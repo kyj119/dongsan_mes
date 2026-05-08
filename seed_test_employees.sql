@@ -1,0 +1,3 @@
+-- seed_test_employees.sql
+-- 실제 직원 데이터는 0117_import_real_employees.sql 마이그레이션으로 관리 (2026-04-11)
+-- 이 파일은 더 이상 사용하지 않음

@@ -1,0 +1,7 @@
+Batch 1: success=True, imported=0, errors=0
+Batch 2: success=True, imported=0, errors=0
+Batch 3: success=True, imported=0, errors=0
+Batch 4: success=True, imported=0, errors=0
+Batch 5: success=True, imported=0, errors=0
+Batch 6: success=True, imported=0, errors=0
+Batch 7: success=True, imported=0, errors=0

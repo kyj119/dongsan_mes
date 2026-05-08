@@ -1,0 +1,3 @@
+-- 0147: 사용자별 기본 법인 설정
+-- SQLite 제약: ALTER TABLE ADD COLUMN에서 REFERENCES + non-NULL DEFAULT 불가
+ALTER TABLE users ADD COLUMN default_entity_id INTEGER DEFAULT 1;

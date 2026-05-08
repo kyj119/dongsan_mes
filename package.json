@@ -1,0 +1,48 @@
+{
+  "name": "webapp",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "concurrently -k -n build,serve -c blue,green \"vite build --watch\" \"wrangler pages dev dist --d1=webapp-production --local --ip 0.0.0.0 --port 3000\"",
+    "dev:sandbox": "taskkill /IM workerd.exe /F 2>NUL & wrangler pages dev dist --ip 0.0.0.0 --port 3000",
+    "dev:d1": "powershell -Command \"Get-Process workerd -EA SilentlyContinue | Stop-Process -Force\" & wrangler pages dev dist --local --ip 0.0.0.0 --port 3000",
+    "build": "vite build",
+    "typecheck": "tsc --noEmit",
+    "verify": "npm run typecheck && npm run build",
+    "preview": "wrangler pages dev dist",
+    "deploy": "npm run build && wrangler pages deploy dist",
+    "deploy:prod": "npm run build && wrangler pages deploy dist --project-name webapp",
+    "cf-typegen": "wrangler types --env-interface CloudflareBindings",
+    "clean-port": "taskkill /IM workerd.exe /F 2>NUL || ver>NUL",
+    "clean:tmp": "powershell -NoProfile -Command \"if(Test-Path .wrangler/tmp){Remove-Item .wrangler/tmp -Recurse -Force; Write-Host 'Cleaned .wrangler/tmp'}else{Write-Host 'Already clean'}\"",
+    "test": "curl http://localhost:3000",
+    "smoke": "node scripts/smoke.cjs",
+    "verify:items": "node scripts/verify-items.mjs",
+    "db:migrate:local": "wrangler d1 migrations apply webapp-production --local",
+    "db:migrate:prod": "wrangler d1 migrations apply webapp-production",
+    "db:seed": "wrangler d1 execute webapp-production --local --file=./seed_users.sql && wrangler d1 execute webapp-production --local --file=./seed_data.sql",
+    "db:reset": "taskkill /F /IM workerd.exe 2>NUL & powershell -NoProfile -Command \"Start-Sleep -Milliseconds 500; if(Test-Path .wrangler/state/v3/d1){Remove-Item .wrangler/state/v3/d1 -Recurse -Force}\" && npm run db:migrate:local && npm run db:seed",
+    "db:console:local": "wrangler d1 execute webapp-production --local",
+    "db:console:prod": "wrangler d1 execute webapp-production",
+    "git:init": "git init && git add . && git commit -m 'Initial commit'",
+    "git:commit": "git add . && git commit -m",
+    "git:status": "git status",
+    "git:log": "git log --oneline",
+    "dev:local": "npm run build && npm run dev:d1",
+    "db:seed:all": "npm run db:seed && npx wrangler d1 execute webapp-production --local --file=./seed_hr.sql && npx wrangler d1 execute webapp-production --local --file=./seed_inventory.sql && npx wrangler d1 execute webapp-production --local --file=./seed_production.sql",
+    "db:reset:full": "npm run db:reset && npm run db:seed:all",
+    "scan-server": "node tools/folder-scan-server.cjs"
+  },
+  "dependencies": {
+    "@rollup/rollup-linux-x64-gnu": "^4.60.1",
+    "hono": "^4.7.9"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20250705.0",
+    "@hono/vite-cloudflare-pages": "^0.4.2",
+    "concurrently": "^9.2.1",
+    "typescript": "^5.7.3",
+    "vite": "^5.4.14",
+    "wrangler": "^4.75.0"
+  }
+}

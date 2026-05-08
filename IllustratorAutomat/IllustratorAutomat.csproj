@@ -1,0 +1,58 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <RootNamespace>IllustratorAutomation</RootNamespace>
+    <Nullable>enable</Nullable>
+    <PublishSingleFile>true</PublishSingleFile>
+    <SelfContained>true</SelfContained>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <PublishReadyToRun>true</PublishReadyToRun>
+    <!-- RuntimeIdentifier를 csproj에 고정 시 SDK가 AssemblyInfo를 중복 생성하는 버그 우회 -->
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+  </PropertyGroup>
+
+  <!-- TestRunner 서브프로젝트 파일이 SDK glob에 의해 포함되지 않도록 제외 -->
+  <ItemGroup>
+    <Compile Remove="TestRunner\**\*.cs" />
+    <None Remove="TestRunner\**" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- COM 자동화(dynamic + Marshal.GetActiveObject)용 -->
+    <PackageReference Include="Microsoft.CSharp" Version="4.7.0" />
+    <!-- OpenCV 바운드 추출 (디자인 그룹 검출) -->
+    <PackageReference Include="OpenCvSharp4" Version="4.9.0.20240103" />
+    <PackageReference Include="OpenCvSharp4.runtime.win" Version="4.9.0.20240103" />
+    <!-- appsettings.json 로드 (Step 4.5) -->
+    <PackageReference Include="Microsoft.Extensions.Configuration" Version="8.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="8.0.0" />
+  </ItemGroup>
+
+  <!-- Illustrator 스크립트를 빌드/배포 출력 폴더에 항상 복사 -->
+  <ItemGroup>
+    <None Include="ExtractGroups.jsx">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+      <ExcludeFromSingleFile>true</ExcludeFromSingleFile>
+    </None>
+    <None Include="ProcessOrderItem.jsx">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+      <ExcludeFromSingleFile>true</ExcludeFromSingleFile>
+    </None>
+    <None Include="PackGroups.jsx">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+      <ExcludeFromSingleFile>true</ExcludeFromSingleFile>
+    </None>
+    <None Include="SheetLayout.jsx">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+      <ExcludeFromSingleFile>true</ExcludeFromSingleFile>
+    </None>
+    <!-- Step 4.5: agent-side config -->
+    <None Update="appsettings.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </None>
+  </ItemGroup>
+
+</Project>

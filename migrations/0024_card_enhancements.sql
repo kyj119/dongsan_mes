@@ -1,0 +1,2 @@
+ALTER TABLE cards ADD COLUMN thumbnail_url TEXT DEFAULT NULL;
+ALTER TABLE cards ADD COLUMN printed_quantity INTEGER DEFAULT 0;

@@ -1,0 +1,35 @@
+# PR 자동 검증 (typecheck + build)
+#
+# main에 머지하기 전 자동 검증. PR 생성/업데이트 시 작동.
+# main에 직접 push만 하는 워크플로우라면 이 파일은 동작하지 않음 (PR이 없으므로).
+
+name: Verify PR
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  verify:
+    name: Typecheck & Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npx tsc --noEmit
+
+      - name: Build
+        run: npx vite build
