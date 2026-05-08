@@ -1,0 +1,23 @@
+{
+  "name": "caps-worker",
+  "version": "1.0.0",
+  "description": "CAPS 근태 시스템 → MES 동기화 워커 (경리 PC에서 실행)",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "test-conn": "node src/test-connection.js",
+    "test-query": "node src/test-query.js",
+    "deploy": "powershell -Command \"xcopy src \\\\DESKTOP-9R7B2DD\\c$\\caps-worker\\src /E /Y /I && echo Deploy complete!\"",
+    "install-service": "node src/service-install.js",
+    "uninstall-service": "node src/service-uninstall.js"
+  },
+  "dependencies": {
+    "odbc": "^2.4.9",
+    "axios": "^1.7.0",
+    "node-cron": "^3.0.3",
+    "dotenv": "^16.4.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

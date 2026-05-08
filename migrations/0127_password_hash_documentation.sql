@@ -1,0 +1,14 @@
+-- ============================================================================
+-- Migration 0127 — Password hashing upgrade (PBKDF2)
+-- ----------------------------------------------------------------------------
+-- No schema change. `users.password_hash` (TEXT) now stores either:
+--   * A legacy plaintext password (from early seeds), OR
+--   * A PBKDF2-SHA256 hash in the format
+--       pbkdf2$<iterations>$<saltBase64>$<hashBase64>
+--     produced by src/utils/password.ts.
+--
+-- The login route (src/routes/auth.ts) transparently upgrades plaintext rows
+-- to PBKDF2 on the first successful login. This migration exists purely to
+-- mark the change point for anyone auditing the migrations folder.
+-- ============================================================================
+SELECT 1;

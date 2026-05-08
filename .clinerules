@@ -1,0 +1,14 @@
+## AI 작업 동기화 규칙
+
+작업 완료 시 반드시 .ai-sync/changelog.jsonl 파일에 아래 형식으로 한 줄 append할 것:
+
+{"date":"ISO날짜","task":"작업명","files":["변경파일1","변경파일2"],"summary":"한줄요약","status":"completed"}
+
+예시:
+{"date":"2026-03-22T15:30","task":"스마트 매칭 구현","files":["D:\\tools\\smart-match.py","src/scripts/iaScan.js"],"summary":"카테시안곱→이미지유사도 1:1매칭, 01월 4331→565행","status":"completed"}
+
+규칙:
+- 파일 수정/생성/삭제 작업이 있을 때만 기록
+- summary는 50자 이내
+- files는 실제 변경된 파일 경로만 포함
+- .ai-sync 폴더가 없으면 자동 생성

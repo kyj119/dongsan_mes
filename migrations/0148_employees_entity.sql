@@ -1,0 +1,3 @@
+-- 0148: 직원 소속 법인
+-- SQLite 제약: ALTER TABLE ADD COLUMN에서 REFERENCES + non-NULL DEFAULT 불가
+ALTER TABLE employees ADD COLUMN entity_id INTEGER DEFAULT 1;

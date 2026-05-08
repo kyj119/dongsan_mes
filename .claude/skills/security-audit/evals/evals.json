@@ -1,0 +1,23 @@
+{
+  "skill_name": "security-audit",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "보안 점검해줘 API 쪽만",
+      "expected_output": "SQL Injection, 인증/인가, IDOR, 비즈니스 로직 카테고리를 중심으로 src/routes/*.ts 43개 라우터를 점검하고, 심각도별로 분류된 보고서를 출력",
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "프론트엔드에서 XSS 취약점 없는지 확인해줘",
+      "expected_output": "src/scripts/*.js와 src/pages/*.ts에서 innerHTML 사용, 사용자 데이터 미이스케이프 삽입, onclick 핸들러 내 데이터 삽입 등을 찾아서 보고",
+      "files": []
+    },
+    {
+      "id": 3,
+      "prompt": "전체 보안 감사 실행해줘",
+      "expected_output": "8개 카테고리 전체를 병렬 에이전트로 점검하고, CRITICAL/HIGH/MEDIUM/LOW 심각도별 요약 + 수정 제안이 포함된 종합 보고서",
+      "files": []
+    }
+  ]
+}

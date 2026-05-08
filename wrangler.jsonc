@@ -1,0 +1,33 @@
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "webapp",
+	"compatibility_date": "2024-01-01",
+	"compatibility_flags": [
+		"nodejs_compat"
+	],
+	"pages_build_output_dir": "./dist",
+	// Secrets (set via CLI, not committed):
+	//   npx wrangler pages secret put JWT_SECRET --project-name webapp
+	// Secrets are exposed to the Worker as `c.env.JWT_SECRET`. When unset,
+	// src/routes/auth.ts and src/middleware/auth.ts fall back to a dev-only
+	// default so local builds keep working — the fallback MUST NOT be used in
+	// production.
+	// D1 Database configuration
+	// Create production database: npx wrangler d1 create webapp-production
+	// Local development automatically uses local SQLite with --local flag
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "webapp-production",
+			"database_id": "e477d6cc-65b0-465e-8a5e-1b04c4fd6eee"
+		}
+	],
+	// R2 Object Storage — 소스 파일(EPS/AI) 저장
+	// Create: npx wrangler r2 bucket create dongsan-files
+	"r2_buckets": [
+		{
+			"binding": "R2_BUCKET",
+			"bucket_name": "dongsan-files"
+		}
+	]
+}
