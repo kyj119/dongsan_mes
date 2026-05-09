@@ -88,7 +88,9 @@ settingsRouter.patch('/entity', requireRole('ADMIN'), async (c) => {
     const ALLOWED = [
       'name', 'short_name', 'business_reg_no', 'representative',
       'business_type', 'business_item', 'address', 'phone', 'fax', 'email',
-      'tax_email', 'popbill_corp_num', 'bank_info', 'stamp_base64'
+      'tax_email', 'popbill_corp_num', 'bank_info', 'stamp_base64',
+      // Phase 1.2: entity별 이메일 발신 설정
+      'email_from_address', 'email_from_name'
     ]
     const updates: string[] = []
     const params: any[] = []

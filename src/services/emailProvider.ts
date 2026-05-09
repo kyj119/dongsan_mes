@@ -27,7 +27,8 @@ interface EmailSettings {
   replyTo: string
 }
 
-async function getEmailSettings(db: D1Database): Promise<EmailSettings> {
+async function getEmailSettings(db: D1Database, entityId?: number): Promise<EmailSettings> {
+  // 1) 글로벌 settings 조회 (기본값 fallback용)
   const { results } = await db.prepare(
     `SELECT setting_key, setting_value FROM settings
      WHERE setting_key IN ('email_enabled', 'email_from_name', 'email_from_address', 'email_reply_to')`
@@ -38,10 +39,25 @@ async function getEmailSettings(db: D1Database): Promise<EmailSettings> {
     map[row.setting_key] = row.setting_value || ''
   }
 
+  let fromName = map['email_from_name'] || '동산현수막'
+  let fromAddress = map['email_from_address'] || 'onboarding@resend.dev'
+
+  // Phase 1.2: 2) entity별 발신 주소가 있으면 우선 사용
+  if (entityId && entityId > 0) {
+    const entity = await db.prepare(
+      `SELECT name, email_from_address, email_from_name FROM entities WHERE id = ?`
+    ).bind(entityId).first() as any
+    if (entity) {
+      if (entity.email_from_address) fromAddress = entity.email_from_address
+      if (entity.email_from_name) fromName = entity.email_from_name
+      else if (entity.name && !map['email_from_name']) fromName = entity.name
+    }
+  }
+
   return {
     enabled: map['email_enabled'] !== '0',
-    fromName: map['email_from_name'] || '동산현수막',
-    fromAddress: map['email_from_address'] || 'onboarding@resend.dev',
+    fromName,
+    fromAddress,
     replyTo: map['email_reply_to'] || '',
   }
 }
@@ -50,9 +66,10 @@ export async function sendEmail(
   env: Bindings,
   db: D1Database,
   options: EmailOptions,
-  meta?: { template?: string; relatedType?: string; relatedId?: number; sentBy?: number }
+  meta?: { template?: string; relatedType?: string; relatedId?: number; sentBy?: number; entityId?: number }
 ): Promise<EmailResult> {
-  const settings = await getEmailSettings(db)
+  // Phase 1.2: meta.entityId가 있으면 entity별 발신 주소 사용
+  const settings = await getEmailSettings(db, meta?.entityId)
 
   if (!settings.enabled) {
     return { success: false, error: '이메일 발송이 비활성화되어 있습니다.' }
