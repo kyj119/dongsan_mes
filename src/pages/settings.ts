@@ -133,6 +133,17 @@ ${capsSettingsScript}
                   <input type="text" id="s_company_bank_info" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500" placeholder="은행명 계좌번호 예금주">
                 </div>
               </div>
+              <!-- Phase 1.2: 멀티사업자 이메일 발신 설정 -->
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label class="block text-sm font-semibold text-gray-700 mb-1">이메일 발신 주소 <span class="text-xs font-normal text-gray-400">(거래명세서/원장 발송)</span></label>
+                  <input type="email" id="s_company_email_from_address" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500" placeholder="billing@dongsan.co.kr (비우면 글로벌 설정 사용)">
+                </div>
+                <div>
+                  <label class="block text-sm font-semibold text-gray-700 mb-1">이메일 발신 이름</label>
+                  <input type="text" id="s_company_email_from_name" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500" placeholder="동산현수막 (비우면 회사명 사용)">
+                </div>
+              </div>
               <div>
                 <label class="block text-sm font-semibold text-gray-700 mb-1">인감도장</label>
                 <div class="flex items-center gap-4">

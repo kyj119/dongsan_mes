@@ -81,6 +81,9 @@ async function loadSettings() {
         company_address: e.address || '',
         company_fax: e.fax || '',
         company_bank_info: e.bank_info || '',
+        // Phase 1.2: 멀티사업자 이메일
+        company_email_from_address: e.email_from_address || '',
+        company_email_from_name: e.email_from_name || '',
       };
       Object.keys(fieldMap).forEach(function(key) {
         var el = document.getElementById('s_' + key);
@@ -149,6 +152,9 @@ function saveSettings() {
     address: (document.getElementById('s_company_address') || {}).value || '',
     bank_info: (document.getElementById('s_company_bank_info') || {}).value || '',
     stamp_base64: (document.getElementById('s_company_stamp_base64') || {}).value || '',
+    // Phase 1.2: 멀티사업자 이메일 발신 설정
+    email_from_address: (document.getElementById('s_company_email_from_address') || {}).value || '',
+    email_from_name: (document.getElementById('s_company_email_from_name') || {}).value || '',
   };
   // popbill_corp_num 자동 생성 (사업자번호에서 하이픈 제거)
   if (payload.business_reg_no) {

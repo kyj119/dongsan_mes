@@ -118,14 +118,25 @@ ordersQueriesRouter.get('/ready-to-ship', async (c) => {
 })
 
 // PATCH /api/orders/bulk-bill - 일괄 경리 확인 (MANAGER+)
+// Phase 1.1: receipt_type 추가 (TAX_INVOICE | CASH_RECEIPT | CARD | SIMPLE)
 ordersQueriesRouter.patch('/bulk-bill', requireRole('ADMIN', 'MANAGER'), async (c) => {
   try {
     const user = c.get('user')
-    const { order_ids } = await c.req.json<{ order_ids: number[] }>()
+    // 클라가 카멜케이스(orderIds/receiptType) 또는 스네이크(order_ids/receipt_type) 둘 다 보낼 수 있음
+    const body = await c.req.json<any>()
+    const order_ids: number[] = body.order_ids || body.orderIds || []
+    const receipt_type: string | undefined = body.receipt_type || body.receiptType
 
     if (!order_ids || order_ids.length === 0) {
       return c.json({ success: false, error: 'order_ids is required' }, 400)
     }
+
+    // 증빙 유형 검증 (선택 입력이지만 들어오면 화이트리스트만 허용)
+    const validReceiptTypes = ['TAX_INVOICE', 'CASH_RECEIPT', 'CARD', 'SIMPLE']
+    if (receipt_type && !validReceiptTypes.includes(receipt_type)) {
+      return c.json({ success: false, error: '잘못된 증빙 유형입니다.' }, 400)
+    }
+    const normalizedReceiptType = receipt_type || null
 
     let billedCount = 0
 
@@ -148,9 +159,10 @@ ordersQueriesRouter.patch('/bulk-bill', requireRole('ADMIN', 'MANAGER'), async (
               billed_at = CURRENT_TIMESTAMP,
               billed_by = ?,
               billed_amount = ?,
+              receipt_type = COALESCE(?, receipt_type),
               updated_at = CURRENT_TIMESTAMP
           WHERE id = ? AND billing_status != 'BILLED'
-        `).bind(user?.id || null, billedAmount, orderId),
+        `).bind(user?.id || null, billedAmount, normalizedReceiptType, orderId),
         c.env.DB.prepare(
           'UPDATE clients SET balance = balance + ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
         ).bind(billedAmount, order.client_id)

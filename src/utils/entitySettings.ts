@@ -9,7 +9,8 @@ export async function getEntityCompanyInfo(
   const entity = await db.prepare(
     `SELECT name, business_reg_no, representative, address,
             business_type, business_item, popbill_corp_num, email, tax_email, phone,
-            stamp_base64, bank_info, fax
+            stamp_base64, bank_info, fax,
+            email_from_address, email_from_name
      FROM entities WHERE id = ?`
   ).bind(entityId).first() as any
 
@@ -44,6 +45,9 @@ export async function getEntityCompanyInfo(
     company_phone: entity.phone || '',
     company_fax: entity.fax || '',
     company_bank_info: entity.bank_info || '',
+    // Phase 1.2: entity별 이메일 발신 설정
+    email_from_address: entity.email_from_address || '',
+    email_from_name: entity.email_from_name || entity.name || '',
   }
 }
 

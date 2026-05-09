@@ -85,9 +85,19 @@ export function taxInvoicesPage(c: Context<HonoEnv>) {
             선택: <span id="billingSelCount" class="font-bold text-green-700">0</span>건 /
             <span id="billingSelAmount" class="font-bold text-green-700">0</span>원
           </div>
-          <button onclick="submitBulkBilling()" class="px-5 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm font-medium">
-            <i class="fas fa-check-double mr-1"></i>선택 회계반영
-          </button>
+          <div class="flex items-center gap-3">
+            <label class="text-sm text-gray-600">증빙 유형</label>
+            <select id="billingReceiptType" class="px-3 py-2 border rounded text-sm" style="color:#212529;">
+              <option value="">미선택</option>
+              <option value="TAX_INVOICE">세금계산서</option>
+              <option value="CASH_RECEIPT">현금영수증</option>
+              <option value="CARD">카드</option>
+              <option value="SIMPLE">간이영수증</option>
+            </select>
+            <button onclick="submitBulkBilling()" class="px-5 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm font-medium">
+              <i class="fas fa-check-double mr-1"></i>선택 회계반영
+            </button>
+          </div>
         </div>
       </div>
       <div id="billingBarSpacer" class="hidden h-16"></div>

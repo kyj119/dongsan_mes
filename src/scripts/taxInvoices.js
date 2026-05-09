@@ -858,11 +858,19 @@ async function submitBulkBilling() {
   if (chks.length === 0) { showToast('주문을 선택하세요.', 'warning'); return; }
   var orderIds = [];
   chks.forEach(function(c) { orderIds.push(parseInt(c.getAttribute('data-order-id'))); });
-  if (!confirm(orderIds.length + '건의 주문을 회계반영 처리하시겠습니까?')) return;
+
+  // Phase 1.1: 증빙 유형 (선택)
+  var receiptTypeEl = document.getElementById('billingReceiptType');
+  var receiptType = receiptTypeEl ? receiptTypeEl.value : '';
+  var rtLabel = { TAX_INVOICE: '세금계산서', CASH_RECEIPT: '현금영수증', CARD: '카드', SIMPLE: '간이영수증' }[receiptType] || '미분류';
+
+  if (!confirm(orderIds.length + '건의 주문을 [' + rtLabel + '] 증빙으로 회계반영 처리하시겠습니까?')) return;
   try {
-    var res = await axios.patch('/api/orders/bulk-bill', { orderIds: orderIds });
+    var payload = { orderIds: orderIds };
+    if (receiptType) payload.receiptType = receiptType;
+    var res = await axios.patch('/api/orders/bulk-bill', payload);
     if (res.data.success) {
-      showToast(orderIds.length + '건 회계반영 완료', 'success');
+      showToast(orderIds.length + '건 회계반영 완료 (' + rtLabel + ')', 'success');
       loadBillingPendingOrders(); // 새로고침
     } else {
       showToast(res.data.error || '회계반영 실패', 'error');
