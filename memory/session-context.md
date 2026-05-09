@@ -1,6 +1,26 @@
-# 최근 세션 컨텍스트 (2026-05-08)
+# 최근 세션 컨텍스트 (2026-05-09)
 
-## 이번 세션에서 진행된 결정/작업
+## 이번 세션 (2026-05-09)에서 완료된 작업
+
+### Phase 0 — 인프라 안정화 ✅ 완료
+- 거래처 정책 UI (가격 정책 드롭다운) — 마이그레이션 0187 활용
+- GitHub Actions 자동 배포 (deploy.yml + verify.yml)
+- GitHub Secrets 등록 (CLOUDFLARE_API_TOKEN/ACCOUNT_ID)
+- git history squash 7GB → 2.5MB (1700배 감소, .gitignore 보강)
+
+### Phase 1 — 회계·재무 정합성 ✅ 완료
+- **1.1 즉시수금 증빙 유형 분류**: 마이그레이션 0189 (`orders.receipt_type`), 회계반영 모달에 select 추가 (세금계산서/현금영수증/카드/간이), bulk-bill API에서 receipt_type 수용 (snake/camelCase 양쪽 호환)
+- **1.2 멀티사업자 이메일**: 마이그레이션 0190 (`entities.email_from_address`, `email_from_name`), `emailProvider.sendEmail({meta: {entityId}})`로 entity별 발신 우선, 법인 정보 설정에 입력 필드 추가
+- **1.3 팝빌 LinkedID**: 사용자가 직접 settings에서 입력 완료 (코드 변경 없음)
+
+### Phase 3.3 — TypeScript 인터페이스 갱신 ✅ 완료
+- `src/types/models.ts`: Client/Order에 누락 컬럼 다수 추가 (price_list_id, price_policy_id, auto_billing, billing_status, receipt_type, cancel_reason 등)
+- 신규 인터페이스: Entity, PricePolicy, PricePolicyRule
+- 신규 타입 alias: BillingStatus, ReceiptType, OrderType
+
+---
+
+## 이전 세션 (2026-05-08) 컨텍스트
 
 ### 1. 거래처 편집 모달에 가격 정책 드롭다운 추가
 - **결정**: UI는 거래처 편집 모달에만 추가 (상세 페이지 아님), 기존 `price_list_id`/`client_price_rates`와 공존
