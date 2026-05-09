@@ -74,6 +74,7 @@ export interface Client {
   client_code: string;
   client_name: string;
   representative?: string;
+  business_registration_number?: string;
   business_type?: string;
   business_item?: string;
   phone?: string;
@@ -81,13 +82,79 @@ export interface Client {
   fax?: string;
   email?: string;
   address?: string;
+  postal_code?: string;
+  address_detail?: string;
   search_keywords?: string;
   transfer_info?: string;
   is_active: number;
   balance: number;
   notes?: string;
+  // 거래처 분류·배송·결제
+  client_type?: 'SALES' | 'PURCHASE' | 'BOTH';
+  delivery_method?: 'SAME' | 'FREIGHT' | 'DIRECT' | 'PICKUP';
+  delivery_address?: string;
+  delivery_invoice_type?: string;
+  invoice_method?: string;
+  bank_info?: string;
+  // 단가 시스템 (구 + 신)
+  price_list_id?: number | null;       // 0035 구 단가표 시스템
+  price_policy_id?: number | null;     // 0187 신 가격 정책 (Phase 0)
+  // 자동 회계반영 (0183)
+  auto_billing?: number;
   created_at: string;
   updated_at: string;
+}
+
+// ============================================================================
+// Entity (멀티사업자/법인 — 0145, 0149)
+// ============================================================================
+
+export interface Entity {
+  id: number;
+  name: string;
+  short_name?: string;
+  business_reg_no?: string;
+  representative?: string;
+  business_type?: string;
+  business_item?: string;
+  address?: string;
+  phone?: string;
+  fax?: string;            // 0185
+  email?: string;
+  tax_email?: string;
+  popbill_corp_num?: string;
+  bank_info?: string;
+  stamp_base64?: string;   // 0152
+  // Phase 1.2: 멀티사업자 이메일 발신 (0190)
+  email_from_address?: string;
+  email_from_name?: string;
+  is_active?: number;
+  created_at: string;
+  updated_at: string;
+}
+
+// ============================================================================
+// Price Policy (가격 정책 — 0187, Phase 0)
+// ============================================================================
+
+export interface PricePolicy {
+  id: number;
+  name: string;
+  description?: string;
+  is_default: number;
+  is_active: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PricePolicyRule {
+  id: number;
+  policy_id: number;
+  category?: string;          // NULL이면 전체 적용
+  item_id?: number;           // 특정 품목 우선
+  rate_percent: number;       // 양수=할증, 음수=할인
+  fixed_price?: number;       // 우선순위 1: 고정가
+  sort_order: number;
 }
 
 // ============================================================================
@@ -150,11 +217,16 @@ export interface PostProcessingOption {
 // Order (주문)
 // ============================================================================
 
+export type BillingStatus = 'PENDING' | 'BILLED' | 'PAID';
+export type ReceiptType = 'TAX_INVOICE' | 'CASH_RECEIPT' | 'CARD' | 'SIMPLE';
+export type OrderType = 'NORMAL' | 'DISTRIBUTION';
+
 export interface Order {
   id: number;
   order_number: string;
   client_id: number;
   status: OrderStatus;
+  order_type?: OrderType;
   order_year?: number;
   order_month?: number;
   reception_location?: string;
@@ -170,6 +242,19 @@ export interface Order {
   contact_phone?: string;
   contact_mobile?: string;
   shipping_payment?: string;
+  // 회계반영 (0102/0183/0189)
+  billing_status?: BillingStatus;
+  billed_at?: string;
+  billed_by?: number;
+  billed_amount?: number;
+  billable_after?: string;       // 0178: PICKUP +1일 등 회계반영 가능 시점
+  receipt_type?: ReceiptType;    // 0189: Phase 1.1 증빙 유형 분류
+  // 취소 (0184)
+  cancel_reason?: string;
+  cancelled_at?: string;
+  cancelled_by?: number;
+  // 자동 완료
+  auto_complete_date?: string;   // 0182
   created_by: number;
   updated_by?: number;
   confirmed_at?: string;

@@ -1,7 +1,22 @@
 # 동산현수막 ERP+MES — 로드맵
 
-> **최종 업데이트**: 2026-05-08
+> **최종 업데이트**: 2026-05-09 (Phase 0, 1, 3.3 완료)
 > **기준 자료**: `.claude/PROJECT_STATUS.md`, `memory/session-context.md`, `.claude/design-decisions.md`, `feedback-sheet-layout.md`
+
+## 진행 상태 요약 (2026-05-09)
+
+| Phase | 상태 | 비고 |
+|-------|------|------|
+| 0 — 인프라 안정화 | ✅ 완료 | CI/CD 가동 + 거래처 정책 UI 배포 + git 7GB→2.5MB |
+| 1.1 — 즉시수금 증빙 유형 | ✅ 완료 | 마이그레이션 0189, 회계반영 모달에 select |
+| 1.2 — 멀티사업자 이메일 | ✅ 완료 | 마이그레이션 0190, entity별 발신 |
+| 1.3 — 팝빌 LinkedID | ✅ 완료 | 사용자가 settings에서 직접 입력 |
+| 2 — 운영 차단 해소 | ⏳ 외부 의존 | CAPS 경리 PC 접속 / RIP-LogWatcher 현장 / 라벨 프린터 |
+| 3.3 — Client 타입 갱신 | ✅ 완료 | Entity, PricePolicy 인터페이스 추가, Client/Order 보강 |
+| 3.1 — 대형 파일 리팩토링 | 🟡 대기 | brainstorming 선행 필요, 별도 세션 |
+| 3.2 — 견적서 전환 재설계 | 🟡 대기 | 현재 동작 중, 긴급도 낮음 |
+| 4 — IA 오프셋 버그 | 🟡 대기 | Illustrator MCP 디버깅 세션 |
+| 5 — 모니터링·피드백 | 🔁 상시 | v2 피드백 / E2E / 카카오톡 알림 |
 
 ---
 
