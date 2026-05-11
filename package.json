@@ -31,7 +31,11 @@
     "dev:local": "npm run build && npm run dev:d1",
     "db:seed:all": "npm run db:seed && npx wrangler d1 execute webapp-production --local --file=./seed_hr.sql && npx wrangler d1 execute webapp-production --local --file=./seed_inventory.sql && npx wrangler d1 execute webapp-production --local --file=./seed_production.sql",
     "db:reset:full": "npm run db:reset && npm run db:seed:all",
-    "scan-server": "node tools/folder-scan-server.cjs"
+    "scan-server": "node tools/folder-scan-server.cjs",
+    "e2e": "playwright test",
+    "e2e:headed": "playwright test --headed",
+    "e2e:ui": "playwright test --ui",
+    "e2e:report": "playwright show-report"
   },
   "dependencies": {
     "@rollup/rollup-linux-x64-gnu": "^4.60.1",
@@ -40,6 +44,7 @@
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20250705.0",
     "@hono/vite-cloudflare-pages": "^0.4.2",
+    "@playwright/test": "^1.49.0",
     "concurrently": "^9.2.1",
     "typescript": "^5.7.3",
     "vite": "^5.4.14",
