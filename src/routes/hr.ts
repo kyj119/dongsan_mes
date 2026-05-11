@@ -29,8 +29,8 @@ hrRouter.get('/employees/next-code', async (c) => {
     }
     return c.json({ success: false, error: '사원번호 생성 한도 초과' }, 500)
   } catch (error: any) {
-    console.error('next-code failed:', error)
-    return c.json({ success: false, error: '사원번호 생성 실패', detail: error?.message || String(error) }, 500)
+    console.error('hr.ts [next-code]:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
   }
 })
 
@@ -483,8 +483,8 @@ hrRouter.post('/employees', async (c) => {
 
     return c.json({ success: true, data: { id: result.meta.last_row_id } })
   } catch (error: any) {
-    console.error('Failed to create employee:', error)
-    return c.json({ success: false, error: '서버 오류가 발생했습니다.', detail: error?.message || String(error) }, 500)
+    console.error('hr.ts [POST /employees]:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
   }
 })
 
@@ -651,13 +651,8 @@ hrRouter.put('/employees/:id', async (c) => {
         : undefined,
     })
   } catch (error: any) {
-    console.error('Failed to update employee:', error)
-    const errMsg = error?.message || String(error)
-    return c.json({
-      success: false,
-      error: '직원 정보 저장 실패',
-      detail: errMsg,
-    }, 500)
+    console.error('hr.ts [PUT /employees/:id]:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
   }
 })
 
@@ -714,12 +709,8 @@ hrRouter.delete('/employees/:id', async (c) => {
       },
     })
   } catch (error: any) {
-    console.error('Failed to delete employee:', error)
-    return c.json({
-      success: false,
-      error: '직원 삭제에 실패했습니다.',
-      detail: error?.message || String(error),
-    }, 500)
+    console.error('hr.ts [DELETE /employees/:id]:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
   }
 })
 
@@ -985,8 +976,8 @@ hrRouter.get('/employees/:id/detail', async (c) => {
       }
     })
   } catch (error: any) {
-    console.error('Failed to get employee detail:', error)
-    return c.json({ success: false, error: '서버 오류가 발생했습니다.', detail: '서버 오류가 발생했습니다' }, 500)
+    console.error('hr.ts [GET /employees/:id/detail]:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
   }
 })
 

@@ -3,11 +3,12 @@ import { sign, verify } from 'hono/jwt'
 import type { HonoEnv } from '../types/env'
 import { verifyPassword, hashPassword } from '../utils/crypto'
 import { authMiddleware, requireRole } from '../middleware/auth'
+import { rateLimitMiddleware } from '../middleware/rateLimit'
 
 const auth = new Hono<HonoEnv>()
 
-// 로그인 API
-auth.post('/login', async (c) => {
+// 로그인 API (브루트포스 방지: 60초당 5회)
+auth.post('/login', rateLimitMiddleware(5, 60000), async (c) => {
   try {
     const { username, password } = await c.req.json()
 
