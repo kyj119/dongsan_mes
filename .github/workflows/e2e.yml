@@ -1,0 +1,79 @@
+# 동산현수막 ERP+MES — E2E (Playwright) 자동 검증
+#
+# Trigger:
+#   - main 푸시 후 (deploy.yml이 끝난 뒤 실행)
+#   - 매일 한국시간 오전 9시 (UTC 0시)
+#   - 수동 실행 (workflow_dispatch)
+#
+# 필요한 GitHub Secrets (선택):
+#   E2E_USER   기본 admin
+#   E2E_PASS   기본 password
+#
+# 결과:
+#   - 실패 시 playwright-report HTML 아티팩트 업로드
+#   - trace.zip / screenshot / video 첨부 (실패 시에만)
+#
+# 자동 알림:
+#   - GitHub 기본 이메일 알림 (Settings → Notifications → Actions)
+#   - 추후 카카오톡 연동 가능 (별도 step 추가)
+
+name: E2E (Playwright)
+
+on:
+  workflow_run:
+    workflows: ['Deploy to Cloudflare Pages']
+    types: [completed]
+    branches: [main]
+  schedule:
+    - cron: '0 0 * * *'  # 매일 UTC 0시 = KST 9시
+  workflow_dispatch:
+
+concurrency:
+  group: e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  e2e:
+    name: Playwright E2E (production)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # workflow_run 트리거일 때 deploy 성공한 경우만 실행
+    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Run Playwright tests (production)
+        env:
+          E2E_BASE_URL: https://webapp-9i0.pages.dev
+          E2E_USER: ${{ secrets.E2E_USER || 'admin' }}
+          E2E_PASS: ${{ secrets.E2E_PASS || 'password' }}
+          CI: true
+        run: npm run e2e
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 14
+
+      - name: Notify on failure
+        if: failure()
+        run: |
+          echo "::error::E2E 실패 — production에 회귀 발생 의심"
+          echo "Report: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
