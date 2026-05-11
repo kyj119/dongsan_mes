@@ -60,12 +60,12 @@ clientsRouter.get('/check-brn/:brn', async (c) => {
 // Get all clients
 clientsRouter.get('/', async (c) => {
   try {
-    const { page = '1', limit = '50', search = '', client_type = '', active = '', invoice_method = '', delivery_method = '' } = c.req.query()
+    const { page = '1', limit = '50', search = '', client_type = '', active = '', invoice_method = '', delivery_method = '', sort = 'name', dormant = '', has_balance = '', credit_hold = '' } = c.req.query()
     const safeLimit = Math.min(parseInt(limit) || 50, 200)
     const offset = (parseInt(page) - 1) * safeLimit
 
     // WHERE 절 + params를 한 번만 빌드 (alias c. 사용, 카운트 쿼리도 FROM clients c로 통일)
-    function buildClientFilters(q: { active: string; search: string; client_type: string; invoice_method: string; delivery_method: string }) {
+    function buildClientFilters(q: { active: string; search: string; client_type: string; invoice_method: string; delivery_method: string; has_balance: string; credit_hold: string }) {
       let where = ' WHERE 1=1'
       const fp: any[] = []
 
@@ -79,9 +79,9 @@ clientsRouter.get('/', async (c) => {
       }
 
       if (q.search) {
-        where += ' AND (c.client_name LIKE ? OR c.client_code LIKE ? OR c.search_keywords LIKE ? OR c.business_registration_number LIKE ?)'
+        where += ' AND (c.client_name LIKE ? OR c.client_code LIKE ? OR c.search_keywords LIKE ? OR c.business_registration_number LIKE ? OR c.phone LIKE ? OR c.mobile LIKE ?)'
         const searchPattern = `%${q.search}%`
-        fp.push(searchPattern, searchPattern, searchPattern, searchPattern)
+        fp.push(searchPattern, searchPattern, searchPattern, searchPattern, searchPattern, searchPattern)
       }
 
       // client_type 필터: SALES → SALES+BOTH, PURCHASE → PURCHASE+BOTH, BOTH → BOTH만
@@ -105,19 +105,50 @@ clientsRouter.get('/', async (c) => {
         fp.push(q.delivery_method)
       }
 
+      // balance 필터
+      if (q.has_balance === '1') {
+        where += ' AND c.balance > 0'
+      }
+
+      // credit_hold 필터
+      if (q.credit_hold === '1') {
+        where += ' AND c.credit_hold = 1'
+      }
+
       return { where, params: fp }
     }
 
-    const { where: filterWhere, params: filterParams } = buildClientFilters({ active, search, client_type, invoice_method, delivery_method })
+    const { where: filterWhere, params: filterParams } = buildClientFilters({ active, search, client_type, invoice_method, delivery_method, has_balance, credit_hold })
 
-    const query = `SELECT c.*, pl.name as price_list_name, (SELECT MAX(order_date) FROM orders WHERE client_id = c.id) as last_order_date FROM clients c LEFT JOIN price_lists pl ON c.price_list_id = pl.id` + filterWhere + ' ORDER BY c.client_name ASC LIMIT ? OFFSET ?'
-    const params = [...filterParams, safeLimit, offset]
+    // Sort option
+    let orderByClause = ' ORDER BY c.client_name ASC'
+    if (sort === 'last_order') orderByClause = ' ORDER BY last_order_date DESC NULLS LAST, c.client_name ASC'
+    else if (sort === 'created') orderByClause = ' ORDER BY c.created_at DESC'
+
+    // Dormant filter (needs last_order_date subquery)
+    let dormantWhere = ''
+    const dormantParams: any[] = []
+    if (dormant && ['30', '60', '90', '180'].includes(dormant)) {
+      dormantWhere = ` AND (last_order_date IS NULL OR last_order_date < date('now', '-' || ? || ' days'))`
+      dormantParams.push(dormant)
+    }
+
+    const query = `SELECT *, last_order_date FROM (SELECT c.*, pl.name as price_list_name, (SELECT MAX(order_date) FROM orders WHERE client_id = c.id) as last_order_date FROM clients c LEFT JOIN price_lists pl ON c.price_list_id = pl.id` + filterWhere + `) c WHERE 1=1` + dormantWhere + orderByClause + ' LIMIT ? OFFSET ?'
+    const params = [...filterParams, ...dormantParams, safeLimit, offset]
 
     const { results } = await c.env.DB.prepare(query).bind(...params).all()
 
     // Get total count (same filters, FROM clients c로 alias 통일)
-    const countQuery = 'SELECT COUNT(*) as count FROM clients c' + filterWhere
-    const { count } = await c.env.DB.prepare(countQuery).bind(...filterParams).first() as any
+    let countQuery: string
+    let countParams: any[]
+    if (dormantWhere) {
+      countQuery = `SELECT COUNT(*) as count FROM (SELECT c.*, (SELECT MAX(order_date) FROM orders WHERE client_id = c.id) as last_order_date FROM clients c` + filterWhere + `) c WHERE 1=1` + dormantWhere
+      countParams = [...filterParams, ...dormantParams]
+    } else {
+      countQuery = 'SELECT COUNT(*) as count FROM clients c' + filterWhere
+      countParams = [...filterParams]
+    }
+    const { count } = await c.env.DB.prepare(countQuery).bind(...countParams).first() as any
 
     return c.json({
       success: true,

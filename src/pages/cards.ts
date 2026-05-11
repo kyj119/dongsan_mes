@@ -344,6 +344,17 @@ export function cardsPage(c: Context<HonoEnv>) {
             </div>
         </div>
 
+        <!-- KPI 요약 바 -->
+        <div class="flex flex-wrap items-center gap-2 mb-3" id="kanbanKpiBar">
+            <span id="kpiOverdue" class="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold bg-gray-100 text-gray-400">지연 0건</span>
+            <span class="text-gray-300">|</span>
+            <span id="kpiRipWaiting" class="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-blue-50 text-blue-700">RIP대기 0</span>
+            <span id="kpiPrinting" class="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-yellow-50 text-yellow-700">출력중 0</span>
+            <span id="kpiPrintDone" class="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-green-50 text-green-700">완료 0</span>
+            <span class="text-gray-300">|</span>
+            <span id="kpiHold" class="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold bg-gray-100 text-gray-400">보류 0건</span>
+        </div>
+
         <!-- 데스크탑 2컬럼 칸반 (진행중 | 출력완료) -->
         <div class="hidden lg:grid lg:grid-cols-2 gap-3 items-start" id="kanbanBoard">
             <!-- 진행중 (RIP대기 + 출력중 통합) -->

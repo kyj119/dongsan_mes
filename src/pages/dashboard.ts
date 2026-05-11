@@ -65,6 +65,28 @@ export function dashboardPage(c: Context<HonoEnv>) {
                         <span class="text-xs tabular-nums" id="statKpiOver30" style="color:var(--c-text-muted)">30일+ -</span>
                     </div>
                 </div>
+                <!-- 긴급 주문 -->
+                <div class="ds-card ds-card-compact cursor-pointer" onclick="location.href='/orders?priority=URGENT'" id="kpiUrgentCard">
+                    <div class="flex items-center justify-between mb-1">
+                        <div class="text-sm" style="color:var(--c-text-secondary)">긴급 주문</div>
+                        <i class="fas fa-bolt text-xs" style="color:#ea580c;opacity:0.6"></i>
+                    </div>
+                    <div class="text-3xl font-bold tabular-nums" style="color:#ea580c" id="statUrgentCount">-</div>
+                    <div class="flex items-center gap-1 mt-2">
+                        <span class="text-xs" style="color:var(--c-text-muted)">진행 중 긴급건</span>
+                    </div>
+                </div>
+                <!-- 이번 달 수금률 -->
+                <div class="ds-card ds-card-compact">
+                    <div class="flex items-center justify-between mb-1">
+                        <div class="text-sm" style="color:var(--c-text-secondary)">수금률</div>
+                        <i class="fas fa-hand-holding-usd text-xs" style="color:#0d9488;opacity:0.6"></i>
+                    </div>
+                    <div class="text-3xl font-bold tabular-nums" style="color:#0d9488" id="statCollectionRate">-</div>
+                    <div class="flex items-center gap-1 mt-2">
+                        <span class="text-xs tabular-nums" style="color:var(--c-text-muted)" id="statCollectionDetail">이번 달</span>
+                    </div>
+                </div>
             </div>
 
             <!-- 검수 대기 경고 카드 (PENDING_REVIEW 건수 > 0 시 노출) -->

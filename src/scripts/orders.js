@@ -1132,7 +1132,8 @@ async function exportOrdersCsv() {
   const savedBillingStatus = localStorage.getItem('orders_filter_billing_status');
   const savedPriority = localStorage.getItem('orders_filter_priority');
   if (savedSearch) document.getElementById('searchQuery').value = savedSearch;
-  if (savedStatus) document.getElementById('statusFilter').value = savedStatus;
+  var TRANSIENT_STATUSES = ['CANCELLED', 'QUOTATION'];
+  if (savedStatus && TRANSIENT_STATUSES.indexOf(savedStatus) === -1) document.getElementById('statusFilter').value = savedStatus;
   if (savedSort) document.getElementById('sortBy').value = savedSort;
   if (savedPage) currentPage = parseInt(savedPage) || 1;
   if (savedDateFrom) document.getElementById('orderDateFrom').value = savedDateFrom;
