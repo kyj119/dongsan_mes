@@ -1,7 +1,7 @@
 ﻿// Skeleton loading
 (function initSkeletons() {
   var kpi = document.getElementById('kpiArea');
-  if (kpi && window.dsSkeleton) kpi.innerHTML = dsSkeleton.stat(4);
+  if (kpi && window.dsSkeleton) kpi.innerHTML = dsSkeleton.stat(7);
   var skeletonTargets = ['todayDueList','weeklyTrend','cardDistribution','productionToday','uptimeWeekly','activeCardsList','receivablesClients','agingBuckets','topClients','ppStats','recentOrdersList','recentShipmentsList'];
   skeletonTargets.forEach(function(id) {
     var el = document.getElementById(id);
@@ -59,7 +59,9 @@ async function loadDashboardStats() {
                 '<div class="ds-card ds-card-compact"><div class="flex items-center justify-between mb-1"><div class="text-sm" style="color:var(--c-text-secondary)">오늘 주문</div><i class="fas fa-shopping-cart text-xs" style="color:var(--c-primary);opacity:0.6"></i></div><div class="text-3xl font-bold tabular-nums" style="color:var(--c-primary)" id="statTodayOrders">-</div><div class="flex items-center justify-between mt-2"><div class="text-xs" style="color:var(--c-text-muted)" id="statTodayRevenueSub">-</div></div></div>'
                 + '<div class="ds-card ds-card-compact"><div class="flex items-center justify-between mb-1"><div class="text-sm" style="color:var(--c-text-secondary)">이번 달 매출</div><i class="fas fa-won-sign text-xs" style="color:#7c3aed;opacity:0.6"></i></div><div class="text-3xl font-bold tabular-nums" style="color:#7c3aed" id="statMonthRevenue">-</div><div class="flex items-center gap-1 mt-2"><span class="text-xs tabular-nums" id="statMonthChange" style="color:var(--c-text-muted)">-</span></div></div>'
                 + '<div class="ds-card ds-card-compact"><div class="flex items-center justify-between mb-1"><div class="text-sm" style="color:var(--c-text-secondary)">생산 현황</div><i class="fas fa-print text-xs" style="color:var(--c-success);opacity:0.6"></i></div><div class="text-3xl font-bold tabular-nums" style="color:var(--c-success)" id="statProductionOrders">-</div><div class="flex items-center gap-3 mt-2"><span class="text-xs" style="color:var(--c-text-muted)">출고대기 <span class="font-semibold tabular-nums" style="color:var(--c-warning)" id="statShipmentReady">-</span>건</span></div></div>'
-                + '<div class="ds-card ds-card-compact"><div class="flex items-center justify-between mb-1"><div class="text-sm" style="color:var(--c-text-secondary)">미수금</div><i class="fas fa-exclamation-triangle text-xs" style="color:var(--c-danger);opacity:0.6"></i></div><div class="text-3xl font-bold tabular-nums" style="color:var(--c-danger)" id="statKpiReceivables">-</div><div class="flex items-center gap-1 mt-2"><span class="text-xs tabular-nums" id="statKpiOver30" style="color:var(--c-text-muted)">30일+ -</span></div></div>';
+                + '<div class="ds-card ds-card-compact"><div class="flex items-center justify-between mb-1"><div class="text-sm" style="color:var(--c-text-secondary)">미수금</div><i class="fas fa-exclamation-triangle text-xs" style="color:var(--c-danger);opacity:0.6"></i></div><div class="text-3xl font-bold tabular-nums" style="color:var(--c-danger)" id="statKpiReceivables">-</div><div class="flex items-center gap-1 mt-2"><span class="text-xs tabular-nums" id="statKpiOver30" style="color:var(--c-text-muted)">30일+ -</span></div></div>'
+                + '<div class="ds-card ds-card-compact cursor-pointer" onclick="location.href=\'/orders?priority=URGENT\'" id="kpiUrgentCard"><div class="flex items-center justify-between mb-1"><div class="text-sm" style="color:var(--c-text-secondary)">긴급 주문</div><i class="fas fa-bolt text-xs" style="color:#ea580c;opacity:0.6"></i></div><div class="text-3xl font-bold tabular-nums" style="color:#ea580c" id="statUrgentCount">-</div><div class="flex items-center gap-1 mt-2"><span class="text-xs" style="color:var(--c-text-muted)">진행 중 긴급건</span></div></div>'
+                + '<div class="ds-card ds-card-compact"><div class="flex items-center justify-between mb-1"><div class="text-sm" style="color:var(--c-text-secondary)">수금률</div><i class="fas fa-hand-holding-usd text-xs" style="color:#0d9488;opacity:0.6"></i></div><div class="text-3xl font-bold tabular-nums" style="color:#0d9488" id="statCollectionRate">-</div><div class="flex items-center gap-1 mt-2"><span class="text-xs tabular-nums" style="color:var(--c-text-muted)" id="statCollectionDetail">이번 달</span></div></div>';
             }
             // 오늘 주문 KPI
             var todayOrders = stats.today_order_count || 0;
@@ -87,6 +89,28 @@ async function loadDashboardStats() {
             if (todayShipEl) todayShipEl.textContent = (stats.today_shipment_due || 0) + '건';
             var todayShipSub = document.getElementById('statTodayShipmentSub');
             if (todayShipSub) todayShipSub.textContent = '출고대기 ' + (stats.shipment_ready_count || 0) + '건';
+
+            // KPI 5: 긴급 주문 건수
+            var urgentCount = stats.urgent_count || 0;
+            var urgentEl = document.getElementById('statUrgentCount');
+            if (urgentEl) urgentEl.textContent = urgentCount + '건';
+            var urgentCard = document.getElementById('kpiUrgentCard');
+            if (urgentCard) {
+                if (urgentCount > 0) {
+                    urgentCard.style.borderLeft = '3px solid #ea580c';
+                } else {
+                    urgentCard.style.borderLeft = '';
+                }
+            }
+
+            // KPI 6: 이번 달 수금률
+            var monthBilled = stats.month_billed || 0;
+            var monthPaid = stats.month_paid || 0;
+            var collRate = monthBilled > 0 ? Math.round(monthPaid / monthBilled * 100) : 0;
+            var collEl = document.getElementById('statCollectionRate');
+            if (collEl) collEl.textContent = collRate + '%';
+            var collDetail = document.getElementById('statCollectionDetail');
+            if (collDetail) collDetail.textContent = fmtAmtShort(monthPaid) + ' / ' + fmtAmtShort(monthBilled);
 
             // 이전 통계 (하위 Revenue 카드)
             var todayRevEl = document.getElementById('statTodayRevenue');

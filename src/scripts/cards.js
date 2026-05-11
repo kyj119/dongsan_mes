@@ -896,6 +896,40 @@ function renderDashboard() {
     renderProgressGauge();
     renderDeliverySummary();
     renderTodayShip();
+    renderKanbanKpi();
+}
+
+function renderKanbanKpi() {
+    var summary = kanbanSummary;
+    // KPI 1: 납기 지연
+    var overdueEl = document.getElementById('kpiOverdue');
+    if (overdueEl) {
+        var ov = (summary && summary.overdue) || 0;
+        overdueEl.textContent = '지연 ' + ov + '건';
+        if (ov > 0) {
+            overdueEl.className = 'inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold bg-red-100 text-red-700';
+        } else {
+            overdueEl.className = 'inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold bg-gray-100 text-gray-400';
+        }
+    }
+    // KPI 2: 컬럼별 카드 수
+    var ripEl = document.getElementById('kpiRipWaiting');
+    if (ripEl) ripEl.textContent = 'RIP대기 ' + ((summary && summary.rip_waiting) || 0);
+    var printingEl = document.getElementById('kpiPrinting');
+    if (printingEl) printingEl.textContent = '출력중 ' + ((summary && summary.printing) || 0);
+    var doneEl = document.getElementById('kpiPrintDone');
+    if (doneEl) doneEl.textContent = '완료 ' + ((summary && summary.print_done) || 0);
+    // KPI 3: 보류 건수
+    var holdEl = document.getElementById('kpiHold');
+    if (holdEl) {
+        var hv = (summary && summary.hold) || 0;
+        holdEl.textContent = '보류 ' + hv + '건';
+        if (hv > 0) {
+            holdEl.className = 'inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold bg-orange-100 text-orange-700';
+        } else {
+            holdEl.className = 'inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold bg-gray-100 text-gray-400';
+        }
+    }
 }
 
 function renderProgressGauge() {

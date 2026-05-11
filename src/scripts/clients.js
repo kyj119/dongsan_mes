@@ -77,6 +77,10 @@ function getFilters() {
         invoice_method: (document.getElementById('invoiceMethodFilter') || {}).value || '',
         delivery_method: (document.getElementById('deliveryMethodFilter') || {}).value || '',
         active: (document.getElementById('activeFilter') || {}).value || '1',
+        sort: (document.getElementById('sortBy') || {}).value || 'name',
+        dormant: (document.getElementById('dormantFilter') || {}).value || '',
+        has_balance: (document.getElementById('balanceFilter') || {}).value || '',
+        credit_hold: (document.getElementById('creditHoldFilter') || {}).value || '',
     };
 }
 
@@ -86,6 +90,14 @@ function resetFilters() {
     document.getElementById('invoiceMethodFilter').value = '';
     document.getElementById('deliveryMethodFilter').value = '';
     document.getElementById('activeFilter').value = '1';
+    var sortEl = document.getElementById('sortBy');
+    if (sortEl) sortEl.value = 'name';
+    var dormantEl = document.getElementById('dormantFilter');
+    if (dormantEl) dormantEl.value = '';
+    var balanceEl = document.getElementById('balanceFilter');
+    if (balanceEl) balanceEl.value = '';
+    var creditHoldEl = document.getElementById('creditHoldFilter');
+    if (creditHoldEl) creditHoldEl.value = '';
     loadClients(1);
 }
 
@@ -112,6 +124,10 @@ async function loadClients(page) {
         if (f.client_type) url += '&client_type=' + f.client_type;
         if (f.invoice_method) url += '&invoice_method=' + f.invoice_method;
         if (f.delivery_method) url += '&delivery_method=' + f.delivery_method;
+        if (f.sort && f.sort !== 'name') url += '&sort=' + f.sort;
+        if (f.dormant) url += '&dormant=' + f.dormant;
+        if (f.has_balance) url += '&has_balance=' + f.has_balance;
+        if (f.credit_hold) url += '&credit_hold=' + f.credit_hold;
 
         var response = await axios.get(url, { timeout: 10000 });
 

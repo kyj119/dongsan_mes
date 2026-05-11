@@ -13,7 +13,7 @@ export function clientsPage(c: Context<HonoEnv>) {
         <div class="flex flex-wrap gap-2 items-end">
           <div class="flex-1 min-w-[200px]">
             <label class="block text-[10px] text-gray-400 mb-0.5">검색</label>
-            <input type="text" id="searchInput" placeholder="거래처명, 사업자번호, 키워드..."
+            <input type="text" id="searchInput" placeholder="거래처명, 사업자번호, 전화번호, 키워드..."
               class="w-full border rounded px-2 py-1.5 text-sm" style="color:#212529;">
           </div>
           <div>
@@ -52,6 +52,38 @@ export function clientsPage(c: Context<HonoEnv>) {
               <option value="1">활성</option>
               <option value="all">전체</option>
               <option value="0">비활성</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-[10px] text-gray-400 mb-0.5">정렬</label>
+            <select id="sortBy" class="border rounded px-2 py-1.5 text-xs" style="color:#212529;" onchange="searchClients()">
+              <option value="name">이름순</option>
+              <option value="last_order">최근주문순</option>
+              <option value="created">최근등록순</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-[10px] text-gray-400 mb-0.5">휴면</label>
+            <select id="dormantFilter" class="border rounded px-2 py-1.5 text-xs" style="color:#212529;" onchange="searchClients()">
+              <option value="">전체</option>
+              <option value="30">30일+</option>
+              <option value="60">60일+</option>
+              <option value="90">90일+</option>
+              <option value="180">180일+</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-[10px] text-gray-400 mb-0.5">미수금</label>
+            <select id="balanceFilter" class="border rounded px-2 py-1.5 text-xs" style="color:#212529;" onchange="searchClients()">
+              <option value="">전체</option>
+              <option value="1">미수금 있음</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-[10px] text-gray-400 mb-0.5">차단</label>
+            <select id="creditHoldFilter" class="border rounded px-2 py-1.5 text-xs" style="color:#212529;" onchange="searchClients()">
+              <option value="">전체</option>
+              <option value="1">주문차단</option>
             </select>
           </div>
           <div class="flex gap-1 ml-auto">

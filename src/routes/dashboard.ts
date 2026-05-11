@@ -36,7 +36,10 @@ dashboardRouter.get('/stats', async (c) => {
         (SELECT COUNT(*) FROM orders WHERE strftime('%Y-%m', created_at) = strftime('%Y-%m', date('now', '-1 month')) AND status != 'CANCELLED'${ef.clause}) as prev_month_order_count,
         (SELECT SUM(final_amount) FROM orders WHERE date(created_at) >= date('now', '-7 days') AND status != 'CANCELLED'${ef.clause}) as week_revenue,
         (SELECT COUNT(*) FROM cards WHERE status = 'PRINT_DONE') as shipment_ready_count,
-        (SELECT COUNT(*) FROM orders WHERE delivery_date = date('now') AND status NOT IN ('SHIPPED','CANCELLED')${ef.clause}) as today_shipment_due
+        (SELECT COUNT(*) FROM orders WHERE delivery_date = date('now') AND status NOT IN ('SHIPPED','CANCELLED')${ef.clause}) as today_shipment_due,
+        (SELECT COUNT(*) FROM orders WHERE priority='URGENT' AND status NOT IN ('SHIPPED','CANCELLED')${ef.clause}) as urgent_count,
+        (SELECT COALESCE(SUM(final_amount),0) FROM orders WHERE billing_status='BILLED' AND strftime('%Y-%m',billed_at)=strftime('%Y-%m','now')${ef.clause}) as month_billed,
+        (SELECT COALESCE(SUM(amount),0) FROM payments WHERE strftime('%Y-%m',payment_date)=strftime('%Y-%m','now')) as month_paid
     `).bind(...[
       ...ef.params, // total_orders
       ...ef.params, // confirmed_orders
@@ -51,6 +54,8 @@ dashboardRouter.get('/stats', async (c) => {
       ...ef.params, // prev_month_order_count
       ...ef.params, // week_revenue
       ...ef.params, // today_shipment_due
+      ...ef.params, // urgent_count
+      ...ef.params, // month_billed
     ]).first()
 
     // 후가공 통계: 활성 카드의 post_processing JSON을 TypeScript에서 파싱
