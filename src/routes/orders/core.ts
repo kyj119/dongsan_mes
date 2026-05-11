@@ -708,15 +708,17 @@ ordersCoreRouter.get('/:id', async (c) => {
   try {
     const id = c.req.param('id')
     
-    // Get order
+    // Get order (Phase 3.2: quotation_number도 함께 — 견적서 연결 표시용)
     const order = await c.env.DB.prepare(`
-      SELECT 
+      SELECT
         o.*,
         c.client_name,
-        u.name as created_by_name
+        u.name as created_by_name,
+        q.quotation_number as quotation_number
       FROM orders o
       LEFT JOIN clients c ON o.client_id = c.id
       LEFT JOIN users u ON o.created_by = u.id
+      LEFT JOIN quotations q ON o.quotation_id = q.id
       WHERE o.id = ?
     `).bind(id).first()
 

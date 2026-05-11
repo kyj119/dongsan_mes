@@ -17,7 +17,8 @@ var entityId = 1; // 현재 법인
 
 // ========== 탭 전환 ==========
 function switchTab(tab) {
-  ['priceTable', 'policies', 'settings'].forEach(function(t) {
+  // 'settings' 탭은 /settings 페이지로 이동됨 (Phase 후속 작업)
+  ['priceTable', 'policies'].forEach(function(t) {
     var btn = document.getElementById('tab' + t.charAt(0).toUpperCase() + t.slice(1));
     var panel = document.getElementById('panel' + t.charAt(0).toUpperCase() + t.slice(1));
     if (!btn || !panel) return;
@@ -30,7 +31,6 @@ function switchTab(tab) {
     }
   });
   if (tab === 'policies') loadPolicies();
-  if (tab === 'settings') loadLogoSettings();
 }
 
 // ========== 단가표 데이터 ==========
@@ -490,56 +490,4 @@ async function saveCurrentRules() {
   } catch (e) { showToast('저장 실패', 'error'); }
 }
 
-// ========== 로고 설정 ==========
-async function loadLogoSettings() {
-  try {
-    var res = await axios.get('/api/price-list/logo/' + entityId);
-    var ent = (res.data.success && res.data.data) ? res.data.data : {};
-    var el = document.getElementById('logoSettingsArea');
-    el.innerHTML = '<div class="max-w-lg">'
-      + '<div class="mb-4">'
-      + '<label class="block text-sm font-medium text-gray-700 mb-2">현재 로고</label>'
-      + (ent.logo_base64 ? '<img src="' + ent.logo_base64 + '" style="max-height:60px;max-width:240px;border:1px solid #e5e7eb;border-radius:8px;padding:8px;background:#fff;">' : '<div class="text-sm text-gray-400">로고 미설정</div>')
-      + '</div>'
-      + '<div class="mb-4">'
-      + '<label class="block text-sm font-medium text-gray-700 mb-2">로고 업로드 (PNG/JPG, 권장 높이 60px)</label>'
-      + '<input type="file" id="logoFileInput" accept="image/png,image/jpeg,image/svg+xml" onchange="onLogoFileSelected(this)" class="text-sm">'
-      + '</div>'
-      + '<div class="mb-4"><div id="logoPreview"></div></div>'
-      + '<button onclick="saveLogo()" class="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700"><i class="fas fa-save mr-1"></i>로고 저장</button>'
-      + (ent.logo_base64 ? ' <button onclick="deleteLogo()" class="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm hover:bg-gray-100 ml-2"><i class="fas fa-trash mr-1"></i>삭제</button>' : '')
-      + '</div>';
-  } catch (e) { showToast('로고 설정 로드 실패', 'error'); }
-}
-
-var pendingLogoBase64 = null;
-
-function onLogoFileSelected(input) {
-  var file = input.files[0];
-  if (!file) return;
-  var reader = new FileReader();
-  reader.onload = function(e) {
-    pendingLogoBase64 = e.target.result;
-    document.getElementById('logoPreview').innerHTML = '<img src="' + pendingLogoBase64 + '" style="max-height:60px;max-width:240px;border:1px solid #e5e7eb;border-radius:8px;padding:8px;background:#fff;margin-top:8px;">';
-  };
-  reader.readAsDataURL(file);
-}
-
-async function saveLogo() {
-  if (!pendingLogoBase64) { showToast('로고 파일을 선택하세요.', 'warning'); return; }
-  try {
-    await axios.put('/api/price-list/logo/' + entityId, { logo_base64: pendingLogoBase64 });
-    showToast('로고 저장 완료', 'success');
-    pendingLogoBase64 = null;
-    loadLogoSettings();
-  } catch (e) { showToast('저장 실패', 'error'); }
-}
-
-async function deleteLogo() {
-  if (!confirm('로고를 삭제하시겠습니까?')) return;
-  try {
-    await axios.put('/api/price-list/logo/' + entityId, { logo_base64: null });
-    showToast('로고 삭제 완료', 'success');
-    loadLogoSettings();
-  } catch (e) { showToast('삭제 실패', 'error'); }
-}
+// 로고 설정 기능은 /settings 페이지로 이동됨 (loadLogoSettings, onLogoFileSelected, saveLogo, deleteLogo)

@@ -647,6 +647,7 @@ function showOrderModal(order, cards, autoJobs) {
             <div><label class="text-sm font-medium text-gray-600">우선순위</label><p class="text-lg">${order.priority === 'URGENT' ? '<span class="px-2 py-1 rounded-full bg-red-50 text-red-700 font-bold text-sm">긴급</span>' : '<span class="text-gray-500">일반</span>'}</p></div>
             <div><label class="text-sm font-medium text-gray-600">등록일</label><p class="text-lg">${new Date(order.created_at).toLocaleString('ko-KR')}</p></div>
             <div><label class="text-sm font-medium text-gray-600">등록자</label><p class="text-lg">${order.created_by_name || '-'}</p></div>
+            ${order.quotation_id ? `<div class="col-span-2 bg-blue-50 border border-blue-200 rounded p-3"><label class="text-sm font-medium text-blue-700"><i class="fas fa-link mr-1"></i>견적서 연결</label><p class="text-sm mt-1">이 주문은 견적서 <a href="/quotations#${order.quotation_id}" class="font-bold text-blue-700 underline hover:text-blue-900">#${order.quotation_id}${order.quotation_number ? ' (' + escapeHtml(order.quotation_number) + ')' : ''}</a>에서 생성되었습니다.</p></div>` : ''}
           </div>
           <div class="mb-6">
             <h3 class="text-lg font-bold mb-3">주문 품목</h3>

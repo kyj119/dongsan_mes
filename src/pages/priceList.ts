@@ -32,9 +32,7 @@ export function priceListPage(c: Context<HonoEnv>) {
           <button onclick="switchTab('policies')" id="tabPolicies" class="tab-btn">
             <i class="fas fa-sliders-h mr-1"></i>가격 정책
           </button>
-          <button onclick="switchTab('settings')" id="tabSettings" class="tab-btn">
-            <i class="fas fa-cog mr-1"></i>인쇄 설정
-          </button>
+          <!-- 로고 설정은 설정(/settings) 페이지로 이동됨 -->
         </div>
 
         <!-- ======== 탭 1: 단가표 ======== -->
@@ -118,14 +116,7 @@ export function priceListPage(c: Context<HonoEnv>) {
           </div>
         </div>
 
-        <!-- ======== 탭 3: 인쇄 설정 ======== -->
-        <div id="panelSettings" class="hidden">
-          <div class="bg-white shadow rounded-b-lg p-6">
-            <h2 class="text-lg font-bold text-gray-800 mb-4"><i class="fas fa-image mr-2 text-green-600"></i>법인별 로고 설정</h2>
-            <p class="text-sm text-gray-500 mb-4">단가표 인쇄 시 상단에 표시될 회사 로고를 설정합니다.</p>
-            <div id="logoSettingsArea"></div>
-          </div>
-        </div>
+        <!-- 로고 설정은 /settings 페이지로 이동됨 -->
 
         <div id="printArea"></div>
       </div>
