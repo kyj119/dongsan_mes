@@ -166,6 +166,55 @@ description: 자율 점검·개선 에이전트. 6개 영역을 순환하며 실
 - 비즈니스 로직 변경
 - 기존 API 응답 형식 변경
 
+## 승인된 Issue 처리 워크플로우
+
+사용자가 "승인된 이슈 처리해줘" 또는 "backlog 진행해줘"라고 하면 아래 워크플로우 실행.
+
+### Step 1: 승인된 Issue 수집
+```bash
+# 👍 리액션이 있는 open Issue 조회
+gh api repos/{owner}/{repo}/issues?labels=auto-improve&state=open --jq '.[] | select(.reactions["+1"] > 0) | {number, title}'
+```
+
+### Step 2: 코멘트 읽기 (핵심!)
+```bash
+# 각 승인 Issue의 코멘트 전부 읽기
+gh issue view {number} --comments
+```
+
+코멘트에 담길 수 있는 내용:
+- **방향 수정**: "이 방향 말고 이렇게 해줘"
+- **범위 조정**: "1번만 하고 2번은 나중에"  
+- **추가 맥락**: "실제로는 이렇게 동작해야 해"
+- **디자인 힌트**: "기존 XX 페이지 스타일로"
+- **거부 사유**: "이건 안 해도 돼, 이유는..."
+
+### Step 3: 구현
+- Issue 본문 = 기본 요구사항
+- 코멘트 = **수정/보완된 요구사항** (코멘트가 본문과 충돌하면 코멘트 우선)
+- 코멘트에 모호한 부분이 있으면 → Issue에 질문 코멘트 남기고 다음 Issue로
+- 구현 후 `npm run build && npm run e2e` 검증
+
+### Step 4: 완료 처리
+```bash
+# 커밋 메시지에 Issue 번호 포함 → 자동 연결
+git commit -m "fix: cards entity_id isolation (closes #1)"
+
+# Issue에 결과 코멘트
+gh issue comment {number} --body "✅ 완료. 커밋: {hash}\n\n변경 내용:\n- ..."
+
+# Issue close
+gh issue close {number}
+```
+
+### Step 5: 코멘트로 질문/논의
+구현 중 판단이 필요한 경우, Issue에 코멘트로 질문:
+```bash
+gh issue comment {number} --body "🤔 구현 중 질문:\n\n{질문 내용}\n\n선택지:\n1. ...\n2. ...\n\n코멘트로 답변 부탁드립니다."
+```
+
+---
+
 ## IMPROVEMENT_BACKLOG.md 형식
 
 ```markdown
