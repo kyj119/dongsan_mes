@@ -1,6 +1,6 @@
 # PROJECT_STATUS.md — 프로젝트 현황판
 
-> **최종 업데이트**: 2026-05-11
+> **최종 업데이트**: 2026-05-12
 
 ---
 
@@ -34,12 +34,32 @@
 - Phase A~D 3~4세션 분량, 솔루션 선정 + API 키 확보 후 착수
 ### [카카오톡 알림 마무리] — Phase 5.4
 - src/routes/kakao.ts 기존 존재, 누락 이벤트 추가 + 템플릿 정리 필요
-### [E2E 쓰기 시나리오 확장] — Phase 5.3 확장
-- 현재 read-only 5 spec만. 쓰기 시나리오 + 테스트 전용 entity 필요
+### [범용 LogWatcher] — 설계 완료, 장비 목록 대기 (사용자 결정 필요)
+- `docs/UNIVERSAL_LOGWATCHER_DESIGN.md` 설계 완료
+- Config 기반 5가지 파서 타입 (tns/printexp/text_log/jdf_folder/csv_log)
+- 구현 착수 조건: 장비 7종 목록 + 로그 샘플 + 우선순위
 
 ---
 
-## 🟢 최근 완료 (2026-05-09~05-11, 4 커밋)
+## 🟢 최근 완료 (2026-05-11~05-12, 12 커밋)
+
+- **E2E 쓰기 시나리오 확장**: 10→28 테스트 (entity_id=99 격리, 마이그레이션 0192)
+- **auto-improve 스킬**: 6영역 순환 점검 + GitHub Issues 자동 생성 + 코멘트 반영 워크플로우
+- **GitHub Issues #1~#14 전량 처리**:
+  - #1 cards entity_id 격리 수정 + #12 기존 32건 데이터 보정
+  - #3~#5 N+1 쿼리 3건 제거 (bank/autoProcess/approvals)
+  - #6 clients API 응답 통일 ({success,data} + 프론트 14파일)
+  - #7 거래처 필터 5개 (전화번호/정렬/미거래/미수금/주문차단)
+  - #8 주문 필터 CANCELLED 고정 해소
+  - #9 대시보드 KPI 5개 (/cards: 지연·컬럼별·보류, /dashboard: 긴급·수금률)
+  - #11 SHIPPED 전환 시 카드 확인 모달 (확정/취소 선택)
+  - #13 로그인 rate limit 적용 (5회/60초)
+  - #14 hr.ts 에러 메시지 제네릭화 5곳
+- **LogWatcher 프로덕션 연결**: appsettings URL 수정, RIP PC 2대 online 확인
+- **범용 LogWatcher 설계**: docs/UNIVERSAL_LOGWATCHER_DESIGN.md
+- **문서 동기화**: PROJECT_STATUS/ROADMAP/MEMORY/design-decisions/architecture-flow
+
+## 🟢 이전 완료 (2026-05-09~05-11, 4 커밋)
 
 - **Phase 3.1 대형 파일 리팩토링 (3 파일 → 15 파일)**:
   - cards.ts(2121줄) → aggregator + queries/scheduling/lifecycle

@@ -40,3 +40,4 @@
 | W | 견적서 분리 (1:N 주문) | quotations 테이블, quotation_items, orders.quotation_id FK, immutable snapshot |
 | X | 대형 파일 분할 패턴 | cards→queries/scheduling/lifecycle, items→5파일, orderForm→6파일, ?raw concat |
 | Y | entity_id INSERT 의무화 | 14건 누락 수정, DEFAULT 1 함정, entityFilter SELECT + INSERT 양쪽 적용 |
+| Z | SHIPPED 출고 카드 확인 | 미완료 카드 있으면 확인 모달, 확정→PRINT_DONE+shipped_at, 취소→HOLD |

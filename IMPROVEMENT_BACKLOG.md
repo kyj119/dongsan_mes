@@ -8,8 +8,8 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | 4 |
-| ✔️ done | 10 |
+| 🆕 new | 0 |
+| ✔️ done | 14 |
 | ❌ rejected | 1 |
 
 > **Area 6 자기진화 평가** (2026-05-11T16:00):
@@ -21,44 +21,7 @@
 
 ## 🔴 Bugs / Issues
 
-### [B-003] SHIPPED 주문에 PRINTING 카드 2건 — 상태 불일치 (Area 4, #11)
-- **발견**: 2026-05-11
-- **증상**: 주문 #20260511-003, #20260511-006이 SHIPPED인데 카드 PRINTING
-- **영향**: 현장 대시보드에 이미 출고된 주문의 카드가 "출력중" 표시
-- **수정**: 해당 카드 DONE 업데이트 + SHIPPED 전환 시 카드 자동 완료 로직 보완
-- **공수**: 30분
-- **상태**: 🆕
-
-### [B-004] cards.requesting_entity_id NULL 6건 — 기존 데이터 보정 (Area 4, #12)
-- **발견**: 2026-05-11
-- **증상**: #1 수정 전에 생성된 카드 6건의 requesting_entity_id가 NULL
-- **수정**: `UPDATE cards SET requesting_entity_id = (SELECT entity_id FROM orders WHERE orders.id = cards.order_id) WHERE requesting_entity_id IS NULL`
-- **공수**: 15분 (SQL 1줄)
-- **상태**: 🆕
-
----
-
-## 🟡 Improvements
-
-### [I-005] 로그인 Rate Limiting 미적용 (Area 5, #13)
-- **발견**: 2026-05-11
-- **현재**: rateLimitMiddleware 존재하지만 어떤 라우트에도 미적용
-- **수정**: 최소 `/api/auth/login`에 rateLimitMiddleware(10, 60000) 적용
-- **공수**: 30분
-- **상태**: 🆕
-
-### [I-006] hr.ts 에러 응답에 내부 정보 노출 (Area 5, #14)
-- **발견**: 2026-05-11
-- **현재**: 3곳에서 `error?.message` 원문 반환 (SQLite 내부 정보 포함)
-- **수정**: 제네릭 메시지로 교체 + console.error 로깅
-- **공수**: 15분
-- **상태**: 🆕
-
----
-
-## 🟢 Feature Proposals
-
-(이번 라운드에서 신규 제안 없음 — Area 3에서 발견된 F-001~004는 모두 처리 완료)
+(모두 처리 완료 — Done 섹션 참조)
 
 ---
 
@@ -69,10 +32,14 @@
 | A-001 | entity_id INSERT 14건 누락 | c7c20d3 | - |
 | B-001 | cards entity_id 격리 | 0960a5a | #1 |
 | B-002 | LogWatcher URL + 서비스 실행 | (설정 수정) | #2 |
+| B-003 | SHIPPED 카드 확인 모달 | 3dd4274 | #11 |
+| B-004 | cards entity_id NULL 32건 보정 | (prod SQL) | #12 |
 | I-001 | bank.ts N+1 제거 | 0960a5a | #3 |
 | I-002 | autoProcess.ts N+1 제거 | 0960a5a | #4 |
 | I-003 | approvals.ts N+1 제거 | 0960a5a | #5 |
 | I-004 | clients API 응답 통일 | 0960a5a | #6 |
+| I-005 | 로그인 rate limit 적용 | 44c1f04 | #13 |
+| I-006 | hr.ts 에러 메시지 제네릭화 | 44c1f04 | #14 |
 | F-001 | 거래처 필터 5개 | 575312d | #7 |
 | F-002 | 주문 필터 CANCELLED 해소 | 575312d | #8 |
 | F-003 | 대시보드 KPI 5개 | 575312d | #9 |
