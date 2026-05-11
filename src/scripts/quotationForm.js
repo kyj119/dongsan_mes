@@ -309,7 +309,15 @@ function calculateTotal() {
 
 async function loadQuotation(id) {
     try {
-        var res = await axios.get('/api/orders/' + id);
+        // Phase 3.2: 신규 quotations API. 구 데이터(orders.status=QUOTATION)는 fallback으로 /api/orders 시도
+        var res;
+        try {
+            res = await axios.get('/api/quotations/' + id);
+        } catch(legacyErr) {
+            if (legacyErr.response && legacyErr.response.status === 404) {
+                res = await axios.get('/api/orders/' + id);  // 구 데이터 fallback
+            } else { throw legacyErr; }
+        }
         if (!res.data.success) {
             showToast('견적서 로딩 실패', 'error');
             return;
@@ -456,7 +464,6 @@ document.getElementById('quotationForm').addEventListener('submit', async functi
 
     var orderData = {
         client_id: parseInt(clientId),
-        status: 'QUOTATION',
         valid_until: validUntil,
         discount_amount: parseMoney(document.getElementById('discountAmount').value),
         notes: document.getElementById('notes').value,
@@ -466,9 +473,18 @@ document.getElementById('quotationForm').addEventListener('submit', async functi
     try {
         var res;
         if (editMode) {
-            res = await axios.patch('/api/orders/' + editMode, orderData);
+            // 수정: 신규 quotations API 시도, 실패 시 구 orders API fallback
+            try {
+                res = await axios.put('/api/quotations/' + editMode, orderData);
+            } catch(legacyErr) {
+                if (legacyErr.response && legacyErr.response.status === 404) {
+                    orderData.status = 'QUOTATION';
+                    res = await axios.patch('/api/orders/' + editMode, orderData);
+                } else { throw legacyErr; }
+            }
         } else {
-            res = await axios.post('/api/orders', orderData);
+            // 신규: quotations 테이블로
+            res = await axios.post('/api/quotations', orderData);
         }
 
         if (res.data.success) {

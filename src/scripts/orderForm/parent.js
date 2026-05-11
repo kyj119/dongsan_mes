@@ -1271,9 +1271,110 @@
                 const params = new URLSearchParams(window.location.search);
                 const editId = params.get('edit');
                 const isCopy = params.get('copy');
+                const quotationId = params.get('quotation_id');
                 if (editId) {
                     await loadOrderForEdit(editId);
                 } else if (isCopy) {
                     await loadOrderForCopy();
+                } else if (quotationId) {
+                    // Phase 3.2: 견적서 → 주문 prefill (사용자가 검토/수정 후 제출)
+                    await loadQuotationForPrefill(quotationId);
                 }
             });
+
+            // Phase 3.2: 견적서 데이터를 주문서에 prefill
+            async function loadQuotationForPrefill(quotationId) {
+                try {
+                    const res = await axios.get('/api/quotations/' + quotationId);
+                    if (!res.data.success) {
+                        showToast('견적서 로드 실패: ' + (res.data.error || ''), 'error');
+                        return;
+                    }
+                    const q = res.data.data;
+
+                    // 만료/취소 경고
+                    if (q.status === 'CANCELLED') {
+                        showToast('취소된 견적서입니다. 새 주문에 사용할 수 없습니다.', 'warning');
+                        return;
+                    }
+                    if (q.status === 'EXPIRED') {
+                        showToast('주의: 만료된 견적서입니다 (유효기한 ' + (q.valid_until || '-') + ')', 'warning');
+                    }
+
+                    // 거래처
+                    if (q.client_id) {
+                        document.getElementById('clientId').value = q.client_id;
+                        document.getElementById('clientSearch').value = q.client_name || '';
+                    }
+                    // 배송/연락
+                    if (q.delivery_date) document.getElementById('deliveryDate').value = q.delivery_date;
+                    if (q.delivery_method) {
+                        const dm = document.querySelector('[name="delivery_method"]');
+                        if (dm) dm.value = q.delivery_method;
+                    }
+                    if (q.contact_phone) {
+                        const cp = document.getElementById('contactPhone');
+                        if (cp) cp.value = q.contact_phone;
+                    }
+                    if (q.contact_mobile) {
+                        const cm = document.getElementById('contactMobile');
+                        if (cm) cm.value = q.contact_mobile;
+                    }
+                    if (q.notes) {
+                        const nt = document.getElementById('notes');
+                        if (nt) nt.value = q.notes;
+                    }
+
+                    // 품목 행 채우기 — 기존 빈 행 제거 후 견적서 items로 add
+                    document.getElementById('itemsContainer').innerHTML = '';
+                    var nonParentItems = (q.items || []).filter(function(it) { return !it.parent_id; });
+                    for (var i = 0; i < nonParentItems.length; i++) {
+                        window.addItemRow();
+                    }
+                    // 채우기 (간단: 첫 N개 행)
+                    setTimeout(function() {
+                        nonParentItems.forEach(function(it, idx) {
+                            var id = idx + 1;
+                            var setVal = function(sel, v) {
+                                var el = document.querySelector(sel);
+                                if (el && v != null) {
+                                    el.value = v;
+                                    el.dispatchEvent(new Event('input', { bubbles: true }));
+                                    el.dispatchEvent(new Event('change', { bubbles: true }));
+                                }
+                            };
+                            setVal('[name="item_search_' + id + '"]', it.item_name);
+                            setVal('[name="item_id_' + id + '"]', it.item_id);
+                            setVal('[name="width_' + id + '"]', it.width);
+                            setVal('[name="height_' + id + '"]', it.height);
+                            setVal('[name="quantity_' + id + '"]', it.quantity);
+                            setVal('[name="unit_price_' + id + '"]', it.unit_price);
+                            setVal('[name="content_' + id + '"]', it.content);
+                            if (typeof window.calcItem === 'function') window.calcItem(id);
+                        });
+                    }, 200);
+
+                    // 견적서 ID를 hidden 필드에 (제출 시 함께 보내기)
+                    var hid = document.getElementById('sourceQuotationId');
+                    if (!hid) {
+                        hid = document.createElement('input');
+                        hid.type = 'hidden';
+                        hid.id = 'sourceQuotationId';
+                        hid.name = 'source_quotation_id';
+                        document.querySelector('form').appendChild(hid);
+                    }
+                    hid.value = quotationId;
+
+                    // 연결 표시 배너
+                    var banner = document.createElement('div');
+                    banner.className = 'mb-4 px-4 py-3 rounded bg-blue-50 border border-blue-200 text-sm text-blue-800';
+                    banner.innerHTML = '<i class="fas fa-link mr-1"></i> 견적서 <a href="/quotation/' + quotationId + '" target="_blank" class="font-bold underline">' + (q.quotation_number || '#' + quotationId) + '</a>에서 가져온 주문서입니다. 내용을 검토하고 저장하세요.';
+                    var form = document.querySelector('form');
+                    if (form) form.insertBefore(banner, form.firstChild);
+
+                    showToast('견적서 ' + (q.quotation_number || '') + ' 데이터를 불러왔습니다.', 'success');
+                } catch(e) {
+                    console.error('quotation prefill error:', e);
+                    showToast('견적서 prefill 실패: ' + (e.response && e.response.data ? e.response.data.error : e.message), 'error');
+                }
+            }

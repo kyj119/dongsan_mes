@@ -53,7 +53,55 @@
 
 **미완료 (다음 세션)**:
 - 수동 시나리오 검증 (`refactor/PHASE_3_1_VERIFICATION.md` 체크리스트 참고)
-- Playwright E2E 도입 (Phase 5.3로 이월)
+- Playwright E2E 도입 (Phase 5.3로 이월) — ✅ 같은 세션에서 완료됨
+
+### Phase 5.3 — Playwright E2E ✅ 완료
+- **인프라**: `@playwright/test` devDep + `playwright.config.ts` (production URL, ko-KR/Asia/Seoul, headless, screenshot/video/trace on failure)
+- **fixtures.ts**: `authedPage` (E2E_USER/PASS 자동 로그인) + `consoleErrors` (page.on('console'/'pageerror') 감시)
+- **5개 spec (read-only, 데이터 오염 0)**:
+  - `auth.spec.ts`: 로그인 → /cards + 사이드바 href 검증 (a[href="/clients"] 등)
+  - `clients.spec.ts`: editClient(1) async + 가격 정책 드롭다운 option 로드 검증
+  - `order-form.spec.ts`: 9개 핵심 window.* + 거래처 검색 + 단가 계산 (56,000/61,600)
+  - `items.spec.ts`: 6개 핵심 함수 + 메인 탭 전환 (output→sign→rawMaterial)
+  - `cards-api.spec.ts`: 10개 API 200 (defect-stats 포함) + /:id/history + /:id/defects
+- **워크플로우 `.github/workflows/e2e.yml`**:
+  - workflow_run (deploy 성공 후 자동)
+  - schedule cron `0 0 * * *` (KST 9시)
+  - workflow_dispatch (수동 실행)
+  - HTML report + trace/screenshot/video 14일 보관
+- **`@rollup/rollup-linux-x64-gnu`** → `optionalDependencies` 이동 (Windows에서 npm install 가능)
+- **e2e scripts에 `npx` prefix** (wrangler가 PATH의 `playwright` 명령 가로채는 충돌 회피)
+- **검증 결과**: 7/7 통과 (production https://webapp-9i0.pages.dev 대상)
+
+### Phase 3.2 — 견적서 → 주문 전환 재설계 🟡 진행중
+**결정사항** (사용자 답변):
+- Q1 1:N (한 견적서 → 여러 주문 가능)
+- Q2 별도 `quotations` 테이블 신설
+- Q3 immutable snapshot 복사 (변환 시 모두 복사)
+- Q4 quotations.first_converted_at + orders.quotation_id FK (1:N 호환 조정)
+- Q5 기존 데이터 그대로
+- Q6 "주문 생성" 버튼 + 양쪽 연결 표시 + prefill (검토 후 저장)
+
+**작업 완료**:
+- 마이그레이션 `0191_quotations_separated.sql`: quotations + quotation_items + orders.quotation_id
+- `src/routes/quotations.ts` 신규 (GET list/detail/orders, POST create/convert-to-order, PUT update, DELETE cancel)
+- `src/types/models.ts`: Quotation + QuotationItem + QuotationStatus 타입
+- `src/index.tsx`: `app.route('/api/quotations', quotationsRouter)` 등록
+- `src/scripts/quotations.js`: 신규 API 사용 (axios endpoint 5곳 변경), 상태 매핑 변경 (ACTIVE/EXPIRED/CANCELLED + partial)
+- `src/scripts/quotationForm.js`: POST/PUT/GET → /api/quotations (구 orders API fallback 유지)
+- `src/scripts/orderForm/parent.js`: `?quotation_id=X` prefill 흐름 + 견적서 연결 배너
+- `src/routes/orders/core.ts`: POST /api/orders가 `source_quotation_id` 받아 orders.quotation_id 저장 + quotations.converted_count 자동 증가
+- 견적서 상세 모달에 "이 견적서로 생성된 주문" 표시
+- `e2e/quotations.spec.ts` 추가 (3개 시나리오)
+
+**대기 (다음 세션 또는 검증 후)**:
+- 마이그레이션 prod 적용 (`npm run db:migrate:prod` 필요)
+- 주문 상세 페이지에 "이 주문은 견적서 #N에서 옴" 표시 (orders 페이지 UI 변경 — 다음에)
+- 구 데이터 (orders.status='QUOTATION') 마이그레이션 — 사용자 결정상 그대로 둠
+
+### 이번 세션에서 발견·수정한 실제 회귀
+- **`/api/cards/defect-stats` 404 → 200**: Phase 3.1.A 분할 후 cards/queries.ts에서 `/:id` 라우트가 `defect-stats`를 카드 ID로 가로채는 라우트 매칭 순서 버그. Claude in Chrome으로 수동 검증 중 발견 → `/defect-stats`를 `/:id` 앞으로 이동.
+- **commit message UTF-8 이슈**: 한글 commit message가 Cloudflare Pages API에서 "Invalid UTF-8" 거부 → `git config --global i18n.commitEncoding utf-8` 영구 설정 + 영어 commit message로 amend.
 
 ---
 
