@@ -1271,7 +1271,7 @@ ordersCoreRouter.post('/', async (c) => {
 ordersCoreRouter.patch('/:id/status', requireRole('ADMIN', 'MANAGER'), async (c) => {
   try {
     const id = c.req.param('id')
-    const { status, reason } = await c.req.json()
+    const { status, reason, confirmed_card_ids, cancelled_card_ids } = await c.req.json()
     const user = c.get('user')
 
     // Validate status
@@ -1308,6 +1308,56 @@ ordersCoreRouter.patch('/:id/status', requireRole('ADMIN', 'MANAGER'), async (c)
         success: false,
         error: `상태 전이 불가: ${order.status} → ${status}`
       }, 400)
+    }
+
+    // SHIPPED 전환 시 미완료 카드 체크
+    if (status === 'SHIPPED') {
+      const { results: pendingCards } = await c.env.DB.prepare(`
+        SELECT id, card_number, status, shipped_at FROM cards
+        WHERE order_id = ? AND (status != 'PRINT_DONE' OR shipped_at IS NULL)
+      `).bind(id).all() as any
+
+      const unfinishedCards = (pendingCards || []).filter((c: any) => c.status !== 'PRINT_DONE')
+
+      // 미완료 카드가 있고 확인 응답이 아닌 경우 → 확인 요청 반환
+      if (unfinishedCards.length > 0 && !confirmed_card_ids && !cancelled_card_ids) {
+        return c.json({
+          success: false,
+          requires_confirmation: true,
+          pending_cards: unfinishedCards.map((c: any) => ({
+            id: c.id,
+            card_number: c.card_number,
+            status: c.status,
+          })),
+          message: `인쇄 미완료 카드 ${unfinishedCards.length}건이 있습니다. 확인 후 진행해주세요.`
+        })
+      }
+
+      // 확인 응답 처리: 확정된 카드 → PRINT_DONE + shipped_at
+      if (confirmed_card_ids && confirmed_card_ids.length > 0) {
+        for (const cardId of confirmed_card_ids) {
+          await c.env.DB.prepare(`
+            UPDATE cards SET status = 'PRINT_DONE', shipped_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+            WHERE id = ? AND order_id = ?
+          `).bind(cardId, id).run()
+        }
+      }
+
+      // 취소된 카드 → HOLD 처리
+      if (cancelled_card_ids && cancelled_card_ids.length > 0) {
+        for (const cardId of cancelled_card_ids) {
+          await c.env.DB.prepare(`
+            UPDATE cards SET status = 'HOLD', updated_at = CURRENT_TIMESTAMP
+            WHERE id = ? AND order_id = ?
+          `).bind(cardId, id).run()
+        }
+      }
+
+      // PRINT_DONE 카드 중 shipped_at 없는 것도 일괄 출고 처리
+      await c.env.DB.prepare(`
+        UPDATE cards SET shipped_at = CURRENT_TIMESTAMP
+        WHERE order_id = ? AND status = 'PRINT_DONE' AND shipped_at IS NULL
+      `).bind(id).run()
     }
 
     // Update order status
