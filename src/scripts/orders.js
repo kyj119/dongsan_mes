@@ -485,14 +485,14 @@ function showCardConfirmModal(orderId, targetStatus, pendingCards) {
       + '<div><span class="font-mono text-sm font-semibold">' + escapeHtml(card.card_number) + '</span>'
       + ' <span class="ml-2 px-1.5 py-0.5 text-xs rounded bg-amber-100 text-amber-700">' + (STATUS_KR[card.status] || card.status) + '</span></div>'
       + '<div class="flex gap-1">'
-      + '<button onclick="setCardAction(' + card.id + ',\\'confirm\\')" class="px-2 py-1 text-xs rounded bg-green-100 text-green-700 hover:bg-green-200 card-action-btn" data-card="' + card.id + '" data-action="">확정</button>'
-      + '<button onclick="setCardAction(' + card.id + ',\\'cancel\\')" class="px-2 py-1 text-xs rounded bg-red-100 text-red-700 hover:bg-red-200 card-action-btn" data-card="' + card.id + '" data-action="">취소</button>'
+      + '<button onclick="setCardAction(' + card.id + ',&#39;confirm&#39;)" class="px-2 py-1 text-xs rounded bg-green-100 text-green-700 hover:bg-green-200 card-action-btn" data-card="' + card.id + '" data-action="">확정</button>'
+      + '<button onclick="setCardAction(' + card.id + ',&#39;cancel&#39;)" class="px-2 py-1 text-xs rounded bg-red-100 text-red-700 hover:bg-red-200 card-action-btn" data-card="' + card.id + '" data-action="">취소</button>'
       + '</div></div>';
   });
   html += '</div>'
     + '<div class="mt-3 flex gap-2">'
-    + '<button onclick="selectAllCardActions(\\'confirm\\')" class="px-3 py-1 text-xs rounded bg-green-600 text-white hover:bg-green-700">전체 확정</button>'
-    + '<button onclick="selectAllCardActions(\\'cancel\\')" class="px-3 py-1 text-xs rounded bg-red-600 text-white hover:bg-red-700">전체 취소</button>'
+    + '<button onclick="selectAllCardActions(&#39;confirm&#39;)" class="px-3 py-1 text-xs rounded bg-green-600 text-white hover:bg-green-700">전체 확정</button>'
+    + '<button onclick="selectAllCardActions(&#39;cancel&#39;)" class="px-3 py-1 text-xs rounded bg-red-600 text-white hover:bg-red-700">전체 취소</button>'
     + '</div>';
 
   showModal('미완료 카드 처리', html, [
@@ -509,7 +509,7 @@ function setCardAction(cardId, action) {
     b.style.opacity = '0.4';
     b.style.fontWeight = 'normal';
   });
-  var activeBtn = row.querySelector('[onclick*="\\'' + action + '\\'"]');
+  var activeBtn = row.querySelector('[onclick*="' + action + '"]');
   if (activeBtn) {
     activeBtn.style.opacity = '1';
     activeBtn.style.fontWeight = 'bold';
