@@ -1,64 +1,106 @@
 # 최근 세션 컨텍스트 (2026-05-11)
 
-## 이번 세션에서 완료된 작업
+## 이번 세션 완료 작업 (커밋 6개)
 
-### 1. 미커밋 변경사항 정리 + Push
-- session-context.md만 미커밋 (코드 변경은 이전 세션 c7c20d3에서 이미 push됨)
-- 커밋 4784b7d → push
+### 1. 미커밋 정리 + Push (`4784b7d`)
+- session-context.md 커밋. 코드 변경은 이전 세션에서 이미 push됨
 
 ### 2. `/api/auth/entities` 회귀 점검 ✅ 해소
-- Cowork 세션에서 발견된 `success: false` 이슈 → **현재 정상 동작**
-- 프로덕션 Playwright MCP로 직접 확인: status 200, 3개 entity 반환
-- entity 전환 드롭다운 UI 정상 (4개 옵션: 동산기획, 선명, 동산기획(청주), 전체)
-- 추정 원인: 배포 직후 일시적 문제 또는 토큰 만료
+- 프로덕션 Playwright로 직접 확인: 200, 3개 entity 정상
+- entity 전환 드롭다운 정상 작동
 
-### 3. 문서 동기화 (sync-docs) ✅
-- **PROJECT_STATUS.md**: 날짜 5/8→5/11, 10개 완료 항목 🟢 이동, 대기 항목 정리+신규 추가
-- **ROADMAP.md**: Phase 3.1/3.2/5.3 → ✅ 완료 표시, 날짜 갱신
-- **MEMORY.md**: 설계 결정 3건 추가 (견적서 분리, 파일 분할, entity_id INSERT 의무화)
-- **design-decisions.md**: W/X/Y 엔트리 3건 추가
-- **architecture-flow.md**: cards.ts 경로 → cards/{queries,scheduling,lifecycle}.ts
+### 3. 문서 동기화 (sync-docs)
+- PROJECT_STATUS.md: 5/8→5/11, 10개 완료 항목 이동
+- ROADMAP.md: Phase 3.1/3.2/5.3 → ✅ 완료
+- MEMORY.md: 설계 결정 3건 추가
+- design-decisions.md: W/X/Y 엔트리 추가
+- architecture-flow.md: cards.ts → cards/{queries,scheduling,lifecycle}.ts
 
-### 4. E2E 쓰기 시나리오 확장 ✅ (10 → 28 테스트)
-**설계 결정**:
-- 격리 전략: entity_id=99 테스트 전용 entity (entityFilter로 자연 격리)
-- e2e_tester 유저 (ADMIN, default_entity_id=99)
-- writeApi fixture (worker-scoped, 한 번만 로그인 → rate limit 회피)
+### 4. E2E 쓰기 시나리오 확장 (`5af0fed`) — 10 → 28 테스트
+- 마이그레이션 0192: entity_id=99 테스트 entity + e2e_tester user
+- crud-clients.spec.ts (4), crud-quotation-order.spec.ts (6), crud-order-lifecycle.spec.ts (8)
+- fixtures.ts: writeApi fixture (worker-scoped)
+- playwright.config.ts: workers=3
 
-**신규 파일**:
-- `migrations/0192_e2e_test_entity.sql`: entity_id=99 + e2e_tester 유저
-- `e2e/crud-clients.spec.ts` (4 tests): 거래처 생성/조회/수정/삭제
-- `e2e/crud-quotation-order.spec.ts` (6 tests): 견적서 생성→주문 변환→확인→cleanup
-- `e2e/crud-order-lifecycle.spec.ts` (8 tests): 주문 생성→상태 전이→카드 생성→cleanup
+### 5. auto-improve 스킬 + IMPROVEMENT_BACKLOG (`71cc3d5`, `3643074`)
+- 6개 영역 순환 점검 스킬 생성
+- 첫 실행: 3개 영역(헬스/코드품질/UX) 스캔 → 10건 발견
+- GitHub Issues #1~#10 자동 생성 (라벨: bug/improvement/feature + 공수)
+- 승인된 Issue 처리 워크플로우 (👍 + 코멘트 반영)
 
-**수정 파일**:
-- `e2e/fixtures.ts`: WriteApiContext 타입 + writeApi fixture (worker-scoped)
-- `playwright.config.ts`: workers=3 (rate limit 방지)
+### 6. 승인된 Issue 처리 (`0960a5a`, `575312d`)
 
-**검증 결과**: 프로덕션 대상 28/28 통과 (23.1초)
+**자동 구현 (6건)**:
+- #1 cards.requesting_entity_id 수정 (entity 격리)
+- #3 bank.ts N+1 제거 (IN 쿼리 + Map)
+- #4 autoProcess.ts N+1 제거 (배치 조회)
+- #5 approvals.ts N+1 제거 (db.batch)
+- #6 /api/clients 응답 통일 ({success,data} 래핑 + 프론트 14파일)
+- #10 close (용준님: 불필요)
 
-**발견·수정한 이슈**:
-- 거래처 수정은 PUT이 아닌 PATCH (clients.ts:762)
-- convert-to-order 응답은 `data.order_id` (not `data.id`)
-- 10 workers → rate limit 초과 → workers=3으로 해결
-- writeApi fixture scope: 'worker'로 로그인 1회만 수행
+**코멘트 반영 구현 (3건)**:
+- #7 거래처 필터 5개 (전화번호검색/정렬/미거래/미수금/주문차단)
+- #8 주문 필터 CANCELLED 고정 해소 (localStorage 복원 제외)
+- #9 대시보드 KPI 5개 (/cards: 지연·컬럼별·보류, /dashboard: 긴급·수금률)
+
+### 7. LogWatcher 프로덕션 점검 (#2)
+- appsettings.json URL 수정: 로컬 → 프로덕션 (publish/Release/Debug/NAS 4개)
+- 용준님이 서버PC에서 서비스 실행 → RIP PC 2대 online 확인
+  - DESKTOP-GFHBHPD (TPM-01, 192.168.127.1)
+  - DESKTOP-GMKQE13 (RIP-03, 192.168.0.95)
+- 테스트 데이터 3건 삭제 완료
+- Issue #2 close
+
+---
+
+## 오늘 세션 성과 요약
+
+| 지표 | 수치 |
+|------|------|
+| 커밋 | 6개 |
+| E2E 테스트 | 10 → 28개 (+18) |
+| GitHub Issues 생성 | 10개 |
+| Issues 처리 | 10/10 (구현 9 + 거절 1) |
+| 프로덕션 배포 | 4회 (모두 CI 통과) |
+| 버그 수정 | 2건 (entity_id, LogWatcher URL) |
+| N+1 쿼리 제거 | 3건 |
+| 신규 기능 | 10개 (필터 5, KPI 5) |
+
+---
+
+## GitHub Issues 현황
+
+| # | 제목 | 상태 |
+|---|------|------|
+| #1 | cards entity_id 격리 | ✅ closed |
+| #2 | LogWatcher 미수신 | ✅ closed |
+| #3 | bank.ts N+1 | ✅ closed |
+| #4 | autoProcess N+1 | ✅ closed |
+| #5 | approvals N+1 | ✅ closed |
+| #6 | clients API 통일 | ✅ closed |
+| #7 | 거래처 필터 강화 | ✅ closed |
+| #8 | 주문 필터 해소 | ✅ closed |
+| #9 | 대시보드 KPI | ✅ closed |
+| #10 | 납품시간 disabled | ❌ rejected |
 
 ---
 
 ## 다음 세션 작업 후보
 
 ### 즉시 착수 가능
-1. **카카오톡 알림 마무리** (Phase 5.4) — 0.5~1세션
-2. **거래처 상세 정책 UI** — 30분
-3. **E2E 추가 시나리오** (재고, 발주 등)
+1. **auto-improve 다음 영역** (Area 4~6: 데이터 정합성/보안/자기진화)
+2. **카카오톡 알림 마무리** (Phase 5.4) — 0.5~1세션
+3. **KPI 4 출력 성공률** — 신규 엔드포인트 필요 (대시보드 후속)
+4. **거래처 목록 정렬** — #7에서 백엔드 구현됨, UI 동작 검증
 
 ### 사용자 결정 필요
-- **한진택배 Phase A** — 솔루션 선정 + API 키 확보 후
+- **한진택배 Phase A** — 솔루션 선정 + API 키
 - **IA 오프셋 버그** — Illustrator MCP 필요
 
-## 다음 세션 시작 시 권장 명령
+### 새 세션 시작 시 권장
 ```powershell
 cd C:\Users\user\dongsan_mes
 git pull
 git log --oneline -5
+# "auto-improve 다음 영역 돌려줘" 또는 "승인된 이슈 처리해줘"
 ```
