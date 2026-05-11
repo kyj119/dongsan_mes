@@ -13,10 +13,10 @@ test.describe('인증', () => {
     // authedPage fixture가 이미 로그인 + /cards 리다이렉트 확인
     await expect(authedPage).toHaveURL(/\/cards/)
 
-    // 사이드바 핵심 메뉴 보여야 함
-    await expect(authedPage.getByRole('link', { name: '거래처' })).toBeVisible()
-    await expect(authedPage.getByRole('link', { name: '품목' })).toBeVisible()
-    await expect(authedPage.getByRole('link', { name: '주문 관리' })).toBeVisible()
+    // 사이드바 핵심 메뉴 보여야 함 (exact: true — "거래처 원장"과 구분)
+    await expect(authedPage.getByRole('link', { name: '거래처', exact: true })).toBeVisible()
+    await expect(authedPage.getByRole('link', { name: '품목', exact: true })).toBeVisible()
+    await expect(authedPage.getByRole('link', { name: '주문 관리', exact: true })).toBeVisible()
 
     // 콘솔 에러가 발생하면 실패
     expect(consoleErrors).toEqual([])

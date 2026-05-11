@@ -33,12 +33,15 @@ export const test = base.extend<Fixtures>({
     const pass = process.env.E2E_PASS || 'password'
 
     await page.goto('/login')
+    await page.waitForLoadState('domcontentloaded')
     await page.locator('input[type="text"], input[name="username"]').first().fill(user)
     await page.locator('input[type="password"]').first().fill(pass)
     await page.locator('button[type="submit"]').click()
 
     // 로그인 성공 시 /cards 또는 /dashboard로 리다이렉트
-    await page.waitForURL(/\/(cards|dashboard)/, { timeout: 10_000 })
+    // Cloudflare cold start + 병렬 worker 환경 고려해 timeout 넉넉히
+    await page.waitForURL(/\/(cards|dashboard)/, { timeout: 30_000 })
+    await page.waitForLoadState('networkidle', { timeout: 30_000 })
 
     await use(page)
   },
