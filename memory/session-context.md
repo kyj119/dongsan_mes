@@ -1,314 +1,64 @@
-# 최근 세션 컨텍스트 (2026-05-09)
+# 최근 세션 컨텍스트 (2026-05-11)
 
-## 이번 세션 (2026-05-09)에서 완료된 작업
+## 이번 세션에서 완료된 작업
 
-### Phase 0 — 인프라 안정화 ✅ 완료
-- 거래처 정책 UI (가격 정책 드롭다운) — 마이그레이션 0187 활용
-- GitHub Actions 자동 배포 (deploy.yml + verify.yml)
-- GitHub Secrets 등록 (CLOUDFLARE_API_TOKEN/ACCOUNT_ID)
-- git history squash 7GB → 2.5MB (1700배 감소, .gitignore 보강)
+### 1. 미커밋 변경사항 정리 + Push
+- session-context.md만 미커밋 (코드 변경은 이전 세션 c7c20d3에서 이미 push됨)
+- 커밋 4784b7d → push
 
-### Phase 1 — 회계·재무 정합성 ✅ 완료
-- **1.1 즉시수금 증빙 유형 분류**: 마이그레이션 0189 (`orders.receipt_type`), 회계반영 모달에 select 추가 (세금계산서/현금영수증/카드/간이), bulk-bill API에서 receipt_type 수용 (snake/camelCase 양쪽 호환)
-- **1.2 멀티사업자 이메일**: 마이그레이션 0190 (`entities.email_from_address`, `email_from_name`), `emailProvider.sendEmail({meta: {entityId}})`로 entity별 발신 우선, 법인 정보 설정에 입력 필드 추가
-- **1.3 팝빌 LinkedID**: 사용자가 직접 settings에서 입력 완료 (코드 변경 없음)
+### 2. `/api/auth/entities` 회귀 점검 ✅ 해소
+- Cowork 세션에서 발견된 `success: false` 이슈 → **현재 정상 동작**
+- 프로덕션 Playwright MCP로 직접 확인: status 200, 3개 entity 반환
+- entity 전환 드롭다운 UI 정상 (4개 옵션: 동산기획, 선명, 동산기획(청주), 전체)
+- 추정 원인: 배포 직후 일시적 문제 또는 토큰 만료
 
-### Phase 3.3 — TypeScript 인터페이스 갱신 ✅ 완료
-- `src/types/models.ts`: Client/Order에 누락 컬럼 다수 추가 (price_list_id, price_policy_id, auto_billing, billing_status, receipt_type, cancel_reason 등)
-- 신규 인터페이스: Entity, PricePolicy, PricePolicyRule
-- 신규 타입 alias: BillingStatus, ReceiptType, OrderType
+### 3. 문서 동기화 (sync-docs) ✅
+- **PROJECT_STATUS.md**: 날짜 5/8→5/11, 10개 완료 항목 🟢 이동, 대기 항목 정리+신규 추가
+- **ROADMAP.md**: Phase 3.1/3.2/5.3 → ✅ 완료 표시, 날짜 갱신
+- **MEMORY.md**: 설계 결정 3건 추가 (견적서 분리, 파일 분할, entity_id INSERT 의무화)
+- **design-decisions.md**: W/X/Y 엔트리 3건 추가
+- **architecture-flow.md**: cards.ts 경로 → cards/{queries,scheduling,lifecycle}.ts
 
-### Phase 3.1 — 대형 파일 리팩토링 ✅ 완료 (3 파일 → 15 파일)
+### 4. E2E 쓰기 시나리오 확장 ✅ (10 → 28 테스트)
+**설계 결정**:
+- 격리 전략: entity_id=99 테스트 전용 entity (entityFilter로 자연 격리)
+- e2e_tester 유저 (ADMIN, default_entity_id=99)
+- writeApi fixture (worker-scoped, 한 번만 로그인 → rate limit 회피)
 
-**Phase 3.1.A — cards.ts** (2121줄 → aggregator 30줄 + 3 파일 2180줄)
-- `src/routes/cards.ts` (30줄): 얇은 aggregator (route mount만)
-- `src/routes/cards/queries.ts` (836줄): 13 GET 라우트 + entityFilter
-- `src/routes/cards/scheduling.ts` (166줄): 4 PUT/PATCH (assign/priority/bulk-priority/notes)
-- `src/routes/cards/lifecycle.ts` (1178줄): 14 라우트 (status/ship/defects/generate/etc) + syncOrderStatusFromCards 헬퍼
-- 매칭 우선순위: queries(구체 경로) → scheduling(/schedule/:id) → lifecycle(/:id/*) — orders.ts 패턴
+**신규 파일**:
+- `migrations/0192_e2e_test_entity.sql`: entity_id=99 + e2e_tester 유저
+- `e2e/crud-clients.spec.ts` (4 tests): 거래처 생성/조회/수정/삭제
+- `e2e/crud-quotation-order.spec.ts` (6 tests): 견적서 생성→주문 변환→확인→cleanup
+- `e2e/crud-order-lifecycle.spec.ts` (8 tests): 주문 생성→상태 전이→카드 생성→cleanup
 
-**Phase 3.1.B — items.js** (3235줄 → 5 파일 3245줄, ?raw concat)
-- `src/scripts/items/core.js` (504줄): 상수, 캐시, 로딩 유틸, 그룹 편집 모달
-- `src/scripts/items/modals.js` (506줄): 품목 CRUD 모달 + 자재 매핑
-- `src/scripts/items/tabs.js` (467줄): 메인 탭, 출력/원자재 그룹 뷰, 인쇄방식
-- `src/scripts/items/media.js` (1190줄): 인쇄매체 단일/그룹 CRUD, RM 그룹 일괄
-- `src/scripts/items/bulk.js` (578줄): 일괄 추가, 가격 이력, window exports, 초기화
-- `src/pages/items.ts`: 5 ?raw → `[a,b,c,d,e].join('\n')`
+**수정 파일**:
+- `e2e/fixtures.ts`: WriteApiContext 타입 + writeApi fixture (worker-scoped)
+- `playwright.config.ts`: workers=3 (rate limit 방지)
 
-**Phase 3.1.C — orderForm.js** (3966줄 → 6 파일 3979줄, ?raw concat)
-- `src/scripts/orderForm/client.js` (230줄): 거래처 + 배송시간
-- `src/scripts/orderForm/itemRow.js` (334줄): 품목 행 빌드/자동완성/추가/삭제/스케일
-- `src/scripts/orderForm/finishing.js` (507줄): 마감 PP/타공/오프셋/주석
-- `src/scripts/orderForm/calc.js` (564줄): 단가·총액 계산
-- `src/scripts/orderForm/sheet.js` (1065줄): 폼 제출 + AI tabs + 합판 레이아웃
-- `src/scripts/orderForm/parent.js` (1279줄): AI 파일/결과 + 부모/자식 + 후가공 복원
-- `src/pages/orderForm.ts`: 6 ?raw concat (orderFormDist.js는 그대로 — 351줄, 통합 무가치)
+**검증 결과**: 프로덕션 대상 28/28 통과 (23.1초)
 
-**검증 결과**:
-- typecheck (tsc --noEmit) 통과 ✓
-- vite build 통과: 297 → 306 modules (+9 신규 모듈), 4.17MB
-- dist 검증: cards 31 라우트 + items 14개 핵심 window.* + orderForm 26개 핵심 window.* + 7개 인라인 함수 모두 존재 ✓
-- 변수명 충돌 검사 통과 (top-level var 모두 unique)
-- 백업: `src/scripts/items.js.refactor-baseline`, `src/scripts/orderForm.js.refactor-baseline` (gitignore 후 삭제 권장)
-
-**미완료 (다음 세션)**:
-- 수동 시나리오 검증 (`refactor/PHASE_3_1_VERIFICATION.md` 체크리스트 참고)
-- Playwright E2E 도입 (Phase 5.3로 이월) — ✅ 같은 세션에서 완료됨
-
-### Phase 5.3 — Playwright E2E ✅ 완료
-- **인프라**: `@playwright/test` devDep + `playwright.config.ts` (production URL, ko-KR/Asia/Seoul, headless, screenshot/video/trace on failure)
-- **fixtures.ts**: `authedPage` (E2E_USER/PASS 자동 로그인) + `consoleErrors` (page.on('console'/'pageerror') 감시)
-- **5개 spec (read-only, 데이터 오염 0)**:
-  - `auth.spec.ts`: 로그인 → /cards + 사이드바 href 검증 (a[href="/clients"] 등)
-  - `clients.spec.ts`: editClient(1) async + 가격 정책 드롭다운 option 로드 검증
-  - `order-form.spec.ts`: 9개 핵심 window.* + 거래처 검색 + 단가 계산 (56,000/61,600)
-  - `items.spec.ts`: 6개 핵심 함수 + 메인 탭 전환 (output→sign→rawMaterial)
-  - `cards-api.spec.ts`: 10개 API 200 (defect-stats 포함) + /:id/history + /:id/defects
-- **워크플로우 `.github/workflows/e2e.yml`**:
-  - workflow_run (deploy 성공 후 자동)
-  - schedule cron `0 0 * * *` (KST 9시)
-  - workflow_dispatch (수동 실행)
-  - HTML report + trace/screenshot/video 14일 보관
-- **`@rollup/rollup-linux-x64-gnu`** → `optionalDependencies` 이동 (Windows에서 npm install 가능)
-- **e2e scripts에 `npx` prefix** (wrangler가 PATH의 `playwright` 명령 가로채는 충돌 회피)
-- **검증 결과**: 7/7 통과 (production https://webapp-9i0.pages.dev 대상)
-
-### Phase 3.2 — 견적서 → 주문 전환 재설계 ✅ 완료 (production 배포 + E2E 통과)
-**결정사항** (사용자 답변):
-- Q1 1:N (한 견적서 → 여러 주문 가능)
-- Q2 별도 `quotations` 테이블 신설
-- Q3 immutable snapshot 복사 (변환 시 모두 복사)
-- Q4 quotations.first_converted_at + orders.quotation_id FK (1:N 호환 조정)
-- Q5 기존 데이터 그대로
-- Q6 "주문 생성" 버튼 + 양쪽 연결 표시 + prefill (검토 후 저장)
-
-**작업 완료**:
-- 마이그레이션 `0191_quotations_separated.sql`: quotations + quotation_items + orders.quotation_id
-- `src/routes/quotations.ts` 신규 (GET list/detail/orders, POST create/convert-to-order, PUT update, DELETE cancel)
-- `src/types/models.ts`: Quotation + QuotationItem + QuotationStatus 타입
-- `src/index.tsx`: `app.route('/api/quotations', quotationsRouter)` 등록
-- `src/scripts/quotations.js`: 신규 API 사용 (axios endpoint 5곳 변경), 상태 매핑 변경 (ACTIVE/EXPIRED/CANCELLED + partial)
-- `src/scripts/quotationForm.js`: POST/PUT/GET → /api/quotations (구 orders API fallback 유지)
-- `src/scripts/orderForm/parent.js`: `?quotation_id=X` prefill 흐름 + 견적서 연결 배너
-- `src/routes/orders/core.ts`: POST /api/orders가 `source_quotation_id` 받아 orders.quotation_id 저장 + quotations.converted_count 자동 증가
-- 견적서 상세 모달에 "이 견적서로 생성된 주문" 표시
-- `e2e/quotations.spec.ts` 추가 (3개 시나리오)
-
-**프로덕션 검증 결과**:
-- 마이그레이션 0191 prod 적용 완료 (단, prod 메타데이터에 0187~0190 누락 → `INSERT INTO d1_migrations` 수동 보정 필요했음)
-- `/api/quotations` 200, /quotations 페이지 5개 함수 정상
-- `/order-form?quotation_id=X` prefill 흐름 정상
-- E2E 8 spec / 10 테스트 모두 통과 (auth + clients + order-form + items + cards-api 5개 + quotations 3개)
-
-**미완료 (다음 세션 후보)**:
-- 주문 상세 페이지에 "이 주문은 견적서 #N에서 옴" 표시 (orders.ts UI 변경, 작은 작업 ~30분)
-- 구 데이터 (orders.status='QUOTATION') 마이그레이션 — 사용자 결정상 그대로 둠 (불필요)
+**발견·수정한 이슈**:
+- 거래처 수정은 PUT이 아닌 PATCH (clients.ts:762)
+- convert-to-order 응답은 `data.order_id` (not `data.id`)
+- 10 workers → rate limit 초과 → workers=3으로 해결
+- writeApi fixture scope: 'worker'로 로그인 1회만 수행
 
 ---
 
-### 추가 작업 (Cowork 세션 후반부)
+## 다음 세션 작업 후보
 
-**① 주문 상세 견적서 연결 표시** ✅
-- `src/scripts/orders.js`: 주문 상세 모달에 견적서 연결 배너 (`order.quotation_id` 있을 때만 표시)
-- `src/routes/orders/core.ts`: GET /api/orders/:id 응답에 `quotation_number` JOIN
+### 즉시 착수 가능
+1. **카카오톡 알림 마무리** (Phase 5.4) — 0.5~1세션
+2. **거래처 상세 정책 UI** — 30분
+3. **E2E 추가 시나리오** (재고, 발주 등)
 
-**② 로고 설정 priceList → settings 이동** ✅
-- `src/pages/priceList.ts`: "인쇄 설정" 탭 제거
-- `src/scripts/priceList.js`: loadLogoSettings/saveLogo/deleteLogo 함수 제거
-- `src/pages/settings.ts`: "법인별 로고" 카드 신규 추가 (법인 정보 카드 아래)
-- `src/scripts/settings.js`: 로고 함수 4개 이동 + `window.currentEntityId` 연동
+### 사용자 결정 필요
+- **한진택배 Phase A** — 솔루션 선정 + API 키 확보 후
+- **IA 오프셋 버그** — Illustrator MCP 필요
 
-**③ 법인 분리 백엔드 점검** ✅
-- 산출물: `ENTITY_ISOLATION_AUDIT.md`
-- **발견**: INSERT 14건 entity_id 누락 (DEFAULT 1로 흘러감)
-- **수정 완료**:
-  - `src/routes/inventory.ts` (4건)
-  - `src/routes/inventoryCount.ts` (1건)
-  - `src/routes/orders/queries.ts` (1건)
-  - `src/routes/purchaseOrders/core.ts` (4건)
-  - `src/routes/purchaseOrders/templates.ts` (1건)
-  - `src/routes/purchaseRequests.ts` (2건)
-  - `src/routes/taxInvoices.ts` (1건)
-
-**④ 한진택배 자동화 로드맵** ✅
-- 산출물: `HANJIN_INTEGRATION_ROADMAP.md`
-- 3단계 (A 인프라 → B 송장 발급 → C 상태 폴링) 3~4세션 분량
-- 사용자 결정 대기: 솔루션 선택 (스마트택배/굿스플로/위빅스/한진 직접 API), 발신자 분리 여부
-
-**(다) UI entity 점검** ✅
-- `/settings` entityLabel 정상 `((주)동산기획)` ✓
-- `/ledger` entity 라벨 정상 ✓
-- **🚨 발견된 회귀**: `/api/auth/entities` 응답 `success: false, count: 0` — 다중 entity 환경에서 entity 전환 메뉴 작동 안 할 가능성
-
-### 미커밋 변경사항 (push 대기)
-```
-src/scripts/orders.js
-src/routes/orders/core.ts
-src/pages/priceList.ts
-src/scripts/priceList.js
-src/pages/settings.ts
-src/scripts/settings.js
-src/routes/inventory.ts
-src/routes/inventoryCount.ts
-src/routes/orders/queries.ts
-src/routes/purchaseOrders/core.ts
-src/routes/purchaseOrders/templates.ts
-src/routes/purchaseRequests.ts
-src/routes/taxInvoices.ts
-ENTITY_ISOLATION_AUDIT.md
-HANJIN_INTEGRATION_ROADMAP.md
-```
-
-권장 commit 메시지:
-```
-feat: Order detail quotation link + logo settings moved + entity_id added to 14 INSERTs
-
-- orders.js: quotation link banner in order detail modal
-- orders/core.ts: GET /:id JOINs quotations.quotation_number
-- priceList → settings: logo settings UI relocated (4 files)
-- entity_id fix: 14 INSERTs in inventory/purchase/tax routes
-- Audit docs: ENTITY_ISOLATION_AUDIT.md + HANJIN_INTEGRATION_ROADMAP.md
-```
-
----
-
-## Cowork → Cline 이전 (2026-05-11)
-
-**이전 사유**: Cowork sandbox의 unlink 권한 제한 (GitHub Issue #55206 — Anthropic 미해결). git commit/push가 sandbox에서 안 됨. Cline은 VS Code native라 제약 없음.
-
-**Cline 인계 우선순위**:
-1. 미커밋 변경 commit + push (위 목록)
-2. `/api/auth/entities` 응답 회귀 점검 (다중 entity 메뉴 작동 위해)
-3. 한진택배 솔루션 선정 후 Phase A 착수
-
-## 다음 세션 시작 가이드
-
-### 현재 인프라 상태 (모두 작동 중)
-- `git push` → CI typecheck/build/deploy/smoke 자동
-- 매일 KST 9시 + push 후 E2E 자동 (8 spec / 10 테스트)
-- 회귀 발생 시 GitHub Actions 이메일 + HTML report 14일 보관
-- Claude in Chrome MCP로 즉시 디버깅 (사용자가 Chrome 페어링)
-
-### 다음 작업 후보 (사용자 선택)
-
-**(가) Phase 4 / 5.4 — 카카오톡 알림 마무리** (0.5~1세션, 가벼움)
-- 현재 상태 점검: src/routes/kakao.ts 기존 존재, 메시지 발송 일부 구현
-- 필요한 작업: 어디서 트리거되는지 확인 + 누락된 이벤트 추가 + 템플릿 정리
-- 시작점: `grep -r "kakao" src/routes/ src/scripts/` 로 현황 파악
-
-**(나) Phase 3.2 연장 — 주문 상세에 견적서 연결 표시** (~30분)
-- orders 페이지 (`/orders` 또는 `/order/:id`)에 `quotation_id` 있으면 견적서 링크 표시
-- 시작점: `src/pages/orders.ts` 또는 주문 상세 modal 코드
-
-**(다) Phase 5.3 확장 — E2E 쓰기 시나리오** (1세션)
-- 현재 read-only만. 쓰기는 entity_id 격리 필요.
-- 시작점: 테스트 전용 entity_id 결정 + cleanup cron 추가
-
-**(라) Phase 4 — IA 오프셋 버그** (1~2세션, 외부 의존)
-- IllustratorAutomat에서 3mm 확장 안 됨
-- 시작점: Illustrator MCP 연결 확인 + SheetLayout.jsx 직접 실행 디버깅
-- 차단: 사용자 환경 (IA PC 실행) 필요
-
-### 새 세션 시작 시 권장 명령
+## 다음 세션 시작 시 권장 명령
 ```powershell
 cd C:\Users\user\dongsan_mes
-git pull  # 혹시 모를 변경 동기화
-git log --oneline -5  # 최신 커밋 확인
+git pull
+git log --oneline -5
 ```
-
-### 새 세션에서 클로드에게 첫 메시지 예시
-"세션 컨텍스트 읽고 (나) 작업 진행해줘" 또는 "Phase 4 카카오톡 알림 점검부터 시작"
-
-### 이번 세션에서 발견·수정한 실제 회귀
-- **`/api/cards/defect-stats` 404 → 200**: Phase 3.1.A 분할 후 cards/queries.ts에서 `/:id` 라우트가 `defect-stats`를 카드 ID로 가로채는 라우트 매칭 순서 버그. Claude in Chrome으로 수동 검증 중 발견 → `/defect-stats`를 `/:id` 앞으로 이동.
-- **commit message UTF-8 이슈**: 한글 commit message가 Cloudflare Pages API에서 "Invalid UTF-8" 거부 → `git config --global i18n.commitEncoding utf-8` 영구 설정 + 영어 commit message로 amend.
-
----
-
-## 이전 세션 (2026-05-08) 컨텍스트
-
-### 1. 거래처 편집 모달에 가격 정책 드롭다운 추가
-- **결정**: UI는 거래처 편집 모달에만 추가 (상세 페이지 아님), 기존 `price_list_id`/`client_price_rates`와 공존
-- **변경 파일 3개**:
-  - `src/pages/clients.ts`: `clientModalPricePolicy` select 추가 (단가표 옆)
-  - `src/scripts/clients.js`: `loadPricePolicyOptions()` 추가, editClient/saveClient/showAddClientModal 갱신
-  - `src/routes/clients.ts`: POST /api/clients가 `price_policy_id` 받음 + 기본 정책(is_default=1) 자동 할당
-- **검증**: 샌드박스에서 typecheck (exit 0) + build (294 modules, 4.16MB) 통과
-- **수동 UI 검증**: 자동 배포 셋업 후 production URL에서 확인
-
-### 2. GitHub Actions 자동 배포 셋업 (CI/CD)
-- **결정**: typecheck/build/deploy/smoke를 한 워크플로우에 묶어 main push 트리거
-- **신규 파일 2개**:
-  - `.github/workflows/deploy.yml` — main push → typecheck + build + Cloudflare Pages 배포 + smoke 헬스체크
-  - `.github/workflows/verify.yml` — PR 시 typecheck + build (현재 PR 흐름 없으면 미작동, 미래용)
-- **사용자 액션 필요**: GitHub Secrets에 `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID` 등록
-  - SMOKE_USER/SMOKE_PASS는 선택 (기본 admin/password)
-
-## 다음 세션 주의사항
-
-1. **GitHub Secrets 셋업 후 첫 push 동작 확인 필수**: 토큰 권한 부족 시 배포 실패. Cloudflare API Token은 "Edit Cloudflare Workers" 템플릿 사용.
-2. **smoke의 admin/password 기본값**: 프로덕션 admin 계정 비번이 다르면 SMOKE_PASS 시크릿 등록 필요. 안 하면 smoke 401로 실패.
-3. **거래처 정책 UI 수동 검증 시나리오**:
-   - `/clients` → 거래처 수정 → "가격 정책" 드롭다운 노출 확인
-   - 정책 선택 → 저장 → 재진입 시 값 유지 확인
-   - 새 주문 작성 → 해당 거래처 + 정책 적용된 품목 → 단가 자동 반영 확인
-4. **다음 후보 작업**: 즉시수금 증빙 유형 분류 (receipt_type 컬럼 추가 + 회계반영 UI)
-
-## 기존 미해결 이슈 (이전 세션 이월)
-
-### 오프셋 버그 (SheetLayout 3mm 확장 미작동)
-- 코드 분석 완료, MCP로 SheetLayout.jsx 직접 실행 디버깅 필요
-- 관련 파일: `IllustratorAutomat/SheetLayout.jsx` (line 168~197, 322~344), `Program.cs` (line 1419~1544)
-
-### CAPS 경리PC 워커 실행
-- .env 배포 완료, 경리 PC에서 `node src/index.js` 실행 대기
-- **현재 경리 PC 접속 불가 상태** (사용자 보고, 2026-05-08)
-
----
-
-# 이전 세션 컨텍스트 (2026-04-29)
-
-## 이번 세션에서 확정된 결정
-
-### 1. 서버PC = IA PC 통합
-- **결정**: 192.168.0.94 (서버PC)에서 IllustratorAutomat.exe를 직접 실행
-- **왜**: 일러스트 사용자가 1명만 남아서 별도 IA PC 불필요
-- **코드 변경 불필요**: `ERP_API_URL = "http://192.168.0.94:3000"` 그대로 사용 (자기 자신에게 연결)
-- **해야 할 것**: publish/IllustratorAutomat.exe 이 PC에서 실행 + Windows 작업 스케줄러 자동시작 등록
-
-### 2. Illustrator MCP 연결 확인
-- **결정**: mcp__illustrator__* 툴 정상 작동 확인 (view로 스크린샷 성공)
-- **활용 방향**: JSX 직접 실행 → 결과 확인 → 수정 루프로 개발 속도 대폭 향상
-- **다음 세션에서**: MCP로 JSX 테스트 워크플로우 구축
-
-### 3. PROJECT_STATUS.md 정리
-- **CAPS on-prem** → 🟢 완료로 이동
-- **통합 메시지 발송** → 🟡 유지 (SMS/카카오 완료, 이메일/팩스 미확인)
-
-## 오프셋 버그 현황 (미해결)
-
-### 증상
-- SheetLayout → 주문 처리 흐름에서 3mm 확장이 안 됨
-
-### 코드 분석 결과
-- `SheetLayout.jsx`에 `createEdgeStrip` 함수 있음 (line 168~197)
-- `bleed_mm = _params.bleed_mm || 3` — 기본값 3mm
-- C#(Program.cs line 1512)에서 `bleed_mm = sheetBleedMm` 넘김 ✅
-- **미확인**: `allDesignItems`가 `createEdgeStrip` 호출 시 실제로 채워져 있는지 (SheetLayout.jsx line 322-344 부근)
-- **다음 단계**: MCP로 SheetLayout.jsx를 test.eps에 직접 실행해서 edge_strip 작동 여부 확인
-
-### 관련 파일
-- `IllustratorAutomat/SheetLayout.jsx` (line 168~197: createEdgeStrip, line 322~344: bleed 적용)
-- `IllustratorAutomat/Program.cs` (line 1419~1544: SheetLayout 파라미터 구성)
-- `IllustratorAutomat/ProcessOrderItem.jsx` (별도 오프셋 로직 — SheetLayout과 무관)
-
-## 다음 세션 주의사항
-
-1. **오프셋 디버깅은 MCP로**: `_ia_params_override_path` 변수 활용해서 파라미터 파일 직접 지정 가능
-   ```javascript
-   // SheetLayout.jsx line 40-41에 이미 구현됨
-   var _cfgPathSL = (typeof _ia_params_override_path !== "undefined" && _ia_params_override_path)
-       ? _ia_params_override_path : ...
-   ```
-2. **IllustratorAutomat 자동시작**: 작업 스케줄러 설정 시 "로그인 시 실행" + Illustrator 실행 대기 필요
-3. **brainstorming 미완료**: (가)(나)(다) 모두 필요하다고 했으나 (가) 디버깅 먼저 진행 예정

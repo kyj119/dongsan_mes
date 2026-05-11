@@ -333,7 +333,7 @@ function openRecipientPicker(type) {
         return { id: u.id, name: u.name || u.username, phone: u.phone || '', email: u.email || '', role: u.role || '', dept: '' };
       });
     } else {
-      var clients = res.data.clients || res.data.data || [];
+      var clients = (res.data.data && res.data.data.clients) ? res.data.data.clients : (res.data.data || []);
       if (!Array.isArray(clients)) clients = [];
       items = clients.map(function(c) {
         return { id: c.id, name: c.client_name || c.name, phone: c.mobile || c.phone || '', email: c.email || '', role: '', dept: c.client_type || '' };

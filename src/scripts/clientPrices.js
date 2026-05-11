@@ -124,7 +124,7 @@ function searchSuppliersForPrice() {
     }
     spSearchTimer = setTimeout(function() {
         axios.get('/api/clients?search=' + encodeURIComponent(q) + '&client_type=PURCHASE&limit=20').then(function(res) {
-            var clients = res.data.clients || [];
+            var clients = (res.data.data && res.data.data.clients) ? res.data.data.clients : [];
             var dd = document.getElementById('spSupplierDropdown');
             var html = '';
             for (var i = 0; i < clients.length; i++) {

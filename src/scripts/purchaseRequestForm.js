@@ -184,7 +184,7 @@ function onPRSupplierInput() {
   prSupplierSearchTimer = setTimeout(async function() {
     try {
       var res = await axios.get('/api/clients?type=PURCHASE&search=' + encodeURIComponent(q) + '&limit=20');
-      var clients = (res.data && res.data.clients) ? res.data.clients : [];
+      var clients = (res.data && res.data.data && res.data.data.clients) ? res.data.data.clients : [];
       var dd = document.getElementById('prSupplierDd');
       if (clients.length === 0) {
         dd.innerHTML = '<div class="pr-supplier-dd-entry text-gray-400 cursor-default">검색 결과 없음</div>';

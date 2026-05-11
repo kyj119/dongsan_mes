@@ -74,7 +74,7 @@ async function loadSupplierFilter() {
     if (res.data.success) {
       var sel = document.getElementById('supplierFilter');
       if (!sel) return;
-      var clients = (res.data.data || res.data.clients || []);
+      var clients = (res.data.data && res.data.data.clients) ? res.data.data.clients : (res.data.clients || []);
       clients.forEach(function(c) {
         var opt = document.createElement('option');
         opt.value = c.id;

@@ -36,10 +36,11 @@ interface GenerateCardsParams {
   deliveryDate: string | null
   priority: string
   notes?: string | null
+  entityId?: number | null
 }
 
 async function generateCardsForOrder(params: GenerateCardsParams): Promise<number> {
-  const { db, orderId, orderNumber, clientId, deliveryDate, priority, notes } = params
+  const { db, orderId, orderNumber, clientId, deliveryDate, priority, notes, entityId } = params
   const cardPriority = priority === 'URGENT' ? 1 : 0
 
   const client = await db.prepare(`
@@ -200,8 +201,9 @@ async function generateCardsForOrder(params: GenerateCardsParams): Promise<numbe
           width, height, quantity, unit,
           rip_filename, post_processing,
           final_width, final_height,
-          delivery_date, priority, finishing, notes
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          delivery_date, priority, finishing, notes,
+          requesting_entity_id
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).bind(
         cardNumber, orderId, null, 'PRINTING',
         client?.client_name || 'Unknown', category, category,
@@ -211,7 +213,8 @@ async function generateCardsForOrder(params: GenerateCardsParams): Promise<numbe
         cardHeight > 0 ? cardHeight + totalMT + totalMB : 0,
         deliveryDate || null, cardPriority,
         cardFinishing ? JSON.stringify(cardFinishing) : null,
-        notes || null
+        notes || null,
+        entityId ?? null
       )
     )
   }
@@ -1086,7 +1089,8 @@ ordersCoreRouter.post('/', async (c) => {
         clientId: orderData.client_id,
         deliveryDate: orderData.delivery_date || null,
         priority: orderData.priority || 'NORMAL',
-        notes: orderData.notes || null
+        notes: orderData.notes || null,
+        entityId: getEntityId(c)
       })
     }
 
@@ -1849,7 +1853,8 @@ ordersCoreRouter.put('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
         clientId: orderData.client_id,
         deliveryDate: orderData.delivery_date || null,
         priority: orderData.priority || 'NORMAL',
-        notes: orderData.notes || null
+        notes: orderData.notes || null,
+        entityId: getEntityId(c)
       })
     } // end if (canRegenerateCards)
 

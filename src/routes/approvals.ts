@@ -179,18 +179,21 @@ approvals.post('/', async (c) => {
 
     const requestId = result.meta?.last_row_id as number
 
-    // 결재 단계 생성
-    for (const step of steps) {
-      const isRole = ['ADMIN', 'MANAGER', 'DESIGNER', 'OPERATOR'].includes(step.role_or_user_id)
-      await c.env.DB.prepare(`
-        INSERT INTO approval_steps (request_id, step_order, approver_id, approver_role, label, status)
-        VALUES (?, ?, ?, ?, ?, 'PENDING')
-      `).bind(
-        requestId, step.step_order,
-        isRole ? null : Number(step.role_or_user_id) || null,
-        isRole ? step.role_or_user_id : null,
-        step.label || `${step.step_order}단계`
-      ).run()
+    // 결재 단계 생성 — db.batch()로 단일 왕복 처리
+    if (steps.length > 0) {
+      const stepStatements = steps.map((step: any) => {
+        const isRole = ['ADMIN', 'MANAGER', 'DESIGNER', 'OPERATOR'].includes(step.role_or_user_id)
+        return c.env.DB.prepare(`
+          INSERT INTO approval_steps (request_id, step_order, approver_id, approver_role, label, status)
+          VALUES (?, ?, ?, ?, ?, 'PENDING')
+        `).bind(
+          requestId, step.step_order,
+          isRole ? null : Number(step.role_or_user_id) || null,
+          isRole ? step.role_or_user_id : null,
+          step.label || `${step.step_order}단계`
+        )
+      })
+      await c.env.DB.batch(stepStatements)
     }
 
     return c.json({ success: true, data: { id: requestId, requestNumber } })

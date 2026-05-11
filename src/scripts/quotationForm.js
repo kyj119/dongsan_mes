@@ -16,7 +16,7 @@ function handleClientEnter(e) {
     axios.get('/api/clients?search=' + encodeURIComponent(q) + '&limit=50')
         .then(function(res) {
             document.getElementById('clientSearch').style.borderColor = '';
-            var clients = (res.data && res.data.clients) ? res.data.clients : [];
+            var clients = (res.data && res.data.data && res.data.data.clients) ? res.data.data.clients : [];
             if (clients.length === 1) {
                 selectClient(clients[0].id, clients[0].client_name);
                 showToast(clients[0].client_name + ' 선택됨', 'success');
@@ -74,7 +74,7 @@ function handleModalClientSearch(e) {
     if (!q) return;
     axios.get('/api/clients?search=' + encodeURIComponent(q) + '&limit=50')
         .then(function(res) {
-            var clients = (res.data && res.data.clients) ? res.data.clients : [];
+            var clients = (res.data && res.data.data && res.data.data.clients) ? res.data.data.clients : [];
             if (clients.length === 1) {
                 selectClientFromModal(clients[0].id, clients[0].client_name);
             } else {
