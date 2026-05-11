@@ -1,6 +1,6 @@
 # PROJECT_STATUS.md — 프로젝트 현황판
 
-> **최종 업데이트**: 2026-05-08
+> **최종 업데이트**: 2026-05-11
 
 ---
 
@@ -18,38 +18,47 @@
 
 ## 🟡 대기 중
 
-### [대형 파일 리팩토링] — 다음 세션
-- orderForm.js(3966줄), items.js(3235줄), cards.ts(2122줄) 분리
-- src/services/ 레이어 확장
-- SELECT * → 명시적 컬럼 (점진적)
 ### [거래처 상세 정책 UI] — 단가 관리 연동
 - 거래처 상세 페이지에 가격 정책 드롭다운 추가
-### [CAPS 경리PC 워커 실행 확인] — 배포 완료, 실행 대기
-- .env 비밀번호 설정 완료, 동기화 폴링 방식 전환
-- 경리 PC에서 워커 실행 + 근태 동기화 테스트 필요
-### [라벨 프린터 인쇄] — 프린터 모델 확인 필요
+### [CAPS 경리PC 워커 실행] — 경리 PC 수동 실행 대기 (외부 의존)
+- .env/시크릿 모두 배포 완료, 폴링 방식 전환 완료
+- 경리 PC 접속 불가 (2026-05-08~), 복구 시 `node src/index.js` 실행 필요
+### [라벨 프린터 인쇄] — 프린터 모델 확인 필요 (외부 의존)
 - CSS color 강화 완료, 실제 프린터에서 추가 테스트 필요
-### [견적서→주문 전환 재설계] — 설계 검토 중
-- 현재: 상태 변경(QUOTATION→CONFIRMED)으로 처리 (동작 중)
-- 향후: 별도 전환 기능으로 개선 필요 (견적서 원본 보존 등)
-### [즉시수금 증빙 유형 분류] — 설계 확정, 구현 대기 (P1)
-- 회계반영 시 증빙 유형 선택 (세금계산서/현금영수증/카드/간이)
-- receipt_type 컬럼 추가 필요 (DB 스키마 변경)
-### [멀티사업자 이메일] — entity별 email_from_address (P1)
-### [RIP 전송] — 코드 완료, 현장 테스트 대기
-### [LogWatcher PrintExp] — 구현 완료, 현장 배포 대기
-### [작업지시서 방향 결정] — v2 구현 완료, 실사용 피드백 대기 (2026-05-02)
+### [RIP 전송] — 코드 완료, 현장 테스트 대기 (외부 의존)
+### [LogWatcher PrintExp] — 구현 완료, 현장 배포 대기 (외부 의존)
+### [작업지시서 v2] — 실사용 피드백 대기 (2026-05-02 구현 완료)
 ### [주문 템플릿 UI] — API 완성, UI 연결 보류 (당장 불필요)
-### [CAPS 경리PC 연동] — .env 배포 완료, 워커 실행 대기
-- caps-worker `.env` 생성 완료, 경리 PC에 복사됨
-- 프로덕션 설정 완료 (caps_worker_api_key, caps_sync_enabled=1)
-- 경리 PC에서 `node src/index.js` 실행 필요
-### [팝빌 LinkedID] — 프로덕션 설정 미입력
-- `tax_provider_linked_id` 설정 UI에서 입력 필요
+### [한진택배 자동화] — 솔루션 선정 대기 (사용자 결정 필요)
+- 로드맵 작성 완료 (HANJIN_INTEGRATION_ROADMAP.md)
+- Phase A~D 3~4세션 분량, 솔루션 선정 + API 키 확보 후 착수
+### [카카오톡 알림 마무리] — Phase 5.4
+- src/routes/kakao.ts 기존 존재, 누락 이벤트 추가 + 템플릿 정리 필요
+### [E2E 쓰기 시나리오 확장] — Phase 5.3 확장
+- 현재 read-only 5 spec만. 쓰기 시나리오 + 테스트 전용 entity 필요
 
 ---
 
-## 🟢 최근 완료 (2026-05-08)
+## 🟢 최근 완료 (2026-05-09~05-11, 4 커밋)
+
+- **Phase 3.1 대형 파일 리팩토링 (3 파일 → 15 파일)**:
+  - cards.ts(2121줄) → aggregator + queries/scheduling/lifecycle
+  - items.js(3235줄) → core/modals/tabs/media/bulk (5파일, ?raw concat)
+  - orderForm.js(3966줄) → client/itemRow/finishing/calc/sheet/parent (6파일, ?raw concat)
+- **Phase 3.2 견적서 분리 (1:N 주문)**:
+  - quotations + quotation_items 테이블 (마이그레이션 0191)
+  - src/routes/quotations.ts 신규, 견적서→주문 변환 + prefill
+  - 주문 상세에 견적서 연결 배너 표시
+- **Phase 3.3 TypeScript 인터페이스 갱신**: Entity, PricePolicy, QuotationStatus 등
+- **Phase 5.3 Playwright E2E**: 5 spec / 10 테스트, e2e.yml (deploy 후 자동 + 매일 KST 9시)
+- **Phase 1.1 즉시수금 증빙 유형**: 마이그레이션 0189, receipt_type 컬럼 + 회계반영 모달 select
+- **Phase 1.2 멀티사업자 이메일**: 마이그레이션 0190, entity별 email_from_address
+- **Phase 1.3 팝빌 LinkedID**: settings UI에서 입력 완료
+- **Entity 분리 백엔드 수정**: INSERT 14건 entity_id 누락 수정 (inventory/purchaseOrders/taxInvoices)
+- **로고 설정 이동**: priceList → settings 페이지
+- **감사 문서**: ENTITY_ISOLATION_AUDIT.md, HANJIN_INTEGRATION_ROADMAP.md
+
+## 🟢 이전 완료 (2026-05-08)
 
 - **단가 관리 시스템 신규 구축**:
   - 가격 정책 방식 (price_policies + price_policy_rules)
