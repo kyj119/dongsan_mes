@@ -71,6 +71,9 @@ async function loadSettings() {
       var e = entityRes.data.data;
       var entityLabel = document.getElementById('entityLabel');
       if (entityLabel) entityLabel.textContent = '(' + (e.short_name || e.name || '') + ')';
+      window.currentEntityId = e.id;
+      // 법인별 로고 로드 (Phase 후속: price-list에서 이동됨)
+      if (typeof loadLogoSettings === 'function' && e.id) loadLogoSettings(e.id);
       var fieldMap = {
         company_name: e.name || '',
         company_business_registration_number: e.business_reg_no || '',
@@ -447,4 +450,61 @@ async function testMsgPopbillConnection() {
   } catch(e) {
     document.getElementById('msgConnTemplateCount').textContent = '조회 실패';
   }
+}
+
+// ========== 법인별 로고 (Phase 후속: price-list에서 이동됨) ==========
+var pendingLogoBase64 = null;
+
+async function loadLogoSettings(entityId) {
+  try {
+    var res = await axios.get('/api/price-list/logo/' + entityId);
+    var ent = (res.data.success && res.data.data) ? res.data.data : {};
+    var el = document.getElementById('logoSettingsArea');
+    if (!el) return;
+    el.innerHTML = '<div class="max-w-lg">'
+      + '<div class="mb-4">'
+      + '<label class="block text-sm font-medium text-gray-700 mb-2">현재 로고</label>'
+      + (ent.logo_base64 ? '<img src="' + ent.logo_base64 + '" style="max-height:60px;max-width:240px;border:1px solid #e5e7eb;border-radius:8px;padding:8px;background:#fff;">' : '<div class="text-sm text-gray-400">로고 미설정</div>')
+      + '</div>'
+      + '<div class="mb-4">'
+      + '<label class="block text-sm font-medium text-gray-700 mb-2">로고 업로드 (PNG/JPG/SVG, 권장 높이 60px)</label>'
+      + '<input type="file" id="logoFileInput" accept="image/png,image/jpeg,image/svg+xml" onchange="onLogoFileSelected(this)" class="text-sm">'
+      + '</div>'
+      + '<div class="mb-4"><div id="logoPreview"></div></div>'
+      + '<button onclick="saveLogo()" class="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700"><i class="fas fa-save mr-1"></i>로고 저장</button>'
+      + (ent.logo_base64 ? ' <button onclick="deleteLogo()" class="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm hover:bg-gray-100 ml-2"><i class="fas fa-trash mr-1"></i>삭제</button>' : '')
+      + '</div>';
+  } catch (e) { showToast('로고 설정 로드 실패', 'error'); }
+}
+
+function onLogoFileSelected(input) {
+  var file = input.files[0];
+  if (!file) return;
+  var reader = new FileReader();
+  reader.onload = function(e) {
+    pendingLogoBase64 = e.target.result;
+    document.getElementById('logoPreview').innerHTML = '<img src="' + pendingLogoBase64 + '" style="max-height:60px;max-width:240px;border:1px solid #e5e7eb;border-radius:8px;padding:8px;background:#fff;margin-top:8px;">';
+  };
+  reader.readAsDataURL(file);
+}
+
+async function saveLogo() {
+  if (!pendingLogoBase64) { showToast('로고 파일을 선택하세요.', 'warning'); return; }
+  if (!window.currentEntityId) { showToast('법인 정보 로딩 중', 'warning'); return; }
+  try {
+    await axios.put('/api/price-list/logo/' + window.currentEntityId, { logo_base64: pendingLogoBase64 });
+    showToast('로고 저장 완료', 'success');
+    pendingLogoBase64 = null;
+    loadLogoSettings(window.currentEntityId);
+  } catch (e) { showToast('저장 실패', 'error'); }
+}
+
+async function deleteLogo() {
+  if (!confirm('로고를 삭제하시겠습니까?')) return;
+  if (!window.currentEntityId) return;
+  try {
+    await axios.put('/api/price-list/logo/' + window.currentEntityId, { logo_base64: null });
+    showToast('로고 삭제 완료', 'success');
+    loadLogoSettings(window.currentEntityId);
+  } catch (e) { showToast('삭제 실패', 'error'); }
 }

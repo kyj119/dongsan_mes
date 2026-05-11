@@ -162,6 +162,17 @@ ${capsSettingsScript}
             <div id="saveMsg" class="mt-3 text-center text-sm hidden"></div>
           </div>
 
+          <!-- 법인별 로고 (Phase 후속: price-list 페이지에서 이동됨) -->
+          <div class="bg-white rounded-lg border border-gray-200 p-6">
+            <h2 class="text-lg font-bold text-gray-900 mb-2 flex items-center gap-2">
+              <i class="fas fa-image text-green-600"></i>
+              <span>법인별 로고</span>
+              <span class="text-xs font-normal text-gray-500">(단가표·견적서·세금계산서 등 인쇄 시 상단 표시)</span>
+            </h2>
+            <p class="text-sm text-gray-500 mb-4">현재 선택된 법인의 로고를 설정합니다. 권장 높이 60px (PNG/JPG/SVG).</p>
+            <div id="logoSettingsArea"></div>
+          </div>
+
           <!-- 전자세금계산서 (팝빌) -->
           <div class="bg-white rounded-lg border border-gray-200 p-6">
             <h2 class="text-lg font-bold text-gray-900 mb-6 flex items-center gap-2">
