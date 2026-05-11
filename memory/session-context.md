@@ -18,6 +18,43 @@
 - 신규 인터페이스: Entity, PricePolicy, PricePolicyRule
 - 신규 타입 alias: BillingStatus, ReceiptType, OrderType
 
+### Phase 3.1 — 대형 파일 리팩토링 ✅ 완료 (3 파일 → 15 파일)
+
+**Phase 3.1.A — cards.ts** (2121줄 → aggregator 30줄 + 3 파일 2180줄)
+- `src/routes/cards.ts` (30줄): 얇은 aggregator (route mount만)
+- `src/routes/cards/queries.ts` (836줄): 13 GET 라우트 + entityFilter
+- `src/routes/cards/scheduling.ts` (166줄): 4 PUT/PATCH (assign/priority/bulk-priority/notes)
+- `src/routes/cards/lifecycle.ts` (1178줄): 14 라우트 (status/ship/defects/generate/etc) + syncOrderStatusFromCards 헬퍼
+- 매칭 우선순위: queries(구체 경로) → scheduling(/schedule/:id) → lifecycle(/:id/*) — orders.ts 패턴
+
+**Phase 3.1.B — items.js** (3235줄 → 5 파일 3245줄, ?raw concat)
+- `src/scripts/items/core.js` (504줄): 상수, 캐시, 로딩 유틸, 그룹 편집 모달
+- `src/scripts/items/modals.js` (506줄): 품목 CRUD 모달 + 자재 매핑
+- `src/scripts/items/tabs.js` (467줄): 메인 탭, 출력/원자재 그룹 뷰, 인쇄방식
+- `src/scripts/items/media.js` (1190줄): 인쇄매체 단일/그룹 CRUD, RM 그룹 일괄
+- `src/scripts/items/bulk.js` (578줄): 일괄 추가, 가격 이력, window exports, 초기화
+- `src/pages/items.ts`: 5 ?raw → `[a,b,c,d,e].join('\n')`
+
+**Phase 3.1.C — orderForm.js** (3966줄 → 6 파일 3979줄, ?raw concat)
+- `src/scripts/orderForm/client.js` (230줄): 거래처 + 배송시간
+- `src/scripts/orderForm/itemRow.js` (334줄): 품목 행 빌드/자동완성/추가/삭제/스케일
+- `src/scripts/orderForm/finishing.js` (507줄): 마감 PP/타공/오프셋/주석
+- `src/scripts/orderForm/calc.js` (564줄): 단가·총액 계산
+- `src/scripts/orderForm/sheet.js` (1065줄): 폼 제출 + AI tabs + 합판 레이아웃
+- `src/scripts/orderForm/parent.js` (1279줄): AI 파일/결과 + 부모/자식 + 후가공 복원
+- `src/pages/orderForm.ts`: 6 ?raw concat (orderFormDist.js는 그대로 — 351줄, 통합 무가치)
+
+**검증 결과**:
+- typecheck (tsc --noEmit) 통과 ✓
+- vite build 통과: 297 → 306 modules (+9 신규 모듈), 4.17MB
+- dist 검증: cards 31 라우트 + items 14개 핵심 window.* + orderForm 26개 핵심 window.* + 7개 인라인 함수 모두 존재 ✓
+- 변수명 충돌 검사 통과 (top-level var 모두 unique)
+- 백업: `src/scripts/items.js.refactor-baseline`, `src/scripts/orderForm.js.refactor-baseline` (gitignore 후 삭제 권장)
+
+**미완료 (다음 세션)**:
+- 수동 시나리오 검증 (`refactor/PHASE_3_1_VERIFICATION.md` 체크리스트 참고)
+- Playwright E2E 도입 (Phase 5.3로 이월)
+
 ---
 
 ## 이전 세션 (2026-05-08) 컨텍스트

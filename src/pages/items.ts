@@ -1,7 +1,13 @@
 import type { Context } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { renderPage } from '../layout'
-import pageScript from '../scripts/items.js?raw'
+// Phase 3.1.B 분할: items.js (3235줄) → 5개 모듈
+import sCore from '../scripts/items/core.js?raw'
+import sModals from '../scripts/items/modals.js?raw'
+import sTabs from '../scripts/items/tabs.js?raw'
+import sMedia from '../scripts/items/media.js?raw'
+import sBulk from '../scripts/items/bulk.js?raw'
+const pageScript = [sCore, sModals, sTabs, sMedia, sBulk].join('\n')
 
 export function itemsPage(c: Context<HonoEnv>) {
   return renderPage(c, {
