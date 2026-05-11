@@ -6,6 +6,7 @@ import { Hono } from 'hono'
 import type { HonoEnv } from '../../types/env'
 import type { PurchaseOrder, PurchaseOrderItem, ApiResponse, PaginatedResponse } from '../../types/models'
 import { authMiddleware, requireRole } from '../../middleware/auth'
+import { getEntityId } from '../../utils/entityFilter'
 
 const templatesRouter = new Hono<HonoEnv>()
 templatesRouter.use('/*', authMiddleware, requireRole('ADMIN', 'MANAGER'))
@@ -217,9 +218,9 @@ templatesRouter.post('/from-template/:templateId', async (c) => {
         po_number, supplier_id, status,
         order_date, expected_date,
         total_amount, vat_amount, discount_amount, final_amount,
-        notes, created_by,
+        notes, created_by, entity_id,
         confirmed_at, confirmed_by
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?)
     `).bind(
       poNumber,
       template.supplier_id,
@@ -229,6 +230,7 @@ templatesRouter.post('/from-template/:templateId', async (c) => {
       totalAmount, vatAmount, finalAmount,
       notes || (template.notes ? `[템플릿: ${template.name}] ${template.notes}` : `[템플릿: ${template.name}]`),
       user?.id || 1,
+      getEntityId(c) || 1,
       initialStatus === 'CONFIRMED' ? nowIso : null,
       initialStatus === 'CONFIRMED' ? (user?.id || 1) : null
     ).run()

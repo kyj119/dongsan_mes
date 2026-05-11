@@ -1458,11 +1458,12 @@ poCoreRouter.post('/:id/receive', async (c) => {
             INSERT INTO inventory_transactions (
               item_id, transaction_type, transaction_date, quantity,
               unit_price, total_amount, reference_type, reference_id,
-              balance_after, reason, handled_by
-            ) VALUES (?, 'IN', ?, ?, ?, ?, 'PURCHASE', ?, ?, '발주입고(합격분)', ?)
+              balance_after, reason, handled_by, entity_id
+            ) VALUES (?, 'IN', ?, ?, ?, ?, 'PURCHASE', ?, ?, '발주입고(합격분)', ?, ?)
           `).bind(
             p.itemId, receiptDate, p.acceptedQty, p.unitPrice,
-            p.acceptedQty * p.unitPrice, receiptId, p.balanceAfter, user?.id || 1
+            p.acceptedQty * p.unitPrice, receiptId, p.balanceAfter, user?.id || 1,
+            getEntityId(c) || 1
           ))
         }
       }
@@ -1569,8 +1570,8 @@ poCoreRouter.post('/:id/copy', requireRole('ADMIN', 'MANAGER'), async (c) => {
         po_number, supplier_id, status,
         order_date, expected_date,
         total_amount, vat_amount, discount_amount, final_amount,
-        notes, internal_notes, created_by
-      ) VALUES (?, ?, 'DRAFT', ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        notes, internal_notes, created_by, entity_id
+      ) VALUES (?, ?, 'DRAFT', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).bind(
       newPoNumber,
       po.supplier_id,
@@ -1582,7 +1583,8 @@ poCoreRouter.post('/:id/copy', requireRole('ADMIN', 'MANAGER'), async (c) => {
       po.final_amount,
       po.notes ? `[복사] ${po.notes}` : null,
       po.internal_notes || null,
-      user?.id || 1
+      user?.id || 1,
+      getEntityId(c) || 1
     ).run()
 
     const newPoId = newPoResult.meta.last_row_id
@@ -1736,8 +1738,8 @@ poCoreRouter.post('/:id/reorder', requireRole('ADMIN', 'MANAGER'), async (c) => 
     const result = await c.env.DB.prepare(`
       INSERT INTO purchase_orders (po_number, supplier_id, status, order_date, expected_date, delivery_location,
         total_amount, vat_amount, discount_amount, final_amount, notes, internal_notes,
-        source_po_id, created_by, updated_by, confirmed_at, confirmed_by)
-      VALUES (?, ?, ?, date('now'), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ${targetStatus === 'CONFIRMED' ? "datetime('now')" : 'NULL'}, ${targetStatus === 'CONFIRMED' ? '?' : 'NULL'})
+        source_po_id, created_by, updated_by, entity_id, confirmed_at, confirmed_by)
+      VALUES (?, ?, ?, date('now'), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ${targetStatus === 'CONFIRMED' ? "datetime('now')" : 'NULL'}, ${targetStatus === 'CONFIRMED' ? '?' : 'NULL'})
     `).bind(
       poNumber,
       originalPo.supplier_id,
@@ -1753,6 +1755,7 @@ poCoreRouter.post('/:id/reorder', requireRole('ADMIN', 'MANAGER'), async (c) => 
       id,
       user.id,
       user.id,
+      getEntityId(c) || 1,
       ...(targetStatus === 'CONFIRMED' ? [user.id] : [])
     ).run()
 
@@ -1859,8 +1862,8 @@ poCoreRouter.post('/quick', requireRole('ADMIN', 'MANAGER'), async (c) => {
     const result = await c.env.DB.prepare(`
       INSERT INTO purchase_orders (po_number, supplier_id, status, order_date, expected_date, delivery_location,
         total_amount, vat_amount, discount_amount, final_amount, notes, internal_notes,
-        created_by, updated_by, confirmed_at, confirmed_by)
-      VALUES (?, ?, ?, date('now'), ?, ?, ?, ?, 0, ?, ?, ?, ?, ?,
+        created_by, updated_by, entity_id, confirmed_at, confirmed_by)
+      VALUES (?, ?, ?, date('now'), ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?,
         ${canAutoApprove ? "datetime('now')" : 'NULL'},
         ${canAutoApprove ? '?' : 'NULL'})
     `).bind(
@@ -1868,7 +1871,7 @@ poCoreRouter.post('/quick', requireRole('ADMIN', 'MANAGER'), async (c) => {
       body.expected_date || null, body.delivery_location || null,
       totalAmount, vatAmount, finalAmount,
       body.notes || null, canAutoApprove ? '빠른 발주 (자동승인)' : '빠른 발주',
-      user.id, user.id,
+      user.id, user.id, getEntityId(c) || 1,
       ...(canAutoApprove ? [user.id] : [])
     ).run()
 

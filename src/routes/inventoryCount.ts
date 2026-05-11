@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
+import { getEntityId } from '../utils/entityFilter'
 
 const inventoryCountRouter = new Hono<HonoEnv>()
 inventoryCountRouter.use('/*', authMiddleware, requireRole('ADMIN', 'MANAGER'))
@@ -228,15 +229,16 @@ inventoryCountRouter.patch('/:id/approve', async (c) => {
 
       // inventory_transactions 기록
       await c.env.DB.prepare(`
-        INSERT INTO inventory_transactions (item_id, transaction_type, quantity_before, quantity_after, quantity_change, reason, notes, created_by, created_at)
-        VALUES (?, 'ADJUST', ?, ?, ?, 'STOCK_COUNT', ?, ?, CURRENT_TIMESTAMP)
+        INSERT INTO inventory_transactions (item_id, transaction_type, quantity_before, quantity_after, quantity_change, reason, notes, created_by, created_at, entity_id)
+        VALUES (?, 'ADJUST', ?, ?, ?, 'STOCK_COUNT', ?, ?, CURRENT_TIMESTAMP, ?)
       `).bind(
         item_id,
         system_quantity,
         counted_quantity,
         counted_quantity - system_quantity,
         `Inventory Count ID: ${countId}`,
-        userId
+        userId,
+        getEntityId(c) || 1
       ).run()
     }
 

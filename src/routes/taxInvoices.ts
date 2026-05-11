@@ -1348,7 +1348,7 @@ taxInvoicesRouter.post('/:id/modify', requireRole('ADMIN', 'MANAGER'), async (c)
         buyer_client_id, buyer_brn, buyer_name, buyer_representative,
         buyer_address, buyer_business_type, buyer_business_item, buyer_email,
         supply_amount, tax_amount, total_amount,
-        status, issue_date, notes,
+        status, issue_date, notes, entity_id,
         created_at, updated_at
       ) VALUES (
         ?, ?, 'MODIFY', ?, ?,
@@ -1357,7 +1357,7 @@ taxInvoicesRouter.post('/:id/modify', requireRole('ADMIN', 'MANAGER'), async (c)
         ?, ?, ?, ?,
         ?, ?, ?, ?,
         ?, ?, ?,
-        'DRAFT', ?, ?,
+        'DRAFT', ?, ?, ?,
         CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
       )
     `).bind(
@@ -1383,7 +1383,8 @@ taxInvoicesRouter.post('/:id/modify', requireRole('ADMIN', 'MANAGER'), async (c)
       original.tax_amount,
       original.total_amount,
       issueDate,
-      body.notes !== undefined ? body.notes : (original.notes || null)
+      body.notes !== undefined ? body.notes : (original.notes || null),
+      original.entity_id || 1
     ).run()
 
     const newInvoiceId = insertResult.meta.last_row_id

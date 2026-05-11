@@ -238,9 +238,9 @@ ordersQueriesRouter.patch('/bulk-ship', async (c) => {
               `UPDATE inventory SET quantity = MAX(0, quantity - ?), last_updated = CURRENT_TIMESTAMP WHERE item_id = ?`
             ).bind(oi.quantity, oi.item_id).run()
             await c.env.DB.prepare(
-              `INSERT INTO inventory_transactions (item_id, transaction_type, quantity, reference_type, reference_id, notes, transaction_date)
-               VALUES (?, 'OUT', ?, 'ORDER', ?, '유통 출고 차감', date('now'))`
-            ).bind(oi.item_id, oi.quantity, orderId).run()
+              `INSERT INTO inventory_transactions (item_id, transaction_type, quantity, reference_type, reference_id, notes, transaction_date, entity_id)
+               VALUES (?, 'OUT', ?, 'ORDER', ?, '유통 출고 차감', date('now'), ?)`
+            ).bind(oi.item_id, oi.quantity, orderId, getEntityId(c) || 1).run()
           }
         }
         // auto_complete_date 설정: 직접수령/방문수령/퀵은 +1일, 배송은 +2일
