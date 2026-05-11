@@ -864,6 +864,8 @@ ordersCoreRouter.post('/', async (c) => {
 
     // Insert order
     const orderType = orderData.order_type === 'DISTRIBUTION' ? 'DISTRIBUTION' : 'PRODUCTION'
+    // Phase 3.2: source_quotation_id 받으면 orders.quotation_id에 저장 (견적서 → 주문 prefill 흐름)
+    const sourceQuotationId = orderData.source_quotation_id || orderData.quotation_id || null
     const orderResult = await c.env.DB.prepare(`
       INSERT INTO orders (
         order_number, client_id, status, order_year, order_month,
@@ -872,8 +874,8 @@ ordersCoreRouter.post('/', async (c) => {
         notes, internal_notes, created_by,
         ai_file_path, ai_analysis_id, layout_id, priority, delivery_method, delivery_time,
         contact_phone, contact_mobile, shipping_payment, valid_until, entity_id,
-        sheet_layout_params, order_type
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        sheet_layout_params, order_type, quotation_id
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).bind(
       orderNumber,
       orderData.client_id,
@@ -906,8 +908,20 @@ ordersCoreRouter.post('/', async (c) => {
         const slItem = orderData.items.find((it: any) => it.sheet_layout_params && !it.parent_client_id)
         return slItem?.sheet_layout_params || null
       })(),
-      orderType
+      orderType,
+      sourceQuotationId
     ).run()
+
+    // Phase 3.2: 견적서로부터 생성된 주문이면 quotations 카운트 갱신
+    if (sourceQuotationId && initialStatus !== 'QUOTATION') {
+      await c.env.DB.prepare(`
+        UPDATE quotations
+        SET converted_count = converted_count + 1,
+            first_converted_at = COALESCE(first_converted_at, CURRENT_TIMESTAMP),
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `).bind(sourceQuotationId).run().catch(() => {})
+    }
 
     const orderId = orderResult.meta.last_row_id
 

@@ -221,6 +221,73 @@ export type BillingStatus = 'PENDING' | 'BILLED' | 'PAID';
 export type ReceiptType = 'TAX_INVOICE' | 'CASH_RECEIPT' | 'CARD' | 'SIMPLE';
 export type OrderType = 'NORMAL' | 'DISTRIBUTION';
 
+// Phase 3.2: 견적서 (orders와 별도 테이블, 1:N 관계)
+export type QuotationStatus = 'ACTIVE' | 'EXPIRED' | 'CANCELLED';
+
+export interface Quotation {
+  id: number;
+  quotation_number: string;
+  client_id: number;
+  entity_id?: number;
+  status: QuotationStatus;
+  quotation_date?: string;
+  delivery_date?: string;
+  valid_until?: string;
+  total_amount: number;
+  vat_amount: number;
+  discount_amount: number;
+  final_amount: number;
+  delivery_method?: string;
+  delivery_time?: string;
+  delivery_info?: string;
+  contact_phone?: string;
+  contact_mobile?: string;
+  shipping_payment?: string;
+  notes?: string;
+  internal_notes?: string;
+  first_converted_at?: string;
+  converted_count: number;
+  created_by: number;
+  updated_by?: number;
+  created_at: string;
+  updated_at: string;
+  // joined fields
+  client_name?: string;
+  business_registration_number?: string;
+  address?: string;
+  created_by_name?: string;
+  actual_order_count?: number;
+  items?: QuotationItem[];
+  converted_orders?: Array<{ id: number; order_number: string; status: string; final_amount: number; created_at: string }>;
+}
+
+export interface QuotationItem {
+  id: number;
+  quotation_id: number;
+  item_id?: number;
+  item_name: string;
+  width: number;
+  height: number;
+  scale_factor: number;
+  quantity: number;
+  unit: string;
+  unit_price: number;
+  amount: number;
+  content?: string;
+  post_processing?: string;
+  finishing?: string;
+  pricing_method?: string;
+  parent_id?: number;
+  sort_order: number;
+  ai_group_index?: number;
+  media_subcategory_name?: string;
+  print_method_id?: number;
+  print_method_name?: string;
+  print_media_id?: number;
+  print_media_name?: string;
+  created_at: string;
+}
+
 export interface Order {
   id: number;
   order_number: string;

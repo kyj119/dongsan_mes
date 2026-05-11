@@ -72,6 +72,7 @@ import printSystemRouter from './routes/printSystem'
 import finishingRouter from './routes/finishing'
 import filesRouter from './routes/files'
 import priceListRouter from './routes/priceList'
+import quotationsRouter from './routes/quotations'
 
 // Page handlers
 import { clientsPage } from './pages/clients'
@@ -209,6 +210,7 @@ app.route('/api/production', productionRouter)
 app.route('/api/clients', clientsRouter)
 app.route('/api/items', itemsRouter)
 app.route('/api/orders', ordersRouter)
+app.route('/api/quotations', quotationsRouter)
 app.route('/api/cards', cardsRouter)
 app.route('/api/rip', ripRouter)
 app.route('/api/ai-analysis', aiAnalysisRouter)
