@@ -73,7 +73,7 @@
 - **e2e scripts에 `npx` prefix** (wrangler가 PATH의 `playwright` 명령 가로채는 충돌 회피)
 - **검증 결과**: 7/7 통과 (production https://webapp-9i0.pages.dev 대상)
 
-### Phase 3.2 — 견적서 → 주문 전환 재설계 🟡 진행중
+### Phase 3.2 — 견적서 → 주문 전환 재설계 ✅ 완료 (production 배포 + E2E 통과)
 **결정사항** (사용자 답변):
 - Q1 1:N (한 견적서 → 여러 주문 가능)
 - Q2 별도 `quotations` 테이블 신설
@@ -94,10 +94,130 @@
 - 견적서 상세 모달에 "이 견적서로 생성된 주문" 표시
 - `e2e/quotations.spec.ts` 추가 (3개 시나리오)
 
-**대기 (다음 세션 또는 검증 후)**:
-- 마이그레이션 prod 적용 (`npm run db:migrate:prod` 필요)
-- 주문 상세 페이지에 "이 주문은 견적서 #N에서 옴" 표시 (orders 페이지 UI 변경 — 다음에)
-- 구 데이터 (orders.status='QUOTATION') 마이그레이션 — 사용자 결정상 그대로 둠
+**프로덕션 검증 결과**:
+- 마이그레이션 0191 prod 적용 완료 (단, prod 메타데이터에 0187~0190 누락 → `INSERT INTO d1_migrations` 수동 보정 필요했음)
+- `/api/quotations` 200, /quotations 페이지 5개 함수 정상
+- `/order-form?quotation_id=X` prefill 흐름 정상
+- E2E 8 spec / 10 테스트 모두 통과 (auth + clients + order-form + items + cards-api 5개 + quotations 3개)
+
+**미완료 (다음 세션 후보)**:
+- 주문 상세 페이지에 "이 주문은 견적서 #N에서 옴" 표시 (orders.ts UI 변경, 작은 작업 ~30분)
+- 구 데이터 (orders.status='QUOTATION') 마이그레이션 — 사용자 결정상 그대로 둠 (불필요)
+
+---
+
+### 추가 작업 (Cowork 세션 후반부)
+
+**① 주문 상세 견적서 연결 표시** ✅
+- `src/scripts/orders.js`: 주문 상세 모달에 견적서 연결 배너 (`order.quotation_id` 있을 때만 표시)
+- `src/routes/orders/core.ts`: GET /api/orders/:id 응답에 `quotation_number` JOIN
+
+**② 로고 설정 priceList → settings 이동** ✅
+- `src/pages/priceList.ts`: "인쇄 설정" 탭 제거
+- `src/scripts/priceList.js`: loadLogoSettings/saveLogo/deleteLogo 함수 제거
+- `src/pages/settings.ts`: "법인별 로고" 카드 신규 추가 (법인 정보 카드 아래)
+- `src/scripts/settings.js`: 로고 함수 4개 이동 + `window.currentEntityId` 연동
+
+**③ 법인 분리 백엔드 점검** ✅
+- 산출물: `ENTITY_ISOLATION_AUDIT.md`
+- **발견**: INSERT 14건 entity_id 누락 (DEFAULT 1로 흘러감)
+- **수정 완료**:
+  - `src/routes/inventory.ts` (4건)
+  - `src/routes/inventoryCount.ts` (1건)
+  - `src/routes/orders/queries.ts` (1건)
+  - `src/routes/purchaseOrders/core.ts` (4건)
+  - `src/routes/purchaseOrders/templates.ts` (1건)
+  - `src/routes/purchaseRequests.ts` (2건)
+  - `src/routes/taxInvoices.ts` (1건)
+
+**④ 한진택배 자동화 로드맵** ✅
+- 산출물: `HANJIN_INTEGRATION_ROADMAP.md`
+- 3단계 (A 인프라 → B 송장 발급 → C 상태 폴링) 3~4세션 분량
+- 사용자 결정 대기: 솔루션 선택 (스마트택배/굿스플로/위빅스/한진 직접 API), 발신자 분리 여부
+
+**(다) UI entity 점검** ✅
+- `/settings` entityLabel 정상 `((주)동산기획)` ✓
+- `/ledger` entity 라벨 정상 ✓
+- **🚨 발견된 회귀**: `/api/auth/entities` 응답 `success: false, count: 0` — 다중 entity 환경에서 entity 전환 메뉴 작동 안 할 가능성
+
+### 미커밋 변경사항 (push 대기)
+```
+src/scripts/orders.js
+src/routes/orders/core.ts
+src/pages/priceList.ts
+src/scripts/priceList.js
+src/pages/settings.ts
+src/scripts/settings.js
+src/routes/inventory.ts
+src/routes/inventoryCount.ts
+src/routes/orders/queries.ts
+src/routes/purchaseOrders/core.ts
+src/routes/purchaseOrders/templates.ts
+src/routes/purchaseRequests.ts
+src/routes/taxInvoices.ts
+ENTITY_ISOLATION_AUDIT.md
+HANJIN_INTEGRATION_ROADMAP.md
+```
+
+권장 commit 메시지:
+```
+feat: Order detail quotation link + logo settings moved + entity_id added to 14 INSERTs
+
+- orders.js: quotation link banner in order detail modal
+- orders/core.ts: GET /:id JOINs quotations.quotation_number
+- priceList → settings: logo settings UI relocated (4 files)
+- entity_id fix: 14 INSERTs in inventory/purchase/tax routes
+- Audit docs: ENTITY_ISOLATION_AUDIT.md + HANJIN_INTEGRATION_ROADMAP.md
+```
+
+---
+
+## Cowork → Cline 이전 (2026-05-11)
+
+**이전 사유**: Cowork sandbox의 unlink 권한 제한 (GitHub Issue #55206 — Anthropic 미해결). git commit/push가 sandbox에서 안 됨. Cline은 VS Code native라 제약 없음.
+
+**Cline 인계 우선순위**:
+1. 미커밋 변경 commit + push (위 목록)
+2. `/api/auth/entities` 응답 회귀 점검 (다중 entity 메뉴 작동 위해)
+3. 한진택배 솔루션 선정 후 Phase A 착수
+
+## 다음 세션 시작 가이드
+
+### 현재 인프라 상태 (모두 작동 중)
+- `git push` → CI typecheck/build/deploy/smoke 자동
+- 매일 KST 9시 + push 후 E2E 자동 (8 spec / 10 테스트)
+- 회귀 발생 시 GitHub Actions 이메일 + HTML report 14일 보관
+- Claude in Chrome MCP로 즉시 디버깅 (사용자가 Chrome 페어링)
+
+### 다음 작업 후보 (사용자 선택)
+
+**(가) Phase 4 / 5.4 — 카카오톡 알림 마무리** (0.5~1세션, 가벼움)
+- 현재 상태 점검: src/routes/kakao.ts 기존 존재, 메시지 발송 일부 구현
+- 필요한 작업: 어디서 트리거되는지 확인 + 누락된 이벤트 추가 + 템플릿 정리
+- 시작점: `grep -r "kakao" src/routes/ src/scripts/` 로 현황 파악
+
+**(나) Phase 3.2 연장 — 주문 상세에 견적서 연결 표시** (~30분)
+- orders 페이지 (`/orders` 또는 `/order/:id`)에 `quotation_id` 있으면 견적서 링크 표시
+- 시작점: `src/pages/orders.ts` 또는 주문 상세 modal 코드
+
+**(다) Phase 5.3 확장 — E2E 쓰기 시나리오** (1세션)
+- 현재 read-only만. 쓰기는 entity_id 격리 필요.
+- 시작점: 테스트 전용 entity_id 결정 + cleanup cron 추가
+
+**(라) Phase 4 — IA 오프셋 버그** (1~2세션, 외부 의존)
+- IllustratorAutomat에서 3mm 확장 안 됨
+- 시작점: Illustrator MCP 연결 확인 + SheetLayout.jsx 직접 실행 디버깅
+- 차단: 사용자 환경 (IA PC 실행) 필요
+
+### 새 세션 시작 시 권장 명령
+```powershell
+cd C:\Users\user\dongsan_mes
+git pull  # 혹시 모를 변경 동기화
+git log --oneline -5  # 최신 커밋 확인
+```
+
+### 새 세션에서 클로드에게 첫 메시지 예시
+"세션 컨텍스트 읽고 (나) 작업 진행해줘" 또는 "Phase 4 카카오톡 알림 점검부터 시작"
 
 ### 이번 세션에서 발견·수정한 실제 회귀
 - **`/api/cards/defect-stats` 404 → 200**: Phase 3.1.A 분할 후 cards/queries.ts에서 `/:id` 라우트가 `defect-stats`를 카드 ID로 가로채는 라우트 매칭 순서 버그. Claude in Chrome으로 수동 검증 중 발견 → `/defect-stats`를 `/:id` 앞으로 이동.
