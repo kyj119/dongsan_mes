@@ -1,7 +1,14 @@
 import type { Context } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { renderPage } from '../layout'
-import pageScript from '../scripts/orderForm.js?raw'
+// Phase 3.1.C 분할: orderForm.js (3966줄) → 6개 모듈
+import sClient from '../scripts/orderForm/client.js?raw'
+import sItemRow from '../scripts/orderForm/itemRow.js?raw'
+import sFinishing from '../scripts/orderForm/finishing.js?raw'
+import sCalc from '../scripts/orderForm/calc.js?raw'
+import sSheet from '../scripts/orderForm/sheet.js?raw'
+import sParent from '../scripts/orderForm/parent.js?raw'
+const pageScript = [sClient, sItemRow, sFinishing, sCalc, sSheet, sParent].join('\n')
 import distPageScript from '../scripts/orderFormDist.js?raw'
 
 export function orderFormPage(c: Context<HonoEnv>) {
