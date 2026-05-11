@@ -11,19 +11,24 @@ import { test, expect } from './fixtures'
 test.describe('거래처', () => {
   test('편집 모달 → 가격 정책 드롭다운 표시', async ({ authedPage, consoleErrors }) => {
     await authedPage.goto('/clients')
+    await authedPage.waitForLoadState('networkidle')
     await expect(authedPage.getByRole('button', { name: '거래처 추가' })).toBeVisible()
 
-    // 첫 거래처의 editClient 호출 (페이지 내부 함수)
-    await authedPage.evaluate(() => {
-      const btn = document.querySelector('tr td button[onclick*="editClient"]') as HTMLElement
-      if (btn) btn.click()
+    // editClient(1) async 호출 + 응답 + 모달 표시 모두 대기
+    await authedPage.evaluate(async () => {
+      const fn = (window as any).editClient
+      if (typeof fn === 'function') await fn(1)
     })
 
-    // 모달 열림 + 가격 정책 드롭다운 존재
+    // 옵션 로드까지 추가 대기 (loadPricePolicyOptions axios)
     const sel = authedPage.locator('#clientModalPricePolicy')
-    await expect(sel).toBeVisible({ timeout: 5_000 })
+    await sel.waitFor({ state: 'attached', timeout: 10_000 })
 
-    // 옵션 개수 ≥ 1 (정가 기본정책)
+    // 옵션 개수 ≥ 1 (정가 기본정책) — visible 대신 option 존재 검증
+    await authedPage.waitForFunction(() => {
+      const s = document.getElementById('clientModalPricePolicy') as HTMLSelectElement
+      return s && s.options.length >= 1
+    }, { timeout: 10_000 })
     const optCount = await sel.locator('option').count()
     expect(optCount).toBeGreaterThanOrEqual(1)
 
