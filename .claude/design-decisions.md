@@ -37,3 +37,6 @@
 | T | DOM 참조 가드 패턴 | console.warn, silent fail 방지 |
 | U | 가격 정책(Price Policy) 시스템 | price_policies, price_policy_rules, 우선순위: 품목고정>품목할인>카테고리>전체기본 |
 | V | Linkhub 공통 인증 모듈 | linkhubAuth.ts, forwardIP=*, x-lh-forwarded, HMAC 서명 |
+| W | 견적서 분리 (1:N 주문) | quotations 테이블, quotation_items, orders.quotation_id FK, immutable snapshot |
+| X | 대형 파일 분할 패턴 | cards→queries/scheduling/lifecycle, items→5파일, orderForm→6파일, ?raw concat |
+| Y | entity_id INSERT 의무화 | 14건 누락 수정, DEFAULT 1 함정, entityFilter SELECT + INSERT 양쪽 적용 |

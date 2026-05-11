@@ -83,7 +83,7 @@ fetch(url, { headers: { 'X-SPA-Request': '1', Authorization: Bearer } })
 ```
 scripts/*.js: axios.get('/api/cards', { params })
   ↓ (Authorization: Bearer 자동 추가 — SHARED_AUTH_JS 설정)
-routes/cards.ts: 쿼리 파라미터 파싱 → SQL 동적 구성
+routes/cards/{queries,scheduling,lifecycle}.ts: 쿼리 파라미터 파싱 → SQL 동적 구성
   ↓
 c.env.DB.prepare(sql).bind(...params).all()
   ↓
