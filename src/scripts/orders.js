@@ -95,12 +95,19 @@ async function bulkShipSelected() {
     var res = await axios.patch('/api/orders/bulk-ship', { order_ids: Array.from(selectedOrderIds) });
     if (res.data.success) {
       var results = res.data.data || [];
-      var totalShipped = 0, failCount = 0;
+      var totalShipped = 0, failCount = 0, remainingCards = [];
       results.forEach(function(r) {
-        if (r.success) totalShipped += (r.shipped_cards || 0);
-        else failCount++;
+        if (r.success) {
+          totalShipped += (r.shipped_cards || 0);
+          if (r.remaining > 0 && r.unshipped_cards) {
+            remainingCards = remainingCards.concat(r.unshipped_cards.map(function(c) { return c.card_number + ' (' + c.status + ')'; }));
+          }
+        } else failCount++;
       });
-      showToast(totalShipped + '건 카드 출고 완료' + (failCount > 0 ? ', ' + failCount + '건 실패' : ''), failCount > 0 ? 'warning' : 'success');
+      var msg = totalShipped + '건 카드 출고 완료';
+      if (remainingCards.length > 0) msg += '\n⚠️ 미출고 카드 ' + remainingCards.length + '건: ' + remainingCards.join(', ');
+      if (failCount > 0) msg += ', ' + failCount + '건 실패';
+      showToast(msg, remainingCards.length > 0 ? 'warning' : (failCount > 0 ? 'warning' : 'success'));
       clearBulkSelection();
       loadOrderStats();
       loadOrders();
@@ -426,27 +433,138 @@ function closeStatusModal() {
 var _statusChangeInProgress = false;
 async function confirmStatusChange() {
   if (_statusChangeInProgress) return;
-  const newStatus = document.getElementById('newStatusSelect').value;
+  var newStatus = document.getElementById('newStatusSelect').value;
   if (!newStatus || !_statusChangeOrderId) return;
   _statusChangeInProgress = true;
   var btn = document.querySelector('#statusChangeModal .btn-primary, #statusChangeModal button[onclick*="confirmStatusChange"]');
   if (btn) { btn.disabled = true; btn.textContent = '처리중...'; }
   try {
-    const response = await axios.patch(`/api/orders/${_statusChangeOrderId}/status`, {
+    var response = await axios.patch('/api/orders/' + _statusChangeOrderId + '/status', {
       status: newStatus
     });
     if (response.data.success) {
       closeStatusModal();
       loadOrderStats();
       loadOrders();
+    } else if (response.data.requires_confirmation) {
+      // 미완료 카드 확인 모달 표시
+      closeStatusModal();
+      showCardConfirmModal(_statusChangeOrderId, newStatus, response.data.pending_cards);
     } else {
       showToast('상태 변경 실패: ' + response.data.error, 'error');
     }
   } catch (error) {
-    showToast('상태 변경 중 오류: ' + (error.response?.data?.error || error.message), 'error');
+    var errData = error.response?.data;
+    if (errData && errData.requires_confirmation) {
+      closeStatusModal();
+      showCardConfirmModal(_statusChangeOrderId, errData.pending_cards ? 'SHIPPED' : 'SHIPPED', errData.pending_cards);
+    } else {
+      showToast('상태 변경 중 오류: ' + (errData?.error || error.message), 'error');
+    }
   } finally {
     _statusChangeInProgress = false;
     if (btn) { btn.disabled = false; btn.textContent = '변경'; }
+  }
+}
+
+// 미완료 카드 확인 모달
+var _cardConfirmOrderId = null;
+var _cardConfirmStatus = null;
+var _cardConfirmPending = [];
+
+function showCardConfirmModal(orderId, targetStatus, pendingCards) {
+  _cardConfirmOrderId = orderId;
+  _cardConfirmStatus = targetStatus;
+  _cardConfirmPending = pendingCards || [];
+
+  var STATUS_KR = { PRINTING: '출력중', CONFIRMED: '확정', RIP_WAITING: 'RIP대기', HOLD: '보류' };
+  var html = '<div class="mb-3 text-sm text-gray-600">인쇄 미완료 카드 <b class="text-red-600">' + _cardConfirmPending.length + '건</b>이 있습니다. 각 카드를 확정(출고) 또는 취소(보류) 처리해주세요.</div>'
+    + '<div class="space-y-2 max-h-60 overflow-y-auto">';
+  _cardConfirmPending.forEach(function(card) {
+    html += '<div class="flex items-center justify-between p-2 bg-gray-50 rounded border" id="cardRow_' + card.id + '">'
+      + '<div><span class="font-mono text-sm font-semibold">' + escapeHtml(card.card_number) + '</span>'
+      + ' <span class="ml-2 px-1.5 py-0.5 text-xs rounded bg-amber-100 text-amber-700">' + (STATUS_KR[card.status] || card.status) + '</span></div>'
+      + '<div class="flex gap-1">'
+      + '<button onclick="setCardAction(' + card.id + ',\\'confirm\\')" class="px-2 py-1 text-xs rounded bg-green-100 text-green-700 hover:bg-green-200 card-action-btn" data-card="' + card.id + '" data-action="">확정</button>'
+      + '<button onclick="setCardAction(' + card.id + ',\\'cancel\\')" class="px-2 py-1 text-xs rounded bg-red-100 text-red-700 hover:bg-red-200 card-action-btn" data-card="' + card.id + '" data-action="">취소</button>'
+      + '</div></div>';
+  });
+  html += '</div>'
+    + '<div class="mt-3 flex gap-2">'
+    + '<button onclick="selectAllCardActions(\\'confirm\\')" class="px-3 py-1 text-xs rounded bg-green-600 text-white hover:bg-green-700">전체 확정</button>'
+    + '<button onclick="selectAllCardActions(\\'cancel\\')" class="px-3 py-1 text-xs rounded bg-red-600 text-white hover:bg-red-700">전체 취소</button>'
+    + '</div>';
+
+  showModal('미완료 카드 처리', html, [
+    { text: '출고 진행', class: 'btn-primary', onclick: 'submitCardConfirm()' },
+    { text: '닫기', class: 'btn-secondary', onclick: 'closeModal()' }
+  ]);
+}
+
+function setCardAction(cardId, action) {
+  var row = document.getElementById('cardRow_' + cardId);
+  if (!row) return;
+  var btns = row.querySelectorAll('.card-action-btn');
+  btns.forEach(function(b) {
+    b.style.opacity = '0.4';
+    b.style.fontWeight = 'normal';
+  });
+  var activeBtn = row.querySelector('[onclick*="\\'' + action + '\\'"]');
+  if (activeBtn) {
+    activeBtn.style.opacity = '1';
+    activeBtn.style.fontWeight = 'bold';
+    activeBtn.dataset.action = action;
+  }
+  // 모든 카드의 액션 버튼에 data-action 저장
+  btns.forEach(function(b) {
+    if (b === activeBtn) {
+      b.dataset.action = action;
+    }
+  });
+  // row에 선택 상태 저장
+  row.dataset.selectedAction = action;
+}
+
+function selectAllCardActions(action) {
+  _cardConfirmPending.forEach(function(card) {
+    setCardAction(card.id, action);
+  });
+}
+
+async function submitCardConfirm() {
+  var confirmedIds = [];
+  var cancelledIds = [];
+  var unset = 0;
+
+  _cardConfirmPending.forEach(function(card) {
+    var row = document.getElementById('cardRow_' + card.id);
+    var action = row ? row.dataset.selectedAction : null;
+    if (action === 'confirm') confirmedIds.push(card.id);
+    else if (action === 'cancel') cancelledIds.push(card.id);
+    else unset++;
+  });
+
+  if (unset > 0) {
+    showToast('모든 카드에 대해 확정 또는 취소를 선택해주세요. (' + unset + '건 미선택)', 'warning');
+    return;
+  }
+
+  try {
+    var response = await axios.patch('/api/orders/' + _cardConfirmOrderId + '/status', {
+      status: _cardConfirmStatus,
+      confirmed_card_ids: confirmedIds,
+      cancelled_card_ids: cancelledIds
+    });
+    if (response.data.success) {
+      closeModal();
+      showToast('출고 처리 완료 (확정 ' + confirmedIds.length + '건, 취소 ' + cancelledIds.length + '건)', 'success');
+      loadOrderStats();
+      loadOrders();
+    } else {
+      showToast('출고 처리 실패: ' + response.data.error, 'error');
+    }
+  } catch (error) {
+    showToast('출고 처리 오류: ' + (error.response?.data?.error || error.message), 'error');
   }
 }
 

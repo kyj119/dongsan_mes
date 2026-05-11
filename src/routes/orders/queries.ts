@@ -190,7 +190,7 @@ ordersQueriesRouter.patch('/bulk-ship', async (c) => {
       return c.json({ success: false, error: 'order_ids is required' }, 400)
     }
 
-    const results: { id: number; success: boolean; error?: string; shipped_cards?: number; order_shipped?: boolean; remaining?: number }[] = []
+    const results: { id: number; success: boolean; error?: string; shipped_cards?: number; order_shipped?: boolean; remaining?: number; unshipped_cards?: { id: number; card_number: string; status: string }[] }[] = []
 
     for (const orderId of order_ids) {
       // 해당 주문의 카드 현황 조회
@@ -251,8 +251,14 @@ ordersQueriesRouter.patch('/bulk-ship', async (c) => {
         ).bind(delayDays, orderId).run()
         results.push({ id: orderId, success: true, shipped_cards: shippedCards, order_shipped: true })
       } else {
+        // 미출고 카드 상세 정보 포함 (프론트에서 안내 표시용)
+        const { results: unshippedCards } = await c.env.DB.prepare(`
+          SELECT id, card_number, status FROM cards WHERE order_id = ? AND shipped_at IS NULL
+        `).bind(orderId).all() as any
         results.push({ id: orderId, success: true, shipped_cards: shippedCards, order_shipped: false,
-          remaining: afterCheck?.remaining || 0 })
+          remaining: afterCheck?.remaining || 0,
+          unshipped_cards: (unshippedCards || []).map((c: any) => ({ id: c.id, card_number: c.card_number, status: c.status }))
+        })
       }
     }
 
