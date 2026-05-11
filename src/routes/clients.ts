@@ -120,12 +120,15 @@ clientsRouter.get('/', async (c) => {
     const { count } = await c.env.DB.prepare(countQuery).bind(...filterParams).first() as any
 
     return c.json({
-      clients: results as unknown as Client[],
-      pagination: {
-        page: parseInt(page),
-        limit: safeLimit,
-        total: count,
-        total_pages: Math.ceil(count / safeLimit)
+      success: true,
+      data: {
+        clients: results as unknown as Client[],
+        pagination: {
+          page: parseInt(page),
+          limit: safeLimit,
+          total: count,
+          total_pages: Math.ceil(count / safeLimit)
+        }
       }
     })
   } catch (error) {

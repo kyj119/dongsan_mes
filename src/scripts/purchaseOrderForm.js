@@ -124,7 +124,7 @@ function debounceSupplierSearch() {
   supplierTimer = setTimeout(function() {
     axios.get('/api/clients?search=' + encodeURIComponent(q) + '&limit=10')
       .then(function(res) {
-        var clients = (res.data && res.data.clients) ? res.data.clients : [];
+        var clients = (res.data && res.data.data && res.data.data.clients) ? res.data.data.clients : [];
         var dd = document.getElementById('supplierDropdown');
         if (!dd) return;
         if (clients.length === 0) {
@@ -156,7 +156,7 @@ function handleSupplierEnter(e) {
   if (!q) return;
   axios.get('/api/clients?search=' + encodeURIComponent(q) + '&limit=50')
     .then(function(res) {
-      var clients = (res.data && res.data.clients) ? res.data.clients : [];
+      var clients = (res.data && res.data.data && res.data.data.clients) ? res.data.data.clients : [];
       if (clients.length === 1) {
         selectSupplier(clients[0].id, clients[0].client_name);
         showToast(clients[0].client_name + ' 선택됨', 'success');
@@ -356,7 +356,7 @@ function handleModalSupplierSearch(e) {
   if (!q) return;
   axios.get('/api/clients?search=' + encodeURIComponent(q) + '&limit=50')
     .then(function(res) {
-      var clients = (res.data && res.data.clients) ? res.data.clients : [];
+      var clients = (res.data && res.data.data && res.data.data.clients) ? res.data.data.clients : [];
       if (clients.length === 1) {
         selectSupplierFromModal(clients[0].id, clients[0].client_name);
       } else {

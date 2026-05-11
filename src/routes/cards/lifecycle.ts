@@ -14,7 +14,7 @@ import type { HonoEnv } from '../../types/env'
 import { authMiddleware, requireRole } from '../../middleware/auth'
 import { requireAnyPagePermission } from '../../middleware/permissions'
 import { logActivity } from '../../utils/activityLog'
-import { entityFilter } from '../../utils/entityFilter'
+import { entityFilter, getEntityId } from '../../utils/entityFilter'
 
 const cardsLifecycleRouter = new Hono<HonoEnv>()
 cardsLifecycleRouter.use('/*', authMiddleware, requireAnyPagePermission('/cards', '/orders'))
@@ -941,15 +941,17 @@ cardsLifecycleRouter.post('/generate/:orderId', async (c) => {
           width, height, quantity, unit,
           rip_filename, post_processing,
           final_width, final_height,
-          delivery_date, priority
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          delivery_date, priority,
+          requesting_entity_id
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).bind(
         cardNumber, orderId, item.id, 'PRINTING',
         order.client_name || 'Unknown', item.item_name, item.category_name,
         item.width || 0, item.height || 0, item.quantity, item.unit || 'EA',
         ripFilename, item.post_processing,
         finalWidth, finalHeight,
-        order.delivery_date || null, order.priority || 'NORMAL'
+        order.delivery_date || null, order.priority || 'NORMAL',
+        getEntityId(c)
       ).run()
 
       const cardId = cardResult.meta.last_row_id

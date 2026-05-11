@@ -83,19 +83,26 @@ autoProcessRouter.post('/start', async (c) => {
 
     const jobs: any[] = []
 
+    // Bulk-fetch item names for all order_items in one query
+    const itemIds = [...new Set(
+      (items.results as any[]).map((i: any) => i.item_id).filter(Boolean)
+    )] as number[]
+    let itemNameMap = new Map<number, string>()
+    if (itemIds.length > 0) {
+      const placeholders = itemIds.map(() => '?').join(', ')
+      const { results: itemRows } = await c.env.DB.prepare(
+        `SELECT id, name FROM items WHERE id IN (${placeholders})`
+      ).bind(...itemIds).all<{ id: number; name: string }>()
+      itemNameMap = new Map(itemRows.map(row => [row.id, row.name]))
+    }
+
     for (const item of items.results as any[]) {
       const groupIdx = item.ai_group_index ?? 0
       const group = groups[groupIdx]
       if (!group) continue
 
-      // 품목명 조회
-      let productName = ''
-      if (item.item_id) {
-        const itemRow = await c.env.DB.prepare(
-          `SELECT name FROM items WHERE id = ?`
-        ).bind(item.item_id).first() as any
-        productName = itemRow?.name || ''
-      }
+      // 품목명 Map에서 조회 (N+1 제거)
+      const productName = item.item_id ? (itemNameMap.get(item.item_id) ?? '') : ''
 
       // 후가공 합치기
       const finishing = [item.finishing, item.finishing2, item.finishing3]

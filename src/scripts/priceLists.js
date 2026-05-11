@@ -61,7 +61,7 @@ function switchTab(tab) {
 
 function loadAssignedClients(plId) {
   axios.get('/api/clients?limit=500').then(function(res) {
-    var clients = (res.data.clients || []);
+    var clients = (res.data.data && res.data.data.clients) ? res.data.data.clients : [];
     var html = '';
     var count = 0;
     for (var i = 0; i < clients.length; i++) {
@@ -193,7 +193,7 @@ function searchClientsToAssign() {
   }
   assignSearchTimer = setTimeout(function() {
     axios.get('/api/clients?search=' + encodeURIComponent(q) + '&limit=20').then(function(res) {
-      var clients = res.data.clients || [];
+      var clients = (res.data.data && res.data.data.clients) ? res.data.data.clients : [];
       var html = '';
       for (var i = 0; i < clients.length; i++) {
         var c = clients[i];

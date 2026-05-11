@@ -955,18 +955,23 @@ bankRouter.post('/transactions/batch-apply', requireRole('ADMIN'), async (c) => 
 
     const results: { id: number; success: boolean; error?: string; payment_id?: number }[] = []
 
+    // Bulk-fetch all transactions in one query instead of N individual SELECTs
+    const placeholders = transaction_ids.map(() => '?').join(', ')
+    const { results: txRows } = await c.env.DB.prepare(
+      `SELECT * FROM bank_transactions WHERE id IN (${placeholders})`
+    ).bind(...transaction_ids).all<{
+      id: number
+      transaction_date: string
+      amount: number
+      match_status: string
+      matched_client_id: number | null
+      counterpart_name: string | null
+      description: string | null
+    }>()
+    const txMap = new Map(txRows.map(row => [row.id, row]))
+
     for (const txId of transaction_ids) {
-      const tx = await c.env.DB.prepare(
-        'SELECT * FROM bank_transactions WHERE id = ?'
-      ).bind(txId).first<{
-        id: number
-        transaction_date: string
-        amount: number
-        match_status: string
-        matched_client_id: number | null
-        counterpart_name: string | null
-        description: string | null
-      }>()
+      const tx = txMap.get(txId) ?? null
 
       if (!tx) {
         results.push({ id: txId, success: false, error: '거래내역 없음' })

@@ -65,7 +65,7 @@
   // Load clients for dropdown
   function loadClients() {
     return axios.get('/api/clients?limit=500').then(function(r) {
-      clients = (r.data.data || r.data.clients || r.data || []);
+      clients = (r.data.data && r.data.data.clients) ? r.data.data.clients : (r.data.clients || []);
     }).catch(function() { clients = []; });
   }
 

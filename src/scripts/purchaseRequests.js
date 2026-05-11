@@ -377,7 +377,7 @@ async function searchApprSupplier() {
   if (!q) return;
   try {
     var res = await axios.get('/api/clients?type=PURCHASE&search=' + encodeURIComponent(q) + '&limit=20');
-    var clients = (res.data && res.data.clients) ? res.data.clients : [];
+    var clients = (res.data && res.data.data && res.data.data.clients) ? res.data.data.clients : [];
     var dd = document.getElementById('apprSupplierDd');
     if (clients.length === 0) {
       dd.innerHTML = '<div class="px-3 py-2 text-sm text-gray-400">검색 결과 없음</div>';

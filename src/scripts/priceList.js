@@ -76,7 +76,7 @@ function setupClientSearch() {
       if (!q) return;
       clearTimeout(searchTimer);
       axios.get('/api/clients?search=' + encodeURIComponent(q) + '&limit=20').then(function(res) {
-        var clients = (res.data && res.data.clients) ? res.data.clients : [];
+        var clients = (res.data && res.data.data && res.data.data.clients) ? res.data.data.clients : [];
         if (clients.length === 1) { pickClient(clients[0].id, clients[0].client_name); dd.classList.add('hidden'); }
         else showClientDropdown(clients);
       });
@@ -88,7 +88,7 @@ function setupClientSearch() {
     if (q.length < 1) { dd.classList.add('hidden'); return; }
     searchTimer = setTimeout(function() {
       axios.get('/api/clients?search=' + encodeURIComponent(q) + '&limit=20').then(function(res) {
-        showClientDropdown((res.data && res.data.clients) ? res.data.clients : []);
+        showClientDropdown((res.data && res.data.data && res.data.data.clients) ? res.data.data.clients : []);
       });
     }, 300);
   });

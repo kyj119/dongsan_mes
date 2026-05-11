@@ -115,8 +115,8 @@ async function loadClients(page) {
 
         var response = await axios.get(url, { timeout: 10000 });
 
-        if (response.data && response.data.clients) {
-            displayClients(response.data.clients, response.data.pagination);
+        if (response.data && response.data.data && response.data.data.clients) {
+            displayClients(response.data.data.clients, response.data.data.pagination);
             currentPage = page;
         } else {
             throw new Error('서버 응답 형식 오류');
