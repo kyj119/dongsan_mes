@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import { authMiddleware, requireRole } from '../middleware/auth'
 import type { HonoEnv } from '../types/env'
+import { getEntityId } from '../utils/entityFilter'
 
 const inventoryRouter = new Hono<HonoEnv>()
 
@@ -333,11 +334,11 @@ inventoryRouter.post('/receipts', async (c) => {
       await c.env.DB.prepare(`
         INSERT INTO inventory_transactions
         (item_id, transaction_type, transaction_date, quantity, unit_price, total_amount,
-         reference_type, reference_id, balance_after, reason, handled_by)
-        VALUES (?, 'IN', ?, ?, ?, ?, 'PURCHASE', ?, ?, '입고', ?)
+         reference_type, reference_id, balance_after, reason, handled_by, entity_id)
+        VALUES (?, 'IN', ?, ?, ?, ?, 'PURCHASE', ?, ?, '입고', ?, ?)
       `).bind(
         item_id, receipt_date, quantity, unit_price, amount,
-        receiptId, newStock, user?.id || 1
+        receiptId, newStock, user?.id || 1, getEntityId(c) || 1
       ).run()
     }
 
@@ -442,11 +443,12 @@ inventoryRouter.patch('/receipts/:id/inspection-decision',
             `SELECT quantity FROM inventory WHERE item_id = ?`
           ).bind(ri.item_id).first() as any
           await c.env.DB.prepare(
-            `INSERT INTO inventory_transactions (item_id, transaction_type, quantity, balance_after, reference_type, reference_id, notes, handled_by, transaction_date)
-             VALUES (?, 'OUT', ?, ?, 'RECEIPT_CANCEL', ?, ?, ?, datetime('now'))`
+            `INSERT INTO inventory_transactions (item_id, transaction_type, quantity, balance_after, reference_type, reference_id, notes, handled_by, transaction_date, entity_id)
+             VALUES (?, 'OUT', ?, ?, 'RECEIPT_CANCEL', ?, ?, ?, datetime('now'), ?)`
           ).bind(
             ri.item_id, ri.received_quantity, inv?.quantity || 0,
-            Number(id), '입고 취소 역분개', c.get('user')?.id || null
+            Number(id), '입고 취소 역분개', c.get('user')?.id || null,
+            getEntityId(c) || 1
           ).run()
         }
       }
@@ -574,11 +576,11 @@ inventoryRouter.post('/releases', async (c) => {
       await c.env.DB.prepare(`
         INSERT INTO inventory_transactions
         (item_id, transaction_type, transaction_date, quantity, reference_type,
-         reference_id, balance_after, reason, handled_by)
-        VALUES (?, 'OUT', ?, ?, ?, ?, ?, '출고', ?)
+         reference_id, balance_after, reason, handled_by, entity_id)
+        VALUES (?, 'OUT', ?, ?, ?, ?, ?, '출고', ?, ?)
       `).bind(
         item_id, release_date, -quantity, reference_type,
-        reference_id || null, newStock, user?.id || 1
+        reference_id || null, newStock, user?.id || 1, getEntityId(c) || 1
       ).run()
     }
 
@@ -653,11 +655,12 @@ inventoryRouter.post('/adjustments', async (c) => {
     await c.env.DB.prepare(`
       INSERT INTO inventory_transactions
       (item_id, transaction_type, transaction_date, quantity,
-       reference_type, balance_after, reason, handled_by, notes)
-      VALUES (?, ?, ?, ?, 'ADJUSTMENT', ?, ?, ?, ?)
+       reference_type, balance_after, reason, handled_by, notes, entity_id)
+      VALUES (?, ?, ?, ?, 'ADJUSTMENT', ?, ?, ?, ?, ?)
     `).bind(
       item_id, transactionType, adjustment_date, adjustment_quantity,
-      quantityAfter, reason, user?.id || 1, notes || null
+      quantityAfter, reason, user?.id || 1, notes || null,
+      getEntityId(c) || 1
     ).run()
 
     return c.json({

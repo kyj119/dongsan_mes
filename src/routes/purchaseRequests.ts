@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import type { HonoEnv } from '../types/env'
 import type { PurchaseRequest, PurchaseRequestItem, ApiResponse, PaginatedResponse } from '../types/models'
 import { authMiddleware, requireRole } from '../middleware/auth'
+import { getEntityId } from '../utils/entityFilter'
 
 const prRouter = new Hono<HonoEnv>()
 
@@ -565,13 +566,14 @@ prRouter.post('/:id/convert', requireRole('ADMIN'), async (c) => {
       INSERT INTO purchase_orders (
         po_number, supplier_id, status, order_date,
         total_amount, vat_amount, discount_amount, final_amount,
-        notes, created_by, created_at, updated_at
-      ) VALUES (?, ?, 'DRAFT', ?, ?, ?, 0, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        notes, created_by, entity_id, created_at, updated_at
+      ) VALUES (?, ?, 'DRAFT', ?, ?, ?, 0, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
     `).bind(
       poNumber, pr.supplier_id,
       today.toISOString().split('T')[0],
       totalAmount, vatAmount, finalAmount,
-      pr.notes || null, user?.id || 1
+      pr.notes || null, user?.id || 1,
+      getEntityId(c) || 1
     ).run()
 
     const poId = poResult.meta.last_row_id
@@ -716,13 +718,14 @@ prRouter.post('/:id/auto-convert', requireRole('ADMIN'), async (c) => {
         INSERT INTO purchase_orders (
           po_number, supplier_id, status, order_date,
           total_amount, vat_amount, discount_amount, final_amount,
-          notes, created_by, created_at, updated_at
-        ) VALUES (?, ?, 'DRAFT', ?, ?, ?, 0, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+          notes, created_by, entity_id, created_at, updated_at
+        ) VALUES (?, ?, 'DRAFT', ?, ?, ?, 0, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
       `).bind(
         poNumber, group.supplierId,
         today.toISOString().split('T')[0],
         totalAmount, vatAmount, finalAmount,
-        `발주요청 #${pr.request_number} 자동 분리`, user?.id || 1
+        `발주요청 #${pr.request_number} 자동 분리`, user?.id || 1,
+        getEntityId(c) || 1
       ).run()
 
       const poId = poResult.meta.last_row_id
