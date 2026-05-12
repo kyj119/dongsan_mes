@@ -171,8 +171,9 @@ function sidebarHTML(activePage: string): string {
 
 function topBarHTML(title: string): string {
   return `
+    <a href="#mainContent" class="ds-skip-link">본문으로 건너뛰기</a>
     <div class="sidebar-overlay" id="sidebarOverlay" onclick="closeMobileSidebar()"></div>
-    <header class="top-bar">
+    <header class="top-bar" role="banner">
       <button class="mobile-menu-btn" onclick="toggleMobileSidebar()" aria-label="메뉴">
         <i class="fas fa-bars"></i>
       </button>
@@ -474,6 +475,8 @@ const SHARED_CSS = `
     backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
     border-bottom: 1px solid var(--c-border);
+    box-shadow: none;
+    transition: box-shadow var(--transition-normal);
     position: sticky;
     top: 0;
     z-index: 40;
@@ -836,6 +839,16 @@ const SHARED_CSS = `
   html.dark .ds-input-group-suffix,
   html.dark .ds-input-group-prefix { background: #0f172a; border-color: #475569; }
 
+  /* === Skip Link (Accessibility) === */
+  .ds-skip-link {
+    position: absolute; top: -100px; left: 16px;
+    background: var(--c-primary); color: #fff;
+    padding: 8px 16px; border-radius: 0 0 var(--radius-md) var(--radius-md);
+    font-size: var(--fs-sm); font-weight: 600; z-index: 999;
+    text-decoration: none; transition: top 0.2s ease;
+  }
+  .ds-skip-link:focus { top: 0; }
+
   /* === DS Modal === */
   .ds-modal-overlay {
     position: fixed; inset: 0; background: rgba(0,0,0,0.4); backdrop-filter: blur(2px);
@@ -981,12 +994,15 @@ const SHARED_CSS = `
   @keyframes ds-shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
   @keyframes ds-fadeIn { from { opacity: 0; } to { opacity: 1; } }
   @keyframes ds-slideUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
-  .page-body { animation: ds-fadeIn 0.15s ease; }
+  @keyframes ds-pageIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+  .page-body { animation: ds-pageIn 0.2s ease-out; }
   /* FOUC 방지: 권한 체크 중에는 콘텐츠 숨김 (비-ADMIN). ADMIN/체크 완료 시 즉시 노출. */
   body.perm-checking .page-body { visibility: hidden; }
 
   /* === Dark Mode: Glasstop top-bar === */
+  .top-bar.scrolled { box-shadow: 0 1px 8px rgba(0,0,0,0.08); border-bottom-color: transparent; }
   html.dark .top-bar { background: rgba(15,23,42,0.85); }
+  html.dark .top-bar.scrolled { box-shadow: 0 1px 8px rgba(0,0,0,0.3); }
 
   /* === Dark Mode: Modal backdrop === */
   html.dark .bg-black.bg-opacity-50 { background-color: rgba(0,0,0,0.7) !important; }
@@ -1127,6 +1143,29 @@ window.readMoney = function(id) {
 };
 
 // === 테이블 빈 상태 행 (전역) ===
+// === KPI Count-Up Animation ===
+window.animateNumber = function(el, endValue, opts) {
+  if (!el) return;
+  opts = opts || {};
+  var duration = opts.duration || 600;
+  var suffix = opts.suffix || '';
+  var prefix = opts.prefix || '';
+  var formatter = opts.formatter || function(n) { return Math.round(n).toLocaleString('ko-KR'); };
+  var start = 0;
+  var startTime = null;
+  function step(timestamp) {
+    if (!startTime) startTime = timestamp;
+    var progress = Math.min((timestamp - startTime) / duration, 1);
+    // easeOutExpo for snappy feel
+    var eased = progress === 1 ? 1 : 1 - Math.pow(2, -10 * progress);
+    var current = start + (endValue - start) * eased;
+    el.textContent = prefix + formatter(current) + suffix;
+    if (progress < 1) requestAnimationFrame(step);
+  }
+  if (endValue === 0) { el.textContent = prefix + formatter(0) + suffix; return; }
+  requestAnimationFrame(step);
+};
+
 window.emptyRow = function(colspan, msg, icon) {
   return '<tr><td colspan="' + colspan + '" class="text-center py-8 text-gray-400">'
     + (icon ? '<i class="fas ' + icon + ' text-2xl block mb-2"></i>' : '')
@@ -1143,18 +1182,42 @@ window.handleApiError = function(error, fallbackMsg) {
   console.error(msg, error);
 };
 
+// === Focus Trap (Accessibility) ===
+window.trapFocus = function(container) {
+  if (!container) return;
+  var focusable = container.querySelectorAll('a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])');
+  if (focusable.length === 0) return;
+  var first = focusable[0];
+  var last = focusable[focusable.length - 1];
+  first.focus();
+  container._trapHandler = function(e) {
+    if (e.key !== 'Tab') return;
+    if (e.shiftKey) {
+      if (document.activeElement === first) { e.preventDefault(); last.focus(); }
+    } else {
+      if (document.activeElement === last) { e.preventDefault(); first.focus(); }
+    }
+  };
+  container.addEventListener('keydown', container._trapHandler);
+};
+window.releaseFocus = function(container) {
+  if (!container || !container._trapHandler) return;
+  container.removeEventListener('keydown', container._trapHandler);
+  delete container._trapHandler;
+};
+
 // === DS Sheet (Right Drawer) helpers ===
 window.openSheet = function(sheetId) {
   var sheet = document.getElementById(sheetId);
   var overlay = document.getElementById(sheetId + 'Overlay');
-  if (sheet) sheet.classList.add('open');
+  if (sheet) { sheet.classList.add('open'); sheet.setAttribute('role', 'dialog'); sheet.setAttribute('aria-modal', 'true'); trapFocus(sheet); }
   if (overlay) overlay.classList.add('open');
   document.body.style.overflow = 'hidden';
 };
 window.closeSheet = function(sheetId) {
   var sheet = document.getElementById(sheetId);
   var overlay = document.getElementById(sheetId + 'Overlay');
-  if (sheet) sheet.classList.remove('open');
+  if (sheet) { sheet.classList.remove('open'); releaseFocus(sheet); }
   if (overlay) overlay.classList.remove('open');
   document.body.style.overflow = '';
 };
@@ -2162,6 +2225,18 @@ document.addEventListener('keydown', function(e) {
   }
 });
 
+// === Scroll shadow on top-bar ===
+(function() {
+  var mc = document.querySelector('.main-content');
+  if (!mc) return;
+  var tb = mc.querySelector('.top-bar');
+  if (!tb) return;
+  mc.addEventListener('scroll', function() {
+    if (mc.scrollTop > 8) tb.classList.add('scrolled');
+    else tb.classList.remove('scrolled');
+  }, { passive: true });
+})();
+
 // Track page visits for "recent"
 (function() {
   var path = window.location.pathname;
@@ -2905,9 +2980,9 @@ export function appLayout(opts: AppLayoutOptions): string {
 </head>
 <body class="perm-checking">
     ${sidebarHTML(opts.activePage)}
-    <div class="main-content">
+    <div class="main-content" role="main">
         ${topBarHTML(opts.title)}
-        <div class="page-body">
+        <div class="page-body" id="mainContent">
             ${opts.pageContent}
         </div>
     </div>
