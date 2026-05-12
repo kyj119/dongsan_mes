@@ -24,7 +24,7 @@ var SIZE_MAP = {
 var STATUS_COLORS = {
     RUNNING: '#16a34a',
     IDLE: '#ca8a04',
-    MAINTENANCE: '#ea580c',
+    MAINTENANCE: 'var(--c-orange)',
     BROKEN: '#dc2626',
 };
 

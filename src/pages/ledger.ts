@@ -578,7 +578,7 @@ export function ledgerPage(c: Context<HonoEnv>) {
                         <textarea id="colNotes" rows="2" placeholder="독촉 내용..." class="w-full ds-input mt-1"></textarea>
                     </div>
                     <div class="flex gap-2 pt-2">
-                        <button onclick="saveCollectionLog()" class="ds-btn ds-btn-primary flex-1" style="background:#7c3aed">등록</button>
+                        <button onclick="saveCollectionLog()" class="ds-btn ds-btn-primary flex-1" style="background:var(--c-purple)">등록</button>
                         <button onclick="closeCollectionModal()" class="ds-btn ds-btn-secondary flex-1">취소</button>
                     </div>
                 </div>

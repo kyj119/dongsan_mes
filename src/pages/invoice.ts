@@ -59,7 +59,7 @@ export function invoicePage(c: Context<HonoEnv>) {
             .no-print .btn-tax:hover { background: #059669; }
             .no-print .btn-tax-link { background: #6366f1; color: #fff; text-decoration: none; padding: 8px 20px; border-radius: 6px; font-size: 14px; font-weight: 600; display: inline-flex; align-items: center; gap: 6px; }
             .no-print .btn-tax-link:hover { background: #4f46e5; }
-            .no-print .btn-email { background: #0d9488; color: #fff; }
+            .no-print .btn-email { background: var(--c-teal); color: #fff; }
             .no-print .btn-email:hover { background: #0f766e; }
             .no-print .btn-fax { background: #6366f1; color: #fff; }
             .no-print .btn-fax:hover { background: #4f46e5; }

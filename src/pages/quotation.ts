@@ -29,7 +29,7 @@ export function quotationPage(c: Context<HonoEnv>) {
 
             .no-print {
                 position: sticky; top: 0; z-index: 100;
-                background: #0d9488; color: #fff;
+                background: var(--c-teal); color: #fff;
                 padding: 12px 24px; display: flex; gap: 12px; align-items: center;
                 box-shadow: 0 2px 8px rgba(0,0,0,.2);
             }
@@ -37,7 +37,7 @@ export function quotationPage(c: Context<HonoEnv>) {
                 padding: 8px 20px; border: none; border-radius: 6px;
                 font-size: 14px; cursor: pointer; font-weight: 600;
             }
-            .no-print .btn-print { background: #fff; color: #0d9488; }
+            .no-print .btn-print { background: #fff; color: var(--c-teal); }
             .no-print .btn-print:hover { background: #ccfbf1; }
             .no-print .btn-close { background: #ef4444; color: #fff; }
             .no-print .btn-close:hover { background: #dc2626; }
@@ -124,10 +124,10 @@ export function quotationPage(c: Context<HonoEnv>) {
                 width: 100%; padding: 10px 14px; border: 1px solid #d1d5db;
                 border-radius: 8px; font-size: 14px; margin-bottom: 16px;
             }
-            .email-modal input:focus { outline: none; border-color: #0d9488; box-shadow: 0 0 0 2px rgba(13,148,136,.2); }
+            .email-modal input:focus { outline: none; border-color: var(--c-teal); box-shadow: 0 0 0 2px rgba(13,148,136,.2); }
             .email-modal .modal-actions { display: flex; gap: 8px; justify-content: flex-end; }
             .email-modal .modal-actions button { padding: 8px 20px; border: none; border-radius: 6px; font-size: 14px; cursor: pointer; font-weight: 600; }
-            .email-modal .btn-send { background: #0d9488; color: #fff; }
+            .email-modal .btn-send { background: var(--c-teal); color: #fff; }
             .email-modal .btn-send:hover { background: #0f766e; }
             .email-modal .btn-cancel { background: #e5e7eb; color: #374151; }
             .email-modal .btn-cancel:hover { background: #d1d5db; }
@@ -174,7 +174,7 @@ export function quotationPage(c: Context<HonoEnv>) {
         <!-- 이메일 발송 모달 -->
         <div class="email-modal-overlay" id="emailModalOverlay" onclick="if(event.target===this)closeEmailModal()">
             <div class="email-modal">
-                <h3><i class="fas fa-envelope mr-2" style="color:#0d9488"></i>이메일 발송</h3>
+                <h3><i class="fas fa-envelope mr-2" style="color:var(--c-teal)"></i>이메일 발송</h3>
                 <label style="display:block;font-size:13px;font-weight:600;color:#374151;margin-bottom:6px">수신 이메일</label>
                 <input type="email" id="emailTo" placeholder="example@company.com">
                 <div class="modal-actions">

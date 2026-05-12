@@ -12,7 +12,7 @@ function handleClientEnter(e) {
     var q = document.getElementById('clientSearch').value.trim();
     if (!q) return;
     document.getElementById('clientId').value = '';
-    document.getElementById('clientSearch').style.borderColor = '#0d9488';
+    document.getElementById('clientSearch').style.borderColor = 'var(--c-teal)';
     axios.get('/api/clients?search=' + encodeURIComponent(q) + '&limit=50')
         .then(function(res) {
             document.getElementById('clientSearch').style.borderColor = '';
