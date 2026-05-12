@@ -100,27 +100,29 @@ const MENU_ITEMS: MenuGroup[] = [
 function sidebarHTML(activePage: string): string {
   let html = `<aside class="sidebar" id="sidebar">`
 
-  // Logo area + entity switcher + pin toggle
+  // Logo area
   html += `
     <div class="sidebar-logo">
       <i class="fas fa-industry"></i>
-      <div class="nav-label" id="entitySwitcher" style="position:relative;flex:1;min-width:0;">
-        <button id="entitySwitcherBtn" onclick="toggleEntityDropdown()"
-          style="background:none;border:none;cursor:pointer;display:flex;align-items:center;gap:4px;padding:0;font-size:13px;font-weight:600;color:#e2e8f0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;">
-          <span id="entityName" style="overflow:hidden;text-overflow:ellipsis;">로딩중...</span>
-          <i class="fas fa-chevron-down" id="entityArrow" style="font-size:9px;flex-shrink:0;transition:transform 0.2s;"></i>
-        </button>
-        <div id="entityDropdown" style="display:none;position:absolute;top:100%;left:0;margin-top:4px;background:#1e293b;border:1px solid #334155;border-radius:6px;min-width:180px;z-index:9999;box-shadow:0 4px 12px rgba(0,0,0,0.3);overflow:hidden;"></div>
-      </div>
+      <span class="nav-label sidebar-logo-text">동산 MES</span>
       <button class="sidebar-pin-btn" id="sidebarPinBtn" title="사이드바 고정" onclick="toggleSidebarPin()">
         <i class="fas fa-thumbtack"></i>
       </button>
     </div>`
 
+  // Entity switcher (separate row)
+  html += `
+    <div class="sidebar-entity" id="entitySwitcher">
+      <button id="entitySwitcherBtn" class="sidebar-entity-btn" onclick="toggleEntityDropdown()">
+        <i class="fas fa-building sidebar-entity-icon"></i>
+        <span class="nav-label" id="entityName">로딩중...</span>
+        <i class="fas fa-chevron-down nav-label sidebar-entity-arrow" id="entityArrow"></i>
+      </button>
+      <div id="entityDropdown" class="sidebar-entity-dropdown"></div>
+    </div>`
+
   // Favorites section (rendered by JS)
   html += `<div class="sidebar-favorites" id="sidebarFavorites"></div>`
-  // Recent pages section (rendered by JS)
-  html += `<div class="sidebar-recent" id="sidebarRecent"></div>`
 
   // Menu groups
   html += `<nav class="sidebar-nav">`
@@ -341,7 +343,45 @@ const SHARED_CSS = `
     white-space: nowrap;
     min-height: 56px;
   }
-  .sidebar-logo i { width: 24px; text-align: center; font-size: 20px; }
+  .sidebar-logo i { width: 24px; text-align: center; font-size: 20px; flex-shrink: 0; }
+  .sidebar-logo-text { font-size: 15px; }
+
+  /* Entity Switcher */
+  .sidebar-entity {
+    position: relative;
+    border-bottom: 1px solid var(--c-sidebar-border);
+    padding: 0;
+  }
+  .sidebar-entity-btn {
+    display: flex; align-items: center;
+    width: 100%; padding: 10px 18px;
+    background: none; border: none; cursor: pointer;
+    color: var(--c-sidebar-text); font-size: var(--fs-sm);
+    font-family: inherit; text-align: left;
+    transition: background var(--transition-fast), color var(--transition-fast);
+  }
+  .sidebar-entity-btn:hover { background: var(--c-sidebar-hover); color: #e2e8f0; }
+  .sidebar-entity-icon { width: 24px; text-align: center; font-size: 14px; flex-shrink: 0; }
+  .sidebar-entity-arrow { font-size: 9px !important; width: auto !important; margin-left: auto; transition: transform 0.2s; }
+  .sidebar-entity-dropdown {
+    display: none; position: absolute; top: 100%; left: 8px; right: 8px;
+    margin-top: 2px; background: var(--c-sidebar); border: 1px solid var(--c-sidebar-border);
+    border-radius: var(--radius-md); z-index: 9999;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.4); overflow: hidden;
+  }
+  .sidebar-entity-item {
+    padding: 8px 14px; font-size: var(--fs-xs); cursor: pointer;
+    color: #cbd5e1; font-weight: 400;
+    display: flex; align-items: center; gap: 6px;
+    transition: background var(--transition-fast);
+  }
+  .sidebar-entity-item:hover { background: var(--c-sidebar-hover); }
+  .sidebar-entity-item.active { color: var(--c-primary); font-weight: 600; }
+  .sidebar-entity-item i { font-size: 10px; width: 10px; text-align: center; }
+  .sidebar-entity-spacer { width: 10px; }
+  .sidebar-entity-sep { border-top: 1px solid var(--c-sidebar-border); margin: 2px 0; }
+  /* Hide entity section when sidebar collapsed */
+  .sidebar:not(:hover):not(.pinned) .sidebar-entity { display: none; }
 
   .sidebar-nav {
     flex: 1;
@@ -434,12 +474,6 @@ const SHARED_CSS = `
   .sidebar-favorites { border-bottom: 1px solid var(--c-sidebar-border); padding: 4px 0; }
   .sidebar-favorites:empty { display: none; border: none; padding: 0; }
   .sidebar-favorites .nav-item { padding: 8px 18px; font-size: 13px; }
-
-  /* Recent pages section */
-  .sidebar-recent { border-bottom: 1px solid var(--c-sidebar-border); padding: 4px 0; }
-  .sidebar-recent:empty { display: none; border: none; padding: 0; }
-  .sidebar-recent .nav-item { padding: 8px 18px; font-size: 13px; opacity: 0.85; }
-  .sidebar-recent .nav-item:hover { opacity: 1; }
 
   /* Favorite star */
   .fav-star {
@@ -1430,32 +1464,6 @@ function renderFavorites() {
   container.innerHTML = html;
 }
 
-function renderRecent() {
-  var container = document.getElementById('sidebarRecent');
-  if (!container) return;
-  var recent = [];
-  try { recent = JSON.parse(localStorage.getItem('recent-pages') || '[]'); } catch(e) {}
-  // Exclude current page and favorites
-  var favs = [];
-  try { favs = JSON.parse(localStorage.getItem('sidebar-favorites') || '[]'); } catch(e) {}
-  var currentPath = window.location.pathname;
-  var filtered = recent.filter(function(p) { return p !== currentPath && favs.indexOf(p) < 0; }).slice(0, 5);
-  if (filtered.length === 0) { container.innerHTML = ''; return; }
-  var allItems = document.querySelectorAll('.sidebar-nav .nav-item[data-path]');
-  var itemMap = {};
-  allItems.forEach(function(el) { itemMap[el.getAttribute('data-path')] = el; });
-  var html = '<div class="group-label" style="opacity:1;height:auto;font-size:9px;color:var(--c-text-muted);padding:8px 18px 2px;"><i class="fas fa-clock" style="margin-right:4px;"></i>최근 방문</div>';
-  filtered.forEach(function(path) {
-    var orig = itemMap[path];
-    if (!orig || orig.style.display === 'none') return;
-    var icon = orig.querySelector('i.fas');
-    var label = orig.querySelector('.nav-label');
-    if (!icon || !label) return;
-    html += '<a href="' + path + '" class="nav-item" title="' + label.textContent + '"><i class="fas ' + icon.className.replace('fas ', '') + '"></i><span class="nav-label">' + label.textContent + '</span></a>';
-  });
-  container.innerHTML = html;
-}
-
 function updateFavStars() {
   var favs = [];
   try { favs = JSON.parse(localStorage.getItem('sidebar-favorites') || '[]'); } catch(e) {}
@@ -1483,9 +1491,8 @@ function initSidebarState() {
       if (header) header.classList.add('collapsed');
     });
   } catch(e) {}
-  // Favorites & Recent
+  // Favorites
   renderFavorites();
-  renderRecent();
   updateFavStars();
 }
 initSidebarState();
@@ -1586,16 +1593,16 @@ var __currentEntityId = 1;
             var html = '';
             entities.forEach(function(e) {
                 var isActive = e.id === __currentEntityId;
-                html += '<div onclick="switchEntity(' + e.id + ')" style="padding:8px 14px;font-size:12px;cursor:pointer;color:' + (isActive ? '#60a5fa' : '#cbd5e1') + ';font-weight:' + (isActive ? '600' : '400') + ';display:flex;align-items:center;gap:6px;" onmouseover="this.style.background=\\'#334155\\'" onmouseout="this.style.background=\\'transparent\\'">'
-                    + (isActive ? '<i class="fas fa-check" style="font-size:10px;"></i>' : '<span style="width:10px;"></span>')
+                html += '<div onclick="switchEntity(' + e.id + ')" class="sidebar-entity-item' + (isActive ? ' active' : '') + '">'
+                    + (isActive ? '<i class="fas fa-check"></i>' : '<span class="sidebar-entity-spacer"></span>')
                     + escapeHtml(e.short_name)
                     + '</div>';
             });
             if (currentUserRole === 'ADMIN') {
-                html += '<div style="border-top:1px solid #334155;margin:2px 0;"></div>';
+                html += '<div class="sidebar-entity-sep"></div>';
                 var allActive = __currentEntityId === 0;
-                html += '<div onclick="switchEntity(0)" style="padding:8px 14px;font-size:12px;cursor:pointer;color:' + (allActive ? '#60a5fa' : '#94a3b8') + ';font-weight:' + (allActive ? '600' : '400') + ';display:flex;align-items:center;gap:6px;" onmouseover="this.style.background=\\'#334155\\'" onmouseout="this.style.background=\\'transparent\\'">'
-                    + (allActive ? '<i class="fas fa-check" style="font-size:10px;"></i>' : '<span style="width:10px;"></span>')
+                html += '<div onclick="switchEntity(0)" class="sidebar-entity-item' + (allActive ? ' active' : '') + '">'
+                    + (allActive ? '<i class="fas fa-check"></i>' : '<span class="sidebar-entity-spacer"></span>')
                     + '전체 (합산)</div>';
             }
             ddEl.innerHTML = html;
@@ -1618,9 +1625,9 @@ window.toggleEntityDropdown = function() {
     var dd = document.getElementById('entityDropdown');
     var arrow = document.getElementById('entityArrow');
     if (dd) {
-        var show = dd.style.display === 'none';
-        dd.style.display = show ? 'block' : 'none';
-        if (arrow) arrow.style.transform = show ? 'rotate(180deg)' : '';
+        var isHidden = getComputedStyle(dd).display === 'none';
+        dd.style.display = isHidden ? 'block' : 'none';
+        if (arrow) arrow.style.transform = isHidden ? 'rotate(180deg)' : '';
     }
 };
 
@@ -2368,7 +2375,6 @@ window.dsSkeleton = {
                 if (rp.length > 10) rp = rp.slice(0, 10);
                 localStorage.setItem('recent-pages', JSON.stringify(rp));
             } catch(e) {}
-            if (typeof renderRecent === 'function') renderRecent();
             if (typeof renderFavorites === 'function') renderFavorites();
 
             // SPA 페이지 전환 후 금액 input 자동 바인딩
