@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 6 -->
-<!-- last_run_at: 2026-05-11T16:30:00+09:00 -->
+<!-- last_run_area: 1 -->
+<!-- last_run_at: 2026-05-12T10:00:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,14 +8,28 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | 0 |
-| ✔️ done | 14 |
+| 🆕 new | 1 |
+| ✔️ done | 15 |
 | ❌ rejected | 1 |
 
-> **Area 6 자기진화 평가** (2026-05-11T16:00):
-> - 전체 6개 영역 1순환 완료. 총 15건 발견 (done 10, new 4, rejected 1)
-> - 학습: entity_id 누락 패턴 유효, API 응답 형식 통일은 연쇄 변경 큼
-> - 오탐 방지: SELECT * 스캔 시 views/migrations 제외 필요
+> **Area 1 프로덕션 헬스** (2026-05-12T10:00):
+> - 전체 77개 ?raw JS 파일 syntax check 통과
+> - 최근 커밋 `cd04d93`: orders.js `\'` 이스케이프 버그(전체 주문페이지 함수 실패) 수정 확인
+> - 자동 수정: smoke.cjs에 quotations/hometax-invoices/search 3개 엔드포인트 추가
+> - 이슈 생성: #15 스모크 커버리지 확대 (34개 미등록 라우트)
+> - Playwright 미설치/외부 HTTP 차단으로 실시간 API 응답 직접 확인 불가
+
+---
+
+## 🆕 New
+
+### [I-007] 스모크 테스트 커버리지 확대 — 미등록 라우트 34개 (Area 1, 2026-05-12)
+- **현재**: `/api/quotations`, `/api/hometax-invoices` 등 34개 라우트 스모크 미등록
+- **자동 수정**: quotations/hometax-invoices/search 3개 추가 완료
+- **잔여**: bom/prices/facility/costs/tasks 등 8개 추가 필요
+- **영향**: 핵심 기능 회귀를 스모크로 탐지 못함
+- **공수**: 1시간
+- **상태**: 🆕 (GitHub #15)
 
 ---
 
@@ -29,6 +43,7 @@
 
 | ID | 제목 | 커밋 | Issue |
 |----|------|------|-------|
+| A-002 | smoke.cjs 3개 엔드포인트 추가 (quotations/hometax/search) | 256e37c | #15 |
 | A-001 | entity_id INSERT 14건 누락 | c7c20d3 | - |
 | B-001 | cards entity_id 격리 | 0960a5a | #1 |
 | B-002 | LogWatcher URL + 서비스 실행 | (설정 수정) | #2 |
