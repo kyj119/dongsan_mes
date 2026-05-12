@@ -58,6 +58,7 @@ const ENDPOINTS = [
 
   // 주문/생산
   { path: '/api/orders?limit=10', name: 'orders.list' },
+  { path: '/api/quotations?limit=5', name: 'quotations.list' },
   { path: '/api/cards', name: 'cards.list' },
   { path: '/api/production/logs?limit=10', name: 'production.logs' },
   { path: '/api/production/stats', name: 'production.stats' },
@@ -73,6 +74,7 @@ const ENDPOINTS = [
   { path: `/api/ledger/monthly-summary?month=${THIS_MONTH}`, name: 'ledger.monthly' },
   { path: '/api/ledger/payments?limit=10', name: 'ledger.payments' },
   { path: `/api/tax-invoices?from=${FIRST_OF_MONTH}&to=${TODAY}`, name: 'taxInvoices.range' },
+  { path: '/api/hometax-invoices?limit=10', name: 'hometaxInvoices.list' },
   { path: '/api/cash-receipts?limit=10', name: 'cashReceipts.list' },
   { path: '/api/bank/transactions?limit=10', name: 'bank.txs' },
   { path: '/api/cash-flow/summary', name: 'cashFlow.summary' },
@@ -113,6 +115,7 @@ const ENDPOINTS = [
   // 관리
   { path: '/api/users', name: 'users.list' },
   { path: '/api/settings', name: 'settings.list' },
+  { path: '/api/search?q=test', name: 'search.query' },
   { path: '/api/notifications?limit=10', name: 'notifications.list' },
   { path: '/api/activity-logs?limit=10', name: 'activityLogs.list' },
   { path: '/api/approvals?limit=10', name: 'approvals.list' },
