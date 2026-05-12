@@ -64,11 +64,11 @@ async function loadDashboardStats() {
                 + '<div class="ds-card ds-card-compact"><div class="flex items-center justify-between mb-1"><div class="text-sm" style="color:var(--c-text-secondary)">미수금</div><i class="fas fa-exclamation-triangle text-xs" style="color:var(--c-danger);opacity:0.6"></i></div><div class="text-3xl font-bold tabular-nums" style="color:var(--c-danger)" id="statKpiReceivables">-</div><div class="text-xs mt-1 tabular-nums" id="statKpiOver30" style="color:var(--c-text-muted)">30일+ -</div></div>'
                 + '<div class="ds-card ds-card-compact"><div class="flex items-center justify-between mb-1"><div class="text-sm" style="color:var(--c-text-secondary)">수금률</div><i class="fas fa-hand-holding-usd text-xs" style="color:var(--c-teal);opacity:0.6"></i></div><div class="text-3xl font-bold tabular-nums" style="color:var(--c-teal)" id="statCollectionRate">-</div><div class="text-xs mt-1 tabular-nums" style="color:var(--c-text-muted)" id="statCollectionDetail">이번 달</div></div>';
             }
-            // 오늘 주문 KPI
+            // 오늘 주문 KPI (with count-up animation)
             var todayOrders = stats.today_order_count || 0;
             var todayRev = stats.today_revenue || 0;
             var el = document.getElementById('statTodayOrders');
-            if (el) el.textContent = todayOrders + '건';
+            animateNumber(el, todayOrders, { suffix: '건' });
             var sub = document.getElementById('statTodayRevenueSub');
             if (sub) sub.textContent = fmtAmtShort(todayRev);
 
@@ -76,25 +76,26 @@ async function loadDashboardStats() {
             var monthRev = stats.month_revenue || 0;
             var prevRev = stats.prev_month_revenue || 0;
             var monthEl = document.getElementById('statMonthRevenue');
-            if (monthEl) monthEl.textContent = fmtAmtShort(monthRev);
+            animateNumber(monthEl, monthRev, { formatter: fmtAmtShort, duration: 800 });
             var changeEl = document.getElementById('statMonthChange');
             if (changeEl) changeEl.innerHTML = changeRateBadge(monthRev, prevRev);
 
             // 생산 현황 KPI
-            document.getElementById('statProductionOrders').textContent = stats.production_orders || 0;
+            var prodEl = document.getElementById('statProductionOrders');
+            animateNumber(prodEl, stats.production_orders || 0);
             var shipEl = document.getElementById('statShipmentReady');
             if (shipEl) shipEl.textContent = stats.shipment_ready_count || 0;
 
             // 오늘 출고 예정 KPI
             var todayShipEl = document.getElementById('statTodayShipment');
-            if (todayShipEl) todayShipEl.textContent = (stats.today_shipment_due || 0) + '건';
+            animateNumber(todayShipEl, stats.today_shipment_due || 0, { suffix: '건' });
             var todayShipSub = document.getElementById('statTodayShipmentSub');
             if (todayShipSub) todayShipSub.textContent = '출고대기 ' + (stats.shipment_ready_count || 0) + '건';
 
             // KPI 5: 긴급 주문 건수
             var urgentCount = stats.urgent_count || 0;
             var urgentEl = document.getElementById('statUrgentCount');
-            if (urgentEl) urgentEl.textContent = urgentCount + '건';
+            animateNumber(urgentEl, urgentCount, { suffix: '건' });
             var urgentCard = document.getElementById('kpiUrgentCard');
             if (urgentCard) {
                 if (urgentCount > 0) {
@@ -109,7 +110,7 @@ async function loadDashboardStats() {
             var monthPaid = stats.month_paid || 0;
             var collRate = monthBilled > 0 ? Math.round(monthPaid / monthBilled * 100) : 0;
             var collEl = document.getElementById('statCollectionRate');
-            if (collEl) collEl.textContent = collRate + '%';
+            animateNumber(collEl, collRate, { suffix: '%' });
             var collDetail = document.getElementById('statCollectionDetail');
             if (collDetail) collDetail.textContent = fmtAmtShort(monthPaid) + ' / ' + fmtAmtShort(monthBilled);
 
