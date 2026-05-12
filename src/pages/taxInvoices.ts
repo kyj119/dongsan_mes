@@ -79,37 +79,36 @@ export function taxInvoicesPage(c: Context<HonoEnv>) {
       </div>
 
       <!-- 하단 일괄 회계반영 바 -->
-      <div id="billingBar" class="hidden fixed bottom-0 left-16 right-0 bg-white border-t shadow-lg z-30 px-6 py-3">
-        <div class="flex items-center justify-between">
-          <div class="text-sm text-gray-600">
-            선택: <span id="billingSelCount" class="font-bold text-green-700">0</span>건 /
-            <span id="billingSelAmount" class="font-bold text-green-700">0</span>원
-          </div>
-          <div class="flex items-center gap-3">
-            <label class="text-sm text-gray-600">증빙 유형</label>
-            <select id="billingReceiptType" class="px-3 py-2 border rounded text-sm" style="color:#212529;">
-              <option value="">미선택</option>
-              <option value="TAX_INVOICE">세금계산서</option>
-              <option value="CASH_RECEIPT">현금영수증</option>
-              <option value="CARD">카드</option>
-              <option value="SIMPLE">간이영수증</option>
-            </select>
-            <button onclick="submitBulkBilling()" class="px-5 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm font-medium">
-              <i class="fas fa-check-double mr-1"></i>선택 회계반영
-            </button>
-          </div>
+      <div id="billingBar" class="ds-bulk-bar">
+        <div class="ds-bulk-bar-count" style="color:var(--c-success)">
+          <i class="fas fa-check-square"></i>
+          <span>선택: <span id="billingSelCount">0</span>건 / <span id="billingSelAmount">0</span>원</span>
+        </div>
+        <div class="ds-bulk-bar-divider"></div>
+        <div class="ds-bulk-bar-actions">
+          <select id="billingReceiptType" class="ds-input" style="width:auto;min-height:32px;padding:4px 10px;font-size:var(--fs-xs)">
+            <option value="">증빙 유형</option>
+            <option value="TAX_INVOICE">세금계산서</option>
+            <option value="CASH_RECEIPT">현금영수증</option>
+            <option value="CARD">카드</option>
+            <option value="SIMPLE">간이영수증</option>
+          </select>
+          <button onclick="submitBulkBilling()" class="ds-btn ds-btn-sm" style="background:var(--c-success);color:#fff">
+            <i class="fas fa-check-double" style="margin-right:4px"></i>선택 회계반영
+          </button>
         </div>
       </div>
-      <div id="billingBarSpacer" class="hidden h-16"></div>
+      <div id="billingBarSpacer" class="ds-bulk-bar-spacer"></div>
     </div>
 
     <!-- ===== 발행 목록 패널 ===== -->
     <div id="panelList" class="hidden">
       <!-- 툴바 -->
-      <div class="flex items-center justify-between mb-4">
-        <div class="flex items-center gap-3 flex-wrap flex-1">
-          <select id="statusFilter" onchange="loadInvoices(1)" class="px-3 py-2 border rounded-lg text-sm">
-            <option value="">전체 상태</option>
+      <div class="ds-filter-bar">
+        <div class="ds-filter-field" style="min-width:120px">
+          <label class="ds-label">상태</label>
+          <select id="statusFilter" onchange="loadInvoices(1)" class="ds-input">
+            <option value="">전체</option>
             <option value="DRAFT">작성중</option>
             <option value="ISSUED">발행완료</option>
             <option value="SENT">전송완료</option>
@@ -118,15 +117,25 @@ export function taxInvoicesPage(c: Context<HonoEnv>) {
             <option value="NTS_FAILED">국세청 전송실패</option>
             <option value="CANCELLED">취소</option>
           </select>
-          <input type="date" id="dateFrom" onchange="loadInvoices(1)" class="px-3 py-2 border rounded-lg text-sm">
-          <input type="date" id="dateTo" onchange="loadInvoices(1)" class="px-3 py-2 border rounded-lg text-sm">
-          <input type="text" id="searchInput" placeholder="거래처 / 주문번호 검색..."
-            class="px-3 py-2 border rounded-lg text-sm flex-1 min-w-[200px]"
-            onkeyup="if(event.key==='Enter')loadInvoices(1)">
         </div>
-        <button onclick="switchMainTab('unbilled')" class="ml-3 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium whitespace-nowrap">
-          <i class="fas fa-plus mr-1"></i>새 세금계산서
-        </button>
+        <div class="ds-filter-field">
+          <label class="ds-label">기간 from</label>
+          <input type="date" id="dateFrom" onchange="loadInvoices(1)" class="ds-input">
+        </div>
+        <div class="ds-filter-field">
+          <label class="ds-label">~ to</label>
+          <input type="date" id="dateTo" onchange="loadInvoices(1)" class="ds-input">
+        </div>
+        <div class="ds-filter-field" style="flex:1;min-width:200px">
+          <label class="ds-label">검색</label>
+          <input type="text" id="searchInput" placeholder="거래처 / 주문번호..."
+            class="ds-input" onkeydown="if(event.key==='Enter')loadInvoices(1)">
+        </div>
+        <div class="ds-filter-actions">
+          <button onclick="switchMainTab('unbilled')" class="ds-btn ds-btn-primary ds-btn-sm">
+            <i class="fas fa-plus" style="margin-right:4px"></i>새 세금계산서
+          </button>
+        </div>
       </div>
 
       <!-- 목록 테이블 -->
@@ -188,21 +197,19 @@ export function taxInvoicesPage(c: Context<HonoEnv>) {
         </div>
       </div>
 
-      <!-- 하단 일괄 발행 바 (sticky) -->
-      <div id="batchBar" class="hidden fixed bottom-0 left-16 right-0 bg-white border-t shadow-lg z-30 px-6 py-3">
-        <div class="flex items-center justify-between">
-          <div class="text-sm text-gray-600">
-            선택: <span id="batchSelClients" class="font-bold text-blue-700">0</span>개 거래처 /
-            <span id="batchSelOrders" class="font-bold text-blue-700">0</span>건 /
-            <span id="batchSelAmount" class="font-bold text-blue-700">0</span>원
-          </div>
-          <button onclick="submitBatchIssue()" class="px-5 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium">
-            <i class="fas fa-paper-plane mr-1"></i>선택 일괄 발행
+      <!-- 하단 일괄 발행 바 -->
+      <div id="batchBar" class="ds-bulk-bar">
+        <div class="ds-bulk-bar-count">
+          <i class="fas fa-paper-plane"></i>
+          <span>선택: <span id="batchSelClients">0</span>개 거래처 / <span id="batchSelOrders">0</span>건 / <span id="batchSelAmount">0</span>원</span>
+        </div>
+        <div class="ds-bulk-bar-end">
+          <button onclick="submitBatchIssue()" class="ds-btn ds-btn-primary ds-btn-sm">
+            <i class="fas fa-paper-plane" style="margin-right:4px"></i>선택 일괄 발행
           </button>
         </div>
       </div>
-      <!-- 하단 바 여백 -->
-      <div id="batchBarSpacer" class="hidden h-16"></div>
+      <div id="batchBarSpacer" class="ds-bulk-bar-spacer"></div>
     </div>
 
     <!-- ===== 상세 모달 ===== -->

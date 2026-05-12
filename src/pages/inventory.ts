@@ -106,20 +106,29 @@ export function inventoryPage(c: Context<HonoEnv>) {
             </div>
 
             <!-- Filters -->
-            <div class="bg-white rounded-lg shadow-lg p-4 mb-6">
-                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                    <select id="categoryFilter" class="px-4 py-2 border rounded">
-                        <option value="">전체 카테고리</option>
-                    </select>
-                    <input type="text" id="searchInput" placeholder="품목명 검색" class="px-4 py-2 border rounded"
-                        onkeyup="if(event.key==='Enter'){currentPage=1;loadInventory();}">
-                    <select id="stockFilter" class="px-4 py-2 border rounded">
-                        <option value="">재고 상태</option>
-                        <option value="low">재고 부족</option>
-                    </select>
-                    <button id="searchBtn" class="px-4 py-2 bg-teal-600 text-white rounded hover:bg-teal-700">
-                        <i class="fas fa-search mr-2"></i>조회
-                    </button>
+            <div class="ds-filter-bar">
+                <div class="ds-filter-field" style="min-width:140px">
+                  <label class="ds-label">카테고리</label>
+                  <select id="categoryFilter" class="ds-input" onchange="currentPage=1;loadInventory();">
+                    <option value="">전체</option>
+                  </select>
+                </div>
+                <div class="ds-filter-field" style="flex:1;min-width:180px">
+                  <label class="ds-label">검색</label>
+                  <input type="text" id="searchInput" placeholder="품목명 검색" class="ds-input"
+                    onkeydown="if(event.key==='Enter'){currentPage=1;loadInventory();}">
+                </div>
+                <div class="ds-filter-field" style="min-width:120px">
+                  <label class="ds-label">재고 상태</label>
+                  <select id="stockFilter" class="ds-input" onchange="currentPage=1;loadInventory();">
+                    <option value="">전체</option>
+                    <option value="low">재고 부족</option>
+                  </select>
+                </div>
+                <div class="ds-filter-actions">
+                  <button id="searchBtn" class="ds-btn ds-btn-primary ds-btn-sm">
+                    <i class="fas fa-search" style="margin-right:4px"></i>조회
+                  </button>
                 </div>
             </div>
 
