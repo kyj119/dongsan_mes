@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 2 -->
-<!-- last_run_at: 2026-05-12T13:00:00+09:00 -->
+<!-- last_run_area: 1 -->
+<!-- last_run_at: 2026-05-12T16:30:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,65 +8,47 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | 4 |
+| 🆕 new | 10 |
 | ✔️ done | 15 |
 | ❌ rejected | 1 |
 
-> **Area 1 프로덕션 헬스** (2026-05-12T10:00):
-> - 전체 77개 ?raw JS 파일 syntax check 통과
-> - 최근 커밋 `cd04d93`: orders.js `\'` 이스케이프 버그(전체 주문페이지 함수 실패) 수정 확인
-> - 자동 수정: smoke.cjs에 quotations/hometax-invoices/search 3개 엔드포인트 추가
-> - 이슈 생성: #15 스모크 커버리지 확대 (34개 미등록 라우트)
-> - Playwright 미설치/외부 HTTP 차단으로 실시간 API 응답 직접 확인 불가
-
-> **Area 2 코드 품질** (2026-05-12T13:00):
-> - entity_id INSERT 누락 스캔: 15건 오탐 (order_items/quotation_items/clients/hometax_invoices 테이블에 entity_id 컬럼 없음 — 스키마 확인 필수 원칙 추가 필요)
-> - authMiddleware 누락: 없음 (webhooks.ts는 외부 Webhook 의도적, printEvents는 agentKeyMiddleware)
-> - N+1 쿼리: taxInvoices.ts 중첩 3중 루프 (Issue #21), inventoryCount.ts (Issue #22)
-> - Dead code: models.ts 미사용 타입 14개 (Issue 등록 예정, 런타임 영향 없음)
-> - SELECT *: 157개 사용처 (단순 조회 대부분, 비즈니스 영향 미미)
-
----
-
-## 🆕 New
-
-### [I-007] 스모크 테스트 커버리지 확대 — 미등록 라우트 34개 (Area 1, 2026-05-12)
-- **현재**: `/api/quotations`, `/api/hometax-invoices` 등 34개 라우트 스모크 미등록
-- **자동 수정**: quotations/hometax-invoices/search 3개 추가 완료
-- **잔여**: bom/prices/facility/costs/tasks 등 8개 추가 필요
-- **영향**: 핵심 기능 회귀를 스모크로 탐지 못함
-- **공수**: 1시간
-- **상태**: 🆕 (GitHub #15)
-
-### [N-001] taxInvoices.ts 세금계산서 일괄 생성 O(N×M×K) 중첩 N+1 쿼리 (Area 2, 2026-05-12)
-- **위치**: `src/routes/taxInvoices.ts:732-761`
-- **증상**: `for (const order of orders)` 루프 안에 `SELECT order_items` + `for (oi)` 안에 `INSERT tax_invoice_items` 3중 중첩
-- **영향**: 거래처 20개×주문 10건×품목 8개 = 1,620 D1 쿼리 (월말 일괄 발행 시 체감 지연)
-- **수정**: `WHERE order_id IN (?)` 배치 SELECT + D1 batch API INSERT
-- **공수**: 3시간
-- **상태**: 🆕 (GitHub #21)
-
-### [N-002] inventoryCount.ts 재고 실사 승인 for 루프 N+1 쿼리 (Area 2, 2026-05-12)
-- **위치**: `src/routes/inventoryCount.ts:221-243` (승인), `88-93`, `156-168` (저장)
-- **증상**: 각 재고 항목마다 UPDATE + INSERT 개별 호출 (항목 수 × 2 쿼리)
-- **영향**: 실사 100품목 → 승인 시 200 쿼리
-- **수정**: D1 batch API 일괄 처리
-- **공수**: 2시간
-- **상태**: 🆕 (GitHub #22)
-
-### [D-001] models.ts 미사용 타입/enum 14개 dead code (Area 2, 2026-05-12)
-- **위치**: `src/types/models.ts`
-- **항목**: PricePolicyRule, ItemSubcategory, PostProcessingOption, BillingStatus, OrderType, QuotationStatus, OrderStatusHistory, CardStatusHistory, PurchaseOrderStatus, PurchaseRequestStatus, PurchaseRequestUrgency, InspectionWorkflowStatus, InspectionOverallResult, InspectionCheckResult
-- **영향**: 런타임 0, TypeScript 타입 파일 복잡도 증가
-- **수정**: 해당 타입 제거 (grep으로 미참조 확인됨)
-- **공수**: 30분
-- **상태**: 🆕 (Issue 미등록 — 낮은 우선순위)
+> **Area 1 헬스체크 (2026-05-12T16:30):**
+> - Cloudflare Access 외부 IP 차단 확인 (정상, 프로덕션 보안 정책)
+> - hono JWT CVE + postcss XSS — 즉시 자동 패치 (4.12.12→4.12.18, 8.5.9→8.5.14)
+> - esbuild/vite dev server SSRF → #23 등록 (prod 영향 없음)
+> - 이전 Area 1/2 실행(2026-05-12 00:14 / 12:15) backlog 미갱신분 통합
+>
+> **Area 2 코드 품질 (2026-05-12T12:15):**
+> - N+1 쿼리 6건 발견 (#16~#22), entity_id 누락 테이블 11개 (#18), as any 270건 (#17)
+>
+> **Area 1 헬스체크 (2026-05-12T00:14):**
+> - smoke.cjs 3개 엔드포인트 자동 추가 (quotations/hometax-invoices/search)
+> - 스모크 커버리지 갭 34개 → #15 등록
 
 ---
 
-## 🔴 Bugs / Issues
+## 🆕 New (미검토)
 
-(모두 처리 완료 — Done 섹션 참조)
+| ID | 제목 | 영역 | Issue | 공수 |
+|----|------|------|-------|------|
+| B-005 | printEvents.ts N+1 (이벤트당 3~5쿼리) | Area 2 | #16 | 1~2h |
+| B-006 | entity_id 누락 테이블 11개 | Area 2 | #18 | 2~3h |
+| B-007 | prices.ts + rip.ts Promise.all N+1 | Area 2 | #19 | 2~3h |
+| B-008 | shipments.ts N+1 + webhooks.ts IP 하드코딩 | Area 2 | #20 | 1.5h |
+| B-009 | taxInvoices.ts O(N×M×K) 중첩 N+1 | Area 2 | #21 | 3h |
+| B-010 | inventoryCount.ts 재고 실사 N+1 | Area 2 | #22 | 2h |
+| I-007 | as any 타입 안전성 270+ 인스턴스 | Area 2 | #17 | 3~4세션 |
+| I-008 | 스모크 테스트 커버리지 갭 34개 | Area 1 | #15 | 1h |
+| I-009 | vite/esbuild dev server SSRF (GHSA-67mh) | Area 1 | #23 | 30분~1h |
+| D-001 | models.ts 미사용 타입 14개 dead code | Area 2 | - | 30분 |
+
+---
+
+## 🔧 Auto-fixed (자동 수정 완료)
+
+| ID | 제목 | 커밋 | 날짜 |
+|----|------|------|------|
+| A-003 | hono 4.12.18 + postcss 8.5.14 보안 패치 (JWT CVE 등 7건) | 16b1482 | 2026-05-12 |
 
 ---
 
