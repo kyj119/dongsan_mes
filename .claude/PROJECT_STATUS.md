@@ -12,7 +12,7 @@
 
 ## 🔴 현재 진행 중
 
-- (없음)
+- (없음) — 범용 LogWatcher Phase 1+2 구현 완료, 커밋 대기
 
 ---
 
@@ -34,14 +34,25 @@
 - Phase A~D 3~4세션 분량, 솔루션 선정 + API 키 확보 후 착수
 ### [카카오톡 알림 마무리] — Phase 5.4
 - src/routes/kakao.ts 기존 존재, 누락 이벤트 추가 + 템플릿 정리 필요
-### [범용 LogWatcher] — 설계 완료, 장비 목록 대기 (사용자 결정 필요)
-- `docs/UNIVERSAL_LOGWATCHER_DESIGN.md` 설계 완료
-- Config 기반 5가지 파서 타입 (tns/printexp/text_log/jdf_folder/csv_log)
-- 구현 착수 조건: 장비 7종 목록 + 로그 샘플 + 우선순위
+### [범용 LogWatcher] — Phase 1+2 구현 완료, Phase 3~5 대기
+- Phase 1 완료: IEquipmentParser, WatcherManager, ParserFactory, 기존 파서 래핑
+- Phase 2 완료: SqliteDbParser (Epson Edge Print DB 폴링, 132건 검증)
+- `equipment.json` 이중 모드 (있으면 Universal, 없으면 Legacy 호환)
+- 나머지 장비 로그 샘플 확보 후 Phase 3~5 착수
 
 ---
 
-## 🟢 최근 완료 (2026-05-11~05-12, 12 커밋)
+## 🟢 최근 완료 (2026-05-12)
+
+- **범용 LogWatcher Phase 1+2 구현**:
+  - Phase 1: IEquipmentParser 인터페이스, WatcherManager(다중 장비 폴링), ParserFactory, TnsParserAdapter, PrintExpParserAdapter
+  - Phase 2: SqliteDbParser — Epson Edge Print SQLite DB 폴링 (Microsoft.Data.Sqlite)
+  - Program.cs 이중 모드: equipment.json 있으면 Universal, 없으면 Legacy 호환
+  - Epson NAS DB(Z:\Designs\Epson Edge Print\DB\Data.db)로 132건 읽기 검증 완료
+  - 코드 리뷰 후 수정: NULL 체크, 원자적 position 쓰기, heartbeat 타임아웃 로깅
+  - USAGE.md, UNIVERSAL_LOGWATCHER_DESIGN.md 업데이트
+
+## 🟢 이전 완료 (2026-05-11~05-12, 12 커밋)
 
 - **E2E 쓰기 시나리오 확장**: 10→28 테스트 (entity_id=99 격리, 마이그레이션 0192)
 - **auto-improve 스킬**: 6영역 순환 점검 + GitHub Issues 자동 생성 + 코멘트 반영 워크플로우

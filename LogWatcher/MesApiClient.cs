@@ -122,6 +122,38 @@ namespace LogWatcher
         }
 
         /// <summary>
+        /// Send heartbeat for a specific equipment (used by WatcherManager).
+        /// </summary>
+        public async Task<bool> SendHeartbeatForEquipmentAsync(string equipmentId, bool isPrinting = false)
+        {
+            try
+            {
+                var payload = new
+                {
+                    agent_id = _agentId,
+                    equipment_id = equipmentId,
+                    agent_version = "2.0.0",
+                    ip_address = GetLocalIp(),
+                    is_printing = isPrinting
+                };
+
+                using var cts = new System.Threading.CancellationTokenSource(TimeSpan.FromSeconds(5));
+                var response = await _http.PostAsJsonAsync($"{_baseUrl}/api/print-events/heartbeat", payload, cts.Token);
+                return response.IsSuccessStatusCode;
+            }
+            catch (OperationCanceledException)
+            {
+                Console.WriteLine($"[HEARTBEAT] {equipmentId}: Timeout (5s)");
+                return false;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[HEARTBEAT] {equipmentId}: {ex.Message}");
+                return false;
+            }
+        }
+
+        /// <summary>
         /// Fetch pending RIP jobs (item-level) for the given equipment from MES.
         /// Uses /api/rip/pending-items endpoint (아이템 단위 전송).
         /// </summary>
