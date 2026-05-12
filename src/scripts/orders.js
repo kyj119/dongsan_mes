@@ -46,10 +46,11 @@ var STATUS_LABELS = { QUOTATION: '견적', CONFIRMED: '확정', PRINTING: '출�
 
 function updateBulkBar() {
   var bar = document.getElementById('bulkActionBar');
+  var spacer = document.getElementById('bulkActionSpacer');
   var count = document.getElementById('bulkCount');
   if (selectedOrderIds.size > 0) {
-    bar.classList.remove('hidden');
-    bar.style.display = 'flex';
+    bar.classList.add('visible');
+    if (spacer) spacer.classList.add('visible');
     count.textContent = selectedOrderIds.size;
     // 선택된 주문들의 상태 수집 → 공통 전이 가능 상태만 표시
     var statuses = new Set();
@@ -75,8 +76,8 @@ function updateBulkBar() {
       });
     }
   } else {
-    bar.classList.add('hidden');
-    bar.style.display = 'none';
+    bar.classList.remove('visible');
+    if (spacer) spacer.classList.remove('visible');
   }
 }
 
@@ -164,7 +165,7 @@ function getOrderUrgency(deliveryDate) {
   delivery.setHours(0, 0, 0, 0);
   const diffDays = Math.ceil((delivery - now) / (1000 * 60 * 60 * 24));
   if (diffDays < 0) return { label: '지연', color: '#dc2626', bg: '#fef2f2' };
-  if (diffDays === 0) return { label: 'D-Day', color: '#ea580c', bg: '#fff7ed' };
+  if (diffDays === 0) return { label: 'D-Day', color: 'var(--c-orange)', bg: 'var(--c-orange-light)' };
   if (diffDays === 1) return { label: 'D-1', color: '#d97706', bg: '#fffbeb' };
   if (diffDays <= 3) return { label: 'D-' + diffDays, color: '#2563eb', bg: '#eff6ff' };
   return null;
@@ -1270,7 +1271,7 @@ function openInvoicePanel(url, title, orderId) {
   overlay.id = 'invoicePanel';
   overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:10000;display:flex;align-items:center;justify-content:center;';
   var emailBtn = orderId
-    ? '<button onclick="openInvoiceEmail(' + orderId + ')" style="padding:6px 16px;border:none;border-radius:6px;background:#0d9488;color:#fff;font-size:13px;font-weight:600;cursor:pointer;"><i class="fas fa-envelope" style="margin-right:4px;"></i>이메일</button>'
+    ? '<button onclick="openInvoiceEmail(' + orderId + ')" style="padding:6px 16px;border:none;border-radius:6px;background:var(--c-teal);color:#fff;font-size:13px;font-weight:600;cursor:pointer;"><i class="fas fa-envelope" style="margin-right:4px;"></i>이메일</button>'
     : '';
   overlay.innerHTML =
     '<div style="background:#fff;width:95vw;max-width:900px;height:92vh;border-radius:12px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 25px 60px rgba(0,0,0,.3);">'

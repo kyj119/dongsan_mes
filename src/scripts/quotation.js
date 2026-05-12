@@ -127,7 +127,7 @@ function buildQuotationHalf(data, copyLabel, fullPage, validUntil, isExpired) {
         + '<div class="meta-row">'
         + '  <span>작성일자: ' + orderDate + '</span>'
         + '  <span>주문번호: ' + (order.order_number || '') + '</span>'
-        + (validUntilStr ? '  <span style="' + (isExpired ? 'color:#ef4444;font-weight:700' : 'color:#0d9488') + '">유효기한: ' + validUntilStr + (isExpired ? ' (만료)' : '') + '</span>' : '')
+        + (validUntilStr ? '  <span style="' + (isExpired ? 'color:var(--c-danger);font-weight:700' : 'color:var(--c-teal)') + '">유효기한: ' + validUntilStr + (isExpired ? ' (만료)' : '') + '</span>' : '')
         + '</div>'
 
         + '<div class="total-korean">' + koreanAmount + ' (\u20A9' + fmt(finalAmount) + ')</div>'

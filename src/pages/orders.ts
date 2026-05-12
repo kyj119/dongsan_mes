@@ -29,139 +29,135 @@ export function ordersPage(c: Context<HonoEnv>) {
       </div>
 
       <!-- 검색/필터 -->
-      <div class="ds-card ds-card-compact mb-4">
-        <!-- 주요 필터 (항상 표시) -->
-        <div class="flex flex-wrap gap-3 items-end">
-          <div class="flex-1 min-w-[180px]">
-            <label class="ds-label">검색</label>
-            <input type="text" id="searchQuery" placeholder="주문번호, 거래처명..."
-              class="ds-input"
-              onkeydown="if(event.key==='Enter'){currentPage=1;loadOrders();}">
-          </div>
-          <div class="min-w-[120px]">
-            <label class="ds-label">상태</label>
-            <select id="statusFilter" class="ds-input"
-              onchange="currentPage=1;loadOrders();">
-              <option value="">전체 (취소제외)</option>
-              <option value="CONFIRMED">확정</option>
-              <option value="PRINTING">출력중</option>
-              <option value="PRINT_DONE">출력완료</option>
-              <option value="SHIPPED">출고완료</option>
-              <option value="CANCELLED">취소</option>
-            </select>
-          </div>
-          <button type="button" id="filterToggleBtn" onclick="const moreDiv = document.getElementById('ordFilterMore'); moreDiv.classList.toggle('hidden'); const span = this.querySelector('span'); span.textContent = moreDiv.classList.contains('hidden') ? '필터 더보기 ▼' : '접기 ▲';" class="text-sm text-gray-500 hover:text-gray-700 whitespace-nowrap" style="padding-top:10px">
-            <span>필터 더보기 ▼</span>
-          </button>
+      <div class="ds-filter-bar">
+        <div class="ds-filter-field" style="flex:1;min-width:180px">
+          <label class="ds-label">검색</label>
+          <input type="text" id="searchQuery" placeholder="주문번호, 거래처명..."
+            class="ds-input"
+            onkeydown="if(event.key==='Enter'){currentPage=1;loadOrders();}">
         </div>
-
-        <!-- 추가 필터 (접기/펼치기) -->
-        <div id="ordFilterMore" class="hidden mt-3 pt-3" style="border-top:1px solid var(--c-border)">
-          <div class="flex flex-wrap gap-3 items-end">
-            <div class="min-w-[120px]">
-              <label class="ds-label">배송방법</label>
-              <select id="deliveryMethodFilter" class="ds-input"
-                onchange="currentPage=1;loadOrders();">
-                <option value="">전체</option>
-                <option value="대신택배">대신택배</option>
-                <option value="대신화물">대신화물</option>
-                <option value="한진택배">한진택배</option>
-                <option value="직배">직배</option>
-                <option value="용차">용차</option>
-                <option value="퀵">퀵</option>
-                <option value="방문수령">방문수령</option>
-              </select>
-            </div>
-            <div class="min-w-[110px]">
-              <label class="ds-label">회계상태</label>
-              <select id="billingStatusFilter" class="ds-input"
-                onchange="currentPage=1;loadOrders();">
-                <option value="">전체</option>
-                <option value="NONE">미확인</option>
-                <option value="BILLED">회계반영</option>
-                <option value="PAID">수금완료</option>
-              </select>
-            </div>
-            <div class="min-w-[100px]">
-              <label class="ds-label">우선순위</label>
-              <select id="priorityFilter" class="ds-input"
-                onchange="currentPage=1;loadOrders();">
-                <option value="">전체</option>
-                <option value="URGENT">긴급</option>
-                <option value="NORMAL">일반</option>
-              </select>
-            </div>
-            <div class="min-w-[140px]">
-              <label class="ds-label">정렬</label>
-              <select id="sortBy" class="ds-input"
-                onchange="currentPage=1;loadOrders();">
-                <option value="created_at_desc">등록일 최신순</option>
-                <option value="created_at_asc">등록일 오래된순</option>
-                <option value="delivery_date_asc">납기일 빠른순</option>
-                <option value="delivery_date_desc">납기일 늦은순</option>
-              </select>
-            </div>
-          </div>
-          <div class="flex flex-wrap gap-3 items-end mt-3">
-            <div class="flex gap-2 items-end">
-              <div>
-                <label class="ds-label">등록일 from</label>
-                <input type="date" id="orderDateFrom" class="ds-input"
-                  onchange="currentPage=1;loadOrders();">
-              </div>
-              <div>
-                <label class="ds-label">~ to</label>
-                <input type="date" id="orderDateTo" class="ds-input"
-                  onchange="currentPage=1;loadOrders();">
-              </div>
-            </div>
-          </div>
+        <div class="ds-filter-field" style="min-width:120px">
+          <label class="ds-label">상태</label>
+          <select id="statusFilter" class="ds-input"
+            onchange="currentPage=1;loadOrders();">
+            <option value="">전체 (취소제외)</option>
+            <option value="CONFIRMED">확정</option>
+            <option value="PRINTING">출력중</option>
+            <option value="PRINT_DONE">출력완료</option>
+            <option value="SHIPPED">출고완료</option>
+            <option value="CANCELLED">취소</option>
+          </select>
         </div>
-
-        <!-- 액션 버튼 (항상 표시) -->
-        <div class="flex flex-wrap gap-3 items-end mt-3">
+        <div class="ds-filter-divider"></div>
+        <button type="button" id="filterToggleBtn" class="ds-filter-toggle"
+          onclick="var e=document.getElementById('ordFilterMore');e.classList.toggle('open');this.querySelector('span').textContent=e.classList.contains('open')?'접기 \\u25B2':'더보기 \\u25BC';">
+          <i class="fas fa-sliders-h"></i><span>더보기 \u25BC</span>
+        </button>
+        <div class="ds-filter-actions">
           <button onclick="resetAllFilters()" class="ds-btn ds-btn-secondary ds-btn-sm">
             <i class="fas fa-undo" style="margin-right:4px"></i>초기화
           </button>
-          <button onclick="currentPage=1;loadOrders();" class="ds-btn ds-btn-primary">
+          <button onclick="currentPage=1;loadOrders();" class="ds-btn ds-btn-primary ds-btn-sm">
             <i class="fas fa-search" style="margin-right:4px"></i>검색
           </button>
           <div id="newOrderBtnWrap" class="hidden">
-            <a id="newOrderLink" href="/order-form" class="ds-btn ds-btn-primary" style="background:var(--c-success);display:inline-flex;align-items:center;text-decoration:none;">
+            <a id="newOrderLink" href="/order-form" class="ds-btn ds-btn-sm" style="background:var(--c-success);color:#fff;display:inline-flex;align-items:center;text-decoration:none;">
               <i class="fas fa-plus" style="margin-right:4px"></i>새 주문
             </a>
           </div>
-          <button onclick="exportOrdersCsv()" class="ds-btn ds-btn-secondary">
+          <button onclick="exportOrdersCsv()" class="ds-btn ds-btn-secondary ds-btn-sm">
             <i class="fas fa-file-csv" style="margin-right:4px"></i>CSV
           </button>
         </div>
+
+        <!-- 확장 필터 -->
+        <div id="ordFilterMore" class="ds-filter-expand">
+          <div class="ds-filter-field" style="min-width:120px">
+            <label class="ds-label">배송방법</label>
+            <select id="deliveryMethodFilter" class="ds-input"
+              onchange="currentPage=1;loadOrders();">
+              <option value="">전체</option>
+              <option value="대신택배">대신택배</option>
+              <option value="대신화물">대신화물</option>
+              <option value="한진택배">한진택배</option>
+              <option value="직배">직배</option>
+              <option value="용차">용차</option>
+              <option value="퀵">퀵</option>
+              <option value="방문수령">방문수령</option>
+            </select>
+          </div>
+          <div class="ds-filter-field" style="min-width:110px">
+            <label class="ds-label">회계상태</label>
+            <select id="billingStatusFilter" class="ds-input"
+              onchange="currentPage=1;loadOrders();">
+              <option value="">전체</option>
+              <option value="NONE">미확인</option>
+              <option value="BILLED">회계반영</option>
+              <option value="PAID">수금완료</option>
+            </select>
+          </div>
+          <div class="ds-filter-field" style="min-width:100px">
+            <label class="ds-label">우선순위</label>
+            <select id="priorityFilter" class="ds-input"
+              onchange="currentPage=1;loadOrders();">
+              <option value="">전체</option>
+              <option value="URGENT">긴급</option>
+              <option value="NORMAL">일반</option>
+            </select>
+          </div>
+          <div class="ds-filter-field" style="min-width:140px">
+            <label class="ds-label">정렬</label>
+            <select id="sortBy" class="ds-input"
+              onchange="currentPage=1;loadOrders();">
+              <option value="created_at_desc">등록일 최신순</option>
+              <option value="created_at_asc">등록일 오래된순</option>
+              <option value="delivery_date_asc">납기일 빠른순</option>
+              <option value="delivery_date_desc">납기일 늦은순</option>
+            </select>
+          </div>
+          <div class="ds-filter-divider"></div>
+          <div class="ds-filter-field">
+            <label class="ds-label">등록일 from</label>
+            <input type="date" id="orderDateFrom" class="ds-input"
+              onchange="currentPage=1;loadOrders();">
+          </div>
+          <div class="ds-filter-field">
+            <label class="ds-label">~ to</label>
+            <input type="date" id="orderDateTo" class="ds-input"
+              onchange="currentPage=1;loadOrders();">
+          </div>
+        </div>
       </div>
 
-      <!-- 일괄 액션 바 (체크박스 선택 시 표시) -->
-      <div id="bulkActionBar" class="ds-alert ds-alert-info mb-4 hidden" style="display:none;align-items:center;gap:12px;flex-wrap:wrap;">
-        <span class="text-sm font-medium"><i class="fas fa-check-square" style="margin-right:4px"></i><span id="bulkCount">0</span>건 선택</span>
-        <div style="border-left:1px solid #93c5fd;height:24px;margin:0 4px"></div>
-        <select id="bulkStatusSelect" class="ds-input" style="width:auto">
-          <option value="">상태 선택</option>
-          <option value="CONFIRMED">확정</option>
-          <option value="PRINTING">출력중</option>
-          <option value="PRINT_DONE">출력완료</option>
-          <option value="SHIPPED">출고완료</option>
-        </select>
-        <button onclick="bulkChangeStatus()" class="ds-btn ds-btn-primary ds-btn-sm">
-          <i class="fas fa-sync-alt" style="margin-right:4px"></i>일괄 상태변경
-        </button>
-        <div style="border-left:1px solid #93c5fd;height:24px;margin:0 4px"></div>
-        <button onclick="bulkShipSelected()" class="ds-btn ds-btn-sm" style="background:#059669;color:#fff;">
-          <i class="fas fa-shipping-fast" style="margin-right:4px"></i>일괄 출고
-        </button>
-        <button onclick="bulkBillingConfirm()" class="ds-btn ds-btn-sm" style="background:#7c3aed;color:#fff;">
-          <i class="fas fa-check-double" style="margin-right:4px"></i>일괄 회계반영
-        </button>
-        <div style="margin-left:auto">
+      <!-- 일괄 액션 바 (체크박스 선택 시 하단 고정 표시) -->
+      <div id="bulkActionBar" class="ds-bulk-bar">
+        <div class="ds-bulk-bar-count">
+          <i class="fas fa-check-square"></i>
+          <span><span id="bulkCount">0</span>건 선택</span>
+        </div>
+        <div class="ds-bulk-bar-divider"></div>
+        <div class="ds-bulk-bar-actions">
+          <select id="bulkStatusSelect" class="ds-input" style="width:auto;min-height:32px;padding:4px 10px;font-size:var(--fs-xs)">
+            <option value="">상태 선택</option>
+          </select>
+          <button onclick="bulkChangeStatus()" class="ds-btn ds-btn-primary ds-btn-sm">
+            <i class="fas fa-sync-alt" style="margin-right:4px"></i>상태변경
+          </button>
+        </div>
+        <div class="ds-bulk-bar-divider"></div>
+        <div class="ds-bulk-bar-actions">
+          <button onclick="bulkShipSelected()" class="ds-btn ds-btn-sm" style="background:var(--c-success);color:#fff;">
+            <i class="fas fa-shipping-fast" style="margin-right:4px"></i>일괄 출고
+          </button>
+          <button onclick="bulkBillingConfirm()" class="ds-btn ds-btn-sm" style="background:var(--c-purple);color:#fff;">
+            <i class="fas fa-check-double" style="margin-right:4px"></i>회계반영
+          </button>
+        </div>
+        <div class="ds-bulk-bar-end">
           <button onclick="clearBulkSelection()" class="ds-btn ds-btn-secondary ds-btn-sm">선택 해제</button>
         </div>
       </div>
+      <div id="bulkActionSpacer" class="ds-bulk-bar-spacer"></div>
 
       <!-- 주문 테이블 -->
       <div class="ds-card" style="padding:0;overflow:hidden;">

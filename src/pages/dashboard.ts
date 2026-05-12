@@ -8,8 +8,20 @@ export function dashboardPage(c: Context<HonoEnv>) {
     title: '대시보드',
     activePage: '/dashboard',
     pageContent: `
-            <!-- Quick Stats -->
-            <div id="kpiArea" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-6 mb-8">
+            <!-- Quick Stats — Bento Grid -->
+            <div id="kpiArea" class="ds-bento mb-8">
+                <!-- Hero: 이번 달 매출 (2col × 2row) -->
+                <div class="ds-card ds-bento-hero" style="border-left:4px solid var(--c-purple);">
+                    <div class="flex items-center justify-between mb-2">
+                        <div class="text-sm font-medium" style="color:var(--c-text-secondary)">이번 달 매출</div>
+                        <i class="fas fa-won-sign" style="color:var(--c-purple);opacity:0.5"></i>
+                    </div>
+                    <div style="font-size:36px;font-weight:800;color:var(--c-purple);font-variant-numeric:tabular-nums;line-height:1.1" id="statMonthRevenue">-</div>
+                    <div class="flex items-center gap-2 mt-3" id="statMonthChange" style="color:var(--c-text-muted);font-size:var(--fs-sm)">-</div>
+                    <div class="flex items-center gap-4 mt-auto pt-4" style="border-top:1px solid var(--c-border-light)">
+                        <div><div class="text-xs" style="color:var(--c-text-muted)">오늘</div><div class="font-bold tabular-nums" style="color:var(--c-text)" id="statTodayRevenueSub">-</div></div>
+                    </div>
+                </div>
                 <!-- 오늘 주문 -->
                 <div class="ds-card ds-card-compact">
                     <div class="flex items-center justify-between mb-1">
@@ -17,75 +29,51 @@ export function dashboardPage(c: Context<HonoEnv>) {
                         <i class="fas fa-shopping-cart text-xs" style="color:var(--c-primary);opacity:0.6"></i>
                     </div>
                     <div class="text-3xl font-bold tabular-nums" style="color:var(--c-primary)" id="statTodayOrders">-</div>
-                    <div class="flex items-center justify-between mt-2">
-                        <div class="text-xs" style="color:var(--c-text-muted)" id="statTodayRevenueSub">-</div>
-                    </div>
                 </div>
-                <!-- 이번 달 매출 -->
-                <div class="ds-card ds-card-compact">
+                <!-- 긴급 주문 -->
+                <div class="ds-card ds-card-compact cursor-pointer" onclick="location.href='/orders?priority=URGENT'" id="kpiUrgentCard">
                     <div class="flex items-center justify-between mb-1">
-                        <div class="text-sm" style="color:var(--c-text-secondary)">이번 달 매출</div>
-                        <i class="fas fa-won-sign text-xs" style="color:#7c3aed;opacity:0.6"></i>
+                        <div class="text-sm" style="color:var(--c-text-secondary)">긴급 주문</div>
+                        <i class="fas fa-bolt text-xs" style="color:var(--c-orange);opacity:0.6"></i>
                     </div>
-                    <div class="text-3xl font-bold tabular-nums" style="color:#7c3aed" id="statMonthRevenue">-</div>
-                    <div class="flex items-center gap-1 mt-2">
-                        <span class="text-xs tabular-nums" id="statMonthChange" style="color:var(--c-text-muted)">-</span>
-                    </div>
+                    <div class="text-3xl font-bold tabular-nums" style="color:var(--c-orange)" id="statUrgentCount">-</div>
+                    <div class="text-xs mt-1" style="color:var(--c-text-muted)">진행 중 긴급건</div>
                 </div>
-                <!-- 생산 중 / 출고 대기 -->
+                <!-- 생산 현황 -->
                 <div class="ds-card ds-card-compact">
                     <div class="flex items-center justify-between mb-1">
                         <div class="text-sm" style="color:var(--c-text-secondary)">생산 현황</div>
                         <i class="fas fa-print text-xs" style="color:var(--c-success);opacity:0.6"></i>
                     </div>
                     <div class="text-3xl font-bold tabular-nums" style="color:var(--c-success)" id="statProductionOrders">-</div>
-                    <div class="flex items-center gap-3 mt-2">
-                        <span class="text-xs" style="color:var(--c-text-muted)">출고대기 <span class="font-semibold tabular-nums" style="color:var(--c-warning)" id="statShipmentReady">-</span>건</span>
-                    </div>
+                    <div class="text-xs mt-1" style="color:var(--c-text-muted)">출고대기 <span class="font-semibold tabular-nums" style="color:var(--c-warning)" id="statShipmentReady">-</span>건</div>
                 </div>
-                <!-- 오늘 출고 예정 -->
+                <!-- 오늘 출고 -->
                 <div class="ds-card ds-card-compact cursor-pointer" onclick="location.href='/shipments'">
                     <div class="flex items-center justify-between mb-1">
                         <div class="text-sm" style="color:var(--c-text-secondary)">오늘 출고</div>
                         <i class="fas fa-truck text-xs" style="color:var(--c-warning);opacity:0.6"></i>
                     </div>
                     <div class="text-3xl font-bold tabular-nums" style="color:var(--c-warning)" id="statTodayShipment">-</div>
-                    <div class="flex items-center gap-1 mt-2">
-                        <span class="text-xs tabular-nums" id="statTodayShipmentSub" style="color:var(--c-text-muted)">-</span>
-                    </div>
+                    <div class="text-xs mt-1 tabular-nums" id="statTodayShipmentSub" style="color:var(--c-text-muted)">-</div>
                 </div>
-                <!-- 미수금 요약 -->
+                <!-- 미수금 -->
                 <div class="ds-card ds-card-compact">
                     <div class="flex items-center justify-between mb-1">
                         <div class="text-sm" style="color:var(--c-text-secondary)">미수금</div>
                         <i class="fas fa-exclamation-triangle text-xs" style="color:var(--c-danger);opacity:0.6"></i>
                     </div>
                     <div class="text-3xl font-bold tabular-nums" style="color:var(--c-danger)" id="statKpiReceivables">-</div>
-                    <div class="flex items-center gap-1 mt-2">
-                        <span class="text-xs tabular-nums" id="statKpiOver30" style="color:var(--c-text-muted)">30일+ -</span>
-                    </div>
+                    <div class="text-xs mt-1 tabular-nums" id="statKpiOver30" style="color:var(--c-text-muted)">30일+ -</div>
                 </div>
-                <!-- 긴급 주문 -->
-                <div class="ds-card ds-card-compact cursor-pointer" onclick="location.href='/orders?priority=URGENT'" id="kpiUrgentCard">
-                    <div class="flex items-center justify-between mb-1">
-                        <div class="text-sm" style="color:var(--c-text-secondary)">긴급 주문</div>
-                        <i class="fas fa-bolt text-xs" style="color:#ea580c;opacity:0.6"></i>
-                    </div>
-                    <div class="text-3xl font-bold tabular-nums" style="color:#ea580c" id="statUrgentCount">-</div>
-                    <div class="flex items-center gap-1 mt-2">
-                        <span class="text-xs" style="color:var(--c-text-muted)">진행 중 긴급건</span>
-                    </div>
-                </div>
-                <!-- 이번 달 수금률 -->
+                <!-- 수금률 -->
                 <div class="ds-card ds-card-compact">
                     <div class="flex items-center justify-between mb-1">
                         <div class="text-sm" style="color:var(--c-text-secondary)">수금률</div>
-                        <i class="fas fa-hand-holding-usd text-xs" style="color:#0d9488;opacity:0.6"></i>
+                        <i class="fas fa-hand-holding-usd text-xs" style="color:var(--c-teal);opacity:0.6"></i>
                     </div>
-                    <div class="text-3xl font-bold tabular-nums" style="color:#0d9488" id="statCollectionRate">-</div>
-                    <div class="flex items-center gap-1 mt-2">
-                        <span class="text-xs tabular-nums" style="color:var(--c-text-muted)" id="statCollectionDetail">이번 달</span>
-                    </div>
+                    <div class="text-3xl font-bold tabular-nums" style="color:var(--c-teal)" id="statCollectionRate">-</div>
+                    <div class="text-xs mt-1 tabular-nums" style="color:var(--c-text-muted)" id="statCollectionDetail">이번 달</div>
                 </div>
             </div>
 
@@ -200,7 +188,7 @@ export function dashboardPage(c: Context<HonoEnv>) {
                     <div class="text-sm" style="opacity:0.9;margin-bottom:8px">이번 주 매출</div>
                     <div class="text-2xl font-bold" id="statWeekRevenue">0원</div>
                 </div>
-                <div class="ds-card" style="background:linear-gradient(135deg,#7c3aed,#6d28d9);color:#fff;">
+                <div class="ds-card" style="background:linear-gradient(135deg,var(--c-purple),#6d28d9);color:#fff;">
                     <div class="text-sm" style="opacity:0.9;margin-bottom:8px">총 매출</div>
                     <div class="text-2xl font-bold" id="statTotalRevenue">0원</div>
                 </div>
