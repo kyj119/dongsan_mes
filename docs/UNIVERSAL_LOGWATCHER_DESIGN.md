@@ -2,7 +2,7 @@
 
 > 작성: 2026-05-12
 > 목적: 7가지 이상 장비의 로그를 **1개 에이전트 + 설정 파일**로 통합 감시
-> 상태: 설계 완료, 장비 목록 확정 후 구현 착수
+> 상태: 설계 완료 + Epson 로그 분석 완료 (2026-05-12), 구현 착수 가능
 
 ---
 
@@ -27,8 +27,53 @@ LogWatcher.exe (C# .NET 8)
 |------|---------------|----------|----------|
 | TopazRip (솔벤트) | TNSRip-X1/X11 | 바이너리 (EUC-KR, 필드 길이 접두사) | ✅ PrintLogParser |
 | PrintExp (UV?) | PrintExp | 텍스트 (UTF-16LE, 상태 머신) | ✅ PrintExpLogParser |
-| Epson Edge Print (에코솔벤트) | Epson Edge Print | JDF XML (폴더별 잡) + CSV 로그 | ❌ 없음 |
+| Epson Edge Print (에코솔벤트) | Epson Edge Print 7.6 | **SQLite DB** (Job+Log 테이블) + JDF XML + log.txt | ❌ 없음 |
 | 장비 4~7+ | 미확인 | 미확인 | ❌ 없음 |
+
+### Epson Edge Print 로그 분석 결과 (2026-05-12 확인)
+
+**데이터 위치**: `C:\ProgramData\Epson\Epson Edge Print\` (로컬) / `Z:\Designs\Epson Edge Print\` (NAS 백업)
+
+```
+Epson Edge Print/
+├── DB/Data.db          ← SQLite 3.x ★ 핵심 데이터 소스
+├── Job/{번호}/         ← 잡별 폴더 (1898~2124, 총 140개)
+│   ├── Rip/1_RipJdf.jdf   ← JDF XML (잡 설정, 크기 정보)
+│   ├── Source/Source.eps   ← 원본 파일
+│   └── Preview/            ← 썸네일
+├── Log/log.txt         ← 시스템 로그 (드라이버 레벨, 저수준)
+└── Settings/           ← 앱 설정
+```
+
+**DB 핵심 테이블:**
+
+| 테이블 | 역할 | 핵심 컬럼 |
+|--------|------|-----------|
+| `Job` | 잡 마스터 | `JobID`, `JobName`, `JobStatus`, `OriginalFileName` |
+| `Log` | 인쇄 이력 | `JobID`, `EntryTime`, `StartPrintTime`, **`FinishPrintTime`**, `PrintTimes` |
+| `Page` | 페이지 크기 | `OriginalSizeWidth`, `OriginalSizeHeight` (포인트 단위) |
+
+**JobStatus 코드:**
+| Status | 의미 | 비고 |
+|--------|------|------|
+| 2 | 등록/대기 | |
+| 6 | RIP 완료 (인쇄 대기) | |
+| 7 | 인쇄 중 | |
+| **12** | **인쇄 완료** | 132/140건 |
+
+**JobName 형식 (현재):**
+- `(솔벤시트)2-5(141X172-1장).eps` — 카드번호-파일번호(크기) 패턴
+- `KR유통04(93x173-1장).eps` — 거래처+번호(크기) 패턴
+- `25-(솔벤시트)푸른광고-옷걸이(24x10)-12일 점심 자동문.eps` — 긴급건
+
+> ⚠️ IA 명명규칙(`YYYYMMDD-NNN`)이 아직 적용되지 않음. OrderMatcher 확장 필요.
+
+**데이터 소스 비교 (설계 결정):**
+| 방식 | 장점 | 단점 |
+|------|------|------|
+| JDF 폴더 감시 | XML에서 크기 추출 가능 | RIP 완료만 감지, 인쇄 완료 시점 모름 |
+| log.txt 텍스트 파싱 | ClosePrinterDriver로 인쇄 완료 감지 | JobName 없음, Job ID로 JDF 재조회 필요 |
+| **DB 폴링 ★ 채택** | `FinishPrintTime` + `JobName` + `JobStatus` 한 쿼리 | DB 잠금 가능성 (읽기 전용+WAL이면 안전) |
 
 ### 공통점 (설계 기반)
 
@@ -74,8 +119,9 @@ LogWatcher.exe (범용)
 ├── Parsers/                ← 플러그인 (ILogParser 인터페이스)
 │   ├── TnsParser.cs        ← 기존 PrintLogParser 래핑
 │   ├── PrintExpParser.cs   ← 기존 PrintExpLogParser 래핑
-│   ├── TextLogParser.cs    ← 정규식 기반 범용 텍스트 파서 ★ 핵심
-│   ├── JdfFolderParser.cs  ← XML JDF 폴더 감시 (Epson 등)
+│   ├── TextLogParser.cs    ← 정규식 기반 범용 텍스트 파서
+│   ├── SqliteDbParser.cs   ← SQLite DB 폴링 (Epson 등) ★ 핵심
+│   ├── JdfFolderParser.cs  ← XML JDF 폴더 감시 (폴백)
 │   └── CsvLogParser.cs     ← CSV 컬럼 매핑 파서
 │
 └── appsettings.json        ← MES URL, API 키 등 (기존)
@@ -132,14 +178,18 @@ Heartbeat: 60초마다 장비별 heartbeat 전송
     },
     {
       "equipment_id": "EPSON-01",
-      "name": "Epson 에코솔벤트",
+      "name": "Epson 에코솔벤트 (SC-S9100)",
       "enabled": true,
-      "parser_type": "jdf_folder",
+      "parser_type": "sqlite_db",
       "config": {
-        "job_folder": "C:\\ProgramData\\Epson\\Epson Edge Print\\Job",
-        "jdf_subpath": "Rip/1_RipJdf.jdf",
-        "filename_attribute": "JobName",
-        "size_attribute": "OutputDisplayPrintSize"
+        "db_path": "C:\\ProgramData\\Epson\\Epson Edge Print\\DB\\Data.db",
+        "query": "SELECT j.JobID, j.JobName, l.FinishPrintTime, p.OriginalSizeWidth, p.OriginalSizeHeight FROM Job j JOIN Log l ON j.JobID = l.JobID LEFT JOIN Page p ON j.JobID = p.JobID AND p.PageID = 1 WHERE j.JobStatus = 12 AND j.JobID > @last_id ORDER BY j.JobID",
+        "id_column": "JobID",
+        "filename_column": "JobName",
+        "timestamp_column": "FinishPrintTime",
+        "size_columns": ["OriginalSizeWidth", "OriginalSizeHeight"],
+        "size_unit": "pt",
+        "read_only": true
       }
     },
     {
@@ -280,6 +330,54 @@ config 파라미터:
 | `error_values` | | 에러 상태 값 목록 |
 | `size_columns` | | 크기 컬럼 [width_idx, height_idx] |
 
+### 5.6 `sqlite_db` — SQLite DB 폴링 ★ (Epson 등)
+
+**RIP 소프트웨어가 자체 SQLite DB를 사용하는 장비용.**
+Epson Edge Print가 대표적. DB에 잡 상태, 타임스탬프, 파일명이 모두 있어 가장 정확한 데이터 추출 가능.
+
+config 파라미터:
+| 파라미터 | 필수 | 설명 | 예시 |
+|---------|------|------|------|
+| `db_path` | ✅ | SQLite DB 파일 경로 | `C:\ProgramData\Epson\...\Data.db` |
+| `query` | ✅ | 새 완료 건 조회 SQL (`@last_id` 파라미터 사용) | 아래 참조 |
+| `id_column` | ✅ | 결과에서 ID로 사용할 컬럼명 (위치 추적용) | `JobID` |
+| `filename_column` | ✅ | 결과에서 파일명으로 사용할 컬럼명 | `JobName` |
+| `timestamp_column` | | 완료 시간 컬럼명 | `FinishPrintTime` |
+| `size_columns` | | 크기 컬럼 [width, height] | `["OriginalSizeWidth", "OriginalSizeHeight"]` |
+| `size_unit` | | 크기 단위 (`pt`, `mm`, `inch`) 기본 `mm` | `pt` |
+| `read_only` | | 읽기 전용 모드 (기본 `true`) | `true` |
+| `null_timestamp_value` | | 미완료 타임스탬프 값 (필터링용) | `0001-01-01` |
+
+동작 방식:
+```
+1. db_path를 읽기 전용 + 불변 모드로 열기 (SQLITE_OPEN_READONLY)
+   → "Data Source={path};Mode=ReadOnly;Pooling=false;"
+2. query 실행 (WHERE id > @last_id)
+3. 결과 행마다 PrintEvent 생성:
+   - filename = filename_column 값
+   - timestamp = timestamp_column 값 파싱
+   - size = size_columns 값을 size_unit에 따라 mm로 변환 (pt → ÷ 2.835)
+4. OrderMatcher로 주문번호 추출
+5. last_id = 마지막 행의 id_column 값으로 갱신
+```
+
+**Epson 전용 쿼리:**
+```sql
+SELECT j.JobID, j.JobName, l.FinishPrintTime,
+       p.OriginalSizeWidth, p.OriginalSizeHeight
+FROM Job j
+JOIN Log l ON j.JobID = l.JobID
+LEFT JOIN Page p ON j.JobID = p.JobID AND p.PageID = 1
+WHERE j.JobStatus = 12 AND j.JobID > @last_id
+ORDER BY j.JobID
+```
+
+**DB 잠금 안전성:**
+- Epson Edge Print는 SQLite WAL 모드 미사용 (journal mode) 이나,
+  읽기 전용 + 불변 모드(`immutable=1`)로 열면 잠금 없이 읽기 가능
+- 단, 앱이 쓰기 중이면 SQLITE_BUSY 발생 → 5초 후 재시도 (1폴링 스킵)
+- 폴링 간격 5초이므로 실질적 영향 없음
+
 ---
 
 ## 6. 공통 모듈
@@ -362,6 +460,7 @@ public static class ParserFactory
             "tns"        => new TnsParser(config),
             "printexp"   => new PrintExpParser(config),
             "text_log"   => new TextLogParser(config),
+            "sqlite_db"  => new SqliteDbParser(config),
             "jdf_folder" => new JdfFolderParser(config),
             "csv_log"    => new CsvLogParser(config),
             _ => throw new ArgumentException($"Unknown parser type: {config.ParserType}")
@@ -380,7 +479,7 @@ public static class ParserFactory
 positions/
 ├── TPM-01.pos          ← "123456" (바이트 오프셋)
 ├── RIP-03.pos          ← "789012"
-├── EPSON-01.pos        ← "1923" (마지막 잡 폴더 번호)
+├── EPSON-01.pos        ← "2116" (마지막 완료 JobID)
 ├── UV-01.pos           ← "45678" (바이트 오프셋)
 └── CUT-01.pos          ← "2026-05-12|1234" (날짜|오프셋)
 ```
@@ -391,6 +490,7 @@ positions/
 | `tns` | 바이트 오프셋 | 파일 크기 < 위치 |
 | `printexp` | `날짜\|오프셋` | 날짜 변경 시 새 파일 |
 | `text_log` | 바이트 오프셋 | 파일 크기 < 위치 |
+| `sqlite_db` | 마지막 완료 ID (예: JobID) | - (단조 증가) |
 | `jdf_folder` | 마지막 잡 ID (폴더 번호) | - |
 | `csv_log` | 라인 번호 | 파일 크기 < 위치 |
 
@@ -478,7 +578,7 @@ nssm restart LogWatcher
 
 ---
 
-## 11. 구현 로드맵
+## 11. 구현 로드맵 (수정: 2026-05-12)
 
 ### Phase 1: 기반 구조 리팩토링 (1세션)
 
@@ -491,7 +591,19 @@ nssm restart LogWatcher
 - 장비별 독립 위치 파일 (`positions/`)
 - **검증**: 기존 TNS/PrintExp 동작이 깨지지 않는지 확인
 
-### Phase 2: TextLogParser 범용 파서 (1세션)
+### Phase 2: SqliteDbParser — Epson 연동 ★ (0.5~1세션)
+
+> **우선순위 상향**: 로그 분석 완료, 즉시 구현 가능. NuGet `Microsoft.Data.Sqlite` 추가.
+
+- `SqliteDbParser` 구현 (config 기반 SQL 쿼리 실행)
+- 읽기 전용 모드 + SQLITE_BUSY 재시도 (3회, 1초 간격)
+- `@last_id` 파라미터 바인딩 → 새 완료 건만 조회
+- 크기 단위 변환 (pt → mm: ÷ 2.835)
+- `--test --equipment EPSON-01`로 실제 Data.db 대상 테스트
+- **검증**: NAS의 `Z:\Designs\Epson Edge Print\DB\Data.db`로 연결 테스트
+- **주의**: Epson Edge Print 실행 중에도 읽기 가능한지 현장 검증
+
+### Phase 3: TextLogParser 범용 파서 (1세션)
 
 - 정규식 기반 텍스트 파서 구현
 - 싱글라인 + 멀티라인 모드
@@ -500,25 +612,20 @@ nssm restart LogWatcher
 - `--test` 모드로 파싱 결과 검증
 - **검증**: 실제 장비 로그 샘플로 테스트
 
-### Phase 3: JdfFolderParser (0.5세션)
+### Phase 4: CsvLogParser + JdfFolderParser (0.5세션)
 
-- Epson Edge Print JDF XML 파서
-- 폴더 번호 기반 위치 추적
-- JobName에서 파일명 + 주문번호 추출
-- **검증**: `Z:\Designs\Epson Edge Print\Job` 대상 테스트
+- CSV 컬럼 매핑 파서 (카팅기 등)
+- JDF 폴더 파서 (sqlite_db 사용 불가한 장비 폴백용)
+- **검증**: 실제 로그 샘플로 테스트
 
-### Phase 4: CsvLogParser (0.5세션)
+### Phase 5: OrderMatcher 확장 + 관리 도구 (1세션)
 
-- CSV 컬럼 매핑 파서
-- 구분자, 헤더, 인코딩 설정
-- **검증**: 실제 CSV 로그 샘플로 테스트
-
-### Phase 5: 관리 도구 (1세션)
-
+- OrderMatcher: 현재 Epson JobName 패턴 지원 추가
+  - `(솔벤시트){카드번호}-{파일번호}(WxH-N장).eps` → 카드 매핑
+  - `YYYYMMDD-NNN` 패턴 (IA 적용 후)
 - `--test --equipment {id}` 모드 (장비별 테스트)
 - `--list` 모드 (등록된 장비 목록 + 상태)
 - `--validate` 모드 (equipment.json 검증)
-- MES `/settings` 페이지에 장비 config 편집 UI (선택)
 - Config hot-reload (재시작 없이 설정 반영, 선택)
 
 ---
@@ -569,14 +676,24 @@ nssm restart LogWatcher
 
 ## 14. 사전 필요 사항
 
-구현 착수 전 필요한 정보:
+### ✅ 완료된 항목
 
-1. **장비 목록** — 7가지 장비명, 종류, RIP 소프트웨어
-2. **로그 샘플** — 각 장비의 로그 파일 경로 + 샘플 10줄
-3. **PC 배치** — 어떤 장비가 어떤 PC에 연결되어 있는지
-4. **우선순위** — 어떤 장비부터 연동할지
+| 항목 | 상태 | 내용 |
+|------|------|------|
+| Epson 로그 분석 | ✅ 완료 | SQLite DB (Job+Log 테이블), JobStatus=12=완료, 132건 히스토리 |
+| Epson 데이터 경로 | ✅ 확인 | 로컬: `C:\ProgramData\Epson\Epson Edge Print\DB\Data.db` / NAS: Z: |
+| 파서 전략 결정 | ✅ 확정 | `sqlite_db` 타입 (DB 폴링 방���) |
 
-이 4가지가 확정되면 Phase 1부터 즉시 착수 가능합니다.
+### ⬜ 미완료 항목
+
+1. **나머지 장비 목록** — Epson 외 5~6가지 장비명, 종류, RIP 소프트웨어
+2. **나머지 장비 로그 샘플** — 각 장비의 로그 파일 경로 + 샘플
+3. **PC 배치** — 어떤 장비가 어떤 PC에 연결되어 있는지 (Epson: DESKTOP-CB8Q1D6)
+4. **Epson PC 현장 검증** — Epson 실행 중 DB 읽�� 가능 여부 (동시 접근 테스트)
+5. **OrderMatcher 매핑 규칙** — 현재 JobName에서 주문/카드 매핑 방식 확정
+
+> Phase 1 + Phase 2 (기반 + Epson)는 위 미완료 항목 없이도 착수 가능.
+> 나머지 장비는 Phase 3~4에서 로그 샘플 확보 후 대응.
 
 ---
 

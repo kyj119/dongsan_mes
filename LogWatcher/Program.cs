@@ -3,6 +3,7 @@ using System.IO;
 using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Threading.Tasks;
+using LogWatcher.Core;
 
 namespace LogWatcher
 {
@@ -40,7 +41,116 @@ namespace LogWatcher
         static async Task Main(string[] args)
         {
             DisableQuickEdit();
-            Console.WriteLine("=== LogWatcher v1.0 ===");
+
+            var equipmentConfigPath = Path.Combine(AppContext.BaseDirectory, "equipment.json");
+
+            // Route: equipment.json exists → new universal mode
+            if (File.Exists(equipmentConfigPath))
+            {
+                await RunUniversalMode(args, equipmentConfigPath);
+            }
+            else
+            {
+                // Fallback: legacy appsettings.json mode
+                await RunLegacyMode(args);
+            }
+        }
+
+        /// <summary>
+        /// New universal mode: equipment.json drives multi-equipment polling.
+        /// </summary>
+        static async Task RunUniversalMode(string[] args, string equipmentConfigPath)
+        {
+            Console.WriteLine("=== LogWatcher v2.0 (Universal) ===");
+            Console.WriteLine($"PC: {Environment.MachineName}");
+            Console.WriteLine($"Time: {DateTime.Now}");
+            Console.WriteLine($"Config: {equipmentConfigPath}");
+
+            // Load appsettings.json for API config (MesApiUrl, ApiKey)
+            var settingsPath = Path.Combine(AppContext.BaseDirectory, "appsettings.json");
+            string mesApiUrl = "http://192.168.0.94:3000";
+            string apiKey = "";
+            if (File.Exists(settingsPath))
+            {
+                var settingsJson = File.ReadAllText(settingsPath);
+                var settings = JsonSerializer.Deserialize<JsonElement>(settingsJson);
+                mesApiUrl = settings.TryGetProperty("MesApiUrl", out var url) ? url.GetString() ?? mesApiUrl : mesApiUrl;
+                apiKey = settings.TryGetProperty("ApiKey", out var key) ? key.GetString() ?? "" : "";
+            }
+
+            var agentId = Environment.MachineName;
+            var apiClient = new MesApiClient(mesApiUrl, apiKey, agentId);
+            var queuePath = Path.Combine(AppContext.BaseDirectory, "pending_events.json");
+            var queue = new EventQueue(queuePath);
+            var positionsDir = Path.Combine(AppContext.BaseDirectory, "positions");
+
+            var manager = new WatcherManager(apiClient, queue, positionsDir);
+
+            try
+            {
+                manager.LoadConfig(equipmentConfigPath);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[FATAL] Failed to load equipment.json: {ex.Message}");
+                return;
+            }
+
+            if (manager.ParserCount == 0)
+            {
+                Console.WriteLine("[FATAL] No enabled equipment found in equipment.json");
+                return;
+            }
+
+            Console.WriteLine($"API: {mesApiUrl}");
+            Console.WriteLine($"Poll: {manager.Config.PollIntervalSeconds}s, Heartbeat: {manager.Config.HeartbeatIntervalSeconds}s");
+
+            // Handle CLI commands
+            if (args.Length > 0)
+            {
+                switch (args[0])
+                {
+                    case "--test":
+                        var testEq = args.Length > 1 ? args[1] : null;
+                        manager.TestEquipment(testEq);
+                        return;
+
+                    case "--list":
+                        manager.ListEquipment();
+                        return;
+
+                    case "--validate":
+                        Console.WriteLine("[VALIDATE] equipment.json loaded successfully");
+                        manager.ListEquipment();
+                        return;
+                }
+            }
+
+            // Main polling loop
+            Console.WriteLine($"\n[START] Monitoring {manager.ParserCount} equipment...\n");
+            var pollInterval = manager.Config.PollIntervalSeconds;
+
+            while (true)
+            {
+                try
+                {
+                    await manager.PollAllAsync();
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[ERROR] Main loop: {ex.Message}");
+                }
+
+                await Task.Delay(pollInterval * 1000);
+            }
+        }
+
+        /// <summary>
+        /// Legacy mode: single-equipment appsettings.json (backward compatible).
+        /// </summary>
+        static async Task RunLegacyMode(string[] args)
+        {
+            Console.WriteLine("=== LogWatcher v2.0 (Legacy Mode) ===");
             Console.WriteLine($"PC: {Environment.MachineName}");
             Console.WriteLine($"Time: {DateTime.Now}");
 
@@ -49,6 +159,7 @@ namespace LogWatcher
             if (!File.Exists(settingsPath))
             {
                 Console.WriteLine($"[FATAL] appsettings.json not found at {settingsPath}");
+                Console.WriteLine("[HINT] Create equipment.json for multi-equipment mode");
                 return;
             }
 
@@ -86,7 +197,7 @@ namespace LogWatcher
             Console.WriteLine($"Equipment: {(string.IsNullOrEmpty(equipmentId) ? "(hostname)" : equipmentId)}");
             Console.WriteLine($"Poll: {pollInterval}s, Heartbeat: {heartbeatInterval}s");
 
-            // Test mode: if --test argument provided, parse and display then exit
+            // Test mode
             if (args.Length > 0 && args[0] == "--test")
             {
                 var testPath = args.Length > 1 ? args[1] : printLogPath;
@@ -238,16 +349,16 @@ namespace LogWatcher
                         }
                     }
 
-                    // Backoff: 연속 실패 시 폴링 간격 점진 증가
+                    // Backoff
                     if (anyFailed)
                     {
                         consecutiveFailures++;
                         currentPollInterval = consecutiveFailures switch
                         {
-                            <= 3 => pollInterval,        // 5초
-                            <= 6 => pollInterval * 2,    // 10초
-                            <= 12 => 30,                 // 30초
-                            _ => 60                      // 60초
+                            <= 3 => pollInterval,
+                            <= 6 => pollInterval * 2,
+                            <= 12 => 30,
+                            _ => 60
                         };
                         if (consecutiveFailures == 4 || consecutiveFailures == 7 || consecutiveFailures == 13)
                             Console.WriteLine($"[BACKOFF] Poll interval → {currentPollInterval}s (failures={consecutiveFailures})");
@@ -273,7 +384,6 @@ namespace LogWatcher
                             {
                                 try
                                 {
-                                    // 소스 파일 존재 확인
                                     if (string.IsNullOrEmpty(job.SourceFilePath) || !File.Exists(job.SourceFilePath))
                                     {
                                         Console.WriteLine($"[JOB] FAIL {job.CardNumber}: source file not found ({job.SourceFilePath})");
@@ -281,7 +391,6 @@ namespace LogWatcher
                                         continue;
                                     }
 
-                                    // .job 파일 이미 존재 확인 (이전 ACK 실패 시 재시도 대응)
                                     var expectedJobPath = Path.Combine(jobCreator.JobFolder, $"{job.CardNumber}_item{job.CardItemId}.job");
                                     string jobPath;
                                     if (File.Exists(expectedJobPath))
