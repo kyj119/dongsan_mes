@@ -9,89 +9,87 @@ export function clientsPage(c: Context<HonoEnv>) {
     activePage: '/clients',
     pageContent: `
       <!-- 필터 영역 -->
-      <div class="bg-white rounded-lg border p-3 shadow-sm mb-4">
-        <div class="flex flex-wrap gap-2 items-end">
-          <div class="flex-1 min-w-[200px]">
-            <label class="block text-[10px] text-gray-400 mb-0.5">검색</label>
-            <input type="text" id="searchInput" placeholder="거래처명, 사업자번호, 전화번호, 키워드..."
-              class="w-full border rounded px-2 py-1.5 text-sm" style="color:#212529;">
-          </div>
-          <div>
-            <label class="block text-[10px] text-gray-400 mb-0.5">유형</label>
-            <select id="clientTypeFilter" class="border rounded px-2 py-1.5 text-xs" style="color:#212529;">
-              <option value="">전체</option>
-              <option value="SALES">매출처</option>
-              <option value="PURCHASE">매입처</option>
-              <option value="BOTH">양쪽</option>
-            </select>
-          </div>
-          <div>
-            <label class="block text-[10px] text-gray-400 mb-0.5">계산서</label>
-            <select id="invoiceMethodFilter" class="border rounded px-2 py-1.5 text-xs" style="color:#212529;">
-              <option value="">전체</option>
-              <option value="PER_ORDER">건별 발행</option>
-              <option value="MONTHLY">월합산</option>
-              <option value="UNDECIDED">미분류</option>
-              <option value="CARD">카드결제</option>
-              <option value="ISSUED_BY_OTHER">타발행</option>
-            </select>
-          </div>
-          <div>
-            <label class="block text-[10px] text-gray-400 mb-0.5">배송</label>
-            <select id="deliveryMethodFilter" class="border rounded px-2 py-1.5 text-xs" style="color:#212529;">
-              <option value="">전체</option>
-              <option value="SAME">소재지</option>
-              <option value="FREIGHT">화물</option>
-              <option value="DIRECT">직배송</option>
-              <option value="PICKUP">방문수령</option>
-            </select>
-          </div>
-          <div>
-            <label class="block text-[10px] text-gray-400 mb-0.5">상태</label>
-            <select id="activeFilter" class="border rounded px-2 py-1.5 text-xs" style="color:#212529;">
-              <option value="1">활성</option>
-              <option value="all">전체</option>
-              <option value="0">비활성</option>
-            </select>
-          </div>
-          <div>
-            <label class="block text-[10px] text-gray-400 mb-0.5">정렬</label>
-            <select id="sortBy" class="border rounded px-2 py-1.5 text-xs" style="color:#212529;" onchange="searchClients()">
-              <option value="name">이름순</option>
-              <option value="last_order">최근주문순</option>
-              <option value="created">최근등록순</option>
-            </select>
-          </div>
-          <div>
-            <label class="block text-[10px] text-gray-400 mb-0.5">휴면</label>
-            <select id="dormantFilter" class="border rounded px-2 py-1.5 text-xs" style="color:#212529;" onchange="searchClients()">
-              <option value="">전체</option>
-              <option value="30">30일+</option>
-              <option value="60">60일+</option>
-              <option value="90">90일+</option>
-              <option value="180">180일+</option>
-            </select>
-          </div>
-          <div>
-            <label class="block text-[10px] text-gray-400 mb-0.5">미수금</label>
-            <select id="balanceFilter" class="border rounded px-2 py-1.5 text-xs" style="color:#212529;" onchange="searchClients()">
-              <option value="">전체</option>
-              <option value="1">미수금 있음</option>
-            </select>
-          </div>
-          <div>
-            <label class="block text-[10px] text-gray-400 mb-0.5">차단</label>
-            <select id="creditHoldFilter" class="border rounded px-2 py-1.5 text-xs" style="color:#212529;" onchange="searchClients()">
-              <option value="">전체</option>
-              <option value="1">주문차단</option>
-            </select>
-          </div>
-          <div class="flex gap-1 ml-auto">
-            <button onclick="resetFilters()" class="text-gray-500 px-2 py-1.5 text-xs hover:text-gray-700">초기화</button>
-            <button onclick="searchClients()" class="px-3 py-1.5 bg-blue-600 text-white rounded text-xs hover:bg-blue-700">
-              <i class="fas fa-search mr-1"></i>검색
-            </button>
-          </div>
+      <div class="ds-filter-bar">
+        <div class="ds-filter-field" style="flex:1;min-width:200px">
+          <label class="ds-label">검색</label>
+          <input type="text" id="searchInput" placeholder="거래처명, 사업자번호, 전화번호, 키워드..."
+            class="ds-input" onkeydown="if(event.key==='Enter')searchClients()">
+        </div>
+        <div class="ds-filter-field">
+          <label class="ds-label">유형</label>
+          <select id="clientTypeFilter" class="ds-input" onchange="searchClients()">
+            <option value="">전체</option>
+            <option value="SALES">매출처</option>
+            <option value="PURCHASE">매입처</option>
+            <option value="BOTH">양쪽</option>
+          </select>
+        </div>
+        <div class="ds-filter-field">
+          <label class="ds-label">계산서</label>
+          <select id="invoiceMethodFilter" class="ds-input" onchange="searchClients()">
+            <option value="">전체</option>
+            <option value="PER_ORDER">건별 발행</option>
+            <option value="MONTHLY">월합산</option>
+            <option value="UNDECIDED">미분류</option>
+            <option value="CARD">카드결제</option>
+            <option value="ISSUED_BY_OTHER">타발행</option>
+          </select>
+        </div>
+        <div class="ds-filter-field">
+          <label class="ds-label">배송</label>
+          <select id="deliveryMethodFilter" class="ds-input" onchange="searchClients()">
+            <option value="">전체</option>
+            <option value="SAME">소재지</option>
+            <option value="FREIGHT">화물</option>
+            <option value="DIRECT">직배송</option>
+            <option value="PICKUP">방문수령</option>
+          </select>
+        </div>
+        <div class="ds-filter-field">
+          <label class="ds-label">상태</label>
+          <select id="activeFilter" class="ds-input" onchange="searchClients()">
+            <option value="1">활성</option>
+            <option value="all">전체</option>
+            <option value="0">비활성</option>
+          </select>
+        </div>
+        <div class="ds-filter-field">
+          <label class="ds-label">정렬</label>
+          <select id="sortBy" class="ds-input" onchange="searchClients()">
+            <option value="name">이름순</option>
+            <option value="last_order">최근주문순</option>
+            <option value="created">최근등록순</option>
+          </select>
+        </div>
+        <div class="ds-filter-field">
+          <label class="ds-label">휴면</label>
+          <select id="dormantFilter" class="ds-input" onchange="searchClients()">
+            <option value="">전체</option>
+            <option value="30">30일+</option>
+            <option value="60">60일+</option>
+            <option value="90">90일+</option>
+            <option value="180">180일+</option>
+          </select>
+        </div>
+        <div class="ds-filter-field">
+          <label class="ds-label">미수금</label>
+          <select id="balanceFilter" class="ds-input" onchange="searchClients()">
+            <option value="">전체</option>
+            <option value="1">미수금 있음</option>
+          </select>
+        </div>
+        <div class="ds-filter-field">
+          <label class="ds-label">차단</label>
+          <select id="creditHoldFilter" class="ds-input" onchange="searchClients()">
+            <option value="">전체</option>
+            <option value="1">주문차단</option>
+          </select>
+        </div>
+        <div class="ds-filter-actions">
+          <button onclick="resetFilters()" class="ds-btn ds-btn-ghost ds-btn-sm">초기화</button>
+          <button onclick="searchClients()" class="ds-btn ds-btn-primary ds-btn-sm">
+            <i class="fas fa-search" style="margin-right:4px"></i>검색
+          </button>
         </div>
       </div>
 

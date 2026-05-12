@@ -51,8 +51,8 @@ function switchMainTab(tab) {
   var batchSpacer = document.getElementById('batchBarSpacer');
   var billingBar = document.getElementById('billingBar');
   var billingSpacer = document.getElementById('billingBarSpacer');
-  if (tab !== 'unbilled' && batchBar) { batchBar.classList.add('hidden'); batchSpacer.classList.add('hidden'); }
-  if (tab !== 'billing' && billingBar) { billingBar.classList.add('hidden'); billingSpacer.classList.add('hidden'); }
+  if (tab !== 'unbilled' && batchBar) { batchBar.classList.remove('visible'); batchSpacer.classList.remove('visible'); }
+  if (tab !== 'billing' && billingBar) { billingBar.classList.remove('visible'); billingSpacer.classList.remove('visible'); }
   if (tab === 'billing') loadBillingPendingOrders();
   if (tab === 'list') loadInvoices(1);
   if (tab === 'monthly') {
@@ -331,11 +331,11 @@ function updateBatchBar() {
   var spacer = document.getElementById('batchBarSpacer');
   var panelUnbilled = document.getElementById('panelUnbilled');
   if (!panelUnbilled.classList.contains('hidden') && clientCount > 0) {
-    bar.classList.remove('hidden');
-    spacer.classList.remove('hidden');
+    bar.classList.add('visible');
+    spacer.classList.add('visible');
   } else {
-    bar.classList.add('hidden');
-    spacer.classList.add('hidden');
+    bar.classList.remove('visible');
+    spacer.classList.remove('visible');
   }
 }
 
@@ -847,9 +847,9 @@ function updateBillingBar() {
   var spacer = document.getElementById('billingBarSpacer');
   var panel = document.getElementById('panelBilling');
   if (panel && !panel.classList.contains('hidden') && count > 0) {
-    bar.classList.remove('hidden'); spacer.classList.remove('hidden');
+    bar.classList.add('visible'); spacer.classList.add('visible');
   } else {
-    bar.classList.add('hidden'); spacer.classList.add('hidden');
+    bar.classList.remove('visible'); spacer.classList.remove('visible');
   }
 }
 

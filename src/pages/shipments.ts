@@ -80,25 +80,29 @@ export function shipmentsPage(c: Context<HonoEnv>) {
       </style>
 
       <!-- 헤더: 날짜 탐색 + 배지 -->
-      <div class="flex items-center justify-between mb-4 flex-wrap gap-2">
-        <div class="flex items-center gap-2">
-          <button onclick="changeDate(-1)" class="px-3 py-2 bg-white border rounded hover:bg-gray-50 text-sm">◀</button>
-          <input type="date" id="shipDate" onchange="loadShipmentsByDate()"
-            class="ds-input px-3 py-2 text-sm font-medium border rounded">
-          <button onclick="changeDate(1)" class="px-3 py-2 bg-white border rounded hover:bg-gray-50 text-sm">▶</button>
-          <button onclick="goToday()" class="px-3 py-2 bg-blue-50 border border-blue-200 text-blue-700 rounded text-xs hover:bg-blue-100">오늘</button>
+      <div class="ds-filter-bar">
+        <div class="ds-filter-field">
+          <label class="ds-label">날짜</label>
+          <div class="flex items-center gap-1">
+            <button onclick="changeDate(-1)" class="ds-btn ds-btn-secondary ds-btn-sm" style="min-width:32px">◀</button>
+            <input type="date" id="shipDate" onchange="loadShipmentsByDate()" class="ds-input" style="min-width:140px">
+            <button onclick="changeDate(1)" class="ds-btn ds-btn-secondary ds-btn-sm" style="min-width:32px">▶</button>
+            <button onclick="goToday()" class="ds-btn ds-btn-sm" style="background:var(--c-primary-light);color:var(--c-primary);border:1px solid var(--c-primary)">오늘</button>
+          </div>
         </div>
-        <div class="flex gap-2 flex-wrap items-center">
-          <span id="badgeFreight" class="px-2.5 py-0.5 rounded-full text-xs bg-blue-50 text-blue-700 font-medium cursor-pointer" onclick="scrollToSection('sectionFreight')"><i class="fas fa-truck mr-1"></i>대신화물 0건</span>
-          <span id="badgeDaesintaekbae" class="px-2.5 py-0.5 rounded-full text-xs bg-green-50 text-green-700 font-medium cursor-pointer" onclick="scrollToSection('sectionDaesintaekbae')"><i class="fas fa-box mr-1"></i>대신택배 0건</span>
-          <span id="badgeHanjin" class="px-2.5 py-0.5 rounded-full text-xs bg-amber-50 text-amber-700 font-medium cursor-pointer" onclick="scrollToSection('sectionHanjin')"><i class="fas fa-box mr-1"></i>한진택배 0건</span>
-          <span id="badgeQuick" class="px-2.5 py-0.5 rounded-full text-xs bg-gray-100 text-gray-700 font-medium cursor-pointer" onclick="scrollToSection('sectionQuick')"><i class="fas fa-bolt mr-1"></i>퀵·용차 0건</span>
-          <span class="border-l border-gray-300 h-4 mx-1"></span>
-          <button onclick="printShipmentList('daeshin')" class="px-2.5 py-1 text-xs bg-white border border-blue-300 text-blue-700 rounded hover:bg-blue-50" title="대신(화물+택배) 출고 리스트 A4 인쇄">
-            <i class="fas fa-list-alt mr-1"></i>대신 리스트
+        <div class="ds-filter-divider"></div>
+        <div class="ds-filter-chips">
+          <span id="badgeFreight" class="ds-chip" onclick="scrollToSection('sectionFreight')"><i class="fas fa-truck" style="margin-right:4px"></i>대신화물 0건</span>
+          <span id="badgeDaesintaekbae" class="ds-chip" onclick="scrollToSection('sectionDaesintaekbae')"><i class="fas fa-box" style="margin-right:4px"></i>대신택배 0건</span>
+          <span id="badgeHanjin" class="ds-chip" onclick="scrollToSection('sectionHanjin')"><i class="fas fa-box" style="margin-right:4px"></i>한진택배 0건</span>
+          <span id="badgeQuick" class="ds-chip" onclick="scrollToSection('sectionQuick')"><i class="fas fa-bolt" style="margin-right:4px"></i>퀵·용차 0건</span>
+        </div>
+        <div class="ds-filter-actions">
+          <button onclick="printShipmentList('daeshin')" class="ds-btn ds-btn-secondary ds-btn-sm" title="대신(화물+택배) 출고 리스트 A4 인쇄">
+            <i class="fas fa-list-alt" style="margin-right:4px"></i>대신 리스트
           </button>
-          <button onclick="printShipmentList('hanjin')" class="px-2.5 py-1 text-xs bg-white border border-amber-300 text-amber-700 rounded hover:bg-amber-50" title="한진택배 출고 리스트 A4 인쇄">
-            <i class="fas fa-list-alt mr-1"></i>한진 리스트
+          <button onclick="printShipmentList('hanjin')" class="ds-btn ds-btn-secondary ds-btn-sm" title="한진택배 출고 리스트 A4 인쇄">
+            <i class="fas fa-list-alt" style="margin-right:4px"></i>한진 리스트
           </button>
         </div>
       </div>

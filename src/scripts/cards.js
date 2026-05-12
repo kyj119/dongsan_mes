@@ -2283,13 +2283,16 @@ function toggleCardSelect(el) {
 
 function updateCardBulkBar() {
     var bar = document.getElementById('cardBulkBar');
+    var spacer = document.getElementById('cardBulkSpacer');
     var countEl = document.getElementById('cardBulkCount');
     if (!bar) return;
     if (selectedCardIds.size > 0) {
-        bar.classList.remove('hidden');
+        bar.classList.add('visible');
+        if (spacer) spacer.classList.add('visible');
         if (countEl) countEl.textContent = selectedCardIds.size;
     } else {
-        bar.classList.add('hidden');
+        bar.classList.remove('visible');
+        if (spacer) spacer.classList.remove('visible');
     }
 }
 

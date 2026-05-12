@@ -287,39 +287,56 @@ export function cardsPage(c: Context<HonoEnv>) {
         <!-- 카테고리 필터 -->
         <div id="categoryFilterBar" class="flex gap-1.5 mb-2 overflow-x-auto pb-1" style="scrollbar-width:thin"></div>
 
-        <!-- 일괄 액션 바 (체크박스 선택 시 표시) -->
-        <div id="cardBulkBar" class="ds-alert ds-alert-info mb-3 hidden" style="display:none;align-items:center;gap:12px;flex-wrap:wrap;">
-          <span class="text-sm font-medium"><i class="fas fa-check-square" style="margin-right:4px"></i><span id="cardBulkCount">0</span>건 선택</span>
-          <select id="cardBulkStatus" class="ds-input" style="width:auto">
-            <option value="">상태 선택</option>
-            <option value="PRINT_DONE">출력완료</option>
-            <option value="HOLD">보류</option>
-            <option value="PRINTING">출력중</option>
-          </select>
-          <button onclick="cardBulkChangeStatus()" class="ds-btn ds-btn-primary ds-btn-sm">
-            <i class="fas fa-sync-alt" style="margin-right:4px"></i>일괄 변경
-          </button>
-          <button onclick="clearCardSelection()" class="ds-btn ds-btn-secondary ds-btn-sm">선택 해제</button>
-        </div>
-
-        <!-- 필터 바: 긴급도 + 정렬 + 검색 -->
-        <div class="flex gap-2 mb-3 items-center flex-wrap">
-            <select id="urgencyFilter" onchange="setUrgencyFilter(this.value)" class="ds-input" style="width:auto">
-                <option value="">긴급도 전체</option>
+        <!-- 필터 바 -->
+        <div class="ds-filter-bar" style="margin-bottom:var(--space-md)">
+            <div class="ds-filter-field">
+              <label class="ds-label">긴급도</label>
+              <select id="urgencyFilter" onchange="setUrgencyFilter(this.value)" class="ds-input">
+                <option value="">전체</option>
                 <option value="urgent">지연 (D-Day 이전)</option>
                 <option value="high">긴급 (D-1)</option>
                 <option value="normal">보통 (D-2~3)</option>
                 <option value="low">여유 (D-4+)</option>
-            </select>
-            <select id="kanbanSort" onchange="setKanbanSort(this.value)" class="ds-input" style="width:auto">
+              </select>
+            </div>
+            <div class="ds-filter-field">
+              <label class="ds-label">정렬</label>
+              <select id="kanbanSort" onchange="setKanbanSort(this.value)" class="ds-input">
                 <option value="delivery_asc">납기순</option>
                 <option value="priority_desc">우선순위순</option>
                 <option value="created_desc">최신등록순</option>
-            </select>
-            <input type="text" id="kanbanSearch" placeholder="거래처, 품목, 주문번호 검색..."
-                   class="ds-input flex-1 min-w-[180px]"
-                   onkeyup="filterKanban(this.value)">
+              </select>
+            </div>
+            <div class="ds-filter-field" style="flex:1;min-width:180px">
+              <label class="ds-label">검색</label>
+              <input type="text" id="kanbanSearch" placeholder="거래처, 품목, 주문번호..."
+                class="ds-input" onkeyup="filterKanban(this.value)">
+            </div>
         </div>
+
+        <!-- 일괄 액션 바 -->
+        <div id="cardBulkBar" class="ds-bulk-bar">
+          <div class="ds-bulk-bar-count">
+            <i class="fas fa-check-square"></i>
+            <span><span id="cardBulkCount">0</span>건 선택</span>
+          </div>
+          <div class="ds-bulk-bar-divider"></div>
+          <div class="ds-bulk-bar-actions">
+            <select id="cardBulkStatus" class="ds-input" style="width:auto;min-height:32px;padding:4px 10px;font-size:var(--fs-xs)">
+              <option value="">상태 선택</option>
+              <option value="PRINT_DONE">출력완료</option>
+              <option value="HOLD">보류</option>
+              <option value="PRINTING">출력중</option>
+            </select>
+            <button onclick="cardBulkChangeStatus()" class="ds-btn ds-btn-primary ds-btn-sm">
+              <i class="fas fa-sync-alt" style="margin-right:4px"></i>일괄 변경
+            </button>
+          </div>
+          <div class="ds-bulk-bar-end">
+            <button onclick="clearCardSelection()" class="ds-btn ds-btn-secondary ds-btn-sm">선택 해제</button>
+          </div>
+        </div>
+        <div id="cardBulkSpacer" class="ds-bulk-bar-spacer"></div>
 
         <!-- 대시보드 요약 -->
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 mb-3" id="dashboardPanel">
