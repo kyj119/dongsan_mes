@@ -21,8 +21,9 @@
 ### [UI/UX 롤아웃 잔여] — Input Group 실적용
 - ds-input-group CSS 준비 완료, orderForm/items 등 적용 보류 (템플릿 구조 변경 위험)
 - 신규 폼 작성 시 점진적 적용 예정
-### [GitHub #26] — SELECT * 178건 → 명시 컬럼 전환
-- 대공수, 다음 세션에서 진행
+### [GitHub #27~#30] — auto-improve UX 제안 4건
+- #27 출고→세금계산서 빠른 이동, #28 주문→카드 현황 버튼, #29 납기 준수율 KPI, #30 원단 소모 예측 필터
+- 코멘트 확인 후 진행
 ### [거래처 상세 정책 UI] — 단가 관리 연동
 - 거래처 상세 페이지에 가격 정책 드롭다운 추가
 ### [CAPS 경리PC 워커 실행] — 경리 PC 수동 실행 대기 (외부 의존)
@@ -47,17 +48,16 @@
 
 ---
 
-## 🟢 최근 완료 (2026-05-13, 20커밋)
+## 🟢 최근 완료 (2026-05-13, 22커밋)
 
-- **GitHub Issues 11건 전량 처리 (#15~#25 + #17)**:
-  - **N+1 쿼리 제거** (8파일): prices/rip/shipments/inventoryCount/inventory/taxInvoices/priceList/inspections → db.batch()/IN절 전환
-  - **printEvents.ts 최적화**: 이벤트당 5~7쿼리 → 3~4쿼리 (카드 조회 합침 + batch)
-  - **printSystem.ts**: method_media/product_materials/해제 방식 batch
-  - **entity_id 누락 10테이블**: 마이그레이션 0193 + INSERT 16건 수정
-  - **스모크 테스트 커버리지**: 55→88 엔드포인트 (88/88 PASS)
-  - **as any 타입 안전성**: 902→45건 (857건 제거, 95%) — 9커밋, 50+파일
-  - SKILL.md 동기화: design-token.md (--c-* 체계), component.md (FilterBar/BulkBar/BentoGrid)
-  - 프로덕션 배포 4회 완료
+- **GitHub Issues 12건 전량 처리 (#15~#26)**:
+  - **N+1 쿼리 제거** (8파일): db.batch()/IN절 전환 (#19~#25)
+  - **printEvents/printSystem 최적화** (#16): 건당 쿼리 40% 감소
+  - **entity_id 누락 10테이블**: 마이그레이션 0193 + INSERT 16건 (#18)
+  - **스모크 테스트**: 55→88 엔드포인트 (#15)
+  - **as any 타입 안전성**: 902→45건 (95% 제거, 50+파일) (#17)
+  - **SELECT * → 명시 컬럼**: 151→6건 (96% 제거, 53파일) (#26)
+  - SKILL.md 동기화, 프로덕션 배포 5회
 - **UI/UX 전면 개선 (P0~P3 + 롤아웃, 이전 세션 5커밋)**:
   - P0~P3: CSS 변수, Bento Grid, FilterBar/BulkBar, 접근성, 스크롤 그림자
   - 독립 에이전트 검증 29/29 PASS
