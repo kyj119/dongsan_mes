@@ -299,48 +299,49 @@ inventoryRouter.post('/receipts', async (c) => {
 
     const receiptId = receiptResult.meta.last_row_id
 
-    // Insert receipt items and update inventory
-    for (const item of items) {
+    // Insert receipt items + update inventory (batch)
+    const entityId = getEntityId(c) || 1
+    const receiptStmts = items.flatMap((item: any) => {
       const { item_id, quantity, unit_price, location } = item
       const amount = quantity * unit_price
+      return [
+        c.env.DB.prepare(`
+          INSERT INTO inventory_receipt_items
+          (receipt_id, item_id, quantity, unit_price, amount, location)
+          VALUES (?, ?, ?, ?, ?, ?)
+        `).bind(receiptId, item_id, quantity, unit_price, amount, location || null),
+        c.env.DB.prepare(`
+          INSERT INTO inventory (item_id, quantity, last_updated)
+          VALUES (?, ?, CURRENT_TIMESTAMP)
+          ON CONFLICT(item_id) DO UPDATE SET quantity = quantity + excluded.quantity, last_updated = CURRENT_TIMESTAMP
+        `).bind(item_id, quantity)
+      ]
+    })
+    await c.env.DB.batch(receiptStmts)
 
-      // Insert receipt item
-      await c.env.DB.prepare(`
-        INSERT INTO inventory_receipt_items
-        (receipt_id, item_id, quantity, unit_price, amount, location)
-        VALUES (?, ?, ?, ?, ?, ?)
-      `).bind(receiptId, item_id, quantity, unit_price, amount, location || null).run()
+    // Get updated balances + insert transactions (batch)
+    const itemIds = items.map((item: any) => item.item_id)
+    const ph = itemIds.map(() => '?').join(',')
+    const { results: balances } = await c.env.DB.prepare(
+      `SELECT item_id, quantity FROM inventory WHERE item_id IN (${ph})`
+    ).bind(...itemIds).all()
+    const balanceMap: Record<number, number> = {}
+    for (const b of balances as any[]) balanceMap[b.item_id] = b.quantity
 
-      // Get current stock from inventory table
-      const invRow = await c.env.DB.prepare(
-        `SELECT quantity FROM inventory WHERE item_id = ?`
-      ).bind(item_id).first() as any
-
-      let newStock: number
-
-      if (invRow) {
-        newStock = (invRow.quantity || 0) + quantity
-        await c.env.DB.prepare(`
-          UPDATE inventory SET quantity = ?, last_updated = CURRENT_TIMESTAMP WHERE item_id = ?
-        `).bind(newStock, item_id).run()
-      } else {
-        newStock = quantity
-        await c.env.DB.prepare(`
-          INSERT INTO inventory (item_id, quantity, last_updated) VALUES (?, ?, CURRENT_TIMESTAMP)
-        `).bind(item_id, newStock).run()
-      }
-
-      // Insert transaction
-      await c.env.DB.prepare(`
-        INSERT INTO inventory_transactions
-        (item_id, transaction_type, transaction_date, quantity, unit_price, total_amount,
-         reference_type, reference_id, balance_after, reason, handled_by, entity_id)
-        VALUES (?, 'IN', ?, ?, ?, ?, 'PURCHASE', ?, ?, '입고', ?, ?)
-      `).bind(
-        item_id, receipt_date, quantity, unit_price, amount,
-        receiptId, newStock, user?.id || 1, getEntityId(c) || 1
-      ).run()
-    }
+    await c.env.DB.batch(
+      items.map((item: any) => {
+        const amount = item.quantity * item.unit_price
+        return c.env.DB.prepare(`
+          INSERT INTO inventory_transactions
+          (item_id, transaction_type, transaction_date, quantity, unit_price, total_amount,
+           reference_type, reference_id, balance_after, reason, handled_by, entity_id)
+          VALUES (?, 'IN', ?, ?, ?, ?, 'PURCHASE', ?, ?, '입고', ?, ?)
+        `).bind(
+          item.item_id, receipt_date, item.quantity, item.unit_price, amount,
+          receiptId, balanceMap[item.item_id] || 0, user?.id || 1, entityId
+        )
+      })
+    )
 
     return c.json({
       success: true,
@@ -432,25 +433,37 @@ inventoryRouter.patch('/receipts/:id/inspection-decision',
         `SELECT item_id, received_quantity FROM inventory_receipt_items WHERE receipt_id = ?`
       ).bind(id).all() as any
 
-      for (const ri of (receiptItems || [])) {
-        if (ri.item_id && ri.received_quantity > 0) {
-          // 재고 차감
-          await c.env.DB.prepare(
-            `UPDATE inventory SET quantity = MAX(0, quantity - ?) WHERE item_id = ?`
-          ).bind(ri.received_quantity, ri.item_id).run()
-          // 역분개 트랜잭션 기록
-          const inv = await c.env.DB.prepare(
-            `SELECT quantity FROM inventory WHERE item_id = ?`
-          ).bind(ri.item_id).first() as any
-          await c.env.DB.prepare(
-            `INSERT INTO inventory_transactions (item_id, transaction_type, quantity, balance_after, reference_type, reference_id, notes, handled_by, transaction_date, entity_id)
-             VALUES (?, 'OUT', ?, ?, 'RECEIPT_CANCEL', ?, ?, ?, datetime('now'), ?)`
-          ).bind(
-            ri.item_id, ri.received_quantity, inv?.quantity || 0,
-            Number(id), '입고 취소 역분개', c.get('user')?.id || null,
-            getEntityId(c) || 1
-          ).run()
-        }
+      const validItems = (receiptItems || []).filter((ri: any) => ri.item_id && ri.received_quantity > 0)
+      if (validItems.length > 0) {
+        // 재고 일괄 차감 (batch)
+        await c.env.DB.batch(
+          validItems.map((ri: any) =>
+            c.env.DB.prepare(`UPDATE inventory SET quantity = MAX(0, quantity - ?) WHERE item_id = ?`)
+              .bind(ri.received_quantity, ri.item_id)
+          )
+        )
+        // 차감 후 잔량 조회 + 역분개 트랜잭션 기록 (batch)
+        const cancelItemIds = validItems.map((ri: any) => ri.item_id)
+        const cancelPh = cancelItemIds.map(() => '?').join(',')
+        const { results: cancelBalances } = await c.env.DB.prepare(
+          `SELECT item_id, quantity FROM inventory WHERE item_id IN (${cancelPh})`
+        ).bind(...cancelItemIds).all()
+        const cancelBalMap: Record<number, number> = {}
+        for (const b of cancelBalances as any[]) cancelBalMap[b.item_id] = b.quantity
+
+        const cancelEntityId = getEntityId(c) || 1
+        await c.env.DB.batch(
+          validItems.map((ri: any) =>
+            c.env.DB.prepare(
+              `INSERT INTO inventory_transactions (item_id, transaction_type, quantity, balance_after, reference_type, reference_id, notes, handled_by, transaction_date, entity_id)
+               VALUES (?, 'OUT', ?, ?, 'RECEIPT_CANCEL', ?, ?, ?, datetime('now'), ?)`
+            ).bind(
+              ri.item_id, ri.received_quantity, cancelBalMap[ri.item_id] || 0,
+              Number(id), '입고 취소 역분개', c.get('user')?.id || null,
+              cancelEntityId
+            )
+          )
+        )
       }
 
       await c.env.DB.prepare(
@@ -540,49 +553,49 @@ inventoryRouter.post('/releases', async (c) => {
 
     const releaseId = releaseResult.meta.last_row_id
 
-    // Insert release items and update inventory
+    // 재고 일괄 확인 (단일 쿼리)
+    const releaseItemIds = items.map((item: any) => item.item_id)
+    const relPh = releaseItemIds.map(() => '?').join(',')
+    const { results: stockRows } = await c.env.DB.prepare(
+      `SELECT item_id, quantity FROM inventory WHERE item_id IN (${relPh})`
+    ).bind(...releaseItemIds).all()
+    const stockMap: Record<number, number> = {}
+    for (const s of stockRows as any[]) stockMap[s.item_id] = s.quantity
+
+    // 재고 부족 사전 검증
     for (const item of items) {
-      const { item_id, quantity } = item
-
-      // Check stock availability from inventory table
-      const invRow = await c.env.DB.prepare(
-        `SELECT quantity FROM inventory WHERE item_id = ?`
-      ).bind(item_id).first() as any
-
-      const currentStock = invRow?.quantity || 0
-
-      if (currentStock < quantity) {
+      const currentStock = stockMap[item.item_id] || 0
+      if (currentStock < item.quantity) {
         return c.json({
           success: false,
-          message: `재고 부족 (품목 ${item_id}). 현재고: ${currentStock}, 요청: ${quantity}`
+          message: `재고 부족 (품목 ${item.item_id}). 현재고: ${currentStock}, 요청: ${item.quantity}`
         }, 400)
       }
-
-      const newStock = currentStock - quantity
-
-      // Insert release item
-      await c.env.DB.prepare(`
-        INSERT INTO inventory_release_items
-        (release_id, item_id, quantity)
-        VALUES (?, ?, ?)
-      `).bind(releaseId, item_id, quantity).run()
-
-      // Update inventory stock
-      await c.env.DB.prepare(`
-        UPDATE inventory SET quantity = ?, last_updated = CURRENT_TIMESTAMP WHERE item_id = ?
-      `).bind(newStock, item_id).run()
-
-      // Insert transaction
-      await c.env.DB.prepare(`
-        INSERT INTO inventory_transactions
-        (item_id, transaction_type, transaction_date, quantity, reference_type,
-         reference_id, balance_after, reason, handled_by, entity_id)
-        VALUES (?, 'OUT', ?, ?, ?, ?, ?, '출고', ?, ?)
-      `).bind(
-        item_id, release_date, -quantity, reference_type,
-        reference_id || null, newStock, user?.id || 1, getEntityId(c) || 1
-      ).run()
     }
+
+    // Insert release items + update inventory (batch)
+    const relEntityId = getEntityId(c) || 1
+    const releaseStmts = items.flatMap((item: any) => {
+      const newStock = (stockMap[item.item_id] || 0) - item.quantity
+      return [
+        c.env.DB.prepare(`
+          INSERT INTO inventory_release_items (release_id, item_id, quantity) VALUES (?, ?, ?)
+        `).bind(releaseId, item.item_id, item.quantity),
+        c.env.DB.prepare(`
+          UPDATE inventory SET quantity = ?, last_updated = CURRENT_TIMESTAMP WHERE item_id = ?
+        `).bind(newStock, item.item_id),
+        c.env.DB.prepare(`
+          INSERT INTO inventory_transactions
+          (item_id, transaction_type, transaction_date, quantity, reference_type,
+           reference_id, balance_after, reason, handled_by, entity_id)
+          VALUES (?, 'OUT', ?, ?, ?, ?, ?, '출고', ?, ?)
+        `).bind(
+          item.item_id, release_date, -item.quantity, reference_type,
+          reference_id || null, newStock, user?.id || 1, relEntityId
+        )
+      ]
+    })
+    await c.env.DB.batch(releaseStmts)
 
     return c.json({
       success: true,
