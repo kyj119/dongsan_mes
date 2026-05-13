@@ -147,7 +147,7 @@ async function loadDashboardStats() {
                 topClientsDiv.innerHTML = '<div class="ds-empty">거래처 데이터가 없습니다.</div>';
             } else {
                 topClientsDiv.innerHTML = clients.map((client, index) =>
-                    '<div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition">' +
+                    '<div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition cursor-pointer" onclick="location.href=\'/ledger?search=' + encodeURIComponent(client.client_name) + '\'">' +
                     '<div class="flex items-center gap-3">' +
                     '<div class="text-2xl font-bold text-gray-400">' + (index + 1) + '</div>' +
                     '<div><div class="font-semibold">' + escapeHtml(client.client_name) + '</div>' +
@@ -574,7 +574,7 @@ async function loadTodayDue() {
       var label = isOverdue ? '지연' : 'D-Day';
       var labelClass = isOverdue ? 'bg-red-500 text-white' : 'bg-orange-400 text-white';
       var priorityBadge = o.priority === 'URGENT' ? '<span class="px-1 py-0.5 text-[10px] rounded bg-red-50 text-red-700 ml-1">긴급</span>' : '';
-      return '<div class="flex items-center justify-between p-2 rounded-lg border cursor-pointer hover:shadow-sm ' + urgencyClass + '" onclick="location.href=\'/orders\'">'
+      return '<div class="flex items-center justify-between p-2 rounded-lg border cursor-pointer hover:shadow-sm ' + urgencyClass + '" onclick="location.href=\'/shipments/daily?date=' + encodeURIComponent(o.delivery_date || '') + '\'">'
         + '<div class="flex items-center gap-2">'
         + '<span class="px-1.5 py-0.5 rounded text-[10px] font-bold ' + labelClass + '">' + label + '</span>'
         + '<div>'
