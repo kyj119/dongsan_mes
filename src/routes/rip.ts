@@ -44,14 +44,8 @@ interface PresetRow {
   equipment_id: string
   preset_name: string
   tps_filename: string | null
-  is_default: number
-  rip_profile: string | null
-  color_mode: string | null
-  resolution: string | null
-  media_type: string | null
-  copies: number | null
-  quality: string | null
   description: string | null
+  is_default: number
 }
 
 interface HeadRow {
@@ -234,7 +228,9 @@ ripRouter.get('/status', authMiddleware, async (c) => {
 ripRouter.get('/equipment', authMiddleware, async (c) => {
   try {
     const { results: equipmentList } = await c.env.DB.prepare(`
-      SELECT e.*,
+      SELECT e.id, e.name, e.printer_name, e.ip_address, e.status,
+        e.head_count, e.location_zone, e.location_x, e.location_y,
+        e.notes, e.equipment_status, e.daily_capacity, e.size_type,
         ah.last_seen_at,
         ah.ip_address as agent_ip,
         CASE
@@ -254,7 +250,7 @@ ripRouter.get('/equipment', authMiddleware, async (c) => {
     if (eqIds.length > 0) {
       const placeholders = eqIds.map(() => '?').join(',')
       const { results: allPresets } = await c.env.DB.prepare(`
-        SELECT id, equipment_id, preset_name, is_default, rip_profile, color_mode, resolution, media_type, copies, quality
+        SELECT id, equipment_id, preset_name, tps_filename, description, is_default
         FROM equipment_presets
         WHERE equipment_id IN (${placeholders})
         ORDER BY is_default DESC, preset_name ASC
