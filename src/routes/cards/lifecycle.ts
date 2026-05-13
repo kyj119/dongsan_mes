@@ -754,14 +754,14 @@ cardsLifecycleRouter.patch('/:id/ship', requireRole('ADMIN', 'MANAGER'), async (
           if (cardItems.results?.length) {
             for (const ci of cardItems.results) {
               await c.env.DB.prepare(`
-                INSERT INTO shipment_items (shipment_id, card_id, order_item_id, quantity)
+                INSERT OR IGNORE INTO shipment_items (shipment_id, card_id, order_item_id, quantity)
                 VALUES (?, ?, ?, ?)
               `).bind(shipmentId, card.id, ci.order_item_id, ci.quantity).run()
             }
           } else {
             // card_items가 없으면 카드 자체 정보로 1건 생성
             await c.env.DB.prepare(`
-              INSERT INTO shipment_items (shipment_id, card_id, order_item_id, quantity)
+              INSERT OR IGNORE INTO shipment_items (shipment_id, card_id, order_item_id, quantity)
               VALUES (?, ?, ?, 1)
             `).bind(shipmentId, card.id, card.order_item_id || null).run()
           }
@@ -780,13 +780,13 @@ cardsLifecycleRouter.patch('/:id/ship', requireRole('ADMIN', 'MANAGER'), async (
           if (cardItems.results?.length) {
             for (const ci of cardItems.results) {
               await c.env.DB.prepare(`
-                INSERT INTO shipment_items (shipment_id, card_id, order_item_id, quantity)
+                INSERT OR IGNORE INTO shipment_items (shipment_id, card_id, order_item_id, quantity)
                 VALUES (?, ?, ?, ?)
               `).bind(existingShipment.id, card.id, ci.order_item_id, ci.quantity).run()
             }
           } else {
             await c.env.DB.prepare(`
-              INSERT INTO shipment_items (shipment_id, card_id, order_item_id, quantity)
+              INSERT OR IGNORE INTO shipment_items (shipment_id, card_id, order_item_id, quantity)
               VALUES (?, ?, ?, 1)
             `).bind(existingShipment.id, card.id, card.order_item_id || null).run()
           }
