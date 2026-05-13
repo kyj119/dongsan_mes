@@ -21,9 +21,8 @@
 ### [UI/UX 롤아웃 잔여] — Input Group 실적용
 - ds-input-group CSS 준비 완료, orderForm/items 등 적용 보류 (템플릿 구조 변경 위험)
 - 신규 폼 작성 시 점진적 적용 예정
-### [GitHub #17] — as any 타입 안전성 270+ 인스턴스
-- 사용자 승인 완료 (코멘트: "전체 파일 점검해서 순차적으로 진행해줘")
-- 대공수 작업, 다음 세션에서 진행
+### [GitHub #26] — SELECT * 178건 → 명시 컬럼 전환
+- 대공수, 다음 세션에서 진행
 ### [거래처 상세 정책 UI] — 단가 관리 연동
 - 거래처 상세 페이지에 가격 정책 드롭다운 추가
 ### [CAPS 경리PC 워커 실행] — 경리 PC 수동 실행 대기 (외부 의존)
@@ -48,18 +47,20 @@
 
 ---
 
-## 🟢 최근 완료 (2026-05-13, 5커밋)
+## 🟢 최근 완료 (2026-05-13, 20커밋)
 
-- **UI/UX 전면 개선 (P0~P3 + 롤아웃)**:
-  - P0: 시맨틱 CSS 변수 12종 (purple/orange/teal + light + surface), 11파일 하드코딩 색상 치환, 테이블 기본 striped
-  - P1: 대시보드 Bento Grid (4열 hero 레이아웃), Side Sheet 컴포넌트, 사이드바 최근방문→제거
-  - P2: FilterBar/BulkBar/InputGroup CSS 컴포넌트 + orders/clients/cards/inventory/taxInvoices/shipments 6개 페이지 롤아웃
-  - P3: KPI 카운트업 애니메이션, 접근성 (Skip Link, ARIA, Focus Trap), 스크롤 그림자, 페이지 전환 효과
-  - 사이드바: 법인 전환 UI 분리 (로고→별도 행), 최근 방문 제거
-  - 버그수정: body/html 배경색, overscroll 방지, 스크롤 이벤트 window 전환
+- **GitHub Issues 11건 전량 처리 (#15~#25 + #17)**:
+  - **N+1 쿼리 제거** (8파일): prices/rip/shipments/inventoryCount/inventory/taxInvoices/priceList/inspections → db.batch()/IN절 전환
+  - **printEvents.ts 최적화**: 이벤트당 5~7쿼리 → 3~4쿼리 (카드 조회 합침 + batch)
+  - **printSystem.ts**: method_media/product_materials/해제 방식 batch
+  - **entity_id 누락 10테이블**: 마이그레이션 0193 + INSERT 16건 수정
+  - **스모크 테스트 커버리지**: 55→88 엔드포인트 (88/88 PASS)
+  - **as any 타입 안전성**: 902→45건 (857건 제거, 95%) — 9커밋, 50+파일
+  - SKILL.md 동기화: design-token.md (--c-* 체계), component.md (FilterBar/BulkBar/BentoGrid)
+  - 프로덕션 배포 4회 완료
+- **UI/UX 전면 개선 (P0~P3 + 롤아웃, 이전 세션 5커밋)**:
+  - P0~P3: CSS 변수, Bento Grid, FilterBar/BulkBar, 접근성, 스크롤 그림자
   - 독립 에이전트 검증 29/29 PASS
-  - **프로덕션 배포 완료**: 스모크 18페이지 + 코드 리뷰 + typecheck 통과 후 deploy:prod
-  - SKILL.md 동기화: design-token.md CSS 변수 체계 갱신 (--color-* → --c-*), component.md FilterBar/BulkBar/BentoGrid 추가
 
 ## 🟢 이전 완료 (2026-05-12)
 
