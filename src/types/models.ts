@@ -640,6 +640,7 @@ export interface TaxInvoice {
   notes?: string;
 
   issued_by?: number;
+  entity_id?: number;
   cancelled_at?: string;
   cancelled_by?: number;
   cancel_reason?: string;

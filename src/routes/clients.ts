@@ -148,7 +148,7 @@ clientsRouter.get('/', async (c) => {
       countQuery = 'SELECT COUNT(*) as count FROM clients c' + filterWhere
       countParams = [...filterParams]
     }
-    const { count } = await c.env.DB.prepare(countQuery).bind(...countParams).first() as any
+    const { count } = await c.env.DB.prepare(countQuery).bind(...countParams).first<{ count: number }>() as { count: number }
 
     return c.json({
       success: true,
@@ -177,7 +177,7 @@ clientsRouter.get('/:id/credit-check', async (c) => {
     const id = c.req.param('id')
     const client = await c.env.DB.prepare(
       'SELECT id, client_name, credit_limit, credit_hold FROM clients WHERE id = ?'
-    ).bind(id).first() as any
+    ).bind(id).first<{ id: number; client_name: string; credit_limit: number | null; credit_hold: number }>()
     if (!client) return c.json({ success: false, error: '거래처를 찾을 수 없습니다.' }, 404)
 
     // 차단 상태
@@ -196,7 +196,7 @@ clientsRouter.get('/:id/credit-check', async (c) => {
            - COALESCE(SUM(CASE WHEN o.paid_amount > 0 THEN o.paid_amount ELSE 0 END), 0) as balance
       FROM orders o
       WHERE o.client_id = ? AND o.status NOT IN ('CANCELLED','DELETED','QUOTATION')
-    `).bind(id).first() as any
+    `).bind(id).first<{ balance: number }>()
     const balance = ar?.balance || 0
 
     if (balance >= client.credit_limit) {
@@ -287,13 +287,13 @@ clientsRouter.get('/:id/detail', async (c) => {
         COALESCE(SUM(CASE WHEN billing_status = 'BILLED' THEN billed_amount ELSE 0 END), 0) as total_billed,
         COUNT(CASE WHEN billing_status = 'BILLED' THEN 1 END) as billed_count
       FROM orders WHERE client_id = ?
-    `).bind(id).first() as any
+    `).bind(id).first<{ total_billed: number; billed_count: number }>()
 
     const payments = await c.env.DB.prepare(`
       SELECT COALESCE(SUM(amount), 0) as total_payments,
         MAX(payment_date) as last_payment_date
       FROM payments WHERE client_id = ?
-    `).bind(id).first() as any
+    `).bind(id).first<{ total_payments: number; last_payment_date: string | null }>()
 
     // Client-specific prices
     const { results: prices } = await c.env.DB.prepare(`
@@ -347,7 +347,7 @@ clientsRouter.get('/:id/detail', async (c) => {
         receivables: {
           total_billed: receivables?.total_billed || 0,
           total_payments: payments?.total_payments || 0,
-          balance: (client as any).balance || 0,
+          balance: (client as Record<string, unknown>).balance as number || 0,
           billed_count: receivables?.billed_count || 0,
           last_payment_date: payments?.last_payment_date || null
         },
@@ -370,7 +370,7 @@ clientsRouter.get('/:id/intelligence', async (c) => {
 
     const client = await c.env.DB.prepare(
       'SELECT id, balance FROM clients WHERE id = ?'
-    ).bind(id).first() as any
+    ).bind(id).first<{ id: number; balance: number }>()
     if (!client) return c.json({ success: false, error: 'Client not found' }, 404)
 
     // 1. 수익성: 최근 6개월 매출/원가/마진
@@ -383,10 +383,10 @@ clientsRouter.get('/:id/intelligence', async (c) => {
       WHERE o.client_id = ? AND o.status != 'CANCELLED'
         AND oi.parent_item_id IS NULL
         AND o.created_at >= date('now', '-6 months')
-    `).bind(id).first() as any
+    `).bind(id).first<{ total_revenue: number; total_cost: number }>()
 
-    const revenue = parseFloat(profitability?.total_revenue || 0)
-    const cost = parseFloat(profitability?.total_cost || 0)
+    const revenue = Number(profitability?.total_revenue || 0)
+    const cost = Number(profitability?.total_cost || 0)
     const marginRate = revenue > 0 ? Math.round((revenue - cost) / revenue * 1000) / 10 : 0
     let profitGrade = 'D'
     if (marginRate >= 50) profitGrade = 'A'
@@ -400,16 +400,16 @@ clientsRouter.get('/:id/intelligence', async (c) => {
         MAX(payment_date) as last_payment_date,
         COUNT(*) as payment_count
       FROM payments WHERE client_id = ?
-    `).bind(id).first() as any
+    `).bind(id).first<{ total_payments: number; last_payment_date: string | null; payment_count: number }>()
 
     const totalBilled = await c.env.DB.prepare(`
       SELECT COALESCE(SUM(billed_amount), 0) as total
       FROM orders WHERE client_id = ? AND billing_status = 'BILLED'
-    `).bind(id).first() as any
+    `).bind(id).first<{ total: number }>()
 
-    const billedAmt = parseFloat(totalBilled?.total || 0)
-    const paidAmt = parseFloat(paymentStats?.total_payments || 0)
-    const balance = parseFloat(client.balance || 0)
+    const billedAmt = Number(totalBilled?.total || 0)
+    const paidAmt = Number(paymentStats?.total_payments || 0)
+    const balance = Number(client.balance || 0)
     const arRatio = billedAmt > 0 ? Math.round(balance / billedAmt * 1000) / 10 : 0
 
     // 3. 성장성: 최근 3개월 vs 이전 3개월
@@ -417,28 +417,28 @@ clientsRouter.get('/:id/intelligence', async (c) => {
       SELECT COUNT(*) as cnt, COALESCE(SUM(final_amount), 0) as rev
       FROM orders WHERE client_id = ? AND status != 'CANCELLED'
         AND created_at >= date('now', '-3 months')
-    `).bind(id).first() as any
+    `).bind(id).first<{ cnt: number; rev: number }>()
 
     const prev3 = await c.env.DB.prepare(`
       SELECT COUNT(*) as cnt, COALESCE(SUM(final_amount), 0) as rev
       FROM orders WHERE client_id = ? AND status != 'CANCELLED'
         AND created_at >= date('now', '-6 months') AND created_at < date('now', '-3 months')
-    `).bind(id).first() as any
+    `).bind(id).first<{ cnt: number; rev: number }>()
 
-    const recentRev = parseFloat(recent3?.rev || 0)
-    const prevRev = parseFloat(prev3?.rev || 0)
+    const recentRev = Number(recent3?.rev || 0)
+    const prevRev = Number(prev3?.rev || 0)
     const growthRate = prevRev > 0
       ? Math.round((recentRev - prevRev) / prevRev * 1000) / 10
       : (recentRev > 0 ? 100 : 0)
 
     // 4. 거래 빈도 (최근 6개월)
-    const recentOrderCount = parseInt(recent3?.cnt || 0) + parseInt(prev3?.cnt || 0)
+    const recentOrderCount = Number(recent3?.cnt || 0) + Number(prev3?.cnt || 0)
 
     // 5. 최근 주문일
     const lastOrder = await c.env.DB.prepare(`
       SELECT MAX(created_at) as last_order_date
       FROM orders WHERE client_id = ? AND status != 'CANCELLED'
-    `).bind(id).first() as any
+    `).bind(id).first<{ last_order_date: string | null }>()
 
     const lastOrderDate = lastOrder?.last_order_date || null
     const daysSinceLastOrder = lastOrderDate
@@ -449,7 +449,7 @@ clientsRouter.get('/:id/intelligence', async (c) => {
     const collectionCount = await c.env.DB.prepare(`
       SELECT COUNT(*) as cnt FROM collection_logs
       WHERE client_id = ? AND contact_date >= date('now', '-6 months')
-    `).bind(id).first() as any
+    `).bind(id).first<{ cnt: number }>()
 
     // 7. 위험 신호
     const risks: string[] = []
@@ -487,8 +487,8 @@ clientsRouter.get('/:id/intelligence', async (c) => {
         growth: {
           recent_3m_revenue: recentRev, prev_3m_revenue: prevRev,
           growth_rate: growthRate,
-          recent_3m_orders: parseInt(recent3?.cnt || 0),
-          prev_3m_orders: parseInt(prev3?.cnt || 0)
+          recent_3m_orders: Number(recent3?.cnt || 0),
+          prev_3m_orders: Number(prev3?.cnt || 0)
         },
         activity: {
           last_order_date: lastOrderDate,
@@ -590,7 +590,7 @@ clientsRouter.post('/import', async (c) => {
         // Check if client exists (by client_code OR business_registration_number)
         const existing = await c.env.DB.prepare(
           'SELECT id FROM clients WHERE client_code = ? OR (business_registration_number = ? AND business_registration_number IS NOT NULL AND business_registration_number != ?)'
-        ).bind(clientData.client_code, clientData.business_registration_number || '', '').first()
+        ).bind(clientData.client_code, clientData.business_registration_number || '', '').first<{ id: number }>()
 
         if (existing) {
           // Update existing client
@@ -635,7 +635,7 @@ clientsRouter.post('/import', async (c) => {
             clientData.delivery_method || 'SAME',
             clientData.delivery_address || null,
             clientData.invoice_method || clientData.invoice_type || 'PER_ORDER',
-            (existing as any).id
+            existing.id
           ).run()
 
           results.updated++
@@ -712,7 +712,7 @@ clientsRouter.post('/', requireRole('ADMIN', 'MANAGER'), async (c) => {
       const prefix = clientType === 'PURCHASE' ? 'P' : clientType === 'BOTH' ? 'B' : 'S'
       const lastCode = await c.env.DB.prepare(
         `SELECT client_code FROM clients WHERE client_code LIKE ? ORDER BY client_code DESC LIMIT 1`
-      ).bind(prefix + '-%').first() as any
+      ).bind(prefix + '-%').first<{ client_code: string }>()
       const nextNum = lastCode ? (parseInt(lastCode.client_code.split('-')[1]) || 0) + 1 : 1
       clientData.client_code = prefix + '-' + String(nextNum).padStart(4, '0')
     }
@@ -738,7 +738,7 @@ clientsRouter.post('/', requireRole('ADMIN', 'MANAGER'), async (c) => {
     if (!priceListId) {
       const defaultPl = await c.env.DB.prepare(
         'SELECT id FROM price_lists WHERE is_default = 1 LIMIT 1'
-      ).first() as any
+      ).first<{ id: number }>()
       priceListId = defaultPl ? defaultPl.id : null
     }
 
@@ -746,7 +746,7 @@ clientsRouter.post('/', requireRole('ADMIN', 'MANAGER'), async (c) => {
     if (!pricePolicyId) {
       const defaultPolicy = await c.env.DB.prepare(
         'SELECT id FROM price_policies WHERE is_default = 1 AND is_active = 1 LIMIT 1'
-      ).first() as any
+      ).first<{ id: number }>()
       pricePolicyId = defaultPolicy ? defaultPolicy.id : null
     }
 
@@ -953,7 +953,7 @@ clientsRouter.delete('/:id', requireRole('ADMIN'), async (c) => {
     // Check if client has orders
     const { count } = await c.env.DB.prepare(
       'SELECT COUNT(*) as count FROM orders WHERE client_id = ?'
-    ).bind(id).first() as any
+    ).bind(id).first<{ count: number }>() as { count: number }
 
     if (count > 0) {
       return c.json({
@@ -993,7 +993,7 @@ clientsRouter.get('/:id/portal-account', requireRole('ADMIN', 'MANAGER'), async 
              is_active, last_login_at, created_at
       FROM client_accounts
       WHERE client_id = ?
-    `).bind(clientId).first() as any | null
+    `).bind(clientId).first<{ id: number; login_id: string; contact_name: string | null; contact_phone: string | null; contact_email: string | null; is_active: number; last_login_at: string | null; created_at: string }>()
 
     return c.json({ success: true, data: { account: account || null } })
   } catch (error) {
@@ -1059,7 +1059,7 @@ clientsRouter.patch('/:id/portal-account', requireRole('ADMIN'), async (c) => {
 
     const existing = await c.env.DB.prepare(
       'SELECT id FROM client_accounts WHERE client_id = ?'
-    ).bind(clientId).first() as any
+    ).bind(clientId).first<{ id: number }>()
     if (!existing) {
       return c.json({ success: false, error: '포털 계정이 없습니다.' }, 404)
     }

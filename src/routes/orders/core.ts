@@ -29,7 +29,7 @@ function getCardGroup(item: any): string | null {
 
 // ── 카드 생성 공통 함수 (POST/PUT 중복 제거) ──
 interface GenerateCardsParams {
-  db: any
+  db: D1Database
   orderId: number
   orderNumber: string
   clientId: number
@@ -45,7 +45,7 @@ async function generateCardsForOrder(params: GenerateCardsParams): Promise<numbe
 
   const client = await db.prepare(`
     SELECT client_name FROM clients WHERE id = ?
-  `).bind(clientId).first() as any
+  `).bind(clientId).first<{ client_name: string }>()
 
   const { results: orderItems } = await db.prepare(`
     SELECT oi.*, i.category, i.sub_category, i.print_method_id, i.print_media_id,
@@ -55,69 +55,72 @@ async function generateCardsForOrder(params: GenerateCardsParams): Promise<numbe
     LEFT JOIN print_methods pm ON i.print_method_id = pm.id
     WHERE oi.order_id = ?
     ORDER BY oi.sort_order ASC
-  `).bind(orderId).all() as any
+  `).bind(orderId).all()
 
   const { results: finMethods } = await db.prepare(
     `SELECT name, margin_cm FROM finishing_methods WHERE is_active = 1`
-  ).all() as any
+  ).all()
   const finMarginMap = new Map<string, number>(
-    (finMethods || []).map((m: any) => [m.name, m.margin_cm || 0])
+    (finMethods || []).map((m): [string, number] => [m.name as string, (m.margin_cm as number) || 0])
   )
 
   const orderNumberParts = orderNumber.split('-')
   const orderSeq = orderNumberParts[1]
   const orderDate = orderNumberParts[0]
 
+  // orderItems rows from JOIN query — typed as Record<string, unknown>
+  type OIRow = Record<string, unknown>
+
   const parentIds = new Set<number>(
-    (orderItems as any[])
-      .filter((i: any) => i.parent_item_id !== null && i.parent_item_id !== undefined)
-      .map((i: any) => i.parent_item_id)
+    (orderItems as OIRow[])
+      .filter((i) => i.parent_item_id !== null && i.parent_item_id !== undefined)
+      .map((i) => i.parent_item_id as number)
   )
-  const parentMap = new Map<number, any>(
-    (orderItems as any[]).map((i: any) => [i.id, i])
-  )
-
-  const regularItems = (orderItems as any[]).filter(
-    (i: any) => !i.parent_item_id && !parentIds.has(i.id)
-  )
-  const childItems = (orderItems as any[]).filter(
-    (i: any) => i.parent_item_id !== null && i.parent_item_id !== undefined
+  const parentMap = new Map<number, OIRow>(
+    (orderItems as OIRow[]).map((i) => [i.id as number, i])
   )
 
-  const itemsByCardGroup = new Map<string, Array<{ item: any; ppJson: string | null; qty: number }>>()
+  const regularItems = (orderItems as OIRow[]).filter(
+    (i) => !i.parent_item_id && !parentIds.has(i.id as number)
+  )
+  const childItems = (orderItems as OIRow[]).filter(
+    (i) => i.parent_item_id !== null && i.parent_item_id !== undefined
+  )
+
+  const itemsByCardGroup = new Map<string, Array<{ item: OIRow; ppJson: string | null; qty: number }>>()
 
   for (const item of regularItems) {
     const cg = getCardGroup(item)
     if (!cg) continue
     if (!itemsByCardGroup.has(cg)) itemsByCardGroup.set(cg, [])
-    itemsByCardGroup.get(cg)!.push({ item, ppJson: item.post_processing || null, qty: item.quantity || 0 })
+    itemsByCardGroup.get(cg)!.push({ item, ppJson: (item.post_processing as string) || null, qty: (item.quantity as number) || 0 })
   }
 
   for (const child of childItems) {
-    const parent: any = parentMap.get(child.parent_item_id)
+    const parent = parentMap.get(child.parent_item_id as number)
     if (!parent) continue
     const cg = getCardGroup(parent)
     if (!cg) continue
     if (!itemsByCardGroup.has(cg)) itemsByCardGroup.set(cg, [])
-    itemsByCardGroup.get(cg)!.push({ item: child, ppJson: parent.post_processing || null, qty: 1 })
+    itemsByCardGroup.get(cg)!.push({ item: child, ppJson: (parent.post_processing as string) || null, qty: 1 })
   }
 
   // shipment_ready: 카드 미생성 품목은 바로 출고 준비 완료
   const cardGroupItems = new Set<number>()
   for (const entries of itemsByCardGroup.values()) {
-    for (const entry of entries) cardGroupItems.add(entry.item.id)
+    for (const entry of entries) cardGroupItems.add(entry.item.id as number)
   }
-  const noCardItems = (orderItems as any[]).filter((i: any) => !cardGroupItems.has(i.id))
+  const noCardItems = (orderItems as OIRow[]).filter((i) => !cardGroupItems.has(i.id as number))
   if (noCardItems.length > 0) {
-    const ids = noCardItems.map((i: any) => i.id)
+    const ids = noCardItems.map((i) => i.id as number)
     await db.prepare(
       `UPDATE order_items SET shipment_ready = 1 WHERE id IN (${ids.map(() => '?').join(',')})`
     ).bind(...ids).run()
   }
 
   // D1 batch로 원자적 카드 생성
-  const cardStatements: any[] = []
-  const cardGroupEntries: Array<{ cardNumber: string; entries: any[] }> = []
+  const cardStatements: D1PreparedStatement[] = []
+  const cardGroupEntries: Array<{ cardNumber: string; entries: Array<{ item: OIRow; ppJson: string | null; qty: number }> }> = []
 
   let cardIndex = 0
   for (const [cardGroup, entries] of itemsByCardGroup) {
@@ -184,9 +187,9 @@ async function generateCardsForOrder(params: GenerateCardsParams): Promise<numbe
     }
 
     const firstItem = entries[0].item
-    const cardWidth = firstItem.width || 0
-    const cardHeight = firstItem.height || 0
-    const totalQty = entries.reduce((s: number, e: any) => s + e.qty, 0)
+    const cardWidth = (firstItem.width as number) || 0
+    const cardHeight = (firstItem.height as number) || 0
+    const totalQty = entries.reduce((s: number, e) => s + e.qty, 0)
     const ripFilename = `${cardNumber}-${client?.client_name || 'Unknown'}-${category}(${entries.length}건)${postProcStr}`
 
     const totalML = mL + finL, totalMR = mR + finR
@@ -207,7 +210,7 @@ async function generateCardsForOrder(params: GenerateCardsParams): Promise<numbe
       `).bind(
         cardNumber, orderId, null, 'PRINTING',
         client?.client_name || 'Unknown', category, category,
-        cardWidth, cardHeight, totalQty, firstItem.unit || 'EA',
+        cardWidth, cardHeight, totalQty, (firstItem.unit as string) || 'EA',
         ripFilename, JSON.stringify(uniquePP),
         cardWidth > 0 ? cardWidth + totalML + totalMR : 0,
         cardHeight > 0 ? cardHeight + totalMT + totalMB : 0,
@@ -226,13 +229,13 @@ async function generateCardsForOrder(params: GenerateCardsParams): Promise<numbe
   const batchResults = await db.batch(cardStatements)
 
   // card_items INSERT (카드 ID 기반)
-  const itemStatements: any[] = []
+  const itemStatements: D1PreparedStatement[] = []
   for (let i = 0; i < batchResults.length; i++) {
     const cardId = batchResults[i].meta.last_row_id
     for (const entry of cardGroupEntries[i].entries) {
       itemStatements.push(
         db.prepare(`INSERT INTO card_items (card_id, order_item_id, quantity) VALUES (?, ?, ?)`)
-          .bind(cardId, entry.item.id, entry.qty)
+          .bind(cardId, entry.item.id as number, entry.qty)
       )
     }
   }
@@ -436,11 +439,12 @@ ordersCoreRouter.get('/', async (c) => {
       countQuery += ' WHERE ' + countWhereClauses.join(' AND ')
     }
 
-    const { count } = await c.env.DB.prepare(countQuery).bind(...countParams).first() as any
+    const countRow = await c.env.DB.prepare(countQuery).bind(...countParams).first<{ count: number }>()
+    const count = countRow?.count || 0
 
     const response: PaginatedResponse<Order> = {
       success: true,
-      data: results as any,
+      data: results as unknown as Order[],
       pagination: {
         page: parseInt(page),
         limit: safeLimit,
@@ -468,7 +472,7 @@ ordersCoreRouter.patch('/:id/bill', requireRole('ADMIN', 'MANAGER'), async (c) =
 
     const order = await c.env.DB.prepare(
       'SELECT id, status, client_id, final_amount, billing_status FROM orders WHERE id = ?'
-    ).bind(id).first() as any
+    ).bind(id).first<{ id: number; status: string; client_id: number; final_amount: number; billing_status: string | null }>()
 
     if (!order) {
       return c.json({ success: false, error: 'Order not found' }, 404)
@@ -485,7 +489,7 @@ ordersCoreRouter.patch('/:id/bill', requireRole('ADMIN', 'MANAGER'), async (c) =
       return c.json({ success: false, error: '이미 회계반영된 주문입니다' }, 400)
     }
 
-    const maxAmount = parseFloat(order.final_amount) || 0
+    const maxAmount = parseFloat(String(order.final_amount)) || 0
     const billedAmount = body.billed_amount !== undefined
       ? Math.min(Math.max(0, parseFloat(String(body.billed_amount)) || 0), maxAmount * 1.5)
       : maxAmount
@@ -528,7 +532,7 @@ ordersCoreRouter.patch('/:id/billing-status', requireRole('ADMIN', 'MANAGER'), a
 
     const order = await c.env.DB.prepare(
       'SELECT id, status, client_id, final_amount, billing_status, billed_amount FROM orders WHERE id = ?'
-    ).bind(id).first() as any
+    ).bind(id).first<{ id: number; status: string; client_id: number; final_amount: number; billing_status: string | null; billed_amount: number | null }>()
 
     if (!order) {
       return c.json({ success: false, error: 'Order not found' }, 404)
@@ -541,7 +545,7 @@ ordersCoreRouter.patch('/:id/billing-status', requireRole('ADMIN', 'MANAGER'), a
       if (order.status !== 'SHIPPED') {
         return c.json({ success: false, error: '출고완료 상태인 주문만 회계반영 가능합니다' }, 400)
       }
-      const billedAmount = parseFloat(order.final_amount) || 0
+      const billedAmount = Number(order.final_amount) || 0
       await c.env.DB.prepare(`
         UPDATE orders SET billing_status = 'BILLED', billed_at = CURRENT_TIMESTAMP, billed_by = ?, billed_amount = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?
       `).bind(user?.id || null, billedAmount, id).run()
@@ -556,7 +560,7 @@ ordersCoreRouter.patch('/:id/billing-status', requireRole('ADMIN', 'MANAGER'), a
       if (oldStatus !== 'BILLED') {
         return c.json({ success: false, error: '회계반영된 주문만 수금완료 처리할 수 있습니다' }, 400)
       }
-      const billedAmount = order.billed_amount || parseFloat(order.final_amount) || 0
+      const billedAmount = order.billed_amount || Number(order.final_amount) || 0
       await c.env.DB.prepare(`
         UPDATE orders SET billing_status = 'PAID', updated_at = CURRENT_TIMESTAMP WHERE id = ?
       `).bind(id).run()
@@ -567,7 +571,7 @@ ordersCoreRouter.patch('/:id/billing-status', requireRole('ADMIN', 'MANAGER'), a
     } else {
       // 회계반영 취소 (빈 문자열)
       if (oldStatus === 'BILLED') {
-        const billedAmount = order.billed_amount || parseFloat(order.final_amount) || 0
+        const billedAmount = order.billed_amount || Number(order.final_amount) || 0
         await c.env.DB.prepare(
           'UPDATE clients SET balance = balance - ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
         ).bind(billedAmount, order.client_id).run()
@@ -643,9 +647,12 @@ ordersCoreRouter.get('/:id/invoice', async (c) => {
       }, 404)
     }
 
+    // Cast order to a typed shape for property access
+    const o = order as Record<string, unknown>
+
     // Get full client info
-    const client = (order as any).client_id
-      ? await c.env.DB.prepare('SELECT * FROM clients WHERE id = ?').bind((order as any).client_id).first()
+    const client = o.client_id
+      ? await c.env.DB.prepare('SELECT * FROM clients WHERE id = ?').bind(o.client_id as number).first() as Record<string, unknown> | null
       : null
 
     // Get order items (부모행/단독행만 반환 - 자식행 제외)
@@ -658,7 +665,7 @@ ordersCoreRouter.get('/:id/invoice', async (c) => {
     `).bind(id).all()
 
     // Get company settings (entity 우선, 폴백 settings)
-    const entityId = (order as any).entity_id || getEntityId(c)
+    const entityId = (o.entity_id as number) || getEntityId(c)
     const company = await getEntityCompanyInfo(c.env.DB, entityId)
 
     return c.json({
@@ -666,12 +673,12 @@ ordersCoreRouter.get('/:id/invoice', async (c) => {
       data: {
         order, client, items, company,
         // 전미수금/현미수금: BILLED면 balance에 이미 포함, 아니면 미포함
-        previous_balance: (order as any)?.billing_status === 'BILLED'
-          ? ((client as any)?.balance || 0) - ((order as any)?.billed_amount || (order as any)?.final_amount || 0)
-          : ((client as any)?.balance || 0),
-        current_balance: (order as any)?.billing_status === 'BILLED'
-          ? ((client as any)?.balance || 0)
-          : ((client as any)?.balance || 0) + ((order as any)?.final_amount || 0)
+        previous_balance: o.billing_status === 'BILLED'
+          ? ((client?.balance as number) || 0) - ((o.billed_amount as number) || (o.final_amount as number) || 0)
+          : ((client?.balance as number) || 0),
+        current_balance: o.billing_status === 'BILLED'
+          ? ((client?.balance as number) || 0)
+          : ((client?.balance as number) || 0) + ((o.final_amount as number) || 0)
       }
     })
   } catch (error) {
@@ -794,10 +801,11 @@ ordersCoreRouter.post('/', async (c) => {
     const dateStr = today.toISOString().split('T')[0].replace(/-/g, '')
 
     // MAX 기반: 삭제된 주문이 있어도 시퀀스가 겹치지 않음
-    const { max_seq } = await c.env.DB.prepare(`
+    const seqRow = await c.env.DB.prepare(`
       SELECT COALESCE(MAX(CAST(SUBSTR(order_number, 10) AS INTEGER)), 0) as max_seq
       FROM orders WHERE order_number LIKE ?
-    `).bind(`${dateStr}-%`).first() as any
+    `).bind(`${dateStr}-%`).first<{ max_seq: number }>()
+    const max_seq = seqRow?.max_seq || 0
 
     const orderNumber = `${dateStr}-${String((max_seq || 0) + 1).padStart(3, '0')}`
 
@@ -810,9 +818,9 @@ ordersCoreRouter.post('/', async (c) => {
       const placeholders = itemIdsForPricing.map(() => '?').join(',')
       const { results: pricingRows } = await c.env.DB.prepare(
         `SELECT id, pricing_method FROM items WHERE id IN (${placeholders})`
-      ).bind(...itemIdsForPricing).all() as any
+      ).bind(...itemIdsForPricing).all()
       for (const row of pricingRows) {
-        pricingMethodMap.set(row.id, row.pricing_method || 'FIXED')
+        pricingMethodMap.set(row.id as number, (row.pricing_method as string) || 'FIXED')
       }
     }
 
@@ -957,7 +965,7 @@ ordersCoreRouter.post('/', async (c) => {
       if (item.item_id && !itemName) {
         const itemDetail = await c.env.DB.prepare(`
           SELECT item_name, category, unit FROM items WHERE id = ?
-        `).bind(item.item_id).first() as any
+        `).bind(item.item_id).first<{ item_name: string; category: string; unit: string }>()
 
         if (itemDetail) {
           itemName = itemDetail.item_name
@@ -1107,19 +1115,19 @@ ordersCoreRouter.post('/', async (c) => {
           AND oi.ai_group_index IS NOT NULL
           AND c.thumbnail_url IS NULL
         GROUP BY c.id
-      `).bind(orderId).all() as any
+      `).bind(orderId).all()
 
       // Cache analysis results to avoid redundant DB lookups
-      const analysisCache = new Map<number, any[]>()
+      const analysisCache = new Map<number, Record<string, unknown>[]>()
 
-      for (const row of (cardsForThumb as any[])) {
-        const analysisId: number = row.ai_analysis_id
-        const groupIndex: number = row.ai_group_index
+      for (const row of cardsForThumb) {
+        const analysisId = row.ai_analysis_id as number
+        const groupIndex = row.ai_group_index as number
 
         if (!analysisCache.has(analysisId)) {
           const analysis = await c.env.DB.prepare(
             'SELECT groups_json FROM ai_analysis_requests WHERE id = ?'
-          ).bind(analysisId).first() as any
+          ).bind(analysisId).first<{ groups_json: string | null }>()
           if (analysis?.groups_json) {
             try {
               analysisCache.set(analysisId, JSON.parse(analysis.groups_json))
@@ -1131,14 +1139,14 @@ ordersCoreRouter.post('/', async (c) => {
           }
         }
 
-        const groups: any[] = analysisCache.get(analysisId) || []
+        const groups = analysisCache.get(analysisId) || []
         // ai_group_index === -1 means "whole file" → use first group's thumbnail
         const matchedGroup = groupIndex === -1
           ? groups[0]
-          : groups.find((g: any) => g.index === groupIndex)
+          : groups.find((g) => g.index === groupIndex)
 
         if (matchedGroup?.thumbnail_base64) {
-          const thumbnailUrl = `data:image/png;base64,${matchedGroup.thumbnail_base64}`
+          const thumbnailUrl = `data:image/png;base64,${matchedGroup.thumbnail_base64 as string}`
           await c.env.DB.prepare(
             'UPDATE cards SET thumbnail_url = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
           ).bind(thumbnailUrl, row.card_id).run()
@@ -1154,13 +1162,13 @@ ordersCoreRouter.post('/', async (c) => {
       try {
         const analysis = await c.env.DB.prepare(
           `SELECT id, file_path, groups_json FROM ai_analysis_requests WHERE id = ?`
-        ).bind(aiAnalysisId).first() as any
+        ).bind(aiAnalysisId).first<{ id: number; file_path: string; groups_json: string | null }>()
         if (analysis?.groups_json) {
           const groups = JSON.parse(analysis.groups_json || '[]')
           const { results: postOrderItems } = await c.env.DB.prepare(
             `SELECT * FROM order_items WHERE order_id = ? AND ai_analysis_id IS NOT NULL ORDER BY sort_order ASC`
-          ).bind(orderId).all() as any
-          const aiItems = (postOrderItems as any[])
+          ).bind(orderId).all()
+          const aiItems = postOrderItems
 
           // sheet_layout 주문은 orders.sheet_layout_params에 저장됨
           // → C#의 ProcessOrderAsync에서 처리 (auto_process_jobs 불필요)
@@ -1195,14 +1203,14 @@ ordersCoreRouter.post('/', async (c) => {
           }
 
           for (const oi of aiItems) {
-            const gIdx = oi.ai_group_index ?? 0
+            const gIdx = (oi.ai_group_index as number) ?? 0
             const group = groups[gIdx]
             if (!group) continue
 
             const finishing = [oi.finishing, oi.finishing2, oi.finishing3].filter(Boolean).join('+')
-            const itemInfo = await c.env.DB.prepare('SELECT name FROM items WHERE id = ?').bind(oi.item_id).first() as any
+            const itemInfo = await c.env.DB.prepare('SELECT name FROM items WHERE id = ?').bind(oi.item_id).first<{ name: string }>()
             const productName = itemInfo?.name || ''
-            const scale = oi.scale_factor || _getScale(productName, oi.width || 0)
+            const scale = (oi.scale_factor as number) || _getScale(productName, (oi.width as number) || 0)
             const margins = _getMargins(finishing)
             const mL = margins.w / 10.0 / scale, mR = margins.w / 10.0 / scale
             const mT = margins.h > 0 ? margins.h / 10.0 / scale : 0
@@ -1227,8 +1235,8 @@ ordersCoreRouter.post('/', async (c) => {
                 scale_factor, clip_bounds, margins, status, ia_params)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)`
             ).bind(
-              orderId, oi.id, aiAnalysisId, gIdx,
-              analysis.file_path, productName, oi.width || 0, oi.height || 0, finishing,
+              orderId, oi.id as number, aiAnalysisId, gIdx,
+              analysis.file_path, productName, (oi.width as number) || 0, (oi.height as number) || 0, finishing,
               scale, JSON.stringify(clipBounds),
               JSON.stringify({ L: mL, R: mR, T: mT, B: mB }),
               JSON.stringify(iaParams)
@@ -1293,7 +1301,7 @@ ordersCoreRouter.patch('/:id/status', requireRole('ADMIN', 'MANAGER'), async (c)
     }
 
     // Get current status
-    const order = await c.env.DB.prepare('SELECT status, client_id, final_amount, order_number FROM orders WHERE id = ?').bind(id).first() as any
+    const order = await c.env.DB.prepare('SELECT status, client_id, final_amount, order_number FROM orders WHERE id = ?').bind(id).first<{ status: string; client_id: number; final_amount: number; order_number: string }>()
 
     if (!order) {
       return c.json({
@@ -1315,19 +1323,19 @@ ordersCoreRouter.patch('/:id/status', requireRole('ADMIN', 'MANAGER'), async (c)
       const { results: pendingCards } = await c.env.DB.prepare(`
         SELECT id, card_number, status, shipped_at FROM cards
         WHERE order_id = ? AND (status != 'PRINT_DONE' OR shipped_at IS NULL)
-      `).bind(id).all() as any
+      `).bind(id).all()
 
-      const unfinishedCards = (pendingCards || []).filter((c: any) => c.status !== 'PRINT_DONE')
+      const unfinishedCards = (pendingCards || []).filter((cd) => cd.status !== 'PRINT_DONE')
 
       // 미완료 카드가 있고 확인 응답이 아닌 경우 → 확인 요청 반환
       if (unfinishedCards.length > 0 && !confirmed_card_ids && !cancelled_card_ids) {
         return c.json({
           success: false,
           requires_confirmation: true,
-          pending_cards: unfinishedCards.map((c: any) => ({
-            id: c.id,
-            card_number: c.card_number,
-            status: c.status,
+          pending_cards: unfinishedCards.map((cd) => ({
+            id: cd.id,
+            card_number: cd.card_number,
+            status: cd.status,
           })),
           message: `인쇄 미완료 카드 ${unfinishedCards.length}건이 있습니다. 확인 후 진행해주세요.`
         })
@@ -1399,7 +1407,7 @@ ordersCoreRouter.patch('/:id/status', requireRole('ADMIN', 'MANAGER'), async (c)
           SELECT c.client_name, c.balance,
             (SELECT MIN(o2.billed_at) FROM orders o2 WHERE o2.client_id = c.id AND o2.billing_status = 'BILLED') as oldest_billed
           FROM clients c WHERE c.id = ? AND c.balance > 0
-        `).bind(order.client_id).first() as any
+        `).bind(order.client_id).first<{ client_name: string; balance: number; oldest_billed: string | null }>()
         if (clientCheck && clientCheck.oldest_billed) {
           const daysSince = Math.floor((Date.now() - new Date(clientCheck.oldest_billed).getTime()) / 86400000)
           if (daysSince > 30) {
@@ -1433,7 +1441,7 @@ ordersCoreRouter.delete('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
     // Check if order exists (status, client_id, final_amount 포함)
     const order = await c.env.DB.prepare(`
       SELECT id, order_number, status, client_id, final_amount, billing_status, billed_amount FROM orders WHERE id = ?
-    `).bind(id).first() as any
+    `).bind(id).first<{ id: number; order_number: string; status: string; client_id: number; final_amount: number; billing_status: string | null; billed_amount: number | null }>()
 
     if (!order) {
       return c.json({
@@ -1589,7 +1597,7 @@ ordersCoreRouter.put('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
     // Check if order exists (client_id, final_amount 포함하여 balance 차액 계산에 활용)
     const existingOrder = await c.env.DB.prepare(`
       SELECT id, status, client_id, final_amount, order_number, billing_status FROM orders WHERE id = ?
-    `).bind(id).first() as any
+    `).bind(id).first<{ id: number; status: string; client_id: number; final_amount: number; order_number: string; billing_status: string | null }>()
 
     if (!existingOrder) {
       return c.json({
@@ -1617,9 +1625,9 @@ ordersCoreRouter.put('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
       const putPlaceholders = putItemIdsForPricing.map(() => '?').join(',')
       const { results: putPricingRows } = await c.env.DB.prepare(
         `SELECT id, pricing_method FROM items WHERE id IN (${putPlaceholders})`
-      ).bind(...putItemIdsForPricing).all() as any
+      ).bind(...putItemIdsForPricing).all()
       for (const row of putPricingRows) {
-        putPricingMethodMap.set(row.id, row.pricing_method || 'FIXED')
+        putPricingMethodMap.set(row.id as number, (row.pricing_method as string) || 'FIXED')
       }
     }
 
@@ -1817,7 +1825,7 @@ ordersCoreRouter.put('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
       if (item.item_id && !itemName) {
         const itemDetail = await c.env.DB.prepare(`
           SELECT item_name, category, unit FROM items WHERE id = ?
-        `).bind(item.item_id).first() as any
+        `).bind(item.item_id).first<{ item_name: string; category: string; unit: string }>()
 
         if (itemDetail) {
           itemName = itemDetail.item_name
@@ -1951,7 +1959,7 @@ ordersCoreRouter.patch('/:id/cancel', requireRole('ADMIN', 'MANAGER'), async (c)
 
     const order = await c.env.DB.prepare(
       'SELECT id, status, order_number, client_id, billing_status, billed_amount, final_amount FROM orders WHERE id = ?'
-    ).bind(id).first() as any
+    ).bind(id).first<{ id: number; status: string; order_number: string; client_id: number; billing_status: string | null; billed_amount: number | null; final_amount: number }>()
     if (!order) return c.json({ success: false, error: '주문을 찾을 수 없습니다.' }, 404)
 
     if (order.status === 'CANCELLED') {
@@ -2010,7 +2018,7 @@ ordersCoreRouter.patch('/:id/restore', requireRole('ADMIN', 'MANAGER'), async (c
 
     const order = await c.env.DB.prepare(
       'SELECT id, status, order_number FROM orders WHERE id = ?'
-    ).bind(id).first() as any
+    ).bind(id).first<{ id: number; status: string; order_number: string }>()
     if (!order) return c.json({ success: false, error: '주문을 찾을 수 없습니다.' }, 404)
 
     if (order.status !== 'CANCELLED') {
@@ -2064,8 +2072,8 @@ ordersCoreRouter.post('/sync-statuses', requireRole('ADMIN', 'MANAGER'), async (
         ${ef.clause}
     `).bind(...ef.params).all()
 
-    for (const order of toShip as any[]) {
-      const method = (order.delivery_method || '').trim()
+    for (const order of toShip) {
+      const method = ((order.delivery_method as string) || '').trim()
       const isQuick = method === '방문수령' || method === '직접수령' || method === '직접배송' || method === '퀵'
       const billableDays = isQuick ? 1 : 2
 
@@ -2094,7 +2102,7 @@ ordersCoreRouter.post('/sync-statuses', requireRole('ADMIN', 'MANAGER'), async (
         ${ef.clause}
     `).bind(...ef.params).all()
 
-    for (const order of toBill as any[]) {
+    for (const order of toBill) {
       await db.prepare(`
         UPDATE orders SET billing_status = 'BILLED', billed_at = CURRENT_TIMESTAMP,
           billed_by = ?, billed_amount = final_amount, updated_at = CURRENT_TIMESTAMP
@@ -2121,7 +2129,7 @@ ordersCoreRouter.post('/sync-statuses', requireRole('ADMIN', 'MANAGER'), async (
         ${ef.clause}
     `).bind(...ef.params).all()
 
-    for (const order of noInvoice as any[]) {
+    for (const order of noInvoice) {
       await db.prepare(`
         UPDATE orders SET billing_status = 'BILLED', billed_at = CURRENT_TIMESTAMP,
           billed_by = ?, billed_amount = final_amount, updated_at = CURRENT_TIMESTAMP
@@ -2134,7 +2142,7 @@ ordersCoreRouter.post('/sync-statuses', requireRole('ADMIN', 'MANAGER'), async (
       `).bind(order.id, order.client_id).run()
     }
 
-    const billedCount = (toBill as any[]).length + (noInvoice as any[]).length
+    const billedCount = toBill.length + noInvoice.length
 
     await logActivity({
       db,
@@ -2149,7 +2157,7 @@ ordersCoreRouter.post('/sync-statuses', requireRole('ADMIN', 'MANAGER'), async (
       data: {
         shipped: toShip.length,
         billed: billedCount,
-        shipped_ids: (toShip as any[]).map((o: any) => o.id)
+        shipped_ids: toShip.map((o) => o.id)
       }
     })
   } catch (error) {
