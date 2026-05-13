@@ -441,7 +441,7 @@ shipmentsRouter.post('/', requireRole('ADMIN', 'MANAGER', 'DESIGNER'), async (c)
     if (body.card_ids && body.card_ids.length > 0) {
       const stmts = body.card_ids.flatMap((cardId: number) => [
         c.env.DB.prepare('UPDATE cards SET shipped_at = CURRENT_TIMESTAMP WHERE id = ? AND shipped_at IS NULL').bind(cardId),
-        c.env.DB.prepare('INSERT INTO shipment_items (shipment_id, card_id) VALUES (?, ?)').bind(shipmentId, cardId)
+        c.env.DB.prepare('INSERT OR IGNORE INTO shipment_items (shipment_id, card_id) VALUES (?, ?)').bind(shipmentId, cardId)
       ])
       await c.env.DB.batch(stmts)
     } else {
@@ -458,7 +458,7 @@ shipmentsRouter.post('/', requireRole('ADMIN', 'MANAGER', 'DESIGNER'), async (c)
       if (shippedCards && shippedCards.length > 0) {
         await c.env.DB.batch(
           (shippedCards as { id: number }[]).map(card =>
-            c.env.DB.prepare('INSERT INTO shipment_items (shipment_id, card_id) VALUES (?, ?)').bind(shipmentId, card.id)
+            c.env.DB.prepare('INSERT OR IGNORE INTO shipment_items (shipment_id, card_id) VALUES (?, ?)').bind(shipmentId, card.id)
           )
         )
       }
