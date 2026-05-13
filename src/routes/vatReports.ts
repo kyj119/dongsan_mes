@@ -2,7 +2,7 @@
 import { Hono } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
-import { entityFilter } from '../utils/entityFilter'
+import { entityFilter, getEntityId } from '../utils/entityFilter'
 
 const vatReportsRouter = new Hono<HonoEnv>()
 vatReportsRouter.use('/*', authMiddleware, requireRole('ADMIN', 'MANAGER'))
@@ -113,8 +113,8 @@ vatReportsRouter.post('/reports', async (c) => {
         report_year, report_quarter, period_start, period_end,
         sales_count, sales_supply_amount, sales_tax_amount,
         purchase_count, purchase_supply_amount, purchase_tax_amount,
-        payable_tax, status, notes, created_by
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        payable_tax, status, notes, created_by, entity_id
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(report_year, report_quarter) DO UPDATE SET
         sales_count = excluded.sales_count,
         sales_supply_amount = excluded.sales_supply_amount,
@@ -132,7 +132,8 @@ vatReportsRouter.post('/reports', async (c) => {
       body.payable_tax || 0,
       body.status || 'DRAFT',
       body.notes || null,
-      user?.id || null
+      user?.id || null,
+      getEntityId(c) || 1
     ).run()
 
     return c.json({ success: true, data: { id: result.meta.last_row_id }, message: '저장되었습니다.' })

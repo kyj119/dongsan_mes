@@ -4,7 +4,7 @@ import { authMiddleware, requireRole } from '../middleware/auth'
 import { requirePagePermission } from '../middleware/permissions'
 import { sendEmail } from '../services/emailProvider'
 import { renderTemplate } from '../services/emailTemplates'
-import { entityFilter } from '../utils/entityFilter'
+import { entityFilter, getEntityId } from '../utils/entityFilter'
 
 const shipmentsRouter = new Hono<HonoEnv>()
 shipmentsRouter.use('/*', authMiddleware, requirePagePermission('/shipments'))
@@ -410,14 +410,14 @@ shipmentsRouter.post('/', requireRole('ADMIN', 'MANAGER', 'DESIGNER'), async (c)
         shipment_number, order_id, status, delivery_type,
         courier_name, tracking_number, shipped_at,
         receiver_name, receiver_phone, receiver_address,
-        notes, created_by, created_at, updated_at
-      ) VALUES (?, ?, 'SHIPPED', ?, ?, ?, CURRENT_TIMESTAMP, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        notes, created_by, created_at, updated_at, entity_id
+      ) VALUES (?, ?, 'SHIPPED', ?, ?, ?, CURRENT_TIMESTAMP, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, ?)
     `).bind(
       shipmentNumber, body.order_id,
       body.delivery_type || 'DELIVERY',
       body.courier_name || null, body.tracking_number || null,
       body.receiver_name || null, body.receiver_phone || null, body.receiver_address || null,
-      body.notes || null, user?.id || 1
+      body.notes || null, user?.id || 1, getEntityId(c) || 1
     ).run()
 
     const shipmentId = result.meta.last_row_id
@@ -575,8 +575,8 @@ shipmentsRouter.patch('/:id', requireRole('ADMIN', 'MANAGER', 'OPERATOR'), async
         : 'DELIVERY'
 
       await c.env.DB.prepare(
-        `INSERT INTO shipments (shipment_number, order_id, delivery_type) VALUES (?, ?, ?)`
-      ).bind(shipmentNumber, order.id, deliveryType).run()
+        `INSERT INTO shipments (shipment_number, order_id, delivery_type, entity_id) VALUES (?, ?, ?, ?)`
+      ).bind(shipmentNumber, order.id, deliveryType, getEntityId(c) || 1).run()
 
       shipment = await c.env.DB.prepare('SELECT id FROM shipments WHERE order_id = ?').bind(id).first()
     }

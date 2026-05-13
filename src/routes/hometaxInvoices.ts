@@ -75,9 +75,9 @@ hometaxInvoicesRouter.post('/collect', requireRole('ADMIN', 'MANAGER'), async (c
     // Save job to DB
     const db = c.env.DB
     const insertResult = await db.prepare(`
-      INSERT INTO hometax_jobs (job_id, job_type, start_date, end_date, requested_by)
-      VALUES (?, ?, ?, ?, ?)
-    `).bind(jobId, type, startDate, endDate, user.id).run()
+      INSERT INTO hometax_jobs (job_id, job_type, start_date, end_date, requested_by, entity_id)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).bind(jobId, type, startDate, endDate, user.id, getEntityId(c) || 1).run()
 
     return c.json({
       success: true,
@@ -258,15 +258,15 @@ hometaxInvoicesRouter.post('/jobs/:id/fetch', requireRole('ADMIN', 'MANAGER'), a
             issuer_corp_num, issuer_corp_name, issuer_ceo_name,
             receiver_corp_num, receiver_corp_name, receiver_ceo_name,
             invoice_detail_type, tax_type, purpose_type,
-            raw_data
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            raw_data, entity_id
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `).bind(
           job.id, job.job_type, ntsConfirmNumber, issueDate, sendDate,
           supplyAmount, taxAmount, totalAmount,
           issuerCorpNum, issuerCorpName, issuerCeoName,
           receiverCorpNum, receiverCorpName, receiverCeoName,
           invoiceDetailType, taxType, purposeType,
-          JSON.stringify(invoice)
+          JSON.stringify(invoice), getEntityId(c) || 1
         ).run()
 
         totalImported++

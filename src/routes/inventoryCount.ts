@@ -63,9 +63,9 @@ inventoryCountRouter.post('/', async (c) => {
 
     // inventory_counts 생성
     const result = await c.env.DB.prepare(`
-      INSERT INTO inventory_counts (count_number, count_date, count_type, status, notes)
-      VALUES (?, ?, ?, 'DRAFT', ?)
-    `).bind(countNumber, countDate, actualType, countNotes).run()
+      INSERT INTO inventory_counts (count_number, count_date, count_type, status, notes, entity_id)
+      VALUES (?, ?, ?, 'DRAFT', ?, ?)
+    `).bind(countNumber, countDate, actualType, countNotes, getEntityId(c) || 1).run()
 
     const countId = (result.meta.last_row_id as number)
 

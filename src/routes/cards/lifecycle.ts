@@ -423,9 +423,9 @@ cardsLifecycleRouter.post('/:id/defects', async (c) => {
 
     // 불량 기록 생성
     const result = await c.env.DB.prepare(`
-      INSERT INTO quality_issues (card_id, issue_type, defect_category, description, severity, status, reported_by)
-      VALUES (?, 'DEFECT', ?, ?, ?, 'OPEN', ?)
-    `).bind(cardId, defect_category, description, severity || 'MEDIUM', employeeId).run()
+      INSERT INTO quality_issues (card_id, issue_type, defect_category, description, severity, status, reported_by, entity_id)
+      VALUES (?, 'DEFECT', ?, ?, ?, 'OPEN', ?, ?)
+    `).bind(cardId, defect_category, description, severity || 'MEDIUM', employeeId, getEntityId(c) || 1).run()
 
     // auto_hold가 true이고 현재 HOLD 상태가 아니면 HOLD 전환
     if (auto_hold && card.status !== 'HOLD') {
@@ -506,9 +506,9 @@ cardsLifecycleRouter.patch('/:id/status', async (c) => {
           await c.env.DB.prepare(`
             INSERT INTO quality_issues (
               work_record_id, card_id, issue_type, defect_category,
-              quantity_defect, description, status, reported_by, created_at
-            ) VALUES (NULL, ?, 'DEFECT', ?, 1, ?, 'REPORTED', ?, CURRENT_TIMESTAMP)
-          `).bind(parseInt(id), safeCategory, reason || '', reportedBy).run()
+              quantity_defect, description, status, reported_by, created_at, entity_id
+            ) VALUES (NULL, ?, 'DEFECT', ?, 1, ?, 'REPORTED', ?, CURRENT_TIMESTAMP, ?)
+          `).bind(parseInt(id), safeCategory, reason || '', reportedBy, getEntityId(c) || 1).run()
         }
       }
     } else {
@@ -726,15 +726,16 @@ cardsLifecycleRouter.patch('/:id/ship', requireRole('ADMIN', 'MANAGER'), async (
         const deliveryType = dtMap[orderInfo?.delivery_method] || 'DELIVERY'
 
         const shipmentResult = await c.env.DB.prepare(`
-          INSERT INTO shipments (shipment_number, order_id, status, delivery_type, courier_name, shipped_at, receiver_address, created_by)
-          VALUES (?, ?, 'SHIPPED', ?, ?, CURRENT_TIMESTAMP, ?, ?)
+          INSERT INTO shipments (shipment_number, order_id, status, delivery_type, courier_name, shipped_at, receiver_address, created_by, entity_id)
+          VALUES (?, ?, 'SHIPPED', ?, ?, CURRENT_TIMESTAMP, ?, ?, ?)
         `).bind(
           shipmentNumber,
           card.order_id,
           deliveryType,
           orderInfo?.delivery_method || null,
           orderInfo?.delivery_info || null,
-          user?.id || 1
+          user?.id || 1,
+          getEntityId(c) || 1
         ).run()
 
         const shipmentId = shipmentResult.meta?.last_row_id
