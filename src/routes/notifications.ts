@@ -24,7 +24,7 @@ notificationsRouter.get('/', async (c) => {
     const { limit = '20', unread_only = '' } = c.req.query()
     const safeLimit = Math.min(Number(limit) || 20, 50)
 
-    let query = `SELECT * FROM notifications WHERE (user_id = ? OR (user_id IS NULL AND target_role = ?))`
+    let query = `SELECT id, user_id, target_role, title, message, link, is_read, created_at FROM notifications WHERE (user_id = ? OR (user_id IS NULL AND target_role = ?))`
     const params: any[] = [user.id, user.role]
 
     if (unread_only === '1') {

@@ -99,7 +99,7 @@ facilityRouter.get('/layout-data', async (c) => {
   try {
     const [zonesRes, equipRes, locsRes, cardsRes] = await Promise.all([
       c.env.DB.prepare(`
-        SELECT * FROM facility_zones WHERE is_active = 1 ORDER BY sort_order
+        SELECT id, name, description, color, sort_order, bounds, is_active, created_at, updated_at FROM facility_zones WHERE is_active = 1 ORDER BY sort_order
       `).all(),
       c.env.DB.prepare(`
         SELECT e.id, e.name, e.printer_name, e.equipment_status, e.location_x, e.location_y,
@@ -114,7 +114,7 @@ facilityRouter.get('/layout-data', async (c) => {
         WHERE e.status = 'ACTIVE'
       `).all(),
       c.env.DB.prepare(`
-        SELECT * FROM inventory_locations WHERE is_active = 1
+        SELECT id, zone_id, name, location_x, location_y, location_type, description, is_active, created_at FROM inventory_locations WHERE is_active = 1
       `).all(),
       // 구역별 오늘 작업 수
       c.env.DB.prepare(`

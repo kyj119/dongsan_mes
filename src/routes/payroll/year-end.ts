@@ -130,7 +130,7 @@ yearEndRouter.get('/year-end-settlement/:employeeId', async (c) => {
     if (!settlement) return c.json({ success: true, data: null })
 
     const items = await c.env.DB.prepare(
-      `SELECT * FROM year_end_deduction_items WHERE settlement_id = ? ORDER BY category, id`
+      `SELECT id, settlement_id, category, sub_category, description, amount, deductible_amount, created_at FROM year_end_deduction_items WHERE settlement_id = ? ORDER BY category, id`
     ).bind(settlement.id).all()
 
     return c.json({ success: true, data: { settlement, items: items.results || [] } })

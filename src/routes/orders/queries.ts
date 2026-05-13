@@ -71,7 +71,7 @@ ordersQueriesRouter.get('/stats', async (c) => {
 ordersQueriesRouter.get('/options/post-processing', async (c) => {
   try {
     const { results } = await c.env.DB.prepare(`
-      SELECT * FROM post_processing_options WHERE is_active = 1 ORDER BY option_name ASC
+      SELECT id, option_code, option_name, margin_left, margin_right, margin_top, margin_bottom, additional_cost, description, pp_category, parameter_schema, pricing_type, unit_price, display_on_card, is_active FROM post_processing_options WHERE is_active = 1 ORDER BY option_name ASC
     `).all()
 
     return c.json({

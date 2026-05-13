@@ -107,7 +107,7 @@ priceListRouter.get('/policies/:id', async (c) => {
   try {
     const id = c.req.param('id')
     const policy = await c.env.DB.prepare(
-      'SELECT * FROM price_policies WHERE id = ?'
+      'SELECT id, name, description, is_default, is_active, created_at, updated_at FROM price_policies WHERE id = ?'
     ).bind(id).first()
     if (!policy) return c.json({ success: false, error: '정책을 찾을 수 없습니다.' }, 404)
 

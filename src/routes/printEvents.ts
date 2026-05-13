@@ -595,7 +595,7 @@ printEventsRouter.get('/', authMiddleware, async (c) => {
 printEventsRouter.get('/agents', authMiddleware, async (c) => {
   try {
     const { results } = await c.env.DB.prepare(`
-      SELECT *,
+      SELECT id, agent_id, agent_version, ip_address, last_seen_at, print_log_path, status, equipment_id, is_printing, created_at, updated_at,
         CASE
           WHEN last_seen_at IS NULL THEN 'unknown'
           WHEN (julianday('now') - julianday(last_seen_at)) * 86400 > 120 THEN 'offline'
@@ -667,7 +667,7 @@ printEventsRouter.get('/stats', authMiddleware, async (c) => {
 
     // Recent events (last 20)
     const { results: recent } = await c.env.DB.prepare(`
-      SELECT * FROM print_events
+      SELECT id, agent_id, card_number, card_id, order_number, file_path, file_name, printer_name, print_status, print_started_at, print_completed_at, output_width, output_height, dpi, equipment_id, copy_total, print_duration_sec, created_at FROM print_events
       ORDER BY created_at DESC LIMIT 20
     `).all()
 

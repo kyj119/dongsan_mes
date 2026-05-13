@@ -282,11 +282,11 @@ cashFlowRouter.get('/loans/:id/schedule', requireRole('ADMIN'), async (c) => {
 
     // 기존 스케줄 조회
     const { results } = await c.env.DB.prepare(`
-      SELECT * FROM loan_payments WHERE loan_id = ? ORDER BY payment_number
+      SELECT id, loan_id, payment_number, scheduled_date, principal_amount, interest_amount, total_amount, actual_paid_amount, actual_paid_date, status, notes, created_at FROM loan_payments WHERE loan_id = ? ORDER BY payment_number
     `).bind(id).all()
 
     // 대출 정보도 함께
-    const loan = await c.env.DB.prepare('SELECT * FROM loans WHERE id = ?').bind(id).first()
+    const loan = await c.env.DB.prepare('SELECT id, loan_number, creditor, description, original_amount, current_balance, rate_type, current_rate, repayment_type, start_date, maturity_date, monthly_payment_day, monthly_payment_amount, notes, is_active, created_at FROM loans WHERE id = ?').bind(id).first()
 
     return c.json({ success: true, data: { loan, payments: results } })
   } catch (error) {
@@ -299,7 +299,7 @@ cashFlowRouter.get('/loans/:id/schedule', requireRole('ADMIN'), async (c) => {
 cashFlowRouter.post('/loans/:id/generate-schedule', requireRole('ADMIN'), async (c) => {
   try {
     const id = c.req.param('id')
-    const loan = await c.env.DB.prepare('SELECT * FROM loans WHERE id = ?').bind(id).first<{
+    const loan = await c.env.DB.prepare('SELECT id, start_date, maturity_date, current_rate, current_balance, monthly_payment_day, repayment_type FROM loans WHERE id = ?').bind(id).first<{
       start_date: string; maturity_date: string; current_rate: number;
       current_balance: number; monthly_payment_day: number | null;
       repayment_type: string
@@ -390,7 +390,7 @@ cashFlowRouter.post('/loans/:id/payments/:pid/pay', requireRole('ADMIN'), async 
     const body = await c.req.json<{ actual_paid_amount: number; actual_paid_date: string; notes?: string }>()
 
     const payment = await c.env.DB.prepare(
-      'SELECT * FROM loan_payments WHERE id = ? AND loan_id = ?'
+      'SELECT id, loan_id, payment_number, total_amount, principal_amount FROM loan_payments WHERE id = ? AND loan_id = ?'
     ).bind(pid, id).first<{ total_amount: number; principal_amount: number }>()
     if (!payment) return c.json({ success: false, error: '상환 스케줄을 찾을 수 없습니다.' }, 404)
 

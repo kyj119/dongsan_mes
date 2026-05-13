@@ -62,7 +62,7 @@ settingsRouter.get('/entity', requireRole('ADMIN', 'MANAGER'), async (c) => {
       return c.json({ success: false, error: '법인을 선택해주세요.' }, 400)
     }
     const entity = await c.env.DB.prepare(
-      'SELECT * FROM entities WHERE id = ?'
+      'SELECT id, name, short_name, business_reg_no, representative, business_type, business_item, address, phone, fax, email, tax_email, popbill_corp_num, bank_info, stamp_base64, logo_base64, email_from_address, email_from_name, is_active, sort_order, created_at FROM entities WHERE id = ?'
     ).bind(entityId).first()
     if (!entity) {
       return c.json({ success: false, error: '법인을 찾을 수 없습니다.' }, 404)
@@ -109,7 +109,7 @@ settingsRouter.patch('/entity', requireRole('ADMIN'), async (c) => {
     ).bind(...params).run()
 
     const updated = await c.env.DB.prepare(
-      'SELECT * FROM entities WHERE id = ?'
+      'SELECT id, name, short_name, business_reg_no, representative, business_type, business_item, address, phone, fax, email, tax_email, popbill_corp_num, bank_info, stamp_base64, logo_base64, email_from_address, email_from_name, is_active, sort_order, created_at FROM entities WHERE id = ?'
     ).bind(entityId).first()
     return c.json({ success: true, data: updated })
   } catch (error) {
@@ -124,7 +124,7 @@ settingsRouter.patch('/entity', requireRole('ADMIN'), async (c) => {
 settingsRouter.get('/cost-standards', requireRole('ADMIN', 'MANAGER'), async (c) => {
   try {
     const { results } = await c.env.DB.prepare(
-      'SELECT * FROM cost_standards ORDER BY category_name'
+      'SELECT id, category_name, media_cost_per_sqm, ink_cost_per_sqm, description, updated_at FROM cost_standards ORDER BY category_name'
     ).all()
     return c.json({ success: true, data: results })
   } catch (error) {

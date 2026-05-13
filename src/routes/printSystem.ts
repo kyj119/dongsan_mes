@@ -124,8 +124,8 @@ async function createLinkedItem(
   mediaId: number,
   priceOverride?: number | null
 ) {
-  const method = await db.prepare('SELECT * FROM print_methods WHERE id = ?').bind(methodId).first<MethodRow>()
-  const media = await db.prepare('SELECT * FROM print_media WHERE id = ?').bind(mediaId).first<MediaRow>()
+  const method = await db.prepare('SELECT id, name, code, price_per_sqm, sort_order, is_active FROM print_methods WHERE id = ?').bind(methodId).first<MethodRow>()
+  const media = await db.prepare('SELECT id, name, code, media_type, price_per_unit, unit, roll_width_cm, sheet_width_cm, sheet_height_cm, media_group, group_sort, sort_order FROM print_media WHERE id = ?').bind(mediaId).first<MediaRow>()
 
   if (!method || !media) return null
 
@@ -163,7 +163,7 @@ async function createLinkedItem(
 printSystemRouter.get('/methods', async (c) => {
   try {
     const { results } = await c.env.DB.prepare(
-      'SELECT * FROM print_methods WHERE is_active = 1 ORDER BY sort_order ASC, name ASC'
+      'SELECT id, name, code, price_per_sqm, sort_order, is_active FROM print_methods WHERE is_active = 1 ORDER BY sort_order ASC, name ASC'
     ).all()
 
     return c.json({ success: true, data: results })

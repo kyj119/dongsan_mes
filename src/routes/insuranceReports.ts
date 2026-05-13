@@ -16,7 +16,7 @@ insuranceReportsRouter.get('/', async (c) => {
     const year = Number(c.req.query('year') || new Date().getFullYear())
     const month = c.req.query('month')
 
-    let sql = `SELECT * FROM insurance_reports WHERE year = ?`
+    let sql = `SELECT id, year, month, report_type, status, employee_count, total_national_pension, total_health_insurance, total_long_term_care, total_employment_insurance, total_industrial_accident, employer_national_pension, employer_health_insurance, employer_long_term_care, employer_employment_insurance, grand_total_employee, grand_total_employer, grand_total, submitted_at, confirmed_by, confirmed_at, created_at, updated_at FROM insurance_reports WHERE year = ?`
     const params: any[] = [year]
 
     if (month) {
@@ -61,11 +61,11 @@ insuranceReportsRouter.get('/annual-summary', async (c) => {
 insuranceReportsRouter.get('/:id', async (c) => {
   try {
     const id = Number(c.req.param('id'))
-    const report = await c.env.DB.prepare(`SELECT * FROM insurance_reports WHERE id = ?`).bind(id).first<any>()
+    const report = await c.env.DB.prepare(`SELECT id, year, month, report_type, status, employee_count, total_national_pension, total_health_insurance, total_long_term_care, total_employment_insurance, total_industrial_accident, employer_national_pension, employer_health_insurance, employer_long_term_care, employer_employment_insurance, grand_total_employee, grand_total_employer, grand_total, submitted_at, confirmed_by, confirmed_at, created_at, updated_at FROM insurance_reports WHERE id = ?`).bind(id).first<any>()
     if (!report) return c.json({ success: false, error: '신고서 없음' }, 404)
 
     const details = await c.env.DB.prepare(
-      `SELECT * FROM insurance_report_details WHERE report_id = ? ORDER BY employee_name`
+      `SELECT id, report_id, employee_id, employee_name, rrn, base_salary, national_pension, health_insurance, long_term_care, employment_insurance, employer_national_pension, employer_health_insurance, employer_long_term_care, employer_employment_insurance, employer_industrial_accident FROM insurance_report_details WHERE report_id = ? ORDER BY employee_name`
     ).bind(id).all()
 
     return c.json({ success: true, data: { report, details: details.results || [] } })

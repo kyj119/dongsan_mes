@@ -529,7 +529,11 @@ poCoreRouter.get('/:id/invoice', async (c) => {
       : null
 
     const { results: items } = await c.env.DB.prepare(`
-      SELECT * FROM purchase_order_items WHERE po_id = ? ORDER BY sort_order ASC
+      SELECT id, po_id, item_id, item_name, category_name, quantity, received_quantity,
+             unit, unit_price, amount, vat_included, sort_order, notes,
+             accepted_quantity, rejected_quantity, storage_zone_id, line_status,
+             received_by, received_at, created_at, updated_at
+      FROM purchase_order_items WHERE po_id = ? ORDER BY sort_order ASC
     `).bind(id).all()
 
     // Get company settings (entity 우선, 폴백 settings)
@@ -1293,7 +1297,8 @@ poCoreRouter.post('/:id/receive', async (c) => {
 
     // po_item 정보 로딩
     const { results: poItems } = await c.env.DB.prepare(`
-      SELECT * FROM purchase_order_items WHERE po_id = ?
+      SELECT id, item_id, item_name, quantity, received_quantity, unit_price
+      FROM purchase_order_items WHERE po_id = ?
     `).bind(id).all()
 
     type PoItemRow = Record<string, unknown>
@@ -1569,7 +1574,8 @@ poCoreRouter.post('/:id/copy', requireRole('ADMIN', 'MANAGER'), async (c) => {
     }
 
     const { results: originalItems } = await c.env.DB.prepare(`
-      SELECT * FROM purchase_order_items WHERE po_id = ? ORDER BY sort_order ASC
+      SELECT item_id, item_name, category_name, quantity, unit, unit_price, amount, vat_included, sort_order, notes
+      FROM purchase_order_items WHERE po_id = ? ORDER BY sort_order ASC
     `).bind(id).all()
 
     // 새 발주번호 생성
@@ -1741,7 +1747,8 @@ poCoreRouter.post('/:id/reorder', requireRole('ADMIN', 'MANAGER'), async (c) => 
 
     // 원본 PO 아이템 조회
     const { results: originalItems } = await c.env.DB.prepare(`
-      SELECT * FROM purchase_order_items WHERE po_id = ? ORDER BY sort_order
+      SELECT item_id, item_name, category_name, quantity, unit, unit_price, amount, vat_included, sort_order, notes
+      FROM purchase_order_items WHERE po_id = ? ORDER BY sort_order
     `).bind(id).all()
 
     // 새 PO 번호 생성

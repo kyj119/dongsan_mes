@@ -204,7 +204,7 @@ hrRouter.post('/attendance/checkin', async (c) => {
 
     // Check if already checked in today
     const { results: existing } = await c.env.DB.prepare(`
-      SELECT * FROM attendance WHERE employee_id = ? AND work_date = ?
+      SELECT id FROM attendance WHERE employee_id = ? AND work_date = ?
     `).bind(employee_id, work_date || new Date().toISOString().split('T')[0]).all()
 
     if (existing.length > 0) {
@@ -236,7 +236,7 @@ hrRouter.post('/attendance/checkout', async (c) => {
 
     // Get check-in record
     const { results } = await c.env.DB.prepare(`
-      SELECT * FROM attendance WHERE employee_id = ? AND work_date = ?
+      SELECT id, check_in_time, check_out_time FROM attendance WHERE employee_id = ? AND work_date = ?
     `).bind(employee_id, work_date || new Date().toISOString().split('T')[0]).all()
 
     if (results.length === 0) {

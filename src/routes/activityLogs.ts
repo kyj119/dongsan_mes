@@ -12,7 +12,7 @@ activityLogsRouter.get('/', requireRole('ADMIN', 'MANAGER'), async (c) => {
     const safeLimit = Math.min(parseInt(limit) || 50, 100)
     const offset = (parseInt(page) - 1) * safeLimit
 
-    let query = 'SELECT * FROM activity_logs'
+    let query = 'SELECT id, user_id, user_name, action, entity_type, entity_id, entity_label, details, ip_address, created_at FROM activity_logs'
     const params: any[] = []
     const where: string[] = []
 

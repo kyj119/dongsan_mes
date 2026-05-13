@@ -523,7 +523,7 @@ arRouter.put('/payment/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
 
     // Get existing payment
     const existing = await c.env.DB.prepare(
-      'SELECT * FROM payments WHERE id = ?'
+      'SELECT id, client_id, payment_date, amount, payment_method, reference_number, notes, created_at FROM payments WHERE id = ?'
     ).bind(id).first<PaymentRow>()
 
     if (!existing) {
@@ -594,7 +594,7 @@ arRouter.delete('/payment/:id', requireRole('ADMIN'), async (c) => {
 
     // Get existing payment
     const existing = await c.env.DB.prepare(
-      'SELECT * FROM payments WHERE id = ?'
+      'SELECT id, client_id, payment_date, amount, payment_method, reference_number, notes, created_at FROM payments WHERE id = ?'
     ).bind(id).first<PaymentRow>()
 
     if (!existing) {
@@ -1155,7 +1155,7 @@ arRouter.delete('/adjustment/:id', requireRole('ADMIN'), async (c) => {
     const id = c.req.param('id')
 
     const existing = await c.env.DB.prepare(
-      'SELECT * FROM adjustments WHERE id = ?'
+      'SELECT id, client_id, order_id, type, amount, reason, created_at FROM adjustments WHERE id = ?'
     ).bind(id).first<AdjustmentRow>()
 
     if (!existing) {

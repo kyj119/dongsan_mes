@@ -335,7 +335,7 @@ autoProcessRouter.post('/:id/retry', async (c) => {
 
     // 기존 job 조회
     const job = await c.env.DB.prepare(
-      `SELECT * FROM auto_process_jobs WHERE id = ?`
+      `SELECT id, order_id, order_item_id, ai_analysis_id, ai_group_index, source_path, product, width_cm, height_cm, finishing, scale_factor, clip_bounds, margins, status, ia_params, output_eps_path, output_png_path, output_png_base64, error_message, saved_path FROM auto_process_jobs WHERE id = ?`
     ).bind(id).first<{ scale_factor: number; finishing: string; clip_bounds: string; source_path: string; [key: string]: unknown }>()
     if (!job) return c.json({ success: false, error: '작업을 찾을 수 없습니다' }, 404)
 

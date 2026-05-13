@@ -237,7 +237,7 @@ paymentRequestsRouter.patch('/:id/approve', requireRole('ADMIN', 'MANAGER'), asy
     `).bind(user?.id || null, id).run()
 
     // 자금 예정에 자동 등록
-    const pr = await c.env.DB.prepare('SELECT * FROM payment_requests WHERE id = ?').bind(id).first<Record<string, unknown>>()
+    const pr = await c.env.DB.prepare('SELECT id, request_date, request_type, recipient_client_id, recipient_name, amount, description FROM payment_requests WHERE id = ?').bind(id).first<Record<string, unknown>>()
     if (pr) {
       await c.env.DB.prepare(`
         INSERT INTO cash_schedule (schedule_date, flow_type, source_type, source_id, client_id, amount, description, created_by)
@@ -287,7 +287,7 @@ paymentRequestsRouter.patch('/:id/pay', requireRole('ADMIN', 'MANAGER'), async (
     `).bind(paid_at || null, user?.id || null, bank_transaction_id || null, id).run()
 
     // 자금 예정 완료 처리
-    const pr2 = await c.env.DB.prepare('SELECT * FROM payment_requests WHERE id = ?').bind(id).first<Record<string, unknown>>()
+    const pr2 = await c.env.DB.prepare('SELECT id, request_date, request_type, recipient_client_id, recipient_name, amount, description FROM payment_requests WHERE id = ?').bind(id).first<Record<string, unknown>>()
     if (pr2) {
       await c.env.DB.prepare(`
         UPDATE cash_schedule SET status = 'DONE', actual_date = ?, actual_amount = ?

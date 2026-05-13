@@ -120,7 +120,7 @@ inventoryCountRouter.get('/:id', async (c) => {
     const id = parseInt(c.req.param('id'))
 
     const count = await c.env.DB.prepare(`
-      SELECT * FROM inventory_counts WHERE id = ?
+      SELECT id, count_number, count_date, count_type, status, submitted_by, submitted_at, approved_by, approved_at, notes, created_at FROM inventory_counts WHERE id = ?
     `).bind(id).first()
 
     if (!count) {
@@ -211,7 +211,7 @@ inventoryCountRouter.patch('/:id/approve', async (c) => {
 
     // 먼저 count 조회
     const count = await c.env.DB.prepare(`
-      SELECT * FROM inventory_counts WHERE id = ?
+      SELECT id, count_number, count_date, count_type, status, submitted_by, submitted_at, approved_by, approved_at, notes, created_at FROM inventory_counts WHERE id = ?
     `).bind(countId).first<{ status: string }>()
 
     if (!count || count.status !== 'SUBMITTED') {
@@ -220,7 +220,7 @@ inventoryCountRouter.patch('/:id/approve', async (c) => {
 
     // count_items 조회
     const { results: countItems } = await c.env.DB.prepare(`
-      SELECT * FROM inventory_count_items WHERE count_id = ?
+      SELECT id, count_id, item_id, system_quantity, counted_quantity, difference, difference_pct, unit, notes FROM inventory_count_items WHERE count_id = ?
     `).bind(countId).all<{ item_id: number; system_quantity: number; counted_quantity: number }>()
 
     // 각 항목별로 inventory 보정 + inventory_transactions 기록 (batch)
