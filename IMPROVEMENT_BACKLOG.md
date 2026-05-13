@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 4 -->
-<!-- last_run_at: 2026-05-13T11:30:00+09:00 -->
+<!-- last_run_area: 5 -->
+<!-- last_run_at: 2026-05-13T13:30:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,10 +8,19 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | 15 |
+| 🆕 new | 18 |
 | ✔️ done | 15 |
 | ❌ rejected | 1 |
 
+> **Area 5 보안 (2026-05-13T13:30):**
+> - SQL Injection 전수 검사: entityFilter() + 파라미터 바인딩 확인 → 취약점 없음
+> - XSS 5건 자동 수정 (A-006): approvals.js:380, invoice.js:203, purchaseInvoice.js:193, quotation.js:202, clients.js:463 → escapeHtml() 적용
+> - XSS 잔여 (approvals.js:119-276, cards.js document.write) → #34 등록 (HIGH)
+> - 보안 헤더 (CSP/X-Frame-Options/HSTS) 전무 → #32 등록 (HIGH)
+> - /api/portal/auth/change-password rate limit 누락 → #33 등록 (MEDIUM)
+> - CI 폴백 자격증명 (admin/password) 낮은 위험, GitHub Secrets 분리 권고
+> - Popbill IP 화이트리스트 하드코딩 → #32 포함 기재
+>
 > **Area 4 데이터 정합성 (2026-05-13T11:30):**
 > - tax_invoice_items/tax_invoice_orders tax_invoice_id 인덱스 누락 → A-005 자동 수정 (0193 migration)
 > - shipment_items UNIQUE(shipment_id, card_id) 없음 → #31 등록 (HIGH: 카드 중복 출고 가능)
@@ -65,6 +74,9 @@
 | I-011 | 대시보드 납기 준수율 KPI 카드 없음 | Area 3 | #29 | 2~3h |
 | I-012 | 원단 소모 예측 페이지 검색/필터 없음 | Area 3 | #30 | 1h |
 | D-001 | shipment_items UNIQUE(shipment_id, card_id) 제약 누락 | Area 4 | #31 | 1~2h |
+| I-013 | 보안 헤더 전무 (CSP/X-Frame-Options/HSTS/X-Content-Type) | Area 5 | #32 | 1~2h |
+| I-014 | /api/portal/auth/change-password rate limit 누락 | Area 5 | #33 | 30분 |
+| I-015 | XSS 잔여: approvals.js(119-276) + cards.js document.write | Area 5 | #34 | 2~3h |
 
 ---
 
@@ -72,6 +84,7 @@
 
 | ID | 제목 | 커밋 | 날짜 |
 |----|------|------|------|
+| A-006 | XSS escapeHtml 5건 (approvals/invoice/purchaseInvoice/quotation/clients) | e099b20 | 2026-05-13 |
 | A-005 | tax_invoice_items/orders tax_invoice_id 인덱스 추가 (0193 migration) | 1b3a698 | 2026-05-13 |
 | A-004 | models.ts 미사용 타입 8개 제거 (UserSession 등) | 2f94080 | 2026-05-13 |
 | A-003 | hono 4.12.18 + postcss 8.5.14 보안 패치 (JWT CVE 등 7건) | 16b1482 | 2026-05-12 |
