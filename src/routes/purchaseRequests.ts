@@ -24,8 +24,8 @@ prRouter.get('/', async (c) => {
       date_from = '',
       date_to = ''
     } = c.req.query()
-    const safeLimit = Math.min(parseInt(limit) || 50, 200)
-    const offset = (parseInt(page) - 1) * safeLimit
+    const safeLimit = Math.min(Number(limit) || 50, 200)
+    const offset = (Number(page) - 1) * safeLimit
 
     let query = `
       SELECT
@@ -111,13 +111,14 @@ prRouter.get('/', async (c) => {
       countQuery += ' WHERE ' + countWhereClauses.join(' AND ')
     }
 
-    const { count } = await c.env.DB.prepare(countQuery).bind(...countParams).first() as any
+    const countRow = await c.env.DB.prepare(countQuery).bind(...countParams).first<{ count: number }>()
+    const count = countRow?.count ?? 0
 
     return c.json({
       success: true,
       requests: results,
       pagination: {
-        page: parseInt(page),
+        page: Number(page),
         limit: safeLimit,
         total: count,
         total_pages: Math.ceil(count / safeLimit)
@@ -143,12 +144,12 @@ prRouter.get('/stats', async (c) => {
     }
     query += ' GROUP BY status'
 
-    const { results } = await c.env.DB.prepare(query).bind(...params).all()
+    const { results } = await c.env.DB.prepare(query).bind(...params).all<{ status: string; count: number }>()
     const stats: Record<string, number> = { total: 0, pending: 0, approved: 0, rejected: 0, converted: 0 }
-    for (const row of results as any[]) {
-      const key = (row as any).status.toLowerCase()
-      stats[key] = (row as any).count
-      stats.total += (row as any).count
+    for (const row of results) {
+      const key = row.status.toLowerCase()
+      stats[key] = row.count
+      stats.total += row.count
     }
     return c.json({ success: true, data: stats })
   } catch (error) {
@@ -169,7 +170,7 @@ prRouter.get('/:id/comments', async (c) => {
       JOIN users u ON pc.user_id = u.id
       WHERE pc.request_id = ?
       ORDER BY pc.created_at ASC
-    `).bind(parseInt(id)).all()
+    `).bind(Number(id)).all()
     return c.json({ success: true, comments: results })
   } catch (error) {
     console.error('src/routes/purchaseRequests.ts error:', error)
@@ -190,12 +191,12 @@ prRouter.post('/:id/comments', async (c) => {
       return c.json({ success: false, error: '댓글 내용을 입력해주세요.' }, 400)
     }
 
-    const pr = await c.env.DB.prepare('SELECT id FROM purchase_requests WHERE id = ?').bind(parseInt(id)).first()
+    const pr = await c.env.DB.prepare('SELECT id FROM purchase_requests WHERE id = ?').bind(Number(id)).first()
     if (!pr) return c.json({ success: false, error: '발주 요청을 찾을 수 없습니다.' }, 404)
 
     await c.env.DB.prepare(`
       INSERT INTO pr_comments (request_id, user_id, content) VALUES (?, ?, ?)
-    `).bind(parseInt(id), user?.id || 1, content.trim()).run()
+    `).bind(Number(id), user?.id || 1, content.trim()).run()
 
     return c.json({ success: true }, 201)
   } catch (error) {
@@ -220,7 +221,7 @@ prRouter.get('/:id', async (c) => {
       LEFT JOIN clients c ON pr.supplier_id = c.id
       LEFT JOIN users ab ON pr.approved_by = ab.id
       WHERE pr.id = ?
-    `).bind(id).first() as any
+    `).bind(id).first<PurchaseRequest & { requester_name: string; supplier_name: string | null; approved_by_name: string | null }>()
 
     if (!request) {
       return c.json({ success: false, error: '발주 요청을 찾을 수 없습니다.' }, 404)
@@ -281,12 +282,13 @@ prRouter.post('/', async (c) => {
     const today = new Date()
     const dateStr = today.toISOString().split('T')[0].replace(/-/g, '')
 
-    const { max_seq } = await c.env.DB.prepare(`
+    const seqRow = await c.env.DB.prepare(`
       SELECT COALESCE(MAX(CAST(SUBSTR(request_number, 13) AS INTEGER)), 0) as max_seq
       FROM purchase_requests WHERE request_number LIKE ?
-    `).bind(`PR-${dateStr}-%`).first() as any
+    `).bind(`PR-${dateStr}-%`).first<{ max_seq: number }>()
+    const max_seq = seqRow?.max_seq ?? 0
 
-    const requestNumber = `PR-${dateStr}-${String((max_seq || 0) + 1).padStart(3, '0')}`
+    const requestNumber = `PR-${dateStr}-${String(max_seq + 1).padStart(3, '0')}`
 
     const prResult = await c.env.DB.prepare(`
       INSERT INTO purchase_requests (
@@ -309,8 +311,8 @@ prRouter.post('/', async (c) => {
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).bind(
         requestId, item.item_id || null, item.item_name, item.category_name || null,
-        parseFloat(item.quantity) || 1, item.unit || 'EA',
-        parseFloat(item.estimated_unit_price) || 0, i, item.notes || null
+        Number(item.quantity) || 1, item.unit || 'EA',
+        Number(item.estimated_unit_price) || 0, i, item.notes || null
       ).run()
     }
 
@@ -335,7 +337,7 @@ prRouter.put('/:id', async (c) => {
     const id = c.req.param('id')
     const data = await c.req.json()
 
-    const pr = await c.env.DB.prepare(`SELECT * FROM purchase_requests WHERE id = ?`).bind(id).first() as any
+    const pr = await c.env.DB.prepare(`SELECT * FROM purchase_requests WHERE id = ?`).bind(id).first<PurchaseRequest>()
     if (!pr) return c.json({ success: false, error: '발주 요청을 찾을 수 없습니다.' }, 404)
     if (user?.role === 'MANAGER' && pr.requester_id !== user.id) {
       return c.json({ success: false, error: '접근 권한이 없습니다.' }, 403)
@@ -363,7 +365,7 @@ prRouter.put('/:id', async (c) => {
     // 수정 전 품목 조회 (이력 비교용)
     const { results: oldItems } = await c.env.DB.prepare(
       `SELECT item_name, quantity, unit, estimated_unit_price FROM purchase_request_items WHERE request_id = ? ORDER BY sort_order ASC`
-    ).bind(id).all()
+    ).bind(id).all<Pick<PurchaseRequestItem, 'item_name' | 'quantity' | 'unit' | 'estimated_unit_price'>>()
 
     await c.env.DB.prepare(`DELETE FROM purchase_request_items WHERE request_id = ?`).bind(id).run()
 
@@ -375,9 +377,9 @@ prRouter.put('/:id', async (c) => {
           quantity, unit, estimated_unit_price, sort_order, notes
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).bind(
-        parseInt(id), item.item_id || null, item.item_name, item.category_name || null,
-        parseFloat(item.quantity) || 1, item.unit || 'EA',
-        parseFloat(item.estimated_unit_price) || 0, i, item.notes || null
+        Number(id), item.item_id || null, item.item_name, item.category_name || null,
+        Number(item.quantity) || 1, item.unit || 'EA',
+        Number(item.estimated_unit_price) || 0, i, item.notes || null
       ).run()
     }
 
@@ -387,17 +389,17 @@ prRouter.put('/:id', async (c) => {
     if (data.urgency && data.urgency !== pr.urgency) changes.push(`긴급도: ${pr.urgency}→${data.urgency}`)
     if (data.reason !== undefined && data.reason !== pr.reason) changes.push('사유 변경')
 
-    const oldItemCount = (oldItems as any[]).length
+    const oldItemCount = oldItems.length
     const newItemCount = data.items.length
     if (oldItemCount !== newItemCount) {
       changes.push(`품목 수: ${oldItemCount}→${newItemCount}`)
     } else {
       // 같은 수일 때 수량/단가 변경 감지
       for (let i = 0; i < Math.min(oldItemCount, newItemCount); i++) {
-        const o = oldItems[i] as any
+        const o = oldItems[i]
         const n = data.items[i]
-        if (o.item_name !== n.item_name || parseFloat(o.quantity) !== (parseFloat(n.quantity) || 1) ||
-            parseFloat(o.estimated_unit_price) !== (parseFloat(n.estimated_unit_price) || 0)) {
+        if (o.item_name !== n.item_name || Number(o.quantity) !== (Number(n.quantity) || 1) ||
+            Number(o.estimated_unit_price) !== (Number(n.estimated_unit_price) || 0)) {
           changes.push('품목 내용 변경')
           break
         }
@@ -408,7 +410,7 @@ prRouter.put('/:id', async (c) => {
       await c.env.DB.prepare(`
         INSERT INTO pr_status_history (request_id, from_status, to_status, changed_by, change_reason)
         VALUES (?, 'PENDING', 'PENDING', ?, ?)
-      `).bind(parseInt(id), user?.id || 1, `수정: ${changes.join(', ')}`).run()
+      `).bind(Number(id), user?.id || 1, `수정: ${changes.join(', ')}`).run()
     }
 
     return c.json({ success: true })
@@ -427,7 +429,7 @@ prRouter.patch('/:id/approve', requireRole('ADMIN'), async (c) => {
     const id = c.req.param('id')
     const data = await c.req.json()
 
-    const pr = await c.env.DB.prepare(`SELECT * FROM purchase_requests WHERE id = ?`).bind(id).first() as any
+    const pr = await c.env.DB.prepare(`SELECT * FROM purchase_requests WHERE id = ?`).bind(id).first<PurchaseRequest>()
     if (!pr) return c.json({ success: false, error: '발주 요청을 찾을 수 없습니다.' }, 404)
     if (pr.status !== 'PENDING') {
       return c.json({ success: false, error: `'${pr.status}' 상태에서는 승인할 수 없습니다.` }, 400)
@@ -449,9 +451,9 @@ prRouter.patch('/:id/approve', requireRole('ADMIN'), async (c) => {
           UPDATE purchase_request_items SET admin_quantity = ?, admin_unit_price = ?
           WHERE id = ? AND request_id = ?
         `).bind(
-          itemUpdate.admin_quantity !== undefined ? parseFloat(itemUpdate.admin_quantity) : null,
-          itemUpdate.admin_unit_price !== undefined ? parseFloat(itemUpdate.admin_unit_price) : null,
-          itemUpdate.request_item_id, parseInt(id)
+          itemUpdate.admin_quantity !== undefined ? Number(itemUpdate.admin_quantity) : null,
+          itemUpdate.admin_unit_price !== undefined ? Number(itemUpdate.admin_unit_price) : null,
+          itemUpdate.request_item_id, Number(id)
         ).run()
       }
     }
@@ -459,7 +461,7 @@ prRouter.patch('/:id/approve', requireRole('ADMIN'), async (c) => {
     await c.env.DB.prepare(`
       INSERT INTO pr_status_history (request_id, from_status, to_status, changed_by, change_reason)
       VALUES (?, 'PENDING', 'APPROVED', ?, ?)
-    `).bind(parseInt(id), user?.id || 1, data.change_reason || '발주 요청 승인').run()
+    `).bind(Number(id), user?.id || 1, data.change_reason || '발주 요청 승인').run()
 
     return c.json({ success: true })
   } catch (error) {
@@ -481,7 +483,7 @@ prRouter.patch('/:id/reject', requireRole('ADMIN'), async (c) => {
       return c.json({ success: false, error: '반려 사유는 필수입니다.' }, 400)
     }
 
-    const pr = await c.env.DB.prepare(`SELECT * FROM purchase_requests WHERE id = ?`).bind(id).first() as any
+    const pr = await c.env.DB.prepare(`SELECT * FROM purchase_requests WHERE id = ?`).bind(id).first<PurchaseRequest>()
     if (!pr) return c.json({ success: false, error: '발주 요청을 찾을 수 없습니다.' }, 404)
     if (pr.status !== 'PENDING') {
       return c.json({ success: false, error: `'${pr.status}' 상태에서는 반려할 수 없습니다.` }, 400)
@@ -496,7 +498,7 @@ prRouter.patch('/:id/reject', requireRole('ADMIN'), async (c) => {
     await c.env.DB.prepare(`
       INSERT INTO pr_status_history (request_id, from_status, to_status, changed_by, change_reason)
       VALUES (?, 'PENDING', 'REJECTED', ?, ?)
-    `).bind(parseInt(id), user?.id || 1, data.reject_reason).run()
+    `).bind(Number(id), user?.id || 1, data.reject_reason).run()
 
     return c.json({ success: true })
   } catch (error) {
@@ -513,7 +515,7 @@ prRouter.post('/:id/convert', requireRole('ADMIN'), async (c) => {
     const user = c.get('user')
     const id = c.req.param('id')
 
-    const pr = await c.env.DB.prepare(`SELECT * FROM purchase_requests WHERE id = ?`).bind(id).first() as any
+    const pr = await c.env.DB.prepare(`SELECT * FROM purchase_requests WHERE id = ?`).bind(id).first<PurchaseRequest>()
     if (!pr) return c.json({ success: false, error: '발주 요청을 찾을 수 없습니다.' }, 404)
     if (pr.status !== 'APPROVED') {
       return c.json({ success: false, error: `'${pr.status}' 상태에서는 발주서 변환이 불가능합니다. APPROVED 상태만 가능합니다.` }, 400)
@@ -524,20 +526,20 @@ prRouter.post('/:id/convert', requireRole('ADMIN'), async (c) => {
 
     const { results: requestItems } = await c.env.DB.prepare(`
       SELECT * FROM purchase_request_items WHERE request_id = ? ORDER BY sort_order ASC
-    `).bind(id).all()
+    `).bind(id).all<PurchaseRequestItem>()
 
     if (!requestItems || requestItems.length === 0) {
       return c.json({ success: false, error: '요청 품목이 없습니다.' }, 400)
     }
 
     // PO items 구성: admin 값 우선
-    const poItems = (requestItems as any[]).map((ri: any) => ({
+    const poItems = requestItems.map((ri) => ({
       item_id: ri.item_id || null,
       item_name: ri.item_name,
       category_name: ri.category_name || null,
-      quantity: parseFloat(ri.admin_quantity) || parseFloat(ri.quantity) || 1,
+      quantity: Number(ri.admin_quantity) || Number(ri.quantity) || 1,
       unit: ri.unit || 'EA',
-      unit_price: parseFloat(ri.admin_unit_price) || parseFloat(ri.estimated_unit_price) || 0,
+      unit_price: Number(ri.admin_unit_price) || Number(ri.estimated_unit_price) || 0,
       notes: ri.notes || null,
       sort_order: ri.sort_order || 0
     }))
@@ -554,12 +556,12 @@ prRouter.post('/:id/convert', requireRole('ADMIN'), async (c) => {
     const today = new Date()
     const dateStr = today.toISOString().split('T')[0].replace(/-/g, '')
 
-    const { max_seq } = await c.env.DB.prepare(`
+    const poSeqRow = await c.env.DB.prepare(`
       SELECT COALESCE(MAX(CAST(SUBSTR(po_number, 11) AS INTEGER)), 0) as max_seq
       FROM purchase_orders WHERE po_number LIKE ?
-    `).bind(`${dateStr}-P%`).first() as any
+    `).bind(`${dateStr}-P%`).first<{ max_seq: number }>()
 
-    const poNumber = `${dateStr}-P${String((max_seq || 0) + 1).padStart(3, '0')}`
+    const poNumber = `${dateStr}-P${String((poSeqRow?.max_seq ?? 0) + 1).padStart(3, '0')}`
 
     // INSERT purchase_orders (DRAFT 상태)
     const poResult = await c.env.DB.prepare(`
@@ -607,7 +609,7 @@ prRouter.post('/:id/convert', requireRole('ADMIN'), async (c) => {
     await c.env.DB.prepare(`
       INSERT INTO pr_status_history (request_id, from_status, to_status, changed_by, change_reason)
       VALUES (?, 'APPROVED', 'CONVERTED', ?, ?)
-    `).bind(parseInt(id), user?.id || 1, `발주서 ${poNumber} 생성`).run()
+    `).bind(Number(id), user?.id || 1, `발주서 ${poNumber} 생성`).run()
 
     return c.json({ success: true, po_id: poId, po_number: poNumber })
   } catch (error) {
@@ -624,7 +626,7 @@ prRouter.post('/:id/auto-convert', requireRole('ADMIN'), async (c) => {
     const user = c.get('user')
     const id = c.req.param('id')
 
-    const pr = await c.env.DB.prepare(`SELECT * FROM purchase_requests WHERE id = ?`).bind(id).first() as any
+    const pr = await c.env.DB.prepare(`SELECT * FROM purchase_requests WHERE id = ?`).bind(id).first<PurchaseRequest>()
     if (!pr) return c.json({ success: false, error: '발주 요청을 찾을 수 없습니다.' }, 404)
     if (pr.status !== 'APPROVED') {
       return c.json({ success: false, error: `'${pr.status}' 상태에서는 자동 변환이 불가능합니다. APPROVED 상태만 가능합니다.` }, 400)
@@ -632,16 +634,16 @@ prRouter.post('/:id/auto-convert', requireRole('ADMIN'), async (c) => {
 
     const { results: requestItems } = await c.env.DB.prepare(`
       SELECT * FROM purchase_request_items WHERE request_id = ? ORDER BY sort_order ASC
-    `).bind(id).all()
+    `).bind(id).all<PurchaseRequestItem>()
 
     if (!requestItems || requestItems.length === 0) {
       return c.json({ success: false, error: '요청 품목이 없습니다.' }, 400)
     }
 
     // 각 품목의 최근 공급업체 조회 후 그룹화
-    const supplierGroups = new Map<number | string, { supplierId: number | null, supplierName: string, items: any[] }>()
+    const supplierGroups = new Map<number | string, { supplierId: number | null, supplierName: string, items: PurchaseRequestItem[] }>()
 
-    for (const ri of requestItems as any[]) {
+    for (const ri of requestItems) {
       let supplierId: number | null = null
       let supplierName = '미지정'
 
@@ -655,7 +657,7 @@ prRouter.post('/:id/auto-convert', requireRole('ADMIN'), async (c) => {
           WHERE poi.item_id = ? AND poi.received_quantity > 0
           ORDER BY po.created_at DESC
           LIMIT 1
-        `).bind(ri.item_id).first() as any
+        `).bind(ri.item_id).first<{ supplier_id: number | null; client_name: string | null }>()
 
         if (recentPO && recentPO.supplier_id) {
           supplierId = recentPO.supplier_id
@@ -666,7 +668,7 @@ prRouter.post('/:id/auto-convert', requireRole('ADMIN'), async (c) => {
       // 이력이 없으면 PR의 공급업체 사용
       if (!supplierId && pr.supplier_id) {
         supplierId = pr.supplier_id
-        const supplierRow = await c.env.DB.prepare('SELECT client_name FROM clients WHERE id = ?').bind(pr.supplier_id).first() as any
+        const supplierRow = await c.env.DB.prepare('SELECT client_name FROM clients WHERE id = ?').bind(pr.supplier_id).first<{ client_name: string }>()
         supplierName = supplierRow?.client_name || '공급업체'
       }
 
@@ -694,18 +696,18 @@ prRouter.post('/:id/auto-convert', requireRole('ADMIN'), async (c) => {
       if (!group.supplierId) continue // 미지정 그룹 건너뜀
 
       // PO 번호 생성 (루프 내에서 매번 최신 max_seq 조회)
-      const { max_seq } = await c.env.DB.prepare(`
+      const loopSeqRow = await c.env.DB.prepare(`
         SELECT COALESCE(MAX(CAST(SUBSTR(po_number, 11) AS INTEGER)), 0) as max_seq
         FROM purchase_orders WHERE po_number LIKE ?
-      `).bind(`${dateStr}-P%`).first() as any
+      `).bind(`${dateStr}-P%`).first<{ max_seq: number }>()
 
-      const poNumber = `${dateStr}-P${String((max_seq || 0) + 1).padStart(3, '0')}`
+      const poNumber = `${dateStr}-P${String((loopSeqRow?.max_seq ?? 0) + 1).padStart(3, '0')}`
 
       // 금액 계산 (admin 값 우선)
       let totalAmount = 0
-      const poItems = group.items.map((ri: any) => {
-        const qty = parseFloat(ri.admin_quantity) || parseFloat(ri.quantity) || 1
-        const price = parseFloat(ri.admin_unit_price) || parseFloat(ri.estimated_unit_price) || 0
+      const poItems = group.items.map((ri) => {
+        const qty = Number(ri.admin_quantity) || Number(ri.quantity) || 1
+        const price = Number(ri.admin_unit_price) || Number(ri.estimated_unit_price) || 0
         const amount = qty * price
         totalAmount += amount
         return { ...ri, qty, price, amount }
@@ -752,12 +754,12 @@ prRouter.post('/:id/auto-convert', requireRole('ADMIN'), async (c) => {
         VALUES (?, 'DRAFT', ?, ?)
       `).bind(poId, user?.id || 1, `발주요청 #${pr.request_number} 자동 분리`).run()
 
-      createdPOs.push({ po_id: poId as number, po_number: poNumber, supplier_name: group.supplierName, item_count: poItems.length })
+      createdPOs.push({ po_id: poId as number, po_number: poNumber, supplier_name: group.supplierName, item_count: poItems.length }) // TODO: #17 poId as number - D1 meta.last_row_id 타입
     }
 
     // 미지정 품목 목록
     const unassigned = supplierGroups.get('unassigned')
-    const unassignedItems = unassigned ? unassigned.items.map((ri: any) => ri.item_name) : []
+    const unassignedItems = unassigned ? unassigned.items.map((ri) => ri.item_name) : []
 
     // 생성된 PO가 1개 이상이면 PR을 CONVERTED로 전환
     if (createdPOs.length > 0) {
@@ -770,7 +772,7 @@ prRouter.post('/:id/auto-convert', requireRole('ADMIN'), async (c) => {
       await c.env.DB.prepare(`
         INSERT INTO pr_status_history (request_id, from_status, to_status, changed_by, change_reason)
         VALUES (?, 'APPROVED', 'CONVERTED', ?, ?)
-      `).bind(parseInt(id), user?.id || 1, `자동 분리: ${createdPOs.length}건 발주서 생성`).run()
+      `).bind(Number(id), user?.id || 1, `자동 분리: ${createdPOs.length}건 발주서 생성`).run()
     }
 
     return c.json({
@@ -794,7 +796,7 @@ prRouter.delete('/:id', async (c) => {
     const user = c.get('user')
     const id = c.req.param('id')
 
-    const pr = await c.env.DB.prepare(`SELECT * FROM purchase_requests WHERE id = ?`).bind(id).first() as any
+    const pr = await c.env.DB.prepare(`SELECT * FROM purchase_requests WHERE id = ?`).bind(id).first<PurchaseRequest>()
     if (!pr) return c.json({ success: false, error: '발주 요청을 찾을 수 없습니다.' }, 404)
     if (user?.role === 'MANAGER' && pr.requester_id !== user.id) {
       return c.json({ success: false, error: '접근 권한이 없습니다.' }, 403)

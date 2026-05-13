@@ -6,6 +6,53 @@ import { logActivity } from '../../utils/activityLog'
 import { notifyRoles } from '../../utils/notify'
 import { getEntityId, entityFilter } from '../../utils/entityFilter'
 
+// ── Row interfaces ──────────────────────────────────────────────────────────
+interface PurchaseOrderRow {
+  id: number; po_number: string; date: string; final_amount: number
+  status: string; created_at: string
+}
+interface PurchasePaymentRow {
+  id: number; date: string; amount: number; payment_method: string | null
+  reference_number: string | null; po_id: number | null; notes: string | null
+  created_at: string; supplier_id: number; payment_date: string
+}
+interface PurchaseAdjustmentRow {
+  id: number; supplier_id: number; po_id: number | null; type: string
+  amount: number; reason: string | null; adjustment_date: string
+  created_at: string
+}
+interface SupplierRow {
+  id: number; client_code: string; client_name: string
+  purchase_balance: number
+}
+interface PoAggRow { supplier_id: number; po_count: number; total_purchases: number }
+interface PpAggRow { supplier_id: number; total_payments: number }
+interface MonthlyPoRow { month: string; po_count: number; total_purchases: number }
+interface MonthlyPpRow { month: string; payment_count: number; total_payments: number }
+interface OverdueRow {
+  id: number; client_code: string; client_name: string; purchase_balance: number
+  overdue_alert_days: number | null; last_order_date: string | null
+  last_payment_date: string | null
+}
+interface IntegrityRow {
+  id: number; client_code: string; client_name: string; purchase_balance: number
+  total_orders: number; total_paid: number; total_adj: number
+}
+interface BalanceRow { purchase_balance: number }
+interface ClientNameRow { client_name: string }
+interface CsvPoRow {
+  id: number; po_number: string; order_date: string; final_amount: number
+  status: string; created_at: string
+}
+interface CsvPpRow {
+  id: number; payment_date: string; amount: number; payment_method: string | null
+  notes: string | null; created_at: string
+}
+interface CsvPaRow {
+  id: number; po_id: number | null; type: string; amount: number
+  reason: string | null; adjustment_date: string; created_at: string
+}
+
 const apRouter = new Hono<HonoEnv>()
 apRouter.use('/*', authMiddleware, requireRole('ADMIN', 'MANAGER'))
 
@@ -43,7 +90,7 @@ apRouter.get('/purchase-client/:clientId', async (c) => {
     }
 
     poQuery += ' ORDER BY order_date ASC, created_at ASC'
-    const { results: purchaseOrders } = await c.env.DB.prepare(poQuery).bind(...poParams).all()
+    const { results: purchaseOrders } = await c.env.DB.prepare(poQuery).bind(...poParams).all<PurchaseOrderRow>()
 
     // Get purchase payments (지급 - credit)
     const { clause: ppEf, params: ppEfParams } = entityFilter(c)
@@ -66,11 +113,11 @@ apRouter.get('/purchase-client/:clientId', async (c) => {
     }
 
     ppQuery += ' ORDER BY payment_date ASC, created_at ASC'
-    const { results: purchasePayments } = await c.env.DB.prepare(ppQuery).bind(...ppParams).all()
+    const { results: purchasePayments } = await c.env.DB.prepare(ppQuery).bind(...ppParams).all<PurchasePaymentRow>()
 
     // Calculate totals
-    const totalPurchases = (purchaseOrders as any[]).reduce((sum, o) => sum + (o.final_amount || 0), 0)
-    const totalPayments = (purchasePayments as any[]).reduce((sum, p) => sum + (p.amount || 0), 0)
+    const totalPurchases = purchaseOrders.reduce((sum, o) => sum + (o.final_amount || 0), 0)
+    const totalPayments = purchasePayments.reduce((sum, p) => sum + (p.amount || 0), 0)
     const balance = totalPurchases - totalPayments
 
     // Find last payment date
@@ -78,7 +125,7 @@ apRouter.get('/purchase-client/:clientId', async (c) => {
 
     // Combine and sort by date ASC for running balance
     const transactions = [
-      ...(purchaseOrders as any[]).map(o => ({
+      ...purchaseOrders.map(o => ({
         type: 'purchase',
         date: o.date,
         description: `발주: ${o.po_number}`,
@@ -87,7 +134,7 @@ apRouter.get('/purchase-client/:clientId', async (c) => {
         reference: o.po_number,
         status: o.status
       })),
-      ...(purchasePayments as any[]).map(p => ({
+      ...purchasePayments.map(p => ({
         type: 'payment',
         id: p.id,
         date: p.date,
@@ -115,7 +162,7 @@ apRouter.get('/purchase-client/:clientId', async (c) => {
           total_purchases: totalPurchases,
           total_payments: totalPayments,
           balance,
-          last_payment_date: lastPayment ? (lastPayment as any).date : null
+          last_payment_date: lastPayment ? lastPayment.date : null
         },
         transactions: transactionsWithBalance.reverse(), // newest first for display
         purchase_count: purchaseOrders.length,
@@ -158,8 +205,8 @@ apRouter.get('/purchase-settlement', async (c) => {
       GROUP BY supplier_id
     `
     const { results: poResults } = poParams.length > 0
-      ? await c.env.DB.prepare(poQuery).bind(...poParams).all()
-      : await c.env.DB.prepare(poQuery).all()
+      ? await c.env.DB.prepare(poQuery).bind(...poParams).all<PoAggRow>()
+      : await c.env.DB.prepare(poQuery).all<PoAggRow>()
 
     // Step 2: Get per-supplier payment totals
     const ppQuery = `
@@ -168,19 +215,19 @@ apRouter.get('/purchase-settlement', async (c) => {
       GROUP BY supplier_id
     `
     const { results: ppResults } = ppParams.length > 0
-      ? await c.env.DB.prepare(ppQuery).bind(...ppParams).all()
-      : await c.env.DB.prepare(ppQuery).all()
+      ? await c.env.DB.prepare(ppQuery).bind(...ppParams).all<PpAggRow>()
+      : await c.env.DB.prepare(ppQuery).all<PpAggRow>()
 
     // Step 3: Get active suppliers
     const { results: suppliers } = await c.env.DB.prepare(
       'SELECT id, client_code, client_name, purchase_balance FROM clients WHERE is_active = 1'
-    ).all()
+    ).all<SupplierRow>()
 
     // Merge
-    const poMap = new Map((poResults as any[]).map(o => [o.supplier_id, o]))
-    const ppMap = new Map((ppResults as any[]).map(p => [p.supplier_id, p]))
+    const poMap = new Map(poResults.map(o => [o.supplier_id, o]))
+    const ppMap = new Map(ppResults.map(p => [p.supplier_id, p]))
 
-    const supplierRows = (suppliers as any[])
+    const supplierRows = suppliers
       .map(s => {
         const po = poMap.get(s.id)
         const pp = ppMap.get(s.id)
@@ -195,10 +242,10 @@ apRouter.get('/purchase-settlement', async (c) => {
           total_payments: pp?.total_payments || 0
         }
       })
-      .filter(Boolean)
-      .sort((a: any, b: any) => b.purchase_balance - a.purchase_balance)
+      .filter((x): x is NonNullable<typeof x> => x !== null)
+      .sort((a, b) => b.purchase_balance - a.purchase_balance)
 
-    const summary = supplierRows.reduce((acc: any, s: any) => ({
+    const summary = supplierRows.reduce((acc, s) => ({
       total_suppliers: acc.total_suppliers + 1,
       total_purchases: acc.total_purchases + s.total_purchases,
       total_payments: acc.total_payments + s.total_payments,
@@ -224,7 +271,7 @@ apRouter.get('/purchase-monthly-summary', async (c) => {
   try {
     const { year, months = '12' } = c.req.query()
     const targetYear = year || new Date().getFullYear().toString()
-    const monthCount = parseInt(months)
+    const monthCount = Number(months)
 
     // Monthly purchase order totals
     const { clause: monthlyPoEf, params: monthlyPoEfParams } = entityFilter(c)
@@ -239,7 +286,7 @@ apRouter.get('/purchase-monthly-summary', async (c) => {
       GROUP BY strftime('%Y-%m', order_date)
       ORDER BY month DESC
       LIMIT ?
-    `).bind(String(parseInt(targetYear) - 1), ...monthlyPoEfParams, monthCount).all()
+    `).bind(String(Number(targetYear) - 1), ...monthlyPoEfParams, monthCount).all<MonthlyPoRow>()
 
     // Monthly payment totals
     const { clause: monthlyPpEf, params: monthlyPpEfParams } = entityFilter(c)
@@ -253,12 +300,12 @@ apRouter.get('/purchase-monthly-summary', async (c) => {
       GROUP BY strftime('%Y-%m', payment_date)
       ORDER BY month DESC
       LIMIT ?
-    `).bind(String(parseInt(targetYear) - 1), ...monthlyPpEfParams, monthCount).all()
+    `).bind(String(Number(targetYear) - 1), ...monthlyPpEfParams, monthCount).all<MonthlyPpRow>()
 
     // Merge into one array
-    const monthMap = new Map<string, any>()
+    const monthMap = new Map<string, { month: string; po_count: number; total_purchases: number; payment_count: number; total_payments: number }>()
 
-    ;(poByMonth as any[]).forEach(o => {
+    ;poByMonth.forEach(o => {
       monthMap.set(o.month, {
         month: o.month,
         po_count: o.po_count,
@@ -268,7 +315,7 @@ apRouter.get('/purchase-monthly-summary', async (c) => {
       })
     })
 
-    ;(ppByMonth as any[]).forEach(p => {
+    ;ppByMonth.forEach(p => {
       const existing = monthMap.get(p.month)
       if (existing) {
         existing.payment_count = p.payment_count
@@ -380,7 +427,7 @@ apRouter.put('/purchase-payment/:id', requireRole('ADMIN', 'MANAGER'), async (c)
     // Get existing payment
     const existing = await c.env.DB.prepare(
       'SELECT * FROM purchase_payments WHERE id = ?'
-    ).bind(id).first() as any
+    ).bind(id).first<PurchasePaymentRow>()
 
     if (!existing) {
       return c.json({ success: false, error: '지급 내역을 찾을 수 없습니다' }, 404)
@@ -425,7 +472,7 @@ apRouter.put('/purchase-payment/:id', requireRole('ADMIN', 'MANAGER'), async (c)
     // Get updated balance
     const supplier = await c.env.DB.prepare(
       'SELECT purchase_balance FROM clients WHERE id = ?'
-    ).bind(existing.supplier_id).first() as any
+    ).bind(existing.supplier_id).first<BalanceRow>()
 
     return c.json({
       success: true,
@@ -450,7 +497,7 @@ apRouter.delete('/purchase-payment/:id', requireRole('ADMIN'), async (c) => {
     // Get existing payment
     const existing = await c.env.DB.prepare(
       'SELECT * FROM purchase_payments WHERE id = ?'
-    ).bind(id).first() as any
+    ).bind(id).first<PurchasePaymentRow>()
 
     if (!existing) {
       return c.json({ success: false, error: '지급 내역을 찾을 수 없습니다' }, 404)
@@ -467,7 +514,7 @@ apRouter.delete('/purchase-payment/:id', requireRole('ADMIN'), async (c) => {
     // Get updated balance
     const supplier = await c.env.DB.prepare(
       'SELECT purchase_balance FROM clients WHERE id = ?'
-    ).bind(existing.supplier_id).first() as any
+    ).bind(existing.supplier_id).first<BalanceRow>()
 
     return c.json({
       success: true,
@@ -509,14 +556,14 @@ apRouter.post('/purchase-adjustment', requireRole('ADMIN', 'MANAGER'), async (c)
       }, 400)
     }
 
-    const amount = parseFloat(String(body.amount))
+    const amount = Number(body.amount)
     if (amount <= 0) {
       return c.json({ success: false, error: '금액은 0보다 커야 합니다' }, 400)
     }
 
     const supplier = await c.env.DB.prepare(
       'SELECT id, purchase_balance FROM clients WHERE id = ?'
-    ).bind(body.supplier_id).first() as any
+    ).bind(body.supplier_id).first<{ id: number; purchase_balance: number }>()
 
     if (!supplier) {
       return c.json({ success: false, error: 'Supplier not found' }, 404)
@@ -542,7 +589,7 @@ apRouter.post('/purchase-adjustment', requireRole('ADMIN', 'MANAGER'), async (c)
 
     const updatedSupplier = await c.env.DB.prepare(
       'SELECT purchase_balance FROM clients WHERE id = ?'
-    ).bind(body.supplier_id).first() as any
+    ).bind(body.supplier_id).first<BalanceRow>()
 
     return c.json({
       success: true,
@@ -594,7 +641,7 @@ apRouter.delete('/purchase-adjustment/:id', requireRole('ADMIN'), async (c) => {
 
     const existing = await c.env.DB.prepare(
       'SELECT * FROM purchase_adjustments WHERE id = ?'
-    ).bind(id).first() as any
+    ).bind(id).first<PurchaseAdjustmentRow>()
 
     if (!existing) {
       return c.json({ success: false, error: '매입 감액 내역을 찾을 수 없습니다' }, 404)
@@ -609,7 +656,7 @@ apRouter.delete('/purchase-adjustment/:id', requireRole('ADMIN'), async (c) => {
 
     const updatedSupplier = await c.env.DB.prepare(
       'SELECT purchase_balance FROM clients WHERE id = ?'
-    ).bind(existing.supplier_id).first() as any
+    ).bind(existing.supplier_id).first<BalanceRow>()
 
     return c.json({
       success: true,
@@ -637,10 +684,10 @@ apRouter.get('/purchase-overdue', async (c) => {
       WHERE c.purchase_balance > 0
       AND c.client_type IN ('SUPPLIER', 'BOTH')
       ORDER BY c.purchase_balance DESC
-    `).all() as any
+    `).all<OverdueRow>()
 
     const today = new Date()
-    const overdue = rows.map((row: any) => {
+    const overdue = rows.map((row) => {
       let days_since_last_payment = null
       let is_overdue = false
 
@@ -701,12 +748,12 @@ apRouter.get('/purchase-integrity-check', requireRole('ADMIN', 'MANAGER'), async
         SELECT supplier_id, SUM(amount) as v FROM purchase_adjustments GROUP BY supplier_id
       ) pa ON pa.supplier_id = c.id
       WHERE c.is_active = 1 AND c.client_type IN ('SUPPLIER', 'BOTH')
-    `).bind(...intPoEfParams, ...intPpEfParams).all() as any
+    `).bind(...intPoEfParams, ...intPpEfParams).all<IntegrityRow>()
 
-    const discrepancies: any[] = []
+    const discrepancies: { supplier_id: number; client_code: string; client_name: string; cached_purchase_balance: number; calculated_purchase_balance: number; difference: number }[] = []
     for (const row of rows) {
-      const calculated = parseFloat(row.total_orders) - parseFloat(row.total_paid) - parseFloat(row.total_adj)
-      const cached = parseFloat(row.purchase_balance) || 0
+      const calculated = Number(row.total_orders) - Number(row.total_paid) - Number(row.total_adj)
+      const cached = Number(row.purchase_balance) || 0
       if (Math.abs(calculated - cached) > 0.01) {
         discrepancies.push({
           supplier_id: row.id,
@@ -758,16 +805,16 @@ apRouter.post('/purchase-integrity-fix', requireRole('ADMIN', 'MANAGER'), async 
         SELECT supplier_id, SUM(amount) as v FROM purchase_adjustments GROUP BY supplier_id
       ) pa ON pa.supplier_id = c.id
       WHERE c.is_active = 1 AND c.client_type IN ('SUPPLIER', 'BOTH')
-    `).bind(...fixPoEfParams, ...fixPpEfParams).all() as any
+    `).bind(...fixPoEfParams, ...fixPpEfParams).all<IntegrityRow>()
 
     let fixed = 0
-    const fixResults: any[] = []
+    const fixResults: { supplier_id: number; client_name: string; old: number; new: number }[] = []
 
     for (const row of rows) {
       if (supplier_ids && supplier_ids.length > 0 && !supplier_ids.includes(row.id)) continue
 
-      const calculated = parseFloat(row.total_orders) - parseFloat(row.total_paid) - parseFloat(row.total_adj)
-      const cached = parseFloat(row.purchase_balance) || 0
+      const calculated = Number(row.total_orders) - Number(row.total_paid) - Number(row.total_adj)
+      const cached = Number(row.purchase_balance) || 0
 
       if (Math.abs(calculated - cached) > 0.01) {
         await c.env.DB.prepare(
@@ -795,7 +842,7 @@ apRouter.get('/purchase-client/:clientId/export/csv', async (c) => {
     const clientId = c.req.param('clientId')
     const { startDate, endDate } = c.req.query()
 
-    const supplier = await c.env.DB.prepare('SELECT client_name FROM clients WHERE id = ?').bind(clientId).first() as any
+    const supplier = await c.env.DB.prepare('SELECT client_name FROM clients WHERE id = ?').bind(clientId).first<ClientNameRow>()
     if (!supplier) return c.json({ success: false, error: 'Supplier not found' }, 404)
 
     // Purchase orders (발주)
@@ -808,7 +855,7 @@ apRouter.get('/purchase-client/:clientId/export/csv', async (c) => {
     const poParams: any[] = [clientId, ...csvPoEfParams]
     if (startDate) { poQuery += ' AND date(created_at) >= ?'; poParams.push(startDate) }
     if (endDate) { poQuery += ' AND date(created_at) <= ?'; poParams.push(endDate) }
-    const { results: purchaseOrders } = await c.env.DB.prepare(poQuery + ' ORDER BY created_at ASC').bind(...poParams).all() as any
+    const { results: purchaseOrders } = await c.env.DB.prepare(poQuery + ' ORDER BY created_at ASC').bind(...poParams).all<CsvPoRow>()
 
     // Purchase payments (지급)
     const { clause: csvPpEf, params: csvPpEfParams } = entityFilter(c)
@@ -820,7 +867,7 @@ apRouter.get('/purchase-client/:clientId/export/csv', async (c) => {
     const ppParams: any[] = [clientId, ...csvPpEfParams]
     if (startDate) { ppQuery += ' AND date(payment_date) >= ?'; ppParams.push(startDate) }
     if (endDate) { ppQuery += ' AND date(payment_date) <= ?'; ppParams.push(endDate) }
-    const { results: purchasePayments } = await c.env.DB.prepare(ppQuery + ' ORDER BY payment_date ASC').bind(...ppParams).all() as any
+    const { results: purchasePayments } = await c.env.DB.prepare(ppQuery + ' ORDER BY payment_date ASC').bind(...ppParams).all<CsvPpRow>()
 
     // Purchase adjustments (감액) — purchase_adjustments has no entity_id column yet
     let paQuery = `
@@ -831,35 +878,39 @@ apRouter.get('/purchase-client/:clientId/export/csv', async (c) => {
     const paParams: any[] = [clientId]
     if (startDate) { paQuery += ' AND date(adjustment_date) >= ?'; paParams.push(startDate) }
     if (endDate) { paQuery += ' AND date(adjustment_date) <= ?'; paParams.push(endDate) }
-    const { results: purchaseAdjustments } = await c.env.DB.prepare(paQuery + ' ORDER BY adjustment_date ASC').bind(...paParams).all() as any
+    const { results: purchaseAdjustments } = await c.env.DB.prepare(paQuery + ' ORDER BY adjustment_date ASC').bind(...paParams).all<CsvPaRow>()
 
     const methodLabels: Record<string, string> = { CASH: '현금', CARD: '카드', BANK_TRANSFER: '계좌이체', CHECK: '수표', OTHER: '기타' }
 
     // Build unified entry list
-    const entries: any[] = [
-      ...(purchaseOrders || []).map((po: any) => ({
+    interface CsvEntry { date: string; type: string; ref: string; debit: number; credit: number; note: string; balance: number }
+    const entries: CsvEntry[] = [
+      ...(purchaseOrders || []).map((po) => ({
         date: po.order_date || (po.created_at ? po.created_at.slice(0, 10) : ''),
-        type: '발주',
+        type: '발주' as const,
         ref: po.po_number,
         debit: po.final_amount || 0,
         credit: 0,
-        note: ''
+        note: '',
+        balance: 0
       })),
-      ...(purchasePayments || []).map((p: any) => ({
+      ...(purchasePayments || []).map((p) => ({
         date: p.payment_date,
-        type: '지급',
-        ref: methodLabels[p.payment_method] || p.payment_method || '',
+        type: '지급' as const,
+        ref: methodLabels[p.payment_method || ''] || p.payment_method || '',
         debit: 0,
         credit: p.amount || 0,
-        note: p.notes || ''
+        note: p.notes || '',
+        balance: 0
       })),
-      ...(purchaseAdjustments || []).map((adj: any) => ({
+      ...(purchaseAdjustments || []).map((adj) => ({
         date: adj.adjustment_date,
-        type: '감액',
+        type: '감액' as const,
         ref: adj.po_id ? `발주 #${adj.po_id}` : adj.type || '',
         debit: 0,
         credit: adj.amount || 0,
-        note: adj.reason || ''
+        note: adj.reason || '',
+        balance: 0
       }))
     ]
 

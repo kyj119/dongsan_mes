@@ -16,7 +16,7 @@ function calcPrintDuration(startedAt: string | null, completedAt: string | null)
 
 // 인쇄 에러/취소 → quality_issues 자동 등록 헬퍼
 async function autoCreateQualityIssue(
-  db: any, cardId: number, printStatus: string, agentId: string,
+  db: D1Database, cardId: number, printStatus: string, agentId: string,
   filePath: string, copyTotal: number
 ) {
   const issueType = printStatus === 'ERROR' ? 'DEFECT' : 'REWORK'
@@ -32,25 +32,35 @@ async function autoCreateQualityIssue(
   } catch { /* 중복 등 무시 */ }
 }
 
+// ─── Row 타입 정의 ───
+interface FileMapRow { card_id: number | null; card_number: string | null; order_number: string | null; order_item_id: number | null; file_name: string | null }
+interface CardRow { id: number; status: string; post_processing?: string | null; order_id?: number | null }
+interface CountRow { count: number }
+interface DoneTilesRow { done_tiles: number }
+interface PrintCompletedRow { print_completed: number }
+interface EquipmentStatusRow { equipment_status: string | null }
+interface AgentHeartbeatRow { computed_status: string; [key: string]: unknown }
+interface TodaySummaryRow { ok_count: number; error_count: number; cancel_count: number; total_count: number }
+
 // ─── 카드 매칭 헬퍼 ───
 // 파일명에서 order_number + file_seq를 추출하고, print_file_map → fallback regex 순으로 카드 조회
-async function resolveCard(db: any, extractedName: string): Promise<{
+async function resolveCard(db: D1Database, extractedName: string): Promise<{
   cardId: number | null, cardNumber: string | null, orderNumber: string | null, orderItemId: number | null
 }> {
   // 1차: file_map 조회 (YYYYMMDD-NNN-FFF 패턴)
   const seqMatch = extractedName.match(/^(\d{8}-\d{3})-(\d{3})/)
   if (seqMatch) {
     const orderNum = seqMatch[1]
-    const fileSeq = parseInt(seqMatch[2])
+    const fileSeq = Number(seqMatch[2])
     const map = await db.prepare(
       'SELECT card_id, card_number, order_item_id FROM print_file_map WHERE order_number = ? AND file_seq = ?'
-    ).bind(orderNum, fileSeq).first() as any
+    ).bind(orderNum, fileSeq).first<FileMapRow>()
     if (map) return { cardId: map.card_id, cardNumber: map.card_number, orderNumber: orderNum, orderItemId: map.order_item_id || null }
   }
   // 2차: 파일명 직접 매칭
   const fnMap = await db.prepare(
     'SELECT card_id, card_number, order_number, order_item_id FROM print_file_map WHERE file_name = ?'
-  ).bind(extractedName).first() as any
+  ).bind(extractedName).first<FileMapRow>()
   if (fnMap) return { cardId: fnMap.card_id, cardNumber: fnMap.card_number, orderNumber: fnMap.order_number, orderItemId: fnMap.order_item_id || null }
   // 3차: 기존 regex fallback (order_number만)
   const orderMatch = extractedName.match(/(\d{8}-\d{3})/)
@@ -58,17 +68,17 @@ async function resolveCard(db: any, extractedName: string): Promise<{
 }
 
 // ─── 타일 완료 판단: 같은 파일의 고유 tile_index 기준 ───
-async function checkAllTilesComplete(db: any, filePath: string, tileCount: number): Promise<boolean> {
+async function checkAllTilesComplete(db: D1Database, filePath: string, tileCount: number): Promise<boolean> {
   if (!tileCount || tileCount <= 1) return true // 타일 분할 없으면 즉시 완료
   // 같은 file_path에서 OK인 고유 tile_index 개수 카운트
   const result = await db.prepare(
     "SELECT COUNT(DISTINCT tile_index) as done_tiles FROM print_events WHERE file_path = ? AND print_status = 'OK' AND tile_index > 0"
-  ).bind(filePath).first() as any
+  ).bind(filePath).first<DoneTilesRow>()
   return (result?.done_tiles || 0) >= tileCount
 }
 
 // ─── card_item 자동 체크 + 전체 완료 시 PRINT_DONE 전환 ───
-async function autoCheckCardItem(db: any, cardId: number, orderItemId: number | null, agentId: string): Promise<void> {
+async function autoCheckCardItem(db: D1Database, cardId: number, orderItemId: number | null, agentId: string): Promise<void> {
   // orderItemId로 card_item 찾기
   if (orderItemId) {
     await db.prepare(
@@ -79,17 +89,17 @@ async function autoCheckCardItem(db: any, cardId: number, orderItemId: number | 
   // 모든 card_items 완료 여부 확인
   const { results: allItems } = await db.prepare(
     'SELECT print_completed FROM card_items WHERE card_id = ?'
-  ).bind(cardId).all() as any
+  ).bind(cardId).all<PrintCompletedRow>()
 
   if (!allItems || allItems.length === 0) return
 
   const total = allItems.length
-  const done = allItems.filter((i: any) => i.print_completed === 1).length
+  const done = allItems.filter((i) => i.print_completed === 1).length
   const allDone = total > 0 && done === total
 
   if (allDone) {
     // 카드 상태 확인
-    const card = await db.prepare('SELECT status, post_processing, order_id FROM cards WHERE id = ?').bind(cardId).first() as any
+    const card = await db.prepare('SELECT status, post_processing, order_id FROM cards WHERE id = ?').bind(cardId).first<CardRow>()
     if (card && card.status !== 'PRINT_DONE') {
       // 후가공 여부 → pp_status
       const hasPP = card.post_processing && card.post_processing !== '[]' && card.post_processing !== ''
@@ -108,11 +118,11 @@ async function autoCheckCardItem(db: any, cardId: number, orderItemId: number | 
           // syncOrderStatus는 cards.ts 내부 함수라 직접 호출 불가 → 동일 로직 적용
           const { results: siblingCards } = await db.prepare(
             "SELECT status FROM cards WHERE order_id = ? AND status != 'HOLD'"
-          ).bind(card.order_id).all() as any
+          ).bind(card.order_id).all<{ status: string }>()
           const orderCheck = await db.prepare(
             "SELECT status FROM orders WHERE id = ?"
-          ).bind(card.order_id).first() as any
-          const statuses = (siblingCards || []).map((c: any) => c.status)
+          ).bind(card.order_id).first<{ status: string }>()
+          const statuses = (siblingCards || []).map((sc) => sc.status)
           let newOrderStatus = null
           if (statuses.every((s: string) => s === 'PRINT_DONE')) {
             newOrderStatus = 'PRINT_DONE'
@@ -187,10 +197,10 @@ printEventsRouter.post('/', agentKeyMiddleware, async (c) => {
     // Idempotency check
     const existing = await c.env.DB.prepare(
       'SELECT id FROM print_events WHERE file_path = ? AND print_completed_at = ?'
-    ).bind(file_path, print_completed_at || '').first()
+    ).bind(file_path, print_completed_at || '').first<{ id: number }>()
 
     if (existing) {
-      return c.json({ success: true, message: 'Event already recorded', data: { id: (existing as any).id, duplicate: true } })
+      return c.json({ success: true, message: 'Event already recorded', data: { id: existing.id, duplicate: true } })
     }
 
     // Extract card/order from file-map or regex fallback
@@ -203,9 +213,9 @@ printEventsRouter.post('/', agentKeyMiddleware, async (c) => {
     // file_map에서 cardId를 찾았으면 카드 상태 조회, 못 찾았으면 cardNumber로 직접 조회
     if (cardId || cardNumber) {
       const card = cardId
-        ? await c.env.DB.prepare('SELECT id, status FROM cards WHERE id = ?').bind(cardId).first() as any
+        ? await c.env.DB.prepare('SELECT id, status FROM cards WHERE id = ?').bind(cardId).first<CardRow>()
         : cardNumber
-          ? await c.env.DB.prepare('SELECT id, status FROM cards WHERE card_number = ?').bind(cardNumber).first() as any
+          ? await c.env.DB.prepare('SELECT id, status FROM cards WHERE card_number = ?').bind(cardNumber).first<CardRow>()
           : null
       if (card) {
         cardId = card.id
@@ -331,7 +341,7 @@ printEventsRouter.post('/heartbeat', agentKeyMiddleware, async (c) => {
     if (equipment_id) {
       const equip = await c.env.DB.prepare(
         'SELECT equipment_status FROM equipment WHERE id = ?'
-      ).bind(equipment_id).first() as any
+      ).bind(equipment_id).first<EquipmentStatusRow>()
 
       if (equip) {
         const currentStatus = equip.equipment_status || 'IDLE'
@@ -388,9 +398,9 @@ printEventsRouter.post('/batch', agentKeyMiddleware, async (c) => {
         // file_map 또는 fallback으로 카드 매칭 (status + post_processing 1쿼리로 조회)
         if (cardId || cardNumber) {
           const card = cardId
-            ? await c.env.DB.prepare('SELECT id, status, post_processing FROM cards WHERE id = ?').bind(cardId).first() as any
+            ? await c.env.DB.prepare('SELECT id, status, post_processing FROM cards WHERE id = ?').bind(cardId).first<CardRow>()
             : cardNumber
-              ? await c.env.DB.prepare('SELECT id, status, post_processing FROM cards WHERE card_number = ?').bind(cardNumber).first() as any
+              ? await c.env.DB.prepare('SELECT id, status, post_processing FROM cards WHERE card_number = ?').bind(cardNumber).first<CardRow>()
               : null
           if (card) {
             cardId = card.id
@@ -529,10 +539,12 @@ printEventsRouter.patch('/:id/actual-printed', authMiddleware, async (c) => {
 printEventsRouter.get('/', authMiddleware, async (c) => {
   try {
     const { page = '1', limit = '50', agent_id = '', equipment_id = '', status = '', date = '' } = c.req.query()
-    const offset = (parseInt(page) - 1) * parseInt(limit)
+    const pageNum = Number(page)
+    const limitNum = Number(limit)
+    const offset = (pageNum - 1) * limitNum
 
     let where = 'WHERE 1=1'
-    const params: any[] = []
+    const params: (string | number)[] = []
 
     if (agent_id) {
       where += ' AND pe.agent_id = ?'
@@ -553,20 +565,21 @@ printEventsRouter.get('/', authMiddleware, async (c) => {
 
     // Count
     const countQuery = `SELECT COUNT(*) as count FROM print_events pe ${where}`
-    const { count } = await c.env.DB.prepare(countQuery).bind(...params).first() as any
+    const countRow = await c.env.DB.prepare(countQuery).bind(...params).first<CountRow>()
+    const count = countRow?.count ?? 0
 
     const selectQuery = `SELECT pe.*, COALESCE(pe.printer_name, eq.printer_name) as printer_name FROM print_events pe LEFT JOIN equipment eq ON pe.equipment_id = eq.id ${where} ORDER BY COALESCE(pe.print_completed_at, pe.created_at) DESC LIMIT ? OFFSET ?`
-    params.push(parseInt(limit), offset)
+    params.push(limitNum, offset)
     const { results } = await c.env.DB.prepare(selectQuery).bind(...params).all()
 
     return c.json({
       success: true,
       data: results,
       pagination: {
-        page: parseInt(page),
-        limit: parseInt(limit),
+        page: pageNum,
+        limit: limitNum,
         total: count,
-        total_pages: Math.ceil(count / parseInt(limit))
+        total_pages: Math.ceil(count / limitNum)
       }
     })
   } catch (error) {
@@ -592,8 +605,8 @@ printEventsRouter.get('/agents', authMiddleware, async (c) => {
       ORDER BY last_seen_at DESC
     `).all()
 
-    const online = (results as any[]).filter((a: any) => a.computed_status === 'online').length
-    const offline = (results as any[]).filter((a: any) => a.computed_status === 'offline').length
+    const online = (results as AgentHeartbeatRow[]).filter((a) => a.computed_status === 'online').length
+    const offline = (results as AgentHeartbeatRow[]).filter((a) => a.computed_status === 'offline').length
 
     return c.json({
       success: true,
@@ -625,7 +638,7 @@ printEventsRouter.get('/stats', authMiddleware, async (c) => {
         COUNT(*) as total_count
       FROM print_events
       WHERE date(created_at) = date('now')
-    `).first() as any
+    `).first<TodaySummaryRow>()
 
     // Daily breakdown
     const { results: daily } = await c.env.DB.prepare(`
