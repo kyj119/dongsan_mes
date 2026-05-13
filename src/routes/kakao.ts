@@ -603,7 +603,7 @@ kakaoRouter.post('/send-portal-link', async (c) => {
 
     // 거래처 정보 조회
     const client = await db.prepare(
-      `SELECT * FROM clients WHERE id = ?`
+      `SELECT id, client_name, mobile FROM clients WHERE id = ?`
     ).bind(clientId).first<ClientRow>()
 
     if (!client) {

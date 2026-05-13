@@ -113,7 +113,7 @@ async function issueTaxInvoice(
   }
 
   const { results: items } = await db.prepare(
-    'SELECT * FROM tax_invoice_items WHERE tax_invoice_id = ? ORDER BY sort_order'
+    'SELECT id, tax_invoice_id, item_date, item_name, specification, quantity, unit_price, supply_amount, tax_amount, notes, sort_order FROM tax_invoice_items WHERE tax_invoice_id = ? ORDER BY sort_order'
   ).bind(taxInvoiceId).all()
 
   // 팝빌 연동 확인
@@ -855,7 +855,7 @@ taxInvoicesRouter.get('/:id', async (c) => {
     }
 
     const { results: items } = await c.env.DB.prepare(
-      'SELECT * FROM tax_invoice_items WHERE tax_invoice_id = ? ORDER BY sort_order'
+      'SELECT id, tax_invoice_id, item_date, item_name, specification, quantity, unit_price, supply_amount, tax_amount, notes, sort_order FROM tax_invoice_items WHERE tax_invoice_id = ? ORDER BY sort_order'
     ).bind(id).all()
 
     // 연결된 주문 목록 조회 (묶음 발행 지원)
@@ -1001,7 +1001,8 @@ taxInvoicesRouter.post('/', requireRole('ADMIN', 'MANAGER'), async (c) => {
       let globalSortOrder = 0
       for (const order of orders as Array<Record<string, unknown>>) {
         const { results: orderItems } = await c.env.DB.prepare(
-          'SELECT * FROM order_items WHERE order_id = ? ORDER BY sort_order'
+          `SELECT item_name, width, height, quantity, unit_price, amount, vat_included, sort_order
+           FROM order_items WHERE order_id = ? ORDER BY sort_order`
         ).bind(order.id).all()
 
         for (const oi of orderItems as Array<Record<string, unknown>>) {
@@ -1035,7 +1036,7 @@ taxInvoicesRouter.post('/', requireRole('ADMIN', 'MANAGER'), async (c) => {
       `).bind(taxInvoiceId).first()
 
       const { results: createdItems } = await c.env.DB.prepare(
-        'SELECT * FROM tax_invoice_items WHERE tax_invoice_id = ? ORDER BY sort_order'
+        'SELECT id, tax_invoice_id, item_date, item_name, specification, quantity, unit_price, supply_amount, tax_amount, notes, sort_order FROM tax_invoice_items WHERE tax_invoice_id = ? ORDER BY sort_order'
       ).bind(taxInvoiceId).all()
 
       const { results: linkedOrders } = await c.env.DB.prepare(`
@@ -1134,7 +1135,8 @@ taxInvoicesRouter.post('/', requireRole('ADMIN', 'MANAGER'), async (c) => {
 
     // Copy order_items -> tax_invoice_items
     const { results: orderItems } = await c.env.DB.prepare(
-      'SELECT * FROM order_items WHERE order_id = ? ORDER BY sort_order'
+      `SELECT item_name, width, height, quantity, unit_price, amount, vat_included, sort_order
+       FROM order_items WHERE order_id = ? ORDER BY sort_order`
     ).bind(body.order_id).all()
 
     const vatRate = 0.1
@@ -1168,7 +1170,7 @@ taxInvoicesRouter.post('/', requireRole('ADMIN', 'MANAGER'), async (c) => {
     `).bind(taxInvoiceId).first()
 
     const { results: createdItems } = await c.env.DB.prepare(
-      'SELECT * FROM tax_invoice_items WHERE tax_invoice_id = ? ORDER BY sort_order'
+      'SELECT id, tax_invoice_id, item_date, item_name, specification, quantity, unit_price, supply_amount, tax_amount, notes, sort_order FROM tax_invoice_items WHERE tax_invoice_id = ? ORDER BY sort_order'
     ).bind(taxInvoiceId).all()
 
     // auto_issue 처리
@@ -1281,7 +1283,7 @@ taxInvoicesRouter.patch('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
     `).bind(id).first()
 
     const { results: items } = await c.env.DB.prepare(
-      'SELECT * FROM tax_invoice_items WHERE tax_invoice_id = ? ORDER BY sort_order'
+      'SELECT id, tax_invoice_id, item_date, item_name, specification, quantity, unit_price, supply_amount, tax_amount, notes, sort_order FROM tax_invoice_items WHERE tax_invoice_id = ? ORDER BY sort_order'
     ).bind(id).all()
 
     return c.json({ success: true, data: { ...updated, items } })
@@ -1376,7 +1378,7 @@ taxInvoicesRouter.post('/:id/modify', requireRole('ADMIN', 'MANAGER'), async (c)
 
     // 원본 품목 조회
     const { results: originalItems } = await c.env.DB.prepare(
-      'SELECT * FROM tax_invoice_items WHERE tax_invoice_id = ? ORDER BY sort_order'
+      'SELECT id, tax_invoice_id, item_date, item_name, specification, quantity, unit_price, supply_amount, tax_amount, notes, sort_order FROM tax_invoice_items WHERE tax_invoice_id = ? ORDER BY sort_order'
     ).bind(id).all()
 
     const invoiceNumber = await generateInvoiceNumber(c.env.DB)
@@ -1497,7 +1499,7 @@ taxInvoicesRouter.post('/:id/modify', requireRole('ADMIN', 'MANAGER'), async (c)
     `).bind(newInvoiceId).first()
 
     const { results: createdItems } = await c.env.DB.prepare(
-      'SELECT * FROM tax_invoice_items WHERE tax_invoice_id = ? ORDER BY sort_order'
+      'SELECT id, tax_invoice_id, item_date, item_name, specification, quantity, unit_price, supply_amount, tax_amount, notes, sort_order FROM tax_invoice_items WHERE tax_invoice_id = ? ORDER BY sort_order'
     ).bind(newInvoiceId).all()
 
     return c.json({ success: true, data: { ...created, items: createdItems } }, 201)

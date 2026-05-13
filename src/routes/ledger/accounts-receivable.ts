@@ -147,7 +147,11 @@ arRouter.get('/client/:clientId', async (c) => {
 
     // Get client info
     const client = await c.env.DB.prepare(
-      'SELECT * FROM clients WHERE id = ?'
+      `SELECT id, client_code, client_name, representative, business_registration_number,
+              business_type, business_item, phone, mobile, fax, email, address, postal_code,
+              bank_info, is_active, balance, client_type, delivery_method, auto_billing,
+              price_policy_id, notes, invoice_method, entity_id, created_at, updated_at
+       FROM clients WHERE id = ?`
     ).bind(clientId).first<ClientRow>()
 
     if (!client) {
@@ -1689,7 +1693,7 @@ arRouter.post('/send-email', async (c) => {
 
     // Get client info
     const client = await c.env.DB.prepare(
-      'SELECT * FROM clients WHERE id = ?'
+      `SELECT id, client_name, balance FROM clients WHERE id = ?`
     ).bind(client_id).first<ClientRow>()
 
     if (!client) {
