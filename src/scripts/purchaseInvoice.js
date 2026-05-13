@@ -10,7 +10,7 @@ function numberToKorean(num) {
     if (!num || num === 0) return '영';
     num = Math.floor(Math.abs(num));
     var digits = ['', '일', '이', '삼', '사', '오', '육', '칠', '팔', '구'];
-    var smallUnits = ['', '십', '백', '천'];
+    var smallUnits = ['', '십', '백', '청'];
     var bigUnits = ['', '만', '억', '조'];
     var result = '';
     var unitIdx = 0;
@@ -101,7 +101,7 @@ function buildPOSheet(data) {
     var managerPhone = po.created_by_phone || '';
 
     return '<div class="po-sheet">'
-        + '<div class="po-header">' + logoHtml + '<div class="po-title">발  주  서</div></div>'
+        + '<div class="po-header">' + logoHtml + '<div class="po-title">발   주   서</div></div>'
         + '<div class="po-subtitle">발주번호: ' + (po.po_number || po.order_number || '') + '</div>'
 
         + '<div class="info-grid">'
@@ -125,11 +125,11 @@ function buildPOSheet(data) {
 
         + '<div class="meta-row">'
         + '  <span>발주일자: ' + poDate + '</span>'
-        + '  <span>납품요청일: ' + (deliveryDate || '-') + '</span>'
-        + '  <span>납품장소: ' + (po.delivery_location || '-') + '</span>'
+        + '  <span>낙품요청일: ' + (deliveryDate || '-') + '</span>'
+        + '  <span>낙품장소: ' + (po.delivery_location || '-') + '</span>'
         + '</div>'
 
-        + '<div class="total-korean">' + koreanAmount + ' (\u20A9' + fmt(finalAmount) + ')</div>'
+        + '<div class="total-korean">' + koreanAmount + ' (₩' + fmt(finalAmount) + ')</div>'
 
         + '<table class="items-table">'
         + '<thead><tr>'
@@ -190,7 +190,7 @@ async function loadInvoice() {
     } catch (err) {
         document.getElementById('loadingMsg').style.display = 'none';
         document.getElementById('errorMsg').style.display = 'block';
-        document.getElementById('errorMsg').innerHTML = '<i class="fas fa-exclamation-circle"></i> 발주서를 불러오는데 실패했습니다.<br><small>' + (err.message || '') + '</small>';
+        document.getElementById('errorMsg').innerHTML = '<i class="fas fa-exclamation-circle"></i> 발주서를 불러오는데 실패했습니다.<br><small>' + escapeHtml(err.message || '') + '</small>';
     }
 }
 
