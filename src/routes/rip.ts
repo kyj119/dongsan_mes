@@ -2,6 +2,143 @@ import { Hono } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole, agentKeyMiddleware } from '../middleware/auth'
 
+// ─── D1 row types ───────────────────────────────────────────────────────────
+
+interface CardRipRow {
+  id: number
+  card_number: string
+  rip_filename: string | null
+  rip_status: string | null
+  rip_sent_at: string | null
+  rip_preview_path: string | null
+  rip_job_path: string | null
+  rip_queued_at: string | null
+  equipment_id: string | null
+  rip_preset: string | null
+  status: string
+  client_name: string | null
+  item_name: string | null
+}
+
+interface EquipmentRow {
+  id: string
+  name: string
+  printer_name: string | null
+  ip_address: string | null
+  status: string
+  head_count: number | null
+  location_zone: string | null
+  location_x: number | null
+  location_y: number | null
+  notes: string | null
+  equipment_status: string | null
+  daily_capacity: number | null
+  size_type: string | null
+  last_seen_at: string | null
+  agent_ip: string | null
+  agent_status: string
+}
+
+interface PresetRow {
+  id: number
+  equipment_id: string
+  preset_name: string
+  tps_filename: string | null
+  is_default: number
+  rip_profile: string | null
+  color_mode: string | null
+  resolution: string | null
+  media_type: string | null
+  copies: number | null
+  quality: string | null
+  description: string | null
+}
+
+interface HeadRow {
+  id: number
+  equipment_id: string
+  head_number: number
+  status: string
+  replaced_at: string | null
+  notes: string | null
+}
+
+interface ConsumableRow {
+  id: number
+  equipment_id: string
+  name: string
+  replacement_cycle_days: number
+  last_replaced_at: string | null
+  next_due_at: string | null
+  quantity_on_hand: number
+  notes: string | null
+}
+
+interface ScheduleRow {
+  id: number
+  equipment_id: string
+  title: string
+  description: string | null
+  interval_days: number
+  checklist: string | null
+  next_due_at: string | null
+  last_performed_at: string | null
+  is_active: number
+}
+
+interface CardFullRow {
+  id: number
+  card_number: string
+  status: string
+  rip_filename: string | null
+  rip_status: string | null
+  rip_sent_at: string | null
+  rip_job_path: string | null
+  equipment_id: string | null
+  rip_preset: string | null
+  source_file_path: string | null
+  width: number | null
+  height: number | null
+  quantity: number | null
+  priority: number | null
+  delivery_date: string | null
+  client_name: string | null
+  item_name: string | null
+}
+
+interface CardItemJoinRow {
+  id: number
+  card_id: number
+  order_item_id: number
+  quantity: number
+  rip_status: string | null
+  rip_job_path: string | null
+  source_file_path: string | null
+  card_number: string
+  card_status: string
+  delivery_date: string | null
+  priority: number | null
+  item_name: string | null
+  width: number | null
+  height: number | null
+  content: string | null
+  scale_factor: number | null
+  rip_equipment_id: string | null
+  rip_preset: string | null
+}
+
+interface CountRow {
+  cnt: number
+}
+
+interface RetryCountRow {
+  rip_retry_count: number
+}
+
+interface UptimeRow {
+  active_days: number
+}
+
 const ripRouter = new Hono<HonoEnv>()
 
 // ─── 유틸: RIP 파일명 파싱 ──────────────────────────────────────────────────
@@ -72,13 +209,13 @@ ripRouter.get('/status', authMiddleware, async (c) => {
       WHERE rip_filename IS NOT NULL
       ORDER BY created_at DESC
       LIMIT 50
-    `).all()
+    `).all<CardRipRow>()
 
     const summary = {
       total: cards.length,
-      queued: cards.filter((c: any) => c.rip_status === 'QUEUED').length,
-      sent: cards.filter((c: any) => c.rip_sent_at).length,
-      pending: cards.filter((c: any) => !c.rip_sent_at).length,
+      queued: cards.filter((r) => r.rip_status === 'QUEUED').length,
+      sent: cards.filter((r) => r.rip_sent_at).length,
+      pending: cards.filter((r) => !r.rip_sent_at).length,
       cards: cards
     }
 
@@ -109,11 +246,11 @@ ripRouter.get('/equipment', authMiddleware, async (c) => {
       LEFT JOIN agent_heartbeats ah ON ah.equipment_id = e.id
       WHERE e.status = 'ACTIVE'
       ORDER BY e.id
-    `).all()
+    `).all<EquipmentRow>()
 
     // 프리셋 일괄 조회 (N+1 → 단일 쿼리)
-    const eqIds = (equipmentList as any[]).map((eq: any) => eq.id)
-    let presetsMap: Record<string, any[]> = {}
+    const eqIds = equipmentList.map((eq) => eq.id)
+    let presetsMap: Record<string, PresetRow[]> = {}
     if (eqIds.length > 0) {
       const placeholders = eqIds.map(() => '?').join(',')
       const { results: allPresets } = await c.env.DB.prepare(`
@@ -121,13 +258,13 @@ ripRouter.get('/equipment', authMiddleware, async (c) => {
         FROM equipment_presets
         WHERE equipment_id IN (${placeholders})
         ORDER BY is_default DESC, preset_name ASC
-      `).bind(...eqIds).all()
-      for (const p of allPresets as any[]) {
+      `).bind(...eqIds).all<PresetRow>()
+      for (const p of allPresets) {
         if (!presetsMap[p.equipment_id]) presetsMap[p.equipment_id] = []
         presetsMap[p.equipment_id].push(p)
       }
     }
-    const result = (equipmentList as any[]).map((eq: any) => ({
+    const result = equipmentList.map((eq) => ({
       ...eq,
       presets: presetsMap[eq.id] || []
     }))
@@ -319,7 +456,7 @@ ripRouter.get('/equipment/:id', authMiddleware, async (c) => {
       FROM equipment e
       LEFT JOIN agent_heartbeats ah ON ah.equipment_id = e.id
       WHERE e.id = ?
-    `).bind(equipId).first() as any
+    `).bind(equipId).first<EquipmentRow>()
 
     if (!equipment) {
       return c.json({ success: false, error: 'Equipment not found' }, 404)
@@ -373,7 +510,7 @@ ripRouter.patch('/equipment/:id/status', authMiddleware, async (c) => {
 
     const existing = await c.env.DB.prepare(
       'SELECT id, equipment_status FROM equipment WHERE id = ?'
-    ).bind(equipId).first() as any
+    ).bind(equipId).first<{ id: string; equipment_status: string | null }>()
 
     if (!existing) {
       return c.json({ success: false, error: 'Equipment not found' }, 404)
@@ -522,14 +659,14 @@ ripRouter.put('/equipment/:id/heads/:headNum', authMiddleware, async (c) => {
 
     const head = await c.env.DB.prepare(
       'SELECT * FROM equipment_heads WHERE equipment_id = ? AND head_number = ?'
-    ).bind(equipId, headNum).first() as any
+    ).bind(equipId, headNum).first<HeadRow>()
 
     if (!head) {
       return c.json({ success: false, error: 'Head not found' }, 404)
     }
 
     const fields: string[] = ['updated_at = CURRENT_TIMESTAMP']
-    const values: any[] = []
+    const values: any[] = [] // dynamic SQL params
 
     if (status) { fields.push('status = ?'); values.push(status) }
     if (replaced_at) { fields.push('replaced_at = ?'); values.push(replaced_at) }
@@ -759,14 +896,14 @@ ripRouter.put('/equipment/:id/consumables/:cid', authMiddleware, requireRole('AD
 
     const existing = await c.env.DB.prepare(
       'SELECT * FROM equipment_consumables WHERE id = ?'
-    ).bind(cid).first() as any
+    ).bind(cid).first<ConsumableRow>()
 
     if (!existing) {
       return c.json({ success: false, error: 'Consumable not found' }, 404)
     }
 
     const fields: string[] = []
-    const values: any[] = []
+    const values: any[] = [] // dynamic SQL params
 
     if (body.name !== undefined) { fields.push('name = ?'); values.push(body.name) }
     if (body.replacement_cycle_days !== undefined) { fields.push('replacement_cycle_days = ?'); values.push(body.replacement_cycle_days) }
@@ -810,7 +947,7 @@ ripRouter.post('/equipment/:id/consumables/:cid/replace', authMiddleware, async 
 
     const consumable = await c.env.DB.prepare(
       'SELECT * FROM equipment_consumables WHERE id = ? AND equipment_id = ?'
-    ).bind(cid, equipId).first() as any
+    ).bind(cid, equipId).first<ConsumableRow>()
 
     if (!consumable) {
       return c.json({ success: false, error: 'Consumable not found' }, 404)
@@ -939,7 +1076,7 @@ ripRouter.post('/equipment/:id/schedules/:sid/complete', authMiddleware, async (
 
     const schedule = await c.env.DB.prepare(
       'SELECT * FROM maintenance_schedules WHERE id = ? AND equipment_id = ?'
-    ).bind(sid, equipId).first() as any
+    ).bind(sid, equipId).first<ScheduleRow>()
 
     if (!schedule) {
       return c.json({ success: false, error: 'Schedule not found' }, 404)
@@ -1049,7 +1186,7 @@ ripRouter.get('/equipment/:id/stats', authMiddleware, async (c) => {
       WHERE equipment_id = ?
         AND print_status = 'OK'
         AND print_completed_at >= date('now', '-7 days')
-    `).bind(equipId).first() as any
+    `).bind(equipId).first<UptimeRow>()
 
     // 유지보수 비용 합계 (최근 6개월)
     const costData = await c.env.DB.prepare(`
@@ -1144,7 +1281,7 @@ ripRouter.post('/send/:cardId', authMiddleware, async (c) => {
     // 1. 카드 존재 확인
     const card = await c.env.DB.prepare(
       'SELECT * FROM cards WHERE id = ?'
-    ).bind(cardId).first() as any
+    ).bind(cardId).first<CardFullRow>()
 
     if (!card) {
       return c.json({ success: false, error: 'Card not found' }, 404)
@@ -1214,7 +1351,7 @@ ripRouter.post('/complete/:cardId', authMiddleware, async (c) => {
 
     const card = await c.env.DB.prepare(
       'SELECT * FROM cards WHERE id = ?'
-    ).bind(cardId).first() as any
+    ).bind(cardId).first<CardFullRow>()
 
     if (!card) {
       return c.json({ success: false, error: 'Card not found' }, 404)
@@ -1284,7 +1421,7 @@ ripRouter.get('/test-filename/:cardId', authMiddleware, async (c) => {
 
     const card = await c.env.DB.prepare(
       'SELECT * FROM cards WHERE id = ?'
-    ).bind(cardId).first() as any
+    ).bind(cardId).first<CardFullRow>()
 
     if (!card) {
       return c.json({ success: false, error: 'Card not found' }, 404)
@@ -1365,7 +1502,7 @@ ripRouter.post('/ack/:cardId', agentKeyMiddleware, async (c) => {
 
     const card = await c.env.DB.prepare(
       "SELECT id, status, rip_status FROM cards WHERE id = ? AND rip_status = 'QUEUED'"
-    ).bind(cardId).first() as any
+    ).bind(cardId).first<{ id: number; status: string; rip_status: string }>()
 
     if (!card) {
       return c.json({
@@ -1433,7 +1570,7 @@ ripRouter.post('/send-item/:cardItemId', authMiddleware, async (c) => {
       JOIN cards c ON ci.card_id = c.id
       JOIN order_items oi ON ci.order_item_id = oi.id
       WHERE ci.id = ?
-    `).bind(cardItemId).first() as any
+    `).bind(cardItemId).first<CardItemJoinRow>()
 
     if (!cardItem) {
       return c.json({ success: false, error: 'Card item not found' }, 404)
@@ -1446,7 +1583,7 @@ ripRouter.post('/send-item/:cardItemId', authMiddleware, async (c) => {
     // 2. equipment 존재 확인
     const equipment = await c.env.DB.prepare(
       "SELECT id, name FROM equipment WHERE id = ? AND status = 'ACTIVE'"
-    ).bind(equipment_id).first() as any
+    ).bind(equipment_id).first<{ id: string; name: string }>()
 
     if (!equipment) {
       return c.json({ success: false, error: 'Equipment not found or inactive' }, 400)
@@ -1514,8 +1651,8 @@ ripRouter.post('/send-items-bulk', authMiddleware, async (c) => {
       return c.json({ success: false, error: 'items array is required' }, 400)
     }
 
-    const results: any[] = []
-    const errors: any[] = []
+    const results: Array<{ card_item_id: number; rip_status: string }> = []
+    const errors: Array<{ card_item_id: number; error: string }> = []
     const cardIdsToUpdate = new Set<number>()
 
     for (const item of items) {
@@ -1534,7 +1671,7 @@ ripRouter.post('/send-items-bulk', authMiddleware, async (c) => {
         JOIN cards c ON ci.card_id = c.id
         JOIN order_items oi ON ci.order_item_id = oi.id
         WHERE ci.id = ?
-      `).bind(item.card_item_id).first() as any
+      `).bind(item.card_item_id).first<{ id: number; card_id: number; rip_status: string | null; card_number: string; card_status: string; item_name: string | null }>()
 
       if (!cardItem) {
         errors.push({ card_item_id: item.card_item_id, error: 'Not found' })
@@ -1652,7 +1789,7 @@ ripRouter.post('/ack-item/:cardItemId', agentKeyMiddleware, async (c) => {
       FROM card_items ci
       JOIN cards c ON ci.card_id = c.id
       WHERE ci.id = ?
-    `).bind(cardItemId).first() as any
+    `).bind(cardItemId).first<{ id: number; card_id: number; rip_status: string | null; rip_job_path: string | null; card_status: string }>()
 
     if (!cardItem) {
       return c.json({ success: false, error: 'Card item not found' }, 404)
@@ -1689,7 +1826,7 @@ ripRouter.post('/ack-item/:cardItemId', agentKeyMiddleware, async (c) => {
     // 카드의 모든 아이템이 SENT 이상인지 확인 → 카드 rip_status 갱신
     const { results: remainingQueued } = await c.env.DB.prepare(`
       SELECT COUNT(*) as cnt FROM card_items WHERE card_id = ? AND rip_status = 'QUEUED'
-    `).bind(cardItem.card_id).all() as any
+    `).bind(cardItem.card_id).all<CountRow>()
 
     if (remainingQueued[0]?.cnt === 0) {
       await c.env.DB.prepare(`
@@ -1735,7 +1872,7 @@ ripRouter.post('/fail-item/:cardItemId', agentKeyMiddleware, async (c) => {
     // retry_count >= 5면 ERROR로 전환
     const item = await c.env.DB.prepare(
       `SELECT rip_retry_count FROM card_items WHERE id = ?`
-    ).bind(cardItemId).first() as any
+    ).bind(cardItemId).first<RetryCountRow>()
 
     if (item && item.rip_retry_count >= 5) {
       await c.env.DB.prepare(`
@@ -1748,7 +1885,7 @@ ripRouter.post('/fail-item/:cardItemId', agentKeyMiddleware, async (c) => {
       data: {
         card_item_id: cardItemId,
         rip_retry_count: item?.rip_retry_count || 0,
-        rip_status: (item?.rip_retry_count >= 5) ? 'ERROR' : 'QUEUED'
+        rip_status: ((item?.rip_retry_count ?? 0) >= 5) ? 'ERROR' : 'QUEUED'
       }
     })
   } catch (error) {

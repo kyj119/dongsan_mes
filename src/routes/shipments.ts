@@ -75,17 +75,18 @@ shipmentsRouter.get('/', async (c) => {
       LIMIT ? OFFSET ?
     `).bind(...params, safeLimit, offset).all()
 
-    const { count } = await c.env.DB.prepare(`
+    const countRow = await c.env.DB.prepare(`
       SELECT COUNT(*) as count FROM shipments s
       JOIN orders o ON s.order_id = o.id
       LEFT JOIN clients cl ON o.client_id = cl.id
       ${where}
-    `).bind(...params).first() as any
+    `).bind(...params).first<{ count: number }>()
 
+    const total = countRow?.count ?? 0
     return c.json({
       success: true,
       data: results,
-      pagination: { page: parseInt(page), limit: safeLimit, total: count, total_pages: Math.ceil(count / safeLimit) }
+      pagination: { page: parseInt(page), limit: safeLimit, total, total_pages: Math.ceil(total / safeLimit) }
     })
   } catch (error) {
     console.error('src/routes/shipments.ts error:', error)
@@ -145,8 +146,10 @@ shipmentsRouter.get('/daily', async (c) => {
     `).bind(targetDate, ...efDaily.params).all()
 
     // 품목 상세
-    const orderIds = (results as any[]).map((r: any) => r.id)
-    const ordersWithItems = results as any[]
+    interface DailyOrderRow { id: number; [key: string]: unknown }
+    interface DailyItemRow { order_id: number; item_name: string; category_name: string | null; width: number | null; height: number | null; quantity: number; content: string | null }
+    const orderIds = (results as DailyOrderRow[]).map(r => r.id)
+    const ordersWithItems = results as (DailyOrderRow & { items?: DailyItemRow[]; item_summary?: string })[]
 
     if (orderIds.length > 0) {
       const placeholders = orderIds.map(() => '?').join(',')
@@ -156,10 +159,10 @@ shipmentsRouter.get('/daily', async (c) => {
         FROM order_items oi
         WHERE oi.order_id IN (${placeholders}) AND oi.parent_item_id IS NULL
         ORDER BY oi.order_id, oi.id
-      `).bind(...orderIds).all()
+      `).bind(...orderIds).all<DailyItemRow>()
 
-      const itemsByOrder: Record<number, any[]> = {}
-      for (const item of itemRows as any[]) {
+      const itemsByOrder: Record<number, DailyItemRow[]> = {}
+      for (const item of itemRows) {
         if (!itemsByOrder[item.order_id]) itemsByOrder[item.order_id] = []
         itemsByOrder[item.order_id].push(item)
       }
@@ -167,7 +170,7 @@ shipmentsRouter.get('/daily', async (c) => {
       for (const order of ordersWithItems) {
         order.items = itemsByOrder[order.id] || []
         // 품목 요약
-        order.item_summary = order.items.map((i: any) => {
+        order.item_summary = order.items.map((i) => {
           const size = (i.width && i.height) ? `${i.width}x${i.height}` : ''
           return `${i.item_name}${size ? ' ' + size : ''} x${i.quantity}`
         }).join(', ')
@@ -204,8 +207,10 @@ shipmentsRouter.get('/ready-orders', async (c) => {
     `).bind(...efReady.params).all()
 
     // 품목 상세 일괄 조회
-    const orderIds = results.map((r: any) => r.id)
-    const ordersWithItems = results as any[]
+    interface ReadyOrderRow { id: number; [key: string]: unknown }
+    interface ReadyItemRow { order_id: number; item_name: string; category_name: string | null; width: number | null; height: number | null; quantity: number; unit: string | null; card_number: string | null; card_status: string | null; card_shipped_at: string | null }
+    const orderIds = (results as ReadyOrderRow[]).map(r => r.id)
+    const ordersWithItems = results as (ReadyOrderRow & { items?: ReadyItemRow[] })[]
 
     if (orderIds.length > 0) {
       const placeholders = orderIds.map(() => '?').join(',')
@@ -216,11 +221,11 @@ shipmentsRouter.get('/ready-orders', async (c) => {
         LEFT JOIN cards c ON c.order_item_id = oi.id
         WHERE oi.order_id IN (${placeholders}) AND oi.parent_item_id IS NULL
         ORDER BY oi.order_id, oi.id
-      `).bind(...orderIds).all()
+      `).bind(...orderIds).all<ReadyItemRow>()
 
       // order_id별로 그룹핑
-      const itemsByOrder: Record<number, any[]> = {}
-      for (const item of itemRows as any[]) {
+      const itemsByOrder: Record<number, ReadyItemRow[]> = {}
+      for (const item of itemRows) {
         if (!itemsByOrder[item.order_id]) itemsByOrder[item.order_id] = []
         itemsByOrder[item.order_id].push(item)
       }
@@ -254,9 +259,10 @@ shipmentsRouter.get('/dashboard/counts', async (c) => {
         AND DATE(o.delivery_date) = ?
         ${ef.clause}
       GROUP BY o.id
-    `).bind(today, ...ef.params).all()
-    const total = (results as any[]).length
-    const ready = (results as any[]).filter((r: any) => r.all_ready === 1).length
+    `).bind(today, ...ef.params).all<{ id: number; all_ready: number }>()
+    const typedResults = results
+    const total = typedResults.length
+    const ready = typedResults.filter(r => r.all_ready === 1).length
     return c.json({ success: true, data: { total, ready, pending: total - ready } })
   } catch (err) {
     return c.json({ success: false, error: 'Failed to load counts' }, 500)
@@ -289,10 +295,19 @@ shipmentsRouter.get('/dashboard', async (c) => {
         AND DATE(o.delivery_date) = ?
         ${ef.clause}
       ORDER BY c.client_name ASC, o.id ASC, oi.sort_order ASC
-    `).bind(targetDate, ...ef.params).all()
+    `).bind(targetDate, ...ef.params).all<{
+      order_id: number; order_number: string; delivery_method: string | null; delivery_date: string | null; delivery_time: string | null; order_status: string;
+      client_id: number; client_name: string;
+      order_item_id: number; item_name: string; quantity: number; width: number | null; height: number | null; amount: number | null; shipment_ready: number | null;
+      card_id: number | null; card_number: string | null; card_status: string | null; card_category: string | null;
+    }>()
 
-    const clientMap = new Map<number, any>()
-    for (const row of results as any[]) {
+    interface DashboardItem { order_item_id: number; item_name: string; quantity: number; width: number | null; height: number | null; amount: number | null; shipment_ready: number | null; card_id: number | null; card_number: string | null; card_status: string | null; card_category: string | null }
+    interface DashboardOrder { order_id: number; order_number: string; delivery_method: string | null; delivery_date: string | null; delivery_time: string | null; order_status: string; items: DashboardItem[] }
+    interface DashboardClient { client_id: number; client_name: string; orders: Map<number, DashboardOrder> }
+
+    const clientMap = new Map<number, DashboardClient>()
+    for (const row of results) {
       if (!clientMap.has(row.client_id)) {
         clientMap.set(row.client_id, { client_id: row.client_id, client_name: row.client_name, orders: new Map() })
       }
@@ -311,9 +326,9 @@ shipmentsRouter.get('/dashboard', async (c) => {
     }
 
     const data = Array.from(clientMap.values()).map(client => {
-      const orders = Array.from(client.orders.values()).map((order: any) => {
-        const allReady = order.items.every((i: any) => i.shipment_ready === 1)
-        const readyCount = order.items.filter((i: any) => i.shipment_ready === 1).length
+      const orders = Array.from(client.orders.values()).map((order) => {
+        const allReady = order.items.every((i) => i.shipment_ready === 1)
+        const readyCount = order.items.filter((i) => i.shipment_ready === 1).length
         return { ...order, all_ready: allReady, ready_count: readyCount, total_count: order.items.length }
       })
       return { client_id: client.client_id, client_name: client.client_name, orders }
@@ -321,12 +336,12 @@ shipmentsRouter.get('/dashboard', async (c) => {
 
     let filtered = data
     if (delivery_method) {
-      filtered = data.map(cl => ({ ...cl, orders: cl.orders.filter((o: any) => o.delivery_method === delivery_method) })).filter(cl => cl.orders.length > 0)
+      filtered = data.map(cl => ({ ...cl, orders: cl.orders.filter(o => o.delivery_method === delivery_method) })).filter(cl => cl.orders.length > 0)
     }
     if (status === 'ready') {
-      filtered = filtered.map(cl => ({ ...cl, orders: cl.orders.filter((o: any) => o.all_ready) })).filter(cl => cl.orders.length > 0)
+      filtered = filtered.map(cl => ({ ...cl, orders: cl.orders.filter(o => o.all_ready) })).filter(cl => cl.orders.length > 0)
     } else if (status === 'pending') {
-      filtered = filtered.map(cl => ({ ...cl, orders: cl.orders.filter((o: any) => !o.all_ready) })).filter(cl => cl.orders.length > 0)
+      filtered = filtered.map(cl => ({ ...cl, orders: cl.orders.filter(o => !o.all_ready) })).filter(cl => cl.orders.length > 0)
     }
 
     return c.json({ success: true, data: filtered })
@@ -392,17 +407,17 @@ shipmentsRouter.post('/', requireRole('ADMIN', 'MANAGER', 'DESIGNER'), async (c)
     if (!body.order_id) return c.json({ success: false, error: '주문을 선택하세요.' }, 400)
 
     // 주문 확인
-    const order = await c.env.DB.prepare('SELECT id, order_number, status FROM orders WHERE id = ?').bind(body.order_id).first() as any
+    const order = await c.env.DB.prepare('SELECT id, order_number, status FROM orders WHERE id = ?').bind(body.order_id).first<{ id: number; order_number: string; status: string }>()
     if (!order) return c.json({ success: false, error: '주문을 찾을 수 없습니다.' }, 404)
 
     // 출고번호 생성
     const today = new Date()
     const dateStr = today.toISOString().split('T')[0].replace(/-/g, '')
-    const { max_seq } = await c.env.DB.prepare(`
+    const seqRow = await c.env.DB.prepare(`
       SELECT COALESCE(MAX(CAST(SUBSTR(shipment_number, 13) AS INTEGER)), 0) as max_seq
       FROM shipments WHERE shipment_number LIKE ?
-    `).bind(`SHP-${dateStr}-%`).first() as any
-    const shipmentNumber = `SHP-${dateStr}-${String((max_seq || 0) + 1).padStart(3, '0')}`
+    `).bind(`SHP-${dateStr}-%`).first<{ max_seq: number | null }>()
+    const shipmentNumber = `SHP-${dateStr}-${String((seqRow?.max_seq || 0) + 1).padStart(3, '0')}`
 
     // 출고 등록
     const result = await c.env.DB.prepare(`
@@ -442,7 +457,7 @@ shipmentsRouter.post('/', requireRole('ADMIN', 'MANAGER', 'DESIGNER'), async (c)
       `).bind(body.order_id).all()
       if (shippedCards && shippedCards.length > 0) {
         await c.env.DB.batch(
-          (shippedCards as any[]).map((card: any) =>
+          (shippedCards as { id: number }[]).map(card =>
             c.env.DB.prepare('INSERT INTO shipment_items (shipment_id, card_id) VALUES (?, ?)').bind(shipmentId, card.id)
           )
         )
@@ -454,10 +469,10 @@ shipmentsRouter.post('/', requireRole('ADMIN', 'MANAGER', 'DESIGNER'), async (c)
       SELECT COUNT(*) as total,
              SUM(CASE WHEN shipped_at IS NOT NULL THEN 1 ELSE 0 END) as shipped
       FROM cards WHERE order_id = ?
-    `).bind(body.order_id).first() as any
+    `).bind(body.order_id).first<{ total: number; shipped: number }>()
 
     if (cardCheck && cardCheck.total > 0 && cardCheck.total === cardCheck.shipped) {
-      const orderInfo = await c.env.DB.prepare('SELECT delivery_method FROM orders WHERE id = ?').bind(body.order_id).first() as any
+      const orderInfo = await c.env.DB.prepare('SELECT delivery_method FROM orders WHERE id = ?').bind(body.order_id).first<{ delivery_method: string | null }>()
       const method = (orderInfo?.delivery_method || '').trim()
       const isQuick = method === '방문수령' || method === '직접수령' || method === '직접배송' || method === '퀵'
       const delayDays = isQuick ? 1 : 2
@@ -470,7 +485,7 @@ shipmentsRouter.post('/', requireRole('ADMIN', 'MANAGER', 'DESIGNER'), async (c)
     try {
       const client = await c.env.DB.prepare(
         'SELECT cl.email, cl.client_name FROM clients cl JOIN orders o ON o.client_id = cl.id WHERE o.id = ?'
-      ).bind(body.order_id).first() as any
+      ).bind(body.order_id).first<{ email: string | null; client_name: string }>()
 
       if (client?.email) {
         const { results: shipItems } = await c.env.DB.prepare(`
@@ -489,7 +504,7 @@ shipmentsRouter.post('/', requireRole('ADMIN', 'MANAGER', 'DESIGNER'), async (c)
           deliveryType: body.delivery_type || 'DELIVERY',
           courierName: body.courier_name,
           trackingNumber: body.tracking_number,
-          items: (shipItems as any[]).map(i => ({
+          items: (shipItems as { item_name: string | null; quantity: number | null; width: number | null; height: number | null }[]).map(i => ({
             itemName: i.item_name || '품목',
             quantity: i.quantity || 1,
             width: i.width,
@@ -513,7 +528,7 @@ shipmentsRouter.post('/', requireRole('ADMIN', 'MANAGER', 'DESIGNER'), async (c)
     try {
       const kakaoEnabled = await c.env.DB.prepare(
         `SELECT setting_value FROM settings WHERE setting_key = 'kakao_enabled'`
-      ).first() as any
+      ).first<{ setting_value: string | null }>()
       if (kakaoEnabled?.setting_value === '1') {
         // 내부 API 호출로 알림톡 발송 위임
         const internalRes = await fetch(new URL('/api/kakao/send-shipment', c.req.url).href, {
@@ -562,7 +577,7 @@ shipmentsRouter.patch('/:id', requireRole('ADMIN', 'MANAGER', 'OPERATOR'), async
 
     // 3차: 그래도 없으면 해당 주문에 대한 shipment 자동 생성
     if (!shipment) {
-      const order = await c.env.DB.prepare('SELECT id, order_number, delivery_method FROM orders WHERE id = ?').bind(id).first() as any
+      const order = await c.env.DB.prepare('SELECT id, order_number, delivery_method FROM orders WHERE id = ?').bind(id).first<{ id: number; order_number: string; delivery_method: string | null }>()
       if (!order) {
         return c.json({ success: false, error: '주문 또는 출고 정보를 찾을 수 없습니다.' }, 404)
       }
@@ -606,7 +621,7 @@ shipmentsRouter.patch('/:id', requireRole('ADMIN', 'MANAGER', 'OPERATOR'), async
     }
 
     updates.push('updated_at = CURRENT_TIMESTAMP')
-    params.push((shipment as any).id)
+    params.push((shipment as { id: number }).id)
 
     await c.env.DB.prepare(
       `UPDATE shipments SET ${updates.join(', ')} WHERE id = ?`
@@ -636,7 +651,7 @@ shipmentsRouter.patch('/:id/status', requireRole('ADMIN', 'MANAGER'), async (c) 
       return c.json({ success: false, error: '유효하지 않은 상태입니다.' }, 400)
     }
 
-    const shipment = await c.env.DB.prepare('SELECT id, status FROM shipments WHERE id = ?').bind(id).first() as any
+    const shipment = await c.env.DB.prepare('SELECT id, status FROM shipments WHERE id = ?').bind(id).first<{ id: number; status: string }>()
     if (!shipment) {
       return c.json({ success: false, error: '출고 정보를 찾을 수 없습니다.' }, 404)
     }
@@ -656,7 +671,7 @@ shipmentsRouter.patch('/:id/status', requireRole('ADMIN', 'MANAGER'), async (c) 
       // 주문의 auto_complete_date 리셋 (미출고 카드가 생겼으므로)
       const orderRow = await c.env.DB.prepare(
         'SELECT order_id FROM shipments WHERE id = ?'
-      ).bind(id).first() as any
+      ).bind(id).first<{ order_id: number }>()
       if (orderRow?.order_id) {
         await c.env.DB.prepare(
           'UPDATE orders SET auto_complete_date = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND status != ?'
@@ -688,14 +703,14 @@ shipmentsRouter.patch('/:orderId/ship', requireRole('ADMIN', 'MANAGER'), async (
     // 주문 확인
     const order = await c.env.DB.prepare(
       'SELECT id, order_number, status, client_id, delivery_method FROM orders WHERE id = ?'
-    ).bind(orderId).first() as any
+    ).bind(orderId).first<{ id: number; order_number: string; status: string; client_id: number; delivery_method: string | null }>()
     if (!order) return c.json({ success: false, error: '주문을 찾을 수 없습니다.' }, 404)
 
     // 모든 order_items.shipment_ready 확인
     const { results: items } = await c.env.DB.prepare(
       'SELECT id, shipment_ready FROM order_items WHERE order_id = ? AND parent_item_id IS NULL'
-    ).bind(orderId).all() as any
-    const notReady = items.filter((i: any) => !i.shipment_ready)
+    ).bind(orderId).all<{ id: number; shipment_ready: number | null }>()
+    const notReady = items.filter(i => !i.shipment_ready)
     if (notReady.length > 0) {
       return c.json({ success: false, error: `미완료 품목이 ${notReady.length}건 있습니다.` }, 400)
     }

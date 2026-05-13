@@ -7,6 +7,134 @@ import { logActivity } from '../../utils/activityLog'
 import { notifyRoles } from '../../utils/notify'
 import { getEntityId, entityFilter } from '../../utils/entityFilter'
 
+// ── Row types for D1 .first<T>() / .all<T>() ──
+
+interface ClientRow {
+  id: number
+  client_code: string
+  client_name: string
+  balance: number
+  is_active: number
+  email?: string | null
+  overdue_alert_days?: number | null
+}
+
+interface OrderRow {
+  id: number
+  order_number: string
+  order_date: string
+  delivery_date: string | null
+  final_amount: number
+  billed_amount: number | null
+  billing_status: string | null
+  billed_at: string | null
+  status: string
+  created_at: string
+}
+
+interface PaymentRow {
+  id: number
+  client_id: number
+  payment_date: string
+  amount: number
+  payment_method: string | null
+  reference_number: string | null
+  notes: string | null
+  created_at: string
+  client_name?: string
+  created_by_name?: string
+}
+
+interface AdjustmentRow {
+  id: number
+  client_id: number
+  order_id: number | null
+  type: string
+  amount: number
+  reason: string | null
+  created_at: string
+  created_by_name?: string
+}
+
+interface IntegrityRow {
+  id: number
+  client_code: string
+  client_name: string
+  balance: number
+  total_billed: number
+  total_paid: number
+  total_adj: number
+}
+
+interface OrderAggRow { client_id: number; order_count: number; total_sales: number }
+interface PaymentAggRow { client_id: number; total_payments: number }
+
+interface MonthlyOrderRow { month: string; order_count: number; total_sales: number }
+interface MonthlyPaymentRow { month: string; payment_count: number; total_payments: number }
+
+interface OverdueClientRow {
+  id: number
+  client_name: string
+  balance: number
+  oldest_billed_at: string | null
+  overdue_days: number
+}
+
+interface NotifLinkRow { link: string }
+
+interface CollectionLogRow {
+  id: number
+  client_id: number
+  contact_date: string
+  contact_method: string
+  contact_person: string | null
+  promised_date: string | null
+  promised_amount: number | null
+  notes: string | null
+  result: string | null
+  created_by: number | null
+  created_at: string
+  client_name?: string
+  created_by_name?: string
+}
+
+interface ReceivableClientRow {
+  id: number
+  client_code: string
+  client_name: string
+  balance: number
+  last_payment_date: string | null
+  billed_order_count: number
+  oldest_unpaid_date: string | null
+}
+
+interface ReceivableOrderRow {
+  id: number
+  order_number: string
+  order_date: string
+  delivery_date: string | null
+  final_amount: number
+  billed_amount: number
+  billing_status: string
+  billed_at: string | null
+  days_since_billed: number | null
+}
+
+interface OverdueAlertRow {
+  client_id: number
+  client_name: string
+  overdue_count: number
+  overdue_amount: number
+  oldest_billed_at: string | null
+  overdue_alert_days: number | null
+}
+
+interface UnpaidOrderRow {
+  order_number: string
+  billed_amount: number
+  order_date: string
+}
+
 const arRouter = new Hono<HonoEnv>()
 arRouter.use('/*', authMiddleware, requireRole('ADMIN', 'MANAGER'))
 
@@ -20,7 +148,7 @@ arRouter.get('/client/:clientId', async (c) => {
     // Get client info
     const client = await c.env.DB.prepare(
       'SELECT * FROM clients WHERE id = ?'
-    ).bind(clientId).first() as any
+    ).bind(clientId).first<ClientRow>()
 
     if (!client) {
       return c.json({
@@ -50,7 +178,7 @@ arRouter.get('/client/:clientId', async (c) => {
     }
 
     ordersQuery += ' ORDER BY created_at ASC'
-    const { results: orders } = await c.env.DB.prepare(ordersQuery).bind(...ordersParams).all()
+    const { results: orders } = await c.env.DB.prepare(ordersQuery).bind(...ordersParams).all<OrderRow>()
 
     // Get payments (입금)
     const { clause: paymentsEf, params: paymentsEfParams } = entityFilter(c)
@@ -73,7 +201,7 @@ arRouter.get('/client/:clientId', async (c) => {
     }
 
     paymentsQuery += ' ORDER BY payment_date ASC'
-    const { results: payments } = await c.env.DB.prepare(paymentsQuery).bind(...paymentsParams).all()
+    const { results: payments } = await c.env.DB.prepare(paymentsQuery).bind(...paymentsParams).all<PaymentRow>()
 
     // Get adjustments (감액)
     const { clause: adjEf, params: adjEfParams } = entityFilter(c)
@@ -95,53 +223,52 @@ arRouter.get('/client/:clientId', async (c) => {
     }
 
     adjQuery += ' ORDER BY created_at ASC'
-    const { results: adjustments } = await c.env.DB.prepare(adjQuery).bind(...adjParams).all()
+    const { results: adjustments } = await c.env.DB.prepare(adjQuery).bind(...adjParams).all<AdjustmentRow>()
 
-    const totalPayments = (payments as any[]).reduce((sum: number, p: any) => sum + (p.amount || 0), 0)
-    const totalAdjustments = (adjustments as any[]).reduce((sum: number, a: any) => sum + (a.amount || 0), 0)
+    const totalPayments = payments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0)
+    const totalAdjustments = adjustments.reduce((sum, a) => sum + (Number(a.amount) || 0), 0)
 
     // BILLED 주문의 billed_amount 합계만 매출로 집계
-    const totalBilled = (orders as any[]).reduce((sum: number, o: any) => {
-      return o.billing_status === 'BILLED' ? sum + (o.billed_amount || o.final_amount || 0) : sum
+    const totalBilled = orders.reduce((sum, o) => {
+      return o.billing_status === 'BILLED' ? sum + (Number(o.billed_amount) || Number(o.final_amount) || 0) : sum
     }, 0)
     const calculated_balance = totalBilled - totalPayments - totalAdjustments
     const cached_balance = client.balance || 0
     const has_discrepancy = Math.abs(calculated_balance - cached_balance) > 0.01
 
     // Find last payment date
-    const lastPaymentArr = payments as any[]
-    const lastPayment = lastPaymentArr.length > 0 ? lastPaymentArr[lastPaymentArr.length - 1] : null
+    const lastPayment = payments.length > 0 ? payments[payments.length - 1] : null
 
     // Combine and sort by date ASC for running balance
     const transactions = [
-      ...(orders as any[]).map((o: any) => ({
-        type: 'order',
+      ...orders.map(o => ({
+        type: 'order' as const,
         date: o.created_at,
         description: `주문: ${o.order_number}`,
-        debit: o.billing_status === 'BILLED' ? (o.billed_amount || o.final_amount || 0) : 0,
+        debit: o.billing_status === 'BILLED' ? (Number(o.billed_amount) || Number(o.final_amount) || 0) : 0,
         credit: 0,
         reference: o.order_number,
         status: o.status,
         billing_status: o.billing_status,
         billed_amount: o.billed_amount
       })),
-      ...(payments as any[]).map((p: any) => ({
-        type: 'payment',
+      ...payments.map(p => ({
+        type: 'payment' as const,
         id: p.id,
         date: p.payment_date,
         description: `입금: ${p.payment_method || ''}`,
         debit: 0,
-        credit: p.amount || 0,
+        credit: Number(p.amount) || 0,
         reference: p.reference_number,
         notes: p.notes
       })),
-      ...(adjustments as any[]).map((a: any) => ({
-        type: 'adjustment',
+      ...adjustments.map(a => ({
+        type: 'adjustment' as const,
         id: a.id,
         date: a.created_at,
         description: `감액: ${a.reason || a.type}`,
         debit: 0,
-        credit: a.amount || 0,
+        credit: Number(a.amount) || 0,
         reference: a.order_id ? `주문 #${a.order_id}` : null,
         adj_type: a.type
       }))
@@ -169,12 +296,12 @@ arRouter.get('/client/:clientId', async (c) => {
           calculated_balance,
           cached_balance,
           has_discrepancy,
-          last_payment_date: lastPayment ? (lastPayment as any).payment_date : null
+          last_payment_date: lastPayment ? lastPayment.payment_date : null
         },
         transactions: transactionsWithBalance.reverse(), // newest first for display
-        orders_count: (orders as any[]).length,
-        payments_count: (payments as any[]).length,
-        adjustments_count: (adjustments as any[]).length
+        orders_count: orders.length,
+        payments_count: payments.length,
+        adjustments_count: adjustments.length
       }
     })
   } catch (error) {
@@ -193,7 +320,7 @@ arRouter.get('/client/:clientId/export/csv', async (c) => {
     const clientId = c.req.param('clientId')
     const { startDate, endDate } = c.req.query()
 
-    const client = await c.env.DB.prepare('SELECT client_name FROM clients WHERE id = ?').bind(clientId).first() as any
+    const client = await c.env.DB.prepare('SELECT client_name FROM clients WHERE id = ?').bind(clientId).first<{ client_name: string }>()
     if (!client) return c.json({ success: false, error: 'Client not found' }, 404)
 
     // Orders (매출)
@@ -206,7 +333,7 @@ arRouter.get('/client/:clientId/export/csv', async (c) => {
     const ordersParams: any[] = [clientId, ...csvOrdersEfParams]
     if (startDate) { ordersQuery += ' AND date(created_at) >= ?'; ordersParams.push(startDate) }
     if (endDate) { ordersQuery += ' AND date(created_at) <= ?'; ordersParams.push(endDate) }
-    const { results: orders } = await c.env.DB.prepare(ordersQuery + ' ORDER BY created_at ASC').bind(...ordersParams).all() as any
+    const { results: orders } = await c.env.DB.prepare(ordersQuery + ' ORDER BY created_at ASC').bind(...ordersParams).all<OrderRow>()
 
     // Payments (입금)
     const { clause: csvPaymentsEf, params: csvPaymentsEfParams } = entityFilter(c)
@@ -218,7 +345,7 @@ arRouter.get('/client/:clientId/export/csv', async (c) => {
     const paymentsParams: any[] = [clientId, ...csvPaymentsEfParams]
     if (startDate) { paymentsQuery += ' AND date(payment_date) >= ?'; paymentsParams.push(startDate) }
     if (endDate) { paymentsQuery += ' AND date(payment_date) <= ?'; paymentsParams.push(endDate) }
-    const { results: payments } = await c.env.DB.prepare(paymentsQuery + ' ORDER BY payment_date ASC').bind(...paymentsParams).all() as any
+    const { results: payments } = await c.env.DB.prepare(paymentsQuery + ' ORDER BY payment_date ASC').bind(...paymentsParams).all<PaymentRow>()
 
     // Adjustments (감액)
     const { clause: csvAdjEf, params: csvAdjEfParams } = entityFilter(c)
@@ -230,35 +357,39 @@ arRouter.get('/client/:clientId/export/csv', async (c) => {
     const adjParams: any[] = [clientId, ...csvAdjEfParams]
     if (startDate) { adjQuery += ' AND date(created_at) >= ?'; adjParams.push(startDate) }
     if (endDate) { adjQuery += ' AND date(created_at) <= ?'; adjParams.push(endDate) }
-    const { results: adjustments } = await c.env.DB.prepare(adjQuery + ' ORDER BY created_at ASC').bind(...adjParams).all() as any
+    const { results: adjustments } = await c.env.DB.prepare(adjQuery + ' ORDER BY created_at ASC').bind(...adjParams).all<AdjustmentRow>()
 
     const methodLabels: Record<string, string> = { CASH: '현금', CARD: '카드', BANK_TRANSFER: '계좌이체', CHECK: '수표', OTHER: '기타' }
 
     // Build unified entry list
-    const entries: any[] = [
-      ...(orders || []).map((o: any) => ({
+    interface CsvEntry { date: string; type: string; ref: string; debit: number; credit: number; note: string; balance: number }
+    const entries: CsvEntry[] = [
+      ...orders.map(o => ({
         date: o.order_date || (o.created_at ? o.created_at.slice(0, 10) : ''),
-        type: '매출',
+        type: '매출' as const,
         ref: o.order_number,
-        debit: o.billing_status === 'BILLED' ? (o.billed_amount || o.final_amount || 0) : (o.final_amount || 0),
+        debit: o.billing_status === 'BILLED' ? (Number(o.billed_amount) || Number(o.final_amount) || 0) : (Number(o.final_amount) || 0),
         credit: 0,
-        note: ''
+        note: '',
+        balance: 0
       })),
-      ...(payments || []).map((p: any) => ({
+      ...payments.map(p => ({
         date: p.payment_date,
-        type: '입금',
-        ref: methodLabels[p.payment_method] || p.payment_method || '',
+        type: '입금' as const,
+        ref: methodLabels[p.payment_method || ''] || p.payment_method || '',
         debit: 0,
-        credit: p.amount || 0,
-        note: p.notes || ''
+        credit: Number(p.amount) || 0,
+        note: p.notes || '',
+        balance: 0
       })),
-      ...(adjustments || []).map((a: any) => ({
+      ...adjustments.map(a => ({
         date: a.created_at ? a.created_at.slice(0, 10) : '',
-        type: '감액',
+        type: '감액' as const,
         ref: a.order_id ? `주문 #${a.order_id}` : (a.type || ''),
         debit: 0,
-        credit: a.amount || 0,
-        note: a.reason || ''
+        credit: Number(a.amount) || 0,
+        note: a.reason || '',
+        balance: 0
       }))
     ]
 
@@ -325,7 +456,7 @@ arRouter.post('/payment', requireRole('ADMIN', 'MANAGER'), async (c) => {
       throw err
     }
 
-    const clientRow = await c.env.DB.prepare('SELECT client_name FROM clients WHERE id = ?').bind(paymentData.client_id).first() as any
+    const clientRow = await c.env.DB.prepare('SELECT client_name FROM clients WHERE id = ?').bind(paymentData.client_id).first<{ client_name: string }>()
 
     await logActivity({
       db: c.env.DB, userId: user?.id, userName: user?.username,
@@ -389,7 +520,7 @@ arRouter.put('/payment/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
     // Get existing payment
     const existing = await c.env.DB.prepare(
       'SELECT * FROM payments WHERE id = ?'
-    ).bind(id).first() as any
+    ).bind(id).first<PaymentRow>()
 
     if (!existing) {
       return c.json({ success: false, error: '입금 내역을 찾을 수 없습니다' }, 404)
@@ -435,7 +566,7 @@ arRouter.put('/payment/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
     // Get updated balance
     const client = await c.env.DB.prepare(
       'SELECT balance FROM clients WHERE id = ?'
-    ).bind(existing.client_id).first() as any
+    ).bind(existing.client_id).first<{ balance: number }>()
 
     return c.json({
       success: true,
@@ -460,7 +591,7 @@ arRouter.delete('/payment/:id', requireRole('ADMIN'), async (c) => {
     // Get existing payment
     const existing = await c.env.DB.prepare(
       'SELECT * FROM payments WHERE id = ?'
-    ).bind(id).first() as any
+    ).bind(id).first<PaymentRow>()
 
     if (!existing) {
       return c.json({ success: false, error: '입금 내역을 찾을 수 없습니다' }, 404)
@@ -477,7 +608,7 @@ arRouter.delete('/payment/:id', requireRole('ADMIN'), async (c) => {
     // Get updated balance
     const client = await c.env.DB.prepare(
       'SELECT balance FROM clients WHERE id = ?'
-    ).bind(existing.client_id).first() as any
+    ).bind(existing.client_id).first<{ balance: number }>()
 
     return c.json({
       success: true,
@@ -521,8 +652,8 @@ arRouter.get('/settlement', async (c) => {
       GROUP BY client_id
     `
     const { results: orderResults } = orderParams.length > 0
-      ? await c.env.DB.prepare(orderQuery).bind(...orderParams).all()
-      : await c.env.DB.prepare(orderQuery).all()
+      ? await c.env.DB.prepare(orderQuery).bind(...orderParams).all<OrderAggRow>()
+      : await c.env.DB.prepare(orderQuery).all<OrderAggRow>()
 
     // Step 2: Get per-client payment totals
     const paymentQuery = `
@@ -531,37 +662,37 @@ arRouter.get('/settlement', async (c) => {
       GROUP BY client_id
     `
     const { results: paymentResults } = paymentParams.length > 0
-      ? await c.env.DB.prepare(paymentQuery).bind(...paymentParams).all()
-      : await c.env.DB.prepare(paymentQuery).all()
+      ? await c.env.DB.prepare(paymentQuery).bind(...paymentParams).all<PaymentAggRow>()
+      : await c.env.DB.prepare(paymentQuery).all<PaymentAggRow>()
 
     // Step 3: Get active clients
     const { results: clients } = await c.env.DB.prepare(
       'SELECT id, client_code, client_name, balance FROM clients WHERE is_active = 1'
-    ).all()
+    ).all<{ id: number; client_code: string; client_name: string; balance: number }>()
 
     // Merge
-    const orderMap = new Map((orderResults as any[]).map(o => [o.client_id, o]))
-    const paymentMap = new Map((paymentResults as any[]).map(p => [p.client_id, p]))
+    const orderMap = new Map(orderResults.map(o => [o.client_id, o]))
+    const paymentMap = new Map(paymentResults.map(p => [p.client_id, p]))
 
-    const clientRows = (clients as any[])
-      .map(c => {
-        const o = orderMap.get(c.id)
-        const p = paymentMap.get(c.id)
+    const clientRows = clients
+      .map(cl => {
+        const o = orderMap.get(cl.id)
+        const p = paymentMap.get(cl.id)
         if (!o && !p) return null
         return {
-          id: c.id,
-          client_code: c.client_code,
-          client_name: c.client_name,
-          balance: c.balance || 0,
+          id: cl.id,
+          client_code: cl.client_code,
+          client_name: cl.client_name,
+          balance: cl.balance || 0,
           order_count: o?.order_count || 0,
           total_sales: o?.total_sales || 0,
           total_payments: p?.total_payments || 0
         }
       })
-      .filter(Boolean)
-      .sort((a: any, b: any) => b.balance - a.balance)
+      .filter((row): row is NonNullable<typeof row> => row !== null)
+      .sort((a, b) => b.balance - a.balance)
 
-    const summary = clientRows.reduce((acc: any, cl: any) => ({
+    const summary = clientRows.reduce((acc, cl) => ({
       total_clients: acc.total_clients + 1,
       total_sales: acc.total_sales + cl.total_sales,
       total_payments: acc.total_payments + cl.total_payments,
@@ -601,7 +732,7 @@ arRouter.get('/monthly-summary', async (c) => {
       GROUP BY strftime('%Y-%m', created_at)
       ORDER BY month DESC
       LIMIT ?
-    `).bind(String(parseInt(targetYear) - 1), ...monthlyOrderEfParams, monthCount).all()
+    `).bind(String(parseInt(targetYear) - 1), ...monthlyOrderEfParams, monthCount).all<MonthlyOrderRow>()
 
     // Monthly payment totals
     const { clause: monthlyPaymentEf, params: monthlyPaymentEfParams } = entityFilter(c)
@@ -615,12 +746,13 @@ arRouter.get('/monthly-summary', async (c) => {
       GROUP BY strftime('%Y-%m', payment_date)
       ORDER BY month DESC
       LIMIT ?
-    `).bind(String(parseInt(targetYear) - 1), ...monthlyPaymentEfParams, monthCount).all()
+    `).bind(String(parseInt(targetYear) - 1), ...monthlyPaymentEfParams, monthCount).all<MonthlyPaymentRow>()
 
     // Merge into one array
-    const monthMap = new Map<string, any>()
+    interface MonthlySummaryEntry { month: string; order_count: number; total_sales: number; payment_count: number; total_payments: number }
+    const monthMap = new Map<string, MonthlySummaryEntry>()
 
-    ;(ordersByMonth as any[]).forEach(o => {
+    ;ordersByMonth.forEach(o => {
       monthMap.set(o.month, {
         month: o.month,
         order_count: o.order_count,
@@ -630,7 +762,7 @@ arRouter.get('/monthly-summary', async (c) => {
       })
     })
 
-    ;(paymentsByMonth as any[]).forEach(p => {
+    ;paymentsByMonth.forEach(p => {
       const existing = monthMap.get(p.month)
       if (existing) {
         existing.payment_count = p.payment_count
@@ -750,13 +882,14 @@ arRouter.get('/integrity-check', requireRole('ADMIN', 'MANAGER'), async (c) => {
   try {
     const { query: integrityQuery, params: integrityParams } = buildIntegrityQuery(c)
     const { results: rows } = integrityParams.length > 0
-      ? await c.env.DB.prepare(integrityQuery).bind(...integrityParams).all() as any
-      : await c.env.DB.prepare(integrityQuery).all() as any
+      ? await c.env.DB.prepare(integrityQuery).bind(...integrityParams).all<IntegrityRow>()
+      : await c.env.DB.prepare(integrityQuery).all<IntegrityRow>()
 
-    const discrepancies: any[] = []
+    interface DiscrepancyRow { client_id: number; client_code: string; client_name: string; cached_balance: number; calculated_balance: number; difference: number }
+    const discrepancies: DiscrepancyRow[] = []
     for (const row of rows) {
-      const calculated = parseFloat(row.total_billed) - parseFloat(row.total_paid) - parseFloat(row.total_adj)
-      const cached = parseFloat(row.balance) || 0
+      const calculated = Number(row.total_billed) - Number(row.total_paid) - Number(row.total_adj)
+      const cached = Number(row.balance) || 0
       if (Math.abs(calculated - cached) > 0.01) {
         discrepancies.push({
           client_id: row.id,
@@ -790,17 +923,18 @@ arRouter.post('/integrity-fix', requireRole('ADMIN', 'MANAGER'), async (c) => {
 
     const { query: integrityQuery, params: integrityParams } = buildIntegrityQuery(c)
     const { results: rows } = integrityParams.length > 0
-      ? await c.env.DB.prepare(integrityQuery).bind(...integrityParams).all() as any
-      : await c.env.DB.prepare(integrityQuery).all() as any
+      ? await c.env.DB.prepare(integrityQuery).bind(...integrityParams).all<IntegrityRow>()
+      : await c.env.DB.prepare(integrityQuery).all<IntegrityRow>()
 
     let fixed = 0
-    const fixResults: any[] = []
+    interface FixResult { client_id: number; client_name: string; old: number; new: number }
+    const fixResults: FixResult[] = []
 
     for (const row of rows) {
       if (client_ids && client_ids.length > 0 && !client_ids.includes(row.id)) continue
 
-      const calculated = parseFloat(row.total_billed) - parseFloat(row.total_paid) - parseFloat(row.total_adj)
-      const cached = parseFloat(row.balance) || 0
+      const calculated = Number(row.total_billed) - Number(row.total_paid) - Number(row.total_adj)
+      const cached = Number(row.balance) || 0
 
       if (Math.abs(calculated - cached) > 0.01) {
         await c.env.DB.prepare(
@@ -829,7 +963,7 @@ arRouter.post('/recalculate/:clientId', requireRole('ADMIN', 'MANAGER'), async (
 
     const client = await c.env.DB.prepare(
       'SELECT id, balance FROM clients WHERE id = ?'
-    ).bind(clientId).first() as any
+    ).bind(clientId).first<{ id: number; balance: number }>()
 
     if (!client) {
       return c.json({ success: false, error: 'Client not found' }, 404)
@@ -840,22 +974,22 @@ arRouter.post('/recalculate/:clientId', requireRole('ADMIN', 'MANAGER'), async (
     const billedRow = await c.env.DB.prepare(`
       SELECT COALESCE(SUM(CASE WHEN billing_status = 'BILLED' THEN billed_amount ELSE 0 END), 0) as total_billed
       FROM orders WHERE client_id = ?${recalcOrderEf}
-    `).bind(clientId, ...recalcOrderEfParams).first() as any
+    `).bind(clientId, ...recalcOrderEfParams).first<{ total_billed: number }>()
 
     // 입금 합계
     const { clause: recalcPaymentEf, params: recalcPaymentEfParams } = entityFilter(c)
     const paymentRow = await c.env.DB.prepare(`
       SELECT COALESCE(SUM(amount), 0) as total_payments FROM payments WHERE client_id = ?${recalcPaymentEf}
-    `).bind(clientId, ...recalcPaymentEfParams).first() as any
+    `).bind(clientId, ...recalcPaymentEfParams).first<{ total_payments: number }>()
 
     // 감액 합계
     const { clause: recalcAdjEf, params: recalcAdjEfParams } = entityFilter(c)
     const adjRow = await c.env.DB.prepare(`
       SELECT COALESCE(SUM(amount), 0) as total_adjustments FROM adjustments WHERE client_id = ?${recalcAdjEf}
-    `).bind(clientId, ...recalcAdjEfParams).first() as any
+    `).bind(clientId, ...recalcAdjEfParams).first<{ total_adjustments: number }>()
 
-    const newBalance = parseFloat(billedRow.total_billed) - parseFloat(paymentRow.total_payments) - parseFloat(adjRow.total_adjustments)
-    const oldBalance = parseFloat(client.balance) || 0
+    const newBalance = Number(billedRow!.total_billed) - Number(paymentRow!.total_payments) - Number(adjRow!.total_adjustments)
+    const oldBalance = Number(client.balance) || 0
 
     await c.env.DB.prepare(
       'UPDATE clients SET balance = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
@@ -940,7 +1074,7 @@ arRouter.post('/adjustment', requireRole('ADMIN', 'MANAGER'), async (c) => {
 
     const client = await c.env.DB.prepare(
       'SELECT id, balance FROM clients WHERE id = ?'
-    ).bind(body.client_id).first() as any
+    ).bind(body.client_id).first<{ id: number; balance: number }>()
 
     if (!client) {
       return c.json({ success: false, error: 'Client not found' }, 404)
@@ -966,7 +1100,7 @@ arRouter.post('/adjustment', requireRole('ADMIN', 'MANAGER'), async (c) => {
 
     const updatedClient = await c.env.DB.prepare(
       'SELECT balance FROM clients WHERE id = ?'
-    ).bind(body.client_id).first() as any
+    ).bind(body.client_id).first<{ balance: number }>()
 
     return c.json({
       success: true,
@@ -1018,7 +1152,7 @@ arRouter.delete('/adjustment/:id', requireRole('ADMIN'), async (c) => {
 
     const existing = await c.env.DB.prepare(
       'SELECT * FROM adjustments WHERE id = ?'
-    ).bind(id).first() as any
+    ).bind(id).first<AdjustmentRow>()
 
     if (!existing) {
       return c.json({ success: false, error: '감액 내역을 찾을 수 없습니다' }, 404)
@@ -1033,7 +1167,7 @@ arRouter.delete('/adjustment/:id', requireRole('ADMIN'), async (c) => {
 
     const updatedClient = await c.env.DB.prepare(
       'SELECT balance FROM clients WHERE id = ?'
-    ).bind(existing.client_id).first() as any
+    ).bind(existing.client_id).first<{ balance: number }>()
 
     return c.json({
       success: true,
@@ -1164,13 +1298,13 @@ arRouter.get('/receivables', async (c) => {
         ) as oldest_unpaid_date
       FROM clients c
       WHERE c.is_active = 1 AND c.balance > ?
-    `).bind(...recvPayEfParams, ...recvOrdEf1Params, ...recvOrdEf2Params, ...recvPayEf2Params, minBalance).all() as any
+    `).bind(...recvPayEfParams, ...recvOrdEf1Params, ...recvOrdEf2Params, ...recvPayEf2Params, minBalance).all<ReceivableClientRow>()
 
     // aging_days, aging_category 계산 (JS에서)
     const today = new Date()
     today.setHours(0, 0, 0, 0)
 
-    let rows = (clients as any[]).map((client: any) => {
+    let rows = clients.map(client => {
       let agingDays: number | null = null
       if (client.oldest_unpaid_date) {
         const oldest = new Date(client.oldest_unpaid_date)
@@ -1179,7 +1313,7 @@ arRouter.get('/receivables', async (c) => {
       }
       return {
         ...client,
-        balance: parseFloat(client.balance) || 0,
+        balance: Number(client.balance) || 0,
         aging_days: agingDays,
         aging_category: getAgingCategory(agingDays)
       }
@@ -1187,21 +1321,21 @@ arRouter.get('/receivables', async (c) => {
 
     // overdue_only 필터 (30일 초과)
     if (overdue_only === '1') {
-      rows = rows.filter((r: any) => r.aging_days !== null && r.aging_days > 30)
+      rows = rows.filter(r => r.aging_days !== null && r.aging_days > 30)
     }
 
     // 정렬
     if (sort === 'balance_asc') {
-      rows.sort((a: any, b: any) => a.balance - b.balance)
+      rows.sort((a, b) => a.balance - b.balance)
     } else if (sort === 'oldest_first') {
-      rows.sort((a: any, b: any) => {
+      rows.sort((a, b) => {
         if (a.oldest_unpaid_date === null) return 1
         if (b.oldest_unpaid_date === null) return -1
         return a.oldest_unpaid_date.localeCompare(b.oldest_unpaid_date)
       })
     } else {
       // balance_desc (기본)
-      rows.sort((a: any, b: any) => b.balance - a.balance)
+      rows.sort((a, b) => b.balance - a.balance)
     }
 
     return c.json({ success: true, data: rows })
@@ -1223,7 +1357,7 @@ arRouter.get('/receivables/:clientId/orders', async (c) => {
     // 거래처 존재 확인
     const client = await c.env.DB.prepare(
       'SELECT id, client_name, balance FROM clients WHERE id = ? AND is_active = 1'
-    ).bind(clientId).first() as any
+    ).bind(clientId).first<{ id: number; client_name: string; balance: number }>()
 
     if (!client) {
       return c.json({ success: false, error: 'Client not found' }, 404)
@@ -1245,7 +1379,7 @@ arRouter.get('/receivables/:clientId/orders', async (c) => {
       FROM orders o
       WHERE o.client_id = ? AND o.billing_status = 'BILLED'${recvOrdDetailEf}
       ORDER BY o.billed_at ASC
-    `).bind(clientId, ...recvOrdDetailEfParams).all() as any
+    `).bind(clientId, ...recvOrdDetailEfParams).all<ReceivableOrderRow>()
 
     // 입금 내역
     const { clause: recvPayDetailEf, params: recvPayDetailEfParams } = entityFilter(c)
@@ -1260,11 +1394,11 @@ arRouter.get('/receivables/:clientId/orders', async (c) => {
       WHERE client_id = ?${recvPayDetailEf}
       ORDER BY payment_date DESC
       LIMIT 50
-    `).bind(clientId, ...recvPayDetailEfParams).all() as any
+    `).bind(clientId, ...recvPayDetailEfParams).all<PaymentRow>()
 
     // 미입금 잔액 계산
-    const totalBilled = (orders as any[]).reduce((sum: number, o: any) => sum + (parseFloat(o.billed_amount) || 0), 0)
-    const totalPayments = (payments as any[]).reduce((sum: number, p: any) => sum + (parseFloat(p.amount) || 0), 0)
+    const totalBilled = orders.reduce((sum, o) => sum + (Number(o.billed_amount) || 0), 0)
+    const totalPayments = payments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0)
     const unpaidBalance = totalBilled - totalPayments
 
     return c.json({
@@ -1273,16 +1407,16 @@ arRouter.get('/receivables/:clientId/orders', async (c) => {
         client: {
           id: client.id,
           client_name: client.client_name,
-          balance: parseFloat(client.balance) || 0
+          balance: Number(client.balance) || 0
         },
-        orders: (orders as any[]).map((o: any) => ({
+        orders: orders.map(o => ({
           ...o,
-          final_amount: parseFloat(o.final_amount) || 0,
-          billed_amount: parseFloat(o.billed_amount) || 0
+          final_amount: Number(o.final_amount) || 0,
+          billed_amount: Number(o.billed_amount) || 0
         })),
-        payments: (payments as any[]).map((p: any) => ({
+        payments: payments.map(p => ({
           ...p,
-          amount: parseFloat(p.amount) || 0
+          amount: Number(p.amount) || 0
         })),
         summary: {
           total_billed: totalBilled,
@@ -1321,24 +1455,24 @@ arRouter.post('/receivables/check-overdue', requireRole('ADMIN', 'MANAGER'), asy
       GROUP BY c.id, c.client_name, c.balance
       HAVING overdue_days > 30
       ORDER BY overdue_days DESC
-    `).bind(...checkOverdueEfParams).all() as any
+    `).bind(...checkOverdueEfParams).all<OverdueClientRow>()
 
     let alertsCreated = 0
-    const checked = (overdueClients as any[]).length
+    const checked = overdueClients.length
 
     // 24시간 내 이미 발송된 연체 알림 link를 한 번에 로드 (N+1 방지)
     const { results: recentNotifs } = await c.env.DB.prepare(`
       SELECT DISTINCT link FROM notifications
       WHERE title LIKE '연체 경고:%'
         AND created_at > datetime('now', '-24 hours')
-    `).all() as any
-    const recentLinks = new Set((recentNotifs || []).map((n: any) => n.link))
+    `).all<NotifLinkRow>()
+    const recentLinks = new Set((recentNotifs || []).map(n => n.link))
 
-    for (const client of overdueClients as any[]) {
+    for (const client of overdueClients) {
       const link = `/ledger?client=${client.id}`
       if (recentLinks.has(link)) continue
 
-      const balanceFormatted = Number(parseFloat(client.balance)).toLocaleString()
+      const balanceFormatted = Number(client.balance).toLocaleString()
       const days = client.overdue_days
 
       await notifyRoles(
@@ -1398,9 +1532,10 @@ arRouter.get('/collection-logs', async (c) => {
       LIMIT ? OFFSET ?
     `).bind(...params, safeLimit, offset).all()
 
-    const { count } = await c.env.DB.prepare(`
+    const countRow = await c.env.DB.prepare(`
       SELECT COUNT(*) as count FROM collection_logs cl ${where}
-    `).bind(...params).first() as any
+    `).bind(...params).first<{ count: number }>()
+    const count = countRow?.count || 0
 
     return c.json({
       success: true,
@@ -1458,7 +1593,7 @@ arRouter.post('/collection-logs', async (c) => {
 
         const client = await c.env.DB.prepare(
           'SELECT client_name, email, balance FROM clients WHERE id = ?'
-        ).bind(body.client_id).first() as any
+        ).bind(body.client_id).first<{ client_name: string; email: string | null; balance: number }>()
 
         if (client?.email) {
           const { clause: emailOrdEf, params: emailOrdEfParams } = entityFilter(c)
@@ -1471,10 +1606,10 @@ arRouter.post('/collection-logs', async (c) => {
                 SELECT DISTINCT order_id FROM payments WHERE order_id IS NOT NULL${emailPayEf}
               )
             ORDER BY order_date ASC LIMIT 10
-          `).bind(body.client_id, ...emailOrdEfParams, ...emailPayEfParams).all()
+          `).bind(body.client_id, ...emailOrdEfParams, ...emailPayEfParams).all<UnpaidOrderRow>()
 
-          const balance = parseFloat(client.balance) || body.amount_requested || 0
-          const firstOrderDate = (unpaidOrders as any[])[0]?.order_date
+          const balance = Number(client.balance) || body.amount_requested || 0
+          const firstOrderDate = unpaidOrders[0]?.order_date
           const agingDays = firstOrderDate
             ? Math.floor((Date.now() - new Date(firstOrderDate).getTime()) / 86400000)
             : 0
@@ -1483,9 +1618,9 @@ arRouter.post('/collection-logs', async (c) => {
             clientName: client.client_name,
             totalBalance: balance,
             agingDays: Math.max(agingDays, 0),
-            orders: (unpaidOrders as any[]).map(o => ({
+            orders: unpaidOrders.map(o => ({
               orderNumber: o.order_number,
-              amount: parseFloat(o.billed_amount) || 0,
+              amount: Number(o.billed_amount) || 0,
               orderDate: o.order_date,
             })),
             notes: body.notes,
@@ -1555,7 +1690,7 @@ arRouter.post('/send-email', async (c) => {
     // Get client info
     const client = await c.env.DB.prepare(
       'SELECT * FROM clients WHERE id = ?'
-    ).bind(client_id).first() as any
+    ).bind(client_id).first<ClientRow>()
 
     if (!client) {
       return c.json({ success: false, error: '거래처를 찾을 수 없습니다.' }, 404)
@@ -1570,44 +1705,44 @@ arRouter.post('/send-email', async (c) => {
       SELECT id, order_number, order_date, final_amount, billed_amount, billing_status, status, created_at
       FROM orders WHERE client_id = ?${ordersEf} AND date(created_at) >= ? AND date(created_at) <= ?
       ORDER BY created_at ASC
-    `).bind(client_id, ...ordersEfParams, startDate, endDate).all()
+    `).bind(client_id, ...ordersEfParams, startDate, endDate).all<OrderRow>()
 
     const { clause: paymentsEf, params: paymentsEfParams } = entityFilter(c)
     const { results: payments } = await c.env.DB.prepare(`
       SELECT id, payment_date, amount, payment_method, reference_number, notes, created_at
       FROM payments WHERE client_id = ?${paymentsEf} AND date(payment_date) >= ? AND date(payment_date) <= ?
       ORDER BY payment_date ASC
-    `).bind(client_id, ...paymentsEfParams, startDate, endDate).all()
+    `).bind(client_id, ...paymentsEfParams, startDate, endDate).all<PaymentRow>()
 
     const { clause: adjEf, params: adjEfParams } = entityFilter(c)
     const { results: adjustments } = await c.env.DB.prepare(`
       SELECT id, order_id, type, amount, reason, created_at
       FROM adjustments WHERE client_id = ?${adjEf} AND date(created_at) >= ? AND date(created_at) <= ?
       ORDER BY created_at ASC
-    `).bind(client_id, ...adjEfParams, startDate, endDate).all()
+    `).bind(client_id, ...adjEfParams, startDate, endDate).all<AdjustmentRow>()
 
     // Combine and sort
     const transactions = [
-      ...(orders as any[]).map((o: any) => ({
+      ...orders.map(o => ({
         type: 'order' as const,
         date: o.created_at,
         description: `주문: ${o.order_number}`,
-        debit: o.billing_status === 'BILLED' ? (o.billed_amount || o.final_amount || 0) : 0,
+        debit: o.billing_status === 'BILLED' ? (Number(o.billed_amount) || Number(o.final_amount) || 0) : 0,
         credit: 0,
       })),
-      ...(payments as any[]).map((p: any) => ({
+      ...payments.map(p => ({
         type: 'payment' as const,
         date: p.payment_date,
         description: `입금: ${p.payment_method || ''}`,
         debit: 0,
-        credit: p.amount || 0,
+        credit: Number(p.amount) || 0,
       })),
-      ...(adjustments as any[]).map((a: any) => ({
+      ...adjustments.map(a => ({
         type: 'adjustment' as const,
         date: a.created_at,
         description: `감액: ${a.reason || a.type}`,
         debit: 0,
-        credit: a.amount || 0,
+        credit: Number(a.amount) || 0,
       }))
     ].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
 
@@ -1624,10 +1759,10 @@ arRouter.post('/send-email', async (c) => {
     // Generate portal token for link
     let portalUrl = ''
     try {
-      const user = (c as any).get('user') as any
+      const user = c.get('user')
       const siteUrlSetting = await c.env.DB.prepare(
         `SELECT setting_value FROM settings WHERE setting_key = 'site_base_url'`
-      ).first() as any
+      ).first<{ setting_value: string }>()
       const baseUrl = siteUrlSetting?.setting_value || new URL(c.req.url).origin
       const portalResult = await generatePortalToken(c.env.DB, Number(client_id), user?.id || 0, baseUrl, 7,
         { type: 'ledger', period_start: startDate, period_end: endDate })
@@ -1697,7 +1832,7 @@ arRouter.post('/send-email', async (c) => {
       <p style="margin-top:24px;font-size:12px;color:#9ca3af">본 메일은 동산현수막 ERP에서 자동 발송되었습니다. 문의: 042-523-1982</p>
     </div>`
 
-    const user = (c as any).get('user') as any
+    const user = c.get('user')
     const result = await sendEmail(c.env, c.env.DB, {
       to: to_email,
       subject: `[동산현수막] ${client.client_name} 거래 내역 안내 (${startDate} ~ ${endDate})`,
