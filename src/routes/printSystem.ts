@@ -2,6 +2,49 @@ import { Hono } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
 
+// ============================================================================
+// Row types for D1 generic queries
+// ============================================================================
+interface ItemCodeRow { item_code: string }
+interface IdRow { id: number }
+interface PriceSqmRow { price_per_sqm: number }
+interface PriceUnitRow { price_per_unit: number }
+interface PriceSqmNameRow { price_per_sqm: number; name: string }
+interface PriceUnitNameRow { price_per_unit: number; name: string }
+interface MediaCodeRow { code: string }
+
+interface ItemWithMediaPrice { id: number; price_per_unit: number; print_media_id: number }
+interface ItemWithMethodPrice { id: number; price_per_sqm: number; print_method_id: number }
+
+interface MethodRow { id: number; name: string; code: string; price_per_sqm: number; sort_order: number; is_active: number }
+interface MediaRow {
+  id: number; name: string; code: string; media_type: string; price_per_unit: number; unit: string;
+  roll_width_cm: number | null; sheet_width_cm: number | null; sheet_height_cm: number | null;
+  media_group: string | null; group_sort: number | null; sort_order: number;
+}
+
+interface ConnectionRow { print_media_id: number; method_id: number; method_name: string }
+interface RMItemRow {
+  id: number; item_code: string; item_name: string; width_mm: number | null;
+  specification: string | null; parent_media_id: number;
+  base_price: number; sales_price: number; is_sales_item: number;
+}
+
+interface ItemMethodIdRow { id: number; print_method_id: number }
+interface OrderRefRow { item_id: number; cnt: number }
+
+interface LinkedItemRow { id: number; method_name: string }
+
+interface RepairPMMRow { print_method_id: number; print_media_id: number }
+interface RepairProductRow { id: number; print_media_id: number }
+interface RepairGroupRow { id: number; media_group: string | null }
+
+interface RMFullRow { id: number; item_name: string; item_code: string; item_group: string; width_mm: number | null; specification: string | null; sub_category: string | null }
+interface MediaGroupRow { media_group: string | null; media_name: string }
+interface ItemGroupRow { item_group: string }
+interface PrintMediaIdRow { print_media_id: number }
+interface MaterialItemIdRow { material_item_id: number }
+
 const printSystemRouter = new Hono<HonoEnv>()
 
 printSystemRouter.use('/*', authMiddleware)
@@ -23,12 +66,12 @@ async function getNextPMCode(db: D1Database, rangeStart: number, rangeEnd: numbe
     WHERE item_code LIKE 'PM-%'
       AND CAST(SUBSTR(item_code, 4) AS INTEGER) BETWEEN ? AND ?
     ORDER BY CAST(SUBSTR(item_code, 4) AS INTEGER) DESC LIMIT 1
-  `).bind(rangeStart, rangeEnd).all()
+  `).bind(rangeStart, rangeEnd).all<ItemCodeRow>()
 
   let nextNum = rangeStart
   if (results.length > 0) {
-    const lastCode = (results[0] as any).item_code as string
-    const numPart = parseInt(lastCode.replace('PM-', ''))
+    const lastCode = results[0].item_code
+    const numPart = Number(lastCode.replace('PM-', ''))
     if (!isNaN(numPart)) nextNum = numPart + 1
   }
   if (nextNum > rangeEnd) throw new Error(`PM 코드 범위 초과: ${rangeStart}-${rangeEnd}`)
@@ -45,12 +88,12 @@ async function updateLinkedItemPrices(db: D1Database, methodId?: number, mediaId
 
   if (methodId) {
     // method 단가 변경 → 해당 method의 모든 출력 품목 업데이트
-    const method = await db.prepare('SELECT price_per_sqm FROM print_methods WHERE id = ?').bind(methodId).first() as any
+    const method = await db.prepare('SELECT price_per_sqm FROM print_methods WHERE id = ?').bind(methodId).first<PriceSqmRow>()
     if (!method) return 0
     const { results: items } = await db.prepare(
       'SELECT i.id, i.print_media_id, pm.price_per_unit FROM items i JOIN print_media pm ON i.print_media_id = pm.id WHERE i.print_method_id = ? AND i.print_media_id IS NOT NULL AND i.is_active = 1'
-    ).bind(methodId).all()
-    for (const item of items as any[]) {
+    ).bind(methodId).all<ItemWithMediaPrice>()
+    for (const item of items) {
       const newPrice = (method.price_per_sqm || 0) + (item.price_per_unit || 0)
       await db.prepare('UPDATE items SET base_price = ?, updated_at = datetime(\'now\') WHERE id = ?').bind(newPrice, item.id).run()
       updatedCount++
@@ -59,12 +102,12 @@ async function updateLinkedItemPrices(db: D1Database, methodId?: number, mediaId
 
   if (mediaId) {
     // media 단가 변경 → 해당 media의 모든 출력 품목 업데이트
-    const media = await db.prepare('SELECT price_per_unit FROM print_media WHERE id = ?').bind(mediaId).first() as any
+    const media = await db.prepare('SELECT price_per_unit FROM print_media WHERE id = ?').bind(mediaId).first<PriceUnitRow>()
     if (!media) return 0
     const { results: items } = await db.prepare(
       'SELECT i.id, i.print_method_id, pm.price_per_sqm FROM items i JOIN print_methods pm ON i.print_method_id = pm.id WHERE i.print_media_id = ? AND i.print_method_id IS NOT NULL AND i.is_active = 1'
-    ).bind(mediaId).all()
-    for (const item of items as any[]) {
+    ).bind(mediaId).all<ItemWithMethodPrice>()
+    for (const item of items) {
       const newPrice = (item.price_per_sqm || 0) + (media.price_per_unit || 0)
       await db.prepare('UPDATE items SET base_price = ?, updated_at = datetime(\'now\') WHERE id = ?').bind(newPrice, item.id).run()
       updatedCount++
@@ -81,8 +124,8 @@ async function createLinkedItem(
   mediaId: number,
   priceOverride?: number | null
 ) {
-  const method = await db.prepare('SELECT * FROM print_methods WHERE id = ?').bind(methodId).first() as any
-  const media = await db.prepare('SELECT * FROM print_media WHERE id = ?').bind(mediaId).first() as any
+  const method = await db.prepare('SELECT * FROM print_methods WHERE id = ?').bind(methodId).first<MethodRow>()
+  const media = await db.prepare('SELECT * FROM print_media WHERE id = ?').bind(mediaId).first<MediaRow>()
 
   if (!method || !media) return null
 
@@ -94,7 +137,7 @@ async function createLinkedItem(
   // category_id: '기타' 카테고리를 폴백으로 사용
   const fallbackCat = await db.prepare(
     "SELECT id FROM item_categories WHERE category_name = '기타' LIMIT 1"
-  ).first() as any
+  ).first<IdRow>()
   const catId = fallbackCat?.id || 1
 
   const result = await db.prepare(`
@@ -153,7 +196,7 @@ printSystemRouter.patch('/methods/:id', requireRole('ADMIN', 'MANAGER'), async (
 
     // 단가 변경 이력 기록
     if (price_per_sqm !== undefined) {
-      const oldMethod = await c.env.DB.prepare('SELECT price_per_sqm, name FROM print_methods WHERE id = ?').bind(id).first() as any
+      const oldMethod = await c.env.DB.prepare('SELECT price_per_sqm, name FROM print_methods WHERE id = ?').bind(id).first<PriceSqmNameRow>()
       if (oldMethod) {
         const userId = c.get('user')?.id || null
         await c.env.DB.prepare(
@@ -211,11 +254,11 @@ printSystemRouter.get('/media', async (c) => {
 
     query += ' ORDER BY pm.media_group ASC, pm.group_sort ASC, pm.sort_order ASC, pm.name ASC'
 
-    const { results: mediaList } = await c.env.DB.prepare(query).bind(...params).all()
+    const { results: mediaList } = await c.env.DB.prepare(query).bind(...params).all<MediaRow>()
 
     // 각 소재에 연결된 출력방식 목록 조회 (items 테이블에서 직접)
-    const mediaIds = (mediaList as any[]).map(m => m.id)
-    let connectionMap: Record<number, any[]> = {}
+    const mediaIds = mediaList.map(m => m.id)
+    let connectionMap: Record<number, { id: number; name: string; price_override: null }[]> = {}
 
     if (mediaIds.length > 0) {
       const placeholders = mediaIds.map(() => '?').join(',')
@@ -227,9 +270,9 @@ printSystemRouter.get('/media', async (c) => {
           AND i.print_method_id IS NOT NULL
           AND i.is_active = 1
         GROUP BY i.print_media_id, pm.id
-      `).bind(...mediaIds).all()
+      `).bind(...mediaIds).all<ConnectionRow>()
 
-      for (const conn of connections as any[]) {
+      for (const conn of connections) {
         if (!connectionMap[conn.print_media_id]) {
           connectionMap[conn.print_media_id] = []
         }
@@ -242,7 +285,7 @@ printSystemRouter.get('/media', async (c) => {
     }
 
     // 각 소재에 연결된 원자재(RM) 목록 조회 (IN 쿼리로 N+1 방지)
-    let rmMap: Record<number, any[]> = {}
+    let rmMap: Record<number, { id: number; item_code: string; item_name: string; width_mm: number | null; specification: string | null; base_price: number; sales_price: number; is_sales_item: number }[]> = {}
 
     if (mediaIds.length > 0) {
       const rmPlaceholders = mediaIds.map(() => '?').join(',')
@@ -254,9 +297,9 @@ printSystemRouter.get('/media', async (c) => {
           AND i.is_active = 1
           AND i.item_type = 'MATERIAL'
         ORDER BY i.item_code
-      `).bind(...mediaIds).all()
+      `).bind(...mediaIds).all<RMItemRow>()
 
-      for (const rm of rmItems as any[]) {
+      for (const rm of rmItems) {
         if (!rmMap[rm.parent_media_id]) {
           rmMap[rm.parent_media_id] = []
         }
@@ -274,10 +317,10 @@ printSystemRouter.get('/media', async (c) => {
     }
 
     // 그룹핑
-    const groups: Record<string, any[]> = {}
-    const ungrouped: any[] = []
+    const groups: Record<string, Record<string, unknown>[]> = {}
+    const ungrouped: Record<string, unknown>[] = []
 
-    for (const media of mediaList as any[]) {
+    for (const media of mediaList) {
       const item = { ...media, methods: connectionMap[media.id] || [], raw_materials: rmMap[media.id] || [] }
       if (media.media_group) {
         if (!groups[media.media_group]) groups[media.media_group] = []
@@ -313,7 +356,7 @@ printSystemRouter.post('/media', requireRole('ADMIN', 'MANAGER'), async (c) => {
     // 중복 소재명 경고
     const dup = await c.env.DB.prepare(
       'SELECT id, name FROM print_media WHERE name = ? AND is_active = 1'
-    ).bind(name).first() as any
+    ).bind(name).first<IdRow & { name: string }>()
     if (dup) {
       return c.json({ success: false, error: `동일 소재명이 이미 존재합니다: "${name}" (id=${dup.id})` }, 409)
     }
@@ -323,10 +366,10 @@ printSystemRouter.post('/media', requireRole('ADMIN', 'MANAGER'), async (c) => {
     if (!mediaCode) {
       const pmLast = await c.env.DB.prepare(
         "SELECT code FROM print_media WHERE code LIKE 'PM-%' ORDER BY code DESC LIMIT 1"
-      ).first() as any
+      ).first<MediaCodeRow>()
       let pmNext = 1
       if (pmLast) {
-        const n = parseInt(pmLast.code.replace('PM-', ''))
+        const n = Number(pmLast.code.replace('PM-', ''))
         if (!isNaN(n)) pmNext = n + 1
       }
       mediaCode = `PM-${String(pmNext).padStart(4, '0')}`
@@ -349,7 +392,7 @@ printSystemRouter.post('/media', requireRole('ADMIN', 'MANAGER'), async (c) => {
     const mediaId = result.meta?.last_row_id as number
 
     // method_ids가 있으면 print_method_media 연결 + 품목 생성
-    const createdItems: any[] = []
+    const createdItems: { id: number | undefined; item_name: string; item_code: string; base_price: number }[] = []
     if (method_ids && Array.isArray(method_ids)) {
       for (const methodId of method_ids) {
         // print_method_media 연결
@@ -387,8 +430,8 @@ printSystemRouter.post('/media/bulk', requireRole('ADMIN', 'MANAGER'), async (c)
     }
 
     // entityId removed — items table has no entity_id column
-    const createdMedia: any[] = []
-    const createdItems: any[] = []
+    const createdMedia: { id: number; name: string; price: number }[] = []
+    const createdItems: { id: number | undefined; item_name: string; item_code: string; base_price: number }[] = []
 
     // sheet_sizes JSON (판재 복수 규격)
     const sheetSizes = body.sheet_sizes || null // [{w:90,h:180},{w:120,h:240}]
@@ -457,10 +500,10 @@ printSystemRouter.post('/media/bulk', requireRole('ADMIN', 'MANAGER'), async (c)
     // 소재 코드 시작 번호: 루프 전에 한번만 조회
     const pmLast = await c.env.DB.prepare(
       "SELECT code FROM print_media WHERE code LIKE 'PM-%' ORDER BY code DESC LIMIT 1"
-    ).first() as any
+    ).first<MediaCodeRow>()
     let pmNextNum = 1
     if (pmLast) {
-      const n = parseInt(pmLast.code.replace('PM-', ''))
+      const n = Number(pmLast.code.replace('PM-', ''))
       if (!isNaN(n)) pmNextNum = n + 1
     }
 
@@ -506,7 +549,7 @@ printSystemRouter.post('/media/bulk', requireRole('ADMIN', 'MANAGER'), async (c)
     }
 
     // RM 원자재 자동 생성
-    const createdRM: any[] = []
+    const createdRM: { id: number | undefined; item_code: string; item_name: string }[] = []
     const rmSubCat = body.rm_sub_category || (media_type === 'ROLL' ? '원단류' : '판재류')
     const RM_SUB_MAP: Record<string, string> = {
       '원단류': 'F', '판재류': 'P', '시트류': 'S', '잉크': 'I',
@@ -522,13 +565,13 @@ printSystemRouter.post('/media/bulk', requireRole('ADMIN', 'MANAGER'), async (c)
     const rmPatternQ = `RM-${rmLetter}%`
     const rmLastQ = await c.env.DB.prepare(
       'SELECT item_code FROM items WHERE item_code LIKE ? ORDER BY item_code DESC LIMIT 1'
-    ).bind(rmPatternQ).first() as any
+    ).bind(rmPatternQ).first<ItemCodeRow>()
     let rmStartNum = 1
     if (rmLastQ) {
-      const n = parseInt(rmLastQ.item_code.replace(`RM-${rmLetter}`, ''))
+      const n = Number(rmLastQ.item_code.replace(`RM-${rmLetter}`, ''))
       if (!isNaN(n)) rmStartNum = n + 1
     }
-    const rmFallbackCat = await c.env.DB.prepare("SELECT id FROM item_categories WHERE category_name = '기타' LIMIT 1").first() as any
+    const rmFallbackCat = await c.env.DB.prepare("SELECT id FROM item_categories WHERE category_name = '기타' LIMIT 1").first<IdRow>()
     const rmCatId = rmFallbackCat?.id || 1
 
     if (media_type === 'ROLL' && body.rm_widths && Array.isArray(body.rm_widths) && body.rm_widths.length > 0) {
@@ -595,13 +638,13 @@ printSystemRouter.post('/media/bulk', requireRole('ADMIN', 'MANAGER'), async (c)
         // product의 print_media_id와 같은 parent_media_id를 가진 원자재 연결
         const productItem = await c.env.DB.prepare(
           'SELECT print_media_id FROM items WHERE id = ?'
-        ).bind(product.id).first() as any
+        ).bind(product.id).first<PrintMediaIdRow>()
         if (!productItem?.print_media_id) continue
 
         for (const rm of createdRM) {
           const rmItem = await c.env.DB.prepare(
             'SELECT parent_media_id FROM items WHERE id = ?'
-          ).bind(rm.id).first() as any
+          ).bind(rm.id).first<{ parent_media_id: number | null }>()
           if (rmItem?.parent_media_id === productItem.print_media_id) {
             await c.env.DB.prepare(`
               INSERT OR IGNORE INTO product_materials (product_item_id, material_item_id, is_default)
@@ -668,7 +711,7 @@ printSystemRouter.put('/media/:id', requireRole('ADMIN', 'MANAGER'), async (c) =
 
     // 단가 변경 이력 기록
     if (price_per_unit !== undefined) {
-      const oldMedia = await c.env.DB.prepare('SELECT price_per_unit, name FROM print_media WHERE id = ?').bind(id).first() as any
+      const oldMedia = await c.env.DB.prepare('SELECT price_per_unit, name FROM print_media WHERE id = ?').bind(id).first<PriceUnitNameRow>()
       if (oldMedia) {
         const userId = c.get('user')?.id || null
         await c.env.DB.prepare(
@@ -699,13 +742,13 @@ printSystemRouter.put('/media/:id', requireRole('ADMIN', 'MANAGER'), async (c) =
       // 현재 연결된 출력방식 조회 (활성 items에서)
       const { results: currentItems } = await c.env.DB.prepare(
         'SELECT id, print_method_id FROM items WHERE print_media_id = ? AND print_method_id IS NOT NULL AND is_active = 1'
-      ).bind(id).all()
-      const currentMethodIds = new Set((currentItems as any[]).map((i: any) => i.print_method_id))
+      ).bind(id).all<ItemMethodIdRow>()
+      const currentMethodIds = new Set(currentItems.map(i => i.print_method_id))
 
       // 원자재 목록 일괄 조회 (루프 밖에서 1회)
       const { results: matchedRM } = await c.env.DB.prepare(
         'SELECT id FROM items WHERE parent_media_id = ? AND item_type = ? AND is_active = 1'
-      ).bind(id, 'MATERIAL').all()
+      ).bind(id, 'MATERIAL').all<IdRow>()
 
       // print_method_media 연결 일괄 (batch)
       const methodMediaStmts = method_ids.map((methodId: number) =>
@@ -717,13 +760,13 @@ printSystemRouter.put('/media/:id', requireRole('ADMIN', 'MANAGER'), async (c) =
       if (methodMediaStmts.length > 0) await c.env.DB.batch(methodMediaStmts)
 
       // 새로 추가할 방식 — 품목 생성 + product_materials 연결
-      const productMaterialStmts: any[] = []
+      const productMaterialStmts: D1PreparedStatement[] = []
       for (const methodId of method_ids) {
         if (!currentMethodIds.has(methodId)) {
           const item = await createLinkedItem(c.env.DB, methodId, id, null)
           if (item) {
             createdCount++
-            for (const rm of matchedRM as any[]) {
+            for (const rm of matchedRM) {
               productMaterialStmts.push(c.env.DB.prepare(`
                 INSERT OR IGNORE INTO product_materials (product_item_id, material_item_id, is_default)
                 VALUES (?, ?, 0)
@@ -736,7 +779,7 @@ printSystemRouter.put('/media/:id', requireRole('ADMIN', 'MANAGER'), async (c) =
 
       // 해제된 방식 → 주문 참조 확인 후 비활성화 (batch)
       const newMethodIds = new Set(method_ids)
-      const removedItems = (currentItems as any[]).filter((ci: any) => !newMethodIds.has(ci.print_method_id))
+      const removedItems = currentItems.filter(ci => !newMethodIds.has(ci.print_method_id))
       const inUseItems: string[] = []
 
       if (removedItems.length > 0) {
@@ -744,15 +787,15 @@ printSystemRouter.put('/media/:id', requireRole('ADMIN', 'MANAGER'), async (c) =
         const refPh = removedItems.map(() => '?').join(',')
         const { results: orderRefs } = await c.env.DB.prepare(
           `SELECT item_id, COUNT(*) as cnt FROM order_items WHERE item_id IN (${refPh}) GROUP BY item_id`
-        ).bind(...removedItems.map((ci: any) => ci.id)).all()
-        const refSet = new Set((orderRefs as any[]).filter((r: any) => r.cnt > 0).map((r: any) => r.item_id))
+        ).bind(...removedItems.map(ci => ci.id)).all<OrderRefRow>()
+        const refSet = new Set(orderRefs.filter(r => r.cnt > 0).map(r => r.item_id))
         for (const ci of removedItems) {
-          if (refSet.has(ci.id)) inUseItems.push(ci.id)
+          if (refSet.has(ci.id)) inUseItems.push(String(ci.id))
         }
 
         // 비활성화 + print_method_media 정리 (batch)
         await c.env.DB.batch(
-          removedItems.flatMap((ci: any) => [
+          removedItems.flatMap((ci) => [
             c.env.DB.prepare("UPDATE items SET is_active = 0, updated_at = datetime('now') WHERE id = ?").bind(ci.id),
             c.env.DB.prepare('DELETE FROM print_method_media WHERE print_method_id = ? AND print_media_id = ?').bind(ci.print_method_id, id)
           ])
@@ -816,12 +859,12 @@ printSystemRouter.patch('/media/group/:groupName/price', requireRole('ADMIN', 'M
     // 그룹 소재 조회
     const { results: mediaList } = await c.env.DB.prepare(
       'SELECT id, name, price_per_unit FROM print_media WHERE media_group = ? AND is_active = 1'
-    ).bind(groupName).all()
+    ).bind(groupName).all<{ id: number; name: string; price_per_unit: number }>()
 
-    const updatedItems: any[] = []
+    const updatedItems: { name: string; old_price: number; new_price: number }[] = []
     const userId = c.get('user')?.id || null
 
-    for (const media of mediaList as any[]) {
+    for (const media of mediaList) {
       const oldPrice = media.price_per_unit || 0
       let newPrice: number
 
@@ -898,7 +941,7 @@ printSystemRouter.patch('/media/group/:groupName/bulk', requireRole('ADMIN', 'MA
       if (sets.length > 0) {
         // 단가 이력
         if (u.price_per_unit !== undefined) {
-          const old = await c.env.DB.prepare('SELECT price_per_unit, name FROM print_media WHERE id = ?').bind(u.id).first() as any
+          const old = await c.env.DB.prepare('SELECT price_per_unit, name FROM print_media WHERE id = ?').bind(u.id).first<PriceUnitNameRow>()
           if (old && old.price_per_unit !== u.price_per_unit) {
             await c.env.DB.prepare(
               "INSERT INTO price_change_history (target_type, target_id, target_name, old_price, new_price, changed_by) VALUES ('MEDIA', ?, ?, ?, ?, ?)"
@@ -921,8 +964,8 @@ printSystemRouter.patch('/media/group/:groupName/bulk', requireRole('ADMIN', 'MA
         if (u.name !== undefined) {
           const { results: linkedItems } = await c.env.DB.prepare(
             'SELECT i.id, pm.name as method_name FROM items i JOIN print_methods pm ON pm.id = i.print_method_id WHERE i.print_media_id = ? AND i.is_active = 1'
-          ).bind(u.id).all()
-          for (const li of linkedItems as any[]) {
+          ).bind(u.id).all<LinkedItemRow>()
+          for (const li of linkedItems) {
             const newItemName = `${li.method_name} ${u.name}`
             await c.env.DB.prepare("UPDATE items SET item_name = ?, updated_at = datetime('now') WHERE id = ?").bind(newItemName, li.id).run()
           }
@@ -936,8 +979,8 @@ printSystemRouter.patch('/media/group/:groupName/bulk', requireRole('ADMIN', 'MA
         // 기존 연결 비활성화
         const { results: currentItems } = await c.env.DB.prepare(
           'SELECT id, print_method_id FROM items WHERE print_media_id = ? AND print_method_id IS NOT NULL AND is_active = 1'
-        ).bind(u.id).all()
-        const currentMethodSet = new Set((currentItems as any[]).map((ci: any) => ci.print_method_id))
+        ).bind(u.id).all<ItemMethodIdRow>()
+        const currentMethodSet = new Set(currentItems.map(ci => ci.print_method_id))
         const newMethodSet = new Set(bulk_method_ids)
 
         // 새 방식 추가
@@ -953,8 +996,8 @@ printSystemRouter.patch('/media/group/:groupName/bulk', requireRole('ADMIN', 'MA
               // product_materials 자동 연결
               const { results: matchedRM } = await c.env.DB.prepare(
                 'SELECT id FROM items WHERE parent_media_id = ? AND item_type = ? AND is_active = 1'
-              ).bind(u.id, 'MATERIAL').all()
-              for (const rm of matchedRM as any[]) {
+              ).bind(u.id, 'MATERIAL').all<IdRow>()
+              for (const rm of matchedRM) {
                 await c.env.DB.prepare(`
                   INSERT OR IGNORE INTO product_materials (product_item_id, material_item_id, is_default)
                   VALUES (?, ?, 0)
@@ -966,7 +1009,7 @@ printSystemRouter.patch('/media/group/:groupName/bulk', requireRole('ADMIN', 'MA
         }
 
         // 해제된 방식 비활성화
-        for (const ci of currentItems as any[]) {
+        for (const ci of currentItems) {
           if (!newMethodSet.has(ci.print_method_id)) {
             await c.env.DB.prepare("UPDATE items SET is_active = 0, updated_at = datetime('now') WHERE id = ?").bind(ci.id).run()
             methodChanged++
@@ -1075,8 +1118,8 @@ printSystemRouter.post('/repair-links', requireRole('ADMIN'), async (c) => {
       SELECT DISTINCT print_method_id, print_media_id
       FROM items
       WHERE print_method_id IS NOT NULL AND print_media_id IS NOT NULL AND is_active = 1
-    `).all()
-    for (const r of missingPMM as any[]) {
+    `).all<RepairPMMRow>()
+    for (const r of missingPMM) {
       const res = await db.prepare(`
         INSERT OR IGNORE INTO print_method_media (print_method_id, print_media_id, created_at)
         VALUES (?, ?, datetime('now'))
@@ -1088,13 +1131,13 @@ printSystemRouter.post('/repair-links', requireRole('ADMIN'), async (c) => {
     const { results: products } = await db.prepare(`
       SELECT id, print_media_id FROM items
       WHERE print_method_id IS NOT NULL AND print_media_id IS NOT NULL AND is_active = 1 AND item_type = 'PRODUCT'
-    `).all()
-    for (const p of products as any[]) {
+    `).all<RepairProductRow>()
+    for (const p of products) {
       const { results: materials } = await db.prepare(`
         SELECT id FROM items
         WHERE parent_media_id = ? AND item_type = 'MATERIAL' AND is_active = 1
-      `).bind(p.print_media_id).all()
-      for (const m of materials as any[]) {
+      `).bind(p.print_media_id).all<IdRow>()
+      for (const m of materials) {
         const res = await db.prepare(`
           INSERT OR IGNORE INTO product_materials (product_item_id, material_item_id, is_default)
           VALUES (?, ?, 0)
@@ -1109,8 +1152,8 @@ printSystemRouter.post('/repair-links', requireRole('ADMIN'), async (c) => {
       FROM items i
       JOIN print_media pm ON i.parent_media_id = pm.id
       WHERE i.item_group IS NULL AND i.parent_media_id IS NOT NULL AND i.is_active = 1
-    `).all()
-    for (const r of noGroup as any[]) {
+    `).all<RepairGroupRow>()
+    for (const r of noGroup) {
       if (r.media_group) {
         await db.prepare("UPDATE items SET item_group = ?, updated_at = datetime('now') WHERE id = ?")
           .bind(r.media_group, r.id).run()
@@ -1147,8 +1190,8 @@ printSystemRouter.get('/rm-connections/:mediaGroup', async (c) => {
       SELECT i.id FROM items i
       JOIN print_media pm ON i.print_media_id = pm.id
       WHERE pm.media_group = ? AND i.item_type = 'PRODUCT' AND i.is_active = 1
-    `).bind(mediaGroup).all()
-    const productIds = products.map((p: any) => p.id)
+    `).bind(mediaGroup).all<IdRow>()
+    const productIds = products.map(p => p.id)
 
     // 2. 원자재 그룹별 아이템 + 연결 상태
     const { results: allRM } = await db.prepare(`
@@ -1156,7 +1199,7 @@ printSystemRouter.get('/rm-connections/:mediaGroup', async (c) => {
       FROM items
       WHERE item_type = 'MATERIAL' AND is_active = 1 AND item_group IS NOT NULL AND item_group != ''
       ORDER BY item_group ASC, width_mm ASC, item_name ASC
-    `).all()
+    `).all<RMFullRow>()
 
     // 3. 연결된 RM ID 목록 (product_materials + parent_media_id 둘 다 확인)
     let connectedIds = new Set<number>()
@@ -1164,28 +1207,28 @@ printSystemRouter.get('/rm-connections/:mediaGroup', async (c) => {
     // 3a. product_materials 기반
     if (productIds.length > 0) {
       const pPlaceholders = productIds.map(() => '?').join(',')
-      const { results: pmRows } = await db.prepare(
+      const { results: pmConnRows } = await db.prepare(
         `SELECT DISTINCT material_item_id FROM product_materials WHERE product_item_id IN (${pPlaceholders})`
-      ).bind(...productIds).all()
-      pmRows.forEach((r: any) => connectedIds.add(r.material_item_id))
+      ).bind(...productIds).all<MaterialItemIdRow>()
+      pmConnRows.forEach(r => connectedIds.add(r.material_item_id))
     }
 
     // 3b. parent_media_id 기반 (기존 연결 — 이 소재 그룹의 media ID를 참조하는 RM)
     const { results: mediaRows } = await db.prepare(
       'SELECT id FROM print_media WHERE media_group = ? AND is_active = 1'
-    ).bind(mediaGroup).all()
-    const mediaIds = mediaRows.map((r: any) => r.id)
+    ).bind(mediaGroup).all<IdRow>()
+    const mediaIds = mediaRows.map(r => r.id)
     if (mediaIds.length > 0) {
       const mPlaceholders = mediaIds.map(() => '?').join(',')
       const { results: parentLinked } = await db.prepare(
         `SELECT id FROM items WHERE parent_media_id IN (${mPlaceholders}) AND item_type = 'MATERIAL' AND is_active = 1`
-      ).bind(...mediaIds).all()
-      parentLinked.forEach((r: any) => connectedIds.add(r.id))
+      ).bind(...mediaIds).all<IdRow>()
+      parentLinked.forEach(r => connectedIds.add(r.id))
     }
 
     // 4. 그룹별로 묶어서 반환
-    const groups: Record<string, any> = {}
-    for (const rm of allRM as any[]) {
+    const groups: Record<string, { name: string; items: Record<string, unknown>[]; connectedCount: number; totalCount: number }> = {}
+    for (const rm of allRM) {
       if (!groups[rm.item_group]) {
         groups[rm.item_group] = { name: rm.item_group, items: [], connectedCount: 0, totalCount: 0 }
       }
@@ -1223,8 +1266,8 @@ printSystemRouter.put('/rm-connections/:mediaGroup', requireRole('ADMIN', 'MANAG
       SELECT i.id FROM items i
       JOIN print_media pm ON i.print_media_id = pm.id
       WHERE pm.media_group = ? AND i.item_type = 'PRODUCT' AND i.is_active = 1
-    `).bind(mediaGroup).all()
-    const productIds = products.map((p: any) => p.id)
+    `).bind(mediaGroup).all<IdRow>()
+    const productIds = products.map(p => p.id)
 
     if (productIds.length === 0) {
       return c.json({ success: false, error: '출력품목이 없습니다' }, 404)
@@ -1234,15 +1277,15 @@ printSystemRouter.put('/rm-connections/:mediaGroup', requireRole('ADMIN', 'MANAG
     const { results: allRM } = await db.prepare(`
       SELECT id, item_group FROM items
       WHERE item_type = 'MATERIAL' AND is_active = 1 AND item_group IS NOT NULL AND item_group != ''
-    `).all()
-    const allRMIds = new Set(allRM.map((r: any) => r.id))
+    `).all<{ id: number; item_group: string }>()
+    const allRMIds = new Set(allRM.map(r => r.id))
 
     // 3. 기존 연결 조회
     const pPlaceholders = productIds.map(() => '?').join(',')
     const { results: existingPM } = await db.prepare(
       `SELECT DISTINCT material_item_id FROM product_materials WHERE product_item_id IN (${pPlaceholders})`
-    ).bind(...productIds).all()
-    const existingSet = new Set(existingPM.map((r: any) => r.material_item_id))
+    ).bind(...productIds).all<MaterialItemIdRow>()
+    const existingSet = new Set(existingPM.map(r => r.material_item_id))
 
     // 4. item_group 있는 RM만 대상으로 추가/삭제
     const toAdd = connected_item_ids.filter(id => allRMIds.has(id) && !existingSet.has(id))
@@ -1276,12 +1319,12 @@ printSystemRouter.put('/rm-connections/:mediaGroup', requireRole('ADMIN', 'MANAG
     // 7. media_material_groups 동기화 (그룹 레벨 메타)
     const { results: mediaRows } = await db.prepare(
       'SELECT id FROM print_media WHERE media_group = ? AND is_active = 1'
-    ).bind(mediaGroup).all()
-    const mediaIds = mediaRows.map((r: any) => r.id)
+    ).bind(mediaGroup).all<IdRow>()
+    const mediaIds = mediaRows.map(r => r.id)
 
     // 연결된 item_group 목록 추출
     const connectedGroups = new Set<string>()
-    for (const rm of allRM as any[]) {
+    for (const rm of allRM) {
       if (connectedSet.has(rm.id)) connectedGroups.add(rm.item_group)
     }
 
@@ -1319,7 +1362,7 @@ printSystemRouter.get('/item-linked-media/:itemId', async (c) => {
       FROM items i
       JOIN print_media pm ON i.parent_media_id = pm.id
       WHERE i.id = ? AND i.parent_media_id IS NOT NULL
-    `).bind(itemId).all()
+    `).bind(itemId).all<MediaGroupRow>()
 
     // 2) product_materials 간접 연결
     const { results: indirectResults } = await db.prepare(`
@@ -1329,11 +1372,11 @@ printSystemRouter.get('/item-linked-media/:itemId', async (c) => {
       JOIN print_media pm2 ON prod.print_media_id = pm2.id
       WHERE pmat.material_item_id = ?
       ORDER BY pm2.media_group
-    `).bind(itemId).all()
+    `).bind(itemId).all<MediaGroupRow>()
 
     // 그룹별로 묶기 (중복 제거)
     const groups: Record<string, string[]> = {}
-    for (const r of [...(directResults as any[]), ...(indirectResults as any[])]) {
+    for (const r of [...directResults, ...indirectResults]) {
       const g = r.media_group || '기타'
       if (!groups[g]) groups[g] = []
       if (!groups[g].includes(r.media_name)) groups[g].push(r.media_name)
@@ -1355,23 +1398,23 @@ printSystemRouter.post('/sync-product-materials/:mediaGroup', requireRole('ADMIN
     // 1. 이 소재 그룹의 모든 media ID
     const { results: mediaRows } = await db.prepare(
       'SELECT id FROM print_media WHERE media_group = ? AND is_active = 1'
-    ).bind(mediaGroup).all()
-    const mediaIds = mediaRows.map((r: any) => r.id)
+    ).bind(mediaGroup).all<IdRow>()
+    const mediaIds = mediaRows.map(r => r.id)
     if (mediaIds.length === 0) return c.json({ success: true, message: 'no media' })
 
     // 2. 이 소재들의 출력품목(PRODUCT)
     const mPlaceholders = mediaIds.map(() => '?').join(',')
     const { results: products } = await db.prepare(
       `SELECT id FROM items WHERE print_media_id IN (${mPlaceholders}) AND item_type = 'PRODUCT' AND is_active = 1`
-    ).bind(...mediaIds).all()
-    const productIds = products.map((p: any) => p.id)
+    ).bind(...mediaIds).all<IdRow>()
+    const productIds = products.map(p => p.id)
     if (productIds.length === 0) return c.json({ success: true, message: 'no products' })
 
     // 3. parent_media_id로 연결된 원자재
     const { results: materials } = await db.prepare(
       `SELECT id FROM items WHERE parent_media_id IN (${mPlaceholders}) AND item_type = 'MATERIAL' AND is_active = 1`
-    ).bind(...mediaIds).all()
-    const materialIds = materials.map((m: any) => m.id)
+    ).bind(...mediaIds).all<IdRow>()
+    const materialIds = materials.map(m => m.id)
 
     // 4. 기존 product_materials 삭제 (이 출력품목들에 대해)
     const pPlaceholders = productIds.map(() => '?').join(',')
@@ -1406,9 +1449,9 @@ printSystemRouter.post('/sync-product-materials/:mediaGroup', requireRole('ADMIN
       const matPlaceholders = materialIds.map(() => '?').join(',')
       const { results: groups } = await db.prepare(
         `SELECT DISTINCT item_group FROM items WHERE id IN (${matPlaceholders}) AND item_group IS NOT NULL`
-      ).bind(...materialIds).all()
+      ).bind(...materialIds).all<ItemGroupRow>()
       for (const mediaId of mediaIds) {
-        for (const g of groups as any[]) {
+        for (const g of groups) {
           await db.prepare('INSERT OR IGNORE INTO media_material_groups (media_id, item_group) VALUES (?, ?)').bind(mediaId, g.item_group).run()
         }
       }

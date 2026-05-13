@@ -9,6 +9,87 @@ import type { PortalUser } from '../middleware/portalAuth'
 import { hashPassword, verifyPassword } from '../utils/crypto'
 import { authMiddleware, requireRole } from '../middleware/auth'
 
+// ─── DB Row 타입 ────────────────────────────────────────────────────────────
+
+interface ClientAccountRow {
+  id: number
+  client_id: number
+  login_id: string
+  password_hash: string
+  contact_name: string | null
+  contact_phone: string | null
+  contact_email: string | null
+  is_active: number
+  entity_id: number | null
+  last_login_at: string | null
+  client_name: string
+}
+
+interface TokenRow {
+  client_id: number
+  expires_at: string
+  client_name: string
+}
+
+interface TokenRowWithMeta extends TokenRow {
+  metadata: string | null
+  business_registration_number: string | null
+}
+
+interface CountRow {
+  cnt: number
+}
+
+interface SumRow {
+  total: number | null
+  total_balance: number | null
+}
+
+interface SettingRow {
+  setting_value: string
+}
+
+interface ClientRow {
+  id: number
+  client_name: string
+}
+
+interface OrderRow {
+  id: number
+  order_number: string
+  final_amount: number | null
+  total_amount: number | null
+  vat_amount: number | null
+  discount_amount: number | null
+  billed_amount: number | null
+  order_date: string
+  billing_status: string | null
+  created_at: string | null
+}
+
+interface OrderItemRow {
+  item_name: string
+  width: number | null
+  height: number | null
+  quantity: number
+  unit: string | null
+  unit_price: number
+  amount: number
+}
+
+interface PaymentRow {
+  payment_date: string
+  amount: number | null
+  payment_method: string | null
+}
+
+interface AdjustmentRow {
+  created_at: string | null
+  amount: number | null
+  reason: string | null
+  type: string | null
+}
+
 const portal = new Hono<HonoEnv>()
 
 // 포털 비밀번호 검증 (PBKDF2 + 레거시 SHA-256 호환)
@@ -39,7 +120,7 @@ portal.post('/auth/login', async (c) => {
       FROM client_accounts ca
       JOIN clients cl ON ca.client_id = cl.id
       WHERE ca.login_id = ? AND ca.is_active = 1
-    `).bind(login_id).first() as any
+    `).bind(login_id).first<ClientAccountRow>()
 
     if (!account) {
       return c.json({ success: false, error: '아이디 또는 비밀번호가 올바르지 않습니다.' }, 401)
@@ -114,14 +195,14 @@ portal.use('/balance', async (c, next) => {
       FROM portal_access_tokens pat
       JOIN clients cl ON pat.client_id = cl.id
       WHERE pat.token = ?
-    `).bind(t).first() as any
+    `).bind(t).first<TokenRow>()
 
     if (!row || new Date(row.expires_at) <= new Date()) {
       return c.json({ success: false, error: '유효하지 않은 링크입니다.' }, 401)
     }
 
     // portalUser 형태로 context에 주입 (client_account_id 0: 임시 접근)
-    c.set('portalUser' as any, {
+    c.set('portalUser', {
       portal_client_id: row.client_id,
       client_account_id: 0,
       client_name: row.client_name,
@@ -137,7 +218,7 @@ portal.use('/reorder', portalAuthMiddleware)
 // GET /auth/me
 portal.get('/auth/me', async (c) => {
   try {
-    const user = (c as any).get('portalUser') as PortalUser
+    const user = c.get('portalUser')
     const account = await c.env.DB.prepare(`
       SELECT ca.contact_name, ca.contact_phone, ca.contact_email, cl.client_name
       FROM client_accounts ca
@@ -154,7 +235,7 @@ portal.get('/auth/me', async (c) => {
 // POST /auth/change-password
 portal.post('/auth/change-password', async (c) => {
   try {
-    const user = (c as any).get('portalUser') as PortalUser
+    const user = c.get('portalUser')
     const { current_password, new_password } = await c.req.json()
 
     if (!new_password || new_password.length < 6) {
@@ -164,7 +245,7 @@ portal.post('/auth/change-password', async (c) => {
     // 현재 비밀번호 확인
     const account = await c.env.DB.prepare(
       `SELECT password_hash FROM client_accounts WHERE id = ?`
-    ).bind(user.client_account_id).first() as any
+    ).bind(user.client_account_id).first<{ password_hash: string }>()
 
     if (!account) {
       return c.json({ success: false, error: '계정을 찾을 수 없습니다.' }, 400)
@@ -192,13 +273,13 @@ portal.post('/auth/change-password', async (c) => {
 
 portal.get('/dashboard', async (c) => {
   try {
-    const user = (c as any).get('portalUser') as PortalUser
+    const user = c.get('portalUser')
     const clientId = user.portal_client_id
 
     const [orderCount, recentOrders, balance] = await Promise.all([
       c.env.DB.prepare(
         `SELECT COUNT(*) as cnt FROM orders WHERE client_id = ?`
-      ).bind(clientId).first() as Promise<any>,
+      ).bind(clientId).first<CountRow>(),
       c.env.DB.prepare(`
         SELECT id, order_number, order_date, status, total_amount
         FROM orders WHERE client_id = ?
@@ -207,7 +288,7 @@ portal.get('/dashboard', async (c) => {
       c.env.DB.prepare(`
         SELECT SUM(balance) as total_balance
         FROM ledger WHERE client_id = ? AND balance > 0
-      `).bind(clientId).first() as Promise<any>,
+      `).bind(clientId).first<SumRow>(),
     ])
 
     return c.json({
@@ -228,7 +309,7 @@ portal.get('/dashboard', async (c) => {
 
 portal.get('/orders', async (c) => {
   try {
-    const user = (c as any).get('portalUser') as PortalUser
+    const user = c.get('portalUser')
     const { status, page } = c.req.query()
     const limit = 20
     const offset = ((Number(page) || 1) - 1) * limit
@@ -255,7 +336,7 @@ portal.get('/orders', async (c) => {
 
     const countResult = await c.env.DB.prepare(
       `SELECT COUNT(*) as cnt FROM orders WHERE client_id = ?`
-    ).bind(user.portal_client_id).first() as any
+    ).bind(user.portal_client_id).first<CountRow>()
 
     return c.json({ success: true, data: { orders: results, total: countResult?.cnt || 0 } })
   } catch (e) {
@@ -268,7 +349,7 @@ portal.get('/orders', async (c) => {
 
 portal.get('/orders/:id', async (c) => {
   try {
-    const user = (c as any).get('portalUser') as PortalUser
+    const user = c.get('portalUser')
     const orderId = Number(c.req.param('id'))
 
     const order = await c.env.DB.prepare(
@@ -321,7 +402,7 @@ portal.get('/orders/:id', async (c) => {
 
 portal.get('/balance', async (c) => {
   try {
-    const user = (c as any).get('portalUser') as PortalUser
+    const user = c.get('portalUser')
 
     const { results } = await c.env.DB.prepare(`
       SELECT l.id, l.order_id, l.total_amount, l.paid_amount, l.balance, l.billing_date,
@@ -334,7 +415,7 @@ portal.get('/balance', async (c) => {
 
     const total = await c.env.DB.prepare(
       `SELECT SUM(balance) as total FROM ledger WHERE client_id = ? AND balance > 0`
-    ).bind(user.portal_client_id).first() as any
+    ).bind(user.portal_client_id).first<SumRow>()
 
     return c.json({ success: true, data: { items: results, totalBalance: total?.total || 0 } })
   } catch (e) {
@@ -347,7 +428,7 @@ portal.get('/balance', async (c) => {
 
 portal.get('/invoices', async (c) => {
   try {
-    const user = (c as any).get('portalUser') as PortalUser
+    const user = c.get('portalUser')
 
     const { results } = await c.env.DB.prepare(`
       SELECT id, invoice_number, issue_date, supply_amount, tax_amount, total_amount, status
@@ -367,7 +448,7 @@ portal.get('/invoices', async (c) => {
 
 portal.post('/reorder', async (c) => {
   try {
-    const user = (c as any).get('portalUser') as PortalUser
+    const user = c.get('portalUser')
     const { reference_order_id, description, file_urls } = await c.req.json()
 
     // 참조 주문이 해당 거래처 것인지 확인
@@ -410,19 +491,19 @@ portal.post('/generate-token', authMiddleware, requireRole('ADMIN', 'MANAGER'), 
     // 거래처 존재 확인
     const client = await c.env.DB.prepare(
       `SELECT id, client_name FROM clients WHERE id = ?`
-    ).bind(clientId).first() as any
+    ).bind(clientId).first<ClientRow>()
 
     if (!client) {
       return c.json({ success: false, error: '존재하지 않는 거래처입니다.' }, 404)
     }
 
-    const user = (c as any).get('user') as any
+    const user = c.get('user')
     const createdBy = user?.id || 0
 
     // 사이트 기본 URL (settings에서 조회, 없으면 요청 origin 사용)
     const siteUrlSetting = await c.env.DB.prepare(
       `SELECT setting_value FROM settings WHERE setting_key = 'site_base_url'`
-    ).first() as any
+    ).first<SettingRow>()
     const baseUrl = siteUrlSetting?.setting_value || new URL(c.req.url).origin
 
     const { token, url, expiresAt } = await generatePortalToken(c.env.DB, clientId, createdBy, baseUrl, expiresDays)
@@ -455,7 +536,7 @@ portal.get('/verify-token', async (c) => {
       FROM portal_access_tokens pat
       JOIN clients cl ON pat.client_id = cl.id
       WHERE pat.token = ?
-    `).bind(t).first() as any
+    `).bind(t).first<TokenRow>()
 
     if (!row) {
       return c.json({ success: false, error: '유효하지 않은 링크입니다.' })
@@ -521,7 +602,7 @@ portal.post('/verify-document', async (c) => {
       FROM portal_access_tokens pat
       JOIN clients cl ON pat.client_id = cl.id
       WHERE pat.token = ?
-    `).bind(token).first() as any
+    `).bind(token).first<TokenRowWithMeta>()
 
     if (!row) {
       return c.json({ success: false, error: '유효하지 않은 링크입니다.' }, 410)
@@ -556,7 +637,7 @@ portal.post('/verify-document', async (c) => {
            FROM orders WHERE client_id = ? AND status NOT IN ('CANCELLED','DRAFT')
            ORDER BY created_at DESC LIMIT 1`
       const orderParams = order_id ? [order_id, clientId] : [clientId]
-      const order = await c.env.DB.prepare(orderQuery).bind(...orderParams).first() as any
+      const order = await c.env.DB.prepare(orderQuery).bind(...orderParams).first<OrderRow>()
 
       if (!order) {
         return c.json({ success: true, data: { client_name: row.client_name, order_number: '', items: [], total_amount: 0 } })
@@ -565,9 +646,9 @@ portal.post('/verify-document', async (c) => {
       const { results: items } = await c.env.DB.prepare(`
         SELECT item_name, width, height, quantity, unit, unit_price, amount
         FROM order_items WHERE order_id = ? AND parent_item_id IS NULL ORDER BY sort_order
-      `).bind(order.id).all() as any
+      `).bind(order.id).all<OrderItemRow>()
 
-      const invoiceItems = (items || []).map((i: any) => ({
+      const invoiceItems = (items || []).map((i) => ({
         item_name: i.item_name,
         spec: (i.width && i.height) ? `${i.width}x${i.height}cm` : '',
         quantity: i.quantity,
@@ -600,34 +681,34 @@ portal.post('/verify-document', async (c) => {
         SELECT order_number, created_at, billed_amount, final_amount, billing_status
         FROM orders WHERE client_id = ? AND status != 'CANCELLED' AND date(created_at) >= ?
         ORDER BY created_at ASC
-      `).bind(clientId, sixMonthsAgo).all() as any
+      `).bind(clientId, sixMonthsAgo).all<OrderRow>()
 
       const { results: payments } = await c.env.DB.prepare(`
         SELECT payment_date, amount, payment_method
         FROM payments WHERE client_id = ? AND date(payment_date) >= ?
         ORDER BY payment_date ASC
-      `).bind(clientId, sixMonthsAgo).all() as any
+      `).bind(clientId, sixMonthsAgo).all<PaymentRow>()
 
       const { results: adjustments } = await c.env.DB.prepare(`
         SELECT created_at, amount, reason, type
         FROM adjustments WHERE client_id = ? AND date(created_at) >= ?
         ORDER BY created_at ASC
-      `).bind(clientId, sixMonthsAgo).all() as any
+      `).bind(clientId, sixMonthsAgo).all<AdjustmentRow>()
 
       const transactions = [
-        ...(orders as any[]).map((o: any) => ({
-          type: 'order', date: (o.created_at || '').substring(0, 10),
+        ...orders.map((o) => ({
+          type: 'order' as const, date: (o.created_at || '').substring(0, 10),
           description: o.order_number,
           debit: o.billing_status === 'BILLED' ? (o.billed_amount || o.final_amount || 0) : (o.final_amount || 0),
           credit: 0
         })),
-        ...(payments as any[]).map((p: any) => ({
-          type: 'payment', date: p.payment_date,
+        ...payments.map((p) => ({
+          type: 'payment' as const, date: p.payment_date,
           description: p.payment_method || '입금',
           debit: 0, credit: p.amount || 0
         })),
-        ...(adjustments as any[]).map((a: any) => ({
-          type: 'adjustment', date: (a.created_at || '').substring(0, 10),
+        ...adjustments.map((a) => ({
+          type: 'adjustment' as const, date: (a.created_at || '').substring(0, 10),
           description: a.reason || a.type || '조정',
           debit: 0, credit: a.amount || 0
         }))
