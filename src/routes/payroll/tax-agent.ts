@@ -68,7 +68,7 @@ taxAgentRouter.get('/tax-agent/changes', requireRole('ADMIN', 'MANAGER'), async 
     if (!/^\d{4}-\d{2}$/.test(period)) {
       return c.json({ success: false, error: 'period=YYYY-MM 파라미터 필요' }, 400)
     }
-    const user = c.get('user') as any
+    const user = c.get('user')
     const unmask = user?.role === 'ADMIN'
     const { first, last } = monthBounds(period)
 
@@ -122,7 +122,7 @@ taxAgentRouter.get('/tax-agent/payroll', requireRole('ADMIN', 'MANAGER'), async 
     if (!/^\d{4}-\d{2}$/.test(period)) {
       return c.json({ success: false, error: 'period=YYYY-MM 파라미터 필요' }, 400)
     }
-    const user = c.get('user') as any
+    const user = c.get('user')
     const unmask = user?.role === 'ADMIN'
 
     const { results } = await c.env.DB.prepare(
@@ -185,7 +185,7 @@ taxAgentRouter.get('/tax-agent/annual', requireRole('ADMIN', 'MANAGER'), async (
     if (!/^\d{4}$/.test(year)) {
       return c.json({ success: false, error: 'year=YYYY 파라미터 필요' }, 400)
     }
-    const user = c.get('user') as any
+    const user = c.get('user')
     const unmask = user?.role === 'ADMIN'
 
     // 해당 연도의 모든 급여 데이터를 직원별로 집계
@@ -316,7 +316,7 @@ taxAgentRouter.get('/tax-agent/annual', requireRole('ADMIN', 'MANAGER'), async (
 taxAgentRouter.get('/tax-agent/roster', requireRole('ADMIN', 'MANAGER'), async (c) => {
   try {
     const statusFilter = (c.req.query('status') || 'active').toLowerCase()
-    const user = c.get('user') as any
+    const user = c.get('user')
     const unmask = user?.role === 'ADMIN'
 
     let sql = `SELECT

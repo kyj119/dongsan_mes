@@ -80,7 +80,7 @@ stockAlertsRouter.post('/stock-alerts/check', requireRole('ADMIN', 'MANAGER'), a
 stockAlertsRouter.patch('/stock-alerts/:id/acknowledge', requireRole('ADMIN', 'MANAGER'), async (c) => {
   try {
     const id = c.req.param('id')
-    const user = c.get('user') as any
+    const user = c.get('user')
 
     await c.env.DB.prepare(`
       UPDATE stock_alerts SET status = 'ACKNOWLEDGED', acknowledged_by = ?, acknowledged_at = datetime('now')

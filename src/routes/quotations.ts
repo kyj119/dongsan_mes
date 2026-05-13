@@ -187,7 +187,7 @@ quotationsRouter.get('/:id', async (c) => {
 // ===== POST / — 신규 작성 =====
 quotationsRouter.post('/', async (c) => {
   try {
-    const user = c.get('user') as any
+    const user = c.get('user')
     const body = await c.req.json()
 
     if (!body.client_id) {
@@ -352,7 +352,7 @@ quotationsRouter.post('/', async (c) => {
 quotationsRouter.put('/:id', async (c) => {
   try {
     const id = c.req.param('id')
-    const user = c.get('user') as any
+    const user = c.get('user')
     const body = await c.req.json()
 
     const existing = await c.env.DB.prepare(
@@ -477,7 +477,7 @@ quotationsRouter.put('/:id', async (c) => {
 quotationsRouter.delete('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
   try {
     const id = c.req.param('id')
-    const user = c.get('user') as any
+    const user = c.get('user')
     const quotation = await c.env.DB.prepare(
       `SELECT id, quotation_number, status FROM quotations WHERE id = ?`
     ).bind(id).first() as any
@@ -504,7 +504,7 @@ quotationsRouter.delete('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
 quotationsRouter.post('/:id/convert-to-order', requireRole('ADMIN', 'MANAGER'), async (c) => {
   try {
     const id = c.req.param('id')
-    const user = c.get('user') as any
+    const user = c.get('user')
     const body = await c.req.json().catch(() => ({}))
     const force = body.force === true
 

@@ -1942,7 +1942,7 @@ ordersCoreRouter.put('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
 ordersCoreRouter.patch('/:id/cancel', requireRole('ADMIN', 'MANAGER'), async (c) => {
   try {
     const id = c.req.param('id')
-    const user = c.get('user') as any
+    const user = c.get('user')
     const { reason, reason_detail } = await c.req.json<{ reason: string; reason_detail?: string }>()
 
     if (!reason) {
@@ -2006,7 +2006,7 @@ ordersCoreRouter.patch('/:id/cancel', requireRole('ADMIN', 'MANAGER'), async (c)
 ordersCoreRouter.patch('/:id/restore', requireRole('ADMIN', 'MANAGER'), async (c) => {
   try {
     const id = c.req.param('id')
-    const user = c.get('user') as any
+    const user = c.get('user')
 
     const order = await c.env.DB.prepare(
       'SELECT id, status, order_number FROM orders WHERE id = ?'
@@ -2051,7 +2051,7 @@ ordersCoreRouter.patch('/:id/restore', requireRole('ADMIN', 'MANAGER'), async (c
 ordersCoreRouter.post('/sync-statuses', requireRole('ADMIN', 'MANAGER'), async (c) => {
   try {
     const db = c.env.DB
-    const user = c.get('user') as any
+    const user = c.get('user')
 
     // Step 1: 출고완료 자동 전이 — auto_complete_date 도래 + 모든 카드 출고완료
     const ef = entityFilter(c, 'o')

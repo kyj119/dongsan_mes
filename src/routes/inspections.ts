@@ -174,7 +174,7 @@ inspectionsRouter.delete('/templates/:id', requireRole('ADMIN'), async (c) => {
 // POST /results - 검수 결과 저장 (Q1-a: ADMIN/MANAGER/OPERATOR만)
 inspectionsRouter.post('/results', requireRole('ADMIN', 'MANAGER', 'OPERATOR'), async (c) => {
   try {
-    const user = c.get('user') as any
+    const user = c.get('user')
     const body = await c.req.json<{
       receipt_id: number
       receipt_item_id?: number

@@ -283,7 +283,7 @@ leavesRouter.get('/requests', async (c) => {
 
 leavesRouter.post('/requests', async (c) => {
   try {
-    const user = c.get('user') as any
+    const user = c.get('user')
     const body = await c.req.json<{
       employee_id: number; leave_type: string; start_date: string; end_date: string;
       days?: number; reason?: string;

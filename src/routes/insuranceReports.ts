@@ -222,7 +222,7 @@ insuranceReportsRouter.put('/:id/submit', async (c) => {
 insuranceReportsRouter.put('/:id/confirm', async (c) => {
   try {
     const id = Number(c.req.param('id'))
-    const user = c.get('user') as any
+    const user = c.get('user')
     const now = new Date().toISOString()
     await c.env.DB.prepare(
       `UPDATE insurance_reports SET status = 'CONFIRMED', confirmed_by = ?, confirmed_at = ?, updated_at = ? WHERE id = ?`

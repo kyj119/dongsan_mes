@@ -1472,7 +1472,7 @@ ripRouter.post('/send-item/:cardItemId', authMiddleware, async (c) => {
     `).bind(equipment_id, rip_preset, cardItemId).run()
 
     // 5. 카드 rip_status 동기화 + 상태 이력
-    const user = c.get('user') as any
+    const user = c.get('user')
     if (cardItem.card_status !== 'RIP_WAITING' && cardItem.card_status !== 'PRINTING') {
       await c.env.DB.prepare(`
         UPDATE cards SET rip_status = 'QUEUED', updated_at = CURRENT_TIMESTAMP WHERE id = ?

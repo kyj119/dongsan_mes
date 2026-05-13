@@ -275,7 +275,7 @@ autoProcessRouter.get('/order/:orderId', async (c) => {
 autoProcessRouter.post('/:id/approve', async (c) => {
   try {
     const id = parseInt(c.req.param('id'))
-    const user = c.get('user') as any
+    const user = c.get('user')
 
     // job 조회
     const job = await c.env.DB.prepare(

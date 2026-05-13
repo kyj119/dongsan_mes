@@ -19,7 +19,7 @@ async function createIfNotExists(db: any, targetRole: string, title: string, mes
 // Get notifications for current user
 notificationsRouter.get('/', async (c) => {
   try {
-    const user = c.get('user') as any
+    const user = c.get('user')
     const { limit = '20', unread_only = '' } = c.req.query()
     const safeLimit = Math.min(parseInt(limit) || 20, 50)
 
@@ -53,7 +53,7 @@ notificationsRouter.get('/', async (c) => {
 // Get unread count only (lightweight polling)
 notificationsRouter.get('/unread-count', async (c) => {
   try {
-    const user = c.get('user') as any
+    const user = c.get('user')
     const result = await c.env.DB.prepare(
       `SELECT COUNT(*) as count FROM notifications WHERE (user_id = ? OR (user_id IS NULL AND target_role = ?)) AND is_read = 0`
     ).bind(user.id, user.role).first() as any
@@ -68,7 +68,7 @@ notificationsRouter.get('/unread-count', async (c) => {
 notificationsRouter.get('/nav-badges', async (c) => {
   try {
     const db = c.env.DB
-    const user = c.get('user') as any
+    const user = c.get('user')
     const isSupervisor = user?.role === 'ADMIN' || user?.role === 'MANAGER'
     const supervisorClause = isSupervisor ? "OR sz.manager_id IS NULL OR sz.id IS NULL" : ""
 
@@ -117,7 +117,7 @@ notificationsRouter.get('/nav-badges', async (c) => {
 // Mark all as read (must be before /:id/read)
 notificationsRouter.patch('/read-all', async (c) => {
   try {
-    const user = c.get('user') as any
+    const user = c.get('user')
     await c.env.DB.prepare(
       `UPDATE notifications SET is_read = 1 WHERE (user_id = ? OR (user_id IS NULL AND target_role = ?)) AND is_read = 0`
     ).bind(user.id, user.role).run()
@@ -131,7 +131,7 @@ notificationsRouter.patch('/read-all', async (c) => {
 // Mark single notification as read
 notificationsRouter.patch('/:id/read', async (c) => {
   try {
-    const user = c.get('user') as any
+    const user = c.get('user')
     const id = c.req.param('id')
     await c.env.DB.prepare(
       `UPDATE notifications SET is_read = 1 WHERE id = ? AND (user_id = ? OR (user_id IS NULL AND target_role = ?))`

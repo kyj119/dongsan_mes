@@ -163,7 +163,7 @@ coreRouter.post('/save', requireRole('ADMIN', 'MANAGER'), async (c) => {
     const payDateInput = String(body.pay_date || '')
     if (!employeeId || !payPeriod) return c.json({ success: false, error: 'employee_id, pay_period 필요' }, 400)
 
-    const user = c.get('user') as any
+    const user = c.get('user')
 
     // 1) 직원 + 설정 로드
     const emp = await c.env.DB.prepare(
@@ -374,7 +374,7 @@ coreRouter.post('/batch', requireRole('ADMIN', 'MANAGER'), async (c) => {
     const employees = await c.env.DB.prepare(empQuery).bind(...ef.params).all<{ id: number }>()
     const list = employees.results || []
 
-    const user = c.get('user') as any
+    const user = c.get('user')
     let created = 0
     let skipped = 0
     for (const emp of list) {

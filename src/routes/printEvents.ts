@@ -501,7 +501,7 @@ printEventsRouter.patch('/:id/actual-printed', authMiddleware, async (c) => {
     }
 
     // JWT에서 사용자 정보 추출
-    const user = c.get('user') as any
+    const user = c.get('user')
     const userName = user?.username || 'unknown'
 
     await c.env.DB.prepare(`

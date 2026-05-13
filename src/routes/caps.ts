@@ -468,7 +468,7 @@ capsRouter.post('/employee-map', async (c) => {
   if (!caps_e_idno || !employee_id) {
     return c.json({ success: false, error: 'caps_e_idno와 employee_id는 필수' }, 400)
   }
-  const user = c.get('user') as any
+  const user = c.get('user')
   const result = await c.env.DB.prepare(`
     INSERT INTO caps_employee_map (caps_e_idno, caps_e_name, caps_c_dept, employee_id, mapped_by, notes)
     VALUES (?, ?, ?, ?, ?, ?)
@@ -555,7 +555,7 @@ capsRouter.get('/sync-log', async (c) => {
 // 클라우드 → 사내망 직접 호출 불가하므로, 플래그만 설정하고
 // 워커가 /api/caps/sync/pending 을 폴링해서 감지하는 방식.
 capsRouter.post('/sync/trigger', async (c) => {
-  const user = c.get('user') as any
+  const user = c.get('user')
   await c.env.DB.prepare(
     `INSERT INTO settings (setting_key, setting_value) VALUES ('caps_sync_requested_at', datetime('now'))
      ON CONFLICT(setting_key) DO UPDATE SET setting_value = datetime('now')`

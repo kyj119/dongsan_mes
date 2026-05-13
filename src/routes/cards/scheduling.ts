@@ -18,7 +18,7 @@ cardsSchedulingRouter.use('/*', authMiddleware, requireAnyPagePermission('/cards
 cardsSchedulingRouter.put('/schedule/assign/:id', async (c) => {
   try {
     const id = c.req.param('id')
-    const user = c.get('user') as any
+    const user = c.get('user')
     const { equipment_id } = await c.req.json()
 
     const card = await c.env.DB.prepare(

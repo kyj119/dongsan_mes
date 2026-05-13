@@ -12,7 +12,7 @@ permissionsRouter.use('/*', authMiddleware)
 
 // GET /api/permissions/me - 현재 사용자가 접근 가능한 page_key 배열 (사이드바용, 모든 로그인 사용자)
 permissionsRouter.get('/me', async (c) => {
-  const user = c.get('user') as any
+  const user = c.get('user')
   const allowed = await getAccessiblePages(c.env.DB, user.role)
   return c.json({ success: true, data: { role: user.role, pages: Array.from(allowed) } })
 })
@@ -58,7 +58,7 @@ permissionsRouter.patch('/', requireRole('ADMIN'), async (c) => {
   if (updates.length === 0) {
     return c.json({ success: true, updated: 0 })
   }
-  const user = c.get('user') as any
+  const user = c.get('user')
   for (const u of updates) {
     if (!ROLE_SET.has(u.role)) {
       return c.json({ success: false, error: `잘못된 역할: ${u.role}` }, 400)
@@ -91,7 +91,7 @@ const HARD_ADMIN_ONLY_PAGES = new Set<string>([
 // POST /api/permissions/request - 사용자가 ADMIN에게 페이지 권한 부여 요청 (notifications 생성)
 // body: { page_key: '/orders' } — page_key 가 마스터에 존재해야 함. 당일 동일 사용자+페이지 중복 차단.
 permissionsRouter.post('/request', async (c) => {
-  const user = c.get('user') as any
+  const user = c.get('user')
   const body = await c.req.json().catch(() => ({})) as { page_key?: string }
   const pageKey = body.page_key
   if (!pageKey || typeof pageKey !== 'string') {
@@ -113,7 +113,7 @@ permissionsRouter.post('/request', async (c) => {
     return c.json({ success: false, error: '이미 접근 권한이 있습니다' }, 400)
   }
   // 당일 동일 요청 중복 차단 (스팸 방지)
-  const userName = user.name || user.username || `#${user.id}`
+  const userName = user.username || `#${user.id}`
   const title = `[권한 요청] ${userName} → ${page.page_label}`
   const dup = await c.env.DB.prepare(
     `SELECT id FROM notifications WHERE target_role = 'ADMIN' AND title = ? AND date(created_at) = date('now') LIMIT 1`
