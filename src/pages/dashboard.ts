@@ -11,7 +11,7 @@ export function dashboardPage(c: Context<HonoEnv>) {
             <!-- Quick Stats — Bento Grid -->
             <div id="kpiArea" class="ds-bento mb-8">
                 <!-- Hero: 이번 달 매출 (2col × 2row) -->
-                <div class="ds-card ds-bento-hero" style="border-left:4px solid var(--c-purple);">
+                <div class="ds-card ds-bento-hero cursor-pointer" style="border-left:4px solid var(--c-purple);" onclick="location.href='/ledger'" title="거래처 원장으로 이동">
                     <div class="flex items-center justify-between mb-2">
                         <div class="text-sm font-medium" style="color:var(--c-text-secondary)">이번 달 매출</div>
                         <i class="fas fa-won-sign" style="color:var(--c-purple);opacity:0.5"></i>
@@ -23,7 +23,7 @@ export function dashboardPage(c: Context<HonoEnv>) {
                     </div>
                 </div>
                 <!-- 오늘 주문 -->
-                <div class="ds-card ds-card-compact">
+                <div class="ds-card ds-card-compact cursor-pointer" onclick="location.href='/orders'" title="주문 관리로 이동">
                     <div class="flex items-center justify-between mb-1">
                         <div class="text-sm" style="color:var(--c-text-secondary)">오늘 주문</div>
                         <i class="fas fa-shopping-cart text-xs" style="color:var(--c-primary);opacity:0.6"></i>
@@ -40,7 +40,7 @@ export function dashboardPage(c: Context<HonoEnv>) {
                     <div class="text-xs mt-1" style="color:var(--c-text-muted)">진행 중 긴급건</div>
                 </div>
                 <!-- 생산 현황 -->
-                <div class="ds-card ds-card-compact">
+                <div class="ds-card ds-card-compact cursor-pointer" onclick="location.href='/cards'" title="현장 대시보드로 이동">
                     <div class="flex items-center justify-between mb-1">
                         <div class="text-sm" style="color:var(--c-text-secondary)">생산 현황</div>
                         <i class="fas fa-print text-xs" style="color:var(--c-success);opacity:0.6"></i>
@@ -58,7 +58,7 @@ export function dashboardPage(c: Context<HonoEnv>) {
                     <div class="text-xs mt-1 tabular-nums" id="statTodayShipmentSub" style="color:var(--c-text-muted)">-</div>
                 </div>
                 <!-- 미수금 -->
-                <div class="ds-card ds-card-compact">
+                <div class="ds-card ds-card-compact cursor-pointer" onclick="location.href='/ledger'" title="거래처 원장 (미수금)">
                     <div class="flex items-center justify-between mb-1">
                         <div class="text-sm" style="color:var(--c-text-secondary)">미수금</div>
                         <i class="fas fa-exclamation-triangle text-xs" style="color:var(--c-danger);opacity:0.6"></i>
@@ -67,7 +67,7 @@ export function dashboardPage(c: Context<HonoEnv>) {
                     <div class="text-xs mt-1 tabular-nums" id="statKpiOver30" style="color:var(--c-text-muted)">30일+ -</div>
                 </div>
                 <!-- 수금률 -->
-                <div class="ds-card ds-card-compact">
+                <div class="ds-card ds-card-compact cursor-pointer" onclick="location.href='/ledger'" title="거래처 원장 (수금 현황)">
                     <div class="flex items-center justify-between mb-1">
                         <div class="text-sm" style="color:var(--c-text-secondary)">수금률</div>
                         <i class="fas fa-hand-holding-usd text-xs" style="color:var(--c-teal);opacity:0.6"></i>
