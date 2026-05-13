@@ -20,7 +20,7 @@ messageTemplatesRouter.get('/', async (c) => {
   }
   query += ' ORDER BY created_at DESC'
 
-  const { results } = await db.prepare(query).bind(...bindings).all() as any
+  const { results } = await db.prepare(query).bind(...bindings).all()
   return c.json({ success: true, data: results || [] })
 })
 
@@ -40,7 +40,7 @@ messageTemplatesRouter.post('/', async (c) => {
 
   const result = await db.prepare(
     'INSERT INTO message_templates (channel, name, subject, content, created_by) VALUES (?, ?, ?, ?, ?)'
-  ).bind(channel, name, subject || null, content, userId).run() as any
+  ).bind(channel, name, subject || null, content, userId).run()
 
   return c.json({ success: true, data: { id: result.meta.last_row_id } })
 })

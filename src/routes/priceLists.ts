@@ -15,7 +15,7 @@ priceListsRouter.get('/', async (c) => {
       LEFT JOIN clients c ON c.price_list_id = pl.id AND c.is_active = 1
       GROUP BY pl.id
       ORDER BY pl.is_default DESC, pl.name
-    `).all() as { results: any[] }
+    `).all()
 
     return c.json({ price_lists: results })
   } catch (error) {
@@ -116,7 +116,7 @@ priceListsRouter.delete('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
 
     const existing = await c.env.DB.prepare(
       'SELECT id, is_default FROM price_lists WHERE id = ?'
-    ).bind(id).first() as any
+    ).bind(id).first<{ id: number; is_default: number }>()
 
     if (!existing) {
       return c.json({ success: false, error: 'Price list not found' }, 404)
@@ -126,9 +126,10 @@ priceListsRouter.delete('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
       return c.json({ success: false, error: '기본 단가표는 삭제할 수 없습니다.' }, 400)
     }
 
-    const { count } = await c.env.DB.prepare(
+    const row = await c.env.DB.prepare(
       'SELECT COUNT(*) as count FROM clients WHERE price_list_id = ? AND is_active = 1'
-    ).bind(id).first() as any
+    ).bind(id).first<{ count: number }>()
+    const count = row?.count ?? 0
 
     if (count > 0) {
       return c.json({
@@ -197,7 +198,7 @@ priceListsRouter.get('/:id/preview', async (c) => {
 
     const priceList = await c.env.DB.prepare(
       'SELECT * FROM price_lists WHERE id = ?'
-    ).bind(id).first() as any
+    ).bind(id).first<{ id: number; name: string; adjustment_percent: number; description: string | null; is_default: number }>()
 
     if (!priceList) {
       return c.json({ success: false, error: 'Price list not found' }, 404)
@@ -208,7 +209,7 @@ priceListsRouter.get('/:id/preview', async (c) => {
       FROM items
       WHERE is_active = 1 AND base_price > 0
       ORDER BY item_name
-    `).all() as { results: any[] }
+    `).all<{ id: number; item_code: string; item_name: string; unit: string; base_price: number }>()
 
     const adjustmentPercent: number = priceList.adjustment_percent ?? 0
     const items = results.map((item) => ({

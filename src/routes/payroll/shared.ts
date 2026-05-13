@@ -15,7 +15,7 @@ export async function getSetting(db: D1Database, key: string, fallback: string):
 
 export async function getSettings(db: D1Database, keys: string[]): Promise<Record<string, string>> {
   const placeholders = keys.map(() => '?').join(',')
-  const rows = await db.prepare(`SELECT setting_key, setting_value FROM settings WHERE setting_key IN (${placeholders})`).bind(...keys).all<{ setting_key: string; setting_value: string }>().catch(() => ({ results: [] as any[] }))
+  const rows = await db.prepare(`SELECT setting_key, setting_value FROM settings WHERE setting_key IN (${placeholders})`).bind(...keys).all<{ setting_key: string; setting_value: string }>().catch(() => ({ results: [] as { setting_key: string; setting_value: string }[] }))
   const map: Record<string, string> = {}
   for (const r of (rows.results || [])) map[r.setting_key] = r.setting_value
   return map
@@ -318,7 +318,7 @@ export async function loadEmployeeDefaults(db: D1Database, employeeId: number): 
   }
   try {
     const { results: colInfo } = await db.prepare(`PRAGMA table_info(employees)`).all()
-    const cols = new Set((colInfo as any[]).map((r) => r.name))
+    const cols = new Set((colInfo as { name: string }[]).map((r) => r.name))
     const pickNum = ['position_allowance','vehicle_allowance','meal_allowance_fixed','special_bonus_fixed','other_allowance_fixed','mutual_aid_fee','other_deduction_fixed']
     const pickBool = ['insurance_apply_national_pension','insurance_apply_health','insurance_apply_long_term_care','insurance_apply_employment','insurance_apply_industrial_accident']
     const selectable = [...pickNum, ...pickBool].filter((c) => cols.has(c))
@@ -328,11 +328,12 @@ export async function loadEmployeeDefaults(db: D1Database, employeeId: number): 
       `SELECT ${selectable.join(', ')} FROM employees WHERE id = ?`
     ).bind(employeeId).first<any>()
     if (!row) return defaults
+    const d = defaults as unknown as Record<string, number | boolean>
     for (const k of pickNum) {
-      if (row[k] != null) (defaults as any)[k] = Number(row[k]) || 0
+      if (row[k] != null) d[k] = Number(row[k]) || 0
     }
     for (const k of pickBool) {
-      if (row[k] != null) (defaults as any)[k] = Number(row[k]) === 1
+      if (row[k] != null) d[k] = Number(row[k]) === 1
     }
   } catch (_) { /* 컬럼 없음 — defaults 그대로 */ }
   return defaults

@@ -104,8 +104,8 @@ hrRouter.get('/employees', async (c) => {
       countParams.push(searchTerm, searchTerm, searchTerm)
     }
 
-    const { results: countResults } = await c.env.DB.prepare(countQuery).bind(...countParams).all()
-    const total = (countResults[0] as any).total
+    const { results: countResults } = await c.env.DB.prepare(countQuery).bind(...countParams).all<{ total: number }>()
+    const total = countResults[0].total
 
     return c.json({
       success: true,
@@ -243,7 +243,7 @@ hrRouter.post('/attendance/checkout', async (c) => {
       return c.json({ success: false, error: 'No check-in record found' }, 404)
     }
 
-    const record = results[0] as any
+    const record = results[0] as { id: number; check_in_time: string; check_out_time: string | null }
 
     if (record.check_out_time) {
       return c.json({ success: false, error: 'Already checked out' }, 400)
@@ -578,16 +578,16 @@ hrRouter.put('/employees/:id', async (c) => {
 
     // ⚠️ 방어 로직: employees 테이블에 실제 존재하는 컬럼만 업데이트한다.
     // (0112 마이그레이션이 아직 적용되지 않은 환경 대응)
-    let colInfo: any[] = []
+    let colInfo: { name: string }[] = []
     try {
       const res = await c.env.DB.prepare(`PRAGMA table_info(employees)`).all()
-      colInfo = (res.results || []) as any[]
+      colInfo = (res.results || []) as { name: string }[]
     } catch (pragmaErr: any) {
       console.error('PRAGMA table_info failed:', pragmaErr)
       // PRAGMA 실패 시 ALLOWED 목록을 그대로 사용 (fallback)
     }
     const existingCols = colInfo.length > 0
-      ? new Set(colInfo.map((r: any) => r.name))
+      ? new Set(colInfo.map((r) => r.name))
       : new Set(ALLOWED)  // fallback: 허용 목록 전부 사용
 
     const setCols: string[] = []
@@ -807,7 +807,7 @@ hrRouter.get('/stats', async (c) => {
     // Total employees
     const { results: totalResults } = await c.env.DB.prepare(`
       SELECT COUNT(*) as total FROM employees WHERE status = 'ACTIVE'
-    `).all()
+    `).all<{ total: number }>()
 
     // Department breakdown (employees table doesn't have base_salary)
     const { results: deptResults } = await c.env.DB.prepare(`
@@ -829,7 +829,7 @@ hrRouter.get('/stats', async (c) => {
       WHERE a.work_date = ?
         AND e.status = 'ACTIVE'
         AND a.status = 'PRESENT'
-    `).bind(todayKst).all()
+    `).bind(todayKst).all<{ present: number }>()
 
     // Average work hours this month — 재직 직원의 PRESENT 기록만 (결근 제외)
     const { results: avgHoursResults } = await c.env.DB.prepare(`
@@ -841,7 +841,7 @@ hrRouter.get('/stats', async (c) => {
         AND a.status = 'PRESENT'
         AND a.work_hours IS NOT NULL
         AND a.work_hours > 0
-    `).all()
+    `).all<{ avg_hours: number }>()
 
     // Monthly payroll total (실제 테이블: payroll 단수형, 컬럼: net_pay)
     const thisMonth = new Date().toISOString().slice(0, 7)
@@ -849,15 +849,15 @@ hrRouter.get('/stats', async (c) => {
       SELECT SUM(net_pay) as total
       FROM payroll
       WHERE pay_period = ?
-    `).bind(thisMonth).all()
+    `).bind(thisMonth).all<{ total: number }>()
 
     return c.json({
       success: true,
       data: {
-        total_employees: (totalResults[0] as any).total || 0,
-        today_attendance: (attendanceResults[0] as any).present || 0,
-        avg_work_hours: (avgHoursResults[0] as any).avg_hours || 0,
-        monthly_payroll: (payrollResults[0] as any).total || 0,
+        total_employees: totalResults[0].total || 0,
+        today_attendance: attendanceResults[0].present || 0,
+        avg_work_hours: avgHoursResults[0].avg_hours || 0,
+        monthly_payroll: payrollResults[0].total || 0,
         departments: deptResults
       }
     })

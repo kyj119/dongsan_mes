@@ -4,6 +4,14 @@ import { authMiddleware, requireRole } from '../middleware/auth'
 import { PopbillProvider } from '../services/popbillProvider'
 import { getEntityId, entityFilter } from '../utils/entityFilter'
 
+interface CashReceiptRow {
+  id: number; receipt_number: string; status: string; trade_date: string;
+  trade_type: string; identity_number: string; item_name: string | null;
+  supply_amount: number; tax_amount: number; service_amount: number;
+  total_amount: number; nts_approval_number: string | null;
+  [key: string]: unknown
+}
+
 const cashReceiptsRouter = new Hono<HonoEnv>()
 cashReceiptsRouter.use('/*', authMiddleware, requireRole('ADMIN', 'MANAGER'))
 
@@ -14,11 +22,11 @@ async function generateReceiptNumber(db: D1Database): Promise<string> {
   const year = new Date().getFullYear()
   const lastRow = await db.prepare(
     `SELECT receipt_number FROM cash_receipts WHERE receipt_number LIKE ? ORDER BY receipt_number DESC LIMIT 1`
-  ).bind(`CR-${year}-%`).first() as any
+  ).bind(`CR-${year}-%`).first<{ receipt_number: string }>()
   let nextSeq = 1
   if (lastRow?.receipt_number) {
-    const parts = (lastRow.receipt_number as string).split('-')
-    nextSeq = parseInt(parts[parts.length - 1]) + 1
+    const parts = lastRow.receipt_number.split('-')
+    nextSeq = Number(parts[parts.length - 1]) + 1
   }
   return `CR-${year}-${String(nextSeq).padStart(4, '0')}`
 }
@@ -41,7 +49,7 @@ async function getCompanySettings(db: D1Database, entityId?: number): Promise<Re
      )`
   ).all()
   const settings: Record<string, string> = {}
-  for (const row of settingRows as any[]) {
+  for (const row of settingRows as Array<{ setting_key: string; setting_value: string }>) {
     settings[row.setting_key] = row.setting_value || ''
   }
   return settings
@@ -132,7 +140,7 @@ cashReceiptsRouter.get('/', async (c) => {
       countQuery += ' WHERE ' + countWhereClauses.join(' AND ')
     }
 
-    const countRow = await c.env.DB.prepare(countQuery).bind(...countParams).first() as any
+    const countRow = await c.env.DB.prepare(countQuery).bind(...countParams).first<{ count: number }>()
     const count = countRow?.count ?? 0
 
     return c.json({
@@ -268,7 +276,7 @@ cashReceiptsRouter.post('/:id/issue', requireRole('ADMIN', 'MANAGER'), async (c)
 
     const existing = await c.env.DB.prepare(
       'SELECT * FROM cash_receipts WHERE id = ?'
-    ).bind(id).first() as any
+    ).bind(id).first<CashReceiptRow>()
 
     if (!existing) {
       return c.json({ success: false, error: '현금영수증을 찾을 수 없습니다.' }, 404)
@@ -406,7 +414,7 @@ cashReceiptsRouter.post('/:id/cancel', requireRole('ADMIN', 'MANAGER'), async (c
 
     const existing = await c.env.DB.prepare(
       'SELECT * FROM cash_receipts WHERE id = ?'
-    ).bind(id).first() as any
+    ).bind(id).first<CashReceiptRow>()
 
     if (!existing) {
       return c.json({ success: false, error: '현금영수증을 찾을 수 없습니다.' }, 404)
@@ -497,7 +505,7 @@ cashReceiptsRouter.post('/:id/refresh-status', requireRole('ADMIN', 'MANAGER'), 
 
     const existing = await c.env.DB.prepare(
       'SELECT * FROM cash_receipts WHERE id = ?'
-    ).bind(id).first() as any
+    ).bind(id).first<CashReceiptRow>()
 
     if (!existing) {
       return c.json({ success: false, error: '현금영수증을 찾을 수 없습니다.' }, 404)
@@ -543,7 +551,7 @@ cashReceiptsRouter.post('/:id/refresh-status', requireRole('ADMIN', 'MANAGER'), 
     let mappedStatus = existing.status
     if (statusResult.status) {
       // 팝빌 API 상태코드 매핑 (예: 1=승인, 0=취소 등)
-      const stateCode = parseInt(statusResult.status)
+      const stateCode = Number(statusResult.status)
       if (stateCode === 1) {
         mappedStatus = 'ISSUED'
       } else if (stateCode === 2) {
@@ -591,7 +599,7 @@ cashReceiptsRouter.get('/:id/print-url', async (c) => {
 
     const existing = await c.env.DB.prepare(
       'SELECT * FROM cash_receipts WHERE id = ?'
-    ).bind(id).first() as any
+    ).bind(id).first<CashReceiptRow>()
 
     if (!existing) {
       return c.json({ success: false, error: '현금영수증을 찾을 수 없습니다.' }, 404)
@@ -649,7 +657,7 @@ cashReceiptsRouter.delete('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => 
 
     const existing = await c.env.DB.prepare(
       'SELECT id, status FROM cash_receipts WHERE id = ?'
-    ).bind(id).first() as any
+    ).bind(id).first<{ id: number; status: string }>()
 
     if (!existing) {
       return c.json({ success: false, error: '현금영수증을 찾을 수 없습니다.' }, 404)

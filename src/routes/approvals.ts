@@ -151,8 +151,8 @@ approvals.post('/', async (c) => {
     const today = new Date().toISOString().slice(0, 10).replace(/-/g, '')
     const { results: existing } = await c.env.DB.prepare(
       `SELECT COUNT(*) as cnt FROM approval_requests WHERE request_number LIKE ?`
-    ).bind(`APR-${today}-%`).all()
-    const seq = ((existing[0] as any)?.cnt || 0) + 1
+    ).bind(`APR-${today}-%`).all<{ cnt: number }>()
+    const seq = (existing[0]?.cnt || 0) + 1
     const requestNumber = `APR-${today}-${String(seq).padStart(3, '0')}`
 
     // 템플릿에서 결재 단계 가져오기
@@ -303,7 +303,7 @@ approvals.post('/:id/approve', async (c) => {
 
     const req = await c.env.DB.prepare(
       `SELECT * FROM approval_requests WHERE id = ?`
-    ).bind(id).first() as any
+    ).bind(id).first<{ status: string; current_step: number; total_steps: number; reference_type: string | null; reference_id: number | null }>()
     if (!req || !['PENDING', 'IN_REVIEW'].includes(req.status)) {
       return c.json({ success: false, error: '승인 가능한 상태가 아닙니다.' }, 400)
     }
@@ -312,7 +312,7 @@ approvals.post('/:id/approve', async (c) => {
     const step = await c.env.DB.prepare(`
       SELECT * FROM approval_steps
       WHERE request_id = ? AND step_order = ? AND status = 'PENDING'
-    `).bind(id, req.current_step).first() as any
+    `).bind(id, req.current_step).first<{ id: number; approver_id: number | null; approver_role: string | null }>()
 
     if (!step) {
       return c.json({ success: false, error: '현재 결재 단계를 찾을 수 없습니다.' }, 400)
@@ -366,7 +366,7 @@ approvals.post('/:id/reject', async (c) => {
 
     const req = await c.env.DB.prepare(
       `SELECT * FROM approval_requests WHERE id = ?`
-    ).bind(id).first() as any
+    ).bind(id).first<{ status: string; current_step: number }>()
     if (!req || !['PENDING', 'IN_REVIEW'].includes(req.status)) {
       return c.json({ success: false, error: '반려 가능한 상태가 아닙니다.' }, 400)
     }
@@ -374,7 +374,7 @@ approvals.post('/:id/reject', async (c) => {
     const step = await c.env.DB.prepare(`
       SELECT * FROM approval_steps
       WHERE request_id = ? AND step_order = ? AND status = 'PENDING'
-    `).bind(id, req.current_step).first() as any
+    `).bind(id, req.current_step).first<{ id: number; approver_id: number | null; approver_role: string | null }>()
 
     if (!step) {
       return c.json({ success: false, error: '현재 결재 단계를 찾을 수 없습니다.' }, 400)
@@ -411,7 +411,7 @@ approvals.post('/:id/cancel', async (c) => {
 
     const req = await c.env.DB.prepare(
       `SELECT requester_id, status FROM approval_requests WHERE id = ?`
-    ).bind(id).first() as any
+    ).bind(id).first<{ requester_id: number; status: string }>()
 
     if (!req || req.requester_id !== userId) {
       return c.json({ success: false, error: '본인의 요청만 취소 가능합니다.' }, 403)

@@ -58,14 +58,14 @@ autoProcessRouter.post('/start', async (c) => {
     // 주문 정보 조회
     const order = await c.env.DB.prepare(
       `SELECT id, ai_file_path, ai_analysis_id FROM orders WHERE id = ?`
-    ).bind(order_id).first() as any
+    ).bind(order_id).first<{ id: number; ai_file_path: string | null; ai_analysis_id: number | null }>()
     if (!order) return c.json({ success: false, error: '주문을 찾을 수 없습니다' }, 404)
     if (!order.ai_analysis_id) return c.json({ success: false, error: 'AI 분석 정보가 없는 주문입니다' }, 400)
 
     // 분석 결과 조회 (groups_json)
     const analysis = await c.env.DB.prepare(
       `SELECT id, file_path, groups_json FROM ai_analysis_requests WHERE id = ?`
-    ).bind(order.ai_analysis_id).first() as any
+    ).bind(order.ai_analysis_id).first<{ id: number; file_path: string; groups_json: string }>()
     if (!analysis) return c.json({ success: false, error: '분석 결과를 찾을 수 없습니다' }, 404)
 
     const groups = JSON.parse(analysis.groups_json || '[]')
@@ -81,11 +81,12 @@ autoProcessRouter.post('/start', async (c) => {
       return c.json({ success: false, error: '자동가공 대상 품목이 없습니다' }, 400)
     }
 
-    const jobs: any[] = []
+    const jobs: Record<string, unknown>[] = []
 
     // Bulk-fetch item names for all order_items in one query
+    interface OrderItemRow { id: number; item_id: number | null; width: number; height: number; ai_group_index: number; scale_factor: number | null; finishing: string | null; finishing2: string | null; finishing3: string | null }
     const itemIds = [...new Set(
-      (items.results as any[]).map((i: any) => i.item_id).filter(Boolean)
+      (items.results as unknown as OrderItemRow[]).map((i) => i.item_id).filter(Boolean)
     )] as number[]
     let itemNameMap = new Map<number, string>()
     if (itemIds.length > 0) {
@@ -96,7 +97,7 @@ autoProcessRouter.post('/start', async (c) => {
       itemNameMap = new Map(itemRows.map(row => [row.id, row.name]))
     }
 
-    for (const item of items.results as any[]) {
+    for (const item of items.results as unknown as OrderItemRow[]) {
       const groupIdx = item.ai_group_index ?? 0
       const group = groups[groupIdx]
       if (!group) continue
@@ -169,7 +170,7 @@ autoProcessRouter.post('/start', async (c) => {
         JSON.stringify(iaParams),
       ).first()
 
-      jobs.push(job)
+      if (job) jobs.push(job)
     }
 
     return c.json({ success: true, jobs_created: jobs.length, jobs })
@@ -284,7 +285,7 @@ autoProcessRouter.post('/:id/approve', async (c) => {
        JOIN orders o ON apj.order_id = o.id
        JOIN order_items oi ON apj.order_item_id = oi.id
        WHERE apj.id = ?`
-    ).bind(id).first() as any
+    ).bind(id).first<{ status: string; order_id: number; order_number: string; item_id: number; [key: string]: unknown }>()
 
     if (!job) return c.json({ success: false, error: '작업을 찾을 수 없습니다' }, 404)
     if (job.status !== 'done') return c.json({ success: false, error: '완료된 작업만 승인 가능합니다' }, 400)
@@ -292,7 +293,7 @@ autoProcessRouter.post('/:id/approve', async (c) => {
     // 품목 대분류 조회
     const item = await c.env.DB.prepare(
       `SELECT name, category FROM items WHERE id = ?`
-    ).bind(job.item_id).first() as any
+    ).bind(job.item_id).first<{ name: string; category: string | null }>()
     const category = item?.category || item?.name || '기타'
 
     // 저장 경로 생성: Z:\[품목 대분류]\YYYY\MM\DD\주문번호\
@@ -335,7 +336,7 @@ autoProcessRouter.post('/:id/retry', async (c) => {
     // 기존 job 조회
     const job = await c.env.DB.prepare(
       `SELECT * FROM auto_process_jobs WHERE id = ?`
-    ).bind(id).first() as any
+    ).bind(id).first<{ scale_factor: number; finishing: string; clip_bounds: string; source_path: string; [key: string]: unknown }>()
     if (!job) return c.json({ success: false, error: '작업을 찾을 수 없습니다' }, 404)
 
     // 파라미터 업데이트
@@ -410,7 +411,7 @@ autoProcessRouter.post('/auto-match', async (c) => {
     // 분석 결과 조회
     const analysis = await c.env.DB.prepare(
       `SELECT groups_json FROM ai_analysis_requests WHERE id = ?`
-    ).bind(ai_analysis_id).first() as any
+    ).bind(ai_analysis_id).first<{ groups_json: string | null }>()
     if (!analysis?.groups_json) {
       return c.json({ success: false, error: '분석 결과를 찾을 수 없습니다' }, 404)
     }

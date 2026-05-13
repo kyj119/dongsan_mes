@@ -63,7 +63,7 @@ dashboardRouter.get('/stats', async (c) => {
       SELECT post_processing FROM cards
       WHERE status IN ('PRINTING', 'PRINT_DONE')
       AND post_processing IS NOT NULL AND post_processing != '' AND post_processing != '[]'
-    `).all() as any
+    `).all<{ post_processing: string }>()
 
     const ppCounts: Record<string, number> = {}
     for (const row of (ppCards || [])) {
@@ -340,8 +340,8 @@ dashboardRouter.get('/stats/receivables', async (c) => {
           over_90: aging?.over_90 || 0,
           overdue_count: aging?.overdue_count || 0
         },
-        total_receivables: (totals as any)?.total_receivables || 0,
-        clients_with_balance: (totals as any)?.clients_with_balance || 0
+        total_receivables: (totals as Record<string, unknown>)?.total_receivables || 0,
+        clients_with_balance: (totals as Record<string, unknown>)?.clients_with_balance || 0
       }
     })
   } catch (error) {
@@ -523,10 +523,10 @@ dashboardRouter.get('/stats/production-today', async (c) => {
     return c.json({
       success: true,
       data: {
-        total_prints: (summary as any)?.total_prints || 0,
-        ok_count: (summary as any)?.ok_count || 0,
-        cancel_count: (summary as any)?.cancel_count || 0,
-        error_count: (summary as any)?.error_count || 0,
+        total_prints: (summary as Record<string, unknown>)?.total_prints || 0,
+        ok_count: (summary as Record<string, unknown>)?.ok_count || 0,
+        cancel_count: (summary as Record<string, unknown>)?.cancel_count || 0,
+        error_count: (summary as Record<string, unknown>)?.error_count || 0,
         by_equipment: byEquipment
       }
     })
@@ -554,13 +554,14 @@ dashboardRouter.get('/stats/uptime-weekly', async (c) => {
       ORDER BY total_events DESC
     `).all()
 
-    const data = (results as any[]).map((row) => ({
+    interface UptimeRow { equipment_id: number; equipment_name: string; active_days: number; total_events: number; ok_events: number }
+    const data = (results as unknown as UptimeRow[]).map((row) => ({
       equipment_id: row.equipment_id,
       equipment_name: row.equipment_name,
       active_days: row.active_days,
       total_events: row.total_events,
       ok_events: row.ok_events,
-      uptime_ratio: parseFloat((row.active_days / 7).toFixed(4))
+      uptime_ratio: Number((row.active_days / 7).toFixed(4))
     }))
 
     return c.json({ success: true, data })

@@ -24,7 +24,7 @@ productionReportsRouter.get('/daily-summary', async (c) => {
         AVG(CASE WHEN print_status = 'OK' AND print_duration_sec > 0 THEN print_duration_sec END) as avg_duration
       FROM print_events
       WHERE date(print_completed_at) = ?
-    `).bind(targetDate).first() as any
+    `).bind(targetDate).first<{ ok_count: number; error_count: number; cancel_count: number; total_count: number; total_sqm: number; avg_duration: number }>()
 
     // 장비별 통계
     const { results: byEquipment } = await c.env.DB.prepare(`
@@ -184,7 +184,7 @@ productionReportsRouter.get('/post-processing', async (c) => {
       FROM cards c
       WHERE c.post_processing IS NOT NULL AND c.post_processing != '' AND c.post_processing != '[]'
         AND date(c.created_at) >= ? AND date(c.created_at) <= ?
-    `).bind(dateFrom, dateTo).all() as any
+    `).bind(dateFrom, dateTo).all<{ post_processing: string; status: string; created_at: string; category_name: string | null }>()
 
     // 후가공 유형별 집계
     const ppCounts: Record<string, { total: number, printing: number, done: number }> = {}

@@ -25,7 +25,7 @@ priceListRouter.get('/', async (c) => {
       ORDER BY media_group, sort_order, name
     `).all()
 
-    let policyRules: any[] = []
+    let policyRules: Record<string, unknown>[] = []
     let policyName = ''
     let clientName = ''
     let policyId: number | null = null
@@ -33,14 +33,14 @@ priceListRouter.get('/', async (c) => {
     if (clientId) {
       const client = await c.env.DB.prepare(
         'SELECT client_name, price_policy_id FROM clients WHERE id = ?'
-      ).bind(clientId).first() as any
+      ).bind(clientId).first<{ client_name: string; price_policy_id: number | null }>()
       clientName = client?.client_name || ''
       policyId = client?.price_policy_id || null
 
       if (policyId) {
         const policy = await c.env.DB.prepare(
           'SELECT name FROM price_policies WHERE id = ?'
-        ).bind(policyId).first() as any
+        ).bind(policyId).first<{ name: string }>()
         policyName = policy?.name || ''
 
         const { results: rules } = await c.env.DB.prepare(`
@@ -48,11 +48,11 @@ priceListRouter.get('/', async (c) => {
           FROM price_policy_rules WHERE policy_id = ?
           ORDER BY item_id NULLS LAST, category NULLS LAST
         `).bind(policyId).all()
-        policyRules = rules as any[]
+        policyRules = rules
       }
     }
 
-    const categories = [...new Set((items as any[]).map(i => i.category).filter(Boolean))]
+    const categories = [...new Set(items.map(i => (i as Record<string, unknown>).category).filter(Boolean))]
 
     return c.json({
       success: true,
@@ -148,7 +148,7 @@ priceListRouter.delete('/policies/:id', requireRole('ADMIN', 'MANAGER'), async (
     const id = c.req.param('id')
     const policy = await c.env.DB.prepare(
       'SELECT is_default FROM price_policies WHERE id = ?'
-    ).bind(id).first() as any
+    ).bind(id).first<{ is_default: number }>()
     if (policy?.is_default) return c.json({ success: false, error: '기본 정책은 삭제할 수 없습니다.' }, 400)
 
     // 해당 정책 사용 중인 거래처 → NULL로 변경
@@ -212,34 +212,36 @@ priceListRouter.get('/calculate', async (c) => {
 
     const item = await c.env.DB.prepare(
       'SELECT id, base_price, sales_price, category FROM items WHERE id = ?'
-    ).bind(itemId).first() as any
+    ).bind(itemId).first<{ id: number; base_price: number; sales_price: number; category: string }>()
     if (!item) return c.json({ success: false, error: '품목을 찾을 수 없습니다.' }, 404)
 
     const client = await c.env.DB.prepare(
       'SELECT price_policy_id FROM clients WHERE id = ?'
-    ).bind(clientId).first() as any
+    ).bind(clientId).first<{ price_policy_id: number | null }>()
 
     const basePrice = item.sales_price || item.base_price || 0
     if (!client?.price_policy_id) {
       return c.json({ success: true, data: { price: basePrice, source: 'base' } })
     }
 
+    interface PriceRule { category: string | null; item_id: number | null; rate_percent: number; fixed_price: number | null }
     const { results: rules } = await c.env.DB.prepare(`
       SELECT category, item_id, rate_percent, fixed_price
       FROM price_policy_rules WHERE policy_id = ?
-    `).bind(client.price_policy_id).all() as any
+    `).bind(client.price_policy_id).all<PriceRule>()
 
     // 우선순위: 품목별 고정가 > 품목별 할인 > 카테고리별 > 전체 기본
-    const itemFixed = rules.find((r: any) => r.item_id == itemId && r.fixed_price != null)
+    const numItemId = Number(itemId)
+    const itemFixed = rules.find((r) => r.item_id === numItemId && r.fixed_price != null)
     if (itemFixed) return c.json({ success: true, data: { price: itemFixed.fixed_price, source: 'item_fixed' } })
 
-    const itemRate = rules.find((r: any) => r.item_id == itemId && !r.fixed_price)
+    const itemRate = rules.find((r) => r.item_id === numItemId && !r.fixed_price)
     if (itemRate) return c.json({ success: true, data: { price: Math.round(basePrice * (1 + itemRate.rate_percent / 100)), source: 'item_rate' } })
 
-    const catRate = rules.find((r: any) => !r.item_id && r.category === item.category)
+    const catRate = rules.find((r) => !r.item_id && r.category === item.category)
     if (catRate) return c.json({ success: true, data: { price: Math.round(basePrice * (1 + catRate.rate_percent / 100)), source: 'category_rate' } })
 
-    const defaultRate = rules.find((r: any) => !r.item_id && !r.category)
+    const defaultRate = rules.find((r) => !r.item_id && !r.category)
     if (defaultRate) return c.json({ success: true, data: { price: Math.round(basePrice * (1 + defaultRate.rate_percent / 100)), source: 'default_rate' } })
 
     return c.json({ success: true, data: { price: basePrice, source: 'base' } })
@@ -256,7 +258,7 @@ priceListRouter.get('/logo/:entityId', async (c) => {
     const entityId = c.req.param('entityId')
     const entity = await c.env.DB.prepare(
       'SELECT name, logo_base64, phone, fax, address, email FROM entities WHERE id = ?'
-    ).bind(entityId).first() as any
+    ).bind(entityId).first<{ name: string; logo_base64: string | null; phone: string | null; fax: string | null; address: string | null; email: string | null }>()
     return c.json({ success: true, data: entity || {} })
   } catch (error) {
     return c.json({ success: false, error: '로고 조회 실패' }, 500)

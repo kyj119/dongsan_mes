@@ -96,7 +96,7 @@ tasksRouter.post('/', async (c) => {
       max_retries?: number
     }>()
 
-    if (!VALID_TYPES.includes(body.type as any)) {
+    if (!VALID_TYPES.includes(body.type as typeof VALID_TYPES[number])) {
       return c.json({ success: false, error: `Invalid type. Must be one of ${VALID_TYPES.join(', ')}` }, 400)
     }
 
@@ -136,7 +136,7 @@ tasksRouter.post('/claim', async (c) => {
     const type = body.type ?? c.req.query('type') ?? ''
     const limit = Math.min(body.limit ?? 5, 20)
 
-    if (!type || !VALID_TYPES.includes(type as any)) {
+    if (!type || !VALID_TYPES.includes(type as typeof VALID_TYPES[number])) {
       return c.json({ success: false, error: 'type is required and must be valid' }, 400)
     }
 
@@ -147,13 +147,13 @@ tasksRouter.post('/claim', async (c) => {
       WHERE type = ? AND status = 'PENDING' AND retry_count < max_retries
       ORDER BY created_at ASC
       LIMIT ?
-    `).bind(type, limit).all() as any
+    `).bind(type, limit).all<{ id: number }>()
 
     if (!results || results.length === 0) {
       return c.json({ success: true, data: [] })
     }
 
-    const ids = results.map((r: any) => r.id)
+    const ids = results.map((r) => r.id)
     const placeholders = ids.map(() => '?').join(',')
     await c.env.DB.prepare(`
       UPDATE tasks
@@ -191,13 +191,13 @@ tasksRouter.patch('/:id', async (c) => {
       error_message?: string | null
     }>()
 
-    if (body.status && !VALID_STATUSES.includes(body.status as any)) {
+    if (body.status && !VALID_STATUSES.includes(body.status as typeof VALID_STATUSES[number])) {
       return c.json({ success: false, error: 'Invalid status' }, 400)
     }
 
     const existing = await c.env.DB.prepare(
       'SELECT retry_count, max_retries FROM tasks WHERE id = ?'
-    ).bind(id).first() as any
+    ).bind(id).first<{ retry_count: number; max_retries: number }>()
     if (!existing) return c.json({ success: false, error: 'Task not found' }, 404)
 
     const output = body.output_payload !== undefined
@@ -251,7 +251,7 @@ tasksRouter.patch('/:id', async (c) => {
 tasksRouter.post('/:id/retry', async (c) => {
   try {
     const id = c.req.param('id')
-    const row = await c.env.DB.prepare('SELECT status FROM tasks WHERE id = ?').bind(id).first() as any
+    const row = await c.env.DB.prepare('SELECT status FROM tasks WHERE id = ?').bind(id).first<{ status: string }>()
     if (!row) return c.json({ success: false, error: 'Task not found' }, 404)
 
     await c.env.DB.prepare(`

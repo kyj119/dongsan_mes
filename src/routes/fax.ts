@@ -11,9 +11,9 @@ faxRouter.use('*', authMiddleware)
 faxRouter.use('*', requireRole('ADMIN', 'MANAGER'))
 
 async function getFaxProvider(c: any): Promise<FaxProvider | null> {
-  const db = c.env.DB
-  const linkedIdRow = await db.prepare("SELECT setting_value FROM settings WHERE setting_key = 'tax_provider_linked_id'").first() as any
-  const testModeRow = await db.prepare("SELECT setting_value FROM settings WHERE setting_key = 'tax_test_mode'").first() as any
+  const db = c.env.DB as D1Database
+  const linkedIdRow = await db.prepare("SELECT setting_value FROM settings WHERE setting_key = 'tax_provider_linked_id'").first<{ setting_value: string }>()
+  const testModeRow = await db.prepare("SELECT setting_value FROM settings WHERE setting_key = 'tax_test_mode'").first<{ setting_value: string }>()
 
   const linkedId = linkedIdRow?.setting_value
   const secretKey = c.env.POPBILL_SECRET_KEY

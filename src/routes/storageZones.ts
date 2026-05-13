@@ -169,18 +169,18 @@ storageZonesRouter.delete('/:id', requireRole('ADMIN'), async (c) => {
   try {
     const id = c.req.param('id')
 
-    const zone = await c.env.DB.prepare('SELECT id, zone_name FROM storage_zones WHERE id = ?').bind(id).first() as any
+    const zone = await c.env.DB.prepare('SELECT id, zone_name FROM storage_zones WHERE id = ?').bind(id).first<{ id: number; zone_name: string }>()
     if (!zone) return c.json({ success: false, error: '구역을 찾을 수 없습니다.' }, 404)
 
     // 배정된 품목 확인
     const itemCount = await c.env.DB.prepare(
       'SELECT COUNT(*) as cnt FROM items WHERE storage_zone_id = ? AND is_active = 1'
-    ).bind(id).first() as any
+    ).bind(id).first<{ cnt: number }>()
 
-    if (itemCount?.cnt > 0) {
+    if ((itemCount?.cnt ?? 0) > 0) {
       return c.json({
         success: false,
-        error: `${zone.zone_name} 구역에 ${itemCount.cnt}개 품목이 배정되어 있습니다. 품목을 다른 구역으로 이동한 후 삭제해주세요.`
+        error: `${zone.zone_name} 구역에 ${itemCount!.cnt}개 품목이 배정되어 있습니다. 품목을 다른 구역으로 이동한 후 삭제해주세요.`
       }, 400)
     }
 

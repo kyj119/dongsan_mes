@@ -52,9 +52,9 @@ ordersQueriesRouter.get('/stats', async (c) => {
       : await c.env.DB.prepare(statsQuery).all()
 
     const stats: Record<string, number> = { total: 0 }
-    for (const row of results as any[]) {
-      stats[(row as any).status] = (row as any).count
-      stats.total += (row as any).count
+    for (const row of results as Array<{ status: string; count: number }>) {
+      stats[row.status] = row.count
+      stats.total += row.count
     }
 
     return c.json({ success: true, data: stats })
@@ -123,9 +123,9 @@ ordersQueriesRouter.patch('/bulk-bill', requireRole('ADMIN', 'MANAGER'), async (
   try {
     const user = c.get('user')
     // 클라가 카멜케이스(orderIds/receiptType) 또는 스네이크(order_ids/receipt_type) 둘 다 보낼 수 있음
-    const body = await c.req.json<any>()
-    const order_ids: number[] = body.order_ids || body.orderIds || []
-    const receipt_type: string | undefined = body.receipt_type || body.receiptType
+    const body = await c.req.json<Record<string, unknown>>()
+    const order_ids: number[] = (body.order_ids || body.orderIds || []) as number[]
+    const receipt_type: string | undefined = (body.receipt_type || body.receiptType) as string | undefined
 
     if (!order_ids || order_ids.length === 0) {
       return c.json({ success: false, error: 'order_ids is required' }, 400)
@@ -143,12 +143,12 @@ ordersQueriesRouter.patch('/bulk-bill', requireRole('ADMIN', 'MANAGER'), async (
     for (const orderId of order_ids) {
       const order = await c.env.DB.prepare(
         'SELECT id, status, client_id, final_amount, billing_status FROM orders WHERE id = ?'
-      ).bind(orderId).first() as any
+      ).bind(orderId).first<{ id: number; status: string; client_id: number; final_amount: number; billing_status: string }>()
 
       if (!order || order.status !== 'SHIPPED') continue
       if (order.billing_status === 'BILLED') continue
 
-      const billedAmount = parseFloat(order.final_amount) || 0
+      const billedAmount = Number(order.final_amount) || 0
 
       // D1 batch: 주문 BILLED + 거래처 balance 원자적 업데이트
       // 하나라도 실패하면 둘 다 롤백됨
@@ -217,7 +217,7 @@ ordersQueriesRouter.patch('/bulk-ship', async (c) => {
       // Step 2: 출고 후 전체 카드 확인 → 모두 출고면 auto_complete_date 설정 (동기화 시 SHIPPED 전이)
       const orderInfo = await c.env.DB.prepare(
         `SELECT delivery_method, order_type FROM orders WHERE id = ?`
-      ).bind(orderId).first() as any
+      ).bind(orderId).first<{ delivery_method: string | null; order_type: string | null }>()
       const method = (orderInfo?.delivery_method || '').trim()
 
       // 모든 카드 출고 완료 확인
@@ -231,7 +231,7 @@ ordersQueriesRouter.patch('/bulk-ship', async (c) => {
         if (orderInfo?.order_type === 'DISTRIBUTION') {
           const { results: orderItems } = await c.env.DB.prepare(
             `SELECT item_id, quantity FROM order_items WHERE order_id = ? AND item_id IS NOT NULL`
-          ).bind(orderId).all() as any
+          ).bind(orderId).all<{ item_id: number; quantity: number }>()
           for (const oi of (orderItems || [])) {
             if (!oi.item_id || !oi.quantity) continue
             await c.env.DB.prepare(
@@ -254,10 +254,10 @@ ordersQueriesRouter.patch('/bulk-ship', async (c) => {
         // 미출고 카드 상세 정보 포함 (프론트에서 안내 표시용)
         const { results: unshippedCards } = await c.env.DB.prepare(`
           SELECT id, card_number, status FROM cards WHERE order_id = ? AND shipped_at IS NULL
-        `).bind(orderId).all() as any
+        `).bind(orderId).all<{ id: number; card_number: string; status: string }>()
         results.push({ id: orderId, success: true, shipped_cards: shippedCards, order_shipped: false,
           remaining: afterCheck?.remaining || 0,
-          unshipped_cards: (unshippedCards || []).map((c: any) => ({ id: c.id, card_number: c.card_number, status: c.status }))
+          unshipped_cards: (unshippedCards || []).map((cd) => ({ id: cd.id, card_number: cd.card_number, status: cd.status }))
         })
       }
     }
@@ -317,7 +317,7 @@ ordersQueriesRouter.get('/export/csv', async (c) => {
     query += ` ORDER BY ${orderBy} LIMIT ?`
     params.push(maxRows)
 
-    const { results } = await c.env.DB.prepare(query).bind(...params).all() as any
+    const { results } = await c.env.DB.prepare(query).bind(...params).all<Record<string, unknown>>()
 
     const statusLabels: Record<string, string> = { CONFIRMED: '확정', PRINTING: '출력중', PRINT_DONE: '출력완료', SHIPPED: '출고완료', HOLD: '보류', CANCELLED: '취소' }
     const billingLabels: Record<string, string> = { BILLED: '회계반영', PAID: '수금완료' }

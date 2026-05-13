@@ -75,7 +75,7 @@ paymentRequestsRouter.get('/:id', async (c) => {
 paymentRequestsRouter.post('/', async (c) => {
   try {
     const user = c.get('user')
-    const body = await c.req.json() as any
+    const body = await c.req.json<Record<string, unknown>>()
 
     if (!body.recipient_name || !body.amount || !body.description) {
       return c.json({ success: false, error: '필수 항목 누락' }, 400)
@@ -84,11 +84,11 @@ paymentRequestsRouter.post('/', async (c) => {
     // 결의서 번호 생성
     const today = new Date()
     const dateStr = today.toISOString().substring(0, 10).replace(/-/g, '')
-    const { max_seq } = await c.env.DB.prepare(`
+    const seqRow = await c.env.DB.prepare(`
       SELECT COALESCE(MAX(CAST(SUBSTR(request_number, 13) AS INTEGER)), 0) as max_seq
       FROM payment_requests WHERE request_number LIKE ?
-    `).bind(`PR-${dateStr}-%`).first() as any
-    const requestNumber = `PR-${dateStr}-${String((max_seq || 0) + 1).padStart(3, '0')}`
+    `).bind(`PR-${dateStr}-%`).first<{ max_seq: number }>()
+    const requestNumber = `PR-${dateStr}-${String((seqRow?.max_seq || 0) + 1).padStart(3, '0')}`
 
     const result = await c.env.DB.prepare(`
       INSERT INTO payment_requests (
@@ -132,7 +132,7 @@ paymentRequestsRouter.post('/from-po/:poId', async (c) => {
       FROM purchase_orders po
       LEFT JOIN clients c ON c.id = po.supplier_id
       WHERE po.id = ?
-    `).bind(poId).first() as any
+    `).bind(poId).first<Record<string, unknown>>()
 
     if (!po) return c.json({ success: false, error: '발주서 없음' }, 404)
 
@@ -146,11 +146,11 @@ paymentRequestsRouter.post('/from-po/:poId', async (c) => {
 
     const today = new Date()
     const dateStr = today.toISOString().substring(0, 10).replace(/-/g, '')
-    const { max_seq } = await c.env.DB.prepare(`
+    const seqRow2 = await c.env.DB.prepare(`
       SELECT COALESCE(MAX(CAST(SUBSTR(request_number, 13) AS INTEGER)), 0) as max_seq
       FROM payment_requests WHERE request_number LIKE ?
-    `).bind(`PR-${dateStr}-%`).first() as any
-    const requestNumber = `PR-${dateStr}-${String((max_seq || 0) + 1).padStart(3, '0')}`
+    `).bind(`PR-${dateStr}-%`).first<{ max_seq: number }>()
+    const requestNumber = `PR-${dateStr}-${String((seqRow2?.max_seq || 0) + 1).padStart(3, '0')}`
 
     const result = await c.env.DB.prepare(`
       INSERT INTO payment_requests (
@@ -182,9 +182,9 @@ paymentRequestsRouter.post('/from-po/:poId', async (c) => {
 paymentRequestsRouter.patch('/:id', async (c) => {
   try {
     const id = c.req.param('id')
-    const body = await c.req.json() as any
+    const body = await c.req.json<Record<string, unknown>>()
     const updates: string[] = []
-    const params: any[] = []
+    const params: any[] = [] // dynamic SQL params
     for (const f of ['recipient_name', 'recipient_account', 'recipient_bank', 'amount', 'description', 'notes']) {
       if (body[f] !== undefined) { updates.push(`${f} = ?`); params.push(body[f]) }
     }
@@ -237,7 +237,7 @@ paymentRequestsRouter.patch('/:id/approve', requireRole('ADMIN', 'MANAGER'), asy
     `).bind(user?.id || null, id).run()
 
     // 자금 예정에 자동 등록
-    const pr = await c.env.DB.prepare('SELECT * FROM payment_requests WHERE id = ?').bind(id).first() as any
+    const pr = await c.env.DB.prepare('SELECT * FROM payment_requests WHERE id = ?').bind(id).first<Record<string, unknown>>()
     if (pr) {
       await c.env.DB.prepare(`
         INSERT INTO cash_schedule (schedule_date, flow_type, source_type, source_id, client_id, amount, description, created_by)
@@ -277,7 +277,7 @@ paymentRequestsRouter.patch('/:id/pay', requireRole('ADMIN', 'MANAGER'), async (
   try {
     const id = c.req.param('id')
     const user = c.get('user')
-    const { bank_transaction_id, paid_at } = await c.req.json() as any
+    const { bank_transaction_id, paid_at } = await c.req.json<{ bank_transaction_id?: string; paid_at?: string }>()
 
     await c.env.DB.prepare(`
       UPDATE payment_requests SET status = 'PAID',
@@ -287,12 +287,12 @@ paymentRequestsRouter.patch('/:id/pay', requireRole('ADMIN', 'MANAGER'), async (
     `).bind(paid_at || null, user?.id || null, bank_transaction_id || null, id).run()
 
     // 자금 예정 완료 처리
-    const pr = await c.env.DB.prepare('SELECT * FROM payment_requests WHERE id = ?').bind(id).first() as any
-    if (pr) {
+    const pr2 = await c.env.DB.prepare('SELECT * FROM payment_requests WHERE id = ?').bind(id).first<Record<string, unknown>>()
+    if (pr2) {
       await c.env.DB.prepare(`
         UPDATE cash_schedule SET status = 'DONE', actual_date = ?, actual_amount = ?
         WHERE source_type = 'OTHER' AND source_id = ?
-      `).bind(paid_at || pr.request_date, pr.amount, id).run()
+      `).bind(paid_at || pr2.request_date, pr2.amount, id).run()
     }
 
     return c.json({ success: true, message: '이체 완료 처리되었습니다.' })
