@@ -75,6 +75,15 @@ export function dashboardPage(c: Context<HonoEnv>) {
                     <div class="text-3xl font-bold tabular-nums" style="color:var(--c-teal)" id="statCollectionRate">-</div>
                     <div class="text-xs mt-1 tabular-nums" style="color:var(--c-text-muted)" id="statCollectionDetail">이번 달</div>
                 </div>
+                <!-- 납기 준수율 -->
+                <div class="ds-card ds-card-compact cursor-pointer" onclick="location.href='/orders'" title="주문 관리 (납기 현황)">
+                    <div class="flex items-center justify-between mb-1">
+                        <div class="text-sm" style="color:var(--c-text-secondary)">납기 준수율</div>
+                        <i class="fas fa-calendar-check text-xs" style="color:var(--c-success);opacity:0.6"></i>
+                    </div>
+                    <div class="text-3xl font-bold tabular-nums" id="statOnTimeRate">-</div>
+                    <div class="text-xs mt-1" style="color:var(--c-text-muted)">이번 달 출고 기준</div>
+                </div>
             </div>
 
             <!-- 검수 대기 경고 카드 (PENDING_REVIEW 건수 > 0 시 노출) -->
@@ -110,11 +119,12 @@ export function dashboardPage(c: Context<HonoEnv>) {
               <div class="ds-card">
                 <div class="ds-card-header">
                   <h3 class="ds-card-title">
-                    <i class="fas fa-chart-pie" style="color:var(--c-success);margin-right:6px"></i>
-                    카드 상태 분포
+                    <i class="fas fa-stream" style="color:var(--c-primary);margin-right:6px"></i>
+                    생산 파이프라인
                   </h3>
+                  <a href="/cards" class="ds-btn ds-btn-ghost ds-btn-sm">현장 &rarr;</a>
                 </div>
-                <div id="cardDistribution" class="space-y-2"></div>
+                <div id="productionPipeline" class="space-y-2"></div>
               </div>
             </div>
 
@@ -138,7 +148,7 @@ export function dashboardPage(c: Context<HonoEnv>) {
                   </h3>
                   <a href="/production-reports" class="ds-btn ds-btn-ghost ds-btn-sm">상세 &rarr;</a>
                 </div>
-                <div id="uptimeWeekly" class="space-y-2"></div>
+                <div id="uptimeWeekly" class="space-y-2 max-h-[180px] overflow-y-auto"></div>
               </div>
             </div>
 
@@ -281,21 +291,9 @@ export function dashboardPage(c: Context<HonoEnv>) {
                     후가공 현황 (활성 카드)
                   </h3>
                 </div>
-                <div id="ppStats" class="space-y-2"></div>
+                <div id="ppStats" class="space-y-2 max-h-[200px] overflow-y-auto"></div>
             </div>
 
-            <!-- System Status -->
-            <div class="ds-card">
-                <div class="ds-card-header" style="margin-bottom:var(--space-md)">
-                  <h3 class="ds-card-title" style="font-size:var(--fs-xl)">
-                    <i class="fas fa-check-circle" style="color:var(--c-success);margin-right:8px"></i>
-                    시스템 상태
-                  </h3>
-                </div>
-                <div id="status" style="color:var(--c-text-secondary)">
-                    시스템 상태를 확인하는 중...
-                </div>
-            </div>
     `,
     pageScript
   })

@@ -1,8 +1,8 @@
 ﻿// Skeleton loading
 (function initSkeletons() {
   var kpi = document.getElementById('kpiArea');
-  if (kpi && window.dsSkeleton) kpi.innerHTML = dsSkeleton.stat(7);
-  var skeletonTargets = ['todayDueList','weeklyTrend','cardDistribution','productionToday','uptimeWeekly','activeCardsList','receivablesClients','agingBuckets','topClients','ppStats','recentOrdersList','recentShipmentsList'];
+  if (kpi && window.dsSkeleton) kpi.innerHTML = dsSkeleton.stat(8);
+  var skeletonTargets = ['todayDueList','weeklyTrend','productionPipeline','productionToday','uptimeWeekly','activeCardsList','receivablesClients','agingBuckets','topClients','ppStats','recentOrdersList','recentShipmentsList'];
   skeletonTargets.forEach(function(id) {
     var el = document.getElementById(id);
     if (el && window.dsSkeleton) el.innerHTML = dsSkeleton.table(3, 3);
@@ -27,25 +27,6 @@ function fmtAmtShort(v) {
   return n.toLocaleString() + '원';
 }
 
-// Check system health
-axios.get('/api/health')
-    .then(response => {
-        document.getElementById('status').innerHTML =
-            '<div class="flex items-center gap-4">' +
-            '<div class="flex items-center"><i class="fas fa-circle text-green-500 mr-2"></i><span>API: 정상</span></div>' +
-            '<div class="text-sm text-gray-500">' + new Date(response.data.timestamp).toLocaleString('ko-KR') + '</div>' +
-            '</div>';
-        return axios.get('/api/db-test');
-    })
-    .then(response => {
-        const statusDiv = document.getElementById('status');
-        statusDiv.innerHTML += '<div class="flex items-center mt-2"><i class="fas fa-circle text-green-500 mr-2"></i><span>데이터베이스: 정상 연결</span></div>';
-    })
-    .catch(error => {
-        document.getElementById('status').innerHTML =
-            '<div class="flex items-center"><i class="fas fa-circle text-red-500 mr-2"></i><span>시스템 오류: ' + error.message + '</span></div>';
-    });
-
 // Load dashboard statistics
 async function loadDashboardStats() {
     try {
@@ -62,7 +43,8 @@ async function loadDashboardStats() {
                 + '<div class="ds-card ds-card-compact"><div class="flex items-center justify-between mb-1"><div class="text-sm" style="color:var(--c-text-secondary)">생산 현황</div><i class="fas fa-print text-xs" style="color:var(--c-success);opacity:0.6"></i></div><div class="text-3xl font-bold tabular-nums" style="color:var(--c-success)" id="statProductionOrders">-</div><div class="text-xs mt-1" style="color:var(--c-text-muted)">출고대기 <span class="font-semibold tabular-nums" style="color:var(--c-warning)" id="statShipmentReady">-</span>건</div></div>'
                 + '<div class="ds-card ds-card-compact cursor-pointer" onclick="location.href=\'/shipments\'"><div class="flex items-center justify-between mb-1"><div class="text-sm" style="color:var(--c-text-secondary)">오늘 출고</div><i class="fas fa-truck text-xs" style="color:var(--c-warning);opacity:0.6"></i></div><div class="text-3xl font-bold tabular-nums" style="color:var(--c-warning)" id="statTodayShipment">-</div><div class="text-xs mt-1 tabular-nums" id="statTodayShipmentSub" style="color:var(--c-text-muted)">-</div></div>'
                 + '<div class="ds-card ds-card-compact"><div class="flex items-center justify-between mb-1"><div class="text-sm" style="color:var(--c-text-secondary)">미수금</div><i class="fas fa-exclamation-triangle text-xs" style="color:var(--c-danger);opacity:0.6"></i></div><div class="text-3xl font-bold tabular-nums" style="color:var(--c-danger)" id="statKpiReceivables">-</div><div class="text-xs mt-1 tabular-nums" id="statKpiOver30" style="color:var(--c-text-muted)">30일+ -</div></div>'
-                + '<div class="ds-card ds-card-compact"><div class="flex items-center justify-between mb-1"><div class="text-sm" style="color:var(--c-text-secondary)">수금률</div><i class="fas fa-hand-holding-usd text-xs" style="color:var(--c-teal);opacity:0.6"></i></div><div class="text-3xl font-bold tabular-nums" style="color:var(--c-teal)" id="statCollectionRate">-</div><div class="text-xs mt-1 tabular-nums" style="color:var(--c-text-muted)" id="statCollectionDetail">이번 달</div></div>';
+                + '<div class="ds-card ds-card-compact"><div class="flex items-center justify-between mb-1"><div class="text-sm" style="color:var(--c-text-secondary)">수금률</div><i class="fas fa-hand-holding-usd text-xs" style="color:var(--c-teal);opacity:0.6"></i></div><div class="text-3xl font-bold tabular-nums" style="color:var(--c-teal)" id="statCollectionRate">-</div><div class="text-xs mt-1 tabular-nums" style="color:var(--c-text-muted)" id="statCollectionDetail">이번 달</div></div>'
+                + '<div class="ds-card ds-card-compact cursor-pointer" onclick="location.href=\'/orders\'"><div class="flex items-center justify-between mb-1"><div class="text-sm" style="color:var(--c-text-secondary)">납기 준수율</div><i class="fas fa-calendar-check text-xs" style="color:var(--c-success);opacity:0.6"></i></div><div class="text-3xl font-bold tabular-nums" id="statOnTimeRate">-</div><div class="text-xs mt-1" style="color:var(--c-text-muted)">이번 달 출고 기준</div></div>';
             }
             // 오늘 주문 KPI (with count-up animation)
             var todayOrders = stats.today_order_count || 0;
@@ -114,6 +96,14 @@ async function loadDashboardStats() {
             var collDetail = document.getElementById('statCollectionDetail');
             if (collDetail) collDetail.textContent = fmtAmtShort(monthPaid) + ' / ' + fmtAmtShort(monthBilled);
 
+            // KPI 7: 납기 준수율
+            var onTimeEl = document.getElementById('statOnTimeRate');
+            if (onTimeEl) {
+              var rate = stats.on_time_rate || 0;
+              onTimeEl.textContent = rate + '%';
+              onTimeEl.style.color = rate >= 90 ? 'var(--c-success)' : rate >= 80 ? 'var(--c-warning)' : 'var(--c-danger)';
+            }
+
             // 이전 통계 (하위 Revenue 카드)
             var todayRevEl = document.getElementById('statTodayRevenue');
             if (todayRevEl) todayRevEl.textContent = fmtAmt(todayRev);
@@ -136,6 +126,27 @@ async function loadDashboardStats() {
                         '<span class="font-bold text-amber-700">' + count + '건</span></div>'
                     ).join('');
                 }
+            }
+
+            // 생산 파이프라인
+            var pipeline = document.getElementById('productionPipeline');
+            if (pipeline) {
+              var stages = [
+                { label: '확정', count: stats.confirmed_orders || 0, color: 'var(--c-primary)', icon: 'fa-check' },
+                { label: '출력중', count: stats.printing_cards || 0, color: 'var(--c-info)', icon: 'fa-print' },
+                { label: '출력완료', count: stats.done_cards || 0, color: 'var(--c-success)', icon: 'fa-check-double' },
+                { label: '출고대기', count: stats.shipment_ready_count || 0, color: 'var(--c-warning)', icon: 'fa-box' },
+                { label: '보류', count: stats.hold_cards || 0, color: 'var(--c-danger)', icon: 'fa-pause' }
+              ];
+              var maxCount = Math.max.apply(null, stages.map(function(s) { return s.count; }).concat([1]));
+              pipeline.innerHTML = stages.map(function(s) {
+                var pct = Math.round((s.count / maxCount) * 100);
+                return '<div class="flex items-center gap-3">'
+                  + '<div class="w-20 text-xs font-medium" style="color:var(--c-text-secondary)"><i class="fas ' + s.icon + '" style="color:' + s.color + ';margin-right:4px;width:12px"></i>' + s.label + '</div>'
+                  + '<div class="flex-1 h-6 rounded-full" style="background:var(--c-surface-secondary)">'
+                  + '<div class="h-6 rounded-full flex items-center justify-end pr-2 text-xs font-bold text-white transition-all" style="width:' + Math.max(pct, 8) + '%;background:' + s.color + '">' + s.count + '</div>'
+                  + '</div></div>';
+              }).join('');
             }
         }
 
@@ -697,36 +708,6 @@ async function loadUptimeWeekly() {
   } catch(e) { console.error('Load uptime weekly error:', e); }
 }
 loadUptimeWeekly();
-
-// Load card distribution
-async function loadCardDistribution() {
-  try {
-    var res = await axios.get('/api/dashboard/stats/card-distribution');
-    if (!res.data.success) return;
-    var items = res.data.data || [];
-    var container = document.getElementById('cardDistribution');
-    if (items.length === 0) {
-      container.innerHTML = '<div class="ds-empty">카드 없음</div>';
-      return;
-    }
-    var total = items.reduce(function(s, d) { return s + d.count; }, 0) || 1;
-    var statusLabels = { PRINTING: '출력중', PRINT_DONE: '출력완료', HOLD: '보류', PENDING: '대기' };
-    var statusColors = { PRINTING: 'bg-orange-500', PRINT_DONE: 'bg-green-500', HOLD: 'bg-gray-400', PENDING: 'bg-amber-500' };
-    container.innerHTML = items.map(function(d) {
-      var pct = Math.round((d.count / total) * 100);
-      var label = statusLabels[d.status] || d.status;
-      var color = statusColors[d.status] || 'bg-blue-500';
-      return '<div>'
-        + '<div class="flex justify-between text-xs mb-1">'
-        + '<span class="text-gray-600">' + label + '</span>'
-        + '<span class="font-medium">' + d.count + '건 (' + pct + '%)</span></div>'
-        + '<div class="h-3 bg-gray-100 rounded-full overflow-hidden">'
-        + '<div class="h-full ' + color + ' rounded-full" style="width:' + Math.max(pct, 2) + '%"></div>'
-        + '</div></div>';
-    }).join('');
-  } catch(e) { console.error('Load card distribution error:', e); }
-}
-loadCardDistribution();
 
 // 60초마다 자동 갱신 (탭이 보이는 경우만)
 setInterval(function() {
