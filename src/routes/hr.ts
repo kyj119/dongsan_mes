@@ -570,7 +570,7 @@ hrRouter.put('/employees/:id', async (c) => {
       return String(newVal ?? '') !== String(curVal ?? '')
     })
     if (hasSalaryChange) {
-      const user = c.get('user') as any
+      const user = c.get('user')
       if (user?.role !== 'ADMIN' && user?.role !== 'MANAGER') {
         return c.json({ success: false, error: '급여 정보 변경은 관리자만 가능합니다.' }, 403)
       }
@@ -632,7 +632,7 @@ hrRouter.put('/employees/:id', async (c) => {
     ).bind(id).first<any>()
 
     // RRN 복호화 + 마스킹
-    const user = c.get('user') as any
+    const user = c.get('user')
     if (updated?.resident_number) {
       const piiKey = c.env.JWT_SECRET || 'fallback-dev-key'
       const decrypted = await decryptPII(String(updated.resident_number), piiKey)
@@ -662,7 +662,7 @@ hrRouter.put('/employees/:id', async (c) => {
 // ============================================================================
 hrRouter.delete('/employees/:id', async (c) => {
   try {
-    const user = c.get('user') as any
+    const user = c.get('user')
     if (user?.role !== 'ADMIN') {
       return c.json({ success: false, error: '관리자(ADMIN)만 직원을 삭제할 수 있습니다.' }, 403)
     }
@@ -892,7 +892,7 @@ hrRouter.get('/employees/:id/detail', async (c) => {
     }
 
     // RRN 복호화 + 마스킹 (ADMIN만 원본)
-    const user = c.get('user') as any
+    const user = c.get('user')
     if (employee.resident_number) {
       const piiKey = c.env.JWT_SECRET || 'fallback-dev-key'
       const decrypted = await decryptPII(String(employee.resident_number), piiKey)

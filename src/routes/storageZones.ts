@@ -28,7 +28,7 @@ storageZonesRouter.get('/', async (c) => {
 // GET /api/storage-zones/my - 내 담당 구역 조회
 storageZonesRouter.get('/my', async (c) => {
   try {
-    const user = c.get('user') as any
+    const user = c.get('user')
     const { results } = await c.env.DB.prepare(`
       SELECT sz.*,
         (SELECT COUNT(*) FROM items WHERE storage_zone_id = sz.id AND is_active = 1) as item_count

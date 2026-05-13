@@ -353,7 +353,7 @@ yearEndRouter.post('/year-end-settlement/:employeeId', async (c) => {
 yearEndRouter.put('/year-end-settlement/:settlementId/confirm', async (c) => {
   try {
     const settlementId = Number(c.req.param('settlementId'))
-    const user = c.get('user') as any
+    const user = c.get('user')
     const now = new Date().toISOString()
     await c.env.DB.prepare(
       `UPDATE year_end_settlements SET status = 'CONFIRMED', confirmed_by = ?, confirmed_at = ?, updated_at = ? WHERE id = ?`

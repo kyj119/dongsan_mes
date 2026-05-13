@@ -58,7 +58,7 @@ recordsRouter.get('/:id', async (c) => {
 // ============================================================================
 recordsRouter.patch('/:id/approve', requireRole('ADMIN', 'MANAGER'), async (c) => {
   const id = Number(c.req.param('id'))
-  const user = c.get('user') as any
+  const user = c.get('user')
   await c.env.DB.prepare(
     `UPDATE payroll SET status='APPROVED', approved_by=?, approved_at=datetime('now'), updated_at=datetime('now') WHERE id=?`
   ).bind(user?.id || null, id).run()

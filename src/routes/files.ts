@@ -55,7 +55,7 @@ filesRouter.post('/upload', requireRole('ADMIN', 'MANAGER', 'DESIGNER'), async (
         contentDisposition: `inline; filename="${encodeURIComponent(file.name)}"`,
       },
       customMetadata: {
-        uploadedBy: String((c.get('user') as any)?.id || 0),
+        uploadedBy: String((c.get('user'))?.id || 0),
         uploadedAt: new Date().toISOString(),
       },
     })

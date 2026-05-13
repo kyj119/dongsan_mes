@@ -67,7 +67,7 @@ async function syncOrderStatusFromCards(db: any, orderId: number) {
 // Bulk status change (must be before /:id)
 cardsLifecycleRouter.patch('/bulk/status', requireRole('ADMIN', 'MANAGER', 'OPERATOR'), async (c) => {
   try {
-    const user = c.get('user') as any
+    const user = c.get('user')
     const { card_ids, status, reason, defect_category } = await c.req.json()
 
     if (!Array.isArray(card_ids) || card_ids.length === 0) {
@@ -181,7 +181,7 @@ cardsLifecycleRouter.patch('/bulk/status', requireRole('ADMIN', 'MANAGER', 'OPER
 cardsLifecycleRouter.patch('/defects/:defectId', async (c) => {
   try {
     const defectId = c.req.param('defectId')
-    const user = c.get('user') as any
+    const user = c.get('user')
     const { status, corrective_action, root_cause, cost_impact } = await c.req.json()
 
     const validStatuses = ['OPEN', 'UNDER_REVIEW', 'RESOLVED', 'REWORK_REQUIRED']
@@ -222,7 +222,7 @@ cardsLifecycleRouter.patch('/defects/:defectId', async (c) => {
 // 일괄 출고 처리 (/:id/ship 보다 먼저 등록되어야 함)
 cardsLifecycleRouter.post('/bulk-ship', async (c) => {
   try {
-    const user = c.get('user') as any
+    const user = c.get('user')
     const { card_ids } = await c.req.json() as { card_ids: number[] }
 
     if (!Array.isArray(card_ids) || card_ids.length === 0) {
@@ -303,7 +303,7 @@ cardsLifecycleRouter.post('/bulk-ship', async (c) => {
 cardsLifecycleRouter.post('/:id/ship', async (c) => {
   try {
     const idParam = c.req.param('id')
-    const user = c.get('user') as any
+    const user = c.get('user')
 
     // card_number 패턴 여부 확인
     const isCardNumber = /^CARD-\d{8}-\d{3,}$/i.test(idParam)
@@ -401,7 +401,7 @@ cardsLifecycleRouter.post('/:id/ship', async (c) => {
 cardsLifecycleRouter.post('/:id/defects', async (c) => {
   try {
     const cardId = c.req.param('id')
-    const user = c.get('user') as any
+    const user = c.get('user')
     const { defect_category, description, severity, auto_hold } = await c.req.json()
 
     if (!defect_category || !description) {
@@ -462,7 +462,7 @@ cardsLifecycleRouter.patch('/:id/status', async (c) => {
       defect_category?: string
       rip_file_path?: string
     }
-    const user = c.get('user') as any
+    const user = c.get('user')
 
     // Validate status — PRINT_ERROR added so LogWatcher/EdgeAgent can report
     // RIP failures observed in Print.log (Step 4 / PrintLogMonitor.cs).
@@ -571,7 +571,7 @@ cardsLifecycleRouter.patch('/:id/status', async (c) => {
 cardsLifecycleRouter.patch('/:id/pp-complete', async (c) => {
   try {
     const id = c.req.param('id')
-    const user = c.get('user') as any
+    const user = c.get('user')
 
     const card = await c.env.DB.prepare(
       'SELECT id, card_number, order_id, status, pp_status, post_processing FROM cards WHERE id = ?'
@@ -604,7 +604,7 @@ cardsLifecycleRouter.patch('/:id/pp-complete', async (c) => {
 cardsLifecycleRouter.patch('/bulk/pp-complete', async (c) => {
   try {
     const { card_ids } = await c.req.json()
-    const user = c.get('user') as any
+    const user = c.get('user')
 
     if (!card_ids?.length) return c.json({ success: false, error: 'card_ids required' }, 400)
 
@@ -628,7 +628,7 @@ cardsLifecycleRouter.patch('/bulk/pp-complete', async (c) => {
 cardsLifecycleRouter.patch('/:id/ship', requireRole('ADMIN', 'MANAGER'), async (c) => {
   try {
     const id = c.req.param('id')
-    const user = c.get('user') as any
+    const user = c.get('user')
 
     // 1. 카드 조회
     const card = await c.env.DB.prepare(
@@ -806,7 +806,7 @@ cardsLifecycleRouter.patch('/:id/ship', requireRole('ADMIN', 'MANAGER'), async (
 cardsLifecycleRouter.patch('/:id/unship', requireRole('ADMIN', 'MANAGER'), async (c) => {
   try {
     const id = c.req.param('id')
-    const user = c.get('user') as any
+    const user = c.get('user')
 
     // 1. 카드 조회
     const card = await c.env.DB.prepare(
@@ -858,7 +858,7 @@ cardsLifecycleRouter.patch('/:id/unship', requireRole('ADMIN', 'MANAGER'), async
 cardsLifecycleRouter.post('/generate/:orderId', async (c) => {
   try {
     const orderId = c.req.param('orderId')
-    const user = c.get('user') as any
+    const user = c.get('user')
 
     // Get order details
     const order = await c.env.DB.prepare(`
@@ -1023,7 +1023,7 @@ cardsLifecycleRouter.patch('/:cardId/items/:itemId/print-toggle', async (c) => {
   try {
     const cardId = c.req.param('cardId')
     const itemId = c.req.param('itemId')
-    const user = c.get('user') as any
+    const user = c.get('user')
 
     // card_item 확인
     const ci = await c.env.DB.prepare(
@@ -1088,7 +1088,7 @@ cardsLifecycleRouter.patch('/:cardId/items/:itemId/print-toggle', async (c) => {
 cardsLifecycleRouter.patch('/:id/complete', async (c) => {
   try {
     const id = c.req.param('id')
-    const user = c.get('user') as any
+    const user = c.get('user')
 
     const card = await c.env.DB.prepare(
       'SELECT id, status, order_id, post_processing FROM cards WHERE id = ?'
@@ -1144,7 +1144,7 @@ cardsLifecycleRouter.patch('/:id/complete', async (c) => {
 cardsLifecycleRouter.patch('/:id/revert', async (c) => {
   try {
     const id = c.req.param('id')
-    const user = c.get('user') as any
+    const user = c.get('user')
 
     const card = await c.env.DB.prepare(
       'SELECT id, status, order_id, card_number FROM cards WHERE id = ?'

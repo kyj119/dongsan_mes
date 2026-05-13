@@ -414,7 +414,7 @@ itemsRouter.patch('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
       try {
         const old = await c.env.DB.prepare('SELECT base_price, sales_price FROM items WHERE id = ?').bind(parseInt(id)).first() as any
         if (old) {
-          const user = (c.get('user') as any)?.username || 'system'
+          const user = (c.get('user'))?.username || 'system'
           if (updates.base_price !== undefined && updates.base_price !== old.base_price) {
             await c.env.DB.prepare(
               `INSERT INTO price_change_history (target_type, target_id, field_name, old_value, new_value, changed_by) VALUES ('ITEM', ?, 'base_price', ?, ?, ?)`
@@ -838,7 +838,7 @@ itemsRouter.put('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
         await c.env.DB.prepare(
           `INSERT INTO price_change_history (target_type, target_id, field_name, old_value, new_value, changed_by)
            VALUES ('ITEM', ?, 'base_price', ?, ?, ?)`
-        ).bind(parseInt(id), existing.base_price || 0, newPrice, (c.get('user') as any)?.username || 'system').run()
+        ).bind(parseInt(id), existing.base_price || 0, newPrice, (c.get('user'))?.username || 'system').run()
       } catch (_) { /* 이력 실패해도 메인 로직 영향 없음 */ }
     }
 

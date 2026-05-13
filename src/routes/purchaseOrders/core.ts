@@ -547,7 +547,7 @@ poCoreRouter.get('/:id/invoice', async (c) => {
 // ============================================================================
 poCoreRouter.get('/receiving-queue', async (c) => {
   try {
-    const user = c.get('user') as any
+    const user = c.get('user')
     if (!user?.id) return c.json({ success: false, error: '인증 필요' }, 401)
     const scope = c.req.query('scope') || (user.role === 'OPERATOR' ? 'mine' : 'all')
     const isSupervisor = user.role === 'ADMIN' || user.role === 'MANAGER'
@@ -667,7 +667,7 @@ poCoreRouter.get('/receiving-queue', async (c) => {
 // ============================================================================
 poCoreRouter.get('/my-lines', async (c) => {
   try {
-    const user = c.get('user') as any
+    const user = c.get('user')
     if (!user?.id) return c.json({ success: false, error: '인증 필요' }, 401)
     const isSupervisor = user.role === 'ADMIN' || user.role === 'MANAGER'
 
@@ -718,7 +718,7 @@ poCoreRouter.get('/my-lines', async (c) => {
 // GET /my-lines-count - 사이드바 배지용 카운트 (⚠️ /:id 보다 먼저)
 poCoreRouter.get('/my-lines-count', async (c) => {
   try {
-    const user = c.get('user') as any
+    const user = c.get('user')
     if (!user?.id) return c.json({ success: false, error: '인증 필요' }, 401)
     const isSupervisor = user.role === 'ADMIN' || user.role === 'MANAGER'
 
@@ -1705,7 +1705,7 @@ poCoreRouter.delete('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
 poCoreRouter.post('/:id/reorder', requireRole('ADMIN', 'MANAGER'), async (c) => {
   try {
     const id = c.req.param('id')
-    const user = c.get('user') as any
+    const user = c.get('user')
     const body: { status?: string } = await c.req.json<{ status?: string }>().catch(() => ({}))
     const targetStatus = body.status || 'CONFIRMED'
 
@@ -1803,7 +1803,7 @@ poCoreRouter.post('/:id/reorder', requireRole('ADMIN', 'MANAGER'), async (c) => 
 // ============================================================================
 poCoreRouter.post('/quick', requireRole('ADMIN', 'MANAGER'), async (c) => {
   try {
-    const user = c.get('user') as any
+    const user = c.get('user')
     const body = await c.req.json<{
       supplier_id: number
       items: Array<{
