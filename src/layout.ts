@@ -313,7 +313,8 @@ const SHARED_CSS = `
     --shadow-lg: 0 10px 15px rgba(0,0,0,0.5);
     --shadow-xl: 0 20px 25px rgba(0,0,0,0.6);
   }
-  body { font-family: var(--font-family); color: var(--c-text); -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+  html, body { background: var(--c-bg); overscroll-behavior: none; }
+  body { font-family: var(--font-family); color: var(--c-text); -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; min-height: 100vh; }
 
   /* === Sidebar === */
   .sidebar {
@@ -380,8 +381,10 @@ const SHARED_CSS = `
   .sidebar-entity-item i { font-size: 10px; width: 10px; text-align: center; }
   .sidebar-entity-spacer { width: 10px; }
   .sidebar-entity-sep { border-top: 1px solid var(--c-sidebar-border); margin: 2px 0; }
-  /* Hide entity section when sidebar collapsed */
-  .sidebar:not(:hover):not(.pinned) .sidebar-entity { display: none; }
+  /* Entity section: show icon-only when sidebar collapsed */
+  .sidebar:not(:hover):not(.pinned) .sidebar-entity .nav-label { opacity: 0; }
+  .sidebar:not(:hover):not(.pinned) .sidebar-entity-arrow { display: none; }
+  .sidebar:not(:hover):not(.pinned) .sidebar-entity-dropdown { display: none !important; }
 
   .sidebar-nav {
     flex: 1;
@@ -2234,12 +2237,10 @@ document.addEventListener('keydown', function(e) {
 
 // === Scroll shadow on top-bar ===
 (function() {
-  var mc = document.querySelector('.main-content');
-  if (!mc) return;
-  var tb = mc.querySelector('.top-bar');
+  var tb = document.querySelector('.top-bar');
   if (!tb) return;
-  mc.addEventListener('scroll', function() {
-    if (mc.scrollTop > 8) tb.classList.add('scrolled');
+  window.addEventListener('scroll', function() {
+    if (window.scrollY > 8) tb.classList.add('scrolled');
     else tb.classList.remove('scrolled');
   }, { passive: true });
 })();
