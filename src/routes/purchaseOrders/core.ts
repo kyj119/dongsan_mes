@@ -140,11 +140,12 @@ poCoreRouter.get('/', async (c) => {
       countQuery += ' WHERE ' + countWhereClauses.join(' AND ')
     }
 
-    const { count } = await c.env.DB.prepare(countQuery).bind(...countParams).first() as any
+    const countRow = await c.env.DB.prepare(countQuery).bind(...countParams).first<{ count: number }>()
+    const count = countRow?.count ?? 0
 
     const response: PaginatedResponse<PurchaseOrder> = {
       success: true,
-      data: results as any,
+      data: results as unknown as PurchaseOrder[],
       pagination: {
         page: parseInt(page),
         limit: safeLimit,
@@ -177,9 +178,9 @@ poCoreRouter.get('/stats', async (c) => {
       : await c.env.DB.prepare(`SELECT status, COUNT(*) as count FROM purchase_orders GROUP BY status`).all()
 
     const stats: Record<string, number> = { total: 0 }
-    for (const row of results as any[]) {
-      stats[(row as any).status] = (row as any).count
-      stats.total += (row as any).count
+    for (const row of results as Record<string, unknown>[]) {
+      stats[row.status as string] = row.count as number
+      stats.total += row.count as number
     }
 
     // 납기 지연 카운트
@@ -187,7 +188,7 @@ poCoreRouter.get('/stats', async (c) => {
       SELECT COUNT(*) as count FROM purchase_orders
       WHERE status IN ('CONFIRMED', 'PARTIAL_RECEIVED')
         AND expected_date IS NOT NULL AND expected_date < date('now')${efAnd}
-    `).bind(...ef.params).first() as any
+    `).bind(...ef.params).first<{ count: number }>()
     stats.overdue = overdue?.count || 0
 
     // 납기 임박 (D-3 이내)
@@ -197,7 +198,7 @@ poCoreRouter.get('/stats', async (c) => {
         AND expected_date IS NOT NULL
         AND expected_date >= date('now')
         AND expected_date <= date('now', '+3 days')${efAnd}
-    `).bind(...ef.params).first() as any
+    `).bind(...ef.params).first<{ count: number }>()
     stats.upcoming = upcoming?.count || 0
 
     // 이번 달 발주 금액 합계
@@ -206,7 +207,7 @@ poCoreRouter.get('/stats', async (c) => {
       FROM purchase_orders
       WHERE status NOT IN ('CANCELLED', 'DRAFT')
         AND order_date >= date('now', 'start of month')${efAnd}
-    `).bind(...ef.params).first() as any
+    `).bind(...ef.params).first<{ total: number }>()
     stats.monthly_amount = monthlyAmount?.total || 0
 
     // 공급업체별 미지급 현황 TOP 5
@@ -220,13 +221,13 @@ poCoreRouter.get('/stats', async (c) => {
       ORDER BY c.purchase_balance DESC
       LIMIT 5
     `).bind(...ef.params).all()
-    ;(stats as any).supplier_balances = supplierBalances
+    ;(stats as Record<string, unknown>).supplier_balances = supplierBalances
 
     // 재고 부족 알림 수
     try {
       const alertCount = await c.env.DB.prepare(
         `SELECT COUNT(*) as count FROM stock_alerts WHERE status = 'ACTIVE'`
-      ).first() as any
+      ).first<{ count: number }>()
       stats.active_alerts = alertCount?.count || 0
     } catch { stats.active_alerts = 0 }
 
@@ -270,7 +271,7 @@ poCoreRouter.get('/export/csv', async (c) => {
     if (whereClauses.length > 0) query += ' WHERE ' + whereClauses.join(' AND ')
     query += ' ORDER BY po.created_at DESC LIMIT 5000'
 
-    const { results } = await c.env.DB.prepare(query).bind(...params).all() as any
+    const { results } = await c.env.DB.prepare(query).bind(...params).all()
 
     const statusLabels: Record<string, string> = {
       DRAFT: '임시저장', CONFIRMED: '발주확정', PARTIAL_RECEIVED: '부분입고',
@@ -278,11 +279,11 @@ poCoreRouter.get('/export/csv', async (c) => {
     }
 
     const headers = ['발주번호', '공급업체', '발주일', '납기일', '금액', '상태', '비고', '작성자', '등록일']
-    const rows = (results || []).map((po: any) => [
-      po.po_number, po.supplier_name, po.order_date, po.expected_date,
-      po.final_amount, statusLabels[po.status] || po.status,
-      po.notes, po.created_by_name,
-      po.created_at ? new Date(po.created_at).toLocaleDateString('ko-KR') : ''
+    const rows = (results || []).map((po: Record<string, unknown>) => [
+      po.po_number as string, po.supplier_name as string, po.order_date as string, po.expected_date as string | null,
+      po.final_amount as number, statusLabels[po.status as string] || (po.status as string),
+      po.notes as string | null, po.created_by_name as string | null,
+      po.created_at ? new Date(po.created_at as string).toLocaleDateString('ko-KR') : ''
     ])
 
     const { generateCsv, csvResponse } = await import('../../utils/csv')
@@ -386,7 +387,8 @@ poCoreRouter.get('/receipts', async (c) => {
       countQuery += ' WHERE ' + countWhereClauses.join(' AND ')
     }
 
-    const { count } = await c.env.DB.prepare(countQuery).bind(...countParams).first() as any
+    const countRow2 = await c.env.DB.prepare(countQuery).bind(...countParams).first<{ count: number }>()
+    const count2 = countRow2?.count ?? 0
 
     return c.json({
       success: true,
@@ -394,8 +396,8 @@ poCoreRouter.get('/receipts', async (c) => {
       pagination: {
         page: parseInt(page),
         limit: safeLimit,
-        total: count,
-        total_pages: Math.ceil(count / safeLimit)
+        total: count2,
+        total_pages: Math.ceil(count2 / safeLimit)
       }
     })
   } catch (error) {
@@ -448,10 +450,11 @@ poCoreRouter.get('/:id/inspections', async (c) => {
     `).bind(id).all()
 
     // receipt_id 기준으로 그룹화
-    const inspectionMap = new Map<number, any>()
-    for (const row of rows as any[]) {
-      if (!inspectionMap.has(row.receipt_id)) {
-        inspectionMap.set(row.receipt_id, {
+    type InspectionRow = Record<string, unknown>
+    const inspectionMap = new Map<number, Record<string, unknown>>()
+    for (const row of rows as InspectionRow[]) {
+      if (!inspectionMap.has(row.receipt_id as number)) {
+        inspectionMap.set(row.receipt_id as number, {
           receipt_id: row.receipt_id,
           receipt_number: row.receipt_number,
           receipt_date: row.receipt_date,
@@ -461,7 +464,7 @@ poCoreRouter.get('/:id/inspections', async (c) => {
           items: []
         })
       }
-      inspectionMap.get(row.receipt_id).items.push({
+      ;(inspectionMap.get(row.receipt_id as number) as Record<string, unknown[]>).items.push({
         item_id: row.item_id,
         inventory_item_id: row.inventory_item_id,
         po_item_id: row.po_item_id,
@@ -514,8 +517,9 @@ poCoreRouter.get('/:id/invoice', async (c) => {
       return c.json({ success: false, error: 'Purchase order not found' }, 404)
     }
 
-    const supplier = (po as any).supplier_id
-      ? await c.env.DB.prepare('SELECT * FROM clients WHERE id = ?').bind((po as any).supplier_id).first()
+    const poRec = po as Record<string, unknown>
+    const supplier = poRec.supplier_id
+      ? await c.env.DB.prepare('SELECT * FROM clients WHERE id = ?').bind(poRec.supplier_id).first()
       : null
 
     const { results: items } = await c.env.DB.prepare(`
@@ -523,7 +527,7 @@ poCoreRouter.get('/:id/invoice', async (c) => {
     `).bind(id).all()
 
     // Get company settings (entity 우선, 폴백 settings)
-    const entityId = (po as any).entity_id || getEntityId(c)
+    const entityId = (poRec.entity_id as number) || getEntityId(c)
     const company = await getEntityCompanyInfo(c.env.DB, entityId)
 
     return c.json({
@@ -607,13 +611,13 @@ poCoreRouter.get('/receiving-queue', async (c) => {
       LIMIT 500
     `
 
-    const { results } = await c.env.DB.prepare(sql).bind(...binds, ...entityFilter(c, 'po').params).all() as any
-    const rows = results || []
+    const { results } = await c.env.DB.prepare(sql).bind(...binds, ...entityFilter(c, 'po').params).all()
+    const rows = (results || []) as Record<string, unknown>[]
 
     // PO 단위 그룹화
-    const poMap = new Map<number, any>()
+    const poMap = new Map<number, Record<string, unknown> & { lines: Record<string, unknown>[] }>()
     for (const r of rows) {
-      const poId = r.po_id
+      const poId = r.po_id as number
       if (!poMap.has(poId)) {
         poMap.set(poId, {
           po_id: poId,
@@ -840,12 +844,12 @@ poCoreRouter.post('/', requireRole('ADMIN', 'MANAGER'), async (c) => {
     const today = new Date()
     const dateStr = today.toISOString().split('T')[0].replace(/-/g, '')
 
-    const { max_seq } = await c.env.DB.prepare(`
+    const seqRow = await c.env.DB.prepare(`
       SELECT COALESCE(MAX(CAST(SUBSTR(po_number, 11) AS INTEGER)), 0) as max_seq
       FROM purchase_orders WHERE po_number LIKE ?
-    `).bind(`${dateStr}-P%`).first() as any
+    `).bind(`${dateStr}-P%`).first<{ max_seq: number }>()
 
-    const poNumber = `${dateStr}-P${String((max_seq || 0) + 1).padStart(3, '0')}`
+    const poNumber = `${dateStr}-P${String((seqRow?.max_seq || 0) + 1).padStart(3, '0')}`
 
     // 금액 계산
     let totalAmount = 0
@@ -908,7 +912,7 @@ poCoreRouter.post('/', requireRole('ADMIN', 'MANAGER'), async (c) => {
       if (item.item_id && !itemName) {
         const itemDetail = await c.env.DB.prepare(`
           SELECT item_name, category, unit FROM items WHERE id = ?
-        `).bind(item.item_id).first() as any
+        `).bind(item.item_id).first<{ item_name: string; category: string; unit: string }>()
         if (itemDetail) {
           itemName = itemDetail.item_name
           categoryName = itemDetail.category
@@ -984,7 +988,7 @@ poCoreRouter.put('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
 
     const po = await c.env.DB.prepare(`
       SELECT * FROM purchase_orders WHERE id = ?
-    `).bind(id).first() as any
+    `).bind(id).first<PurchaseOrder & { delivery_date?: string; delivery_location?: string; discount_amount: number }>()
 
     if (!po) {
       return c.json({ success: false, error: 'Purchase order not found' }, 404)
@@ -1074,8 +1078,8 @@ poCoreRouter.put('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
       data.notes !== undefined ? data.notes : po.notes,
       data.internal_notes !== undefined ? data.internal_notes : po.internal_notes,
       user?.id || 1,
-      data.delivery_date !== undefined ? data.delivery_date : (po as any).delivery_date,
-      data.delivery_location !== undefined ? data.delivery_location : (po as any).delivery_location,
+      data.delivery_date !== undefined ? data.delivery_date : po.delivery_date,
+      data.delivery_location !== undefined ? data.delivery_location : po.delivery_location,
       id
     ).run()
 
@@ -1093,7 +1097,7 @@ poCoreRouter.put('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
       if (item.item_id && !itemName) {
         const itemDetail = await c.env.DB.prepare(`
           SELECT item_name, category, unit FROM items WHERE id = ?
-        `).bind(item.item_id).first() as any
+        `).bind(item.item_id).first<{ item_name: string; category: string; unit: string }>()
         if (itemDetail) {
           itemName = itemDetail.item_name
           categoryName = itemDetail.category
@@ -1153,7 +1157,7 @@ poCoreRouter.patch('/:id/status', requireRole('ADMIN', 'MANAGER'), async (c) => 
 
     const po = await c.env.DB.prepare(`
       SELECT * FROM purchase_orders WHERE id = ?
-    `).bind(id).first() as any
+    `).bind(id).first<PurchaseOrder>()
 
     if (!po) {
       return c.json({ success: false, error: 'Purchase order not found' }, 404)
@@ -1252,7 +1256,7 @@ poCoreRouter.post('/:id/receive', async (c) => {
 
     const po = await c.env.DB.prepare(`
       SELECT * FROM purchase_orders WHERE id = ?
-    `).bind(id).first() as any
+    `).bind(id).first<PurchaseOrder>()
 
     if (!po) {
       return c.json({ success: false, error: 'Purchase order not found' }, 404)
@@ -1269,11 +1273,11 @@ poCoreRouter.post('/:id/receive', async (c) => {
 
     // 입고 번호 생성: RCV-YYYYMMDD-001
     const dateStr = new Date().toISOString().split('T')[0].replace(/-/g, '')
-    const { results: countResults } = await c.env.DB.prepare(`
+    const rcvCountRow = await c.env.DB.prepare(`
       SELECT COUNT(*) as count FROM inventory_receipts WHERE receipt_number LIKE ?
-    `).bind(`RCV-${dateStr}%`).all()
+    `).bind(`RCV-${dateStr}%`).first<{ count: number }>()
 
-    const sequence = (((countResults[0] as any).count || 0) + 1).toString().padStart(3, '0')
+    const sequence = ((rcvCountRow?.count || 0) + 1).toString().padStart(3, '0')
     const receiptNumber = `RCV-${dateStr}-${sequence}`
 
     // po_item 정보 로딩
@@ -1281,9 +1285,10 @@ poCoreRouter.post('/:id/receive', async (c) => {
       SELECT * FROM purchase_order_items WHERE po_id = ?
     `).bind(id).all()
 
-    const poItemMap = new Map<number, any>()
-    for (const pi of poItems as any[]) {
-      poItemMap.set((pi as any).id, pi)
+    type PoItemRow = Record<string, unknown>
+    const poItemMap = new Map<number, PoItemRow>()
+    for (const pi of poItems as PoItemRow[]) {
+      poItemMap.set(pi.id as number, pi)
     }
 
     // 수량 초과 검증 + 입고 총액 계산
@@ -1305,18 +1310,18 @@ poCoreRouter.post('/:id/receive', async (c) => {
       if (Math.abs((acceptedQty + rejectedQty) - receiveQty) > 0.0001) {
         return c.json({
           success: false,
-          error: `품목 '${(poItem as any).item_name}': 합격(${acceptedQty}) + 불합격(${rejectedQty}) = ${acceptedQty + rejectedQty} 이 수령수량(${receiveQty})과 일치하지 않습니다.`
+          error: `품목 '${poItem.item_name}': 합격(${acceptedQty}) + 불합격(${rejectedQty}) = ${acceptedQty + rejectedQty} 이 수령수량(${receiveQty})과 일치하지 않습니다.`
         }, 400)
       }
 
-      const remaining = (poItem as any).quantity - (poItem as any).received_quantity
+      const remaining = Number(poItem.quantity) - Number(poItem.received_quantity)
       if (receiveQty > remaining) {
         return c.json({
           success: false,
-          error: `품목 '${(poItem as any).item_name}': 입고 가능 수량(${remaining})을 초과했습니다. 요청: ${receiveQty}`
+          error: `품목 '${poItem.item_name}': 입고 가능 수량(${remaining})을 초과했습니다. 요청: ${receiveQty}`
         }, 400)
       }
-      receiptTotalAmount += receiveQty * ((poItem as any).unit_price || 0)
+      receiptTotalAmount += receiveQty * (Number(poItem.unit_price) || 0)
     }
 
     // ============================================================================
@@ -1339,11 +1344,11 @@ poCoreRouter.post('/:id/receive', async (c) => {
     let summaryRejected = 0
 
     for (const ri of receiveItems) {
-      const poItem = poItemMap.get(ri.po_item_id) as any
+      const poItem = poItemMap.get(ri.po_item_id)!
       const receiveQty: number = Number(ri.received_quantity ?? ri.quantity ?? 0)
       const acceptedQty: number = ri.accepted_quantity !== undefined ? Number(ri.accepted_quantity) : receiveQty
       const rejectedQty: number = ri.rejected_quantity !== undefined ? Number(ri.rejected_quantity) : 0
-      const unitPrice: number = poItem.unit_price || 0
+      const unitPrice: number = Number(poItem.unit_price) || 0
       const amount = receiveQty * unitPrice
       const qualityStatus = rejectedQty === 0 ? 'PASSED' : acceptedQty === 0 ? 'FAILED' : 'PARTIAL'
 
@@ -1352,7 +1357,7 @@ poCoreRouter.post('/:id/receive', async (c) => {
       if (poItem.item_id && acceptedQty > 0) {
         const invRow = await c.env.DB.prepare(
           `SELECT quantity FROM inventory WHERE item_id = ?`
-        ).bind(poItem.item_id).first() as any
+        ).bind(poItem.item_id).first<{ quantity: number }>()
         const currentStock = Number(invRow?.quantity || 0)
         hasInventoryRow = !!invRow
         balanceAfter = currentStock + acceptedQty
@@ -1360,7 +1365,7 @@ poCoreRouter.post('/:id/receive', async (c) => {
 
       perItemPrep.push({
         poItemId: ri.po_item_id,
-        itemId: poItem.item_id || null,
+        itemId: (poItem.item_id as number) || null,
         receiveQty, acceptedQty, rejectedQty, unitPrice, amount, qualityStatus,
         rejectMemo: ri.reject_memo || null,
         balanceAfter, hasInventoryRow,
@@ -1374,8 +1379,8 @@ poCoreRouter.post('/:id/receive', async (c) => {
     const inspectionStatusForReceipt = summaryRejected === 0 ? 'NORMAL' : 'PENDING_REVIEW'
 
     // 새 PO status 사전 계산 (in-memory, 쓰기 전)
-    const willAllReceived = (poItems as any[]).every((pi: any) => {
-      const match = perItemPrep.find(p => p.poItemId === pi.id)
+    const willAllReceived = (poItems as PoItemRow[]).every((pi) => {
+      const match = perItemPrep.find(p => p.poItemId === (pi.id as number))
       const afterReceived = Number(pi.received_quantity || 0) + (match ? match.receiveQty : 0)
       return afterReceived >= Number(pi.quantity)
     })
@@ -1543,7 +1548,7 @@ poCoreRouter.post('/:id/copy', requireRole('ADMIN', 'MANAGER'), async (c) => {
 
     const po = await c.env.DB.prepare(`
       SELECT * FROM purchase_orders WHERE id = ?
-    `).bind(id).first() as any
+    `).bind(id).first<PurchaseOrder>()
 
     if (!po) {
       return c.json({ success: false, error: 'Purchase order not found' }, 404)
@@ -1557,12 +1562,12 @@ poCoreRouter.post('/:id/copy', requireRole('ADMIN', 'MANAGER'), async (c) => {
     const today = new Date()
     const dateStr = today.toISOString().split('T')[0].replace(/-/g, '')
 
-    const { max_seq } = await c.env.DB.prepare(`
+    const copySeqRow = await c.env.DB.prepare(`
       SELECT COALESCE(MAX(CAST(SUBSTR(po_number, 11) AS INTEGER)), 0) as max_seq
       FROM purchase_orders WHERE po_number LIKE ?
-    `).bind(`${dateStr}-P%`).first() as any
+    `).bind(`${dateStr}-P%`).first<{ max_seq: number }>()
 
-    const newPoNumber = `${dateStr}-P${String((max_seq || 0) + 1).padStart(3, '0')}`
+    const newPoNumber = `${dateStr}-P${String((copySeqRow?.max_seq || 0) + 1).padStart(3, '0')}`
 
     // 새 발주 INSERT (DRAFT 상태, balance 미반영)
     const newPoResult = await c.env.DB.prepare(`
@@ -1590,7 +1595,7 @@ poCoreRouter.post('/:id/copy', requireRole('ADMIN', 'MANAGER'), async (c) => {
     const newPoId = newPoResult.meta.last_row_id
 
     // 품목 복사 (received_quantity=0으로 초기화)
-    for (const item of originalItems as any[]) {
+    for (const item of originalItems as Record<string, unknown>[]) {
       await c.env.DB.prepare(`
         INSERT INTO purchase_order_items (
           po_id, item_id, item_name, category_name,
@@ -1600,16 +1605,16 @@ poCoreRouter.post('/:id/copy', requireRole('ADMIN', 'MANAGER'), async (c) => {
         ) VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?)
       `).bind(
         newPoId,
-        (item as any).item_id || null,
-        (item as any).item_name,
-        (item as any).category_name || null,
-        (item as any).quantity,
-        (item as any).unit || 'EA',
-        (item as any).unit_price || 0,
-        (item as any).amount || 0,
-        (item as any).vat_included,
-        (item as any).sort_order || 0,
-        (item as any).notes || null
+        item.item_id || null,
+        item.item_name,
+        item.category_name || null,
+        item.quantity,
+        item.unit || 'EA',
+        item.unit_price || 0,
+        item.amount || 0,
+        item.vat_included,
+        item.sort_order || 0,
+        item.notes || null
       ).run()
     }
 
@@ -1643,7 +1648,7 @@ poCoreRouter.delete('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
 
     const po = await c.env.DB.prepare(`
       SELECT * FROM purchase_orders WHERE id = ?
-    `).bind(id).first() as any
+    `).bind(id).first<PurchaseOrder>()
 
     if (!po) {
       return c.json({ success: false, error: 'Purchase order not found' }, 404)
@@ -1712,7 +1717,7 @@ poCoreRouter.post('/:id/reorder', requireRole('ADMIN', 'MANAGER'), async (c) => 
     // 원본 PO 조회
     const originalPo = await c.env.DB.prepare(`
       SELECT * FROM purchase_orders WHERE id = ?
-    `).bind(id).first() as any
+    `).bind(id).first<PurchaseOrder & { delivery_location?: string }>()
     if (!originalPo) {
       return c.json({ success: false, error: '원본 발주서를 찾을 수 없습니다.' }, 404)
     }
@@ -1720,13 +1725,13 @@ poCoreRouter.post('/:id/reorder', requireRole('ADMIN', 'MANAGER'), async (c) => 
     // 원본 PO 아이템 조회
     const { results: originalItems } = await c.env.DB.prepare(`
       SELECT * FROM purchase_order_items WHERE po_id = ? ORDER BY sort_order
-    `).bind(id).all() as any
+    `).bind(id).all()
 
     // 새 PO 번호 생성
     const today = new Date().toISOString().slice(0, 10).replace(/-/g, '')
     const lastPo = await c.env.DB.prepare(
       `SELECT po_number FROM purchase_orders WHERE po_number LIKE ? ORDER BY po_number DESC LIMIT 1`
-    ).bind(`${today}-P%`).first() as any
+    ).bind(`${today}-P%`).first<{ po_number: string }>()
     let seq = 1
     if (lastPo) {
       const lastSeq = parseInt(lastPo.po_number.split('-P')[1])
@@ -1826,9 +1831,9 @@ poCoreRouter.post('/quick', requireRole('ADMIN', 'MANAGER'), async (c) => {
     // 자동승인 설정 확인
     const { results: settingsRows } = await c.env.DB.prepare(
       `SELECT setting_key, setting_value FROM settings WHERE setting_key IN ('po_auto_approve_enabled', 'po_auto_approve_limit')`
-    ).all() as any
+    ).all()
     const settingsMap: Record<string, string> = {}
-    for (const s of settingsRows) settingsMap[s.setting_key] = s.setting_value
+    for (const s of settingsRows as Record<string, unknown>[]) settingsMap[s.setting_key as string] = s.setting_value as string
 
     // 금액 계산
     let totalAmount = 0
@@ -1842,7 +1847,7 @@ poCoreRouter.post('/quick', requireRole('ADMIN', 'MANAGER'), async (c) => {
 
     // 자동승인 가능 여부 판단
     const autoApproveEnabled = settingsMap.po_auto_approve_enabled === '1'
-    const autoApproveLimit = parseFloat(settingsMap.po_auto_approve_limit || '0')
+    const autoApproveLimit = Number(settingsMap.po_auto_approve_limit || '0')
     const canAutoApprove = autoApproveEnabled && finalAmount <= autoApproveLimit
     const status = canAutoApprove ? 'CONFIRMED' : 'DRAFT'
 
@@ -1850,7 +1855,7 @@ poCoreRouter.post('/quick', requireRole('ADMIN', 'MANAGER'), async (c) => {
     const today = new Date().toISOString().slice(0, 10).replace(/-/g, '')
     const lastPo = await c.env.DB.prepare(
       `SELECT po_number FROM purchase_orders WHERE po_number LIKE ? ORDER BY po_number DESC LIMIT 1`
-    ).bind(`${today}-P%`).first() as any
+    ).bind(`${today}-P%`).first<{ po_number: string }>()
     let seq = 1
     if (lastPo) {
       const lastSeq = parseInt(lastPo.po_number.split('-P')[1])
