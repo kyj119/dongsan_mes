@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 3 -->
-<!-- last_run_at: 2026-05-13T10:00:00+09:00 -->
+<!-- last_run_area: 4 -->
+<!-- last_run_at: 2026-05-13T11:30:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,10 +8,16 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | 14 |
+| 🆕 new | 15 |
 | ✔️ done | 15 |
 | ❌ rejected | 1 |
 
+> **Area 4 데이터 정합성 (2026-05-13T11:30):**
+> - tax_invoice_items/tax_invoice_orders tax_invoice_id 인덱스 누락 → A-005 자동 수정 (0193 migration)
+> - shipment_items UNIQUE(shipment_id, card_id) 없음 → #31 등록 (HIGH: 카드 중복 출고 가능)
+> - order 삭제 캐스케이드, 상태 머신, 트랜잭션 경계 등 검토 → 기존 코드에서 대부분 적절 처리됨
+> - bank_transactions, inventory_transactions 인덱스 이미 존재 확인 → 추가 조치 불필요
+>
 > **Area 3 UX/기능 감사 (2026-05-13T10:00):**
 > - 출고 → 세금계산서 이동 링크 없음 → #27 등록 (HIGH)
 > - 주문 상세 → 카드 현황 버튼 없음 → #28 등록 (MEDIUM)
@@ -58,6 +64,7 @@
 | F-006 | 주문 상세 모달에 "카드 현황 보기" 버튼 없음 | Area 3 | #28 | 0.5~1h |
 | I-011 | 대시보드 납기 준수율 KPI 카드 없음 | Area 3 | #29 | 2~3h |
 | I-012 | 원단 소모 예측 페이지 검색/필터 없음 | Area 3 | #30 | 1h |
+| D-001 | shipment_items UNIQUE(shipment_id, card_id) 제약 누락 | Area 4 | #31 | 1~2h |
 
 ---
 
@@ -65,6 +72,7 @@
 
 | ID | 제목 | 커밋 | 날짜 |
 |----|------|------|------|
+| A-005 | tax_invoice_items/orders tax_invoice_id 인덱스 추가 (0193 migration) | 1b3a698 | 2026-05-13 |
 | A-004 | models.ts 미사용 타입 8개 제거 (UserSession 등) | 2f94080 | 2026-05-13 |
 | A-003 | hono 4.12.18 + postcss 8.5.14 보안 패치 (JWT CVE 등 7건) | 16b1482 | 2026-05-12 |
 
