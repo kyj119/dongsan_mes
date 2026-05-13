@@ -116,8 +116,8 @@ function renderPending() {
     <div class="border rounded-lg p-4 hover:shadow-md transition cursor-pointer" onclick="viewApprovalDetail(${r.id})">
       <div class="flex justify-between items-start">
         <div>
-          <div class="font-semibold">${r.title}</div>
-          <div class="text-sm text-gray-500 mt-1">${r.request_number} | ${TYPE_MAP[r.type] || r.type} | ${r.requester_name}</div>
+          <div class="font-semibold">${escapeHtml(r.title)}</div>
+          <div class="text-sm text-gray-500 mt-1">${escapeHtml(r.request_number)} | ${TYPE_MAP[r.type] || r.type} | ${escapeHtml(r.requester_name)}</div>
         </div>
         <div class="text-right">
           ${statusBadge(r.status)}
@@ -144,9 +144,9 @@ function renderMyRequests() {
   }
 
   tbody.innerHTML = myRequests.map(r => `<tr class="hover:bg-blue-50 border-b cursor-pointer" onclick="viewApprovalDetail(${r.id})">
-    <td class="px-3 py-2 text-sm font-mono">${r.request_number}</td>
+    <td class="px-3 py-2 text-sm font-mono">${escapeHtml(r.request_number)}</td>
     <td class="px-3 py-2 text-sm">${TYPE_MAP[r.type] || r.type}</td>
-    <td class="px-3 py-2 text-sm">${r.title}</td>
+    <td class="px-3 py-2 text-sm">${escapeHtml(r.title)}</td>
     <td class="px-3 py-2 text-sm text-right">${r.amount ? Number(r.amount).toLocaleString() + '원' : '-'}</td>
     <td class="px-3 py-2 text-sm">${statusBadge(r.status)}</td>
     <td class="px-3 py-2 text-sm">${new Date(r.created_at).toLocaleDateString('ko-KR')}</td>
@@ -165,10 +165,10 @@ function renderAllRequests() {
   }
 
   tbody.innerHTML = allRequests.map(r => `<tr class="hover:bg-blue-50 border-b cursor-pointer" onclick="viewApprovalDetail(${r.id})">
-    <td class="px-3 py-2 text-sm font-mono">${r.request_number}</td>
+    <td class="px-3 py-2 text-sm font-mono">${escapeHtml(r.request_number)}</td>
     <td class="px-3 py-2 text-sm">${TYPE_MAP[r.type] || r.type}</td>
-    <td class="px-3 py-2 text-sm">${r.title}</td>
-    <td class="px-3 py-2 text-sm">${r.requester_name || '-'}</td>
+    <td class="px-3 py-2 text-sm">${escapeHtml(r.title)}</td>
+    <td class="px-3 py-2 text-sm">${escapeHtml(r.requester_name || '-')}</td>
     <td class="px-3 py-2 text-sm text-right">${r.amount ? Number(r.amount).toLocaleString() + '원' : '-'}</td>
     <td class="px-3 py-2 text-sm">${statusBadge(r.status)}</td>
     <td class="px-3 py-2 text-sm">${new Date(r.created_at).toLocaleDateString('ko-KR')}</td>
@@ -205,9 +205,9 @@ function showDetailModal(request, steps, attachments) {
         ${i < steps.length - 1 ? `<div class="w-0.5 flex-1 ${lineClass} border-l-2 mt-1"></div>` : ''}
       </div>
       <div class="flex-1 -mt-0.5">
-        <div class="text-sm font-medium">${s.label || s.step_order + '단계'}</div>
-        <div class="text-xs text-gray-500">${s.approver_name || s.approver_role || '-'}</div>
-        ${s.comment ? `<div class="text-xs text-gray-600 mt-1 bg-gray-50 p-2 rounded">${s.comment}</div>` : ''}
+        <div class="text-sm font-medium">${escapeHtml(s.label || s.step_order + '단계')}</div>
+        <div class="text-xs text-gray-500">${escapeHtml(s.approver_name || s.approver_role || '-')}</div>
+        ${s.comment ? `<div class="text-xs text-gray-600 mt-1 bg-gray-50 p-2 rounded">${escapeHtml(s.comment)}</div>` : ''}
         ${s.acted_at ? `<div class="text-xs text-gray-400 mt-1">${new Date(s.acted_at).toLocaleString('ko-KR')}</div>` : ''}
       </div>
       <div>${statusBadge(s.status)}</div>
@@ -216,16 +216,16 @@ function showDetailModal(request, steps, attachments) {
 
   // 첨부 파일 목록
   const attList = attachments.length > 0
-    ? attachments.map(a => `<div class="text-sm"><i class="fas fa-paperclip mr-1"></i>${a.file_name}</div>`).join('')
+    ? attachments.map(a => `<div class="text-sm"><i class="fas fa-paperclip mr-1"></i>${escapeHtml(a.file_name)}</div>`).join('')
     : '<div class="text-sm text-gray-400">첨부 파일 없음</div>';
 
   let contentHtml = '';
   try {
     const parsed = JSON.parse(request.content || '{}');
     if (typeof parsed === 'object') {
-      contentHtml = Object.entries(parsed).map(([k, v]) => `<div class="text-sm"><span class="font-medium">${k}:</span> ${v}</div>`).join('');
+      contentHtml = Object.entries(parsed).map(([k, v]) => `<div class="text-sm"><span class="font-medium">${escapeHtml(String(k))}:</span> ${escapeHtml(String(v ?? ''))}</div>`).join('');
     }
-  } catch { contentHtml = `<div class="text-sm">${request.content || '-'}</div>`; }
+  } catch { contentHtml = `<div class="text-sm">${escapeHtml(request.content || '-')}</div>`; }
 
   const canApprove = ['PENDING', 'IN_REVIEW'].includes(request.status);
   const canCancel = request.requester_id === currentUser.id && ['DRAFT', 'PENDING'].includes(request.status);
@@ -235,14 +235,14 @@ function showDetailModal(request, steps, attachments) {
       <div class="p-6">
         <div class="flex justify-between items-start mb-4">
           <div>
-            <h3 class="text-lg font-bold">${request.title}</h3>
-            <div class="text-sm text-gray-500">${request.request_number} | ${TYPE_MAP[request.type] || request.type}</div>
+            <h3 class="text-lg font-bold">${escapeHtml(request.title)}</h3>
+            <div class="text-sm text-gray-500">${escapeHtml(request.request_number)} | ${TYPE_MAP[request.type] || request.type}</div>
           </div>
           <button onclick="document.getElementById('approval-detail-modal').remove()" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times text-lg"></i></button>
         </div>
 
         <div class="grid grid-cols-2 gap-4 mb-4 text-sm">
-          <div><span class="text-gray-500">요청자:</span> ${request.requester_name}</div>
+          <div><span class="text-gray-500">요청자:</span> ${escapeHtml(request.requester_name)}</div>
           <div><span class="text-gray-500">금액:</span> ${request.amount ? Number(request.amount).toLocaleString() + '원' : '-'}</div>
           <div><span class="text-gray-500">상태:</span> ${statusBadge(request.status)}</div>
           <div><span class="text-gray-500">요청일:</span> ${new Date(request.created_at).toLocaleDateString('ko-KR')}</div>
@@ -324,7 +324,7 @@ function openNewRequestModal() {
   const existing = document.getElementById('new-request-modal');
   if (existing) existing.remove();
 
-  const tmplOptions = templates.map(t => `<option value="${t.id}" data-type="${t.type}">${t.name} (${TYPE_MAP[t.type] || t.type})</option>`).join('');
+  const tmplOptions = templates.map(t => `<option value="${t.id}" data-type="${escapeHtml(t.type)}">${escapeHtml(t.name)} (${TYPE_MAP[t.type] || escapeHtml(t.type)})</option>`).join('');
 
   const html = `<div id="new-request-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
     <div class="bg-white rounded-lg shadow-xl w-full max-w-lg p-6">
@@ -377,7 +377,7 @@ function onTemplateChange() {
 
   if (tmpl) {
     const steps = JSON.parse(tmpl.steps || '[]');
-    list.innerHTML = steps.map(s => `<div>${s.step_order}. ${s.label} (${s.role_or_user_id})</div>`).join('');
+    list.innerHTML = steps.map(s => `<div>${s.step_order}. ${escapeHtml(s.label)} (${escapeHtml(s.role_or_user_id)})</div>`).join('');
     preview.classList.remove('hidden');
   } else {
     preview.classList.add('hidden');
@@ -442,9 +442,9 @@ function renderTemplates() {
   tbody.innerHTML = templates.map(t => {
     const steps = JSON.parse(t.steps || '[]');
     return `<tr class="hover:bg-blue-50 border-b">
-      <td class="px-3 py-2 text-sm font-medium">${t.name}</td>
-      <td class="px-3 py-2 text-sm">${TYPE_MAP[t.type] || t.type}</td>
-      <td class="px-3 py-2 text-sm">${steps.map(s => s.label).join(' → ')}</td>
+      <td class="px-3 py-2 text-sm font-medium">${escapeHtml(t.name)}</td>
+      <td class="px-3 py-2 text-sm">${TYPE_MAP[t.type] || escapeHtml(t.type)}</td>
+      <td class="px-3 py-2 text-sm">${steps.map(s => escapeHtml(s.label)).join(' → ')}</td>
       <td class="px-3 py-2 text-sm text-center">
         <button onclick="deleteTemplate(${t.id})" class="text-red-600 hover:text-red-700"><i class="fas fa-trash"></i></button>
       </td>
