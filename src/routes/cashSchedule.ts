@@ -6,6 +6,74 @@ import { authMiddleware, requireRole } from '../middleware/auth'
 import { requirePagePermission } from '../middleware/permissions'
 import { entityFilter } from '../utils/entityFilter'
 
+interface DailyAggRow {
+  schedule_date: string
+  flow_type: string
+  status: string
+  total_amount: number | string
+  cnt: number
+}
+
+interface ScheduleItemRow {
+  id: number
+  schedule_date: string
+  flow_type: string
+  source_type: string
+  amount: number | string
+  description: string | null
+  status: string
+  client_id: number | null
+  client_name: string | null
+}
+
+interface BilledOrderRow {
+  id: number
+  client_id: number | null
+  billed_amount: number
+  billed_at: string
+  order_number: string
+  payment_days: number
+  client_name: string | null
+}
+
+interface ConfirmedPORow {
+  id: number
+  supplier_id: number | null
+  final_amount: number
+  po_number: string
+  created_at: string
+  delivery_date: string | null
+  supplier_name: string | null
+  payment_days: number
+}
+
+interface FixedExpenseRow {
+  id: number
+  name: string
+  category: string
+  amount: number
+  payment_day: number | null
+  frequency: string
+  start_date: string | null
+  end_date: string | null
+}
+
+interface ForecastDay {
+  date: string
+  in_amount: number
+  out_amount: number
+  net: number
+  balance: number
+  is_negative: boolean
+}
+
+interface ForecastAggRow {
+  schedule_date: string
+  flow_type: string
+  total_amount: number | string
+  effective_amount: number | string
+}
+
 const cashScheduleRouter = new Hono<HonoEnv>()
 cashScheduleRouter.use('/*', authMiddleware, requirePagePermission('/cash-schedule'))
 
@@ -46,7 +114,7 @@ cashScheduleRouter.get('/schedule/calendar', requireRole('ADMIN', 'MANAGER'), as
     const { year, month } = c.req.query()
     if (!year || !month) return c.json({ success: false, error: 'year, month 파라미터 필요' }, 400)
 
-    const y = parseInt(year), m = parseInt(month)
+    const y = Number(year), m = Number(month)
     const monthStart = `${y}-${String(m).padStart(2, '0')}-01`
     const lastDay = new Date(y, m, 0).getDate()
     const monthEnd = `${y}-${String(m).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`
@@ -59,7 +127,7 @@ cashScheduleRouter.get('/schedule/calendar', requireRole('ADMIN', 'MANAGER'), as
       WHERE schedule_date BETWEEN ? AND ?
       GROUP BY schedule_date, flow_type, status
       ORDER BY schedule_date
-    `).bind(monthStart, monthEnd).all() as any
+    `).bind(monthStart, monthEnd).all<DailyAggRow>()
 
     const { results: items } = await c.env.DB.prepare(`
       SELECT cs.id, cs.schedule_date, cs.flow_type, cs.source_type,
@@ -69,34 +137,35 @@ cashScheduleRouter.get('/schedule/calendar', requireRole('ADMIN', 'MANAGER'), as
       LEFT JOIN clients c ON c.id = cs.client_id
       WHERE cs.schedule_date BETWEEN ? AND ?
       ORDER BY cs.schedule_date, cs.flow_type DESC
-    `).bind(monthStart, monthEnd).all() as any
+    `).bind(monthStart, monthEnd).all<ScheduleItemRow>()
 
-    const days: Record<string, any> = {}
+    interface DayBucket { date: string; in_total: number; out_total: number; in_done: number; out_done: number; items: ScheduleItemRow[] }
+    const days: Record<string, DayBucket> = {}
     for (let d = 1; d <= lastDay; d++) {
       const dateStr = `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`
       days[dateStr] = { date: dateStr, in_total: 0, out_total: 0, in_done: 0, out_done: 0, items: [] }
     }
-    for (const row of daily as any[]) {
+    for (const row of daily) {
       const day = days[row.schedule_date]
       if (!day) continue
       if (row.flow_type === 'IN') {
-        day.in_total += parseFloat(row.total_amount) || 0
-        if (row.status === 'DONE') day.in_done += parseFloat(row.total_amount) || 0
+        day.in_total += Number(row.total_amount) || 0
+        if (row.status === 'DONE') day.in_done += Number(row.total_amount) || 0
       } else {
-        day.out_total += parseFloat(row.total_amount) || 0
-        if (row.status === 'DONE') day.out_done += parseFloat(row.total_amount) || 0
+        day.out_total += Number(row.total_amount) || 0
+        if (row.status === 'DONE') day.out_done += Number(row.total_amount) || 0
       }
     }
-    for (const item of items as any[]) {
+    for (const item of items) {
       const day = days[item.schedule_date]
       if (day) day.items.push(item)
     }
 
     const summary = {
-      in_total: Object.values(days).reduce((s, d: any) => s + d.in_total, 0),
-      out_total: Object.values(days).reduce((s, d: any) => s + d.out_total, 0),
-      in_done: Object.values(days).reduce((s, d: any) => s + d.in_done, 0),
-      out_done: Object.values(days).reduce((s, d: any) => s + d.out_done, 0),
+      in_total: Object.values(days).reduce((s, d) => s + d.in_total, 0),
+      out_total: Object.values(days).reduce((s, d) => s + d.out_total, 0),
+      in_done: Object.values(days).reduce((s, d) => s + d.in_done, 0),
+      out_done: Object.values(days).reduce((s, d) => s + d.out_done, 0),
     }
 
     return c.json({ success: true, data: { year: y, month: m, days, summary } })
@@ -128,7 +197,11 @@ cashScheduleRouter.get('/schedule/day/:date', requireRole('ADMIN', 'MANAGER'), a
 cashScheduleRouter.post('/schedule', requireRole('ADMIN', 'MANAGER'), async (c) => {
   try {
     const user = c.get('user')
-    const body = await c.req.json() as any
+    const body = await c.req.json<{
+      schedule_date?: string; flow_type?: string; source_type?: string
+      source_id?: number; client_id?: number; amount?: number
+      description?: string; notes?: string
+    }>()
     if (!body.schedule_date || !body.flow_type || !body.amount) {
       return c.json({ success: false, error: '필수 항목 누락' }, 400)
     }
@@ -154,9 +227,9 @@ cashScheduleRouter.post('/schedule', requireRole('ADMIN', 'MANAGER'), async (c) 
 cashScheduleRouter.patch('/schedule/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
   try {
     const id = c.req.param('id')
-    const body = await c.req.json() as any
+    const body = await c.req.json<Record<string, unknown>>()
     const updates: string[] = []
-    const params: any[] = []
+    const params: any[] = [] // dynamic SQL bind values
 
     for (const field of ['schedule_date', 'amount', 'description', 'notes', 'status', 'actual_date', 'actual_amount']) {
       if (body[field] !== undefined) {
@@ -216,7 +289,7 @@ cashScheduleRouter.post('/schedule/auto-generate', requireRole('ADMIN'), async (
     const user = c.get('user')
     let inserted = 0
 
-    const batchStmts: any[] = []
+    const batchStmts: D1PreparedStatement[] = []
 
     const ef = entityFilter(c, 'o')
 
@@ -233,7 +306,7 @@ cashScheduleRouter.post('/schedule/auto-generate', requireRole('ADMIN'), async (
           WHERE cs.source_type = 'ORDER' AND cs.source_id = o.id
         )
       LIMIT 500
-    `).bind(...ef.params).all() as any
+    `).bind(...ef.params).all<BilledOrderRow>()
 
     for (const order of billedOrders) {
       const billedDate = new Date(order.billed_at)
@@ -267,7 +340,7 @@ cashScheduleRouter.post('/schedule/auto-generate', requireRole('ADMIN'), async (
           WHERE cs.source_type = 'PURCHASE' AND cs.source_id = po.id
         )
       LIMIT 500
-    `).bind(...entityFilter(c, 'po').params).all() as any
+    `).bind(...entityFilter(c, 'po').params).all<ConfirmedPORow>()
 
     for (const po of confirmedPOs) {
       const baseDate = po.delivery_date || po.created_at
@@ -292,7 +365,7 @@ cashScheduleRouter.post('/schedule/auto-generate', requireRole('ADMIN'), async (
     const { results: fixedExpenses } = await c.env.DB.prepare(`
       SELECT id, name, category, amount, payment_day, frequency, start_date, end_date
       FROM fixed_expenses WHERE is_active = 1 LIMIT 100
-    `).all() as any
+    `).all<FixedExpenseRow>()
 
     const today = new Date()
     const futureMonths = 3
@@ -303,11 +376,11 @@ cashScheduleRouter.post('/schedule/auto-generate', requireRole('ADMIN'), async (
         const dateStr = targetDate.toISOString().substring(0, 10)
 
         if (fe.frequency === 'QUARTERLY') {
-          const startMonth = parseInt((fe.start_date || '').split('-')[1] || '1')
+          const startMonth = Number((fe.start_date || '').split('-')[1] || '1')
           if ((targetDate.getMonth() + 1 - startMonth) % 3 !== 0) continue
         }
         if (fe.frequency === 'YEARLY') {
-          const startMonth = parseInt((fe.start_date || '').split('-')[1] || '1')
+          const startMonth = Number((fe.start_date || '').split('-')[1] || '1')
           if (targetDate.getMonth() + 1 !== startMonth) continue
         }
 
@@ -336,7 +409,7 @@ cashScheduleRouter.post('/schedule/auto-generate', requireRole('ADMIN'), async (
     if (batchStmts.length > 0) {
       const batchResults = await c.env.DB.batch(batchStmts)
       // 실제 삽입 수 재집계 (NOT EXISTS로 스킵된 건 제외)
-      inserted = batchResults.reduce((sum: number, r: any) => sum + (r.meta?.changes || 0), 0)
+      inserted = batchResults.reduce((sum, r) => sum + (r.meta?.changes || 0), 0)
     }
 
     return c.json({ success: true, data: { inserted }, message: `${inserted}건이 자동 생성되었습니다.` })
@@ -365,8 +438,8 @@ cashScheduleRouter.post('/schedule/check-overdue', requireRole('ADMIN', 'MANAGER
 // A2: 추정 자금 일보 — 향후 N일 잔액 예측
 cashScheduleRouter.get('/schedule/forecast', requireRole('ADMIN', 'MANAGER'), async (c) => {
   try {
-    const days = parseInt(c.req.query('days') || '90')
-    const startBalance = parseFloat(c.req.query('start_balance') || '0')
+    const days = Number(c.req.query('days') || '90')
+    const startBalance = Number(c.req.query('start_balance') || '0')
 
     const today = new Date().toISOString().substring(0, 10)
     const endDate = new Date(Date.now() + days * 86400000).toISOString().substring(0, 10)
@@ -380,16 +453,16 @@ cashScheduleRouter.get('/schedule/forecast', requireRole('ADMIN', 'MANAGER'), as
         AND status != 'CANCELLED'
       GROUP BY schedule_date, flow_type
       ORDER BY schedule_date
-    `).bind(today, endDate).all() as any
+    `).bind(today, endDate).all<ForecastAggRow>()
 
     const dayMap: Record<string, { in: number, out: number }> = {}
-    for (const row of dailyAgg as any[]) {
+    for (const row of dailyAgg) {
       if (!dayMap[row.schedule_date]) dayMap[row.schedule_date] = { in: 0, out: 0 }
-      if (row.flow_type === 'IN') dayMap[row.schedule_date].in += parseFloat(row.effective_amount) || 0
-      else dayMap[row.schedule_date].out += parseFloat(row.effective_amount) || 0
+      if (row.flow_type === 'IN') dayMap[row.schedule_date].in += Number(row.effective_amount) || 0
+      else dayMap[row.schedule_date].out += Number(row.effective_amount) || 0
     }
 
-    const forecast: any[] = []
+    const forecast: ForecastDay[] = []
     let runningBalance = startBalance
     const todayDate = new Date(today)
     for (let i = 0; i <= days; i++) {

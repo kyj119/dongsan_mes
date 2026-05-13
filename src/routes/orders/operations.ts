@@ -9,6 +9,43 @@ import { recalculateOrderCosts } from '../../utils/costCalculator'
 import { sendEmail } from '../../services/emailProvider'
 import { getEntityId } from '../../utils/entityFilter'
 
+// ---------- D1 row shapes ----------
+interface OrderCopyRow {
+  id: number; client_id: number; order_number: string; status: string
+  order_year: number; order_month: number
+  reception_location: string | null; delivery_info: string | null; delivery_date: string | null
+  total_amount: number; vat_amount: number; discount_amount: number; final_amount: number
+  notes: string | null; internal_notes: string | null
+  priority: string | null; delivery_method: string | null; delivery_time: string | null
+  contact_phone: string | null; contact_mobile: string | null; shipping_payment: string | null
+}
+interface OrderItemCopyRow {
+  id: number; order_id: number; item_id: number | null
+  item_name: string; category_name: string | null
+  width: number | null; height: number | null; quantity: number; unit: string
+  unit_price: number; amount: number; vat_included: number
+  post_processing: string | null; content: string | null; sort_order: number
+  scale_factor: number; ai_group_index: number | null; parent_item_id: number | null
+}
+interface MaxSeqRow { max_seq: number }
+interface QuotationRow {
+  id: number; order_number: string; status: string
+  valid_until: string | null; client_id: number; final_amount: number
+}
+interface OrderEmailRow {
+  id: number; order_number: string; order_date: string; delivery_date: string | null
+  client_name: string; representative: string | null; client_email: string | null; client_balance: number
+  total_amount: number; vat_amount: number; discount_amount: number; final_amount: number
+  notes: string | null; valid_until: string | null
+  client_id: number; status: string
+}
+interface EmailItemRow {
+  item_name: string; width: number | null; height: number | null
+  quantity: number; unit: string; unit_price: number; amount: number; vat_included: number
+}
+interface SettingRow { setting_key: string; setting_value: string | null }
+interface SettingValueRow { setting_value: string | null }
+
 const ordersOpsRouter = new Hono<HonoEnv>()
 ordersOpsRouter.use('/*', authMiddleware, requireAnyPagePermission('/orders', '/cards'))
 
@@ -20,7 +57,7 @@ ordersOpsRouter.post('/:id/copy', requireRole('ADMIN', 'MANAGER', 'DESIGNER'), a
     // Get original order
     const original = await c.env.DB.prepare(`
       SELECT * FROM orders WHERE id = ?
-    `).bind(id).first() as any
+    `).bind(id).first<OrderCopyRow>()
 
     if (!original) {
       return c.json({ success: false, error: 'Order not found' }, 404)
@@ -29,7 +66,7 @@ ordersOpsRouter.post('/:id/copy', requireRole('ADMIN', 'MANAGER', 'DESIGNER'), a
     // Get original order items
     const { results: originalItems } = await c.env.DB.prepare(`
       SELECT * FROM order_items WHERE order_id = ? ORDER BY sort_order ASC
-    `).bind(id).all() as any
+    `).bind(id).all<OrderItemCopyRow>()
 
     // Generate new order number
     const today = new Date()
@@ -38,12 +75,12 @@ ordersOpsRouter.post('/:id/copy', requireRole('ADMIN', 'MANAGER', 'DESIGNER'), a
       String(today.getDate()).padStart(2, '0')
 
     // MAX 기반: 삭제된 주문이 있어도 시퀀스가 겹치지 않음
-    const { max_seq } = await c.env.DB.prepare(`
+    const seqRow = await c.env.DB.prepare(`
       SELECT COALESCE(MAX(CAST(SUBSTR(order_number, 10) AS INTEGER)), 0) as max_seq
       FROM orders WHERE order_number LIKE ?
-    `).bind(`${dateStr}-%`).first() as any
+    `).bind(`${dateStr}-%`).first<MaxSeqRow>()
 
-    const newOrderNumber = `${dateStr}-${String((max_seq || 0) + 1).padStart(3, '0')}`
+    const newOrderNumber = `${dateStr}-${String((seqRow?.max_seq || 0) + 1).padStart(3, '0')}`
 
     // Insert new order
     const orderResult = await c.env.DB.prepare(`
@@ -180,7 +217,7 @@ ordersOpsRouter.post('/:id/convert-to-order', requireRole('ADMIN', 'MANAGER'), a
     const order = await c.env.DB.prepare(`
       SELECT id, order_number, status, valid_until, client_id, final_amount
       FROM orders WHERE id = ?
-    `).bind(id).first() as any
+    `).bind(id).first<QuotationRow>()
 
     if (!order) {
       return c.json({ success: false, error: 'Order not found' }, 404)
@@ -256,7 +293,7 @@ ordersOpsRouter.post('/:id/send-email', requireRole('ADMIN', 'MANAGER'), async (
       FROM orders o
       LEFT JOIN clients c ON o.client_id = c.id
       WHERE o.id = ?
-    `).bind(id).first() as any
+    `).bind(id).first<OrderEmailRow>()
 
     if (!order) {
       return c.json({ success: false, error: 'Order not found' }, 404)
@@ -268,15 +305,15 @@ ordersOpsRouter.post('/:id/send-email', requireRole('ADMIN', 'MANAGER'), async (
       FROM order_items
       WHERE order_id = ? AND parent_item_id IS NULL
       ORDER BY sort_order ASC
-    `).bind(id).all() as any
+    `).bind(id).all<EmailItemRow>()
 
     // 회사 settings 조회
     const { results: settingsRows } = await c.env.DB.prepare(
       'SELECT setting_key, setting_value FROM settings'
-    ).all()
+    ).all<SettingRow>()
     const company: Record<string, string> = {}
-    for (const row of settingsRows as any[]) {
-      company[(row as any).setting_key] = (row as any).setting_value || ''
+    for (const row of settingsRows) {
+      company[row.setting_key] = row.setting_value || ''
     }
 
     const companyName = company.company_name || '동산현수막'
@@ -296,7 +333,7 @@ ordersOpsRouter.post('/:id/send-email', requireRole('ADMIN', 'MANAGER'), async (
     const formatAmount = (v: number) => Math.round(v).toLocaleString('ko-KR')
 
     // 품목 테이블 행 생성
-    const itemRows = (items as any[]).map((item: any) => {
+    const itemRows = items.map((item) => {
       const sizeStr = item.width && item.height
         ? `${item.width}x${item.height}cm`
         : ''
@@ -369,10 +406,10 @@ ordersOpsRouter.post('/:id/send-email', requireRole('ADMIN', 'MANAGER'), async (
       const { generatePortalToken } = await import('../portal')
       const siteUrlSetting = await c.env.DB.prepare(
         `SELECT setting_value FROM settings WHERE setting_key = 'site_base_url'`
-      ).first() as any
+      ).first<SettingValueRow>()
       const baseUrl = siteUrlSetting?.setting_value || new URL(c.req.url).origin
       const portalResult = await generatePortalToken(c.env.DB, order.client_id, user?.id || 0, baseUrl, 7,
-        { type: 'invoice', order_id: parseInt(id) })
+        { type: 'invoice', order_id: Number(id) })
       portalLink = `${baseUrl}/portal/document?t=${portalResult.token}`
     } catch (_) { /* 포털 링크 생성 실패는 무시 */ }
 
@@ -392,7 +429,7 @@ ordersOpsRouter.post('/:id/send-email', requireRole('ADMIN', 'MANAGER'), async (
     }, {
       template: isQuotation ? 'QUOTATION' : 'INVOICE',
       relatedType: 'ORDER',
-      relatedId: parseInt(id),
+      relatedId: Number(id),
       sentBy: user?.id
     })
 

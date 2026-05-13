@@ -1,12 +1,13 @@
 import { Hono } from 'hono'
 import type { HonoEnv } from '../types/env'
+import type { D1Database } from '@cloudflare/workers-types'
 import { authMiddleware } from '../middleware/auth'
 
 const notificationsRouter = new Hono<HonoEnv>()
 notificationsRouter.use('/*', authMiddleware)
 
 // ── Helper: 중복 방지 알림 생성 (당일 동일 title 스킵) ──
-async function createIfNotExists(db: any, targetRole: string, title: string, message: string, link: string) {
+async function createIfNotExists(db: D1Database, targetRole: string, title: string, message: string, link: string) {
   const existing = await db.prepare(
     `SELECT id FROM notifications WHERE target_role = ? AND title = ? AND date(created_at) = date('now') LIMIT 1`
   ).bind(targetRole, title).first()
@@ -21,7 +22,7 @@ notificationsRouter.get('/', async (c) => {
   try {
     const user = c.get('user')
     const { limit = '20', unread_only = '' } = c.req.query()
-    const safeLimit = Math.min(parseInt(limit) || 20, 50)
+    const safeLimit = Math.min(Number(limit) || 20, 50)
 
     let query = `SELECT * FROM notifications WHERE (user_id = ? OR (user_id IS NULL AND target_role = ?))`
     const params: any[] = [user.id, user.role]
@@ -37,7 +38,7 @@ notificationsRouter.get('/', async (c) => {
 
     const countResult = await c.env.DB.prepare(
       `SELECT COUNT(*) as count FROM notifications WHERE (user_id = ? OR (user_id IS NULL AND target_role = ?)) AND is_read = 0`
-    ).bind(user.id, user.role).first() as any
+    ).bind(user.id, user.role).first<{ count: number }>()
 
     return c.json({
       success: true,
@@ -56,7 +57,7 @@ notificationsRouter.get('/unread-count', async (c) => {
     const user = c.get('user')
     const result = await c.env.DB.prepare(
       `SELECT COUNT(*) as count FROM notifications WHERE (user_id = ? OR (user_id IS NULL AND target_role = ?)) AND is_read = 0`
-    ).bind(user.id, user.role).first() as any
+    ).bind(user.id, user.role).first<{ count: number }>()
 
     return c.json({ success: true, count: result?.count || 0 })
   } catch (error) {
@@ -80,11 +81,11 @@ notificationsRouter.get('/nav-badges', async (c) => {
     const efPOParams = (entityId && entityId > 0) ? [entityId] : []
 
     const [orders, receivables, pr, inspPr, inspOverdue, myReceiving] = await Promise.all([
-      db.prepare(`SELECT COUNT(*) as cnt FROM orders WHERE status = 'CONFIRMED'${efOrders}`).bind(...efOrdersParams).first() as any,
-      db.prepare(`SELECT COUNT(DISTINCT client_id) as cnt FROM orders WHERE status != 'CANCELLED'${efOrders} GROUP BY client_id HAVING SUM(final_amount) - COALESCE((SELECT SUM(amount) FROM payments WHERE payments.client_id = orders.client_id), 0) > 0 AND MIN(created_at) < datetime('now', '-30 days')`).bind(...efOrdersParams).all().then((r: any) => ({ cnt: r.results?.length || 0 })),
-      db.prepare(`SELECT COUNT(*) as cnt FROM purchase_requests WHERE status = 'PENDING'`).first() as any,
-      db.prepare(`SELECT COUNT(*) as cnt FROM inventory_receipts WHERE inspection_status = 'PENDING_REVIEW'`).first() as any,
-      db.prepare(`SELECT COUNT(*) as cnt FROM inventory_receipts WHERE inspection_status IS NULL AND status != 'CANCELLED' AND created_at <= datetime('now', '-24 hours')`).first() as any,
+      db.prepare(`SELECT COUNT(*) as cnt FROM orders WHERE status = 'CONFIRMED'${efOrders}`).bind(...efOrdersParams).first<{ cnt: number }>(),
+      db.prepare(`SELECT COUNT(DISTINCT client_id) as cnt FROM orders WHERE status != 'CANCELLED'${efOrders} GROUP BY client_id HAVING SUM(final_amount) - COALESCE((SELECT SUM(amount) FROM payments WHERE payments.client_id = orders.client_id), 0) > 0 AND MIN(created_at) < datetime('now', '-30 days')`).bind(...efOrdersParams).all().then((r) => ({ cnt: r.results?.length || 0 })),
+      db.prepare(`SELECT COUNT(*) as cnt FROM purchase_requests WHERE status = 'PENDING'`).first<{ cnt: number }>(),
+      db.prepare(`SELECT COUNT(*) as cnt FROM inventory_receipts WHERE inspection_status = 'PENDING_REVIEW'`).first<{ cnt: number }>(),
+      db.prepare(`SELECT COUNT(*) as cnt FROM inventory_receipts WHERE inspection_status IS NULL AND status != 'CANCELLED' AND created_at <= datetime('now', '-24 hours')`).first<{ cnt: number }>(),
       // nav-badge-my-receiving: 내 담당 창고 입고 대기 라인 수
       db.prepare(`
         SELECT COUNT(*) as cnt
@@ -95,7 +96,7 @@ notificationsRouter.get('/nav-badges', async (c) => {
         WHERE poi.line_status IN ('PENDING','PARTIAL')
           AND po.status IN ('CONFIRMED','PARTIAL_RECEIVED')
           AND (sz.manager_id = ? ${supervisorClause})${efPO}
-      `).bind(user?.id || 0, ...efPOParams).first() as any,
+      `).bind(user?.id || 0, ...efPOParams).first<{ cnt: number }>(),
     ])
     const inspTotal = (inspPr?.cnt || 0) + (inspOverdue?.cnt || 0)
     return c.json({
@@ -158,22 +159,22 @@ notificationsRouter.post('/generate', async (c) => {
         AND o.delivery_date IS NOT NULL
         AND o.delivery_date <= ?
       ORDER BY o.delivery_date ASC LIMIT 10
-    `).bind(tomorrow).all() as any
+    `).bind(tomorrow).all()
 
     if (dueOrders && dueOrders.length > 0) {
-      const overdue = dueOrders.filter((o: any) => o.delivery_date <= today)
-      const dueSoon = dueOrders.filter((o: any) => o.delivery_date > today)
+      const overdue = dueOrders.filter((o) => (o.delivery_date as string) <= today)
+      const dueSoon = dueOrders.filter((o) => (o.delivery_date as string) > today)
 
       if (overdue.length > 0) {
         await createIfNotExists(db, 'MANAGER',
           `납기 지연 ${overdue.length}건`,
-          overdue.slice(0, 3).map((o: any) => `${o.order_number} (${o.client_name})`).join(', '),
+          overdue.slice(0, 3).map((o) => `${o.order_number} (${o.client_name})`).join(', '),
           '/orders')
       }
       if (dueSoon.length > 0) {
         await createIfNotExists(db, 'MANAGER',
           `내일 납기 ${dueSoon.length}건`,
-          dueSoon.slice(0, 3).map((o: any) => `${o.order_number} (${o.client_name})`).join(', '),
+          dueSoon.slice(0, 3).map((o) => `${o.order_number} (${o.client_name})`).join(', '),
           '/orders')
       }
     }
@@ -183,9 +184,9 @@ notificationsRouter.post('/generate', async (c) => {
       SELECT COUNT(*) as cnt FROM purchase_orders
       WHERE status IN ('CONFIRMED','PARTIAL_RECEIVED')
         AND expected_date IS NOT NULL AND expected_date < ?
-    `).bind(today).first() as any
+    `).bind(today).first<{ cnt: number }>()
 
-    if (overduePoResult?.cnt > 0) {
+    if (overduePoResult?.cnt && overduePoResult.cnt > 0) {
       await createIfNotExists(db, 'MANAGER',
         `발주 납기 초과 ${overduePoResult.cnt}건`,
         '입고 대기 중인 발주서의 납기가 지났습니다.',
@@ -201,9 +202,9 @@ notificationsRouter.post('/generate', async (c) => {
         SELECT id FROM maintenance_schedules
         WHERE is_active = 1 AND next_due_at IS NOT NULL AND next_due_at <= ?
       )
-    `).bind(tomorrow, tomorrow).first() as any
+    `).bind(tomorrow, tomorrow).first<{ cnt: number }>()
 
-    if (alertResult?.cnt > 0) {
+    if (alertResult?.cnt && alertResult.cnt > 0) {
       await createIfNotExists(db, 'MANAGER',
         `장비 정비/소모품 알림 ${alertResult.cnt}건`,
         '교체 또는 정비 기한이 도래한 항목이 있습니다.',
@@ -214,9 +215,9 @@ notificationsRouter.post('/generate', async (c) => {
     const lowStockResult = await db.prepare(`
       SELECT COUNT(*) as cnt FROM inventory
       WHERE reorder_point > 0 AND quantity <= reorder_point
-    `).first() as any
+    `).first<{ cnt: number }>()
 
-    if (lowStockResult?.cnt > 0) {
+    if (lowStockResult?.cnt && lowStockResult.cnt > 0) {
       await createIfNotExists(db, 'MANAGER',
         `재고 부족 ${lowStockResult.cnt}개 품목`,
         '재주문점 이하로 떨어진 재고 품목이 있습니다.',
