@@ -1,4 +1,5 @@
 import type { AuthUser } from './models'
+import type { PortalUser } from '../middleware/portalAuth'
 
 // Cloudflare environment bindings
 export type Bindings = {
@@ -20,5 +21,6 @@ export type HonoEnv = {
   Variables: {
     user: AuthUser;
     entityId: number;
+    portalUser: PortalUser;
   };
 };

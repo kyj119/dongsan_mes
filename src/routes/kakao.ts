@@ -1,7 +1,41 @@
 import { Hono } from 'hono'
+import type { Context } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
 import { createKakaoProvider, KakaoProvider, SMSMessage, ATSMessage } from '../services/kakaoProvider'
+
+// ────────────────────────────────────────────────────────────────────────────
+// D1 row types
+// ────────────────────────────────────────────────────────────────────────────
+interface SettingRow { setting_value: string | null }
+interface EntityRow { popbill_corp_num: string | null; business_reg_no: string | null }
+interface SettingKVRow { setting_key: string; setting_value: string | null }
+interface IdRow { id: number }
+interface CountRow { total: number }
+interface ClientRow { id: number; client_name: string | null; mobile: string | null }
+
+interface ShipmentJoinRow {
+  id: number; order_number: string | null; client_name: string | null;
+  mobile: string | null; client_id: number | null;
+  [key: string]: unknown;
+}
+
+interface TaxInvoiceJoinRow {
+  id: number; invoice_number: string | null; client_name: string | null;
+  mobile: string | null; client_id: number | null;
+  [key: string]: unknown;
+}
+
+interface KakaoLogRow {
+  id: number; receipt_num: string | null; template_code: string | null;
+  receiver_num: string | null; receiver_name: string | null;
+  related_type: string | null; related_id: number | null;
+  client_id: number | null; client_name: string | null;
+  content: string | null; status: string | null;
+  result_code: string | null; result_message: string | null;
+  channel: string | null; sent_by: number | null;
+  user_name: string | null; created_at: string | null;
+}
 
 const kakaoRouter = new Hono<HonoEnv>()
 kakaoRouter.use('/*', authMiddleware, requireRole('ADMIN', 'MANAGER'))
@@ -9,22 +43,22 @@ kakaoRouter.use('/*', authMiddleware, requireRole('ADMIN', 'MANAGER'))
 // ────────────────────────────────────────────────────────────────────────────
 // 공통 헬퍼: 카카오 Provider 인스턴스 생성
 // ────────────────────────────────────────────────────────────────────────────
-export async function getKakaoProvider(c: any): Promise<KakaoProvider | null> {
+export async function getKakaoProvider(c: Context<HonoEnv>): Promise<KakaoProvider | null> {
   try {
     const db = c.env.DB
-    const entityId = c.get?.('entityId') || 1
+    const entityId = c.get('entityId') || 1
 
     // 팝빌 연동 설정 확인
     const linkedIdSetting = await db.prepare(
       `SELECT setting_value FROM settings WHERE setting_key = 'tax_provider_linked_id'`
-    ).first() as any
+    ).first<SettingRow>()
     const secretKey = c.env.POPBILL_SECRET_KEY
 
     // entities 테이블에서 corpNum 조회 (우선), 폴백: settings
     let brn = ''
     const entity = await db.prepare(
       'SELECT popbill_corp_num, business_reg_no FROM entities WHERE id = ?'
-    ).bind(entityId).first() as any
+    ).bind(entityId).first<EntityRow>()
     if (entity?.popbill_corp_num) {
       brn = entity.popbill_corp_num
     } else if (entity?.business_reg_no) {
@@ -32,7 +66,7 @@ export async function getKakaoProvider(c: any): Promise<KakaoProvider | null> {
     } else {
       const companyBrn = await db.prepare(
         `SELECT setting_value FROM settings WHERE setting_key = 'company_business_registration_number'`
-      ).first() as any
+      ).first<SettingRow>()
       brn = (companyBrn?.setting_value || '').replace(/-/g, '')
     }
 
@@ -43,7 +77,7 @@ export async function getKakaoProvider(c: any): Promise<KakaoProvider | null> {
     // 테스트 모드 확인
     const testModeSetting = await db.prepare(
       `SELECT setting_value FROM settings WHERE setting_key = 'tax_test_mode'`
-    ).first() as any
+    ).first<SettingRow>()
     const isTestMode = testModeSetting?.setting_value === '1'
 
     return createKakaoProvider(linkedIdSetting.setting_value, secretKey, brn, isTestMode)
@@ -63,11 +97,11 @@ export interface KakaoSettings {
   altSendType: string
 }
 
-export async function getKakaoSettings(db: any): Promise<KakaoSettings> {
+export async function getKakaoSettings(db: D1Database): Promise<KakaoSettings> {
   const { results } = await db.prepare(
     `SELECT setting_key, setting_value FROM settings
      WHERE setting_key IN ('kakao_enabled', 'kakao_sender_num', 'kakao_channel_id', 'kakao_alt_send_type')`
-  ).all() as any
+  ).all<SettingKVRow>()
 
   const map: Record<string, string> = {}
   for (const r of results) map[r.setting_key] = r.setting_value || ''
@@ -95,9 +129,9 @@ kakaoRouter.get('/settings', async (c) => {
          'email_enabled', 'email_from_name', 'email_from_address',
          'fax_enabled', 'fax_sender_num'
        )`
-    ).all() as any
+    ).all<SettingKVRow>()
 
-    const settings: Record<string, any> = {}
+    const settings: Record<string, string> = {}
     for (const row of settingRows) {
       if (row.setting_key === 'kakao_enabled') {
         settings[row.setting_key] = row.setting_value || '0'
@@ -109,7 +143,7 @@ kakaoRouter.get('/settings', async (c) => {
     // 팝빌 연동 여부 확인
     const linkedIdSetting = await db.prepare(
       `SELECT setting_value FROM settings WHERE setting_key = 'tax_provider_linked_id'`
-    ).first() as any
+    ).first<SettingRow>()
     const popbillConfigured = !!linkedIdSetting?.setting_value && !!c.env.POPBILL_SECRET_KEY
 
     return c.json({
@@ -139,7 +173,7 @@ kakaoRouter.get('/settings', async (c) => {
 kakaoRouter.patch('/settings', async (c) => {
   try {
     const db = c.env.DB
-    const body = await c.req.json() as any
+    const body = await c.req.json() as any // TODO: #17 — external request body
 
     // 입력 유효성 검사
     const kakaoEnabled = body.kakao_enabled
@@ -174,7 +208,7 @@ kakaoRouter.patch('/settings', async (c) => {
     for (const setting of settingsToUpdate) {
       const existing = await db.prepare(
         `SELECT id FROM settings WHERE setting_key = ?`
-      ).bind(setting.key).first() as any
+      ).bind(setting.key).first<IdRow>()
 
       if (existing) {
         await db.prepare(
@@ -247,7 +281,7 @@ kakaoRouter.get('/balance', async (c) => {
 kakaoRouter.post('/send', async (c) => {
   try {
     const db = c.env.DB
-    const body = await c.req.json() as any
+    const body = await c.req.json() as any // TODO: #17 — external request body
     const userId = c.get('user').id
 
     // 필수 파라미터 확인
@@ -318,7 +352,7 @@ kakaoRouter.post('/send', async (c) => {
       sendResult.code,
       sendResult.message,
       userId
-    ).run() as any
+    ).run()
 
     return c.json({
       success: true,
@@ -342,7 +376,7 @@ kakaoRouter.post('/send', async (c) => {
 kakaoRouter.post('/send-shipment', async (c) => {
   try {
     const db = c.env.DB
-    const body = await c.req.json() as any
+    const body = await c.req.json() as any // TODO: #17 — external request body
     const userId = c.get('user').id
 
     const shipmentId = body.shipment_id
@@ -357,7 +391,7 @@ kakaoRouter.post('/send-shipment', async (c) => {
        LEFT JOIN orders o ON s.order_id = o.id
        LEFT JOIN clients c ON o.client_id = c.id
        WHERE s.id = ?`
-    ).bind(shipmentId).first() as any
+    ).bind(shipmentId).first<ShipmentJoinRow>()
 
     if (!shipment) {
       return c.json({ success: false, error: '출고 정보를 찾을 수 없습니다.' }, 400)
@@ -426,7 +460,7 @@ kakaoRouter.post('/send-shipment', async (c) => {
       sendResult.code,
       sendResult.message,
       userId
-    ).run() as any
+    ).run()
 
     return c.json({
       success: true,
@@ -450,7 +484,7 @@ kakaoRouter.post('/send-shipment', async (c) => {
 kakaoRouter.post('/send-tax-invoice', async (c) => {
   try {
     const db = c.env.DB
-    const body = await c.req.json() as any
+    const body = await c.req.json() as any // TODO: #17 — external request body
     const userId = c.get('user').id
 
     const taxInvoiceId = body.tax_invoice_id
@@ -464,7 +498,7 @@ kakaoRouter.post('/send-tax-invoice', async (c) => {
        FROM tax_invoices ti
        LEFT JOIN clients c ON ti.client_id = c.id
        WHERE ti.id = ?`
-    ).bind(taxInvoiceId).first() as any
+    ).bind(taxInvoiceId).first<TaxInvoiceJoinRow>()
 
     if (!taxInvoice) {
       return c.json({ success: false, error: '세금계산서를 찾을 수 없습니다.' }, 400)
@@ -533,7 +567,7 @@ kakaoRouter.post('/send-tax-invoice', async (c) => {
       sendResult.code,
       sendResult.message,
       userId
-    ).run() as any
+    ).run()
 
     return c.json({
       success: true,
@@ -557,7 +591,7 @@ kakaoRouter.post('/send-tax-invoice', async (c) => {
 kakaoRouter.post('/send-portal-link', async (c) => {
   try {
     const db = c.env.DB
-    const body = await c.req.json() as any
+    const body = await c.req.json() as any // TODO: #17 — external request body
     const userId = c.get('user').id
 
     const clientId = body.client_id
@@ -570,7 +604,7 @@ kakaoRouter.post('/send-portal-link', async (c) => {
     // 거래처 정보 조회
     const client = await db.prepare(
       `SELECT * FROM clients WHERE id = ?`
-    ).bind(clientId).first() as any
+    ).bind(clientId).first<ClientRow>()
 
     if (!client) {
       return c.json({ success: false, error: '거래처를 찾을 수 없습니다.' }, 400)
@@ -592,7 +626,7 @@ kakaoRouter.post('/send-portal-link', async (c) => {
     // 포털 베이스 URL — settings에서 조회, 없으면 빈 문자열
     const portalBaseUrlRow = await db.prepare(
       `SELECT setting_value FROM settings WHERE setting_key = 'portal_base_url'`
-    ).first() as any
+    ).first<SettingRow>()
     const portalBaseUrl = portalBaseUrlRow?.setting_value || ''
     const portalLink = portalBaseUrl ? `${portalBaseUrl}/client/${clientId}` : ''
 
@@ -648,7 +682,7 @@ kakaoRouter.post('/send-portal-link', async (c) => {
       sendResult.code,
       sendResult.message,
       userId
-    ).run() as any
+    ).run()
 
     return c.json({
       success: true,
@@ -673,7 +707,7 @@ kakaoRouter.post('/send-portal-link', async (c) => {
 kakaoRouter.post('/send-sms', async (c) => {
   try {
     const db = c.env.DB
-    const body = await c.req.json() as any
+    const body = await c.req.json() as any // TODO: #17 — external request body
     const userId = c.get('user').id
 
     const receiverNum = body.receiver_num?.trim()
@@ -746,7 +780,7 @@ kakaoRouter.post('/send-sms', async (c) => {
       sendResult.code,
       sendResult.message,
       userId
-    ).run() as any
+    ).run()
 
     return c.json({
       success: true,
@@ -771,7 +805,7 @@ kakaoRouter.post('/send-sms', async (c) => {
 kakaoRouter.post('/send-sms-bulk', async (c) => {
   try {
     const db = c.env.DB
-    const body = await c.req.json() as any
+    const body = await c.req.json() as any // TODO: #17 — external request body
     const userId = c.get('user').id
 
     const content = body.content?.trim()
@@ -794,16 +828,16 @@ kakaoRouter.post('/send-sms-bulk', async (c) => {
     if (targetType === 'clients') {
       const { results: clientRows } = await db.prepare(
         `SELECT client_name, mobile FROM clients WHERE mobile IS NOT NULL AND mobile != '' ORDER BY client_name`
-      ).all() as any
-      messages = (clientRows || []).map((r: any) => ({
+      ).all<{ client_name: string; mobile: string }>()
+      messages = clientRows.map((r) => ({
         rcv: r.mobile,
         rcvnm: r.client_name || '고객',
       }))
     } else if (targetType === 'employees') {
       const { results: empRows } = await db.prepare(
         `SELECT name, phone FROM employees WHERE phone IS NOT NULL AND phone != '' ORDER BY name`
-      ).all() as any
-      messages = (empRows || []).map((r: any) => ({
+      ).all<{ name: string; phone: string }>()
+      messages = empRows.map((r) => ({
         rcv: r.phone,
         rcvnm: r.name || '직원',
       }))
@@ -865,7 +899,7 @@ kakaoRouter.post('/send-sms-bulk', async (c) => {
       sendResult.code,
       sendResult.message,
       userId
-    ).run() as any
+    ).run()
 
     return c.json({
       success: true,
@@ -891,7 +925,7 @@ kakaoRouter.post('/send-sms-bulk', async (c) => {
 kakaoRouter.post('/send-shipment-bulk', async (c) => {
   try {
     const db = c.env.DB
-    const body = await c.req.json() as any
+    const body = await c.req.json() as any // TODO: #17 — external request body
     const userId = c.get('user').id
     const { channel, content, targets, template_code, subject, date } = body
 
@@ -1059,7 +1093,7 @@ kakaoRouter.get('/logs', async (c) => {
 
     // 총 건수 조회
     const countQuery = `SELECT COUNT(*) as total FROM kakao_send_logs ksl${whereClause}`
-    const countResult = await db.prepare(countQuery).bind(...bindings).first() as any
+    const countResult = await db.prepare(countQuery).bind(...bindings).first<CountRow>()
     const total = countResult?.total || 0
 
     // 이력 조회
@@ -1092,7 +1126,7 @@ kakaoRouter.get('/logs', async (c) => {
     `
 
     bindings.push(limit, offset)
-    const { results: logs } = await db.prepare(query).bind(...bindings).all() as any
+    const { results: logs } = await db.prepare(query).bind(...bindings).all<KakaoLogRow>()
 
     return c.json({
       success: true,

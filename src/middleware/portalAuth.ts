@@ -38,7 +38,7 @@ export const portalAuthMiddleware = createMiddleware<HonoEnv>(async (c, next) =>
       return c.json({ success: false, error: '유효하지 않은 포털 토큰입니다.' }, 401)
     }
 
-    c.set('portalUser' as any, {
+    c.set('portalUser', {
       portal_client_id: payload.portal_client_id,
       client_account_id: payload.client_account_id,
       client_name: payload.client_name,
