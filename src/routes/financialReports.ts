@@ -5,6 +5,22 @@ import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
 import { entityFilter } from '../utils/entityFilter'
 
+// ── Row types for D1 queries ──
+interface SalesRow { order_count: number; total_billed: number; total_final: number }
+interface CostRow { total_cost: number }
+interface PurchaseRow { po_count: number; total_purchase: number }
+interface ExpenseRow { expense_count: number; total_expense: number }
+interface PayrollRow { total_payroll: number }
+interface FixedRow { total_fixed: number }
+interface MonthlyRevenueRow { month: string; revenue: number }
+interface MonthlyExpenseRow { month: string; expense: number }
+interface MonthlyPayrollRow { month: string; payroll: number }
+interface ArRow { total_ar: number }
+interface ApRow { total_ap: number }
+interface InventoryRow { total_inventory: number }
+interface BankRow { total_bank: number }
+interface LoanRow { total_loan: number }
+
 const financialReportsRouter = new Hono<HonoEnv>()
 financialReportsRouter.use('/*', authMiddleware, requireRole('ADMIN', 'MANAGER'))
 
@@ -28,7 +44,7 @@ financialReportsRouter.get('/pnl', async (c) => {
       FROM orders
       WHERE billing_status = 'BILLED'
         AND date(billed_at) BETWEEN ? AND ?${ef.clause}
-    `).bind(from, to, ...ef.params).first() as any
+    `).bind(from, to, ...ef.params).first<SalesRow>()
 
     // 2. 매출원가 — 주문에 연결된 cost (있으면)
     const costRow = await c.env.DB.prepare(`
@@ -37,7 +53,7 @@ financialReportsRouter.get('/pnl', async (c) => {
       WHERE order_id IN (
         SELECT id FROM orders WHERE billing_status = 'BILLED' AND date(billed_at) BETWEEN ? AND ?${ef.clause}
       )
-    `).bind(from, to, ...ef.params).first().catch(() => ({ total_cost: 0 })) as any
+    `).bind(from, to, ...ef.params).first<CostRow>().catch((): CostRow => ({ total_cost: 0 }))
 
     // 3. 매입 — CONFIRMED/RECEIVED 발주서
     const purchaseRow = await c.env.DB.prepare(`
@@ -47,7 +63,7 @@ financialReportsRouter.get('/pnl', async (c) => {
       FROM purchase_orders
       WHERE status IN ('CONFIRMED', 'RECEIVED', 'PARTIAL_RECEIVED')
         AND date(created_at) BETWEEN ? AND ?
-    `).bind(from, to).first() as any
+    `).bind(from, to).first<PurchaseRow>()
 
     // 4. 경비 — 승인된 지출결의서 (EXPENSE 유형)
     const expenseRow = await c.env.DB.prepare(`
@@ -58,7 +74,7 @@ financialReportsRouter.get('/pnl', async (c) => {
       WHERE status IN ('APPROVED', 'PAID')
         AND request_type = 'EXPENSE'
         AND date(request_date) BETWEEN ? AND ?
-    `).bind(from, to).first().catch(() => ({ total_expense: 0, expense_count: 0 })) as any
+    `).bind(from, to).first<ExpenseRow>().catch((): ExpenseRow => ({ total_expense: 0, expense_count: 0 }))
 
     // 5. 인건비 — 급여 (B Phase 후 활성화)
     const payrollRow = await c.env.DB.prepare(`
@@ -66,7 +82,7 @@ financialReportsRouter.get('/pnl', async (c) => {
       FROM payroll_slips
       WHERE status IN ('CONFIRMED', 'PAID')
         AND date(pay_date) BETWEEN ? AND ?
-    `).bind(from, to).first().catch(() => ({ total_payroll: 0 })) as any
+    `).bind(from, to).first<PayrollRow>().catch((): PayrollRow => ({ total_payroll: 0 }))
 
     // 6. 고정비 — fixed_expenses (해당 월에 활성)
     const fixedRow = await c.env.DB.prepare(`
@@ -75,7 +91,7 @@ financialReportsRouter.get('/pnl', async (c) => {
       WHERE is_active = 1
         AND start_date <= ? AND (end_date IS NULL OR end_date >= ?)
         AND frequency = 'MONTHLY'
-    `).bind(to, from).first().catch(() => ({ total_fixed: 0 })) as any
+    `).bind(to, from).first<FixedRow>().catch((): FixedRow => ({ total_fixed: 0 }))
 
     // 월 수 계산
     const fromDate = new Date(from)
@@ -83,12 +99,12 @@ financialReportsRouter.get('/pnl', async (c) => {
     const monthsCount = Math.max(1, Math.round((toDate.getTime() - fromDate.getTime()) / (30 * 86400000)))
 
     // 손익 계산
-    const revenue = parseFloat(salesRow.total_billed) || 0
-    const cogs = parseFloat(costRow.total_cost) || 0
-    const purchase = parseFloat(purchaseRow.total_purchase) || 0
-    const expense = parseFloat(expenseRow.total_expense) || 0
-    const payroll = parseFloat(payrollRow.total_payroll) || 0
-    const fixed = (parseFloat(fixedRow.total_fixed) || 0) * monthsCount
+    const revenue = Number(salesRow?.total_billed) || 0
+    const cogs = Number(costRow?.total_cost) || 0
+    const purchase = Number(purchaseRow?.total_purchase) || 0
+    const expense = Number(expenseRow?.total_expense) || 0
+    const payroll = Number(payrollRow?.total_payroll) || 0
+    const fixed = (Number(fixedRow?.total_fixed) || 0) * monthsCount
 
     const grossProfit = revenue - cogs                  // 매출총이익
     const operatingExpense = expense + payroll + fixed  // 판관비
@@ -103,8 +119,8 @@ financialReportsRouter.get('/pnl', async (c) => {
         period: { from, to, months: monthsCount },
         revenue: {
           total: revenue,
-          order_count: salesRow.order_count || 0,
-          original_amount: parseFloat(salesRow.total_final) || 0,
+          order_count: salesRow?.order_count || 0,
+          original_amount: Number(salesRow?.total_final) || 0,
         },
         cogs: {
           total: cogs,
@@ -143,7 +159,7 @@ financialReportsRouter.get('/pnl', async (c) => {
 // ============================================================
 financialReportsRouter.get('/pnl/monthly', async (c) => {
   try {
-    const year = parseInt(c.req.query('year') || String(new Date().getFullYear()))
+    const year = Number(c.req.query('year') || new Date().getFullYear())
     const ef = entityFilter(c)
 
     const { results: salesRows } = await c.env.DB.prepare(`
@@ -155,9 +171,9 @@ financialReportsRouter.get('/pnl/monthly', async (c) => {
         AND strftime('%Y', billed_at) = ?${ef.clause}
       GROUP BY month
       ORDER BY month
-    `).bind(String(year), ...ef.params).all() as any
+    `).bind(String(year), ...ef.params).all<MonthlyRevenueRow>()
 
-    const { results: expenseRows } = await c.env.DB.prepare(`
+    const expenseResult = await c.env.DB.prepare(`
       SELECT
         strftime('%m', request_date) as month,
         COALESCE(SUM(amount), 0) as expense
@@ -166,9 +182,10 @@ financialReportsRouter.get('/pnl/monthly', async (c) => {
         AND strftime('%Y', request_date) = ?
       GROUP BY month
       ORDER BY month
-    `).bind(String(year)).all().catch(() => ({ results: [] })) as any
+    `).bind(String(year)).all<MonthlyExpenseRow>().catch((): { results: MonthlyExpenseRow[] } => ({ results: [] }))
+    const expenseRows = expenseResult.results
 
-    const { results: payrollRows } = await c.env.DB.prepare(`
+    const payrollResult = await c.env.DB.prepare(`
       SELECT
         printf('%02d', pay_month) as month,
         COALESCE(SUM(net_pay), 0) as payroll
@@ -176,19 +193,21 @@ financialReportsRouter.get('/pnl/monthly', async (c) => {
       WHERE status IN ('CONFIRMED', 'PAID')
         AND pay_year = ?
       GROUP BY pay_month
-    `).bind(year).all().catch(() => ({ results: [] })) as any
+    `).bind(year).all<MonthlyPayrollRow>().catch((): { results: MonthlyPayrollRow[] } => ({ results: [] }))
+    const payrollRows = payrollResult.results
 
     // 12개월 데이터 조합
-    const monthly: any[] = []
+    interface MonthlyEntry { month: number; revenue: number; expense: number; payroll: number; profit: number; margin_pct: number }
+    const monthly: MonthlyEntry[] = []
     for (let m = 1; m <= 12; m++) {
       const mStr = String(m).padStart(2, '0')
-      const sales = (salesRows as any[]).find(r => r.month === mStr)
-      const exp = (expenseRows as any[]).find(r => r.month === mStr)
-      const pay = (payrollRows as any[]).find(r => r.month === mStr)
+      const sales = salesRows.find(r => r.month === mStr)
+      const exp = expenseRows.find(r => r.month === mStr)
+      const pay = payrollRows.find(r => r.month === mStr)
 
-      const revenue = parseFloat(sales?.revenue) || 0
-      const expense = parseFloat(exp?.expense) || 0
-      const payroll = parseFloat(pay?.payroll) || 0
+      const revenue = Number(sales?.revenue) || 0
+      const expense = Number(exp?.expense) || 0
+      const payroll = Number(pay?.payroll) || 0
       const profit = revenue - expense - payroll
 
       monthly.push({
@@ -225,53 +244,54 @@ financialReportsRouter.get('/balance-snapshot', async (c) => {
     const arRow = await c.env.DB.prepare(`
       SELECT COALESCE(SUM(balance), 0) as total_ar
       FROM clients WHERE is_active = 1
-    `).first() as any
+    `).first<ArRow>()
 
     // 매입 미지급 (purchase_balance)
     const apRow = await c.env.DB.prepare(`
       SELECT COALESCE(SUM(purchase_balance), 0) as total_ap
       FROM clients WHERE is_active = 1
-    `).first() as any
+    `).first<ApRow>()
 
     // 재고 평가액 (현재 재고 × 단가)
     const inventoryRow = await c.env.DB.prepare(`
       SELECT COALESCE(SUM(current_stock * COALESCE(unit_price, 0)), 0) as total_inventory
       FROM items WHERE is_active = 1
-    `).first().catch(() => ({ total_inventory: 0 })) as any
+    `).first<InventoryRow>().catch((): InventoryRow => ({ total_inventory: 0 }))
 
     // 은행 잔액 합계 (있으면)
     const bankRow = await c.env.DB.prepare(`
       SELECT COALESCE(SUM(current_balance), 0) as total_bank
       FROM bank_accounts WHERE is_active = 1
-    `).first().catch(() => ({ total_bank: 0 })) as any
+    `).first<BankRow>().catch((): BankRow => ({ total_bank: 0 }))
 
     // 대출 잔액
     const loanRow = await c.env.DB.prepare(`
       SELECT COALESCE(SUM(remaining_principal), 0) as total_loan
       FROM loans WHERE status = 'ACTIVE'
-    `).first().catch(() => ({ total_loan: 0 })) as any
+    `).first<LoanRow>().catch((): LoanRow => ({ total_loan: 0 }))
+
+    const cash = Number(bankRow?.total_bank) || 0
+    const ar = Number(arRow?.total_ar) || 0
+    const inventory = Number(inventoryRow?.total_inventory) || 0
+    const ap = Number(apRow?.total_ap) || 0
+    const loans = Number(loanRow?.total_loan) || 0
 
     return c.json({
       success: true,
       data: {
         snapshot_at: new Date().toISOString(),
         assets: {
-          cash: parseFloat(bankRow.total_bank) || 0,
-          accounts_receivable: parseFloat(arRow.total_ar) || 0,
-          inventory: parseFloat(inventoryRow.total_inventory) || 0,
-          total: (parseFloat(bankRow.total_bank) || 0)
-                + (parseFloat(arRow.total_ar) || 0)
-                + (parseFloat(inventoryRow.total_inventory) || 0),
+          cash,
+          accounts_receivable: ar,
+          inventory,
+          total: cash + ar + inventory,
         },
         liabilities: {
-          accounts_payable: parseFloat(apRow.total_ap) || 0,
-          loans: parseFloat(loanRow.total_loan) || 0,
-          total: (parseFloat(apRow.total_ap) || 0) + (parseFloat(loanRow.total_loan) || 0),
+          accounts_payable: ap,
+          loans,
+          total: ap + loans,
         },
-        net_assets: ((parseFloat(bankRow.total_bank) || 0)
-                    + (parseFloat(arRow.total_ar) || 0)
-                    + (parseFloat(inventoryRow.total_inventory) || 0))
-                  - ((parseFloat(apRow.total_ap) || 0) + (parseFloat(loanRow.total_loan) || 0)),
+        net_assets: (cash + ar + inventory) - (ap + loans),
       }
     })
   } catch (error) {

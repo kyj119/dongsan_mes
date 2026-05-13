@@ -3,6 +3,41 @@ import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
 import { entityFilter } from '../utils/entityFilter'
 
+// ── Row types for D1 query results ──
+interface MonthlyRevenueRow { month: string; order_count: number; revenue: number }
+interface ClientMonthlyRow { client_id: number; client_name: string; month: string; order_count: number; revenue: number }
+interface ClientSummaryRow { id: number; client_name: string; balance: number; total_orders: number; total_revenue: number; avg_order_amount: number }
+interface ItemAnalysisRow { item_id: number; item_name: string; category: string; order_count: number; total_quantity: number; total_revenue: number; avg_unit_price: number }
+interface CategoryRevenueRow { category: string; order_count: number; total_revenue: number }
+interface DesignerStatsRow { user_id: number; designer_name: string; order_count: number; total_revenue: number; avg_amount: number; completed_count: number; in_progress_count: number }
+interface MonthlySummaryRow { month: string; order_count: number; revenue: number; unique_clients: number }
+interface MonthlyPaymentRow { month: string; payment_count: number; payments: number }
+interface MarginSummaryRow { total_revenue: number; total_cost: number; avg_margin_rate: number }
+interface MarginCategoryRow { category_name: string; revenue: number; cost: number; profit: number; margin_rate: number; item_count: number }
+interface MarginMonthRow { month: string; revenue: number; cost: number; profit: number; margin_rate: number }
+interface LowMarginOrderRow { order_id: number; order_number: string; client_name: string; total_revenue: number; total_cost: number; margin_rate: number }
+interface MarginByClientRow { client_id: number; client_name: string; order_count: number; total_revenue: number; total_cost: number; margin_amount: number; margin_rate: number }
+interface ARSummaryRow { total_ar: number; ar_client_count: number }
+interface BilledRow { billed: number }
+interface CollectedRow { collected: number }
+interface AgingRow { id: number; client_name: string; balance: number; last_payment_date: string | null; days_since_payment: number }
+interface TopARRow { id: number; client_name: string; balance: number; last_payment_date: string | null; days_overdue: number; collection_count: number; total_paid: number }
+interface MonthlyTrendRow { month: string; revenue: number; payments: number }
+interface PrintSummaryRow { ok_count: number; error_count: number; total_count: number }
+interface QualityRow { issue_count: number }
+interface MaintRow { maint_cost: number }
+interface EquipmentRow { printer_name: string; total: number; ok_count: number; active_days: number }
+interface PrintMonthRow { month: string; total: number; ok_count: number }
+interface DefectTypeRow { category: string; count: number; cost: number }
+interface KPIOrderRow { order_count: number; revenue: number; avg_amount: number; client_count: number }
+interface KPIPayRow { payments: number }
+interface KPIMarginRow { revenue: number; cost: number }
+interface KPINewClientRow { new_clients: number }
+interface PeriodCategoryRow { category: string; revenue: number }
+interface PeriodClientRow { id: string; client_name: string; revenue: number }
+interface CSVOrderRow { month: string; order_count: number; revenue: number }
+interface CSVPaymentRow { month: string; total_payments: number }
+
 const reportsRouter = new Hono<HonoEnv>()
 reportsRouter.use('/*', authMiddleware, requireRole('ADMIN', 'MANAGER'))
 
@@ -10,7 +45,7 @@ reportsRouter.use('/*', authMiddleware, requireRole('ADMIN', 'MANAGER'))
 reportsRouter.get('/client-revenue', async (c) => {
   try {
     const { client_id, months = '12' } = c.req.query()
-    const monthCount = parseInt(months)
+    const monthCount = Number(months)
     const ef = entityFilter(c, 'o')
 
     let query: string
@@ -77,7 +112,7 @@ reportsRouter.get('/client-revenue', async (c) => {
 reportsRouter.get('/item-analysis', async (c) => {
   try {
     const { months = '6' } = c.req.query()
-    const monthCount = parseInt(months)
+    const monthCount = Number(months)
     const ef = entityFilter(c, 'o')
 
     const { results } = await c.env.DB.prepare(`
@@ -123,7 +158,7 @@ reportsRouter.get('/item-analysis', async (c) => {
 reportsRouter.get('/designer-stats', async (c) => {
   try {
     const { months = '3' } = c.req.query()
-    const monthCount = parseInt(months)
+    const monthCount = Number(months)
     const ef = entityFilter(c, 'o')
 
     const { results } = await c.env.DB.prepare(`
@@ -156,7 +191,7 @@ reportsRouter.get('/designer-stats', async (c) => {
 reportsRouter.get('/monthly-summary', async (c) => {
   try {
     const { months = '12' } = c.req.query()
-    const monthCount = parseInt(months)
+    const monthCount = Number(months)
     const ef = entityFilter(c, 'o')
     const efP = entityFilter(c)
 
@@ -197,7 +232,7 @@ reportsRouter.get('/monthly-summary', async (c) => {
 reportsRouter.get('/margin-analysis', async (c) => {
   try {
     const { months = '6' } = c.req.query()
-    const monthCount = parseInt(months)
+    const monthCount = Number(months)
     const ef = entityFilter(c, 'o')
 
     // 1. 기간 전체 요약
@@ -211,16 +246,16 @@ reportsRouter.get('/margin-analysis', async (c) => {
       WHERE o.status != 'CANCELLED'
         AND oi.parent_item_id IS NULL
         AND o.created_at >= date('now', '-' || ? || ' months')${ef.clause}
-    `).bind(monthCount, ...ef.params).all()
+    `).bind(monthCount, ...ef.params).all<MarginSummaryRow>()
 
-    const summaryRaw = summaryRows[0] as any
-    const totalRevenue = parseFloat(summaryRaw?.total_revenue ?? 0)
-    const totalCost = parseFloat(summaryRaw?.total_cost ?? 0)
+    const summaryRaw = summaryRows[0]
+    const totalRevenue = Number(summaryRaw?.total_revenue ?? 0)
+    const totalCost = Number(summaryRaw?.total_cost ?? 0)
     const summary = {
       total_revenue: totalRevenue,
       total_cost: totalCost,
       total_profit: totalRevenue - totalCost,
-      avg_margin_rate: parseFloat(summaryRaw?.avg_margin_rate ?? 0),
+      avg_margin_rate: Number(summaryRaw?.avg_margin_rate ?? 0),
     }
 
     // 2. 카테고리별 마진율
@@ -244,14 +279,14 @@ reportsRouter.get('/margin-analysis', async (c) => {
         AND o.created_at >= date('now', '-' || ? || ' months')${ef.clause}
       GROUP BY i.category
       ORDER BY revenue DESC
-    `).bind(monthCount, ...ef.params).all()
+    `).bind(monthCount, ...ef.params).all<MarginCategoryRow>()
 
-    const byCategoryMapped = (byCategory as any[]).map((r) => ({
+    const byCategoryMapped = byCategory.map((r) => ({
       category_name: r.category_name,
-      revenue: parseFloat(r.revenue),
-      cost: parseFloat(r.cost),
-      profit: parseFloat(r.profit),
-      margin_rate: parseFloat(r.margin_rate),
+      revenue: Number(r.revenue),
+      cost: Number(r.cost),
+      profit: Number(r.profit),
+      margin_rate: Number(r.margin_rate),
       item_count: r.item_count,
     }))
 
@@ -274,14 +309,14 @@ reportsRouter.get('/margin-analysis', async (c) => {
         AND o.created_at >= date('now', '-' || ? || ' months')${ef.clause}
       GROUP BY strftime('%Y-%m', o.created_at)
       ORDER BY month DESC
-    `).bind(monthCount, ...ef.params).all()
+    `).bind(monthCount, ...ef.params).all<MarginMonthRow>()
 
-    const byMonthMapped = (byMonth as any[]).map((r) => ({
+    const byMonthMapped = byMonth.map((r) => ({
       month: r.month,
-      revenue: parseFloat(r.revenue),
-      cost: parseFloat(r.cost),
-      profit: parseFloat(r.profit),
-      margin_rate: parseFloat(r.margin_rate),
+      revenue: Number(r.revenue),
+      cost: Number(r.cost),
+      profit: Number(r.profit),
+      margin_rate: Number(r.margin_rate),
     }))
 
     // 4. 마진율 낮은 주문 TOP 10 (margin_rate < 20 우선, 없으면 전체 최하위)
@@ -307,15 +342,15 @@ reportsRouter.get('/margin-analysis', async (c) => {
       HAVING SUM(oi.total_cost) > 0
       ORDER BY margin_rate ASC
       LIMIT 10
-    `).bind(monthCount, ...ef.params).all()
+    `).bind(monthCount, ...ef.params).all<LowMarginOrderRow>()
 
-    const lowMarginMapped = (lowMarginOrders as any[]).map((r) => ({
+    const lowMarginMapped = lowMarginOrders.map((r) => ({
       order_id: r.order_id,
       order_number: r.order_number,
       client_name: r.client_name,
-      total_revenue: parseFloat(r.total_revenue),
-      total_cost: parseFloat(r.total_cost),
-      margin_rate: parseFloat(r.margin_rate),
+      total_revenue: Number(r.total_revenue),
+      total_cost: Number(r.total_cost),
+      margin_rate: Number(r.margin_rate),
     }))
 
     return c.json({
@@ -337,7 +372,7 @@ reportsRouter.get('/margin-analysis', async (c) => {
 reportsRouter.get('/margin-by-client', async (c) => {
   try {
     const { months = '6' } = c.req.query()
-    const monthCount = parseInt(months)
+    const monthCount = Number(months)
     const ef = entityFilter(c, 'o')
 
     const { results } = await c.env.DB.prepare(`
@@ -367,7 +402,7 @@ reportsRouter.get('/margin-by-client', async (c) => {
       GROUP BY c.id, c.client_name
       HAVING total_revenue > 0
       ORDER BY margin_rate DESC
-    `).bind(monthCount, ...ef.params).all()
+    `).bind(monthCount, ...ef.params).all<MarginByClientRow>()
 
     // TOP 10 / BOTTOM 10
     const all = results || []
@@ -375,7 +410,7 @@ reportsRouter.get('/margin-by-client', async (c) => {
     const bottom10 = all.slice().reverse().slice(0, 10)
 
     // 수익성 등급
-    const graded = all.map((r: any) => {
+    const graded = all.map((r) => {
       let grade = 'D'
       if (r.margin_rate >= 50) grade = 'A'
       else if (r.margin_rate >= 35) grade = 'B'
@@ -394,7 +429,7 @@ reportsRouter.get('/margin-by-client', async (c) => {
 reportsRouter.get('/receivables-analysis', async (c) => {
   try {
     const { months = '6' } = c.req.query()
-    const monthCount = parseInt(months)
+    const monthCount = Number(months)
     const ef = entityFilter(c)
 
     // 1) 미수금 요약
@@ -403,7 +438,7 @@ reportsRouter.get('/receivables-analysis', async (c) => {
         COALESCE(SUM(CASE WHEN balance > 0 THEN balance ELSE 0 END), 0) as total_ar,
         COUNT(CASE WHEN balance > 0 THEN 1 END) as ar_client_count
       FROM clients WHERE is_active = 1
-    `).all()
+    `).all<ARSummaryRow>()
 
     // 당월 매출 발생 (billing)
     const { results: billedRows } = await c.env.DB.prepare(`
@@ -411,20 +446,20 @@ reportsRouter.get('/receivables-analysis', async (c) => {
       FROM orders
       WHERE status != 'CANCELLED'
         AND strftime('%Y-%m', created_at) = strftime('%Y-%m', 'now')${ef.clause}
-    `).bind(...ef.params).all()
+    `).bind(...ef.params).all<BilledRow>()
 
     // 당월 수금
     const { results: collectedRows } = await c.env.DB.prepare(`
       SELECT COALESCE(SUM(amount), 0) as collected
       FROM payments
       WHERE strftime('%Y-%m', payment_date) = strftime('%Y-%m', 'now')${ef.clause}
-    `).bind(...ef.params).all()
+    `).bind(...ef.params).all<CollectedRow>()
 
     const summary = {
-      total_ar: parseFloat((summaryRows[0] as any)?.total_ar ?? 0),
-      ar_client_count: (summaryRows[0] as any)?.ar_client_count ?? 0,
-      month_billed: parseFloat((billedRows[0] as any)?.billed ?? 0),
-      month_collected: parseFloat((collectedRows[0] as any)?.collected ?? 0),
+      total_ar: Number(summaryRows[0]?.total_ar ?? 0),
+      ar_client_count: summaryRows[0]?.ar_client_count ?? 0,
+      month_billed: Number(billedRows[0]?.billed ?? 0),
+      month_collected: Number(collectedRows[0]?.collected ?? 0),
     }
 
     // 2) Aging Buckets (미수금 연령 분석) - clients.balance 기준
@@ -438,13 +473,13 @@ reportsRouter.get('/receivables-analysis', async (c) => {
       LEFT JOIN payments p ON c.id = p.client_id
       WHERE c.is_active = 1 AND c.balance > 0
       GROUP BY c.id
-    `).all()
+    `).all<AgingRow>()
 
     const buckets = { current: 0, days30: 0, days60: 0, days90: 0 }
     const bucketCounts = { current: 0, days30: 0, days60: 0, days90: 0 }
-    for (const row of agingData as any[]) {
+    for (const row of agingData) {
       const days = row.days_since_payment || 0
-      const bal = parseFloat(row.balance) || 0
+      const bal = Number(row.balance) || 0
       if (days <= 30) { buckets.current += bal; bucketCounts.current++ }
       else if (days <= 60) { buckets.days30 += bal; bucketCounts.days30++ }
       else if (days <= 90) { buckets.days60 += bal; bucketCounts.days60++ }
@@ -511,7 +546,7 @@ reportsRouter.get('/receivables-analysis', async (c) => {
 reportsRouter.get('/production-analysis', async (c) => {
   try {
     const { months = '6' } = c.req.query()
-    const monthCount = parseInt(months)
+    const monthCount = Number(months)
 
     // 1) 요약
     const { results: summaryRows } = await c.env.DB.prepare(`
@@ -521,27 +556,27 @@ reportsRouter.get('/production-analysis', async (c) => {
         COUNT(*) as total_count
       FROM print_events
       WHERE created_at >= date('now', '-' || ? || ' months')
-    `).bind(monthCount).all()
+    `).bind(monthCount).all<PrintSummaryRow>()
 
     const { results: qualityRows } = await c.env.DB.prepare(`
       SELECT COUNT(*) as issue_count
       FROM quality_issues
       WHERE created_at >= date('now', '-' || ? || ' months')
-    `).bind(monthCount).all()
+    `).bind(monthCount).all<QualityRow>()
 
     const { results: maintRows } = await c.env.DB.prepare(`
       SELECT COALESCE(SUM(cost), 0) as maint_cost
       FROM maintenance_logs
       WHERE performed_at >= date('now', '-' || ? || ' months')
-    `).bind(monthCount).all()
+    `).bind(monthCount).all<MaintRow>()
 
-    const ps = summaryRows[0] as any
+    const ps = summaryRows[0]
     const summary = {
       ok_count: ps?.ok_count ?? 0,
       error_count: ps?.error_count ?? 0,
       total_count: ps?.total_count ?? 0,
-      quality_issues: (qualityRows[0] as any)?.issue_count ?? 0,
-      maintenance_cost: parseFloat((maintRows[0] as any)?.maint_cost ?? 0),
+      quality_issues: qualityRows[0]?.issue_count ?? 0,
+      maintenance_cost: Number(maintRows[0]?.maint_cost ?? 0),
     }
 
     // 2) 장비별 실적
@@ -624,13 +659,13 @@ reportsRouter.get('/period-comparison', async (c) => {
         FROM orders
         WHERE status != 'CANCELLED'
           AND strftime('%Y-%m', created_at) = ?${efKPI.clause}
-      `).bind(month, ...efKPI.params).all()
+      `).bind(month, ...efKPI.params).all<KPIOrderRow>()
 
       const { results: payRows } = await c.env.DB.prepare(`
         SELECT COALESCE(SUM(amount), 0) as payments
         FROM payments
         WHERE strftime('%Y-%m', payment_date) = ?${efKPI.clause}
-      `).bind(month, ...efKPI.params).all()
+      `).bind(month, ...efKPI.params).all<KPIPayRow>()
 
       const { results: marginRows } = await c.env.DB.prepare(`
         SELECT
@@ -641,7 +676,7 @@ reportsRouter.get('/period-comparison', async (c) => {
         WHERE o.status != 'CANCELLED'
           AND oi.parent_item_id IS NULL
           AND strftime('%Y-%m', o.created_at) = ?${efKPIo.clause}
-      `).bind(month, ...efKPIo.params).all()
+      `).bind(month, ...efKPIo.params).all<KPIMarginRow>()
 
       const { results: newClientRows } = await c.env.DB.prepare(`
         SELECT COUNT(DISTINCT client_id) as new_clients
@@ -652,22 +687,22 @@ reportsRouter.get('/period-comparison', async (c) => {
             SELECT DISTINCT client_id FROM orders
             WHERE status != 'CANCELLED' AND created_at < ? || '-01'${efKPI.clause}
           )
-      `).bind(month, ...efKPI.params, month, ...efKPI.params).all()
+      `).bind(month, ...efKPI.params, month, ...efKPI.params).all<KPINewClientRow>()
 
-      const o = orderRows[0] as any
-      const p = payRows[0] as any
-      const m = marginRows[0] as any
-      const mr = parseFloat(m?.revenue ?? 0)
-      const mc = parseFloat(m?.cost ?? 0)
+      const o = orderRows[0]
+      const p = payRows[0]
+      const m = marginRows[0]
+      const mr = Number(m?.revenue ?? 0)
+      const mc = Number(m?.cost ?? 0)
 
       return {
         order_count: o?.order_count ?? 0,
-        revenue: parseFloat(o?.revenue ?? 0),
-        avg_amount: parseFloat(o?.avg_amount ?? 0),
+        revenue: Number(o?.revenue ?? 0),
+        avg_amount: Number(o?.avg_amount ?? 0),
         client_count: o?.client_count ?? 0,
-        payments: parseFloat(p?.payments ?? 0),
+        payments: Number(p?.payments ?? 0),
         margin_rate: mr > 0 ? Math.round((mr - mc) / mr * 1000) / 10 : 0,
-        new_clients: (newClientRows[0] as any)?.new_clients ?? 0,
+        new_clients: newClientRows[0]?.new_clients ?? 0,
       }
     }
 
@@ -686,19 +721,19 @@ reportsRouter.get('/period-comparison', async (c) => {
           AND oi.parent_item_id IS NULL
           AND strftime('%Y-%m', o.created_at) = ?${efKPIo.clause}
         GROUP BY i.category
-      `).bind(month, ...efKPIo.params).all()
-      return results as any[]
+      `).bind(month, ...efKPIo.params).all<PeriodCategoryRow>()
+      return results
     }
 
     const [baseCat, compCat] = await Promise.all([getCategoryRevenue(baseM), getCategoryRevenue(compM)])
 
     // 카테고리 병합
     const catMap = new Map<string, { base: number; comp: number }>()
-    for (const r of baseCat) catMap.set(r.category || '기타', { base: parseFloat(r.revenue), comp: 0 })
+    for (const r of baseCat) catMap.set(r.category || '기타', { base: Number(r.revenue), comp: 0 })
     for (const r of compCat) {
       const key = r.category || '기타'
       const existing = catMap.get(key) || { base: 0, comp: 0 }
-      existing.comp = parseFloat(r.revenue)
+      existing.comp = Number(r.revenue)
       catMap.set(key, existing)
     }
     const categories = Array.from(catMap.entries()).map(([cat, v]) => ({
@@ -717,17 +752,17 @@ reportsRouter.get('/period-comparison', async (c) => {
         JOIN clients c ON o.client_id = c.id
         WHERE o.status != 'CANCELLED' AND strftime('%Y-%m', o.created_at) = ?${efKPIo.clause}
         GROUP BY c.id
-      `).bind(month, ...efKPIo.params).all()
-      return results as any[]
+      `).bind(month, ...efKPIo.params).all<PeriodClientRow>()
+      return results
     }
 
     const [baseClients, compClients] = await Promise.all([getClientRevenue(baseM), getClientRevenue(compM)])
 
     const clientMap = new Map<string, { name: string; base: number; comp: number }>()
-    for (const r of baseClients) clientMap.set(r.id, { name: r.client_name, base: parseFloat(r.revenue), comp: 0 })
+    for (const r of baseClients) clientMap.set(r.id, { name: r.client_name, base: Number(r.revenue), comp: 0 })
     for (const r of compClients) {
       const existing = clientMap.get(r.id) || { name: r.client_name, base: 0, comp: 0 }
-      existing.comp = parseFloat(r.revenue)
+      existing.comp = Number(r.revenue)
       clientMap.set(r.id, existing)
     }
     const clientChanges = Array.from(clientMap.values()).map(v => ({
@@ -762,7 +797,7 @@ reportsRouter.get('/period-comparison', async (c) => {
 reportsRouter.get('/monthly-summary/csv', async (c) => {
   try {
     const { months = '6' } = c.req.query()
-    const monthsInt = Math.min(parseInt(months) || 6, 24)
+    const monthsInt = Math.min(Number(months) || 6, 24)
     const ef = entityFilter(c, 'o')
     const efP = entityFilter(c)
 
@@ -776,7 +811,7 @@ reportsRouter.get('/monthly-summary/csv', async (c) => {
         AND o.created_at >= date('now', '-' || ? || ' months')${ef.clause}
       GROUP BY strftime('%Y-%m', o.created_at)
       ORDER BY month DESC
-    `).bind(monthsInt, ...ef.params).all() as any
+    `).bind(monthsInt, ...ef.params).all<CSVOrderRow>()
 
     const { results: payments } = await c.env.DB.prepare(`
       SELECT
@@ -785,13 +820,13 @@ reportsRouter.get('/monthly-summary/csv', async (c) => {
       FROM payments
       WHERE payment_date >= date('now', '-' || ? || ' months')${efP.clause}
       GROUP BY strftime('%Y-%m', payment_date)
-    `).bind(monthsInt, ...efP.params).all() as any
+    `).bind(monthsInt, ...efP.params).all<CSVPaymentRow>()
 
     const payMap: Record<string, number> = {}
     for (const p of (payments || [])) payMap[p.month] = p.total_payments || 0
 
     const headers = ['월', '주문수', '매출액', '수금액', '수금률']
-    const rows = (results || []).map((r: any) => {
+    const rows = (results || []).map((r: CSVOrderRow) => {
       const pay = payMap[r.month] || 0
       const rate = r.revenue > 0 ? Math.round((pay / r.revenue) * 100) : 0
       return [r.month, r.order_count, r.revenue, pay, rate + '%']
