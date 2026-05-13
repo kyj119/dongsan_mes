@@ -19,20 +19,20 @@ import { entityFilter, getEntityId } from '../../utils/entityFilter'
 const cardsLifecycleRouter = new Hono<HonoEnv>()
 cardsLifecycleRouter.use('/*', authMiddleware, requireAnyPagePermission('/cards', '/orders'))
 
-async function syncOrderStatusFromCards(db: any, orderId: number) {
+async function syncOrderStatusFromCards(db: D1Database, orderId: number) {
   // 1. 해당 주문의 모든 카드 상태 조회 (HOLD 제외)
   const cards = await db.prepare(
     `SELECT status FROM cards WHERE order_id = ? AND status != 'HOLD'`
-  ).bind(orderId).all()
+  ).bind(orderId).all<{ status: string }>()
 
   if (!cards.results || cards.results.length === 0) return
 
-  const statuses: string[] = cards.results.map((c: any) => c.status)
+  const statuses: string[] = cards.results.map((c) => c.status)
 
   // 2. 주문 현재 상태 확인 — 아래 상태는 카드로 자동 변경하지 않음
   const order = await db.prepare(
     `SELECT status FROM orders WHERE id = ?`
-  ).bind(orderId).first()
+  ).bind(orderId).first<{ status: string }>()
   if (!order) return
 
   const skipStatuses = ['SHIPPED', 'CANCELLED', 'HOLD']
@@ -84,11 +84,12 @@ cardsLifecycleRouter.patch('/bulk/status', requireRole('ADMIN', 'MANAGER', 'OPER
     // HOLD + defect_category 시 quality_issues에 사용할 employee_id 조회
     let employeeId: number | null = null
     if (status === 'HOLD' && defect_category && user?.id) {
-      const emp = await c.env.DB.prepare('SELECT id FROM employees WHERE user_id = ?').bind(user.id).first() as any
+      const emp = await c.env.DB.prepare('SELECT id FROM employees WHERE user_id = ?').bind(user.id).first<{ id: number }>()
       employeeId = emp?.id || null
     }
 
     // N+1 → 일괄 SELECT로 현재 상태 조회 (루프 SELECT 제거)
+    interface BulkCard { id: number; status: string; order_id: number; post_processing: string | null }
     const placeholders = card_ids.map(() => '?').join(',')
     const efBulk = entityFilter(c, 'o')
     const { results: existingCards } = await c.env.DB.prepare(`
@@ -96,15 +97,15 @@ cardsLifecycleRouter.patch('/bulk/status', requireRole('ADMIN', 'MANAGER', 'OPER
       FROM cards
       JOIN orders o ON cards.order_id = o.id
       WHERE cards.id IN (${placeholders})${efBulk.clause}
-    `).bind(...card_ids, ...efBulk.params).all()
-    const cardMap = new Map((existingCards as any[]).map(c => [c.id, c]))
+    `).bind(...card_ids, ...efBulk.params).all<BulkCard>()
+    const cardMap = new Map(existingCards.map(c => [c.id, c]))
 
     // batch 문 구성
-    const batchStmts: any[] = []
+    const batchStmts: D1PreparedStatement[] = []
     let updated = 0
 
     for (const cardId of card_ids) {
-      const card = cardMap.get(cardId) as any
+      const card = cardMap.get(cardId)
       if (!card) continue
 
       if (status === 'HOLD') {
@@ -191,17 +192,17 @@ cardsLifecycleRouter.patch('/defects/:defectId', async (c) => {
 
     let employeeId: number | null = null
     if (user?.id) {
-      const emp = await c.env.DB.prepare('SELECT id FROM employees WHERE user_id = ?').bind(user.id).first() as any
+      const emp = await c.env.DB.prepare('SELECT id FROM employees WHERE user_id = ?').bind(user.id).first<{ id: number }>()
       employeeId = emp?.id || null
     }
 
     const sets: string[] = ['updated_at = CURRENT_TIMESTAMP']
-    const params: any[] = []
+    const params: (string | number | null)[] = []
 
     if (status) { sets.push('status = ?'); params.push(status) }
     if (corrective_action !== undefined) { sets.push('corrective_action = ?'); params.push(corrective_action) }
     if (root_cause !== undefined) { sets.push('root_cause = ?'); params.push(root_cause) }
-    if (cost_impact !== undefined) { sets.push('cost_impact = ?'); params.push(parseFloat(cost_impact) || 0) }
+    if (cost_impact !== undefined) { sets.push('cost_impact = ?'); params.push(Number(cost_impact) || 0) }
 
     if (status === 'RESOLVED') {
       sets.push('resolved_by = ?', 'resolved_at = CURRENT_TIMESTAMP')
@@ -235,16 +236,17 @@ cardsLifecycleRouter.post('/bulk-ship', async (c) => {
     const processedOrderIds = new Set<number>()
 
     // N+1 → 일괄 SELECT로 카드 정보 조회
+    interface ShipCard { id: number; status: string; order_id: number; card_number: string; shipped_at: string | null }
     const placeholders = card_ids.map(() => '?').join(',')
     const { results: existingCards } = await c.env.DB.prepare(`
       SELECT id, status, order_id, card_number, shipped_at FROM cards WHERE id IN (${placeholders})
-    `).bind(...card_ids).all()
-    const cardMap = new Map((existingCards as any[]).map(c => [c.id, c]))
+    `).bind(...card_ids).all<ShipCard>()
+    const cardMap = new Map(existingCards.map(c => [c.id, c]))
 
     // 적격 카드 필터링 + batch UPDATE 구성
-    const shipBatchStmts: any[] = []
+    const shipBatchStmts: D1PreparedStatement[] = []
     for (const cardId of card_ids) {
-      const card = cardMap.get(cardId) as any
+      const card = cardMap.get(cardId)
       if (!card) { failed++; errors.push(`ID ${cardId}: not found`); continue }
       if (card.status !== 'PRINT_DONE') { failed++; errors.push(`${card.card_number}: 상태 ${card.status}`); continue }
       if (card.shipped_at) { failed++; errors.push(`${card.card_number}: 이미 출고됨`); continue }
@@ -268,10 +270,10 @@ cardsLifecycleRouter.post('/bulk-ship', async (c) => {
         SELECT COUNT(*) as total,
                SUM(CASE WHEN shipped_at IS NOT NULL THEN 1 ELSE 0 END) as shipped_count
         FROM cards WHERE order_id = ?
-      `).bind(orderId).first() as any
+      `).bind(orderId).first<{ total: number; shipped_count: number }>()
 
       if (progress && progress.total > 0 && progress.total === progress.shipped_count) {
-        const order = await c.env.DB.prepare('SELECT status FROM orders WHERE id = ?').bind(orderId).first() as any
+        const order = await c.env.DB.prepare('SELECT status FROM orders WHERE id = ?').bind(orderId).first<{ status: string }>()
         if (order && order.status !== 'SHIPPED' && order.status !== 'CANCELLED') {
           // batch로 UPDATE + 이력 INSERT 원자 처리
           await c.env.DB.batch([
@@ -308,13 +310,14 @@ cardsLifecycleRouter.post('/:id/ship', async (c) => {
     // card_number 패턴 여부 확인
     const isCardNumber = /^CARD-\d{8}-\d{3,}$/i.test(idParam)
 
+    interface CardShipRow { id: number; status: string; order_id: number; card_number: string; shipped_at: string | null }
     const card = isCardNumber
       ? await c.env.DB.prepare(`
           SELECT id, status, order_id, card_number, shipped_at FROM cards WHERE card_number = ?
-        `).bind(idParam).first() as any
+        `).bind(idParam).first<CardShipRow>()
       : await c.env.DB.prepare(`
           SELECT id, status, order_id, card_number, shipped_at FROM cards WHERE id = ?
-        `).bind(idParam).first() as any
+        `).bind(idParam).first<CardShipRow>()
 
     if (!card) {
       return c.json({ success: false, error: 'Card not found' }, 404)
@@ -332,9 +335,9 @@ cardsLifecycleRouter.post('/:id/ship', async (c) => {
     }
 
     // 후가공 미완료 체크
-    const cardFull = await c.env.DB.prepare('SELECT pp_status FROM cards WHERE id = ?').bind(card.id).first() as any
+    const cardFull = await c.env.DB.prepare('SELECT pp_status FROM cards WHERE id = ?').bind(card.id).first<{ pp_status: string | null }>()
     if (cardFull?.pp_status === 'PENDING') {
-      const body = await c.req.json().catch(() => ({})) as any
+      const body = await c.req.json().catch(() => ({})) as { force?: boolean }
       if (!body?.force) {
         return c.json({
           success: false,
@@ -354,13 +357,13 @@ cardsLifecycleRouter.post('/:id/ship', async (c) => {
       SELECT COUNT(*) as total,
              SUM(CASE WHEN shipped_at IS NOT NULL THEN 1 ELSE 0 END) as shipped_count
       FROM cards WHERE order_id = ?
-    `).bind(card.order_id).first() as any
+    `).bind(card.order_id).first<{ total: number; shipped_count: number }>()
 
     let orderShipped = false
     if (progress && progress.total > 0 && progress.total === progress.shipped_count) {
       const order = await c.env.DB.prepare(
         'SELECT status FROM orders WHERE id = ?'
-      ).bind(card.order_id).first() as any
+      ).bind(card.order_id).first<{ status: string }>()
 
       if (order && order.status !== 'SHIPPED' && order.status !== 'CANCELLED') {
         await c.env.DB.prepare(`
@@ -411,14 +414,14 @@ cardsLifecycleRouter.post('/:id/defects', async (c) => {
     // 사용자의 employee_id 조회
     let employeeId: number | null = null
     if (user?.id) {
-      const emp = await c.env.DB.prepare('SELECT id FROM employees WHERE user_id = ?').bind(user.id).first() as any
+      const emp = await c.env.DB.prepare('SELECT id FROM employees WHERE user_id = ?').bind(user.id).first<{ id: number }>()
       employeeId = emp?.id || null
     }
     if (!employeeId) {
       return c.json({ success: false, error: '직원 정보가 없습니다.' }, 400)
     }
 
-    const card = await c.env.DB.prepare('SELECT id, status, order_id FROM cards WHERE id = ?').bind(cardId).first() as any
+    const card = await c.env.DB.prepare('SELECT id, status, order_id FROM cards WHERE id = ?').bind(cardId).first<{ id: number; status: string; order_id: number }>()
     if (!card) return c.json({ success: false, error: '카드를 찾을 수 없습니다.' }, 404)
 
     // 불량 기록 생성
@@ -475,7 +478,7 @@ cardsLifecycleRouter.patch('/:id/status', async (c) => {
     }
 
     // Get current status and order_id
-    const card = await c.env.DB.prepare('SELECT status, order_id, card_number FROM cards WHERE id = ?').bind(id).first() as any
+    const card = await c.env.DB.prepare('SELECT status, order_id, card_number FROM cards WHERE id = ?').bind(id).first<{ status: string; order_id: number; card_number: string }>()
 
     if (!card) {
       return c.json({
@@ -499,7 +502,7 @@ cardsLifecycleRouter.patch('/:id/status', async (c) => {
         // reported_by: employees 테이블에서 user_id로 employee_id 조회
         const empRow = await c.env.DB.prepare(
           'SELECT id FROM employees WHERE user_id = ? LIMIT 1'
-        ).bind(user?.id || null).first() as any
+        ).bind(user?.id || null).first<{ id: number }>()
         const reportedBy = empRow?.id || null
 
         if (reportedBy) {
@@ -514,7 +517,7 @@ cardsLifecycleRouter.patch('/:id/status', async (c) => {
     } else {
       // PRINT_DONE 전환 시 후가공 상태 자동 설정
       if (status === 'PRINT_DONE') {
-        const cardDetail = await c.env.DB.prepare('SELECT post_processing FROM cards WHERE id = ?').bind(id).first() as any
+        const cardDetail = await c.env.DB.prepare('SELECT post_processing FROM cards WHERE id = ?').bind(id).first<{ post_processing: string | null }>()
         const hasPP = cardDetail?.post_processing && cardDetail.post_processing !== '[]' && cardDetail.post_processing !== ''
         const ppStatus = hasPP ? 'PENDING' : 'N/A'
         await c.env.DB.prepare(`
@@ -575,7 +578,7 @@ cardsLifecycleRouter.patch('/:id/pp-complete', async (c) => {
 
     const card = await c.env.DB.prepare(
       'SELECT id, card_number, order_id, status, pp_status, post_processing FROM cards WHERE id = ?'
-    ).bind(id).first() as any
+    ).bind(id).first<{ id: number; card_number: string; order_id: number; status: string; pp_status: string | null; post_processing: string | null }>()
 
     if (!card) return c.json({ success: false, error: 'Card not found' }, 404)
     if (card.status !== 'PRINT_DONE') return c.json({ success: false, error: '인쇄 완료 상태에서만 후가공 완료 처리 가능합니다' }, 400)
@@ -631,9 +634,10 @@ cardsLifecycleRouter.patch('/:id/ship', requireRole('ADMIN', 'MANAGER'), async (
     const user = c.get('user')
 
     // 1. 카드 조회
+    interface CardFullRow { id: number; status: string; order_id: number; order_item_id: number | null; shipped_at: string | null; pp_status: string | null; card_number: string }
     const card = await c.env.DB.prepare(
-      'SELECT * FROM cards WHERE id = ?'
-    ).bind(id).first() as any
+      'SELECT id, status, order_id, order_item_id, shipped_at, pp_status, card_number FROM cards WHERE id = ?'
+    ).bind(id).first<CardFullRow>()
 
     if (!card) {
       return c.json({ success: false, error: 'Card not found' }, 404)
@@ -673,7 +677,7 @@ cardsLifecycleRouter.patch('/:id/ship', requireRole('ADMIN', 'MANAGER'), async (
       SELECT COUNT(*) as total,
              SUM(CASE WHEN shipped_at IS NOT NULL THEN 1 ELSE 0 END) as shipped
       FROM cards WHERE order_id = ?
-    `).bind(card.order_id).first() as any
+    `).bind(card.order_id).first<{ total: number; shipped: number }>()
 
     let orderShipped = false
     const allShipped = progress && progress.total > 0 && progress.total === progress.shipped
@@ -682,7 +686,7 @@ cardsLifecycleRouter.patch('/:id/ship', requireRole('ADMIN', 'MANAGER'), async (
     if (allShipped) {
       const order = await c.env.DB.prepare(
         'SELECT status FROM orders WHERE id = ?'
-      ).bind(card.order_id).first() as any
+      ).bind(card.order_id).first<{ status: string }>()
 
       if (order && order.status !== 'SHIPPED' && order.status !== 'CANCELLED') {
         await c.env.DB.prepare(
@@ -699,31 +703,32 @@ cardsLifecycleRouter.patch('/:id/ship', requireRole('ADMIN', 'MANAGER'), async (
     }
 
     // 5-1. 출고 기록(shipments) 생성 — 실패해도 카드 출고는 유지
+    interface CardItemRow { order_item_id: number | null; quantity: number }
     try {
       const existingShipment = await c.env.DB.prepare(
         'SELECT id FROM shipments WHERE order_id = ?'
-      ).bind(card.order_id).first() as any
+      ).bind(card.order_id).first<{ id: number }>()
 
       if (!existingShipment) {
         // 출고번호 생성: SHP-YYYYMMDD-NNN
         const today = new Date().toISOString().slice(0, 10).replace(/-/g, '')
         const countResult = await c.env.DB.prepare(
           `SELECT COUNT(*) as cnt FROM shipments WHERE shipment_number LIKE ?`
-        ).bind(`SHP-${today}-%`).first() as any
+        ).bind(`SHP-${today}-%`).first<{ cnt: number }>()
         const seq = String((countResult?.cnt || 0) + 1).padStart(3, '0')
         const shipmentNumber = `SHP-${today}-${seq}`
 
         // 주문 정보 조회
         const orderInfo = await c.env.DB.prepare(
           'SELECT delivery_method, delivery_info, contact_phone FROM orders WHERE id = ?'
-        ).bind(card.order_id).first() as any
+        ).bind(card.order_id).first<{ delivery_method: string | null; delivery_info: string | null; contact_phone: string | null }>()
 
         // delivery_method → delivery_type 매핑 (CHECK 제약: DELIVERY, PICKUP, FREIGHT, QUICK)
         const dtMap: Record<string, string> = {
           '대신택배': 'DELIVERY', '한진택배': 'DELIVERY', '직배': 'DELIVERY',
           '대신화물': 'FREIGHT', '용차': 'FREIGHT', '퀵': 'QUICK', '방문수령': 'PICKUP'
         }
-        const deliveryType = dtMap[orderInfo?.delivery_method] || 'DELIVERY'
+        const deliveryType = (orderInfo?.delivery_method && dtMap[orderInfo.delivery_method]) || 'DELIVERY'
 
         const shipmentResult = await c.env.DB.prepare(`
           INSERT INTO shipments (shipment_number, order_id, status, delivery_type, courier_name, shipped_at, receiver_address, created_by, entity_id)
@@ -744,10 +749,10 @@ cardsLifecycleRouter.patch('/:id/ship', requireRole('ADMIN', 'MANAGER'), async (
           // 카드에 연결된 card_items에서 order_item_id와 수량 조회
           const cardItems = await c.env.DB.prepare(
             'SELECT order_item_id, quantity FROM card_items WHERE card_id = ?'
-          ).bind(card.id).all()
+          ).bind(card.id).all<CardItemRow>()
 
           if (cardItems.results?.length) {
-            for (const ci of cardItems.results as any[]) {
+            for (const ci of cardItems.results) {
               await c.env.DB.prepare(`
                 INSERT INTO shipment_items (shipment_id, card_id, order_item_id, quantity)
                 VALUES (?, ?, ?, ?)
@@ -770,10 +775,10 @@ cardsLifecycleRouter.patch('/:id/ship', requireRole('ADMIN', 'MANAGER'), async (
         if (!existsItem) {
           const cardItems = await c.env.DB.prepare(
             'SELECT order_item_id, quantity FROM card_items WHERE card_id = ?'
-          ).bind(card.id).all()
+          ).bind(card.id).all<CardItemRow>()
 
           if (cardItems.results?.length) {
-            for (const ci of cardItems.results as any[]) {
+            for (const ci of cardItems.results) {
               await c.env.DB.prepare(`
                 INSERT INTO shipment_items (shipment_id, card_id, order_item_id, quantity)
                 VALUES (?, ?, ?, ?)
@@ -810,8 +815,8 @@ cardsLifecycleRouter.patch('/:id/unship', requireRole('ADMIN', 'MANAGER'), async
 
     // 1. 카드 조회
     const card = await c.env.DB.prepare(
-      'SELECT * FROM cards WHERE id = ?'
-    ).bind(id).first() as any
+      'SELECT id, order_id, shipped_at FROM cards WHERE id = ?'
+    ).bind(id).first<{ id: number; order_id: number; shipped_at: string | null }>()
 
     if (!card) {
       return c.json({ success: false, error: 'Card not found' }, 404)
@@ -830,7 +835,7 @@ cardsLifecycleRouter.patch('/:id/unship', requireRole('ADMIN', 'MANAGER'), async
     // 4. 주문이 SHIPPED 상태였으면 PRINT_DONE으로 되돌림
     const order = await c.env.DB.prepare(
       'SELECT status FROM orders WHERE id = ?'
-    ).bind(card.order_id).first() as any
+    ).bind(card.order_id).first<{ status: string }>()
 
     if (order && order.status === 'SHIPPED') {
       await c.env.DB.prepare(
@@ -861,12 +866,13 @@ cardsLifecycleRouter.post('/generate/:orderId', async (c) => {
     const user = c.get('user')
 
     // Get order details
+    interface OrderGenRow { order_number: string; client_name: string | null; delivery_date: string | null; priority: string | null }
     const order = await c.env.DB.prepare(`
-      SELECT o.*, c.client_name
+      SELECT o.order_number, o.delivery_date, o.priority, c.client_name
       FROM orders o
       LEFT JOIN clients c ON o.client_id = c.id
       WHERE o.id = ?
-    `).bind(orderId).first() as any
+    `).bind(orderId).first<OrderGenRow>()
 
     if (!order) {
       return c.json({
@@ -876,9 +882,10 @@ cardsLifecycleRouter.post('/generate/:orderId', async (c) => {
     }
 
     // Get order items
+    interface OrderItemRow { id: number; item_name: string; category_name: string | null; width: number | null; height: number | null; quantity: number; unit: string | null; post_processing: string | null; ai_analysis_id: number | null }
     const { results: orderItems } = await c.env.DB.prepare(`
-      SELECT * FROM order_items WHERE order_id = ? ORDER BY sort_order ASC
-    `).bind(orderId).all() as any
+      SELECT id, item_name, category_name, width, height, quantity, unit, post_processing, ai_analysis_id FROM order_items WHERE order_id = ? ORDER BY sort_order ASC
+    `).bind(orderId).all<OrderItemRow>()
 
     if (orderItems.length === 0) {
       return c.json({
@@ -888,12 +895,13 @@ cardsLifecycleRouter.post('/generate/:orderId', async (c) => {
     }
 
     // Get post-processing options for margin calculation
+    interface PostProcRow { option_code: string; margin_left: number; margin_right: number; margin_top: number; margin_bottom: number }
     const { results: postProcOptions } = await c.env.DB.prepare(`
-      SELECT * FROM post_processing_options WHERE is_active = 1
-    `).all() as any
+      SELECT option_code, margin_left, margin_right, margin_top, margin_bottom FROM post_processing_options WHERE is_active = 1
+    `).all<PostProcRow>()
 
-    const postProcMap = new Map()
-    postProcOptions.forEach((opt: any) => {
+    const postProcMap = new Map<string, PostProcRow>()
+    postProcOptions.forEach((opt) => {
       postProcMap.set(opt.option_code, opt)
     })
 
@@ -901,10 +909,11 @@ cardsLifecycleRouter.post('/generate/:orderId', async (c) => {
     const dateStr = today.toISOString().split('T')[0].replace(/-/g, '')
 
     // Get today's card count for numbering
-    const { count } = await c.env.DB.prepare(`
+    const countRow = await c.env.DB.prepare(`
       SELECT COUNT(*) as count FROM cards
       WHERE date(created_at) = date('now')
-    `).first() as any
+    `).first<{ count: number }>()
+    const count = countRow?.count ?? 0
 
     let cardCount = count
     const createdCards = []
@@ -993,7 +1002,7 @@ cardsLifecycleRouter.post('/generate/:orderId', async (c) => {
         orderId,
         JSON.stringify({
           card_count: createdCards.length,
-          card_numbers: createdCards.map((c: any) => c.card_number)
+          card_numbers: createdCards.map((c) => c.card_number)
         })
       ).run()
     } catch (logErr) {
@@ -1028,7 +1037,7 @@ cardsLifecycleRouter.patch('/:cardId/items/:itemId/print-toggle', async (c) => {
     // card_item 확인
     const ci = await c.env.DB.prepare(
       'SELECT ci.id, ci.card_id, ci.print_completed, c.status, c.order_id FROM card_items ci JOIN cards c ON c.id = ci.card_id WHERE ci.id = ? AND ci.card_id = ?'
-    ).bind(itemId, cardId).first() as any
+    ).bind(itemId, cardId).first<{ id: number; card_id: number; print_completed: number; status: string; order_id: number }>()
 
     if (!ci) {
       return c.json({ success: false, error: 'Card item not found' }, 404)
@@ -1049,10 +1058,10 @@ cardsLifecycleRouter.patch('/:cardId/items/:itemId/print-toggle', async (c) => {
     // 전체 완료 여부 확인 → 자동 PRINT_DONE 전환
     const { results: allItems } = await c.env.DB.prepare(
       'SELECT print_completed FROM card_items WHERE card_id = ?'
-    ).bind(cardId).all() as any
+    ).bind(cardId).all<{ print_completed: number }>()
 
     const total = allItems.length
-    const done = allItems.filter((i: any) => i.print_completed === 1).length
+    const done = allItems.filter((i) => i.print_completed === 1).length
     const allDone = total > 0 && done === total
 
     if (allDone && ci.status !== 'PRINT_DONE') {
@@ -1092,7 +1101,7 @@ cardsLifecycleRouter.patch('/:id/complete', async (c) => {
 
     const card = await c.env.DB.prepare(
       'SELECT id, status, order_id, post_processing FROM cards WHERE id = ?'
-    ).bind(id).first() as any
+    ).bind(id).first<{ id: number; status: string; order_id: number; post_processing: string | null }>()
 
     if (!card) {
       return c.json({ success: false, error: 'Card not found' }, 404)
@@ -1126,9 +1135,9 @@ cardsLifecycleRouter.patch('/:id/complete', async (c) => {
     // 6) 진행률 반환
     const { results: allItems } = await c.env.DB.prepare(
       'SELECT print_completed FROM card_items WHERE card_id = ?'
-    ).bind(id).all() as any
+    ).bind(id).all<{ print_completed: number }>()
     const total = allItems.length
-    const done = allItems.filter((i: any) => i.print_completed === 1).length
+    const done = allItems.filter((i) => i.print_completed === 1).length
 
     return c.json({
       success: true,
@@ -1148,7 +1157,7 @@ cardsLifecycleRouter.patch('/:id/revert', async (c) => {
 
     const card = await c.env.DB.prepare(
       'SELECT id, status, order_id, card_number FROM cards WHERE id = ?'
-    ).bind(id).first() as any
+    ).bind(id).first<{ id: number; status: string; order_id: number; card_number: string }>()
 
     if (!card) {
       return c.json({ success: false, error: 'Card not found' }, 404)

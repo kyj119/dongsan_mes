@@ -13,6 +13,70 @@ import { authMiddleware } from '../../middleware/auth'
 import { requireAnyPagePermission } from '../../middleware/permissions'
 import { entityFilter } from '../../utils/entityFilter'
 
+// ── Row types for D1 query results ──
+interface EquipmentRow {
+  id: number; name: string; equipment_status: string; daily_capacity: number;
+  location_zone: string | null; queue_count: number; last_seen_at: string | null; agent_status: string;
+}
+
+interface PrintingCardRow {
+  id: number; card_number: string; client_name: string; item_name: string; category_name: string;
+  delivery_date: string; priority: number; status: string; rip_status: string | null; rip_preset: string | null;
+  width: number; height: number; quantity: number; unit: string; created_at: string;
+  equipment_id: number; order_number: string;
+}
+
+interface CategoryRow { category_name: string }
+
+interface CardResultRow {
+  id: number; order_id: number; client_name: string; item_name: string; width: number; height: number;
+  quantity: number; unit: string; content: string | null; status: string; priority: number;
+  delivery_date: string; created_at: string; equipment_id: number | null;
+  order_number: string; delivery_method: string | null; delivery_time: string | null;
+  order_delivery_date: string | null; created_by_name: string | null; order_notes: string | null;
+  item_scale_factor?: number; item_count?: number;
+  _items?: CardLiveItem[]; print_progress?: { total: number; done: number };
+  order_card_total?: number; order_card_done?: number;
+  [key: string]: unknown;
+}
+
+interface CardLiveItem {
+  card_item_id: number; item_name: string; width: number; height: number;
+  quantity: number; unit: string; content: string; scale_factor: number;
+  post_processing: string | null; finishing: string | null; print_completed: number;
+}
+
+interface LiveItemRow {
+  card_id: number; card_item_id: number; print_completed: number;
+  item_name: string; width: number; height: number;
+  scale_factor: number; quantity: number; unit: string; content: string; post_processing: string | null; finishing: string | null;
+}
+
+interface OrderProgressRow { order_id: number; order_card_total: number; order_card_done: number }
+
+interface CountRow { count: number }
+
+interface KanbanColRow { rip_waiting: number; printing: number; print_done: number; hold: number }
+interface OverdueRow { cnt: number }
+interface DeliveryRow { delivery_method: string | null; delivery_time: string | null; total: number; done: number }
+interface TodayRow { today_total: number; today_done: number }
+
+interface DailyStatsRow { date: string; completed: number; in_progress: number; on_hold: number }
+
+interface DefectCategoryRow { defect_category: string; count: number; resolved: number; open_count: number }
+interface DefectEquipmentRow { equipment_name: string; equipment_id: number; count: number }
+interface DefectDailyRow { date: string; count: number }
+interface DefectRateRow { defect_cards: number; total_cards: number }
+
+interface CardItemRow {
+  id: number; item_name: string; width: number; height: number; quantity: number; unit: string;
+  content: string | null; scale_factor: number; ai_analysis_id: number | null; ai_group_index: number | null;
+  card_item_id: number; print_completed: number; card_quantity: number;
+  thumbnail_url?: string;
+}
+
+interface AnalysisRow { id: number; groups_json: string | null }
+
 const cardsQueriesRouter = new Hono<HonoEnv>()
 cardsQueriesRouter.use('/*', authMiddleware, requireAnyPagePermission('/cards', '/orders'))
 
@@ -34,7 +98,7 @@ cardsQueriesRouter.get('/schedule/queues', async (c) => {
       LEFT JOIN agent_heartbeats ah ON ah.equipment_id = e.id
       WHERE e.status = 'ACTIVE'
       ORDER BY e.name
-    `).all()
+    `).all<EquipmentRow>()
 
     // 2. 전체 PRINTING 카드를 한 번에 조회 후 장비별 그룹핑 (N+1 → 1 쿼리)
     const ef2 = entityFilter(c, 'o')
@@ -49,14 +113,14 @@ cardsQueriesRouter.get('/schedule/queues', async (c) => {
         SELECT id FROM equipment WHERE status = 'ACTIVE'
       )${ef2.clause}
       ORDER BY c.equipment_id, c.priority DESC, c.delivery_date ASC, c.created_at ASC
-    `).bind(...ef2.params).all()
+    `).bind(...ef2.params).all<PrintingCardRow>()
 
-    const cardsByEquipment = new Map<number, any[]>()
-    for (const card of allPrintingCards as any[]) {
+    const cardsByEquipment = new Map<number, PrintingCardRow[]>()
+    for (const card of allPrintingCards) {
       if (!cardsByEquipment.has(card.equipment_id)) cardsByEquipment.set(card.equipment_id, [])
       cardsByEquipment.get(card.equipment_id)!.push(card)
     }
-    const queues = (equipmentList as any[]).map(eq => ({
+    const queues = equipmentList.map(eq => ({
       ...eq,
       cards: cardsByEquipment.get(eq.id) || []
     }))
@@ -125,9 +189,9 @@ cardsQueriesRouter.get('/categories', async (c) => {
       WHERE c.category_name IS NOT NULL
         AND c.status != 'PRINT_DONE'${efCat.clause}
       ORDER BY c.category_name ASC
-    `).bind(...efCat.params).all()
+    `).bind(...efCat.params).all<CategoryRow>()
 
-    const categories = (results as any[]).map((r) => r.category_name as string)
+    const categories = results.map((r) => r.category_name)
     return c.json({ success: true, data: categories })
   } catch (error) {
     return c.json({
@@ -242,7 +306,8 @@ cardsQueriesRouter.get('/', async (c) => {
     const { results } = await c.env.DB.prepare(query).bind(...params).all()
 
     // Batch-query live display data from order_items
-    const cardIds = (results as any[]).map((r: any) => r.id)
+    const typedResults = results as CardResultRow[]
+    const cardIds = typedResults.map((r) => r.id)
     if (cardIds.length > 0) {
       const ph = cardIds.map(() => '?').join(',')
       const { results: liveItems } = await c.env.DB.prepare(`
@@ -253,27 +318,27 @@ cardsQueriesRouter.get('/', async (c) => {
         JOIN order_items oi ON ci.order_item_id = oi.id
         WHERE ci.card_id IN (${ph})
         ORDER BY ci.card_id, oi.sort_order ASC
-      `).bind(...cardIds).all() as any
+      `).bind(...cardIds).all<LiveItemRow>()
 
-      const byCard = new Map<number, any[]>()
-      for (const item of (liveItems || []) as any[]) {
+      const byCard = new Map<number, LiveItemRow[]>()
+      for (const item of liveItems || []) {
         if (!byCard.has(item.card_id)) byCard.set(item.card_id, [])
         byCard.get(item.card_id)!.push(item)
       }
 
-      for (const card of results as any[]) {
+      for (const card of typedResults) {
         const items = byCard.get(card.id)
         if (items && items.length > 0) {
-          card.item_name = items.map((i: any) => i.item_name).join(', ')
+          card.item_name = items.map((i) => i.item_name).join(', ')
           card.width = items[0].width || 0
           card.height = items[0].height || 0
           card.item_scale_factor = items[0].scale_factor || 1
-          card.quantity = items.reduce((s: number, i: any) => s + (i.quantity || 0), 0)
+          card.quantity = items.reduce((s: number, i) => s + (i.quantity || 0), 0)
           card.unit = items[0].unit || 'EA'
           card.item_count = items.length
-          card.content = items.map((i: any) => i.content).filter(Boolean).join(', ')
+          card.content = items.map((i) => i.content).filter(Boolean).join(', ')
           // 개별 품목 배열
-          ;(card as any)._items = items.map((i: any) => ({
+          card._items = items.map((i) => ({
             card_item_id: i.card_item_id,
             item_name: i.item_name,
             width: i.width || 0,
@@ -288,15 +353,15 @@ cardsQueriesRouter.get('/', async (c) => {
           }))
           // 진행률 계산
           const totalItems = items.length
-          const doneItems = items.filter((i: any) => i.print_completed === 1).length
-          ;(card as any).print_progress = { total: totalItems, done: doneItems }
+          const doneItems = items.filter((i) => i.print_completed === 1).length
+          card.print_progress = { total: totalItems, done: doneItems }
         }
       }
     }
 
     // Batch-query order card progress (for shipping completeness check)
     if (cardIds.length > 0) {
-      const orderIds = [...new Set((results as any[]).map((r: any) => r.order_id).filter(Boolean))]
+      const orderIds = [...new Set(typedResults.map((r) => r.order_id).filter(Boolean))]
       if (orderIds.length > 0) {
         const oph = orderIds.map(() => '?').join(',')
         const { results: orderProgress } = await c.env.DB.prepare(`
@@ -306,13 +371,13 @@ cardsQueriesRouter.get('/', async (c) => {
           FROM cards
           WHERE order_id IN (${oph}) AND status != 'HOLD'
           GROUP BY order_id
-        `).bind(...orderIds).all() as any
+        `).bind(...orderIds).all<OrderProgressRow>()
 
         const progressMap = new Map<number, { total: number, done: number }>()
-        for (const p of (orderProgress || []) as any[]) {
+        for (const p of orderProgress || []) {
           progressMap.set(p.order_id, { total: p.order_card_total, done: p.order_card_done })
         }
-        for (const card of results as any[]) {
+        for (const card of typedResults) {
           const prog = progressMap.get(card.order_id)
           if (prog) {
             card.order_card_total = prog.total
@@ -380,11 +445,12 @@ cardsQueriesRouter.get('/', async (c) => {
     countQuery += efCount.clause
     countParams.push(...efCount.params)
 
-    const { count } = await c.env.DB.prepare(countQuery).bind(...countParams).first() as any
+    const countResult = await c.env.DB.prepare(countQuery).bind(...countParams).first<CountRow>()
+    const count = countResult?.count ?? 0
 
     return c.json({
       success: true,
-      data: results as any,
+      data: typedResults,
       pagination: {
         page: parseInt(page),
         limit: safeLimit,
@@ -426,7 +492,7 @@ cardsQueriesRouter.get('/kanban-summary', async (c) => {
       JOIN orders o ON c.order_id = o.id
       WHERE 1=1${categoryFilter}${efKanban.clause}
     `
-    const colRow = await c.env.DB.prepare(colCountSql).bind(...categoryParams, ...efKanban.params).first() as any
+    const colRow = await c.env.DB.prepare(colCountSql).bind(...categoryParams, ...efKanban.params).first<KanbanColRow>()
 
     // 2. 지연(overdue): 오늘 납기 이전인데 아직 미출고 카드
     let overdueSql = `
@@ -436,7 +502,7 @@ cardsQueriesRouter.get('/kanban-summary', async (c) => {
       WHERE c.status NOT IN ('PRINT_DONE', 'HOLD')
         AND date(c.delivery_date) < date('now')${categoryFilter}${efKanban.clause}
     `
-    const overdueRow = await c.env.DB.prepare(overdueSql).bind(...categoryParams, ...efKanban.params).first() as any
+    const overdueRow = await c.env.DB.prepare(overdueSql).bind(...categoryParams, ...efKanban.params).first<OverdueRow>()
 
     // 3. 납품방법별 집계 (오늘 납기 + 미출고 주문 기준)
     let deliverySql = `
@@ -458,7 +524,7 @@ cardsQueriesRouter.get('/kanban-summary', async (c) => {
     deliveryParams.push(...efKanban.params)
     deliverySql += ' GROUP BY o.delivery_method, o.delivery_time ORDER BY o.delivery_time ASC'
 
-    const { results: deliveryRows } = await c.env.DB.prepare(deliverySql).bind(...deliveryParams).all() as any
+    const { results: deliveryRows } = await c.env.DB.prepare(deliverySql).bind(...deliveryParams).all<DeliveryRow>()
 
     // 4. 오늘 납기 전체/완료 요약
     let todaySql = `
@@ -478,7 +544,7 @@ cardsQueriesRouter.get('/kanban-summary', async (c) => {
     }
     todaySql += efKanban.clause
     todayParams.push(...efKanban.params)
-    const todayRow = await c.env.DB.prepare(todaySql).bind(...todayParams).first() as any
+    const todayRow = await c.env.DB.prepare(todaySql).bind(...todayParams).first<TodayRow>()
 
     return c.json({
       success: true,
@@ -488,7 +554,7 @@ cardsQueriesRouter.get('/kanban-summary', async (c) => {
         print_done: colRow?.print_done ?? 0,
         hold: colRow?.hold ?? 0,
         overdue: overdueRow?.cnt ?? 0,
-        by_delivery_method: (deliveryRows || []).map((r: any) => ({
+        by_delivery_method: (deliveryRows || []).map((r) => ({
           method: r.delivery_method || '미지정',
           time: r.delivery_time || null,
           total: r.total ?? 0,
@@ -640,7 +706,7 @@ cardsQueriesRouter.get('/defect-stats', async (c) => {
         (SELECT COUNT(*) FROM cards WHERE created_at >= ?) as total_cards
       FROM quality_issues qi
       WHERE qi.created_at >= ? AND qi.created_at <= ?
-    `).bind(startDate, startDate, endDate).first() as any
+    `).bind(startDate, startDate, endDate).first<DefectRateRow>()
 
     return c.json({
       success: true,
@@ -709,24 +775,25 @@ cardsQueriesRouter.get('/:id', async (c) => {
       LEFT JOIN order_items oi ON ci.order_item_id = oi.id
       WHERE ci.card_id = ?
       ORDER BY oi.sort_order ASC
-    `).bind(id).all() as any
+    `).bind(id).all<CardItemRow>()
 
     // Resolve per-item thumbnails from ai_analysis_requests
     const analysisIds = new Set<number>()
-    for (const item of (cardItems || []) as any[]) {
+    for (const item of cardItems || []) {
       if (item.ai_analysis_id && item.ai_group_index !== null && item.ai_group_index !== undefined) {
         analysisIds.add(item.ai_analysis_id)
       }
     }
 
-    const analysisCache = new Map<number, any[]>()
+    interface AnalysisGroup { index: number; thumbnail_base64?: string; [key: string]: unknown }
+    const analysisCache = new Map<number, AnalysisGroup[]>()
     if (analysisIds.size > 0) {
       const idArr = Array.from(analysisIds)
       const placeholders = idArr.map(() => '?').join(',')
       const { results: analyses } = await c.env.DB.prepare(
         `SELECT id, groups_json FROM ai_analysis_requests WHERE id IN (${placeholders})`
-      ).bind(...idArr).all() as any
-      for (const analysis of (analyses || [])) {
+      ).bind(...idArr).all<AnalysisRow>()
+      for (const analysis of analyses || []) {
         if (analysis.groups_json) {
           try {
             analysisCache.set(analysis.id, JSON.parse(analysis.groups_json))
@@ -737,43 +804,45 @@ cardsQueriesRouter.get('/:id', async (c) => {
       }
     }
 
-    for (const item of (cardItems || []) as any[]) {
+    for (const item of cardItems || []) {
       if (item.ai_analysis_id && item.ai_group_index !== null && item.ai_group_index !== undefined) {
         const groups = analysisCache.get(item.ai_analysis_id) || []
         const matched = item.ai_group_index === -1
           ? groups[0]
-          : groups.find((g: any) => g.index === item.ai_group_index)
+          : groups.find((g) => g.index === item.ai_group_index)
         if (matched?.thumbnail_base64) {
-          (item as any).thumbnail_url = `data:image/png;base64,${matched.thumbnail_base64}`
+          item.thumbnail_url = `data:image/png;base64,${matched.thumbnail_base64}`
         }
       }
     }
 
     // 거래처 메모 (최근 3건)
-    let clientNotes: any[] = []
-    if ((card as any).client_id) {
+    interface ClientNoteRow { note_type: string; content: string; created_at: string }
+    let clientNotes: ClientNoteRow[] = []
+    const typedCard = card as Record<string, unknown>
+    if (typedCard.client_id) {
       const { results: cnRows } = await c.env.DB.prepare(
         `SELECT note_type, content, created_at FROM client_notes WHERE client_id = ? ORDER BY created_at DESC LIMIT 3`
-      ).bind((card as any).client_id).all() as any
+      ).bind(typedCard.client_id).all<ClientNoteRow>()
       clientNotes = cnRows || []
     }
 
-    const firstItem = (cardItems as any[])?.[0]
+    const firstItem = cardItems?.[0]
     const response: ApiResponse<Card> = {
       success: true,
       data: {
         ...card,
-        item_name: (cardItems as any[])?.length > 0
-          ? (cardItems as any[]).map((i: any) => i.item_name).join(', ')
-          : (card as any).item_name,
-        width: firstItem?.width || (card as any).width || 0,
-        height: firstItem?.height || (card as any).height || 0,
-        quantity: (cardItems as any[])?.length > 0
-          ? (cardItems as any[]).reduce((s: number, i: any) => s + (i.quantity || 0), 0)
-          : (card as any).quantity,
+        item_name: cardItems?.length > 0
+          ? cardItems.map((i) => i.item_name).join(', ')
+          : typedCard.item_name,
+        width: firstItem?.width || typedCard.width || 0,
+        height: firstItem?.height || typedCard.height || 0,
+        quantity: cardItems?.length > 0
+          ? cardItems.reduce((s: number, i) => s + (i.quantity || 0), 0)
+          : typedCard.quantity,
         items: cardItems || [],
         client_notes: clientNotes
-      } as any
+      } as unknown as Card
     }
 
     return c.json(response)
