@@ -1935,6 +1935,9 @@ async function printWorkOrder(orderId) {
             try { qrDataUrl = await QRCode.toDataURL(qrUrl, { width: 120, margin: 1 }); } catch(e) {}
         }
 
+        // XSS 방지 래퍼 (document.write 컨텍스트)
+        var esc = window.escapeHtml || function(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); };
+
         // 마감방식 포맷 헬퍼
         function fmtFinishing(fin) {
             if (!fin) return '';
@@ -1942,10 +1945,10 @@ async function printWorkOrder(orderId) {
                 var f = typeof fin === 'string' ? JSON.parse(fin) : fin;
                 var t = f.top || '', b = f.bottom || '', l = f.left || '', r = f.right || '';
                 if (!t && !b && !l && !r) return '';
-                if (t && t === b && t === l && t === r) return t + ' 사방';
+                if (t && t === b && t === l && t === r) return esc(t) + ' 사방';
                 var p = [];
-                if (t) p.push('상:' + t); if (b) p.push('하:' + b);
-                if (l) p.push('좌:' + l); if (r) p.push('우:' + r);
+                if (t) p.push('상:' + esc(t)); if (b) p.push('하:' + esc(b));
+                if (l) p.push('좌:' + esc(l)); if (r) p.push('우:' + esc(r));
                 return p.join(' ');
             } catch(e) { return ''; }
         }
@@ -1958,10 +1961,10 @@ async function printWorkOrder(orderId) {
                 var t = f.top || '', b = f.bottom || '', l = f.left || '', r = f.right || '';
                 if (!t && !b && !l && !r) return '';
                 return '<div style="position:relative;width:100px;height:70px;border:2px solid #92400e;border-radius:4px;margin:4px 0;font-size:9px;color:#92400e">'
-                    + '<span style="position:absolute;top:-12px;left:50%;transform:translateX(-50%);background:#fff;padding:0 3px">' + (t || '-') + '</span>'
-                    + '<span style="position:absolute;bottom:-12px;left:50%;transform:translateX(-50%);background:#fff;padding:0 3px">' + (b || '-') + '</span>'
-                    + '<span style="position:absolute;left:-2px;top:50%;transform:translateY(-50%) rotate(-90deg);background:#fff;padding:0 3px">' + (l || '-') + '</span>'
-                    + '<span style="position:absolute;right:-2px;top:50%;transform:translateY(-50%) rotate(90deg);background:#fff;padding:0 3px">' + (r || '-') + '</span>'
+                    + '<span style="position:absolute;top:-12px;left:50%;transform:translateX(-50%);background:#fff;padding:0 3px">' + esc(t || '-') + '</span>'
+                    + '<span style="position:absolute;bottom:-12px;left:50%;transform:translateX(-50%);background:#fff;padding:0 3px">' + esc(b || '-') + '</span>'
+                    + '<span style="position:absolute;left:-2px;top:50%;transform:translateY(-50%) rotate(-90deg);background:#fff;padding:0 3px">' + esc(l || '-') + '</span>'
+                    + '<span style="position:absolute;right:-2px;top:50%;transform:translateY(-50%) rotate(90deg);background:#fff;padding:0 3px">' + esc(r || '-') + '</span>'
                     + '<span style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:8px;color:#6b7280">디자인</span>'
                     + '</div>';
             } catch(e) { return ''; }
@@ -1969,7 +1972,7 @@ async function printWorkOrder(orderId) {
 
         // 인쇄 창 생성
         var win = window.open('', '_blank', 'width=700,height=900');
-        var html = '<!DOCTYPE html><html><head><meta charset="utf-8"><title>작업지시서 - ' + (order.order_number || '') + '</title>'
+        var html = '<!DOCTYPE html><html><head><meta charset="utf-8"><title>작업지시서 - ' + esc(order.order_number || '') + '</title>'
             + '<style>'
             + 'body { font-family: "Malgun Gothic", sans-serif; padding: 20px; font-size: 13px; color: #111; }'
             + 'h1 { font-size: 18px; margin: 0 0 12px; border-bottom: 2px solid #111; padding-bottom: 6px; }'
@@ -1992,18 +1995,18 @@ async function printWorkOrder(orderId) {
         html += '<div class="header">';
         html += '<div><h1>작업지시서</h1>';
         html += '<div class="info">';
-        html += '<b>주문번호</b> ' + (order.order_number || '-') + '<br>';
-        html += '<b>거래처</b> ' + (order.client_name || '-') + '<br>';
-        html += '<b>납기</b> ' + (order.delivery_date || '-') + ' (' + (order.delivery_method || '배송') + ')<br>';
+        html += '<b>주문번호</b> ' + esc(order.order_number || '-') + '<br>';
+        html += '<b>거래처</b> ' + esc(order.client_name || '-') + '<br>';
+        html += '<b>납기</b> ' + esc(order.delivery_date || '-') + ' (' + esc(order.delivery_method || '배송') + ')<br>';
         if (order.contact_mobile || order.contact_phone) {
-            html += '<b>연락처</b> ' + (order.contact_mobile || order.contact_phone || '') + '<br>';
+            html += '<b>연락처</b> ' + esc(order.contact_mobile || order.contact_phone || '') + '<br>';
         }
         html += '</div></div>';
         if (qrDataUrl) html += '<img src="' + qrDataUrl + '" style="width:100px;height:100px">';
         html += '</div>';
 
         if (order.internal_notes) {
-            html += '<div class="notes"><b>특이사항:</b> ' + order.internal_notes + '</div>';
+            html += '<div class="notes"><b>특이사항:</b> ' + esc(order.internal_notes) + '</div>';
         }
 
         // 품목별 카드 형태로 표시 (Q8: 시각적 작업지시서)
@@ -2022,9 +2025,9 @@ async function printWorkOrder(orderId) {
             }
             // 기본 정보
             html += '<div class="item-info">';
-            html += '<div class="item-title">#' + (idx + 1) + ' ' + (item.item_name || '-') + '</div>';
-            html += '<div class="item-spec">' + (spec || '-') + ' / ' + (item.quantity || 1) + (item.unit || 'EA') + '</div>';
-            if (item.content) html += '<div class="item-spec" style="color:#2563eb">' + item.content + '</div>';
+            html += '<div class="item-title">#' + (idx + 1) + ' ' + esc(item.item_name || '-') + '</div>';
+            html += '<div class="item-spec">' + (spec || '-') + ' / ' + (item.quantity || 1) + esc(item.unit || 'EA') + '</div>';
+            if (item.content) html += '<div class="item-spec" style="color:#2563eb">' + esc(item.content) + '</div>';
             html += '</div>';
             html += '</div>';
 
@@ -2037,7 +2040,7 @@ async function printWorkOrder(orderId) {
                     var ppArr = typeof item.post_processing === 'string' ? JSON.parse(item.post_processing) : item.post_processing;
                     if (Array.isArray(ppArr)) {
                         ppArr.filter(function(pp) { return !isPPHidden(pp.name || pp.code || pp); })
-                            .forEach(function(pp) { ppHtml += '<span class="pp-badge">' + (pp.name || pp.code || pp) + '</span>'; });
+                            .forEach(function(pp) { ppHtml += '<span class="pp-badge">' + esc(pp.name || pp.code || pp) + '</span>'; });
                     }
                 } catch(e) {}
             }

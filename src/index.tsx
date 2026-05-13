@@ -194,10 +194,19 @@ app.use('/api/*', cors({
   maxAge: 86400,
 }))
 
+// 보안 헤더 — Clickjacking, MIME sniffing, Referrer 노출 방지
+app.use('*', async (c, next) => {
+  await next()
+  c.header('X-Frame-Options', 'DENY')
+  c.header('X-Content-Type-Options', 'nosniff')
+  c.header('Referrer-Policy', 'strict-origin-when-cross-origin')
+})
+
 // Rate limiting — 로그인 브루트포스 방지
 app.use('/api/auth/login', rateLimitMiddleware(5, 60000))  // 분당 5회
 app.use('/api/portal/auth/login', rateLimitMiddleware(5, 60000))
 app.use('/api/users/change-password', rateLimitMiddleware(5, 60000))  // 분당 5회
+app.use('/api/portal/auth/change-password', rateLimitMiddleware(5, 60000))  // 분당 5회
 app.use('/api/auth/refresh', rateLimitMiddleware(10, 60000))  // 분당 10회
 
 // Mount API routers
