@@ -39,7 +39,12 @@ dashboardRouter.get('/stats', async (c) => {
         (SELECT COUNT(*) FROM orders WHERE delivery_date = date('now') AND status NOT IN ('SHIPPED','CANCELLED')${ef.clause}) as today_shipment_due,
         (SELECT COUNT(*) FROM orders WHERE priority='URGENT' AND status NOT IN ('SHIPPED','CANCELLED')${ef.clause}) as urgent_count,
         (SELECT COALESCE(SUM(final_amount),0) FROM orders WHERE billing_status='BILLED' AND strftime('%Y-%m',billed_at)=strftime('%Y-%m','now')${ef.clause}) as month_billed,
-        (SELECT COALESCE(SUM(amount),0) FROM payments WHERE strftime('%Y-%m',payment_date)=strftime('%Y-%m','now')) as month_paid
+        (SELECT COALESCE(SUM(amount),0) FROM payments WHERE strftime('%Y-%m',payment_date)=strftime('%Y-%m','now')) as month_paid,
+        (SELECT ROUND(
+          COUNT(CASE WHEN o2.status = 'SHIPPED' AND date(o2.updated_at) <= date(o2.delivery_date) THEN 1 END) * 100.0 /
+          NULLIF(COUNT(*), 0), 1)
+         FROM orders o2 WHERE o2.status IN ('SHIPPED') AND strftime('%Y-%m', o2.created_at) = strftime('%Y-%m', 'now') AND o2.delivery_date IS NOT NULL${ef.clause}
+        ) as on_time_rate
     `).bind(...[
       ...ef.params, // total_orders
       ...ef.params, // confirmed_orders
@@ -56,6 +61,7 @@ dashboardRouter.get('/stats', async (c) => {
       ...ef.params, // today_shipment_due
       ...ef.params, // urgent_count
       ...ef.params, // month_billed
+      ...ef.params, // on_time_rate
     ]).first()
 
     // 후가공 통계: 활성 카드의 post_processing JSON을 TypeScript에서 파싱
