@@ -174,6 +174,24 @@ comm -23 /tmp/js_ids.txt /tmp/html_ids.txt
 
 **주의**: `?raw` import 특성상 TypeScript가 JS 내부를 검증하지 못함. 이 검사는 반드시 수동 또는 grep으로 수행.
 
+### 13. N+1 쿼리 패턴 검사 (라우트 변경 시)
+
+for/while 루프 안에 `await DB.prepare(...)` 호출 패턴 탐지.
+
+```bash
+# 루프 내 await DB 패턴 (N+1 의심)
+grep -n "for\s*(" src/routes/CHANGED.ts | head -20
+# 해당 줄 ±10줄 컨텍스트로 루프 안에 await DB가 있는지 확인
+```
+
+**수정 방향**:
+- SELECT: `WHERE id IN (${ids.map(()=>'?').join(',')})` + Map 구성
+- INSERT/UPDATE 다건: `db.batch([stmt1, stmt2, ...])` 활용
+- 단, 직렬 의존성(이전 INSERT의 id를 다음에 사용)이 있으면 batch 불가 → 이슈만 등록
+
+**오탐 주의**:
+- `webhooks.ts allowedPrefixes` — 의도적 IP 화이트리스트, 하드코딩이 아님
+
 ## 참조
 
 상세 안티패턴 목록: [anti-patterns.md](references/anti-patterns.md)

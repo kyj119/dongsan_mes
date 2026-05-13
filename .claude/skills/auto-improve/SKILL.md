@@ -99,10 +99,14 @@ description: 자율 점검·개선 에이전트. 6개 영역을 순환하며 실
 - SQL 바인딩 없이 문자열 삽입하는 쿼리 탐지
 - XSS: innerHTML 사용처 vs escapeHtml 적용 여부
 - 인증 누락: authMiddleware 없는 라우트
-- Rate limiting 커버리지
+- Rate limiting 커버리지 (인증·비밀번호 변경 엔드포인트 우선)
 - .env / 시크릿 노출 (git history, 코드 내 하드코딩)
 - Cloudflare Workers 설정 (호환성 플래그, 보안 헤더)
 - GitHub Actions 보안 (시크릿 접근, 권한 범위)
+
+**오탐 제외**:
+- `webhooks.ts allowedPrefixes` Popbill IP 목록 → 의도적 보안 화이트리스트, 하드코딩 아님
+- dev server 전용 취약점 (vite/esbuild SSRF 등) → 프로덕션 영향 없음, 보고 가치 없음
 
 **자동 수정 가능**: escapeHtml 추가, SQL 바인딩 수정
 
@@ -113,16 +117,28 @@ description: 자율 점검·개선 에이전트. 6개 영역을 순환하며 실
 **목적**: 이 에이전트 자체의 탐지 능력 향상
 
 수행 작업:
-- IMPROVEMENT_BACKLOG.md 리뷰:
-  - 용준님이 "approved" → "done"으로 바꾼 항목: 제안이 유효했음 → 유사 패턴 강화
-  - 오래된 "new" 항목: 가치 없었을 수 있음 → 유사 패턴 약화
-  - "rejected" 항목: 잘못된 제안 → 해당 탐지 규칙 수정
+- **IMPROVEMENT_BACKLOG.md ↔ GitHub 동기화**: open/closed 상태 대조 후 done/rejected 반영
+  - closed + 완료 코멘트 → done으로 이동
+  - closed + 거절 코멘트 → rejected로 이동 + 오탐 패턴 목록 갱신
+  - 백로그에 없는 GitHub 이슈도 수집하여 done 섹션에 추가
 - 스킬 파일 업데이트:
   - 새로 발견한 패턴을 다른 스킬(review-checklist, security-audit 등)에 추가
-  - 오탐(false positive) 패턴 제외 목록 갱신
+  - 오탐(false positive) 패턴 제외 목록 갱신 (IMPROVEMENT_BACKLOG.md 하단 표도 갱신)
 - E2E 테스트 강화:
   - 이전 실행에서 발견된 버그에 대한 회귀 테스트 추가 제안
 - 이 SKILL.md 자체도 필요하면 업데이트
+
+**학습된 패턴 (탐지 가치 높음)**:
+- N+1 쿼리: for 루프 내 `await DB.prepare(...)` → 모든 케이스 보고 대상 (100% 수정율)
+- entity_id 누락: 새 테이블 생성 시 entity_id 컬럼 필수 체크 → 반복적으로 발견·수정
+- as any 타입 캐스팅: 대규모 제거 가능·환영 받음
+- UX 흐름 단절: 페이지 간 이동 링크 부재 → 비즈니스 영향 높음
+- 대시보드 KPI 제안 시: 단순 카드 추가가 아닌 **전체 대시보드 UX 재검토 맥락**에서 제안
+
+**학습된 패턴 (탐지 금지)**:
+- 비활성 필드 UI 힌트 제안 (disabled 이유 표시 등 미세 UX) → 불필요 판단 (F-004 패턴)
+- dev server 전용 취약점 → 프로덕션 영향 없음
+- 의도적 IP 화이트리스트 코드 → 보안 제어 목적
 
 ---
 
