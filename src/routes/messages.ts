@@ -19,7 +19,7 @@ messagesRouter.use('/*', authMiddleware, requireRole('ADMIN', 'MANAGER'))
 // ────────────────────────────────────────────────────────────────────────────
 // 공통: 로그 저장 헬퍼
 // ────────────────────────────────────────────────────────────────────────────
-async function insertSendLog(db: any, log: {
+async function insertSendLog(db: D1Database, log: {
   receiptNum: string
   templateCode: string
   receiverNum: string
@@ -56,7 +56,7 @@ async function insertSendLog(db: any, log: {
     log.resultMessage,
     log.sentBy,
     log.channel,
-  ).run() as any
+  ).run()
   return result.meta.last_row_id
 }
 
@@ -82,7 +82,7 @@ messagesRouter.post('/send', async (c) => {
     if (body.include_portal_link && ctx.client_id) {
       const siteUrlSetting = await c.env.DB.prepare(
         "SELECT setting_value FROM settings WHERE setting_key = 'site_base_url'"
-      ).first() as any
+      ).first<{ setting_value: string }>()
       const baseUrl: string = siteUrlSetting?.setting_value || new URL(c.req.url).origin
 
       const { token, url } = await generatePortalToken(db, Number(ctx.client_id), userId, baseUrl)
@@ -112,7 +112,7 @@ messagesRouter.post('/send', async (c) => {
 
     // ── 팩스: fax_enabled 설정 확인 ────────────────────────────────────────
     if (channel === 'fax') {
-      const faxEnabledRow = await c.env.DB.prepare("SELECT setting_value FROM settings WHERE setting_key = 'fax_enabled'").first() as any
+      const faxEnabledRow = await c.env.DB.prepare("SELECT setting_value FROM settings WHERE setting_key = 'fax_enabled'").first<{ setting_value: string }>()
       if (!faxEnabledRow || faxEnabledRow.setting_value !== '1') {
         return c.json({ success: false, error: '팩스 발송이 비활성화되어 있습니다. 설정에서 활성화해주세요.' }, 400)
       }
@@ -381,7 +381,7 @@ messagesRouter.get('/logs', async (c) => {
 
     const countResult = await db.prepare(
       `SELECT COUNT(*) as total FROM kakao_send_logs ksl${whereClause}`
-    ).bind(...bindings).first() as any
+    ).bind(...bindings).first<{ total: number }>()
     const total = countResult?.total || 0
 
     const offset = (page - 1) * limit
@@ -413,7 +413,7 @@ messagesRouter.get('/logs', async (c) => {
     `
 
     const queryBindings = [...bindings, limit, offset]
-    const { results: logs } = await db.prepare(query).bind(...queryBindings).all() as any
+    const { results: logs } = await db.prepare(query).bind(...queryBindings).all()
 
     return c.json({
       success: true,
@@ -460,8 +460,8 @@ messagesRouter.post('/send-bulk', async (c) => {
       if (targetType === 'clients') {
         const { results: clientRows } = await db.prepare(
           `SELECT client_name, email FROM clients WHERE email IS NOT NULL AND email != '' ORDER BY client_name`
-        ).all() as any
-        receivers = (clientRows || []).map((r: any) => ({ name: r.client_name, email: r.email }))
+        ).all<{ client_name: string; email: string }>()
+        receivers = (clientRows || []).map((r) => ({ name: r.client_name, email: r.email }))
       }
 
       if (receivers.length === 0) {
@@ -514,13 +514,13 @@ messagesRouter.post('/send-bulk', async (c) => {
     if (targetType === 'clients') {
       const { results: clientRows } = await db.prepare(
         `SELECT client_name, mobile FROM clients WHERE mobile IS NOT NULL AND mobile != '' ORDER BY client_name`
-      ).all() as any
-      rawReceivers = (clientRows || []).map((r: any) => ({ name: r.client_name, phone: r.mobile }))
+      ).all<{ client_name: string; mobile: string }>()
+      rawReceivers = (clientRows || []).map((r) => ({ name: r.client_name, phone: r.mobile }))
     } else if (targetType === 'employees') {
       const { results: empRows } = await db.prepare(
         `SELECT name, phone FROM employees WHERE phone IS NOT NULL AND phone != '' ORDER BY name`
-      ).all() as any
-      rawReceivers = (empRows || []).map((r: any) => ({ name: r.name, phone: r.phone }))
+      ).all<{ name: string; phone: string }>()
+      rawReceivers = (empRows || []).map((r) => ({ name: r.name, phone: r.phone }))
     }
 
     if (rawReceivers.length === 0) {
@@ -633,7 +633,7 @@ messagesRouter.get('/stats', async (c) => {
       GROUP BY DATE(created_at)
       ORDER BY date ASC
     `
-    const { results: daily } = await db.prepare(dailyQuery).all() as any
+    const { results: daily } = await db.prepare(dailyQuery).all<{ date: string; total: number; success: number; failed: number }>()
 
     // 2. 채널별 통계
     const channelQuery = `
@@ -645,7 +645,7 @@ messagesRouter.get('/stats', async (c) => {
       WHERE created_at >= datetime('now', '-${days} days')
       GROUP BY COALESCE(channel, 'kakao')
     `
-    const { results: byChannel } = await db.prepare(channelQuery).all() as any
+    const { results: byChannel } = await db.prepare(channelQuery).all<{ channel: string; total: number; success: number; failed: number }>()
 
     // 3. 관련 업무별 통계
     const typeQuery = `
@@ -656,7 +656,7 @@ messagesRouter.get('/stats', async (c) => {
       GROUP BY COALESCE(related_type, 'direct')
       ORDER BY total DESC
     `
-    const { results: byType } = await db.prepare(typeQuery).all() as any
+    const { results: byType } = await db.prepare(typeQuery).all<{ type: string; total: number }>()
 
     // 4. 전체 요약
     const summaryQuery = `
@@ -667,7 +667,7 @@ messagesRouter.get('/stats', async (c) => {
       FROM kakao_send_logs
       WHERE created_at >= datetime('now', '-${days} days')
     `
-    const summary = await db.prepare(summaryQuery).first() as any
+    const summary = await db.prepare(summaryQuery).first<{ total: number; success: number; failed: number; pending: number }>()
 
     // 5. 주요 수신자 Top 10
     const topReceiversQuery = `
@@ -679,7 +679,7 @@ messagesRouter.get('/stats', async (c) => {
       ORDER BY count DESC
       LIMIT 10
     `
-    const { results: topReceivers } = await db.prepare(topReceiversQuery).all() as any
+    const { results: topReceivers } = await db.prepare(topReceiversQuery).all<{ receiver_name: string; receiver_num: string; count: number }>()
 
     return c.json({
       success: true,

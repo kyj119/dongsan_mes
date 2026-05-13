@@ -13,11 +13,11 @@ itemsRouter.get('/categories', async (c) => {
   try {
     const { results } = await c.env.DB.prepare(
       'SELECT * FROM item_categories WHERE is_active = 1 ORDER BY sort_order ASC'
-    ).all()
+    ).all<ItemCategory>()
 
     const response: ApiResponse<ItemCategory[]> = {
       success: true,
-      data: results as unknown as ItemCategory[]
+      data: results
     }
 
     return c.json(response)
@@ -45,11 +45,11 @@ itemsRouter.get('/category/:categoryId', async (c) => {
       LEFT JOIN item_subcategories isc ON i.subcategory_id = isc.id
       WHERE i.category_id = ? AND i.is_active = 1
       ORDER BY i.item_name ASC
-    `).bind(categoryId).all()
+    `).bind(categoryId).all<Item>()
 
     const response: ApiResponse<Item[]> = {
       success: true,
-      data: results as unknown as Item[]
+      data: results
     }
 
     return c.json(response)
@@ -147,7 +147,8 @@ itemsRouter.get('/', async (c) => {
       countParams.push(`%${search}%`, `%${search}%`)
     }
 
-    const { count } = await c.env.DB.prepare(countQuery).bind(...countParams).first() as any
+    const countRow = await c.env.DB.prepare(countQuery).bind(...countParams).first<{ count: number }>()
+    const count = countRow?.count ?? 0
 
     const response: PaginatedResponse<Item> = {
       success: true,
@@ -412,7 +413,7 @@ itemsRouter.patch('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
     // 단가 변경 이력 (base_price 또는 sales_price 변경 시)
     if (updates.base_price !== undefined || updates.sales_price !== undefined) {
       try {
-        const old = await c.env.DB.prepare('SELECT base_price, sales_price FROM items WHERE id = ?').bind(parseInt(id)).first() as any
+        const old = await c.env.DB.prepare('SELECT base_price, sales_price FROM items WHERE id = ?').bind(parseInt(id)).first<{ base_price: number; sales_price: number }>()
         if (old) {
           const user = (c.get('user'))?.username || 'system'
           if (updates.base_price !== undefined && updates.base_price !== old.base_price) {
@@ -490,11 +491,11 @@ itemsRouter.post('/', requireRole('ADMIN', 'MANAGER'), async (c) => {
     const dupCheck = await c.env.DB.prepare(
       `SELECT id, item_name FROM items WHERE item_name = ? AND item_type = ? AND is_active = 1
        AND COALESCE(specification, '') = ? LIMIT 1`
-    ).bind(itemData.item_name, itemType, specVal).first()
+    ).bind(itemData.item_name, itemType, specVal).first<{ id: number; item_name: string }>()
     if (dupCheck) {
       return c.json({
         success: false,
-        error: `동일한 품목이 이미 존재합니다: ${(dupCheck as any).item_name} (ID: ${(dupCheck as any).id})`
+        error: `동일한 품목이 이미 존재합니다: ${dupCheck.item_name} (ID: ${dupCheck.id})`
       }, 409)
     }
 
@@ -515,18 +516,18 @@ itemsRouter.post('/', requireRole('ADMIN', 'MANAGER'), async (c) => {
     if (itemData.category) {
       const catRow = await c.env.DB.prepare(
         'SELECT id FROM item_categories WHERE category_name = ? OR category_code = ? LIMIT 1'
-      ).bind(itemData.category, itemData.category).first() as any
+      ).bind(itemData.category, itemData.category).first<{ id: number }>()
       if (catRow) categoryId = catRow.id
     }
     if (!categoryId) {
       const fallback = await c.env.DB.prepare(
         `SELECT id FROM item_categories WHERE category_name = '기타' LIMIT 1`
-      ).first() as any
+      ).first<{ id: number }>()
       if (fallback) categoryId = fallback.id
       else {
         // '기타'도 없으면 첫 카테고리로 fallback
-        const any = await c.env.DB.prepare('SELECT id FROM item_categories ORDER BY id LIMIT 1').first() as any
-        if (any) categoryId = any.id
+        const firstCat = await c.env.DB.prepare('SELECT id FROM item_categories ORDER BY id LIMIT 1').first<{ id: number }>()
+        if (firstCat) categoryId = firstCat.id
         else return c.json({ success: false, error: '등록된 카테고리가 없습니다. 카테고리를 먼저 생성하세요.' }, 400)
       }
     }
@@ -553,7 +554,7 @@ itemsRouter.post('/', requireRole('ADMIN', 'MANAGER'), async (c) => {
       const rmPattern = `${codePrefix}%`
       const rmLast = await c.env.DB.prepare(
         'SELECT item_code FROM items WHERE item_code LIKE ? ORDER BY item_code DESC LIMIT 1'
-      ).bind(rmPattern).first() as any
+      ).bind(rmPattern).first<{ item_code: string }>()
       let rmNext = 1
       if (rmLast) {
         const n = parseInt(rmLast.item_code.replace(codePrefix, ''))
@@ -587,11 +588,11 @@ itemsRouter.post('/', requireRole('ADMIN', 'MANAGER'), async (c) => {
         SELECT item_code FROM items WHERE item_code LIKE 'PM-%'
           AND CAST(SUBSTR(item_code, 4) AS INTEGER) BETWEEN ? AND ?
         ORDER BY CAST(SUBSTR(item_code, 4) AS INTEGER) DESC LIMIT 1
-      `).bind(range.start, range.end).all()
+      `).bind(range.start, range.end).all<{ item_code: string }>()
 
       let nextNum = range.start
       if (lastItems.length > 0) {
-        const n = parseInt((lastItems[0] as any).item_code.replace('PM-', ''))
+        const n = parseInt(lastItems[0].item_code.replace('PM-', ''))
         if (!isNaN(n)) nextNum = n + 1
       }
       var itemCode = `PM-${String(nextNum).padStart(4, '0')}`
@@ -667,16 +668,16 @@ itemsRouter.post('/bulk', requireRole('ADMIN', 'MANAGER'), async (c) => {
     let categoryId = 0
     const catRow = await c.env.DB.prepare(
       'SELECT id FROM item_categories WHERE category_name = ? OR category_code = ? LIMIT 1'
-    ).bind(base.category, base.category).first() as any
+    ).bind(base.category, base.category).first<{ id: number }>()
     if (catRow) categoryId = catRow.id
     if (!categoryId) {
       const fallback = await c.env.DB.prepare(
         `SELECT id FROM item_categories WHERE category_name = '기타' LIMIT 1`
-      ).first() as any
+      ).first<{ id: number }>()
       if (fallback) categoryId = fallback.id
       else {
-        const any = await c.env.DB.prepare('SELECT id FROM item_categories ORDER BY id LIMIT 1').first() as any
-        if (any) categoryId = any.id
+        const firstCat = await c.env.DB.prepare('SELECT id FROM item_categories ORDER BY id LIMIT 1').first<{ id: number }>()
+        if (firstCat) categoryId = firstCat.id
         else return c.json({ success: false, error: '등록된 카테고리가 없습니다. 카테고리를 먼저 생성하세요.' }, 400)
       }
     }
@@ -770,7 +771,7 @@ itemsRouter.put('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
     if (itemData.category) {
       const catRow = await c.env.DB.prepare(
         'SELECT id FROM item_categories WHERE category_name = ? OR category_code = ? LIMIT 1'
-      ).bind(itemData.category, itemData.category).first() as any
+      ).bind(itemData.category, itemData.category).first<{ id: number }>()
       if (catRow) categoryId = catRow.id
     }
 
@@ -846,7 +847,7 @@ itemsRouter.put('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
       success: true,
       message: 'Item updated successfully'
     })
-  } catch (error: any) {
+  } catch (error) {
     console.error('src/routes/items.ts PUT error:', error)
     return c.json({
       success: false,
@@ -898,7 +899,7 @@ itemsRouter.get('/:id/materials', async (c) => {
     // Check if product exists and is a sales item or PRODUCT type
     const product = await c.env.DB.prepare(
       'SELECT id, is_sales_item, item_type FROM items WHERE id = ?'
-    ).bind(productId).first() as any
+    ).bind(productId).first<{ id: number; is_sales_item: number; item_type: string }>()
 
     if (!product) {
       return c.json({
@@ -960,7 +961,7 @@ itemsRouter.post('/:id/materials', requireRole('ADMIN', 'MANAGER'), async (c) =>
     // Check if product exists and is a sales item or PRODUCT type
     const product = await c.env.DB.prepare(
       'SELECT id, is_sales_item, item_type FROM items WHERE id = ?'
-    ).bind(productId).first() as any
+    ).bind(productId).first<{ id: number; is_sales_item: number; item_type: string }>()
 
     if (!product) {
       return c.json({
@@ -979,7 +980,7 @@ itemsRouter.post('/:id/materials', requireRole('ADMIN', 'MANAGER'), async (c) =>
     // Check if material exists and is a purchase item or MATERIAL type
     const material = await c.env.DB.prepare(
       'SELECT id, is_purchase_item, item_type FROM items WHERE id = ?'
-    ).bind(material_item_id).first() as any
+    ).bind(material_item_id).first<{ id: number; is_purchase_item: number; item_type: string }>()
 
     if (!material) {
       return c.json({
@@ -1012,8 +1013,8 @@ itemsRouter.post('/:id/materials', requireRole('ADMIN', 'MANAGER'), async (c) =>
         data: { id: result.meta.last_row_id },
         message: 'Material mapped successfully'
       })
-    } catch (dbError: any) {
-      if (dbError.message?.includes('UNIQUE')) {
+    } catch (dbError) {
+      if (dbError instanceof Error && dbError.message?.includes('UNIQUE')) {
         return c.json({
           success: false,
           error: 'This material is already mapped to this product'

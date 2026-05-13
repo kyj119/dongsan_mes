@@ -31,11 +31,11 @@ async function generateQuotationNumber(db: any): Promise<string> {
   const today = new Date()
   const dateStr = today.toISOString().split('T')[0].replace(/-/g, '')
   const prefix = `Q-${dateStr}-`
-  const { max_seq } = await db.prepare(`
+  const seqRow = await db.prepare(`
     SELECT COALESCE(MAX(CAST(SUBSTR(quotation_number, 12) AS INTEGER)), 0) as max_seq
     FROM quotations WHERE quotation_number LIKE ?
-  `).bind(`${prefix}%`).first() as any
-  return `${prefix}${String((max_seq || 0) + 1).padStart(3, '0')}`
+  `).bind(`${prefix}%`).first() as { max_seq: number } | null
+  return `${prefix}${String((seqRow?.max_seq || 0) + 1).padStart(3, '0')}`
 }
 
 // 만료 견적서 자동 마킹 (read-time check)
@@ -61,8 +61,8 @@ quotationsRouter.get('/', async (c) => {
       sort = 'created_desc',
       client_id = '',
     } = c.req.query()
-    const safeLimit = Math.min(parseInt(limit) || 50, 200)
-    const offset = (parseInt(page) - 1) * safeLimit
+    const safeLimit = Math.min(Number(limit) || 50, 200)
+    const offset = (Number(page) - 1) * safeLimit
 
     let query = `
       SELECT q.*, c.client_name, u.name as created_by_name,
@@ -80,7 +80,7 @@ quotationsRouter.get('/', async (c) => {
     }
     if (client_id) {
       query += ' AND q.client_id = ?'
-      params.push(parseInt(client_id))
+      params.push(Number(client_id))
     }
     if (search) {
       query += ' AND (q.quotation_number LIKE ? OR c.client_name LIKE ?)'
@@ -102,15 +102,15 @@ quotationsRouter.get('/', async (c) => {
     query += ` ORDER BY ${orderBy} LIMIT ? OFFSET ?`
     params.push(safeLimit, offset)
 
-    const { results } = await c.env.DB.prepare(query).bind(...params).all() as any
+    const { results } = await c.env.DB.prepare(query).bind(...params).all<Record<string, unknown>>()
 
     // 만료 자동 마킹 (백그라운드)
     const today = new Date().toISOString().split('T')[0]
-    const toExpire = (results as any[]).filter(q => q.status === 'ACTIVE' && q.valid_until && q.valid_until < today).map(q => q.id)
+    const toExpire = results.filter(q => q.status === 'ACTIVE' && q.valid_until && q.valid_until < today).map(q => q.id)
     if (toExpire.length > 0) {
       const ph = toExpire.map(() => '?').join(',')
       await c.env.DB.prepare(`UPDATE quotations SET status='EXPIRED' WHERE id IN (${ph})`).bind(...toExpire).run().catch(() => {})
-      for (const q of results as any[]) {
+      for (const q of results) {
         if (toExpire.includes(q.id)) q.status = 'EXPIRED'
       }
     }
@@ -119,7 +119,7 @@ quotationsRouter.get('/', async (c) => {
     let countQuery = `SELECT COUNT(*) as count FROM quotations q LEFT JOIN clients c ON q.client_id = c.id WHERE 1=1`
     const countParams: any[] = []
     if (status) { countQuery += ' AND q.status = ?'; countParams.push(status) }
-    if (client_id) { countQuery += ' AND q.client_id = ?'; countParams.push(parseInt(client_id)) }
+    if (client_id) { countQuery += ' AND q.client_id = ?'; countParams.push(Number(client_id)) }
     if (search) {
       countQuery += ' AND (q.quotation_number LIKE ? OR c.client_name LIKE ?)'
       const pat = `%${search}%`
@@ -128,13 +128,13 @@ quotationsRouter.get('/', async (c) => {
     const efCount = entityFilter(c, 'q')
     countQuery += efCount.clause
     countParams.push(...efCount.params)
-    const { count } = await c.env.DB.prepare(countQuery).bind(...countParams).first() as any
+    const { count } = await c.env.DB.prepare(countQuery).bind(...countParams).first<{ count: number }>() ?? { count: 0 }
 
     return c.json({
       success: true,
       data: results,
       pagination: {
-        page: parseInt(page),
+        page: Number(page),
         limit: safeLimit,
         total: count,
         total_pages: Math.ceil(count / safeLimit)
@@ -204,7 +204,7 @@ quotationsRouter.post('/', async (c) => {
     const vatSetting = await c.env.DB.prepare(
       `SELECT setting_value FROM settings WHERE setting_key = 'vat_rate'`
     ).first<{ setting_value: string }>()
-    const vatRate = vatSetting ? parseFloat(vatSetting.setting_value) : 0.10
+    const vatRate = vatSetting ? Number(vatSetting.setting_value) : 0.10
 
     // 금액 계산
     let totalAmount = 0
@@ -356,8 +356,8 @@ quotationsRouter.put('/:id', async (c) => {
     const body = await c.req.json()
 
     const existing = await c.env.DB.prepare(
-      `SELECT id, status FROM quotations WHERE id = ?`
-    ).bind(id).first() as any
+      `SELECT id, status, client_id FROM quotations WHERE id = ?`
+    ).bind(id).first<{ id: number; status: string; client_id: number }>()
     if (!existing) return c.json({ success: false, error: '견적서를 찾을 수 없습니다.' }, 404)
     if (existing.status !== 'ACTIVE') {
       return c.json({ success: false, error: `현재 상태(${existing.status})에서는 수정할 수 없습니다.` }, 400)
@@ -367,7 +367,7 @@ quotationsRouter.put('/:id', async (c) => {
     const vatSetting = await c.env.DB.prepare(
       `SELECT setting_value FROM settings WHERE setting_key = 'vat_rate'`
     ).first<{ setting_value: string }>()
-    const vatRate = vatSetting ? parseFloat(vatSetting.setting_value) : 0.10
+    const vatRate = vatSetting ? Number(vatSetting.setting_value) : 0.10
 
     let totalAmount = 0
     let vatAmount = 0
@@ -432,7 +432,7 @@ quotationsRouter.put('/:id', async (c) => {
           finishing, pricing_method, sort_order
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).bind(
-        parseInt(id), item.item_id || null, item.item_name || 'Unknown',
+        Number(id), item.item_id || null, item.item_name || 'Unknown',
         w, h, item.scale_factor || 1,
         item.quantity || 1, item.unit || 'EA',
         item.unit_price || 0, amount,
@@ -453,7 +453,7 @@ quotationsRouter.put('/:id', async (c) => {
           parent_id, sort_order
         ) VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?, ?)
       `).bind(
-        parseInt(id), item.item_name || '',
+        Number(id), item.item_name || '',
         item.width_mm || item.width || 0, item.height_mm || item.height || 0,
         item.scale_factor || 1, item.quantity || 1, item.unit || 'EA',
         item.content || null, parentDbId, parentCount + i
@@ -463,10 +463,10 @@ quotationsRouter.put('/:id', async (c) => {
     await logActivity({
       db: c.env.DB, userId: user?.id, userName: user?.username,
       action: 'UPDATE', entityType: 'QUOTATION',
-      entityId: parseInt(id), entityLabel: String(id)
+      entityId: Number(id), entityLabel: String(id)
     })
 
-    return c.json({ success: true, data: { id: parseInt(id) } })
+    return c.json({ success: true, data: { id: Number(id) } })
   } catch (error) {
     console.error('quotations.update error:', error)
     return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
@@ -480,7 +480,7 @@ quotationsRouter.delete('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
     const user = c.get('user')
     const quotation = await c.env.DB.prepare(
       `SELECT id, quotation_number, status FROM quotations WHERE id = ?`
-    ).bind(id).first() as any
+    ).bind(id).first<{ id: number; quotation_number: string; status: string }>()
     if (!quotation) return c.json({ success: false, error: '견적서를 찾을 수 없습니다.' }, 404)
 
     await c.env.DB.prepare(
@@ -490,7 +490,7 @@ quotationsRouter.delete('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
     await logActivity({
       db: c.env.DB, userId: user?.id, userName: user?.username,
       action: 'CANCEL', entityType: 'QUOTATION',
-      entityId: parseInt(id), entityLabel: quotation.quotation_number
+      entityId: Number(id), entityLabel: quotation.quotation_number
     })
 
     return c.json({ success: true, message: '견적서 취소 완료' })
@@ -526,7 +526,7 @@ quotationsRouter.post('/:id/convert-to-order', requireRole('ADMIN', 'MANAGER'), 
 
     const { results: qItems } = await c.env.DB.prepare(
       `SELECT * FROM quotation_items WHERE quotation_id = ? ORDER BY sort_order, id`
-    ).bind(id).all() as any
+    ).bind(id).all<Record<string, unknown>>()
     if (!qItems || qItems.length === 0) {
       return c.json({ success: false, error: '견적서에 품목이 없습니다.' }, 400)
     }
@@ -534,11 +534,11 @@ quotationsRouter.post('/:id/convert-to-order', requireRole('ADMIN', 'MANAGER'), 
     // 주문번호 생성
     const today = new Date()
     const dateStr = today.toISOString().split('T')[0].replace(/-/g, '')
-    const { max_seq } = await c.env.DB.prepare(`
+    const seqRow = await c.env.DB.prepare(`
       SELECT COALESCE(MAX(CAST(SUBSTR(order_number, 10) AS INTEGER)), 0) as max_seq
       FROM orders WHERE order_number LIKE ?
-    `).bind(`${dateStr}-%`).first() as any
-    const orderNumber = `${dateStr}-${String((max_seq || 0) + 1).padStart(3, '0')}`
+    `).bind(`${dateStr}-%`).first<{ max_seq: number }>()
+    const orderNumber = `${dateStr}-${String((seqRow?.max_seq || 0) + 1).padStart(3, '0')}`
 
     // 주문 생성 — quotation의 모든 필드 snapshot
     const orderResult = await c.env.DB.prepare(`
@@ -573,7 +573,7 @@ quotationsRouter.post('/:id/convert-to-order', requireRole('ADMIN', 'MANAGER'), 
 
     // 품목 복사 (parent_id 매핑)
     const qParentToOrderId = new Map<number, number>()
-    for (const qi of qItems as any[]) {
+    for (const qi of qItems) {
       if (qi.parent_id != null) continue
       const ins = await c.env.DB.prepare(`
         INSERT INTO order_items (
@@ -589,11 +589,11 @@ quotationsRouter.post('/:id/convert-to-order', requireRole('ADMIN', 'MANAGER'), 
         qi.post_processing, qi.content, qi.sort_order,
         qi.ai_group_index, qi.scale_factor, qi.finishing
       ).run()
-      qParentToOrderId.set(qi.id, ins.meta.last_row_id as number)
+      qParentToOrderId.set(qi.id as number, ins.meta.last_row_id as number)
     }
-    for (const qi of qItems as any[]) {
+    for (const qi of qItems) {
       if (qi.parent_id == null) continue
-      const parentOrderItemId = qParentToOrderId.get(qi.parent_id) ?? null
+      const parentOrderItemId = qParentToOrderId.get(qi.parent_id as number) ?? null
       await c.env.DB.prepare(`
         INSERT INTO order_items (
           order_id, item_name, width, height, quantity, unit,
@@ -627,13 +627,13 @@ quotationsRouter.post('/:id/convert-to-order', requireRole('ADMIN', 'MANAGER'), 
     await logActivity({
       db: c.env.DB, userId: user?.id, userName: user?.username,
       action: 'CONVERT', entityType: 'QUOTATION',
-      entityId: parseInt(id), entityLabel: quotation.quotation_number,
+      entityId: Number(id), entityLabel: quotation.quotation_number,
       details: JSON.stringify({ created_order_id: orderId, order_number: orderNumber })
     })
 
     return c.json({
       success: true,
-      data: { order_id: orderId, order_number: orderNumber, quotation_id: parseInt(id) },
+      data: { order_id: orderId, order_number: orderNumber, quotation_id: Number(id) },
       message: `견적서 ${quotation.quotation_number} → 주문 ${orderNumber} 생성됨`
     })
   } catch (error) {
