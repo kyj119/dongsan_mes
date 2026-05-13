@@ -430,7 +430,7 @@ apRouter.put('/purchase-payment/:id', requireRole('ADMIN', 'MANAGER'), async (c)
 
     // Get existing payment
     const existing = await c.env.DB.prepare(
-      'SELECT * FROM purchase_payments WHERE id = ?'
+      'SELECT id, supplier_id, po_id, payment_date, amount, payment_method, reference_number, notes, created_at FROM purchase_payments WHERE id = ?'
     ).bind(id).first<PurchasePaymentRow>()
 
     if (!existing) {
@@ -500,7 +500,7 @@ apRouter.delete('/purchase-payment/:id', requireRole('ADMIN'), async (c) => {
 
     // Get existing payment
     const existing = await c.env.DB.prepare(
-      'SELECT * FROM purchase_payments WHERE id = ?'
+      'SELECT id, supplier_id, po_id, payment_date, amount, payment_method, reference_number, notes, created_at FROM purchase_payments WHERE id = ?'
     ).bind(id).first<PurchasePaymentRow>()
 
     if (!existing) {
@@ -644,7 +644,7 @@ apRouter.delete('/purchase-adjustment/:id', requireRole('ADMIN'), async (c) => {
     const id = c.req.param('id')
 
     const existing = await c.env.DB.prepare(
-      'SELECT * FROM purchase_adjustments WHERE id = ?'
+      'SELECT id, supplier_id, po_id, type, amount, reason, adjustment_date, created_at FROM purchase_adjustments WHERE id = ?'
     ).bind(id).first<PurchaseAdjustmentRow>()
 
     if (!existing) {

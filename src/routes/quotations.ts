@@ -166,7 +166,7 @@ quotationsRouter.get('/:id', async (c) => {
     await markExpiredIfNeeded(c.env.DB, quotation)
 
     const { results: items } = await c.env.DB.prepare(`
-      SELECT * FROM quotation_items WHERE quotation_id = ? ORDER BY sort_order ASC, id ASC
+      SELECT id, quotation_id, item_id, item_name, width, height, scale_factor, quantity, unit, unit_price, amount, content, post_processing, finishing, pricing_method, parent_id, sort_order, ai_group_index, media_subcategory_name, print_method_id, print_method_name, print_media_id, print_media_name, created_at FROM quotation_items WHERE quotation_id = ? ORDER BY sort_order ASC, id ASC
     `).bind(id).all()
 
     const { results: convertedOrders } = await c.env.DB.prepare(`
@@ -525,7 +525,7 @@ quotationsRouter.post('/:id/convert-to-order', requireRole('ADMIN', 'MANAGER'), 
     }
 
     const { results: qItems } = await c.env.DB.prepare(
-      `SELECT * FROM quotation_items WHERE quotation_id = ? ORDER BY sort_order, id`
+      `SELECT id, quotation_id, item_id, item_name, width, height, scale_factor, quantity, unit, unit_price, amount, content, post_processing, finishing, pricing_method, parent_id, sort_order, ai_group_index, media_subcategory_name, print_method_id, print_method_name, print_media_id, print_media_name, created_at FROM quotation_items WHERE quotation_id = ? ORDER BY sort_order, id`
     ).bind(id).all<Record<string, unknown>>()
     if (!qItems || qItems.length === 0) {
       return c.json({ success: false, error: '견적서에 품목이 없습니다.' }, 400)

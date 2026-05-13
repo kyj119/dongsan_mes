@@ -56,7 +56,13 @@ ordersOpsRouter.post('/:id/copy', requireRole('ADMIN', 'MANAGER', 'DESIGNER'), a
 
     // Get original order
     const original = await c.env.DB.prepare(`
-      SELECT * FROM orders WHERE id = ?
+      SELECT id, client_id, order_number, status,
+             order_year, order_month, reception_location, delivery_info, delivery_date,
+             total_amount, vat_amount, discount_amount, final_amount,
+             notes, internal_notes,
+             priority, delivery_method, delivery_time,
+             contact_phone, contact_mobile, shipping_payment
+      FROM orders WHERE id = ?
     `).bind(id).first<OrderCopyRow>()
 
     if (!original) {

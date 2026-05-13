@@ -358,7 +358,7 @@ leavesRouter.patch('/requests/:id/approve', requireRole('ADMIN', 'MANAGER'), asy
     const id = Number(c.req.param('id'))
 
     const req = await c.env.DB.prepare(
-      `SELECT * FROM leave_requests WHERE id = ?`
+      `SELECT id, employee_id, leave_type, start_date, end_date, days, reason, status, approved_by, approved_at, rejection_reason FROM leave_requests WHERE id = ?`
     ).bind(id).first<LeaveRequestRow>()
     if (!req) return c.json({ success: false, error: '신청을 찾을 수 없습니다.' }, 404)
     if (req.status !== 'PENDING') return c.json({ success: false, error: '이미 처리된 신청입니다.' }, 400)
@@ -442,7 +442,7 @@ leavesRouter.delete('/requests/:id', async (c) => {
 leavesRouter.get('/types', async (c) => {
   try {
     const { results } = await c.env.DB.prepare(`
-      SELECT * FROM leave_types WHERE is_active = 1 ORDER BY sort_order, id
+      SELECT id, code, name, category, deduction_days, time_from, time_to, is_paid, is_active, sort_order, created_at, updated_at FROM leave_types WHERE is_active = 1 ORDER BY sort_order, id
     `).all()
     return c.json({ success: true, data: results })
   } catch (error: any) {
@@ -479,7 +479,7 @@ leavesRouter.put('/types/:id', requireRole('ADMIN'), async (c) => {
 leavesRouter.get('/family-events', async (c) => {
   try {
     const { results } = await c.env.DB.prepare(`
-      SELECT * FROM family_event_rules WHERE is_active = 1 ORDER BY sort_order, id
+      SELECT id, event_name, paid_days, is_active, sort_order, created_at FROM family_event_rules WHERE is_active = 1 ORDER BY sort_order, id
     `).all()
     return c.json({ success: true, data: results })
   } catch (error: any) {

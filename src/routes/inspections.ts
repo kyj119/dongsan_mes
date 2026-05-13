@@ -38,11 +38,11 @@ inspectionsRouter.get('/templates', async (c) => {
 inspectionsRouter.get('/templates/:id', async (c) => {
   try {
     const id = c.req.param('id')
-    const template = await c.env.DB.prepare('SELECT * FROM inspection_templates WHERE id = ?').bind(id).first()
+    const template = await c.env.DB.prepare('SELECT id, template_name, category_name, is_active, sort_order, created_at, updated_at FROM inspection_templates WHERE id = ?').bind(id).first()
     if (!template) return c.json({ success: false, error: '템플릿을 찾을 수 없습니다.' }, 404)
 
     const { results: items } = await c.env.DB.prepare(
-      'SELECT * FROM inspection_template_items WHERE template_id = ? ORDER BY sort_order'
+      'SELECT id, template_id, check_item, check_type, description, is_required, sort_order, created_at FROM inspection_template_items WHERE template_id = ? ORDER BY sort_order'
     ).bind(id).all()
 
     return c.json({ success: true, data: { ...template, items } })
@@ -323,7 +323,7 @@ inspectionsRouter.get('/results/:id', async (c) => {
     if (!result) return c.json({ success: false, error: '검수 결과를 찾을 수 없습니다.' }, 404)
 
     const { results: items } = await c.env.DB.prepare(`
-      SELECT * FROM inspection_result_items WHERE result_id = ? ORDER BY id
+      SELECT id, result_id, template_item_id, check_item, check_result, value, notes, created_at FROM inspection_result_items WHERE result_id = ? ORDER BY id
     `).bind(id).all()
 
     return c.json({ success: true, data: { ...result, items } })

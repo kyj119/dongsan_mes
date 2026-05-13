@@ -44,7 +44,7 @@ ppRouter.get('/', async (c) => {
 ppRouter.get('/subcategories', async (c) => {
   try {
     const { results } = await c.env.DB.prepare(
-      `SELECT * FROM pp_applicable_subcategories WHERE is_active = 1 ORDER BY sort_order ASC`
+      `SELECT id, group_name, subcat_name, sort_order, is_active FROM pp_applicable_subcategories WHERE is_active = 1 ORDER BY sort_order ASC`
     ).all()
     return c.json({ success: true, data: results })
   } catch (error) {

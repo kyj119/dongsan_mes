@@ -247,7 +247,7 @@ productionRouter.patch('/work-records/:id', async (c) => {
 
     // Get current record
     const { results } = await c.env.DB.prepare(`
-      SELECT * FROM work_records WHERE id = ?
+      SELECT id, production_log_id, card_id, employee_id, work_type, start_time, end_time, work_hours, quantity_completed, quantity_target, status, notes FROM work_records WHERE id = ?
     `).bind(id).all()
 
     if (results.length === 0) {

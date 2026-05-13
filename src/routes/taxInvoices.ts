@@ -1855,7 +1855,17 @@ taxInvoicesRouter.post('/:id/refresh-status', async (c) => {
 
     // 업데이트된 데이터 반환
     const updated = await db.prepare(
-      `SELECT * FROM tax_invoices WHERE id = ?`
+      `SELECT id, invoice_number, order_id, invoice_type, modify_code, original_invoice_id,
+              supplier_brn, supplier_name, supplier_representative, supplier_address,
+              supplier_business_type, supplier_business_item,
+              buyer_client_id, buyer_brn, buyer_name, buyer_representative,
+              buyer_address, buyer_business_type, buyer_business_item, buyer_email,
+              supply_amount, tax_amount, total_amount, status,
+              nts_approval_number, nts_sent_at, nts_result_code, nts_result_message,
+              provider_name, provider_invoice_id, provider_response,
+              issue_date, notes, issued_by, cancelled_at, cancelled_by, cancel_reason,
+              created_at, updated_at, entity_id
+       FROM tax_invoices WHERE id = ?`
     ).bind(id).first()
 
     return c.json({
@@ -1906,7 +1916,17 @@ taxInvoicesRouter.post('/:id/retry', async (c) => {
     `).bind(id).run()
 
     const updated = await db.prepare(
-      `SELECT * FROM tax_invoices WHERE id = ?`
+      `SELECT id, invoice_number, order_id, invoice_type, modify_code, original_invoice_id,
+              supplier_brn, supplier_name, supplier_representative, supplier_address,
+              supplier_business_type, supplier_business_item,
+              buyer_client_id, buyer_brn, buyer_name, buyer_representative,
+              buyer_address, buyer_business_type, buyer_business_item, buyer_email,
+              supply_amount, tax_amount, total_amount, status,
+              nts_approval_number, nts_sent_at, nts_result_code, nts_result_message,
+              provider_name, provider_invoice_id, provider_response,
+              issue_date, notes, issued_by, cancelled_at, cancelled_by, cancel_reason,
+              created_at, updated_at, entity_id
+       FROM tax_invoices WHERE id = ?`
     ).bind(id).first()
 
     return c.json({ success: true, data: updated })

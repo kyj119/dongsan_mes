@@ -231,7 +231,8 @@ prRouter.get('/:id', async (c) => {
     }
 
     const { results: items } = await c.env.DB.prepare(`
-      SELECT * FROM purchase_request_items WHERE request_id = ? ORDER BY sort_order ASC
+      SELECT id, request_id, item_id, item_name, category_name, quantity, unit, estimated_unit_price, admin_unit_price, admin_quantity, sort_order, notes, created_at
+      FROM purchase_request_items WHERE request_id = ? ORDER BY sort_order ASC
     `).bind(id).all()
 
     const { results: history } = await c.env.DB.prepare(`
@@ -525,7 +526,8 @@ prRouter.post('/:id/convert', requireRole('ADMIN'), async (c) => {
     }
 
     const { results: requestItems } = await c.env.DB.prepare(`
-      SELECT * FROM purchase_request_items WHERE request_id = ? ORDER BY sort_order ASC
+      SELECT id, request_id, item_id, item_name, category_name, quantity, unit, estimated_unit_price, admin_unit_price, admin_quantity, sort_order, notes, created_at
+      FROM purchase_request_items WHERE request_id = ? ORDER BY sort_order ASC
     `).bind(id).all<PurchaseRequestItem>()
 
     if (!requestItems || requestItems.length === 0) {
@@ -633,7 +635,8 @@ prRouter.post('/:id/auto-convert', requireRole('ADMIN'), async (c) => {
     }
 
     const { results: requestItems } = await c.env.DB.prepare(`
-      SELECT * FROM purchase_request_items WHERE request_id = ? ORDER BY sort_order ASC
+      SELECT id, request_id, item_id, item_name, category_name, quantity, unit, estimated_unit_price, admin_unit_price, admin_quantity, sort_order, notes, created_at
+      FROM purchase_request_items WHERE request_id = ? ORDER BY sort_order ASC
     `).bind(id).all<PurchaseRequestItem>()
 
     if (!requestItems || requestItems.length === 0) {

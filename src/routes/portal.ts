@@ -353,7 +353,11 @@ portal.get('/orders/:id', async (c) => {
     const orderId = Number(c.req.param('id'))
 
     const order = await c.env.DB.prepare(
-      `SELECT * FROM orders WHERE id = ? AND client_id = ?`
+      `SELECT id, order_number, client_id, status, order_date, delivery_date,
+              total_amount, vat_amount, discount_amount, final_amount,
+              notes, priority, delivery_method, delivery_time,
+              reception_location, delivery_info, shipping_payment
+       FROM orders WHERE id = ? AND client_id = ?`
     ).bind(orderId, user.portal_client_id).first()
 
     if (!order) return c.json({ success: false, error: '주문을 찾을 수 없습니다.' }, 404)

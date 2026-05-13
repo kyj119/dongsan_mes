@@ -131,7 +131,7 @@ cardsSchedulingRouter.patch('/:id', async (c) => {
     const id = c.req.param('id')
     const body = await c.req.json()
 
-    const card = await c.env.DB.prepare('SELECT * FROM cards WHERE id = ?').bind(id).first()
+    const card = await c.env.DB.prepare('SELECT id FROM cards WHERE id = ?').bind(id).first()
     if (!card) {
       return c.json({ success: false, error: 'Card not found' }, 404)
     }

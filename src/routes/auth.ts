@@ -18,7 +18,7 @@ auth.post('/login', rateLimitMiddleware(5, 60000), async (c) => {
 
     // 사용자 조회 (users 테이블에서)
     const user = await c.env.DB.prepare(
-      'SELECT * FROM users WHERE username = ? AND is_active = 1'
+      'SELECT id, username, password_hash, name, email, role, default_entity_id FROM users WHERE username = ? AND is_active = 1'
     ).bind(username).first()
 
     if (!user) {

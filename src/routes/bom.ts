@@ -123,7 +123,7 @@ bom.get('/by-item/:itemId', async (c) => {
   try {
     const itemId = Number(c.req.param('itemId'))
     const { results } = await c.env.DB.prepare(
-      `SELECT * FROM bom_items WHERE item_id = ? AND is_active = 1 ORDER BY material_name`
+      `SELECT id, item_id, category_name, material_item_id, material_name, usage_per_sqm, usage_unit, waste_factor, notes, created_by, created_at, updated_at FROM bom_items WHERE item_id = ? AND is_active = 1 ORDER BY material_name`
     ).bind(itemId).all()
     return c.json({ success: true, data: results })
   } catch (error) {
@@ -137,7 +137,7 @@ bom.get('/by-category/:cat', async (c) => {
   try {
     const cat = c.req.param('cat')
     const { results } = await c.env.DB.prepare(
-      `SELECT * FROM bom_items WHERE category_name = ? AND is_active = 1 ORDER BY material_name`
+      `SELECT id, item_id, category_name, material_item_id, material_name, usage_per_sqm, usage_unit, waste_factor, notes, created_by, created_at, updated_at FROM bom_items WHERE category_name = ? AND is_active = 1 ORDER BY material_name`
     ).bind(cat).all()
     return c.json({ success: true, data: results })
   } catch (error) {
@@ -228,7 +228,7 @@ bom.get('/mrp/runs/:id', async (c) => {
     if (!run) return c.json({ success: false, error: '실행 이력을 찾을 수 없습니다.' }, 404)
 
     const { results } = await c.env.DB.prepare(
-      `SELECT * FROM mrp_results WHERE run_id = ? ORDER BY shortfall DESC, material_name`
+      `SELECT id, run_id, material_item_id, material_name, required_quantity, current_stock, on_order_quantity, shortfall, auto_pr_id, created_at FROM mrp_results WHERE run_id = ? ORDER BY shortfall DESC, material_name`
     ).bind(id).all()
 
     return c.json({ success: true, data: { run, results } })
@@ -246,7 +246,7 @@ bom.post('/mrp/runs/:id/create-pr', async (c) => {
 
     // 부족 자재 조회
     const { results: shortfalls } = await c.env.DB.prepare(
-      `SELECT * FROM mrp_results WHERE run_id = ? AND shortfall > 0`
+      `SELECT id, run_id, material_item_id, material_name, required_quantity, current_stock, on_order_quantity, shortfall FROM mrp_results WHERE run_id = ? AND shortfall > 0`
     ).bind(runId).all() as { results: any[] }
 
     if (shortfalls.length === 0) {

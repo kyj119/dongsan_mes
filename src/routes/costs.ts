@@ -10,7 +10,7 @@ costsRouter.use('/*', authMiddleware, requireRole('ADMIN', 'MANAGER'))
 costsRouter.get('/', async (c) => {
   try {
     const { results } = await c.env.DB.prepare(
-      'SELECT * FROM cost_standards ORDER BY category_name ASC'
+      'SELECT id, category_name, media_cost_per_sqm, ink_cost_per_sqm, description, updated_at FROM cost_standards ORDER BY category_name ASC'
     ).all()
     return c.json({ success: true, data: results })
   } catch (error) {
@@ -133,7 +133,7 @@ costsRouter.get('/analysis', async (c) => {
     const periodTo = c.req.query('period_to')
 
     // cost_snapshots 조회
-    let snapQuery = 'SELECT * FROM cost_snapshots WHERE 1=1'
+    let snapQuery = 'SELECT id, period, material_item_id, category_name, total_consumed_yd, total_consumed_sqm, total_produced_sqm, loss_rate, total_material_cost, avg_purchase_price_yd, material_cost_per_sqm, ink_total_cost, ink_cost_per_sqm, total_cost_per_sqm, created_at FROM cost_snapshots WHERE 1=1'
     const params: any[] = []
 
     if (periodFrom) {
@@ -220,7 +220,7 @@ costsRouter.get('/deductions', async (c) => {
     const dateFrom = c.req.query('date_from')
     const dateTo = c.req.query('date_to')
 
-    let query = 'SELECT * FROM inventory_auto_deductions WHERE 1=1'
+    let query = 'SELECT id, print_event_id, material_item_id, deducted_length_mm, deducted_length_yd, output_width_mm, output_height_mm, copy_total, inventory_before, inventory_after, matched_width_mm, card_id, order_number, created_at FROM inventory_auto_deductions WHERE 1=1'
     const params: any[] = []
 
     if (materialItemId) {

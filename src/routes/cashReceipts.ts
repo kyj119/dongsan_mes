@@ -275,7 +275,7 @@ cashReceiptsRouter.post('/:id/issue', requireRole('ADMIN', 'MANAGER'), async (c)
     const user = c.get('user')
 
     const existing = await c.env.DB.prepare(
-      'SELECT * FROM cash_receipts WHERE id = ?'
+      'SELECT id, receipt_number, status, trade_date, trade_type, identity_number, item_name, supply_amount, tax_amount, service_amount, total_amount, nts_approval_number FROM cash_receipts WHERE id = ?'
     ).bind(id).first<CashReceiptRow>()
 
     if (!existing) {
@@ -413,7 +413,7 @@ cashReceiptsRouter.post('/:id/cancel', requireRole('ADMIN', 'MANAGER'), async (c
     }>()
 
     const existing = await c.env.DB.prepare(
-      'SELECT * FROM cash_receipts WHERE id = ?'
+      'SELECT id, receipt_number, status, trade_date, trade_type, identity_number, item_name, supply_amount, tax_amount, service_amount, total_amount, nts_approval_number FROM cash_receipts WHERE id = ?'
     ).bind(id).first<CashReceiptRow>()
 
     if (!existing) {
@@ -504,7 +504,7 @@ cashReceiptsRouter.post('/:id/refresh-status', requireRole('ADMIN', 'MANAGER'), 
     const id = parseInt(c.req.param('id'))
 
     const existing = await c.env.DB.prepare(
-      'SELECT * FROM cash_receipts WHERE id = ?'
+      'SELECT id, receipt_number, status FROM cash_receipts WHERE id = ?'
     ).bind(id).first<CashReceiptRow>()
 
     if (!existing) {
@@ -598,7 +598,7 @@ cashReceiptsRouter.get('/:id/print-url', async (c) => {
     const id = parseInt(c.req.param('id'))
 
     const existing = await c.env.DB.prepare(
-      'SELECT * FROM cash_receipts WHERE id = ?'
+      'SELECT id, receipt_number, status FROM cash_receipts WHERE id = ?'
     ).bind(id).first<CashReceiptRow>()
 
     if (!existing) {

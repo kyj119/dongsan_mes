@@ -15,7 +15,7 @@ approvals.use('*', authMiddleware, requirePagePermission('/approvals'))
 approvals.get('/templates', async (c) => {
   try {
     const { results } = await c.env.DB.prepare(
-      `SELECT * FROM approval_templates WHERE is_active = 1 ORDER BY type, name`
+      `SELECT id, name, type, description, steps, is_active, created_by, created_at, updated_at FROM approval_templates WHERE is_active = 1 ORDER BY type, name`
     ).all()
     return c.json({ success: true, data: results })
   } catch (e) {
@@ -302,7 +302,7 @@ approvals.post('/:id/approve', async (c) => {
     const body = await c.req.json()
 
     const req = await c.env.DB.prepare(
-      `SELECT * FROM approval_requests WHERE id = ?`
+      `SELECT id, status, current_step, total_steps, reference_type, reference_id FROM approval_requests WHERE id = ?`
     ).bind(id).first<{ status: string; current_step: number; total_steps: number; reference_type: string | null; reference_id: number | null }>()
     if (!req || !['PENDING', 'IN_REVIEW'].includes(req.status)) {
       return c.json({ success: false, error: '승인 가능한 상태가 아닙니다.' }, 400)
@@ -310,7 +310,7 @@ approvals.post('/:id/approve', async (c) => {
 
     // 현재 단계 조회
     const step = await c.env.DB.prepare(`
-      SELECT * FROM approval_steps
+      SELECT id, approver_id, approver_role FROM approval_steps
       WHERE request_id = ? AND step_order = ? AND status = 'PENDING'
     `).bind(id, req.current_step).first<{ id: number; approver_id: number | null; approver_role: string | null }>()
 
@@ -365,14 +365,14 @@ approvals.post('/:id/reject', async (c) => {
     const body = await c.req.json()
 
     const req = await c.env.DB.prepare(
-      `SELECT * FROM approval_requests WHERE id = ?`
+      `SELECT id, status, current_step FROM approval_requests WHERE id = ?`
     ).bind(id).first<{ status: string; current_step: number }>()
     if (!req || !['PENDING', 'IN_REVIEW'].includes(req.status)) {
       return c.json({ success: false, error: '반려 가능한 상태가 아닙니다.' }, 400)
     }
 
     const step = await c.env.DB.prepare(`
-      SELECT * FROM approval_steps
+      SELECT id, approver_id, approver_role FROM approval_steps
       WHERE request_id = ? AND step_order = ? AND status = 'PENDING'
     `).bind(id, req.current_step).first<{ id: number; approver_id: number | null; approver_role: string | null }>()
 
@@ -456,7 +456,7 @@ approvals.get('/:id/attachments/:attachId', async (c) => {
   try {
     const attachId = Number(c.req.param('attachId'))
     const att = await c.env.DB.prepare(
-      `SELECT * FROM approval_attachments WHERE id = ?`
+      `SELECT id, request_id, file_name, file_type, file_data, uploaded_by, created_at FROM approval_attachments WHERE id = ?`
     ).bind(attachId).first()
     if (!att) return c.json({ success: false, error: '첨부 파일을 찾을 수 없습니다.' }, 404)
     return c.json({ success: true, data: att })

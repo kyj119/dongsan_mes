@@ -197,7 +197,7 @@ priceListsRouter.get('/:id/preview', async (c) => {
     const id = c.req.param('id')
 
     const priceList = await c.env.DB.prepare(
-      'SELECT * FROM price_lists WHERE id = ?'
+      'SELECT id, name, adjustment_percent, description, is_default FROM price_lists WHERE id = ?'
     ).bind(id).first<{ id: number; name: string; adjustment_percent: number; description: string | null; is_default: number }>()
 
     if (!priceList) {

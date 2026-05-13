@@ -8,7 +8,7 @@ finishingRouter.use('/*', authMiddleware)
 // GET /methods
 finishingRouter.get('/methods', async (c) => {
   const { results } = await c.env.DB.prepare(
-    'SELECT * FROM finishing_methods WHERE is_active = 1 ORDER BY sort_order ASC'
+    'SELECT id, name, margin_cm, description, sort_order, is_active, created_at FROM finishing_methods WHERE is_active = 1 ORDER BY sort_order ASC'
   ).all()
   return c.json({ success: true, data: results })
 })
@@ -51,7 +51,7 @@ finishingRouter.delete('/methods/:id', requireRole('ADMIN'), async (c) => {
 // GET /presets
 finishingRouter.get('/presets', async (c) => {
   const { results } = await c.env.DB.prepare(
-    'SELECT * FROM finishing_presets WHERE is_active = 1 ORDER BY sort_order ASC'
+    'SELECT id, name, config, sort_order, is_active, created_at FROM finishing_presets WHERE is_active = 1 ORDER BY sort_order ASC'
   ).all()
   return c.json({ success: true, data: results })
 })

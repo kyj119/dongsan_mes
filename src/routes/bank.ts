@@ -23,7 +23,7 @@ bankRouter.get('/accounts', requireRole('ADMIN'), async (c) => {
   try {
     const ef = entityFilter(c, 'bank_accounts')
     const { results } = await c.env.DB.prepare(
-      `SELECT * FROM bank_accounts WHERE is_active = 1${ef.clause} ORDER BY created_at DESC`
+      `SELECT id, bank_code, bank_name, account_number, account_holder, connected_id, is_active, last_synced_at, last_synced_date, entity_id, created_at FROM bank_accounts WHERE is_active = 1${ef.clause} ORDER BY created_at DESC`
     ).bind(...ef.params).all()
     return c.json({ success: true, data: results })
   } catch (error) {
@@ -259,7 +259,7 @@ bankRouter.post('/accounts/:id/sync-preview', requireRole('ADMIN'), async (c) =>
     }
 
     const account = await c.env.DB.prepare(
-      'SELECT * FROM bank_accounts WHERE id = ? AND is_active = 1'
+      'SELECT id, bank_code, account_number, connected_id FROM bank_accounts WHERE id = ? AND is_active = 1'
     ).bind(id).first<{
       id: number
       bank_code: string
@@ -369,7 +369,7 @@ bankRouter.post('/accounts/:id/sync', requireRole('ADMIN'), async (c) => {
     }
 
     const account = await c.env.DB.prepare(
-      'SELECT * FROM bank_accounts WHERE id = ? AND is_active = 1'
+      'SELECT id, bank_code, account_number, connected_id FROM bank_accounts WHERE id = ? AND is_active = 1'
     ).bind(id).first<{
       id: number
       bank_code: string
@@ -851,7 +851,7 @@ bankRouter.post('/transactions/:id/apply', requireRole('ADMIN'), async (c) => {
     const body = await c.req.json().catch(() => ({})) as any
 
     const tx = await c.env.DB.prepare(
-      'SELECT * FROM bank_transactions WHERE id = ?'
+      'SELECT id, bank_account_id, transaction_date, transaction_time, transaction_type, amount, balance_after, counterpart_name, description, match_status, matched_client_id, matched_payment_id, entity_id FROM bank_transactions WHERE id = ?'
     ).bind(id).first<{
       id: number
       transaction_date: string
@@ -958,7 +958,7 @@ bankRouter.post('/transactions/batch-apply', requireRole('ADMIN'), async (c) => 
     // Bulk-fetch all transactions in one query instead of N individual SELECTs
     const placeholders = transaction_ids.map(() => '?').join(', ')
     const { results: txRows } = await c.env.DB.prepare(
-      `SELECT * FROM bank_transactions WHERE id IN (${placeholders})`
+      `SELECT id, transaction_date, amount, match_status, matched_client_id, counterpart_name, description FROM bank_transactions WHERE id IN (${placeholders})`
     ).bind(...transaction_ids).all<{
       id: number
       transaction_date: string

@@ -169,7 +169,7 @@ hometaxInvoicesRouter.get('/jobs/:id/status', requireRole('ADMIN', 'MANAGER'), a
     const db = c.env.DB
 
     const job = await db.prepare(`
-      SELECT * FROM hometax_jobs WHERE id = ?
+      SELECT id, job_id, job_type, start_date, end_date, state, result, message, total_count, requested_by, created_at FROM hometax_jobs WHERE id = ?
     `).bind(Number(jobDbId)).first<HometaxJobRow>()
 
     if (!job) {
@@ -230,7 +230,7 @@ hometaxInvoicesRouter.post('/jobs/:id/fetch', requireRole('ADMIN', 'MANAGER'), a
     const db = c.env.DB
 
     const job = await db.prepare(`
-      SELECT * FROM hometax_jobs WHERE id = ?
+      SELECT id, job_id, job_type, start_date, end_date, state, result, message, total_count, requested_by, created_at FROM hometax_jobs WHERE id = ?
     `).bind(Number(jobDbId)).first<HometaxJobRow>()
 
     if (!job) {
@@ -414,7 +414,7 @@ hometaxInvoicesRouter.get('/compare', requireRole('ADMIN', 'MANAGER'), async (c)
 
     // Get hometax invoices for the month
     const { results: htInvoices } = await db.prepare(`
-      SELECT * FROM hometax_invoices
+      SELECT id, job_id, invoice_type, nts_confirm_number, issue_date, send_date, supply_amount, tax_amount, total_amount, issuer_corp_num, issuer_corp_name, issuer_ceo_name, receiver_corp_num, receiver_corp_name, receiver_ceo_name, invoice_detail_type, tax_type, purpose_type, matched_invoice_id, match_status, match_note, created_at FROM hometax_invoices
       WHERE invoice_type = ? AND SUBSTR(issue_date, 1, 7) = ?
       ORDER BY issue_date DESC
     `).bind(type, month).all<HometaxInvoiceRow>()
@@ -425,7 +425,9 @@ hometaxInvoicesRouter.get('/compare', requireRole('ADMIN', 'MANAGER'), async (c)
     let sysInvoices: TaxInvoiceRow[] = []
     if (type === 'SELL') {
       const result = await db.prepare(`
-        SELECT * FROM tax_invoices
+        SELECT id, invoice_number, issue_date, supplier_name, buyer_name,
+               supply_amount, tax_amount, total_amount, nts_approval_number, status
+        FROM tax_invoices
         WHERE SUBSTR(issue_date, 1, 7) = ?
         ORDER BY issue_date DESC
       `).bind(month).all<TaxInvoiceRow>()
@@ -498,7 +500,7 @@ hometaxInvoicesRouter.post('/:id/match', requireRole('ADMIN', 'MANAGER'), async 
     const body = await c.req.json<{ tax_invoice_id?: number; action?: string }>()
 
     const db = c.env.DB
-    const invoice = await db.prepare(`SELECT * FROM hometax_invoices WHERE id = ?`).bind(Number(invoiceId)).first()
+    const invoice = await db.prepare(`SELECT id, invoice_type, nts_confirm_number, issue_date, supply_amount, tax_amount, total_amount, issuer_corp_name, receiver_corp_name, matched_invoice_id, match_status, match_note FROM hometax_invoices WHERE id = ?`).bind(Number(invoiceId)).first()
 
     if (!invoice) {
       return c.json({ success: false, error: '세금계산서 없음' }, 404)
@@ -522,7 +524,7 @@ hometaxInvoicesRouter.post('/:id/match', requireRole('ADMIN', 'MANAGER'), async 
     }
 
     // Verify tax_invoice_id exists
-    const taxInvoice = await db.prepare(`SELECT * FROM tax_invoices WHERE id = ?`).bind(body.tax_invoice_id).first()
+    const taxInvoice = await db.prepare(`SELECT id FROM tax_invoices WHERE id = ?`).bind(body.tax_invoice_id).first()
     if (!taxInvoice) {
       return c.json({ success: false, error: '시스템 세금계산서 없음' }, 404)
     }

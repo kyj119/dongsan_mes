@@ -12,7 +12,7 @@ itemsRouter.use('/*', authMiddleware)
 itemsRouter.get('/categories', async (c) => {
   try {
     const { results } = await c.env.DB.prepare(
-      'SELECT * FROM item_categories WHERE is_active = 1 ORDER BY sort_order ASC'
+      'SELECT id, category_name, category_code, sort_order, is_active, created_at FROM item_categories WHERE is_active = 1 ORDER BY sort_order ASC'
     ).all<ItemCategory>()
 
     const response: ApiResponse<ItemCategory[]> = {

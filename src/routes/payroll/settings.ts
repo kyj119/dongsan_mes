@@ -15,7 +15,7 @@ settingsRouter.use('/*', authMiddleware)
 settingsRouter.get('/rates/:year', async (c) => {
   const year = Number(c.req.param('year'))
   const rows = await c.env.DB.prepare(
-    `SELECT * FROM insurance_rates WHERE year = ? ORDER BY insurance_type`
+    `SELECT id, year, insurance_type, total_rate, employee_rate, employer_rate, base, min_base, max_base, effective_from, effective_to, notes, created_at FROM insurance_rates WHERE year = ? ORDER BY insurance_type`
   ).bind(year).all()
   return c.json({ success: true, data: rows.results || [] })
 })
@@ -121,7 +121,7 @@ settingsRouter.get('/tax-table/:year', async (c) => {
   const offset = Number(c.req.query('offset') || 0)
   const limit = Math.min(Number(c.req.query('limit') || 100), 500)
   const rows = await c.env.DB.prepare(
-    `SELECT * FROM income_tax_table WHERE year = ? ORDER BY monthly_pay_min LIMIT ? OFFSET ?`
+    `SELECT id, year, monthly_pay_min, monthly_pay_max, dependents_1, dependents_2, dependents_3, dependents_4, dependents_5, dependents_6, dependents_7, dependents_8, dependents_9, dependents_10, dependents_11 FROM income_tax_table WHERE year = ? ORDER BY monthly_pay_min LIMIT ? OFFSET ?`
   ).bind(year, limit, offset).all()
   const count = await c.env.DB.prepare(
     `SELECT COUNT(*) as cnt FROM income_tax_table WHERE year = ?`

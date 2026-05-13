@@ -295,7 +295,7 @@ ripRouter.post('/equipment', authMiddleware, requireRole('ADMIN'), async (c) => 
     `).bind(id, name, printer_name || null, ip_address || null).run()
 
     const equipment = await c.env.DB.prepare(
-      'SELECT * FROM equipment WHERE id = ?'
+      'SELECT id, name, printer_name, ip_address, status, equipment_status, head_count, location_x, location_y, location_zone, zone_id, daily_capacity, size_type, notes, created_at, updated_at FROM equipment WHERE id = ?'
     ).bind(id).first()
 
     return c.json({ success: true, data: equipment }, 201)
@@ -346,7 +346,7 @@ ripRouter.put('/equipment/:id', authMiddleware, requireRole('ADMIN'), async (c) 
     ).bind(...values).run()
 
     const updated = await c.env.DB.prepare(
-      'SELECT * FROM equipment WHERE id = ?'
+      'SELECT id, name, printer_name, ip_address, status, equipment_status, head_count, location_x, location_y, location_zone, zone_id, daily_capacity, size_type, notes, created_at, updated_at FROM equipment WHERE id = ?'
     ).bind(equipId).first()
 
     return c.json({ success: true, data: updated })
@@ -397,7 +397,7 @@ ripRouter.post('/equipment/:id/presets', authMiddleware, requireRole('ADMIN'), a
     ).run()
 
     const preset = await c.env.DB.prepare(
-      'SELECT * FROM equipment_presets WHERE id = ?'
+      'SELECT id, equipment_id, preset_name, tps_filename, description, is_default FROM equipment_presets WHERE id = ?'
     ).bind(result.meta.last_row_id).first()
 
     return c.json({ success: true, data: preset }, 201)
@@ -464,12 +464,12 @@ ripRouter.get('/equipment/:id', authMiddleware, async (c) => {
 
     // 프리셋
     const { results: presets } = await c.env.DB.prepare(
-      'SELECT * FROM equipment_presets WHERE equipment_id = ? ORDER BY is_default DESC, preset_name ASC'
+      'SELECT id, equipment_id, preset_name, tps_filename, description, is_default FROM equipment_presets WHERE equipment_id = ? ORDER BY is_default DESC, preset_name ASC'
     ).bind(equipId).all()
 
     // 헤드
     const { results: heads } = await c.env.DB.prepare(
-      'SELECT * FROM equipment_heads WHERE equipment_id = ? ORDER BY head_number ASC'
+      'SELECT id, equipment_id, head_number, status, replaced_at, notes, updated_at FROM equipment_heads WHERE equipment_id = ? ORDER BY head_number ASC'
     ).bind(equipId).all()
 
     // 최근 유지보수 이력 (20건)
@@ -630,7 +630,7 @@ ripRouter.post('/equipment/:id/heads', authMiddleware, requireRole('ADMIN', 'MAN
     ).bind(head_count, equipId).run()
 
     const { results: heads } = await c.env.DB.prepare(
-      'SELECT * FROM equipment_heads WHERE equipment_id = ? ORDER BY head_number'
+      'SELECT id, equipment_id, head_number, status, replaced_at, notes, updated_at FROM equipment_heads WHERE equipment_id = ? ORDER BY head_number'
     ).bind(equipId).all()
 
     return c.json({ success: true, data: heads })
@@ -658,7 +658,7 @@ ripRouter.put('/equipment/:id/heads/:headNum', authMiddleware, async (c) => {
     }
 
     const head = await c.env.DB.prepare(
-      'SELECT * FROM equipment_heads WHERE equipment_id = ? AND head_number = ?'
+      'SELECT id, equipment_id, head_number, status, replaced_at, notes, updated_at FROM equipment_heads WHERE equipment_id = ? AND head_number = ?'
     ).bind(equipId, headNum).first<HeadRow>()
 
     if (!head) {
@@ -691,7 +691,7 @@ ripRouter.put('/equipment/:id/heads/:headNum', authMiddleware, async (c) => {
     }
 
     const updated = await c.env.DB.prepare(
-      'SELECT * FROM equipment_heads WHERE equipment_id = ? AND head_number = ?'
+      'SELECT id, equipment_id, head_number, status, replaced_at, notes, updated_at FROM equipment_heads WHERE equipment_id = ? AND head_number = ?'
     ).bind(equipId, headNum).first()
 
     return c.json({ success: true, data: updated })
@@ -821,7 +821,7 @@ ripRouter.get('/equipment/:id/consumables', authMiddleware, async (c) => {
   try {
     const equipId = c.req.param('id')
     const { results } = await c.env.DB.prepare(`
-      SELECT *,
+      SELECT id, equipment_id, name, replacement_cycle_days, last_replaced_at, next_due_at, quantity_on_hand, notes, created_at, updated_at,
         CASE
           WHEN next_due_at IS NOT NULL AND next_due_at <= date('now') THEN 'OVERDUE'
           WHEN next_due_at IS NOT NULL AND next_due_at <= date('now', '+7 days') THEN 'DUE_SOON'
@@ -895,7 +895,7 @@ ripRouter.put('/equipment/:id/consumables/:cid', authMiddleware, requireRole('AD
     const body = await c.req.json()
 
     const existing = await c.env.DB.prepare(
-      'SELECT * FROM equipment_consumables WHERE id = ?'
+      'SELECT id, equipment_id, name, replacement_cycle_days, last_replaced_at, next_due_at, quantity_on_hand, notes, created_at, updated_at FROM equipment_consumables WHERE id = ?'
     ).bind(cid).first<ConsumableRow>()
 
     if (!existing) {
@@ -946,7 +946,7 @@ ripRouter.post('/equipment/:id/consumables/:cid/replace', authMiddleware, async 
     const user = c.get('user')
 
     const consumable = await c.env.DB.prepare(
-      'SELECT * FROM equipment_consumables WHERE id = ? AND equipment_id = ?'
+      'SELECT id, equipment_id, name, replacement_cycle_days, last_replaced_at, next_due_at, quantity_on_hand, notes FROM equipment_consumables WHERE id = ? AND equipment_id = ?'
     ).bind(cid, equipId).first<ConsumableRow>()
 
     if (!consumable) {
@@ -1005,7 +1005,7 @@ ripRouter.get('/equipment/:id/schedules', authMiddleware, async (c) => {
   try {
     const equipId = c.req.param('id')
     const { results } = await c.env.DB.prepare(`
-      SELECT *,
+      SELECT id, equipment_id, title, description, interval_days, checklist, last_performed_at, next_due_at, is_active, created_at, updated_at,
         CASE
           WHEN next_due_at IS NOT NULL AND next_due_at <= date('now') THEN 'OVERDUE'
           WHEN next_due_at IS NOT NULL AND next_due_at <= date('now', '+7 days') THEN 'DUE_SOON'
@@ -1075,7 +1075,7 @@ ripRouter.post('/equipment/:id/schedules/:sid/complete', authMiddleware, async (
     const body = await c.req.json()
 
     const schedule = await c.env.DB.prepare(
-      'SELECT * FROM maintenance_schedules WHERE id = ? AND equipment_id = ?'
+      'SELECT id, equipment_id, title, description, interval_days, checklist, last_performed_at, next_due_at, is_active FROM maintenance_schedules WHERE id = ? AND equipment_id = ?'
     ).bind(sid, equipId).first<ScheduleRow>()
 
     if (!schedule) {
@@ -1280,7 +1280,10 @@ ripRouter.post('/send/:cardId', authMiddleware, async (c) => {
 
     // 1. 카드 존재 확인
     const card = await c.env.DB.prepare(
-      'SELECT * FROM cards WHERE id = ?'
+      `SELECT id, card_number, status, rip_filename, rip_status, rip_sent_at, rip_job_path,
+              equipment_id, rip_preset, source_file_path, width, height, quantity,
+              priority, delivery_date, client_name, item_name
+       FROM cards WHERE id = ?`
     ).bind(cardId).first<CardFullRow>()
 
     if (!card) {
@@ -1350,7 +1353,10 @@ ripRouter.post('/complete/:cardId', authMiddleware, async (c) => {
     const cardId = c.req.param('cardId')
 
     const card = await c.env.DB.prepare(
-      'SELECT * FROM cards WHERE id = ?'
+      `SELECT id, card_number, status, rip_filename, rip_status, rip_sent_at, rip_job_path,
+              equipment_id, rip_preset, source_file_path, width, height, quantity,
+              priority, delivery_date, client_name, item_name
+       FROM cards WHERE id = ?`
     ).bind(cardId).first<CardFullRow>()
 
     if (!card) {
@@ -1420,7 +1426,10 @@ ripRouter.get('/test-filename/:cardId', authMiddleware, async (c) => {
     const cardId = c.req.param('cardId')
 
     const card = await c.env.DB.prepare(
-      'SELECT * FROM cards WHERE id = ?'
+      `SELECT id, card_number, status, rip_filename, rip_status, rip_sent_at, rip_job_path,
+              equipment_id, rip_preset, source_file_path, width, height, quantity,
+              priority, delivery_date, client_name, item_name
+       FROM cards WHERE id = ?`
     ).bind(cardId).first<CardFullRow>()
 
     if (!card) {
