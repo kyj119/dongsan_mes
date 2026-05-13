@@ -58,6 +58,8 @@
   - 사이드바: 법인 전환 UI 분리 (로고→별도 행), 최근 방문 제거
   - 버그수정: body/html 배경색, overscroll 방지, 스크롤 이벤트 window 전환
   - 독립 에이전트 검증 29/29 PASS
+  - **프로덕션 배포 완료**: 스모크 18페이지 + 코드 리뷰 + typecheck 통과 후 deploy:prod
+  - SKILL.md 동기화: design-token.md CSS 변수 체계 갱신 (--color-* → --c-*), component.md FilterBar/BulkBar/BentoGrid 추가
 
 ## 🟢 이전 완료 (2026-05-12)
 

@@ -130,17 +130,20 @@ inspectionsRouter.put('/templates/:id', requireRole('ADMIN'), async (c) => {
 
     // 항목 갱신 (전체 교체)
     if (body.items) {
-      await c.env.DB.prepare('DELETE FROM inspection_template_items WHERE template_id = ?').bind(id).run()
+      const stmts: any[] = [
+        c.env.DB.prepare('DELETE FROM inspection_template_items WHERE template_id = ?').bind(id)
+      ]
       for (let i = 0; i < body.items.length; i++) {
         const item = body.items[i]
-        await c.env.DB.prepare(`
+        stmts.push(c.env.DB.prepare(`
           INSERT INTO inspection_template_items (template_id, check_item, check_type, description, is_required, sort_order)
           VALUES (?, ?, ?, ?, ?, ?)
         `).bind(
           id, item.check_item, item.check_type || 'PASS_FAIL',
           item.description || null, item.is_required !== false ? 1 : 0, i + 1
-        ).run()
+        ))
       }
+      await c.env.DB.batch(stmts)
     }
 
     return c.json({ success: true, message: '검수 템플릿이 수정되었습니다.' })

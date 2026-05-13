@@ -702,54 +702,62 @@ printSystemRouter.put('/media/:id', requireRole('ADMIN', 'MANAGER'), async (c) =
       ).bind(id).all()
       const currentMethodIds = new Set((currentItems as any[]).map((i: any) => i.print_method_id))
 
-      // 새로 추가할 방식
-      for (const methodId of method_ids) {
-        // print_method_media 연결 (항상 보장)
-        await c.env.DB.prepare(`
+      // 원자재 목록 일괄 조회 (루프 밖에서 1회)
+      const { results: matchedRM } = await c.env.DB.prepare(
+        'SELECT id FROM items WHERE parent_media_id = ? AND item_type = ? AND is_active = 1'
+      ).bind(id, 'MATERIAL').all()
+
+      // print_method_media 연결 일괄 (batch)
+      const methodMediaStmts = method_ids.map((methodId: number) =>
+        c.env.DB.prepare(`
           INSERT OR IGNORE INTO print_method_media (print_method_id, print_media_id, created_at)
           VALUES (?, ?, datetime('now'))
-        `).bind(methodId, id).run()
+        `).bind(methodId, id)
+      )
+      if (methodMediaStmts.length > 0) await c.env.DB.batch(methodMediaStmts)
 
+      // 새로 추가할 방식 — 품목 생성 + product_materials 연결
+      const productMaterialStmts: any[] = []
+      for (const methodId of method_ids) {
         if (!currentMethodIds.has(methodId)) {
           const item = await createLinkedItem(c.env.DB, methodId, id, null)
           if (item) {
             createdCount++
-            // product_materials 자동 연결: 같은 parent_media_id를 가진 원자재
-            const { results: matchedRM } = await c.env.DB.prepare(
-              'SELECT id FROM items WHERE parent_media_id = ? AND item_type = ? AND is_active = 1'
-            ).bind(id, 'MATERIAL').all()
             for (const rm of matchedRM as any[]) {
-              await c.env.DB.prepare(`
+              productMaterialStmts.push(c.env.DB.prepare(`
                 INSERT OR IGNORE INTO product_materials (product_item_id, material_item_id, is_default)
                 VALUES (?, ?, 0)
-              `).bind(item.id, rm.id).run()
+              `).bind(item.id, rm.id))
             }
           }
         }
       }
+      if (productMaterialStmts.length > 0) await c.env.DB.batch(productMaterialStmts)
 
-      // 해제된 방식 → 주문 참조 확인 후 비활성화
+      // 해제된 방식 → 주문 참조 확인 후 비활성화 (batch)
       const newMethodIds = new Set(method_ids)
+      const removedItems = (currentItems as any[]).filter((ci: any) => !newMethodIds.has(ci.print_method_id))
       const inUseItems: string[] = []
-      for (const ci of currentItems as any[]) {
-        if (!newMethodIds.has(ci.print_method_id)) {
-          // 주문에서 사용 중인지 확인
-          const orderRef = await c.env.DB.prepare(
-            'SELECT COUNT(*) as cnt FROM order_items WHERE item_id = ?'
-          ).bind(ci.id).first() as any
-          if (orderRef?.cnt > 0) {
-            // 주문 참조 있으면 비활성화만 (삭제 안 함) + 경고
-            inUseItems.push(ci.id)
-          }
-          await c.env.DB.prepare(
-            "UPDATE items SET is_active = 0, updated_at = datetime('now') WHERE id = ?"
-          ).bind(ci.id).run()
-          // print_method_media도 정리
-          await c.env.DB.prepare(
-            'DELETE FROM print_method_media WHERE print_method_id = ? AND print_media_id = ?'
-          ).bind(ci.print_method_id, id).run()
-          deactivatedCount++
+
+      if (removedItems.length > 0) {
+        // 주문 참조 일괄 확인
+        const refPh = removedItems.map(() => '?').join(',')
+        const { results: orderRefs } = await c.env.DB.prepare(
+          `SELECT item_id, COUNT(*) as cnt FROM order_items WHERE item_id IN (${refPh}) GROUP BY item_id`
+        ).bind(...removedItems.map((ci: any) => ci.id)).all()
+        const refSet = new Set((orderRefs as any[]).filter((r: any) => r.cnt > 0).map((r: any) => r.item_id))
+        for (const ci of removedItems) {
+          if (refSet.has(ci.id)) inUseItems.push(ci.id)
         }
+
+        // 비활성화 + print_method_media 정리 (batch)
+        await c.env.DB.batch(
+          removedItems.flatMap((ci: any) => [
+            c.env.DB.prepare("UPDATE items SET is_active = 0, updated_at = datetime('now') WHERE id = ?").bind(ci.id),
+            c.env.DB.prepare('DELETE FROM print_method_media WHERE print_method_id = ? AND print_media_id = ?').bind(ci.print_method_id, id)
+          ])
+        )
+        deactivatedCount = removedItems.length
       }
     }
 

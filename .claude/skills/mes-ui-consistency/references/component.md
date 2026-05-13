@@ -164,23 +164,94 @@ interface EmptyStateProps {
 
 ---
 
-## FilterBar
+## FilterBar (`.ds-filter-bar`)
 
-목록 페이지의 필터 영역.
+목록 페이지의 필터 영역. `layout.ts`에 정의된 CSS 컴포넌트.
 
-### 레이아웃 패턴
+### CSS 클래스 구조
 
+```html
+<div class="ds-filter-bar">
+  <div class="ds-filter-chips">            <!-- 검색 + 인라인 필터 -->
+    <div class="ds-filter-field">           <!-- 개별 필터 항목 -->
+      <label class="ds-label">검색</label>
+      <input class="ds-input ds-input-sm" />
+    </div>
+    ...
+  </div>
+  <div class="ds-filter-actions">           <!-- 버튼 그룹 (ml-auto) -->
+    <button class="ds-btn ds-btn-ghost">초기화</button>
+    <button class="ds-btn ds-btn-primary">검색</button>
+  </div>
+  <button class="ds-filter-toggle">더보기 ▼</button>  <!-- 4개+ 필터 시 -->
+  <div class="ds-filter-expand">            <!-- 접힘 영역, .open 토글 -->
+    <div class="ds-filter-field">...</div>
+  </div>
+</div>
 ```
-[SearchInput (flex-1)] [StatusSelect] [SortSelect] [DateRange] | [Ghost:초기화] [Primary:검색] [Primary:+CTA]
+
+### 주요 클래스
+
+| 클래스 | 역할 |
+|--------|------|
+| `.ds-filter-bar` | 컨테이너 (flex wrap, gap, 배경/보더/라운드) |
+| `.ds-filter-chips` | 인라인 필터 그룹 (flex wrap) |
+| `.ds-filter-field` | 개별 필터 (label + input) |
+| `.ds-filter-actions` | 버튼 그룹 (`margin-left: auto`) |
+| `.ds-filter-toggle` | 더보기/접기 토글 버튼 |
+| `.ds-filter-expand` | 접힘 영역 (`.open` 클래스로 토글) |
+| `.ds-filter-divider` | 세로 구분선 |
+
+---
+
+## BulkBar (`.ds-bulk-bar`)
+
+목록 페이지 하단 고정 일괄 작업 바. 체크박스 선택 시 나타남.
+
+### CSS 클래스 구조
+
+```html
+<div class="ds-bulk-bar" id="bulkActionBar">       <!-- fixed bottom -->
+  <div class="ds-bulk-bar-count">
+    <i class="fas fa-check-square"></i> <span id="bulkCount">0</span>건 선택
+  </div>
+  <div class="ds-bulk-bar-divider"></div>
+  <div class="ds-bulk-bar-actions">
+    <select class="ds-input ds-input-sm">...</select>
+    <button class="ds-btn ds-btn-primary ds-btn-sm">상태변경</button>
+  </div>
+  <div class="ds-bulk-bar-end">
+    <button class="ds-btn ds-btn-ghost ds-btn-sm">선택 해제</button>
+  </div>
+</div>
+<div class="ds-bulk-bar-spacer" id="bulkActionSpacer"></div>  <!-- 하단 여백 -->
 ```
 
-### 규칙
+### 주요 클래스
 
-- 검색 입력: `flex-1`, placeholder "검색어 입력..."
-- 드롭다운: 고정 너비 (`w-36` ~ `w-44`)
-- 구분: 필터와 액션 버튼 사이에 `ml-auto` 또는 `flex justify-between`
-- 모바일: 2행으로 wrap
-- 필터 4개 이상: "필터 더보기" 토글 (기본 접힘)
+| 클래스 | 역할 |
+|--------|------|
+| `.ds-bulk-bar` | 하단 고정 바 (`position: fixed; bottom: 0`) |
+| `.ds-bulk-bar.visible` | 표시 상태 (`transform: translateY(0)`) |
+| `.ds-bulk-bar-count` | 선택 건수 표시 |
+| `.ds-bulk-bar-divider` | 세로 구분선 |
+| `.ds-bulk-bar-actions` | 액션 버튼 그룹 |
+| `.ds-bulk-bar-end` | 우측 정렬 (`margin-left: auto`) |
+| `.ds-bulk-bar-spacer` | 바 높이만큼 여백 (`.visible`로 토글) |
+
+### JS 토글 패턴
+
+```javascript
+var bar = document.getElementById('bulkActionBar');
+var spacer = document.getElementById('bulkActionSpacer');
+if (selectedCount > 0) {
+  bar.classList.add('visible');
+  spacer.classList.add('visible');
+} else {
+  bar.classList.remove('visible');
+  spacer.classList.remove('visible');
+}
+```
 
 ---
 
@@ -233,3 +304,57 @@ danger:  text-gray-400 hover:text-red-600 hover:bg-red-50
 - 칼럼 제목: `text-sm font-semibold text-gray-700`
 - 카운트 뱃지: 해당 칼럼 색상의 `rounded-full px-2 py-0.5 text-xs font-bold`
 - 칼럼 최소 높이: `min-h-[200px]` (빈 상태에서도 드롭 가능 영역 확보)
+
+---
+
+## Bento Grid (`.ds-bento`)
+
+대시보드 KPI 카드 레이아웃. 첫 번째 카드를 2x2 히어로로 배치.
+
+### CSS 클래스
+
+```html
+<div class="ds-bento">
+  <div class="ds-bento-hero"><!-- 히어로 카드 (2col x 2row) --></div>
+  <div><!-- 일반 카드 --></div>
+  <div><!-- 일반 카드 --></div>
+  ...
+</div>
+```
+
+| 클래스 | 역할 |
+|--------|------|
+| `.ds-bento` | `display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--space-lg)` |
+| `.ds-bento-hero` | `grid-column: span 2; grid-row: span 2` (첫 번째 카드 강조) |
+
+반응형: `@media ≤1024px` → 3열, `≤768px` → 2열, `≤640px` → 1열 (hero span 해제)
+
+---
+
+## Count-Up 애니메이션
+
+KPI 숫자에 적용하는 카운트업 효과. `src/scripts/dashboard.js`에 구현.
+
+### 사용 패턴
+
+```javascript
+function animateCount(el, target, duration) {
+  // requestAnimationFrame 기반, 0 → target까지 duration(ms) 동안 증가
+  // 금액은 toLocaleString() 포맷 적용
+}
+```
+
+---
+
+## 스크롤 그림자 (`.ds-table-wrap`)
+
+테이블 컨테이너에 스크롤 위치에 따른 상단 그림자 효과.
+
+```css
+.ds-table-wrap {
+  overflow-x: auto;
+  /* JS로 scroll 이벤트 감지 → .scrolled 클래스 토글 */
+}
+.ds-table-wrap.scrolled {
+  box-shadow: inset 0 8px 6px -6px rgba(0,0,0,0.08);
+}

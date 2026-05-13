@@ -111,17 +111,26 @@ ripRouter.get('/equipment', authMiddleware, async (c) => {
       ORDER BY e.id
     `).all()
 
-    // 각 장비에 프리셋 목록 첨부
-    const result = await Promise.all(
-      (equipmentList as any[]).map(async (eq) => {
-        const { results: presets } = await c.env.DB.prepare(`
-          SELECT * FROM equipment_presets
-          WHERE equipment_id = ?
-          ORDER BY is_default DESC, preset_name ASC
-        `).bind(eq.id).all()
-        return { ...eq, presets }
-      })
-    )
+    // 프리셋 일괄 조회 (N+1 → 단일 쿼리)
+    const eqIds = (equipmentList as any[]).map((eq: any) => eq.id)
+    let presetsMap: Record<string, any[]> = {}
+    if (eqIds.length > 0) {
+      const placeholders = eqIds.map(() => '?').join(',')
+      const { results: allPresets } = await c.env.DB.prepare(`
+        SELECT id, equipment_id, preset_name, is_default, rip_profile, color_mode, resolution, media_type, copies, quality
+        FROM equipment_presets
+        WHERE equipment_id IN (${placeholders})
+        ORDER BY is_default DESC, preset_name ASC
+      `).bind(...eqIds).all()
+      for (const p of allPresets as any[]) {
+        if (!presetsMap[p.equipment_id]) presetsMap[p.equipment_id] = []
+        presetsMap[p.equipment_id].push(p)
+      }
+    }
+    const result = (equipmentList as any[]).map((eq: any) => ({
+      ...eq,
+      presets: presetsMap[eq.id] || []
+    }))
 
     return c.json({ success: true, data: result })
   } catch (error) {
