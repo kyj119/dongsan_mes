@@ -55,6 +55,13 @@ const ENDPOINTS = [
   { path: '/api/dashboard/stats', name: 'dashboard.stats' },
   { path: '/api/dashboard/stats/daily', name: 'dashboard.daily' },
   { path: '/api/dashboard/stats/monthly', name: 'dashboard.monthly' },
+  { path: '/api/dashboard/stats/weekly', name: 'dashboard.weekly' },
+  { path: '/api/dashboard/stats/status-distribution', name: 'dashboard.statusDist' },
+  { path: '/api/dashboard/stats/card-progress', name: 'dashboard.cardProgress' },
+  { path: '/api/dashboard/stats/receivables', name: 'dashboard.receivables' },
+  { path: '/api/dashboard/stats/today-due', name: 'dashboard.todayDue' },
+  { path: '/api/dashboard/overdue-pos', name: 'dashboard.overduePOs' },
+  { path: '/api/dashboard/low-stock', name: 'dashboard.lowStock' },
 
   // 주문/생산
   { path: '/api/orders?limit=10', name: 'orders.list' },
@@ -64,10 +71,17 @@ const ENDPOINTS = [
   { path: '/api/shipments?limit=10', name: 'shipments.list' },
   { path: '/api/print-events?limit=10', name: 'printEvents.list' },
 
+  // 견적서
+  { path: '/api/quotations?limit=5', name: 'quotations.list' },
+
   // 기준정보
   { path: '/api/clients?limit=10', name: 'clients.list' },
   { path: '/api/items?limit=10', name: 'items.list' },
   { path: '/api/price-lists', name: 'priceLists.list' },
+  { path: '/api/prices?item_id=1&client_id=1&context=sales', name: 'prices.lookup', allow404: true },
+  { path: '/api/bom?limit=10', name: 'bom.list' },
+  { path: '/api/facility/zones', name: 'facility.zones' },
+  { path: '/api/storage-zones', name: 'storageZones.list' },
 
   // 재무/경리
   { path: `/api/ledger/monthly-summary?month=${THIS_MONTH}`, name: 'ledger.monthly' },
@@ -88,6 +102,7 @@ const ENDPOINTS = [
   { path: '/api/purchase-orders?limit=10', name: 'purchaseOrders.list' },
   { path: '/api/purchase-requests?limit=10', name: 'purchaseRequests.list' },
   { path: '/api/inventory', name: 'inventory.list' },
+  { path: '/api/inventory-counts', name: 'inventoryCount.list' },
 
   // 인사/급여
   { path: '/api/hr/employees', name: 'hr.employees' },
@@ -109,17 +124,36 @@ const ENDPOINTS = [
   { path: '/api/reports/client-revenue', name: 'reports.clientRevenue' },
   { path: `/api/production-reports/production?from=${FIRST_OF_MONTH}&to=${TODAY}`, name: 'productionReports.production' },
   { path: `/api/production-reports/uptime?from=${FIRST_OF_MONTH}&to=${TODAY}`, name: 'productionReports.uptime' },
+  { path: `/api/production-reports/daily-summary?from=${FIRST_OF_MONTH}&to=${TODAY}`, name: 'productionReports.daily' },
+  { path: `/api/production-reports/post-processing?from=${FIRST_OF_MONTH}&to=${TODAY}`, name: 'productionReports.postProc' },
+
+  // 예측/분석
+  { path: '/api/forecast/order-forecast', name: 'forecast.order' },
+  { path: '/api/forecast/capacity-analysis', name: 'forecast.capacity' },
+  { path: '/api/forecast/client-forecast', name: 'forecast.client' },
+  { path: '/api/costs', name: 'costs.list' },
 
   // 관리
   { path: '/api/users', name: 'users.list' },
   { path: '/api/settings', name: 'settings.list' },
   { path: '/api/notifications?limit=10', name: 'notifications.list' },
+  { path: '/api/notifications/unread-count', name: 'notifications.unreadCount' },
+  { path: '/api/notifications/nav-badges', name: 'notifications.navBadges' },
+  { path: '/api/permissions/me', name: 'permissions.me' },
+  { path: '/api/permissions/pages', name: 'permissions.pages' },
+  { path: '/api/messages/logs', name: 'messages.logs' },
+  { path: '/api/tasks?limit=10', name: 'tasks.list' },
   { path: '/api/activity-logs?limit=10', name: 'activityLogs.list' },
   { path: '/api/approvals?limit=10', name: 'approvals.list' },
 
-  // 출력방식/소재
+  // 출력방식/소재/RIP
   { path: '/api/print-system/methods', name: 'printSystem.methods' },
   { path: '/api/print-system/media', name: 'printSystem.media' },
+  { path: '/api/rip/equipment', name: 'rip.equipment' },
+  { path: '/api/search?q=test', name: 'search.global' },
+
+  // 은행
+  { path: '/api/bank/accounts', name: 'bank.accounts' },
 
   // 출고 대시보드
   { path: '/api/shipments/dashboard/counts', name: 'shipments.dashboardCounts' },
