@@ -34,7 +34,7 @@ capsRouter.post('/ingest', async (c) => {
     const { results: keyRows } = await c.env.DB.prepare(
       `SELECT setting_value FROM settings WHERE setting_key = 'caps_worker_api_key'`
     ).all()
-    const storedKey = (keyRows[0] as any)?.setting_value || ''
+    const storedKey = ((keyRows[0] as Record<string, unknown>)?.setting_value || '') as string
     // 타이밍 공격 방지: 해시 비교
     const enc = new TextEncoder()
     const [a, b] = await Promise.all([
@@ -46,7 +46,7 @@ capsRouter.post('/ingest', async (c) => {
       return c.json({ success: false, error: 'Invalid agent key' }, 401)
     }
 
-    const body = await c.req.json<any>()
+    const body = await c.req.json() as any // dynamic ingest payload — fields vary per record
     const records: any[] = Array.isArray(body.records) ? body.records : []
     const fromDate = body.from_date || null
     const toDate = body.to_date || null
@@ -72,7 +72,7 @@ capsRouter.post('/ingest', async (c) => {
     const { results: capsIdRows } = await c.env.DB.prepare(
       `SELECT id, caps_id FROM employees WHERE caps_id IS NOT NULL AND caps_id != '' AND (pay_type IS NULL OR pay_type != 'FIXED')`
     ).all()
-    for (const row of capsIdRows as any[]) {
+    for (const row of capsIdRows as Array<{ id: number; caps_id: string }>) {
       empMap[String(row.caps_id)] = row.id
     }
 
@@ -80,7 +80,7 @@ capsRouter.post('/ingest', async (c) => {
     const ignoredFpidsSet = new Set<string>()
     const ignoredSetting = await c.env.DB.prepare(
       `SELECT setting_value FROM settings WHERE setting_key = 'caps_ignored_fpids'`
-    ).first() as any
+    ).first<{ setting_value: string | null }>()
     if (ignoredSetting?.setting_value) {
       try {
         const arr = JSON.parse(ignoredSetting.setting_value)
@@ -374,11 +374,11 @@ capsRouter.get('/sync/pending', async (c) => {
   const { results: keyRows } = await c.env.DB.prepare(
     `SELECT setting_value FROM settings WHERE setting_key = 'caps_worker_api_key'`
   ).all()
-  const storedKey = (keyRows[0] as any)?.setting_value || ''
+  const storedKey = (keyRows[0] as Record<string, unknown>)?.setting_value || ''
   const enc = new TextEncoder()
   const [a, b] = await Promise.all([
-    crypto.subtle.digest('SHA-256', enc.encode(providedKey)),
-    crypto.subtle.digest('SHA-256', enc.encode(storedKey))
+    crypto.subtle.digest('SHA-256', enc.encode(providedKey as string)),
+    crypto.subtle.digest('SHA-256', enc.encode(storedKey as string))
   ])
   const match = new Uint8Array(a).every((v, i) => v === new Uint8Array(b)[i])
   if (!storedKey || !match) {
@@ -387,7 +387,7 @@ capsRouter.get('/sync/pending', async (c) => {
 
   const row = await c.env.DB.prepare(
     `SELECT setting_value FROM settings WHERE setting_key = 'caps_sync_requested_at'`
-  ).first() as any
+  ).first<{ setting_value: string | null }>()
   const requestedAt = row?.setting_value || null
 
   if (!requestedAt) {
@@ -425,13 +425,13 @@ capsRouter.get('/settings', async (c) => {
     `SELECT setting_key, setting_value FROM settings WHERE setting_key IN (${placeholders})`
   ).bind(...keys).all()
   const data: Record<string, string> = {}
-  for (const row of results as any[]) data[row.setting_key] = row.setting_value
+  for (const row of results as Array<{ setting_key: string; setting_value: string }>) data[row.setting_key] = row.setting_value
   return c.json({ success: true, data })
 })
 
 // PUT /api/caps/settings — 설정 업데이트
 capsRouter.put('/settings', async (c) => {
-  const body = await c.req.json<any>()
+  const body = await c.req.json<Record<string, string>>()
   const ALLOWED = [
     'caps_relay_db_host', 'caps_relay_db_port', 'caps_relay_db_engine',
     'caps_relay_db_name', 'caps_relay_db_user', 'caps_relay_db_password',
@@ -463,7 +463,7 @@ capsRouter.get('/employee-map', async (c) => {
 
 // POST /api/caps/employee-map — 매핑 추가
 capsRouter.post('/employee-map', async (c) => {
-  const body = await c.req.json<any>()
+  const body = await c.req.json<{ caps_e_idno?: string; caps_e_name?: string; caps_c_dept?: string; employee_id?: number; notes?: string }>()
   const { caps_e_idno, caps_e_name, caps_c_dept, employee_id, notes } = body
   if (!caps_e_idno || !employee_id) {
     return c.json({ success: false, error: 'caps_e_idno와 employee_id는 필수' }, 400)
@@ -493,7 +493,7 @@ capsRouter.delete('/employee-map/:id', async (c) => {
 
 // POST /api/caps/ignore-fpids — 퇴사자 등 무시할 fpid 일괄 추가
 capsRouter.post('/ignore-fpids', async (c) => {
-  const body = await c.req.json<any>()
+  const body = await c.req.json<{ fpids?: string[] }>()
   const { fpids } = body
   if (!Array.isArray(fpids) || fpids.length === 0) {
     return c.json({ success: false, error: 'fpids 배열 필요' }, 400)
@@ -501,7 +501,7 @@ capsRouter.post('/ignore-fpids', async (c) => {
   // 기존 목록 로드
   const existing = await c.env.DB.prepare(
     `SELECT setting_value FROM settings WHERE setting_key = 'caps_ignored_fpids'`
-  ).first() as any
+  ).first<{ setting_value: string | null }>()
   let currentList: string[] = []
   if (existing?.setting_value) {
     try { currentList = JSON.parse(existing.setting_value) } catch (_) {}
@@ -517,15 +517,15 @@ capsRouter.post('/ignore-fpids', async (c) => {
 
 // DELETE /api/caps/ignore-fpids — 무시 목록에서 fpid 제거
 capsRouter.delete('/ignore-fpids', async (c) => {
-  const body = await c.req.json<any>()
-  const { fpids } = body
-  if (!Array.isArray(fpids) || fpids.length === 0) {
+  const body2 = await c.req.json<{ fpids?: string[] }>()
+  const { fpids: fpidsToRemove } = body2
+  if (!Array.isArray(fpidsToRemove) || fpidsToRemove.length === 0) {
     return c.json({ success: false, error: 'fpids 배열 필요' }, 400)
   }
-  const removeSet = new Set(fpids.map((v: any) => String(v)))
+  const removeSet = new Set(fpidsToRemove.map((v) => String(v)))
   const existing = await c.env.DB.prepare(
     `SELECT setting_value FROM settings WHERE setting_key = 'caps_ignored_fpids'`
-  ).first() as any
+  ).first<{ setting_value: string | null }>()
   let currentList: string[] = []
   if (existing?.setting_value) {
     try { currentList = JSON.parse(existing.setting_value) } catch (_) {}

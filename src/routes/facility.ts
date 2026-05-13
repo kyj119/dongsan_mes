@@ -127,11 +127,11 @@ facilityRouter.get('/layout-data', async (c) => {
     ])
 
     const zoneCards: Record<number, number> = {}
-    for (const r of cardsRes.results as any[]) {
+    for (const r of cardsRes.results as Array<{ zone_id: number; card_count: number }>) {
       zoneCards[r.zone_id] = r.card_count
     }
 
-    const zones = (zonesRes.results as any[]).map(z => ({
+    const zones = (zonesRes.results as Array<{ id: number; bounds?: string; [key: string]: unknown }>).map(z => ({
       ...z,
       bounds: z.bounds ? JSON.parse(z.bounds) : { x: 10, y: 10, width: 200, height: 150 },
       active_cards: zoneCards[z.id] || 0,
@@ -155,7 +155,7 @@ facilityRouter.get('/background', async (c) => {
   try {
     const row = await c.env.DB.prepare(
       "SELECT setting_value FROM facility_settings WHERE setting_key = 'background_image'"
-    ).first() as any
+    ).first<{ setting_value: string }>()
     return c.json({ success: true, data: row?.setting_value || null })
   } catch (error) {
     console.error('src/routes/facility.ts error:', error)

@@ -31,7 +31,7 @@ vatReportsRouter.get('/summary', async (c) => {
       FROM tax_invoices
       WHERE status IN ('ISSUED', 'NTS_SUCCESS', 'SENT')
         AND issue_date BETWEEN ? AND ?${ef.clause}
-    `).bind(periodStart, periodEnd, ...ef.params).first() as any
+    `).bind(periodStart, periodEnd, ...ef.params).first<{ cnt: number; supply_sum: string; tax_sum: string }>()
 
     // 매출 세금계산서 상세
     const { results: salesList } = await c.env.DB.prepare(`
@@ -52,7 +52,7 @@ vatReportsRouter.get('/summary', async (c) => {
       FROM hometax_invoices
       WHERE invoice_type = 'BUY'
         AND issue_date BETWEEN ? AND ?
-    `).bind(periodStart, periodEnd).first().catch(() => null) as any
+    `).bind(periodStart, periodEnd).first<{ cnt: number; supply_sum: string; tax_sum: string }>().catch(() => null)
 
     // 매입 상세
     const { results: purchaseList } = await c.env.DB.prepare(`
@@ -66,10 +66,10 @@ vatReportsRouter.get('/summary', async (c) => {
       ORDER BY issue_date DESC
     `).bind(periodStart, periodEnd).all().catch(() => ({ results: [] }))
 
-    const salesSupply = parseFloat(salesAgg?.supply_sum) || 0
-    const salesTax = parseFloat(salesAgg?.tax_sum) || 0
-    const purchaseSupply = parseFloat(purchaseAgg?.supply_sum) || 0
-    const purchaseTax = parseFloat(purchaseAgg?.tax_sum) || 0
+    const salesSupply = Number(salesAgg?.supply_sum) || 0
+    const salesTax = Number(salesAgg?.tax_sum) || 0
+    const purchaseSupply = Number(purchaseAgg?.supply_sum) || 0
+    const purchaseTax = Number(purchaseAgg?.tax_sum) || 0
     const payableTax = salesTax - purchaseTax
 
     return c.json({

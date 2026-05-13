@@ -62,7 +62,7 @@ usersRouter.post('/change-password', async (c) => {
     // 현재 비밀번호 확인
     const existing = await c.env.DB.prepare(
       `SELECT id, password_hash FROM users WHERE id = ? AND is_active = 1`
-    ).bind(user.id).first() as any
+    ).bind(user.id).first<{ id: number; password_hash: string }>()
 
     if (!existing) {
       return c.json({ success: false, error: '사용자를 찾을 수 없습니다.' }, 404)
@@ -139,7 +139,7 @@ usersRouter.post('/:id/reset-password', requireAdmin, async (c) => {
       return c.json({ success: false, error: '사용자를 찾을 수 없습니다.' }, 404)
     }
 
-    const body = await c.req.json().catch(() => ({})) as any
+    const body = await c.req.json().catch(() => ({})) as { password?: string }
     const newPw = body.password || 'password'
 
     const hashedPassword = await hashPassword(newPw)

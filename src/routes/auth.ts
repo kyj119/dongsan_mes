@@ -40,7 +40,7 @@ auth.post('/login', rateLimitMiddleware(5, 60000), async (c) => {
     }
 
     // 기본 법인 ID (default_entity_id 컬럼이 있으면 사용, 없으면 1)
-    const defaultEntityId = (user as any).default_entity_id || 1
+    const defaultEntityId = (user as Record<string, unknown>).default_entity_id as number || 1
 
     // JWT 토큰 생성
     const jwtSecret = c.env.JWT_SECRET
@@ -191,7 +191,7 @@ auth.post('/switch-entity', authMiddleware, async (c) => {
       if (!['ADMIN', 'MANAGER'].includes(user.role)) {
         const userRow = await c.env.DB.prepare(
           'SELECT default_entity_id FROM users WHERE id = ?'
-        ).bind(user.id).first() as any
+        ).bind(user.id).first<{ default_entity_id: number | null }>()
         if (userRow?.default_entity_id && userRow.default_entity_id !== entity_id) {
           return c.json({ success: false, error: '권한 없음' }, 403)
         }

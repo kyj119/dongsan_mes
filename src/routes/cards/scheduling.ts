@@ -23,7 +23,7 @@ cardsSchedulingRouter.put('/schedule/assign/:id', async (c) => {
 
     const card = await c.env.DB.prepare(
       'SELECT id, equipment_id, card_number FROM cards WHERE id = ?'
-    ).bind(id).first() as any
+    ).bind(id).first<{ id: number; equipment_id: number | null; card_number: string }>()
 
     if (!card) {
       return c.json({ success: false, error: 'Card not found' }, 404)
@@ -32,7 +32,7 @@ cardsSchedulingRouter.put('/schedule/assign/:id', async (c) => {
     if (equipment_id) {
       const equip = await c.env.DB.prepare(
         "SELECT id, equipment_status FROM equipment WHERE id = ? AND status = 'ACTIVE'"
-      ).bind(equipment_id).first() as any
+      ).bind(equipment_id).first<{ id: number; equipment_status: string }>()
       if (!equip) {
         return c.json({ success: false, error: 'Equipment not found or inactive' }, 404)
       }

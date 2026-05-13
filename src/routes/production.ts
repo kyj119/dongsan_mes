@@ -42,12 +42,12 @@ productionRouter.get('/logs', async (c) => {
     }
 
     query += ` ORDER BY pl.log_date DESC, pl.shift LIMIT ?`
-    params.push(parseInt(limit))
+    params.push(Number(limit))
 
     const { results } = await c.env.DB.prepare(query).bind(...params).all()
 
     return c.json({ success: true, data: { logs: results } })
-  } catch (error: any) {
+  } catch (error) {
     console.error('Failed to get production logs:', error)
     console.error('Production error:', error)
     return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
@@ -111,7 +111,7 @@ productionRouter.get('/logs/:id', async (c) => {
         quality_issues: qualityIssues
       }
     })
-  } catch (error: any) {
+  } catch (error) {
     console.error('Failed to get production log:', error)
     console.error('Production error:', error)
     return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
@@ -131,7 +131,7 @@ productionRouter.post('/logs', async (c) => {
     `).bind(log_date, shift, weather, temperature, humidity, supervisor_id, notes, user.id, getEntityId(c) || 1).run()
 
     return c.json({ success: true, data: { id: result.meta.last_row_id } })
-  } catch (error: any) {
+  } catch (error) {
     console.error('Failed to create production log:', error)
     console.error('Production error:', error)
     return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
@@ -180,12 +180,12 @@ productionRouter.get('/work-records', async (c) => {
     }
 
     query += ` ORDER BY wr.start_time DESC LIMIT ?`
-    params.push(parseInt(limit))
+    params.push(Number(limit))
 
     const { results } = await c.env.DB.prepare(query).bind(...params).all()
 
     return c.json({ success: true, data: { work_records: results } })
-  } catch (error: any) {
+  } catch (error) {
     console.error('Failed to get work records:', error)
     console.error('Production error:', error)
     return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
@@ -231,7 +231,7 @@ productionRouter.post('/work-records', async (c) => {
     ).run()
 
     return c.json({ success: true, data: { id: result.meta.last_row_id } })
-  } catch (error: any) {
+  } catch (error) {
     console.error('Failed to create work record:', error)
     console.error('Production error:', error)
     return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
@@ -254,12 +254,12 @@ productionRouter.patch('/work-records/:id', async (c) => {
       return c.json({ success: false, error: 'Work record not found' }, 404)
     }
 
-    const record = results[0] as any
+    const record = results[0] as Record<string, unknown>
 
     // Calculate work hours
-    let work_hours = record.work_hours
+    let work_hours = record.work_hours as number | null
     if (end_time && record.start_time) {
-      const start = new Date(record.start_time)
+      const start = new Date(record.start_time as string)
       const end = new Date(end_time)
       work_hours = (end.getTime() - start.getTime()) / (1000 * 60 * 60)
     }
@@ -271,7 +271,7 @@ productionRouter.patch('/work-records/:id', async (c) => {
     `).bind(end_time, work_hours, quantity_completed, status, notes, id).run()
 
     return c.json({ success: true })
-  } catch (error: any) {
+  } catch (error) {
     console.error('Failed to update work record:', error)
     console.error('Production error:', error)
     return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
@@ -324,12 +324,12 @@ productionRouter.get('/quality-issues', async (c) => {
     }
 
     query += ` ORDER BY qi.reported_at DESC LIMIT ?`
-    params.push(parseInt(limit))
+    params.push(Number(limit))
 
     const { results } = await c.env.DB.prepare(query).bind(...params).all()
 
     return c.json({ success: true, data: { quality_issues: results } })
-  } catch (error: any) {
+  } catch (error) {
     console.error('Failed to get quality issues:', error)
     console.error('Production error:', error)
     return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
@@ -367,7 +367,7 @@ productionRouter.post('/quality-issues', async (c) => {
     ).run()
 
     return c.json({ success: true, data: { id: result.meta.last_row_id } })
-  } catch (error: any) {
+  } catch (error) {
     console.error('Failed to create quality issue:', error)
     console.error('Production error:', error)
     return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
@@ -387,7 +387,7 @@ productionRouter.patch('/quality-issues/:id', async (c) => {
       SELECT id FROM employees WHERE user_id = ? LIMIT 1
     `).bind(user.id).all()
 
-    const resolved_by = empResults.length > 0 ? (empResults[0] as any).id : null
+    const resolved_by = empResults.length > 0 ? (empResults[0] as Record<string, unknown>).id : null
 
     await c.env.DB.prepare(`
       UPDATE quality_issues
@@ -396,7 +396,7 @@ productionRouter.patch('/quality-issues/:id', async (c) => {
     `).bind(status, corrective_action, resolved_by, resolved_at || new Date().toISOString(), id).run()
 
     return c.json({ success: true })
-  } catch (error: any) {
+  } catch (error) {
     console.error('Failed to update quality issue:', error)
     console.error('Production error:', error)
     return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
@@ -470,9 +470,9 @@ productionRouter.get('/stats', async (c) => {
       GROUP BY defect_category
     `).bind(startDate, endDate).all()
 
-    const totalHours = (hoursResults[0] as any)?.total_hours || 0
-    const totalQuantity = (quantityResults[0] as any)?.total_quantity || 0
-    const totalDefects = (defectsResults[0] as any)?.total_defects || 0
+    const totalHours = Number((hoursResults[0] as Record<string, unknown>)?.total_hours) || 0
+    const totalQuantity = Number((quantityResults[0] as Record<string, unknown>)?.total_quantity) || 0
+    const totalDefects = Number((defectsResults[0] as Record<string, unknown>)?.total_defects) || 0
     const defectRate = totalQuantity > 0 ? (totalDefects / totalQuantity * 100).toFixed(2) : 0
 
     return c.json({
@@ -481,16 +481,16 @@ productionRouter.get('/stats', async (c) => {
         total_work_hours: totalHours,
         total_quantity_completed: totalQuantity,
         total_defects: totalDefects,
-        total_issues: (defectsResults[0] as any)?.total_issues || 0,
-        total_cost_impact: (defectsResults[0] as any)?.total_cost_impact || 0,
-        defect_rate: parseFloat(defectRate as string),
-        cards_processed: (cardsResults[0] as any)?.cards_processed || 0,
+        total_issues: Number((defectsResults[0] as Record<string, unknown>)?.total_issues) || 0,
+        total_cost_impact: Number((defectsResults[0] as Record<string, unknown>)?.total_cost_impact) || 0,
+        defect_rate: Number(defectRate),
+        cards_processed: Number((cardsResults[0] as Record<string, unknown>)?.cards_processed) || 0,
         work_type_distribution: workTypeResults,
         defect_by_category: defectCategoryResults,
         period: { start_date: startDate, end_date: endDate }
       }
     })
-  } catch (error: any) {
+  } catch (error) {
     console.error('Failed to get production stats:', error)
     console.error('Production error:', error)
     return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)

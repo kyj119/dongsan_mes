@@ -20,7 +20,7 @@ forecastRouter.get('/order-forecast', async (c) => {
         AND created_at >= date('now', '-12 months')
       GROUP BY strftime('%Y-%m', created_at)
       ORDER BY month ASC
-    `).all()
+    `).all<{ month: string; order_count: number; revenue: number; client_count: number }>()
 
     // 카테고리별 최근 6개월 추이
     const { results: categoryTrend } = await c.env.DB.prepare(`
@@ -37,7 +37,7 @@ forecastRouter.get('/order-forecast', async (c) => {
         AND o.created_at >= date('now', '-6 months')
       GROUP BY i.category, strftime('%Y-%m', o.created_at)
       ORDER BY i.category, month ASC
-    `).all()
+    `).all<{ category: string; month: string; item_count: number; revenue: number }>()
 
     // 요일별 평균 주문량 (패턴 분석)
     const { results: dayOfWeek } = await c.env.DB.prepare(`
@@ -53,10 +53,10 @@ forecastRouter.get('/order-forecast', async (c) => {
     `).all()
 
     // 예측 계산: 3개월 이동 평균 + 전년 동기 가중치
-    const data = (monthly as any[]).map(r => ({
+    const data = monthly.map((r) => ({
       month: r.month,
       order_count: r.order_count,
-      revenue: parseFloat(r.revenue),
+      revenue: Number(r.revenue),
       client_count: r.client_count,
     }))
 
@@ -86,11 +86,11 @@ forecastRouter.get('/order-forecast', async (c) => {
     const growthRate = prevAvgRevenue > 0 ? Math.round((avgRevenue3m - prevAvgRevenue) / prevAvgRevenue * 1000) / 10 : 0
 
     // 카테고리별 추이 병합
-    const catMap = new Map<string, any[]>()
-    for (const r of categoryTrend as any[]) {
+    const catMap = new Map<string, { month: string; count: number; revenue: number }[]>()
+    for (const r of categoryTrend) {
       const key = r.category || '기타'
       if (!catMap.has(key)) catMap.set(key, [])
-      catMap.get(key)!.push({ month: r.month, count: r.item_count, revenue: parseFloat(r.revenue) })
+      catMap.get(key)!.push({ month: r.month, count: r.item_count, revenue: Number(r.revenue) })
     }
     const categoryForecast = Array.from(catMap.entries()).map(([cat, months]) => {
       const last3 = months.slice(-3)
@@ -126,7 +126,7 @@ forecastRouter.get('/order-forecast', async (c) => {
 forecastRouter.get('/capacity-analysis', async (c) => {
   try {
     const { months = '3' } = c.req.query()
-    const monthCount = parseInt(months)
+    const monthCount = Number(months)
 
     // 장비별 일별 출력 건수
     const { results: dailyPrint } = await c.env.DB.prepare(`
@@ -140,11 +140,11 @@ forecastRouter.get('/capacity-analysis', async (c) => {
         AND printer_name IS NOT NULL AND printer_name != ''
       GROUP BY printer_name, date(created_at)
       ORDER BY printer_name, print_date
-    `).bind(monthCount).all()
+    `).bind(monthCount).all<{ printer_name: string; print_date: string; print_count: number; ok_count: number }>()
 
     // 장비별 가동률 집계
     const equipmentMap = new Map<string, { days: number; total: number; ok: number; maxDay: number; dates: Set<string> }>()
-    for (const row of dailyPrint as any[]) {
+    for (const row of dailyPrint) {
       const name = row.printer_name
       if (!equipmentMap.has(name)) {
         equipmentMap.set(name, { days: 0, total: 0, ok: 0, maxDay: 0, dates: new Set() })
@@ -232,17 +232,17 @@ forecastRouter.get('/client-forecast', async (c) => {
         AND o.created_at >= date('now', '-6 months')
       GROUP BY c.id, strftime('%Y-%m', o.created_at)
       ORDER BY c.id, month ASC
-    `).all()
+    `).all<{ id: number; client_name: string; month: string; order_count: number; revenue: number }>()
 
     // 거래처별 월간 데이터 집계
-    const clientMap = new Map<string, { name: string; months: any[] }>()
-    for (const r of results as any[]) {
+    const clientMap = new Map<string, { name: string; months: { month: string; order_count: number; revenue: number }[] }>()
+    for (const r of results) {
       const key = String(r.id)
       if (!clientMap.has(key)) clientMap.set(key, { name: r.client_name, months: [] })
       clientMap.get(key)!.months.push({
         month: r.month,
         order_count: r.order_count,
-        revenue: parseFloat(r.revenue),
+        revenue: Number(r.revenue),
       })
     }
 

@@ -36,7 +36,7 @@ inventoryCountRouter.get('/', async (c) => {
     return c.json({
       success: true,
       data: results || [],
-      total: (countRes as any)?.cnt || 0,
+      total: (countRes as { cnt: number } | null)?.cnt || 0,
       limit,
       offset
     })
@@ -83,11 +83,11 @@ inventoryCountRouter.post('/', async (c) => {
     }
     itemQuery += ' ORDER BY i.category, i.item_name'
 
-    const { results: items } = await c.env.DB.prepare(itemQuery).bind(...params).all()
+    const { results: items } = await c.env.DB.prepare(itemQuery).bind(...params).all<{ id: number; item_code: string; item_name: string; unit: string; category: string; quantity: number | null }>()
 
     if (items && items.length > 0) {
       await c.env.DB.batch(
-        (items as any[]).map((item: any) =>
+        items.map((item) =>
           c.env.DB.prepare(`
             INSERT INTO inventory_count_items (count_id, item_id, system_quantity, unit)
             VALUES (?, ?, ?, ?)
@@ -153,15 +153,15 @@ inventoryCountRouter.get('/:id', async (c) => {
 inventoryCountRouter.put('/:id/items', async (c) => {
   try {
     const countId = parseInt(c.req.param('id'))
-    const body = await c.req.json() as any
+    const body = await c.req.json<{ items?: { id: number; system_quantity: string; counted_quantity: string; notes?: string }[] }>()
     const { items = [] } = body
 
     // 일괄 업데이트 (batch)
     if (items.length > 0) {
       await c.env.DB.batch(
         items.map((item: any) => {
-          const systemQty = parseFloat(item.system_quantity)
-          const countedQty = parseFloat(item.counted_quantity)
+          const systemQty = Number(item.system_quantity)
+          const countedQty = Number(item.counted_quantity)
           const diff = countedQty - systemQty
           const diffPct = systemQty !== 0 ? (diff / systemQty) * 100 : 0
           return c.env.DB.prepare(`
@@ -212,7 +212,7 @@ inventoryCountRouter.patch('/:id/approve', async (c) => {
     // 먼저 count 조회
     const count = await c.env.DB.prepare(`
       SELECT * FROM inventory_counts WHERE id = ?
-    `).bind(countId).first() as any
+    `).bind(countId).first<{ status: string }>()
 
     if (!count || count.status !== 'SUBMITTED') {
       return c.json({ success: false, error: 'Count not found or not submitted' }, 400)
@@ -221,13 +221,13 @@ inventoryCountRouter.patch('/:id/approve', async (c) => {
     // count_items 조회
     const { results: countItems } = await c.env.DB.prepare(`
       SELECT * FROM inventory_count_items WHERE count_id = ?
-    `).bind(countId).all()
+    `).bind(countId).all<{ item_id: number; system_quantity: number; counted_quantity: number }>()
 
     // 각 항목별로 inventory 보정 + inventory_transactions 기록 (batch)
     if (countItems && countItems.length > 0) {
       const entityId = getEntityId(c) || 1
       await c.env.DB.batch(
-        (countItems as any[]).flatMap((item: any) => [
+        countItems.flatMap((item) => [
           c.env.DB.prepare(`
             UPDATE inventory SET quantity = ?, updated_at = CURRENT_TIMESTAMP
             WHERE item_id = ?

@@ -54,7 +54,7 @@ aiAnalysisRouter.post('/batch-test', async (c) => {
     }
 
     const batchTag = tag || `batch_${Date.now()}`
-    const created: any[] = []
+    const created: Array<{ id: number; file_path: string; status: string; created_at: string; batch_tag: string }> = []
     const errors: string[] = []
 
     for (const fp of file_paths) {
@@ -63,8 +63,8 @@ aiAnalysisRouter.post('/batch-test', async (c) => {
           `INSERT INTO ai_analysis_requests (file_path, status)
            VALUES (?, 'pending')
            RETURNING id, file_path, status, created_at`
-        ).bind(fp).first()
-        created.push({ ...result, batch_tag: batchTag })
+        ).bind(fp).first<{ id: number; file_path: string; status: string; created_at: string }>()
+        if (result) created.push({ ...result, batch_tag: batchTag })
       } catch (err) {
         errors.push(`${fp}: ${err}`)
       }
@@ -76,7 +76,7 @@ aiAnalysisRouter.post('/batch-test', async (c) => {
       total_requested: file_paths.length,
       created_count: created.length,
       error_count: errors.length,
-      created_ids: created.map((r: any) => r.id),
+      created_ids: created.map((r) => r.id),
       errors: errors.length > 0 ? errors : undefined
     })
   } catch (error) {
@@ -115,16 +115,17 @@ aiAnalysisRouter.get('/batch-results', async (c) => {
       binds = []
     }
 
+    type AnalysisRow = { id: number; file_path: string; status: string; groups_json: string | null; error_message: string | null; created_at: string; updated_at: string }
     const stmt = c.env.DB.prepare(query)
-    const { results } = binds.length > 0 ? await stmt.bind(...binds).all() : await stmt.all()
+    const { results } = binds.length > 0 ? await stmt.bind(...binds).all<AnalysisRow>() : await stmt.all<AnalysisRow>()
 
     // 요약 통계
     const summary = {
       total: results.length,
-      pending: results.filter((r: any) => r.status === 'pending').length,
-      processing: results.filter((r: any) => r.status === 'processing').length,
-      done: results.filter((r: any) => r.status === 'done').length,
-      error: results.filter((r: any) => r.status === 'error').length,
+      pending: results.filter((r) => r.status === 'pending').length,
+      processing: results.filter((r) => r.status === 'processing').length,
+      done: results.filter((r) => r.status === 'done').length,
+      error: results.filter((r) => r.status === 'error').length,
     }
 
     return c.json({ success: true, summary, results })
@@ -145,9 +146,9 @@ aiAnalysisRouter.post('/upload', async (c) => {
     const result = await c.env.DB.prepare(
       `INSERT INTO ai_analysis_requests (file_path, status) VALUES (?, 'pending')
        RETURNING id, file_path, status, created_at`
-    ).bind(file.name).first() as any
+    ).bind(file.name).first<{ id: number; file_path: string; status: string; created_at: string }>()
 
-    const analysisId = result.id
+    const analysisId = result!.id
 
     // R2에 소스 파일 업로드
     const r2Key = `sources/${analysisId}/${file.name}`
@@ -178,7 +179,7 @@ aiAnalysisRouter.get('/:id/download', async (c) => {
     const id = c.req.param('id')
     const row = await c.env.DB.prepare(
       'SELECT file_path FROM ai_analysis_requests WHERE id = ?'
-    ).bind(id).first() as any
+    ).bind(id).first<{ file_path: string }>()
     if (!row) return c.json({ success: false, error: 'Not found' }, 404)
 
     // R2 경로인 경우
@@ -312,7 +313,7 @@ aiAnalysisRouter.patch('/:id', async (c) => {
     if (status === 'error') {
       const row = await c.env.DB.prepare(
         `SELECT retry_count, max_retries FROM ai_analysis_requests WHERE id = ?`
-      ).bind(id).first() as any
+      ).bind(id).first<{ retry_count: number | null; max_retries: number | null }>()
       if (!row) return c.json({ success: false, error: 'Not found' }, 404)
 
       const newCount = (row.retry_count ?? 0) + 1

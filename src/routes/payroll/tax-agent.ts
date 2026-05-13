@@ -78,7 +78,7 @@ taxAgentRouter.get('/tax-agent/changes', requireRole('ADMIN', 'MANAGER'), async 
        FROM employees
        WHERE hire_date BETWEEN ? AND ?
        ORDER BY hire_date`
-    ).bind(first, last).all()
+    ).bind(first, last).all<{ employee_code: string; name: string; resident_number: string | null; hire_date: string; department: string; position: string; base_salary: number }>()
 
     // 이번 달 퇴사자
     const { results: quits } = await c.env.DB.prepare(
@@ -86,7 +86,7 @@ taxAgentRouter.get('/tax-agent/changes', requireRole('ADMIN', 'MANAGER'), async 
        FROM employees
        WHERE resignation_date BETWEEN ? AND ?
        ORDER BY resignation_date`
-    ).bind(first, last).all()
+    ).bind(first, last).all<{ employee_code: string; name: string; resident_number: string | null; hire_date: string; resignation_date: string; department: string; position: string; base_salary: number }>()
 
     const rows: string[] = []
     rows.push([
@@ -94,13 +94,13 @@ taxAgentRouter.get('/tax-agent/changes', requireRole('ADMIN', 'MANAGER'), async 
       '부서', '직급', '월급여', '비고',
     ].map(csvField).join(','))
 
-    for (const r of hires as any[]) {
+    for (const r of hires) {
       rows.push([
         '취득', r.employee_code, r.name, maskRrn(r.resident_number, unmask),
         r.hire_date, '', r.department, r.position, r.base_salary, '신규입사',
       ].map(csvField).join(','))
     }
-    for (const r of quits as any[]) {
+    for (const r of quits) {
       rows.push([
         '상실', r.employee_code, r.name, maskRrn(r.resident_number, unmask),
         r.hire_date, r.resignation_date, r.department, r.position, r.base_salary, '퇴사',
@@ -136,7 +136,16 @@ taxAgentRouter.get('/tax-agent/payroll', requireRole('ADMIN', 'MANAGER'), async 
        JOIN employees e ON p.employee_id = e.id
        WHERE p.pay_period = ?
        ORDER BY e.department, e.name`
-    ).bind(period).all()
+    ).bind(period).all<{
+      employee_code: string; name: string; resident_number: string | null; department: string; position: string
+      hire_date: string; resignation_date: string | null; employee_status: string
+      base_salary: number; bonus: number | null; overtime_pay: number | null; night_pay: number | null; holiday_pay: number | null
+      meal_allowance: number | null; transportation_allowance: number | null; other_allowance: number | null
+      total_salary: number; taxable_salary: number | null
+      national_pension: number | null; health_insurance: number | null; long_term_care: number | null; employment_insurance: number | null
+      income_tax: number | null; local_tax: number | null; total_deduction: number; net_pay: number
+      bank_name: string | null; bank_account: string | null
+    }>()
 
     const rows: string[] = []
     rows.push([
@@ -151,7 +160,7 @@ taxAgentRouter.get('/tax-agent/payroll', requireRole('ADMIN', 'MANAGER'), async 
       '은행', '계좌번호',
     ].map(csvField).join(','))
 
-    for (const r of results as any[]) {
+    for (const r of results) {
       rows.push([
         r.employee_code, r.name, maskRrn(r.resident_number, unmask),
         r.department, r.position,
@@ -207,13 +216,20 @@ taxAgentRouter.get('/tax-agent/annual', requireRole('ADMIN', 'MANAGER'), async (
        LEFT JOIN payroll p ON p.employee_id = e.id AND substr(p.pay_period, 1, 4) = ?
        WHERE e.hire_date IS NULL OR substr(e.hire_date, 1, 4) <= ?
        ORDER BY e.department, e.name, p.pay_period`
-    ).bind(year, year).all()
+    ).bind(year, year).all<{
+      employee_id: number; employee_code: string; name: string; resident_number: string | null
+      department: string; position: string; hire_date: string; resignation_date: string | null; employee_status: string
+      pay_period: string | null; total_salary: number | null
+      income_tax: number | null; local_tax: number | null
+      national_pension: number | null; health_insurance: number | null; long_term_care: number | null
+      employment_insurance: number | null; net_pay: number | null
+    }>()
 
     // 직원별로 그룹핑
     type EmpAgg = {
       employee_code: string
       name: string
-      resident_number: string
+      resident_number: string | null
       department: string
       position: string
       hire_date: string
@@ -231,7 +247,7 @@ taxAgentRouter.get('/tax-agent/annual', requireRole('ADMIN', 'MANAGER'), async (
       netPay: number
     }
     const byEmp = new Map<number, EmpAgg>()
-    for (const r of results as any[]) {
+    for (const r of results) {
       if (!byEmp.has(r.employee_id)) {
         byEmp.set(r.employee_id, {
           employee_code: r.employee_code,
@@ -340,7 +356,17 @@ taxAgentRouter.get('/tax-agent/roster', requireRole('ADMIN', 'MANAGER'), async (
     // 'all'이면 필터 없음
     sql += ` ORDER BY department, name`
 
-    const { results } = await c.env.DB.prepare(sql).bind(...params).all()
+    const { results } = await c.env.DB.prepare(sql).bind(...params).all<{
+      employee_code: string; name: string; name_eng: string | null; resident_number: string | null
+      email: string | null; phone: string | null; mobile: string | null; address: string | null
+      department: string; position: string; job_title: string | null; employment_type: string
+      hire_date: string; resignation_date: string | null; status: string
+      base_salary: number | null; hourly_rate: number | null
+      bank_name: string | null; bank_account: string | null
+      emergency_contact: string | null; emergency_phone: string | null
+      dependents_count: number | null; children_under_20_count: number | null
+      income_tax_table_option: string | null; insurance_grade: string | null; notes: string | null
+    }>()
 
     const rows: string[] = []
     rows.push([
@@ -356,7 +382,7 @@ taxAgentRouter.get('/tax-agent/roster', requireRole('ADMIN', 'MANAGER'), async (
       '비고',
     ].map(csvField).join(','))
 
-    for (const r of results as any[]) {
+    for (const r of results) {
       rows.push([
         r.employee_code, r.name, r.name_eng || '', maskRrn(r.resident_number, unmask),
         r.email || '', r.phone || '', r.mobile || '', r.address || '',

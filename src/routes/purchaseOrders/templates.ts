@@ -86,7 +86,7 @@ templatesRouter.post('/templates', async (c) => {
       RETURNING *
     `).bind(name, supplier_id || null, notes || null, user?.id || 1).first()
 
-    const templateId = (result as any).id
+    const templateId = (result as { id: number }).id
 
     for (let i = 0; i < items.length; i++) {
       const item = items[i]
@@ -102,7 +102,7 @@ templatesRouter.post('/templates', async (c) => {
         item.category_name || null,
         item.quantity || 1,
         item.unit || 'EA',
-        parseFloat(item.unit_price) || 0,
+        Number(item.unit_price) || 0,
         item.vat_included ? 1 : 0,
         i
       ).run()
@@ -159,7 +159,7 @@ templatesRouter.post('/from-template/:templateId', async (c) => {
     const user = c.get('user')
     const templateId = c.req.param('templateId')
     const body = await c.req.json().catch(() => ({}))
-    const { status: reqStatus, expected_date, notes, item_overrides } = body as any
+    const { status: reqStatus, expected_date, notes, item_overrides } = body as { status?: string; expected_date?: string; notes?: string; item_overrides?: Record<string, { quantity?: number; unit_price?: number; vat_included?: number }> }
 
     // 템플릿 조회
     const template = await c.env.DB.prepare(`
@@ -167,7 +167,7 @@ templatesRouter.post('/from-template/:templateId', async (c) => {
       FROM po_templates t
       LEFT JOIN clients c ON t.supplier_id = c.id
       WHERE t.id = ? AND t.is_active = 1
-    `).bind(templateId).first() as any
+    `).bind(templateId).first<{ supplier_id: number; name: string; notes: string | null }>()
 
     if (!template) {
       return c.json({ success: false, error: '템플릿을 찾을 수 없습니다.' }, 404)
@@ -177,7 +177,7 @@ templatesRouter.post('/from-template/:templateId', async (c) => {
       SELECT * FROM po_template_items
       WHERE template_id = ? AND is_active = 1
       ORDER BY sort_order ASC
-    `).bind(templateId).all() as any
+    `).bind(templateId).all<{ id: number; item_id: number | null; item_name: string; category_name: string | null; quantity: number; unit: string; unit_price: number; vat_included: number; notes: string | null }>()
 
     if (!templateItems || templateItems.length === 0) {
       return c.json({ success: false, error: '템플릿에 품목이 없습니다.' }, 400)
@@ -186,21 +186,21 @@ templatesRouter.post('/from-template/:templateId', async (c) => {
     // 발주번호 생성
     const today = new Date()
     const dateStr = today.toISOString().split('T')[0].replace(/-/g, '')
-    const { max_seq } = await c.env.DB.prepare(`
+    const seqRow = await c.env.DB.prepare(`
       SELECT COALESCE(MAX(CAST(SUBSTR(po_number, 11) AS INTEGER)), 0) as max_seq
       FROM purchase_orders WHERE po_number LIKE ?
-    `).bind(`${dateStr}-P%`).first() as any
-    const poNumber = `${dateStr}-P${String((max_seq || 0) + 1).padStart(3, '0')}`
+    `).bind(`${dateStr}-P%`).first<{ max_seq: number }>()
+    const poNumber = `${dateStr}-P${String((seqRow?.max_seq || 0) + 1).padStart(3, '0')}`
 
     // 품목별 수량/단가 오버라이드 적용 + 금액 계산
     const overrides = item_overrides || {}
     let totalAmount = 0
     let vatAmount = 0
 
-    const items = templateItems.map((ti: any) => {
+    const items = templateItems.map((ti) => {
       const ov = overrides[String(ti.id)] || {}
-      const qty = ov.quantity != null ? parseFloat(ov.quantity) : (ti.quantity || 1)
-      const price = ov.unit_price != null ? parseFloat(ov.unit_price) : (ti.unit_price || 0)
+      const qty = ov.quantity != null ? Number(ov.quantity) : (ti.quantity || 1)
+      const price = ov.unit_price != null ? Number(ov.unit_price) : (ti.unit_price || 0)
       const vatIncluded = ov.vat_included != null ? ov.vat_included : ti.vat_included
       const amount = price * qty
       totalAmount += amount
