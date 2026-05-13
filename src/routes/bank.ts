@@ -585,13 +585,13 @@ bankRouter.post('/match-rules', requireRole('ADMIN'), async (c) => {
 
     // INSERT OR REPLACE + match_count 증가
     const res = await c.env.DB.prepare(`
-      INSERT INTO bank_match_rules (counterpart_name, matched_client_id, created_by, match_count)
-      VALUES (?, ?, ?, 1)
+      INSERT INTO bank_match_rules (counterpart_name, matched_client_id, created_by, match_count, entity_id)
+      VALUES (?, ?, ?, 1, ?)
       ON CONFLICT(counterpart_name) DO UPDATE SET
         matched_client_id = excluded.matched_client_id,
         match_count = match_count + 1,
         last_used_at = CURRENT_TIMESTAMP
-    `).bind(counterpart_name, matched_client_id, user?.id ?? 1).run()
+    `).bind(counterpart_name, matched_client_id, user?.id ?? 1, getEntityId(c) || 1).run()
 
     return c.json({
       success: true,
@@ -824,13 +824,13 @@ bankRouter.post('/transactions/:id/match', requireRole('ADMIN'), async (c) => {
     // 규칙 학습: counterpart_name이 있으면 bank_match_rules에 추가/업데이트
     if (tx.counterpart_name && tx.counterpart_name.trim()) {
       await c.env.DB.prepare(`
-        INSERT INTO bank_match_rules (counterpart_name, matched_client_id, created_by, match_count)
-        VALUES (?, ?, ?, 1)
+        INSERT INTO bank_match_rules (counterpart_name, matched_client_id, created_by, match_count, entity_id)
+        VALUES (?, ?, ?, 1, ?)
         ON CONFLICT(counterpart_name) DO UPDATE SET
           matched_client_id = excluded.matched_client_id,
           match_count = match_count + 1,
           last_used_at = CURRENT_TIMESTAMP
-      `).bind(tx.counterpart_name.trim(), client_id, user?.id ?? 1).run()
+      `).bind(tx.counterpart_name.trim(), client_id, user?.id ?? 1, getEntityId(c) || 1).run()
     }
 
     return c.json({ success: true, message: '매칭이 확인되었습니다' })

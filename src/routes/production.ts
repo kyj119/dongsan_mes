@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import { authMiddleware } from '../middleware/auth'
 import { requireAnyPagePermission } from '../middleware/permissions'
 import type { HonoEnv } from '../types/env'
+import { getEntityId } from '../utils/entityFilter'
 
 const productionRouter = new Hono<HonoEnv>()
 
@@ -125,9 +126,9 @@ productionRouter.post('/logs', async (c) => {
     const { log_date, shift = 'DAY', weather, temperature, humidity, supervisor_id, notes } = body
 
     const result = await c.env.DB.prepare(`
-      INSERT INTO production_logs (log_date, shift, weather, temperature, humidity, supervisor_id, notes, created_by)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `).bind(log_date, shift, weather, temperature, humidity, supervisor_id, notes, user.id).run()
+      INSERT INTO production_logs (log_date, shift, weather, temperature, humidity, supervisor_id, notes, created_by, entity_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).bind(log_date, shift, weather, temperature, humidity, supervisor_id, notes, user.id, getEntityId(c) || 1).run()
 
     return c.json({ success: true, data: { id: result.meta.last_row_id } })
   } catch (error: any) {
@@ -220,13 +221,13 @@ productionRouter.post('/work-records', async (c) => {
       INSERT INTO work_records (
         production_log_id, card_id, employee_id, work_type,
         start_time, end_time, work_hours,
-        quantity_completed, quantity_target, status, notes
+        quantity_completed, quantity_target, status, notes, entity_id
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).bind(
       production_log_id, card_id, employee_id, work_type,
       start_time, end_time, work_hours,
-      quantity_completed, quantity_target, status, notes
+      quantity_completed, quantity_target, status, notes, getEntityId(c) || 1
     ).run()
 
     return c.json({ success: true, data: { id: result.meta.last_row_id } })
@@ -356,13 +357,13 @@ productionRouter.post('/quality-issues', async (c) => {
       INSERT INTO quality_issues (
         work_record_id, card_id, issue_type, defect_category,
         quantity_defect, description, root_cause, corrective_action,
-        reported_by, cost_impact
+        reported_by, cost_impact, entity_id
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).bind(
       work_record_id, card_id, issue_type, defect_category,
       quantity_defect, description, root_cause, corrective_action,
-      reported_by, cost_impact
+      reported_by, cost_impact, getEntityId(c) || 1
     ).run()
 
     return c.json({ success: true, data: { id: result.meta.last_row_id } })

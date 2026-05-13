@@ -26,9 +26,9 @@ async function autoCreateQualityIssue(
     : `인쇄 취소 자동 감지 (${copyTotal}매 중 취소, ${agentId})`
   try {
     await db.prepare(`
-      INSERT INTO quality_issues (card_id, issue_type, defect_category, description, status, reported_by, reported_at)
-      VALUES (?, ?, ?, ?, 'REPORTED', 1, CURRENT_TIMESTAMP)
-    `).bind(cardId, issueType, defectCategory, description).run()
+      INSERT INTO quality_issues (card_id, issue_type, defect_category, description, status, reported_by, reported_at, entity_id)
+      VALUES (?, ?, ?, ?, 'REPORTED', 1, CURRENT_TIMESTAMP, COALESCE((SELECT entity_id FROM cards WHERE id = ?), 1))
+    `).bind(cardId, issueType, defectCategory, description, cardId).run()
   } catch { /* 중복 등 무시 */ }
 }
 

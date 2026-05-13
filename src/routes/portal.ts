@@ -74,9 +74,9 @@ portal.post('/auth/login', async (c) => {
 
     // 접근 로그
     await c.env.DB.prepare(
-      `INSERT INTO portal_access_logs (client_account_id, action, ip_address, user_agent)
-       VALUES (?, 'LOGIN', ?, ?)`
-    ).bind(account.id, c.req.header('CF-Connecting-IP') || '', c.req.header('User-Agent') || '').run()
+      `INSERT INTO portal_access_logs (client_account_id, action, ip_address, user_agent, entity_id)
+       VALUES (?, 'LOGIN', ?, ?, ?)`
+    ).bind(account.id, c.req.header('CF-Connecting-IP') || '', c.req.header('User-Agent') || '', account.entity_id || 1).run()
 
     return c.json({
       success: true,
