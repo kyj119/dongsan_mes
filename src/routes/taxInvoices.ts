@@ -6,6 +6,46 @@ import { sendEmail } from '../services/emailProvider'
 import { renderTemplate } from '../services/emailTemplates'
 import { getEntityId, entityFilter } from '../utils/entityFilter'
 
+// 세금계산서 + 주문번호 JOIN 결과 타입
+type TaxInvoiceWithOrder = TaxInvoice & { order_number?: string }
+
+// settings 테이블 단건 조회 결과
+type SettingRow = { setting_value: string }
+
+// 거래처 정보 조회 결과 (batch-create / 단건 공용)
+type ClientRow = {
+  id: number; client_name: string; business_registration_number: string | null;
+  representative: string | null; address: string | null; business_type: string | null;
+  business_item: string | null; email: string | null; billing_group_id: number | null;
+  mobile?: string;
+}
+
+// eligible-orders / monthly 쿼리 결과 행
+type EligibleOrderRow = {
+  id: number; order_number: string; order_date: string; total_amount: string;
+  vat_amount: string; final_amount: string; billing_status: string;
+  client_id: number; client_name: string; business_registration_number: string | null;
+  client_email: string | null; invoice_method: string | null;
+}
+
+// 주문 + 거래처 JOIN 결과
+type OrderWithClient = {
+  id: number; order_number: string; order_date: string; total_amount: string;
+  vat_amount: string; client_name: string; business_registration_number: string | null;
+  representative: string | null; address: string | null; business_type: string | null;
+  business_item: string | null; client_email: string | null; client_id: number;
+  [key: string]: unknown;
+}
+
+// monthly-eligible 쿼리 결과 행
+type MonthlyEligibleRow = {
+  client_id: number; client_name: string; business_registration_number: string | null;
+  representative: string | null; address: string | null; business_type: string | null;
+  business_item: string | null; buyer_email: string | null;
+  order_id: number; order_number: string; total_amount: string; vat_amount: string;
+  client_email?: string | null;
+}
+
 const taxInvoicesRouter = new Hono<HonoEnv>()
 taxInvoicesRouter.use('/*', authMiddleware, requireRole('ADMIN', 'MANAGER'))
 
@@ -16,10 +56,10 @@ async function generateInvoiceNumber(db: D1Database): Promise<string> {
   const year = new Date().getFullYear()
   const lastRow = await db.prepare(
     `SELECT invoice_number FROM tax_invoices WHERE invoice_number LIKE ? ORDER BY invoice_number DESC LIMIT 1`
-  ).bind(`TI-${year}-%`).first() as any
+  ).bind(`TI-${year}-%`).first<{ invoice_number: string }>()
   let nextSeq = 1
   if (lastRow?.invoice_number) {
-    const parts = (lastRow.invoice_number as string).split('-')
+    const parts = lastRow.invoice_number.split('-')
     nextSeq = parseInt(parts[parts.length - 1]) + 1
   }
   return `TI-${year}-${String(nextSeq).padStart(4, '0')}`
@@ -44,7 +84,7 @@ async function getCompanySettings(db: D1Database, entityId?: number): Promise<Re
      )`
   ).all()
   const settings: Record<string, string> = {}
-  for (const row of settingRows as any[]) {
+  for (const row of settingRows as Array<{ setting_key: string; setting_value: string }>) {
     settings[row.setting_key] = row.setting_value || ''
   }
   return settings
@@ -63,7 +103,7 @@ async function issueTaxInvoice(
     `SELECT ti.*, o.order_number FROM tax_invoices ti
      LEFT JOIN orders o ON ti.order_id = o.id
      WHERE ti.id = ?`
-  ).bind(taxInvoiceId).first() as any
+  ).bind(taxInvoiceId).first<TaxInvoiceWithOrder>()
 
   if (!existing) {
     return { success: false, error: '세금계산서를 찾을 수 없습니다.' }
@@ -93,7 +133,7 @@ async function issueTaxInvoice(
     const supplierEmailSetting = await db.prepare(
       `SELECT setting_value FROM settings WHERE setting_key IN ('email_from_address', 'company_email') ORDER BY setting_key`
     ).all()
-    const supplierEmail = (supplierEmailSetting.results as any[])
+    const supplierEmail = (supplierEmailSetting.results as Array<{ setting_value: string }>)
       .map(r => r.setting_value).find(v => v) || ''
 
     const provider = createPopbillProvider(
@@ -125,7 +165,7 @@ async function issueTaxInvoice(
       issueDate: existing.issue_date.replace(/-/g, ''),
       invoiceType: existing.invoice_type === 'MODIFY' ? 'modify' : 'normal',
       modifyCode: existing.modify_code ? parseInt(existing.modify_code) : undefined,
-      items: (items as any[]).map((item, i) => ({
+      items: (items as unknown as TaxInvoiceItem[]).map((item, i) => ({
         serialNum: i + 1,
         itemDate: (item.item_date || existing.issue_date).replace(/-/g, ''),
         itemName: item.item_name,
@@ -173,7 +213,7 @@ async function issueTaxInvoice(
     SELECT ti.*, o.order_number FROM tax_invoices ti
     LEFT JOIN orders o ON ti.order_id = o.id
     WHERE ti.id = ?
-  `).bind(taxInvoiceId).first() as any
+  `).bind(taxInvoiceId).first<TaxInvoiceWithOrder>()
 
   // 이메일 자동 발송 (발행 성공 시 buyer_email로)
   if (updated && (updated.status === 'SENT' || updated.status === 'ISSUED') && updated.buyer_email) {
@@ -182,15 +222,15 @@ async function issueTaxInvoice(
       const { results: tioRows } = await db.prepare(
         `SELECT o.order_number FROM tax_invoice_orders tio JOIN orders o ON tio.order_id = o.id WHERE tio.tax_invoice_id = ?`
       ).bind(taxInvoiceId).all()
-      const orderNumbers = (tioRows as any[]).map(r => r.order_number).join(', ') || updated.order_number || ''
+      const orderNumbers = (tioRows as Array<{ order_number: string }>).map(r => r.order_number).join(', ') || updated.order_number || ''
 
       const { subject, html } = renderTemplate('INVOICE_ISSUED', {
         buyerName: updated.buyer_name,
         invoiceNumber: updated.invoice_number,
         issueDate: updated.issue_date,
-        supplyAmount: parseFloat(updated.supply_amount) || 0,
-        taxAmount: parseFloat(updated.tax_amount) || 0,
-        totalAmount: parseFloat(updated.total_amount) || 0,
+        supplyAmount: Number(updated.supply_amount) || 0,
+        taxAmount: Number(updated.tax_amount) || 0,
+        totalAmount: Number(updated.total_amount) || 0,
         ntsApprovalNumber: updated.nts_approval_number,
         orderNumbers,
       })
@@ -211,27 +251,27 @@ async function issueTaxInvoice(
     try {
       const kakaoEnabled = await db.prepare(
         `SELECT setting_value FROM settings WHERE setting_key = 'kakao_enabled'`
-      ).first() as any
+      ).first<SettingRow>()
       if (kakaoEnabled?.setting_value === '1') {
         // 거래처 mobile 번호 조회
         const buyerClient = await db.prepare(
           `SELECT id, mobile FROM clients WHERE business_registration_number = ?`
-        ).bind(updated.buyer_brn?.replace(/-/g, '')).first() as any
+        ).bind(updated.buyer_brn?.replace(/-/g, '')).first<{ id: number; mobile: string | null }>()
         if (buyerClient?.mobile) {
           const kakaoSenderNum = await db.prepare(
             `SELECT setting_value FROM settings WHERE setting_key = 'kakao_sender_num'`
-          ).first() as any
+          ).first<SettingRow>()
           if (kakaoSenderNum?.setting_value) {
             const { createKakaoProvider } = await import('../services/kakaoProvider')
             const linkedIdSetting = await db.prepare(
               `SELECT setting_value FROM settings WHERE setting_key = 'tax_provider_linked_id'`
-            ).first() as any
+            ).first<SettingRow>()
             const testModeSetting = await db.prepare(
               `SELECT setting_value FROM settings WHERE setting_key = 'tax_test_mode'`
-            ).first() as any
+            ).first<SettingRow>()
             const companyBrn = await db.prepare(
               `SELECT setting_value FROM settings WHERE setting_key = 'company_business_registration_number'`
-            ).first() as any
+            ).first<SettingRow>()
             if (linkedIdSetting?.setting_value && env.POPBILL_SECRET_KEY && companyBrn?.setting_value) {
               const kakaoProvider = createKakaoProvider(
                 linkedIdSetting.setting_value,
@@ -241,7 +281,7 @@ async function issueTaxInvoice(
               )
               const altSendType = await db.prepare(
                 `SELECT setting_value FROM settings WHERE setting_key = 'kakao_alt_send_type'`
-              ).first() as any
+              ).first<SettingRow>()
               // 알림톡 발송 시도 (템플릿 코드는 설정에서 관리 — 미설정 시 스킵)
               // TODO: 세금계산서 전용 템플릿 코드 설정 추가 후 활성화
               console.log(`[kakao] 세금계산서 ${updated.invoice_number} 알림톡 발송 대상: ${buyerClient.mobile}`)
@@ -268,9 +308,9 @@ async function issueTaxInvoice(
     const { results: linkedOrders } = await db.prepare(
       `SELECT order_id FROM tax_invoice_orders WHERE tax_invoice_id = ?`
     ).bind(taxInvoiceId).all()
-    const orderIds = (linkedOrders as any[]).map(r => r.order_id).filter(Boolean)
+    const orderIds = (linkedOrders as Array<{ order_id: number }>).map(r => r.order_id).filter(Boolean)
     // 직접 연결된 order_id도 포함
-    if (updated.order_id && !orderIds.includes(updated.order_id)) orderIds.push(updated.order_id)
+    if (updated?.order_id && !orderIds.includes(updated.order_id)) orderIds.push(updated.order_id)
     if (orderIds.length > 0) {
       const ph = orderIds.map(() => '?').join(',')
       await db.prepare(
@@ -422,7 +462,7 @@ taxInvoicesRouter.get('/', async (c) => {
       countQuery += ' WHERE ' + countWhereClauses.join(' AND ')
     }
 
-    const countRow = await c.env.DB.prepare(countQuery).bind(...countParams).first() as any
+    const countRow = await c.env.DB.prepare(countQuery).bind(...countParams).first<{ count: number }>()
     const count = countRow?.count ?? 0
 
     return c.json({
@@ -506,7 +546,7 @@ taxInvoicesRouter.get('/eligible-orders', async (c) => {
       orders: any[]
     }>()
 
-    for (const row of results as any[]) {
+    for (const row of results as EligibleOrderRow[]) {
       const cid = row.client_id
       if (!clientMap.has(cid)) {
         clientMap.set(cid, {
@@ -625,7 +665,7 @@ taxInvoicesRouter.post('/batch-create', requireRole('ADMIN', 'MANAGER'), async (
         // 거래처 정보 조회 (주문 거래처)
         const orderClient = await c.env.DB.prepare(
           'SELECT id, client_name, business_registration_number, representative, address, business_type, business_item, email, billing_group_id FROM clients WHERE id = ?'
-        ).bind(group.client_id).first() as any
+        ).bind(group.client_id).first<ClientRow>()
 
         if (!orderClient) {
           results.push({ client_id: group.client_id, success: false, error: '거래처를 찾을 수 없습니다.' })
@@ -638,7 +678,7 @@ taxInvoicesRouter.post('/batch-create', requireRole('ADMIN', 'MANAGER'), async (
         if (group.buyer_client_id && group.buyer_client_id !== group.client_id) {
           const buyerClient = await c.env.DB.prepare(
             'SELECT id, client_name, business_registration_number, representative, address, business_type, business_item, email, billing_group_id FROM clients WHERE id = ?'
-          ).bind(group.buyer_client_id).first() as any
+          ).bind(group.buyer_client_id).first<ClientRow>()
 
           if (!buyerClient) {
             results.push({ client_id: group.client_id, success: false, error: 'buyer 거래처를 찾을 수 없습니다.' })
@@ -669,7 +709,7 @@ taxInvoicesRouter.post('/batch-create', requireRole('ADMIN', 'MANAGER'), async (
           FROM orders o
           LEFT JOIN clients c ON o.client_id = c.id
           WHERE o.id IN (${placeholders}) AND o.client_id = ?
-        `).bind(...orderIds, group.client_id).all() as { results: any[] }
+        `).bind(...orderIds, group.client_id).all()
 
         if (orders.length !== orderIds.length) {
           results.push({ client_id: group.client_id, client_name: client.client_name, success: false, error: '일부 주문이 존재하지 않거나 거래처가 다릅니다.' })
@@ -678,8 +718,8 @@ taxInvoicesRouter.post('/batch-create', requireRole('ADMIN', 'MANAGER'), async (
         }
 
         const invoiceNumber = await generateInvoiceNumber(c.env.DB)
-        const supplyAmount = orders.reduce((sum: number, o: any) => sum + (parseFloat(o.total_amount) || 0), 0)
-        const taxAmount = orders.reduce((sum: number, o: any) => sum + (parseFloat(o.vat_amount) || 0), 0)
+        const supplyAmount = orders.reduce((sum: number, o) => sum + (parseFloat(String(o.total_amount)) || 0), 0)
+        const taxAmount = orders.reduce((sum: number, o) => sum + (parseFloat(String(o.vat_amount)) || 0), 0)
         const totalAmount = supplyAmount + taxAmount
         const firstOrder = orders[0]
 
@@ -746,8 +786,8 @@ taxInvoicesRouter.post('/batch-create', requireRole('ADMIN', 'MANAGER'), async (
         const vatRate = 0.1
         if (allOrderItems && allOrderItems.length > 0) {
           await c.env.DB.batch(
-            (allOrderItems as any[]).map((oi: any, idx: number) => {
-              const itemAmount = parseFloat(oi.amount) || 0
+            (allOrderItems as Array<Record<string, unknown>>).map((oi, idx: number) => {
+              const itemAmount = parseFloat(String(oi.amount)) || 0
               const itemTax = oi.vat_included ? Math.round(itemAmount * vatRate) : 0
               const spec = (oi.width && oi.height) ? `${oi.width}x${oi.height}` : null
               return c.env.DB.prepare(`
@@ -757,7 +797,7 @@ taxInvoicesRouter.post('/batch-create', requireRole('ADMIN', 'MANAGER'), async (
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
               `).bind(
                 taxInvoiceId, issueDate, oi.item_name, spec,
-                oi.quantity, parseFloat(oi.unit_price) || 0,
+                oi.quantity, parseFloat(String(oi.unit_price)) || 0,
                 itemAmount, itemTax, idx
               )
             })
@@ -878,7 +918,7 @@ taxInvoicesRouter.post('/', requireRole('ADMIN', 'MANAGER'), async (c) => {
         FROM orders o
         LEFT JOIN clients c ON o.client_id = c.id
         WHERE o.id IN (${placeholders})
-      `).bind(...orderIds).all() as { results: any[] }
+      `).bind(...orderIds).all()
 
       if (orders.length === 0) {
         return c.json({ success: false, error: '주문을 찾을 수 없습니다.' }, 404)
@@ -888,19 +928,19 @@ taxInvoicesRouter.post('/', requireRole('ADMIN', 'MANAGER'), async (c) => {
       }
 
       // 모든 주문이 같은 거래처인지 검증
-      const clientIds = [...new Set(orders.map((o: any) => o.client_id))]
+      const clientIds = [...new Set(orders.map(o => o.client_id))]
       if (clientIds.length > 1) {
         return c.json({ success: false, error: '묶음 발행은 동일 거래처 주문만 가능합니다.' }, 400)
       }
 
-      const firstOrder = orders[0] as any
+      const firstOrder = orders[0]
       if (!firstOrder.business_registration_number) {
         return c.json({ success: false, error: '거래처에 사업자등록번호가 등록되어 있지 않습니다.' }, 400)
       }
 
       // 금액 합산
-      const supplyAmount = orders.reduce((sum: number, o: any) => sum + (parseFloat(o.total_amount) || 0), 0)
-      const taxAmount = orders.reduce((sum: number, o: any) => sum + (parseFloat(o.vat_amount) || 0), 0)
+      const supplyAmount = orders.reduce((sum: number, o) => sum + (parseFloat(String(o.total_amount)) || 0), 0)
+      const taxAmount = orders.reduce((sum: number, o) => sum + (parseFloat(String(o.vat_amount)) || 0), 0)
       const totalAmount = supplyAmount + taxAmount
 
       const insertResult = await c.env.DB.prepare(`
@@ -959,13 +999,13 @@ taxInvoicesRouter.post('/', requireRole('ADMIN', 'MANAGER'), async (c) => {
       // 모든 주문의 order_items 병합 → tax_invoice_items (sort_order 연속)
       const vatRate = 0.1
       let globalSortOrder = 0
-      for (const order of orders as any[]) {
+      for (const order of orders as Array<Record<string, unknown>>) {
         const { results: orderItems } = await c.env.DB.prepare(
           'SELECT * FROM order_items WHERE order_id = ? ORDER BY sort_order'
         ).bind(order.id).all()
 
-        for (const oi of orderItems as any[]) {
-          const itemAmount = parseFloat(oi.amount) || 0
+        for (const oi of orderItems as Array<Record<string, unknown>>) {
+          const itemAmount = parseFloat(String(oi.amount)) || 0
           const itemTax = oi.vat_included ? Math.round(itemAmount * vatRate) : 0
           const spec = (oi.width && oi.height) ? `${oi.width}x${oi.height}` : null
 
@@ -980,7 +1020,7 @@ taxInvoicesRouter.post('/', requireRole('ADMIN', 'MANAGER'), async (c) => {
             oi.item_name,
             spec,
             oi.quantity,
-            parseFloat(oi.unit_price) || 0,
+            parseFloat(String(oi.unit_price)) || 0,
             itemAmount,
             itemTax,
             globalSortOrder++
@@ -1028,7 +1068,7 @@ taxInvoicesRouter.post('/', requireRole('ADMIN', 'MANAGER'), async (c) => {
       FROM orders o
       LEFT JOIN clients c ON o.client_id = c.id
       WHERE o.id = ?
-    `).bind(body.order_id).first() as any
+    `).bind(body.order_id).first<OrderWithClient>()
 
     if (!order) {
       return c.json({ success: false, error: '주문을 찾을 수 없습니다.' }, 404)
@@ -1037,8 +1077,8 @@ taxInvoicesRouter.post('/', requireRole('ADMIN', 'MANAGER'), async (c) => {
       return c.json({ success: false, error: '거래처에 사업자등록번호가 등록되어 있지 않습니다.' }, 400)
     }
 
-    const supplyAmount = parseFloat(order.total_amount) || 0
-    const taxAmount = parseFloat(order.vat_amount) || 0
+    const supplyAmount = parseFloat(String(order.total_amount)) || 0
+    const taxAmount = parseFloat(String(order.vat_amount)) || 0
     const totalAmount = supplyAmount + taxAmount
 
     const insertResult = await c.env.DB.prepare(`
@@ -1098,8 +1138,8 @@ taxInvoicesRouter.post('/', requireRole('ADMIN', 'MANAGER'), async (c) => {
     ).bind(body.order_id).all()
 
     const vatRate = 0.1
-    for (const oi of orderItems as any[]) {
-      const itemAmount = parseFloat(oi.amount) || 0
+    for (const oi of orderItems as Array<Record<string, unknown>>) {
+      const itemAmount = parseFloat(String(oi.amount)) || 0
       const itemTax = oi.vat_included ? Math.round(itemAmount * vatRate) : 0
       const spec = (oi.width && oi.height) ? `${oi.width}x${oi.height}` : null
 
@@ -1114,7 +1154,7 @@ taxInvoicesRouter.post('/', requireRole('ADMIN', 'MANAGER'), async (c) => {
         oi.item_name,
         spec,
         oi.quantity,
-        parseFloat(oi.unit_price) || 0,
+        parseFloat(String(oi.unit_price)) || 0,
         itemAmount,
         itemTax,
         oi.sort_order
@@ -1170,7 +1210,7 @@ taxInvoicesRouter.patch('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
 
     const existing = await c.env.DB.prepare(
       'SELECT id, status FROM tax_invoices WHERE id = ?'
-    ).bind(id).first() as any
+    ).bind(id).first<{ id: number; status: string }>()
 
     if (!existing) {
       return c.json({ success: false, error: '세금계산서를 찾을 수 없습니다.' }, 404)
@@ -1180,7 +1220,7 @@ taxInvoicesRouter.patch('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
     }
 
     const setClauses: string[] = ['updated_at = CURRENT_TIMESTAMP']
-    const params: any[] = []
+    const params: unknown[] = []
 
     if (body.issue_date !== undefined) { setClauses.push('issue_date = ?'); params.push(body.issue_date) }
     if (body.notes !== undefined) { setClauses.push('notes = ?'); params.push(body.notes) }
@@ -1212,9 +1252,9 @@ taxInvoicesRouter.patch('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
             it.item_name,
             it.specification || null,
             it.quantity,
-            parseFloat(it.unit_price as any) || 0,
-            parseFloat(it.supply_amount as any) || 0,
-            parseFloat(it.tax_amount as any) || 0,
+            parseFloat(String(it.unit_price)) || 0,
+            parseFloat(String(it.supply_amount)) || 0,
+            parseFloat(String(it.tax_amount)) || 0,
             it.notes || null,
             it.sort_order ?? i
           )
@@ -1225,10 +1265,10 @@ taxInvoicesRouter.patch('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
       // Recalculate header totals from items
       const totals = await c.env.DB.prepare(
         'SELECT SUM(supply_amount) as supply, SUM(tax_amount) as tax FROM tax_invoice_items WHERE tax_invoice_id = ?'
-      ).bind(id).first() as any
+      ).bind(id).first<{ supply: number | null; tax: number | null }>()
 
-      const supply = parseFloat(totals?.supply) || 0
-      const tax = parseFloat(totals?.tax) || 0
+      const supply = parseFloat(String(totals?.supply)) || 0
+      const tax = parseFloat(String(totals?.tax)) || 0
       await c.env.DB.prepare(
         'UPDATE tax_invoices SET supply_amount = ?, tax_amount = ?, total_amount = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
       ).bind(supply, tax, supply + tax, id).run()
@@ -1258,7 +1298,7 @@ taxInvoicesRouter.delete('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
 
     const existing = await c.env.DB.prepare(
       'SELECT id, status FROM tax_invoices WHERE id = ?'
-    ).bind(id).first() as any
+    ).bind(id).first<{ id: number; status: string }>()
 
     if (!existing) {
       return c.json({ success: false, error: '세금계산서를 찾을 수 없습니다.' }, 404)
@@ -1325,7 +1365,7 @@ taxInvoicesRouter.post('/:id/modify', requireRole('ADMIN', 'MANAGER'), async (c)
       SELECT ti.*, o.order_number FROM tax_invoices ti
       LEFT JOIN orders o ON ti.order_id = o.id
       WHERE ti.id = ?
-    `).bind(id).first() as any
+    `).bind(id).first<TaxInvoiceWithOrder>()
 
     if (!original) {
       return c.json({ success: false, error: '세금계산서를 찾을 수 없습니다.' }, 404)
@@ -1397,7 +1437,7 @@ taxInvoicesRouter.post('/:id/modify', requireRole('ADMIN', 'MANAGER'), async (c)
       'SELECT order_id FROM tax_invoice_orders WHERE tax_invoice_id = ?'
     ).bind(id).all()
 
-    for (const row of origOrders as any[]) {
+    for (const row of origOrders as Array<{ order_id: number }>) {
       await c.env.DB.prepare(
         'INSERT OR IGNORE INTO tax_invoice_orders (tax_invoice_id, order_id) VALUES (?, ?)'
       ).bind(newInvoiceId, row.order_id).run()
@@ -1410,20 +1450,20 @@ taxInvoicesRouter.post('/:id/modify', requireRole('ADMIN', 'MANAGER'), async (c)
           item_name: it.item_name,
           specification: it.specification || null,
           quantity: it.quantity,
-          unit_price: parseFloat(it.unit_price as any) || 0,
-          supply_amount: parseFloat(it.supply_amount as any) || 0,
-          tax_amount: parseFloat(it.tax_amount as any) || 0,
+          unit_price: parseFloat(String(it.unit_price)) || 0,
+          supply_amount: parseFloat(String(it.supply_amount)) || 0,
+          tax_amount: parseFloat(String(it.tax_amount)) || 0,
           notes: null,
           sort_order: i
         }))
-      : (originalItems as any[]).map((it, i) => ({
+      : (originalItems as unknown as TaxInvoiceItem[]).map((it, i) => ({
           item_date: it.item_date || issueDate,
           item_name: it.item_name,
           specification: it.specification || null,
           quantity: it.quantity,
-          unit_price: parseFloat(it.unit_price) || 0,
-          supply_amount: parseFloat(it.supply_amount) || 0,
-          tax_amount: parseFloat(it.tax_amount) || 0,
+          unit_price: Number(it.unit_price) || 0,
+          supply_amount: Number(it.supply_amount) || 0,
+          tax_amount: Number(it.tax_amount) || 0,
           notes: it.notes || null,
           sort_order: i
         }))
@@ -1476,7 +1516,7 @@ taxInvoicesRouter.post('/:id/cancel', requireRole('ADMIN'), async (c) => {
 
     const existing = await c.env.DB.prepare(
       'SELECT id, status FROM tax_invoices WHERE id = ?'
-    ).bind(id).first() as any
+    ).bind(id).first<{ id: number; status: string }>()
 
     if (!existing) {
       return c.json({ success: false, error: '세금계산서를 찾을 수 없습니다.' }, 404)
@@ -1540,8 +1580,14 @@ taxInvoicesRouter.get('/monthly-eligible', async (c) => {
     `).bind(dateFrom, dateTo).all()
 
     // 거래처별 그룹핑
-    const grouped: Record<number, any> = {}
-    for (const row of results as any[]) {
+    type MonthlyEligibleGroup = {
+      client_id: number; client_name: string; business_registration_number: string | null;
+      client_email: string | null; orders: Array<Record<string, unknown>>;
+      total_supply: number; total_tax: number; total_amount: number;
+    }
+    const grouped: Record<number, MonthlyEligibleGroup> = {}
+    type MonthlyRow = EligibleOrderRow & { order_id: number; final_amount: string }
+    for (const row of results as MonthlyRow[]) {
       if (!grouped[row.client_id]) {
         grouped[row.client_id] = {
           client_id: row.client_id,
@@ -1627,21 +1673,23 @@ taxInvoicesRouter.post('/monthly-create', async (c) => {
     `).bind(...params).all()
 
     // 거래처별 그룹핑
-    const grouped: Record<number, any> = {}
-    for (const row of results as any[]) {
+    type MonthlyCreateRow = MonthlyEligibleRow & { order_id: number }
+    type MonthlyCreateGroup = MonthlyCreateRow & { orders: MonthlyCreateRow[]; supply: number; tax: number }
+    const grouped: Record<number, MonthlyCreateGroup> = {}
+    for (const row of results as MonthlyCreateRow[]) {
       if (!grouped[row.client_id]) {
         grouped[row.client_id] = { ...row, orders: [], supply: 0, tax: 0 }
       }
       grouped[row.client_id].orders.push(row)
-      grouped[row.client_id].supply += parseFloat(row.total_amount) || 0
-      grouped[row.client_id].tax += parseFloat(row.vat_amount) || 0
+      grouped[row.client_id].supply += parseFloat(String(row.total_amount)) || 0
+      grouped[row.client_id].tax += parseFloat(String(row.vat_amount)) || 0
     }
 
     const companySettings = await getCompanySettings(c.env.DB, getEntityId(c))
-    const created: any[] = []
-    const errors: any[] = []
+    const created: Array<{ invoice_number: string; client_name: string; issued: boolean }> = []
+    const errors: Array<{ client_name: string; error: string }> = []
 
-    for (const group of Object.values(grouped) as any[]) {
+    for (const group of Object.values(grouped)) {
       try {
         const invoiceNumber = await generateInvoiceNumber(c.env.DB)
 
@@ -1734,7 +1782,7 @@ taxInvoicesRouter.post('/:id/refresh-status', async (c) => {
   try {
     const invoice = await db.prepare(
       `SELECT id, invoice_number, status, supplier_brn FROM tax_invoices WHERE id = ?`
-    ).bind(id).first() as any
+    ).bind(id).first<{ id: number; invoice_number: string; status: string; supplier_brn: string }>()
 
     if (!invoice) {
       return c.json({ success: false, error: '세금계산서를 찾을 수 없습니다.' }, 404)
@@ -1829,7 +1877,7 @@ taxInvoicesRouter.post('/:id/retry', async (c) => {
   try {
     const invoice = await db.prepare(
       `SELECT id, status, invoice_number FROM tax_invoices WHERE id = ?`
-    ).bind(id).first() as any
+    ).bind(id).first<{ id: number; status: string; invoice_number: string }>()
 
     if (!invoice) {
       return c.json({ success: false, error: '세금계산서를 찾을 수 없습니다.' }, 404)
@@ -1876,7 +1924,7 @@ taxInvoicesRouter.post('/:id/send-email', async (c) => {
   try {
     const invoice = await db.prepare(
       `SELECT id, invoice_number, status, supplier_brn, buyer_email FROM tax_invoices WHERE id = ?`
-    ).bind(id).first() as any
+    ).bind(id).first<{ id: number; invoice_number: string; status: string; supplier_brn: string; buyer_email: string | null }>()
 
     if (!invoice) return c.json({ success: false, error: '세금계산서를 찾을 수 없습니다.' }, 404)
     if (!['ISSUED', 'SENT', 'NTS_SUCCESS'].includes(invoice.status)) {
@@ -1917,7 +1965,7 @@ taxInvoicesRouter.get('/:id/print-url', async (c) => {
   try {
     const invoice = await db.prepare(
       `SELECT id, invoice_number, status, supplier_brn FROM tax_invoices WHERE id = ?`
-    ).bind(id).first() as any
+    ).bind(id).first<{ id: number; invoice_number: string; status: string; supplier_brn: string }>()
 
     if (!invoice) return c.json({ success: false, error: '세금계산서를 찾을 수 없습니다.' }, 404)
     if (!['ISSUED', 'SENT', 'NTS_SUCCESS', 'NTS_FAILED'].includes(invoice.status)) {
