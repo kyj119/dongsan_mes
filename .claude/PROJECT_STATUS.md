@@ -1,6 +1,6 @@
 # PROJECT_STATUS.md — 프로젝트 현황판
 
-> **최종 업데이트**: 2026-05-12
+> **최종 업데이트**: 2026-05-13
 
 ---
 
@@ -12,12 +12,18 @@
 
 ## 🔴 현재 진행 중
 
-- (없음) — 범용 LogWatcher Phase 1+2 구현 완료, 커밋 대기
+- (없음)
 
 ---
 
 ## 🟡 대기 중
 
+### [UI/UX 롤아웃 잔여] — Input Group 실적용
+- ds-input-group CSS 준비 완료, orderForm/items 등 적용 보류 (템플릿 구조 변경 위험)
+- 신규 폼 작성 시 점진적 적용 예정
+### [GitHub #17] — as any 타입 안전성 270+ 인스턴스
+- 사용자 승인 완료 (코멘트: "전체 파일 점검해서 순차적으로 진행해줘")
+- 대공수 작업, 다음 세션에서 진행
 ### [거래처 상세 정책 UI] — 단가 관리 연동
 - 거래처 상세 페이지에 가격 정책 드롭다운 추가
 ### [CAPS 경리PC 워커 실행] — 경리 PC 수동 실행 대기 (외부 의존)
@@ -42,7 +48,18 @@
 
 ---
 
-## 🟢 최근 완료 (2026-05-12)
+## 🟢 최근 완료 (2026-05-13, 5커밋)
+
+- **UI/UX 전면 개선 (P0~P3 + 롤아웃)**:
+  - P0: 시맨틱 CSS 변수 12종 (purple/orange/teal + light + surface), 11파일 하드코딩 색상 치환, 테이블 기본 striped
+  - P1: 대시보드 Bento Grid (4열 hero 레이아웃), Side Sheet 컴포넌트, 사이드바 최근방문→제거
+  - P2: FilterBar/BulkBar/InputGroup CSS 컴포넌트 + orders/clients/cards/inventory/taxInvoices/shipments 6개 페이지 롤아웃
+  - P3: KPI 카운트업 애니메이션, 접근성 (Skip Link, ARIA, Focus Trap), 스크롤 그림자, 페이지 전환 효과
+  - 사이드바: 법인 전환 UI 분리 (로고→별도 행), 최근 방문 제거
+  - 버그수정: body/html 배경색, overscroll 방지, 스크롤 이벤트 window 전환
+  - 독립 에이전트 검증 29/29 PASS
+
+## 🟢 이전 완료 (2026-05-12)
 
 - **범용 LogWatcher Phase 1+2 구현**:
   - Phase 1: IEquipmentParser 인터페이스, WatcherManager(다중 장비 폴링), ParserFactory, TnsParserAdapter, PrintExpParserAdapter
