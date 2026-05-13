@@ -176,20 +176,21 @@ priceListRouter.put('/policies/:id/rules', requireRole('ADMIN', 'MANAGER'), asyn
 
     if (!Array.isArray(rules)) return c.json({ success: false, error: 'rules 배열이 필요합니다.' }, 400)
 
-    await c.env.DB.prepare('DELETE FROM price_policy_rules WHERE policy_id = ?').bind(policyId).run()
-
+    const stmts: any[] = [
+      c.env.DB.prepare('DELETE FROM price_policy_rules WHERE policy_id = ?').bind(policyId)
+    ]
     for (let i = 0; i < rules.length; i++) {
       const r = rules[i]
       if (!r.rate_percent && !r.fixed_price) continue
-      await c.env.DB.prepare(`
+      stmts.push(c.env.DB.prepare(`
         INSERT INTO price_policy_rules (policy_id, category, item_id, rate_percent, fixed_price, sort_order)
         VALUES (?, ?, ?, ?, ?, ?)
-      `).bind(policyId, r.category || null, r.item_id || null, r.rate_percent || 0, r.fixed_price || null, i).run()
+      `).bind(policyId, r.category || null, r.item_id || null, r.rate_percent || 0, r.fixed_price || null, i))
     }
-
-    await c.env.DB.prepare(
+    stmts.push(c.env.DB.prepare(
       'UPDATE price_policies SET updated_at = CURRENT_TIMESTAMP WHERE id = ?'
-    ).bind(policyId).run()
+    ).bind(policyId))
+    await c.env.DB.batch(stmts)
 
     return c.json({ success: true })
   } catch (error) {

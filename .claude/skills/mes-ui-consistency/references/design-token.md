@@ -1,74 +1,75 @@
 # Design Tokens — 동산현수막 ERP+MES
 
 이 문서는 시스템 전체에서 사용하는 디자인 토큰의 정확한 값을 정의합니다.
-CSS 변수 또는 Tailwind config에서 이 값을 참조하세요.
+**단일 소스**: `src/layout.ts` `:root` 블록. 이 문서는 참조용 스냅샷.
 
 ---
 
 ## Color Tokens
 
-### Semantic Colors (의미 기반)
+### `--c-*` 시맨틱 변수 (layout.ts :root)
 
 ```css
 :root {
   /* Primary — 주요 액션, 링크, 활성 상태 */
-  --color-primary-50: #eff6ff;
-  --color-primary-100: #dbeafe;
-  --color-primary-500: #3b82f6;
-  --color-primary-600: #2563eb;   /* 기본 */
-  --color-primary-700: #1d4ed8;
+  --c-primary: #3b82f6;
+  --c-primary-hover: #2563eb;
+  --c-primary-light: #eff6ff;
+  --c-primary-dark: #1e40af;
 
   /* Success — 완료, 활성, 정상 */
-  --color-success-50: #f0fdf4;
-  --color-success-100: #dcfce7;
-  --color-success-500: #22c55e;
-  --color-success-600: #16a34a;   /* 기본 */
-  --color-success-700: #15803d;
+  --c-success: #16a34a;
+  --c-success-light: #dcfce7;
 
   /* Warning — 주의, 대기 */
-  --color-warning-50: #fffbeb;
-  --color-warning-100: #fef3c7;
-  --color-warning-400: #fbbf24;
-  --color-warning-500: #f59e0b;   /* 기본 */
-  --color-warning-600: #d97706;
+  --c-warning: #d97706;
+  --c-warning-light: #fef3c7;
 
   /* Danger — 에러, 긴급, 삭제 */
-  --color-danger-50: #fef2f2;
-  --color-danger-100: #fee2e2;
-  --color-danger-500: #ef4444;
-  --color-danger-600: #dc2626;    /* 기본 */
-  --color-danger-700: #b91c1c;
+  --c-danger: #dc2626;
+  --c-danger-light: #fee2e2;
 
-  /* Neutral — 텍스트, 배경, 보더 */
-  --color-gray-50: #f9fafb;
-  --color-gray-100: #f3f4f6;
-  --color-gray-200: #e5e7eb;
-  --color-gray-300: #d1d5db;
-  --color-gray-400: #9ca3af;
-  --color-gray-500: #6b7280;
-  --color-gray-600: #4b5563;
-  --color-gray-700: #374151;
-  --color-gray-800: #1f2937;
-  --color-gray-900: #111827;
+  /* Info — 진행중, 대기 */
+  --c-info: #2563eb;
+  --c-info-light: #dbeafe;
+
+  /* 확장 시맨틱 (KPI·카드·차트에서도 사용) */
+  --c-purple: #7c3aed;
+  --c-purple-light: #f5f3ff;
+  --c-orange: #ea580c;
+  --c-orange-light: #fff7ed;
+  --c-teal: #0d9488;
+  --c-teal-light: #f0fdfa;
+
+  /* Surface & Layout */
+  --c-bg: #F0F1F3;
+  --c-surface: #ffffff;
+  --c-surface-secondary: #f9fafb;
+  --c-surface-stripe: #f8fafc;
+  --c-border: #e2e8f0;
+  --c-border-light: #f1f5f9;
+
+  /* Text */
+  --c-text: #1e293b;
+  --c-text-secondary: #64748b;
+  --c-text-muted: #94a3b8;
+
+  /* Sidebar */
+  --c-sidebar: #1e293b;
+  --c-sidebar-hover: #334155;
+  --c-sidebar-border: #334155;
+  --c-sidebar-text: #94a3b8;
+  --c-sidebar-text-active: #ffffff;
 }
 ```
 
-### 사용 금지 색상
-
-아래 색상은 본문 UI에서 사용하지 않습니다. 차트/그래프 데이터 시각화에서만 허용.
-
-| 색상 | 용도 제한 |
-|------|-----------|
-| Purple (`#7c3aed`) | 차트 전용 |
-| Pink (`#db2777`) | 차트 전용 |
-| Teal (`#0d9488`) | 차트 전용 |
-| Indigo (`#4f46e5`) | 사용 금지 (Primary Blue와 혼동) |
+> 다크 모드(`html.dark`)는 동일 변수명에 다른 값을 할당 (layout.ts 참조).
 
 ### 차트 팔레트 (시각화 전용)
 
 데이터 시각화에 필요할 때만 아래 순서로 사용:
 ```
-#2563eb → #16a34a → #f59e0b → #dc2626 → #7c3aed → #0d9488 → #db2777
+--c-primary → --c-success → --c-warning → --c-danger → --c-purple → --c-teal → --c-orange
 ```
 
 ---
@@ -78,7 +79,7 @@ CSS 변수 또는 Tailwind config에서 이 값을 참조하세요.
 ```css
 :root {
   /* Font Family */
-  --font-sans: 'Pretendard', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-family: 'Inter', 'Pretendard Variable', Pretendard, -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
 
   /* Font Sizes */
   --text-xs: 0.75rem;     /* 12px — 뱃지, 카테고리 라벨 */

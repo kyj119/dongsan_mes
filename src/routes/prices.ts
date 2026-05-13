@@ -164,56 +164,68 @@ pricesRouter.get('/client-item-prices', async (c) => {
 
     const { results } = await c.env.DB.prepare(query).bind(...params).all() as { results: any[] }
 
-    // 각 품목에 대해 최근 거래 단가 조회 (구매/판매 모두 확인하여 더 최근 것 사용)
-    const enriched = await Promise.all(
-      results.map(async (row: any) => {
-        let recent_price: number | null = null
-        let recent_date: string | null = null
+    // 최근 거래 단가 일괄 조회 (N+1 → 2쿼리)
+    const itemIds = results.map((r: any) => r.item_id)
+    const purchaseMap: Record<number, { unit_price: number; order_date: string }> = {}
+    const salesMap: Record<number, { unit_price: number; order_date: string }> = {}
 
-        // 매입 최근 거래
-        const recentPurchase = await c.env.DB.prepare(`
-          SELECT poi.unit_price, po.order_date
-          FROM purchase_order_items poi
-          JOIN purchase_orders po ON poi.po_id = po.id
-          WHERE poi.item_id = ? AND po.supplier_id = ? AND po.status != 'CANCELLED'
-          ORDER BY po.order_date DESC, po.id DESC
-          LIMIT 1
-        `).bind(row.item_id, client_id).first() as any
+    if (itemIds.length > 0) {
+      const ph = itemIds.map(() => '?').join(',')
 
-        // 매출 최근 거래
-        const recentSales = await c.env.DB.prepare(`
-          SELECT oi.unit_price, o.order_date
-          FROM order_items oi
-          JOIN orders o ON oi.order_id = o.id
-          WHERE oi.item_id = ? AND o.client_id = ? AND o.status != 'CANCELLED'
-          ORDER BY o.order_date DESC, o.id DESC
-          LIMIT 1
-        `).bind(row.item_id, client_id).first() as any
+      // 매입 최근 거래 (품목별 최신 1건)
+      const { results: purchaseRows } = await c.env.DB.prepare(`
+        SELECT poi.item_id, poi.unit_price, po.order_date
+        FROM purchase_order_items poi
+        JOIN purchase_orders po ON poi.po_id = po.id
+        WHERE poi.item_id IN (${ph}) AND po.supplier_id = ? AND po.status != 'CANCELLED'
+          AND po.order_date = (
+            SELECT MAX(po2.order_date) FROM purchase_orders po2
+            JOIN purchase_order_items poi2 ON poi2.po_id = po2.id
+            WHERE poi2.item_id = poi.item_id AND po2.supplier_id = po.supplier_id AND po2.status != 'CANCELLED'
+          )
+        GROUP BY poi.item_id
+      `).bind(...itemIds, client_id).all()
+      for (const r of purchaseRows as any[]) {
+        purchaseMap[r.item_id] = { unit_price: r.unit_price, order_date: r.order_date }
+      }
 
-        // 더 최근 거래 선택
-        if (recentPurchase && recentSales) {
-          if (recentPurchase.order_date >= recentSales.order_date) {
-            recent_price = recentPurchase.unit_price
-            recent_date = recentPurchase.order_date
-          } else {
-            recent_price = recentSales.unit_price
-            recent_date = recentSales.order_date
-          }
-        } else if (recentPurchase) {
-          recent_price = recentPurchase.unit_price
-          recent_date = recentPurchase.order_date
-        } else if (recentSales) {
-          recent_price = recentSales.unit_price
-          recent_date = recentSales.order_date
+      // 매출 최근 거래 (품목별 최신 1건)
+      const { results: salesRows } = await c.env.DB.prepare(`
+        SELECT oi.item_id, oi.unit_price, o.order_date
+        FROM order_items oi
+        JOIN orders o ON oi.order_id = o.id
+        WHERE oi.item_id IN (${ph}) AND o.client_id = ? AND o.status != 'CANCELLED'
+          AND o.order_date = (
+            SELECT MAX(o2.order_date) FROM orders o2
+            JOIN order_items oi2 ON oi2.order_id = o2.id
+            WHERE oi2.item_id = oi.item_id AND o2.client_id = o.client_id AND o2.status != 'CANCELLED'
+          )
+        GROUP BY oi.item_id
+      `).bind(...itemIds, client_id).all()
+      for (const r of salesRows as any[]) {
+        salesMap[r.item_id] = { unit_price: r.unit_price, order_date: r.order_date }
+      }
+    }
+
+    const enriched = results.map((row: any) => {
+      const purchase = purchaseMap[row.item_id]
+      const sales = salesMap[row.item_id]
+      let recent_price: number | null = null
+      let recent_date: string | null = null
+
+      if (purchase && sales) {
+        if (purchase.order_date >= sales.order_date) {
+          recent_price = purchase.unit_price; recent_date = purchase.order_date
+        } else {
+          recent_price = sales.unit_price; recent_date = sales.order_date
         }
-
-        return {
-          ...row,
-          recent_price,
-          recent_date
-        }
-      })
-    )
+      } else if (purchase) {
+        recent_price = purchase.unit_price; recent_date = purchase.order_date
+      } else if (sales) {
+        recent_price = sales.unit_price; recent_date = sales.order_date
+      }
+      return { ...row, recent_price, recent_date }
+    })
 
     return c.json({
       prices: enriched

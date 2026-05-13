@@ -424,13 +424,11 @@ shipmentsRouter.post('/', requireRole('ADMIN', 'MANAGER', 'DESIGNER'), async (c)
 
     // 카드별 출고 처리
     if (body.card_ids && body.card_ids.length > 0) {
-      for (const cardId of body.card_ids) {
-        // 카드의 shipped_at 업데이트
-        await c.env.DB.prepare('UPDATE cards SET shipped_at = CURRENT_TIMESTAMP WHERE id = ? AND shipped_at IS NULL').bind(cardId).run()
-
-        // shipment_items 등록
-        await c.env.DB.prepare('INSERT INTO shipment_items (shipment_id, card_id) VALUES (?, ?)').bind(shipmentId, cardId).run()
-      }
+      const stmts = body.card_ids.flatMap((cardId: number) => [
+        c.env.DB.prepare('UPDATE cards SET shipped_at = CURRENT_TIMESTAMP WHERE id = ? AND shipped_at IS NULL').bind(cardId),
+        c.env.DB.prepare('INSERT INTO shipment_items (shipment_id, card_id) VALUES (?, ?)').bind(shipmentId, cardId)
+      ])
+      await c.env.DB.batch(stmts)
     } else {
       // 카드 지정 없으면 주문의 모든 출고 가능 카드 처리
       const updateResult = await c.env.DB.prepare(`
@@ -442,8 +440,12 @@ shipmentsRouter.post('/', requireRole('ADMIN', 'MANAGER', 'DESIGNER'), async (c)
       const { results: shippedCards } = await c.env.DB.prepare(`
         SELECT id FROM cards WHERE order_id = ? AND shipped_at IS NOT NULL
       `).bind(body.order_id).all()
-      for (const card of shippedCards as any[]) {
-        await c.env.DB.prepare('INSERT INTO shipment_items (shipment_id, card_id) VALUES (?, ?)').bind(shipmentId, card.id).run()
+      if (shippedCards && shippedCards.length > 0) {
+        await c.env.DB.batch(
+          (shippedCards as any[]).map((card: any) =>
+            c.env.DB.prepare('INSERT INTO shipment_items (shipment_id, card_id) VALUES (?, ?)').bind(shipmentId, card.id)
+          )
+        )
       }
     }
 

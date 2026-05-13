@@ -85,11 +85,15 @@ inventoryCountRouter.post('/', async (c) => {
 
     const { results: items } = await c.env.DB.prepare(itemQuery).bind(...params).all()
 
-    for (const item of items || []) {
-      await c.env.DB.prepare(`
-        INSERT INTO inventory_count_items (count_id, item_id, system_quantity, unit)
-        VALUES (?, ?, ?, ?)
-      `).bind(countId, (item as any).id, (item as any).quantity || 0, (item as any).unit || 'YD')
+    if (items && items.length > 0) {
+      await c.env.DB.batch(
+        (items as any[]).map((item: any) =>
+          c.env.DB.prepare(`
+            INSERT INTO inventory_count_items (count_id, item_id, system_quantity, unit)
+            VALUES (?, ?, ?, ?)
+          `).bind(countId, item.id, item.quantity || 0, item.unit || 'YD')
+        )
+      )
     }
 
     return c.json({
@@ -152,19 +156,21 @@ inventoryCountRouter.put('/:id/items', async (c) => {
     const body = await c.req.json() as any
     const { items = [] } = body
 
-    // 일괄 업데이트
-    for (const item of items) {
-      const { id: itemId, counted_quantity, notes } = item
-      const systemQty = parseFloat(item.system_quantity)
-      const countedQty = parseFloat(counted_quantity)
-      const diff = countedQty - systemQty
-      const diffPct = systemQty !== 0 ? (diff / systemQty) * 100 : 0
-
-      await c.env.DB.prepare(`
-        UPDATE inventory_count_items
-        SET counted_quantity = ?, difference = ?, difference_pct = ?, notes = ?
-        WHERE id = ? AND count_id = ?
-      `).bind(countedQty, diff, diffPct, notes || '', itemId, countId).run()
+    // 일괄 업데이트 (batch)
+    if (items.length > 0) {
+      await c.env.DB.batch(
+        items.map((item: any) => {
+          const systemQty = parseFloat(item.system_quantity)
+          const countedQty = parseFloat(item.counted_quantity)
+          const diff = countedQty - systemQty
+          const diffPct = systemQty !== 0 ? (diff / systemQty) * 100 : 0
+          return c.env.DB.prepare(`
+            UPDATE inventory_count_items
+            SET counted_quantity = ?, difference = ?, difference_pct = ?, notes = ?
+            WHERE id = ? AND count_id = ?
+          `).bind(countedQty, diff, diffPct, item.notes || '', item.id, countId)
+        })
+      )
     }
 
     return c.json({ success: true })
@@ -217,29 +223,29 @@ inventoryCountRouter.patch('/:id/approve', async (c) => {
       SELECT * FROM inventory_count_items WHERE count_id = ?
     `).bind(countId).all()
 
-    // 각 항목별로 inventory 보정 + inventory_transactions 기록
-    for (const item of countItems || []) {
-      const { item_id, counted_quantity, system_quantity } = item as any
-
-      // inventory 보정
-      const invResult = await c.env.DB.prepare(`
-        UPDATE inventory SET quantity = ?, updated_at = CURRENT_TIMESTAMP
-        WHERE item_id = ?
-      `).bind(counted_quantity, item_id).run()
-
-      // inventory_transactions 기록
-      await c.env.DB.prepare(`
-        INSERT INTO inventory_transactions (item_id, transaction_type, quantity_before, quantity_after, quantity_change, reason, notes, created_by, created_at, entity_id)
-        VALUES (?, 'ADJUST', ?, ?, ?, 'STOCK_COUNT', ?, ?, CURRENT_TIMESTAMP, ?)
-      `).bind(
-        item_id,
-        system_quantity,
-        counted_quantity,
-        counted_quantity - system_quantity,
-        `Inventory Count ID: ${countId}`,
-        userId,
-        getEntityId(c) || 1
-      ).run()
+    // 각 항목별로 inventory 보정 + inventory_transactions 기록 (batch)
+    if (countItems && countItems.length > 0) {
+      const entityId = getEntityId(c) || 1
+      await c.env.DB.batch(
+        (countItems as any[]).flatMap((item: any) => [
+          c.env.DB.prepare(`
+            UPDATE inventory SET quantity = ?, updated_at = CURRENT_TIMESTAMP
+            WHERE item_id = ?
+          `).bind(item.counted_quantity, item.item_id),
+          c.env.DB.prepare(`
+            INSERT INTO inventory_transactions (item_id, transaction_type, quantity_before, quantity_after, quantity_change, reason, notes, created_by, created_at, entity_id)
+            VALUES (?, 'ADJUST', ?, ?, ?, 'STOCK_COUNT', ?, ?, CURRENT_TIMESTAMP, ?)
+          `).bind(
+            item.item_id,
+            item.system_quantity,
+            item.counted_quantity,
+            item.counted_quantity - item.system_quantity,
+            `Inventory Count ID: ${countId}`,
+            userId,
+            entityId
+          )
+        ])
+      )
     }
 
     // count 상태를 APPROVED로 변경
