@@ -37,6 +37,25 @@ export function materialForecastPage(c: Context<HonoEnv>) {
     </div>
   </div>
 
+  <!-- 검색/필터 -->
+  <div class="ds-filter-bar">
+    <div class="ds-filter-chips">
+      <div class="ds-filter-field">
+        <label class="ds-label">검색</label>
+        <input id="materialSearch" class="ds-input ds-input-sm" placeholder="원단명 검색..." oninput="filterMaterials()">
+      </div>
+      <div class="ds-filter-field">
+        <label class="ds-label">상태</label>
+        <select id="materialStatusFilter" class="ds-input ds-input-sm" onchange="filterMaterials()">
+          <option value="">전체</option>
+          <option value="danger">위험</option>
+          <option value="warning">주의</option>
+          <option value="good">양호</option>
+        </select>
+      </div>
+    </div>
+  </div>
+
   <!-- 원단별 테이블 -->
   <div class="bg-white rounded-xl shadow-sm border p-4">
     <h3 class="text-sm font-bold text-gray-700 mb-3"><i class="fas fa-boxes mr-1"></i> 원단별 재고 현황</h3>
