@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 1 -->
-<!-- last_run_at: 2026-05-12T16:30:00+09:00 -->
+<!-- last_run_area: 2 -->
+<!-- last_run_at: 2026-05-13T00:00:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -12,6 +12,12 @@
 | ✔️ done | 15 |
 | ❌ rejected | 1 |
 
+> **Area 2 코드 품질 (2026-05-13T00:00):**
+> - authMiddleware 전수 검사 (73개 라우트): 전부 적절히 보호됨 — 이슈 없음
+> - models.ts 미사용 타입 8개 자동 제거 → A-004 (UserSession, PricePolicy, PricePolicyRule, ItemSubcategory, OrderStatusHistory, CardStatusHistory, Setting, InspectionQualityStatus)
+> - SELECT * 178건 발견 → #26 등록 (상위 5개 테이블 우선)
+> - calculateItemCost 내부 전용 export (무해) — 미조치
+>
 > **Area 1 헬스체크 (2026-05-12T16:30):**
 > - Cloudflare Access 외부 IP 차단 확인 (정상, 프로덕션 보안 정책)
 > - hono JWT CVE + postcss XSS — 즉시 자동 패치 (4.12.12→4.12.18, 8.5.9→8.5.14)
@@ -40,7 +46,7 @@
 | I-007 | as any 타입 안전성 270+ 인스턴스 | Area 2 | #17 | 3~4세션 |
 | I-008 | 스모크 테스트 커버리지 갭 34개 | Area 1 | #15 | 1h |
 | I-009 | vite/esbuild dev server SSRF (GHSA-67mh) | Area 1 | #23 | 30분~1h |
-| D-001 | models.ts 미사용 타입 14개 dead code | Area 2 | - | 30분 |
+| I-010 | SELECT * 178건 → 명시 컬럼 전환 (clients/order_items/tax_invoice_items 우선) | Area 2 | #26 | 2~3h |
 
 ---
 
@@ -48,6 +54,7 @@
 
 | ID | 제목 | 커밋 | 날짜 |
 |----|------|------|------|
+| A-004 | models.ts 미사용 타입 8개 제거 (UserSession 등) | 2f94080 | 2026-05-13 |
 | A-003 | hono 4.12.18 + postcss 8.5.14 보안 패치 (JWT CVE 등 7건) | 16b1482 | 2026-05-12 |
 
 ---
