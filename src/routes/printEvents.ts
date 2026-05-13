@@ -385,43 +385,44 @@ printEventsRouter.post('/batch', agentKeyMiddleware, async (c) => {
         const orderNumber = resolved.orderNumber
         let cardId = resolved.cardId
 
-        // file_map 또는 fallback으로 카드 매칭
+        // file_map 또는 fallback으로 카드 매칭 (status + post_processing 1쿼리로 조회)
         if (cardId || cardNumber) {
           const card = cardId
-            ? await c.env.DB.prepare('SELECT id, status FROM cards WHERE id = ?').bind(cardId).first() as any
+            ? await c.env.DB.prepare('SELECT id, status, post_processing FROM cards WHERE id = ?').bind(cardId).first() as any
             : cardNumber
-              ? await c.env.DB.prepare('SELECT id, status FROM cards WHERE card_number = ?').bind(cardNumber).first() as any
+              ? await c.env.DB.prepare('SELECT id, status, post_processing FROM cards WHERE card_number = ?').bind(cardNumber).first() as any
               : null
           if (card) {
             cardId = card.id
             if (evt.print_status === 'OK' && card.status !== 'PRINT_DONE') {
-              const bCardDetail = await c.env.DB.prepare(
-                'SELECT post_processing FROM cards WHERE id = ?'
-              ).bind(card.id).first() as any
-              const bHasPP = bCardDetail?.post_processing && bCardDetail.post_processing !== '[]' && bCardDetail.post_processing !== ''
+              const bHasPP = card.post_processing && card.post_processing !== '[]' && card.post_processing !== ''
               const bPpStatus = bHasPP ? 'PENDING' : 'N/A'
 
-              await c.env.DB.prepare(
-                `UPDATE cards SET status = 'PRINT_DONE', rip_status = 'COMPLETED',
-                 pp_status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`
-              ).bind(bPpStatus, card.id).run()
-              await c.env.DB.prepare(
-                `INSERT INTO card_status_history (card_id, from_status, to_status, changed_by, change_reason)
-                 VALUES (?, ?, 'PRINT_DONE', 1, ?)`
-              ).bind(card.id, card.status, `Print completed on ${agent_id}`).run()
+              await c.env.DB.batch([
+                c.env.DB.prepare(
+                  `UPDATE cards SET status = 'PRINT_DONE', rip_status = 'COMPLETED',
+                   pp_status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`
+                ).bind(bPpStatus, card.id),
+                c.env.DB.prepare(
+                  `INSERT INTO card_status_history (card_id, from_status, to_status, changed_by, change_reason)
+                   VALUES (?, ?, 'PRINT_DONE', 1, ?)`
+                ).bind(card.id, card.status, `Print completed on ${agent_id}`)
+              ])
             }
             if (evt.print_status === 'CANCEL') {
               const evtCopyTotal = evt.copy_total || 1
               const reason = evtCopyTotal > 1
                 ? `Print cancelled (${evtCopyTotal}매 배열출력 중 취소) on ${agent_id}`
                 : `Print cancelled on ${agent_id}`
-              await c.env.DB.prepare(
-                `UPDATE cards SET rip_status = 'ERROR', updated_at = CURRENT_TIMESTAMP WHERE id = ?`
-              ).bind(card.id).run()
-              await c.env.DB.prepare(
-                `INSERT INTO card_status_history (card_id, from_status, to_status, changed_by, change_reason)
-                 VALUES (?, ?, ?, 1, ?)`
-              ).bind(card.id, card.status, card.status, reason).run()
+              await c.env.DB.batch([
+                c.env.DB.prepare(
+                  `UPDATE cards SET rip_status = 'ERROR', updated_at = CURRENT_TIMESTAMP WHERE id = ?`
+                ).bind(card.id),
+                c.env.DB.prepare(
+                  `INSERT INTO card_status_history (card_id, from_status, to_status, changed_by, change_reason)
+                   VALUES (?, ?, ?, 1, ?)`
+                ).bind(card.id, card.status, card.status, reason)
+              ])
             }
             if (evt.print_status === 'ERROR' || evt.print_status === 'CANCEL') {
               await autoCreateQualityIssue(c.env.DB, card.id, evt.print_status, agent_id, evt.file_path, evt.copy_total || 1)
