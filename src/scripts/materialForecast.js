@@ -129,5 +129,35 @@ function renderTrendChart() {
     el.innerHTML = html;
 }
 
+function filterMaterials() {
+    var searchEl = document.getElementById('materialSearch');
+    var statusEl = document.getElementById('materialStatusFilter');
+    if (!searchEl || !statusEl) return;
+
+    var keyword = searchEl.value.trim().toLowerCase();
+    var statusVal = statusEl.value;
+
+    var tbody = document.querySelector('#materialTable tbody');
+    if (!tbody) return;
+
+    var rows = tbody.querySelectorAll('tr');
+    rows.forEach(function(row) {
+        var nameCell = row.querySelectorAll('td')[1];
+        var name = nameCell ? nameCell.textContent.toLowerCase() : '';
+
+        var statusCell = row.querySelectorAll('td')[0];
+        var statusText = statusCell ? statusCell.textContent.trim() : '';
+        var rowStatus = '';
+        if (statusText === '위험') rowStatus = 'danger';
+        else if (statusText === '주의') rowStatus = 'warning';
+        else if (statusText === '양호') rowStatus = 'good';
+
+        var matchSearch = !keyword || name.indexOf(keyword) !== -1;
+        var matchStatus = !statusVal || rowStatus === statusVal;
+
+        row.style.display = (matchSearch && matchStatus) ? '' : 'none';
+    });
+}
+
 // 초기화
 loadMaterialForecast();

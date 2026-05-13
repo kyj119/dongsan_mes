@@ -230,7 +230,9 @@ function renderFreightSection() {
 
     return '<tr class="border-t hover:bg-blue-50">'
       + '<td class="px-3 py-2 w-8"><input type="checkbox" id="cb-freight-' + escapeHtml(key) + '" ' + (isChecked ? 'checked' : '') + ' onchange="toggleShipmentCheck(\'freight\',\'' + escapeHtml(key) + '\',this.checked)" class="rounded"></td>'
-      + '<td class="px-3 py-2 font-medium">' + escapeHtml(grp.client_name) + '</td>'
+      + '<td class="px-3 py-2 font-medium">' + escapeHtml(grp.client_name)
+      + '<a href="/tax-invoices?search=' + encodeURIComponent(grp.client_name) + '" class="text-xs text-blue-600 hover:underline ml-2"><i class="fas fa-file-invoice mr-1"></i>계산서 발행</a>'
+      + '</td>'
       + '<td class="px-3 py-2">' + terminalHtml + '</td>'
       + '<td class="px-3 py-2 text-xs text-gray-500 hidden md:table-cell max-w-[160px] truncate">' + escapeHtml(itemSummary) + '</td>'
       + '<td class="px-3 py-2 text-center">'
@@ -268,7 +270,9 @@ function renderDaesintaekbaeSection() {
     // ID 접두어 'd-' 사용: 대신택배 전용 (대신화물과 ID 충돌 방지)
     return '<tr class="border-t hover:bg-green-50">'
       + '<td class="px-3 py-2 w-8"><input type="checkbox" id="cb-daesintaekbae-' + escapeHtml(key) + '" ' + (isChecked ? 'checked' : '') + ' onchange="toggleShipmentCheck(\'daesintaekbae\',\'' + escapeHtml(key) + '\',this.checked)" class="rounded"></td>'
-      + '<td class="px-3 py-2 font-medium">' + escapeHtml(grp.client_name) + '</td>'
+      + '<td class="px-3 py-2 font-medium">' + escapeHtml(grp.client_name)
+      + '<a href="/tax-invoices?search=' + encodeURIComponent(grp.client_name) + '" class="text-xs text-blue-600 hover:underline ml-2"><i class="fas fa-file-invoice mr-1"></i>계산서 발행</a>'
+      + '</td>'
       + '<td class="px-3 py-2 text-sm">'
       + '<input type="text" id="d-addr-' + escapeHtml(key) + '" value="' + escapeHtml(addr) + '"'
       + ' class="ds-input px-2 py-1 text-xs w-full border rounded" placeholder="배송주소">'
@@ -305,7 +309,9 @@ function renderHanjinSection() {
     var isChecked = selectedShipments['hanjin'] && selectedShipments['hanjin'].has(key);
     return '<tr class="border-t hover:bg-orange-50">'
       + '<td class="px-3 py-2 w-8"><input type="checkbox" id="cb-hanjin-' + escapeHtml(key) + '" ' + (isChecked ? 'checked' : '') + ' onchange="toggleShipmentCheck(\'hanjin\',\'' + escapeHtml(key) + '\',this.checked)" class="rounded"></td>'
-      + '<td class="px-3 py-2 font-medium">' + escapeHtml(grp.client_name) + '</td>'
+      + '<td class="px-3 py-2 font-medium">' + escapeHtml(grp.client_name)
+      + '<a href="/tax-invoices?search=' + encodeURIComponent(grp.client_name) + '" class="text-xs text-blue-600 hover:underline ml-2"><i class="fas fa-file-invoice mr-1"></i>계산서 발행</a>'
+      + '</td>'
       + '<td class="px-3 py-2 text-sm text-gray-600 max-w-[180px] truncate">' + escapeHtml(addr || '-') + '</td>'
       + '<td class="px-3 py-2">'
       + '<input type="text" id="track-' + escapeHtml(key) + '" value="' + escapeHtml(tracking) + '"'
@@ -332,7 +338,9 @@ function renderQuickSection() {
     var isChecked = selectedShipments['quick'] && selectedShipments['quick'].has(key);
     return '<tr class="border-t hover:bg-gray-50">'
       + '<td class="px-3 py-2 w-8"><input type="checkbox" id="cb-quick-' + escapeHtml(key) + '" ' + (isChecked ? 'checked' : '') + ' onchange="toggleShipmentCheck(\'quick\',\'' + escapeHtml(key) + '\',this.checked)" class="rounded"></td>'
-      + '<td class="px-3 py-2 font-medium">' + escapeHtml(grp.client_name) + '</td>'
+      + '<td class="px-3 py-2 font-medium">' + escapeHtml(grp.client_name)
+      + '<a href="/tax-invoices?search=' + encodeURIComponent(grp.client_name) + '" class="text-xs text-blue-600 hover:underline ml-2"><i class="fas fa-file-invoice mr-1"></i>계산서 발행</a>'
+      + '</td>'
       + '<td class="px-3 py-2 text-sm text-gray-600">' + escapeHtml(grp.receiver_address || '-') + '</td>'
       + '<td class="px-3 py-2 text-sm">' + escapeHtml(grp.contact_phone || '-') + '</td>'
       + '<td class="px-3 py-2 text-center">'
@@ -356,7 +364,9 @@ function renderEtcSection() {
   tbody.innerHTML = keys.map(function(key) {
     var grp = etcGroups[key];
     return '<tr class="border-t">'
-      + '<td class="px-3 py-2 font-medium">' + escapeHtml(grp.client_name) + '</td>'
+      + '<td class="px-3 py-2 font-medium">' + escapeHtml(grp.client_name)
+      + '<a href="/tax-invoices?search=' + encodeURIComponent(grp.client_name) + '" class="text-xs text-blue-600 hover:underline ml-2"><i class="fas fa-file-invoice mr-1"></i>계산서 발행</a>'
+      + '</td>'
       + '<td class="px-3 py-2 text-xs text-gray-500">' + escapeHtml(grp.delivery_type) + '</td>'
       + '<td class="px-3 py-2 text-xs text-gray-500">' + escapeHtml(grp.courier_name || '-') + '</td>'
       + '<td class="px-3 py-2 text-sm">' + escapeHtml(grp.receiver_address || '-') + '</td>'

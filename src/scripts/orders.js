@@ -834,6 +834,7 @@ function showOrderModal(order, cards, autoJobs) {
             ${canEdit && order.status !== 'CANCELLED' && order.status !== 'SHIPPED' ? `<button onclick="showCancelModal(${order.id}, '${order.order_number}')" class="px-4 py-2 bg-amber-500 text-white rounded text-sm hover:bg-amber-600"><i class="fas fa-ban mr-1"></i>취소</button>` : ''}
             ${canEdit && order.status === 'CANCELLED' ? `<button onclick="restoreOrder(${order.id}, '${order.order_number}')" class="px-4 py-2 bg-green-600 text-white rounded text-sm hover:bg-green-700"><i class="fas fa-undo mr-1"></i>복구</button>` : ''}
             ${canEdit && (order.status === 'QUOTATION' || order.status === 'CANCELLED') ? `<button onclick="deleteOrder(${order.id}, '${order.order_number}', '${order.status}')" class="px-4 py-2 bg-red-600 text-white rounded text-sm hover:bg-red-700"><i class="fas fa-trash-alt mr-1"></i>삭제</button>` : ''}
+            ${['CONFIRMED','PRINTING','PRINT_DONE','SHIPPED'].includes(order.status) ? '<button onclick="location.href=\'/cards?search=' + order.order_number + '\'" class="px-4 py-2 border border-gray-300 text-gray-700 bg-white rounded-lg text-sm hover:bg-gray-50"><i class="fas fa-layer-group mr-1"></i>카드 현황</button>' : ''}
             <button onclick="document.getElementById('orderModal').remove()" class="px-4 py-2 border border-gray-300 text-gray-700 bg-white rounded text-sm hover:bg-gray-50">닫기</button>
           </div>
         </div>
