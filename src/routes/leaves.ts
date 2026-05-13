@@ -8,6 +8,30 @@ import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
 import { requirePagePermission } from '../middleware/permissions'
 
+// ---------- D1 row shapes ----------
+interface EmployeeBasicRow {
+  id: number; employee_code: string; name: string; department: string
+  position: string; hire_date: string; status: string
+}
+interface EmployeeHireDateRow { id: number; hire_date: string }
+interface AccruedRow { accrued: number }
+interface LeaveTypeRow { deduction_days: number }
+interface LeaveTypeWithCategoryRow { category: string; deduction_days: number }
+interface LeaveRequestRow {
+  id: number; employee_id: number; leave_type: string
+  start_date: string; end_date: string; days: number
+  reason: string | null; status: string
+  approved_by: number | null; approved_at: string | null
+  rejection_reason: string | null
+}
+interface EmployeeIdRow { id: number }
+interface BalanceRow {
+  employee_id: number; employee_code: string; name: string; department: string
+  position: string; hire_date: string; base_salary: number
+  total_annual: number; used_annual: number; remaining_annual: number
+  sick_total: number; sick_used: number; sick_remaining: number
+}
+
 const leavesRouter = new Hono<HonoEnv>()
 leavesRouter.use('/*', authMiddleware, requirePagePermission('/leaves'))
 
@@ -44,7 +68,7 @@ function calcMonthlyAccrualUpTo(hireDate: string, asOf: Date = new Date()): numb
 // 전체 직원 연차 현황 (관리자/매니저)
 leavesRouter.get('/balances', requireRole('ADMIN', 'MANAGER'), async (c) => {
   try {
-    const year = parseInt(c.req.query('year') || String(new Date().getFullYear()))
+    const year = Number(c.req.query('year') || new Date().getFullYear())
     const { results } = await c.env.DB.prepare(`
       SELECT
         e.id as employee_id,
@@ -75,10 +99,10 @@ leavesRouter.get('/balances', requireRole('ADMIN', 'MANAGER'), async (c) => {
 // 직원 본인 연차 현황 (입사일 기준 전체 연도)
 leavesRouter.get('/balance/:employeeId', async (c) => {
   try {
-    const employeeId = parseInt(c.req.param('employeeId'))
+    const employeeId = Number(c.req.param('employeeId'))
     const emp = await c.env.DB.prepare(
       `SELECT id, employee_code, name, department, position, hire_date, status FROM employees WHERE id = ?`
-    ).bind(employeeId).first() as any
+    ).bind(employeeId).first<EmployeeBasicRow>()
     if (!emp) return c.json({ success: false, error: '직원을 찾을 수 없습니다.' }, 404)
 
     const { results: history } = await c.env.DB.prepare(`
@@ -122,12 +146,12 @@ leavesRouter.post('/accrual/monthly', requireRole('ADMIN'), async (c) => {
 
     const { results: employees } = await c.env.DB.prepare(`
       SELECT id, hire_date FROM employees WHERE status = 'ACTIVE' AND hire_date IS NOT NULL
-    `).all()
+    `).all<EmployeeHireDateRow>()
 
     let processed = 0
     const errors: string[] = []
 
-    for (const emp of employees as any[]) {
+    for (const emp of employees) {
       const expected = calcMonthlyAccrualUpTo(emp.hire_date, today)
       const annual = calcAnnualEntitlement(emp.hire_date, today)
       if (annual >= 15) continue // 1년 이상 → 월차 대상 아님
@@ -136,7 +160,7 @@ leavesRouter.post('/accrual/monthly', requireRole('ADMIN'), async (c) => {
       // 현재 적립값 확인
       const existing = await c.env.DB.prepare(
         `SELECT accrued FROM leave_balances WHERE employee_id = ? AND year = ? AND leave_type = 'ANNUAL'`
-      ).bind(emp.id, currentYear).first() as any
+      ).bind(emp.id, currentYear).first<AccruedRow>()
 
       const currentAccrued = existing?.accrued || 0
       const delta = expected - currentAccrued
@@ -177,18 +201,18 @@ leavesRouter.post('/accrual/yearly', requireRole('ADMIN'), async (c) => {
 
     const { results: employees } = await c.env.DB.prepare(`
       SELECT id, hire_date FROM employees WHERE status = 'ACTIVE' AND hire_date IS NOT NULL
-    `).all()
+    `).all<EmployeeHireDateRow>()
 
     let processed = 0
     const errors: string[] = []
 
-    for (const emp of employees as any[]) {
+    for (const emp of employees) {
       const annual = calcAnnualEntitlement(emp.hire_date, today)
       if (annual <= 0) continue
 
       const existing = await c.env.DB.prepare(
         `SELECT accrued FROM leave_balances WHERE employee_id = ? AND year = ? AND leave_type = 'ANNUAL'`
-      ).bind(emp.id, currentYear).first() as any
+      ).bind(emp.id, currentYear).first<AccruedRow>()
 
       const currentAccrued = existing?.accrued || 0
       if (currentAccrued >= annual) continue
@@ -258,7 +282,7 @@ leavesRouter.get('/requests', async (c) => {
     const clauses: string[] = []
     const params: any[] = []
     if (status) { clauses.push('lr.status = ?'); params.push(status) }
-    if (employee_id) { clauses.push('lr.employee_id = ?'); params.push(parseInt(employee_id)) }
+    if (employee_id) { clauses.push('lr.employee_id = ?'); params.push(Number(employee_id)) }
     if (from) { clauses.push('lr.start_date >= ?'); params.push(from) }
     if (to) { clauses.push('lr.end_date <= ?'); params.push(to) }
     const where = clauses.length ? 'WHERE ' + clauses.join(' AND ') : ''
@@ -297,7 +321,7 @@ leavesRouter.post('/requests', async (c) => {
     if (days == null) {
       const lt = await c.env.DB.prepare(
         `SELECT deduction_days FROM leave_types WHERE code = ?`
-      ).bind(body.leave_type).first() as any
+      ).bind(body.leave_type).first<LeaveTypeRow>()
       if (lt) {
         // 반차/반반차는 1일 내 사용, 연차는 날짜 차이
         if (lt.deduction_days < 1) {
@@ -331,18 +355,18 @@ leavesRouter.post('/requests', async (c) => {
 leavesRouter.patch('/requests/:id/approve', requireRole('ADMIN', 'MANAGER'), async (c) => {
   try {
     const user = c.get('user')
-    const id = parseInt(c.req.param('id'))
+    const id = Number(c.req.param('id'))
 
     const req = await c.env.DB.prepare(
       `SELECT * FROM leave_requests WHERE id = ?`
-    ).bind(id).first() as any
+    ).bind(id).first<LeaveRequestRow>()
     if (!req) return c.json({ success: false, error: '신청을 찾을 수 없습니다.' }, 404)
     if (req.status !== 'PENDING') return c.json({ success: false, error: '이미 처리된 신청입니다.' }, 400)
 
     // 잔여 차감: leave_types에서 카테고리 확인
     const lt = await c.env.DB.prepare(
       `SELECT category, deduction_days FROM leave_types WHERE code = ?`
-    ).bind(req.leave_type).first() as any
+    ).bind(req.leave_type).first<LeaveTypeWithCategoryRow>()
 
     const year = new Date(req.start_date).getFullYear()
     if (lt?.category === 'ANNUAL' || req.leave_type === 'ANNUAL' ||
@@ -381,7 +405,7 @@ leavesRouter.patch('/requests/:id/approve', requireRole('ADMIN', 'MANAGER'), asy
 leavesRouter.patch('/requests/:id/reject', requireRole('ADMIN', 'MANAGER'), async (c) => {
   try {
     const user = c.get('user')
-    const id = parseInt(c.req.param('id'))
+    const id = Number(c.req.param('id'))
     const body: { reason?: string } = await c.req.json<{ reason?: string }>().catch(() => ({}))
 
     await c.env.DB.prepare(`
@@ -399,7 +423,7 @@ leavesRouter.patch('/requests/:id/reject', requireRole('ADMIN', 'MANAGER'), asyn
 // 신청 취소 (PENDING만)
 leavesRouter.delete('/requests/:id', async (c) => {
   try {
-    const id = parseInt(c.req.param('id'))
+    const id = Number(c.req.param('id'))
     await c.env.DB.prepare(
       `DELETE FROM leave_requests WHERE id = ? AND status = 'PENDING'`
     ).bind(id).run()
@@ -430,7 +454,7 @@ leavesRouter.get('/types', async (c) => {
 // 휴가 유형 수정 (관리자) — 시간대 변경 등
 leavesRouter.put('/types/:id', requireRole('ADMIN'), async (c) => {
   try {
-    const id = parseInt(c.req.param('id'))
+    const id = Number(c.req.param('id'))
     const body = await c.req.json<any>()
     const fields: string[] = []
     const params: any[] = []
@@ -466,7 +490,7 @@ leavesRouter.get('/family-events', async (c) => {
 
 leavesRouter.put('/family-events/:id', requireRole('ADMIN'), async (c) => {
   try {
-    const id = parseInt(c.req.param('id'))
+    const id = Number(c.req.param('id'))
     const body = await c.req.json<any>()
     const fields: string[] = []
     const params: any[] = []
@@ -518,8 +542,8 @@ leavesRouter.post('/sick-grant', requireRole('ADMIN'), async (c) => {
     } else {
       const { results } = await c.env.DB.prepare(
         `SELECT id FROM employees WHERE status = 'ACTIVE'`
-      ).all()
-      targetIds = (results as any[]).map(r => r.id)
+      ).all<EmployeeIdRow>()
+      targetIds = results.map(r => r.id)
     }
 
     let processed = 0
@@ -548,7 +572,7 @@ leavesRouter.post('/sick-grant', requireRole('ADMIN'), async (c) => {
 
 leavesRouter.get('/unused-allowance', requireRole('ADMIN', 'MANAGER'), async (c) => {
   try {
-    const year = parseInt(c.req.query('year') || String(new Date().getFullYear()))
+    const year = Number(c.req.query('year') || new Date().getFullYear())
 
     // 직원별 연차 잔여 + 기본급(일급 계산용)
     const { results } = await c.env.DB.prepare(`
@@ -573,11 +597,11 @@ leavesRouter.get('/unused-allowance', requireRole('ADMIN', 'MANAGER'), async (c)
         ON sick.employee_id = e.id AND sick.year = ? AND sick.leave_type = 'SICK'
       WHERE e.status = 'ACTIVE'
       ORDER BY e.department, e.name
-    `).bind(year, year).all()
+    `).bind(year, year).all<BalanceRow>()
 
     // 미사용 연차수당 계산: 기본급 / 209시간 * 8 * 잔여일수
     // (통상임금 시급 = 월급 / 209, 일급 = 시급 * 8)
-    const data = (results as any[]).map(r => {
+    const data = results.map(r => {
       const remaining = Math.max(0, r.remaining_annual || 0)
       const baseSalary = r.base_salary || 0
       const hourlyRate = baseSalary > 0 ? Math.round(baseSalary / 209) : 0

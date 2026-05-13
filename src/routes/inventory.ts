@@ -13,7 +13,7 @@ inventoryRouter.use('/*', authMiddleware)
 inventoryRouter.get('/', async (c) => {
   try {
     const { page = '1', limit = '50', category, search, low_stock } = c.req.query()
-    const offset = (parseInt(page) - 1) * parseInt(limit)
+    const offset = (Number(page) - 1) * Number(limit)
 
     let query = `
       SELECT
@@ -54,7 +54,7 @@ inventoryRouter.get('/', async (c) => {
     }
 
     query += ` ORDER BY i.category, i.item_name LIMIT ? OFFSET ?`
-    params.push(parseInt(limit), offset)
+    params.push(Number(limit), offset)
 
     const { results } = await c.env.DB.prepare(query).bind(...params).all()
 
@@ -82,18 +82,18 @@ inventoryRouter.get('/', async (c) => {
       countQuery += ` AND COALESCE(inv.quantity, 0) <= COALESCE(inv.safe_stock, 0) AND COALESCE(inv.safe_stock, 0) > 0`
     }
 
-    const { results: countResults } = await c.env.DB.prepare(countQuery).bind(...countParams).all()
-    const total = (countResults[0] as any).total
+    const countRow = await c.env.DB.prepare(countQuery).bind(...countParams).first<{ total: number }>()
+    const total = countRow?.total || 0
 
     return c.json({
       success: true,
       data: {
         items: results,
         pagination: {
-          page: parseInt(page),
-          limit: parseInt(limit),
+          page: Number(page),
+          limit: Number(limit),
           total,
-          total_pages: Math.ceil(total / parseInt(limit))
+          total_pages: Math.ceil(total / Number(limit))
         }
       }
     })
@@ -148,7 +148,7 @@ inventoryRouter.get('/:id/transactions', async (c) => {
       WHERE t.item_id = ?
       ORDER BY t.transaction_date DESC, t.id DESC
       LIMIT ?
-    `).bind(id, parseInt(limit)).all()
+    `).bind(id, Number(limit)).all()
 
     return c.json({ success: true, data: { transactions: results } })
   } catch (error: any) {
@@ -226,8 +226,8 @@ inventoryRouter.put('/:id/settings', async (c) => {
       return c.json({ success: false, error: 'Item not found' }, 404)
     }
 
-    const safeStock = parseFloat(safe_stock) || 0
-    const rop = parseFloat(reorder_point) || 0
+    const safeStock = Number(safe_stock) || 0
+    const rop = Number(reorder_point) || 0
     const autoPr = auto_pr_enabled ? 1 : 0
 
     // Upsert inventory row
@@ -277,12 +277,12 @@ inventoryRouter.post('/receipts', async (c) => {
 
     // Generate receipt number
     const today = new Date().toISOString().split('T')[0].replace(/-/g, '')
-    const { results: countResults } = await c.env.DB.prepare(`
+    const countRow = await c.env.DB.prepare(`
       SELECT COUNT(*) as count FROM inventory_receipts
       WHERE receipt_number LIKE ?
-    `).bind(`RCV-${today}%`).all()
+    `).bind(`RCV-${today}%`).first<{ count: number }>()
 
-    const sequence = ((countResults[0] as any).count + 1).toString().padStart(3, '0')
+    const sequence = ((countRow?.count || 0) + 1).toString().padStart(3, '0')
     const receiptNumber = `RCV-${today}-${sequence}`
 
     // Calculate total amount
@@ -326,7 +326,7 @@ inventoryRouter.post('/receipts', async (c) => {
       `SELECT item_id, quantity FROM inventory WHERE item_id IN (${ph})`
     ).bind(...itemIds).all()
     const balanceMap: Record<number, number> = {}
-    for (const b of balances as any[]) balanceMap[b.item_id] = b.quantity
+    for (const b of balances) balanceMap[b.item_id as number] = b.quantity as number
 
     await c.env.DB.batch(
       items.map((item: any) => {
@@ -431,34 +431,34 @@ inventoryRouter.patch('/receipts/:id/inspection-decision',
       // 취소 시 재고 롤백: 입고 수량만큼 차감 + 역분개 트랜잭션 기록
       const { results: receiptItems } = await c.env.DB.prepare(
         `SELECT item_id, received_quantity FROM inventory_receipt_items WHERE receipt_id = ?`
-      ).bind(id).all() as any
+      ).bind(id).all()
 
-      const validItems = (receiptItems || []).filter((ri: any) => ri.item_id && ri.received_quantity > 0)
+      const validItems = (receiptItems || []).filter((ri) => ri.item_id && (ri.received_quantity as number) > 0)
       if (validItems.length > 0) {
         // 재고 일괄 차감 (batch)
         await c.env.DB.batch(
-          validItems.map((ri: any) =>
+          validItems.map((ri) =>
             c.env.DB.prepare(`UPDATE inventory SET quantity = MAX(0, quantity - ?) WHERE item_id = ?`)
               .bind(ri.received_quantity, ri.item_id)
           )
         )
         // 차감 후 잔량 조회 + 역분개 트랜잭션 기록 (batch)
-        const cancelItemIds = validItems.map((ri: any) => ri.item_id)
+        const cancelItemIds = validItems.map((ri) => ri.item_id)
         const cancelPh = cancelItemIds.map(() => '?').join(',')
         const { results: cancelBalances } = await c.env.DB.prepare(
           `SELECT item_id, quantity FROM inventory WHERE item_id IN (${cancelPh})`
         ).bind(...cancelItemIds).all()
         const cancelBalMap: Record<number, number> = {}
-        for (const b of cancelBalances as any[]) cancelBalMap[b.item_id] = b.quantity
+        for (const b of cancelBalances) cancelBalMap[b.item_id as number] = b.quantity as number
 
         const cancelEntityId = getEntityId(c) || 1
         await c.env.DB.batch(
-          validItems.map((ri: any) =>
+          validItems.map((ri) =>
             c.env.DB.prepare(
               `INSERT INTO inventory_transactions (item_id, transaction_type, quantity, balance_after, reference_type, reference_id, notes, handled_by, transaction_date, entity_id)
                VALUES (?, 'OUT', ?, ?, 'RECEIPT_CANCEL', ?, ?, ?, datetime('now'), ?)`
             ).bind(
-              ri.item_id, ri.received_quantity, cancelBalMap[ri.item_id] || 0,
+              ri.item_id, ri.received_quantity, cancelBalMap[ri.item_id as number] || 0,
               Number(id), '입고 취소 역분개', c.get('user')?.id || null,
               cancelEntityId
             )
@@ -494,7 +494,10 @@ inventoryRouter.get('/receipts/:id', async (c) => {
              ir.total_amount, ir.status, ir.inspection_status, ir.notes, ir.po_id
       FROM inventory_receipts ir
       WHERE ir.id = ?
-    `).bind(id).first() as any
+    `).bind(id).first<{
+      id: number; receipt_number: string; receipt_date: string; supplier: string;
+      total_amount: number; status: string; inspection_status: string | null; notes: string | null; po_id: number | null
+    }>()
 
     if (!receipt) return c.json({ success: false, error: '입고 정보를 찾을 수 없습니다.' }, 404)
 
@@ -533,12 +536,12 @@ inventoryRouter.post('/releases', async (c) => {
 
     // Generate release number
     const today = new Date().toISOString().split('T')[0].replace(/-/g, '')
-    const { results: countResults } = await c.env.DB.prepare(`
+    const countRow = await c.env.DB.prepare(`
       SELECT COUNT(*) as count FROM inventory_releases
       WHERE release_number LIKE ?
-    `).bind(`REL-${today}%`).all()
+    `).bind(`REL-${today}%`).first<{ count: number }>()
 
-    const sequence = ((countResults[0] as any).count + 1).toString().padStart(3, '0')
+    const sequence = ((countRow?.count || 0) + 1).toString().padStart(3, '0')
     const releaseNumber = `REL-${today}-${sequence}`
 
     // Insert release header
@@ -560,7 +563,7 @@ inventoryRouter.post('/releases', async (c) => {
       `SELECT item_id, quantity FROM inventory WHERE item_id IN (${relPh})`
     ).bind(...releaseItemIds).all()
     const stockMap: Record<number, number> = {}
-    for (const s of stockRows as any[]) stockMap[s.item_id] = s.quantity
+    for (const s of stockRows) stockMap[s.item_id as number] = s.quantity as number
 
     // 재고 부족 사전 검증
     for (const item of items) {
@@ -629,10 +632,10 @@ inventoryRouter.post('/adjustments', async (c) => {
     // Get current stock from inventory table
     const invRow = await c.env.DB.prepare(
       `SELECT quantity FROM inventory WHERE item_id = ?`
-    ).bind(item_id).first() as any
+    ).bind(item_id).first<{ quantity: number }>()
 
     const quantityBefore = invRow?.quantity || 0
-    const quantityAfter = quantityBefore + parseFloat(adjustment_quantity)
+    const quantityAfter = quantityBefore + Number(adjustment_quantity)
 
     if (quantityAfter < 0) {
       return c.json({
@@ -664,7 +667,7 @@ inventoryRouter.post('/adjustments', async (c) => {
     }
 
     // Insert transaction
-    const transactionType = parseFloat(adjustment_quantity) > 0 ? 'IN' : 'OUT'
+    const transactionType = Number(adjustment_quantity) > 0 ? 'IN' : 'OUT'
     await c.env.DB.prepare(`
       INSERT INTO inventory_transactions
       (item_id, transaction_type, transaction_date, quantity,
@@ -694,25 +697,25 @@ inventoryRouter.post('/adjustments', async (c) => {
 inventoryRouter.get('/stats/summary', async (c) => {
   try {
     // Total items count
-    const { results: totalResults } = await c.env.DB.prepare(`
+    const totalRow = await c.env.DB.prepare(`
       SELECT COUNT(*) as total FROM items WHERE is_purchase_item = 1 AND is_active = 1
-    `).all()
+    `).first<{ total: number }>()
 
     // Low stock items count
-    const { results: lowStockResults } = await c.env.DB.prepare(`
+    const lowStockRow = await c.env.DB.prepare(`
       SELECT COUNT(*) as count FROM items i
       JOIN inventory inv ON i.id = inv.item_id
       WHERE i.is_purchase_item = 1 AND i.is_active = 1
         AND inv.quantity <= inv.safe_stock AND inv.safe_stock > 0
-    `).all()
+    `).first<{ count: number }>()
 
     // Total inventory value
-    const { results: valueResults } = await c.env.DB.prepare(`
+    const valueRow = await c.env.DB.prepare(`
       SELECT SUM(COALESCE(inv.quantity, 0) * COALESCE(i.base_price, 0)) as total_value
       FROM items i
       LEFT JOIN inventory inv ON i.id = inv.item_id
       WHERE i.is_purchase_item = 1 AND i.is_active = 1
-    `).all()
+    `).first<{ total_value: number | null }>()
 
     // Category breakdown
     const { results: categoryResults } = await c.env.DB.prepare(`
@@ -729,9 +732,9 @@ inventoryRouter.get('/stats/summary', async (c) => {
     return c.json({
       success: true,
       data: {
-        total_items: (totalResults[0] as any).total,
-        low_stock_items: (lowStockResults[0] as any).count,
-        total_value: (valueResults[0] as any).total_value || 0,
+        total_items: totalRow?.total || 0,
+        low_stock_items: lowStockRow?.count || 0,
+        total_value: valueRow?.total_value || 0,
         categories: categoryResults
       }
     })

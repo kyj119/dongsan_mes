@@ -2,6 +2,38 @@ import { Hono } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
 
+// ---------- D1 row shapes ----------
+interface RecentPurchaseRow {
+  unit_price: number
+  order_date: string
+  po_number: string
+}
+interface RecentSalesRow {
+  unit_price: number
+  order_date: string
+  order_number: string
+}
+interface BasePriceRow { base_price: number }
+interface AdjustmentRow { adjustment_percent: number }
+interface PriceRow { price: number }
+interface ClientItemPriceRow {
+  id: number; client_id: number; item_id: number; price: number; notes: string | null
+  created_at: string; updated_at: string
+  item_name: string; item_code: string; unit: string; base_price: number
+}
+interface RecentTransactionRow {
+  item_id: number; unit_price: number; order_date: string
+}
+interface ItemRow {
+  id: number; item_code: string; item_name: string; unit: string; base_price: number
+}
+interface SupplierPriceRow {
+  id: number; client_id: number; item_id: number; price: number; notes: string | null
+  created_at: string; updated_at: string
+  client_name: string; client_code: string
+}
+interface RecentPriceRow { unit_price: number; order_date: string }
+
 const pricesRouter = new Hono<HonoEnv>()
 
 pricesRouter.use('/*', authMiddleware)
@@ -32,7 +64,7 @@ pricesRouter.get('/', async (c) => {
           WHERE poi.item_id = ? AND po.supplier_id = ? AND po.status != 'CANCELLED'
           ORDER BY po.order_date DESC, po.id DESC
           LIMIT 1
-        `).bind(item_id, client_id).first() as any
+        `).bind(item_id, client_id).first<RecentPurchaseRow>()
 
         if (recentPurchase) {
           details.recent = {
@@ -49,7 +81,7 @@ pricesRouter.get('/', async (c) => {
           WHERE oi.item_id = ? AND o.client_id = ? AND o.status != 'CANCELLED'
           ORDER BY o.order_date DESC, o.id DESC
           LIMIT 1
-        `).bind(item_id, client_id).first() as any
+        `).bind(item_id, client_id).first<RecentSalesRow>()
 
         if (recentSales) {
           details.recent = {
@@ -64,7 +96,7 @@ pricesRouter.get('/', async (c) => {
     // 3순위 기반: 품목 기본 단가 (먼저 조회 — 단가표 계산에 필요)
     const baseItem = await c.env.DB.prepare(`
       SELECT base_price FROM items WHERE id = ?
-    `).bind(item_id).first() as any
+    `).bind(item_id).first<BasePriceRow>()
 
     if (baseItem) {
       details.base = baseItem.base_price
@@ -80,7 +112,7 @@ pricesRouter.get('/', async (c) => {
           FROM clients c
           JOIN price_lists pl ON c.price_list_id = pl.id
           WHERE c.id = ?
-        `).bind(client_id).first() as any
+        `).bind(client_id).first<AdjustmentRow>()
 
         if (plData && baseItem && baseItem.base_price != null) {
           const adjusted = baseItem.base_price * (1 + plData.adjustment_percent / 100)
@@ -89,7 +121,7 @@ pricesRouter.get('/', async (c) => {
       } else if (context === 'purchase') {
         const matched = await c.env.DB.prepare(`
           SELECT price FROM client_item_prices WHERE client_id = ? AND item_id = ?
-        `).bind(client_id, item_id).first() as any
+        `).bind(client_id, item_id).first<PriceRow>()
 
         if (matched) {
           details.matched = matched.price
@@ -98,7 +130,7 @@ pricesRouter.get('/', async (c) => {
         // context 없이 client_id만 있는 경우: client_item_prices 폴백
         const matched = await c.env.DB.prepare(`
           SELECT price FROM client_item_prices WHERE client_id = ? AND item_id = ?
-        `).bind(client_id, item_id).first() as any
+        `).bind(client_id, item_id).first<PriceRow>()
 
         if (matched) {
           details.matched = matched.price
@@ -162,10 +194,10 @@ pricesRouter.get('/client-item-prices', async (c) => {
 
     query += ' ORDER BY i.item_name'
 
-    const { results } = await c.env.DB.prepare(query).bind(...params).all() as { results: any[] }
+    const { results } = await c.env.DB.prepare(query).bind(...params).all<ClientItemPriceRow>()
 
     // 최근 거래 단가 일괄 조회 (N+1 → 2쿼리)
-    const itemIds = results.map((r: any) => r.item_id)
+    const itemIds = results.map((r) => r.item_id)
     const purchaseMap: Record<number, { unit_price: number; order_date: string }> = {}
     const salesMap: Record<number, { unit_price: number; order_date: string }> = {}
 
@@ -184,8 +216,8 @@ pricesRouter.get('/client-item-prices', async (c) => {
             WHERE poi2.item_id = poi.item_id AND po2.supplier_id = po.supplier_id AND po2.status != 'CANCELLED'
           )
         GROUP BY poi.item_id
-      `).bind(...itemIds, client_id).all()
-      for (const r of purchaseRows as any[]) {
+      `).bind(...itemIds, client_id).all<RecentTransactionRow>()
+      for (const r of purchaseRows) {
         purchaseMap[r.item_id] = { unit_price: r.unit_price, order_date: r.order_date }
       }
 
@@ -201,13 +233,13 @@ pricesRouter.get('/client-item-prices', async (c) => {
             WHERE oi2.item_id = oi.item_id AND o2.client_id = o.client_id AND o2.status != 'CANCELLED'
           )
         GROUP BY oi.item_id
-      `).bind(...itemIds, client_id).all()
-      for (const r of salesRows as any[]) {
+      `).bind(...itemIds, client_id).all<RecentTransactionRow>()
+      for (const r of salesRows) {
         salesMap[r.item_id] = { unit_price: r.unit_price, order_date: r.order_date }
       }
     }
 
-    const enriched = results.map((row: any) => {
+    const enriched = results.map((row) => {
       const purchase = purchaseMap[row.item_id]
       const sales = salesMap[row.item_id]
       let recent_price: number | null = null
@@ -251,7 +283,7 @@ pricesRouter.get('/item-supplier-prices', async (c) => {
     // Get item info
     const item = await c.env.DB.prepare(`
       SELECT id, item_code, item_name, unit, base_price FROM items WHERE id = ?
-    `).bind(item_id).first() as any
+    `).bind(item_id).first<ItemRow>()
 
     if (!item) {
       return c.json({ success: false, error: 'Item not found' }, 404)
@@ -266,11 +298,11 @@ pricesRouter.get('/item-supplier-prices', async (c) => {
       JOIN clients c ON cip.client_id = c.id
       WHERE cip.item_id = ?
       ORDER BY cip.price ASC
-    `).bind(item_id).all() as { results: any[] }
+    `).bind(item_id).all<SupplierPriceRow>()
 
     // Enrich with recent purchase prices
     const enriched = await Promise.all(
-      results.map(async (row: any) => {
+      results.map(async (row) => {
         const recentPurchase = await c.env.DB.prepare(`
           SELECT poi.unit_price, po.order_date
           FROM purchase_order_items poi
@@ -278,7 +310,7 @@ pricesRouter.get('/item-supplier-prices', async (c) => {
           WHERE poi.item_id = ? AND po.supplier_id = ? AND po.status != 'CANCELLED'
           ORDER BY po.order_date DESC, po.id DESC
           LIMIT 1
-        `).bind(item_id, row.client_id).first() as any
+        `).bind(item_id, row.client_id).first<RecentPriceRow>()
 
         return {
           ...row,

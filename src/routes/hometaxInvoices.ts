@@ -5,6 +5,35 @@ import { PopbillProvider } from '../services/popbillProvider'
 import { getEntityCorpNum } from '../utils/entitySettings'
 import { getEntityId } from '../utils/entityFilter'
 
+interface HometaxInvoiceRow {
+  id: number
+  nts_confirm_number: string | null
+  total_amount: number | null
+  [key: string]: unknown
+}
+
+interface TaxInvoiceRow {
+  id: number
+  nts_approval_number: string | null
+  total_amount: number | null
+  [key: string]: unknown
+}
+
+interface HometaxJobRow {
+  id: number
+  job_id: string
+  job_type: string
+  start_date: string
+  end_date: string
+  state: number | null
+  result: number | null
+  message: string | null
+  total_count: number | null
+  requested_by: number | null
+  requested_at: string
+  completed_at: string | null
+}
+
 const hometaxInvoicesRouter = new Hono<HonoEnv>()
 hometaxInvoicesRouter.use('/*', authMiddleware)
 
@@ -15,10 +44,10 @@ async function getProvider(c: Context<HonoEnv>): Promise<PopbillProvider | null>
   const db = c.env.DB
   const linkedIdRow = await db.prepare(
     "SELECT setting_value FROM settings WHERE setting_key = 'tax_provider_linked_id'"
-  ).first() as any
+  ).first<{ setting_value: string }>()
   const testModeRow = await db.prepare(
     "SELECT setting_value FROM settings WHERE setting_key = 'tax_test_mode'"
-  ).first() as any
+  ).first<{ setting_value: string }>()
 
   const linkedId = linkedIdRow?.setting_value
   const secretKey = c.env.POPBILL_SECRET_KEY
@@ -103,8 +132,8 @@ hometaxInvoicesRouter.post('/collect', requireRole('ADMIN', 'MANAGER'), async (c
 hometaxInvoicesRouter.get('/jobs', requireRole('ADMIN', 'MANAGER'), async (c) => {
   try {
     const { page = '1', limit = '20' } = c.req.query()
-    const safeLimit = Math.min(parseInt(limit) || 20, 100)
-    const offset = (parseInt(page) - 1) * safeLimit
+    const safeLimit = Math.min(Number(limit) || 20, 100)
+    const offset = (Number(page) - 1) * safeLimit
 
     const db = c.env.DB
     const { results } = await db.prepare(`
@@ -116,12 +145,13 @@ hometaxInvoicesRouter.get('/jobs', requireRole('ADMIN', 'MANAGER'), async (c) =>
       LIMIT ? OFFSET ?
     `).bind(safeLimit, offset).all()
 
-    const { count } = (await db.prepare(`SELECT COUNT(*) as count FROM hometax_jobs`).first()) as any
+    const countRow = await db.prepare(`SELECT COUNT(*) as count FROM hometax_jobs`).first<{ count: number }>()
+    const count = countRow?.count ?? 0
 
     return c.json({
       success: true,
       data: results,
-      pagination: { page: parseInt(page), limit: safeLimit, total: count, total_pages: Math.ceil(count / safeLimit) }
+      pagination: { page: Number(page), limit: safeLimit, total: count, total_pages: Math.ceil(count / safeLimit) }
     })
   } catch (error) {
     console.error('hometaxInvoices GET /jobs error:', error)
@@ -138,9 +168,9 @@ hometaxInvoicesRouter.get('/jobs/:id/status', requireRole('ADMIN', 'MANAGER'), a
     const jobDbId = c.req.param('id')
     const db = c.env.DB
 
-    const job = (await db.prepare(`
+    const job = await db.prepare(`
       SELECT * FROM hometax_jobs WHERE id = ?
-    `).bind(parseInt(jobDbId)).first()) as any
+    `).bind(Number(jobDbId)).first<HometaxJobRow>()
 
     if (!job) {
       return c.json({ success: false, error: '작업 없음' }, 404)
@@ -199,9 +229,9 @@ hometaxInvoicesRouter.post('/jobs/:id/fetch', requireRole('ADMIN', 'MANAGER'), a
     const jobDbId = c.req.param('id')
     const db = c.env.DB
 
-    const job = (await db.prepare(`
+    const job = await db.prepare(`
       SELECT * FROM hometax_jobs WHERE id = ?
-    `).bind(parseInt(jobDbId)).first()) as any
+    `).bind(Number(jobDbId)).first<HometaxJobRow>()
 
     if (!job) {
       return c.json({ success: false, error: '작업 없음' }, 404)
@@ -235,9 +265,9 @@ hometaxInvoicesRouter.post('/jobs/:id/fetch', requireRole('ADMIN', 'MANAGER'), a
         const ntsConfirmNumber = invoice.ntsconfirmNum || invoice.ntsConfirmNum
         const issueDate = invoice.issueDate
         const sendDate = invoice.sendDate
-        const supplyAmount = parseInt(invoice.supplyCostTotal || invoice.supplyCost || 0)
-        const taxAmount = parseInt(invoice.taxTotal || invoice.tax || 0)
-        const totalAmount = parseInt(invoice.totalAmount || 0)
+        const supplyAmount = Number(invoice.supplyCostTotal || invoice.supplyCost || 0)
+        const taxAmount = Number(invoice.taxTotal || invoice.tax || 0)
+        const totalAmount = Number(invoice.totalAmount || 0)
 
         const issuerCorpNum = invoice.invoicerCorpNum || invoice.supplierBRN
         const issuerCorpName = invoice.invoicerCorpName || invoice.supplierName
@@ -303,8 +333,8 @@ hometaxInvoicesRouter.post('/jobs/:id/fetch', requireRole('ADMIN', 'MANAGER'), a
 hometaxInvoicesRouter.get('/', requireRole('ADMIN', 'MANAGER'), async (c) => {
   try {
     const { page = '1', limit = '30', type = '', date_from = '', date_to = '', match_status = '', search = '' } = c.req.query()
-    const safeLimit = Math.min(parseInt(limit) || 30, 200)
-    const offset = (parseInt(page) - 1) * safeLimit
+    const safeLimit = Math.min(Number(limit) || 30, 200)
+    const offset = (Number(page) - 1) * safeLimit
 
     const whereClauses: string[] = []
     const params: any[] = []
@@ -346,16 +376,17 @@ hometaxInvoicesRouter.get('/', requireRole('ADMIN', 'MANAGER'), async (c) => {
       LIMIT ? OFFSET ?
     `).bind(...params, safeLimit, offset).all()
 
-    const { count } = (await db.prepare(`
+    const countRow = await db.prepare(`
       SELECT COUNT(*) as count FROM hometax_invoices hi
       LEFT JOIN hometax_jobs hj ON hi.job_id = hj.id
       ${where}
-    `).bind(...params).first()) as any
+    `).bind(...params).first<{ count: number }>()
+    const count = countRow?.count ?? 0
 
     return c.json({
       success: true,
       data: results,
-      pagination: { page: parseInt(page), limit: safeLimit, total: count, total_pages: Math.ceil(count / safeLimit) }
+      pagination: { page: Number(page), limit: safeLimit, total: count, total_pages: Math.ceil(count / safeLimit) }
     })
   } catch (error) {
     console.error('hometaxInvoices GET / error:', error)
@@ -386,38 +417,34 @@ hometaxInvoicesRouter.get('/compare', requireRole('ADMIN', 'MANAGER'), async (c)
       SELECT * FROM hometax_invoices
       WHERE invoice_type = ? AND SUBSTR(issue_date, 1, 7) = ?
       ORDER BY issue_date DESC
-    `).bind(type, month).all()
+    `).bind(type, month).all<HometaxInvoiceRow>()
 
     // Get system tax invoices for comparison
     // Note: tax_invoices are always SELL type (company as supplier)
     // Only match when comparing SELL invoices from hometax
-    let sysInvoices: any[] = []
+    let sysInvoices: TaxInvoiceRow[] = []
     if (type === 'SELL') {
       const result = await db.prepare(`
         SELECT * FROM tax_invoices
         WHERE SUBSTR(issue_date, 1, 7) = ?
         ORDER BY issue_date DESC
-      `).bind(month).all()
+      `).bind(month).all<TaxInvoiceRow>()
       sysInvoices = result.results || []
     }
 
     // Auto-match by nts_confirm_number
-    const matched: any[] = []
-    const unmatchedHT: any[] = []
-    const unmatchedSys: any[] = []
+    const matched: { hometax: HometaxInvoiceRow; system: TaxInvoiceRow }[] = []
+    const unmatchedHT: HometaxInvoiceRow[] = []
+    const unmatchedSys: TaxInvoiceRow[] = []
 
-    const htMap = new Map<string, any>()
-    const sysMap = new Map<string, any>()
+    const sysMap = new Map<string, TaxInvoiceRow>()
 
-    for (const ht of (htInvoices || []) as any[]) {
-      htMap.set(String(ht.nts_confirm_number), ht)
-    }
-    for (const sys of (sysInvoices || []) as any[]) {
+    for (const sys of sysInvoices) {
       sysMap.set(String(sys.nts_approval_number), sys)
     }
 
     // Find matches
-    for (const ht of (htInvoices || []) as any[]) {
+    for (const ht of (htInvoices || [])) {
       const sys = sysMap.get(String(ht.nts_confirm_number))
       if (sys) {
         matched.push({ hometax: ht, system: sys })
@@ -439,9 +466,9 @@ hometaxInvoicesRouter.get('/compare', requireRole('ADMIN', 'MANAGER'), async (c)
       matched_count: matched.length,
       unmatched_hometax_count: unmatchedHT.length,
       unmatched_system_count: unmatchedSys.length,
-      hometax_amount_total: (htInvoices as any[] || []).reduce((sum: number, inv: any) => sum + (Number(inv.total_amount) || 0), 0),
-      system_amount_total: (sysInvoices as any[] || []).reduce((sum: number, inv: any) => sum + (Number(inv.total_amount) || 0), 0),
-      matched_amount_total: matched.reduce((sum, m) => sum + (m.hometax.total_amount || 0), 0)
+      hometax_amount_total: (htInvoices || []).reduce((sum, inv) => sum + (Number(inv.total_amount) || 0), 0),
+      system_amount_total: sysInvoices.reduce((sum, inv) => sum + (Number(inv.total_amount) || 0), 0),
+      matched_amount_total: matched.reduce((sum, m) => sum + (Number(m.hometax.total_amount) || 0), 0)
     }
 
     return c.json({
@@ -471,7 +498,7 @@ hometaxInvoicesRouter.post('/:id/match', requireRole('ADMIN', 'MANAGER'), async 
     const body = await c.req.json<{ tax_invoice_id?: number; action?: string }>()
 
     const db = c.env.DB
-    const invoice = await db.prepare(`SELECT * FROM hometax_invoices WHERE id = ?`).bind(parseInt(invoiceId)).first()
+    const invoice = await db.prepare(`SELECT * FROM hometax_invoices WHERE id = ?`).bind(Number(invoiceId)).first()
 
     if (!invoice) {
       return c.json({ success: false, error: '세금계산서 없음' }, 404)
@@ -482,11 +509,11 @@ hometaxInvoicesRouter.post('/:id/match', requireRole('ADMIN', 'MANAGER'), async 
       await db.prepare(`
         UPDATE hometax_invoices SET matched_invoice_id = NULL, match_status = 'UNMATCHED', match_note = NULL
         WHERE id = ?
-      `).bind(parseInt(invoiceId)).run()
+      `).bind(Number(invoiceId)).run()
 
       return c.json({
         success: true,
-        data: { id: parseInt(invoiceId), match_status: 'UNMATCHED' }
+        data: { id: Number(invoiceId), match_status: 'UNMATCHED' }
       })
     }
 
@@ -504,12 +531,12 @@ hometaxInvoicesRouter.post('/:id/match', requireRole('ADMIN', 'MANAGER'), async 
     await db.prepare(`
       UPDATE hometax_invoices SET matched_invoice_id = ?, match_status = 'MATCHED'
       WHERE id = ?
-    `).bind(body.tax_invoice_id, parseInt(invoiceId)).run()
+    `).bind(body.tax_invoice_id, Number(invoiceId)).run()
 
     return c.json({
       success: true,
       data: {
-        id: parseInt(invoiceId),
+        id: Number(invoiceId),
         matched_invoice_id: body.tax_invoice_id,
         match_status: 'MATCHED'
       }
