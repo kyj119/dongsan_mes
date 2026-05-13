@@ -224,7 +224,12 @@ clientsRouter.get('/:id', async (c) => {
   try {
     const id = c.req.param('id')
     const client = await c.env.DB.prepare(
-      'SELECT * FROM clients WHERE id = ?'
+      `SELECT id, client_code, client_name, representative, business_registration_number,
+              business_type, business_item, phone, mobile, fax, email, address, postal_code,
+              bank_info, is_active, balance, client_type, delivery_method, auto_billing,
+              price_policy_id, notes, invoice_method, transfer_info, address_detail,
+              search_keywords, entity_id, created_at, updated_at
+       FROM clients WHERE id = ?`
     ).bind(id).first()
 
     if (!client) {
@@ -256,7 +261,12 @@ clientsRouter.get('/:id/detail', async (c) => {
 
     // Client info
     const client = await c.env.DB.prepare(
-      'SELECT * FROM clients WHERE id = ?'
+      `SELECT id, client_code, client_name, representative, business_registration_number,
+              business_type, business_item, phone, mobile, fax, email, address, postal_code,
+              bank_info, is_active, balance, client_type, delivery_method, auto_billing,
+              price_policy_id, notes, invoice_method, transfer_info, address_detail,
+              search_keywords, entity_id, created_at, updated_at
+       FROM clients WHERE id = ?`
     ).bind(id).first()
 
     if (!client) {

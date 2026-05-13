@@ -652,7 +652,13 @@ ordersCoreRouter.get('/:id/invoice', async (c) => {
 
     // Get full client info
     const client = o.client_id
-      ? await c.env.DB.prepare('SELECT * FROM clients WHERE id = ?').bind(o.client_id as number).first() as Record<string, unknown> | null
+      ? await c.env.DB.prepare(
+          `SELECT id, client_code, client_name, representative, business_registration_number,
+                  business_type, business_item, phone, mobile, fax, email, address, postal_code,
+                  bank_info, is_active, balance, client_type, delivery_method, auto_billing,
+                  price_policy_id, notes, invoice_method, entity_id, created_at, updated_at
+           FROM clients WHERE id = ?`
+        ).bind(o.client_id as number).first() as Record<string, unknown> | null
       : null
 
     // Get order items (부모행/단독행만 반환 - 자식행 제외)
@@ -1166,7 +1172,12 @@ ordersCoreRouter.post('/', async (c) => {
         if (analysis?.groups_json) {
           const groups = JSON.parse(analysis.groups_json || '[]')
           const { results: postOrderItems } = await c.env.DB.prepare(
-            `SELECT * FROM order_items WHERE order_id = ? AND ai_analysis_id IS NOT NULL ORDER BY sort_order ASC`
+            `SELECT id, order_id, item_id, item_name, category_name,
+                    width, height, quantity, unit, unit_price, amount, vat_included,
+                    post_processing, content, sort_order, parent_item_id,
+                    scale_factor, finishing, finishing2, finishing3,
+                    ai_group_index, ai_analysis_id
+             FROM order_items WHERE order_id = ? AND ai_analysis_id IS NOT NULL ORDER BY sort_order ASC`
           ).bind(orderId).all()
           const aiItems = postOrderItems
 

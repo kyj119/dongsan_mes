@@ -519,7 +519,13 @@ poCoreRouter.get('/:id/invoice', async (c) => {
 
     const poRec = po as Record<string, unknown>
     const supplier = poRec.supplier_id
-      ? await c.env.DB.prepare('SELECT * FROM clients WHERE id = ?').bind(poRec.supplier_id).first()
+      ? await c.env.DB.prepare(
+          `SELECT id, client_code, client_name, representative, business_registration_number,
+                  business_type, business_item, phone, mobile, fax, email, address, postal_code,
+                  bank_info, is_active, balance, client_type, delivery_method, auto_billing,
+                  price_policy_id, notes, invoice_method, entity_id, created_at, updated_at
+           FROM clients WHERE id = ?`
+        ).bind(poRec.supplier_id).first()
       : null
 
     const { results: items } = await c.env.DB.prepare(`
@@ -987,7 +993,10 @@ poCoreRouter.put('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
     const data = await c.req.json()
 
     const po = await c.env.DB.prepare(`
-      SELECT * FROM purchase_orders WHERE id = ?
+      SELECT id, status, supplier_id, final_amount, discount_amount,
+             order_date, expected_date, notes, internal_notes,
+             delivery_date, delivery_location
+      FROM purchase_orders WHERE id = ?
     `).bind(id).first<PurchaseOrder & { delivery_date?: string; delivery_location?: string; discount_amount: number }>()
 
     if (!po) {
@@ -1156,7 +1165,8 @@ poCoreRouter.patch('/:id/status', requireRole('ADMIN', 'MANAGER'), async (c) => 
     }
 
     const po = await c.env.DB.prepare(`
-      SELECT * FROM purchase_orders WHERE id = ?
+      SELECT id, status, supplier_id, final_amount
+      FROM purchase_orders WHERE id = ?
     `).bind(id).first<PurchaseOrder>()
 
     if (!po) {
@@ -1255,7 +1265,8 @@ poCoreRouter.post('/:id/receive', async (c) => {
     }
 
     const po = await c.env.DB.prepare(`
-      SELECT * FROM purchase_orders WHERE id = ?
+      SELECT id, status, supplier_id
+      FROM purchase_orders WHERE id = ?
     `).bind(id).first<PurchaseOrder>()
 
     if (!po) {
@@ -1547,7 +1558,10 @@ poCoreRouter.post('/:id/copy', requireRole('ADMIN', 'MANAGER'), async (c) => {
     const id = c.req.param('id')
 
     const po = await c.env.DB.prepare(`
-      SELECT * FROM purchase_orders WHERE id = ?
+      SELECT id, po_number, supplier_id, expected_date,
+             total_amount, vat_amount, discount_amount, final_amount,
+             notes, internal_notes
+      FROM purchase_orders WHERE id = ?
     `).bind(id).first<PurchaseOrder>()
 
     if (!po) {
@@ -1647,7 +1661,8 @@ poCoreRouter.delete('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
     const id = c.req.param('id')
 
     const po = await c.env.DB.prepare(`
-      SELECT * FROM purchase_orders WHERE id = ?
+      SELECT id, status, supplier_id, final_amount
+      FROM purchase_orders WHERE id = ?
     `).bind(id).first<PurchaseOrder>()
 
     if (!po) {
@@ -1716,7 +1731,9 @@ poCoreRouter.post('/:id/reorder', requireRole('ADMIN', 'MANAGER'), async (c) => 
 
     // 원본 PO 조회
     const originalPo = await c.env.DB.prepare(`
-      SELECT * FROM purchase_orders WHERE id = ?
+      SELECT id, po_number, supplier_id, expected_date, delivery_location,
+             total_amount, vat_amount, discount_amount, final_amount, notes
+      FROM purchase_orders WHERE id = ?
     `).bind(id).first<PurchaseOrder & { delivery_location?: string }>()
     if (!originalPo) {
       return c.json({ success: false, error: '원본 발주서를 찾을 수 없습니다.' }, 404)

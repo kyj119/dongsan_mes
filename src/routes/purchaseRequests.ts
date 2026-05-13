@@ -337,7 +337,7 @@ prRouter.put('/:id', async (c) => {
     const id = c.req.param('id')
     const data = await c.req.json()
 
-    const pr = await c.env.DB.prepare(`SELECT * FROM purchase_requests WHERE id = ?`).bind(id).first<PurchaseRequest>()
+    const pr = await c.env.DB.prepare(`SELECT id, requester_id, supplier_id, urgency, status FROM purchase_requests WHERE id = ?`).bind(id).first<PurchaseRequest>()
     if (!pr) return c.json({ success: false, error: '발주 요청을 찾을 수 없습니다.' }, 404)
     if (user?.role === 'MANAGER' && pr.requester_id !== user.id) {
       return c.json({ success: false, error: '접근 권한이 없습니다.' }, 403)
@@ -429,7 +429,7 @@ prRouter.patch('/:id/approve', requireRole('ADMIN'), async (c) => {
     const id = c.req.param('id')
     const data = await c.req.json()
 
-    const pr = await c.env.DB.prepare(`SELECT * FROM purchase_requests WHERE id = ?`).bind(id).first<PurchaseRequest>()
+    const pr = await c.env.DB.prepare(`SELECT id, supplier_id, status FROM purchase_requests WHERE id = ?`).bind(id).first<PurchaseRequest>()
     if (!pr) return c.json({ success: false, error: '발주 요청을 찾을 수 없습니다.' }, 404)
     if (pr.status !== 'PENDING') {
       return c.json({ success: false, error: `'${pr.status}' 상태에서는 승인할 수 없습니다.` }, 400)
@@ -483,7 +483,7 @@ prRouter.patch('/:id/reject', requireRole('ADMIN'), async (c) => {
       return c.json({ success: false, error: '반려 사유는 필수입니다.' }, 400)
     }
 
-    const pr = await c.env.DB.prepare(`SELECT * FROM purchase_requests WHERE id = ?`).bind(id).first<PurchaseRequest>()
+    const pr = await c.env.DB.prepare(`SELECT id, status FROM purchase_requests WHERE id = ?`).bind(id).first<PurchaseRequest>()
     if (!pr) return c.json({ success: false, error: '발주 요청을 찾을 수 없습니다.' }, 404)
     if (pr.status !== 'PENDING') {
       return c.json({ success: false, error: `'${pr.status}' 상태에서는 반려할 수 없습니다.` }, 400)
@@ -515,7 +515,7 @@ prRouter.post('/:id/convert', requireRole('ADMIN'), async (c) => {
     const user = c.get('user')
     const id = c.req.param('id')
 
-    const pr = await c.env.DB.prepare(`SELECT * FROM purchase_requests WHERE id = ?`).bind(id).first<PurchaseRequest>()
+    const pr = await c.env.DB.prepare(`SELECT id, supplier_id, status FROM purchase_requests WHERE id = ?`).bind(id).first<PurchaseRequest>()
     if (!pr) return c.json({ success: false, error: '발주 요청을 찾을 수 없습니다.' }, 404)
     if (pr.status !== 'APPROVED') {
       return c.json({ success: false, error: `'${pr.status}' 상태에서는 발주서 변환이 불가능합니다. APPROVED 상태만 가능합니다.` }, 400)
@@ -626,7 +626,7 @@ prRouter.post('/:id/auto-convert', requireRole('ADMIN'), async (c) => {
     const user = c.get('user')
     const id = c.req.param('id')
 
-    const pr = await c.env.DB.prepare(`SELECT * FROM purchase_requests WHERE id = ?`).bind(id).first<PurchaseRequest>()
+    const pr = await c.env.DB.prepare(`SELECT id, status FROM purchase_requests WHERE id = ?`).bind(id).first<PurchaseRequest>()
     if (!pr) return c.json({ success: false, error: '발주 요청을 찾을 수 없습니다.' }, 404)
     if (pr.status !== 'APPROVED') {
       return c.json({ success: false, error: `'${pr.status}' 상태에서는 자동 변환이 불가능합니다. APPROVED 상태만 가능합니다.` }, 400)
@@ -796,7 +796,7 @@ prRouter.delete('/:id', async (c) => {
     const user = c.get('user')
     const id = c.req.param('id')
 
-    const pr = await c.env.DB.prepare(`SELECT * FROM purchase_requests WHERE id = ?`).bind(id).first<PurchaseRequest>()
+    const pr = await c.env.DB.prepare(`SELECT id, requester_id, status FROM purchase_requests WHERE id = ?`).bind(id).first<PurchaseRequest>()
     if (!pr) return c.json({ success: false, error: '발주 요청을 찾을 수 없습니다.' }, 404)
     if (user?.role === 'MANAGER' && pr.requester_id !== user.id) {
       return c.json({ success: false, error: '접근 권한이 없습니다.' }, 403)
