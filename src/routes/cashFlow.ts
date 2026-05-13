@@ -22,7 +22,7 @@ cashFlowRouter.get('/fixed-expenses', requireRole('ADMIN'), async (c) => {
     }
     if (active) {
       clauses.push('is_active = ?')
-      params.push(parseInt(active))
+      params.push(Number(active))
     }
 
     const where = clauses.length ? 'WHERE ' + clauses.map(cl => cl.replace(/^(\w)/, 'fe.$1')).join(' AND ') : ''
@@ -34,7 +34,7 @@ cashFlowRouter.get('/fixed-expenses', requireRole('ADMIN'), async (c) => {
     const { results } = await c.env.DB.prepare(sql).bind(...params).all()
 
     return c.json({ success: true, data: results })
-  } catch (error: any) {
+  } catch (error) {
     console.error('src/routes/cashFlow.ts fixed-expenses error:', error)
     return c.json({ success: false, error: '서버 오류가 발생했습니다.', detail: '서버 오류가 발생했습니다' }, 500)
   }
@@ -124,7 +124,7 @@ cashFlowRouter.get('/loans', requireRole('ADMIN'), async (c) => {
   try {
     const { active = '1' } = c.req.query()
     const where = active ? 'WHERE l.is_active = ?' : ''
-    const params = active ? [parseInt(active)] : []
+    const params = active ? [Number(active)] : []
 
     const { results } = await c.env.DB.prepare(`
       SELECT l.*,
@@ -299,7 +299,11 @@ cashFlowRouter.get('/loans/:id/schedule', requireRole('ADMIN'), async (c) => {
 cashFlowRouter.post('/loans/:id/generate-schedule', requireRole('ADMIN'), async (c) => {
   try {
     const id = c.req.param('id')
-    const loan = await c.env.DB.prepare('SELECT * FROM loans WHERE id = ?').bind(id).first() as any
+    const loan = await c.env.DB.prepare('SELECT * FROM loans WHERE id = ?').bind(id).first<{
+      start_date: string; maturity_date: string; current_rate: number;
+      current_balance: number; monthly_payment_day: number | null;
+      repayment_type: string
+    }>()
     if (!loan) return c.json({ success: false, error: '대출을 찾을 수 없습니다.' }, 404)
 
     // 기존 SCHEDULED 스케줄 삭제 (PAID는 유지)
@@ -316,7 +320,7 @@ cashFlowRouter.post('/loans/:id/generate-schedule', requireRole('ADMIN'), async 
     // 이미 납부된 회차 수
     const { count } = await c.env.DB.prepare(
       "SELECT COUNT(*) as count FROM loan_payments WHERE loan_id = ? AND status = 'PAID'"
-    ).bind(id).first() as any
+    ).bind(id).first<{ count: number }>() ?? { count: 0 }
     let paymentNumber = (count || 0) + 1
 
     // 남은 개월 수 계산
@@ -387,7 +391,7 @@ cashFlowRouter.post('/loans/:id/payments/:pid/pay', requireRole('ADMIN'), async 
 
     const payment = await c.env.DB.prepare(
       'SELECT * FROM loan_payments WHERE id = ? AND loan_id = ?'
-    ).bind(pid, id).first() as any
+    ).bind(pid, id).first<{ total_amount: number; principal_amount: number }>()
     if (!payment) return c.json({ success: false, error: '상환 스케줄을 찾을 수 없습니다.' }, 404)
 
     const status = body.actual_paid_amount >= payment.total_amount ? 'PAID' : 'PARTIAL'
@@ -417,12 +421,15 @@ cashFlowRouter.post('/loans/:id/payments/:pid/pay', requireRole('ADMIN'), async 
 cashFlowRouter.get('/projection', requireRole('ADMIN'), async (c) => {
   try {
     const { months = '6' } = c.req.query()
-    const monthCount = Math.min(parseInt(months) || 6, 12)
+    const monthCount = Math.min(Number(months) || 6, 12)
     const efOrders = entityFilter(c)
     const efPayments = entityFilter(c)
 
     const now = new Date()
-    const projections = []
+    const projections: {
+      month: string; income: number; fixed_expenses: number; loan_payments: number;
+      purchase_expenses: number; total_expenses: number; net_cash_flow: number; cumulative?: number
+    }[] = []
 
     for (let i = 0; i < monthCount; i++) {
       const d = new Date(now.getFullYear(), now.getMonth() + i, 1)
@@ -436,13 +443,13 @@ cashFlowRouter.get('/projection', requireRole('ADMIN'), async (c) => {
         FROM orders
         WHERE status NOT IN ('CANCELLED', 'DRAFT')
           AND DATE(created_at) BETWEEN ? AND ?${efOrders.clause}
-      `).bind(monthStart, monthEnd, ...efOrders.params).first() as any
+      `).bind(monthStart, monthEnd, ...efOrders.params).first<{ total: number }>()
 
       // 입금 (결제)
       const payments = await c.env.DB.prepare(`
         SELECT COALESCE(SUM(amount), 0) as total
         FROM payments WHERE payment_date BETWEEN ? AND ?${efPayments.clause}
-      `).bind(monthStart, monthEnd, ...efPayments.params).first() as any
+      `).bind(monthStart, monthEnd, ...efPayments.params).first<{ total: number }>()
 
       // 고정비
       const fixedExp = await c.env.DB.prepare(`
@@ -456,7 +463,7 @@ cashFlowRouter.get('/projection', requireRole('ADMIN'), async (c) => {
             OR (frequency = 'QUARTERLY' AND (CAST(strftime('%m', ?) AS INTEGER) - CAST(strftime('%m', start_date) AS INTEGER)) % 3 = 0)
             OR (frequency = 'YEARLY' AND strftime('%m', ?) = strftime('%m', start_date))
           )
-      `).bind(monthEnd, monthStart, monthStart, monthStart).first() as any
+      `).bind(monthEnd, monthStart, monthStart, monthStart).first<{ total: number }>()
 
       // 대출 상환
       const loanPay = await c.env.DB.prepare(`
@@ -464,7 +471,7 @@ cashFlowRouter.get('/projection', requireRole('ADMIN'), async (c) => {
         FROM loan_payments
         WHERE scheduled_date BETWEEN ? AND ?
           AND status IN ('SCHEDULED', 'OVERDUE')
-      `).bind(monthStart, monthEnd).first() as any
+      `).bind(monthStart, monthEnd).first<{ total: number }>()
 
       // 구매 (발주)
       const purchaseExp = await c.env.DB.prepare(`
@@ -472,7 +479,7 @@ cashFlowRouter.get('/projection', requireRole('ADMIN'), async (c) => {
         FROM purchase_orders
         WHERE status NOT IN ('CANCELLED', 'DRAFT')
           AND order_date BETWEEN ? AND ?
-      `).bind(monthStart, monthEnd).first() as any
+      `).bind(monthStart, monthEnd).first<{ total: number }>()
 
       const income = (i === 0) ? (payments?.total || 0) : (revenue?.total || 0)
       const expenses = (fixedExp?.total || 0) + (loanPay?.total || 0) + (purchaseExp?.total || 0)
@@ -493,7 +500,7 @@ cashFlowRouter.get('/projection', requireRole('ADMIN'), async (c) => {
     let cumulative = 0
     for (const p of projections) {
       cumulative += p.net_cash_flow
-      ;(p as any).cumulative = cumulative
+      p.cumulative = cumulative
     }
 
     return c.json({ success: true, data: projections })
@@ -512,7 +519,7 @@ cashFlowRouter.get('/calendar', requireRole('ADMIN'), async (c) => {
     const { year, month } = c.req.query()
     if (!year || !month) return c.json({ success: false, error: 'year, month 파라미터 필요' }, 400)
 
-    const y = parseInt(year), m = parseInt(month)
+    const y = Number(year), m = Number(month)
     const monthStart = `${y}-${String(m).padStart(2, '0')}-01`
     const lastDay = new Date(y, m, 0).getDate()
     const monthEnd = `${y}-${String(m).padStart(2, '0')}-${lastDay}`
@@ -522,7 +529,10 @@ cashFlowRouter.get('/calendar', requireRole('ADMIN'), async (c) => {
       SELECT name, category, amount, payment_day, frequency
       FROM fixed_expenses
       WHERE is_active = 1 AND start_date <= ? AND (end_date IS NULL OR end_date >= ?)
-    `).bind(monthEnd, monthStart).all()
+    `).bind(monthEnd, monthStart).all<{
+      name: string; category: string; amount: number; payment_day: number;
+      frequency: string; start_date?: string
+    }>()
 
     // 대출 상환
     const { results: loanItems } = await c.env.DB.prepare(`
@@ -530,7 +540,9 @@ cashFlowRouter.get('/calendar', requireRole('ADMIN'), async (c) => {
       FROM loan_payments lp
       JOIN loans l ON lp.loan_id = l.id
       WHERE lp.scheduled_date BETWEEN ? AND ?
-    `).bind(monthStart, monthEnd).all()
+    `).bind(monthStart, monthEnd).all<{
+      scheduled_date: string; total_amount: number; status: string; creditor: string
+    }>()
 
     // 주문 매출 (delivery_date 또는 created_at 기준)
     const efCalOrders = entityFilter(c)
@@ -542,30 +554,34 @@ cashFlowRouter.get('/calendar', requireRole('ADMIN'), async (c) => {
       WHERE status NOT IN ('CANCELLED', 'DRAFT')
         AND DATE(COALESCE(delivery_date, created_at)) BETWEEN ? AND ?${efCalOrders.clause}
       GROUP BY order_date
-    `).bind(monthStart, monthEnd, ...efCalOrders.params).all()
+    `).bind(monthStart, monthEnd, ...efCalOrders.params).all<{
+      order_date: string; total: number; cnt: number
+    }>()
 
     // 입금
     const { results: paymentItems } = await c.env.DB.prepare(`
       SELECT payment_date, SUM(amount) as total, COUNT(*) as cnt
       FROM payments WHERE payment_date BETWEEN ? AND ?${efCalPayments.clause}
       GROUP BY payment_date
-    `).bind(monthStart, monthEnd, ...efCalPayments.params).all()
+    `).bind(monthStart, monthEnd, ...efCalPayments.params).all<{
+      payment_date: string; total: number; cnt: number
+    }>()
 
     // 일별 데이터 조합
-    const days: Record<string, any[]> = {}
+    const days: Record<string, { type: string; name: string; amount: number; category?: string; status?: string }[]> = {}
     for (let d = 1; d <= lastDay; d++) {
       const dateStr = `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`
       days[dateStr] = []
     }
 
     // 고정비 배치
-    for (const fe of fixedItems as any[]) {
+    for (const fe of fixedItems) {
       if (fe.frequency === 'QUARTERLY') {
-        const startMonth = parseInt(fe.start_date?.split('-')[1] || '1')
+        const startMonth = Number(fe.start_date?.split('-')[1] || '1')
         if ((m - startMonth) % 3 !== 0) continue
       }
       if (fe.frequency === 'YEARLY') {
-        const startMonth = parseInt(fe.start_date?.split('-')[1] || '1')
+        const startMonth = Number(fe.start_date?.split('-')[1] || '1')
         if (m !== startMonth) continue
       }
       const day = Math.min(fe.payment_day || 1, lastDay)
@@ -576,7 +592,7 @@ cashFlowRouter.get('/calendar', requireRole('ADMIN'), async (c) => {
     }
 
     // 대출 상환 배치
-    for (const lp of loanItems as any[]) {
+    for (const lp of loanItems) {
       if (days[lp.scheduled_date]) {
         days[lp.scheduled_date].push({
           type: 'LOAN', name: lp.creditor + ' 상환', amount: lp.total_amount, status: lp.status
@@ -585,14 +601,14 @@ cashFlowRouter.get('/calendar', requireRole('ADMIN'), async (c) => {
     }
 
     // 매출 배치
-    for (const o of orderItems as any[]) {
+    for (const o of orderItems) {
       if (days[o.order_date]) {
         days[o.order_date].push({ type: 'REVENUE', name: `주문 ${o.cnt}건`, amount: o.total })
       }
     }
 
     // 입금 배치
-    for (const p of paymentItems as any[]) {
+    for (const p of paymentItems) {
       if (days[p.payment_date]) {
         days[p.payment_date].push({ type: 'INCOME', name: `입금 ${p.cnt}건`, amount: p.total })
       }
@@ -621,31 +637,31 @@ cashFlowRouter.get('/summary', requireRole('ADMIN'), async (c) => {
       c.env.DB.prepare(`
         SELECT COALESCE(SUM(amount), 0) as total FROM payments
         WHERE payment_date BETWEEN ? AND ?${efSummary.clause}
-      `).bind(monthStart, monthEnd, ...efSummary.params).first(),
+      `).bind(monthStart, monthEnd, ...efSummary.params).first<{ total: number }>(),
       c.env.DB.prepare(`
         SELECT COALESCE(SUM(amount), 0) as total FROM fixed_expenses
         WHERE is_active = 1 AND start_date <= ? AND (end_date IS NULL OR end_date >= ?)
           AND frequency = 'MONTHLY'
-      `).bind(monthEnd, monthStart).first(),
+      `).bind(monthEnd, monthStart).first<{ total: number }>(),
       c.env.DB.prepare(`
         SELECT COALESCE(SUM(total_amount), 0) as total FROM loan_payments
         WHERE scheduled_date BETWEEN ? AND ? AND status IN ('SCHEDULED','OVERDUE')
-      `).bind(monthStart, monthEnd).first(),
+      `).bind(monthStart, monthEnd).first<{ total: number }>(),
       c.env.DB.prepare(`
         SELECT COUNT(*) as count, COALESCE(SUM(current_balance), 0) as total_balance
         FROM loans WHERE is_active = 1
-      `).first()
+      `).first<{ count: number; total_balance: number }>()
     ])
 
     return c.json({
       success: true,
       data: {
         month: yearMonth,
-        income: Math.round((incomeResult as any)?.total || 0),
-        fixed_expenses: Math.round((fixedResult as any)?.total || 0),
-        loan_payments: Math.round((loanResult as any)?.total || 0),
-        active_loans: (loanSummary as any)?.count || 0,
-        total_loan_balance: Math.round((loanSummary as any)?.total_balance || 0),
+        income: Math.round(incomeResult?.total || 0),
+        fixed_expenses: Math.round(fixedResult?.total || 0),
+        loan_payments: Math.round(loanResult?.total || 0),
+        active_loans: loanSummary?.count || 0,
+        total_loan_balance: Math.round(loanSummary?.total_balance || 0),
       }
     })
   } catch (error) {
