@@ -1299,6 +1299,7 @@ hrRouter.get('/contracts/:id/preview', requireRole('ADMIN', 'MANAGER'), async (c
       SELECT lc.*,
              e.name as employee_name, e.birth_date as employee_birth_date,
              COALESCE(e.mobile, e.phone) as employee_phone, e.address as employee_address,
+             e.base_salary as employee_base_salary,
              ent.name as entity_name, ent.representative as entity_representative,
              ent.address as entity_address
       FROM labor_contracts lc
@@ -1341,6 +1342,7 @@ hrRouter.get('/contracts/:id/preview', requireRole('ADMIN', 'MANAGER'), async (c
         wage_start_date: row.wage_start_date || '',
         wage_end_date: row.wage_end_date || '',
         hourly_rate: row.hourly_rate || 0,
+        base_salary: row.employee_base_salary || 0,
         overtime_daily_hours: row.overtime_daily_hours || 0,
         overtime_work_days: row.overtime_work_days || 22,
         base_hours_monthly: row.base_hours_monthly || 209,

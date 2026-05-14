@@ -25,6 +25,7 @@ export function renderLaborContractHTML(data: {
     wage_start_date: string
     wage_end_date: string
     hourly_rate: number
+    base_salary?: number
     overtime_daily_hours?: number
     overtime_work_days?: number
     base_hours_monthly?: number
@@ -48,15 +49,19 @@ export function renderLaborContractHTML(data: {
     ? '교대제 (별도 근무일정표에 따름)'
     : '통상근무 (09:00 ~ 18:00, 휴게시간 12:00 ~ 13:00)'
 
-  // 급여 계산
+  // 급여 계산 — base_salary 기준 (시급은 참고값)
   const isMonthly = contract.contract_type === 'MONTHLY'
   const contractTypeLabel = isMonthly ? '월급제' : '시급제'
   const baseH = contract.base_hours_monthly || 209
   const otDaily = contract.overtime_daily_hours || 0
   const otDays = contract.overtime_work_days || 22
   const otHours = otDaily * otDays
-  const basePay = isMonthly ? contract.hourly_rate : contract.hourly_rate * baseH
-  const otPay = isMonthly ? 0 : Math.round(contract.hourly_rate * otHours * 1.5)
+  // 기본급: base_salary가 있으면 그대로, 없으면 hourly_rate × 209
+  const basePay = isMonthly ? contract.hourly_rate : (contract.base_salary || contract.hourly_rate * baseH)
+  // 시급: base_salary에서 역산 (반올림 없이 계산용)
+  const hourlyForCalc = basePay / baseH
+  const hourlyDisplay = Math.round(hourlyForCalc)
+  const otPay = isMonthly ? 0 : Math.round(hourlyForCalc * otHours * 1.5)
   const totalPay = basePay + otPay
 
   const employerSig = contract.signature_employer_base64
@@ -383,7 +388,7 @@ export function renderLaborContractHTML(data: {
           ${isMonthly ? `
           <p>1) 월 급여: <strong>${formatNumber(contract.hourly_rate)}원</strong></p>
           ` : `
-          <p>1) 통상시급: <strong>${formatNumber(contract.hourly_rate)}원</strong></p>
+          <p>1) 통상시급: <strong>${formatNumber(hourlyDisplay)}원</strong> <span style="font-size:12px;color:#555">(기본급 ${formatNumber(basePay)}원 ÷ ${baseH}시간)</span></p>
           <table class="party-table" style="margin:8px 0 12px">
             <tr>
               <th style="width:25%">구분</th>
@@ -392,12 +397,12 @@ export function renderLaborContractHTML(data: {
             </tr>
             <tr>
               <td style="text-align:center">기본급</td>
-              <td>${formatNumber(contract.hourly_rate)}원 × ${baseH}시간</td>
+              <td>월 ${baseH}시간 (통상시급 ${formatNumber(hourlyDisplay)}원)</td>
               <td style="text-align:right">${formatNumber(basePay)}원</td>
             </tr>
             ${otDaily > 0 ? `<tr>
               <td style="text-align:center">고정연장수당</td>
-              <td>${formatNumber(contract.hourly_rate)}원 × ${otHours}h (일 ${otDaily}h × ${otDays}일) × 1.5</td>
+              <td>${formatNumber(hourlyDisplay)}원 × ${otHours}h (일 ${otDaily}h × ${otDays}일) × 1.5</td>
               <td style="text-align:right">${formatNumber(otPay)}원</td>
             </tr>` : ''}
             <tr style="border-top:2px solid #333;font-weight:700">
