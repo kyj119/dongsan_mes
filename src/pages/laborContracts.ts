@@ -129,8 +129,9 @@ export function laborContractsPage(c: Context<HonoEnv>) {
               </div>
               <div class="grid grid-cols-3 gap-3">
                 <div>
-                  <label class="text-xs text-gray-600 block mb-1">시급 (원)</label>
-                  <input type="number" id="lcHourlyRate" class="w-full border rounded px-2 py-1 text-sm" placeholder="0" oninput="lcCalcWage()">
+                  <label class="text-xs text-gray-600 block mb-1" id="lcRateLabel">기본급 (원)</label>
+                  <input type="number" id="lcBaseSalary" class="w-full border rounded px-2 py-1 text-sm" placeholder="0" oninput="lcCalcWage()">
+                  <input type="hidden" id="lcHourlyRate" value="0">
                 </div>
                 <div class="flex items-center gap-2 pt-5">
                   <input type="checkbox" id="lcOvertimeDaily" onchange="lcCalcWage()" class="w-4 h-4 rounded">
