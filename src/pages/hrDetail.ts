@@ -111,13 +111,12 @@ export function hrDetailPage(c: Context<HonoEnv>) {
                 <div><label class="block text-xs text-gray-500 mb-1">부서</label>
                   <select data-field="department" class="hrd-input w-full border border-gray-200 rounded px-2 py-1.5 text-sm" disabled>
                     <option value="">-</option>
-                    <option value="OFFICE">사무직</option>
+                    <option value="ADMIN_DEPT">사무직</option>
                     <option value="DESIGN">디자인</option>
-                    <option value="PRODUCTION">생산직</option>
-                    <option value="UV_SIGN">UV/사인</option>
-                    <option value="FINISHING">후가공</option>
-                    <option value="ASSEMBLY">조립</option>
                     <option value="SALES">영업</option>
+                    <option value="TRANSFER">전사</option>
+                    <option value="SIGN">간판</option>
+                    <option value="PRINTING">출력</option>
                     <option value="EXECUTIVE">임원</option>
                   </select>
                 </div>
@@ -125,10 +124,13 @@ export function hrDetailPage(c: Context<HonoEnv>) {
                   <select data-field="position" class="hrd-input w-full border border-gray-200 rounded px-2 py-1.5 text-sm" disabled>
                     <option value="">-</option>
                     <option value="STAFF">사원</option>
+                    <option value="SENIOR_STAFF">주임</option>
                     <option value="ASSISTANT_MANAGER">대리</option>
                     <option value="MANAGER">과장</option>
                     <option value="DEPUTY_GENERAL_MANAGER">차장</option>
                     <option value="GENERAL_MANAGER">부장</option>
+                    <option value="DIRECTOR">이사</option>
+                    <option value="CEO">대표이사</option>
                   </select>
                 </div>
                 <div><label class="block text-xs text-gray-500 mb-1">직책</label><input data-field="job_title" class="hrd-input w-full border border-gray-200 rounded px-2 py-1.5 text-sm" disabled></div>

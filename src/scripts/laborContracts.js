@@ -61,7 +61,7 @@ async function lcLoadEmployees() {
         if (rateEl && !rateEl.value) rateEl.value = emp.hourly_rate || '';
         var deptEl = document.getElementById('lcJobDesc');
         if (deptEl && !deptEl.value) {
-          var deptName = {'PRODUCTION':'생산','DESIGN':'디자인','ADMIN_DEPT':'관리','SALES':'영업','LOGISTICS':'물류','FINISHING':'후가공'}[emp.department] || emp.department || '';
+          var deptName = {'ADMIN_DEPT':'사무','DESIGN':'디자인','SALES':'영업','TRANSFER':'전사','SIGN':'간판','PRINTING':'출력','EXECUTIVE':'임원'}[emp.department] || emp.department || '';
           deptName && (deptEl.value = deptName);
         }
       }
