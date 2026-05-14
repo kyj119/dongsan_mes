@@ -625,15 +625,28 @@ function hrdGetPayType() {
   return 'VARIABLE';
 }
 
+function hrdGetOvertimeDivisor() {
+  var otToggle = document.getElementById('hrdOvertimeToggle');
+  return (otToggle && otToggle.checked) ? 225.5 : 209;
+}
+
 function hrdUpdateOvertimePreview() {
   var preview = document.getElementById('hrdOvertimePreview');
   if (!preview) return;
 
   var otToggle = document.getElementById('hrdOvertimeToggle');
   var baseSalaryEl = document.querySelector('#hrdManageCard [data-field="base_salary"]');
+  var hourlyRateEl = document.querySelector('#hrdManageCard [data-field="hourly_rate"]');
 
   var hasOvertime = otToggle && otToggle.checked;
   var baseSalary = hrdParseMoneyInput(baseSalaryEl ? baseSalaryEl.value : '');
+
+  // 시급 필드도 연동 갱신 (OT ON=225.5, OFF=209)
+  if (baseSalary && baseSalary > 0 && hourlyRateEl) {
+    var divisor = hasOvertime ? 225.5 : 209;
+    var hourly = Math.round(baseSalary / divisor);
+    hourlyRateEl.value = hrdFmtMoneyInput(hourly);
+  }
 
   if (!baseSalary || !hasOvertime) {
     preview.innerHTML = '';
@@ -665,7 +678,8 @@ function hrdBindSalaryCalc() {
       if (hrdGetPayType() !== 'VARIABLE') { hrdUpdateOvertimePreview(); return; }
       var base = hrdParseMoneyInput(baseSalaryEl.value);
       if (base != null && base > 0 && hourlyRateEl) {
-        var hourly = Math.round(base / 209);
+        var divisor = hrdGetOvertimeDivisor();
+        var hourly = Math.round(base / divisor);
         hourlyRateEl.value = hrdFmtMoneyInput(hourly);
       }
       hrdUpdateOvertimePreview();
@@ -677,8 +691,9 @@ function hrdBindSalaryCalc() {
       if (hrdGetPayType() !== 'VARIABLE') { hrdUpdateOvertimePreview(); return; }
       var hourly = hrdParseMoneyInput(hourlyRateEl.value);
       if (hourly != null && hourly > 0 && baseSalaryEl) {
-        var base = hourly * 209;
-        baseSalaryEl.value = hrdFmtMoneyInput(base);
+        var divisor = hrdGetOvertimeDivisor();
+        var base = hourly * divisor;
+        baseSalaryEl.value = hrdFmtMoneyInput(Math.round(base));
       }
       hrdUpdateOvertimePreview();
     });
