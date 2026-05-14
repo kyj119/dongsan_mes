@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 6 -->
-<!-- last_run_at: 2026-05-13T16:00:00+09:00 -->
+<!-- last_run_area: 1 -->
+<!-- last_run_at: 2026-05-14T09:15:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,10 +8,17 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | 3 |
+| 🆕 new | 5 |
 | ✔️ done | 31 |
 | ❌ rejected | 2 |
 
+> **Area 1 프로덕션 헬스 (2026-05-14T09:15):**
+> - TypeScript typecheck: PASS ✓, Vite build: PASS ✓ (4.2MB worker, 307 modules)
+> - 65개 라우트 등록 전수 확인 — 누락·충돌 없음 ✓
+> - npm audit: esbuild GHSA-67mh (SSRF) — 기존 거절 패턴 (#23), 신규 조치 없음
+> - 신규 발견 2건 (#35 대시보드 E2E 커버리지 부재, #36 try-catch 누락 4개 라우트)
+> - 자동 수정 0건 (자동 수정 가능 항목 없음)
+>
 > **Area 6 자기 진화 (2026-05-13T16:00):**
 > - GitHub 실제 상태 ↔ 백로그 대조: 18개 "new" 중 14개 완료·1개 거절 확인 → 동기화
 > - 오탐 패턴 2건 문서화: dev server SSRF(#23 거절), webhooks.ts Popbill IP 화이트리스트(의도적 보안 제어 → 하드코딩 아님)
@@ -64,6 +71,8 @@
 | I-013 | 보안 헤더 전무 (CSP/X-Frame-Options/HSTS/X-Content-Type) | Area 5 | #32 | 1~2h |
 | I-014 | /api/portal/auth/change-password rate limit 누락 | Area 5 | #33 | 30분 |
 | I-015 | XSS 잔여: approvals.js(119-276) + cards.js document.write | Area 5 | #34 | 2~3h |
+| I-016 | 대시보드 E2E 커버리지 부재 — 전면 재설계 후 회귀 테스트 없음 | Area 1 | #35 | 2~3h |
+| I-017 | 라우트 4개 try-catch 누락 (permissions/finishing/messageTemplates/iaAuto) | Area 1 | #36 | 1h |
 
 ---
 
