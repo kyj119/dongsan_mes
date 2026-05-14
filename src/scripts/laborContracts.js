@@ -538,14 +538,16 @@ function lcSelectEmployee(empId) {
   var typeEl = document.getElementById('lcContractType');
   if (typeEl) typeEl.value = isFixed ? 'MONTHLY' : 'HOURLY';
 
-  // 자동 채움
+  // 자동 채움 — 항상 덮어쓰기 (직원 선택 시점에 최신값 반영)
   var rateEl = document.getElementById('lcHourlyRate');
   if (rateEl) {
     if (isFixed) {
       rateEl.value = emp.base_salary || '';
       rateEl.previousElementSibling.textContent = '월급 (원)';
     } else {
-      rateEl.value = emp.hourly_rate || '';
+      // 시급이 있으면 시급, 없으면 기본급에서 역산
+      var hourly = emp.hourly_rate || (emp.base_salary ? Math.round(emp.base_salary / 209) : 0);
+      rateEl.value = hourly || '';
       rateEl.previousElementSibling.textContent = '시급 (원)';
     }
   }
