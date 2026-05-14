@@ -56,8 +56,8 @@ export function renderLaborContractHTML(data: {
   const otDaily = contract.overtime_daily_hours || 0
   const otDays = contract.overtime_work_days || 22
   const otHours = otDaily * otDays
-  // 총액 기준: monthly_salary가 입력된 기본급(=총액)
-  const totalWage = contract.monthly_salary || contract.base_salary || contract.hourly_rate * baseH
+  // 총액 기준: base_salary(직원 기본급)가 최우선, monthly_salary는 fallback
+  const totalWage = contract.base_salary || contract.monthly_salary || contract.hourly_rate * baseH
   let hourlyDisplay: number, basePay: number, otPay: number
 
   if (isMonthly || otHours === 0) {
