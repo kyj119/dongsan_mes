@@ -48,7 +48,7 @@ dashboardRouter.get('/stats', async (c) => {
         (SELECT COUNT(*) FROM orders WHERE delivery_date = date('now') AND status NOT IN ('SHIPPED','CANCELLED')${ef.clause}) as today_shipment_due,
         (SELECT COUNT(*) FROM orders WHERE priority='URGENT' AND status NOT IN ('SHIPPED','CANCELLED')${ef.clause}) as urgent_count,
         (SELECT COALESCE(SUM(final_amount),0) FROM orders WHERE billing_status='BILLED' AND strftime('%Y-%m',billed_at)=strftime('%Y-%m','now')${ef.clause}) as month_billed,
-        (SELECT COALESCE(SUM(amount),0) FROM payments WHERE strftime('%Y-%m',payment_date)=strftime('%Y-%m','now')) as month_paid,
+        (SELECT COALESCE(SUM(amount),0) FROM payments WHERE strftime('%Y-%m',payment_date)=strftime('%Y-%m','now')${ef.clause}) as month_paid,
         (SELECT ROUND(
           COUNT(CASE WHEN o2.status = 'SHIPPED' AND date(o2.updated_at) <= date(o2.delivery_date) THEN 1 END) * 100.0 /
           NULLIF(COUNT(*), 0), 1)
@@ -76,6 +76,7 @@ dashboardRouter.get('/stats', async (c) => {
       ...ef.params, // today_shipment_due
       ...ef.params, // urgent_count
       ...ef.params, // month_billed
+      ...ef.params, // month_paid
       ...ef.params, // on_time_rate
     ]).first()
 
@@ -344,14 +345,14 @@ dashboardRouter.get('/stats/receivables', async (c) => {
         )
     `).bind(...ef.params).first()
 
-    // Total receivables
+    // Total receivables (법인별: 청구액 - 수금액)
+    const efPlain = entityFilter(c)
     const totals = await c.env.DB.prepare(`
       SELECT
-        COALESCE(SUM(balance), 0) as total_receivables,
-        COUNT(CASE WHEN balance > 0 THEN 1 END) as clients_with_balance
-      FROM clients
-      WHERE is_active = 1
-    `).first()
+        COALESCE((SELECT SUM(billed_amount) FROM orders WHERE billing_status = 'BILLED'${efPlain.clause}), 0)
+        - COALESCE((SELECT SUM(amount) FROM payments WHERE 1=1${efPlain.clause}), 0) as total_receivables,
+        (SELECT COUNT(DISTINCT client_id) FROM orders WHERE billing_status = 'BILLED' AND billed_amount > 0${efPlain.clause}) as clients_with_balance
+    `).bind(...efPlain.params, ...efPlain.params, ...efPlain.params).first()
 
     return c.json({
       success: true,
