@@ -446,6 +446,7 @@ hrRouter.post('/employees', async (c) => {
       'pay_type',
       'emergency_contact', 'emergency_phone', 'notes',
       'entity_id',
+      'overtime_daily_hours', 'overtime_work_days',
     ]
 
     // 실제 테이블 컬럼 조회 (없는 컬럼은 제외)
@@ -529,6 +530,8 @@ hrRouter.put('/employees/:id', async (c) => {
       'emergency_contact', 'emergency_phone', 'notes',
       // 소속 법인
       'entity_id',
+      // 고정연장
+      'overtime_daily_hours', 'overtime_work_days',
     ]
 
     // ⚠️ pay_type enum 검증
