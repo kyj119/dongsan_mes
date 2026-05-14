@@ -364,12 +364,14 @@ function orderFormDistPage(c: Context<HonoEnv>) {
                 </div>
 
                 <form id="distOrderForm">
-                    <!-- 기본 정보 -->
+                    <!-- 기본 정보 (생산 주문서와 동일 레이아웃) -->
                     <div class="mb-6">
-                        <h2 class="text-lg font-bold text-gray-700 mb-3"><i class="fas fa-info-circle mr-2"></i>기본 정보</h2>
+                        <h2 class="text-xl font-bold text-gray-800 mb-4 border-b pb-2">
+                            <i class="fas fa-info-circle mr-2"></i>기본 정보
+                        </h2>
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div style="position:relative">
-                                <label class="block text-sm font-medium text-gray-700 mb-1">거래처 <span class="text-red-500">*</span></label>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">거래처 <span class="text-red-500">*</span></label>
                                 <input type="text" id="clientSearch" placeholder="거래처명 입력 후 Enter" autocomplete="off"
                                     onkeydown="handleClientEnter(event)"
                                     class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
@@ -377,26 +379,76 @@ function orderFormDistPage(c: Context<HonoEnv>) {
                                 <div id="clientModal"></div>
                             </div>
                             <div>
-                                <label class="block text-sm font-medium text-gray-700 mb-1">납품일</label>
-                                <input type="date" id="distDeliveryDate" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                                <label class="block text-sm font-medium text-gray-700 mb-2">우선순위</label>
+                                <select id="distPriority" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                                    <option value="NORMAL">일반</option>
+                                    <option value="URGENT">긴급</option>
+                                </select>
                             </div>
                             <div>
-                                <label class="block text-sm font-medium text-gray-700 mb-1">전화번호</label>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">전화번호</label>
                                 <input type="tel" id="contactPhone" placeholder="거래처 선택 시 자동 입력"
                                     class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
                             </div>
                             <div>
-                                <label class="block text-sm font-medium text-gray-700 mb-1">휴대전화</label>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">휴대전화</label>
                                 <input type="tel" id="contactMobile" placeholder="거래처 선택 시 자동 입력"
                                     class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">배송처</label>
+                                <input type="text" id="receptionLocation" placeholder="예: 동산인쇄" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">배송처 주소</label>
+                                <div class="flex gap-2">
+                                    <input type="text" id="deliveryAddress" placeholder="예: 서울시 중구 을지로 123" class="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                                    <button type="button" onclick="openPostcodeSearch(function(r){ var el=document.getElementById('deliveryAddress'); el.value=(r.postal?'['+r.postal+'] ':'')+r.address; el.focus(); })" class="px-3 py-2 text-sm font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 rounded border border-blue-200 whitespace-nowrap">
+                                        <i class="fas fa-search mr-1"></i>주소 검색
+                                    </button>
+                                </div>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">출고방법</label>
+                                <select id="distDeliveryMethod" onchange="onDistDeliveryMethodChange()" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                                    <option value="대신택배">대신택배</option>
+                                    <option value="대신화물">대신화물</option>
+                                    <option value="한진택배">한진택배</option>
+                                    <option value="직배">직배</option>
+                                    <option value="용차">용차</option>
+                                    <option value="퀵">퀵</option>
+                                    <option value="방문수령">방문수령</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label id="distShippingPaymentLabel" class="block text-sm font-medium text-gray-700 mb-2">선불/착불</label>
+                                <select id="distShippingPayment" disabled class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                                    <option value="">해당없음</option>
+                                    <option value="PREPAID">선불</option>
+                                    <option value="COLLECT">착불</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">납품일</label>
+                                <input type="date" id="distDeliveryDate" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">납품시간</label>
+                                <div class="flex items-center gap-2">
+                                    <select id="distDeliveryTimeHour" onchange="onDistDeliveryTimeHourChange()" class="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                                    </select>
+                                    <span class="text-gray-500 font-medium">:</span>
+                                    <select id="distDeliveryTimeMinute" class="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                                    </select>
+                                </div>
                             </div>
                         </div>
                     </div>
 
                     <!-- 품목 테이블 -->
                     <div class="mb-6">
-                        <div class="flex items-center justify-between mb-3">
-                            <h2 class="text-lg font-bold text-gray-700"><i class="fas fa-box mr-2"></i>주문 품목</h2>
+                        <div class="flex items-center justify-between mb-4 border-b pb-2">
+                            <h2 class="text-xl font-bold text-gray-800"><i class="fas fa-box mr-2"></i>주문 품목</h2>
                             <button type="button" onclick="addItemRow()" class="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700">
                                 <i class="fas fa-plus mr-1"></i>품목 추가
                             </button>
@@ -415,46 +467,6 @@ function orderFormDistPage(c: Context<HonoEnv>) {
                                 </thead>
                                 <tbody id="distItemsBody"></tbody>
                             </table>
-                        </div>
-                    </div>
-
-                    <!-- 배송 정보 -->
-                    <div class="mb-6">
-                        <h2 class="text-lg font-bold text-gray-700 mb-3"><i class="fas fa-shipping-fast mr-2"></i>배송 정보</h2>
-                        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-                            <div>
-                                <label class="block text-sm font-medium text-gray-700 mb-1">출고방법</label>
-                                <select id="distDeliveryMethod" onchange="onDistDeliveryMethodChange()" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
-                                    <option value="대신택배">대신택배</option>
-                                    <option value="대신화물">대신화물</option>
-                                    <option value="한진택배">한진택배</option>
-                                    <option value="직배">직배</option>
-                                    <option value="용차">용차</option>
-                                    <option value="퀵">퀵</option>
-                                    <option value="방문수령">방문수령</option>
-                                </select>
-                            </div>
-                            <div>
-                                <label class="block text-sm font-medium text-gray-700 mb-1">선불/착불</label>
-                                <select id="distShippingPayment" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
-                                    <option value="">해당없음</option>
-                                    <option value="PREPAID">선불</option>
-                                    <option value="COLLECT">착불</option>
-                                </select>
-                            </div>
-                            <div>
-                                <label class="block text-sm font-medium text-gray-700 mb-1">배송처</label>
-                                <input type="text" id="receptionLocation" placeholder="예: 동산인쇄" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
-                            </div>
-                            <div class="md:col-span-3">
-                                <label class="block text-sm font-medium text-gray-700 mb-1">배송처 주소</label>
-                                <div class="flex gap-2">
-                                    <input type="text" id="deliveryAddress" placeholder="예: 서울시 중구 을지로 123" class="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
-                                    <button type="button" onclick="openPostcodeSearch(function(r){ var el=document.getElementById('deliveryAddress'); el.value=(r.postal?'['+r.postal+'] ':'')+r.address; el.focus(); })" class="px-3 py-2 text-sm font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 rounded border border-blue-200 whitespace-nowrap">
-                                        <i class="fas fa-search mr-1"></i>주소 검색
-                                    </button>
-                                </div>
-                            </div>
                         </div>
                     </div>
 
