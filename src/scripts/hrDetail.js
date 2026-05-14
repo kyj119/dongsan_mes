@@ -593,11 +593,95 @@ window.hrdLoadDetail = async function() {
       // 초기 상태는 읽기 전용 회색 배경
       var inputs = document.querySelectorAll('#hrdManageCard .hrd-input');
       for (var i = 0; i < inputs.length; i++) inputs[i].classList.add('bg-gray-50');
+      // 급여 자동 계산 바인딩 + 고정연장 미리보기
+      hrdBindSalaryCalc();
+      hrdUpdateOvertimePreview();
     }
   } catch (e) {
     console.error('직원 정보 로드 실패', e);
   }
 };
+
+// ============================================================================
+// base_salary ↔ hourly_rate 자동 계산 + 고정연장 미리보기
+// ============================================================================
+function hrdGetPayType() {
+  var radios = document.querySelectorAll('#hrdManageCard input[name="pay_type"]');
+  for (var i = 0; i < radios.length; i++) {
+    if (radios[i].checked) return radios[i].value;
+  }
+  return 'VARIABLE';
+}
+
+function hrdUpdateOvertimePreview() {
+  var preview = document.getElementById('hrdOvertimePreview');
+  if (!preview) return;
+
+  var hourlyEl = document.querySelector('#hrdManageCard [data-field="hourly_rate"]');
+  var otHoursEl = document.querySelector('#hrdManageCard [data-field="overtime_daily_hours"]');
+  var otDaysEl = document.querySelector('#hrdManageCard [data-field="overtime_work_days"]');
+  var baseSalaryEl = document.querySelector('#hrdManageCard [data-field="base_salary"]');
+
+  var hourly = hrdParseMoneyInput(hourlyEl ? hourlyEl.value : '');
+  var otHours = otHoursEl ? parseFloat(otHoursEl.value) || 0 : 0;
+  var otDays = otDaysEl ? parseFloat(otDaysEl.value) || 22 : 22;
+  var baseSalary = hrdParseMoneyInput(baseSalaryEl ? baseSalaryEl.value : '');
+
+  if (!hourly || !otHours) {
+    preview.innerHTML = '';
+    return;
+  }
+
+  var otPay = Math.round(hourly * otHours * otDays * 1.5);
+  var monthTotal = (baseSalary || 0) + otPay;
+  preview.innerHTML = '<p class="text-xs text-blue-600">' +
+    '고정연장: ' + hourly.toLocaleString('ko-KR') + '원 × ' + otHours + 'h × ' + otDays + '일 × 1.5 = ' + otPay.toLocaleString('ko-KR') + '원' +
+    ' | 월 합계: ' + monthTotal.toLocaleString('ko-KR') + '원</p>';
+}
+
+var HRD_SALARY_CALC_BOUND = false;
+function hrdBindSalaryCalc() {
+  if (HRD_SALARY_CALC_BOUND) return;
+  HRD_SALARY_CALC_BOUND = true;
+
+  var baseSalaryEl = document.querySelector('#hrdManageCard [data-field="base_salary"]');
+  var hourlyRateEl = document.querySelector('#hrdManageCard [data-field="hourly_rate"]');
+  var otHoursEl = document.querySelector('#hrdManageCard [data-field="overtime_daily_hours"]');
+  var otDaysEl = document.querySelector('#hrdManageCard [data-field="overtime_work_days"]');
+
+  if (baseSalaryEl) {
+    baseSalaryEl.addEventListener('input', function() {
+      if (hrdGetPayType() !== 'VARIABLE') { hrdUpdateOvertimePreview(); return; }
+      var base = hrdParseMoneyInput(baseSalaryEl.value);
+      if (base != null && base > 0 && hourlyRateEl) {
+        var hourly = Math.round(base / 209);
+        hourlyRateEl.value = hrdFmtMoneyInput(hourly);
+      }
+      hrdUpdateOvertimePreview();
+    });
+  }
+
+  if (hourlyRateEl) {
+    hourlyRateEl.addEventListener('input', function() {
+      if (hrdGetPayType() !== 'VARIABLE') { hrdUpdateOvertimePreview(); return; }
+      var hourly = hrdParseMoneyInput(hourlyRateEl.value);
+      if (hourly != null && hourly > 0 && baseSalaryEl) {
+        var base = hourly * 209;
+        baseSalaryEl.value = hrdFmtMoneyInput(base);
+      }
+      hrdUpdateOvertimePreview();
+    });
+  }
+
+  if (otHoursEl) otHoursEl.addEventListener('input', hrdUpdateOvertimePreview);
+  if (otDaysEl) otDaysEl.addEventListener('input', hrdUpdateOvertimePreview);
+
+  // pay_type 라디오 변경 시 갱신
+  var radios = document.querySelectorAll('#hrdManageCard input[name="pay_type"]');
+  for (var i = 0; i < radios.length; i++) {
+    radios[i].addEventListener('change', hrdUpdateOvertimePreview);
+  }
+}
 
 (function hrdInit() {
   var input = document.getElementById('hrdMonth');

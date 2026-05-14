@@ -27,7 +27,8 @@ coreRouter.post('/preview', async (c) => {
     if (!employeeId || !payPeriod) return c.json({ success: false, error: 'employee_id, pay_period 필요' }, 400)
 
     const emp = await c.env.DB.prepare(
-      `SELECT id, name, base_salary, dependents_count, children_under_20_count, income_tax_table_option
+      `SELECT id, name, base_salary, hourly_rate, overtime_daily_hours, overtime_work_days,
+              dependents_count, children_under_20_count, income_tax_table_option
        FROM employees WHERE id = ?`
     ).bind(employeeId).first<any>()
     if (!emp) return c.json({ success: false, error: '직원 없음' }, 404)
@@ -46,8 +47,10 @@ coreRouter.post('/preview', async (c) => {
 
     const base_salary = Number(body.base_salary ?? emp.base_salary ?? 0)
 
-    // 시간 입력 있으면 자동 계산, 아니면 금액 직접 입력 사용
-    const overtime_hours = Number(body.overtime_hours || 0)
+    // 고정연장시간: overtime_daily_hours × overtime_work_days (기본 0)
+    const fixedOvertimeHours = (Number(emp.overtime_daily_hours) || 0) * (Number(emp.overtime_work_days) || 22)
+    // body.overtime_hours 입력 시 수동 오버라이드, 없으면 고정연장시간 자동 적용
+    const overtime_hours = body.overtime_hours != null ? Number(body.overtime_hours) : fixedOvertimeHours
     const night_hours = Number(body.night_hours || 0)
     const holiday_hours = Number(body.holiday_hours || 0)
     const otSettings = await loadOvertimeSettings(c.env.DB)
@@ -167,7 +170,8 @@ coreRouter.post('/save', requireRole('ADMIN', 'MANAGER'), async (c) => {
 
     // 1) 직원 + 설정 로드
     const emp = await c.env.DB.prepare(
-      `SELECT id, base_salary, dependents_count, income_tax_table_option
+      `SELECT id, base_salary, hourly_rate, overtime_daily_hours, overtime_work_days,
+              dependents_count, income_tax_table_option
        FROM employees WHERE id = ?`
     ).bind(employeeId).first<any>()
     if (!emp) return c.json({ success: false, error: '직원 없음' }, 404)
@@ -196,8 +200,10 @@ coreRouter.post('/save', requireRole('ADMIN', 'MANAGER'), async (c) => {
 
     const base_salary = Number(body.base_salary ?? emp.base_salary ?? 0)
 
-    // 시간 → 금액 자동 계산 (body에 금액이 없고 시간만 있을 때)
-    const overtime_hours_in = Number(body.overtime_hours || 0)
+    // 고정연장시간: overtime_daily_hours × overtime_work_days (기본 0)
+    const fixedOvertimeHours = (Number(emp.overtime_daily_hours) || 0) * (Number(emp.overtime_work_days) || 22)
+    // body.overtime_hours 입력 시 수동 오버라이드, 없으면 고정연장시간 자동 적용
+    const overtime_hours_in = body.overtime_hours != null ? Number(body.overtime_hours) : fixedOvertimeHours
     const night_hours_in = Number(body.night_hours || 0)
     const holiday_hours_in = Number(body.holiday_hours || 0)
     const otSettings = await loadOvertimeSettings(c.env.DB)
@@ -256,7 +262,7 @@ coreRouter.post('/save', requireRole('ADMIN', 'MANAGER'), async (c) => {
     })
 
     const work_days = Number(body.work_days || 0)
-    const overtime_hours = Number(body.overtime_hours || 0)
+    const overtime_hours = overtime_hours_in
     const absent_days = Number(body.absent_days || 0)
     const late_count = Number(body.late_count || 0)
     const leave_used_days = Number(body.leave_used_days || 0)
@@ -386,13 +392,30 @@ coreRouter.post('/batch', requireRole('ADMIN', 'MANAGER'), async (c) => {
 
       // preview 로직 재사용 — 직원 고정수당 + 보험 토글을 기본값으로 반영
       const empRow = await c.env.DB.prepare(
-        `SELECT base_salary, dependents_count, income_tax_table_option FROM employees WHERE id = ?`
+        `SELECT base_salary, hourly_rate, overtime_daily_hours, overtime_work_days,
+                dependents_count, income_tax_table_option FROM employees WHERE id = ?`
       ).bind(emp.id).first<any>()
       const empDefaults = await loadEmployeeDefaults(c.env.DB, emp.id)
       const base_salary = Number(empRow?.base_salary || 0)
       const dependents = Math.max(1, Number(empRow?.dependents_count || 1))
       const taxOption = String(empRow?.income_tax_table_option || '100')
       const year = Number(payPeriod.slice(0, 4))
+
+      // 고정연장시간 자동 계산
+      const batchFixedOtHours = (Number(empRow?.overtime_daily_hours) || 0) * (Number(empRow?.overtime_work_days) || 22)
+      const otSettings = await loadOvertimeSettings(c.env.DB)
+      const batchOt = calcOvertimePay({
+        baseSalary: base_salary,
+        monthlyWorkHours: otSettings.monthlyWorkHours,
+        overtimeHours: batchFixedOtHours,
+        nightHours: 0,
+        holidayHours: 0,
+        overtimeMul: otSettings.overtimeMul,
+        nightMul: otSettings.nightMul,
+        holidayMul: otSettings.holidayMul,
+        holidayOverMul: otSettings.holidayOverMul,
+      })
+      const batch_overtime_pay = batchOt.overtime_pay
 
       // 고정 수당
       const bonus_fixed = empDefaults.special_bonus_fixed
@@ -405,8 +428,8 @@ coreRouter.post('/batch', requireRole('ADMIN', 'MANAGER'), async (c) => {
       const nontax_meal = Math.min(meal_total, mealMax)
       const tax_meal = meal_total - nontax_meal
 
-      const total_salary = base_salary + bonus_fixed + other_allowance_fixed_total + meal_total
-      const taxable_pay = base_salary + bonus_fixed + other_allowance_fixed_total + tax_meal
+      const total_salary = base_salary + batch_overtime_pay + bonus_fixed + other_allowance_fixed_total + meal_total
+      const taxable_pay = base_salary + batch_overtime_pay + bonus_fixed + other_allowance_fixed_total + tax_meal
 
       const d = await calcDeductions(c.env.DB, {
         taxablePay: taxable_pay, dependents, taxOption, year,
@@ -424,6 +447,7 @@ coreRouter.post('/batch', requireRole('ADMIN', 'MANAGER'), async (c) => {
       await c.env.DB.prepare(
         `INSERT INTO payroll (
           employee_id, pay_period, pay_date, base_salary,
+          overtime_pay, overtime_hours,
           meal_allowance, other_allowance, bonus,
           nontax_meal, taxable_pay, total_salary,
           national_pension, health_insurance, long_term_care_insurance,
@@ -431,9 +455,10 @@ coreRouter.post('/batch', requireRole('ADMIN', 'MANAGER'), async (c) => {
           employer_national_pension, employer_health_insurance, employer_long_term_care,
           employer_employment_insurance, employer_industrial_accident,
           total_deduction, net_pay, status, created_by, entity_id, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'PENDING', ?, ?, datetime('now'), datetime('now'))`
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'PENDING', ?, ?, datetime('now'), datetime('now'))`
       ).bind(
         emp.id, payPeriod, pay_date, base_salary,
+        batch_overtime_pay, batchFixedOtHours,
         meal_total, other_allowance_fixed_total, bonus_fixed,
         nontax_meal, taxable_pay, total_salary,
         d.national_pension, d.health_insurance, d.long_term_care_insurance,
