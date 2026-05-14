@@ -51,6 +51,21 @@ async function lcLoadEmployees() {
       opts += '<option value="' + e.id + '">' + (e.employee_code || '') + ' ' + (e.name || '') + ' (' + (e.department || '-') + ')</option>';
     }
     sel.innerHTML = opts;
+    // 직원 선택 시 시급 자동 채움
+    sel.onchange = function() {
+      var empId = parseInt(sel.value);
+      if (!empId) return;
+      var emp = lcEmployees.find(function(e) { return e.id === empId; });
+      if (emp) {
+        var rateEl = document.getElementById('lcHourlyRate');
+        if (rateEl && !rateEl.value) rateEl.value = emp.hourly_rate || '';
+        var deptEl = document.getElementById('lcJobDesc');
+        if (deptEl && !deptEl.value) {
+          var deptName = {'PRODUCTION':'생산','DESIGN':'디자인','ADMIN_DEPT':'관리','SALES':'영업','LOGISTICS':'물류','FINISHING':'후가공'}[emp.department] || emp.department || '';
+          deptName && (deptEl.value = deptName);
+        }
+      }
+    };
   } catch (e) {
     console.error('[laborContracts] 직원 로드 실패', e);
   }
@@ -265,9 +280,21 @@ window.lcDelete = async function(id) {
   }
 };
 
-// ===== 미리보기 (새 창) =====
-window.lcPreview = function(id) {
-  window.open('/api/hr/contracts/' + id + '/preview', '_blank', 'width=900,height=800');
+// ===== 미리보기 (새 창, JWT 인증 포함) =====
+window.lcPreview = async function(id) {
+  try {
+    var token = localStorage.getItem('token');
+    var res = await fetch('/api/hr/contracts/' + id + '/preview', {
+      headers: { 'Authorization': 'Bearer ' + token }
+    });
+    if (!res.ok) throw new Error('미리보기 실패: ' + res.status);
+    var html = await res.text();
+    var w = window.open('', '_blank', 'width=900,height=800');
+    w.document.write(html);
+    w.document.close();
+  } catch (e) {
+    alert('미리보기 오류: ' + e.message);
+  }
 };
 
 // ===== 서명 캔버스 =====
