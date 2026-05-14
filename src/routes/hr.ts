@@ -1331,6 +1331,7 @@ hrRouter.get('/contracts/:id/preview', requireRole('ADMIN', 'MANAGER'), async (c
         address: row.employee_address || '',
       },
       contract: {
+        contract_type: row.contract_type || 'HOURLY',
         contract_date: row.contract_date || '',
         contract_start_date: row.contract_start_date || '',
         contract_end_date: row.contract_end_date || null,
