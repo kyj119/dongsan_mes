@@ -71,6 +71,7 @@ import messageTemplatesRouter from './routes/messageTemplates'
 import faxRouter from './routes/fax'
 import printSystemRouter from './routes/printSystem'
 import finishingRouter from './routes/finishing'
+import deliveryAnalyticsRouter from './routes/deliveryAnalytics'
 import filesRouter from './routes/files'
 import priceListRouter from './routes/priceList'
 import quotationsRouter from './routes/quotations'
@@ -249,6 +250,7 @@ app.route('/api/activity-logs', activityLogsRouter)
 app.route('/api/notifications', notificationsRouter)
 app.route('/api/search', searchRouter)
 app.route('/api/production-reports', productionReportsRouter)
+app.route('/api/delivery-analytics', deliveryAnalyticsRouter)
 app.route('/api/costs', costsRouter)
 app.route('/api/forecast', forecastRouter)
 app.route('/api/emails', emailsRouter)

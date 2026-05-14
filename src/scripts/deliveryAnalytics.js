@@ -279,5 +279,28 @@ function openOrder(orderId) {
   window.location.href = `/orders?id=${orderId}`;
 }
 
+// ===== CSV 내보내기 =====
+async function exportDeliveryAnalyticsCsv() {
+  try {
+    var from = document.getElementById('dateFrom').value;
+    var to = document.getElementById('dateTo').value;
+    if (!from || !to) {
+      showToast('기간을 선택해주세요.', 'warning');
+      return;
+    }
+    var res = await authFetch('/api/delivery-analytics/export/csv?from=' + from + '&to=' + to);
+    if (!res.ok) throw new Error('서버 오류');
+    var blob = await res.blob();
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = '납기분석_' + from + '_' + to + '.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+  } catch (e) {
+    showToast('CSV 내보내기 실패: ' + e.message, 'error');
+  }
+}
+
 // ===== 페이지 로드 시 초기화 =====
 window.addEventListener('load', initDeliveryAnalytics);

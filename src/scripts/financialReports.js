@@ -2,6 +2,7 @@
 var pnlData = null;
 var monthlyData = null;
 var monthlyChart = null;
+var currentFinancialTab = 'pnl';
 
 function fmt(n) { return (n || 0).toLocaleString(); }
 // 초기화는 파일 맨 아래에서 실행 (window.* 함수 정의 이후)
@@ -356,6 +357,7 @@ function renderBalanceSnapshot(d) {
 // ============================================================
 
 window.switchFinancialTab = function(tab) {
+  currentFinancialTab = tab;
   ['pnl', 'monthly', 'snapshot'].forEach(function(t) {
     var btn = document.getElementById('tab' + (t === 'pnl' ? 'Pnl' : t === 'monthly' ? 'Monthly' : 'Snapshot'));
     var panel = document.getElementById(t + 'Panel');
@@ -373,6 +375,41 @@ window.switchFinancialTab = function(tab) {
       panel.classList.add('hidden');
     }
   });
+};
+
+// ============================================================
+// CSV 내보내기
+// ============================================================
+window.exportFinancialCsv = async function() {
+  try {
+    var url;
+    var filename;
+    if (currentFinancialTab === 'monthly') {
+      var year = document.getElementById('monthlyYear').value;
+      url = '/api/financial/export/csv?type=monthly&year=' + year;
+      filename = '월별추이_' + year + '.csv';
+    } else {
+      var from = document.getElementById('pnlFromDate').value;
+      var to = document.getElementById('pnlToDate').value;
+      if (!from || !to) {
+        showToast('기간을 선택해주세요.', 'warning');
+        return;
+      }
+      url = '/api/financial/export/csv?type=pnl&from=' + from + '&to=' + to;
+      filename = '손익계산서_' + from + '_' + to + '.csv';
+    }
+    var res = await authFetch(url);
+    if (!res.ok) throw new Error('서버 오류');
+    var blob = await res.blob();
+    var blobUrl = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = blobUrl;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(blobUrl);
+  } catch(e) {
+    showToast('CSV 내보내기 실패: ' + e.message, 'error');
+  }
 };
 
 // ============================================================

@@ -55,6 +55,7 @@ export function deliveryAnalyticsPage(c: Context<HonoEnv>) {
             <button onclick="resetFilters()" class="ds-btn ds-btn-ghost ds-btn-sm">
               <i class="fas fa-redo" style="margin-right:4px"></i>초기화
             </button>
+            <button onclick="exportDeliveryAnalyticsCsv()" class="px-3 py-1 bg-gray-600 text-white text-sm rounded hover:bg-gray-700"><i class="fas fa-file-csv mr-1"></i>CSV</button>
           </div>
         </div>
 
