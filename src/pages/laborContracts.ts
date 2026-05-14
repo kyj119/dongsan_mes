@@ -129,7 +129,7 @@ export function laborContractsPage(c: Context<HonoEnv>) {
               </div>
               <div class="grid grid-cols-3 gap-3">
                 <div>
-                  <label class="text-xs text-gray-600 block mb-1" id="lcRateLabel">월 급여 총액 (원)</label>
+                  <label class="text-xs text-gray-600 block mb-1">기본급 (원)</label>
                   <input type="number" id="lcTotalWage" class="w-full border rounded px-2 py-1 text-sm" placeholder="예: 2700000" oninput="lcCalcWage()">
                   <input type="hidden" id="lcHourlyRate" value="0">
                   <input type="hidden" id="lcBaseSalary" value="0">
