@@ -16,6 +16,7 @@ import dashboardRouter from './routes/dashboard'
 import ledgerRouter from './routes/ledger'
 import inventoryRouter from './routes/inventory'
 import hrRouter from './routes/hr'
+import hrSelfRouter from './routes/hrSelf'
 import productionRouter from './routes/production'
 import aiAnalysisRouter from './routes/aiAnalysis'
 import aiLayoutRouter from './routes/aiLayout'
@@ -152,6 +153,8 @@ import { yearEndPage } from './pages/yearEnd'
 import { yearEndManagePage } from './pages/yearEndManage'
 import { insuranceReportsPage } from './pages/insuranceReports'
 import { messagesPage } from './pages/messages'
+import { laborContractsPage } from './pages/laborContracts'
+import { employeeSelfPage } from './pages/employeeSelf'
 // costAnalysisPage → productionReports 통합됨
 import { portalLoginPage } from './pages/portal/portalLogin'
 import { portalDashboardPage } from './pages/portal/portalDashboard'
@@ -208,8 +211,10 @@ app.use('/api/portal/auth/login', rateLimitMiddleware(5, 60000))
 app.use('/api/users/change-password', rateLimitMiddleware(5, 60000))  // 분당 5회
 app.use('/api/portal/auth/change-password', rateLimitMiddleware(5, 60000))  // 분당 5회
 app.use('/api/auth/refresh', rateLimitMiddleware(10, 60000))  // 분당 10회
+app.use('/api/hr/self-auth', rateLimitMiddleware(5, 60000))  // 분당 5회
 
-// Mount API routers
+// Mount API routers (hrSelf는 인증 미들웨어 없이 먼저 마운트)
+app.route('/api/hr', hrSelfRouter)
 app.route('/api/auth', authRouter)
 app.route('/api/dashboard', dashboardRouter)
 app.route('/api/ledger', ledgerRouter)
@@ -358,6 +363,7 @@ app.get('/production', pageAuthMiddleware, requirePagePermission('/production'),
 app.get('/schedule', pageAuthMiddleware, requirePagePermission('/schedule'), schedulePage)
 app.get('/hr', pageAuthMiddleware, requirePagePermission('/hr'), hrPage)
 app.get('/hr/:id{[0-9]+}', pageAuthMiddleware, requirePagePermission('/hr'), hrDetailPage)
+app.get('/labor-contracts', pageAuthMiddleware, requirePagePermission('/labor-contracts'), laborContractsPage)
 app.get('/attendance', pageAuthMiddleware, requirePagePermission('/attendance'), attendancePage)
 app.get('/users', pageAuthMiddleware, requireAdminPage(), usersPage)
 app.get('/post-processing', pageAuthMiddleware, requirePagePermission('/post-processing'), postProcessingPage)
@@ -429,6 +435,9 @@ app.get('/kakao', (c) => c.redirect('/messages'))
 
 app.get('/production-daily', pageAuthMiddleware, requirePagePermission('/production-daily'), productionDailyPage)
 app.get('/material-forecast', pageAuthMiddleware, requirePagePermission('/material-forecast'), materialForecastPage)
+
+// 직원 셀프서비스 (인증 불필요)
+app.get('/employee-self', employeeSelfPage)
 
 // Portal 페이지 라우트 (고객 포털)
 app.get('/portal/login', portalLoginPage)

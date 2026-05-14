@@ -86,6 +86,13 @@ export function dashboardPage(c: Context<HonoEnv>) {
                 </div>
             </div>
 
+            <!-- 계약 만료 임박 경고 카드 -->
+            <div id="dashContractExpiring" class="hidden ds-card mb-6 cursor-pointer" style="border-left:4px solid var(--c-warning)" onclick="location.href='/labor-contracts?status=expiring'">
+              <div class="text-sm" style="color:var(--c-text-secondary)"><i class="fas fa-file-contract" style="color:var(--c-warning);margin-right:4px"></i>계약 만료 임박</div>
+              <div class="text-2xl font-bold" style="color:var(--c-warning)" id="dashContractExpiringCount">0</div>
+              <div class="text-xs" style="color:var(--c-text-muted)">30일 이내 만료 — 클릭하여 확인</div>
+            </div>
+
             <!-- 검수 대기 경고 카드 (PENDING_REVIEW 건수 > 0 시 노출) -->
             <div id="dashPendingReview" class="hidden bg-white rounded-lg border border-red-200 shadow-sm hover:shadow-md transition-shadow p-4 mb-6 cursor-pointer" onclick="location.href='/inspections'">
                 <div class="text-sm text-gray-600"><i class="fas fa-exclamation-triangle text-red-400 mr-1"></i>검수 대기</div>

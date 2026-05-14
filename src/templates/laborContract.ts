@@ -1,0 +1,387 @@
+// 근로계약서(시급직) HTML 템플릿 — 인쇄/PDF 출력용
+// entity 파라미터로 법인별 회사명/대표자/주소 자동 치환
+
+function formatDate(dateStr: string): string {
+  if (!dateStr) return ''
+  const d = new Date(dateStr)
+  const y = d.getFullYear()
+  const m = d.getMonth() + 1
+  const day = d.getDate()
+  return `${y}년 ${m}월 ${day}일`
+}
+
+function formatNumber(n: number): string {
+  return n.toLocaleString('ko-KR')
+}
+
+export function renderLaborContractHTML(data: {
+  entity: { name: string; representative: string; address: string }
+  employee: { name: string; birth_date: string; phone: string; address: string }
+  contract: {
+    contract_date: string
+    contract_start_date: string
+    contract_end_date: string | null
+    wage_start_date: string
+    wage_end_date: string
+    hourly_rate: number
+    work_type: string
+    job_description: string
+    probation_months: number
+    signature_employee_base64?: string
+    signature_employer_base64?: string
+  }
+}): string {
+  const { entity, employee, contract } = data
+
+  const contractPeriod = contract.contract_end_date
+    ? `${formatDate(contract.contract_start_date)} ~ ${formatDate(contract.contract_end_date)}`
+    : `${formatDate(contract.contract_start_date)} ~ 기간의 정함이 없음`
+
+  const wagePeriod = `${formatDate(contract.wage_start_date)} ~ ${formatDate(contract.wage_end_date)}`
+
+  const workTypeText = contract.work_type === 'SHIFT'
+    ? '교대제 (별도 근무일정표에 따름)'
+    : '통상근무 (09:00 ~ 18:00, 휴게시간 12:00 ~ 13:00)'
+
+  const employerSig = contract.signature_employer_base64
+    ? `<img src="${contract.signature_employer_base64}" style="height:50px;" alt="사용자 인감">`
+    : '<span style="display:inline-block;width:50px;height:50px;border:1px dashed #999;"></span>'
+
+  const employeeSig = contract.signature_employee_base64
+    ? `<img src="${contract.signature_employee_base64}" style="height:50px;" alt="근로자 서명">`
+    : '<span style="display:inline-block;width:50px;height:50px;border:1px dashed #999;"></span>'
+
+  return `<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>근로계약서(시급직)</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Malgun Gothic', sans-serif;
+      font-size: 13px;
+      line-height: 1.7;
+      color: #111;
+      background: #e5e7eb;
+    }
+
+    @page { size: A4; margin: 15mm 15mm; }
+    @media print {
+      .no-print { display: none !important; }
+      body { background: #fff; }
+      .page-wrapper { padding: 0; max-width: none; }
+      .contract { box-shadow: none; border: none; margin: 0; }
+    }
+
+    .no-print {
+      position: sticky; top: 0; z-index: 100;
+      background: #1e40af; color: #fff;
+      padding: 12px 24px; display: flex; gap: 12px; align-items: center;
+      box-shadow: 0 2px 8px rgba(0,0,0,.2);
+    }
+    .no-print .title { font-size: 16px; font-weight: 600; flex: 1; }
+    .no-print button {
+      padding: 8px 18px; border: none; border-radius: 6px;
+      font-size: 14px; cursor: pointer; font-weight: 600;
+    }
+    .no-print .btn-print { background: #fff; color: #1e40af; }
+    .no-print .btn-print:hover { background: #dbeafe; }
+    .no-print .btn-close { background: #ef4444; color: #fff; }
+    .no-print .btn-close:hover { background: #dc2626; }
+
+    .page-wrapper { max-width: 800px; margin: 0 auto; padding: 24px 16px; }
+    .contract {
+      background: #fff;
+      padding: 40px 48px;
+      box-shadow: 0 2px 8px rgba(0,0,0,.08);
+      border: 1px solid #e5e7eb;
+    }
+
+    .contract-title {
+      text-align: center;
+      font-size: 24px;
+      font-weight: 700;
+      letter-spacing: 6px;
+      margin-bottom: 24px;
+      padding-bottom: 12px;
+      border-bottom: 2px solid #111;
+    }
+
+    .preamble {
+      margin-bottom: 16px;
+      text-indent: 1em;
+    }
+
+    .article {
+      margin-bottom: 14px;
+    }
+    .article-title {
+      font-weight: 700;
+      font-size: 14px;
+      margin-bottom: 4px;
+    }
+    .article-body {
+      padding-left: 1em;
+    }
+    .article-body p {
+      margin-bottom: 2px;
+    }
+
+    .party-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 8px 0 16px;
+      font-size: 13px;
+    }
+    .party-table th,
+    .party-table td {
+      border: 1px solid #333;
+      padding: 6px 10px;
+      text-align: left;
+    }
+    .party-table th {
+      background: #f3f4f6;
+      font-weight: 600;
+      width: 25%;
+      text-align: center;
+    }
+    .party-table .header-cell {
+      background: #dbeafe;
+      font-weight: 700;
+      text-align: center;
+    }
+
+    .sub-items {
+      padding-left: 1.5em;
+      list-style: none;
+    }
+    .sub-items li { margin-bottom: 2px; }
+    .sub-items li::before { content: "- "; }
+
+    .signature-section {
+      margin-top: 32px;
+      text-align: center;
+      font-size: 14px;
+    }
+    .sig-date {
+      font-size: 16px;
+      font-weight: 600;
+      margin-bottom: 24px;
+    }
+    .sig-block {
+      display: flex;
+      justify-content: space-between;
+      gap: 40px;
+      margin-top: 20px;
+    }
+    .sig-party {
+      flex: 1;
+      text-align: left;
+      padding: 16px;
+      border: 1px solid #d1d5db;
+      border-radius: 4px;
+    }
+    .sig-party-title {
+      font-weight: 700;
+      font-size: 15px;
+      margin-bottom: 8px;
+      padding-bottom: 4px;
+      border-bottom: 1px solid #e5e7eb;
+    }
+    .sig-party p {
+      margin-bottom: 4px;
+      font-size: 13px;
+    }
+    .sig-stamp {
+      text-align: right;
+      margin-top: 8px;
+    }
+  </style>
+</head>
+<body>
+  <div class="no-print">
+    <span class="title">근로계약서(시급직)</span>
+    <button class="btn-print" onclick="window.print()">인쇄</button>
+    <button class="btn-close" onclick="window.close()">닫기</button>
+  </div>
+
+  <div class="page-wrapper">
+    <div class="contract">
+      <div class="contract-title">근 로 계 약 서 (시급직)</div>
+
+      <p class="preamble">
+        ${entity.name} (이하 "사용자"라 한다)와(과) ${employee.name} (이하 "근로자"라 한다)는
+        다음과 같이 근로계약을 체결하고 이를 성실히 이행할 것을 약정한다.
+      </p>
+
+      <!-- 제1조 -->
+      <div class="article">
+        <div class="article-title">제1조 [양당사자]</div>
+        <table class="party-table">
+          <tr>
+            <td class="header-cell" colspan="4">사 용 자</td>
+          </tr>
+          <tr>
+            <th>상호(법인명)</th>
+            <td>${entity.name}</td>
+            <th>대표자</th>
+            <td>${entity.representative}</td>
+          </tr>
+          <tr>
+            <th>소재지</th>
+            <td colspan="3">${entity.address}</td>
+          </tr>
+          <tr>
+            <td class="header-cell" colspan="4">근 로 자</td>
+          </tr>
+          <tr>
+            <th>성명</th>
+            <td>${employee.name}</td>
+            <th>생년월일</th>
+            <td>${employee.birth_date}</td>
+          </tr>
+          <tr>
+            <th>연락처</th>
+            <td>${employee.phone}</td>
+            <th>주소</th>
+            <td>${employee.address}</td>
+          </tr>
+        </table>
+      </div>
+
+      <!-- 제2조 -->
+      <div class="article">
+        <div class="article-title">제2조 [담당업무 및 취업장소]</div>
+        <div class="article-body">
+          <p>1. 담당업무: ${contract.job_description}</p>
+          <p>2. 취업장소: ${entity.address}</p>
+        </div>
+      </div>
+
+      <!-- 제3조 -->
+      <div class="article">
+        <div class="article-title">제3조 [근로계약기간 및 수습기간]</div>
+        <div class="article-body">
+          <p>1. 근로계약기간: ${contractPeriod}</p>
+          <p>2. 임금적용기간: ${wagePeriod}</p>
+          <p>3. 수습기간: 입사일로부터 ${contract.probation_months}개월</p>
+          <p style="padding-left:1em;font-size:12px;color:#555;">
+            (수습기간 중에는 해당 임금의 90%를 지급하며, 최저임금 미만이 되지 않도록 한다)
+          </p>
+        </div>
+      </div>
+
+      <!-- 제4조 -->
+      <div class="article">
+        <div class="article-title">제4조 [근로시간 및 휴게시간]</div>
+        <div class="article-body">
+          <p>1. 근무형태: ${workTypeText}</p>
+          <p>2. 연장, 야간, 휴일근로는 근로기준법에 따라 사용자와 근로자가 합의하여 실시하며, 가산수당을 지급한다.</p>
+        </div>
+      </div>
+
+      <!-- 제5조 -->
+      <div class="article">
+        <div class="article-title">제5조 [휴일 및 휴가]</div>
+        <div class="article-body">
+          <p>1. 유급휴일: 1주간 소정근로일을 개근한 자에게 1일의 유급주휴일을 부여한다.</p>
+          <p>2. 연차유급휴가: 근로기준법 제60조에 따라 부여한다.</p>
+        </div>
+      </div>
+
+      <!-- 제6조 -->
+      <div class="article">
+        <div class="article-title">제6조 [임금]</div>
+        <div class="article-body">
+          <p>1. 통상시급: ${formatNumber(contract.hourly_rate)}원</p>
+          <p>2. 임금 지급일: 매월 10일 (해당일이 휴일인 경우 전일 지급)</p>
+          <p>3. 지급방법: 근로자 명의 예금통장에 입금</p>
+          <p>4. 초과근로수당: 연장근로 통상시급의 150%, 야간근로(22:00~06:00) 통상시급의 150%, 휴일근로 통상시급의 150%</p>
+        </div>
+      </div>
+
+      <!-- 제7조 -->
+      <div class="article">
+        <div class="article-title">제7조 [연차유급휴가]</div>
+        <div class="article-body">
+          <p>연차유급휴가는 근로기준법 제60조에 따라 부여하며, 미사용 연차에 대해서는 연차유급휴가 미사용수당을 지급한다.</p>
+        </div>
+      </div>
+
+      <!-- 제8조 -->
+      <div class="article">
+        <div class="article-title">제8조 [퇴직금]</div>
+        <div class="article-body">
+          <p>1년 이상 근속한 근로자에 대하여 퇴직급여보장법에 따라 퇴직금을 지급한다.</p>
+        </div>
+      </div>
+
+      <!-- 제9조 -->
+      <div class="article">
+        <div class="article-title">제9조 [건강검진]</div>
+        <div class="article-body">
+          <p>사용자는 산업안전보건법에 따라 근로자에 대한 건강검진을 실시한다.</p>
+        </div>
+      </div>
+
+      <!-- 제10조 -->
+      <div class="article">
+        <div class="article-title">제10조 [근로관계 종료]</div>
+        <div class="article-body">
+          <p>1. 근로자가 퇴직하고자 할 때에는 30일 전에 사용자에게 통보하여야 한다.</p>
+          <p>2. 근로계약기간 만료 시 별도의 조치가 없으면 근로계약은 종료된다.</p>
+        </div>
+      </div>
+
+      <!-- 제11조 -->
+      <div class="article">
+        <div class="article-title">제11조 [해고 사유]</div>
+        <div class="article-body">
+          <p>사용자는 근로기준법 제23조에 따른 정당한 이유 없이 근로자를 해고하지 아니한다.</p>
+        </div>
+      </div>
+
+      <!-- 제12조 -->
+      <div class="article">
+        <div class="article-title">제12조 [근로자 동의]</div>
+        <div class="article-body">
+          <p>근로자는 사용자의 취업규칙 및 제 규정을 준수하고, 사용자의 정당한 업무지시에 따를 것을 동의한다.</p>
+        </div>
+      </div>
+
+      <!-- 제13조 -->
+      <div class="article">
+        <div class="article-title">제13조 [기타]</div>
+        <div class="article-body">
+          <p>1. 본 계약에 명시되지 아니한 사항은 근로기준법 및 관계 법령에 따른다.</p>
+          <p>2. 본 계약서는 2통을 작성하여 사용자와 근로자가 각각 1통씩 보관한다.</p>
+        </div>
+      </div>
+
+      <!-- 서명 영역 -->
+      <div class="signature-section">
+        <div class="sig-date">${formatDate(contract.contract_date)}</div>
+        <div class="sig-block">
+          <div class="sig-party">
+            <div class="sig-party-title">(사용자)</div>
+            <p>상호: ${entity.name}</p>
+            <p>대표자: ${entity.representative}</p>
+            <p>주소: ${entity.address}</p>
+            <div class="sig-stamp">(인) ${employerSig}</div>
+          </div>
+          <div class="sig-party">
+            <div class="sig-party-title">(근로자)</div>
+            <p>성명: ${employee.name}</p>
+            <p>생년월일: ${employee.birth_date}</p>
+            <p>주소: ${employee.address}</p>
+            <div class="sig-stamp">(서명) ${employeeSig}</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>`
+}

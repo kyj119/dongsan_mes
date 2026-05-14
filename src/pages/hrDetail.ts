@@ -101,12 +101,24 @@ export function hrDetailPage(c: Context<HonoEnv>) {
                 <div><label class="block text-xs text-gray-500 mb-1">성명</label><input data-field="name" class="hrd-input w-full border border-gray-200 rounded px-2 py-1.5 text-sm" disabled></div>
                 <div><label class="block text-xs text-gray-500 mb-1">생년월일</label><input data-field="birth_date" type="date" class="hrd-input w-full border border-gray-200 rounded px-2 py-1.5 text-sm" disabled></div>
                 <div><label class="block text-xs text-gray-500 mb-1">주민등록번호</label><input data-field="resident_number" data-format="rrn" maxlength="14" class="hrd-input w-full border border-gray-200 rounded px-2 py-1.5 text-sm tabular-nums" placeholder="000000-0000000" disabled></div>
+                <div><label class="block text-xs text-gray-500 mb-1">소속법인</label>
+                  <select data-field="entity_id" class="hrd-input w-full border border-gray-200 rounded px-2 py-1.5 text-sm" disabled>
+                    <option value="1">동산기획</option>
+                    <option value="2">선명</option>
+                    <option value="3">동산기획 청주</option>
+                  </select>
+                </div>
                 <div><label class="block text-xs text-gray-500 mb-1">부서</label>
                   <select data-field="department" class="hrd-input w-full border border-gray-200 rounded px-2 py-1.5 text-sm" disabled>
                     <option value="">-</option>
                     <option value="OFFICE">사무직</option>
+                    <option value="DESIGN">디자인</option>
                     <option value="PRODUCTION">생산직</option>
+                    <option value="UV_SIGN">UV/사인</option>
+                    <option value="FINISHING">후가공</option>
+                    <option value="ASSEMBLY">조립</option>
                     <option value="SALES">영업</option>
+                    <option value="EXECUTIVE">임원</option>
                   </select>
                 </div>
                 <div><label class="block text-xs text-gray-500 mb-1">직위</label>
