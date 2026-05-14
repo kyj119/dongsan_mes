@@ -55,16 +55,6 @@ export interface User {
   updated_at: string;
 }
 
-export interface UserSession {
-  id: number;
-  user_id: number;
-  token: string;
-  ip_address?: string;
-  user_agent?: string;
-  expires_at: string;
-  created_at: string;
-}
-
 // ============================================================================
 // Client (거래처)
 // ============================================================================
@@ -134,30 +124,6 @@ export interface Entity {
 }
 
 // ============================================================================
-// Price Policy (가격 정책 — 0187, Phase 0)
-// ============================================================================
-
-export interface PricePolicy {
-  id: number;
-  name: string;
-  description?: string;
-  is_default: number;
-  is_active: number;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface PricePolicyRule {
-  id: number;
-  policy_id: number;
-  category?: string;          // NULL이면 전체 적용
-  item_id?: number;           // 특정 품목 우선
-  rate_percent: number;       // 양수=할증, 음수=할인
-  fixed_price?: number;       // 우선순위 1: 고정가
-  sort_order: number;
-}
-
-// ============================================================================
 // Item (품목)
 // ============================================================================
 
@@ -165,16 +131,6 @@ export interface ItemCategory {
   id: number;
   category_name: string;
   category_code: string;
-  sort_order: number;
-  is_active: number;
-  created_at: string;
-}
-
-export interface ItemSubcategory {
-  id: number;
-  category_id: number;
-  subcategory_name: string;
-  subcategory_code: string;
   sort_order: number;
   is_active: number;
   created_at: string;
@@ -387,30 +343,6 @@ export interface Card {
 }
 
 // ============================================================================
-// Status History
-// ============================================================================
-
-export interface OrderStatusHistory {
-  id: number;
-  order_id: number;
-  from_status?: string;
-  to_status: string;
-  changed_by: number;
-  change_reason?: string;
-  created_at: string;
-}
-
-export interface CardStatusHistory {
-  id: number;
-  card_id: number;
-  from_status?: string;
-  to_status: string;
-  changed_by: number;
-  change_reason?: string;
-  created_at: string;
-}
-
-// ============================================================================
 // Notification (인앱 알림)
 // ============================================================================
 
@@ -423,19 +355,6 @@ export interface Notification {
   link?: string;
   is_read: number;
   created_at: string;
-}
-
-// ============================================================================
-// System Setting
-// ============================================================================
-
-export interface Setting {
-  id: number;
-  setting_key: string;
-  setting_value?: string;
-  description?: string;
-  updated_by?: number;
-  updated_at: string;
 }
 
 // ============================================================================
@@ -462,12 +381,6 @@ export enum PurchaseRequestUrgency {
   NORMAL = 'NORMAL',
   HIGH = 'HIGH',
   URGENT = 'URGENT'
-}
-
-export enum InspectionQualityStatus {
-  PASSED = 'PASSED',
-  PARTIAL = 'PARTIAL',
-  FAILED = 'FAILED'
 }
 
 /**

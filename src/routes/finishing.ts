@@ -9,11 +9,10 @@ finishingRouter.use('/*', authMiddleware)
 finishingRouter.get('/methods', async (c) => {
   try {
     const { results } = await c.env.DB.prepare(
-      'SELECT id, name, margin_cm, description, sort_order, is_active, created_at FROM finishing_methods WHERE is_active = 1 ORDER BY sort_order ASC'
+      'SELECT * FROM finishing_methods WHERE is_active = 1 ORDER BY sort_order ASC'
     ).all()
     return c.json({ success: true, data: results })
-  } catch (err) {
-    console.error('finishing GET /methods error:', err)
+  } catch {
     return c.json({ success: false, error: '서버 오류' }, 500)
   }
 })
@@ -47,8 +46,7 @@ finishingRouter.put('/methods/:id', requireRole('ADMIN', 'MANAGER'), async (c) =
     params.push(parseInt(id))
     await c.env.DB.prepare(`UPDATE finishing_methods SET ${sets.join(', ')} WHERE id = ?`).bind(...params).run()
     return c.json({ success: true })
-  } catch (err) {
-    console.error('finishing PUT /methods error:', err)
+  } catch {
     return c.json({ success: false, error: '서버 오류' }, 500)
   }
 })
@@ -58,8 +56,7 @@ finishingRouter.delete('/methods/:id', requireRole('ADMIN'), async (c) => {
   try {
     await c.env.DB.prepare('UPDATE finishing_methods SET is_active = 0 WHERE id = ?').bind(parseInt(c.req.param('id'))).run()
     return c.json({ success: true })
-  } catch (err) {
-    console.error('finishing DELETE /methods error:', err)
+  } catch {
     return c.json({ success: false, error: '서버 오류' }, 500)
   }
 })
@@ -68,11 +65,10 @@ finishingRouter.delete('/methods/:id', requireRole('ADMIN'), async (c) => {
 finishingRouter.get('/presets', async (c) => {
   try {
     const { results } = await c.env.DB.prepare(
-      'SELECT id, name, config, sort_order, is_active, created_at FROM finishing_presets WHERE is_active = 1 ORDER BY sort_order ASC'
+      'SELECT * FROM finishing_presets WHERE is_active = 1 ORDER BY sort_order ASC'
     ).all()
     return c.json({ success: true, data: results })
-  } catch (err) {
-    console.error('finishing GET /presets error:', err)
+  } catch {
     return c.json({ success: false, error: '서버 오류' }, 500)
   }
 })
@@ -87,8 +83,7 @@ finishingRouter.post('/presets', requireRole('ADMIN', 'MANAGER'), async (c) => {
       'INSERT INTO finishing_presets (name, config, sort_order) VALUES (?, ?, (SELECT COALESCE(MAX(sort_order),0)+1 FROM finishing_presets))'
     ).bind(name, configStr).run()
     return c.json({ success: true, data: { id: r.meta.last_row_id } })
-  } catch (err) {
-    console.error('finishing POST /presets error:', err)
+  } catch {
     return c.json({ success: false, error: '서버 오류' }, 500)
   }
 })
@@ -105,8 +100,7 @@ finishingRouter.put('/presets/:id', requireRole('ADMIN', 'MANAGER'), async (c) =
     params.push(parseInt(id))
     await c.env.DB.prepare(`UPDATE finishing_presets SET ${sets.join(', ')} WHERE id = ?`).bind(...params).run()
     return c.json({ success: true })
-  } catch (err) {
-    console.error('finishing PUT /presets error:', err)
+  } catch {
     return c.json({ success: false, error: '서버 오류' }, 500)
   }
 })
@@ -116,8 +110,7 @@ finishingRouter.delete('/presets/:id', requireRole('ADMIN'), async (c) => {
   try {
     await c.env.DB.prepare('DELETE FROM finishing_presets WHERE id = ?').bind(parseInt(c.req.param('id'))).run()
     return c.json({ success: true })
-  } catch (err) {
-    console.error('finishing DELETE /presets error:', err)
+  } catch {
     return c.json({ success: false, error: '서버 오류' }, 500)
   }
 })

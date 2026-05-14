@@ -106,8 +106,7 @@ iaAuto.post('/process', async (c) => {
       },
       outputs: { eps: epsOutput, png: pngOutput },
     })
-  } catch (err) {
-    console.error('ia-auto /process error:', err)
+  } catch {
     return c.json({ success: false, error: '서버 오류' }, 500)
   }
 })

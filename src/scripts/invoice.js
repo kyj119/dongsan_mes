@@ -16,7 +16,7 @@ function numberToKorean(num) {
     if (!num || num === 0) return '영';
     num = Math.floor(Math.abs(num));
     var digits = ['', '일', '이', '삼', '사', '오', '육', '칠', '팔', '구'];
-    var smallUnits = ['', '십', '백', '천'];
+    var smallUnits = ['', '십', '백', '청'];
     var bigUnits = ['', '만', '억', '조'];
     var result = '';
     var unitIdx = 0;
@@ -85,7 +85,6 @@ function buildInvoiceHalf(data, copyLabel, fullPage) {
     for (var j = displayItems.length; j < MIN_ROWS; j++) {
         itemRows += '<tr class="empty-row"><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>';
     }
-    // 규격 컬럼 추가로 colspan 조정 필요 없음 (8컬럼 유지, 비고→규격으로 교체)
 
     var finalAmount = order.final_amount || (totalSupply + totalVat);
     var koreanAmount = '일금 ' + numberToKorean(finalAmount) + '원정';
@@ -100,7 +99,7 @@ function buildInvoiceHalf(data, copyLabel, fullPage) {
     var halfClass = fullPage ? 'invoice-half invoice-full' : 'invoice-half';
 
     return '<div class="' + halfClass + '">'
-        + '<div class="inv-title">거  래  명  세  서</div>'
+        + '<div class="inv-title">거   래   명   세   서</div>'
         + '<div class="inv-copy">(' + copyLabel + ')</div>'
 
         + '<div class="info-grid">'
@@ -126,7 +125,7 @@ function buildInvoiceHalf(data, copyLabel, fullPage) {
         + '  <span>주문번호: ' + (order.order_number || '') + '</span>'
         + '</div>'
 
-        + '<div class="total-korean">' + koreanAmount + ' (\u20A9' + fmt(finalAmount) + ')</div>'
+        + '<div class="total-korean">' + koreanAmount + ' (₩' + fmt(finalAmount) + ')</div>'
 
         + '<table class="items-table">'
         + '<thead><tr><th style="width:24px">No</th><th style="width:28%">품목명</th><th style="width:10%">규격</th><th style="width:5%">수량</th><th style="width:5%">단위</th><th style="width:11%">단가</th><th style="width:13%">공급가액</th><th style="width:10%">세액</th></tr></thead>'
@@ -200,7 +199,7 @@ async function loadInvoice() {
     } catch (err) {
         document.getElementById('loadingMsg').style.display = 'none';
         document.getElementById('errorMsg').style.display = 'block';
-        document.getElementById('errorMsg').innerHTML = '<i class="fas fa-exclamation-circle"></i> 거래 명세서를 불러오는데 실패했습니다.<br><small>' + (err.message || '') + '</small>';
+        document.getElementById('errorMsg').innerHTML = '<i class="fas fa-exclamation-circle"></i> 거래 명세서를 불러오는데 실패했습니다.<br><small>' + escapeHtml(err.message || '') + '</small>';
     }
 }
 

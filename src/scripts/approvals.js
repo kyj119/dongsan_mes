@@ -377,7 +377,7 @@ function onTemplateChange() {
 
   if (tmpl) {
     const steps = JSON.parse(tmpl.steps || '[]');
-    list.innerHTML = steps.map(s => `<div>${s.step_order}. ${escapeHtml(s.label)} (${escapeHtml(s.role_or_user_id)})</div>`).join('');
+    list.innerHTML = steps.map(s => `<div>${escapeHtml(s.step_order)}. ${escapeHtml(s.label)} (${escapeHtml(s.role_or_user_id)})</div>`).join('');
     preview.classList.remove('hidden');
   } else {
     preview.classList.add('hidden');
