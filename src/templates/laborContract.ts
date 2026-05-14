@@ -56,13 +56,21 @@ export function renderLaborContractHTML(data: {
   const otDaily = contract.overtime_daily_hours || 0
   const otDays = contract.overtime_work_days || 22
   const otHours = otDaily * otDays
-  // 총액 기준 역산: monthly_salary가 총액
+  // 총액 기준: monthly_salary가 입력된 기본급(=총액)
   const totalWage = contract.monthly_salary || contract.base_salary || contract.hourly_rate * baseH
-  const divisor = baseH + (isMonthly ? 0 : otHours * 1.5)
-  const hourlyExact = isMonthly ? 0 : totalWage / divisor
-  const hourlyDisplay = Math.round(hourlyExact)
-  const basePay = isMonthly ? totalWage : totalWage - (otHours > 0 ? totalWage - Math.round(hourlyExact * baseH) : 0)
-  const otPay = isMonthly ? 0 : totalWage - basePay
+  let hourlyDisplay: number, basePay: number, otPay: number
+
+  if (isMonthly || otHours === 0) {
+    // 고정급 or 연장 없음: 총액 = 기본급
+    hourlyDisplay = Math.round(totalWage / baseH)
+    basePay = totalWage
+    otPay = 0
+  } else {
+    // 연장 있음: 총액 ÷ 225.5 = 시급, 기본급 = 시급 × 209, 연장 = 총액 - 기본급
+    hourlyDisplay = Math.round(totalWage / (baseH + otHours * 1.5))
+    basePay = hourlyDisplay * baseH
+    otPay = totalWage - basePay
+  }
   const totalPay = basePay + otPay
 
   const employerSig = contract.signature_employer_base64
