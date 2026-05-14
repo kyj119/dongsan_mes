@@ -109,7 +109,7 @@ async function loadLogs(page) {
       return '<tr class="border-b border-gray-100 hover:bg-gray-50">'
         + '<td class="px-4 py-3 text-sm text-gray-600">' + fmtDt(log.created_at) + '</td>'
         + '<td class="px-4 py-3 text-sm">' + channelIcon(log.channel || 'kakao') + '</td>'
-        + '<td class="px-4 py-3 text-sm font-medium text-gray-900">' + (log.receiver_name || '-') + '</td>'
+        + '<td class="px-4 py-3 text-sm font-medium text-gray-900">' + escapeHtml(log.receiver_name || '-') + '</td>'
         + '<td class="px-4 py-3 text-sm text-gray-600">' + (log.receiver_num || '-') + '</td>'
         + '<td class="px-4 py-3 text-sm text-gray-500">' + typeLabel(log.related_type) + '</td>'
         + '<td class="px-4 py-3 text-center">' + statusBadge(log.status) + '</td>'
@@ -570,13 +570,13 @@ function loadDbTemplates(channel) {
     el.innerHTML = templates.map(function(t) {
       return '<div class="bg-white rounded-lg shadow p-4">'
         + '<div class="flex items-center justify-between mb-2">'
-        + '<span class="text-sm font-bold text-gray-800">' + t.name + '</span>'
+        + '<span class="text-sm font-bold text-gray-800">' + escapeHtml(t.name) + '</span>'
         + '<div class="flex gap-2">'
         + '<button onclick="openTplEditor(\'' + channel + '\',' + t.id + ')" class="text-xs text-blue-600 hover:text-blue-800"><i class="fas fa-edit mr-1"></i>편집</button>'
         + '<button onclick="deleteTpl(' + t.id + ',\'' + channel + '\')" class="text-xs text-red-600 hover:text-red-800"><i class="fas fa-trash mr-1"></i>삭제</button>'
         + '</div></div>'
-        + (t.subject ? '<div class="text-xs text-gray-500 mb-1">제목: ' + t.subject + '</div>' : '')
-        + '<pre class="text-xs text-gray-600 bg-gray-50 rounded p-3 whitespace-pre-wrap max-h-32 overflow-y-auto">' + t.content + '</pre>'
+        + (t.subject ? '<div class="text-xs text-gray-500 mb-1">제목: ' + escapeHtml(t.subject) + '</div>' : '')
+        + '<pre class="text-xs text-gray-600 bg-gray-50 rounded p-3 whitespace-pre-wrap max-h-32 overflow-y-auto">' + escapeHtml(t.content) + '</pre>'
         + '</div>';
     }).join('');
   }).catch(function() {

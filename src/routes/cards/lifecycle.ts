@@ -51,16 +51,17 @@ async function syncOrderStatusFromCards(db: D1Database, orderId: number) {
     newStatus = 'PRINTING'
   }
 
-  // 4. 변경이 필요한 경우만 UPDATE + 이력 기록
+  // 4. 변경이 필요한 경우만 UPDATE + 이력 기록 (db.batch로 원자적 처리)
   if (newStatus && newStatus !== order.status) {
-    await db.prepare(
-      `UPDATE orders SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`
-    ).bind(newStatus, orderId).run()
-
-    await db.prepare(`
-      INSERT INTO order_status_history (order_id, from_status, to_status, changed_by, change_reason)
-      VALUES (?, ?, ?, 1, ?)
-    `).bind(orderId, order.status, newStatus, '카드 상태 자동 동기화').run()
+    await db.batch([
+      db.prepare(
+        `UPDATE orders SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`
+      ).bind(newStatus, orderId),
+      db.prepare(`
+        INSERT INTO order_status_history (order_id, from_status, to_status, changed_by, change_reason)
+        VALUES (?, ?, ?, 1, ?)
+      `).bind(orderId, order.status, newStatus, '카드 상태 자동 동기화'),
+    ])
   }
 }
 
@@ -366,14 +367,15 @@ cardsLifecycleRouter.post('/:id/ship', async (c) => {
       ).bind(card.order_id).first<{ status: string }>()
 
       if (order && order.status !== 'SHIPPED' && order.status !== 'CANCELLED') {
-        await c.env.DB.prepare(`
-          UPDATE orders SET status = 'SHIPPED', updated_at = CURRENT_TIMESTAMP WHERE id = ?
-        `).bind(card.order_id).run()
-
-        await c.env.DB.prepare(`
-          INSERT INTO order_status_history (order_id, from_status, to_status, changed_by, change_reason)
-          VALUES (?, ?, 'SHIPPED', ?, '카드 전체 출고 완료 자동 처리')
-        `).bind(card.order_id, order.status, user?.id || 1).run()
+        await c.env.DB.batch([
+          c.env.DB.prepare(`
+            UPDATE orders SET status = 'SHIPPED', updated_at = CURRENT_TIMESTAMP WHERE id = ?
+          `).bind(card.order_id),
+          c.env.DB.prepare(`
+            INSERT INTO order_status_history (order_id, from_status, to_status, changed_by, change_reason)
+            VALUES (?, ?, 'SHIPPED', ?, '카드 전체 출고 완료 자동 처리')
+          `).bind(card.order_id, order.status, user?.id || 1),
+        ])
 
         orderShipped = true
       }
@@ -689,14 +691,15 @@ cardsLifecycleRouter.patch('/:id/ship', requireRole('ADMIN', 'MANAGER'), async (
       ).bind(card.order_id).first<{ status: string }>()
 
       if (order && order.status !== 'SHIPPED' && order.status !== 'CANCELLED') {
-        await c.env.DB.prepare(
-          `UPDATE orders SET status = 'SHIPPED', updated_at = datetime('now') WHERE id = ?`
-        ).bind(card.order_id).run()
-
-        await c.env.DB.prepare(`
-          INSERT INTO order_status_history (order_id, from_status, to_status, changed_by, change_reason)
-          VALUES (?, ?, 'SHIPPED', ?, '카드 전체 출고 완료 자동 처리')
-        `).bind(card.order_id, order.status, user?.id || 1).run()
+        await c.env.DB.batch([
+          c.env.DB.prepare(
+            `UPDATE orders SET status = 'SHIPPED', updated_at = datetime('now') WHERE id = ?`
+          ).bind(card.order_id),
+          c.env.DB.prepare(`
+            INSERT INTO order_status_history (order_id, from_status, to_status, changed_by, change_reason)
+            VALUES (?, ?, 'SHIPPED', ?, '카드 전체 출고 완료 자동 처리')
+          `).bind(card.order_id, order.status, user?.id || 1),
+        ])
 
         orderShipped = true
       }
@@ -838,14 +841,15 @@ cardsLifecycleRouter.patch('/:id/unship', requireRole('ADMIN', 'MANAGER'), async
     ).bind(card.order_id).first<{ status: string }>()
 
     if (order && order.status === 'SHIPPED') {
-      await c.env.DB.prepare(
-        `UPDATE orders SET status = 'PRINT_DONE', updated_at = datetime('now') WHERE id = ?`
-      ).bind(card.order_id).run()
-
-      await c.env.DB.prepare(`
-        INSERT INTO order_status_history (order_id, from_status, to_status, changed_by, change_reason)
-        VALUES (?, 'SHIPPED', 'PRINT_DONE', ?, '카드 출고 취소로 주문 상태 복원')
-      `).bind(card.order_id, user?.id || 1).run()
+      await c.env.DB.batch([
+        c.env.DB.prepare(
+          `UPDATE orders SET status = 'PRINT_DONE', updated_at = datetime('now') WHERE id = ?`
+        ).bind(card.order_id),
+        c.env.DB.prepare(`
+          INSERT INTO order_status_history (order_id, from_status, to_status, changed_by, change_reason)
+          VALUES (?, 'SHIPPED', 'PRINT_DONE', ?, '카드 출고 취소로 주문 상태 복원')
+        `).bind(card.order_id, user?.id || 1),
+      ])
     }
 
     return c.json({ success: true })

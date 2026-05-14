@@ -236,13 +236,28 @@ notificationsRouter.post('/generate', async (c) => {
   }
 })
 
-// ── DELETE old notifications (30일 이상) ──
+// ── DELETE old notifications (30일 이상) + 포털 토큰 정리 (90일) ──
 notificationsRouter.delete('/cleanup', async (c) => {
   try {
-    await c.env.DB.prepare(
-      `DELETE FROM notifications WHERE created_at < datetime('now', '-30 days')`
-    ).run()
-    return c.json({ success: true })
+    const retentionDays = Number(c.req.query('token_retention_days')) || 90
+
+    const [notifResult, tokenResult] = await Promise.all([
+      c.env.DB.prepare(
+        `DELETE FROM notifications WHERE created_at < datetime('now', '-30 days')`
+      ).run(),
+      c.env.DB.prepare(
+        `DELETE FROM portal_access_tokens WHERE created_at < datetime('now', '-' || ? || ' days')`
+      ).bind(retentionDays).run(),
+    ])
+
+    return c.json({
+      success: true,
+      data: {
+        notifications_deleted: notifResult.meta?.changes || 0,
+        tokens_deleted: tokenResult.meta?.changes || 0,
+        token_retention_days: retentionDays,
+      }
+    })
   } catch (error) {
     console.error('src/routes/notifications.ts error:', error)
     return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)

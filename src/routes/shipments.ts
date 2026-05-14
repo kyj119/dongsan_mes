@@ -660,22 +660,40 @@ shipmentsRouter.patch('/:id/status', requireRole('ADMIN', 'MANAGER'), async (c) 
       'UPDATE shipments SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
     ).bind(status, id).run()
 
-    // 출고 취소 시 해당 카드의 shipped_at 롤백 + auto_complete_date 리셋
+    // #51: 출고 취소 시 카드 shipped_at 롤백 + 주문 상태 복원 + auto_complete_date 리셋
     if (status === 'CANCELLED') {
-      // 이 출고건의 카드 shipped_at 리셋
+      // 이 출고건의 카드 shipped_at 리셋 (HOLD 카드는 건드리지 않음)
       await c.env.DB.prepare(`
         UPDATE cards SET shipped_at = NULL
         WHERE id IN (SELECT card_id FROM shipment_items WHERE shipment_id = ?)
+          AND status != 'HOLD'
       `).bind(id).run()
 
-      // 주문의 auto_complete_date 리셋 (미출고 카드가 생겼으므로)
+      // 주문 상태 복원: SHIPPED → PRINT_DONE (출고 취소로 미출고 카드 발생)
       const orderRow = await c.env.DB.prepare(
         'SELECT order_id FROM shipments WHERE id = ?'
       ).bind(id).first<{ order_id: number }>()
       if (orderRow?.order_id) {
-        await c.env.DB.prepare(
-          'UPDATE orders SET auto_complete_date = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND status != ?'
-        ).bind(orderRow.order_id, 'SHIPPED').run()
+        const orderInfo = await c.env.DB.prepare(
+          'SELECT status FROM orders WHERE id = ?'
+        ).bind(orderRow.order_id).first<{ status: string }>()
+
+        if (orderInfo?.status === 'SHIPPED') {
+          const user = c.get('user')
+          await c.env.DB.prepare(
+            `UPDATE orders SET status = 'PRINT_DONE', auto_complete_date = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?`
+          ).bind(orderRow.order_id).run()
+
+          await c.env.DB.prepare(`
+            INSERT INTO order_status_history (order_id, from_status, to_status, changed_by, change_reason)
+            VALUES (?, 'SHIPPED', 'PRINT_DONE', ?, '출고 취소로 주문 상태 복원')
+          `).bind(orderRow.order_id, user?.id || 1).run()
+        } else {
+          // SHIPPED가 아닌 경우에도 auto_complete_date는 리셋
+          await c.env.DB.prepare(
+            'UPDATE orders SET auto_complete_date = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
+          ).bind(orderRow.order_id).run()
+        }
       }
     }
 

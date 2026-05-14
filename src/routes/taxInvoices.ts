@@ -1309,7 +1309,11 @@ taxInvoicesRouter.delete('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
       return c.json({ success: false, error: '임시저장 상태의 세금계산서만 삭제할 수 있습니다.' }, 400)
     }
 
-    await c.env.DB.prepare('DELETE FROM tax_invoices WHERE id = ?').bind(id).run()
+    await c.env.DB.batch([
+      c.env.DB.prepare('DELETE FROM tax_invoice_items WHERE tax_invoice_id = ?').bind(id),
+      c.env.DB.prepare('DELETE FROM tax_invoice_orders WHERE tax_invoice_id = ?').bind(id),
+      c.env.DB.prepare('DELETE FROM tax_invoices WHERE id = ?').bind(id),
+    ])
 
     return c.json({ success: true, data: { id } })
   } catch (error) {

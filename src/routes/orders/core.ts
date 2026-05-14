@@ -1379,6 +1379,35 @@ ordersCoreRouter.patch('/:id/status', requireRole('ADMIN', 'MANAGER'), async (c)
       `).bind(id).run()
     }
 
+    // #48: 주문 → 카드 상태 하향 동기화
+    // PRINT_DONE 전환 시: 아직 PRINTING인 카드를 PRINT_DONE으로 일괄 전환
+    if (status === 'PRINT_DONE') {
+      const printingCards = await c.env.DB.prepare(`
+        SELECT id FROM cards WHERE order_id = ? AND status = 'PRINTING'
+      `).bind(id).all<{ id: number }>()
+
+      if (printingCards.results && printingCards.results.length > 0) {
+        const batchStmts: D1PreparedStatement[] = []
+        for (const card of printingCards.results) {
+          batchStmts.push(
+            c.env.DB.prepare(`
+              UPDATE cards SET status = 'PRINT_DONE', updated_at = CURRENT_TIMESTAMP WHERE id = ?
+            `).bind(card.id)
+          )
+          batchStmts.push(
+            c.env.DB.prepare(`
+              INSERT INTO card_status_history (card_id, from_status, to_status, changed_by, change_reason)
+              VALUES (?, 'PRINTING', 'PRINT_DONE', ?, '주문 상태 PRINT_DONE 동기화')
+            `).bind(card.id, user?.id || null)
+          )
+        }
+        for (let i = 0; i < batchStmts.length; i += 80) {
+          const chunk = batchStmts.slice(i, i + 80)
+          if (chunk.length > 0) await c.env.DB.batch(chunk)
+        }
+      }
+    }
+
     // Update order status
     await c.env.DB.prepare(`
       UPDATE orders SET status = ?, updated_at = CURRENT_TIMESTAMP,
@@ -1510,7 +1539,7 @@ ordersCoreRouter.delete('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
         VALUES (?, ?, 'CANCELLED', ?, ?)
       `).bind(id, order.status, user.id, '주문 삭제 요청으로 인한 취소').run()
 
-      // 카드 상태도 HOLD로 변경
+      // 카드 상태를 HOLD로 변경 (출고 완료 카드 제외)
       await c.env.DB.prepare(`
         UPDATE cards
         SET status = 'HOLD',
@@ -1518,6 +1547,7 @@ ordersCoreRouter.delete('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
             hold_at = CURRENT_TIMESTAMP,
             hold_by = ?
         WHERE order_id = ? AND status != 'HOLD'
+          AND shipped_at IS NULL
       `).bind(user.id, id).run()
 
       // BILLED 주문만 balance 차감 (미확정 주문은 balance에 미반영 상태)
@@ -1980,6 +2010,17 @@ ordersCoreRouter.patch('/:id/cancel', requireRole('ADMIN', 'MANAGER'), async (c)
       return c.json({ success: false, error: '출고완료 주문은 취소할 수 없습니다.' }, 400)
     }
 
+    // #55: 부분 출고 체크 — 출고된 카드가 1장이라도 있으면 취소 거부
+    const shippedCardCheck = await c.env.DB.prepare(`
+      SELECT COUNT(*) as cnt FROM cards WHERE order_id = ? AND shipped_at IS NOT NULL
+    `).bind(id).first<{ cnt: number }>()
+    if (shippedCardCheck && shippedCardCheck.cnt > 0) {
+      return c.json({
+        success: false,
+        error: `출고된 카드가 ${shippedCardCheck.cnt}건 있어 취소할 수 없습니다. 먼저 출고를 취소해주세요.`
+      }, 400)
+    }
+
     const cancelText = reason_detail ? `${reason}: ${reason_detail}` : reason
 
     // 주문 취소
@@ -1987,11 +2028,36 @@ ordersCoreRouter.patch('/:id/cancel', requireRole('ADMIN', 'MANAGER'), async (c)
       UPDATE orders SET status = 'CANCELLED', cancel_reason = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?
     `).bind(cancelText, id).run()
 
-    // 카드 보류 처리
-    await c.env.DB.prepare(`
-      UPDATE cards SET status = 'HOLD', hold_reason = ?, hold_at = CURRENT_TIMESTAMP, hold_by = ?
-      WHERE order_id = ? AND status != 'HOLD'
-    `).bind('주문 취소: ' + cancelText, user?.id || null, id).run()
+    // #55: 미출고 카드만 HOLD 처리 (출고 완료 카드는 건드리지 않음)
+    // 향후 세금계산서 취소/수정발행 기능 추가 시에도 카드 상태를 확인해야 함:
+    //   - hold_reason LIKE '주문 취소%'인 HOLD 카드는 주문 취소로 인한 보류
+    //   - 세금계산서 취소 시 관련 주문의 카드 상태 재검토 필요
+    const { results: cardsToHold } = await c.env.DB.prepare(`
+      SELECT id, status FROM cards WHERE order_id = ? AND status NOT IN ('HOLD') AND shipped_at IS NULL
+    `).bind(id).all<{ id: number; status: string }>()
+
+    if (cardsToHold && cardsToHold.length > 0) {
+      const holdStmts: D1PreparedStatement[] = []
+      for (const card of cardsToHold) {
+        holdStmts.push(
+          c.env.DB.prepare(`
+            UPDATE cards SET status = 'HOLD', hold_reason = ?, hold_at = CURRENT_TIMESTAMP, hold_by = ?,
+              updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+          `).bind('주문 취소: ' + cancelText, user?.id || null, card.id)
+        )
+        holdStmts.push(
+          c.env.DB.prepare(`
+            INSERT INTO card_status_history (card_id, from_status, to_status, changed_by, change_reason)
+            VALUES (?, ?, 'HOLD', ?, ?)
+          `).bind(card.id, card.status, user?.id || null, '주문 취소: ' + cancelText)
+        )
+      }
+      for (let i = 0; i < holdStmts.length; i += 80) {
+        const chunk = holdStmts.slice(i, i + 80)
+        if (chunk.length > 0) await c.env.DB.batch(chunk)
+      }
+    }
 
     // BILLED 상태면 balance 롤백
     if (order.billing_status === 'BILLED' && order.final_amount && order.final_amount !== 0) {
@@ -2040,10 +2106,12 @@ ordersCoreRouter.patch('/:id/restore', requireRole('ADMIN', 'MANAGER'), async (c
       UPDATE orders SET status = 'CONFIRMED', cancel_reason = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?
     `).bind(id).run()
 
-    // 카드 보류 해제 → PRINTING 상태로 복원
+    // 카드 복원: HOLD → PRINTING (주문 취소/삭제로 HOLD된 카드)
     await c.env.DB.prepare(`
-      UPDATE cards SET status = 'PRINTING', hold_reason = NULL, hold_at = NULL, hold_by = NULL
-      WHERE order_id = ? AND status = 'HOLD' AND hold_reason LIKE '주문 취소%'
+      UPDATE cards SET status = 'PRINTING', hold_reason = NULL, hold_at = NULL, hold_by = NULL,
+        updated_at = CURRENT_TIMESTAMP
+      WHERE order_id = ? AND status = 'HOLD'
+        AND (hold_reason LIKE '주문 취소%' OR hold_reason LIKE '주문 삭제%')
     `).bind(id).run()
 
     await c.env.DB.prepare(`

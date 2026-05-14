@@ -696,7 +696,7 @@ hrRouter.delete('/employees/:id', async (c) => {
       'leave_balances', 'leave_requests', 'leaves',
       'caps_attendance_raw', 'caps_employee_mapping',
       'work_assignments', 'production_logs', 'production_issues',
-      'employee_documents', 'employee_history',
+      'employee_documents', 'employee_history', 'labor_contracts',
     ]
     const cleanupResults: Record<string, number | string> = {}
     for (const table of CHILD_TABLES) {

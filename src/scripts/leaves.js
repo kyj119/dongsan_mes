@@ -60,7 +60,7 @@ window.leavesSwitchTab = function(tab) {
 window.leavesLoadBalances = async function() {
   var year = document.getElementById('lvYear').value || new Date().getFullYear();
   var tbody = document.getElementById('lvBalancesBody');
-  tbody.innerHTML = '<tr><td colspan="9" class="text-center text-gray-400 py-6">로드 중...</td></tr>';
+  tbody.innerHTML = '<tr><td colspan="9" class="text-center text-gray-400 py-6"><i class="fas fa-spinner fa-spin text-2xl mb-2"></i><br>로딩 중...</td></tr>';
   try {
     var res = await axios.get('/api/leaves/balances', { params: { year: year } });
     var rows = res.data.data || [];
@@ -91,7 +91,7 @@ window.leavesLoadBalances = async function() {
 window.leavesLoadRequests = async function() {
   var status = document.getElementById('lvReqStatus').value;
   var tbody = document.getElementById('lvRequestsBody');
-  tbody.innerHTML = '<tr><td colspan="9" class="text-center text-gray-400 py-6">로드 중...</td></tr>';
+  tbody.innerHTML = '<tr><td colspan="9" class="text-center text-gray-400 py-6"><i class="fas fa-spinner fa-spin text-2xl mb-2"></i><br>로딩 중...</td></tr>';
   try {
     var res = await axios.get('/api/leaves/requests', { params: status ? { status: status } : {} });
     var rows = res.data.data || [];
@@ -310,7 +310,7 @@ window.leavesLoadAllowance = async function() {
   var year = document.getElementById('lvAllowYear') ? document.getElementById('lvAllowYear').value : new Date().getFullYear();
   var tbody = document.getElementById('lvAllowanceBody');
   if (!tbody) return;
-  tbody.innerHTML = '<tr><td colspan="9" class="text-center text-gray-400 py-6">로드 중...</td></tr>';
+  tbody.innerHTML = '<tr><td colspan="9" class="text-center text-gray-400 py-6"><i class="fas fa-spinner fa-spin text-2xl mb-2"></i><br>로딩 중...</td></tr>';
   try {
     var res = await axios.get('/api/leaves/unused-allowance', { params: { year: year } });
     var d = res.data.data || {};

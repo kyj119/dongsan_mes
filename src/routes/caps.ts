@@ -99,111 +99,148 @@ capsRouter.post('/ingest', async (c) => {
 
     let ignoredCount = 0
 
+    // ========== 헬퍼 함수 (루프 밖) ==========
+    const parseTime = (t: any): string | null => {
+      if (!t) return null
+      const s = String(t).replace(/[^0-9]/g, '')
+      if (s.length === 6) return `${s.slice(0, 2)}:${s.slice(2, 4)}:${s.slice(4, 6)}`
+      if (s.length === 4) return `${s.slice(0, 2)}:${s.slice(2, 4)}:00`
+      return null
+    }
+    const parseMin = (t: any): number => {
+      if (!t) return 0
+      const s = String(t).replace(/[^0-9]/g, '')
+      if (s.length >= 3) {
+        const h = parseInt(s.slice(0, s.length - 2)) || 0
+        const m = parseInt(s.slice(s.length - 2)) || 0
+        return h * 60 + m
+      }
+      return parseInt(s) || 0
+    }
+    const WORK_START = 8 * 60 + 30
+    const WORK_END = 18 * 60
+    const EARLY_CUTOFF = 7 * 60 + 30
+    const timeToMin = (t: string | null): number => {
+      if (!t) return -1
+      const parts = t.split(':')
+      return (parseInt(parts[0]) || 0) * 60 + (parseInt(parts[1]) || 0)
+    }
+
+    // ========== Phase 1: 매칭 + 날짜 파싱 (CPU only) ==========
+    interface ParsedRecord {
+      employeeId: number
+      workDate: string
+      rec: any
+      fpidRaw: string
+      eIdno: string
+    }
+    const parsed: ParsedRecord[] = []
+
     for (const rec of records) {
+      const fpidRaw = rec.fpid != null ? String(rec.fpid) : ''
+      const fpidPadded = fpidRaw ? fpidRaw.padStart(4, '0') : ''
+      const eIdno = String(rec.e_idno || '').trim()
+      const matchKey = fpidRaw || eIdno
+      if (!matchKey) { skipped++; continue }
+
+      if (ignoredFpidsSet.has(fpidRaw) || ignoredFpidsSet.has(fpidPadded)) { ignoredCount++; skipped++; continue }
+
+      const employeeId = empMap[fpidPadded] || empMap[fpidRaw] || (eIdno ? empMap[eIdno] : undefined)
+      if (!employeeId) {
+        skipped++
+        const sampleKey = fpidPadded || fpidRaw || eIdno
+        if (unmappedSamples.length < 20 && !unmappedSeen.has(sampleKey)) {
+          unmappedSeen.add(sampleKey)
+          unmappedSamples.push({
+            fpid: fpidPadded || fpidRaw,
+            e_idno: eIdno,
+            e_name: String(rec.e_name || '').trim(),
+            c_dept: String(rec.c_dept || '').trim(),
+          })
+        }
+        continue
+      }
+
+      const dd = String(rec.d_date || '').replace(/-/g, '')
+      if (dd.length !== 8) { skipped++; continue }
+      const workDate = `${dd.slice(0, 4)}-${dd.slice(4, 6)}-${dd.slice(6, 8)}`
+
+      parsed.push({ employeeId, workDate, rec, fpidRaw, eIdno })
+    }
+
+    // ========== Phase 2: 기존 attendance 일괄 조회 (N+1 제거) ==========
+    // employee_id + work_date 조합으로 기존 레코드 맵 구축
+    const existingMap = new Map<string, { id: number; source: string }>()
+    if (parsed.length > 0) {
+      // 고유 employee_id 목록 추출하여 해당 기간 attendance 일괄 조회
+      const uniqueEmpIds = [...new Set(parsed.map(p => p.employeeId))]
+      const workDates = [...new Set(parsed.map(p => p.workDate))]
+      // 청크 단위로 조회 (SQL 파라미터 제한 대응)
+      for (let i = 0; i < uniqueEmpIds.length; i += 50) {
+        const empChunk = uniqueEmpIds.slice(i, i + 50)
+        const empPh = empChunk.map(() => '?').join(',')
+        const datePh = workDates.map(() => '?').join(',')
+        const { results: existingRows } = await c.env.DB.prepare(
+          `SELECT id, employee_id, work_date, source FROM attendance WHERE employee_id IN (${empPh}) AND work_date IN (${datePh})`
+        ).bind(...empChunk, ...workDates).all<{ id: number; employee_id: number; work_date: string; source: string }>()
+        for (const row of existingRows) {
+          existingMap.set(`${row.employee_id}:${row.work_date}`, { id: row.id, source: row.source })
+        }
+      }
+    }
+
+    // ========== Phase 3: 계산 + 배치 문 구축 (CPU + stmt build) ==========
+    const batchStmts: D1PreparedStatement[] = []
+    const touchedEmployeeIds = new Set<number>()
+
+    for (const { employeeId, workDate, rec, fpidRaw, eIdno } of parsed) {
       try {
-        const fpidRaw = rec.fpid != null ? String(rec.fpid) : ''
-        const fpidPadded = fpidRaw ? fpidRaw.padStart(4, '0') : ''
-        const eIdno = String(rec.e_idno || '').trim()
-        const matchKey = fpidRaw || eIdno
-        if (!matchKey) { skipped++; continue }
-
-        if (ignoredFpidsSet.has(fpidRaw) || ignoredFpidsSet.has(fpidPadded)) { ignoredCount++; skipped++; continue }
-
-        const employeeId = empMap[fpidPadded] || empMap[fpidRaw] || (eIdno ? empMap[eIdno] : undefined)
-        if (!employeeId) {
-          skipped++
-          const sampleKey = fpidPadded || fpidRaw || eIdno
-          if (unmappedSamples.length < 20 && !unmappedSeen.has(sampleKey)) {
-            unmappedSeen.add(sampleKey)
-            unmappedSamples.push({
-              fpid: fpidPadded || fpidRaw,
-              e_idno: eIdno,
-              e_name: String(rec.e_name || '').trim(),
-              c_dept: String(rec.c_dept || '').trim(),
-            })
-          }
-          continue
-        }
-
-        // d_date: YYYYMMDD → YYYY-MM-DD
-        const dd = String(rec.d_date || '').replace(/-/g, '')
-        if (dd.length !== 8) { skipped++; continue }
-        const workDate = `${dd.slice(0, 4)}-${dd.slice(4, 6)}-${dd.slice(6, 8)}`
-
-        const parseTime = (t: any): string | null => {
-          if (!t) return null
-          const s = String(t).replace(/[^0-9]/g, '')
-          if (s.length === 6) return `${s.slice(0, 2)}:${s.slice(2, 4)}:${s.slice(4, 6)}`
-          if (s.length === 4) return `${s.slice(0, 2)}:${s.slice(2, 4)}:00`
-          return null
-        }
         const inTime = parseTime(rec.in_time)
         const outTime = parseTime(rec.out_time)
-
-        const parseMin = (t: any): number => {
-          if (!t) return 0
-          const s = String(t).replace(/[^0-9]/g, '')
-          if (s.length >= 3) {
-            const h = parseInt(s.slice(0, s.length - 2)) || 0
-            const m = parseInt(s.slice(s.length - 2)) || 0
-            return h * 60 + m
-          }
-          return parseInt(s) || 0
-        }
         const lateMin = parseMin(rec.late_time)
         const earlyMin = parseMin(rec.ealry_time)
         const overMin = parseMin(rec.over_time)
         const nightMin = parseMin(rec.night_time)
         const totalMin = parseMin(rec.total_time)
 
-        // ========== 근태 규정 기반 계산 ==========
-        const WORK_START = 8 * 60 + 30
-        const WORK_END = 18 * 60
-        const EARLY_CUTOFF = 7 * 60 + 30
-        const timeToMin = (t: string | null): number => {
-          if (!t) return -1
-          const parts = t.split(':')
-          return (parseInt(parts[0]) || 0) * 60 + (parseInt(parts[1]) || 0)
-        }
-
-        let inMin = timeToMin(inTime)
-        let outMin = timeToMin(outTime)
+        let inMinVal = timeToMin(inTime)
+        let outMinVal = timeToMin(outTime)
         let checkOutDefaulted = false
-        if (inMin >= 0 && outMin < 0) {
-          outMin = WORK_END
+        if (inMinVal >= 0 && outMinVal < 0) {
+          outMinVal = WORK_END
           checkOutDefaulted = true
         }
 
         let workHours = 0, overtimeHours = 0, earlyHours = 0, earlyLeaveHours = 0, holidayWorkHours = 0, lateMinutes = 0
-        if (inMin >= 0 && outMin > inMin) {
-          let totalWork = (outMin - inMin) / 60
+        if (inMinVal >= 0 && outMinVal > inMinVal) {
+          let totalWork = (outMinVal - inMinVal) / 60
           const LUNCH_START = 12 * 60
           const LUNCH_END = 13 * 60
-          if (inMin < LUNCH_END && outMin > LUNCH_START) {
-            const overlapStart = Math.max(inMin, LUNCH_START)
-            const overlapEnd = Math.min(outMin, LUNCH_END)
+          if (inMinVal < LUNCH_END && outMinVal > LUNCH_START) {
+            const overlapStart = Math.max(inMinVal, LUNCH_START)
+            const overlapEnd = Math.min(outMinVal, LUNCH_END)
             totalWork -= (overlapEnd - overlapStart) / 60
           }
           workHours = Math.max(0, Math.floor(totalWork * 2) / 2)
 
-          if (inMin > WORK_START) lateMinutes = inMin - WORK_START
-          if (inMin < EARLY_CUTOFF) {
-            const earlyMinutes = WORK_START - inMin
+          if (inMinVal > WORK_START) lateMinutes = inMinVal - WORK_START
+          if (inMinVal < EARLY_CUTOFF) {
+            const earlyMinutes = WORK_START - inMinVal
             earlyHours = Math.floor(earlyMinutes / 30) * 0.5
           }
-          if (outMin > WORK_END) {
-            const overMinutes = outMin - WORK_END
+          if (outMinVal > WORK_END) {
+            const overMinutes = outMinVal - WORK_END
             overtimeHours = Math.floor(overMinutes / 30) * 0.5
           }
-          if (outMin < WORK_END && !checkOutDefaulted) {
-            const leaveMinutes = WORK_END - outMin
+          if (outMinVal < WORK_END && !checkOutDefaulted) {
+            const leaveMinutes = WORK_END - outMinVal
             earlyLeaveHours = Math.ceil(leaveMinutes / 30) * 0.5
           }
         }
 
         let attType = 'NORMAL'
-        if (inMin < 0 && outMin < 0) attType = 'ABSENT'
-        else if (inMin < 0) attType = 'ABSENT'
+        if (inMinVal < 0 && outMinVal < 0) attType = 'ABSENT'
+        else if (inMinVal < 0) attType = 'ABSENT'
 
         const dayOfWeek = new Date(workDate).getDay()
         if (dayOfWeek === 0 || dayOfWeek === 6) {
@@ -215,9 +252,7 @@ capsRouter.post('/ingest', async (c) => {
           lateMinutes = 0
         }
 
-        const existing = await c.env.DB.prepare(
-          `SELECT id, source FROM attendance WHERE employee_id = ? AND work_date = ?`
-        ).bind(employeeId, workDate).first<any>()
+        const existing = existingMap.get(`${employeeId}:${workDate}`)
 
         const checkInFull = inTime ? `${workDate}T${inTime}` : null
         const checkOutFull = checkOutDefaulted
@@ -230,59 +265,76 @@ capsRouter.post('/ingest', async (c) => {
             skipped++
             continue
           }
-          await c.env.DB.prepare(`
-            UPDATE attendance SET
-              check_in_time = ?, check_out_time = ?,
-              work_hours = ?, overtime_hours = ?, early_hours = ?,
-              early_leave_hours = ?, holiday_work_hours = ?,
-              late_minutes = ?,
-              attendance_type = ?, status = 'PRESENT',
-              source = 'CAPS', caps_site_id = ?,
-              caps_fpid = ?, caps_e_idno = ?,
-              caps_late_min = ?, caps_early_min = ?,
-              caps_over_min = ?, caps_night_min = ?, caps_total_min = ?,
-              caps_raw_json = ?, caps_synced_at = datetime('now'),
-              updated_at = datetime('now')
-            WHERE id = ?
-          `).bind(
-            checkInFull, checkOutFull, workHours, overtimeHours, earlyHours,
-            earlyLeaveHours, holidayWorkHours, lateMinutes,
-            attType, resolvedSiteId,
-            rec.fpid || null, eIdno,
-            lateMin, earlyMin, overMin, nightMin, totalMin,
-            rawJson, existing.id
-          ).run()
+          batchStmts.push(
+            c.env.DB.prepare(`
+              UPDATE attendance SET
+                check_in_time = ?, check_out_time = ?,
+                work_hours = ?, overtime_hours = ?, early_hours = ?,
+                early_leave_hours = ?, holiday_work_hours = ?,
+                late_minutes = ?,
+                attendance_type = ?, status = 'PRESENT',
+                source = 'CAPS', caps_site_id = ?,
+                caps_fpid = ?, caps_e_idno = ?,
+                caps_late_min = ?, caps_early_min = ?,
+                caps_over_min = ?, caps_night_min = ?, caps_total_min = ?,
+                caps_raw_json = ?, caps_synced_at = datetime('now'),
+                updated_at = datetime('now')
+              WHERE id = ?
+            `).bind(
+              checkInFull, checkOutFull, workHours, overtimeHours, earlyHours,
+              earlyLeaveHours, holidayWorkHours, lateMinutes,
+              attType, resolvedSiteId,
+              rec.fpid || null, eIdno,
+              lateMin, earlyMin, overMin, nightMin, totalMin,
+              rawJson, existing.id
+            )
+          )
           updated++
         } else {
-          await c.env.DB.prepare(`
-            INSERT INTO attendance (
-              employee_id, work_date, check_in_time, check_out_time,
-              work_hours, overtime_hours, early_hours, early_leave_hours, holiday_work_hours,
-              late_minutes,
-              attendance_type, status,
-              source, caps_site_id, caps_fpid, caps_e_idno,
-              caps_late_min, caps_early_min, caps_over_min, caps_night_min, caps_total_min,
-              caps_raw_json, caps_synced_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'PRESENT', 'CAPS', ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
-          `).bind(
-            employeeId, workDate, checkInFull, checkOutFull,
-            workHours, overtimeHours, earlyHours, earlyLeaveHours, holidayWorkHours,
-            lateMinutes, attType, resolvedSiteId,
-            rec.fpid || null, eIdno,
-            lateMin, earlyMin, overMin, nightMin, totalMin,
-            rawJson
-          ).run()
+          batchStmts.push(
+            c.env.DB.prepare(`
+              INSERT INTO attendance (
+                employee_id, work_date, check_in_time, check_out_time,
+                work_hours, overtime_hours, early_hours, early_leave_hours, holiday_work_hours,
+                late_minutes,
+                attendance_type, status,
+                source, caps_site_id, caps_fpid, caps_e_idno,
+                caps_late_min, caps_early_min, caps_over_min, caps_night_min, caps_total_min,
+                caps_raw_json, caps_synced_at
+              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'PRESENT', 'CAPS', ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+            `).bind(
+              employeeId, workDate, checkInFull, checkOutFull,
+              workHours, overtimeHours, earlyHours, earlyLeaveHours, holidayWorkHours,
+              lateMinutes, attType, resolvedSiteId,
+              rec.fpid || null, eIdno,
+              lateMin, earlyMin, overMin, nightMin, totalMin,
+              rawJson
+            )
+          )
           inserted++
         }
 
-        await c.env.DB.prepare(
-          `UPDATE employees SET caps_last_synced_at = datetime('now') WHERE id = ?`
-        ).bind(employeeId).run()
+        touchedEmployeeIds.add(employeeId)
       } catch (innerErr: any) {
         console.error('CAPS record processing error:', innerErr)
         errors++
         if (errorSamples.length < 3) errorSamples.push('기록 처리 오류')
       }
+    }
+
+    // ========== Phase 4: D1 batch 실행 (100개 단위 청크) ==========
+    // employees caps_last_synced_at 일괄 업데이트도 배치에 포함
+    for (const empId of touchedEmployeeIds) {
+      batchStmts.push(
+        c.env.DB.prepare(
+          `UPDATE employees SET caps_last_synced_at = datetime('now') WHERE id = ?`
+        ).bind(empId)
+      )
+    }
+
+    for (let i = 0; i < batchStmts.length; i += 100) {
+      const chunk = batchStmts.slice(i, i + 100)
+      if (chunk.length > 0) await c.env.DB.batch(chunk)
     }
 
     const finalStatus = errors > 0 ? 'PARTIAL' : 'SUCCESS'

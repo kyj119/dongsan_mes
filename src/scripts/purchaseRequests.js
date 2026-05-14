@@ -36,6 +36,8 @@ async function loadPRStats() {
 
 async function loadPurchaseRequests(page) {
   prCurrentPage = page || 1;
+  var tbody = document.getElementById('prTableBody');
+  if (tbody) tbody.innerHTML = '<tr><td colspan="8" class="text-center py-8 text-gray-400"><i class="fas fa-spinner fa-spin text-2xl mb-2"></i><br>로딩 중...</td></tr>';
   var search = document.getElementById('prSearchInput').value;
   var status = document.getElementById('prStatusFilter').value;
   var urgency = document.getElementById('prUrgencyFilter').value;
@@ -277,9 +279,9 @@ async function viewPRDetail(id) {
       + '<div><span class="text-gray-500">요청일:</span> ' + (pr.created_at ? pr.created_at.substring(0, 10) : '-') + '</div>'
       + '<div><span class="text-gray-500">공급업체(추천):</span> ' + (pr.supplier_name || '-') + '</div>'
       + (pr.approved_by_name ? '<div><span class="text-gray-500">승인자:</span> ' + pr.approved_by_name + '</div>' : '')
-      + (pr.reject_reason ? '<div class="col-span-2 text-red-600"><span class="text-gray-500">반려사유:</span> ' + pr.reject_reason + '</div>' : '')
+      + (pr.reject_reason ? '<div class="col-span-2 text-red-600"><span class="text-gray-500">반려사유:</span> ' + escapeHtml(pr.reject_reason) + '</div>' : '')
       + '</div>'
-      + (pr.reason ? '<div class="bg-gray-50 rounded p-3 mb-4 text-sm"><span class="font-medium">요청 사유:</span> ' + pr.reason + '</div>' : '')
+      + (pr.reason ? '<div class="bg-gray-50 rounded p-3 mb-4 text-sm"><span class="font-medium">요청 사유:</span> ' + escapeHtml(pr.reason) + '</div>' : '')
       + '<h4 class="font-medium mb-2 text-sm">요청 품목</h4>'
       + '<div class="overflow-x-auto mb-4">'
       + '<table class="w-full text-sm ds-table-striped"><thead class="bg-gray-50"><tr>'
