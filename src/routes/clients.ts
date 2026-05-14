@@ -3,6 +3,7 @@ import type { HonoEnv } from '../types/env'
 import type { Client, ApiResponse, PaginatedResponse } from '../types/models'
 import { authMiddleware, requireRole } from '../middleware/auth'
 import { hashPassword } from '../utils/crypto'
+import { entityFilter } from '../utils/entityFilter'
 
 const clientsRouter = new Hono<HonoEnv>()
 
@@ -133,8 +134,9 @@ clientsRouter.get('/', async (c) => {
       dormantParams.push(dormant)
     }
 
-    const query = `SELECT *, last_order_date FROM (SELECT c.*, pl.name as price_list_name, (SELECT MAX(order_date) FROM orders WHERE client_id = c.id) as last_order_date FROM clients c LEFT JOIN price_lists pl ON c.price_list_id = pl.id` + filterWhere + `) c WHERE 1=1` + dormantWhere + orderByClause + ' LIMIT ? OFFSET ?'
-    const params = [...filterParams, ...dormantParams, safeLimit, offset]
+    const ef = entityFilter(c)
+    const query = `SELECT *, last_order_date FROM (SELECT c.*, pl.name as price_list_name, (SELECT MAX(order_date) FROM orders WHERE client_id = c.id${ef.clause}) as last_order_date FROM clients c LEFT JOIN price_lists pl ON c.price_list_id = pl.id` + filterWhere + `) c WHERE 1=1` + dormantWhere + orderByClause + ' LIMIT ? OFFSET ?'
+    const params = [...ef.params, ...filterParams, ...dormantParams, safeLimit, offset]
 
     const { results } = await c.env.DB.prepare(query).bind(...params).all()
 
@@ -142,8 +144,8 @@ clientsRouter.get('/', async (c) => {
     let countQuery: string
     let countParams: any[]
     if (dormantWhere) {
-      countQuery = `SELECT COUNT(*) as count FROM (SELECT c.*, (SELECT MAX(order_date) FROM orders WHERE client_id = c.id) as last_order_date FROM clients c` + filterWhere + `) c WHERE 1=1` + dormantWhere
-      countParams = [...filterParams, ...dormantParams]
+      countQuery = `SELECT COUNT(*) as count FROM (SELECT c.*, (SELECT MAX(order_date) FROM orders WHERE client_id = c.id${ef.clause}) as last_order_date FROM clients c` + filterWhere + `) c WHERE 1=1` + dormantWhere
+      countParams = [...ef.params, ...filterParams, ...dormantParams]
     } else {
       countQuery = 'SELECT COUNT(*) as count FROM clients c' + filterWhere
       countParams = [...filterParams]
@@ -191,12 +193,14 @@ clientsRouter.get('/:id/credit-check', async (c) => {
     }
 
     // 미수금 합계 조회
+    const ef = entityFilter(c, 'o')
     const ar = await c.env.DB.prepare(`
       SELECT COALESCE(SUM(CASE WHEN o.final_amount > 0 THEN o.final_amount ELSE 0 END), 0)
            - COALESCE(SUM(CASE WHEN o.paid_amount > 0 THEN o.paid_amount ELSE 0 END), 0) as balance
       FROM orders o
       WHERE o.client_id = ? AND o.status NOT IN ('CANCELLED','DELETED','QUOTATION')
-    `).bind(id).first<{ balance: number }>()
+        ${ef.clause}
+    `).bind(id, ...ef.params).first<{ balance: number }>()
     const balance = ar?.balance || 0
 
     if (balance >= client.credit_limit) {
@@ -273,23 +277,27 @@ clientsRouter.get('/:id/detail', async (c) => {
       return c.json({ success: false, error: 'Client not found' }, 404)
     }
 
+    const ef = entityFilter(c)
+
     // Recent orders (last 20)
     const { results: orders } = await c.env.DB.prepare(`
       SELECT id, order_number, order_date, delivery_date, final_amount, status, billing_status, created_at
       FROM orders
       WHERE client_id = ? AND status != 'QUOTATION'
+        ${ef.clause}
       ORDER BY created_at DESC
       LIMIT 20
-    `).bind(id).all()
+    `).bind(id, ...ef.params).all()
 
     // Active quotations
     const { results: quotations } = await c.env.DB.prepare(`
       SELECT id, order_number, final_amount, status, valid_until, created_at
       FROM orders
       WHERE client_id = ? AND status = 'QUOTATION'
+        ${ef.clause}
       ORDER BY created_at DESC
       LIMIT 10
-    `).bind(id).all()
+    `).bind(id, ...ef.params).all()
 
     // Receivables summary
     const receivables = await c.env.DB.prepare(`
@@ -297,13 +305,15 @@ clientsRouter.get('/:id/detail', async (c) => {
         COALESCE(SUM(CASE WHEN billing_status = 'BILLED' THEN billed_amount ELSE 0 END), 0) as total_billed,
         COUNT(CASE WHEN billing_status = 'BILLED' THEN 1 END) as billed_count
       FROM orders WHERE client_id = ?
-    `).bind(id).first<{ total_billed: number; billed_count: number }>()
+        ${ef.clause}
+    `).bind(id, ...ef.params).first<{ total_billed: number; billed_count: number }>()
 
     const payments = await c.env.DB.prepare(`
       SELECT COALESCE(SUM(amount), 0) as total_payments,
         MAX(payment_date) as last_payment_date
       FROM payments WHERE client_id = ?
-    `).bind(id).first<{ total_payments: number; last_payment_date: string | null }>()
+        ${ef.clause}
+    `).bind(id, ...ef.params).first<{ total_payments: number; last_payment_date: string | null }>()
 
     // Client-specific prices
     const { results: prices } = await c.env.DB.prepare(`
@@ -344,9 +354,10 @@ clientsRouter.get('/:id/detail', async (c) => {
       FROM orders
       WHERE client_id = ? AND status != 'CANCELLED'
         AND created_at >= date('now', '-6 months')
+        ${ef.clause}
       GROUP BY strftime('%Y-%m', created_at)
       ORDER BY month DESC
-    `).bind(id).all()
+    `).bind(id, ...ef.params).all()
 
     return c.json({
       success: true,
@@ -383,6 +394,8 @@ clientsRouter.get('/:id/intelligence', async (c) => {
     ).bind(id).first<{ id: number; balance: number }>()
     if (!client) return c.json({ success: false, error: 'Client not found' }, 404)
 
+    const ef = entityFilter(c, 'o')
+
     // 1. 수익성: 최근 6개월 매출/원가/마진
     const profitability = await c.env.DB.prepare(`
       SELECT
@@ -393,7 +406,8 @@ clientsRouter.get('/:id/intelligence', async (c) => {
       WHERE o.client_id = ? AND o.status != 'CANCELLED'
         AND oi.parent_item_id IS NULL
         AND o.created_at >= date('now', '-6 months')
-    `).bind(id).first<{ total_revenue: number; total_cost: number }>()
+        ${ef.clause}
+    `).bind(id, ...ef.params).first<{ total_revenue: number; total_cost: number }>()
 
     const revenue = Number(profitability?.total_revenue || 0)
     const cost = Number(profitability?.total_cost || 0)
@@ -404,18 +418,21 @@ clientsRouter.get('/:id/intelligence', async (c) => {
     else if (marginRate >= 20) profitGrade = 'C'
 
     // 2. 결제 성향: 미수금 비율, 최근 입금
+    const efNoAlias = entityFilter(c)
     const paymentStats = await c.env.DB.prepare(`
       SELECT
         COALESCE(SUM(amount), 0) as total_payments,
         MAX(payment_date) as last_payment_date,
         COUNT(*) as payment_count
       FROM payments WHERE client_id = ?
-    `).bind(id).first<{ total_payments: number; last_payment_date: string | null; payment_count: number }>()
+        ${efNoAlias.clause}
+    `).bind(id, ...efNoAlias.params).first<{ total_payments: number; last_payment_date: string | null; payment_count: number }>()
 
     const totalBilled = await c.env.DB.prepare(`
       SELECT COALESCE(SUM(billed_amount), 0) as total
       FROM orders WHERE client_id = ? AND billing_status = 'BILLED'
-    `).bind(id).first<{ total: number }>()
+        ${efNoAlias.clause}
+    `).bind(id, ...efNoAlias.params).first<{ total: number }>()
 
     const billedAmt = Number(totalBilled?.total || 0)
     const paidAmt = Number(paymentStats?.total_payments || 0)
@@ -427,13 +444,15 @@ clientsRouter.get('/:id/intelligence', async (c) => {
       SELECT COUNT(*) as cnt, COALESCE(SUM(final_amount), 0) as rev
       FROM orders WHERE client_id = ? AND status != 'CANCELLED'
         AND created_at >= date('now', '-3 months')
-    `).bind(id).first<{ cnt: number; rev: number }>()
+        ${efNoAlias.clause}
+    `).bind(id, ...efNoAlias.params).first<{ cnt: number; rev: number }>()
 
     const prev3 = await c.env.DB.prepare(`
       SELECT COUNT(*) as cnt, COALESCE(SUM(final_amount), 0) as rev
       FROM orders WHERE client_id = ? AND status != 'CANCELLED'
         AND created_at >= date('now', '-6 months') AND created_at < date('now', '-3 months')
-    `).bind(id).first<{ cnt: number; rev: number }>()
+        ${efNoAlias.clause}
+    `).bind(id, ...efNoAlias.params).first<{ cnt: number; rev: number }>()
 
     const recentRev = Number(recent3?.rev || 0)
     const prevRev = Number(prev3?.rev || 0)
@@ -448,7 +467,8 @@ clientsRouter.get('/:id/intelligence', async (c) => {
     const lastOrder = await c.env.DB.prepare(`
       SELECT MAX(created_at) as last_order_date
       FROM orders WHERE client_id = ? AND status != 'CANCELLED'
-    `).bind(id).first<{ last_order_date: string | null }>()
+        ${efNoAlias.clause}
+    `).bind(id, ...efNoAlias.params).first<{ last_order_date: string | null }>()
 
     const lastOrderDate = lastOrder?.last_order_date || null
     const daysSinceLastOrder = lastOrderDate

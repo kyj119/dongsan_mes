@@ -51,8 +51,8 @@ vatReportsRouter.get('/summary', async (c) => {
         COALESCE(SUM(tax_amount), 0) as tax_sum
       FROM hometax_invoices
       WHERE invoice_type = 'BUY'
-        AND issue_date BETWEEN ? AND ?
-    `).bind(periodStart, periodEnd).first<{ cnt: number; supply_sum: string; tax_sum: string }>().catch(() => null)
+        AND issue_date BETWEEN ? AND ?${ef.clause}
+    `).bind(periodStart, periodEnd, ...ef.params).first<{ cnt: number; supply_sum: string; tax_sum: string }>().catch(() => null)
 
     // 매입 상세
     const { results: purchaseList } = await c.env.DB.prepare(`
@@ -62,9 +62,9 @@ vatReportsRouter.get('/summary', async (c) => {
         supply_amount, tax_amount, total_amount
       FROM hometax_invoices
       WHERE invoice_type = 'BUY'
-        AND issue_date BETWEEN ? AND ?
+        AND issue_date BETWEEN ? AND ?${ef.clause}
       ORDER BY issue_date DESC
-    `).bind(periodStart, periodEnd).all().catch(() => ({ results: [] }))
+    `).bind(periodStart, periodEnd, ...ef.params).all().catch(() => ({ results: [] }))
 
     const salesSupply = Number(salesAgg?.supply_sum) || 0
     const salesTax = Number(salesAgg?.tax_sum) || 0

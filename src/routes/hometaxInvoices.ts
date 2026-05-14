@@ -3,7 +3,7 @@ import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
 import { PopbillProvider } from '../services/popbillProvider'
 import { getEntityCorpNum } from '../utils/entitySettings'
-import { getEntityId } from '../utils/entityFilter'
+import { entityFilter, getEntityId } from '../utils/entityFilter'
 
 interface HometaxInvoiceRow {
   id: number
@@ -361,6 +361,7 @@ hometaxInvoicesRouter.get('/', requireRole('ADMIN', 'MANAGER'), async (c) => {
       params.push(p, p, p)
     }
 
+    const ef = entityFilter(c, 'hi')
     const where = whereClauses.length > 0 ? 'WHERE ' + whereClauses.join(' AND ') : ''
 
     const db = c.env.DB
@@ -371,16 +372,16 @@ hometaxInvoicesRouter.get('/', requireRole('ADMIN', 'MANAGER'), async (c) => {
       FROM hometax_invoices hi
       LEFT JOIN hometax_jobs hj ON hi.job_id = hj.id
       LEFT JOIN tax_invoices ti ON hi.matched_invoice_id = ti.id
-      ${where}
+      ${where}${ef.clause}
       ORDER BY hi.issue_date DESC, hi.collected_at DESC
       LIMIT ? OFFSET ?
-    `).bind(...params, safeLimit, offset).all()
+    `).bind(...params, ...ef.params, safeLimit, offset).all()
 
     const countRow = await db.prepare(`
       SELECT COUNT(*) as count FROM hometax_invoices hi
       LEFT JOIN hometax_jobs hj ON hi.job_id = hj.id
-      ${where}
-    `).bind(...params).first<{ count: number }>()
+      ${where}${ef.clause}
+    `).bind(...params, ...ef.params).first<{ count: number }>()
     const count = countRow?.count ?? 0
 
     return c.json({
@@ -411,26 +412,28 @@ hometaxInvoicesRouter.get('/compare', requireRole('ADMIN', 'MANAGER'), async (c)
 
     const db = c.env.DB
     const monthPrefix = month.replace('-', '')
+    const ef = entityFilter(c)
 
     // Get hometax invoices for the month
     const { results: htInvoices } = await db.prepare(`
       SELECT id, job_id, invoice_type, nts_confirm_number, issue_date, send_date, supply_amount, tax_amount, total_amount, issuer_corp_num, issuer_corp_name, issuer_ceo_name, receiver_corp_num, receiver_corp_name, receiver_ceo_name, invoice_detail_type, tax_type, purpose_type, matched_invoice_id, match_status, match_note, created_at FROM hometax_invoices
-      WHERE invoice_type = ? AND SUBSTR(issue_date, 1, 7) = ?
+      WHERE invoice_type = ? AND SUBSTR(issue_date, 1, 7) = ?${ef.clause}
       ORDER BY issue_date DESC
-    `).bind(type, month).all<HometaxInvoiceRow>()
+    `).bind(type, month, ...ef.params).all<HometaxInvoiceRow>()
 
     // Get system tax invoices for comparison
     // Note: tax_invoices are always SELL type (company as supplier)
     // Only match when comparing SELL invoices from hometax
+    const efTi = entityFilter(c)
     let sysInvoices: TaxInvoiceRow[] = []
     if (type === 'SELL') {
       const result = await db.prepare(`
         SELECT id, invoice_number, issue_date, supplier_name, buyer_name,
                supply_amount, tax_amount, total_amount, nts_approval_number, status
         FROM tax_invoices
-        WHERE SUBSTR(issue_date, 1, 7) = ?
+        WHERE SUBSTR(issue_date, 1, 7) = ?${efTi.clause}
         ORDER BY issue_date DESC
-      `).bind(month).all<TaxInvoiceRow>()
+      `).bind(month, ...efTi.params).all<TaxInvoiceRow>()
       sysInvoices = result.results || []
     }
 

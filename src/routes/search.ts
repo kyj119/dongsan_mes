@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { authMiddleware } from '../middleware/auth'
+import { entityFilter, getEntityId } from '../utils/entityFilter'
 
 const searchRouter = new Hono<HonoEnv>()
 searchRouter.use('/*', authMiddleware)
@@ -14,6 +15,13 @@ searchRouter.get('/', async (c) => {
     }
 
     const pattern = `%${q}%`
+    const ef = entityFilter(c, 'o')
+
+    // Cards use requesting_entity_id
+    const entityId = getEntityId(c)
+    let cardClause = ''
+    let cardParams: number[] = []
+    if (entityId > 0) { cardClause = ' AND ca.requesting_entity_id = ?'; cardParams = [entityId] }
 
     const [orders, clients, cards] = await Promise.all([
       c.env.DB.prepare(`
@@ -22,9 +30,10 @@ searchRouter.get('/', async (c) => {
         LEFT JOIN clients c ON o.client_id = c.id
         WHERE (o.order_number LIKE ? OR c.client_name LIKE ?)
           AND o.status != 'CANCELLED'
+          ${ef.clause}
         ORDER BY o.created_at DESC
         LIMIT 20
-      `).bind(pattern, pattern).all(),
+      `).bind(pattern, pattern, ...ef.params).all(),
 
       c.env.DB.prepare(`
         SELECT id, client_code, client_name, balance
@@ -42,9 +51,10 @@ searchRouter.get('/', async (c) => {
         LEFT JOIN clients c ON o.client_id = c.id
         WHERE (ca.card_number LIKE ? OR c.client_name LIKE ?)
           AND ca.status NOT IN ('CANCELLED')
+          ${cardClause}
         ORDER BY ca.created_at DESC
         LIMIT 20
-      `).bind(pattern, pattern).all(),
+      `).bind(pattern, pattern, ...cardParams).all(),
     ])
 
     return c.json({

@@ -37,7 +37,7 @@ function renderDashboard(data) {
 
   tbody.innerHTML = data.recentOrders.map(o => {
     const s = STATUS_MAP[o.status] || { label: o.status, cls: 'bg-gray-100' };
-    return `<tr class="hover:bg-blue-50 border-b cursor-pointer" onclick="location.href='/portal/orders/${o.id}'">
+    return `<tr class="hover:bg-blue-50 border-b cursor-pointer" onclick="location.href='/portal/orders?highlight=${o.id}'">
       <td class="px-3 py-2 text-sm font-mono">${o.order_number}</td>
       <td class="px-3 py-2 text-sm">${o.order_date || '-'}</td>
       <td class="px-3 py-2 text-sm"><span class="px-2 py-0.5 rounded text-xs ${s.cls}">${s.label}</span></td>
