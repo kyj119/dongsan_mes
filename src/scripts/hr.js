@@ -1,6 +1,7 @@
 // 인사 관리 - 직원 목록 전용 (근태/급여는 별도 페이지로 분리)
 
-var DEPT_NAMES = { OFFICE: '사무직', PRODUCTION: '생산직', SALES: '영업' };
+var DEPT_NAMES = { OFFICE: '사무직', DESIGN: '디자인', PRODUCTION: '생산직', UV_SIGN: 'UV/사인', FINISHING: '후가공', ASSEMBLY: '조립', SALES: '영업', EXECUTIVE: '임원' };
+var ENTITY_NAMES = { 1: '동산기획', 2: '선명', 3: '동산기획 청주' };
 var POSITION_NAMES = {
   STAFF: '사원', ASSISTANT_MANAGER: '대리', MANAGER: '과장',
   DEPUTY_GENERAL_MANAGER: '차장', GENERAL_MANAGER: '부장'
@@ -31,11 +32,11 @@ window.hrLoadStats = async function() {
 
 window.hrLoadEmployees = async function() {
   var tbody = document.getElementById('hrEmployeeBody');
-  tbody.innerHTML = '<tr><td colspan="9" class="py-2"><div class="ds-skeleton ds-skeleton-row"></div></td></tr>'
-    + '<tr><td colspan="9" class="py-2"><div class="ds-skeleton ds-skeleton-row"></div></td></tr>'
-    + '<tr><td colspan="9" class="py-2"><div class="ds-skeleton ds-skeleton-row"></div></td></tr>'
-    + '<tr><td colspan="9" class="py-2"><div class="ds-skeleton ds-skeleton-row"></div></td></tr>'
-    + '<tr><td colspan="9" class="py-2"><div class="ds-skeleton ds-skeleton-row"></div></td></tr>';
+  tbody.innerHTML = '<tr><td colspan="10" class="py-2"><div class="ds-skeleton ds-skeleton-row"></div></td></tr>'
+    + '<tr><td colspan="10" class="py-2"><div class="ds-skeleton ds-skeleton-row"></div></td></tr>'
+    + '<tr><td colspan="10" class="py-2"><div class="ds-skeleton ds-skeleton-row"></div></td></tr>'
+    + '<tr><td colspan="10" class="py-2"><div class="ds-skeleton ds-skeleton-row"></div></td></tr>'
+    + '<tr><td colspan="10" class="py-2"><div class="ds-skeleton ds-skeleton-row"></div></td></tr>';
   try {
     var params = {};
     var dept = document.getElementById('hrFilterDept').value;
@@ -52,7 +53,7 @@ window.hrLoadEmployees = async function() {
     var employees = (res.data && res.data.data && res.data.data.employees) || [];
 
     if (employees.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="9" class="text-center py-12 text-gray-400">' +
+      tbody.innerHTML = '<tr><td colspan="10" class="text-center py-12 text-gray-400">' +
         '<i class="fas fa-users text-3xl text-gray-300 mb-3 block"></i>' +
         '<div class="text-sm text-gray-500 mb-1">등록된 직원이 없습니다</div>' +
         '<button onclick="hrOpenEmployeeModal()" class="px-3 py-1.5 text-xs bg-blue-600 text-white rounded mt-2">+ 직원 등록</button>' +
@@ -73,6 +74,7 @@ window.hrLoadEmployees = async function() {
       html += '<tr class="border-b border-gray-100 hover:bg-blue-50 cursor-pointer" onclick="hrOpenDetail(' + e.id + ')">' +
         '<td class="px-4 py-3 font-medium">' + hrEscape(e.employee_code) + '</td>' +
         '<td class="px-4 py-3 font-semibold text-gray-900">' + hrEscape(e.name) + payBadge + '</td>' +
+        '<td class="px-4 py-3 text-gray-600">' + (e.entity_name || ENTITY_NAMES[e.entity_id] || '-') + '</td>' +
         '<td class="px-4 py-3 text-gray-700">' + (DEPT_NAMES[e.department] || e.department || '-') + '</td>' +
         '<td class="px-4 py-3 text-gray-700">' + (POSITION_NAMES[e.position] || e.position || '-') + '</td>' +
         '<td class="px-4 py-3 text-gray-600">' + hrEscape(e.phone || '-') + '</td>' +
@@ -87,7 +89,7 @@ window.hrLoadEmployees = async function() {
     }
     tbody.innerHTML = html;
   } catch (e) {
-    tbody.innerHTML = '<tr><td colspan="9" class="text-center text-red-500 py-6">로드 실패: ' + (e.message || '') + '</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="10" class="text-center text-red-500 py-6">로드 실패: ' + (e.message || '') + '</td></tr>';
   }
 };
 

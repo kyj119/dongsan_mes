@@ -1,6 +1,7 @@
 // 직원 상세 페이지 (근태 + 급여 이력)
 
-var DEPT_NAMES = { OFFICE: '사무직', PRODUCTION: '생산직', SALES: '영업' };
+var DEPT_NAMES = { OFFICE: '사무직', DESIGN: '디자인', PRODUCTION: '생산직', UV_SIGN: 'UV/사인', FINISHING: '후가공', ASSEMBLY: '조립', SALES: '영업', EXECUTIVE: '임원' };
+var ENTITY_NAMES = { 1: '동산기획', 2: '선명', 3: '동산기획 청주' };
 var POSITION_NAMES = {
   STAFF: '사원', ASSISTANT_MANAGER: '대리', MANAGER: '과장',
   DEPUTY_GENERAL_MANAGER: '차장', GENERAL_MANAGER: '부장'

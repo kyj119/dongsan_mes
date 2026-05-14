@@ -78,6 +78,7 @@ export function hrPage(c: Context<HonoEnv>) {
                 <tr>
                   <th class="px-4 py-3 text-left">사번</th>
                   <th class="px-4 py-3 text-left">이름</th>
+                  <th class="px-4 py-3 text-left">소속법인</th>
                   <th class="px-4 py-3 text-left">부서</th>
                   <th class="px-4 py-3 text-left">직급</th>
                   <th class="px-4 py-3 text-left">전화번호</th>
@@ -88,7 +89,7 @@ export function hrPage(c: Context<HonoEnv>) {
                 </tr>
               </thead>
               <tbody id="hrEmployeeBody" class="bg-white">
-                <tr><td colspan="9" class="text-center py-12 text-gray-400">
+                <tr><td colspan="10" class="text-center py-12 text-gray-400">
                   <i class="fas fa-users text-4xl text-gray-300 mb-2 block"></i>
                   직원 데이터를 불러오는 중...
                 </td></tr>
@@ -131,6 +132,13 @@ export function hrPage(c: Context<HonoEnv>) {
                     <option value="FULL_TIME">정규직</option>
                     <option value="CONTRACT">계약직</option>
                     <option value="PART_TIME">시간제</option>
+                  </select>
+                </div>
+                <div><label class="block text-xs text-gray-500 mb-1">소속법인</label>
+                  <select name="entity_id" class="w-full border border-gray-300 rounded px-2 py-1.5 text-sm">
+                    <option value="1">동산기획</option>
+                    <option value="2">선명</option>
+                    <option value="3">동산기획 청주</option>
                   </select>
                 </div>
                 <div><label class="block text-xs text-gray-500 mb-1">부서 <span class="text-red-500">*</span></label>

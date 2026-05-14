@@ -74,6 +74,7 @@ const MENU_ITEMS: MenuGroup[] = [
     group: '인사',
     items: [
       { path: '/hr', icon: 'fa-id-badge', label: '직원 관리', roles: ['ADMIN', 'MANAGER'] },
+      { path: '/labor-contracts', icon: 'fa-file-contract', label: '근로계약', roles: ['ADMIN', 'MANAGER'] },
       { path: '/attendance', icon: 'fa-user-clock', label: '근태 관리', roles: ['ADMIN', 'MANAGER'] },
       { path: '/leaves', icon: 'fa-umbrella-beach', label: '연차 관리', roles: ['ADMIN', 'MANAGER'] },
       { path: '/payroll', icon: 'fa-money-check-alt', label: '급여 관리', roles: ['ADMIN', 'MANAGER'] },

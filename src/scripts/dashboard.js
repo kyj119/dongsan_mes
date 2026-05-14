@@ -187,6 +187,25 @@ async function loadDashboardStats() {
         } catch (prErr) {
             console.warn('검수 대기 카드 조회 실패:', prErr);
         }
+        // 계약 만료 임박 카드
+        try {
+            var ceRes = await axios.get('/api/hr/contracts/expiring');
+            if (ceRes.data.success) {
+                var ceCount = (ceRes.data.data || []).length;
+                var ceCard = document.getElementById('dashContractExpiring');
+                var ceCountEl = document.getElementById('dashContractExpiringCount');
+                if (ceCard && ceCountEl) {
+                    ceCountEl.textContent = ceCount;
+                    if (ceCount > 0) {
+                        ceCard.classList.remove('hidden');
+                    } else {
+                        ceCard.classList.add('hidden');
+                    }
+                }
+            }
+        } catch (ceErr) {
+            console.warn('계약 만료 임박 카드 조회 실패:', ceErr);
+        }
     } catch (error) {
         console.error('Load dashboard stats error:', error);
     }

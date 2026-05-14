@@ -1,8 +1,10 @@
 import { Hono } from 'hono'
-import { authMiddleware } from '../middleware/auth'
+import { authMiddleware, requireRole } from '../middleware/auth'
 import { requirePagePermission } from '../middleware/permissions'
 import type { HonoEnv } from '../types/env'
 import { encryptPII, decryptPII } from '../utils/crypto'
+import { getEntityId } from '../utils/entityFilter'
+import { renderEmploymentCertificateHTML } from '../templates/employmentCertificate'
 
 const hrRouter = new Hono<HonoEnv>()
 
@@ -977,6 +979,462 @@ hrRouter.get('/employees/:id/detail', async (c) => {
     })
   } catch (error: any) {
     console.error('hr.ts [GET /employees/:id/detail]:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
+  }
+})
+
+// ============================================================================
+// 근로계약서 CRUD
+// ============================================================================
+
+// GET /api/hr/contracts/expiring — 만료 임박 계약 (30일 내)
+hrRouter.get('/contracts/expiring', requireRole('ADMIN', 'MANAGER'), async (c) => {
+  try {
+    const entityId = getEntityId(c)
+    const today = new Date().toISOString().split('T')[0]
+    const thirtyDaysLater = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+
+    let query = `
+      SELECT lc.*, e.name as employee_name, e.employee_code, e.department, e.position,
+             ent.name as entity_name
+      FROM labor_contracts lc
+      JOIN employees e ON lc.employee_id = e.id
+      LEFT JOIN entities ent ON lc.entity_id = ent.id
+      WHERE lc.contract_end_date IS NOT NULL
+        AND lc.contract_end_date >= ?
+        AND lc.contract_end_date <= ?
+        AND lc.status IN ('DRAFT', 'SIGNED')
+    `
+    const params: any[] = [today, thirtyDaysLater]
+
+    if (entityId) {
+      query += ` AND lc.entity_id = ?`
+      params.push(entityId)
+    }
+
+    query += ` ORDER BY lc.contract_end_date ASC`
+
+    const { results } = await c.env.DB.prepare(query).bind(...params).all()
+
+    return c.json({ success: true, data: results || [] })
+  } catch (error: any) {
+    console.error('hr.ts [GET /contracts/expiring]:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
+  }
+})
+
+// GET /api/hr/contracts — 계약서 목록
+hrRouter.get('/contracts', requireRole('ADMIN', 'MANAGER'), async (c) => {
+  try {
+    const { employee_id, status, page = '1', limit = '50' } = c.req.query()
+    const entityId = getEntityId(c)
+    const safeLimit = Math.min(parseInt(limit) || 50, 200)
+    const offset = (parseInt(page) - 1) * safeLimit
+
+    let query = `
+      SELECT lc.*, e.name as employee_name, e.employee_code, e.department, e.position,
+             ent.name as entity_name
+      FROM labor_contracts lc
+      JOIN employees e ON lc.employee_id = e.id
+      LEFT JOIN entities ent ON lc.entity_id = ent.id
+      WHERE 1=1
+    `
+    const params: any[] = []
+
+    if (entityId) {
+      query += ` AND lc.entity_id = ?`
+      params.push(entityId)
+    }
+    if (employee_id) {
+      query += ` AND lc.employee_id = ?`
+      params.push(employee_id)
+    }
+    if (status) {
+      query += ` AND lc.status = ?`
+      params.push(status)
+    }
+
+    // Count
+    const countQuery = query.replace(/SELECT lc\.\*.*?FROM/, 'SELECT COUNT(*) as total FROM')
+    const countResult = await c.env.DB.prepare(countQuery).bind(...params).first<{ total: number }>()
+    const total = countResult?.total || 0
+
+    query += ` ORDER BY lc.created_at DESC LIMIT ? OFFSET ?`
+    params.push(safeLimit, offset)
+
+    const { results } = await c.env.DB.prepare(query).bind(...params).all()
+
+    return c.json({
+      success: true,
+      data: {
+        contracts: results || [],
+        pagination: {
+          page: parseInt(page),
+          limit: safeLimit,
+          total,
+          total_pages: Math.ceil(total / safeLimit)
+        }
+      }
+    })
+  } catch (error: any) {
+    console.error('hr.ts [GET /contracts]:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
+  }
+})
+
+// GET /api/hr/contracts/:id — 계약서 상세
+hrRouter.get('/contracts/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
+  try {
+    const id = Number(c.req.param('id'))
+    const entityId = getEntityId(c)
+
+    let query = `
+      SELECT lc.*, e.name as employee_name, e.employee_code, e.department, e.position,
+             ent.name as entity_name
+      FROM labor_contracts lc
+      JOIN employees e ON lc.employee_id = e.id
+      LEFT JOIN entities ent ON lc.entity_id = ent.id
+      WHERE lc.id = ?
+    `
+    const params: any[] = [id]
+
+    if (entityId) {
+      query += ` AND lc.entity_id = ?`
+      params.push(entityId)
+    }
+
+    const contract = await c.env.DB.prepare(query).bind(...params).first<Record<string, unknown>>()
+
+    if (!contract) {
+      return c.json({ success: false, error: '계약서를 찾을 수 없습니다.' }, 404)
+    }
+
+    return c.json({ success: true, data: contract })
+  } catch (error: any) {
+    console.error('hr.ts [GET /contracts/:id]:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
+  }
+})
+
+// POST /api/hr/contracts — 계약서 생성 (DRAFT)
+hrRouter.post('/contracts', requireRole('ADMIN', 'MANAGER'), async (c) => {
+  try {
+    const body = await c.req.json()
+    const entityId = getEntityId(c)
+
+    const {
+      employee_id, contract_type, contract_date, contract_start_date,
+      contract_end_date, wage_start_date, wage_end_date,
+      hourly_rate, work_type, job_description, probation_months
+    } = body
+
+    if (!employee_id || !contract_type || !contract_date || !contract_start_date) {
+      return c.json({ success: false, error: '필수 항목이 누락되었습니다. (employee_id, contract_type, contract_date, contract_start_date)' }, 400)
+    }
+
+    // 직원 존재 확인
+    const emp = await c.env.DB.prepare(`SELECT id FROM employees WHERE id = ?`).bind(employee_id).first<{ id: number }>()
+    if (!emp) {
+      return c.json({ success: false, error: '직원을 찾을 수 없습니다.' }, 404)
+    }
+
+    const result = await c.env.DB.prepare(`
+      INSERT INTO labor_contracts (
+        employee_id, entity_id, contract_type, contract_date, contract_start_date,
+        contract_end_date, wage_start_date, wage_end_date,
+        hourly_rate, work_type, job_description, probation_months,
+        status, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'DRAFT', datetime('now'), datetime('now'))
+    `).bind(
+      employee_id, entityId || 1, contract_type, contract_date, contract_start_date,
+      contract_end_date || null, wage_start_date || null, wage_end_date || null,
+      hourly_rate || null, work_type || null, job_description || null, probation_months || null
+    ).run()
+
+    return c.json({ success: true, data: { id: result.meta.last_row_id } })
+  } catch (error: any) {
+    console.error('hr.ts [POST /contracts]:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
+  }
+})
+
+// PUT /api/hr/contracts/:id — 계약서 수정
+hrRouter.put('/contracts/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
+  try {
+    const id = Number(c.req.param('id'))
+    const entityId = getEntityId(c)
+    const body = await c.req.json()
+
+    // 기존 계약 확인
+    let checkQuery = `SELECT id, status FROM labor_contracts WHERE id = ?`
+    const checkParams: any[] = [id]
+    if (entityId) {
+      checkQuery += ` AND entity_id = ?`
+      checkParams.push(entityId)
+    }
+    const existing = await c.env.DB.prepare(checkQuery).bind(...checkParams).first<{ id: number; status: string }>()
+
+    if (!existing) {
+      return c.json({ success: false, error: '계약서를 찾을 수 없습니다.' }, 404)
+    }
+    if (existing.status === 'SIGNED') {
+      return c.json({ success: false, error: '서명된 계약서는 수정할 수 없습니다.' }, 400)
+    }
+
+    const ALLOWED = [
+      'contract_type', 'contract_date', 'contract_start_date', 'contract_end_date',
+      'wage_start_date', 'wage_end_date', 'hourly_rate', 'work_type',
+      'job_description', 'probation_months'
+    ]
+
+    const setCols: string[] = []
+    const vals: any[] = []
+    for (const key of ALLOWED) {
+      if (!(key in body)) continue
+      setCols.push(`${key} = ?`)
+      vals.push(body[key] === '' ? null : body[key])
+    }
+
+    if (setCols.length === 0) {
+      return c.json({ success: false, error: '업데이트할 필드가 없습니다.' }, 400)
+    }
+
+    setCols.push(`updated_at = datetime('now')`)
+    vals.push(id)
+
+    await c.env.DB.prepare(
+      `UPDATE labor_contracts SET ${setCols.join(', ')} WHERE id = ?`
+    ).bind(...vals).run()
+
+    // 업데이트된 행 반환
+    const updated = await c.env.DB.prepare(
+      `SELECT * FROM labor_contracts WHERE id = ?`
+    ).bind(id).first<Record<string, unknown>>()
+
+    return c.json({ success: true, data: updated })
+  } catch (error: any) {
+    console.error('hr.ts [PUT /contracts/:id]:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
+  }
+})
+
+// PATCH /api/hr/contracts/:id/sign — 서명
+hrRouter.patch('/contracts/:id/sign', requireRole('ADMIN', 'MANAGER'), async (c) => {
+  try {
+    const id = Number(c.req.param('id'))
+    const entityId = getEntityId(c)
+    const body = await c.req.json()
+
+    const { signature_employee_base64, signature_employer_base64 } = body
+
+    if (!signature_employee_base64) {
+      return c.json({ success: false, error: '근로자 서명이 필요합니다.' }, 400)
+    }
+
+    // 기존 계약 확인
+    let checkQuery = `SELECT id, status FROM labor_contracts WHERE id = ?`
+    const checkParams: any[] = [id]
+    if (entityId) {
+      checkQuery += ` AND entity_id = ?`
+      checkParams.push(entityId)
+    }
+    const existing = await c.env.DB.prepare(checkQuery).bind(...checkParams).first<{ id: number; status: string }>()
+
+    if (!existing) {
+      return c.json({ success: false, error: '계약서를 찾을 수 없습니다.' }, 404)
+    }
+    if (existing.status === 'SIGNED') {
+      return c.json({ success: false, error: '이미 서명된 계약서입니다.' }, 400)
+    }
+
+    const signedIp = c.req.header('CF-Connecting-IP') || c.req.header('X-Forwarded-For') || 'unknown'
+
+    await c.env.DB.prepare(`
+      UPDATE labor_contracts
+      SET signature_employee_base64 = ?,
+          signature_employer_base64 = ?,
+          signed_ip = ?,
+          signed_at = datetime('now'),
+          status = 'SIGNED',
+          updated_at = datetime('now')
+      WHERE id = ?
+    `).bind(
+      signature_employee_base64,
+      signature_employer_base64 || null,
+      signedIp,
+      id
+    ).run()
+
+    const updated = await c.env.DB.prepare(
+      `SELECT * FROM labor_contracts WHERE id = ?`
+    ).bind(id).first<Record<string, unknown>>()
+
+    return c.json({ success: true, data: updated })
+  } catch (error: any) {
+    console.error('hr.ts [PATCH /contracts/:id/sign]:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
+  }
+})
+
+// GET /api/hr/contracts/:id/preview — 계약서 HTML 미리보기
+hrRouter.get('/contracts/:id/preview', requireRole('ADMIN', 'MANAGER'), async (c) => {
+  try {
+    const id = Number(c.req.param('id'))
+    const entityId = getEntityId(c)
+
+    let query = `
+      SELECT lc.*,
+             e.name as employee_name, e.birth_date as employee_birth_date,
+             e.phone as employee_phone, e.address as employee_address,
+             ent.name as entity_name, ent.representative as entity_representative,
+             ent.address as entity_address
+      FROM labor_contracts lc
+      JOIN employees e ON lc.employee_id = e.id
+      LEFT JOIN entities ent ON lc.entity_id = ent.id
+      WHERE lc.id = ?
+    `
+    const params: any[] = [id]
+
+    if (entityId) {
+      query += ` AND lc.entity_id = ?`
+      params.push(entityId)
+    }
+
+    const row = await c.env.DB.prepare(query).bind(...params).first<Record<string, any>>()
+
+    if (!row) {
+      return c.json({ success: false, error: '계약서를 찾을 수 없습니다.' }, 404)
+    }
+
+    const { renderLaborContractHTML } = await import('../templates/laborContract')
+
+    const html = renderLaborContractHTML({
+      entity: {
+        name: row.entity_name || '동산기획',
+        representative: row.entity_representative || '',
+        address: row.entity_address || '',
+      },
+      employee: {
+        name: row.employee_name || '',
+        birth_date: row.employee_birth_date || '',
+        phone: row.employee_phone || '',
+        address: row.employee_address || '',
+      },
+      contract: {
+        contract_date: row.contract_date || '',
+        contract_start_date: row.contract_start_date || '',
+        contract_end_date: row.contract_end_date || null,
+        wage_start_date: row.wage_start_date || '',
+        wage_end_date: row.wage_end_date || '',
+        hourly_rate: row.hourly_rate || 0,
+        work_type: row.work_type || 'REGULAR',
+        job_description: row.job_description || '',
+        probation_months: row.probation_months ?? 3,
+        signature_employee_base64: row.signature_employee_base64 || undefined,
+        signature_employer_base64: row.signature_employer_base64 || undefined,
+      },
+    })
+
+    return c.html(html)
+  } catch (error: any) {
+    console.error('hr.ts [GET /contracts/:id/preview]:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
+  }
+})
+
+// DELETE /api/hr/contracts/:id — 삭제 (DRAFT만)
+hrRouter.delete('/contracts/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
+  try {
+    const id = Number(c.req.param('id'))
+    const entityId = getEntityId(c)
+
+    let checkQuery = `SELECT id, status FROM labor_contracts WHERE id = ?`
+    const checkParams: any[] = [id]
+    if (entityId) {
+      checkQuery += ` AND entity_id = ?`
+      checkParams.push(entityId)
+    }
+    const existing = await c.env.DB.prepare(checkQuery).bind(...checkParams).first<{ id: number; status: string }>()
+
+    if (!existing) {
+      return c.json({ success: false, error: '계약서를 찾을 수 없습니다.' }, 404)
+    }
+    if (existing.status !== 'DRAFT') {
+      return c.json({ success: false, error: 'DRAFT 상태의 계약서만 삭제할 수 있습니다.' }, 400)
+    }
+
+    await c.env.DB.prepare(`DELETE FROM labor_contracts WHERE id = ?`).bind(id).run()
+
+    return c.json({ success: true, data: { deleted_id: id } })
+  } catch (error: any) {
+    console.error('hr.ts [DELETE /contracts/:id]:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
+  }
+})
+
+// ============================================================================
+// GET /api/hr/certificates/employment/:employeeId — 재직증명서 HTML 반환
+// ============================================================================
+hrRouter.get('/certificates/employment/:employeeId', async (c) => {
+  try {
+    const employeeId = Number(c.req.param('employeeId'))
+    const purpose = c.req.query('purpose') || '제출용'
+
+    // employee + entity JOIN
+    const emp = await c.env.DB.prepare(`
+      SELECT e.*, ent.name as entity_name, ent.representative, ent.address as entity_address,
+             ent.business_reg_no
+      FROM employees e
+      LEFT JOIN entities ent ON ent.id = e.entity_id
+      WHERE e.id = ? AND e.status = 'ACTIVE'
+    `).bind(employeeId).first<any>()
+
+    if (!emp) {
+      return c.json({ success: false, error: '직원을 찾을 수 없습니다.' }, 404)
+    }
+
+    // certificate_number 자동 채번: CERT-YYYYMMDD-NNN
+    const today = new Date()
+    const dateStr = today.toISOString().slice(0, 10).replace(/-/g, '')
+    const { results: countResult } = await c.env.DB.prepare(`
+      SELECT COUNT(*) as cnt FROM certificate_logs WHERE issue_date = ?
+    `).bind(today.toISOString().slice(0, 10)).all<{ cnt: number }>().catch(() => ({ results: [{ cnt: 0 }] }))
+    const seq = ((countResult?.[0]?.cnt) || 0) + 1
+    const certificateNumber = `CERT-${dateStr}-${String(seq).padStart(3, '0')}`
+
+    // 발급 로그 저장 (테이블 없으면 무시)
+    try {
+      await c.env.DB.prepare(`
+        INSERT INTO certificate_logs (employee_id, certificate_number, certificate_type, purpose, issue_date, created_at)
+        VALUES (?, ?, 'EMPLOYMENT', ?, ?, datetime('now'))
+      `).bind(employeeId, certificateNumber, purpose, today.toISOString().slice(0, 10)).run()
+    } catch {
+      // certificate_logs 테이블 없으면 무시
+    }
+
+    const html = renderEmploymentCertificateHTML({
+      entity: {
+        name: emp.entity_name || '동산기획',
+        representative: emp.representative || '',
+        address: emp.entity_address || '',
+        business_reg_no: emp.business_reg_no || '',
+      },
+      employee: {
+        name: emp.name,
+        birth_date: emp.birth_date || '',
+        department: emp.department || '',
+        position: emp.position || '',
+        hire_date: emp.hire_date || '',
+        employee_code: emp.employee_code || '',
+      },
+      issue_date: today.toISOString().slice(0, 10),
+      certificate_number: certificateNumber,
+      purpose,
+    })
+
+    return c.html(html)
+  } catch (error: any) {
+    console.error('hr.ts [GET /certificates/employment/:employeeId]:', error)
     return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
   }
 })
