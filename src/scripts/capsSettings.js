@@ -41,7 +41,7 @@ function renderCapsSiteCards() {
     var isActive = s.id === capsCurrentSiteId;
     var syncOk = s.last_sync_ok_at ? timeAgo(s.last_sync_ok_at) : '없음';
     var statusDot = s.sync_enabled ? 'bg-green-500' : 'bg-gray-400';
-    return '<button onclick="selectCapsSite(\\''+s.id+'\\')\" class="text-left p-3 rounded-lg border-2 transition-all ' +
+    return '<button onclick="selectCapsSite(\'' + s.id + '\')" class="text-left p-3 rounded-lg border-2 transition-all ' +
       (isActive ? 'border-blue-500 bg-blue-50 ring-1 ring-blue-200' : 'border-gray-200 bg-white hover:border-blue-300') + '">' +
       '<div class="flex items-center gap-2 mb-1">' +
         '<span class="w-2 h-2 rounded-full ' + statusDot + '"></span>' +
