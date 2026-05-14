@@ -42,30 +42,8 @@ async function lcLoadEmployees() {
     else if (Array.isArray(d)) lcEmployees = d;
     else lcEmployees = [];
 
-    var sel = document.getElementById('lcEmpSelect');
-    if (!sel) return;
-    var opts = '<option value="">- 직원 선택 -</option>';
-    for (var i = 0; i < lcEmployees.length; i++) {
-      var e = lcEmployees[i];
-      if (e.status && e.status !== 'ACTIVE') continue;
-      opts += '<option value="' + e.id + '">' + (e.employee_code || '') + ' ' + (e.name || '') + ' (' + (e.department || '-') + ')</option>';
-    }
-    sel.innerHTML = opts;
-    // 직원 선택 시 시급 자동 채움
-    sel.onchange = function() {
-      var empId = parseInt(sel.value);
-      if (!empId) return;
-      var emp = lcEmployees.find(function(e) { return e.id === empId; });
-      if (emp) {
-        var rateEl = document.getElementById('lcHourlyRate');
-        if (rateEl && !rateEl.value) rateEl.value = emp.hourly_rate || '';
-        var deptEl = document.getElementById('lcJobDesc');
-        if (deptEl && !deptEl.value) {
-          var deptName = {'ADMIN_DEPT':'사무','DESIGN':'디자인','SALES':'영업','TRANSFER':'전사','SIGN':'간판','PRINTING':'출력','EXECUTIVE':'임원'}[emp.department] || emp.department || '';
-          deptName && (deptEl.value = deptName);
-        }
-      }
-    };
+    // 검색형 직원 선택 초기화
+    lcInitEmpSearch();
   } catch (e) {
     console.error('[laborContracts] 직원 로드 실패', e);
   }
@@ -190,6 +168,10 @@ window.lcOpenEditModal = async function(id) {
 
   // 폼 초기화
   document.getElementById('lcEmpSelect').value = '';
+  var searchEl = document.getElementById('lcEmpSearch');
+  if (searchEl) searchEl.value = '';
+  var previewEl = document.getElementById('lcEmpPreview');
+  if (previewEl) previewEl.classList.add('hidden');
   document.getElementById('lcContractType').value = 'HOURLY';
   document.getElementById('lcWorkType').value = 'REGULAR';
   document.getElementById('lcContractDate').value = new Date().toISOString().substring(0, 10);
@@ -207,6 +189,10 @@ window.lcOpenEditModal = async function(id) {
       var c = res.data && res.data.data;
       if (c) {
         document.getElementById('lcEmpSelect').value = c.employee_id || '';
+        // 검색 필드에 직원 이름 표시
+        var empSearch = document.getElementById('lcEmpSearch');
+        if (empSearch && c.employee_name) empSearch.value = c.employee_name + ' (' + (c.employee_code || '') + ')';
+        if (c.employee_id) lcSelectEmployee(parseInt(c.employee_id));
         document.getElementById('lcContractType').value = c.contract_type || 'HOURLY';
         document.getElementById('lcWorkType').value = c.work_type || 'REGULAR';
         document.getElementById('lcContractDate').value = (c.contract_date || '').substring(0, 10);
@@ -420,6 +406,96 @@ window.lcSubmitSignature = async function() {
     alert(msg);
   }
 };
+
+// ===== 검색형 직원 선택 =====
+var LC_DEPT = {'ADMIN_DEPT':'사무직','DESIGN':'디자인','SALES':'영업','TRANSFER':'전사','SIGN':'간판','PRINTING':'출력','EXECUTIVE':'임원'};
+var LC_POS = {'STAFF':'사원','SENIOR_STAFF':'주임','ASSISTANT_MANAGER':'대리','MANAGER':'과장','DEPUTY_GENERAL_MANAGER':'차장','GENERAL_MANAGER':'부장','DIRECTOR':'이사','CEO':'대표이사'};
+var LC_ENT = {1:'동산기획',2:'선명',3:'동산기획 청주'};
+
+function lcInitEmpSearch() {
+  var searchEl = document.getElementById('lcEmpSearch');
+  var dropdown = document.getElementById('lcEmpDropdown');
+  var hiddenEl = document.getElementById('lcEmpSelect');
+  if (!searchEl || !dropdown || !hiddenEl) return;
+
+  function renderDropdown(query) {
+    var q = (query || '').toLowerCase();
+    var active = lcEmployees.filter(function(e) { return !e.status || e.status === 'ACTIVE'; });
+    var filtered = q ? active.filter(function(e) {
+      return (e.name || '').toLowerCase().indexOf(q) >= 0 || (e.employee_code || '').toLowerCase().indexOf(q) >= 0;
+    }) : active;
+
+    // 부서별 그룹핑
+    var groups = {};
+    filtered.forEach(function(e) {
+      var dept = LC_DEPT[e.department] || e.department || '기타';
+      if (!groups[dept]) groups[dept] = [];
+      groups[dept].push(e);
+    });
+
+    var html = '';
+    Object.keys(groups).forEach(function(dept) {
+      html += '<div style="padding:4px 8px;font-size:11px;font-weight:700;color:#6b7280;background:#f9fafb;border-bottom:1px solid #e5e7eb">' + dept + '</div>';
+      groups[dept].forEach(function(e) {
+        var pos = LC_POS[e.position] || e.position || '';
+        var ent = LC_ENT[e.entity_id] || '';
+        html += '<div class="lc-emp-item" data-id="' + e.id + '" style="padding:6px 12px;cursor:pointer;font-size:13px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #f3f4f6" onmouseover="this.style.background=\'#eff6ff\'" onmouseout="this.style.background=\'\'">';
+        html += '<span><strong>' + (e.name || '') + '</strong> <span style="color:#9ca3af">' + (e.employee_code || '') + '</span></span>';
+        html += '<span style="font-size:11px;color:#6b7280">' + pos + (ent ? ' · ' + ent : '') + '</span>';
+        html += '</div>';
+      });
+    });
+    if (filtered.length === 0) html = '<div style="padding:12px;text-align:center;color:#9ca3af;font-size:13px">검색 결과 없음</div>';
+    dropdown.innerHTML = html;
+    dropdown.classList.remove('hidden');
+
+    // 클릭 이벤트
+    dropdown.querySelectorAll('.lc-emp-item').forEach(function(el) {
+      el.addEventListener('click', function() {
+        var empId = parseInt(el.getAttribute('data-id'));
+        lcSelectEmployee(empId);
+        dropdown.classList.add('hidden');
+      });
+    });
+  }
+
+  searchEl.addEventListener('focus', function() { renderDropdown(searchEl.value); });
+  searchEl.addEventListener('input', function() { renderDropdown(searchEl.value); });
+  document.addEventListener('click', function(ev) {
+    if (!searchEl.contains(ev.target) && !dropdown.contains(ev.target)) dropdown.classList.add('hidden');
+  });
+}
+
+function lcSelectEmployee(empId) {
+  var emp = lcEmployees.find(function(e) { return e.id === empId; });
+  if (!emp) return;
+  document.getElementById('lcEmpSelect').value = empId;
+  document.getElementById('lcEmpSearch').value = emp.name + ' (' + (emp.employee_code || '') + ')';
+
+  // 미리보기 카드
+  var preview = document.getElementById('lcEmpPreview');
+  if (preview) {
+    var dept = LC_DEPT[emp.department] || emp.department || '-';
+    var pos = LC_POS[emp.position] || emp.position || '-';
+    var ent = LC_ENT[emp.entity_id] || '-';
+    preview.innerHTML = '<div style="display:flex;gap:16px;align-items:center">'
+      + '<div><strong>' + emp.name + '</strong> <span style="color:#6b7280">' + (emp.employee_code || '') + '</span></div>'
+      + '<div style="color:#6b7280">' + dept + ' / ' + pos + '</div>'
+      + '<div style="color:#6b7280">법인: ' + ent + '</div>'
+      + '<div style="color:#6b7280">시급: ' + ((emp.hourly_rate || 0).toLocaleString()) + '원</div>'
+      + '</div>';
+    preview.classList.remove('hidden');
+  }
+
+  // 자동 채움
+  var rateEl = document.getElementById('lcHourlyRate');
+  if (rateEl && !rateEl.value) rateEl.value = emp.hourly_rate || '';
+  var deptEl = document.getElementById('lcJobDesc');
+  if (deptEl && !deptEl.value) {
+    var deptName = LC_DEPT[emp.department] || emp.department || '';
+    if (deptName) deptEl.value = deptName;
+  }
+}
 
 // ===== 초기화 =====
 (function() {

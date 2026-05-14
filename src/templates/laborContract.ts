@@ -151,20 +151,24 @@ export function renderLaborContractHTML(data: {
       border-collapse: collapse;
       margin: 10px 0 20px;
       font-size: 13.5px;
+      table-layout: fixed;
     }
     .party-table th,
     .party-table td {
       border: 1px solid #333;
       padding: 7px 12px;
       text-align: left;
+      word-break: keep-all;
+      overflow: hidden;
     }
     .party-table th {
       background: #f5f5f5;
       font-weight: 600;
-      width: 22%;
+      width: 15%;
       text-align: center;
       color: #222;
     }
+    .party-table td { width: 35%; }
     .party-table .header-cell {
       background: #e8e8e8;
       font-weight: 700;
@@ -300,16 +304,18 @@ export function renderLaborContractHTML(data: {
             <td class="header-cell" colspan="4">근 로 자</td>
           </tr>
           <tr>
-            <th>성명</th>
+            <th>성 명</th>
             <td>${employee.name}</td>
             <th>생년월일</th>
             <td>${employee.birth_date}</td>
           </tr>
           <tr>
             <th>연락처</th>
-            <td>${employee.phone}</td>
-            <th>주소</th>
-            <td>${employee.address}</td>
+            <td colspan="3">${employee.phone}</td>
+          </tr>
+          <tr>
+            <th>주 소</th>
+            <td colspan="3">${employee.address}</td>
           </tr>
         </table>
       </div>

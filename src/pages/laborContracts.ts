@@ -79,9 +79,12 @@ export function laborContractsPage(c: Context<HonoEnv>) {
             <div class="p-4 space-y-3">
               <div>
                 <label class="text-xs text-gray-600 block mb-1">직원 <span class="text-red-500">*</span></label>
-                <select id="lcEmpSelect" class="w-full border rounded px-2 py-1 text-sm">
-                  <option value="">- 직원 선택 -</option>
-                </select>
+                <div style="position:relative">
+                  <input id="lcEmpSearch" type="text" placeholder="이름 또는 사번 검색..." class="w-full border rounded px-2 py-1 text-sm" autocomplete="off">
+                  <div id="lcEmpDropdown" class="hidden" style="position:absolute;top:100%;left:0;right:0;max-height:200px;overflow-y:auto;background:#fff;border:1px solid #d1d5db;border-top:0;border-radius:0 0 6px 6px;z-index:50;box-shadow:0 4px 12px rgba(0,0,0,.1)"></div>
+                  <input id="lcEmpSelect" type="hidden" value="">
+                </div>
+                <div id="lcEmpPreview" class="hidden mt-2 p-2 rounded-lg text-xs" style="background:var(--c-surface-secondary);border:1px solid var(--c-border)"></div>
               </div>
               <div class="grid grid-cols-2 gap-3">
                 <div>
