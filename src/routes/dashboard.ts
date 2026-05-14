@@ -2,7 +2,15 @@ import { Hono } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { authMiddleware } from '../middleware/auth'
 import { requirePagePermission } from '../middleware/permissions'
-import { entityFilter } from '../utils/entityFilter'
+import { entityFilter, getEntityId } from '../utils/entityFilter'
+
+/** cards 테이블용 엔티티 필터 (requesting_entity_id 컬럼 사용) */
+function cardEntityFilter(c: any, tableAlias?: string): { clause: string; params: number[] } {
+  const entityId = getEntityId(c)
+  if (entityId === 0) return { clause: '', params: [] }
+  const prefix = tableAlias ? `${tableAlias}.` : ''
+  return { clause: ` AND ${prefix}requesting_entity_id = ?`, params: [entityId] }
+}
 
 const dashboardRouter = new Hono<HonoEnv>()
 
@@ -13,7 +21,8 @@ dashboardRouter.use('/*', authMiddleware, requirePagePermission('/dashboard'))
 dashboardRouter.get('/stats', async (c) => {
   try {
     const ef = entityFilter(c)
-    // Build basic stats query dynamically to support entity filter on orders
+    const cf = cardEntityFilter(c)
+    // Build basic stats query dynamically to support entity filter on orders + cards
     const basicStats = await c.env.DB.prepare(`
       SELECT
         (SELECT COUNT(*) FROM users WHERE is_active = 1) as active_users,
@@ -22,11 +31,11 @@ dashboardRouter.get('/stats', async (c) => {
         (SELECT COUNT(*) FROM orders WHERE status = 'CONFIRMED'${ef.clause}) as confirmed_orders,
         (SELECT COUNT(*) FROM orders WHERE status IN ('PRINTING', 'PRINT_DONE')${ef.clause}) as production_orders,
         (SELECT COUNT(*) FROM orders WHERE status = 'SHIPPED'${ef.clause}) as shipped_orders,
-        (SELECT COUNT(*) FROM cards) as total_cards,
-        (SELECT COUNT(*) FROM cards WHERE status = 'PRINTING') as pending_cards,
-        (SELECT COUNT(*) FROM cards WHERE status = 'PRINTING') as printing_cards,
-        (SELECT COUNT(*) FROM cards WHERE status = 'PRINT_DONE') as done_cards,
-        (SELECT COUNT(*) FROM cards WHERE status = 'HOLD') as hold_cards,
+        (SELECT COUNT(*) FROM cards WHERE 1=1${cf.clause}) as total_cards,
+        (SELECT COUNT(*) FROM cards WHERE status = 'PRINTING'${cf.clause}) as pending_cards,
+        (SELECT COUNT(*) FROM cards WHERE status = 'PRINTING'${cf.clause}) as printing_cards,
+        (SELECT COUNT(*) FROM cards WHERE status = 'PRINT_DONE'${cf.clause}) as done_cards,
+        (SELECT COUNT(*) FROM cards WHERE status = 'HOLD'${cf.clause}) as hold_cards,
         (SELECT SUM(final_amount) FROM orders WHERE 1=1${ef.clause}) as total_revenue,
         (SELECT COUNT(*) FROM orders WHERE date(created_at) = date('now') AND status != 'CANCELLED'${ef.clause}) as today_order_count,
         (SELECT SUM(final_amount) FROM orders WHERE date(created_at) = date('now') AND status != 'CANCELLED'${ef.clause}) as today_revenue,
@@ -35,7 +44,7 @@ dashboardRouter.get('/stats', async (c) => {
         (SELECT SUM(final_amount) FROM orders WHERE strftime('%Y-%m', created_at) = strftime('%Y-%m', date('now', '-1 month')) AND status != 'CANCELLED'${ef.clause}) as prev_month_revenue,
         (SELECT COUNT(*) FROM orders WHERE strftime('%Y-%m', created_at) = strftime('%Y-%m', date('now', '-1 month')) AND status != 'CANCELLED'${ef.clause}) as prev_month_order_count,
         (SELECT SUM(final_amount) FROM orders WHERE date(created_at) >= date('now', '-7 days') AND status != 'CANCELLED'${ef.clause}) as week_revenue,
-        (SELECT COUNT(*) FROM cards WHERE status = 'PRINT_DONE') as shipment_ready_count,
+        (SELECT COUNT(*) FROM cards WHERE status = 'PRINT_DONE'${cf.clause}) as shipment_ready_count,
         (SELECT COUNT(*) FROM orders WHERE delivery_date = date('now') AND status NOT IN ('SHIPPED','CANCELLED')${ef.clause}) as today_shipment_due,
         (SELECT COUNT(*) FROM orders WHERE priority='URGENT' AND status NOT IN ('SHIPPED','CANCELLED')${ef.clause}) as urgent_count,
         (SELECT COALESCE(SUM(final_amount),0) FROM orders WHERE billing_status='BILLED' AND strftime('%Y-%m',billed_at)=strftime('%Y-%m','now')${ef.clause}) as month_billed,
@@ -50,6 +59,11 @@ dashboardRouter.get('/stats', async (c) => {
       ...ef.params, // confirmed_orders
       ...ef.params, // production_orders
       ...ef.params, // shipped_orders
+      ...cf.params, // total_cards
+      ...cf.params, // pending_cards
+      ...cf.params, // printing_cards
+      ...cf.params, // done_cards
+      ...cf.params, // hold_cards
       ...ef.params, // total_revenue
       ...ef.params, // today_order_count
       ...ef.params, // today_revenue
@@ -58,6 +72,7 @@ dashboardRouter.get('/stats', async (c) => {
       ...ef.params, // prev_month_revenue
       ...ef.params, // prev_month_order_count
       ...ef.params, // week_revenue
+      ...cf.params, // shipment_ready_count
       ...ef.params, // today_shipment_due
       ...ef.params, // urgent_count
       ...ef.params, // month_billed
@@ -68,8 +83,8 @@ dashboardRouter.get('/stats', async (c) => {
     const { results: ppCards } = await c.env.DB.prepare(`
       SELECT post_processing FROM cards
       WHERE status IN ('PRINTING', 'PRINT_DONE')
-      AND post_processing IS NOT NULL AND post_processing != '' AND post_processing != '[]'
-    `).all<{ post_processing: string }>()
+      AND post_processing IS NOT NULL AND post_processing != '' AND post_processing != '[]'${cf.clause}
+    `).bind(...cf.params).all<{ post_processing: string }>()
 
     const ppCounts: Record<string, number> = {}
     for (const row of (ppCards || [])) {
@@ -226,6 +241,7 @@ dashboardRouter.get('/stats/clients', async (c) => {
 dashboardRouter.get('/stats/status-distribution', async (c) => {
   try {
     const ef = entityFilter(c)
+    const cf = cardEntityFilter(c)
     const orderStatus = await c.env.DB.prepare(`
       SELECT
         status,
@@ -240,8 +256,9 @@ dashboardRouter.get('/stats/status-distribution', async (c) => {
         status,
         COUNT(*) as count
       FROM cards
+      WHERE 1=1${cf.clause}
       GROUP BY status
-    `).all()
+    `).bind(...cf.params).all()
 
     return c.json({
       success: true,
@@ -262,9 +279,10 @@ dashboardRouter.get('/stats/status-distribution', async (c) => {
 // Get card progress (delivery date based)
 dashboardRouter.get('/stats/card-progress', async (c) => {
   try {
+    const cf = cardEntityFilter(c)
     const { results } = await c.env.DB.prepare(`
-      SELECT 
-        CASE 
+      SELECT
+        CASE
           WHEN julianday(delivery_date) - julianday('now') <= 2 THEN 'urgent'
           WHEN julianday(delivery_date) - julianday('now') <= 7 THEN 'soon'
           ELSE 'normal'
@@ -272,10 +290,10 @@ dashboardRouter.get('/stats/card-progress', async (c) => {
         status,
         COUNT(*) as count
       FROM cards
-      WHERE delivery_date IS NOT NULL
+      WHERE delivery_date IS NOT NULL${cf.clause}
       GROUP BY urgency, status
       ORDER BY urgency, status
-    `).all()
+    `).bind(...cf.params).all()
 
     return c.json({
       success: true,
@@ -363,6 +381,7 @@ dashboardRouter.get('/stats/receivables', async (c) => {
 // 납기 지연 발주서 목록 (미입고 경고)
 dashboardRouter.get('/overdue-pos', async (c) => {
   try {
+    const ef = entityFilter(c, 'po')
     const { results } = await c.env.DB.prepare(`
       SELECT
         po.id, po.po_number, po.expected_date, po.status, po.final_amount,
@@ -372,10 +391,10 @@ dashboardRouter.get('/overdue-pos', async (c) => {
       LEFT JOIN clients c ON po.supplier_id = c.id
       WHERE po.status IN ('CONFIRMED', 'PARTIAL_RECEIVED')
         AND po.expected_date IS NOT NULL
-        AND po.expected_date < date('now')
+        AND po.expected_date < date('now')${ef.clause}
       ORDER BY po.expected_date ASC
       LIMIT 20
-    `).all()
+    `).bind(...ef.params).all()
 
     return c.json({ success: true, data: results })
   } catch (error) {
@@ -461,12 +480,13 @@ dashboardRouter.get('/stats/weekly-trend', async (c) => {
 // 카드 상태 분포
 dashboardRouter.get('/stats/card-distribution', async (c) => {
   try {
+    const cf = cardEntityFilter(c)
     const { results } = await c.env.DB.prepare(`
       SELECT status, COUNT(*) as count
       FROM cards
-      WHERE status NOT IN ('CANCELLED')
+      WHERE status NOT IN ('CANCELLED')${cf.clause}
       GROUP BY status
-    `).all()
+    `).bind(...cf.params).all()
     return c.json({ success: true, data: results })
   } catch (error) {
     console.error('src/routes/dashboard.ts error:', error)
