@@ -424,37 +424,35 @@ window.lcSubmitSignature = async function() {
 // ===== 급여 계산 미리보기 =====
 window.lcCalcWage = function() {
   var contractType = (document.getElementById('lcContractType') || {}).value || 'HOURLY';
-  var totalWage = parseInt(document.getElementById('lcTotalWage').value) || 0;
+  var inputAmount = parseInt(document.getElementById('lcTotalWage').value) || 0;
   var preview = document.getElementById('lcWagePreview');
-  if (!preview || !totalWage) { if (preview) preview.classList.add('hidden'); return; }
+  if (!preview || !inputAmount) { if (preview) preview.classList.add('hidden'); return; }
+
+  var hasOT = document.getElementById('lcOvertimeDaily').checked;
+  var hourly, basePay, otPay;
+
+  if (hasOT) {
+    // 고정연장 ON: 총액 ÷ 225.5 = 시급, 기본급 = 시급×209, 연장 = 총액-기본급
+    hourly = Math.round(inputAmount / 225.5);
+    basePay = hourly * 209;
+    otPay = inputAmount - basePay;
+  } else {
+    // 고정연장 OFF: 기본급 = 입력값 그대로, 시급 = 참고값
+    basePay = inputAmount;
+    hourly = Math.round(inputAmount / 209);
+    otPay = 0;
+  }
+
+  document.getElementById('lcHourlyRate').value = hourly;
+  document.getElementById('lcBaseSalary').value = basePay;
 
   var html = '<div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">';
-
-  if (contractType === 'MONTHLY') {
-    document.getElementById('lcHourlyRate').value = totalWage;
-    document.getElementById('lcBaseSalary').value = totalWage;
-    html += '<span style="color:var(--c-primary);font-weight:700">월급: ' + totalWage.toLocaleString() + '원</span>';
-  } else {
-    var hasOT = document.getElementById('lcOvertimeDaily').checked;
-    var baseHours = 209;
-    var otHoursTotal = hasOT ? 0.5 * 22 : 0; // 11h
-    var divisor = baseHours + otHoursTotal * 1.5; // 209 or 225.5
-
-    var hourlyExact = totalWage / divisor;
-    var hourlyDisplay = Math.round(hourlyExact);
-    var otPay = hasOT ? totalWage - Math.round(hourlyExact * baseHours) : 0;
-    var basePay = totalWage - otPay;
-
-    document.getElementById('lcHourlyRate').value = hourlyDisplay;
-    document.getElementById('lcBaseSalary').value = basePay;
-
-    html += '<span>시급: <strong>' + hourlyDisplay.toLocaleString() + '원</strong></span>';
-    html += '<span>기본급: <strong>' + basePay.toLocaleString() + '원</strong></span>';
-    if (hasOT) {
-      html += '<span>고정연장: <strong>' + otPay.toLocaleString() + '원</strong></span>';
-    }
-    html += '<span style="color:var(--c-primary);font-weight:700">합계: ' + totalWage.toLocaleString() + '원</span>';
+  html += '<span>시급: <strong>' + hourly.toLocaleString() + '원</strong></span>';
+  html += '<span>기본급(209h): <strong>' + basePay.toLocaleString() + '원</strong></span>';
+  if (hasOT) {
+    html += '<span>고정연장(16.5h): <strong>' + otPay.toLocaleString() + '원</strong></span>';
   }
+  html += '<span style="color:var(--c-primary);font-weight:700">합계: ' + inputAmount.toLocaleString() + '원</span>';
   html += '</div>';
   preview.innerHTML = html;
   preview.classList.remove('hidden');
