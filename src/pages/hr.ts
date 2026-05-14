@@ -261,8 +261,15 @@ export function hrPage(c: Context<HonoEnv>) {
             <!-- 7) CAPS 매핑 -->
             <section>
               <h4 class="text-sm font-semibold text-gray-700 border-b border-gray-200 pb-1.5 mb-3">CAPS 매핑</h4>
-              <div class="grid grid-cols-3 gap-3 items-end">
-                <div><label class="block text-xs text-gray-500 mb-1">CAPS 번호</label><input type="text" name="caps_id" placeholder="ACServer 사원번호" class="w-full border border-gray-300 rounded px-2 py-1.5 text-sm"></div>
+              <div class="grid grid-cols-4 gap-3 items-end">
+                <div><label class="block text-xs text-gray-500 mb-1">CAPS 사이트</label>
+                  <select name="caps_site_id" class="w-full border border-gray-300 rounded px-2 py-1.5 text-sm">
+                    <option value="">— 미설정 —</option>
+                    <option value="DJ">대전 (DJ)</option>
+                    <option value="SM">선명 (SM)</option>
+                  </select>
+                </div>
+                <div><label class="block text-xs text-gray-500 mb-1">CAPS 번호</label><input type="text" name="caps_id" placeholder="ACServer fpid" class="w-full border border-gray-300 rounded px-2 py-1.5 text-sm"></div>
                 <label class="flex items-center gap-1.5 text-sm pb-2"><input type="checkbox" name="caps_sync_enabled" value="1" class="accent-blue-600"> CAPS 동기화 대상</label>
               </div>
             </section>

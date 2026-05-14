@@ -442,7 +442,7 @@ hrRouter.post('/employees', async (c) => {
       'insurance_apply_national_pension', 'insurance_apply_health',
       'insurance_apply_long_term_care', 'insurance_apply_employment',
       'insurance_apply_industrial_accident',
-      'caps_id', 'caps_sync_enabled',
+      'caps_id', 'caps_site_id', 'caps_sync_enabled',
       'pay_type',
       'emergency_contact', 'emergency_phone', 'notes',
       'entity_id',
@@ -523,7 +523,7 @@ hrRouter.put('/employees/:id', async (c) => {
       'insurance_apply_long_term_care', 'insurance_apply_employment',
       'insurance_apply_industrial_accident',
       // CAPS 매핑
-      'caps_id', 'caps_sync_enabled',
+      'caps_id', 'caps_site_id', 'caps_sync_enabled',
       // 급여유형
       'pay_type',
       // 비상연락망 / 메모
