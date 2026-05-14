@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 3 -->
-<!-- last_run_at: 2026-05-14T13:30:00+09:00 -->
+<!-- last_run_area: 4 -->
+<!-- last_run_at: 2026-05-14T15:00:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,10 +8,19 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | 11 |
+| 🆕 new | 14 |
 | ✔️ done | 32 |
 | ❌ rejected | 2 |
 
+> **Area 4 데이터 정합성 (2026-05-14T15:00):**
+> - 마이그레이션 201개 전수 분석: FK 91개 중 인덱스 누락 다수 발견
+> - quality_issues 4개 FK 인덱스, purchase_requests 2개, tax_invoices.buyer_client_id, cards.order_item_id/hold_by → A-009 자동 적용 (0205 migration)
+> - labor_contracts(employee_id, contract_start_date) UNIQUE 제약 누락 → A-010 자동 적용 (0206 migration)
+> - 출고 취소 시 cards.status 미복구 버그 (중복 배송 위험) → #51 등록 (MEDIUM, 1~2h)
+> - 카드→주문 상태 전환 트랜잭션 없음 — 3개 파일 비원자적 처리 → #52 등록 (MEDIUM, 2~3h)
+> - hr.ts CHILD_TABLES 오탈자(caps_employee_mapping→caps_employee_map) + labor_contracts 누락 + 트랜잭션 없음 → #53 등록 (SMALL, 30m)
+> - 자동 수정 2건 (A-009, A-010), 신규 이슈 3건 (#51~#53)
+>
 > **Area 3 UX/기능 감사 (2026-05-14T13:30):**
 > - 75개 페이지/스크립트 전수 UX 패턴 분석 (검색·필터·페이지네이션·빈상태·로딩)
 > - approvals.js 3탭 결재 목록 검색·필터·페이지네이션 전무 → #43 등록 (MEDIUM, 2~3h)
@@ -95,6 +104,9 @@
 | I-022 | tasks.js limit:200 하드코딩 — 200건+ 실패 태스크 미표시 | Area 3 | #44 | 30분 |
 | I-023 | deliveryAnalytics + financialReports CSV 내보내기 없음 | Area 3 | #45 | 2h |
 | I-024 | 대시보드 장비 가동률 % KPI 부재 | Area 3 | #46 | 1~2h |
+| I-025 | 출고 취소 시 cards.status 미복구 — 중복 배송 위험 | Area 4 | #51 | 1~2h |
+| I-026 | 카드→주문 상태 전환 트랜잭션 없음 (shipments/cards/orders 3파일) | Area 4 | #52 | 2~3h |
+| I-027 | hr.ts 직원 삭제 CHILD_TABLES 오탈자 + labor_contracts 누락 + 트랜잭션 없음 | Area 4 | #53 | 30분 |
 
 ---
 
@@ -102,6 +114,8 @@
 
 | ID | 제목 | 커밋 | 날짜 |
 |----|------|------|------|
+| A-010 | labor_contracts(employee_id, contract_start_date) UNIQUE INDEX 추가 (0206 migration) | — | 2026-05-14 |
+| A-009 | quality_issues/purchase_requests/tax_invoices/cards FK 인덱스 9개 추가 (0205 migration) | — | 2026-05-14 |
 | A-008 | try-catch 누락 17핸들러 (permissions/finishing/messageTemplates/iaAuto) | 60ee8b8 | 2026-05-14 |
 | A-006 | XSS escapeHtml 5건 (approvals/invoice/purchaseInvoice/quotation/clients) | e099b20 | 2026-05-13 |
 | A-005 | tax_invoice_items/orders tax_invoice_id 인덱스 추가 (0193 migration) | 1b3a698 | 2026-05-13 |
