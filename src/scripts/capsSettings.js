@@ -6,12 +6,10 @@
 
 var capsSitesCache = [];
 var capsCurrentSiteId = null;
-var capsEmployeesCache = [];
 
 // ───────── 초기화 ─────────
 async function initCapsTab() {
   await loadCapsSites();
-  await loadCapsEmployeesList();
 }
 
 // ───────── 0) 사이트 목록 ─────────
@@ -63,7 +61,6 @@ function selectCapsSite(siteId) {
   capsCurrentSiteId = siteId;
   renderCapsSiteCards();
   loadCapsSiteSettings(siteId);
-  loadCapsEmployeeMap();
   loadCapsSyncLog();
 }
 
@@ -212,114 +209,6 @@ async function regenerateCapsSiteKey() {
   }
 }
 
-// ───────── 2) 사원 매핑 ─────────
-async function loadCapsEmployeesList() {
-  try {
-    var res = await axios.get('/api/hr/employees', { params: { status: 'ACTIVE', limit: 200 } });
-    if (!res.data.success) return;
-    var d = res.data.data || {};
-    capsEmployeesCache = d.employees || d || [];
-    var sel = document.getElementById('capsMapEmployee');
-    if (!sel) return;
-    var html = '<option value="">— 선택 —</option>';
-    capsEmployeesCache.forEach(function(emp) {
-      var label = (emp.employee_code || '-') + ' ' + (emp.name || '') +
-                  (emp.department ? ' (' + emp.department + ')' : '');
-      html += '<option value="' + emp.id + '">' + escapeHtml(label) + '</option>';
-    });
-    sel.innerHTML = html;
-  } catch (err) {
-    console.error('직원 목록 로드 실패', err);
-  }
-}
-
-async function loadCapsEmployeeMap() {
-  try {
-    var params = {};
-    if (capsCurrentSiteId) params.site_id = capsCurrentSiteId;
-    var res = await axios.get('/api/caps/employee-map', { params: params });
-    if (!res.data.success) return;
-    var rows = res.data.data || [];
-    var body = document.getElementById('capsMapBody');
-    var empty = document.getElementById('capsMapEmpty');
-    if (!body) return;
-    if (rows.length === 0) {
-      body.innerHTML = '';
-      if (empty) empty.classList.remove('hidden');
-      return;
-    }
-    if (empty) empty.classList.add('hidden');
-    body.innerHTML = rows.map(function(r) {
-      var mappedAt = r.mapped_at ? String(r.mapped_at).slice(0, 10) : '-';
-      var dept = r.caps_c_dept || '';
-      var capsLabel = escapeHtml(r.caps_e_name || '-') + (dept ? ' <span class="text-gray-400">(' + escapeHtml(dept) + ')</span>' : '');
-      return '<tr class="border-b border-gray-100 hover:bg-blue-50/30">' +
-        '<td class="px-3 py-2 tabular-nums font-medium">' + escapeHtml(r.caps_e_idno) + '</td>' +
-        '<td class="px-3 py-2 text-gray-700">' + capsLabel + '</td>' +
-        '<td class="px-3 py-2 text-gray-400"><i class="fas fa-arrow-right"></i></td>' +
-        '<td class="px-3 py-2">' +
-          escapeHtml(r.employee_code || '-') + ' ' + escapeHtml(r.employee_name || '-') +
-          (r.department ? ' <span class="text-gray-400">(' + escapeHtml(r.department) + ')</span>' : '') +
-        '</td>' +
-        '<td class="px-3 py-2 text-gray-600 text-xs">' + escapeHtml(r.notes || '') + '</td>' +
-        '<td class="px-3 py-2 text-xs text-gray-400 tabular-nums">' + mappedAt + '</td>' +
-        '<td class="px-3 py-2 text-center">' +
-          '<button onclick="removeCapsEmployeeMap(' + r.id + ')" class="text-gray-400 hover:text-red-600" title="삭제">' +
-            '<i class="fas fa-trash text-xs"></i>' +
-          '</button>' +
-        '</td>' +
-      '</tr>';
-    }).join('');
-  } catch (err) {
-    console.error('CAPS 매핑 로드 실패', err);
-  }
-}
-
-async function addCapsEmployeeMap() {
-  var idno = document.getElementById('capsMapIdno').value.trim();
-  var name = document.getElementById('capsMapName').value.trim();
-  var dept = document.getElementById('capsMapDept').value.trim();
-  var empId = document.getElementById('capsMapEmployee').value;
-  var notes = document.getElementById('capsMapNotes').value.trim();
-  if (!idno) { if (typeof showToast === 'function') showToast('CAPS 사원번호를 입력하세요', 'warning'); return; }
-  if (!empId) { if (typeof showToast === 'function') showToast('MES 직원을 선택하세요', 'warning'); return; }
-  try {
-    var res = await axios.post('/api/caps/employee-map', {
-      site_id: capsCurrentSiteId || 'DJ',
-      caps_e_idno: idno,
-      caps_e_name: name || null,
-      caps_c_dept: dept || null,
-      employee_id: parseInt(empId),
-      notes: notes || null
-    });
-    if (res.data.success) {
-      if (typeof showToast === 'function') showToast('매핑이 추가되었습니다', 'success');
-      document.getElementById('capsMapIdno').value = '';
-      document.getElementById('capsMapName').value = '';
-      document.getElementById('capsMapDept').value = '';
-      document.getElementById('capsMapEmployee').value = '';
-      document.getElementById('capsMapNotes').value = '';
-      await loadCapsEmployeeMap();
-      await loadCapsSites();
-    }
-  } catch (err) {
-    if (typeof showToast === 'function') showToast('추가 실패: ' + (err.response && err.response.data && err.response.data.error || err.message), 'error');
-  }
-}
-
-async function removeCapsEmployeeMap(id) {
-  if (!(await showConfirm('이 매핑을 삭제하시겠습니까?', { danger: true }))) return;
-  try {
-    var res = await axios.delete('/api/caps/employee-map/' + id);
-    if (res.data.success) {
-      if (typeof showToast === 'function') showToast('삭제되었습니다', 'success');
-      await loadCapsEmployeeMap();
-    }
-  } catch (err) {
-    if (typeof showToast === 'function') showToast('삭제 실패: ' + err.message, 'error');
-  }
-}
-
 // ───────── 미매핑 배너 ─────────
 function renderCapsUnmappedBanner(rawJson) {
   var banner = document.getElementById('capsUnmappedBanner');
@@ -337,24 +226,11 @@ function renderCapsUnmappedBanner(rawJson) {
   }
   banner.classList.remove('hidden');
   count.textContent = samples.length;
-  list.innerHTML = samples.map(function(s, idx) {
-    var label = s.e_idno + (s.e_name ? ' · ' + s.e_name : '') + (s.c_dept ? ' (' + s.c_dept + ')' : '');
-    return '<button type="button" onclick="fillCapsMapFromUnmapped(' + idx + ')" ' +
-           'class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-white border border-amber-300 text-amber-800 hover:bg-amber-100">' +
-           '<i class="fas fa-plus text-[9px] mr-1"></i>' + escapeHtml(label) +
-           '</button>';
+  list.innerHTML = samples.map(function(s) {
+    var label = (s.fpid || s.e_idno) + (s.e_name ? ' · ' + s.e_name : '') + (s.c_dept ? ' (' + s.c_dept + ')' : '');
+    return '<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-white border border-amber-300 text-amber-800">' +
+           escapeHtml(label) + '</span>';
   }).join('');
-  window.__capsUnmappedSamples = samples;
-}
-
-function fillCapsMapFromUnmapped(idx) {
-  var samples = window.__capsUnmappedSamples || [];
-  var s = samples[idx];
-  if (!s) return;
-  document.getElementById('capsMapIdno').value = s.e_idno || '';
-  document.getElementById('capsMapName').value = s.e_name || '';
-  document.getElementById('capsMapDept').value = s.c_dept || '';
-  document.getElementById('capsMapEmployee').focus();
 }
 
 // ───────── 3) 동기화 이력 ─────────

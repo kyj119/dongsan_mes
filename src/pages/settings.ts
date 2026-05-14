@@ -460,69 +460,7 @@ ${capsSettingsScript}
             <div id="capsSettingsMsg" class="mt-3 text-center text-sm hidden"></div>
           </div>
 
-          <!-- 섹션 2: 사원 매핑 -->
-          <div class="bg-white rounded-lg border border-gray-200 p-6">
-            <h2 class="text-lg font-bold text-gray-900 mb-2 flex items-center gap-2">
-              <i class="fas fa-id-badge text-gray-500"></i>
-              사원 매핑
-            </h2>
-            <p class="text-sm text-gray-500 mb-4">선택한 사이트의 CAPS 사원번호(e_idno)를 MES 직원과 1:1로 매핑합니다.</p>
-
-            <div class="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-4">
-              <div class="grid grid-cols-1 md:grid-cols-5 gap-3">
-                <div>
-                  <label class="block text-xs font-semibold text-gray-600 mb-1">CAPS 사원번호 <span class="text-red-500">*</span></label>
-                  <input type="text" id="capsMapIdno" class="w-full px-2.5 py-1.5 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500" placeholder="e_idno">
-                </div>
-                <div>
-                  <label class="block text-xs font-semibold text-gray-600 mb-1">CAPS 이름</label>
-                  <input type="text" id="capsMapName" class="w-full px-2.5 py-1.5 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500" placeholder="참고용">
-                </div>
-                <div>
-                  <label class="block text-xs font-semibold text-gray-600 mb-1">CAPS 부서</label>
-                  <input type="text" id="capsMapDept" class="w-full px-2.5 py-1.5 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500" placeholder="참고용">
-                </div>
-                <div>
-                  <label class="block text-xs font-semibold text-gray-600 mb-1">MES 직원 <span class="text-red-500">*</span></label>
-                  <select id="capsMapEmployee" class="w-full px-2.5 py-1.5 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
-                    <option value="">— 선택 —</option>
-                  </select>
-                </div>
-                <div class="flex items-end">
-                  <button onclick="addCapsEmployeeMap()" class="w-full px-3 py-1.5 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm font-medium">
-                    <i class="fas fa-plus mr-1"></i>추가
-                  </button>
-                </div>
-              </div>
-              <div class="mt-3">
-                <label class="block text-xs font-semibold text-gray-600 mb-1">메모</label>
-                <input type="text" id="capsMapNotes" class="w-full px-2.5 py-1.5 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500" placeholder="선택 사항">
-              </div>
-            </div>
-
-            <div class="overflow-x-auto" style="max-height: 400px; overflow-y: auto;">
-              <table class="w-full text-sm ds-table-striped">
-                <thead>
-                  <tr class="bg-gray-50 text-gray-600 text-xs font-semibold uppercase tracking-wider">
-                    <th class="px-3 py-2 text-left">CAPS e_idno</th>
-                    <th class="px-3 py-2 text-left">CAPS 이름/부서</th>
-                    <th class="px-3 py-2 text-left"></th>
-                    <th class="px-3 py-2 text-left">MES 직원</th>
-                    <th class="px-3 py-2 text-left">메모</th>
-                    <th class="px-3 py-2 text-left">매핑일</th>
-                    <th class="px-3 py-2 w-12"></th>
-                  </tr>
-                </thead>
-                <tbody id="capsMapBody"></tbody>
-              </table>
-            </div>
-            <div id="capsMapEmpty" class="text-center py-8 hidden">
-              <i class="fas fa-inbox text-3xl text-gray-300 block mb-2"></i>
-              <p class="text-sm text-gray-500">등록된 매핑이 없습니다.</p>
-            </div>
-          </div>
-
-          <!-- 섹션 3: 동기화 이력 -->
+          <!-- 동기화 이력 -->
           <div class="bg-white rounded-lg border border-gray-200 p-6">
             <div class="flex items-center justify-between mb-4">
               <h2 class="text-lg font-bold text-gray-900 flex items-center gap-2">
