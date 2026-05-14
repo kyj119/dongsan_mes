@@ -413,6 +413,11 @@ function hrdPopulateForm(emp) {
       el.checked = (el.value === (val || 'VARIABLE'));
       continue;
     }
+    // 체크박스 처리 (overtime_daily_hours → 0보다 크면 체크)
+    if (el.type === 'checkbox') {
+      el.checked = val > 0;
+      continue;
+    }
     // 포맷 적용
     var fmt = el.getAttribute('data-format');
     if (fmt === 'rrn') val = hrdFmtRRN(val);
@@ -510,6 +515,13 @@ window.hrdSave = async function() {
         var origRadio = String(orig[field] || 'VARIABLE');
         if (el.value !== origRadio) payload[field] = el.value;
       }
+      continue;
+    }
+    // 체크박스: overtime_daily_hours → 0.5 or 0
+    if (el.type === 'checkbox') {
+      var checkNum = el.checked ? 0.5 : 0;
+      var origNum = Number(orig[field]) || 0;
+      if (checkNum !== origNum) payload[field] = checkNum;
       continue;
     }
     var val = el.value;
@@ -618,24 +630,25 @@ function hrdUpdateOvertimePreview() {
   if (!preview) return;
 
   var hourlyEl = document.querySelector('#hrdManageCard [data-field="hourly_rate"]');
-  var otHoursEl = document.querySelector('#hrdManageCard [data-field="overtime_daily_hours"]');
-  var otDaysEl = document.querySelector('#hrdManageCard [data-field="overtime_work_days"]');
+  var otToggle = document.getElementById('hrdOvertimeToggle');
   var baseSalaryEl = document.querySelector('#hrdManageCard [data-field="base_salary"]');
 
   var hourly = hrdParseMoneyInput(hourlyEl ? hourlyEl.value : '');
-  var otHours = otHoursEl ? parseFloat(otHoursEl.value) || 0 : 0;
-  var otDays = otDaysEl ? parseFloat(otDaysEl.value) || 22 : 22;
+  var hasOvertime = otToggle && otToggle.checked;
   var baseSalary = hrdParseMoneyInput(baseSalaryEl ? baseSalaryEl.value : '');
 
-  if (!hourly || !otHours) {
+  if (!hourly || !hasOvertime) {
     preview.innerHTML = '';
     return;
   }
 
-  var otPay = Math.round(hourly * otHours * otDays * 1.5);
+  var otHours = 0.5;
+  var otDays = 22;
+  var totalOtHours = otHours * otDays;
+  var otPay = Math.round(hourly * totalOtHours * 1.5);
   var monthTotal = (baseSalary || 0) + otPay;
   preview.innerHTML = '<p class="text-xs text-blue-600">' +
-    '고정연장: ' + hourly.toLocaleString('ko-KR') + '원 × ' + otHours + 'h × ' + otDays + '일 × 1.5 = ' + otPay.toLocaleString('ko-KR') + '원' +
+    '고정연장: ' + hourly.toLocaleString('ko-KR') + '원 × ' + totalOtHours + 'h × 1.5 = ' + otPay.toLocaleString('ko-KR') + '원' +
     ' | 월 합계: ' + monthTotal.toLocaleString('ko-KR') + '원</p>';
 }
 
@@ -646,8 +659,7 @@ function hrdBindSalaryCalc() {
 
   var baseSalaryEl = document.querySelector('#hrdManageCard [data-field="base_salary"]');
   var hourlyRateEl = document.querySelector('#hrdManageCard [data-field="hourly_rate"]');
-  var otHoursEl = document.querySelector('#hrdManageCard [data-field="overtime_daily_hours"]');
-  var otDaysEl = document.querySelector('#hrdManageCard [data-field="overtime_work_days"]');
+  var otToggle = document.getElementById('hrdOvertimeToggle');
 
   if (baseSalaryEl) {
     baseSalaryEl.addEventListener('input', function() {
@@ -673,8 +685,7 @@ function hrdBindSalaryCalc() {
     });
   }
 
-  if (otHoursEl) otHoursEl.addEventListener('input', hrdUpdateOvertimePreview);
-  if (otDaysEl) otDaysEl.addEventListener('input', hrdUpdateOvertimePreview);
+  if (otToggle) otToggle.addEventListener('change', hrdUpdateOvertimePreview);
 
   // pay_type 라디오 변경 시 갱신
   var radios = document.querySelectorAll('#hrdManageCard input[name="pay_type"]');

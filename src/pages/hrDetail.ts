@@ -194,8 +194,11 @@ export function hrDetailPage(c: Context<HonoEnv>) {
               <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 <div><label class="block text-xs text-gray-500 mb-1">기본급 <span class="text-gray-400">(원)</span></label><input data-field="base_salary" data-money="1" type="text" inputmode="numeric" class="hrd-input w-full border border-gray-200 rounded px-2 py-1.5 text-sm text-right tabular-nums" disabled></div>
                 <div><label class="block text-xs text-gray-500 mb-1">시급 <span class="text-gray-400">(원/시간제)</span></label><input data-field="hourly_rate" data-money="1" type="text" inputmode="numeric" class="hrd-input w-full border border-gray-200 rounded px-2 py-1.5 text-sm text-right tabular-nums" disabled></div>
-                <div><label class="block text-xs text-gray-500 mb-1">일 고정연장 <span class="text-gray-400">(시간)</span></label><input data-field="overtime_daily_hours" type="number" step="0.5" min="0" max="4" class="hrd-input w-full border border-gray-200 rounded px-2 py-1.5 text-sm text-right tabular-nums" disabled></div>
-                <div><label class="block text-xs text-gray-500 mb-1">월 근무일수 <span class="text-gray-400">(고정연장)</span></label><input data-field="overtime_work_days" type="number" min="0" max="31" class="hrd-input w-full border border-gray-200 rounded px-2 py-1.5 text-sm text-right tabular-nums" placeholder="22" disabled></div>
+                <div class="flex items-center gap-2 pt-5">
+                  <input data-field="overtime_daily_hours" type="checkbox" id="hrdOvertimeToggle" class="hrd-input w-4 h-4 rounded" disabled>
+                  <input data-field="overtime_work_days" type="hidden" value="22">
+                  <label for="hrdOvertimeToggle" class="text-sm text-gray-700 cursor-pointer">고정연장 적용 <span class="text-gray-400">(아침 30분)</span></label>
+                </div>
               </div>
               <div id="hrdOvertimePreview" class="mt-2"></div>
               <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mt-4">
