@@ -173,10 +173,10 @@ function renderNotes(notes) {
     return '<div class="bg-white rounded-lg shadow p-4">'
       + '<div class="flex justify-between items-start mb-2">'
       + '<div class="flex items-center gap-2">' + typeBadge + '<span class="text-xs text-gray-400">' + fmtDate(n.created_at) + '</span>'
-      + (n.created_by_name ? '<span class="text-xs text-gray-400">by ' + n.created_by_name + '</span>' : '') + '</div>'
+      + (n.created_by_name ? '<span class="text-xs text-gray-400">by ' + escapeHtml(n.created_by_name) + '</span>' : '') + '</div>'
       + '<button onclick="deleteNote(' + n.id + ')" class="text-red-400 hover:text-red-600 text-xs"><i class="fas fa-trash"></i></button>'
       + '</div>'
-      + '<div class="text-sm text-gray-700 whitespace-pre-wrap">' + (n.content || '') + '</div>'
+      + '<div class="text-sm text-gray-700 whitespace-pre-wrap">' + escapeHtml(n.content || '') + '</div>'
       + '</div>';
   }).join('');
 }
@@ -191,10 +191,10 @@ function renderCollection(logs) {
     return '<tr class="border-t hover:bg-gray-50">'
       + '<td class="px-4 py-3 text-sm">' + fmtDate(cl.contact_date) + '</td>'
       + '<td class="px-4 py-3"><span class="px-2 py-0.5 rounded text-xs bg-gray-100 text-gray-700">' + (collMethodLabels[cl.contact_method] || cl.contact_method) + '</span></td>'
-      + '<td class="px-4 py-3 text-sm">' + (cl.contact_person || cl.created_by_name || '-') + '</td>'
+      + '<td class="px-4 py-3 text-sm">' + escapeHtml(cl.contact_person || cl.created_by_name || '-') + '</td>'
       + '<td class="px-4 py-3 text-sm">' + fmtDate(cl.promised_date) + '</td>'
       + '<td class="px-4 py-3 text-right text-sm">' + (cl.promised_amount ? fmt(cl.promised_amount) + '원' : '-') + '</td>'
-      + '<td class="px-4 py-3 text-sm text-gray-500">' + (cl.notes || '-') + '</td>'
+      + '<td class="px-4 py-3 text-sm text-gray-500">' + escapeHtml(cl.notes || '-') + '</td>'
       + '</tr>';
   }).join('');
 }
