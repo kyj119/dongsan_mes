@@ -151,11 +151,11 @@ export function dashboardPage(c: Context<HonoEnv>) {
                 <div class="ds-card-header">
                   <h3 class="ds-card-title">
                     <i class="fas fa-tachometer-alt" style="color:var(--c-success);margin-right:6px"></i>
-                    장비 가동률 (최근 7일)
+                    장비 가동시간
                   </h3>
                   <a href="/production-reports" class="ds-btn ds-btn-ghost ds-btn-sm">상세 &rarr;</a>
                 </div>
-                <div id="uptimeWeekly" class="space-y-2 max-h-[180px] overflow-y-auto"></div>
+                <div id="equipUtilization" class="space-y-3"></div>
               </div>
             </div>
 

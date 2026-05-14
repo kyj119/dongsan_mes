@@ -602,6 +602,113 @@ dashboardRouter.get('/stats/uptime-weekly', async (c) => {
   }
 })
 
+// 장비 가동시간 (print_duration_sec 기반, 근무시간 570분 = 08:30~18:00)
+dashboardRouter.get('/stats/equipment-utilization', async (c) => {
+  try {
+    const WORK_MINUTES = 570 // 08:30~18:00
+
+    // 오늘 장비별 가동시간
+    const { results: todayRows } = await c.env.DB.prepare(`
+      SELECT pe.equipment_id, e.name as equipment_name,
+        SUM(pe.print_duration_sec) as total_sec,
+        COUNT(*) as print_count,
+        SUM(CASE WHEN pe.print_status = 'OK' THEN 1 ELSE 0 END) as ok_count,
+        MIN(pe.print_started_at) as first_print,
+        MAX(pe.print_completed_at) as last_print
+      FROM print_events pe
+      LEFT JOIN equipment e ON pe.equipment_id = e.id
+      WHERE date(pe.print_started_at) = date('now')
+      GROUP BY pe.equipment_id
+      ORDER BY total_sec DESC
+    `).all()
+
+    // 최근 7일 장비별 일평균 가동시간
+    const { results: weeklyRows } = await c.env.DB.prepare(`
+      SELECT pe.equipment_id, e.name as equipment_name,
+        SUM(pe.print_duration_sec) as total_sec,
+        COUNT(DISTINCT date(pe.print_started_at)) as active_days,
+        COUNT(*) as print_count
+      FROM print_events pe
+      LEFT JOIN equipment e ON pe.equipment_id = e.id
+      WHERE date(pe.print_started_at) >= date('now', '-6 days')
+      GROUP BY pe.equipment_id
+      ORDER BY total_sec DESC
+    `).all()
+
+    interface TodayRow { equipment_id: string; equipment_name: string; total_sec: number; print_count: number; ok_count: number; first_print: string; last_print: string }
+    interface WeeklyRow { equipment_id: string; equipment_name: string; total_sec: number; active_days: number; print_count: number }
+
+    const weeklyMap = new Map<string, WeeklyRow>()
+    for (const r of (weeklyRows as unknown as WeeklyRow[])) {
+      weeklyMap.set(r.equipment_id, r)
+    }
+
+    const equipment = (todayRows as unknown as TodayRow[]).map((row) => {
+      const totalMin = Math.round(row.total_sec / 60)
+      const utilPct = Math.min(Number(((totalMin / WORK_MINUTES) * 100).toFixed(1)), 100)
+      const weekly = weeklyMap.get(row.equipment_id)
+      const weeklyAvgMin = weekly
+        ? Math.round(weekly.total_sec / 60 / Math.max(weekly.active_days, 1))
+        : 0
+      const weeklyAvgPct = Math.min(Number(((weeklyAvgMin / WORK_MINUTES) * 100).toFixed(1)), 100)
+      return {
+        equipment_id: row.equipment_id,
+        equipment_name: row.equipment_name || row.equipment_id,
+        today_minutes: totalMin,
+        today_pct: utilPct,
+        today_print_count: row.print_count,
+        today_ok_count: row.ok_count,
+        first_print: row.first_print,
+        last_print: row.last_print,
+        weekly_avg_minutes: weeklyAvgMin,
+        weekly_avg_pct: weeklyAvgPct,
+        weekly_active_days: weekly?.active_days || 0
+      }
+    })
+
+    // 전체 장비 + 아직 오늘 가동 안 된 장비도 weekly에서 추가
+    for (const [eqId, weekly] of weeklyMap) {
+      if (!equipment.find(e => e.equipment_id === eqId)) {
+        const weeklyAvgMin = Math.round(weekly.total_sec / 60 / Math.max(weekly.active_days, 1))
+        equipment.push({
+          equipment_id: eqId,
+          equipment_name: weekly.equipment_name || eqId,
+          today_minutes: 0,
+          today_pct: 0,
+          today_print_count: 0,
+          today_ok_count: 0,
+          first_print: '',
+          last_print: '',
+          weekly_avg_minutes: weeklyAvgMin,
+          weekly_avg_pct: Math.min(Number(((weeklyAvgMin / WORK_MINUTES) * 100).toFixed(1)), 100),
+          weekly_active_days: weekly.active_days
+        })
+      }
+    }
+
+    // 전체 평균 가동률
+    const avgTodayPct = equipment.length > 0
+      ? Number((equipment.reduce((s, e) => s + e.today_pct, 0) / equipment.length).toFixed(1))
+      : 0
+    const avgWeeklyPct = equipment.length > 0
+      ? Number((equipment.reduce((s, e) => s + e.weekly_avg_pct, 0) / equipment.length).toFixed(1))
+      : 0
+
+    return c.json({
+      success: true,
+      data: {
+        work_minutes: WORK_MINUTES,
+        avg_today_pct: avgTodayPct,
+        avg_weekly_pct: avgWeeklyPct,
+        equipment
+      }
+    })
+  } catch (error) {
+    console.error('equipment-utilization error:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
+  }
+})
+
 // 최근 활동: 최근 주문 5건 + 최근 출고 5건
 dashboardRouter.get('/stats/recent-activity', async (c) => {
   try {
