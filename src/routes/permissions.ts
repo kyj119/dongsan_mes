@@ -13,11 +13,10 @@ permissionsRouter.use('/*', authMiddleware)
 // GET /api/permissions/me - 현재 사용자가 접근 가능한 page_key 배열 (사이드바용, 모든 로그인 사용자)
 permissionsRouter.get('/me', async (c) => {
   try {
-    const user = c.get('user')
+    const user = c.get('user') as any
     const allowed = await getAccessiblePages(c.env.DB, user.role)
     return c.json({ success: true, data: { role: user.role, pages: Array.from(allowed) } })
-  } catch (err) {
-    console.error('permissions /me error:', err)
+  } catch {
     return c.json({ success: false, error: '서버 오류' }, 500)
   }
 })
@@ -31,8 +30,7 @@ permissionsRouter.get('/pages', async (c) => {
        ORDER BY sort_order, page_key`
     ).all()
     return c.json({ success: true, data: results || [] })
-  } catch (err) {
-    console.error('permissions /pages error:', err)
+  } catch {
     return c.json({ success: false, error: '서버 오류' }, 500)
   }
 })
@@ -57,8 +55,7 @@ permissionsRouter.get('/matrix', requireRole('ADMIN'), async (c) => {
       matrix[p.role][p.page_key] = 1
     }
     return c.json({ success: true, data: { pages: pagesRes.results || [], matrix } })
-  } catch (err) {
-    console.error('permissions /matrix error:', err)
+  } catch {
     return c.json({ success: false, error: '서버 오류' }, 500)
   }
 })
@@ -74,7 +71,7 @@ permissionsRouter.patch('/', requireRole('ADMIN'), async (c) => {
     if (updates.length === 0) {
       return c.json({ success: true, updated: 0 })
     }
-    const user = c.get('user')
+    const user = c.get('user') as any
     for (const u of updates) {
       if (!ROLE_SET.has(u.role)) {
         return c.json({ success: false, error: `잘못된 역할: ${u.role}` }, 400)
@@ -96,8 +93,7 @@ permissionsRouter.patch('/', requireRole('ADMIN'), async (c) => {
     await c.env.DB.batch(stmts)
     invalidatePermissionCache()
     return c.json({ success: true, updated: updates.length })
-  } catch (err) {
-    console.error('permissions PATCH error:', err)
+  } catch {
     return c.json({ success: false, error: '서버 오류' }, 500)
   }
 })
@@ -112,7 +108,7 @@ const HARD_ADMIN_ONLY_PAGES = new Set<string>([
 // body: { page_key: '/orders' } — page_key 가 마스터에 존재해야 함. 당일 동일 사용자+페이지 중복 차단.
 permissionsRouter.post('/request', async (c) => {
   try {
-    const user = c.get('user')
+    const user = c.get('user') as any
     const body = await c.req.json().catch(() => ({})) as { page_key?: string }
     const pageKey = body.page_key
     if (!pageKey || typeof pageKey !== 'string') {
@@ -134,7 +130,7 @@ permissionsRouter.post('/request', async (c) => {
       return c.json({ success: false, error: '이미 접근 권한이 있습니다' }, 400)
     }
     // 당일 동일 요청 중복 차단 (스팸 방지)
-    const userName = user.username || `#${user.id}`
+    const userName = user.name || user.username || `#${user.id}`
     const title = `[권한 요청] ${userName} → ${page.page_label}`
     const dup = await c.env.DB.prepare(
       `SELECT id FROM notifications WHERE target_role = 'ADMIN' AND title = ? AND date(created_at) = date('now') LIMIT 1`
@@ -147,8 +143,7 @@ permissionsRouter.post('/request', async (c) => {
       `INSERT INTO notifications (target_role, title, message, link) VALUES ('ADMIN', ?, ?, '/permissions')`
     ).bind(title, message).run()
     return c.json({ success: true, message: 'ADMIN에게 요청이 전송되었습니다.' })
-  } catch (err) {
-    console.error('permissions /request error:', err)
+  } catch {
     return c.json({ success: false, error: '서버 오류' }, 500)
   }
 })

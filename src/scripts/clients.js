@@ -38,7 +38,7 @@ function setValueKeepCursor(el, newVal) {
 async function checkBrnStatus() {
     var brn = document.getElementById('clientModalBizRegNum').value.trim();
     if (!brn || brn.replace(/-/g, '').length !== 10) {
-        showToast('사업자등록번호 10자리를 입력���세요.', 'warning');
+        showToast('사업자등록번호 10자리를 입력하세요.', 'warning');
         return;
     }
     var btn = document.getElementById('btnCheckBrn');
@@ -68,7 +68,7 @@ async function checkBrnStatus() {
     }
 }
 
-// ── 필터 ────────────────────────────────────────
+// ── 필터 ────────────────────────────────────────────────
 
 function getFilters() {
     return {
@@ -112,7 +112,7 @@ function changePageSize() {
     loadClients(1);
 }
 
-// ── 목록 로드 ───────────────────────────────────
+// ── 목록 로드 ───────────────────────────────────────────────
 
 async function loadClients(page) {
     if (page === undefined) page = 1;
@@ -153,10 +153,9 @@ async function loadClients(page) {
     }
 }
 
-// ── 목록 표시 ───────────────────────────────────
+// ── 목록 표시 ───────────────────────────────────────────────
 
 function displayClients(clients, pagination) {
-    // 총 건수 표시
     var countEl = document.getElementById('totalCount');
     if (countEl) countEl.textContent = pagination.total.toLocaleString('ko-KR') + '건';
 
@@ -176,21 +175,17 @@ function displayClients(clients, pagination) {
     };
 
     var rows = clients.map(function(c) {
-        // 유형 뱃지
         var typeBadge = '';
         if (c.client_type === 'SALES') typeBadge = '<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-50 text-blue-700">매출</span>';
         else if (c.client_type === 'PURCHASE') typeBadge = '<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-amber-50 text-amber-700">매입</span>';
         else if (c.client_type === 'BOTH') typeBadge = '<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-50 text-blue-700">매출+매입</span>';
 
-        // 상태
         var statusBadge = c.is_active
             ? '<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-50 text-green-700"><i class="fas fa-check-circle text-[7px] mr-1"></i>활성</span>'
             : '<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-600"><i class="fas fa-power-off text-[7px] mr-1"></i>비활성</span>';
 
-        // 계산서 유형
         var invLabel = invoiceLabels[c.invoice_method] || '-';
 
-        // 최근 주문 / 무주문 기간
         var orderDisplay = '-';
         if (c.last_order_date) {
             var days = Math.floor((Date.now() - new Date(c.last_order_date).getTime()) / 86400000);
@@ -236,7 +231,6 @@ function displayClients(clients, pagination) {
         + '<tbody>' + rows + '</tbody>'
         + '</table>';
 
-    // 페이지네이션
     var p = pagination;
     var pageNums = '';
     var startPage = Math.max(1, p.page - 2);
@@ -251,7 +245,7 @@ function displayClients(clients, pagination) {
 
     document.getElementById('paginationArea').innerHTML =
         '<div class="flex justify-between items-center">'
-        + '<div class="text-xs text-gray-500">총 <span class="font-medium">' + p.total.toLocaleString('ko-KR') + '</span>건 (페이지 ' + p.page + ' / ' + p.total_pages + ')</div>'
+        + '<div class="text-xs text-gray-500">싙 <span class="font-medium">' + p.total.toLocaleString('ko-KR') + '</span>건 (페이지 ' + p.page + ' / ' + p.total_pages + ')</div>'
         + '<div class="flex gap-1 items-center">'
             + (p.page > 1 ? '<button onclick="loadClients(1)" class="px-2 py-1 border rounded text-xs hover:bg-gray-50"><i class="fas fa-angle-double-left"></i></button>' : '')
             + (p.page > 1 ? '<button onclick="loadClients(' + (p.page - 1) + ')" class="px-2 py-1 border rounded text-xs hover:bg-gray-50"><i class="fas fa-angle-left"></i></button>' : '')
@@ -262,7 +256,7 @@ function displayClients(clients, pagination) {
         + '</div>';
 }
 
-// ── 모달 ────────────────────────────────────────
+// ── 모달 ────────────────────────────────────────────────
 
 function showAddClientModal() {
     document.getElementById('clientModalTitle').textContent = '거래처 추가';
@@ -363,7 +357,7 @@ async function saveClient() {
         document.getElementById('clientModal').classList.add('hidden');
         loadClients(currentPage);
     } catch (error) {
-        handleApiError(error, '��장 실패');
+        handleApiError(error, '저장 실패');
     }
 }
 
@@ -380,7 +374,7 @@ async function deleteClient(clientId, clientName) {
     }
 }
 
-// ── 엑셀 임포트 ────────────────────────────────
+// ── 엑셀 임포트 ──────────────────────────────────
 
 async function importExcel() {
     var fileInput = document.getElementById('excelFile');
@@ -421,7 +415,7 @@ async function importExcel() {
         };
 
         var clients = jsonData.map(function(row) {
-            var code = findVal(row, ['client_code', '거래처���드']) || '';
+            var code = findVal(row, ['client_code', '거래처코드']) || '';
             return {
                 client_code: String(code),
                 client_name: findVal(row, ['client_name', '거래처명']) || '',
@@ -432,7 +426,7 @@ async function importExcel() {
                 mobile: findVal(row, ['mobile', '모바일']),
                 fax: findVal(row, ['fax', 'Fax']),
                 email: findVal(row, ['email', 'Email']),
-                address: findVal(row, ['address', '기본주��', '주소1']),
+                address: findVal(row, ['address', '기본주소', '주소1']),
                 address_detail: findVal(row, ['address_detail', '상세주소']),
                 search_keywords: findVal(row, ['search_keywords', '검색창내용']),
                 transfer_info: findVal(row, ['transfer_info', '이체정보']),
@@ -452,7 +446,7 @@ async function importExcel() {
             resultDiv.innerHTML =
                 '<div class="font-medium text-green-700 mb-1"><i class="fas fa-check-circle mr-1"></i>임포트 완료</div>'
                 + '<div class="text-gray-700">'
-                + '전체: ' + r.total + ' / 신규: ' + r.inserted + ' / 업데이트: ' + r.updated + ' / 건너뜀: ' + r.skipped
+                + '전체: ' + r.total + ' / 신규: ' + r.inserted + ' / 업데이트: ' + r.updated + ' / 건너눠: ' + r.skipped
                 + (r.errors.length > 0 ? '<div class="mt-1 text-red-600 text-xs">' + r.errors.slice(0,3).join('<br>') + '</div>' : '')
                 + '</div>';
             loadClients(currentPage);
@@ -460,7 +454,7 @@ async function importExcel() {
         }
     } catch (error) {
         resultDiv.className = 'mt-3 p-3 bg-red-50 border border-red-200 rounded text-sm text-red-700';
-        resultDiv.innerHTML = '<i class="fas fa-exclamation-circle mr-1"></i>임포트 실패: ' + (error.response && error.response.data ? error.response.data.error : error.message);
+        resultDiv.innerHTML = '<i class="fas fa-exclamation-circle mr-1"></i>임포트 실패: ' + escapeHtml(error.response && error.response.data ? error.response.data.error : error.message);
     }
 }
 
@@ -492,7 +486,7 @@ function loadPricePolicyOptions() {
     }).catch(function(err) { console.error('[clients] 가격 정책 목록 로드 실패', err); });
 }
 
-// ── 초기화 ──────────────────────────────────────
+// ── 초기화 ────────────────────────────────────────────────
 
 loadClients(1);
 loadPriceListOptions();

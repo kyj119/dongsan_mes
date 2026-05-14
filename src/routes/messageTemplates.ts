@@ -12,7 +12,7 @@ messageTemplatesRouter.get('/', async (c) => {
     const db = c.env.DB
     const channel = c.req.query('channel')
 
-    let query = 'SELECT id, channel, name, subject, content, created_by, created_at, updated_at FROM message_templates'
+    let query = 'SELECT * FROM message_templates'
     const bindings: any[] = []
 
     if (channel) {
@@ -21,10 +21,9 @@ messageTemplatesRouter.get('/', async (c) => {
     }
     query += ' ORDER BY created_at DESC'
 
-    const { results } = await db.prepare(query).bind(...bindings).all()
+    const { results } = await db.prepare(query).bind(...bindings).all() as any
     return c.json({ success: true, data: results || [] })
-  } catch (err) {
-    console.error('messageTemplates GET / error:', err)
+  } catch {
     return c.json({ success: false, error: '서버 오류' }, 500)
   }
 })
@@ -46,11 +45,10 @@ messageTemplatesRouter.post('/', async (c) => {
 
     const result = await db.prepare(
       'INSERT INTO message_templates (channel, name, subject, content, created_by) VALUES (?, ?, ?, ?, ?)'
-    ).bind(channel, name, subject || null, content, userId).run()
+    ).bind(channel, name, subject || null, content, userId).run() as any
 
     return c.json({ success: true, data: { id: result.meta.last_row_id } })
-  } catch (err) {
-    console.error('messageTemplates POST / error:', err)
+  } catch {
     return c.json({ success: false, error: '서버 오류' }, 500)
   }
 })
@@ -82,8 +80,7 @@ messageTemplatesRouter.patch('/:id', async (c) => {
     bindings.push(id)
     await db.prepare(`UPDATE message_templates SET ${sets.join(', ')} WHERE id = ?`).bind(...bindings).run()
     return c.json({ success: true })
-  } catch (err) {
-    console.error('messageTemplates PATCH /:id error:', err)
+  } catch {
     return c.json({ success: false, error: '서버 오류' }, 500)
   }
 })
@@ -101,8 +98,7 @@ messageTemplatesRouter.delete('/:id', async (c) => {
 
     await db.prepare('DELETE FROM message_templates WHERE id = ?').bind(id).run()
     return c.json({ success: true })
-  } catch (err) {
-    console.error('messageTemplates DELETE /:id error:', err)
+  } catch {
     return c.json({ success: false, error: '서버 오류' }, 500)
   }
 })

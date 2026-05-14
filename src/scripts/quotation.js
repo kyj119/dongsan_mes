@@ -130,7 +130,7 @@ function buildQuotationHalf(data, copyLabel, fullPage, validUntil, isExpired) {
         + (validUntilStr ? '  <span style="' + (isExpired ? 'color:var(--c-danger);font-weight:700' : 'color:var(--c-teal)') + '">유효기한: ' + validUntilStr + (isExpired ? ' (만료)' : '') + '</span>' : '')
         + '</div>'
 
-        + '<div class="total-korean">' + koreanAmount + ' (\u20A9' + fmt(finalAmount) + ')</div>'
+        + '<div class="total-korean">' + koreanAmount + ' (₩' + fmt(finalAmount) + ')</div>'
 
         + '<table class="items-table">'
         + '<thead><tr><th style="width:24px">No</th><th style="width:30%">품목명</th><th style="width:6%">수량</th><th style="width:5%">단위</th><th style="width:12%">단가</th><th style="width:13%">공급가액</th><th style="width:10%">세액</th><th>비고</th></tr></thead>'
@@ -199,7 +199,7 @@ async function loadQuotation() {
     } catch (err) {
         document.getElementById('loadingMsg').style.display = 'none';
         document.getElementById('errorMsg').style.display = 'block';
-        document.getElementById('errorMsg').innerHTML = '<i class="fas fa-exclamation-circle"></i> 견적서를 불러오는데 실패했습니다.<br><small>' + (err.message || '') + '</small>';
+        document.getElementById('errorMsg').innerHTML = '<i class="fas fa-exclamation-circle"></i> 견적서를 불러오는데 실패했습니다.<br><small>' + escapeHtml(err.message || '') + '</small>';
     }
 }
 
