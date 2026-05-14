@@ -58,10 +58,10 @@ export function renderLaborContractHTML(data: {
   const otHours = otDaily * otDays
   // 기본급: base_salary가 있으면 그대로, 없으면 hourly_rate × 209
   const basePay = isMonthly ? contract.hourly_rate : (contract.base_salary || contract.hourly_rate * baseH)
-  // 시급: base_salary에서 역산 (반올림 없이 계산용)
-  const hourlyForCalc = basePay / baseH
-  const hourlyDisplay = Math.round(hourlyForCalc)
-  const otPay = isMonthly ? 0 : Math.round(hourlyForCalc * otHours * 1.5)
+  // 시급: 정밀값으로 계산, 표시용만 반올림
+  const hourlyExact = basePay / baseH
+  const hourlyDisplay = Math.round(hourlyExact)
+  const otPay = isMonthly ? 0 : Math.round(hourlyExact * otHours * 1.5)
   const totalPay = basePay + otPay
 
   const employerSig = contract.signature_employer_base64
