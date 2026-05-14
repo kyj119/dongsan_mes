@@ -98,12 +98,18 @@ test.describe.serial('주문 생성 → 상태 전이 → 카드 생성', () => 
   })
 
   test('잘못된 상태 전이 거부: PRINT_DONE → SHIPPED 후 역행 불가', async ({ writeApi }) => {
-    // PRINT_DONE → SHIPPED 는 유효
-    const shipRes = await writeApi.patch(`/api/orders/${orderId}/status`, {
+    // PRINT_DONE → SHIPPED 는 유효 (미완료 카드가 있으면 confirmed_card_ids로 확인 처리)
+    let shipRes = await writeApi.patch(`/api/orders/${orderId}/status`, {
       status: 'SHIPPED',
     })
-    if (!shipRes.success) {
-      console.error('[E2E DEBUG] SHIPPED transition failed:', JSON.stringify(shipRes))
+
+    // 프로덕션에서 카드가 존재할 수 있음 → requires_confirmation 시 카드 확인 후 재시도
+    if (!shipRes.success && shipRes.requires_confirmation && shipRes.pending_cards) {
+      const cardIds = shipRes.pending_cards.map((c: any) => c.id)
+      shipRes = await writeApi.patch(`/api/orders/${orderId}/status`, {
+        status: 'SHIPPED',
+        confirmed_card_ids: cardIds,
+      })
     }
     expect(shipRes.success).toBe(true)
 
