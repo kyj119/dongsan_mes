@@ -629,27 +629,26 @@ function hrdUpdateOvertimePreview() {
   var preview = document.getElementById('hrdOvertimePreview');
   if (!preview) return;
 
-  var hourlyEl = document.querySelector('#hrdManageCard [data-field="hourly_rate"]');
   var otToggle = document.getElementById('hrdOvertimeToggle');
   var baseSalaryEl = document.querySelector('#hrdManageCard [data-field="base_salary"]');
 
-  var hourly = hrdParseMoneyInput(hourlyEl ? hourlyEl.value : '');
   var hasOvertime = otToggle && otToggle.checked;
   var baseSalary = hrdParseMoneyInput(baseSalaryEl ? baseSalaryEl.value : '');
 
-  if (!hourly || !hasOvertime) {
+  if (!baseSalary || !hasOvertime) {
     preview.innerHTML = '';
     return;
   }
 
-  var otHours = 0.5;
-  var otDays = 22;
-  var totalOtHours = otHours * otDays;
-  var otPay = Math.round(hourly * totalOtHours * 1.5);
-  var monthTotal = (baseSalary || 0) + otPay;
+  // 기본급 ÷ 225.5 = 시급, 기본급(209h) = 시급×209, 연장 = 기본급(입력) - 기본급(209h)
+  var hourly = Math.round(baseSalary / 225.5);
+  var base209 = hourly * 209;
+  var otPay = baseSalary - base209;
   preview.innerHTML = '<p class="text-xs text-blue-600">' +
-    '고정연장: ' + hourly.toLocaleString('ko-KR') + '원 × ' + totalOtHours + 'h × 1.5 = ' + otPay.toLocaleString('ko-KR') + '원' +
-    ' | 월 합계: ' + monthTotal.toLocaleString('ko-KR') + '원</p>';
+    '시급: ' + hourly.toLocaleString('ko-KR') + '원 | ' +
+    '기본급(209h): ' + base209.toLocaleString('ko-KR') + '원 | ' +
+    '고정연장(16.5h): ' + otPay.toLocaleString('ko-KR') + '원 | ' +
+    '합계: ' + baseSalary.toLocaleString('ko-KR') + '원</p>';
 }
 
 var HRD_SALARY_CALC_BOUND = false;
