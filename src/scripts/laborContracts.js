@@ -428,15 +428,17 @@ window.lcCalcWage = function() {
     // 고정급: 입력값이 곧 월급
     html += '<span style="color:var(--c-primary);font-weight:700">월급: ' + rate.toLocaleString() + '원</span>';
   } else {
-    // 변동급: 시급 × 209 + 연장
+    // 변동급: 기본급 기준 (시급은 참고)
     var otDaily = document.getElementById('lcOvertimeDaily').checked ? 0.5 : 0;
     var baseHours = 209;
     var otDays = 22;
+    // rate = 시급 입력값. 기본급 = 시급 × 209
     var basePay = rate * baseHours;
+    var hourlyFromBase = rate; // 시급 그대로 사용
     var otHours = otDaily * otDays;
-    var otPay = Math.round(rate * otHours * 1.5);
+    var otPay = Math.round(hourlyFromBase * otHours * 1.5);
     var total = basePay + otPay;
-    html += '<span><strong>기본급:</strong> ' + rate.toLocaleString() + '원 × ' + baseHours + 'h = <strong>' + basePay.toLocaleString() + '원</strong></span>';
+    html += '<span><strong>기본급:</strong> <strong>' + basePay.toLocaleString() + '원</strong> <span style="color:#6b7280">(시급 ' + rate.toLocaleString() + '원)</span></span>';
     if (otDaily > 0) {
       html += '<span><strong>고정연장:</strong> ' + rate.toLocaleString() + ' × ' + otHours + 'h × 1.5 = <strong>' + otPay.toLocaleString() + '원</strong></span>';
     }
