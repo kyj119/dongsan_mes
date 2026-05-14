@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 2 -->
-<!-- last_run_at: 2026-05-14T11:00:00+09:00 -->
+<!-- last_run_area: 3 -->
+<!-- last_run_at: 2026-05-14T13:30:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,10 +8,18 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | 7 |
+| 🆕 new | 11 |
 | ✔️ done | 32 |
 | ❌ rejected | 2 |
 
+> **Area 3 UX/기능 감사 (2026-05-14T13:30):**
+> - 75개 페이지/스크립트 전수 UX 패턴 분석 (검색·필터·페이지네이션·빈상태·로딩)
+> - approvals.js 3탭 결재 목록 검색·필터·페이지네이션 전무 → #43 등록 (MEDIUM, 2~3h)
+> - tasks.js 작업 큐 limit:200 하드코딩 (API max:500) — 200건+ 실패 태스크 미표시 → #44 등록 (SMALL, 30m)
+> - deliveryAnalytics + financialReports CSV 내보내기 없음 (productionReports와 불일치) → #45 등록 (MEDIUM, 2h)
+> - 대시보드 장비 가동률 % KPI 부재 — 생산 용량 즉시 파악 불가 → #46 등록 (SMALL, 1~2h)
+> - 자동 수정 0건 (안전 기준 미충족), 신규 이슈 4건 (#43~#46)
+>
 > **Area 2 코드 품질 (2026-05-14T11:00):**
 > - authMiddleware: 84개 라우트 파일 전수 확인 — 모두 적절히 보호됨 ✓
 > - try-catch 누락 17핸들러 자동 수정 (A-008): permissions(5) + finishing(7) + messageTemplates(4) + iaAuto(1)
@@ -83,6 +91,10 @@
 | I-018 | N+1: printSystem.ts rebuildItemPrices + 대량생성 이중루프 | Area 2 | #37 | 2~3h |
 | I-019 | N+1: settings.ts PATCH + priceLists.ts assign-clients | Area 2 | #38 | 30분 |
 | I-020 | SELECT * 잔여 157건 (hometaxInvoices/inventoryCount/finishing 등) | Area 2 | #39 | 2~3h |
+| I-021 | approvals.js 결재 목록 검색·필터·페이지네이션 전무 | Area 3 | #43 | 2~3h |
+| I-022 | tasks.js limit:200 하드코딩 — 200건+ 실패 태스크 미표시 | Area 3 | #44 | 30분 |
+| I-023 | deliveryAnalytics + financialReports CSV 내보내기 없음 | Area 3 | #45 | 2h |
+| I-024 | 대시보드 장비 가동률 % KPI 부재 | Area 3 | #46 | 1~2h |
 
 ---
 
