@@ -436,19 +436,20 @@ window.lcCalcWage = function() {
     document.getElementById('lcHourlyRate').value = baseSalary;
   } else {
     var baseHours = 209;
-    var hourly = Math.floor(baseSalary / baseHours);
-    document.getElementById('lcHourlyRate').value = hourly;
+    var hourlyExact = baseSalary / baseHours;       // 정밀값 (계산용)
+    var hourlyDisplay = Math.round(hourlyExact);     // 표시용 반올림
+    document.getElementById('lcHourlyRate').value = hourlyDisplay;
 
     var otDaily = document.getElementById('lcOvertimeDaily').checked ? 0.5 : 0;
     var otDays = 22;
     var otHours = otDaily * otDays;
-    var otPay = Math.round(hourly * otHours * 1.5);
+    var otPay = Math.round(hourlyExact * otHours * 1.5);  // 정밀값으로 계산
     var total = baseSalary + otPay;
 
-    html += '<span>시급: <strong>' + hourly.toLocaleString() + '원</strong></span>';
+    html += '<span>시급: <strong>' + hourlyDisplay.toLocaleString() + '원</strong></span>';
     html += '<span>기본급: <strong>' + baseSalary.toLocaleString() + '원</strong></span>';
     if (otDaily > 0) {
-      html += '<span>고정연장: ' + hourly.toLocaleString() + ' × ' + otHours + 'h × 1.5 = <strong>' + otPay.toLocaleString() + '원</strong></span>';
+      html += '<span>고정연장: <strong>' + otPay.toLocaleString() + '원</strong></span>';
     }
     html += '<span style="color:var(--c-primary);font-weight:700">월 합계: ' + total.toLocaleString() + '원</span>';
   }
