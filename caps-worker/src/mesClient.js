@@ -92,6 +92,7 @@ async function pushRecords(records, fromDate, toDate, triggerType) {
   });
 
   var payload = {
+    site_id: config.siteId,
     from_date: fromDate,
     to_date: toDate,
     trigger_type: triggerType,
