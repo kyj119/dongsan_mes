@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 1 -->
-<!-- last_run_at: 2026-05-14T09:15:00+09:00 -->
+<!-- last_run_area: 2 -->
+<!-- last_run_at: 2026-05-14T11:00:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,10 +8,18 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | 5 |
-| ✔️ done | 31 |
+| 🆕 new | 7 |
+| ✔️ done | 32 |
 | ❌ rejected | 2 |
 
+> **Area 2 코드 품질 (2026-05-14T11:00):**
+> - authMiddleware: 84개 라우트 파일 전수 확인 — 모두 적절히 보호됨 ✓
+> - try-catch 누락 17핸들러 자동 수정 (A-008): permissions(5) + finishing(7) + messageTemplates(4) + iaAuto(1)
+> - N+1 신규 패턴 3건 발견: printSystem.ts rebuildItemPrices/대량생성 → #37 등록, settings.ts+priceLists.ts → #38 등록
+> - SELECT * 잔여 157건 (이전 수정 범위 플랫 파일 한정) → #39 등록
+> - floating HEAD 18개 커밋 main fast-forward 통합 완료
+> - 자동 수정 1건 (A-008), 신규 이슈 3건 (#37/#38/#39)
+>
 > **Area 1 프로덕션 헬스 (2026-05-14T09:15):**
 > - TypeScript typecheck: PASS ✓, Vite build: PASS ✓ (4.2MB worker, 307 modules)
 > - 65개 라우트 등록 전수 확인 — 누락·충돌 없음 ✓
@@ -72,7 +80,9 @@
 | I-014 | /api/portal/auth/change-password rate limit 누락 | Area 5 | #33 | 30분 |
 | I-015 | XSS 잔여: approvals.js(119-276) + cards.js document.write | Area 5 | #34 | 2~3h |
 | I-016 | 대시보드 E2E 커버리지 부재 — 전면 재설계 후 회귀 테스트 없음 | Area 1 | #35 | 2~3h |
-| I-017 | 라우트 4개 try-catch 누락 (permissions/finishing/messageTemplates/iaAuto) | Area 1 | #36 | 1h |
+| I-018 | N+1: printSystem.ts rebuildItemPrices + 대량생성 이중루프 | Area 2 | #37 | 2~3h |
+| I-019 | N+1: settings.ts PATCH + priceLists.ts assign-clients | Area 2 | #38 | 30분 |
+| I-020 | SELECT * 잔여 157건 (hometaxInvoices/inventoryCount/finishing 등) | Area 2 | #39 | 2~3h |
 
 ---
 
@@ -80,6 +90,7 @@
 
 | ID | 제목 | 커밋 | 날짜 |
 |----|------|------|------|
+| A-008 | try-catch 누락 17핸들러 (permissions/finishing/messageTemplates/iaAuto) | 60ee8b8 | 2026-05-14 |
 | A-006 | XSS escapeHtml 5건 (approvals/invoice/purchaseInvoice/quotation/clients) | e099b20 | 2026-05-13 |
 | A-005 | tax_invoice_items/orders tax_invoice_id 인덱스 추가 (0193 migration) | 1b3a698 | 2026-05-13 |
 | A-004 | models.ts 미사용 타입 8개 제거 (UserSession 등) | 2f94080 | 2026-05-13 |
@@ -91,6 +102,7 @@
 
 | ID | 제목 | 커밋/Issue | 날짜 |
 |----|------|-----------|------|
+| I-017 | try-catch 누락 17핸들러 자동 수정 (permissions/finishing/messageTemplates/iaAuto) | A-008 / 60ee8b8 | 2026-05-14 |
 | D-001 | shipment_items UNIQUE(shipment_id, card_id) 제약 추가 (0194 migration) | #31 | 2026-05-13 |
 | I-015partial | 스모크 커버리지 55→88 엔드포인트 확대 | #15 | 2026-05-13 |
 | I-012 | 원단 소모 예측 페이지 검색+상태 필터 추가 | #30 | 2026-05-13 |
