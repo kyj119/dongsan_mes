@@ -9,6 +9,69 @@ var templates = [];
 var currentUser = {};
 try { currentUser = JSON.parse(localStorage.getItem('user') || '{}'); } catch(e) { console.warn('[approvals] Failed to parse user from localStorage'); }
 
+var PAGE_SIZE = 20;
+var myPage = 1;
+var allPage = 1;
+
+// ─── 필터 & 페이지네이션 유틸 ───────────────────────────────────────────────
+
+function applyFilter(list, prefix) {
+  var searchEl = document.getElementById(prefix + '-search');
+  var typeEl = document.getElementById(prefix + '-type-filter');
+  var statusEl = document.getElementById(prefix + '-status-filter');
+  var search = (searchEl ? searchEl.value : '').toLowerCase().trim();
+  var typeF = typeEl ? typeEl.value : '';
+  var statusF = statusEl ? statusEl.value : '';
+
+  return list.filter(function(r) {
+    if (typeF && r.type !== typeF) return false;
+    if (statusF && r.status !== statusF) return false;
+    if (search) {
+      var haystack = ((r.title || '') + ' ' + (r.request_number || '') + ' ' + (r.requester_name || '')).toLowerCase();
+      if (haystack.indexOf(search) === -1) return false;
+    }
+    return true;
+  });
+}
+
+function filterMyRequests() { myPage = 1; renderMyRequests(); }
+function filterAllRequests() { allPage = 1; renderAllRequests(); }
+
+function paginate(arr, page, size) {
+  var start = (page - 1) * size;
+  return arr.slice(start, start + size);
+}
+
+function renderPagination(containerId, total, page, onPageChange) {
+  var container = document.getElementById(containerId);
+  if (!container) return;
+  var totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  if (total === 0) { container.innerHTML = ''; return; }
+
+  var start = (page - 1) * PAGE_SIZE + 1;
+  var end = Math.min(page * PAGE_SIZE, total);
+
+  var html = '<span>' + start + '-' + end + ' / ' + total + '건</span><div class="flex gap-1">';
+  html += '<button class="px-2 py-1 rounded border text-xs ' + (page <= 1 ? 'opacity-30 cursor-default' : 'hover:bg-gray-100') + '" ' + (page <= 1 ? 'disabled' : '') + ' data-page="' + (page - 1) + '">이전</button>';
+
+  var startP = Math.max(1, page - 2);
+  var endP = Math.min(totalPages, page + 2);
+  for (var i = startP; i <= endP; i++) {
+    html += '<button class="px-2 py-1 rounded border text-xs ' + (i === page ? 'bg-blue-600 text-white' : 'hover:bg-gray-100') + '" data-page="' + i + '">' + i + '</button>';
+  }
+
+  html += '<button class="px-2 py-1 rounded border text-xs ' + (page >= totalPages ? 'opacity-30 cursor-default' : 'hover:bg-gray-100') + '" ' + (page >= totalPages ? 'disabled' : '') + ' data-page="' + (page + 1) + '">다음</button>';
+  html += '</div>';
+  container.innerHTML = html;
+
+  container.querySelectorAll('button[data-page]').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      var p = Number(btn.dataset.page);
+      if (p >= 1 && p <= totalPages) onPageChange(p);
+    });
+  });
+}
+
 // ─── 초기화 ────────────────────────────────────────────────────────────────────
 
 async function initApprovals() {
@@ -88,13 +151,25 @@ var STATUS_MAP = {
   CANCELLED: { label: '취소', cls: 'bg-gray-100 text-gray-500' },
 };
 var TYPE_MAP = {
-  PURCHASE_REQUEST: '발주 요청',
-  DISCOUNT: '할인 승인',
-  BAD_DEBT_WRITEOFF: '대손처리',
-  EQUIPMENT_PURCHASE: '장비 구매',
-  EXPENSE_CLAIM: '경비 청구',
-  GENERAL: '일반',
+  PURCHASE_REQUEST: { label: '발주 승인', icon: 'fa-cart-shopping', cls: 'bg-orange-50 text-orange-700 border-orange-200' },
+  PRICE_CHANGE:     { label: '단가 변경', icon: 'fa-tag', cls: 'bg-violet-50 text-violet-700 border-violet-200' },
+  BAD_DEBT_WRITEOFF:{ label: '미수금 탕감', icon: 'fa-hand-holding-dollar', cls: 'bg-rose-50 text-rose-700 border-rose-200' },
+  LEAVE_ATTENDANCE: { label: '휴가/근태', icon: 'fa-calendar-check', cls: 'bg-teal-50 text-teal-700 border-teal-200' },
+  SHIPMENT_HOLD:    { label: '출고 승인', icon: 'fa-truck', cls: 'bg-sky-50 text-sky-700 border-sky-200' },
+  DISCOUNT:         { label: '할인 승인', icon: 'fa-percent', cls: 'bg-amber-50 text-amber-700 border-amber-200' },
+  EQUIPMENT_PURCHASE:{ label: '장비 구매', icon: 'fa-wrench', cls: 'bg-indigo-50 text-indigo-700 border-indigo-200' },
+  EXPENSE_CLAIM:    { label: '경비 청구', icon: 'fa-receipt', cls: 'bg-lime-50 text-lime-700 border-lime-200' },
+  GENERAL:          { label: '일반', icon: 'fa-file-lines', cls: 'bg-gray-50 text-gray-700 border-gray-200' },
 };
+
+function typeBadge(type) {
+  var t = TYPE_MAP[type] || { label: type, icon: 'fa-file', cls: 'bg-gray-50 text-gray-600' };
+  return '<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded border text-xs ' + t.cls + '"><i class="fas ' + t.icon + '"></i>' + t.label + '</span>';
+}
+function typeLabel(type) {
+  var t = TYPE_MAP[type];
+  return t ? t.label : type;
+}
 
 function statusBadge(status) {
   const s = STATUS_MAP[status] || { label: status, cls: 'bg-gray-100' };
@@ -117,7 +192,7 @@ function renderPending() {
       <div class="flex justify-between items-start">
         <div>
           <div class="font-semibold">${escapeHtml(r.title)}</div>
-          <div class="text-sm text-gray-500 mt-1">${escapeHtml(r.request_number)} | ${TYPE_MAP[r.type] || r.type} | ${escapeHtml(r.requester_name)}</div>
+          <div class="text-sm text-gray-500 mt-1">${escapeHtml(r.request_number)} | ${typeBadge(r.type)} | ${escapeHtml(r.requester_name)}</div>
         </div>
         <div class="text-right">
           ${statusBadge(r.status)}
@@ -138,14 +213,18 @@ function renderMyRequests() {
   const tbody = document.getElementById('my-requests-tbody');
   if (!tbody) return;
 
-  if (myRequests.length === 0) {
+  var filtered = applyFilter(myRequests, 'my');
+  var paged = paginate(filtered, myPage, PAGE_SIZE);
+  renderPagination('my-pagination', filtered.length, myPage, function(p) { myPage = p; renderMyRequests(); });
+
+  if (paged.length === 0) {
     tbody.innerHTML = '<tr><td colspan="6" class="text-center py-8 text-gray-500">요청 내역이 없습니다.</td></tr>';
     return;
   }
 
-  tbody.innerHTML = myRequests.map(r => `<tr class="hover:bg-blue-50 border-b cursor-pointer" onclick="viewApprovalDetail(${r.id})">
+  tbody.innerHTML = paged.map(r => `<tr class="hover:bg-blue-50 border-b cursor-pointer" onclick="viewApprovalDetail(${r.id})">
     <td class="px-3 py-2 text-sm font-mono">${escapeHtml(r.request_number)}</td>
-    <td class="px-3 py-2 text-sm">${TYPE_MAP[r.type] || r.type}</td>
+    <td class="px-3 py-2 text-sm">${typeBadge(r.type)}</td>
     <td class="px-3 py-2 text-sm">${escapeHtml(r.title)}</td>
     <td class="px-3 py-2 text-sm text-right">${r.amount ? Number(r.amount).toLocaleString() + '원' : '-'}</td>
     <td class="px-3 py-2 text-sm">${statusBadge(r.status)}</td>
@@ -159,14 +238,18 @@ function renderAllRequests() {
   const tbody = document.getElementById('all-requests-tbody');
   if (!tbody) return;
 
-  if (allRequests.length === 0) {
+  var filtered = applyFilter(allRequests, 'all');
+  var paged = paginate(filtered, allPage, PAGE_SIZE);
+  renderPagination('all-pagination', filtered.length, allPage, function(p) { allPage = p; renderAllRequests(); });
+
+  if (paged.length === 0) {
     tbody.innerHTML = '<tr><td colspan="7" class="text-center py-8 text-gray-500">결재 내역이 없습니다.</td></tr>';
     return;
   }
 
-  tbody.innerHTML = allRequests.map(r => `<tr class="hover:bg-blue-50 border-b cursor-pointer" onclick="viewApprovalDetail(${r.id})">
+  tbody.innerHTML = paged.map(r => `<tr class="hover:bg-blue-50 border-b cursor-pointer" onclick="viewApprovalDetail(${r.id})">
     <td class="px-3 py-2 text-sm font-mono">${escapeHtml(r.request_number)}</td>
-    <td class="px-3 py-2 text-sm">${TYPE_MAP[r.type] || r.type}</td>
+    <td class="px-3 py-2 text-sm">${typeBadge(r.type)}</td>
     <td class="px-3 py-2 text-sm">${escapeHtml(r.title)}</td>
     <td class="px-3 py-2 text-sm">${escapeHtml(r.requester_name || '-')}</td>
     <td class="px-3 py-2 text-sm text-right">${r.amount ? Number(r.amount).toLocaleString() + '원' : '-'}</td>
@@ -236,7 +319,7 @@ function showDetailModal(request, steps, attachments) {
         <div class="flex justify-between items-start mb-4">
           <div>
             <h3 class="text-lg font-bold">${escapeHtml(request.title)}</h3>
-            <div class="text-sm text-gray-500">${escapeHtml(request.request_number)} | ${TYPE_MAP[request.type] || request.type}</div>
+            <div class="text-sm text-gray-500 flex items-center gap-2">${escapeHtml(request.request_number)} | ${typeBadge(request.type)}</div>
           </div>
           <button onclick="document.getElementById('approval-detail-modal').remove()" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times text-lg"></i></button>
         </div>
@@ -324,7 +407,7 @@ function openNewRequestModal() {
   const existing = document.getElementById('new-request-modal');
   if (existing) existing.remove();
 
-  const tmplOptions = templates.map(t => `<option value="${t.id}" data-type="${escapeHtml(t.type)}">${escapeHtml(t.name)} (${TYPE_MAP[t.type] || escapeHtml(t.type)})</option>`).join('');
+  const tmplOptions = templates.map(t => `<option value="${t.id}" data-type="${escapeHtml(t.type)}">${escapeHtml(t.name)} (${typeLabel(t.type)})</option>`).join('');
 
   const html = `<div id="new-request-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
     <div class="bg-white rounded-lg shadow-xl w-full max-w-lg p-6">
@@ -443,7 +526,7 @@ function renderTemplates() {
     const steps = JSON.parse(t.steps || '[]');
     return `<tr class="hover:bg-blue-50 border-b">
       <td class="px-3 py-2 text-sm font-medium">${escapeHtml(t.name)}</td>
-      <td class="px-3 py-2 text-sm">${TYPE_MAP[t.type] || escapeHtml(t.type)}</td>
+      <td class="px-3 py-2 text-sm">${typeBadge(t.type)}</td>
       <td class="px-3 py-2 text-sm">${steps.map(s => escapeHtml(s.label)).join(' → ')}</td>
       <td class="px-3 py-2 text-sm text-center">
         <button onclick="deleteTemplate(${t.id})" class="text-red-600 hover:text-red-700"><i class="fas fa-trash"></i></button>

@@ -591,6 +591,75 @@ window.hrdSave = async function() {
   }
 };
 
+// ============================================================================
+// 근로계약 섹션
+// ============================================================================
+var HRD_CONTRACT_TYPE = { HOURLY: '시급제', MONTHLY: '월급제', DAILY: '일급제' };
+var HRD_CONTRACT_STATUS = {
+  DRAFT: '<span class="inline-flex items-center px-2 py-0.5 text-xs rounded-full bg-gray-100 text-gray-600"><i class="fas fa-pen text-[7px] mr-1"></i>작성중</span>',
+  PENDING_SIGNATURE: '<span class="inline-flex items-center px-2 py-0.5 text-xs rounded-full bg-amber-50 text-amber-700"><i class="fas fa-clock text-[7px] mr-1"></i>서명 대기</span>',
+  ACTIVE: '<span class="inline-flex items-center px-2 py-0.5 text-xs rounded-full bg-green-50 text-green-700"><i class="fas fa-check-circle text-[7px] mr-1"></i>활성</span>',
+  SIGNED: '<span class="inline-flex items-center px-2 py-0.5 text-xs rounded-full bg-green-50 text-green-700"><i class="fas fa-check-circle text-[7px] mr-1"></i>서명 완료</span>',
+  CONFIRMED: '<span class="inline-flex items-center px-2 py-0.5 text-xs rounded-full bg-blue-50 text-blue-700"><i class="fas fa-check-double text-[7px] mr-1"></i>확정</span>',
+  EXPIRED: '<span class="inline-flex items-center px-2 py-0.5 text-xs rounded-full bg-red-50 text-red-700"><i class="fas fa-times-circle text-[7px] mr-1"></i>만료</span>',
+};
+
+function hrdContractStatusBadge(status) {
+  return HRD_CONTRACT_STATUS[status] || '<span class="inline-flex items-center px-2 py-0.5 text-xs rounded-full bg-gray-100 text-gray-600">' + (status || '-') + '</span>';
+}
+
+function hrdFmtDateShort(d) {
+  if (!d) return '-';
+  return String(d).substring(0, 10);
+}
+
+async function hrdLoadContracts() {
+  var id = hrdGetEmployeeId();
+  if (!id) return;
+  var tbody = document.getElementById('hrdContractsBody');
+  if (!tbody) return;
+
+  try {
+    var res = await axios.get('/api/hr/contracts', { params: { employee_id: id, limit: '100' } });
+    var data = (res.data && res.data.data) || [];
+    var records = Array.isArray(data) ? data : (data.records || data.items || []);
+    var countEl = document.getElementById('hrdContractsCount');
+    if (countEl) countEl.textContent = records.length + '건';
+
+    if (records.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="7" class="text-center py-8 text-gray-400">등록된 근로계약이 없습니다</td></tr>';
+      return;
+    }
+
+    var html = '';
+    for (var i = 0; i < records.length; i++) {
+      var r = records[i];
+      var period = hrdFmtDateShort(r.contract_start_date || r.contract_date) + ' ~ ' + (r.contract_end_date ? hrdFmtDateShort(r.contract_end_date) : '무기한');
+      var monthly = r.monthly_salary ? hrdFmtMoney(r.monthly_salary) : '-';
+      html += '<tr class="border-b border-gray-100 hover:bg-gray-50">'
+        + '<td class="px-4 py-2 text-sm">' + (HRD_CONTRACT_TYPE[r.contract_type] || r.contract_type || '-') + '</td>'
+        + '<td class="px-4 py-2 text-sm">' + period + '</td>'
+        + '<td class="px-4 py-2 text-right text-sm">' + hrdFmtMoney(r.hourly_rate) + '</td>'
+        + '<td class="px-4 py-2 text-right text-sm">' + monthly + '</td>'
+        + '<td class="px-4 py-2 text-center">' + hrdContractStatusBadge(r.status) + '</td>'
+        + '<td class="px-4 py-2 text-center text-sm text-gray-500">' + hrdFmtDateShort(r.created_at) + '</td>'
+        + '<td class="px-4 py-2 text-center"><a href="/labor-contracts?highlight=' + r.id + '" onclick="if(window.spaNavigate){event.preventDefault();window.spaNavigate(\'/labor-contracts?highlight=' + r.id + '\')}" class="text-blue-600 hover:text-blue-800 text-xs font-medium"><i class="fas fa-external-link-alt mr-0.5"></i>상세</a></td>'
+        + '</tr>';
+    }
+    tbody.innerHTML = html;
+  } catch (e) {
+    console.error('[hrDetail] 계약 목록 로드 실패', e);
+    tbody.innerHTML = '<tr><td colspan="7" class="text-center py-6 text-red-500">계약 데이터 로드 실패</td></tr>';
+  }
+}
+
+window.hrdNewContract = function() {
+  var id = hrdGetEmployeeId();
+  var url = '/labor-contracts?new=1&employee_id=' + id;
+  if (window.spaNavigate) window.spaNavigate(url);
+  else window.location.href = url;
+};
+
 // hrdLoadDetail 함수 감싸기 — 폼 바인딩 추가
 var _hrdOrigLoad = window.hrdLoadDetail;
 window.hrdLoadDetail = async function() {
@@ -612,6 +681,8 @@ window.hrdLoadDetail = async function() {
   } catch (e) {
     console.error('직원 정보 로드 실패', e);
   }
+  // 근로계약 목록 로드
+  hrdLoadContracts();
 };
 
 // ============================================================================

@@ -271,6 +271,42 @@ export function hrDetailPage(c: Context<HonoEnv>) {
         </div>
 
         <!-- ============================================================ -->
+        <!-- 근로계약 섹션                                                 -->
+        <!-- ============================================================ -->
+        <div class="bg-white rounded-lg border border-gray-200 overflow-hidden" id="hrdContractsCard">
+          <div class="px-5 py-3 border-b border-gray-200 flex items-center justify-between">
+            <h3 class="text-sm font-semibold text-gray-700">
+              <i class="fas fa-file-contract text-blue-600 mr-1"></i>
+              근로계약
+            </h3>
+            <div class="flex items-center gap-2">
+              <span id="hrdContractsCount" class="text-xs text-gray-400"></span>
+              <a id="hrdNewContractBtn" href="#" onclick="hrdNewContract(); return false;" class="px-3 py-1.5 text-xs font-medium text-white bg-blue-600 hover:bg-blue-700 rounded">
+                <i class="fas fa-plus mr-1"></i>신규 계약 작성
+              </a>
+            </div>
+          </div>
+          <div class="overflow-x-auto">
+            <table class="w-full text-sm ds-table-striped">
+              <thead class="bg-gray-50 text-xs text-gray-600 uppercase tracking-wider">
+                <tr>
+                  <th class="px-4 py-2 text-left">계약유형</th>
+                  <th class="px-4 py-2 text-left">계약기간</th>
+                  <th class="px-4 py-2 text-right">시급</th>
+                  <th class="px-4 py-2 text-right">월급여</th>
+                  <th class="px-4 py-2 text-center">상태</th>
+                  <th class="px-4 py-2 text-center">작성일</th>
+                  <th class="px-4 py-2 text-center">상세</th>
+                </tr>
+              </thead>
+              <tbody id="hrdContractsBody">
+                <tr><td colspan="7" class="text-center py-8 text-gray-400">계약 데이터 로드 중...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- ============================================================ -->
         <!-- 근태 영역 (직원 상세 정보와 분리)                              -->
         <!-- ============================================================ -->
         <div class="pt-2">

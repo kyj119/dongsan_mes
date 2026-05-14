@@ -34,10 +34,28 @@ export const approvalsPage = (c: Context<HonoEnv>) => {
       <!-- 탭 2: 내 요청 -->
       <div id="tab-my" class="tab-content hidden">
         <div class="bg-white rounded-lg shadow">
-          <div class="p-4 border-b">
-            <h2 class="text-lg font-bold"><i class="fas fa-paper-plane mr-2 text-blue-600"></i>내 결재 요청</h2>
+          <div class="p-4 border-b flex flex-wrap items-center gap-2">
+            <h2 class="text-lg font-bold mr-auto"><i class="fas fa-paper-plane mr-2 text-blue-600"></i>내 결재 요청</h2>
+            <input id="my-search" type="text" placeholder="검색 (제목, 번호)" class="border rounded px-3 py-1.5 text-sm w-48" oninput="filterMyRequests()">
+            <select id="my-type-filter" class="border rounded px-2 py-1.5 text-sm" onchange="filterMyRequests()">
+              <option value="">전체 유형</option>
+              <option value="PURCHASE_REQUEST">발주 승인</option>
+              <option value="PRICE_CHANGE">단가 변경</option>
+              <option value="BAD_DEBT_WRITEOFF">미수금 탕감</option>
+              <option value="LEAVE_ATTENDANCE">휴가/근태</option>
+              <option value="SHIPMENT_HOLD">출고 승인</option>
+              <option value="GENERAL">일반</option>
+            </select>
+            <select id="my-status-filter" class="border rounded px-2 py-1.5 text-sm" onchange="filterMyRequests()">
+              <option value="">전체 상태</option>
+              <option value="DRAFT">작성중</option>
+              <option value="PENDING">대기</option>
+              <option value="IN_REVIEW">검토중</option>
+              <option value="APPROVED">승인</option>
+              <option value="REJECTED">반려</option>
+            </select>
           </div>
-          <div class="overflow-x-auto" style="max-height: calc(100vh - 280px); overflow-y: auto;">
+          <div class="overflow-x-auto" style="max-height: calc(100vh - 320px); overflow-y: auto;">
             <table class="w-full ds-table-striped">
               <thead><tr class="bg-gray-50 border-b text-sm text-gray-500">
                 <th class="px-3 py-3 text-left">번호</th>
@@ -50,16 +68,35 @@ export const approvalsPage = (c: Context<HonoEnv>) => {
               <tbody id="my-requests-tbody"></tbody>
             </table>
           </div>
+          <div id="my-pagination" class="flex items-center justify-between px-4 py-3 border-t text-sm text-gray-500"></div>
         </div>
       </div>
 
       <!-- 탭 3: 전체 현황 -->
       <div id="tab-all" class="tab-content hidden">
         <div class="bg-white rounded-lg shadow">
-          <div class="p-4 border-b">
-            <h2 class="text-lg font-bold"><i class="fas fa-list mr-2 text-purple-600"></i>전체 결재 현황</h2>
+          <div class="p-4 border-b flex flex-wrap items-center gap-2">
+            <h2 class="text-lg font-bold mr-auto"><i class="fas fa-list mr-2 text-purple-600"></i>전체 결재 현황</h2>
+            <input id="all-search" type="text" placeholder="검색 (제목, 번호, 요청자)" class="border rounded px-3 py-1.5 text-sm w-48" oninput="filterAllRequests()">
+            <select id="all-type-filter" class="border rounded px-2 py-1.5 text-sm" onchange="filterAllRequests()">
+              <option value="">전체 유형</option>
+              <option value="PURCHASE_REQUEST">발주 승인</option>
+              <option value="PRICE_CHANGE">단가 변경</option>
+              <option value="BAD_DEBT_WRITEOFF">미수금 탕감</option>
+              <option value="LEAVE_ATTENDANCE">휴가/근태</option>
+              <option value="SHIPMENT_HOLD">출고 승인</option>
+              <option value="GENERAL">일반</option>
+            </select>
+            <select id="all-status-filter" class="border rounded px-2 py-1.5 text-sm" onchange="filterAllRequests()">
+              <option value="">전체 상태</option>
+              <option value="DRAFT">작성중</option>
+              <option value="PENDING">대기</option>
+              <option value="IN_REVIEW">검토중</option>
+              <option value="APPROVED">승인</option>
+              <option value="REJECTED">반려</option>
+            </select>
           </div>
-          <div class="overflow-x-auto" style="max-height: calc(100vh - 280px); overflow-y: auto;">
+          <div class="overflow-x-auto" style="max-height: calc(100vh - 320px); overflow-y: auto;">
             <table class="w-full ds-table-striped">
               <thead><tr class="bg-gray-50 border-b text-sm text-gray-500">
                 <th class="px-3 py-3 text-left">번호</th>
@@ -73,6 +110,7 @@ export const approvalsPage = (c: Context<HonoEnv>) => {
               <tbody id="all-requests-tbody"></tbody>
             </table>
           </div>
+          <div id="all-pagination" class="flex items-center justify-between px-4 py-3 border-t text-sm text-gray-500"></div>
         </div>
       </div>
 

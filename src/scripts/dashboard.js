@@ -2,7 +2,7 @@
 (function initSkeletons() {
   var kpi = document.getElementById('kpiArea');
   if (kpi && window.dsSkeleton) kpi.innerHTML = dsSkeleton.stat(8);
-  var skeletonTargets = ['todayDueList','weeklyTrend','productionPipeline','productionToday','uptimeWeekly','activeCardsList','receivablesClients','agingBuckets','topClients','ppStats','recentOrdersList','recentShipmentsList'];
+  var skeletonTargets = ['todayDueList','weeklyTrend','productionPipeline','productionToday','equipUtilization','activeCardsList','receivablesClients','agingBuckets','topClients','ppStats','recentOrdersList','recentShipmentsList'];
   skeletonTargets.forEach(function(id) {
     var el = document.getElementById(id);
     if (el && window.dsSkeleton) el.innerHTML = dsSkeleton.table(3, 3);
@@ -697,36 +697,62 @@ async function loadProductionToday() {
 }
 loadProductionToday();
 
-// Load weekly uptime stats
-async function loadUptimeWeekly() {
+// Load equipment utilization (가동시간)
+async function loadEquipmentUtilization() {
   try {
-    var res = await axios.get('/api/dashboard/stats/uptime-weekly');
+    var res = await axios.get('/api/dashboard/stats/equipment-utilization');
     if (!res.data.success) return;
-    var items = res.data.data || [];
-    var container = document.getElementById('uptimeWeekly');
+    var d = res.data.data;
+    var container = document.getElementById('equipUtilization');
+    if (!container) return;
 
+    var items = d.equipment || [];
     if (items.length === 0) {
       container.innerHTML = '<div class="ds-empty">가동 데이터 없음</div>';
       return;
     }
 
-    container.innerHTML = items.map(function(eq) {
-      var activeDays = eq.active_days || 0;
-      var pct = Math.round((activeDays / 7) * 100);
-      var okRate = eq.total_events > 0 ? Math.round((eq.ok_events / eq.total_events) * 100) : 0;
-      var barColor = pct >= 80 ? 'bg-green-500' : pct >= 50 ? 'bg-amber-500' : 'bg-red-500';
-      return '<div>'
+    // 전체 평균 요약
+    var html = '<div class="flex items-center justify-between p-2 rounded-lg" style="background:var(--c-surface-secondary)">'
+      + '<div class="text-xs" style="color:var(--c-text-secondary)">전체 평균</div>'
+      + '<div class="flex items-center gap-3">'
+      + '<span class="text-xs" style="color:var(--c-text-muted)">오늘 <strong style="color:var(--c-text)">' + d.avg_today_pct + '%</strong></span>'
+      + '<span class="text-xs" style="color:var(--c-text-muted)">주간 <strong style="color:var(--c-text)">' + d.avg_weekly_pct + '%</strong></span>'
+      + '</div></div>';
+
+    // 장비별 상세
+    html += '<div class="space-y-2">';
+    items.forEach(function(eq) {
+      var pct = eq.today_pct || 0;
+      var barColor = pct >= 70 ? 'bg-green-500' : pct >= 40 ? 'bg-amber-500' : pct > 0 ? 'bg-red-400' : 'bg-gray-300';
+      var totalMin = eq.today_minutes || 0;
+      var hours = Math.floor(totalMin / 60);
+      var mins = totalMin % 60;
+      var timeStr = hours > 0 ? hours + '시간 ' + mins + '분' : mins + '분';
+      if (totalMin === 0) timeStr = '-';
+      var weekAvg = eq.weekly_avg_pct || 0;
+
+      html += '<div>'
         + '<div class="flex justify-between text-xs mb-1">'
         + '<span class="text-gray-600 truncate" style="max-width:140px;">' + (eq.equipment_name || eq.equipment_id || '-').replace(/</g, '&lt;') + '</span>'
-        + '<span class="font-medium">' + activeDays + '/7일 <span class="text-gray-400">(' + okRate + '% 성공)</span></span>'
+        + '<span class="font-medium tabular-nums">' + timeStr
+        + ' <span class="text-gray-400">(' + pct + '%)</span></span>'
         + '</div>'
         + '<div class="h-2 bg-gray-200 rounded-full overflow-hidden">'
-        + '<div class="h-full ' + barColor + ' rounded-full" style="width:' + Math.max(pct, 3) + '%"></div>'
-        + '</div></div>';
-    }).join('');
-  } catch(e) { console.error('Load uptime weekly error:', e); }
+        + '<div class="h-full ' + barColor + ' rounded-full transition-all" style="width:' + Math.max(pct, 2) + '%"></div>'
+        + '</div>'
+        + '<div class="flex justify-between text-[10px] mt-0.5" style="color:var(--c-text-muted)">'
+        + '<span>' + (eq.today_print_count || 0) + '건 출력</span>'
+        + '<span>주간평균 ' + weekAvg + '%</span>'
+        + '</div>'
+        + '</div>';
+    });
+    html += '</div>';
+
+    container.innerHTML = html;
+  } catch(e) { console.error('Load equipment utilization error:', e); }
 }
-loadUptimeWeekly();
+loadEquipmentUtilization();
 
 // 60초마다 자동 갱신 (탭이 보이는 경우만)
 setInterval(function() {

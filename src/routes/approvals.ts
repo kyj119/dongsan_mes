@@ -79,7 +79,7 @@ approvals.get('/', async (c) => {
   try {
     const userId = c.get('user')?.id
     const userRole = c.get('user')?.role
-    const { status, type } = c.req.query()
+    const { status, type, search, limit: limitQ, offset: offsetQ } = c.req.query()
 
     let query = `
       SELECT ar.*, u.name as requester_name
@@ -102,7 +102,16 @@ approvals.get('/', async (c) => {
       query += ` AND ar.type = ?`
       params.push(type)
     }
-    query += ` ORDER BY ar.created_at DESC LIMIT 100`
+    if (search) {
+      query += ` AND (ar.title LIKE ? OR ar.request_number LIKE ? OR u.name LIKE ?)`
+      const s = `%${search}%`
+      params.push(s, s, s)
+    }
+
+    const limit = Math.min(Number(limitQ) || 200, 500)
+    const offset = Number(offsetQ) || 0
+    query += ` ORDER BY ar.created_at DESC LIMIT ? OFFSET ?`
+    params.push(limit, offset)
 
     const stmt = params.length > 0 ? c.env.DB.prepare(query).bind(...params) : c.env.DB.prepare(query)
     const { results } = await stmt.all()
@@ -494,11 +503,19 @@ approvals.get('/badge/count', async (c) => {
 
 async function handlePostApproval(db: D1Database, req: any) {
   // 연관 엔티티에 따른 후처리
-  if (req.reference_type === 'purchase_request' && req.reference_id) {
-    // PR 자동 승인
-    await db.prepare(`
-      UPDATE purchase_requests SET status = 'APPROVED', approved_at = CURRENT_TIMESTAMP WHERE id = ? AND status = 'PENDING'
-    `).bind(req.reference_id).run()
+  try {
+    if (req.reference_type === 'purchase_request' && req.reference_id) {
+      // 발주 요청 자동 승인
+      await db.prepare(`
+        UPDATE purchase_requests SET status = 'APPROVED', approved_at = CURRENT_TIMESTAMP WHERE id = ? AND status = 'PENDING'
+      `).bind(req.reference_id).run()
+    }
+    // 단가 변경: client_item_prices 업데이트는 추후 연계 시 구현
+    // 미수금 탕감: ledger 차감은 추후 연계 시 구현
+    // 휴가/근태: leave_requests 상태 업데이트는 추후 연계 시 구현
+    // 출고 보류 해제: shipment hold 해제는 추후 연계 시 구현
+  } catch (e) {
+    console.error('Post-approval hook error:', e)
   }
 }
 
