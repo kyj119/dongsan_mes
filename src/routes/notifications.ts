@@ -80,7 +80,7 @@ notificationsRouter.get('/nav-badges', async (c) => {
     const efPO = (entityId && entityId > 0) ? ' AND po.entity_id = ?' : ''
     const efPOParams = (entityId && entityId > 0) ? [entityId] : []
 
-    const [orders, receivables, pr, inspPr, inspOverdue, myReceiving] = await Promise.all([
+    const [orders, receivables, pr, inspPr, inspOverdue, myReceiving, tasksPending] = await Promise.all([
       db.prepare(`SELECT COUNT(*) as cnt FROM orders WHERE status = 'CONFIRMED'${efOrders}`).bind(...efOrdersParams).first<{ cnt: number }>(),
       db.prepare(`SELECT COUNT(DISTINCT client_id) as cnt FROM orders WHERE status != 'CANCELLED'${efOrders} GROUP BY client_id HAVING SUM(final_amount) - COALESCE((SELECT SUM(amount) FROM payments WHERE payments.client_id = orders.client_id), 0) > 0 AND MIN(created_at) < datetime('now', '-30 days')`).bind(...efOrdersParams).all().then((r) => ({ cnt: r.results?.length || 0 })),
       db.prepare(`SELECT COUNT(*) as cnt FROM purchase_requests WHERE status = 'PENDING'`).first<{ cnt: number }>(),
@@ -97,6 +97,7 @@ notificationsRouter.get('/nav-badges', async (c) => {
           AND po.status IN ('CONFIRMED','PARTIAL_RECEIVED')
           AND (sz.manager_id = ? ${supervisorClause})${efPO}
       `).bind(user?.id || 0, ...efPOParams).first<{ cnt: number }>(),
+      db.prepare(`SELECT COUNT(*) as cnt FROM tasks WHERE status IN ('PENDING','PROCESSING','FAILED')`).first<{ cnt: number }>(),
     ])
     const inspTotal = (inspPr?.cnt || 0) + (inspOverdue?.cnt || 0)
     return c.json({
@@ -107,6 +108,7 @@ notificationsRouter.get('/nav-badges', async (c) => {
         'nav-badge-pr': pr?.cnt || 0,
         'nav-badge-insp': inspTotal,
         'nav-badge-my-receiving': myReceiving?.cnt || 0,
+        'nav-badge-tasks': tasksPending?.cnt || 0,
       }
     })
   } catch (error: any) {

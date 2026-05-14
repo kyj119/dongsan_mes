@@ -43,7 +43,7 @@ async function loadTasks() {
   const params = new URLSearchParams();
   if (type) params.set('type', type);
   if (status) params.set('status', status);
-  params.set('limit', '200');
+  params.set('limit', '500');
 
   const body = document.getElementById('tasksBody');
   body.innerHTML = '<tr><td colspan="8" class="text-center py-8 text-gray-400">로딩중...</td></tr>';
@@ -53,6 +53,19 @@ async function loadTasks() {
     if (rows.length === 0) {
       body.innerHTML = '<tr><td colspan="8" class="text-center py-8 text-gray-400">표시할 작업이 없습니다.</td></tr>';
       return;
+    }
+    if (rows.length >= 500) {
+      var warn = document.getElementById('limitWarning');
+      if (!warn) {
+        warn = document.createElement('div');
+        warn.id = 'limitWarning';
+        warn.className = 'bg-yellow-50 border border-yellow-200 text-yellow-800 text-sm px-4 py-2 rounded-lg mb-2';
+        body.closest('.bg-white').parentElement.insertBefore(warn, body.closest('.bg-white'));
+      }
+      warn.innerHTML = '<i class="fas fa-exclamation-triangle mr-1"></i>최대 500건까지 표시됩니다. 필터를 사용해 범위를 좁혀주세요.';
+    } else {
+      var existingWarn = document.getElementById('limitWarning');
+      if (existingWarn) existingWarn.remove();
     }
     body.innerHTML = rows.map(function(t) {
       const colorClass = STATUS_COLOR[t.status] || 'bg-gray-100 text-gray-700';
