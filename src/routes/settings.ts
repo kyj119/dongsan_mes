@@ -36,13 +36,14 @@ settingsRouter.patch('/', requireRole('ADMIN'), async (c) => {
   try {
     const { settings } = await c.req.json<{ settings: Record<string, string> }>()
 
-    for (const [key, value] of Object.entries(settings)) {
-      await c.env.DB.prepare(
+    const stmts = Object.entries(settings).map(([key, value]) =>
+      c.env.DB.prepare(
         `INSERT INTO settings (setting_key, setting_value, updated_at)
          VALUES (?, ?, CURRENT_TIMESTAMP)
          ON CONFLICT(setting_key) DO UPDATE SET setting_value = excluded.setting_value, updated_at = CURRENT_TIMESTAMP`
-      ).bind(key, value).run()
-    }
+      ).bind(key, value)
+    )
+    await c.env.DB.batch(stmts)
 
     return c.json({ success: true, message: '설정이 저장되었습니다.' })
   } catch (error) {
