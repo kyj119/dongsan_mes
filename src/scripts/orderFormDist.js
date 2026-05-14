@@ -238,14 +238,69 @@
                 document.getElementById('distGrandTotal').textContent = grand.toLocaleString() + '원';
             }
 
-            // ===== 출고방법 변경 시 선불/착불 =====
+            // ===== 납품시간 옵션 =====
+            function initDistDeliveryTimeOptions() {
+                var hourSel = document.getElementById('distDeliveryTimeHour');
+                var minSel = document.getElementById('distDeliveryTimeMinute');
+                if (!hourSel || !minSel) return;
+                var hHtml = '<option value="">미정</option>';
+                for (var h = 9; h <= 18; h++) {
+                    var hh = (h < 10 ? '0' : '') + h;
+                    hHtml += '<option value="' + hh + '">' + hh + '시</option>';
+                }
+                hourSel.innerHTML = hHtml;
+                updateDistMinuteOptions();
+            }
+
+            function updateDistMinuteOptions() {
+                var hourSel = document.getElementById('distDeliveryTimeHour');
+                var minSel = document.getElementById('distDeliveryTimeMinute');
+                if (!hourSel || !minSel) return;
+                var prevMin = minSel.value;
+                var hour = hourSel.value;
+                var mHtml = '<option value="00">00분</option>';
+                if (hour !== '18') {
+                    mHtml += '<option value="30">30분</option>';
+                }
+                minSel.innerHTML = mHtml;
+                if (prevMin === '30' && hour !== '18') minSel.value = '30';
+                else minSel.value = '00';
+                minSel.disabled = !hour;
+            }
+
+            function onDistDeliveryTimeHourChange() {
+                updateDistMinuteOptions();
+            }
+
+            // ===== 출고방법 변경 시 선불/착불 + 납품시간 연동 =====
             function onDistDeliveryMethodChange() {
                 var method = document.getElementById('distDeliveryMethod').value;
+                var hourSel = document.getElementById('distDeliveryTimeHour');
+                var minSel = document.getElementById('distDeliveryTimeMinute');
+
+                // 납품시간 자동 설정
+                if (hourSel && minSel) {
+                    if (method === '한진택배') {
+                        hourSel.value = '18'; updateDistMinuteOptions(); minSel.value = '00';
+                        hourSel.disabled = true; minSel.disabled = true;
+                    } else if (method === '대신택배' || method === '대신화물') {
+                        hourSel.value = '16'; updateDistMinuteOptions(); minSel.value = '00';
+                        hourSel.disabled = true; minSel.disabled = true;
+                    } else {
+                        if (hourSel.disabled) { hourSel.value = ''; updateDistMinuteOptions(); }
+                        hourSel.disabled = false;
+                        minSel.disabled = !hourSel.value;
+                    }
+                }
+
+                // 선불/착불 활성화 제어
                 var spSelect = document.getElementById('distShippingPayment');
+                var spLabel = document.getElementById('distShippingPaymentLabel');
                 if (spSelect) {
                     var needsPayment = ['대신택배','대신화물','한진택배','용차','퀵'].indexOf(method) >= 0;
                     spSelect.disabled = !needsPayment;
                     if (!needsPayment) spSelect.value = '';
+                    if (spLabel) spLabel.innerHTML = needsPayment ? '선불/착불 <span class="text-red-500">*</span>' : '선불/착불';
                 }
             }
 
@@ -292,15 +347,23 @@
                 btn.disabled = true;
                 btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>등록 중...';
 
+                // 납품시간 조합
+                var dtHour = (document.getElementById('distDeliveryTimeHour') || {}).value || '';
+                var dtMin = (document.getElementById('distDeliveryTimeMinute') || {}).value || '00';
+                var deliveryTime = dtHour ? (dtHour + ':' + dtMin) : null;
+
                 var orderData = {
                     client_id: parseInt(clientId),
                     order_type: 'DISTRIBUTION',
+                    priority: (document.getElementById('distPriority') || {}).value || 'NORMAL',
                     delivery_date: document.getElementById('distDeliveryDate').value || null,
+                    delivery_time: deliveryTime,
                     delivery_method: document.getElementById('distDeliveryMethod').value || null,
                     shipping_payment: document.getElementById('distShippingPayment').value || null,
                     reception_location: document.getElementById('receptionLocation').value || null,
                     delivery_info: document.getElementById('deliveryAddress').value || null,
                     contact_phone: document.getElementById('contactPhone').value || null,
+                    contact_mobile: document.getElementById('contactMobile').value || null,
                     discount_amount: parseMoney((document.getElementById('distDiscount') || {}).value),
                     notes: document.getElementById('distNotes').value || null,
                     items: items
@@ -344,7 +407,9 @@
                 tomorrow.setDate(tomorrow.getDate() + 1);
                 var dateEl = document.getElementById('distDeliveryDate');
                 if (dateEl) dateEl.value = tomorrow.toISOString().split('T')[0];
-                // 출고방법 초기화
+                // 납품시간 옵션 초기화
+                initDistDeliveryTimeOptions();
+                // 출고방법 초기화 (납품시간 자동 설정 포함)
                 onDistDeliveryMethodChange();
                 // 첫 품목 행 추가
                 addItemRow();
