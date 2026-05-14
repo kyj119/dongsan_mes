@@ -110,6 +110,7 @@ async function main() {
   logger.info(`DB: ${config.capsDbPath}`);
   logger.info(`PW: ${config.capsDbPassword ? '****' : '(없음)'}`);
   logger.info(`주기: ${config.syncCron}`);
+  logger.info(`Site ID: ${config.siteId}`);
   logger.info(`Lookback: ${config.lookbackDays}일`);
   logger.info('==================================');
 
@@ -148,6 +149,7 @@ function startPendingPoller() {
     try {
       var res = await axios.get(config.mesUrl + '/api/caps/sync/pending', {
         headers: { 'X-Agent-Key': config.mesApiKey },
+        params: { site_id: config.siteId },
         timeout: 10000,
       });
       if (res.data && res.data.pending) {

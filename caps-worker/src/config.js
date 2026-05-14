@@ -12,6 +12,7 @@ module.exports = {
   // MES
   mesUrl: (process.env.MES_URL || 'https://webapp-9i0.pages.dev').replace(/\/$/, ''),
   mesApiKey: process.env.MES_API_KEY || '',
+  siteId: process.env.SITE_ID || 'DJ',
 
   // 스케줄
   syncCron: process.env.SYNC_CRON || '0 9,13,19 * * *',
