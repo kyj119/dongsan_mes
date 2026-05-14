@@ -75,6 +75,8 @@ function switchTab(tab) {
 // ─── 데이터 로드 ────────────────────────────────────────────────────────────
 
 async function loadEquipment() {
+    var eqTbody = document.getElementById('equipTableBody');
+    if (eqTbody) eqTbody.innerHTML = '<tr><td colspan="8" class="text-center py-8 text-gray-400"><i class="fas fa-spinner fa-spin text-2xl mb-2"></i><br>로딩 중...</td></tr>';
     try {
         var res = await axios.get('/api/rip/equipment');
         equipList = res.data.data || [];

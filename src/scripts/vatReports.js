@@ -7,6 +7,10 @@ function fmt(n) { return (n || 0).toLocaleString(); }
 window.loadVatSummary = async function() {
   var year = document.getElementById('vatYear').value;
   var quarter = document.getElementById('vatQuarter').value;
+  var salesPanel = document.getElementById('vatSalesPanel');
+  if (salesPanel) salesPanel.innerHTML = '<div class="text-center py-8 text-gray-400"><i class="fas fa-spinner fa-spin text-2xl mb-2"></i><p>로딩 중...</p></div>';
+  var purPanel = document.getElementById('vatPurchasePanel');
+  if (purPanel) purPanel.innerHTML = '<div class="text-center py-8 text-gray-400"><i class="fas fa-spinner fa-spin text-2xl mb-2"></i><p>로딩 중...</p></div>';
   try {
     var res = await axios.get('/api/vat/summary?year=' + year + '&quarter=' + quarter);
     if (!res.data.success) return;

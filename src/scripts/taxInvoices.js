@@ -519,8 +519,8 @@ async function viewDetail(id) {
       + '<div class="col-span-2 font-bold text-base"><span class="text-gray-500 font-normal text-sm">합계:</span> ' + fmt(inv.total_amount) + '원</div>'
       + (inv.nts_confirm_number ? '<div class="col-span-2"><span class="text-gray-500">국세청 승인번호:</span> <span class="font-mono text-green-700">' + inv.nts_confirm_number + '</span></div>' : '')
       + (inv.buyer_email ? '<div class="col-span-2"><span class="text-gray-500">수신 이메일:</span> ' + inv.buyer_email + '</div>' : '')
-      + (inv.notes ? '<div class="col-span-2"><span class="text-gray-500">비고:</span> ' + inv.notes + '</div>' : '')
-      + (inv.cancel_reason ? '<div class="col-span-2 text-red-600"><span class="font-medium">취소 사유:</span> ' + inv.cancel_reason + '</div>' : '')
+      + (inv.notes ? '<div class="col-span-2"><span class="text-gray-500">비고:</span> ' + escapeHtml(inv.notes) + '</div>' : '')
+      + (inv.cancel_reason ? '<div class="col-span-2 text-red-600"><span class="font-medium">취소 사유:</span> ' + escapeHtml(inv.cancel_reason) + '</div>' : '')
       + '</div>'
       + (items.length > 0
         ? '<h4 class="text-sm font-medium mb-2">품목 내역</h4>'
