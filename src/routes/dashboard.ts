@@ -102,8 +102,9 @@ dashboardRouter.get('/stats', async (c) => {
       }
     }
 
-    // 대시보드 통계는 5분간 캐시 (빈번 새로고침 시 D1 부하 절감)
-    c.header('Cache-Control', 'private, max-age=300')
+    // Vary: Authorization → 법인(토큰) 변경 시 캐시 무효화
+    c.header('Cache-Control', 'private, max-age=60')
+    c.header('Vary', 'Authorization')
     return c.json({
       success: true,
       data: {
