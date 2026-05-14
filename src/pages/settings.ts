@@ -328,11 +328,20 @@ ${capsSettingsScript}
         <!-- ─── CAPS 근태 연동 탭 ─── -->
         <div id="capsTabContent" class="hidden space-y-6">
 
+          <!-- 사이트 선택 카드 -->
+          <div class="bg-white rounded-lg border border-gray-200 p-4">
+            <div class="flex items-center justify-between mb-3">
+              <h2 class="text-sm font-bold text-gray-700"><i class="fas fa-map-marker-alt mr-1 text-gray-400"></i>CAPS 사이트</h2>
+            </div>
+            <div id="capsSiteCards" class="grid grid-cols-2 md:grid-cols-4 gap-3"></div>
+          </div>
+
           <!-- 상단 요약 뱃지 + 수동 동기화 버튼 -->
           <div class="bg-white rounded-lg border border-gray-200 p-4">
             <div class="flex items-center justify-between flex-wrap gap-3">
               <div class="flex items-center gap-2 flex-wrap">
-                <span class="text-sm font-semibold text-gray-700 mr-2">최근 7일 동기화</span>
+                <span class="text-sm font-semibold text-gray-700 mr-1" id="capsCurrentSiteName">—</span>
+                <span class="text-xs text-gray-400">|</span>
                 <span id="capsBadgeSuccess" class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-50 text-green-700">
                   <i class="fas fa-check-circle text-[9px] mr-1"></i>성공 <span class="ml-1 tabular-nums">0</span>
                 </span>
@@ -350,7 +359,7 @@ ${capsSettingsScript}
             </div>
           </div>
 
-          <!-- 미매핑 e_idno 자동 감지 배너 -->
+          <!-- 미매핑 배너 -->
           <div id="capsUnmappedBanner" class="hidden bg-amber-50 border border-amber-200 rounded-lg p-4">
             <div class="flex items-start gap-3">
               <i class="fas fa-exclamation-triangle text-amber-600 mt-0.5"></i>
@@ -364,21 +373,20 @@ ${capsSettingsScript}
             </div>
           </div>
 
-          <!-- 섹션 1: 릴레이 DB 설정 -->
+          <!-- 섹션 1: 사이트별 릴레이 DB 설정 -->
           <div class="bg-white rounded-lg border border-gray-200 p-6">
             <h2 class="text-lg font-bold text-gray-900 mb-6 flex items-center gap-2">
               <i class="fas fa-database text-gray-500"></i>
               릴레이 DB / 워커 설정
             </h2>
             <p class="text-sm text-gray-500 mb-4">
-              사내망 on-prem 워커가 CAPS ACServer 릴레이 DB에서 <code class="bg-gray-100 px-1 rounded text-xs">nOutput</code> 테이블을 읽어 MES로 푸시합니다.
-              DB 접속 정보는 워커가 사용합니다.
+              선택한 사이트의 on-prem 워커 설정입니다. 워커가 CAPS ACServer에서 <code class="bg-gray-100 px-1 rounded text-xs">nOutput</code> 테이블을 읽어 MES로 푸시합니다.
             </p>
             <div class="space-y-4">
               <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
                   <label class="block text-sm font-semibold text-gray-700 mb-1">DB 엔진</label>
-                  <select id="s_caps_relay_db_engine" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                  <select id="caps_site_relay_db_engine" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
                     <option value="mysql">MySQL</option>
                     <option value="mssql">MSSQL</option>
                     <option value="postgres">PostgreSQL</option>
@@ -387,62 +395,67 @@ ${capsSettingsScript}
                 </div>
                 <div>
                   <label class="block text-sm font-semibold text-gray-700 mb-1">Host</label>
-                  <input type="text" id="s_caps_relay_db_host" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500" placeholder="192.168.0.x">
+                  <input type="text" id="caps_site_relay_db_host" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500" placeholder="192.168.0.x">
                 </div>
                 <div>
                   <label class="block text-sm font-semibold text-gray-700 mb-1">Port</label>
-                  <input type="text" id="s_caps_relay_db_port" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500" placeholder="3306">
+                  <input type="text" id="caps_site_relay_db_port" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500" placeholder="3306">
                 </div>
               </div>
               <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
                   <label class="block text-sm font-semibold text-gray-700 mb-1">DB 이름</label>
-                  <input type="text" id="s_caps_relay_db_name" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500" placeholder="acserver">
+                  <input type="text" id="caps_site_relay_db_name" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500" placeholder="acserver">
                 </div>
                 <div>
                   <label class="block text-sm font-semibold text-gray-700 mb-1">사용자</label>
-                  <input type="text" id="s_caps_relay_db_user" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500" placeholder="caps_reader">
+                  <input type="text" id="caps_site_relay_db_user" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500" placeholder="caps_reader">
                 </div>
                 <div>
                   <label class="block text-sm font-semibold text-gray-700 mb-1">비밀번호</label>
-                  <input type="password" id="s_caps_relay_db_password" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500" placeholder="변경 시에만 입력">
+                  <input type="password" id="caps_site_relay_db_password" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500" placeholder="변경 시에만 입력">
                   <p class="text-xs text-gray-400 mt-1">빈 값으로 저장하면 기존 값 유지</p>
                 </div>
               </div>
               <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
                   <label class="block text-sm font-semibold text-gray-700 mb-1">테이블명</label>
-                  <input type="text" id="s_caps_relay_table" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500" placeholder="nOutput">
+                  <input type="text" id="caps_site_relay_table" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500" placeholder="nOutput">
                 </div>
                 <div>
                   <label class="block text-sm font-semibold text-gray-700 mb-1">동기화 주기 (분)</label>
-                  <input type="number" id="s_caps_sync_interval_min" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500" placeholder="30" min="1">
+                  <input type="number" id="caps_site_sync_interval_min" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500" placeholder="30" min="1">
                 </div>
                 <div>
                   <label class="block text-sm font-semibold text-gray-700 mb-1">재조회 범위 (일)</label>
-                  <input type="number" id="s_caps_sync_lookback_days" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500" placeholder="3" min="1">
+                  <input type="number" id="caps_site_sync_lookback_days" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500" placeholder="3" min="1">
                 </div>
               </div>
               <div class="border-t border-gray-200 pt-4 space-y-4">
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <label class="block text-sm font-semibold text-gray-700 mb-1">워커 Endpoint URL</label>
-                    <input type="text" id="s_caps_worker_endpoint" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500" placeholder="https://caps-worker.local/sync">
+                    <input type="text" id="caps_site_worker_endpoint" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500" placeholder="https://caps-worker.local/sync">
                   </div>
                   <div>
                     <label class="block text-sm font-semibold text-gray-700 mb-1">워커 API Key</label>
-                    <input type="password" id="s_caps_worker_api_key" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500" placeholder="변경 시에만 입력">
+                    <div class="flex gap-2">
+                      <input type="password" id="caps_site_worker_api_key" class="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500" placeholder="변경 시에만 입력">
+                      <button onclick="regenerateCapsSiteKey()" class="px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-600 hover:bg-gray-50" title="API 키 재생성">
+                        <i class="fas fa-redo"></i>
+                      </button>
+                    </div>
                     <p class="text-xs text-gray-400 mt-1">빈 값으로 저장하면 기존 값 유지</p>
                   </div>
                 </div>
                 <label class="flex items-center gap-2 cursor-pointer">
-                  <input type="checkbox" id="s_caps_sync_enabled" class="w-4 h-4 text-blue-600 rounded focus:ring-blue-500">
+                  <input type="checkbox" id="caps_site_sync_enabled" class="w-4 h-4 text-blue-600 rounded focus:ring-blue-500">
                   <span class="text-sm text-gray-700">CAPS 자동 동기화 활성화</span>
                 </label>
               </div>
             </div>
             <div class="mt-6 flex justify-end">
-              <button onclick="saveCapsSettings()" id="saveCapsSettingsBtn" class="px-5 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium">저장</button>
+              <button onclick="saveCapsSiteSettings()" id="saveCapsSettingsBtn" class="px-5 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium">저장</button>
             </div>
             <div id="capsSettingsMsg" class="mt-3 text-center text-sm hidden"></div>
           </div>
@@ -453,9 +466,8 @@ ${capsSettingsScript}
               <i class="fas fa-id-badge text-gray-500"></i>
               사원 매핑
             </h2>
-            <p class="text-sm text-gray-500 mb-4">CAPS의 사원번호(e_idno)를 MES 직원과 1:1로 매핑합니다. 중복 등록 시 기존 값이 갱신됩니다.</p>
+            <p class="text-sm text-gray-500 mb-4">선택한 사이트의 CAPS 사원번호(e_idno)를 MES 직원과 1:1로 매핑합니다.</p>
 
-            <!-- 매핑 추가 폼 -->
             <div class="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-4">
               <div class="grid grid-cols-1 md:grid-cols-5 gap-3">
                 <div>
@@ -488,14 +500,13 @@ ${capsSettingsScript}
               </div>
             </div>
 
-            <!-- 매핑 목록 -->
             <div class="overflow-x-auto" style="max-height: 400px; overflow-y: auto;">
               <table class="w-full text-sm ds-table-striped">
                 <thead>
                   <tr class="bg-gray-50 text-gray-600 text-xs font-semibold uppercase tracking-wider">
                     <th class="px-3 py-2 text-left">CAPS e_idno</th>
                     <th class="px-3 py-2 text-left">CAPS 이름/부서</th>
-                    <th class="px-3 py-2 text-left">→</th>
+                    <th class="px-3 py-2 text-left"></th>
                     <th class="px-3 py-2 text-left">MES 직원</th>
                     <th class="px-3 py-2 text-left">메모</th>
                     <th class="px-3 py-2 text-left">매핑일</th>
@@ -543,6 +554,27 @@ ${capsSettingsScript}
             <div id="capsSyncLogEmpty" class="text-center py-8 hidden">
               <i class="fas fa-inbox text-3xl text-gray-300 block mb-2"></i>
               <p class="text-sm text-gray-500">동기화 이력이 없습니다.</p>
+            </div>
+          </div>
+
+          <!-- 사이트 추가 모달 -->
+          <div id="capsAddSiteModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+            <div class="bg-white rounded-xl shadow-xl p-6 w-full max-w-md">
+              <h3 class="text-lg font-bold text-gray-900 mb-4"><i class="fas fa-plus-circle text-blue-500 mr-2"></i>CAPS 사이트 추가</h3>
+              <div class="space-y-4">
+                <div>
+                  <label class="block text-sm font-semibold text-gray-700 mb-1">사이트 코드 <span class="text-red-500">*</span></label>
+                  <input type="text" id="capsNewSiteId" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm uppercase" placeholder="CJ (2~5자 영문 대문자)" maxlength="5">
+                </div>
+                <div>
+                  <label class="block text-sm font-semibold text-gray-700 mb-1">사이트 이름 <span class="text-red-500">*</span></label>
+                  <input type="text" id="capsNewSiteName" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" placeholder="청주">
+                </div>
+              </div>
+              <div class="mt-6 flex justify-end gap-3">
+                <button onclick="closeAddCapsSiteModal()" class="px-4 py-2 border border-gray-300 rounded-lg text-sm text-gray-700 hover:bg-gray-50">취소</button>
+                <button onclick="addCapsSite()" class="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700 font-medium">추가</button>
+              </div>
             </div>
           </div>
 
