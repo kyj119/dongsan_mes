@@ -1,6 +1,6 @@
 // 인사 관리 - 직원 목록 전용 (근태/급여는 별도 페이지로 분리)
 
-var DEPT_NAMES = { ADMIN_DEPT: '사무직', DESIGN: '디자인', SALES: '영업', TRANSFER: '전사', SIGN: '간판', PRINTING: '출력', EXECUTIVE: '임원' };
+var DEPT_NAMES = { ADMIN_DEPT: '사무직', DESIGN: '디자인', SALES: '영업', TRANSFER: '전사', SIGN: '간판', PRINTING: '출력', PRODUCTION: '생산직', EXECUTIVE: '임원' };
 var ENTITY_NAMES = { 1: '동산기획', 2: '선명', 3: '동산기획 청주' };
 var POSITION_NAMES = {
   STAFF: '사원', SENIOR_STAFF: '주임', ASSISTANT_MANAGER: '대리', MANAGER: '과장',

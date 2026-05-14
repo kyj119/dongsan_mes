@@ -441,7 +441,7 @@ window.lcCalcWage = function() {
 };
 
 // ===== 검색형 직원 선택 =====
-var LC_DEPT = {'ADMIN_DEPT':'사무직','DESIGN':'디자인','SALES':'영업','TRANSFER':'전사','SIGN':'간판','PRINTING':'출력','EXECUTIVE':'임원'};
+var LC_DEPT = {'ADMIN_DEPT':'사무직','DESIGN':'디자인','SALES':'영업','TRANSFER':'전사','SIGN':'간판','PRINTING':'출력','PRODUCTION':'생산직','EXECUTIVE':'임원'};
 var LC_POS = {'STAFF':'사원','SENIOR_STAFF':'주임','ASSISTANT_MANAGER':'대리','MANAGER':'과장','DEPUTY_GENERAL_MANAGER':'차장','GENERAL_MANAGER':'부장','DIRECTOR':'이사','CEO':'대표이사'};
 var LC_ENT = {1:'동산기획',2:'선명',3:'동산기획 청주'};
 
