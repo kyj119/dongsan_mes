@@ -45,6 +45,7 @@ export function hrPage(c: Context<HonoEnv>) {
               <option value="TRANSFER">전사</option>
               <option value="SIGN">간판</option>
               <option value="PRINTING">출력</option>
+              <option value="PRODUCTION">생산직</option>
               <option value="EXECUTIVE">임원</option>
             </select>
             <select id="hrFilterPosition" class="border border-gray-300 rounded-lg px-3 py-2 text-sm">
