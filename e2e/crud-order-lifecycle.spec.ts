@@ -102,6 +102,9 @@ test.describe.serial('주문 생성 → 상태 전이 → 카드 생성', () => 
     const shipRes = await writeApi.patch(`/api/orders/${orderId}/status`, {
       status: 'SHIPPED',
     })
+    if (!shipRes.success) {
+      console.error('[E2E DEBUG] SHIPPED transition failed:', JSON.stringify(shipRes))
+    }
     expect(shipRes.success).toBe(true)
 
     // SHIPPED → PRINTING 은 불가

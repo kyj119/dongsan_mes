@@ -522,8 +522,8 @@ poCoreRouter.get('/:id/invoice', async (c) => {
       ? await c.env.DB.prepare(
           `SELECT id, client_code, client_name, representative, business_registration_number,
                   business_type, business_item, phone, mobile, fax, email, address, postal_code,
-                  bank_info, is_active, balance, client_type, delivery_method, auto_billing,
-                  price_policy_id, notes, invoice_method, entity_id, created_at, updated_at
+                  transfer_info, is_active, balance, client_type, delivery_method, auto_billing,
+                  price_policy_id, notes, invoice_method, created_at, updated_at
            FROM clients WHERE id = ?`
         ).bind(poRec.supplier_id).first()
       : null
