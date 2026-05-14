@@ -24,6 +24,10 @@ export function renderLaborContractHTML(data: {
     wage_start_date: string
     wage_end_date: string
     hourly_rate: number
+    overtime_daily_hours?: number
+    overtime_work_days?: number
+    base_hours_monthly?: number
+    monthly_salary?: number
     work_type: string
     job_description: string
     probation_months: number
@@ -42,6 +46,15 @@ export function renderLaborContractHTML(data: {
   const workTypeText = contract.work_type === 'SHIFT'
     ? '교대제 (별도 근무일정표에 따름)'
     : '통상근무 (09:00 ~ 18:00, 휴게시간 12:00 ~ 13:00)'
+
+  // 급여 계산
+  const baseH = contract.base_hours_monthly || 209
+  const otDaily = contract.overtime_daily_hours || 0
+  const otDays = contract.overtime_work_days || 22
+  const otHours = otDaily * otDays
+  const basePay = contract.hourly_rate * baseH
+  const otPay = Math.round(contract.hourly_rate * otHours * 1.5)
+  const totalPay = basePay + otPay
 
   const employerSig = contract.signature_employer_base64
     ? `<img src="${contract.signature_employer_base64}" style="height:50px;" alt="사용자 인감">`
@@ -364,10 +377,33 @@ export function renderLaborContractHTML(data: {
       <div class="article">
         <div class="article-title">제6조 (임금)</div>
         <div class="article-body">
-          <p>1) 통상시급: ${formatNumber(contract.hourly_rate)}원</p>
+          <p>1) 통상시급: <strong>${formatNumber(contract.hourly_rate)}원</strong></p>
+          <table class="party-table" style="margin:8px 0 12px">
+            <tr>
+              <th style="width:25%">구분</th>
+              <th style="width:45%">산출 근거</th>
+              <th style="width:30%;text-align:right">금액</th>
+            </tr>
+            <tr>
+              <td style="text-align:center">기본급</td>
+              <td>${formatNumber(contract.hourly_rate)}원 × ${baseH}시간</td>
+              <td style="text-align:right">${formatNumber(basePay)}원</td>
+            </tr>
+            ${otDaily > 0 ? `<tr>
+              <td style="text-align:center">고정연장수당</td>
+              <td>${formatNumber(contract.hourly_rate)}원 × ${otHours}h (일 ${otDaily}h × ${otDays}일) × 1.5</td>
+              <td style="text-align:right">${formatNumber(otPay)}원</td>
+            </tr>` : ''}
+            <tr style="border-top:2px solid #333;font-weight:700">
+              <td style="text-align:center">월 합계</td>
+              <td></td>
+              <td style="text-align:right">${formatNumber(totalPay)}원</td>
+            </tr>
+          </table>
+          ${otDaily > 0 ? `<p style="font-size:12px;color:#555">※ 매일 ${otDaily}시간 조기출근에 따른 월 ${otHours}시간 고정 연장근로 포함</p>` : ''}
           <p>2) 임금 지급일: 매월 10일 (해당일이 휴일인 경우 전일 지급)</p>
           <p>3) 지급방법: 근로자 명의 예금통장에 입금</p>
-          <p>4) 초과근로수당: 연장근로 통상시급의 150%, 야간근로(22:00~06:00) 통상시급의 150%, 휴일근로 통상시급의 150%</p>
+          <p>4) 초과근로수당: 상기 고정연장 외 추가 연장근로 시 통상시급의 150%, 야간근로(22:00~06:00) 통상시급의 50% 가산, 휴일근로 통상시급의 150%</p>
         </div>
       </div>
 
