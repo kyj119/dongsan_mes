@@ -253,8 +253,15 @@ export function hrDetailPage(c: Context<HonoEnv>) {
             <!-- CAPS 연동 -->
             <section>
               <h4 class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">CAPS 근태 연동</h4>
-              <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                <div><label class="block text-xs text-gray-500 mb-1">CAPS 번호</label><input data-field="caps_id" class="hrd-input w-full border border-gray-200 rounded px-2 py-1.5 text-sm" placeholder="ACServer 사원번호" disabled></div>
+              <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div><label class="block text-xs text-gray-500 mb-1">CAPS 사이트</label>
+                  <select data-field="caps_site_id" class="hrd-input w-full border border-gray-200 rounded px-2 py-1.5 text-sm" disabled>
+                    <option value="">— 미설정 —</option>
+                    <option value="DJ">대전 (DJ)</option>
+                    <option value="SM">선명 (SM)</option>
+                  </select>
+                </div>
+                <div><label class="block text-xs text-gray-500 mb-1">CAPS 번호</label><input data-field="caps_id" class="hrd-input w-full border border-gray-200 rounded px-2 py-1.5 text-sm" placeholder="ACServer fpid" disabled></div>
                 <div class="flex items-end">
                   <label class="flex items-center gap-2 text-sm"><input type="checkbox" data-field="caps_sync_enabled" class="hrd-check" disabled> CAPS 동기화 대상</label>
                 </div>

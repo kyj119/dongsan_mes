@@ -217,7 +217,8 @@ async function loadCapsEmployeesList() {
   try {
     var res = await axios.get('/api/hr/employees', { params: { status: 'ACTIVE', limit: 200 } });
     if (!res.data.success) return;
-    capsEmployeesCache = res.data.data || [];
+    var d = res.data.data || {};
+    capsEmployeesCache = d.employees || d || [];
     var sel = document.getElementById('capsMapEmployee');
     if (!sel) return;
     var html = '<option value="">— 선택 —</option>';
