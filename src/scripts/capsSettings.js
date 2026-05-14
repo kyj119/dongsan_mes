@@ -1,89 +1,189 @@
 // ============================================================================
-// CAPS 근태 연동 설정 탭 스크립트 (Phase 9)
+// CAPS 근태 연동 설정 탭 스크립트 — 멀티사이트 지원
 // - /settings 페이지 내 capsTabContent 영역 로직
-// - API: /api/caps/settings, /api/caps/employee-map, /api/caps/sync-log,
-//        /api/caps/sync/trigger, /api/hr/employees (직원 드롭다운)
+// - caps_sites 테이블 기반 사이트별 설정/매핑/로그 관리
 // ============================================================================
 
-var CAPS_TEXT_KEYS = [
-  'caps_relay_db_engine', 'caps_relay_db_host', 'caps_relay_db_port',
-  'caps_relay_db_name', 'caps_relay_db_user', 'caps_relay_table',
-  'caps_sync_interval_min', 'caps_sync_lookback_days', 'caps_worker_endpoint'
-];
-// 비밀번호/키는 GET에서 안 내려옴 — 빈 값으로 저장 시 유지
-var CAPS_SECRET_KEYS = ['caps_relay_db_password', 'caps_worker_api_key'];
-var CAPS_CHECKBOX_KEYS = ['caps_sync_enabled'];
-
+var capsSitesCache = [];
+var capsCurrentSiteId = null;
 var capsEmployeesCache = [];
 
 // ───────── 초기화 ─────────
 async function initCapsTab() {
-  await loadCapsSettings();
+  await loadCapsSites();
   await loadCapsEmployeesList();
-  await loadCapsEmployeeMap();
-  await loadCapsSyncLog();
 }
 
-// ───────── 1) 릴레이 DB 설정 ─────────
-async function loadCapsSettings() {
+// ───────── 0) 사이트 목록 ─────────
+async function loadCapsSites() {
   try {
-    var res = await axios.get('/api/caps/settings');
+    var res = await axios.get('/api/caps/sites');
     if (!res.data.success) return;
-    var data = res.data.data || {};
-    CAPS_TEXT_KEYS.forEach(function(key) {
-      var el = document.getElementById('s_' + key);
-      if (el && data[key] != null) el.value = data[key];
-    });
-    CAPS_CHECKBOX_KEYS.forEach(function(key) {
-      var el = document.getElementById('s_' + key);
-      if (el) el.checked = data[key] === '1' || data[key] === 1 || data[key] === 'true';
-    });
-    // 마지막 성공 시각
-    var lastOkEl = document.getElementById('capsLastOk');
-    if (lastOkEl) lastOkEl.textContent = data.caps_sync_last_ok_at || '—';
-    // 미매핑 배너
-    renderCapsUnmappedBanner(data.caps_last_unmapped);
+    capsSitesCache = res.data.data || [];
+    renderCapsSiteCards();
+    // 첫 번째 사이트 자동 선택
+    if (capsSitesCache.length > 0 && !capsCurrentSiteId) {
+      selectCapsSite(capsSitesCache[0].id);
+    }
   } catch (err) {
     if (err.response && err.response.status === 403) {
       if (typeof showToast === 'function') showToast('관리자 권한이 필요합니다', 'error');
     } else {
-      console.error('CAPS 설정 로드 실패', err);
+      console.error('CAPS 사이트 로드 실패', err);
     }
   }
 }
 
-async function saveCapsSettings() {
+function renderCapsSiteCards() {
+  var container = document.getElementById('capsSiteCards');
+  if (!container) return;
+  var html = capsSitesCache.map(function(s) {
+    var isActive = s.id === capsCurrentSiteId;
+    var syncOk = s.last_sync_ok_at ? timeAgo(s.last_sync_ok_at) : '없음';
+    var statusDot = s.sync_enabled ? 'bg-green-500' : 'bg-gray-400';
+    return '<button onclick="selectCapsSite(\\''+s.id+'\\')\" class="text-left p-3 rounded-lg border-2 transition-all ' +
+      (isActive ? 'border-blue-500 bg-blue-50 ring-1 ring-blue-200' : 'border-gray-200 bg-white hover:border-blue-300') + '">' +
+      '<div class="flex items-center gap-2 mb-1">' +
+        '<span class="w-2 h-2 rounded-full ' + statusDot + '"></span>' +
+        '<span class="font-bold text-sm">' + escapeHtml(s.name) + '</span>' +
+        '<span class="text-xs text-gray-400">(' + escapeHtml(s.id) + ')</span>' +
+      '</div>' +
+      '<div class="text-xs text-gray-500">마지막 동기화: ' + escapeHtml(syncOk) + '</div>' +
+    '</button>';
+  }).join('');
+  // 사이트 추가 버튼
+  html += '<button onclick="showAddCapsSiteModal()" class="p-3 rounded-lg border-2 border-dashed border-gray-300 bg-gray-50 hover:border-blue-400 hover:bg-blue-50 transition-all text-center">' +
+    '<i class="fas fa-plus text-gray-400 text-lg block mb-1"></i>' +
+    '<span class="text-xs text-gray-500">사이트 추가</span>' +
+  '</button>';
+  container.innerHTML = html;
+}
+
+function selectCapsSite(siteId) {
+  capsCurrentSiteId = siteId;
+  renderCapsSiteCards();
+  loadCapsSiteSettings(siteId);
+  loadCapsEmployeeMap();
+  loadCapsSyncLog();
+}
+
+function timeAgo(dateStr) {
+  if (!dateStr) return '없음';
+  try {
+    var d = Date.parse(dateStr.replace(' ', 'T') + (dateStr.includes('Z') ? '' : 'Z'));
+    if (isNaN(d)) return dateStr;
+    var diff = Math.floor((Date.now() - d) / 1000);
+    if (diff < 60) return diff + '초 전';
+    if (diff < 3600) return Math.floor(diff / 60) + '분 전';
+    if (diff < 86400) return Math.floor(diff / 3600) + '시간 전';
+    return Math.floor(diff / 86400) + '일 전';
+  } catch (e) { return dateStr; }
+}
+
+// ───────── 사이트 추가 모달 ─────────
+function showAddCapsSiteModal() {
+  document.getElementById('capsAddSiteModal').classList.remove('hidden');
+  document.getElementById('capsNewSiteId').value = '';
+  document.getElementById('capsNewSiteName').value = '';
+  document.getElementById('capsNewSiteId').focus();
+}
+
+function closeAddCapsSiteModal() {
+  document.getElementById('capsAddSiteModal').classList.add('hidden');
+}
+
+async function addCapsSite() {
+  var id = document.getElementById('capsNewSiteId').value.trim().toUpperCase();
+  var name = document.getElementById('capsNewSiteName').value.trim();
+  if (!id || !name) {
+    if (typeof showToast === 'function') showToast('사이트 코드와 이름을 입력하세요', 'warning');
+    return;
+  }
+  try {
+    var res = await axios.post('/api/caps/sites', { id: id, name: name });
+    if (res.data.success) {
+      closeAddCapsSiteModal();
+      if (typeof showToast === 'function') showToast(name + ' 사이트가 추가되었습니다', 'success');
+      // API 키 표시
+      if (res.data.data && res.data.data.worker_api_key) {
+        var keyMsg = '워커 설치 시 아래 API 키를 사용하세요:\n\n' + res.data.data.worker_api_key;
+        alert(keyMsg);
+      }
+      capsCurrentSiteId = id;
+      await loadCapsSites();
+    }
+  } catch (err) {
+    if (typeof showToast === 'function') showToast('추가 실패: ' + (err.response && err.response.data && err.response.data.error || err.message), 'error');
+  }
+}
+
+// ───────── 1) 사이트별 설정 로드/저장 ─────────
+function loadCapsSiteSettings(siteId) {
+  var site = capsSitesCache.find(function(s) { return s.id === siteId; });
+  if (!site) return;
+
+  var fields = {
+    'caps_site_relay_db_engine': site.relay_db_engine || 'access',
+    'caps_site_relay_db_host': site.relay_db_host || '',
+    'caps_site_relay_db_port': site.relay_db_port || '3306',
+    'caps_site_relay_db_name': site.relay_db_name || '',
+    'caps_site_relay_db_user': site.relay_db_user || '',
+    'caps_site_relay_table': site.relay_table || 'nOutput',
+    'caps_site_sync_interval_min': site.sync_interval_min || '30',
+    'caps_site_sync_lookback_days': site.sync_lookback_days || '3',
+    'caps_site_worker_endpoint': site.worker_endpoint || '',
+  };
+  Object.keys(fields).forEach(function(id) {
+    var el = document.getElementById(id);
+    if (el) el.value = fields[id];
+  });
+  var chk = document.getElementById('caps_site_sync_enabled');
+  if (chk) chk.checked = site.sync_enabled === 1 || site.sync_enabled === '1';
+
+  // 비밀번호/키 필드 초기화
+  var pwEl = document.getElementById('caps_site_relay_db_password');
+  if (pwEl) pwEl.value = '';
+  var keyEl = document.getElementById('caps_site_worker_api_key');
+  if (keyEl) keyEl.value = '';
+
+  // 마지막 성공 시각
+  var lastOkEl = document.getElementById('capsLastOk');
+  if (lastOkEl) lastOkEl.textContent = site.last_sync_ok_at || '—';
+
+  // 미매핑 배너
+  renderCapsUnmappedBanner(site.last_unmapped);
+
+  // 사이트 이름 표시
+  var nameEl = document.getElementById('capsCurrentSiteName');
+  if (nameEl) nameEl.textContent = site.name + ' (' + site.id + ')';
+}
+
+async function saveCapsSiteSettings() {
+  if (!capsCurrentSiteId) return;
   var btn = document.getElementById('saveCapsSettingsBtn');
   var msg = document.getElementById('capsSettingsMsg');
   if (btn) btn.disabled = true;
   try {
     var body = {};
-    CAPS_TEXT_KEYS.forEach(function(key) {
-      var el = document.getElementById('s_' + key);
+    ['relay_db_engine', 'relay_db_host', 'relay_db_port', 'relay_db_name',
+     'relay_db_user', 'relay_table', 'sync_interval_min', 'sync_lookback_days',
+     'worker_endpoint'].forEach(function(key) {
+      var el = document.getElementById('caps_site_' + key);
       if (el) body[key] = el.value;
     });
-    CAPS_CHECKBOX_KEYS.forEach(function(key) {
-      var el = document.getElementById('s_' + key);
-      if (el) body[key] = el.checked ? '1' : '0';
-    });
-    // 시크릿 — 비어있으면 body에 포함하지 않음 (기존 값 유지)
-    CAPS_SECRET_KEYS.forEach(function(key) {
-      var el = document.getElementById('s_' + key);
-      if (el && el.value && el.value.length > 0) {
-        body[key] = el.value;
-      }
-    });
-    var res = await axios.put('/api/caps/settings', body);
+    body.sync_enabled = document.getElementById('caps_site_sync_enabled').checked ? 1 : 0;
+    // 시크릿
+    var pw = document.getElementById('caps_site_relay_db_password');
+    if (pw && pw.value) body.relay_db_password = pw.value;
+    var ak = document.getElementById('caps_site_worker_api_key');
+    if (ak && ak.value) body.worker_api_key = ak.value;
+
+    var res = await axios.put('/api/caps/sites/' + capsCurrentSiteId, body);
     if (res.data.success) {
-      if (msg) {
-        msg.textContent = '저장되었습니다.';
-        msg.className = 'mt-3 text-center text-sm text-green-600';
-      }
-      // 시크릿 입력 필드 초기화 (보안)
-      CAPS_SECRET_KEYS.forEach(function(key) {
-        var el = document.getElementById('s_' + key);
-        if (el) el.value = '';
-      });
+      if (msg) { msg.textContent = '저장되었습니다.'; msg.className = 'mt-3 text-center text-sm text-green-600'; }
+      if (pw) pw.value = '';
+      if (ak) ak.value = '';
+      await loadCapsSites();
     } else {
       throw new Error(res.data.error || '저장 실패');
     }
@@ -95,6 +195,20 @@ async function saveCapsSettings() {
   } finally {
     if (btn) btn.disabled = false;
     setTimeout(function() { if (msg) msg.className = 'mt-3 text-center text-sm hidden'; }, 4000);
+  }
+}
+
+async function regenerateCapsSiteKey() {
+  if (!capsCurrentSiteId) return;
+  if (!(await showConfirm('API 키를 재생성하시겠습니까?\n기존 워커에서 새 키로 교체해야 합니다.', { danger: true }))) return;
+  try {
+    var res = await axios.post('/api/caps/sites/' + capsCurrentSiteId + '/regenerate-key');
+    if (res.data.success && res.data.data) {
+      alert('새 API 키:\n\n' + res.data.data.worker_api_key + '\n\n워커 설정에서 교체하세요.');
+      if (typeof showToast === 'function') showToast('API 키가 재생성되었습니다', 'success');
+    }
+  } catch (err) {
+    if (typeof showToast === 'function') showToast('재생성 실패: ' + err.message, 'error');
   }
 }
 
@@ -120,7 +234,9 @@ async function loadCapsEmployeesList() {
 
 async function loadCapsEmployeeMap() {
   try {
-    var res = await axios.get('/api/caps/employee-map');
+    var params = {};
+    if (capsCurrentSiteId) params.site_id = capsCurrentSiteId;
+    var res = await axios.get('/api/caps/employee-map', { params: params });
     if (!res.data.success) return;
     var rows = res.data.data || [];
     var body = document.getElementById('capsMapBody');
@@ -164,16 +280,11 @@ async function addCapsEmployeeMap() {
   var dept = document.getElementById('capsMapDept').value.trim();
   var empId = document.getElementById('capsMapEmployee').value;
   var notes = document.getElementById('capsMapNotes').value.trim();
-  if (!idno) {
-    if (typeof showToast === 'function') showToast('CAPS 사원번호를 입력하세요', 'warning');
-    return;
-  }
-  if (!empId) {
-    if (typeof showToast === 'function') showToast('MES 직원을 선택하세요', 'warning');
-    return;
-  }
+  if (!idno) { if (typeof showToast === 'function') showToast('CAPS 사원번호를 입력하세요', 'warning'); return; }
+  if (!empId) { if (typeof showToast === 'function') showToast('MES 직원을 선택하세요', 'warning'); return; }
   try {
     var res = await axios.post('/api/caps/employee-map', {
+      site_id: capsCurrentSiteId || 'DJ',
       caps_e_idno: idno,
       caps_e_name: name || null,
       caps_c_dept: dept || null,
@@ -188,8 +299,7 @@ async function addCapsEmployeeMap() {
       document.getElementById('capsMapEmployee').value = '';
       document.getElementById('capsMapNotes').value = '';
       await loadCapsEmployeeMap();
-      // 배너 재계산 — 추가한 e_idno가 배너에서 사라지도록
-      await loadCapsSettings();
+      await loadCapsSites();
     }
   } catch (err) {
     if (typeof showToast === 'function') showToast('추가 실패: ' + (err.response && err.response.data && err.response.data.error || err.message), 'error');
@@ -217,10 +327,9 @@ function renderCapsUnmappedBanner(rawJson) {
   if (!banner || !list || !count) return;
   var samples = [];
   try {
-    if (rawJson) samples = JSON.parse(rawJson) || [];
-  } catch (e) {
-    samples = [];
-  }
+    if (rawJson) samples = typeof rawJson === 'string' ? JSON.parse(rawJson) : rawJson;
+    if (!samples) samples = [];
+  } catch (e) { samples = []; }
   if (!Array.isArray(samples) || samples.length === 0) {
     banner.classList.add('hidden');
     return;
@@ -234,7 +343,6 @@ function renderCapsUnmappedBanner(rawJson) {
            '<i class="fas fa-plus text-[9px] mr-1"></i>' + escapeHtml(label) +
            '</button>';
   }).join('');
-  // 배너 데이터를 window에 잠시 저장 (클릭 핸들러에서 참조)
   window.__capsUnmappedSamples = samples;
 }
 
@@ -251,7 +359,9 @@ function fillCapsMapFromUnmapped(idx) {
 // ───────── 3) 동기화 이력 ─────────
 async function loadCapsSyncLog() {
   try {
-    var res = await axios.get('/api/caps/sync-log', { params: { limit: 50 } });
+    var params = { limit: 50 };
+    if (capsCurrentSiteId) params.site_id = capsCurrentSiteId;
+    var res = await axios.get('/api/caps/sync-log', { params: params });
     if (!res.data.success) return;
     var rows = res.data.data || [];
     window.__capsSyncLogCache = rows;
@@ -259,7 +369,7 @@ async function loadCapsSyncLog() {
     var empty = document.getElementById('capsSyncLogEmpty');
     if (!body) return;
 
-    // 최근 7일 요약 뱃지 계산
+    // 최근 7일 요약
     var now = Date.now();
     var weekAgo = now - 7 * 24 * 3600 * 1000;
     var cnt = { SUCCESS: 0, PARTIAL: 0, FAILED: 0 };
@@ -288,7 +398,7 @@ async function loadCapsSyncLog() {
         '<td class="px-3 py-2 text-right tabular-nums text-gray-700">' + (r.updated_count || 0) + '</td>' +
         '<td class="px-3 py-2 text-right tabular-nums text-gray-500">' + (r.skipped_count || 0) + '</td>' +
         '<td class="px-3 py-2 text-right tabular-nums ' + ((r.error_count || 0) > 0 ? 'text-red-600 font-semibold' : 'text-gray-400') + '">' + (r.error_count || 0) + '</td>' +
-        '<td class="px-3 py-2 text-xs text-gray-500">' + escapeHtml(r.trigger_type || '-') + (r.triggered_by_name ? ' <span class="text-gray-400">(' + escapeHtml(r.triggered_by_name) + ')</span>' : '') + '</td>' +
+        '<td class="px-3 py-2 text-xs text-gray-500">' + escapeHtml(r.trigger_type || '-') + '</td>' +
         '<td class="px-3 py-2 text-xs text-gray-500 tabular-nums">' + escapeHtml(range) + '</td>' +
       '</tr>';
     }).join('');
@@ -336,7 +446,7 @@ function showCapsSyncLogDetail(logId) {
       '<div><span class="text-gray-500">소요 시간</span><div class="mt-1 tabular-nums">' + duration + '</div></div>' +
       '<div><span class="text-gray-500">시작</span><div class="mt-1 tabular-nums text-xs">' + escapeHtml(r.started_at || '-') + '</div></div>' +
       '<div><span class="text-gray-500">종료</span><div class="mt-1 tabular-nums text-xs">' + escapeHtml(r.finished_at || '-') + '</div></div>' +
-      '<div><span class="text-gray-500">트리거</span><div class="mt-1">' + escapeHtml(r.trigger_type || '-') + (r.triggered_by_name ? ' (' + escapeHtml(r.triggered_by_name) + ')' : '') + '</div></div>' +
+      '<div><span class="text-gray-500">트리거</span><div class="mt-1">' + escapeHtml(r.trigger_type || '-') + '</div></div>' +
       '<div><span class="text-gray-500">범위</span><div class="mt-1 tabular-nums text-xs">' + escapeHtml(range) + '</div></div>' +
     '</div>' +
     '<div class="mt-4 border-t border-gray-200 pt-4">' +
@@ -353,12 +463,6 @@ function showCapsSyncLogDetail(logId) {
         '<div class="text-sm font-semibold text-gray-700 mb-2">오류 메시지</div>' +
         '<pre class="bg-red-50 border border-red-200 rounded p-3 text-xs text-red-800 whitespace-pre-wrap break-all max-h-60 overflow-y-auto">' + escapeHtml(r.error_message) + '</pre>' +
       '</div>'
-    ) : '') +
-    (r.notes ? (
-      '<div class="mt-4 border-t border-gray-200 pt-4">' +
-        '<div class="text-sm font-semibold text-gray-700 mb-2">메모</div>' +
-        '<div class="text-sm text-gray-600">' + escapeHtml(r.notes) + '</div>' +
-      '</div>'
     ) : '');
   document.getElementById('capsSyncLogModal').classList.remove('hidden');
 }
@@ -369,21 +473,16 @@ function closeCapsSyncLogModal() {
 }
 
 // ───────── 4) 수동 동기화 트리거 ─────────
-// MES에 동기화 요청 플래그를 설정. CAPS 워커가 30초마다 폴링해서 감지.
 async function triggerCapsSync() {
   var btn = document.getElementById('capsSyncBtn');
-  if (btn) {
-    btn.disabled = true;
-    btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i>요청 중...';
-  }
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i>요청 중...'; }
   try {
-    var res = await axios.post('/api/caps/sync/trigger', {});
+    var res = await axios.post('/api/caps/sync/trigger', { site_id: capsCurrentSiteId || 'DJ' });
     if (res.data.success) {
       if (typeof showToast === 'function') showToast('동기화 요청 완료 — 워커가 30초 내 실행합니다', 'success');
-      // 워커 폴링 + 실행 후 이력 갱신
       setTimeout(async function() {
         await loadCapsSyncLog();
-        await loadCapsSettings();
+        await loadCapsSites();
       }, 35000);
     } else {
       if (typeof showToast === 'function') showToast('요청 실패: ' + (res.data.error || '알 수 없는 오류'), 'error');
@@ -391,11 +490,6 @@ async function triggerCapsSync() {
   } catch (err) {
     if (typeof showToast === 'function') showToast('요청 실패: ' + (err.response && err.response.data && err.response.data.error || err.message), 'error');
   } finally {
-    if (btn) {
-      btn.disabled = false;
-      btn.innerHTML = '<i class="fas fa-sync-alt mr-1"></i>지금 동기화';
-    }
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-sync-alt mr-1"></i>지금 동기화'; }
   }
 }
-
-// ───────── 유틸 ─────────
