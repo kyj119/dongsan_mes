@@ -418,23 +418,30 @@ window.lcSubmitSignature = async function() {
 // ===== 급여 계산 미리보기 =====
 window.lcCalcWage = function() {
   var rate = parseInt(document.getElementById('lcHourlyRate').value) || 0;
-  var otDaily = parseFloat(document.getElementById('lcOvertimeDaily').value) || 0;
+  var contractType = (document.getElementById('lcContractType') || {}).value || 'HOURLY';
   var preview = document.getElementById('lcWagePreview');
   if (!preview || !rate) { if (preview) preview.classList.add('hidden'); return; }
 
-  var baseHours = 209;
-  var otDays = 22;
-  var basePay = rate * baseHours;
-  var otHours = otDaily * otDays;
-  var otPay = Math.round(rate * otHours * 1.5);
-  var total = basePay + otPay;
-
   var html = '<div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap">';
-  html += '<span><strong>기본급:</strong> ' + rate.toLocaleString() + '원 × ' + baseHours + 'h = <strong>' + basePay.toLocaleString() + '원</strong></span>';
-  if (otDaily > 0) {
-    html += '<span><strong>고정연장:</strong> ' + rate.toLocaleString() + ' × ' + otHours + 'h × 1.5 = <strong>' + otPay.toLocaleString() + '원</strong></span>';
+
+  if (contractType === 'MONTHLY') {
+    // 고정급: 입력값이 곧 월급
+    html += '<span style="color:var(--c-primary);font-weight:700">월급: ' + rate.toLocaleString() + '원</span>';
+  } else {
+    // 변동급: 시급 × 209 + 연장
+    var otDaily = parseFloat(document.getElementById('lcOvertimeDaily').value) || 0;
+    var baseHours = 209;
+    var otDays = 22;
+    var basePay = rate * baseHours;
+    var otHours = otDaily * otDays;
+    var otPay = Math.round(rate * otHours * 1.5);
+    var total = basePay + otPay;
+    html += '<span><strong>기본급:</strong> ' + rate.toLocaleString() + '원 × ' + baseHours + 'h = <strong>' + basePay.toLocaleString() + '원</strong></span>';
+    if (otDaily > 0) {
+      html += '<span><strong>고정연장:</strong> ' + rate.toLocaleString() + ' × ' + otHours + 'h × 1.5 = <strong>' + otPay.toLocaleString() + '원</strong></span>';
+    }
+    html += '<span style="color:var(--c-primary);font-weight:700">월 합계: ' + total.toLocaleString() + '원</span>';
   }
-  html += '<span style="color:var(--c-primary);font-weight:700">월 합계: ' + total.toLocaleString() + '원</span>';
   html += '</div>';
   preview.innerHTML = html;
   preview.classList.remove('hidden');
@@ -505,29 +512,57 @@ function lcSelectEmployee(empId) {
   document.getElementById('lcEmpSelect').value = empId;
   document.getElementById('lcEmpSearch').value = emp.name + ' (' + (emp.employee_code || '') + ')';
 
+  // pay_type 판별
+  var isFixed = emp.pay_type === 'FIXED';
+  var payLabel = isFixed ? '고정급 (월급)' : '변동급 (시급)';
+  var payAmount = isFixed
+    ? (emp.base_salary || 0).toLocaleString() + '원/월'
+    : (emp.hourly_rate || 0).toLocaleString() + '원/시';
+
   // 미리보기 카드
   var preview = document.getElementById('lcEmpPreview');
   if (preview) {
     var dept = LC_DEPT[emp.department] || emp.department || '-';
     var pos = LC_POS[emp.position] || emp.position || '-';
     var ent = LC_ENT[emp.entity_id] || '-';
-    preview.innerHTML = '<div style="display:flex;gap:16px;align-items:center">'
+    preview.innerHTML = '<div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap">'
       + '<div><strong>' + emp.name + '</strong> <span style="color:#6b7280">' + (emp.employee_code || '') + '</span></div>'
       + '<div style="color:#6b7280">' + dept + ' / ' + pos + '</div>'
       + '<div style="color:#6b7280">법인: ' + ent + '</div>'
-      + '<div style="color:#6b7280">시급: ' + ((emp.hourly_rate || 0).toLocaleString()) + '원</div>'
+      + '<div style="color:var(--c-primary);font-weight:600">' + payLabel + ': ' + payAmount + '</div>'
       + '</div>';
     preview.classList.remove('hidden');
   }
 
+  // 계약유형 자동 설정
+  var typeEl = document.getElementById('lcContractType');
+  if (typeEl) typeEl.value = isFixed ? 'MONTHLY' : 'HOURLY';
+
   // 자동 채움
   var rateEl = document.getElementById('lcHourlyRate');
-  if (rateEl && !rateEl.value) rateEl.value = emp.hourly_rate || '';
+  if (rateEl) {
+    if (isFixed) {
+      rateEl.value = emp.base_salary || '';
+      rateEl.previousElementSibling.textContent = '월급 (원)';
+    } else {
+      rateEl.value = emp.hourly_rate || '';
+      rateEl.previousElementSibling.textContent = '시급 (원)';
+    }
+  }
+  // 고정급이면 연장 입력 숨김
+  var otEl = document.getElementById('lcOvertimeDaily');
+  if (otEl) {
+    otEl.parentElement.style.display = isFixed ? 'none' : '';
+    if (isFixed) otEl.value = '0';
+  }
+
   var deptEl = document.getElementById('lcJobDesc');
   if (deptEl && !deptEl.value) {
     var deptName = LC_DEPT[emp.department] || emp.department || '';
     if (deptName) deptEl.value = deptName;
   }
+
+  lcCalcWage();
 }
 
 // ===== 초기화 =====
