@@ -563,7 +563,9 @@ hrRouter.put('/employees/:id', async (c) => {
     // 현재 DB 값과 비교하여 실제 변경이 있을 때만 체크
     const SALARY_FIELDS = ['pay_type', 'base_salary', 'hourly_rate', 'position_allowance',
       'vehicle_allowance', 'meal_allowance_fixed', 'special_bonus_fixed', 'other_allowance_fixed']
-    const currentEmp = await c.env.DB.prepare(`SELECT * FROM employees WHERE id = ?`).bind(id).first<any>()
+    const currentEmp = await c.env.DB.prepare(
+      `SELECT id, pay_type, base_salary, hourly_rate, position_allowance, vehicle_allowance, meal_allowance_fixed, special_bonus_fixed, other_allowance_fixed FROM employees WHERE id = ?`
+    ).bind(id).first<any>()
     if (!currentEmp) {
       return c.json({ success: false, error: '직원을 찾을 수 없습니다.' }, 404)
     }
@@ -633,7 +635,7 @@ hrRouter.put('/employees/:id', async (c) => {
 
     // 반환: 업데이트된 행
     const updated = await c.env.DB.prepare(
-      `SELECT * FROM employees WHERE id = ?`
+      `SELECT id, employee_code, user_id, name, name_eng, resident_number, email, phone, mobile, address, postal_code, address_detail, department, position, job_title, employment_type, hire_date, resignation_date, status, base_salary, hourly_rate, bank_name, bank_account, bank_holder, emergency_contact, emergency_phone, notes, entity_id, pay_type, position_allowance, vehicle_allowance, meal_allowance_fixed, special_bonus_fixed, other_allowance_fixed, mutual_aid_fee, other_deduction_fixed, dependents_count, children_under_20_count, income_tax_table_option, insurance_grade, insurance_apply_national_pension, insurance_apply_health, insurance_apply_long_term_care, insurance_apply_employment, insurance_apply_industrial_accident, caps_employee_code, caps_id, caps_site_id, caps_sync_enabled, caps_last_synced_at, birth_date, overtime_daily_hours, overtime_work_days, created_at, updated_at FROM employees WHERE id = ?`
     ).bind(id).first<any>()
 
     // RRN 복호화 + 마스킹
@@ -1223,7 +1225,7 @@ hrRouter.put('/contracts/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
 
     // 업데이트된 행 반환
     const updated = await c.env.DB.prepare(
-      `SELECT * FROM labor_contracts WHERE id = ?`
+      `SELECT id, employee_id, entity_id, contract_type, contract_date, contract_start_date, contract_end_date, wage_start_date, wage_end_date, hourly_rate, work_type, job_description, probation_months, status, signature_employee_base64, signature_employer_base64, signed_at, signed_ip, pdf_path, notes, created_by, created_at, updated_at, base_hours_monthly, overtime_daily_hours, overtime_work_days, monthly_salary FROM labor_contracts WHERE id = ?`
     ).bind(id).first<Record<string, unknown>>()
 
     return c.json({ success: true, data: updated })
@@ -1281,7 +1283,7 @@ hrRouter.patch('/contracts/:id/sign', requireRole('ADMIN', 'MANAGER'), async (c)
     ).run()
 
     const updated = await c.env.DB.prepare(
-      `SELECT * FROM labor_contracts WHERE id = ?`
+      `SELECT id, employee_id, entity_id, contract_type, contract_date, contract_start_date, contract_end_date, wage_start_date, wage_end_date, hourly_rate, work_type, job_description, probation_months, status, signature_employee_base64, signature_employer_base64, signed_at, signed_ip, pdf_path, notes, created_by, created_at, updated_at, base_hours_monthly, overtime_daily_hours, overtime_work_days, monthly_salary FROM labor_contracts WHERE id = ?`
     ).bind(id).first<Record<string, unknown>>()
 
     return c.json({ success: true, data: updated })

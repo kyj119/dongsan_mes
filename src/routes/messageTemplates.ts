@@ -12,7 +12,7 @@ messageTemplatesRouter.get('/', async (c) => {
     const db = c.env.DB
     const channel = c.req.query('channel')
 
-    let query = 'SELECT * FROM message_templates'
+    let query = 'SELECT id, channel, name, subject, content, created_by, created_at, updated_at FROM message_templates'
     const bindings: any[] = []
 
     if (channel) {

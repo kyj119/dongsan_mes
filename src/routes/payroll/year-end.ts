@@ -124,7 +124,7 @@ yearEndRouter.get('/year-end-settlement/:employeeId', async (c) => {
     if (!employeeId) return c.json({ success: false, error: 'employeeId 필요' }, 400)
 
     const settlement = await c.env.DB.prepare(
-      `SELECT * FROM year_end_settlements WHERE employee_id = ? AND year = ?`
+      `SELECT id, employee_id, year, status, total_salary, total_nontax, gross_taxable, earned_income_deduction, basic_deduction, dependents_count, additional_aged, additional_disabled, additional_single_parent, insurance_deduction, medical_deduction, education_deduction, housing_deduction, donation_deduction, pension_saving, credit_card_deduction, taxable_income, calculated_tax, earned_tax_credit, child_tax_credit, pension_contribution_credit, insurance_premium_credit, medical_credit, education_credit, donation_credit, standard_tax_credit, determined_tax, determined_local_tax, prepaid_income_tax, prepaid_local_tax, refund_income_tax, refund_local_tax, refund_total, notes, calculated_at, confirmed_by, confirmed_at, created_at, updated_at FROM year_end_settlements WHERE employee_id = ? AND year = ?`
     ).bind(employeeId, year).first<any>()
 
     if (!settlement) return c.json({ success: true, data: null })

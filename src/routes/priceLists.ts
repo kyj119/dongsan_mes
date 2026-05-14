@@ -173,13 +173,11 @@ priceListsRouter.post('/bulk-assign', requireRole('ADMIN', 'MANAGER'), async (c)
       return c.json({ success: false, error: 'Price list not found' }, 404)
     }
 
-    let updated = 0
-    for (const clientId of client_ids) {
-      const result = await c.env.DB.prepare(
-        'UPDATE clients SET price_list_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
-      ).bind(price_list_id, clientId).run()
-      updated += result.meta.changes ?? 0
-    }
+    const placeholders = client_ids.map(() => '?').join(',')
+    const result = await c.env.DB.prepare(
+      `UPDATE clients SET price_list_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id IN (${placeholders})`
+    ).bind(price_list_id, ...client_ids).run()
+    const updated = result.meta.changes ?? 0
 
     return c.json({ success: true, updated })
   } catch (error) {

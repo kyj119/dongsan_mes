@@ -17,7 +17,7 @@ async function verifyAgentKey(db: any, providedKey: string, siteId?: string): Pr
   // site_id가 주어지면 해당 사이트의 키로 검증
   if (siteId) {
     const site = await db.prepare(
-      `SELECT * FROM caps_sites WHERE id = ? AND is_active = 1`
+      `SELECT id, name, relay_db_host, relay_db_port, relay_db_engine, relay_db_name, relay_db_user, relay_db_password, relay_table, sync_enabled, sync_interval_min, sync_lookback_days, worker_endpoint, worker_api_key, ignored_fpids, last_sync_ok_at, last_unmapped, is_active, created_at FROM caps_sites WHERE id = ? AND is_active = 1`
     ).bind(siteId).first()
     if (!site || !site.worker_api_key) return { valid: false }
 
@@ -32,7 +32,7 @@ async function verifyAgentKey(db: any, providedKey: string, siteId?: string): Pr
 
   // site_id 없으면 모든 활성 사이트의 키를 순회 (하위호환)
   const { results: sites } = await db.prepare(
-    `SELECT * FROM caps_sites WHERE is_active = 1 AND worker_api_key != ''`
+    `SELECT id, name, worker_api_key FROM caps_sites WHERE is_active = 1 AND worker_api_key != ''`
   ).all()
   const enc = new TextEncoder()
   const providedHash = await crypto.subtle.digest('SHA-256', enc.encode(providedKey))
@@ -666,7 +666,7 @@ capsRouter.post('/sync/trigger', async (c) => {
 capsRouter.get('/settings', async (c) => {
   try {
     const { results } = await c.env.DB.prepare(
-      `SELECT * FROM caps_sites WHERE is_active = 1 ORDER BY created_at`
+      `SELECT id, name, relay_db_host, relay_db_port, relay_db_engine, relay_db_name, relay_db_user, relay_db_password, relay_table, sync_enabled, sync_interval_min, sync_lookback_days, worker_endpoint, worker_api_key, ignored_fpids, last_sync_ok_at, last_unmapped, is_active, created_at FROM caps_sites WHERE is_active = 1 ORDER BY created_at`
     ).all()
     return c.json({ success: true, data: results || [] })
   } catch (err) {

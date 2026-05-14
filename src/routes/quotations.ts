@@ -510,7 +510,7 @@ quotationsRouter.post('/:id/convert-to-order', requireRole('ADMIN', 'MANAGER'), 
 
     const quotation = await markExpiredIfNeeded(
       c.env.DB,
-      await c.env.DB.prepare(`SELECT * FROM quotations WHERE id = ?`).bind(id).first() as any
+      await c.env.DB.prepare(`SELECT id, quotation_number, client_id, entity_id, status, quotation_date, delivery_date, valid_until, total_amount, vat_amount, discount_amount, final_amount, delivery_method, delivery_time, delivery_info, contact_phone, contact_mobile, shipping_payment, notes, internal_notes, first_converted_at, converted_count, created_by, updated_by, created_at, updated_at FROM quotations WHERE id = ?`).bind(id).first() as any
     )
     if (!quotation) return c.json({ success: false, error: '견적서를 찾을 수 없습니다.' }, 404)
     if (quotation.status === 'CANCELLED') {

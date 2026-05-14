@@ -13,8 +13,6 @@ interface PriceSqmNameRow { price_per_sqm: number; name: string }
 interface PriceUnitNameRow { price_per_unit: number; name: string }
 interface MediaCodeRow { code: string }
 
-interface ItemWithMediaPrice { id: number; price_per_unit: number; print_media_id: number }
-interface ItemWithMethodPrice { id: number; price_per_sqm: number; print_method_id: number }
 
 interface MethodRow { id: number; name: string; code: string; price_per_sqm: number; sort_order: number; is_active: number }
 interface MediaRow {
@@ -82,36 +80,32 @@ async function getNextPMCode(db: D1Database, rangeStart: number, rangeEnd: numbe
 // Helper Functions
 // ============================================================================
 
-/** items.base_price 연쇄 업데이트 (method 또는 media 가격 변경 시) — items 직접 조회 */
+/** items.base_price 연쇄 업데이트 (method 또는 media 가격 변경 시) — 단일 UPDATE */
 async function updateLinkedItemPrices(db: D1Database, methodId?: number, mediaId?: number) {
   let updatedCount = 0
 
   if (methodId) {
-    // method 단가 변경 → 해당 method의 모든 출력 품목 업데이트
     const method = await db.prepare('SELECT price_per_sqm FROM print_methods WHERE id = ?').bind(methodId).first<PriceSqmRow>()
     if (!method) return 0
-    const { results: items } = await db.prepare(
-      'SELECT i.id, i.print_media_id, pm.price_per_unit FROM items i JOIN print_media pm ON i.print_media_id = pm.id WHERE i.print_method_id = ? AND i.print_media_id IS NOT NULL AND i.is_active = 1'
-    ).bind(methodId).all<ItemWithMediaPrice>()
-    for (const item of items) {
-      const newPrice = (method.price_per_sqm || 0) + (item.price_per_unit || 0)
-      await db.prepare('UPDATE items SET base_price = ?, updated_at = datetime(\'now\') WHERE id = ?').bind(newPrice, item.id).run()
-      updatedCount++
-    }
+    const result = await db.prepare(`
+      UPDATE items SET base_price = ? + COALESCE((
+        SELECT pm.price_per_unit FROM print_media pm WHERE pm.id = items.print_media_id
+      ), 0), updated_at = datetime('now')
+      WHERE print_method_id = ? AND print_media_id IS NOT NULL AND is_active = 1
+    `).bind(method.price_per_sqm || 0, methodId).run()
+    updatedCount += result.meta?.changes ?? 0
   }
 
   if (mediaId) {
-    // media 단가 변경 → 해당 media의 모든 출력 품목 업데이트
     const media = await db.prepare('SELECT price_per_unit FROM print_media WHERE id = ?').bind(mediaId).first<PriceUnitRow>()
     if (!media) return 0
-    const { results: items } = await db.prepare(
-      'SELECT i.id, i.print_method_id, pm.price_per_sqm FROM items i JOIN print_methods pm ON i.print_method_id = pm.id WHERE i.print_media_id = ? AND i.print_method_id IS NOT NULL AND i.is_active = 1'
-    ).bind(mediaId).all<ItemWithMethodPrice>()
-    for (const item of items) {
-      const newPrice = (item.price_per_sqm || 0) + (media.price_per_unit || 0)
-      await db.prepare('UPDATE items SET base_price = ?, updated_at = datetime(\'now\') WHERE id = ?').bind(newPrice, item.id).run()
-      updatedCount++
-    }
+    const result = await db.prepare(`
+      UPDATE items SET base_price = COALESCE((
+        SELECT pm.price_per_sqm FROM print_methods pm WHERE pm.id = items.print_method_id
+      ), 0) + ?, updated_at = datetime('now')
+      WHERE print_media_id = ? AND print_method_id IS NOT NULL AND is_active = 1
+    `).bind(media.price_per_unit || 0, mediaId).run()
+    updatedCount += result.meta?.changes ?? 0
   }
 
   return updatedCount
@@ -393,14 +387,18 @@ printSystemRouter.post('/media', requireRole('ADMIN', 'MANAGER'), async (c) => {
 
     // method_ids가 있으면 print_method_media 연결 + 품목 생성
     const createdItems: { id: number | undefined; item_name: string; item_code: string; base_price: number }[] = []
-    if (method_ids && Array.isArray(method_ids)) {
+    if (method_ids && Array.isArray(method_ids) && method_ids.length > 0) {
+      // batch: print_method_media 연결
+      await c.env.DB.batch(
+        method_ids.map((methodId: number) =>
+          c.env.DB.prepare(`
+            INSERT OR IGNORE INTO print_method_media (print_method_id, print_media_id, created_at)
+            VALUES (?, ?, datetime('now'))
+          `).bind(methodId, mediaId)
+        )
+      )
+      // 품목 생성 (코드 채번 필요 → 순차)
       for (const methodId of method_ids) {
-        // print_method_media 연결
-        await c.env.DB.prepare(`
-          INSERT OR IGNORE INTO print_method_media (print_method_id, print_media_id, created_at)
-          VALUES (?, ?, datetime('now'))
-        `).bind(methodId, mediaId).run()
-
         const item = await createLinkedItem(c.env.DB, methodId, mediaId, null)
         if (item) createdItems.push(item)
       }
@@ -507,41 +505,54 @@ printSystemRouter.post('/media/bulk', requireRole('ADMIN', 'MANAGER'), async (c)
       if (!isNaN(n)) pmNextNum = n + 1
     }
 
-    // ═══ Step 1: 모든 소재(print_media) 순서대로 생성 ═══
-    for (let ei = 0; ei < entries.length; ei++) {
-      const entry = entries[ei]
-      const mediaName = entry.suffix ? `${base_name} ${entry.suffix}` : base_name
-      const mediaCode = `PM-${String(pmNextNum + ei).padStart(4, '0')}`
-
-      const result = await c.env.DB.prepare(`
-        INSERT INTO print_media (
-          name, code, media_type, price_per_unit, unit,
-          sheet_width_cm, sheet_height_cm, sheet_sizes,
-          roll_width_cm, media_group, group_sort, sort_order, is_active,
-          created_at, updated_at
-        ) VALUES (?, ?, ?, ?, '㎡', ?, ?, ?, ?, ?, ?, 0, 1, datetime('now'), datetime('now'))
-      `).bind(
-        mediaName, mediaCode, media_type, entry.price,
-        sheetW, sheetH, sheetSizesJson,
-        roll_width_cm || null,
-        base_name, entry.sortKey
-      ).run()
-
-      const mediaId = result.meta?.last_row_id as number
-      createdMedia.push({ id: mediaId, name: mediaName, price: entry.price })
+    // ═══ Step 1: 모든 소재(print_media) 일괄 생성 (db.batch) ═══
+    const mediaInsertMeta = entries.map((entry, ei) => ({
+      name: entry.suffix ? `${base_name} ${entry.suffix}` : base_name,
+      code: `PM-${String(pmNextNum + ei).padStart(4, '0')}`,
+      price: entry.price,
+      sortKey: entry.sortKey
+    }))
+    const mediaInsertResults = await c.env.DB.batch(
+      mediaInsertMeta.map(m =>
+        c.env.DB.prepare(`
+          INSERT INTO print_media (
+            name, code, media_type, price_per_unit, unit,
+            sheet_width_cm, sheet_height_cm, sheet_sizes,
+            roll_width_cm, media_group, group_sort, sort_order, is_active,
+            created_at, updated_at
+          ) VALUES (?, ?, ?, ?, '㎡', ?, ?, ?, ?, ?, ?, 0, 1, datetime('now'), datetime('now'))
+        `).bind(
+          m.name, m.code, media_type, m.price,
+          sheetW, sheetH, sheetSizesJson,
+          roll_width_cm || null,
+          base_name, m.sortKey
+        )
+      )
+    )
+    for (let i = 0; i < mediaInsertResults.length; i++) {
+      createdMedia.push({
+        id: mediaInsertResults[i].meta?.last_row_id as number,
+        name: mediaInsertMeta[i].name,
+        price: mediaInsertMeta[i].price
+      })
     }
 
     // ═══ Step 2: 출력방식×소재 연결 + 품목 생성 ═══
     if (method_ids && Array.isArray(method_ids) && method_ids.length > 0) {
-      for (const methodId of method_ids) {
-        for (const mediaInfo of createdMedia) {
-          // 2a. print_method_media 연결 생성 (가능한 조합)
-          await c.env.DB.prepare(`
+      // 2a. print_method_media 연결 일괄 생성 (db.batch)
+      const methodMediaStmts = method_ids.flatMap((methodId: number) =>
+        createdMedia.map(mediaInfo =>
+          c.env.DB.prepare(`
             INSERT OR IGNORE INTO print_method_media (print_method_id, print_media_id, created_at)
             VALUES (?, ?, datetime('now'))
-          `).bind(methodId, mediaInfo.id).run()
+          `).bind(methodId, mediaInfo.id)
+        )
+      )
+      if (methodMediaStmts.length > 0) await c.env.DB.batch(methodMediaStmts)
 
-          // 2b. 출력 품목 생성
+      // 2b. 출력 품목 생성 (코드 채번 필요 → 순차)
+      for (const methodId of method_ids) {
+        for (const mediaInfo of createdMedia) {
           const item = await createLinkedItem(c.env.DB, methodId, mediaInfo.id, null)
           if (item) createdItems.push(item)
         }
@@ -863,6 +874,8 @@ printSystemRouter.patch('/media/group/:groupName/price', requireRole('ADMIN', 'M
 
     const updatedItems: { name: string; old_price: number; new_price: number }[] = []
     const userId = c.get('user')?.id || null
+    const historyStmts: D1PreparedStatement[] = []
+    const mediaUpdateStmts: D1PreparedStatement[] = []
 
     for (const media of mediaList) {
       const oldPrice = media.price_per_unit || 0
@@ -876,19 +889,25 @@ printSystemRouter.patch('/media/group/:groupName/price', requireRole('ADMIN', 'M
 
       if (newPrice < 0) newPrice = 0
 
-      // 단가 변경 이력 기록
-      await c.env.DB.prepare(
+      historyStmts.push(c.env.DB.prepare(
         "INSERT INTO price_change_history (target_type, target_id, target_name, old_price, new_price, changed_by) VALUES ('MEDIA', ?, ?, ?, ?, ?)"
-      ).bind(media.id, media.name, oldPrice, newPrice, userId).run()
+      ).bind(media.id, media.name, oldPrice, newPrice, userId))
 
-      await c.env.DB.prepare(
+      mediaUpdateStmts.push(c.env.DB.prepare(
         "UPDATE print_media SET price_per_unit = ?, updated_at = datetime('now') WHERE id = ?"
-      ).bind(newPrice, media.id).run()
-
-      // 연쇄 업데이트
-      await updateLinkedItemPrices(c.env.DB, undefined, media.id)
+      ).bind(newPrice, media.id))
 
       updatedItems.push({ name: media.name, old_price: oldPrice, new_price: newPrice })
+    }
+
+    // 이력 + 단가 업데이트 일괄 (db.batch)
+    if (historyStmts.length > 0) {
+      await c.env.DB.batch([...historyStmts, ...mediaUpdateStmts])
+    }
+
+    // 연쇄 품목 단가 업데이트 (각 1 UPDATE)
+    for (const media of mediaList) {
+      await updateLinkedItemPrices(c.env.DB, undefined, media.id)
     }
 
     return c.json({
