@@ -58,7 +58,7 @@ export function dashboardPage(c: Context<HonoEnv>) {
                     <div class="text-xs mt-1 tabular-nums" id="statTodayShipmentSub" style="color:var(--c-text-muted)">-</div>
                 </div>
                 <!-- 미수금 -->
-                <div class="ds-card ds-card-compact cursor-pointer" onclick="location.href='/ledger'" title="거래처 원장 (미수금)">
+                <div class="ds-card ds-card-compact cursor-pointer" onclick="location.href='/receivables'" title="미수금 현황으로 이동">
                     <div class="flex items-center justify-between mb-1">
                         <div class="text-sm" style="color:var(--c-text-secondary)">미수금</div>
                         <i class="fas fa-exclamation-triangle text-xs" style="color:var(--c-danger);opacity:0.6"></i>
@@ -67,7 +67,7 @@ export function dashboardPage(c: Context<HonoEnv>) {
                     <div class="text-xs mt-1 tabular-nums" id="statKpiOver30" style="color:var(--c-text-muted)">30일+ -</div>
                 </div>
                 <!-- 수금률 -->
-                <div class="ds-card ds-card-compact cursor-pointer" onclick="location.href='/ledger'" title="거래처 원장 (수금 현황)">
+                <div class="ds-card ds-card-compact cursor-pointer" onclick="location.href='/receivables'" title="미수금 현황으로 이동">
                     <div class="flex items-center justify-between mb-1">
                         <div class="text-sm" style="color:var(--c-text-secondary)">수금률</div>
                         <i class="fas fa-hand-holding-usd text-xs" style="color:var(--c-teal);opacity:0.6"></i>

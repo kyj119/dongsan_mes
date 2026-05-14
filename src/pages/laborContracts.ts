@@ -28,13 +28,27 @@ export function laborContractsPage(c: Context<HonoEnv>) {
         <!-- 필터 바 -->
         <div class="bg-white rounded-lg border shadow-sm p-3 flex items-center gap-2 flex-wrap">
           <input type="text" id="lcSearch" placeholder="직원 검색..." class="border rounded px-2 py-1 text-xs w-40" onkeydown="if(event.key==='Enter')lcLoad()">
-          <select id="lcStatusFilter" class="border rounded px-2 py-1 text-xs">
+          <select id="lcDeptFilter" class="border rounded px-2 py-1 text-xs" onchange="lcLoad()">
+            <option value="">전체 부서</option>
+            <option value="ADMIN_DEPT">사무직</option>
+            <option value="DESIGN">디자인</option>
+            <option value="SALES">영업</option>
+            <option value="TRANSFER">전사</option>
+            <option value="SIGN">간판</option>
+            <option value="PRINTING">출력</option>
+            <option value="PRODUCTION">생산직</option>
+            <option value="EXECUTIVE">임원</option>
+          </select>
+          <select id="lcStatusFilter" class="border rounded px-2 py-1 text-xs" onchange="lcLoad()">
             <option value="">전체 상태</option>
             <option value="DRAFT">작성중</option>
             <option value="PENDING_SIGNATURE">서명 대기</option>
             <option value="SIGNED">서명 완료</option>
             <option value="EXPIRED">만료</option>
           </select>
+          <button id="lcExpiringBtn" onclick="lcToggleExpiring()" class="px-3 py-1.5 text-xs border border-red-300 text-red-600 rounded hover:bg-red-50 transition-colors" title="30일 내 만료 계약만 표시">
+            <i class="fas fa-exclamation-triangle mr-1"></i>만료 임박
+          </button>
           <button onclick="lcLoad()" class="px-3 py-1.5 text-xs bg-blue-600 text-white rounded hover:bg-blue-700">
             <i class="fas fa-search mr-1"></i>조회
           </button>
@@ -51,6 +65,7 @@ export function laborContractsPage(c: Context<HonoEnv>) {
               <thead class="bg-gray-50 text-xs text-gray-600 uppercase tracking-wider">
                 <tr>
                   <th class="px-3 py-2 text-left">직원명</th>
+                  <th class="px-3 py-2 text-left">부서</th>
                   <th class="px-3 py-2 text-left">소속법인</th>
                   <th class="px-3 py-2 text-left">계약유형</th>
                   <th class="px-3 py-2 text-left">계약기간</th>
@@ -61,7 +76,7 @@ export function laborContractsPage(c: Context<HonoEnv>) {
                 </tr>
               </thead>
               <tbody id="lcBody">
-                <tr><td colspan="8" class="text-center text-gray-400 py-6">로드 중...</td></tr>
+                <tr><td colspan="9" class="text-center text-gray-400 py-6">로드 중...</td></tr>
               </tbody>
             </table>
           </div>

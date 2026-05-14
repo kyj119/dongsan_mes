@@ -399,7 +399,7 @@ app.get('/shipments-dashboard', pageAuthMiddleware, requirePagePermission('/ship
 app.get('/reports', pageAuthMiddleware, requirePagePermission('/reports'), reportsPage)
 app.get('/forecast', (c) => c.redirect('/reports?tab=forecast'))
 app.get('/activity-log', pageAuthMiddleware, requirePagePermission('/activity-log'), activityLogPage)
-app.get('/tasks', pageAuthMiddleware, requirePagePermission('/cards'), tasksPage)
+app.get('/tasks', pageAuthMiddleware, requirePagePermission('/tasks'), tasksPage)
 app.get('/email-logs', (c) => c.redirect('/activity-log#tab=email'))
 // 이전 /equipment-dashboard 페이지는 /equipment#tab=dashboard로 이동
 app.get('/equipment-dashboard', (c) => c.html('<script>window.location.href="/equipment?tab=dashboard"</script>'))

@@ -1031,7 +1031,7 @@ hrRouter.get('/contracts/expiring', requireRole('ADMIN', 'MANAGER'), async (c) =
 // GET /api/hr/contracts — 계약서 목록
 hrRouter.get('/contracts', requireRole('ADMIN', 'MANAGER'), async (c) => {
   try {
-    const { employee_id, status, page = '1', limit = '50' } = c.req.query()
+    const { employee_id, status, department, expiring, page = '1', limit = '50' } = c.req.query()
     const entityId = getEntityId(c)
     const safeLimit = Math.min(parseInt(limit) || 50, 200)
     const offset = (parseInt(page) - 1) * safeLimit
@@ -1057,6 +1057,18 @@ hrRouter.get('/contracts', requireRole('ADMIN', 'MANAGER'), async (c) => {
     if (status) {
       query += ` AND lc.status = ?`
       params.push(status)
+    }
+    if (department) {
+      query += ` AND e.department = ?`
+      params.push(department)
+    }
+    // 만료 임박 필터: expiring=30 → 오늘~30일 후 만료 계약
+    if (expiring) {
+      const days = parseInt(expiring) || 30
+      const today = new Date().toISOString().split('T')[0]
+      const future = new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+      query += ` AND lc.contract_end_date IS NOT NULL AND lc.contract_end_date >= ? AND lc.contract_end_date <= ?`
+      params.push(today, future)
     }
 
     // Count

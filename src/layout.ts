@@ -68,6 +68,7 @@ const MENU_ITEMS: MenuGroup[] = [
       { path: '/production-reports', icon: 'fa-chart-bar', label: '생산 분석', roles: ['ADMIN', 'MANAGER'] },
       { path: '/material-forecast', icon: 'fa-chart-line', label: '원단 소모 예측', roles: ['ADMIN', 'MANAGER'] },
       { path: '/bom', icon: 'fa-sitemap', label: '자재명세(BOM)', roles: ['ADMIN', 'MANAGER'] },
+      { path: '/tasks', icon: 'fa-tasks', label: '작업 큐', roles: ['ADMIN', 'MANAGER'], badgeId: 'nav-badge-tasks' },
     ],
   },
   {

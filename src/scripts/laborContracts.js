@@ -1,11 +1,16 @@
 // 근로계약 관리 스크립트
 
+var LC_DEPT = {'ADMIN_DEPT':'사무직','DESIGN':'디자인','SALES':'영업','TRANSFER':'전사','SIGN':'간판','PRINTING':'출력','PRODUCTION':'생산직','EXECUTIVE':'임원'};
+var LC_POS = {'STAFF':'사원','SENIOR_STAFF':'주임','ASSISTANT_MANAGER':'대리','MANAGER':'과장','DEPUTY_GENERAL_MANAGER':'차장','GENERAL_MANAGER':'부장','DIRECTOR':'이사','CEO':'대표이사'};
+var LC_ENT = {1:'동산기획',2:'선명',3:'동산기획 청주'};
+
 var lcEditId = 0;
 var lcSignContractId = 0;
 var lcEmployees = [];
 var lcDrawing = false;
 var lcLastX = 0;
 var lcLastY = 0;
+var lcExpiringActive = false;
 
 // ===== 유틸 =====
 function lcStatusBadge(status) {
@@ -49,19 +54,36 @@ async function lcLoadEmployees() {
   }
 }
 
+// ===== 만료 임박 토글 =====
+window.lcToggleExpiring = function() {
+  lcExpiringActive = !lcExpiringActive;
+  var btn = document.getElementById('lcExpiringBtn');
+  if (btn) {
+    if (lcExpiringActive) {
+      btn.className = 'px-3 py-1.5 text-xs border border-red-500 bg-red-600 text-white rounded hover:bg-red-700 transition-colors';
+    } else {
+      btn.className = 'px-3 py-1.5 text-xs border border-red-300 text-red-600 rounded hover:bg-red-50 transition-colors';
+    }
+  }
+  lcLoad();
+};
+
 // ===== 목록 조회 =====
 window.lcLoad = async function() {
   var tbody = document.getElementById('lcBody');
   if (!tbody) { console.warn('[laborContracts] #lcBody not found'); return; }
 
-  tbody.innerHTML = '<tr><td colspan="8" class="py-2"><div class="ds-skeleton ds-skeleton-row"></div></td></tr>'
-    + '<tr><td colspan="8" class="py-2"><div class="ds-skeleton ds-skeleton-row"></div></td></tr>'
-    + '<tr><td colspan="8" class="py-2"><div class="ds-skeleton ds-skeleton-row"></div></td></tr>';
+  tbody.innerHTML = '<tr><td colspan="9" class="py-2"><div class="ds-skeleton ds-skeleton-row"></div></td></tr>'
+    + '<tr><td colspan="9" class="py-2"><div class="ds-skeleton ds-skeleton-row"></div></td></tr>'
+    + '<tr><td colspan="9" class="py-2"><div class="ds-skeleton ds-skeleton-row"></div></td></tr>';
 
   try {
     var params = { limit: 100 };
     var status = document.getElementById('lcStatusFilter').value;
     if (status) params.status = status;
+    var dept = document.getElementById('lcDeptFilter').value;
+    if (dept) params.department = dept;
+    if (lcExpiringActive) params.expiring = '30';
 
     var res = await axios.get('/api/hr/contracts', { params: params });
     var d = res.data && res.data.data;
@@ -80,7 +102,7 @@ window.lcLoad = async function() {
     lcUpdateKPI(d);
 
     if (rows.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="8" class="text-center text-gray-400 py-6">계약서가 없습니다.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="9" class="text-center text-gray-400 py-6">계약서가 없습니다.</td></tr>';
       return;
     }
 
@@ -90,12 +112,22 @@ window.lcLoad = async function() {
       var period = lcFmtDate(r.contract_start_date);
       if (r.contract_end_date) {
         period += ' ~ ' + lcFmtDate(r.contract_end_date);
+        // 만료 임박 강조 (30일 이내)
+        var endMs = new Date(r.contract_end_date).getTime();
+        var nowMs = Date.now();
+        var daysLeft = Math.ceil((endMs - nowMs) / (1000 * 60 * 60 * 24));
+        if (daysLeft >= 0 && daysLeft <= 30 && r.status !== 'EXPIRED') {
+          period += ' <span class="ml-1 px-1 py-0.5 text-[10px] rounded bg-red-100 text-red-700 font-medium">' + daysLeft + '일 남음</span>';
+        }
       } else {
         period += ' ~ 무기한';
       }
 
+      var deptName = LC_DEPT[r.department] || r.department || '-';
+
       html += '<tr class="hover:bg-gray-50">'
         + '<td class="px-3 py-2 text-left font-medium">' + (r.employee_name || '-') + '<div class="text-[10px] text-gray-400">' + (r.employee_code || '') + '</div></td>'
+        + '<td class="px-3 py-2 text-left text-xs">' + deptName + '</td>'
         + '<td class="px-3 py-2 text-left text-xs">' + (r.entity_name || '-') + '</td>'
         + '<td class="px-3 py-2 text-left text-xs">' + lcContractTypeName(r.contract_type) + '</td>'
         + '<td class="px-3 py-2 text-left text-xs">' + period + '</td>'
@@ -108,7 +140,7 @@ window.lcLoad = async function() {
     tbody.innerHTML = html;
   } catch (e) {
     console.error('[laborContracts] 목록 로드 실패', e);
-    tbody.innerHTML = '<tr><td colspan="8" class="text-center text-red-500 py-6">로드 실패</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="9" class="text-center text-red-500 py-6">로드 실패</td></tr>';
   }
 };
 
@@ -459,9 +491,6 @@ window.lcCalcWage = function() {
 };
 
 // ===== 검색형 직원 선택 =====
-var LC_DEPT = {'ADMIN_DEPT':'사무직','DESIGN':'디자인','SALES':'영업','TRANSFER':'전사','SIGN':'간판','PRINTING':'출력','PRODUCTION':'생산직','EXECUTIVE':'임원'};
-var LC_POS = {'STAFF':'사원','SENIOR_STAFF':'주임','ASSISTANT_MANAGER':'대리','MANAGER':'과장','DEPUTY_GENERAL_MANAGER':'차장','GENERAL_MANAGER':'부장','DIRECTOR':'이사','CEO':'대표이사'};
-var LC_ENT = {1:'동산기획',2:'선명',3:'동산기획 청주'};
 
 function lcInitEmpSearch() {
   var searchEl = document.getElementById('lcEmpSearch');
