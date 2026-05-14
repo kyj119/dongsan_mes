@@ -814,15 +814,15 @@ function openShipmentSendModal(section) {
 function getDefaultShipmentMessage(section, groups, selected) {
   var date = document.getElementById('shipDate').value;
   if (section === 'freight') {
-    return '#{고객명}님, 동산현수막입니다.\n\n주문하신 제품이 발송되었습니다.\n\n■ 품목: #{품목}\n■ 배송: 대신화물\n■ 터미널: #{터미널}\n■ 출고일: ' + date + '\n\n문의: 042-523-1982';
+    return '#{고객명}님, 동산기획입니다.\n\n주문하신 제품이 발송되었습니다.\n\n■ 품목: #{품목}\n■ 배송: 대신화물\n■ 터미널: #{터미널}\n■ 출고일: ' + date + '\n\n문의: 042-523-1982';
   } else if (section === 'hanjin') {
-    return '#{고객명}님, 동산현수막입니다.\n\n주문하신 제품이 발송되었습니다.\n\n■ 품목: #{품목}\n■ 배송: 한진택배\n■ 송장번호: #{송장번호}\n■ 출고일: ' + date + '\n\n문의: 042-523-1982';
+    return '#{고객명}님, 동산기획입니다.\n\n주문하신 제품이 발송되었습니다.\n\n■ 품목: #{품목}\n■ 배송: 한진택배\n■ 송장번호: #{송장번호}\n■ 출고일: ' + date + '\n\n문의: 042-523-1982';
   } else if (section === 'daesintaekbae') {
-    return '#{고객명}님, 동산현수막입니다.\n\n주문하신 제품이 발송되었습니다.\n\n■ 품목: #{품목}\n■ 배송: 대신택배\n■ 출고일: ' + date + '\n\n문의: 042-523-1982';
+    return '#{고객명}님, 동산기획입니다.\n\n주문하신 제품이 발송되었습니다.\n\n■ 품목: #{품목}\n■ 배송: 대신택배\n■ 출고일: ' + date + '\n\n문의: 042-523-1982';
   } else if (section === 'quick') {
-    return '#{고객명}님, 동산현수막입니다.\n\n주문하신 제품이 출고 준비 완료되었습니다.\n방문 수령 가능합니다.\n\n■ 품목: #{품목}\n■ 출고일: ' + date + '\n\n문의: 042-523-1982';
+    return '#{고객명}님, 동산기획입니다.\n\n주문하신 제품이 출고 준비 완료되었습니다.\n방문 수령 가능합니다.\n\n■ 품목: #{품목}\n■ 출고일: ' + date + '\n\n문의: 042-523-1982';
   }
-  return '#{고객명}님, 동산현수막입니다.\n\n주문하신 제품이 출고되었습니다.\n\n■ 출고일: ' + date + '\n\n문의: 042-523-1982';
+  return '#{고객명}님, 동산기획입니다.\n\n주문하신 제품이 출고되었습니다.\n\n■ 출고일: ' + date + '\n\n문의: 042-523-1982';
 }
 
 function fillShipTemplateSelect() {

@@ -1,4 +1,4 @@
-# Design Tokens — 동산현수막 ERP+MES
+# Design Tokens — 동산기획 ERP+MES
 
 이 문서는 시스템 전체에서 사용하는 디자인 토큰의 정확한 값을 정의합니다.
 **단일 소스**: `src/layout.ts` `:root` 블록. 이 문서는 참조용 스냅샷.

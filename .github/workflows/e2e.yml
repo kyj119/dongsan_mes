@@ -1,4 +1,4 @@
-# 동산현수막 ERP+MES — E2E (Playwright) 자동 검증
+# 동산기획 ERP+MES — E2E (Playwright) 자동 검증
 #
 # Trigger:
 #   - main 푸시 후 (deploy.yml이 끝난 뒤 실행)

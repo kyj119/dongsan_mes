@@ -1,6 +1,6 @@
 ---
 name: security-audit
-description: "동산현수막 ERP+MES 보안 취약점 점검 (OWASP Top 10). TRIGGERS: 보안 점검, security audit, 취약점 분석, SQL injection, XSS, 인증 누락, 권한 검사."
+description: "동산기획 ERP+MES 보안 취약점 점검 (OWASP Top 10). TRIGGERS: 보안 점검, security audit, 취약점 분석, SQL injection, XSS, 인증 누락, 권한 검사."
 ---
 
 # 보안 취약점 점검

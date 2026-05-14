@@ -286,7 +286,7 @@ class Analyzer {
 // presets/mes.json 예시
 {
   "name": "mes",
-  "description": "동산현수막 ERP+MES",
+  "description": "동산기획 ERP+MES",
   "project": "C:\\Users\\user\\dongsan_mes",
   "systemPrompt": "이 프로젝트는 Cloudflare Workers + Hono + D1 기반 ERP+MES. CLAUDE.md 참고.",
   "verify": "npm run verify",
@@ -345,7 +345,7 @@ claude-pm/
 │
 ├── presets/
 │   ├── default.json                # 기본 프리셋
-│   └── mes.json                    # 동산현수막 MES 프리셋
+│   └── mes.json                    # 동산기획 MES 프리셋
 │
 ├── migrations/
 │   └── 001-init.sql                # SQLite 스키마

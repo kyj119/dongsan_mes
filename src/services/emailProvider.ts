@@ -39,7 +39,7 @@ async function getEmailSettings(db: D1Database, entityId?: number): Promise<Emai
     map[row.setting_key] = row.setting_value || ''
   }
 
-  let fromName = map['email_from_name'] || '동산현수막'
+  let fromName = map['email_from_name'] || '동산기획'
   let fromAddress = map['email_from_address'] || 'onboarding@resend.dev'
 
   // Phase 1.2: 2) entity별 발신 주소가 있으면 우선 사용

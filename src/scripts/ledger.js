@@ -1528,7 +1528,7 @@ async function openLedgerSendModal(clientId, clientName, balance, defaultChannel
     var balanceText = (balance || 0).toLocaleString() + '원';
     var today = new Date().toISOString().slice(0, 10);
     document.getElementById('ledgerSendContent').value =
-        clientName + '님, 동산현수막입니다.\n\n'
+        clientName + '님, 동산기획입니다.\n\n'
         + '거래 내역을 안내드립니다.\n\n'
         + '■ 미수금: ' + balanceText + '\n'
         + '■ 기준일: ' + today + '\n\n'

@@ -24,7 +24,7 @@ interface ShipmentData {
 }
 
 function renderShipmentNotice(data: ShipmentData): TemplateResult {
-  const subject = `[동산현수막] 출고 알림 - ${data.orderNumber}`
+  const subject = `[동산기획] 출고 알림 - ${data.orderNumber}`
 
   const itemRows = data.items.map(item => {
     const size = item.width && item.height ? `${item.width}×${item.height}mm` : '-'
@@ -99,7 +99,7 @@ function formatKRW(amount: number): string {
 }
 
 function renderInvoiceIssued(data: InvoiceIssuedData): TemplateResult {
-  const subject = `[동산현수막] 세금계산서 발행 안내 - ${data.invoiceNumber}`
+  const subject = `[동산기획] 세금계산서 발행 안내 - ${data.invoiceNumber}`
 
   const html = baseLayout(`
     <h2 style="color:#1a56db;margin:0 0 8px;">세금계산서 발행 안내</h2>
@@ -146,7 +146,7 @@ interface PaymentReminderData {
 }
 
 function renderPaymentReminder(data: PaymentReminderData): TemplateResult {
-  const subject = `[동산현수막] 미수금 안내 - ${data.clientName}`
+  const subject = `[동산기획] 미수금 안내 - ${data.clientName}`
 
   const orderRows = data.orders.map(o => `<tr>
     <td style="padding:6px 12px;border-bottom:1px solid #eee;">${o.orderNumber}</td>
@@ -194,7 +194,7 @@ export function baseLayout(content: string): string {
   <div style="max-width:600px;margin:0 auto;padding:20px;">
     <!-- Header -->
     <div style="background:#1a56db;border-radius:8px 8px 0 0;padding:20px 24px;text-align:center;">
-      <h1 style="color:#fff;margin:0;font-size:18px;letter-spacing:1px;">동산현수막</h1>
+      <h1 style="color:#fff;margin:0;font-size:18px;letter-spacing:1px;">동산기획</h1>
     </div>
     <!-- Content -->
     <div style="background:#fff;padding:32px 24px;border-radius:0 0 8px 8px;">
@@ -203,7 +203,7 @@ export function baseLayout(content: string): string {
     <!-- Footer -->
     <div style="text-align:center;padding:16px;color:#999;font-size:12px;">
       <p style="margin:4px 0;">본 메일은 발신 전용입니다.</p>
-      <p style="margin:4px 0;">동산현수막 | 문의: 042-523-1982</p>
+      <p style="margin:4px 0;">동산기획 | 문의: 042-523-1982</p>
     </div>
   </div>
 </body>

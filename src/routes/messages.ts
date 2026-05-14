@@ -280,7 +280,7 @@ messagesRouter.post('/send', async (c) => {
       if (isLms) {
         sendResult = await provider.sendLMS({
           snd: kakaoSettings.senderNum,
-          subject: content.subject || '동산현수막',
+          subject: content.subject || '동산기획',
           content: content.body,
           messages: [smsMsg],
           sndDT: content.sndDT || undefined,

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * smoke.cjs — 동산현수막 ERP+MES API 스모크 테스트
+ * smoke.cjs — 동산기획 ERP+MES API 스모크 테스트
  *
  * 목적:
  *  - 주요 GET 엔드포인트의 라우팅/컬럼명/권한/JOIN 오류를 빠르게 감지한다.

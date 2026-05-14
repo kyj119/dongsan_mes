@@ -1,7 +1,7 @@
 import { defineConfig, devices } from '@playwright/test'
 
 /**
- * Playwright E2E 설정 — 동산현수막 ERP+MES
+ * Playwright E2E 설정 — 동산기획 ERP+MES
  *
  * 동작 원칙:
  * - production URL 직접 검증 (smoke가 못 잡는 onclick/모달/계산 흐름)

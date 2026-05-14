@@ -1,6 +1,6 @@
 ---
 name: mes-ui-consistency
-description: "동산현수막 ERP+MES UI 일관성 가이드. 프론트엔드 작업 시 참조. TRIGGERS: UI 수정, 페이지 생성, 스타일 변경, CSS, Tailwind, 버튼, 테이블, 카드, 뱃지."
+description: "동산기획 ERP+MES UI 일관성 가이드. 프론트엔드 작업 시 참조. TRIGGERS: UI 수정, 페이지 생성, 스타일 변경, CSS, Tailwind, 버튼, 테이블, 카드, 뱃지."
 ---
 
 # UI/UX 일관성 가이드 (핵심)

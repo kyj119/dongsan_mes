@@ -1072,7 +1072,7 @@ function sendTaxInvoiceNotice(id, buyerName, email, invoiceNumber) {
     receiver: { name: buyerName, phone: '', email: email },
     context: { type: 'tax_invoices', id: id },
     defaultChannel: 'kakao',
-    defaultContent: buyerName + '님, 동산현수막입니다.\n\n세금계산서가 발행되었습니다.\n\n■ 세금계산서 번호: ' + invoiceNumber + '\n\n문의: 042-523-1982',
+    defaultContent: buyerName + '님, 동산기획입니다.\n\n세금계산서가 발행되었습니다.\n\n■ 세금계산서 번호: ' + invoiceNumber + '\n\n문의: 042-523-1982',
     autoTemplate: '026040001090',
     templateVars: { '고객명': buyerName, '기준일': new Date().toISOString().slice(0, 10) },
   });

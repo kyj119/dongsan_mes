@@ -326,7 +326,7 @@ ordersOpsRouter.post('/:id/send-email', requireRole('ADMIN', 'MANAGER'), async (
       company[row.setting_key] = row.setting_value || ''
     }
 
-    const companyName = company.company_name || '동산현수막'
+    const companyName = company.company_name || '동산기획'
     const fromEmail = company.email_from_address || company.company_email
     const fromName = company.email_from_name || companyName
 

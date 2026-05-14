@@ -291,7 +291,7 @@ export function yearEndPage(c: Context<HonoEnv>) {
 
         '<div class="sign-area">' +
           '<div class="date">' + YEAR + '년 ' + (new Date().getMonth() + 1) + '월 ' + new Date().getDate() + '일 발행</div>' +
-          '<div><span class="company">동산현수막</span> (인)</div>' +
+          '<div><span class="company">동산기획</span> (인)</div>' +
         '</div>' +
 
         '<div class="footer-note">' +

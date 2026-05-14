@@ -21,7 +21,7 @@ PowerShell 빌드/검증 명령 + 다음 세션 TODO + `memory/session-context.m
 - 세션 시작 시 `.claude/PROJECT_STATUS.md` 읽기 (MEMORY.md는 auto-memory 자동 로드)
 - 작업 시작/완료/차단 시 PROJECT_STATUS.md 업데이트
 
-# 동산현수막 ERP+MES 프로젝트
+# 동산기획 ERP+MES 프로젝트
 
 ## 기술 스택
 - **Runtime**: Cloudflare Workers (Hono 4.x) | **DB**: D1 (SQLite) `c.env.DB` | **Build**: Vite 5.x

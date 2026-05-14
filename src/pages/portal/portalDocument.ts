@@ -6,7 +6,7 @@ export const portalDocumentPage = (c: Context) => {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>동산현수막 - 거래 문서 확인</title>
+  <title>동산기획 - 거래 문서 확인</title>
   <link href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css" rel="stylesheet">
   <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
   <style>
@@ -52,7 +52,7 @@ export const portalDocumentPage = (c: Context) => {
 <body>
   <div class="card" id="authCard">
     <div class="logo">
-      <h1><i class="fas fa-shield-alt"></i> 동산현수막</h1>
+      <h1><i class="fas fa-shield-alt"></i> 동산기획</h1>
       <p>거래 문서 안전 확인</p>
     </div>
     <div id="expiredView" class="expired" style="display:none">

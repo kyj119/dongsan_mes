@@ -2755,7 +2755,7 @@ export class PresetManager {
 // presets/mes.json
 {
   "name": "mes",
-  "description": "동산현수막 ERP+MES",
+  "description": "동산기획 ERP+MES",
   "project": "C:\\Users\\user\\dongsan_mes",
   "systemPrompt": "이 프로젝트는 Cloudflare Workers + Hono + D1 기반 ERP+MES. CLAUDE.md를 반드시 읽고 따를 것.",
   "verify": "npm run verify",
