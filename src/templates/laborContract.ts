@@ -60,19 +60,19 @@ export function renderLaborContractHTML(data: {
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
-      font-family: 'Malgun Gothic', sans-serif;
-      font-size: 13px;
-      line-height: 1.7;
+      font-family: 'Nanum Myeongjo', 'Malgun Gothic', serif;
+      font-size: 14px;
+      line-height: 1.8;
       color: #111;
       background: #e5e7eb;
     }
 
-    @page { size: A4; margin: 15mm 15mm; }
+    @page { size: A4; margin: 20mm 18mm; }
     @media print {
       .no-print { display: none !important; }
       body { background: #fff; }
       .page-wrapper { padding: 0; max-width: none; }
-      .contract { box-shadow: none; border: none; margin: 0; }
+      .contract { box-shadow: none; border: none; margin: 0; padding: 0; }
     }
 
     .no-print {
@@ -80,6 +80,7 @@ export function renderLaborContractHTML(data: {
       background: #1e40af; color: #fff;
       padding: 12px 24px; display: flex; gap: 12px; align-items: center;
       box-shadow: 0 2px 8px rgba(0,0,0,.2);
+      font-family: 'Malgun Gothic', sans-serif;
     }
     .no-print .title { font-size: 16px; font-weight: 600; flex: 1; }
     .no-print button {
@@ -94,63 +95,84 @@ export function renderLaborContractHTML(data: {
     .page-wrapper { max-width: 800px; margin: 0 auto; padding: 24px 16px; }
     .contract {
       background: #fff;
-      padding: 40px 48px;
-      box-shadow: 0 2px 8px rgba(0,0,0,.08);
-      border: 1px solid #e5e7eb;
+      padding: 50px 56px;
+      box-shadow: 0 2px 12px rgba(0,0,0,.1);
+      border: 1px solid #d1d5db;
     }
 
+    /* --- 제목 --- */
     .contract-title {
       text-align: center;
-      font-size: 24px;
+      font-size: 28px;
       font-weight: 700;
-      letter-spacing: 6px;
-      margin-bottom: 24px;
-      padding-bottom: 12px;
-      border-bottom: 2px solid #111;
+      letter-spacing: 12px;
+      margin-bottom: 32px;
+      padding-bottom: 10px;
+      border-bottom: 3px double #111;
     }
 
+    /* --- 전문 --- */
     .preamble {
-      margin-bottom: 16px;
+      margin-bottom: 24px;
       text-indent: 1em;
+      font-size: 14px;
+      line-height: 2;
     }
 
+    /* --- 조항 --- */
     .article {
-      margin-bottom: 14px;
+      margin-bottom: 18px;
+      page-break-inside: avoid;
     }
     .article-title {
       font-weight: 700;
-      font-size: 14px;
-      margin-bottom: 4px;
+      font-size: 15px;
+      margin-top: 20px;
+      margin-bottom: 6px;
+      padding-left: 2px;
+      border-left: 3px solid #333;
+      padding-left: 8px;
     }
     .article-body {
-      padding-left: 1em;
+      padding-left: 1.2em;
     }
     .article-body p {
-      margin-bottom: 2px;
+      margin-bottom: 3px;
+    }
+    .article-body .note {
+      padding-left: 1.5em;
+      font-size: 12.5px;
+      color: #444;
     }
 
+    /* --- 양당사자 테이블 --- */
     .party-table {
       width: 100%;
       border-collapse: collapse;
-      margin: 8px 0 16px;
-      font-size: 13px;
+      margin: 10px 0 20px;
+      font-size: 13.5px;
     }
     .party-table th,
     .party-table td {
       border: 1px solid #333;
-      padding: 6px 10px;
+      padding: 7px 12px;
       text-align: left;
     }
     .party-table th {
-      background: #f3f4f6;
+      background: #f5f5f5;
       font-weight: 600;
-      width: 25%;
+      width: 22%;
       text-align: center;
+      color: #222;
     }
     .party-table .header-cell {
-      background: #dbeafe;
+      background: #e8e8e8;
       font-weight: 700;
+      font-size: 14px;
       text-align: center;
+      letter-spacing: 6px;
+      padding: 8px;
+      border-top: 2px solid #333;
     }
 
     .sub-items {
@@ -160,43 +182,82 @@ export function renderLaborContractHTML(data: {
     .sub-items li { margin-bottom: 2px; }
     .sub-items li::before { content: "- "; }
 
+    /* --- 서명 영역 --- */
     .signature-section {
-      margin-top: 32px;
+      margin-top: 40px;
+      page-break-inside: avoid;
+    }
+    .sig-preamble {
       text-align: center;
       font-size: 14px;
+      line-height: 2;
+      margin-bottom: 12px;
     }
     .sig-date {
-      font-size: 16px;
-      font-weight: 600;
-      margin-bottom: 24px;
+      text-align: center;
+      font-size: 17px;
+      font-weight: 700;
+      margin-bottom: 28px;
+      letter-spacing: 2px;
     }
     .sig-block {
       display: flex;
       justify-content: space-between;
-      gap: 40px;
-      margin-top: 20px;
+      gap: 32px;
     }
     .sig-party {
       flex: 1;
-      text-align: left;
-      padding: 16px;
-      border: 1px solid #d1d5db;
-      border-radius: 4px;
+      padding: 0;
     }
-    .sig-party-title {
+    .sig-party-label {
       font-weight: 700;
       font-size: 15px;
-      margin-bottom: 8px;
-      padding-bottom: 4px;
-      border-bottom: 1px solid #e5e7eb;
+      margin-bottom: 10px;
+      text-align: center;
+      letter-spacing: 4px;
     }
-    .sig-party p {
-      margin-bottom: 4px;
-      font-size: 13px;
+    .sig-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13.5px;
     }
-    .sig-stamp {
+    .sig-table th,
+    .sig-table td {
+      border: 1px solid #333;
+      padding: 6px 10px;
+      text-align: left;
+    }
+    .sig-table th {
+      background: #f5f5f5;
+      font-weight: 600;
+      width: 35%;
+      text-align: center;
+    }
+    .sig-stamp-row td {
       text-align: right;
-      margin-top: 8px;
+      padding: 10px 12px;
+      height: 60px;
+      vertical-align: middle;
+    }
+    .sig-stamp-row img {
+      height: 50px;
+      vertical-align: middle;
+    }
+    .sig-stamp-placeholder {
+      display: inline-block;
+      width: 50px;
+      height: 50px;
+      border: 1px dashed #999;
+      vertical-align: middle;
+    }
+
+    /* --- 유틸리티 --- */
+    .text-center { text-align: center; }
+    .mt-8 { margin-top: 8px; }
+    .separator {
+      border: none;
+      border-top: 1px solid #ccc;
+      margin: 28px 0;
     }
   </style>
 </head>
@@ -209,16 +270,18 @@ export function renderLaborContractHTML(data: {
 
   <div class="page-wrapper">
     <div class="contract">
-      <div class="contract-title">근 로 계 약 서 (시급직)</div>
+      <div class="contract-title">근 로 계 약 서</div>
 
       <p class="preamble">
         ${entity.name} (이하 "사용자"라 한다)와(과) ${employee.name} (이하 "근로자"라 한다)는
         다음과 같이 근로계약을 체결하고 이를 성실히 이행할 것을 약정한다.
       </p>
 
+      <hr class="separator">
+
       <!-- 제1조 -->
       <div class="article">
-        <div class="article-title">제1조 [양당사자]</div>
+        <div class="article-title">제1조 (양당사자)</div>
         <table class="party-table">
           <tr>
             <td class="header-cell" colspan="4">사 용 자</td>
@@ -253,21 +316,21 @@ export function renderLaborContractHTML(data: {
 
       <!-- 제2조 -->
       <div class="article">
-        <div class="article-title">제2조 [담당업무 및 취업장소]</div>
+        <div class="article-title">제2조 (담당업무 및 취업장소)</div>
         <div class="article-body">
-          <p>1. 담당업무: ${contract.job_description}</p>
-          <p>2. 취업장소: ${entity.address}</p>
+          <p>1) 담당업무: ${contract.job_description}</p>
+          <p>2) 취업장소: ${entity.address}</p>
         </div>
       </div>
 
       <!-- 제3조 -->
       <div class="article">
-        <div class="article-title">제3조 [근로계약기간 및 수습기간]</div>
+        <div class="article-title">제3조 (근로계약기간 및 수습기간)</div>
         <div class="article-body">
-          <p>1. 근로계약기간: ${contractPeriod}</p>
-          <p>2. 임금적용기간: ${wagePeriod}</p>
-          <p>3. 수습기간: 입사일로부터 ${contract.probation_months}개월</p>
-          <p style="padding-left:1em;font-size:12px;color:#555;">
+          <p>1) 근로계약기간: ${contractPeriod}</p>
+          <p>2) 임금적용기간: ${wagePeriod}</p>
+          <p>3) 수습기간: 입사일로부터 ${contract.probation_months}개월</p>
+          <p class="note">
             (수습기간 중에는 해당 임금의 90%를 지급하며, 최저임금 미만이 되지 않도록 한다)
           </p>
         </div>
@@ -275,36 +338,36 @@ export function renderLaborContractHTML(data: {
 
       <!-- 제4조 -->
       <div class="article">
-        <div class="article-title">제4조 [근로시간 및 휴게시간]</div>
+        <div class="article-title">제4조 (근로시간 및 휴게시간)</div>
         <div class="article-body">
-          <p>1. 근무형태: ${workTypeText}</p>
-          <p>2. 연장, 야간, 휴일근로는 근로기준법에 따라 사용자와 근로자가 합의하여 실시하며, 가산수당을 지급한다.</p>
+          <p>1) 근무형태: ${workTypeText}</p>
+          <p>2) 연장, 야간, 휴일근로는 근로기준법에 따라 사용자와 근로자가 합의하여 실시하며, 가산수당을 지급한다.</p>
         </div>
       </div>
 
       <!-- 제5조 -->
       <div class="article">
-        <div class="article-title">제5조 [휴일 및 휴가]</div>
+        <div class="article-title">제5조 (휴일 및 휴가)</div>
         <div class="article-body">
-          <p>1. 유급휴일: 1주간 소정근로일을 개근한 자에게 1일의 유급주휴일을 부여한다.</p>
-          <p>2. 연차유급휴가: 근로기준법 제60조에 따라 부여한다.</p>
+          <p>1) 유급휴일: 1주간 소정근로일을 개근한 자에게 1일의 유급주휴일을 부여한다.</p>
+          <p>2) 연차유급휴가: 근로기준법 제60조에 따라 부여한다.</p>
         </div>
       </div>
 
       <!-- 제6조 -->
       <div class="article">
-        <div class="article-title">제6조 [임금]</div>
+        <div class="article-title">제6조 (임금)</div>
         <div class="article-body">
-          <p>1. 통상시급: ${formatNumber(contract.hourly_rate)}원</p>
-          <p>2. 임금 지급일: 매월 10일 (해당일이 휴일인 경우 전일 지급)</p>
-          <p>3. 지급방법: 근로자 명의 예금통장에 입금</p>
-          <p>4. 초과근로수당: 연장근로 통상시급의 150%, 야간근로(22:00~06:00) 통상시급의 150%, 휴일근로 통상시급의 150%</p>
+          <p>1) 통상시급: ${formatNumber(contract.hourly_rate)}원</p>
+          <p>2) 임금 지급일: 매월 10일 (해당일이 휴일인 경우 전일 지급)</p>
+          <p>3) 지급방법: 근로자 명의 예금통장에 입금</p>
+          <p>4) 초과근로수당: 연장근로 통상시급의 150%, 야간근로(22:00~06:00) 통상시급의 150%, 휴일근로 통상시급의 150%</p>
         </div>
       </div>
 
       <!-- 제7조 -->
       <div class="article">
-        <div class="article-title">제7조 [연차유급휴가]</div>
+        <div class="article-title">제7조 (연차유급휴가)</div>
         <div class="article-body">
           <p>연차유급휴가는 근로기준법 제60조에 따라 부여하며, 미사용 연차에 대해서는 연차유급휴가 미사용수당을 지급한다.</p>
         </div>
@@ -312,7 +375,7 @@ export function renderLaborContractHTML(data: {
 
       <!-- 제8조 -->
       <div class="article">
-        <div class="article-title">제8조 [퇴직금]</div>
+        <div class="article-title">제8조 (퇴직금)</div>
         <div class="article-body">
           <p>1년 이상 근속한 근로자에 대하여 퇴직급여보장법에 따라 퇴직금을 지급한다.</p>
         </div>
@@ -320,7 +383,7 @@ export function renderLaborContractHTML(data: {
 
       <!-- 제9조 -->
       <div class="article">
-        <div class="article-title">제9조 [건강검진]</div>
+        <div class="article-title">제9조 (건강검진)</div>
         <div class="article-body">
           <p>사용자는 산업안전보건법에 따라 근로자에 대한 건강검진을 실시한다.</p>
         </div>
@@ -328,16 +391,16 @@ export function renderLaborContractHTML(data: {
 
       <!-- 제10조 -->
       <div class="article">
-        <div class="article-title">제10조 [근로관계 종료]</div>
+        <div class="article-title">제10조 (근로관계 종료)</div>
         <div class="article-body">
-          <p>1. 근로자가 퇴직하고자 할 때에는 30일 전에 사용자에게 통보하여야 한다.</p>
-          <p>2. 근로계약기간 만료 시 별도의 조치가 없으면 근로계약은 종료된다.</p>
+          <p>1) 근로자가 퇴직하고자 할 때에는 30일 전에 사용자에게 통보하여야 한다.</p>
+          <p>2) 근로계약기간 만료 시 별도의 조치가 없으면 근로계약은 종료된다.</p>
         </div>
       </div>
 
       <!-- 제11조 -->
       <div class="article">
-        <div class="article-title">제11조 [해고 사유]</div>
+        <div class="article-title">제11조 (해고 사유)</div>
         <div class="article-body">
           <p>사용자는 근로기준법 제23조에 따른 정당한 이유 없이 근로자를 해고하지 아니한다.</p>
         </div>
@@ -345,7 +408,7 @@ export function renderLaborContractHTML(data: {
 
       <!-- 제12조 -->
       <div class="article">
-        <div class="article-title">제12조 [근로자 동의]</div>
+        <div class="article-title">제12조 (근로자 동의)</div>
         <div class="article-body">
           <p>근로자는 사용자의 취업규칙 및 제 규정을 준수하고, 사용자의 정당한 업무지시에 따를 것을 동의한다.</p>
         </div>
@@ -353,30 +416,64 @@ export function renderLaborContractHTML(data: {
 
       <!-- 제13조 -->
       <div class="article">
-        <div class="article-title">제13조 [기타]</div>
+        <div class="article-title">제13조 (기타)</div>
         <div class="article-body">
-          <p>1. 본 계약에 명시되지 아니한 사항은 근로기준법 및 관계 법령에 따른다.</p>
-          <p>2. 본 계약서는 2통을 작성하여 사용자와 근로자가 각각 1통씩 보관한다.</p>
+          <p>1) 본 계약에 명시되지 아니한 사항은 근로기준법 및 관계 법령에 따른다.</p>
+          <p>2) 본 계약서는 2통을 작성하여 사용자와 근로자가 각각 1통씩 보관한다.</p>
         </div>
       </div>
 
+      <hr class="separator">
+
       <!-- 서명 영역 -->
       <div class="signature-section">
+        <p class="sig-preamble">
+          위 계약의 성립을 증명하기 위하여 본 계약서 2통을 작성하고,<br>
+          사용자와 근로자가 서명 날인 후 각각 1통씩 보관한다.
+        </p>
         <div class="sig-date">${formatDate(contract.contract_date)}</div>
         <div class="sig-block">
           <div class="sig-party">
-            <div class="sig-party-title">(사용자)</div>
-            <p>상호: ${entity.name}</p>
-            <p>대표자: ${entity.representative}</p>
-            <p>주소: ${entity.address}</p>
-            <div class="sig-stamp">(인) ${employerSig}</div>
+            <div class="sig-party-label">[ 사 용 자 ]</div>
+            <table class="sig-table">
+              <tr>
+                <th>상 호</th>
+                <td>${entity.name}</td>
+              </tr>
+              <tr>
+                <th>대 표 자</th>
+                <td>${entity.representative}</td>
+              </tr>
+              <tr>
+                <th>소 재 지</th>
+                <td>${entity.address}</td>
+              </tr>
+              <tr class="sig-stamp-row">
+                <th>인</th>
+                <td>${employerSig}</td>
+              </tr>
+            </table>
           </div>
           <div class="sig-party">
-            <div class="sig-party-title">(근로자)</div>
-            <p>성명: ${employee.name}</p>
-            <p>생년월일: ${employee.birth_date}</p>
-            <p>주소: ${employee.address}</p>
-            <div class="sig-stamp">(서명) ${employeeSig}</div>
+            <div class="sig-party-label">[ 근 로 자 ]</div>
+            <table class="sig-table">
+              <tr>
+                <th>성 명</th>
+                <td>${employee.name}</td>
+              </tr>
+              <tr>
+                <th>생년월일</th>
+                <td>${employee.birth_date}</td>
+              </tr>
+              <tr>
+                <th>주 소</th>
+                <td>${employee.address}</td>
+              </tr>
+              <tr class="sig-stamp-row">
+                <th>서명</th>
+                <td>${employeeSig}</td>
+              </tr>
+            </table>
           </div>
         </div>
       </div>
