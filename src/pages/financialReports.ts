@@ -33,6 +33,7 @@ export function financialReportsPage(c: Context<HonoEnv>) {
               <button onclick="loadPnl()" class="px-3 py-1.5 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 ml-auto">
                 <i class="fas fa-search mr-1"></i>조회
               </button>
+              <button onclick="exportFinancialCsv()" class="px-3 py-1 bg-gray-600 text-white text-sm rounded hover:bg-gray-700"><i class="fas fa-file-csv mr-1"></i>CSV</button>
             </div>
 
             <!-- KPI 행 -->
@@ -89,6 +90,7 @@ export function financialReportsPage(c: Context<HonoEnv>) {
               <button onclick="loadMonthlyPnl()" class="px-3 py-1.5 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 ml-auto">
                 <i class="fas fa-search mr-1"></i>조회
               </button>
+              <button onclick="exportFinancialCsv()" class="px-3 py-1 bg-gray-600 text-white text-sm rounded hover:bg-gray-700"><i class="fas fa-file-csv mr-1"></i>CSV</button>
             </div>
 
             <!-- KPI 행 -->

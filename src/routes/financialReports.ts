@@ -300,4 +300,114 @@ financialReportsRouter.get('/balance-snapshot', async (c) => {
   }
 })
 
+// ============================================================
+// CSV 내보내기
+// GET /export/csv?type=pnl&from=&to=  OR  ?type=monthly&year=
+// ============================================================
+financialReportsRouter.get('/export/csv', async (c) => {
+  try {
+    const type = c.req.query('type')
+    if (!type || !['pnl', 'monthly'].includes(type)) {
+      return c.json({ success: false, error: 'type 파라미터 필요 (pnl | monthly)' }, 400)
+    }
+
+    const { generateCsv, csvResponse } = await import('../utils/csv')
+
+    if (type === 'pnl') {
+      const from = c.req.query('from')
+      const to = c.req.query('to')
+      if (!from || !to) return c.json({ success: false, error: 'from, to 파라미터 필요' }, 400)
+
+      const ef = entityFilter(c)
+
+      const salesRow = await c.env.DB.prepare(`
+        SELECT COUNT(*) as order_count, COALESCE(SUM(billed_amount), 0) as total_billed, COALESCE(SUM(final_amount), 0) as total_final
+        FROM orders WHERE billing_status = 'BILLED' AND date(billed_at) BETWEEN ? AND ?${ef.clause}
+      `).bind(from, to, ...ef.params).first<SalesRow>()
+
+      const costRow = await c.env.DB.prepare(`
+        SELECT COALESCE(SUM(material_cost + labor_cost + overhead_cost), 0) as total_cost
+        FROM order_costs WHERE order_id IN (SELECT id FROM orders WHERE billing_status = 'BILLED' AND date(billed_at) BETWEEN ? AND ?${ef.clause})
+      `).bind(from, to, ...ef.params).first<CostRow>().catch((): CostRow => ({ total_cost: 0 }))
+
+      const expenseRow = await c.env.DB.prepare(`
+        SELECT COUNT(*) as expense_count, COALESCE(SUM(amount), 0) as total_expense
+        FROM payment_requests WHERE status IN ('APPROVED', 'PAID') AND request_type = 'EXPENSE' AND date(request_date) BETWEEN ? AND ?
+      `).bind(from, to).first<ExpenseRow>().catch((): ExpenseRow => ({ total_expense: 0, expense_count: 0 }))
+
+      const payrollRow = await c.env.DB.prepare(`
+        SELECT COALESCE(SUM(net_pay), 0) as total_payroll
+        FROM payroll_slips WHERE status IN ('CONFIRMED', 'PAID') AND date(pay_date) BETWEEN ? AND ?
+      `).bind(from, to).first<PayrollRow>().catch((): PayrollRow => ({ total_payroll: 0 }))
+
+      const revenue = Number(salesRow?.total_billed) || 0
+      const cogs = Number(costRow?.total_cost) || 0
+      const grossProfit = revenue - cogs
+      const expense = Number(expenseRow?.total_expense) || 0
+      const payroll = Number(payrollRow?.total_payroll) || 0
+      const operatingProfit = grossProfit - expense - payroll
+      const grossMargin = revenue > 0 ? +((grossProfit / revenue) * 100).toFixed(1) : 0
+      const operatingMargin = revenue > 0 ? +((operatingProfit / revenue) * 100).toFixed(1) : 0
+
+      const headers = ['기간', '매출', '매출건수', '매출원가', '매출총이익', '매출총이익률(%)', '영업이익', '영업이익률(%)']
+      const rows = [[
+        `${from} ~ ${to}`,
+        revenue,
+        salesRow?.order_count || 0,
+        cogs,
+        grossProfit,
+        grossMargin,
+        operatingProfit,
+        operatingMargin,
+      ]]
+      const csv = generateCsv(headers, rows)
+      return csvResponse(c, `손익계산서_${from}_${to}.csv`, csv)
+    }
+
+    // type === 'monthly'
+    const year = Number(c.req.query('year') || new Date().getFullYear())
+    const ef = entityFilter(c)
+
+    const { results: salesRows } = await c.env.DB.prepare(`
+      SELECT strftime('%m', billed_at) as month, COALESCE(SUM(billed_amount), 0) as revenue
+      FROM orders WHERE billing_status = 'BILLED' AND strftime('%Y', billed_at) = ?${ef.clause}
+      GROUP BY month ORDER BY month
+    `).bind(String(year), ...ef.params).all<MonthlyRevenueRow>()
+
+    const expenseResult = await c.env.DB.prepare(`
+      SELECT strftime('%m', request_date) as month, COALESCE(SUM(amount), 0) as expense
+      FROM payment_requests WHERE status IN ('APPROVED', 'PAID') AND strftime('%Y', request_date) = ?
+      GROUP BY month ORDER BY month
+    `).bind(String(year)).all<MonthlyExpenseRow>().catch((): { results: MonthlyExpenseRow[] } => ({ results: [] }))
+
+    const payrollResult = await c.env.DB.prepare(`
+      SELECT printf('%02d', pay_month) as month, COALESCE(SUM(net_pay), 0) as payroll
+      FROM payroll_slips WHERE status IN ('CONFIRMED', 'PAID') AND pay_year = ?
+      GROUP BY pay_month
+    `).bind(year).all<MonthlyPayrollRow>().catch((): { results: MonthlyPayrollRow[] } => ({ results: [] }))
+
+    const headers = ['월', '매출', '매출원가', '인건비', '경비', '영업이익', '이익률(%)']
+    const rows: (string | number)[][] = []
+    for (let m = 1; m <= 12; m++) {
+      const mStr = String(m).padStart(2, '0')
+      const sales = salesRows.find(r => r.month === mStr)
+      const exp = expenseResult.results.find(r => r.month === mStr)
+      const pay = payrollResult.results.find(r => r.month === mStr)
+
+      const revenue = Number(sales?.revenue) || 0
+      const expense = Number(exp?.expense) || 0
+      const payroll = Number(pay?.payroll) || 0
+      const profit = revenue - expense - payroll
+      const margin = revenue > 0 ? +((profit / revenue) * 100).toFixed(1) : 0
+
+      rows.push([`${m}월`, revenue, 0, payroll, expense, profit, margin])
+    }
+    const csv = generateCsv(headers, rows)
+    return csvResponse(c, `월별추이_${year}.csv`, csv)
+  } catch (error) {
+    console.error('financial csv export error:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
+  }
+})
+
 export default financialReportsRouter
