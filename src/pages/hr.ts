@@ -39,22 +39,24 @@ export function hrPage(c: Context<HonoEnv>) {
             <input id="hrSearch" type="text" placeholder="사번/이름 검색" class="flex-1 min-w-[200px] border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500" />
             <select id="hrFilterDept" class="border border-gray-300 rounded-lg px-3 py-2 text-sm">
               <option value="">전체 부서</option>
-              <option value="OFFICE">사무직</option>
+              <option value="ADMIN_DEPT">사무직</option>
               <option value="DESIGN">디자인</option>
-              <option value="PRODUCTION">생산직</option>
-              <option value="UV_SIGN">UV/사인</option>
-              <option value="FINISHING">후가공</option>
-              <option value="ASSEMBLY">조립</option>
               <option value="SALES">영업</option>
+              <option value="TRANSFER">전사</option>
+              <option value="SIGN">간판</option>
+              <option value="PRINTING">출력</option>
               <option value="EXECUTIVE">임원</option>
             </select>
             <select id="hrFilterPosition" class="border border-gray-300 rounded-lg px-3 py-2 text-sm">
               <option value="">전체 직급</option>
               <option value="STAFF">사원</option>
+              <option value="SENIOR_STAFF">주임</option>
               <option value="ASSISTANT_MANAGER">대리</option>
               <option value="MANAGER">과장</option>
               <option value="DEPUTY_GENERAL_MANAGER">차장</option>
               <option value="GENERAL_MANAGER">부장</option>
+              <option value="DIRECTOR">이사</option>
+              <option value="CEO">대표이사</option>
             </select>
             <select id="hrFilterStatus" class="border border-gray-300 rounded-lg px-3 py-2 text-sm">
               <option value="ACTIVE">재직</option>
@@ -144,13 +146,12 @@ export function hrPage(c: Context<HonoEnv>) {
                 <div><label class="block text-xs text-gray-500 mb-1">부서 <span class="text-red-500">*</span></label>
                   <select name="department" required class="w-full border border-gray-300 rounded px-2 py-1.5 text-sm">
                     <option value="">선택</option>
-                    <option value="OFFICE">사무직</option>
+                    <option value="ADMIN_DEPT">사무직</option>
                     <option value="DESIGN">디자인</option>
-                    <option value="PRODUCTION">생산직</option>
-                    <option value="UV_SIGN">UV/사인</option>
-                    <option value="FINISHING">후가공</option>
-                    <option value="ASSEMBLY">조립</option>
                     <option value="SALES">영업</option>
+                    <option value="TRANSFER">전사</option>
+                    <option value="SIGN">간판</option>
+                    <option value="PRINTING">출력</option>
                     <option value="EXECUTIVE">임원</option>
                   </select>
                 </div>
@@ -158,10 +159,13 @@ export function hrPage(c: Context<HonoEnv>) {
                   <select name="position" required class="w-full border border-gray-300 rounded px-2 py-1.5 text-sm">
                     <option value="">선택</option>
                     <option value="STAFF">사원</option>
+                    <option value="SENIOR_STAFF">주임</option>
                     <option value="ASSISTANT_MANAGER">대리</option>
                     <option value="MANAGER">과장</option>
                     <option value="DEPUTY_GENERAL_MANAGER">차장</option>
                     <option value="GENERAL_MANAGER">부장</option>
+                    <option value="DIRECTOR">이사</option>
+                    <option value="CEO">대표이사</option>
                   </select>
                 </div>
                 <div><label class="block text-xs text-gray-500 mb-1">직책</label><input type="text" name="job_title" class="w-full border border-gray-300 rounded px-2 py-1.5 text-sm"></div>
