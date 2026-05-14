@@ -1,4 +1,4 @@
-# 동산현수막 ERP+MES — 에이전트 팀 작업 환경 기동
+# 동산기획 ERP+MES — 에이전트 팀 작업 환경 기동
 # Windows Terminal을 3-pane 레이아웃으로 실행:
 #   왼쪽(50%)       : Claude Code PM 세션
 #   오른쪽 위(25%)  : dev 서버 (npm run dev:d1)

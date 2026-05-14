@@ -26,7 +26,7 @@ export function uiGuidePage(c: Context<HonoEnv>) {
   <div class="flex items-center justify-between">
     <div>
       <h2 class="text-lg font-bold" style="color:#212529;"><i class="fas fa-palette mr-2 text-blue-600"></i>UI 컴포넌트 가이드</h2>
-      <p class="text-xs mt-1" style="color:#6b7280;">동산현수막 ERP+MES 디자인 시스템 — 개선안 적용</p>
+      <p class="text-xs mt-1" style="color:#6b7280;">동산기획 ERP+MES 디자인 시스템 — 개선안 적용</p>
     </div>
     <div class="flex gap-2">
       <button onclick="toggleSection('all')" class="px-3 py-1.5 text-xs bg-blue-600 text-white rounded hover:bg-blue-700">전체 보기</button>

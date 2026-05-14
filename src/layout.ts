@@ -3077,7 +3077,7 @@ export function appLayout(opts: AppLayoutOptions): string {
             <div id="msgPreviewArea">
               <div id="msgPreviewKakao" class="bg-[#b2c7d9] rounded-2xl p-3 min-h-[260px]">
                 <div class="bg-white rounded-xl p-3 shadow-sm">
-                  <div class="text-xs font-bold text-gray-800 mb-1">동산현수막</div>
+                  <div class="text-xs font-bold text-gray-800 mb-1">동산기획</div>
                   <div id="msgPreviewKakaoBody" class="text-xs text-gray-600 whitespace-pre-wrap leading-relaxed" style="min-height:80px;">메시지 내용이 여기에 표시됩니다</div>
                   <div class="mt-2 border-t pt-2">
                     <div class="text-center text-xs text-blue-600 bg-blue-50 rounded py-1.5">확인하기</div>

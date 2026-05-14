@@ -10,7 +10,7 @@ export const portalLoginPage = (c: Context) => {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>고객포털 로그인 - 동산현수막</title>
+  <title>고객포털 로그인 - 동산기획</title>
   <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
   <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
@@ -24,7 +24,7 @@ export const portalLoginPage = (c: Context) => {
       <div class="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-3">
         <i class="fas fa-building text-blue-600 text-2xl"></i>
       </div>
-      <h1 class="text-xl font-bold text-gray-800">동산현수막 고객포털</h1>
+      <h1 class="text-xl font-bold text-gray-800">동산기획 고객포털</h1>
       <p class="text-sm text-gray-500 mt-1">거래처 전용 조회 서비스</p>
     </div>
 

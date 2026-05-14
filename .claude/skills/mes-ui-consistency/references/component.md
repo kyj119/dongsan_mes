@@ -1,4 +1,4 @@
-# Component Specs — 동산현수막 ERP+MES
+# Component Specs — 동산기획 ERP+MES
 
 이 문서는 공통 컴포넌트의 상세 구현 스펙입니다.
 새 컴포넌트를 만들기 전에 여기에 해당하는 것이 있는지 먼저 확인하세요.

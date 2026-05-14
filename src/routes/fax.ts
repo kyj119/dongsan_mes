@@ -54,7 +54,7 @@ faxRouter.post('/send', async (c) => {
 
     const result = await provider.sendFax({
       senderNum: settings.senderNum || '',
-      senderName: '동산현수막',
+      senderName: '동산기획',
       receiverNum: receiver_num,
       receiverName: receiver_name || '',
       fileName: file_name || 'document.pdf',

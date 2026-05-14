@@ -141,7 +141,7 @@ ${capsSettingsScript}
                 </div>
                 <div>
                   <label class="block text-sm font-semibold text-gray-700 mb-1">이메일 발신 이름</label>
-                  <input type="text" id="s_company_email_from_name" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500" placeholder="동산현수막 (비우면 회사명 사용)">
+                  <input type="text" id="s_company_email_from_name" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500" placeholder="동산기획 (비우면 회사명 사용)">
                 </div>
               </div>
               <div>
@@ -598,7 +598,7 @@ ${capsSettingsScript}
               </div>
               <div>
                 <label class="text-sm font-semibold text-gray-700 mb-1 block">카카오 채널 ID</label>
-                <input type="text" id="msgSettingChannelId" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="@동산현수막">
+                <input type="text" id="msgSettingChannelId" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="@동산기획">
               </div>
               <div>
                 <label class="text-sm font-semibold text-gray-700 mb-1 block">대체문자 발송</label>
@@ -625,7 +625,7 @@ ${capsSettingsScript}
               </div>
               <div>
                 <label class="text-sm font-semibold text-gray-700 mb-1 block">발신자명</label>
-                <input type="text" id="msgSettingEmailFromName" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="동산현수막">
+                <input type="text" id="msgSettingEmailFromName" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="동산기획">
               </div>
               <div>
                 <label class="text-sm font-semibold text-gray-700 mb-1 block">발신 이메일</label>

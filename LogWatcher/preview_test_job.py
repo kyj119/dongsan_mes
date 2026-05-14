@@ -233,7 +233,7 @@ LICCurveName_v4=Default"""
 if __name__ == "__main__":
     if len(sys.argv) < 2:
         print("사용법: python preview_test_job.py \"Z:\\경로\\파일.eps\" [출력파일명]")
-        print("예: python preview_test_job.py \"Z:\\동산현수막\\테스트.eps\" \"MES_TEST\"")
+        print("예: python preview_test_job.py \"Z:\\동산기획\\테스트.eps\" \"MES_TEST\"")
         sys.exit(1)
 
     source = sys.argv[1]

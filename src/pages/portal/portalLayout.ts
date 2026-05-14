@@ -12,7 +12,7 @@ export function renderPortalPage(options: {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${options.title} - 동산현수막 고객포털</title>
+  <title>${options.title} - 동산기획 고객포털</title>
   <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
   <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
@@ -28,7 +28,7 @@ export function renderPortalPage(options: {
       <div class="flex justify-between items-center h-14">
         <div class="flex items-center space-x-6">
           <a href="/portal" class="font-bold text-lg">
-            <i class="fas fa-building mr-2"></i>동산현수막
+            <i class="fas fa-building mr-2"></i>동산기획
           </a>
           <div class="hidden md:flex space-x-4 text-sm">
             <a href="/portal" class="hover:text-blue-200 px-2 py-1" id="nav-dashboard">대시보드</a>

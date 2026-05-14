@@ -1367,7 +1367,7 @@ function sendOrderNotice(orderId, clientName, mobile, contactPhone, orderNumber,
     receiver: { name: clientName, phone: phone, email: clientEmail || '', fax: clientFax || '' },
     context: { type: 'orders', id: orderId, client_id: clientId },
     defaultChannel: 'kakao',
-    defaultContent: clientName + '님, 동산현수막입니다.\n\n주문이 접수되었습니다.\n\n■ 주문번호: ' + orderNumber + '\n\n진행 상황은 추후 안내드리겠습니다.\n감사합니다.\n\n문의: 042-523-1982',
+    defaultContent: clientName + '님, 동산기획입니다.\n\n주문이 접수되었습니다.\n\n■ 주문번호: ' + orderNumber + '\n\n진행 상황은 추후 안내드리겠습니다.\n감사합니다.\n\n문의: 042-523-1982',
     autoTemplate: '026040001087',
     templateVars: { '고객명': clientName, '품목': orderNumber, '날짜': today },
   });

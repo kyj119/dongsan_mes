@@ -1798,7 +1798,7 @@ arRouter.post('/send-email', async (c) => {
 
     const html = `
     <div style="font-family:'Pretendard',sans-serif;max-width:700px;margin:0 auto;padding:20px">
-      <h2 style="color:#1f2937;border-bottom:2px solid #2563eb;padding-bottom:12px">동산현수막 거래 내역 안내</h2>
+      <h2 style="color:#1f2937;border-bottom:2px solid #2563eb;padding-bottom:12px">동산기획 거래 내역 안내</h2>
       <p style="color:#4b5563">거래처: <strong>${client.client_name}</strong></p>
       <p style="color:#4b5563">기간: ${startDate} ~ ${endDate}</p>
 
@@ -1833,13 +1833,13 @@ arRouter.post('/send-email', async (c) => {
 
       ${portalSection}
 
-      <p style="margin-top:24px;font-size:12px;color:#9ca3af">본 메일은 동산현수막 ERP에서 자동 발송되었습니다. 문의: 042-523-1982</p>
+      <p style="margin-top:24px;font-size:12px;color:#9ca3af">본 메일은 동산기획 ERP에서 자동 발송되었습니다. 문의: 042-523-1982</p>
     </div>`
 
     const user = c.get('user')
     const result = await sendEmail(c.env, c.env.DB, {
       to: to_email,
-      subject: `[동산현수막] ${client.client_name} 거래 내역 안내 (${startDate} ~ ${endDate})`,
+      subject: `[동산기획] ${client.client_name} 거래 내역 안내 (${startDate} ~ ${endDate})`,
       html: html
     }, {
       template: 'ledger_summary',

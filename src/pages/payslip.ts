@@ -237,7 +237,7 @@ export function payslipPage(c: Context<HonoEnv>) {
         '<div class="slip-header">' +
           '<div class="slip-title">급여명세서</div>' +
           '<div class="slip-period">' + (p.pay_period || '') + '월분 (지급일: ' + (p.pay_date || '-') + ')</div>' +
-          '<div class="slip-company">동산현수막</div>' +
+          '<div class="slip-company">동산기획</div>' +
         '</div>' +
         '<div class="slip-meta">' +
           '<div class="meta-row"><div class="meta-label">사번</div><div class="meta-value">' + (p.employee_code || '-') + '</div></div>' +
@@ -261,7 +261,7 @@ export function payslipPage(c: Context<HonoEnv>) {
         '</div>' +
         nontaxNote +
         '<div class="signature-box">' +
-          '<span class="company-name">동산현수막 대표</span> (인)' +
+          '<span class="company-name">동산기획 대표</span> (인)' +
         '</div>' +
         '<div class="slip-footer">' +
           '<div>근무일수 ' + (p.work_days || 0) + '일 / 결근 ' + (p.absent_days || 0) + '일 / 지각 ' + (p.late_count || 0) + '회</div>' +

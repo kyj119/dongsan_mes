@@ -748,7 +748,7 @@ function sendPayslipNotice(payrollId, employeeId, name, phone, period) {
     receiver: { name: name, phone: phone },
     context: { type: 'payroll', id: payrollId },
     defaultChannel: 'sms',
-    defaultContent: name + '님, 동산현수막입니다.\n\n' + period + ' 급여명세서를 안내드립니다.' + netPay + '\n\n명세서 확인은 아래 링크를 통해 가능합니다.\n\n문의: 042-523-1982',
+    defaultContent: name + '님, 동산기획입니다.\n\n' + period + ' 급여명세서를 안내드립니다.' + netPay + '\n\n명세서 확인은 아래 링크를 통해 가능합니다.\n\n문의: 042-523-1982',
   });
 }
 
@@ -774,7 +774,7 @@ window.sendPayslipBulk = async function() {
         return { name: r.employee_name, phone: r.employee_mobile };
       }),
       content: {
-        body: '동산현수막 급여명세서를 안내드립니다.\n\n급여 기간: ' + (targets[0].pay_period || '') + '\n\n명세서 확인은 담당자에게 문의하시기 바랍니다.\n\n문의: 042-523-1982'
+        body: '동산기획 급여명세서를 안내드립니다.\n\n급여 기간: ' + (targets[0].pay_period || '') + '\n\n명세서 확인은 담당자에게 문의하시기 바랍니다.\n\n문의: 042-523-1982'
       }
     });
     if (res.data.success) {

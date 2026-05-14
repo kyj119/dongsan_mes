@@ -1,4 +1,4 @@
-# 동산현수막 ERP+MES — 로드맵
+# 동산기획 ERP+MES — 로드맵
 
 > **최종 업데이트**: 2026-05-11 (Phase 0, 1, 3.1~3.3, 5.3 완료)
 > **기준 자료**: `.claude/PROJECT_STATUS.md`, `memory/session-context.md`, `.claude/design-decisions.md`, `feedback-sheet-layout.md`

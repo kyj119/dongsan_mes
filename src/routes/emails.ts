@@ -139,10 +139,10 @@ emailsRouter.post('/test', requireRole('ADMIN'), async (c) => {
 
     const result = await sendEmail(c.env, c.env.DB, {
       to: body.to,
-      subject: '[동산현수막] 이메일 테스트',
+      subject: '[동산기획] 이메일 테스트',
       html: `<div style="font-family:sans-serif;padding:20px;">
         <h2>이메일 발송 테스트</h2>
-        <p>이 메일은 동산현수막 ERP 시스템에서 발송된 테스트 메일입니다.</p>
+        <p>이 메일은 동산기획 ERP 시스템에서 발송된 테스트 메일입니다.</p>
         <p>발송 시각: ${new Date().toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' })}</p>
       </div>`,
     }, {

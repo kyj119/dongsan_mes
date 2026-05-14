@@ -693,7 +693,7 @@ function sendPurchaseOrderNotice(id, supplierName, poNumber) {
     receiver: { name: supplierName, phone: '', email: '' },
     context: { type: 'purchase_orders', id: id },
     defaultChannel: 'email',
-    defaultContent: supplierName + '님, 동산현수막입니다.\n\n발주서를 확인해주시기 바랍니다.\n\n■ 발주번호: ' + poNumber + '\n\n문의: 042-523-1982'
+    defaultContent: supplierName + '님, 동산기획입니다.\n\n발주서를 확인해주시기 바랍니다.\n\n■ 발주번호: ' + poNumber + '\n\n문의: 042-523-1982'
   });
 }
 
