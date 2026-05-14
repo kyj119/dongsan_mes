@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
+import { entityFilter } from '../utils/entityFilter'
 
 const productionReportsRouter = new Hono<HonoEnv>()
 
@@ -53,14 +54,15 @@ productionReportsRouter.get('/daily-summary', async (c) => {
     `).bind(targetDate).all()
 
     // 납기 초과 주문
+    const ef = entityFilter(c, 'o')
     const { results: overdue } = await c.env.DB.prepare(`
       SELECT o.id, o.order_number, o.delivery_date, c.client_name, o.status
       FROM orders o
       LEFT JOIN clients c ON o.client_id = c.id
-      WHERE o.delivery_date < ? AND o.status IN ('CONFIRMED', 'PRINTING')
+      WHERE o.delivery_date < ? AND o.status IN ('CONFIRMED', 'PRINTING')${ef.clause}
       ORDER BY o.delivery_date ASC
       LIMIT 20
-    `).bind(targetDate).all()
+    `).bind(targetDate, ...ef.params).all()
 
     const okCount = stats?.ok_count || 0
     const totalCount = stats?.total_count || 0

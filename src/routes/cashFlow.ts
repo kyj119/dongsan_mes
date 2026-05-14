@@ -474,12 +474,13 @@ cashFlowRouter.get('/projection', requireRole('ADMIN'), async (c) => {
       `).bind(monthStart, monthEnd).first<{ total: number }>()
 
       // 구매 (발주)
+      const efPurchase = entityFilter(c)
       const purchaseExp = await c.env.DB.prepare(`
         SELECT COALESCE(SUM(final_amount), 0) as total
         FROM purchase_orders
         WHERE status NOT IN ('CANCELLED', 'DRAFT')
-          AND order_date BETWEEN ? AND ?
-      `).bind(monthStart, monthEnd).first<{ total: number }>()
+          AND order_date BETWEEN ? AND ?${efPurchase.clause}
+      `).bind(monthStart, monthEnd, ...efPurchase.params).first<{ total: number }>()
 
       const income = (i === 0) ? (payments?.total || 0) : (revenue?.total || 0)
       const expenses = (fixedExp?.total || 0) + (loanPay?.total || 0) + (purchaseExp?.total || 0)

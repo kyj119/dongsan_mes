@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
+import { entityFilter } from '../utils/entityFilter'
 
 const forecastRouter = new Hono<HonoEnv>()
 forecastRouter.use('/*', authMiddleware, requireRole('ADMIN', 'MANAGER'))
@@ -8,6 +9,8 @@ forecastRouter.use('/*', authMiddleware, requireRole('ADMIN', 'MANAGER'))
 // 1. 수주 예측
 forecastRouter.get('/order-forecast', async (c) => {
   try {
+    const ef = entityFilter(c)
+
     // 최근 12개월 월별 데이터
     const { results: monthly } = await c.env.DB.prepare(`
       SELECT
@@ -18,11 +21,13 @@ forecastRouter.get('/order-forecast', async (c) => {
       FROM orders
       WHERE status != 'CANCELLED'
         AND created_at >= date('now', '-12 months')
+        ${ef.clause}
       GROUP BY strftime('%Y-%m', created_at)
       ORDER BY month ASC
-    `).all<{ month: string; order_count: number; revenue: number; client_count: number }>()
+    `).bind(...ef.params).all<{ month: string; order_count: number; revenue: number; client_count: number }>()
 
     // 카테고리별 최근 6개월 추이
+    const efo = entityFilter(c, 'o')
     const { results: categoryTrend } = await c.env.DB.prepare(`
       SELECT
         i.category,
@@ -35,9 +40,10 @@ forecastRouter.get('/order-forecast', async (c) => {
       WHERE o.status != 'CANCELLED'
         AND oi.parent_item_id IS NULL
         AND o.created_at >= date('now', '-6 months')
+        ${efo.clause}
       GROUP BY i.category, strftime('%Y-%m', o.created_at)
       ORDER BY i.category, month ASC
-    `).all<{ category: string; month: string; item_count: number; revenue: number }>()
+    `).bind(...efo.params).all<{ category: string; month: string; item_count: number; revenue: number }>()
 
     // 요일별 평균 주문량 (패턴 분석)
     const { results: dayOfWeek } = await c.env.DB.prepare(`
@@ -48,9 +54,10 @@ forecastRouter.get('/order-forecast', async (c) => {
       FROM orders
       WHERE status != 'CANCELLED'
         AND created_at >= date('now', '-6 months')
+        ${ef.clause}
       GROUP BY strftime('%w', created_at)
       ORDER BY dow
-    `).all()
+    `).bind(...ef.params).all()
 
     // 예측 계산: 3개월 이동 평균 + 전년 동기 가중치
     const data = monthly.map((r) => ({
@@ -219,6 +226,8 @@ forecastRouter.get('/capacity-analysis', async (c) => {
 // 3. 거래처별 수주 예측
 forecastRouter.get('/client-forecast', async (c) => {
   try {
+    const ef = entityFilter(c, 'o')
+
     // 최근 6개월 거래처별 월 매출 (상위 15개)
     const { results } = await c.env.DB.prepare(`
       SELECT
@@ -230,9 +239,10 @@ forecastRouter.get('/client-forecast', async (c) => {
       JOIN clients c ON o.client_id = c.id
       WHERE o.status != 'CANCELLED'
         AND o.created_at >= date('now', '-6 months')
+        ${ef.clause}
       GROUP BY c.id, strftime('%Y-%m', o.created_at)
       ORDER BY c.id, month ASC
-    `).all<{ id: number; client_name: string; month: string; order_count: number; revenue: number }>()
+    `).bind(...ef.params).all<{ id: number; client_name: string; month: string; order_count: number; revenue: number }>()
 
     // 거래처별 월간 데이터 집계
     const clientMap = new Map<string, { name: string; months: { month: string; order_count: number; revenue: number }[] }>()

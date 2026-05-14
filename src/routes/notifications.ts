@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import type { HonoEnv } from '../types/env'
 import type { D1Database } from '@cloudflare/workers-types'
 import { authMiddleware } from '../middleware/auth'
+import { entityFilter } from '../utils/entityFilter'
 
 const notificationsRouter = new Hono<HonoEnv>()
 notificationsRouter.use('/*', authMiddleware)
@@ -154,14 +155,15 @@ notificationsRouter.post('/generate', async (c) => {
     const tomorrow = new Date(Date.now() + 86400000).toISOString().slice(0, 10)
 
     // 1. 납기 도래/지연 주문
+    const ef = entityFilter(c, 'o')
     const { results: dueOrders } = await db.prepare(`
       SELECT o.order_number, o.delivery_date, c.client_name
       FROM orders o LEFT JOIN clients c ON o.client_id = c.id
       WHERE o.status IN ('CONFIRMED','PRINTING','PRINT_DONE')
         AND o.delivery_date IS NOT NULL
-        AND o.delivery_date <= ?
+        AND o.delivery_date <= ?${ef.clause}
       ORDER BY o.delivery_date ASC LIMIT 10
-    `).bind(tomorrow).all()
+    `).bind(tomorrow, ...ef.params).all()
 
     if (dueOrders && dueOrders.length > 0) {
       const overdue = dueOrders.filter((o) => (o.delivery_date as string) <= today)
@@ -182,11 +184,12 @@ notificationsRouter.post('/generate', async (c) => {
     }
 
     // 2. 발주 납기 초과
+    const efPo = entityFilter(c)
     const overduePoResult = await db.prepare(`
       SELECT COUNT(*) as cnt FROM purchase_orders
       WHERE status IN ('CONFIRMED','PARTIAL_RECEIVED')
-        AND expected_date IS NOT NULL AND expected_date < ?
-    `).bind(today).first<{ cnt: number }>()
+        AND expected_date IS NOT NULL AND expected_date < ?${efPo.clause}
+    `).bind(today, ...efPo.params).first<{ cnt: number }>()
 
     if (overduePoResult?.cnt && overduePoResult.cnt > 0) {
       await createIfNotExists(db, 'MANAGER',

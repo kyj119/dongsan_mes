@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
+import { entityFilter } from '../utils/entityFilter'
 
 // ---------- D1 row shapes ----------
 interface RecentPurchaseRow {
@@ -205,35 +206,37 @@ pricesRouter.get('/client-item-prices', async (c) => {
       const ph = itemIds.map(() => '?').join(',')
 
       // 매입 최근 거래 (품목별 최신 1건)
+      const efPo = entityFilter(c, 'po')
       const { results: purchaseRows } = await c.env.DB.prepare(`
         SELECT poi.item_id, poi.unit_price, po.order_date
         FROM purchase_order_items poi
         JOIN purchase_orders po ON poi.po_id = po.id
-        WHERE poi.item_id IN (${ph}) AND po.supplier_id = ? AND po.status != 'CANCELLED'
+        WHERE poi.item_id IN (${ph}) AND po.supplier_id = ? AND po.status != 'CANCELLED'${efPo.clause}
           AND po.order_date = (
             SELECT MAX(po2.order_date) FROM purchase_orders po2
             JOIN purchase_order_items poi2 ON poi2.po_id = po2.id
             WHERE poi2.item_id = poi.item_id AND po2.supplier_id = po.supplier_id AND po2.status != 'CANCELLED'
           )
         GROUP BY poi.item_id
-      `).bind(...itemIds, client_id).all<RecentTransactionRow>()
+      `).bind(...itemIds, client_id, ...efPo.params).all<RecentTransactionRow>()
       for (const r of purchaseRows) {
         purchaseMap[r.item_id] = { unit_price: r.unit_price, order_date: r.order_date }
       }
 
       // 매출 최근 거래 (품목별 최신 1건)
+      const efO = entityFilter(c, 'o')
       const { results: salesRows } = await c.env.DB.prepare(`
         SELECT oi.item_id, oi.unit_price, o.order_date
         FROM order_items oi
         JOIN orders o ON oi.order_id = o.id
-        WHERE oi.item_id IN (${ph}) AND o.client_id = ? AND o.status != 'CANCELLED'
+        WHERE oi.item_id IN (${ph}) AND o.client_id = ? AND o.status != 'CANCELLED'${efO.clause}
           AND o.order_date = (
             SELECT MAX(o2.order_date) FROM orders o2
             JOIN order_items oi2 ON oi2.order_id = o2.id
             WHERE oi2.item_id = oi.item_id AND o2.client_id = o.client_id AND o2.status != 'CANCELLED'
           )
         GROUP BY oi.item_id
-      `).bind(...itemIds, client_id).all<RecentTransactionRow>()
+      `).bind(...itemIds, client_id, ...efO.params).all<RecentTransactionRow>()
       for (const r of salesRows) {
         salesMap[r.item_id] = { unit_price: r.unit_price, order_date: r.order_date }
       }
