@@ -127,16 +127,21 @@ export function laborContractsPage(c: Context<HonoEnv>) {
                   <input type="date" id="lcWageEnd" class="w-full border rounded px-2 py-1 text-sm">
                 </div>
               </div>
-              <div class="grid grid-cols-2 gap-3">
+              <div class="grid grid-cols-3 gap-3">
                 <div>
                   <label class="text-xs text-gray-600 block mb-1">시급 (원)</label>
-                  <input type="number" id="lcHourlyRate" class="w-full border rounded px-2 py-1 text-sm" placeholder="0">
+                  <input type="number" id="lcHourlyRate" class="w-full border rounded px-2 py-1 text-sm" placeholder="0" oninput="lcCalcWage()">
+                </div>
+                <div>
+                  <label class="text-xs text-gray-600 block mb-1">일 고정연장 (시간)</label>
+                  <input type="number" id="lcOvertimeDaily" class="w-full border rounded px-2 py-1 text-sm" value="0" step="0.5" min="0" max="4" oninput="lcCalcWage()">
                 </div>
                 <div>
                   <label class="text-xs text-gray-600 block mb-1">수습기간 (개월)</label>
                   <input type="number" id="lcProbation" class="w-full border rounded px-2 py-1 text-sm" value="3" min="0" max="12">
                 </div>
               </div>
+              <div id="lcWagePreview" class="hidden p-2 rounded text-xs" style="background:var(--c-surface-secondary);border:1px solid var(--c-border)"></div>
               <div>
                 <label class="text-xs text-gray-600 block mb-1">담당업무</label>
                 <input type="text" id="lcJobDesc" class="w-full border rounded px-2 py-1 text-sm" placeholder="현수막 제작 보조 등">

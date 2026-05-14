@@ -180,7 +180,10 @@ window.lcOpenEditModal = async function(id) {
   document.getElementById('lcWageStart').value = '';
   document.getElementById('lcWageEnd').value = '';
   document.getElementById('lcHourlyRate').value = '';
+  document.getElementById('lcOvertimeDaily').value = '0';
   document.getElementById('lcProbation').value = '3';
+  var wp = document.getElementById('lcWagePreview');
+  if (wp) wp.classList.add('hidden');
   document.getElementById('lcJobDesc').value = '';
 
   if (id) {
@@ -201,6 +204,8 @@ window.lcOpenEditModal = async function(id) {
         document.getElementById('lcWageStart').value = (c.wage_start_date || '').substring(0, 10);
         document.getElementById('lcWageEnd').value = (c.wage_end_date || '').substring(0, 10);
         document.getElementById('lcHourlyRate').value = c.hourly_rate || '';
+        document.getElementById('lcOvertimeDaily').value = c.overtime_daily_hours || '0';
+        lcCalcWage();
         document.getElementById('lcProbation').value = c.probation_months != null ? c.probation_months : 3;
         document.getElementById('lcJobDesc').value = c.job_description || '';
       }
@@ -236,6 +241,9 @@ window.lcSave = async function() {
     wage_start_date: document.getElementById('lcWageStart').value || null,
     wage_end_date: document.getElementById('lcWageEnd').value || null,
     hourly_rate: parseInt(document.getElementById('lcHourlyRate').value) || 0,
+    overtime_daily_hours: parseFloat(document.getElementById('lcOvertimeDaily').value) || 0,
+    overtime_work_days: 22,
+    base_hours_monthly: 209,
     probation_months: parseInt(document.getElementById('lcProbation').value) || 3,
     job_description: document.getElementById('lcJobDesc').value || null,
   };
@@ -405,6 +413,31 @@ window.lcSubmitSignature = async function() {
     var msg = (e.response && e.response.data && e.response.data.error) || '서명 실패';
     alert(msg);
   }
+};
+
+// ===== 급여 계산 미리보기 =====
+window.lcCalcWage = function() {
+  var rate = parseInt(document.getElementById('lcHourlyRate').value) || 0;
+  var otDaily = parseFloat(document.getElementById('lcOvertimeDaily').value) || 0;
+  var preview = document.getElementById('lcWagePreview');
+  if (!preview || !rate) { if (preview) preview.classList.add('hidden'); return; }
+
+  var baseHours = 209;
+  var otDays = 22;
+  var basePay = rate * baseHours;
+  var otHours = otDaily * otDays;
+  var otPay = Math.round(rate * otHours * 1.5);
+  var total = basePay + otPay;
+
+  var html = '<div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap">';
+  html += '<span><strong>기본급:</strong> ' + rate.toLocaleString() + '원 × ' + baseHours + 'h = <strong>' + basePay.toLocaleString() + '원</strong></span>';
+  if (otDaily > 0) {
+    html += '<span><strong>고정연장:</strong> ' + rate.toLocaleString() + ' × ' + otHours + 'h × 1.5 = <strong>' + otPay.toLocaleString() + '원</strong></span>';
+  }
+  html += '<span style="color:var(--c-primary);font-weight:700">월 합계: ' + total.toLocaleString() + '원</span>';
+  html += '</div>';
+  preview.innerHTML = html;
+  preview.classList.remove('hidden');
 };
 
 // ===== 검색형 직원 선택 =====

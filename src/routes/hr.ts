@@ -1125,7 +1125,8 @@ hrRouter.post('/contracts', requireRole('ADMIN', 'MANAGER'), async (c) => {
     const {
       employee_id, contract_type, contract_date, contract_start_date,
       contract_end_date, wage_start_date, wage_end_date,
-      hourly_rate, work_type, job_description, probation_months
+      hourly_rate, work_type, job_description, probation_months,
+      overtime_daily_hours, overtime_work_days, base_hours_monthly
     } = body
 
     if (!employee_id || !contract_type || !contract_date || !contract_start_date) {
@@ -1139,18 +1140,25 @@ hrRouter.post('/contracts', requireRole('ADMIN', 'MANAGER'), async (c) => {
     }
 
     const contractEntityId = emp.entity_id || entityId || 1
+    const otDaily = overtime_daily_hours || 0
+    const otDays = overtime_work_days || 22
+    const baseH = base_hours_monthly || 209
+    const rate = hourly_rate || 0
+    const monthlySalary = Math.round(rate * baseH + rate * otDaily * otDays * 1.5)
 
     const result = await c.env.DB.prepare(`
       INSERT INTO labor_contracts (
         employee_id, entity_id, contract_type, contract_date, contract_start_date,
         contract_end_date, wage_start_date, wage_end_date,
         hourly_rate, work_type, job_description, probation_months,
+        overtime_daily_hours, overtime_work_days, base_hours_monthly, monthly_salary,
         status, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'DRAFT', datetime('now'), datetime('now'))
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'DRAFT', datetime('now'), datetime('now'))
     `).bind(
       employee_id, contractEntityId, contract_type, contract_date, contract_start_date,
       contract_end_date || null, wage_start_date || null, wage_end_date || null,
-      hourly_rate || null, work_type || null, job_description || null, probation_months || null
+      rate, work_type || null, job_description || null, probation_months || null,
+      otDaily, otDays, baseH, monthlySalary
     ).run()
 
     return c.json({ success: true, data: { id: result.meta.last_row_id } })
@@ -1329,6 +1337,10 @@ hrRouter.get('/contracts/:id/preview', requireRole('ADMIN', 'MANAGER'), async (c
         wage_start_date: row.wage_start_date || '',
         wage_end_date: row.wage_end_date || '',
         hourly_rate: row.hourly_rate || 0,
+        overtime_daily_hours: row.overtime_daily_hours || 0,
+        overtime_work_days: row.overtime_work_days || 22,
+        base_hours_monthly: row.base_hours_monthly || 209,
+        monthly_salary: row.monthly_salary || 0,
         work_type: row.work_type || 'REGULAR',
         job_description: row.job_description || '',
         probation_months: row.probation_months ?? 3,
