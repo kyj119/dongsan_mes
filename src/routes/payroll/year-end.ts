@@ -145,7 +145,7 @@ yearEndRouter.get('/year-end-settlement/:employeeId', async (c) => {
 // POST /api/payroll/year-end-settlement/:employeeId
 // body: { year, deduction_items: [...], dependents_count, additional_aged, ... }
 // ============================================================================
-yearEndRouter.post('/year-end-settlement/:employeeId', async (c) => {
+yearEndRouter.post('/year-end-settlement/:employeeId', requireRole('ADMIN', 'MANAGER'), async (c) => {
   try {
     const employeeId = Number(c.req.param('employeeId'))
     const body = await c.req.json<any>()
@@ -350,7 +350,7 @@ yearEndRouter.post('/year-end-settlement/:employeeId', async (c) => {
 // API: 연말정산 확정 (CONFIRMED 상태로 변경)
 // PUT /api/payroll/year-end-settlement/:settlementId/confirm
 // ============================================================================
-yearEndRouter.put('/year-end-settlement/:settlementId/confirm', async (c) => {
+yearEndRouter.put('/year-end-settlement/:settlementId/confirm', requireRole('ADMIN', 'MANAGER'), async (c) => {
   try {
     const settlementId = Number(c.req.param('settlementId'))
     const user = c.get('user')

@@ -45,7 +45,13 @@ hrRouter.get('/employees', async (c) => {
 
     let query = `
       SELECT
-        e.*,
+        e.id, e.employee_code, e.user_id, e.name, e.name_eng,
+        e.email, e.phone, e.mobile,
+        e.department, e.position, e.job_title, e.employment_type,
+        e.hire_date, e.resignation_date, e.status,
+        e.base_salary, e.hourly_rate, e.pay_type,
+        e.entity_id, e.caps_id, e.caps_site_id,
+        e.created_at, e.updated_at,
         u.username,
         ent.short_name as entity_name
       FROM employees e

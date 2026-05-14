@@ -428,10 +428,10 @@ app.get('/settings/payroll-rates', pageAuthMiddleware, requirePagePermission('/s
 app.get('/storage-zones', pageAuthMiddleware, requirePagePermission('/storage-zones'), storageZonesPage)
 app.get('/permissions', pageAuthMiddleware, requireAdminPage(), permissionsPage)
 app.get('/no-permission', pageAuthMiddleware, noPermissionPage)
-app.get('/payslip/:id', payslipPage)
+app.get('/payslip/:id', pageAuthMiddleware, payslipPage)
 app.get('/year-end-manage', pageAuthMiddleware, requirePagePermission('/year-end-manage'), yearEndManagePage)
 app.get('/insurance-reports', pageAuthMiddleware, requirePagePermission('/insurance-reports'), insuranceReportsPage)
-app.get('/year-end/:employeeId', yearEndPage)
+app.get('/year-end/:employeeId', pageAuthMiddleware, yearEndPage)
 app.get('/messages', pageAuthMiddleware, requirePagePermission('/messages'), messagesPage)
 app.get('/kakao', (c) => c.redirect('/messages'))
 
