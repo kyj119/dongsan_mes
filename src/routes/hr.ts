@@ -1132,11 +1132,13 @@ hrRouter.post('/contracts', requireRole('ADMIN', 'MANAGER'), async (c) => {
       return c.json({ success: false, error: '필수 항목이 누락되었습니다. (employee_id, contract_type, contract_date, contract_start_date)' }, 400)
     }
 
-    // 직원 존재 확인
-    const emp = await c.env.DB.prepare(`SELECT id FROM employees WHERE id = ?`).bind(employee_id).first<{ id: number }>()
+    // 직원 존재 확인 + entity_id 가져오기
+    const emp = await c.env.DB.prepare(`SELECT id, entity_id FROM employees WHERE id = ?`).bind(employee_id).first<{ id: number; entity_id: number | null }>()
     if (!emp) {
       return c.json({ success: false, error: '직원을 찾을 수 없습니다.' }, 404)
     }
+
+    const contractEntityId = emp.entity_id || entityId || 1
 
     const result = await c.env.DB.prepare(`
       INSERT INTO labor_contracts (
@@ -1146,7 +1148,7 @@ hrRouter.post('/contracts', requireRole('ADMIN', 'MANAGER'), async (c) => {
         status, created_at, updated_at
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'DRAFT', datetime('now'), datetime('now'))
     `).bind(
-      employee_id, entityId || 1, contract_type, contract_date, contract_start_date,
+      employee_id, contractEntityId, contract_type, contract_date, contract_start_date,
       contract_end_date || null, wage_start_date || null, wage_end_date || null,
       hourly_rate || null, work_type || null, job_description || null, probation_months || null
     ).run()
@@ -1285,7 +1287,7 @@ hrRouter.get('/contracts/:id/preview', requireRole('ADMIN', 'MANAGER'), async (c
     let query = `
       SELECT lc.*,
              e.name as employee_name, e.birth_date as employee_birth_date,
-             e.phone as employee_phone, e.address as employee_address,
+             COALESCE(e.mobile, e.phone) as employee_phone, e.address as employee_address,
              ent.name as entity_name, ent.representative as entity_representative,
              ent.address as entity_address
       FROM labor_contracts lc
