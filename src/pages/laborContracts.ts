@@ -132,9 +132,9 @@ export function laborContractsPage(c: Context<HonoEnv>) {
                   <label class="text-xs text-gray-600 block mb-1">시급 (원)</label>
                   <input type="number" id="lcHourlyRate" class="w-full border rounded px-2 py-1 text-sm" placeholder="0" oninput="lcCalcWage()">
                 </div>
-                <div>
-                  <label class="text-xs text-gray-600 block mb-1">일 고정연장 (시간)</label>
-                  <input type="number" id="lcOvertimeDaily" class="w-full border rounded px-2 py-1 text-sm" value="0" step="0.5" min="0" max="4" oninput="lcCalcWage()">
+                <div class="flex items-center gap-2 pt-5">
+                  <input type="checkbox" id="lcOvertimeDaily" onchange="lcCalcWage()" class="w-4 h-4 rounded">
+                  <label for="lcOvertimeDaily" class="text-xs text-gray-600 cursor-pointer">고정연장 (아침 30분)</label>
                 </div>
                 <div>
                   <label class="text-xs text-gray-600 block mb-1">수습기간 (개월)</label>

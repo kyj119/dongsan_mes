@@ -180,7 +180,7 @@ window.lcOpenEditModal = async function(id) {
   document.getElementById('lcWageStart').value = '';
   document.getElementById('lcWageEnd').value = '';
   document.getElementById('lcHourlyRate').value = '';
-  document.getElementById('lcOvertimeDaily').value = '0';
+  document.getElementById('lcOvertimeDaily').checked = false;
   document.getElementById('lcProbation').value = '3';
   var wp = document.getElementById('lcWagePreview');
   if (wp) wp.classList.add('hidden');
@@ -204,7 +204,7 @@ window.lcOpenEditModal = async function(id) {
         document.getElementById('lcWageStart').value = (c.wage_start_date || '').substring(0, 10);
         document.getElementById('lcWageEnd').value = (c.wage_end_date || '').substring(0, 10);
         document.getElementById('lcHourlyRate').value = c.hourly_rate || '';
-        document.getElementById('lcOvertimeDaily').value = c.overtime_daily_hours || '0';
+        document.getElementById('lcOvertimeDaily').checked = (c.overtime_daily_hours || 0) > 0;
         lcCalcWage();
         document.getElementById('lcProbation').value = c.probation_months != null ? c.probation_months : 3;
         document.getElementById('lcJobDesc').value = c.job_description || '';
@@ -241,7 +241,7 @@ window.lcSave = async function() {
     wage_start_date: document.getElementById('lcWageStart').value || null,
     wage_end_date: document.getElementById('lcWageEnd').value || null,
     hourly_rate: parseInt(document.getElementById('lcHourlyRate').value) || 0,
-    overtime_daily_hours: parseFloat(document.getElementById('lcOvertimeDaily').value) || 0,
+    overtime_daily_hours: document.getElementById('lcOvertimeDaily').checked ? 0.5 : 0,
     overtime_work_days: 22,
     base_hours_monthly: 209,
     probation_months: parseInt(document.getElementById('lcProbation').value) || 3,
@@ -429,7 +429,7 @@ window.lcCalcWage = function() {
     html += '<span style="color:var(--c-primary);font-weight:700">월급: ' + rate.toLocaleString() + '원</span>';
   } else {
     // 변동급: 시급 × 209 + 연장
-    var otDaily = parseFloat(document.getElementById('lcOvertimeDaily').value) || 0;
+    var otDaily = document.getElementById('lcOvertimeDaily').checked ? 0.5 : 0;
     var baseHours = 209;
     var otDays = 22;
     var basePay = rate * baseHours;
@@ -549,11 +549,15 @@ function lcSelectEmployee(empId) {
       rateEl.previousElementSibling.textContent = '시급 (원)';
     }
   }
-  // 고정급이면 연장 입력 숨김
+  // 고정급이면 연장 토글 숨김, 변동급이면 직원의 설정 반영
   var otEl = document.getElementById('lcOvertimeDaily');
   if (otEl) {
     otEl.parentElement.style.display = isFixed ? 'none' : '';
-    if (isFixed) otEl.value = '0';
+    if (isFixed) {
+      otEl.checked = false;
+    } else {
+      otEl.checked = (emp.overtime_daily_hours || 0) > 0;
+    }
   }
 
   var deptEl = document.getElementById('lcJobDesc');
