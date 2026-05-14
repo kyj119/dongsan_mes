@@ -1128,7 +1128,7 @@ hrRouter.post('/contracts', requireRole('ADMIN', 'MANAGER'), async (c) => {
     const {
       employee_id, contract_type, contract_date, contract_start_date,
       contract_end_date, wage_start_date, wage_end_date,
-      hourly_rate, work_type, job_description, probation_months,
+      hourly_rate, base_salary, work_type, job_description, probation_months,
       overtime_daily_hours, overtime_work_days, base_hours_monthly
     } = body
 
@@ -1146,8 +1146,10 @@ hrRouter.post('/contracts', requireRole('ADMIN', 'MANAGER'), async (c) => {
     const otDaily = overtime_daily_hours || 0
     const otDays = overtime_work_days || 22
     const baseH = base_hours_monthly || 209
-    const rate = hourly_rate || 0
-    const monthlySalary = Math.round(rate * baseH + rate * otDaily * otDays * 1.5)
+    // 시급: 직접 입력 또는 기본급에서 역산
+    const rate = hourly_rate || (base_salary ? Math.floor(base_salary / baseH) : 0)
+    const baseSalaryVal = base_salary || rate * baseH
+    const monthlySalary = Math.round(baseSalaryVal + rate * otDaily * otDays * 1.5)
 
     const result = await c.env.DB.prepare(`
       INSERT INTO labor_contracts (

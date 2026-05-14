@@ -180,7 +180,10 @@ window.lcOpenEditModal = async function(id) {
   document.getElementById('lcWageStart').value = '';
   document.getElementById('lcWageEnd').value = '';
   document.getElementById('lcHourlyRate').value = '';
+  document.getElementById('lcBaseSalary').value = '';
   document.getElementById('lcOvertimeDaily').checked = false;
+  var lbl = document.getElementById('lcRateLabel');
+  if (lbl) lbl.textContent = '기본급 (원)';
   document.getElementById('lcProbation').value = '3';
   var wp = document.getElementById('lcWagePreview');
   if (wp) wp.classList.add('hidden');
@@ -204,6 +207,9 @@ window.lcOpenEditModal = async function(id) {
         document.getElementById('lcWageStart').value = (c.wage_start_date || '').substring(0, 10);
         document.getElementById('lcWageEnd').value = (c.wage_end_date || '').substring(0, 10);
         document.getElementById('lcHourlyRate').value = c.hourly_rate || '';
+        // 기본급: hourly_rate × 209 역산 (저장된 값 기반)
+        var savedBase = c.hourly_rate ? c.hourly_rate * 209 : '';
+        document.getElementById('lcBaseSalary').value = savedBase || '';
         document.getElementById('lcOvertimeDaily').checked = (c.overtime_daily_hours || 0) > 0;
         lcCalcWage();
         document.getElementById('lcProbation').value = c.probation_months != null ? c.probation_months : 3;
@@ -241,6 +247,7 @@ window.lcSave = async function() {
     wage_start_date: document.getElementById('lcWageStart').value || null,
     wage_end_date: document.getElementById('lcWageEnd').value || null,
     hourly_rate: parseInt(document.getElementById('lcHourlyRate').value) || 0,
+    base_salary: parseInt(document.getElementById('lcBaseSalary').value) || 0,
     overtime_daily_hours: document.getElementById('lcOvertimeDaily').checked ? 0.5 : 0,
     overtime_work_days: 22,
     base_hours_monthly: 209,
@@ -417,30 +424,31 @@ window.lcSubmitSignature = async function() {
 
 // ===== 급여 계산 미리보기 =====
 window.lcCalcWage = function() {
-  var rate = parseInt(document.getElementById('lcHourlyRate').value) || 0;
   var contractType = (document.getElementById('lcContractType') || {}).value || 'HOURLY';
+  var baseSalary = parseInt(document.getElementById('lcBaseSalary').value) || 0;
   var preview = document.getElementById('lcWagePreview');
-  if (!preview || !rate) { if (preview) preview.classList.add('hidden'); return; }
+  if (!preview || !baseSalary) { if (preview) preview.classList.add('hidden'); return; }
 
-  var html = '<div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap">';
+  var html = '<div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">';
 
   if (contractType === 'MONTHLY') {
-    // 고정급: 입력값이 곧 월급
-    html += '<span style="color:var(--c-primary);font-weight:700">월급: ' + rate.toLocaleString() + '원</span>';
+    html += '<span style="color:var(--c-primary);font-weight:700">월급: ' + baseSalary.toLocaleString() + '원</span>';
+    document.getElementById('lcHourlyRate').value = baseSalary;
   } else {
-    // 변동급: 기본급 기준 (시급은 참고)
-    var otDaily = document.getElementById('lcOvertimeDaily').checked ? 0.5 : 0;
     var baseHours = 209;
+    var hourly = Math.floor(baseSalary / baseHours);
+    document.getElementById('lcHourlyRate').value = hourly;
+
+    var otDaily = document.getElementById('lcOvertimeDaily').checked ? 0.5 : 0;
     var otDays = 22;
-    // rate = 시급 입력값. 기본급 = 시급 × 209
-    var basePay = rate * baseHours;
-    var hourlyFromBase = rate; // 시급 그대로 사용
     var otHours = otDaily * otDays;
-    var otPay = Math.round(hourlyFromBase * otHours * 1.5);
-    var total = basePay + otPay;
-    html += '<span><strong>기본급:</strong> <strong>' + basePay.toLocaleString() + '원</strong> <span style="color:#6b7280">(시급 ' + rate.toLocaleString() + '원)</span></span>';
+    var otPay = Math.round(hourly * otHours * 1.5);
+    var total = baseSalary + otPay;
+
+    html += '<span>시급: <strong>' + hourly.toLocaleString() + '원</strong></span>';
+    html += '<span>기본급: <strong>' + baseSalary.toLocaleString() + '원</strong></span>';
     if (otDaily > 0) {
-      html += '<span><strong>고정연장:</strong> ' + rate.toLocaleString() + ' × ' + otHours + 'h × 1.5 = <strong>' + otPay.toLocaleString() + '원</strong></span>';
+      html += '<span>고정연장: ' + hourly.toLocaleString() + ' × ' + otHours + 'h × 1.5 = <strong>' + otPay.toLocaleString() + '원</strong></span>';
     }
     html += '<span style="color:var(--c-primary);font-weight:700">월 합계: ' + total.toLocaleString() + '원</span>';
   }
@@ -540,18 +548,12 @@ function lcSelectEmployee(empId) {
   var typeEl = document.getElementById('lcContractType');
   if (typeEl) typeEl.value = isFixed ? 'MONTHLY' : 'HOURLY';
 
-  // 자동 채움 — 항상 덮어쓰기 (직원 선택 시점에 최신값 반영)
-  var rateEl = document.getElementById('lcHourlyRate');
-  if (rateEl) {
-    if (isFixed) {
-      rateEl.value = emp.base_salary || '';
-      rateEl.previousElementSibling.textContent = '월급 (원)';
-    } else {
-      // 시급이 있으면 시급, 없으면 기본급에서 역산
-      var hourly = emp.hourly_rate || (emp.base_salary ? Math.round(emp.base_salary / 209) : 0);
-      rateEl.value = hourly || '';
-      rateEl.previousElementSibling.textContent = '시급 (원)';
-    }
+  // 자동 채움 — 기본급 기반
+  var baseSalaryEl = document.getElementById('lcBaseSalary');
+  var labelEl = document.getElementById('lcRateLabel');
+  if (baseSalaryEl) {
+    baseSalaryEl.value = emp.base_salary || '';
+    if (labelEl) labelEl.textContent = isFixed ? '월급 (원)' : '기본급 (원)';
   }
   // 고정급이면 연장 토글 숨김, 변동급이면 직원의 설정 반영
   var otEl = document.getElementById('lcOvertimeDaily');
