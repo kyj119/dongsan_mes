@@ -1,4 +1,10 @@
-﻿var currentTab = 'pending';
+﻿// Skeleton loading
+(function() {
+  var el = document.getElementById('pendingTableBody');
+  if (el && window.dsSkeleton) el.innerHTML = dsSkeleton.table(5, 6);
+})();
+
+var currentTab = 'pending';
 var pendingPage = 1;
 var historyPage = 1;
 var currentPOId = null;

@@ -1,4 +1,11 @@
 // 손익계산서 페이지
+
+// Skeleton loading
+(function() {
+  var el = document.getElementById('pnlTableBody');
+  if (el && window.dsSkeleton) el.innerHTML = dsSkeleton.table(8, 5);
+})();
+
 var pnlData = null;
 var monthlyData = null;
 var monthlyChart = null;

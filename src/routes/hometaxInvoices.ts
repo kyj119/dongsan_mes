@@ -136,16 +136,19 @@ hometaxInvoicesRouter.get('/jobs', requireRole('ADMIN', 'MANAGER'), async (c) =>
     const offset = (Number(page) - 1) * safeLimit
 
     const db = c.env.DB
+    const ef = entityFilter(c, 'hj')
     const { results } = await db.prepare(`
       SELECT hj.*,
              u.name as requester_name
       FROM hometax_jobs hj
       LEFT JOIN users u ON hj.requested_by = u.id
+      WHERE 1=1${ef.clause}
       ORDER BY hj.requested_at DESC
       LIMIT ? OFFSET ?
-    `).bind(safeLimit, offset).all()
+    `).bind(...ef.params, safeLimit, offset).all()
 
-    const countRow = await db.prepare(`SELECT COUNT(*) as count FROM hometax_jobs`).first<{ count: number }>()
+    const efCount = entityFilter(c, 'hj')
+    const countRow = await db.prepare(`SELECT COUNT(*) as count FROM hometax_jobs hj WHERE 1=1${efCount.clause}`).bind(...efCount.params).first<{ count: number }>()
     const count = countRow?.count ?? 0
 
     return c.json({

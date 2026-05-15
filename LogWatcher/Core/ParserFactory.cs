@@ -15,7 +15,8 @@ namespace LogWatcher.Core
             {
                 "tns" => new TnsParserAdapter(config, positionsDir),
                 "printexp" => new PrintExpParserAdapter(config, positionsDir),
-                "sqlite_db" => new SqliteDbParser(config, positionsDir),
+                "epson" => new SqliteDbParser(config, positionsDir),
+                "flexi" => new FlexiHtmlParser(config, positionsDir),
                 _ => throw new ArgumentException($"Unknown parser type: '{config.ParserType}' for equipment '{config.EquipmentId}'")
             };
         }

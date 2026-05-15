@@ -1,5 +1,13 @@
 // 직원 상세 페이지 (근태 + 급여 이력)
 
+// Skeleton loading
+(function() {
+  var el = document.getElementById('hrdPayBody');
+  if (el && window.dsSkeleton) el.innerHTML = dsSkeleton.table(5, 6);
+  var el2 = document.getElementById('hrdContractsBody');
+  if (el2 && window.dsSkeleton) el2.innerHTML = dsSkeleton.table(3, 5);
+})();
+
 var DEPT_NAMES = { ADMIN_DEPT: '사무직', DESIGN: '디자인', SALES: '영업', TRANSFER: '전사', SIGN: '간판', PRINTING: '출력', PRODUCTION: '생산직', EXECUTIVE: '임원' };
 var ENTITY_NAMES = { 1: '동산기획', 2: '선명', 3: '동산기획 청주' };
 var POSITION_NAMES = {

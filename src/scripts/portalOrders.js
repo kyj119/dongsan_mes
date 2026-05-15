@@ -2,6 +2,12 @@
 // 고객 포털 주문 내역 스크립트
 // ============================================================================
 
+// Skeleton loading
+(function() {
+  var el = document.getElementById('orders-tbody');
+  if (el && window.dsSkeleton) el.innerHTML = dsSkeleton.table(5, 6);
+})();
+
 var STATUS_MAP = {
   'QUOTATION': { label: '견적', color: 'gray', step: 0 },
   'CONFIRMED': { label: '확정', color: 'blue', step: 1 },

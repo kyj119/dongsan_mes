@@ -1,4 +1,10 @@
-﻿(function() {
+﻿// Skeleton loading
+(function() {
+  var el = document.getElementById('txTableBody');
+  if (el && window.dsSkeleton) el.innerHTML = dsSkeleton.table(8, 8);
+})();
+
+(function() {
   // State
   var clients = [];
   var transactions = [];

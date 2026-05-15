@@ -2,6 +2,15 @@
 // 전자결재 프론트엔드
 // ============================================================================
 
+// Skeleton loading
+(function() {
+  var ids = ['my-requests-tbody', 'all-requests-tbody'];
+  ids.forEach(function(id) {
+    var el = document.getElementById(id);
+    if (el && window.dsSkeleton) el.innerHTML = dsSkeleton.table(5, 6);
+  });
+})();
+
 var pendingApprovals = [];
 var myRequests = [];
 var allRequests = [];

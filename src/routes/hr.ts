@@ -3,7 +3,7 @@ import { authMiddleware, requireRole } from '../middleware/auth'
 import { requirePagePermission } from '../middleware/permissions'
 import type { HonoEnv } from '../types/env'
 import { encryptPII, decryptPII } from '../utils/crypto'
-import { getEntityId } from '../utils/entityFilter'
+import { getEntityId, entityFilter } from '../utils/entityFilter'
 import { renderEmploymentCertificateHTML } from '../templates/employmentCertificate'
 
 const hrRouter = new Hono<HonoEnv>()
@@ -60,6 +60,9 @@ hrRouter.get('/employees', async (c) => {
       WHERE 1=1
     `
     const params: any[] = []
+    const ef = entityFilter(c, 'e')
+    query += ef.clause
+    params.push(...ef.params)
 
     if (department) {
       query += ` AND e.department = ?`
@@ -90,6 +93,9 @@ hrRouter.get('/employees', async (c) => {
     // Count total
     let countQuery = `SELECT COUNT(*) as total FROM employees WHERE 1=1`
     const countParams: any[] = []
+    const efCount = entityFilter(c)
+    countQuery += efCount.clause
+    countParams.push(...efCount.params)
 
     if (department) {
       countQuery += ` AND department = ?`
@@ -817,20 +823,23 @@ hrRouter.post('/payrolls', async (c) => {
 // Get HR statistics
 hrRouter.get('/stats', async (c) => {
   try {
+    const ef = entityFilter(c)
+    const efE = entityFilter(c, 'e')
+
     // Total employees
     const { results: totalResults } = await c.env.DB.prepare(`
-      SELECT COUNT(*) as total FROM employees WHERE status = 'ACTIVE'
-    `).all<{ total: number }>()
+      SELECT COUNT(*) as total FROM employees WHERE status = 'ACTIVE'${ef.clause}
+    `).bind(...ef.params).all<{ total: number }>()
 
-    // Department breakdown (employees table doesn't have base_salary)
+    // Department breakdown
     const { results: deptResults } = await c.env.DB.prepare(`
-      SELECT 
+      SELECT
         department,
         COUNT(*) as count
       FROM employees
-      WHERE status = 'ACTIVE'
+      WHERE status = 'ACTIVE'${ef.clause}
       GROUP BY department
-    `).all()
+    `).bind(...ef.params).all()
 
     // Today's attendance — 재직(ACTIVE) 직원의 PRESENT 상태만 카운트
     // KST 기준 오늘 (UTC+9)
@@ -841,8 +850,8 @@ hrRouter.get('/stats', async (c) => {
       INNER JOIN employees e ON e.id = a.employee_id
       WHERE a.work_date = ?
         AND e.status = 'ACTIVE'
-        AND a.status = 'PRESENT'
-    `).bind(todayKst).all<{ present: number }>()
+        AND a.status = 'PRESENT'${efE.clause}
+    `).bind(todayKst, ...efE.params).all<{ present: number }>()
 
     // Average work hours this month — 재직 직원의 PRESENT 기록만 (결근 제외)
     const { results: avgHoursResults } = await c.env.DB.prepare(`
@@ -853,16 +862,18 @@ hrRouter.get('/stats', async (c) => {
         AND e.status = 'ACTIVE'
         AND a.status = 'PRESENT'
         AND a.work_hours IS NOT NULL
-        AND a.work_hours > 0
-    `).all<{ avg_hours: number }>()
+        AND a.work_hours > 0${efE.clause}
+    `).bind(...efE.params).all<{ avg_hours: number }>()
 
     // Monthly payroll total (실제 테이블: payroll 단수형, 컬럼: net_pay)
+    // payroll 테이블에는 entity_id 없음 → employees JOIN으로 필터
     const thisMonth = new Date().toISOString().slice(0, 7)
     const { results: payrollResults } = await c.env.DB.prepare(`
-      SELECT SUM(net_pay) as total
-      FROM payroll
-      WHERE pay_period = ?
-    `).bind(thisMonth).all<{ total: number }>()
+      SELECT SUM(p.net_pay) as total
+      FROM payroll p
+      INNER JOIN employees e ON e.id = p.employee_id
+      WHERE p.pay_period = ?${efE.clause}
+    `).bind(thisMonth, ...efE.params).all<{ total: number }>()
 
     return c.json({
       success: true,

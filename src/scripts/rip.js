@@ -1,6 +1,14 @@
 ﻿var eventsPage = 1;
 var autoRefreshTimer = null;
 
+// Skeleton loading
+(function() {
+  var el = document.getElementById('agentsBody');
+  if (el && window.dsSkeleton) el.innerHTML = dsSkeleton.table(3, 7);
+  var el2 = document.getElementById('eventsBody');
+  if (el2 && window.dsSkeleton) el2.innerHTML = dsSkeleton.table(5, 8);
+})();
+
 // Tabs
 document.querySelectorAll(".tab-btn").forEach(btn => {
     btn.addEventListener("click", () => {

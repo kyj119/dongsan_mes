@@ -1,4 +1,11 @@
 // 근태 관리 스프레드시트
+
+// Skeleton loading
+(function() {
+  var el = document.getElementById('attBody');
+  if (el && window.dsSkeleton) el.innerHTML = dsSkeleton.table(8, 10);
+})();
+
 (function () {
   // 상태
   var state = {

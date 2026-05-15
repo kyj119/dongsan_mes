@@ -51,7 +51,7 @@ POST /api/print-events → MES
       "equipment_id": "EPSON-01",
       "name": "Epson 에코솔벤트 (SC-S9100)",
       "enabled": true,
-      "parser_type": "sqlite_db",
+      "parser_type": "epson",
       "config": {
         "db_path": "C:\\ProgramData\\Epson\\Epson Edge Print\\DB\\Data.db",
         "query": "SELECT j.JobID, j.JobName, l.FinishPrintTime, p.OriginalSizeWidth, p.OriginalSizeHeight FROM Job j JOIN Log l ON j.JobID = l.JobID LEFT JOIN Page p ON j.JobID = p.JobID AND p.PageID = 1 WHERE j.JobStatus = 12 AND j.JobID > @last_id ORDER BY j.JobID",
@@ -88,7 +88,15 @@ POST /api/print-events → MES
 |---------|------|------|
 | `log_path` | ✅ | 로그 폴더 경로 (Log[날짜].txt가 있는 폴더) |
 
-#### `sqlite_db` — SQLite DB 폴링 (Epson 등)
+#### `flexi` — SAi FlexiPRINT HTML 로그
+
+| 파라미터 | 필수 | 설명 | 예시 |
+|---------|------|------|------|
+| `log_path` | ✅ | RIPLOG.HTML 파일 경로 | `C:\Program Files\SAi\...\Jobs and Settings\RIPLOG.HTML` |
+
+> FlexiPRINT의 RIPLOG.HTML은 append-only HTML 파일. "인쇄 시작"~"출력 끝" 블록에서 파일명, 치수(mm/inch 자동변환), 시작/종료 시간, 상태(OK/CANCEL/ERROR), 인쇄 매수를 추출합니다.
+
+#### `epson` — Epson Edge Print SQLite DB 폴링
 
 | 파라미터 | 필수 | 설명 | 예시 |
 |---------|------|------|------|

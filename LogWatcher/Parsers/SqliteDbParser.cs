@@ -49,9 +49,9 @@ namespace LogWatcher.Parsers
             _sizeUnit = config.GetConfigString("size_unit", "mm");
 
             if (string.IsNullOrEmpty(_dbPath))
-                throw new ArgumentException($"[{EquipmentId}] config.db_path is required for sqlite_db parser");
+                throw new ArgumentException($"[{EquipmentId}] config.db_path is required for epson parser");
             if (string.IsNullOrEmpty(_query))
-                throw new ArgumentException($"[{EquipmentId}] config.query is required for sqlite_db parser");
+                throw new ArgumentException($"[{EquipmentId}] config.query is required for epson parser");
 
             _positionFile = Path.Combine(positionsDir, $"{EquipmentId}.pos");
             _lastId = LoadPosition();

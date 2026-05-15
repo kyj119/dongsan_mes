@@ -2,6 +2,12 @@
 // 고객 포털 미수금 스크립트
 // ============================================================================
 
+// Skeleton loading
+(function() {
+  var el = document.getElementById('balance-tbody');
+  if (el && window.dsSkeleton) el.innerHTML = dsSkeleton.table(5, 5);
+})();
+
 // URL의 ?t= 임시 토큰 파라미터 확인
 const urlParams = new URLSearchParams(window.location.search);
 const accessToken = urlParams.get('t');

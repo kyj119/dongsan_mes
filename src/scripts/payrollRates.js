@@ -1,6 +1,12 @@
 // 급여 요율/간이세액표 관리 스크립트
 // IIFE는 파일 맨 아래
 
+// Skeleton loading
+(function() {
+  var el = document.getElementById('prRRatesBody');
+  if (el && window.dsSkeleton) el.innerHTML = dsSkeleton.table(5, 7);
+})();
+
 var prRTaxOffset = 0;
 var prRTaxLimit = 100;
 var prRTaxTotal = 0;

@@ -1,4 +1,12 @@
-﻿// ── 유틸 ──
+﻿// Skeleton loading
+(function() {
+  var el = document.getElementById('unassignedCards');
+  if (el && window.dsSkeleton) el.innerHTML = dsSkeleton.cards(4);
+  var el2 = document.getElementById('equipmentColumns');
+  if (el2 && window.dsSkeleton) el2.innerHTML = dsSkeleton.cards(3);
+})();
+
+// ── 유틸 ──
 function getUrgencyInfo(deliveryDate) {
   if (!deliveryDate) return { class: '', label: '' };
   const today = new Date();

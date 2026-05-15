@@ -1,6 +1,12 @@
 // 연차 관리 (Phase B3)
 // IIFE 호이스팅 버그 방지: window.foo 할당은 IIFE 위, IIFE는 파일 맨 아래
 
+// Skeleton loading
+(function() {
+  var el = document.getElementById('lvBalancesBody');
+  if (el && window.dsSkeleton) el.innerHTML = dsSkeleton.table(5, 7);
+})();
+
 var lvCurrentTab = 'balances';
 var lvEmployees = [];
 

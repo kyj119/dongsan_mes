@@ -1,4 +1,11 @@
 // 자금계획 (Cash Schedule) 페이지
+
+// Skeleton loading
+(function() {
+  var el = document.getElementById('schCalendarContainer');
+  if (el && window.dsSkeleton) el.innerHTML = dsSkeleton.cards(6);
+})();
+
 var schCurrentYear = null;
 var schCurrentMonth = null;
 var schCalendarData = null;
