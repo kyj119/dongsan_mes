@@ -2,6 +2,12 @@
 // 고객 포털 세금계산서 스크립트
 // ============================================================================
 
+// Skeleton loading
+(function() {
+  var el = document.getElementById('invoices-tbody');
+  if (el && window.dsSkeleton) el.innerHTML = dsSkeleton.table(5, 6);
+})();
+
 var INV_STATUS = {
   ISSUED: { label: '발행', cls: 'bg-green-50 text-green-700' },
   PENDING: { label: '대기', cls: 'bg-amber-50 text-amber-700' },

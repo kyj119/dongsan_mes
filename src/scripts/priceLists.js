@@ -1,4 +1,10 @@
-﻿var selectedPriceListId = null;
+﻿// Skeleton loading
+(function() {
+  var el = document.getElementById('priceListCards');
+  if (el && window.dsSkeleton) el.innerHTML = dsSkeleton.cards(3);
+})();
+
+var selectedPriceListId = null;
 var assignClientIds = [];
 
 function loadPriceLists() {

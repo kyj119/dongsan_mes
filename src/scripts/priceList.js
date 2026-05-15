@@ -1,3 +1,9 @@
+// Skeleton loading
+(function() {
+  var el = document.getElementById('priceTableArea');
+  if (el && window.dsSkeleton) el.innerHTML = dsSkeleton.table(8, 6);
+})();
+
 var priceData = { items: [], media: [], policyRules: [], policyName: '', policyId: null, clientName: '', categories: [] };
 var priceMode = 'base';
 var selectedClientId = null;

@@ -25,7 +25,7 @@
       "equipment_id": "EPSON-01",
       "name": "Epson 에코솔벤트 (SC-S9100)",
       "enabled": true,
-      "parser_type": "sqlite_db",
+      "parser_type": "epson",
       "config": {
         "db_path": "C:\\ProgramData\\Epson\\Epson Edge Print\\DB\\Data.db",
         "query": "SELECT j.JobID, j.JobName, l.FinishPrintTime, p.OriginalSizeWidth, p.OriginalSizeHeight FROM Job j JOIN Log l ON j.JobID = l.JobID LEFT JOIN Page p ON j.JobID = p.JobID AND p.PageID = 1 WHERE j.JobStatus = 12 AND j.JobID > @last_id ORDER BY j.JobID",

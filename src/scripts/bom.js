@@ -2,6 +2,12 @@
 // BOM/MRP 프론트엔드
 // ============================================================================
 
+// Skeleton loading
+(function() {
+  var el = document.getElementById('bom-tbody');
+  if (el && window.dsSkeleton) el.innerHTML = dsSkeleton.table(5, 7);
+})();
+
 var bomData = [];
 var categoriesList = [];
 var materialsList = [];

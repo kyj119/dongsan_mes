@@ -1,4 +1,10 @@
-﻿// State
+﻿// Skeleton loading
+(function() {
+  var el = document.getElementById('clientsTableBody');
+  if (el && window.dsSkeleton) el.innerHTML = dsSkeleton.table(8, 7);
+})();
+
+// State
 var selectedClientId = null;
 var selectedClientName = '';
 var allClients = [];

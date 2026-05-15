@@ -180,7 +180,7 @@ Heartbeat: 60초마다 장비별 heartbeat 전송
       "equipment_id": "EPSON-01",
       "name": "Epson 에코솔벤트 (SC-S9100)",
       "enabled": true,
-      "parser_type": "sqlite_db",
+      "parser_type": "epson",
       "config": {
         "db_path": "C:\\ProgramData\\Epson\\Epson Edge Print\\DB\\Data.db",
         "query": "SELECT j.JobID, j.JobName, l.FinishPrintTime, p.OriginalSizeWidth, p.OriginalSizeHeight FROM Job j JOIN Log l ON j.JobID = l.JobID LEFT JOIN Page p ON j.JobID = p.JobID AND p.PageID = 1 WHERE j.JobStatus = 12 AND j.JobID > @last_id ORDER BY j.JobID",
@@ -330,7 +330,7 @@ config 파라미터:
 | `error_values` | | 에러 상태 값 목록 |
 | `size_columns` | | 크기 컬럼 [width_idx, height_idx] |
 
-### 5.6 `sqlite_db` — SQLite DB 폴링 ★ (Epson 등)
+### 5.6 `epson` — SQLite DB 폴링 ★ (Epson 등)
 
 **RIP 소프트웨어가 자체 SQLite DB를 사용하는 장비용.**
 Epson Edge Print가 대표적. DB에 잡 상태, 타임스탬프, 파일명이 모두 있어 가장 정확한 데이터 추출 가능.
@@ -460,7 +460,7 @@ public static class ParserFactory
             "tns"        => new TnsParser(config),
             "printexp"   => new PrintExpParser(config),
             "text_log"   => new TextLogParser(config),
-            "sqlite_db"  => new SqliteDbParser(config),
+            "epson"  => new SqliteDbParser(config),
             "jdf_folder" => new JdfFolderParser(config),
             "csv_log"    => new CsvLogParser(config),
             _ => throw new ArgumentException($"Unknown parser type: {config.ParserType}")
@@ -490,7 +490,7 @@ positions/
 | `tns` | 바이트 오프셋 | 파일 크기 < 위치 |
 | `printexp` | `날짜\|오프셋` | 날짜 변경 시 새 파일 |
 | `text_log` | 바이트 오프셋 | 파일 크기 < 위치 |
-| `sqlite_db` | 마지막 완료 ID (예: JobID) | - (단조 증가) |
+| `epson` | 마지막 완료 ID (예: JobID) | - (단조 증가) |
 | `jdf_folder` | 마지막 잡 ID (폴더 번호) | - |
 | `csv_log` | 라인 번호 | 파일 크기 < 위치 |
 
@@ -615,7 +615,7 @@ nssm restart LogWatcher
 ### Phase 4: CsvLogParser + JdfFolderParser (0.5세션)
 
 - CSV 컬럼 매핑 파서 (카팅기 등)
-- JDF 폴더 파서 (sqlite_db 사용 불가한 장비 폴백용)
+- JDF 폴더 파서 (epson 사용 불가한 장비 폴백용)
 - **검증**: 실제 로그 샘플로 테스트
 
 ### Phase 5: OrderMatcher 확장 + 관리 도구 (1세션)
@@ -682,7 +682,7 @@ nssm restart LogWatcher
 |------|------|------|
 | Epson 로그 분석 | ✅ 완료 | SQLite DB (Job+Log 테이블), JobStatus=12=완료, 132건 히스토리 |
 | Epson 데이터 경로 | ✅ 확인 | 로컬: `C:\ProgramData\Epson\Epson Edge Print\DB\Data.db` / NAS: Z: |
-| 파서 전략 결정 | ✅ 확정 | `sqlite_db` 타입 (DB 폴링 방���) |
+| 파서 전략 결정 | ✅ 확정 | `epson` 타입 (DB 폴링 방���) |
 
 ### ⬜ 미완료 항목
 

@@ -1,4 +1,10 @@
-﻿var paramCount = 0;
+﻿// Skeleton loading
+(function() {
+  var el = document.getElementById('ppTableBody');
+  if (el && window.dsSkeleton) el.innerHTML = dsSkeleton.table(5, 9);
+})();
+
+var paramCount = 0;
 var allSubcats = [];
 var MARGIN_MAX = 15;
 

@@ -1,5 +1,11 @@
 // /tasks 페이지 - 작업 큐 모니터링 (axios bearer 토큰은 SHARED_AUTH_JS에서 설정됨)
 
+// Skeleton loading
+(function() {
+  var el = document.getElementById('tasksBody');
+  if (el && window.dsSkeleton) el.innerHTML = dsSkeleton.table(5, 8);
+})();
+
 const STATUS_COLOR = {
   PENDING: 'bg-gray-100 text-gray-700',
   PROCESSING: 'bg-blue-50 text-blue-700',

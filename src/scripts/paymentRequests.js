@@ -1,4 +1,11 @@
 // 지출결의서
+
+// Skeleton loading
+(function() {
+  var el = document.getElementById('prTableBody');
+  if (el && window.dsSkeleton) el.innerHTML = dsSkeleton.table(5, 9);
+})();
+
 function fmt(n) { return (n || 0).toLocaleString(); }
 var prEditingId = null;
 // 초기화는 파일 맨 아래에서 실행 (window.* 함수 정의 이후)
