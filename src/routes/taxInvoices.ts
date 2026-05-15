@@ -1541,8 +1541,37 @@ taxInvoicesRouter.post('/:id/cancel', requireRole('ADMIN'), async (c) => {
       WHERE id = ?
     `).bind(user.id, cancel_reason || null, id).run()
 
+    // 취소된 계산서에 연결된 주문들의 billing_status 초기화
+    // 다른 유효 계산서(ISSUED/SENT/NTS_SUCCESS)가 없는 주문만 초기화
+    try {
+      const { results: linkedOrders } = await c.env.DB.prepare(
+        `SELECT DISTINCT tio.order_id FROM tax_invoice_orders tio
+         WHERE tio.tax_invoice_id = ?
+         UNION
+         SELECT order_id FROM tax_invoices WHERE id = ? AND order_id IS NOT NULL`
+      ).bind(id, id).all()
+      const orderIds = (linkedOrders as Array<{ order_id: number }>).map(r => r.order_id).filter(Boolean)
+
+      for (const orderId of orderIds) {
+        // 이 주문에 연결된 다른 유효 계산서가 있는지 확인
+        const otherValid = await c.env.DB.prepare(
+          `SELECT COUNT(*) as cnt FROM tax_invoice_orders tio
+           JOIN tax_invoices ti ON tio.tax_invoice_id = ti.id
+           WHERE tio.order_id = ? AND ti.id != ? AND ti.status NOT IN ('CANCELLED', 'DRAFT')`
+        ).bind(orderId, id).first<{ cnt: number }>()
+
+        if (!otherValid || otherValid.cnt === 0) {
+          await c.env.DB.prepare(
+            `UPDATE orders SET billing_status = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?`
+          ).bind(orderId).run()
+        }
+      }
+    } catch (_err) {
+      console.warn('세금계산서 취소 - billing_status 초기화 오류:', _err)
+    }
+
     const updated = await c.env.DB.prepare(`
-      SELECT ti.*, o.order_number FROM tax_invoices ti
+      SELECT ti.*, o.order_number, o.billing_status FROM tax_invoices ti
       LEFT JOIN orders o ON ti.order_id = o.id
       WHERE ti.id = ?
     `).bind(id).first()

@@ -20,14 +20,15 @@ const cardsLifecycleRouter = new Hono<HonoEnv>()
 cardsLifecycleRouter.use('/*', authMiddleware, requireAnyPagePermission('/cards', '/orders'))
 
 async function syncOrderStatusFromCards(db: D1Database, orderId: number) {
-  // 1. 해당 주문의 모든 카드 상태 조회 (HOLD 제외)
+  // 1. 해당 주문의 모든 카드 상태 조회 (CANCELLED 제외)
   const cards = await db.prepare(
-    `SELECT status FROM cards WHERE order_id = ? AND status != 'HOLD'`
+    `SELECT status FROM cards WHERE order_id = ? AND status != 'CANCELLED'`
   ).bind(orderId).all<{ status: string }>()
 
   if (!cards.results || cards.results.length === 0) return
 
   const statuses: string[] = cards.results.map((c) => c.status)
+  const hasHold = statuses.some((s) => s === 'HOLD')
 
   // 2. 주문 현재 상태 확인 — 아래 상태는 카드로 자동 변경하지 않음
   const order = await db.prepare(
@@ -39,10 +40,12 @@ async function syncOrderStatusFromCards(db: D1Database, orderId: number) {
   if (skipStatuses.includes(order.status)) return
 
   // 3. 카드 상태 집계 → 주문 상태 결정
+  //    HOLD 카드가 있으면 PRINT_DONE 전환 차단 (HOLD 해제 후에만 완료 처리)
+  const nonHoldStatuses = statuses.filter((s) => s !== 'HOLD')
   let newStatus: string | null = null
-  if (statuses.every((s) => s === 'PRINT_DONE')) {
+  if (!hasHold && nonHoldStatuses.length > 0 && nonHoldStatuses.every((s) => s === 'PRINT_DONE')) {
     newStatus = 'PRINT_DONE'
-  } else if (statuses.some((s) => s === 'PRINTING')) {
+  } else if (nonHoldStatuses.some((s) => s === 'PRINTING')) {
     // CONFIRMED 상태에서는 실제 출력 시작(카드 중 하나라도 PRINT_DONE이 있을 때)만 전이
     // 카드 생성 시 기본 PRINTING이므로, 모두 PRINTING이면 아직 실제 출력 시작 안 한 것
     if (order.status === 'CONFIRMED' && !statuses.some((s) => s === 'PRINT_DONE')) {

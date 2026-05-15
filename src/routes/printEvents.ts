@@ -117,16 +117,18 @@ async function autoCheckCardItem(db: D1Database, cardId: number, orderItemId: nu
         try {
           // syncOrderStatus는 cards.ts 내부 함수라 직접 호출 불가 → 동일 로직 적용
           const { results: siblingCards } = await db.prepare(
-            "SELECT status FROM cards WHERE order_id = ? AND status != 'HOLD'"
+            "SELECT status FROM cards WHERE order_id = ? AND status != 'CANCELLED'"
           ).bind(card.order_id).all<{ status: string }>()
           const orderCheck = await db.prepare(
             "SELECT status FROM orders WHERE id = ?"
           ).bind(card.order_id).first<{ status: string }>()
           const statuses = (siblingCards || []).map((sc) => sc.status)
+          const hasHold = statuses.some((s: string) => s === 'HOLD')
+          const nonHold = statuses.filter((s: string) => s !== 'HOLD')
           let newOrderStatus = null
-          if (statuses.every((s: string) => s === 'PRINT_DONE')) {
+          if (!hasHold && nonHold.length > 0 && nonHold.every((s: string) => s === 'PRINT_DONE')) {
             newOrderStatus = 'PRINT_DONE'
-          } else if (statuses.some((s: string) => s === 'PRINTING')) {
+          } else if (nonHold.some((s: string) => s === 'PRINTING')) {
             // CONFIRMED 상태에서 모든 카드가 PRINTING(실제 출력 미시작)이면 전이하지 않음
             if (orderCheck?.status === 'CONFIRMED' && !statuses.some((s: string) => s === 'PRINT_DONE')) {
               newOrderStatus = null
