@@ -1588,31 +1588,15 @@ ordersCoreRouter.delete('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
       `).bind(order.billed_amount || order.final_amount, order.client_id).run()
     }
 
-    // Delete related shipments & shipment_items (서브쿼리로 N+1 제거)
-    await c.env.DB.prepare(`
-      DELETE FROM shipment_items WHERE shipment_id IN (SELECT id FROM shipments WHERE order_id = ?)
-    `).bind(id).run()
-    await c.env.DB.prepare('DELETE FROM shipments WHERE order_id = ?').bind(id).run()
-
-    // Delete related cards (CASCADE will handle card_items)
-    await c.env.DB.prepare(`
-      DELETE FROM cards WHERE order_id = ?
-    `).bind(id).run()
-
-    // Delete order items
-    await c.env.DB.prepare(`
-      DELETE FROM order_items WHERE order_id = ?
-    `).bind(id).run()
-
-    // Delete order status history
-    await c.env.DB.prepare(`
-      DELETE FROM order_status_history WHERE order_id = ?
-    `).bind(id).run()
-
-    // Delete order
-    await c.env.DB.prepare(`
-      DELETE FROM orders WHERE id = ?
-    `).bind(id).run()
+    // Delete in single atomic batch: child→parent order (CASCADE handles card_items)
+    await c.env.DB.batch([
+      c.env.DB.prepare(`DELETE FROM shipment_items WHERE shipment_id IN (SELECT id FROM shipments WHERE order_id = ?)`).bind(id),
+      c.env.DB.prepare(`DELETE FROM shipments WHERE order_id = ?`).bind(id),
+      c.env.DB.prepare(`DELETE FROM cards WHERE order_id = ?`).bind(id),
+      c.env.DB.prepare(`DELETE FROM order_items WHERE order_id = ?`).bind(id),
+      c.env.DB.prepare(`DELETE FROM order_status_history WHERE order_id = ?`).bind(id),
+      c.env.DB.prepare(`DELETE FROM orders WHERE id = ?`).bind(id),
+    ])
 
     return c.json({
       success: true,
