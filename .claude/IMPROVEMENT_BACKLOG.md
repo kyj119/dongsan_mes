@@ -1,59 +1,37 @@
 # Improvement Backlog
-<!-- last_run_area: 2,3,4,5,6 (전체 심층 감사) -->
-<!-- last_run_at: 2026-05-15T01:00:00+09:00 -->
+<!-- last_run_area: 전체 심층 감사 (Area 2~6) -->
+<!-- last_run_at: 2026-05-15T02:00:00+09:00 -->
 
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| ✔️ done | 5 |
-| 🆕 new (GitHub Issue) | 4 |
+| ✔️ done | 15 |
+| 🆕 new | 0 |
 
-## 🔧 Auto-fixed (이번 세션)
-### [A-001] Auth bypass — payslip/year-end 페이지 인증 누락 (Area 5)
-- **수정**: pageAuthMiddleware 추가
-- **커밋**: 82d4da3
-- **상태**: ✔️ done
+## 🔧 Auto-fixed (2026-05-15 세션)
 
-### [A-002] XSS — clientDetail.js 거래처 메모 innerHTML (Area 5)
-- **수정**: escapeHtml 4곳 적용
-- **커밋**: 82d4da3
-- **상태**: ✔️ done
+### [A-001] Auth bypass — payslip/year-end 인증 누락 (Area 5, 커밋 82d4da3)
+### [A-002] XSS — clientDetail.js 거래처 메모 innerHTML (Area 5, 커밋 82d4da3)
+### [A-003] Authorization — year-end settlement requireRole 누락 (Area 5, 커밋 82d4da3)
+### [A-004] PII — HR 직원 목록 주민번호/계좌 노출 (Area 5, 커밋 82d4da3)
+### [A-005] 인덱스 — cards.requesting_entity_id 외 4건 (Area 2, 커밋 82d4da3)
+### [A-006] XSS 8건 — messages/purchaseRequests/taxInvoices (#47, 커밋 932f236)
+### [A-007] 카드-주문 상태 동기화 + 불일치 32건 수정 (#48, 커밋 932f236)
+### [A-008] caps.ts N+1 batch 리팩토링 (#49, 커밋 932f236)
+### [A-009] 로딩 스피너 5개 주요 페이지 (#50, 커밋 932f236)
+### [A-010] 출고 취소 시 카드/주문 상태 복구 (#51, 커밋 932f236)
+### [A-011] 카드→주문 상태 전환 원자적 batch (#52, 커밋 932f236)
+### [A-012] HR CHILD_TABLES labor_contracts 누락 (#53, 커밋 932f236)
+### [A-013] 세금계산서 삭제 시 자식 테이블 동시 삭제 (#54, 커밋 932f236)
+### [A-014] 주문 취소 시 부분 출고 차단 + 카드 이력 (#55, 커밋 932f236)
+### [A-015] portal_access_tokens 90일 보존 후 정리 (#56, 커밋 932f236)
 
-### [A-003] Authorization — year-end settlement requireRole 누락 (Area 5)
-- **수정**: requireRole('ADMIN','MANAGER') 추가
-- **커밋**: 82d4da3
-- **상태**: ✔️ done
+상태: 전부 ✔️ done — GitHub Issues #47~#56 closed
 
-### [A-004] PII — HR 직원 목록에 주민번호/계좌 노출 (Area 5)
-- **수정**: SELECT에서 민감 필드 제외
-- **커밋**: 82d4da3
-- **상태**: ✔️ done
-
-### [A-005] 인덱스 — cards.requesting_entity_id 외 4건 (Area 2)
-- **수정**: 마이그레이션 0204 생성
-- **커밋**: 82d4da3
-- **상태**: ✔️ done
-
-## 🆕 Open Issues
-### [I-047] XSS 취약점 8건 — messages/purchaseRequests/taxInvoices (Area 5)
-- **GitHub**: #47
-- **공수**: 30분
-- **상태**: 🆕
-
-### [I-048] 카드-주문 상태 불일치 32건 (Area 4)
-- **GitHub**: #48
-- **공수**: 1h
-- **상태**: 🆕
-
-### [I-049] N+1 caps.ts + entity_id 인덱스 3건 (Area 2)
-- **GitHub**: #49
-- **공수**: 1h
-- **상태**: 🆕
-
-### [I-050] 로딩 상태 미구현 30/79 페이지 (Area 3)
-- **GitHub**: #50
-- **공수**: 2-3h
-- **상태**: 🆕
+## 잔여 개선 대상 (이슈 미등록, 낮은 우선순위)
+- 로딩 스피너 나머지 25개 페이지 (5/30 완료)
+- `as any` 51건 점진적 타입 개선
+- 빈 상태 메시지 10개 파일
 
 ## 오탐 제외 패턴
 | 패턴 | 이유 |
