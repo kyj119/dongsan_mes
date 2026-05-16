@@ -114,8 +114,8 @@
 
 | ID | 제목 | 커밋 | 날짜 |
 |----|------|------|------|
-| A-010 | caps_site_id 인덱스 추가 (employees/attendance/caps_sync_log) — 마이그레이션 0208 | TBD | 2026-05-16 |
-| A-009 | payment 삭제 시 bank_transactions 매칭 초기화 누락 버그 수정 | TBD | 2026-05-16 |
+| A-010 | caps_site_id 인덱스 추가 (employees/attendance/caps_sync_log) — 마이그레이션 0208 | 71f0772 | 2026-05-16 |
+| A-009 | payment 삭제 시 bank_transactions 매칭 초기화 누락 버그 수정 | 71f0772 | 2026-05-16 |
 | A-008 | try-catch 누락 17핸들러 (permissions/finishing/messageTemplates/iaAuto) | 60ee8b8 | 2026-05-14 |
 | A-006 | XSS escapeHtml 5건 (approvals/invoice/purchaseInvoice/quotation/clients) | e099b20 | 2026-05-13 |
 | A-005 | tax_invoice_items/orders tax_invoice_id 인덱스 추가 (0193 migration) | 1b3a698 | 2026-05-13 |
