@@ -601,12 +601,16 @@ arRouter.delete('/payment/:id', requireRole('ADMIN'), async (c) => {
       return c.json({ success: false, error: '입금 내역을 찾을 수 없습니다' }, 404)
     }
 
-    // D1 batch: 결제 삭제 + 잔액 복구를 원자적으로 처리
+    // D1 batch: 결제 삭제 + 잔액 복구 + 은행 매칭 초기화를 원자적으로 처리
     await c.env.DB.batch([
       c.env.DB.prepare('DELETE FROM payments WHERE id = ?').bind(id),
       c.env.DB.prepare(
         'UPDATE clients SET balance = balance + ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
-      ).bind(existing.amount, existing.client_id)
+      ).bind(existing.amount, existing.client_id),
+      c.env.DB.prepare(
+        `UPDATE bank_transactions SET match_status = 'UNMATCHED', matched_payment_id = NULL,
+         matched_by = NULL, matched_at = NULL WHERE matched_payment_id = ?`
+      ).bind(id)
     ])
 
     // Get updated balance

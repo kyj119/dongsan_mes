@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 3 -->
-<!-- last_run_at: 2026-05-14T13:30:00+09:00 -->
+<!-- last_run_area: 4 -->
+<!-- last_run_at: 2026-05-16T00:00:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,10 +8,20 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | 11 |
-| ✔️ done | 32 |
+| 🆕 new | 13 |
+| ✔️ done | 34 |
 | ❌ rejected | 2 |
 
+> **Area 4 데이터 정합성 (2026-05-16T00:00):**
+> - 204개 마이그레이션 스키마 + 라우트 전수 분석 (외래키, 인덱스, 상태 동기화)
+> - entity_id INSERT 점검: inventory/purchase_orders 전건 entity_id 포함 확인 ✓ (이전 오탐 재확인)
+> - 결제 삭제 시 bank_transactions 매칭 미초기화 버그 발견 → A-009 자동 수정
+> - caps_employee_map.site_id FK 누락 → #94 등록 (SMALL, 30m)
+> - bank_transactions.matched_payment_id FK 누락 → #93 등록 (SMALL, 30m)
+> - employees/attendance/caps_sync_log caps_site_id 인덱스 추가 → A-010 마이그레이션 (0208)
+> - card/order 상태 불일치: 0205 마이그레이션으로 이미 수정됨, 재발 없음 확인 ✓
+> - 자동 수정 2건 (A-009, A-010), 신규 이슈 2건 (#93~#94)
+>
 > **Area 3 UX/기능 감사 (2026-05-14T13:30):**
 > - 75개 페이지/스크립트 전수 UX 패턴 분석 (검색·필터·페이지네이션·빈상태·로딩)
 > - approvals.js 3탭 결재 목록 검색·필터·페이지네이션 전무 → #43 등록 (MEDIUM, 2~3h)
@@ -84,6 +94,8 @@
 
 | ID | 제목 | 영역 | Issue | 공수 |
 |----|------|------|-------|------|
+| I-025 | bank_transactions.matched_payment_id FK 누락 (스키마 강화) | Area 4 | #93 | 30분 |
+| I-026 | caps_employee_map.site_id FK 누락 → 사이트 삭제 시 고아 매핑 | Area 4 | #94 | 30분 |
 | I-013 | 보안 헤더 전무 (CSP/X-Frame-Options/HSTS/X-Content-Type) | Area 5 | #32 | 1~2h |
 | I-014 | /api/portal/auth/change-password rate limit 누락 | Area 5 | #33 | 30분 |
 | I-015 | XSS 잔여: approvals.js(119-276) + cards.js document.write | Area 5 | #34 | 2~3h |
@@ -102,6 +114,8 @@
 
 | ID | 제목 | 커밋 | 날짜 |
 |----|------|------|------|
+| A-010 | caps_site_id 인덱스 추가 (employees/attendance/caps_sync_log) — 마이그레이션 0208 | TBD | 2026-05-16 |
+| A-009 | payment 삭제 시 bank_transactions 매칭 초기화 누락 버그 수정 | TBD | 2026-05-16 |
 | A-008 | try-catch 누락 17핸들러 (permissions/finishing/messageTemplates/iaAuto) | 60ee8b8 | 2026-05-14 |
 | A-006 | XSS escapeHtml 5건 (approvals/invoice/purchaseInvoice/quotation/clients) | e099b20 | 2026-05-13 |
 | A-005 | tax_invoice_items/orders tax_invoice_id 인덱스 추가 (0193 migration) | 1b3a698 | 2026-05-13 |
