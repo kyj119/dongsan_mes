@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 3 -->
-<!-- last_run_at: 2026-05-14T13:30:00+09:00 -->
+<!-- last_run_area: 4 -->
+<!-- last_run_at: 2026-05-16T00:00:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,10 +8,19 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | 11 |
-| ✔️ done | 32 |
+| 🆕 new | 13 |
+| ✔️ done | 33 |
 | ❌ rejected | 2 |
 
+> **Area 4 데이터 정합성 (2026-05-16T00:00):**
+> - 마이그레이션 0001~0207 전수 분석: 인덱스·제약·entity_id 현황 점검
+> - inventory_transactions/employees/adjustments entity_id 인덱스 누락 → A-009 자동 수정 (0208 migration)
+> - orders 삭제 순차 await 6단계 — 중간 실패 시 반쪽 삭제 위험 → #95 등록 (SMALL, 30m)
+> - print_events/quality_issues card_id FK 없음 — 카드 삭제 시 고아 레코드 발생 → #96 등록 (SMALL, 30m)
+> - 상태 불일치 0205 migration에서 이미 처리됨 확인 ✓ (13건 PRINTING→PRINT_DONE 일괄 수정)
+> - 중복 레코드, orders CASCADE: 적절히 처리됨 확인 ✓
+> - 자동 수정 1건 (A-009), 신규 이슈 2건 (#95/#96)
+>
 > **Area 3 UX/기능 감사 (2026-05-14T13:30):**
 > - 75개 페이지/스크립트 전수 UX 패턴 분석 (검색·필터·페이지네이션·빈상태·로딩)
 > - approvals.js 3탭 결재 목록 검색·필터·페이지네이션 전무 → #43 등록 (MEDIUM, 2~3h)
@@ -95,6 +104,8 @@
 | I-022 | tasks.js limit:200 하드코딩 — 200건+ 실패 태스크 미표시 | Area 3 | #44 | 30분 |
 | I-023 | deliveryAnalytics + financialReports CSV 내보내기 없음 | Area 3 | #45 | 2h |
 | I-024 | 대시보드 장비 가동률 % KPI 부재 | Area 3 | #46 | 1~2h |
+| I-025 | orders 삭제: 순차 await 6단계 → db.batch() 원자성 보장 | Area 4 | #95 | 30m |
+| I-026 | print_events/quality_issues card_id FK 없음 — 카드 삭제 시 고아 레코드 | Area 4 | #96 | 30m |
 
 ---
 
@@ -102,6 +113,7 @@
 
 | ID | 제목 | 커밋 | 날짜 |
 |----|------|------|------|
+| A-009 | entity_id 인덱스 누락 3건 (inventory_transactions/employees/adjustments) | 6aefbd0 | 2026-05-16 |
 | A-008 | try-catch 누락 17핸들러 (permissions/finishing/messageTemplates/iaAuto) | 60ee8b8 | 2026-05-14 |
 | A-006 | XSS escapeHtml 5건 (approvals/invoice/purchaseInvoice/quotation/clients) | e099b20 | 2026-05-13 |
 | A-005 | tax_invoice_items/orders tax_invoice_id 인덱스 추가 (0193 migration) | 1b3a698 | 2026-05-13 |
