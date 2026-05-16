@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 3 -->
-<!-- last_run_at: 2026-05-14T13:30:00+09:00 -->
+<!-- last_run_area: 4 -->
+<!-- last_run_at: 2026-05-16T10:00:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,10 +8,17 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | 11 |
-| ✔️ done | 32 |
+| 🆕 new | 12 |
+| ✔️ done | 33 |
 | ❌ rejected | 2 |
 
+> **Area 4 데이터 정합성 (2026-05-16T10:00):**
+> - 인덱스 갭 전수 분석: 0150/0193 마이그레이션에서 entity_id 인덱스 6개 누락 확인
+> - hometax_jobs/portal_access_logs (0193 누락) + adjustments/payment_requests/purchase_payments/inventory_transactions (0150 누락) + ai_analysis_requests.status 인덱스 → A-009 자동 수정 (0208 migration)
+> - quality_issues.reported_by=1 하드코딩 + catch {} 전체 오류 삼킴 → #85 등록 (SMALL, 30m)
+> - shipment_items FK cascade 검토: 코드에서 수동 순서 삭제로 실제 고아 레코드 위험 없음 (기존 #84와 중복, 스킵)
+> - 자동 수정 1건 (A-009), 신규 이슈 1건 (#85)
+>
 > **Area 3 UX/기능 감사 (2026-05-14T13:30):**
 > - 75개 페이지/스크립트 전수 UX 패턴 분석 (검색·필터·페이지네이션·빈상태·로딩)
 > - approvals.js 3탭 결재 목록 검색·필터·페이지네이션 전무 → #43 등록 (MEDIUM, 2~3h)
@@ -95,6 +102,7 @@
 | I-022 | tasks.js limit:200 하드코딩 — 200건+ 실패 태스크 미표시 | Area 3 | #44 | 30분 |
 | I-023 | deliveryAnalytics + financialReports CSV 내보내기 없음 | Area 3 | #45 | 2h |
 | I-024 | 대시보드 장비 가동률 % KPI 부재 | Area 3 | #46 | 1~2h |
+| I-025 | quality_issues.reported_by=1 하드코딩 — 자동 품질이슈 silent fail 위험 | Area 4 | #85 | 30분 |
 
 ---
 
@@ -102,6 +110,7 @@
 
 | ID | 제목 | 커밋 | 날짜 |
 |----|------|------|------|
+| A-009 | 누락 entity_id 인덱스 6개 + ai_analysis_requests 상태 인덱스 (0208) | d56b5bc | 2026-05-16 |
 | A-008 | try-catch 누락 17핸들러 (permissions/finishing/messageTemplates/iaAuto) | 60ee8b8 | 2026-05-14 |
 | A-006 | XSS escapeHtml 5건 (approvals/invoice/purchaseInvoice/quotation/clients) | e099b20 | 2026-05-13 |
 | A-005 | tax_invoice_items/orders tax_invoice_id 인덱스 추가 (0193 migration) | 1b3a698 | 2026-05-13 |
@@ -114,6 +123,7 @@
 
 | ID | 제목 | 커밋/Issue | 날짜 |
 |----|------|-----------|------|
+| A-009 | 누락 entity_id 인덱스 6개 + ai_analysis_requests 상태 인덱스 추가 (0208) | d56b5bc | 2026-05-16 |
 | I-017 | try-catch 누락 17핸들러 자동 수정 (permissions/finishing/messageTemplates/iaAuto) | A-008 / 60ee8b8 | 2026-05-14 |
 | D-001 | shipment_items UNIQUE(shipment_id, card_id) 제약 추가 (0194 migration) | #31 | 2026-05-13 |
 | I-015partial | 스모크 커버리지 55→88 엔드포인트 확대 | #15 | 2026-05-13 |
