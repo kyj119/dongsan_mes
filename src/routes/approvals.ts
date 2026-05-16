@@ -6,6 +6,7 @@ import { Hono } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
 import { requirePagePermission } from '../middleware/permissions'
+import { getEntityId, entityFilter } from '../utils/entityFilter'
 
 const approvals = new Hono<HonoEnv>()
 approvals.use('*', authMiddleware, requirePagePermission('/approvals'))
@@ -88,6 +89,11 @@ approvals.get('/', async (c) => {
       WHERE 1=1
     `
     const params: any[] = []
+
+    // #86: entity_id 필터 적용
+    const eFilter = entityFilter(c, 'ar')
+    query += eFilter.clause
+    params.push(...eFilter.params)
 
     // ADMIN/MANAGER는 전체 조회, 나머지는 자기 것만
     if (userRole !== 'ADMIN' && userRole !== 'MANAGER') {
@@ -178,12 +184,12 @@ approvals.post('/', async (c) => {
     }
 
     const result = await c.env.DB.prepare(`
-      INSERT INTO approval_requests (request_number, template_id, type, requester_id, title, content, amount, reference_type, reference_id, status, current_step, total_steps)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'DRAFT', 1, ?)
+      INSERT INTO approval_requests (request_number, template_id, type, requester_id, title, content, amount, reference_type, reference_id, status, current_step, total_steps, entity_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'DRAFT', 1, ?, ?)
     `).bind(
       requestNumber, template_id || null, type || 'GENERAL', userId,
       title, content ? JSON.stringify(content) : null, amount || 0,
-      reference_type || null, reference_id || null, totalSteps
+      reference_type || null, reference_id || null, totalSteps, getEntityId(c)
     ).run()
 
     const requestId = result.meta?.last_row_id as number
@@ -374,8 +380,8 @@ approvals.post('/:id/reject', async (c) => {
     const body = await c.req.json()
 
     const req = await c.env.DB.prepare(
-      `SELECT id, status, current_step FROM approval_requests WHERE id = ?`
-    ).bind(id).first<{ status: string; current_step: number }>()
+      `SELECT id, status, current_step, reference_type, reference_id FROM approval_requests WHERE id = ?`
+    ).bind(id).first<{ status: string; current_step: number; reference_type: string | null; reference_id: number | null }>()
     if (!req || !['PENDING', 'IN_REVIEW'].includes(req.status)) {
       return c.json({ success: false, error: '반려 가능한 상태가 아닙니다.' }, 400)
     }
@@ -403,6 +409,16 @@ approvals.post('/:id/reject', async (c) => {
     await c.env.DB.prepare(`
       UPDATE approval_requests SET status = 'REJECTED', final_comment = ?, completed_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = ?
     `).bind(body.comment || '반려', id).run()
+
+    // 여신한도 반려 → 주문 credit_status 업데이트 (#69)
+    if (req.reference_type === 'order' && req.reference_id) {
+      await c.env.DB.prepare(
+        `UPDATE orders SET credit_status = 'REJECTED' WHERE id = ? AND credit_status = 'PENDING'`
+      ).bind(req.reference_id).run()
+      await c.env.DB.prepare(
+        `UPDATE credit_overrides SET status = 'REJECTED' WHERE order_id = ? AND status = 'PENDING'`
+      ).bind(req.reference_id).run()
+    }
 
     return c.json({ success: true })
   } catch (e) {
@@ -510,6 +526,42 @@ async function handlePostApproval(db: D1Database, req: any) {
         UPDATE purchase_requests SET status = 'APPROVED', approved_at = CURRENT_TIMESTAMP WHERE id = ? AND status = 'PENDING'
       `).bind(req.reference_id).run()
     }
+
+    // 여신한도 초과 승인 → 주문 카드 생성 (#69)
+    if (req.reference_type === 'order' && req.reference_id) {
+      const order = await db.prepare(`
+        SELECT id, order_number, client_id, delivery_date, priority, notes, credit_status
+        FROM orders WHERE id = ? AND credit_status = 'PENDING'
+      `).bind(req.reference_id).first<{
+        id: number; order_number: string; client_id: number;
+        delivery_date: string | null; priority: string; notes: string | null; credit_status: string
+      }>()
+
+      if (order) {
+        // credit_status 업데이트
+        await db.prepare(
+          `UPDATE orders SET credit_status = 'APPROVED' WHERE id = ?`
+        ).bind(order.id).run()
+
+        // credit_overrides 업데이트
+        await db.prepare(
+          `UPDATE credit_overrides SET status = 'APPROVED', approved_at = CURRENT_TIMESTAMP WHERE order_id = ? AND status = 'PENDING'`
+        ).bind(order.id).run()
+
+        // 카드 생성 (생산 진입)
+        const { generateCardsForOrder } = await import('./orders/core')
+        await generateCardsForOrder({
+          db,
+          orderId: order.id,
+          orderNumber: order.order_number,
+          clientId: order.client_id,
+          deliveryDate: order.delivery_date,
+          priority: order.priority || 'NORMAL',
+          notes: order.notes
+        })
+      }
+    }
+
     // 단가 변경: client_item_prices 업데이트는 추후 연계 시 구현
     // 미수금 탕감: ledger 차감은 추후 연계 시 구현
     // 휴가/근태: leave_requests 상태 업데이트는 추후 연계 시 구현

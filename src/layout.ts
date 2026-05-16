@@ -65,6 +65,7 @@ const MENU_ITEMS: MenuGroup[] = [
       { path: '/production', icon: 'fa-industry', label: '생산 현황', roles: ['ADMIN', 'MANAGER', 'DESIGNER', 'OPERATOR'] },
       { path: '/equipment', icon: 'fa-server', label: '장비 관리', roles: ['ADMIN', 'MANAGER', 'DESIGNER'] },
       { path: '/post-processing', icon: 'fa-cut', label: '후가공', roles: ['ADMIN', 'MANAGER', 'DESIGNER', 'OPERATOR'] },
+      { path: '/maintenance', icon: 'fa-wrench', label: '정비 관리', roles: ['ADMIN', 'MANAGER'] },
       { path: '/production-reports', icon: 'fa-chart-bar', label: '생산 분석', roles: ['ADMIN', 'MANAGER'] },
       { path: '/material-forecast', icon: 'fa-chart-line', label: '원단 소모 예측', roles: ['ADMIN', 'MANAGER'] },
       { path: '/bom', icon: 'fa-sitemap', label: '자재명세(BOM)', roles: ['ADMIN', 'MANAGER'] },

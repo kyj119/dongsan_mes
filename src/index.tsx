@@ -11,6 +11,17 @@ import itemsRouter from './routes/items'
 import ordersRouter from './routes/orders'
 import cardsRouter from './routes/cards'
 import ripRouter from './routes/rip'
+import oeeRouter from './routes/oee'
+import equipmentQueueRouter from './routes/equipmentQueue'
+import claimsRouter from './routes/claims'
+import returnsRouter from './routes/returns'
+import purchaseInvoicesRouter from './routes/purchaseInvoices'
+import wasteRouter from './routes/waste'
+import inventoryValuationRouter from './routes/inventoryValuation'
+import fixedAssetsRouter from './routes/fixedAssets'
+import budgetsRouter from './routes/budgets'
+import generalLedgerRouter from './routes/generalLedger'
+import aiInsightsRouter from './routes/aiInsights'
 import authRouter from './routes/auth'
 import dashboardRouter from './routes/dashboard'
 import ledgerRouter from './routes/ledger'
@@ -94,6 +105,7 @@ import { attendancePage } from './pages/attendance'
 import { usersPage } from './pages/users'
 import { postProcessingPage } from './pages/postProcessing'
 import { equipmentPage } from './pages/equipment'
+import { maintenancePage } from './pages/maintenance'
 import { iaScanPage } from './pages/iaScan'
 import { iaAutoProcessPage } from './pages/iaAutoProcess'
 import { iaBatchTestPage } from './pages/iaBatchTest'
@@ -228,6 +240,17 @@ app.route('/api/orders', ordersRouter)
 app.route('/api/quotations', quotationsRouter)
 app.route('/api/cards', cardsRouter)
 app.route('/api/rip', ripRouter)
+app.route('/api/oee', oeeRouter)
+app.route('/api/equipment-queue', equipmentQueueRouter)
+app.route('/api/claims', claimsRouter)
+app.route('/api/returns', returnsRouter)
+app.route('/api/purchase-invoices', purchaseInvoicesRouter)
+app.route('/api/waste', wasteRouter)
+app.route('/api/inventory-valuation', inventoryValuationRouter)
+app.route('/api/fixed-assets', fixedAssetsRouter)
+app.route('/api/budgets', budgetsRouter)
+app.route('/api/gl', generalLedgerRouter)
+app.route('/api/ai', aiInsightsRouter)
 app.route('/api/ai-analysis', aiAnalysisRouter)
 app.route('/api/ai-layout', aiLayoutRouter)
 app.route('/api/tasks', tasksRouter)
@@ -370,6 +393,7 @@ app.get('/attendance', pageAuthMiddleware, requirePagePermission('/attendance'),
 app.get('/users', pageAuthMiddleware, requireAdminPage(), usersPage)
 app.get('/post-processing', pageAuthMiddleware, requirePagePermission('/post-processing'), postProcessingPage)
 app.get('/equipment', pageAuthMiddleware, requirePagePermission('/equipment'), equipmentPage)
+app.get('/maintenance', pageAuthMiddleware, requirePagePermission('/maintenance'), maintenancePage)
 app.get('/ia-scan', pageAuthMiddleware, requireAdminPage(), iaScanPage)
 app.get('/ia-auto', pageAuthMiddleware, requireAdminPage(), iaAutoProcessPage)
 app.get('/ia-batch-test', pageAuthMiddleware, requireAdminPage(), iaBatchTestPage)

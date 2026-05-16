@@ -1942,4 +1942,91 @@ ripRouter.get('/card-items/:cardId', authMiddleware, async (c) => {
   }
 })
 
+// ─── GET /api/rip/maintenance/dashboard — 정비 대시보드 종합 (#73) ────────────
+
+ripRouter.get('/maintenance/dashboard', authMiddleware, async (c) => {
+  try {
+    // 최근 30일 정비 이력 요약
+    const { results: recentLogs } = await c.env.DB.prepare(`
+      SELECT ml.*, e.name as equipment_name
+      FROM maintenance_logs ml
+      JOIN equipment e ON ml.equipment_id = e.id
+      WHERE ml.performed_at >= date('now', '-30 days')
+      ORDER BY ml.performed_at DESC
+      LIMIT 50
+    `).all()
+
+    // 장비별 정비 비용/다운타임 집계 (최근 90일)
+    const { results: costSummary } = await c.env.DB.prepare(`
+      SELECT ml.equipment_id, e.name as equipment_name,
+        COUNT(*) as log_count,
+        COALESCE(SUM(ml.cost), 0) as total_cost,
+        COALESCE(SUM(ml.downtime_minutes), 0) as total_downtime_min
+      FROM maintenance_logs ml
+      JOIN equipment e ON ml.equipment_id = e.id
+      WHERE ml.performed_at >= date('now', '-90 days')
+      GROUP BY ml.equipment_id
+      ORDER BY total_cost DESC
+    `).all()
+
+    // PM 스케줄 현황
+    const { results: schedules } = await c.env.DB.prepare(`
+      SELECT ms.*, e.name as equipment_name,
+        CASE
+          WHEN ms.next_due_at <= date('now') THEN 'OVERDUE'
+          WHEN ms.next_due_at <= date('now', '+7 days') THEN 'DUE_SOON'
+          ELSE 'OK'
+        END as due_status
+      FROM maintenance_schedules ms
+      JOIN equipment e ON ms.equipment_id = e.id
+      WHERE ms.is_active = 1
+      ORDER BY ms.next_due_at ASC
+    `).all()
+
+    // 소모품 현황
+    const { results: consumables } = await c.env.DB.prepare(`
+      SELECT ec.*, e.name as equipment_name,
+        CASE
+          WHEN ec.next_due_at <= date('now') THEN 'OVERDUE'
+          WHEN ec.next_due_at <= date('now', '+7 days') THEN 'DUE_SOON'
+          ELSE 'OK'
+        END as due_status
+      FROM equipment_consumables ec
+      JOIN equipment e ON ec.equipment_id = e.id
+      WHERE e.status = 'ACTIVE'
+      ORDER BY ec.next_due_at ASC
+    `).all()
+
+    // 프린터 헤드 상태
+    const { results: heads } = await c.env.DB.prepare(`
+      SELECT eh.*, e.name as equipment_name
+      FROM equipment_heads eh
+      JOIN equipment e ON eh.equipment_id = e.id
+      WHERE e.status = 'ACTIVE'
+      ORDER BY e.name, eh.head_number
+    `).all()
+
+    // KPI
+    const overdue = schedules.filter((s: any) => s.due_status === 'OVERDUE').length
+    const dueSoon = schedules.filter((s: any) => s.due_status === 'DUE_SOON').length
+    const totalCost90d = costSummary.reduce((sum: number, r: any) => sum + (r.total_cost || 0), 0)
+    const totalDowntime90d = costSummary.reduce((sum: number, r: any) => sum + (r.total_downtime_min || 0), 0)
+
+    return c.json({
+      success: true,
+      data: {
+        kpi: { overdue, due_soon: dueSoon, total_cost_90d: totalCost90d, total_downtime_90d_min: totalDowntime90d },
+        recent_logs: recentLogs,
+        cost_summary: costSummary,
+        schedules,
+        consumables,
+        heads
+      }
+    })
+  } catch (error) {
+    console.error('maintenance dashboard error:', error)
+    return c.json({ success: false, error: '서버 오류' }, 500)
+  }
+})
+
 export default ripRouter

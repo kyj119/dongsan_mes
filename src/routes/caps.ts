@@ -583,6 +583,11 @@ capsRouter.post('/employee-map', async (c) => {
       `UPDATE employees SET caps_id = ?, caps_site_id = ?, caps_sync_enabled = 1 WHERE id = ?`
     ).bind(caps_e_idno, siteId, employee_id).run()
 
+    // #90: 이전 사이트 매핑 비활성화 (동일 employee_id의 다른 사이트 항목)
+    await c.env.DB.prepare(
+      `UPDATE caps_employee_map SET is_active = 0 WHERE employee_id = ? AND site_id != ? AND is_active = 1`
+    ).bind(employee_id, siteId).run()
+
     const result = await c.env.DB.prepare(`
       INSERT INTO caps_employee_map (site_id, caps_e_idno, caps_e_name, caps_c_dept, employee_id, mapped_by, notes)
       VALUES (?, ?, ?, ?, ?, ?, ?)
