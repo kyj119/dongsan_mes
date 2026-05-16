@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 3 -->
-<!-- last_run_at: 2026-05-14T13:30:00+09:00 -->
+<!-- last_run_area: 4 -->
+<!-- last_run_at: 2026-05-16T00:00:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,10 +8,22 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | 11 |
-| ✔️ done | 32 |
+| 🆕 new | 14 |
+| ✔️ done | 33 |
 | ❌ rejected | 2 |
 
+> **Area 4 데이터 정합성 (2026-05-16T00:00):**
+> - 207개 마이그레이션 + 주요 라우트 파일 전수 분석 (shipments/inventory/caps)
+> - 복합 인덱스 3개 누락 발견 → A-009 자동 수정 (0208 migration)
+>   - inventory_transactions(item_id, transaction_date DESC)
+>   - quotations(entity_id, status), purchase_orders(entity_id, status)
+> - CAPS 사원 재사이트 매핑 시 이전 is_active=1 항목 잔류 → #90 등록 (2h)
+> - 입고 등록 unit_price 음수/0 허용으로 원가 데이터 손상 가능 → #91 등록 (1h)
+> - 재고 조정 SELECT→검증→UPDATE 비원자적 처리 → #92 등록 (3h)
+> - shipments.entity_id: entityFilter()가 orders 테이블 경유 → 실제 영향 없음
+> - CAPS 동기화 매핑: employees 직접 조회 방식 → caps_employee_map 미사용 확인
+> - 자동 수정 1건 (A-009), 신규 이슈 3건 (#90/#91/#92)
+>
 > **Area 3 UX/기능 감사 (2026-05-14T13:30):**
 > - 75개 페이지/스크립트 전수 UX 패턴 분석 (검색·필터·페이지네이션·빈상태·로딩)
 > - approvals.js 3탭 결재 목록 검색·필터·페이지네이션 전무 → #43 등록 (MEDIUM, 2~3h)
@@ -95,6 +107,9 @@
 | I-022 | tasks.js limit:200 하드코딩 — 200건+ 실패 태스크 미표시 | Area 3 | #44 | 30분 |
 | I-023 | deliveryAnalytics + financialReports CSV 내보내기 없음 | Area 3 | #45 | 2h |
 | I-024 | 대시보드 장비 가동률 % KPI 부재 | Area 3 | #46 | 1~2h |
+| I-025 | CAPS 사원 재사이트 매핑 시 이전 사이트 매핑 미비활성화 | Area 4 | #90 | 2h |
+| I-026 | 입고 등록 unit_price 음수/0 허용 — 원가 데이터 손상 | Area 4 | #91 | 1h |
+| I-027 | 재고 조정 비원자적 처리 — 동시 요청 시 음수 재고 허용 | Area 4 | #92 | 3h |
 
 ---
 
@@ -102,6 +117,7 @@
 
 | ID | 제목 | 커밋 | 날짜 |
 |----|------|------|------|
+| A-009 | 복합 인덱스 3개 추가 (inv_transactions/quotations/purchase_orders entity+status) | 0208 migration | 2026-05-16 |
 | A-008 | try-catch 누락 17핸들러 (permissions/finishing/messageTemplates/iaAuto) | 60ee8b8 | 2026-05-14 |
 | A-006 | XSS escapeHtml 5건 (approvals/invoice/purchaseInvoice/quotation/clients) | e099b20 | 2026-05-13 |
 | A-005 | tax_invoice_items/orders tax_invoice_id 인덱스 추가 (0193 migration) | 1b3a698 | 2026-05-13 |
@@ -114,6 +130,7 @@
 
 | ID | 제목 | 커밋/Issue | 날짜 |
 |----|------|-----------|------|
+| A-009 | 복합 인덱스 3개 추가 (inventory_transactions/quotations/purchase_orders) | 0208 migration | 2026-05-16 |
 | I-017 | try-catch 누락 17핸들러 자동 수정 (permissions/finishing/messageTemplates/iaAuto) | A-008 / 60ee8b8 | 2026-05-14 |
 | D-001 | shipment_items UNIQUE(shipment_id, card_id) 제약 추가 (0194 migration) | #31 | 2026-05-13 |
 | I-015partial | 스모크 커버리지 55→88 엔드포인트 확대 | #15 | 2026-05-13 |
