@@ -28,7 +28,7 @@ function getCardGroup(item: any): string | null {
 }
 
 // ── 카드 생성 공통 함수 (POST/PUT 중복 제거) ──
-interface GenerateCardsParams {
+export interface GenerateCardsParams {
   db: D1Database
   orderId: number
   orderNumber: string
@@ -39,7 +39,7 @@ interface GenerateCardsParams {
   entityId?: number | null
 }
 
-async function generateCardsForOrder(params: GenerateCardsParams): Promise<number> {
+export async function generateCardsForOrder(params: GenerateCardsParams): Promise<number> {
   const { db, orderId, orderNumber, clientId, deliveryDate, priority, notes, entityId } = params
   const cardPriority = priority === 'URGENT' ? 1 : 0
 
@@ -494,20 +494,21 @@ ordersCoreRouter.patch('/:id/bill', requireRole('ADMIN', 'MANAGER'), async (c) =
       ? Math.min(Math.max(0, parseFloat(String(body.billed_amount)) || 0), maxAmount * 1.5)
       : maxAmount
 
-    await c.env.DB.prepare(`
-      UPDATE orders
-      SET billing_status = 'BILLED',
-          billed_at = CURRENT_TIMESTAMP,
-          billed_by = ?,
-          billed_amount = ?,
-          updated_at = CURRENT_TIMESTAMP
-      WHERE id = ?
-    `).bind(user?.id || null, billedAmount, id).run()
-
-    // 미수금 증가 (매출 확정)
-    await c.env.DB.prepare(
-      'UPDATE clients SET balance = balance + ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
-    ).bind(billedAmount, order.client_id).run()
+    // #83: 원자적 처리 (billing_status + clients.balance 동시 업데이트)
+    await c.env.DB.batch([
+      c.env.DB.prepare(`
+        UPDATE orders
+        SET billing_status = 'BILLED',
+            billed_at = CURRENT_TIMESTAMP,
+            billed_by = ?,
+            billed_amount = ?,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `).bind(user?.id || null, billedAmount, id),
+      c.env.DB.prepare(
+        'UPDATE clients SET balance = balance + ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
+      ).bind(billedAmount, order.client_id)
+    ])
 
     return c.json({
       success: true,
@@ -546,42 +547,56 @@ ordersCoreRouter.patch('/:id/billing-status', requireRole('ADMIN', 'MANAGER'), a
         return c.json({ success: false, error: '출고완료 상태인 주문만 회계반영 가능합니다' }, 400)
       }
       const billedAmount = Number(order.final_amount) || 0
-      await c.env.DB.prepare(`
-        UPDATE orders SET billing_status = 'BILLED', billed_at = CURRENT_TIMESTAMP, billed_by = ?, billed_amount = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?
-      `).bind(user?.id || null, billedAmount, id).run()
-      // 미수금 증가
+      // #83: 원자적 처리
+      const batchStmts: any[] = [
+        c.env.DB.prepare(`
+          UPDATE orders SET billing_status = 'BILLED', billed_at = CURRENT_TIMESTAMP, billed_by = ?, billed_amount = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?
+        `).bind(user?.id || null, billedAmount, id)
+      ]
       if (oldStatus !== 'BILLED' && oldStatus !== 'PAID') {
-        await c.env.DB.prepare(
-          'UPDATE clients SET balance = balance + ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
-        ).bind(billedAmount, order.client_id).run()
+        batchStmts.push(
+          c.env.DB.prepare(
+            'UPDATE clients SET balance = balance + ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
+          ).bind(billedAmount, order.client_id)
+        )
       }
+      await c.env.DB.batch(batchStmts)
     } else if (newStatus === 'PAID') {
       // 수금완료
       if (oldStatus !== 'BILLED') {
         return c.json({ success: false, error: '회계반영된 주문만 수금완료 처리할 수 있습니다' }, 400)
       }
       const billedAmount = order.billed_amount || Number(order.final_amount) || 0
-      await c.env.DB.prepare(`
-        UPDATE orders SET billing_status = 'PAID', updated_at = CURRENT_TIMESTAMP WHERE id = ?
-      `).bind(id).run()
-      // 미수금 차감 (수금 완료)
-      await c.env.DB.prepare(
-        'UPDATE clients SET balance = balance - ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
-      ).bind(billedAmount, order.client_id).run()
+      // #83: 원자적 처리
+      await c.env.DB.batch([
+        c.env.DB.prepare(`
+          UPDATE orders SET billing_status = 'PAID', updated_at = CURRENT_TIMESTAMP WHERE id = ?
+        `).bind(id),
+        c.env.DB.prepare(
+          'UPDATE clients SET balance = balance - ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
+        ).bind(billedAmount, order.client_id)
+      ])
     } else {
       // 회계반영 취소 (빈 문자열)
       if (oldStatus === 'BILLED') {
         const billedAmount = order.billed_amount || Number(order.final_amount) || 0
-        await c.env.DB.prepare(
-          'UPDATE clients SET balance = balance - ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
-        ).bind(billedAmount, order.client_id).run()
+        // #83: 원자적 처리
+        await c.env.DB.batch([
+          c.env.DB.prepare(
+            'UPDATE clients SET balance = balance - ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
+          ).bind(billedAmount, order.client_id),
+          c.env.DB.prepare(`
+            UPDATE orders SET billing_status = NULL, billed_at = NULL, billed_by = NULL, billed_amount = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?
+          `).bind(id)
+        ])
       } else if (oldStatus === 'PAID') {
         // PAID에서 되돌리기는 허용하지 않음
         return c.json({ success: false, error: '수금완료 상태에서는 직접 미확인으로 변경할 수 없습니다' }, 400)
+      } else {
+        await c.env.DB.prepare(`
+          UPDATE orders SET billing_status = NULL, billed_at = NULL, billed_by = NULL, billed_amount = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?
+        `).bind(id).run()
       }
-      await c.env.DB.prepare(`
-        UPDATE orders SET billing_status = NULL, billed_at = NULL, billed_by = NULL, billed_amount = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?
-      `).bind(id).run()
     }
 
     return c.json({ success: true, data: { billing_status: newStatus || null } })
@@ -944,13 +959,15 @@ ordersCoreRouter.post('/', async (c) => {
 
     const orderId = orderResult.meta.last_row_id
 
-    // Insert order items — two-pass for parent_item_id support
-    // Pass 1: parent/regular rows (no parent_client_id) → collect DB IDs
-    const clientIdMap = new Map<string, number>() // client_group_id → db id
+    // Insert order items — two-pass batch for parent_item_id support (#63 원자화)
+    // Pre-resolve: item detail lookups for items missing name
+    const parentItems: Array<{ idx: number; item: any; itemName: string | null; categoryName: string | null; unit: string; itemAmount: number }> = []
+    const itemIdsToLookup: number[] = []
+    const lookupIndices: number[] = []
 
     for (let i = 0; i < orderData.items.length; i++) {
       const item = orderData.items[i]
-      if (item.parent_client_id) continue  // 자식 행은 2단계에서 처리
+      if (item.parent_client_id) continue
 
       const itemPricingMethod = item.item_id ? (pricingMethodMap.get(item.item_id) || 'FIXED') : 'FIXED'
       const itemW = item.width_mm || item.width || 0
@@ -964,23 +981,36 @@ ordersCoreRouter.post('/', async (c) => {
         itemAmount = (item.unit_price || 0) * (item.quantity || 1)
       }
       itemAmount = Math.round(itemAmount / 100) * 100
-      let itemName = item.item_name || null
-      let categoryName = item.category_name || null
-      let unit = item.unit || 'EA'
 
-      if (item.item_id && !itemName) {
-        const itemDetail = await c.env.DB.prepare(`
-          SELECT item_name, category, unit FROM items WHERE id = ?
-        `).bind(item.item_id).first<{ item_name: string; category: string; unit: string }>()
+      const entry = { idx: i, item, itemName: item.item_name || null, categoryName: item.category_name || null, unit: item.unit || 'EA', itemAmount }
+      parentItems.push(entry)
 
-        if (itemDetail) {
-          itemName = itemDetail.item_name
-          categoryName = itemDetail.category
-          unit = itemDetail.unit
+      if (item.item_id && !entry.itemName) {
+        itemIdsToLookup.push(item.item_id)
+        lookupIndices.push(parentItems.length - 1)
+      }
+    }
+
+    // Batch lookup item details
+    if (itemIdsToLookup.length > 0) {
+      const lookupStmts = itemIdsToLookup.map(id =>
+        c.env.DB.prepare('SELECT item_name, category, unit FROM items WHERE id = ?').bind(id)
+      )
+      const lookupResults = await c.env.DB.batch(lookupStmts)
+      for (let k = 0; k < lookupResults.length; k++) {
+        const row = lookupResults[k].results[0] as { item_name: string; category: string; unit: string } | undefined
+        if (row) {
+          const entry = parentItems[lookupIndices[k]]
+          entry.itemName = row.item_name
+          entry.categoryName = row.category
+          entry.unit = row.unit
         }
       }
+    }
 
-      const insertResult = await c.env.DB.prepare(`
+    // Pass 1: batch insert parent/regular rows
+    const pass1Stmts = parentItems.map(({ idx, item, itemName, categoryName, unit, itemAmount }) =>
+      c.env.DB.prepare(`
         INSERT INTO order_items (
           order_id, item_id, item_name, category_name,
           width, height, quantity, unit,
@@ -1002,48 +1032,60 @@ ordersCoreRouter.post('/', async (c) => {
         item.vat_included !== undefined ? (item.vat_included ? 1 : 0) : 1,
         item.post_processing || item.paper || null,
         item.content || item.print || null,
-        i,
+        idx,
         item.ai_group_index !== undefined ? item.ai_group_index : null,
         item.scale_factor || 1,
         item.ai_analysis_id || null,
         item.finishing || null
-      ).run()
+      )
+    )
 
-      if (item.client_group_id) {
-        clientIdMap.set(item.client_group_id, insertResult.meta.last_row_id as number)
+    const clientIdMap = new Map<string, number>()
+    if (pass1Stmts.length > 0) {
+      const pass1Results = await c.env.DB.batch(pass1Stmts)
+      for (let k = 0; k < pass1Results.length; k++) {
+        const item = parentItems[k].item
+        if (item.client_group_id) {
+          clientIdMap.set(item.client_group_id, pass1Results[k].meta.last_row_id as number)
+        }
       }
     }
 
-    // Pass 2: child rows (has parent_client_id) → resolve parent DB ID
-    const parentOnlyCount = orderData.items.filter((i: any) => !i.parent_client_id).length
+    // Pass 2: batch insert child rows (has parent_client_id)
+    const parentOnlyCount = parentItems.length
+    const pass2Stmts: ReturnType<ReturnType<typeof c.env.DB.prepare>['bind']>[] = []
     for (let i = 0; i < orderData.items.length; i++) {
       const item = orderData.items[i]
       if (!item.parent_client_id) continue
 
       const parentDbId = clientIdMap.get(item.parent_client_id) ?? null
-
-      await c.env.DB.prepare(`
-        INSERT INTO order_items (
-          order_id, item_id, item_name, category_name,
-          width, height, quantity, unit,
-          unit_price, amount, vat_included,
-          post_processing, content, sort_order,
-          ai_group_index, scale_factor, ai_analysis_id, parent_item_id
-        ) VALUES (?, NULL, ?, NULL, ?, ?, ?, ?, 0, 0, 1, NULL, ?, ?, ?, ?, ?, ?)
-      `).bind(
-        orderId,
-        item.item_name || '',
-        item.width_mm || item.width || null,
-        item.height_mm || item.height || null,
-        item.quantity || 1,
-        item.unit || 'EA',
-        item.content || null,
-        parentOnlyCount + i,
-        item.ai_group_index !== undefined ? item.ai_group_index : null,
-        item.scale_factor || 1,
-        item.ai_analysis_id || null,
-        parentDbId
-      ).run()
+      pass2Stmts.push(
+        c.env.DB.prepare(`
+          INSERT INTO order_items (
+            order_id, item_id, item_name, category_name,
+            width, height, quantity, unit,
+            unit_price, amount, vat_included,
+            post_processing, content, sort_order,
+            ai_group_index, scale_factor, ai_analysis_id, parent_item_id
+          ) VALUES (?, NULL, ?, NULL, ?, ?, ?, ?, 0, 0, 1, NULL, ?, ?, ?, ?, ?, ?)
+        `).bind(
+          orderId,
+          item.item_name || '',
+          item.width_mm || item.width || null,
+          item.height_mm || item.height || null,
+          item.quantity || 1,
+          item.unit || 'EA',
+          item.content || null,
+          parentOnlyCount + i,
+          item.ai_group_index !== undefined ? item.ai_group_index : null,
+          item.scale_factor || 1,
+          item.ai_analysis_id || null,
+          parentDbId
+        )
+      )
+    }
+    if (pass2Stmts.length > 0) {
+      await c.env.DB.batch(pass2Stmts)
     }
 
     // Insert status history
@@ -1087,6 +1129,104 @@ ordersCoreRouter.post('/', async (c) => {
         data: { id: orderId, order_number: orderNumber },
         message: `견적서가 생성되었습니다. 유효기한: ${validUntil}`
       })
+    }
+
+    // ── 여신한도 체크 (#69) ──────────────────────────────────────────────────
+    // ADMIN은 무조건 통과, 그 외 역할은 여신 초과 시 결재 요청 생성 + 카드 미생성
+    let creditBlocked = false
+    if (orderData.client_id && user?.role !== 'ADMIN') {
+      const creditClient = await c.env.DB.prepare(
+        `SELECT credit_limit, credit_hold FROM clients WHERE id = ?`
+      ).bind(orderData.client_id).first<{ credit_limit: number; credit_hold: number }>()
+
+      if (creditClient?.credit_hold === 1) {
+        // 수동 차단 — 주문 자체를 막진 않되 결재 필수
+        creditBlocked = true
+      } else if (creditClient?.credit_limit && creditClient.credit_limit > 0) {
+        const balRow = await c.env.DB.prepare(`
+          SELECT COALESCE(SUM(CASE WHEN final_amount > 0 THEN final_amount ELSE 0 END), 0)
+                 - COALESCE(SUM(CASE WHEN paid_amount > 0 THEN paid_amount ELSE 0 END), 0) as balance
+          FROM orders WHERE client_id = ? AND status NOT IN ('CANCELLED','DELETED','QUOTATION')
+        `).bind(orderData.client_id).first<{ balance: number }>()
+        const balance = balRow?.balance || 0
+        if (balance >= creditClient.credit_limit) {
+          creditBlocked = true
+        }
+      }
+
+      if (creditBlocked) {
+        // 주문에 credit_status 마킹
+        await c.env.DB.prepare(
+          `UPDATE orders SET credit_status = 'PENDING' WHERE id = ?`
+        ).bind(orderId).run()
+
+        // 결재 요청 자동 생성
+        const today2 = new Date().toISOString().slice(0, 10).replace(/-/g, '')
+        const { results: aprExisting } = await c.env.DB.prepare(
+          `SELECT COUNT(*) as cnt FROM approval_requests WHERE request_number LIKE ?`
+        ).bind(`APR-${today2}-%`).all<{ cnt: number }>()
+        const aprSeq = (aprExisting[0]?.cnt || 0) + 1
+        const aprNumber = `APR-${today2}-${String(aprSeq).padStart(3, '0')}`
+
+        const clientName = await c.env.DB.prepare(
+          `SELECT client_name FROM clients WHERE id = ?`
+        ).bind(orderData.client_id).first<{ client_name: string }>()
+
+        const balRow2 = await c.env.DB.prepare(`
+          SELECT COALESCE(SUM(CASE WHEN final_amount > 0 THEN final_amount ELSE 0 END), 0)
+                 - COALESCE(SUM(CASE WHEN paid_amount > 0 THEN paid_amount ELSE 0 END), 0) as balance
+          FROM orders WHERE client_id = ? AND status NOT IN ('CANCELLED','DELETED','QUOTATION')
+        `).bind(orderData.client_id).first<{ balance: number }>()
+
+        const creditInfo = await c.env.DB.prepare(
+          `SELECT credit_limit FROM clients WHERE id = ?`
+        ).bind(orderData.client_id).first<{ credit_limit: number }>()
+
+        const aprResult = await c.env.DB.prepare(`
+          INSERT INTO approval_requests (request_number, type, requester_id, title, content, amount, reference_type, reference_id, status, current_step, total_steps, entity_id)
+          VALUES (?, 'CREDIT_OVERRIDE', ?, ?, ?, ?, 'order', ?, 'PENDING', 1, 1, ?)
+        `).bind(
+          aprNumber,
+          user?.id || 1,
+          `여신한도 초과 승인 요청 — ${clientName?.client_name || ''}`,
+          JSON.stringify({
+            client_id: orderData.client_id,
+            client_name: clientName?.client_name,
+            credit_limit: creditInfo?.credit_limit || 0,
+            current_balance: balRow2?.balance || 0,
+            order_amount: finalAmount,
+            order_number: orderNumber
+          }),
+          finalAmount,
+          orderId,
+          getEntityId(c)
+        ).run()
+
+        const aprId = aprResult.meta?.last_row_id as number
+
+        // 결재 단계: ADMIN 또는 MANAGER 1단계
+        await c.env.DB.prepare(`
+          INSERT INTO approval_steps (request_id, step_order, approver_role, label, status)
+          VALUES (?, 1, 'ADMIN', '경리/관리자 승인', 'PENDING')
+        `).bind(aprId).run()
+
+        // credit_overrides 기록
+        await c.env.DB.prepare(`
+          INSERT INTO credit_overrides (order_id, client_id, credit_limit, balance_at_time, order_amount, approval_request_id)
+          VALUES (?, ?, ?, ?, ?, ?)
+        `).bind(
+          orderId, orderData.client_id,
+          creditInfo?.credit_limit || 0, balRow2?.balance || 0,
+          finalAmount, aprId
+        ).run()
+
+        // 카드 생성 없이 반환 — 여신 승인 대기 상태
+        return c.json({
+          success: true,
+          data: { id: orderId, order_number: orderNumber, credit_status: 'PENDING', approval_request_id: aprId },
+          message: '여신한도 초과 — 경리/관리자 승인 대기 중입니다. 승인 후 생산이 시작됩니다.'
+        })
+      }
     }
 
     // 유통 주문: 카드 미생성, 전 품목 shipment_ready=1 (바로 출고 가능)
@@ -1588,31 +1728,15 @@ ordersCoreRouter.delete('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
       `).bind(order.billed_amount || order.final_amount, order.client_id).run()
     }
 
-    // Delete related shipments & shipment_items (서브쿼리로 N+1 제거)
-    await c.env.DB.prepare(`
-      DELETE FROM shipment_items WHERE shipment_id IN (SELECT id FROM shipments WHERE order_id = ?)
-    `).bind(id).run()
-    await c.env.DB.prepare('DELETE FROM shipments WHERE order_id = ?').bind(id).run()
-
-    // Delete related cards (CASCADE will handle card_items)
-    await c.env.DB.prepare(`
-      DELETE FROM cards WHERE order_id = ?
-    `).bind(id).run()
-
-    // Delete order items
-    await c.env.DB.prepare(`
-      DELETE FROM order_items WHERE order_id = ?
-    `).bind(id).run()
-
-    // Delete order status history
-    await c.env.DB.prepare(`
-      DELETE FROM order_status_history WHERE order_id = ?
-    `).bind(id).run()
-
-    // Delete order
-    await c.env.DB.prepare(`
-      DELETE FROM orders WHERE id = ?
-    `).bind(id).run()
+    // #87: 원자적 삭제 (db.batch — 전체 ���공 또는 전체 롤백)
+    await c.env.DB.batch([
+      c.env.DB.prepare(`DELETE FROM shipment_items WHERE shipment_id IN (SELECT id FROM shipments WHERE order_id = ?)`).bind(id),
+      c.env.DB.prepare('DELETE FROM shipments WHERE order_id = ?').bind(id),
+      c.env.DB.prepare('DELETE FROM cards WHERE order_id = ?').bind(id),
+      c.env.DB.prepare('DELETE FROM order_items WHERE order_id = ?').bind(id),
+      c.env.DB.prepare('DELETE FROM order_status_history WHERE order_id = ?').bind(id),
+      c.env.DB.prepare('DELETE FROM orders WHERE id = ?').bind(id),
+    ])
 
     return c.json({
       success: true,
@@ -1828,16 +1952,17 @@ ordersCoreRouter.put('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
       ).run()
       cardsPreserved = true
     } else {
-      // 카드를 재생성할 것이므로 먼저 카드 삭제 (order_items CASCADE보다 먼저)
-      await c.env.DB.prepare(`
-        DELETE FROM cards WHERE order_id = ?
-      `).bind(id).run()
+      // #87: 카드+order_items 원자적 삭제 (재생성 전)
+      await c.env.DB.batch([
+        c.env.DB.prepare('DELETE FROM cards WHERE order_id = ?').bind(id),
+        c.env.DB.prepare('DELETE FROM order_items WHERE order_id = ?').bind(id),
+      ])
     }
 
-    // 이제 안전하게 order_items 삭제 (카드는 이미 보존/삭제 처리됨)
-    await c.env.DB.prepare(`
-      DELETE FROM order_items WHERE order_id = ?
-    `).bind(id).run()
+    // 카드 보존 경로에서는 order_items만 삭제
+    if (cardsPreserved) {
+      await c.env.DB.prepare('DELETE FROM order_items WHERE order_id = ?').bind(id).run()
+    }
 
     // Insert updated order items — two-pass for parent_item_id support
     // Pass 1: parent/regular rows (no parent_client_id) → collect DB IDs

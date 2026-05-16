@@ -275,6 +275,16 @@ inventoryRouter.post('/receipts', async (c) => {
       }, 400)
     }
 
+    // #91: unit_price 음수/0 검증
+    for (const item of items) {
+      if (!item.item_id || !item.quantity || item.quantity <= 0) {
+        return c.json({ success: false, message: 'item_id와 양수 quantity 필수' }, 400)
+      }
+      if (item.unit_price === undefined || item.unit_price === null || item.unit_price < 0) {
+        return c.json({ success: false, message: `품목 ${item.item_id}: unit_price는 0 이상이어야 합니다` }, 400)
+      }
+    }
+
     // Generate receipt number
     const today = new Date().toISOString().split('T')[0].replace(/-/g, '')
     const countRow = await c.env.DB.prepare(`
