@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 3 -->
-<!-- last_run_at: 2026-05-14T13:30:00+09:00 -->
+<!-- last_run_area: 4 -->
+<!-- last_run_at: 2026-05-17T10:00:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,10 +8,16 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | 11 |
-| ✔️ done | 32 |
+| 🆕 new | 18 |
+| ✔️ done | 33 |
 | ❌ rejected | 2 |
 
+> **Area 4 데이터 정합성 (2026-05-17T10:00):**
+> - card_items UNIQUE(card_id, order_item_id) 누락 → A-009 자동 수정 (0208 migration)
+> - 모든 카드 HOLD 시 주문 상태 PRINT_DONE 유지 버그 → #100 등록 (SMALL, 30m)
+> - 이전 Area 4 실행(2026-05-16~17) 누락 이슈 백로그 편입: #89(동시성), #92(음수재고), #93(bank FK), #94(caps FK), #95(delete 원자성), #96(print_events FK), #97(prices entity), #98(purchaseReq entity), #99(work_records sync)
+> - 자동 수정 1건 (A-009), 신규 이슈 1건 (#100)
+>
 > **Area 3 UX/기능 감사 (2026-05-14T13:30):**
 > - 75개 페이지/스크립트 전수 UX 패턴 분석 (검색·필터·페이지네이션·빈상태·로딩)
 > - approvals.js 3탭 결재 목록 검색·필터·페이지네이션 전무 → #43 등록 (MEDIUM, 2~3h)
@@ -95,6 +101,16 @@
 | I-022 | tasks.js limit:200 하드코딩 — 200건+ 실패 태스크 미표시 | Area 3 | #44 | 30분 |
 | I-023 | deliveryAnalytics + financialReports CSV 내보내기 없음 | Area 3 | #45 | 2h |
 | I-024 | 대시보드 장비 가동률 % KPI 부재 | Area 3 | #46 | 1~2h |
+| I-025 | syncOrderStatusFromCards 동시성 race condition | Area 4 | #89 | 2~3h |
+| I-026 | 재고 조정 API 동시 요청 시 음수 재고 허용 (Race Condition) | Area 4 | #92 | 3h |
+| I-027 | bank_transactions.matched_payment_id FK 누락 | Area 4 | #93 | 30분 |
+| I-028 | caps_employee_map.site_id FK 누락 | Area 4 | #94 | 30분 |
+| I-029 | orders 삭제 핸들러 순차 await 6단계 → db.batch() 원자성 | Area 4 | #95 | 30분 |
+| I-030 | print_events/quality_issues card_id FK 없어 고아 레코드 위험 | Area 4 | #96 | 30분 |
+| I-031 | prices.ts 단가 제안 쿼리 entity_id 필터 누락 | Area 4 | #97 | 1~2h |
+| I-032 | purchaseRequests.ts 자동 공급업체 추천 쿼리 entity_id 누락 | Area 4 | #98 | 30분 |
+| I-033 | 카드 상태 변경 시 work_records 상태 미동기화 | Area 4 | #99 | 1~2h |
+| I-034 | 모든 카드 HOLD 시 주문 PRINT_DONE 유지 — 대시보드 오집계 | Area 4 | #100 | 30분 |
 
 ---
 
@@ -102,6 +118,7 @@
 
 | ID | 제목 | 커밋 | 날짜 |
 |----|------|------|------|
+| A-009 | card_items UNIQUE(card_id, order_item_id) 제약 추가 (0208 migration) | 9153ac6 | 2026-05-17 |
 | A-008 | try-catch 누락 17핸들러 (permissions/finishing/messageTemplates/iaAuto) | 60ee8b8 | 2026-05-14 |
 | A-006 | XSS escapeHtml 5건 (approvals/invoice/purchaseInvoice/quotation/clients) | e099b20 | 2026-05-13 |
 | A-005 | tax_invoice_items/orders tax_invoice_id 인덱스 추가 (0193 migration) | 1b3a698 | 2026-05-13 |
