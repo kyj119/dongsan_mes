@@ -114,8 +114,8 @@
 
 | ID | 제목 | 커밋 | 날짜 |
 |----|------|------|------|
-| A-010 | 누락 FK 인덱스 7개 추가 migration 0225 (journal_entries/customer_claims/waste_records/fifo/pii) | (pending) | 2026-05-17 |
-| A-009 | returns.ts inventory_transactions INSERT entity_id 누락 수정 | (pending) | 2026-05-17 |
+| A-010 | 누락 FK 인덱스 7개 추가 migration 0225 (journal_entries/customer_claims/waste_records/fifo/pii) | 0563fb9 | 2026-05-17 |
+| A-009 | returns.ts inventory_transactions INSERT entity_id 누락 수정 | 0563fb9 | 2026-05-17 |
 | A-008 | try-catch 누락 17핸들러 (permissions/finishing/messageTemplates/iaAuto) | 60ee8b8 | 2026-05-14 |
 | A-006 | XSS escapeHtml 5건 (approvals/invoice/purchaseInvoice/quotation/clients) | e099b20 | 2026-05-13 |
 | A-005 | tax_invoice_items/orders tax_invoice_id 인덱스 추가 (0193 migration) | 1b3a698 | 2026-05-13 |
