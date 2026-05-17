@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 3 -->
-<!-- last_run_at: 2026-05-14T13:30:00+09:00 -->
+<!-- last_run_area: 4 -->
+<!-- last_run_at: 2026-05-17T00:00:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,10 +8,19 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | 11 |
-| ✔️ done | 32 |
+| 🆕 new | 14 |
+| ✔️ done | 34 |
 | ❌ rejected | 2 |
 
+> **Area 4 데이터 정합성 (2026-05-17T00:00):**
+> - 마이그레이션 0209~0224 신규 테이블 전수 분석 (entity_id, 인덱스, CASCADE, 상태 머신)
+> - returns.ts inventory_transactions INSERT entity_id 누락 → A-009 자동 수정
+> - 누락 FK 인덱스 7개 (journal_entries entity_id, customer_claims, waste_records, fifo, pii) → A-010 migration 0225
+> - 신규 테이블 4개 entity_id 컬럼 미정의 (멀티테넌트 격리 실패) → #104 등록 (HIGH)
+> - credit_overrides entity_id 없음 + SHIPPED 여신 검증 부재 → #105 등록 (HIGH)
+> - FK CASCADE 누락 7개 테이블 → #106 등록 (MEDIUM)
+> - 자동 수정 2건 (A-009, A-010), 신규 이슈 3건 (#104~#106)
+>
 > **Area 3 UX/기능 감사 (2026-05-14T13:30):**
 > - 75개 페이지/스크립트 전수 UX 패턴 분석 (검색·필터·페이지네이션·빈상태·로딩)
 > - approvals.js 3탭 결재 목록 검색·필터·페이지네이션 전무 → #43 등록 (MEDIUM, 2~3h)
@@ -84,6 +93,9 @@
 
 | ID | 제목 | 영역 | Issue | 공수 |
 |----|------|------|-------|------|
+| I-025 | 신규 테이블 4개 entity_id 컬럼 누락 (멀티테넌트 격리 실패) | Area 4 | #104 | 2~3h |
+| I-026 | credit_overrides entity_id 없음 + SHIPPED 여신 검증 부재 | Area 4 | #105 | 1~2h |
+| I-027 | FK CASCADE 누락 7개 테이블 — 고아 레코드 위험 | Area 4 | #106 | 1~2h |
 | I-013 | 보안 헤더 전무 (CSP/X-Frame-Options/HSTS/X-Content-Type) | Area 5 | #32 | 1~2h |
 | I-014 | /api/portal/auth/change-password rate limit 누락 | Area 5 | #33 | 30분 |
 | I-015 | XSS 잔여: approvals.js(119-276) + cards.js document.write | Area 5 | #34 | 2~3h |
@@ -102,6 +114,8 @@
 
 | ID | 제목 | 커밋 | 날짜 |
 |----|------|------|------|
+| A-010 | 누락 FK 인덱스 7개 추가 migration 0225 (journal_entries/customer_claims/waste_records/fifo/pii) | (pending) | 2026-05-17 |
+| A-009 | returns.ts inventory_transactions INSERT entity_id 누락 수정 | (pending) | 2026-05-17 |
 | A-008 | try-catch 누락 17핸들러 (permissions/finishing/messageTemplates/iaAuto) | 60ee8b8 | 2026-05-14 |
 | A-006 | XSS escapeHtml 5건 (approvals/invoice/purchaseInvoice/quotation/clients) | e099b20 | 2026-05-13 |
 | A-005 | tax_invoice_items/orders tax_invoice_id 인덱스 추가 (0193 migration) | 1b3a698 | 2026-05-13 |

@@ -97,9 +97,9 @@ returns.patch('/:id/status', requireRole('ADMIN', 'MANAGER'), async (c) => {
 
     const invStmts = returnItems.map(ri =>
       c.env.DB.prepare(`
-        INSERT INTO inventory_transactions (item_id, transaction_type, quantity, unit_price, total_amount, reference_type, reference_id, reason, transaction_date)
-        VALUES (?, 'IN', ?, 0, 0, 'RETURN', ?, '반품 입고', CURRENT_TIMESTAMP)
-      `).bind(ri.item_id, ri.quantity, id)
+        INSERT INTO inventory_transactions (item_id, transaction_type, quantity, unit_price, total_amount, reference_type, reference_id, reason, entity_id, transaction_date)
+        VALUES (?, 'IN', ?, 0, 0, 'RETURN', ?, '반품 입고', ?, CURRENT_TIMESTAMP)
+      `).bind(ri.item_id, ri.quantity, id, getEntityId(c))
     )
     if (invStmts.length > 0) await c.env.DB.batch(invStmts)
   }
