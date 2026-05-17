@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 3 -->
-<!-- last_run_at: 2026-05-14T13:30:00+09:00 -->
+<!-- last_run_area: 4 -->
+<!-- last_run_at: 2026-05-17T10:00:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,10 +8,21 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | 11 |
-| ✔️ done | 32 |
+| 🆕 new | 13 |
+| ✔️ done | 33 |
 | ❌ rejected | 2 |
 
+> **Area 4 데이터 정합성 (2026-05-17T10:00):**
+> - 최신 마이그레이션(0209~0224) 테이블 전수 점검: entity_id 컬럼 보유 여부 + 인덱스 존재 여부
+> - entity_id 인덱스 누락 6개 테이블 발견: returns / budgets / fixed_assets / waste_records / journal_entries / purchase_invoices
+> - → A-009 자동 수정: 0225_entity_id_indexes_new_tables.sql 생성 + 커밋 (f0a1d78)
+> - N+1 oee.ts /calculate: 장비 N대 × 4쿼리 직렬 → #102 등록 (SMALL, 30~60m)
+> - N+1 fixedAssets.ts /depreciate: 자산 N개 × 2쿼리 직렬 → #103 등록 (SMALL, 30m)
+> - credit_overrides: entity_id 없으나 order_id JOIN으로 격리되어 문제 없음 (오탐 아님)
+> - equipment_oee_daily: entity_id 없으나 장비가 엔티티 공유 자원이므로 불필요 (정상)
+> - 고아 레코드/상태 불일치: ON DELETE 미설정 FK 다수 존재하나 SQLite D1에서는 FK 강제 비활성 기본값 → 기존 패턴과 동일, 신규 이슈 없음
+> - 자동 수정 1건 (A-009), 신규 이슈 2건 (#102/#103)
+>
 > **Area 3 UX/기능 감사 (2026-05-14T13:30):**
 > - 75개 페이지/스크립트 전수 UX 패턴 분석 (검색·필터·페이지네이션·빈상태·로딩)
 > - approvals.js 3탭 결재 목록 검색·필터·페이지네이션 전무 → #43 등록 (MEDIUM, 2~3h)
@@ -95,6 +106,8 @@
 | I-022 | tasks.js limit:200 하드코딩 — 200건+ 실패 태스크 미표시 | Area 3 | #44 | 30분 |
 | I-023 | deliveryAnalytics + financialReports CSV 내보내기 없음 | Area 3 | #45 | 2h |
 | I-024 | 대시보드 장비 가동률 % KPI 부재 | Area 3 | #46 | 1~2h |
+| I-025 | N+1: oee.ts /calculate 장비당 4쿼리 직렬 실행 | Area 4 | #102 | 30~60m |
+| I-026 | N+1: fixedAssets.ts /depreciate 자산당 2쿼리 직렬 실행 | Area 4 | #103 | 30m |
 
 ---
 
@@ -102,6 +115,7 @@
 
 | ID | 제목 | 커밋 | 날짜 |
 |----|------|------|------|
+| A-009 | entity_id 인덱스 6개 추가 (returns/budgets/fixed_assets/waste_records/journal_entries/purchase_invoices) | f0a1d78 | 2026-05-17 |
 | A-008 | try-catch 누락 17핸들러 (permissions/finishing/messageTemplates/iaAuto) | 60ee8b8 | 2026-05-14 |
 | A-006 | XSS escapeHtml 5건 (approvals/invoice/purchaseInvoice/quotation/clients) | e099b20 | 2026-05-13 |
 | A-005 | tax_invoice_items/orders tax_invoice_id 인덱스 추가 (0193 migration) | 1b3a698 | 2026-05-13 |
@@ -114,6 +128,7 @@
 
 | ID | 제목 | 커밋/Issue | 날짜 |
 |----|------|-----------|------|
+| A-009 | entity_id 인덱스 6개 자동 추가 (returns/budgets/fixed_assets/waste/journal_entries/purchase_invoices) | A-009 / f0a1d78 | 2026-05-17 |
 | I-017 | try-catch 누락 17핸들러 자동 수정 (permissions/finishing/messageTemplates/iaAuto) | A-008 / 60ee8b8 | 2026-05-14 |
 | D-001 | shipment_items UNIQUE(shipment_id, card_id) 제약 추가 (0194 migration) | #31 | 2026-05-13 |
 | I-015partial | 스모크 커버리지 55→88 엔드포인트 확대 | #15 | 2026-05-13 |
