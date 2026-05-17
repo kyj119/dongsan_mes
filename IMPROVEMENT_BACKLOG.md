@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 3 -->
-<!-- last_run_at: 2026-05-14T13:30:00+09:00 -->
+<!-- last_run_area: 4 -->
+<!-- last_run_at: 2026-05-17T00:00:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,10 +8,19 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | 11 |
+| 🆕 new | 14 |
 | ✔️ done | 32 |
 | ❌ rejected | 2 |
 
+> **Area 4 데이터 정합성 (2026-05-17T00:00):**
+> - 207개 마이그레이션 + 26개 entity_id 테이블 + 288개 INSERT 전수 분석
+> - prices.ts L61/L78/L309 단가 제안 쿼리 entity_id 필터 3건 누락 + Promise.all N+1 → #97 등록 (MEDIUM)
+> - purchaseRequests.ts L655 공급업체 자동 추천 entity_id 누락 → #98 등록 (SMALL)
+> - cards HOLD/CANCELLED 전환 시 work_records.status 미동기화 → 고아 레코드 가능 → #99 등록 (MEDIUM)
+> - bank_accounts(entity_id) 인덱스: migration 0204에서 이미 생성 확인 ✓
+> - shipment_items/inventory_count_items: 부모 테이블 경유 entity 격리 — 의도적 설계 ✓
+> - 자동 수정 0건 (비즈니스 로직 변경 필요 항목 전량 → Issue 처리), 신규 이슈 3건 (#97~#99)
+>
 > **Area 3 UX/기능 감사 (2026-05-14T13:30):**
 > - 75개 페이지/스크립트 전수 UX 패턴 분석 (검색·필터·페이지네이션·빈상태·로딩)
 > - approvals.js 3탭 결재 목록 검색·필터·페이지네이션 전무 → #43 등록 (MEDIUM, 2~3h)
@@ -95,6 +104,9 @@
 | I-022 | tasks.js limit:200 하드코딩 — 200건+ 실패 태스크 미표시 | Area 3 | #44 | 30분 |
 | I-023 | deliveryAnalytics + financialReports CSV 내보내기 없음 | Area 3 | #45 | 2h |
 | I-024 | 대시보드 장비 가동률 % KPI 부재 | Area 3 | #46 | 1~2h |
+| I-025 | prices.ts 단가 제안 쿼리 entity_id 필터 누락 (3건) + N+1 | Area 4 | #97 | 1~2h |
+| I-026 | purchaseRequests.ts 공급업체 자동 추천 entity_id 누락 | Area 4 | #98 | 30분 |
+| I-027 | 카드 HOLD/CANCELLED 시 work_records 상태 미동기화 (고아 레코드) | Area 4 | #99 | 1~2h |
 
 ---
 
