@@ -471,8 +471,8 @@ ordersCoreRouter.patch('/:id/bill', requireRole('ADMIN', 'MANAGER'), async (c) =
     const body = await c.req.json().catch(() => ({})) as { billed_amount?: number }
 
     const order = await c.env.DB.prepare(
-      'SELECT id, status, client_id, final_amount, billing_status FROM orders WHERE id = ?'
-    ).bind(id).first<{ id: number; status: string; client_id: number; final_amount: number; billing_status: string | null }>()
+      'SELECT id, status, client_id, final_amount, billing_status, has_pending_prices FROM orders WHERE id = ?'
+    ).bind(id).first<{ id: number; status: string; client_id: number; final_amount: number; billing_status: string | null; has_pending_prices: number }>()
 
     if (!order) {
       return c.json({ success: false, error: 'Order not found' }, 404)
@@ -487,6 +487,10 @@ ordersCoreRouter.patch('/:id/bill', requireRole('ADMIN', 'MANAGER'), async (c) =
 
     if (order.billing_status === 'BILLED') {
       return c.json({ success: false, error: '이미 회계반영된 주문입니다' }, 400)
+    }
+
+    if (order.has_pending_prices) {
+      return c.json({ success: false, error: '단가 미정 품목이 있는 주문은 회계반영할 수 없습니다. 먼저 단가를 확정해주세요.' }, 400)
     }
 
     const maxAmount = parseFloat(String(order.final_amount)) || 0
@@ -851,11 +855,13 @@ ordersCoreRouter.post('/', async (c) => {
     ).first<{ setting_value: string }>()
     const vatRatePost = vatSettingPost ? parseFloat(vatSettingPost.setting_value) : 0.10
 
-    // Calculate totals
+    // Calculate totals (PENDING 품목은 0원 처리)
     let totalAmount = 0
     let vatAmount = 0
+    let hasPendingPrices = 0
 
     for (const item of orderData.items) {
+      if (item.price_status === 'PENDING') { hasPendingPrices = 1; continue }
       const pricingMethod = item.item_id ? (pricingMethodMap.get(item.item_id) || 'FIXED') : 'FIXED'
       const w = item.width_mm || item.width || 0
       const h = item.height_mm || item.height || 0
@@ -908,8 +914,8 @@ ordersCoreRouter.post('/', async (c) => {
         notes, internal_notes, created_by,
         ai_file_path, ai_analysis_id, layout_id, priority, delivery_method, delivery_time,
         contact_phone, contact_mobile, shipping_payment, valid_until, entity_id,
-        sheet_layout_params, order_type, quotation_id
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        sheet_layout_params, order_type, quotation_id, has_pending_prices
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).bind(
       orderNumber,
       orderData.client_id,
@@ -943,7 +949,8 @@ ordersCoreRouter.post('/', async (c) => {
         return slItem?.sheet_layout_params || null
       })(),
       orderType,
-      sourceQuotationId
+      sourceQuotationId,
+      hasPendingPrices
     ).run()
 
     // Phase 3.2: 견적서로부터 생성된 주문이면 quotations 카운트 갱신
@@ -1016,8 +1023,8 @@ ordersCoreRouter.post('/', async (c) => {
           width, height, quantity, unit,
           unit_price, amount, vat_included,
           post_processing, content, sort_order,
-          ai_group_index, scale_factor, ai_analysis_id, parent_item_id, finishing
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)
+          ai_group_index, scale_factor, ai_analysis_id, parent_item_id, finishing, price_status
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?)
       `).bind(
         orderId,
         item.item_id || null,
@@ -1027,8 +1034,8 @@ ordersCoreRouter.post('/', async (c) => {
         item.height_mm || item.height || null,
         item.quantity || 1,
         unit,
-        item.unit_price || 0,
-        itemAmount,
+        item.price_status === 'PENDING' ? 0 : (item.unit_price || 0),
+        item.price_status === 'PENDING' ? 0 : itemAmount,
         item.vat_included !== undefined ? (item.vat_included ? 1 : 0) : 1,
         item.post_processing || item.paper || null,
         item.content || item.print || null,
@@ -1036,7 +1043,8 @@ ordersCoreRouter.post('/', async (c) => {
         item.ai_group_index !== undefined ? item.ai_group_index : null,
         item.scale_factor || 1,
         item.ai_analysis_id || null,
-        item.finishing || null
+        item.finishing || null,
+        item.price_status || 'CONFIRMED'
       )
     )
 
@@ -1818,11 +1826,13 @@ ordersCoreRouter.put('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
     ).first<{ setting_value: string }>()
     const vatRatePut = vatSettingPut ? parseFloat(vatSettingPut.setting_value) : 0.10
 
-    // Calculate totals
+    // Calculate totals (PENDING 품목은 0원 처리)
     let totalAmount = 0
     let vatAmount = 0
+    let hasPendingPricesPut = 0
 
     for (const item of orderData.items) {
+      if (item.price_status === 'PENDING') { hasPendingPricesPut = 1; continue }
       const pricingMethod = item.item_id ? (putPricingMethodMap.get(item.item_id) || 'FIXED') : 'FIXED'
       const w = item.width_mm || item.width || 0
       const h = item.height_mm || item.height || 0
@@ -1862,6 +1872,7 @@ ordersCoreRouter.put('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
         contact_phone = ?,
         contact_mobile = ?,
         shipping_payment = ?,
+        has_pending_prices = ?,
         updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
     `).bind(
@@ -1881,6 +1892,7 @@ ordersCoreRouter.put('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
       orderData.contact_phone || null,
       orderData.contact_mobile || null,
       orderData.shipping_payment || null,
+      hasPendingPricesPut,
       id
     ).run()
 
@@ -2022,8 +2034,8 @@ ordersCoreRouter.put('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
           width, height, quantity, unit,
           unit_price, amount, vat_included,
           post_processing, content, sort_order,
-          ai_group_index, scale_factor, ai_analysis_id, parent_item_id, finishing
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)
+          ai_group_index, scale_factor, ai_analysis_id, parent_item_id, finishing, price_status
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?)
       `).bind(
         id,
         item.item_id || null,
@@ -2033,8 +2045,8 @@ ordersCoreRouter.put('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
         item.height_mm || item.height || null,
         item.quantity || 1,
         unit,
-        item.unit_price || 0,
-        itemAmount,
+        item.price_status === 'PENDING' ? 0 : (item.unit_price || 0),
+        item.price_status === 'PENDING' ? 0 : itemAmount,
         item.vat_included !== undefined ? (item.vat_included ? 1 : 0) : 1,
         item.post_processing || item.paper || null,
         item.content || item.print || null,
@@ -2042,7 +2054,8 @@ ordersCoreRouter.put('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
         item.ai_group_index !== undefined ? item.ai_group_index : null,
         item.scale_factor || 1,
         item.ai_analysis_id || null,
-        item.finishing || null
+        item.finishing || null,
+        item.price_status || 'CONFIRMED'
       ).run()
 
       if (item.client_group_id) {
@@ -2318,6 +2331,7 @@ ordersCoreRouter.post('/sync-statuses', requireRole('ADMIN', 'MANAGER'), async (
         AND o.billable_after IS NOT NULL
         AND o.billable_after <= date('now')
         AND o.final_amount > 0
+        AND o.has_pending_prices = 0
         AND c.auto_billing = 1
         ${ef.clause}
     `).bind(...ef.params).all()

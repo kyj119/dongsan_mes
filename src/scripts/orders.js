@@ -364,7 +364,7 @@ async function loadOrders() {
               <div class="text-xs text-gray-400 mt-0.5">${escapeHtml(deliveryLabel)}</div>
             </td>
             <td class="px-6 py-4 whitespace-nowrap text-right tabular-nums">
-              <div class="text-sm text-gray-900">${order.final_amount?.toLocaleString() || '0'}원</div>
+              <div class="text-sm text-gray-900">${order.final_amount?.toLocaleString() || '0'}원${order.has_pending_prices ? '<span class="ml-1 px-1.5 py-0.5 text-[10px] rounded bg-amber-100 text-amber-700 font-bold">미정</span>' : ''}</div>
             </td>
             <td class="px-6 py-4 whitespace-nowrap">
               <span class="px-2 inline-flex items-center text-xs leading-5 font-semibold rounded-full ${getStatusColor(order.status)}">

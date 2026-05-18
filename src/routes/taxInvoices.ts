@@ -927,6 +927,12 @@ taxInvoicesRouter.post('/', requireRole('ADMIN', 'MANAGER'), async (c) => {
         return c.json({ success: false, error: '일부 주문이 존재하지 않습니다.' }, 400)
       }
 
+      // 단가 미정 주문 검증
+      const pendingOrders = orders.filter((o: any) => o.has_pending_prices === 1)
+      if (pendingOrders.length > 0) {
+        return c.json({ success: false, error: '단가 미정 품목이 있는 주문이 포함되어 있습니다. 먼저 단가를 확정해주세요.' }, 400)
+      }
+
       // 모든 주문이 같은 거래처인지 검증
       const clientIds = [...new Set(orders.map(o => o.client_id))]
       if (clientIds.length > 1) {

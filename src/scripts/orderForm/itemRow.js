@@ -71,6 +71,12 @@
                                 <span class="text-gray-700">부가세</span>
                             </label>
                         </div>
+                        <div class="flex items-end pb-0.5">
+                            <label class="flex items-center gap-1.5 text-xs cursor-pointer">
+                                <input type="checkbox" name="price_pending_${id}" class="rounded border-gray-300 text-amber-600" onchange="onPricePendingChange(${id})">
+                                <span class="text-gray-700">단가 미정</span>
+                            </label>
+                        </div>
                     </div>
                     <div class="pt-2 border-t border-gray-200" id="pp_section_${id}">
                         <label class="block text-xs font-medium text-gray-600 mb-1">후가공 <span class="text-gray-400 font-normal">(품목 선택 시 자동 로드)</span></label>

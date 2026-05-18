@@ -42,52 +42,46 @@
 
 ## 🟢 최근 완료 (2026-05-18)
 
-### Issues #89~#110 — 동시성/N+1/entity_id/FK 일괄 수정 (22건 close)
+### 생산 현황 보드 대규모 개편
+- 기본 필터: 출력 전 (PRINT_PENDING), 탭: 전체/출력전/출력중/출력완료/출고완료/HOLD
+- 긴급도 정렬 (납기초과→당일→임박→PP미완료→납기순)
+- 20건 페이지네이션 + 더보기 버튼
+- 수량·후가공 상세 표시, 모달 확장 버튼
+- SPA 내비게이션 버그 수정 (DOMContentLoaded→IIFE)
+- 모달 닫기 버그 수정 (layout.ts ESC handler hidden 충돌)
+- 스마트 자동갱신 (summary 30초, full 2분)
 
-#### 동시성/Race Condition (2건)
-- **#89**: syncOrderStatusFromCards Option B 원자적 조건부 UPDATE
-- **#92**: 재고 조정 원자적 UPDATE WHERE (quantity+?)>=0
+### Issues #111~#117 — 6건 close
+- **#111**: returns.ts RESTOCK balance_after + entity_id
+- **#112**: generalLedger 결제 자동분개 중복 방지 (409)
+- **#114**: fixedAssets depreciate + GET /:id entityFilter
+- **#115**: budgets LABOR + MAINTENANCE entityFilter
+- **#116**: 주문 하드삭제 cascade 8개 테이블 추가
+- **#117**: FK 미강제 → 옵션B (수동 cascade 유지, #116에서 보완)
 
-#### 데이터 정합성 (5건)
-- **#99**: HOLD 시 work_records PAUSED 동기화
-- **#100**: 전체 카드 HOLD → 주문 HOLD 반영
-- **#101**: CONFIRMED+ 주문 delivery_date NULL 서버검증
-- **#93**: 결제 삭제 시 bank_transactions 매칭 해제
-- **#95**: 이미 #87에서 해결됨 (확인 후 클로즈)
+### DB 일일 백업 자동화 구축
+- GitHub Actions → R2 버킷 (`dongsan-backups`) 일일 자동 백업
+- Windows 작업 스케줄러 → NAS (`Z:\Backups\D1\`) 일일 자동 백업
+- 보존 정책: 일별 90일 + 월별 무기한
+- `npm run db:backup` / `db:backup:nas` 수동 명령 추가
 
-#### entity_id 필터 누락 (4건)
-- **#97**: prices.ts 단가 제안 entityFilter 적용
-- **#98**: purchaseRequests.ts 공급업체 추천 entityFilter 적용
-- **#104/#105**: 5개 테이블 entity_id 컬럼 추가 (migration 0225)
-- **#110**: oee.ts entityFilter 전면 적용
-
-#### N+1 쿼리 해소 (2건)
-- **#102/#108**: oee.ts 4N→4 일괄 GROUP BY
-- **#103/#109**: fixedAssets.ts 2N→일괄 SELECT + Set/Map
-
-#### FK/인덱스 (3건)
-- **#94/#96/#106**: FK 인덱스 추가 (migration 0225)
-
-#### 중복 닫기 (4건)
-- **#107**(=#105), **#108**(=#102), **#109**(=#103), **#110**(⊂#104)
-
-#### 기타
-- postProcessing stats 500 에러 수정 (items.category_name → order_items.category_name)
-
-### [#81] 생산 현황 보드 — 디지털 작업 지시서 (신규 페이지)
-- `/production-board` 카드 그리드 뷰 + 썸네일 lazy-load
-- 라이트박스: 품목별 썸네일 + 이미지 확대(zoom) + 후가공 오버레이
-- 상태 필터 탭 + 정렬 + 풀스크린 모드 + 자동갱신 30초
-- 반응형: 모바일 2열 ~ 대형 모니터 6열
-- 전용 API: GET /api/cards/board, GET /api/cards/thumbnails
+### 소재관리 연동 버그 수정
+- PUT /media/:id: 소재명 변경 → 출력 품목명 자동 전파
+- media_group 변경 → 원자재 item_group 연쇄 업데이트
+- PATCH /items/:id: item_group, is_purchase_item 필드 허용
 
 ---
 
-## 🟢 이전 완료 (2026-05-15~16)
+## 🟢 이전 완료 (2026-05-15~17)
+
+### Issues #89~#110 — 22건 close (2026-05-17)
+- 동시성, 데이터 정합성, entity_id 필터, N+1 해소, FK/인덱스
+
+### [#81] 생산 현황 보드 — 디지털 작업 지시서 (2026-05-17)
+- 카드 그리드 뷰 + 라이트박스 + 자동갱신 + 풀스크린
 
 ### 이슈 대량 처리 — 24건 closed (2026-05-15~16)
 - #63~#91: 버그/데이터(10건) + Tier1(5건) + Tier2(6건) + Tier3(4건)
-- 상세 → git log 참조
 
 ---
 
