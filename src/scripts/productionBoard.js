@@ -140,23 +140,47 @@ async function openLightbox(cardId) {
     var html = '';
 
     // 품목별 썸네일 그리드
+    var hasItemThumbs = items.some(function(it) { return !!it.thumbnail_url; });
     if (items.length > 0) {
       html += '<div class="lb-items-grid">';
       for (var i = 0; i < items.length; i++) {
         var item = items[i];
         var checkIcon = item.print_completed ? '<span class="done-check"><i class="fas fa-check-circle"></i> 완료</span>' : '<span class="pending-check"><i class="far fa-circle"></i> 대기</span>';
+
+        // 후가공 파싱
+        var ppList = [];
+        try { if (item.post_processing) ppList = typeof item.post_processing === 'string' ? JSON.parse(item.post_processing) : item.post_processing; } catch(_){}
+        var ppOverlay = '';
+        if (ppList && ppList.length > 0) {
+          ppOverlay = '<div class="lb-item-pp">';
+          for (var p = 0; p < ppList.length; p++) {
+            ppOverlay += '<span class="pp-tag">' + escHtml(ppList[p].name || ppList[p].code || '') + '</span>';
+          }
+          ppOverlay += '</div>';
+        }
+
+        // 이미지: 품목별 → 카드 대표 → 플레이스홀더
+        var imgSrc = item.thumbnail_url || (hasItemThumbs ? '' : card.thumbnail_url) || '';
         html += '<div class="lb-item">';
-        if (item.thumbnail_url) {
-          html += '<img src="' + item.thumbnail_url + '" alt="" loading="lazy">';
+        html += '<div class="lb-item-img-wrap">';
+        if (imgSrc) {
+          html += '<img src="' + imgSrc + '" alt="" loading="lazy" onclick="zoomImage(this.src)" title="클릭하여 확대">';
         } else {
           html += '<div class="lb-no-thumb"><i class="fas fa-image"></i></div>';
         }
+        html += ppOverlay;
+        html += '</div>';
         html += '<div class="lb-item-info">';
         html += '<div class="lb-item-name" title="' + escHtml(item.item_name || '') + '">' + escHtml(item.item_name || '') + '</div>';
         html += '<div class="lb-item-size">' + (item.width || 0) + 'x' + (item.height || 0) + ' · ' + (item.quantity || 0) + (item.unit || 'EA') + '</div>';
         html += '<div>' + checkIcon + '</div>';
         html += '</div></div>';
       }
+      html += '</div>';
+    } else if (card.thumbnail_url) {
+      // 품목 없는 카드 — 카드 대표 썸네일 표시
+      html += '<div class="lb-single-thumb" onclick="zoomImage(\'' + card.thumbnail_url.replace(/'/g, "\\'") + '\')">';
+      html += '<img src="' + card.thumbnail_url + '" alt="">';
       html += '</div>';
     }
 
@@ -189,8 +213,38 @@ function closeLightbox(e) {
 
 // ESC 닫기
 document.addEventListener('keydown', function (e) {
-  if (e.key === 'Escape') closeLightbox();
+  if (e.key === 'Escape') {
+    var zoom = document.getElementById('zoomOverlay');
+    if (zoom) { zoom.remove(); return; }
+    closeLightbox();
+  }
 });
+
+// ── 이미지 확대 ───────────────────────────────────────────────────────────────
+function zoomImage(src) {
+  if (!src) return;
+  var existing = document.getElementById('zoomOverlay');
+  if (existing) existing.remove();
+
+  var overlay = document.createElement('div');
+  overlay.id = 'zoomOverlay';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:2000;display:flex;align-items:center;justify-content:center;cursor:zoom-out;padding:20px;';
+  overlay.onclick = function() { overlay.remove(); };
+
+  var img = document.createElement('img');
+  img.src = src;
+  img.style.cssText = 'max-width:95vw;max-height:90vh;object-fit:contain;border-radius:8px;box-shadow:0 0 40px rgba(0,0,0,0.5);';
+  img.onclick = function(e) { e.stopPropagation(); };
+
+  var closeBtn = document.createElement('button');
+  closeBtn.innerHTML = '&times;';
+  closeBtn.style.cssText = 'position:absolute;top:16px;right:24px;background:none;border:none;color:white;font-size:36px;cursor:pointer;';
+  closeBtn.onclick = function() { overlay.remove(); };
+
+  overlay.appendChild(img);
+  overlay.appendChild(closeBtn);
+  document.body.appendChild(overlay);
+}
 
 // ── 풀스크린 ──────────────────────────────────────────────────────────────────
 function toggleFullscreen() {
