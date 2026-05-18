@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 3 -->
-<!-- last_run_at: 2026-05-14T13:30:00+09:00 -->
+<!-- last_run_area: 4 -->
+<!-- last_run_at: 2026-05-18T00:00:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,10 +8,18 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | 11 |
+| 🆕 new | 14 |
 | ✔️ done | 32 |
 | ❌ rejected | 2 |
 
+> **Area 4 데이터 정합성 (2026-05-18T00:00):**
+> - 최근 마이그레이션(0213~0226) 스키마 전수 검토: entity_id/인덱스/상태 정합성/고아 레코드
+> - entity_id 인덱스 누락 7개 (returns/purchase_invoices×3/fixed_assets/budgets/journal_entries) → A-009 자동 수정 (0227 migration)
+> - returns.ts RESOLVED+RESTOCK inventory_transactions INSERT `balance_after NOT NULL` 오류 → #113 등록 (SMALL, 2h)
+> - fixedAssets.post('/depreciate') entity_id 필터 없음 → #114 등록 (SMALL, 30m)
+> - budgets.ts /vs-actual LABOR payroll entity_id 필터 누락 → #115 등록 (SMALL, 15m)
+> - 자동 수정 1건 (A-009), 신규 이슈 3건 (#113~#115)
+>
 > **Area 3 UX/기능 감사 (2026-05-14T13:30):**
 > - 75개 페이지/스크립트 전수 UX 패턴 분석 (검색·필터·페이지네이션·빈상태·로딩)
 > - approvals.js 3탭 결재 목록 검색·필터·페이지네이션 전무 → #43 등록 (MEDIUM, 2~3h)
@@ -95,6 +103,9 @@
 | I-022 | tasks.js limit:200 하드코딩 — 200건+ 실패 태스크 미표시 | Area 3 | #44 | 30분 |
 | I-023 | deliveryAnalytics + financialReports CSV 내보내기 없음 | Area 3 | #45 | 2h |
 | I-024 | 대시보드 장비 가동률 % KPI 부재 | Area 3 | #46 | 1~2h |
+| I-025 | returns.ts RESTOCK 재고 복원 balance_after NOT NULL 오류 | Area 4 | #113 | 2h |
+| I-026 | fixedAssets.post('/depreciate') entity_id 필터 없음 | Area 4 | #114 | 30분 |
+| I-027 | budgets.ts /vs-actual LABOR payroll entity 필터 누락 | Area 4 | #115 | 15분 |
 
 ---
 
@@ -102,6 +113,7 @@
 
 | ID | 제목 | 커밋 | 날짜 |
 |----|------|------|------|
+| A-009 | entity_id 인덱스 7개 추가 (returns/purchase_invoices×3/fixed_assets/budgets/journal_entries) | 0227 migration | 2026-05-18 |
 | A-008 | try-catch 누락 17핸들러 (permissions/finishing/messageTemplates/iaAuto) | 60ee8b8 | 2026-05-14 |
 | A-006 | XSS escapeHtml 5건 (approvals/invoice/purchaseInvoice/quotation/clients) | e099b20 | 2026-05-13 |
 | A-005 | tax_invoice_items/orders tax_invoice_id 인덱스 추가 (0193 migration) | 1b3a698 | 2026-05-13 |
