@@ -133,7 +133,7 @@ async function openLightbox(cardId) {
     var res = await axios.get('/api/cards/' + cardId);
     if (!res.data.success) return;
     var card = res.data.data;
-    var items = card._items || [];
+    var items = card.items || card._items || [];
 
     document.getElementById('lbTitle').textContent = card.card_number + ' — ' + (card.client_name || '');
 
