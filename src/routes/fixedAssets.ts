@@ -78,20 +78,27 @@ fixedAssets.post('/depreciate', requireRole('ADMIN'), async (c) => {
     SELECT * FROM fixed_assets WHERE status = 'IN_USE'
   `).all<any>()
 
+  // N+1 해소: 이미 처리된 기간 + 최신 누적감가상각을 일괄 조회
+  const { results: existingPeriods } = await c.env.DB.prepare(
+    `SELECT asset_id FROM depreciation_records WHERE period = ?`
+  ).bind(period).all<{ asset_id: number }>()
+  const alreadyProcessed = new Set(existingPeriods.map(r => r.asset_id))
+
+  const { results: latestRecords } = await c.env.DB.prepare(`
+    SELECT dr.asset_id, dr.accumulated_depreciation, dr.book_value
+    FROM depreciation_records dr
+    INNER JOIN (
+      SELECT asset_id, MAX(period) as max_period FROM depreciation_records GROUP BY asset_id
+    ) latest ON dr.asset_id = latest.asset_id AND dr.period = latest.max_period
+  `).all<{ asset_id: number; accumulated_depreciation: number; book_value: number }>()
+  const latestMap = new Map(latestRecords.map(r => [r.asset_id, r]))
+
   const stmts: any[] = []
 
   for (const asset of assets) {
-    // 이미 해당 월 감가상각 있으면 스킵
-    const existing = await c.env.DB.prepare(
-      `SELECT id FROM depreciation_records WHERE asset_id = ? AND period = ?`
-    ).bind(asset.id, period).first()
-    if (existing) continue
+    if (alreadyProcessed.has(asset.id)) continue
 
-    // 누적 감가상각 조회
-    const lastRecord = await c.env.DB.prepare(
-      `SELECT accumulated_depreciation, book_value FROM depreciation_records WHERE asset_id = ? ORDER BY period DESC LIMIT 1`
-    ).bind(asset.id).first<{ accumulated_depreciation: number; book_value: number }>()
-
+    const lastRecord = latestMap.get(asset.id)
     const accumulated = lastRecord?.accumulated_depreciation || 0
     const bookValue = lastRecord?.book_value || asset.current_book_value || asset.acquisition_cost
 

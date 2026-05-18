@@ -20,51 +20,61 @@ const cardsLifecycleRouter = new Hono<HonoEnv>()
 cardsLifecycleRouter.use('/*', authMiddleware, requireAnyPagePermission('/cards', '/orders'))
 
 async function syncOrderStatusFromCards(db: D1Database, orderId: number) {
-  // 1. 해당 주문의 모든 카드 상태 조회 (CANCELLED 제외)
-  const cards = await db.prepare(
-    `SELECT status FROM cards WHERE order_id = ? AND status != 'CANCELLED'`
-  ).bind(orderId).all<{ status: string }>()
+  // Option B: 단일 SELECT로 카드+주문 상태를 원자적 스냅샷으로 조회
+  const snapshot = await db.prepare(`
+    SELECT
+      o.status as order_status,
+      COUNT(c.id) as card_count,
+      SUM(CASE WHEN c.status = 'HOLD' THEN 1 ELSE 0 END) as hold_count,
+      SUM(CASE WHEN c.status = 'PRINT_DONE' THEN 1 ELSE 0 END) as done_count,
+      SUM(CASE WHEN c.status = 'PRINTING' THEN 1 ELSE 0 END) as printing_count
+    FROM orders o
+    LEFT JOIN cards c ON c.order_id = o.id AND c.status != 'CANCELLED'
+    WHERE o.id = ?
+    GROUP BY o.id
+  `).bind(orderId).first<{
+    order_status: string
+    card_count: number
+    hold_count: number
+    done_count: number
+    printing_count: number
+  }>()
 
-  if (!cards.results || cards.results.length === 0) return
-
-  const statuses: string[] = cards.results.map((c) => c.status)
-  const hasHold = statuses.some((s) => s === 'HOLD')
-
-  // 2. 주문 현재 상태 확인 — 아래 상태는 카드로 자동 변경하지 않음
-  const order = await db.prepare(
-    `SELECT status FROM orders WHERE id = ?`
-  ).bind(orderId).first<{ status: string }>()
-  if (!order) return
+  if (!snapshot || snapshot.card_count === 0) return
 
   const skipStatuses = ['SHIPPED', 'CANCELLED', 'HOLD']
-  if (skipStatuses.includes(order.status)) return
+  if (skipStatuses.includes(snapshot.order_status)) return
 
-  // 3. 카드 상태 집계 → 주문 상태 결정
-  //    HOLD 카드가 있으면 PRINT_DONE 전환 차단 (HOLD 해제 후에만 완료 처리)
-  const nonHoldStatuses = statuses.filter((s) => s !== 'HOLD')
+  // 카드 상태 집계 → 주문 상태 결정
   let newStatus: string | null = null
-  if (!hasHold && nonHoldStatuses.length > 0 && nonHoldStatuses.every((s) => s === 'PRINT_DONE')) {
+  if (snapshot.hold_count === 0 && snapshot.done_count === snapshot.card_count) {
+    // 모든 카드가 PRINT_DONE (HOLD 없음)
     newStatus = 'PRINT_DONE'
-  } else if (nonHoldStatuses.some((s) => s === 'PRINTING')) {
-    // CONFIRMED 상태에서는 실제 출력 시작(카드 중 하나라도 PRINT_DONE이 있을 때)만 전이
-    // 카드 생성 시 기본 PRINTING이므로, 모두 PRINTING이면 아직 실제 출력 시작 안 한 것
-    if (order.status === 'CONFIRMED' && !statuses.some((s) => s === 'PRINT_DONE')) {
-      return // 카드 생성 직후 — 아직 실제 출력 안 했으므로 CONFIRMED 유지
+  } else if (snapshot.hold_count === snapshot.card_count) {
+    // #100: 모든 카드가 HOLD → 주문도 HOLD 반영
+    newStatus = 'HOLD'
+  } else if (snapshot.printing_count > 0) {
+    // CONFIRMED에서 카드 생성 직후(아직 실제 출력 안 한 상태) → CONFIRMED 유지
+    if (snapshot.order_status === 'CONFIRMED' && snapshot.done_count === 0) {
+      return
     }
     newStatus = 'PRINTING'
   }
 
-  // 4. 변경이 필요한 경우만 UPDATE + 이력 기록 (db.batch로 원자적 처리)
-  if (newStatus && newStatus !== order.status) {
-    await db.batch([
-      db.prepare(
-        `UPDATE orders SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`
-      ).bind(newStatus, orderId),
-      db.prepare(`
+  // 원자적 조건부 UPDATE: order_status가 스냅샷과 동일할 때만 실행 (race 방지)
+  if (newStatus && newStatus !== snapshot.order_status) {
+    const result = await db.prepare(`
+      UPDATE orders SET status = ?, updated_at = CURRENT_TIMESTAMP
+      WHERE id = ? AND status = ?
+    `).bind(newStatus, orderId, snapshot.order_status).run()
+
+    // 실제로 UPDATE된 경우에만 이력 기록
+    if (result.meta.changes > 0) {
+      await db.prepare(`
         INSERT INTO order_status_history (order_id, from_status, to_status, changed_by, change_reason)
         VALUES (?, ?, ?, 1, ?)
-      `).bind(orderId, order.status, newStatus, '카드 상태 자동 동기화'),
-    ])
+      `).bind(orderId, snapshot.order_status, newStatus, '카드 상태 자동 동기화').run()
+    }
   }
 }
 
@@ -118,6 +128,13 @@ cardsLifecycleRouter.patch('/bulk/status', requireRole('ADMIN', 'MANAGER', 'OPER
             UPDATE cards SET status = ?, hold_reason = ?, hold_at = CURRENT_TIMESTAMP,
             hold_by = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?
           `).bind(status, reason || null, user?.id || null, cardId)
+        )
+        // #99: HOLD 시 진행 중 work_records → PAUSED
+        batchStmts.push(
+          c.env.DB.prepare(`
+            UPDATE work_records SET status = 'PAUSED', updated_at = CURRENT_TIMESTAMP
+            WHERE card_id = ? AND status = 'IN_PROGRESS'
+          `).bind(cardId)
         )
 
         // 불량 유형이 있으면 quality_issues 자동 생성
@@ -437,15 +454,21 @@ cardsLifecycleRouter.post('/:id/defects', async (c) => {
 
     // auto_hold가 true이고 현재 HOLD 상태가 아니면 HOLD 전환
     if (auto_hold && card.status !== 'HOLD') {
-      await c.env.DB.prepare(`
-        UPDATE cards SET status = 'HOLD', hold_reason = ?, hold_at = CURRENT_TIMESTAMP,
-        hold_by = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?
-      `).bind(description, user?.id || null, cardId).run()
-
-      await c.env.DB.prepare(`
-        INSERT INTO card_status_history (card_id, from_status, to_status, changed_by, change_reason)
-        VALUES (?, ?, 'HOLD', ?, ?)
-      `).bind(cardId, card.status, user?.id || null, '불량 접수: ' + defect_category).run()
+      await c.env.DB.batch([
+        c.env.DB.prepare(`
+          UPDATE cards SET status = 'HOLD', hold_reason = ?, hold_at = CURRENT_TIMESTAMP,
+          hold_by = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?
+        `).bind(description, user?.id || null, cardId),
+        // #99: HOLD 시 진행 중 work_records → PAUSED
+        c.env.DB.prepare(`
+          UPDATE work_records SET status = 'PAUSED', updated_at = CURRENT_TIMESTAMP
+          WHERE card_id = ? AND status = 'IN_PROGRESS'
+        `).bind(cardId),
+        c.env.DB.prepare(`
+          INSERT INTO card_status_history (card_id, from_status, to_status, changed_by, change_reason)
+          VALUES (?, ?, 'HOLD', ?, ?)
+        `).bind(cardId, card.status, user?.id || null, '불량 접수: ' + defect_category),
+      ])
 
       if (card.order_id) {
         await syncOrderStatusFromCards(c.env.DB, card.order_id)
@@ -494,10 +517,17 @@ cardsLifecycleRouter.patch('/:id/status', async (c) => {
 
     // Update card status with hold fields
     if (status === 'HOLD') {
-      await c.env.DB.prepare(`
-        UPDATE cards SET status = ?, hold_reason = ?, hold_at = CURRENT_TIMESTAMP,
-        hold_by = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?
-      `).bind(status, reason || null, user?.id || null, id).run()
+      await c.env.DB.batch([
+        c.env.DB.prepare(`
+          UPDATE cards SET status = ?, hold_reason = ?, hold_at = CURRENT_TIMESTAMP,
+          hold_by = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?
+        `).bind(status, reason || null, user?.id || null, id),
+        // #99: HOLD 시 진행 중 work_records → PAUSED
+        c.env.DB.prepare(`
+          UPDATE work_records SET status = 'PAUSED', updated_at = CURRENT_TIMESTAMP
+          WHERE card_id = ? AND status = 'IN_PROGRESS'
+        `).bind(id),
+      ])
 
       // HOLD 전환 시 defect_category가 있으면 quality_issues 자동 생성
       if (defect_category) {

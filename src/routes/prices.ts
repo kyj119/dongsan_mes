@@ -58,14 +58,15 @@ pricesRouter.get('/', async (c) => {
     // 1순위: 최근 거래 단가
     if (client_id && context) {
       if (context === 'purchase') {
+        const efPurchase = entityFilter(c, 'po')
         const recentPurchase = await c.env.DB.prepare(`
           SELECT poi.unit_price, po.order_date, po.po_number
           FROM purchase_order_items poi
           JOIN purchase_orders po ON poi.po_id = po.id
-          WHERE poi.item_id = ? AND po.supplier_id = ? AND po.status != 'CANCELLED'
+          WHERE poi.item_id = ? AND po.supplier_id = ? AND po.status != 'CANCELLED'${efPurchase.clause}
           ORDER BY po.order_date DESC, po.id DESC
           LIMIT 1
-        `).bind(item_id, client_id).first<RecentPurchaseRow>()
+        `).bind(item_id, client_id, ...efPurchase.params).first<RecentPurchaseRow>()
 
         if (recentPurchase) {
           details.recent = {
@@ -75,14 +76,15 @@ pricesRouter.get('/', async (c) => {
           }
         }
       } else if (context === 'sales') {
+        const efSales = entityFilter(c, 'o')
         const recentSales = await c.env.DB.prepare(`
           SELECT oi.unit_price, o.order_date, o.order_number
           FROM order_items oi
           JOIN orders o ON oi.order_id = o.id
-          WHERE oi.item_id = ? AND o.client_id = ? AND o.status != 'CANCELLED'
+          WHERE oi.item_id = ? AND o.client_id = ? AND o.status != 'CANCELLED'${efSales.clause}
           ORDER BY o.order_date DESC, o.id DESC
           LIMIT 1
-        `).bind(item_id, client_id).first<RecentSalesRow>()
+        `).bind(item_id, client_id, ...efSales.params).first<RecentSalesRow>()
 
         if (recentSales) {
           details.recent = {
