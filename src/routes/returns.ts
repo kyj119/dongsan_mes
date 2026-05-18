@@ -85,9 +85,9 @@ returns.patch('/:id/status', requireRole('ADMIN', 'MANAGER'), async (c) => {
   sql += ' WHERE id = ?'
   binds.push(id)
 
-  await c.env.DB.prepare(sql).bind(...binds).run()
+  const stmts: ReturnType<typeof c.env.DB.prepare>[] = [c.env.DB.prepare(sql).bind(...binds)]
 
-  // RESOLVED + RESTOCK → 재고 복원
+  // RESOLVED + RESTOCK → 재고 복원 (상태 변경과 원자적으로 처리)
   if (status === 'RESOLVED') {
     const { results: returnItems } = await c.env.DB.prepare(`
       SELECT ri.*, oi.item_id FROM return_items ri
@@ -95,15 +95,15 @@ returns.patch('/:id/status', requireRole('ADMIN', 'MANAGER'), async (c) => {
       WHERE ri.return_id = ? AND ri.disposition = 'RESTOCK' AND oi.item_id IS NOT NULL
     `).bind(id).all<{ item_id: number; quantity: number }>()
 
-    const invStmts = returnItems.map(ri =>
+    returnItems.forEach(ri => stmts.push(
       c.env.DB.prepare(`
         INSERT INTO inventory_transactions (item_id, transaction_type, quantity, unit_price, total_amount, reference_type, reference_id, reason, transaction_date)
         VALUES (?, 'IN', ?, 0, 0, 'RETURN', ?, '반품 입고', CURRENT_TIMESTAMP)
       `).bind(ri.item_id, ri.quantity, id)
-    )
-    if (invStmts.length > 0) await c.env.DB.batch(invStmts)
+    ))
   }
 
+  await c.env.DB.batch(stmts)
   return c.json({ success: true })
 })
 

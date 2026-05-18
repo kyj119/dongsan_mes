@@ -43,7 +43,7 @@ waste.post('/', async (c) => {
     return c.json({ success: false, error: 'waste_date, waste_type, waste_reason, quantity 필수' }, 400)
   }
 
-  const result = await c.env.DB.prepare(`
+  const insertStmt = c.env.DB.prepare(`
     INSERT INTO waste_records (card_id, equipment_id, waste_date, waste_type, waste_reason, quantity, unit, estimated_cost, material_item_id, notes, recorded_by, entity_id)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).bind(
@@ -51,16 +51,17 @@ waste.post('/', async (c) => {
     waste_type, waste_reason, quantity, unit || 'SQM',
     estimated_cost || 0, material_item_id || null, notes || null,
     userId, getEntityId(c)
-  ).run()
+  )
 
-  // 카드에 waste_sqm 업데이트
+  const stmts: ReturnType<typeof c.env.DB.prepare>[] = [insertStmt]
   if (card_id && (unit === 'SQM' || !unit)) {
-    await c.env.DB.prepare(`
+    stmts.push(c.env.DB.prepare(`
       UPDATE cards SET waste_sqm = COALESCE(waste_sqm, 0) + ?, waste_reason = ? WHERE id = ?
-    `).bind(quantity, waste_reason, card_id).run()
+    `).bind(quantity, waste_reason, card_id))
   }
 
-  return c.json({ success: true, data: { id: result.meta.last_row_id } })
+  const [insertResult] = await c.env.DB.batch(stmts)
+  return c.json({ success: true, data: { id: insertResult.meta.last_row_id } })
 })
 
 // ─── 로스 분석 (원인별/장비별/기간별) ─────────────────────────────────────────
