@@ -764,8 +764,9 @@ cardsQueriesRouter.get('/board', async (c) => {
     const { results: cards } = await c.env.DB.prepare(`
       SELECT c.id, c.card_number, c.client_name, c.item_name, c.category_name,
              c.width, c.height, c.quantity, c.unit, c.status, c.priority,
-             c.delivery_date, c.pp_status, c.thumbnail_url, c.equipment_id,
+             c.delivery_date, c.pp_status, c.equipment_id,
              c.hold_reason, c.created_at,
+             CASE WHEN c.thumbnail_url IS NOT NULL AND c.thumbnail_url != '' THEN 1 ELSE 0 END as has_thumbnail,
              o.order_number, e.name as equipment_name
       FROM cards c
       LEFT JOIN orders o ON c.order_id = o.id
@@ -827,6 +828,26 @@ cardsQueriesRouter.get('/board', async (c) => {
   } catch (error) {
     console.error('board API error:', error)
     return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
+  }
+})
+
+// ── 배치 썸네일 API (보드용 lazy-load) ───────────────────────────────────────
+cardsQueriesRouter.get('/thumbnails', async (c) => {
+  try {
+    const idsParam = c.req.query('ids') || ''
+    const ids = idsParam.split(',').map(Number).filter(n => n > 0).slice(0, 20)
+    if (ids.length === 0) return c.json({ success: true, data: {} })
+
+    const ph = ids.map(() => '?').join(',')
+    const { results } = await c.env.DB.prepare(
+      `SELECT id, thumbnail_url FROM cards WHERE id IN (${ph}) AND thumbnail_url IS NOT NULL AND thumbnail_url != ''`
+    ).bind(...ids).all<{ id: number; thumbnail_url: string }>()
+
+    const map: Record<number, string> = {}
+    for (const r of results) map[r.id] = r.thumbnail_url
+    return c.json({ success: true, data: map })
+  } catch (error) {
+    return c.json({ success: false, error: '서버 오류' }, 500)
   }
 })
 

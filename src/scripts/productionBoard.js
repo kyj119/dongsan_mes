@@ -70,6 +70,7 @@ function renderGrid(cards) {
     html += renderTile(cards[i]);
   }
   grid.innerHTML = html;
+  initThumbObserver();
 }
 
 function renderTile(card) {
@@ -79,8 +80,8 @@ function renderTile(card) {
   var pct = progress.total > 0 ? Math.round((progress.done / progress.total) * 100) : 0;
 
   var thumbHtml = '';
-  if (card.thumbnail_url) {
-    thumbHtml = '<div class="tile-thumb"><img src="' + card.thumbnail_url + '" alt="" loading="lazy"></div>';
+  if (card.has_thumbnail) {
+    thumbHtml = '<div class="tile-thumb" data-card-id="' + card.id + '"><span class="thumb-loading"><i class="fas fa-spinner fa-spin"></i></span></div>';
   } else {
     thumbHtml = '<div class="tile-thumb"><i class="fas fa-image"></i></div>';
   }
@@ -228,6 +229,64 @@ function startAutoRefresh() {
       loadBoard();
     }
   }, 1000);
+}
+
+// ── 썸네일 Lazy Load (IntersectionObserver + 배치) ────────────────────────────
+var thumbObserver = null;
+var thumbQueue = [];
+var thumbTimer = null;
+
+function initThumbObserver() {
+  if (thumbObserver) thumbObserver.disconnect();
+  thumbQueue = [];
+
+  var thumbEls = document.querySelectorAll('.tile-thumb[data-card-id]');
+  if (thumbEls.length === 0) return;
+
+  thumbObserver = new IntersectionObserver(function (entries) {
+    for (var i = 0; i < entries.length; i++) {
+      if (entries[i].isIntersecting) {
+        var id = Number(entries[i].target.getAttribute('data-card-id'));
+        if (id && thumbQueue.indexOf(id) === -1) thumbQueue.push(id);
+        thumbObserver.unobserve(entries[i].target);
+      }
+    }
+    scheduleThumbFetch();
+  }, { rootMargin: '200px' });
+
+  for (var i = 0; i < thumbEls.length; i++) {
+    thumbObserver.observe(thumbEls[i]);
+  }
+}
+
+function scheduleThumbFetch() {
+  if (thumbTimer) return;
+  thumbTimer = setTimeout(function () {
+    thumbTimer = null;
+    flushThumbQueue();
+  }, 150);
+}
+
+async function flushThumbQueue() {
+  if (thumbQueue.length === 0) return;
+  var batch = thumbQueue.splice(0, 12);
+  try {
+    var res = await axios.get('/api/cards/thumbnails?ids=' + batch.join(','));
+    if (!res.data.success) return;
+    var map = res.data.data;
+    for (var i = 0; i < batch.length; i++) {
+      var el = document.querySelector('.tile-thumb[data-card-id="' + batch[i] + '"]');
+      if (!el) continue;
+      if (map[batch[i]]) {
+        el.innerHTML = '<img src="' + map[batch[i]] + '" alt="">';
+      } else {
+        el.innerHTML = '<i class="fas fa-image"></i>';
+      }
+    }
+  } catch (e) {
+    // 실패 시 플레이스홀더 유지
+  }
+  if (thumbQueue.length > 0) flushThumbQueue();
 }
 
 // ── 유틸 ──────────────────────────────────────────────────────────────────────

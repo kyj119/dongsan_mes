@@ -48,6 +48,7 @@ export function productionBoardPage(c: Context<HonoEnv>) {
         border-radius: var(--radius-lg); overflow: hidden;
         cursor: pointer; transition: all 0.2s;
         display: flex; flex-direction: column;
+        height: 320px;
       }
       .board-tile:hover { box-shadow: 0 4px 16px rgba(0,0,0,0.1); transform: translateY(-2px); }
       .board-tile.status-HOLD { border-left: 4px solid #f59e0b; }
@@ -55,12 +56,16 @@ export function productionBoardPage(c: Context<HonoEnv>) {
       .board-tile.status-PRINT_DONE { border-left: 4px solid #10b981; }
 
       .tile-thumb {
-        width: 100%; aspect-ratio: 4/3; object-fit: cover;
+        width: 100%; height: 180px; flex-shrink: 0;
         background: #f1f5f9; display: flex; align-items: center; justify-content: center;
-        font-size: 48px; color: #94a3b8;
+        font-size: 48px; color: #94a3b8; overflow: hidden; position: relative;
       }
       .tile-thumb img { width: 100%; height: 100%; object-fit: cover; }
-      .tile-body { padding: 10px 12px; flex: 1; display: flex; flex-direction: column; gap: 4px; }
+      .tile-thumb .thumb-loading {
+        position: absolute; inset: 0; display: flex; align-items: center;
+        justify-content: center; background: #f1f5f9; color: #cbd5e1; font-size: 20px;
+      }
+      .tile-body { padding: 10px 12px; flex: 1; display: flex; flex-direction: column; gap: 4px; overflow: hidden; }
       .tile-client { font-size: 14px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
       .tile-item { font-size: 12px; color: var(--c-text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
       .tile-meta { display: flex; justify-content: space-between; align-items: center; font-size: 11px; margin-top: auto; padding-top: 6px; }
