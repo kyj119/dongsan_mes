@@ -127,7 +127,19 @@ export function productionBoardPage(c: Context<HonoEnv>) {
         border: 1px solid var(--c-border); border-radius: var(--radius);
         overflow: hidden; text-align: center;
       }
-      .lb-item img { width: 100%; aspect-ratio: 4/3; object-fit: cover; background: #f1f5f9; }
+      .lb-item-img-wrap { position: relative; overflow: hidden; }
+      .lb-item-img-wrap img { width: 100%; aspect-ratio: 4/3; object-fit: cover; background: #f1f5f9; cursor: zoom-in; transition: transform 0.2s; }
+      .lb-item-img-wrap img:hover { transform: scale(1.05); }
+      .lb-item-pp {
+        position: absolute; bottom: 4px; left: 4px; right: 4px;
+        display: flex; gap: 3px; flex-wrap: wrap;
+      }
+      .pp-tag {
+        background: rgba(0,0,0,0.7); color: #fff; font-size: 9px; font-weight: 600;
+        padding: 1px 5px; border-radius: 3px; white-space: nowrap;
+      }
+      .lb-single-thumb { text-align: center; margin-bottom: 12px; cursor: zoom-in; }
+      .lb-single-thumb img { max-height: 300px; border-radius: var(--radius); border: 1px solid var(--c-border); }
       .lb-item-info { padding: 6px 8px; font-size: 11px; }
       .lb-item-name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
       .lb-item-size { color: var(--c-text-muted); }
