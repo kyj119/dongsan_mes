@@ -193,7 +193,7 @@ export function productionBoardPage(c: Context<HonoEnv>) {
         </div>
         <div class="board-grid" id="boardGrid"></div>
       </div>
-      <div class="lb-overlay" id="lightbox" onclick="closeLightbox(event)">
+      <div class="lb-overlay" id="lightbox" style="display:none" onclick="closeLightbox(event)">
         <div class="lb-modal" onclick="event.stopPropagation()">
           <div class="lb-header">
             <h3 id="lbTitle"></h3>
