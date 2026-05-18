@@ -730,6 +730,106 @@ cardsQueriesRouter.get('/defect-stats', async (c) => {
   }
 })
 
+// ── 생산 현황 보드 전용 API (/:id 보다 먼저 등록) ────────────────────────────
+cardsQueriesRouter.get('/board', async (c) => {
+  try {
+    const { status = '', category = '', sort = 'priority_desc' } = c.req.query()
+    const ef = entityFilter(c, 'o')
+
+    let where = `WHERE c.status != 'CANCELLED'`
+    const params: any[] = []
+
+    if (status) {
+      if (status === 'HOLD') {
+        where += ` AND c.status = 'HOLD'`
+      } else if (status === 'PRINTING') {
+        where += ` AND c.status = 'PRINTING'`
+      } else if (status === 'PRINT_DONE') {
+        where += ` AND c.status = 'PRINT_DONE'`
+      } else if (status === 'PRINT_PENDING') {
+        where += ` AND c.status = 'PRINTING' AND (c.rip_status IS NULL OR c.rip_status = '' OR c.rip_status = 'ERROR')`
+      }
+    }
+    if (category) { where += ' AND c.category_name = ?'; params.push(category) }
+    where += ef.clause
+    params.push(...ef.params)
+
+    const sortMap: Record<string, string> = {
+      'priority_desc': 'c.priority DESC, c.delivery_date ASC',
+      'delivery_asc': 'c.delivery_date ASC, c.priority DESC',
+      'status_group': `CASE c.status WHEN 'HOLD' THEN 0 WHEN 'PRINTING' THEN 1 WHEN 'PRINT_DONE' THEN 2 ELSE 3 END, c.delivery_date ASC`
+    }
+    const orderBy = sortMap[sort] || sortMap['priority_desc']
+
+    const { results: cards } = await c.env.DB.prepare(`
+      SELECT c.id, c.card_number, c.client_name, c.item_name, c.category_name,
+             c.width, c.height, c.quantity, c.unit, c.status, c.priority,
+             c.delivery_date, c.pp_status, c.thumbnail_url, c.equipment_id,
+             c.hold_reason, c.created_at,
+             o.order_number, e.name as equipment_name
+      FROM cards c
+      LEFT JOIN orders o ON c.order_id = o.id
+      LEFT JOIN equipment e ON c.equipment_id = e.id
+      ${where}
+      ORDER BY ${orderBy}
+      LIMIT 200
+    `).bind(...params).all()
+
+    const cardIds = cards.map((c: any) => c.id)
+    const itemMap = new Map<number, { item_count: number; done: number; total: number; items: string }>()
+
+    if (cardIds.length > 0) {
+      const ph = cardIds.map(() => '?').join(',')
+      const { results: itemStats } = await c.env.DB.prepare(`
+        SELECT ci.card_id,
+               COUNT(*) as item_count,
+               SUM(CASE WHEN ci.print_completed = 1 THEN 1 ELSE 0 END) as done,
+               GROUP_CONCAT(oi.item_name, ', ') as items
+        FROM card_items ci
+        JOIN order_items oi ON ci.order_item_id = oi.id
+        WHERE ci.card_id IN (${ph})
+        GROUP BY ci.card_id
+      `).bind(...cardIds).all<{ card_id: number; item_count: number; done: number; items: string }>()
+
+      for (const s of itemStats) {
+        itemMap.set(s.card_id, { item_count: s.item_count, done: s.done, total: s.item_count, items: s.items })
+      }
+    }
+
+    const efSummary = entityFilter(c, 'o')
+    const { results: statusCounts } = await c.env.DB.prepare(`
+      SELECT
+        COUNT(*) as total,
+        SUM(CASE WHEN c.status = 'PRINTING' AND (c.rip_status IS NULL OR c.rip_status = '' OR c.rip_status = 'ERROR') THEN 1 ELSE 0 END) as pending,
+        SUM(CASE WHEN c.status = 'PRINTING' AND c.rip_status IN ('QUEUED','SENT') THEN 1 ELSE 0 END) as printing,
+        SUM(CASE WHEN c.status = 'PRINT_DONE' THEN 1 ELSE 0 END) as done,
+        SUM(CASE WHEN c.status = 'HOLD' THEN 1 ELSE 0 END) as hold
+      FROM cards c
+      LEFT JOIN orders o ON c.order_id = o.id
+      WHERE c.status != 'CANCELLED'${efSummary.clause}
+    `).bind(...efSummary.params).all()
+
+    const data = cards.map((card: any) => {
+      const stats = itemMap.get(card.id)
+      return {
+        ...card,
+        item_count: stats?.item_count || 1,
+        item_names: stats?.items || card.item_name,
+        print_progress: stats ? { done: stats.done, total: stats.total } : { done: 0, total: 1 }
+      }
+    })
+
+    return c.json({
+      success: true,
+      data,
+      summary: statusCounts[0] || { total: 0, pending: 0, printing: 0, done: 0, hold: 0 }
+    })
+  } catch (error) {
+    console.error('board API error:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
+  }
+})
+
 // Get card by ID
 cardsQueriesRouter.get('/:id', async (c) => {
   try {

@@ -93,6 +93,7 @@ import { itemsPage } from './pages/items'
 import { priceListsPage } from './pages/priceLists'
 import { priceListPage } from './pages/priceList'
 import { cardsPage } from './pages/cards'
+import { productionBoardPage } from './pages/productionBoard'
 import { ordersPage } from './pages/orders'
 import { orderFormPage } from './pages/orderForm'
 import { loginPage } from './pages/login'
@@ -380,6 +381,7 @@ app.get('/price-lists', (c) => c.redirect('/price-list'))
 app.get('/price-list', pageAuthMiddleware, requirePagePermission('/price-list'), priceListPage)
 app.get('/client-prices', (c) => c.redirect('/price-list'))
 app.get('/cards', pageAuthMiddleware, requirePagePermission('/cards'), cardsPage)
+app.get('/production-board', pageAuthMiddleware, requirePagePermission('/production-board'), productionBoardPage)
 app.get('/orders', pageAuthMiddleware, requirePagePermission('/orders'), ordersPage)
 app.get('/order-form', pageAuthMiddleware, requirePagePermission('/orders'), orderFormPage)
 app.get('/ledger', pageAuthMiddleware, requirePagePermission('/ledger'), ledgerPage)
