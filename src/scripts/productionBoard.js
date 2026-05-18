@@ -1,28 +1,45 @@
 /* ── 생산 현황 보드 ─────────────────────────────────────────────────────────── */
 var boardData = [];
-var currentFilter = '';
+var currentFilter = 'PRINT_PENDING';
+var currentOffset = 0;
+var pageSize = 20;
+var hasMore = false;
 var refreshTimer = null;
 var refreshInterval = 30;
 var countdown = refreshInterval;
+var refreshCount = 0;
+var lbCloseTimer = null;
 
 // ── 초기화 ────────────────────────────────────────────────────────────────────
-document.addEventListener('DOMContentLoaded', function () {
+(function init() {
   loadBoard();
-  document.getElementById('sortSelect').addEventListener('change', loadBoard);
+  var sortEl = document.getElementById('sortSelect');
+  if (sortEl) sortEl.addEventListener('change', function () { loadBoard(); });
   startAutoRefresh();
-});
+})();
 
 // ── 데이터 로드 ───────────────────────────────────────────────────────────────
-async function loadBoard() {
+async function loadBoard(append) {
   try {
     var sort = document.getElementById('sortSelect').value;
-    var params = '?sort=' + sort;
+    var offset = append ? currentOffset + pageSize : 0;
+    var params = '?sort=' + sort + '&limit=' + (pageSize + 1) + '&offset=' + offset;
     if (currentFilter) params += '&status=' + currentFilter;
 
     var res = await axios.get('/api/cards/board' + params);
     if (!res.data.success) return;
 
-    boardData = res.data.data;
+    var newCards = res.data.data;
+    hasMore = res.data.hasMore;
+
+    if (append) {
+      boardData = boardData.concat(newCards);
+      currentOffset = offset;
+    } else {
+      boardData = newCards;
+      currentOffset = 0;
+    }
+
     renderStatusTabs(res.data.summary);
     renderGrid(boardData);
     countdown = refreshInterval;
@@ -31,14 +48,24 @@ async function loadBoard() {
   }
 }
 
+// ── Summary만 갱신 (경량 새로고침) ────────────────────────────────────────────
+async function refreshSummary() {
+  try {
+    var params = '?summary_only=1';
+    var res = await axios.get('/api/cards/board' + params);
+    if (res.data.success) renderStatusTabs(res.data.summary);
+  } catch (e) { /* silent */ }
+}
+
 // ── 상태 탭 렌더 ──────────────────────────────────────────────────────────────
 function renderStatusTabs(summary) {
   var tabs = [
-    { key: '', label: '전체', count: summary.total },
-    { key: 'PRINT_PENDING', label: '출력대기', count: summary.pending },
-    { key: 'PRINTING', label: '출력중', count: summary.printing },
-    { key: 'PRINT_DONE', label: '출력완료', count: summary.done },
-    { key: 'HOLD', label: 'HOLD', count: summary.hold }
+    { key: '',              label: '전체',     count: summary.total },
+    { key: 'PRINT_PENDING', label: '출력 전',  count: summary.pending },
+    { key: 'PRINTING',      label: '출력중',   count: summary.printing },
+    { key: 'PRINT_DONE',    label: '출력완료', count: summary.done },
+    { key: 'SHIPPED',       label: '출고완료', count: summary.shipped },
+    { key: 'HOLD',          label: 'HOLD',     count: summary.hold }
   ];
 
   var html = '';
@@ -62,6 +89,7 @@ function renderGrid(cards) {
   var grid = document.getElementById('boardGrid');
   if (!cards || cards.length === 0) {
     grid.innerHTML = '<div class="board-empty"><i class="fas fa-inbox"></i><p>표시할 카드가 없습니다</p></div>';
+    removeLoadMore();
     return;
   }
 
@@ -71,11 +99,13 @@ function renderGrid(cards) {
   }
   grid.innerHTML = html;
   initThumbObserver();
+  renderLoadMore();
 }
 
 function renderTile(card) {
   var dday = calcDday(card.delivery_date);
   var statusClass = 'status-' + card.status;
+  if (card.shipped_at) statusClass = 'status-SHIPPED';
   var progress = card.print_progress || { done: 0, total: 1 };
   var pct = progress.total > 0 ? Math.round((progress.done / progress.total) * 100) : 0;
 
@@ -86,14 +116,24 @@ function renderTile(card) {
     thumbHtml = '<div class="tile-thumb"><i class="fas fa-image"></i></div>';
   }
 
-  var statusBadge = getStatusBadge(card.status);
-  var ppBadge = getPPBadge(card.pp_status);
+  var statusBadge = getStatusBadge(card.status, card.shipped_at);
 
   var sizeText = '';
   if (card.width && card.height) {
     sizeText = card.width + 'x' + card.height;
-    if (card.unit === 'M' || card.unit === 'm') sizeText += 'cm';
   }
+
+  // 수량 표시
+  var qtyText = '';
+  if (card.total_quantity) {
+    qtyText = card.total_quantity + (card.unit || 'EA');
+  }
+
+  // 메타 라인: 사이즈 · 수량 · 품목수
+  var metaParts = [];
+  if (sizeText) metaParts.push(sizeText);
+  if (qtyText) metaParts.push(qtyText);
+  if (card.item_count > 1) metaParts.push(card.item_count + '품목');
 
   var html = '<div class="board-tile ' + statusClass + '" onclick="openLightbox(' + card.id + ')">';
   html += thumbHtml;
@@ -101,31 +141,60 @@ function renderTile(card) {
   html += '<div class="tile-client">' + escHtml(card.client_name || '') + '</div>';
   html += '<div class="tile-item" title="' + escHtml(card.item_names || card.item_name || '') + '">' + escHtml(card.item_names || card.item_name || '') + '</div>';
   html += '<div class="tile-meta">';
-  html += '<span class="tile-size">' + sizeText + (card.item_count > 1 ? ' · ' + card.item_count + '품목' : '') + '</span>';
+  html += '<span class="tile-size">' + metaParts.join(' · ') + '</span>';
   html += '<span class="dday ' + dday.cls + '">' + dday.text + '</span>';
   html += '</div>';
 
   // 진행률 바
   html += '<div class="progress-bar"><div class="progress-fill' + (pct === 100 ? ' complete' : '') + '" style="width:' + pct + '%"></div></div>';
 
-  // 상태 + PP
+  // 상태 + PP + 장비
   html += '<div class="tile-status">';
   html += statusBadge;
-  html += ppBadge;
+  html += getPPBadge(card.pp_status, card.pp_names);
   if (card.equipment_name) {
     html += '<span class="s-badge" style="background:#f1f5f9;color:#475569"><i class="fas fa-print" style="font-size:9px"></i> ' + escHtml(card.equipment_name) + '</span>';
   }
   html += '</div>';
 
+  // 후가공 상세 태그 (PP 항목이 있을 때)
+  if (card.pp_names && card.pp_names.length > 0) {
+    html += '<div class="tile-pp-tags">';
+    for (var p = 0; p < card.pp_names.length; p++) {
+      html += '<span class="pp-step-tag">' + escHtml(card.pp_names[p]) + '</span>';
+    }
+    html += '</div>';
+  }
+
   html += '</div></div>';
   return html;
 }
 
+// ── 더보기 버튼 ──────────────────────────────────────────────────────────────
+function renderLoadMore() {
+  removeLoadMore();
+  if (!hasMore) return;
+  var container = document.getElementById('boardContainer');
+  var btn = document.createElement('div');
+  btn.id = 'loadMoreWrap';
+  btn.className = 'load-more-wrap';
+  btn.innerHTML = '<button class="load-more-btn" onclick="loadBoard(true)"><i class="fas fa-chevron-down"></i> 더보기</button>';
+  container.appendChild(btn);
+}
+
+function removeLoadMore() {
+  var existing = document.getElementById('loadMoreWrap');
+  if (existing) existing.remove();
+}
+
 // ── 라이트박스 ────────────────────────────────────────────────────────────────
 async function openLightbox(cardId) {
+  // 닫기 타이머가 남아 있으면 취소 (race condition 방지)
+  if (lbCloseTimer) { clearTimeout(lbCloseTimer); lbCloseTimer = null; }
   var overlay = document.getElementById('lightbox');
-  overlay.classList.add('show');
   overlay.style.display = 'flex';
+  void overlay.offsetHeight; // reflow 강제 → transition 보장
+  overlay.classList.add('show');
   document.getElementById('lbTitle').textContent = '로딩 중...';
   document.getElementById('lbBody').innerHTML = '<div class="text-center py-8"><i class="fas fa-spinner fa-spin fa-2x"></i></div>';
 
@@ -189,10 +258,13 @@ async function openLightbox(cardId) {
     html += '<dl class="lb-detail-grid">';
     html += '<dt>주문번호</dt><dd>' + escHtml(card.order_number || '-') + '</dd>';
     html += '<dt>납기</dt><dd><span class="dday ' + dday.cls + '">' + dday.text + '</span> ' + (card.delivery_date || '-') + '</dd>';
-    html += '<dt>상태</dt><dd>' + getStatusBadge(card.status) + '</dd>';
+    html += '<dt>상태</dt><dd>' + getStatusBadge(card.status, card.shipped_at) + '</dd>';
     html += '<dt>후가공</dt><dd>' + getPPBadge(card.pp_status) + '</dd>';
     html += '<dt>장비</dt><dd>' + escHtml(card.equipment_name || card.equipment_id || '미배정') + '</dd>';
     html += '<dt>카테고리</dt><dd>' + escHtml(card.category_name || '-') + '</dd>';
+    if (card.shipped_at) {
+      html += '<dt>출고일시</dt><dd>' + card.shipped_at.replace('T', ' ').slice(0, 16) + '</dd>';
+    }
     if (card.hold_reason) {
       html += '<dt>HOLD 사유</dt><dd style="color:#d97706">' + escHtml(card.hold_reason) + '</dd>';
     }
@@ -204,21 +276,41 @@ async function openLightbox(cardId) {
   }
 }
 
-function closeLightbox(e) {
-  if (e && e.target !== e.currentTarget) return;
-  var overlay = document.getElementById('lightbox');
-  overlay.classList.remove('show');
-  setTimeout(function () { overlay.style.display = 'none'; }, 200);
+function closeLbZoom() {
+  var zoom = document.getElementById('zoomOverlay');
+  if (zoom) { zoom.remove(); return true; }
+  return false;
 }
 
-// ESC 닫기
-document.addEventListener('keydown', function (e) {
-  if (e.key === 'Escape') {
-    var zoom = document.getElementById('zoomOverlay');
-    if (zoom) { zoom.remove(); return; }
-    closeLightbox();
+function toggleLbExpand() {
+  var modal = document.getElementById('lbModal');
+  var btn = document.getElementById('lbExpandBtn');
+  modal.classList.toggle('expanded');
+  if (modal.classList.contains('expanded')) {
+    btn.innerHTML = '<i class="fas fa-compress-arrows-alt"></i>';
+    btn.title = '축소';
+  } else {
+    btn.innerHTML = '<i class="fas fa-expand-arrows-alt"></i>';
+    btn.title = '확대';
   }
-});
+}
+
+function closeLightbox(e) {
+  if (e && e.target !== e.currentTarget) return;
+  if (lbCloseTimer) { clearTimeout(lbCloseTimer); lbCloseTimer = null; }
+  var overlay = document.getElementById('lightbox');
+  overlay.classList.remove('show');
+  var modal = document.getElementById('lbModal');
+  if (modal) modal.classList.remove('expanded');
+  var btn = document.getElementById('lbExpandBtn');
+  if (btn) { btn.innerHTML = '<i class="fas fa-expand-arrows-alt"></i>'; btn.title = '확대'; }
+  lbCloseTimer = setTimeout(function () {
+    overlay.style.display = 'none';
+    lbCloseTimer = null;
+  }, 250);
+}
+
+// ESC는 layout.ts 글로벌 핸들러에서 closeLightbox() 호출 (중복 등록 방지)
 
 // ── 이미지 확대 ───────────────────────────────────────────────────────────────
 function zoomImage(src) {
@@ -271,16 +363,23 @@ document.addEventListener('fullscreenchange', function () {
   }
 });
 
-// ── 자동 갱신 ─────────────────────────────────────────────────────────────────
+// ── 자동 갱신 (30초: summary만, 2분마다: 전체) ──────────────────────────────
 function startAutoRefresh() {
   if (refreshTimer) clearInterval(refreshTimer);
   countdown = refreshInterval;
+  refreshCount = 0;
   refreshTimer = setInterval(function () {
     countdown--;
     var el = document.getElementById('refreshCountdown');
     if (el) el.textContent = countdown + 's';
     if (countdown <= 0) {
-      loadBoard();
+      refreshCount++;
+      if (refreshCount % 4 === 0) {
+        loadBoard();
+      } else {
+        refreshSummary();
+      }
+      countdown = refreshInterval;
     }
   }, 1000);
 }
@@ -355,7 +454,8 @@ function calcDday(dateStr) {
   return { text: 'D-' + diff, cls: 'dday-ok' };
 }
 
-function getStatusBadge(status) {
+function getStatusBadge(status, shippedAt) {
+  if (shippedAt) return '<span class="s-badge s-shipped"><i class="fas fa-truck" style="font-size:9px"></i> 출고완료</span>';
   var map = {
     'PRINTING': '<span class="s-badge s-printing">출력중</span>',
     'PRINT_DONE': '<span class="s-badge s-done">출력완료</span>',
@@ -365,9 +465,15 @@ function getStatusBadge(status) {
   return map[status] || '<span class="s-badge s-pending">' + (status || '-') + '</span>';
 }
 
-function getPPBadge(ppStatus) {
+function getPPBadge(ppStatus, ppNames) {
   if (ppStatus === 'DONE') return '<span class="pp-badge pp-done">PP완료</span>';
-  if (ppStatus === 'PENDING') return '<span class="pp-badge pp-pending">PP대기</span>';
+  if (ppStatus === 'PENDING') {
+    var label = 'PP대기';
+    if (ppNames && ppNames.length > 0) {
+      label = ppNames[0] + (ppNames.length > 1 ? ' +' + (ppNames.length - 1) : '');
+    }
+    return '<span class="pp-badge pp-pending">' + escHtml(label) + '</span>';
+  }
   return '';
 }
 

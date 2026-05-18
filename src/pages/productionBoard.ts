@@ -48,7 +48,7 @@ export function productionBoardPage(c: Context<HonoEnv>) {
         border-radius: var(--radius-lg); overflow: hidden;
         cursor: pointer; transition: all 0.2s;
         display: flex; flex-direction: column;
-        height: 320px;
+        min-height: 300px;
       }
       .board-tile:hover { box-shadow: 0 4px 16px rgba(0,0,0,0.1); transform: translateY(-2px); }
       .board-tile.status-HOLD { border-left: 4px solid #f59e0b; }
@@ -88,6 +88,8 @@ export function productionBoardPage(c: Context<HonoEnv>) {
       .s-done { background: #d1fae5; color: #047857; }
       .s-hold { background: #fef3c7; color: #92400e; }
       .s-pending { background: #f1f5f9; color: #64748b; }
+      .s-shipped { background: #ede9fe; color: #6d28d9; }
+      .board-tile.status-SHIPPED { border-left: 4px solid #8b5cf6; opacity: 0.75; }
 
       /* 진행률 바 */
       .progress-bar { height: 4px; background: #e2e8f0; border-radius: 2px; overflow: hidden; }
@@ -100,6 +102,25 @@ export function productionBoardPage(c: Context<HonoEnv>) {
       .pp-done { background: #d1fae5; color: #047857; }
       .pp-na { background: #f1f5f9; color: #94a3b8; }
 
+      /* 후가공 상세 태그 */
+      .tile-pp-tags {
+        display: flex; gap: 3px; flex-wrap: wrap; padding-top: 4px;
+      }
+      .pp-step-tag {
+        font-size: 9px; padding: 1px 5px; border-radius: 3px;
+        background: #fef3c7; color: #92400e; white-space: nowrap;
+      }
+
+      /* 더보기 버튼 */
+      .load-more-wrap { text-align: center; padding: 12px 20px 20px; }
+      .load-more-btn {
+        display: inline-flex; align-items: center; gap: 6px;
+        padding: 8px 24px; border-radius: 20px; font-size: 13px; font-weight: 600;
+        border: 1px solid var(--c-border); background: var(--c-bg);
+        cursor: pointer; transition: all 0.15s;
+      }
+      .load-more-btn:hover { background: var(--c-border-light); box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
+
       /* ── 라이트박스 ────────────────────────────────── */
       .lb-overlay {
         position: fixed; inset: 0; background: rgba(0,0,0,0.6);
@@ -110,14 +131,29 @@ export function productionBoardPage(c: Context<HonoEnv>) {
       .lb-modal {
         background: var(--c-bg); border-radius: var(--radius-xl);
         max-width: 720px; width: 100%; max-height: 90vh; overflow-y: auto;
-        box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        box-shadow: 0 20px 60px rgba(0,0,0,0.3); transition: max-width 0.25s ease;
       }
+      .lb-modal.expanded {
+        max-width: 95vw; max-height: 95vh;
+      }
+      .lb-modal.expanded .lb-items-grid {
+        grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      }
+      .lb-modal.expanded .lb-item-img-wrap img { aspect-ratio: 3/2; }
       .lb-header {
         display: flex; justify-content: space-between; align-items: center;
         padding: 16px 20px; border-bottom: 1px solid var(--c-border);
       }
       .lb-header h3 { margin: 0; font-size: 16px; }
-      .lb-close { background: none; border: none; font-size: 24px; cursor: pointer; color: var(--c-text-muted); padding: 4px 8px; }
+      .lb-header-actions { display: flex; align-items: center; gap: 4px; }
+      .lb-expand, .lb-close {
+        background: none; border: none; cursor: pointer;
+        color: var(--c-text-muted); padding: 4px 8px; border-radius: 4px;
+        transition: background 0.15s;
+      }
+      .lb-expand:hover, .lb-close:hover { background: var(--c-border-light); }
+      .lb-expand { font-size: 16px; }
+      .lb-close { font-size: 24px; }
       .lb-body { padding: 16px 20px; }
       .lb-items-grid {
         display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
@@ -196,8 +232,9 @@ export function productionBoardPage(c: Context<HonoEnv>) {
           <div class="board-filters" id="statusTabs"></div>
           <div class="board-actions">
             <select id="sortSelect" class="text-sm border rounded px-2 py-1">
-              <option value="priority_desc">긴급순</option>
+              <option value="urgency">긴급도순</option>
               <option value="delivery_asc">납기순</option>
+              <option value="priority_desc">우선순위</option>
               <option value="status_group">상태별</option>
             </select>
             <div class="auto-refresh-indicator" id="refreshIndicator">
@@ -211,10 +248,13 @@ export function productionBoardPage(c: Context<HonoEnv>) {
         <div class="board-grid" id="boardGrid"></div>
       </div>
       <div class="lb-overlay" id="lightbox" style="display:none" onclick="closeLightbox(event)">
-        <div class="lb-modal" onclick="event.stopPropagation()">
+        <div class="lb-modal" id="lbModal" onclick="event.stopPropagation()">
           <div class="lb-header">
             <h3 id="lbTitle"></h3>
-            <button class="lb-close" onclick="closeLightbox()">&times;</button>
+            <div class="lb-header-actions">
+              <button class="lb-expand" onclick="toggleLbExpand()" title="확대/축소" id="lbExpandBtn"><i class="fas fa-expand-arrows-alt"></i></button>
+              <button class="lb-close" onclick="closeLightbox()">&times;</button>
+            </div>
           </div>
           <div class="lb-body" id="lbBody"></div>
         </div>

@@ -54,11 +54,12 @@ fixedAssets.post('/', requireRole('ADMIN', 'MANAGER'), async (c) => {
 // ─── 고정자산 상세 ──────────────────────────────────────────────────────────
 fixedAssets.get('/:id', async (c) => {
   const id = Number(c.req.param('id'))
+  const eFilter = entityFilter(c, 'fa')
   const asset = await c.env.DB.prepare(`
     SELECT fa.*, e.name as equipment_name
     FROM fixed_assets fa LEFT JOIN equipment e ON fa.equipment_id = e.id
-    WHERE fa.id = ?
-  `).bind(id).first()
+    WHERE fa.id = ? ${eFilter.clause}
+  `).bind(id, ...eFilter.params).first()
 
   const { results: depreciations } = await c.env.DB.prepare(`
     SELECT * FROM depreciation_records WHERE asset_id = ? ORDER BY period DESC LIMIT 24
@@ -74,9 +75,10 @@ fixedAssets.post('/depreciate', requireRole('ADMIN'), async (c) => {
     return c.json({ success: false, error: 'period (YYYY-MM) 필수' }, 400)
   }
 
+  const eFilter = entityFilter(c)
   const { results: assets } = await c.env.DB.prepare(`
-    SELECT * FROM fixed_assets WHERE status = 'IN_USE'
-  `).all<any>()
+    SELECT * FROM fixed_assets WHERE status = 'IN_USE' ${eFilter.clause}
+  `).bind(...eFilter.params).all<any>()
 
   // N+1 해소: 이미 처리된 기간 + 최신 누적감가상각을 일괄 조회
   const { results: existingPeriods } = await c.env.DB.prepare(

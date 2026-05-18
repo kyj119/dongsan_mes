@@ -1,6 +1,6 @@
 # PROJECT_STATUS.md — 프로젝트 현황판
 
-> **최종 업데이트**: 2026-05-16
+> **최종 업데이트**: 2026-05-18
 
 ---
 
@@ -21,12 +21,6 @@
 ### [#65] 후가공 단계별 추적 — 방안 A/B/C 선택 대기
 - A: QR 원터치, B: Zone 기반, C: 최소 2단계. 코멘트 제안 완료, 답변 대기
 
-### [#89] syncOrderStatus Race Condition — Option B 승인 대기
-- 원자적 조건부 UPDATE SQL 방안 제안. 승인 시 구현
-
-### [#92] 재고 조정 동시성 — 방안 B 승인 대기
-- UPDATE WHERE quantity + ? >= 0 원자적 검증 방안 제안
-
 ### [#75] 견적 적정 단가 제안 — 방향 수정 답변 완료
 - 매입단가 미노출, 평균 판매가 기반 추천 방식으로 전환
 
@@ -35,9 +29,6 @@
 
 ### [#80] 바코드/QR 시스템 — 모바일 설계 답변 완료
 - HTTPS + html5-qrcode + 모바일 우선 레이아웃 계획
-
-### [#81] 카드 강화 (폴더 미리보기) — 심층 추론 답변 완료
-- 방안 B(썸네일 그리드 뷰) + A(카드 상세 리디자인) 하이브리드 제안
 
 ### [배송 관리 최적화] — 출고 대기 보드
 - 배송방법별 그룹화 + 마감시간 카운트다운 + 일괄 출고 + 카카오톡 자동 발송
@@ -49,51 +40,58 @@
 
 ---
 
-## 🟢 최근 완료 (2026-05-15~16)
+## 🟢 최근 완료 (2026-05-18)
 
-### 이슈 대량 처리 — 24건 closed (2026-05-15~16)
+### Issues #89~#110 — 동시성/N+1/entity_id/FK 일괄 수정 (22건 close)
 
-#### 버그/데이터 정합성 (8건)
-- **#63**: 주문 생성 order_items INSERT db.batch() 원자화
-- **#64**: shipment_items FK ON DELETE SET NULL (migration 0208)
-- **#83**: billing_status 변경 5개 쿼리쌍 db.batch() 원자화
-- **#84**: #64 중복 (close)
-- **#85**: printEvents reported_by=1 → nullable + console.warn (0222)
-- **#86**: approval_requests entity_id 추가 + entityFilter 적용 (0223)
-- **#87**: 주문 삭제 6개 DELETE → db.batch() 원자화
-- **#88**: inventory_transactions UNIQUE INDEX 중복 방지 (0224)
-- **#90**: CAPS 사원 매핑 이전 사이트 비활성화
-- **#91**: 입고 unit_price 음수/0 검증 추가
+#### 동시성/Race Condition (2건)
+- **#89**: syncOrderStatusFromCards Option B 원자적 조건부 UPDATE
+- **#92**: 재고 조정 원자적 UPDATE WHERE (quantity+?)>=0
 
-#### 신규 기능 — Tier 1 (5건)
-- **#65~#69**: 후가공/프린터큐/OEE/불량코드·클레임/여신한도 → 승인 4건 구현 (#65 대기)
+#### 데이터 정합성 (5건)
+- **#99**: HOLD 시 work_records PAUSED 동기화
+- **#100**: 전체 카드 HOLD → 주문 HOLD 반영
+- **#101**: CONFIRMED+ 주문 delivery_date NULL 서버검증
+- **#93**: 결제 삭제 시 bank_transactions 매칭 해제
+- **#95**: 이미 #87에서 해결됨 (확인 후 클로즈)
 
-#### 신규 기능 — Tier 2 (6건)
-- **#70**: 반품/RMA 워크플로 (`/api/returns`)
-- **#71**: 3-Way Matching (`/api/purchase-invoices`)
-- **#72**: 자재 폐기/로스 추적 (`/api/waste`)
-- **#73**: 정비 관리 페이지 + 대시보드 API
-- **#74**: 재고 평가 FIFO/이동평균 (`/api/inventory-valuation`)
-- **#75**: 견적↔실적 피드백 (방향 수정 중)
+#### entity_id 필터 누락 (4건)
+- **#97**: prices.ts 단가 제안 entityFilter 적용
+- **#98**: purchaseRequests.ts 공급업체 추천 entityFilter 적용
+- **#104/#105**: 5개 테이블 entity_id 컬럼 추가 (migration 0225)
+- **#110**: oee.ts entityFilter 전면 적용
 
-#### 신규 기능 — Tier 3 (4건)
-- **#76**: 총계정원장 복식부기 (`/api/gl`, 34개 계정과목 시드)
-- **#77**: 고정자산 감가상각 (`/api/fixed-assets`)
-- **#78**: 예산 관리 Budget vs Actual (`/api/budgets`)
-- **#82**: AI 미수금 리스크 Phase 1 (`/api/ai`)
+#### N+1 쿼리 해소 (2건)
+- **#102/#108**: oee.ts 4N→4 일괄 GROUP BY
+- **#103/#109**: fixedAssets.ts 2N→일괄 SELECT + Set/Map
 
-### 수치 요약
-- 마이그레이션: 0208~0224 (17개)
-- 신규 라우트 파일: 11개
-- 신규 API 엔드포인트: ~55개
-- 신규 페이지: maintenance (정비 관리)
-- 기존 코드 수정: orders/core.ts, approvals.ts, printEvents.ts, caps.ts, inventory.ts, rip.ts
+#### FK/인덱스 (3건)
+- **#94/#96/#106**: FK 인덱스 추가 (migration 0225)
+
+#### 중복 닫기 (4건)
+- **#107**(=#105), **#108**(=#102), **#109**(=#103), **#110**(⊂#104)
+
+#### 기타
+- postProcessing stats 500 에러 수정 (items.category_name → order_items.category_name)
+
+### [#81] 생산 현황 보드 — 디지털 작업 지시서 (신규 페이지)
+- `/production-board` 카드 그리드 뷰 + 썸네일 lazy-load
+- 라이트박스: 품목별 썸네일 + 이미지 확대(zoom) + 후가공 오버레이
+- 상태 필터 탭 + 정렬 + 풀스크린 모드 + 자동갱신 30초
+- 반응형: 모바일 2열 ~ 대형 모니터 6열
+- 전용 API: GET /api/cards/board, GET /api/cards/thumbnails
 
 ---
 
-## 📋 다음 세션 TODO
+## 🟢 이전 완료 (2026-05-15~16)
 
-1. **사용자 선택 대기 이슈 답변 확인** — #65, #89, #92 승인 시 즉시 구현
-2. **미커밋 변경사항 커밋** — 현재 uncommitted (사용자 확인 후)
-3. **프로덕션 배포 판단** — 17개 마이그레이션 + 대량 기능 추가
-4. **#75, #79, #80, #81** — 방향 확정 후 구현
+### 이슈 대량 처리 — 24건 closed (2026-05-15~16)
+- #63~#91: 버그/데이터(10건) + Tier1(5건) + Tier2(6건) + Tier3(4건)
+- 상세 → git log 참조
+
+---
+
+## 📌 기존 에러 (이번 세션과 무관)
+- `/api/hr/employees/12` → 500
+- `/api/dashboard/stats/clients` → 500
+- `/api/notifications/unread-count` → 500

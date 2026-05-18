@@ -1,0 +1,95 @@
+name: Daily D1 Backup
+
+on:
+  schedule:
+    # 매일 KST 02:00 (UTC 17:00 전날)
+    - cron: '0 17 * * *'
+  workflow_dispatch: # 수동 실행 가능
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install wrangler
+        run: npm install -g wrangler
+
+      - name: Export D1 database
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          DATE=$(date +%Y-%m-%d)
+          MONTH=$(date +%Y-%m)
+          DAY=$(date +%d)
+
+          echo "📦 Exporting D1 database..."
+          wrangler d1 export webapp-production --remote --output=backup.sql
+
+          FILE_SIZE=$(stat --format=%s backup.sql)
+          echo "✅ Export complete: backup.sql (${FILE_SIZE} bytes)"
+
+          # 최소 크기 검증 (1KB 미만이면 실패)
+          if [ "$FILE_SIZE" -lt 1024 ]; then
+            echo "❌ Backup file too small — likely failed"
+            exit 1
+          fi
+
+          # gzip 압축
+          gzip -9 backup.sql
+          COMPRESSED_SIZE=$(stat --format=%s backup.sql.gz)
+          echo "📁 Compressed: backup.sql.gz (${COMPRESSED_SIZE} bytes)"
+
+          # 일별 백업 → R2
+          echo "☁️ Uploading daily backup to R2..."
+          wrangler r2 object put "dongsan-backups/daily/${DATE}.sql.gz" \
+            --file=backup.sql.gz \
+            --content-type="application/gzip"
+
+          # 매월 1일이면 월별 백업도 저장
+          if [ "$DAY" = "01" ]; then
+            echo "📅 Monthly backup: ${MONTH}"
+            wrangler r2 object put "dongsan-backups/monthly/${MONTH}.sql.gz" \
+              --file=backup.sql.gz \
+              --content-type="application/gzip"
+          fi
+
+          echo "✅ Backup uploaded successfully"
+
+      - name: Cleanup old daily backups (90일 초과)
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          CUTOFF=$(date -d '90 days ago' +%Y-%m-%d)
+          echo "🗑️ Removing daily backups older than ${CUTOFF}..."
+
+          # R2 객체 목록 조회 후 오래된 것 삭제
+          wrangler r2 object list dongsan-backups --prefix="daily/" 2>/dev/null | \
+            grep -oP 'daily/\d{4}-\d{2}-\d{2}\.sql\.gz' | \
+            while read key; do
+              FILE_DATE=$(echo "$key" | grep -oP '\d{4}-\d{2}-\d{2}')
+              if [[ "$FILE_DATE" < "$CUTOFF" ]]; then
+                echo "  Deleting $key"
+                wrangler r2 object delete "dongsan-backups/${key}" 2>/dev/null || true
+              fi
+            done
+
+          echo "✅ Cleanup complete"
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "### 📊 Backup Summary" >> $GITHUB_STEP_SUMMARY
+          echo "- **Date**: $(date +%Y-%m-%d)" >> $GITHUB_STEP_SUMMARY
+          echo "- **Database**: webapp-production" >> $GITHUB_STEP_SUMMARY
+          echo "- **Status**: ${{ job.status }}" >> $GITHUB_STEP_SUMMARY

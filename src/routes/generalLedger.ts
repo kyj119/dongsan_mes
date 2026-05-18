@@ -111,6 +111,11 @@ gl.post('/auto-journal/payment', requireRole('ADMIN', 'MANAGER'), async (c) => {
   ).bind(payment_id).first<any>()
   if (!payment) return c.json({ success: false, error: '결제 내역 없음' }, 404)
 
+  const existingJournal = await c.env.DB.prepare(
+    `SELECT id FROM journal_entries WHERE reference_type = 'PAYMENT' AND reference_id = ?`
+  ).bind(payment_id).first<{ id: number }>()
+  if (existingJournal) return c.json({ success: false, error: '이미 분개 처리된 결제입니다' }, 409)
+
   // 결제 방법에 따른 차변 계정 결정
   let debitAccountCode: string
   switch (payment.payment_method) {

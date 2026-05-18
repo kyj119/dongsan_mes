@@ -75,17 +75,17 @@ budgets.get('/vs-actual', async (c) => {
   const laborActual = await c.env.DB.prepare(`
     SELECT strftime('%m', pay_date) as month, SUM(net_pay) as total
     FROM payroll
-    WHERE strftime('%Y', pay_date) = ?
+    WHERE strftime('%Y', pay_date) = ? ${eFilter.clause.replace(/\bb\./g, '')}
     GROUP BY month
-  `).bind(String(year)).all<{ month: string; total: number }>()
+  `).bind(String(year), ...eFilter.params).all<{ month: string; total: number }>()
 
   // MAINTENANCE: maintenance_logs cost
   const maintenanceActual = await c.env.DB.prepare(`
     SELECT strftime('%m', performed_at) as month, SUM(cost) as total
     FROM maintenance_logs
-    WHERE strftime('%Y', performed_at) = ?
+    WHERE strftime('%Y', performed_at) = ? ${eFilter.clause.replace(/\bb\./g, '')}
     GROUP BY month
-  `).bind(String(year)).all<{ month: string; total: number }>()
+  `).bind(String(year), ...eFilter.params).all<{ month: string; total: number }>()
 
   // 월별 매핑
   const monthNames = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec']
