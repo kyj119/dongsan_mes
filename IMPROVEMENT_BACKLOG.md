@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 3 -->
-<!-- last_run_at: 2026-05-14T13:30:00+09:00 -->
+<!-- last_run_area: 4 -->
+<!-- last_run_at: 2026-05-18T10:00:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,10 +8,21 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | 11 |
-| ✔️ done | 32 |
+| 🆕 new | 15 |
+| ✔️ done | 34 |
 | ❌ rejected | 2 |
 
+> **Area 4 데이터 정합성 (2026-05-18T10:00):**
+> - 0200~0224 마이그레이션 전수 검토: 신규 테이블 entity_id 현황 파악
+> - 신규 라우트 INSERT/원자성 패턴 분석: returns, purchaseInvoices, waste, fixedAssets, generalLedger, aiAnalysis, claims, equipmentQueue
+> - waste.ts INSERT+UPDATE 원자화 (db.batch) → A-009 자동 수정
+> - returns.ts 상태변경+재고입고 원자화 (db.batch) → A-009 자동 수정
+> - credit_overrides entity_id 완전 누락 (스키마+INSERT) → #107 등록 (HIGH, SMALL)
+> - oee.ts N+1: 장비당 4 SELECT 루프 (4N→4 쿼리 개선 가능) → #108 등록 (HIGH, MEDIUM)
+> - fixedAssets.ts N+1: 자산당 2 SELECT 루프 → #109 등록 (MEDIUM, SMALL)
+> - equipment_oee_daily entity_id 누락 + oee.ts entityFilter 미사용 → #110 등록 (MEDIUM, SMALL)
+> - 자동 수정 2건 (waste.ts + returns.ts atomicity), 신규 이슈 4건 (#107~#110)
+>
 > **Area 3 UX/기능 감사 (2026-05-14T13:30):**
 > - 75개 페이지/스크립트 전수 UX 패턴 분석 (검색·필터·페이지네이션·빈상태·로딩)
 > - approvals.js 3탭 결재 목록 검색·필터·페이지네이션 전무 → #43 등록 (MEDIUM, 2~3h)
@@ -84,6 +95,10 @@
 
 | ID | 제목 | 영역 | Issue | 공수 |
 |----|------|------|-------|------|
+| I-025 | credit_overrides entity_id 완전 누락 (스키마+INSERT) | Area 4 | #107 | 30분 |
+| I-026 | oee.ts N+1: 장비당 4 SELECT 루프 (4N 쿼리) | Area 4 | #108 | 1~2h |
+| I-027 | fixedAssets.ts /depreciate N+1: 자산당 2 SELECT 루프 | Area 4 | #109 | 30분 |
+| I-028 | equipment_oee_daily entity_id 누락 + oee.ts entityFilter 미사용 | Area 4 | #110 | 30~60분 |
 | I-013 | 보안 헤더 전무 (CSP/X-Frame-Options/HSTS/X-Content-Type) | Area 5 | #32 | 1~2h |
 | I-014 | /api/portal/auth/change-password rate limit 누락 | Area 5 | #33 | 30분 |
 | I-015 | XSS 잔여: approvals.js(119-276) + cards.js document.write | Area 5 | #34 | 2~3h |
@@ -102,6 +117,7 @@
 
 | ID | 제목 | 커밋 | 날짜 |
 |----|------|------|------|
+| A-009 | waste.ts INSERT+UPDATE 원자화 + returns.ts 상태변경+재고입고 원자화 (db.batch) | de3aec9 | 2026-05-18 |
 | A-008 | try-catch 누락 17핸들러 (permissions/finishing/messageTemplates/iaAuto) | 60ee8b8 | 2026-05-14 |
 | A-006 | XSS escapeHtml 5건 (approvals/invoice/purchaseInvoice/quotation/clients) | e099b20 | 2026-05-13 |
 | A-005 | tax_invoice_items/orders tax_invoice_id 인덱스 추가 (0193 migration) | 1b3a698 | 2026-05-13 |
@@ -114,6 +130,8 @@
 
 | ID | 제목 | 커밋/Issue | 날짜 |
 |----|------|-----------|------|
+| A-009-waste | waste.ts INSERT waste_records + UPDATE cards.waste_sqm 원자화 | de3aec9 | 2026-05-18 |
+| A-009-returns | returns.ts UPDATE status + INSERT inventory_transactions 원자화 | de3aec9 | 2026-05-18 |
 | I-017 | try-catch 누락 17핸들러 자동 수정 (permissions/finishing/messageTemplates/iaAuto) | A-008 / 60ee8b8 | 2026-05-14 |
 | D-001 | shipment_items UNIQUE(shipment_id, card_id) 제약 추가 (0194 migration) | #31 | 2026-05-13 |
 | I-015partial | 스모크 커버리지 55→88 엔드포인트 확대 | #15 | 2026-05-13 |
