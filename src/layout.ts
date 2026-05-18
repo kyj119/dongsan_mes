@@ -3133,6 +3133,8 @@ document.addEventListener('keydown', function(e) {
     function() { var el = document.getElementById('itemSearchModal'); if (el) { el.remove(); return true; } },
     // 원자재 연결 모달 (z:60, DOM remove 방식)
     function() { var el = document.getElementById('rmConnectionModal'); if (el) { el.remove(); return true; } },
+    // 생산 현황 보드: zoom → lightbox 순서
+    function() { if (typeof closeLbZoom === 'function' && closeLbZoom()) return true; var el = document.getElementById('lightbox'); if (el && el.classList.contains('show')) { if (typeof closeLightbox === 'function') closeLightbox(); return true; } return false; },
     // 전역 검색
     function() { var el = document.getElementById('globalSearchResults'); if (el && el.style.display !== 'none') { el.style.display = 'none'; return true; } },
     // display:flex 모달 (사용자 모달, 비번 초기화 등)
@@ -3140,6 +3142,7 @@ document.addEventListener('keydown', function(e) {
       var modals = document.querySelectorAll('[id$="Modal"],[id$="modal"],[id$="ModalOverlay"]');
       for (var i = modals.length - 1; i >= 0; i--) {
         var m = modals[i];
+        if (m.id === 'lbModal') continue; // lightbox는 전용 closer에서 처리
         var st = window.getComputedStyle(m);
         if (st.display !== 'none' && st.visibility !== 'hidden') {
           if (m.classList.contains('active')) { m.classList.remove('active'); return true; }

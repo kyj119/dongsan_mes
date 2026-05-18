@@ -95,13 +95,28 @@ returns.patch('/:id/status', requireRole('ADMIN', 'MANAGER'), async (c) => {
       WHERE ri.return_id = ? AND ri.disposition = 'RESTOCK' AND oi.item_id IS NOT NULL
     `).bind(id).all<{ item_id: number; quantity: number }>()
 
-    const invStmts = returnItems.map(ri =>
-      c.env.DB.prepare(`
-        INSERT INTO inventory_transactions (item_id, transaction_type, quantity, unit_price, total_amount, reference_type, reference_id, reason, transaction_date)
-        VALUES (?, 'IN', ?, 0, 0, 'RETURN', ?, '반품 입고', CURRENT_TIMESTAMP)
-      `).bind(ri.item_id, ri.quantity, id)
-    )
-    if (invStmts.length > 0) await c.env.DB.batch(invStmts)
+    if (returnItems.length > 0) {
+      const itemIds = returnItems.map(ri => ri.item_id)
+      const placeholders = itemIds.map(() => '?').join(',')
+      const { results: balances } = await c.env.DB.prepare(
+        `SELECT item_id, quantity FROM inventory WHERE item_id IN (${placeholders})`
+      ).bind(...itemIds).all<{ item_id: number; quantity: number }>()
+      const balMap: Record<number, number> = {}
+      for (const b of balances) balMap[b.item_id] = b.quantity
+
+      const eid = getEntityId(c) || 1
+      await c.env.DB.batch(
+        returnItems.map(ri => {
+          const balanceAfter = (balMap[ri.item_id] || 0) + ri.quantity
+          return c.env.DB.prepare(`
+            INSERT INTO inventory_transactions
+              (item_id, transaction_type, quantity, unit_price, total_amount,
+               reference_type, reference_id, reason, transaction_date, balance_after, entity_id)
+            VALUES (?, 'IN', ?, 0, 0, 'RETURN', ?, '반품 입고', CURRENT_TIMESTAMP, ?, ?)
+          `).bind(ri.item_id, ri.quantity, id, balanceAfter, eid)
+        })
+      )
+    }
   }
 
   return c.json({ success: true })

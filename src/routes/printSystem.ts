@@ -745,6 +745,28 @@ printSystemRouter.put('/media/:id', requireRole('ADMIN', 'MANAGER'), async (c) =
       await updateLinkedItemPrices(c.env.DB, undefined, id)
     }
 
+    // 소재명 변경 시 연결된 출력 품목명 연쇄 업데이트
+    if (name !== undefined) {
+      const { results: linkedItems } = await c.env.DB.prepare(
+        'SELECT i.id, pm.name as method_name FROM items i JOIN print_methods pm ON pm.id = i.print_method_id WHERE i.print_media_id = ? AND i.is_active = 1'
+      ).bind(id).all<LinkedItemRow>()
+      if (linkedItems.length > 0) {
+        await c.env.DB.batch(
+          linkedItems.map(li =>
+            c.env.DB.prepare("UPDATE items SET item_name = ?, updated_at = datetime('now') WHERE id = ?")
+              .bind(`${li.method_name} ${name}`, li.id)
+          )
+        )
+      }
+    }
+
+    // 소재 그룹명 변경 시 원자재 item_group 연쇄 업데이트
+    if (media_group !== undefined) {
+      await c.env.DB.prepare(
+        "UPDATE items SET item_group = ?, updated_at = datetime('now') WHERE parent_media_id = ? AND item_type = 'MATERIAL' AND is_active = 1"
+      ).bind(media_group, id).run()
+    }
+
     // method_ids 변경 시: 새 출력방식 추가, 해제된 방식 비활성화
     let createdCount = 0
     let deactivatedCount = 0

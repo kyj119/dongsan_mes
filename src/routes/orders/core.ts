@@ -1730,6 +1730,16 @@ ordersCoreRouter.delete('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
 
     // #87: 원자적 삭제 (db.batch — 전체 ���공 또는 전체 롤백)
     await c.env.DB.batch([
+      // #116: card_id 기반 정리 (cards 삭제 전에 먼저, #117 FK 미강제 대응)
+      c.env.DB.prepare('DELETE FROM card_status_history WHERE card_id IN (SELECT id FROM cards WHERE order_id = ?)').bind(id),
+      c.env.DB.prepare('DELETE FROM quality_issues WHERE card_id IN (SELECT id FROM cards WHERE order_id = ?)').bind(id),
+      c.env.DB.prepare('DELETE FROM waste_records WHERE card_id IN (SELECT id FROM cards WHERE order_id = ?)').bind(id),
+      c.env.DB.prepare('UPDATE print_events SET card_id = NULL WHERE card_id IN (SELECT id FROM cards WHERE order_id = ?)').bind(id),
+      c.env.DB.prepare('DELETE FROM card_items WHERE card_id IN (SELECT id FROM cards WHERE order_id = ?)').bind(id),
+      // #116: order_id 기반 정리
+      c.env.DB.prepare('DELETE FROM customer_claims WHERE order_id = ?').bind(id),
+      c.env.DB.prepare('DELETE FROM returns WHERE order_id = ?').bind(id),
+      c.env.DB.prepare('DELETE FROM credit_overrides WHERE order_id = ?').bind(id),
       c.env.DB.prepare(`DELETE FROM shipment_items WHERE shipment_id IN (SELECT id FROM shipments WHERE order_id = ?)`).bind(id),
       c.env.DB.prepare('DELETE FROM shipments WHERE order_id = ?').bind(id),
       c.env.DB.prepare('DELETE FROM cards WHERE order_id = ?').bind(id),
