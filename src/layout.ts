@@ -23,6 +23,7 @@ const MENU_ITEMS: MenuGroup[] = [
       { path: '/orders', icon: 'fa-file-alt', label: '주문 관리', roles: ['ADMIN', 'MANAGER', 'DESIGNER'], badgeId: 'nav-badge-orders' },
       { path: '/quotations', icon: 'fa-file-invoice', label: '견적서 관리', roles: ['ADMIN', 'MANAGER'] },
       { path: '/cards', icon: 'fa-th-large', label: '현장 카드', roles: ['ADMIN', 'MANAGER', 'DESIGNER', 'OPERATOR'] },
+      { path: '/production-board', icon: 'fa-tv', label: '생산 현황', roles: ['ADMIN', 'MANAGER', 'DESIGNER', 'OPERATOR'] },
       { path: '/shipments', icon: 'fa-truck', label: '출고/배송', roles: ['ADMIN', 'MANAGER', 'DESIGNER'] },
       { path: '/shipments-dashboard', icon: 'fa-clipboard-check', label: '출고 대시보드', roles: ['ADMIN', 'MANAGER', 'OPERATOR'] },
       { path: '/delivery-analytics', icon: 'fa-chart-line', label: '납기 분석', roles: ['ADMIN', 'MANAGER'] },
