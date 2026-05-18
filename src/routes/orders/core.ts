@@ -1210,14 +1210,14 @@ ordersCoreRouter.post('/', async (c) => {
           VALUES (?, 1, 'ADMIN', '경리/관리자 승인', 'PENDING')
         `).bind(aprId).run()
 
-        // credit_overrides 기록
+        // credit_overrides 기록 (#105: entity_id 포함)
         await c.env.DB.prepare(`
-          INSERT INTO credit_overrides (order_id, client_id, credit_limit, balance_at_time, order_amount, approval_request_id)
-          VALUES (?, ?, ?, ?, ?, ?)
+          INSERT INTO credit_overrides (order_id, client_id, credit_limit, balance_at_time, order_amount, approval_request_id, entity_id)
+          VALUES (?, ?, ?, ?, ?, ?, ?)
         `).bind(
           orderId, orderData.client_id,
           creditInfo?.credit_limit || 0, balRow2?.balance || 0,
-          finalAmount, aprId
+          finalAmount, aprId, getEntityId(c) || 1
         ).run()
 
         // 카드 생성 없이 반환 — 여신 승인 대기 상태
@@ -1779,6 +1779,12 @@ ordersCoreRouter.put('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
           error: '회계반영된 주문은 매니저 이상만 수정할 수 있습니다'
         }, 403)
       }
+    }
+
+    // #101: CONFIRMED 이상 상태에서 delivery_date NULL 방지
+    const confirmedStatuses = ['CONFIRMED', 'PRINTING', 'PRINT_DONE', 'SHIPPED']
+    if (confirmedStatuses.includes(existingOrder.status) && !orderData.delivery_date) {
+      return c.json({ success: false, error: '확정된 주문의 납품일은 필수입니다.' }, 400)
     }
 
     // pricing_method batch 조회 (AREA 계산 분기용)

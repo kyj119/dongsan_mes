@@ -329,13 +329,12 @@ ppRouter.get('/stats', async (c) => {
     // 소분류별 PP 사용 빈도 (최근 N개월)
     const { results: subcatStats } = await c.env.DB.prepare(`
       SELECT
-        i.category_name as subcategory,
+        oi.category_name as subcategory,
         json_extract(j.value, '$.code') as pp_code,
         json_extract(j.value, '$.name') as pp_name,
         COUNT(*) as usage_count
       FROM order_items oi
       JOIN orders o ON oi.order_id = o.id
-      JOIN items i ON oi.item_id = i.id
       JOIN json_each(oi.post_processing) j
       WHERE oi.post_processing IS NOT NULL
         AND oi.post_processing != '[]'

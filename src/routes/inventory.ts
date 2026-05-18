@@ -639,55 +639,58 @@ inventoryRouter.post('/adjustments', async (c) => {
       }, 400)
     }
 
-    // Get current stock from inventory table
+    const adjQty = Number(adjustment_quantity)
+
+    // 원자적 조건부 UPDATE: DB 레벨에서 음수 방지 (race condition 해결)
     const invRow = await c.env.DB.prepare(
       `SELECT quantity FROM inventory WHERE item_id = ?`
     ).bind(item_id).first<{ quantity: number }>()
 
     const quantityBefore = invRow?.quantity || 0
-    const quantityAfter = quantityBefore + Number(adjustment_quantity)
 
-    if (quantityAfter < 0) {
-      return c.json({
-        success: false,
-        message: '조정 후 재고가 음수가 됩니다'
-      }, 400)
-    }
-
-    // Insert adjustment record
-    await c.env.DB.prepare(`
-      INSERT INTO inventory_adjustments
-      (item_id, adjustment_date, quantity_before, quantity_after,
-       adjustment_quantity, reason, adjusted_by, notes)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `).bind(
-      item_id, adjustment_date, quantityBefore, quantityAfter,
-      adjustment_quantity, reason, user?.id || 1, notes || null
-    ).run()
-
-    // Update inventory stock (upsert)
     if (invRow) {
-      await c.env.DB.prepare(`
-        UPDATE inventory SET quantity = ?, last_updated = CURRENT_TIMESTAMP WHERE item_id = ?
-      `).bind(quantityAfter, item_id).run()
+      // 원자적 UPDATE — quantity + adj >= 0 조건으로 race 방지
+      const updateResult = await c.env.DB.prepare(`
+        UPDATE inventory SET quantity = quantity + ?, last_updated = CURRENT_TIMESTAMP
+        WHERE item_id = ? AND (quantity + ?) >= 0
+      `).bind(adjQty, item_id, adjQty).run()
+
+      if (adjQty < 0 && updateResult.meta.changes === 0) {
+        return c.json({ success: false, message: '재고 부족으로 조정할 수 없습니다' }, 400)
+      }
     } else {
+      if (adjQty < 0) {
+        return c.json({ success: false, message: '재고 부족으로 조정할 수 없습니다' }, 400)
+      }
       await c.env.DB.prepare(`
         INSERT INTO inventory (item_id, quantity, last_updated) VALUES (?, ?, CURRENT_TIMESTAMP)
-      `).bind(item_id, quantityAfter).run()
+      `).bind(item_id, adjQty).run()
     }
 
-    // Insert transaction
-    const transactionType = Number(adjustment_quantity) > 0 ? 'IN' : 'OUT'
-    await c.env.DB.prepare(`
-      INSERT INTO inventory_transactions
-      (item_id, transaction_type, transaction_date, quantity,
-       reference_type, balance_after, reason, handled_by, notes, entity_id)
-      VALUES (?, ?, ?, ?, 'ADJUSTMENT', ?, ?, ?, ?, ?)
-    `).bind(
-      item_id, transactionType, adjustment_date, adjustment_quantity,
-      quantityAfter, reason, user?.id || 1, notes || null,
-      getEntityId(c) || 1
-    ).run()
+    // UPDATE 후 실제 잔고 조회
+    const newStock = await c.env.DB.prepare(
+      `SELECT quantity FROM inventory WHERE item_id = ?`
+    ).bind(item_id).first<{ quantity: number }>()
+    const quantityAfter = newStock?.quantity ?? 0
+
+    // 조정 이력 + 트랜잭션 기록
+    const transactionType = adjQty > 0 ? 'IN' : 'OUT'
+    await c.env.DB.batch([
+      c.env.DB.prepare(`
+        INSERT INTO inventory_adjustments
+        (item_id, adjustment_date, quantity_before, quantity_after,
+         adjustment_quantity, reason, adjusted_by, notes)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `).bind(item_id, adjustment_date, quantityBefore, quantityAfter,
+        adjustment_quantity, reason, user?.id || 1, notes || null),
+      c.env.DB.prepare(`
+        INSERT INTO inventory_transactions
+        (item_id, transaction_type, transaction_date, quantity,
+         reference_type, balance_after, reason, handled_by, notes, entity_id)
+        VALUES (?, ?, ?, ?, 'ADJUSTMENT', ?, ?, ?, ?, ?)
+      `).bind(item_id, transactionType, adjustment_date, adjustment_quantity,
+        quantityAfter, reason, user?.id || 1, notes || null, getEntityId(c) || 1),
+    ])
 
     return c.json({
       success: true,

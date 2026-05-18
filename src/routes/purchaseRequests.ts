@@ -2,7 +2,7 @@ import { Hono } from 'hono'
 import type { HonoEnv } from '../types/env'
 import type { PurchaseRequest, PurchaseRequestItem, ApiResponse, PaginatedResponse } from '../types/models'
 import { authMiddleware, requireRole } from '../middleware/auth'
-import { getEntityId } from '../utils/entityFilter'
+import { getEntityId, entityFilter } from '../utils/entityFilter'
 
 const prRouter = new Hono<HonoEnv>()
 
@@ -652,15 +652,16 @@ prRouter.post('/:id/auto-convert', requireRole('ADMIN'), async (c) => {
 
       if (ri.item_id) {
         // 해당 품목의 최근 입고 이력에서 공급업체 조회
+        const efPo = entityFilter(c, 'po')
         const recentPO = await c.env.DB.prepare(`
           SELECT po.supplier_id, c.client_name
           FROM purchase_order_items poi
           JOIN purchase_orders po ON poi.po_id = po.id
           LEFT JOIN clients c ON po.supplier_id = c.id
-          WHERE poi.item_id = ? AND poi.received_quantity > 0
+          WHERE poi.item_id = ? AND poi.received_quantity > 0${efPo.clause}
           ORDER BY po.created_at DESC
           LIMIT 1
-        `).bind(ri.item_id).first<{ supplier_id: number | null; client_name: string | null }>()
+        `).bind(ri.item_id, ...efPo.params).first<{ supplier_id: number | null; client_name: string | null }>()
 
         if (recentPO && recentPO.supplier_id) {
           supplierId = recentPO.supplier_id
