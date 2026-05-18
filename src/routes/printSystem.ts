@@ -760,12 +760,8 @@ printSystemRouter.put('/media/:id', requireRole('ADMIN', 'MANAGER'), async (c) =
       }
     }
 
-    // 소재 그룹명 변경 시 원자재 item_group 연쇄 업데이트
-    if (media_group !== undefined) {
-      await c.env.DB.prepare(
-        "UPDATE items SET item_group = ?, updated_at = datetime('now') WHERE parent_media_id = ? AND item_type = 'MATERIAL' AND is_active = 1"
-      ).bind(media_group, id).run()
-    }
+    // 소재 그룹명과 원자재 그룹명은 독립 관리 (parent_media_id로 연결)
+    // 원자재 item_group은 PATCH /items/:id에서 개별 수정
 
     // method_ids 변경 시: 새 출력방식 추가, 해제된 방식 비활성화
     let createdCount = 0

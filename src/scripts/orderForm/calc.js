@@ -79,7 +79,35 @@
                 return subtotal;
             }
 
+            // 단가 미정 토글
+            window.onPricePendingChange = function(id) {
+                var cb = document.querySelector('[name="price_pending_' + id + '"]');
+                var priceEl = document.querySelector('[name="unit_price_' + id + '"]');
+                var amtEl = document.querySelector('[name="amount_' + id + '"]');
+                if (!cb || !priceEl || !amtEl) return;
+                if (cb.checked) {
+                    priceEl.value = '0';
+                    priceEl.disabled = true;
+                    priceEl.classList.add('bg-amber-50', 'text-amber-600');
+                    amtEl.value = '미정';
+                    amtEl.dataset.autoAmount = '0';
+                    amtEl.classList.add('bg-amber-50', 'text-amber-700', 'font-bold');
+                    amtEl.disabled = true;
+                } else {
+                    priceEl.disabled = false;
+                    priceEl.classList.remove('bg-amber-50', 'text-amber-600');
+                    amtEl.disabled = false;
+                    amtEl.classList.remove('bg-amber-50', 'text-amber-700');
+                    calcItem(id);
+                }
+                calculateTotal();
+            };
+
             window.calcItem = function(id) {
+                // 미정 품목은 계산 스킵
+                var pendingCb = document.querySelector('[name="price_pending_' + id + '"]');
+                if (pendingCb && pendingCb.checked) return;
+
                 var qty = parseInt(document.querySelector('[name="quantity_' + id + '"]').value) || 0;
                 var price = parseMoney((document.querySelector('[name="unit_price_' + id + '"]') || {}).value);
                 var pmEl = document.querySelector('[name="pricing_method_' + id + '"]');
@@ -447,7 +475,8 @@
                             var el = document.querySelector('[name="sheet_layout_params_' + id + '"]');
                             return el ? el.value : null;
                         })(),
-                        client_group_id: document.querySelector(`[name="client_group_id_${id}"]`)?.value || null
+                        client_group_id: document.querySelector(`[name="client_group_id_${id}"]`)?.value || null,
+                        price_status: document.querySelector('[name="price_pending_' + id + '"]')?.checked ? 'PENDING' : 'CONFIRMED'
                     });
                 });
                 if (!valid) return;
@@ -483,7 +512,7 @@
                 }
 
                 // 단가 0원 경고
-                const zeroItems = items.filter(i => !i.parent_client_id && (i.unit_price === 0 || !i.unit_price));
+                const zeroItems = items.filter(i => !i.parent_client_id && i.price_status !== 'PENDING' && (i.unit_price === 0 || !i.unit_price));
                 if (zeroItems.length > 0) {
                     if (!(await showConfirm(`${zeroItems.length}개 품목의 단가가 0원입니다. 계속하시겠습니까?`))) {
                         isSubmitting = false;

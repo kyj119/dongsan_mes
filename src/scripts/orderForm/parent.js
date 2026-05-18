@@ -810,6 +810,12 @@
                         const vatEl = document.querySelector('[name="vat_' + id + '"]');
                         if (vatEl) vatEl.checked = (item.vat_included == 1);
 
+                        // 단가 미정 복원
+                        if (item.price_status === 'PENDING') {
+                            const pendingEl = document.querySelector('[name="price_pending_' + id + '"]');
+                            if (pendingEl) { pendingEl.checked = true; onPricePendingChange(id); }
+                        }
+
                         calcItem(id);
 
                         // 썸네일 복원: ai_groups_json에서 해당 그룹의 thumbnail_base64 추출
@@ -1029,6 +1035,11 @@
 
                     const vatEl = document.querySelector('[name="vat_' + id + '"]');
                     if (vatEl) vatEl.checked = (item.vat_included == 1);
+
+                    if (item.price_status === 'PENDING') {
+                        const pendingEl = document.querySelector('[name="price_pending_' + id + '"]');
+                        if (pendingEl) { pendingEl.checked = true; onPricePendingChange(id); }
+                    }
 
                     calcItem(id);
 
