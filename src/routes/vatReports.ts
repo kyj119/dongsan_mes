@@ -146,12 +146,14 @@ vatReportsRouter.post('/reports', async (c) => {
 // 신고 이력 목록
 vatReportsRouter.get('/reports', async (c) => {
   try {
+    const ef = entityFilter(c, 'vr')
     const { results } = await c.env.DB.prepare(`
       SELECT vr.*, u.name as created_by_name
       FROM vat_reports vr
       LEFT JOIN users u ON u.id = vr.created_by
+      WHERE 1=1${ef.clause}
       ORDER BY vr.report_year DESC, vr.report_quarter DESC
-    `).all()
+    `).bind(...ef.params).all()
     return c.json({ success: true, data: results })
   } catch (error) {
     console.error('vat list error:', error)
@@ -163,6 +165,11 @@ vatReportsRouter.get('/reports', async (c) => {
 vatReportsRouter.patch('/reports/:id/submit', async (c) => {
   try {
     const id = c.req.param('id')
+    const ef = entityFilter(c)
+    const existing = await c.env.DB.prepare(
+      `SELECT id FROM vat_reports WHERE id = ?${ef.clause}`
+    ).bind(id, ...ef.params).first()
+    if (!existing) return c.json({ success: false, error: '신고 이력을 찾을 수 없습니다.' }, 404)
     await c.env.DB.prepare(`
       UPDATE vat_reports SET status = 'SUBMITTED', submitted_at = CURRENT_TIMESTAMP WHERE id = ?
     `).bind(id).run()
