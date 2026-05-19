@@ -1,6 +1,6 @@
 # PROJECT_STATUS.md — 프로젝트 현황판
 
-> **최종 업데이트**: 2026-05-18
+> **최종 업데이트**: 2026-05-19
 
 ---
 
@@ -40,7 +40,26 @@
 
 ---
 
-## 🟢 최근 완료 (2026-05-18)
+## 🟢 최근 완료 (2026-05-19)
+
+### Issues #118~#120 — 3건 close + 멀티사업자 전체 점검
+- **#118**: vat_reports UNIQUE → entity_id 포함으로 재생성
+- **#119**: fixed_expenses/loans entity_id 추가 + cashFlow 전체 entityFilter 적용
+- **#120**: paymentRequests/approvals/taxInvoices → db.batch() 원자성 강화
+- 추가: production.ts GET /logs, paymentRequests stats entityFilter 적용
+
+### 현수막 RM 데이터 정합성 수정 (마이그레이션 0228)
+- print_media id=3 재활성화, id=4 이름 통일, null parent_media_id 5건 수정
+
+### GitHub Actions Backup 수정
+- CLOUDFLARE_BACKUP_TOKEN 분리, 첫 성공 실행 확인
+
+### 기존 500 에러 3건 해소 확인
+- employees/12, stats/clients, unread-count — 모두 200 정상
+
+---
+
+## 🟢 이전 완료 (2026-05-18)
 
 ### 생산 현황 보드 대규모 개편
 - 기본 필터: 출력 전 (PRINT_PENDING), 탭: 전체/출력전/출력중/출력완료/출고완료/HOLD
