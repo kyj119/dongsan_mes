@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 3 -->
-<!-- last_run_at: 2026-05-14T13:30:00+09:00 -->
+<!-- last_run_area: 4 -->
+<!-- last_run_at: 2026-05-19T10:00:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,10 +8,20 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | 11 |
+| 🆕 new | 16 |
 | ✔️ done | 32 |
 | ❌ rejected | 2 |
 
+> **Area 4 데이터 정합성 (2026-05-19T10:00):**
+> - 6개 테이블 entity_id 인덱스 누락 → A-009 자동 수정 (0231 migration): waste_records/returns/purchase_invoices/budgets/journal_entries/fixed_assets
+> - return_items.order_item_id + purchase_invoice_items.po_item_id/item_id FK 인덱스 누락 → A-009 포함 수정
+> - notifications 테이블 entity_id 컬럼 없음 (0058 생성, 멀티 entity 이전) → A-009 포함 자동 수정 (0231 migration)
+> - returns.ts RESTOCK 시 inventory.quantity 미반영 버그 → I-025 등록 (HIGH, SMALL 30분)
+> - returns + purchaseInvoices POST 비원자적 처리 → I-026 등록 (MEDIUM, SMALL 2h)
+> - hr.ts 직원 삭제 14개 자식 테이블 비원자적 cascade — 오류 시 고아 레코드 → I-027 등록 (HIGH, MEDIUM 1h)
+> - purchase_invoices.invoice_number 공급업체+entity 복합 UNIQUE 없음 → I-028 등록 (MEDIUM, SMALL 30분)
+> - 자동 수정 1건 (A-009: 인덱스 11개 + notifications entity_id), 신규 이슈 4건 (I-025~I-028)
+>
 > **Area 3 UX/기능 감사 (2026-05-14T13:30):**
 > - 75개 페이지/스크립트 전수 UX 패턴 분석 (검색·필터·페이지네이션·빈상태·로딩)
 > - approvals.js 3탭 결재 목록 검색·필터·페이지네이션 전무 → #43 등록 (MEDIUM, 2~3h)
@@ -95,6 +105,10 @@
 | I-022 | tasks.js limit:200 하드코딩 — 200건+ 실패 태스크 미표시 | Area 3 | #44 | 30분 |
 | I-023 | deliveryAnalytics + financialReports CSV 내보내기 없음 | Area 3 | #45 | 2h |
 | I-024 | 대시보드 장비 가동률 % KPI 부재 | Area 3 | #46 | 1~2h |
+| I-025 | returns.ts RESTOCK 처리 시 inventory.quantity 미반영 (재고 수량 불일치) | Area 4 | TBD | 30분 |
+| I-026 | returns/purchaseInvoices POST 부모 INSERT + 자식 batch 비원자적 처리 | Area 4 | TBD | 2h |
+| I-027 | hr.ts 직원 삭제 14개 자식 테이블 cascade 비원자적 — 오류 시 고아 레코드 잔존 | Area 4 | TBD | 1h |
+| I-028 | purchase_invoices invoice_number 공급업체+entity 복합 UNIQUE 제약 없음 | Area 4 | TBD | 30분 |
 
 ---
 
@@ -102,6 +116,7 @@
 
 | ID | 제목 | 커밋 | 날짜 |
 |----|------|------|------|
+| A-009 | entity_id 인덱스 6개 + FK 인덱스 3개 + notifications entity_id (0231 migration) | TBD | 2026-05-19 |
 | A-008 | try-catch 누락 17핸들러 (permissions/finishing/messageTemplates/iaAuto) | 60ee8b8 | 2026-05-14 |
 | A-006 | XSS escapeHtml 5건 (approvals/invoice/purchaseInvoice/quotation/clients) | e099b20 | 2026-05-13 |
 | A-005 | tax_invoice_items/orders tax_invoice_id 인덱스 추가 (0193 migration) | 1b3a698 | 2026-05-13 |
