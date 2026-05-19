@@ -1753,6 +1753,8 @@ ordersCoreRouter.delete('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
       c.env.DB.prepare('DELETE FROM cards WHERE order_id = ?').bind(id),
       c.env.DB.prepare('DELETE FROM order_items WHERE order_id = ?').bind(id),
       c.env.DB.prepare('DELETE FROM order_status_history WHERE order_id = ?').bind(id),
+      // #122: 취소된 세금계산서의 junction 레코드 정리 (non-CANCELLED 인보이스는 상단 check에서 차단됨)
+      c.env.DB.prepare('DELETE FROM tax_invoice_orders WHERE order_id = ?').bind(id),
       c.env.DB.prepare('DELETE FROM orders WHERE id = ?').bind(id),
     ])
 
