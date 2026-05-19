@@ -105,10 +105,10 @@
 | I-022 | tasks.js limit:200 하드코딩 — 200건+ 실패 태스크 미표시 | Area 3 | #44 | 30분 |
 | I-023 | deliveryAnalytics + financialReports CSV 내보내기 없음 | Area 3 | #45 | 2h |
 | I-024 | 대시보드 장비 가동률 % KPI 부재 | Area 3 | #46 | 1~2h |
-| I-025 | returns.ts RESTOCK 처리 시 inventory.quantity 미반영 (재고 수량 불일치) | Area 4 | TBD | 30분 |
-| I-026 | returns/purchaseInvoices POST 부모 INSERT + 자식 batch 비원자적 처리 | Area 4 | TBD | 2h |
-| I-027 | hr.ts 직원 삭제 14개 자식 테이블 cascade 비원자적 — 오류 시 고아 레코드 잔존 | Area 4 | TBD | 1h |
-| I-028 | purchase_invoices invoice_number 공급업체+entity 복합 UNIQUE 제약 없음 | Area 4 | TBD | 30분 |
+| I-025 | returns.ts RESTOCK 처리 시 inventory.quantity 미반영 (재고 수량 불일치) | Area 4 | #125 | 30분 |
+| I-026 | returns/purchaseInvoices POST 부모 INSERT + 자식 batch 비원자적 처리 | Area 4 | #126 | 2h |
+| I-027 | hr.ts 직원 삭제 14개 자식 테이블 cascade 비원자적 — 오류 시 고아 레코드 잔존 | Area 4 | #127 | 1h |
+| I-028 | purchase_invoices invoice_number 공급업체+entity 복합 UNIQUE 제약 없음 | Area 4 | #128 | 30분 |
 
 ---
 
@@ -116,7 +116,7 @@
 
 | ID | 제목 | 커밋 | 날짜 |
 |----|------|------|------|
-| A-009 | entity_id 인덱스 6개 + FK 인덱스 3개 + notifications entity_id (0231 migration) | TBD | 2026-05-19 |
+| A-009 | entity_id 인덱스 6개 + FK 인덱스 3개 + notifications entity_id (0231 migration) | 3ac62b3 | 2026-05-19 |
 | A-008 | try-catch 누락 17핸들러 (permissions/finishing/messageTemplates/iaAuto) | 60ee8b8 | 2026-05-14 |
 | A-006 | XSS escapeHtml 5건 (approvals/invoice/purchaseInvoice/quotation/clients) | e099b20 | 2026-05-13 |
 | A-005 | tax_invoice_items/orders tax_invoice_id 인덱스 추가 (0193 migration) | 1b3a698 | 2026-05-13 |
