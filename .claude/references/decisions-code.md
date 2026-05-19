@@ -153,3 +153,29 @@ if (el) el.textContent = value;
 ```
 
 기존 코드 소급 적용 안 함. 파일 수정 시 점진 적용.
+
+## Y. entity_id INSERT 의무화 (2026-05-09, 보완 2026-05-19)
+
+모든 트랜잭션 테이블에 entity_id 컬럼 + entityFilter SELECT + getEntityId INSERT.
+
+- 2026-05-09: 14건 누락 수정 (orders, cards, payments 등)
+- 2026-05-19: fixed_expenses, loans 추가 (마이그레이션 0230), cashFlow.ts 전 CRUD 적용
+
+UNIQUE 제약도 entity_id 포함 필요 (예: vat_reports → 마이그레이션 0229).
+
+## AA. vat_reports UNIQUE 재생성 (2026-05-19)
+
+`UNIQUE(report_year, report_quarter)` → `UNIQUE(report_year, report_quarter, entity_id)`.
+SQLite ALTER TABLE 불가 → 테이블 재생성 패턴 사용 (CREATE new → INSERT SELECT → DROP old → RENAME).
+
+## AB. db.batch() 원자성 강화 (2026-05-19)
+
+D1은 완전한 트랜잭션 미지원. 다중 테이블 UPDATE 시 `db.batch()`로 단일 네트워크 왕복 처리하여 부분 실패 확률 최소화.
+
+적용: paymentRequests (approve, pay), approvals (approve, reject).
+
+## AC. 백업 토큰 분리 (2026-05-19)
+
+GitHub Actions 시크릿을 용도별 분리:
+- `CLOUDFLARE_API_TOKEN` — 배포용 (Workers 권한)
+- `CLOUDFLARE_BACKUP_TOKEN` — 백업용 (D1 Edit + R2 Edit 권한)
