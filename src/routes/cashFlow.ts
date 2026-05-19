@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
-import { entityFilter } from '../utils/entityFilter'
+import { entityFilter, getEntityId } from '../utils/entityFilter'
 
 const cashFlowRouter = new Hono<HonoEnv>()
 cashFlowRouter.use('/*', authMiddleware)
@@ -13,19 +13,21 @@ cashFlowRouter.use('/*', authMiddleware)
 cashFlowRouter.get('/fixed-expenses', requireRole('ADMIN'), async (c) => {
   try {
     const { category = '', active = '1' } = c.req.query()
-    const clauses: string[] = []
+    const clauses: string[] = ['1=1']
     const params: any[] = []
+    const ef = entityFilter(c, 'fe')
+    if (ef.clause) { clauses.push(ef.clause.replace(' AND ', '')); params.push(...ef.params) }
 
     if (category) {
-      clauses.push('category = ?')
+      clauses.push('fe.category = ?')
       params.push(category)
     }
     if (active) {
-      clauses.push('is_active = ?')
+      clauses.push('fe.is_active = ?')
       params.push(Number(active))
     }
 
-    const where = clauses.length ? 'WHERE ' + clauses.map(cl => cl.replace(/^(\w)/, 'fe.$1')).join(' AND ') : ''
+    const where = 'WHERE ' + clauses.join(' AND ')
     const sql = `SELECT fe.*, u.name as created_by_name
        FROM fixed_expenses fe
        LEFT JOIN users u ON fe.created_by = u.id
@@ -54,12 +56,13 @@ cashFlowRouter.post('/fixed-expenses', requireRole('ADMIN'), async (c) => {
     }
 
     const result = await c.env.DB.prepare(`
-      INSERT INTO fixed_expenses (name, category, amount, frequency, payment_day, start_date, end_date, counterpart_name, notes, created_by)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO fixed_expenses (name, category, amount, frequency, payment_day, start_date, end_date, counterpart_name, notes, created_by, entity_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).bind(
       body.name, body.category, body.amount, body.frequency || 'MONTHLY',
       body.payment_day || 1, body.start_date, body.end_date || null,
-      body.counterpart_name || null, body.notes || null, user?.id || null
+      body.counterpart_name || null, body.notes || null, user?.id || null,
+      getEntityId(c)
     ).run()
 
     return c.json({ success: true, data: { id: result.meta.last_row_id } })
@@ -123,8 +126,12 @@ cashFlowRouter.delete('/fixed-expenses/:id', requireRole('ADMIN'), async (c) => 
 cashFlowRouter.get('/loans', requireRole('ADMIN'), async (c) => {
   try {
     const { active = '1' } = c.req.query()
-    const where = active ? 'WHERE l.is_active = ?' : ''
-    const params = active ? [Number(active)] : []
+    const clauses: string[] = []
+    const params: any[] = []
+    const ef = entityFilter(c, 'l')
+    if (ef.clause) { clauses.push(ef.clause.replace(' AND ', '')); params.push(...ef.params) }
+    if (active) { clauses.push('l.is_active = ?'); params.push(Number(active)) }
+    const where = clauses.length ? 'WHERE ' + clauses.join(' AND ') : ''
 
     const { results } = await c.env.DB.prepare(`
       SELECT l.*,
@@ -162,8 +169,8 @@ cashFlowRouter.post('/loans', requireRole('ADMIN'), async (c) => {
     const result = await c.env.DB.prepare(`
       INSERT INTO loans (loan_number, creditor, description, original_amount, current_balance,
         rate_type, current_rate, repayment_type, start_date, maturity_date,
-        monthly_payment_day, monthly_payment_amount, notes, created_by)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        monthly_payment_day, monthly_payment_amount, notes, created_by, entity_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).bind(
       body.loan_number || null, body.creditor, body.description || null,
       body.original_amount, body.current_balance ?? body.original_amount,
@@ -171,7 +178,8 @@ cashFlowRouter.post('/loans', requireRole('ADMIN'), async (c) => {
       body.repayment_type || 'EQUAL_INSTALLMENT',
       body.start_date, body.maturity_date,
       body.monthly_payment_day || 1, body.monthly_payment_amount || 0,
-      body.notes || null, user?.id || null
+      body.notes || null, user?.id || null,
+      getEntityId(c)
     ).run()
 
     // 초기 금리 이력 기록
@@ -452,6 +460,7 @@ cashFlowRouter.get('/projection', requireRole('ADMIN'), async (c) => {
       `).bind(monthStart, monthEnd, ...efPayments.params).first<{ total: number }>()
 
       // 고정비
+      const efFixed = entityFilter(c)
       const fixedExp = await c.env.DB.prepare(`
         SELECT COALESCE(SUM(amount), 0) as total
         FROM fixed_expenses
@@ -462,16 +471,18 @@ cashFlowRouter.get('/projection', requireRole('ADMIN'), async (c) => {
             frequency = 'MONTHLY'
             OR (frequency = 'QUARTERLY' AND (CAST(strftime('%m', ?) AS INTEGER) - CAST(strftime('%m', start_date) AS INTEGER)) % 3 = 0)
             OR (frequency = 'YEARLY' AND strftime('%m', ?) = strftime('%m', start_date))
-          )
-      `).bind(monthEnd, monthStart, monthStart, monthStart).first<{ total: number }>()
+          )${efFixed.clause}
+      `).bind(monthEnd, monthStart, monthStart, monthStart, ...efFixed.params).first<{ total: number }>()
 
       // 대출 상환
+      const efLoan = entityFilter(c)
       const loanPay = await c.env.DB.prepare(`
-        SELECT COALESCE(SUM(total_amount), 0) as total
-        FROM loan_payments
-        WHERE scheduled_date BETWEEN ? AND ?
-          AND status IN ('SCHEDULED', 'OVERDUE')
-      `).bind(monthStart, monthEnd).first<{ total: number }>()
+        SELECT COALESCE(SUM(lp.total_amount), 0) as total
+        FROM loan_payments lp
+        JOIN loans l ON lp.loan_id = l.id
+        WHERE lp.scheduled_date BETWEEN ? AND ?
+          AND lp.status IN ('SCHEDULED', 'OVERDUE')${efLoan.clause.replace('entity_id', 'l.entity_id')}
+      `).bind(monthStart, monthEnd, ...efLoan.params).first<{ total: number }>()
 
       // 구매 (발주)
       const efPurchase = entityFilter(c)
@@ -526,22 +537,24 @@ cashFlowRouter.get('/calendar', requireRole('ADMIN'), async (c) => {
     const monthEnd = `${y}-${String(m).padStart(2, '0')}-${lastDay}`
 
     // 고정비 (해당 월에 활성인 것)
+    const efCalFixed = entityFilter(c)
     const { results: fixedItems } = await c.env.DB.prepare(`
-      SELECT name, category, amount, payment_day, frequency
+      SELECT name, category, amount, payment_day, frequency, start_date
       FROM fixed_expenses
-      WHERE is_active = 1 AND start_date <= ? AND (end_date IS NULL OR end_date >= ?)
-    `).bind(monthEnd, monthStart).all<{
+      WHERE is_active = 1 AND start_date <= ? AND (end_date IS NULL OR end_date >= ?)${efCalFixed.clause}
+    `).bind(monthEnd, monthStart, ...efCalFixed.params).all<{
       name: string; category: string; amount: number; payment_day: number;
       frequency: string; start_date?: string
     }>()
 
     // 대출 상환
+    const efCalLoan = entityFilter(c)
     const { results: loanItems } = await c.env.DB.prepare(`
       SELECT lp.scheduled_date, lp.total_amount, lp.status, l.creditor
       FROM loan_payments lp
       JOIN loans l ON lp.loan_id = l.id
-      WHERE lp.scheduled_date BETWEEN ? AND ?
-    `).bind(monthStart, monthEnd).all<{
+      WHERE lp.scheduled_date BETWEEN ? AND ?${efCalLoan.clause.replace('entity_id', 'l.entity_id')}
+    `).bind(monthStart, monthEnd, ...efCalLoan.params).all<{
       scheduled_date: string; total_amount: number; status: string; creditor: string
     }>()
 
@@ -634,6 +647,9 @@ cashFlowRouter.get('/summary', requireRole('ADMIN'), async (c) => {
     const monthEnd = yearMonth + '-' + new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate()
 
     const efSummary = entityFilter(c)
+    const efSumFixed = entityFilter(c)
+    const efSumLoan = entityFilter(c)
+    const efSumLoanBal = entityFilter(c)
     const [incomeResult, fixedResult, loanResult, loanSummary] = await Promise.all([
       c.env.DB.prepare(`
         SELECT COALESCE(SUM(amount), 0) as total FROM payments
@@ -642,16 +658,17 @@ cashFlowRouter.get('/summary', requireRole('ADMIN'), async (c) => {
       c.env.DB.prepare(`
         SELECT COALESCE(SUM(amount), 0) as total FROM fixed_expenses
         WHERE is_active = 1 AND start_date <= ? AND (end_date IS NULL OR end_date >= ?)
-          AND frequency = 'MONTHLY'
-      `).bind(monthEnd, monthStart).first<{ total: number }>(),
+          AND frequency = 'MONTHLY'${efSumFixed.clause}
+      `).bind(monthEnd, monthStart, ...efSumFixed.params).first<{ total: number }>(),
       c.env.DB.prepare(`
-        SELECT COALESCE(SUM(total_amount), 0) as total FROM loan_payments
-        WHERE scheduled_date BETWEEN ? AND ? AND status IN ('SCHEDULED','OVERDUE')
-      `).bind(monthStart, monthEnd).first<{ total: number }>(),
+        SELECT COALESCE(SUM(lp.total_amount), 0) as total FROM loan_payments lp
+        JOIN loans l ON lp.loan_id = l.id
+        WHERE lp.scheduled_date BETWEEN ? AND ? AND lp.status IN ('SCHEDULED','OVERDUE')${efSumLoan.clause.replace('entity_id', 'l.entity_id')}
+      `).bind(monthStart, monthEnd, ...efSumLoan.params).first<{ total: number }>(),
       c.env.DB.prepare(`
         SELECT COUNT(*) as count, COALESCE(SUM(current_balance), 0) as total_balance
-        FROM loans WHERE is_active = 1
-      `).first<{ count: number; total_balance: number }>()
+        FROM loans WHERE is_active = 1${efSumLoanBal.clause}
+      `).bind(...efSumLoanBal.params).first<{ count: number; total_balance: number }>()
     ])
 
     return c.json({

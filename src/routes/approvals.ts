@@ -341,26 +341,28 @@ approvals.post('/:id/approve', async (c) => {
       return c.json({ success: false, error: '결재 권한이 없습니다.' }, 403)
     }
 
-    // 단계 승인
-    await c.env.DB.prepare(`
-      UPDATE approval_steps SET status = 'APPROVED', comment = ?, approver_id = ?, acted_at = CURRENT_TIMESTAMP
-      WHERE id = ?
-    `).bind(body.comment || null, userId, step.id).run()
-
-    // 다음 단계 확인
+    // batch: 단계 승인 + 요청 상태를 단일 왕복으로 처리
     const nextStep = req.current_step + 1
-    if (nextStep > req.total_steps) {
-      // 최종 승인
-      await c.env.DB.prepare(`
-        UPDATE approval_requests SET status = 'APPROVED', final_comment = ?, completed_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = ?
-      `).bind(body.comment || null, id).run()
+    const isFinished = nextStep > req.total_steps
 
-      // Post-approval hook
+    const approveStmts = [
+      c.env.DB.prepare(`
+        UPDATE approval_steps SET status = 'APPROVED', comment = ?, approver_id = ?, acted_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `).bind(body.comment || null, userId, step.id),
+      isFinished
+        ? c.env.DB.prepare(`
+            UPDATE approval_requests SET status = 'APPROVED', final_comment = ?, completed_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = ?
+          `).bind(body.comment || null, id)
+        : c.env.DB.prepare(`
+            UPDATE approval_requests SET status = 'IN_REVIEW', current_step = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?
+          `).bind(nextStep, id)
+    ]
+    await c.env.DB.batch(approveStmts)
+
+    // Post-approval hook (외부 연쇄 — batch 범위 밖에서 실행)
+    if (isFinished) {
       await handlePostApproval(c.env.DB, req)
-    } else {
-      await c.env.DB.prepare(`
-        UPDATE approval_requests SET status = 'IN_REVIEW', current_step = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?
-      `).bind(nextStep, id).run()
     }
 
     return c.json({ success: true })
@@ -402,23 +404,29 @@ approvals.post('/:id/reject', async (c) => {
       return c.json({ success: false, error: '결재 권한이 없습니다.' }, 403)
     }
 
-    await c.env.DB.prepare(`
-      UPDATE approval_steps SET status = 'REJECTED', comment = ?, approver_id = ?, acted_at = CURRENT_TIMESTAMP WHERE id = ?
-    `).bind(body.comment || '반려', userId, step.id).run()
-
-    await c.env.DB.prepare(`
-      UPDATE approval_requests SET status = 'REJECTED', final_comment = ?, completed_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = ?
-    `).bind(body.comment || '반려', id).run()
+    // batch: 모든 반려 관련 UPDATE를 단일 왕복으로 처리
+    const batchStmts = [
+      c.env.DB.prepare(`
+        UPDATE approval_steps SET status = 'REJECTED', comment = ?, approver_id = ?, acted_at = CURRENT_TIMESTAMP WHERE id = ?
+      `).bind(body.comment || '반려', userId, step.id),
+      c.env.DB.prepare(`
+        UPDATE approval_requests SET status = 'REJECTED', final_comment = ?, completed_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = ?
+      `).bind(body.comment || '반려', id)
+    ]
 
     // 여신한도 반려 → 주문 credit_status 업데이트 (#69)
     if (req.reference_type === 'order' && req.reference_id) {
-      await c.env.DB.prepare(
-        `UPDATE orders SET credit_status = 'REJECTED' WHERE id = ? AND credit_status = 'PENDING'`
-      ).bind(req.reference_id).run()
-      await c.env.DB.prepare(
-        `UPDATE credit_overrides SET status = 'REJECTED' WHERE order_id = ? AND status = 'PENDING'`
-      ).bind(req.reference_id).run()
+      batchStmts.push(
+        c.env.DB.prepare(
+          `UPDATE orders SET credit_status = 'REJECTED' WHERE id = ? AND credit_status = 'PENDING'`
+        ).bind(req.reference_id),
+        c.env.DB.prepare(
+          `UPDATE credit_overrides SET status = 'REJECTED' WHERE order_id = ? AND status = 'PENDING'`
+        ).bind(req.reference_id)
+      )
     }
+
+    await c.env.DB.batch(batchStmts)
 
     return c.json({ success: true })
   } catch (e) {

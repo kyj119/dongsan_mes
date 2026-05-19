@@ -231,23 +231,30 @@ paymentRequestsRouter.patch('/:id/approve', requireRole('ADMIN', 'MANAGER'), asy
   try {
     const id = c.req.param('id')
     const user = c.get('user')
-    await c.env.DB.prepare(`
-      UPDATE payment_requests SET status = 'APPROVED', approved_by = ?, approved_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
-      WHERE id = ? AND status = 'PENDING'
-    `).bind(user?.id || null, id).run()
 
-    // 자금 예정에 자동 등록
-    const pr = await c.env.DB.prepare('SELECT id, request_date, request_type, recipient_client_id, recipient_name, amount, description FROM payment_requests WHERE id = ?').bind(id).first<Record<string, unknown>>()
-    if (pr) {
-      await c.env.DB.prepare(`
+    // 먼저 현재 데이터를 읽은 후 batch로 원자적 업데이트
+    const pr = await c.env.DB.prepare(
+      'SELECT id, request_date, request_type, recipient_client_id, recipient_name, amount, description, status FROM payment_requests WHERE id = ?'
+    ).bind(id).first<Record<string, unknown>>()
+    if (!pr || pr.status !== 'PENDING') {
+      return c.json({ success: false, error: '승인 가능한 상태가 아닙니다.' }, 400)
+    }
+
+    // batch: 승인 + 자금 예정 등록을 단일 왕복으로 처리
+    await c.env.DB.batch([
+      c.env.DB.prepare(`
+        UPDATE payment_requests SET status = 'APPROVED', approved_by = ?, approved_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+        WHERE id = ? AND status = 'PENDING'
+      `).bind(user?.id || null, id),
+      c.env.DB.prepare(`
         INSERT INTO cash_schedule (schedule_date, flow_type, source_type, source_id, client_id, amount, description, created_by)
         VALUES (?, 'OUT', ?, ?, ?, ?, ?, ?)
       `).bind(
         pr.request_date, pr.request_type || 'OTHER', pr.id, pr.recipient_client_id, pr.amount,
         `[지출결의] ${pr.recipient_name} ${pr.description}`,
         user?.id || null
-      ).run()
-    }
+      )
+    ])
 
     return c.json({ success: true, message: '승인되었습니다.' })
   } catch (error) {
@@ -279,21 +286,26 @@ paymentRequestsRouter.patch('/:id/pay', requireRole('ADMIN', 'MANAGER'), async (
     const user = c.get('user')
     const { bank_transaction_id, paid_at } = await c.req.json<{ bank_transaction_id?: string; paid_at?: string }>()
 
-    await c.env.DB.prepare(`
-      UPDATE payment_requests SET status = 'PAID',
-        paid_at = COALESCE(?, CURRENT_TIMESTAMP),
-        paid_by = ?, bank_transaction_id = ?, updated_at = CURRENT_TIMESTAMP
-      WHERE id = ? AND status = 'APPROVED'
-    `).bind(paid_at || null, user?.id || null, bank_transaction_id || null, id).run()
+    const pr2 = await c.env.DB.prepare(
+      'SELECT id, request_date, amount, status FROM payment_requests WHERE id = ?'
+    ).bind(id).first<Record<string, unknown>>()
+    if (!pr2 || pr2.status !== 'APPROVED') {
+      return c.json({ success: false, error: '이체 가능한 상태가 아닙니다.' }, 400)
+    }
 
-    // 자금 예정 완료 처리
-    const pr2 = await c.env.DB.prepare('SELECT id, request_date, request_type, recipient_client_id, recipient_name, amount, description FROM payment_requests WHERE id = ?').bind(id).first<Record<string, unknown>>()
-    if (pr2) {
-      await c.env.DB.prepare(`
+    // batch: 이체완료 + 자금 예정 완료를 단일 왕복으로 처리
+    await c.env.DB.batch([
+      c.env.DB.prepare(`
+        UPDATE payment_requests SET status = 'PAID',
+          paid_at = COALESCE(?, CURRENT_TIMESTAMP),
+          paid_by = ?, bank_transaction_id = ?, updated_at = CURRENT_TIMESTAMP
+        WHERE id = ? AND status = 'APPROVED'
+      `).bind(paid_at || null, user?.id || null, bank_transaction_id || null, id),
+      c.env.DB.prepare(`
         UPDATE cash_schedule SET status = 'DONE', actual_date = ?, actual_amount = ?
         WHERE source_type = 'OTHER' AND source_id = ?
-      `).bind(paid_at || pr2.request_date, pr2.amount, id).run()
-    }
+      `).bind(paid_at || pr2.request_date as string, pr2.amount, id)
+    ])
 
     return c.json({ success: true, message: '이체 완료 처리되었습니다.' })
   } catch (error) {
@@ -305,6 +317,7 @@ paymentRequestsRouter.patch('/:id/pay', requireRole('ADMIN', 'MANAGER'), async (
 // 통계
 paymentRequestsRouter.get('/stats/summary', async (c) => {
   try {
+    const ef = entityFilter(c)
     const stats = await c.env.DB.prepare(`
       SELECT
         SUM(CASE WHEN status = 'DRAFT' THEN 1 ELSE 0 END) as draft_count,
@@ -314,8 +327,8 @@ paymentRequestsRouter.get('/stats/summary', async (c) => {
         SUM(CASE WHEN status = 'PENDING' THEN amount ELSE 0 END) as pending_amount,
         SUM(CASE WHEN status = 'APPROVED' THEN amount ELSE 0 END) as approved_amount
       FROM payment_requests
-      WHERE request_date >= date('now', '-90 days')
-    `).first()
+      WHERE request_date >= date('now', '-90 days')${ef.clause}
+    `).bind(...ef.params).first()
     return c.json({ success: true, data: stats })
   } catch (error) {
     console.error('payment-requests stats error:', error)
