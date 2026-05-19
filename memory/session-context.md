@@ -1,60 +1,46 @@
-# 최근 세션 컨텍스트 (2026-05-11~12)
+# 최근 세션 컨텍스트 (2026-05-19)
 
 ## 세션 성과 요약
 
 | 지표 | 수치 |
 |------|------|
-| 커밋 | 14개 |
-| E2E 테스트 | 10 → 28개 |
-| GitHub Issues | 14개 생성, 14/14 처리 (done 13, rejected 1) |
-| 신규 기능 | 10개 (필터 5, KPI 5) |
-| 버그 수정 | 5건 (entity_id, LogWatcher, SHIPPED 카드, orders.js 파싱, N+1 x3) |
-| 보안 | rate limit 적용, hr.ts 에러 제네릭화 |
-| 자동화 | auto-improve 4시간 스케줄 설정 |
-| 설계 문서 | 범용 LogWatcher (docs/UNIVERSAL_LOGWATCHER_DESIGN.md) |
+| 커밋 | 3개 |
+| GitHub Issues | #118~#120 close |
+| 마이그레이션 | 0228~0230 (3개) |
+| 버그 수정 | 500 에러 3건 해소 확인, 현수막 RM 정합성 |
+| 멀티사업자 | 전체 점검 + entityFilter 추가 적용 |
+| 인프라 | GitHub Actions Backup 토큰 분리 + 첫 성공 |
 
 ## 주요 완료 작업
 
-1. **E2E 쓰기 테스트 18개** — entity_id=99 격리, writeApi fixture
-2. **auto-improve 시스템** — 6영역 순환 + GitHub Issues + 코멘트 반영 + 4시간 스케줄
-3. **Issues #1~#14 전량 처리** — entity 격리, N+1 제거, 필터 5개, KPI 5개, SHIPPED 카드 확인, rate limit, 에러 제네릭화
-4. **LogWatcher 프로덕션 연결** — appsettings URL 수정, install-service.bat 인코딩 수정, RIP 2대 online
-5. **orders.js 파싱 에러 수정** — `\\'` 이스케이프 문제 (?raw 파일에서 `&#39;` 사용)
-6. **범용 LogWatcher 설계** — config 기반 5가지 파서 타입, equipment.json
-7. **문서 동기화** — PROJECT_STATUS/ROADMAP/MEMORY/design-decisions/BACKLOG
-
-## 발견·수정한 회귀
-
-- **orders.js 전체 파싱 실패**: #11 카드 확인 모달에서 `\\'` 사용 → `?raw` 파일에서 "Invalid or unexpected token". `&#39;` HTML entity로 교체.
-- **교훈**: `src/scripts/*.js`는 `?raw` import이므로 `\\'` 금지. CLAUDE.md에 명시된 규칙이지만 에이전트가 놓침.
+1. **기존 500 에러 3건** — employees/12, stats/clients, unread-count 모두 200 정상 확인
+2. **현수막 RM 정합성** (마이그레이션 0228) — print_media 재활성화, 이름 통일, null parent_media_id 수정
+3. **GitHub Actions Backup** — CLOUDFLARE_BACKUP_TOKEN 분리, D1 Edit + R2 Edit 권한, 수동 실행 성공
+4. **Issues #118~#120**
+   - #118: vat_reports UNIQUE(year, quarter, entity_id) 재생성
+   - #119: fixed_expenses/loans entity_id 추가 + cashFlow.ts 전체 entityFilter
+   - #120: paymentRequests/approvals → db.batch() 원자성 강화
+5. **멀티사업자 전체 점검** — production.ts GET /logs, paymentRequests stats entityFilter 추가
 
 ## 설계 결정
 
-- **E2E entity(id=99)**: 법인 선택 UI에서 숨기지 않고 적극 활용 (테스트 샌드박스)
-- **SHIPPED 카드 확인**: 미완료 카드 → 확인 모달, 확정→PRINT_DONE, 취소→HOLD
-- **범용 LogWatcher**: equipment.json config 기반, 장비당 20분 추가
+- **토큰 분리**: 배포 토큰에 D1 export 권한 없었음 → 최소권한 원칙으로 용도별 분리
+- **db.batch()**: D1 트랜잭션 미지원 → batch 단일 왕복으로 부분 실패 최소화
+- **vat_reports 재생성**: SQLite ALTER TABLE로 UNIQUE 변경 불가 → CREATE→INSERT→DROP→RENAME 패턴
 
-## auto-improve 스케줄
+## 주의사항
 
-- Trigger ID: `trig_01SeYWktYw7rSLy4GHypHZVx`
-- 스케줄: 4시간 간격 (KST 0/4/8/12/16/20시)
-- 모델: claude-sonnet-4-6
-- 관리: https://claude.ai/code/scheduled/trig_01SeYWktYw7rSLy4GHypHZVx
+- inventory.ts: items(마스터) 조회라 entity_id 필터 의도적 미적용 — 확인 필요
+- UNIQUE 제약(order_number, card_number 등) entity_id 미포함 — 법인 추가 시 충돌 위험
 
-## 다음 세션
+## 다음 세션 TODO
 
-### 즉시 착수 가능
-- auto-improve가 생성한 새 Issues 확인 + 처리
-- 범용 LogWatcher Phase 1 (장비 목록 확정 후)
-- 카카오톡 알림 마무리 (Phase 5.4)
-
-### 사용자 결정 필요
-- 장비 7종 목록 + 로그 샘플 (범용 LogWatcher 착수 조건)
-- 한진택배 솔루션 선정
+1. 백업 정상 동작 모니터링 (매일 KST 02:00 실행 확인)
+2. UNIQUE 제약 + 자동채번 entity 프리픽스 설계 여부 결정
+3. 대기 중 이슈: #65(후가공 추적), #75(견적 적정단가), #79(로트 추적), #80(바코드/QR)
 
 ### 새 세션 시작
 ```powershell
 cd C:\Users\user\dongsan_mes
 git pull
-# "승인된 이슈 처리해줘" 또는 "auto-improve 결과 확인해줘"
 ```
