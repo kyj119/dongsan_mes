@@ -85,7 +85,5 @@
 
 ---
 
-## 📌 기존 에러 (이번 세션과 무관)
-- `/api/hr/employees/12` → 500
-- `/api/dashboard/stats/clients` → 500
-- `/api/notifications/unread-count` → 500
+## 📌 기존 에러
+- (없음) — 2026-05-19 확인: 3건 모두 200 정상 (employees/12, stats/clients, unread-count)

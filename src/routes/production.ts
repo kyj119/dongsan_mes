@@ -2,7 +2,7 @@ import { Hono } from 'hono'
 import { authMiddleware } from '../middleware/auth'
 import { requireAnyPagePermission } from '../middleware/permissions'
 import type { HonoEnv } from '../types/env'
-import { getEntityId } from '../utils/entityFilter'
+import { getEntityId, entityFilter } from '../utils/entityFilter'
 
 const productionRouter = new Hono<HonoEnv>()
 
@@ -13,18 +13,19 @@ productionRouter.use('/*', authMiddleware, requireAnyPagePermission('/production
 productionRouter.get('/logs', async (c) => {
   try {
     const { start_date, end_date, shift, limit = '30' } = c.req.query()
+    const ef = entityFilter(c, 'pl')
 
     let query = `
-      SELECT 
+      SELECT
         pl.*,
         e.name as supervisor_name,
         u.username as created_by_name
       FROM production_logs pl
       LEFT JOIN employees e ON pl.supervisor_id = e.id
       LEFT JOIN users u ON pl.created_by = u.id
-      WHERE 1=1
+      WHERE 1=1${ef.clause}
     `
-    const params: any[] = []
+    const params: any[] = [...ef.params]
 
     if (start_date) {
       query += ` AND pl.log_date >= ?`

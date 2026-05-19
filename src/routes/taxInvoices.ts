@@ -318,7 +318,7 @@ async function issueTaxInvoice(
       ).bind(...orderIds).run()
     }
   } catch (_billingErr) {
-    console.warn('billing_status 업데이트 오류:', _billingErr)
+    console.error('[taxInvoices] billing_status 업데이트 실패 — 수동 확인 필요 (invoice:', taxInvoiceId, '):', _billingErr)
   }
 
   return { success: true, data: { ...updated, items } }
