@@ -62,8 +62,8 @@ financialReportsRouter.get('/pnl', async (c) => {
         COALESCE(SUM(final_amount), 0) as total_purchase
       FROM purchase_orders
       WHERE status IN ('CONFIRMED', 'RECEIVED', 'PARTIAL_RECEIVED')
-        AND date(created_at) BETWEEN ? AND ?
-    `).bind(from, to).first<PurchaseRow>()
+        AND date(created_at) BETWEEN ? AND ?${ef.clause}
+    `).bind(from, to, ...ef.params).first<PurchaseRow>()
 
     // 4. 경비 — 승인된 지출결의서 (EXPENSE 유형)
     const expenseRow = await c.env.DB.prepare(`
@@ -73,8 +73,8 @@ financialReportsRouter.get('/pnl', async (c) => {
       FROM payment_requests
       WHERE status IN ('APPROVED', 'PAID')
         AND request_type = 'EXPENSE'
-        AND date(request_date) BETWEEN ? AND ?
-    `).bind(from, to).first<ExpenseRow>().catch((): ExpenseRow => ({ total_expense: 0, expense_count: 0 }))
+        AND date(request_date) BETWEEN ? AND ?${ef.clause}
+    `).bind(from, to, ...ef.params).first<ExpenseRow>().catch((): ExpenseRow => ({ total_expense: 0, expense_count: 0 }))
 
     // 5. 인건비 — 급여 (B Phase 후 활성화)
     const payrollRow = await c.env.DB.prepare(`
@@ -90,8 +90,8 @@ financialReportsRouter.get('/pnl', async (c) => {
       FROM fixed_expenses
       WHERE is_active = 1
         AND start_date <= ? AND (end_date IS NULL OR end_date >= ?)
-        AND frequency = 'MONTHLY'
-    `).bind(to, from).first<FixedRow>().catch((): FixedRow => ({ total_fixed: 0 }))
+        AND frequency = 'MONTHLY'${ef.clause}
+    `).bind(to, from, ...ef.params).first<FixedRow>().catch((): FixedRow => ({ total_fixed: 0 }))
 
     // 월 수 계산
     const fromDate = new Date(from)
@@ -179,10 +179,10 @@ financialReportsRouter.get('/pnl/monthly', async (c) => {
         COALESCE(SUM(amount), 0) as expense
       FROM payment_requests
       WHERE status IN ('APPROVED', 'PAID')
-        AND strftime('%Y', request_date) = ?
+        AND strftime('%Y', request_date) = ?${ef.clause}
       GROUP BY month
       ORDER BY month
-    `).bind(String(year)).all<MonthlyExpenseRow>().catch((): { results: MonthlyExpenseRow[] } => ({ results: [] }))
+    `).bind(String(year), ...ef.params).all<MonthlyExpenseRow>().catch((): { results: MonthlyExpenseRow[] } => ({ results: [] }))
     const expenseRows = expenseResult.results
 
     const payrollResult = await c.env.DB.prepare(`
@@ -240,6 +240,8 @@ financialReportsRouter.get('/pnl/monthly', async (c) => {
 // ============================================================
 financialReportsRouter.get('/balance-snapshot', async (c) => {
   try {
+    const ef = entityFilter(c)
+
     // 미수금 합계 (clients.balance)
     const arRow = await c.env.DB.prepare(`
       SELECT COALESCE(SUM(balance), 0) as total_ar
@@ -261,14 +263,14 @@ financialReportsRouter.get('/balance-snapshot', async (c) => {
     // 은행 잔액 합계 (있으면)
     const bankRow = await c.env.DB.prepare(`
       SELECT COALESCE(SUM(current_balance), 0) as total_bank
-      FROM bank_accounts WHERE is_active = 1
-    `).first<BankRow>().catch((): BankRow => ({ total_bank: 0 }))
+      FROM bank_accounts WHERE is_active = 1${ef.clause}
+    `).bind(...ef.params).first<BankRow>().catch((): BankRow => ({ total_bank: 0 }))
 
     // 대출 잔액
     const loanRow = await c.env.DB.prepare(`
       SELECT COALESCE(SUM(remaining_principal), 0) as total_loan
-      FROM loans WHERE status = 'ACTIVE'
-    `).first<LoanRow>().catch((): LoanRow => ({ total_loan: 0 }))
+      FROM loans WHERE status = 'ACTIVE'${ef.clause}
+    `).bind(...ef.params).first<LoanRow>().catch((): LoanRow => ({ total_loan: 0 }))
 
     const cash = Number(bankRow?.total_bank) || 0
     const ar = Number(arRow?.total_ar) || 0
@@ -332,8 +334,8 @@ financialReportsRouter.get('/export/csv', async (c) => {
 
       const expenseRow = await c.env.DB.prepare(`
         SELECT COUNT(*) as expense_count, COALESCE(SUM(amount), 0) as total_expense
-        FROM payment_requests WHERE status IN ('APPROVED', 'PAID') AND request_type = 'EXPENSE' AND date(request_date) BETWEEN ? AND ?
-      `).bind(from, to).first<ExpenseRow>().catch((): ExpenseRow => ({ total_expense: 0, expense_count: 0 }))
+        FROM payment_requests WHERE status IN ('APPROVED', 'PAID') AND request_type = 'EXPENSE' AND date(request_date) BETWEEN ? AND ?${ef.clause}
+      `).bind(from, to, ...ef.params).first<ExpenseRow>().catch((): ExpenseRow => ({ total_expense: 0, expense_count: 0 }))
 
       const payrollRow = await c.env.DB.prepare(`
         SELECT COALESCE(SUM(net_pay), 0) as total_payroll
@@ -376,9 +378,9 @@ financialReportsRouter.get('/export/csv', async (c) => {
 
     const expenseResult = await c.env.DB.prepare(`
       SELECT strftime('%m', request_date) as month, COALESCE(SUM(amount), 0) as expense
-      FROM payment_requests WHERE status IN ('APPROVED', 'PAID') AND strftime('%Y', request_date) = ?
+      FROM payment_requests WHERE status IN ('APPROVED', 'PAID') AND strftime('%Y', request_date) = ?${ef.clause}
       GROUP BY month ORDER BY month
-    `).bind(String(year)).all<MonthlyExpenseRow>().catch((): { results: MonthlyExpenseRow[] } => ({ results: [] }))
+    `).bind(String(year), ...ef.params).all<MonthlyExpenseRow>().catch((): { results: MonthlyExpenseRow[] } => ({ results: [] }))
 
     const payrollResult = await c.env.DB.prepare(`
       SELECT printf('%02d', pay_month) as month, COALESCE(SUM(net_pay), 0) as payroll

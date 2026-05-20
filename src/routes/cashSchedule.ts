@@ -362,10 +362,11 @@ cashScheduleRouter.post('/schedule/auto-generate', requireRole('ADMIN'), async (
     }
 
     // 3. 고정비 → 향후 3개월 (LIMIT 100 안전장치)
+    const efFe = entityFilter(c)
     const { results: fixedExpenses } = await c.env.DB.prepare(`
       SELECT id, name, category, amount, payment_day, frequency, start_date, end_date
-      FROM fixed_expenses WHERE is_active = 1 LIMIT 100
-    `).all<FixedExpenseRow>()
+      FROM fixed_expenses WHERE is_active = 1${efFe.clause} LIMIT 100
+    `).bind(...efFe.params).all<FixedExpenseRow>()
 
     const today = new Date()
     const futureMonths = 3
