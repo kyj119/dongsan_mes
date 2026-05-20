@@ -18,6 +18,11 @@
 
 ## 🟡 대기 중 (사용자 선택/승인 필요)
 
+### [CODEF 멤버십] — 승인 대기
+- 멤버십 가입 신청 완료. 승인 후 client_id/secret 받으면 카드/보험/홈택스 연동 가동
+- 신청 API: 법인카드 승인내역, 법인카드 청구내역, 고용산재 보험료, 근로자고용정보, 사업장취득자명부, 기업 거래내역
+
+
 ### [#65] 후가공 단계별 추적 — 방안 A/B/C 선택 대기
 - A: QR 원터치, B: Zone 기반, C: 최소 2단계. 코멘트 제안 완료, 답변 대기
 
@@ -41,6 +46,11 @@
 ---
 
 ## 🟢 최근 완료 (2026-05-20)
+
+### CODEF API 확장 — 카드/보험/홈택스 함수 추가
+- codef.ts에 fetchCardApprovals, fetchInsurancePayments, fetchEmploymentInfo, fetchTaxInvoices, checkBusinessStatus 추가
+- cardExpenses 라우트에 CODEF 카드 연결(connect) + 동기화(sync) API 추가
+- 카드사 기관 코드 매핑 10개사 (신한/현대/삼성/KB/롯데/하나/우리/농협/BC/씨티)
 
 ### 법인카드 사용 내역 관리 시스템 (Phase 1)
 - DB: corporate_cards, card_transactions, expense_categories 3테이블
