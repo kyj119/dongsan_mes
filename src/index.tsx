@@ -99,6 +99,7 @@ import { orderFormPage } from './pages/orderForm'
 import { loginPage } from './pages/login'
 import { ledgerPage } from './pages/ledger'
 import { inventoryPage } from './pages/inventory'
+import { inventoryDashboardPage } from './pages/inventoryDashboard'
 import { productionPage } from './pages/production'
 import { hrPage } from './pages/hr'
 import { hrDetailPage } from './pages/hrDetail'
@@ -387,6 +388,7 @@ app.get('/orders', pageAuthMiddleware, requirePagePermission('/orders'), ordersP
 app.get('/order-form', pageAuthMiddleware, requirePagePermission('/orders'), orderFormPage)
 app.get('/ledger', pageAuthMiddleware, requirePagePermission('/ledger'), ledgerPage)
 app.get('/inventory', pageAuthMiddleware, requirePagePermission('/inventory'), inventoryPage)
+app.get('/inventory-dashboard', pageAuthMiddleware, requirePagePermission('/inventory'), inventoryDashboardPage)
 app.get('/production', pageAuthMiddleware, requirePagePermission('/production'), productionPage)
 app.get('/schedule', pageAuthMiddleware, requirePagePermission('/schedule'), schedulePage)
 app.get('/hr', pageAuthMiddleware, requirePagePermission('/hr'), hrPage)

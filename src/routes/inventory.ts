@@ -697,4 +697,106 @@ inventoryRouter.get('/stats/summary', async (c) => {
   }
 })
 
+// ── 창고별 재고 대시보드 API ──
+inventoryRouter.get('/dashboard/zones', async (c) => {
+  try {
+    const entityId = getEntityId(c)
+    const zoneFilter = c.req.query('zone_id')
+    const params: any[] = []
+
+    // 1. 창고 목록 (법인 필터)
+    let zoneSql = `
+      SELECT sz.id, sz.zone_name, sz.zone_code, sz.is_default, sz.entity_id,
+        e.short_name as entity_name
+      FROM storage_zones sz
+      LEFT JOIN entities e ON sz.entity_id = e.id
+      WHERE sz.is_active = 1
+    `
+    const zoneParams: any[] = []
+    if (entityId > 0) {
+      zoneSql += ' AND sz.entity_id = ?'
+      zoneParams.push(entityId)
+    }
+    zoneSql += ' ORDER BY sz.entity_id, sz.sort_order, sz.zone_name'
+    const { results: zones } = await c.env.DB.prepare(zoneSql).bind(...zoneParams).all()
+
+    // 2. 창고별 품목 재고 현황
+    let itemSql = `
+      SELECT
+        i.id as item_id, i.item_code, i.item_name, i.category, i.sub_category,
+        i.unit, i.base_price, i.storage_zone_id,
+        sz.zone_name, sz.entity_id as zone_entity_id,
+        COALESCE(inv.quantity, 0) as current_stock,
+        COALESCE(inv.safe_stock, 0) as safe_stock,
+        COALESCE(inv.reorder_point, 0) as reorder_point,
+        CASE
+          WHEN COALESCE(inv.safe_stock, 0) > 0 AND COALESCE(inv.quantity, 0) <= 0 THEN 'CRITICAL'
+          WHEN COALESCE(inv.safe_stock, 0) > 0 AND COALESCE(inv.quantity, 0) <= COALESCE(inv.safe_stock, 0) THEN 'LOW'
+          ELSE 'OK'
+        END as stock_status
+      FROM items i
+      LEFT JOIN storage_zones sz ON i.storage_zone_id = sz.id
+    `
+
+    // entity_id 조건부 JOIN
+    if (entityId > 0) {
+      itemSql += ` LEFT JOIN inventory inv ON i.id = inv.item_id AND inv.entity_id = ?`
+      params.push(entityId)
+    } else {
+      itemSql += ` LEFT JOIN inventory inv ON i.id = inv.item_id`
+    }
+
+    itemSql += ` WHERE i.is_active = 1 AND i.is_purchase_item = 1`
+
+    if (entityId > 0) {
+      itemSql += ' AND (sz.entity_id = ? OR i.storage_zone_id IS NULL)'
+      params.push(entityId)
+    }
+    if (zoneFilter) {
+      itemSql += ' AND i.storage_zone_id = ?'
+      params.push(Number(zoneFilter))
+    }
+    itemSql += ' ORDER BY sz.sort_order, sz.zone_name, i.category, i.item_name'
+
+    const { results: items } = await c.env.DB.prepare(itemSql).bind(...params).all()
+
+    // 3. 요약 통계
+    const totalItems = items.length
+    const criticalCount = items.filter((i: any) => i.stock_status === 'CRITICAL').length
+    const lowCount = items.filter((i: any) => i.stock_status === 'LOW').length
+    const totalValue = items.reduce((sum: number, i: any) =>
+      sum + ((i.current_stock || 0) * (i.base_price || 0)), 0)
+
+    // 4. 창고별 그룹핑
+    const zoneGroups: Record<string, any> = {}
+    for (const item of items as any[]) {
+      const key = item.storage_zone_id || 'unassigned'
+      if (!zoneGroups[key]) {
+        zoneGroups[key] = {
+          zone_id: item.storage_zone_id,
+          zone_name: item.zone_name || '미배정',
+          items: [],
+          total: 0, critical: 0, low: 0
+        }
+      }
+      zoneGroups[key].items.push(item)
+      zoneGroups[key].total++
+      if (item.stock_status === 'CRITICAL') zoneGroups[key].critical++
+      if (item.stock_status === 'LOW') zoneGroups[key].low++
+    }
+
+    return c.json({
+      success: true,
+      data: {
+        zones,
+        zone_groups: Object.values(zoneGroups),
+        summary: { total_items: totalItems, critical: criticalCount, low: lowCount, total_value: totalValue }
+      }
+    })
+  } catch (error: any) {
+    console.error('dashboard/zones error:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다' }, 500)
+  }
+})
+
 export default inventoryRouter
