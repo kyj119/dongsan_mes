@@ -69,6 +69,7 @@ import migrationRouter from './routes/migration'
 import cashScheduleRouter from './routes/cashSchedule'
 import vatReportsRouter from './routes/vatReports'
 import paymentRequestsRouter from './routes/paymentRequests'
+import cardExpensesRouter from './routes/cardExpenses'
 import financialReportsRouter from './routes/financialReports'
 import leavesRouter from './routes/leaves'
 import payrollRouter from './routes/payroll'
@@ -154,6 +155,7 @@ import { migrationPage } from './pages/migration'
 import { vatReportsPage } from './pages/vatReports'
 import { cashSchedulePage } from './pages/cashSchedule'
 import { paymentRequestsPage } from './pages/paymentRequests'
+import { cardExpensesPage } from './pages/cardExpenses'
 import { financialReportsPage } from './pages/financialReports'
 import { leavesPage } from './pages/leaves'
 import { payrollPage } from './pages/payroll'
@@ -293,6 +295,7 @@ app.route('/api/inspections', inspectionsRouter)
 app.route('/api/migration', migrationRouter)
 app.route('/api/vat', vatReportsRouter)
 app.route('/api/payment-requests', paymentRequestsRouter)
+app.route('/api/card-expenses', cardExpensesRouter)
 app.route('/api/financial', financialReportsRouter)
 app.route('/api/leaves', leavesRouter)
 app.route('/api/payroll', payrollRouter)
@@ -445,6 +448,7 @@ app.get('/migration', pageAuthMiddleware, requireAdminPage(), migrationPage)
 app.get('/vat-reports', pageAuthMiddleware, requirePagePermission('/vat-reports'), vatReportsPage)
 app.get('/cash-schedule', pageAuthMiddleware, requirePagePermission('/cash-schedule'), cashSchedulePage)
 app.get('/payment-requests', pageAuthMiddleware, requirePagePermission('/payment-requests'), paymentRequestsPage)
+app.get('/card-expenses', pageAuthMiddleware, requirePagePermission('/card-expenses'), cardExpensesPage)
 app.get('/financial-reports', pageAuthMiddleware, requirePagePermission('/financial-reports'), financialReportsPage)
 app.get('/leaves', pageAuthMiddleware, requirePagePermission('/leaves'), leavesPage)
 app.get('/payroll', pageAuthMiddleware, requirePagePermission('/payroll'), payrollPage)

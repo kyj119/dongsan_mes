@@ -55,6 +55,7 @@ const MENU_ITEMS: MenuGroup[] = [
       { path: '/bank', icon: 'fa-university', label: '자금 관리', roles: ['ADMIN'] },
       { path: '/cash-schedule', icon: 'fa-calendar-alt', label: '자금계획', roles: ['ADMIN', 'MANAGER'] },
       { path: '/payment-requests', icon: 'fa-money-check-alt', label: '지출결의서', roles: ['ADMIN', 'MANAGER'] },
+      { path: '/card-expenses', icon: 'fa-credit-card', label: '법인카드', roles: ['ADMIN', 'MANAGER'] },
       { path: '/vat-reports', icon: 'fa-file-invoice', label: '부가세 신고', roles: ['ADMIN', 'MANAGER'] },
       { path: '/financial-reports', icon: 'fa-chart-bar', label: '손익계산서', roles: ['ADMIN', 'MANAGER'] },
       { path: '/reports', icon: 'fa-chart-line', label: '경영 분석', roles: ['ADMIN', 'MANAGER'] },
