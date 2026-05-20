@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 3 -->
-<!-- last_run_at: 2026-05-14T13:30:00+09:00 -->
+<!-- last_run_area: 4 -->
+<!-- last_run_at: 2026-05-20T00:00:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,10 +8,18 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | 11 |
-| ✔️ done | 32 |
+| 🆕 new | 12 |
+| ✔️ done | 33 |
 | ❌ rejected | 2 |
 
+> **Area 4 데이터 정합성 (2026-05-20T00:00):**
+> - 227개 마이그레이션 + 65개 라우트 전수 분석
+> - entity_id 인덱스 누락 10개 테이블 발견: inventory_transactions/adjustments/payment_requests/purchase_payments/returns/purchase_invoices/waste_records/fixed_assets/budgets/journal_entries — 모두 entityFilter()로 쿼리되나 인덱스 없어 매 요청마다 전체 스캔 → A-009 자동 수정 (migration 0231)
+> - 일련번호 생성 race condition 패턴 발견: orders/cards/returns 등 MAX(seq)+1 로직이 동시 요청 시 중복 시도 가능 (UNIQUE constraint 덕분에 INSERT는 실패하지만 500 에러 노출) → #47 등록
+> - 주문 취소 시 카드 HOLD 처리 확인 — 적절히 처리됨 ✓
+> - D1 FK 미강제 확인 (PRAGMA foreign_keys 기본 OFF) — 애플리케이션 레벨 CASCADE 코드로 대체됨 ✓
+> - 자동 수정 1건 (A-009, 10개 인덱스), 신규 이슈 1건 (#47)
+>
 > **Area 3 UX/기능 감사 (2026-05-14T13:30):**
 > - 75개 페이지/스크립트 전수 UX 패턴 분석 (검색·필터·페이지네이션·빈상태·로딩)
 > - approvals.js 3탭 결재 목록 검색·필터·페이지네이션 전무 → #43 등록 (MEDIUM, 2~3h)
@@ -84,6 +92,7 @@
 
 | ID | 제목 | 영역 | Issue | 공수 |
 |----|------|------|-------|------|
+| I-025 | 일련번호 생성 race condition — MAX+1 패턴 동시 요청 시 500 에러 노출 | Area 4 | #47 | 1~2h |
 | I-013 | 보안 헤더 전무 (CSP/X-Frame-Options/HSTS/X-Content-Type) | Area 5 | #32 | 1~2h |
 | I-014 | /api/portal/auth/change-password rate limit 누락 | Area 5 | #33 | 30분 |
 | I-015 | XSS 잔여: approvals.js(119-276) + cards.js document.write | Area 5 | #34 | 2~3h |
@@ -102,6 +111,7 @@
 
 | ID | 제목 | 커밋 | 날짜 |
 |----|------|------|------|
+| A-009 | entity_id 인덱스 누락 10개 테이블 (migration 0231) | 82d09a7 | 2026-05-20 |
 | A-008 | try-catch 누락 17핸들러 (permissions/finishing/messageTemplates/iaAuto) | 60ee8b8 | 2026-05-14 |
 | A-006 | XSS escapeHtml 5건 (approvals/invoice/purchaseInvoice/quotation/clients) | e099b20 | 2026-05-13 |
 | A-005 | tax_invoice_items/orders tax_invoice_id 인덱스 추가 (0193 migration) | 1b3a698 | 2026-05-13 |
@@ -114,6 +124,7 @@
 
 | ID | 제목 | 커밋/Issue | 날짜 |
 |----|------|-----------|------|
+| D-002 | entity_id 인덱스 누락 10개 테이블 일괄 추가 | A-009 / 82d09a7 | 2026-05-20 |
 | I-017 | try-catch 누락 17핸들러 자동 수정 (permissions/finishing/messageTemplates/iaAuto) | A-008 / 60ee8b8 | 2026-05-14 |
 | D-001 | shipment_items UNIQUE(shipment_id, card_id) 제약 추가 (0194 migration) | #31 | 2026-05-13 |
 | I-015partial | 스모크 커버리지 55→88 엔드포인트 확대 | #15 | 2026-05-13 |
