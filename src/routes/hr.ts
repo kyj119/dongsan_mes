@@ -696,7 +696,7 @@ hrRouter.delete('/employees/:id', async (c) => {
       return c.json({ success: false, error: '직원을 찾을 수 없습니다.' }, 404)
     }
 
-    // 자식 테이블 정리 — 존재하지 않는 테이블은 무시
+    // 자식 테이블 정리 + 본 테이블 삭제를 db.batch()로 원자적 처리
     const CHILD_TABLES = [
       'attendance', 'payroll', 'payroll_records', 'payslips',
       'leave_balances', 'leave_requests', 'leaves',
@@ -704,19 +704,32 @@ hrRouter.delete('/employees/:id', async (c) => {
       'work_assignments', 'production_logs', 'production_issues',
       'employee_documents', 'employee_history', 'labor_contracts',
     ]
-    const cleanupResults: Record<string, number | string> = {}
+
+    // 존재하는 테이블만 필터링 (마이그레이션 미실행 환경 대응)
+    const existingTables: string[] = []
     for (const table of CHILD_TABLES) {
-      try {
-        const r = await c.env.DB.prepare(`DELETE FROM ${table} WHERE employee_id = ?`).bind(id).run()
-        cleanupResults[table] = r.meta?.changes ?? 0
-      } catch (e: any) {
-        // 테이블 없음 등은 무시
-        cleanupResults[table] = 'skipped'
-      }
+      const check = await c.env.DB.prepare(
+        `SELECT name FROM sqlite_master WHERE type='table' AND name=?`
+      ).bind(table).first<{ name: string }>()
+      if (check) existingTables.push(table)
     }
 
-    // 본 테이블 삭제
-    await c.env.DB.prepare(`DELETE FROM employees WHERE id = ?`).bind(id).run()
+    const stmts = [
+      ...existingTables.map(table =>
+        c.env.DB.prepare(`DELETE FROM ${table} WHERE employee_id = ?`).bind(id)
+      ),
+      c.env.DB.prepare(`DELETE FROM employees WHERE id = ?`).bind(id),
+    ]
+    const batchResults = await c.env.DB.batch(stmts)
+
+    // 정리 결과 매핑
+    const cleanupResults: Record<string, number | string> = {}
+    existingTables.forEach((table, i) => {
+      cleanupResults[table] = batchResults[i]?.meta?.changes ?? 0
+    })
+    for (const table of CHILD_TABLES) {
+      if (!existingTables.includes(table)) cleanupResults[table] = 'skipped'
+    }
 
     return c.json({
       success: true,

@@ -266,7 +266,8 @@ ordersCoreRouter.get('/', async (c) => {
         c.fax as client_fax,
         u.name as created_by_name,
         (SELECT COUNT(*) FROM cards WHERE order_id = o.id) as total_cards,
-        (SELECT COUNT(*) FROM cards WHERE order_id = o.id AND shipped_at IS NOT NULL) as shipped_cards
+        (SELECT COUNT(*) FROM cards WHERE order_id = o.id AND shipped_at IS NOT NULL) as shipped_cards,
+        (SELECT CASE WHEN COUNT(*) > 0 THEN 1 ELSE 0 END FROM order_items WHERE order_id = o.id AND price_status = 'PENDING') as has_pending_prices
       FROM orders o
       LEFT JOIN clients c ON o.client_id = c.id
       LEFT JOIN users u ON o.created_by = u.id
@@ -472,7 +473,9 @@ ordersCoreRouter.patch('/:id/bill', requireRole('ADMIN', 'MANAGER'), async (c) =
     const body = await c.req.json().catch(() => ({})) as { billed_amount?: number }
 
     const order = await c.env.DB.prepare(
-      'SELECT id, status, client_id, final_amount, billing_status, has_pending_prices FROM orders WHERE id = ?'
+      `SELECT id, status, client_id, final_amount, billing_status,
+        (SELECT CASE WHEN COUNT(*) > 0 THEN 1 ELSE 0 END FROM order_items WHERE order_id = orders.id AND price_status = 'PENDING') as has_pending_prices
+       FROM orders WHERE id = ?`
     ).bind(id).first<{ id: number; status: string; client_id: number; final_amount: number; billing_status: string | null; has_pending_prices: number }>()
 
     if (!order) {
@@ -859,10 +862,8 @@ ordersCoreRouter.post('/', async (c) => {
     // Calculate totals (PENDING 품목은 0원 처리)
     let totalAmount = 0
     let vatAmount = 0
-    let hasPendingPrices = 0
-
     for (const item of orderData.items) {
-      if (item.price_status === 'PENDING') { hasPendingPrices = 1; continue }
+      if (item.price_status === 'PENDING') { continue }
       const pricingMethod = item.item_id ? (pricingMethodMap.get(item.item_id) || 'FIXED') : 'FIXED'
       const w = item.width_mm || item.width || 0
       const h = item.height_mm || item.height || 0
@@ -915,8 +916,8 @@ ordersCoreRouter.post('/', async (c) => {
         notes, internal_notes, created_by,
         ai_file_path, ai_analysis_id, layout_id, priority, delivery_method, delivery_time,
         contact_phone, contact_mobile, shipping_payment, valid_until, entity_id,
-        sheet_layout_params, order_type, quotation_id, has_pending_prices
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        sheet_layout_params, order_type, quotation_id
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).bind(
       orderNumber,
       orderData.client_id,
@@ -950,8 +951,7 @@ ordersCoreRouter.post('/', async (c) => {
         return slItem?.sheet_layout_params || null
       })(),
       orderType,
-      sourceQuotationId,
-      hasPendingPrices
+      sourceQuotationId
     ).run()
 
     // Phase 3.2: 견적서로부터 생성된 주문이면 quotations 카운트 갱신
@@ -1857,10 +1857,8 @@ ordersCoreRouter.put('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
     // Calculate totals (PENDING 품목은 0원 처리)
     let totalAmount = 0
     let vatAmount = 0
-    let hasPendingPricesPut = 0
-
     for (const item of orderData.items) {
-      if (item.price_status === 'PENDING') { hasPendingPricesPut = 1; continue }
+      if (item.price_status === 'PENDING') { continue }
       const pricingMethod = item.item_id ? (putPricingMethodMap.get(item.item_id) || 'FIXED') : 'FIXED'
       const w = item.width_mm || item.width || 0
       const h = item.height_mm || item.height || 0
@@ -1900,7 +1898,6 @@ ordersCoreRouter.put('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
         contact_phone = ?,
         contact_mobile = ?,
         shipping_payment = ?,
-        has_pending_prices = ?,
         updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
     `).bind(
@@ -1920,7 +1917,6 @@ ordersCoreRouter.put('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
       orderData.contact_phone || null,
       orderData.contact_mobile || null,
       orderData.shipping_payment || null,
-      hasPendingPricesPut,
       id
     ).run()
 
@@ -2015,8 +2011,23 @@ ordersCoreRouter.put('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
       ])
     }
 
-    // 카드 보존 경로에서는 order_items만 삭제
+    // 카드 보존 경로에서는 order_items 삭제 전 card_items 매핑을 저장
+    // (order_items 삭제 시 card_items가 ON DELETE CASCADE로 함께 삭제되기 때문)
+    let savedCardItemMappings: Array<{ card_id: number; item_id: number | null; sort_order: number; quantity: number }> = []
     if (cardsPreserved) {
+      const { results: existingMappings } = await c.env.DB.prepare(`
+        SELECT ci.card_id, ci.quantity, oi.item_id, oi.sort_order
+        FROM card_items ci
+        JOIN order_items oi ON ci.order_item_id = oi.id
+        WHERE oi.order_id = ?
+      `).bind(id).all()
+      savedCardItemMappings = (existingMappings || []).map((m: any) => ({
+        card_id: m.card_id,
+        item_id: m.item_id,
+        sort_order: m.sort_order,
+        quantity: m.quantity,
+      }))
+
       await c.env.DB.prepare('DELETE FROM order_items WHERE order_id = ?').bind(id).run()
     }
 
@@ -2121,6 +2132,35 @@ ordersCoreRouter.put('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
         item.ai_analysis_id || null,
         parentDbId
       ).run()
+    }
+
+    // #124: 카드 보존 경로 — card_items 재매핑 (item_id + sort_order 기준)
+    if (cardsPreserved && savedCardItemMappings.length > 0) {
+      // 새로 삽입된 order_items 조회
+      const { results: newOrderItems } = await c.env.DB.prepare(`
+        SELECT id, item_id, sort_order FROM order_items WHERE order_id = ? ORDER BY sort_order
+      `).bind(id).all()
+
+      const remapStmts: any[] = []
+      for (const mapping of savedCardItemMappings) {
+        // item_id + sort_order로 매칭, 없으면 item_id만으로 매칭
+        let matched = (newOrderItems || []).find(
+          (oi: any) => oi.item_id === mapping.item_id && oi.sort_order === mapping.sort_order
+        )
+        if (!matched) {
+          matched = (newOrderItems || []).find((oi: any) => oi.item_id === mapping.item_id)
+        }
+        if (matched) {
+          remapStmts.push(
+            c.env.DB.prepare(
+              `INSERT INTO card_items (card_id, order_item_id, quantity) VALUES (?, ?, ?)`
+            ).bind(mapping.card_id, (matched as any).id, mapping.quantity)
+          )
+        }
+      }
+      if (remapStmts.length > 0) {
+        await c.env.DB.batch(remapStmts)
+      }
     }
 
     // 카드 보존/삭제 로직은 order_items 삭제 전에 이미 처리됨
@@ -2359,7 +2399,7 @@ ordersCoreRouter.post('/sync-statuses', requireRole('ADMIN', 'MANAGER'), async (
         AND o.billable_after IS NOT NULL
         AND o.billable_after <= date('now')
         AND o.final_amount > 0
-        AND o.has_pending_prices = 0
+        AND NOT EXISTS (SELECT 1 FROM order_items oi WHERE oi.order_id = o.id AND oi.price_status = 'PENDING')
         AND c.auto_billing = 1
         ${ef.clause}
     `).bind(...ef.params).all()

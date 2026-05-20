@@ -914,7 +914,8 @@ taxInvoicesRouter.post('/', requireRole('ADMIN', 'MANAGER'), async (c) => {
       const { results: orders } = await c.env.DB.prepare(`
         SELECT o.*, c.client_name, c.business_registration_number,
           c.representative, c.address, c.business_type, c.business_item,
-          c.email as client_email, c.id as client_id
+          c.email as client_email, c.id as client_id,
+          (SELECT CASE WHEN COUNT(*) > 0 THEN 1 ELSE 0 END FROM order_items WHERE order_id = o.id AND price_status = 'PENDING') as has_pending_prices
         FROM orders o
         LEFT JOIN clients c ON o.client_id = c.id
         WHERE o.id IN (${placeholders})
