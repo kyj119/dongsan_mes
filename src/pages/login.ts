@@ -76,11 +76,8 @@ export function loginPage(c: Context<HonoEnv>) {
             </form>
 
             <div class="mt-6 pt-6 border-t border-gray-200">
-                <div class="text-center text-sm text-gray-600">
-                    <p>테스트 계정:</p>
-                    <p class="mt-2">
-                        <span class="font-semibold">admin</span> / password
-                    </p>
+                <div class="text-center text-xs text-gray-400">
+                    <p>로그인 문제 발생 시 관리자에게 문의하세요.</p>
                 </div>
             </div>
         </div>
@@ -145,11 +142,17 @@ export function loginPage(c: Context<HonoEnv>) {
                 } catch (error) {
                     console.error('Login error:', error);
                     errorMessage.classList.remove('hidden');
-                    
-                    if (error.response && error.response.data) {
-                        errorText.textContent = error.response.data.message || '로그인에 실패했습니다.';
+
+                    if (error.response) {
+                        if (error.response.status === 429) {
+                            errorText.textContent = error.response.data.error || '요청이 너무 많습니다. 잠시 후 다시 시도하세요.';
+                        } else if (error.response.data) {
+                            errorText.textContent = error.response.data.message || '아이디 또는 비밀번호가 올바르지 않습니다.';
+                        } else {
+                            errorText.textContent = '로그인에 실패했습니다.';
+                        }
                     } else {
-                        errorText.textContent = '서버와의 연결에 실패했습니다.';
+                        errorText.textContent = '서버와의 연결에 실패했습니다. 네트워크를 확인하세요.';
                     }
                 }
             });

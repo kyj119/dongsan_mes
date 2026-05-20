@@ -1368,18 +1368,24 @@ if (!token) {
     handleAuthExpired();
     throw new Error('No auth token');
 }
-// 로컬 exp 빠른 체크
+// 로컬 exp 빠른 체크 (시계 오차 60초 여유)
 try {
     var __parts = token.split('.');
     if (__parts.length === 3) {
         var __payload = JSON.parse(atob(__parts[1]));
-        if (__payload.exp && __payload.exp <= Math.floor(Date.now() / 1000)) {
+        if (__payload.exp && __payload.exp <= Math.floor(Date.now() / 1000) - 60) {
             handleAuthExpired();
             throw new Error('Token expired');
         }
     }
 } catch(e) {
     if (e.message === 'Token expired' || e.message === 'No auth token') throw e;
+    // JWT 파싱 실패 시 (corrupt token) — 토큰 제거 후 로그인으로
+    console.warn('[Auth] Token parse error, clearing:', e.message);
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+    window.location.href = '/login';
+    throw new Error('Token parse error');
 }
 
 axios.defaults.headers.common['Authorization'] = 'Bearer ' + token;
@@ -1758,20 +1764,28 @@ async function checkTokenRefresh() {
         var now = Math.floor(Date.now() / 1000);
         var timeLeft = payload.exp - now;
 
-        if (timeLeft <= 0) {
+        if (timeLeft <= -60) { // 시계 오차 60초 여유
             handleAuthExpired();
             return;
         }
         if (timeLeft < 7200) {
-            var res = await fetch('/api/auth/refresh', {
-                method: 'POST',
-                headers: { 'Authorization': 'Bearer ' + t }
-            });
-            var data = await res.json();
-            if (data.success && data.refreshed && data.data && data.data.token) {
-                localStorage.setItem('token', data.data.token);
-                axios.defaults.headers.common['Authorization'] = 'Bearer ' + data.data.token;
-                console.log('[Auth] Token refreshed, new expiry:', new Date((Math.floor(Date.now()/1000) + 28800) * 1000).toLocaleTimeString());
+            try {
+                var res = await fetch('/api/auth/refresh', {
+                    method: 'POST',
+                    headers: { 'Authorization': 'Bearer ' + t }
+                });
+                if (!res.ok) {
+                    if (res.status === 401) { handleAuthExpired(); return; }
+                    return; // 5xx 등은 무시 (다음 주기에 재시도)
+                }
+                var data = await res.json();
+                if (data.success && data.refreshed && data.data && data.data.token) {
+                    localStorage.setItem('token', data.data.token);
+                    axios.defaults.headers.common['Authorization'] = 'Bearer ' + data.data.token;
+                    console.log('[Auth] Token refreshed');
+                }
+            } catch(fetchErr) {
+                console.warn('[Auth] Token refresh network error (will retry):', fetchErr.message);
             }
         }
     } catch(e) {

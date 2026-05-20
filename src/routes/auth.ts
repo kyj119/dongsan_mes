@@ -7,8 +7,8 @@ import { rateLimitMiddleware } from '../middleware/rateLimit'
 
 const auth = new Hono<HonoEnv>()
 
-// 로그인 API (브루트포스 방지: 60초당 5회)
-auth.post('/login', rateLimitMiddleware(5, 60000), async (c) => {
+// 로그인 API (브루트포스 방지: 60초당 10회 — 현장 PC 공유 NAT 고려)
+auth.post('/login', rateLimitMiddleware(10, 60000), async (c) => {
   try {
     const { username, password } = await c.req.json()
 
@@ -22,13 +22,13 @@ auth.post('/login', rateLimitMiddleware(5, 60000), async (c) => {
     ).bind(username).first()
 
     if (!user) {
-      return c.json({ success: false, message: 'Invalid username or password' }, 401)
+      return c.json({ success: false, message: '아이디 또는 비밀번호가 올바르지 않습니다' }, 401)
     }
 
     // 비밀번호 검증 (평문 레거시 + PBKDF2 해시 모두 지원)
     const passwordValid = await verifyPassword(password, user.password_hash as string)
     if (!passwordValid) {
-      return c.json({ success: false, message: 'Invalid username or password' }, 401)
+      return c.json({ success: false, message: '아이디 또는 비밀번호가 올바르지 않습니다' }, 401)
     }
 
     // 레거시 평문 비밀번호 → PBKDF2 해시로 자동 마이그레이션
@@ -76,7 +76,7 @@ auth.post('/login', rateLimitMiddleware(5, 60000), async (c) => {
     })
   } catch (error) {
     console.error('Login error:', error)
-    return c.json({ success: false, message: 'Login failed' }, 500)
+    return c.json({ success: false, message: '로그인 처리 중 오류가 발생했습니다. 잠시 후 다시 시도하세요.' }, 500)
   }
 })
 

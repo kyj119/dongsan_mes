@@ -225,6 +225,8 @@ async function loadClientDetail(clientId) {
         var res = await axios.get(url);
         if (res.data.success) {
             var d = res.data.data;
+            // 인쇄/팩스용 데이터 캐시
+            _ledgerStatementData = d;
             document.getElementById('clientTotalSales').textContent = d.summary.total_orders.toLocaleString() + '원';
             document.getElementById('clientTotalPayments').textContent = d.summary.total_payments.toLocaleString() + '원';
             var adjEl = document.getElementById('clientTotalAdjustments');
@@ -235,59 +237,89 @@ async function loadClientDetail(clientId) {
             // 이중잔액 표시
             renderDualBalance(d, clientId);
 
-            // Render transactions with color-coded timeline
+            // Render transactions — 매출(+)/입금(-) 2컬럼, 주문 품목 항상 펼침
             var txBody = document.getElementById('transactionsTableBody');
             txBody.innerHTML = '';
             (d.transactions || []).forEach(function(tx) {
-                var row = document.createElement('tr');
                 var type = tx.type;
-                var badgeClass, badgeText, rowBg;
-                if (type === 'order') {
-                    badgeClass = 'bg-green-100 text-green-800';
-                    badgeText = '주문';
-                    rowBg = 'bg-green-50/50';
-                } else if (type === 'payment') {
-                    badgeClass = 'bg-blue-100 text-blue-800';
-                    badgeText = '입금';
-                    rowBg = 'bg-blue-50/50';
-                } else if (type === 'adjustment') {
-                    badgeClass = 'bg-yellow-100 text-yellow-800';
-                    badgeText = '할인/조정';
-                    rowBg = 'bg-yellow-50/50';
-                } else {
-                    badgeClass = 'bg-gray-100 text-gray-600';
-                    badgeText = type || '기타';
-                    rowBg = '';
-                }
-                row.className = rowBg + ' hover:bg-gray-100 transition-colors';
                 var balClass = tx.balance > 0 ? 'text-red-600 font-semibold' : 'text-green-600 font-semibold';
-                // billing_status 확인 표시
-                var billedMark = (type === 'order' && tx.billing_status === 'BILLED')
-                    ? ' <i class="fas fa-check-circle text-blue-500 text-xs" title="회계반영완료"></i>'
-                    : '';
-                // 인라인 액션 (입금: 수정/삭제, 감액: 삭제)
-                var actionHtml = '';
-                if (type === 'payment' && tx.id) {
-                    actionHtml = '<td class="px-2 py-2 text-center whitespace-nowrap">' +
-                        '<button onclick="editPayment(' + tx.id + ')" class="text-blue-400 hover:text-blue-600 p-1" title="수정"><i class="fas fa-edit text-xs"></i></button>' +
-                        '<button onclick="deletePayment(' + tx.id + ',' + (tx.credit || 0) + ')" class="text-red-400 hover:text-red-600 p-1" title="삭제"><i class="fas fa-trash text-xs"></i></button>' +
-                        '</td>';
-                } else if (type === 'adjustment' && tx.id) {
-                    actionHtml = '<td class="px-2 py-2 text-center">' +
-                        '<button onclick="deleteAdjustment(' + tx.id + ',' + (tx.credit || 0) + ')" class="text-red-400 hover:text-red-600 p-1" title="삭제"><i class="fas fa-trash text-xs"></i></button>' +
-                        '</td>';
-                } else {
-                    actionHtml = '<td class="px-2 py-2"></td>';
+
+                if (type === 'order') {
+                    // ── 주문 헤더 행 ──
+                    var billedMark = tx.billing_status === 'BILLED'
+                        ? ' <i class="fas fa-check-circle text-blue-500" style="font-size:10px" title="회계반영"></i>' : '';
+                    var headerRow = document.createElement('tr');
+                    headerRow.className = 'border-t-2 border-green-200 bg-green-50';
+                    headerRow.innerHTML =
+                        '<td class="px-3 py-2 text-gray-600 whitespace-nowrap text-xs">' + formatDate(tx.date) + '</td>' +
+                        '<td class="px-2 py-2 text-center"><span class="tx-badge bg-green-100 text-green-800">주문</span></td>' +
+                        '<td class="px-3 py-2 text-sm font-bold text-green-800"><i class="fas fa-file-alt text-green-400 mr-1"></i>' + escapeHtml(tx.reference || '') + billedMark + '</td>' +
+                        '<td class="px-3 py-2 text-right tabular-nums text-sm font-bold text-green-700">' + tx.debit.toLocaleString() + '</td>' +
+                        '<td class="px-3 py-2"></td>' +
+                        '<td class="px-3 py-2 text-right tabular-nums text-sm ' + balClass + '">' + tx.balance.toLocaleString() + '</td>' +
+                        '<td></td>';
+                    txBody.appendChild(headerRow);
+
+                    // ── 품목 라인 행 ──
+                    if (tx.items && tx.items.length > 0) {
+                        tx.items.forEach(function(item) {
+                            var itemRow = document.createElement('tr');
+                            itemRow.className = 'bg-green-50/30';
+                            var specStr = item.spec ? ' [' + escapeHtml(item.spec) + ']' : '';
+                            var contentStr = item.content ? ' ' + escapeHtml(item.content) : '';
+                            itemRow.innerHTML =
+                                '<td></td><td></td>' +
+                                '<td class="pl-8 pr-2 py-1 text-xs text-gray-700">' +
+                                    '<span class="text-gray-800">' + escapeHtml(item.item_name) + '</span>' +
+                                    '<span class="text-gray-400">' + specStr + '</span>' +
+                                    '<span class="text-gray-500 italic">' + contentStr + '</span>' +
+                                    '<span class="text-gray-400 ml-2">' + item.quantity + (item.unit || '') + '×' + (item.unit_price ? item.unit_price.toLocaleString() : '-') +
+                                    (item.vat_included ? '<span class="text-blue-400 ml-0.5" title="부가세포함">✓</span>' : '') + '</span>' +
+                                '</td>' +
+                                '<td class="px-3 py-1 text-right tabular-nums text-xs text-gray-600">' + (item.amount || 0).toLocaleString() + '</td>' +
+                                '<td></td><td></td><td></td>';
+                            txBody.appendChild(itemRow);
+                        });
+                    }
+                } else if (type === 'payment') {
+                    // ── 입금 행 ──
+                    var pm = tx.payment_method || '기타';
+                    var badgeClass;
+                    if (pm === '카드') badgeClass = 'bg-purple-100 text-purple-800';
+                    else if (pm === '현금') badgeClass = 'bg-emerald-100 text-emerald-800';
+                    else if (pm === '수표') badgeClass = 'bg-amber-100 text-amber-800';
+                    else if (pm === '어음') badgeClass = 'bg-rose-100 text-rose-800';
+                    else if (pm === '계좌이체') badgeClass = 'bg-blue-100 text-blue-800';
+                    else badgeClass = 'bg-gray-100 text-gray-700';
+                    var payRow = document.createElement('tr');
+                    payRow.className = 'border-t border-blue-100 bg-blue-50/30 hover:bg-blue-50 transition-colors';
+                    var payDesc = '';
+                    if (tx.reference) payDesc += '<span class="text-gray-400 text-xs mr-2">#' + escapeHtml(tx.reference) + '</span>';
+                    if (tx.notes) payDesc += '<span class="text-gray-500 text-xs">' + escapeHtml(tx.notes) + '</span>';
+                    payRow.innerHTML =
+                        '<td class="px-3 py-2 text-gray-600 whitespace-nowrap text-xs">' + formatDate(tx.date) + '</td>' +
+                        '<td class="px-2 py-2 text-center"><span class="tx-badge ' + badgeClass + '">' + escapeHtml(pm) + '</span></td>' +
+                        '<td class="px-3 py-2 text-sm">' + payDesc + '</td>' +
+                        '<td class="px-3 py-2"></td>' +
+                        '<td class="px-3 py-2 text-right tabular-nums text-sm font-medium text-blue-700">' + tx.credit.toLocaleString() + '</td>' +
+                        '<td class="px-3 py-2 text-right tabular-nums text-sm ' + balClass + '">' + tx.balance.toLocaleString() + '</td>' +
+                        '<td class="px-2 py-2 text-center"><button onclick="editPayment(' + tx.id + ')" class="text-gray-400 hover:text-blue-600 p-0.5" title="수정"><i class="fas fa-pen text-xs"></i></button></td>';
+                    txBody.appendChild(payRow);
+                } else if (type === 'adjustment') {
+                    // ── 감액 행 ──
+                    var adjLabel = { DISCOUNT: '할인', CLAIM: '클레임', RETURN: '반품', OTHER: '기타' };
+                    var adjRow = document.createElement('tr');
+                    adjRow.className = 'border-t border-yellow-100 bg-yellow-50/30 hover:bg-yellow-50 transition-colors';
+                    adjRow.innerHTML =
+                        '<td class="px-3 py-2 text-gray-600 whitespace-nowrap text-xs">' + formatDate(tx.date) + '</td>' +
+                        '<td class="px-2 py-2 text-center"><span class="tx-badge bg-yellow-100 text-yellow-800">' + (adjLabel[tx.adj_type] || '감액') + '</span></td>' +
+                        '<td class="px-3 py-2 text-sm text-gray-600">' + escapeHtml(tx.description || '-').replace('감액: ', '') + '</td>' +
+                        '<td class="px-3 py-2"></td>' +
+                        '<td class="px-3 py-2 text-right tabular-nums text-sm font-medium text-orange-600">' + tx.credit.toLocaleString() + '</td>' +
+                        '<td class="px-3 py-2 text-right tabular-nums text-sm ' + balClass + '">' + tx.balance.toLocaleString() + '</td>' +
+                        '<td class="px-2 py-2 text-center"><button onclick="deleteAdjustment(' + tx.id + ',' + (tx.credit || 0) + ')" class="text-gray-400 hover:text-red-600 p-0.5" title="삭제"><i class="fas fa-trash text-xs"></i></button></td>';
+                    txBody.appendChild(adjRow);
                 }
-                row.innerHTML =
-                    '<td class="px-3 py-2 text-gray-600 whitespace-nowrap text-xs">' + formatDate(tx.date) + '</td>' +
-                    '<td class="px-2 py-2 text-center"><span class="px-2 py-0.5 text-xs font-medium rounded ' + badgeClass + '">' + badgeText + '</span></td>' +
-                    '<td class="px-3 py-2 text-sm">' + (tx.description || '-') + billedMark + '</td>' +
-                    '<td class="px-3 py-2 text-right tabular-nums text-sm">' + (tx.debit > 0 ? tx.debit.toLocaleString() : '') + '</td>' +
-                    '<td class="px-3 py-2 text-right tabular-nums text-sm">' + (tx.credit > 0 ? tx.credit.toLocaleString() : '') + '</td>' +
-                    '<td class="px-3 py-2 text-right tabular-nums text-sm ' + balClass + '">' + tx.balance.toLocaleString() + '</td>' +
-                    actionHtml;
-                txBody.appendChild(row);
             });
 
             if ((d.transactions || []).length === 0) {
@@ -642,7 +674,7 @@ async function editPayment(paymentId) {
             document.getElementById('editMethod').value = p.payment_method || '';
             document.getElementById('editRef').value = p.reference_number || '';
             document.getElementById('editNotes').value = p.notes || '';
-            document.getElementById('paymentEditModal').classList.add('show');
+            document.getElementById('paymentEditModal').classList.remove('hidden');
         }
     } catch (e) {
         showToast('입금 정보 로드 실패', 'error');
@@ -679,7 +711,27 @@ async function savePaymentEdit() {
 }
 
 function closePaymentModal() {
-    document.getElementById('paymentEditModal').classList.remove('show');
+    document.getElementById('paymentEditModal').classList.add('hidden');
+}
+
+// 수정 모달 내 삭제 버튼
+async function deletePaymentFromModal() {
+    var id = document.getElementById('editPaymentId').value;
+    var amount = parseMoney(document.getElementById('editAmount').value);
+    if (!(await showConfirm('입금 내역(' + (amount || 0).toLocaleString() + '원)을 삭제하시겠습니까?\n삭제 시 거래처 잔액이 복원됩니다.', { danger: true }))) return;
+    try {
+        var res = await axios.delete('/api/ledger/payment/' + id);
+        if (res.data.success) {
+            showToast('입금 내역이 삭제되었습니다', 'success');
+            closePaymentModal();
+            await loadClientDetail(selectedClientId);
+            await loadSettlement();
+        } else {
+            showToast(res.data.error || '삭제 실패', 'error');
+        }
+    } catch (e) {
+        showToast('삭제 실패: ' + (e.response?.data?.error || e.message), 'error');
+    }
 }
 
 // Delete payment
@@ -842,27 +894,39 @@ function refreshAll() {
     showToast('새로고침 완료', 'success');
 }
 
-// ===== Tab Switch (매출/매입) =====
+// ===== Tab Switch (매출/매입/분석) =====
 function switchLedgerTab(tab) {
     var salesTab = document.getElementById('tabSales');
     var purchaseTab = document.getElementById('tabPurchase');
+    var analysisTab = document.getElementById('tabAnalysis');
     var salesContent = document.getElementById('salesContent');
     var purchaseContent = document.getElementById('purchaseContent');
+    var analysisContent = document.getElementById('analysisContent');
     var activeClass = 'px-6 py-3 text-sm font-medium border-b-2 border-blue-600 text-blue-600';
     var inactiveClass = 'px-6 py-3 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700';
+
+    salesTab.className = inactiveClass;
+    purchaseTab.className = inactiveClass;
+    analysisTab.className = inactiveClass;
+    salesContent.style.display = 'none';
+    purchaseContent.style.display = 'none';
+    analysisContent.style.display = 'none';
+
     if (tab === 'sales') {
         salesTab.className = activeClass;
-        purchaseTab.className = inactiveClass;
         salesContent.style.display = '';
-        purchaseContent.style.display = 'none';
-    } else {
+    } else if (tab === 'purchase') {
         purchaseTab.className = activeClass;
-        salesTab.className = inactiveClass;
-        salesContent.style.display = 'none';
         purchaseContent.style.display = '';
         loadPurchaseSettlement();
         loadPurchaseMonthlySummary();
         loadPurchaseOverdue();
+    } else if (tab === 'analysis') {
+        analysisTab.className = activeClass;
+        analysisContent.style.display = '';
+        loadClosingSummary();
+        loadProfitSummary();
+        loadCollectionPeriod();
     }
 }
 
@@ -1504,12 +1568,7 @@ async function openLedgerSendModal(clientId, clientName, balance, defaultChannel
     document.getElementById('ledgerNoEmail').classList.add('hidden');
 
     // 채널 기본값 설정
-    if (defaultChannel) {
-        document.getElementById('ledgerSendChannel').value = defaultChannel;
-    } else {
-        document.getElementById('ledgerSendChannel').value = 'sms';
-    }
-    toggleLedgerChannelFields();
+    setLedgerChannel(defaultChannel || 'sms');
 
     // 거래처 연락처 조회
     try {
@@ -1564,18 +1623,28 @@ async function openLedgerSendModal(clientId, clientName, balance, defaultChannel
     };
 }
 
-function toggleLedgerChannelFields() {
-    var channel = document.getElementById('ledgerSendChannel').value;
+var _ledgerChannel = 'sms';
+function setLedgerChannel(ch) {
+    _ledgerChannel = ch;
+    var btns = { alimtalk: 'ledgerChAlimtalk', sms: 'ledgerChSms', email: 'ledgerChEmail' };
+    var activeClass = 'flex-1 px-3 py-2 text-sm rounded-lg border-2 border-blue-500 bg-blue-50 text-blue-700 font-medium';
+    var inactiveClass = 'flex-1 px-3 py-2 text-sm rounded-lg border-2 border-gray-200 text-gray-600';
+    Object.keys(btns).forEach(function(k) {
+        var el = document.getElementById(btns[k]);
+        if (el) el.className = k === ch ? activeClass : inactiveClass;
+    });
     var phoneRow = document.getElementById('ledgerPhoneRow');
     var emailRow = document.getElementById('ledgerEmailRow');
-    if (channel === 'email') {
-        phoneRow.classList.add('hidden');
-        emailRow.classList.remove('hidden');
-    } else {
-        phoneRow.classList.remove('hidden');
-        emailRow.classList.add('hidden');
-    }
+    var alimArea = document.getElementById('ledgerAlimtalkArea');
+    var smsArea = document.getElementById('ledgerSmsArea');
+    phoneRow.classList.toggle('hidden', ch === 'email');
+    emailRow.classList.toggle('hidden', ch !== 'email');
+    alimArea.classList.toggle('hidden', ch !== 'alimtalk');
+    smsArea.classList.toggle('hidden', ch !== 'sms');
 }
+
+// 하위 호환
+function toggleLedgerChannelFields() { }
 
 function closeLedgerSendModal() {
     document.getElementById('ledgerSendModal').classList.add('hidden');
@@ -1583,7 +1652,7 @@ function closeLedgerSendModal() {
 
 async function sendLedgerNotification() {
     var content = document.getElementById('ledgerSendContent').value.trim();
-    var channel = document.getElementById('ledgerSendChannel').value;
+    var channel = _ledgerChannel;
 
     // 이메일 채널 별도 처리
     if (channel === 'email') {
@@ -1725,6 +1794,340 @@ async function loadBillingPending() {
     } catch (e) {
         console.error('Billing pending load error:', e);
     }
+}
+
+// ===== 분석 탭: 월말 마감 대시보드 =====
+async function loadClosingSummary() {
+    try {
+        var res = await axios.get('/api/ledger/closing-summary');
+        if (!res.data.success) return;
+        var d = res.data.data;
+
+        document.getElementById('closingPeriod').textContent = d.period.start + ' ~ ' + d.period.end;
+        document.getElementById('closingSales').textContent = d.month_sales.toLocaleString() + '원';
+        document.getElementById('closingPayments').textContent = d.month_payments.toLocaleString() + '원';
+        document.getElementById('closingReceivables').textContent = d.total_receivables.toLocaleString() + '원';
+        document.getElementById('closingReceivableClients').textContent = d.receivable_clients + '개 거래처';
+        document.getElementById('closingUnbilled').textContent = d.unbilled_count + '건';
+        document.getElementById('closingUnbilledAmount').textContent = d.unbilled_amount.toLocaleString() + '원';
+        document.getElementById('closingAdj').textContent = d.adj_amount.toLocaleString() + '원';
+        document.getElementById('closingAdjCount').textContent = d.adj_count + '건';
+
+        // 회수율
+        var collRate = d.month_sales > 0 ? Math.round(d.month_payments / d.month_sales * 100) : 0;
+        var rateEl = document.getElementById('closingCollRate');
+        rateEl.textContent = collRate + '%';
+        rateEl.className = 'text-lg font-bold tabular-nums text-right ' + (collRate >= 80 ? 'text-green-600' : collRate >= 50 ? 'text-amber-600' : 'text-red-600');
+
+        // 전월 대비
+        renderDiffBadge('closingSalesDiff', d.month_sales, d.prev_month_sales);
+        renderDiffBadge('closingPaymentsDiff', d.month_payments, d.prev_month_payments);
+    } catch (e) {
+        console.error('Closing summary error:', e);
+    }
+}
+
+function renderDiffBadge(elId, current, prev) {
+    var el = document.getElementById(elId);
+    if (!el || !prev) { if (el) el.textContent = ''; return; }
+    var diff = current - prev;
+    var pct = prev > 0 ? Math.round(diff / prev * 100) : 0;
+    var sign = diff >= 0 ? '+' : '';
+    var color = diff >= 0 ? 'text-green-600' : 'text-red-600';
+    var icon = diff >= 0 ? 'fa-arrow-up' : 'fa-arrow-down';
+    el.innerHTML = '<span class="' + color + '"><i class="fas ' + icon + ' mr-1" style="font-size:9px"></i>' + sign + pct + '% 전월비</span>';
+}
+
+// ===== 분석 탭: 매출-매입 손익 요약 =====
+var _profitClients = [];
+
+async function loadProfitSummary() {
+    try {
+        var months = document.getElementById('profitMonthRange').value || '6';
+        var res = await axios.get('/api/ledger/profit-summary?months=' + months);
+        if (!res.data.success) return;
+        var data = res.data.data;
+
+        // 월별 테이블
+        var tbody = document.getElementById('profitMonthlyBody');
+        var tfoot = document.getElementById('profitMonthlyFoot');
+        tbody.innerHTML = '';
+        var maxProfit = Math.max.apply(null, data.monthly.map(function(m) { return Math.abs(m.profit); })) || 1;
+        var totSales = 0, totPurch = 0, totProfit = 0, totPay = 0, totPPay = 0;
+
+        data.monthly.forEach(function(m) {
+            totSales += m.sales; totPurch += m.purchases; totProfit += m.profit;
+            totPay += m.payments; totPPay += m.purch_payments;
+            var rate = m.sales > 0 ? Math.round(m.profit / m.sales * 100) : 0;
+            var barW = Math.round(Math.abs(m.profit) / maxProfit * 100);
+            var barColor = m.profit >= 0 ? '#22c55e' : '#ef4444';
+            var profitColor = m.profit >= 0 ? 'text-green-600' : 'text-red-600';
+            var row = '<tr>' +
+                '<td class="px-3 py-2 font-medium">' + m.month + '</td>' +
+                '<td class="px-3 py-2 text-right tabular-nums">' + m.sales.toLocaleString() + '</td>' +
+                '<td class="px-3 py-2 text-right tabular-nums">' + m.purchases.toLocaleString() + '</td>' +
+                '<td class="px-3 py-2 text-right tabular-nums font-bold ' + profitColor + '">' + m.profit.toLocaleString() + '</td>' +
+                '<td class="px-3 py-2 text-right tabular-nums ' + profitColor + '">' + rate + '%</td>' +
+                '<td class="px-3 py-2 text-right tabular-nums text-blue-600">' + m.payments.toLocaleString() + '</td>' +
+                '<td class="px-3 py-2 text-right tabular-nums text-orange-600">' + m.purch_payments.toLocaleString() + '</td>' +
+                '<td class="px-3 py-2"><div style="display:flex;align-items:center;gap:4px">' +
+                '<div style="width:' + barW + '%;height:16px;background:' + barColor + ';border-radius:3px;min-width:2px"></div>' +
+                '<span class="text-xs text-gray-400">' + m.profit.toLocaleString() + '</span></div></td>' +
+                '</tr>';
+            tbody.innerHTML += row;
+        });
+
+        var totRate = totSales > 0 ? Math.round(totProfit / totSales * 100) : 0;
+        tfoot.innerHTML = '<tr>' +
+            '<td class="px-3 py-2">합계</td>' +
+            '<td class="px-3 py-2 text-right tabular-nums">' + totSales.toLocaleString() + '</td>' +
+            '<td class="px-3 py-2 text-right tabular-nums">' + totPurch.toLocaleString() + '</td>' +
+            '<td class="px-3 py-2 text-right tabular-nums ' + (totProfit >= 0 ? 'text-green-600' : 'text-red-600') + '">' + totProfit.toLocaleString() + '</td>' +
+            '<td class="px-3 py-2 text-right tabular-nums">' + totRate + '%</td>' +
+            '<td class="px-3 py-2 text-right tabular-nums text-blue-600">' + totPay.toLocaleString() + '</td>' +
+            '<td class="px-3 py-2 text-right tabular-nums text-orange-600">' + totPPay.toLocaleString() + '</td>' +
+            '<td></td></tr>';
+
+        // 거래처별 손익
+        _profitClients = data.clients || [];
+        renderProfitClientTable(_profitClients);
+    } catch (e) {
+        console.error('Profit summary error:', e);
+    }
+}
+
+function renderProfitClientTable(clients) {
+    var tbody = document.getElementById('profitClientBody');
+    tbody.innerHTML = '';
+    if (!clients.length) {
+        tbody.innerHTML = '<tr><td colspan="6" class="text-center py-8 text-gray-400">데이터 없음</td></tr>';
+        return;
+    }
+    var maxVal = Math.max.apply(null, clients.map(function(c) { return Math.max(c.sales, c.purchases); })) || 1;
+
+    clients.forEach(function(c) {
+        var rate = c.sales > 0 ? Math.round(c.profit / c.sales * 100) : (c.purchases > 0 ? -100 : 0);
+        var profitColor = c.profit >= 0 ? 'text-green-600' : 'text-red-600';
+        var salesW = Math.round(c.sales / maxVal * 100);
+        var purchW = Math.round(c.purchases / maxVal * 100);
+        var row = '<tr>' +
+            '<td class="px-3 py-2 font-medium">' + escapeHtml(c.client_name) + '</td>' +
+            '<td class="px-3 py-2 text-right tabular-nums">' + c.sales.toLocaleString() + '</td>' +
+            '<td class="px-3 py-2 text-right tabular-nums">' + c.purchases.toLocaleString() + '</td>' +
+            '<td class="px-3 py-2 text-right tabular-nums font-bold ' + profitColor + '">' + c.profit.toLocaleString() + '</td>' +
+            '<td class="px-3 py-2 text-right tabular-nums ' + profitColor + '">' + rate + '%</td>' +
+            '<td class="px-3 py-2"><div style="position:relative;height:20px">' +
+            '<div style="position:absolute;top:0;left:0;height:10px;width:' + salesW + '%;background:#3b82f6;border-radius:2px" title="매출"></div>' +
+            '<div style="position:absolute;top:10px;left:0;height:10px;width:' + purchW + '%;background:#f97316;border-radius:2px" title="매입"></div>' +
+            '</div></td></tr>';
+        tbody.innerHTML += row;
+    });
+}
+
+function filterProfitClientTable() {
+    var q = (document.getElementById('profitClientSearch').value || '').toLowerCase();
+    var filtered = _profitClients.filter(function(c) { return c.client_name.toLowerCase().indexOf(q) >= 0; });
+    renderProfitClientTable(filtered);
+}
+
+// ===== 분석 탭: 거래처별 평균 회수 기간 =====
+async function loadCollectionPeriod() {
+    try {
+        var res = await axios.get('/api/ledger/collection-period');
+        if (!res.data.success) return;
+        var data = res.data.data || [];
+
+        var tbody = document.getElementById('collectionPeriodBody');
+        tbody.innerHTML = '';
+
+        if (!data.length) {
+            tbody.innerHTML = '<tr><td colspan="7" class="text-center py-8 text-gray-400">충분한 입금 데이터가 없습니다</td></tr>';
+            return;
+        }
+
+        var maxDays = Math.max.apply(null, data.map(function(c) { return c.avg_days; })) || 1;
+
+        data.forEach(function(c) {
+            var avgDays = Math.round(c.avg_days);
+            var speedColor, speedLabel;
+            if (avgDays <= 15) { speedColor = '#22c55e'; speedLabel = '빠름'; }
+            else if (avgDays <= 30) { speedColor = '#3b82f6'; speedLabel = '보통'; }
+            else if (avgDays <= 60) { speedColor = '#f59e0b'; speedLabel = '느림'; }
+            else { speedColor = '#ef4444'; speedLabel = '지연'; }
+
+            var barW = Math.round(avgDays / maxDays * 100);
+            var balColor = c.balance > 0 ? 'text-red-600 font-bold' : 'text-green-600';
+
+            var row = '<tr>' +
+                '<td class="px-3 py-2 font-medium">' + escapeHtml(c.client_name) + '</td>' +
+                '<td class="px-3 py-2 text-right tabular-nums font-bold">' + avgDays + '일</td>' +
+                '<td class="px-3 py-2 text-right tabular-nums text-gray-500">' + Math.round(c.min_days) + '일</td>' +
+                '<td class="px-3 py-2 text-right tabular-nums text-gray-500">' + Math.round(c.max_days) + '일</td>' +
+                '<td class="px-3 py-2 text-right tabular-nums">' + c.settled_orders + '건</td>' +
+                '<td class="px-3 py-2 text-right tabular-nums ' + balColor + '">' + c.balance.toLocaleString() + '</td>' +
+                '<td class="px-3 py-2"><div style="display:flex;align-items:center;gap:6px">' +
+                '<div style="width:' + barW + '%;height:14px;background:' + speedColor + ';border-radius:3px;min-width:4px"></div>' +
+                '<span class="text-xs font-medium" style="color:' + speedColor + '">' + speedLabel + '</span>' +
+                '</div></td></tr>';
+            tbody.innerHTML += row;
+        });
+    } catch (e) {
+        console.error('Collection period error:', e);
+    }
+}
+
+// ===== 원장 명세서 인쇄/팩스 =====
+var _ledgerStatementData = null; // 마지막 로드된 거래처 데이터 캐시
+
+function buildLedgerStatementHtml(clientName, transactions, summary) {
+    var today = new Date().toISOString().split('T')[0];
+    var sd = currentDateFilter.startDate || '';
+    var ed = currentDateFilter.endDate || '';
+    var periodText = sd && ed ? sd + ' ~ ' + ed : (sd || ed || '전체 기간');
+
+    var h = '<div style="font-family:Malgun Gothic,sans-serif;color:#000;width:780px;padding:10px;">';
+    // 헤더
+    h += '<table style="width:100%;border:none;margin-bottom:8px;"><tr>'
+      + '<td style="border:none;padding:0;vertical-align:top;"><div style="font-size:22pt;font-weight:bold;">거래처 원장</div>'
+      + '<div style="font-size:10pt;color:#666;margin-top:2px;">기간: ' + periodText + '</div></td>'
+      + '<td style="border:none;padding:0;text-align:right;vertical-align:top;">'
+      + '<div style="font-size:9pt;color:#888;">발행일: ' + today + '</div></td></tr></table>';
+
+    // 거래처 정보
+    h += '<table style="width:100%;border-collapse:collapse;margin-bottom:10px;border:2px solid #000;">'
+      + '<tr><td style="background:#f0f0f0;border:1px solid #999;padding:5px 10px;font-size:10pt;font-weight:bold;width:100px;">거래처</td>'
+      + '<td style="border:1px solid #999;padding:5px 10px;font-size:12pt;font-weight:bold;">' + escapeHtml(clientName) + '</td>'
+      + '<td style="background:#f0f0f0;border:1px solid #999;padding:5px 10px;font-size:10pt;font-weight:bold;width:80px;">매출</td>'
+      + '<td style="border:1px solid #999;padding:5px 10px;font-size:10pt;text-align:right;">' + (summary.total_orders || 0).toLocaleString() + '원</td></tr>'
+      + '<tr><td style="background:#f0f0f0;border:1px solid #999;padding:5px 10px;font-size:10pt;font-weight:bold;">잔액</td>'
+      + '<td style="border:1px solid #999;padding:5px 10px;font-size:12pt;font-weight:bold;color:#dc2626;">' + (summary.balance || 0).toLocaleString() + '원</td>'
+      + '<td style="background:#f0f0f0;border:1px solid #999;padding:5px 10px;font-size:10pt;font-weight:bold;">입금</td>'
+      + '<td style="border:1px solid #999;padding:5px 10px;font-size:10pt;text-align:right;">' + (summary.total_payments || 0).toLocaleString() + '원</td></tr></table>';
+
+    // 거래 내역 테이블
+    h += '<table style="width:100%;border-collapse:collapse;border:1px solid #999;">'
+      + '<tr style="background:#e5e5e5;"><th style="border:1px solid #999;padding:4px 6px;font-size:8pt;">일자</th>'
+      + '<th style="border:1px solid #999;padding:4px 6px;font-size:8pt;">구분</th>'
+      + '<th style="border:1px solid #999;padding:4px 6px;font-size:8pt;text-align:left;">내용</th>'
+      + '<th style="border:1px solid #999;padding:4px 6px;font-size:8pt;text-align:right;">매출(+)</th>'
+      + '<th style="border:1px solid #999;padding:4px 6px;font-size:8pt;text-align:right;">입금(-)</th>'
+      + '<th style="border:1px solid #999;padding:4px 6px;font-size:8pt;text-align:right;">잔액</th></tr>';
+
+    (transactions || []).forEach(function(tx, i) {
+        var bg = i % 2 ? '#f9f9f9' : '#fff';
+        var typeLabel = tx.type === 'order' ? '주문' : tx.type === 'payment' ? (tx.payment_method || '입금') : '감액';
+        var desc = '';
+        if (tx.type === 'order') {
+            desc = tx.reference || '';
+            if (tx.items && tx.items.length > 0) {
+                var first = tx.items[0].item_name || '';
+                desc += ' ' + first + (tx.items.length > 1 ? ' 외 ' + (tx.items.length - 1) + '건' : '');
+            }
+        } else if (tx.type === 'payment') {
+            desc = tx.notes || tx.reference || '';
+        } else {
+            desc = (tx.description || '').replace('감액: ', '');
+        }
+        h += '<tr style="background:' + bg + ';">'
+          + '<td style="border:1px solid #ddd;padding:3px 6px;font-size:8pt;text-align:center;">' + formatDate(tx.date) + '</td>'
+          + '<td style="border:1px solid #ddd;padding:3px 6px;font-size:8pt;text-align:center;">' + typeLabel + '</td>'
+          + '<td style="border:1px solid #ddd;padding:3px 6px;font-size:8pt;">' + escapeHtml(desc) + '</td>'
+          + '<td style="border:1px solid #ddd;padding:3px 6px;font-size:8pt;text-align:right;">' + (tx.debit > 0 ? tx.debit.toLocaleString() : '') + '</td>'
+          + '<td style="border:1px solid #ddd;padding:3px 6px;font-size:8pt;text-align:right;">' + (tx.credit > 0 ? tx.credit.toLocaleString() : '') + '</td>'
+          + '<td style="border:1px solid #ddd;padding:3px 6px;font-size:8pt;text-align:right;font-weight:bold;">' + tx.balance.toLocaleString() + '</td></tr>';
+    });
+
+    // 합계
+    h += '<tr style="background:#e5e5e5;font-weight:bold;">'
+      + '<td colspan="3" style="border:1px solid #999;padding:5px 8px;font-size:9pt;text-align:center;">합계</td>'
+      + '<td style="border:1px solid #999;padding:5px 6px;font-size:9pt;text-align:right;">' + (summary.total_orders || 0).toLocaleString() + '</td>'
+      + '<td style="border:1px solid #999;padding:5px 6px;font-size:9pt;text-align:right;">' + ((summary.total_payments || 0) + (summary.total_adjustments || 0)).toLocaleString() + '</td>'
+      + '<td style="border:1px solid #999;padding:5px 6px;font-size:9pt;text-align:right;color:#dc2626;">' + (summary.balance || 0).toLocaleString() + '</td></tr>';
+    h += '</table></div>';
+    return h;
+}
+
+function printLedgerStatement() {
+    if (!modalContext.clientId || !_ledgerStatementData) { showToast('거래처를 먼저 선택하세요', 'warning'); return; }
+    var area = document.getElementById('ledgerPrintArea');
+    area.innerHTML = buildLedgerStatementHtml(modalContext.clientName, _ledgerStatementData.transactions, _ledgerStatementData.summary);
+    area.style.display = 'block';
+    var ps = document.createElement('style');
+    ps.id = 'ledgerPrintStyle';
+    ps.textContent = '@media print { body > *:not(#ledgerPrintArea) { display:none !important; } #ledgerPrintArea { display:block !important; } } @page { size: A4 portrait; margin: 10mm; }';
+    document.head.appendChild(ps);
+    setTimeout(function() {
+        window.print();
+        area.innerHTML = ''; area.style.display = 'none';
+        var el = document.getElementById('ledgerPrintStyle'); if (el) el.remove();
+    }, 300);
+}
+
+function openLedgerFaxModal() {
+    if (!modalContext.clientId) { showToast('거래처를 먼저 선택하세요', 'warning'); return; }
+    document.getElementById('ledgerFaxModal').classList.remove('hidden');
+    document.getElementById('ledgerFaxName').value = modalContext.clientName || '';
+    document.getElementById('ledgerFaxStatus').textContent = '';
+    document.getElementById('ledgerFaxSendBtn').disabled = false;
+}
+function closeLedgerFaxModal() { document.getElementById('ledgerFaxModal').classList.add('hidden'); }
+
+function loadHtml2Canvas() {
+    return new Promise(function(resolve, reject) {
+        if (window.html2canvas) return resolve(window.html2canvas);
+        var s = document.createElement('script');
+        s.src = 'https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js';
+        s.onload = function() { resolve(window.html2canvas); };
+        s.onerror = reject;
+        document.head.appendChild(s);
+    });
+}
+
+async function sendLedgerFax() {
+    var faxNum = document.getElementById('ledgerFaxNum').value.trim().replace(/[^0-9\-]/g, '');
+    var faxName = document.getElementById('ledgerFaxName').value.trim();
+    if (!faxNum) { document.getElementById('ledgerFaxStatus').textContent = '팩스번호를 입력해주세요.'; document.getElementById('ledgerFaxStatus').style.color = '#ef4444'; return; }
+
+    var statusEl = document.getElementById('ledgerFaxStatus');
+    var sendBtn = document.getElementById('ledgerFaxSendBtn');
+    sendBtn.disabled = true;
+    statusEl.textContent = '원장 명세서 이미지 생성 중...';
+    statusEl.style.color = '#6b7280';
+
+    try {
+        var area = document.getElementById('ledgerPrintArea');
+        area.innerHTML = buildLedgerStatementHtml(modalContext.clientName, _ledgerStatementData.transactions, _ledgerStatementData.summary);
+        area.style.display = 'block';
+        area.style.position = 'absolute';
+        area.style.left = '-9999px';
+
+        await loadHtml2Canvas();
+        var canvas = await html2canvas(area, { scale: 2, useCORS: true, backgroundColor: '#ffffff' });
+        var base64 = canvas.toDataURL('image/png').replace(/^data:image\/png;base64,/, '');
+        area.innerHTML = ''; area.style.display = 'none'; area.style.position = ''; area.style.left = '';
+
+        statusEl.textContent = '팩스 전송 중...';
+        var res = await axios.post('/api/fax/send', {
+            receiver_num: faxNum,
+            receiver_name: faxName,
+            file_data: base64,
+            file_name: '원장_' + escapeHtml(modalContext.clientName) + '.png',
+            client_id: modalContext.clientId
+        });
+        if (res.data.success) {
+            statusEl.textContent = '팩스 발송 완료! (접수번호: ' + (res.data.data.receipt_num || '-') + ')';
+            statusEl.style.color = '#16a34a';
+        } else {
+            statusEl.textContent = '팩스 전송 실패: ' + (res.data.error || '알 수 없는 오류');
+            statusEl.style.color = '#ef4444';
+        }
+    } catch (err) {
+        statusEl.textContent = '팩스 전송 실패: ' + (err.message || '알 수 없는 오류');
+        statusEl.style.color = '#ef4444';
+        var a2 = document.getElementById('ledgerPrintArea');
+        a2.innerHTML = ''; a2.style.display = 'none';
+    }
+    sendBtn.disabled = false;
 }
 
 // Initial load

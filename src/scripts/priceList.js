@@ -334,6 +334,139 @@ async function printPriceList() {
   setTimeout(function() { window.print(); printArea.innerHTML = ''; var el = document.getElementById('pricePrintStyle'); if (el) el.remove(); }, 200);
 }
 
+// ========== 팩스 발송 ==========
+function openPriceFaxModal() {
+  document.getElementById('priceFaxModal').classList.remove('hidden');
+  document.getElementById('priceFaxStatus').textContent = '';
+  document.getElementById('priceFaxSendBtn').disabled = false;
+}
+function closePriceFaxModal() {
+  document.getElementById('priceFaxModal').classList.add('hidden');
+}
+
+function loadHtml2Canvas() {
+  return new Promise(function(resolve, reject) {
+    if (window.html2canvas) return resolve(window.html2canvas);
+    var s = document.createElement('script');
+    s.src = 'https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js';
+    s.onload = function() { resolve(window.html2canvas); };
+    s.onerror = reject;
+    document.head.appendChild(s);
+  });
+}
+
+async function sendPriceFax() {
+  var faxNum = document.getElementById('priceFaxNum').value.trim().replace(/[^0-9\-]/g, '');
+  var faxName = document.getElementById('priceFaxName').value.trim();
+  if (!faxNum) { document.getElementById('priceFaxStatus').textContent = '팩스번호를 입력해주세요.'; document.getElementById('priceFaxStatus').style.color = '#ef4444'; return; }
+
+  var statusEl = document.getElementById('priceFaxStatus');
+  var sendBtn = document.getElementById('priceFaxSendBtn');
+  sendBtn.disabled = true;
+  statusEl.textContent = '단가표 이미지 생성 중...';
+  statusEl.style.color = '#6b7280';
+
+  try {
+    // printArea에 인쇄용 HTML 생성 (printPriceList와 동일)
+    var printArea = document.getElementById('printArea');
+    printArea.style.display = 'block';
+    printArea.style.position = 'absolute';
+    printArea.style.left = '-9999px';
+    // printPriceList의 내용 생성 로직 재사용 — 이미 printArea에 있으면 재생성
+    await printPriceList_render();
+
+    await loadHtml2Canvas();
+    var canvas = await html2canvas(printArea, { scale: 2, useCORS: true, backgroundColor: '#ffffff' });
+    var base64 = canvas.toDataURL('image/png').replace(/^data:image\/png;base64,/, '');
+    printArea.innerHTML = '';
+    printArea.style.display = '';
+    printArea.style.position = '';
+    printArea.style.left = '';
+
+    statusEl.textContent = '팩스 전송 중...';
+    var title = priceData.clientName ? priceData.clientName + '_단가표' : '단가표';
+    var res = await axios.post('/api/fax/send', {
+      receiver_num: faxNum,
+      receiver_name: faxName,
+      file_data: base64,
+      file_name: title + '.png'
+    });
+    if (res.data.success) {
+      statusEl.textContent = '팩스 발송 완료! (접수번호: ' + (res.data.data.receipt_num || '-') + ')';
+      statusEl.style.color = '#16a34a';
+    } else {
+      statusEl.textContent = '팩스 전송 실패: ' + (res.data.error || '알 수 없는 오류');
+      statusEl.style.color = '#ef4444';
+    }
+  } catch (err) {
+    statusEl.textContent = '팩스 전송 실패: ' + (err.message || '알 수 없는 오류');
+    statusEl.style.color = '#ef4444';
+    var printArea2 = document.getElementById('printArea');
+    printArea2.innerHTML = '';
+    printArea2.style.display = '';
+  }
+  sendBtn.disabled = false;
+}
+
+// printPriceList에서 렌더링만 분리
+async function printPriceList_render() {
+  var printArea = document.getElementById('printArea');
+  var title = '단가표';
+  if (priceData.clientName) title = priceData.clientName + ' 단가표';
+  var modeLabel = priceMode === 'sales' ? '판매 단가' : '기본 단가';
+  var today = new Date().toISOString().split('T')[0];
+  var hasClient = !!selectedClientId;
+  var colCount = hasClient ? 6 : 5;
+  var data = getFilteredGroups();
+  var logo = '', companyInfo = '';
+  try {
+    var lr = await axios.get('/api/price-list/logo/' + entityId);
+    if (lr.data.success && lr.data.data) {
+      var ent = lr.data.data;
+      if (ent.logo_base64) logo = '<img src="' + ent.logo_base64 + '" style="max-height:50px;max-width:200px;">';
+      companyInfo = '<div style="font-size:8pt;color:#666;">' + (ent.name || '') + '<br>' + (ent.address || '') + '<br>'
+        + (ent.phone ? 'T. ' + ent.phone : '') + (ent.fax ? ' | F. ' + ent.fax : '') + (ent.email ? ' | ' + ent.email : '') + '</div>';
+    }
+  } catch (e) {}
+  var s = '<div style="font-family:Malgun Gothic,sans-serif;color:#000;padding:2mm;width:780px;">'
+    + '<table style="width:100%;border:none;margin-bottom:12px;"><tr>'
+    + '<td style="border:none;padding:0;vertical-align:top;width:50%;">' + logo
+    + '<div style="font-size:22pt;font-weight:bold;margin:4px 0 0;">' + escapeHtml(title) + '</div>'
+    + '<div style="font-size:10pt;color:#666;">' + modeLabel + (priceData.policyName ? ' | 정책: ' + escapeHtml(priceData.policyName) : '') + '</div></td>'
+    + '<td style="border:none;padding:0;text-align:right;vertical-align:top;">' + companyInfo
+    + '<div style="font-size:9pt;color:#888;margin-top:6px;">발행일: ' + today + '</div></td></tr></table>'
+    + '<hr style="border:none;border-top:3px solid #000;margin:0 0 10px 0;">';
+  Object.keys(data.groups).sort().forEach(function(key) {
+    var grp = data.groups[key];
+    var typeName = typeLabels[grp.type] || grp.type;
+    s += '<table style="width:100%;border-collapse:collapse;margin-bottom:12px;">'
+      + '<tr><td colspan="' + colCount + '" style="background:#eee;padding:5px 8px;font-size:10pt;font-weight:bold;border:1px solid #999;">[' + typeName + '] ' + escapeHtml(grp.category) + ' — ' + grp.items.length + '건</td></tr>'
+      + '<tr style="background:#f5f5f5;"><th style="border:1px solid #bbb;padding:4px 6px;font-size:8pt;text-align:left;">품목코드</th>'
+      + '<th style="border:1px solid #bbb;padding:4px 6px;font-size:8pt;text-align:left;">품목명</th>'
+      + '<th style="border:1px solid #bbb;padding:4px 6px;font-size:8pt;text-align:left;">규격</th>'
+      + '<th style="border:1px solid #bbb;padding:4px 6px;font-size:8pt;text-align:center;">단위</th>'
+      + '<th style="border:1px solid #bbb;padding:4px 6px;font-size:8pt;text-align:right;">단가</th>'
+      + (hasClient ? '<th style="border:1px solid #bbb;padding:4px 6px;font-size:8pt;text-align:right;color:#1a56db;">적용단가</th>' : '') + '</tr>';
+    grp.items.forEach(function(item, idx) {
+      var p = calcPrice(item);
+      var bg = idx % 2 ? '#f9f9f9' : '#fff';
+      s += '<tr style="background:' + bg + ';"><td style="border:1px solid #ddd;padding:3px 6px;font-size:8pt;font-family:Consolas,monospace;">' + escapeHtml(item.item_code || '') + '</td>'
+        + '<td style="border:1px solid #ddd;padding:3px 6px;font-size:8pt;font-weight:600;">' + escapeHtml(item.item_name) + '</td>'
+        + '<td style="border:1px solid #ddd;padding:3px 6px;font-size:8pt;">' + escapeHtml(item.specification || '-') + '</td>'
+        + '<td style="border:1px solid #ddd;padding:3px 6px;font-size:8pt;text-align:center;">' + escapeHtml(item.unit || 'EA') + '</td>'
+        + '<td style="border:1px solid #ddd;padding:3px 6px;font-size:8pt;text-align:right;">' + (p.base ? p.base.toLocaleString() + '원' : '-') + '</td>';
+      if (hasClient) {
+        var changed = p.applied !== p.base;
+        s += '<td style="border:1px solid #ddd;padding:3px 6px;font-size:8pt;text-align:right;font-weight:bold;' + (changed ? 'color:#1a56db;' : '') + '">' + (p.applied ? p.applied.toLocaleString() + '원' : '-') + '</td>';
+      }
+      s += '</tr>';
+    });
+    s += '</table>';
+  });
+  s += '</div>';
+  printArea.innerHTML = s;
+}
+
 // ========== 정책 관리 ==========
 async function loadPolicies() {
   try {

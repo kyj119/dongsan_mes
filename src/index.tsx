@@ -20,7 +20,6 @@ import wasteRouter from './routes/waste'
 import inventoryValuationRouter from './routes/inventoryValuation'
 import fixedAssetsRouter from './routes/fixedAssets'
 import budgetsRouter from './routes/budgets'
-import generalLedgerRouter from './routes/generalLedger'
 import aiInsightsRouter from './routes/aiInsights'
 import authRouter from './routes/auth'
 import dashboardRouter from './routes/dashboard'
@@ -201,7 +200,7 @@ app.use('/api/*', cors({
   origin: (origin) => {
     // 로컬 개발
     if (!origin) return '*'
-    if (origin.startsWith('http://localhost:') || origin.startsWith('http://192.168.')) return origin
+    if (origin.startsWith('http://localhost:') || origin.startsWith('http://192.168.') || origin.startsWith('http://10.')) return origin
     // Cloudflare Pages 배포 도메인
     if (origin.endsWith('.pages.dev') || origin.endsWith('.dongsan.co.kr')) return origin
     return null
@@ -250,7 +249,6 @@ app.route('/api/waste', wasteRouter)
 app.route('/api/inventory-valuation', inventoryValuationRouter)
 app.route('/api/fixed-assets', fixedAssetsRouter)
 app.route('/api/budgets', budgetsRouter)
-app.route('/api/gl', generalLedgerRouter)
 app.route('/api/ai', aiInsightsRouter)
 app.route('/api/ai-analysis', aiAnalysisRouter)
 app.route('/api/ai-layout', aiLayoutRouter)

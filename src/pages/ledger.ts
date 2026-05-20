@@ -12,8 +12,6 @@ export function ledgerPage(c: Context<HonoEnv>) {
       .client-row{cursor:pointer;transition:background .15s}
       .client-row:hover{background:#fff7ed}
       .client-row.active{background:#fed7aa}
-      .payment-edit-modal{display:none;position:fixed;inset:0;z-index:50;background:rgba(0,0,0,.5);justify-content:center;align-items:center}
-      .payment-edit-modal.show{display:flex}
       #adjustmentModal.show{display:flex!important}
       .aging-badge{display:inline-block;padding:1px 6px;border-radius:4px;font-size:11px;font-weight:500}
       .aging-normal{background:#dcfce7;color:#15803d}
@@ -23,6 +21,7 @@ export function ledgerPage(c: Context<HonoEnv>) {
       #clientDetailModal .modal-body{overflow-y:auto;max-height:calc(100vh - 72px)}
       #clientDetailModal .modal-header{position:sticky;top:0;background:#fff;border-bottom:1px solid #e5e7eb;padding:12px 24px;z-index:10}
       #clientDetailModal .ds-table td{font-size:13px}
+      #transactionsTableBody .tx-badge{display:inline-block;min-width:52px;text-align:center;padding:2px 6px;font-size:11px;font-weight:600;border-radius:4px;white-space:nowrap}
     `,
     pageContent: `
         <!-- 회계반영 대기 배너 -->
@@ -47,6 +46,9 @@ export function ledgerPage(c: Context<HonoEnv>) {
           </button>
           <button id="tabPurchase" onclick="switchLedgerTab('purchase')" class="px-6 py-3 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">
             <i class="fas fa-truck mr-1"></i>매입 원장
+          </button>
+          <button id="tabAnalysis" onclick="switchLedgerTab('analysis')" class="px-6 py-3 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">
+            <i class="fas fa-chart-pie mr-1"></i>분석
           </button>
         </div>
 
@@ -257,10 +259,138 @@ export function ledgerPage(c: Context<HonoEnv>) {
         </div>
         <!-- End purchaseContent -->
 
+        <!-- ===== 분석 콘텐츠 ===== -->
+        <div id="analysisContent" style="display:none">
+
+            <!-- 월말 마감 대시보드 -->
+            <div class="mb-6">
+                <h2 class="text-sm font-bold text-gray-700 mb-3">
+                    <i class="fas fa-calendar-check text-orange-500 mr-2"></i>이번달 마감 현황
+                    <span id="closingPeriod" class="text-xs text-gray-400 font-normal ml-2"></span>
+                </h2>
+                <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-4">
+                    <div class="ds-card ds-card-compact">
+                        <div class="ds-label mb-1">이번달 매출</div>
+                        <div class="text-lg font-bold text-gray-700 tabular-nums text-right" id="closingSales">-</div>
+                        <div class="text-xs text-right mt-1" id="closingSalesDiff"></div>
+                    </div>
+                    <div class="ds-card ds-card-compact">
+                        <div class="ds-label mb-1">이번달 입금</div>
+                        <div class="text-lg font-bold text-gray-700 tabular-nums text-right" id="closingPayments">-</div>
+                        <div class="text-xs text-right mt-1" id="closingPaymentsDiff"></div>
+                    </div>
+                    <div class="ds-card ds-card-compact">
+                        <div class="ds-label mb-1">총 미수금</div>
+                        <div class="text-lg font-bold text-red-600 tabular-nums text-right" id="closingReceivables">-</div>
+                        <div class="text-xs text-gray-400 text-right mt-1" id="closingReceivableClients"></div>
+                    </div>
+                    <div class="ds-card ds-card-compact" style="border-left:3px solid #f59e0b">
+                        <div class="ds-label mb-1"><i class="fas fa-file-invoice text-amber-500 mr-1"></i>미발행 계산서</div>
+                        <div class="text-lg font-bold text-amber-600 tabular-nums text-right" id="closingUnbilled">-</div>
+                        <div class="text-xs text-gray-400 text-right mt-1" id="closingUnbilledAmount"></div>
+                    </div>
+                    <div class="ds-card ds-card-compact">
+                        <div class="ds-label mb-1">이번달 감액</div>
+                        <div class="text-lg font-bold text-orange-600 tabular-nums text-right" id="closingAdj">-</div>
+                        <div class="text-xs text-gray-400 text-right mt-1" id="closingAdjCount"></div>
+                    </div>
+                    <div class="ds-card ds-card-compact">
+                        <div class="ds-label mb-1">회수율</div>
+                        <div class="text-lg font-bold tabular-nums text-right" id="closingCollRate">-</div>
+                        <div class="text-xs text-gray-400 text-right mt-1">입금÷매출</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 매출-매입 손익 요약 (월별) -->
+            <div class="ds-card mb-4" style="padding:0">
+                <div class="p-4 flex justify-between items-center">
+                    <h2 class="text-sm font-bold text-gray-700">
+                        <i class="fas fa-balance-scale text-blue-500 mr-2"></i>월별 손익 요약
+                    </h2>
+                    <select id="profitMonthRange" onchange="loadProfitSummary()" class="ds-input" style="width:auto">
+                        <option value="6">최근 6개월</option>
+                        <option value="12">최근 12개월</option>
+                    </select>
+                </div>
+                <div class="overflow-x-auto px-4 pb-4">
+                    <table class="ds-table ds-table-compact ds-table-striped">
+                        <thead>
+                            <tr>
+                                <th class="text-left">월</th>
+                                <th class="text-right">매출</th>
+                                <th class="text-right">매입</th>
+                                <th class="text-right">손익</th>
+                                <th class="text-right">이익률</th>
+                                <th class="text-right">입금</th>
+                                <th class="text-right">지급</th>
+                                <th class="text-left" style="min-width:180px">손익 그래프</th>
+                            </tr>
+                        </thead>
+                        <tbody id="profitMonthlyBody"></tbody>
+                        <tfoot id="profitMonthlyFoot" class="bg-gray-50 border-t font-bold text-sm"></tfoot>
+                    </table>
+                </div>
+            </div>
+
+            <!-- 거래처별 손익 -->
+            <div class="ds-card mb-4" style="padding:0">
+                <div class="p-4 flex justify-between items-center">
+                    <h2 class="text-sm font-bold text-gray-700">
+                        <i class="fas fa-building text-green-500 mr-2"></i>거래처별 손익
+                    </h2>
+                    <input type="text" id="profitClientSearch" placeholder="거래처명 검색..." class="ds-input" style="width:200px" oninput="filterProfitClientTable()">
+                </div>
+                <div class="overflow-x-auto" style="max-height:400px;overflow-y:auto">
+                    <table class="ds-table ds-table-compact ds-table-striped">
+                        <thead>
+                            <tr>
+                                <th class="text-left">거래처</th>
+                                <th class="text-right">총 매출</th>
+                                <th class="text-right">총 매입</th>
+                                <th class="text-right">손익</th>
+                                <th class="text-right">이익률</th>
+                                <th class="text-left" style="min-width:150px">비율</th>
+                            </tr>
+                        </thead>
+                        <tbody id="profitClientBody"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- 거래처별 평균 회수 기간 -->
+            <div class="ds-card mb-4" style="padding:0">
+                <div class="p-4 flex justify-between items-center">
+                    <h2 class="text-sm font-bold text-gray-700">
+                        <i class="fas fa-hourglass-half text-purple-500 mr-2"></i>거래처별 평균 회수 기간
+                    </h2>
+                    <span class="text-xs text-gray-400">입금 실적 2건 이상 거래처 기준</span>
+                </div>
+                <div class="overflow-x-auto" style="max-height:400px;overflow-y:auto">
+                    <table class="ds-table ds-table-compact ds-table-striped">
+                        <thead>
+                            <tr>
+                                <th class="text-left">거래처</th>
+                                <th class="text-right">평균 회수</th>
+                                <th class="text-right">최소</th>
+                                <th class="text-right">최대</th>
+                                <th class="text-right">정산 건수</th>
+                                <th class="text-right">현재 잔액</th>
+                                <th class="text-left" style="min-width:150px">회수 속도</th>
+                            </tr>
+                        </thead>
+                        <tbody id="collectionPeriodBody"></tbody>
+                    </table>
+                </div>
+            </div>
+
+        </div>
+        <!-- End analysisContent -->
+
         <!-- ===== 거래처 상세 모달 (은행 거래내역 스타일) ===== -->
         <div id="clientDetailModal" class="hidden" style="position:fixed;inset:0;z-index:50">
             <div style="position:absolute;inset:0;background:rgba(0,0,0,0.3)" onclick="closeDetailModal()"></div>
-            <div style="position:relative;background:#fff;max-width:1000px;margin:16px auto;border-radius:12px;box-shadow:0 8px 32px rgba(0,0,0,.15);display:flex;flex-direction:column;max-height:calc(100vh - 32px)">
+            <div style="position:relative;background:#fff;max-width:1100px;margin:16px auto;border-radius:12px;box-shadow:0 8px 32px rgba(0,0,0,.15);display:flex;flex-direction:column;max-height:calc(100vh - 32px)">
 
                 <!-- 모달 헤더 -->
                 <div class="modal-header" style="flex-shrink:0">
@@ -317,6 +447,7 @@ export function ledgerPage(c: Context<HonoEnv>) {
                                     <option value="현금">현금</option>
                                     <option value="카드">카드</option>
                                     <option value="수표">수표</option>
+                                    <option value="어음">어음</option>
                                     <option value="기타">기타</option>
                                 </select>
                                 <input type="text" id="paymentRef" placeholder="참조번호" class="ds-input" style="width:100px">
@@ -343,6 +474,12 @@ export function ledgerPage(c: Context<HonoEnv>) {
                                     <button onclick="openLedgerSendModal(modalContext.clientId, modalContext.clientName, 0, 'email')" class="ds-btn ds-btn-ghost ds-btn-sm text-blue-600" title="알림 발송">
                                         <i class="fas fa-paper-plane mr-1"></i>발송
                                     </button>
+                                    <button onclick="printLedgerStatement()" class="ds-btn ds-btn-ghost ds-btn-sm" title="인쇄">
+                                        <i class="fas fa-print"></i>
+                                    </button>
+                                    <button onclick="openLedgerFaxModal()" class="ds-btn ds-btn-ghost ds-btn-sm text-indigo-600" title="팩스 발송">
+                                        <i class="fas fa-fax"></i>
+                                    </button>
                                     <button onclick="exportTransactionsCSV()" class="ds-btn ds-btn-ghost ds-btn-sm" title="CSV 내보내기">
                                         <i class="fas fa-file-csv"></i>
                                     </button>
@@ -350,15 +487,24 @@ export function ledgerPage(c: Context<HonoEnv>) {
                             </div>
                             <div class="overflow-x-auto" style="max-height:calc(100vh - 320px);overflow-y:auto">
                                 <table class="ds-table ds-table-compact ds-table-striped">
+                                    <colgroup>
+                                        <col style="width:82px">
+                                        <col style="width:64px">
+                                        <col>
+                                        <col style="width:105px">
+                                        <col style="width:105px">
+                                        <col style="width:105px">
+                                        <col style="width:36px">
+                                    </colgroup>
                                     <thead>
                                         <tr>
-                                            <th class="text-left" style="width:90px">일자</th>
-                                            <th class="text-center" style="width:70px">구분</th>
+                                            <th class="text-left">일자</th>
+                                            <th class="text-center">구분</th>
                                             <th class="text-left">내용</th>
-                                            <th class="text-right" style="width:110px">매출(+)</th>
-                                            <th class="text-right" style="width:110px">입금(-)</th>
-                                            <th class="text-right" style="width:110px">잔액</th>
-                                            <th class="text-center" style="width:50px"></th>
+                                            <th class="text-right">매출(+)</th>
+                                            <th class="text-right">입금(-)</th>
+                                            <th class="text-right">잔액</th>
+                                            <th></th>
                                         </tr>
                                     </thead>
                                     <tbody id="transactionsTableBody" class="divide-y"></tbody>
@@ -382,6 +528,7 @@ export function ledgerPage(c: Context<HonoEnv>) {
                                     <option value="현금">현금</option>
                                     <option value="카드">카드</option>
                                     <option value="수표">수표</option>
+                                    <option value="어음">어음</option>
                                     <option value="기타">기타</option>
                                 </select>
                                 <input type="text" id="pPaymentRef" placeholder="참조번호" class="ds-input" style="width:100px">
@@ -454,47 +601,54 @@ export function ledgerPage(c: Context<HonoEnv>) {
         <!-- End clientDetailModal -->
 
         <!-- ===== 입금 수정 모달 ===== -->
-        <div id="paymentEditModal" class="payment-edit-modal">
-            <div class="ds-modal" style="max-width:448px">
-                <div class="flex justify-between items-center mb-4">
-                    <h3 class="font-bold text-gray-700"><i class="fas fa-edit mr-2"></i>입금 수정</h3>
-                    <button onclick="closePaymentModal()" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times"></i></button>
-                </div>
-                <input type="hidden" id="editPaymentId">
-                <div class="space-y-3">
-                    <div>
-                        <label class="ds-label">입금액</label>
-                        <input type="text" inputmode="numeric" data-money id="editAmount" class="w-full ds-input">
-                    </div>
-                    <div>
-                        <label class="ds-label">입금일</label>
-                        <input type="date" id="editDate" class="w-full ds-input">
-                    </div>
-                    <div>
-                        <label class="ds-label">입금방법</label>
-                        <select id="editMethod" class="w-full ds-input">
-                            <option value="">선택</option>
-                            <option value="계좌이체">계좌이체</option>
-                            <option value="현금">현금</option>
-                            <option value="카드">카드</option>
-                            <option value="수표">수표</option>
-                            <option value="기타">기타</option>
-                        </select>
-                    </div>
-                    <div>
-                        <label class="ds-label">참조번호</label>
-                        <input type="text" id="editRef" class="w-full ds-input">
-                    </div>
-                    <div>
-                        <label class="ds-label">메모</label>
-                        <input type="text" id="editNotes" class="w-full ds-input">
-                    </div>
-                    <div class="flex gap-2 pt-2">
-                        <button onclick="savePaymentEdit()" class="ds-btn ds-btn-primary flex-1" style="background:var(--c-warning)">저장</button>
-                        <button onclick="closePaymentModal()" class="ds-btn ds-btn-secondary flex-1">취소</button>
-                    </div>
-                </div>
+        <div id="paymentEditModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/50" style="z-index:60">
+          <div class="bg-white rounded-lg shadow-xl w-[440px] p-6">
+            <div class="flex justify-between items-center mb-4">
+              <h3 class="text-lg font-bold text-gray-800"><i class="fas fa-edit text-orange-500 mr-2"></i>입금 수정</h3>
+              <button onclick="closePaymentModal()" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times"></i></button>
             </div>
+            <input type="hidden" id="editPaymentId">
+            <div class="space-y-3">
+              <div>
+                <label class="text-sm font-semibold text-gray-700 mb-1 block">입금액</label>
+                <input type="text" inputmode="numeric" data-money id="editAmount" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+              </div>
+              <div>
+                <label class="text-sm font-semibold text-gray-700 mb-1 block">입금일</label>
+                <input type="date" id="editDate" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+              </div>
+              <div>
+                <label class="text-sm font-semibold text-gray-700 mb-1 block">입금방법</label>
+                <select id="editMethod" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+                  <option value="">선택</option>
+                  <option value="계좌이체">계좌이체</option>
+                  <option value="현금">현금</option>
+                  <option value="카드">카드</option>
+                  <option value="수표">수표</option>
+                  <option value="어음">어음</option>
+                  <option value="기타">기타</option>
+                </select>
+              </div>
+              <div>
+                <label class="text-sm font-semibold text-gray-700 mb-1 block">참조번호</label>
+                <input type="text" id="editRef" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+              </div>
+              <div>
+                <label class="text-sm font-semibold text-gray-700 mb-1 block">메모</label>
+                <input type="text" id="editNotes" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+              </div>
+            </div>
+            <div class="flex items-center gap-2 mt-6">
+              <button onclick="deletePaymentFromModal()" class="px-3 py-2 border border-red-300 text-red-600 rounded-lg text-sm hover:bg-red-50">
+                <i class="fas fa-trash mr-1"></i>삭제
+              </button>
+              <div class="flex-1"></div>
+              <button onclick="closePaymentModal()" class="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm hover:bg-gray-50">취소</button>
+              <button onclick="savePaymentEdit()" class="px-4 py-2 bg-orange-500 text-white rounded-lg text-sm hover:bg-orange-600">
+                <i class="fas fa-save mr-1"></i>저장
+              </button>
+            </div>
+          </div>
         </div>
 
         <!-- ===== 감액 등록 모달 ===== -->
@@ -627,56 +781,102 @@ export function ledgerPage(c: Context<HonoEnv>) {
 
         <!-- ===== 원장 알림 발송 모달 ===== -->
         <div id="ledgerSendModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/50" style="z-index:60">
-          <div class="bg-white rounded-lg shadow-xl w-[500px] max-h-[80vh] overflow-y-auto p-6">
+          <div class="bg-white rounded-lg shadow-xl w-[550px] max-h-[80vh] overflow-y-auto p-6">
             <div class="flex items-center justify-between mb-4">
               <h3 class="text-lg font-bold text-gray-800"><i class="fas fa-paper-plane text-blue-600 mr-2"></i>원장 알림 발송</h3>
               <button onclick="closeLedgerSendModal()" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times"></i></button>
             </div>
             <div class="space-y-4">
+              <!-- 채널 선택 (토글 버튼) -->
+              <div class="flex gap-2">
+                <button onclick="setLedgerChannel('alimtalk')" id="ledgerChAlimtalk" class="flex-1 px-3 py-2 text-sm rounded-lg border-2 border-gray-200 text-gray-600">
+                  <i class="fas fa-comment-dots mr-1"></i>카카오톡
+                </button>
+                <button onclick="setLedgerChannel('sms')" id="ledgerChSms" class="flex-1 px-3 py-2 text-sm rounded-lg border-2 border-blue-500 bg-blue-50 text-blue-700 font-medium">
+                  <i class="fas fa-sms mr-1"></i>문자
+                </button>
+                <button onclick="setLedgerChannel('email')" id="ledgerChEmail" class="flex-1 px-3 py-2 text-sm rounded-lg border-2 border-gray-200 text-gray-600">
+                  <i class="fas fa-envelope mr-1"></i>이메일
+                </button>
+              </div>
+
+              <!-- 수신자 -->
               <div>
                 <label class="text-sm font-semibold text-gray-700 mb-1 block">수신자</label>
                 <input type="text" id="ledgerSendName" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-gray-50" readonly>
               </div>
+
+              <!-- 수신번호 (문자/카카오톡) -->
               <div id="ledgerPhoneRow">
                 <label class="text-sm font-semibold text-gray-700 mb-1 block">수신번호</label>
                 <input type="text" id="ledgerSendMobile" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="010-0000-0000">
                 <div id="ledgerNoMobile" class="hidden text-xs text-amber-600 mt-1"><i class="fas fa-exclamation-triangle mr-1"></i>거래처에 연락처가 등록되지 않았습니다. 직접 입력해주세요.</div>
               </div>
+
+              <!-- 이메일 (이메일 채널) -->
               <div id="ledgerEmailRow" class="hidden">
                 <label class="text-sm font-semibold text-gray-700 mb-1 block">이메일</label>
                 <input type="email" id="ledgerSendEmail" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="example@email.com">
                 <div id="ledgerNoEmail" class="hidden text-xs text-amber-600 mt-1"><i class="fas fa-exclamation-triangle mr-1"></i>거래처에 이메일이 등록되지 않았습니다. 직접 입력해주세요.</div>
               </div>
-              <div>
-                <label class="text-sm font-semibold text-gray-700 mb-1 block">발송 채널</label>
-                <select id="ledgerSendChannel" onchange="toggleLedgerChannelFields()" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
-                  <option value="sms">문자 (SMS/LMS)</option>
-                  <option value="alimtalk">카카오톡</option>
-                  <option value="email">이메일</option>
-                </select>
-              </div>
-              <div>
-                <label class="text-sm font-semibold text-gray-700 mb-1 block">카카오톡 템플릿 <span class="text-xs text-gray-400">(카카오톡 선택 시)</span></label>
+
+              <!-- 알림톡 템플릿 (카카오톡 채널) -->
+              <div id="ledgerAlimtalkArea" class="hidden">
+                <label class="text-sm font-semibold text-gray-700 mb-1 block">템플릿</label>
                 <select id="ledgerTemplateCode" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
                   <option value="">직접 작성 (템플릿 없이)</option>
                 </select>
               </div>
-              <div>
-                <label class="text-sm font-semibold text-gray-700 mb-1 block">제목 <span class="text-xs text-gray-400">(문자 LMS용)</span></label>
-                <input type="text" id="ledgerSmsSubject" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="제목 (선택, 입력 시 LMS)">
+
+              <!-- 제목 (문자 LMS) -->
+              <div id="ledgerSmsArea">
+                <label class="text-sm font-semibold text-gray-700 mb-1 block">제목 <span class="text-xs text-gray-400">(입력 시 LMS)</span></label>
+                <input type="text" id="ledgerSmsSubject" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="제목 (선택)">
               </div>
+
+              <!-- 메시지 내용 -->
               <div>
                 <label class="text-sm font-semibold text-gray-700 mb-1 block">메시지 내용</label>
-                <textarea id="ledgerSendContent" rows="8" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"></textarea>
+                <textarea id="ledgerSendContent" rows="6" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"></textarea>
                 <p class="text-xs text-gray-400 mt-1">포털 링크가 자동으로 추가됩니다 (7일간 유효)</p>
               </div>
             </div>
             <div class="flex justify-end gap-2 mt-6">
               <button onclick="closeLedgerSendModal()" class="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm hover:bg-gray-50">취소</button>
-              <button onclick="sendLedgerNotification()" class="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700"><i class="fas fa-paper-plane mr-1"></i>발송</button>
+              <button onclick="sendLedgerNotification()" class="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700">
+                <i class="fas fa-paper-plane mr-1"></i>발송
+              </button>
             </div>
           </div>
         </div>
+
+        <!-- ===== 원장 팩스 발송 모달 ===== -->
+        <div id="ledgerFaxModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/50" style="z-index:60">
+          <div class="bg-white rounded-lg shadow-xl w-[400px] p-6">
+            <div class="flex justify-between items-center mb-4">
+              <h3 class="text-lg font-bold text-gray-800"><i class="fas fa-fax text-indigo-500 mr-2"></i>원장 팩스 발송</h3>
+              <button onclick="closeLedgerFaxModal()" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times"></i></button>
+            </div>
+            <div class="space-y-3">
+              <div>
+                <label class="text-sm font-semibold text-gray-700 mb-1 block">수신 팩스번호 <span class="text-red-500">*</span></label>
+                <input type="text" id="ledgerFaxNum" placeholder="042-000-0000" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+              </div>
+              <div>
+                <label class="text-sm font-semibold text-gray-700 mb-1 block">수신자명</label>
+                <input type="text" id="ledgerFaxName" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+              </div>
+              <div id="ledgerFaxStatus" class="text-xs text-gray-500"></div>
+            </div>
+            <div class="flex justify-end gap-2 mt-4">
+              <button onclick="closeLedgerFaxModal()" class="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm hover:bg-gray-50">취소</button>
+              <button onclick="sendLedgerFax()" id="ledgerFaxSendBtn" class="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm hover:bg-indigo-700"><i class="fas fa-paper-plane mr-1"></i>발송</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 인쇄용 영역 -->
+        <div id="ledgerPrintArea" style="display:none"></div>
     `,
     pageScript: ledgerScript
   })

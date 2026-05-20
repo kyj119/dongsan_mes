@@ -184,6 +184,32 @@ arRouter.get('/client/:clientId', async (c) => {
     ordersQuery += ' ORDER BY created_at ASC'
     const { results: orders } = await c.env.DB.prepare(ordersQuery).bind(...ordersParams).all<OrderRow>()
 
+    // Get order items (주문 품목 라인) for all orders
+    interface OrderItemLine {
+      order_id: number; item_name: string | null; width: number | null; height: number | null
+      quantity: number; unit: string | null; unit_price: number | null; amount: number | null
+      vat_included: number | null; content: string | null
+    }
+    const orderIds = orders.map(o => o.id)
+    let orderItemsMap = new Map<number, OrderItemLine[]>()
+    if (orderIds.length > 0) {
+      // D1 batch로 품목 조회 (최대 50개씩)
+      const chunks: number[][] = []
+      for (let i = 0; i < orderIds.length; i += 50) chunks.push(orderIds.slice(i, i + 50))
+      for (const chunk of chunks) {
+        const ph = chunk.map(() => '?').join(',')
+        const { results: items } = await c.env.DB.prepare(`
+          SELECT order_id, item_name, width, height, quantity, unit, unit_price, amount, vat_included, content
+          FROM order_items WHERE order_id IN (${ph}) AND parent_item_id IS NULL
+          ORDER BY sort_order ASC
+        `).bind(...chunk).all<OrderItemLine>()
+        for (const item of items) {
+          if (!orderItemsMap.has(item.order_id)) orderItemsMap.set(item.order_id, [])
+          orderItemsMap.get(item.order_id)!.push(item)
+        }
+      }
+    }
+
     // Get payments (입금)
     const { clause: paymentsEf, params: paymentsEfParams } = entityFilter(c)
     let paymentsQuery = `
@@ -244,17 +270,31 @@ arRouter.get('/client/:clientId', async (c) => {
     const lastPayment = payments.length > 0 ? payments[payments.length - 1] : null
 
     // Combine and sort by date ASC for running balance
+    // 미회계반영(BILLED 아닌) 주문은 원장에서 제외
+    const billedOrders = orders.filter(o => o.billing_status === 'BILLED')
     const transactions = [
-      ...orders.map(o => ({
+      ...billedOrders.map(o => ({
         type: 'order' as const,
+        order_id: o.id,
         date: o.created_at,
         description: `주문: ${o.order_number}`,
-        debit: o.billing_status === 'BILLED' ? (Number(o.billed_amount) || Number(o.final_amount) || 0) : 0,
+        debit: Number(o.billed_amount) || Number(o.final_amount) || 0,
         credit: 0,
         reference: o.order_number,
         status: o.status,
         billing_status: o.billing_status,
-        billed_amount: o.billed_amount
+        billed_amount: o.billed_amount,
+        final_amount: o.final_amount,
+        items: (orderItemsMap.get(o.id) || []).map(item => ({
+          item_name: item.item_name || '-',
+          spec: item.width && item.height ? `${item.width}×${item.height}` : '',
+          content: item.content || '',
+          quantity: item.quantity || 0,
+          unit: item.unit || 'EA',
+          unit_price: Number(item.unit_price) || 0,
+          amount: Number(item.amount) || 0,
+          vat_included: item.vat_included ? true : false,
+        }))
       })),
       ...payments.map(p => ({
         type: 'payment' as const,
@@ -264,7 +304,8 @@ arRouter.get('/client/:clientId', async (c) => {
         debit: 0,
         credit: Number(p.amount) || 0,
         reference: p.reference_number,
-        notes: p.notes
+        notes: p.notes,
+        payment_method: p.payment_method || '기타',
       })),
       ...adjustments.map(a => ({
         type: 'adjustment' as const,
@@ -1870,9 +1911,233 @@ arRouter.post('/send-email', async (c) => {
 })
 
 // ============================================================================
-// PURCHASE LEDGER IMPROVEMENTS
+// 분석 기능 (월말 마감 / 손익 요약 / 평균 회수 기간)
 // ============================================================================
 
-// POST /purchase-adjustment - 매입 감액/조정 등록 (MANAGER+)
+// GET /closing-summary - 월말 마감 대시보드
+arRouter.get('/closing-summary', async (c) => {
+  try {
+    const now = new Date()
+    const y = now.getFullYear()
+    const m = now.getMonth() // 0-based
+    const monthStart = `${y}-${String(m + 1).padStart(2, '0')}-01`
+    const monthEnd = new Date(y, m + 1, 0).toISOString().substring(0, 10)
+
+    const ef = entityFilter(c)
+    const efO = entityFilter(c, 'o')
+    const efP = entityFilter(c, 'p')
+
+    // 이번달 매출 (BILLED 기준)
+    const salesRes = await c.env.DB.prepare(`
+      SELECT COALESCE(SUM(CASE WHEN billing_status='BILLED' THEN billed_amount ELSE 0 END),0) as month_sales,
+             COUNT(*) as month_order_count
+      FROM orders o
+      WHERE status != 'CANCELLED' AND date(o.created_at) >= ? AND date(o.created_at) <= ?${efO.clause}
+    `).bind(monthStart, monthEnd, ...efO.params).first<{ month_sales: number; month_order_count: number }>()
+
+    // 이번달 입금
+    const payRes = await c.env.DB.prepare(`
+      SELECT COALESCE(SUM(amount),0) as month_payments, COUNT(*) as month_payment_count
+      FROM payments p WHERE date(payment_date) >= ? AND date(payment_date) <= ?${efP.clause}
+    `).bind(monthStart, monthEnd, ...efP.params).first<{ month_payments: number; month_payment_count: number }>()
+
+    // 총 미수금 (전체)
+    const balRes = await c.env.DB.prepare(
+      `SELECT COALESCE(SUM(balance),0) as total_receivables, COUNT(*) as receivable_clients
+       FROM clients WHERE is_active=1 AND balance > 0`
+    ).first<{ total_receivables: number; receivable_clients: number }>()
+
+    // 미발행 세금계산서 (SHIPPED but not BILLED)
+    const unbilledRes = await c.env.DB.prepare(`
+      SELECT COUNT(*) as unbilled_count, COALESCE(SUM(final_amount),0) as unbilled_amount
+      FROM orders o
+      WHERE status IN ('SHIPPED','DELIVERED') AND (billing_status IS NULL OR billing_status != 'BILLED')${efO.clause}
+    `).bind(...efO.params).first<{ unbilled_count: number; unbilled_amount: number }>()
+
+    // 미처리 조정 건수 (이번달)
+    const adjRes = await c.env.DB.prepare(`
+      SELECT COUNT(*) as adj_count, COALESCE(SUM(amount),0) as adj_amount
+      FROM adjustments WHERE date(created_at) >= ? AND date(created_at) <= ?${ef.clause}
+    `).bind(monthStart, monthEnd, ...ef.params).first<{ adj_count: number; adj_amount: number }>()
+
+    // 지난달 매출 (전월 대비용)
+    const prevStart = `${m === 0 ? y - 1 : y}-${String(m === 0 ? 12 : m).padStart(2, '0')}-01`
+    const prevEnd = new Date(y, m, 0).toISOString().substring(0, 10)
+    const prevSalesRes = await c.env.DB.prepare(`
+      SELECT COALESCE(SUM(CASE WHEN billing_status='BILLED' THEN billed_amount ELSE 0 END),0) as prev_sales
+      FROM orders o
+      WHERE status != 'CANCELLED' AND date(o.created_at) >= ? AND date(o.created_at) <= ?${efO.clause}
+    `).bind(prevStart, prevEnd, ...efO.params).first<{ prev_sales: number }>()
+
+    const prevPayRes = await c.env.DB.prepare(`
+      SELECT COALESCE(SUM(amount),0) as prev_payments
+      FROM payments p WHERE date(payment_date) >= ? AND date(payment_date) <= ?${efP.clause}
+    `).bind(prevStart, prevEnd, ...efP.params).first<{ prev_payments: number }>()
+
+    return c.json({
+      success: true,
+      data: {
+        period: { start: monthStart, end: monthEnd },
+        month_sales: salesRes?.month_sales || 0,
+        month_order_count: salesRes?.month_order_count || 0,
+        month_payments: payRes?.month_payments || 0,
+        month_payment_count: payRes?.month_payment_count || 0,
+        total_receivables: balRes?.total_receivables || 0,
+        receivable_clients: balRes?.receivable_clients || 0,
+        unbilled_count: unbilledRes?.unbilled_count || 0,
+        unbilled_amount: unbilledRes?.unbilled_amount || 0,
+        adj_count: adjRes?.adj_count || 0,
+        adj_amount: adjRes?.adj_amount || 0,
+        prev_month_sales: prevSalesRes?.prev_sales || 0,
+        prev_month_payments: prevPayRes?.prev_payments || 0,
+      }
+    })
+  } catch (error) {
+    console.error('Closing summary error:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
+  }
+})
+
+// GET /profit-summary - 매출-매입 손익 요약
+arRouter.get('/profit-summary', async (c) => {
+  try {
+    const { months = '6' } = c.req.query()
+    const monthCount = parseInt(months)
+    const efO = entityFilter(c, 'o')
+    const efP = entityFilter(c, 'p')
+    const efPo = entityFilter(c, 'po')
+
+    // 월별 매출 (BILLED 기준)
+    const { results: monthlySales } = await c.env.DB.prepare(`
+      SELECT strftime('%Y-%m', o.created_at) as month,
+             COALESCE(SUM(CASE WHEN billing_status='BILLED' THEN billed_amount ELSE final_amount END),0) as sales
+      FROM orders o
+      WHERE status != 'CANCELLED'${efO.clause}
+      GROUP BY month ORDER BY month DESC LIMIT ?
+    `).bind(...efO.params, monthCount).all<{ month: string; sales: number }>()
+
+    // 월별 매입
+    const { results: monthlyPurchases } = await c.env.DB.prepare(`
+      SELECT strftime('%Y-%m', po.created_at) as month,
+             COALESCE(SUM(po.final_amount),0) as purchases
+      FROM purchase_orders po
+      WHERE po.status != 'CANCELLED'${efPo.clause}
+      GROUP BY month ORDER BY month DESC LIMIT ?
+    `).bind(...efPo.params, monthCount).all<{ month: string; purchases: number }>()
+
+    // 월별 입금
+    const { results: monthlyPayments } = await c.env.DB.prepare(`
+      SELECT strftime('%Y-%m', p.payment_date) as month,
+             COALESCE(SUM(p.amount),0) as payments
+      FROM payments p WHERE 1=1${efP.clause}
+      GROUP BY month ORDER BY month DESC LIMIT ?
+    `).bind(...efP.params, monthCount).all<{ month: string; payments: number }>()
+
+    // 월별 지급
+    const { results: monthlyPurchPayments } = await c.env.DB.prepare(`
+      SELECT strftime('%Y-%m', pp.payment_date) as month,
+             COALESCE(SUM(pp.amount),0) as purch_payments
+      FROM purchase_payments pp WHERE 1=1${efP.clause.replace(/\bp\./g, 'pp.')}
+      GROUP BY month ORDER BY month DESC LIMIT ?
+    `).bind(...efP.params, monthCount).all<{ month: string; purch_payments: number }>()
+
+    // 월별 데이터 병합
+    interface MonthlyProfit { month: string; sales: number; purchases: number; profit: number; payments: number; purch_payments: number }
+    const monthMap = new Map<string, MonthlyProfit>()
+    monthlySales.forEach(s => {
+      monthMap.set(s.month, { month: s.month, sales: s.sales, purchases: 0, profit: s.sales, payments: 0, purch_payments: 0 })
+    })
+    monthlyPurchases.forEach(p => {
+      const e = monthMap.get(p.month)
+      if (e) { e.purchases = p.purchases; e.profit = e.sales - p.purchases }
+      else monthMap.set(p.month, { month: p.month, sales: 0, purchases: p.purchases, profit: -p.purchases, payments: 0, purch_payments: 0 })
+    })
+    monthlyPayments.forEach(p => {
+      const e = monthMap.get(p.month)
+      if (e) e.payments = p.payments
+    })
+    monthlyPurchPayments.forEach(p => {
+      const e = monthMap.get(p.month)
+      if (e) e.purch_payments = p.purch_payments
+    })
+    const monthly = Array.from(monthMap.values()).sort((a, b) => b.month.localeCompare(a.month))
+
+    // 거래처별 손익 (매출+매입 양쪽 거래가 있는 거래처)
+    const { results: clientProfit } = await c.env.DB.prepare(`
+      SELECT c.id, c.client_name,
+        COALESCE(s.total_sales,0) as sales,
+        COALESCE(p.total_purchases,0) as purchases,
+        COALESCE(s.total_sales,0) - COALESCE(p.total_purchases,0) as profit
+      FROM clients c
+      LEFT JOIN (
+        SELECT client_id, SUM(CASE WHEN billing_status='BILLED' THEN billed_amount ELSE final_amount END) as total_sales
+        FROM orders WHERE status != 'CANCELLED' GROUP BY client_id
+      ) s ON s.client_id = c.id
+      LEFT JOIN (
+        SELECT supplier_id, SUM(final_amount) as total_purchases
+        FROM purchase_orders WHERE status != 'CANCELLED' GROUP BY supplier_id
+      ) p ON p.supplier_id = c.id
+      WHERE c.is_active = 1 AND (s.total_sales > 0 OR p.total_purchases > 0)
+      ORDER BY profit DESC
+    `).all<{ id: number; client_name: string; sales: number; purchases: number; profit: number }>()
+
+    return c.json({
+      success: true,
+      data: { monthly, clients: clientProfit }
+    })
+  } catch (error) {
+    console.error('Profit summary error:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
+  }
+})
+
+// GET /collection-period - 거래처별 평균 회수 기간
+arRouter.get('/collection-period', async (c) => {
+  try {
+    const ef = entityFilter(c, 'o')
+
+    // 거래처별: 주문 생성일 ~ 마지막 입금일 평균 차이 계산
+    // 완납된 주문(balance = 0, 입금 있음) 기준
+    const { results } = await c.env.DB.prepare(`
+      SELECT
+        c.id as client_id,
+        c.client_name,
+        c.balance,
+        COUNT(DISTINCT sub.order_id) as settled_orders,
+        ROUND(AVG(sub.days_to_pay), 0) as avg_days,
+        MIN(sub.days_to_pay) as min_days,
+        MAX(sub.days_to_pay) as max_days,
+        MAX(sub.last_payment_date) as last_payment_date
+      FROM clients c
+      INNER JOIN (
+        SELECT
+          o.client_id,
+          o.id as order_id,
+          julianday(p.payment_date) - julianday(date(o.created_at)) as days_to_pay,
+          p.payment_date as last_payment_date
+        FROM orders o
+        INNER JOIN payments p ON p.client_id = o.client_id
+          AND p.payment_date >= date(o.created_at)
+        WHERE o.status != 'CANCELLED'
+          AND o.billing_status = 'BILLED'${ef.clause}
+        GROUP BY o.id
+        HAVING days_to_pay >= 0
+      ) sub ON sub.client_id = c.id
+      WHERE c.is_active = 1
+      GROUP BY c.id
+      HAVING settled_orders >= 2
+      ORDER BY avg_days DESC
+    `).bind(...ef.params).all<{
+      client_id: number; client_name: string; balance: number
+      settled_orders: number; avg_days: number; min_days: number; max_days: number
+      last_payment_date: string | null
+    }>()
+
+    return c.json({ success: true, data: results })
+  } catch (error) {
+    console.error('Collection period error:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
+  }
+})
 
 export default arRouter

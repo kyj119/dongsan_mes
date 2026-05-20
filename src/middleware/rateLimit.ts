@@ -15,7 +15,8 @@ function cleanup() {
 
 export function rateLimitMiddleware(maxAttempts: number = 10, windowMs: number = 60000) {
   return createMiddleware<HonoEnv>(async (c, next) => {
-    const ip = c.req.header('CF-Connecting-IP') || c.req.header('X-Forwarded-For') || 'unknown'
+    const xff = c.req.header('X-Forwarded-For')
+    const ip = c.req.header('CF-Connecting-IP') || (xff ? xff.split(',')[0].trim() : '') || 'unknown'
     const key = `${ip}:${new URL(c.req.url).pathname}`
     const now = Date.now()
 

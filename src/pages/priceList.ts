@@ -71,6 +71,9 @@ export function priceListPage(c: Context<HonoEnv>) {
               <button type="button" onclick="printPriceList()" class="px-4 py-2 bg-green-600 text-white rounded-lg text-sm hover:bg-green-700">
                 <i class="fas fa-print mr-1"></i>인쇄
               </button>
+              <button type="button" onclick="openPriceFaxModal()" class="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm hover:bg-indigo-700">
+                <i class="fas fa-fax mr-1"></i>팩스
+              </button>
             </div>
 
             <div id="clientBanner" class="hidden mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm flex items-center gap-2">
@@ -119,6 +122,31 @@ export function priceListPage(c: Context<HonoEnv>) {
         <!-- 로고 설정은 /settings 페이지로 이동됨 -->
 
         <div id="printArea"></div>
+
+        <!-- 팩스 발송 모달 -->
+        <div id="priceFaxModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div class="bg-white rounded-lg shadow-xl w-[400px] p-6">
+            <div class="flex justify-between items-center mb-4">
+              <h3 class="text-lg font-bold text-gray-800"><i class="fas fa-fax text-indigo-500 mr-2"></i>단가표 팩스 발송</h3>
+              <button onclick="closePriceFaxModal()" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times"></i></button>
+            </div>
+            <div class="space-y-3">
+              <div>
+                <label class="text-sm font-semibold text-gray-700 mb-1 block">수신 팩스번호 <span class="text-red-500">*</span></label>
+                <input type="text" id="priceFaxNum" placeholder="042-000-0000" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+              </div>
+              <div>
+                <label class="text-sm font-semibold text-gray-700 mb-1 block">수신자명</label>
+                <input type="text" id="priceFaxName" placeholder="수신자명" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+              </div>
+              <div id="priceFaxStatus" class="text-xs text-gray-500"></div>
+            </div>
+            <div class="flex justify-end gap-2 mt-4">
+              <button onclick="closePriceFaxModal()" class="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm hover:bg-gray-50">취소</button>
+              <button onclick="sendPriceFax()" id="priceFaxSendBtn" class="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm hover:bg-indigo-700"><i class="fas fa-paper-plane mr-1"></i>발송</button>
+            </div>
+          </div>
+        </div>
       </div>
 
       <!-- 정책 생성/수정 모달 -->
