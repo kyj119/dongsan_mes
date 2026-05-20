@@ -8,13 +8,14 @@ claims.use('*', authMiddleware)
 
 // ─── 불량 코드 목록 ──────────────────────────────────────────────────────────
 claims.get('/defect-codes', async (c) => {
+  const dcEf = entityFilter(c, 'd')
   const { results } = await c.env.DB.prepare(`
     SELECT d.*, p.name as parent_name
     FROM defect_codes d
     LEFT JOIN defect_codes p ON d.parent_id = p.id
-    WHERE d.is_active = 1
+    WHERE d.is_active = 1 ${dcEf.clause}
     ORDER BY d.sort_order ASC
-  `).all()
+  `).bind(...dcEf.params).all()
   return c.json({ success: true, data: results })
 })
 
@@ -25,9 +26,9 @@ claims.post('/defect-codes', requireRole('ADMIN', 'MANAGER'), async (c) => {
     return c.json({ success: false, error: 'code, name, category 필수' }, 400)
   }
   const result = await c.env.DB.prepare(`
-    INSERT INTO defect_codes (code, name, parent_id, category, description, preventive_action)
-    VALUES (?, ?, ?, ?, ?, ?)
-  `).bind(code, name, parent_id || null, category, description || null, preventive_action || null).run()
+    INSERT INTO defect_codes (code, name, parent_id, category, description, preventive_action, entity_id)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `).bind(code, name, parent_id || null, category, description || null, preventive_action || null, getEntityId(c)).run()
   return c.json({ success: true, data: { id: result.meta.last_row_id } })
 })
 

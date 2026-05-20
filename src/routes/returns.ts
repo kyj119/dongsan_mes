@@ -54,14 +54,19 @@ returns.post('/', async (c) => {
 
   const returnId = result.meta.last_row_id as number
 
-  // 반품 아이템 생성
+  // #126 #137: 아이템 batch 실패 시 헤더 롤백 (고아 방지)
   const itemStmts = items.map((item: any) =>
     c.env.DB.prepare(`
       INSERT INTO return_items (return_id, order_item_id, quantity, condition, disposition, notes)
       VALUES (?, ?, ?, ?, ?, ?)
     `).bind(returnId, item.order_item_id, item.quantity, item.condition || 'UNKNOWN', item.disposition || null, item.notes || null)
   )
-  if (itemStmts.length > 0) await c.env.DB.batch(itemStmts)
+  try {
+    if (itemStmts.length > 0) await c.env.DB.batch(itemStmts)
+  } catch (e) {
+    await c.env.DB.prepare('DELETE FROM returns WHERE id = ?').bind(returnId).run()
+    throw e
+  }
 
   return c.json({ success: true, data: { id: returnId, return_number: returnNumber } })
 })
@@ -76,14 +81,34 @@ returns.patch('/:id/status', requireRole('ADMIN', 'MANAGER'), async (c) => {
     return c.json({ success: false, error: `유효한 상태: ${validStatuses.join(', ')}` }, 400)
   }
 
+  // #133: 상태머신 전환 검증
+  const transitions: Record<string, string[]> = {
+    REQUESTED: ['APPROVED'],
+    APPROVED: ['SHIPPED_BACK'],
+    SHIPPED_BACK: ['RECEIVED'],
+    RECEIVED: ['INSPECTED'],
+    INSPECTED: ['RESOLVED'],
+  }
+  // #132: entity 격리
+  const patchEf = entityFilter(c)
+  const currentReturn = await c.env.DB.prepare(
+    `SELECT status FROM returns WHERE id = ?${patchEf.clause}`
+  ).bind(id, ...patchEf.params).first<{ status: string }>()
+  if (!currentReturn) return c.json({ success: false, error: '반품을 찾을 수 없습니다.' }, 404)
+
+  const allowed = transitions[currentReturn.status]
+  if (!allowed || !allowed.includes(status)) {
+    return c.json({ success: false, error: `${currentReturn.status} → ${status} 전환은 허용되지 않습니다.` }, 400)
+  }
+
   let sql = `UPDATE returns SET status = ?, updated_at = CURRENT_TIMESTAMP`
   const binds: any[] = [status]
 
   if (resolution) { sql += ', resolution = ?'; binds.push(resolution) }
   if (refund_amount !== undefined) { sql += ', refund_amount = ?'; binds.push(refund_amount) }
 
-  sql += ' WHERE id = ?'
-  binds.push(id)
+  sql += ` WHERE id = ?${patchEf.clause}`
+  binds.push(id, ...patchEf.params)
 
   await c.env.DB.prepare(sql).bind(...binds).run()
 
@@ -106,14 +131,21 @@ returns.patch('/:id/status', requireRole('ADMIN', 'MANAGER'), async (c) => {
 
       const eid = getEntityId(c) || 1
       await c.env.DB.batch(
-        returnItems.map(ri => {
+        returnItems.flatMap(ri => {
           const balanceAfter = (balMap[ri.item_id] || 0) + ri.quantity
-          return c.env.DB.prepare(`
-            INSERT INTO inventory_transactions
-              (item_id, transaction_type, quantity, unit_price, total_amount,
-               reference_type, reference_id, reason, transaction_date, balance_after, entity_id)
-            VALUES (?, 'IN', ?, 0, 0, 'RETURN', ?, '반품 입고', CURRENT_TIMESTAMP, ?, ?)
-          `).bind(ri.item_id, ri.quantity, id, balanceAfter, eid)
+          return [
+            // 실제 재고 수량 반영
+            c.env.DB.prepare(
+              `UPDATE inventory SET quantity = quantity + ?, last_updated = CURRENT_TIMESTAMP WHERE item_id = ? AND entity_id = ?`
+            ).bind(ri.quantity, ri.item_id, eid),
+            // 트랜잭션 로그
+            c.env.DB.prepare(`
+              INSERT INTO inventory_transactions
+                (item_id, transaction_type, quantity, unit_price, total_amount,
+                 reference_type, reference_id, reason, transaction_date, balance_after, entity_id)
+              VALUES (?, 'IN', ?, 0, 0, 'RETURN', ?, '반품 입고', CURRENT_TIMESTAMP, ?, ?)
+            `).bind(ri.item_id, ri.quantity, id, balanceAfter, eid),
+          ]
         })
       )
     }
@@ -125,13 +157,14 @@ returns.patch('/:id/status', requireRole('ADMIN', 'MANAGER'), async (c) => {
 // ─── 반품 상세 ───────────────────────────────────────────────────────────────
 returns.get('/:id', async (c) => {
   const id = Number(c.req.param('id'))
+  const retEf = entityFilter(c, 'r')
   const ret = await c.env.DB.prepare(`
     SELECT r.*, cl.client_name, o.order_number
     FROM returns r
     LEFT JOIN clients cl ON r.client_id = cl.id
     LEFT JOIN orders o ON r.order_id = o.id
-    WHERE r.id = ?
-  `).bind(id).first()
+    WHERE r.id = ? ${retEf.clause}
+  `).bind(id, ...retEf.params).first()
 
   const { results: items } = await c.env.DB.prepare(`
     SELECT ri.*, oi.item_name, oi.quantity as original_qty

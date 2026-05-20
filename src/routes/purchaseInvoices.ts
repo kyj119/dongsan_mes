@@ -50,7 +50,7 @@ purchaseInvoices.post('/', async (c) => {
 
   const invoiceId = result.meta.last_row_id as number
 
-  // 라인 아이템
+  // #126 #137: 아이템 batch 실패 시 헤더 롤백 (고아 방지)
   if (items?.length) {
     const stmts = items.map((item: any) =>
       c.env.DB.prepare(`
@@ -58,7 +58,12 @@ purchaseInvoices.post('/', async (c) => {
         VALUES (?, ?, ?, ?, ?, ?)
       `).bind(invoiceId, item.po_item_id || null, item.item_id || null, item.quantity, item.unit_price, item.amount)
     )
-    await c.env.DB.batch(stmts)
+    try {
+      await c.env.DB.batch(stmts)
+    } catch (e) {
+      await c.env.DB.prepare('DELETE FROM purchase_invoices WHERE id = ?').bind(invoiceId).run()
+      throw e
+    }
   }
 
   return c.json({ success: true, data: { id: invoiceId } })
@@ -68,9 +73,10 @@ purchaseInvoices.post('/', async (c) => {
 purchaseInvoices.post('/:id/match', requireRole('ADMIN', 'MANAGER'), async (c) => {
   const id = Number(c.req.param('id'))
 
+  const matchEf = entityFilter(c, 'pi')
   const invoice = await c.env.DB.prepare(
-    `SELECT * FROM purchase_invoices WHERE id = ?`
-  ).bind(id).first<any>()
+    `SELECT pi.* FROM purchase_invoices pi WHERE pi.id = ?${matchEf.clause}`
+  ).bind(id, ...matchEf.params).first<any>()
   if (!invoice) return c.json({ success: false, error: '인보이스를 찾을 수 없습니다.' }, 404)
   if (!invoice.po_id) {
     return c.json({ success: false, error: 'PO가 연결되지 않았습니다.' }, 400)
@@ -121,13 +127,14 @@ purchaseInvoices.post('/:id/match', requireRole('ADMIN', 'MANAGER'), async (c) =
 // ─── 매입 인보이스 상세 ──────────────────────────────────────────────────────
 purchaseInvoices.get('/:id', async (c) => {
   const id = Number(c.req.param('id'))
+  const detailEf = entityFilter(c, 'pi')
   const invoice = await c.env.DB.prepare(`
     SELECT pi.*, cl.client_name as supplier_name, po.po_number
     FROM purchase_invoices pi
     LEFT JOIN clients cl ON pi.supplier_id = cl.id
     LEFT JOIN purchase_orders po ON pi.po_id = po.id
-    WHERE pi.id = ?
-  `).bind(id).first()
+    WHERE pi.id = ? ${detailEf.clause}
+  `).bind(id, ...detailEf.params).first()
 
   const { results: items } = await c.env.DB.prepare(`
     SELECT pii.*, i.item_name

@@ -80,19 +80,21 @@ fixedAssets.post('/depreciate', requireRole('ADMIN'), async (c) => {
     SELECT * FROM fixed_assets WHERE status = 'IN_USE' ${eFilter.clause}
   `).bind(...eFilter.params).all<any>()
 
-  // N+1 해소: 이미 처리된 기간 + 최신 누적감가상각을 일괄 조회
+  // #131: entity_id 필터 추가
+  const eid = getEntityId(c) || 1
   const { results: existingPeriods } = await c.env.DB.prepare(
-    `SELECT asset_id FROM depreciation_records WHERE period = ?`
-  ).bind(period).all<{ asset_id: number }>()
+    `SELECT asset_id FROM depreciation_records WHERE period = ? AND entity_id = ?`
+  ).bind(period, eid).all<{ asset_id: number }>()
   const alreadyProcessed = new Set(existingPeriods.map(r => r.asset_id))
 
   const { results: latestRecords } = await c.env.DB.prepare(`
     SELECT dr.asset_id, dr.accumulated_depreciation, dr.book_value
     FROM depreciation_records dr
     INNER JOIN (
-      SELECT asset_id, MAX(period) as max_period FROM depreciation_records GROUP BY asset_id
+      SELECT asset_id, MAX(period) as max_period FROM depreciation_records WHERE entity_id = ? GROUP BY asset_id
     ) latest ON dr.asset_id = latest.asset_id AND dr.period = latest.max_period
-  `).all<{ asset_id: number; accumulated_depreciation: number; book_value: number }>()
+    WHERE dr.entity_id = ?
+  `).bind(eid, eid).all<{ asset_id: number; accumulated_depreciation: number; book_value: number }>()
   const latestMap = new Map(latestRecords.map(r => [r.asset_id, r]))
 
   const stmts: any[] = []
@@ -127,9 +129,9 @@ fixedAssets.post('/depreciate', requireRole('ADMIN'), async (c) => {
 
     stmts.push(
       c.env.DB.prepare(`
-        INSERT INTO depreciation_records (asset_id, period, depreciation_amount, accumulated_depreciation, book_value)
-        VALUES (?, ?, ?, ?, ?)
-      `).bind(asset.id, period, monthlyDepreciation, newAccumulated, newBookValue)
+        INSERT INTO depreciation_records (asset_id, period, depreciation_amount, accumulated_depreciation, book_value, entity_id)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `).bind(asset.id, period, monthlyDepreciation, newAccumulated, newBookValue, eid)
     )
     stmts.push(
       c.env.DB.prepare(`UPDATE fixed_assets SET current_book_value = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`)

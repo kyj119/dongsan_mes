@@ -32,6 +32,7 @@ interface MaxSeqRow { max_seq: number }
 interface QuotationRow {
   id: number; order_number: string; status: string
   valid_until: string | null; client_id: number; final_amount: number
+  delivery_date: string | null
 }
 interface OrderEmailRow {
   id: number; order_number: string; order_date: string; delivery_date: string | null
@@ -226,7 +227,7 @@ ordersOpsRouter.post('/:id/convert-to-order', requireRole('ADMIN', 'MANAGER'), a
     const force = body.force === true
 
     const order = await c.env.DB.prepare(`
-      SELECT id, order_number, status, valid_until, client_id, final_amount
+      SELECT id, order_number, status, valid_until, client_id, final_amount, delivery_date
       FROM orders WHERE id = ?
     `).bind(id).first<QuotationRow>()
 
@@ -251,6 +252,11 @@ ordersOpsRouter.post('/:id/convert-to-order', requireRole('ADMIN', 'MANAGER'), a
         error: `견적 유효기한이 만료되었습니다 (${order.valid_until}). force=true 로 강제 전환하거나 유효기한을 연장하세요.`,
         data: { expired: true, valid_until: order.valid_until }
       }, 400)
+    }
+
+    // #134: 납품일 없는 견적은 주문 전환 불가
+    if (!order.delivery_date) {
+      return c.json({ success: false, error: '납품일을 먼저 입력해야 주문으로 전환할 수 있습니다.' }, 400)
     }
 
     // QUOTATION → CONFIRMED 전환

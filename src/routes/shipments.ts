@@ -406,8 +406,9 @@ shipmentsRouter.post('/', requireRole('ADMIN', 'MANAGER', 'DESIGNER'), async (c)
 
     if (!body.order_id) return c.json({ success: false, error: '주문을 선택하세요.' }, 400)
 
-    // 주문 확인
-    const order = await c.env.DB.prepare('SELECT id, order_number, status FROM orders WHERE id = ?').bind(body.order_id).first<{ id: number; order_number: string; status: string }>()
+    // 주문 확인 (#123: entity_id 필터 추가)
+    const ef = entityFilter(c)
+    const order = await c.env.DB.prepare(`SELECT id, order_number, status FROM orders WHERE id = ?${ef.clause}`).bind(body.order_id, ...ef.params).first<{ id: number; order_number: string; status: string }>()
     if (!order) return c.json({ success: false, error: '주문을 찾을 수 없습니다.' }, 404)
 
     // 출고번호 생성

@@ -2004,8 +2004,13 @@ ordersCoreRouter.put('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
       ).run()
       cardsPreserved = true
     } else {
-      // #87: 카드+order_items 원자적 삭제 (재생성 전)
+      // #87 + #122: 카드 자식 테이블 + 카드 + order_items 원자적 삭제 (재생성 전)
       await c.env.DB.batch([
+        c.env.DB.prepare('DELETE FROM card_status_history WHERE card_id IN (SELECT id FROM cards WHERE order_id = ?)').bind(id),
+        c.env.DB.prepare('DELETE FROM quality_issues WHERE card_id IN (SELECT id FROM cards WHERE order_id = ?)').bind(id),
+        c.env.DB.prepare('DELETE FROM waste_records WHERE card_id IN (SELECT id FROM cards WHERE order_id = ?)').bind(id),
+        c.env.DB.prepare('UPDATE print_events SET card_id = NULL WHERE card_id IN (SELECT id FROM cards WHERE order_id = ?)').bind(id),
+        c.env.DB.prepare('DELETE FROM card_items WHERE card_id IN (SELECT id FROM cards WHERE order_id = ?)').bind(id),
         c.env.DB.prepare('DELETE FROM cards WHERE order_id = ?').bind(id),
         c.env.DB.prepare('DELETE FROM order_items WHERE order_id = ?').bind(id),
       ])

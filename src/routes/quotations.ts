@@ -531,6 +531,11 @@ quotationsRouter.post('/:id/convert-to-order', requireRole('ADMIN', 'MANAGER'), 
       return c.json({ success: false, error: '견적서에 품목이 없습니다.' }, 400)
     }
 
+    // #134: 납품일 없는 견적서 → 주문 전환 방지
+    if (!quotation.delivery_date) {
+      return c.json({ success: false, error: '납품일이 설정된 견적서만 주문으로 전환할 수 있습니다.' }, 400)
+    }
+
     // 주문번호 생성
     const today = new Date()
     const dateStr = today.toISOString().split('T')[0].replace(/-/g, '')

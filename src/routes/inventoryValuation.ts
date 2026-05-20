@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
+import { entityFilter } from '../utils/entityFilter'
 
 const inventoryValuation = new Hono<HonoEnv>()
 inventoryValuation.use('*', authMiddleware)
@@ -51,6 +52,7 @@ inventoryValuation.get('/report', async (c) => {
     results = rows
   } else if (method === 'FIFO') {
     // FIFO: 레이어별 잔여수량 * 레이어 단가 합산
+    const fifoEf = entityFilter(c, 'fl')
     const { results: rows } = await c.env.DB.prepare(`
       SELECT i.id, i.item_code, i.item_name, i.unit,
         SUM(fl.remaining_quantity) as current_stock,
@@ -58,10 +60,10 @@ inventoryValuation.get('/report', async (c) => {
         ROUND(SUM(fl.remaining_quantity * fl.unit_cost) / NULLIF(SUM(fl.remaining_quantity), 0), 2) as avg_cost
       FROM inventory_fifo_layers fl
       JOIN items i ON fl.item_id = i.id
-      WHERE fl.remaining_quantity > 0
+      WHERE fl.remaining_quantity > 0 ${fifoEf.clause}
       GROUP BY fl.item_id
       ORDER BY valuation DESC
-    `).all()
+    `).bind(...fifoEf.params).all()
     results = rows
   } else {
     // 표준원가: cost_standards 기반
