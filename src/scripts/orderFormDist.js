@@ -356,6 +356,10 @@
                     var res = await axios.post('/api/orders', orderData);
                     if (res.data.success) {
                         showToast('유통 주문이 등록되었습니다.', 'success');
+                        if (res.data.material_warnings && res.data.material_warnings.length > 0) {
+                            var wl = res.data.material_warnings.map(function(w) { return w.material_name + ': 부족 ' + w.shortfall + ' ' + w.unit; });
+                            alert('자재 부족 경고 ' + res.data.material_warnings.length + '건\n\n' + wl.join('\n'));
+                        }
                         window.location.href = '/orders';
                     } else {
                         showToast('등록 실패: ' + (res.data.error || '알 수 없는 오류'), 'error');

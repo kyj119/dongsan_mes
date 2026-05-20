@@ -167,6 +167,8 @@ const ENDPOINTS = [
   { path: '/api/inspections/results', name: 'inspections.results' },
   { path: '/api/inventory/receipts/inspection-counts', name: 'inventory.inspectionCounts' },
   { path: '/api/inventory/receipts/pending-review', name: 'inventory.pendingReview' },
+  // 주간 발주
+  { path: '/api/weekly-purchase/analyze', name: 'weeklyPurchase.analyze' },
 ]
 
 const COLOR = {

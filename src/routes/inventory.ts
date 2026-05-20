@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import { authMiddleware, requireRole } from '../middleware/auth'
 import type { HonoEnv } from '../types/env'
 import { getEntityId, entityFilter } from '../utils/entityFilter'
+import { triggerLowStockAlert } from '../utils/inventoryAlert'
 
 const inventoryRouter = new Hono<HonoEnv>()
 
@@ -565,6 +566,29 @@ inventoryRouter.post('/releases', async (c) => {
       ]
     })
     await c.env.DB.batch(releaseStmts)
+
+    // Phase 6: 출고 후 안전재고 이하 품목 알림
+    try {
+      const lowItems = items.filter((item: any) => {
+        const newQty = (stockMap[item.item_id] || 0) - item.quantity
+        const safeStock = Number(item.safe_stock) || 0
+        return safeStock > 0 && newQty <= safeStock
+      })
+      if (lowItems.length > 0) {
+        // 안전재고 정보 조회
+        const lowItemIds = lowItems.map((i: any) => i.item_id)
+        const lowPh = lowItemIds.map(() => '?').join(',')
+        const { results: lowDetails } = await c.env.DB.prepare(`
+          SELECT i.id as item_id, i.item_name, i.unit, COALESCE(inv.quantity, 0) as current_stock, COALESCE(inv.safe_stock, 0) as safe_stock
+          FROM items i LEFT JOIN inventory inv ON i.id = inv.item_id AND inv.entity_id = ?
+          WHERE i.id IN (${lowPh})
+        `).bind(entityId, ...lowItemIds).all()
+        await triggerLowStockAlert(c.env.DB, (lowDetails || []).map((d: any) => ({
+          item_id: d.item_id, item_name: d.item_name, current_stock: d.current_stock,
+          safe_stock: d.safe_stock, unit: d.unit || 'EA',
+        })), entityId)
+      }
+    } catch (_alertErr) { /* 알림 실패가 출고를 방해하면 안 됨 */ }
 
     return c.json({
       success: true,

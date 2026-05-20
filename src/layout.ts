@@ -35,6 +35,7 @@ const MENU_ITEMS: MenuGroup[] = [
     items: [
       { path: '/purchase-orders', icon: 'fa-shopping-cart', label: '발주 관리', roles: ['ADMIN', 'MANAGER'] },
       { path: '/purchase-requests', icon: 'fa-clipboard-list', label: '발주 요청', roles: ['ADMIN', 'MANAGER'], badgeId: 'nav-badge-pr' },
+      { path: '/weekly-purchase', icon: 'fa-calendar-week', label: '주간 일괄 발주', roles: ['ADMIN', 'MANAGER'] },
       { path: '/inspections', icon: 'fa-clipboard-check', label: '검수 템플릿 (고급)', roles: ['ADMIN'], badgeId: 'nav-badge-insp' },
       { path: '/receiving', icon: 'fa-truck-loading', label: '입고 관리', roles: ['ADMIN', 'MANAGER', 'OPERATOR'], badgeId: 'nav-badge-my-receiving' },
     ],

@@ -447,6 +447,10 @@ async function confirmStatusChange() {
       closeStatusModal();
       loadOrderStats();
       loadOrders();
+      // Phase 5: 자재 부족 경고
+      if (response.data.material_warnings && response.data.material_warnings.length > 0) {
+        showMaterialShortageWarning(response.data.material_warnings);
+      }
     } else if (response.data.requires_confirmation) {
       // 미완료 카드 확인 모달 표시
       closeStatusModal();
@@ -466,6 +470,35 @@ async function confirmStatusChange() {
     _statusChangeInProgress = false;
     if (btn) { btn.disabled = false; btn.textContent = '변경'; }
   }
+}
+
+// Phase 5: 자재 부족 경고 모달
+function showMaterialShortageWarning(warnings) {
+  var html = '<div class="mb-3 text-sm text-amber-700">'
+    + '<i class="fas fa-exclamation-triangle mr-1"></i>'
+    + '주문 확정 시 BOM 기준 자재 부족이 감지되었습니다.</div>'
+    + '<div class="overflow-x-auto"><table class="min-w-full text-sm">'
+    + '<thead class="bg-gray-50"><tr>'
+    + '<th class="px-3 py-1.5 text-left text-xs text-gray-500">자재명</th>'
+    + '<th class="px-3 py-1.5 text-right text-xs text-gray-500">필요량</th>'
+    + '<th class="px-3 py-1.5 text-right text-xs text-gray-500">현재고</th>'
+    + '<th class="px-3 py-1.5 text-right text-xs text-gray-500">발주중</th>'
+    + '<th class="px-3 py-1.5 text-right text-xs text-gray-500">부족</th>'
+    + '</tr></thead><tbody>';
+  warnings.forEach(function(w) {
+    html += '<tr class="border-t border-gray-100">'
+      + '<td class="px-3 py-1.5 font-medium">' + escapeHtml(w.material_name) + '</td>'
+      + '<td class="px-3 py-1.5 text-right">' + w.required + ' ' + (w.unit || '') + '</td>'
+      + '<td class="px-3 py-1.5 text-right">' + w.current_stock + '</td>'
+      + '<td class="px-3 py-1.5 text-right">' + w.on_order + '</td>'
+      + '<td class="px-3 py-1.5 text-right text-red-600 font-bold">' + w.shortfall + '</td>'
+      + '</tr>';
+  });
+  html += '</tbody></table></div>';
+  showModal('자재 부족 경고 (' + warnings.length + '건)', html, [
+    { label: '주간 발주로 이동', class: 'bg-blue-600 text-white hover:bg-blue-700', onclick: "window.navigateTo('/weekly-purchase')" },
+    { label: '확인', class: 'border border-gray-300 text-gray-700 hover:bg-gray-50', onclick: 'closeModal()' },
+  ]);
 }
 
 // 미완료 카드 확인 모달

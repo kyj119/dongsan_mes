@@ -562,10 +562,15 @@
                         const id = editMode ? editMode : res.data.data.id;
                         var msg = editMode ? '주문이 수정되었습니다.' : '주문이 등록되었습니다.';
                         if (res.data.message && res.data.message.includes('자동가공')) {
-                            msg += '\n\n🔄 자동가공이 시작되었습니다. 주문 상세에서 결과를 확인하세요.';
+                            msg += '\n\n자동가공이 시작되었습니다. 주문 상세에서 결과를 확인하세요.';
                         }
                         if (res.data.cards_preserved) {
-                            msg += '\n\n⚠️ ' + res.data.card_warning;
+                            msg += '\n\n' + res.data.card_warning;
+                        }
+                        // Phase 5: 자재 부족 경고
+                        if (res.data.material_warnings && res.data.material_warnings.length > 0) {
+                            var wl = res.data.material_warnings.map(function(w) { return w.material_name + ': 부족 ' + w.shortfall + ' ' + w.unit; });
+                            msg += '\n\n[자재 부족 ' + res.data.material_warnings.length + '건]\n' + wl.join('\n');
                         }
                         showToast(msg, 'warning');
                         // 견적서 폼이면 견적서 관리로, 아니면 주문 관리로

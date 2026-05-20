@@ -47,6 +47,12 @@
 
 ## 🟢 최근 완료 (2026-05-20)
 
+### 법인별·창고별 재고 분리 — Phase 1~6 전체 완료
+- **Phase 1~3** (2026-05-20): DB 스키마, entity_id 코드 대응, 창고 UI, 대시보드
+- **Phase 4** (2026-05-20): 주간 일괄 발주 — 소모예측+MRP+안전재고 통합 분석, 공급처별 PR 자동 생성, /weekly-purchase 대시보드
+- **Phase 5** (2026-05-20): 주문 확정 시 자재 부족 경고 — BOM 기반 자재 체크, 주문 생성/상태변경/견적전환 3곳에 non-blocking warning
+- **Phase 6** (2026-05-20): 알림 시스템 연동 — 출고 시 안전재고 이하 즉시 알림(in-app+stock_alerts), 주간 발주 결과 SMS 발송, MRP 버그 수정(po_id)
+
 ### CODEF API 확장 — 카드/보험/홈택스 함수 추가
 - codef.ts에 fetchCardApprovals, fetchInsurancePayments, fetchEmploymentInfo, fetchTaxInvoices, checkBusinessStatus 추가
 - cardExpenses 라우트에 CODEF 카드 연결(connect) + 동기화(sync) API 추가

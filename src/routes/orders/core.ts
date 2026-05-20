@@ -6,6 +6,7 @@ import { requireAnyPagePermission } from '../../middleware/permissions'
 import { logActivity } from '../../utils/activityLog'
 import { notifyRoles } from '../../utils/notify'
 import { recalculateOrderCosts } from '../../utils/costCalculator'
+import { checkMaterialShortage } from '../../utils/materialShortageCheck'
 import { sendEmail } from '../../services/emailProvider'
 import { getEntityId, entityFilter } from '../../utils/entityFilter'
 import { getEntityCompanyInfo } from '../../utils/entitySettings'
@@ -1416,13 +1417,27 @@ ordersCoreRouter.post('/', async (c) => {
       entityLabel: orderNumber, details: null
     })
 
+    // Phase 5: 주문 생성 시 CONFIRMED이면 자재 부족 경고
+    let materialWarnings: any[] = []
+    if (initialStatus === 'CONFIRMED') {
+      try {
+        materialWarnings = await checkMaterialShortage(c.env.DB, orderId, getEntityId(c) || 1)
+      } catch (mErr) {
+        console.error('Material shortage check failed (non-blocking):', mErr)
+      }
+    }
+
     return c.json({
       success: true,
       data: {
         id: orderId,
         order_number: orderNumber
       },
-      message: `Order created successfully. ${cardsGenerated} card(s) generated.${autoProcessStarted ? ' 자동가공이 시작되었습니다.' : ''}`
+      message: `Order created successfully. ${cardsGenerated} card(s) generated.${autoProcessStarted ? ' 자동가공이 시작되었습니다.' : ''}`,
+      ...(materialWarnings.length > 0 && {
+        material_warnings: materialWarnings,
+        warning_message: `자재 부족 ${materialWarnings.length}건: ${materialWarnings.slice(0, 3).map((w: any) => w.material_name).join(', ')}${materialWarnings.length > 3 ? ' 외' : ''}`,
+      }),
     })
   } catch (error) {
     console.error('Order creation error:', error)
@@ -1578,7 +1593,16 @@ ordersCoreRouter.patch('/:id/status', requireRole('ADMIN', 'MANAGER'), async (c)
       details: JSON.stringify({ from: order.status, to: status })
     })
 
+    // Phase 5: 자재 부족 경고 (CONFIRMED 전환 시, non-blocking)
+    let materialWarnings: any[] = []
     if (status === 'CONFIRMED') {
+      try {
+        const entityId = getEntityId(c) || 1
+        materialWarnings = await checkMaterialShortage(c.env.DB, parseInt(id), entityId)
+      } catch (mErr) {
+        console.error('Material shortage check failed (non-blocking):', mErr)
+      }
+
       await notifyRoles(c.env.DB, ['OPERATOR'], '주문 확정', `${order.order_number} 주문이 확정되었습니다.`, '/orders')
 
       // 원가 자동계산
@@ -1609,7 +1633,11 @@ ordersCoreRouter.patch('/:id/status', requireRole('ADMIN', 'MANAGER'), async (c)
 
     return c.json({
       success: true,
-      message: 'Order status updated successfully'
+      message: 'Order status updated successfully',
+      ...(materialWarnings.length > 0 && {
+        material_warnings: materialWarnings,
+        warning_message: `자재 부족 ${materialWarnings.length}건: ${materialWarnings.slice(0, 3).map(w => w.material_name).join(', ')}${materialWarnings.length > 3 ? ' 외' : ''}`,
+      }),
     })
   } catch (error) {
     console.error('src/routes/orders.ts error:', error)

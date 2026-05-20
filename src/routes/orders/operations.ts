@@ -8,6 +8,7 @@ import { notifyRoles } from '../../utils/notify'
 import { recalculateOrderCosts } from '../../utils/costCalculator'
 import { sendEmail } from '../../services/emailProvider'
 import { getEntityId } from '../../utils/entityFilter'
+import { checkMaterialShortage } from '../../utils/materialShortageCheck'
 
 // ---------- D1 row shapes ----------
 interface OrderCopyRow {
@@ -264,11 +265,24 @@ ordersOpsRouter.post('/:id/convert-to-order', requireRole('ADMIN', 'MANAGER'), a
       VALUES (?, 'QUOTATION', 'CONFIRMED', ?, ?)
     `).bind(id, user?.id || null, force && isExpired ? '만료 견적 강제 전환' : '견적서 → 주문 전환').run()
 
+    // Phase 5: 자재 부족 경고 (non-blocking)
+    let materialWarnings: any[] = []
+    try {
+      const entityId = getEntityId(c) || 1
+      materialWarnings = await checkMaterialShortage(c.env.DB, order.id, entityId)
+    } catch (mErr) {
+      console.error('Material shortage check failed (non-blocking):', mErr)
+    }
+
     return c.json({
       success: true,
       message: `견적서 ${order.order_number}이(가) 주문으로 전환되었습니다.`,
       data: { id: order.id, order_number: order.order_number, status: 'CONFIRMED' },
-      ...(isExpired && { warning: `유효기한이 만료된 견적서입니다 (${order.valid_until}).` })
+      ...(isExpired && { warning: `유효기한이 만료된 견적서입니다 (${order.valid_until}).` }),
+      ...(materialWarnings.length > 0 && {
+        material_warnings: materialWarnings,
+        warning_message: `자재 부족 ${materialWarnings.length}건: ${materialWarnings.slice(0, 3).map((w: any) => w.material_name).join(', ')}${materialWarnings.length > 3 ? ' 외' : ''}`,
+      }),
     })
   } catch (error) {
     console.error('src/routes/orders.ts error:', error)

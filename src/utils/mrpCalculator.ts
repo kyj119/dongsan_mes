@@ -149,7 +149,7 @@ export async function runMrpCalculation(
     const { results: onOrder } = await db.prepare(`
       SELECT poi.item_id, SUM(poi.quantity) as total_qty
       FROM purchase_order_items poi
-      JOIN purchase_orders po ON poi.purchase_order_id = po.id
+      JOIN purchase_orders po ON poi.po_id = po.id
       WHERE po.status IN ('PENDING', 'APPROVED', 'ORDERED')
         AND poi.item_id IN (${placeholders})
       GROUP BY poi.item_id
