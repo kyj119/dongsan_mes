@@ -196,6 +196,218 @@ export async function fetchTransactions(
   return res.json<CodefTransactionResponse>()
 }
 
+// ---------------------------------------------------------------------------
+// 법인카드 승인내역 조회
+// POST /v1/kr/card/b/account/approval-list
+// ---------------------------------------------------------------------------
+
+export interface CodefCardApprovalParams {
+  connectedId: string
+  organization: string     // 카드사 기관 코드 (예: '0301' = 신한, '0302' = 현대, '0303' = 삼성 등)
+  startDate: string        // YYYYMMDD
+  endDate: string          // YYYYMMDD
+  orderBy?: '0' | '1'
+  cardNo?: string          // 특정 카드번호 (선택)
+  memberStoreInfoType?: '0' | '1'  // 0=가맹점명, 1=가맹점번호
+}
+
+export interface CodefCardApproval {
+  resCardNo: string            // 카드번호
+  resApprovalNo: string        // 승인번호
+  resUsedDate: string          // 이용일자 YYYYMMDD
+  resUsedTime: string          // 이용시간
+  resMemberStoreName: string   // 가맹점명
+  resUsedAmount: string        // 이용금액
+  resInstallmentCount: string  // 할부개월
+  resCardName: string          // 카드명
+  resCurrency?: string         // 통화
+}
+
+export interface CodefCardApprovalResponse {
+  result: { code: string; message: string; extraMessage?: string }
+  data?: {
+    resApprovalList?: CodefCardApproval[]
+    [key: string]: any
+  }
+}
+
+export async function fetchCardApprovals(
+  db: D1Database,
+  params: CodefCardApprovalParams
+): Promise<CodefCardApprovalResponse> {
+  const serviceType = (await getSetting(db, 'codef_service_type') ?? 'sandbox') as CodefServiceType
+  const baseUrl = getBaseUrl(serviceType)
+  const token = await getAccessToken(db)
+
+  const body: Record<string, string> = {
+    connectedId: params.connectedId,
+    organization: params.organization,
+    startDate: params.startDate,
+    endDate: params.endDate,
+    orderBy: params.orderBy ?? '0',
+    memberStoreInfoType: params.memberStoreInfoType ?? '0',
+  }
+  if (params.cardNo) body.cardNo = params.cardNo
+
+  const res = await fetch(`${baseUrl}/v1/kr/card/b/account/approval-list`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+    body: JSON.stringify(body),
+  })
+
+  if (!res.ok) {
+    const text = await res.text()
+    throw new Error(`CODEF 카드 승인내역 조회 실패 (${res.status}): ${text}`)
+  }
+  return res.json<CodefCardApprovalResponse>()
+}
+
+// ---------------------------------------------------------------------------
+// 고용산재보험 보험료 조회
+// POST /v1/kr/public/pp/insurance-payment-list (개인별 부과고지 보험료)
+// ---------------------------------------------------------------------------
+
+export interface CodefInsurancePaymentParams {
+  connectedId: string
+  organization: string     // '0019' = 고용산재보험 토탈서비스
+  inquiryType: string      // '0'=고용보험, '1'=산재보험
+  startDate: string        // YYYYMM
+  endDate: string          // YYYYMM
+}
+
+export interface CodefInsurancePayment {
+  resCompanyName?: string       // 사업장명
+  resEmployeeName?: string      // 근로자명
+  resIdentityNo?: string        // 주민번호 (마스킹)
+  resPaymentAmount?: string     // 보험료
+  resCompanyAmount?: string     // 사업주부담금
+  resEmployeeAmount?: string    // 근로자부담금
+  resBaseAmount?: string        // 보수월액
+  resRate?: string              // 요율
+  [key: string]: string | undefined
+}
+
+export interface CodefInsuranceResponse {
+  result: { code: string; message: string; extraMessage?: string }
+  data?: any
+}
+
+export async function fetchInsurancePayments(
+  db: D1Database,
+  params: CodefInsurancePaymentParams
+): Promise<CodefInsuranceResponse> {
+  const serviceType = (await getSetting(db, 'codef_service_type') ?? 'sandbox') as CodefServiceType
+  const baseUrl = getBaseUrl(serviceType)
+  const token = await getAccessToken(db)
+
+  const res = await fetch(`${baseUrl}/v1/kr/public/pp/imposing-contribution-list`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+    body: JSON.stringify({
+      connectedId: params.connectedId,
+      organization: params.organization || '0019',
+      inquiryType: params.inquiryType,
+      startDate: params.startDate,
+      endDate: params.endDate,
+    }),
+  })
+
+  if (!res.ok) {
+    const text = await res.text()
+    throw new Error(`CODEF 보험료 조회 실패 (${res.status}): ${text}`)
+  }
+  return res.json<CodefInsuranceResponse>()
+}
+
+// ---------------------------------------------------------------------------
+// 고용산재보험 근로자 고용정보 현황 조회
+// ---------------------------------------------------------------------------
+
+export async function fetchEmploymentInfo(
+  db: D1Database,
+  connectedId: string,
+  identityNo?: string  // 주민번호 (선택, 특정 직원 조회)
+): Promise<CodefInsuranceResponse> {
+  const serviceType = (await getSetting(db, 'codef_service_type') ?? 'sandbox') as CodefServiceType
+  const baseUrl = getBaseUrl(serviceType)
+  const token = await getAccessToken(db)
+
+  const body: Record<string, string> = {
+    connectedId,
+    organization: '0019',
+  }
+  if (identityNo) body.identity = identityNo
+
+  const res = await fetch(`${baseUrl}/v1/kr/public/pp/employment-detail`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+    body: JSON.stringify(body),
+  })
+
+  if (!res.ok) {
+    const text = await res.text()
+    throw new Error(`CODEF 고용정보 조회 실패 (${res.status}): ${text}`)
+  }
+  return res.json<CodefInsuranceResponse>()
+}
+
+// ---------------------------------------------------------------------------
+// 국세청 홈택스 전자세금계산서 조회
+// ---------------------------------------------------------------------------
+
+export async function fetchTaxInvoices(
+  db: D1Database,
+  connectedId: string,
+  params: { startDate: string; endDate: string; type?: '0' | '1' | '2' }  // 0=전체, 1=매출, 2=매입
+): Promise<CodefInsuranceResponse> {
+  const serviceType = (await getSetting(db, 'codef_service_type') ?? 'sandbox') as CodefServiceType
+  const baseUrl = getBaseUrl(serviceType)
+  const token = await getAccessToken(db)
+
+  const res = await fetch(`${baseUrl}/v1/kr/public/pp/taxinvoice-integrated-list`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+    body: JSON.stringify({
+      connectedId,
+      organization: '0004',  // 국세청
+      startDate: params.startDate,
+      endDate: params.endDate,
+      inquiryType: params.type ?? '0',
+    }),
+  })
+
+  if (!res.ok) {
+    const text = await res.text()
+    throw new Error(`CODEF 세금계산서 조회 실패 (${res.status}): ${text}`)
+  }
+  return res.json<CodefInsuranceResponse>()
+}
+
+// ---------------------------------------------------------------------------
+// 사업자등록상태 조회 (거래처 검증용)
+// ---------------------------------------------------------------------------
+
+export async function checkBusinessStatus(
+  db: D1Database,
+  businessNumber: string  // 사업자등록번호 (하이픈 없이 10자리)
+): Promise<CodefInsuranceResponse> {
+  const serviceType = (await getSetting(db, 'codef_service_type') ?? 'sandbox') as CodefServiceType
+  const baseUrl = getBaseUrl(serviceType)
+  const token = await getAccessToken(db)
+
+  const res = await fetch(`${baseUrl}/v1/kr/public/ck/business-status`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+    body: JSON.stringify({ organization: '0004', businessNo: businessNumber }),
+  })
+
+  if (!res.ok) {
+    const text = await res.text()
+    throw new Error(`CODEF 사업자 상태 조회 실패 (${res.status}): ${text}`)
+  }
+  return res.json<CodefInsuranceResponse>()
+}
+
 /**
  * CODEF connectedId 생성.
  * POST /v1/account/create
