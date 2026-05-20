@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 3 -->
-<!-- last_run_at: 2026-05-14T13:30:00+09:00 -->
+<!-- last_run_area: 4 -->
+<!-- last_run_at: 2026-05-20T10:00:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,9 +8,18 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | 11 |
-| ✔️ done | 32 |
+| 🆕 new | 13 |
+| ✔️ done | 33 |
 | ❌ rejected | 2 |
+
+> **Area 4 데이터 정합성 (2026-05-20T10:00):**
+> - financialReports.ts 손익계산서 6개 쿼리 entity_id 필터 누락 → A-009 자동 수정 (purchase_orders/payment_requests/fixed_expenses × 3곳)
+> - financialReports.ts balance-snapshot bank_accounts/loans entity_id 필터 누락 → A-009 자동 수정
+> - cashSchedule.ts fixed_expenses entity_id 필터 누락 → A-009 자동 수정
+> - chart_of_accounts entity_id 필터 아키텍처 결정 필요 (공유 vs 격리) → I-025 등록
+> - balance-snapshot clients/items entity_id 필터 누락 → I-026 등록
+> - 자동 수정 1건 (A-009, 커밋 28a980c), 신규 이슈 2건 (I-025/I-026)
+> - ⚠️ GitHub 토큰 만료로 이슈 GitHub 등록 실패 — 백로그에만 기록
 
 > **Area 3 UX/기능 감사 (2026-05-14T13:30):**
 > - 75개 페이지/스크립트 전수 UX 패턴 분석 (검색·필터·페이지네이션·빈상태·로딩)
@@ -84,6 +93,8 @@
 
 | ID | 제목 | 영역 | Issue | 공수 |
 |----|------|------|-------|------|
+| I-025 | chart_of_accounts entity 필터 아키텍처 결정 (공유 vs 격리) | Area 4 | ⚠️미등록 | 30분 |
+| I-026 | balance-snapshot clients/items entity_id 필터 누락 | Area 4 | ⚠️미등록 | 30분 |
 | I-013 | 보안 헤더 전무 (CSP/X-Frame-Options/HSTS/X-Content-Type) | Area 5 | #32 | 1~2h |
 | I-014 | /api/portal/auth/change-password rate limit 누락 | Area 5 | #33 | 30분 |
 | I-015 | XSS 잔여: approvals.js(119-276) + cards.js document.write | Area 5 | #34 | 2~3h |
@@ -102,6 +113,7 @@
 
 | ID | 제목 | 커밋 | 날짜 |
 |----|------|------|------|
+| A-009 | financialReports entity_id 필터 6건 + cashSchedule fixed_expenses 필터 (멀티entity 재무 혼입 방지) | 28a980c | 2026-05-20 |
 | A-008 | try-catch 누락 17핸들러 (permissions/finishing/messageTemplates/iaAuto) | 60ee8b8 | 2026-05-14 |
 | A-006 | XSS escapeHtml 5건 (approvals/invoice/purchaseInvoice/quotation/clients) | e099b20 | 2026-05-13 |
 | A-005 | tax_invoice_items/orders tax_invoice_id 인덱스 추가 (0193 migration) | 1b3a698 | 2026-05-13 |
