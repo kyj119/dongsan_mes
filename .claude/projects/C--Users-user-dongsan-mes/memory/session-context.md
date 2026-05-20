@@ -1,58 +1,29 @@
-# 최근 세션 컨텍스트 (2026-05-04)
+---
+name: session-context
+description: 2026-05-20 세션 컨텍스트 — 원장 개선 + 팩스 + 로그인 + 법인카드
+type: project
+---
 
-## 이번 세션 완료 작업 (커밋 20개)
+## 완료 작업
 
-### 마감 방식 시스템
-- 카드 생성 시 finishing → final_width/height 반영 (POST + PUT)
-- IA fold/cut lines (M100 0.6pt) — ProcessOrderItem.jsx
-- display_on_card 플래그 (주석/오프셋/돔보 숨김)
-- 프리셋 선택 강조 (파란 활성 상태)
-- 마감 표시 그룹핑 (`상하:줄미싱 좌우:접어미싱`)
-- 카드→품목 라인별 이동 (2줄 구조)
-- **cm 오버라이드** (방식 선택 후 cm 직접 입력)
-- Math.max 대표값 버그 수정 (마진합 최대인 것으로)
-- 사방 동일 드롭다운 제거 (프리셋+개별설정만)
+### 거래처 원장 전면 개선
+- 분석 탭 신규: 월말 마감, 손익 요약, 평균 회수 기간
+- 거래 내역: 품목 항상 펼침, 매출/입금 2컬럼, 어음 추가, 미BILLED 제외
+- 수정 모달 통일, 발송 모달 채널 토글, 복식부기 제거
 
-### 재고관리
-- 실사 버그 수정 (is_purchase_item)
-- 입고 취소 롤백 로직
-- 입고/출고 모달 제거 + 로스율 카드
-- 부분 실사 (카테고리별)
-- 빈 카테고리 정리 (판재류/원단류/원자재)
+### 팩스 기능 확장
+- 단가표/거래처 원장에 인쇄+팩스 추가 (html2canvas 방식)
 
-### 현장 카드 (오퍼레이터)
-- 진행률 뱃지 (X/Y)
-- 주문/거래처 메모 연동
-- QR 스캔 상태 전환 확장
-- 작업지시서 v2 (썸네일 + 마감 다이어그램)
-- **금일 출고 대시보드 패널**
-- 카드 무한로딩 버그 수정 (try 없는 catch)
+### 로그인 안정화
+- Rate limit 완화(10회), JWT 시계 오차 여유, corrupt 토큰 정리, CORS 10.x 추가
 
-### 코드 품질
-- cards.ts API 응답 success 필드 추가
-- IA ProcessItemAsync 빈 파일 가드
-- 주문↔카드 메타데이터 동기화 (납기/우선순위)
-- 납품일 필수 검증 추가
-
-## 미완료 / 다음 세션 TODO
-
-### 대기 (사용자 결정 필요)
-- 출고 프로세스 간소화 (방향 결정 후)
-- 작업지시서 최종 방향 (docs/work-order-usage-research.md 참고)
-- 반복주문 템플릿 (필요 여부 검토 중)
-- 동시성 안전장치 A/B/C 착수 여부 (docs/concurrency-safety-report.md)
-
-### 코드 리팩토링 (시간 있을 때)
-- POST/PUT 카드 생성 로직 함수 추출 (~400줄 중복)
-- N+1 쿼리 수정 (cards.ts:954 AI 분석)
-- 카드 생성 부분 실패 격리 (try-catch per card)
-
-### 운영
-- 프로덕션 배포: D1 바인딩 설정 + 마이그레이션 0176~0177 적용
-- IA publish 배포 (Program.cs 변경 — cm 오버라이드, 파일 가드)
-- 프로덕션 비밀번호 변경 + WAF 설정
+### 법인카드 Phase 1
+- DB 3테이블, 경비 분류 15개, 카드 CRUD, 내역 관리, CSV 가져오기, 지출결의 연동
 
 ## 주의사항
-- `wrangler.jsonc`의 database_id는 로컬용 (`8f90967b-...`). 프로덕션은 대시보드에서 바인딩
-- 카드 페이지 무한로딩 원인은 try 없는 catch (구문 오류) — 코드 변경 시 JS 구문 꼭 확인
-- finishing JSON 구조: `{top, bottom, left, right, top_cm?, bottom_cm?, left_cm?, right_cm?}`
+- order_items의 `content` = 내용 (specification 칼럼 없음)
+- 프로덕션 admin 비밀번호: "password" (PBKDF2 해시)
+
+## 다음 세션 TODO
+- 법인카드 Phase 2~5: CODEF 연동, 영수증 첨부, 결재 강화, 분석 대시보드
+- 원장 Tier 2: 미수금 카카오톡 자동발송, 세금계산서 대조, PDF 출력
