@@ -117,9 +117,8 @@
                 var html = '<tr id="distItem-' + id + '" class="border-b border-gray-100">'
                     + '<td class="py-3 px-3 relative">'
                     + '<input type="hidden" name="dist_item_id_' + id + '">'
-                    + '<input type="text" name="dist_item_search_' + id + '" placeholder="품목명 검색..." autocomplete="off"'
+                    + '<input type="text" name="dist_item_search_' + id + '" placeholder="품목명 또는 코드 검색..." autocomplete="off"'
                     + ' class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">'
-                    + '<div id="dist_dd_' + id + '" class="item-dd hidden"></div>'
                     + '</td>'
                     + '<td class="py-3 px-3"><input type="text" name="dist_spec_' + id + '" readonly class="w-full px-3 py-2 border border-gray-200 rounded-lg bg-gray-50"></td>'
                     + '<td class="py-3 px-3"><input type="number" name="dist_qty_' + id + '" value="1" min="1" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-center" oninput="calcDistItem(' + id + ')"></td>'
@@ -143,72 +142,56 @@
 
             function setupDistAutocomplete(id) {
                 var input = document.querySelector('[name="dist_item_search_' + id + '"]');
-                var dd = document.getElementById('dist_dd_' + id);
                 var hidId = document.querySelector('[name="dist_item_id_' + id + '"]');
 
+                // 품목 선택 적용 (openItemSearchModal 콜백과 동일 인터페이스)
+                function applyDistItem(item) {
+                    hidId.value = item.id;
+                    input.value = item.name;
+                    document.querySelector('[name="dist_spec_' + id + '"]').value = item.specification || '';
+                    var price = parseInt(item.price) || 0;
+                    document.querySelector('[name="dist_price_' + id + '"]').value = fmtMoneyInput(price);
+                    calcDistItem(id);
+                }
+
+                // 검색 함수 (생산 주문서와 동일 패턴)
+                async function doDistItemSearch(openModal) {
+                    var q = input.value.trim();
+                    if (!q) return;
+                    try {
+                        var res = await axios.get('/api/items?search=' + encodeURIComponent(q) + '&limit=50');
+                        var items = res.data.data || [];
+                        if (items.length === 1) {
+                            var it = items[0];
+                            applyDistItem({
+                                id: it.id, name: it.item_name,
+                                price: it.sales_price || it.base_price || 0,
+                                unit: it.unit || 'EA',
+                                specification: it.specification || ''
+                            });
+                        } else if (items.length > 1 && openModal) {
+                            window.openItemSearchModal({ type: '', search: q, onSelect: applyDistItem });
+                        }
+                    } catch(e) { console.error('Dist search error', e); }
+                }
+
+                // input: 자동완성 (1건 자동 적용, 모달은 열지 않음)
                 input.addEventListener('input', function() {
                     clearTimeout(searchTimers[id]);
                     hidId.value = '';
                     var q = input.value.trim();
-                    if (q.length < 1) { dd.classList.add('hidden'); dd.innerHTML = ''; return; }
-                    searchTimers[id] = setTimeout(function() {
-                        axios.get('/api/items?is_sales_item=1&search=' + encodeURIComponent(q) + '&limit=20')
-                            .then(function(res) {
-                                var items = res.data.data || [];
-                                if (items.length === 0) { dd.classList.add('hidden'); dd.innerHTML = ''; return; }
-                                dd.innerHTML = items.map(function(it) {
-                                    return '<div class="item-dd-entry px-3 py-2 cursor-pointer text-sm border-b border-gray-50" '
-                                        + 'data-id="' + it.id + '" data-name="' + escapeHtml(it.item_name) + '" '
-                                        + 'data-price="' + (it.sales_price || it.base_price || 0) + '" '
-                                        + 'data-unit="' + escapeHtml(it.unit || 'EA') + '" '
-                                        + 'data-spec="' + escapeHtml(it.specification || '') + '">'
-                                        + '<div class="font-medium">' + escapeHtml(it.item_name) + '</div>'
-                                        + '<div class="text-xs text-gray-500">'
-                                        + (it.specification ? it.specification + ' | ' : '')
-                                        + (it.sales_price ? it.sales_price.toLocaleString() + '원' : '')
-                                        + (it.unit ? ' | ' + it.unit : '')
-                                        + '</div></div>';
-                                }).join('');
-                                dd.classList.remove('hidden');
-                            })
-                            .catch(function() { dd.classList.add('hidden'); });
-                    }, 300);
+                    if (!q) return;
+                    searchTimers[id] = setTimeout(function() { doDistItemSearch(false); }, 300);
                 });
 
+                // Enter: 모달 열기 허용
                 input.addEventListener('keydown', function(e) {
                     if (e.key === 'Enter') {
                         e.preventDefault();
-                        // select first item in dropdown if visible
-                        var first = dd.querySelector('.item-dd-entry');
-                        if (first && !dd.classList.contains('hidden')) {
-                            selectDistItem(id, first);
-                        }
+                        clearTimeout(searchTimers[id]);
+                        doDistItemSearch(true);
                     }
                 });
-
-                dd.addEventListener('mousedown', function(e) {
-                    var entry = e.target.closest('.item-dd-entry');
-                    if (entry) { selectDistItem(id, entry); }
-                });
-
-                input.addEventListener('blur', function() {
-                    setTimeout(function() { dd.classList.add('hidden'); }, 200);
-                });
-            }
-
-            function selectDistItem(id, entryEl) {
-                var itemId = entryEl.dataset.id;
-                var name = entryEl.dataset.name;
-                var price = parseInt(entryEl.dataset.price) || 0;
-                var unit = entryEl.dataset.unit || 'EA';
-                var spec = entryEl.dataset.spec || '';
-
-                document.querySelector('[name="dist_item_id_' + id + '"]').value = itemId;
-                document.querySelector('[name="dist_item_search_' + id + '"]').value = name;
-                document.querySelector('[name="dist_spec_' + id + '"]').value = spec;
-                document.querySelector('[name="dist_price_' + id + '"]').value = fmtMoneyInput(price);
-                document.getElementById('dist_dd_' + id).classList.add('hidden');
-                calcDistItem(id);
             }
 
             function calcDistItem(id) {

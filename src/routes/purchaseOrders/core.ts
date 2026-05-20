@@ -1355,6 +1355,8 @@ poCoreRouter.post('/:id/receive', async (c) => {
       rejectMemo: string | null
       balanceAfter: number
       hasInventoryRow: boolean
+      entityId: number
+      zoneId: number | null
     }> = []
     let summaryAccepted = 0
     let summaryRejected = 0
@@ -1370,13 +1372,21 @@ poCoreRouter.post('/:id/receive', async (c) => {
 
       let balanceAfter = 0
       let hasInventoryRow = false
+      const poEntityId = getEntityId(c) || 1
       if (poItem.item_id && acceptedQty > 0) {
         const invRow = await c.env.DB.prepare(
-          `SELECT quantity FROM inventory WHERE item_id = ?`
-        ).bind(poItem.item_id).first<{ quantity: number }>()
+          `SELECT quantity FROM inventory WHERE item_id = ? AND entity_id = ?`
+        ).bind(poItem.item_id, poEntityId).first<{ quantity: number }>()
         const currentStock = Number(invRow?.quantity || 0)
         hasInventoryRow = !!invRow
         balanceAfter = currentStock + acceptedQty
+      }
+
+      // 품목의 storage_zone_id 미리 조회 (batch 안에서 await 방지)
+      let itemZoneId: number | null = null
+      if (poItem.item_id && !hasInventoryRow) {
+        const zRow = await c.env.DB.prepare('SELECT storage_zone_id FROM items WHERE id = ?').bind(poItem.item_id).first<{ storage_zone_id: number | null }>()
+        itemZoneId = zRow?.storage_zone_id ?? null
       }
 
       perItemPrep.push({
@@ -1385,6 +1395,7 @@ poCoreRouter.post('/:id/receive', async (c) => {
         receiveQty, acceptedQty, rejectedQty, unitPrice, amount, qualityStatus,
         rejectMemo: ri.reject_memo || null,
         balanceAfter, hasInventoryRow,
+        entityId: poEntityId, zoneId: itemZoneId,
       })
       summaryAccepted += acceptedQty
       summaryRejected += rejectedQty
@@ -1467,12 +1478,12 @@ poCoreRouter.post('/:id/receive', async (c) => {
         if (p.itemId && p.acceptedQty > 0) {
           if (p.hasInventoryRow) {
             stmts.push(c.env.DB.prepare(`
-              UPDATE inventory SET quantity = ?, last_updated = CURRENT_TIMESTAMP WHERE item_id = ?
-            `).bind(p.balanceAfter, p.itemId))
+              UPDATE inventory SET quantity = ?, last_updated = CURRENT_TIMESTAMP WHERE item_id = ? AND entity_id = ?
+            `).bind(p.balanceAfter, p.itemId, p.entityId))
           } else {
             stmts.push(c.env.DB.prepare(`
-              INSERT INTO inventory (item_id, quantity, last_updated) VALUES (?, ?, CURRENT_TIMESTAMP)
-            `).bind(p.itemId, p.balanceAfter))
+              INSERT INTO inventory (item_id, quantity, entity_id, storage_zone_id, last_updated) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+            `).bind(p.itemId, p.balanceAfter, p.entityId, p.zoneId))
           }
 
           stmts.push(c.env.DB.prepare(`

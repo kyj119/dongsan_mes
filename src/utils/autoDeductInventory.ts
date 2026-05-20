@@ -152,26 +152,39 @@ export async function autoDeductInventory(
     // 6. 차감량 계산 (mm → yd 변환: 914.4mm = 1yd)
     const deductedLengthYd = (outputHeightMm / 914.4) * copyTotal
 
-    // 7. 원자적 재고 차감 (Race condition 방지)
-    // D1(SQLite)은 단일 쓰기이므로 UPDATE 내에서 직접 차감하면 안전
+    // 7. 주문의 entity_id 조회 → 해당 법인 재고에서 차감
+    let entityId = 1
+    if (card.order_id) {
+      const orderRow = await db
+        .prepare(`SELECT entity_id FROM orders WHERE id = ?`)
+        .bind(card.order_id)
+        .first() as any
+      if (orderRow?.entity_id) entityId = orderRow.entity_id
+    }
+
     const inventoryRow = await db
-      .prepare(`SELECT quantity FROM inventory WHERE item_id = ?`)
-      .bind(selectedMaterial.material_item_id)
+      .prepare(`SELECT quantity FROM inventory WHERE item_id = ? AND entity_id = ?`)
+      .bind(selectedMaterial.material_item_id, entityId)
       .first() as any
 
     const inventoryBefore = inventoryRow?.quantity ?? 0
 
-    // 원자적 UPDATE: quantity = quantity - deductedLengthYd (음수 허용, 실사에서 보정)
+    // 원자적 UPDATE: quantity - deductedLengthYd (음수 허용, 경고만)
     await db
       .prepare(
         `UPDATE inventory
          SET quantity = quantity - ?, last_updated = CURRENT_TIMESTAMP
-         WHERE item_id = ?`
+         WHERE item_id = ? AND entity_id = ?`
       )
-      .bind(deductedLengthYd, selectedMaterial.material_item_id)
+      .bind(deductedLengthYd, selectedMaterial.material_item_id, entityId)
       .run()
 
     const inventoryAfter = inventoryBefore - deductedLengthYd
+
+    // 음수 재고 경고 로그
+    if (inventoryAfter < 0) {
+      console.warn(`[autoDeduct] ⚠️ 재고 음수 경고: ${selectedMaterial.item_name} (entity=${entityId}), 잔량=${inventoryAfter.toFixed(2)}yd, 차감=${deductedLengthYd.toFixed(2)}yd, card=${cardId}`)
+    }
 
     // 8. inventory_auto_deductions 기록 (UNIQUE print_event_id로 중복 INSERT 방지)
     try {
@@ -203,9 +216,9 @@ export async function autoDeductInventory(
       if (insertError?.message?.includes('UNIQUE')) {
         await db
           .prepare(
-            `UPDATE inventory SET quantity = quantity + ?, last_updated = CURRENT_TIMESTAMP WHERE item_id = ?`
+            `UPDATE inventory SET quantity = quantity + ?, last_updated = CURRENT_TIMESTAMP WHERE item_id = ? AND entity_id = ?`
           )
-          .bind(deductedLengthYd, selectedMaterial.material_item_id)
+          .bind(deductedLengthYd, selectedMaterial.material_item_id, entityId)
           .run()
         return { success: true, deducted: false, reason: 'already deducted (UNIQUE constraint)' }
       }

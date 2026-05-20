@@ -70,13 +70,14 @@ inventoryCountRouter.post('/', async (c) => {
     const countId = (result.meta.last_row_id as number)
 
     // 품목 로드: category 필터 적용
+    const countEntityId = getEntityId(c) || 1
     let itemQuery = `
       SELECT i.id, i.item_code, i.item_name, i.unit, i.category, inv.quantity
       FROM items i
-      LEFT JOIN inventory inv ON i.id = inv.item_id
+      LEFT JOIN inventory inv ON i.id = inv.item_id AND inv.entity_id = ?
       WHERE i.is_active = 1 AND i.is_purchase_item = 1
     `
-    const params: any[] = []
+    const params: any[] = [countEntityId]
     if (category) {
       itemQuery += ' AND i.category = ?'
       params.push(category)
@@ -229,9 +230,9 @@ inventoryCountRouter.patch('/:id/approve', async (c) => {
       await c.env.DB.batch(
         countItems.flatMap((item) => [
           c.env.DB.prepare(`
-            UPDATE inventory SET quantity = ?, updated_at = CURRENT_TIMESTAMP
-            WHERE item_id = ?
-          `).bind(item.counted_quantity, item.item_id),
+            UPDATE inventory SET quantity = ?, last_updated = CURRENT_TIMESTAMP
+            WHERE item_id = ? AND entity_id = ?
+          `).bind(item.counted_quantity, item.item_id, entityId),
           c.env.DB.prepare(`
             INSERT INTO inventory_transactions (item_id, transaction_type, quantity_before, quantity_after, quantity_change, reason, notes, created_by, created_at, entity_id)
             VALUES (?, 'ADJUST', ?, ?, ?, 'STOCK_COUNT', ?, ?, CURRENT_TIMESTAMP, ?)

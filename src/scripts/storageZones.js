@@ -1,6 +1,8 @@
 // ── 창고 구역 관리 스크립트 ──
 var storageZones = [];
 var allUsers = [];
+var allEntities = [];
+var currentEntityFilter = 0; // 0 = 전체
 
 function escapeAttr(s) {
   return String(s == null ? '' : s)
@@ -12,32 +14,42 @@ function escapeAttr(s) {
 }
 
 async function loadStorageZones() {
-  // 스켈레톤 로딩 표시
   var tbody = document.getElementById('storageZonesBody');
   if (tbody) {
     tbody.innerHTML = Array(5).fill(
       '<tr class="border-b border-gray-100">' +
-        '<td class="px-3 py-3"><div class="ds-skeleton ds-skeleton-row"></div></td>' +
-        '<td class="px-3 py-3"><div class="ds-skeleton ds-skeleton-row"></div></td>' +
-        '<td class="px-3 py-3"><div class="ds-skeleton ds-skeleton-row"></div></td>' +
-        '<td class="px-3 py-3"><div class="ds-skeleton ds-skeleton-row"></div></td>' +
-        '<td class="px-3 py-3"><div class="ds-skeleton ds-skeleton-row"></div></td>' +
-        '<td class="px-3 py-3"><div class="ds-skeleton ds-skeleton-row"></div></td>' +
-        '<td class="px-3 py-3"><div class="ds-skeleton ds-skeleton-row"></div></td>' +
+        '<td class="px-3 py-3"><div class="ds-skeleton ds-skeleton-row"></div></td>'.repeat(8) +
       '</tr>'
     ).join('');
   }
   try {
-    var [zonesRes, usersRes] = await Promise.all([
-      axios.get('/api/storage-zones', { params: { include_inactive: '1' } }),
-      axios.get('/api/users')
+    var [zonesRes, usersRes, entRes] = await Promise.all([
+      axios.get('/api/storage-zones', { params: { include_inactive: '1', all_entities: '1' } }),
+      axios.get('/api/users'),
+      axios.get('/api/auth/entities')
     ]);
     storageZones = zonesRes.data.success ? zonesRes.data.data : [];
     allUsers = usersRes.data.success ? usersRes.data.data : [];
+    allEntities = entRes.data.success ? entRes.data.data : [];
+
+    // 법인 필터 드롭다운 초기화
+    var filterEl = document.getElementById('entityFilter');
+    if (filterEl && allEntities.length > 0) {
+      filterEl.innerHTML = '<option value="0">전체 법인</option>'
+        + allEntities.map(function(e) {
+          return '<option value="' + e.id + '">' + escapeAttr(e.short_name || e.name) + '</option>';
+        }).join('');
+    }
+
     renderStorageZones();
   } catch (err) {
     console.error('Storage zones load failed:', err);
   }
+}
+
+function onEntityFilterChange() {
+  currentEntityFilter = parseInt(document.getElementById('entityFilter').value) || 0;
+  renderStorageZones();
 }
 
 function renderStorageZones() {
@@ -45,20 +57,31 @@ function renderStorageZones() {
   var noMsg = document.getElementById('noZonesMsg');
   if (!tbody) return;
 
-  if (storageZones.length === 0) {
+  var filtered = currentEntityFilter > 0
+    ? storageZones.filter(function(z) { return z.entity_id === currentEntityFilter; })
+    : storageZones;
+
+  if (filtered.length === 0) {
     tbody.innerHTML = '';
     if (noMsg) noMsg.classList.remove('hidden');
     return;
   }
   if (noMsg) noMsg.classList.add('hidden');
 
-  tbody.innerHTML = storageZones.map(function(z) {
+  tbody.innerHTML = filtered.map(function(z) {
     var statusBadge = z.is_active
       ? '<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-50 text-green-700"><i class="fas fa-check-circle text-[7px] mr-1"></i>활성</span>'
       : '<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600"><i class="fas fa-power-off text-[7px] mr-1"></i>비활성</span>';
 
+    var defaultBadge = z.is_default
+      ? ' <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-50 text-amber-700 border border-amber-200">기본</span>'
+      : '';
+
+    var entityName = z.entity_name || allEntities.find(function(e) { return e.id === z.entity_id; })?.short_name || '-';
+
     return '<tr class="border-b border-gray-100 hover:bg-gray-50">'
-      + '<td class="px-3 py-3 text-sm font-medium text-gray-900">' + escapeAttr(z.zone_name) + '</td>'
+      + '<td class="px-3 py-3 text-sm text-gray-600">' + escapeAttr(entityName) + '</td>'
+      + '<td class="px-3 py-3 text-sm font-medium text-gray-900">' + escapeAttr(z.zone_name) + defaultBadge + '</td>'
       + '<td class="px-3 py-3 text-sm text-gray-500">' + escapeAttr(z.zone_code || '-') + '</td>'
       + '<td class="px-3 py-3 text-sm text-gray-500">' + escapeAttr(z.description || '-') + '</td>'
       + '<td class="px-3 py-3 text-sm text-gray-900">' + escapeAttr(z.manager_name || '미지정') + '</td>'
@@ -74,6 +97,25 @@ function renderStorageZones() {
   }).join('');
 }
 
+function populateEntitySelect(selectedId) {
+  var sel = document.getElementById('zoneModalEntity');
+  if (!sel) return;
+  sel.innerHTML = allEntities.map(function(e) {
+    return '<option value="' + e.id + '"' + (e.id === selectedId ? ' selected' : '') + '>'
+      + escapeAttr(e.short_name || e.name) + '</option>';
+  }).join('');
+}
+
+function populateManagerSelect(selectedId) {
+  var sel = document.getElementById('zoneModalManager');
+  if (!sel) return;
+  sel.innerHTML = '<option value="">미지정</option>'
+    + allUsers.filter(function(u) { return u.is_active; }).map(function(u) {
+      return '<option value="' + u.id + '"' + (u.id === selectedId ? ' selected' : '') + '>'
+        + escapeAttr(u.name) + ' (' + escapeAttr(u.role) + ')</option>';
+    }).join('');
+}
+
 function openAddZoneModal() {
   document.getElementById('zoneModalTitle').textContent = '창고 구역 추가';
   document.getElementById('zoneModalId').value = '';
@@ -82,12 +124,12 @@ function openAddZoneModal() {
   document.getElementById('zoneModalDesc').value = '';
   document.getElementById('zoneModalSort').value = '0';
   document.getElementById('zoneModalActive').checked = true;
+  document.getElementById('zoneModalDefault').checked = false;
 
-  var managerSelect = document.getElementById('zoneModalManager');
-  managerSelect.innerHTML = '<option value="">미지정</option>'
-    + allUsers.filter(function(u) { return u.is_active; }).map(function(u) {
-      return '<option value="' + u.id + '">' + escapeAttr(u.name) + ' (' + escapeAttr(u.role) + ')</option>';
-    }).join('');
+  // 법인 기본값: 현재 필터 또는 첫 법인
+  var defaultEntity = currentEntityFilter > 0 ? currentEntityFilter : (allEntities[0]?.id || 1);
+  populateEntitySelect(defaultEntity);
+  populateManagerSelect(null);
 
   document.getElementById('zoneModal').classList.remove('hidden');
   document.getElementById('zoneModalName').focus();
@@ -104,13 +146,10 @@ function openEditZoneModal(id) {
   document.getElementById('zoneModalDesc').value = zone.description || '';
   document.getElementById('zoneModalSort').value = zone.sort_order || 0;
   document.getElementById('zoneModalActive').checked = !!zone.is_active;
+  document.getElementById('zoneModalDefault').checked = !!zone.is_default;
 
-  var managerSelect = document.getElementById('zoneModalManager');
-  managerSelect.innerHTML = '<option value="">미지정</option>'
-    + allUsers.filter(function(u) { return u.is_active; }).map(function(u) {
-      return '<option value="' + u.id + '"' + (u.id === zone.manager_id ? ' selected' : '') + '>'
-        + escapeAttr(u.name) + ' (' + escapeAttr(u.role) + ')</option>';
-    }).join('');
+  populateEntitySelect(zone.entity_id || 1);
+  populateManagerSelect(zone.manager_id);
 
   document.getElementById('zoneModal').classList.remove('hidden');
   document.getElementById('zoneModalName').focus();
@@ -128,7 +167,9 @@ async function saveZone() {
     description: document.getElementById('zoneModalDesc').value.trim() || null,
     manager_id: parseInt(document.getElementById('zoneModalManager').value) || null,
     sort_order: parseInt(document.getElementById('zoneModalSort').value) || 0,
-    is_active: document.getElementById('zoneModalActive').checked ? 1 : 0
+    is_active: document.getElementById('zoneModalActive').checked ? 1 : 0,
+    entity_id: parseInt(document.getElementById('zoneModalEntity').value) || 1,
+    is_default: document.getElementById('zoneModalDefault').checked ? 1 : 0
   };
 
   if (!payload.zone_name) {
@@ -150,6 +191,7 @@ async function saveZone() {
     if (res.data.success) {
       closeZoneModal();
       await loadStorageZones();
+      showToast(id ? '구역이 수정되었습니다.' : '구역이 추가되었습니다.', 'success');
     } else {
       showToast(res.data.error || '저장 실패', 'error');
     }
@@ -170,6 +212,7 @@ async function deleteZone(id) {
     var res = await axios.delete('/api/storage-zones/' + id);
     if (res.data.success) {
       await loadStorageZones();
+      showToast('구역이 삭제되었습니다.', 'success');
     } else {
       showToast(res.data.error || '삭제 실패', 'error');
     }

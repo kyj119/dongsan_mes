@@ -1,23 +1,39 @@
 import { Hono } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
+import { getEntityId } from '../utils/entityFilter'
 
 const storageZonesRouter = new Hono<HonoEnv>()
 storageZonesRouter.use('/*', authMiddleware)
 
-// GET /api/storage-zones - 전체 창고 구역 조회 (로그인 사용자)
+// GET /api/storage-zones - 창고 구역 조회 (entity_id 필터)
 storageZonesRouter.get('/', async (c) => {
   try {
     const includeInactive = c.req.query('include_inactive') === '1'
+    const allEntities = c.req.query('all_entities') === '1'
+    const entityId = getEntityId(c)
+    const params: any[] = []
+    let where = ''
+
+    if (!includeInactive) {
+      where = 'WHERE sz.is_active = 1'
+    }
+    // all_entities=1 (관리 페이지) 또는 entity_id=0 (전체 모드)이면 entity 필터 생략
+    if (!allEntities && entityId > 0) {
+      where += (where ? ' AND' : 'WHERE') + ' sz.entity_id = ?'
+      params.push(entityId)
+    }
+
     const sql = `
-      SELECT sz.*, u.name as manager_name,
+      SELECT sz.*, u.name as manager_name, e.short_name as entity_name,
         (SELECT COUNT(*) FROM items WHERE storage_zone_id = sz.id AND is_active = 1) as item_count
       FROM storage_zones sz
       LEFT JOIN users u ON sz.manager_id = u.id
-      ${includeInactive ? '' : 'WHERE sz.is_active = 1'}
-      ORDER BY sz.sort_order, sz.zone_name
+      LEFT JOIN entities e ON sz.entity_id = e.id
+      ${where}
+      ORDER BY sz.entity_id, sz.sort_order, sz.zone_name
     `
-    const { results } = await c.env.DB.prepare(sql).all()
+    const { results } = await c.env.DB.prepare(sql).bind(...params).all()
     return c.json({ success: true, data: results })
   } catch (error) {
     console.error('storageZones GET error:', error)
@@ -56,14 +72,15 @@ storageZonesRouter.get('/:id', async (c) => {
 
     if (!zone) return c.json({ success: false, error: '구역을 찾을 수 없습니다.' }, 404)
 
+    const zoneEntityId = (zone as any).entity_id || 1
     const { results: items } = await c.env.DB.prepare(`
       SELECT i.id, i.item_code, i.item_name, i.category, i.sub_category, i.unit, i.item_type,
         inv.quantity as current_stock, inv.safe_stock, inv.reorder_point, inv.auto_pr_enabled
       FROM items i
-      LEFT JOIN inventory inv ON inv.item_id = i.id
+      LEFT JOIN inventory inv ON inv.item_id = i.id AND inv.entity_id = ?
       WHERE i.storage_zone_id = ? AND i.is_active = 1
       ORDER BY i.item_name
-    `).bind(id).all()
+    `).bind(zoneEntityId, id).all()
 
     return c.json({ success: true, data: { ...zone, items } })
   } catch (error) {
@@ -81,29 +98,42 @@ storageZonesRouter.post('/', requireRole('ADMIN'), async (c) => {
       description?: string
       manager_id?: number
       sort_order?: number
+      entity_id?: number
+      is_default?: number
     }>()
 
     if (!body.zone_name?.trim()) {
       return c.json({ success: false, error: '구역명을 입력해주세요.' }, 400)
     }
 
-    // 중복 체크
+    const entityId = body.entity_id ?? (getEntityId(c) || 1)
+
+    // 중복 체크 (같은 법인 내)
     const exists = await c.env.DB.prepare(
-      'SELECT id FROM storage_zones WHERE zone_name = ?'
-    ).bind(body.zone_name.trim()).first()
+      'SELECT id FROM storage_zones WHERE zone_name = ? AND entity_id = ?'
+    ).bind(body.zone_name.trim(), entityId).first()
     if (exists) {
       return c.json({ success: false, error: '이미 존재하는 구역명입니다.' }, 400)
     }
 
+    // is_default=1 설정 시 같은 법인의 다른 기본 창고 해제
+    if (body.is_default) {
+      await c.env.DB.prepare(
+        'UPDATE storage_zones SET is_default = 0 WHERE entity_id = ? AND is_default = 1'
+      ).bind(entityId).run()
+    }
+
     const result = await c.env.DB.prepare(`
-      INSERT INTO storage_zones (zone_name, zone_code, description, manager_id, sort_order)
-      VALUES (?, ?, ?, ?, ?)
+      INSERT INTO storage_zones (zone_name, zone_code, description, manager_id, sort_order, entity_id, is_default)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
     `).bind(
       body.zone_name.trim(),
       body.zone_code?.trim() || null,
       body.description?.trim() || null,
       body.manager_id || null,
-      body.sort_order ?? 0
+      body.sort_order ?? 0,
+      entityId,
+      body.is_default ?? 0
     ).run()
 
     return c.json({ success: true, data: { id: result.meta.last_row_id }, message: '구역이 생성되었습니다.' })
@@ -124,17 +154,28 @@ storageZonesRouter.put('/:id', requireRole('ADMIN'), async (c) => {
       manager_id?: number | null
       sort_order?: number
       is_active?: number
+      entity_id?: number
+      is_default?: number
     }>()
 
-    const zone = await c.env.DB.prepare('SELECT id FROM storage_zones WHERE id = ?').bind(id).first()
+    const zone = await c.env.DB.prepare('SELECT id, entity_id FROM storage_zones WHERE id = ?').bind(id).first<{ id: number; entity_id: number }>()
     if (!zone) return c.json({ success: false, error: '구역을 찾을 수 없습니다.' }, 404)
 
-    // 이름 중복 체크 (자기 자신 제외)
+    const entityId = body.entity_id ?? zone.entity_id
+
+    // 이름 중복 체크 (같은 법인 내, 자기 자신 제외)
     if (body.zone_name) {
       const dup = await c.env.DB.prepare(
-        'SELECT id FROM storage_zones WHERE zone_name = ? AND id != ?'
-      ).bind(body.zone_name.trim(), id).first()
+        'SELECT id FROM storage_zones WHERE zone_name = ? AND entity_id = ? AND id != ?'
+      ).bind(body.zone_name.trim(), entityId, id).first()
       if (dup) return c.json({ success: false, error: '이미 존재하는 구역명입니다.' }, 400)
+    }
+
+    // is_default=1 설정 시 같은 법인의 다른 기본 창고 해제
+    if (body.is_default) {
+      await c.env.DB.prepare(
+        'UPDATE storage_zones SET is_default = 0 WHERE entity_id = ? AND is_default = 1 AND id != ?'
+      ).bind(entityId, id).run()
     }
 
     await c.env.DB.prepare(`
@@ -145,6 +186,8 @@ storageZonesRouter.put('/:id', requireRole('ADMIN'), async (c) => {
         manager_id = ?,
         sort_order = COALESCE(?, sort_order),
         is_active = COALESCE(?, is_active),
+        entity_id = ?,
+        is_default = COALESCE(?, is_default),
         updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
     `).bind(
@@ -154,6 +197,8 @@ storageZonesRouter.put('/:id', requireRole('ADMIN'), async (c) => {
       body.manager_id ?? null,
       body.sort_order ?? null,
       body.is_active ?? null,
+      entityId,
+      body.is_default ?? null,
       id
     ).run()
 

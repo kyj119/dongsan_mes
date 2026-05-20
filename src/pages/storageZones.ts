@@ -10,17 +10,23 @@ export function storageZonesPage(c: Context<HonoEnv>) {
   <div class="flex items-center justify-between">
     <div>
       <h2 class="text-xl font-bold text-gray-900">창고 구역 관리</h2>
-      <p class="text-sm text-gray-500 mt-1">입고 검수 담당자별 품목 구역 설정</p>
+      <p class="text-sm text-gray-500 mt-1">법인별 창고 구역 및 품목 배정 관리</p>
     </div>
-    <button onclick="openAddZoneModal()" class="bg-blue-600 text-white rounded-lg px-4 py-2 text-sm hover:bg-blue-700">
-      <i class="fas fa-plus mr-1"></i>구역 추가
-    </button>
+    <div class="flex items-center gap-3">
+      <select id="entityFilter" class="border border-gray-300 rounded-lg px-3 py-2 text-sm" onchange="onEntityFilterChange()">
+        <option value="0">전체 법인</option>
+      </select>
+      <button onclick="openAddZoneModal()" class="bg-blue-600 text-white rounded-lg px-4 py-2 text-sm hover:bg-blue-700">
+        <i class="fas fa-plus mr-1"></i>구역 추가
+      </button>
+    </div>
   </div>
 
   <div class="bg-white rounded-lg border shadow-sm hover:shadow-md transition-shadow overflow-hidden">
     <table class="w-full text-sm ds-table-striped">
       <thead class="bg-gray-50">
         <tr>
+          <th class="px-3 py-3 text-left">법인</th>
           <th class="px-3 py-3 text-left">구역명</th>
           <th class="px-3 py-3 text-left">코드</th>
           <th class="px-3 py-3 text-left">설명</th>
@@ -56,8 +62,20 @@ export function storageZonesPage(c: Context<HonoEnv>) {
       </div>
       <div class="grid grid-cols-2 gap-3">
         <div>
+          <label class="block text-xs font-semibold text-gray-700 mb-1">법인 *</label>
+          <select id="zoneModalEntity" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"></select>
+        </div>
+        <div>
           <label class="block text-xs font-semibold text-gray-700 mb-1">코드</label>
           <input type="text" id="zoneModalCode" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="예: FABRIC">
+        </div>
+      </div>
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="block text-xs font-semibold text-gray-700 mb-1">담당자</label>
+          <select id="zoneModalManager" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+            <option value="">미지정</option>
+          </select>
         </div>
         <div>
           <label class="block text-xs font-semibold text-gray-700 mb-1">정렬 순서</label>
@@ -68,16 +86,16 @@ export function storageZonesPage(c: Context<HonoEnv>) {
         <label class="block text-xs font-semibold text-gray-700 mb-1">설명</label>
         <textarea id="zoneModalDesc" rows="2" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="선택"></textarea>
       </div>
-      <div>
-        <label class="block text-xs font-semibold text-gray-700 mb-1">담당자</label>
-        <select id="zoneModalManager" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
-          <option value="">미지정</option>
-        </select>
+      <div class="flex items-center gap-4">
+        <label class="flex items-center gap-2 text-sm text-gray-700">
+          <input type="checkbox" id="zoneModalActive" class="w-4 h-4" checked>
+          활성
+        </label>
+        <label class="flex items-center gap-2 text-sm text-gray-700">
+          <input type="checkbox" id="zoneModalDefault" class="w-4 h-4">
+          기본 출고 창고
+        </label>
       </div>
-      <label class="flex items-center gap-2 text-sm text-gray-700">
-        <input type="checkbox" id="zoneModalActive" class="w-4 h-4" checked>
-        활성
-      </label>
     </div>
     <div class="flex justify-end gap-2 px-5 py-3 border-t border-gray-200">
       <button onclick="closeZoneModal()" class="border border-gray-300 bg-white text-gray-700 rounded-lg px-4 py-2 text-sm hover:bg-gray-50">취소</button>

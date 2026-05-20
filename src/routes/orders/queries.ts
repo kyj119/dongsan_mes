@@ -216,8 +216,8 @@ ordersQueriesRouter.patch('/bulk-ship', async (c) => {
 
       // Step 2: 출고 후 전체 카드 확인 → 모두 출고면 auto_complete_date 설정 (동기화 시 SHIPPED 전이)
       const orderInfo = await c.env.DB.prepare(
-        `SELECT delivery_method, order_type FROM orders WHERE id = ?`
-      ).bind(orderId).first<{ delivery_method: string | null; order_type: string | null }>()
+        `SELECT delivery_method, order_type, entity_id FROM orders WHERE id = ?`
+      ).bind(orderId).first<{ delivery_method: string | null; order_type: string | null; entity_id: number | null }>()
       const method = (orderInfo?.delivery_method || '').trim()
 
       // 모든 카드 출고 완료 확인
@@ -227,20 +227,29 @@ ordersQueriesRouter.patch('/bulk-ship', async (c) => {
       const allShipped = (afterCheck?.remaining || 0) === 0
 
       if (allShipped) {
-        // 유통 주문 출고 시 재고 차감
+        // 유통 주문 출고 시 재고 차감 (주문의 법인 소속 재고에서 차감)
         if (orderInfo?.order_type === 'DISTRIBUTION') {
+          const orderEntityId = (orderInfo as any).entity_id || getEntityId(c) || 1
           const { results: orderItems } = await c.env.DB.prepare(
             `SELECT item_id, quantity FROM order_items WHERE order_id = ? AND item_id IS NOT NULL`
           ).bind(orderId).all<{ item_id: number; quantity: number }>()
           for (const oi of (orderItems || [])) {
             if (!oi.item_id || !oi.quantity) continue
+            // 음수 허용 (경고만) — MAX(0, ...) 제거
+            const beforeRow = await c.env.DB.prepare(
+              `SELECT quantity FROM inventory WHERE item_id = ? AND entity_id = ?`
+            ).bind(oi.item_id, orderEntityId).first<{ quantity: number }>()
+            const before = beforeRow?.quantity ?? 0
             await c.env.DB.prepare(
-              `UPDATE inventory SET quantity = MAX(0, quantity - ?), last_updated = CURRENT_TIMESTAMP WHERE item_id = ?`
-            ).bind(oi.quantity, oi.item_id).run()
+              `UPDATE inventory SET quantity = quantity - ?, last_updated = CURRENT_TIMESTAMP WHERE item_id = ? AND entity_id = ?`
+            ).bind(oi.quantity, oi.item_id, orderEntityId).run()
+            if (before - oi.quantity < 0) {
+              console.warn(`[distShip] ⚠️ 재고 음수 경고: item=${oi.item_id}, entity=${orderEntityId}, 잔량=${before - oi.quantity}`)
+            }
             await c.env.DB.prepare(
               `INSERT INTO inventory_transactions (item_id, transaction_type, quantity, reference_type, reference_id, notes, transaction_date, entity_id)
                VALUES (?, 'OUT', ?, 'ORDER', ?, '유통 출고 차감', date('now'), ?)`
-            ).bind(oi.item_id, oi.quantity, orderId, getEntityId(c) || 1).run()
+            ).bind(oi.item_id, oi.quantity, orderId, orderEntityId).run()
           }
         }
         // auto_complete_date 설정: 직접수령/방문수령/퀵은 +1일, 배송은 +2일
