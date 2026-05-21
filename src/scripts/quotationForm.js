@@ -144,6 +144,7 @@ function buildItemHtml(id) {
                 <label id="unit_price_label_${id}" class="block text-xs font-medium text-gray-600 mb-1">단가 (원)</label>
                 <input type="text" inputmode="numeric" data-money name="unit_price_${id}" value="0"
                        class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" oninput="calcItem(${id})">
+                <div id="price_suggest_${id}" class="hidden mt-1"></div>
             </div>
             <div>
                 <label class="block text-xs font-medium text-gray-600 mb-1">금액</label>
@@ -200,7 +201,14 @@ function setupAutocomplete(id) {
         var clientId = document.getElementById('clientId').value;
         if (clientId && item.id) {
             axios.get('/api/prices?item_id=' + item.id + '&client_id=' + clientId + '&context=sales')
-                .then(function(r) { if (r.data && r.data.suggested_price > 0) { priceInp.value = fmtMoneyInput(r.data.suggested_price); calcItem(id); } })
+                .then(function(r) {
+                    if (r.data && r.data.suggested_price > 0) {
+                        priceInp.value = fmtMoneyInput(r.data.suggested_price);
+                        calcItem(id);
+                    }
+                    // #75: 3개월 평균 판매가 추천 라벨 표시
+                    showPriceSuggestion(id, r.data, priceInp);
+                })
                 .catch(function() {});
         }
     }
@@ -276,8 +284,46 @@ window.calcItem = function(id) {
     }
     var el = document.querySelector('[name="amount_' + id + '"]');
     if (el) el.value = Math.round(amt).toLocaleString() + '원';
+    // #75: 입력 단가 vs 추천 단가 경고 체크
+    checkPriceWarning(id, price);
     calculateTotal();
 };
+
+// #75: 3개월 평균 판매가 추천 라벨 + 저가 경고
+var avgPriceCache = {};
+
+function showPriceSuggestion(id, data, priceInp) {
+    var box = document.getElementById('price_suggest_' + id);
+    if (!box) return;
+    var avg = data && data.details && data.details.avg_3month;
+    if (!avg || !avg.price) { box.classList.add('hidden'); return; }
+    avgPriceCache[id] = avg.price;
+    box.innerHTML = '<span class="text-xs text-blue-600 cursor-pointer" onclick="applySuggestedPrice(' + id + ',' + avg.price + ')" title="클릭하면 적용">'
+        + '<i class="fas fa-lightbulb mr-1"></i>추천: ₩' + Number(avg.price).toLocaleString()
+        + ' <span class="text-gray-400">(' + avg.count + '건 평균)</span></span>';
+    box.classList.remove('hidden');
+    checkPriceWarning(id, parseMoney(priceInp.value));
+}
+
+window.applySuggestedPrice = function(id, price) {
+    var inp = document.querySelector('[name="unit_price_' + id + '"]');
+    if (inp) { inp.value = fmtMoneyInput(price); calcItem(id); }
+};
+
+function checkPriceWarning(id, currentPrice) {
+    var box = document.getElementById('price_suggest_' + id);
+    if (!box) return;
+    var avg = avgPriceCache[id];
+    if (!avg || !currentPrice || currentPrice <= 0) return;
+    var warnEl = box.querySelector('.price-warn');
+    if (warnEl) warnEl.remove();
+    if (currentPrice < avg * 0.8) {
+        var warn = document.createElement('div');
+        warn.className = 'price-warn text-xs text-orange-600 mt-0.5';
+        warn.innerHTML = '<i class="fas fa-exclamation-triangle mr-1"></i>평균 대비 ' + Math.round((1 - currentPrice / avg) * 100) + '% 낮은 단가입니다';
+        box.appendChild(warn);
+    }
+}
 
 function calculateTotal() {
     var total = 0, vat = 0;

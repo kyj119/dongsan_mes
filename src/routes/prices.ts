@@ -93,6 +93,22 @@ pricesRouter.get('/', async (c) => {
             reference: recentSales.order_number
           }
         }
+
+        // #75: 3개월 평균 판매단가 (전체 거래처 대상, 원가 미노출)
+        const avg3m = await c.env.DB.prepare(`
+          SELECT ROUND(AVG(oi.unit_price)) as avg_price, COUNT(*) as tx_count
+          FROM order_items oi
+          JOIN orders o ON oi.order_id = o.id
+          WHERE oi.item_id = ? AND o.status NOT IN ('CANCELLED','DRAFT')
+            AND o.order_date >= date('now', '-3 months')${efSales.clause}
+        `).bind(item_id, ...efSales.params).first<{ avg_price: number | null; tx_count: number }>()
+
+        if (avg3m && avg3m.avg_price && avg3m.tx_count > 0) {
+          ;(details as any).avg_3month = {
+            price: avg3m.avg_price,
+            count: avg3m.tx_count,
+          }
+        }
       }
     }
 
