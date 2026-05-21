@@ -444,9 +444,7 @@
     var html = '';
     accounts.forEach(function(a) {
       var syncTime = a.last_synced_at ? new Date(a.last_synced_at).toLocaleString('ko-KR') : '동기화 안됨';
-      var connBadge = a.connected_id
-        ? '<span class="text-xs text-green-600 bg-green-50 px-2 py-0.5 rounded-full ml-2"><i class="fas fa-link mr-1"></i>Connected</span>'
-        : '<span class="text-xs text-gray-400 bg-gray-50 px-2 py-0.5 rounded-full ml-2"><i class="fas fa-unlink mr-1"></i>미연결</span>';
+      var connBadge = '';
       html += '<div class="account-card">';
       html += '<div class="flex items-center gap-4">';
       html += '<div class="w-10 h-10 rounded-full bg-blue-50 flex items-center justify-center"><i class="fas fa-university text-blue-600"></i></div>';
@@ -457,7 +455,6 @@
       html += '</div>';
       html += '</div>';
       html += '<div class="flex gap-2">';
-      html += '<button class="btn-sm btn-sync" onclick="syncAccount(' + a.id + ')"><i class="fas fa-sync-alt mr-1"></i>동기화</button>';
       html += '<button class="btn-sm" style="background:#e0e7ff;color:#3730a3;" onclick="editAccount(' + a.id + ')"><i class="fas fa-edit mr-1"></i>수정</button>';
       html += '<button class="btn-sm btn-delete" onclick="deleteAccount(' + a.id + ')"><i class="fas fa-trash mr-1"></i>삭제</button>';
       html += '</div>';
@@ -465,16 +462,6 @@
     });
     list.innerHTML = html;
   }
-
-  window.syncAccount = function(id) {
-    axios.post('/api/bank/accounts/' + id + '/sync').then(function() {
-      showToast('동기화 완료', 'success');
-      loadAccounts();
-    }).catch(function(e) {
-      var msg = (e.response && e.response.data && e.response.data.error) ? e.response.data.error : '동기화 실패';
-      showToast(msg, 'error');
-    });
-  };
 
   window.deleteAccount = async function(id) {
     if (!(await showConfirm('계좌를 비활성화하시겠습니까?', { danger: true }))) return;
@@ -493,7 +480,7 @@
     document.getElementById('accEditId').value = '';
     document.getElementById('accountModalTitle').innerHTML = '<i class="fas fa-university text-blue-500 mr-2"></i>새 계좌 등록';
     document.getElementById('accSaveBtn').textContent = '등록';
-    ['accBank','accNumber','accHolder','accConnectedId'].forEach(function(id) {
+    ['accBank','accNumber','accHolder'].forEach(function(id) {
       var el = document.getElementById(id);
       if (el) el.value = '';
     });
@@ -509,50 +496,11 @@
     document.getElementById('accBank').value = acc.bank_code || '';
     document.getElementById('accNumber').value = acc.account_number || '';
     document.getElementById('accHolder').value = acc.account_holder || '';
-    document.getElementById('accConnectedId').value = acc.connected_id || '';
     document.getElementById('accountModal').classList.add('show');
   };
 
   window.closeAccountModal = function() {
     document.getElementById('accountModal').classList.remove('show');
-    document.getElementById('connIdResult').classList.add('hidden');
-  };
-
-  window.issueConnectedId = function() {
-    var bankCode = document.getElementById('accBank').value;
-    if (!bankCode) { showToast('은행을 먼저 선택하세요.', 'warning'); return; }
-    var loginId = document.getElementById('bankLoginId').value.trim();
-    var loginPw = document.getElementById('bankLoginPw').value;
-    if (!loginId || !loginPw) { showToast('은행 ID와 비밀번호를 입력하세요.', 'warning'); return; }
-    var btn = document.getElementById('issueConnIdBtn');
-    btn.disabled = true;
-    btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i>발급 중...';
-    var resultDiv = document.getElementById('connIdResult');
-    resultDiv.classList.add('hidden');
-    axios.post('/api/bank/connected-id', {
-      organization: bankCode,
-      loginType: '1',
-      id: loginId,
-      password: loginPw
-    }).then(function(r) {
-      var connId = r.data.data && r.data.data.connectedId;
-      if (connId) {
-        document.getElementById('accConnectedId').value = connId;
-        resultDiv.innerHTML = '<i class="fas fa-check-circle mr-1"></i>Connected ID 발급 완료: <strong>' + escHtml(connId) + '</strong>';
-        resultDiv.classList.remove('hidden');
-        showToast('Connected ID 발급 완료', 'success');
-      } else {
-        showToast('Connected ID를 받지 못했습니다. 응답: ' + JSON.stringify(r.data), 'warning');
-      }
-    }).catch(function(e) {
-      var msg = (e.response && e.response.data && e.response.data.error) ? e.response.data.error : 'Connected ID 발급 실패';
-      showToast(msg, 'error');
-      resultDiv.innerHTML = '<i class="fas fa-exclamation-triangle mr-1 text-red-500"></i><span class="text-red-600">' + escHtml(msg) + '</span>';
-      resultDiv.className = 'mt-3 p-3 bg-red-50 border border-red-200 rounded text-sm';
-    }).finally(function() {
-      btn.disabled = false;
-      btn.innerHTML = '<i class="fas fa-key mr-1"></i>발급';
-    });
   };
 
   window.saveAccount = function() {
@@ -562,15 +510,13 @@
     var bankName = bankSel.options[bankSel.selectedIndex].text;
     var number = document.getElementById('accNumber').value.trim();
     var holder = document.getElementById('accHolder').value.trim();
-    var connectedId = document.getElementById('accConnectedId').value.trim();
     if (!bankCode) { showToast('은행을 선택하세요.', 'warning'); return; }
     if (!number) { showToast('계좌번호를 입력하세요.', 'warning'); return; }
     var body = {
       bank_code: bankCode,
       bank_name: bankName,
       account_number: number,
-      account_holder: holder || null,
-      connected_id: connectedId || null
+      account_holder: holder || null
     };
     var promise = editId
       ? axios.put('/api/bank/accounts/' + editId, body)
@@ -597,40 +543,11 @@
     }).catch(function() { matchRules = {}; });
   }
 
-  // CODEF settings
-  function loadCodefSettings() {
-    axios.get('/api/bank/settings').then(function(r) {
-      var s = r.data.data || {};
-      if (s.codef_client_id) document.getElementById('codefClientId').value = s.codef_client_id;
-      if (s.codef_client_secret) document.getElementById('codefClientSecret').value = s.codef_client_secret;
-      if (s.codef_service_type) document.getElementById('codefServiceType').value = s.codef_service_type;
-    }).catch(function(err) { console.error('[bank] CODEF 설정 로드 실패', err); });
-  }
-
-  window.saveCodefSettings = function() {
-    var body = {
-      codef_client_id: document.getElementById('codefClientId').value.trim(),
-      codef_client_secret: document.getElementById('codefClientSecret').value.trim(),
-      codef_service_type: document.getElementById('codefServiceType').value
-    };
-    if (!body.codef_client_id || !body.codef_client_secret) {
-      showToast('Client ID와 Secret을 입력하세요.', 'warning');
-      return;
-    }
-    axios.put('/api/bank/settings', body).then(function() {
-      showToast('CODEF 설정 저장 완료', 'success');
-    }).catch(function(e) {
-      var msg = (e.response && e.response.data && e.response.data.error) ? e.response.data.error : '저장 실패';
-      showToast(msg, 'error');
-    });
-  };
-
   // Init
   Promise.all([loadClients(), loadAccountFilter(), loadMatchRules()]).then(function() {
     loadTransactions();
     loadStats();
   });
-  loadCodefSettings();
 
   // Close modals on overlay click
   document.getElementById('accountModal').addEventListener('click', function(e) {
@@ -638,9 +555,6 @@
   });
   document.getElementById('applyModal').addEventListener('click', function(e) {
     if (e.target === this) closeApplyModal();
-  });
-  document.getElementById('syncPreviewModal').addEventListener('click', function(e) {
-    if (e.target === this) closeSyncPreview();
   });
 
 })();

@@ -3,7 +3,6 @@ import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
 import { getEntityId, entityFilter } from '../utils/entityFilter'
 import { getNextSeqNumber } from '../utils/sequenceGenerator'
-import { fetchCardApprovals, createConnectedId } from '../lib/codef'
 
 const cardExpensesRouter = new Hono<HonoEnv>()
 cardExpensesRouter.use('/*', authMiddleware, requireRole('ADMIN', 'MANAGER'))
@@ -361,131 +360,6 @@ cardExpensesRouter.post('/transactions/import-csv', async (c) => {
   }
 
   return c.json({ success: true, data: { imported, total: body.rows.length } })
-})
-
-// ============================================================================
-// CODEF 카드 내역 자동 연동
-// ============================================================================
-
-// 카드사 기관 코드 매핑
-const CARD_ORG_CODES: Record<string, string> = {
-  '신한': '0301', '현대': '0302', '삼성': '0303', 'KB국민': '0304',
-  '롯데': '0311', '하나': '0313', '우리': '0309', 'NH농협': '0312',
-  'BC': '0305', '씨티': '0306',
-}
-
-// POST /cards/:id/connect — CODEF connectedId 생성 (카드사 로그인 등록)
-cardExpensesRouter.post('/cards/:id/connect', async (c) => {
-  try {
-    const cardId = c.req.param('id')
-    const body = await c.req.json() as { loginId: string; loginPw: string }
-    if (!body.loginId || !body.loginPw) {
-      return c.json({ success: false, error: '카드사 아이디/비밀번호가 필요합니다.' }, 400)
-    }
-
-    const card = await c.env.DB.prepare(
-      'SELECT id, card_company FROM corporate_cards WHERE id = ?'
-    ).bind(cardId).first<{ id: number; card_company: string }>()
-    if (!card) return c.json({ success: false, error: '카드를 찾을 수 없습니다.' }, 404)
-
-    const orgCode = CARD_ORG_CODES[card.card_company]
-    if (!orgCode) return c.json({ success: false, error: `${card.card_company} 카드사는 CODEF에서 지원하지 않습니다.` }, 400)
-
-    const result = await createConnectedId(c.env.DB, {
-      businessType: 'CD',  // CD = 카드
-      clientType: 'B',     // B = 법인
-      organization: orgCode,
-      loginType: '1',      // 1 = ID/PW
-      id: body.loginId,
-      password: body.loginPw,
-    })
-
-    if (result.result.code !== 'CF-00000' && result.result.code !== 'CF-04012') {
-      return c.json({ success: false, error: result.result.message || 'connectedId 생성 실패' }, 400)
-    }
-
-    const connectedId = result.connectedId || result.data?.connectedId
-    if (connectedId) {
-      await c.env.DB.prepare(
-        'UPDATE corporate_cards SET connected_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
-      ).bind(connectedId, cardId).run()
-    }
-
-    return c.json({ success: true, data: { connected_id: connectedId } })
-  } catch (error: any) {
-    console.error('Card connect error:', error)
-    return c.json({ success: false, error: error.message || 'CODEF 연결 실패' }, 500)
-  }
-})
-
-// POST /cards/:id/sync — CODEF 카드 승인내역 동기화
-cardExpensesRouter.post('/cards/:id/sync', async (c) => {
-  try {
-    const cardId = c.req.param('id')
-    const body = await c.req.json() as { startDate?: string; endDate?: string }
-
-    const card = await c.env.DB.prepare(
-      'SELECT id, card_company, card_number_last4, connected_id FROM corporate_cards WHERE id = ?'
-    ).bind(cardId).first<{ id: number; card_company: string; card_number_last4: string | null; connected_id: string | null }>()
-
-    if (!card) return c.json({ success: false, error: '카드를 찾을 수 없습니다.' }, 404)
-    if (!card.connected_id) return c.json({ success: false, error: 'CODEF 연결이 필요합니다. 카드사 로그인 정보를 먼저 등록하세요.' }, 400)
-
-    const orgCode = CARD_ORG_CODES[card.card_company]
-    if (!orgCode) return c.json({ success: false, error: `${card.card_company}는 지원하지 않는 카드사입니다.` }, 400)
-
-    // 기본: 이번달 1일 ~ 오늘
-    const now = new Date()
-    const defaultStart = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}01`
-    const defaultEnd = now.toISOString().substring(0, 10).replace(/-/g, '')
-
-    const result = await fetchCardApprovals(c.env.DB, {
-      connectedId: card.connected_id,
-      organization: orgCode,
-      startDate: body.startDate?.replace(/-/g, '') || defaultStart,
-      endDate: body.endDate?.replace(/-/g, '') || defaultEnd,
-    })
-
-    if (result.result.code !== 'CF-00000') {
-      return c.json({ success: false, error: result.result.message || '조회 실패' }, 400)
-    }
-
-    const approvals = result.data?.resApprovalList || []
-    const entityId = getEntityId(c)
-    const userId = c.get('user').id
-    let imported = 0
-
-    for (const ap of approvals) {
-      const txId = `codef_${orgCode}_${ap.resApprovalNo}_${ap.resUsedDate}`
-      const amount = Math.abs(parseFloat(ap.resUsedAmount) || 0)
-      if (!amount) continue
-
-      try {
-        await c.env.DB.prepare(`
-          INSERT OR IGNORE INTO card_transactions
-            (card_id, transaction_date, transaction_time, merchant_name, amount, installments, codef_transaction_id, entity_id, created_by)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `).bind(
-          card.id,
-          `${ap.resUsedDate.substring(0, 4)}-${ap.resUsedDate.substring(4, 6)}-${ap.resUsedDate.substring(6, 8)}`,
-          ap.resUsedTime || null,
-          ap.resMemberStoreName || null,
-          amount,
-          parseInt(ap.resInstallmentCount) || 1,
-          txId, entityId, userId
-        ).run()
-        imported++
-      } catch (_) { /* duplicate */ }
-    }
-
-    return c.json({
-      success: true,
-      data: { imported, total: approvals.length, card_name: card.card_company + (card.card_number_last4 ? ' ' + card.card_number_last4 : '') }
-    })
-  } catch (error: any) {
-    console.error('Card sync error:', error)
-    return c.json({ success: false, error: error.message || '동기화 실패' }, 500)
-  }
 })
 
 export default cardExpensesRouter

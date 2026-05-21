@@ -6,7 +6,6 @@
 import { Hono } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
-import { fetchTransactions, createConnectedId } from '../lib/codef'
 import { createPayment } from '../lib/payments'
 import { entityFilter, getEntityId } from '../utils/entityFilter'
 
@@ -36,7 +35,7 @@ bankRouter.get('/accounts', requireRole('ADMIN'), async (c) => {
 bankRouter.post('/accounts', requireRole('ADMIN'), async (c) => {
   try {
     const body = await c.req.json()
-    const { bank_code, bank_name, account_number, account_holder, connected_id } = body
+    const { bank_code, bank_name, account_number, account_holder } = body
 
     if (!bank_code || !bank_name || !account_number) {
       return c.json({
@@ -46,30 +45,15 @@ bankRouter.post('/accounts', requireRole('ADMIN'), async (c) => {
     }
 
     const result = await c.env.DB.prepare(`
-      INSERT INTO bank_accounts (bank_code, bank_name, account_number, account_holder, connected_id, entity_id)
-      VALUES (?, ?, ?, ?, ?, ?)
+      INSERT INTO bank_accounts (bank_code, bank_name, account_number, account_holder, entity_id)
+      VALUES (?, ?, ?, ?, ?)
     `).bind(
       bank_code,
       bank_name,
       account_number,
       account_holder ?? null,
-      connected_id ?? null,
       getEntityId(c)
     ).run()
-
-    // CODEF 설정값이 있으면 settings 테이블에 저장
-    const { codef_client_id, codef_client_secret, codef_service_type } = body
-    if (codef_client_id || codef_client_secret || codef_service_type) {
-      const settingsToSave: [string, string][] = []
-      if (codef_client_id)     settingsToSave.push(['codef_client_id', codef_client_id])
-      if (codef_client_secret) settingsToSave.push(['codef_client_secret', codef_client_secret])
-      if (codef_service_type)  settingsToSave.push(['codef_service_type', codef_service_type])
-      for (const [key, val] of settingsToSave) {
-        await c.env.DB.prepare(
-          'INSERT OR REPLACE INTO settings (setting_key, setting_value) VALUES (?, ?)'
-        ).bind(key, val).run()
-      }
-    }
 
     return c.json({
       success: true,
@@ -90,7 +74,7 @@ bankRouter.put('/accounts/:id', requireRole('ADMIN'), async (c) => {
   try {
     const id = c.req.param('id')
     const body = await c.req.json()
-    const { bank_code, bank_name, account_number, account_holder, connected_id } = body
+    const { bank_code, bank_name, account_number, account_holder } = body
 
     const account = await c.env.DB.prepare(
       'SELECT id FROM bank_accounts WHERE id = ? AND is_active = 1'
@@ -105,116 +89,19 @@ bankRouter.put('/accounts/:id', requireRole('ADMIN'), async (c) => {
       SET bank_code = COALESCE(?, bank_code),
           bank_name = COALESCE(?, bank_name),
           account_number = COALESCE(?, account_number),
-          account_holder = COALESCE(?, account_holder),
-          connected_id = ?
+          account_holder = COALESCE(?, account_holder)
       WHERE id = ?
     `).bind(
       bank_code ?? null,
       bank_name ?? null,
       account_number ?? null,
       account_holder ?? null,
-      connected_id ?? null,
       id
     ).run()
-
-    // CODEF 설정값 업데이트
-    const { codef_client_id, codef_client_secret, codef_service_type } = body
-    if (codef_client_id || codef_client_secret || codef_service_type) {
-      const settingsToSave: [string, string][] = []
-      if (codef_client_id)     settingsToSave.push(['codef_client_id', codef_client_id])
-      if (codef_client_secret) settingsToSave.push(['codef_client_secret', codef_client_secret])
-      if (codef_service_type)  settingsToSave.push(['codef_service_type', codef_service_type])
-      for (const [key, val] of settingsToSave) {
-        await c.env.DB.prepare(
-          'INSERT OR REPLACE INTO settings (setting_key, setting_value) VALUES (?, ?)'
-        ).bind(key, val).run()
-      }
-    }
 
     return c.json({ success: true, message: '계좌가 수정되었습니다' })
   } catch (error) {
     console.error('Update bank account error:', error)
-    return c.json({
-      success: false,
-      error: '서버 오류가 발생했습니다.'
-    }, 500)
-  }
-})
-
-// GET /api/bank/settings — CODEF 설정 조회
-bankRouter.get('/settings', requireRole('ADMIN'), async (c) => {
-  try {
-    const { results } = await c.env.DB.prepare(
-      "SELECT setting_key, setting_value FROM settings WHERE setting_key LIKE 'codef_%'"
-    ).all<{ setting_key: string; setting_value: string }>()
-
-    const settings: Record<string, string> = {}
-    for (const r of results) {
-      settings[r.setting_key] = r.setting_value
-    }
-    return c.json({ success: true, data: settings })
-  } catch (error) {
-    return c.json({ success: false, error: 'Settings load failed' }, 500)
-  }
-})
-
-// PUT /api/bank/settings — CODEF 설정 저장
-bankRouter.put('/settings', requireRole('ADMIN'), async (c) => {
-  try {
-    const body = await c.req.json() as Record<string, string>
-    const allowedKeys = ['codef_client_id', 'codef_client_secret', 'codef_service_type']
-    for (const [key, val] of Object.entries(body)) {
-      if (allowedKeys.includes(key) && val) {
-        await c.env.DB.prepare(
-          'INSERT OR REPLACE INTO settings (setting_key, setting_value) VALUES (?, ?)'
-        ).bind(key, val).run()
-      }
-    }
-    return c.json({ success: true, message: 'CODEF 설정이 저장되었습니다' })
-  } catch (error) {
-    return c.json({ success: false, error: 'Settings save failed' }, 500)
-  }
-})
-
-// POST /api/bank/connected-id — CODEF Connected ID 발급
-bankRouter.post('/connected-id', requireRole('ADMIN'), async (c) => {
-  try {
-    const body = await c.req.json()
-    const { organization, loginType, id, password } = body
-
-    if (!organization) {
-      return c.json({ success: false, error: '기관코드(organization) 필수' }, 400)
-    }
-
-    const result = await createConnectedId(c.env.DB, {
-      countryCode: 'KR',
-      businessType: 'BK',
-      clientType: 'P',
-      organization,
-      loginType: loginType || '1',
-      id: id || '',
-      password: password || '',
-    })
-
-    const code = result.result?.code
-    if (code === 'CF-00000' || code === 'CF-04012') {
-      const connectedId = result.data?.connectedId
-      if (connectedId) {
-        return c.json({
-          success: true,
-          data: { connectedId },
-          message: 'Connected ID가 발급되었습니다'
-        })
-      }
-    }
-
-    return c.json({
-      success: false,
-      error: `CODEF 오류 [${code}]`,
-      detail: result
-    }, 400)
-  } catch (error) {
-    console.error('Create connectedId error:', error)
     return c.json({
       success: false,
       error: '서버 오류가 발생했습니다.'
@@ -242,226 +129,6 @@ bankRouter.delete('/accounts/:id', requireRole('ADMIN'), async (c) => {
     return c.json({ success: true, message: '계좌가 비활성화되었습니다' })
   } catch (error) {
     console.error('Delete bank account error:', error)
-    return c.json({
-      success: false,
-      error: '서버 오류가 발생했습니다.'
-    }, 500)
-  }
-})
-
-// POST /api/bank/accounts/:id/sync-preview — 동기화 미리보기 (DB에 저장 안함)
-bankRouter.post('/accounts/:id/sync-preview', requireRole('ADMIN'), async (c) => {
-  try {
-    const id = c.req.param('id')
-    const body = await c.req.json().catch(() => ({})) as {
-      start_date?: string
-      end_date?: string
-    }
-
-    const account = await c.env.DB.prepare(
-      'SELECT id, bank_code, account_number, connected_id FROM bank_accounts WHERE id = ? AND is_active = 1'
-    ).bind(id).first<{
-      id: number
-      bank_code: string
-      account_number: string
-      connected_id: string | null
-    }>()
-
-    if (!account) {
-      return c.json({ success: false, error: '계좌를 찾을 수 없습니다' }, 404)
-    }
-
-    if (!account.connected_id) {
-      return c.json({ success: false, error: 'connected_id가 등록되지 않은 계좌입니다' }, 400)
-    }
-
-    // 날짜 범위 기본값: 최근 30일
-    const today = new Date()
-    const defaultEnd   = today.toISOString().slice(0, 10).replace(/-/g, '')
-    const defaultStart = new Date(today.setDate(today.getDate() - 30))
-      .toISOString().slice(0, 10).replace(/-/g, '')
-
-    const startDate = (body.start_date ?? defaultStart).replace(/-/g, '')
-    const endDate   = (body.end_date ?? defaultEnd).replace(/-/g, '')
-
-    // CODEF API 호출
-    const codefRes = await fetchTransactions(c.env.DB, {
-      connectedId:  account.connected_id,
-      organization: account.bank_code,
-      account:      account.account_number,
-      startDate,
-      endDate,
-    })
-
-    if (codefRes.result.code !== 'CF-00000') {
-      console.error('CODEF API error:', codefRes.result)
-      return c.json({
-        success: false,
-        error: '거래내역 조회 중 오류가 발생했습니다'
-      }, 502)
-    }
-
-    const txList = codefRes.data?.resTrHistoryList ?? []
-    const { results: existingTxs } = await c.env.DB.prepare(`
-      SELECT codef_transaction_id FROM bank_transactions
-      WHERE bank_account_id = ?
-    `).bind(account.id).all<{ codef_transaction_id: string }>()
-
-    const existingCodefIds = new Set(existingTxs.map(t => t.codef_transaction_id))
-
-    const newTransactions: any[] = []
-    let duplicateCount = 0
-
-    for (const tx of txList) {
-      const inAmount  = parseFloat(tx.resAccountIn  || '0')
-      const outAmount = parseFloat(tx.resAccountOut || '0')
-      const type      = inAmount > 0 ? 'DEPOSIT' : 'WITHDRAWAL'
-      const amount    = inAmount > 0 ? inAmount : outAmount
-
-      const codefId = tx.resTransactionId
-        ?? `${tx.resAccountTrDate}${tx.resAccountTrTime}${amount}`
-
-      if (existingCodefIds.has(codefId)) {
-        duplicateCount++
-        continue
-      }
-
-      newTransactions.push({
-        bank_account_id: account.id,
-        transaction_date: tx.resAccountTrDate,
-        transaction_time: tx.resAccountTrTime ?? null,
-        transaction_type: type,
-        amount,
-        balance_after: parseFloat(tx.resAfterTranBalance || '0'),
-        counterpart_name: tx.resAccountDesc1 ?? null,
-        description: [tx.resAccountDesc2, tx.resAccountDesc3, tx.resAccountDesc4]
-          .filter(Boolean).join(' ').trim() || null,
-        codef_transaction_id: codefId,
-      })
-    }
-
-    return c.json({
-      success: true,
-      data: {
-        total: txList.length,
-        new_count: newTransactions.length,
-        duplicate_count: duplicateCount,
-        new_transactions: newTransactions,
-        date_range: { start: startDate, end: endDate }
-      }
-    })
-  } catch (error) {
-    console.error('Sync preview error:', error)
-    return c.json({
-      success: false,
-      error: '서버 오류가 발생했습니다.'
-    }, 500)
-  }
-})
-
-// POST /api/bank/accounts/:id/sync — CODEF 거래내역 조회 후 INSERT OR IGNORE
-bankRouter.post('/accounts/:id/sync', requireRole('ADMIN'), async (c) => {
-  try {
-    const id = c.req.param('id')
-    const body = await c.req.json().catch(() => ({})) as {
-      start_date?: string
-      end_date?: string
-    }
-
-    const account = await c.env.DB.prepare(
-      'SELECT id, bank_code, account_number, connected_id FROM bank_accounts WHERE id = ? AND is_active = 1'
-    ).bind(id).first<{
-      id: number
-      bank_code: string
-      account_number: string
-      connected_id: string | null
-    }>()
-
-    if (!account) {
-      return c.json({ success: false, error: '계좌를 찾을 수 없습니다' }, 404)
-    }
-
-    if (!account.connected_id) {
-      return c.json({ success: false, error: 'connected_id가 등록되지 않은 계좌입니다' }, 400)
-    }
-
-    // 날짜 범위 기본값: 최근 30일
-    const today = new Date()
-    const defaultEnd   = today.toISOString().slice(0, 10).replace(/-/g, '')
-    const defaultStart = new Date(today.setDate(today.getDate() - 30))
-      .toISOString().slice(0, 10).replace(/-/g, '')
-
-    const startDate = (body.start_date ?? defaultStart).replace(/-/g, '')
-    const endDate   = (body.end_date ?? defaultEnd).replace(/-/g, '')
-
-    // CODEF API 호출
-    const codefRes = await fetchTransactions(c.env.DB, {
-      connectedId:  account.connected_id,
-      organization: account.bank_code,
-      account:      account.account_number,
-      startDate,
-      endDate,
-    })
-
-    if (codefRes.result.code !== 'CF-00000') {
-      console.error('CODEF API error:', codefRes.result)
-      return c.json({
-        success: false,
-        error: '거래내역 동기화 중 오류가 발생했습니다'
-      }, 502)
-    }
-
-    const txList = codefRes.data?.resTrHistoryList ?? []
-    let insertedCount = 0
-
-    for (const tx of txList) {
-      const inAmount  = parseFloat(tx.resAccountIn  || '0')
-      const outAmount = parseFloat(tx.resAccountOut || '0')
-      const type      = inAmount > 0 ? 'DEPOSIT' : 'WITHDRAWAL'
-      const amount    = inAmount > 0 ? inAmount : outAmount
-
-      // codef_transaction_id: 지원되면 사용, 없으면 날짜+시간+금액 조합
-      const codefId = tx.resTransactionId
-        ?? `${tx.resAccountTrDate}${tx.resAccountTrTime}${amount}`
-
-      const res = await c.env.DB.prepare(`
-        INSERT OR IGNORE INTO bank_transactions (
-          bank_account_id, transaction_date, transaction_time,
-          transaction_type, amount, balance_after,
-          counterpart_name, description, codef_transaction_id, entity_id
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `).bind(
-        account.id,
-        tx.resAccountTrDate,
-        tx.resAccountTrTime ?? null,
-        type,
-        amount,
-        parseFloat(tx.resAfterTranBalance || '0'),
-        tx.resAccountDesc1 ?? null,
-        [tx.resAccountDesc2, tx.resAccountDesc3, tx.resAccountDesc4]
-          .filter(Boolean).join(' ').trim() || null,
-        codefId,
-        getEntityId(c)
-      ).run()
-
-      if (res.meta.changes > 0) insertedCount++
-    }
-
-    // last_synced_at 업데이트
-    await c.env.DB.prepare(
-      'UPDATE bank_accounts SET last_synced_at = CURRENT_TIMESTAMP, last_synced_date = ? WHERE id = ?'
-    ).bind(endDate, id).run()
-
-    return c.json({
-      success: true,
-      data: {
-        total_fetched: txList.length,
-        newly_inserted: insertedCount,
-      },
-      message: `거래내역 ${txList.length}건 조회, ${insertedCount}건 신규 저장`
-    })
-  } catch (error) {
-    console.error('Sync bank transactions error:', error)
     return c.json({
       success: false,
       error: '서버 오류가 발생했습니다.'

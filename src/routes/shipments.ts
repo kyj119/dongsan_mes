@@ -412,10 +412,11 @@ shipmentsRouter.post('/', requireRole('ADMIN', 'MANAGER', 'DESIGNER'), async (c)
     const order = await c.env.DB.prepare(`SELECT id, order_number, status FROM orders WHERE id = ?${ef.clause}`).bind(body.order_id, ...ef.params).first<{ id: number; order_number: string; status: string }>()
     if (!order) return c.json({ success: false, error: '주문을 찾을 수 없습니다.' }, 404)
 
-    // 출고번호 생성
+    // 출고번호 생성 (#148: entity별 독립 시퀀스)
     const today = new Date()
     const dateStr = today.toISOString().split('T')[0].replace(/-/g, '')
-    const shipmentNumber = await getNextSeqNumber(c.env.DB, 'shipments', 'shipment_number', `SHP-${dateStr}-`)
+    const eid = getEntityId(c) || 1
+    const shipmentNumber = await getNextSeqNumber(c.env.DB, 'shipments', 'shipment_number', `SHP-E${eid}-${dateStr}-`, 3, eid)
 
     // 출고 등록
     const result = await c.env.DB.prepare(`
@@ -430,7 +431,7 @@ shipmentsRouter.post('/', requireRole('ADMIN', 'MANAGER', 'DESIGNER'), async (c)
       body.delivery_type || 'DELIVERY',
       body.courier_name || null, body.tracking_number || null,
       body.receiver_name || null, body.receiver_phone || null, body.receiver_address || null,
-      body.notes || null, user?.id || 1, getEntityId(c) || 1
+      body.notes || null, user?.id || 1, eid
     ).run()
 
     const shipmentId = result.meta.last_row_id
@@ -580,7 +581,8 @@ shipmentsRouter.patch('/:id', requireRole('ADMIN', 'MANAGER', 'OPERATOR'), async
         return c.json({ success: false, error: '주문 또는 출고 정보를 찾을 수 없습니다.' }, 404)
       }
 
-      const shipmentNumber = `SHP-${new Date().toISOString().substring(0, 10).replace(/-/g, '')}-${String(order.id).padStart(3, '0')}`
+      const autoEid = getEntityId(c) || 1
+      const shipmentNumber = `SHP-E${autoEid}-${new Date().toISOString().substring(0, 10).replace(/-/g, '')}-${String(order.id).padStart(3, '0')}`
       const deliveryType = order.delivery_method === '대신화물' ? 'FREIGHT'
         : order.delivery_method === '대신택배' ? 'DELIVERY'
         : order.delivery_method === '한진택배' ? 'DELIVERY'

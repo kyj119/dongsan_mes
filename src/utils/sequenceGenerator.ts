@@ -13,13 +13,17 @@ export async function getNextSeqNumber(
   table: string,
   column: string,
   prefix: string,
-  padLength: number = 3
+  padLength: number = 3,
+  entityId?: number
 ): Promise<string> {
   const substrPos = prefix.length + 1
+  const entityClause = entityId != null ? ` AND entity_id = ?` : ''
+  const binds: any[] = [`${prefix}%`]
+  if (entityId != null) binds.push(entityId)
   const row = await db.prepare(`
     SELECT COALESCE(MAX(CAST(SUBSTR(${column}, ${substrPos}) AS INTEGER)), 0) as max_seq
-    FROM ${table} WHERE ${column} LIKE ?
-  `).bind(`${prefix}%`).first<{ max_seq: number }>()
+    FROM ${table} WHERE ${column} LIKE ?${entityClause}
+  `).bind(...binds).first<{ max_seq: number }>()
   const seq = (row?.max_seq || 0) + 1
   return `${prefix}${String(seq).padStart(padLength, '0')}`
 }

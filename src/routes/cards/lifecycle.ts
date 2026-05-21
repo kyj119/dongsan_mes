@@ -747,9 +747,10 @@ cardsLifecycleRouter.patch('/:id/ship', requireRole('ADMIN', 'MANAGER'), async (
       ).bind(card.order_id).first<{ id: number }>()
 
       if (!existingShipment) {
-        // 출고번호 생성: SHP-YYYYMMDD-NNN
+        // 출고번호 생성: SHP-E{entity}-YYYYMMDD-NNN (#148: entity별 독립 시퀀스)
         const today = new Date().toISOString().slice(0, 10).replace(/-/g, '')
-        const shipmentNumber = await getNextSeqNumber(c.env.DB, 'shipments', 'shipment_number', `SHP-${today}-`)
+        const shipEid = getEntityId(c) || 1
+        const shipmentNumber = await getNextSeqNumber(c.env.DB, 'shipments', 'shipment_number', `SHP-E${shipEid}-${today}-`, 3, shipEid)
 
         // 주문 정보 조회
         const orderInfo = await c.env.DB.prepare(

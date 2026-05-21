@@ -87,6 +87,7 @@ import deliveryAnalyticsRouter from './routes/deliveryAnalytics'
 import filesRouter from './routes/files'
 import priceListRouter from './routes/priceList'
 import quotationsRouter from './routes/quotations'
+import scanRouter from './routes/scan'
 
 // Page handlers
 import { clientsPage } from './pages/clients'
@@ -180,6 +181,7 @@ import { portalOrdersPage } from './pages/portal/portalOrders'
 import { portalBalancePage } from './pages/portal/portalBalance'
 import { portalInvoicesPage } from './pages/portal/portalInvoices'
 import { portalDocumentPage } from './pages/portal/portalDocument'
+import { scanPage } from './pages/scan'
 
 const app = new Hono<HonoEnv>()
 
@@ -300,6 +302,7 @@ app.route('/api/migration', migrationRouter)
 app.route('/api/vat', vatReportsRouter)
 app.route('/api/payment-requests', paymentRequestsRouter)
 app.route('/api/card-expenses', cardExpensesRouter)
+app.route('/api/scan', scanRouter)
 app.route('/api/financial', financialReportsRouter)
 app.route('/api/leaves', leavesRouter)
 app.route('/api/payroll', payrollRouter)
@@ -446,6 +449,7 @@ app.get('/cost-analysis', (c) => c.redirect('/production-reports?tab=cost'))
 app.get('/cash-flow', (c) => c.redirect('/bank?tab=cashflow'))
 app.get('/facility', pageAuthMiddleware, requireAdminPage(), facilityPage)
 app.get('/bom', pageAuthMiddleware, requirePagePermission('/bom'), bomPage)
+app.get('/scan', pageAuthMiddleware, requirePagePermission('/scan'), scanPage)
 // app.get('/workflow') — 폐기됨
 app.get('/approvals', pageAuthMiddleware, requirePagePermission('/approvals'), approvalsPage)
 app.get('/ui-guide', pageAuthMiddleware, requireAdminPage(), uiGuidePage)

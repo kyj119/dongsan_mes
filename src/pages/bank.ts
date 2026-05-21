@@ -179,49 +179,12 @@ export function bankPage(c: Context<HonoEnv>) {
 
         <!-- Tab 2: 계좌 관리 -->
         <div id="tabContentAccounts" class="tab-content">
-          <!-- CODEF 설정 -->
-          <div class="bg-white rounded-lg shadow p-5 mb-5">
-            <div class="flex items-center justify-between mb-4">
-              <h3 class="text-sm font-bold text-gray-700 flex items-center gap-2">
-                <i class="fas fa-key text-blue-500"></i> CODEF API 설정
-              </h3>
-              <button onclick="saveCodefSettings()" class="btn-primary text-xs px-3 py-1.5">
-                <i class="fas fa-save mr-1"></i>저장
-              </button>
-            </div>
-            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              <div>
-                <label class="form-label">Client ID</label>
-                <input type="text" id="codefClientId" class="form-input" placeholder="CODEF client_id">
-              </div>
-              <div>
-                <label class="form-label">Client Secret</label>
-                <input type="password" id="codefClientSecret" class="form-input" placeholder="CODEF client_secret">
-              </div>
-              <div>
-                <label class="form-label">서비스 타입</label>
-                <select id="codefServiceType" class="form-select">
-                  <option value="sandbox">Sandbox (테스트)</option>
-                  <option value="demo">Demo (데모)</option>
-                  <option value="api">API (실서비스)</option>
-                </select>
-              </div>
-            </div>
-            <p class="text-xs text-gray-400 mt-2"><i class="fas fa-info-circle mr-1"></i>CODEF API 키는 <a href="https://codef.io" target="_blank" class="text-blue-500 underline">codef.io</a>에서 발급받을 수 있습니다.</p>
-          </div>
-
           <!-- 계좌 목록 -->
           <div class="flex justify-between items-center mb-4">
             <h2 class="text-base font-semibold text-gray-700">등록 계좌 목록</h2>
             <button onclick="openAddAccountModal()" class="btn-primary flex items-center gap-1">
               <i class="fas fa-plus"></i> 새 계좌 등록
             </button>
-          </div>
-          <div class="bg-white border border-gray-200 rounded-lg p-3 mb-4 text-xs text-gray-600">
-            <i class="fas fa-info-circle mr-1 text-blue-600"></i>
-            <strong>Connected ID</strong>는 CODEF에서 은행 계좌를 등록할 때 발급받는 식별자입니다.
-            Connected ID 없이도 계좌를 등록할 수 있지만, 거래내역 동기화를 위해서는 필요합니다.
-            <a href="https://developer.codef.io" target="_blank" class="underline font-medium text-blue-600">CODEF 개발자 포털</a>에서 테스트용 Connected ID를 발급받을 수 있습니다.
           </div>
           <div id="accountsList" class="space-y-3">
             <div class="text-center py-10 text-gray-400">로딩 중...</div>
@@ -444,31 +407,7 @@ export function bankPage(c: Context<HonoEnv>) {
               <label class="form-label">예금주</label>
               <input type="text" id="accHolder" class="form-input" placeholder="예금주명">
             </div>
-            <!-- Connected ID 발급 섹션 -->
-            <div class="border border-gray-200 rounded p-3 bg-gray-50">
-              <label class="form-label font-semibold mb-2"><i class="fas fa-key text-blue-500 mr-1"></i>Connected ID</label>
-              <div class="flex gap-2 mb-2">
-                <input type="text" id="accConnectedId" class="form-input flex-1 text-sm" placeholder="발급된 Connected ID (자동 입력됨)">
-              </div>
-              <div id="bankLoginSection">
-                <p class="text-xs text-gray-500 mb-2"><i class="fas fa-info-circle mr-1"></i>CODEF를 통해 Connected ID를 발급받으려면 은행 로그인 정보를 입력하세요.</p>
-                <div class="grid grid-cols-2 gap-2 mb-2">
-                  <div>
-                    <label class="text-xs text-gray-500">은행 ID</label>
-                    <input type="text" id="bankLoginId" class="form-input text-sm" placeholder="인터넷뱅킹 ID">
-                  </div>
-                  <div>
-                    <label class="text-xs text-gray-500">은행 비밀번호</label>
-                    <input type="password" id="bankLoginPw" class="form-input text-sm" placeholder="인터넷뱅킹 비밀번호">
-                  </div>
-                </div>
-                <button type="button" onclick="issueConnectedId()" class="btn-primary text-xs px-3 w-full" id="issueConnIdBtn">
-                  <i class="fas fa-key mr-1"></i>Connected ID 발급
-                </button>
-              </div>
-            </div>
           </div>
-          <div id="connIdResult" class="hidden mt-3 p-3 bg-white border border-gray-200 rounded text-sm text-gray-600"></div>
           <div class="flex gap-2 justify-end mt-6">
             <button onclick="closeAccountModal()" class="btn-secondary">취소</button>
             <button onclick="saveAccount()" class="btn-primary" id="accSaveBtn">등록</button>
@@ -509,27 +448,6 @@ export function bankPage(c: Context<HonoEnv>) {
         </div>
       </div>
 
-      <!-- Sync Preview Modal -->
-      <div class="modal-overlay" id="syncPreviewModal">
-        <div class="modal-box" style="max-width:640px;">
-          <div class="flex items-center justify-between mb-4">
-            <h3 class="text-base font-bold text-gray-800"><i class="fas fa-search text-blue-500 mr-2"></i>동기화 미리보기</h3>
-            <button onclick="closeSyncPreview()" class="text-gray-400 hover:text-gray-600 text-xl leading-none">&times;</button>
-          </div>
-          <div class="mb-3 text-sm text-gray-600">
-            CODEF에서 조회된 거래내역입니다. 확인 후 저장해주세요.
-          </div>
-          <div class="mb-3 bg-gray-50 rounded-lg p-3 text-center" id="syncPreviewSummary">
-            로딩 중...
-          </div>
-          <div id="syncPreviewContent" class="mb-4 max-h-96 overflow-y-auto">
-          </div>
-          <div class="flex justify-end gap-2">
-            <button onclick="closeSyncPreview()" class="px-4 py-2 border border-gray-300 text-gray-700 bg-white rounded-lg hover:bg-gray-50 text-sm">취소</button>
-            <button id="syncConfirmBtn" onclick="confirmSync()" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm"><i class="fas fa-download mr-1"></i>저장</button>
-          </div>
-        </div>
-      </div>
     `,
     pageScript: `
       window.switchFinanceTab = function(tab) {
