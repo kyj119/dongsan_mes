@@ -3,6 +3,7 @@ import type { HonoEnv } from '../types/env'
 import type { PurchaseRequest, PurchaseRequestItem, ApiResponse, PaginatedResponse } from '../types/models'
 import { authMiddleware, requireRole } from '../middleware/auth'
 import { getEntityId, entityFilter } from '../utils/entityFilter'
+import { getNextSeqNumber, withSeqRetry } from '../utils/sequenceGenerator'
 
 const prRouter = new Hono<HonoEnv>()
 
@@ -283,13 +284,7 @@ prRouter.post('/', async (c) => {
     const today = new Date()
     const dateStr = today.toISOString().split('T')[0].replace(/-/g, '')
 
-    const seqRow = await c.env.DB.prepare(`
-      SELECT COALESCE(MAX(CAST(SUBSTR(request_number, 13) AS INTEGER)), 0) as max_seq
-      FROM purchase_requests WHERE request_number LIKE ?
-    `).bind(`PR-${dateStr}-%`).first<{ max_seq: number }>()
-    const max_seq = seqRow?.max_seq ?? 0
-
-    const requestNumber = `PR-${dateStr}-${String(max_seq + 1).padStart(3, '0')}`
+    const requestNumber = await getNextSeqNumber(c.env.DB, 'purchase_requests', 'request_number', `PR-${dateStr}-`)
 
     const prResult = await c.env.DB.prepare(`
       INSERT INTO purchase_requests (
@@ -558,12 +553,7 @@ prRouter.post('/:id/convert', requireRole('ADMIN'), async (c) => {
     const today = new Date()
     const dateStr = today.toISOString().split('T')[0].replace(/-/g, '')
 
-    const poSeqRow = await c.env.DB.prepare(`
-      SELECT COALESCE(MAX(CAST(SUBSTR(po_number, 11) AS INTEGER)), 0) as max_seq
-      FROM purchase_orders WHERE po_number LIKE ?
-    `).bind(`${dateStr}-P%`).first<{ max_seq: number }>()
-
-    const poNumber = `${dateStr}-P${String((poSeqRow?.max_seq ?? 0) + 1).padStart(3, '0')}`
+    const poNumber = await getNextSeqNumber(c.env.DB, 'purchase_orders', 'po_number', `${dateStr}-P`)
 
     // INSERT purchase_orders (DRAFT 상태)
     const poResult = await c.env.DB.prepare(`
@@ -700,12 +690,7 @@ prRouter.post('/:id/auto-convert', requireRole('ADMIN'), async (c) => {
       if (!group.supplierId) continue // 미지정 그룹 건너뜀
 
       // PO 번호 생성 (루프 내에서 매번 최신 max_seq 조회)
-      const loopSeqRow = await c.env.DB.prepare(`
-        SELECT COALESCE(MAX(CAST(SUBSTR(po_number, 11) AS INTEGER)), 0) as max_seq
-        FROM purchase_orders WHERE po_number LIKE ?
-      `).bind(`${dateStr}-P%`).first<{ max_seq: number }>()
-
-      const poNumber = `${dateStr}-P${String((loopSeqRow?.max_seq ?? 0) + 1).padStart(3, '0')}`
+      const poNumber = await getNextSeqNumber(c.env.DB, 'purchase_orders', 'po_number', `${dateStr}-P`)
 
       // 금액 계산 (admin 값 우선)
       let totalAmount = 0

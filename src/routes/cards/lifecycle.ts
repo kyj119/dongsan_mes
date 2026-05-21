@@ -15,6 +15,7 @@ import { authMiddleware, requireRole } from '../../middleware/auth'
 import { requireAnyPagePermission } from '../../middleware/permissions'
 import { logActivity } from '../../utils/activityLog'
 import { entityFilter, getEntityId } from '../../utils/entityFilter'
+import { getNextSeqNumber } from '../../utils/sequenceGenerator'
 
 const cardsLifecycleRouter = new Hono<HonoEnv>()
 cardsLifecycleRouter.use('/*', authMiddleware, requireAnyPagePermission('/cards', '/orders'))
@@ -748,11 +749,7 @@ cardsLifecycleRouter.patch('/:id/ship', requireRole('ADMIN', 'MANAGER'), async (
       if (!existingShipment) {
         // 출고번호 생성: SHP-YYYYMMDD-NNN
         const today = new Date().toISOString().slice(0, 10).replace(/-/g, '')
-        const countResult = await c.env.DB.prepare(
-          `SELECT COUNT(*) as cnt FROM shipments WHERE shipment_number LIKE ?`
-        ).bind(`SHP-${today}-%`).first<{ cnt: number }>()
-        const seq = String((countResult?.cnt || 0) + 1).padStart(3, '0')
-        const shipmentNumber = `SHP-${today}-${seq}`
+        const shipmentNumber = await getNextSeqNumber(c.env.DB, 'shipments', 'shipment_number', `SHP-${today}-`)
 
         // 주문 정보 조회
         const orderInfo = await c.env.DB.prepare(
@@ -945,14 +942,13 @@ cardsLifecycleRouter.post('/generate/:orderId', async (c) => {
     const today = new Date()
     const dateStr = today.toISOString().split('T')[0].replace(/-/g, '')
 
-    // Get today's card count for numbering
-    const countRow = await c.env.DB.prepare(`
-      SELECT COUNT(*) as count FROM cards
-      WHERE date(created_at) = date('now')
-    `).first<{ count: number }>()
-    const count = countRow?.count ?? 0
+    // MAX 기반 카드 번호 시작점 조회
+    const cardSeqRow = await c.env.DB.prepare(`
+      SELECT COALESCE(MAX(CAST(SUBSTR(card_number, ${`CARD-${dateStr}-`.length + 1}) AS INTEGER)), 0) as max_seq
+      FROM cards WHERE card_number LIKE ?
+    `).bind(`CARD-${dateStr}-%`).first<{ max_seq: number }>()
 
-    let cardCount = count
+    let cardCount = cardSeqRow?.max_seq ?? 0
     const createdCards = []
 
     // Generate cards for each order item

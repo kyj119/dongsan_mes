@@ -3,6 +3,7 @@ import type { HonoEnv } from '../../types/env'
 import type { Order, OrderItem, ApiResponse, PaginatedResponse } from '../../types/models'
 import { authMiddleware, requireRole } from '../../middleware/auth'
 import { requireAnyPagePermission } from '../../middleware/permissions'
+import { getNextSeqNumber, withSeqRetry } from '../../utils/sequenceGenerator'
 import { logActivity } from '../../utils/activityLog'
 import { notifyRoles } from '../../utils/notify'
 import { recalculateOrderCosts } from '../../utils/costCalculator'
@@ -86,13 +87,7 @@ ordersOpsRouter.post('/:id/copy', requireRole('ADMIN', 'MANAGER', 'DESIGNER'), a
       String(today.getMonth() + 1).padStart(2, '0') +
       String(today.getDate()).padStart(2, '0')
 
-    // MAX 기반: 삭제된 주문이 있어도 시퀀스가 겹치지 않음
-    const seqRow = await c.env.DB.prepare(`
-      SELECT COALESCE(MAX(CAST(SUBSTR(order_number, 10) AS INTEGER)), 0) as max_seq
-      FROM orders WHERE order_number LIKE ?
-    `).bind(`${dateStr}-%`).first<MaxSeqRow>()
-
-    const newOrderNumber = `${dateStr}-${String((seqRow?.max_seq || 0) + 1).padStart(3, '0')}`
+    const newOrderNumber = await getNextSeqNumber(c.env.DB, 'orders', 'order_number', `${dateStr}-`)
 
     // Insert new order
     const orderResult = await c.env.DB.prepare(`

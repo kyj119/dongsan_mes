@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
 import { getEntityId, entityFilter } from '../utils/entityFilter'
+import { getNextSeqNumber, withSeqRetry } from '../utils/sequenceGenerator'
 
 const claims = new Hono<HonoEnv>()
 claims.use('*', authMiddleware)
@@ -76,11 +77,7 @@ claims.post('/', async (c) => {
 
   // 번호 생성
   const today = new Date().toISOString().slice(0, 10).replace(/-/g, '')
-  const { results: existing } = await c.env.DB.prepare(
-    `SELECT COUNT(*) as cnt FROM customer_claims WHERE claim_number LIKE ?`
-  ).bind(`CLM-${today}-%`).all<{ cnt: number }>()
-  const seq = (existing[0]?.cnt || 0) + 1
-  const claimNumber = `CLM-${today}-${String(seq).padStart(3, '0')}`
+  const claimNumber = await getNextSeqNumber(c.env.DB, 'customer_claims', 'claim_number', `CLM-${today}-`)
 
   const result = await c.env.DB.prepare(`
     INSERT INTO customer_claims (claim_number, order_id, client_id, claim_date, claim_type, description, claimed_amount, quality_issue_id, entity_id, created_by)

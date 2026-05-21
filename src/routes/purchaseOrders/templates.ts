@@ -7,6 +7,7 @@ import type { HonoEnv } from '../../types/env'
 import type { PurchaseOrder, PurchaseOrderItem, ApiResponse, PaginatedResponse } from '../../types/models'
 import { authMiddleware, requireRole } from '../../middleware/auth'
 import { getEntityId } from '../../utils/entityFilter'
+import { getNextSeqNumber, withSeqRetry } from '../../utils/sequenceGenerator'
 
 const templatesRouter = new Hono<HonoEnv>()
 templatesRouter.use('/*', authMiddleware, requireRole('ADMIN', 'MANAGER'))
@@ -186,11 +187,7 @@ templatesRouter.post('/from-template/:templateId', async (c) => {
     // 발주번호 생성
     const today = new Date()
     const dateStr = today.toISOString().split('T')[0].replace(/-/g, '')
-    const seqRow = await c.env.DB.prepare(`
-      SELECT COALESCE(MAX(CAST(SUBSTR(po_number, 11) AS INTEGER)), 0) as max_seq
-      FROM purchase_orders WHERE po_number LIKE ?
-    `).bind(`${dateStr}-P%`).first<{ max_seq: number }>()
-    const poNumber = `${dateStr}-P${String((seqRow?.max_seq || 0) + 1).padStart(3, '0')}`
+    const poNumber = await getNextSeqNumber(c.env.DB, 'purchase_orders', 'po_number', `${dateStr}-P`)
 
     // 품목별 수량/단가 오버라이드 적용 + 금액 계산
     const overrides = item_overrides || {}

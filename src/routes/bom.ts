@@ -5,6 +5,7 @@
 import { Hono } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
+import { getNextSeqNumber, withSeqRetry } from '../utils/sequenceGenerator'
 import { runMrpCalculation } from '../utils/mrpCalculator'
 
 const bom = new Hono<HonoEnv>()
@@ -255,11 +256,7 @@ bom.post('/mrp/runs/:id/create-pr', async (c) => {
 
     // PR 번호 생성
     const today = new Date().toISOString().slice(0, 10).replace(/-/g, '')
-    const { results: existingPRs } = await c.env.DB.prepare(
-      `SELECT COUNT(*) as cnt FROM purchase_requests WHERE request_number LIKE ?`
-    ).bind(`PR-${today}-%`).all()
-    const seq = ((existingPRs[0] as any)?.cnt || 0) + 1
-    const requestNumber = `PR-${today}-${String(seq).padStart(3, '0')}`
+    const requestNumber = await getNextSeqNumber(c.env.DB, 'purchase_requests', 'request_number', `PR-${today}-`)
 
     // PR 생성
     const prResult = await c.env.DB.prepare(`

@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
 import { getEntityId, entityFilter } from '../utils/entityFilter'
+import { getNextSeqNumber } from '../utils/sequenceGenerator'
 import { fetchCardApprovals, createConnectedId } from '../lib/codef'
 
 const cardExpensesRouter = new Hono<HonoEnv>()
@@ -302,11 +303,12 @@ cardExpensesRouter.post('/transactions/create-requests', async (c) => {
   const entityId = getEntityId(c)
   const today = new Date().toISOString().substring(0, 10).replace(/-/g, '')
 
-  // 일련번호 조회
-  const seqRow = await c.env.DB.prepare(
-    `SELECT COUNT(*) as cnt FROM payment_requests WHERE request_number LIKE ?`
-  ).bind(`PR-${today}-%`).first<{ cnt: number }>()
-  let seq = (seqRow?.cnt || 0) + 1
+  // MAX 기반 일련번호 시작점 조회
+  const ceSeqRow = await c.env.DB.prepare(`
+    SELECT COALESCE(MAX(CAST(SUBSTR(request_number, ${`PR-${today}-`.length + 1}) AS INTEGER)), 0) as max_seq
+    FROM payment_requests WHERE request_number LIKE ?
+  `).bind(`PR-${today}-%`).first<{ max_seq: number }>()
+  let seq = (ceSeqRow?.max_seq || 0) + 1
 
   const stmts: any[] = []
   const txIds: number[] = []

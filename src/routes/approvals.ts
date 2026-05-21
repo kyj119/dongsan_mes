@@ -7,6 +7,7 @@ import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
 import { requirePagePermission } from '../middleware/permissions'
 import { getEntityId, entityFilter } from '../utils/entityFilter'
+import { getNextSeqNumber, withSeqRetry } from '../utils/sequenceGenerator'
 
 const approvals = new Hono<HonoEnv>()
 approvals.use('*', authMiddleware, requirePagePermission('/approvals'))
@@ -164,11 +165,7 @@ approvals.post('/', async (c) => {
 
     // 번호 생성
     const today = new Date().toISOString().slice(0, 10).replace(/-/g, '')
-    const { results: existing } = await c.env.DB.prepare(
-      `SELECT COUNT(*) as cnt FROM approval_requests WHERE request_number LIKE ?`
-    ).bind(`APR-${today}-%`).all<{ cnt: number }>()
-    const seq = (existing[0]?.cnt || 0) + 1
-    const requestNumber = `APR-${today}-${String(seq).padStart(3, '0')}`
+    const requestNumber = await getNextSeqNumber(c.env.DB, 'approval_requests', 'request_number', `APR-${today}-`)
 
     // 템플릿에서 결재 단계 가져오기
     let steps: any[] = []

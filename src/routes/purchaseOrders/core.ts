@@ -8,6 +8,7 @@ import type { PurchaseOrder, PurchaseOrderItem, ApiResponse, PaginatedResponse }
 import { authMiddleware, requireRole } from '../../middleware/auth'
 import { requireAnyPagePermission } from '../../middleware/permissions'
 import { getEntityId, entityFilter } from '../../utils/entityFilter'
+import { getNextSeqNumber, withSeqRetry } from '../../utils/sequenceGenerator'
 import { getEntityCompanyInfo } from '../../utils/entitySettings'
 
 const poCoreRouter = new Hono<HonoEnv>()
@@ -854,12 +855,7 @@ poCoreRouter.post('/', requireRole('ADMIN', 'MANAGER'), async (c) => {
     const today = new Date()
     const dateStr = today.toISOString().split('T')[0].replace(/-/g, '')
 
-    const seqRow = await c.env.DB.prepare(`
-      SELECT COALESCE(MAX(CAST(SUBSTR(po_number, 11) AS INTEGER)), 0) as max_seq
-      FROM purchase_orders WHERE po_number LIKE ?
-    `).bind(`${dateStr}-P%`).first<{ max_seq: number }>()
-
-    const poNumber = `${dateStr}-P${String((seqRow?.max_seq || 0) + 1).padStart(3, '0')}`
+    const poNumber = await getNextSeqNumber(c.env.DB, 'purchase_orders', 'po_number', `${dateStr}-P`)
 
     // 금액 계산
     let totalAmount = 0
@@ -1593,12 +1589,7 @@ poCoreRouter.post('/:id/copy', requireRole('ADMIN', 'MANAGER'), async (c) => {
     const today = new Date()
     const dateStr = today.toISOString().split('T')[0].replace(/-/g, '')
 
-    const copySeqRow = await c.env.DB.prepare(`
-      SELECT COALESCE(MAX(CAST(SUBSTR(po_number, 11) AS INTEGER)), 0) as max_seq
-      FROM purchase_orders WHERE po_number LIKE ?
-    `).bind(`${dateStr}-P%`).first<{ max_seq: number }>()
-
-    const newPoNumber = `${dateStr}-P${String((copySeqRow?.max_seq || 0) + 1).padStart(3, '0')}`
+    const newPoNumber = await getNextSeqNumber(c.env.DB, 'purchase_orders', 'po_number', `${dateStr}-P`)
 
     // 새 발주 INSERT (DRAFT 상태, balance 미반영)
     const newPoResult = await c.env.DB.prepare(`

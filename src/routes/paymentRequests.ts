@@ -4,6 +4,7 @@ import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
 import { requirePagePermission } from '../middleware/permissions'
 import { getEntityId, entityFilter } from '../utils/entityFilter'
+import { getNextSeqNumber, withSeqRetry } from '../utils/sequenceGenerator'
 
 const paymentRequestsRouter = new Hono<HonoEnv>()
 paymentRequestsRouter.use('/*', authMiddleware, requirePagePermission('/payment-requests'))
@@ -84,11 +85,7 @@ paymentRequestsRouter.post('/', async (c) => {
     // 결의서 번호 생성
     const today = new Date()
     const dateStr = today.toISOString().substring(0, 10).replace(/-/g, '')
-    const seqRow = await c.env.DB.prepare(`
-      SELECT COALESCE(MAX(CAST(SUBSTR(request_number, 13) AS INTEGER)), 0) as max_seq
-      FROM payment_requests WHERE request_number LIKE ?
-    `).bind(`PR-${dateStr}-%`).first<{ max_seq: number }>()
-    const requestNumber = `PR-${dateStr}-${String((seqRow?.max_seq || 0) + 1).padStart(3, '0')}`
+    const requestNumber = await getNextSeqNumber(c.env.DB, 'payment_requests', 'request_number', `PR-${dateStr}-`)
 
     const result = await c.env.DB.prepare(`
       INSERT INTO payment_requests (
@@ -146,11 +143,7 @@ paymentRequestsRouter.post('/from-po/:poId', async (c) => {
 
     const today = new Date()
     const dateStr = today.toISOString().substring(0, 10).replace(/-/g, '')
-    const seqRow2 = await c.env.DB.prepare(`
-      SELECT COALESCE(MAX(CAST(SUBSTR(request_number, 13) AS INTEGER)), 0) as max_seq
-      FROM payment_requests WHERE request_number LIKE ?
-    `).bind(`PR-${dateStr}-%`).first<{ max_seq: number }>()
-    const requestNumber = `PR-${dateStr}-${String((seqRow2?.max_seq || 0) + 1).padStart(3, '0')}`
+    const requestNumber = await getNextSeqNumber(c.env.DB, 'payment_requests', 'request_number', `PR-${dateStr}-`)
 
     const result = await c.env.DB.prepare(`
       INSERT INTO payment_requests (

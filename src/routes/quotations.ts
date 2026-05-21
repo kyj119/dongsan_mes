@@ -20,6 +20,7 @@ import { authMiddleware, requireRole } from '../middleware/auth'
 import { requireAnyPagePermission } from '../middleware/permissions'
 import { logActivity } from '../utils/activityLog'
 import { getEntityId, entityFilter } from '../utils/entityFilter'
+import { getNextSeqNumber, withSeqRetry } from '../utils/sequenceGenerator'
 
 const quotationsRouter = new Hono<HonoEnv>()
 quotationsRouter.use('/*', authMiddleware, requireAnyPagePermission('/quotations', '/orders'))
@@ -28,14 +29,8 @@ quotationsRouter.use('/*', authMiddleware, requireAnyPagePermission('/quotations
 
 // 견적번호 생성: Q-YYYYMMDD-NNN
 async function generateQuotationNumber(db: any): Promise<string> {
-  const today = new Date()
-  const dateStr = today.toISOString().split('T')[0].replace(/-/g, '')
-  const prefix = `Q-${dateStr}-`
-  const seqRow = await db.prepare(`
-    SELECT COALESCE(MAX(CAST(SUBSTR(quotation_number, 12) AS INTEGER)), 0) as max_seq
-    FROM quotations WHERE quotation_number LIKE ?
-  `).bind(`${prefix}%`).first() as { max_seq: number } | null
-  return `${prefix}${String((seqRow?.max_seq || 0) + 1).padStart(3, '0')}`
+  const dateStr = new Date().toISOString().split('T')[0].replace(/-/g, '')
+  return getNextSeqNumber(db, 'quotations', 'quotation_number', `Q-${dateStr}-`)
 }
 
 // 만료 견적서 자동 마킹 (read-time check)
@@ -539,11 +534,7 @@ quotationsRouter.post('/:id/convert-to-order', requireRole('ADMIN', 'MANAGER'), 
     // 주문번호 생성
     const today = new Date()
     const dateStr = today.toISOString().split('T')[0].replace(/-/g, '')
-    const seqRow = await c.env.DB.prepare(`
-      SELECT COALESCE(MAX(CAST(SUBSTR(order_number, 10) AS INTEGER)), 0) as max_seq
-      FROM orders WHERE order_number LIKE ?
-    `).bind(`${dateStr}-%`).first<{ max_seq: number }>()
-    const orderNumber = `${dateStr}-${String((seqRow?.max_seq || 0) + 1).padStart(3, '0')}`
+    const orderNumber = await getNextSeqNumber(c.env.DB, 'orders', 'order_number', `${dateStr}-`)
 
     // 주문 생성 — quotation의 모든 필드 snapshot
     const orderResult = await c.env.DB.prepare(`

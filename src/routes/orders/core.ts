@@ -3,6 +3,7 @@ import type { HonoEnv } from '../../types/env'
 import type { Order, OrderItem, ApiResponse, PaginatedResponse } from '../../types/models'
 import { authMiddleware, requireRole } from '../../middleware/auth'
 import { requireAnyPagePermission } from '../../middleware/permissions'
+import { getNextSeqNumber, withSeqRetry } from '../../utils/sequenceGenerator'
 import { logActivity } from '../../utils/activityLog'
 import { notifyRoles } from '../../utils/notify'
 import { recalculateOrderCosts } from '../../utils/costCalculator'
@@ -829,14 +830,7 @@ ordersCoreRouter.post('/', async (c) => {
     const today = new Date()
     const dateStr = today.toISOString().split('T')[0].replace(/-/g, '')
 
-    // MAX 기반: 삭제된 주문이 있어도 시퀀스가 겹치지 않음
-    const seqRow = await c.env.DB.prepare(`
-      SELECT COALESCE(MAX(CAST(SUBSTR(order_number, 10) AS INTEGER)), 0) as max_seq
-      FROM orders WHERE order_number LIKE ?
-    `).bind(`${dateStr}-%`).first<{ max_seq: number }>()
-    const max_seq = seqRow?.max_seq || 0
-
-    const orderNumber = `${dateStr}-${String((max_seq || 0) + 1).padStart(3, '0')}`
+    const orderNumber = await getNextSeqNumber(c.env.DB, 'orders', 'order_number', `${dateStr}-`)
 
     // pricing_method batch 조회 (AREA 계산 분기용)
     const itemIdsForPricing = [...new Set(
@@ -1171,11 +1165,7 @@ ordersCoreRouter.post('/', async (c) => {
 
         // 결재 요청 자동 생성
         const today2 = new Date().toISOString().slice(0, 10).replace(/-/g, '')
-        const { results: aprExisting } = await c.env.DB.prepare(
-          `SELECT COUNT(*) as cnt FROM approval_requests WHERE request_number LIKE ?`
-        ).bind(`APR-${today2}-%`).all<{ cnt: number }>()
-        const aprSeq = (aprExisting[0]?.cnt || 0) + 1
-        const aprNumber = `APR-${today2}-${String(aprSeq).padStart(3, '0')}`
+        const aprNumber = await getNextSeqNumber(c.env.DB, 'approval_requests', 'request_number', `APR-${today2}-`)
 
         const clientName = await c.env.DB.prepare(
           `SELECT client_name FROM clients WHERE id = ?`

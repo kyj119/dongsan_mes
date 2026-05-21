@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
 import { getEntityId, entityFilter } from '../utils/entityFilter'
+import { getNextSeqNumber, withSeqRetry } from '../utils/sequenceGenerator'
 
 const returns = new Hono<HonoEnv>()
 returns.use('*', authMiddleware)
@@ -37,11 +38,7 @@ returns.post('/', async (c) => {
   }
 
   const today = new Date().toISOString().slice(0, 10).replace(/-/g, '')
-  const { results: existing } = await c.env.DB.prepare(
-    `SELECT COUNT(*) as cnt FROM returns WHERE return_number LIKE ?`
-  ).bind(`RMA-${today}-%`).all<{ cnt: number }>()
-  const seq = (existing[0]?.cnt || 0) + 1
-  const returnNumber = `RMA-${today}-${String(seq).padStart(3, '0')}`
+  const returnNumber = await getNextSeqNumber(c.env.DB, 'returns', 'return_number', `RMA-${today}-`)
 
   const result = await c.env.DB.prepare(`
     INSERT INTO returns (return_number, order_id, client_id, claim_id, return_date, return_reason, notes, entity_id, created_by)

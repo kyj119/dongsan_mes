@@ -5,6 +5,7 @@ import { requirePagePermission } from '../middleware/permissions'
 import { sendEmail } from '../services/emailProvider'
 import { renderTemplate } from '../services/emailTemplates'
 import { entityFilter, getEntityId } from '../utils/entityFilter'
+import { getNextSeqNumber, withSeqRetry } from '../utils/sequenceGenerator'
 
 const shipmentsRouter = new Hono<HonoEnv>()
 shipmentsRouter.use('/*', authMiddleware, requirePagePermission('/shipments'))
@@ -414,11 +415,7 @@ shipmentsRouter.post('/', requireRole('ADMIN', 'MANAGER', 'DESIGNER'), async (c)
     // 출고번호 생성
     const today = new Date()
     const dateStr = today.toISOString().split('T')[0].replace(/-/g, '')
-    const seqRow = await c.env.DB.prepare(`
-      SELECT COALESCE(MAX(CAST(SUBSTR(shipment_number, 13) AS INTEGER)), 0) as max_seq
-      FROM shipments WHERE shipment_number LIKE ?
-    `).bind(`SHP-${dateStr}-%`).first<{ max_seq: number | null }>()
-    const shipmentNumber = `SHP-${dateStr}-${String((seqRow?.max_seq || 0) + 1).padStart(3, '0')}`
+    const shipmentNumber = await getNextSeqNumber(c.env.DB, 'shipments', 'shipment_number', `SHP-${dateStr}-`)
 
     // 출고 등록
     const result = await c.env.DB.prepare(`

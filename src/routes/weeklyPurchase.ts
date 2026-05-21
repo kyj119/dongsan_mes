@@ -6,6 +6,7 @@ import { Hono } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
 import { getEntityId, entityFilter } from '../utils/entityFilter'
+import { getNextSeqNumber, withSeqRetry } from '../utils/sequenceGenerator'
 import { getConsumptionForecast } from '../utils/consumptionForecast'
 import { buildWeeklyPurchaseSMS } from '../utils/inventoryAlert'
 import { getKakaoProvider, getKakaoSettings } from './kakao'
@@ -239,11 +240,7 @@ weeklyPurchaseRouter.post('/create-prs', async (c) => {
 
     for (const [, group] of groups) {
       // PR 번호 생성
-      const seqRow = await c.env.DB.prepare(
-        `SELECT COUNT(*) as cnt FROM purchase_requests WHERE request_number LIKE ?`
-      ).bind(`PR-${today}-%`).first<{ cnt: number }>()
-      const seq = ((seqRow?.cnt || 0) + 1).toString().padStart(3, '0')
-      const requestNumber = `PR-${today}-${seq}`
+      const requestNumber = await getNextSeqNumber(c.env.DB, 'purchase_requests', 'request_number', `PR-${today}-`)
 
       // 긴급도: 그룹 내 가장 높은 긴급도 사용
       const urgencyPriority: Record<string, number> = { URGENT: 0, HIGH: 1, NORMAL: 2, LOW: 3 }
