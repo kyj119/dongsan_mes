@@ -179,3 +179,18 @@ D1은 완전한 트랜잭션 미지원. 다중 테이블 UPDATE 시 `db.batch()`
 GitHub Actions 시크릿을 용도별 분리:
 - `CLOUDFLARE_API_TOKEN` — 배포용 (Workers 권한)
 - `CLOUDFLARE_BACKUP_TOKEN` — 백업용 (D1 Edit + R2 Edit 권한)
+
+## AG. QR 스캔 코드 체계 (2026-05-21)
+
+- 라이브러리: `html5-qrcode` CDN 동적 로드 (번들 미포함)
+- 코드 접두사 규칙:
+  - `CARD:{card_id}` — 생산 카드
+  - `ITEM:{item_code}` — 자재/상품
+  - `EQ:{equipment_id}` — 설비
+  - `ORDER:{order_number}` — 주문
+
+## AH. 견적 추천 단가 (2026-05-21)
+
+- 기준: 최근 3개월, 전체 거래처 평균 판매가
+- 원가(cost) 필드 프론트엔드 노출 금지
+- 이유: 거래처별 단가 차등이 없는 경우가 많고, 원가 노출은 보안 위험

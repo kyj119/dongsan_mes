@@ -1,6 +1,6 @@
 # PROJECT_STATUS.md — 프로젝트 현황판
 
-> **최종 업데이트**: 2026-05-21
+> **최종 업데이트**: 2026-05-22
 
 ---
 
@@ -25,17 +25,12 @@
 - 상세 → `memory/project-card-data-collection.md`
 
 
-### [#65] 후가공 단계별 추적 — 방안 A/B/C 선택 대기
-- A: QR 원터치, B: Zone 기반, C: 최소 2단계. 코멘트 제안 완료, 답변 대기
-
-### [#75] 견적 적정 단가 제안 — 방향 수정 답변 완료
-- 매입단가 미노출, 평균 판매가 기반 추천 방식으로 전환
+### [#65] 후가공 단계별 추적 — 방안 D(제로터치) 선택 대기
+- A~C 모두 현장 부담 → 방안 D 제안 (출력완료=PP시작, 출고=PP완료, 자동 타임스탬프)
+- 용준님 답변 대기 (2026-05-22)
 
 ### [#79] 로트 추적 → 기간 역추적 축소 — 답변 완료
 - lot 테이블 불필요, 기존 receipts 기반 기간별 역추적 쿼리만 추가 (S)
-
-### [#80] 바코드/QR 시스템 — 모바일 설계 답변 완료
-- HTTPS + html5-qrcode + 모바일 우선 레이아웃 계획
 
 ### [배송 관리 최적화] — 출고 대기 보드
 - 배송방법별 그룹화 + 마감시간 카운트다운 + 일괄 출고 + 카카오톡 자동 발송
@@ -47,18 +42,50 @@
 
 ---
 
-## 🟢 최근 완료 (2026-05-20)
+## 🟢 최근 완료 (2026-05-22)
+
+### QR/바코드 스캔 시스템 (#80)
+- /scan 페이지 신규: html5-qrcode 카메라 + 수동 입력, 모바일 우선
+- API: GET /api/scan/:code (CARD/ITEM/EQ/ORDER 자동 감지), POST /api/scan/action
+- 권한: ADMIN/MANAGER/OPERATOR, 사이드바 생산 그룹에 메뉴 추가
+
+### 견적서 적정 단가 제안 (#75)
+- 3개월 평균 판매단가 기반 추천 라벨 ("추천: ₩X,XXX (N건 평균)")
+- 입력 단가가 평균 대비 20% 이상 낮으면 경고, 원가/마진 미노출
+
+### CODEF 코드 전체 제거 (#151)
+- src/lib/codef.ts 삭제 (486줄), bank/cardExpenses 엔드포인트 제거
+- 프론트엔드: CODEF 설정 패널, Connected ID 발급 UI, Sync Preview 모달 제거
+- 관련 이슈 #143 자연 해소 close
+
+### 출고번호 entity별 독립 시퀀스 (#148)
+- 포맷: SHP-E{entity}-YYYYMMDD-NNN, getNextSeqNumber에 entityId 필터 추가
+
+### Issues #121~#156 — 원자성·entity 격리·UNIQUE 16건 close
+- **#147**: approvals 여신 APPROVED → db.batch() 원자화
+- **#146/#121**: sync-statuses billing_status + balance → db.batch() 원자화
+- **#145**: syncOrderStatusFromCards catch → console.error 로그
+- **#139**: approval_steps/attachments entity_id 추가 (0236)
+- **#138**: 주문 하드삭제 batch에 tax_invoice_orders DELETE 추가
+- **#152**: inventoryCount approve 보정+상태 단일 batch
+- **#153**: inventory_count_items UNIQUE(count_id, item_id)
+- **#154**: stock_alerts entity_id 추가
+- **#150/#149/#141**: purchase_invoice_items/return_items/tasks entity_id 추가 (0237)
+- **#155**: BOM 공유 정책 유지 (방안 B, close)
+- **#156**: chart_of_accounts UNIQUE(code,entity_id) 테이블 재생성 (0238)
+- **#140**: facility_zones 현재 중복 없음 확인 close
+- **#157**: #150 중복 close
+- **#142/#144**: on-hold 라벨 처리
+
+---
+
+## 🟢 이전 완료 (2026-05-20)
 
 ### 법인별·창고별 재고 분리 — Phase 1~6 전체 완료
 - **Phase 1~3** (2026-05-20): DB 스키마, entity_id 코드 대응, 창고 UI, 대시보드
 - **Phase 4** (2026-05-20): 주간 일괄 발주 — 소모예측+MRP+안전재고 통합 분석, 공급처별 PR 자동 생성, /weekly-purchase 대시보드
 - **Phase 5** (2026-05-20): 주문 확정 시 자재 부족 경고 — BOM 기반 자재 체크, 주문 생성/상태변경/견적전환 3곳에 non-blocking warning
 - **Phase 6** (2026-05-20): 알림 시스템 연동 — 출고 시 안전재고 이하 즉시 알림(in-app+stock_alerts), 주간 발주 결과 SMS 발송, MRP 버그 수정(po_id)
-
-### CODEF API 확장 — 카드/보험/홈택스 함수 추가
-- codef.ts에 fetchCardApprovals, fetchInsurancePayments, fetchEmploymentInfo, fetchTaxInvoices, checkBusinessStatus 추가
-- cardExpenses 라우트에 CODEF 카드 연결(connect) + 동기화(sync) API 추가
-- 카드사 기관 코드 매핑 10개사 (신한/현대/삼성/KB/롯데/하나/우리/농협/BC/씨티)
 
 ### 법인카드 사용 내역 관리 시스템 (Phase 1)
 - DB: corporate_cards, card_transactions, expense_categories 3테이블

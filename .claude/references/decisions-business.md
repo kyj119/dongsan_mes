@@ -161,3 +161,25 @@ Case 4: 모든 실패 → group.visibleBounds
 | ERP_API_URL | http://192.168.0.94:3000 | Program.cs, LogWatcher, 개발서버 |
 | NAS 경로 | \\\\192.168.0.122\\... (Z:\\) | PDF/PNG 출력 |
 | 프로덕션 URL | https://webapp-9i0.pages.dev | Cloudflare Pages |
+
+---
+
+## AD. 출고번호(shipment_number) 포맷 (2026-05-21)
+
+포맷: `SHP-E{entity_id}-YYYYMMDD-NNN`
+- entity별 독립 시퀀스 (법인 간 번호 충돌 없음)
+- NNN: 당일 entity 내 출고 순번 (001~)
+
+## AE. CODEF API 전면 제거 (2026-05-21)
+
+- 이유: 월 80만원 이용료 — 비용 대비 효과 없음
+- `src/lib/codef.ts` 삭제, `cardExpenses.ts`의 CODEF 연동 엔드포인트 제거
+- DB 컬럼 `codef_transaction_id`는 유지 (CSV import 등 다른 경로 활용 가능)
+- 대안 검토: 이메일 파싱(Cloudflare Email Worker), 카드사 오픈API 직접 문의 진행 중
+- 상세 → `memory/project-card-data-collection.md`
+
+## AF. BOM 법인 간 공유 정책 (2026-05-21)
+
+- BOM 테이블에 entity_id 미추가 — 전 법인 공통 BOM 사용
+- 이유: 동산기획/선명/청주 간 제조 공정이 동일, 분리 실익 없음
+- 재검토 트리거: 법인별 공정 차이가 발생할 경우

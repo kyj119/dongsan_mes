@@ -15,6 +15,9 @@
 | H | JSX getFullBounds 케이스 계층 | Case 0-4, clipping, geometricBounds |
 | I | UI/UX 디자인 시스템 | mes-ui-consistency 스킬 참조 |
 | - | 시스템 구성 + 작업 공간 + 공통 상수 | 서버PC, AutomatPC, NAS |
+| AD | 출고번호 포맷 | SHP-E{entity}-YYYYMMDD-NNN, entity별 독립 시퀀스 |
+| AE | CODEF API 전면 제거 | 월 80만원, codef.ts 삭제, 이메일 파싱 대안 |
+| AF | BOM 법인 간 공유 | entity_id 미추가, 전 법인 공통 |
 
 ## 금액 포맷 → `references/decisions-money.md`
 | ID | 제목 | 키워드 |
@@ -44,3 +47,5 @@
 | AA | vat_reports UNIQUE 재생성 | UNIQUE(year,quarter,entity_id), 테이블 재생성, ON CONFLICT 수정 |
 | AB | db.batch() 원자성 강화 | paymentRequests approve/pay, approvals approve/reject → 단일 왕복 |
 | AC | 백업 토큰 분리 | CLOUDFLARE_BACKUP_TOKEN (D1+R2), 배포 토큰과 분리 |
+| AG | QR 스캔 코드 체계 | html5-qrcode CDN 동적 로드. 코드 접두사: CARD:/ITEM:/EQ:/ORDER: |
+| AH | 견적 추천 단가 | 3개월 전체 거래처 평균 판매가, 원가(cost) 노출 금지 |
