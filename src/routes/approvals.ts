@@ -196,13 +196,14 @@ approvals.post('/', async (c) => {
       const stepStatements = steps.map((step: any) => {
         const isRole = ['ADMIN', 'MANAGER', 'DESIGNER', 'OPERATOR'].includes(step.role_or_user_id)
         return c.env.DB.prepare(`
-          INSERT INTO approval_steps (request_id, step_order, approver_id, approver_role, label, status)
-          VALUES (?, ?, ?, ?, ?, 'PENDING')
+          INSERT INTO approval_steps (request_id, step_order, approver_id, approver_role, label, status, entity_id)
+          VALUES (?, ?, ?, ?, ?, 'PENDING', ?)
         `).bind(
           requestId, step.step_order,
           isRole ? null : Number(step.role_or_user_id) || null,
           isRole ? step.role_or_user_id : null,
-          step.label || `${step.step_order}단계`
+          step.label || `${step.step_order}단계`,
+          getEntityId(c) || 1
         )
       })
       await c.env.DB.batch(stepStatements)
@@ -471,9 +472,9 @@ approvals.post('/:id/attachments', async (c) => {
     const { file_name, file_type, file_data } = body
 
     const result = await c.env.DB.prepare(`
-      INSERT INTO approval_attachments (request_id, file_name, file_type, file_data, uploaded_by)
-      VALUES (?, ?, ?, ?, ?)
-    `).bind(id, file_name, file_type || null, file_data, userId).run()
+      INSERT INTO approval_attachments (request_id, file_name, file_type, file_data, uploaded_by, entity_id)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).bind(id, file_name, file_type || null, file_data, userId, getEntityId(c) || 1).run()
 
     return c.json({ success: true, data: { id: result.meta?.last_row_id } })
   } catch (e) {
@@ -543,15 +544,11 @@ async function handlePostApproval(db: D1Database, req: any) {
       }>()
 
       if (order) {
-        // credit_status 업데이트
-        await db.prepare(
-          `UPDATE orders SET credit_status = 'APPROVED' WHERE id = ?`
-        ).bind(order.id).run()
-
-        // credit_overrides 업데이트
-        await db.prepare(
-          `UPDATE credit_overrides SET status = 'APPROVED', approved_at = CURRENT_TIMESTAMP WHERE order_id = ? AND status = 'PENDING'`
-        ).bind(order.id).run()
+        // #147: credit_status + credit_overrides 원자적 업데이트
+        await db.batch([
+          db.prepare(`UPDATE orders SET credit_status = 'APPROVED' WHERE id = ?`).bind(order.id),
+          db.prepare(`UPDATE credit_overrides SET status = 'APPROVED', approved_at = CURRENT_TIMESTAMP WHERE order_id = ? AND status = 'PENDING'`).bind(order.id),
+        ])
 
         // 카드 생성 (생산 진입)
         const { generateCardsForOrder } = await import('./orders/core')

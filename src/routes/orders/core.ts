@@ -1771,6 +1771,7 @@ ordersCoreRouter.delete('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
       c.env.DB.prepare('DELETE FROM cards WHERE order_id = ?').bind(id),
       c.env.DB.prepare('DELETE FROM order_items WHERE order_id = ?').bind(id),
       c.env.DB.prepare('DELETE FROM order_status_history WHERE order_id = ?').bind(id),
+      c.env.DB.prepare('DELETE FROM tax_invoice_orders WHERE order_id = ?').bind(id),
       c.env.DB.prepare('DELETE FROM orders WHERE id = ?').bind(id),
     ])
 
@@ -2400,17 +2401,11 @@ ordersCoreRouter.post('/sync-statuses', requireRole('ADMIN', 'MANAGER'), async (
     `).bind(...ef.params).all()
 
     for (const order of toBill) {
-      await db.prepare(`
-        UPDATE orders SET billing_status = 'BILLED', billed_at = CURRENT_TIMESTAMP,
-          billed_by = ?, billed_amount = final_amount, updated_at = CURRENT_TIMESTAMP
-        WHERE id = ? AND billing_status IS NULL
-      `).bind(user?.id || null, order.id).run()
-
-      // balance 반영
-      await db.prepare(`
-        UPDATE clients SET balance = balance + (SELECT final_amount FROM orders WHERE id = ?),
-          updated_at = CURRENT_TIMESTAMP WHERE id = ?
-      `).bind(order.id, order.client_id).run()
+      // #146/#121: billing_status + balance 원자적 업데이트
+      await db.batch([
+        db.prepare(`UPDATE orders SET billing_status = 'BILLED', billed_at = CURRENT_TIMESTAMP, billed_by = ?, billed_amount = final_amount, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND billing_status IS NULL`).bind(user?.id || null, order.id),
+        db.prepare(`UPDATE clients SET balance = balance + (SELECT final_amount FROM orders WHERE id = ?), updated_at = CURRENT_TIMESTAMP WHERE id = ?`).bind(order.id, order.client_id),
+      ])
     }
 
     // Step 3: CARD/ISSUED_BY_OTHER 거래처 — 발행 불필요, 자동 BILLED
@@ -2427,16 +2422,11 @@ ordersCoreRouter.post('/sync-statuses', requireRole('ADMIN', 'MANAGER'), async (
     `).bind(...ef.params).all()
 
     for (const order of noInvoice) {
-      await db.prepare(`
-        UPDATE orders SET billing_status = 'BILLED', billed_at = CURRENT_TIMESTAMP,
-          billed_by = ?, billed_amount = final_amount, updated_at = CURRENT_TIMESTAMP
-        WHERE id = ? AND billing_status IS NULL
-      `).bind(user?.id || null, order.id).run()
-
-      await db.prepare(`
-        UPDATE clients SET balance = balance + (SELECT final_amount FROM orders WHERE id = ?),
-          updated_at = CURRENT_TIMESTAMP WHERE id = ?
-      `).bind(order.id, order.client_id).run()
+      // #146/#121: billing_status + balance 원자적 업데이트
+      await db.batch([
+        db.prepare(`UPDATE orders SET billing_status = 'BILLED', billed_at = CURRENT_TIMESTAMP, billed_by = ?, billed_amount = final_amount, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND billing_status IS NULL`).bind(user?.id || null, order.id),
+        db.prepare(`UPDATE clients SET balance = balance + (SELECT final_amount FROM orders WHERE id = ?), updated_at = CURRENT_TIMESTAMP WHERE id = ?`).bind(order.id, order.client_id),
+      ])
     }
 
     const billedCount = toBill.length + noInvoice.length

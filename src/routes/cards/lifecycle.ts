@@ -186,7 +186,9 @@ cardsLifecycleRouter.patch('/bulk/status', requireRole('ADMIN', 'MANAGER', 'OPER
 
     // 영향받은 주문들의 상태 자동 동기화 (병렬 실행)
     await Promise.all([...affectedOrderIds].map(orderId =>
-      syncOrderStatusFromCards(c.env.DB, orderId).catch(() => {})
+      syncOrderStatusFromCards(c.env.DB, orderId).catch((err) => {
+        console.error('[syncOrderStatus] orderId=' + orderId, err)
+      })
     ))
 
     return c.json({ success: true, data: { updated }, message: `${updated}장 상태 변경 완료` })
