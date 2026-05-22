@@ -6,6 +6,7 @@ import { Hono } from 'hono'
 import type { HonoEnv } from '../../types/env'
 import type { PurchaseOrder, PurchaseOrderItem, ApiResponse, PaginatedResponse } from '../../types/models'
 import { authMiddleware, requireRole } from '../../middleware/auth'
+import { getEntityId } from '../../utils/entityFilter'
 
 const stockAlertsRouter = new Hono<HonoEnv>()
 stockAlertsRouter.use('/*', authMiddleware, requireRole('ADMIN', 'MANAGER'))
@@ -56,13 +57,14 @@ stockAlertsRouter.post('/stock-alerts/check', requireRole('ADMIN', 'MANAGER'), a
     let created = 0
     for (const item of lowItems) {
       await c.env.DB.prepare(`
-        INSERT INTO stock_alerts (item_id, alert_type, current_quantity, threshold_quantity)
-        VALUES (?, ?, ?, ?)
+        INSERT INTO stock_alerts (item_id, alert_type, current_quantity, threshold_quantity, entity_id)
+        VALUES (?, ?, ?, ?, ?)
       `).bind(
         item.item_id,
         item.quantity <= item.safe_stock ? 'LOW_STOCK' : 'REORDER_POINT',
         item.quantity,
-        item.reorder_point
+        item.reorder_point,
+        getEntityId(c) || 1
       ).run()
       created++
     }

@@ -54,9 +54,9 @@ purchaseInvoices.post('/', async (c) => {
   if (items?.length) {
     const stmts = items.map((item: any) =>
       c.env.DB.prepare(`
-        INSERT INTO purchase_invoice_items (invoice_id, po_item_id, item_id, quantity, unit_price, amount)
-        VALUES (?, ?, ?, ?, ?, ?)
-      `).bind(invoiceId, item.po_item_id || null, item.item_id || null, item.quantity, item.unit_price, item.amount)
+        INSERT INTO purchase_invoice_items (invoice_id, po_item_id, item_id, quantity, unit_price, amount, entity_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `).bind(invoiceId, item.po_item_id || null, item.item_id || null, item.quantity, item.unit_price, item.amount, getEntityId(c) || 1)
     )
     try {
       await c.env.DB.batch(stmts)

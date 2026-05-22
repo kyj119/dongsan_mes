@@ -38,9 +38,9 @@ export async function triggerLowStockAlert(
   // 2. stock_alerts 레코드 생성
   const alertStmts = newItems.map(i =>
     db.prepare(`
-      INSERT INTO stock_alerts (item_id, alert_type, current_quantity, threshold_quantity, status)
-      VALUES (?, 'LOW_STOCK', ?, ?, 'ACTIVE')
-    `).bind(i.item_id, i.current_stock, i.safe_stock)
+      INSERT INTO stock_alerts (item_id, alert_type, current_quantity, threshold_quantity, status, entity_id)
+      VALUES (?, 'LOW_STOCK', ?, ?, 'ACTIVE', ?)
+    `).bind(i.item_id, i.current_stock, i.safe_stock, entityId)
   )
   await db.batch(alertStmts)
 

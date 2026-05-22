@@ -224,37 +224,31 @@ inventoryCountRouter.patch('/:id/approve', async (c) => {
       SELECT id, count_id, item_id, system_quantity, counted_quantity, difference, difference_pct, unit, notes FROM inventory_count_items WHERE count_id = ?
     `).bind(countId).all<{ item_id: number; system_quantity: number; counted_quantity: number }>()
 
-    // 각 항목별로 inventory 보정 + inventory_transactions 기록 (batch)
-    if (countItems && countItems.length > 0) {
-      const entityId = getEntityId(c) || 1
-      await c.env.DB.batch(
-        countItems.flatMap((item) => [
-          c.env.DB.prepare(`
-            UPDATE inventory SET quantity = ?, last_updated = CURRENT_TIMESTAMP
-            WHERE item_id = ? AND entity_id = ?
-          `).bind(item.counted_quantity, item.item_id, entityId),
-          c.env.DB.prepare(`
-            INSERT INTO inventory_transactions (item_id, transaction_type, quantity_before, quantity_after, quantity_change, reason, notes, created_by, created_at, entity_id)
-            VALUES (?, 'ADJUST', ?, ?, ?, 'STOCK_COUNT', ?, ?, CURRENT_TIMESTAMP, ?)
-          `).bind(
-            item.item_id,
-            item.system_quantity,
-            item.counted_quantity,
-            item.counted_quantity - item.system_quantity,
-            `Inventory Count ID: ${countId}`,
-            userId,
-            entityId
-          )
-        ])
+    // #152: 재고 보정 + 상태 변경을 단일 batch로 원자화 (이중 조정 방지)
+    const entityId = getEntityId(c) || 1
+    const batchStmts = (countItems || []).flatMap((item) => [
+      c.env.DB.prepare(`
+        UPDATE inventory SET quantity = ?, last_updated = CURRENT_TIMESTAMP
+        WHERE item_id = ? AND entity_id = ?
+      `).bind(item.counted_quantity, item.item_id, entityId),
+      c.env.DB.prepare(`
+        INSERT INTO inventory_transactions (item_id, transaction_type, quantity_before, quantity_after, quantity_change, reason, notes, created_by, created_at, entity_id)
+        VALUES (?, 'ADJUST', ?, ?, ?, 'STOCK_COUNT', ?, ?, CURRENT_TIMESTAMP, ?)
+      `).bind(
+        item.item_id,
+        item.system_quantity,
+        item.counted_quantity,
+        item.counted_quantity - item.system_quantity,
+        `Inventory Count ID: ${countId}`,
+        userId,
+        entityId
       )
-    }
-
-    // count 상태를 APPROVED로 변경
-    await c.env.DB.prepare(`
-      UPDATE inventory_counts
-      SET status = 'APPROVED', approved_by = ?, approved_at = CURRENT_TIMESTAMP
-      WHERE id = ?
-    `).bind(userId, countId).run()
+    ])
+    // 상태 변경을 batch 마지막에 포함 — 보정+상태가 동시에 반영
+    batchStmts.push(
+      c.env.DB.prepare(`UPDATE inventory_counts SET status = 'APPROVED', approved_by = ?, approved_at = CURRENT_TIMESTAMP WHERE id = ? AND status = 'SUBMITTED'`).bind(userId, countId)
+    )
+    await c.env.DB.batch(batchStmts)
 
     return c.json({ success: true })
   } catch (error) {

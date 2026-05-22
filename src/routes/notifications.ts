@@ -98,7 +98,7 @@ notificationsRouter.get('/nav-badges', async (c) => {
           AND po.status IN ('CONFIRMED','PARTIAL_RECEIVED')
           AND (sz.manager_id = ? ${supervisorClause})${efPO}
       `).bind(user?.id || 0, ...efPOParams).first<{ cnt: number }>(),
-      db.prepare(`SELECT COUNT(*) as cnt FROM tasks WHERE status IN ('PENDING','PROCESSING','FAILED')`).first<{ cnt: number }>(),
+      db.prepare(`SELECT COUNT(*) as cnt FROM tasks WHERE status IN ('PENDING','PROCESSING','FAILED')${efOrders}`).bind(...efOrdersParams).first<{ cnt: number }>(),
     ])
     const inspTotal = (inspPr?.cnt || 0) + (inspOverdue?.cnt || 0)
     return c.json({

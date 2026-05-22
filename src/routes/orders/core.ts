@@ -1104,8 +1104,8 @@ ordersCoreRouter.post('/', async (c) => {
     if (aiFilePath) {
       try {
         await c.env.DB.prepare(`
-          INSERT INTO tasks (type, status, order_id, input_payload, created_by)
-          VALUES ('AI_PROCESS', 'PENDING', ?, ?, ?)
+          INSERT INTO tasks (type, status, order_id, input_payload, created_by, entity_id)
+          VALUES ('AI_PROCESS', 'PENDING', ?, ?, ?, ?)
         `).bind(
           orderId,
           JSON.stringify({
@@ -1113,7 +1113,8 @@ ordersCoreRouter.post('/', async (c) => {
             ai_file_path: aiFilePath,
             ai_analysis_id: orderData.ai_analysis_id ?? null
           }),
-          user?.id || null
+          user?.id || null,
+          getEntityId(c) || 1
         ).run()
       } catch (taskErr) {
         // Non-fatal — IllustratorAutomat still polls /api/orders?status=CONFIRMED

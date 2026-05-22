@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { authMiddleware } from '../middleware/auth'
+import { getEntityId } from '../utils/entityFilter'
 
 /**
  * Task Manager API (WORKFLOW_PROPOSAL §C, Step 4 roadmap)
@@ -105,8 +106,8 @@ tasksRouter.post('/', async (c) => {
       : null
 
     const row = await c.env.DB.prepare(`
-      INSERT INTO tasks (type, status, order_id, card_id, ref_table, ref_id, input_payload, max_retries, created_by)
-      VALUES (?, 'PENDING', ?, ?, ?, ?, ?, COALESCE(?, 3), ?)
+      INSERT INTO tasks (type, status, order_id, card_id, ref_table, ref_id, input_payload, max_retries, created_by, entity_id)
+      VALUES (?, 'PENDING', ?, ?, ?, ?, ?, COALESCE(?, 3), ?, ?)
       RETURNING *
     `).bind(
       body.type,
@@ -116,7 +117,8 @@ tasksRouter.post('/', async (c) => {
       body.ref_id ?? null,
       payload,
       body.max_retries ?? null,
-      user.id
+      user.id,
+      getEntityId(c) || 1
     ).first()
 
     return c.json({ success: true, data: row })

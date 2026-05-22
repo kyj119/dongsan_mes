@@ -54,9 +54,9 @@ returns.post('/', async (c) => {
   // #126 #137: 아이템 batch 실패 시 헤더 롤백 (고아 방지)
   const itemStmts = items.map((item: any) =>
     c.env.DB.prepare(`
-      INSERT INTO return_items (return_id, order_item_id, quantity, condition, disposition, notes)
-      VALUES (?, ?, ?, ?, ?, ?)
-    `).bind(returnId, item.order_item_id, item.quantity, item.condition || 'UNKNOWN', item.disposition || null, item.notes || null)
+      INSERT INTO return_items (return_id, order_item_id, quantity, condition, disposition, notes, entity_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).bind(returnId, item.order_item_id, item.quantity, item.condition || 'UNKNOWN', item.disposition || null, item.notes || null, getEntityId(c) || 1)
   )
   try {
     if (itemStmts.length > 0) await c.env.DB.batch(itemStmts)
