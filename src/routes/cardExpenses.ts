@@ -19,13 +19,17 @@ cardExpRouter.use('/*', authMiddleware)
 cardExpRouter.get('/cards', requireRole('ADMIN', 'MANAGER'), async (c) => {
   try {
     const ef = entityFilter(c, 'cc')
+    const now = new Date()
+    const thisMonth = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}`
     const { results } = await c.env.DB.prepare(`
-      SELECT cc.*, u.name as assigned_user_name
+      SELECT cc.*, u.name as assigned_user_name,
+        (SELECT COUNT(*) FROM card_transactions ct WHERE ct.card_id = cc.id AND ct.transaction_date >= ? AND ct.transaction_date <= ?) as tx_count,
+        (SELECT COALESCE(SUM(CASE WHEN ct2.approval_type != 'CANCEL' THEN ct2.amount ELSE -ct2.amount END), 0) FROM card_transactions ct2 WHERE ct2.card_id = cc.id AND ct2.transaction_date >= ? AND ct2.transaction_date <= ?) as month_total
       FROM corporate_cards cc
       LEFT JOIN users u ON cc.assigned_user_id = u.id
       WHERE cc.is_active = 1${ef.clause}
       ORDER BY cc.created_at DESC
-    `).bind(...ef.params).all()
+    `).bind(thisMonth + '01', thisMonth + '31', thisMonth + '01', thisMonth + '31', ...ef.params).all()
     return c.json({ success: true, data: results })
   } catch (error) {
     console.error('Get cards error:', error)

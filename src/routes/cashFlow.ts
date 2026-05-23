@@ -436,7 +436,7 @@ cashFlowRouter.get('/projection', requireRole('ADMIN'), async (c) => {
     const now = new Date()
     const projections: {
       month: string; income: number; fixed_expenses: number; loan_payments: number;
-      purchase_expenses: number; total_expenses: number; net_cash_flow: number; cumulative?: number
+      card_payments: number; purchase_expenses: number; total_expenses: number; net_cash_flow: number; cumulative?: number
     }[] = []
 
     for (let i = 0; i < monthCount; i++) {
@@ -493,8 +493,21 @@ cashFlowRouter.get('/projection', requireRole('ADMIN'), async (c) => {
           AND order_date BETWEEN ? AND ?${efPurchase.clause}
       `).bind(monthStart, monthEnd, ...efPurchase.params).first<{ total: number }>()
 
+      // 카드 결제 예정 (전월 사용분이 이번달 결제)
+      let cardPayment = 0
+      try {
+        const prevMonth = new Date(d.getFullYear(), d.getMonth() - 1, 1)
+        const prevYM = `${prevMonth.getFullYear()}${String(prevMonth.getMonth() + 1).padStart(2, '0')}`
+        const cardExp = await c.env.DB.prepare(`
+          SELECT COALESCE(SUM(CASE WHEN ct.approval_type != 'CANCEL' THEN ct.amount ELSE 0 END), 0) as total
+          FROM card_transactions ct
+          WHERE ct.transaction_date >= ? AND ct.transaction_date <= ?
+        `).bind(prevYM + '01', prevYM + '31').first<{ total: number }>()
+        cardPayment = cardExp?.total || 0
+      } catch (_) { /* card_transactions 테이블 없을 수 있음 */ }
+
       const income = (i === 0) ? (payments?.total || 0) : (revenue?.total || 0)
-      const expenses = (fixedExp?.total || 0) + (loanPay?.total || 0) + (purchaseExp?.total || 0)
+      const expenses = (fixedExp?.total || 0) + (loanPay?.total || 0) + (purchaseExp?.total || 0) + cardPayment
       const net = income - expenses
 
       projections.push({
@@ -503,6 +516,7 @@ cashFlowRouter.get('/projection', requireRole('ADMIN'), async (c) => {
         fixed_expenses: Math.round(fixedExp?.total || 0),
         loan_payments: Math.round(loanPay?.total || 0),
         purchase_expenses: Math.round(purchaseExp?.total || 0),
+        card_payments: Math.round(cardPayment),
         total_expenses: Math.round(expenses),
         net_cash_flow: Math.round(net),
       })

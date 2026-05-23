@@ -101,17 +101,17 @@ export function cardExpensesPage(c: Context<HonoEnv>) {
         <div class="ds-card" style="padding:0">
           <div class="overflow-x-auto" style="max-height:calc(100vh - 220px);overflow-y:auto">
             <table class="ds-table ds-table-compact">
-              <thead>
-                <tr>
-                  <th style="width:32px"><input type="checkbox" id="selectAll" onchange="toggleSelectAll()"></th>
-                  <th class="text-left" style="width:80px">일자</th>
-                  <th class="text-left" style="width:80px">담당자</th>
-                  <th class="text-left">가맹점</th>
-                  <th class="text-right" style="width:90px">금액</th>
-                  <th class="text-center" style="width:120px">분류</th>
-                  <th class="text-left" style="width:130px">적요</th>
-                  <th class="text-center" style="width:55px">상태</th>
-                  <th class="text-center" style="width:40px"></th>
+              <thead class="sticky top-0 bg-white z-10">
+                <tr class="text-[10px] text-gray-500 uppercase border-b">
+                  <th class="px-1 py-2" style="width:28px"><input type="checkbox" id="selectAll" onchange="toggleSelectAll()"></th>
+                  <th class="px-2 py-2 text-left" style="width:55px">일자</th>
+                  <th class="px-2 py-2 text-left" style="width:55px">담당자</th>
+                  <th class="px-2 py-2 text-left">가맹점</th>
+                  <th class="px-2 py-2 text-right" style="width:80px">금액</th>
+                  <th class="px-1 py-2 text-center" style="width:110px">분류</th>
+                  <th class="px-1 py-2 text-left" style="width:120px">적요</th>
+                  <th class="px-1 py-2 text-center" style="width:45px">상태</th>
+                  <th class="px-1 py-2" style="width:28px"></th>
                 </tr>
               </thead>
               <tbody id="txTableBody"></tbody>

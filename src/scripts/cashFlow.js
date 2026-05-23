@@ -91,6 +91,7 @@ function renderProjection(data) {
       + '<td class="px-3 py-2 text-right text-green-600">' + fmt(d.income) + '</td>'
       + '<td class="px-3 py-2 text-right">' + fmt(d.fixed_expenses) + '</td>'
       + '<td class="px-3 py-2 text-right">' + fmt(d.loan_payments) + '</td>'
+      + '<td class="px-3 py-2 text-right">' + fmt(d.card_payments || 0) + '</td>'
       + '<td class="px-3 py-2 text-right">' + fmt(d.purchase_expenses) + '</td>'
       + '<td class="px-3 py-2 text-right font-bold ' + netClass + '">' + fmt(d.net_cash_flow) + '</td>'
       + '<td class="px-3 py-2 text-right ' + cumClass + '">' + fmt(d.cumulative) + '</td>'

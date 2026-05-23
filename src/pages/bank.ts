@@ -490,6 +490,7 @@ export function bankPage(c: Context<HonoEnv>) {
                       <th class="px-3 py-2 text-right">수입</th>
                       <th class="px-3 py-2 text-right">고정비</th>
                       <th class="px-3 py-2 text-right">대출상환</th>
+                      <th class="px-3 py-2 text-right">카드결제</th>
                       <th class="px-3 py-2 text-right">구매비</th>
                       <th class="px-3 py-2 text-right">순 현금흐름</th>
                       <th class="px-3 py-2 text-right">누적</th>
