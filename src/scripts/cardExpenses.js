@@ -32,7 +32,7 @@ async function init() {
   document.getElementById('filterEndDate').value = new Date(y, m + 1, 0).toISOString().split('T')[0];
 
   await Promise.all([loadCardOptions(), loadCategoryOptions()]);
-  loadTransactions();
+  switchCardStatus('UNCLASSIFIED');
   loadSummary();
 }
 
@@ -76,15 +76,36 @@ async function loadCategoryOptions() {
   } catch (e) { console.error('Categories load error:', e); }
 }
 
+// ===== Card Status Tab =====
+function switchCardStatus(status) {
+  document.getElementById('filterStatus').value = status;
+  var tabs = [
+    { key: '', id: 'csTabAll' },
+    { key: 'UNCLASSIFIED', id: 'csTabUnclassified' },
+    { key: 'CLASSIFIED', id: 'csTabClassified' },
+    { key: 'REQUESTED', id: 'csTabRequested' },
+    { key: 'APPROVED', id: 'csTabApproved' }
+  ];
+  tabs.forEach(function(t) {
+    var btn = document.getElementById(t.id);
+    if (!btn) return;
+    btn.className = t.key === status
+      ? 'px-3 py-1 text-xs font-medium rounded-full bg-blue-600 text-white'
+      : 'px-3 py-1 text-xs font-medium rounded-full bg-gray-100 text-gray-600 hover:bg-gray-200';
+  });
+  currentPage = 1;
+  loadTransactions();
+}
+
 // ===== KPI Summary =====
 async function loadSummary() {
   try {
     var res = await axios.get('/api/card-expenses/transactions/summary');
     var s = res.data.data.summary || {};
-    document.getElementById('kpiTotalAmount').textContent = (s.total_amount || 0).toLocaleString() + '원';
-    document.getElementById('kpiUnclassified').textContent = (s.unclassified_count || 0) + '건';
-    document.getElementById('kpiClassified').textContent = (s.classified_count || 0) + '건';
-    document.getElementById('kpiApproved').textContent = (s.approved_count || 0) + '건';
+    document.getElementById('kpiTotalAmount').textContent = (s.total_amount || 0).toLocaleString();
+    document.getElementById('kpiUnclassified').textContent = (s.unclassified_count || 0);
+    document.getElementById('kpiClassified').textContent = (s.classified_count || 0);
+    document.getElementById('kpiApproved').textContent = (s.approved_count || 0);
   } catch (e) { console.error('Summary error:', e); }
 }
 
@@ -189,7 +210,8 @@ function clearSelection() {
   updateBulkBar();
 }
 function updateBulkBar() {
-  var bar = document.getElementById('bulkBar');
+  var bar = document.getElementById('cardBulkBar');
+  if (!bar) return;
   if (selectedTxIds.size > 0) {
     bar.classList.remove('hidden');
     document.getElementById('selectedCount').textContent = selectedTxIds.size;
@@ -414,19 +436,86 @@ async function saveTransaction() {
   } catch (e) { showToast('등록 실패', 'error'); }
 }
 
+// ===== Edit Transaction Modal =====
+var editTxData = null;
+
 async function openEditTx(id) {
-  // 간단한 prompt 기반 분류 변경 (향후 모달로 확장 가능)
-  var catOpts = allCategories.map(function(c, i) { return (i + 1) + '. ' + c.name; }).join('\n');
-  var input = prompt('경비 분류 번호를 입력하세요:\n' + catOpts);
-  if (!input) return;
-  var idx = parseInt(input) - 1;
-  if (idx < 0 || idx >= allCategories.length) { showToast('잘못된 번호입니다', 'warning'); return; }
+  // 거래 데이터 가져오기
   try {
-    await axios.put('/api/card-expenses/transactions/' + id, { category_id: allCategories[idx].id });
-    showToast('분류 변경 완료', 'success');
+    var res = await axios.get('/api/card-expenses/transactions?card_id=&date_start=&date_end=');
+    var all = res.data.data || [];
+    editTxData = all.find(function(t) { return t.id === id; });
+  } catch(e) { /* fallback */ }
+
+  if (!editTxData) {
+    // API에서 못 찾으면 테이블에서 추출
+    editTxData = { id: id };
+  }
+
+  document.getElementById('editTxId').value = id;
+  document.getElementById('editTxDate').textContent = editTxData.transaction_date || '-';
+  document.getElementById('editTxMerchant').textContent = editTxData.merchant_name || '-';
+  document.getElementById('editTxAmount').textContent = (editTxData.amount || 0).toLocaleString() + '원';
+  document.getElementById('editTxCard').textContent = (editTxData.card_name || '') + ' ' + (editTxData.card_number_last4 || '');
+
+  // 카테고리 드롭다운
+  var catSel = document.getElementById('editTxCategory');
+  catSel.innerHTML = '<option value="">미분류</option>';
+  allCategories.forEach(function(c) {
+    catSel.innerHTML += '<option value="' + c.id + '"' + (editTxData.category_id == c.id ? ' selected' : '') + '>' + c.name + '</option>';
+  });
+
+  document.getElementById('editTxMemo').value = editTxData.memo || '';
+  document.getElementById('editTxStatus').value = editTxData.status || 'UNCLASSIFIED';
+  document.getElementById('editTxReceiptFile').value = '';
+
+  // 기존 영수증 미리보기
+  var preview = document.getElementById('editTxReceiptPreview');
+  if (editTxData.receipt_image_url) {
+    preview.innerHTML = '<img src="' + editTxData.receipt_image_url + '" class="receipt-preview mb-2" alt="영수증"><br><span class="text-xs text-green-600"><i class="fas fa-check-circle mr-1"></i>영수증 첨부됨</span>';
+  } else {
+    preview.innerHTML = '<span class="text-xs text-gray-400">첨부된 영수증 없음</span>';
+  }
+
+  document.getElementById('editTxModal').classList.remove('hidden');
+}
+
+function closeEditTxModal() {
+  document.getElementById('editTxModal').classList.add('hidden');
+  editTxData = null;
+}
+
+async function saveEditTx() {
+  var id = document.getElementById('editTxId').value;
+  var categoryId = document.getElementById('editTxCategory').value;
+  var memo = document.getElementById('editTxMemo').value.trim();
+  var status = document.getElementById('editTxStatus').value;
+
+  try {
+    // 1. 분류/메모/상태 저장
+    await axios.put('/api/card-expenses/transactions/' + id, {
+      category_id: categoryId ? parseInt(categoryId) : null,
+      memo: memo || null,
+      status: status
+    });
+
+    // 2. 영수증 파일이 있으면 업로드
+    var fileInput = document.getElementById('editTxReceiptFile');
+    if (fileInput.files && fileInput.files[0]) {
+      var formData = new FormData();
+      formData.append('file', fileInput.files[0]);
+      await axios.post('/api/card-expenses/transactions/' + id + '/receipt', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+    }
+
+    showToast('저장 완료', 'success');
+    closeEditTxModal();
     loadTransactions();
     loadSummary();
-  } catch (e) { showToast('변경 실패', 'error'); }
+  } catch (e) {
+    showToast(e.response?.data?.error || '저장 실패', 'error');
+  }
 }
 
 // ===== CSV Import =====

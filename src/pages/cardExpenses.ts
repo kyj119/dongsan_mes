@@ -43,77 +43,56 @@ export function cardExpensesPage(c: Context<HonoEnv>) {
       <!-- ===== 사용 내역 탭 ===== -->
       <div id="transactionsContent">
 
-        <!-- KPI -->
-        <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
-          <div class="ds-card ds-card-compact card-stat" style="border-color:#3b82f6">
-            <div class="ds-label mb-1">이번달 사용</div>
-            <div class="text-lg font-bold text-gray-700 tabular-nums text-right" id="kpiTotalAmount">-</div>
-          </div>
-          <div class="ds-card ds-card-compact card-stat" style="border-color:#f59e0b">
-            <div class="ds-label mb-1">미분류</div>
-            <div class="text-lg font-bold text-amber-600 tabular-nums text-right" id="kpiUnclassified">-</div>
-          </div>
-          <div class="ds-card ds-card-compact card-stat" style="border-color:#8b5cf6">
-            <div class="ds-label mb-1">결의 대기</div>
-            <div class="text-lg font-bold text-purple-600 tabular-nums text-right" id="kpiClassified">-</div>
-          </div>
-          <div class="ds-card ds-card-compact card-stat" style="border-color:#22c55e">
-            <div class="ds-label mb-1">승인 완료</div>
-            <div class="text-lg font-bold text-green-600 tabular-nums text-right" id="kpiApproved">-</div>
-          </div>
-        </div>
-
-        <!-- 필터 -->
-        <div class="ds-card ds-card-compact mb-4">
-          <div class="flex flex-wrap gap-3 items-center">
-            <select id="filterCard" onchange="loadTransactions()" class="ds-input" style="width:auto">
+        <!-- 통합 필터 바: 필터 + 인라인 KPI -->
+        <div class="ds-card ds-card-compact mb-3">
+          <!-- Row 1: 필터 + KPI -->
+          <div class="flex flex-wrap items-center gap-3">
+            <select id="filterCard" onchange="loadTransactions()" class="ds-input" style="width:auto;font-size:12px">
               <option value="">전체 카드</option>
             </select>
-            <select id="filterStatus" onchange="loadTransactions()" class="ds-input" style="width:auto">
-              <option value="">전체 상태</option>
-              <option value="UNCLASSIFIED">미분류</option>
-              <option value="CLASSIFIED">분류 완료</option>
-              <option value="REQUESTED">결의 요청</option>
-              <option value="APPROVED">승인 완료</option>
-            </select>
-            <select id="filterCategory" onchange="loadTransactions()" class="ds-input" style="width:auto">
+            <select id="filterCategory" onchange="loadTransactions()" class="ds-input" style="width:auto;font-size:12px">
               <option value="">전체 분류</option>
             </select>
-            <input type="date" id="filterStartDate" class="ds-input" style="width:auto" onchange="loadTransactions()">
-            <span class="text-gray-400">~</span>
-            <input type="date" id="filterEndDate" class="ds-input" style="width:auto" onchange="loadTransactions()">
-            <input type="text" id="filterSearch" placeholder="가맹점 검색..." class="ds-input" style="width:140px">
-            <button onclick="loadTransactions()" class="ds-btn ds-btn-primary ds-btn-sm" style="background:var(--c-warning)">
-              <i class="fas fa-search mr-1"></i>조회
-            </button>
-            <div class="ml-auto flex gap-2">
-              <button onclick="syncBarobillCards()" id="syncCardBtn" class="ds-btn ds-btn-sm" style="background:#059669;color:white">
-                <i class="fas fa-sync-alt mr-1"></i>바로빌 동기화
-              </button>
-              <button onclick="openImportModal()" class="ds-btn ds-btn-secondary ds-btn-sm">
-                <i class="fas fa-file-upload mr-1"></i>CSV
-              </button>
-              <button onclick="openAddTxModal()" class="ds-btn ds-btn-primary ds-btn-sm">
-                <i class="fas fa-plus mr-1"></i>수동 등록
-              </button>
+            <div class="flex items-center gap-1">
+              <input type="date" id="filterStartDate" class="ds-input" style="width:125px;font-size:12px" onchange="loadTransactions()">
+              <span class="text-gray-300">~</span>
+              <input type="date" id="filterEndDate" class="ds-input" style="width:125px;font-size:12px" onchange="loadTransactions()">
+            </div>
+            <input type="text" id="filterSearch" placeholder="가맹점..." class="ds-input" style="width:110px;font-size:12px">
+            <div class="border-l border-gray-200 h-5 mx-1"></div>
+            <div class="flex items-center gap-2 text-xs">
+              <span class="px-2 py-1 rounded-full bg-blue-50 text-blue-700 font-medium">이번달 <b id="kpiTotalAmount">-</b></span>
+              <span class="px-2 py-1 rounded-full bg-amber-50 text-amber-700 font-medium">미분류 <b id="kpiUnclassified">-</b></span>
+              <span class="px-2 py-1 rounded-full bg-purple-50 text-purple-700 font-medium">대기 <b id="kpiClassified">-</b></span>
+              <span class="px-2 py-1 rounded-full bg-green-50 text-green-700 font-medium">승인 <b id="kpiApproved">-</b></span>
             </div>
           </div>
-        </div>
-
-        <!-- 일괄 작업 바 -->
-        <div id="bulkBar" class="hidden ds-card ds-card-compact mb-3" style="background:#eff6ff;border:1px solid #93c5fd">
-          <div class="flex items-center gap-3">
-            <span class="text-sm font-bold text-blue-700"><span id="selectedCount">0</span>건 선택</span>
-            <select id="bulkCategory" class="ds-input" style="width:auto;font-size:12px">
-              <option value="">분류 선택...</option>
-            </select>
-            <button onclick="bulkClassify()" class="ds-btn ds-btn-sm" style="background:#6366f1;color:white;font-size:12px">
-              <i class="fas fa-tags mr-1"></i>일괄 분류
-            </button>
-            <button onclick="bulkCreateRequests()" class="ds-btn ds-btn-sm" style="background:#059669;color:white;font-size:12px">
-              <i class="fas fa-file-signature mr-1"></i>일괄 결의 생성
-            </button>
-            <button onclick="clearSelection()" class="ds-btn ds-btn-ghost ds-btn-sm text-gray-500">선택 해제</button>
+          <!-- Row 2: 상태 필터 탭 + 액션 -->
+          <div class="flex items-center justify-between mt-2 pt-2 border-t border-gray-100">
+            <div class="flex gap-1">
+              <input type="hidden" id="filterStatus" value="UNCLASSIFIED">
+              <button onclick="switchCardStatus('')" id="csTabAll" class="px-3 py-1 text-xs font-medium rounded-full bg-gray-100 text-gray-600 hover:bg-gray-200">전체</button>
+              <button onclick="switchCardStatus('UNCLASSIFIED')" id="csTabUnclassified" class="px-3 py-1 text-xs font-medium rounded-full bg-blue-600 text-white">미분류</button>
+              <button onclick="switchCardStatus('CLASSIFIED')" id="csTabClassified" class="px-3 py-1 text-xs font-medium rounded-full bg-gray-100 text-gray-600 hover:bg-gray-200">분류완료</button>
+              <button onclick="switchCardStatus('REQUESTED')" id="csTabRequested" class="px-3 py-1 text-xs font-medium rounded-full bg-gray-100 text-gray-600 hover:bg-gray-200">결의요청</button>
+              <button onclick="switchCardStatus('APPROVED')" id="csTabApproved" class="px-3 py-1 text-xs font-medium rounded-full bg-gray-100 text-gray-600 hover:bg-gray-200">승인</button>
+            </div>
+            <div class="flex items-center gap-2">
+              <button onclick="syncBarobillCards()" id="syncCardBtn" class="px-3 py-1.5 text-xs font-medium rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 flex items-center gap-1">
+                <i class="fas fa-sync-alt"></i> 동기화
+              </button>
+              <button onclick="openAddTxModal()" class="px-3 py-1.5 text-xs font-medium rounded-lg bg-blue-600 text-white hover:bg-blue-700 flex items-center gap-1">
+                <i class="fas fa-plus"></i> 등록
+              </button>
+              <div class="relative" id="cardMoreWrap">
+                <button onclick="var m=document.getElementById('cardMoreMenu'); m.classList.toggle('hidden');" class="px-3 py-1.5 text-xs font-medium rounded-lg bg-gray-100 text-gray-600 hover:bg-gray-200">
+                  <i class="fas fa-ellipsis-h"></i>
+                </button>
+                <div id="cardMoreMenu" class="hidden absolute right-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-50 py-1 w-40">
+                  <button onclick="openImportModal(); document.getElementById('cardMoreMenu').classList.add('hidden');" class="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"><i class="fas fa-file-upload text-gray-400 w-4"></i>CSV 가져오기</button>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -137,6 +116,24 @@ export function cardExpensesPage(c: Context<HonoEnv>) {
             </table>
           </div>
           <div id="txPagination" class="p-3 border-t flex justify-between items-center text-sm text-gray-500"></div>
+        </div>
+
+        <!-- Floating Selection Bar -->
+        <div id="cardBulkBar" class="hidden fixed bottom-6 left-1/2 -translate-x-1/2 z-40 bg-gray-900 text-white rounded-xl shadow-2xl px-5 py-3 flex items-center gap-4" style="min-width:480px;">
+          <span class="text-sm"><b id="selectedCount">0</b>건 선택</span>
+          <div class="border-l border-gray-600 h-5"></div>
+          <select id="bulkCategory" class="bg-gray-800 text-white border border-gray-600 rounded-lg px-2 py-1 text-xs">
+            <option value="">분류 선택...</option>
+          </select>
+          <button onclick="bulkClassify()" class="px-3 py-1.5 text-xs font-medium rounded-lg bg-indigo-500 hover:bg-indigo-400 flex items-center gap-1">
+            <i class="fas fa-tags"></i> 일괄 분류
+          </button>
+          <button onclick="bulkCreateRequests()" class="px-3 py-1.5 text-xs font-medium rounded-lg bg-emerald-500 hover:bg-emerald-400 flex items-center gap-1">
+            <i class="fas fa-file-signature"></i> 결의 생성
+          </button>
+          <button onclick="clearSelection()" class="ml-auto px-2 py-1 text-xs text-gray-400 hover:text-white">
+            <i class="fas fa-times"></i>
+          </button>
         </div>
       </div>
 
@@ -385,6 +382,68 @@ export function cardExpensesPage(c: Context<HonoEnv>) {
           <div class="flex justify-end gap-2 mt-6">
             <button onclick="closeCategoryModal()" class="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm hover:bg-gray-50">취소</button>
             <button onclick="saveCategory()" class="px-4 py-2 bg-purple-600 text-white rounded-lg text-sm hover:bg-purple-700"><i class="fas fa-save mr-1"></i>저장</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== 거래 수정 모달 ===== -->
+      <div id="editTxModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+        <div class="bg-white rounded-lg shadow-xl w-[520px] p-6 max-h-[90vh] overflow-y-auto">
+          <div class="flex justify-between items-center mb-4">
+            <h3 class="text-lg font-bold text-gray-800"><i class="fas fa-pen text-blue-500 mr-2"></i>카드 내역 관리</h3>
+            <button onclick="closeEditTxModal()" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times"></i></button>
+          </div>
+          <input type="hidden" id="editTxId">
+
+          <!-- 거래 정보 (읽기 전용) -->
+          <div class="bg-gray-50 rounded-lg p-3 mb-4 text-sm">
+            <div class="flex justify-between mb-1">
+              <span class="text-gray-500">일자</span>
+              <span class="font-medium" id="editTxDate">-</span>
+            </div>
+            <div class="flex justify-between mb-1">
+              <span class="text-gray-500">가맹점</span>
+              <span class="font-medium" id="editTxMerchant">-</span>
+            </div>
+            <div class="flex justify-between mb-1">
+              <span class="text-gray-500">금액</span>
+              <span class="font-bold text-blue-600" id="editTxAmount">-</span>
+            </div>
+            <div class="flex justify-between">
+              <span class="text-gray-500">카드</span>
+              <span id="editTxCard">-</span>
+            </div>
+          </div>
+
+          <!-- 수정 가능 필드 -->
+          <div class="space-y-3">
+            <div>
+              <label class="text-sm font-semibold text-gray-700 mb-1 block">경비 분류</label>
+              <select id="editTxCategory" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"></select>
+            </div>
+            <div>
+              <label class="text-sm font-semibold text-gray-700 mb-1 block">적요 / 메모</label>
+              <input type="text" id="editTxMemo" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="사용 목적, 참석자 등">
+            </div>
+            <div>
+              <label class="text-sm font-semibold text-gray-700 mb-1 block">상태</label>
+              <select id="editTxStatus" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+                <option value="UNCLASSIFIED">미분류</option>
+                <option value="CLASSIFIED">분류 완료</option>
+                <option value="REQUESTED">결의 요청</option>
+                <option value="APPROVED">승인 완료</option>
+              </select>
+            </div>
+            <div>
+              <label class="text-sm font-semibold text-gray-700 mb-1 block">영수증 첨부</label>
+              <div id="editTxReceiptPreview" class="mb-2"></div>
+              <input type="file" id="editTxReceiptFile" accept="image/*,.pdf" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+              <p class="text-xs text-gray-400 mt-1">이미지 또는 PDF 파일</p>
+            </div>
+          </div>
+          <div class="flex justify-end gap-2 mt-6">
+            <button onclick="closeEditTxModal()" class="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm hover:bg-gray-50">취소</button>
+            <button onclick="saveEditTx()" class="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700"><i class="fas fa-save mr-1"></i>저장</button>
           </div>
         </div>
       </div>
