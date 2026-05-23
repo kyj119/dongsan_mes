@@ -49,3 +49,6 @@
 | AC | 백업 토큰 분리 | CLOUDFLARE_BACKUP_TOKEN (D1+R2), 배포 토큰과 분리 |
 | AG | QR 스캔 코드 체계 | html5-qrcode CDN 동적 로드. 코드 접두사: CARD:/ITEM:/EQ:/ORDER: |
 | AH | 견적 추천 단가 | 3개월 전체 거래처 평균 판매가, 원가(cost) 노출 금지 |
+| AI | 법인카드 5 Phase 아키텍처 | corporate_cards + card_transactions + expense_categories, 바로빌 카드→DB 적재, 자동분류 규칙 학습, R2 영수증 |
+| AJ | 자동매칭 신뢰도 임계값 | confidence >= 0.8 → CONFIRMED 자동확인, 0.5~0.8 → SUGGESTED 제안, < 0.5 무시 |
+| AK | bank↔card-expenses 기능 분리 | /bank=통장+입금매칭+미수금+캐시플로, /card-expenses=카드사용+분류+수수료+결제예정+보고서. 중복 금지 |
