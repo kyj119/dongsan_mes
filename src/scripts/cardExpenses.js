@@ -142,6 +142,12 @@ async function loadTransactions() {
       return;
     }
 
+    // 분류 옵션 HTML 미리 생성
+    var catOptionsHtml = '<option value="">-</option>';
+    allCategories.forEach(function(c) {
+      catOptionsHtml += '<option value="' + c.id + '">' + c.name + '</option>';
+    });
+
     data.forEach(function(tx) {
       var row = document.createElement('tr');
       row.className = 'tx-row' + (selectedTxIds.has(tx.id) ? ' selected' : '');
@@ -151,24 +157,28 @@ async function loadTransactions() {
         REQUESTED: 'background:#ede9fe;color:#5b21b6',
         APPROVED: 'background:#dcfce7;color:#166534'
       };
-      var statusLabels = { UNCLASSIFIED: '미분류', CLASSIFIED: '분류완료', REQUESTED: '결의요청', APPROVED: '승인' };
-      var catHtml = tx.category_name
-        ? '<span class="cat-badge" style="background:' + (tx.category_color || '#f3f4f6') + '20;color:' + (tx.category_color || '#6b7280') + '"><i class="fas ' + (tx.category_icon || 'fa-tag') + '" style="font-size:9px"></i>' + escapeHtml(tx.category_name) + '</span>'
-        : '<span class="text-gray-400 text-xs">-</span>';
-      var cardLabel = tx.card_name ? escapeHtml(tx.card_name) : '-';
-      if (tx.card_number_last4) cardLabel += ' <span class="text-gray-400">' + tx.card_number_last4 + '</span>';
+      var statusLabels = { UNCLASSIFIED: '미분류', CLASSIFIED: '분류', REQUESTED: '결의', APPROVED: '승인' };
+
+      // 날짜 포맷: 20260521 → 05-21
+      var d = tx.transaction_date || '';
+      var dateStr = d.length === 8 ? d.slice(4,6) + '-' + d.slice(6,8) : d;
+
+      // 담당자
+      var assignee = tx.assigned_user_name || tx.holder_name || '';
+
+      // 영수증 아이콘
+      var receiptIcon = (tx.receipt_image_url || tx.receipt_data) ? ' <i class="fas fa-paperclip text-blue-400" style="font-size:9px" title="영수증"></i>' : '';
 
       row.innerHTML =
-        '<td class="px-2 py-2 text-center"><input type="checkbox" class="tx-check" data-id="' + tx.id + '" ' + (selectedTxIds.has(tx.id) ? 'checked' : '') + ' onchange="toggleTxSelect(' + tx.id + ', this.checked)"></td>' +
-        '<td class="px-3 py-2 text-xs text-gray-600 whitespace-nowrap">' + tx.transaction_date + '</td>' +
-        '<td class="px-3 py-2 text-xs">' + cardLabel + '</td>' +
-        '<td class="px-3 py-2 text-sm font-medium">' + escapeHtml(tx.merchant_name || '-') +
-          (tx.memo ? '<span class="text-gray-400 text-xs ml-1">' + escapeHtml(tx.memo) + '</span>' : '') +
-          (tx.receipt_data ? ' <i class="fas fa-paperclip text-blue-400 text-xs" title="영수증 첨부"></i>' : '') + '</td>' +
-        '<td class="px-3 py-2 text-right tabular-nums font-medium">' + (tx.amount || 0).toLocaleString() + '</td>' +
-        '<td class="px-2 py-2 text-center">' + catHtml + '</td>' +
-        '<td class="px-2 py-2 text-center"><span class="status-pill" style="' + (statusColors[tx.status] || '') + '">' + (statusLabels[tx.status] || tx.status) + '</span></td>' +
-        '<td class="px-2 py-2 text-center"><button onclick="openEditTx(' + tx.id + ')" class="text-gray-400 hover:text-blue-600 p-0.5" title="수정"><i class="fas fa-pen text-xs"></i></button></td>';
+        '<td class="px-1 py-1.5 text-center"><input type="checkbox" class="tx-check" data-id="' + tx.id + '" ' + (selectedTxIds.has(tx.id) ? 'checked' : '') + ' onchange="toggleTxSelect(' + tx.id + ', this.checked)"></td>' +
+        '<td class="px-2 py-1.5 text-xs text-gray-500 whitespace-nowrap">' + dateStr + '</td>' +
+        '<td class="px-2 py-1.5 text-xs text-gray-600">' + escapeHtml(assignee) + '</td>' +
+        '<td class="px-2 py-1.5 text-xs font-medium text-gray-800">' + escapeHtml(tx.merchant_name || '-') + receiptIcon + '</td>' +
+        '<td class="px-2 py-1.5 text-right text-xs tabular-nums font-semibold">' + (tx.amount || 0).toLocaleString() + '</td>' +
+        '<td class="px-1 py-1"><select class="w-full border border-gray-200 rounded px-1 py-0.5 text-xs bg-white" onchange="quickClassify(' + tx.id + ', this.value)" data-cat-select="' + tx.id + '">' + catOptionsHtml.replace('value="' + (tx.category_id || '') + '"', 'value="' + (tx.category_id || '') + '" selected') + '</select></td>' +
+        '<td class="px-1 py-1"><input type="text" class="w-full border border-gray-200 rounded px-1.5 py-0.5 text-xs" value="' + escapeHtml(tx.memo || '') + '" placeholder="적요..." onblur="quickMemo(' + tx.id + ', this.value)" data-memo-input="' + tx.id + '"></td>' +
+        '<td class="px-1 py-1.5 text-center"><span class="status-pill" style="' + (statusColors[tx.status] || '') + ';font-size:10px">' + (statusLabels[tx.status] || tx.status) + '</span></td>' +
+        '<td class="px-1 py-1.5 text-center"><button onclick="openEditTx(' + tx.id + ')" class="text-gray-400 hover:text-blue-600" title="상세"><i class="fas fa-ellipsis-v text-xs"></i></button></td>';
       tbody.appendChild(row);
     });
 
@@ -516,6 +526,22 @@ async function saveEditTx() {
   } catch (e) {
     showToast(e.response?.data?.error || '저장 실패', 'error');
   }
+}
+
+// ===== Inline Quick Actions =====
+async function quickClassify(txId, catId) {
+  try {
+    await axios.put('/api/card-expenses/transactions/' + txId, {
+      category_id: catId ? parseInt(catId) : null
+    });
+    loadSummary();
+  } catch (e) { showToast('분류 실패', 'error'); }
+}
+
+async function quickMemo(txId, memo) {
+  try {
+    await axios.put('/api/card-expenses/transactions/' + txId, { memo: memo || null });
+  } catch (e) { showToast('메모 저장 실패', 'error'); }
 }
 
 // ===== CSV Import =====

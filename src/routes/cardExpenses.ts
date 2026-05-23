@@ -250,9 +250,11 @@ cardExpRouter.get('/transactions', requireRole('ADMIN', 'MANAGER'), async (c) =>
 
     let query = `
       SELECT ct.*, cc.card_name, cc.card_company, cc.card_number_last4,
+             cc.holder_name, u.name as assigned_user_name,
              ec.name as category_name, ec.icon as category_icon, ec.color as category_color
       FROM card_transactions ct
       LEFT JOIN corporate_cards cc ON ct.card_id = cc.id
+      LEFT JOIN users u ON cc.assigned_user_id = u.id
       LEFT JOIN expense_categories ec ON ct.category_id = ec.id
       WHERE 1=1${ef.clause}
     `

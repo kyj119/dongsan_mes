@@ -12,9 +12,10 @@ export function cardExpensesPage(c: Context<HonoEnv>) {
       .cat-badge{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;white-space:nowrap}
       .card-stat{border-left:3px solid}
       .status-pill{display:inline-block;padding:1px 8px;border-radius:9999px;font-size:11px;font-weight:600}
-      .tx-row{cursor:pointer;transition:background .15s}
+      .tx-row{transition:background .15s}
       .tx-row:hover{background:#f8fafc}
       .tx-row.selected{background:#eff6ff}
+      .tx-row td{vertical-align:middle}
       .receipt-preview{max-width:200px;max-height:200px;border-radius:8px;border:1px solid #e5e7eb}
     `,
     pageContent: `
@@ -98,18 +99,19 @@ export function cardExpensesPage(c: Context<HonoEnv>) {
 
         <!-- 내역 테이블 -->
         <div class="ds-card" style="padding:0">
-          <div class="overflow-x-auto" style="max-height:calc(100vh - 340px);overflow-y:auto">
+          <div class="overflow-x-auto" style="max-height:calc(100vh - 220px);overflow-y:auto">
             <table class="ds-table ds-table-compact">
               <thead>
                 <tr>
-                  <th style="width:36px"><input type="checkbox" id="selectAll" onchange="toggleSelectAll()"></th>
-                  <th class="text-left" style="width:90px">일자</th>
-                  <th class="text-left">카드</th>
+                  <th style="width:32px"><input type="checkbox" id="selectAll" onchange="toggleSelectAll()"></th>
+                  <th class="text-left" style="width:80px">일자</th>
+                  <th class="text-left" style="width:80px">담당자</th>
                   <th class="text-left">가맹점</th>
-                  <th class="text-right" style="width:100px">금액</th>
-                  <th class="text-center" style="width:100px">분류</th>
-                  <th class="text-center" style="width:70px">상태</th>
-                  <th class="text-center" style="width:30px"></th>
+                  <th class="text-right" style="width:90px">금액</th>
+                  <th class="text-center" style="width:120px">분류</th>
+                  <th class="text-left" style="width:130px">적요</th>
+                  <th class="text-center" style="width:55px">상태</th>
+                  <th class="text-center" style="width:40px"></th>
                 </tr>
               </thead>
               <tbody id="txTableBody"></tbody>
