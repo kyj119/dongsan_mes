@@ -173,7 +173,7 @@ ${capsSettingsScript}
             <div id="logoSettingsArea"></div>
           </div>
 
-          <!-- 전자세금계산서 (팝빌) -->
+          <!-- 전자세금계산서 (바로빌) -->
           <div class="bg-white rounded-lg border border-gray-200 p-6">
             <h2 class="text-lg font-bold text-gray-900 mb-6 flex items-center gap-2">
               <svg class="w-5 h-5 text-gray-500" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/><path d="M16 13H8"/><path d="M16 17H8"/><path d="M10 9H8"/></svg>
@@ -182,15 +182,15 @@ ${capsSettingsScript}
             <div class="space-y-4">
               <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label class="block text-sm font-semibold text-gray-700 mb-1">공급자</label>
+                  <label class="block text-sm font-semibold text-gray-700 mb-1">서비스 제공자</label>
                   <select id="s_tax_provider" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
-                    <option value="popbill">팝빌</option>
                     <option value="barobill">바로빌</option>
+                    <option value="popbill">팝빌 (레거시)</option>
                   </select>
                 </div>
                 <div>
-                  <label class="block text-sm font-semibold text-gray-700 mb-1">링크아이디</label>
-                  <input type="text" id="s_tax_provider_linked_id" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500" placeholder="링크아이디">
+                  <label class="block text-sm font-semibold text-gray-700 mb-1">링크아이디 (팝빌 전용)</label>
+                  <input type="text" id="s_tax_provider_linked_id" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500" placeholder="팝빌 사용 시만 입력">
                 </div>
               </div>
               <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -199,15 +199,14 @@ ${capsSettingsScript}
                   <input type="email" id="s_tax_default_email" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500" placeholder="tax@example.com">
                 </div>
                 <div>
-                  <label class="block text-sm font-semibold text-gray-700 mb-1">비밀키 상태</label>
+                  <label class="block text-sm font-semibold text-gray-700 mb-1">바로빌 연결 상태</label>
                   <div id="taxSecretStatus" class="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-50 text-sm text-gray-500">확인 중...</div>
-                  <p class="text-xs text-gray-400 mt-1">변경: <code class="bg-gray-100 px-1 rounded text-xs">wrangler pages secret put POPBILL_SECRET_KEY</code></p>
                 </div>
               </div>
               <div class="flex flex-col gap-3 pt-2">
                 <label class="flex items-center gap-2 cursor-pointer">
                   <input type="checkbox" id="s_tax_test_mode" class="w-4 h-4 text-blue-600 rounded focus:ring-blue-500" checked>
-                  <span class="text-sm text-gray-700">테스트 모드 <span class="text-gray-400">(팝빌 테스트 서버 사용)</span></span>
+                  <span class="text-sm text-gray-700">테스트 모드 <span class="text-gray-400">(바로빌 테스트 서버 사용)</span></span>
                 </label>
                 <label class="flex items-center gap-2 cursor-pointer">
                   <input type="checkbox" id="s_tax_auto_issue" class="w-4 h-4 text-blue-600 rounded focus:ring-blue-500">
@@ -521,7 +520,7 @@ ${capsSettingsScript}
         <!-- ─── 메시지 설정 탭 ─── -->
         <div id="messagesTabContent" class="hidden space-y-6">
           <div class="bg-white rounded-lg shadow p-6">
-            <h3 class="text-lg font-bold text-gray-800 mb-4"><i class="fas fa-plug mr-2 text-blue-500"></i>팝빌 연동 상태</h3>
+            <h3 class="text-lg font-bold text-gray-800 mb-4"><i class="fas fa-plug mr-2 text-blue-500"></i>바로빌 연동 상태</h3>
             <div class="space-y-3">
               <div class="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
                 <span id="msgPopbillIcon" class="text-lg">⏳</span>
@@ -564,7 +563,7 @@ ${capsSettingsScript}
               <div>
                 <label class="text-sm font-semibold text-gray-700 mb-1 block">발신번호</label>
                 <input type="text" id="msgSettingSenderNum" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="042-xxx-xxxx">
-                <p class="text-xs text-gray-400 mt-1">팝빌에 등록된 발신번호</p>
+                <p class="text-xs text-gray-400 mt-1">바로빌에 등록된 발신번호</p>
               </div>
               <div>
                 <label class="text-sm font-semibold text-gray-700 mb-1 block">카카오 채널 ID</label>
@@ -620,7 +619,7 @@ ${capsSettingsScript}
               <div>
                 <label class="text-sm font-semibold text-gray-700 mb-1 block">팩스 발신번호</label>
                 <input type="text" id="msgSettingFaxSenderNum" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="042-xxx-xxxx">
-                <p class="text-xs text-gray-400 mt-1">팝빌에 등록된 팩스 발신번호 (미입력 시 SMS 발신번호 사용)</p>
+                <p class="text-xs text-gray-400 mt-1">바로빌에 등록된 팩스 발신번호 (미입력 시 SMS 발신번호 사용)</p>
               </div>
             </div>
           </div>

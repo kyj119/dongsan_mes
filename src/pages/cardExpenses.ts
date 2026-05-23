@@ -2,6 +2,7 @@ import type { Context } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { renderPage } from '../layout'
 import cardExpensesScript from '../scripts/cardExpenses.js?raw'
+import cardFeeScript from '../scripts/cardFee.js?raw'
 
 export function cardExpensesPage(c: Context<HonoEnv>) {
   return renderPage(c, {
@@ -25,8 +26,17 @@ export function cardExpensesPage(c: Context<HonoEnv>) {
         <button id="tabCards" onclick="switchCardTab('cards')" class="px-6 py-3 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">
           <i class="fas fa-credit-card mr-1"></i>카드 관리
         </button>
+        <button id="tabSchedule" onclick="switchCardTab('schedule')" class="px-6 py-3 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">
+          <i class="fas fa-calendar-alt mr-1"></i>결제 예정
+        </button>
+        <button id="tabReport" onclick="switchCardTab('report')" class="px-6 py-3 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">
+          <i class="fas fa-chart-pie mr-1"></i>보고서
+        </button>
         <button id="tabCategories" onclick="switchCardTab('categories')" class="px-6 py-3 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">
           <i class="fas fa-tags mr-1"></i>경비 분류
+        </button>
+        <button id="tabCardfee" onclick="switchCardTab('cardfee')" class="px-6 py-3 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">
+          <i class="fas fa-calculator mr-1"></i>수수료
         </button>
       </div>
 
@@ -77,8 +87,11 @@ export function cardExpensesPage(c: Context<HonoEnv>) {
               <i class="fas fa-search mr-1"></i>조회
             </button>
             <div class="ml-auto flex gap-2">
+              <button onclick="syncBarobillCards()" id="syncCardBtn" class="ds-btn ds-btn-sm" style="background:#059669;color:white">
+                <i class="fas fa-sync-alt mr-1"></i>바로빌 동기화
+              </button>
               <button onclick="openImportModal()" class="ds-btn ds-btn-secondary ds-btn-sm">
-                <i class="fas fa-file-upload mr-1"></i>CSV 가져오기
+                <i class="fas fa-file-upload mr-1"></i>CSV
               </button>
               <button onclick="openAddTxModal()" class="ds-btn ds-btn-primary ds-btn-sm">
                 <i class="fas fa-plus mr-1"></i>수동 등록
@@ -138,6 +151,59 @@ export function cardExpensesPage(c: Context<HonoEnv>) {
         <div id="cardsList" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"></div>
       </div>
 
+      <!-- ===== 결제 예정 탭 ===== -->
+      <div id="scheduleContent" style="display:none">
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+          <div class="ds-card ds-card-compact card-stat" style="border-color:#ef4444">
+            <div class="ds-label mb-1">이번달 총 결제 예정</div>
+            <div class="text-xl font-bold text-red-600 tabular-nums text-right" id="scheduleTotal">-</div>
+          </div>
+          <div class="ds-card ds-card-compact card-stat" style="border-color:#3b82f6">
+            <div class="ds-label mb-1">카드 수</div>
+            <div class="text-xl font-bold text-blue-600 text-right" id="scheduleCardCount">-</div>
+          </div>
+          <div class="ds-card ds-card-compact card-stat" style="border-color:#8b5cf6">
+            <div class="ds-label mb-1">다음 결제일</div>
+            <div class="text-xl font-bold text-purple-600 text-right" id="scheduleNextDate">-</div>
+          </div>
+        </div>
+        <div class="ds-card" style="padding:0">
+          <table class="ds-table ds-table-compact ds-table-striped">
+            <thead><tr>
+              <th class="text-left">카드</th>
+              <th class="text-left">카드사</th>
+              <th class="text-center">결제일</th>
+              <th class="text-right">사용 금액</th>
+              <th class="text-right">취소 금액</th>
+              <th class="text-right font-bold">결제 예정</th>
+              <th class="text-center">한도 사용률</th>
+              <th class="text-center">건수</th>
+            </tr></thead>
+            <tbody id="scheduleTableBody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- ===== 보고서 탭 ===== -->
+      <div id="reportContent" style="display:none">
+        <div class="flex items-center gap-3 mb-4">
+          <select id="reportMonth" class="ds-input" style="width:auto" onchange="loadReport()"></select>
+          <span class="text-sm text-gray-500" id="reportGrandTotal"></span>
+        </div>
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <!-- 카테고리별 -->
+          <div class="ds-card">
+            <h3 class="text-sm font-bold text-gray-700 mb-3"><i class="fas fa-chart-pie text-purple-500 mr-2"></i>경비 분류별</h3>
+            <div id="reportCategoryBars" class="space-y-2"></div>
+          </div>
+          <!-- 카드별 -->
+          <div class="ds-card">
+            <h3 class="text-sm font-bold text-gray-700 mb-3"><i class="fas fa-credit-card text-blue-500 mr-2"></i>카드별</h3>
+            <div id="reportCardBars" class="space-y-2"></div>
+          </div>
+        </div>
+      </div>
+
       <!-- ===== 경비 분류 탭 ===== -->
       <div id="categoriesContent" style="display:none">
         <div class="flex justify-between items-center mb-4">
@@ -157,6 +223,80 @@ export function cardExpensesPage(c: Context<HonoEnv>) {
             </tr></thead>
             <tbody id="categoryTableBody"></tbody>
           </table>
+        </div>
+      </div>
+
+      <!-- ===== 카드 수수료 탭 (자금관리에서 이동) ===== -->
+      <div id="cardfeeContent" style="display:none">
+        <div class="ds-card mb-4">
+          <h3 class="text-sm font-bold text-gray-800 mb-3"><i class="fas fa-calculator text-blue-500 mr-2"></i>카드 수수료 계산</h3>
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
+            <div>
+              <label class="text-xs font-medium text-gray-600 mb-1 block">카드사</label>
+              <select id="calcCardCompany" class="ds-input"></select>
+            </div>
+            <div>
+              <label class="text-xs font-medium text-gray-600 mb-1 block">입금액 (통장 입금된 금액)</label>
+              <input type="number" id="calcDepositAmount" class="ds-input" placeholder="예: 975000">
+            </div>
+            <button onclick="calculateCardFee()" class="ds-btn ds-btn-primary"><i class="fas fa-calculator mr-1"></i>계산</button>
+          </div>
+          <div id="calcResult" class="hidden mt-4 p-4 bg-blue-50 rounded-lg">
+            <div class="grid grid-cols-3 gap-4 text-center">
+              <div><div class="text-xs text-gray-500">원래 결제금액</div><div class="text-lg font-bold text-gray-800" id="calcOriginal">-</div></div>
+              <div><div class="text-xs text-gray-500">수수료 (<span id="calcRateDisplay">-</span>%)</div><div class="text-lg font-bold text-red-600" id="calcFee">-</div></div>
+              <div><div class="text-xs text-gray-500">실제 입금액</div><div class="text-lg font-bold text-blue-600" id="calcDeposit">-</div></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="ds-card mb-4">
+          <div class="flex items-center justify-between mb-3">
+            <h3 class="text-sm font-bold text-gray-800"><i class="fas fa-chart-bar text-green-500 mr-2"></i>기간별 카드 수수료 집계</h3>
+            <div class="flex items-center gap-2">
+              <input type="date" id="feeDateStart" class="ds-input" style="width:140px;">
+              <span class="text-gray-400">~</span>
+              <input type="date" id="feeDateEnd" class="ds-input" style="width:140px;">
+              <button onclick="loadFeeSummary()" class="ds-btn ds-btn-primary ds-btn-sm"><i class="fas fa-search mr-1"></i>조회</button>
+            </div>
+          </div>
+          <div id="feeSummaryArea"><div class="text-center py-6 text-gray-400">기간을 선택하고 조회를 클릭하세요</div></div>
+        </div>
+
+        <div class="ds-card">
+          <div class="flex items-center justify-between mb-3">
+            <h3 class="text-sm font-bold text-gray-800"><i class="fas fa-cog text-gray-500 mr-2"></i>카드사 수수료율 설정</h3>
+            <button onclick="openAddFeeRateModal()" class="ds-btn ds-btn-primary ds-btn-sm"><i class="fas fa-plus mr-1"></i>추가</button>
+          </div>
+          <table class="ds-table ds-table-compact ds-table-striped">
+            <thead><tr>
+              <th class="text-left">카드사</th>
+              <th class="text-center">수수료율 (%)</th>
+              <th class="text-left">매칭 키워드</th>
+              <th class="text-center w-24">액션</th>
+            </tr></thead>
+            <tbody id="feeRateTableBody"><tr><td colspan="4" class="text-center py-6 text-gray-400">로딩 중...</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- 수수료율 추가/수정 모달 -->
+      <div id="feeRateModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+        <div class="bg-white rounded-lg shadow-xl w-[400px] p-6">
+          <div class="flex items-center justify-between mb-4">
+            <h3 class="text-lg font-bold text-gray-800" id="feeRateModalTitle"><i class="fas fa-credit-card text-blue-500 mr-2"></i>카드사 수수료율</h3>
+            <button onclick="closeFeeRateModal()" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times"></i></button>
+          </div>
+          <input type="hidden" id="feeRateEditId">
+          <div class="space-y-3">
+            <div><label class="text-sm font-semibold text-gray-700 mb-1 block">카드사명 *</label><input type="text" id="feeRateCompany" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="예: BC카드"></div>
+            <div><label class="text-sm font-semibold text-gray-700 mb-1 block">수수료율 (%) *</label><input type="number" id="feeRatePercent" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" step="0.01" min="0" max="100" placeholder="예: 2.2"></div>
+            <div><label class="text-sm font-semibold text-gray-700 mb-1 block">매칭 키워드 (콤마 구분)</label><input type="text" id="feeRateKeywords" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="예: BC,비씨"><div class="text-xs text-gray-400 mt-1">통장 입금자명에서 이 키워드가 포함되면 해당 카드사로 인식</div></div>
+          </div>
+          <div class="flex gap-2 justify-end mt-5">
+            <button onclick="closeFeeRateModal()" class="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm">취소</button>
+            <button onclick="saveFeeRate()" class="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm">저장</button>
+          </div>
         </div>
       </div>
 
@@ -194,9 +334,21 @@ export function cardExpensesPage(c: Context<HonoEnv>) {
                 <input type="text" inputmode="numeric" data-money id="cardLimit" placeholder="0" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
               </div>
             </div>
+            <div class="grid grid-cols-2 gap-3">
+              <div>
+                <label class="text-sm font-semibold text-gray-700 mb-1 block">명의자</label>
+                <input type="text" id="cardHolder" placeholder="사용자명" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+              </div>
+              <div>
+                <label class="text-sm font-semibold text-gray-700 mb-1 block">결제일 (매월)</label>
+                <input type="number" id="cardPayDay" min="1" max="31" value="15" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+              </div>
+            </div>
             <div>
-              <label class="text-sm font-semibold text-gray-700 mb-1 block">명의자</label>
-              <input type="text" id="cardHolder" placeholder="사용자명" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+              <label class="text-sm font-semibold text-gray-700 mb-1 block">담당자</label>
+              <select id="cardAssignedUser" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+                <option value="">미지정</option>
+              </select>
             </div>
           </div>
           <div class="flex justify-end gap-2 mt-6">
@@ -311,6 +463,6 @@ export function cardExpensesPage(c: Context<HonoEnv>) {
         </div>
       </div>
     `,
-    pageScript: cardExpensesScript
+    pageScript: cardExpensesScript + '\n' + cardFeeScript
   })
 }

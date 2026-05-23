@@ -161,7 +161,7 @@ export function messagesPage(c: Context<HonoEnv>) {
     </div>
     <div id="tplPanelKakao">
       <div class="flex items-center justify-between mb-3">
-        <p class="text-sm text-gray-500">팝빌에 등록된 카카오톡 템플릿입니다. 새 템플릿은 팝빌 사이트에서 등록합니다.</p>
+        <p class="text-sm text-gray-500">등록된 카카오톡 템플릿입니다. 새 템플릿은 바로빌 사이트에서 등록합니다.</p>
         <button onclick="loadKakaoTemplates()" class="px-3 py-1.5 border border-gray-300 text-gray-700 bg-white rounded text-xs hover:bg-gray-50"><i class="fas fa-sync-alt mr-1"></i>새로고침</button>
       </div>
       <div id="kakaoTemplatesList" class="space-y-3"></div>

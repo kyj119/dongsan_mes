@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
 import { PopbillProvider } from '../services/popbillProvider'
+// TODO: 현금영수증은 사용 안 함. 바로빌 전환 시 PopbillProvider 참조 제거 가능
 import { getEntityId, entityFilter } from '../utils/entityFilter'
 
 interface CashReceiptRow {

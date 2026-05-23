@@ -141,7 +141,7 @@ async function viewLogDetail(receiptNum) {
   document.getElementById('logDetailModal').classList.remove('hidden');
 
   if (!receiptNum) {
-    el.innerHTML = '<div class="text-center py-4 text-gray-500">접수번호가 없는 발송 건입니다.<br><span class="text-xs text-gray-400">팝빌 발송 상세 조회를 할 수 없습니다.</span></div>';
+    el.innerHTML = '<div class="text-center py-4 text-gray-500">접수번호가 없는 발송 건입니다.<br><span class="text-xs text-gray-400">발송 상세 조회를 할 수 없습니다.</span></div>';
     return;
   }
 

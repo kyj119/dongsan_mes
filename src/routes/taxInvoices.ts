@@ -1,10 +1,42 @@
 import { Hono } from 'hono'
 import type { HonoEnv } from '../types/env'
 import type { TaxInvoice, TaxInvoiceItem } from '../types/models'
+import type { TaxProvider } from '../services/taxProvider'
 import { authMiddleware, requireRole } from '../middleware/auth'
 import { sendEmail } from '../services/emailProvider'
 import { renderTemplate } from '../services/emailTemplates'
 import { getEntityId, entityFilter } from '../utils/entityFilter'
+
+/** 설정에 따라 팝빌 또는 바로빌 TaxProvider 반환 */
+async function getTaxProvider(db: D1Database, env: any, corpNum: string): Promise<TaxProvider | null> {
+  const providerSetting = await db.prepare(
+    "SELECT setting_value FROM settings WHERE setting_key = 'messaging_provider'"
+  ).first<{ setting_value: string }>()
+
+  if (providerSetting?.setting_value === 'barobill') {
+    const testModeRow = await db.prepare(
+      "SELECT setting_value FROM settings WHERE setting_key = 'barobill_test_mode'"
+    ).first<{ setting_value: string }>()
+    const isTest = testModeRow?.setting_value !== '0'
+    const certKey = isTest ? env.BAROBILL_CERT_KEY : env.BAROBILL_CERT_KEY_PROD
+    if (!certKey || !corpNum) return null
+    const { createBarobillTaxProvider } = await import('../services/barobillTax')
+    return createBarobillTaxProvider({ certKey, corpNum, isTest })
+  }
+
+  // 기존 팝빌
+  const linkedIdSetting = await db.prepare(
+    "SELECT setting_value FROM settings WHERE setting_key = 'tax_provider_linked_id'"
+  ).first<{ setting_value: string }>()
+  const secretKey = env.POPBILL_SECRET_KEY
+  if (!linkedIdSetting?.setting_value || !secretKey || !corpNum) return null
+  const testModeSetting = await db.prepare(
+    "SELECT setting_value FROM settings WHERE setting_key = 'tax_test_mode'"
+  ).first<{ setting_value: string }>()
+  const isTestMode = testModeSetting?.setting_value === '1'
+  const { createPopbillProvider } = await import('../services/popbillProvider')
+  return createPopbillProvider(linkedIdSetting.setting_value, secretKey, corpNum, isTestMode)
+}
 
 // 세금계산서 + 주문번호 JOIN 결과 타입
 type TaxInvoiceWithOrder = TaxInvoice & { order_number?: string }
@@ -116,32 +148,14 @@ async function issueTaxInvoice(
     'SELECT id, tax_invoice_id, item_date, item_name, specification, quantity, unit_price, supply_amount, tax_amount, notes, sort_order FROM tax_invoice_items WHERE tax_invoice_id = ? ORDER BY sort_order'
   ).bind(taxInvoiceId).all()
 
-  // 팝빌 연동 확인
-  const linkedIdSetting = await db.prepare(
-    `SELECT setting_value FROM settings WHERE setting_key = 'tax_provider_linked_id'`
-  ).first<{ setting_value: string }>()
-  const secretKey = env.POPBILL_SECRET_KEY
-  const linkedId = linkedIdSetting?.setting_value
-
-  if (linkedId && secretKey) {
-    const { createPopbillProvider } = await import('../services/popbillProvider')
-    const testModeSetting = await db.prepare(
-      `SELECT setting_value FROM settings WHERE setting_key = 'tax_test_mode'`
-    ).first<{ setting_value: string }>()
-    const isTestMode = testModeSetting?.setting_value === '1'
-    // 공급자 이메일 조회
+  // 세금계산서 Provider (바로빌 또는 팝빌)
+  const provider = await getTaxProvider(db, env, existing.supplier_brn.replace(/-/g, ''))
+  if (provider) {
     const supplierEmailSetting = await db.prepare(
       `SELECT setting_value FROM settings WHERE setting_key IN ('email_from_address', 'company_email') ORDER BY setting_key`
     ).all()
     const supplierEmail = (supplierEmailSetting.results as Array<{ setting_value: string }>)
       .map(r => r.setting_value).find(v => v) || ''
-
-    const provider = createPopbillProvider(
-      linkedId,
-      secretKey,
-      existing.supplier_brn.replace(/-/g, ''),
-      isTestMode
-    )
 
     const result = await provider.issue({
       supplierBRN: existing.supplier_brn.replace(/-/g, ''),
@@ -346,13 +360,15 @@ taxInvoicesRouter.get('/test-connection', async (c) => {
       return c.json({ success: false, error: '사업자등록번호가 설정되지 않았습니다.' }, 400)
     }
 
+    const provider = await getTaxProvider(db, c.env, brn)
+    if (!provider) {
+      return c.json({ success: false, error: 'Provider 설정 없음' }, 400)
+    }
+
     const testModeSetting = await db.prepare(
       `SELECT setting_value FROM settings WHERE setting_key = 'tax_test_mode'`
     ).first<{ setting_value: string }>()
     const isTestMode = testModeSetting?.setting_value === '1'
-
-    const { createPopbillProvider } = await import('../services/popbillProvider')
-    const provider = createPopbillProvider(linkedId, secretKey, brn, isTestMode)
 
     const balance = await provider.getBalance()
     return c.json({
@@ -1841,20 +1857,10 @@ taxInvoicesRouter.post('/:id/refresh-status', async (c) => {
     const secretKey = env.POPBILL_SECRET_KEY
     const linkedId = linkedIdSetting?.setting_value
 
-    if (!linkedId || !secretKey) {
-      return c.json({ success: false, error: '팝빌 연동 설정이 없습니다.' })
+    const provider = await getTaxProvider(db, env, invoice.supplier_brn.replace(/-/g, ''))
+    if (!provider) {
+      return c.json({ success: false, error: 'Provider 설정이 없습니다.' })
     }
-
-    const { createPopbillProvider } = await import('../services/popbillProvider')
-    const testModeSetting = await db.prepare(
-      `SELECT setting_value FROM settings WHERE setting_key = 'tax_test_mode'`
-    ).first<{ setting_value: string }>()
-    const isTestMode = testModeSetting?.setting_value === '1'
-    const provider = createPopbillProvider(
-      linkedId, secretKey,
-      invoice.supplier_brn.replace(/-/g, ''),
-      isTestMode
-    )
 
     const statusResult = await provider.getStatus(invoice.invoice_number)
 
@@ -1996,19 +2002,8 @@ taxInvoicesRouter.post('/:id/send-email', async (c) => {
     const email = body.email || invoice.buyer_email
     if (!email) return c.json({ success: false, error: '이메일 주소가 없습니다.' })
 
-    const linkedIdSetting = await db.prepare(
-      `SELECT setting_value FROM settings WHERE setting_key = 'tax_provider_linked_id'`
-    ).first<{ setting_value: string }>()
-    const secretKey = env.POPBILL_SECRET_KEY
-    const linkedId = linkedIdSetting?.setting_value
-    if (!linkedId || !secretKey) return c.json({ success: false, error: '팝빌 연동 설정이 없습니다.' })
-
-    const { createPopbillProvider } = await import('../services/popbillProvider')
-    const testModeSetting = await db.prepare(
-      `SELECT setting_value FROM settings WHERE setting_key = 'tax_test_mode'`
-    ).first<{ setting_value: string }>()
-    const isTestMode = testModeSetting?.setting_value === '1'
-    const provider = createPopbillProvider(linkedId, secretKey, invoice.supplier_brn.replace(/-/g, ''), isTestMode)
+    const provider = await getTaxProvider(db, env, invoice.supplier_brn.replace(/-/g, ''))
+    if (!provider) return c.json({ success: false, error: 'Provider 설정이 없습니다.' })
 
     const result = await provider.sendEmail(invoice.invoice_number, email)
     return c.json({ success: result.success, data: result, email })
@@ -2034,19 +2029,8 @@ taxInvoicesRouter.get('/:id/print-url', async (c) => {
       return c.json({ success: false, error: '발행된 세금계산서만 조회 가능합니다.' })
     }
 
-    const linkedIdSetting = await db.prepare(
-      `SELECT setting_value FROM settings WHERE setting_key = 'tax_provider_linked_id'`
-    ).first<{ setting_value: string }>()
-    const secretKey = env.POPBILL_SECRET_KEY
-    const linkedId = linkedIdSetting?.setting_value
-    if (!linkedId || !secretKey) return c.json({ success: false, error: '팝빌 연동 설정이 없습니다.' })
-
-    const { createPopbillProvider } = await import('../services/popbillProvider')
-    const testModeSetting = await db.prepare(
-      `SELECT setting_value FROM settings WHERE setting_key = 'tax_test_mode'`
-    ).first<{ setting_value: string }>()
-    const isTestMode = testModeSetting?.setting_value === '1'
-    const provider = createPopbillProvider(linkedId, secretKey, invoice.supplier_brn.replace(/-/g, ''), isTestMode)
+    const provider = await getTaxProvider(db, env, invoice.supplier_brn.replace(/-/g, ''))
+    if (!provider) return c.json({ success: false, error: 'Provider 설정이 없습니다.' })
 
     const result = await provider.getPrintURL(invoice.invoice_number)
 

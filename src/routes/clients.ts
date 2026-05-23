@@ -23,17 +23,6 @@ clientsRouter.get('/check-brn/:brn', async (c) => {
   const db = c.env.DB
   const env = c.env
 
-  // 팝빌 연동 설정 확인
-  const linkedIdSetting = await db.prepare(
-    `SELECT setting_value FROM settings WHERE setting_key = 'tax_provider_linked_id'`
-  ).first<{ setting_value: string }>()
-  const secretKey = env.POPBILL_SECRET_KEY
-  const linkedId = linkedIdSetting?.setting_value
-
-  if (!linkedId || !secretKey) {
-    return c.json({ success: false, error: '팝빌 연동 설정이 없습니다.' }, 400)
-  }
-
   // 공급자 사업자번호 조회
   const supplierBrn = await db.prepare(
     `SELECT setting_value FROM settings WHERE setting_key = 'company_business_registration_number'`
@@ -44,12 +33,28 @@ clientsRouter.get('/check-brn/:brn', async (c) => {
   }
 
   try {
-    const { createPopbillProvider } = await import('../services/popbillProvider')
-    const testModeSetting = await db.prepare(
-      `SELECT setting_value FROM settings WHERE setting_key = 'tax_test_mode'`
+    // 바로빌 또는 팝빌 provider
+    const providerSetting = await db.prepare(
+      "SELECT setting_value FROM settings WHERE setting_key = 'messaging_provider'"
     ).first<{ setting_value: string }>()
-    const isTestMode = testModeSetting?.setting_value === '1'
-    const provider = createPopbillProvider(linkedId, secretKey, corpNum, isTestMode)
+
+    let provider: any
+    if (providerSetting?.setting_value === 'barobill') {
+      const { BarobillTaxProvider } = await import('../services/barobillTax')
+      const testModeRow = await db.prepare("SELECT setting_value FROM settings WHERE setting_key = 'barobill_test_mode'").first<{ setting_value: string }>()
+      const isTest = testModeRow?.setting_value !== '0'
+      const certKey = isTest ? env.BAROBILL_CERT_KEY : env.BAROBILL_CERT_KEY_PROD
+      if (!certKey) return c.json({ success: false, error: 'BAROBILL_CERT_KEY 미설정' }, 400)
+      provider = new BarobillTaxProvider({ certKey, corpNum, isTest })
+    } else {
+      const linkedIdSetting = await db.prepare("SELECT setting_value FROM settings WHERE setting_key = 'tax_provider_linked_id'").first<{ setting_value: string }>()
+      const secretKey = env.POPBILL_SECRET_KEY
+      if (!linkedIdSetting?.setting_value || !secretKey) return c.json({ success: false, error: 'Provider 연동 설정이 없습니다.' }, 400)
+      const testModeSetting = await db.prepare("SELECT setting_value FROM settings WHERE setting_key = 'tax_test_mode'").first<{ setting_value: string }>()
+      const { createPopbillProvider } = await import('../services/popbillProvider')
+      provider = createPopbillProvider(linkedIdSetting.setting_value, secretKey, corpNum, testModeSetting?.setting_value === '1')
+    }
+
     const result = await provider.checkCorpNum(brn)
     return c.json({ success: true, data: result })
   } catch (error) {

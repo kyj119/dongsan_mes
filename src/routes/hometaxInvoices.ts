@@ -2,6 +2,7 @@ import { Hono, type Context } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
 import { PopbillProvider } from '../services/popbillProvider'
+// TODO: 홈택스 수집은 바로빌 자동 스크래핑 방식으로 전환 예정
 import { getEntityCorpNum } from '../utils/entitySettings'
 import { entityFilter, getEntityId } from '../utils/entityFilter'
 

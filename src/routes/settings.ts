@@ -177,4 +177,59 @@ settingsRouter.delete('/cost-standards/:id', requireRole('ADMIN'), async (c) => 
   }
 })
 
+// ============================================================================
+// POST /api/settings/barobill-test — 바로빌 연결 테스트
+// ============================================================================
+settingsRouter.post('/barobill-test', requireRole('ADMIN'), async (c) => {
+  try {
+    const { barobillPing, getBarobillBalance } = await import('../services/barobillClient')
+
+    const certKey = c.env.BAROBILL_CERT_KEY
+    if (!certKey) {
+      return c.json({ success: false, error: 'BAROBILL_CERT_KEY 환경변수가 설정되지 않았습니다' }, 400)
+    }
+
+    // body 또는 DB에서 사업자번호
+    const body = await c.req.json().catch(() => ({})) as { corpNum?: string }
+    let corpNum = (body.corpNum || '').replace(/-/g, '')
+    if (!corpNum) {
+      const row = await c.env.DB.prepare(
+        "SELECT setting_value FROM settings WHERE setting_key = 'company_business_registration_number'"
+      ).first<{ setting_value: string }>()
+      corpNum = (row?.setting_value || '').replace(/-/g, '')
+    }
+    if (!corpNum || corpNum.length !== 10) {
+      return c.json({ success: false, error: '사업자등록번호를 입력하세요 (body.corpNum 또는 설정에 등록)' }, 400)
+    }
+
+    const config = { certKey, corpNum, isTest: true }
+
+    // Ping 테스트
+    const pingResult = await barobillPing(config, 'TI')
+
+    // 잔액 조회
+    let balance: number | null = null
+    try {
+      balance = await getBarobillBalance(config)
+    } catch (_) { /* 잔액 조회 실패해도 ping 성공이면 OK */ }
+
+    return c.json({
+      success: true,
+      data: {
+        ping: pingResult,
+        balance,
+        testMode: true,
+        corpNum,
+      },
+      message: '바로빌 테스트 연결 성공'
+    })
+  } catch (error: any) {
+    console.error('Barobill test error:', error)
+    return c.json({
+      success: false,
+      error: `바로빌 연결 실패: ${error.message}`,
+    }, 500)
+  }
+})
+
 export default settingsRouter

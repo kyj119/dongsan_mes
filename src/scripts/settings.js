@@ -205,7 +205,7 @@ function saveEmailSettings() {
   saveSectionSettings(EMAIL_KEYS, EMAIL_CHECKBOX_KEYS, 'saveEmailBtn', 'emailSaveMsg');
 }
 
-// ── 팝빌 연결 테스트 ──
+// ── 바로빌/팝빌 연결 테스트 ──
 async function testPopbillConnection() {
   var btn = document.getElementById('testPopbillBtn');
   var msg = document.getElementById('taxSaveMsg');
@@ -221,7 +221,7 @@ async function testPopbillConnection() {
       var d = res.data.data;
       msg.className = 'mt-3 text-center text-sm text-green-600';
       var pointInfo = '회원: ' + (d.remainPoint || 0) + ' / 파트너: ' + (d.partnerPoint || 0);
-      msg.textContent = '팝빌 연결 성공! (모드: ' + (d.testMode ? '테스트' : '실서비스') + ', 포인트 — ' + pointInfo + ')';
+      msg.textContent = '연결 성공! (모드: ' + (d.testMode ? '테스트' : '운영') + ', 포인트 — ' + pointInfo + ')';
       msg.classList.remove('hidden');
     } else {
       msg.className = 'mt-3 text-center text-sm text-red-600';
@@ -425,18 +425,18 @@ async function testMsgPopbillConnection() {
     if (balRes.data.success) {
       var b = balRes.data.data;
       if (iconEl) iconEl.textContent = '✅';
-      if (textEl) { textEl.textContent = '팝빌 연결 정상'; textEl.className = 'text-sm font-medium text-green-700'; }
+      if (textEl) { textEl.textContent = '바로빌 연결 정상'; textEl.className = 'text-sm font-medium text-green-700'; }
       if (detailEl) detailEl.textContent = '포인트 조회 성공';
       document.getElementById('msgConnBalance').textContent = (b.remain_point || 0).toLocaleString() + '원';
       document.getElementById('msgConnUnitCost').textContent = (b.unit_cost || 0) + '원';
     } else {
       if (iconEl) iconEl.textContent = '❌';
-      if (textEl) { textEl.textContent = '팝빌 연결 실패'; textEl.className = 'text-sm font-medium text-red-700'; }
+      if (textEl) { textEl.textContent = '바로빌 연결 실패'; textEl.className = 'text-sm font-medium text-red-700'; }
       if (detailEl) detailEl.textContent = balRes.data.error || '';
     }
   } catch(e) {
     if (iconEl) iconEl.textContent = '❌';
-    if (textEl) { textEl.textContent = '팝빌 연결 실패'; textEl.className = 'text-sm font-medium text-red-700'; }
+    if (textEl) { textEl.textContent = '바로빌 연결 실패'; textEl.className = 'text-sm font-medium text-red-700'; }
     if (detailEl) detailEl.textContent = '네트워크 오류';
   }
 

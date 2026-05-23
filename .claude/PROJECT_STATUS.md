@@ -1,6 +1,6 @@
 # PROJECT_STATUS.md — 프로젝트 현황판
 
-> **최종 업데이트**: 2026-05-22
+> **최종 업데이트**: 2026-05-23
 
 ---
 
@@ -18,19 +18,15 @@
 
 ## 🟡 대기 중 (사용자 선택/승인 필요)
 
-### [법인카드 내역 자동 수집] — 카드사 오픈API 확인 대기
-- CODEF 월 80만원 → 포기. 대안 조사 완료 (2026-05-21)
-- **용준님 확인 필요**: IBK기업은행(1533-6000)/하나금융/BC카드 오픈API에서 일반 법인 카드 조회 가능 여부
-- API 불가 시 → Cloudflare Email Worker 이메일 파싱 구현 (card@dongsanplan.com)
-- 상세 → `memory/project-card-data-collection.md`
+### [바로빌 전환] — 계좌/카드 관리 UI 수정 진행 중
+- 전환 완료: `messaging_provider=barobill`, 실데이터 조회 성공 (카드 7건, 통장 12건)
+- 통장→수금 반자동 플로우 구현됨 (동기화→자동매칭→사람확인→수금반영)
+- **다음 세션**: 계좌 관리 UI 개선, 카드 관리 연동, 출금 처리
+- **대기**: SMS 발신번호 승인, 알림톡 템플릿 등록, 나머지 카드/계좌 등록
 
-
-### [#65] 후가공 단계별 추적 — 방안 D(제로터치) 선택 대기
-- A~C 모두 현장 부담 → 방안 D 제안 (출력완료=PP시작, 출고=PP완료, 자동 타임스탬프)
-- 용준님 답변 대기 (2026-05-22)
-
-### [#79] 로트 추적 → 기간 역추적 축소 — 답변 완료
-- lot 테이블 불필요, 기존 receipts 기반 기간별 역추적 쿼리만 추가 (S)
+### [선명2 CAPS Worker 설치] — PC 설정 대기
+- S2 사이트 DB 등록 완료, API_KEY 발급됨
+- 선명2 PC에 caps-worker 폴더 복사 + .env 설정 + 실행 필요
 
 ### [배송 관리 최적화] — 출고 대기 보드
 - 배송방법별 그룹화 + 마감시간 카운트다운 + 일괄 출고 + 카카오톡 자동 발송
@@ -43,6 +39,32 @@
 ---
 
 ## 🟢 최근 완료 (2026-05-22)
+
+### 팝빌→바로빌 전환 + 통장 수금 반자동 (2026-05-23)
+- 팝빌 코드 전면 교체: taxInvoices 5곳→getTaxProvider, clients.ts, kakao.ts, fax.ts
+- 프론트 "팝빌" 텍스트 전부 "바로빌"로 변경
+- 바로빌 실데이터 조회 성공: 카드 7건(하나 5월) + 통장 12건(하나 5/22)
+- POST /api/bank/sync-barobill: 통장내역 자동 적재 + 자동매칭
+- 은행 연동 UI: 입금/출금 분리 컬럼, 계좌명 표시, 거래처 검색 매칭
+- 바로빌 조회 탭: 카드/통장 기간 조회 + 필터 토글
+
+### 바로빌 SOAP 연동 전체 구현 (2026-05-22)
+- 6개 서비스 파일: barobillClient/Sms/Fax/Tax/Card/Bank.ts
+- SOAP XML raw fetch 방식 (CF Workers 호환)
+- provider 스위칭: settings `messaging_provider` 값으로 팝빌↔바로빌 전환
+
+### CAPS 선명2 사이트 추가 + 근태 entity 분리
+- caps_sites에 S2(선명2) 등록, API_KEY 발급
+- 선명(SM) CAPS 동기화 복구 (ACServer 재시작)
+- attendance 테이블에 entity_id 컬럼 추가 (마이그레이션 0240)
+- attendance.ts GET /month, GET / 에 entityFilter 적용
+- caps.ts INSERT 시 employee의 entity_id 자동 설정
+
+### 카드 수수료 계산 + 통장내역 CSV 가져오기
+- 자금관리 → "카드 수수료" 탭 신규: 수수료 계산기, 기간별 집계, 카드사별 수수료율 CRUD
+- DB: card_fee_rates 테이블 (0239), 기본 10개 카드사 2.2% 등록
+- 자금관리 → "CSV 가져오기" 버튼 신규: 인터넷뱅킹 CSV 업로드 → 컬럼 자동매핑 → 중복방지 → import
+- API: POST /api/bank/transactions/import, /api/bank/card-fee-rates CRUD, /api/bank/card-fee-calculate, /api/bank/card-fee-summary
 
 ### QR/바코드 스캔 시스템 (#80)
 - /scan 페이지 신규: html5-qrcode 카메라 + 수동 입력, 모바일 우선

@@ -3,6 +3,7 @@ import type { Context } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
 import { createKakaoProvider, KakaoProvider, SMSMessage, ATSMessage } from '../services/kakaoProvider'
+import { BarobillSmsProvider } from '../services/barobillSms'
 
 // ────────────────────────────────────────────────────────────────────────────
 // D1 row types
@@ -43,18 +44,54 @@ kakaoRouter.use('/*', authMiddleware, requireRole('ADMIN', 'MANAGER'))
 // ────────────────────────────────────────────────────────────────────────────
 // 공통 헬퍼: 카카오 Provider 인스턴스 생성
 // ────────────────────────────────────────────────────────────────────────────
-export async function getKakaoProvider(c: Context<HonoEnv>): Promise<KakaoProvider | null> {
+export async function getKakaoProvider(c: Context<HonoEnv>): Promise<KakaoProvider | BarobillSmsProvider | null> {
   try {
     const db = c.env.DB
     const entityId = c.get('entityId') || 1
 
-    // 팝빌 연동 설정 확인
+    // 바로빌 모드 확인
+    const providerSetting = await db.prepare(
+      `SELECT setting_value FROM settings WHERE setting_key = 'messaging_provider'`
+    ).first<SettingRow>()
+
+    if (providerSetting?.setting_value === 'barobill') {
+      // --- 바로빌 Provider ---
+      const certKey = c.env.BAROBILL_CERT_KEY
+      const certKeyProd = c.env.BAROBILL_CERT_KEY_PROD
+
+      const testModeSetting = await db.prepare(
+        `SELECT setting_value FROM settings WHERE setting_key = 'barobill_test_mode'`
+      ).first<SettingRow>()
+      const isTest = testModeSetting?.setting_value !== '0'
+
+      let brn = ''
+      const entity = await db.prepare(
+        'SELECT popbill_corp_num, business_reg_no FROM entities WHERE id = ?'
+      ).bind(entityId).first<EntityRow>()
+      if (entity?.popbill_corp_num) brn = entity.popbill_corp_num
+      else if (entity?.business_reg_no) brn = entity.business_reg_no.replace(/-/g, '')
+      else {
+        const companyBrn = await db.prepare(
+          `SELECT setting_value FROM settings WHERE setting_key = 'company_business_registration_number'`
+        ).first<SettingRow>()
+        brn = (companyBrn?.setting_value || '').replace(/-/g, '')
+      }
+
+      const key = isTest ? certKey : certKeyProd
+      if (!key || !brn) return null
+
+      const senderIdRow = await db.prepare(
+        "SELECT setting_value FROM settings WHERE setting_key = 'barobill_sender_id'"
+      ).first<SettingRow>()
+      return new BarobillSmsProvider({ certKey: key, corpNum: brn, isTest, senderId: senderIdRow?.setting_value || 'DONGSAN' })
+    }
+
+    // --- 기존 팝빌 Provider ---
     const linkedIdSetting = await db.prepare(
       `SELECT setting_value FROM settings WHERE setting_key = 'tax_provider_linked_id'`
     ).first<SettingRow>()
     const secretKey = c.env.POPBILL_SECRET_KEY
 
-    // entities 테이블에서 corpNum 조회 (우선), 폴백: settings
     let brn = ''
     const entity = await db.prepare(
       'SELECT popbill_corp_num, business_reg_no FROM entities WHERE id = ?'
@@ -74,7 +111,6 @@ export async function getKakaoProvider(c: Context<HonoEnv>): Promise<KakaoProvid
       return null
     }
 
-    // 테스트 모드 확인
     const testModeSetting = await db.prepare(
       `SELECT setting_value FROM settings WHERE setting_key = 'tax_test_mode'`
     ).first<SettingRow>()

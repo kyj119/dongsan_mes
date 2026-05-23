@@ -16,6 +16,7 @@ import { Hono } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
 import { requirePagePermission } from '../middleware/permissions'
+import { entityFilter, getEntityId } from '../utils/entityFilter'
 
 const attendanceRouter = new Hono<HonoEnv>()
 attendanceRouter.use('/*', authMiddleware, requirePagePermission('/attendance'))
@@ -62,13 +63,14 @@ attendanceRouter.get('/month', async (c) => {
     const empCols = await getAttendanceColumns(c.env.DB, 'employees')
     const hasPayType = !!empCols['pay_type']
 
-    // 재직중 직원 목록 (부서 필터) — 고정급(FIXED) 제외
+    // 재직중 직원 목록 (부서 필터) — 고정급(FIXED) 제외 + entity 필터
+    const ef = entityFilter(c, 'employees')
     let empQuery = `
       SELECT id, employee_code, name, department, position, base_salary, hire_date, resignation_date${hasPayType ? ', pay_type' : ''}
       FROM employees
-      WHERE status = ?
+      WHERE status = ?${ef.clause}
     `
-    const empParams: any[] = [status]
+    const empParams: any[] = [status, ...ef.params]
     if (hasPayType) { empQuery += ` AND (pay_type IS NULL OR pay_type != 'FIXED')` }
     if (department) { empQuery += ` AND department = ?`; empParams.push(department) }
     empQuery += ` ORDER BY department, employee_code`
@@ -81,7 +83,8 @@ attendanceRouter.get('/month', async (c) => {
       : ''
     const lateSelect = hasLateMin ? `, late_minutes` : ''
 
-    // 해당 월의 근태 기록
+    // 해당 월의 근태 기록 — entity 필터
+    const efAtt = entityFilter(c, 'attendance')
     const { results: records } = await c.env.DB.prepare(`
       SELECT
         id, employee_id, work_date,
@@ -91,9 +94,9 @@ attendanceRouter.get('/month', async (c) => {
         attendance_type, status, notes
         ${capsSelect}
       FROM attendance
-      WHERE strftime('%Y-%m', work_date) = ?
+      WHERE strftime('%Y-%m', work_date) = ?${efAtt.clause}
       ORDER BY work_date, employee_id
-    `).bind(month).all()
+    `).bind(month, ...efAtt.params).all()
 
     // 최근 CAPS 동기화 정보
     let lastSync: any = null
@@ -133,6 +136,7 @@ attendanceRouter.get('/', async (c) => {
     const { employee_id, start_date, end_date, limit = '100' } = c.req.query()
     const safeLimit = Math.min(parseInt(limit) || 100, 500)
 
+    const efList = entityFilter(c, 'a')
     let query = `
       SELECT
         a.id, a.employee_id, a.work_date,
@@ -142,9 +146,9 @@ attendanceRouter.get('/', async (c) => {
         e.employee_code, e.name as employee_name, e.department
       FROM attendance a
       LEFT JOIN employees e ON a.employee_id = e.id
-      WHERE 1=1
+      WHERE 1=1${efList.clause}
     `
-    const params: any[] = []
+    const params: any[] = [...efList.params]
     if (employee_id) { query += ` AND a.employee_id = ?`; params.push(employee_id) }
     if (start_date) { query += ` AND a.work_date >= ?`; params.push(start_date) }
     if (end_date) { query += ` AND a.work_date <= ?`; params.push(end_date) }
@@ -250,6 +254,11 @@ attendanceRouter.patch('/bulk', requireRole('ADMIN', 'MANAGER'), async (c) => {
         if (hasLateMin) { baseCols.push('late_minutes'); baseParams.push(late_minutes) }
         baseCols.push('attendance_type', 'status', 'notes')
         baseParams.push(attendance_type, status, notes)
+
+        // entity_id: 직원의 entity_id 조회
+        const empRow = await c.env.DB.prepare('SELECT entity_id FROM employees WHERE id = ?').bind(employee_id).first<{ entity_id: number | null }>()
+        baseCols.push('entity_id')
+        baseParams.push(empRow?.entity_id || getEntityId(c) || 1)
 
         const updateSets = baseCols.filter(c => c !== 'employee_id' && c !== 'work_date')
           .map(c => `${c} = excluded.${c}`).join(', ')

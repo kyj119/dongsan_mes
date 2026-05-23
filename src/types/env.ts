@@ -8,6 +8,8 @@ export type Bindings = {
   JWT_SECRET: string;
   AGENT_API_KEY: string;
   POPBILL_SECRET_KEY?: string;
+  BAROBILL_CERT_KEY?: string;
+  BAROBILL_CERT_KEY_PROD?: string;
   RESEND_API_KEY?: string;
   ANTHROPIC_API_KEY?: string;
 };

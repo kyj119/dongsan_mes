@@ -12,6 +12,12 @@
 - **subagent dispatch**: typecheck 포함 의무화. 라우트 수정 시 stats/count/badge 포함.
 - **신규 페이지→권한 등록**: `permission_pages` INSERT + `requirePagePermission`.
 
+### 배포 워크플로우 (자동)
+1. **배포 요청 시** → `/deploy-verify` 스킬 자동 실행 (빌드→타입체크→entity감사→배포→스모크)
+2. **routes/*.ts 수정 시** → hook이 entity 필터 감사 리마인더 표시
+3. **migrations/*.sql 생성 시** → hook이 `/migration-check` 실행 리마인더 표시
+4. **배포 후** → 프로덕션 14페이지 + 11 API 자동 검증
+
 ### 세션 종료 시 필수
 PowerShell 빌드/검증 명령 + 다음 세션 TODO + `memory/session-context.md` 덮어쓰기 (결정+이유, 판단기준, 주의사항)
 

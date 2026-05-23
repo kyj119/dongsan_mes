@@ -78,13 +78,15 @@ capsRouter.post('/ingest', async (c) => {
     const unmappedSamples: Array<{ fpid: string; e_idno: string; e_name: string; c_dept: string }> = []
     const unmappedSeen = new Set<string>()
 
-    // 사원 매핑 캐시 — 해당 사이트 직원만
+    // 사원 매핑 캐시 — 해당 사이트 직원만 (entity_id 포함)
     const empMap: Record<string, number> = {}
+    const empEntityMap: Record<number, number> = {}
     const { results: capsIdRows } = await c.env.DB.prepare(
-      `SELECT id, caps_id FROM employees WHERE caps_site_id = ? AND caps_id IS NOT NULL AND caps_id != '' AND (pay_type IS NULL OR pay_type != 'FIXED')`
+      `SELECT id, caps_id, entity_id FROM employees WHERE caps_site_id = ? AND caps_id IS NOT NULL AND caps_id != '' AND (pay_type IS NULL OR pay_type != 'FIXED')`
     ).bind(resolvedSiteId).all()
-    for (const row of capsIdRows as Array<{ id: number; caps_id: string }>) {
+    for (const row of capsIdRows as Array<{ id: number; caps_id: string; entity_id: number | null }>) {
       empMap[String(row.caps_id)] = row.id
+      empEntityMap[row.id] = row.entity_id || 1
     }
 
     // 무시할 fpid 목록 — 사이트별
@@ -300,15 +302,15 @@ capsRouter.post('/ingest', async (c) => {
                 attendance_type, status,
                 source, caps_site_id, caps_fpid, caps_e_idno,
                 caps_late_min, caps_early_min, caps_over_min, caps_night_min, caps_total_min,
-                caps_raw_json, caps_synced_at
-              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'PRESENT', 'CAPS', ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+                caps_raw_json, caps_synced_at, entity_id
+              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'PRESENT', 'CAPS', ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), ?)
             `).bind(
               employeeId, workDate, checkInFull, checkOutFull,
               workHours, overtimeHours, earlyHours, earlyLeaveHours, holidayWorkHours,
               lateMinutes, attType, resolvedSiteId,
               rec.fpid || null, eIdno,
               lateMin, earlyMin, overMin, nightMin, totalMin,
-              rawJson
+              rawJson, empEntityMap[employeeId] || 1
             )
           )
           inserted++

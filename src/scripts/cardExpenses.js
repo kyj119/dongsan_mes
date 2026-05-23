@@ -6,17 +6,21 @@ var currentPage = 1;
 
 // ===== Tab Switch =====
 function switchCardTab(tab) {
-  var tabs = ['transactions', 'cards', 'categories'];
+  var tabs = ['transactions', 'cards', 'schedule', 'report', 'categories', 'cardfee'];
   var activeClass = 'px-6 py-3 text-sm font-medium border-b-2 border-blue-600 text-blue-600';
   var inactiveClass = 'px-6 py-3 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700';
   tabs.forEach(function(t) {
     var btn = document.getElementById('tab' + t.charAt(0).toUpperCase() + t.slice(1));
     var content = document.getElementById(t + 'Content');
+    if (!btn || !content) return;
     if (t === tab) { btn.className = activeClass; content.style.display = ''; }
     else { btn.className = inactiveClass; content.style.display = 'none'; }
   });
   if (tab === 'cards') loadCards();
   if (tab === 'categories') loadCategories();
+  if (tab === 'schedule') loadSchedule();
+  if (tab === 'report') initReport();
+  if (tab === 'cardfee' && window.initCardFeeTab) window.initCardFeeTab();
 }
 
 // ===== Init =====
@@ -274,6 +278,9 @@ async function editCard(id) {
   document.getElementById('cardLast4').value = card.card_number_last4 || '';
   document.getElementById('cardLimit').value = card.monthly_limit ? fmtMoneyInput(card.monthly_limit) : '';
   document.getElementById('cardHolder').value = card.holder_name || '';
+  document.getElementById('cardPayDay').value = card.payment_day || 15;
+  var assignSel = document.getElementById('cardAssignedUser');
+  if (assignSel) assignSel.value = card.assigned_user_id || '';
   document.getElementById('cardModalTitle').innerHTML = '<i class="fas fa-credit-card text-blue-500 mr-2"></i>카드 수정';
   document.getElementById('cardModal').classList.remove('hidden');
 }
@@ -285,7 +292,9 @@ async function saveCard() {
     card_company: document.getElementById('cardCompany').value,
     card_number_last4: document.getElementById('cardLast4').value.trim(),
     holder_name: document.getElementById('cardHolder').value.trim(),
-    monthly_limit: parseMoney(document.getElementById('cardLimit').value) || 0
+    monthly_limit: parseMoney(document.getElementById('cardLimit').value) || 0,
+    payment_day: parseInt(document.getElementById('cardPayDay').value) || 15,
+    assigned_user_id: parseInt(document.getElementById('cardAssignedUser').value) || null
   };
   if (!data.card_name || !data.card_company) { showToast('카드명과 카드사는 필수입니다', 'warning'); return; }
   try {
@@ -491,5 +500,149 @@ async function executeImport() {
   }
 }
 
+// ===== Barobill Sync =====
+async function syncBarobillCards() {
+  var btn = document.getElementById('syncCardBtn');
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i>동기화 중...'; }
+  var sd = document.getElementById('filterStartDate').value;
+  var ed = document.getElementById('filterEndDate').value;
+  try {
+    var res = await axios.post('/api/card-expenses/sync', { date_start: sd, date_end: ed });
+    showToast(res.data.message || '동기화 완료', 'success');
+    loadTransactions();
+    loadSummary();
+  } catch (e) {
+    showToast(e.response?.data?.error || '동기화 실패', 'error');
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-sync-alt mr-1"></i>바로빌 동기화'; }
+  }
+}
+
+// ===== Payment Schedule (Phase 4) =====
+async function loadSchedule() {
+  var tbody = document.getElementById('scheduleTableBody');
+  if (!tbody) return;
+  tbody.innerHTML = '<tr><td colspan="8" class="text-center py-8 text-gray-400"><i class="fas fa-spinner fa-spin mr-1"></i>로딩 중...</td></tr>';
+  try {
+    var res = await axios.get('/api/card-expenses/payment-schedule');
+    var data = res.data.data || {};
+    var cards = data.cards || [];
+
+    document.getElementById('scheduleTotal').textContent = (data.total_payment || 0).toLocaleString() + '원';
+    document.getElementById('scheduleCardCount').textContent = cards.length + '개';
+    var nextDate = cards.length > 0 ? cards[0].next_payment_date : '-';
+    document.getElementById('scheduleNextDate').textContent = nextDate;
+
+    if (!cards.length) {
+      tbody.innerHTML = '<tr><td colspan="8" class="text-center py-8 text-gray-400">등록된 카드가 없습니다</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = cards.map(function(c) {
+      var pct = c.limit_usage_pct;
+      var pctColor = pct > 90 ? 'text-red-600' : pct > 70 ? 'text-yellow-600' : 'text-green-600';
+      var pctBar = c.monthly_limit > 0
+        ? '<div class="w-16 bg-gray-100 rounded-full h-1.5 inline-block ml-1"><div class="rounded-full h-1.5" style="width:' + Math.min(pct, 100) + '%;background:' + (pct > 90 ? '#ef4444' : pct > 70 ? '#f59e0b' : '#22c55e') + '"></div></div>'
+        : '';
+      return '<tr>' +
+        '<td class="px-3 py-2 font-medium">' + escapeHtml(c.card_name) + (c.card_number_last4 ? ' <span class="text-gray-400">' + c.card_number_last4 + '</span>' : '') + '</td>' +
+        '<td class="px-3 py-2 text-sm text-gray-600">' + escapeHtml(c.card_company || '') + '</td>' +
+        '<td class="px-3 py-2 text-center text-sm">매월 ' + (c.payment_day || 15) + '일</td>' +
+        '<td class="px-3 py-2 text-right tabular-nums">' + (c.total_amount || 0).toLocaleString() + '</td>' +
+        '<td class="px-3 py-2 text-right tabular-nums text-red-500">' + (c.cancel_amount ? '-' + c.cancel_amount.toLocaleString() : '-') + '</td>' +
+        '<td class="px-3 py-2 text-right tabular-nums font-bold">' + (c.net_amount || 0).toLocaleString() + '원</td>' +
+        '<td class="px-3 py-2 text-center"><span class="text-xs font-medium ' + pctColor + '">' + (pct != null ? pct + '%' : '-') + '</span>' + pctBar + '</td>' +
+        '<td class="px-3 py-2 text-center text-sm text-gray-500">' + (c.tx_count || 0) + '</td></tr>';
+    }).join('');
+  } catch (e) {
+    tbody.innerHTML = '<tr><td colspan="8" class="text-center py-8 text-red-400">로딩 실패</td></tr>';
+  }
+}
+
+// ===== Report (Phase 5) =====
+var reportInitialized = false;
+function initReport() {
+  if (reportInitialized) return;
+  reportInitialized = true;
+  var sel = document.getElementById('reportMonth');
+  if (!sel) return;
+  var now = new Date();
+  for (var i = 0; i < 12; i++) {
+    var d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    var val = d.getFullYear() + '' + String(d.getMonth() + 1).padStart(2, '0');
+    var label = d.getFullYear() + '년 ' + (d.getMonth() + 1) + '월';
+    sel.innerHTML += '<option value="' + val + '"' + (i === 0 ? ' selected' : '') + '>' + label + '</option>';
+  }
+  loadReport();
+}
+
+async function loadReport() {
+  var month = document.getElementById('reportMonth').value;
+  if (!month) return;
+  try {
+    var res = await axios.get('/api/card-expenses/report?month=' + month);
+    var data = res.data.data || {};
+    var byCat = data.by_category || [];
+    var byCard = data.by_card || [];
+    var grand = data.grand_total || 0;
+
+    document.getElementById('reportGrandTotal').textContent = '총 ' + grand.toLocaleString() + '원';
+
+    // 카테고리별 바
+    var catHtml = '';
+    byCat.forEach(function(c) {
+      var pct = grand > 0 ? Math.round(c.total / grand * 100) : 0;
+      catHtml += '<div class="flex items-center gap-2">' +
+        '<span class="w-24 text-xs font-medium truncate" style="color:' + (c.color || '#6b7280') + '"><i class="fas ' + (c.icon || 'fa-tag') + ' mr-1"></i>' + escapeHtml(c.category_name || '미분류') + '</span>' +
+        '<div class="flex-1 bg-gray-100 rounded-full h-4"><div class="rounded-full h-4 flex items-center justify-end px-1" style="width:' + Math.max(pct, 2) + '%;background:' + (c.color || '#6b7280') + '20;border:1px solid ' + (c.color || '#6b7280') + '40"><span class="text-[10px] font-bold" style="color:' + (c.color || '#6b7280') + '">' + pct + '%</span></div></div>' +
+        '<span class="w-20 text-xs text-right tabular-nums font-medium">' + c.total.toLocaleString() + '</span>' +
+        '<span class="w-10 text-xs text-gray-400 text-right">' + c.count + '건</span></div>';
+    });
+    document.getElementById('reportCategoryBars').innerHTML = catHtml || '<div class="text-center text-gray-400 py-4">데이터 없음</div>';
+
+    // 카드별 바
+    var cardHtml = '';
+    byCard.forEach(function(c) {
+      var pct = grand > 0 ? Math.round(c.total / grand * 100) : 0;
+      cardHtml += '<div class="flex items-center gap-2">' +
+        '<span class="w-28 text-xs font-medium truncate">' + escapeHtml(c.card_name || '알 수 없음') + '</span>' +
+        '<div class="flex-1 bg-gray-100 rounded-full h-4"><div class="rounded-full h-4 flex items-center justify-end px-1" style="width:' + Math.max(pct, 2) + '%;background:#3b82f620;border:1px solid #3b82f640"><span class="text-[10px] font-bold text-blue-600">' + pct + '%</span></div></div>' +
+        '<span class="w-20 text-xs text-right tabular-nums font-medium">' + c.total.toLocaleString() + '</span>' +
+        '<span class="w-10 text-xs text-gray-400 text-right">' + c.count + '건</span></div>';
+    });
+    document.getElementById('reportCardBars').innerHTML = cardHtml || '<div class="text-center text-gray-400 py-4">데이터 없음</div>';
+  } catch (e) {
+    console.error('Report error:', e);
+  }
+}
+
+// ===== Load Users for assignment =====
+async function loadUsers() {
+  try {
+    var res = await axios.get('/api/users');
+    var users = res.data.data || res.data.users || [];
+    var sel = document.getElementById('cardAssignedUser');
+    if (!sel) return;
+    sel.innerHTML = '<option value="">미지정</option>';
+    users.forEach(function(u) {
+      sel.innerHTML += '<option value="' + u.id + '">' + (u.name || u.username) + '</option>';
+    });
+  } catch (e) { /* ignore */ }
+}
+
+// ===== Utility =====
+function escapeHtml(s) {
+  if (!s) return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function parseMoney(s) {
+  if (!s) return 0;
+  return parseFloat(String(s).replace(/[,\s원]/g, '')) || 0;
+}
+function fmtMoneyInput(n) {
+  return n ? Number(n).toLocaleString() : '';
+}
+
 // ===== Init =====
+loadUsers();
 init();

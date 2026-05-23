@@ -44,6 +44,8 @@ import usersRouter from './routes/users'
 import taxInvoicesRouter from './routes/taxInvoices'
 import webhooksRouter from './routes/webhooks'
 import bankRouter from './routes/bank'
+// cardExpenses router - imported below as cardExpensesRouter
+import barobillRouter from './routes/barobill'
 import shipmentsRouter from './routes/shipments'
 import reportsRouter from './routes/reports'
 import activityLogsRouter from './routes/activityLogs'
@@ -274,6 +276,7 @@ app.route('/api/users', usersRouter)
 app.route('/api/tax-invoices', taxInvoicesRouter)
 app.route('/api/webhooks', webhooksRouter)  // 팝빌 Webhook (인증 불필요)
 app.route('/api/bank', bankRouter)
+app.route('/api/barobill', barobillRouter)
 app.route('/api/shipments', shipmentsRouter)
 app.route('/api/reports', reportsRouter)
 app.route('/api/activity-logs', activityLogsRouter)
