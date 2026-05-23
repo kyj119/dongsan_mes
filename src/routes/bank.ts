@@ -422,17 +422,19 @@ bankRouter.post('/sync-barobill', requireRole('ADMIN'), async (c) => {
     let matchedCount = 0
     if (totalInserted > 0) {
       // 미매칭 입금 건 자동매칭
+      const efSyncTx = entityFilter(c, 'bank_transactions')
       const { results: unmatchedTxs } = await c.env.DB.prepare(
-        "SELECT id, amount, counterpart_name, description FROM bank_transactions WHERE match_status = 'UNMATCHED' AND transaction_type = 'DEPOSIT'"
-      ).all<{ id: number; amount: number; counterpart_name: string | null; description: string | null }>()
+        `SELECT id, amount, counterpart_name, description FROM bank_transactions WHERE match_status = 'UNMATCHED' AND transaction_type = 'DEPOSIT'${efSyncTx.clause}`
+      ).bind(...efSyncTx.params).all<{ id: number; amount: number; counterpart_name: string | null; description: string | null }>()
 
       const { results: clients } = await c.env.DB.prepare(
         "SELECT id, client_name, search_keywords, balance FROM clients WHERE is_active = 1 ORDER BY balance DESC"
       ).all<{ id: number; client_name: string; search_keywords: string | null; balance: number | null }>()
 
+      const efSyncRl = entityFilter(c, 'bank_match_rules')
       const { results: matchRules } = await c.env.DB.prepare(
-        "SELECT counterpart_name, matched_client_id FROM bank_match_rules"
-      ).all<{ counterpart_name: string; matched_client_id: number }>()
+        `SELECT counterpart_name, matched_client_id FROM bank_match_rules WHERE 1=1${efSyncRl.clause}`
+      ).bind(...efSyncRl.params).all<{ counterpart_name: string; matched_client_id: number }>()
       const ruleMap = new Map(matchRules.map(r => [r.counterpart_name, r.matched_client_id]))
 
       for (const tx of unmatchedTxs) {
@@ -492,12 +494,14 @@ bankRouter.post('/sync-barobill', requireRole('ADMIN'), async (c) => {
 // GET /api/bank/match-rules — 매칭 규칙 목록
 bankRouter.get('/match-rules', requireRole('ADMIN', 'MANAGER'), async (c) => {
   try {
+    const ef = entityFilter(c, 'r')
     const { results } = await c.env.DB.prepare(`
       SELECT r.*, c.client_name
       FROM bank_match_rules r
       LEFT JOIN clients c ON r.matched_client_id = c.id
+      WHERE 1=1${ef.clause}
       ORDER BY r.match_count DESC
-    `).all<{
+    `).bind(...ef.params).all<{
       id: number
       counterpart_name: string
       matched_client_id: number
@@ -1410,9 +1414,10 @@ bankRouter.post('/auto-sync', requireRole('ADMIN'), async (c) => {
     const dateEnd = today.toISOString().slice(0, 10)
 
     // 모든 활성 계좌에 대해 바로빌 동기화 실행
+    const efAutoAcc = entityFilter(c, 'bank_accounts')
     const { results: activeAccounts } = await c.env.DB.prepare(
-      'SELECT id, bank_code, account_number FROM bank_accounts WHERE is_active = 1'
-    ).all<{ id: number; bank_code: string; account_number: string }>()
+      `SELECT id, bank_code, account_number FROM bank_accounts WHERE is_active = 1${efAutoAcc.clause}`
+    ).bind(...efAutoAcc.params).all<{ id: number; bank_code: string; account_number: string }>()
 
     if (activeAccounts.length === 0) {
       return c.json({ success: true, message: '활성 계좌 없음', data: { synced: 0 } })

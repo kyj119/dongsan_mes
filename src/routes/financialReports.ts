@@ -259,10 +259,11 @@ financialReportsRouter.get('/balance-snapshot', async (c) => {
     `).first<InventoryRow>().catch((): InventoryRow => ({ total_inventory: 0 }))
 
     // 은행 잔액 합계 (있으면)
+    const efBank = entityFilter(c, 'bank_accounts')
     const bankRow = await c.env.DB.prepare(`
       SELECT COALESCE(SUM(current_balance), 0) as total_bank
-      FROM bank_accounts WHERE is_active = 1
-    `).first<BankRow>().catch((): BankRow => ({ total_bank: 0 }))
+      FROM bank_accounts WHERE is_active = 1${efBank.clause}
+    `).bind(...efBank.params).first<BankRow>().catch((): BankRow => ({ total_bank: 0 }))
 
     // 대출 잔액
     const loanRow = await c.env.DB.prepare(`
