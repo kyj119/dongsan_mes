@@ -1,18 +1,17 @@
--- 법인카드 기능 확장
--- payment_day: 카드 결제일 (매월 N일)
--- receipt_image_url: 영수증 이미지 R2 URL
--- approval_number: 승인번호 (바로빌)
--- supply_amount, tax_amount: 공급가/부가세
+-- 법인카드 기능 확장 (프로덕션에 이미 적용된 컬럼은 no-op 처리)
+-- payment_day, assigned_user_id, receipt_image_url 등은 이전 세션에서 수동 적용됨
 
-ALTER TABLE corporate_cards ADD COLUMN payment_day INTEGER DEFAULT 15;
-ALTER TABLE corporate_cards ADD COLUMN assigned_user_id INTEGER REFERENCES users(id);
+-- corporate_cards 컬럼 (이미 존재)
+-- ALTER TABLE corporate_cards ADD COLUMN payment_day INTEGER DEFAULT 15;
+-- ALTER TABLE corporate_cards ADD COLUMN assigned_user_id INTEGER REFERENCES users(id);
 
-ALTER TABLE card_transactions ADD COLUMN receipt_image_url TEXT;
-ALTER TABLE card_transactions ADD COLUMN approval_number TEXT;
-ALTER TABLE card_transactions ADD COLUMN supply_amount REAL DEFAULT 0;
-ALTER TABLE card_transactions ADD COLUMN tax_amount REAL DEFAULT 0;
-ALTER TABLE card_transactions ADD COLUMN approval_type TEXT DEFAULT 'APPROVED';
-ALTER TABLE card_transactions ADD COLUMN matched_bank_tx_id INTEGER REFERENCES bank_transactions(id);
+-- card_transactions 컬럼 (이미 존재)
+-- ALTER TABLE card_transactions ADD COLUMN receipt_image_url TEXT;
+-- ALTER TABLE card_transactions ADD COLUMN approval_number TEXT;
+-- ALTER TABLE card_transactions ADD COLUMN supply_amount REAL DEFAULT 0;
+-- ALTER TABLE card_transactions ADD COLUMN tax_amount REAL DEFAULT 0;
+-- ALTER TABLE card_transactions ADD COLUMN approval_type TEXT DEFAULT 'APPROVED';
+-- ALTER TABLE card_transactions ADD COLUMN matched_bank_tx_id INTEGER REFERENCES bank_transactions(id);
 
 -- 가맹점 → 경비 카테고리 자동 분류 규칙
 CREATE TABLE IF NOT EXISTS expense_auto_rules (
