@@ -1,7 +1,7 @@
 ﻿// Skeleton loading
 (function() {
   var el = document.getElementById('txTableBody');
-  if (el && window.dsSkeleton) el.innerHTML = dsSkeleton.table(8, 8);
+  if (el && window.dsSkeleton) el.innerHTML = dsSkeleton.table(8, 10);
 })();
 
 (function() {
@@ -193,7 +193,7 @@
 
     var url = '/api/bank/transactions' + (params.length ? '?' + params.join('&') : '');
     var tbody = document.getElementById('txTableBody');
-    tbody.innerHTML = '<tr><td colspan="8" class="text-center py-8 text-gray-400"><i class="fas fa-spinner fa-spin mr-1"></i>로딩 중...</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="10" class="text-center py-8 text-gray-400"><i class="fas fa-spinner fa-spin mr-1"></i>로딩 중...</td></tr>';
 
     axios.get(url).then(function(r) {
       transactions = r.data.data || r.data || [];
@@ -201,14 +201,14 @@
       loadStats();
     }).catch(function(e) {
       var msg = (e.response && e.response.data && e.response.data.error) ? e.response.data.error : '거래내역 로딩 실패';
-      tbody.innerHTML = '<tr><td colspan="8" class="text-center py-8 text-red-400"><i class="fas fa-exclamation-circle mr-1"></i>' + msg + '</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="10" class="text-center py-8 text-red-400"><i class="fas fa-exclamation-circle mr-1"></i>' + msg + '</td></tr>';
     });
   };
 
   function renderTransactions() {
     var tbody = document.getElementById('txTableBody');
     if (!transactions.length) {
-      tbody.innerHTML = '<tr><td colspan="9" class="text-center py-12">'
+      tbody.innerHTML = '<tr><td colspan="10" class="text-center py-12">'
         + '<i class="fas fa-exchange-alt text-3xl mb-3 block text-gray-300"></i>'
         + '<div class="text-sm text-gray-500 mb-1">거래내역이 없습니다</div>'
         + '</td></tr>';
@@ -239,6 +239,8 @@
       html += '<td class="font-medium text-gray-800">' + escHtml(tx.counterpart_name || tx.description || '') + '</td>';
       html += '<td class="text-right font-semibold tabular-nums ' + (isDeposit ? 'text-blue-600' : '') + '">' + (isDeposit ? '+' + amt.toLocaleString() : '') + '</td>';
       html += '<td class="text-right tabular-nums ' + (!isDeposit ? 'text-red-600' : '') + '">' + (!isDeposit ? '-' + amt.toLocaleString() : '') + '</td>';
+      var bal = tx.balance_after != null ? Number(tx.balance_after).toLocaleString() : '';
+      html += '<td class="text-right text-xs text-gray-500 tabular-nums">' + bal + '</td>';
       html += '<td class="text-center">' + badge + '</td>';
       html += '<td>' + matchedClient + '</td>';
       html += '<td class="text-center">' + actionCell + '</td>';
@@ -1033,11 +1035,31 @@
     resultDiv.classList.remove('hidden');
   };
 
+  // 바로빌 연결 상태 표시
+  function loadBarobillStatus() {
+    var bar = document.getElementById('barobillStatusBar');
+    if (!bar) return;
+    axios.get('/api/barobill/status').then(function(r) {
+      var d = r.data.data || {};
+      var mode = d.isTest
+        ? '<span class="text-xs bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded">테스트</span>'
+        : '<span class="text-xs bg-green-100 text-green-700 px-1.5 py-0.5 rounded">운영</span>';
+      bar.className = 'flex items-center justify-between bg-green-50 border border-green-200 rounded-lg px-4 py-2 mb-4 text-sm';
+      bar.innerHTML = '<div class="flex items-center gap-2"><i class="fas fa-check-circle text-green-500"></i><span class="font-medium text-gray-700">바로빌 연결됨</span>' + mode + '</div>'
+        + '<span class="text-gray-500">포인트 잔액: <b class="text-blue-600">' + (d.balance || 0).toLocaleString() + '원</b></span>';
+    }).catch(function(e) {
+      var msg = (e.response && e.response.data && e.response.data.error) || '바로빌 미연결';
+      bar.className = 'flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-lg px-4 py-2 mb-4 text-sm';
+      bar.innerHTML = '<i class="fas fa-exclamation-circle text-gray-400"></i><span class="text-gray-500">' + escHtml(msg) + '</span>';
+    });
+  }
+
   // Init
   Promise.all([loadClients(), loadAccountFilter(), loadMatchRules()]).then(function() {
     // 기본값: 미반영 탭
     switchStatusTab('PENDING');
   });
+  loadBarobillStatus();
 
   // Close modals on overlay click
   document.getElementById('accountModal').addEventListener('click', function(e) {

@@ -3,7 +3,6 @@ import type { HonoEnv } from '../types/env'
 import { renderPage } from '../layout'
 import bankScript from '../scripts/bank.js?raw'
 import cashFlowScript from '../scripts/cashFlow.js?raw'
-import barobillViewScript from '../scripts/barobillView.js?raw'
 
 export function bankPage(c: Context<HonoEnv>) {
   return renderPage(c, {
@@ -54,9 +53,6 @@ export function bankPage(c: Context<HonoEnv>) {
           <button onclick="switchFinanceTab('bank')" id="finTabBank" class="px-5 py-3 text-sm font-medium border-b-2 border-blue-600 text-blue-600">
             <i class="fas fa-university mr-1"></i>은행 연동
           </button>
-          <button onclick="switchFinanceTab('barobill')" id="finTabBarobill" class="px-5 py-3 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">
-            <i class="fas fa-plug mr-1"></i>바로빌 통장
-          </button>
           <button onclick="switchFinanceTab('cashflow')" id="finTabCashflow" class="px-5 py-3 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">
             <i class="fas fa-money-bill-wave mr-1"></i>캐시플로
           </button>
@@ -64,6 +60,10 @@ export function bankPage(c: Context<HonoEnv>) {
 
         <!-- 은행 연동 탭 내용 -->
         <div id="finBankContent">
+          <!-- 바로빌 연결 상태 -->
+          <div id="barobillStatusBar" class="flex items-center justify-between bg-gray-50 border border-gray-200 rounded-lg px-4 py-2 mb-4 text-sm">
+            <span class="text-gray-400"><i class="fas fa-plug mr-1"></i>바로빌 연결 확인 중...</span>
+          </div>
           <!-- Tab Navigation -->
           <div class="flex border-b mb-6">
           <button id="tabTx" class="tab-btn active px-6 py-3 text-sm font-medium border-b-2 border-blue-600 text-blue-600"
@@ -131,7 +131,7 @@ export function bankPage(c: Context<HonoEnv>) {
               </div>
               <div class="flex items-center gap-2">
                 <button onclick="syncBarobillBank()" id="syncBarobillBtn" class="px-3 py-1.5 text-xs font-medium rounded-lg bg-blue-600 text-white hover:bg-blue-700 flex items-center gap-1">
-                  <i class="fas fa-sync-alt"></i> 동기화
+                  <i class="fas fa-sync-alt"></i> 바로빌 동기화
                 </button>
                 <button onclick="runAutoMatch()" class="px-3 py-1.5 text-xs font-medium rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 flex items-center gap-1">
                   <i class="fas fa-magic"></i> 자동매칭
@@ -163,13 +163,14 @@ export function bankPage(c: Context<HonoEnv>) {
                     <th class="px-2 py-2 text-left text-[10px] font-medium text-gray-500 uppercase">적요</th>
                     <th class="px-2 py-2 text-right text-[10px] font-medium text-gray-500 uppercase">입금</th>
                     <th class="px-2 py-2 text-right text-[10px] font-medium text-gray-500 uppercase">출금</th>
+                    <th class="px-2 py-2 text-right text-[10px] font-medium text-gray-500 uppercase">잔액</th>
                     <th class="px-2 py-2 text-center text-[10px] font-medium text-gray-500 uppercase">상태</th>
                     <th class="px-2 py-2 text-left text-[10px] font-medium text-gray-500 uppercase">거래처</th>
                     <th class="px-2 py-2 text-center text-[10px] font-medium text-gray-500 uppercase w-20"></th>
                   </tr>
                 </thead>
                 <tbody id="txTableBody">
-                  <tr><td colspan="8" class="text-center py-10 text-gray-400">로딩 중...</td></tr>
+                  <tr><td colspan="10" class="text-center py-10 text-gray-400">로딩 중...</td></tr>
                 </tbody>
               </table>
             </div>
@@ -286,54 +287,6 @@ export function bankPage(c: Context<HonoEnv>) {
             <div class="text-center py-10 text-gray-400">로딩 중...</div>
           </div>
         </div>
-        </div>
-
-        <!-- 바로빌 조회 탭 -->
-        <div id="finBarobillContent" class="hidden">
-          <!-- 연결 상태 -->
-          <div id="bbStatusArea" class="bg-white rounded-lg shadow p-4 mb-4">
-            <div class="flex items-center justify-between">
-              <span class="text-sm text-gray-500">바로빌 연결 확인 중...</span>
-            </div>
-          </div>
-
-          <!-- 통장 내역 -->
-          <div id="bbBankPanel">
-            <div class="bg-white rounded-lg shadow p-4 mb-4">
-              <div class="flex flex-wrap gap-3 items-end mb-3">
-                <div>
-                  <label class="text-xs text-gray-500">시작일</label>
-                  <input type="date" id="bbBankDateStart" class="form-input text-sm" style="width:150px;">
-                </div>
-                <span class="text-gray-400 self-end pb-2">~</span>
-                <div>
-                  <label class="text-xs text-gray-500">종료일</label>
-                  <input type="date" id="bbBankDateEnd" class="form-input text-sm" style="width:150px;">
-                </div>
-                <div>
-                  <label class="text-xs text-gray-500">유형</label>
-                  <select id="bbBankDir" class="form-select text-sm" style="width:100px;">
-                    <option value="0">전체</option>
-                    <option value="1">입금</option>
-                    <option value="2">출금</option>
-                  </select>
-                </div>
-                <button onclick="loadBBBankLogs()" class="btn-primary text-sm"><i class="fas fa-search mr-1"></i>전체 조회</button>
-                <div id="bbBankTotal" class="text-sm text-gray-500 ml-2"></div>
-              </div>
-              <div id="bbBankFilters" class="flex flex-wrap gap-2"></div>
-            </div>
-            <div class="bg-white rounded-lg shadow overflow-hidden">
-              <div class="overflow-x-auto" style="max-height:60vh; overflow-y:auto;">
-                <table class="w-full text-sm ds-table-striped">
-                  <thead class="bg-gray-50 sticky top-0">
-                    <tr><th class="px-3 py-2 text-left">일시</th><th class="px-3 py-2 text-left">계좌</th><th class="px-3 py-2 text-left">적요</th><th class="px-3 py-2 text-right">입금</th><th class="px-3 py-2 text-right">출금</th><th class="px-3 py-2 text-right">잔액</th></tr>
-                  </thead>
-                  <tbody id="bbBankBody"><tr><td colspan="6" class="text-center py-8 text-gray-400">날짜를 선택하고 전체 조회를 클릭하세요</td></tr></tbody>
-                </table>
-              </div>
-            </div>
-          </div>
         </div>
 
         <!-- 카드 수수료 → /card-expenses로 이동됨 -->
@@ -813,9 +766,9 @@ export function bankPage(c: Context<HonoEnv>) {
     `,
     pageScript: `
       window.switchFinanceTab = function(tab) {
-        var tabs = ['bank', 'barobill', 'cashflow'];
-        var contents = { bank: 'finBankContent', barobill: 'finBarobillContent', cashflow: 'finCashflowContent' };
-        var buttons = { bank: 'finTabBank', barobill: 'finTabBarobill', cashflow: 'finTabCashflow' };
+        var tabs = ['bank', 'cashflow'];
+        var contents = { bank: 'finBankContent', cashflow: 'finCashflowContent' };
+        var buttons = { bank: 'finTabBank', cashflow: 'finTabCashflow' };
         tabs.forEach(function(t) {
           var content = document.getElementById(contents[t]);
           var btn = document.getElementById(buttons[t]);
@@ -827,8 +780,6 @@ export function bankPage(c: Context<HonoEnv>) {
             if (btn) { btn.classList.remove('border-blue-600', 'text-blue-600'); btn.classList.add('border-transparent', 'text-gray-500'); }
           }
         });
-        if (tab === 'cardfee' && window.initCardFeeTab) window.initCardFeeTab();
-        if (tab === 'barobill' && window.initBarobillTab) window.initBarobillTab();
       };
       (function() {
         var p = new URLSearchParams(window.location.search);
@@ -838,8 +789,6 @@ export function bankPage(c: Context<HonoEnv>) {
       })();
 
       ${bankScript}
-
-      ${barobillViewScript}
 
       ${cashFlowScript}
     `
