@@ -6,7 +6,7 @@
 import { Hono } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { authMiddleware } from '../middleware/auth'
-import { entityFilter } from '../utils/entityFilter'
+import { entityFilter, getEntityId } from '../utils/entityFilter'
 
 const scanRouter = new Hono<HonoEnv>()
 scanRouter.use('/*', authMiddleware)
@@ -222,10 +222,24 @@ scanRouter.post('/action', async (c) => {
         if (!body.quantity || body.quantity <= 0) {
           return c.json({ success: false, error: '수량을 입력하세요.' }, 400)
         }
+        const entityId = getEntityId(c)
+        // #169: 재고 변경 + inventory_transactions 감사 기록 원자적 처리
         await c.env.DB.prepare(`
           UPDATE items SET current_stock = current_stock + ?, updated_at = CURRENT_TIMESTAMP
           WHERE id = ?
         `).bind(body.quantity, body.id).run()
+
+        const afterRow = await c.env.DB.prepare(
+          'SELECT current_stock FROM items WHERE id = ?'
+        ).bind(body.id).first<{ current_stock: number }>()
+
+        await c.env.DB.prepare(`
+          INSERT INTO inventory_transactions
+          (item_id, transaction_type, transaction_date, quantity, reference_type, balance_after, reason, handled_by, entity_id)
+          VALUES (?, 'IN', DATE('now'), ?, 'SCAN', ?, ?, ?, ?)
+        `).bind(body.id, body.quantity, afterRow?.current_stock ?? 0,
+          body.notes || '스캔 입고', user?.id || 1, entityId).run()
+
         return c.json({ success: true, message: `${body.quantity}개 입고 처리되었습니다.` })
       }
 
@@ -233,16 +247,29 @@ scanRouter.post('/action', async (c) => {
         if (!body.quantity || body.quantity <= 0) {
           return c.json({ success: false, error: '수량을 입력하세요.' }, 400)
         }
-        const item = await c.env.DB.prepare(
-          'SELECT current_stock FROM items WHERE id = ?'
-        ).bind(body.id).first<{ current_stock: number }>()
-        if (!item || item.current_stock < body.quantity) {
+        const entityId2 = getEntityId(c)
+        // #164: atomic UPDATE WHERE — race condition 방지
+        const result = await c.env.DB.prepare(`
+          UPDATE items SET current_stock = current_stock - ?, updated_at = CURRENT_TIMESTAMP
+          WHERE id = ? AND current_stock >= ?
+        `).bind(body.quantity, body.id, body.quantity).run()
+
+        if (!result.meta.changes || result.meta.changes === 0) {
           return c.json({ success: false, error: '재고가 부족합니다.' }, 400)
         }
+
+        // #169: inventory_transactions 감사 기록
+        const afterRow2 = await c.env.DB.prepare(
+          'SELECT current_stock FROM items WHERE id = ?'
+        ).bind(body.id).first<{ current_stock: number }>()
+
         await c.env.DB.prepare(`
-          UPDATE items SET current_stock = current_stock - ?, updated_at = CURRENT_TIMESTAMP
-          WHERE id = ?
-        `).bind(body.quantity, body.id).run()
+          INSERT INTO inventory_transactions
+          (item_id, transaction_type, transaction_date, quantity, reference_type, balance_after, reason, handled_by, entity_id)
+          VALUES (?, 'OUT', DATE('now'), ?, 'SCAN', ?, ?, ?, ?)
+        `).bind(body.id, body.quantity, afterRow2?.current_stock ?? 0,
+          body.notes || '스캔 출고', user?.id || 1, entityId2).run()
+
         return c.json({ success: true, message: `${body.quantity}개 출고 처리되었습니다.` })
       }
 

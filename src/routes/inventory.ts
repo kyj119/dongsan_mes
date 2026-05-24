@@ -645,6 +645,8 @@ inventoryRouter.post('/adjustments', async (c) => {
       `SELECT quantity FROM inventory WHERE item_id = ? AND entity_id = ?`
     ).bind(item_id, entityId).first<{ quantity: number }>()
     const quantityAfter = newStock?.quantity ?? 0
+    // #167: quantityBefore를 실제 변경량 기반으로 계산 (race condition 방지)
+    const actualBefore = quantityAfter - adjQty
 
     const transactionType = adjQty > 0 ? 'IN' : 'OUT'
     await c.env.DB.batch([
@@ -653,7 +655,7 @@ inventoryRouter.post('/adjustments', async (c) => {
         (item_id, adjustment_date, quantity_before, quantity_after,
          adjustment_quantity, reason, adjusted_by, notes, entity_id)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `).bind(item_id, adjustment_date, quantityBefore, quantityAfter,
+      `).bind(item_id, adjustment_date, actualBefore, quantityAfter,
         adjustment_quantity, reason, user?.id || 1, notes || null, entityId),
       c.env.DB.prepare(`
         INSERT INTO inventory_transactions

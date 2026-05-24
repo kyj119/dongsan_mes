@@ -631,9 +631,10 @@ cardExpRouter.put('/categories/:id', requireRole('ADMIN'), async (c) => {
   try {
     const id = c.req.param('id')
     const { name, icon, color } = await c.req.json()
+    const entityId = getEntityId(c)
     await c.env.DB.prepare(
-      'UPDATE expense_categories SET name = COALESCE(?, name), icon = COALESCE(?, icon), color = COALESCE(?, color) WHERE id = ?'
-    ).bind(name || null, icon || null, color || null, id).run()
+      `UPDATE expense_categories SET name = COALESCE(?, name), icon = COALESCE(?, icon), color = COALESCE(?, color) WHERE id = ?${entityId > 0 ? ' AND entity_id = ?' : ''}`
+    ).bind(name || null, icon || null, color || null, id, ...(entityId > 0 ? [entityId] : [])).run()
     return c.json({ success: true, message: '분류 수정 완료' })
   } catch (error) {
     return c.json({ success: false, error: '서버 오류' }, 500)
@@ -643,7 +644,10 @@ cardExpRouter.put('/categories/:id', requireRole('ADMIN'), async (c) => {
 // DELETE /api/card-expenses/categories/:id
 cardExpRouter.delete('/categories/:id', requireRole('ADMIN'), async (c) => {
   try {
-    await c.env.DB.prepare('UPDATE expense_categories SET is_active = 0 WHERE id = ?').bind(c.req.param('id')).run()
+    const entityId = getEntityId(c)
+    await c.env.DB.prepare(
+      `UPDATE expense_categories SET is_active = 0 WHERE id = ?${entityId > 0 ? ' AND entity_id = ?' : ''}`
+    ).bind(c.req.param('id'), ...(entityId > 0 ? [entityId] : [])).run()
     return c.json({ success: true, message: '분류 삭제 완료' })
   } catch (error) {
     return c.json({ success: false, error: '서버 오류' }, 500)

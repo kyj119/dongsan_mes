@@ -503,8 +503,8 @@ ordersCoreRouter.patch('/:id/bill', requireRole('ADMIN', 'MANAGER'), async (c) =
       ? Math.min(Math.max(0, parseFloat(String(body.billed_amount)) || 0), maxAmount * 1.5)
       : maxAmount
 
-    // #83: 원자적 처리 (billing_status + clients.balance 동시 업데이트)
-    await c.env.DB.batch([
+    // #83 + #168: 원자적 처리 + 이중 실행 방지 (billing_status 조건 추가)
+    const batchResult = await c.env.DB.batch([
       c.env.DB.prepare(`
         UPDATE orders
         SET billing_status = 'BILLED',
@@ -512,12 +512,16 @@ ordersCoreRouter.patch('/:id/bill', requireRole('ADMIN', 'MANAGER'), async (c) =
             billed_by = ?,
             billed_amount = ?,
             updated_at = CURRENT_TIMESTAMP
-        WHERE id = ?
+        WHERE id = ? AND billing_status IS NULL
       `).bind(user?.id || null, billedAmount, id),
       c.env.DB.prepare(
         'UPDATE clients SET balance = balance + ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
       ).bind(billedAmount, order.client_id)
     ])
+
+    if (!batchResult[0].meta.changes) {
+      return c.json({ success: false, error: '이미 처리된 주문입니다 (동시 요청 감지)' }, 409)
+    }
 
     return c.json({
       success: true,
@@ -556,10 +560,10 @@ ordersCoreRouter.patch('/:id/billing-status', requireRole('ADMIN', 'MANAGER'), a
         return c.json({ success: false, error: '출고완료 상태인 주문만 회계반영 가능합니다' }, 400)
       }
       const billedAmount = Number(order.final_amount) || 0
-      // #83: 원자적 처리
+      // #83 + #168: 원자적 처리 + 이중 실행 방지
       const batchStmts: any[] = [
         c.env.DB.prepare(`
-          UPDATE orders SET billing_status = 'BILLED', billed_at = CURRENT_TIMESTAMP, billed_by = ?, billed_amount = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?
+          UPDATE orders SET billing_status = 'BILLED', billed_at = CURRENT_TIMESTAMP, billed_by = ?, billed_amount = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND (billing_status IS NULL OR billing_status = '')
         `).bind(user?.id || null, billedAmount, id)
       ]
       if (oldStatus !== 'BILLED' && oldStatus !== 'PAID') {
@@ -576,10 +580,10 @@ ordersCoreRouter.patch('/:id/billing-status', requireRole('ADMIN', 'MANAGER'), a
         return c.json({ success: false, error: '회계반영된 주문만 수금완료 처리할 수 있습니다' }, 400)
       }
       const billedAmount = order.billed_amount || Number(order.final_amount) || 0
-      // #83: 원자적 처리
+      // #83 + #168: 원자적 처리 + 이중 실행 방지
       await c.env.DB.batch([
         c.env.DB.prepare(`
-          UPDATE orders SET billing_status = 'PAID', updated_at = CURRENT_TIMESTAMP WHERE id = ?
+          UPDATE orders SET billing_status = 'PAID', updated_at = CURRENT_TIMESTAMP WHERE id = ? AND billing_status = 'BILLED'
         `).bind(id),
         c.env.DB.prepare(
           'UPDATE clients SET balance = balance - ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
@@ -1159,12 +1163,7 @@ ordersCoreRouter.post('/', async (c) => {
       }
 
       if (creditBlocked) {
-        // 주문에 credit_status 마킹
-        await c.env.DB.prepare(
-          `UPDATE orders SET credit_status = 'PENDING' WHERE id = ?`
-        ).bind(orderId).run()
-
-        // 결재 요청 자동 생성
+        // #163: 여신 초과 — 결재 요청 원자적 생성
         const today2 = new Date().toISOString().slice(0, 10).replace(/-/g, '')
         const aprNumber = await getNextSeqNumber(c.env.DB, 'approval_requests', 'request_number', `APR-${today2}-`)
 
@@ -1182,43 +1181,51 @@ ordersCoreRouter.post('/', async (c) => {
           `SELECT credit_limit FROM clients WHERE id = ?`
         ).bind(orderData.client_id).first<{ credit_limit: number }>()
 
-        const aprResult = await c.env.DB.prepare(`
-          INSERT INTO approval_requests (request_number, type, requester_id, title, content, amount, reference_type, reference_id, status, current_step, total_steps, entity_id)
-          VALUES (?, 'CREDIT_OVERRIDE', ?, ?, ?, ?, 'order', ?, 'PENDING', 1, 1, ?)
-        `).bind(
-          aprNumber,
-          user?.id || 1,
-          `여신한도 초과 승인 요청 — ${clientName?.client_name || ''}`,
-          JSON.stringify({
-            client_id: orderData.client_id,
-            client_name: clientName?.client_name,
-            credit_limit: creditInfo?.credit_limit || 0,
-            current_balance: balRow2?.balance || 0,
-            order_amount: finalAmount,
-            order_number: orderNumber
-          }),
-          finalAmount,
-          orderId,
-          getEntityId(c)
-        ).run()
+        const entityId = getEntityId(c)
 
-        const aprId = aprResult.meta?.last_row_id as number
+        // batch 1: 주문 credit_status + approval_requests 원자적 생성
+        const batchResults = await c.env.DB.batch([
+          c.env.DB.prepare(
+            `UPDATE orders SET credit_status = 'PENDING' WHERE id = ?`
+          ).bind(orderId),
+          c.env.DB.prepare(`
+            INSERT INTO approval_requests (request_number, type, requester_id, title, content, amount, reference_type, reference_id, status, current_step, total_steps, entity_id)
+            VALUES (?, 'CREDIT_OVERRIDE', ?, ?, ?, ?, 'order', ?, 'PENDING', 1, 1, ?)
+          `).bind(
+            aprNumber,
+            user?.id || 1,
+            `여신한도 초과 승인 요청 — ${clientName?.client_name || ''}`,
+            JSON.stringify({
+              client_id: orderData.client_id,
+              client_name: clientName?.client_name,
+              credit_limit: creditInfo?.credit_limit || 0,
+              current_balance: balRow2?.balance || 0,
+              order_amount: finalAmount,
+              order_number: orderNumber
+            }),
+            finalAmount,
+            orderId,
+            entityId
+          )
+        ])
 
-        // 결재 단계: ADMIN 또는 MANAGER 1단계
-        await c.env.DB.prepare(`
-          INSERT INTO approval_steps (request_id, step_order, approver_role, label, status)
-          VALUES (?, 1, 'ADMIN', '경리/관리자 승인', 'PENDING')
-        `).bind(aprId).run()
+        const aprId = batchResults[1].meta?.last_row_id as number
 
-        // credit_overrides 기록 (#105: entity_id 포함)
-        await c.env.DB.prepare(`
-          INSERT INTO credit_overrides (order_id, client_id, credit_limit, balance_at_time, order_amount, approval_request_id, entity_id)
-          VALUES (?, ?, ?, ?, ?, ?, ?)
-        `).bind(
-          orderId, orderData.client_id,
-          creditInfo?.credit_limit || 0, balRow2?.balance || 0,
-          finalAmount, aprId, getEntityId(c) || 1
-        ).run()
+        // batch 2: approval_steps + credit_overrides 원자적 생성
+        await c.env.DB.batch([
+          c.env.DB.prepare(`
+            INSERT INTO approval_steps (request_id, step_order, approver_role, label, status)
+            VALUES (?, 1, 'ADMIN', '경리/관리자 승인', 'PENDING')
+          `).bind(aprId),
+          c.env.DB.prepare(`
+            INSERT INTO credit_overrides (order_id, client_id, credit_limit, balance_at_time, order_amount, approval_request_id, entity_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+          `).bind(
+            orderId, orderData.client_id,
+            creditInfo?.credit_limit || 0, balRow2?.balance || 0,
+            finalAmount, aprId, entityId || 1
+          )
+        ])
 
         // 카드 생성 없이 반환 — 여신 승인 대기 상태
         return c.json({

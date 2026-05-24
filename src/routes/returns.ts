@@ -118,32 +118,21 @@ returns.patch('/:id/status', requireRole('ADMIN', 'MANAGER'), async (c) => {
     `).bind(id).all<{ item_id: number; quantity: number }>()
 
     if (returnItems.length > 0) {
-      const itemIds = returnItems.map(ri => ri.item_id)
-      const placeholders = itemIds.map(() => '?').join(',')
-      const { results: balances } = await c.env.DB.prepare(
-        `SELECT item_id, quantity FROM inventory WHERE item_id IN (${placeholders})`
-      ).bind(...itemIds).all<{ item_id: number; quantity: number }>()
-      const balMap: Record<number, number> = {}
-      for (const b of balances) balMap[b.item_id] = b.quantity
-
       const eid = getEntityId(c) || 1
+      // #164: balance_after를 서브쿼리로 읽어 race condition 방지
       await c.env.DB.batch(
-        returnItems.flatMap(ri => {
-          const balanceAfter = (balMap[ri.item_id] || 0) + ri.quantity
-          return [
-            // 실제 재고 수량 반영
-            c.env.DB.prepare(
-              `UPDATE inventory SET quantity = quantity + ?, last_updated = CURRENT_TIMESTAMP WHERE item_id = ? AND entity_id = ?`
-            ).bind(ri.quantity, ri.item_id, eid),
-            // 트랜잭션 로그
-            c.env.DB.prepare(`
-              INSERT INTO inventory_transactions
-                (item_id, transaction_type, quantity, unit_price, total_amount,
-                 reference_type, reference_id, reason, transaction_date, balance_after, entity_id)
-              VALUES (?, 'IN', ?, 0, 0, 'RETURN', ?, '반품 입고', CURRENT_TIMESTAMP, ?, ?)
-            `).bind(ri.item_id, ri.quantity, id, balanceAfter, eid),
-          ]
-        })
+        returnItems.flatMap(ri => [
+          c.env.DB.prepare(
+            `UPDATE inventory SET quantity = quantity + ?, last_updated = CURRENT_TIMESTAMP WHERE item_id = ? AND entity_id = ?`
+          ).bind(ri.quantity, ri.item_id, eid),
+          c.env.DB.prepare(`
+            INSERT INTO inventory_transactions
+              (item_id, transaction_type, quantity, unit_price, total_amount,
+               reference_type, reference_id, reason, transaction_date, balance_after, entity_id)
+            VALUES (?, 'IN', ?, 0, 0, 'RETURN', ?, '반품 입고', CURRENT_TIMESTAMP,
+              (SELECT quantity FROM inventory WHERE item_id = ? AND entity_id = ?), ?)
+          `).bind(ri.item_id, ri.quantity, id, ri.item_id, eid, eid),
+        ])
       )
     }
   }

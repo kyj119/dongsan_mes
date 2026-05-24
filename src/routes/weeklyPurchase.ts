@@ -266,12 +266,12 @@ weeklyPurchaseRouter.post('/create-prs', async (c) => {
 
       const prId = prResult.meta?.last_row_id as number
 
-      // PR 품목 일괄 추가
+      // #165: PR 품목 일괄 추가 (entity_id 포함)
       const stmts = group.items.map((item, idx) =>
         c.env.DB.prepare(`
           INSERT INTO purchase_request_items
-            (request_id, item_id, item_name, quantity, unit, sort_order, notes)
-          VALUES (?, ?, ?, ?, ?, ?, ?)
+            (request_id, item_id, item_name, quantity, unit, sort_order, notes, entity_id)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         `).bind(
           prId,
           item.item_id,
@@ -280,6 +280,7 @@ weeklyPurchaseRouter.post('/create-prs', async (c) => {
           item.unit || 'EA',
           idx,
           `주간 발주 분석 권장 수량`,
+          entityId,
         )
       )
       if (stmts.length > 0) await c.env.DB.batch(stmts)

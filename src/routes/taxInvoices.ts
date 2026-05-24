@@ -784,41 +784,35 @@ taxInvoicesRouter.post('/batch-create', requireRole('ADMIN', 'MANAGER'), async (
 
         const taxInvoiceId = insertResult.meta.last_row_id
 
-        // junction 테이블 연결 (batch)
-        await c.env.DB.batch(
-          orderIds.map((oid: number) =>
-            c.env.DB.prepare('INSERT OR IGNORE INTO tax_invoice_orders (tax_invoice_id, order_id) VALUES (?, ?)')
-              .bind(taxInvoiceId, oid)
-          )
-        )
-
-        // order_items 일괄 조회 (N+1 → IN절 1쿼리)
+        // #162: junction + items 단일 batch로 원자적 처리
         const oiPh = orderIds.map(() => '?').join(',')
         const { results: allOrderItems } = await c.env.DB.prepare(
           `SELECT oi.*, oi.order_id FROM order_items oi WHERE oi.order_id IN (${oiPh}) ORDER BY oi.order_id, oi.sort_order`
         ).bind(...orderIds).all()
 
-        // tax_invoice_items 일괄 INSERT (batch)
         const vatRate = 0.1
-        if (allOrderItems && allOrderItems.length > 0) {
-          await c.env.DB.batch(
-            (allOrderItems as Array<Record<string, unknown>>).map((oi, idx: number) => {
-              const itemAmount = parseFloat(String(oi.amount)) || 0
-              const itemTax = oi.vat_included ? Math.round(itemAmount * vatRate) : 0
-              const spec = (oi.width && oi.height) ? `${oi.width}x${oi.height}` : null
-              return c.env.DB.prepare(`
-                INSERT INTO tax_invoice_items (
-                  tax_invoice_id, item_date, item_name, specification,
-                  quantity, unit_price, supply_amount, tax_amount, sort_order
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-              `).bind(
-                taxInvoiceId, issueDate, oi.item_name, spec,
-                oi.quantity, parseFloat(String(oi.unit_price)) || 0,
-                itemAmount, itemTax, idx
-              )
-            })
-          )
-        }
+        const batchStmts = [
+          ...orderIds.map((oid: number) =>
+            c.env.DB.prepare('INSERT OR IGNORE INTO tax_invoice_orders (tax_invoice_id, order_id) VALUES (?, ?)')
+              .bind(taxInvoiceId, oid)
+          ),
+          ...(allOrderItems as Array<Record<string, unknown>>).map((oi, idx: number) => {
+            const itemAmount = parseFloat(String(oi.amount)) || 0
+            const itemTax = oi.vat_included ? Math.round(itemAmount * vatRate) : 0
+            const spec = (oi.width && oi.height) ? `${oi.width}x${oi.height}` : null
+            return c.env.DB.prepare(`
+              INSERT INTO tax_invoice_items (
+                tax_invoice_id, item_date, item_name, specification,
+                quantity, unit_price, supply_amount, tax_amount, sort_order
+              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            `).bind(
+              taxInvoiceId, issueDate, oi.item_name, spec,
+              oi.quantity, parseFloat(String(oi.unit_price)) || 0,
+              itemAmount, itemTax, idx
+            )
+          })
+        ]
+        if (batchStmts.length > 0) await c.env.DB.batch(batchStmts)
 
         let invoiceResult: any = { invoice_id: taxInvoiceId, invoice_number: invoiceNumber }
 
@@ -1012,45 +1006,36 @@ taxInvoicesRouter.post('/', requireRole('ADMIN', 'MANAGER'), async (c) => {
 
       const taxInvoiceId = insertResult.meta.last_row_id
 
-      // junction 테이블에 각 주문 연결
-      for (const oid of orderIds) {
-        await c.env.DB.prepare(
-          'INSERT OR IGNORE INTO tax_invoice_orders (tax_invoice_id, order_id) VALUES (?, ?)'
-        ).bind(taxInvoiceId, oid).run()
-      }
-
-      // 모든 주문의 order_items 병합 → tax_invoice_items (sort_order 연속)
+      // #162: junction + items 단일 batch로 원자적 처리
       const vatRate = 0.1
-      let globalSortOrder = 0
-      for (const order of orders as Array<Record<string, unknown>>) {
-        const { results: orderItems } = await c.env.DB.prepare(
-          `SELECT item_name, width, height, quantity, unit_price, amount, vat_included, sort_order
-           FROM order_items WHERE order_id = ? ORDER BY sort_order`
-        ).bind(order.id).all()
+      const junctionStmts = orderIds.map((oid: number) =>
+        c.env.DB.prepare('INSERT OR IGNORE INTO tax_invoice_orders (tax_invoice_id, order_id) VALUES (?, ?)')
+          .bind(taxInvoiceId, oid)
+      )
 
-        for (const oi of orderItems as Array<Record<string, unknown>>) {
-          const itemAmount = parseFloat(String(oi.amount)) || 0
-          const itemTax = oi.vat_included ? Math.round(itemAmount * vatRate) : 0
-          const spec = (oi.width && oi.height) ? `${oi.width}x${oi.height}` : null
+      // 모든 주문의 order_items 일괄 조회
+      const oiPlaceholders = orderIds.map(() => '?').join(',')
+      const { results: allOrderItems } = await c.env.DB.prepare(
+        `SELECT item_name, width, height, quantity, unit_price, amount, vat_included, sort_order, order_id
+         FROM order_items WHERE order_id IN (${oiPlaceholders}) ORDER BY order_id, sort_order`
+      ).bind(...orderIds).all()
 
-          await c.env.DB.prepare(`
-            INSERT INTO tax_invoice_items (
-              tax_invoice_id, item_date, item_name, specification,
-              quantity, unit_price, supply_amount, tax_amount, sort_order
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-          `).bind(
-            taxInvoiceId,
-            issueDate,
-            oi.item_name,
-            spec,
-            oi.quantity,
-            parseFloat(String(oi.unit_price)) || 0,
-            itemAmount,
-            itemTax,
-            globalSortOrder++
-          ).run()
-        }
-      }
+      const itemStmts = (allOrderItems as Array<Record<string, unknown>>).map((oi, idx: number) => {
+        const itemAmount = parseFloat(String(oi.amount)) || 0
+        const itemTax = oi.vat_included ? Math.round(itemAmount * vatRate) : 0
+        const spec = (oi.width && oi.height) ? `${oi.width}x${oi.height}` : null
+        return c.env.DB.prepare(`
+          INSERT INTO tax_invoice_items (
+            tax_invoice_id, item_date, item_name, specification,
+            quantity, unit_price, supply_amount, tax_amount, sort_order
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).bind(taxInvoiceId, issueDate, oi.item_name, spec,
+          oi.quantity, parseFloat(String(oi.unit_price)) || 0,
+          itemAmount, itemTax, idx)
+      })
+
+      const allStmts = [...junctionStmts, ...itemStmts]
+      if (allStmts.length > 0) await c.env.DB.batch(allStmts)
 
       const created = await c.env.DB.prepare(`
         SELECT ti.*, o.order_number FROM tax_invoices ti

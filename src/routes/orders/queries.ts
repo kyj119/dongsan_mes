@@ -235,21 +235,21 @@ ordersQueriesRouter.patch('/bulk-ship', async (c) => {
           ).bind(orderId).all<{ item_id: number; quantity: number }>()
           for (const oi of (orderItems || [])) {
             if (!oi.item_id || !oi.quantity) continue
-            // 음수 허용 (경고만) — MAX(0, ...) 제거
-            const beforeRow = await c.env.DB.prepare(
-              `SELECT quantity FROM inventory WHERE item_id = ? AND entity_id = ?`
-            ).bind(oi.item_id, orderEntityId).first<{ quantity: number }>()
-            const before = beforeRow?.quantity ?? 0
+            // #164: atomic UPDATE — race condition 방지, 음수 허용 (경고만)
             await c.env.DB.prepare(
               `UPDATE inventory SET quantity = quantity - ?, last_updated = CURRENT_TIMESTAMP WHERE item_id = ? AND entity_id = ?`
             ).bind(oi.quantity, oi.item_id, orderEntityId).run()
-            if (before - oi.quantity < 0) {
-              console.warn(`[distShip] ⚠️ 재고 음수 경고: item=${oi.item_id}, entity=${orderEntityId}, 잔량=${before - oi.quantity}`)
+            const afterRow = await c.env.DB.prepare(
+              `SELECT quantity FROM inventory WHERE item_id = ? AND entity_id = ?`
+            ).bind(oi.item_id, orderEntityId).first<{ quantity: number }>()
+            const after = afterRow?.quantity ?? 0
+            if (after < 0) {
+              console.warn(`[distShip] ⚠️ 재고 음수 경고: item=${oi.item_id}, entity=${orderEntityId}, 잔량=${after}`)
             }
             await c.env.DB.prepare(
-              `INSERT INTO inventory_transactions (item_id, transaction_type, quantity, reference_type, reference_id, notes, transaction_date, entity_id)
-               VALUES (?, 'OUT', ?, 'ORDER', ?, '유통 출고 차감', date('now'), ?)`
-            ).bind(oi.item_id, oi.quantity, orderId, orderEntityId).run()
+              `INSERT INTO inventory_transactions (item_id, transaction_type, quantity, reference_type, reference_id, balance_after, notes, transaction_date, entity_id)
+               VALUES (?, 'OUT', ?, 'ORDER', ?, ?, '유통 출고 차감', date('now'), ?)`
+            ).bind(oi.item_id, oi.quantity, orderId, after, orderEntityId).run()
           }
         }
         // auto_complete_date 설정: 직접수령/방문수령/퀵은 +1일, 배송은 +2일

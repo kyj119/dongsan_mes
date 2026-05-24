@@ -519,6 +519,15 @@ quotationsRouter.post('/:id/convert-to-order', requireRole('ADMIN', 'MANAGER'), 
       }, 400)
     }
 
+    // #161: 이미 주문 전환된 견적서 중복 전환 방지
+    if (quotation.converted_count > 0 && !force) {
+      return c.json({
+        success: false,
+        error: `이미 ${quotation.converted_count}건 주문 전환된 견적서입니다. 분할 주문 등 강제 전환하려면 force=true를 전달하세요.`,
+        meta: { already_converted: true, converted_count: quotation.converted_count }
+      }, 409)
+    }
+
     const { results: qItems } = await c.env.DB.prepare(
       `SELECT id, quotation_id, item_id, item_name, width, height, scale_factor, quantity, unit, unit_price, amount, content, post_processing, finishing, pricing_method, parent_id, sort_order, ai_group_index, media_subcategory_name, print_method_id, print_method_name, print_media_id, print_media_name, created_at FROM quotation_items WHERE quotation_id = ? ORDER BY sort_order, id`
     ).bind(id).all<Record<string, unknown>>()

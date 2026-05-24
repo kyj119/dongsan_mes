@@ -303,12 +303,12 @@ prRouter.post('/', async (c) => {
       await c.env.DB.prepare(`
         INSERT INTO purchase_request_items (
           request_id, item_id, item_name, category_name,
-          quantity, unit, estimated_unit_price, sort_order, notes
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+          quantity, unit, estimated_unit_price, sort_order, notes, entity_id
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).bind(
         requestId, item.item_id || null, item.item_name, item.category_name || null,
         Number(item.quantity) || 1, item.unit || 'EA',
-        Number(item.estimated_unit_price) || 0, i, item.notes || null
+        Number(item.estimated_unit_price) || 0, i, item.notes || null, getEntityId(c)
       ).run()
     }
 

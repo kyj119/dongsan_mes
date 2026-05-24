@@ -398,17 +398,20 @@ apRouter.post('/purchase-payment', requireRole('ADMIN', 'MANAGER'), async (c) =>
       getEntityId(c)
     ).run()
 
-    // Update purchase_balance (채무 감소)
-    const newBalance = (Number(supplier.purchase_balance) || 0) - body.amount
+    // #164: atomic purchase_balance 감소 (race condition 방지)
     await c.env.DB.prepare(
-      'UPDATE clients SET purchase_balance = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
-    ).bind(newBalance, body.supplier_id).run()
+      'UPDATE clients SET purchase_balance = COALESCE(purchase_balance, 0) - ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
+    ).bind(body.amount, body.supplier_id).run()
+
+    const updatedSupplier = await c.env.DB.prepare(
+      'SELECT purchase_balance FROM clients WHERE id = ?'
+    ).bind(body.supplier_id).first<{ purchase_balance: number }>()
 
     return c.json({
       success: true,
       data: {
         id: result.meta.last_row_id,
-        new_purchase_balance: newBalance
+        new_purchase_balance: updatedSupplier?.purchase_balance ?? 0
       },
       message: '지급이 등록되었습니다'
     })
