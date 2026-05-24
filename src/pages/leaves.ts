@@ -10,7 +10,7 @@ export function leavesPage(c: Context<HonoEnv>) {
     pageContent: `
       <div class="space-y-4">
         <!-- 탭 -->
-        <div class="bg-white rounded-lg border shadow-sm flex">
+        <div class="ds-card flex">
           <button onclick="leavesSwitchTab('balances')" id="lvTabBalances"
             class="px-4 py-2 text-sm font-medium border-b-2 border-blue-600 text-blue-600">
             <i class="fas fa-user-clock mr-1"></i>직원 잔여 현황
@@ -36,10 +36,10 @@ export function leavesPage(c: Context<HonoEnv>) {
 
         <!-- 탭 1: 직원 잔여 현황 -->
         <div id="lvPaneBalances">
-          <div class="bg-white rounded-lg border shadow-sm p-3 flex items-center gap-2">
+          <div class="ds-card p-3 flex items-center gap-2">
             <label class="text-xs text-gray-600">기준 연도</label>
             <select id="lvYear" class="border rounded px-2 py-1 text-xs"></select>
-            <button onclick="leavesLoadBalances()" class="px-3 py-1.5 text-xs bg-blue-600 text-white rounded hover:bg-blue-700">
+            <button onclick="leavesLoadBalances()" class="ds-btn ds-btn-primary text-xs">
               <i class="fas fa-search mr-1"></i>조회
             </button>
             <div class="flex-1"></div>
@@ -48,7 +48,7 @@ export function leavesPage(c: Context<HonoEnv>) {
             </button>
           </div>
 
-          <div class="bg-white rounded-lg border shadow-sm overflow-hidden mt-3">
+          <div class="ds-card overflow-hidden mt-3">
             <div class="overflow-x-auto">
               <table class="w-full text-sm ds-table-striped">
                 <thead class="bg-gray-50 text-xs text-gray-600 uppercase tracking-wider">
@@ -72,23 +72,23 @@ export function leavesPage(c: Context<HonoEnv>) {
 
         <!-- 탭 2: 휴가 신청 내역 -->
         <div id="lvPaneRequests" class="hidden">
-          <div class="bg-white rounded-lg border shadow-sm p-3 flex items-center gap-2">
+          <div class="ds-card p-3 flex items-center gap-2">
             <select id="lvReqStatus" class="border rounded px-2 py-1 text-xs">
               <option value="">전체 상태</option>
               <option value="PENDING">결재대기</option>
               <option value="APPROVED">승인</option>
               <option value="REJECTED">반려</option>
             </select>
-            <button onclick="leavesLoadRequests()" class="px-3 py-1.5 text-xs bg-blue-600 text-white rounded hover:bg-blue-700">
+            <button onclick="leavesLoadRequests()" class="ds-btn ds-btn-primary text-xs">
               <i class="fas fa-search mr-1"></i>검색
             </button>
             <div class="flex-1"></div>
-            <button onclick="leavesOpenRequestModal()" class="px-3 py-1.5 text-xs bg-blue-600 text-white rounded hover:bg-blue-700">
+            <button onclick="leavesOpenRequestModal()" class="ds-btn ds-btn-primary text-xs">
               <i class="fas fa-plus mr-1"></i>휴가 신청
             </button>
           </div>
 
-          <div class="bg-white rounded-lg border shadow-sm overflow-hidden mt-3">
+          <div class="ds-card overflow-hidden mt-3">
             <div class="overflow-x-auto">
               <table class="w-full text-sm ds-table-striped">
                 <thead class="bg-gray-50 text-xs text-gray-600 uppercase tracking-wider">
@@ -111,17 +111,17 @@ export function leavesPage(c: Context<HonoEnv>) {
         </div>
         <!-- 탭 3: 미사용 연차수당 -->
         <div id="lvPaneAllowance" class="hidden">
-          <div class="bg-white rounded-lg border shadow-sm p-3 flex items-center gap-2">
+          <div class="ds-card p-3 flex items-center gap-2">
             <label class="text-xs text-gray-600">기준 연도</label>
             <select id="lvAllowYear" class="border rounded px-2 py-1 text-xs"></select>
-            <button onclick="leavesLoadAllowance()" class="px-3 py-1.5 text-xs bg-blue-600 text-white rounded hover:bg-blue-700">
+            <button onclick="leavesLoadAllowance()" class="ds-btn ds-btn-primary text-xs">
               <i class="fas fa-search mr-1"></i>조회
             </button>
             <div class="flex-1"></div>
             <span id="lvAllowanceTotal" class="text-sm font-bold text-red-600"></span>
           </div>
 
-          <div class="bg-white rounded-lg border shadow-sm overflow-hidden mt-3">
+          <div class="ds-card overflow-hidden mt-3">
             <div class="overflow-x-auto">
               <table class="w-full text-sm ds-table-striped">
                 <thead class="bg-gray-50 text-xs text-gray-600 uppercase tracking-wider">
@@ -147,8 +147,8 @@ export function leavesPage(c: Context<HonoEnv>) {
       </div>
 
       <!-- 휴가 신청 모달 -->
-      <div id="lvRequestModal" class="hidden fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-        <div class="bg-white rounded-lg shadow-xl w-full max-w-md p-5">
+      <div id="lvRequestModal" class="ds-modal-overlay hidden">
+        <div class="ds-modal p-5" style="max-width:28rem">
           <div class="flex items-center justify-between mb-3">
             <h3 class="text-base font-semibold">휴가 신청</h3>
             <button onclick="leavesCloseRequestModal()" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times"></i></button>
@@ -195,14 +195,14 @@ export function leavesPage(c: Context<HonoEnv>) {
           </div>
           <div class="mt-4 flex justify-end gap-2">
             <button onclick="leavesCloseRequestModal()" class="px-3 py-1.5 text-xs border border-gray-300 text-gray-700 bg-white rounded hover:bg-gray-50">취소</button>
-            <button onclick="leavesSubmitRequest()" class="px-3 py-1.5 text-xs bg-blue-600 text-white rounded hover:bg-blue-700">신청</button>
+            <button onclick="leavesSubmitRequest()" class="ds-btn ds-btn-primary text-xs">신청</button>
           </div>
         </div>
       </div>
 
       <!-- 특별 부여 모달 -->
-      <div id="lvGrantModal" class="hidden fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-        <div class="bg-white rounded-lg shadow-xl w-full max-w-md p-5">
+      <div id="lvGrantModal" class="ds-modal-overlay hidden">
+        <div class="ds-modal p-5" style="max-width:28rem">
           <div class="flex items-center justify-between mb-3">
             <h3 class="text-base font-semibold">연차 특별 부여</h3>
             <button onclick="leavesCloseGrantModal()" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times"></i></button>
@@ -231,7 +231,7 @@ export function leavesPage(c: Context<HonoEnv>) {
           </div>
           <div class="mt-4 flex justify-end gap-2">
             <button onclick="leavesCloseGrantModal()" class="px-3 py-1.5 text-xs border border-gray-300 text-gray-700 bg-white rounded hover:bg-gray-50">취소</button>
-            <button onclick="leavesSubmitGrant()" class="px-3 py-1.5 text-xs bg-blue-600 text-white rounded hover:bg-blue-700">부여</button>
+            <button onclick="leavesSubmitGrant()" class="ds-btn ds-btn-primary text-xs">부여</button>
           </div>
         </div>
       </div>

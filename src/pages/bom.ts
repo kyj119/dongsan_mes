@@ -19,7 +19,7 @@ export const bomPage = (c: Context<HonoEnv>) => {
 
       <!-- 탭 1: BOM 관리 -->
       <div id="tab-bom" class="tab-content">
-        <div class="bg-white rounded-lg shadow">
+        <div class="ds-card">
           <div class="flex justify-between items-center p-4 border-b">
             <h2 class="text-lg font-bold"><i class="fas fa-sitemap mr-2 text-blue-600"></i>자재명세서 (BOM)</h2>
             <button onclick="openBomAddModal()" class="px-3 py-2 bg-blue-600 text-white rounded text-sm hover:bg-blue-700">
@@ -47,7 +47,7 @@ export const bomPage = (c: Context<HonoEnv>) => {
 
       <!-- 탭 2: MRP 실행 -->
       <div id="tab-mrp" class="tab-content hidden">
-        <div class="bg-white rounded-lg shadow">
+        <div class="ds-card">
           <div class="flex justify-between items-center p-4 border-b">
             <h2 class="text-lg font-bold"><i class="fas fa-calculator mr-2 text-green-600"></i>자재소요계획 (MRP)</h2>
             <button onclick="openMrpRunModal()" class="px-3 py-2 bg-blue-600 text-white rounded text-sm hover:bg-blue-700">
@@ -66,7 +66,7 @@ export const bomPage = (c: Context<HonoEnv>) => {
 
       <!-- 탭 3: 실행 이력 -->
       <div id="tab-history" class="tab-content hidden">
-        <div class="bg-white rounded-lg shadow">
+        <div class="ds-card">
           <div class="p-4 border-b">
             <h2 class="text-lg font-bold"><i class="fas fa-history mr-2 text-purple-600"></i>MRP 실행 이력</h2>
           </div>

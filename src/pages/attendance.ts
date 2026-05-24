@@ -10,7 +10,7 @@ export function attendancePage(c: Context<HonoEnv>) {
     pageContent: `
       <div class="max-w-full mx-auto space-y-4">
         <!-- 필터 바 -->
-        <div class="bg-white rounded-lg border border-gray-200 p-4">
+        <div class="ds-card p-4">
           <div class="flex flex-wrap items-center gap-3">
             <div class="flex items-center gap-2">
               <label class="text-sm font-semibold text-gray-700">월</label>
@@ -25,7 +25,7 @@ export function attendancePage(c: Context<HonoEnv>) {
                 <option value="SALES">영업</option>
               </select>
             </div>
-            <button onclick="attendanceLoadMonth()" class="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700">
+            <button onclick="attendanceLoadMonth()" class="ds-btn ds-btn-primary text-sm font-medium">
               <i class="fas fa-search mr-1"></i> 검색
             </button>
             <button onclick="attendanceSyncCaps()" id="attCapsSyncBtn" class="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700">
@@ -34,7 +34,7 @@ export function attendancePage(c: Context<HonoEnv>) {
             <div class="flex-1"></div>
             <div id="attAnomalyCount" class="text-xs text-gray-500"></div>
             <div id="attLastSync" class="text-xs text-gray-500 tabular-nums"></div>
-            <button onclick="attendanceSaveAll()" id="attSaveBtn" class="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50" disabled>
+            <button onclick="attendanceSaveAll()" id="attSaveBtn" class="ds-btn ds-btn-primary text-sm font-medium disabled:opacity-50" disabled>
               <i class="fas fa-save mr-1"></i> <span id="attSaveLabel">저장</span>
             </button>
           </div>
@@ -64,7 +64,7 @@ export function attendancePage(c: Context<HonoEnv>) {
         </div>
 
         <!-- 스프레드시트 -->
-        <div class="bg-white rounded-lg border border-gray-200 overflow-hidden">
+        <div class="ds-card overflow-hidden">
           <div class="overflow-x-auto" style="max-height:70vh;">
             <table id="attGrid" class="min-w-full text-xs ds-table-striped">
               <thead class="bg-gray-50 sticky top-0 z-10">
@@ -80,7 +80,7 @@ export function attendancePage(c: Context<HonoEnv>) {
         </div>
 
         <!-- 범례 -->
-        <div class="bg-white rounded-lg border border-gray-200 p-3 space-y-2 text-xs text-gray-600">
+        <div class="ds-card p-3 space-y-2 text-xs text-gray-600">
           <div class="flex flex-wrap gap-3">
             <span class="font-semibold text-gray-700">유형:</span>
             <span><span class="inline-block w-3 h-3 rounded bg-green-50 border border-green-200 align-middle mr-1"></span>정상(정)</span>
@@ -109,8 +109,8 @@ export function attendancePage(c: Context<HonoEnv>) {
         </div>
 
         <!-- 상세 편집 모달 -->
-        <div id="attDetailModal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50">
-          <div class="bg-white rounded-lg w-[420px] p-5 shadow-xl">
+        <div id="attDetailModal" class="ds-modal-overlay hidden items-center justify-center">
+          <div class="ds-modal p-5" style="max-width:420px">
             <h3 class="text-lg font-bold mb-1"><i class="fas fa-clock text-blue-600 mr-2"></i>근태 상세</h3>
             <div id="attDetailInfo" class="text-sm text-gray-600 mb-2"></div>
             <div id="attDetailAnomaly" class="text-xs text-red-600 bg-red-50 rounded px-2 py-1 mb-2" style="display:none;"></div>
@@ -178,7 +178,7 @@ export function attendancePage(c: Context<HonoEnv>) {
             </div>
             <div class="flex justify-end gap-2 mt-5">
               <button onclick="attendanceCloseDetail()" class="px-4 py-2 text-sm text-gray-600 hover:text-gray-800">닫기</button>
-              <button onclick="attendanceApplyDetail()" class="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700">수정 적용</button>
+              <button onclick="attendanceApplyDetail()" class="ds-btn ds-btn-primary text-sm font-medium">수정 적용</button>
             </div>
           </div>
         </div>

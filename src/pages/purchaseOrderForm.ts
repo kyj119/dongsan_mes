@@ -192,7 +192,7 @@ export function purchaseOrderFormPage(c: Context<HonoEnv>) {
           <div class="flex items-center gap-3">
             <a href="/purchase-orders" class="px-4 py-2 text-gray-500 hover:text-gray-700 text-sm">취소</a>
             <button onclick="savePO('DRAFT')" class="px-4 py-2 border border-gray-300 text-gray-700 bg-white rounded-lg hover:bg-gray-50 text-sm font-medium">임시저장</button>
-            <button onclick="savePO('CONFIRMED')" id="confirmBtn" class="px-5 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium">
+            <button onclick="savePO('CONFIRMED')" id="confirmBtn" class="ds-btn ds-btn-primary text-sm font-medium">
               <svg class="w-4 h-4 inline -mt-0.5 mr-1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>발주 확정
             </button>
           </div>
@@ -201,8 +201,8 @@ export function purchaseOrderFormPage(c: Context<HonoEnv>) {
       </div>
 
       <!-- ─── 그룹 품목 추가 모달 ─── -->
-      <div id="groupAddModal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onclick="if(event.target===this)closeGroupAddModal()">
-        <div class="bg-white rounded-lg shadow-xl max-w-md w-full mx-4">
+      <div id="groupAddModal" class="ds-modal-overlay hidden flex items-center justify-center" onclick="if(event.target===this)closeGroupAddModal()">
+        <div class="ds-modal w-full mx-4" style="max-width:28rem">
           <div class="p-4 border-b flex justify-between items-center">
             <h2 class="text-base font-bold text-gray-900">그룹 품목 추가</h2>
             <button onclick="closeGroupAddModal()" class="text-gray-400 hover:text-gray-600 p-1">
@@ -220,7 +220,7 @@ export function purchaseOrderFormPage(c: Context<HonoEnv>) {
               <p class="text-sm text-gray-500 text-center py-4">그룹을 선택하면 폭별 품목이 표시됩니다.</p>
             </div>
             <div class="flex gap-2">
-              <button onclick="addGroupItems()" class="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium">선택 품목 추가</button>
+              <button onclick="addGroupItems()" class="flex-1 ds-btn ds-btn-primary text-sm font-medium">선택 품목 추가</button>
               <button onclick="closeGroupAddModal()" class="px-4 py-2 border border-gray-300 text-gray-700 bg-white rounded-lg hover:bg-gray-50 text-sm">취소</button>
             </div>
           </div>

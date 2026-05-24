@@ -54,7 +54,7 @@ window.switchLogTab = function(tab) {
 
       <!-- 활동 로그 탭 -->
       <div id="activityTabContent">
-        <div class="bg-white rounded-lg shadow p-4 mb-4">
+        <div class="ds-card p-4 mb-4">
           <div class="flex flex-wrap gap-3 items-end">
             <div class="flex-1 min-w-[180px]">
               <label class="block text-xs text-gray-500 mb-1">검색</label>
@@ -85,13 +85,13 @@ window.switchLogTab = function(tab) {
                 onchange="currentPage=1;loadLogs();">
             </div>
             <button onclick="currentPage=1;loadLogs();"
-              class="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700">
+              class="ds-btn ds-btn-primary text-sm">
               <i class="fas fa-search mr-1"></i>검색
             </button>
           </div>
         </div>
 
-        <div class="bg-white rounded-lg shadow overflow-hidden">
+        <div class="ds-card overflow-hidden">
           <div class="overflow-x-auto" style="max-height: calc(100vh - 280px); overflow-y: auto;">
             <table class="w-full text-sm ds-table-striped">
               <thead class="bg-gray-50">
@@ -126,7 +126,7 @@ window.switchLogTab = function(tab) {
         </div>
 
         <!-- 필터 -->
-        <div class="bg-white rounded-lg shadow p-4 mb-4">
+        <div class="ds-card p-4 mb-4">
           <div class="grid grid-cols-1 md:grid-cols-5 gap-3">
             <input type="text" id="filterSearch" placeholder="수신자/제목 검색" class="border rounded px-3 py-2 text-sm" />
             <select id="filterTemplate" class="border rounded px-3 py-2 text-sm">
@@ -145,7 +145,7 @@ window.switchLogTab = function(tab) {
             <input type="date" id="filterDateTo" class="border rounded px-3 py-2 text-sm" />
           </div>
           <div class="mt-3 text-right">
-            <button onclick="loadData()" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm">
+            <button onclick="loadData()" class="ds-btn ds-btn-primary text-sm">
               <i class="fas fa-search mr-1"></i>조회
             </button>
           </div>
@@ -155,7 +155,7 @@ window.switchLogTab = function(tab) {
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-4" id="statsArea"></div>
 
         <!-- 테이블 -->
-        <div class="bg-white rounded-lg shadow overflow-x-auto" style="max-height: calc(100vh - 280px); overflow-y: auto;">
+        <div class="ds-card overflow-x-auto" style="max-height: calc(100vh - 280px); overflow-y: auto;">
           <table class="w-full text-sm ds-table-striped">
             <thead class="bg-gray-50 border-b">
               <tr>
@@ -176,8 +176,8 @@ window.switchLogTab = function(tab) {
       </div>
 
       <!-- 테스트 발송 모달 (emailTabContent 밖) -->
-      <div id="testModal" class="fixed inset-0 bg-black bg-opacity-50 hidden z-50 flex items-center justify-center">
-        <div class="bg-white rounded-lg shadow-xl w-full max-w-md p-6">
+      <div id="testModal" class="ds-modal-overlay hidden flex items-center justify-center">
+        <div class="ds-modal w-full p-6" style="max-width:28rem">
           <h3 class="text-lg font-bold mb-4">테스트 이메일 발송</h3>
           <div class="mb-4">
             <label class="block text-sm font-medium text-gray-700 mb-1">수신 이메일</label>
@@ -185,7 +185,7 @@ window.switchLogTab = function(tab) {
           </div>
           <div class="flex justify-end gap-2">
             <button onclick="closeTestModal()" class="px-4 py-2 bg-gray-200 rounded text-sm">취소</button>
-            <button onclick="sendTestEmail()" class="px-4 py-2 bg-blue-600 text-white rounded text-sm">발송</button>
+            <button onclick="sendTestEmail()" class="ds-btn ds-btn-primary text-sm">발송</button>
           </div>
         </div>
       </div>

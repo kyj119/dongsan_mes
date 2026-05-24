@@ -13,7 +13,7 @@ export function clientDetailPage(c: Context<HonoEnv>) {
       <div id="detailContent" class="hidden">
 
         <!-- Client Header -->
-        <div class="bg-white rounded-lg shadow p-5 mb-4">
+        <div class="ds-card p-5 mb-4">
           <div class="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
             <div>
               <h2 class="text-2xl font-bold" id="cdClientName">-</h2>
@@ -61,7 +61,7 @@ export function clientDetailPage(c: Context<HonoEnv>) {
 
             <!-- 주문 이력 패널 -->
             <div id="cdOrdersPanel">
-              <div class="bg-white rounded-lg shadow overflow-hidden">
+              <div class="ds-card overflow-hidden">
                 <table class="w-full text-sm ds-table-striped">
                   <thead class="bg-gray-50">
                     <tr>
@@ -85,7 +85,7 @@ export function clientDetailPage(c: Context<HonoEnv>) {
 
             <!-- 독촉 이력 패널 -->
             <div id="cdCollectionPanel" class="hidden">
-              <div class="bg-white rounded-lg shadow overflow-hidden">
+              <div class="ds-card overflow-hidden">
                 <div class="flex items-center justify-between px-4 py-3 bg-gray-50 border-b">
                   <h3 class="text-sm font-semibold text-gray-700">독촉 이력</h3>
                 </div>
@@ -111,7 +111,7 @@ export function clientDetailPage(c: Context<HonoEnv>) {
           <div class="w-full lg:w-80 flex-shrink-0 space-y-4">
 
             <!-- 거래처 정보 카드 -->
-            <div class="bg-white rounded-lg shadow p-4">
+            <div class="ds-card p-4">
               <h4 class="text-sm font-bold text-gray-700 mb-3"><i class="fas fa-building mr-1 text-gray-400"></i>거래처 정보</h4>
               <div class="space-y-2 text-sm">
                 <div class="flex justify-between"><span class="text-gray-500">대표</span><span id="cdRepresentative" class="text-right">-</span></div>
@@ -151,7 +151,7 @@ export function clientDetailPage(c: Context<HonoEnv>) {
             </div>
 
             <!-- 분석 카드 -->
-            <div class="bg-white rounded-lg shadow p-4">
+            <div class="ds-card p-4">
               <h4 class="text-sm font-bold text-gray-700 mb-3"><i class="fas fa-chart-pie mr-1 text-gray-400"></i>분석</h4>
               <div class="space-y-2 text-sm">
                 <div class="flex justify-between items-center">
@@ -174,7 +174,7 @@ export function clientDetailPage(c: Context<HonoEnv>) {
 
             <!-- 여신 관리 카드 (ADMIN only) -->
             <div id="cdCreditSection" class="hidden">
-              <div class="bg-white rounded-lg shadow p-4">
+              <div class="ds-card p-4">
                 <div class="flex items-center justify-between mb-3">
                   <h4 class="text-sm font-bold text-gray-700"><i class="fas fa-shield-alt mr-1 text-gray-400"></i>여신 관리</h4>
                   <button onclick="saveCreditSettings()" class="text-xs text-blue-600 hover:underline">저장</button>
@@ -194,7 +194,7 @@ export function clientDetailPage(c: Context<HonoEnv>) {
                 </div>
               </div>
               <!-- 사업자 그룹 (ADMIN only) -->
-              <div class="bg-white rounded-lg shadow p-4 mt-4">
+              <div class="ds-card p-4 mt-4">
                 <div class="flex items-center justify-between mb-2">
                   <h4 class="text-sm font-bold text-gray-700"><i class="fas fa-link mr-1 text-gray-400"></i>사업자 그룹</h4>
                   <button onclick="saveBillingGroup()" class="text-xs text-blue-600 hover:underline">저장</button>
@@ -212,7 +212,7 @@ export function clientDetailPage(c: Context<HonoEnv>) {
             </div>
 
             <!-- 포털 계정 카드 -->
-            <div class="bg-white rounded-lg shadow p-4">
+            <div class="ds-card p-4">
               <h4 class="text-sm font-bold text-gray-700 mb-3"><i class="fas fa-globe mr-1 text-gray-400"></i>포털 계정</h4>
               <div id="portalAccountStatus">
                 <div class="text-center py-3 text-gray-400 text-sm"><i class="fas fa-spinner fa-spin mr-1"></i>로딩 중...</div>
@@ -232,8 +232,8 @@ export function clientDetailPage(c: Context<HonoEnv>) {
       </div><!-- /detailContent -->
 
       <!-- Note Modal -->
-      <div id="noteModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-        <div class="bg-white rounded-lg shadow-xl w-96 p-6">
+      <div id="noteModal" class="ds-modal-overlay hidden flex items-center justify-center">
+        <div class="ds-modal p-6" style="max-width:24rem">
           <h3 class="text-lg font-bold mb-4">메모 추가</h3>
           <div class="space-y-3">
             <div>
@@ -252,7 +252,7 @@ export function clientDetailPage(c: Context<HonoEnv>) {
           </div>
           <div class="flex justify-end gap-2 mt-4">
             <button onclick="closeNoteModal()" class="px-4 py-2 text-sm border rounded hover:bg-gray-50">취소</button>
-            <button onclick="saveNote()" class="px-4 py-2 text-sm bg-blue-600 text-white rounded hover:bg-blue-700">저장</button>
+            <button onclick="saveNote()" class="ds-btn ds-btn-primary text-sm">저장</button>
           </div>
         </div>
       </div>

@@ -7,7 +7,7 @@ export function shipmentsDashboardPage(c: Context) {
   const pageContent = `
     <div class="ds-container space-y-4">
       <!-- 필터 영역 -->
-      <div class="bg-white rounded-lg border p-3 shadow-sm">
+      <div class="ds-card p-3">
         <div class="flex flex-wrap items-end gap-3">
           <div>
             <label class="block text-[10px] text-gray-400 mb-1">날짜</label>
@@ -43,15 +43,15 @@ export function shipmentsDashboardPage(c: Context) {
 
       <!-- 요약 카드 -->
       <div class="grid grid-cols-3 gap-2">
-        <div class="bg-white rounded-lg border p-2.5 text-center shadow-sm hover:shadow-md transition-shadow">
+        <div class="ds-card p-2.5 text-center hover:shadow-md transition-shadow">
           <div id="dashTotal" class="text-xl font-bold tabular-nums" style="color:#212529;">-</div>
           <div class="text-[10px] text-gray-400">전체</div>
         </div>
-        <div class="bg-white rounded-lg border p-2.5 text-center shadow-sm hover:shadow-md transition-shadow">
+        <div class="ds-card p-2.5 text-center hover:shadow-md transition-shadow">
           <div id="dashReady" class="text-xl font-bold tabular-nums text-green-600">-</div>
           <div class="text-[10px] text-gray-400">출고 가능</div>
         </div>
-        <div class="bg-white rounded-lg border border-amber-200 p-2.5 text-center shadow-sm hover:shadow-md transition-shadow">
+        <div class="ds-card border-amber-200 p-2.5 text-center hover:shadow-md transition-shadow">
           <div id="dashPending" class="text-xl font-bold tabular-nums text-amber-600">-</div>
           <div class="text-[10px] text-amber-500 font-medium">미완료</div>
         </div>

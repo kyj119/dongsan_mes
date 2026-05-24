@@ -10,19 +10,19 @@ export function schedulePage(c: Context<HonoEnv>) {
     pageContent: `
             <!-- 요약 통계 -->
             <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-                <div class="bg-white rounded-lg shadow p-4">
+                <div class="ds-card p-4">
                     <div class="text-sm text-gray-600 mb-1">총 대기 카드</div>
                     <div class="text-2xl font-bold text-blue-600" id="statTotalQueue">-</div>
                 </div>
-                <div class="bg-white rounded-lg shadow p-4">
+                <div class="ds-card p-4">
                     <div class="text-sm text-gray-600 mb-1">미배정 카드</div>
                     <div class="text-2xl font-bold text-orange-600" id="statUnassigned">-</div>
                 </div>
-                <div class="bg-white rounded-lg shadow p-4">
+                <div class="ds-card p-4">
                     <div class="text-sm text-gray-600 mb-1">오늘 납기</div>
                     <div class="text-2xl font-bold text-red-600" id="statTodayDue">-</div>
                 </div>
-                <div class="bg-white rounded-lg shadow p-4">
+                <div class="ds-card p-4">
                     <div class="text-sm text-gray-600 mb-1">과부하 장비</div>
                     <div class="text-2xl font-bold text-red-600" id="statOverloaded">-</div>
                 </div>

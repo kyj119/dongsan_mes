@@ -144,8 +144,8 @@ export function payrollRatesPage(c: Context) {
 </div>
 
 <!-- 4대보험 요율 편집 모달 -->
-<div id="prREditModal" class="fixed inset-0 bg-black bg-opacity-40 z-50 hidden items-center justify-center">
-  <div class="bg-white rounded-lg shadow-xl w-full max-w-lg mx-4">
+<div id="prREditModal" class="ds-modal-overlay hidden items-center justify-center">
+  <div class="ds-modal mx-4" style="max-width:32rem">
     <div class="flex items-center justify-between px-5 py-3 border-b border-gray-200">
       <h3 class="text-base font-semibold text-gray-900">4대보험 요율</h3>
       <button onclick="prRCloseRateModal()" class="text-gray-400 hover:text-gray-700"><i class="fas fa-times"></i></button>
@@ -211,14 +211,14 @@ export function payrollRatesPage(c: Context) {
     </div>
     <div class="flex justify-end gap-2 px-5 py-3 border-t border-gray-200">
       <button onclick="prRCloseRateModal()" class="border border-gray-300 bg-white text-gray-700 rounded-lg px-4 py-2 text-sm hover:bg-gray-50">취소</button>
-      <button onclick="prRSaveRate()" class="bg-blue-600 text-white rounded-lg px-4 py-2 text-sm hover:bg-blue-700">저장</button>
+      <button onclick="prRSaveRate()" class="ds-btn ds-btn-primary text-sm">저장</button>
     </div>
   </div>
 </div>
 
 <!-- 간이세액표 행 편집 모달 -->
-<div id="prRTaxModal" class="fixed inset-0 bg-black bg-opacity-40 z-50 hidden items-center justify-center">
-  <div class="bg-white rounded-lg shadow-xl w-full max-w-2xl mx-4">
+<div id="prRTaxModal" class="ds-modal-overlay hidden items-center justify-center">
+  <div class="ds-modal mx-4" style="max-width:42rem">
     <div class="flex items-center justify-between px-5 py-3 border-b border-gray-200">
       <h3 class="text-base font-semibold text-gray-900">간이세액표 행</h3>
       <button onclick="prRCloseTaxRowModal()" class="text-gray-400 hover:text-gray-700"><i class="fas fa-times"></i></button>
@@ -241,14 +241,14 @@ export function payrollRatesPage(c: Context) {
     </div>
     <div class="flex justify-end gap-2 px-5 py-3 border-t border-gray-200">
       <button onclick="prRCloseTaxRowModal()" class="border border-gray-300 bg-white text-gray-700 rounded-lg px-4 py-2 text-sm hover:bg-gray-50">취소</button>
-      <button onclick="prRSaveTaxRow()" class="bg-blue-600 text-white rounded-lg px-4 py-2 text-sm hover:bg-blue-700">저장</button>
+      <button onclick="prRSaveTaxRow()" class="ds-btn ds-btn-primary text-sm">저장</button>
     </div>
   </div>
 </div>
 
 <!-- 연도 복사 모달 -->
-<div id="prRCopyModal" class="fixed inset-0 bg-black bg-opacity-40 z-50 hidden items-center justify-center">
-  <div class="bg-white rounded-lg shadow-xl w-full max-w-md mx-4">
+<div id="prRCopyModal" class="ds-modal-overlay hidden items-center justify-center">
+  <div class="ds-modal mx-4" style="max-width:28rem">
     <div class="flex items-center justify-between px-5 py-3 border-b border-gray-200">
       <h3 class="text-base font-semibold text-gray-900">연도 요율 복사</h3>
       <button onclick="prRCloseCopyModal()" class="text-gray-400 hover:text-gray-700"><i class="fas fa-times"></i></button>
@@ -266,7 +266,7 @@ export function payrollRatesPage(c: Context) {
     </div>
     <div class="flex justify-end gap-2 px-5 py-3 border-t border-gray-200">
       <button onclick="prRCloseCopyModal()" class="border border-gray-300 bg-white text-gray-700 rounded-lg px-4 py-2 text-sm hover:bg-gray-50">취소</button>
-      <button onclick="prRCopyRates()" class="bg-blue-600 text-white rounded-lg px-4 py-2 text-sm hover:bg-blue-700">복사</button>
+      <button onclick="prRCopyRates()" class="ds-btn ds-btn-primary text-sm">복사</button>
     </div>
   </div>
 </div>

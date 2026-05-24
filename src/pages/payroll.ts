@@ -10,7 +10,7 @@ export function payrollPage(c: Context<HonoEnv>) {
     pageContent: `
       <div class="space-y-4">
         <!-- 상단 컨트롤 바 -->
-        <div class="bg-white rounded-lg border shadow-sm p-3 flex items-center gap-2 flex-wrap">
+        <div class="ds-card p-3 flex items-center gap-2 flex-wrap">
           <label class="text-xs text-gray-600">급여 월</label>
           <input type="month" id="prPeriod" class="border rounded px-2 py-1 text-xs" />
           <select id="prStatus" class="border rounded px-2 py-1 text-xs">
@@ -19,7 +19,7 @@ export function payrollPage(c: Context<HonoEnv>) {
             <option value="APPROVED">승인</option>
             <option value="PAID">지급완료</option>
           </select>
-          <button onclick="payrollLoad()" class="px-3 py-1.5 text-xs bg-blue-600 text-white rounded hover:bg-blue-700">
+          <button onclick="payrollLoad()" class="ds-btn ds-btn-primary text-xs">
             <i class="fas fa-search mr-1"></i>조회
           </button>
           <div class="flex-1"></div>
@@ -57,26 +57,26 @@ export function payrollPage(c: Context<HonoEnv>) {
               </button>
             </div>
           </div>
-          <button onclick="payrollOpenEditModal(0)" class="px-3 py-1.5 text-xs bg-blue-600 text-white rounded hover:bg-blue-700">
+          <button onclick="payrollOpenEditModal(0)" class="ds-btn ds-btn-primary text-xs">
             <i class="fas fa-plus mr-1"></i>급여 작성
           </button>
         </div>
 
         <!-- 요약 카드 -->
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-          <div class="bg-white rounded-lg border shadow-sm p-4">
+          <div class="ds-card p-4">
             <div class="text-xs text-gray-500">총 인원</div>
             <div class="text-2xl font-bold text-gray-900 mt-1" id="prSumCount">-</div>
           </div>
-          <div class="bg-white rounded-lg border shadow-sm p-4">
+          <div class="ds-card p-4">
             <div class="text-xs text-gray-500">지급 총액</div>
             <div class="text-2xl font-bold text-gray-900 mt-1" id="prSumGross">-</div>
           </div>
-          <div class="bg-white rounded-lg border shadow-sm p-4">
+          <div class="ds-card p-4">
             <div class="text-xs text-gray-500">공제 총액</div>
             <div class="text-2xl font-bold text-red-600 mt-1" id="prSumDeduct">-</div>
           </div>
-          <div class="bg-white rounded-lg border shadow-sm p-4">
+          <div class="ds-card p-4">
             <div class="text-xs text-gray-500">실지급 총액</div>
             <div class="text-2xl font-bold text-green-600 mt-1" id="prSumNet">-</div>
           </div>
@@ -89,10 +89,10 @@ export function payrollPage(c: Context<HonoEnv>) {
           </span>
           <span id="prSelectedCount" class="text-xs text-gray-600">선택: 0명</span>
           <div class="flex-1"></div>
-          <button onclick="payrollBulkApprove()" class="px-3 py-1 bg-blue-600 text-white rounded text-sm hover:bg-blue-700">
+          <button onclick="payrollBulkApprove()" class="ds-btn ds-btn-primary text-sm">
             <i class="fas fa-check mr-1"></i>선택 승인
           </button>
-          <button onclick="payrollBulkPay()" class="px-3 py-1 bg-blue-600 text-white rounded text-sm hover:bg-blue-700">
+          <button onclick="payrollBulkPay()" class="ds-btn ds-btn-primary text-sm">
             <i class="fas fa-dollar-sign mr-1"></i>선택 지급완료
           </button>
           <button onclick="payrollBulkSyncAttendance()" class="px-3 py-1 bg-amber-600 text-white rounded text-sm hover:bg-amber-700">
@@ -101,7 +101,7 @@ export function payrollPage(c: Context<HonoEnv>) {
         </div>
 
         <!-- 급여 목록 테이블 -->
-        <div class="bg-white rounded-lg border shadow-sm overflow-hidden">
+        <div class="ds-card overflow-hidden">
           <div class="overflow-x-auto">
             <table class="w-full text-sm ds-table-striped">
               <thead class="bg-gray-50 text-xs text-gray-600 uppercase tracking-wider">
@@ -130,8 +130,8 @@ export function payrollPage(c: Context<HonoEnv>) {
       </div>
 
       <!-- 급여 작성/수정 모달 -->
-      <div id="prEditModal" class="hidden fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-        <div class="bg-white rounded-lg shadow-xl w-full max-w-3xl max-h-[90vh] overflow-y-auto">
+      <div id="prEditModal" class="ds-modal-overlay hidden">
+        <div class="ds-modal max-h-[90vh] overflow-y-auto" style="max-width:48rem">
           <div class="px-5 py-3 border-b flex items-center justify-between sticky top-0 bg-white z-10">
             <h3 class="text-base font-semibold">급여 명세 작성</h3>
             <button onclick="payrollCloseEditModal()" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times"></i></button>
@@ -291,14 +291,14 @@ export function payrollPage(c: Context<HonoEnv>) {
           </div>
           <div class="px-5 py-3 border-t flex justify-end gap-2 sticky bottom-0 bg-white">
             <button onclick="payrollCloseEditModal()" class="px-3 py-1.5 text-xs border border-gray-300 text-gray-700 bg-white rounded hover:bg-gray-50">취소</button>
-            <button onclick="payrollSave()" class="px-3 py-1.5 text-xs bg-blue-600 text-white rounded hover:bg-blue-700"><i class="fas fa-save mr-1"></i>저장</button>
+            <button onclick="payrollSave()" class="ds-btn ds-btn-primary text-xs"><i class="fas fa-save mr-1"></i>저장</button>
           </div>
         </div>
       </div>
 
       <!-- 4대보험 요율 모달 -->
-      <div id="prRatesModal" class="hidden fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-        <div class="bg-white rounded-lg shadow-xl w-full max-w-2xl">
+      <div id="prRatesModal" class="ds-modal-overlay hidden">
+        <div class="ds-modal" style="max-width:42rem">
           <div class="px-5 py-3 border-b flex items-center justify-between">
             <h3 class="text-base font-semibold">4대보험 요율</h3>
             <button onclick="payrollCloseRatesModal()" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times"></i></button>
@@ -307,7 +307,7 @@ export function payrollPage(c: Context<HonoEnv>) {
             <div class="flex items-center gap-2 mb-3">
               <label class="text-xs text-gray-600">연도</label>
               <input type="number" id="prRatesYear" value="2026" class="border rounded px-2 py-1 text-xs w-24" />
-              <button onclick="payrollLoadRates()" class="px-3 py-1.5 text-xs bg-blue-600 text-white rounded hover:bg-blue-700">조회</button>
+              <button onclick="payrollLoadRates()" class="ds-btn ds-btn-primary text-xs">조회</button>
             </div>
             <table class="w-full text-sm">
               <thead class="bg-gray-50 text-xs text-gray-600 uppercase">

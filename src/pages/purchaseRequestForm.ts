@@ -17,7 +17,7 @@ export function purchaseRequestFormPage(c: Context<HonoEnv>) {
     `,
     pageContent: `
       <div class="max-w-4xl mx-auto">
-        <div class="bg-white rounded-lg shadow p-6">
+        <div class="ds-card p-6">
           <h2 class="text-lg font-bold mb-6" id="prFormTitle">
             <i class="fas fa-clipboard-list text-blue-600 mr-2"></i>발주 요청 작성
           </h2>
@@ -106,7 +106,7 @@ export function purchaseRequestFormPage(c: Context<HonoEnv>) {
               class="px-4 py-2 bg-gray-200 rounded-lg hover:bg-gray-300 text-sm">취소</button>
             <button type="button" onclick="submitPRRequest()"
               id="prSubmitBtn"
-              class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium">
+              class="ds-btn ds-btn-primary text-sm font-medium">
               <i class="fas fa-paper-plane mr-1"></i>요청 제출
             </button>
           </div>

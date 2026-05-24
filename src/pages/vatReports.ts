@@ -10,7 +10,7 @@ export function vatReportsPage(c: Context<HonoEnv>) {
     pageContent: `
       <div class="space-y-4">
         <!-- 분기 선택 -->
-        <div class="bg-white rounded-lg border shadow-sm p-3 flex items-center gap-2">
+        <div class="ds-card p-3 flex items-center gap-2">
           <label class="text-xs text-gray-500">신고 연도</label>
           <select id="vatYear" class="border rounded px-2 py-1 text-xs"></select>
           <label class="text-xs text-gray-500 ml-2">분기</label>
@@ -34,22 +34,22 @@ export function vatReportsPage(c: Context<HonoEnv>) {
 
         <!-- 요약 카드 -->
         <div class="grid grid-cols-2 md:grid-cols-4 gap-2">
-          <div class="bg-white rounded-lg border p-3 text-center shadow-sm">
+          <div class="ds-card p-3 text-center">
             <div class="text-xs text-gray-400 mb-1">매출 세금계산서</div>
             <div class="text-lg font-bold text-gray-900" style="font-variant-numeric:tabular-nums;" id="vatSalesCount">-</div>
             <div class="text-[10px] text-gray-400 mt-1">건</div>
           </div>
-          <div class="bg-white rounded-lg border p-3 text-center shadow-sm">
+          <div class="ds-card p-3 text-center">
             <div class="text-xs text-gray-400 mb-1">매출 공급가액</div>
             <div class="text-lg font-bold text-blue-600" style="font-variant-numeric:tabular-nums;" id="vatSalesSupply">-</div>
             <div class="text-[10px] text-gray-400 mt-1" id="vatSalesTax">세액 -</div>
           </div>
-          <div class="bg-white rounded-lg border p-3 text-center shadow-sm">
+          <div class="ds-card p-3 text-center">
             <div class="text-xs text-gray-400 mb-1">매입 공급가액</div>
             <div class="text-lg font-bold text-amber-600" style="font-variant-numeric:tabular-nums;" id="vatPurchaseSupply">-</div>
             <div class="text-[10px] text-gray-400 mt-1" id="vatPurchaseTax">세액 -</div>
           </div>
-          <div class="bg-white rounded-lg border border-red-200 p-3 text-center shadow-sm">
+          <div class="ds-card border-red-200 p-3 text-center">
             <div class="text-xs text-red-500 mb-1">납부세액</div>
             <div class="text-lg font-bold text-red-600" style="font-variant-numeric:tabular-nums;" id="vatPayable">-</div>
             <div class="text-[10px] text-gray-400 mt-1">매출세액 - 매입세액</div>
@@ -57,7 +57,7 @@ export function vatReportsPage(c: Context<HonoEnv>) {
         </div>
 
         <!-- 매출/매입 탭 -->
-        <div class="bg-white rounded-lg border shadow-sm">
+        <div class="ds-card">
           <div class="flex border-b">
             <button id="tabVatSales" onclick="switchVatTab('sales')" class="px-4 py-2 text-sm font-medium border-b-2 border-blue-600 text-blue-600">매출 세금계산서</button>
             <button id="tabVatPurchase" onclick="switchVatTab('purchase')" class="px-4 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">매입 세금계산서</button>

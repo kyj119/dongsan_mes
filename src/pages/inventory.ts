@@ -54,7 +54,7 @@ export function inventoryPage(c: Context<HonoEnv>) {
     activePage: '/inventory',
     pageContent: `
             <!-- Tab Navigation -->
-            <div class="flex border-b mb-6 bg-white rounded-t-lg shadow-lg">
+            <div class="flex border-b mb-6 ds-card" style="border-radius:var(--radius) var(--radius) 0 0">
               <button onclick="switchInvTab('stock')" id="tabStock" class="inv-tab px-6 py-3 text-sm font-medium border-b-2 border-blue-600 text-blue-600 hover:text-blue-700">
                 <i class="fas fa-boxes mr-2"></i>재고 현황
               </button>
@@ -67,7 +67,7 @@ export function inventoryPage(c: Context<HonoEnv>) {
             <div id="stockTabContent" class="block">
             <!-- Statistics Section -->
             <div class="grid grid-cols-1 sm:grid-cols-3 gap-6 mb-6">
-                <div class="bg-white rounded-lg shadow-lg p-6">
+                <div class="ds-card p-6">
                     <div class="flex items-center justify-between mb-2">
                         <div class="text-sm text-gray-600">부족 품목</div>
                         <i class="fas fa-exclamation-triangle text-red-500 text-2xl"></i>
@@ -75,7 +75,7 @@ export function inventoryPage(c: Context<HonoEnv>) {
                     <div class="text-3xl font-bold text-red-600" id="lowStockItems">-</div>
                     <div class="text-xs text-gray-500 mt-1">안전 재고 미달</div>
                 </div>
-                <div class="bg-white rounded-lg shadow-lg p-6">
+                <div class="ds-card p-6">
                     <div class="flex items-center justify-between mb-2">
                         <div class="text-sm text-gray-600">최근 로스율</div>
                         <i class="fas fa-chart-line text-amber-500 text-2xl"></i>
@@ -83,7 +83,7 @@ export function inventoryPage(c: Context<HonoEnv>) {
                     <div class="text-3xl font-bold text-amber-600" id="lossRate">-</div>
                     <div class="text-xs text-gray-500 mt-1">실사 vs 이론 재고 차이</div>
                 </div>
-                <div class="bg-white rounded-lg shadow-lg p-6">
+                <div class="ds-card p-6">
                     <div class="flex items-center justify-between mb-2">
                         <div class="text-sm text-gray-600">마지막 실사</div>
                         <i class="fas fa-clipboard-check text-blue-500 text-2xl"></i>
@@ -94,9 +94,9 @@ export function inventoryPage(c: Context<HonoEnv>) {
             </div>
 
             <!-- Action Buttons -->
-            <div class="bg-white rounded-lg shadow-lg p-4 mb-6">
+            <div class="ds-card p-4 mb-6">
                 <div class="flex gap-4 flex-wrap">
-                    <button id="adjustmentBtn" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">
+                    <button id="adjustmentBtn" class="ds-btn ds-btn-primary">
                         <i class="fas fa-adjust mr-2"></i>재고 조정
                     </button>
                     <button id="refreshBtn" class="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700">
@@ -133,7 +133,7 @@ export function inventoryPage(c: Context<HonoEnv>) {
             </div>
 
             <!-- Inventory Table -->
-            <div class="bg-white rounded-lg shadow-lg p-6">
+            <div class="ds-card p-6">
                 <h2 class="text-xl font-bold mb-4">
                     <i class="fas fa-list text-teal-600 mr-2"></i>재고 현황
                 </h2>
@@ -278,8 +278,8 @@ export function inventoryPage(c: Context<HonoEnv>) {
 
             <!-- 모든 모달들 (탭 콘텐츠 밖) -->
             <!-- Transaction History Modal -->
-            <div id="transactionModal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-                <div class="bg-white rounded-lg shadow-xl p-6 max-w-4xl w-full mx-4 max-h-[80vh] overflow-y-auto">
+            <div id="transactionModal" class="ds-modal-overlay hidden">
+                <div class="ds-modal p-6 max-h-[80vh] overflow-y-auto" style="max-width:56rem">
                     <div class="flex justify-between items-center mb-4">
                         <h3 class="text-xl font-bold">
                             <i class="fas fa-history text-teal-600 mr-2"></i>
@@ -310,8 +310,8 @@ export function inventoryPage(c: Context<HonoEnv>) {
             <!-- Receipt/Release 모달 제거됨 — 입고는 /receiving 페이지에서 처리 -->
 
             <!-- Adjustment Modal (재고 조정) -->
-            <div id="adjustmentModal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-                <div class="bg-white rounded-lg shadow-xl p-6 max-w-2xl w-full mx-4">
+            <div id="adjustmentModal" class="ds-modal-overlay hidden">
+                <div class="ds-modal p-6" style="max-width:42rem">
                     <h3 class="text-xl font-bold mb-4"><i class="fas fa-adjust text-purple-600 mr-2"></i>재고 조정</h3>
                     <div class="space-y-4">
                         <div class="grid grid-cols-2 gap-4">
@@ -351,14 +351,14 @@ export function inventoryPage(c: Context<HonoEnv>) {
                     </div>
                     <div class="mt-6 flex justify-end gap-2">
                         <button id="cancelAdjust" class="px-4 py-2 bg-gray-300 rounded hover:bg-gray-400">취소</button>
-                        <button id="submitAdjust" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">조정 등록</button>
+                        <button id="submitAdjust" class="ds-btn ds-btn-primary">조정 등록</button>
                     </div>
                 </div>
             </div>
 
             <!-- Settings Modal (안전재고/ROP 설정) -->
-            <div id="settingsModal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-                <div class="bg-white rounded-lg shadow-xl p-6 max-w-md w-full mx-4">
+            <div id="settingsModal" class="ds-modal-overlay hidden">
+                <div class="ds-modal p-6" style="max-width:28rem">
                     <h3 class="text-xl font-bold mb-4">
                         <i class="fas fa-cog text-gray-600 mr-2"></i>
                         재고 설정 - <span id="settingsItemName"></span>

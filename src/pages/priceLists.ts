@@ -59,10 +59,10 @@ document.addEventListener('DOMContentLoaded', function() {
 
   <!-- 매출 단가표 탭 -->
   <div id="salesTabContent" class="block">
-    <div class="bg-white rounded-lg shadow-lg p-6 mb-6">
+    <div class="ds-card p-6 mb-6">
       <div class="flex justify-between items-center mb-4">
         <h2 class="text-xl font-bold"><i class="fas fa-layer-group text-purple-600 mr-2"></i>매출 단가표 관리</h2>
-        <button onclick="showAddPriceListModal()" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm">
+        <button onclick="showAddPriceListModal()" class="ds-btn ds-btn-primary text-sm">
           <i class="fas fa-plus mr-1"></i>단가표 추가
         </button>
       </div>
@@ -72,11 +72,11 @@ document.addEventListener('DOMContentLoaded', function() {
     </div>
 
     <!-- 선택된 단가표 상세 -->
-    <div id="priceListDetail" class="hidden bg-white rounded-lg shadow-lg p-6 mb-6">
+    <div id="priceListDetail" class="hidden ds-card p-6 mb-6">
       <div class="flex justify-between items-center mb-4">
         <h3 class="text-lg font-bold" id="detailTitle">단가표 상세</h3>
         <div class="flex gap-2">
-          <button onclick="showAssignClientModal()" class="px-3 py-1.5 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700">
+          <button onclick="showAssignClientModal()" class="ds-btn ds-btn-primary text-sm">
             <i class="fas fa-user-plus mr-1"></i>거래처 배정
           </button>
         </div>
@@ -113,7 +113,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
   <!-- 매입 단가 탭 -->
   <div id="purchaseTabContent" class="hidden">
-    <div class="bg-white rounded-lg shadow-lg p-6 mb-6">
+    <div class="ds-card p-6 mb-6">
       <h2 class="text-xl font-bold mb-4"><i class="fas fa-boxes text-orange-600 mr-2"></i>매입 단가 관리</h2>
       <div class="flex flex-wrap gap-3 items-end mb-4">
         <div class="flex-1 min-w-[200px]">
@@ -139,7 +139,7 @@ document.addEventListener('DOMContentLoaded', function() {
             <h3 class="text-lg font-semibold">공급업체별 단가</h3>
             <span id="supplierPriceCount" class="text-sm text-gray-500"></span>
           </div>
-          <button onclick="showAddSupplierPriceModal()" class="px-3 py-1.5 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700">
+          <button onclick="showAddSupplierPriceModal()" class="ds-btn ds-btn-primary text-sm">
             <i class="fas fa-plus mr-1"></i>공급업체 추가
           </button>
         </div>
@@ -165,8 +165,8 @@ document.addEventListener('DOMContentLoaded', function() {
 </div>
 
 <!-- 매출 단가표 모달들 -->
-<div id="priceListModal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-  <div class="bg-white rounded-lg shadow-xl max-w-md w-full mx-4">
+<div id="priceListModal" class="ds-modal-overlay hidden">
+  <div class="ds-modal" style="max-width:28rem">
     <div class="p-6">
       <h2 class="text-xl font-bold mb-4" id="priceListModalTitle">단가표 추가</h2>
       <input type="hidden" id="plModalId">
@@ -186,15 +186,15 @@ document.addEventListener('DOMContentLoaded', function() {
         </div>
       </div>
       <div class="mt-5 flex gap-2">
-        <button onclick="savePriceList()" class="flex-1 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">저장</button>
+        <button onclick="savePriceList()" class="flex-1 ds-btn ds-btn-primary">저장</button>
         <button onclick="document.getElementById('priceListModal').classList.add('hidden')" class="px-4 py-2 bg-gray-300 rounded hover:bg-gray-400">취소</button>
       </div>
     </div>
   </div>
 </div>
 
-<div id="assignClientModal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-  <div class="bg-white rounded-lg shadow-xl max-w-lg w-full mx-4">
+<div id="assignClientModal" class="ds-modal-overlay hidden">
+  <div class="ds-modal" style="max-width:32rem">
     <div class="p-6">
       <h2 class="text-xl font-bold mb-4">거래처 배정</h2>
       <div class="mb-4">
@@ -203,7 +203,7 @@ document.addEventListener('DOMContentLoaded', function() {
       </div>
       <div id="selectedAssignClients" class="flex flex-wrap gap-2 mb-4"></div>
       <div class="flex gap-2">
-        <button onclick="confirmAssignClients()" class="flex-1 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">배정</button>
+        <button onclick="confirmAssignClients()" class="flex-1 ds-btn ds-btn-primary">배정</button>
         <button onclick="document.getElementById('assignClientModal').classList.add('hidden')" class="px-4 py-2 bg-gray-300 rounded hover:bg-gray-400">취소</button>
       </div>
     </div>
@@ -211,8 +211,8 @@ document.addEventListener('DOMContentLoaded', function() {
 </div>
 
 <!-- 매입 단가 모달 -->
-<div id="supplierPriceModal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-  <div class="bg-white rounded-lg shadow-xl max-w-md w-full mx-4">
+<div id="supplierPriceModal" class="ds-modal-overlay hidden">
+  <div class="ds-modal" style="max-width:28rem">
     <div class="p-6">
       <h2 class="text-xl font-bold mb-4" id="spModalTitle">공급업체 단가 추가</h2>
       <input type="hidden" id="spModalId">
@@ -239,7 +239,7 @@ document.addEventListener('DOMContentLoaded', function() {
         </div>
       </div>
       <div class="mt-5 flex gap-2">
-        <button onclick="saveSupplierPrice()" class="flex-1 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">저장</button>
+        <button onclick="saveSupplierPrice()" class="flex-1 ds-btn ds-btn-primary">저장</button>
         <button onclick="document.getElementById('supplierPriceModal').classList.add('hidden')" class="px-4 py-2 bg-gray-300 rounded hover:bg-gray-400">취소</button>
       </div>
     </div>

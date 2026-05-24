@@ -10,7 +10,7 @@ export function financialReportsPage(c: Context<HonoEnv>) {
     pageContent: `
       <div class="space-y-4">
         <!-- 탭 네비게이션 -->
-        <div class="bg-white rounded-lg border shadow-sm">
+        <div class="ds-card" style="padding:0;">
           <div class="flex border-b px-4">
             <button id="tabPnl" onclick="switchFinancialTab('pnl')" class="px-0 py-3 text-sm font-medium border-b-2 border-blue-600 text-blue-600 flex items-center gap-2">
               <i class="fas fa-file-invoice-dollar"></i>손익계산서
@@ -25,12 +25,12 @@ export function financialReportsPage(c: Context<HonoEnv>) {
 
           <!-- 손익계산서 탭 -->
           <div id="pnlPanel" class="p-4 space-y-4">
-            <div class="bg-white rounded-lg border shadow-sm p-3 flex items-center gap-2 flex-wrap">
+            <div class="ds-card p-3 flex items-center gap-2 flex-wrap">
               <label class="text-xs text-gray-500">기간</label>
               <input type="date" id="pnlFromDate" class="border rounded px-2 py-1 text-xs">
               <span class="text-gray-400">~</span>
               <input type="date" id="pnlToDate" class="border rounded px-2 py-1 text-xs">
-              <button onclick="loadPnl()" class="px-3 py-1.5 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 ml-auto">
+              <button onclick="loadPnl()" class="ds-btn ds-btn-primary text-xs ml-auto">
                 <i class="fas fa-search mr-1"></i>조회
               </button>
               <button onclick="exportFinancialCsv()" class="px-3 py-1 bg-gray-600 text-white text-sm rounded hover:bg-gray-700"><i class="fas fa-file-csv mr-1"></i>CSV</button>
@@ -38,22 +38,22 @@ export function financialReportsPage(c: Context<HonoEnv>) {
 
             <!-- KPI 행 -->
             <div class="grid grid-cols-2 md:grid-cols-4 gap-2">
-              <div class="bg-white rounded-lg border p-3 text-center shadow-sm hover:shadow-md transition-shadow">
+              <div class="ds-card p-3 text-center">
                 <div class="text-[10px] text-gray-400 mb-1">매출</div>
                 <div class="text-lg font-bold text-gray-900" style="font-variant-numeric:tabular-nums;" id="pnlRevenue">-</div>
                 <div class="text-[10px] text-gray-400 mt-1" id="pnlRevenueCount">건</div>
               </div>
-              <div class="bg-white rounded-lg border p-3 text-center shadow-sm hover:shadow-md transition-shadow">
+              <div class="ds-card p-3 text-center">
                 <div class="text-[10px] text-gray-400 mb-1">매출총이익</div>
                 <div class="text-lg font-bold text-gray-900" style="font-variant-numeric:tabular-nums;" id="pnlGrossProfit">-</div>
                 <div class="text-[10px] text-gray-400 mt-1" id="pnlGrossProfitMargin">-</div>
               </div>
-              <div class="bg-white rounded-lg border p-3 text-center shadow-sm hover:shadow-md transition-shadow">
+              <div class="ds-card p-3 text-center">
                 <div class="text-[10px] text-gray-400 mb-1">영업이익</div>
                 <div class="text-lg font-bold text-gray-900" style="font-variant-numeric:tabular-nums;" id="pnlOperatingProfit">-</div>
                 <div class="text-[10px] text-gray-400 mt-1" id="pnlOperatingMargin">-</div>
               </div>
-              <div class="bg-white rounded-lg border p-3 text-center shadow-sm hover:shadow-md transition-shadow">
+              <div class="ds-card p-3 text-center">
                 <div class="text-[10px] text-gray-400 mb-1">당기순이익</div>
                 <div class="text-lg font-bold text-gray-900" style="font-variant-numeric:tabular-nums;" id="pnlNetProfit">-</div>
                 <div class="text-[10px] text-gray-400 mt-1" id="pnlNetMargin">-</div>
@@ -61,7 +61,7 @@ export function financialReportsPage(c: Context<HonoEnv>) {
             </div>
 
             <!-- P&L 테이블 -->
-            <div class="bg-white rounded-lg border shadow-sm overflow-x-auto">
+            <div class="ds-card overflow-x-auto">
               <table class="w-full text-xs ds-table-striped">
                 <thead class="bg-gray-50 sticky top-0">
                   <tr>
@@ -84,10 +84,10 @@ export function financialReportsPage(c: Context<HonoEnv>) {
 
           <!-- 월별 추이 탭 -->
           <div id="monthlyPanel" class="hidden p-4 space-y-4">
-            <div class="bg-white rounded-lg border shadow-sm p-3 flex items-center gap-2 flex-wrap">
+            <div class="ds-card p-3 flex items-center gap-2 flex-wrap">
               <label class="text-xs text-gray-500">연도</label>
               <select id="monthlyYear" class="border rounded px-2 py-1 text-xs"></select>
-              <button onclick="loadMonthlyPnl()" class="px-3 py-1.5 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 ml-auto">
+              <button onclick="loadMonthlyPnl()" class="ds-btn ds-btn-primary text-xs ml-auto">
                 <i class="fas fa-search mr-1"></i>조회
               </button>
               <button onclick="exportFinancialCsv()" class="px-3 py-1 bg-gray-600 text-white text-sm rounded hover:bg-gray-700"><i class="fas fa-file-csv mr-1"></i>CSV</button>
@@ -95,22 +95,22 @@ export function financialReportsPage(c: Context<HonoEnv>) {
 
             <!-- KPI 행 -->
             <div class="grid grid-cols-2 md:grid-cols-4 gap-2">
-              <div class="bg-white rounded-lg border p-3 text-center shadow-sm hover:shadow-md transition-shadow">
+              <div class="ds-card p-3 text-center">
                 <div class="text-[10px] text-gray-400 mb-1">연간 매출</div>
                 <div class="text-lg font-bold text-gray-900" style="font-variant-numeric:tabular-nums;" id="monthlyYearRevenue">-</div>
                 <div class="text-[10px] text-gray-400 mt-1">합계</div>
               </div>
-              <div class="bg-white rounded-lg border p-3 text-center shadow-sm hover:shadow-md transition-shadow">
+              <div class="ds-card p-3 text-center">
                 <div class="text-[10px] text-gray-400 mb-1">연간 영업이익</div>
                 <div class="text-lg font-bold text-gray-900" style="font-variant-numeric:tabular-nums;" id="monthlyYearProfit">-</div>
                 <div class="text-[10px] text-gray-400 mt-1">합계</div>
               </div>
-              <div class="bg-white rounded-lg border p-3 text-center shadow-sm hover:shadow-md transition-shadow">
+              <div class="ds-card p-3 text-center">
                 <div class="text-[10px] text-gray-400 mb-1">월 평균 매출</div>
                 <div class="text-lg font-bold text-gray-900" style="font-variant-numeric:tabular-nums;" id="monthlyAvgRevenue">-</div>
                 <div class="text-[10px] text-gray-400 mt-1">12개월</div>
               </div>
-              <div class="bg-white rounded-lg border p-3 text-center shadow-sm hover:shadow-md transition-shadow">
+              <div class="ds-card p-3 text-center">
                 <div class="text-[10px] text-gray-400 mb-1">평균 이익률</div>
                 <div class="text-lg font-bold text-gray-900" style="font-variant-numeric:tabular-nums;" id="monthlyAvgMargin">-</div>
                 <div class="text-[10px] text-gray-400 mt-1">%</div>
@@ -118,12 +118,12 @@ export function financialReportsPage(c: Context<HonoEnv>) {
             </div>
 
             <!-- 차트 -->
-            <div class="bg-white rounded-lg border shadow-sm p-4">
+            <div class="ds-card p-4">
               <canvas id="monthlyTrendChart" height="80"></canvas>
             </div>
 
             <!-- 월별 테이블 -->
-            <div class="bg-white rounded-lg border shadow-sm overflow-x-auto">
+            <div class="ds-card overflow-x-auto">
               <table class="w-full text-xs ds-table-striped">
                 <thead class="bg-gray-50 sticky top-0">
                   <tr>
@@ -149,29 +149,29 @@ export function financialReportsPage(c: Context<HonoEnv>) {
           <!-- 재무 스냅샷 탭 -->
           <div id="snapshotPanel" class="hidden p-4 space-y-4">
             <div class="flex justify-end">
-              <button onclick="loadBalanceSnapshot()" class="px-3 py-1.5 text-xs bg-blue-600 text-white rounded hover:bg-blue-700">
+              <button onclick="loadBalanceSnapshot()" class="ds-btn ds-btn-primary text-xs">
                 <i class="fas fa-sync-alt mr-1"></i>갱신
               </button>
             </div>
 
             <!-- 자산 카드 -->
             <div class="grid grid-cols-2 md:grid-cols-4 gap-2">
-              <div class="bg-white rounded-lg border shadow-sm hover:shadow-md transition-shadow p-3 text-center">
+              <div class="ds-card p-3 text-center">
                 <i class="fas fa-dollar-sign text-green-600 text-xl mb-2 block"></i>
                 <div class="text-lg font-bold text-gray-900" style="font-variant-numeric:tabular-nums;" id="snapshotCash">-</div>
                 <div class="text-[10px] text-gray-400 mt-1">현금</div>
               </div>
-              <div class="bg-white rounded-lg border shadow-sm hover:shadow-md transition-shadow p-3 text-center">
+              <div class="ds-card p-3 text-center">
                 <i class="fas fa-handshake text-blue-600 text-xl mb-2 block"></i>
                 <div class="text-lg font-bold text-gray-900" style="font-variant-numeric:tabular-nums;" id="snapshotAr">-</div>
                 <div class="text-[10px] text-gray-400 mt-1">미수금</div>
               </div>
-              <div class="bg-white rounded-lg border shadow-sm hover:shadow-md transition-shadow p-3 text-center">
+              <div class="ds-card p-3 text-center">
                 <i class="fas fa-boxes text-amber-600 text-xl mb-2 block"></i>
                 <div class="text-lg font-bold text-gray-900" style="font-variant-numeric:tabular-nums;" id="snapshotInventory">-</div>
                 <div class="text-[10px] text-gray-400 mt-1">재고</div>
               </div>
-              <div class="bg-white rounded-lg border shadow-sm hover:shadow-md transition-shadow p-3 text-center">
+              <div class="ds-card p-3 text-center">
                 <i class="fas fa-credit-card text-red-600 text-xl mb-2 block"></i>
                 <div class="text-lg font-bold text-gray-900" style="font-variant-numeric:tabular-nums;" id="snapshotAp">-</div>
                 <div class="text-[10px] text-gray-400 mt-1">매입미지급</div>
@@ -180,12 +180,12 @@ export function financialReportsPage(c: Context<HonoEnv>) {
 
             <!-- 대출 & 순자산 -->
             <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
-              <div class="bg-white rounded-lg border shadow-sm hover:shadow-md transition-shadow p-4 text-center">
+              <div class="ds-card p-4 text-center">
                 <i class="fas fa-university text-red-600 text-2xl mb-2 block"></i>
                 <div class="text-sm text-gray-500 mb-1">대출 잔액</div>
                 <div class="text-2xl font-bold text-red-600" style="font-variant-numeric:tabular-nums;" id="snapshotLoans">-</div>
               </div>
-              <div class="bg-white rounded-lg border border-green-200 shadow-sm hover:shadow-md transition-shadow p-4 text-center">
+              <div class="ds-card p-4 text-center">
                 <i class="fas fa-chart-pie text-green-600 text-2xl mb-2 block"></i>
                 <div class="text-sm text-gray-500 mb-1">순자산</div>
                 <div class="text-2xl font-bold text-green-600" style="font-variant-numeric:tabular-nums;" id="snapshotNetAssets">-</div>

@@ -10,7 +10,7 @@ export function yearEndManagePage(c: Context<HonoEnv>) {
     pageContent: `
       <div class="space-y-4">
         <!-- 상단 컨트롤 바 -->
-        <div class="bg-white rounded-lg border shadow-sm p-4 flex items-center gap-3 flex-wrap">
+        <div class="ds-card p-4 flex items-center gap-3 flex-wrap">
           <label class="text-xs font-medium text-gray-600">정산 연도</label>
           <select id="yeYear" class="border rounded px-3 py-1.5 text-sm" onchange="yeLoadList()"></select>
           <button onclick="yeLoadList()" class="px-3 py-1.5 text-xs bg-blue-600 text-white rounded hover:bg-blue-700">
@@ -41,7 +41,7 @@ export function yearEndManagePage(c: Context<HonoEnv>) {
         </div>
 
         <!-- 직원 목록 테이블 -->
-        <div class="bg-white rounded-lg border shadow-sm overflow-hidden">
+        <div class="ds-card overflow-hidden">
           <div class="overflow-x-auto">
             <table class="w-full text-sm ds-table-striped">
               <thead class="bg-gray-50 text-xs text-gray-600 font-semibold uppercase tracking-wider">
@@ -64,8 +64,8 @@ export function yearEndManagePage(c: Context<HonoEnv>) {
         </div>
 
         <!-- 정산 편집 모달 -->
-        <div id="yeModal" class="fixed inset-0 bg-black/40 z-50 hidden flex items-start justify-center pt-8 overflow-y-auto">
-          <div class="bg-white rounded-xl shadow-2xl w-full max-w-3xl mx-4 mb-8">
+        <div id="yeModal" class="ds-modal-overlay hidden flex items-start justify-center pt-8 overflow-y-auto">
+          <div class="ds-modal mx-4 mb-8" style="max-width:48rem">
             <div class="flex items-center justify-between px-6 py-4 border-b">
               <h3 class="text-lg font-bold text-gray-900"><i class="fas fa-calculator mr-2 text-blue-600"></i>연말정산 상세</h3>
               <button onclick="yeCloseModal()" class="text-gray-400 hover:text-gray-700"><i class="fas fa-times text-lg"></i></button>
@@ -183,7 +183,7 @@ export function yearEndManagePage(c: Context<HonoEnv>) {
             </div>
             <div class="flex items-center justify-end gap-2 px-6 py-4 border-t bg-gray-50 rounded-b-xl">
               <button onclick="yeCloseModal()" class="px-4 py-2 text-sm border border-gray-300 rounded-lg text-gray-700 bg-white hover:bg-gray-50">취소</button>
-              <button onclick="yeCalculateAndSave()" class="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+              <button onclick="yeCalculateAndSave()" class="ds-btn ds-btn-primary text-sm">
                 <i class="fas fa-calculator mr-1"></i>계산 및 저장
               </button>
             </div>

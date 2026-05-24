@@ -22,7 +22,7 @@ export function storageZonesPage(c: Context<HonoEnv>) {
     </div>
   </div>
 
-  <div class="bg-white rounded-lg border shadow-sm hover:shadow-md transition-shadow overflow-hidden">
+  <div class="ds-card hover:shadow-md transition-shadow overflow-hidden">
     <table class="w-full text-sm ds-table-striped">
       <thead class="bg-gray-50">
         <tr>
@@ -48,8 +48,8 @@ export function storageZonesPage(c: Context<HonoEnv>) {
 </div>
 
 <!-- 구역 추가/수정 모달 -->
-<div id="zoneModal" class="hidden fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
-  <div class="bg-white rounded-lg shadow-xl w-full max-w-lg">
+<div id="zoneModal" class="ds-modal-overlay hidden flex items-center justify-center">
+  <div class="ds-modal" style="max-width:32rem">
     <div class="px-5 py-3 border-b border-gray-200 flex items-center justify-between">
       <h3 id="zoneModalTitle" class="text-base font-bold text-gray-900">창고 구역 추가</h3>
       <button onclick="closeZoneModal()" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times"></i></button>
@@ -99,7 +99,7 @@ export function storageZonesPage(c: Context<HonoEnv>) {
     </div>
     <div class="flex justify-end gap-2 px-5 py-3 border-t border-gray-200">
       <button onclick="closeZoneModal()" class="border border-gray-300 bg-white text-gray-700 rounded-lg px-4 py-2 text-sm hover:bg-gray-50">취소</button>
-      <button id="zoneModalSaveBtn" onclick="saveZone()" class="bg-blue-600 text-white rounded-lg px-4 py-2 text-sm hover:bg-blue-700">저장</button>
+      <button id="zoneModalSaveBtn" onclick="saveZone()" class="ds-btn ds-btn-primary text-sm">저장</button>
     </div>
   </div>
 </div>

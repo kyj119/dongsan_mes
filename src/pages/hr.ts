@@ -11,22 +11,22 @@ export function hrPage(c: Context<HonoEnv>) {
       <div class="space-y-6">
         <!-- 요약 카드 -->
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <div class="bg-white rounded-lg border border-gray-200 p-5">
+          <div class="ds-card p-5">
             <div class="text-xs text-gray-500">총 직원</div>
             <div class="text-3xl font-bold text-gray-900 mt-1" id="hrTotalEmployees">-</div>
             <div class="text-xs text-gray-400 mt-1">재직 중</div>
           </div>
-          <div class="bg-white rounded-lg border border-gray-200 p-5">
+          <div class="ds-card p-5">
             <div class="text-xs text-gray-500">금일 출근</div>
             <div class="text-3xl font-bold text-green-600 mt-1" id="hrTodayAttendance">-</div>
             <div class="text-xs text-gray-400 mt-1">오늘 출근 인원</div>
           </div>
-          <div class="bg-white rounded-lg border border-gray-200 p-5">
+          <div class="ds-card p-5">
             <div class="text-xs text-gray-500">평균 근무시간</div>
             <div class="text-3xl font-bold text-gray-900 mt-1" id="hrAvgWorkHours">-</div>
             <div class="text-xs text-gray-400 mt-1">이번 달 평균</div>
           </div>
-          <div class="bg-white rounded-lg border border-gray-200 p-5">
+          <div class="ds-card p-5">
             <div class="text-xs text-gray-500">월 인건비</div>
             <div class="text-3xl font-bold text-gray-900 mt-1" id="hrMonthlyPayroll">-</div>
             <div class="text-xs text-gray-400 mt-1">이번 달 총액</div>
@@ -34,7 +34,7 @@ export function hrPage(c: Context<HonoEnv>) {
         </div>
 
         <!-- 필터 바 -->
-        <div class="bg-white rounded-lg border border-gray-200 p-4">
+        <div class="ds-card p-4">
           <div class="flex flex-wrap items-center gap-3">
             <input id="hrSearch" type="text" placeholder="사번/이름 검색" class="flex-1 min-w-[200px] border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500" />
             <select id="hrFilterDept" class="border border-gray-300 rounded-lg px-3 py-2 text-sm">
@@ -64,17 +64,17 @@ export function hrPage(c: Context<HonoEnv>) {
               <option value="RESIGNED">퇴사</option>
               <option value="">전체</option>
             </select>
-            <button onclick="hrLoadEmployees()" class="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700">
+            <button onclick="hrLoadEmployees()" class="ds-btn ds-btn-primary text-sm font-medium">
               <i class="fas fa-search mr-1"></i> 검색
             </button>
-            <button onclick="hrOpenEmployeeModal()" class="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700">
+            <button onclick="hrOpenEmployeeModal()" class="ds-btn ds-btn-primary text-sm font-medium">
               <i class="fas fa-plus mr-1"></i> 직원 등록
             </button>
           </div>
         </div>
 
         <!-- 직원 목록 -->
-        <div class="bg-white rounded-lg border border-gray-200 overflow-hidden">
+        <div class="ds-card overflow-hidden">
           <div class="overflow-x-auto">
             <table class="w-full text-sm ds-table-striped">
               <thead class="bg-gray-50 text-xs text-gray-600 uppercase tracking-wider">
@@ -108,8 +108,8 @@ export function hrPage(c: Context<HonoEnv>) {
       </div>
 
       <!-- 직원 등록 모달 (직원 상세와 동일 필드 구성) -->
-      <div id="hrEmployeeModal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50">
-        <div class="bg-white rounded-lg w-full max-w-4xl max-h-[92vh] overflow-y-auto">
+      <div id="hrEmployeeModal" class="ds-modal-overlay hidden items-center justify-center">
+        <div class="ds-modal w-full max-h-[92vh] overflow-y-auto" style="max-width:56rem">
           <div class="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex justify-between items-center z-10">
             <h3 class="text-lg font-bold">
               <i class="fas fa-user-plus text-blue-600 mr-2"></i>
@@ -286,7 +286,7 @@ export function hrPage(c: Context<HonoEnv>) {
 
             <div class="sticky bottom-0 bg-white border-t border-gray-200 -mx-6 px-6 py-3 flex justify-end gap-2">
               <button type="button" onclick="hrCloseEmployeeModal()" class="px-4 py-2 text-sm text-gray-600 hover:text-gray-800">취소</button>
-              <button type="submit" class="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700">
+              <button type="submit" class="ds-btn ds-btn-primary text-sm font-medium">
                 <i class="fas fa-save mr-1"></i> 저장
               </button>
             </div>

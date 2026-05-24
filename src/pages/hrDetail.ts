@@ -10,8 +10,8 @@ export function hrDetailPage(c: Context<HonoEnv>) {
     activePage: '/hr',
     pageContent: `
       <!-- 직원 삭제 2차 확인 모달 -->
-      <div id="hrdDeleteModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-        <div class="bg-white rounded-lg shadow-xl w-[460px] max-w-[92vw] overflow-hidden">
+      <div id="hrdDeleteModal" class="ds-modal-overlay hidden">
+        <div class="ds-modal overflow-hidden" style="width:460px;max-width:92vw">
           <div class="px-5 py-4 border-b border-gray-200 flex items-center gap-2 bg-red-50">
             <i class="fas fa-exclamation-triangle text-red-600"></i>
             <h3 class="text-base font-bold text-red-700">직원 하드 삭제 (복구 불가)</h3>
@@ -84,7 +84,7 @@ export function hrDetailPage(c: Context<HonoEnv>) {
               <button id="hrdEditBtn" onclick="hrdToggleEdit(true)" class="px-3 py-1.5 text-xs font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 rounded">
                 <i class="fas fa-pen mr-1"></i>편집
               </button>
-              <button id="hrdSaveBtn" onclick="hrdSave()" class="hidden px-3 py-1.5 text-xs font-medium text-white bg-blue-600 hover:bg-blue-700 rounded">
+              <button id="hrdSaveBtn" onclick="hrdSave()" class="hidden ds-btn ds-btn-primary text-xs font-medium">
                 <i class="fas fa-save mr-1"></i>저장
               </button>
               <button id="hrdCancelBtn" onclick="hrdToggleEdit(false)" class="hidden px-3 py-1.5 text-xs font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 rounded">
@@ -281,7 +281,7 @@ export function hrDetailPage(c: Context<HonoEnv>) {
             </h3>
             <div class="flex items-center gap-2">
               <span id="hrdContractsCount" class="text-xs text-gray-400"></span>
-              <a id="hrdNewContractBtn" href="#" onclick="hrdNewContract(); return false;" class="px-3 py-1.5 text-xs font-medium text-white bg-blue-600 hover:bg-blue-700 rounded">
+              <a id="hrdNewContractBtn" href="#" onclick="hrdNewContract(); return false;" class="ds-btn ds-btn-primary text-xs font-medium">
                 <i class="fas fa-plus mr-1"></i>신규 계약 작성
               </a>
             </div>
@@ -320,40 +320,40 @@ export function hrDetailPage(c: Context<HonoEnv>) {
 
           <div class="space-y-4">
             <!-- 월 선택 -->
-            <div class="bg-white rounded-lg border border-gray-200 p-4 flex items-center gap-3 shadow-sm">
+            <div class="ds-card p-4 flex items-center gap-3">
               <label class="text-sm font-semibold text-gray-900">조회 월</label>
               <input id="hrdMonth" type="month" class="border border-gray-300 rounded px-3 py-2 text-sm focus:border-gray-400 focus:shadow-[0_0_0_3px_rgba(156,163,175,0.15)] focus:outline-none" />
-              <button onclick="hrdLoadDetail()" class="px-4 py-2 bg-blue-600 text-white rounded text-sm font-medium hover:bg-blue-700 transition-colors">
+              <button onclick="hrdLoadDetail()" class="ds-btn ds-btn-primary text-sm font-medium transition-colors">
                 <i class="fas fa-search mr-1"></i>검색
               </button>
             </div>
 
             <!-- 근태 요약 카드 -->
             <div class="grid grid-cols-5 gap-2">
-              <div class="bg-white rounded-lg border p-2.5 text-center shadow-sm hover:shadow-md transition-shadow">
+              <div class="ds-card p-2.5 text-center hover:shadow-md transition-shadow">
                 <div class="text-xl font-bold tabular-nums text-gray-900" id="hrdTotalDays">-</div>
                 <div class="text-[10px] text-gray-400 mt-0.5">근무일수</div>
               </div>
-              <div class="bg-white rounded-lg border p-2.5 text-center shadow-sm hover:shadow-md transition-shadow">
+              <div class="ds-card p-2.5 text-center hover:shadow-md transition-shadow">
                 <div class="text-xl font-bold tabular-nums text-gray-900" id="hrdTotalHours">-</div>
                 <div class="text-[10px] text-gray-400 mt-0.5">근무시간(h)</div>
               </div>
-              <div class="bg-white rounded-lg border p-2.5 text-center shadow-sm hover:shadow-md transition-shadow">
+              <div class="ds-card p-2.5 text-center hover:shadow-md transition-shadow">
                 <div class="text-xl font-bold tabular-nums text-gray-900" id="hrdOtHours">-</div>
                 <div class="text-[10px] text-gray-400 mt-0.5">연장근무(h)</div>
               </div>
-              <div class="bg-white rounded-lg border p-2.5 text-center shadow-sm hover:shadow-md transition-shadow">
+              <div class="ds-card p-2.5 text-center hover:shadow-md transition-shadow">
                 <div class="text-xl font-bold tabular-nums text-gray-900" id="hrdLateCount">-</div>
                 <div class="text-[10px] text-gray-400 mt-0.5">지각 횟수</div>
               </div>
-              <div class="bg-white rounded-lg border border-red-200 p-2.5 text-center shadow-sm hover:shadow-md transition-shadow">
+              <div class="ds-card border-red-200 p-2.5 text-center hover:shadow-md transition-shadow">
                 <div class="text-xl font-bold text-red-600 tabular-nums" id="hrdAbsentDays">-</div>
                 <div class="text-[10px] text-red-500 font-medium mt-0.5">결근 일수</div>
               </div>
             </div>
 
             <!-- 근태 달력 -->
-            <div class="bg-white rounded-lg border border-gray-200 p-5 shadow-sm">
+            <div class="ds-card p-5">
               <div class="flex items-center justify-between mb-4">
                 <h3 class="text-sm font-semibold text-gray-900">
                   <i class="fas fa-calendar-alt text-blue-600 mr-1"></i>

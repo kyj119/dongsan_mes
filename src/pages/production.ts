@@ -26,7 +26,7 @@ export function productionPage(c: Context<HonoEnv>) {
         <!-- ── 상단: 오늘 생산 KPI ── -->
         <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
           <!-- 오늘 출력 완료 -->
-          <div class="bg-white rounded-lg border shadow-sm hover:shadow-md transition-shadow p-3 text-center">
+          <div class="ds-card hover:shadow-md transition-shadow p-3 text-center">
             <div class="text-[10px] text-gray-400 mb-1">
               <i class="fas fa-check-circle text-green-500 mr-1"></i>오늘 완료
             </div>
@@ -37,7 +37,7 @@ export function productionPage(c: Context<HonoEnv>) {
           </div>
 
           <!-- 오늘 진행중 -->
-          <div class="bg-white rounded-lg border shadow-sm hover:shadow-md transition-shadow p-3 text-center">
+          <div class="ds-card hover:shadow-md transition-shadow p-3 text-center">
             <div class="text-[10px] text-gray-400 mb-1">
               <i class="fas fa-spinner text-blue-500 mr-1"></i>인쇄 진행중
             </div>
@@ -48,7 +48,7 @@ export function productionPage(c: Context<HonoEnv>) {
           </div>
 
           <!-- 오늘 에러/취소 -->
-          <div id="kpiErrorCard" class="bg-white rounded-lg border shadow-sm hover:shadow-md transition-shadow p-3 text-center">
+          <div id="kpiErrorCard" class="ds-card hover:shadow-md transition-shadow p-3 text-center">
             <div class="text-[10px] text-gray-400 mb-1">
               <i class="fas fa-exclamation-triangle text-red-500 mr-1"></i>에러 / 취소
             </div>
@@ -59,7 +59,7 @@ export function productionPage(c: Context<HonoEnv>) {
           </div>
 
           <!-- 평균 인쇄 소요시간 -->
-          <div class="bg-white rounded-lg border shadow-sm hover:shadow-md transition-shadow p-3 text-center">
+          <div class="ds-card hover:shadow-md transition-shadow p-3 text-center">
             <div class="text-[10px] text-gray-400 mb-1">
               <i class="fas fa-stopwatch text-amber-500 mr-1"></i>평균 인쇄시간
             </div>
@@ -71,7 +71,7 @@ export function productionPage(c: Context<HonoEnv>) {
         </div>
 
         <!-- ── 장비(에이전트) 상태 ── -->
-        <div class="bg-white rounded-lg border shadow-sm p-4 mb-4">
+        <div class="ds-card p-4 mb-4">
           <div class="flex items-center justify-between mb-3">
             <h2 class="text-sm font-bold text-gray-700">
               <i class="fas fa-server text-blue-500 mr-1.5"></i>장비 상태
@@ -87,7 +87,7 @@ export function productionPage(c: Context<HonoEnv>) {
         </div>
 
         <!-- ── 최근 출력 이벤트 (페이지네이션 포함) ── -->
-        <div class="bg-white rounded-lg border shadow-sm mb-4">
+        <div class="ds-card mb-4">
           <div class="flex items-center justify-between px-4 py-3 border-b border-gray-100">
             <h2 class="text-sm font-bold text-gray-700">
               <i class="fas fa-list-alt text-blue-500 mr-1.5"></i>최근 출력 이력
@@ -141,7 +141,7 @@ export function productionPage(c: Context<HonoEnv>) {
         </div>
 
         <!-- ── 하단: 일별 생산량 차트 ── -->
-        <div class="bg-white rounded-lg border shadow-sm p-4">
+        <div class="ds-card p-4">
           <div class="flex items-center justify-between mb-3">
             <h2 class="text-sm font-bold text-gray-700">
               <i class="fas fa-chart-bar text-blue-500 mr-1.5"></i>최근 7일 일별 출력량
@@ -167,19 +167,19 @@ export function productionPage(c: Context<HonoEnv>) {
 
         <!-- 요약 통계 -->
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-          <div class="bg-white rounded-lg shadow p-4">
+          <div class="ds-card p-4">
             <div class="text-sm text-gray-600 mb-1">총 대기 카드</div>
             <div class="text-2xl font-bold text-blue-600" id="statTotalQueue">-</div>
           </div>
-          <div class="bg-white rounded-lg shadow p-4">
+          <div class="ds-card p-4">
             <div class="text-sm text-gray-600 mb-1">미배정 카드</div>
             <div class="text-2xl font-bold text-orange-600" id="statUnassigned">-</div>
           </div>
-          <div class="bg-white rounded-lg shadow p-4">
+          <div class="ds-card p-4">
             <div class="text-sm text-gray-600 mb-1">오늘 납기</div>
             <div class="text-2xl font-bold text-red-600" id="statTodayDue">-</div>
           </div>
-          <div class="bg-white rounded-lg shadow p-4">
+          <div class="ds-card p-4">
             <div class="text-sm text-gray-600 mb-1">과부하 장비</div>
             <div class="text-2xl font-bold text-red-600" id="statOverloaded">-</div>
           </div>

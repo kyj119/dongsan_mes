@@ -31,7 +31,7 @@ export function orderFormPage(c: Context<HonoEnv>) {
     `,
     pageContent: `
         <div class="max-w-7xl mx-auto">
-            <div class="bg-white rounded-lg shadow-lg p-6">
+            <div class="ds-card p-6">
                 <div class="flex items-center justify-between mb-4 pb-3 border-b">
                     <h1 class="text-xl font-bold text-gray-800"><i class="fas fa-industry mr-2 text-blue-600"></i>생산 주문서 등록</h1>
                     <a href="/order-form?type=dist" class="text-sm text-green-600 hover:text-green-800 hover:underline">
@@ -353,7 +353,7 @@ function orderFormDistPage(c: Context<HonoEnv>) {
     `,
     pageContent: `
         <div class="max-w-7xl mx-auto">
-            <div class="bg-white rounded-lg shadow-lg p-6">
+            <div class="ds-card p-6">
                 <div class="flex items-center justify-between mb-6 border-b pb-3">
                     <h1 class="text-xl font-bold text-gray-800">
                         <i class="fas fa-truck mr-2 text-green-600"></i>유통 주문서 등록

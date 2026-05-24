@@ -73,33 +73,33 @@ window.switchProdAnalysisTab = function(tab) {
                     <button onclick="changeDailyDate(-1)" class="px-3 py-1.5 text-sm border rounded-lg hover:bg-gray-50"><i class="fas fa-chevron-left"></i></button>
                     <input type="date" id="reportDate" class="px-3 py-1.5 text-sm border rounded-lg" onchange="loadDailySummary()">
                     <button onclick="changeDailyDate(1)" class="px-3 py-1.5 text-sm border rounded-lg hover:bg-gray-50"><i class="fas fa-chevron-right"></i></button>
-                    <button onclick="setToday()" class="px-3 py-1.5 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700">오늘</button>
+                    <button onclick="setToday()" class="ds-btn ds-btn-primary">오늘</button>
                   </div>
                 </div>
 
                 <!-- KPI 카드 -->
                 <div class="grid grid-cols-2 md:grid-cols-5 gap-4">
-                  <div class="bg-white rounded-xl shadow-sm border p-4">
+                  <div class="ds-card p-4">
                     <div class="text-xs text-gray-500 mb-1">출력 건수</div>
                     <div class="text-2xl font-bold text-blue-700" id="kpiPrints">-</div>
                     <div class="text-xs text-gray-400 mt-1"><span id="kpiOk">0</span> OK / <span id="kpiError">0</span> 에러</div>
                   </div>
-                  <div class="bg-white rounded-xl shadow-sm border p-4">
+                  <div class="ds-card p-4">
                     <div class="text-xs text-gray-500 mb-1">출력 면적</div>
                     <div class="text-2xl font-bold text-green-700" id="kpiSqm">-</div>
                     <div class="text-xs text-gray-400 mt-1">㎡</div>
                   </div>
-                  <div class="bg-white rounded-xl shadow-sm border p-4">
+                  <div class="ds-card p-4">
                     <div class="text-xs text-gray-500 mb-1">카드 처리율</div>
                     <div class="text-2xl font-bold text-purple-700" id="kpiRate">-</div>
                     <div class="text-xs text-gray-400 mt-1"><span id="kpiCardDone">0</span> / <span id="kpiCardTotal">0</span> 카드</div>
                   </div>
-                  <div class="bg-white rounded-xl shadow-sm border p-4">
+                  <div class="ds-card p-4">
                     <div class="text-xs text-gray-500 mb-1">장비 가동</div>
                     <div class="text-2xl font-bold text-amber-700" id="kpiEquipCount">-</div>
                     <div class="text-xs text-gray-400 mt-1">대</div>
                   </div>
-                  <div class="bg-white rounded-xl shadow-sm border p-4">
+                  <div class="ds-card p-4">
                     <div class="text-xs text-gray-500 mb-1">미완료/마감</div>
                     <div class="text-2xl font-bold text-red-600" id="kpiOverdue">-</div>
                     <div class="text-xs text-gray-400 mt-1">건</div>
@@ -108,7 +108,7 @@ window.switchProdAnalysisTab = function(tab) {
 
                 <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
                   <!-- 장비별 현황 -->
-                  <div class="bg-white rounded-xl shadow-sm border p-4">
+                  <div class="ds-card p-4">
                     <h3 class="text-sm font-bold text-gray-700 mb-3"><i class="fas fa-print mr-1"></i> 장비별 출력 현황</h3>
                     <div id="equipmentTable">
                       <div class="text-center py-4 text-gray-400 text-sm">데이터 로딩 중...</div>
@@ -116,7 +116,7 @@ window.switchProdAnalysisTab = function(tab) {
                   </div>
 
                   <!-- 시간대별 출력 -->
-                  <div class="bg-white rounded-xl shadow-sm border p-4">
+                  <div class="ds-card p-4">
                     <h3 class="text-sm font-bold text-gray-700 mb-3"><i class="fas fa-chart-bar mr-1"></i> 시간대별 출력량</h3>
                     <div id="hourlyChart" style="height:250px;">
                       <div class="text-center py-4 text-gray-400 text-sm">데이터 로딩 중...</div>
@@ -125,7 +125,7 @@ window.switchProdAnalysisTab = function(tab) {
                 </div>
 
                 <!-- 미완료 주문 -->
-                <div class="bg-white rounded-xl shadow-sm border p-4">
+                <div class="ds-card p-4">
                   <h3 class="text-sm font-bold text-gray-700 mb-3"><i class="fas fa-exclamation-triangle text-red-500 mr-1"></i> 미완료/마감임박 주문</h3>
                   <div id="overdueTable">
                     <div class="text-center py-4 text-gray-400 text-sm">데이터 로딩 중...</div>
@@ -165,7 +165,7 @@ window.switchProdAnalysisTab = function(tab) {
                     <input type="date" id="dateFrom" class="border rounded px-2 py-1 text-sm">
                     <span class="text-gray-400">~</span>
                     <input type="date" id="dateTo" class="border rounded px-2 py-1 text-sm">
-                    <button onclick="loadCurrentTab()" class="px-3 py-1 bg-blue-600 text-white text-sm rounded hover:bg-blue-700">조회</button>
+                    <button onclick="loadCurrentTab()" class="ds-btn ds-btn-primary text-sm">조회</button>
                     <button onclick="exportProductionCsv()" class="px-3 py-1 bg-gray-600 text-white text-sm rounded hover:bg-gray-700">
                         <i class="fas fa-file-csv mr-1"></i>CSV
                     </button>
@@ -175,38 +175,38 @@ window.switchProdAnalysisTab = function(tab) {
             <!-- 생산 실적 패널 -->
             <div id="panelProduction">
                 <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-                    <div class="bg-white rounded-lg shadow p-4 text-center">
+                    <div class="ds-card p-4 text-center">
                         <div class="text-sm text-gray-500">총 출력</div>
                         <div class="text-2xl font-bold text-blue-600" id="prodTotal">-</div>
                     </div>
-                    <div class="bg-white rounded-lg shadow p-4 text-center">
+                    <div class="ds-card p-4 text-center">
                         <div class="text-sm text-gray-500">정상 출력</div>
                         <div class="text-2xl font-bold text-green-600" id="prodOk">-</div>
                     </div>
-                    <div class="bg-white rounded-lg shadow p-4 text-center">
+                    <div class="ds-card p-4 text-center">
                         <div class="text-sm text-gray-500">에러/취소</div>
                         <div class="text-2xl font-bold text-red-600" id="prodError">-</div>
                     </div>
-                    <div class="bg-white rounded-lg shadow p-4 text-center">
+                    <div class="ds-card p-4 text-center">
                         <div class="text-sm text-gray-500">카드 수</div>
                         <div class="text-2xl font-bold text-purple-600" id="prodCards">-</div>
                     </div>
                 </div>
                 <div class="grid grid-cols-2 gap-6">
-                    <div class="bg-white rounded-lg shadow p-6">
+                    <div class="ds-card p-6">
                         <h3 class="text-sm font-bold text-gray-700 mb-3"><i class="fas fa-server text-blue-500 mr-1"></i>장비별 실적</h3>
                         <div id="prodByEquipment" class="space-y-2">
                             <div class="text-center text-gray-400 py-4 text-sm">로딩 중...</div>
                         </div>
                     </div>
-                    <div class="bg-white rounded-lg shadow p-6">
+                    <div class="ds-card p-6">
                         <h3 class="text-sm font-bold text-gray-700 mb-3"><i class="fas fa-map-marker-alt text-green-500 mr-1"></i>구역별 실적</h3>
                         <div id="prodByZone" class="space-y-2">
                             <div class="text-center text-gray-400 py-4 text-sm">로딩 중...</div>
                         </div>
                     </div>
                 </div>
-                <div class="bg-white rounded-lg shadow p-6 mt-6">
+                <div class="ds-card p-6 mt-6">
                     <h3 class="text-sm font-bold text-gray-700 mb-3"><i class="fas fa-chart-bar text-blue-500 mr-1"></i>일별 추이</h3>
                     <div id="prodDaily" class="space-y-1">
                         <div class="text-center text-gray-400 py-4 text-sm">로딩 중...</div>
@@ -217,13 +217,13 @@ window.switchProdAnalysisTab = function(tab) {
             <!-- 후가공 패널 -->
             <div id="panelPostprocess" class="hidden">
                 <div class="grid grid-cols-2 gap-6">
-                    <div class="bg-white rounded-lg shadow p-6">
+                    <div class="ds-card p-6">
                         <h3 class="text-sm font-bold text-gray-700 mb-3"><i class="fas fa-cut text-amber-500 mr-1"></i>후가공 유형별 통계</h3>
                         <div id="ppByType" class="space-y-2">
                             <div class="text-center text-gray-400 py-4 text-sm">로딩 중...</div>
                         </div>
                     </div>
-                    <div class="bg-white rounded-lg shadow p-6">
+                    <div class="ds-card p-6">
                         <h3 class="text-sm font-bold text-gray-700 mb-3"><i class="fas fa-tags text-purple-500 mr-1"></i>카테고리별 후가공 카드</h3>
                         <div id="ppByCategory" class="space-y-2">
                             <div class="text-center text-gray-400 py-4 text-sm">로딩 중...</div>
@@ -234,7 +234,7 @@ window.switchProdAnalysisTab = function(tab) {
 
             <!-- 가동률 패널 -->
             <div id="panelUptime" class="hidden">
-                <div class="bg-white rounded-lg shadow p-6">
+                <div class="ds-card p-6">
                     <h3 class="text-sm font-bold text-gray-700 mb-3"><i class="fas fa-tachometer-alt text-green-500 mr-1"></i>장비별 월간 가동일수 & 유지보수 비용</h3>
                     <div id="uptimeData" class="space-y-3">
                         <div class="text-center text-gray-400 py-4 text-sm">로딩 중...</div>
@@ -245,19 +245,19 @@ window.switchProdAnalysisTab = function(tab) {
             <!-- 불량률 패널 -->
             <div id="panelDefects" class="hidden">
                 <div class="grid grid-cols-2 gap-6">
-                    <div class="bg-white rounded-lg shadow p-6">
+                    <div class="ds-card p-6">
                         <h3 class="text-sm font-bold text-gray-700 mb-3"><i class="fas fa-exclamation-triangle text-red-500 mr-1"></i>장비별 불량률</h3>
                         <div id="defectsByEquipment" class="space-y-2">
                             <div class="text-center text-gray-400 py-4 text-sm">로딩 중...</div>
                         </div>
                     </div>
-                    <div class="bg-white rounded-lg shadow p-6">
+                    <div class="ds-card p-6">
                         <h3 class="text-sm font-bold text-gray-700 mb-3"><i class="fas fa-chart-line text-orange-500 mr-1"></i>월별 불량률 추이</h3>
                         <div id="defectsMonthly" class="space-y-2">
                             <div class="text-center text-gray-400 py-4 text-sm">로딩 중...</div>
                         </div>
                     </div>
-                    <div class="bg-white rounded-lg shadow p-6 col-span-2">
+                    <div class="ds-card p-6 col-span-2">
                         <h3 class="text-sm font-bold text-gray-700 mb-3"><i class="fas fa-clipboard-list text-amber-500 mr-1"></i>불량 접수 유형별 현황</h3>
                         <div id="defectsQualityIssues" class="space-y-1">
                             <div class="text-center text-gray-400 py-4 text-sm">로딩 중...</div>
@@ -269,13 +269,13 @@ window.switchProdAnalysisTab = function(tab) {
             <!-- 자재 소비 패널 -->
             <div id="panelConsumption" class="hidden">
                 <div class="grid grid-cols-2 gap-6">
-                    <div class="bg-white rounded-lg shadow p-6">
+                    <div class="ds-card p-6">
                         <h3 class="text-sm font-bold text-gray-700 mb-3"><i class="fas fa-box-open text-blue-500 mr-1"></i>품목별 소비량</h3>
                         <div id="consumptionByItem" class="space-y-2">
                             <div class="text-center text-gray-400 py-4 text-sm">로딩 중...</div>
                         </div>
                     </div>
-                    <div class="bg-white rounded-lg shadow p-6">
+                    <div class="ds-card p-6">
                         <h3 class="text-sm font-bold text-gray-700 mb-3"><i class="fas fa-chart-area text-teal-500 mr-1"></i>월별 소비 추이</h3>
                         <div id="consumptionMonthly" class="space-y-2">
                             <div class="text-center text-gray-400 py-4 text-sm">로딩 중...</div>
@@ -287,34 +287,34 @@ window.switchProdAnalysisTab = function(tab) {
             <!-- 인쇄시간 패널 -->
             <div id="panelDuration" class="hidden">
                 <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
-                    <div class="bg-white rounded-lg shadow p-4 text-center">
+                    <div class="ds-card p-4 text-center">
                         <div class="text-sm text-gray-500">평균 인쇄시간</div>
                         <div class="text-2xl font-bold text-blue-600" id="durAvg">-</div>
                     </div>
-                    <div class="bg-white rounded-lg shadow p-4 text-center">
+                    <div class="ds-card p-4 text-center">
                         <div class="text-sm text-gray-500">총 가동시간</div>
                         <div class="text-2xl font-bold text-green-600" id="durTotalHours">-</div>
                     </div>
-                    <div class="bg-white rounded-lg shadow p-4 text-center">
+                    <div class="ds-card p-4 text-center">
                         <div class="text-sm text-gray-500">총 인쇄 건수</div>
                         <div class="text-2xl font-bold text-purple-600" id="durCount">-</div>
                     </div>
                 </div>
                 <div class="grid grid-cols-2 gap-6">
-                    <div class="bg-white rounded-lg shadow p-6">
+                    <div class="ds-card p-6">
                         <h3 class="text-sm font-bold text-gray-700 mb-3"><i class="fas fa-server text-blue-500 mr-1"></i>장비별 평균 인쇄시간</h3>
                         <div id="durByEquipment" class="space-y-2">
                             <div class="text-center text-gray-400 py-4 text-sm">로딩 중...</div>
                         </div>
                     </div>
-                    <div class="bg-white rounded-lg shadow p-6">
+                    <div class="ds-card p-6">
                         <h3 class="text-sm font-bold text-gray-700 mb-3"><i class="fas fa-chart-bar text-cyan-500 mr-1"></i>일별 인쇄시간 추이</h3>
                         <div id="durDaily" class="space-y-1">
                             <div class="text-center text-gray-400 py-4 text-sm">로딩 중...</div>
                         </div>
                     </div>
                 </div>
-                <div class="bg-white rounded-lg shadow p-6 mt-6">
+                <div class="ds-card p-6 mt-6">
                     <h3 class="text-sm font-bold text-gray-700 mb-3"><i class="fas fa-ruler-combined text-blue-500 mr-1"></i>프린터별 규격 대비 인쇄시간</h3>
                     <div id="durByPrinterSize" class="overflow-x-auto">
                         <div class="text-center text-gray-400 py-4 text-sm">로딩 중...</div>
@@ -325,13 +325,13 @@ window.switchProdAnalysisTab = function(tab) {
             <!-- 체류시간 패널 -->
             <div id="panelDwelltime" class="hidden">
                 <div class="grid grid-cols-2 gap-6">
-                    <div class="bg-white rounded-lg shadow p-6">
+                    <div class="ds-card p-6">
                         <h3 class="text-sm font-bold text-gray-700 mb-3"><i class="fas fa-hourglass-half text-orange-500 mr-1"></i>상태별 평균 체류시간</h3>
                         <div id="dwellByStatus">
                             <div class="text-center text-gray-400 py-4 text-sm">로딩 중...</div>
                         </div>
                     </div>
-                    <div class="bg-white rounded-lg shadow p-6">
+                    <div class="ds-card p-6">
                         <h3 class="text-sm font-bold text-gray-700 mb-3"><i class="fas fa-tags text-violet-500 mr-1"></i>카테고리별 체류시간</h3>
                         <div id="dwellByCategory" class="space-y-2">
                             <div class="text-center text-gray-400 py-4 text-sm">로딩 중...</div>

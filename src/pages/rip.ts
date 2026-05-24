@@ -22,14 +22,14 @@ export function ripPage(c: Context<HonoEnv>) {
         <!-- Toolbar -->
         <div class="flex items-center justify-end gap-3 mb-4">
             <span id="lastRefresh" class="text-sm text-gray-500"></span>
-            <button onclick="refreshAll()" class="px-3 py-1.5 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm">
+            <button onclick="refreshAll()" class="ds-btn ds-btn-primary text-sm">
                 <i class="fas fa-sync-alt mr-1"></i>새로고침
             </button>
         </div>
 
         <div>
             <!-- Agent Summary Bar -->
-            <div id="agentSummaryBar" class="bg-white rounded-lg shadow p-4 mb-6 flex items-center gap-6">
+            <div id="agentSummaryBar" class="ds-card p-4 mb-6 flex items-center gap-6">
                 <div class="flex items-center gap-2">
                     <i class="fas fa-server text-gray-500"></i>
                     <span class="font-semibold">에이전트:</span>
@@ -51,19 +51,19 @@ export function ripPage(c: Context<HonoEnv>) {
 
             <!-- KPI Cards -->
             <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-                <div class="bg-white rounded-lg shadow p-4">
+                <div class="ds-card p-4">
                     <div class="text-sm text-gray-500 mb-1">오늘 출력 완료</div>
                     <div class="text-3xl font-bold text-green-600" id="kpiOk">0</div>
                 </div>
-                <div class="bg-white rounded-lg shadow p-4">
+                <div class="ds-card p-4">
                     <div class="text-sm text-gray-500 mb-1">오늘 에러</div>
                     <div class="text-3xl font-bold text-red-600" id="kpiError">0</div>
                 </div>
-                <div class="bg-white rounded-lg shadow p-4">
+                <div class="ds-card p-4">
                     <div class="text-sm text-gray-500 mb-1">오늘 취소</div>
                     <div class="text-3xl font-bold text-amber-600" id="kpiCancel">0</div>
                 </div>
-                <div class="bg-white rounded-lg shadow p-4">
+                <div class="ds-card p-4">
                     <div class="text-sm text-gray-500 mb-1">오늘 전체</div>
                     <div class="text-3xl font-bold text-blue-600" id="kpiTotal">0</div>
                 </div>
@@ -84,7 +84,7 @@ export function ripPage(c: Context<HonoEnv>) {
 
             <!-- Tab: Events -->
             <div id="tab-events" class="tab-panel">
-                <div class="bg-white rounded-lg shadow">
+                <div class="ds-card">
                     <div class="p-4 border-b flex items-center gap-3 flex-wrap">
                         <select id="filterStatus" class="border rounded px-3 py-1.5 text-sm">
                             <option value="">전체 상태</option>
@@ -96,7 +96,7 @@ export function ripPage(c: Context<HonoEnv>) {
                             <option value="">전체 에이전트</option>
                         </select>
                         <input type="date" id="filterDate" class="border rounded px-3 py-1.5 text-sm" />
-                        <button onclick="loadEvents()" class="px-3 py-1.5 bg-blue-600 text-white rounded text-sm hover:bg-blue-700">
+                        <button onclick="loadEvents()" class="ds-btn ds-btn-primary text-sm">
                             <i class="fas fa-search mr-1"></i>조회
                         </button>
                     </div>
@@ -135,7 +135,7 @@ export function ripPage(c: Context<HonoEnv>) {
 
             <!-- Tab: Agents -->
             <div id="tab-agents" class="tab-panel hidden">
-                <div class="bg-white rounded-lg shadow">
+                <div class="ds-card">
                     <div class="overflow-x-auto" style="max-height: calc(100vh - 280px); overflow-y: auto;">
                         <table class="w-full text-sm ds-table-striped">
                             <thead class="bg-gray-50">
@@ -159,7 +159,7 @@ export function ripPage(c: Context<HonoEnv>) {
 
             <!-- Tab: Chart -->
             <div id="tab-chart" class="tab-panel hidden">
-                <div class="bg-white rounded-lg shadow p-6">
+                <div class="ds-card p-6">
                     <h3 class="text-lg font-semibold mb-4">최근 7일 출력 현황</h3>
                     <div id="dailyChart" class="space-y-3"></div>
                     <div class="flex gap-4 mt-4 text-sm text-gray-600">

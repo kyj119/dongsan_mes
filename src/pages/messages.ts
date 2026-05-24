@@ -10,20 +10,20 @@ export function messagesPage(c: Context<HonoEnv>) {
     pageContent: `
 <div class="space-y-6">
   <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-    <div class="bg-white border border-gray-200 rounded-lg p-5">
+    <div class="ds-card p-5">
       <div class="text-xs text-gray-500">카카오톡 상태</div>
       <div class="text-3xl font-bold mt-1" id="msgStatusValue">-</div>
       <div class="text-xs text-gray-400 mt-1" id="msgChannelInfo"></div>
     </div>
-    <div class="bg-white border border-gray-200 rounded-lg p-5">
+    <div class="ds-card p-5">
       <div class="text-xs text-gray-500">오늘 발송</div>
       <div class="text-3xl font-bold text-gray-900 mt-1" id="msgTodayCount">-</div>
     </div>
-    <div class="bg-white border border-gray-200 rounded-lg p-5">
+    <div class="ds-card p-5">
       <div class="text-xs text-gray-500">발송 단가</div>
       <div class="text-3xl font-bold text-gray-900 mt-1" id="msgUnitCost">-</div>
     </div>
-    <div class="bg-white border border-gray-200 rounded-lg p-5">
+    <div class="ds-card p-5">
       <div class="text-xs text-gray-500">잔여 포인트</div>
       <div class="text-3xl font-bold text-gray-900 mt-1" id="msgBalance">-</div>
       <div class="text-xs text-gray-400 mt-1" id="msgPartnerPoint"></div>
@@ -31,7 +31,7 @@ export function messagesPage(c: Context<HonoEnv>) {
   </div>
 
   <div class="flex gap-2">
-    <button onclick="openIndividualSend()" class="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700">
+    <button onclick="openIndividualSend()" class="ds-btn ds-btn-primary text-sm">
       <i class="fas fa-paper-plane mr-1"></i>새 발송
     </button>
   </div>
@@ -60,9 +60,9 @@ export function messagesPage(c: Context<HonoEnv>) {
         <option value="PENDING">대기</option>
         <option value="ALT_SENT">대체문자</option>
       </select>
-      <button onclick="loadLogs()" class="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700"><i class="fas fa-search mr-1"></i>조회</button>
+      <button onclick="loadLogs()" class="ds-btn ds-btn-primary text-sm"><i class="fas fa-search mr-1"></i>조회</button>
     </div>
-    <div class="bg-white rounded-lg shadow overflow-hidden">
+    <div class="ds-card overflow-hidden">
       <table class="w-full text-sm">
         <thead class="bg-gray-50">
           <tr>
@@ -82,7 +82,7 @@ export function messagesPage(c: Context<HonoEnv>) {
   </div>
 
   <div id="panelBulk" class="hidden">
-    <div class="bg-white rounded-lg shadow p-6 max-w-3xl">
+    <div class="ds-card p-6 max-w-3xl">
       <div class="mb-6">
         <div class="text-sm font-bold text-gray-700 mb-3">1. 발송 채널</div>
         <div class="flex gap-2 flex-wrap">
@@ -145,7 +145,7 @@ export function messagesPage(c: Context<HonoEnv>) {
         </div>
       </div>
       <div class="flex justify-end pt-4 border-t">
-        <button onclick="sendBulk()" id="bulkSendBtn" class="px-6 py-2.5 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700 font-medium">
+        <button onclick="sendBulk()" id="bulkSendBtn" class="ds-btn ds-btn-primary text-sm font-medium">
           <i class="fas fa-paper-plane mr-1"></i><span id="bulkSendLabel">발송</span>
         </button>
       </div>
@@ -248,8 +248,8 @@ export function messagesPage(c: Context<HonoEnv>) {
   </div>
 </div>
 
-<div id="logDetailModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-  <div class="bg-white rounded-lg shadow-xl w-[500px] max-h-[80vh] overflow-y-auto p-6">
+<div id="logDetailModal" class="ds-modal-overlay hidden flex items-center justify-center">
+  <div class="ds-modal w-[500px] max-h-[80vh] overflow-y-auto p-6">
     <div class="flex items-center justify-between mb-4">
       <h3 class="text-lg font-bold text-gray-800">발송 결과 상세</h3>
       <button onclick="document.getElementById('logDetailModal').classList.add('hidden')" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times"></i></button>
@@ -259,8 +259,8 @@ export function messagesPage(c: Context<HonoEnv>) {
 </div>
 
 <!-- 수신자 선택 팝업 -->
-<div id="recipientPickerModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-  <div class="bg-white rounded-lg shadow-xl w-[600px] max-h-[80vh] flex flex-col">
+<div id="recipientPickerModal" class="ds-modal-overlay hidden flex items-center justify-center">
+  <div class="ds-modal w-[600px] max-h-[80vh] flex flex-col">
     <div class="flex items-center justify-between p-4 border-b">
       <h3 class="text-lg font-bold text-gray-800" id="recipientPickerTitle">수신자 선택</h3>
       <button onclick="closeRecipientPicker()" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times"></i></button>
@@ -280,13 +280,13 @@ export function messagesPage(c: Context<HonoEnv>) {
     </div>
     <div class="p-4 border-t flex justify-end gap-2">
       <button onclick="closeRecipientPicker()" class="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm hover:bg-gray-50">취소</button>
-      <button onclick="confirmRecipientPicker()" class="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700"><i class="fas fa-check mr-1"></i>선택 완료</button>
+      <button onclick="confirmRecipientPicker()" class="ds-btn ds-btn-primary text-sm"><i class="fas fa-check mr-1"></i>선택 완료</button>
     </div>
   </div>
 </div>
 
-<div id="tplEditorModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-  <div class="bg-white rounded-lg shadow-xl w-[500px] max-h-[80vh] overflow-y-auto p-6">
+<div id="tplEditorModal" class="ds-modal-overlay hidden flex items-center justify-center">
+  <div class="ds-modal w-[500px] max-h-[80vh] overflow-y-auto p-6">
     <div class="flex items-center justify-between mb-4">
       <h3 class="text-lg font-bold text-gray-800" id="tplEditorTitle">새 템플릿</h3>
       <button onclick="closeTplEditor()" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times"></i></button>
@@ -309,7 +309,7 @@ export function messagesPage(c: Context<HonoEnv>) {
     </div>
     <div class="flex justify-end gap-2 mt-6">
       <button onclick="closeTplEditor()" class="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm hover:bg-gray-50">취소</button>
-      <button onclick="saveTplEdit()" class="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700"><i class="fas fa-save mr-1"></i>저장</button>
+      <button onclick="saveTplEdit()" class="ds-btn ds-btn-primary text-sm"><i class="fas fa-save mr-1"></i>저장</button>
     </div>
   </div>
 </div>

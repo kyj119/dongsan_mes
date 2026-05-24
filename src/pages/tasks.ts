@@ -8,7 +8,7 @@ export function tasksPage(c: Context<HonoEnv>) {
     title: '작업 큐',
     activePage: '/tasks',
     pageContent: `
-      <div class="bg-white rounded-lg shadow p-4 mb-4">
+      <div class="ds-card p-4 mb-4">
         <div class="flex flex-wrap gap-3 items-end">
           <div class="min-w-[160px]">
             <label class="block text-xs text-gray-500 mb-1">타입</label>
@@ -29,7 +29,7 @@ export function tasksPage(c: Context<HonoEnv>) {
               <option value="CANCELLED">취소</option>
             </select>
           </div>
-          <button onclick="loadTasks()" class="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700">
+          <button onclick="loadTasks()" class="ds-btn ds-btn-primary text-sm">
             <i class="fas fa-sync mr-1"></i>새로고침
           </button>
         </div>
@@ -54,7 +54,7 @@ export function tasksPage(c: Context<HonoEnv>) {
         </div>
       </div>
 
-      <div class="bg-white rounded-lg shadow overflow-hidden">
+      <div class="ds-card overflow-hidden">
         <div class="overflow-x-auto" style="max-height: calc(100vh - 360px); overflow-y: auto;">
           <table class="w-full text-sm ds-table-striped">
             <thead class="bg-gray-50">

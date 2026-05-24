@@ -157,7 +157,7 @@ ${capsSettingsScript}
               </div>
             </div>
             <div class="mt-6 flex justify-end">
-              <button onclick="saveSettings()" id="saveBtn" class="px-5 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium">저장</button>
+              <button onclick="saveSettings()" id="saveBtn" class="ds-btn ds-btn-primary">저장</button>
             </div>
             <div id="saveMsg" class="mt-3 text-center text-sm hidden"></div>
           </div>
@@ -216,7 +216,7 @@ ${capsSettingsScript}
             </div>
             <div class="mt-6 flex items-center justify-between">
               <button onclick="testPopbillConnection()" id="testPopbillBtn" class="px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">연결 테스트</button>
-              <button onclick="saveTaxSettings()" id="saveTaxBtn" class="px-5 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium">저장</button>
+              <button onclick="saveTaxSettings()" id="saveTaxBtn" class="ds-btn ds-btn-primary">저장</button>
             </div>
             <div id="taxSaveMsg" class="mt-3 text-center text-sm hidden"></div>
           </div>
@@ -234,7 +234,7 @@ ${capsSettingsScript}
                 <svg class="w-5 h-5 text-gray-500" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="16" height="20" x="4" y="2" rx="2"/><line x1="8" x2="16" y1="6" y2="6"/><line x1="16" x2="16" y1="14" y2="18"/><path d="M16 10h.01"/><path d="M12 10h.01"/><path d="M8 10h.01"/><path d="M12 14h.01"/><path d="M8 14h.01"/><path d="M12 18h.01"/><path d="M8 18h.01"/></svg>
                 원가 기준 설정
               </h2>
-              <button onclick="addCostRow()" class="px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium">+ 추가</button>
+              <button onclick="addCostRow()" class="ds-btn ds-btn-primary">+ 추가</button>
             </div>
             <p class="text-sm text-gray-500 mb-4">카테고리별 미디어(원단)/잉크 단가를 설정하면 주문 원가가 자동 계산됩니다. (단위: 원/m²)</p>
             <div class="overflow-x-auto" style="max-height: calc(100vh - 280px); overflow-y: auto;">
@@ -253,7 +253,7 @@ ${capsSettingsScript}
             </div>
             <div id="noCostMsg" class="text-center text-gray-400 py-6 hidden">등록된 원가 기준이 없습니다.</div>
             <div class="mt-4 flex justify-end">
-              <button onclick="saveCostStandards()" id="saveCostBtn" class="px-5 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium">저장</button>
+              <button onclick="saveCostStandards()" id="saveCostBtn" class="ds-btn ds-btn-primary">저장</button>
             </div>
             <div id="costSaveMsg" class="mt-3 text-center text-sm hidden"></div>
             <datalist id="catList"></datalist>
@@ -284,7 +284,7 @@ ${capsSettingsScript}
               </div>
             </div>
             <div class="mt-4 flex justify-end">
-              <button onclick="saveAutoApproveSettings()" id="saveAutoApproveBtn" class="px-5 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium">저장</button>
+              <button onclick="saveAutoApproveSettings()" id="saveAutoApproveBtn" class="ds-btn ds-btn-primary">저장</button>
             </div>
             <div id="autoApproveSaveMsg" class="mt-3 text-center text-sm hidden"></div>
           </div>
@@ -296,7 +296,7 @@ ${capsSettingsScript}
                 <svg class="w-5 h-5 text-gray-500" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m2 7 10-4 10 4"/><path d="M4 10v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><path d="M10 20v-6h4v6"/><path d="M2 7v4l10 4 10-4V7"/></svg>
                 창고 구역 관리
               </h2>
-              <button onclick="openAddZoneModal()" class="px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium">+ 구역 추가</button>
+              <button onclick="openAddZoneModal()" class="ds-btn ds-btn-primary">+ 구역 추가</button>
             </div>
             <p class="text-sm text-gray-500 mb-4">자재 저장 구역을 등록하고, 각 구역의 발주 담당자를 지정합니다. 품목에 구역을 배정하면 담당자 기준으로 발주를 관리할 수 있습니다.</p>
             <div class="overflow-x-auto" style="max-height: calc(100vh - 280px); overflow-y: auto;">
@@ -318,7 +318,7 @@ ${capsSettingsScript}
             <div id="noZonesMsg" class="text-center py-8 hidden">
               <svg class="w-10 h-10 text-gray-300 mx-auto mb-2" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m2 7 10-4 10 4"/><path d="M4 10v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><path d="M10 20v-6h4v6"/><path d="M2 7v4l10 4 10-4V7"/></svg>
               <p class="text-gray-400 text-sm">등록된 창고 구역이 없습니다.</p>
-              <button onclick="openAddZoneModal()" class="mt-3 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium">+ 첫 구역 추가</button>
+              <button onclick="openAddZoneModal()" class="mt-3 ds-btn ds-btn-primary">+ 첫 구역 추가</button>
             </div>
           </div>
 
@@ -352,7 +352,7 @@ ${capsSettingsScript}
                 </span>
                 <span class="text-xs text-gray-400 ml-2">마지막 성공: <span id="capsLastOk" class="tabular-nums">—</span></span>
               </div>
-              <button onclick="triggerCapsSync()" id="capsSyncBtn" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium">
+              <button onclick="triggerCapsSync()" id="capsSyncBtn" class="ds-btn ds-btn-primary">
                 <i class="fas fa-sync-alt mr-1"></i>지금 동기화
               </button>
             </div>
@@ -454,7 +454,7 @@ ${capsSettingsScript}
               </div>
             </div>
             <div class="mt-6 flex justify-end">
-              <button onclick="saveCapsSiteSettings()" id="saveCapsSettingsBtn" class="px-5 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium">저장</button>
+              <button onclick="saveCapsSiteSettings()" id="saveCapsSettingsBtn" class="ds-btn ds-btn-primary">저장</button>
             </div>
             <div id="capsSettingsMsg" class="mt-3 text-center text-sm hidden"></div>
           </div>
@@ -495,8 +495,8 @@ ${capsSettingsScript}
           </div>
 
           <!-- 사이트 추가 모달 -->
-          <div id="capsAddSiteModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-            <div class="bg-white rounded-xl shadow-xl p-6 w-full max-w-md">
+          <div id="capsAddSiteModal" class="ds-modal-overlay hidden">
+            <div class="ds-modal p-6" style="max-width:28rem">
               <h3 class="text-lg font-bold text-gray-900 mb-4"><i class="fas fa-plus-circle text-blue-500 mr-2"></i>CAPS 사이트 추가</h3>
               <div class="space-y-4">
                 <div>
@@ -510,7 +510,7 @@ ${capsSettingsScript}
               </div>
               <div class="mt-6 flex justify-end gap-3">
                 <button onclick="closeAddCapsSiteModal()" class="px-4 py-2 border border-gray-300 rounded-lg text-sm text-gray-700 hover:bg-gray-50">취소</button>
-                <button onclick="addCapsSite()" class="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700 font-medium">추가</button>
+                <button onclick="addCapsSite()" class="ds-btn ds-btn-primary">추가</button>
               </div>
             </div>
           </div>
@@ -519,7 +519,7 @@ ${capsSettingsScript}
 
         <!-- ─── 메시지 설정 탭 ─── -->
         <div id="messagesTabContent" class="hidden space-y-6">
-          <div class="bg-white rounded-lg shadow p-6">
+          <div class="ds-card p-6">
             <h3 class="text-lg font-bold text-gray-800 mb-4"><i class="fas fa-plug mr-2 text-blue-500"></i>바로빌 연동 상태</h3>
             <div class="space-y-3">
               <div class="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
@@ -547,7 +547,7 @@ ${capsSettingsScript}
             </div>
           </div>
 
-          <div class="bg-white rounded-lg shadow p-6">
+          <div class="ds-card p-6">
             <h3 class="text-lg font-bold text-gray-800 mb-6"><i class="fas fa-comment mr-2 text-yellow-500"></i>카카오톡 / SMS 설정</h3>
             <div class="space-y-5">
               <div class="flex items-center justify-between">
@@ -580,7 +580,7 @@ ${capsSettingsScript}
             </div>
           </div>
 
-          <div class="bg-white rounded-lg shadow p-6">
+          <div class="ds-card p-6">
             <h3 class="text-lg font-bold text-gray-800 mb-6"><i class="fas fa-envelope mr-2 text-purple-500"></i>이메일 설정</h3>
             <div class="space-y-5">
               <div class="flex items-center justify-between">
@@ -603,7 +603,7 @@ ${capsSettingsScript}
             </div>
           </div>
 
-          <div class="bg-white rounded-lg shadow p-6">
+          <div class="ds-card p-6">
             <h3 class="text-lg font-bold text-gray-800 mb-6"><i class="fas fa-fax mr-2 text-gray-500"></i>팩스 설정</h3>
             <div class="space-y-5">
               <div class="flex items-center justify-between">
@@ -625,13 +625,13 @@ ${capsSettingsScript}
           </div>
 
           <div class="flex justify-end">
-            <button onclick="saveMsgSettings()" class="px-6 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700"><i class="fas fa-save mr-1"></i>저장</button>
+            <button onclick="saveMsgSettings()" class="ds-btn ds-btn-primary"><i class="fas fa-save mr-1"></i>저장</button>
           </div>
         </div>
 
         <!-- ─── CAPS 동기화 이력 상세 모달 ─── -->
-        <div id="capsSyncLogModal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onclick="if(event.target===this)closeCapsSyncLogModal()">
-          <div class="bg-white rounded-lg shadow-xl w-full max-w-2xl mx-4 p-6 max-h-[90vh] overflow-y-auto">
+        <div id="capsSyncLogModal" class="ds-modal-overlay hidden" onclick="if(event.target===this)closeCapsSyncLogModal()">
+          <div class="ds-modal p-6 max-h-[90vh] overflow-y-auto" style="max-width:42rem">
             <div class="flex items-center justify-between mb-4">
               <h3 class="text-lg font-bold text-gray-900">동기화 이력 상세</h3>
               <button onclick="closeCapsSyncLogModal()" class="text-gray-400 hover:text-gray-600">
@@ -646,8 +646,8 @@ ${capsSettingsScript}
         </div>
 
         <!-- ─── 창고 구역 모달 ─── -->
-        <div id="zoneModal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onclick="if(event.target===this)closeZoneModal()">
-          <div class="bg-white rounded-lg shadow-xl w-full max-w-md mx-4 p-6">
+        <div id="zoneModal" class="ds-modal-overlay hidden" onclick="if(event.target===this)closeZoneModal()">
+          <div class="ds-modal p-6" style="max-width:28rem">
             <h3 id="zoneModalTitle" class="text-lg font-bold text-gray-900 mb-4">창고 구역 추가</h3>
             <input type="hidden" id="zoneModalId" value="">
             <div class="space-y-4">
@@ -684,7 +684,7 @@ ${capsSettingsScript}
             </div>
             <div class="mt-6 flex justify-end gap-2">
               <button onclick="closeZoneModal()" class="px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">취소</button>
-              <button onclick="saveZone()" id="zoneModalSaveBtn" class="px-5 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium">저장</button>
+              <button onclick="saveZone()" id="zoneModalSaveBtn" class="ds-btn ds-btn-primary">저장</button>
             </div>
           </div>
         </div>

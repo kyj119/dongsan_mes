@@ -25,7 +25,7 @@ export function priceListPage(c: Context<HonoEnv>) {
     pageContent: `
       <div class="max-w-7xl mx-auto">
         <!-- 탭 헤더 -->
-        <div class="bg-white rounded-t-lg shadow px-4 flex gap-0 border-b">
+        <div class="ds-card rounded-b-none px-4 flex gap-0 border-b">
           <button onclick="switchTab('priceTable')" id="tabPriceTable" class="tab-btn active">
             <i class="fas fa-won-sign mr-1"></i>단가표
           </button>
@@ -37,7 +37,7 @@ export function priceListPage(c: Context<HonoEnv>) {
 
         <!-- ======== 탭 1: 단가표 ======== -->
         <div id="panelPriceTable">
-          <div class="bg-white shadow px-4 py-3 mb-4 rounded-b-lg">
+          <div class="ds-card rounded-t-none px-4 py-3 mb-4">
             <div class="flex flex-wrap items-center gap-3">
               <!-- 거래처 검색 -->
               <div class="flex-1 min-w-[180px] max-w-[320px]" style="position:relative">
@@ -87,7 +87,7 @@ export function priceListPage(c: Context<HonoEnv>) {
 
         <!-- ======== 탭 2: 가격 정책 ======== -->
         <div id="panelPolicies" class="hidden">
-          <div class="bg-white shadow rounded-b-lg p-4 mb-4">
+          <div class="ds-card rounded-t-none p-4 mb-4">
             <div class="flex items-center justify-between mb-4">
               <h2 class="text-lg font-bold text-gray-800"><i class="fas fa-sliders-h mr-2 text-blue-600"></i>가격 정책 관리</h2>
               <button onclick="openPolicyModal()" class="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700">
@@ -99,7 +99,7 @@ export function priceListPage(c: Context<HonoEnv>) {
 
           <!-- 정책 규칙 편집 영역 -->
           <div id="policyRulesArea" class="hidden">
-            <div class="bg-white shadow rounded-lg p-4">
+            <div class="ds-card p-4">
               <div class="flex items-center justify-between mb-4">
                 <h3 class="text-lg font-bold text-gray-800"><i class="fas fa-list-ul mr-2 text-orange-500"></i><span id="rulesTitle"></span> 규칙</h3>
                 <div class="flex gap-2">
@@ -124,8 +124,8 @@ export function priceListPage(c: Context<HonoEnv>) {
         <div id="printArea"></div>
 
         <!-- 팩스 발송 모달 -->
-        <div id="priceFaxModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div class="bg-white rounded-lg shadow-xl w-[400px] p-6">
+        <div id="priceFaxModal" class="ds-modal-overlay hidden flex items-center justify-center">
+          <div class="ds-modal p-6" style="max-width:400px">
             <div class="flex justify-between items-center mb-4">
               <h3 class="text-lg font-bold text-gray-800"><i class="fas fa-fax text-indigo-500 mr-2"></i>단가표 팩스 발송</h3>
               <button onclick="closePriceFaxModal()" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times"></i></button>
@@ -150,8 +150,8 @@ export function priceListPage(c: Context<HonoEnv>) {
       </div>
 
       <!-- 정책 생성/수정 모달 -->
-      <div id="policyModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-        <div class="bg-white rounded-lg shadow-xl w-[440px] p-6">
+      <div id="policyModal" class="ds-modal-overlay hidden flex items-center justify-center">
+        <div class="ds-modal p-6" style="max-width:440px">
           <h3 class="text-lg font-bold mb-4" id="policyModalTitle">새 가격 정책</h3>
           <input type="hidden" id="policyEditId">
           <div class="mb-4">

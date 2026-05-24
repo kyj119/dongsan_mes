@@ -40,14 +40,14 @@ export function usersPage(c: Context<HonoEnv>) {
           <i class="fas fa-users text-blue-600 mr-2"></i>사용자 목록
         </h2>
         <button onclick="showCreateModal()"
-          class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2">
+          class="ds-btn ds-btn-primary flex items-center gap-2">
           <i class="fas fa-plus"></i>
           사용자 추가
         </button>
       </div>
 
       <!-- Users Table -->
-      <div class="bg-white rounded-lg shadow-lg overflow-hidden">
+      <div class="ds-card overflow-hidden">
         <div id="usersTableWrap" class="overflow-x-auto">
           <div class="text-center py-12 text-gray-400">
             <i class="fas fa-spinner fa-spin text-3xl mb-3"></i>
@@ -113,7 +113,7 @@ export function usersPage(c: Context<HonoEnv>) {
               <button type="button" onclick="closeModal()"
                 class="px-4 py-2 border rounded-lg text-gray-700 hover:bg-gray-50">취소</button>
               <button type="submit" id="submitBtn"
-                class="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">저장</button>
+                class="ds-btn ds-btn-primary">저장</button>
             </div>
           </form>
         </div>

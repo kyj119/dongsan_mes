@@ -10,7 +10,7 @@ export function insuranceReportsPage(c: Context<HonoEnv>) {
     pageContent: `
       <div class="space-y-4">
         <!-- 상단 컨트롤 바 -->
-        <div class="bg-white rounded-lg border shadow-sm p-4 flex items-center gap-3 flex-wrap">
+        <div class="ds-card p-4 flex items-center gap-3 flex-wrap">
           <label class="text-xs font-medium text-gray-600">연도</label>
           <select id="irYear" class="border rounded px-3 py-1.5 text-sm" onchange="irLoadList()"></select>
           <label class="text-xs font-medium text-gray-600 ml-2">월</label>
@@ -47,7 +47,7 @@ export function insuranceReportsPage(c: Context<HonoEnv>) {
         </div>
 
         <!-- 신고서 목록 테이블 -->
-        <div class="bg-white rounded-lg border shadow-sm overflow-hidden">
+        <div class="ds-card overflow-hidden">
           <div class="overflow-x-auto">
             <table class="w-full text-sm ds-table-striped">
               <thead class="bg-gray-50 text-xs text-gray-600 font-semibold uppercase tracking-wider">
@@ -72,8 +72,8 @@ export function insuranceReportsPage(c: Context<HonoEnv>) {
         </div>
 
         <!-- 신고서 생성 모달 -->
-        <div id="irGenModal" class="fixed inset-0 bg-black/40 z-50 hidden flex items-center justify-center">
-          <div class="bg-white rounded-xl shadow-2xl w-full max-w-md mx-4">
+        <div id="irGenModal" class="ds-modal-overlay hidden flex items-center justify-center">
+          <div class="ds-modal mx-4" style="max-width:28rem">
             <div class="flex items-center justify-between px-6 py-4 border-b">
               <h3 class="text-lg font-bold text-gray-900"><i class="fas fa-plus-circle mr-2 text-blue-600"></i>4대보험 신고서 생성</h3>
               <button onclick="irCloseGenModal()" class="text-gray-400 hover:text-gray-700"><i class="fas fa-times"></i></button>
@@ -93,7 +93,7 @@ export function insuranceReportsPage(c: Context<HonoEnv>) {
             </div>
             <div class="flex items-center justify-end gap-2 px-6 py-4 border-t bg-gray-50 rounded-b-xl">
               <button onclick="irCloseGenModal()" class="px-4 py-2 text-sm border border-gray-300 rounded-lg text-gray-700 bg-white hover:bg-gray-50">취소</button>
-              <button onclick="irGenerate()" class="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+              <button onclick="irGenerate()" class="ds-btn ds-btn-primary text-sm">
                 <i class="fas fa-cogs mr-1"></i>생성
               </button>
             </div>
@@ -101,8 +101,8 @@ export function insuranceReportsPage(c: Context<HonoEnv>) {
         </div>
 
         <!-- 상세 모달 -->
-        <div id="irDetailModal" class="fixed inset-0 bg-black/40 z-50 hidden flex items-start justify-center pt-8 overflow-y-auto">
-          <div class="bg-white rounded-xl shadow-2xl w-full max-w-5xl mx-4 mb-8">
+        <div id="irDetailModal" class="ds-modal-overlay hidden flex items-start justify-center pt-8 overflow-y-auto">
+          <div class="ds-modal mx-4 mb-8" style="max-width:64rem">
             <div class="flex items-center justify-between px-6 py-4 border-b">
               <h3 class="text-lg font-bold text-gray-900"><i class="fas fa-file-alt mr-2 text-blue-600"></i>신고서 상세</h3>
               <button onclick="irCloseDetail()" class="text-gray-400 hover:text-gray-700"><i class="fas fa-times text-lg"></i></button>
@@ -131,10 +131,10 @@ export function insuranceReportsPage(c: Context<HonoEnv>) {
             </div>
             <div class="flex items-center justify-end gap-2 px-6 py-4 border-t bg-gray-50 rounded-b-xl">
               <button onclick="irCloseDetail()" class="px-4 py-2 text-sm border border-gray-300 rounded-lg text-gray-700 bg-white hover:bg-gray-50">닫기</button>
-              <button id="irSubmitBtn" onclick="irSubmit()" class="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 hidden">
+              <button id="irSubmitBtn" onclick="irSubmit()" class="ds-btn ds-btn-primary text-sm hidden">
                 <i class="fas fa-paper-plane mr-1"></i>제출 완료
               </button>
-              <button id="irConfirmBtn" onclick="irConfirmReport()" class="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 hidden">
+              <button id="irConfirmBtn" onclick="irConfirmReport()" class="ds-btn ds-btn-primary text-sm hidden">
                 <i class="fas fa-check-circle mr-1"></i>확정
               </button>
             </div>

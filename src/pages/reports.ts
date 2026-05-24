@@ -56,14 +56,14 @@ export function reportsPage(c: Context<HonoEnv>) {
       <!-- 매출 분석 탭 -->
       <div id="anaReportsContent">
       <!-- Period Selector -->
-      <div class="bg-white rounded-lg shadow p-4 mb-6 flex items-center gap-3 flex-wrap">
+      <div class="ds-card p-4 mb-6 flex items-center gap-3 flex-wrap">
         <span class="text-sm font-medium text-gray-700"><i class="fas fa-chart-line mr-1"></i>분석 기간:</span>
         <select id="periodMonths" onchange="loadAllReports()" class="px-3 py-2 border rounded-lg text-sm">
           <option value="3">최근 3개월</option>
           <option value="6" selected>최근 6개월</option>
           <option value="12">최근 12개월</option>
         </select>
-        <button onclick="loadAllReports()" class="px-3 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700">
+        <button onclick="loadAllReports()" class="ds-btn ds-btn-primary ds-btn-sm">
           <i class="fas fa-sync-alt mr-1"></i>새로고침
         </button>
         <button onclick="exportReportCsv()" class="px-3 py-2 bg-gray-600 text-white rounded-lg text-sm hover:bg-gray-700">
@@ -86,28 +86,28 @@ export function reportsPage(c: Context<HonoEnv>) {
       <!-- Monthly Tab -->
       <div id="monthlyPanel">
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-          <div class="bg-white rounded-lg shadow p-4">
+          <div class="ds-card p-4">
             <div class="text-sm text-gray-500">기간 총 매출</div>
             <div class="text-2xl font-bold text-blue-600" id="rptTotalRevenue">-</div>
           </div>
-          <div class="bg-white rounded-lg shadow p-4">
+          <div class="ds-card p-4">
             <div class="text-sm text-gray-500">기간 총 입금</div>
             <div class="text-2xl font-bold text-green-600" id="rptTotalPayments">-</div>
           </div>
-          <div class="bg-white rounded-lg shadow p-4">
+          <div class="ds-card p-4">
             <div class="text-sm text-gray-500">총 주문 수</div>
             <div class="text-2xl font-bold text-gray-700" id="rptTotalOrders">-</div>
           </div>
-          <div class="bg-white rounded-lg shadow p-4">
+          <div class="ds-card p-4">
             <div class="text-sm text-gray-500">수금률</div>
             <div class="text-2xl font-bold text-purple-600" id="rptCollectionRate">-</div>
           </div>
         </div>
-        <div class="bg-white rounded-lg shadow p-6 mb-6">
+        <div class="ds-card p-6 mb-6">
           <h3 class="text-lg font-bold mb-4"><i class="fas fa-chart-bar text-blue-500 mr-2"></i>월별 매출/입금 추이</h3>
           <div id="monthlyChartArea" class="space-y-2"></div>
         </div>
-        <div class="bg-white rounded-lg shadow overflow-hidden">
+        <div class="ds-card overflow-hidden">
           <table class="w-full text-sm ds-table-striped">
             <thead class="bg-gray-50">
               <tr>
@@ -126,7 +126,7 @@ export function reportsPage(c: Context<HonoEnv>) {
 
       <!-- Clients Tab -->
       <div id="clientsPanel" class="hidden">
-        <div class="bg-white rounded-lg shadow overflow-hidden mb-6">
+        <div class="ds-card overflow-hidden mb-6">
           <div class="p-4"><h3 class="text-lg font-bold"><i class="fas fa-building text-orange-500 mr-2"></i>거래처별 매출 TOP 20</h3></div>
           <table class="w-full text-sm ds-table-striped">
             <thead class="bg-gray-50">
@@ -148,11 +148,11 @@ export function reportsPage(c: Context<HonoEnv>) {
       <!-- Items Tab -->
       <div id="itemsPanel" class="hidden">
         <div class="grid grid-cols-2 gap-6 mb-6">
-          <div class="bg-white rounded-lg shadow p-6">
+          <div class="ds-card p-6">
             <h3 class="text-lg font-bold mb-4"><i class="fas fa-layer-group text-green-500 mr-2"></i>카테고리별 매출</h3>
             <div id="categoryChart" class="space-y-2"></div>
           </div>
-          <div class="bg-white rounded-lg shadow overflow-hidden">
+          <div class="ds-card overflow-hidden">
             <div class="p-4"><h3 class="text-lg font-bold"><i class="fas fa-box text-purple-500 mr-2"></i>품목 TOP 30</h3></div>
             <div class="max-h-[400px] overflow-y-auto">
               <table class="w-full text-sm ds-table-striped">
@@ -173,7 +173,7 @@ export function reportsPage(c: Context<HonoEnv>) {
 
       <!-- Designers Tab -->
       <div id="designersPanel" class="hidden">
-        <div class="bg-white rounded-lg shadow overflow-hidden">
+        <div class="ds-card overflow-hidden">
           <div class="p-4"><h3 class="text-lg font-bold"><i class="fas fa-user-edit text-blue-500 mr-2"></i>디자이너별 주문 처리</h3></div>
           <table class="w-full text-sm ds-table-striped">
             <thead class="bg-gray-50">
@@ -196,19 +196,19 @@ export function reportsPage(c: Context<HonoEnv>) {
       <div id="marginPanel" class="hidden">
         <!-- 요약 카드 4개 -->
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-          <div class="bg-white rounded-lg shadow p-4">
+          <div class="ds-card p-4">
             <div class="text-sm text-gray-500">총 매출</div>
             <div class="text-2xl font-bold text-blue-600" id="mgTotalRevenue">-</div>
           </div>
-          <div class="bg-white rounded-lg shadow p-4">
+          <div class="ds-card p-4">
             <div class="text-sm text-gray-500">총 원가</div>
             <div class="text-2xl font-bold text-red-600" id="mgTotalCost">-</div>
           </div>
-          <div class="bg-white rounded-lg shadow p-4">
+          <div class="ds-card p-4">
             <div class="text-sm text-gray-500">총 이익</div>
             <div class="text-2xl font-bold text-green-600" id="mgTotalProfit">-</div>
           </div>
-          <div class="bg-white rounded-lg shadow p-4">
+          <div class="ds-card p-4">
             <div class="text-sm text-gray-500">평균 마진율</div>
             <div class="text-2xl font-bold text-purple-600" id="mgAvgMargin">-</div>
           </div>
@@ -216,13 +216,13 @@ export function reportsPage(c: Context<HonoEnv>) {
 
         <!-- 카테고리별 마진 + 월별 추이 -->
         <div class="grid grid-cols-2 gap-6 mb-6">
-          <div class="bg-white rounded-lg shadow p-6">
+          <div class="ds-card p-6">
             <h3 class="text-lg font-bold mb-4"><i class="fas fa-layer-group text-blue-500 mr-2"></i>카테고리별 수익성</h3>
             <div id="mgByCategory" class="space-y-2">
               <div class="text-center text-gray-400 py-4 text-sm">로딩 중...</div>
             </div>
           </div>
-          <div class="bg-white rounded-lg shadow p-6">
+          <div class="ds-card p-6">
             <h3 class="text-lg font-bold mb-4"><i class="fas fa-chart-line text-green-500 mr-2"></i>월별 수익성 추이</h3>
             <div id="mgByMonth" class="space-y-2">
               <div class="text-center text-gray-400 py-4 text-sm">로딩 중...</div>
@@ -232,7 +232,7 @@ export function reportsPage(c: Context<HonoEnv>) {
 
         <!-- 거래처별 마진 TOP/BOTTOM -->
         <div class="grid grid-cols-2 gap-6 mb-6">
-          <div class="bg-white rounded-lg shadow p-6">
+          <div class="ds-card p-6">
             <h3 class="text-lg font-bold mb-4"><i class="fas fa-arrow-up text-green-500 mr-2"></i>고마진 거래처 TOP 10</h3>
             <table class="w-full text-sm ds-table-striped">
               <thead class="bg-gray-50">
@@ -246,7 +246,7 @@ export function reportsPage(c: Context<HonoEnv>) {
               <tbody id="mgTopClientsBody"></tbody>
             </table>
           </div>
-          <div class="bg-white rounded-lg shadow p-6">
+          <div class="ds-card p-6">
             <h3 class="text-lg font-bold mb-4"><i class="fas fa-arrow-down text-red-500 mr-2"></i>저마진 거래처 BOTTOM 10</h3>
             <table class="w-full text-sm ds-table-striped">
               <thead class="bg-gray-50">
@@ -263,7 +263,7 @@ export function reportsPage(c: Context<HonoEnv>) {
         </div>
 
         <!-- 거래처 수익성 등급 분포 -->
-        <div class="bg-white rounded-lg shadow p-6 mb-6">
+        <div class="ds-card p-6 mb-6">
           <h3 class="text-lg font-bold mb-4"><i class="fas fa-medal text-amber-500 mr-2"></i>거래처 수익성 등급 분포</h3>
           <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4" id="mgGradeDistribution">
             <div class="text-center text-gray-400 text-sm">로딩 중...</div>
@@ -271,7 +271,7 @@ export function reportsPage(c: Context<HonoEnv>) {
         </div>
 
         <!-- 저마진 주문 -->
-        <div class="bg-white rounded-lg shadow p-6">
+        <div class="ds-card p-6">
           <h3 class="text-lg font-bold mb-4"><i class="fas fa-exclamation-triangle text-orange-500 mr-2"></i>저마진 주문 TOP 10</h3>
           <table class="w-full text-sm ds-table-striped">
             <thead class="bg-gray-50">
@@ -292,36 +292,36 @@ export function reportsPage(c: Context<HonoEnv>) {
       <!-- Receivables Tab -->
       <div id="receivablesPanel" class="hidden">
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-          <div class="bg-white rounded-lg shadow p-4">
+          <div class="ds-card p-4">
             <div class="text-sm text-gray-500">총 미수금 잔액</div>
             <div class="text-2xl font-bold text-red-600" id="rcTotalAR">-</div>
           </div>
-          <div class="bg-white rounded-lg shadow p-4">
+          <div class="ds-card p-4">
             <div class="text-sm text-gray-500">미수금 거래처</div>
             <div class="text-2xl font-bold text-orange-600" id="rcARClients">-</div>
           </div>
-          <div class="bg-white rounded-lg shadow p-4">
+          <div class="ds-card p-4">
             <div class="text-sm text-gray-500">당월 매출 발생</div>
             <div class="text-2xl font-bold text-blue-600" id="rcMonthBilled">-</div>
           </div>
-          <div class="bg-white rounded-lg shadow p-4">
+          <div class="ds-card p-4">
             <div class="text-sm text-gray-500">당월 수금</div>
             <div class="text-2xl font-bold text-green-600" id="rcMonthCollected">-</div>
           </div>
         </div>
 
         <div class="grid grid-cols-2 gap-6 mb-6">
-          <div class="bg-white rounded-lg shadow p-6">
+          <div class="ds-card p-6">
             <h3 class="text-lg font-bold mb-4"><i class="fas fa-clock text-orange-500 mr-2"></i>미수금 연령 분석</h3>
             <div id="rcAgingChart" class="space-y-3"></div>
           </div>
-          <div class="bg-white rounded-lg shadow p-6">
+          <div class="ds-card p-6">
             <h3 class="text-lg font-bold mb-4"><i class="fas fa-chart-area text-blue-500 mr-2"></i>월별 수금 추이</h3>
             <div id="rcMonthlyTrend" class="space-y-2"></div>
           </div>
         </div>
 
-        <div class="bg-white rounded-lg shadow overflow-hidden">
+        <div class="ds-card overflow-hidden">
           <div class="p-4"><h3 class="text-lg font-bold"><i class="fas fa-exclamation-circle text-red-500 mr-2"></i>미수금 TOP 15 거래처</h3></div>
           <table class="w-full text-sm ds-table-striped">
             <thead class="bg-gray-50">
@@ -342,26 +342,26 @@ export function reportsPage(c: Context<HonoEnv>) {
       <!-- Production Tab -->
       <div id="productionPanel" class="hidden">
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-          <div class="bg-white rounded-lg shadow p-4">
+          <div class="ds-card p-4">
             <div class="text-sm text-gray-500">출력 완료</div>
             <div class="text-2xl font-bold text-green-600" id="prOkCount">-</div>
           </div>
-          <div class="bg-white rounded-lg shadow p-4">
+          <div class="ds-card p-4">
             <div class="text-sm text-gray-500">출력 에러</div>
             <div class="text-2xl font-bold text-red-600" id="prErrorCount">-</div>
           </div>
-          <div class="bg-white rounded-lg shadow p-4">
+          <div class="ds-card p-4">
             <div class="text-sm text-gray-500">불량 보고</div>
             <div class="text-2xl font-bold text-orange-600" id="prQualityCount">-</div>
           </div>
-          <div class="bg-white rounded-lg shadow p-4">
+          <div class="ds-card p-4">
             <div class="text-sm text-gray-500">유지보수 비용</div>
             <div class="text-2xl font-bold text-purple-600" id="prMaintCost">-</div>
           </div>
         </div>
 
         <div class="grid grid-cols-2 gap-6 mb-6">
-          <div class="bg-white rounded-lg shadow overflow-hidden">
+          <div class="ds-card overflow-hidden">
             <div class="p-4"><h3 class="text-lg font-bold"><i class="fas fa-print text-blue-500 mr-2"></i>장비별 출력 실적</h3></div>
             <table class="w-full text-sm ds-table-striped">
               <thead class="bg-gray-50">
@@ -375,13 +375,13 @@ export function reportsPage(c: Context<HonoEnv>) {
               <tbody id="prEquipmentBody"></tbody>
             </table>
           </div>
-          <div class="bg-white rounded-lg shadow p-6">
+          <div class="ds-card p-6">
             <h3 class="text-lg font-bold mb-4"><i class="fas fa-chart-bar text-green-500 mr-2"></i>월별 출력 추이</h3>
             <div id="prMonthlyChart" class="space-y-2"></div>
           </div>
         </div>
 
-        <div class="bg-white rounded-lg shadow p-6">
+        <div class="ds-card p-6">
           <h3 class="text-lg font-bold mb-4"><i class="fas fa-bug text-red-500 mr-2"></i>불량 유형별 분포</h3>
           <div id="prDefectChart" class="space-y-2">
             <div class="text-center text-gray-400 py-4 text-sm">로딩 중...</div>
@@ -391,14 +391,14 @@ export function reportsPage(c: Context<HonoEnv>) {
 
       <!-- Comparison Tab -->
       <div id="comparisonPanel" class="hidden">
-        <div class="bg-white rounded-lg shadow p-4 mb-6 flex items-center gap-3 flex-wrap">
+        <div class="ds-card p-4 mb-6 flex items-center gap-3 flex-wrap">
           <span class="text-sm font-medium text-gray-700"><i class="fas fa-calendar-alt mr-1"></i>기준월:</span>
           <input type="month" id="cpBaseMonth" class="px-3 py-2 border rounded-lg text-sm" />
           <select id="cpCompareType" class="px-3 py-2 border rounded-lg text-sm">
             <option value="MOM">전월 대비</option>
             <option value="YOY">전년 동기 대비</option>
           </select>
-          <button onclick="loadComparison()" class="px-3 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700">
+          <button onclick="loadComparison()" class="ds-btn ds-btn-primary ds-btn-sm">
             <i class="fas fa-search mr-1"></i>비교 분석
           </button>
           <span id="cpPeriodLabel" class="text-sm text-gray-500 ml-2"></span>
@@ -409,7 +409,7 @@ export function reportsPage(c: Context<HonoEnv>) {
         </div>
 
         <div class="grid grid-cols-2 gap-6 mb-6">
-          <div class="bg-white rounded-lg shadow overflow-hidden">
+          <div class="ds-card overflow-hidden">
             <div class="p-4"><h3 class="text-lg font-bold"><i class="fas fa-layer-group text-blue-500 mr-2"></i>카테고리별 매출 비교</h3></div>
             <table class="w-full text-sm ds-table-striped">
               <thead class="bg-gray-50">
@@ -423,7 +423,7 @@ export function reportsPage(c: Context<HonoEnv>) {
               <tbody id="cpCategoryBody"></tbody>
             </table>
           </div>
-          <div class="bg-white rounded-lg shadow p-6">
+          <div class="ds-card p-6">
             <h3 class="text-lg font-bold mb-4"><i class="fas fa-exchange-alt text-green-500 mr-2"></i>거래처 변동</h3>
             <div class="mb-4">
               <h4 class="text-sm font-bold text-green-600 mb-2"><i class="fas fa-arrow-up mr-1"></i>매출 증가 TOP 5</h4>
@@ -451,40 +451,40 @@ export function reportsPage(c: Context<HonoEnv>) {
       <div id="forecastPanel">
         <!-- 예측 요약 카드 -->
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-          <div class="bg-white rounded-lg shadow p-4">
+          <div class="ds-card p-4">
             <div class="text-sm text-gray-500">다음달 예측 매출</div>
             <div class="text-2xl font-bold text-blue-600" id="fcRevenue">-</div>
             <div class="text-xs text-gray-400 mt-1" id="fcMethod"></div>
           </div>
-          <div class="bg-white rounded-lg shadow p-4">
+          <div class="ds-card p-4">
             <div class="text-sm text-gray-500">다음달 예측 주문수</div>
             <div class="text-2xl font-bold text-green-600" id="fcOrders">-</div>
           </div>
-          <div class="bg-white rounded-lg shadow p-4">
+          <div class="ds-card p-4">
             <div class="text-sm text-gray-500">성장률 (3개월)</div>
             <div class="text-2xl font-bold" id="fcGrowth">-</div>
           </div>
-          <div class="bg-white rounded-lg shadow p-4">
+          <div class="ds-card p-4">
             <div class="text-sm text-gray-500">예측 기준월</div>
             <div class="text-2xl font-bold text-gray-700" id="fcMonth">-</div>
           </div>
         </div>
 
         <!-- 월별 추이 + 예측선 -->
-        <div class="bg-white rounded-lg shadow p-6 mb-6">
+        <div class="ds-card p-6 mb-6">
           <h3 class="text-lg font-bold mb-4"><i class="fas fa-chart-line text-blue-500 mr-2"></i>월별 매출 추이 & 예측</h3>
           <div id="fcMonthlyChart" class="space-y-2"></div>
         </div>
 
         <div class="grid grid-cols-2 gap-6 mb-6">
           <!-- 요일별 주문 패턴 -->
-          <div class="bg-white rounded-lg shadow p-6">
+          <div class="ds-card p-6">
             <h3 class="text-lg font-bold mb-4"><i class="fas fa-calendar-week text-green-500 mr-2"></i>요일별 평균 주문량</h3>
             <div id="fcDowChart" class="space-y-2"></div>
           </div>
 
           <!-- 카테고리별 예측 -->
-          <div class="bg-white rounded-lg shadow p-6">
+          <div class="ds-card p-6">
             <h3 class="text-lg font-bold mb-4"><i class="fas fa-layer-group text-purple-500 mr-2"></i>카테고리별 예측 매출</h3>
             <div id="fcCategoryChart" class="space-y-2"></div>
           </div>
@@ -493,7 +493,7 @@ export function reportsPage(c: Context<HonoEnv>) {
 
       <!-- Capacity Tab -->
       <div id="capacityPanel" class="hidden">
-        <div class="bg-white rounded-lg shadow p-4 mb-6 flex items-center gap-3">
+        <div class="ds-card p-4 mb-6 flex items-center gap-3">
           <span class="text-sm font-medium text-gray-700">분석 기간:</span>
           <select id="capMonths" onchange="loadCapacity()" class="px-3 py-2 border rounded-lg text-sm">
             <option value="1">최근 1개월</option>
@@ -503,7 +503,7 @@ export function reportsPage(c: Context<HonoEnv>) {
         </div>
 
         <!-- 장비별 가동률 -->
-        <div class="bg-white rounded-lg shadow overflow-hidden mb-6">
+        <div class="ds-card overflow-hidden mb-6">
           <div class="p-4"><h3 class="text-lg font-bold"><i class="fas fa-server text-blue-500 mr-2"></i>장비별 가동 현황</h3></div>
           <table class="w-full text-sm ds-table-striped">
             <thead class="bg-gray-50">
@@ -523,13 +523,13 @@ export function reportsPage(c: Context<HonoEnv>) {
 
         <div class="grid grid-cols-2 gap-6 mb-6">
           <!-- 주간별 출력 추이 -->
-          <div class="bg-white rounded-lg shadow p-6">
+          <div class="ds-card p-6">
             <h3 class="text-lg font-bold mb-4"><i class="fas fa-chart-area text-green-500 mr-2"></i>주간별 출력 추이</h3>
             <div id="capWeeklyChart" class="space-y-2"></div>
           </div>
 
           <!-- 시간대별 분포 -->
-          <div class="bg-white rounded-lg shadow p-6">
+          <div class="ds-card p-6">
             <h3 class="text-lg font-bold mb-4"><i class="fas fa-clock text-orange-500 mr-2"></i>시간대별 출력 분포</h3>
             <div id="capHourlyChart" class="space-y-1"></div>
           </div>
@@ -538,7 +538,7 @@ export function reportsPage(c: Context<HonoEnv>) {
 
       <!-- Client Forecast Tab -->
       <div id="clientFcPanel" class="hidden">
-        <div class="bg-white rounded-lg shadow overflow-hidden">
+        <div class="ds-card overflow-hidden">
           <div class="p-4"><h3 class="text-lg font-bold"><i class="fas fa-building text-blue-500 mr-2"></i>거래처별 수주 예측 TOP 15</h3></div>
           <table class="w-full text-sm ds-table-striped">
             <thead class="bg-gray-50">
@@ -558,7 +558,7 @@ export function reportsPage(c: Context<HonoEnv>) {
         </div>
 
         <!-- 거래처별 월간 미니 추이 -->
-        <div class="bg-white rounded-lg shadow p-6 mt-6">
+        <div class="ds-card p-6 mt-6">
           <h3 class="text-lg font-bold mb-4"><i class="fas fa-chart-bar text-green-500 mr-2"></i>주요 거래처 월별 매출 추이</h3>
           <div id="cfTrendChart" class="space-y-4"></div>
         </div>

@@ -37,7 +37,7 @@ export function purchaseRequestsPage(c: Context<HonoEnv>) {
       </div>
 
       <!-- 필터 바 -->
-      <div class="bg-white rounded-lg shadow p-4 mb-4 flex items-center gap-3 flex-wrap">
+      <div class="ds-card p-4 mb-4 flex items-center gap-3 flex-wrap">
         <input type="text" id="prSearchInput" placeholder="요청번호, 요청자 검색..."
           class="px-3 py-2 border rounded-lg text-sm flex-1 min-w-[200px]"
           onkeyup="if(event.key==='Enter')loadPurchaseRequests(1)">
@@ -56,13 +56,13 @@ export function purchaseRequestsPage(c: Context<HonoEnv>) {
           <option value="URGENT">긴급</option>
         </select>
         <button onclick="window.location.href='/purchase-request-form'"
-          class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium">
+          class="ds-btn ds-btn-primary text-sm font-medium">
           <i class="fas fa-plus mr-1"></i>새 발주 요청
         </button>
       </div>
 
       <!-- 목록 테이블 -->
-      <div class="bg-white rounded-lg shadow overflow-hidden">
+      <div class="ds-card overflow-hidden">
         <div style="max-height: calc(100vh - 280px); overflow-y: auto;">
           <table class="w-full text-sm ds-table-striped">
           <thead class="bg-gray-50">
@@ -90,22 +90,22 @@ export function purchaseRequestsPage(c: Context<HonoEnv>) {
       <div id="prPagination" class="mt-4 flex justify-center"></div>
 
       <!-- 상세 모달 -->
-      <div id="prDetailModal" class="fixed inset-0 bg-black bg-opacity-50 hidden z-50 flex items-center justify-center">
-        <div class="bg-white rounded-lg shadow-xl w-full max-w-3xl max-h-[90vh] overflow-y-auto">
+      <div id="prDetailModal" class="ds-modal-overlay hidden flex items-center justify-center">
+        <div class="ds-modal w-full max-h-[90vh] overflow-y-auto" style="max-width:48rem">
           <div class="p-6" id="prDetailContent"></div>
         </div>
       </div>
 
       <!-- 승인 모달 (ADMIN) -->
-      <div id="prApproveModal" class="fixed inset-0 bg-black bg-opacity-50 hidden z-50 flex items-center justify-center">
-        <div class="bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+      <div id="prApproveModal" class="ds-modal-overlay hidden flex items-center justify-center">
+        <div class="ds-modal w-full max-h-[90vh] overflow-y-auto" style="max-width:42rem">
           <div class="p-6" id="prApproveContent"></div>
         </div>
       </div>
 
       <!-- 반려 모달 -->
-      <div id="prRejectModal" class="fixed inset-0 bg-black bg-opacity-50 hidden z-50 flex items-center justify-center">
-        <div class="bg-white rounded-lg shadow-xl w-full max-w-md">
+      <div id="prRejectModal" class="ds-modal-overlay hidden flex items-center justify-center">
+        <div class="ds-modal w-full" style="max-width:28rem">
           <div class="p-6">
             <div class="flex justify-between items-center mb-4">
               <h3 class="text-lg font-bold text-red-700"><i class="fas fa-ban mr-2"></i>발주 요청 반려</h3>

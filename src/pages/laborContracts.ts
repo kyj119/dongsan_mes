@@ -11,22 +11,22 @@ export function laborContractsPage(c: Context<HonoEnv>) {
       <div class="space-y-4">
         <!-- KPI 카드 -->
         <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          <div class="bg-white rounded-lg border shadow-sm p-4">
+          <div class="ds-card p-4">
             <div class="text-xs text-gray-500">전체 계약</div>
             <div class="text-2xl font-bold text-gray-900 mt-1" id="lcKpiTotal">-</div>
           </div>
-          <div class="bg-white rounded-lg border shadow-sm p-4">
+          <div class="ds-card p-4">
             <div class="text-xs text-gray-500">서명 대기</div>
             <div class="text-2xl font-bold text-amber-600 mt-1" id="lcKpiPending">-</div>
           </div>
-          <div class="bg-white rounded-lg border shadow-sm p-4">
+          <div class="ds-card p-4">
             <div class="text-xs text-gray-500">만료 임박 (30일)</div>
             <div class="text-2xl font-bold text-red-600 mt-1" id="lcKpiExpiring">-</div>
           </div>
         </div>
 
         <!-- 필터 바 -->
-        <div class="bg-white rounded-lg border shadow-sm p-3 flex items-center gap-2 flex-wrap">
+        <div class="ds-card p-3 flex items-center gap-2 flex-wrap">
           <input type="text" id="lcSearch" placeholder="직원 검색..." class="border rounded px-2 py-1 text-xs w-40" onkeydown="if(event.key==='Enter')lcLoad()">
           <select id="lcDeptFilter" class="border rounded px-2 py-1 text-xs" onchange="lcLoad()">
             <option value="">전체 부서</option>
@@ -49,17 +49,17 @@ export function laborContractsPage(c: Context<HonoEnv>) {
           <button id="lcExpiringBtn" onclick="lcToggleExpiring()" class="px-3 py-1.5 text-xs border border-red-300 text-red-600 rounded hover:bg-red-50 transition-colors" title="30일 내 만료 계약만 표시">
             <i class="fas fa-exclamation-triangle mr-1"></i>만료 임박
           </button>
-          <button onclick="lcLoad()" class="px-3 py-1.5 text-xs bg-blue-600 text-white rounded hover:bg-blue-700">
+          <button onclick="lcLoad()" class="ds-btn ds-btn-primary px-3 py-1.5 text-xs">
             <i class="fas fa-search mr-1"></i>조회
           </button>
           <div class="flex-1"></div>
-          <button onclick="lcOpenEditModal(0)" class="px-3 py-1.5 text-xs bg-blue-600 text-white rounded hover:bg-blue-700">
+          <button onclick="lcOpenEditModal(0)" class="ds-btn ds-btn-primary px-3 py-1.5 text-xs">
             <i class="fas fa-plus mr-1"></i>계약서 작성
           </button>
         </div>
 
         <!-- 테이블 -->
-        <div class="bg-white rounded-lg border shadow-sm overflow-hidden">
+        <div class="ds-card overflow-hidden">
           <div class="overflow-x-auto">
             <table class="w-full text-sm ds-table-striped">
               <thead class="bg-gray-50 text-xs text-gray-600 uppercase tracking-wider">
@@ -86,7 +86,7 @@ export function laborContractsPage(c: Context<HonoEnv>) {
       <!-- 계약서 생성/수정 모달 -->
       <div id="lcEditModal" class="fixed inset-0 z-50 hidden" style="background:rgba(0,0,0,.4);">
         <div class="flex items-center justify-center min-h-screen p-4">
-          <div class="bg-white rounded-lg shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+          <div class="ds-modal w-full max-h-[90vh] overflow-y-auto" style="max-width:32rem">
             <div class="flex items-center justify-between p-4 border-b">
               <h3 class="text-lg font-semibold" id="lcEditTitle">계약서 작성</h3>
               <button onclick="lcCloseEditModal()" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times"></i></button>
@@ -166,7 +166,7 @@ export function laborContractsPage(c: Context<HonoEnv>) {
             </div>
             <div class="flex justify-end gap-2 p-4 border-t">
               <button onclick="lcCloseEditModal()" class="px-4 py-2 text-sm bg-gray-200 text-gray-700 rounded hover:bg-gray-300">취소</button>
-              <button onclick="lcSave()" class="px-4 py-2 text-sm bg-blue-600 text-white rounded hover:bg-blue-700">저장</button>
+              <button onclick="lcSave()" class="ds-btn ds-btn-primary text-sm">저장</button>
             </div>
           </div>
         </div>
@@ -175,7 +175,7 @@ export function laborContractsPage(c: Context<HonoEnv>) {
       <!-- 서명 캔버스 모달 -->
       <div id="lcSignModal" class="fixed inset-0 z-50 hidden" style="background:rgba(0,0,0,.4);">
         <div class="flex items-center justify-center min-h-screen p-4">
-          <div class="bg-white rounded-lg shadow-xl w-full max-w-md">
+          <div class="ds-modal w-full" style="max-width:28rem">
             <div class="flex items-center justify-between p-4 border-b">
               <h3 class="text-lg font-semibold">근로자 서명</h3>
               <button onclick="lcCloseSignModal()" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times"></i></button>

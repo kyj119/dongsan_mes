@@ -20,11 +20,11 @@ export function postProcessingPage(c: Context<HonoEnv>) {
             <div id="panel-list">
                 <div class="flex justify-between items-center mb-4">
                     <h2 class="text-xl font-bold">후가공 종류 목록</h2>
-                    <button onclick="openAddModal()" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">
+                    <button onclick="openAddModal()" class="ds-btn ds-btn-primary">
                         <i class="fas fa-plus mr-2"></i>후가공 추가
                     </button>
                 </div>
-                <div class="bg-white rounded-lg shadow overflow-x-auto">
+                <div class="ds-card overflow-x-auto">
                     <table class="w-full text-sm ds-table-striped">
                         <thead class="bg-gray-50 border-b">
                             <tr>
@@ -58,7 +58,7 @@ export function postProcessingPage(c: Context<HonoEnv>) {
                 </div>
 
                 <!-- 전체 누적 통계 -->
-                <div class="bg-white rounded-lg shadow p-4 mb-4">
+                <div class="ds-card p-4 mb-4">
                     <h3 class="font-bold text-gray-700 mb-3"><i class="fas fa-chart-bar mr-2 text-pink-500"></i>전체 누적 통계</h3>
                     <div class="overflow-x-auto" style="max-height: calc(100vh - 280px); overflow-y: auto;">
                         <table class="w-full text-sm ds-table-striped">
@@ -81,13 +81,13 @@ export function postProcessingPage(c: Context<HonoEnv>) {
                 </div>
 
                 <!-- 월별 추이 -->
-                <div class="bg-white rounded-lg shadow p-4 mb-4">
+                <div class="ds-card p-4 mb-4">
                     <h3 class="font-bold text-gray-700 mb-3"><i class="fas fa-calendar-alt mr-2 text-blue-500"></i>월별 추이</h3>
                     <div id="monthlyChart" class="overflow-x-auto"></div>
                 </div>
 
                 <!-- 소분류별 통계 -->
-                <div class="bg-white rounded-lg shadow p-4">
+                <div class="ds-card p-4">
                     <h3 class="font-bold text-gray-700 mb-3"><i class="fas fa-layer-group mr-2 text-green-500"></i>소분류별 후가공 사용 빈도</h3>
                     <div id="subcatStatsBody" class="space-y-3">
                         <p class="text-center py-6 text-gray-400">로딩 중...</p>
@@ -99,17 +99,17 @@ export function postProcessingPage(c: Context<HonoEnv>) {
             <div id="panel-finishing" class="hidden">
                 <div class="grid grid-cols-2 gap-6">
                     <!-- 마감 방식 목록 -->
-                    <div class="bg-white rounded-lg shadow-sm border p-4">
+                    <div class="ds-card p-4">
                         <div class="flex items-center justify-between mb-3">
                             <h2 class="text-lg font-bold">마감 방식</h2>
-                            <button onclick="showFinMethodModal()" class="px-3 py-1.5 text-xs bg-blue-600 text-white rounded hover:bg-blue-700">
+                            <button onclick="showFinMethodModal()" class="ds-btn ds-btn-primary text-xs">
                                 <i class="fas fa-plus mr-1"></i>추가
                             </button>
                         </div>
                         <div id="finMethodList" class="space-y-2">로딩 중...</div>
                     </div>
                     <!-- 프리셋 -->
-                    <div class="bg-white rounded-lg shadow-sm border p-4">
+                    <div class="ds-card p-4">
                         <div class="flex items-center justify-between mb-3">
                             <h2 class="text-lg font-bold">프리셋</h2>
                             <button onclick="showFinPresetModal()" class="px-3 py-1.5 text-xs bg-green-600 text-white rounded hover:bg-green-700">
@@ -121,8 +121,8 @@ export function postProcessingPage(c: Context<HonoEnv>) {
                 </div>
 
                 <!-- 방식 모달 -->
-                <div id="finMethodModal" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 hidden">
-                    <div class="bg-white rounded-lg shadow-xl w-full max-w-sm mx-4">
+                <div id="finMethodModal" class="ds-modal-overlay hidden">
+                    <div class="ds-modal" style="max-width:24rem">
                         <div class="flex justify-between items-center p-4 border-b">
                             <h3 id="finMethodTitle" class="text-lg font-bold">마감 방식</h3>
                             <button onclick="document.getElementById('finMethodModal').classList.add('hidden')" class="text-gray-400 hover:text-gray-600 text-2xl">&times;</button>
@@ -138,13 +138,13 @@ export function postProcessingPage(c: Context<HonoEnv>) {
                         </div>
                         <div class="flex justify-end gap-2 p-4 border-t">
                             <button onclick="document.getElementById('finMethodModal').classList.add('hidden')" class="px-4 py-2 border rounded">취소</button>
-                            <button onclick="saveFinMethod()" class="px-4 py-2 bg-blue-600 text-white rounded">저장</button>
+                            <button onclick="saveFinMethod()" class="ds-btn ds-btn-primary">저장</button>
                         </div>
                     </div>
                 </div>
                 <!-- 프리셋 모달 -->
-                <div id="finPresetModal" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 hidden">
-                    <div class="bg-white rounded-lg shadow-xl w-full max-w-sm mx-4">
+                <div id="finPresetModal" class="ds-modal-overlay hidden">
+                    <div class="ds-modal" style="max-width:24rem">
                         <div class="flex justify-between items-center p-4 border-b">
                             <h3 id="finPresetTitle" class="text-lg font-bold">프리셋</h3>
                             <button onclick="document.getElementById('finPresetModal').classList.add('hidden')" class="text-gray-400 hover:text-gray-600 text-2xl">&times;</button>
@@ -171,8 +171,8 @@ export function postProcessingPage(c: Context<HonoEnv>) {
         </div>
 
         <!-- 추가/수정 모달 -->
-        <div id="ppModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
-            <div class="bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-screen overflow-y-auto mx-4">
+        <div id="ppModal" class="ds-modal-overlay hidden">
+            <div class="ds-modal max-h-screen overflow-y-auto" style="max-width:42rem">
                 <div class="flex justify-between items-center p-4 border-b">
                     <h3 id="modalTitle" class="text-lg font-bold">후가공 추가</h3>
                     <button onclick="closeModal()" class="text-gray-400 hover:text-gray-600 text-2xl">&times;</button>
@@ -259,7 +259,7 @@ export function postProcessingPage(c: Context<HonoEnv>) {
                                 <p class="font-medium text-gray-700">주문 시 입력 항목 설정</p>
                                 <p class="text-xs text-gray-400">주문 생성 시 현장에서 입력하는 값 (위치, 개수 등)</p>
                             </div>
-                            <button type="button" onclick="addParamField()" class="px-3 py-1 bg-blue-600 text-white rounded text-sm hover:bg-blue-700">
+                            <button type="button" onclick="addParamField()" class="ds-btn ds-btn-primary text-sm">
                                 <i class="fas fa-plus mr-1"></i>항목 추가
                             </button>
                         </div>
@@ -271,7 +271,7 @@ export function postProcessingPage(c: Context<HonoEnv>) {
                 </div>
                 <div class="flex justify-end gap-3 p-4 border-t">
                     <button onclick="closeModal()" class="px-4 py-2 border rounded hover:bg-gray-50">취소</button>
-                    <button onclick="savePP()" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">저장</button>
+                    <button onclick="savePP()" class="ds-btn ds-btn-primary">저장</button>
                 </div>
             </div>
         </div>
