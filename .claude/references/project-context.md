@@ -29,7 +29,7 @@
 ## 에이전트 팀
 - **opus는 오케스트레이터(PM) 전용** — 개별 작업에 opus 금지
 - **haiku**: 읽기 전용, 수집, 상태 확인 (log, sync-jsx, db-reset-seed 등)
-- **sonnet**: 코드 생성/수정, 분석+판단 (review-checklist, deploy, security-audit 등)
+- **sonnet**: 코드 생성/수정, 분석+판단 (review-checklist, deploy-verify, security-audit 등)
 - **중형 이상 기능**: dispatch 전 설계 계약서(인터페이스 명세) 작성 필수
 - **통합 검증**: 모든 에이전트 완료 후 `npm run typecheck` + 계약서 대조
 > 상세: `agent-team-guide.md`

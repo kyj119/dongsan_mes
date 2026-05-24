@@ -76,6 +76,7 @@ design_preview.html
 .claude/scheduled_tasks.lock
 .claude/.edit_counter
 .claude/deployments/
+.claude/projects/
 
 # Config files (may contain secrets)
 .config/

@@ -42,7 +42,7 @@ ordersRouter.route('/', ordersCoreRouter)       // /:id 가장 마지막
 
 ## M. 배포 스냅샷 및 롤백 (2026-04-15)
 
-- `/deploy` 스킬 Step 4 직전에 `.claude/scripts/deploy-snapshot.sh` 실행
+- `/deploy-verify` 스킬 배포 직전에 `.claude/scripts/deploy-snapshot.sh` 실행
 - 저장: `.claude/deployments/deploy_YYYY-MM-DD_HHmmss.json` (commit, migration, changed_files)
 - 롤백: Cloudflare Pages 대시보드→이전 배포 | 역방향 마이그레이션 SQL | D1 Time Travel (30일)
 
