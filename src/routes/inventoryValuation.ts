@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
-import { entityFilter } from '../utils/entityFilter'
+import { entityFilter, getEntityId } from '../utils/entityFilter'
 
 const inventoryValuation = new Hono<HonoEnv>()
 inventoryValuation.use('*', authMiddleware)
@@ -35,8 +35,12 @@ inventoryValuation.get('/report', async (c) => {
 
   let results: any[] = []
 
+  const entityId = getEntityId(c)
+  const entityClause = entityId > 0 ? 'WHERE entity_id = ?' : ''
+  const entityParams = entityId > 0 ? [entityId] : []
+
   if (method === 'WEIGHTED_AVG') {
-    // 이동평균: items.avg_unit_cost * 현재 재고
+    // #158: 이동평균 — entity 필터 적용
     const { results: rows } = await c.env.DB.prepare(`
       SELECT i.id, i.item_code, i.item_name, i.unit, i.avg_unit_cost,
         COALESCE(inv.quantity, 0) as current_stock,
@@ -44,11 +48,11 @@ inventoryValuation.get('/report', async (c) => {
       FROM items i
       LEFT JOIN (
         SELECT item_id, SUM(CASE WHEN transaction_type='IN' THEN quantity ELSE -quantity END) as quantity
-        FROM inventory_transactions GROUP BY item_id
+        FROM inventory_transactions ${entityClause} GROUP BY item_id
       ) inv ON inv.item_id = i.id
       WHERE i.is_purchase_item = 1 AND COALESCE(inv.quantity, 0) > 0
       ORDER BY valuation DESC
-    `).all()
+    `).bind(...entityParams).all()
     results = rows
   } else if (method === 'FIFO') {
     // FIFO: 레이어별 잔여수량 * 레이어 단가 합산
@@ -76,11 +80,11 @@ inventoryValuation.get('/report', async (c) => {
       LEFT JOIN cost_standards cs ON i.category = cs.category_name
       LEFT JOIN (
         SELECT item_id, SUM(CASE WHEN transaction_type='IN' THEN quantity ELSE -quantity END) as quantity
-        FROM inventory_transactions GROUP BY item_id
+        FROM inventory_transactions ${entityClause} GROUP BY item_id
       ) inv ON inv.item_id = i.id
       WHERE i.is_purchase_item = 1 AND COALESCE(inv.quantity, 0) > 0
       ORDER BY valuation DESC
-    `).all()
+    `).bind(...entityParams).all()
     results = rows
   }
 
@@ -106,16 +110,19 @@ inventoryValuation.post('/fifo-layer', requireRole('ADMIN', 'MANAGER'), async (c
 
 // ─── 이동평균 단가 재계산 ────────────────────────────────────────────────────
 inventoryValuation.post('/recalculate-avg', requireRole('ADMIN', 'MANAGER'), async (c) => {
-  // 모든 구매 품목의 이동평균 단가를 재계산
+  // #158: 현재 법인의 이동평균 단가를 재계산
+  const entityId = getEntityId(c)
+  const entityClause = entityId > 0 ? 'AND entity_id = ?' : ''
+  const entityParams = entityId > 0 ? [entityId] : []
   const { results: items } = await c.env.DB.prepare(`
     SELECT item_id,
       SUM(CASE WHEN transaction_type='IN' THEN quantity ELSE 0 END) as total_in,
       SUM(CASE WHEN transaction_type='IN' THEN total_amount ELSE 0 END) as total_cost
     FROM inventory_transactions
-    WHERE transaction_type = 'IN' AND unit_price > 0
+    WHERE transaction_type = 'IN' AND unit_price > 0 ${entityClause}
     GROUP BY item_id
     HAVING total_in > 0
-  `).all<{ item_id: number; total_in: number; total_cost: number }>()
+  `).bind(...entityParams).all<{ item_id: number; total_in: number; total_cost: number }>()
 
   const stmts = items.map(item => {
     const avgCost = Math.round((item.total_cost / item.total_in) * 100) / 100
@@ -125,6 +132,74 @@ inventoryValuation.post('/recalculate-avg', requireRole('ADMIN', 'MANAGER'), asy
   if (stmts.length > 0) await c.env.DB.batch(stmts)
 
   return c.json({ success: true, data: { updated: stmts.length } })
+})
+
+// ─── #158 Option C: 법인 간 동일 품목 단가 차이 경고 ─────────────────────────
+inventoryValuation.get('/price-alerts', requireRole('ADMIN', 'MANAGER'), async (c) => {
+  const thresholdPct = parseFloat(c.req.query('threshold') || '20')
+
+  // 법인별 가중평균 입고 단가 계산
+  const { results: entityAvgs } = await c.env.DB.prepare(`
+    SELECT it.item_id, i.item_code, i.item_name, it.entity_id, e.entity_name,
+      ROUND(SUM(it.total_amount) / NULLIF(SUM(it.quantity), 0), 2) as avg_price,
+      SUM(it.quantity) as total_qty
+    FROM inventory_transactions it
+    JOIN items i ON it.item_id = i.id
+    JOIN entities e ON it.entity_id = e.id
+    WHERE it.transaction_type = 'IN' AND it.unit_price > 0
+    GROUP BY it.item_id, it.entity_id
+    HAVING total_qty > 0
+  `).all<{
+    item_id: number; item_code: string; item_name: string;
+    entity_id: number; entity_name: string;
+    avg_price: number; total_qty: number
+  }>()
+
+  // 품목별 그룹핑 → 법인 간 비교
+  const byItem = new Map<number, typeof entityAvgs>()
+  for (const row of entityAvgs) {
+    const arr = byItem.get(row.item_id) || []
+    arr.push(row)
+    byItem.set(row.item_id, arr)
+  }
+
+  const alerts: {
+    item_id: number; item_code: string; item_name: string;
+    entities: { entity_id: number; entity_name: string; avg_price: number; total_qty: number }[];
+    max_diff_pct: number
+  }[] = []
+
+  for (const [itemId, rows] of byItem) {
+    if (rows.length < 2) continue
+    const prices = rows.map(r => r.avg_price)
+    const minPrice = Math.min(...prices)
+    const maxPrice = Math.max(...prices)
+    if (minPrice <= 0) continue
+    const diffPct = Math.round(((maxPrice - minPrice) / minPrice) * 100)
+    if (diffPct >= thresholdPct) {
+      alerts.push({
+        item_id: itemId,
+        item_code: rows[0].item_code,
+        item_name: rows[0].item_name,
+        entities: rows.map(r => ({
+          entity_id: r.entity_id, entity_name: r.entity_name,
+          avg_price: r.avg_price, total_qty: r.total_qty
+        })),
+        max_diff_pct: diffPct
+      })
+    }
+  }
+
+  alerts.sort((a, b) => b.max_diff_pct - a.max_diff_pct)
+
+  return c.json({
+    success: true,
+    data: {
+      threshold_pct: thresholdPct,
+      alert_count: alerts.length,
+      alerts
+    }
+  })
 })
 
 export default inventoryValuation
