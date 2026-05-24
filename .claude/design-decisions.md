@@ -18,6 +18,7 @@
 | AD | 출고번호 포맷 | SHP-E{entity}-YYYYMMDD-NNN, entity별 독립 시퀀스 |
 | AE | CODEF API 전면 제거 | 월 80만원, codef.ts 삭제, 이메일 파싱 대안 |
 | AF | BOM 법인 간 공유 | entity_id 미추가, 전 법인 공통 |
+| AL | 자금관리 바로빌통장 탭 통합 | 은행연동으로 합침, barobillView.js 삭제 |
 
 ## 금액 포맷 → `references/decisions-money.md`
 | ID | 제목 | 키워드 |
@@ -52,3 +53,9 @@
 | AI | 법인카드 5 Phase 아키텍처 | corporate_cards + card_transactions + expense_categories, 바로빌 카드→DB 적재, 자동분류 규칙 학습, R2 영수증 |
 | AJ | 자동매칭 신뢰도 임계값 | confidence >= 0.8 → CONFIRMED 자동확인, 0.5~0.8 → SUGGESTED 제안, < 0.5 무시 |
 | AK | bank↔card-expenses 기능 분리 | /bank=통장+입금매칭+미수금+캐시플로, /card-expenses=카드사용+분류+수수료+결제예정+보고서. 중복 금지 |
+| AM | atomic UPDATE WHERE 패턴 | SELECT→UPDATE race condition 방지. UPDATE WHERE current_stock >= ?, UPDATE WHERE billing_status IS NULL 등 |
+| AN | 세금계산서 발행 batch 원자화 | junction+items 분리 batch → 단일 batch. 벌크/단건 양쪽 적용 |
+| AO | 견적서 중복 전환 방지 | converted_count > 0 → 409, force=true로 강제 전환 허용 (분할 주문 지원) |
+| AP | 재고평가 entity 분리 + 단가 경고 | Option C: entity 필터 + /price-alerts (법인 간 20%+ 단가 차이 경고) |
+| AQ | HOLD 해제 work_records 복구 | HOLD→PRINTING/PRINT_DONE 전환 시 PAUSED→IN_PROGRESS 자동 복구 |
+| AR | N+1 집계 쿼리 통합 | aiInsights 거래처별 루프→단일 GROUP BY, cardExpenses 자동분류→batch |

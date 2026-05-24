@@ -1,6 +1,6 @@
 # PROJECT_STATUS.md — 프로젝트 현황판
 
-> **최종 업데이트**: 2026-05-23
+> **최종 업데이트**: 2026-05-24
 
 ---
 
@@ -18,10 +18,10 @@
 
 ## 🟡 대기 중 (사용자 선택/승인 필요)
 
-### [바로빌 전환] — 계좌/카드 관리 UI 수정 진행 중
-- 전환 완료: `messaging_provider=barobill`, 실데이터 조회 성공 (카드 7건, 통장 12건)
+### [바로빌 전환] — 통합 완료, 잔여 작업 대기
+- 전환 완료: `messaging_provider=barobill`, 실데이터 조회 성공
 - 통장→수금 반자동 플로우 구현됨 (동기화→자동매칭→사람확인→수금반영)
-- **다음 세션**: 계좌 관리 UI 개선, 카드 관리 연동, 출금 처리
+- 자금관리 탭 정리 완료: 바로빌 통장 탭→은행 연동에 통합 (2026-05-24)
 - **대기**: SMS 발신번호 승인, 알림톡 템플릿 등록, 나머지 카드/계좌 등록
 
 ### [선명2 CAPS Worker 설치] — PC 설정 대기
@@ -38,7 +38,24 @@
 
 ---
 
-## 🟢 최근 완료 (2026-05-22)
+## 🟢 최근 완료 (2026-05-24)
+
+### GitHub Issues #158~#182 일괄 수정 (2026-05-24)
+- **25건 close** — entity 필터, race condition, 원자성, N+1 최적화, 인덱스
+- Race condition: scan.ts atomic UPDATE WHERE, orders/queries balance_after, AP purchase_balance
+- Entity 필터: scan CARD 조회, cash_schedule, mrp_runs/results, expense_categories PUT/DELETE
+- 원자성: 세금계산서 batch 통합, 여신 approval 2-batch, bank unapply, shipments 출고
+- N+1: aiInsights 신용점수 단일 쿼리, cardExpenses 자동분류 batch
+- 스키마: purchase_request_items entity_id, journal_entries 법인별 unique, 인덱스 3건
+- 마이그레이션 0242~0247 생성 + 프로덕션 적용
+- 배포 3회 성공, 스모크 테스트 2회 통과 (14/14 페이지, 11/11 API)
+
+### 자금관리 탭 중복 정리 (2026-05-24)
+- 바로빌 통장 탭 제거 → 은행 연동 탭에 기능 통합
+- 바로빌 연결 상태 바를 은행 연동 상단에 표시
+- 거래내역 테이블에 잔액 열 추가 (DB balance_after 활용)
+- barobillView.js 삭제 (310줄, dead card 코드 포함)
+- 탭 구조: 은행 연동 / 캐시플로 (2탭)
 
 ### 팝빌→바로빌 전환 + 통장 수금 반자동 (2026-05-23)
 - 팝빌 코드 전면 교체: taxInvoices 5곳→getTaxProvider, clients.ts, kakao.ts, fax.ts
@@ -46,7 +63,6 @@
 - 바로빌 실데이터 조회 성공: 카드 7건(하나 5월) + 통장 12건(하나 5/22)
 - POST /api/bank/sync-barobill: 통장내역 자동 적재 + 자동매칭
 - 은행 연동 UI: 입금/출금 분리 컬럼, 계좌명 표시, 거래처 검색 매칭
-- 바로빌 조회 탭: 카드/통장 기간 조회 + 필터 토글
 
 ### 바로빌 SOAP 연동 전체 구현 (2026-05-22)
 - 6개 서비스 파일: barobillClient/Sms/Fax/Tax/Card/Bank.ts
