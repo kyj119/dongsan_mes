@@ -601,8 +601,8 @@ export function ledgerPage(c: Context<HonoEnv>) {
         <!-- End clientDetailModal -->
 
         <!-- ===== 입금 수정 모달 ===== -->
-        <div id="paymentEditModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/50" style="z-index:60">
-          <div class="bg-white rounded-lg shadow-xl w-[440px] p-6">
+        <div id="paymentEditModal" class="ds-modal-overlay hidden" style="z-index:60">
+          <div class="ds-modal" style="max-width:440px">
             <div class="flex justify-between items-center mb-4">
               <h3 class="text-lg font-bold text-gray-800"><i class="fas fa-edit text-orange-500 mr-2"></i>입금 수정</h3>
               <button onclick="closePaymentModal()" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times"></i></button>
@@ -780,8 +780,8 @@ export function ledgerPage(c: Context<HonoEnv>) {
         </div>
 
         <!-- ===== 원장 알림 발송 모달 ===== -->
-        <div id="ledgerSendModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/50" style="z-index:60">
-          <div class="bg-white rounded-lg shadow-xl w-[550px] max-h-[80vh] overflow-y-auto p-6">
+        <div id="ledgerSendModal" class="ds-modal-overlay hidden" style="z-index:60">
+          <div class="ds-modal" style="max-width:550px">
             <div class="flex items-center justify-between mb-4">
               <h3 class="text-lg font-bold text-gray-800"><i class="fas fa-paper-plane text-blue-600 mr-2"></i>원장 알림 발송</h3>
               <button onclick="closeLedgerSendModal()" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times"></i></button>
@@ -843,7 +843,7 @@ export function ledgerPage(c: Context<HonoEnv>) {
             </div>
             <div class="flex justify-end gap-2 mt-6">
               <button onclick="closeLedgerSendModal()" class="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm hover:bg-gray-50">취소</button>
-              <button onclick="sendLedgerNotification()" class="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700">
+              <button onclick="sendLedgerNotification()" class="ds-btn ds-btn-primary">
                 <i class="fas fa-paper-plane mr-1"></i>발송
               </button>
             </div>
@@ -851,8 +851,8 @@ export function ledgerPage(c: Context<HonoEnv>) {
         </div>
 
         <!-- ===== 원장 팩스 발송 모달 ===== -->
-        <div id="ledgerFaxModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/50" style="z-index:60">
-          <div class="bg-white rounded-lg shadow-xl w-[400px] p-6">
+        <div id="ledgerFaxModal" class="ds-modal-overlay hidden" style="z-index:60">
+          <div class="ds-modal" style="max-width:400px">
             <div class="flex justify-between items-center mb-4">
               <h3 class="text-lg font-bold text-gray-800"><i class="fas fa-fax text-indigo-500 mr-2"></i>원장 팩스 발송</h3>
               <button onclick="closeLedgerFaxModal()" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times"></i></button>

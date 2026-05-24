@@ -79,7 +79,7 @@ async function loadQuotations(page) {
 function renderQuotationTable(orders) {
   var tbody = document.getElementById('quotTableBody');
   if (!orders || orders.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="7" class="px-4 py-8 text-center text-gray-500">견적 내역이 없습니다.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="7"><div class="ds-empty"><i class="fas fa-file-invoice"></i><p>견적 내역이 없습니다</p></div></td></tr>';
     return;
   }
   tbody.innerHTML = orders.map(function(q) {

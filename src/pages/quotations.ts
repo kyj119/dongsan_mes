@@ -9,74 +9,89 @@ export function quotationsPage(c: Context<HonoEnv>) {
     activePage: '/quotations',
     pageContent: `
       <!-- 통계 카드 4개 -->
-      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        <div class="bg-white rounded-lg shadow p-4 cursor-pointer" onclick="filterByQuotStatus('')">
-          <div class="text-sm text-gray-600">총 견적수</div>
-          <div class="text-2xl font-bold" id="statTotal">-</div>
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+        <div class="ds-card ds-card-compact cursor-pointer" style="text-align:center" onclick="filterByQuotStatus('')">
+          <div class="text-sm" style="color:var(--c-text-secondary)">총 견적수</div>
+          <div class="text-3xl font-bold" style="color:var(--c-text)" id="statTotal">-</div>
         </div>
-        <div class="bg-white rounded-lg shadow p-4 cursor-pointer" onclick="filterByQuotStatus('valid')">
-          <div class="text-sm text-gray-600">유효 견적</div>
-          <div class="text-2xl font-bold text-teal-600" id="statValid">-</div>
+        <div class="ds-card ds-card-compact cursor-pointer" style="text-align:center" onclick="filterByQuotStatus('valid')">
+          <div class="text-sm" style="color:var(--c-text-secondary)">유효 견적</div>
+          <div class="text-3xl font-bold" style="color:var(--c-teal)" id="statValid">-</div>
         </div>
-        <div class="bg-white rounded-lg shadow p-4 cursor-pointer" onclick="filterByQuotStatus('expired')">
-          <div class="text-sm text-gray-600">만료 견적</div>
-          <div class="text-2xl font-bold text-red-500" id="statExpired">-</div>
+        <div class="ds-card ds-card-compact cursor-pointer" style="text-align:center" onclick="filterByQuotStatus('expired')">
+          <div class="text-sm" style="color:var(--c-text-secondary)">만료 견적</div>
+          <div class="text-3xl font-bold" style="color:var(--c-danger)" id="statExpired">-</div>
         </div>
-        <div class="bg-white rounded-lg shadow p-4">
-          <div class="text-sm text-gray-600">총 견적금액</div>
-          <div class="text-xl font-bold text-blue-600" id="statAmount">-</div>
+        <div class="ds-card ds-card-compact" style="text-align:center">
+          <div class="text-sm" style="color:var(--c-text-secondary)">총 견적금액</div>
+          <div class="text-2xl font-bold" style="color:var(--c-primary)" id="statAmount">-</div>
         </div>
       </div>
 
       <!-- 필터 바 -->
-      <div class="bg-white rounded-lg shadow p-4 mb-4 flex items-center gap-3 flex-wrap">
-        <select id="quotStatusFilter" onchange="loadQuotations(1)" class="px-3 py-2 border rounded-lg text-sm">
-          <option value="">전체 상태</option>
-          <option value="valid">유효</option>
-          <option value="expired">만료</option>
-          <option value="converted">주문전환</option>
-        </select>
-        <input type="text" id="quotClientSearch" placeholder="거래처 검색..."
-          class="px-3 py-2 border rounded-lg text-sm flex-1 min-w-[160px]"
-          onkeyup="if(event.key==='Enter')loadQuotations(1)">
-        <input type="date" id="quotDateFrom" class="px-3 py-2 border rounded-lg text-sm"
-          onchange="loadQuotations(1)">
-        <span class="text-gray-400 text-sm">~</span>
-        <input type="date" id="quotDateTo" class="px-3 py-2 border rounded-lg text-sm"
-          onchange="loadQuotations(1)">
-        <button onclick="loadQuotations(1)" class="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 text-sm">
-          <i class="fas fa-search mr-1"></i>검색
-        </button>
-        <a href="/quotation-form" class="px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 text-sm font-medium">
-          <i class="fas fa-plus mr-1"></i>새 견적서
-        </a>
+      <div class="ds-filter-bar">
+        <div class="ds-filter-field" style="min-width:100px">
+          <label class="ds-label">상태</label>
+          <select id="quotStatusFilter" onchange="loadQuotations(1)" class="ds-input">
+            <option value="">전체 상태</option>
+            <option value="valid">유효</option>
+            <option value="expired">만료</option>
+            <option value="converted">주문전환</option>
+          </select>
+        </div>
+        <div class="ds-filter-field" style="flex:1;min-width:160px">
+          <label class="ds-label">거래처</label>
+          <input type="text" id="quotClientSearch" placeholder="거래처 검색..."
+            class="ds-input"
+            onkeyup="if(event.key==='Enter')loadQuotations(1)">
+        </div>
+        <div class="ds-filter-field" style="min-width:130px">
+          <label class="ds-label">작성일 from</label>
+          <input type="date" id="quotDateFrom" class="ds-input"
+            onchange="loadQuotations(1)">
+        </div>
+        <div class="ds-filter-field" style="min-width:130px">
+          <label class="ds-label">~ to</label>
+          <input type="date" id="quotDateTo" class="ds-input"
+            onchange="loadQuotations(1)">
+        </div>
+        <div class="ds-filter-actions">
+          <button onclick="loadQuotations(1)" class="ds-btn ds-btn-primary ds-btn-sm">
+            <i class="fas fa-search" style="margin-right:4px"></i>검색
+          </button>
+          <a href="/quotation-form" class="ds-btn ds-btn-sm" style="background:var(--c-success);color:#fff;text-decoration:none;">
+            <i class="fas fa-plus" style="margin-right:4px"></i>새 견적서
+          </a>
+        </div>
       </div>
 
       <!-- 견적 목록 테이블 -->
-      <div class="bg-white rounded-lg shadow overflow-hidden">
-        <table class="w-full text-sm ds-table-striped">
-          <thead class="bg-gray-50">
-            <tr>
-              <th class="px-4 py-3 text-left">견적번호</th>
-              <th class="px-4 py-3 text-left">거래처</th>
-              <th class="px-4 py-3 text-right">금액</th>
-              <th class="px-4 py-3 text-center">유효기한</th>
-              <th class="px-4 py-3 text-center">상태</th>
-              <th class="px-4 py-3 text-center">작성일</th>
-              <th class="px-4 py-3 text-center">액션</th>
-            </tr>
-          </thead>
-          <tbody id="quotTableBody">
-            <tr><td colspan="7" class="px-4 py-8 text-center text-gray-500">로딩 중...</td></tr>
-          </tbody>
-        </table>
+      <div class="ds-card" style="padding:0;overflow:hidden;">
+        <div class="ds-table-wrap">
+          <table class="ds-table ds-table-striped">
+            <thead>
+              <tr>
+                <th>견적번호</th>
+                <th>거래처</th>
+                <th style="text-align:right">금액</th>
+                <th style="text-align:center">유효기한</th>
+                <th style="text-align:center">상태</th>
+                <th style="text-align:center">작성일</th>
+                <th style="text-align:center">액션</th>
+              </tr>
+            </thead>
+            <tbody id="quotTableBody">
+              <tr><td colspan="7" class="px-4 py-8 text-center" style="color:var(--c-text-muted)">로딩 중...</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div id="quotPagination" class="px-6 py-3 flex items-center gap-2 flex-wrap" style="border-top:1px solid var(--c-border)"></div>
       </div>
-      <div id="quotPagination" class="mt-4 flex justify-center"></div>
 
       <!-- 상세 모달 -->
-      <div id="quotDetailModal" class="fixed inset-0 bg-black bg-opacity-50 hidden z-50 flex items-center justify-center">
-        <div class="bg-white rounded-lg shadow-xl w-full max-w-3xl max-h-[90vh] overflow-y-auto">
-          <div class="p-6" id="quotDetailContent"></div>
+      <div id="quotDetailModal" class="ds-modal-overlay hidden">
+        <div class="ds-modal ds-modal-wide">
+          <div class="ds-modal-body" id="quotDetailContent"></div>
         </div>
       </div>
     `,

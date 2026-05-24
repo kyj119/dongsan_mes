@@ -77,14 +77,14 @@ export function equipmentPage(c: Context<HonoEnv>) {
                         <i class="fas fa-chart-bar mr-1"></i>현황
                     </button>
                 </div>
-                <button onclick="openAddModal()" class="px-4 py-2 bg-cyan-600 text-white rounded hover:bg-cyan-700 text-sm">
+                <button onclick="openAddModal()" class="ds-btn ds-btn-primary ds-btn-sm">
                     <i class="fas fa-plus mr-2"></i>장비 추가
                 </button>
             </div>
 
             <!-- 목록 탭 -->
             <div id="panelList">
-                <div class="bg-white rounded-lg shadow overflow-x-auto">
+                <div class="ds-card overflow-x-auto">
                     <table class="w-full text-sm hover-actions ds-table-striped">
                         <thead class="bg-gray-50 border-b">
                             <tr>
@@ -206,7 +206,7 @@ export function equipmentPage(c: Context<HonoEnv>) {
 
             <!-- 배치도 탭 -->
             <div id="panelLayout" class="hidden">
-                <div class="bg-white rounded-lg shadow p-4">
+                <div class="ds-card p-4">
 
                     <!-- 범례 + 편집 버튼 -->
                     <div class="flex items-center justify-between mb-3">
@@ -258,7 +258,7 @@ export function equipmentPage(c: Context<HonoEnv>) {
 
             <!-- 장비 상세 패널 (클릭 시 표시) -->
             <div id="detailPanel" class="hidden mt-4">
-                <div class="bg-white rounded-lg shadow">
+                <div class="ds-card">
                     <div class="flex items-center justify-between p-4 border-b">
                         <h3 id="detailTitle" class="text-lg font-bold"></h3>
                         <button onclick="closeDetail()" class="text-gray-400 hover:text-gray-600 text-xl">&times;</button>
@@ -348,8 +348,8 @@ export function equipmentPage(c: Context<HonoEnv>) {
         </div>
 
         <!-- 장비 추가/수정 모달 -->
-        <div id="equipModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
-            <div class="bg-white rounded-lg shadow-xl w-full max-w-md mx-4">
+        <div id="equipModal" class="ds-modal-overlay hidden">
+            <div class="ds-modal" style="max-width:28rem">
                 <div class="flex justify-between items-center p-4 border-b">
                     <h3 id="equipModalTitle" class="text-lg font-bold">장비 추가</h3>
                     <button onclick="closeEquipModal()" class="text-gray-400 hover:text-gray-600 text-2xl">&times;</button>
@@ -388,14 +388,14 @@ export function equipmentPage(c: Context<HonoEnv>) {
                 </div>
                 <div class="flex justify-end gap-3 p-4 border-t">
                     <button onclick="closeEquipModal()" class="px-4 py-2 border rounded hover:bg-gray-50">취소</button>
-                    <button onclick="saveEquip()" class="px-4 py-2 bg-cyan-600 text-white rounded hover:bg-cyan-700">저장</button>
+                    <button onclick="saveEquip()" class="ds-btn ds-btn-primary">저장</button>
                 </div>
             </div>
         </div>
 
         <!-- 프리셋 추가 모달 -->
-        <div id="presetModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
-            <div class="bg-white rounded-lg shadow-xl w-full max-w-md mx-4">
+        <div id="presetModal" class="ds-modal-overlay hidden">
+            <div class="ds-modal" style="max-width:28rem">
                 <div class="flex justify-between items-center p-4 border-b">
                     <h3 class="text-lg font-bold">프리셋 추가</h3>
                     <button onclick="closePresetModal()" class="text-gray-400 hover:text-gray-600 text-2xl">&times;</button>
@@ -420,14 +420,14 @@ export function equipmentPage(c: Context<HonoEnv>) {
                 </div>
                 <div class="flex justify-end gap-3 p-4 border-t">
                     <button onclick="closePresetModal()" class="px-4 py-2 border rounded hover:bg-gray-50">취소</button>
-                    <button onclick="savePreset()" class="px-4 py-2 bg-cyan-600 text-white rounded hover:bg-cyan-700">저장</button>
+                    <button onclick="savePreset()" class="ds-btn ds-btn-primary">저장</button>
                 </div>
             </div>
         </div>
 
         <!-- 유지보수 기록 추가 모달 -->
-        <div id="maintenanceModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
-            <div class="bg-white rounded-lg shadow-xl w-full max-w-md mx-4">
+        <div id="maintenanceModal" class="ds-modal-overlay hidden">
+            <div class="ds-modal" style="max-width:28rem">
                 <div class="flex justify-between items-center p-4 border-b">
                     <h3 class="text-lg font-bold">유지보수 기록</h3>
                     <button onclick="closeMaintenanceModal()" class="text-gray-400 hover:text-gray-600 text-2xl">&times;</button>
@@ -457,14 +457,14 @@ export function equipmentPage(c: Context<HonoEnv>) {
                 </div>
                 <div class="flex justify-end gap-3 p-4 border-t">
                     <button onclick="closeMaintenanceModal()" class="px-4 py-2 border rounded hover:bg-gray-50">취소</button>
-                    <button onclick="saveMaintenance()" class="px-4 py-2 bg-cyan-600 text-white rounded hover:bg-cyan-700">저장</button>
+                    <button onclick="saveMaintenance()" class="ds-btn ds-btn-primary">저장</button>
                 </div>
             </div>
         </div>
 
         <!-- 소모품 추가 모달 -->
-        <div id="consumableModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
-            <div class="bg-white rounded-lg shadow-xl w-full max-w-md mx-4">
+        <div id="consumableModal" class="ds-modal-overlay hidden">
+            <div class="ds-modal" style="max-width:28rem">
                 <div class="flex justify-between items-center p-4 border-b">
                     <h3 class="text-lg font-bold">소모품 추가</h3>
                     <button onclick="closeConsumableModal()" class="text-gray-400 hover:text-gray-600 text-2xl">&times;</button>
@@ -493,14 +493,14 @@ export function equipmentPage(c: Context<HonoEnv>) {
                 </div>
                 <div class="flex justify-end gap-3 p-4 border-t">
                     <button onclick="closeConsumableModal()" class="px-4 py-2 border rounded hover:bg-gray-50">취소</button>
-                    <button onclick="saveConsumable()" class="px-4 py-2 bg-cyan-600 text-white rounded hover:bg-cyan-700">저장</button>
+                    <button onclick="saveConsumable()" class="ds-btn ds-btn-primary">저장</button>
                 </div>
             </div>
         </div>
 
         <!-- 정비 스케줄 추가 모달 -->
-        <div id="scheduleModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
-            <div class="bg-white rounded-lg shadow-xl w-full max-w-md mx-4">
+        <div id="scheduleModal" class="ds-modal-overlay hidden">
+            <div class="ds-modal" style="max-width:28rem">
                 <div class="flex justify-between items-center p-4 border-b">
                     <h3 class="text-lg font-bold">정비 스케줄 추가</h3>
                     <button onclick="closeScheduleModal()" class="text-gray-400 hover:text-gray-600 text-2xl">&times;</button>
@@ -525,14 +525,14 @@ export function equipmentPage(c: Context<HonoEnv>) {
                 </div>
                 <div class="flex justify-end gap-3 p-4 border-t">
                     <button onclick="closeScheduleModal()" class="px-4 py-2 border rounded hover:bg-gray-50">취소</button>
-                    <button onclick="saveSchedule()" class="px-4 py-2 bg-cyan-600 text-white rounded hover:bg-cyan-700">저장</button>
+                    <button onclick="saveSchedule()" class="ds-btn ds-btn-primary">저장</button>
                 </div>
             </div>
         </div>
 
         <!-- 헤드 설정 모달 -->
-        <div id="headSetupModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
-            <div class="bg-white rounded-lg shadow-xl w-full max-w-sm mx-4">
+        <div id="headSetupModal" class="ds-modal-overlay hidden">
+            <div class="ds-modal" style="max-width:24rem">
                 <div class="flex justify-between items-center p-4 border-b">
                     <h3 class="text-lg font-bold">헤드 설정</h3>
                     <button onclick="closeHeadSetup()" class="text-gray-400 hover:text-gray-600 text-2xl">&times;</button>
@@ -550,14 +550,14 @@ export function equipmentPage(c: Context<HonoEnv>) {
                 </div>
                 <div class="flex justify-end gap-3 p-4 border-t">
                     <button onclick="closeHeadSetup()" class="px-4 py-2 border rounded hover:bg-gray-50">취소</button>
-                    <button onclick="saveHeadSetup()" class="px-4 py-2 bg-cyan-600 text-white rounded hover:bg-cyan-700">적용</button>
+                    <button onclick="saveHeadSetup()" class="ds-btn ds-btn-primary">적용</button>
                 </div>
             </div>
         </div>
 
         <!-- 헤드 수정 모달 -->
-        <div id="headEditModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
-            <div class="bg-white rounded-lg shadow-xl w-full max-w-sm mx-4">
+        <div id="headEditModal" class="ds-modal-overlay hidden">
+            <div class="ds-modal" style="max-width:24rem">
                 <div class="flex justify-between items-center p-4 border-b">
                     <h3 id="headEditTitle" class="text-lg font-bold">헤드 #1</h3>
                     <button onclick="closeHeadEdit()" class="text-gray-400 hover:text-gray-600 text-2xl">&times;</button>
@@ -584,7 +584,7 @@ export function equipmentPage(c: Context<HonoEnv>) {
                 </div>
                 <div class="flex justify-end gap-3 p-4 border-t">
                     <button onclick="closeHeadEdit()" class="px-4 py-2 border rounded hover:bg-gray-50">취소</button>
-                    <button onclick="saveHeadEdit()" class="px-4 py-2 bg-cyan-600 text-white rounded hover:bg-cyan-700">저장</button>
+                    <button onclick="saveHeadEdit()" class="ds-btn ds-btn-primary">저장</button>
                 </div>
             </div>
         </div>

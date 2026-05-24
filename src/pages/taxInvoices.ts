@@ -139,7 +139,7 @@ export function taxInvoicesPage(c: Context<HonoEnv>) {
       </div>
 
       <!-- 목록 테이블 -->
-      <div class="bg-white rounded-lg shadow overflow-hidden">
+      <div class="ds-card overflow-hidden">
         <table class="w-full text-sm ds-table-striped">
           <thead class="bg-gray-50">
             <tr>
@@ -165,7 +165,7 @@ export function taxInvoicesPage(c: Context<HonoEnv>) {
     <!-- ===== 미발행 관리 패널 ===== -->
     <div id="panelUnbilled" class="hidden">
       <!-- 검색 조건 바 -->
-      <div class="bg-white rounded-lg shadow p-4 mb-4">
+      <div class="ds-card p-4 mb-4">
         <div class="flex flex-wrap items-end gap-3">
           <div>
             <label class="block text-xs font-medium text-gray-500 mb-1">기간 시작</label>
@@ -213,15 +213,15 @@ export function taxInvoicesPage(c: Context<HonoEnv>) {
     </div>
 
     <!-- ===== 상세 모달 ===== -->
-    <div id="detailModal" class="fixed inset-0 bg-black bg-opacity-50 hidden z-50 flex items-center justify-center">
-      <div class="bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+    <div id="detailModal" class="ds-modal-overlay hidden">
+      <div class="ds-modal w-full max-h-[90vh] overflow-y-auto" style="max-width:42rem">
         <div class="p-6" id="detailContent"></div>
       </div>
     </div>
 
     <!-- ===== 수정발행 모달 ===== -->
-    <div id="modifyModal" class="fixed inset-0 bg-black bg-opacity-50 hidden z-50 flex items-center justify-center">
-      <div class="bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+    <div id="modifyModal" class="ds-modal-overlay hidden">
+      <div class="ds-modal w-full max-h-[90vh] overflow-y-auto" style="max-width:42rem">
         <div class="p-6">
           <div class="flex justify-between items-center mb-4">
             <h3 class="text-lg font-bold"><i class="fas fa-edit text-orange-500 mr-2"></i>수정 세금계산서 발행</h3>
@@ -251,7 +251,7 @@ export function taxInvoicesPage(c: Context<HonoEnv>) {
             <button onclick="document.getElementById('modifyModal').classList.add('hidden')"
               class="px-4 py-2 bg-gray-200 rounded hover:bg-gray-300 text-sm">취소</button>
             <button onclick="submitModify()"
-              class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm font-medium">
+              class="ds-btn ds-btn-primary ds-btn-sm font-medium">
               <i class="fas fa-edit mr-1"></i>수정 계산서 생성
             </button>
           </div>
@@ -260,8 +260,8 @@ export function taxInvoicesPage(c: Context<HonoEnv>) {
     </div>
 
     <!-- ===== 취소 모달 ===== -->
-    <div id="cancelModal" class="fixed inset-0 bg-black bg-opacity-50 hidden z-50 flex items-center justify-center">
-      <div class="bg-white rounded-lg shadow-xl w-full max-w-md p-6">
+    <div id="cancelModal" class="ds-modal-overlay hidden">
+      <div class="ds-modal p-6" style="max-width:28rem">
         <h3 class="text-lg font-bold mb-4"><i class="fas fa-ban text-red-600 mr-2"></i>세금계산서 취소</h3>
         <div class="mb-4">
           <label class="block text-sm font-medium text-gray-700 mb-1">취소 사유 <span class="text-red-500">*</span></label>
@@ -278,18 +278,18 @@ export function taxInvoicesPage(c: Context<HonoEnv>) {
 
     <!-- ===== 월합산 발행 패널 ===== -->
     <div id="panelMonthly" class="hidden">
-      <div class="bg-white rounded-lg shadow p-4 mb-4">
+      <div class="ds-card p-4 mb-4">
         <div class="flex items-center gap-3 flex-wrap">
           <label class="text-sm font-medium text-gray-700">발행 대상 월:</label>
           <input type="month" id="monthlyPeriod" class="px-3 py-2 border rounded-lg text-sm" />
-          <button onclick="loadMonthlyEligible()" class="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700">
+          <button onclick="loadMonthlyEligible()" class="ds-btn ds-btn-primary ds-btn-sm">
             <i class="fas fa-search mr-1"></i>조회
           </button>
           <div class="ml-auto">
-            <button onclick="createMonthlyInvoices(false)" id="btnMonthlyCreate" class="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700 hidden">
+            <button onclick="createMonthlyInvoices(false)" id="btnMonthlyCreate" class="ds-btn ds-btn-primary ds-btn-sm hidden">
               <i class="fas fa-file-invoice mr-1"></i>일괄 생성 (임시저장)
             </button>
-            <button onclick="createMonthlyInvoices(true)" id="btnMonthlyIssue" class="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700 hidden ml-2">
+            <button onclick="createMonthlyInvoices(true)" id="btnMonthlyIssue" class="ds-btn ds-btn-primary ds-btn-sm hidden ml-2">
               <i class="fas fa-paper-plane mr-1"></i>일괄 생성+발행
             </button>
           </div>
@@ -302,8 +302,8 @@ export function taxInvoicesPage(c: Context<HonoEnv>) {
     </div>
 
     <!-- ===== 일괄 발행 결과 모달 ===== -->
-    <div id="batchResultModal" class="fixed inset-0 bg-black bg-opacity-50 hidden z-50 flex items-center justify-center">
-      <div class="bg-white rounded-lg shadow-xl w-full max-w-lg p-6">
+    <div id="batchResultModal" class="ds-modal-overlay hidden">
+      <div class="ds-modal w-full p-6" style="max-width:32rem">
         <div class="flex justify-between items-center mb-4">
           <h3 class="text-lg font-bold"><i class="fas fa-check-circle text-green-600 mr-2"></i>일괄 발행 결과</h3>
           <button onclick="document.getElementById('batchResultModal').classList.add('hidden')" class="text-gray-400 hover:text-gray-600 text-2xl">&times;</button>
@@ -311,7 +311,7 @@ export function taxInvoicesPage(c: Context<HonoEnv>) {
         <div id="batchResultContent" class="text-sm"></div>
         <div class="flex justify-end mt-4">
           <button onclick="document.getElementById('batchResultModal').classList.add('hidden');loadInvoices(1)"
-            class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm font-medium">확인</button>
+            class="ds-btn ds-btn-primary ds-btn-sm font-medium">확인</button>
         </div>
       </div>
     </div>
@@ -326,7 +326,7 @@ export function taxInvoicesPage(c: Context<HonoEnv>) {
       </div>
 
       <!-- Filter Bar -->
-      <div class="bg-white rounded-lg border shadow-sm p-4 mb-6">
+      <div class="ds-card p-4 mb-6">
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
           <!-- Status Filter -->
           <div>
@@ -360,10 +360,10 @@ export function taxInvoicesPage(c: Context<HonoEnv>) {
 
           <!-- Actions -->
           <div class="flex items-end">
-            <button onclick="loadReceipts(1)" class="w-full bg-blue-600 text-white rounded px-4 py-2 text-sm font-medium hover:bg-blue-700 mr-2">
+            <button onclick="loadReceipts(1)" class="w-full ds-btn ds-btn-primary ds-btn-sm mr-2">
               <i class="fas fa-search mr-2"></i>검색
             </button>
-            <button onclick="openCreateModal()" class="w-full bg-blue-600 text-white rounded px-4 py-2 text-sm font-medium hover:bg-blue-700">
+            <button onclick="openCreateModal()" class="w-full ds-btn ds-btn-primary ds-btn-sm">
               <i class="fas fa-plus mr-2"></i>새 현금영수증
             </button>
           </div>
@@ -371,7 +371,7 @@ export function taxInvoicesPage(c: Context<HonoEnv>) {
       </div>
 
       <!-- Table -->
-      <div class="bg-white rounded-lg border shadow-sm overflow-hidden">
+      <div class="ds-card overflow-hidden">
         <div class="overflow-x-auto" style="max-height: calc(100vh - 280px); overflow-y: auto;">
           <table class="w-full ds-table-striped">
             <thead>
@@ -406,8 +406,8 @@ export function taxInvoicesPage(c: Context<HonoEnv>) {
       </div>
 
       <!-- Create Modal -->
-      <div id="createModal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-        <div class="bg-white rounded-lg shadow-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+      <div id="createModal" class="ds-modal-overlay hidden p-4">
+        <div class="ds-modal w-full max-h-[90vh] overflow-y-auto" style="max-width:42rem">
           <div class="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
             <h2 class="text-lg font-bold text-gray-900">새 현금영수증</h2>
             <button onclick="document.getElementById('createModal').classList.add('hidden')" class="text-gray-500 hover:text-gray-700">
@@ -499,7 +499,7 @@ export function taxInvoicesPage(c: Context<HonoEnv>) {
             <button onclick="document.getElementById('createModal').classList.add('hidden')" class="border border-gray-300 text-gray-700 bg-white rounded px-4 py-2 text-sm font-medium hover:bg-gray-50">
               취소
             </button>
-            <button onclick="createReceipt()" class="bg-blue-600 text-white rounded px-4 py-2 text-sm font-medium hover:bg-blue-700">
+            <button onclick="createReceipt()" class="ds-btn ds-btn-primary ds-btn-sm">
               <i class="fas fa-save mr-2"></i>작성
             </button>
           </div>
@@ -507,8 +507,8 @@ export function taxInvoicesPage(c: Context<HonoEnv>) {
       </div>
 
       <!-- Detail Modal -->
-      <div id="detailModal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-        <div class="bg-white rounded-lg shadow-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+      <div id="detailModal" class="ds-modal-overlay hidden p-4">
+        <div class="ds-modal w-full max-h-[90vh] overflow-y-auto" style="max-width:42rem">
           <div class="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
             <h2 class="text-lg font-bold text-gray-900">현금영수증 상세</h2>
             <button onclick="document.getElementById('detailModal').classList.add('hidden')" class="text-gray-500 hover:text-gray-700">
@@ -536,7 +536,7 @@ export function taxInvoicesPage(c: Context<HonoEnv>) {
       </div>
 
       <!-- Tab Navigation -->
-      <div class="bg-white rounded-t-lg border-b">
+      <div class="ds-card rounded-b-none border-b">
         <div class="flex">
           <button id="tabCollect" class="tab-btn active px-6 py-3 text-sm font-medium border-b-2 border-blue-600 text-blue-600"
             onclick="switchTab('collect')">
@@ -590,7 +590,7 @@ export function taxInvoicesPage(c: Context<HonoEnv>) {
             <i class="fas fa-tasks text-gray-700 mr-2"></i>수집 작업 목록
           </h3>
         </div>
-        <div class="bg-white rounded-lg border overflow-hidden shadow-sm">
+        <div class="ds-card overflow-hidden">
           <div class="overflow-x-auto" style="max-height: calc(100vh - 280px); overflow-y: auto;">
             <table class="w-full ds-table-striped">
               <thead class="table-header">
@@ -669,7 +669,7 @@ export function taxInvoicesPage(c: Context<HonoEnv>) {
         </div>
 
         <!-- Invoices Table -->
-        <div class="bg-white rounded-lg border overflow-hidden shadow-sm">
+        <div class="ds-card overflow-hidden">
           <div class="overflow-x-auto" style="max-height: calc(100vh - 280px); overflow-y: auto;">
             <table class="w-full ds-table-striped">
               <thead class="table-header">
@@ -758,7 +758,7 @@ export function taxInvoicesPage(c: Context<HonoEnv>) {
             <h4 class="font-semibold text-gray-900 mb-3 flex items-center">
               <i class="fas fa-check-circle text-green-600 mr-2"></i>매칭 완료
             </h4>
-            <div class="bg-white rounded-lg border overflow-hidden shadow-sm">
+            <div class="ds-card overflow-hidden">
               <div class="overflow-x-auto" style="max-height: calc(100vh - 280px); overflow-y: auto;">
                 <table class="w-full ds-table-striped">
                   <thead class="table-header">
@@ -782,7 +782,7 @@ export function taxInvoicesPage(c: Context<HonoEnv>) {
             <h4 class="font-semibold text-gray-900 mb-3 flex items-center">
               <i class="fas fa-exclamation-circle text-amber-600 mr-2"></i>홈택스에만 존재
             </h4>
-            <div class="bg-white rounded-lg border overflow-hidden shadow-sm">
+            <div class="ds-card overflow-hidden">
               <div class="overflow-x-auto" style="max-height: calc(100vh - 280px); overflow-y: auto;">
                 <table class="w-full ds-table-striped">
                   <thead class="table-header">
@@ -806,7 +806,7 @@ export function taxInvoicesPage(c: Context<HonoEnv>) {
             <h4 class="font-semibold text-gray-900 mb-3 flex items-center">
               <i class="fas fa-exclamation-circle text-red-600 mr-2"></i>시스템에만 존재
             </h4>
-            <div class="bg-white rounded-lg border overflow-hidden shadow-sm">
+            <div class="ds-card overflow-hidden">
               <div class="overflow-x-auto" style="max-height: calc(100vh - 280px); overflow-y: auto;">
                 <table class="w-full ds-table-striped">
                   <thead class="table-header">

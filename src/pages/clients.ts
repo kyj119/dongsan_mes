@@ -94,21 +94,21 @@ export function clientsPage(c: Context<HonoEnv>) {
       </div>
 
       <!-- 거래처 목록 -->
-      <div class="bg-white rounded-lg border shadow-sm">
-        <div class="flex justify-between items-center px-4 py-3 border-b">
+      <div class="ds-card" style="padding:0;overflow:hidden;">
+        <div class="flex justify-between items-center px-4 py-3" style="border-bottom:1px solid var(--c-border-light)">
           <div class="flex items-center gap-3">
-            <h3 class="text-sm font-semibold" style="color:#212529;">거래처 목록</h3>
-            <span id="totalCount" class="text-xs text-gray-400"></span>
+            <h3 class="text-sm font-semibold" style="color:var(--c-text)">거래처 목록</h3>
+            <span id="totalCount" class="text-xs" style="color:var(--c-text-muted)"></span>
           </div>
           <div class="flex items-center gap-2">
-            <select id="pageSizeSelect" onchange="changePageSize()" class="border rounded px-2 py-1 text-xs" style="color:#212529;">
+            <select id="pageSizeSelect" onchange="changePageSize()" class="ds-input" style="width:auto;min-height:28px;padding:2px 8px;font-size:var(--fs-xs)">
               <option value="20">20개</option>
               <option value="50" selected>50개</option>
               <option value="100">100개</option>
               <option value="200">200개</option>
             </select>
-            <button onclick="showAddClientModal()" class="px-3 py-1.5 bg-blue-600 text-white rounded text-xs hover:bg-blue-700">
-              <i class="fas fa-plus mr-1"></i>거래처 추가
+            <button onclick="showAddClientModal()" class="ds-btn ds-btn-primary ds-btn-sm">
+              <i class="fas fa-plus" style="margin-right:4px"></i>거래처 추가
             </button>
           </div>
         </div>
@@ -123,23 +123,23 @@ export function clientsPage(c: Context<HonoEnv>) {
           </div>
         </div>
 
-        <div id="paginationArea" class="px-4 py-3 border-t"></div>
+        <div id="paginationArea" class="px-4 py-3" style="border-top:1px solid var(--c-border)"></div>
       </div>
 
       <!-- 엑셀 임포트 (하단) -->
-      <details class="bg-white rounded-lg border shadow-sm mt-4">
-        <summary class="px-4 py-3 cursor-pointer text-sm font-medium text-gray-700 hover:bg-gray-50">
-          <i class="fas fa-file-excel text-green-600 mr-2"></i>엑셀 파일 임포트
+      <details class="ds-card mt-4" style="padding:0;overflow:hidden;">
+        <summary class="px-4 py-3 cursor-pointer text-sm font-medium" style="color:var(--c-text-secondary)">
+          <i class="fas fa-file-excel" style="color:var(--c-success);margin-right:8px"></i>엑셀 파일 임포트
         </summary>
         <div class="px-4 pb-4">
           <div class="flex gap-3 items-end mt-2">
             <div class="flex-1">
-              <label class="block text-[10px] text-gray-400 mb-1">거래처 엑셀 파일 (.xlsx)</label>
+              <label class="ds-label">거래처 엑셀 파일 (.xlsx)</label>
               <input type="file" id="excelFile" accept=".xlsx,.xls"
-                class="block w-full text-sm text-gray-500 file:mr-3 file:py-1.5 file:px-3 file:rounded file:border-0 file:text-xs file:font-medium file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100">
+                class="ds-input" style="padding:6px">
             </div>
-            <button onclick="importExcel()" class="px-4 py-1.5 bg-blue-600 text-white rounded text-xs hover:bg-blue-700">
-              <i class="fas fa-upload mr-1"></i>임포트
+            <button onclick="importExcel()" class="ds-btn ds-btn-primary ds-btn-sm">
+              <i class="fas fa-upload" style="margin-right:4px"></i>임포트
             </button>
           </div>
           <div id="importResult" class="mt-3 hidden"></div>
@@ -147,113 +147,116 @@ export function clientsPage(c: Context<HonoEnv>) {
       </details>
 
       <!-- 거래처 추가/수정 모달 -->
-      <div id="clientModal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-        <div class="bg-white rounded-lg shadow-xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
-          <div class="p-6">
-            <h2 class="text-lg font-bold mb-4" style="color:#212529;" id="clientModalTitle">거래처 추가</h2>
+      <div id="clientModal" class="ds-modal-overlay hidden">
+        <div class="ds-modal ds-modal-wide" style="max-width:720px">
+          <div class="ds-modal-header">
+            <h3 id="clientModalTitle">거래처 추가</h3>
+            <button onclick="document.getElementById('clientModal').classList.add('hidden')" class="ds-btn ds-btn-ghost ds-btn-sm" style="font-size:18px">&times;</button>
+          </div>
+          <div class="ds-modal-body">
             <input type="hidden" id="clientModalId">
-            <div class="grid grid-cols-2 gap-4">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label class="block text-sm font-medium mb-1" style="color:#374151;">사업자등록번호</label>
+                <label class="ds-label">사업자등록번호</label>
                 <div class="flex gap-2">
-                  <input type="text" id="clientModalBizRegNum" oninput="formatBizRegNum(this)" class="flex-1 px-3 py-2 border rounded text-sm" style="color:#212529;" placeholder="000-00-00000" maxlength="12">
-                  <button type="button" id="btnCheckBrn" onclick="checkBrnStatus()" class="px-3 py-2 border border-gray-300 text-gray-700 bg-white rounded text-sm whitespace-nowrap hover:bg-gray-50">상태조회</button>
+                  <input type="text" id="clientModalBizRegNum" oninput="formatBizRegNum(this)" class="ds-input flex-1" placeholder="000-00-00000" maxlength="12">
+                  <button type="button" id="btnCheckBrn" onclick="checkBrnStatus()" class="ds-btn ds-btn-secondary ds-btn-sm" style="white-space:nowrap">상태조회</button>
                 </div>
                 <div id="brnStatusResult" class="hidden text-sm mt-1"></div>
               </div>
               <div>
-                <label class="block text-sm font-medium mb-1" style="color:#374151;">거래처 유형</label>
-                <select id="editClientType" class="w-full px-3 py-2 border rounded text-sm">
+                <label class="ds-label">거래처 유형</label>
+                <select id="editClientType" class="ds-input">
                   <option value="SALES">매출처</option>
                   <option value="PURCHASE">매입처</option>
                   <option value="BOTH">매출+매입</option>
                 </select>
               </div>
               <div>
-                <label class="block text-sm font-medium mb-1" style="color:#374151;">거래처명 <span class="text-red-500">*</span></label>
-                <input type="text" id="clientModalName" class="w-full px-3 py-2 border rounded text-sm" style="color:#212529;">
+                <label class="ds-label">거래처명 <span style="color:var(--c-danger)">*</span></label>
+                <input type="text" id="clientModalName" class="ds-input">
               </div>
               <div>
-                <label class="block text-sm font-medium mb-1" style="color:#374151;">단가표</label>
-                <select id="clientModalPriceList" class="w-full px-3 py-2 border rounded text-sm">
+                <label class="ds-label">단가표</label>
+                <select id="clientModalPriceList" class="ds-input">
                   <option value="">기본</option>
                 </select>
               </div>
               <div>
-                <label class="block text-sm font-medium mb-1" style="color:#374151;">가격 정책</label>
-                <select id="clientModalPricePolicy" class="w-full px-3 py-2 border rounded text-sm">
+                <label class="ds-label">가격 정책</label>
+                <select id="clientModalPricePolicy" class="ds-input">
                   <option value="">정가 (기본)</option>
                 </select>
               </div>
               <div>
-                <label class="block text-sm font-medium mb-1" style="color:#374151;">대표자</label>
-                <input type="text" id="clientModalRepresentative" class="w-full px-3 py-2 border rounded text-sm" style="color:#212529;">
+                <label class="ds-label">대표자</label>
+                <input type="text" id="clientModalRepresentative" class="ds-input">
               </div>
               <div>
-                <label class="block text-sm font-medium mb-1" style="color:#374151;">업태</label>
-                <input type="text" id="clientModalBizType" class="w-full px-3 py-2 border rounded text-sm" style="color:#212529;" placeholder="예: 제조업">
+                <label class="ds-label">업태</label>
+                <input type="text" id="clientModalBizType" class="ds-input" placeholder="예: 제조업">
               </div>
               <div>
-                <label class="block text-sm font-medium mb-1" style="color:#374151;">종목</label>
-                <input type="text" id="clientModalBizItem" class="w-full px-3 py-2 border rounded text-sm" style="color:#212529;" placeholder="예: 현수막">
+                <label class="ds-label">종목</label>
+                <input type="text" id="clientModalBizItem" class="ds-input" placeholder="예: 현수막">
               </div>
               <div>
-                <label class="block text-sm font-medium mb-1" style="color:#374151;">전화</label>
-                <input type="text" id="clientModalPhone" oninput="formatPhoneNum(this)" class="w-full px-3 py-2 border rounded text-sm" style="color:#212529;">
+                <label class="ds-label">전화</label>
+                <input type="text" id="clientModalPhone" oninput="formatPhoneNum(this)" class="ds-input">
               </div>
               <div>
-                <label class="block text-sm font-medium mb-1" style="color:#374151;">담당자 휴대폰 <span class="text-blue-500 text-xs font-normal">(알림톡/문자)</span></label>
-                <input type="tel" id="clientModalMobile" oninput="formatPhoneNum(this)" class="w-full px-3 py-2 border rounded text-sm" style="color:#212529;" placeholder="010-0000-0000">
+                <label class="ds-label">담당자 휴대폰 <span class="text-xs font-normal" style="color:var(--c-primary)">(알림톡/문자)</span></label>
+                <input type="tel" id="clientModalMobile" oninput="formatPhoneNum(this)" class="ds-input" placeholder="010-0000-0000">
               </div>
               <div>
-                <label class="block text-sm font-medium mb-1" style="color:#374151;">FAX</label>
-                <input type="text" id="clientModalFax" oninput="formatPhoneNum(this)" class="w-full px-3 py-2 border rounded text-sm" style="color:#212529;">
+                <label class="ds-label">FAX</label>
+                <input type="text" id="clientModalFax" oninput="formatPhoneNum(this)" class="ds-input">
               </div>
               <div>
-                <label class="block text-sm font-medium mb-1" style="color:#374151;">이메일</label>
-                <input type="email" id="clientModalEmail" class="w-full px-3 py-2 border rounded text-sm" style="color:#212529;">
+                <label class="ds-label">이메일</label>
+                <input type="email" id="clientModalEmail" class="ds-input">
               </div>
               <div>
-                <label class="block text-sm font-medium mb-1" style="color:#374151;">배송방식</label>
-                <select id="clientModalDeliveryMethod" class="w-full px-3 py-2 border rounded text-sm">
+                <label class="ds-label">배송방식</label>
+                <select id="clientModalDeliveryMethod" class="ds-input">
                   <option value="SAME">소재지 동일</option>
                   <option value="FREIGHT">화물</option>
                   <option value="DIRECT">직배송</option>
                   <option value="PICKUP">방문수령</option>
                 </select>
               </div>
-              <div class="col-span-2">
-                <label class="block text-sm font-medium mb-1" style="color:#374151;">주소</label>
+              <div class="col-span-1 md:col-span-2">
+                <label class="ds-label">주소</label>
                 <div class="grid grid-cols-12 gap-2">
-                  <input type="text" id="clientModalPostalCode" maxlength="5" placeholder="우편번호" class="col-span-2 px-3 py-2 border rounded text-sm tabular-nums" style="color:#212529;">
-                  <input type="text" id="clientModalAddress" placeholder="기본주소" class="col-span-7 px-3 py-2 border rounded text-sm" style="color:#212529;">
-                  <button type="button" onclick="openPostcodeSearch({ postalId: 'clientModalPostalCode', addressId: 'clientModalAddress', detailFocusId: 'clientModalAddressDetail' })" class="col-span-3 px-3 py-2 text-xs font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 rounded border border-blue-200">
-                    <i class="fas fa-search mr-1"></i>주소 검색
+                  <input type="text" id="clientModalPostalCode" maxlength="5" placeholder="우편번호" class="ds-input col-span-2 tabular-nums">
+                  <input type="text" id="clientModalAddress" placeholder="기본주소" class="ds-input col-span-7">
+                  <button type="button" onclick="openPostcodeSearch({ postalId: 'clientModalPostalCode', addressId: 'clientModalAddress', detailFocusId: 'clientModalAddressDetail' })" class="ds-btn ds-btn-secondary ds-btn-sm col-span-3">
+                    <i class="fas fa-search" style="margin-right:4px"></i>주소 검색
                   </button>
-                  <input type="text" id="clientModalAddressDetail" placeholder="상세주소 (예: 101동 1502호)" class="col-span-12 px-3 py-2 border rounded text-sm" style="color:#212529;">
+                  <input type="text" id="clientModalAddressDetail" placeholder="상세주소 (예: 101동 1502호)" class="ds-input col-span-12">
                 </div>
               </div>
-              <div class="col-span-2" id="deliveryAddressRow">
-                <label class="block text-sm font-medium mb-1" style="color:#374151;">배송지 (화물 지점명 등)</label>
-                <input type="text" id="clientModalDeliveryAddress" class="w-full px-3 py-2 border rounded text-sm" style="color:#212529;" placeholder="예: 유성구암, 별도 배송지 주소 등">
+              <div class="col-span-1 md:col-span-2" id="deliveryAddressRow">
+                <label class="ds-label">배송지 (화물 지점명 등)</label>
+                <input type="text" id="clientModalDeliveryAddress" class="ds-input" placeholder="예: 유성구암, 별도 배송지 주소 등">
               </div>
-              <div class="col-span-2">
-                <label class="block text-sm font-medium mb-1" style="color:#374151;">검색 키워드</label>
-                <textarea id="clientModalSearchKeywords" rows="2" class="w-full px-3 py-2 border rounded text-sm" style="color:#212529;" placeholder="검색에 사용할 키워드 (쉼표로 구분)"></textarea>
+              <div class="col-span-1 md:col-span-2">
+                <label class="ds-label">검색 키워드</label>
+                <textarea id="clientModalSearchKeywords" rows="2" class="ds-input" placeholder="검색에 사용할 키워드 (쉼표로 구분)"></textarea>
               </div>
-              <div class="col-span-2">
-                <label class="block text-sm font-medium mb-1" style="color:#374151;">이체 정보</label>
-                <textarea id="clientModalTransferInfo" rows="2" class="w-full px-3 py-2 border rounded text-sm" style="color:#212529;" placeholder="계좌번호, 은행명, 예금주 등"></textarea>
+              <div class="col-span-1 md:col-span-2">
+                <label class="ds-label">이체 정보</label>
+                <textarea id="clientModalTransferInfo" rows="2" class="ds-input" placeholder="계좌번호, 은행명, 예금주 등"></textarea>
               </div>
-              <div class="col-span-2">
-                <label class="block text-sm font-medium mb-1" style="color:#374151;">비고</label>
-                <textarea id="clientModalNotes" rows="2" class="w-full px-3 py-2 border rounded text-sm" style="color:#212529;" placeholder="기타 메모"></textarea>
+              <div class="col-span-1 md:col-span-2">
+                <label class="ds-label">비고</label>
+                <textarea id="clientModalNotes" rows="2" class="ds-input" placeholder="기타 메모"></textarea>
               </div>
             </div>
-            <div class="mt-5 flex gap-2">
-              <button onclick="saveClient()" class="flex-1 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm">저장</button>
-              <button onclick="document.getElementById('clientModal').classList.add('hidden')" class="px-4 py-2 border border-gray-300 text-gray-700 bg-white rounded hover:bg-gray-50 text-sm">취소</button>
-            </div>
+          </div>
+          <div class="ds-modal-footer">
+            <button onclick="document.getElementById('clientModal').classList.add('hidden')" class="ds-btn ds-btn-secondary">취소</button>
+            <button onclick="saveClient()" class="ds-btn ds-btn-primary">저장</button>
           </div>
         </div>
       </div>

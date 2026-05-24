@@ -82,7 +82,7 @@ export function cardExpensesPage(c: Context<HonoEnv>) {
               <button onclick="syncBarobillCards()" id="syncCardBtn" class="px-3 py-1.5 text-xs font-medium rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 flex items-center gap-1">
                 <i class="fas fa-sync-alt"></i> 동기화
               </button>
-              <button onclick="openAddTxModal()" class="px-3 py-1.5 text-xs font-medium rounded-lg bg-blue-600 text-white hover:bg-blue-700 flex items-center gap-1">
+              <button onclick="openAddTxModal()" class="ds-btn ds-btn-primary ds-btn-sm flex items-center gap-1">
                 <i class="fas fa-plus"></i> 등록
               </button>
               <div class="relative" id="cardMoreWrap">
@@ -280,8 +280,8 @@ export function cardExpensesPage(c: Context<HonoEnv>) {
       </div>
 
       <!-- 수수료율 추가/수정 모달 -->
-      <div id="feeRateModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-        <div class="bg-white rounded-lg shadow-xl w-[400px] p-6">
+      <div id="feeRateModal" class="ds-modal-overlay hidden">
+        <div class="ds-modal p-6" style="max-width:400px">
           <div class="flex items-center justify-between mb-4">
             <h3 class="text-lg font-bold text-gray-800" id="feeRateModalTitle"><i class="fas fa-credit-card text-blue-500 mr-2"></i>카드사 수수료율</h3>
             <button onclick="closeFeeRateModal()" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times"></i></button>
@@ -294,14 +294,14 @@ export function cardExpensesPage(c: Context<HonoEnv>) {
           </div>
           <div class="flex gap-2 justify-end mt-5">
             <button onclick="closeFeeRateModal()" class="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm">취소</button>
-            <button onclick="saveFeeRate()" class="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm">저장</button>
+            <button onclick="saveFeeRate()" class="ds-btn ds-btn-primary">저장</button>
           </div>
         </div>
       </div>
 
       <!-- ===== 카드 등록/수정 모달 ===== -->
-      <div id="cardModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-        <div class="bg-white rounded-lg shadow-xl w-[440px] p-6">
+      <div id="cardModal" class="ds-modal-overlay hidden">
+        <div class="ds-modal p-6" style="max-width:440px">
           <div class="flex justify-between items-center mb-4">
             <h3 class="text-lg font-bold text-gray-800" id="cardModalTitle"><i class="fas fa-credit-card text-blue-500 mr-2"></i>카드 등록</h3>
             <button onclick="closeCardModal()" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times"></i></button>
@@ -352,14 +352,14 @@ export function cardExpensesPage(c: Context<HonoEnv>) {
           </div>
           <div class="flex justify-end gap-2 mt-6">
             <button onclick="closeCardModal()" class="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm hover:bg-gray-50">취소</button>
-            <button onclick="saveCard()" class="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700"><i class="fas fa-save mr-1"></i>저장</button>
+            <button onclick="saveCard()" class="ds-btn ds-btn-primary"><i class="fas fa-save mr-1"></i>저장</button>
           </div>
         </div>
       </div>
 
       <!-- ===== 경비 분류 추가 모달 ===== -->
-      <div id="categoryModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-        <div class="bg-white rounded-lg shadow-xl w-[380px] p-6">
+      <div id="categoryModal" class="ds-modal-overlay hidden">
+        <div class="ds-modal p-6" style="max-width:380px">
           <div class="flex justify-between items-center mb-4">
             <h3 class="text-lg font-bold text-gray-800"><i class="fas fa-tag text-purple-500 mr-2"></i>경비 분류</h3>
             <button onclick="closeCategoryModal()" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times"></i></button>
@@ -389,8 +389,8 @@ export function cardExpensesPage(c: Context<HonoEnv>) {
       </div>
 
       <!-- ===== 거래 수정 모달 ===== -->
-      <div id="editTxModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-        <div class="bg-white rounded-lg shadow-xl w-[520px] p-6 max-h-[90vh] overflow-y-auto">
+      <div id="editTxModal" class="ds-modal-overlay hidden">
+        <div class="ds-modal p-6" style="max-width:520px;max-height:90vh;overflow-y:auto">
           <div class="flex justify-between items-center mb-4">
             <h3 class="text-lg font-bold text-gray-800"><i class="fas fa-pen text-blue-500 mr-2"></i>카드 내역 관리</h3>
             <button onclick="closeEditTxModal()" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times"></i></button>
@@ -445,14 +445,14 @@ export function cardExpensesPage(c: Context<HonoEnv>) {
           </div>
           <div class="flex justify-end gap-2 mt-6">
             <button onclick="closeEditTxModal()" class="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm hover:bg-gray-50">취소</button>
-            <button onclick="saveEditTx()" class="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700"><i class="fas fa-save mr-1"></i>저장</button>
+            <button onclick="saveEditTx()" class="ds-btn ds-btn-primary"><i class="fas fa-save mr-1"></i>저장</button>
           </div>
         </div>
       </div>
 
       <!-- ===== 수동 등록 모달 ===== -->
-      <div id="addTxModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-        <div class="bg-white rounded-lg shadow-xl w-[480px] p-6">
+      <div id="addTxModal" class="ds-modal-overlay hidden">
+        <div class="ds-modal p-6" style="max-width:480px">
           <div class="flex justify-between items-center mb-4">
             <h3 class="text-lg font-bold text-gray-800"><i class="fas fa-plus-circle text-green-500 mr-2"></i>카드 내역 수동 등록</h3>
             <button onclick="closeAddTxModal()" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times"></i></button>
@@ -495,8 +495,8 @@ export function cardExpensesPage(c: Context<HonoEnv>) {
       </div>
 
       <!-- ===== CSV 가져오기 모달 ===== -->
-      <div id="importModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-        <div class="bg-white rounded-lg shadow-xl w-[500px] p-6">
+      <div id="importModal" class="ds-modal-overlay hidden">
+        <div class="ds-modal p-6" style="max-width:500px">
           <div class="flex justify-between items-center mb-4">
             <h3 class="text-lg font-bold text-gray-800"><i class="fas fa-file-csv text-green-500 mr-2"></i>CSV 가져오기</h3>
             <button onclick="closeImportModal()" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times"></i></button>

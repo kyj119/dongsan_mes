@@ -11,26 +11,26 @@ export function paymentRequestsPage(c: Context<HonoEnv>) {
       <div class="space-y-4">
         <!-- KPI -->
         <div class="grid grid-cols-2 md:grid-cols-4 gap-2">
-          <div class="bg-white rounded-lg border p-2.5 text-center shadow-sm">
+          <div class="ds-card p-2.5 text-center">
             <div class="text-xl font-bold text-gray-900" style="font-variant-numeric:tabular-nums;" id="prKpiDraft">-</div>
             <div class="text-[10px] text-gray-400">작성중</div>
           </div>
-          <div class="bg-white rounded-lg border p-2.5 text-center shadow-sm">
+          <div class="ds-card p-2.5 text-center">
             <div class="text-xl font-bold text-amber-600" style="font-variant-numeric:tabular-nums;" id="prKpiPending">-</div>
             <div class="text-[10px] text-gray-400">결재대기</div>
           </div>
-          <div class="bg-white rounded-lg border p-2.5 text-center shadow-sm">
+          <div class="ds-card p-2.5 text-center">
             <div class="text-xl font-bold text-blue-600" style="font-variant-numeric:tabular-nums;" id="prKpiApproved">-</div>
             <div class="text-[10px] text-gray-400">승인완료(이체대기)</div>
           </div>
-          <div class="bg-white rounded-lg border p-2.5 text-center shadow-sm">
+          <div class="ds-card p-2.5 text-center">
             <div class="text-xl font-bold text-green-600" style="font-variant-numeric:tabular-nums;" id="prKpiPaid">-</div>
             <div class="text-[10px] text-gray-400">이체완료</div>
           </div>
         </div>
 
         <!-- 필터 + 액션 -->
-        <div class="bg-white rounded-lg border shadow-sm p-3 flex items-center gap-2">
+        <div class="ds-card p-3 flex items-center gap-2">
           <select id="prFilterStatus" class="border rounded px-2 py-1 text-xs">
             <option value="">전체 상태</option>
             <option value="DRAFT">작성중</option>
@@ -50,13 +50,13 @@ export function paymentRequestsPage(c: Context<HonoEnv>) {
             <i class="fas fa-search mr-1"></i>검색
           </button>
           <div class="flex-1"></div>
-          <button onclick="prOpenAddModal()" class="px-3 py-1.5 text-xs bg-blue-600 text-white rounded hover:bg-blue-700">
+          <button onclick="prOpenAddModal()" class="ds-btn ds-btn-primary ds-btn-sm">
             <i class="fas fa-plus mr-1"></i>지출결의서 작성
           </button>
         </div>
 
         <!-- 목록 -->
-        <div class="bg-white rounded-lg border shadow-sm overflow-hidden">
+        <div class="ds-card" style="padding:0;overflow:hidden">
           <div class="overflow-x-auto">
             <table class="w-full text-xs ds-table-striped">
               <thead>
@@ -81,8 +81,8 @@ export function paymentRequestsPage(c: Context<HonoEnv>) {
       </div>
 
       <!-- 작성/수정 모달 -->
-      <div id="prModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-        <div class="bg-white rounded-lg shadow-xl w-[500px] max-h-[90vh] overflow-y-auto p-6">
+      <div id="prModal" class="ds-modal-overlay hidden">
+        <div class="ds-modal p-6" style="max-width:500px;max-height:90vh;overflow-y:auto">
           <div class="flex justify-between items-center mb-4">
             <h3 class="text-lg font-bold" id="prModalTitle">지출결의서 작성</h3>
             <button onclick="prCloseModal()" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times"></i></button>
@@ -129,7 +129,7 @@ export function paymentRequestsPage(c: Context<HonoEnv>) {
           </div>
           <div class="flex justify-end gap-2 mt-4">
             <button onclick="prCloseModal()" class="px-4 py-2 text-sm border rounded hover:bg-gray-50">취소</button>
-            <button onclick="prSave()" class="px-4 py-2 text-sm bg-blue-600 text-white rounded hover:bg-blue-700">저장 (작성중)</button>
+            <button onclick="prSave()" class="ds-btn ds-btn-primary">저장 (작성중)</button>
           </div>
         </div>
       </div>

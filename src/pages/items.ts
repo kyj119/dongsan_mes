@@ -16,7 +16,7 @@ export function itemsPage(c: Context<HonoEnv>) {
     pageContent: `
         <div class="container mx-auto px-4 py-8">
             <!-- 메인 탭 (7탭) -->
-            <div class="flex border-b border-gray-200 mb-4 overflow-x-auto">
+            <div class="flex gap-1 mb-4 border-b overflow-x-auto" style="border-color:var(--c-border)">
                 <button class="px-4 py-2 font-medium text-sm border-b-2 border-blue-600 text-blue-600 whitespace-nowrap" onclick="switchMainTab('output')" id="tabBtnOutput">출력</button>
                 <button class="px-4 py-2 font-medium text-sm text-gray-500 hover:text-gray-700 border-b-2 border-transparent whitespace-nowrap" onclick="switchMainTab('transfer')" id="tabBtnTransfer">전사</button>
                 <button class="px-4 py-2 font-medium text-sm text-gray-500 hover:text-gray-700 border-b-2 border-transparent whitespace-nowrap" onclick="switchMainTab('flag')" id="tabBtnFlag">태극기</button>
@@ -28,7 +28,7 @@ export function itemsPage(c: Context<HonoEnv>) {
 
             <!-- 출력 탭 -->
             <div id="tabOutput">
-                <div class="bg-white rounded-lg shadow-sm border p-4">
+                <div class="ds-card">
                     <div class="flex items-center justify-between mb-3">
                         <div class="flex items-center gap-3">
                             <h3 class="text-lg font-bold">출력 품목</h3>
@@ -51,12 +51,12 @@ export function itemsPage(c: Context<HonoEnv>) {
 
             <!-- 전사 탭 -->
             <div id="tabTransfer" class="hidden">
-                <div class="bg-white rounded-lg shadow-sm border p-4">
+                <div class="ds-card">
                     <div class="flex items-center justify-between mb-3">
                         <h3 class="text-lg font-bold">전사</h3>
                         <div class="flex gap-2">
                             <input type="text" id="transferSearch" placeholder="검색..." class="w-48 px-3 py-1.5 border rounded text-sm" oninput="debouncedLoadTab('transfer')">
-                            <button onclick="showCreateModalForTab('transfer')" class="px-3 py-1.5 text-xs bg-blue-600 text-white rounded hover:bg-blue-700">
+                            <button onclick="showCreateModalForTab('transfer')" class="ds-btn ds-btn-primary ds-btn-sm">
                                 <i class="fas fa-plus mr-1"></i>추가
                             </button>
                         </div>
@@ -67,12 +67,12 @@ export function itemsPage(c: Context<HonoEnv>) {
 
             <!-- 태극기 탭 -->
             <div id="tabFlag" class="hidden">
-                <div class="bg-white rounded-lg shadow-sm border p-4">
+                <div class="ds-card">
                     <div class="flex items-center justify-between mb-3">
                         <h3 class="text-lg font-bold">태극기</h3>
                         <div class="flex gap-2">
                             <input type="text" id="flagSearch" placeholder="검색..." class="w-48 px-3 py-1.5 border rounded text-sm" oninput="debouncedLoadTab('flag')">
-                            <button onclick="showCreateModalForTab('flag')" class="px-3 py-1.5 text-xs bg-blue-600 text-white rounded hover:bg-blue-700">
+                            <button onclick="showCreateModalForTab('flag')" class="ds-btn ds-btn-primary ds-btn-sm">
                                 <i class="fas fa-plus mr-1"></i>추가
                             </button>
                         </div>
@@ -83,12 +83,12 @@ export function itemsPage(c: Context<HonoEnv>) {
 
             <!-- 간판 탭 -->
             <div id="tabSign" class="hidden">
-                <div class="bg-white rounded-lg shadow-sm border p-4">
+                <div class="ds-card">
                     <div class="flex items-center justify-between mb-3">
                         <h3 class="text-lg font-bold">간판</h3>
                         <div class="flex gap-2">
                             <input type="text" id="signSearch" placeholder="검색..." class="w-48 px-3 py-1.5 border rounded text-sm" oninput="debouncedLoadTab('sign')">
-                            <button onclick="showCreateModalForTab('sign')" class="px-3 py-1.5 text-xs bg-blue-600 text-white rounded hover:bg-blue-700">
+                            <button onclick="showCreateModalForTab('sign')" class="ds-btn ds-btn-primary ds-btn-sm">
                                 <i class="fas fa-plus mr-1"></i>추가
                             </button>
                         </div>
@@ -99,12 +99,12 @@ export function itemsPage(c: Context<HonoEnv>) {
 
             <!-- 상품 탭 -->
             <div id="tabGoods" class="hidden">
-                <div class="bg-white rounded-lg shadow-sm border p-4">
+                <div class="ds-card">
                     <div class="flex items-center justify-between mb-3">
                         <h3 class="text-lg font-bold">상품</h3>
                         <div class="flex gap-2">
                             <input type="text" id="goodsSearch" placeholder="검색..." class="w-48 px-3 py-1.5 border rounded text-sm" oninput="debouncedLoadTab('goods')">
-                            <button onclick="showCreateModalForTab('goods')" class="px-3 py-1.5 text-xs bg-blue-600 text-white rounded hover:bg-blue-700">
+                            <button onclick="showCreateModalForTab('goods')" class="ds-btn ds-btn-primary ds-btn-sm">
                                 <i class="fas fa-plus mr-1"></i>추가
                             </button>
                         </div>
@@ -115,7 +115,7 @@ export function itemsPage(c: Context<HonoEnv>) {
 
             <!-- 원자재 탭 -->
             <div id="tabRawMaterial" class="hidden">
-                <div class="bg-white rounded-lg shadow-sm border p-4">
+                <div class="ds-card">
                     <div class="flex items-center justify-between mb-3">
                         <h3 class="text-lg font-bold">원자재</h3>
                         <div class="flex gap-2">
@@ -136,7 +136,7 @@ export function itemsPage(c: Context<HonoEnv>) {
                                 <option value="unlinked">미연결</option>
                             </select>
                             <input type="text" id="rmSearch" placeholder="검색..." class="w-48 px-3 py-1.5 border rounded text-sm" oninput="debouncedLoadTab('rawMaterial')">
-                            <button onclick="showCreateModalForTab('rawMaterial')" class="px-3 py-1.5 text-xs bg-blue-600 text-white rounded hover:bg-blue-700">
+                            <button onclick="showCreateModalForTab('rawMaterial')" class="ds-btn ds-btn-primary ds-btn-sm">
                                 <i class="fas fa-plus mr-1"></i>추가
                             </button>
                         </div>
@@ -148,7 +148,7 @@ export function itemsPage(c: Context<HonoEnv>) {
             <!-- 설정 탭 (기존 출력방식·소재 내용) -->
             <div id="tabSettings" class="hidden">
                 <!-- 출력방식 단가 -->
-                <div class="bg-white rounded-lg shadow-sm border p-4 mb-4">
+                <div class="ds-card mb-4">
                     <h3 class="text-sm font-semibold text-gray-700 mb-3">출력방식 단가</h3>
                     <div id="printMethodsList" class="space-y-2">
                         <div class="text-center py-4 text-gray-400 text-sm"><i class="fas fa-spinner fa-spin mr-1"></i>로딩 중...</div>
@@ -156,12 +156,12 @@ export function itemsPage(c: Context<HonoEnv>) {
                 </div>
 
                 <!-- 소재 관리 -->
-                <div class="bg-white rounded-lg shadow-sm border p-4">
+                <div class="ds-card">
                     <div class="flex items-center justify-between mb-3">
                         <h3 class="text-sm font-semibold text-gray-700">소재 관리</h3>
                         <div class="flex gap-2">
-                            <button onclick="showMediaBulkAddModal()" class="px-3 py-1.5 text-xs bg-green-600 text-white rounded hover:bg-green-700">일괄 추가</button>
-                            <button onclick="showMediaAddModal()" class="px-3 py-1.5 text-xs bg-blue-600 text-white rounded hover:bg-blue-700">소재 추가</button>
+                            <button onclick="showMediaBulkAddModal()" class="ds-btn ds-btn-sm" style="background:var(--c-success);color:#fff">일괄 추가</button>
+                            <button onclick="showMediaAddModal()" class="ds-btn ds-btn-primary ds-btn-sm">소재 추가</button>
                         </div>
                     </div>
                     <div id="printMediaList" class="space-y-3">
@@ -176,13 +176,13 @@ export function itemsPage(c: Context<HonoEnv>) {
             </select>
 
         <!-- 소재 추가 모달 -->
-        <div id="mediaAddModal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[60]">
-            <div class="bg-white rounded-lg shadow-xl max-w-lg w-full mx-4 max-h-screen overflow-y-auto">
-                <div class="p-4 border-b flex justify-between items-center">
+        <div id="mediaAddModal" class="ds-modal-overlay hidden">
+            <div class="ds-modal" style="max-width:520px">
+                <div class="ds-modal-header">
                     <h2 class="text-lg font-bold" id="mediaModalTitle">소재 추가</h2>
                     <button onclick="closeMediaAddModal()" class="text-gray-400 hover:text-gray-600 text-2xl">&times;</button>
                 </div>
-                <div class="p-6 space-y-4">
+                <div class="ds-modal-body space-y-4">
                     <input type="hidden" id="mediaEditId">
                     <div>
                         <label class="block text-sm font-semibold text-gray-700 mb-1">소재명 <span class="text-red-500">*</span></label>
@@ -244,13 +244,13 @@ export function itemsPage(c: Context<HonoEnv>) {
         </div>
 
         <!-- 소재 일괄 추가 모달 -->
-        <div id="mediaBulkAddModal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-            <div class="bg-white rounded-lg shadow-xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
-                <div class="p-4 border-b flex justify-between items-center">
+        <div id="mediaBulkAddModal" class="ds-modal-overlay hidden">
+            <div class="ds-modal" style="max-width:680px">
+                <div class="ds-modal-header">
                     <h2 class="text-lg font-bold">소재 일괄 추가 (교차 생성)</h2>
                     <button onclick="closeMediaBulkAddModal()" class="text-gray-400 hover:text-gray-600 text-2xl">&times;</button>
                 </div>
-                <div class="p-6 space-y-4">
+                <div class="ds-modal-body space-y-4">
                     <p class="text-sm text-gray-500">축(두께, 색상 등)의 교차곱으로 소재를 한번에 생성합니다.</p>
                     <div class="grid grid-cols-2 gap-4">
                         <div>
@@ -346,13 +346,13 @@ export function itemsPage(c: Context<HonoEnv>) {
         </div>
 
         <!-- 그룹 단가 조정 모달 -->
-        <div id="groupPriceModal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center" style="z-index:60">
-            <div class="bg-white rounded-lg shadow-xl max-w-md w-full mx-4">
-                <div class="p-4 border-b flex justify-between items-center">
+        <div id="groupPriceModal" class="ds-modal-overlay hidden" style="z-index:60">
+            <div class="ds-modal" style="max-width:460px">
+                <div class="ds-modal-header">
                     <h2 class="text-lg font-bold" id="groupPriceTitle">그룹 단가 조정</h2>
                     <button onclick="closeGroupPriceModal()" class="text-gray-400 hover:text-gray-600 text-2xl">&times;</button>
                 </div>
-                <div class="p-6 space-y-4">
+                <div class="ds-modal-body space-y-4">
                     <input type="hidden" id="groupPriceName">
                     <div>
                         <label class="block text-sm font-semibold text-gray-700 mb-1">조정 방식</label>
@@ -376,9 +376,9 @@ export function itemsPage(c: Context<HonoEnv>) {
         </div>
 
         <!-- Price History Modal -->
-        <div id="priceHistoryModal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-            <div class="bg-white rounded-lg shadow-xl max-w-md w-full mx-4">
-                <div class="p-4 border-b flex justify-between items-center">
+        <div id="priceHistoryModal" class="ds-modal-overlay hidden">
+            <div class="ds-modal" style="max-width:460px">
+                <div class="ds-modal-header">
                     <h2 class="text-sm font-bold" id="priceHistoryTitle">단가 이력</h2>
                     <button onclick="closePriceHistoryModal()" class="text-gray-400 hover:text-gray-600 text-2xl">&times;</button>
                 </div>
@@ -387,9 +387,9 @@ export function itemsPage(c: Context<HonoEnv>) {
         </div>
 
         <!-- Create/Edit Modal -->
-        <div id="itemModal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-            <div class="bg-white rounded-lg shadow-xl max-w-3xl w-full mx-4 max-h-screen overflow-y-auto">
-                <div class="p-4 border-b flex justify-between items-center">
+        <div id="itemModal" class="ds-modal-overlay hidden">
+            <div class="ds-modal ds-modal-wide">
+                <div class="ds-modal-header">
                     <h2 class="text-xl font-bold" id="modalTitle">품목 추가</h2>
                     <button onclick="closeModal()" class="text-gray-400 hover:text-gray-600 text-2xl">&times;</button>
                 </div>
@@ -574,9 +574,9 @@ export function itemsPage(c: Context<HonoEnv>) {
             </div>
         </div>
         <!-- 그룹 일괄 수정 모달 -->
-        <div id="groupEditModal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-            <div class="bg-white rounded-lg shadow-xl max-w-lg w-full mx-4">
-                <div class="p-4 border-b flex justify-between items-center">
+        <div id="groupEditModal" class="ds-modal-overlay hidden">
+            <div class="ds-modal" style="max-width:520px">
+                <div class="ds-modal-header">
                     <h2 class="text-lg font-bold" id="groupEditTitle">그룹 일괄 수정</h2>
                     <button onclick="closeGroupEditModal()" class="text-gray-400 hover:text-gray-600 text-2xl">&times;</button>
                 </div>
@@ -628,13 +628,13 @@ export function itemsPage(c: Context<HonoEnv>) {
             </div>
         </div>
         <!-- 일괄 등록 모달 -->
-        <div id="bulkModal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-            <div class="bg-white rounded-lg shadow-xl max-w-lg w-full mx-4">
-                <div class="p-4 border-b flex justify-between items-center">
+        <div id="bulkModal" class="ds-modal-overlay hidden">
+            <div class="ds-modal" style="max-width:520px">
+                <div class="ds-modal-header">
                     <h2 class="text-lg font-bold">원자재 일괄 등록</h2>
                     <button onclick="closeBulkModal()" class="text-gray-400 hover:text-gray-600 text-2xl">&times;</button>
                 </div>
-                <div class="p-6 space-y-4">
+                <div class="ds-modal-body space-y-4">
                     <p class="text-sm text-gray-500">같은 품목의 규격만 다른 여러 품목을 한 번에 등록합니다. 품목 그룹이 자동 설정됩니다.</p>
                     <div>
                         <label class="block text-sm font-semibold text-gray-700 mb-1">품목명 (공통) <span class="text-red-500">*</span></label>

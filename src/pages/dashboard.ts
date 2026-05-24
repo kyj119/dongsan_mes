@@ -9,7 +9,7 @@ export function dashboardPage(c: Context<HonoEnv>) {
     activePage: '/dashboard',
     pageContent: `
             <!-- Quick Stats — Bento Grid -->
-            <div id="kpiArea" class="ds-bento mb-8">
+            <div id="kpiArea" class="ds-bento mb-6">
                 <!-- Hero: 이번 달 매출 (2col × 2row) -->
                 <div class="ds-card ds-bento-hero cursor-pointer" style="border-left:4px solid var(--c-purple);" onclick="location.href='/ledger'" title="거래처 원장으로 이동">
                     <div class="flex items-center justify-between mb-2">
@@ -101,7 +101,7 @@ export function dashboardPage(c: Context<HonoEnv>) {
             </div>
 
             <!-- 금일 납기 경고 + 주문 추이 + 카드 분포 -->
-            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 mb-6">
               <div class="ds-card">
                 <div class="ds-card-header">
                   <h3 class="ds-card-title">
@@ -136,8 +136,8 @@ export function dashboardPage(c: Context<HonoEnv>) {
             </div>
 
             <!-- 금일 생산 실적 + 장비 가동률 -->
-            <div class="grid grid-cols-2 gap-6 mb-8">
-              <div class="ds-card">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6" id="productionUtilSection">
+              <div class="ds-card" id="productionTodayCard">
                 <div class="ds-card-header">
                   <h3 class="ds-card-title">
                     <i class="fas fa-industry" style="color:var(--c-info);margin-right:6px"></i>
@@ -147,7 +147,7 @@ export function dashboardPage(c: Context<HonoEnv>) {
                 </div>
                 <div id="productionToday" class="space-y-3"></div>
               </div>
-              <div class="ds-card">
+              <div class="ds-card" id="equipUtilCard">
                 <div class="ds-card-header">
                   <h3 class="ds-card-title">
                     <i class="fas fa-tachometer-alt" style="color:var(--c-success);margin-right:6px"></i>
@@ -160,7 +160,7 @@ export function dashboardPage(c: Context<HonoEnv>) {
             </div>
 
             <!-- 진행 중인 작업 -->
-            <div class="ds-card mb-8">
+            <div class="ds-card mb-6">
                 <div class="ds-card-header">
                     <h3 class="ds-card-title" style="font-size:var(--fs-lg)">
                         <i class="fas fa-print" style="color:var(--c-primary);margin-right:8px"></i>
@@ -172,7 +172,7 @@ export function dashboardPage(c: Context<HonoEnv>) {
             </div>
 
             <!-- 최근 활동 목록 -->
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-6 mb-8">
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-6 mb-6">
               <div class="ds-card">
                 <div class="ds-card-header" style="margin-bottom:var(--space-md)">
                   <h3 class="ds-card-title">
@@ -195,24 +195,8 @@ export function dashboardPage(c: Context<HonoEnv>) {
               </div>
             </div>
 
-            <!-- Revenue Stats -->
-            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
-                <div class="ds-card" style="background:linear-gradient(135deg,var(--c-primary),var(--c-primary-dark));color:#fff;">
-                    <div class="text-sm" style="opacity:0.9;margin-bottom:8px">오늘 매출</div>
-                    <div class="text-2xl font-bold" id="statTodayRevenue">0원</div>
-                </div>
-                <div class="ds-card" style="background:linear-gradient(135deg,var(--c-success),#15803d);color:#fff;">
-                    <div class="text-sm" style="opacity:0.9;margin-bottom:8px">이번 주 매출</div>
-                    <div class="text-2xl font-bold" id="statWeekRevenue">0원</div>
-                </div>
-                <div class="ds-card" style="background:linear-gradient(135deg,var(--c-purple),#6d28d9);color:#fff;">
-                    <div class="text-sm" style="opacity:0.9;margin-bottom:8px">총 매출</div>
-                    <div class="text-2xl font-bold" id="statTotalRevenue">0원</div>
-                </div>
-            </div>
-
             <!-- 미수금 현황 -->
-            <div class="grid grid-cols-2 gap-6 mb-8">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
               <div class="ds-card">
                 <div class="ds-card-header" style="margin-bottom:var(--space-md)">
                   <h3 class="ds-card-title" style="font-size:var(--fs-lg)">
@@ -242,7 +226,7 @@ export function dashboardPage(c: Context<HonoEnv>) {
             </div>
 
             <!-- 납기 지연 발주 -->
-            <div class="ds-card mb-8" id="overduePosSection" style="display:none;">
+            <div class="ds-card mb-6" id="overduePosSection" style="display:none;">
                 <div class="ds-card-header" style="margin-bottom:var(--space-md)">
                   <h3 class="ds-card-title" style="font-size:var(--fs-lg)">
                     <i class="fas fa-truck" style="color:var(--c-danger);margin-right:8px"></i>
@@ -254,7 +238,7 @@ export function dashboardPage(c: Context<HonoEnv>) {
             </div>
 
             <!-- 재고 부족 경고 -->
-            <div class="ds-card mb-8" id="lowStockSection" style="display:none;">
+            <div class="ds-card mb-6" id="lowStockSection" style="display:none;">
                 <div class="ds-card-header" style="margin-bottom:var(--space-md)">
                   <h3 class="ds-card-title" style="font-size:var(--fs-lg)">
                     <i class="fas fa-box-open" style="color:var(--c-warning);margin-right:8px"></i>
@@ -266,7 +250,7 @@ export function dashboardPage(c: Context<HonoEnv>) {
             </div>
 
             <!-- 장비 부하 현황 -->
-            <div class="ds-card mb-8" id="equipmentLoadSection" style="display:none;">
+            <div class="ds-card mb-6" id="equipmentLoadSection" style="display:none;">
                 <div class="ds-card-header">
                     <h3 class="ds-card-title" style="font-size:var(--fs-lg)">
                         <i class="fas fa-server" style="color:var(--c-info);margin-right:8px"></i>
@@ -278,7 +262,7 @@ export function dashboardPage(c: Context<HonoEnv>) {
             </div>
 
             <!-- 정비/소모품 알림 -->
-            <div class="ds-card mb-8" id="maintenanceAlertsSection" style="display:none;">
+            <div class="ds-card mb-6" id="maintenanceAlertsSection" style="display:none;">
                 <div class="ds-card-header">
                     <h3 class="ds-card-title" style="font-size:var(--fs-lg)">
                         <i class="fas fa-wrench" style="color:var(--c-warning);margin-right:8px"></i>
@@ -290,8 +274,8 @@ export function dashboardPage(c: Context<HonoEnv>) {
                 <div id="maintenanceAlertList" class="space-y-2 max-h-[300px] overflow-y-auto"></div>
             </div>
 
-            <!-- 후가공 현황 -->
-            <div class="ds-card mb-8">
+            <!-- 후가공 현황 (데이터 있을 때만 표시) -->
+            <div class="ds-card mb-6" id="ppStatsSection" style="display:none">
                 <div class="ds-card-header" style="margin-bottom:var(--space-md)">
                   <h3 class="ds-card-title" style="font-size:var(--fs-lg)">
                     <i class="fas fa-tools" style="color:var(--c-warning);margin-right:8px"></i>

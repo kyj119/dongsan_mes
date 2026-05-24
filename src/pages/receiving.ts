@@ -24,22 +24,22 @@ export function receivingPage(c: Context<HonoEnv>) {
       <div id="panelPending">
         <!-- 통계 카드 3개 -->
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-4">
-          <div class="bg-white rounded-lg shadow p-4">
+          <div class="ds-card p-4">
             <div class="text-sm text-gray-600"><i class="fas fa-clock text-blue-400 mr-1"></i>입고대기 PO</div>
             <div class="text-2xl font-bold text-blue-600" id="pendingCount">-</div>
           </div>
-          <div class="bg-white rounded-lg shadow p-4">
+          <div class="ds-card p-4">
             <div class="text-sm text-gray-600"><i class="fas fa-box-open text-amber-400 mr-1"></i>부분입고</div>
             <div class="text-2xl font-bold text-amber-600" id="partialCount">-</div>
           </div>
-          <div class="bg-white rounded-lg shadow p-4 border-l-4 border-red-500">
+          <div class="ds-card p-4 border-l-4 border-red-500">
             <div class="text-sm text-gray-600"><i class="fas fa-exclamation-triangle text-red-400 mr-1"></i>납기지연</div>
             <div class="text-2xl font-bold text-red-600" id="overdueCount">-</div>
           </div>
         </div>
 
         <!-- 필터 토글: 내 담당 / 전체 -->
-        <div class="bg-white rounded-lg shadow mb-4 p-2 flex items-center justify-between">
+        <div class="ds-card mb-4 p-2 flex items-center justify-between">
           <div class="inline-flex rounded-lg border border-gray-200 overflow-hidden" role="tablist">
             <button id="scopeMineBtn" onclick="switchScope('mine')"
               class="px-4 py-2 text-sm font-medium bg-blue-600 text-white">
@@ -64,7 +64,7 @@ export function receivingPage(c: Context<HonoEnv>) {
       <!-- 입고이력 패널 -->
       <div id="panelHistory" class="hidden">
         <!-- 필터 바 -->
-        <div class="bg-white rounded-lg shadow p-4 mb-4 flex items-center gap-3 flex-wrap">
+        <div class="ds-card p-4 mb-4 flex items-center gap-3 flex-wrap">
           <input type="date" id="historyDateFrom" class="px-3 py-2 border rounded-lg text-sm">
           <span class="text-gray-400">~</span>
           <input type="date" id="historyDateTo" class="px-3 py-2 border rounded-lg text-sm">
@@ -77,13 +77,13 @@ export function receivingPage(c: Context<HonoEnv>) {
           <input type="text" id="historySearch" placeholder="발주번호, 공급업체 검색..."
             class="px-3 py-2 border rounded-lg text-sm flex-1 min-w-[200px]"
             onkeyup="if(event.key==='Enter')loadReceiptHistory(1)">
-          <button onclick="loadReceiptHistory(1)" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium">
+          <button onclick="loadReceiptHistory(1)" class="ds-btn ds-btn-primary text-sm">
             <i class="fas fa-search mr-1"></i>조회
           </button>
         </div>
 
         <!-- 입고이력 테이블 -->
-        <div class="bg-white rounded-lg shadow overflow-hidden">
+        <div class="ds-card overflow-hidden">
           <table class="w-full text-sm ds-table-striped">
             <thead class="bg-gray-50">
               <tr>
@@ -106,8 +106,8 @@ export function receivingPage(c: Context<HonoEnv>) {
       </div>
 
       <!-- 통합 입고 처리 모달 (발주 상세 + 입고 입력) -->
-      <div id="receiveModal" class="fixed inset-0 bg-black bg-opacity-50 hidden z-50 flex items-center justify-center">
-        <div class="bg-white rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] overflow-y-auto">
+      <div id="receiveModal" class="ds-modal-overlay hidden">
+        <div class="ds-modal w-full max-h-[90vh] overflow-y-auto" style="max-width:56rem">
           <div class="p-6">
             <!-- 헤더 -->
             <div class="flex justify-between items-start mb-4">
@@ -135,7 +135,7 @@ export function receivingPage(c: Context<HonoEnv>) {
               <!-- 품목 테이블 헤더 + 전체 잔량 수령 버튼 -->
               <div class="flex justify-between items-center mb-2">
                 <span class="text-sm font-medium text-gray-700" id="receiveItemsCount">입고 품목</span>
-                <button onclick="fillAllRemaining()" class="px-3 py-1.5 text-xs bg-blue-50 text-blue-700 rounded hover:bg-blue-100 font-medium"><i class="fas fa-check-double mr-1"></i>전체 잔량 수령</button>
+                <button onclick="fillAllRemaining()" class="ds-btn ds-btn-primary ds-btn-sm"><i class="fas fa-check-double mr-1"></i>전체 잔량 수령</button>
               </div>
               <div class="overflow-x-auto mb-4">
                 <table class="w-full text-sm ds-table-striped">
@@ -165,7 +165,7 @@ export function receivingPage(c: Context<HonoEnv>) {
               <!-- 버튼 -->
               <div class="flex justify-end gap-3">
                 <button onclick="closeReceiveModal()" class="px-4 py-2 bg-gray-200 rounded hover:bg-gray-300 text-sm">취소</button>
-                <button onclick="submitReceive()" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm font-medium">
+                <button onclick="submitReceive()" class="ds-btn ds-btn-primary text-sm">
                   <i class="fas fa-check mr-1"></i>입고 확정
                 </button>
               </div>
@@ -184,8 +184,8 @@ export function receivingPage(c: Context<HonoEnv>) {
       </div>
 
       <!-- 검수 결과 등록 모달 (입고 후 자동 트리거) -->
-      <div id="inspectionEntryModal" class="fixed inset-0 bg-black bg-opacity-50 hidden z-50 flex items-center justify-center" onclick="if(event.target===this)receivingCloseInspectionModal()">
-        <div class="bg-white rounded-lg shadow-xl w-full max-w-3xl max-h-[90vh] overflow-y-auto">
+      <div id="inspectionEntryModal" class="ds-modal-overlay hidden" onclick="if(event.target===this)receivingCloseInspectionModal()">
+        <div class="ds-modal w-full max-h-[90vh] overflow-y-auto" style="max-width:48rem">
           <div id="inspectionEntryBody"></div>
         </div>
       </div>

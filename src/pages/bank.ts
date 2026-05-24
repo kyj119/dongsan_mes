@@ -89,7 +89,7 @@ export function bankPage(c: Context<HonoEnv>) {
           <input type="hidden" id="filterStatus" value="PENDING">
 
           <!-- 통합 필터 바: 필터 + 상태탭 + KPI 인라인 -->
-          <div class="bg-white rounded-lg shadow px-4 py-3 mb-3">
+          <div class="ds-card px-4 py-3 mb-3">
             <!-- Row 1: 필터 + 인라인 KPI -->
             <div class="flex flex-wrap items-center gap-3">
               <select id="filterAccount" class="form-select text-sm" style="width:160px;" onchange="loadTransactions()">
@@ -130,7 +130,7 @@ export function bankPage(c: Context<HonoEnv>) {
                 </button>
               </div>
               <div class="flex items-center gap-2">
-                <button onclick="syncBarobillBank()" id="syncBarobillBtn" class="px-3 py-1.5 text-xs font-medium rounded-lg bg-blue-600 text-white hover:bg-blue-700 flex items-center gap-1">
+                <button onclick="syncBarobillBank()" id="syncBarobillBtn" class="ds-btn ds-btn-primary ds-btn-sm flex items-center gap-1">
                   <i class="fas fa-sync-alt"></i> 바로빌 동기화
                 </button>
                 <button onclick="runAutoMatch()" class="px-3 py-1.5 text-xs font-medium rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 flex items-center gap-1">
@@ -150,7 +150,7 @@ export function bankPage(c: Context<HonoEnv>) {
           </div>
 
           <!-- Transactions Table -->
-          <div class="bg-white rounded-lg shadow overflow-hidden">
+          <div class="ds-card overflow-hidden">
             <div class="overflow-x-auto" style="max-height: calc(100vh - 220px); overflow-y: auto;">
               <table class="w-full border-collapse ds-table-striped">
                 <thead>
@@ -218,7 +218,7 @@ export function bankPage(c: Context<HonoEnv>) {
             </div>
           </div>
           <!-- 미수금 테이블 -->
-          <div class="bg-white rounded-lg shadow overflow-hidden">
+          <div class="ds-card overflow-hidden">
             <div class="overflow-x-auto" style="max-height: calc(100vh - 320px); overflow-y: auto;">
               <table class="w-full border-collapse ds-table-striped">
                 <thead>
@@ -253,7 +253,7 @@ export function bankPage(c: Context<HonoEnv>) {
               </button>
             </div>
           </div>
-          <div class="bg-white rounded-lg shadow overflow-hidden">
+          <div class="ds-card overflow-hidden">
             <div class="overflow-x-auto" style="max-height: calc(100vh - 280px); overflow-y: auto;">
               <table class="w-full border-collapse ds-table-striped">
                 <thead>
@@ -292,7 +292,7 @@ export function bankPage(c: Context<HonoEnv>) {
         <!-- 카드 수수료 → /card-expenses로 이동됨 -->
         <div id="finCardfeeContent" class="hidden" style="display:none!important">
           <!-- 수수료 계산기 -->
-          <div class="bg-white rounded-lg shadow p-6 mb-6">
+          <div class="ds-card p-6 mb-6">
             <h3 class="text-base font-bold text-gray-800 mb-4"><i class="fas fa-calculator text-blue-500 mr-2"></i>카드 수수료 계산</h3>
             <div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
               <div>
@@ -328,7 +328,7 @@ export function bankPage(c: Context<HonoEnv>) {
           </div>
 
           <!-- 기간별 수수료 요약 -->
-          <div class="bg-white rounded-lg shadow p-6 mb-6">
+          <div class="ds-card p-6 mb-6">
             <div class="flex items-center justify-between mb-4">
               <h3 class="text-base font-bold text-gray-800"><i class="fas fa-chart-bar text-green-500 mr-2"></i>기간별 카드 수수료 집계</h3>
               <div class="flex items-center gap-2">
@@ -344,7 +344,7 @@ export function bankPage(c: Context<HonoEnv>) {
           </div>
 
           <!-- 카드사 수수료율 설정 -->
-          <div class="bg-white rounded-lg shadow p-6">
+          <div class="ds-card p-6">
             <div class="flex items-center justify-between mb-4">
               <h3 class="text-base font-bold text-gray-800"><i class="fas fa-cog text-gray-500 mr-2"></i>카드사 수수료율 설정</h3>
               <button onclick="openAddFeeRateModal()" class="btn-primary text-sm"><i class="fas fa-plus mr-1"></i>추가</button>
@@ -410,30 +410,30 @@ export function bankPage(c: Context<HonoEnv>) {
           <!-- 탭 1: 캐시플로 현황 -->
           <div id="panel-overview">
             <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-              <div class="bg-white rounded-lg shadow p-4">
+              <div class="ds-card p-4">
                 <div class="text-sm text-gray-500">이번달 수입</div>
                 <div id="kpiIncome" class="text-2xl font-bold text-green-600 mt-1">-</div>
               </div>
-              <div class="bg-white rounded-lg shadow p-4">
+              <div class="ds-card p-4">
                 <div class="text-sm text-gray-500">이번달 지출</div>
                 <div id="kpiExpense" class="text-2xl font-bold text-red-600 mt-1">-</div>
               </div>
-              <div class="bg-white rounded-lg shadow p-4">
+              <div class="ds-card p-4">
                 <div class="text-sm text-gray-500">순 현금흐름</div>
                 <div id="kpiNet" class="text-2xl font-bold mt-1">-</div>
               </div>
-              <div class="bg-white rounded-lg shadow p-4">
+              <div class="ds-card p-4">
                 <div class="text-sm text-gray-500">대출 잔액 합계</div>
                 <div id="kpiLoanBalance" class="text-2xl font-bold text-purple-600 mt-1">-</div>
               </div>
             </div>
 
-            <div class="bg-white rounded-lg shadow p-6 mb-6">
+            <div class="ds-card p-6 mb-6">
               <h3 class="text-lg font-bold mb-4">6개월 캐시플로 프로젝션</h3>
               <div id="projectionChart" class="space-y-3"></div>
             </div>
 
-            <div class="bg-white rounded-lg shadow p-6">
+            <div class="ds-card p-6">
               <h3 class="text-lg font-bold mb-4">월별 상세</h3>
               <div class="overflow-x-auto" style="max-height: calc(100vh - 280px); overflow-y: auto;">
                 <table class="w-full text-sm ds-table-striped">
@@ -457,10 +457,10 @@ export function bankPage(c: Context<HonoEnv>) {
 
           <!-- 탭 2: 고정비 관리 -->
           <div id="panel-fixed" class="hidden">
-            <div class="bg-white rounded-lg shadow p-6">
+            <div class="ds-card p-6">
               <div class="flex items-center justify-between mb-4">
                 <h3 class="text-lg font-bold"><i class="fas fa-file-invoice-dollar text-blue-600 mr-2"></i>고정비 목록</h3>
-                <button onclick="openFixedExpenseModal()" class="px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm">
+                <button onclick="openFixedExpenseModal()" class="ds-btn ds-btn-primary ds-btn-sm">
                   <i class="fas fa-plus mr-1"></i>추가
                 </button>
               </div>
@@ -487,10 +487,10 @@ export function bankPage(c: Context<HonoEnv>) {
 
           <!-- 탭 3: 대출 관리 -->
           <div id="panel-loans" class="hidden">
-            <div class="bg-white rounded-lg shadow p-6 mb-6">
+            <div class="ds-card p-6 mb-6">
               <div class="flex items-center justify-between mb-4">
                 <h3 class="text-lg font-bold"><i class="fas fa-university text-purple-600 mr-2"></i>대출 목록</h3>
-                <button onclick="openLoanModal()" class="px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm">
+                <button onclick="openLoanModal()" class="ds-btn ds-btn-primary ds-btn-sm">
                   <i class="fas fa-plus mr-1"></i>추가
                 </button>
               </div>
@@ -517,17 +517,17 @@ export function bankPage(c: Context<HonoEnv>) {
             <!-- 대출 상세 (선택 시 표시) -->
             <div id="loanDetailPanel" class="hidden">
               <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <div class="bg-white rounded-lg shadow p-6">
+                <div class="ds-card p-6">
                   <h4 class="font-bold mb-3"><i class="fas fa-chart-line text-orange-500 mr-2"></i>금리 변동 이력</h4>
                   <div id="rateHistoryTable"></div>
                   <button onclick="openRateChangeModal()" class="mt-3 px-3 py-1.5 border border-gray-300 text-gray-700 bg-white rounded-lg hover:bg-gray-50 text-sm">
                     <i class="fas fa-edit mr-1"></i>금리 변경
                   </button>
                 </div>
-                <div class="bg-white rounded-lg shadow p-6">
+                <div class="ds-card p-6">
                   <h4 class="font-bold mb-3"><i class="fas fa-calendar-check text-green-600 mr-2"></i>상환 스케줄</h4>
                   <div class="flex gap-2 mb-3">
-                    <button onclick="generateSchedule()" class="px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm">
+                    <button onclick="generateSchedule()" class="ds-btn ds-btn-primary ds-btn-sm">
                       <i class="fas fa-sync mr-1"></i>스케줄 생성
                     </button>
                   </div>
@@ -539,7 +539,7 @@ export function bankPage(c: Context<HonoEnv>) {
 
           <!-- 탭 4: 달력 -->
           <div id="panel-calendar" class="hidden">
-            <div class="bg-white rounded-lg shadow p-6">
+            <div class="ds-card p-6">
               <div class="flex items-center justify-between mb-4">
                 <button onclick="changeMonth(-1)" class="px-3 py-1.5 bg-gray-200 rounded-lg hover:bg-gray-300 text-sm"><i class="fas fa-chevron-left"></i></button>
                 <h3 id="calendarTitle" class="text-lg font-bold"></h3>
@@ -557,8 +557,8 @@ export function bankPage(c: Context<HonoEnv>) {
               <div id="calendarGrid" class="grid grid-cols-7 gap-px bg-gray-200 border-x border-b border-gray-200 rounded-b-lg overflow-hidden"></div>
             </div>
             <!-- 일별 상세 모달 -->
-            <div id="dayDetailModal" class="hidden fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
-              <div class="bg-white rounded-lg shadow-xl p-6 w-full max-w-md max-h-[80vh] overflow-y-auto">
+            <div id="dayDetailModal" class="ds-modal-overlay hidden">
+              <div class="ds-modal p-6 w-full max-h-[80vh] overflow-y-auto" style="max-width:28rem">
                 <div class="flex items-center justify-between mb-4">
                   <h3 id="dayDetailTitle" class="font-bold text-lg"></h3>
                   <button onclick="closeDayDetail()" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times"></i></button>

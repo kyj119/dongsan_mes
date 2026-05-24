@@ -10,26 +10,26 @@ export function purchaseOrdersPage(c: Context<HonoEnv>) {
     pageContent: `
       <!-- 통계 카드 (핵심 4개) -->
       <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        <div class="bg-white rounded-lg border shadow-sm hover:shadow-md transition-shadow p-4 cursor-pointer" onclick="filterByStatus('CONFIRMED')">
+        <div class="ds-card hover:shadow-md transition-shadow p-4 cursor-pointer" onclick="filterByStatus('CONFIRMED')">
           <div class="text-xs font-semibold text-gray-500 uppercase tracking-wider">입고 대기</div>
           <div class="text-3xl font-bold text-blue-600 mt-1 tabular-nums" id="statConfirmed">-</div>
         </div>
-        <div class="bg-white rounded-lg border shadow-sm hover:shadow-md transition-shadow p-4 cursor-pointer" onclick="filterByStatus('PARTIAL_RECEIVED')">
+        <div class="ds-card hover:shadow-md transition-shadow p-4 cursor-pointer" onclick="filterByStatus('PARTIAL_RECEIVED')">
           <div class="text-xs font-semibold text-gray-500 uppercase tracking-wider">부분 입고</div>
           <div class="text-3xl font-bold text-amber-500 mt-1 tabular-nums" id="statPartial">-</div>
         </div>
-        <div class="bg-white rounded-lg border border-red-200 shadow-sm hover:shadow-md transition-shadow p-4 cursor-pointer" onclick="filterByStatus('OVERDUE')">
+        <div class="ds-card border-red-200 hover:shadow-md transition-shadow p-4 cursor-pointer" onclick="filterByStatus('OVERDUE')">
           <div class="text-xs font-semibold text-red-500 uppercase tracking-wider">납기 지연</div>
           <div class="text-3xl font-bold text-red-600 mt-1 tabular-nums" id="statOverdue">-</div>
         </div>
-        <div class="bg-white rounded-lg border shadow-sm hover:shadow-md transition-shadow p-4">
+        <div class="ds-card hover:shadow-md transition-shadow p-4">
           <div class="text-xs font-semibold text-gray-500 uppercase tracking-wider">이번달 발주 금액</div>
           <div class="text-2xl font-bold text-gray-900 mt-1 tabular-nums" id="statMonthlyAmount">-</div>
         </div>
       </div>
 
       <!-- 검색/필터 바 -->
-      <div class="bg-white rounded-lg shadow p-4 mb-4 flex items-center gap-3 flex-wrap">
+      <div class="ds-card p-4 mb-4 flex items-center gap-3 flex-wrap">
         <input type="text" id="searchInput" placeholder="발주번호, 공급업체 검색..."
           class="px-3 py-2 border rounded-lg text-sm flex-1 min-w-[200px]"
           onkeyup="if(event.key==='Enter')loadPOs(1)">
@@ -53,16 +53,16 @@ export function purchaseOrdersPage(c: Context<HonoEnv>) {
         <button onclick="exportPoCsv()" class="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 text-sm font-medium">
           <i class="fas fa-file-csv mr-1"></i>CSV
         </button>
-        <button onclick="openTemplateModal()" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium">
+        <button onclick="openTemplateModal()" class="ds-btn ds-btn-primary text-sm font-medium">
           <i class="fas fa-copy mr-1"></i>템플릿에서 생성
         </button>
-        <a href="/purchase-order-form" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium">
+        <a href="/purchase-order-form" class="ds-btn ds-btn-primary text-sm font-medium">
           <i class="fas fa-plus mr-1"></i>새 발주
         </a>
       </div>
 
       <!-- 발주 목록 테이블 -->
-      <div class="bg-white rounded-lg shadow overflow-hidden">
+      <div class="ds-card overflow-hidden">
         <div style="max-height: calc(100vh - 280px); overflow-y: auto;">
           <table class="w-full text-sm ds-table-striped">
           <thead class="bg-gray-50">
@@ -89,22 +89,22 @@ export function purchaseOrdersPage(c: Context<HonoEnv>) {
       <div id="pagination" class="mt-4 flex justify-center"></div>
 
       <!-- 상세 모달 -->
-      <div id="detailModal" class="fixed inset-0 bg-black bg-opacity-50 hidden z-50 flex items-center justify-center">
-        <div class="bg-white rounded-lg shadow-xl w-full max-w-3xl max-h-[90vh] overflow-y-auto">
+      <div id="detailModal" class="ds-modal-overlay hidden">
+        <div class="ds-modal max-h-[90vh] overflow-y-auto" style="max-width:48rem">
           <div class="p-6" id="detailContent"></div>
         </div>
       </div>
 
       <!-- 입고 처리 모달 -->
-      <div id="receiveModal" class="fixed inset-0 bg-black bg-opacity-50 hidden z-50 flex items-center justify-center">
-        <div class="bg-white rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] overflow-y-auto">
+      <div id="receiveModal" class="ds-modal-overlay hidden">
+        <div class="ds-modal max-h-[90vh] overflow-y-auto" style="max-width:56rem">
           <div class="p-6" id="receiveContent"></div>
         </div>
       </div>
 
       <!-- 템플릿 선택 모달 -->
-      <div id="templateModal" class="fixed inset-0 bg-black bg-opacity-50 hidden z-50 flex items-center justify-center">
-        <div class="bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[85vh] overflow-y-auto">
+      <div id="templateModal" class="ds-modal-overlay hidden">
+        <div class="ds-modal max-h-[85vh] overflow-y-auto" style="max-width:42rem">
           <div class="p-6">
             <div class="flex justify-between items-center mb-4">
               <h3 class="font-bold text-lg"><i class="fas fa-copy text-green-600 mr-2"></i>템플릿에서 발주 생성</h3>
@@ -131,7 +131,7 @@ export function purchaseOrdersPage(c: Context<HonoEnv>) {
               </div>
               <div class="flex gap-2 justify-end">
                 <button onclick="closeTemplateModal()" class="px-4 py-2 bg-gray-300 rounded text-sm hover:bg-gray-400">취소</button>
-                <button onclick="createFromTemplate()" class="px-4 py-2 bg-blue-600 text-white rounded text-sm hover:bg-blue-700">
+                <button onclick="createFromTemplate()" class="ds-btn ds-btn-primary ds-btn-sm">
                   <i class="fas fa-check mr-1"></i>발주 생성
                 </button>
               </div>

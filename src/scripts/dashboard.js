@@ -104,20 +104,14 @@ async function loadDashboardStats() {
               onTimeEl.style.color = rate >= 90 ? 'var(--c-success)' : rate >= 80 ? 'var(--c-warning)' : 'var(--c-danger)';
             }
 
-            // 이전 통계 (하위 Revenue 카드)
-            var todayRevEl = document.getElementById('statTodayRevenue');
-            if (todayRevEl) todayRevEl.textContent = fmtAmt(todayRev);
-            var weekRevEl = document.getElementById('statWeekRevenue');
-            if (weekRevEl) weekRevEl.textContent = fmtAmt(stats.week_revenue || 0);
-            var totalRevEl = document.getElementById('statTotalRevenue');
-            if (totalRevEl) totalRevEl.textContent = fmtAmt(stats.total_revenue || 0);
-
             if (stats.pp_stats) {
                 const ppStatsDiv = document.getElementById('ppStats');
+                const ppSection = document.getElementById('ppStatsSection');
                 const entries = Object.entries(stats.pp_stats);
                 if (entries.length === 0) {
-                    ppStatsDiv.innerHTML = '<div class="ds-empty">현재 후가공 적용된 활성 카드가 없습니다.</div>';
+                    if (ppSection) ppSection.style.display = 'none';
                 } else {
+                    if (ppSection) ppSection.style.display = '';
                     ppStatsDiv.innerHTML = entries.map(([name, count]) =>
                         '<div class="flex items-center justify-between p-3 bg-amber-50 rounded-lg">' +
                         '<div class="flex items-center gap-2">' +
@@ -155,7 +149,7 @@ async function loadDashboardStats() {
             const clients = clientsResponse.data.data.slice(0, 5);
             const topClientsDiv = document.getElementById('topClients');
             if (clients.length === 0) {
-                topClientsDiv.innerHTML = '<div class="ds-empty">거래처 데이터가 없습니다.</div>';
+                topClientsDiv.innerHTML = '<div class="ds-empty"><i class="fas fa-building"></i><p>거래처 데이터가 없습니다</p></div>';
             } else {
                 topClientsDiv.innerHTML = clients.map((client, index) =>
                     '<div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition cursor-pointer" onclick="location.href=\'/ledger?search=' + encodeURIComponent(client.client_name) + '\'">' +
@@ -242,7 +236,7 @@ async function loadReceivables() {
         var container = document.getElementById('receivablesClients');
         var clients = d.top_clients || [];
         if (clients.length === 0) {
-            container.innerHTML = '<div class="ds-empty">미수금 거래처가 없습니다.</div>';
+            container.innerHTML = '<div class="ds-empty"><i class="fas fa-check-circle"></i><p>미수금 거래처가 없습니다</p></div>';
         } else {
             container.innerHTML = clients.map(function(c, i) {
                 var lastPay = c.last_payment_date || '입금 없음';
@@ -298,7 +292,7 @@ async function loadActiveCards() {
         const countEl = document.getElementById('activeCardsCount');
         if (countEl) countEl.textContent = cards.length + '건';
         if (cards.length === 0) {
-            container.innerHTML = '<div class="ds-empty">진행 중인 작업이 없습니다.</div>';
+            container.innerHTML = '<div class="ds-empty"><i class="fas fa-print"></i><p>진행 중인 작업이 없습니다</p></div>';
             return;
         }
         const today = new Date().toISOString().slice(0, 10);
@@ -528,7 +522,7 @@ async function loadRecentActivity() {
     var orderStatusColors = { CONFIRMED:'text-blue-500', PRINTING:'text-blue-600', PRINT_DONE:'text-green-600', SHIPPED:'text-purple-600', CANCELLED:'text-red-400', QUOTATION:'text-amber-600' };
     if (ordersEl) {
       if (orders.length === 0) {
-        ordersEl.innerHTML = '<div class="ds-empty">최근 주문 없음</div>';
+        ordersEl.innerHTML = '<div class="ds-empty"><i class="fas fa-file-alt"></i><p>최근 주문이 없습니다</p></div>';
       } else {
         ordersEl.innerHTML = orders.map(function(o) {
           var statusLabel = orderStatusLabels[o.status] || o.status;
@@ -553,7 +547,7 @@ async function loadRecentActivity() {
     var shipments = data.recent_shipments || [];
     if (shipmentsEl) {
       if (shipments.length === 0) {
-        shipmentsEl.innerHTML = '<div class="ds-empty">최근 출고 없음</div>';
+        shipmentsEl.innerHTML = '<div class="ds-empty"><i class="fas fa-truck"></i><p>최근 출고가 없습니다</p></div>';
       } else {
         shipmentsEl.innerHTML = shipments.map(function(s) {
           var shippedAt = s.shipped_at ? s.shipped_at.slice(0, 10) : '-';
@@ -626,7 +620,7 @@ async function loadWeeklyTrend() {
     var items = res.data.data || [];
     var container = document.getElementById('weeklyTrend');
     if (items.length === 0) {
-      container.innerHTML = '<div class="ds-empty">데이터 없음</div>';
+      container.innerHTML = '<div class="ds-empty"><i class="fas fa-chart-bar"></i><p>주문 데이터가 없습니다</p></div>';
       return;
     }
     var maxCount = Math.max.apply(null, items.map(function(d) { return d.order_count; })) || 1;
@@ -689,7 +683,7 @@ async function loadProductionToday() {
     }
 
     if (total === 0) {
-      html = '<div class="text-center text-gray-400 py-4 text-sm"><i class="fas fa-moon mr-1"></i>금일 출력 기록 없음</div>';
+      html = '<div class="ds-empty"><i class="fas fa-moon"></i><p>금일 생산 실적이 없습니다</p></div>';
     }
 
     container.innerHTML = html;
@@ -708,7 +702,7 @@ async function loadEquipmentUtilization() {
 
     var items = d.equipment || [];
     if (items.length === 0) {
-      container.innerHTML = '<div class="ds-empty">가동 데이터 없음</div>';
+      container.innerHTML = '<div class="ds-empty"><i class="fas fa-tachometer-alt"></i><p>가동 데이터가 없습니다</p></div>';
       return;
     }
 
