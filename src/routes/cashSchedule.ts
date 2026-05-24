@@ -4,7 +4,7 @@ import { Hono } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
 import { requirePagePermission } from '../middleware/permissions'
-import { entityFilter } from '../utils/entityFilter'
+import { entityFilter, getEntityId } from '../utils/entityFilter'
 
 interface DailyAggRow {
   schedule_date: string
@@ -207,13 +207,13 @@ cashScheduleRouter.post('/schedule', requireRole('ADMIN', 'MANAGER'), async (c) 
     }
 
     const result = await c.env.DB.prepare(`
-      INSERT INTO cash_schedule (schedule_date, flow_type, source_type, source_id, client_id, amount, description, notes, created_by)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO cash_schedule (schedule_date, flow_type, source_type, source_id, client_id, amount, description, notes, created_by, entity_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).bind(
       body.schedule_date, body.flow_type, body.source_type || 'OTHER',
       body.source_id || null, body.client_id || null,
       body.amount, body.description || null, body.notes || null,
-      user?.id || null
+      user?.id || null, getEntityId(c)
     ).run()
 
     return c.json({ success: true, data: { id: result.meta.last_row_id }, message: '예정이 등록되었습니다.' })
@@ -315,13 +315,13 @@ cashScheduleRouter.post('/schedule/auto-generate', requireRole('ADMIN'), async (
 
       batchStmts.push(
         c.env.DB.prepare(`
-          INSERT INTO cash_schedule (schedule_date, flow_type, source_type, source_id, client_id, amount, description, created_by)
-          VALUES (?, 'IN', 'ORDER', ?, ?, ?, ?, ?)
+          INSERT INTO cash_schedule (schedule_date, flow_type, source_type, source_id, client_id, amount, description, created_by, entity_id)
+          VALUES (?, 'IN', 'ORDER', ?, ?, ?, ?, ?, ?)
         `).bind(
           dueDateStr, order.id, order.client_id,
           order.billed_amount,
           `${order.client_name || ''} 입금예정 (주문 ${order.order_number})`,
-          user?.id || null
+          user?.id || null, getEntityId(c)
         )
       )
       inserted++
@@ -349,13 +349,13 @@ cashScheduleRouter.post('/schedule/auto-generate', requireRole('ADMIN'), async (
 
       batchStmts.push(
         c.env.DB.prepare(`
-          INSERT INTO cash_schedule (schedule_date, flow_type, source_type, source_id, client_id, amount, description, created_by)
-          VALUES (?, 'OUT', 'PURCHASE', ?, ?, ?, ?, ?)
+          INSERT INTO cash_schedule (schedule_date, flow_type, source_type, source_id, client_id, amount, description, created_by, entity_id)
+          VALUES (?, 'OUT', 'PURCHASE', ?, ?, ?, ?, ?, ?)
         `).bind(
           dueDateStr, po.id, po.supplier_id,
           po.final_amount,
           `${po.supplier_name || '공급사'} 지급예정 (발주 ${po.po_number})`,
-          user?.id || null
+          user?.id || null, getEntityId(c)
         )
       )
       inserted++
@@ -389,15 +389,15 @@ cashScheduleRouter.post('/schedule/auto-generate', requireRole('ADMIN'), async (
         // N+1 제거: NOT EXISTS를 INSERT에 직접 포함 (별도 SELECT 불필요)
         batchStmts.push(
           c.env.DB.prepare(`
-            INSERT INTO cash_schedule (schedule_date, flow_type, source_type, source_id, amount, description, created_by)
-            SELECT ?, 'OUT', 'FIXED', ?, ?, ?, ?
+            INSERT INTO cash_schedule (schedule_date, flow_type, source_type, source_id, amount, description, created_by, entity_id)
+            SELECT ?, 'OUT', 'FIXED', ?, ?, ?, ?, ?
             WHERE NOT EXISTS (
               SELECT 1 FROM cash_schedule WHERE source_type = 'FIXED' AND source_id = ? AND schedule_date = ?
             )
           `).bind(
             dateStr, fe.id, fe.amount,
             `${fe.name} (${fe.category})`,
-            user?.id || null,
+            user?.id || null, getEntityId(c),
             fe.id, dateStr
           )
         )

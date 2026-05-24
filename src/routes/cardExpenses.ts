@@ -230,10 +230,17 @@ cardExpRouter.post('/sync', requireRole('ADMIN'), async (c) => {
           `SELECT id, merchant_name FROM card_transactions WHERE status = 'UNCLASSIFIED' AND merchant_name IS NOT NULL${efTx.clause}`
         ).bind(...efTx.params).all<{ id: number; merchant_name: string }>()
 
-        for (const tx of unclassified) {
-          const matched = rules.find(r => tx.merchant_name.includes(r.keyword))
-          if (matched) {
-            await c.env.DB.prepare("UPDATE card_transactions SET category_id = ?, status = 'CLASSIFIED' WHERE id = ?").bind(matched.category_id, tx.id).run()
+        // #178: N+1 → batch 일괄 UPDATE
+        const classifyStmts = unclassified
+          .map(tx => {
+            const matched = rules.find(r => tx.merchant_name.includes(r.keyword))
+            if (!matched) return null
+            return c.env.DB.prepare("UPDATE card_transactions SET category_id = ?, status = 'CLASSIFIED' WHERE id = ?").bind(matched.category_id, tx.id)
+          })
+          .filter(Boolean) as any[]
+        if (classifyStmts.length > 0) {
+          for (let i = 0; i < classifyStmts.length; i += 80) {
+            await c.env.DB.batch(classifyStmts.slice(i, i + 80))
           }
         }
       }
@@ -536,6 +543,15 @@ cardExpRouter.post('/transactions', requireRole('ADMIN', 'MANAGER'), async (c) =
     }
     const user = c.get('user')
     const entityId = getEntityId(c)
+
+    // #176: card_id가 현재 법인 소속인지 검증
+    const cardCheck = entityId > 0
+      ? await c.env.DB.prepare('SELECT id FROM corporate_cards WHERE id = ? AND entity_id = ? AND is_active = 1').bind(card_id, entityId).first()
+      : await c.env.DB.prepare('SELECT id FROM corporate_cards WHERE id = ? AND is_active = 1').bind(card_id).first()
+    if (!cardCheck) {
+      return c.json({ success: false, error: '해당 법인에 등록된 카드가 아닙니다.' }, 400)
+    }
+
     const status = category_id ? 'CLASSIFIED' : 'UNCLASSIFIED'
     const txDate = transaction_date.replace(/-/g, '')
 

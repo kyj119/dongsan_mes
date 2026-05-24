@@ -6,6 +6,7 @@ import { Hono } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
 import { getNextSeqNumber, withSeqRetry } from '../utils/sequenceGenerator'
+import { entityFilter, getEntityId } from '../utils/entityFilter'
 import { runMrpCalculation } from '../utils/mrpCalculator'
 
 const bom = new Hono<HonoEnv>()
@@ -205,13 +206,16 @@ bom.post('/mrp/run', async (c) => {
 // GET /mrp/runs — MRP 실행 이력
 bom.get('/mrp/runs', async (c) => {
   try {
+    // #174: entity 필터 적용
+    const ef = entityFilter(c, 'mr')
     const { results } = await c.env.DB.prepare(`
       SELECT mr.*, u.name as run_by_name
       FROM mrp_runs mr
       LEFT JOIN users u ON mr.run_by = u.id
+      WHERE 1=1${ef.clause}
       ORDER BY mr.created_at DESC
       LIMIT 50
-    `).all()
+    `).bind(...ef.params).all()
     return c.json({ success: true, data: results })
   } catch (error) {
     console.error('src/routes/bom.ts error:', error)

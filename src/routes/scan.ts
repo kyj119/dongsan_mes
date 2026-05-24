@@ -39,14 +39,16 @@ scanRouter.get('/:code', async (c) => {
     // 1) CARD prefix 또는 CARD- 패턴
     if (prefix === 'CARD' || value.startsWith('CARD-')) {
       const cardNum = prefix === 'CARD' ? value : value
+      // #170: entity 필터 추가
+      const cardEf = entityFilter(c, 'c')
       const card = await c.env.DB.prepare(`
         SELECT c.id, c.card_number, c.status, c.order_id,
                o.order_number, c.client_name,
                c.quantity, c.shipped_at, c.created_at, c.item_name
         FROM cards c
         LEFT JOIN orders o ON c.order_id = o.id
-        WHERE c.card_number = ?
-      `).bind(cardNum).first<any>()
+        WHERE c.card_number = ?${cardEf.clause}
+      `).bind(cardNum, ...cardEf.params).first<any>()
 
       if (card) {
         const actions: ScanResult['actions'] = []

@@ -1200,13 +1200,13 @@ bankRouter.post('/transactions/:id/unapply', requireRole('ADMIN'), async (c) => 
       ).bind(tx.matched_payment_id).first<{ id: number; client_id: number; amount: number }>()
 
       if (payment) {
-        // balance 복원 (차감했던 금액을 다시 더함)
-        await c.env.DB.prepare(
-          'UPDATE clients SET balance = balance + ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
-        ).bind(payment.amount, payment.client_id).run()
-
-        // payment 삭제
-        await c.env.DB.prepare('DELETE FROM payments WHERE id = ?').bind(tx.matched_payment_id).run()
+        // #179: balance 복원 + payment 삭제를 원자적 처리
+        await c.env.DB.batch([
+          c.env.DB.prepare(
+            'UPDATE clients SET balance = balance + ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
+          ).bind(payment.amount, payment.client_id),
+          c.env.DB.prepare('DELETE FROM payments WHERE id = ?').bind(tx.matched_payment_id)
+        ])
       }
     }
 

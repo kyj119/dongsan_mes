@@ -123,44 +123,41 @@ aiInsights.get('/credit-risk/:clientId', async (c) => {
 
 // ─── 전체 거래처 리스크 일괄 계산 ──────��─────────────────────────────────────
 aiInsights.post('/credit-risk/calculate-all', requireRole('ADMIN', 'MANAGER'), async (c) => {
-  // clients 테이블에는 entity_id 없음
-  const { results: clients } = await c.env.DB.prepare(`
-    SELECT id FROM clients WHERE is_active = 1
-  `).all<{ id: number }>()
+  // #177: N+1 → 단일 집계 쿼리로 교체
+  const { results: clientStats } = await c.env.DB.prepare(`
+    SELECT o.client_id,
+      COUNT(*) as total_orders,
+      COALESCE(SUM(o.final_amount), 0) as total_revenue,
+      COALESCE(SUM(o.final_amount) - SUM(COALESCE(o.paid_amount, 0)), 0) as outstanding,
+      SUM(CASE WHEN o.billing_status = 'BILLED'
+           AND julianday('now') - julianday(o.billed_at) > 30
+           AND (o.paid_amount IS NULL OR o.paid_amount < o.final_amount)
+           THEN 1 ELSE 0 END) as overdue_count
+    FROM orders o
+    JOIN clients c ON o.client_id = c.id AND c.is_active = 1
+    WHERE o.status NOT IN ('CANCELLED','DELETED','QUOTATION')
+    GROUP BY o.client_id
+    HAVING total_orders > 0
+  `).all<{ client_id: number; total_orders: number; total_revenue: number; outstanding: number; overdue_count: number }>()
 
-  let calculated = 0
-  for (const client of clients) {
-    // 개별 계산 (위 엔드포인트 로직 축약)
-    const stats = await c.env.DB.prepare(`
-      SELECT COUNT(*) as total_orders,
-        COALESCE(SUM(final_amount), 0) as total_revenue,
-        COALESCE(SUM(final_amount) - SUM(COALESCE(paid_amount, 0)), 0) as outstanding
-      FROM orders WHERE client_id = ? AND status NOT IN ('CANCELLED','DELETED','QUOTATION')
-    `).bind(client.id).first<any>()
-
-    if (!stats || stats.total_orders === 0) continue
-
-    const overdueCount = await c.env.DB.prepare(`
-      SELECT COUNT(*) as cnt FROM orders
-      WHERE client_id = ? AND billing_status = 'BILLED'
-        AND julianday('now') - julianday(billed_at) > 30
-        AND (paid_amount IS NULL OR paid_amount < final_amount)
-    `).bind(client.id).first<{ cnt: number }>()
-
-    const overdueRatio = stats.total_orders > 0 ? (overdueCount?.cnt || 0) / stats.total_orders : 0
-    const outstandingRatio = stats.total_revenue > 0 ? stats.outstanding / stats.total_revenue : 0
+  const updateStmts = clientStats.map(s => {
+    const overdueRatio = s.total_orders > 0 ? s.overdue_count / s.total_orders : 0
+    const outstandingRatio = s.total_revenue > 0 ? s.outstanding / s.total_revenue : 0
     let score = overdueRatio * 30 + outstandingRatio * 25
     score = Math.max(0, Math.min(100, Math.round(score)))
+    const grade = score <= 20 ? 'A' : score <= 40 ? 'B' : score <= 60 ? 'C' : score <= 80 ? 'D' : 'F'
+    return c.env.DB.prepare(
+      'UPDATE clients SET credit_risk_score = ?, credit_risk_grade = ?, credit_risk_updated_at = CURRENT_TIMESTAMP WHERE id = ?'
+    ).bind(score, grade, s.client_id)
+  })
 
-    let grade = score <= 20 ? 'A' : score <= 40 ? 'B' : score <= 60 ? 'C' : score <= 80 ? 'D' : 'F'
-
-    await c.env.DB.prepare(`
-      UPDATE clients SET credit_risk_score = ?, credit_risk_grade = ?, credit_risk_updated_at = CURRENT_TIMESTAMP WHERE id = ?
-    `).bind(score, grade, client.id).run()
-    calculated++
+  if (updateStmts.length > 0) {
+    for (let i = 0; i < updateStmts.length; i += 80) {
+      await c.env.DB.batch(updateStmts.slice(i, i + 80))
+    }
   }
 
-  return c.json({ success: true, data: { calculated } })
+  return c.json({ success: true, data: { calculated: updateStmts.length } })
 })
 
 // (credit-risk/summary는 상단으로 이동됨 — static route before :clientId)

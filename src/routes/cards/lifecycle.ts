@@ -157,6 +157,15 @@ cardsLifecycleRouter.patch('/bulk/status', requireRole('ADMIN', 'MANAGER', 'OPER
             hold_by = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?
           `).bind(status, ppStatus, cardId)
         )
+        // #175: HOLD 해제 시 work_records PAUSED → IN_PROGRESS 복구
+        if (card.status === 'HOLD') {
+          batchStmts.push(
+            c.env.DB.prepare(`
+              UPDATE work_records SET status = 'IN_PROGRESS', updated_at = CURRENT_TIMESTAMP
+              WHERE card_id = ? AND status = 'PAUSED'
+            `).bind(cardId)
+          )
+        }
       } else {
         batchStmts.push(
           c.env.DB.prepare(`
@@ -164,6 +173,15 @@ cardsLifecycleRouter.patch('/bulk/status', requireRole('ADMIN', 'MANAGER', 'OPER
             hold_by = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?
           `).bind(status, cardId)
         )
+        // #175: HOLD 해제 시 work_records PAUSED → IN_PROGRESS 복구
+        if (card.status === 'HOLD') {
+          batchStmts.push(
+            c.env.DB.prepare(`
+              UPDATE work_records SET status = 'IN_PROGRESS', updated_at = CURRENT_TIMESTAMP
+              WHERE card_id = ? AND status = 'PAUSED'
+            `).bind(cardId)
+          )
+        }
       }
 
       // 상태 이력

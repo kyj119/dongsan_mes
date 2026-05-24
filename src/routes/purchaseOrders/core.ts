@@ -1709,9 +1709,12 @@ poCoreRouter.delete('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
         message: '확정된 발주가 취소되었습니다.'
       })
     } else {
-      await c.env.DB.prepare(`
-        DELETE FROM purchase_orders WHERE id = ?
-      `).bind(id).run()
+      // #181: 하위 테이블도 함께 삭제 (고아 레코드 방지)
+      await c.env.DB.batch([
+        c.env.DB.prepare('DELETE FROM purchase_order_items WHERE po_id = ?').bind(id),
+        c.env.DB.prepare('DELETE FROM po_status_history WHERE po_id = ?').bind(id),
+        c.env.DB.prepare('DELETE FROM purchase_orders WHERE id = ?').bind(id)
+      ])
 
       return c.json({
         success: true,

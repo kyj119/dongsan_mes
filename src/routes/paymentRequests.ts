@@ -240,12 +240,12 @@ paymentRequestsRouter.patch('/:id/approve', requireRole('ADMIN', 'MANAGER'), asy
         WHERE id = ? AND status = 'PENDING'
       `).bind(user?.id || null, id),
       c.env.DB.prepare(`
-        INSERT INTO cash_schedule (schedule_date, flow_type, source_type, source_id, client_id, amount, description, created_by)
-        VALUES (?, 'OUT', ?, ?, ?, ?, ?, ?)
+        INSERT INTO cash_schedule (schedule_date, flow_type, source_type, source_id, client_id, amount, description, created_by, entity_id)
+        VALUES (?, 'OUT', ?, ?, ?, ?, ?, ?, ?)
       `).bind(
         pr.request_date, pr.request_type || 'OTHER', pr.id, pr.recipient_client_id, pr.amount,
         `[지출결의] ${pr.recipient_name} ${pr.description}`,
-        user?.id || null
+        user?.id || null, getEntityId(c)
       )
     ])
 

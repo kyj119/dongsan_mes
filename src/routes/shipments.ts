@@ -733,19 +733,19 @@ shipmentsRouter.patch('/:orderId/ship', requireRole('ADMIN', 'MANAGER'), async (
       return c.json({ success: false, error: `미완료 품목이 ${notReady.length}건 있습니다.` }, 400)
     }
 
-    // 관련 카드 출고 처리
-    await c.env.DB.prepare(
-      `UPDATE cards SET shipped_at = CURRENT_TIMESTAMP, shipped_by = ?
-       WHERE order_id = ? AND status = 'PRINT_DONE' AND shipped_at IS NULL`
-    ).bind(user?.id || null, orderId).run()
-
-    // auto_complete_date 설정 (동기화 시 SHIPPED 전이)
+    // #180: 카드 출고 + auto_complete_date 원자적 처리
     const method = (order.delivery_method || '').trim()
     const isQuick = method === '방문수령' || method === '직접수령' || method === '직접배송' || method === '퀵'
     const delayDays = isQuick ? 1 : 2
-    await c.env.DB.prepare(
-      `UPDATE orders SET auto_complete_date = date('now', '+' || ? || ' days'), updated_at = CURRENT_TIMESTAMP WHERE id = ? AND auto_complete_date IS NULL`
-    ).bind(delayDays, orderId).run()
+    await c.env.DB.batch([
+      c.env.DB.prepare(
+        `UPDATE cards SET shipped_at = CURRENT_TIMESTAMP, shipped_by = ?
+         WHERE order_id = ? AND status = 'PRINT_DONE' AND shipped_at IS NULL`
+      ).bind(user?.id || null, orderId),
+      c.env.DB.prepare(
+        `UPDATE orders SET auto_complete_date = date('now', '+' || ? || ' days'), updated_at = CURRENT_TIMESTAMP WHERE id = ? AND auto_complete_date IS NULL`
+      ).bind(delayDays, orderId)
+    ])
 
     return c.json({ success: true, message: '출고 처리되었습니다. 동기화 후 출고완료 상태로 전이됩니다.' })
   } catch (err) {

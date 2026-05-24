@@ -84,11 +84,14 @@ taxInvoicesRouter.use('/*', authMiddleware, requireRole('ADMIN', 'MANAGER'))
 // ────────────────────────────────────────────────────────────────────────────
 // 공통 헬퍼: 관리번호 채번
 // ────────────────────────────────────────────────────────────────────────────
-async function generateInvoiceNumber(db: D1Database): Promise<string> {
+async function generateInvoiceNumber(db: D1Database, entityId?: number): Promise<string> {
+  // #171: 법인별 시퀀스 채번
   const year = new Date().getFullYear()
+  const entityClause = entityId && entityId > 0 ? ' AND entity_id = ?' : ''
+  const entityParams = entityId && entityId > 0 ? [entityId] : []
   const lastRow = await db.prepare(
-    `SELECT invoice_number FROM tax_invoices WHERE invoice_number LIKE ? ORDER BY invoice_number DESC LIMIT 1`
-  ).bind(`TI-${year}-%`).first<{ invoice_number: string }>()
+    `SELECT invoice_number FROM tax_invoices WHERE invoice_number LIKE ?${entityClause} ORDER BY invoice_number DESC LIMIT 1`
+  ).bind(`TI-${year}-%`, ...entityParams).first<{ invoice_number: string }>()
   let nextSeq = 1
   if (lastRow?.invoice_number) {
     const parts = lastRow.invoice_number.split('-')
@@ -733,7 +736,7 @@ taxInvoicesRouter.post('/batch-create', requireRole('ADMIN', 'MANAGER'), async (
           continue
         }
 
-        const invoiceNumber = await generateInvoiceNumber(c.env.DB)
+        const invoiceNumber = await generateInvoiceNumber(c.env.DB, getEntityId(c))
         const supplyAmount = orders.reduce((sum: number, o) => sum + (parseFloat(String(o.total_amount)) || 0), 0)
         const taxAmount = orders.reduce((sum: number, o) => sum + (parseFloat(String(o.vat_amount)) || 0), 0)
         const totalAmount = supplyAmount + taxAmount
@@ -909,7 +912,7 @@ taxInvoicesRouter.post('/', requireRole('ADMIN', 'MANAGER'), async (c) => {
       return c.json({ success: false, error: '회사 사업자등록번호가 설정되어 있지 않습니다.' }, 400)
     }
 
-    const invoiceNumber = await generateInvoiceNumber(c.env.DB)
+    const invoiceNumber = await generateInvoiceNumber(c.env.DB, getEntityId(c))
     const issueDate = body.issue_date || new Date().toISOString().slice(0, 10)
     const user = c.get('user')
 
@@ -1393,7 +1396,7 @@ taxInvoicesRouter.post('/:id/modify', requireRole('ADMIN', 'MANAGER'), async (c)
       'SELECT id, tax_invoice_id, item_date, item_name, specification, quantity, unit_price, supply_amount, tax_amount, notes, sort_order FROM tax_invoice_items WHERE tax_invoice_id = ? ORDER BY sort_order'
     ).bind(id).all()
 
-    const invoiceNumber = await generateInvoiceNumber(c.env.DB)
+    const invoiceNumber = await generateInvoiceNumber(c.env.DB, getEntityId(c))
     const issueDate = body.issue_date || new Date().toISOString().slice(0, 10)
 
     // 새 수정발행 계산서 생성 (원본 정보 복사)
@@ -1734,7 +1737,7 @@ taxInvoicesRouter.post('/monthly-create', async (c) => {
 
     for (const group of Object.values(grouped)) {
       try {
-        const invoiceNumber = await generateInvoiceNumber(c.env.DB)
+        const invoiceNumber = await generateInvoiceNumber(c.env.DB, getEntityId(c))
 
         const insertResult = await c.env.DB.prepare(`
           INSERT INTO tax_invoices (
