@@ -1,7 +1,6 @@
 import { Hono } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
-import { FaxProvider } from '../services/faxProvider'
 import { BarobillFaxProvider } from '../services/barobillFax'
 import { getKakaoSettings } from './kakao'
 import { getEntityCorpNum } from '../utils/entitySettings'
@@ -11,33 +10,16 @@ const faxRouter = new Hono<HonoEnv>()
 faxRouter.use('*', authMiddleware)
 faxRouter.use('*', requireRole('ADMIN', 'MANAGER'))
 
-async function getFaxProvider(c: any): Promise<FaxProvider | BarobillFaxProvider | null> {
+async function getFaxProvider(c: any): Promise<BarobillFaxProvider | null> {
   const db = c.env.DB as D1Database
-
-  // 바로빌 모드 확인
-  const providerSetting = await db.prepare(
-    "SELECT setting_value FROM settings WHERE setting_key = 'messaging_provider'"
+  const testModeRow = await db.prepare(
+    "SELECT setting_value FROM settings WHERE setting_key = 'barobill_test_mode'"
   ).first<{ setting_value: string }>()
-
-  if (providerSetting?.setting_value === 'barobill') {
-    const testModeRow = await db.prepare(
-      "SELECT setting_value FROM settings WHERE setting_key = 'barobill_test_mode'"
-    ).first<{ setting_value: string }>()
-    const isTest = testModeRow?.setting_value !== '0'
-    const certKey = isTest ? c.env.BAROBILL_CERT_KEY : c.env.BAROBILL_CERT_KEY_PROD
-    const corpNum = await getEntityCorpNum(db, getEntityId(c))
-    if (!certKey || !corpNum) return null
-    return new BarobillFaxProvider({ certKey, corpNum, isTest })
-  }
-
-  // 기존 팝빌
-  const linkedIdRow = await db.prepare("SELECT setting_value FROM settings WHERE setting_key = 'tax_provider_linked_id'").first<{ setting_value: string }>()
-  const testModeRow = await db.prepare("SELECT setting_value FROM settings WHERE setting_key = 'tax_test_mode'").first<{ setting_value: string }>()
-  const linkedId = linkedIdRow?.setting_value
-  const secretKey = c.env.POPBILL_SECRET_KEY
+  const isTest = testModeRow?.setting_value !== '0'
+  const certKey = isTest ? c.env.BAROBILL_CERT_KEY : c.env.BAROBILL_CERT_KEY_PROD
   const corpNum = await getEntityCorpNum(db, getEntityId(c))
-  if (!linkedId || !secretKey || !corpNum) return null
-  return new FaxProvider({ linkedId, secretKey, corpNum, testMode: testModeRow?.setting_value === '1' })
+  if (!certKey || !corpNum) return null
+  return new BarobillFaxProvider({ certKey, corpNum, isTest })
 }
 
 // POST /send — 팩스 발송 (base64 PDF)
@@ -58,7 +40,7 @@ faxRouter.post('/send', async (c) => {
 
     const provider = await getFaxProvider(c)
     if (!provider) {
-      return c.json({ success: false, error: '팝빌 연동이 설정되지 않았습니다.' }, 400)
+      return c.json({ success: false, error: '바로빌 연동이 설정되지 않았습니다.' }, 400)
     }
 
     const settings = await getKakaoSettings(db)

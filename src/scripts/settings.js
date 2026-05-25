@@ -4,7 +4,7 @@ var SETTING_KEYS = [
   'company_business_type', 'company_business_item',
   'company_address', 'company_fax', 'company_bank_info',
   'company_stamp_base64',
-  'tax_provider', 'tax_provider_linked_id', 'tax_default_email',
+  'tax_provider', 'tax_default_email',
   'email_from_name', 'email_from_address'
 ];
 var CHECKBOX_KEYS = ['tax_test_mode', 'tax_auto_issue', 'email_enabled'];
@@ -18,7 +18,7 @@ var COMPANY_KEYS = [
   'company_stamp_base64'
 ];
 // ── 세금계산서 키 ──
-var TAX_KEYS = ['tax_provider', 'tax_provider_linked_id', 'tax_default_email'];
+var TAX_KEYS = ['tax_provider', 'tax_default_email'];
 var TAX_CHECKBOX_KEYS = ['tax_test_mode', 'tax_auto_issue'];
 // ── 이메일 키 ──
 var EMAIL_KEYS = ['email_from_name', 'email_from_address'];
@@ -159,10 +159,6 @@ function saveSettings() {
     email_from_address: (document.getElementById('s_company_email_from_address') || {}).value || '',
     email_from_name: (document.getElementById('s_company_email_from_name') || {}).value || '',
   };
-  // popbill_corp_num 자동 생성 (사업자번호에서 하이픈 제거)
-  if (payload.business_reg_no) {
-    payload.popbill_corp_num = payload.business_reg_no.replace(/-/g, '');
-  }
   // short_name은 name과 동일하게
   payload.short_name = payload.name;
 

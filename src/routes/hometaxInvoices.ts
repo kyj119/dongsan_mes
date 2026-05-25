@@ -1,7 +1,6 @@
 import { Hono, type Context } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
-import { PopbillProvider } from '../services/popbillProvider'
 // TODO: 홈택스 수집은 바로빌 자동 스크래핑 방식으로 전환 예정
 import { getEntityCorpNum } from '../utils/entitySettings'
 import { entityFilter, getEntityId } from '../utils/entityFilter'
@@ -39,24 +38,11 @@ const hometaxInvoicesRouter = new Hono<HonoEnv>()
 hometaxInvoicesRouter.use('/*', authMiddleware)
 
 // ============================================================================
-// Helper: Provider 생성 (entity BRN 우선)
+// Helper: Provider 생성 — 홈택스 수집은 바로빌 미지원, 향후 전환 예정
 // ============================================================================
-async function getProvider(c: Context<HonoEnv>): Promise<PopbillProvider | null> {
-  const db = c.env.DB
-  const linkedIdRow = await db.prepare(
-    "SELECT setting_value FROM settings WHERE setting_key = 'tax_provider_linked_id'"
-  ).first<{ setting_value: string }>()
-  const testModeRow = await db.prepare(
-    "SELECT setting_value FROM settings WHERE setting_key = 'tax_test_mode'"
-  ).first<{ setting_value: string }>()
-
-  const linkedId = linkedIdRow?.setting_value
-  const secretKey = c.env.POPBILL_SECRET_KEY
-  const brn = await getEntityCorpNum(db, getEntityId(c))
-  const isTest = testModeRow?.setting_value === '1'
-
-  if (!linkedId || !secretKey || !brn) return null
-  return new PopbillProvider({ linkedId, secretKey, supplierBRN: brn, isTest })
+async function getProvider(_c: Context<HonoEnv>): Promise<any | null> {
+  // 팝빌 제거 후 홈택스 수집 Provider가 없음 — 바로빌 자동 스크래핑 전환 시 교체
+  return null
 }
 
 // ============================================================================
@@ -98,7 +84,7 @@ hometaxInvoicesRouter.post('/collect', requireRole('ADMIN', 'MANAGER'), async (c
       return c.json({ success: false, error: '세금계산서 설정 미완료' }, 400)
     }
 
-    // Request job from Popbill
+    // Request job
     const jobResult = await provider.requestHometaxJob(type as 'SELL' | 'BUY', start, end)
     const jobId = jobResult.jobId
 
@@ -185,7 +171,7 @@ hometaxInvoicesRouter.get('/jobs/:id/status', requireRole('ADMIN', 'MANAGER'), a
       return c.json({ success: false, error: '세금계산서 설정 미완료' }, 400)
     }
 
-    // Get job state from Popbill
+    // Get job state from provider
     const jobState = await provider.getHometaxJobState(job.job_id)
 
     // Update DB with latest state
@@ -267,7 +253,7 @@ hometaxInvoicesRouter.post('/jobs/:id/fetch', requireRole('ADMIN', 'MANAGER'), a
       // Batch insert to avoid N+1 (#192)
       const stmts: D1PreparedStatement[] = []
       for (const invoice of result.list) {
-        // Map Popbill fields to DB schema
+        // Map API fields to DB schema
         const ntsConfirmNumber = invoice.ntsconfirmNum || invoice.ntsConfirmNum
         const issueDate = invoice.issueDate
         const sendDate = invoice.sendDate

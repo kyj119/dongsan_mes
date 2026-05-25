@@ -112,7 +112,6 @@ export interface Entity {
   fax?: string;            // 0185
   email?: string;
   tax_email?: string;
-  popbill_corp_num?: string;
   bank_info?: string;
   stamp_base64?: string;   // 0152
   // Phase 1.2: 멀티사업자 이메일 발신 (0190)

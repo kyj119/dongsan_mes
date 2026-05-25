@@ -10,7 +10,7 @@ import { authMiddleware, requireRole } from '../middleware/auth'
 import { sendEmail } from '../services/emailProvider'
 import { baseLayout } from '../services/emailTemplates'
 import { getKakaoProvider, getKakaoSettings } from './kakao'
-import type { SMSMessage, ATSMessage } from '../services/kakaoProvider'
+import type { SMSMessage, ATSMessage } from './kakao'
 import { generatePortalToken } from './portal'
 
 const messagesRouter = new Hono<HonoEnv>()
@@ -193,7 +193,7 @@ messagesRouter.post('/send', async (c) => {
       })
     }
 
-    // ── 카카오톡 / SMS — 팝빌 Provider 공통 준비 ──────────────────────────
+    // ── 카카오톡 / SMS — 바로빌 Provider 공통 준비 ──────────────────────────
     if (!receiver.phone) {
       return c.json({ success: false, error: `${channel} 채널에서는 receiver.phone이 필요합니다.` }, 400)
     }
@@ -208,7 +208,7 @@ messagesRouter.post('/send', async (c) => {
 
     const provider = await getKakaoProvider(c)
     if (!provider) {
-      return c.json({ success: false, error: '팝빌 연동이 설정되지 않았습니다.' }, 400)
+      return c.json({ success: false, error: '바로빌 연동이 설정되지 않았습니다.' }, 400)
     }
 
     // ── 카카오톡 ────────────────────────────────────────────────────────
@@ -497,7 +497,7 @@ messagesRouter.post('/send-bulk', async (c) => {
       })
     }
 
-    // ── 카카오 / SMS 대량 발송 — 팝빌 Provider ───────────────────────────
+    // ── 카카오 / SMS 대량 발송 — 바로빌 Provider ───────────────────────────
     const kakaoSettings = await getKakaoSettings(db)
     if (!kakaoSettings.senderNum) {
       return c.json({ success: false, error: '발신번호(kakao_sender_num)가 설정되지 않았습니다.' }, 400)
@@ -505,7 +505,7 @@ messagesRouter.post('/send-bulk', async (c) => {
 
     const provider = await getKakaoProvider(c)
     if (!provider) {
-      return c.json({ success: false, error: '팝빌 연동이 설정되지 않았습니다.' }, 400)
+      return c.json({ success: false, error: '바로빌 연동이 설정되지 않았습니다.' }, 400)
     }
 
     // 수신자 목록 구성

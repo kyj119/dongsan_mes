@@ -13,7 +13,7 @@ clientsRouter.use('/*', authMiddleware)
 // RBAC: Only ADMIN and MANAGER can create/import clients
 clientsRouter.use('/import', requireRole('ADMIN', 'MANAGER'))
 
-// GET /check-brn/:brn — 사업자등록상태조회 (팝빌)
+// GET /check-brn/:brn — 사업자등록상태조회 (바로빌)
 clientsRouter.get('/check-brn/:brn', async (c) => {
   const brn = c.req.param('brn').replace(/-/g, '')
   if (brn.length !== 10) {
@@ -33,27 +33,12 @@ clientsRouter.get('/check-brn/:brn', async (c) => {
   }
 
   try {
-    // 바로빌 또는 팝빌 provider
-    const providerSetting = await db.prepare(
-      "SELECT setting_value FROM settings WHERE setting_key = 'messaging_provider'"
-    ).first<{ setting_value: string }>()
-
-    let provider: any
-    if (providerSetting?.setting_value === 'barobill') {
-      const { BarobillTaxProvider } = await import('../services/barobillTax')
-      const testModeRow = await db.prepare("SELECT setting_value FROM settings WHERE setting_key = 'barobill_test_mode'").first<{ setting_value: string }>()
-      const isTest = testModeRow?.setting_value !== '0'
-      const certKey = isTest ? env.BAROBILL_CERT_KEY : env.BAROBILL_CERT_KEY_PROD
-      if (!certKey) return c.json({ success: false, error: 'BAROBILL_CERT_KEY 미설정' }, 400)
-      provider = new BarobillTaxProvider({ certKey, corpNum, isTest })
-    } else {
-      const linkedIdSetting = await db.prepare("SELECT setting_value FROM settings WHERE setting_key = 'tax_provider_linked_id'").first<{ setting_value: string }>()
-      const secretKey = env.POPBILL_SECRET_KEY
-      if (!linkedIdSetting?.setting_value || !secretKey) return c.json({ success: false, error: 'Provider 연동 설정이 없습니다.' }, 400)
-      const testModeSetting = await db.prepare("SELECT setting_value FROM settings WHERE setting_key = 'tax_test_mode'").first<{ setting_value: string }>()
-      const { createPopbillProvider } = await import('../services/popbillProvider')
-      provider = createPopbillProvider(linkedIdSetting.setting_value, secretKey, corpNum, testModeSetting?.setting_value === '1')
-    }
+    const { BarobillTaxProvider } = await import('../services/barobillTax')
+    const testModeRow = await db.prepare("SELECT setting_value FROM settings WHERE setting_key = 'barobill_test_mode'").first<{ setting_value: string }>()
+    const isTest = testModeRow?.setting_value !== '0'
+    const certKey = isTest ? env.BAROBILL_CERT_KEY : env.BAROBILL_CERT_KEY_PROD
+    if (!certKey) return c.json({ success: false, error: 'BAROBILL_CERT_KEY 미설정' }, 400)
+    const provider = new BarobillTaxProvider({ certKey, corpNum, isTest })
 
     const result = await provider.checkCorpNum(brn)
     return c.json({ success: true, data: result })

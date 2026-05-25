@@ -7,35 +7,16 @@ import { sendEmail } from '../services/emailProvider'
 import { renderTemplate } from '../services/emailTemplates'
 import { getEntityId, entityFilter } from '../utils/entityFilter'
 
-/** 설정에 따라 팝빌 또는 바로빌 TaxProvider 반환 */
+/** 바로빌 TaxProvider 반환 */
 async function getTaxProvider(db: D1Database, env: any, corpNum: string): Promise<TaxProvider | null> {
-  const providerSetting = await db.prepare(
-    "SELECT setting_value FROM settings WHERE setting_key = 'messaging_provider'"
+  const testModeRow = await db.prepare(
+    "SELECT setting_value FROM settings WHERE setting_key = 'barobill_test_mode'"
   ).first<{ setting_value: string }>()
-
-  if (providerSetting?.setting_value === 'barobill') {
-    const testModeRow = await db.prepare(
-      "SELECT setting_value FROM settings WHERE setting_key = 'barobill_test_mode'"
-    ).first<{ setting_value: string }>()
-    const isTest = testModeRow?.setting_value !== '0'
-    const certKey = isTest ? env.BAROBILL_CERT_KEY : env.BAROBILL_CERT_KEY_PROD
-    if (!certKey || !corpNum) return null
-    const { createBarobillTaxProvider } = await import('../services/barobillTax')
-    return createBarobillTaxProvider({ certKey, corpNum, isTest })
-  }
-
-  // 기존 팝빌
-  const linkedIdSetting = await db.prepare(
-    "SELECT setting_value FROM settings WHERE setting_key = 'tax_provider_linked_id'"
-  ).first<{ setting_value: string }>()
-  const secretKey = env.POPBILL_SECRET_KEY
-  if (!linkedIdSetting?.setting_value || !secretKey || !corpNum) return null
-  const testModeSetting = await db.prepare(
-    "SELECT setting_value FROM settings WHERE setting_key = 'tax_test_mode'"
-  ).first<{ setting_value: string }>()
-  const isTestMode = testModeSetting?.setting_value === '1'
-  const { createPopbillProvider } = await import('../services/popbillProvider')
-  return createPopbillProvider(linkedIdSetting.setting_value, secretKey, corpNum, isTestMode)
+  const isTest = testModeRow?.setting_value !== '0'
+  const certKey = isTest ? env.BAROBILL_CERT_KEY : env.BAROBILL_CERT_KEY_PROD
+  if (!certKey || !corpNum) return null
+  const { createBarobillTaxProvider } = await import('../services/barobillTax')
+  return createBarobillTaxProvider({ certKey, corpNum, isTest })
 }
 
 // 세금계산서 + 주문번호 JOIN 결과 타입
@@ -151,7 +132,7 @@ async function issueTaxInvoice(
     'SELECT id, tax_invoice_id, item_date, item_name, specification, quantity, unit_price, supply_amount, tax_amount, notes, sort_order FROM tax_invoice_items WHERE tax_invoice_id = ? ORDER BY sort_order'
   ).bind(taxInvoiceId).all()
 
-  // 세금계산서 Provider (바로빌 또는 팝빌)
+  // 세금계산서 Provider (바로빌)
   const provider = await getTaxProvider(db, env, existing.supplier_brn.replace(/-/g, ''))
   if (provider) {
     const supplierEmailSetting = await db.prepare(
@@ -200,14 +181,14 @@ async function issueTaxInvoice(
       await db.prepare(`
         UPDATE tax_invoices
         SET status = 'SENT', issued_by = ?, nts_approval_number = ?,
-            nts_sent_at = CURRENT_TIMESTAMP, provider_name = 'popbill',
+            nts_sent_at = CURRENT_TIMESTAMP, provider_name = 'barobill',
             provider_response = ?, updated_at = CURRENT_TIMESTAMP
         WHERE id = ?
       `).bind(userId, result.ntsApprovalNumber || null, result.rawResponse || null, taxInvoiceId).run()
     } else {
       await db.prepare(`
         UPDATE tax_invoices
-        SET status = 'FAILED', issued_by = ?, provider_name = 'popbill',
+        SET status = 'FAILED', issued_by = ?, provider_name = 'barobill',
             nts_result_code = ?, nts_result_message = ?,
             provider_response = ?, updated_at = CURRENT_TIMESTAMP
         WHERE id = ?
@@ -215,12 +196,12 @@ async function issueTaxInvoice(
 
       return {
         success: false,
-        error: `팝빌 발행 실패: ${result.errorMessage || 'Unknown'}`,
+        error: `바로빌 발행 실패: ${result.errorMessage || 'Unknown'}`,
         data: { providerError: result }
       }
     }
   } else {
-    // 팝빌 미설정 → 로컬 발행만
+    // 바로빌 미설정 → 로컬 발행만
     await db.prepare(
       `UPDATE tax_invoices SET status = 'ISSUED', issued_by = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`
     ).bind(userId, taxInvoiceId).run()
@@ -279,27 +260,6 @@ async function issueTaxInvoice(
             `SELECT setting_value FROM settings WHERE setting_key = 'kakao_sender_num'`
           ).first<SettingRow>()
           if (kakaoSenderNum?.setting_value) {
-            const { createKakaoProvider } = await import('../services/kakaoProvider')
-            const linkedIdSetting = await db.prepare(
-              `SELECT setting_value FROM settings WHERE setting_key = 'tax_provider_linked_id'`
-            ).first<SettingRow>()
-            const testModeSetting = await db.prepare(
-              `SELECT setting_value FROM settings WHERE setting_key = 'tax_test_mode'`
-            ).first<SettingRow>()
-            const companyBrn = await db.prepare(
-              `SELECT setting_value FROM settings WHERE setting_key = 'company_business_registration_number'`
-            ).first<SettingRow>()
-            if (linkedIdSetting?.setting_value && env.POPBILL_SECRET_KEY && companyBrn?.setting_value) {
-              const kakaoProvider = createKakaoProvider(
-                linkedIdSetting.setting_value,
-                env.POPBILL_SECRET_KEY,
-                companyBrn.setting_value.replace(/-/g, ''),
-                testModeSetting?.setting_value === '1'
-              )
-              const altSendType = await db.prepare(
-                `SELECT setting_value FROM settings WHERE setting_key = 'kakao_alt_send_type'`
-              ).first<SettingRow>()
-              // 알림톡 발송 시도 (템플릿 코드는 설정에서 관리 — 미설정 시 스킵)
               // TODO: 세금계산서 전용 템플릿 코드 설정 추가 후 활성화
               console.log(`[kakao] 세금계산서 ${updated.invoice_number} 알림톡 발송 대상: ${buyerClient.mobile}`)
               await db.prepare(`
@@ -311,7 +271,6 @@ async function issueTaxInvoice(
                 `세금계산서 ${updated.invoice_number} 발행 안내`,
                 userId
               ).run()
-            }
           }
         }
       }
@@ -341,21 +300,10 @@ async function issueTaxInvoice(
   return { success: true, data: { ...updated, items } }
 }
 
-// GET /test-connection — 팝빌 연결 테스트 (잔여 포인트 조회)
+// GET /test-connection — 바로빌 연결 테스트 (잔여 포인트 조회)
 taxInvoicesRouter.get('/test-connection', async (c) => {
   try {
     const db = c.env.DB
-    const env = c.env
-
-    const linkedIdSetting = await db.prepare(
-      `SELECT setting_value FROM settings WHERE setting_key = 'tax_provider_linked_id'`
-    ).first<{ setting_value: string }>()
-    const secretKey = env.POPBILL_SECRET_KEY
-    const linkedId = linkedIdSetting?.setting_value
-
-    if (!linkedId || !secretKey) {
-      return c.json({ success: false, error: '팝빌 링크아이디 또는 비밀키가 설정되지 않았습니다.' }, 400)
-    }
 
     const settings = await getCompanySettings(db, getEntityId(c))
     const brn = (settings.company_business_registration_number || '').replace(/-/g, '')
@@ -365,13 +313,13 @@ taxInvoicesRouter.get('/test-connection', async (c) => {
 
     const provider = await getTaxProvider(db, c.env, brn)
     if (!provider) {
-      return c.json({ success: false, error: 'Provider 설정 없음' }, 400)
+      return c.json({ success: false, error: '바로빌 Provider 설정 없음 (CERT_KEY 또는 사업자번호 누락)' }, 400)
     }
 
-    const testModeSetting = await db.prepare(
-      `SELECT setting_value FROM settings WHERE setting_key = 'tax_test_mode'`
+    const testModeRow = await db.prepare(
+      `SELECT setting_value FROM settings WHERE setting_key = 'barobill_test_mode'`
     ).first<{ setting_value: string }>()
-    const isTestMode = testModeSetting?.setting_value === '1'
+    const isTestMode = testModeRow?.setting_value !== '0'
 
     const balance = await provider.getBalance()
     return c.json({
@@ -381,15 +329,14 @@ taxInvoicesRouter.get('/test-connection', async (c) => {
         testMode: isTestMode,
         remainPoint: balance.remainPoint,
         partnerPoint: balance.partnerPoint,
-        linkedId,
         brn,
       }
     })
   } catch (err) {
-    console.error('Popbill connection error:', err)
+    console.error('Barobill connection error:', err)
     return c.json({
       success: false,
-      error: '팝빌 연결에 실패했습니다'
+      error: '바로빌 연결에 실패했습니다'
     }, 500)
   }
 })
@@ -1818,7 +1765,7 @@ taxInvoicesRouter.post('/monthly-create', async (c) => {
 })
 
 // ────────────────────────────────────────────────────────────────────────────
-// 상태 새로고침 (GetInfo) — 팝빌에서 최신 상태 조회
+// 상태 새로고침 (GetInfo) — 바로빌에서 최신 상태 조회
 // ────────────────────────────────────────────────────────────────────────────
 taxInvoicesRouter.post('/:id/refresh-status', async (c) => {
   const db = c.env.DB
@@ -1835,15 +1782,8 @@ taxInvoicesRouter.post('/:id/refresh-status', async (c) => {
     }
 
     if (invoice.status === 'DRAFT' || invoice.status === 'CANCELLED') {
-      return c.json({ success: false, error: '팝빌 전송 전 상태에서는 조회할 수 없습니다.' })
+      return c.json({ success: false, error: '전송 전 상태에서는 조회할 수 없습니다.' })
     }
-
-    // 팝빌 연동 확인
-    const linkedIdSetting = await db.prepare(
-      `SELECT setting_value FROM settings WHERE setting_key = 'tax_provider_linked_id'`
-    ).first<{ setting_value: string }>()
-    const secretKey = env.POPBILL_SECRET_KEY
-    const linkedId = linkedIdSetting?.setting_value
 
     const provider = await getTaxProvider(db, env, invoice.supplier_brn.replace(/-/g, ''))
     if (!provider) {
@@ -1905,7 +1845,7 @@ taxInvoicesRouter.post('/:id/refresh-status', async (c) => {
     return c.json({
       success: true,
       data: updated,
-      popbill: { stateCode, stateDT: statusResult.stateDT, ntsApproval }
+      provider: { stateCode, stateDT: statusResult.stateDT, ntsApproval }
     })
   } catch (error) {
     console.error('src/routes/taxInvoices.ts error:', error)

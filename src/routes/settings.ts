@@ -18,8 +18,8 @@ settingsRouter.get('/', requireRole('ADMIN', 'MANAGER'), async (c) => {
       settingsMap[row.setting_key] = row.setting_value || ''
     }
 
-    // 팝빌 비밀키 설정 여부 (실제 값은 노출하지 않음)
-    settingsMap['tax_secret_key_configured'] = c.env.POPBILL_SECRET_KEY ? '1' : ''
+    // 바로빌 CERT_KEY 설정 여부 (실제 값은 노출하지 않음)
+    settingsMap['tax_secret_key_configured'] = (c.env.BAROBILL_CERT_KEY || c.env.BAROBILL_CERT_KEY_PROD) ? '1' : ''
 
     return c.json({ success: true, data: settingsMap })
   } catch (error) {

@@ -1,6 +1,6 @@
 /**
  * 바로빌 전자세금계산서 + 현금영수증 + 홈택스 + 사업자검증 Provider
- * 팝빌 popbillProvider.ts 대체
+ * 전자세금계산서 발행 Provider
  *
  * WSDL: TI.asmx
  * - RegistAndIssueTaxInvoice (즉시발행)

@@ -2,14 +2,15 @@ import { Hono } from 'hono'
 import type { Context } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
-import { createKakaoProvider, KakaoProvider, SMSMessage, ATSMessage } from '../services/kakaoProvider'
 import { BarobillSmsProvider } from '../services/barobillSms'
+import type { SMSMessage, ATSMessage } from '../services/barobillSms'
+export type { SMSMessage, ATSMessage }
 
 // ────────────────────────────────────────────────────────────────────────────
 // D1 row types
 // ────────────────────────────────────────────────────────────────────────────
 interface SettingRow { setting_value: string | null }
-interface EntityRow { popbill_corp_num: string | null; business_reg_no: string | null }
+interface EntityRow { business_reg_no: string | null }
 interface SettingKVRow { setting_key: string; setting_value: string | null }
 interface IdRow { id: number }
 interface CountRow { total: number }
@@ -44,79 +45,38 @@ kakaoRouter.use('/*', authMiddleware, requireRole('ADMIN', 'MANAGER'))
 // ────────────────────────────────────────────────────────────────────────────
 // 공통 헬퍼: 카카오 Provider 인스턴스 생성
 // ────────────────────────────────────────────────────────────────────────────
-export async function getKakaoProvider(c: Context<HonoEnv>): Promise<KakaoProvider | BarobillSmsProvider | null> {
+export async function getKakaoProvider(c: Context<HonoEnv>): Promise<BarobillSmsProvider | null> {
   try {
     const db = c.env.DB
     const entityId = c.get('entityId') || 1
 
-    // 바로빌 모드 확인
-    const providerSetting = await db.prepare(
-      `SELECT setting_value FROM settings WHERE setting_key = 'messaging_provider'`
+    const certKey = c.env.BAROBILL_CERT_KEY
+    const certKeyProd = c.env.BAROBILL_CERT_KEY_PROD
+
+    const testModeSetting = await db.prepare(
+      `SELECT setting_value FROM settings WHERE setting_key = 'barobill_test_mode'`
     ).first<SettingRow>()
-
-    if (providerSetting?.setting_value === 'barobill') {
-      // --- 바로빌 Provider ---
-      const certKey = c.env.BAROBILL_CERT_KEY
-      const certKeyProd = c.env.BAROBILL_CERT_KEY_PROD
-
-      const testModeSetting = await db.prepare(
-        `SELECT setting_value FROM settings WHERE setting_key = 'barobill_test_mode'`
-      ).first<SettingRow>()
-      const isTest = testModeSetting?.setting_value !== '0'
-
-      let brn = ''
-      const entity = await db.prepare(
-        'SELECT popbill_corp_num, business_reg_no FROM entities WHERE id = ?'
-      ).bind(entityId).first<EntityRow>()
-      if (entity?.popbill_corp_num) brn = entity.popbill_corp_num
-      else if (entity?.business_reg_no) brn = entity.business_reg_no.replace(/-/g, '')
-      else {
-        const companyBrn = await db.prepare(
-          `SELECT setting_value FROM settings WHERE setting_key = 'company_business_registration_number'`
-        ).first<SettingRow>()
-        brn = (companyBrn?.setting_value || '').replace(/-/g, '')
-      }
-
-      const key = isTest ? certKey : certKeyProd
-      if (!key || !brn) return null
-
-      const senderIdRow = await db.prepare(
-        "SELECT setting_value FROM settings WHERE setting_key = 'barobill_sender_id'"
-      ).first<SettingRow>()
-      return new BarobillSmsProvider({ certKey: key, corpNum: brn, isTest, senderId: senderIdRow?.setting_value || 'DONGSAN' })
-    }
-
-    // --- 기존 팝빌 Provider ---
-    const linkedIdSetting = await db.prepare(
-      `SELECT setting_value FROM settings WHERE setting_key = 'tax_provider_linked_id'`
-    ).first<SettingRow>()
-    const secretKey = c.env.POPBILL_SECRET_KEY
+    const isTest = testModeSetting?.setting_value !== '0'
 
     let brn = ''
     const entity = await db.prepare(
-      'SELECT popbill_corp_num, business_reg_no FROM entities WHERE id = ?'
+      'SELECT business_reg_no FROM entities WHERE id = ?'
     ).bind(entityId).first<EntityRow>()
-    if (entity?.popbill_corp_num) {
-      brn = entity.popbill_corp_num
-    } else if (entity?.business_reg_no) {
-      brn = entity.business_reg_no.replace(/-/g, '')
-    } else {
+    if (entity?.business_reg_no) brn = entity.business_reg_no.replace(/-/g, '')
+    else {
       const companyBrn = await db.prepare(
         `SELECT setting_value FROM settings WHERE setting_key = 'company_business_registration_number'`
       ).first<SettingRow>()
       brn = (companyBrn?.setting_value || '').replace(/-/g, '')
     }
 
-    if (!linkedIdSetting?.setting_value || !secretKey || !brn) {
-      return null
-    }
+    const key = isTest ? certKey : certKeyProd
+    if (!key || !brn) return null
 
-    const testModeSetting = await db.prepare(
-      `SELECT setting_value FROM settings WHERE setting_key = 'tax_test_mode'`
+    const senderIdRow = await db.prepare(
+      "SELECT setting_value FROM settings WHERE setting_key = 'barobill_sender_id'"
     ).first<SettingRow>()
-    const isTestMode = testModeSetting?.setting_value === '1'
-
-    return createKakaoProvider(linkedIdSetting.setting_value, secretKey, brn, isTestMode)
+    return new BarobillSmsProvider({ certKey: key, corpNum: brn, isTest, senderId: senderIdRow?.setting_value || 'DONGSAN' })
   } catch (error) {
     console.error('src/routes/kakao.ts getKakaoProvider error:', error)
     return null
@@ -176,12 +136,6 @@ kakaoRouter.get('/settings', async (c) => {
       }
     }
 
-    // 팝빌 연동 여부 확인
-    const linkedIdSetting = await db.prepare(
-      `SELECT setting_value FROM settings WHERE setting_key = 'tax_provider_linked_id'`
-    ).first<SettingRow>()
-    const popbillConfigured = !!linkedIdSetting?.setting_value && !!c.env.POPBILL_SECRET_KEY
-
     return c.json({
       success: true,
       data: {
@@ -194,7 +148,6 @@ kakaoRouter.get('/settings', async (c) => {
         email_from_address: settings.email_from_address || '',
         fax_enabled: settings.fax_enabled || '0',
         fax_sender_num: settings.fax_sender_num || '',
-        popbill_configured: popbillConfigured
       }
     })
   } catch (error) {
@@ -271,7 +224,7 @@ kakaoRouter.get('/templates', async (c) => {
   try {
     const provider = await getKakaoProvider(c)
     if (!provider) {
-      return c.json({ success: false, error: '팝빌 연동이 설정되지 않았습니다. (provider null)' }, 400)
+      return c.json({ success: false, error: '바로빌 연동이 설정되지 않았습니다.' }, 400)
     }
 
     const templates = await provider.listATSTemplate()
@@ -289,7 +242,7 @@ kakaoRouter.get('/balance', async (c) => {
   try {
     const provider = await getKakaoProvider(c)
     if (!provider) {
-      return c.json({ success: false, error: '팝빌 연동이 설정되지 않았습니다.' }, 400)
+      return c.json({ success: false, error: '바로빌 연동이 설정되지 않았습니다.' }, 400)
     }
 
     const [balance, unitCost] = await Promise.all([
@@ -342,10 +295,10 @@ kakaoRouter.post('/send', async (c) => {
       return c.json({ success: false, error: '발신번호가 설정되지 않았습니다.' }, 400)
     }
 
-    // 팝빌 제공자 생성
+    // 바로빌 Provider 생성
     const provider = await getKakaoProvider(c)
     if (!provider) {
-      return c.json({ success: false, error: '팝빌 연동이 설정되지 않았습니다.' }, 400)
+      return c.json({ success: false, error: '바로빌 연동이 설정되지 않았습니다.' }, 400)
     }
 
     // 알림톡 발송
@@ -455,10 +408,10 @@ kakaoRouter.post('/send-shipment', async (c) => {
     // 발송 내용 구성
     const content = body.content || `주문 ${shipment.order_number} 출고되었습니다.`
 
-    // 팝빌 제공자 생성
+    // 바로빌 Provider 생성
     const provider = await getKakaoProvider(c)
     if (!provider) {
-      return c.json({ success: false, error: '팝빌 연동이 설정되지 않았습니다.' }, 400)
+      return c.json({ success: false, error: '바로빌 연동이 설정되지 않았습니다.' }, 400)
     }
 
     // 알림톡 발송
@@ -562,10 +515,10 @@ kakaoRouter.post('/send-tax-invoice', async (c) => {
     // 발송 내용 구성
     const content = body.content || `세금계산서 ${taxInvoice.invoice_number} 발행되었습니다.`
 
-    // 팝빌 제공자 생성
+    // 바로빌 Provider 생성
     const provider = await getKakaoProvider(c)
     if (!provider) {
-      return c.json({ success: false, error: '팝빌 연동이 설정되지 않았습니다.' }, 400)
+      return c.json({ success: false, error: '바로빌 연동이 설정되지 않았습니다.' }, 400)
     }
 
     // 알림톡 발송
@@ -671,10 +624,10 @@ kakaoRouter.post('/send-portal-link', async (c) => {
       ? `거래 정보를 조회하려면 아래 링크를 클릭하세요: ${portalLink}`
       : '거래 정보 조회 링크를 확인하세요.')
 
-    // 팝빌 제공자 생성
+    // 바로빌 Provider 생성
     const provider = await getKakaoProvider(c)
     if (!provider) {
-      return c.json({ success: false, error: '팝빌 연동이 설정되지 않았습니다.' }, 400)
+      return c.json({ success: false, error: '바로빌 연동이 설정되지 않았습니다.' }, 400)
     }
 
     // 버튼 구성 (포털링크가 있을 때만)
@@ -763,7 +716,7 @@ kakaoRouter.post('/send-sms', async (c) => {
 
     const provider = await getKakaoProvider(c)
     if (!provider) {
-      return c.json({ success: false, error: '팝빌 연동이 설정되지 않았습니다.' }, 400)
+      return c.json({ success: false, error: '바로빌 연동이 설정되지 않았습니다.' }, 400)
     }
 
     const messages: SMSMessage[] = [{
@@ -892,7 +845,7 @@ kakaoRouter.post('/send-sms-bulk', async (c) => {
 
     const provider = await getKakaoProvider(c)
     if (!provider) {
-      return c.json({ success: false, error: '팝빌 연동이 설정되지 않았습니다.' }, 400)
+      return c.json({ success: false, error: '바로빌 연동이 설정되지 않았습니다.' }, 400)
     }
 
     const isLms = !!subject
@@ -979,7 +932,7 @@ kakaoRouter.post('/send-shipment-bulk', async (c) => {
 
     const provider = await getKakaoProvider(c)
     if (!provider) {
-      return c.json({ success: false, error: '팝빌 연동이 설정되지 않았습니다.' }, 400)
+      return c.json({ success: false, error: '바로빌 연동이 설정되지 않았습니다.' }, 400)
     }
 
     // 각 대상별 변수 치환
@@ -1194,7 +1147,7 @@ kakaoRouter.get('/logs/:receiptNum/status', async (c) => {
 
     const provider = await getKakaoProvider(c)
     if (!provider) {
-      return c.json({ success: false, error: '팝빌 연동이 설정되지 않았습니다.' }, 400)
+      return c.json({ success: false, error: '바로빌 연동이 설정되지 않았습니다.' }, 400)
     }
 
     const messages = await provider.getMessages(receiptNum)

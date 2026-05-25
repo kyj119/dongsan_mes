@@ -1,13 +1,47 @@
 /**
  * 바로빌 SMS + 카카오톡 알림톡 Provider
- * 팝빌 kakaoProvider.ts 대체
  *
  * WSDL:
  *   SMS: SMS.asmx (SendSMSMessage, SendLMSMessage, SendMessages)
  *   알림톡: KakaoTalk.asmx (SendATKakaotalk, SendATKakaotalks, GetKakaotalkTemplates)
  */
 import { barobillCall, parseXmlArray, parseXmlValues, type BarobillConfig } from './barobillClient'
-import type { SMSMessage, ATSMessage, SendResult, ATSTemplate } from './kakaoProvider'
+
+// ── 메시지 타입 (기존 kakaoProvider.ts에서 이관) ──
+
+export interface SMSMessage {
+  rcv: string              // 수신번호
+  rcvnm: string            // 수신자명
+  msg?: string             // 개별 메시지
+}
+
+export interface ATSMessage {
+  rcv: string              // 수신번호
+  rcvnm: string            // 수신자명
+  msg: string              // 알림톡 본문
+  altmsg?: string          // 대체문자
+  altsjt?: string          // 대체문자 제목
+  btns?: Array<{
+    n: string; t: string; u1?: string; u2?: string
+  }>
+}
+
+export interface SendResult {
+  receiptNum: string
+  code: number
+  message: string
+}
+
+export interface ATSTemplate {
+  templateCode: string
+  templateName: string
+  template: string
+  plusFriendID: string
+  ads: string
+  appendix: string
+  btns?: any[]
+  state: string
+}
 
 export class BarobillSmsProvider {
   private config: BarobillConfig

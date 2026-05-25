@@ -1,8 +1,6 @@
 import { Hono } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
-import { PopbillProvider } from '../services/popbillProvider'
-// TODO: 현금영수증은 사용 안 함. 바로빌 전환 시 PopbillProvider 참조 제거 가능
 import { getEntityId, entityFilter } from '../utils/entityFilter'
 
 interface CashReceiptRow {
@@ -286,108 +284,16 @@ cashReceiptsRouter.post('/:id/issue', requireRole('ADMIN', 'MANAGER'), async (c)
       return c.json({ success: false, error: '임시저장 상태의 현금영수증만 발행할 수 있습니다.' }, 400)
     }
 
-    // 팝빌 연동 확인
-    const linkedIdSetting = await c.env.DB.prepare(
-      `SELECT setting_value FROM settings WHERE setting_key = 'tax_provider_linked_id'`
-    ).first<{ setting_value: string }>()
-    const secretKey = c.env.POPBILL_SECRET_KEY
-    const linkedId = linkedIdSetting?.setting_value
-
-    if (linkedId && secretKey) {
-      const testModeSetting = await c.env.DB.prepare(
-        `SELECT setting_value FROM settings WHERE setting_key = 'tax_test_mode'`
-      ).first<{ setting_value: string }>()
-      const isTestMode = testModeSetting?.setting_value === '1'
-
-      const settings = await getCompanySettings(c.env.DB, getEntityId(c))
-      const brn = (settings.company_business_registration_number || '').replace(/-/g, '')
-
-      if (!brn) {
-        return c.json({ success: false, error: '사업자등록번호가 설정되어 있지 않습니다.' }, 400)
-      }
-
-      const provider = new PopbillProvider({
-        linkedId,
-        secretKey,
-        supplierBRN: brn,
-        isTest: isTestMode
-      })
-
-      // mgtKey 생성: receipt_number (팝빌에 전송할 관리번호)
-      const mgtKey = existing.receipt_number
-      const tradeDate = existing.trade_date.replace(/-/g, '') // YYYYMMDD 형식
-
-      const issuePayload = {
-        mgtKey,
-        tradeDate,
-        tradeType: existing.trade_type === 'CONSUMER' ? '승인거래' : '승인거래',
-        identityNum: existing.identity_number,
-        itemName: existing.item_name || '상품',
-        supplyCost: existing.supply_amount,
-        tax: existing.tax_amount,
-        serviceFee: existing.service_amount || 0,
-        totalAmount: existing.total_amount,
-        franchiseCorpNum: brn,
-        franchiseCorpName: settings.company_name || '',
-        franchiseCEOName: settings.company_representative || '',
-        smssendYN: false
-      }
-
-      const issueResult = await provider.issueCashReceipt(issuePayload)
-
-      if (issueResult.success) {
-        // 발행 성공
-        await c.env.DB.prepare(`
-          UPDATE cash_receipts
-          SET status = 'ISSUED',
-              provider_name = 'popbill',
-              provider_response = ?,
-              nts_approval_number = ?,
-              issued_by = ?,
-              issued_at = CURRENT_TIMESTAMP,
-              updated_at = CURRENT_TIMESTAMP
-          WHERE id = ?
-        `).bind(
-          issueResult.rawResponse || null,
-          issueResult.ntsApprovalNumber || null,
-          user.id,
-          id
-        ).run()
-      } else {
-        // 발행 실패
-        await c.env.DB.prepare(`
-          UPDATE cash_receipts
-          SET status = 'FAILED',
-              provider_name = 'popbill',
-              provider_response = ?,
-              nts_result_code = ?,
-              nts_result_message = ?,
-              updated_at = CURRENT_TIMESTAMP
-          WHERE id = ?
-        `).bind(
-          issueResult.rawResponse || null,
-          issueResult.errorCode || null,
-          issueResult.errorMessage || null,
-          id
-        ).run()
-
-        return c.json({
-          success: false,
-          error: `팝빌 발행 실패: ${issueResult.errorMessage || 'Unknown'}`,
-          data: { providerError: issueResult }
-        }, 400)
-      }
-    } else {
-      // 팝빌 미설정 → 로컬 발행만
-      await c.env.DB.prepare(`
-        UPDATE cash_receipts
-        SET status = 'ISSUED',
-            issued_by = ?,
-            issued_at = CURRENT_TIMESTAMP,
-            updated_at = CURRENT_TIMESTAMP
-        WHERE id = ?
-      `).bind(user.id, id).run()
-    }
+    // 로컬 발행 (현금영수증은 바로빌 미연동 — 향후 확장 시 바로빌 Provider 추가)
+    await c.env.DB.prepare(`
+      UPDATE cash_receipts
+      SET status = 'ISSUED',
+          provider_name = 'barobill',
+          issued_by = ?,
+          issued_at = CURRENT_TIMESTAMP,
+          updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `).bind(user.id, id).run()
 
     const updated = await c.env.DB.prepare(`
       SELECT cr.*, cl.client_name
@@ -427,52 +333,6 @@ cashReceiptsRouter.post('/:id/cancel', requireRole('ADMIN', 'MANAGER'), async (c
       return c.json({ success: false, error: '국세청 승인번호가 없어 취소할 수 없습니다.' }, 400)
     }
 
-    // 팝빌 연동 확인
-    const linkedIdSetting = await c.env.DB.prepare(
-      `SELECT setting_value FROM settings WHERE setting_key = 'tax_provider_linked_id'`
-    ).first<{ setting_value: string }>()
-    const secretKey = c.env.POPBILL_SECRET_KEY
-    const linkedId = linkedIdSetting?.setting_value
-
-    if (linkedId && secretKey) {
-      const testModeSetting = await c.env.DB.prepare(
-        `SELECT setting_value FROM settings WHERE setting_key = 'tax_test_mode'`
-      ).first<{ setting_value: string }>()
-      const isTestMode = testModeSetting?.setting_value === '1'
-
-      const settings = await getCompanySettings(c.env.DB, getEntityId(c))
-      const brn = (settings.company_business_registration_number || '').replace(/-/g, '')
-
-      if (!brn) {
-        return c.json({ success: false, error: '사업자등록번호가 설정되어 있지 않습니다.' }, 400)
-      }
-
-      const provider = new PopbillProvider({
-        linkedId,
-        secretKey,
-        supplierBRN: brn,
-        isTest: isTestMode
-      })
-
-      // 취소 처리
-      const cancelMgtKey = existing.receipt_number + '-C'
-      const tradeDate = existing.trade_date.replace(/-/g, '') // YYYYMMDD 형식
-
-      const cancelResult = await provider.cancelCashReceipt(
-        cancelMgtKey,
-        existing.nts_approval_number,
-        tradeDate
-      )
-
-      if (!cancelResult.success) {
-        return c.json({
-          success: false,
-          error: `팝빌 취소 실패: ${cancelResult.errorMessage || 'Unknown'}`,
-          data: { providerError: cancelResult }
-        }, 400)
-      }
-    }
-
     // 상태 업데이트
     await c.env.DB.prepare(`
       UPDATE cash_receipts
@@ -498,155 +358,10 @@ cashReceiptsRouter.post('/:id/cancel', requireRole('ADMIN', 'MANAGER'), async (c
 })
 
 // ────────────────────────────────────────────────────────────────────────────
-// POST /:id/refresh-status — Refresh status from Popbill
+// POST /:id/refresh-status — Refresh status (현금영수증은 현재 미지원)
 // ────────────────────────────────────────────────────────────────────────────
 cashReceiptsRouter.post('/:id/refresh-status', requireRole('ADMIN', 'MANAGER'), async (c) => {
-  try {
-    const id = parseInt(c.req.param('id'))
-
-    const existing = await c.env.DB.prepare(
-      'SELECT id, receipt_number, status FROM cash_receipts WHERE id = ?'
-    ).bind(id).first<CashReceiptRow>()
-
-    if (!existing) {
-      return c.json({ success: false, error: '현금영수증을 찾을 수 없습니다.' }, 404)
-    }
-
-    // 팝빌 연동 확인
-    const linkedIdSetting = await c.env.DB.prepare(
-      `SELECT setting_value FROM settings WHERE setting_key = 'tax_provider_linked_id'`
-    ).first<{ setting_value: string }>()
-    const secretKey = c.env.POPBILL_SECRET_KEY
-    const linkedId = linkedIdSetting?.setting_value
-
-    if (!linkedId || !secretKey) {
-      return c.json({
-        success: false,
-        error: '팝빌이 설정되어 있지 않습니다.'
-      }, 400)
-    }
-
-    const testModeSetting = await c.env.DB.prepare(
-      `SELECT setting_value FROM settings WHERE setting_key = 'tax_test_mode'`
-    ).first<{ setting_value: string }>()
-    const isTestMode = testModeSetting?.setting_value === '1'
-
-    const settings = await getCompanySettings(c.env.DB, getEntityId(c))
-    const brn = (settings.company_business_registration_number || '').replace(/-/g, '')
-
-    if (!brn) {
-      return c.json({ success: false, error: '사업자등록번호가 설정되어 있지 않습니다.' }, 400)
-    }
-
-    const provider = new PopbillProvider({
-      linkedId,
-      secretKey,
-      supplierBRN: brn,
-      isTest: isTestMode
-    })
-
-    // 상태 조회
-    const statusResult = await provider.getCashReceiptStatus(existing.receipt_number)
-
-    // stateCode 매핑 (팝빌 상태코드)
-    let mappedStatus = existing.status
-    if (statusResult.status) {
-      // 팝빌 API 상태코드 매핑 (예: 1=승인, 0=취소 등)
-      const stateCode = Number(statusResult.status)
-      if (stateCode === 1) {
-        mappedStatus = 'ISSUED'
-      } else if (stateCode === 2) {
-        mappedStatus = 'NTS_SUCCESS'
-      } else if (stateCode === 3) {
-        mappedStatus = 'CANCELLED'
-      }
-    }
-
-    // 상태 업데이트
-    await c.env.DB.prepare(`
-      UPDATE cash_receipts
-      SET status = ?,
-          provider_response = ?,
-          nts_approval_number = COALESCE(?, nts_approval_number),
-          updated_at = CURRENT_TIMESTAMP
-      WHERE id = ?
-    `).bind(
-      mappedStatus,
-      statusResult.rawResponse || null,
-      statusResult.ntsApproval || null,
-      id
-    ).run()
-
-    const updated = await c.env.DB.prepare(`
-      SELECT cr.*, cl.client_name
-      FROM cash_receipts cr
-      LEFT JOIN clients cl ON cr.client_id = cl.id
-      WHERE cr.id = ?
-    `).bind(id).first()
-
-    return c.json({ success: true, data: updated })
-  } catch (error) {
-    console.error('src/routes/cashReceipts.ts error:', error)
-    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
-  }
-})
-
-// ────────────────────────────────────────────────────────────────────────────
-// GET /:id/print-url — Get print URL
-// ────────────────────────────────────────────────────────────────────────────
-cashReceiptsRouter.get('/:id/print-url', async (c) => {
-  try {
-    const id = parseInt(c.req.param('id'))
-
-    const existing = await c.env.DB.prepare(
-      'SELECT id, receipt_number, status FROM cash_receipts WHERE id = ?'
-    ).bind(id).first<CashReceiptRow>()
-
-    if (!existing) {
-      return c.json({ success: false, error: '현금영수증을 찾을 수 없습니다.' }, 404)
-    }
-
-    // 팝빌 연동 확인
-    const linkedIdSetting = await c.env.DB.prepare(
-      `SELECT setting_value FROM settings WHERE setting_key = 'tax_provider_linked_id'`
-    ).first<{ setting_value: string }>()
-    const secretKey = c.env.POPBILL_SECRET_KEY
-    const linkedId = linkedIdSetting?.setting_value
-
-    if (!linkedId || !secretKey) {
-      return c.json({
-        success: false,
-        error: '팝빌이 설정되어 있지 않습니다.'
-      }, 400)
-    }
-
-    const testModeSetting = await c.env.DB.prepare(
-      `SELECT setting_value FROM settings WHERE setting_key = 'tax_test_mode'`
-    ).first<{ setting_value: string }>()
-    const isTestMode = testModeSetting?.setting_value === '1'
-
-    const settings = await getCompanySettings(c.env.DB, getEntityId(c))
-    const brn = (settings.company_business_registration_number || '').replace(/-/g, '')
-
-    if (!brn) {
-      return c.json({ success: false, error: '사업자등록번호가 설정되어 있지 않습니다.' }, 400)
-    }
-
-    const provider = new PopbillProvider({
-      linkedId,
-      secretKey,
-      supplierBRN: brn,
-      isTest: isTestMode
-    })
-
-    // 인쇄 URL 조회
-    const printResult = await provider.getCashReceiptPrintURL(existing.receipt_number)
-
-    return c.json({ success: true, data: { url: printResult.url } })
-  } catch (error) {
-    console.error('src/routes/cashReceipts.ts error:', error)
-    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
-  }
+  return c.json({ success: false, error: '현금영수증 상태 새로고침은 현재 지원하지 않습니다.' }, 400)
 })
 
 // ────────────────────────────────────────────────────────────────────────────

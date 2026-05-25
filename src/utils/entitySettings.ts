@@ -52,7 +52,7 @@ export async function getEntityCompanyInfo(
 }
 
 /**
- * 팝빌 Provider 생성에 필요한 corpNum을 entity에서 조회.
+ * 바로빌 등 외부 Provider에 필요한 corpNum을 entity에서 조회.
  * 폴백: settings의 company_business_registration_number
  */
 export async function getEntityCorpNum(

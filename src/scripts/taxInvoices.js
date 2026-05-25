@@ -582,10 +582,10 @@ async function refreshStatus(id) {
     if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>'; }
     var res = await axios.post('/api/tax-invoices/' + id + '/refresh-status');
     if (res.data.success) {
-      var popbill = res.data.popbill || {};
+      var providerInfo = res.data.provider || {};
       var status = res.data.data.status;
       var label = statusLabels[status] || status;
-      showToast('상태 업데이트: ' + label + ' (코드: ' + (popbill.stateCode || '-') + ')', 'success');
+      showToast('상태 업데이트: ' + label + ' (코드: ' + (providerInfo.stateCode || '-') + ')', 'success');
       loadInvoices(currentPage);
       // 상세 모달이 열려있으면 새로고침
       var detailModal = document.getElementById('detailModal');

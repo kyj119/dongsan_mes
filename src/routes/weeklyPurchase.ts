@@ -391,7 +391,7 @@ weeklyPurchaseRouter.post('/notify', async (c) => {
           results.push({ type: sendChannel, status: 'skipped', detail: '수신 가능한 담당자 없음 (mobile 미등록)' })
         }
       } else {
-        results.push({ type: sendChannel, status: 'skipped', detail: '팝빌 Provider 초기화 실패' })
+        results.push({ type: sendChannel, status: 'skipped', detail: '바로빌 Provider 초기화 실패' })
       }
     } else {
       results.push({ type: 'external', status: 'skipped', detail: '카카오/SMS 비활성화 또는 발신번호 미설정' })

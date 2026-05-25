@@ -7,7 +7,6 @@ export type Bindings = {
   R2_BUCKET: R2Bucket;
   JWT_SECRET: string;
   AGENT_API_KEY: string;
-  POPBILL_SECRET_KEY?: string;
   BAROBILL_CERT_KEY?: string;
   BAROBILL_CERT_KEY_PROD?: string;
   RESEND_API_KEY?: string;
