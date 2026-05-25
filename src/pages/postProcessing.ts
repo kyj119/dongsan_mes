@@ -97,26 +97,50 @@ export function postProcessingPage(c: Context<HonoEnv>) {
 
             <!-- 마감 방식 탭 -->
             <div id="panel-finishing" class="hidden">
-                <div class="grid grid-cols-2 gap-6">
-                    <!-- 마감 방식 목록 -->
-                    <div class="ds-card p-4">
-                        <div class="flex items-center justify-between mb-3">
-                            <h2 class="text-lg font-bold">마감 방식</h2>
-                            <button onclick="showFinMethodModal()" class="ds-btn ds-btn-primary text-xs">
-                                <i class="fas fa-plus mr-1"></i>추가
-                            </button>
-                        </div>
-                        <div id="finMethodList" class="space-y-2">로딩 중...</div>
+                <!-- 출력(현수막) 마감 -->
+                <div class="mb-6">
+                    <div class="flex items-center gap-2 mb-3 pb-2 border-b">
+                        <span class="inline-flex items-center gap-1 px-2 py-0.5 bg-blue-100 text-blue-700 rounded text-xs font-bold"><i class="fas fa-print"></i> 출력(현수막)</span>
+                        <span class="text-xs text-gray-400">솔벤/수성/UV/평판 품목에 적용</span>
                     </div>
-                    <!-- 프리셋 -->
-                    <div class="ds-card p-4">
-                        <div class="flex items-center justify-between mb-3">
-                            <h2 class="text-lg font-bold">프리셋</h2>
-                            <button onclick="showFinPresetModal()" class="px-3 py-1.5 text-xs bg-green-600 text-white rounded hover:bg-green-700">
-                                <i class="fas fa-plus mr-1"></i>추가
-                            </button>
+                    <div class="grid grid-cols-2 gap-6">
+                        <div class="ds-card p-4">
+                            <div class="flex items-center justify-between mb-3">
+                                <h2 class="text-base font-bold">마감 방식</h2>
+                                <button onclick="showFinMethodModal('output')" class="ds-btn ds-btn-primary text-xs"><i class="fas fa-plus mr-1"></i>추가</button>
+                            </div>
+                            <div id="finMethodList_output" class="space-y-2">로딩 중...</div>
                         </div>
-                        <div id="finPresetList" class="space-y-2">로딩 중...</div>
+                        <div class="ds-card p-4">
+                            <div class="flex items-center justify-between mb-3">
+                                <h2 class="text-base font-bold">프리셋</h2>
+                                <button onclick="showFinPresetModal('output')" class="px-3 py-1.5 text-xs bg-green-600 text-white rounded hover:bg-green-700"><i class="fas fa-plus mr-1"></i>추가</button>
+                            </div>
+                            <div id="finPresetList_output" class="space-y-2">로딩 중...</div>
+                        </div>
+                    </div>
+                </div>
+                <!-- 전사(봉제) 마감 -->
+                <div class="mb-6">
+                    <div class="flex items-center gap-2 mb-3 pb-2 border-b">
+                        <span class="inline-flex items-center gap-1 px-2 py-0.5 bg-amber-100 text-amber-700 rounded text-xs font-bold"><i class="fas fa-cut"></i> 전사(봉제)</span>
+                        <span class="text-xs text-gray-400">전사/깃발/태극기 품목에 적용</span>
+                    </div>
+                    <div class="grid grid-cols-2 gap-6">
+                        <div class="ds-card p-4">
+                            <div class="flex items-center justify-between mb-3">
+                                <h2 class="text-base font-bold">봉제 방식</h2>
+                                <button onclick="showFinMethodModal('transfer')" class="ds-btn ds-btn-primary text-xs"><i class="fas fa-plus mr-1"></i>추가</button>
+                            </div>
+                            <div id="finMethodList_transfer" class="space-y-2">로딩 중...</div>
+                        </div>
+                        <div class="ds-card p-4">
+                            <div class="flex items-center justify-between mb-3">
+                                <h2 class="text-base font-bold">프리셋</h2>
+                                <button onclick="showFinPresetModal('transfer')" class="px-3 py-1.5 text-xs bg-green-600 text-white rounded hover:bg-green-700"><i class="fas fa-plus mr-1"></i>추가</button>
+                            </div>
+                            <div id="finPresetList_transfer" class="space-y-2">로딩 중...</div>
+                        </div>
                     </div>
                 </div>
 
@@ -129,6 +153,7 @@ export function postProcessingPage(c: Context<HonoEnv>) {
                         </div>
                         <div class="p-6 space-y-3">
                             <input type="hidden" id="finMethodId">
+                            <input type="hidden" id="finMethodGroup" value="output">
                             <div><label class="block text-sm font-medium mb-1">이름 *</label>
                                 <input id="finMethodName" type="text" class="w-full border rounded px-3 py-2 text-sm" placeholder="예: 접어미싱"></div>
                             <div><label class="block text-sm font-medium mb-1">여백 (cm)</label>
@@ -151,6 +176,7 @@ export function postProcessingPage(c: Context<HonoEnv>) {
                         </div>
                         <div class="p-6 space-y-3">
                             <input type="hidden" id="finPresetId">
+                            <input type="hidden" id="finPresetGroup" value="output">
                             <div><label class="block text-sm font-medium mb-1">이름 *</label>
                                 <input id="finPresetName" type="text" class="w-full border rounded px-3 py-2 text-sm" placeholder="예: 사방 접어미싱"></div>
                             <div class="grid grid-cols-2 gap-2">

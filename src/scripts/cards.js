@@ -1802,6 +1802,9 @@ function showCardModal(card, history, defects, siblingCards) {
     }
     actionBtns += '<button class="action-btn action-btn-hold flex-1" onclick="closeCardModal();showDefectForm(' + card.id + ')"><i class="fas fa-exclamation-triangle"></i> 불량접수</button>';
     actionBtns += '<button class="action-btn flex-1" style="background:#fff;color:#374151;border:1px solid #d1d5db;border-radius:8px" onclick="printWorkOrder(' + card.order_id + ')"><i class="fas fa-print"></i> 작업지시서</button>';
+    if (card.category_name === 'TRANSFER_FLAG' || card.category_name === '전사') {
+        actionBtns += '<button class="action-btn flex-1" style="background:#fef3c7;color:#92400e;border:1px solid #fde68a;border-radius:8px" onclick="printSewingWorkOrder(' + card.id + ')"><i class="fas fa-cut"></i> 봉제작지</button>';
+    }
 
     // ── 모달 조립 (C형 슬라이드 패널) ──
     var modal = document.createElement('div');
@@ -2066,6 +2069,205 @@ async function printWorkOrder(orderId) {
         win.document.close();
     } catch(e) {
         showToast('작업지시서 생성 실패: ' + (e.message || e), 'error');
+    }
+}
+
+// ===== 봉제실 작업지시서 =====
+async function printSewingWorkOrder(cardId) {
+    try {
+        // 카드 정보 + 주문 정보 로드
+        var cardRes = await axios.get('/api/cards/' + cardId);
+        if (!cardRes.data.success) { showToast('카드 조회 실패', 'error'); return; }
+        var card = cardRes.data.data;
+
+        var orderRes = await axios.get('/api/orders/' + card.order_id);
+        if (!orderRes.data.success) { showToast('주문 조회 실패', 'error'); return; }
+        var order = orderRes.data.data;
+        var allItems = order.items || [];
+
+        // 카드에 연결된 품목들 (card_items 기준)
+        var cardItems = (card._items || []).map(function(ci) {
+            return allItems.find(function(oi) { return oi.id === ci.order_item_id; }) || ci;
+        }).filter(Boolean);
+
+        // 부속품 찾기 (parent_item_id가 카드 품목 중 하나를 가리키는 GOODS 품목)
+        var mainItemIds = new Set(cardItems.map(function(i) { return i.id; }));
+        var accessories = allItems.filter(function(i) {
+            return i.parent_item_id && mainItemIds.has(i.parent_item_id) && (i.category_name === '부속품' || i.item_type === 'GOODS');
+        });
+
+        var esc = window.escapeHtml || function(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); };
+
+        // 마감(봉제) 방식 추출
+        function getSewingInfo(item) {
+            var fin = item.finishing;
+            if (!fin) return { method: '', detail: '' };
+            try {
+                var f = typeof fin === 'string' ? JSON.parse(fin) : fin;
+                var methods = [];
+                ['top','bottom','left','right'].forEach(function(dir) {
+                    if (f[dir]) methods.push(f[dir]);
+                });
+                // 봉제방법 요약 (예: 3면쌍침)
+                var counts = {};
+                methods.forEach(function(m) { counts[m] = (counts[m] || 0) + 1; });
+                var parts = Object.keys(counts).map(function(m) { return counts[m] + '면' + m; });
+                return { method: parts.join(', '), detail: f };
+            } catch(e) { return { method: '', detail: '' }; }
+        }
+
+        // PP에서 하도매/부직포/수술 추출
+        function getTransferPP(item) {
+            var result = { grommet: '', nonwoven: '', tassel: '' };
+            if (!item.post_processing) return result;
+            try {
+                var ppArr = typeof item.post_processing === 'string' ? JSON.parse(item.post_processing) : item.post_processing;
+                if (!Array.isArray(ppArr)) return result;
+                ppArr.forEach(function(pp) {
+                    var p = pp.params || {};
+                    if (pp.code === 'PP-GROMMET') result.grommet = (p.size || '') + (p.holes || '');
+                    else if (pp.code === 'PP-NONWOVEN') result.nonwoven = (p.type || '') + (p.size ? ' ' + p.size + 'cm' : '');
+                    else if (pp.code === 'PP-TASSEL') result.tassel = (p.color === '없음' ? '' : p.color || '');
+                });
+            } catch(e) {}
+            return result;
+        }
+
+        // 총 수량 계산
+        var totalQty = cardItems.reduce(function(sum, i) { return sum + (i.quantity || 1); }, 0);
+        var deliveryDate = order.delivery_date || '-';
+        var deliveryDay = '';
+        try {
+            var d = new Date(deliveryDate + 'T00:00:00');
+            var days = ['일','월','화','수','목','금','토'];
+            deliveryDay = days[d.getDay()];
+        } catch(e) {}
+
+        // 규격 (첫 번째 품목 기준)
+        var firstItem = cardItems[0] || {};
+        var specW = Math.round(firstItem.width || 0);
+        var specH = Math.round(firstItem.height || 0);
+
+        // 원단 (카드의 품목에서 추출)
+        var fabricName = '';
+        if (firstItem.print_media_name) fabricName = firstItem.print_media_name;
+        else if (firstItem.media_name) fabricName = firstItem.media_name;
+
+        var sewInfo = getSewingInfo(firstItem);
+        var tfPP = getTransferPP(firstItem);
+
+        // ── HTML 생성 (봉제실 작업지시서 양식) ──
+        var win = window.open('', '_blank', 'width=650,height=900');
+        var html = '<!DOCTYPE html><html><head><meta charset="utf-8"><title>봉제 작업지시서 - ' + esc(card.card_number || '') + '</title>'
+            + '<style>'
+            + 'body { font-family: "Malgun Gothic", sans-serif; padding: 15px; font-size: 13px; color: #111; margin: 0; }'
+            + '.title { text-align: center; font-size: 22px; font-weight: 900; letter-spacing: 8px; margin-bottom: 8px; }'
+            + '.title::before, .title::after { content: "●"; margin: 0 8px; }'
+            + '.header-row { display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 10px; }'
+            + '.design-area { border: 2px solid #333; border-radius: 4px; padding: 16px; min-height: 200px; display: flex; align-items: center; justify-content: center; gap: 20px; flex-wrap: wrap; margin-bottom: 8px; }'
+            + '.design-item { text-align: center; }'
+            + '.design-item img { max-width: 180px; max-height: 180px; object-fit: contain; border: 1px solid #e5e7eb; }'
+            + '.design-item .qty { font-size: 18px; font-weight: 700; color: #dc2626; margin-top: 4px; }'
+            + '.design-item .spec { font-size: 12px; color: #6b7280; }'
+            + '.fabric-spec { display: flex; justify-content: space-between; align-items: baseline; margin: 8px 0; }'
+            + '.fabric-name { font-size: 20px; font-weight: 700; color: #1d4ed8; }'
+            + '.spec-size { font-size: 24px; font-weight: 900; text-align: right; }'
+            + '.spec-price { font-size: 11px; color: #6b7280; }'
+            + '.info-table { width: 100%; border-collapse: collapse; margin-bottom: 6px; }'
+            + '.info-table td { border: 1px solid #333; padding: 4px 8px; font-size: 12px; vertical-align: middle; }'
+            + '.info-table .label { background: #f3f4f6; font-weight: 700; width: 70px; text-align: center; }'
+            + '.info-table .label2 { background: #f3f4f6; font-weight: 700; width: 60px; text-align: center; }'
+            + '.accessories { color: #dc2626; font-weight: 700; font-size: 14px; text-align: center; border: 2px solid #dc2626; border-radius: 6px; padding: 6px; margin: 8px 0; }'
+            + '.shipping-section { border: 1px solid #333; margin-top: 4px; }'
+            + '.shipping-section td { border: 1px solid #333; padding: 3px 8px; font-size: 11px; }'
+            + '.shipping-title { text-align: center; font-weight: 700; font-size: 12px; letter-spacing: 6px; background: #f3f4f6; padding: 4px; border-bottom: 1px solid #333; }'
+            + '.notes-row { font-size: 14px; color: #dc2626; font-weight: 700; padding: 6px 8px; }'
+            + '@media print { body { padding: 8px; } @page { size: A4; margin: 8mm; } }'
+            + '</style></head><body>';
+
+        // 타이틀
+        html += '<div class="title">작 업 지 시 서</div>';
+
+        // 헤더 (출고날짜 + 작업수량)
+        var dateStr = deliveryDate;
+        try {
+            var dp = deliveryDate.split('-');
+            dateStr = parseInt(dp[1]) + '월 ' + parseInt(dp[2]) + '일(' + deliveryDay + ')';
+        } catch(e) {}
+        html += '<div class="header-row">';
+        html += '<span>출고날짜 : <b>' + esc(dateStr) + '</b></span>';
+        html += '<span>작업수량 : <b>' + totalQty + (cardItems.length > 1 ? '장' : (firstItem.unit || 'EA')) + '</b></span>';
+        html += '</div>';
+
+        // 디자인 영역
+        html += '<div class="design-area">';
+        cardItems.forEach(function(item) {
+            var thumb = card.thumbnail_url || '';
+            html += '<div class="design-item">';
+            if (thumb) {
+                html += '<img src="' + thumb + '">';
+            } else {
+                html += '<div style="width:150px;height:150px;border:1px solid #e5e7eb;display:flex;align-items:center;justify-content:center;color:#d1d5db;font-size:40px">&#128444;</div>';
+            }
+            if (item.width && item.height) {
+                html += '<div class="spec">' + Math.round(item.width) + '×' + Math.round(item.height) + '</div>';
+            }
+            html += '<div class="qty">' + (item.quantity || 1) + (cardItems.length > 1 ? '장' : '') + '</div>';
+            html += '</div>';
+        });
+        html += '</div>';
+
+        // 원단 + 규격
+        html += '<div class="fabric-spec">';
+        html += '<span class="fabric-name">' + esc(fabricName || '-') + '</span>';
+        html += '<span class="spec-size">' + (specW && specH ? specW + '*' + specH : '-') + '</span>';
+        html += '</div>';
+
+        // 부속품 (있으면)
+        if (accessories.length > 0) {
+            var accHtml = accessories.map(function(a) {
+                return esc(a.item_name || '') + '—' + (a.quantity || 0) + '개';
+            }).join(', ');
+            html += '<div class="accessories">' + accHtml + ' 동봉</div>';
+        }
+
+        // 봉제 정보 테이블
+        html += '<table class="info-table">';
+        html += '<tr><td class="label">봉제방법</td><td>① ' + esc(sewInfo.method || '-') + '</td>';
+        html += '<td class="label2">하도매</td><td>① ' + esc(tfPP.grommet || '-') + '</td></tr>';
+        html += '<tr><td class="label">부직포</td><td>① ' + esc(tfPP.nonwoven || '-') + '</td>';
+        html += '<td class="label2" colspan="2">' + (tfPP.tassel ? '수술: ' + esc(tfPP.tassel) : '') + '</td></tr>';
+        html += '</table>';
+
+        // 출고처
+        html += '<table class="info-table">';
+        html += '<tr><td class="label">출 고 처</td><td><b>' + esc(order.client_name || '-') + '</b></td>';
+        html += '<td class="label2">연 락 처</td><td>' + esc(order.contact_mobile || order.contact_phone || '-') + '</td></tr>';
+        html += '</table>';
+
+        // 배송관련사항
+        html += '<div class="shipping-section">';
+        html += '<div class="shipping-title">배 송 관 련 사 항</div>';
+        html += '<table style="width:100%;border-collapse:collapse">';
+        html += '<tr><td style="border:1px solid #333;padding:3px 8px;width:70px;font-size:11px;background:#f3f4f6;font-weight:700">보내는사람</td><td style="border:1px solid #333;padding:3px 8px;font-size:11px"></td></tr>';
+        html += '<tr><td style="border:1px solid #333;padding:3px 8px;font-size:11px;background:#f3f4f6;font-weight:700">받는사람</td><td style="border:1px solid #333;padding:3px 8px;font-size:11px;color:#dc2626">' + esc(order.delivery_info || '') + '</td></tr>';
+        html += '<tr><td style="border:1px solid #333;padding:3px 8px;font-size:11px;background:#f3f4f6;font-weight:700">배송방법</td><td style="border:1px solid #333;padding:3px 8px;font-size:11px">';
+        html += '화물 &nbsp; 지점 (선불, 착불) &nbsp;&nbsp;&nbsp; 택배 ( ' + esc(order.shipping_payment === 'PREPAID' ? '선불' : order.shipping_payment === 'COD' ? '착불' : '선불, 착불') + ' )';
+        html += '</td></tr>';
+        html += '</table>';
+        html += '</div>';
+
+        // 비고
+        html += '<table class="info-table" style="margin-top:4px">';
+        html += '<tr><td class="label">비 고</td><td class="notes-row">' + esc(order.internal_notes || card.notes || '') + '</td></tr>';
+        html += '</table>';
+
+        html += '<script>window.onload = function() { window.print(); }<\/script>';
+        html += '</body></html>';
+        win.document.write(html);
+        win.document.close();
+    } catch(e) {
+        showToast('봉제 작업지시서 생성 실패: ' + (e.message || e), 'error');
     }
 }
 

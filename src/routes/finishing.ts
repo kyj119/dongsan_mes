@@ -5,12 +5,18 @@ import { authMiddleware, requireRole } from '../middleware/auth'
 const finishingRouter = new Hono<HonoEnv>()
 finishingRouter.use('/*', authMiddleware)
 
-// GET /methods
+// GET /methods?group=output|transfer (optional filter)
 finishingRouter.get('/methods', async (c) => {
   try {
-    const { results } = await c.env.DB.prepare(
-      'SELECT id, name, margin_cm, description, sort_order FROM finishing_methods WHERE is_active = 1 ORDER BY sort_order ASC'
-    ).all()
+    const group = c.req.query('group')
+    let query = 'SELECT id, name, margin_cm, description, sort_order, method_group FROM finishing_methods WHERE is_active = 1'
+    const params: string[] = []
+    if (group) {
+      query += ' AND method_group = ?'
+      params.push(group)
+    }
+    query += ' ORDER BY sort_order ASC'
+    const { results } = await c.env.DB.prepare(query).bind(...params).all()
     return c.json({ success: true, data: results })
   } catch {
     return c.json({ success: false, error: '서버 오류' }, 500)
@@ -20,11 +26,11 @@ finishingRouter.get('/methods', async (c) => {
 // POST /methods
 finishingRouter.post('/methods', requireRole('ADMIN', 'MANAGER'), async (c) => {
   try {
-    const { name, margin_cm, description } = await c.req.json()
+    const { name, margin_cm, description, method_group } = await c.req.json()
     if (!name) return c.json({ success: false, error: '이름 필수' }, 400)
     const r = await c.env.DB.prepare(
-      'INSERT INTO finishing_methods (name, margin_cm, description, sort_order) VALUES (?, ?, ?, (SELECT COALESCE(MAX(sort_order),0)+1 FROM finishing_methods))'
-    ).bind(name, margin_cm || 0, description || null).run()
+      'INSERT INTO finishing_methods (name, margin_cm, description, method_group, sort_order) VALUES (?, ?, ?, ?, (SELECT COALESCE(MAX(sort_order),0)+1 FROM finishing_methods))'
+    ).bind(name, margin_cm || 0, description || null, method_group || 'output').run()
     return c.json({ success: true, data: { id: r.meta.last_row_id } })
   } catch (e: any) {
     if (e.message?.includes('UNIQUE')) return c.json({ success: false, error: '이미 존재' }, 409)
@@ -37,11 +43,12 @@ finishingRouter.post('/methods', requireRole('ADMIN', 'MANAGER'), async (c) => {
 finishingRouter.put('/methods/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
   try {
     const id = c.req.param('id')
-    const { name, margin_cm, description } = await c.req.json()
+    const { name, margin_cm, description, method_group } = await c.req.json()
     const sets: string[] = [], params: any[] = []
     if (name !== undefined) { sets.push('name = ?'); params.push(name) }
     if (margin_cm !== undefined) { sets.push('margin_cm = ?'); params.push(margin_cm) }
     if (description !== undefined) { sets.push('description = ?'); params.push(description) }
+    if (method_group !== undefined) { sets.push('method_group = ?'); params.push(method_group) }
     if (!sets.length) return c.json({ success: false, error: '변경 없음' }, 400)
     params.push(parseInt(id))
     await c.env.DB.prepare(`UPDATE finishing_methods SET ${sets.join(', ')} WHERE id = ?`).bind(...params).run()
@@ -61,12 +68,18 @@ finishingRouter.delete('/methods/:id', requireRole('ADMIN'), async (c) => {
   }
 })
 
-// GET /presets
+// GET /presets?group=output|transfer (optional filter)
 finishingRouter.get('/presets', async (c) => {
   try {
-    const { results } = await c.env.DB.prepare(
-      'SELECT id, name, config, sort_order FROM finishing_presets WHERE is_active = 1 ORDER BY sort_order ASC'
-    ).all()
+    const group = c.req.query('group')
+    let query = 'SELECT id, name, config, sort_order, method_group FROM finishing_presets WHERE is_active = 1'
+    const params: string[] = []
+    if (group) {
+      query += ' AND method_group = ?'
+      params.push(group)
+    }
+    query += ' ORDER BY sort_order ASC'
+    const { results } = await c.env.DB.prepare(query).bind(...params).all()
     return c.json({ success: true, data: results })
   } catch {
     return c.json({ success: false, error: '서버 오류' }, 500)
@@ -76,12 +89,12 @@ finishingRouter.get('/presets', async (c) => {
 // POST /presets
 finishingRouter.post('/presets', requireRole('ADMIN', 'MANAGER'), async (c) => {
   try {
-    const { name, config } = await c.req.json()
+    const { name, config, method_group } = await c.req.json()
     if (!name || !config) return c.json({ success: false, error: '이름과 설정 필수' }, 400)
     const configStr = typeof config === 'string' ? config : JSON.stringify(config)
     const r = await c.env.DB.prepare(
-      'INSERT INTO finishing_presets (name, config, sort_order) VALUES (?, ?, (SELECT COALESCE(MAX(sort_order),0)+1 FROM finishing_presets))'
-    ).bind(name, configStr).run()
+      'INSERT INTO finishing_presets (name, config, method_group, sort_order) VALUES (?, ?, ?, (SELECT COALESCE(MAX(sort_order),0)+1 FROM finishing_presets))'
+    ).bind(name, configStr, method_group || 'output').run()
     return c.json({ success: true, data: { id: r.meta.last_row_id } })
   } catch {
     return c.json({ success: false, error: '서버 오류' }, 500)
@@ -92,10 +105,11 @@ finishingRouter.post('/presets', requireRole('ADMIN', 'MANAGER'), async (c) => {
 finishingRouter.put('/presets/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
   try {
     const id = c.req.param('id')
-    const { name, config } = await c.req.json()
+    const { name, config, method_group } = await c.req.json()
     const sets: string[] = [], params: any[] = []
     if (name !== undefined) { sets.push('name = ?'); params.push(name) }
     if (config !== undefined) { sets.push('config = ?'); params.push(typeof config === 'string' ? config : JSON.stringify(config)) }
+    if (method_group !== undefined) { sets.push('method_group = ?'); params.push(method_group) }
     if (!sets.length) return c.json({ success: false, error: '변경 없음' }, 400)
     params.push(parseInt(id))
     await c.env.DB.prepare(`UPDATE finishing_presets SET ${sets.join(', ')} WHERE id = ?`).bind(...params).run()

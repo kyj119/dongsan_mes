@@ -1101,6 +1101,24 @@ ordersCoreRouter.post('/', async (c) => {
       VALUES (?, ?, ?, ?)
     `).bind(orderId, initialStatus, user?.id || null, initialStatus === 'QUOTATION' ? 'Quotation created' : 'Order created').run()
 
+    // Step 3.5 — save order_ai_files (다중 AI 파일 지원)
+    const aiFiles: Array<{ file_path: string; analysis_id?: number; groups_count?: number }> = orderData.ai_files || []
+    if (aiFiles.length > 0) {
+      const aiFileStmts = aiFiles.map((af: { file_path: string; analysis_id?: number }, idx: number) =>
+        c.env.DB.prepare(
+          `INSERT INTO order_ai_files (order_id, file_path, file_name, analysis_id, sort_order)
+           VALUES (?, ?, ?, ?, ?)`
+        ).bind(
+          orderId,
+          af.file_path,
+          (af.file_path || '').split(/[/\\]/).pop() || null,
+          af.analysis_id || null,
+          idx
+        )
+      )
+      await c.env.DB.batch(aiFileStmts)
+    }
+
     // Step 4 — enqueue an AI_PROCESS task for IllustratorAutomat.
     // One task per order covers the entire file: JSX processing + EPS output +
     // NAS upload to Z:\orders\{category}\{year}\{month}\{order_number}\.

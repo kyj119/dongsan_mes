@@ -449,9 +449,14 @@ function orderFormDistPage(c: Context<HonoEnv>) {
                     <div class="mb-6">
                         <div class="flex items-center justify-between mb-4 border-b pb-2">
                             <h2 class="text-xl font-bold text-gray-800"><i class="fas fa-box mr-2"></i>주문 품목</h2>
-                            <button type="button" onclick="addItemRow()" class="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700">
-                                <i class="fas fa-plus mr-1"></i>품목 추가
-                            </button>
+                            <div class="flex gap-2">
+                                <button type="button" onclick="addItemRow()" class="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700">
+                                    <i class="fas fa-plus mr-1"></i>품목 추가
+                                </button>
+                                <button type="button" onclick="addAccessoryRow()" class="px-3 py-2 bg-amber-100 text-amber-700 rounded-lg text-sm hover:bg-amber-200" title="부속품(깃대, 삼발이 등) 추가">
+                                    <i class="fas fa-puzzle-piece mr-1"></i>부속품
+                                </button>
+                            </div>
                         </div>
                         <div class="overflow-x-auto">
                             <table class="w-full">

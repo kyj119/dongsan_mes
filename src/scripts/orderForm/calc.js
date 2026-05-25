@@ -430,6 +430,25 @@
                             });
                         }
 
+                        // Transfer PP (하도매, 부직포, 수술)
+                        ppContainer.querySelectorAll('.pp-transfer-item').forEach(function(item) {
+                            var cb = item.querySelector('.pp-transfer-check');
+                            if (cb && cb.checked) {
+                                var params = {};
+                                item.querySelectorAll('.pp-tf-field').forEach(function(f) {
+                                    params[f.dataset.key] = f.type === 'number' ? (parseFloat(f.value) || 0) : f.value;
+                                });
+                                pp.push({
+                                    id: parseInt(item.dataset.ppId),
+                                    code: item.dataset.ppCode,
+                                    name: item.dataset.ppName,
+                                    margin_left: 0, margin_right: 0,
+                                    margin_top: 0, margin_bottom: 0,
+                                    params: params,
+                                    price: 0
+                                });
+                            }
+                        });
 
                     }
                     const wVal = document.querySelector(`[name="width_${id}"]`)?.value;
@@ -547,6 +566,7 @@
                     shipping_payment: document.getElementById('shippingPayment').value || null,
                     ai_file_path: resolvedFilePath || null,
                     ai_analysis_id: aiAnalysisId || null,
+                    ai_files: window._aiAnalyzedFiles || [],
                     layout_id: null,
                     items
                 };

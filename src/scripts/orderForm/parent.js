@@ -130,8 +130,23 @@
                             if (aiResultTabs) aiResultTabs.classList.remove('hidden');
                             switchAiTab('extract');
 
-                            statusDiv.innerHTML = '<i class="fas fa-check-circle text-green-600 mr-1"></i> 분석 완료: '
-                                + groups.length + '개 그룹 추출됨';
+                            // 분석된 파일 기록 (다중 파일 지원)
+                            if (!window._aiAnalyzedFiles) window._aiAnalyzedFiles = [];
+                            window._aiAnalyzedFiles.push({
+                                file_path: resolvedFilePath || (localAIPath || (selectedAIFile ? selectedAIFile.name : '')),
+                                analysis_id: aiAnalysisId,
+                                groups_count: groups.length
+                            });
+                            var fileListHtml = window._aiAnalyzedFiles.map(function(f, i) {
+                                var fname = (f.file_path || '').split(/[/\\]/).pop() || ('파일 ' + (i+1));
+                                return '<span class="inline-flex items-center gap-1 px-2 py-0.5 bg-green-50 text-green-700 rounded text-xs">'
+                                    + '<i class="fas fa-file"></i>' + fname + ' (' + f.groups_count + '그룹)</span>';
+                            }).join(' ');
+
+                            statusDiv.innerHTML = '<div class="flex flex-wrap items-center gap-2 mb-1">'
+                                + fileListHtml + '</div>'
+                                + '<button type="button" onclick="resetForNextAIFile()" class="mt-1 px-3 py-1 text-xs bg-blue-100 text-blue-700 rounded hover:bg-blue-200">'
+                                + '<i class="fas fa-plus mr-1"></i>추가 파일 분석</button>';
                         } else if (d.status === 'error') {
                             clearInterval(analysisPollingTimer);
                             clearTimeout(timeoutId);
@@ -143,6 +158,22 @@
                     }
                 }, 2000);
             }
+
+            window.resetForNextAIFile = function() {
+                // 현재 파일/경로 초기화하여 다음 파일 분석 가능
+                selectedAIFile = null;
+                localAIPath = null;
+                aiAnalysisId = null;
+                resolvedFilePath = null;
+                document.getElementById('aiFileLabel').textContent = 'AI 파일 선택 (.ai, .eps)';
+                document.getElementById('aiFileInput').value = '';
+                document.getElementById('aiLocalPath').value = '';
+                document.getElementById('aiAnalysisBtn').disabled = true;
+                // 탭과 결과 영역은 유지 (기존 품목 행 보존)
+                var aiResultTabs = document.getElementById('aiResultTabs');
+                if (aiResultTabs) aiResultTabs.classList.add('hidden');
+                showToast('추가 AI 파일을 선택하거나 경로를 입력하세요.', 'info');
+            };
 
             function removeEmptyItemRows() {
                 var rows = document.querySelectorAll('#itemsContainer > [id^="item-"]');
@@ -611,6 +642,23 @@
                                         var clCb = container.querySelector('.pp-offset-cutline');
                                         if (clCb) clCb.checked = !!pp.params.cut_line;
                                     }
+                                }
+                            }
+                        } else if (code === 'PP-GROMMET' || code === 'PP-NONWOVEN' || code === 'PP-TASSEL') {
+                            // Restore transfer PP (parameter-based)
+                            var tfItem = container.querySelector('.pp-transfer-item[data-pp-code="' + code + '"]');
+                            if (tfItem) {
+                                var tfCheck = tfItem.querySelector('.pp-transfer-check');
+                                if (tfCheck) {
+                                    tfCheck.checked = true;
+                                    var tfParams = tfItem.querySelector('.pp-transfer-params');
+                                    if (tfParams) tfParams.style.display = 'flex';
+                                }
+                                if (pp.params) {
+                                    Object.keys(pp.params).forEach(function(key) {
+                                        var field = tfItem.querySelector('.pp-tf-field[data-key="' + key + '"]');
+                                        if (field) field.value = pp.params[key];
+                                    });
                                 }
                             }
                         } else {

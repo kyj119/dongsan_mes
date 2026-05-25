@@ -223,6 +223,69 @@
                 renumberDisplay();
             };
 
+            window.addAccessoryRow = async function() {
+                try {
+                    var res = await axios.get('/api/items?category=부속품&is_active=1&limit=50');
+                    var accessories = (res.data.data || res.data.items || []);
+                    if (accessories.length === 0) {
+                        showToast('등록된 부속품이 없습니다. 품목 관리에서 부속품을 등록해주세요.', 'warning');
+                        return;
+                    }
+
+                    // 모달로 부속품 선택
+                    var overlay = document.createElement('div');
+                    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:9998;display:flex;align-items:center;justify-content:center';
+                    overlay.onclick = function(e) { if (e.target === overlay) overlay.remove(); };
+
+                    var modal = document.createElement('div');
+                    modal.style.cssText = 'background:white;border-radius:12px;padding:20px;max-width:400px;width:90%;max-height:70vh;overflow-y:auto';
+                    modal.innerHTML = '<h3 class="text-lg font-bold mb-3"><i class="fas fa-puzzle-piece text-amber-600 mr-2"></i>부속품 추가</h3>'
+                        + '<p class="text-xs text-gray-500 mb-3">선택한 부속품이 품목 행으로 추가됩니다.</p>'
+                        + '<div class="space-y-1">'
+                        + accessories.map(function(acc) {
+                            return '<button type="button" class="w-full text-left px-3 py-2 rounded hover:bg-amber-50 border border-gray-100 text-sm flex items-center justify-between" '
+                                + 'data-acc-id="' + acc.id + '" data-acc-name="' + (acc.item_name || '') + '" data-acc-code="' + (acc.item_code || '') + '">'
+                                + '<span><i class="fas fa-cube text-amber-400 mr-2"></i>' + (acc.item_name || '') + '</span>'
+                                + '<span class="text-xs text-gray-400">' + (acc.item_code || '') + '</span>'
+                                + '</button>';
+                        }).join('')
+                        + '</div>';
+
+                    modal.querySelectorAll('button[data-acc-id]').forEach(function(btn) {
+                        btn.addEventListener('click', function() {
+                            var accId = btn.dataset.accId;
+                            var accName = btn.dataset.accName;
+                            addItemRow();
+                            var id = itemCount;
+                            // 품목 자동 설정
+                            var nameEl = document.querySelector('[name="item_search_' + id + '"]');
+                            if (nameEl) nameEl.value = accName;
+                            var idEl = document.querySelector('[name="item_id_' + id + '"]');
+                            if (idEl) idEl.value = accId;
+                            var unitEl = document.querySelector('[name="item_unit_' + id + '"]');
+                            if (unitEl) unitEl.value = 'EA';
+                            var catEl = document.querySelector('[name="category_name_' + id + '"]');
+                            if (catEl) catEl.value = '부속품';
+                            // 수량에 포커스
+                            var qtyEl = document.querySelector('[name="quantity_' + id + '"]');
+                            if (qtyEl) { qtyEl.value = ''; qtyEl.focus(); }
+                            // 체크 표시
+                            var checkEl = document.getElementById('item_check_' + id);
+                            if (checkEl) checkEl.classList.remove('hidden');
+                            var labelEl = document.getElementById('item_label_' + id);
+                            if (labelEl) labelEl.innerHTML = '<span class="text-amber-600"><i class="fas fa-puzzle-piece mr-1"></i>부속품</span> #' + id;
+                            overlay.remove();
+                            showToast(accName + ' 추가됨. 수량을 입력하세요.', 'success');
+                        });
+                    });
+
+                    overlay.appendChild(modal);
+                    document.body.appendChild(overlay);
+                } catch(err) {
+                    showToast('부속품 목록 로딩 실패: ' + err.message, 'error');
+                }
+            };
+
             window.openThumbModal = function(imgId) {
                 var imgEl = document.getElementById(imgId);
                 if (!imgEl || !imgEl.src) return;

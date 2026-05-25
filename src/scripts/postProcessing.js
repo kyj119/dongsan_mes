@@ -514,48 +514,73 @@ function loadFinishingTab() {
     loadFinPresets();
 }
 
+function renderFinMethodList(methods, containerId) {
+    var html = '';
+    methods.forEach(function(m) {
+        html += '<div class="flex items-center justify-between p-3 border rounded hover:bg-gray-50">'
+            + '<div><span class="font-semibold">' + escapeHtml(m.name) + '</span>'
+            + (m.margin_cm > 0 ? '<span class="ml-2 text-sm text-blue-600 font-mono font-bold">' + m.margin_cm + 'cm</span>' : '')
+            + (m.description ? '<span class="ml-2 text-xs text-gray-400">' + escapeHtml(m.description) + '</span>' : '')
+            + '</div><div class="flex gap-1">'
+            + '<button onclick="editFinMethod(' + m.id + ')" class="text-blue-500 hover:text-blue-700 px-2"><i class="fas fa-edit"></i></button>'
+            + '<button onclick="delFinMethod(' + m.id + ')" class="text-red-400 hover:text-red-600 px-2"><i class="fas fa-trash"></i></button>'
+            + '</div></div>';
+    });
+    var el = document.getElementById(containerId);
+    if (el) el.innerHTML = html || '<div class="text-center py-4 text-gray-400 text-sm">없음</div>';
+}
+
+function renderFinPresetList(presets, containerId) {
+    var html = '';
+    presets.forEach(function(p) {
+        var c = typeof p.config === 'string' ? JSON.parse(p.config) : p.config;
+        html += '<div class="flex items-center justify-between p-3 border rounded hover:bg-gray-50">'
+            + '<div><span class="font-semibold">' + escapeHtml(p.name) + '</span>'
+            + '<div class="text-xs text-gray-500 mt-0.5">상:' + (c.top||'-') + ' 하:' + (c.bottom||'-') + ' 좌:' + (c.left||'-') + ' 우:' + (c.right||'-') + '</div>'
+            + '</div><div class="flex gap-1">'
+            + '<button onclick="editFinPreset(' + p.id + ')" class="text-blue-500 hover:text-blue-700 px-2"><i class="fas fa-edit"></i></button>'
+            + '<button onclick="delFinPreset(' + p.id + ')" class="text-red-400 hover:text-red-600 px-2"><i class="fas fa-trash"></i></button>'
+            + '</div></div>';
+    });
+    var el = document.getElementById(containerId);
+    if (el) el.innerHTML = html || '<div class="text-center py-4 text-gray-400 text-sm">없음</div>';
+}
+
 function loadFinMethods() {
+    // 그룹별 분리 로딩
     axios.get('/api/finishing/methods').then(function(res) {
         finMethods = res.data.data || [];
-        var html = '';
-        finMethods.forEach(function(m) {
-            html += '<div class="flex items-center justify-between p-3 border rounded hover:bg-gray-50">'
-                + '<div><span class="font-semibold">' + escapeHtml(m.name) + '</span>'
-                + '<span class="ml-2 text-sm text-blue-600 font-mono font-bold">' + m.margin_cm + 'cm</span>'
-                + (m.description ? '<span class="ml-2 text-xs text-gray-400">' + escapeHtml(m.description) + '</span>' : '')
-                + '</div><div class="flex gap-1">'
-                + '<button onclick="editFinMethod(' + m.id + ')" class="text-blue-500 hover:text-blue-700 px-2"><i class="fas fa-edit"></i></button>'
-                + '<button onclick="delFinMethod(' + m.id + ')" class="text-red-400 hover:text-red-600 px-2"><i class="fas fa-trash"></i></button>'
-                + '</div></div>';
-        });
-        document.getElementById('finMethodList').innerHTML = html || '<div class="text-center py-4 text-gray-400 text-sm">없음</div>';
+        var outputMethods = finMethods.filter(function(m) { return (m.method_group || 'output') === 'output'; });
+        var transferMethods = finMethods.filter(function(m) { return m.method_group === 'transfer'; });
+        renderFinMethodList(outputMethods, 'finMethodList_output');
+        renderFinMethodList(transferMethods, 'finMethodList_transfer');
     });
 }
 
 function loadFinPresets() {
     axios.get('/api/finishing/presets').then(function(res) {
         finPresets = res.data.data || [];
-        var html = '';
-        finPresets.forEach(function(p) {
-            var c = typeof p.config === 'string' ? JSON.parse(p.config) : p.config;
-            html += '<div class="flex items-center justify-between p-3 border rounded hover:bg-gray-50">'
-                + '<div><span class="font-semibold">' + escapeHtml(p.name) + '</span>'
-                + '<div class="text-xs text-gray-500 mt-0.5">상:' + (c.top||'-') + ' 하:' + (c.bottom||'-') + ' 좌:' + (c.left||'-') + ' 우:' + (c.right||'-') + '</div>'
-                + '</div><div class="flex gap-1">'
-                + '<button onclick="editFinPreset(' + p.id + ')" class="text-blue-500 hover:text-blue-700 px-2"><i class="fas fa-edit"></i></button>'
-                + '<button onclick="delFinPreset(' + p.id + ')" class="text-red-400 hover:text-red-600 px-2"><i class="fas fa-trash"></i></button>'
-                + '</div></div>';
-        });
-        document.getElementById('finPresetList').innerHTML = html || '<div class="text-center py-4 text-gray-400 text-sm">없음</div>';
+        var outputPresets = finPresets.filter(function(p) { return (p.method_group || 'output') === 'output'; });
+        var transferPresets = finPresets.filter(function(p) { return p.method_group === 'transfer'; });
+        renderFinPresetList(outputPresets, 'finPresetList_output');
+        renderFinPresetList(transferPresets, 'finPresetList_transfer');
     });
 }
 
-window.showFinMethodModal = function(id) {
-    var m = id ? finMethods.find(function(x) { return x.id === id; }) : null;
-    document.getElementById('finMethodTitle').textContent = m ? '수정' : '추가';
+window.showFinMethodModal = function(groupOrId) {
+    var m = null;
+    var group = 'output';
+    if (typeof groupOrId === 'number') {
+        m = finMethods.find(function(x) { return x.id === groupOrId; });
+        group = m ? (m.method_group || 'output') : 'output';
+    } else if (typeof groupOrId === 'string') {
+        group = groupOrId;
+    }
+    document.getElementById('finMethodTitle').textContent = (m ? '수정' : '추가') + (group === 'transfer' ? ' (봉제)' : ' (마감)');
     document.getElementById('finMethodId').value = m ? m.id : '';
+    document.getElementById('finMethodGroup').value = group;
     document.getElementById('finMethodName').value = m ? m.name : '';
-    document.getElementById('finMethodMargin').value = m ? m.margin_cm : 0;
+    document.getElementById('finMethodMargin').value = m ? m.margin_cm : (group === 'transfer' ? 0 : 0);
     document.getElementById('finMethodDesc').value = m ? (m.description || '') : '';
     document.getElementById('finMethodModal').classList.remove('hidden');
 };
@@ -563,7 +588,12 @@ window.editFinMethod = function(id) { showFinMethodModal(id); };
 
 window.saveFinMethod = async function() {
     var id = document.getElementById('finMethodId').value;
-    var data = { name: document.getElementById('finMethodName').value.trim(), margin_cm: parseFloat(document.getElementById('finMethodMargin').value) || 0, description: document.getElementById('finMethodDesc').value.trim() || null };
+    var data = {
+        name: document.getElementById('finMethodName').value.trim(),
+        margin_cm: parseFloat(document.getElementById('finMethodMargin').value) || 0,
+        description: document.getElementById('finMethodDesc').value.trim() || null,
+        method_group: document.getElementById('finMethodGroup').value || 'output'
+    };
     if (!data.name) { showToast('이름 필수', 'warning'); return; }
     try {
         if (id) await axios.put('/api/finishing/methods/' + id, data);
@@ -578,13 +608,25 @@ window.delFinMethod = async function(id) {
     await axios.delete('/api/finishing/methods/' + id); showToast('삭제', 'success'); loadFinMethods();
 };
 
-window.showFinPresetModal = function(id) {
-    var p = id ? finPresets.find(function(x) { return x.id === id; }) : null;
+window.showFinPresetModal = function(groupOrId) {
+    var p = null;
+    var group = 'output';
+    if (typeof groupOrId === 'number') {
+        p = finPresets.find(function(x) { return x.id === groupOrId; });
+        group = p ? (p.method_group || 'output') : 'output';
+    } else if (typeof groupOrId === 'string') {
+        group = groupOrId;
+    }
     var c = p ? (typeof p.config === 'string' ? JSON.parse(p.config) : p.config) : {};
-    var opts = '<option value="">선택</option>' + finMethods.map(function(m) { return '<option value="' + escapeHtml(m.name) + '">' + escapeHtml(m.name) + ' (' + m.margin_cm + 'cm)</option>'; }).join('');
+    // 해당 그룹의 methods만 드롭다운에 표시
+    var groupMethods = finMethods.filter(function(m) { return (m.method_group || 'output') === group; });
+    var opts = '<option value="">선택</option>' + groupMethods.map(function(m) {
+        return '<option value="' + escapeHtml(m.name) + '">' + escapeHtml(m.name) + (m.margin_cm > 0 ? ' (' + m.margin_cm + 'cm)' : '') + '</option>';
+    }).join('');
     ['finPreTop','finPreBot','finPreLeft','finPreRight'].forEach(function(sel) { document.getElementById(sel).innerHTML = opts; });
-    document.getElementById('finPresetTitle').textContent = p ? '수정' : '추가';
+    document.getElementById('finPresetTitle').textContent = (p ? '수정' : '추가') + (group === 'transfer' ? ' (봉제)' : ' (마감)');
     document.getElementById('finPresetId').value = p ? p.id : '';
+    document.getElementById('finPresetGroup').value = group;
     document.getElementById('finPresetName').value = p ? p.name : '';
     document.getElementById('finPreTop').value = c.top || '';
     document.getElementById('finPreBot').value = c.bottom || '';
@@ -598,11 +640,12 @@ window.finPreApplyAll = function() { var v = document.getElementById('finPreTop'
 window.saveFinPreset = async function() {
     var id = document.getElementById('finPresetId').value;
     var name = document.getElementById('finPresetName').value.trim();
+    var group = document.getElementById('finPresetGroup').value || 'output';
     var config = { top: document.getElementById('finPreTop').value, bottom: document.getElementById('finPreBot').value, left: document.getElementById('finPreLeft').value, right: document.getElementById('finPreRight').value };
     if (!name) { showToast('이름 필수', 'warning'); return; }
     try {
-        if (id) await axios.put('/api/finishing/presets/' + id, { name: name, config: config });
-        else await axios.post('/api/finishing/presets', { name: name, config: config });
+        if (id) await axios.put('/api/finishing/presets/' + id, { name: name, config: config, method_group: group });
+        else await axios.post('/api/finishing/presets', { name: name, config: config, method_group: group });
         document.getElementById('finPresetModal').classList.add('hidden');
         showToast('저장 완료', 'success'); loadFinPresets();
     } catch(e) { showToast('실패', 'error'); }

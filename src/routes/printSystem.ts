@@ -51,10 +51,11 @@ printSystemRouter.use('/*', authMiddleware)
 // 코드 체계 매핑 — 출력방식별 코드 범위
 // ============================================================================
 const METHOD_RANGES: Record<string, { start: number; end: number }> = {
-  'AQUEOUS': { start: 1001, end: 1999 },
-  'SOLVENT': { start: 2001, end: 2999 },
-  'UV':      { start: 3001, end: 3999 },
-  'FLATBED': { start: 4001, end: 4999 },
+  'AQUEOUS':  { start: 1001, end: 1999 },
+  'SOLVENT':  { start: 2001, end: 2999 },
+  'UV':       { start: 3001, end: 3999 },
+  'FLATBED':  { start: 4001, end: 4999 },
+  'TRANSFER': { start: 5001, end: 5999 },
 }
 
 /** 범위 기반 PM 코드 자동 채번 */
@@ -1076,6 +1077,7 @@ printSystemRouter.get('/items-for-order', async (c) => {
       JOIN print_methods pm ON pm.id = i.print_method_id
       JOIN print_media pmed ON pmed.id = i.print_media_id
       WHERE i.is_active = 1 AND i.print_method_id IS NOT NULL
+        AND pm.code != 'TRANSFER'
     `
     const params: any[] = []
 

@@ -1,24 +1,35 @@
 // orderForm/finishing.js — 마감 PP/타공/오프셋/주석 (Phase 3.1.C 분할)
 
             // ========== 마감 방식 (주문서) ==========
-            var finishingMethodsCache = [];
+            var finishingMethodsCache = {};  // group별 캐시: { output: [...], transfer: [...] }
 
-            async function loadFinishingMethodsForOrder() {
-                if (finishingMethodsCache.length > 0) return;
+            async function loadFinishingMethodsForOrder(group) {
+                var key = group || 'all';
+                if (finishingMethodsCache[key]) return finishingMethodsCache[key];
                 try {
-                    var res = await axios.get('/api/finishing/methods');
-                    finishingMethodsCache = (res.data.data || []).map(function(m) {
+                    var url = '/api/finishing/methods';
+                    if (group) url += '?group=' + group;
+                    var res = await axios.get(url);
+                    finishingMethodsCache[key] = (res.data.data || []).map(function(m) {
                         return { name: m.name, margin: m.margin_cm };
                     });
-                } catch(e) { console.warn('마감 방식 로드 실패'); }
+                    return finishingMethodsCache[key];
+                } catch(e) { console.warn('마감 방식 로드 실패'); return []; }
             }
 
-            async function loadFinishingForOrder(id) {
-                await loadFinishingMethodsForOrder();
-                var methods = finishingMethodsCache;
+            function getFinishingGroup(itemId) {
+                var catEl = document.querySelector('[name="category_name_' + itemId + '"]');
+                var cat = catEl ? (catEl.value || '').toLowerCase() : '';
+                if (['전사', '태극기', '깃발'].some(function(k) { return cat.indexOf(k) >= 0; })) return 'transfer';
+                return 'output';
+            }
+
+            async function loadFinishingForOrder(id, forceGroup) {
+                var group = forceGroup || getFinishingGroup(id);
+                var methods = await loadFinishingMethodsForOrder(group);
 
                 var opts = '<option value="">없음</option>' + methods.map(function(m) {
-                    return '<option value="' + m.name + '">' + m.name + ' (' + m.margin + 'cm)</option>';
+                    return '<option value="' + m.name + '">' + m.name + (m.margin > 0 ? ' (' + m.margin + 'cm)' : '') + '</option>';
                 }).join('');
                 ['fin_top_','fin_bottom_','fin_left_','fin_right_'].forEach(function(prefix) {
                     var sel = document.querySelector('[name="' + prefix + id + '"]');
@@ -27,7 +38,7 @@
 
                 // 프리셋 버튼
                 try {
-                    var presetsRes = await axios.get('/api/finishing/presets');
+                    var presetsRes = await axios.get('/api/finishing/presets?group=' + group);
                     var presets = presetsRes.data.data || [];
                     var presetsEl = document.getElementById('finishing_presets_' + id);
                     if (presetsEl && presets.length > 0) {
@@ -143,6 +154,7 @@
                     const options = res.data.data || [];
 
                     const finishOpts = options.filter(function(o) { return (o.pp_category || 'finish') === 'finish'; });
+                    const transferOpts = options.filter(function(o) { return o.pp_category === 'transfer'; });
                     const punchingOpt = options.find(function(o) { return o.pp_category === 'punching'; });
                     const annotationOpt = options.find(function(o) { return o.pp_category === 'annotation'; });
                     const offsetOpt = options.find(function(o) { return o.pp_category === 'offset'; });
@@ -286,6 +298,48 @@
                         html += '</label>';
                         html += '</div>';
                         html += '</div>';
+                        html += '</div>';
+                    }
+
+                    // --- Section 2.7: Transfer PP — parameter-based options (하도매, 부직포, 수술) ---
+                    if (transferOpts.length > 0) {
+                        html += '<div class="pp-transfer-section mb-3 pt-2 border-t border-gray-100">';
+                        html += '<label class="block text-xs font-medium text-gray-600 mb-2">봉제 부자재</label>';
+                        transferOpts.forEach(function(opt) {
+                            var schema = null;
+                            try { schema = JSON.parse(opt.parameter_schema || '{}'); } catch(e) { schema = {}; }
+                            var fields = (schema && schema.fields) || [];
+                            if (fields.length === 0) return;
+
+                            html += '<div class="pp-transfer-item flex items-center gap-2 mb-2"'
+                                + ' data-pp-id="' + opt.id + '"'
+                                + ' data-pp-code="' + (opt.option_code || '') + '"'
+                                + ' data-pp-name="' + (opt.option_name || '') + '"'
+                                + '>';
+                            html += '<label class="flex items-center gap-1.5 cursor-pointer">';
+                            html += '<input type="checkbox" class="pp-transfer-check h-4 w-4" data-row="' + rowId + '" data-pp-code="' + opt.option_code + '">';
+                            html += '<span class="text-sm font-medium text-gray-700">' + opt.option_name + '</span>';
+                            html += '</label>';
+                            html += '<div class="pp-transfer-params flex items-center gap-2 ml-2" style="display:none">';
+                            fields.forEach(function(f) {
+                                if (f.type === 'select') {
+                                    html += '<select class="pp-tf-field border border-gray-300 rounded px-2 py-1 text-xs" data-key="' + f.key + '" data-row="' + rowId + '" data-pp-code="' + opt.option_code + '">';
+                                    (f.options || []).forEach(function(v) {
+                                        html += '<option value="' + v + '"' + (v === f.default ? ' selected' : '') + '>' + v + '</option>';
+                                    });
+                                    html += '</select>';
+                                } else if (f.type === 'number') {
+                                    html += '<label class="text-xs text-gray-500">' + f.label + '</label>';
+                                    html += '<input type="number" class="pp-tf-field w-14 border rounded px-1 py-0.5 text-xs text-center" data-key="' + f.key + '" data-row="' + rowId + '" data-pp-code="' + opt.option_code + '"'
+                                        + ' value="' + (f.default || '') + '"'
+                                        + (f.min != null ? ' min="' + f.min + '"' : '')
+                                        + (f.max != null ? ' max="' + f.max + '"' : '')
+                                        + '>';
+                                }
+                            });
+                            html += '</div>';
+                            html += '</div>';
+                        });
                         html += '</div>';
                     }
 
@@ -459,6 +513,14 @@
                     });
                 }
 
+                // Transfer PP checkboxes (하도매, 부직포, 수술)
+                container.querySelectorAll('.pp-transfer-check').forEach(function(cb) {
+                    cb.addEventListener('change', function() {
+                        var item = cb.closest('.pp-transfer-item');
+                        var params = item ? item.querySelector('.pp-transfer-params') : null;
+                        if (params) params.style.display = cb.checked ? 'flex' : 'none';
+                    });
+                });
 
             }
 
