@@ -1836,6 +1836,7 @@ function showCardModal(card, history, defects, siblingCards) {
         + '      ' + timeHtml
         + '    </div>'
         + '  </div>'
+        + '  <a href="/cards/' + card.id + '" class="spa-link" style="font-size:11px;color:#6b7280;text-decoration:none;padding:4px 8px;border:1px solid #e5e7eb;border-radius:6px;white-space:nowrap;flex-shrink:0" title="작업지시서 상세 페이지"><i class="fas fa-external-link-alt" style="margin-right:3px"></i>상세</a>'
         + '  <button onclick="closeCardModal()" style="background:none;border:none;font-size:20px;color:#9ca3af;cursor:pointer;padding:4px;flex-shrink:0">&times;</button>'
         + '</div>'
         // 본문 (스크롤)

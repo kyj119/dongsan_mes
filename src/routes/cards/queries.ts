@@ -902,6 +902,14 @@ cardsQueriesRouter.get('/:id', async (c) => {
         o.order_number,
         o.client_id,
         o.internal_notes as order_notes,
+        o.delivery_date as order_delivery_date,
+        o.delivery_method,
+        o.delivery_time,
+        o.delivery_info,
+        o.shipping_payment,
+        o.contact_phone,
+        o.contact_mobile,
+        o.notes as order_public_notes,
         u.name as created_by_name
       FROM cards c
       LEFT JOIN orders o ON c.order_id = o.id
@@ -929,11 +937,20 @@ cardsQueriesRouter.get('/:id', async (c) => {
         oi.scale_factor,
         oi.ai_analysis_id,
         oi.ai_group_index,
+        oi.post_processing,
+        oi.finishing,
+        oi.category_name,
+        oi.parent_item_id,
         ci.id as card_item_id,
         ci.print_completed,
-        ci.quantity as card_quantity
+        ci.quantity as card_quantity,
+        pm.name as print_media_name,
+        pmeth.name as print_method_name
       FROM card_items ci
       LEFT JOIN order_items oi ON ci.order_item_id = oi.id
+      LEFT JOIN items it ON oi.item_id = it.id
+      LEFT JOIN print_media pm ON it.print_media_id = pm.id
+      LEFT JOIN print_methods pmeth ON it.print_method_id = pmeth.id
       WHERE ci.card_id = ?
       ORDER BY oi.sort_order ASC
     `).bind(id).all<CardItemRow>()
@@ -977,10 +994,25 @@ cardsQueriesRouter.get('/:id', async (c) => {
       }
     }
 
+    const typedCard = card as Record<string, unknown>
+
+    // 부속품 조회 (카드 품목의 자식 — parent_item_id 관계, GOODS 타입)
+    const mainItemIds = (cardItems || []).map((i) => i.id).filter(Boolean)
+    let accessories: Array<{ item_name: string; quantity: number; item_code?: string }> = []
+    if (mainItemIds.length > 0 && typedCard?.order_id) {
+      const { results: accRows } = await c.env.DB.prepare(
+        `SELECT oi.item_name, oi.quantity, it.item_code
+         FROM order_items oi
+         LEFT JOIN items it ON oi.item_id = it.id
+         WHERE oi.order_id = ? AND oi.parent_item_id IN (${mainItemIds.map(() => '?').join(',')})
+         ORDER BY oi.sort_order ASC`
+      ).bind(typedCard.order_id as number, ...mainItemIds).all<{ item_name: string; quantity: number; item_code?: string }>()
+      accessories = accRows || []
+    }
+
     // 거래처 메모 (최근 3건)
     interface ClientNoteRow { note_type: string; content: string; created_at: string }
     let clientNotes: ClientNoteRow[] = []
-    const typedCard = card as Record<string, unknown>
     if (typedCard.client_id) {
       const { results: cnRows } = await c.env.DB.prepare(
         `SELECT note_type, content, created_at FROM client_notes WHERE client_id = ? ORDER BY created_at DESC LIMIT 3`
@@ -1002,6 +1034,7 @@ cardsQueriesRouter.get('/:id', async (c) => {
           ? cardItems.reduce((s: number, i) => s + (i.quantity || 0), 0)
           : typedCard.quantity,
         items: cardItems || [],
+        accessories: accessories,
         client_notes: clientNotes
       } as unknown as Card
     }
