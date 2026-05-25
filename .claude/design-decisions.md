@@ -45,6 +45,9 @@
 | X | 대형 파일 분할 패턴 | cards→queries/scheduling/lifecycle, items→5파일, orderForm→6파일, ?raw concat |
 | Y | entity_id INSERT 의무화 | 14건 누락 수정, DEFAULT 1 함정, entityFilter SELECT + INSERT 양쪽 적용 |
 | Z | SHIPPED 출고 카드 확인 | 미완료 카드 있으면 확인 모달, 확정→PRINT_DONE+shipped_at, 취소→HOLD |
+| AA | 봉제실 작업지시서 통합 | PP/finishing 확장, method_group output/transfer, 부속품=품목라인 GOODS |
+| AB | 품목 코드 PM-5xxx/6xxx | 전사=5xxx, 태극기=6xxx, METHOD_RANGES TRANSFER 추가 |
+| AC | 후가공 사이드바 이동 | 생산→기준정보 (거래처/품목/단가/후가공·마감) |
 | AA | vat_reports UNIQUE 재생성 | UNIQUE(year,quarter,entity_id), 테이블 재생성, ON CONFLICT 수정 |
 | AB | db.batch() 원자성 강화 | paymentRequests approve/pay, approvals approve/reject → 단일 왕복 |
 | AC | 백업 토큰 분리 | CLOUDFLARE_BACKUP_TOKEN (D1+R2), 배포 토큰과 분리 |
