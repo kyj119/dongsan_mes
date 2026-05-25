@@ -264,6 +264,9 @@ export function orderFormPage(c: Context<HonoEnv>) {
                                 <button type="button" id="bulkPPBtn" class="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700">
                                     <i class="fas fa-cog mr-2"></i>후가공 일괄
                                 </button>
+                                <button type="button" onclick="addAccessoryRow()" class="px-3 py-2 bg-amber-100 text-amber-700 rounded hover:bg-amber-200" title="부속품(깃대, 삼발이 등) 추가">
+                                    <i class="fas fa-puzzle-piece mr-1"></i>부속품
+                                </button>
                             </div>
                         </div>
                         <div id="printMethodFilter" class="hidden mb-3 p-3 bg-blue-50 border border-blue-200 rounded-lg"></div>

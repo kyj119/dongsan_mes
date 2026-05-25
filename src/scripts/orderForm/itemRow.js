@@ -225,7 +225,7 @@
 
             window.addAccessoryRow = async function() {
                 try {
-                    var res = await axios.get('/api/items?category=부속품&is_active=1&limit=50');
+                    var res = await axios.get('/api/items?category=ACCESSORY&is_active=1&limit=50');
                     var accessories = (res.data.data || res.data.items || []);
                     if (accessories.length === 0) {
                         showToast('등록된 부속품이 없습니다. 품목 관리에서 부속품을 등록해주세요.', 'warning');
