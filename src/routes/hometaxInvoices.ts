@@ -264,6 +264,8 @@ hometaxInvoicesRouter.post('/jobs/:id/fetch', requireRole('ADMIN', 'MANAGER'), a
 
       if (!result.list || result.list.length === 0) break
 
+      // Batch insert to avoid N+1 (#192)
+      const stmts: D1PreparedStatement[] = []
       for (const invoice of result.list) {
         // Map Popbill fields to DB schema
         const ntsConfirmNumber = invoice.ntsconfirmNum || invoice.ntsConfirmNum
@@ -284,26 +286,31 @@ hometaxInvoicesRouter.post('/jobs/:id/fetch', requireRole('ADMIN', 'MANAGER'), a
         const taxType = invoice.taxType
         const purposeType = invoice.purposeType
 
-        // Insert into DB
-        await db.prepare(`
-          INSERT INTO hometax_invoices (
-            job_id, invoice_type, nts_confirm_number, issue_date, send_date,
-            supply_amount, tax_amount, total_amount,
-            issuer_corp_num, issuer_corp_name, issuer_ceo_name,
-            receiver_corp_num, receiver_corp_name, receiver_ceo_name,
-            invoice_detail_type, tax_type, purpose_type,
-            raw_data, entity_id
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `).bind(
-          job.id, job.job_type, ntsConfirmNumber, issueDate, sendDate,
-          supplyAmount, taxAmount, totalAmount,
-          issuerCorpNum, issuerCorpName, issuerCeoName,
-          receiverCorpNum, receiverCorpName, receiverCeoName,
-          invoiceDetailType, taxType, purposeType,
-          JSON.stringify(invoice), getEntityId(c) || 1
-        ).run()
+        stmts.push(
+          db.prepare(`
+            INSERT INTO hometax_invoices (
+              job_id, invoice_type, nts_confirm_number, issue_date, send_date,
+              supply_amount, tax_amount, total_amount,
+              issuer_corp_num, issuer_corp_name, issuer_ceo_name,
+              receiver_corp_num, receiver_corp_name, receiver_ceo_name,
+              invoice_detail_type, tax_type, purpose_type,
+              raw_data, entity_id
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          `).bind(
+            job.id, job.job_type, ntsConfirmNumber, issueDate, sendDate,
+            supplyAmount, taxAmount, totalAmount,
+            issuerCorpNum, issuerCorpName, issuerCeoName,
+            receiverCorpNum, receiverCorpName, receiverCeoName,
+            invoiceDetailType, taxType, purposeType,
+            JSON.stringify(invoice), getEntityId(c) || 1
+          )
+        )
 
         totalImported++
+      }
+
+      if (stmts.length > 0) {
+        await db.batch(stmts)
       }
 
       // Check if we've reached the last page

@@ -436,48 +436,68 @@ shipmentsRouter.post('/', requireRole('ADMIN', 'MANAGER', 'DESIGNER'), async (c)
 
     const shipmentId = result.meta.last_row_id
 
-    // 카드별 출고 처리
+    // #195: 카드 출고 + shipment_items + auto_complete_date를 원자적 batch로 처리
+    // 1) 출고 대상 카드 결정 (READ — batch 전 조회)
+    let targetCardIds: number[]
     if (body.card_ids && body.card_ids.length > 0) {
-      const stmts = body.card_ids.flatMap((cardId: number) => [
-        c.env.DB.prepare('UPDATE cards SET shipped_at = CURRENT_TIMESTAMP WHERE id = ? AND shipped_at IS NULL').bind(cardId),
-        c.env.DB.prepare('INSERT OR IGNORE INTO shipment_items (shipment_id, card_id) VALUES (?, ?)').bind(shipmentId, cardId)
-      ])
-      await c.env.DB.batch(stmts)
+      targetCardIds = body.card_ids
     } else {
-      // 카드 지정 없으면 주문의 모든 출고 가능 카드 처리
-      const updateResult = await c.env.DB.prepare(`
-        UPDATE cards SET shipped_at = CURRENT_TIMESTAMP
-        WHERE order_id = ? AND status = 'PRINT_DONE' AND shipped_at IS NULL
-      `).bind(body.order_id).run()
+      // 카드 지정 없으면 주문의 모든 출고 가능 카드 + 이미 출고된 카드
+      const { results: eligibleCards } = await c.env.DB.prepare(`
+        SELECT id FROM cards
+        WHERE order_id = ? AND (
+          (status = 'PRINT_DONE' AND shipped_at IS NULL)
+          OR shipped_at IS NOT NULL
+        )
+      `).bind(body.order_id).all<{ id: number }>()
+      targetCardIds = eligibleCards.map(card => card.id)
+    }
 
-      // 출고된 카드들 shipment_items에 등록
-      const { results: shippedCards } = await c.env.DB.prepare(`
-        SELECT id FROM cards WHERE order_id = ? AND shipped_at IS NOT NULL
-      `).bind(body.order_id).all()
-      if (shippedCards && shippedCards.length > 0) {
-        await c.env.DB.batch(
-          (shippedCards as { id: number }[]).map(card =>
-            c.env.DB.prepare('INSERT OR IGNORE INTO shipment_items (shipment_id, card_id) VALUES (?, ?)').bind(shipmentId, card.id)
-          )
+    // 2) auto_complete_date 판정을 위해 전체 카드 수 조회
+    const [cardCheck, orderInfo] = await Promise.all([
+      c.env.DB.prepare(`
+        SELECT COUNT(*) as total,
+               SUM(CASE WHEN shipped_at IS NOT NULL THEN 1 ELSE 0 END) as shipped
+        FROM cards WHERE order_id = ?
+      `).bind(body.order_id).first<{ total: number; shipped: number }>(),
+      c.env.DB.prepare('SELECT delivery_method FROM orders WHERE id = ?')
+        .bind(body.order_id).first<{ delivery_method: string | null }>()
+    ])
+
+    // 3) 모든 WRITE 문을 수집하여 batch 실행
+    const batchStmts: ReturnType<typeof c.env.DB.prepare>[] = []
+
+    // 카드 shipped_at 업데이트 + shipment_items 등록
+    for (const cardId of targetCardIds) {
+      batchStmts.push(
+        c.env.DB.prepare('UPDATE cards SET shipped_at = CURRENT_TIMESTAMP WHERE id = ? AND shipped_at IS NULL').bind(cardId)
+      )
+      batchStmts.push(
+        c.env.DB.prepare('INSERT OR IGNORE INTO shipment_items (shipment_id, card_id) VALUES (?, ?)').bind(shipmentId, cardId)
+      )
+    }
+
+    // 이번 출고로 모든 카드가 출고 완료되는 경우 → auto_complete_date 설정
+    // (현재 미출고 카드 수 = total - shipped, 이번에 출고할 미출고 카드가 이를 커버하면 완료)
+    if (cardCheck && cardCheck.total > 0) {
+      const unshippedCount = cardCheck.total - (cardCheck.shipped || 0)
+      const newlyShipping = body.card_ids
+        ? targetCardIds.length  // 지정 카드 수
+        : unshippedCount        // else 분기는 미출고 전체 대상
+      if (unshippedCount > 0 && newlyShipping >= unshippedCount) {
+        const method = (orderInfo?.delivery_method || '').trim()
+        const isQuick = method === '방문수령' || method === '직접수령' || method === '직접배송' || method === '퀵'
+        const delayDays = isQuick ? 1 : 2
+        batchStmts.push(
+          c.env.DB.prepare(
+            `UPDATE orders SET auto_complete_date = date('now', '+' || ? || ' days'), updated_at = CURRENT_TIMESTAMP WHERE id = ? AND auto_complete_date IS NULL`
+          ).bind(delayDays, body.order_id)
         )
       }
     }
 
-    // 주문의 모든 카드가 출고되었는지 확인 → auto_complete_date 설정 (동기화 시 SHIPPED 전이)
-    const cardCheck = await c.env.DB.prepare(`
-      SELECT COUNT(*) as total,
-             SUM(CASE WHEN shipped_at IS NOT NULL THEN 1 ELSE 0 END) as shipped
-      FROM cards WHERE order_id = ?
-    `).bind(body.order_id).first<{ total: number; shipped: number }>()
-
-    if (cardCheck && cardCheck.total > 0 && cardCheck.total === cardCheck.shipped) {
-      const orderInfo = await c.env.DB.prepare('SELECT delivery_method FROM orders WHERE id = ?').bind(body.order_id).first<{ delivery_method: string | null }>()
-      const method = (orderInfo?.delivery_method || '').trim()
-      const isQuick = method === '방문수령' || method === '직접수령' || method === '직접배송' || method === '퀵'
-      const delayDays = isQuick ? 1 : 2
-      await c.env.DB.prepare(
-        `UPDATE orders SET auto_complete_date = date('now', '+' || ? || ' days'), updated_at = CURRENT_TIMESTAMP WHERE id = ? AND auto_complete_date IS NULL`
-      ).bind(delayDays, body.order_id).run()
+    if (batchStmts.length > 0) {
+      await c.env.DB.batch(batchStmts)
     }
 
     // 이메일 자동 발송 (fire-and-forget — 실패해도 출고는 성공)
@@ -656,23 +676,27 @@ shipmentsRouter.patch('/:id/status', requireRole('ADMIN', 'MANAGER'), async (c) 
       return c.json({ success: false, error: '출고 정보를 찾을 수 없습니다.' }, 404)
     }
 
-    await c.env.DB.prepare(
-      'UPDATE shipments SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
-    ).bind(status, id).run()
-
-    // #51: 출고 취소 시 카드 shipped_at 롤백 + 주문 상태 복원 + auto_complete_date 리셋
+    // #51 + #185: 출고 취소 시 카드 shipped_at 롤백 + 주문 상태 복원 + auto_complete_date 리셋
+    // 모든 UPDATE/INSERT를 수집하여 batch로 원자적 실행
     if (status === 'CANCELLED') {
-      // 이 출고건의 카드 shipped_at 리셋 (HOLD 카드는 건드리지 않음)
-      await c.env.DB.prepare(`
-        UPDATE cards SET shipped_at = NULL
-        WHERE id IN (SELECT card_id FROM shipment_items WHERE shipment_id = ?)
-          AND status != 'HOLD'
-      `).bind(id).run()
-
-      // 주문 상태 복원: SHIPPED → PRINT_DONE (출고 취소로 미출고 카드 발생)
+      // 취소에 필요한 정보를 먼저 조회
       const orderRow = await c.env.DB.prepare(
         'SELECT order_id FROM shipments WHERE id = ?'
       ).bind(id).first<{ order_id: number }>()
+
+      const stmts: ReturnType<typeof c.env.DB.prepare>[] = [
+        // 1) 출고 상태 변경
+        c.env.DB.prepare(
+          'UPDATE shipments SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
+        ).bind(status, id),
+        // 2) 카드 shipped_at 리셋 (HOLD 카드는 건드리지 않음)
+        c.env.DB.prepare(`
+          UPDATE cards SET shipped_at = NULL
+          WHERE id IN (SELECT card_id FROM shipment_items WHERE shipment_id = ?)
+            AND status != 'HOLD'
+        `).bind(id),
+      ]
+
       if (orderRow?.order_id) {
         const orderInfo = await c.env.DB.prepare(
           'SELECT status FROM orders WHERE id = ?'
@@ -680,21 +704,29 @@ shipmentsRouter.patch('/:id/status', requireRole('ADMIN', 'MANAGER'), async (c) 
 
         if (orderInfo?.status === 'SHIPPED') {
           const user = c.get('user')
-          await c.env.DB.prepare(
+          // 3) 주문 상태 복원
+          stmts.push(c.env.DB.prepare(
             `UPDATE orders SET status = 'PRINT_DONE', auto_complete_date = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?`
-          ).bind(orderRow.order_id).run()
-
-          await c.env.DB.prepare(`
+          ).bind(orderRow.order_id))
+          // 4) 상태 이력 기록
+          stmts.push(c.env.DB.prepare(`
             INSERT INTO order_status_history (order_id, from_status, to_status, changed_by, change_reason)
             VALUES (?, 'SHIPPED', 'PRINT_DONE', ?, '출고 취소로 주문 상태 복원')
-          `).bind(orderRow.order_id, user?.id || 1).run()
+          `).bind(orderRow.order_id, user?.id || 1))
         } else {
           // SHIPPED가 아닌 경우에도 auto_complete_date는 리셋
-          await c.env.DB.prepare(
+          stmts.push(c.env.DB.prepare(
             'UPDATE orders SET auto_complete_date = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
-          ).bind(orderRow.order_id).run()
+          ).bind(orderRow.order_id))
         }
       }
+
+      await c.env.DB.batch(stmts)
+    } else {
+      // 취소가 아닌 단순 상태 변경
+      await c.env.DB.prepare(
+        'UPDATE shipments SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
+      ).bind(status, id).run()
     }
 
     return c.json({ success: true, message: '출고 상태가 변경되었습니다.' })

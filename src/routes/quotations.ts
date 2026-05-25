@@ -402,10 +402,12 @@ quotationsRouter.put('/:id', async (c) => {
       user?.id || null, id
     ).run()
 
-    // items 재작성: 기존 삭제 후 신규 삽입 (단순화)
-    await c.env.DB.prepare(`DELETE FROM quotation_items WHERE quotation_id = ?`).bind(id).run()
+    // items 재작성: DELETE + INSERT를 batch로 원자적 실행
+    const deleteStmt = c.env.DB.prepare(`DELETE FROM quotation_items WHERE quotation_id = ?`).bind(id)
 
-    const clientIdMap = new Map<string, number>()
+    // 부모 품목 INSERT 문 수집 (parent_client_id 없는 것)
+    const parentInsertStmts: D1PreparedStatement[] = []
+    const parentClientGroupIds: (string | null)[] = []
     for (let i = 0; i < (body.items || []).length; i++) {
       const item = body.items[i]
       if (item.parent_client_id) continue
@@ -420,7 +422,7 @@ quotationsRouter.put('/:id', async (c) => {
       }
       amount = Math.round(amount / 100) * 100
 
-      const ins = await c.env.DB.prepare(`
+      parentInsertStmts.push(c.env.DB.prepare(`
         INSERT INTO quotation_items (
           quotation_id, item_id, item_name, width, height, scale_factor,
           quantity, unit, unit_price, amount, content, post_processing,
@@ -433,15 +435,28 @@ quotationsRouter.put('/:id', async (c) => {
         item.unit_price || 0, amount,
         item.content || null, item.post_processing || null,
         item.finishing || null, pricingMethod, i
-      ).run()
-      if (item.client_group_id) clientIdMap.set(item.client_group_id, ins.meta.last_row_id as number)
+      ))
+      parentClientGroupIds.push(item.client_group_id || null)
     }
-    const parentCount = (body.items || []).filter((i: any) => !i.parent_client_id).length
+
+    // 부모 품목 batch 실행 (DELETE 포함)
+    const parentResults = await c.env.DB.batch([deleteStmt, ...parentInsertStmts])
+
+    // 부모 ID 매핑 (batch 결과에서 last_row_id 추출, index 0은 DELETE)
+    const clientIdMap = new Map<string, number>()
+    for (let i = 0; i < parentClientGroupIds.length; i++) {
+      const cgId = parentClientGroupIds[i]
+      if (cgId) clientIdMap.set(cgId, parentResults[i + 1].meta.last_row_id as number)
+    }
+
+    // 자식 품목 INSERT (parent_id 참조 필요 → 부모 batch 이후 실행)
+    const parentCount = parentInsertStmts.length
+    const childStmts: D1PreparedStatement[] = []
     for (let i = 0; i < (body.items || []).length; i++) {
       const item = body.items[i]
       if (!item.parent_client_id) continue
       const parentDbId = clientIdMap.get(item.parent_client_id) ?? null
-      await c.env.DB.prepare(`
+      childStmts.push(c.env.DB.prepare(`
         INSERT INTO quotation_items (
           quotation_id, item_name, width, height, scale_factor,
           quantity, unit, unit_price, amount, content,
@@ -452,8 +467,9 @@ quotationsRouter.put('/:id', async (c) => {
         item.width_mm || item.width || 0, item.height_mm || item.height || 0,
         item.scale_factor || 1, item.quantity || 1, item.unit || 'EA',
         item.content || null, parentDbId, parentCount + i
-      ).run()
+      ))
     }
+    if (childStmts.length > 0) await c.env.DB.batch(childStmts)
 
     await logActivity({
       db: c.env.DB, userId: user?.id, userName: user?.username,

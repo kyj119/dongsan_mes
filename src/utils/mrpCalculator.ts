@@ -51,6 +51,7 @@ export async function runMrpCalculation(
     orderId?: number
     runBy?: number
     runType?: string
+    entityId?: number
   }
 ): Promise<{
   runId: number
@@ -169,18 +170,20 @@ export async function runMrpCalculation(
   }
   results.sort((a, b) => b.shortfall - a.shortfall)
 
-  // 7. 실행 번호 생성
+  // 7. 실행 번호 생성 (entity_id 포함으로 멀티 법인 충돌 방지)
   const today = new Date().toISOString().slice(0, 10).replace(/-/g, '')
+  const eId = options.entityId || 1
+  const prefix = `MRP-E${eId}-${today}-`
   const { results: existingRuns } = await db.prepare(
     `SELECT COUNT(*) as cnt FROM mrp_runs WHERE run_number LIKE ?`
-  ).bind(`MRP-${today}-%`).all()
+  ).bind(`${prefix}%`).all()
   const seq = ((existingRuns[0] as any)?.cnt || 0) + 1
-  const runNumber = `MRP-${today}-${String(seq).padStart(3, '0')}`
+  const runNumber = `${prefix}${String(seq).padStart(3, '0')}`
 
   // 8. 결과 저장
   const runResult = await db.prepare(`
-    INSERT INTO mrp_runs (run_number, run_type, date_from, date_to, order_id, status, total_materials, shortfall_count, run_by)
-    VALUES (?, ?, ?, ?, ?, 'COMPLETED', ?, ?, ?)
+    INSERT INTO mrp_runs (run_number, run_type, date_from, date_to, order_id, status, total_materials, shortfall_count, run_by, entity_id)
+    VALUES (?, ?, ?, ?, ?, 'COMPLETED', ?, ?, ?, ?)
   `).bind(
     runNumber,
     options.runType || 'MANUAL',
@@ -189,7 +192,8 @@ export async function runMrpCalculation(
     options.orderId || null,
     results.length,
     results.filter(r => r.shortfall > 0).length,
-    options.runBy || null
+    options.runBy || null,
+    eId
   ).run()
 
   const runId = runResult.meta?.last_row_id as number

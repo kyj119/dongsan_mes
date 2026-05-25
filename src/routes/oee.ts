@@ -12,10 +12,13 @@ oee.post('/calculate', requireRole('ADMIN', 'MANAGER'), async (c) => {
     const { date } = await c.req.json()
     const targetDate = date || new Date().toISOString().split('T')[0]
 
-    // 활성 장비 목록
+    // 활성 장비 목록 (entity 필터 적용)
+    const entityId = getEntityId(c)
+    const eqEntityClause = entityId ? ' AND entity_id = ?' : ''
+    const eqEntityParams = entityId ? [entityId] : []
     const { results: equipments } = await c.env.DB.prepare(
-      `SELECT id, daily_capacity FROM equipment WHERE status = 'ACTIVE'`
-    ).all<{ id: string; daily_capacity: number }>()
+      `SELECT id, daily_capacity FROM equipment WHERE status = 'ACTIVE'${eqEntityClause}`
+    ).bind(...eqEntityParams).all<{ id: string; daily_capacity: number }>()
 
     const plannedHours = 8
 
@@ -71,7 +74,7 @@ oee.post('/calculate', requireRole('ADMIN', 'MANAGER'), async (c) => {
     const outMap = new Map((outputRes.results as OutputRow[]).map(r => [r.equipment_id, r]))
     const defMap = new Map((defectsRes.results as DefectRow[]).map(r => [r.equipment_id, r]))
 
-    const entityId = getEntityId(c) || 1
+    const oeeEntityId = entityId || 1
     const statements: any[] = []
 
     for (const eq of equipments) {
@@ -128,7 +131,7 @@ oee.post('/calculate', requireRole('ADMIN', 'MANAGER'), async (c) => {
           Math.round(theoreticalSqm * 100) / 100, Math.round(actualSqm * 100) / 100,
           Math.round(performance * 10) / 10,
           totalProduced, goodProduced, defectCount,
-          Math.round(quality * 10) / 10, Math.round(oeeValue * 10) / 10, entityId
+          Math.round(quality * 10) / 10, Math.round(oeeValue * 10) / 10, oeeEntityId
         )
       )
     }

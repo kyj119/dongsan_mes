@@ -576,9 +576,10 @@ apRouter.post('/purchase-adjustment', requireRole('ADMIN', 'MANAGER'), async (c)
       return c.json({ success: false, error: 'Supplier not found' }, 404)
     }
 
+    const adjEntityId = getEntityId(c) || 1
     const result = await c.env.DB.prepare(`
-      INSERT INTO purchase_adjustments (supplier_id, po_id, type, amount, reason, adjustment_date, created_by)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO purchase_adjustments (supplier_id, po_id, type, amount, reason, adjustment_date, created_by, entity_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `).bind(
       body.supplier_id,
       body.po_id || null,
@@ -586,7 +587,8 @@ apRouter.post('/purchase-adjustment', requireRole('ADMIN', 'MANAGER'), async (c)
       amount,
       body.reason || null,
       body.adjustment_date || new Date().toISOString().split('T')[0],
-      user?.id || null
+      user?.id || null,
+      adjEntityId
     ).run()
 
     // 지급액 감소 (감액 → purchase_balance 차감)
@@ -620,15 +622,16 @@ apRouter.get('/purchase-adjustments/:supplierId', async (c) => {
   try {
     const supplierId = c.req.param('supplierId')
 
+    const paEf = entityFilter(c, 'pa')
     const { results } = await c.env.DB.prepare(`
       SELECT
         pa.*,
         u.name as created_by_name
       FROM purchase_adjustments pa
       LEFT JOIN users u ON pa.created_by = u.id
-      WHERE pa.supplier_id = ?
+      WHERE pa.supplier_id = ?${paEf.clause}
       ORDER BY pa.adjustment_date DESC
-    `).bind(supplierId).all()
+    `).bind(supplierId, ...paEf.params).all()
 
     return c.json({ success: true, data: results })
   } catch (error) {
@@ -737,6 +740,7 @@ apRouter.get('/purchase-integrity-check', requireRole('ADMIN', 'MANAGER'), async
   try {
     const { clause: intPoEf, params: intPoEfParams } = entityFilter(c)
     const { clause: intPpEf, params: intPpEfParams } = entityFilter(c)
+    const { clause: intPaEf, params: intPaEfParams } = entityFilter(c)
     const { results: rows } = await c.env.DB.prepare(`
       SELECT c.id, c.client_code, c.client_name, c.purchase_balance,
         COALESCE(po.v, 0) as total_orders,
@@ -752,10 +756,10 @@ apRouter.get('/purchase-integrity-check', requireRole('ADMIN', 'MANAGER'), async
         SELECT supplier_id, SUM(amount) as v FROM purchase_payments WHERE 1=1${intPpEf} GROUP BY supplier_id
       ) pp ON pp.supplier_id = c.id
       LEFT JOIN (
-        SELECT supplier_id, SUM(amount) as v FROM purchase_adjustments GROUP BY supplier_id
+        SELECT supplier_id, SUM(amount) as v FROM purchase_adjustments WHERE 1=1${intPaEf} GROUP BY supplier_id
       ) pa ON pa.supplier_id = c.id
       WHERE c.is_active = 1 AND c.client_type IN ('SUPPLIER', 'BOTH')
-    `).bind(...intPoEfParams, ...intPpEfParams).all<IntegrityRow>()
+    `).bind(...intPoEfParams, ...intPpEfParams, ...intPaEfParams).all<IntegrityRow>()
 
     const discrepancies: { supplier_id: number; client_code: string; client_name: string; cached_purchase_balance: number; calculated_purchase_balance: number; difference: number }[] = []
     for (const row of rows) {
@@ -794,6 +798,7 @@ apRouter.post('/purchase-integrity-fix', requireRole('ADMIN', 'MANAGER'), async 
 
     const { clause: fixPoEf, params: fixPoEfParams } = entityFilter(c)
     const { clause: fixPpEf, params: fixPpEfParams } = entityFilter(c)
+    const { clause: fixPaEf, params: fixPaEfParams } = entityFilter(c)
     const { results: rows } = await c.env.DB.prepare(`
       SELECT c.id, c.client_code, c.client_name, c.purchase_balance,
         COALESCE(po.v, 0) as total_orders,
@@ -809,10 +814,10 @@ apRouter.post('/purchase-integrity-fix', requireRole('ADMIN', 'MANAGER'), async 
         SELECT supplier_id, SUM(amount) as v FROM purchase_payments WHERE 1=1${fixPpEf} GROUP BY supplier_id
       ) pp ON pp.supplier_id = c.id
       LEFT JOIN (
-        SELECT supplier_id, SUM(amount) as v FROM purchase_adjustments GROUP BY supplier_id
+        SELECT supplier_id, SUM(amount) as v FROM purchase_adjustments WHERE 1=1${fixPaEf} GROUP BY supplier_id
       ) pa ON pa.supplier_id = c.id
       WHERE c.is_active = 1 AND c.client_type IN ('SUPPLIER', 'BOTH')
-    `).bind(...fixPoEfParams, ...fixPpEfParams).all<IntegrityRow>()
+    `).bind(...fixPoEfParams, ...fixPpEfParams, ...fixPaEfParams).all<IntegrityRow>()
 
     let fixed = 0
     const fixResults: { supplier_id: number; client_name: string; old: number; new: number }[] = []
@@ -876,13 +881,14 @@ apRouter.get('/purchase-client/:clientId/export/csv', async (c) => {
     if (endDate) { ppQuery += ' AND date(payment_date) <= ?'; ppParams.push(endDate) }
     const { results: purchasePayments } = await c.env.DB.prepare(ppQuery + ' ORDER BY payment_date ASC').bind(...ppParams).all<CsvPpRow>()
 
-    // Purchase adjustments (감액) — purchase_adjustments has no entity_id column yet
+    // Purchase adjustments (감액)
+    const csvPaEf = entityFilter(c)
     let paQuery = `
       SELECT id, po_id, type, amount, reason, adjustment_date, created_at
       FROM purchase_adjustments
-      WHERE supplier_id = ?
+      WHERE supplier_id = ?${csvPaEf.clause}
     `
-    const paParams: any[] = [clientId]
+    const paParams: any[] = [clientId, ...csvPaEf.params]
     if (startDate) { paQuery += ' AND date(adjustment_date) >= ?'; paParams.push(startDate) }
     if (endDate) { paQuery += ' AND date(adjustment_date) <= ?'; paParams.push(endDate) }
     const { results: purchaseAdjustments } = await c.env.DB.prepare(paQuery + ' ORDER BY adjustment_date ASC').bind(...paParams).all<CsvPaRow>()

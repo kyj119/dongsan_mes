@@ -1365,15 +1365,17 @@ printSystemRouter.put('/rm-connections/:mediaGroup', requireRole('ADMIN', 'MANAG
       if (connectedSet.has(rm.id)) connectedGroups.add(rm.item_group)
     }
 
-    // 기존 media_material_groups 정리 후 재생성
+    // 기존 media_material_groups 정리 후 재생성 (batch로 원자적 실행)
     if (mediaIds.length > 0) {
       const mPlaceholders = mediaIds.map(() => '?').join(',')
-      await db.prepare(`DELETE FROM media_material_groups WHERE media_id IN (${mPlaceholders})`).bind(...mediaIds).run()
+      const mmgDeleteStmt = db.prepare(`DELETE FROM media_material_groups WHERE media_id IN (${mPlaceholders})`).bind(...mediaIds)
+      const mmgInsertStmts: D1PreparedStatement[] = []
       for (const mediaId of mediaIds) {
         for (const group of connectedGroups) {
-          await db.prepare('INSERT OR IGNORE INTO media_material_groups (media_id, item_group) VALUES (?, ?)').bind(mediaId, group).run()
+          mmgInsertStmts.push(db.prepare('INSERT OR IGNORE INTO media_material_groups (media_id, item_group) VALUES (?, ?)').bind(mediaId, group))
         }
       }
+      await db.batch([mmgDeleteStmt, ...mmgInsertStmts])
     }
 
     return c.json({

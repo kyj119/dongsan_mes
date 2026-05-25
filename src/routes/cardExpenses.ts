@@ -46,6 +46,17 @@ cardExpRouter.post('/cards', requireRole('ADMIN'), async (c) => {
       return c.json({ success: false, error: 'card_name, card_company 필수' }, 400)
     }
     const entityId = getEntityId(c)
+
+    // 카드번호 중복 체크 (#190)
+    if (card_number_last4) {
+      const existing = await c.env.DB.prepare(
+        'SELECT id FROM corporate_cards WHERE card_number_last4 = ? AND entity_id = ?'
+      ).bind(card_number_last4, entityId).first()
+      if (existing) {
+        return c.json({ success: false, error: '동일한 카드번호(끝 4자리)가 이미 등록되어 있습니다' }, 409)
+      }
+    }
+
     const result = await c.env.DB.prepare(`
       INSERT INTO corporate_cards (card_name, card_company, card_number_last4, holder_name, monthly_limit, payment_day, assigned_user_id, entity_id)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)

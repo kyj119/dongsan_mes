@@ -363,11 +363,9 @@ prRouter.put('/:id', async (c) => {
       `SELECT item_name, quantity, unit, estimated_unit_price FROM purchase_request_items WHERE request_id = ? ORDER BY sort_order ASC`
     ).bind(id).all<Pick<PurchaseRequestItem, 'item_name' | 'quantity' | 'unit' | 'estimated_unit_price'>>()
 
-    await c.env.DB.prepare(`DELETE FROM purchase_request_items WHERE request_id = ?`).bind(id).run()
-
-    for (let i = 0; i < data.items.length; i++) {
-      const item = data.items[i]
-      await c.env.DB.prepare(`
+    const deleteStmt = c.env.DB.prepare(`DELETE FROM purchase_request_items WHERE request_id = ?`).bind(id)
+    const insertStmts = data.items.map((item: any, i: number) =>
+      c.env.DB.prepare(`
         INSERT INTO purchase_request_items (
           request_id, item_id, item_name, category_name,
           quantity, unit, estimated_unit_price, sort_order, notes
@@ -376,8 +374,9 @@ prRouter.put('/:id', async (c) => {
         Number(id), item.item_id || null, item.item_name, item.category_name || null,
         Number(item.quantity) || 1, item.unit || 'EA',
         Number(item.estimated_unit_price) || 0, i, item.notes || null
-      ).run()
-    }
+      )
+    )
+    await c.env.DB.batch([deleteStmt, ...insertStmts])
 
     // 수정 이력 기록
     const changes: string[] = []

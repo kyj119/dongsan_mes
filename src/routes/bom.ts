@@ -194,6 +194,7 @@ bom.post('/mrp/run', async (c) => {
       orderId: body.order_id ? Number(body.order_id) : undefined,
       runBy: user?.id,
       runType: body.run_type || 'MANUAL',
+      entityId: getEntityId(c) || 1,
     })
 
     return c.json({ success: true, data: result })
