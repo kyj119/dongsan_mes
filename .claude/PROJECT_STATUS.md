@@ -42,6 +42,14 @@
 
 ## 🟢 최근 완료 (2026-05-25)
 
+### 카드 상세 페이지 — 작업지시서 통합 뷰 (2026-05-26)
+- PrintVis Advanced Case Card 모델 벤치마크 → B+C 하이브리드 설계
+- `/cards/:id` 페이지 신규: 작업지시서 + 생산현황 + 이력 통합
+- API 확장: 배송 정보, 부속품, 원단(print_media) JOIN
+- @media print: 인쇄 시 봉제실 양식 출력 (액션/이력 숨김)
+- 칸반 모달에 "상세 ↗" 링크 추가
+- 프로덕션 검증: 3개 카드(PRINTING/PRINT_DONE/404) + 14페이지 + 11 API 통과
+
 ### 봉제실 작업지시서 MES 통합 — 전사/깃발 후가공 시스템 확장 (2026-05-25)
 - **설계**: 주문서 구조 재검토 → 기존 PP/finishing 인프라 확장으로 결정 (신규 테이블 최소화)
 - **DB (0251~0260)**: finishing에 쌍침/오바/봉미싱 + method_group 분리, PP-GROMMET/NONWOVEN/TASSEL 신규, 전사 subcategory 9종, 전사 print_method + 원단 5종, order_ai_files(AI 1:N), 부속품 GOODS 10종, 전사 품목 24개(PM-5xxx/6xxx)
