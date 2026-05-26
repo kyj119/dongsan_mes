@@ -77,8 +77,6 @@ CREATE TABLE orders (
   auto_complete_date TEXT,
   -- 0184
   cancel_reason TEXT,
-  -- 0189
-  receipt_type TEXT,
   -- 0191
   quotation_id INTEGER DEFAULT NULL,
   -- 0209
