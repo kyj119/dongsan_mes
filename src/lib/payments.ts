@@ -22,16 +22,13 @@ export interface PaymentResult {
 }
 
 /**
- * 입금을 생성하고 거래처 잔액을 차감한다.
- * - client 존재 확인
- * - payments 테이블 INSERT
- * - clients.balance -= amount
+ * 입금 사전 검증 (읽기 전용) — batch 처리 전 호출
+ * client 존재 확인 + 중복 결제 방지
  */
-export async function createPayment(
+export async function validatePayment(
   db: D1Database,
   data: PaymentInput
-): Promise<PaymentResult> {
-  // 1. client 존재 확인
+): Promise<{ client: { id: number; balance: number }; newBalance: number }> {
   const client = await db.prepare(
     'SELECT id, balance FROM clients WHERE id = ?'
   ).bind(data.client_id).first<{ id: number; balance: number | null }>()
@@ -40,7 +37,6 @@ export async function createPayment(
     throw new Error(`Client not found: id=${data.client_id}`)
   }
 
-  // 1.5 중복 결제 방지: 동일 거래처+금액+날짜가 1분 이내 존재하면 거부
   const recent = await db.prepare(
     `SELECT id FROM payments
      WHERE client_id = ? AND amount = ? AND payment_date = ?
@@ -50,32 +46,54 @@ export async function createPayment(
     throw new Error('DUPLICATE_PAYMENT: 1분 이내 동일한 결제가 이미 등록되었습니다.')
   }
 
-  // 2. INSERT INTO payments
-  const result = await db.prepare(`
-    INSERT INTO payments (
-      client_id, payment_date, amount, payment_method,
-      reference_number, notes, created_by, entity_id
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-  `).bind(
-    data.client_id,
-    data.payment_date,
-    data.amount,
-    data.payment_method ?? null,
-    data.reference_number ?? null,
-    data.notes ?? null,
-    data.created_by,
-    data.entity_id ?? 1
-  ).run()
-
-  const paymentId = result.meta.last_row_id
-
-  // 3. UPDATE clients.balance (잔액 차감)
   const newBalance = (Number(client.balance) || 0) - data.amount
-  await db.prepare(
-    'UPDATE clients SET balance = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
-  ).bind(newBalance, data.client_id).run()
+  return { client: { id: client.id, balance: Number(client.balance) || 0 }, newBalance }
+}
 
-  // 4. 결과 반환
+/**
+ * 입금 쓰기용 prepared statements 반환 (batch에 포함 가능)
+ */
+export function preparePaymentStatements(
+  db: D1Database,
+  data: PaymentInput,
+  newBalance: number
+): D1PreparedStatement[] {
+  return [
+    db.prepare(`
+      INSERT INTO payments (
+        client_id, payment_date, amount, payment_method,
+        reference_number, notes, created_by, entity_id
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).bind(
+      data.client_id,
+      data.payment_date,
+      data.amount,
+      data.payment_method ?? null,
+      data.reference_number ?? null,
+      data.notes ?? null,
+      data.created_by,
+      data.entity_id ?? 1
+    ),
+    db.prepare(
+      'UPDATE clients SET balance = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
+    ).bind(newBalance, data.client_id),
+  ]
+}
+
+/**
+ * 입금을 생성하고 거래처 잔액을 차감한다 (기존 호환 API).
+ * 내부적으로 validatePayment + preparePaymentStatements + batch 실행.
+ */
+export async function createPayment(
+  db: D1Database,
+  data: PaymentInput
+): Promise<PaymentResult> {
+  const { newBalance } = await validatePayment(db, data)
+  const stmts = preparePaymentStatements(db, data, newBalance)
+  const results = await db.batch(stmts)
+
+  const paymentId = results[0].meta.last_row_id
+
   return {
     payment_id: paymentId,
     new_balance: newBalance,

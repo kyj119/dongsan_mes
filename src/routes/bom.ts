@@ -276,36 +276,39 @@ bom.post('/mrp/runs/:id/create-pr', async (c) => {
 
     const prId = prResult.meta?.last_row_id as number
 
-    // PR 품목 추가
-    for (let i = 0; i < shortfalls.length; i++) {
-      const s = shortfalls[i]
-      // inventory에서 item_id 조회
-      const inv = await c.env.DB.prepare(
-        `SELECT item_id FROM inventory WHERE id = ?`
-      ).bind(s.material_item_id).first() as { item_id: number } | null
+    // inventory에서 item_id 일괄 조회
+    const materialIds = shortfalls.map((s: any) => s.material_item_id)
+    const invRows = materialIds.length > 0
+      ? (await c.env.DB.prepare(
+          `SELECT id, item_id FROM inventory WHERE id IN (${materialIds.map(() => '?').join(',')})`
+        ).bind(...materialIds).all()).results as { id: number; item_id: number }[]
+      : []
+    const invMap = new Map(invRows.map(r => [r.id, r.item_id]))
 
-      await c.env.DB.prepare(`
+    // PR 품목 INSERT + MRP 결과 UPDATE를 batch로 일괄 처리
+    const batchStmts: D1PreparedStatement[] = shortfalls.flatMap((s: any, i: number) => [
+      c.env.DB.prepare(`
         INSERT INTO purchase_request_items (request_id, item_id, item_name, quantity, unit, sort_order, notes)
         VALUES (?, ?, ?, ?, 'EA', ?, ?)
       `).bind(
         prId,
-        inv?.item_id || null,
+        invMap.get(s.material_item_id) || null,
         s.material_name,
         Math.ceil(s.shortfall),
         i,
         `MRP 부족량: ${s.shortfall.toFixed(2)}`
-      ).run()
-
-      // MRP 결과에 PR ID 기록
-      await c.env.DB.prepare(
+      ),
+      c.env.DB.prepare(
         `UPDATE mrp_results SET auto_pr_id = ? WHERE id = ?`
-      ).bind(prId, s.id).run()
-    }
-
-    // MRP 실행 기록 업데이트
-    await c.env.DB.prepare(
-      `UPDATE mrp_runs SET auto_pr_created = auto_pr_created + 1 WHERE id = ?`
-    ).bind(runId).run()
+      ).bind(prId, s.id),
+    ])
+    // MRP 실행 기록 업데이트도 batch에 포함
+    batchStmts.push(
+      c.env.DB.prepare(
+        `UPDATE mrp_runs SET auto_pr_created = auto_pr_created + 1 WHERE id = ?`
+      ).bind(runId)
+    )
+    await c.env.DB.batch(batchStmts)
 
     return c.json({ success: true, data: { prId, requestNumber, itemCount: shortfalls.length } })
   } catch (error) {

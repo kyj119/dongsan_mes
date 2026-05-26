@@ -3,7 +3,8 @@ import type { HonoEnv } from '../types/env'
 import type { Client, ApiResponse, PaginatedResponse } from '../types/models'
 import { authMiddleware, requireRole } from '../middleware/auth'
 import { hashPassword } from '../utils/crypto'
-import { entityFilter } from '../utils/entityFilter'
+import { entityFilter, getEntityId } from '../utils/entityFilter'
+import { getNextSeqNumber } from '../utils/sequenceGenerator'
 
 const clientsRouter = new Hono<HonoEnv>()
 
@@ -726,15 +727,11 @@ clientsRouter.post('/', requireRole('ADMIN', 'MANAGER'), async (c) => {
       }, 400)
     }
 
-    // client_code 자동 채번 (미입력 시)
+    // client_code 자동 채번 (미입력 시) — getNextSeqNumber로 동시성 안전
     if (!clientData.client_code) {
       const clientType = clientData.client_type || 'SALES'
-      const prefix = clientType === 'PURCHASE' ? 'P' : clientType === 'BOTH' ? 'B' : 'S'
-      const lastCode = await c.env.DB.prepare(
-        `SELECT client_code FROM clients WHERE client_code LIKE ? ORDER BY client_code DESC LIMIT 1`
-      ).bind(prefix + '-%').first<{ client_code: string }>()
-      const nextNum = lastCode ? (parseInt(lastCode.client_code.split('-')[1]) || 0) + 1 : 1
-      clientData.client_code = prefix + '-' + String(nextNum).padStart(4, '0')
+      const prefix = clientType === 'PURCHASE' ? 'P-' : clientType === 'BOTH' ? 'B-' : 'S-'
+      clientData.client_code = await getNextSeqNumber(c.env.DB, 'clients', 'client_code', prefix, 4)
     }
 
     // Check if client_code already exists
@@ -1165,8 +1162,8 @@ clientsRouter.post('/billing-groups', requireRole('ADMIN', 'MANAGER'), async (c)
       return c.json({ success: false, error: '그룹명을 입력하세요.' }, 400)
     }
     const result = await c.env.DB.prepare(
-      `INSERT INTO billing_groups (group_name, notes) VALUES (?, ?)`
-    ).bind(group_name.trim(), notes || null).run()
+      `INSERT INTO billing_groups (group_name, notes, entity_id) VALUES (?, ?, ?)`
+    ).bind(group_name.trim(), notes || null, getEntityId(c) || 1).run()
     return c.json({ success: true, data: { id: result.meta.last_row_id, group_name: group_name.trim() } })
   } catch (error) {
     console.error('src/routes/clients.ts billing-groups POST error:', error)

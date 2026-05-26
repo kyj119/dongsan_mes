@@ -367,8 +367,8 @@ weeklyPurchaseRouter.post('/notify', async (c) => {
             // 발송 로그
             await c.env.DB.prepare(`
               INSERT INTO kakao_send_logs
-                (template_code, receiver_num, receiver_name, related_type, content, status, channel, sent_by)
-              VALUES (?, ?, ?, 'weekly_purchase', ?, 'SUCCESS', ?, ?)
+                (template_code, receiver_num, receiver_name, related_type, content, status, channel, sent_by, entity_id)
+              VALUES (?, ?, ?, 'weekly_purchase', ?, 'SUCCESS', ?, ?, ?)
             `).bind(
               sendChannel === 'sms' ? 'SMS' : 'LMS',
               managers.map((m: any) => m.mobile).join(','),
@@ -376,6 +376,7 @@ weeklyPurchaseRouter.post('/notify', async (c) => {
               smsContent,
               sendChannel,
               user?.id || null,
+              getEntityId(c) || 1,
             ).run()
 
             results.push({

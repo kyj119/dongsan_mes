@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
+import { getEntityId } from '../utils/entityFilter'
 
 const autoProcessRouter = new Hono<HonoEnv>()
 
@@ -151,8 +152,8 @@ autoProcessRouter.post('/start', async (c) => {
         `INSERT INTO auto_process_jobs
          (order_id, order_item_id, ai_analysis_id, ai_group_index,
           source_path, product, width_cm, height_cm, finishing,
-          scale_factor, clip_bounds, margins, status, ia_params)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)
+          scale_factor, clip_bounds, margins, status, ia_params, entity_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)
          RETURNING id, status`
       ).bind(
         order_id,
@@ -168,6 +169,7 @@ autoProcessRouter.post('/start', async (c) => {
         JSON.stringify(clipBounds),
         JSON.stringify({ L: marginLcm, R: marginRcm, T: marginTcm, B: marginBcm }),
         JSON.stringify(iaParams),
+        getEntityId(c) || 1,
       ).first()
 
       if (job) jobs.push(job)

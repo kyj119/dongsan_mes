@@ -1,6 +1,6 @@
 # PROJECT_STATUS.md — 프로젝트 현황판
 
-> **최종 업데이트**: 2026-05-25
+> **최종 업데이트**: 2026-05-26
 
 ---
 
@@ -14,7 +14,7 @@
 
 - (없음)
 
-> **직전 세션 결과 (2026-05-25)**: 봉제실 작업지시서 MES 통합 Phase 1~3 완료 + 프로덕션 배포
+> **직전 세션 결과 (2026-05-26)**: GitHub Issues #197~#216 — 20건 일괄 수정 (entity_id 12테이블, 비원자성 5건, UNIQUE 분리, 소프트삭제, 레이스컨디션)
 
 ---
 
@@ -40,7 +40,22 @@
 
 ---
 
-## 🟢 최근 완료 (2026-05-25)
+## 🟢 최근 완료 (2026-05-26)
+
+### GitHub Issues #197~#216 일괄 수정 (2026-05-26)
+- **20건 close** (19건 코드 수정 + 1건 법인공용 결정)
+- **entity_id 누락 12테이블**: attendance, order_ai_files, ai_analysis_requests, quotation_items, kakao_send_logs, auto_process_jobs, billing_groups, loan_rate_history, loan_payments, price_lists, insurance_reports, bank_match_rules UNIQUE
+- **비원자성 5건 → db.batch()**: printSystem 소재삭제, bom MRP N+1, 주문 취소/복원, bank apply(createPayment 리팩터링)
+- **UNIQUE 제약 entity 분리**: orders/cards 테이블 재생성 (인라인 UNIQUE → 복합 인덱스)
+- **직원 소프트 삭제**: 하드 DELETE → is_deleted/deleted_at (급여/근태 이력 보존)
+- **견적→수주 레이스컨디션**: 낙관적 잠금 (updated_at 스냅샷 비교, 409 반환)
+- **purchaseRequests entity 필터**: GET / + GET /stats에 entityFilter 적용
+- **client_code 채번**: SELECT MAX → getNextSeqNumber 패턴
+- 마이그레이션 0261~0263 생성, typecheck + build 통과
+
+---
+
+## 🟢 이전 완료 (2026-05-25)
 
 ### 카드 상세 페이지 — 작업지시서 통합 뷰 (2026-05-26)
 - PrintVis Advanced Case Card 모델 벤치마크 → B+C 하이브리드 설계

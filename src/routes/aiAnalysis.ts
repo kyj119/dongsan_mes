@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
+import { getEntityId } from '../utils/entityFilter'
 
 
 const aiAnalysisRouter = new Hono<HonoEnv>()
@@ -21,9 +22,9 @@ aiAnalysisRouter.post('/', async (c) => {
 
     // 초기 status = 'uploading' (청크 업로드 완료 후 브라우저가 'pending'으로 변경)
     const result = await c.env.DB.prepare(
-      `INSERT INTO ai_analysis_requests (file_path, status) VALUES (?, 'uploading')
+      `INSERT INTO ai_analysis_requests (file_path, status, entity_id) VALUES (?, 'uploading', ?)
        RETURNING id, file_path, status, created_at`
-    ).bind(file_path).first()
+    ).bind(file_path, getEntityId(c)).first()
 
     return c.json({ success: true, data: result })
   } catch (error) {
@@ -60,10 +61,10 @@ aiAnalysisRouter.post('/batch-test', async (c) => {
     for (const fp of file_paths) {
       try {
         const result = await c.env.DB.prepare(
-          `INSERT INTO ai_analysis_requests (file_path, status)
-           VALUES (?, 'pending')
+          `INSERT INTO ai_analysis_requests (file_path, status, entity_id)
+           VALUES (?, 'pending', ?)
            RETURNING id, file_path, status, created_at`
-        ).bind(fp).first<{ id: number; file_path: string; status: string; created_at: string }>()
+        ).bind(fp, getEntityId(c)).first<{ id: number; file_path: string; status: string; created_at: string }>()
         if (result) created.push({ ...result, batch_tag: batchTag })
       } catch (err) {
         errors.push(`${fp}: ${err}`)
@@ -144,9 +145,9 @@ aiAnalysisRouter.post('/upload', async (c) => {
 
     // 분석 요청 생성
     const result = await c.env.DB.prepare(
-      `INSERT INTO ai_analysis_requests (file_path, status) VALUES (?, 'pending')
+      `INSERT INTO ai_analysis_requests (file_path, status, entity_id) VALUES (?, 'pending', ?)
        RETURNING id, file_path, status, created_at`
-    ).bind(file.name).first<{ id: number; file_path: string; status: string; created_at: string }>()
+    ).bind(file.name, getEntityId(c)).first<{ id: number; file_path: string; status: string; created_at: string }>()
 
     const analysisId = result!.id
 

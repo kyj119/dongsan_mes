@@ -963,11 +963,12 @@ cardsLifecycleRouter.post('/generate/:orderId', async (c) => {
     const today = new Date()
     const dateStr = today.toISOString().split('T')[0].replace(/-/g, '')
 
-    // MAX 기반 카드 번호 시작점 조회
+    // MAX 기반 카드 번호 시작점 조회 (entity별 분리)
+    const cardEntityId = getEntityId(c) || 1
     const cardSeqRow = await c.env.DB.prepare(`
       SELECT COALESCE(MAX(CAST(SUBSTR(card_number, ${`CARD-${dateStr}-`.length + 1}) AS INTEGER)), 0) as max_seq
-      FROM cards WHERE card_number LIKE ?
-    `).bind(`CARD-${dateStr}-%`).first<{ max_seq: number }>()
+      FROM cards WHERE card_number LIKE ? AND requesting_entity_id = ?
+    `).bind(`CARD-${dateStr}-%`, cardEntityId).first<{ max_seq: number }>()
 
     let cardCount = cardSeqRow?.max_seq ?? 0
     const createdCards = []

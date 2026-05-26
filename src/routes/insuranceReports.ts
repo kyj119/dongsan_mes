@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
+import { getEntityId, entityFilter } from '../utils/entityFilter'
 
 const insuranceReportsRouter = new Hono<HonoEnv>()
 
@@ -16,8 +17,9 @@ insuranceReportsRouter.get('/', async (c) => {
     const year = Number(c.req.query('year') || new Date().getFullYear())
     const month = c.req.query('month')
 
-    let sql = `SELECT id, year, month, report_type, status, employee_count, total_national_pension, total_health_insurance, total_long_term_care, total_employment_insurance, total_industrial_accident, employer_national_pension, employer_health_insurance, employer_long_term_care, employer_employment_insurance, grand_total_employee, grand_total_employer, grand_total, submitted_at, confirmed_by, confirmed_at, created_at, updated_at FROM insurance_reports WHERE year = ?`
-    const params: any[] = [year]
+    const ef = entityFilter(c, '')
+    let sql = `SELECT id, year, month, report_type, status, employee_count, total_national_pension, total_health_insurance, total_long_term_care, total_employment_insurance, total_industrial_accident, employer_national_pension, employer_health_insurance, employer_long_term_care, employer_employment_insurance, grand_total_employee, grand_total_employer, grand_total, submitted_at, confirmed_by, confirmed_at, created_at, updated_at FROM insurance_reports WHERE year = ?${ef.clause}`
+    const params: any[] = [year, ...ef.params]
 
     if (month) {
       sql += ` AND month = ?`
@@ -151,14 +153,14 @@ insuranceReportsRouter.post('/generate', async (c) => {
         employer_national_pension, employer_health_insurance, employer_long_term_care,
         employer_employment_insurance,
         grand_total_employee, grand_total_employer, grand_total,
-        created_at, updated_at
-      ) VALUES (?, ?, 'MONTHLY', 'DRAFT', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        created_at, updated_at, entity_id
+      ) VALUES (?, ?, 'MONTHLY', 'DRAFT', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).bind(
       year, month, rows.length,
       totals.np, totals.hi, totals.ltc, totals.ei, totals.eia,
       totals.enp, totals.ehi, totals.eltc, totals.eei,
       grandEmployee, grandEmployer, grandEmployee + grandEmployer,
-      now, now
+      now, now, getEntityId(c) || 1
     ).run()
 
     const reportId = Number(ins.meta?.last_row_id || 0)

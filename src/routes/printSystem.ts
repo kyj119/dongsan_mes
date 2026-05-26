@@ -848,20 +848,12 @@ printSystemRouter.delete('/media/:id', requireRole('ADMIN'), async (c) => {
   try {
     const id = parseInt(c.req.param('id'))
 
-    // 소재 비활성화
-    await c.env.DB.prepare(
-      "UPDATE print_media SET is_active = 0, updated_at = datetime('now') WHERE id = ?"
-    ).bind(id).run()
-
-    // 관련 items 비활성화
-    await c.env.DB.prepare(
-      "UPDATE items SET is_active = 0, updated_at = datetime('now') WHERE print_media_id = ?"
-    ).bind(id).run()
-
-    // print_method_media 정리
-    await c.env.DB.prepare(
-      'DELETE FROM print_method_media WHERE print_media_id = ?'
-    ).bind(id).run()
+    // 소재 비활성화 + 관련 items 비활성화 + 연결 정리 (원자적 처리)
+    await c.env.DB.batch([
+      c.env.DB.prepare("UPDATE print_media SET is_active = 0, updated_at = datetime('now') WHERE id = ?").bind(id),
+      c.env.DB.prepare("UPDATE items SET is_active = 0, updated_at = datetime('now') WHERE print_media_id = ?").bind(id),
+      c.env.DB.prepare('DELETE FROM print_method_media WHERE print_media_id = ?').bind(id),
+    ])
 
     return c.json({ success: true })
   } catch (error) {

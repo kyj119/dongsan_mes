@@ -185,9 +185,9 @@ cashFlowRouter.post('/loans', requireRole('ADMIN'), async (c) => {
     // 초기 금리 이력 기록
     if (body.current_rate) {
       await c.env.DB.prepare(`
-        INSERT INTO loan_rate_history (loan_id, effective_date, rate, changed_by, notes)
-        VALUES (?, ?, ?, ?, '초기 설정')
-      `).bind(result.meta.last_row_id, body.start_date, body.current_rate, user?.id || null).run()
+        INSERT INTO loan_rate_history (loan_id, effective_date, rate, changed_by, notes, entity_id)
+        VALUES (?, ?, ?, ?, '초기 설정', ?)
+      `).bind(result.meta.last_row_id, body.start_date, body.current_rate, user?.id || null, getEntityId(c) || 1).run()
     }
 
     return c.json({ success: true, data: { id: result.meta.last_row_id } })
@@ -248,9 +248,9 @@ cashFlowRouter.post('/loans/:id/rate-change', requireRole('ADMIN'), async (c) =>
 
     await c.env.DB.batch([
       c.env.DB.prepare(`
-        INSERT INTO loan_rate_history (loan_id, effective_date, rate, changed_by, notes)
-        VALUES (?, ?, ?, ?, ?)
-      `).bind(id, body.effective_date, body.rate, user?.id || null, body.notes || null),
+        INSERT INTO loan_rate_history (loan_id, effective_date, rate, changed_by, notes, entity_id)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `).bind(id, body.effective_date, body.rate, user?.id || null, body.notes || null, getEntityId(c) || 1),
       c.env.DB.prepare(
         'UPDATE loans SET current_rate = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
       ).bind(body.rate, id)
@@ -374,9 +374,9 @@ cashFlowRouter.post('/loans/:id/generate-schedule', requireRole('ADMIN'), async 
 
       stmts.push(
         c.env.DB.prepare(`
-          INSERT INTO loan_payments (loan_id, payment_number, scheduled_date, principal_amount, interest_amount, total_amount)
-          VALUES (?, ?, ?, ?, ?, ?)
-        `).bind(id, paymentNumber + i, dateStr, principal, interest, total)
+          INSERT INTO loan_payments (loan_id, payment_number, scheduled_date, principal_amount, interest_amount, total_amount, entity_id)
+          VALUES (?, ?, ?, ?, ?, ?, ?)
+        `).bind(id, paymentNumber + i, dateStr, principal, interest, total, getEntityId(c) || 1)
       )
 
       balance -= principal

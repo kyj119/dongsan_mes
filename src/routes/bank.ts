@@ -6,7 +6,7 @@
 import { Hono } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
-import { createPayment } from '../lib/payments'
+import { createPayment, validatePayment, preparePaymentStatements } from '../lib/payments'
 import { entityFilter, getEntityId } from '../utils/entityFilter'
 
 const bankRouter = new Hono<HonoEnv>()
@@ -545,11 +545,11 @@ bankRouter.post('/match-rules', requireRole('ADMIN'), async (c) => {
       return c.json({ success: false, error: '거래처를 찾을 수 없습니다' }, 404)
     }
 
-    // INSERT OR REPLACE + match_count 증가
+    // INSERT OR REPLACE + match_count 증가 (entity_id별 UNIQUE)
     const res = await c.env.DB.prepare(`
       INSERT INTO bank_match_rules (counterpart_name, matched_client_id, created_by, match_count, entity_id)
       VALUES (?, ?, ?, 1, ?)
-      ON CONFLICT(counterpart_name) DO UPDATE SET
+      ON CONFLICT(entity_id, counterpart_name) DO UPDATE SET
         matched_client_id = excluded.matched_client_id,
         match_count = match_count + 1,
         last_used_at = CURRENT_TIMESTAMP
@@ -892,18 +892,20 @@ bankRouter.post('/transactions/:id/apply', requireRole('ADMIN'), async (c) => {
 
     const defaultNotes = '[은행연동] ' + [tx.counterpart_name, tx.description].filter(Boolean).join(' ')
 
-    // createPayment 공유 함수로 입금 생성
-    let payResult: { payment_id: number; new_balance: number }
+    // #216: 읽기(검증) + 쓰기(batch) 분리로 원자성 보장
+    const paymentData = {
+      client_id: clientId,
+      payment_date: payDate,
+      amount: parseFloat(String(tx.amount)),
+      payment_method: body.payment_method || '계좌이체',
+      reference_number: String(tx.id),
+      notes: body.notes || defaultNotes,
+      created_by: user?.id ?? 1,
+    }
+
+    let validated: { newBalance: number }
     try {
-      payResult = await createPayment(c.env.DB, {
-        client_id: clientId,
-        payment_date: payDate,
-        amount: parseFloat(String(tx.amount)),
-        payment_method: body.payment_method || '계좌이체',
-        reference_number: String(tx.id),
-        notes: body.notes || defaultNotes,
-        created_by: user?.id ?? 1,
-      })
+      validated = await validatePayment(c.env.DB, paymentData)
     } catch (err) {
       if (err instanceof Error && err.message.startsWith('Client not found')) {
         return c.json({ success: false, error: '매칭된 거래처를 찾을 수 없습니다' }, 404)
@@ -911,21 +913,32 @@ bankRouter.post('/transactions/:id/apply', requireRole('ADMIN'), async (c) => {
       throw err
     }
 
-    // match_status → APPLIED
-    await c.env.DB.prepare(`
-      UPDATE bank_transactions
-      SET match_status = 'APPLIED',
-          matched_payment_id = ?,
-          matched_by = ?,
-          matched_at = CURRENT_TIMESTAMP
-      WHERE id = ?
-    `).bind(payResult.payment_id, user?.id ?? 1, id).run()
+    // 입금 INSERT + 잔액 차감 + 거래내역 APPLIED를 단일 batch로 원자적 처리
+    const payStmts = preparePaymentStatements(c.env.DB, paymentData, validated.newBalance)
+    payStmts.push(
+      c.env.DB.prepare(`
+        UPDATE bank_transactions
+        SET match_status = 'APPLIED',
+            matched_by = ?,
+            matched_at = CURRENT_TIMESTAMP
+        WHERE id = ? AND match_status != 'APPLIED'
+      `).bind(user?.id ?? 1, id)
+    )
+    const batchResults = await c.env.DB.batch(payStmts)
+
+    // 첫 번째 결과에서 payment_id 추출
+    const paymentId = batchResults[0].meta.last_row_id
+
+    // matched_payment_id는 payment_id를 알아야 하므로 후속 업데이트
+    await c.env.DB.prepare(
+      'UPDATE bank_transactions SET matched_payment_id = ? WHERE id = ?'
+    ).bind(paymentId, id).run()
 
     return c.json({
       success: true,
       data: {
-        payment_id: payResult.payment_id,
-        new_balance: payResult.new_balance,
+        payment_id: paymentId,
+        new_balance: validated.newBalance,
       },
       message: '입금이 생성되었습니다'
     })

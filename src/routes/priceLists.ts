@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
+import { getEntityId, entityFilter } from '../utils/entityFilter'
 
 const priceListsRouter = new Hono<HonoEnv>()
 
@@ -9,13 +10,15 @@ priceListsRouter.use('/*', authMiddleware)
 // GET / — 단가표 목록 (배정된 거래처 수 포함)
 priceListsRouter.get('/', async (c) => {
   try {
+    const ef = entityFilter(c, 'pl')
     const { results } = await c.env.DB.prepare(`
       SELECT pl.*, COUNT(c.id) as client_count
       FROM price_lists pl
       LEFT JOIN clients c ON c.price_list_id = pl.id AND c.is_active = 1
+      WHERE 1=1${ef.clause}
       GROUP BY pl.id
       ORDER BY pl.is_default DESC, pl.name
-    `).all()
+    `).bind(...ef.params).all()
 
     return c.json({ price_lists: results })
   } catch (error) {
@@ -41,9 +44,9 @@ priceListsRouter.post('/', requireRole('ADMIN', 'MANAGER'), async (c) => {
     }
 
     const result = await c.env.DB.prepare(`
-      INSERT INTO price_lists (name, adjustment_percent, description)
-      VALUES (?, ?, ?)
-    `).bind(name, adjustment_percent, description ?? null).run()
+      INSERT INTO price_lists (name, adjustment_percent, description, entity_id)
+      VALUES (?, ?, ?, ?)
+    `).bind(name, adjustment_percent, description ?? null, getEntityId(c) || 1).run()
 
     return c.json({
       success: true,

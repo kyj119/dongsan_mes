@@ -57,7 +57,7 @@ hrRouter.get('/employees', async (c) => {
       FROM employees e
       LEFT JOIN users u ON e.user_id = u.id
       LEFT JOIN entities ent ON ent.id = e.entity_id
-      WHERE 1=1
+      WHERE e.is_deleted = 0
     `
     const params: any[] = []
     const ef = entityFilter(c, 'e')
@@ -91,7 +91,7 @@ hrRouter.get('/employees', async (c) => {
     const { results } = await c.env.DB.prepare(query).bind(...params).all()
 
     // Count total
-    let countQuery = `SELECT COUNT(*) as total FROM employees WHERE 1=1`
+    let countQuery = `SELECT COUNT(*) as total FROM employees WHERE is_deleted = 0`
     const countParams: any[] = []
     const efCount = entityFilter(c)
     countQuery += efCount.clause
@@ -691,45 +691,20 @@ hrRouter.delete('/employees/:id', async (c) => {
       return c.json({ success: false, error: '유효하지 않은 직원 ID입니다.' }, 400)
     }
 
-    const emp = await c.env.DB.prepare(`SELECT id, name, employee_code FROM employees WHERE id = ?`).bind(id).first<any>()
+    const emp = await c.env.DB.prepare(`SELECT id, name, employee_code, is_deleted FROM employees WHERE id = ?`).bind(id).first<any>()
     if (!emp) {
       return c.json({ success: false, error: '직원을 찾을 수 없습니다.' }, 404)
     }
-
-    // 자식 테이블 정리 + 본 테이블 삭제를 db.batch()로 원자적 처리
-    const CHILD_TABLES = [
-      'attendance', 'payroll', 'payroll_records', 'payslips',
-      'leave_balances', 'leave_requests', 'leaves',
-      'caps_attendance_raw', 'caps_employee_mapping',
-      'work_assignments', 'production_logs', 'production_issues',
-      'employee_documents', 'employee_history', 'labor_contracts',
-    ]
-
-    // 존재하는 테이블만 필터링 (마이그레이션 미실행 환경 대응)
-    const existingTables: string[] = []
-    for (const table of CHILD_TABLES) {
-      const check = await c.env.DB.prepare(
-        `SELECT name FROM sqlite_master WHERE type='table' AND name=?`
-      ).bind(table).first<{ name: string }>()
-      if (check) existingTables.push(table)
+    if (emp.is_deleted) {
+      return c.json({ success: false, error: '이미 삭제된 직원입니다.' }, 400)
     }
 
-    const stmts = [
-      ...existingTables.map(table =>
-        c.env.DB.prepare(`DELETE FROM ${table} WHERE employee_id = ?`).bind(id)
-      ),
-      c.env.DB.prepare(`DELETE FROM employees WHERE id = ?`).bind(id),
-    ]
-    const batchResults = await c.env.DB.batch(stmts)
-
-    // 정리 결과 매핑
-    const cleanupResults: Record<string, number | string> = {}
-    existingTables.forEach((table, i) => {
-      cleanupResults[table] = batchResults[i]?.meta?.changes ?? 0
-    })
-    for (const table of CHILD_TABLES) {
-      if (!existingTables.includes(table)) cleanupResults[table] = 'skipped'
-    }
+    // 소프트 삭제: 자식 테이블은 유지하고 직원만 비활성화 (급여/근태 이력 보존)
+    await c.env.DB.prepare(`
+      UPDATE employees
+      SET is_deleted = 1, deleted_at = CURRENT_TIMESTAMP, deleted_by = ?, updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `).bind(user?.id || null, id).run()
 
     return c.json({
       success: true,
@@ -737,7 +712,7 @@ hrRouter.delete('/employees/:id', async (c) => {
         deleted_id: id,
         deleted_name: emp.name,
         deleted_code: emp.employee_code,
-        cleanup: cleanupResults,
+        soft_deleted: true,
       },
     })
   } catch (error: any) {
@@ -841,7 +816,7 @@ hrRouter.get('/stats', async (c) => {
 
     // Total employees
     const { results: totalResults } = await c.env.DB.prepare(`
-      SELECT COUNT(*) as total FROM employees WHERE status = 'ACTIVE'${ef.clause}
+      SELECT COUNT(*) as total FROM employees WHERE status = 'ACTIVE' AND is_deleted = 0${ef.clause}
     `).bind(...ef.params).all<{ total: number }>()
 
     // Department breakdown
@@ -850,7 +825,7 @@ hrRouter.get('/stats', async (c) => {
         department,
         COUNT(*) as count
       FROM employees
-      WHERE status = 'ACTIVE'${ef.clause}
+      WHERE status = 'ACTIVE' AND is_deleted = 0${ef.clause}
       GROUP BY department
     `).bind(...ef.params).all()
 

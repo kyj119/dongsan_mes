@@ -40,6 +40,13 @@ prRouter.get('/', async (c) => {
     const params: any[] = []
     const whereClauses: string[] = []
 
+    // entity 필터 적용
+    const ef = entityFilter(c, 'pr')
+    if (ef.clause) {
+      whereClauses.push(ef.clause.replace(' AND ', ''))
+      params.push(...ef.params)
+    }
+
     if (user?.role === 'MANAGER') {
       whereClauses.push('pr.requester_id = ?')
       params.push(user.id)
@@ -82,6 +89,12 @@ prRouter.get('/', async (c) => {
     `
     const countParams: any[] = []
     const countWhereClauses: string[] = []
+
+    // entity 필터 적용
+    if (ef.clause) {
+      countWhereClauses.push(ef.clause.replace(' AND ', ''))
+      countParams.push(...ef.params)
+    }
 
     if (user?.role === 'MANAGER') {
       countWhereClauses.push('pr.requester_id = ?')
@@ -139,9 +152,21 @@ prRouter.get('/stats', async (c) => {
     const user = c.get('user')
     let query = `SELECT status, COUNT(*) as count FROM purchase_requests`
     const params: any[] = []
+    const conditions: string[] = []
+
+    // entity 필터 적용
+    const ef = entityFilter(c, '')
+    if (ef.clause) {
+      conditions.push(ef.clause.replace(' AND ', ''))
+      params.push(...ef.params)
+    }
+
     if (user?.role === 'MANAGER') {
-      query += ' WHERE requester_id = ?'
+      conditions.push('requester_id = ?')
       params.push(user.id)
+    }
+    if (conditions.length > 0) {
+      query += ' WHERE ' + conditions.join(' AND ')
     }
     query += ' GROUP BY status'
 

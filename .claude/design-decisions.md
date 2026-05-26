@@ -62,3 +62,8 @@
 | AP | 재고평가 entity 분리 + 단가 경고 | Option C: entity 필터 + /price-alerts (법인 간 20%+ 단가 차이 경고) |
 | AQ | HOLD 해제 work_records 복구 | HOLD→PRINTING/PRINT_DONE 전환 시 PAUSED→IN_PROGRESS 자동 복구 |
 | AR | N+1 집계 쿼리 통합 | aiInsights 거래처별 루프→단일 GROUP BY, cardExpenses 자동분류→batch |
+| AS | orders/cards UNIQUE entity 분리 | 인라인 UNIQUE 제거 불가→테이블 재생성 (0262), 복합 UNIQUE(entity_id, order_number) |
+| AT | 직원 소프트 삭제 | is_deleted+deleted_at+deleted_by, 자식 테이블 유지, 조회 WHERE is_deleted=0 |
+| AU | createPayment 읽기/쓰기 분리 | validatePayment(읽기) + preparePaymentStatements(쓰기) → 외부 batch 포함 가능 |
+| AV | 견적→수주 낙관적 잠금 | updated_at 스냅샷 비교, 변환 중 수정 시 409 Conflict 반환 |
+| AW | cash_receipt 취소 시 역산 불필요 | 현재 발행 시 balance/journal 미사용, 향후 회계 연동 시 재검토 |

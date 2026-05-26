@@ -285,8 +285,8 @@ quotationsRouter.post('/', async (c) => {
           quantity, unit, unit_price, amount, content, post_processing,
           finishing, pricing_method, sort_order, ai_group_index,
           media_subcategory_name, print_method_id, print_method_name,
-          print_media_id, print_media_name
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          print_media_id, print_media_name, entity_id
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).bind(
         quotationId, item.item_id || null, item.item_name || 'Unknown',
         w, h, item.scale_factor || 1,
@@ -297,7 +297,8 @@ quotationsRouter.post('/', async (c) => {
         item.ai_group_index != null ? item.ai_group_index : null,
         item.media_subcategory_name || null,
         item.print_method_id || null, item.print_method_name || null,
-        item.print_media_id || null, item.print_media_name || null
+        item.print_media_id || null, item.print_media_name || null,
+        getEntityId(c) || 1
       ).run()
 
       if (item.client_group_id) {
@@ -315,15 +316,16 @@ quotationsRouter.post('/', async (c) => {
         INSERT INTO quotation_items (
           quotation_id, item_name, width, height, scale_factor,
           quantity, unit, unit_price, amount, content,
-          parent_id, sort_order, ai_group_index
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?, ?, ?)
+          parent_id, sort_order, ai_group_index, entity_id
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?, ?, ?, ?)
       `).bind(
         quotationId, item.item_name || '',
         w, h, item.scale_factor || 1,
         item.quantity || 1, item.unit || 'EA',
         item.content || null, parentDbId,
         parentCount + i,
-        item.ai_group_index != null ? item.ai_group_index : null
+        item.ai_group_index != null ? item.ai_group_index : null,
+        getEntityId(c) || 1
       ).run()
     }
 
@@ -426,15 +428,16 @@ quotationsRouter.put('/:id', async (c) => {
         INSERT INTO quotation_items (
           quotation_id, item_id, item_name, width, height, scale_factor,
           quantity, unit, unit_price, amount, content, post_processing,
-          finishing, pricing_method, sort_order
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          finishing, pricing_method, sort_order, entity_id
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).bind(
         Number(id), item.item_id || null, item.item_name || 'Unknown',
         w, h, item.scale_factor || 1,
         item.quantity || 1, item.unit || 'EA',
         item.unit_price || 0, amount,
         item.content || null, item.post_processing || null,
-        item.finishing || null, pricingMethod, i
+        item.finishing || null, pricingMethod, i,
+        getEntityId(c) || 1
       ))
       parentClientGroupIds.push(item.client_group_id || null)
     }
@@ -460,13 +463,14 @@ quotationsRouter.put('/:id', async (c) => {
         INSERT INTO quotation_items (
           quotation_id, item_name, width, height, scale_factor,
           quantity, unit, unit_price, amount, content,
-          parent_id, sort_order
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?, ?)
+          parent_id, sort_order, entity_id
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?, ?, ?)
       `).bind(
         Number(id), item.item_name || '',
         item.width_mm || item.width || 0, item.height_mm || item.height || 0,
         item.scale_factor || 1, item.quantity || 1, item.unit || 'EA',
-        item.content || null, parentDbId, parentCount + i
+        item.content || null, parentDbId, parentCount + i,
+        getEntityId(c) || 1
       ))
     }
     if (childStmts.length > 0) await c.env.DB.batch(childStmts)
@@ -556,10 +560,24 @@ quotationsRouter.post('/:id/convert-to-order', requireRole('ADMIN', 'MANAGER'), 
       return c.json({ success: false, error: '납품일이 설정된 견적서만 주문으로 전환할 수 있습니다.' }, 400)
     }
 
+    // #209: 낙관적 잠금 — 변환 직전 updated_at 스냅샷 저장
+    const originalUpdatedAt = quotation.updated_at
+
     // 주문번호 생성
     const today = new Date()
     const dateStr = today.toISOString().split('T')[0].replace(/-/g, '')
-    const orderNumber = await getNextSeqNumber(c.env.DB, 'orders', 'order_number', `${dateStr}-`)
+    const orderNumber = await getNextSeqNumber(c.env.DB, 'orders', 'order_number', `${dateStr}-`, 3, quotation.entity_id || 1)
+
+    // #209: 낙관적 잠금 — 변환 중 견적서 수정 여부 확인
+    const current = await c.env.DB.prepare(
+      'SELECT updated_at FROM quotations WHERE id = ?'
+    ).bind(id).first<{ updated_at: string }>()
+    if (current && current.updated_at !== originalUpdatedAt) {
+      return c.json({
+        success: false,
+        error: '견적서가 다른 사용자에 의해 수정되었습니다. 페이지를 새로고침 후 다시 시도해주세요.'
+      }, 409)
+    }
 
     // 주문 생성 — quotation의 모든 필드 snapshot
     const orderResult = await c.env.DB.prepare(`
