@@ -47,7 +47,14 @@ async function loadSettings() {
       ['tax_provider', 'tax_provider_linked_id', 'tax_default_email',
        'email_from_name', 'email_from_address'].forEach(function(key) {
         var el = document.getElementById('s_' + key);
-        if (el && data[key]) el.value = data[key];
+        if (el && data[key]) {
+          // tax_provider는 DB에 popbill로 남아있어도 바로빌로 표시
+          if (key === 'tax_provider') {
+            el.value = '바로빌';
+          } else {
+            el.value = data[key];
+          }
+        }
       });
       CHECKBOX_KEYS.forEach(function(key) {
         var el = document.getElementById('s_' + key);
@@ -201,9 +208,9 @@ function saveEmailSettings() {
   saveSectionSettings(EMAIL_KEYS, EMAIL_CHECKBOX_KEYS, 'saveEmailBtn', 'emailSaveMsg');
 }
 
-// ── 바로빌/팝빌 연결 테스트 ──
-async function testPopbillConnection() {
-  var btn = document.getElementById('testPopbillBtn');
+// ── 바로빌 연결 테스트 ──
+async function testBarobillConnection() {
+  var btn = document.getElementById('testBarobillBtn');
   var msg = document.getElementById('taxSaveMsg');
   btn.disabled = true;
   btn.textContent = '연결 중...';
@@ -409,10 +416,10 @@ async function saveMsgSettings() {
   }
 }
 
-async function testMsgPopbillConnection() {
-  var iconEl = document.getElementById('msgPopbillIcon');
-  var textEl = document.getElementById('msgPopbillText');
-  var detailEl = document.getElementById('msgPopbillDetail');
+async function testMsgBarobillConnection() {
+  var iconEl = document.getElementById('msgBarobillIcon');
+  var textEl = document.getElementById('msgBarobillText');
+  var detailEl = document.getElementById('msgBarobillDetail');
   if (iconEl) iconEl.textContent = '⏳';
   if (textEl) textEl.textContent = '연결 확인 중...';
 

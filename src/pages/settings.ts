@@ -37,7 +37,7 @@ function switchSettingsTab(tab) {
   if (tab === 'messages' && typeof loadMsgSettings === 'function' && !window.__msgTabInitialized) {
     window.__msgTabInitialized = true;
     loadMsgSettings();
-    testMsgPopbillConnection();
+    testMsgBarobillConnection();
   }
 }
 
@@ -208,7 +208,7 @@ ${capsSettingsScript}
               </div>
             </div>
             <div class="mt-6 flex items-center justify-between">
-              <button onclick="testPopbillConnection()" id="testPopbillBtn" class="px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">연결 테스트</button>
+              <button onclick="testBarobillConnection()" id="testBarobillBtn" class="px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">연결 테스트</button>
               <button onclick="saveTaxSettings()" id="saveTaxBtn" class="ds-btn ds-btn-primary">저장</button>
             </div>
             <div id="taxSaveMsg" class="mt-3 text-center text-sm hidden"></div>
@@ -516,12 +516,12 @@ ${capsSettingsScript}
             <h3 class="text-lg font-bold text-gray-800 mb-4"><i class="fas fa-plug mr-2 text-blue-500"></i>바로빌 연동 상태</h3>
             <div class="space-y-3">
               <div class="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
-                <span id="msgPopbillIcon" class="text-lg">⏳</span>
+                <span id="msgBarobillIcon" class="text-lg">⏳</span>
                 <div class="flex-1">
-                  <div class="text-sm font-medium" id="msgPopbillText">확인 중...</div>
-                  <div class="text-xs text-gray-400" id="msgPopbillDetail"></div>
+                  <div class="text-sm font-medium" id="msgBarobillText">확인 중...</div>
+                  <div class="text-xs text-gray-400" id="msgBarobillDetail"></div>
                 </div>
-                <button onclick="testMsgPopbillConnection()" class="px-3 py-1.5 border border-gray-300 text-gray-700 bg-white rounded text-xs hover:bg-gray-50"><i class="fas fa-sync-alt mr-1"></i>연결 확인</button>
+                <button onclick="testMsgBarobillConnection()" class="px-3 py-1.5 border border-gray-300 text-gray-700 bg-white rounded text-xs hover:bg-gray-50"><i class="fas fa-sync-alt mr-1"></i>연결 확인</button>
               </div>
               <div class="grid grid-cols-3 gap-3 text-center">
                 <div class="p-3 bg-gray-50 rounded-lg">

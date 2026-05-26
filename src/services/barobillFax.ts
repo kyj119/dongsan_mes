@@ -1,6 +1,6 @@
 /**
  * 바로빌 팩스 발송 서비스
- * 팝빌 faxProvider.ts 대체
+ * (구 팝빌 faxProvider.ts 대체)
  *
  * 바로빌 팩스는 FTP 방식(SendFaxFromFTP)을 사용
  * base64 PDF → 바로빌 FTP 업로드 후 발송
