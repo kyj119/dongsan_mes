@@ -223,7 +223,13 @@ app.use('/api/*', cors({
 // 보안 헤더 — Clickjacking, MIME sniffing, Referrer 노출 방지
 app.use('*', async (c, next) => {
   await next()
-  c.header('X-Frame-Options', 'DENY')
+  // 명세서/견적서 페이지는 같은 도메인 iframe 허용 (openInvoicePanel)
+  const path = new URL(c.req.url).pathname
+  if (path.startsWith('/invoice/') || path.startsWith('/quotation/')) {
+    c.header('X-Frame-Options', 'SAMEORIGIN')
+  } else {
+    c.header('X-Frame-Options', 'DENY')
+  }
   c.header('X-Content-Type-Options', 'nosniff')
   c.header('Referrer-Policy', 'strict-origin-when-cross-origin')
 })
