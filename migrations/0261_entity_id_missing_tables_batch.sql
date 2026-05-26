@@ -3,15 +3,8 @@
 -- Issues: #198, #199, #200, #201, #202, #203, #208, #212, #214
 -- ============================================================================
 
--- 1. attendance — 0240에서 ALTER TABLE이 누락되어 entity_id 컬럼 자체가 없음
-ALTER TABLE attendance ADD COLUMN entity_id INTEGER DEFAULT 1;
-UPDATE attendance
-SET entity_id = (
-  SELECT e.entity_id FROM employees e WHERE e.id = attendance.employee_id
-)
-WHERE EXISTS (
-  SELECT 1 FROM employees e WHERE e.id = attendance.employee_id
-);
+-- 1. attendance — 프로덕션에 이미 entity_id 존재 (0240에서 추가됨). 스킵.
+-- ALTER TABLE attendance ADD COLUMN entity_id INTEGER DEFAULT 1; -- 이미 존재
 
 -- 2. order_ai_files (#203/#208)
 ALTER TABLE order_ai_files ADD COLUMN entity_id INTEGER DEFAULT 1;
