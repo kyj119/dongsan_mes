@@ -194,3 +194,59 @@ GitHub Actions 시크릿을 용도별 분리:
 - 기준: 최근 3개월, 전체 거래처 평균 판매가
 - 원가(cost) 필드 프론트엔드 노출 금지
 - 이유: 거래처별 단가 차등이 없는 경우가 많고, 원가 노출은 보안 위험
+
+## AS. orders/cards UNIQUE entity 분리 (2026-05-26)
+
+SQLite `ALTER TABLE`로 UNIQUE 제약 변경 불가 → 테이블 재생성 패턴 (마이그레이션 0262).
+
+- **변경**: `UNIQUE(order_number)` → `UNIQUE(entity_id, order_number)`
+- **적용 대상**: orders, cards 테이블
+- **목적**: 법인별 주문/카드 번호 중복 허용 (entity 필터링 기반)
+- **마이그레이션 패턴**: CREATE TABLE new_orders AS SELECT * FROM orders; DROP TABLE orders; ALTER TABLE new_orders RENAME TO orders;
+
+## AT. 직원 소프트 삭제 (2026-05-26)
+
+직원 정보 완전 삭제 대신 소프트 삭제로 감사 추적 보존.
+
+- **스키마**: `is_deleted` (0/1), `deleted_at` (TIMESTAMP), `deleted_by` (user_id FK)
+- **자식 테이블**: 변경 없음 (payment_requests, work_records 등에서 참조 유지)
+- **조회**: 모든 SELECT에 `WHERE is_deleted=0` 추가 (공통 유틸 함수)
+- **이유**: 결재 이력, 작업기록 등 연관 데이터 보존 필요
+
+## AU. createPayment 읽기/쓰기 분리 (2026-05-26)
+
+결제 전표 생성 로직을 검증(읽기 전용)과 실행(쓰기)으로 명확히 분리.
+
+```ts
+// 읽기: 상태 검증, 조건 확인
+validatePayment(paymentRequest): ValidationError | null
+
+// 쓰기: 전표 생성, 잔액 업데이트
+preparePaymentStatements(paymentRequest): { creditJournal, debitJournal }
+
+// 호출부: 외부 batch() 포함 가능
+const statements = preparePaymentStatements(...);
+db.batch([...otherUpdates, ...statements])
+```
+
+- **이점**: 배치 트랜잭션 유연성 증대, 테스트 용이
+- **적용**: approval.ts, paymentRequests.ts 전 payment 관련 로직
+
+## AV. 견적→수주 낙관적 잠금 (2026-05-26)
+
+견적서 변환 중 동시 수정으로 인한 데이터 불일치 방지.
+
+- **스냅샷**: 변환 시작 시 `quotations.updated_at` 기록
+- **검증**: 변환 전 SELECT하여 `updated_at` 일치 확인
+- **충돌**: 불일치 시 409 Conflict 반환 (사용자가 새로고침 후 재시도)
+- **구현**: UPDATE WHERE updated_at = ? (Atomic UPDATE WHERE 패턴)
+- **이유**: 견적→수주 변환 후 주문 수정 불가 (immutable snapshot)
+
+## AW. cash_receipt 취소 시 역산 불필요 (2026-05-26)
+
+현재 시스템에서 영수증 발행 시 balance/journal을 사용하지 않으므로, 취소 시 역산 로직 불필요.
+
+- **현황**: `createCashReceipt` 시 db.updateAt(...)로 balance 변경 없음
+- **영수증 취소**: UPDATE는_deleted=1 처리만 수행
+- **향후**: 회계 연동 시 journal 역산 로직 재검토 필요
+- **근거**: 영수증은 현금 흐름 기록이며, A/R settlement와 독립적

@@ -2,14 +2,14 @@
 
 > 코드 수정 시 영향 범위를 빠르게 파악하기 위한 참조 문서.
 
-## 프로젝트 규모 (2026-04-15 기준)
+## 프로젝트 규모 (2026-05-26 기준)
 
 | 항목 | 수량 | 위치 |
 |------|------|------|
-| API 라우터 | 58개 top-level + 5개 서브파일 = 63개 | `src/routes/*.ts` + `src/routes/{ledger,orders}/*.ts` |
-| 페이지 | 82개 (일반 76 + 포털 6) | `src/pages/*.ts` + `src/pages/portal/*.ts` |
-| 스크립트 | 78개 | `src/scripts/*.js` |
-| DB 마이그레이션 | 127개 파일 (최신 0131) | `migrations/` |
+| API 라우터 | 83개 (top-level + 서브파일) | `src/routes/*.ts` + `src/routes/{ledger,orders,cards}/*.ts` |
+| 페이지 | 84개 (일반 78 + 포털 6) | `src/pages/*.ts` + `src/pages/portal/*.ts` |
+| 스크립트 | 87개 | `src/scripts/*.js` |
+| DB 마이그레이션 | 263개 파일 (최신 0263) | `migrations/` |
 | Seed 파일 | 9개 | 프로젝트 루트 `seed_*.sql` |
 | 외부 연동 | IllustratorAutomat(C#), LogWatcher(C#), EdgeAgent | 프로젝트 루트 |
 
