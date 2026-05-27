@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import type { Context } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
+import { entityFilter } from '../utils/entityFilter'
 import { BarobillSmsProvider } from '../services/barobillSms'
 import type { SMSMessage, ATSMessage } from '../services/barobillSms'
 export type { SMSMessage, ATSMessage }
@@ -374,13 +375,14 @@ kakaoRouter.post('/send-shipment', async (c) => {
     }
 
     // 출고 정보 조회
+    const sef = entityFilter(c, 'o')
     const shipment = await db.prepare(
       `SELECT s.*, o.order_number, c.client_name, c.mobile
        FROM shipments s
        LEFT JOIN orders o ON s.order_id = o.id
        LEFT JOIN clients c ON o.client_id = c.id
-       WHERE s.id = ?`
-    ).bind(shipmentId).first<ShipmentJoinRow>()
+       WHERE s.id = ?${sef.clause}`
+    ).bind(shipmentId, ...sef.params).first<ShipmentJoinRow>()
 
     if (!shipment) {
       return c.json({ success: false, error: '출고 정보를 찾을 수 없습니다.' }, 400)
@@ -482,12 +484,13 @@ kakaoRouter.post('/send-tax-invoice', async (c) => {
     }
 
     // 세금계산서 정보 조회
+    const tief = entityFilter(c, 'ti')
     const taxInvoice = await db.prepare(
       `SELECT ti.*, c.client_name, c.mobile
        FROM tax_invoices ti
        LEFT JOIN clients c ON ti.client_id = c.id
-       WHERE ti.id = ?`
-    ).bind(taxInvoiceId).first<TaxInvoiceJoinRow>()
+       WHERE ti.id = ?${tief.clause}`
+    ).bind(taxInvoiceId, ...tief.params).first<TaxInvoiceJoinRow>()
 
     if (!taxInvoice) {
       return c.json({ success: false, error: '세금계산서를 찾을 수 없습니다.' }, 400)

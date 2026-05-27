@@ -146,7 +146,7 @@ attendanceRouter.get('/', async (c) => {
         e.employee_code, e.name as employee_name, e.department
       FROM attendance a
       LEFT JOIN employees e ON a.employee_id = e.id
-      WHERE 1=1${efList.clause}
+      WHERE e.is_deleted = 0${efList.clause}
     `
     const params: any[] = [...efList.params]
     if (employee_id) { query += ` AND a.employee_id = ?`; params.push(employee_id) }

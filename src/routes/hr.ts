@@ -177,7 +177,7 @@ hrRouter.get('/attendance', async (c) => {
         e.department
       FROM attendance a
       LEFT JOIN employees e ON a.employee_id = e.id
-      WHERE 1=1
+      WHERE e.is_deleted = 0
     `
     const params: any[] = []
 
@@ -303,7 +303,7 @@ hrRouter.get('/payrolls', async (c) => {
         e.position
       FROM payroll p
       LEFT JOIN employees e ON p.employee_id = e.id
-      WHERE 1=1
+      WHERE e.is_deleted = 0
     `
     const params: any[] = []
 
@@ -359,7 +359,7 @@ hrRouter.get('/attendances', async (c) => {
         e.department
       FROM attendance a
       LEFT JOIN employees e ON a.employee_id = e.id
-      WHERE 1=1
+      WHERE e.is_deleted = 0
     `
     const params: any[] = []
 

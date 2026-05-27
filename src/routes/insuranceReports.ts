@@ -43,12 +43,13 @@ insuranceReportsRouter.get('/', async (c) => {
 insuranceReportsRouter.get('/annual-summary', async (c) => {
   try {
     const year = Number(c.req.query('year') || new Date().getFullYear())
+    const ef = entityFilter(c, '')
     const rows = await c.env.DB.prepare(
       `SELECT month, employee_count, grand_total_employee, grand_total_employer, grand_total, status
        FROM insurance_reports
-       WHERE year = ? AND report_type = 'MONTHLY'
+       WHERE year = ? AND report_type = 'MONTHLY'${ef.clause}
        ORDER BY month`
-    ).bind(year).all()
+    ).bind(year, ...ef.params).all()
     return c.json({ success: true, data: rows.results || [] })
   } catch (err: any) {
     console.error('Insurance reports annual-summary error:', err)

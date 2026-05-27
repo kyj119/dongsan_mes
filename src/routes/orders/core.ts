@@ -1491,7 +1491,7 @@ ordersCoreRouter.patch('/:id/status', requireRole('ADMIN', 'MANAGER'), async (c)
     }
 
     // Get current status
-    const order = await c.env.DB.prepare('SELECT status, client_id, final_amount, order_number FROM orders WHERE id = ?').bind(id).first<{ status: string; client_id: number; final_amount: number; order_number: string }>()
+    const order = await c.env.DB.prepare('SELECT status, client_id, final_amount, order_number, delivery_date FROM orders WHERE id = ?').bind(id).first<{ status: string; client_id: number; final_amount: number; order_number: string; delivery_date: string | null }>()
 
     if (!order) {
       return c.json({
@@ -1506,6 +1506,11 @@ ordersCoreRouter.patch('/:id/status', requireRole('ADMIN', 'MANAGER'), async (c)
         success: false,
         error: `상태 전이 불가: ${order.status} → ${status}`
       }, 400)
+    }
+
+    // #217: CONFIRMED 전환 시 납기일 필수 검증
+    if (status === 'CONFIRMED' && !order.delivery_date) {
+      return c.json({ success: false, error: '납기일이 설정되지 않은 주문은 확정할 수 없습니다.' }, 400)
     }
 
     // SHIPPED 전환 시 미완료 카드 체크

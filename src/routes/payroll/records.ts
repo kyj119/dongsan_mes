@@ -14,11 +14,11 @@ recordsRouter.get('/', async (c) => {
     const period = c.req.query('period') || ''
     const status = c.req.query('status') || ''
 
-    const clauses: string[] = []
+    const clauses: string[] = ['e.is_deleted = 0']
     const params: any[] = []
     if (period) { clauses.push('p.pay_period = ?'); params.push(period) }
     if (status) { clauses.push('p.status = ?'); params.push(status) }
-    const where = clauses.length ? 'WHERE ' + clauses.join(' AND ') : ''
+    const where = 'WHERE ' + clauses.join(' AND ')
 
     const rows = await c.env.DB.prepare(
       `SELECT p.*, e.name as employee_name, e.employee_code, e.department, e.position,

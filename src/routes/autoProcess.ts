@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
-import { getEntityId } from '../utils/entityFilter'
+import { getEntityId, entityFilter } from '../utils/entityFilter'
 
 const autoProcessRouter = new Hono<HonoEnv>()
 
@@ -186,14 +186,15 @@ autoProcessRouter.post('/start', async (c) => {
 // IllustratorAutomat 폴링: 대기 중인 작업 조회
 autoProcessRouter.get('/pending', async (c) => {
   try {
+    const ef = entityFilter(c, 'auto_process_jobs')
     const result = await c.env.DB.prepare(
       `SELECT id, order_id, order_item_id, source_path, product,
               scale_factor, ia_params, created_at
        FROM auto_process_jobs
-       WHERE status = 'pending'
+       WHERE status = 'pending'${ef.clause}
        ORDER BY created_at ASC
        LIMIT 10`
-    ).all()
+    ).bind(...ef.params).all()
 
     return c.json({ success: true, jobs: result.results || [] })
   } catch (error) {

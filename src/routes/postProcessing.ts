@@ -288,6 +288,9 @@ ppRouter.get('/stats', async (c) => {
     sinceDate.setMonth(sinceDate.getMonth() - months)
     const sinceDateStr = sinceDate.toISOString().slice(0, 10)
 
+    const { entityFilter: ef } = await import('../utils/entityFilter')
+    const oef = ef(c, 'o')
+
     // 월별 후가공 사용 건수 (최근 N개월)
     const { results: monthlyStats } = await c.env.DB.prepare(`
       SELECT
@@ -302,10 +305,10 @@ ppRouter.get('/stats', async (c) => {
       JOIN json_each(oi.post_processing) j
       WHERE oi.post_processing IS NOT NULL
         AND oi.post_processing != '[]'
-        AND o.order_date >= ?
+        AND o.order_date >= ?${oef.clause}
       GROUP BY month, pp_code
       ORDER BY month DESC, usage_count DESC
-    `).bind(sinceDateStr).all()
+    `).bind(sinceDateStr, ...oef.params).all()
 
     // 전체 PP별 누적 통계
     const { results: totalStats } = await c.env.DB.prepare(`
@@ -321,10 +324,10 @@ ppRouter.get('/stats', async (c) => {
       JOIN orders o ON oi.order_id = o.id
       JOIN json_each(oi.post_processing) j
       WHERE oi.post_processing IS NOT NULL
-        AND oi.post_processing != '[]'
+        AND oi.post_processing != '[]'${oef.clause}
       GROUP BY pp_code
       ORDER BY usage_count DESC
-    `).all()
+    `).bind(...oef.params).all()
 
     // 소분류별 PP 사용 빈도 (최근 N개월)
     const { results: subcatStats } = await c.env.DB.prepare(`
@@ -338,10 +341,10 @@ ppRouter.get('/stats', async (c) => {
       JOIN json_each(oi.post_processing) j
       WHERE oi.post_processing IS NOT NULL
         AND oi.post_processing != '[]'
-        AND o.order_date >= ?
+        AND o.order_date >= ?${oef.clause}
       GROUP BY subcategory, pp_code
       ORDER BY subcategory, usage_count DESC
-    `).bind(sinceDateStr).all()
+    `).bind(sinceDateStr, ...oef.params).all()
 
     return c.json({
       success: true,

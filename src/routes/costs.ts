@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
+import { entityFilter } from '../utils/entityFilter'
 import { recalculateOrderCosts } from '../utils/costCalculator'
 
 const costsRouter = new Hono<HonoEnv>()
@@ -99,9 +100,10 @@ costsRouter.post('/recalculate/:orderId', requireRole('ADMIN', 'MANAGER'), async
       return c.json({ success: false, error: '유효하지 않은 주문 ID입니다.' }, 400)
     }
 
+    const ef = entityFilter(c, 'orders')
     const order = await c.env.DB.prepare(
-      'SELECT id FROM orders WHERE id = ?'
-    ).bind(orderId).first()
+      `SELECT id FROM orders WHERE id = ?${ef.clause}`
+    ).bind(orderId, ...ef.params).first()
 
     if (!order) {
       return c.json({ success: false, error: '주문을 찾을 수 없습니다.' }, 404)

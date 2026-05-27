@@ -1,8 +1,10 @@
 import { Hono } from 'hono'
 import type { HonoEnv } from '../types/env'
+import { authMiddleware } from '../middleware/auth'
 import { entityFilter } from '../utils/entityFilter'
 
 const deliveryAnalyticsRouter = new Hono<HonoEnv>()
+deliveryAnalyticsRouter.use('/*', authMiddleware)
 
 // GET /export/csv - 납기분석 CSV 내보내기
 deliveryAnalyticsRouter.get('/export/csv', async (c) => {

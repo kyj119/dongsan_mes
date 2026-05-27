@@ -67,9 +67,10 @@ priceListsRouter.patch('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
     const id = c.req.param('id')
     const body = await c.req.json()
 
+    const ef = entityFilter(c, 'price_lists')
     const existing = await c.env.DB.prepare(
-      'SELECT id FROM price_lists WHERE id = ?'
-    ).bind(id).first()
+      `SELECT id FROM price_lists WHERE id = ?${ef.clause}`
+    ).bind(id, ...ef.params).first()
 
     if (!existing) {
       return c.json({ success: false, error: 'Price list not found' }, 404)
@@ -117,9 +118,10 @@ priceListsRouter.delete('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
   try {
     const id = c.req.param('id')
 
+    const efDel = entityFilter(c, 'price_lists')
     const existing = await c.env.DB.prepare(
-      'SELECT id, is_default FROM price_lists WHERE id = ?'
-    ).bind(id).first<{ id: number; is_default: number }>()
+      `SELECT id, is_default FROM price_lists WHERE id = ?${efDel.clause}`
+    ).bind(id, ...efDel.params).first<{ id: number; is_default: number }>()
 
     if (!existing) {
       return c.json({ success: false, error: 'Price list not found' }, 404)

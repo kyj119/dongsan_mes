@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
-import { getEntityId } from '../utils/entityFilter'
+import { getEntityId, entityFilter } from '../utils/entityFilter'
 
 
 const aiAnalysisRouter = new Hono<HonoEnv>()
@@ -254,10 +254,11 @@ aiAnalysisRouter.get('/:id/chunks', async (c) => {
 aiAnalysisRouter.get('/', async (c) => {
   try {
     const status = c.req.query('status') || 'pending'
+    const ef = entityFilter(c, 'ai_analysis_requests')
     const { results } = await c.env.DB.prepare(
       `SELECT id, file_path, status, error_message, retry_count, max_retries, last_error_at, created_at
-       FROM ai_analysis_requests WHERE status = ? ORDER BY created_at ASC LIMIT 10`
-    ).bind(status).all()
+       FROM ai_analysis_requests WHERE status = ?${ef.clause} ORDER BY created_at ASC LIMIT 10`
+    ).bind(status, ...ef.params).all()
 
     return c.json({ success: true, data: results })
   } catch (error) {
