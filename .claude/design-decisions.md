@@ -67,3 +67,5 @@
 | AU | createPayment 읽기/쓰기 분리 | validatePayment(읽기) + preparePaymentStatements(쓰기) → 외부 batch 포함 가능 |
 | AV | 견적→수주 낙관적 잠금 | updated_at 스냅샷 비교, 변환 중 수정 시 409 Conflict 반환 |
 | AW | cash_receipt 취소 시 역산 불필요 | 현재 발행 시 balance/journal 미사용, 향후 회계 연동 시 재검토 |
+| BA | entity 분리 전체 감사 (174 테이블) | docs/entity-separation-map.md, 86완료/0버그/28간접/42공유/18시스템. migration 0264로 14건 해소 |
+| BB | 카드 페이지 역할 분리 | 오퍼레이터=뷰어(board→detail), 관리자=칸반+KPI, 자동화 우선. 인쇄 유지 |

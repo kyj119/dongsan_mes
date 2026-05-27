@@ -1,6 +1,6 @@
 # PROJECT_STATUS.md — 프로젝트 현황판
 
-> **최종 업데이트**: 2026-05-26
+> **최종 업데이트**: 2026-05-27
 
 ---
 
@@ -14,7 +14,7 @@
 
 - (없음)
 
-> **직전 세션 결과 (2026-05-26)**: GitHub Issues #197~#216 — 20건 일괄 수정 (entity_id 12테이블, 비원자성 5건, UNIQUE 분리, 소프트삭제, 레이스컨디션)
+> **직전 세션 결과 (2026-05-27)**: Issues #217~#234 Phase 1~3 + MES 자동 스캔 — entity 분리 전체 감사(174테이블), entityFilter 누락 8건, entity_id 14테이블 추가, 데이터 정합성 6건, E2E 정리
 
 ---
 
@@ -40,7 +40,19 @@
 
 ---
 
-## 🟢 최근 완료 (2026-05-26)
+## 🟢 최근 완료 (2026-05-27)
+
+### 법인 분리 전체 감사 + Issues #217~#234 Phase 1~3 (2026-05-27)
+- **MES 자동 스캔**: 6개 영역(페이지·API·정적분석·데이터정합성·UI·보안) → Issues 6건 등록
+- **법인 분리 지도**: `docs/entity-separation-map.md` — 174테이블 전수 감사 (72완료/14버그/28간접/42공유/18시스템)
+- **Phase 1** (코드만 11건): entityFilter 누락 8건(postProcessing, kakao, costs, priceLists, insuranceReports, aiAnalysis, autoProcess), auth 누락 1건(deliveryAnalytics CRITICAL), soft-delete 필터 1건, validation 1건
+- **Phase 2** (마이그레이션 0264): entity_id 14테이블 추가 + 라우트 8파일 entityFilter 적용
+- **Phase 3** (데이터 정합성 6건): 출고 취소 복수 shipment 수정, 소프트삭제 batch, users.email UNIQUE(0265), payment_requests UNIQUE(0266), auto_process_jobs 고아 방지, E2E 데이터 정리(900건+)
+- 총 18건 close, 마이그레이션 0264~0266, 프로덕션 배포 3회
+
+---
+
+## 🟢 이전 완료 (2026-05-26)
 
 ### GitHub Issues #197~#216 일괄 수정 (2026-05-26)
 - **20건 close** (19건 코드 수정 + 1건 법인공용 결정)
