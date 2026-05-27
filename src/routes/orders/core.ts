@@ -1722,40 +1722,40 @@ ordersCoreRouter.delete('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
     const needsSoftDelete = CONFIRMED_AND_AFTER.includes(order.status)
 
     if (needsSoftDelete) {
-      // 소프트 삭제: 상태를 CANCELLED로 변경
-      await c.env.DB.prepare(`
-        UPDATE orders
-        SET status = 'CANCELLED',
-            updated_at = CURRENT_TIMESTAMP
-        WHERE id = ?
-      `).bind(id).run()
-
-      // 상태 변경 이력 기록
-      await c.env.DB.prepare(`
-        INSERT INTO order_status_history (order_id, from_status, to_status, changed_by, change_reason)
-        VALUES (?, ?, 'CANCELLED', ?, ?)
-      `).bind(id, order.status, user.id, '주문 삭제 요청으로 인한 취소').run()
-
-      // 카드 상태를 HOLD로 변경 (출고 완료 카드 제외)
-      await c.env.DB.prepare(`
-        UPDATE cards
-        SET status = 'HOLD',
-            hold_reason = '주문 삭제/취소',
-            hold_at = CURRENT_TIMESTAMP,
-            hold_by = ?
-        WHERE order_id = ? AND status != 'HOLD'
-          AND shipped_at IS NULL
-      `).bind(user.id, id).run()
+      // #219: 소프트 삭제 — 원자적 batch 처리
+      const softDeleteStmts = [
+        c.env.DB.prepare(`
+          UPDATE orders
+          SET status = 'CANCELLED',
+              updated_at = CURRENT_TIMESTAMP
+          WHERE id = ?
+        `).bind(id),
+        c.env.DB.prepare(`
+          INSERT INTO order_status_history (order_id, from_status, to_status, changed_by, change_reason)
+          VALUES (?, ?, 'CANCELLED', ?, ?)
+        `).bind(id, order.status, user.id, '주문 삭제 요청으로 인한 취소'),
+        c.env.DB.prepare(`
+          UPDATE cards
+          SET status = 'HOLD',
+              hold_reason = '주문 삭제/취소',
+              hold_at = CURRENT_TIMESTAMP,
+              hold_by = ?
+          WHERE order_id = ? AND status != 'HOLD'
+            AND shipped_at IS NULL
+        `).bind(user.id, id),
+      ]
 
       // BILLED 주문만 balance 차감 (미확정 주문은 balance에 미반영 상태)
       if (order.billing_status === 'BILLED' && order.final_amount && order.final_amount !== 0) {
-        await c.env.DB.prepare(`
+        softDeleteStmts.push(c.env.DB.prepare(`
           UPDATE clients
           SET balance = balance - ?,
               updated_at = CURRENT_TIMESTAMP
           WHERE id = ?
-        `).bind(order.billed_amount || order.final_amount, order.client_id).run()
+        `).bind(order.billed_amount || order.final_amount, order.client_id))
       }
+
+      await c.env.DB.batch(softDeleteStmts)
 
       return c.json({
         success: true,
@@ -1803,6 +1803,7 @@ ordersCoreRouter.delete('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
       c.env.DB.prepare('DELETE FROM order_items WHERE order_id = ?').bind(id),
       c.env.DB.prepare('DELETE FROM order_status_history WHERE order_id = ?').bind(id),
       c.env.DB.prepare('DELETE FROM tax_invoice_orders WHERE order_id = ?').bind(id),
+      c.env.DB.prepare('DELETE FROM auto_process_jobs WHERE order_id = ?').bind(id),
       c.env.DB.prepare('DELETE FROM orders WHERE id = ?').bind(id),
     ])
 

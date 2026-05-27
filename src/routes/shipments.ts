@@ -703,16 +703,29 @@ shipmentsRouter.patch('/:id/status', requireRole('ADMIN', 'MANAGER'), async (c) 
         ).bind(orderRow.order_id).first<{ status: string }>()
 
         if (orderInfo?.status === 'SHIPPED') {
-          const user = c.get('user')
-          // 3) 주문 상태 복원
-          stmts.push(c.env.DB.prepare(
-            `UPDATE orders SET status = 'PRINT_DONE', auto_complete_date = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?`
-          ).bind(orderRow.order_id))
-          // 4) 상태 이력 기록
-          stmts.push(c.env.DB.prepare(`
-            INSERT INTO order_status_history (order_id, from_status, to_status, changed_by, change_reason)
-            VALUES (?, 'SHIPPED', 'PRINT_DONE', ?, '출고 취소로 주문 상태 복원')
-          `).bind(orderRow.order_id, user?.id || 1))
+          // #218: 동일 주문에 다른 활성 출고가 남아있는지 확인
+          const otherShipped = await c.env.DB.prepare(
+            `SELECT COUNT(*) as cnt FROM shipments WHERE order_id = ? AND id != ? AND status = 'SHIPPED'`
+          ).bind(orderRow.order_id, id).first<{ cnt: number }>()
+
+          if (!otherShipped || otherShipped.cnt === 0) {
+            // 모든 출고 취소됨 → 주문 상태 복원
+            const user = c.get('user')
+            // 3) 주문 상태 복원
+            stmts.push(c.env.DB.prepare(
+              `UPDATE orders SET status = 'PRINT_DONE', auto_complete_date = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?`
+            ).bind(orderRow.order_id))
+            // 4) 상태 이력 기록
+            stmts.push(c.env.DB.prepare(`
+              INSERT INTO order_status_history (order_id, from_status, to_status, changed_by, change_reason)
+              VALUES (?, 'SHIPPED', 'PRINT_DONE', ?, '출고 취소로 주문 상태 복원')
+            `).bind(orderRow.order_id, user?.id || 1))
+          } else {
+            // 다른 출고가 아직 SHIPPED → auto_complete_date만 리셋
+            stmts.push(c.env.DB.prepare(
+              'UPDATE orders SET auto_complete_date = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
+            ).bind(orderRow.order_id))
+          }
         } else {
           // SHIPPED가 아닌 경우에도 auto_complete_date는 리셋
           stmts.push(c.env.DB.prepare(
