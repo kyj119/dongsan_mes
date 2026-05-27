@@ -7,6 +7,7 @@ import { Hono } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
 import { requirePagePermission } from '../middleware/permissions'
+import { entityFilter, getEntityId } from '../utils/entityFilter'
 
 // ---------- D1 row shapes ----------
 interface EmployeeBasicRow {
@@ -69,6 +70,7 @@ function calcMonthlyAccrualUpTo(hireDate: string, asOf: Date = new Date()): numb
 leavesRouter.get('/balances', requireRole('ADMIN', 'MANAGER'), async (c) => {
   try {
     const year = Number(c.req.query('year') || new Date().getFullYear())
+    const ef = entityFilter(c, 'lb')
     const { results } = await c.env.DB.prepare(`
       SELECT
         e.id as employee_id,
@@ -86,9 +88,9 @@ leavesRouter.get('/balances', requireRole('ADMIN', 'MANAGER'), async (c) => {
       FROM employees e
       LEFT JOIN leave_balances lb
         ON lb.employee_id = e.id AND lb.year = ? AND lb.leave_type = 'ANNUAL'
-      WHERE e.status = 'ACTIVE'
+      WHERE e.status = 'ACTIVE'${ef.clause}
       ORDER BY e.department, e.name
-    `).bind(year).all()
+    `).bind(year, ...ef.params).all()
     return c.json({ success: true, data: results, year })
   } catch (error: any) {
     console.error('leaves balances error:', error)
@@ -279,8 +281,10 @@ leavesRouter.post('/grant', requireRole('ADMIN'), async (c) => {
 leavesRouter.get('/requests', async (c) => {
   try {
     const { status, employee_id, from, to } = c.req.query()
+    const ef = entityFilter(c, 'lr')
     const clauses: string[] = []
     const params: any[] = []
+    if (ef.clause) { clauses.push(ef.clause.replace(/^ AND /, '')); params.push(...ef.params) }
     if (status) { clauses.push('lr.status = ?'); params.push(status) }
     if (employee_id) { clauses.push('lr.employee_id = ?'); params.push(Number(employee_id)) }
     if (from) { clauses.push('lr.start_date >= ?'); params.push(from) }
@@ -338,11 +342,11 @@ leavesRouter.post('/requests', async (c) => {
     }
 
     const result = await c.env.DB.prepare(`
-      INSERT INTO leave_requests (employee_id, leave_type, start_date, end_date, days, reason, status, created_by)
-      VALUES (?, ?, ?, ?, ?, ?, 'PENDING', ?)
+      INSERT INTO leave_requests (employee_id, leave_type, start_date, end_date, days, reason, status, created_by, entity_id)
+      VALUES (?, ?, ?, ?, ?, ?, 'PENDING', ?, ?)
     `).bind(
       body.employee_id, body.leave_type, body.start_date, body.end_date,
-      days, body.reason || null, user?.id || null
+      days, body.reason || null, user?.id || null, getEntityId(c) || 1
     ).run()
 
     return c.json({ success: true, data: { id: result.meta.last_row_id, days } })

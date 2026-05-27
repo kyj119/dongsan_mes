@@ -2,7 +2,7 @@ import { Hono } from 'hono'
 import type { HonoEnv } from '../types/env'
 import type { D1Database } from '@cloudflare/workers-types'
 import { authMiddleware } from '../middleware/auth'
-import { entityFilter } from '../utils/entityFilter'
+import { entityFilter, getEntityId } from '../utils/entityFilter'
 
 const notificationsRouter = new Hono<HonoEnv>()
 notificationsRouter.use('/*', authMiddleware)
@@ -25,8 +25,9 @@ notificationsRouter.get('/', async (c) => {
     const { limit = '20', unread_only = '' } = c.req.query()
     const safeLimit = Math.min(Number(limit) || 20, 50)
 
-    let query = `SELECT id, user_id, target_role, title, message, link, is_read, created_at FROM notifications WHERE (user_id = ? OR (user_id IS NULL AND target_role = ?))`
-    const params: any[] = [user.id, user.role]
+    const ef = entityFilter(c, '')
+    let query = `SELECT id, user_id, target_role, title, message, link, is_read, created_at FROM notifications WHERE (user_id = ? OR (user_id IS NULL AND target_role = ?))${ef.clause}`
+    const params: any[] = [user.id, user.role, ...ef.params]
 
     if (unread_only === '1') {
       query += ' AND is_read = 0'
@@ -38,8 +39,8 @@ notificationsRouter.get('/', async (c) => {
     const { results } = await c.env.DB.prepare(query).bind(...params).all()
 
     const countResult = await c.env.DB.prepare(
-      `SELECT COUNT(*) as count FROM notifications WHERE (user_id = ? OR (user_id IS NULL AND target_role = ?)) AND is_read = 0`
-    ).bind(user.id, user.role).first<{ count: number }>()
+      `SELECT COUNT(*) as count FROM notifications WHERE (user_id = ? OR (user_id IS NULL AND target_role = ?))${ef.clause} AND is_read = 0`
+    ).bind(user.id, user.role, ...ef.params).first<{ count: number }>()
 
     return c.json({
       success: true,

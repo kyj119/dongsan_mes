@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
+import { entityFilter, getEntityId } from '../utils/entityFilter'
 
 const inspectionsRouter = new Hono<HonoEnv>()
 inspectionsRouter.use('/*', authMiddleware)
@@ -237,11 +238,11 @@ inspectionsRouter.post('/results', requireRole('ADMIN', 'MANAGER', 'OPERATOR'), 
 
     // Step 3. 부모 INSERT
     const result = await c.env.DB.prepare(`
-      INSERT INTO inspection_results (receipt_id, receipt_item_id, template_id, inspector_id, overall_result, notes)
-      VALUES (?, ?, ?, ?, ?, ?)
+      INSERT INTO inspection_results (receipt_id, receipt_item_id, template_id, inspector_id, overall_result, notes, entity_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
     `).bind(
       body.receipt_id, body.receipt_item_id || null, body.template_id || null,
-      user.id, overallResult, body.notes || null
+      user.id, overallResult, body.notes || null, getEntityId(c) || 1
     ).run()
     const resultId = result.meta.last_row_id
 
@@ -287,6 +288,7 @@ inspectionsRouter.get('/results', async (c) => {
   try {
     const receiptId = c.req.query('receipt_id')
     const supplierId = c.req.query('supplier_id')
+    const ef = entityFilter(c, 'ir')
 
     let sql = `
       SELECT ir.*, u.name as inspector_name,
@@ -294,9 +296,9 @@ inspectionsRouter.get('/results', async (c) => {
       FROM inspection_results ir
       LEFT JOIN users u ON ir.inspector_id = u.id
       LEFT JOIN inventory_receipts rec ON ir.receipt_id = rec.id
-      WHERE 1=1
+      WHERE 1=1${ef.clause}
     `
-    const params: any[] = []
+    const params: any[] = [...ef.params]
     if (receiptId) { sql += ' AND ir.receipt_id = ?'; params.push(receiptId) }
     if (supplierId) { sql += ' AND rec.supplier_id = ?'; params.push(supplierId) }
     sql += ' ORDER BY ir.inspected_at DESC LIMIT 100'

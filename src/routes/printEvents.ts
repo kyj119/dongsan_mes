@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { authMiddleware, agentKeyMiddleware } from '../middleware/auth'
 import { autoDeductInventory } from '../utils/autoDeductInventory'
+import { entityFilter } from '../utils/entityFilter'
 
 const printEventsRouter = new Hono<HonoEnv>()
 
@@ -548,8 +549,9 @@ printEventsRouter.get('/', authMiddleware, async (c) => {
     const limitNum = Number(limit)
     const offset = (pageNum - 1) * limitNum
 
-    let where = 'WHERE 1=1'
-    const params: (string | number)[] = []
+    const ef = entityFilter(c, 'pe')
+    let where = 'WHERE 1=1' + ef.clause
+    const params: (string | number)[] = [...ef.params]
 
     if (agent_id) {
       where += ' AND pe.agent_id = ?'

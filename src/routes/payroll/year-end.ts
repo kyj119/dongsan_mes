@@ -5,6 +5,7 @@
 import { Hono } from 'hono'
 import type { HonoEnv } from '../../types/env'
 import { authMiddleware, requireRole } from '../../middleware/auth'
+import { entityFilter, getEntityId } from '../../utils/entityFilter'
 
 const yearEndRouter = new Hono<HonoEnv>()
 yearEndRouter.use('/*', authMiddleware)
@@ -123,9 +124,10 @@ yearEndRouter.get('/year-end-settlement/:employeeId', async (c) => {
     const year = Number(c.req.query('year') || new Date().getFullYear())
     if (!employeeId) return c.json({ success: false, error: 'employeeId 필요' }, 400)
 
+    const efSet = entityFilter(c, '')
     const settlement = await c.env.DB.prepare(
-      `SELECT id, employee_id, year, status, total_salary, total_nontax, gross_taxable, earned_income_deduction, basic_deduction, dependents_count, additional_aged, additional_disabled, additional_single_parent, insurance_deduction, medical_deduction, education_deduction, housing_deduction, donation_deduction, pension_saving, credit_card_deduction, taxable_income, calculated_tax, earned_tax_credit, child_tax_credit, pension_contribution_credit, insurance_premium_credit, medical_credit, education_credit, donation_credit, standard_tax_credit, determined_tax, determined_local_tax, prepaid_income_tax, prepaid_local_tax, refund_income_tax, refund_local_tax, refund_total, notes, calculated_at, confirmed_by, confirmed_at, created_at, updated_at FROM year_end_settlements WHERE employee_id = ? AND year = ?`
-    ).bind(employeeId, year).first<any>()
+      `SELECT id, employee_id, year, status, total_salary, total_nontax, gross_taxable, earned_income_deduction, basic_deduction, dependents_count, additional_aged, additional_disabled, additional_single_parent, insurance_deduction, medical_deduction, education_deduction, housing_deduction, donation_deduction, pension_saving, credit_card_deduction, taxable_income, calculated_tax, earned_tax_credit, child_tax_credit, pension_contribution_credit, insurance_premium_credit, medical_credit, education_credit, donation_credit, standard_tax_credit, determined_tax, determined_local_tax, prepaid_income_tax, prepaid_local_tax, refund_income_tax, refund_local_tax, refund_total, notes, calculated_at, confirmed_by, confirmed_at, created_at, updated_at FROM year_end_settlements WHERE employee_id = ? AND year = ?${efSet.clause}`
+    ).bind(employeeId, year, ...efSet.params).first<any>()
 
     if (!settlement) return c.json({ success: true, data: null })
 
@@ -295,8 +297,8 @@ yearEndRouter.post('/year-end-settlement/:employeeId', requireRole('ADMIN', 'MAN
           determined_tax, determined_local_tax,
           prepaid_income_tax, prepaid_local_tax,
           refund_income_tax, refund_local_tax, refund_total,
-          notes, calculated_at
-        ) VALUES (?, ?, 'CALCULATED', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+          notes, calculated_at, entity_id
+        ) VALUES (?, ?, 'CALCULATED', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       ).bind(
         employeeId, year, totalSalary, totalNontax, grossTaxable,
         earnedIncomeDeduction, basicDeduction, dependentsCount,
@@ -311,7 +313,7 @@ yearEndRouter.post('/year-end-settlement/:employeeId', requireRole('ADMIN', 'MAN
         determinedTax, determinedLocalTax,
         prepaidIncomeTax, prepaidLocalTax,
         refundIncomeTax, refundLocalTax, refundTotal,
-        body.notes || null, now
+        body.notes || null, now, getEntityId(c) || 1
       ).run()
       settlementId = Number(ins.meta?.last_row_id || 0)
     }
@@ -372,15 +374,16 @@ yearEndRouter.put('/year-end-settlement/:settlementId/confirm', requireRole('ADM
 yearEndRouter.get('/year-end-list', async (c) => {
   try {
     const year = Number(c.req.query('year') || new Date().getFullYear())
+    const ef = entityFilter(c, 'y')
     const rows = await c.env.DB.prepare(
       `SELECT e.id, e.name, e.employee_code, e.department, e.position,
               y.id as settlement_id, y.status, y.total_salary, y.determined_tax,
               y.prepaid_income_tax, y.refund_total, y.calculated_at
        FROM employees e
        LEFT JOIN year_end_settlements y ON e.id = y.employee_id AND y.year = ?
-       WHERE e.status = 'ACTIVE'
+       WHERE e.status = 'ACTIVE'${ef.clause}
        ORDER BY e.department, e.name`
-    ).bind(year).all()
+    ).bind(year, ...ef.params).all()
     return c.json({ success: true, data: rows.results || [] })
   } catch (err: any) {
     console.error('Payroll settlement list error:', err)

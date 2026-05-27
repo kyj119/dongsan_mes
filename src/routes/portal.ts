@@ -8,6 +8,7 @@ import { portalAuthMiddleware, createPortalToken } from '../middleware/portalAut
 import type { PortalUser } from '../middleware/portalAuth'
 import { hashPassword, verifyPassword } from '../utils/crypto'
 import { authMiddleware, requireRole } from '../middleware/auth'
+import { entityFilter, getEntityId } from '../utils/entityFilter'
 
 // ─── DB Row 타입 ────────────────────────────────────────────────────────────
 
@@ -468,12 +469,12 @@ portal.post('/reorder', async (c) => {
     }
 
     const result = await c.env.DB.prepare(`
-      INSERT INTO portal_reorder_requests (client_account_id, client_id, reference_order_id, description, file_urls)
-      VALUES (?, ?, ?, ?, ?)
+      INSERT INTO portal_reorder_requests (client_account_id, client_id, reference_order_id, description, file_urls, entity_id)
+      VALUES (?, ?, ?, ?, ?, ?)
     `).bind(
       user.client_account_id, user.portal_client_id,
       reference_order_id || null, description || null,
-      file_urls ? JSON.stringify(file_urls) : null
+      file_urls ? JSON.stringify(file_urls) : null, getEntityId(c) || 1
     ).run()
 
     return c.json({ success: true, data: { id: result.meta?.last_row_id } })
@@ -514,7 +515,7 @@ portal.post('/generate-token', authMiddleware, requireRole('ADMIN', 'MANAGER'), 
     ).first<SettingRow>()
     const baseUrl = siteUrlSetting?.setting_value || new URL(c.req.url).origin
 
-    const { token, url, expiresAt } = await generatePortalToken(c.env.DB, clientId, createdBy, baseUrl, expiresDays)
+    const { token, url, expiresAt } = await generatePortalToken(c.env.DB, clientId, createdBy, baseUrl, expiresDays, undefined, getEntityId(c) || 1)
 
     return c.json({
       success: true,
@@ -575,7 +576,8 @@ export async function generatePortalToken(
   userId: number,
   baseUrl: string,
   expiresDays: number = 7,
-  metadata?: Record<string, any>
+  metadata?: Record<string, any>,
+  entityId?: number
 ): Promise<{ token: string; url: string; expiresAt: string }> {
   const token = crypto.randomUUID().replace(/-/g, '')
 
@@ -585,9 +587,9 @@ export async function generatePortalToken(
     .slice(0, 19)
 
   await db.prepare(`
-    INSERT INTO portal_access_tokens (token, client_id, expires_at, created_by, metadata)
-    VALUES (?, ?, ?, ?, ?)
-  `).bind(token, clientId, expiresAt, userId, metadata ? JSON.stringify(metadata) : null).run()
+    INSERT INTO portal_access_tokens (token, client_id, expires_at, created_by, metadata, entity_id)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `).bind(token, clientId, expiresAt, userId, metadata ? JSON.stringify(metadata) : null, entityId || 1).run()
 
   const url = `${baseUrl}/portal/balance?t=${token}`
 

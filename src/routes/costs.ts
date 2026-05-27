@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
-import { entityFilter } from '../utils/entityFilter'
+import { entityFilter, getEntityId } from '../utils/entityFilter'
 import { recalculateOrderCosts } from '../utils/costCalculator'
 
 const costsRouter = new Hono<HonoEnv>()
@@ -135,8 +135,9 @@ costsRouter.get('/analysis', async (c) => {
     const periodTo = c.req.query('period_to')
 
     // cost_snapshots 조회
-    let snapQuery = 'SELECT id, period, material_item_id, category_name, total_consumed_yd, total_consumed_sqm, total_produced_sqm, loss_rate, total_material_cost, avg_purchase_price_yd, material_cost_per_sqm, ink_total_cost, ink_cost_per_sqm, total_cost_per_sqm, created_at FROM cost_snapshots WHERE 1=1'
-    const params: any[] = []
+    const efSnap = entityFilter(c, '')
+    let snapQuery = 'SELECT id, period, material_item_id, category_name, total_consumed_yd, total_consumed_sqm, total_produced_sqm, loss_rate, total_material_cost, avg_purchase_price_yd, material_cost_per_sqm, ink_total_cost, ink_cost_per_sqm, total_cost_per_sqm, created_at FROM cost_snapshots WHERE 1=1' + efSnap.clause
+    const params: any[] = [...efSnap.params]
 
     if (periodFrom) {
       snapQuery += ' AND period >= ?'
@@ -152,6 +153,7 @@ costsRouter.get('/analysis', async (c) => {
     const { results: snapshots } = await c.env.DB.prepare(snapQuery).bind(...params).all()
 
     // 집계 데이터
+    const efAgg = entityFilter(c, '')
     let aggQuery = `
       SELECT
         AVG(total_cost_per_sqm) as avg_cost_per_sqm,
@@ -159,9 +161,9 @@ costsRouter.get('/analysis', async (c) => {
         SUM(total_consumed_sqm) as total_consumed_sqm,
         SUM(total_material_cost + ink_total_cost) as total_cost
       FROM cost_snapshots
-      WHERE 1=1
+      WHERE 1=1${efAgg.clause}
     `
-    const aggParams: any[] = []
+    const aggParams: any[] = [...efAgg.params]
 
     if (periodFrom) {
       aggQuery += ' AND period >= ?'
@@ -199,12 +201,12 @@ costsRouter.post('/snapshot', requireRole('ADMIN', 'MANAGER'), async (c) => {
 
     // 간단한 스냅샷 생성 (실제로는 소모량, 입고량, 기말재고 등에서 계산)
     const result = await c.env.DB.prepare(`
-      INSERT INTO cost_snapshots (period, material_item_id, category_name, created_at)
-      VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+      INSERT INTO cost_snapshots (period, material_item_id, category_name, entity_id, created_at)
+      VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
       ON CONFLICT(period, material_item_id, category_name) DO UPDATE SET
         updated_at = CURRENT_TIMESTAMP
       RETURNING *
-    `).bind(period, material_item_id || null, category_name || null).first()
+    `).bind(period, material_item_id || null, category_name || null, getEntityId(c) || 1).first()
 
     return c.json({ success: true, data: result })
   } catch (error) {
@@ -280,8 +282,9 @@ costsRouter.get('/loss-rate', async (c) => {
     const periodFrom = c.req.query('period_from')
     const periodTo = c.req.query('period_to')
 
-    let query = 'SELECT period, material_item_id, loss_rate FROM cost_snapshots WHERE loss_rate > 0'
-    const params: any[] = []
+    const efLoss = entityFilter(c, '')
+    let query = 'SELECT period, material_item_id, loss_rate FROM cost_snapshots WHERE loss_rate > 0' + efLoss.clause
+    const params: any[] = [...efLoss.params]
 
     if (periodFrom) {
       query += ' AND period >= ?'

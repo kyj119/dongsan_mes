@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
+import { entityFilter, getEntityId } from '../utils/entityFilter'
 
 const priceListRouter = new Hono<HonoEnv>()
 priceListRouter.use('/*', authMiddleware)
@@ -71,15 +72,16 @@ priceListRouter.get('/', async (c) => {
 // GET /policies — 정책 목록
 priceListRouter.get('/policies', async (c) => {
   try {
+    const ef = entityFilter(c, 'p')
     const { results } = await c.env.DB.prepare(`
       SELECT p.*, COUNT(r.id) as rule_count,
              (SELECT COUNT(*) FROM clients WHERE price_policy_id = p.id) as client_count
       FROM price_policies p
       LEFT JOIN price_policy_rules r ON r.policy_id = p.id
-      WHERE p.is_active = 1
+      WHERE p.is_active = 1${ef.clause}
       GROUP BY p.id
       ORDER BY p.is_default DESC, p.name
-    `).all()
+    `).bind(...ef.params).all()
     return c.json({ success: true, data: results })
   } catch (error) {
     return c.json({ success: false, error: '정책 목록 조회 실패' }, 500)
@@ -93,8 +95,8 @@ priceListRouter.post('/policies', requireRole('ADMIN', 'MANAGER'), async (c) => 
     if (!name?.trim()) return c.json({ success: false, error: '정책명은 필수입니다.' }, 400)
 
     const result = await c.env.DB.prepare(
-      'INSERT INTO price_policies (name, description) VALUES (?, ?)'
-    ).bind(name.trim(), description || null).run()
+      'INSERT INTO price_policies (name, description, entity_id) VALUES (?, ?, ?)'
+    ).bind(name.trim(), description || null, getEntityId(c) || 1).run()
 
     return c.json({ success: true, data: { id: result.meta.last_row_id } })
   } catch (error) {
@@ -106,9 +108,10 @@ priceListRouter.post('/policies', requireRole('ADMIN', 'MANAGER'), async (c) => 
 priceListRouter.get('/policies/:id', async (c) => {
   try {
     const id = c.req.param('id')
+    const ef = entityFilter(c, '')
     const policy = await c.env.DB.prepare(
-      'SELECT id, name, description, is_default, is_active, created_at, updated_at FROM price_policies WHERE id = ?'
-    ).bind(id).first()
+      `SELECT id, name, description, is_default, is_active, created_at, updated_at FROM price_policies WHERE id = ?${ef.clause}`
+    ).bind(id, ...ef.params).first()
     if (!policy) return c.json({ success: false, error: '정책을 찾을 수 없습니다.' }, 404)
 
     const { results: rules } = await c.env.DB.prepare(`
@@ -132,9 +135,10 @@ priceListRouter.put('/policies/:id', requireRole('ADMIN', 'MANAGER'), async (c) 
     const { name, description } = await c.req.json<{ name: string; description?: string }>()
     if (!name?.trim()) return c.json({ success: false, error: '정책명은 필수입니다.' }, 400)
 
+    const efUpd = entityFilter(c, '')
     await c.env.DB.prepare(
-      'UPDATE price_policies SET name = ?, description = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
-    ).bind(name.trim(), description || null, id).run()
+      `UPDATE price_policies SET name = ?, description = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?${efUpd.clause}`
+    ).bind(name.trim(), description || null, id, ...efUpd.params).run()
 
     return c.json({ success: true })
   } catch (error) {
@@ -146,9 +150,10 @@ priceListRouter.put('/policies/:id', requireRole('ADMIN', 'MANAGER'), async (c) 
 priceListRouter.delete('/policies/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
   try {
     const id = c.req.param('id')
+    const efDel = entityFilter(c, '')
     const policy = await c.env.DB.prepare(
-      'SELECT is_default FROM price_policies WHERE id = ?'
-    ).bind(id).first<{ is_default: number }>()
+      `SELECT is_default FROM price_policies WHERE id = ?${efDel.clause}`
+    ).bind(id, ...efDel.params).first<{ is_default: number }>()
     if (policy?.is_default) return c.json({ success: false, error: '기본 정책은 삭제할 수 없습니다.' }, 400)
 
     // 해당 정책 사용 중인 거래처 → NULL로 변경
@@ -156,7 +161,7 @@ priceListRouter.delete('/policies/:id', requireRole('ADMIN', 'MANAGER'), async (
       'UPDATE clients SET price_policy_id = NULL WHERE price_policy_id = ?'
     ).bind(id).run()
     await c.env.DB.prepare('DELETE FROM price_policy_rules WHERE policy_id = ?').bind(id).run()
-    await c.env.DB.prepare('DELETE FROM price_policies WHERE id = ?').bind(id).run()
+    await c.env.DB.prepare(`DELETE FROM price_policies WHERE id = ?${efDel.clause}`).bind(id, ...efDel.params).run()
 
     return c.json({ success: true })
   } catch (error) {
