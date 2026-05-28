@@ -1523,6 +1523,77 @@ poCoreRouter.post('/:id/receive', async (c) => {
       throw batchErr
     }
 
+    // ============================================================================
+    // Phase 4: 단가 자동 갱신 (트랜잭션 밖 — 실패해도 입고 롤백 안 함)
+    // ① 매입처 단가 upsert → ② base_price 갱신 → ③ 그룹 연쇄 → ④ 이력
+    // ============================================================================
+    const priceUpdates: Array<{ itemId: number; name: string; old: number; new_: number }> = []
+    try {
+      for (const p of perItemPrep) {
+        if (!p.itemId || p.unitPrice <= 0) continue
+
+        // ① client_item_prices upsert (매입처 단가)
+        if (po.supplier_id) {
+          await c.env.DB.prepare(`
+            INSERT INTO client_item_prices (client_id, item_id, price)
+            VALUES (?, ?, ?)
+            ON CONFLICT(client_id, item_id) DO UPDATE SET price = ?, updated_at = CURRENT_TIMESTAMP
+          `).bind(po.supplier_id, p.itemId, p.unitPrice, p.unitPrice).run()
+        }
+
+        // ② items.base_price 갱신
+        const oldItem = await c.env.DB.prepare(
+          'SELECT base_price, item_group, item_name FROM items WHERE id = ?'
+        ).bind(p.itemId).first<{ base_price: number; item_group: string | null; item_name: string }>()
+
+        if (!oldItem || oldItem.base_price === p.unitPrice) continue
+
+        // 직접 입고 품목 갱신
+        await c.env.DB.prepare(
+          'UPDATE items SET base_price = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
+        ).bind(p.unitPrice, p.itemId).run()
+
+        await c.env.DB.prepare(
+          `INSERT INTO price_change_history (target_type, target_id, field_name, old_value, new_value, changed_by)
+           VALUES ('ITEM', ?, 'base_price', ?, ?, ?)`
+        ).bind(p.itemId, oldItem.base_price, p.unitPrice, user?.username || 'system').run()
+
+        priceUpdates.push({ itemId: p.itemId, name: oldItem.item_name, old: oldItem.base_price, new_: p.unitPrice })
+
+        // ③ 같은 item_group + 단가 연동(price_linked) 품목 연쇄 갱신
+        if (oldItem.item_group) {
+          const linked = await c.env.DB.prepare(
+            'SELECT price_linked FROM item_group_settings WHERE group_name = ?'
+          ).bind(oldItem.item_group).first<{ price_linked: number }>()
+
+          if (linked?.price_linked) {
+            const { results: groupItems } = await c.env.DB.prepare(
+              'SELECT id, base_price, item_name FROM items WHERE item_group = ? AND id != ? AND is_active = 1'
+            ).bind(oldItem.item_group, p.itemId).all<{ id: number; base_price: number; item_name: string }>()
+
+            const updateStmts = []
+            for (const gi of groupItems) {
+              if (gi.base_price === p.unitPrice) continue
+              updateStmts.push(
+                c.env.DB.prepare('UPDATE items SET base_price = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
+                  .bind(p.unitPrice, gi.id)
+              )
+              updateStmts.push(
+                c.env.DB.prepare(
+                  `INSERT INTO price_change_history (target_type, target_id, field_name, old_value, new_value, changed_by)
+                   VALUES ('ITEM', ?, 'base_price', ?, ?, ?)`
+                ).bind(gi.id, gi.base_price, p.unitPrice, user?.username || 'system')
+              )
+              priceUpdates.push({ itemId: gi.id, name: gi.item_name, old: gi.base_price, new_: p.unitPrice })
+            }
+            if (updateStmts.length) await c.env.DB.batch(updateStmts)
+          }
+        }
+      }
+    } catch (priceErr) {
+      console.warn('purchaseOrders receive: price auto-update failed (non-fatal)', priceErr)
+    }
+
     // PENDING_REVIEW 시 ADMIN/MANAGER에게 알림 자동 생성 (트랜잭션 밖 — 알림 실패가 입고를 롤백하면 안 됨)
     if (inspectionStatusForReceipt === 'PENDING_REVIEW') {
       try {
@@ -1534,13 +1605,17 @@ poCoreRouter.post('/:id/receive', async (c) => {
         ).bind(title).first()
         if (!existing) {
           await c.env.DB.prepare(
-            `INSERT INTO notifications (target_role, title, message, link) VALUES ('ADMIN', ?, ?, '/inspections')`
-          ).bind(title, message).run()
+            `INSERT INTO notifications (target_role, title, message, link, entity_id) VALUES ('ADMIN', ?, ?, '/inspections', ?)`
+          ).bind(title, message, getEntityId(c)).run()
         }
       } catch (notifErr) {
         console.warn('purchaseOrders receive: notification insert failed (non-fatal)', notifErr)
       }
     }
+
+    const priceMsg = priceUpdates.length
+      ? ` 단가 변경: ${priceUpdates.length}건 (${priceUpdates.map(u => u.name + ' ' + u.old.toLocaleString() + '→' + u.new_.toLocaleString()).join(', ')})`
+      : ''
 
     return c.json({
       success: true,
@@ -1548,9 +1623,10 @@ poCoreRouter.post('/:id/receive', async (c) => {
         receipt_number: receiptNumber,
         receipt_id: receiptId,
         po_status: newStatus,
-        inspection_status: inspectionStatusForReceipt
+        inspection_status: inspectionStatusForReceipt,
+        price_updates: priceUpdates.length ? priceUpdates : undefined
       },
-      message: `입고 처리 완료. 발주 상태: ${newStatus}`
+      message: `입고 처리 완료. 발주 상태: ${newStatus}${priceMsg}`
     })
   } catch (error: any) {
     console.error('purchaseOrders receive error:', error)

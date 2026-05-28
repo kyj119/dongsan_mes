@@ -96,6 +96,7 @@ import { clientsPage } from './pages/clients'
 import { itemsPage } from './pages/items'
 import { priceListsPage } from './pages/priceLists'
 import { priceListPage } from './pages/priceList'
+import { priceManagementPage } from './pages/priceManagement'
 import { cardsPage } from './pages/cards'
 import { cardDetailPage } from './pages/cardDetail'
 import { productionBoardPage } from './pages/productionBoard'
@@ -396,7 +397,8 @@ app.get('/clients', pageAuthMiddleware, requirePagePermission('/clients'), clien
 app.get('/clients/:id', pageAuthMiddleware, requirePagePermission('/clients'), (c) => clientDetailPage(c))
 app.get('/items', pageAuthMiddleware, requirePagePermission('/items'), itemsPage)
 app.get('/price-lists', (c) => c.redirect('/price-list'))
-app.get('/price-list', pageAuthMiddleware, requirePagePermission('/price-list'), priceListPage)
+app.get('/price-list', pageAuthMiddleware, requirePagePermission('/price-list'), priceManagementPage)
+app.get('/price-list-old', pageAuthMiddleware, requirePagePermission('/price-list'), priceListPage)
 app.get('/client-prices', (c) => c.redirect('/price-list'))
 app.get('/cards', pageAuthMiddleware, requirePagePermission('/cards'), cardsPage)
 app.get('/cards/:id', pageAuthMiddleware, requirePagePermission('/cards'), cardDetailPage)

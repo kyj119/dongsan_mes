@@ -619,6 +619,13 @@ export function itemsPage(c: Context<HonoEnv>) {
                                 <option value="AREA">면적 단위</option>
                             </select>
                         </div>
+                        <div class="border-t pt-4 mt-2">
+                            <label class="flex items-center gap-2">
+                                <input type="checkbox" id="groupEditPriceLinked" class="h-4 w-4 text-blue-600">
+                                <span class="text-sm font-medium text-gray-700"><i class="fas fa-link text-blue-500 mr-1"></i>단가 연동</span>
+                            </label>
+                            <p class="text-xs text-gray-400 mt-1 ml-6">입고 시 이 그룹 품목의 매입단가가 함께 변경됩니다</p>
+                        </div>
                     </div>
                     <div class="mt-6 flex gap-2">
                         <button onclick="saveGroupEdit()" class="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm">일괄 저장</button>

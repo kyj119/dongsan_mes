@@ -297,6 +297,13 @@ function showGroupEditModal(groupName) {
         toggleGroupField(f);
     });
 
+    // 단가 연동 설정 로드
+    var plCheck = document.getElementById('groupEditPriceLinked');
+    if (plCheck) plCheck.checked = false;
+    axios.get('/api/items/group-settings/' + encodeURIComponent(groupName)).then(function(res) {
+        if (res.data.settings && plCheck) plCheck.checked = !!res.data.settings.price_linked;
+    }).catch(function() {});
+
     document.getElementById('groupEditModal').classList.remove('hidden');
 }
 
@@ -345,18 +352,26 @@ async function saveGroupEdit() {
         updates.pricing_method = document.getElementById('groupEditPricing').value;
     }
 
-    if (Object.keys(updates).length === 0) {
-        showToast('변경할 항목을 선택해주세요.', 'warning');
-        return;
-    }
+    // 단가 연동 설정은 별도 저장 (items 일괄 수정과 독립)
+    var plCheck = document.getElementById('groupEditPriceLinked');
+    var priceLinked = plCheck ? plCheck.checked : false;
 
     try {
-        await axios.patch('/api/items/groups/' + encodeURIComponent(groupName), updates);
-        showToast('그룹 "' + groupName + '" 일괄 수정 완료', 'success');
+        // 단가 연동 설정 저장 (항상)
+        await axios.put('/api/items/group-settings/' + encodeURIComponent(groupName), {
+            price_linked: priceLinked ? 1 : 0
+        });
+
+        // 일괄 수정 필드가 있으면 함께 저장
+        if (Object.keys(updates).length > 0) {
+            await axios.patch('/api/items/groups/' + encodeURIComponent(groupName), updates);
+        }
+
+        showToast('그룹 "' + groupName + '" 설정 저장 완료' + (priceLinked ? ' (단가 연동 ON)' : ''), 'success');
         closeGroupEditModal();
         loadItems();
     } catch (error) {
-        showToast('일괄 수정 실패: ' + (error.response?.data?.error || error.message), 'error');
+        showToast('저장 실패: ' + (error.response?.data?.error || error.message), 'error');
     }
 }
 

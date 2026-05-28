@@ -426,4 +426,289 @@ pricesRouter.delete('/client-item-prices/:id', requireRole('ADMIN', 'MANAGER'), 
   }
 })
 
+// ==================== Price Overview (통합 단가 뷰) ====================
+
+// GET /price-overview — 전체 품목 단가 + item_group 정보
+pricesRouter.get('/price-overview', async (c) => {
+  try {
+    const { search } = c.req.query()
+
+    let sql = `
+      SELECT i.id, i.item_code, i.item_name, i.base_price, i.sales_price, i.unit,
+             i.category, i.item_type, i.item_group,
+             igs.price_linked
+      FROM items i
+      LEFT JOIN item_group_settings igs ON i.item_group = igs.group_name
+      WHERE i.is_active = 1
+    `
+    const binds: any[] = []
+
+    if (search) {
+      sql += ' AND (i.item_name LIKE ? OR i.item_code LIKE ? OR i.item_group LIKE ?)'
+      binds.push(`%${search}%`, `%${search}%`, `%${search}%`)
+    }
+
+    sql += ' ORDER BY i.item_code'
+
+    const stmt = binds.length
+      ? c.env.DB.prepare(sql).bind(...binds)
+      : c.env.DB.prepare(sql)
+    const { results: items } = await stmt.all()
+
+    return c.json({ success: true, items })
+  } catch (error) {
+    console.error('price-overview GET error:', error)
+    return c.json({ success: false, error: '서버 오류' }, 500)
+  }
+})
+
+// GET /item-detail/:id — 품목 상세 (매입처별 단가 + 이력)
+pricesRouter.get('/item-detail/:id', async (c) => {
+  try {
+    const itemId = parseInt(c.req.param('id'))
+
+    // 매입처별 단가
+    const { results: supplierPrices } = await c.env.DB.prepare(`
+      SELECT cip.id, cip.client_id, cip.price, cip.notes, cip.updated_at,
+             cl.client_name, cl.client_code
+      FROM client_item_prices cip
+      JOIN clients cl ON cip.client_id = cl.id
+      WHERE cip.item_id = ?
+      ORDER BY cip.updated_at DESC
+    `).bind(itemId).all()
+
+    // 최근 변경 이력
+    const { results: history } = await c.env.DB.prepare(`
+      SELECT id, field_name, old_value, new_value, old_price, new_price, changed_by,
+             changed_at
+      FROM price_change_history
+      WHERE target_type = 'ITEM' AND target_id = ?
+      ORDER BY id DESC LIMIT 20
+    `).bind(itemId).all()
+
+    // 최근 매입 거래
+    const { results: recentPurchases } = await c.env.DB.prepare(`
+      SELECT poi.unit_price, po.order_date, po.po_number,
+             cl.client_name as supplier_name
+      FROM purchase_order_items poi
+      JOIN purchase_orders po ON poi.po_id = po.id
+      LEFT JOIN clients cl ON po.supplier_id = cl.id
+      WHERE poi.item_id = ? AND po.status IN ('CONFIRMED','PARTIAL_RECEIVED','RECEIVED')
+      ORDER BY po.order_date DESC, po.id DESC LIMIT 10
+    `).bind(itemId).all()
+
+    return c.json({ success: true, supplierPrices, history, recentPurchases })
+  } catch (error) {
+    console.error('item-detail GET error:', error)
+    return c.json({ success: false, error: '서버 오류' }, 500)
+  }
+})
+
+// ==================== Price Groups (단가 그룹) ====================
+
+interface PriceGroupRow {
+  id: number; name: string; description: string | null
+  created_at: string; updated_at: string
+  item_count: number
+}
+
+// GET /price-groups — 단가 그룹 목록
+pricesRouter.get('/price-groups', async (c) => {
+  try {
+    const { results } = await c.env.DB.prepare(`
+      SELECT pg.*, COUNT(i.id) as item_count
+      FROM price_groups pg
+      LEFT JOIN items i ON i.price_group_id = pg.id
+      GROUP BY pg.id
+      ORDER BY pg.name
+    `).all<PriceGroupRow>()
+
+    return c.json({ success: true, groups: results })
+  } catch (error) {
+    console.error('price-groups GET error:', error)
+    return c.json({ success: false, error: '서버 오류' }, 500)
+  }
+})
+
+// GET /price-groups/:id — 단가 그룹 상세 (소속 품목 포함)
+pricesRouter.get('/price-groups/:id', async (c) => {
+  try {
+    const id = c.req.param('id')
+    const group = await c.env.DB.prepare(
+      'SELECT * FROM price_groups WHERE id = ?'
+    ).bind(id).first()
+
+    if (!group) return c.json({ success: false, error: '그룹 없음' }, 404)
+
+    const { results: items } = await c.env.DB.prepare(`
+      SELECT id, item_code, item_name, base_price, sales_price, unit, category, item_type
+      FROM items WHERE price_group_id = ? AND is_active = 1
+      ORDER BY item_code
+    `).bind(id).all()
+
+    return c.json({ success: true, group, items })
+  } catch (error) {
+    console.error('price-groups/:id GET error:', error)
+    return c.json({ success: false, error: '서버 오류' }, 500)
+  }
+})
+
+// POST /price-groups — 단가 그룹 생성
+pricesRouter.post('/price-groups', requireRole('ADMIN', 'MANAGER'), async (c) => {
+  try {
+    const { name, description, item_ids } = await c.req.json<{
+      name: string; description?: string; item_ids?: number[]
+    }>()
+
+    if (!name?.trim()) return c.json({ success: false, error: '그룹명 필수' }, 400)
+
+    const result = await c.env.DB.prepare(
+      'INSERT INTO price_groups (name, description) VALUES (?, ?)'
+    ).bind(name.trim(), description || null).run()
+
+    const groupId = result.meta.last_row_id
+
+    // 품목 배정
+    if (item_ids?.length) {
+      const stmts = item_ids.map(itemId =>
+        c.env.DB.prepare('UPDATE items SET price_group_id = ? WHERE id = ?').bind(groupId, itemId)
+      )
+      await c.env.DB.batch(stmts)
+    }
+
+    return c.json({ success: true, id: groupId })
+  } catch (error: any) {
+    if (error?.message?.includes('UNIQUE')) {
+      return c.json({ success: false, error: '동일한 이름의 그룹이 존재합니다' }, 409)
+    }
+    console.error('price-groups POST error:', error)
+    return c.json({ success: false, error: '서버 오류' }, 500)
+  }
+})
+
+// PATCH /price-groups/:id — 단가 그룹 수정
+pricesRouter.patch('/price-groups/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
+  try {
+    const id = c.req.param('id')
+    const { name, description } = await c.req.json<{
+      name?: string; description?: string
+    }>()
+
+    const sets: string[] = []
+    const vals: any[] = []
+    if (name !== undefined) { sets.push('name = ?'); vals.push(name.trim()) }
+    if (description !== undefined) { sets.push('description = ?'); vals.push(description) }
+    if (!sets.length) return c.json({ success: false, error: '변경 항목 없음' }, 400)
+
+    sets.push('updated_at = CURRENT_TIMESTAMP')
+    vals.push(parseInt(id))
+
+    await c.env.DB.prepare(
+      `UPDATE price_groups SET ${sets.join(', ')} WHERE id = ?`
+    ).bind(...vals).run()
+
+    return c.json({ success: true })
+  } catch (error: any) {
+    if (error?.message?.includes('UNIQUE')) {
+      return c.json({ success: false, error: '동일한 이름의 그룹이 존재합니다' }, 409)
+    }
+    console.error('price-groups PATCH error:', error)
+    return c.json({ success: false, error: '서버 오류' }, 500)
+  }
+})
+
+// DELETE /price-groups/:id — 단가 그룹 삭제 (품목은 그룹 해제)
+pricesRouter.delete('/price-groups/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
+  try {
+    const id = c.req.param('id')
+
+    await c.env.DB.batch([
+      c.env.DB.prepare('UPDATE items SET price_group_id = NULL WHERE price_group_id = ?').bind(parseInt(id)),
+      c.env.DB.prepare('DELETE FROM price_groups WHERE id = ?').bind(parseInt(id))
+    ])
+
+    return c.json({ success: true })
+  } catch (error) {
+    console.error('price-groups DELETE error:', error)
+    return c.json({ success: false, error: '서버 오류' }, 500)
+  }
+})
+
+// POST /price-groups/:id/assign — 품목 배정
+pricesRouter.post('/price-groups/:id/assign', requireRole('ADMIN', 'MANAGER'), async (c) => {
+  try {
+    const groupId = parseInt(c.req.param('id'))
+    const { item_ids } = await c.req.json<{ item_ids: number[] }>()
+
+    if (!item_ids?.length) return c.json({ success: false, error: 'item_ids 필수' }, 400)
+
+    const existing = await c.env.DB.prepare(
+      'SELECT id FROM price_groups WHERE id = ?'
+    ).bind(groupId).first()
+    if (!existing) return c.json({ success: false, error: '그룹 없음' }, 404)
+
+    const stmts = item_ids.map(itemId =>
+      c.env.DB.prepare('UPDATE items SET price_group_id = ? WHERE id = ?').bind(groupId, itemId)
+    )
+    await c.env.DB.batch(stmts)
+
+    return c.json({ success: true, assigned: item_ids.length })
+  } catch (error) {
+    console.error('price-groups assign error:', error)
+    return c.json({ success: false, error: '서버 오류' }, 500)
+  }
+})
+
+// POST /price-groups/:id/unassign — 품목 그룹 해제
+pricesRouter.post('/price-groups/:id/unassign', requireRole('ADMIN', 'MANAGER'), async (c) => {
+  try {
+    const groupId = parseInt(c.req.param('id'))
+    const { item_ids } = await c.req.json<{ item_ids: number[] }>()
+
+    if (!item_ids?.length) return c.json({ success: false, error: 'item_ids 필수' }, 400)
+
+    const stmts = item_ids.map(itemId =>
+      c.env.DB.prepare(
+        'UPDATE items SET price_group_id = NULL WHERE id = ? AND price_group_id = ?'
+      ).bind(itemId, groupId)
+    )
+    await c.env.DB.batch(stmts)
+
+    return c.json({ success: true, unassigned: item_ids.length })
+  } catch (error) {
+    console.error('price-groups unassign error:', error)
+    return c.json({ success: false, error: '서버 오류' }, 500)
+  }
+})
+
+// GET /price-history — 단가 변경 이력 조회
+pricesRouter.get('/price-history', async (c) => {
+  try {
+    const { item_id, target_type, limit: limitStr } = c.req.query()
+    const limit = parseInt(limitStr || '50')
+
+    let sql = `
+      SELECT pch.*, i.item_name, i.item_code
+      FROM price_change_history pch
+      LEFT JOIN items i ON pch.target_type = 'ITEM' AND pch.target_id = i.id
+      WHERE 1=1
+    `
+    const binds: any[] = []
+
+    if (item_id) { sql += ' AND pch.target_id = ? AND pch.target_type = ?'; binds.push(parseInt(item_id), 'ITEM') }
+    else if (target_type) { sql += ' AND pch.target_type = ?'; binds.push(target_type) }
+
+    sql += ' ORDER BY pch.id DESC LIMIT ?'
+    binds.push(limit)
+
+    const stmt = c.env.DB.prepare(sql).bind(...binds)
+    const { results } = await stmt.all()
+
+    return c.json({ success: true, history: results })
+  } catch (error) {
+    console.error('price-history GET error:', error)
+    return c.json({ success: false, error: '서버 오류' }, 500)
+  }
+})
+
 export default pricesRouter

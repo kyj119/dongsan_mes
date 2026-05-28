@@ -297,6 +297,35 @@ itemsRouter.patch('/groups/:groupName', requireRole('ADMIN', 'MANAGER'), async (
   }
 })
 
+// GET /group-settings/:groupName — 그룹 단가 연동 설정 조회
+itemsRouter.get('/group-settings/:groupName', async (c) => {
+  try {
+    const groupName = decodeURIComponent(c.req.param('groupName'))
+    const row = await c.env.DB.prepare(
+      'SELECT * FROM item_group_settings WHERE group_name = ?'
+    ).bind(groupName).first()
+    return c.json({ success: true, settings: row || { group_name: groupName, price_linked: 0 } })
+  } catch (error) {
+    return c.json({ success: false, error: '서버 오류' }, 500)
+  }
+})
+
+// PUT /group-settings/:groupName — 그룹 단가 연동 설정 저장
+itemsRouter.put('/group-settings/:groupName', requireRole('ADMIN', 'MANAGER'), async (c) => {
+  try {
+    const groupName = decodeURIComponent(c.req.param('groupName'))
+    const { price_linked, notes } = await c.req.json<{ price_linked: number; notes?: string }>()
+    await c.env.DB.prepare(`
+      INSERT INTO item_group_settings (group_name, price_linked, notes)
+      VALUES (?, ?, ?)
+      ON CONFLICT(group_name) DO UPDATE SET price_linked = ?, notes = ?
+    `).bind(groupName, price_linked ? 1 : 0, notes || null, price_linked ? 1 : 0, notes || null).run()
+    return c.json({ success: true })
+  } catch (error) {
+    return c.json({ success: false, error: '서버 오류' }, 500)
+  }
+})
+
 // Search materials for mapping (purchase items with width_mm)
 itemsRouter.get('/materials/search', async (c) => {
   try {
