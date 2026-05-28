@@ -53,15 +53,15 @@ export function leavesPage(c: Context<HonoEnv>) {
               <table class="w-full text-sm ds-table-striped">
                 <thead class="bg-gray-50 text-xs text-gray-600 uppercase tracking-wider">
                   <tr>
-                    <th class="px-3 py-2 text-left">사번</th>
-                    <th class="px-3 py-2 text-left">이름</th>
+                    <th class="px-3 py-2 text-left" style="width:80px">사번</th>
+                    <th class="px-3 py-2 text-left" style="width:80px">이름</th>
                     <th class="px-3 py-2 text-left">부서</th>
-                    <th class="px-3 py-2 text-left">직급</th>
-                    <th class="px-3 py-2 text-left">입사일</th>
-                    <th class="px-3 py-2 text-right">부여</th>
-                    <th class="px-3 py-2 text-right">특별</th>
-                    <th class="px-3 py-2 text-right">사용</th>
-                    <th class="px-3 py-2 text-right">잔여</th>
+                    <th class="px-3 py-2 text-left" style="width:70px">직급</th>
+                    <th class="px-3 py-2 text-left" style="width:95px">입사일</th>
+                    <th class="px-3 py-2 text-right" style="width:60px">부여</th>
+                    <th class="px-3 py-2 text-right" style="width:60px">특별</th>
+                    <th class="px-3 py-2 text-right" style="width:60px">사용</th>
+                    <th class="px-3 py-2 text-right" style="width:60px">잔여</th>
                   </tr>
                 </thead>
                 <tbody id="lvBalancesBody"><tr><td colspan="9" class="text-center text-gray-400 py-6">로드 중...</td></tr></tbody>
@@ -93,15 +93,15 @@ export function leavesPage(c: Context<HonoEnv>) {
               <table class="w-full text-sm ds-table-striped">
                 <thead class="bg-gray-50 text-xs text-gray-600 uppercase tracking-wider">
                   <tr>
-                    <th class="px-3 py-2 text-left">신청일</th>
-                    <th class="px-3 py-2 text-left">사번/이름</th>
-                    <th class="px-3 py-2 text-left">부서</th>
-                    <th class="px-3 py-2 text-left">유형</th>
+                    <th class="px-3 py-2 text-left" style="width:90px">신청일</th>
+                    <th class="px-3 py-2 text-left" style="width:100px">사번/이름</th>
+                    <th class="px-3 py-2 text-left" style="width:75px">부서</th>
+                    <th class="px-3 py-2 text-left" style="width:75px">유형</th>
                     <th class="px-3 py-2 text-left">기간</th>
-                    <th class="px-3 py-2 text-right">일수</th>
-                    <th class="px-3 py-2 text-left">사유</th>
-                    <th class="px-3 py-2 text-center">상태</th>
-                    <th class="px-3 py-2 text-center">액션</th>
+                    <th class="px-3 py-2 text-right" style="width:55px">일수</th>
+                    <th class="px-3 py-2 text-left" style="width:120px">사유</th>
+                    <th class="px-3 py-2 text-center" style="width:70px">상태</th>
+                    <th class="px-3 py-2 text-center" style="width:90px">액션</th>
                   </tr>
                 </thead>
                 <tbody id="lvRequestsBody"><tr><td colspan="9" class="text-center text-gray-400 py-6">로드 중...</td></tr></tbody>
@@ -126,14 +126,14 @@ export function leavesPage(c: Context<HonoEnv>) {
               <table class="w-full text-sm ds-table-striped">
                 <thead class="bg-gray-50 text-xs text-gray-600 uppercase tracking-wider">
                   <tr>
-                    <th class="px-3 py-2 text-left">사번</th>
-                    <th class="px-3 py-2 text-left">이름</th>
+                    <th class="px-3 py-2 text-left" style="width:80px">사번</th>
+                    <th class="px-3 py-2 text-left" style="width:80px">이름</th>
                     <th class="px-3 py-2 text-left">부서</th>
-                    <th class="px-3 py-2 text-right">부여</th>
-                    <th class="px-3 py-2 text-right">사용</th>
-                    <th class="px-3 py-2 text-right">잔여</th>
-                    <th class="px-3 py-2 text-right">일급(원)</th>
-                    <th class="px-3 py-2 text-right">미사용수당(원)</th>
+                    <th class="px-3 py-2 text-right" style="width:60px">부여</th>
+                    <th class="px-3 py-2 text-right" style="width:60px">사용</th>
+                    <th class="px-3 py-2 text-right" style="width:60px">잔여</th>
+                    <th class="px-3 py-2 text-right" style="width:100px">일급(원)</th>
+                    <th class="px-3 py-2 text-right" style="width:120px">미사용수당(원)</th>
                   </tr>
                 </thead>
                 <tbody id="lvAllowanceBody"><tr><td colspan="8" class="text-center text-gray-400 py-6">탭 클릭 시 조회됩니다.</td></tr></tbody>

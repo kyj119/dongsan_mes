@@ -79,16 +79,16 @@ export function hrPage(c: Context<HonoEnv>) {
             <table class="w-full text-sm ds-table-striped">
               <thead class="bg-gray-50 text-xs text-gray-600 uppercase tracking-wider">
                 <tr>
-                  <th class="px-4 py-3 text-left">사번</th>
-                  <th class="px-4 py-3 text-left">이름</th>
+                  <th class="px-4 py-3 text-left" style="width:80px">사번</th>
+                  <th class="px-4 py-3 text-left" style="width:80px">이름</th>
                   <th class="px-4 py-3 text-left">소속법인</th>
-                  <th class="px-4 py-3 text-left">부서</th>
-                  <th class="px-4 py-3 text-left">직급</th>
-                  <th class="px-4 py-3 text-left">전화번호</th>
-                  <th class="px-4 py-3 text-left">입사일</th>
-                  <th class="px-4 py-3 text-right">기본급</th>
-                  <th class="px-4 py-3 text-center">상태</th>
-                  <th class="px-4 py-3 text-center">상세</th>
+                  <th class="px-4 py-3 text-left" style="width:80px">부서</th>
+                  <th class="px-4 py-3 text-left" style="width:70px">직급</th>
+                  <th class="px-4 py-3 text-left" style="width:120px">전화번호</th>
+                  <th class="px-4 py-3 text-left" style="width:95px">입사일</th>
+                  <th class="px-4 py-3 text-right" style="width:100px">기본급</th>
+                  <th class="px-4 py-3 text-center" style="width:70px">상태</th>
+                  <th class="px-4 py-3 text-center" style="width:55px">상세</th>
                 </tr>
               </thead>
               <tbody id="hrEmployeeBody" class="bg-white">

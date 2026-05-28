@@ -64,15 +64,15 @@ export function laborContractsPage(c: Context<HonoEnv>) {
             <table class="w-full text-sm ds-table-striped">
               <thead class="bg-gray-50 text-xs text-gray-600 uppercase tracking-wider">
                 <tr>
-                  <th class="px-3 py-2 text-left">직원명</th>
-                  <th class="px-3 py-2 text-left">부서</th>
-                  <th class="px-3 py-2 text-left">소속법인</th>
-                  <th class="px-3 py-2 text-left">계약유형</th>
+                  <th class="px-3 py-2 text-left" style="width:90px">직원명</th>
+                  <th class="px-3 py-2 text-left" style="width:80px">부서</th>
+                  <th class="px-3 py-2 text-left" style="width:90px">소속법인</th>
+                  <th class="px-3 py-2 text-left" style="width:90px">계약유형</th>
                   <th class="px-3 py-2 text-left">계약기간</th>
-                  <th class="px-3 py-2 text-right">시급</th>
-                  <th class="px-3 py-2 text-center">상태</th>
-                  <th class="px-3 py-2 text-center">서명일</th>
-                  <th class="px-3 py-2 text-center">액션</th>
+                  <th class="px-3 py-2 text-right" style="width:80px">시급</th>
+                  <th class="px-3 py-2 text-center" style="width:70px">상태</th>
+                  <th class="px-3 py-2 text-center" style="width:90px">서명일</th>
+                  <th class="px-3 py-2 text-center" style="width:70px">액션</th>
                 </tr>
               </thead>
               <tbody id="lcBody">

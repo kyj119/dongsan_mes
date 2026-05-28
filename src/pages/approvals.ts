@@ -58,12 +58,12 @@ export const approvalsPage = (c: Context<HonoEnv>) => {
           <div class="overflow-x-auto" style="max-height: calc(100vh - 320px); overflow-y: auto;">
             <table class="w-full ds-table-striped">
               <thead><tr class="bg-gray-50 border-b text-sm text-gray-500">
-                <th class="px-3 py-3 text-left">번호</th>
-                <th class="px-3 py-3 text-left">유형</th>
+                <th class="px-3 py-3 text-left" style="width:110px">번호</th>
+                <th class="px-3 py-3 text-left" style="width:80px">유형</th>
                 <th class="px-3 py-3 text-left">제목</th>
-                <th class="px-3 py-3 text-right">금액</th>
-                <th class="px-3 py-3 text-left">상태</th>
-                <th class="px-3 py-3 text-left">요청일</th>
+                <th class="px-3 py-3 text-right" style="width:100px">금액</th>
+                <th class="px-3 py-3 text-left" style="width:80px">상태</th>
+                <th class="px-3 py-3 text-left" style="width:95px">요청일</th>
               </tr></thead>
               <tbody id="my-requests-tbody"></tbody>
             </table>
@@ -99,13 +99,13 @@ export const approvalsPage = (c: Context<HonoEnv>) => {
           <div class="overflow-x-auto" style="max-height: calc(100vh - 320px); overflow-y: auto;">
             <table class="w-full ds-table-striped">
               <thead><tr class="bg-gray-50 border-b text-sm text-gray-500">
-                <th class="px-3 py-3 text-left">번호</th>
-                <th class="px-3 py-3 text-left">유형</th>
+                <th class="px-3 py-3 text-left" style="width:110px">번호</th>
+                <th class="px-3 py-3 text-left" style="width:80px">유형</th>
                 <th class="px-3 py-3 text-left">제목</th>
-                <th class="px-3 py-3 text-left">요청자</th>
-                <th class="px-3 py-3 text-right">금액</th>
-                <th class="px-3 py-3 text-left">상태</th>
-                <th class="px-3 py-3 text-left">요청일</th>
+                <th class="px-3 py-3 text-left" style="width:80px">요청자</th>
+                <th class="px-3 py-3 text-right" style="width:100px">금액</th>
+                <th class="px-3 py-3 text-left" style="width:80px">상태</th>
+                <th class="px-3 py-3 text-left" style="width:95px">요청일</th>
               </tr></thead>
               <tbody id="all-requests-tbody"></tbody>
             </table>

@@ -106,19 +106,19 @@ export function payrollPage(c: Context<HonoEnv>) {
             <table class="w-full text-sm ds-table-striped">
               <thead class="bg-gray-50 text-xs text-gray-600 uppercase tracking-wider">
                 <tr>
-                  <th class="px-2 py-2 text-center w-8"><input type="checkbox" id="prSelectAll" onchange="payrollToggleAll(this.checked)"></th>
-                  <th class="px-3 py-2 text-left">사번</th>
-                  <th class="px-3 py-2 text-left">이름</th>
+                  <th class="px-2 py-2 text-center" style="width:36px"><input type="checkbox" id="prSelectAll" onchange="payrollToggleAll(this.checked)"></th>
+                  <th class="px-3 py-2 text-left" style="width:70px">사번</th>
+                  <th class="px-3 py-2 text-left" style="width:70px">이름</th>
                   <th class="px-3 py-2 text-left">부서/직급</th>
-                  <th class="px-3 py-2 text-right">기본급</th>
-                  <th class="px-3 py-2 text-right">연장(h)</th>
-                  <th class="px-3 py-2 text-right">연장급여</th>
-                  <th class="px-3 py-2 text-right">수당</th>
-                  <th class="px-3 py-2 text-right">총급여</th>
-                  <th class="px-3 py-2 text-right">공제</th>
-                  <th class="px-3 py-2 text-right">실지급</th>
-                  <th class="px-3 py-2 text-center">상태</th>
-                  <th class="px-3 py-2 text-center">액션</th>
+                  <th class="px-3 py-2 text-right" style="width:85px">기본급</th>
+                  <th class="px-3 py-2 text-right" style="width:55px">연장(h)</th>
+                  <th class="px-3 py-2 text-right" style="width:80px">연장급여</th>
+                  <th class="px-3 py-2 text-right" style="width:75px">수당</th>
+                  <th class="px-3 py-2 text-right" style="width:85px">총급여</th>
+                  <th class="px-3 py-2 text-right" style="width:80px">공제</th>
+                  <th class="px-3 py-2 text-right" style="width:85px">실지급</th>
+                  <th class="px-3 py-2 text-center" style="width:65px">상태</th>
+                  <th class="px-3 py-2 text-center" style="width:55px">액션</th>
                 </tr>
               </thead>
               <tbody id="prBody">

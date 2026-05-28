@@ -96,10 +96,10 @@ window.switchLogTab = function(tab) {
             <table class="w-full text-sm ds-table-striped">
               <thead class="bg-gray-50">
                 <tr>
-                  <th class="px-4 py-3 text-left text-xs font-medium text-gray-500">일시</th>
-                  <th class="px-4 py-3 text-left text-xs font-medium text-gray-500">사용자</th>
-                  <th class="px-4 py-3 text-left text-xs font-medium text-gray-500">작업</th>
-                  <th class="px-4 py-3 text-left text-xs font-medium text-gray-500">대상</th>
+                  <th class="px-4 py-3 text-left text-xs font-medium text-gray-500" style="width:150px">일시</th>
+                  <th class="px-4 py-3 text-left text-xs font-medium text-gray-500" style="width:100px">사용자</th>
+                  <th class="px-4 py-3 text-left text-xs font-medium text-gray-500" style="width:90px">작업</th>
+                  <th class="px-4 py-3 text-left text-xs font-medium text-gray-500" style="width:120px">대상</th>
                   <th class="px-4 py-3 text-left text-xs font-medium text-gray-500">상세</th>
                 </tr>
               </thead>
@@ -159,12 +159,12 @@ window.switchLogTab = function(tab) {
           <table class="w-full text-sm ds-table-striped">
             <thead class="bg-gray-50 border-b">
               <tr>
-                <th class="px-4 py-3 text-left">일시</th>
-                <th class="px-4 py-3 text-left">템플릿</th>
-                <th class="px-4 py-3 text-left">수신자</th>
+                <th class="px-4 py-3 text-left" style="width:150px">일시</th>
+                <th class="px-4 py-3 text-left" style="width:100px">템플릿</th>
+                <th class="px-4 py-3 text-left" style="width:140px">수신자</th>
                 <th class="px-4 py-3 text-left">제목</th>
-                <th class="px-4 py-3 text-center">상태</th>
-                <th class="px-4 py-3 text-left">발송자</th>
+                <th class="px-4 py-3 text-center" style="width:80px">상태</th>
+                <th class="px-4 py-3 text-left" style="width:90px">발송자</th>
               </tr>
             </thead>
             <tbody id="dataBody"></tbody>

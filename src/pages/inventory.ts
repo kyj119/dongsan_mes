@@ -142,13 +142,13 @@ export function inventoryPage(c: Context<HonoEnv>) {
                         <thead class="bg-gray-50">
                             <tr>
                                 <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">품목명</th>
-                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">카테고리</th>
-                                <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">현재고</th>
-                                <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">안전재고</th>
-                                <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">재주문점</th>
-                                <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">단가</th>
-                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">보관위치</th>
-                                <th class="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">액션</th>
+                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase" style="width:100px">카테고리</th>
+                                <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase" style="width:80px">현재고</th>
+                                <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase" style="width:80px">안전재고</th>
+                                <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase" style="width:80px">재주문점</th>
+                                <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase" style="width:95px">단가</th>
+                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase" style="width:90px">보관위치</th>
+                                <th class="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase" style="width:70px">액션</th>
                             </tr>
                         </thead>
                         <tbody id="inventoryTableBody" class="bg-white divide-y divide-gray-100">

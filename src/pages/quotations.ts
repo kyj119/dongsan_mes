@@ -71,13 +71,13 @@ export function quotationsPage(c: Context<HonoEnv>) {
           <table class="ds-table ds-table-striped">
             <thead>
               <tr>
-                <th>견적번호</th>
+                <th style="width:130px">견적번호</th>
                 <th>거래처</th>
-                <th style="text-align:right">금액</th>
-                <th style="text-align:center">유효기한</th>
-                <th style="text-align:center">상태</th>
-                <th style="text-align:center">작성일</th>
-                <th style="text-align:center">액션</th>
+                <th style="width:110px;text-align:right">금액</th>
+                <th style="width:95px;text-align:center">유효기한</th>
+                <th style="width:85px;text-align:center">상태</th>
+                <th style="width:95px;text-align:center">작성일</th>
+                <th style="width:70px;text-align:center">액션</th>
               </tr>
             </thead>
             <tbody id="quotTableBody">

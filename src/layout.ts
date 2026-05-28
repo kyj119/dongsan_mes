@@ -784,13 +784,16 @@ const SHARED_CSS = `
 
   /* === DS Table === */
   .ds-table-wrap { overflow-x: auto; border-radius: var(--radius-lg); border: 1px solid var(--c-border-light); background: var(--c-surface); }
-  .ds-table { width: 100%; border-collapse: collapse; font-size: var(--fs-sm); }
+  .ds-table { width: 100%; border-collapse: collapse; font-size: var(--fs-sm); table-layout: fixed; }
   .ds-table thead th {
     position: sticky; top: 0; z-index: 5;
     background: var(--c-surface-secondary); padding: 10px 12px; font-size: var(--fs-xs); font-weight: 600;
     color: var(--c-text-secondary); text-align: left; border-bottom: 1px solid var(--c-border); white-space: nowrap;
+    overflow: hidden; text-overflow: ellipsis;
   }
-  .ds-table tbody td { padding: 10px 12px; border-bottom: 1px solid var(--c-border-light); vertical-align: middle; }
+  .ds-table tbody td { padding: 10px 12px; border-bottom: 1px solid var(--c-border-light); vertical-align: middle; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ds-table tbody td.ds-wrap { white-space: normal; overflow: visible; }
+  .ds-table tbody td[title] { cursor: default; }
   .ds-table tbody tr { transition: background var(--transition-fast); }
   .ds-table tbody tr:nth-child(even) { background: var(--c-surface-stripe); }
   .ds-table tbody tr:hover { background: var(--c-bg); }

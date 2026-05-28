@@ -111,11 +111,11 @@ export function reportsPage(c: Context<HonoEnv>) {
           <table class="w-full text-sm ds-table-striped">
             <thead class="bg-gray-50">
               <tr>
-                <th class="px-4 py-3 text-left">월</th>
-                <th class="px-4 py-3 text-right">주문수</th>
-                <th class="px-4 py-3 text-right">매출</th>
-                <th class="px-4 py-3 text-right">입금</th>
-                <th class="px-4 py-3 text-right">수금률</th>
+                <th class="px-4 py-3 text-left" style="width:80px">월</th>
+                <th class="px-4 py-3 text-right" style="width:80px">주문수</th>
+                <th class="px-4 py-3 text-right" style="width:120px">매출</th>
+                <th class="px-4 py-3 text-right" style="width:120px">입금</th>
+                <th class="px-4 py-3 text-right" style="width:80px">수금률</th>
                 <th class="px-4 py-3 text-right">거래처수</th>
               </tr>
             </thead>
@@ -131,13 +131,13 @@ export function reportsPage(c: Context<HonoEnv>) {
           <table class="w-full text-sm ds-table-striped">
             <thead class="bg-gray-50">
               <tr>
-                <th class="px-4 py-3 text-center w-10">#</th>
+                <th class="px-4 py-3 text-center w-10" style="width:40px">#</th>
                 <th class="px-4 py-3 text-left">거래처</th>
-                <th class="px-4 py-3 text-right">주문수</th>
-                <th class="px-4 py-3 text-right">매출합계</th>
-                <th class="px-4 py-3 text-right">평균단가</th>
-                <th class="px-4 py-3 text-right">미수금</th>
-                <th class="px-4 py-3">비중</th>
+                <th class="px-4 py-3 text-right" style="width:80px">주문수</th>
+                <th class="px-4 py-3 text-right" style="width:120px">매출합계</th>
+                <th class="px-4 py-3 text-right" style="width:100px">평균단가</th>
+                <th class="px-4 py-3 text-right" style="width:110px">미수금</th>
+                <th class="px-4 py-3" style="width:80px">비중</th>
               </tr>
             </thead>
             <tbody id="clientsTableBody2"></tbody>

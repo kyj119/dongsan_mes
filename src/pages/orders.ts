@@ -166,14 +166,14 @@ export function ordersPage(c: Context<HonoEnv>) {
             <thead>
               <tr>
                 <th style="text-align:center;width:40px"><input type="checkbox" id="selectAllOrders" onchange="toggleSelectAll(this)" class="rounded border-gray-300"></th>
-                <th>주문번호</th>
+                <th style="width:130px">주문번호</th>
                 <th>거래처</th>
-                <th>납기일</th>
-                <th>금액</th>
-                <th>상태</th>
-                <th>회계반영</th>
-                <th>등록일</th>
-                <th>액션</th>
+                <th style="width:95px">납기일</th>
+                <th style="width:110px;text-align:right">금액</th>
+                <th style="width:85px">상태</th>
+                <th style="width:85px">회계반영</th>
+                <th style="width:95px">등록일</th>
+                <th style="width:70px">액션</th>
               </tr>
             </thead>
             <tbody id="ordersTable">

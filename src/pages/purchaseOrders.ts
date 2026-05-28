@@ -67,13 +67,13 @@ export function purchaseOrdersPage(c: Context<HonoEnv>) {
           <table class="w-full text-sm ds-table-striped">
           <thead class="bg-gray-50">
             <tr>
-              <th class="px-4 py-3 text-left">발주번호</th>
+              <th class="px-4 py-3 text-left" style="width:130px">발주번호</th>
               <th class="px-4 py-3 text-left">공급업체</th>
-              <th class="px-4 py-3 text-center">발주일</th>
-              <th class="px-4 py-3 text-center">납기예정</th>
-              <th class="px-4 py-3 text-right">금액</th>
-              <th class="px-4 py-3 text-center">상태</th>
-              <th class="px-4 py-3 text-center">작업</th>
+              <th class="px-4 py-3 text-center" style="width:95px">발주일</th>
+              <th class="px-4 py-3 text-center" style="width:95px">납기예정</th>
+              <th class="px-4 py-3 text-right" style="width:110px">금액</th>
+              <th class="px-4 py-3 text-center" style="width:85px">상태</th>
+              <th class="px-4 py-3 text-center" style="width:70px">작업</th>
             </tr>
           </thead>
           <tbody id="poTableBody">
