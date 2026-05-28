@@ -1213,28 +1213,43 @@ bankRouter.post('/transactions/:id/unapply', requireRole('ADMIN'), async (c) => 
       ).bind(tx.matched_payment_id).first<{ id: number; client_id: number; amount: number }>()
 
       if (payment) {
-        // #179: balance 복원 + payment 삭제를 원자적 처리
+        // #261: balance 복원 + payment 삭제 + transaction 상태 복원을 원자적 처리
         await c.env.DB.batch([
           c.env.DB.prepare(
             'UPDATE clients SET balance = balance + ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
           ).bind(payment.amount, payment.client_id),
-          c.env.DB.prepare('DELETE FROM payments WHERE id = ?').bind(tx.matched_payment_id)
+          c.env.DB.prepare('DELETE FROM payments WHERE id = ?').bind(tx.matched_payment_id),
+          c.env.DB.prepare(`
+            UPDATE bank_transactions
+            SET match_status = 'UNMATCHED',
+                matched_client_id = NULL, matched_payment_id = NULL,
+                matched_by = NULL, matched_at = NULL,
+                match_confidence = NULL, match_reason = NULL
+            WHERE id = ?
+          `).bind(id),
         ])
+      } else {
+        // payment 없이 transaction만 복원
+        await c.env.DB.prepare(`
+          UPDATE bank_transactions
+          SET match_status = 'UNMATCHED',
+              matched_client_id = NULL, matched_payment_id = NULL,
+              matched_by = NULL, matched_at = NULL,
+              match_confidence = NULL, match_reason = NULL
+          WHERE id = ?
+        `).bind(id).run()
       }
+    } else {
+      // matched_payment_id 없는 경우 transaction만 복원
+      await c.env.DB.prepare(`
+        UPDATE bank_transactions
+        SET match_status = 'UNMATCHED',
+            matched_client_id = NULL, matched_payment_id = NULL,
+            matched_by = NULL, matched_at = NULL,
+            match_confidence = NULL, match_reason = NULL
+        WHERE id = ?
+      `).bind(id).run()
     }
-
-    // 2. bank_transaction 상태 복원
-    await c.env.DB.prepare(`
-      UPDATE bank_transactions
-      SET match_status = 'UNMATCHED',
-          matched_client_id = NULL,
-          matched_payment_id = NULL,
-          matched_by = NULL,
-          matched_at = NULL,
-          match_confidence = NULL,
-          match_reason = NULL
-      WHERE id = ?
-    `).bind(id).run()
 
     return c.json({ success: true, message: '적용이 취소되었습니다. 입금 기록이 삭제되고 잔액이 복원되었습니다.' })
   } catch (error) {

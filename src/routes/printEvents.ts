@@ -145,7 +145,7 @@ async function autoCheckCardItem(db: D1Database, cardId: number, orderItemId: nu
               'UPDATE orders SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
             ).bind(newOrderStatus, card.order_id).run()
           }
-        } catch { /* 주문 동기화 실패는 무시 */ }
+        } catch (syncErr) { console.error(`[printEvents] order sync failed for order_id=${card.order_id}:`, syncErr) }
       }
     }
   }
