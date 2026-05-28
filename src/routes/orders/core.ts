@@ -1106,14 +1106,15 @@ ordersCoreRouter.post('/', async (c) => {
     if (aiFiles.length > 0) {
       const aiFileStmts = aiFiles.map((af: { file_path: string; analysis_id?: number }, idx: number) =>
         c.env.DB.prepare(
-          `INSERT INTO order_ai_files (order_id, file_path, file_name, analysis_id, sort_order)
-           VALUES (?, ?, ?, ?, ?)`
+          `INSERT INTO order_ai_files (order_id, file_path, file_name, analysis_id, sort_order, entity_id)
+           VALUES (?, ?, ?, ?, ?, ?)`
         ).bind(
           orderId,
           af.file_path,
           (af.file_path || '').split(/[/\\]/).pop() || null,
           af.analysis_id || null,
-          idx
+          idx,
+          getEntityId(c)
         )
       )
       await c.env.DB.batch(aiFileStmts)
@@ -1408,14 +1409,15 @@ ordersCoreRouter.post('/', async (c) => {
               `INSERT INTO auto_process_jobs
                (order_id, order_item_id, ai_analysis_id, ai_group_index,
                 source_path, product, width_cm, height_cm, finishing,
-                scale_factor, clip_bounds, margins, status, ia_params)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)`
+                scale_factor, clip_bounds, margins, status, ia_params, entity_id)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)`
             ).bind(
               orderId, oi.id as number, aiAnalysisId, gIdx,
               analysis.file_path, productName, (oi.width as number) || 0, (oi.height as number) || 0, finishing,
               scale, JSON.stringify(clipBounds),
               JSON.stringify({ L: mL, R: mR, T: mT, B: mB }),
-              JSON.stringify(iaParams)
+              JSON.stringify(iaParams),
+              getEntityId(c)
             ).run()
           }
           if (aiItems.length > 0) autoProcessStarted = true

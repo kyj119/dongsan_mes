@@ -82,7 +82,7 @@ capsRouter.post('/ingest', async (c) => {
     const empMap: Record<string, number> = {}
     const empEntityMap: Record<number, number> = {}
     const { results: capsIdRows } = await c.env.DB.prepare(
-      `SELECT id, caps_id, entity_id FROM employees WHERE caps_site_id = ? AND caps_id IS NOT NULL AND caps_id != '' AND (pay_type IS NULL OR pay_type != 'FIXED')`
+      `SELECT id, caps_id, entity_id FROM employees WHERE caps_site_id = ? AND caps_id IS NOT NULL AND caps_id != '' AND is_deleted = 0 AND (pay_type IS NULL OR pay_type != 'FIXED')`
     ).bind(resolvedSiteId).all()
     for (const row of capsIdRows as Array<{ id: number; caps_id: string; entity_id: number | null }>) {
       empMap[String(row.caps_id)] = row.id

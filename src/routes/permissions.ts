@@ -6,6 +6,7 @@ import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
 import { invalidatePermissionCache, getAccessiblePages } from '../middleware/permissions'
 import { ROLES, ROLE_SET } from '../types/roles'
+import { getEntityId } from '../utils/entityFilter'
 
 const permissionsRouter = new Hono<HonoEnv>()
 permissionsRouter.use('/*', authMiddleware)
@@ -140,8 +141,8 @@ permissionsRouter.post('/request', async (c) => {
     }
     const message = `${userName} (${user.role}) 님이 "${page.page_label}" (${pageKey}) 페이지 접근 권한을 요청합니다.`
     await c.env.DB.prepare(
-      `INSERT INTO notifications (target_role, title, message, link) VALUES ('ADMIN', ?, ?, '/permissions')`
-    ).bind(title, message).run()
+      `INSERT INTO notifications (target_role, title, message, link, entity_id) VALUES ('ADMIN', ?, ?, '/permissions', ?)`
+    ).bind(title, message, getEntityId(c)).run()
     return c.json({ success: true, message: 'ADMIN에게 요청이 전송되었습니다.' })
   } catch {
     return c.json({ success: false, error: '서버 오류' }, 500)

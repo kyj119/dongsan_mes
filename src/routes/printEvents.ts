@@ -256,14 +256,19 @@ printEventsRouter.post('/', agentKeyMiddleware, async (c) => {
     // 인쇄 소요시간 계산
     const durationSec = calcPrintDuration(print_started_at, print_completed_at)
 
+    // entity_id: 카드에서 유도 (agent endpoint이므로 user context 없음)
+    const eventEntityId = cardId
+      ? (await c.env.DB.prepare('SELECT entity_id FROM cards WHERE id = ?').bind(cardId).first<{ entity_id: number }>())?.entity_id || 1
+      : 1
+
     // Insert event
     const result = await c.env.DB.prepare(`
       INSERT INTO print_events (
         agent_id, equipment_id, card_number, card_id, order_number, file_path, file_name,
         printer_name, print_status, print_started_at, print_completed_at, print_duration_sec,
         output_width, output_height, dpi,
-        copy_columns, copy_rows, copy_total, tile_count, tile_index
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        copy_columns, copy_rows, copy_total, tile_count, tile_index, entity_id
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).bind(
       agent_id, equipment_id || null, cardNumber, cardId, orderNumber, file_path, extractedName,
       printer_name || null, print_status, print_started_at || null,
@@ -271,7 +276,7 @@ printEventsRouter.post('/', agentKeyMiddleware, async (c) => {
       output_width || null, output_height || null,
       dpi || null,
       copy_columns || 1, copy_rows || 1, copy_total || 1,
-      tile_count || 0, tile_index || 0
+      tile_count || 0, tile_index || 0, eventEntityId
     ).run()
 
     const printEventId = result.meta.last_row_id as number
@@ -448,13 +453,18 @@ printEventsRouter.post('/batch', agentKeyMiddleware, async (c) => {
 
         const evtDuration = calcPrintDuration(evt.print_started_at, evt.print_completed_at)
 
+        // entity_id: 카드에서 유도
+        const batchEntityId = cardId
+          ? (await c.env.DB.prepare('SELECT entity_id FROM cards WHERE id = ?').bind(cardId).first<{ entity_id: number }>())?.entity_id || 1
+          : 1
+
         const batchResult = await c.env.DB.prepare(`
           INSERT INTO print_events (
             agent_id, equipment_id, card_number, card_id, order_number, file_path, file_name,
             printer_name, print_status, print_started_at, print_completed_at, print_duration_sec,
             output_width, output_height, dpi,
-            copy_columns, copy_rows, copy_total, tile_count, tile_index
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            copy_columns, copy_rows, copy_total, tile_count, tile_index, entity_id
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `).bind(
           agent_id, equipment_id || null, cardNumber, cardId, orderNumber,
           evt.file_path, extractedName, evt.printer_name || null,
@@ -462,7 +472,7 @@ printEventsRouter.post('/batch', agentKeyMiddleware, async (c) => {
           evt.print_completed_at || null, evtDuration, evt.output_width || null,
           evt.output_height || null, evt.dpi || null,
           evt.copy_columns || 1, evt.copy_rows || 1, evt.copy_total || 1,
-          evt.tile_count || 0, evt.tile_index || 0
+          evt.tile_count || 0, evt.tile_index || 0, batchEntityId
         ).run()
 
         const batchPrintEventId = batchResult.meta.last_row_id as number

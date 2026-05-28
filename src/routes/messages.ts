@@ -10,6 +10,7 @@ import { authMiddleware, requireRole } from '../middleware/auth'
 import { sendEmail } from '../services/emailProvider'
 import { baseLayout } from '../services/emailTemplates'
 import { getKakaoProvider, getKakaoSettings } from './kakao'
+import { getEntityId } from '../utils/entityFilter'
 import type { SMSMessage, ATSMessage } from './kakao'
 import { generatePortalToken } from './portal'
 
@@ -34,13 +35,14 @@ async function insertSendLog(db: D1Database, log: {
   resultMessage: string | null
   sentBy: number
   channel: string
+  entityId: number
 }): Promise<number> {
   const result = await db.prepare(
     `INSERT INTO kakao_send_logs (
       receipt_num, template_code, receiver_num, receiver_name,
       related_type, related_id, client_id, content, alt_content,
-      status, result_code, result_message, sent_by, channel
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      status, result_code, result_message, sent_by, channel, entity_id
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   ).bind(
     log.receiptNum,
     log.templateCode,
@@ -56,6 +58,7 @@ async function insertSendLog(db: D1Database, log: {
     log.resultMessage,
     log.sentBy,
     log.channel,
+    log.entityId,
   ).run()
   return result.meta.last_row_id
 }
@@ -166,6 +169,7 @@ messagesRouter.post('/send', async (c) => {
           resultMessage: emailResult.error || null,
           sentBy: userId,
           channel: 'email',
+          entityId: getEntityId(c),
         })
         return c.json({ success: false, error: emailResult.error }, 500)
       }
@@ -185,6 +189,7 @@ messagesRouter.post('/send', async (c) => {
         resultMessage: null,
         sentBy: userId,
         channel: 'email',
+        entityId: getEntityId(c),
       })
 
       return c.json({
@@ -252,6 +257,7 @@ messagesRouter.post('/send', async (c) => {
         resultMessage: sendResult.receiptNum ? `접수완료 (${sendResult.receiptNum})` : sendResult.message,
         sentBy: userId,
         channel: 'kakao',
+        entityId: getEntityId(c),
       })
 
       return c.json({
@@ -311,6 +317,7 @@ messagesRouter.post('/send', async (c) => {
         resultMessage: sendResult.receiptNum ? `접수완료 (${sendResult.receiptNum})` : sendResult.message,
         sentBy: userId,
         channel: 'sms',
+        entityId: getEntityId(c),
       })
 
       return c.json({
@@ -518,7 +525,7 @@ messagesRouter.post('/send-bulk', async (c) => {
       rawReceivers = (clientRows || []).map((r) => ({ name: r.client_name, phone: r.mobile }))
     } else if (targetType === 'employees') {
       const { results: empRows } = await db.prepare(
-        `SELECT name, phone FROM employees WHERE phone IS NOT NULL AND phone != '' ORDER BY name`
+        `SELECT name, phone FROM employees WHERE phone IS NOT NULL AND phone != '' AND is_deleted = 0 ORDER BY name`
       ).all<{ name: string; phone: string }>()
       rawReceivers = (empRows || []).map((r) => ({ name: r.name, phone: r.phone }))
     }
@@ -595,6 +602,7 @@ messagesRouter.post('/send-bulk', async (c) => {
       resultMessage: sendResult.message,
       sentBy: userId,
       channel,
+      entityId: getEntityId(c),
     })
 
     return c.json({

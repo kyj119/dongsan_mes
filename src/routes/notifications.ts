@@ -8,14 +8,14 @@ const notificationsRouter = new Hono<HonoEnv>()
 notificationsRouter.use('/*', authMiddleware)
 
 // ── Helper: 중복 방지 알림 생성 (당일 동일 title 스킵) ──
-async function createIfNotExists(db: D1Database, targetRole: string, title: string, message: string, link: string) {
+async function createIfNotExists(db: D1Database, targetRole: string, title: string, message: string, link: string, entityId: number = 1) {
   const existing = await db.prepare(
     `SELECT id FROM notifications WHERE target_role = ? AND title = ? AND date(created_at) = date('now') LIMIT 1`
   ).bind(targetRole, title).first()
   if (existing) return
   await db.prepare(
-    `INSERT INTO notifications (target_role, title, message, link) VALUES (?, ?, ?, ?)`
-  ).bind(targetRole, title, message, link).run()
+    `INSERT INTO notifications (target_role, title, message, link, entity_id) VALUES (?, ?, ?, ?, ?)`
+  ).bind(targetRole, title, message, link, entityId).run()
 }
 
 // Get notifications for current user
@@ -170,17 +170,18 @@ notificationsRouter.post('/generate', async (c) => {
       const overdue = dueOrders.filter((o) => (o.delivery_date as string) <= today)
       const dueSoon = dueOrders.filter((o) => (o.delivery_date as string) > today)
 
+      const eid = getEntityId(c)
       if (overdue.length > 0) {
         await createIfNotExists(db, 'MANAGER',
           `납기 지연 ${overdue.length}건`,
           overdue.slice(0, 3).map((o) => `${o.order_number} (${o.client_name})`).join(', '),
-          '/orders')
+          '/orders', eid)
       }
       if (dueSoon.length > 0) {
         await createIfNotExists(db, 'MANAGER',
           `내일 납기 ${dueSoon.length}건`,
           dueSoon.slice(0, 3).map((o) => `${o.order_number} (${o.client_name})`).join(', '),
-          '/orders')
+          '/orders', eid)
       }
     }
 
@@ -196,7 +197,7 @@ notificationsRouter.post('/generate', async (c) => {
       await createIfNotExists(db, 'MANAGER',
         `발주 납기 초과 ${overduePoResult.cnt}건`,
         '입고 대기 중인 발주서의 납기가 지났습니다.',
-        '/purchase-orders')
+        '/purchase-orders', getEntityId(c))
     }
 
     // 3. 장비 소모품/정비 기한 도래
@@ -214,7 +215,7 @@ notificationsRouter.post('/generate', async (c) => {
       await createIfNotExists(db, 'MANAGER',
         `장비 정비/소모품 알림 ${alertResult.cnt}건`,
         '교체 또는 정비 기한이 도래한 항목이 있습니다.',
-        '/equipment')
+        '/equipment', getEntityId(c))
     }
 
     // 4. 재고 부족 (reorder_point 설정된 품목)
@@ -227,7 +228,7 @@ notificationsRouter.post('/generate', async (c) => {
       await createIfNotExists(db, 'MANAGER',
         `재고 부족 ${lowStockResult.cnt}개 품목`,
         '재주문점 이하로 떨어진 재고 품목이 있습니다.',
-        '/inventory')
+        '/inventory', getEntityId(c))
     }
 
     return c.json({ success: true })

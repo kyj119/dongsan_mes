@@ -104,7 +104,7 @@ insuranceReportsRouter.post('/generate', async (c) => {
               COALESCE(p.employer_industrial_accident, 0) as employer_ia,
               e.name, e.rrn, e.employee_code
        FROM payroll p
-       JOIN employees e ON p.employee_id = e.id
+       JOIN employees e ON p.employee_id = e.id AND e.is_deleted = 0
        WHERE p.pay_period = ?
        AND p.status IN ('PAID', 'APPROVED', 'PENDING')
        ORDER BY e.name`

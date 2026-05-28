@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { authMiddleware } from '../middleware/auth'
 import { entityFilter } from '../utils/entityFilter'
+import { generateCsv, csvResponse } from '../utils/csv'
 
 const deliveryAnalyticsRouter = new Hono<HonoEnv>()
 deliveryAnalyticsRouter.use('/*', authMiddleware)
@@ -14,12 +15,11 @@ deliveryAnalyticsRouter.get('/export/csv', async (c) => {
     const dateTo = to || new Date().toISOString().substring(0, 10)
 
     const ef = entityFilter(c, 'o')
-    const { generateCsv, csvResponse } = await import('../utils/csv')
 
     const { results } = await c.env.DB.prepare(`
       SELECT
         o.order_number,
-        c.name AS client_name,
+        c.client_name,
         o.delivery_date,
         o.updated_at,
         o.status,

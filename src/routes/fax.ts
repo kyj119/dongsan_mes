@@ -56,8 +56,8 @@ faxRouter.post('/send', async (c) => {
 
     // 발송 로그 기록
     await db.prepare(`
-      INSERT INTO kakao_send_logs (receipt_num, template_code, receiver_num, receiver_name, related_type, related_id, client_id, content, status, result_code, result_message, sent_by, channel)
-      VALUES (?, 'FAX', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'fax')
+      INSERT INTO kakao_send_logs (receipt_num, template_code, receiver_num, receiver_name, related_type, related_id, client_id, content, status, result_code, result_message, sent_by, channel, entity_id)
+      VALUES (?, 'FAX', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'fax', ?)
     `).bind(
       result.receiptNum,
       receiver_num,
@@ -70,6 +70,7 @@ faxRouter.post('/send', async (c) => {
       result.code,
       result.message,
       userId,
+      getEntityId(c),
     ).run()
 
     return c.json({

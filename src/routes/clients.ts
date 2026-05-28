@@ -542,13 +542,14 @@ clientsRouter.post('/:id/notes', requireRole('ADMIN', 'MANAGER', 'DESIGNER'), as
     }
 
     const result = await c.env.DB.prepare(`
-      INSERT INTO client_notes (client_id, note_type, content, created_by)
-      VALUES (?, ?, ?, ?)
+      INSERT INTO client_notes (client_id, note_type, content, created_by, entity_id)
+      VALUES (?, ?, ?, ?, ?)
     `).bind(
       clientId,
       body.note_type || 'GENERAL',
       body.content,
-      user?.id || null
+      user?.id || null,
+      getEntityId(c)
     ).run()
 
     return c.json({
@@ -1050,15 +1051,16 @@ clientsRouter.post('/:id/portal-account', requireRole('ADMIN'), async (c) => {
     const passwordHash = await hashPassword(password)
 
     const result = await c.env.DB.prepare(`
-      INSERT INTO client_accounts (client_id, login_id, password_hash, contact_name, contact_phone, contact_email, is_active)
-      VALUES (?, ?, ?, ?, ?, ?, 1)
+      INSERT INTO client_accounts (client_id, login_id, password_hash, contact_name, contact_phone, contact_email, is_active, entity_id)
+      VALUES (?, ?, ?, ?, ?, ?, 1, ?)
     `).bind(
       clientId,
       login_id,
       passwordHash,
       contact_name || null,
       contact_phone || null,
-      contact_email || null
+      contact_email || null,
+      getEntityId(c)
     ).run()
 
     return c.json({ success: true, data: { account_id: result.meta.last_row_id, login_id } })

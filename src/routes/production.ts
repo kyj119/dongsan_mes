@@ -385,7 +385,7 @@ productionRouter.patch('/quality-issues/:id', async (c) => {
 
     // Get associated employee_id for the user
     const { results: empResults } = await c.env.DB.prepare(`
-      SELECT id FROM employees WHERE user_id = ? LIMIT 1
+      SELECT id FROM employees WHERE user_id = ? AND is_deleted = 0 LIMIT 1
     `).bind(user.id).all()
 
     const resolved_by = empResults.length > 0 ? (empResults[0] as Record<string, unknown>).id : null

@@ -263,13 +263,14 @@ async function issueTaxInvoice(
               // TODO: 세금계산서 전용 템플릿 코드 설정 추가 후 활성화
               console.log(`[kakao] 세금계산서 ${updated.invoice_number} 알림톡 발송 대상: ${buyerClient.mobile}`)
               await db.prepare(`
-                INSERT INTO kakao_send_logs (template_code, receiver_num, receiver_name, related_type, related_id, client_id, content, status, sent_by, created_at)
-                VALUES ('TAX_INVOICE', ?, ?, 'tax_invoices', ?, ?, ?, 'PENDING', ?, datetime('now'))
+                INSERT INTO kakao_send_logs (template_code, receiver_num, receiver_name, related_type, related_id, client_id, content, status, sent_by, created_at, entity_id)
+                VALUES ('TAX_INVOICE', ?, ?, 'tax_invoices', ?, ?, ?, 'PENDING', ?, datetime('now'), ?)
               `).bind(
                 buyerClient.mobile, updated.buyer_name || '',
                 taxInvoiceId, buyerClient.id,
                 `세금계산서 ${updated.invoice_number} 발행 안내`,
-                userId
+                userId,
+                (updated as any).entity_id || 1
               ).run()
           }
         }

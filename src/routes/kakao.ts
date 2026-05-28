@@ -2,7 +2,7 @@ import { Hono } from 'hono'
 import type { Context } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
-import { entityFilter } from '../utils/entityFilter'
+import { entityFilter, getEntityId } from '../utils/entityFilter'
 import { BarobillSmsProvider } from '../services/barobillSms'
 import type { SMSMessage, ATSMessage } from '../services/barobillSms'
 export type { SMSMessage, ATSMessage }
@@ -326,8 +326,8 @@ kakaoRouter.post('/send', async (c) => {
       `INSERT INTO kakao_send_logs (
         receipt_num, template_code, receiver_num, receiver_name,
         related_type, related_id, client_id, content, alt_content,
-        status, result_code, result_message, sent_by
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        status, result_code, result_message, sent_by, entity_id
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).bind(
       sendResult.receiptNum,
       templateCode,
@@ -341,7 +341,8 @@ kakaoRouter.post('/send', async (c) => {
       sendResult.receiptNum ? 'SUCCESS' : 'FAILED',
       sendResult.code,
       sendResult.message,
-      userId
+      userId,
+      getEntityId(c)
     ).run()
 
     return c.json({
@@ -435,8 +436,8 @@ kakaoRouter.post('/send-shipment', async (c) => {
       `INSERT INTO kakao_send_logs (
         receipt_num, template_code, receiver_num, receiver_name,
         related_type, related_id, client_id, content, alt_content,
-        status, result_code, result_message, sent_by
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        status, result_code, result_message, sent_by, entity_id
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).bind(
       sendResult.receiptNum,
       templateCode,
@@ -450,7 +451,8 @@ kakaoRouter.post('/send-shipment', async (c) => {
       sendResult.receiptNum ? 'SUCCESS' : 'FAILED',
       sendResult.code,
       sendResult.message,
-      userId
+      userId,
+      getEntityId(c)
     ).run()
 
     return c.json({
@@ -543,8 +545,8 @@ kakaoRouter.post('/send-tax-invoice', async (c) => {
       `INSERT INTO kakao_send_logs (
         receipt_num, template_code, receiver_num, receiver_name,
         related_type, related_id, client_id, content, alt_content,
-        status, result_code, result_message, sent_by
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        status, result_code, result_message, sent_by, entity_id
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).bind(
       sendResult.receiptNum,
       templateCode,
@@ -558,7 +560,8 @@ kakaoRouter.post('/send-tax-invoice', async (c) => {
       sendResult.receiptNum ? 'SUCCESS' : 'FAILED',
       sendResult.code,
       sendResult.message,
-      userId
+      userId,
+      getEntityId(c)
     ).run()
 
     return c.json({
@@ -658,8 +661,8 @@ kakaoRouter.post('/send-portal-link', async (c) => {
       `INSERT INTO kakao_send_logs (
         receipt_num, template_code, receiver_num, receiver_name,
         related_type, related_id, client_id, content, alt_content,
-        status, result_code, result_message, sent_by
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        status, result_code, result_message, sent_by, entity_id
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).bind(
       sendResult.receiptNum,
       templateCode,
@@ -673,7 +676,8 @@ kakaoRouter.post('/send-portal-link', async (c) => {
       sendResult.receiptNum ? 'SUCCESS' : 'FAILED',
       sendResult.code,
       sendResult.message,
-      userId
+      userId,
+      getEntityId(c)
     ).run()
 
     return c.json({
@@ -756,8 +760,8 @@ kakaoRouter.post('/send-sms', async (c) => {
       `INSERT INTO kakao_send_logs (
         receipt_num, template_code, receiver_num, receiver_name,
         related_type, related_id, client_id, content, alt_content,
-        status, result_code, result_message, sent_by
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        status, result_code, result_message, sent_by, entity_id
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).bind(
       sendResult.receiptNum,
       templateCode,
@@ -771,7 +775,8 @@ kakaoRouter.post('/send-sms', async (c) => {
       sendResult.receiptNum ? 'SUCCESS' : 'FAILED',
       sendResult.code,
       sendResult.message,
-      userId
+      userId,
+      getEntityId(c)
     ).run()
 
     return c.json({
@@ -827,7 +832,7 @@ kakaoRouter.post('/send-sms-bulk', async (c) => {
       }))
     } else if (targetType === 'employees') {
       const { results: empRows } = await db.prepare(
-        `SELECT name, phone FROM employees WHERE phone IS NOT NULL AND phone != '' ORDER BY name`
+        `SELECT name, phone FROM employees WHERE phone IS NOT NULL AND phone != '' AND is_deleted = 0 ORDER BY name`
       ).all<{ name: string; phone: string }>()
       messages = empRows.map((r) => ({
         rcv: r.phone,
@@ -875,8 +880,8 @@ kakaoRouter.post('/send-sms-bulk', async (c) => {
       `INSERT INTO kakao_send_logs (
         receipt_num, template_code, receiver_num, receiver_name,
         related_type, related_id, client_id, content, alt_content,
-        status, result_code, result_message, sent_by
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        status, result_code, result_message, sent_by, entity_id
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).bind(
       sendResult.receiptNum,
       templateCode,
@@ -890,7 +895,8 @@ kakaoRouter.post('/send-sms-bulk', async (c) => {
       sendResult.receiptNum ? 'SUCCESS' : 'FAILED',
       sendResult.code,
       sendResult.message,
-      userId
+      userId,
+      getEntityId(c)
     ).run()
 
     return c.json({
@@ -998,8 +1004,8 @@ kakaoRouter.post('/send-shipment-bulk', async (c) => {
       `INSERT INTO kakao_send_logs (
         receipt_num, template_code, receiver_num, receiver_name,
         related_type, related_id, content, alt_content,
-        status, result_code, result_message, sent_by
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        status, result_code, result_message, sent_by, entity_id
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).bind(
       sendResult!.receiptNum || '',
       templateLabel,
@@ -1012,7 +1018,8 @@ kakaoRouter.post('/send-shipment-bulk', async (c) => {
       sendResult!.receiptNum ? 'SUCCESS' : 'FAILED',
       sendResult!.code || 0,
       sendResult!.message || '',
-      userId
+      userId,
+      getEntityId(c)
     ).run()
 
     return c.json({

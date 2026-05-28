@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
+import { getEntityId } from '../utils/entityFilter'
 
 const equipmentQueue = new Hono<HonoEnv>()
 equipmentQueue.use('*', authMiddleware)
@@ -8,6 +9,9 @@ equipmentQueue.use('*', authMiddleware)
 // ─── 장비별 작업 큐 조회 ──────────────────────────────────────────────────────
 equipmentQueue.get('/:equipmentId/queue', async (c) => {
   const equipmentId = c.req.param('equipmentId')
+  const entityId = getEntityId(c)
+  const eClause = entityId > 0 ? ' AND c.requesting_entity_id = ?' : ''
+  const eParams = entityId > 0 ? [entityId] : []
 
   const { results } = await c.env.DB.prepare(`
     SELECT c.id, c.card_number, c.client_name, c.item_name,
@@ -15,15 +19,19 @@ equipmentQueue.get('/:equipmentId/queue', async (c) => {
       c.estimated_minutes, c.queue_position, c.estimated_start_at, c.estimated_end_at,
       c.rip_status, c.status
     FROM cards c
-    WHERE c.equipment_id = ? AND c.status = 'PRINTING'
+    WHERE c.equipment_id = ? AND c.status = 'PRINTING'${eClause}
     ORDER BY c.priority DESC, c.delivery_date ASC, c.created_at ASC
-  `).bind(equipmentId).all()
+  `).bind(equipmentId, ...eParams).all()
 
   return c.json({ success: true, data: results })
 })
 
 // ─── 전체 장비 부하 현황 ──────────────────────────────────────────────────────
 equipmentQueue.get('/workload', async (c) => {
+  const entityId = getEntityId(c)
+  const entityClause = entityId > 0 ? ' AND c.requesting_entity_id = ?' : ''
+  const entityParams = entityId > 0 ? [entityId] : []
+
   const { results } = await c.env.DB.prepare(`
     SELECT e.id, e.name, e.daily_capacity, e.avg_print_minutes_per_sqm,
       e.working_hours_start, e.working_hours_end, e.status as equipment_status,
@@ -31,11 +39,11 @@ equipmentQueue.get('/workload', async (c) => {
       COALESCE(SUM(c.estimated_minutes), 0) as total_estimated_minutes,
       MIN(c.delivery_date) as earliest_deadline
     FROM equipment e
-    LEFT JOIN cards c ON c.equipment_id = e.id AND c.status = 'PRINTING'
+    LEFT JOIN cards c ON c.equipment_id = e.id AND c.status = 'PRINTING'${entityClause}
     WHERE e.status = 'ACTIVE'
     GROUP BY e.id
     ORDER BY total_estimated_minutes DESC
-  `).all()
+  `).bind(...entityParams).all()
 
   return c.json({ success: true, data: results })
 })
@@ -53,13 +61,16 @@ equipmentQueue.post('/:equipmentId/recalculate', requireRole('ADMIN', 'MANAGER')
 
   const avgRate = eq.avg_print_minutes_per_sqm || 2 // 기본 2분/㎡
 
-  // 큐의 카드 목록 (우선순위순)
+  // 큐의 카드 목록 (우선순위순) — entity 필터
+  const recalcEntityId = getEntityId(c)
+  const recalcEClause = recalcEntityId > 0 ? ' AND requesting_entity_id = ?' : ''
+  const recalcEParams: number[] = recalcEntityId > 0 ? [recalcEntityId] : []
   const { results: cards } = await c.env.DB.prepare(`
     SELECT id, width, height, quantity
     FROM cards
-    WHERE equipment_id = ? AND status = 'PRINTING'
+    WHERE equipment_id = ? AND status = 'PRINTING'${recalcEClause}
     ORDER BY priority DESC, delivery_date ASC, created_at ASC
-  `).bind(equipmentId).all<{ id: number; width: number; height: number; quantity: number }>()
+  `).bind(equipmentId, ...recalcEParams).all<{ id: number; width: number; height: number; quantity: number }>()
 
   // 예상시간 계산 + 큐 위치
   const now = new Date()
@@ -105,11 +116,13 @@ equipmentQueue.patch('/:equipmentId/queue/reorder', requireRole('ADMIN', 'MANAGE
     return c.json({ success: false, error: 'card_ids 배열 필요' }, 400)
   }
 
-  // priority를 순서 기반으로 갱신 (높은 priority = 먼저 인쇄)
+  // priority를 순서 기반으로 갱신 (높은 priority = 먼저 인쇄) — entity 보호
+  const reorderEntityId = getEntityId(c)
+  const reorderEClause = reorderEntityId > 0 ? ' AND requesting_entity_id = ?' : ''
   const stmts = card_ids.map((cardId: number, idx: number) =>
     c.env.DB.prepare(
-      `UPDATE cards SET priority = ?, queue_position = ? WHERE id = ? AND equipment_id = ?`
-    ).bind(card_ids.length - idx, idx + 1, cardId, equipmentId)
+      `UPDATE cards SET priority = ?, queue_position = ? WHERE id = ? AND equipment_id = ?${reorderEClause}`
+    ).bind(card_ids.length - idx, idx + 1, cardId, equipmentId, ...(reorderEntityId > 0 ? [reorderEntityId] : []))
   )
 
   if (stmts.length > 0) {

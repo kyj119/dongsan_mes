@@ -1265,8 +1265,8 @@ arRouter.post('/collection-log', requireRole('ADMIN', 'MANAGER'), async (c) => {
     }
 
     const result = await c.env.DB.prepare(`
-      INSERT INTO collection_logs (client_id, contact_date, contact_method, contact_person, promised_date, promised_amount, notes, created_by)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO collection_logs (client_id, contact_date, contact_method, contact_person, promised_date, promised_amount, notes, created_by, entity_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).bind(
       body.client_id,
       body.contact_date,
@@ -1275,7 +1275,8 @@ arRouter.post('/collection-log', requireRole('ADMIN', 'MANAGER'), async (c) => {
       body.promised_date || null,
       body.promised_amount || null,
       body.notes || null,
-      user?.id || null
+      user?.id || null,
+      getEntityId(c)
     ).run()
 
     return c.json({
@@ -1620,8 +1621,8 @@ arRouter.post('/collection-logs', async (c) => {
     }
 
     const result = await c.env.DB.prepare(`
-      INSERT INTO collection_logs (client_id, contact_method, contact_date, amount_requested, promised_date, promised_amount, notes, result, created_by)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO collection_logs (client_id, contact_method, contact_date, amount_requested, promised_date, promised_amount, notes, result, created_by, entity_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).bind(
       body.client_id,
       body.contact_method,
@@ -1631,7 +1632,8 @@ arRouter.post('/collection-logs', async (c) => {
       body.promised_amount || null,
       body.notes || null,
       body.result || null,
-      user?.id || null
+      user?.id || null,
+      getEntityId(c)
     ).run()
 
     // 이메일 독촉 발송

@@ -82,10 +82,11 @@ paymentRequestsRouter.post('/', async (c) => {
       return c.json({ success: false, error: '필수 항목 누락' }, 400)
     }
 
-    // 결의서 번호 생성
+    // 결의서 번호 생성 (entity별 독립 시퀀스)
     const today = new Date()
     const dateStr = today.toISOString().substring(0, 10).replace(/-/g, '')
-    const requestNumber = await getNextSeqNumber(c.env.DB, 'payment_requests', 'request_number', `PR-${dateStr}-`)
+    const eid = getEntityId(c) || 1
+    const requestNumber = await getNextSeqNumber(c.env.DB, 'payment_requests', 'request_number', `PR-${dateStr}-`, 3, eid)
 
     const result = await c.env.DB.prepare(`
       INSERT INTO payment_requests (
@@ -143,7 +144,8 @@ paymentRequestsRouter.post('/from-po/:poId', async (c) => {
 
     const today = new Date()
     const dateStr = today.toISOString().substring(0, 10).replace(/-/g, '')
-    const requestNumber = await getNextSeqNumber(c.env.DB, 'payment_requests', 'request_number', `PR-${dateStr}-`)
+    const eidApprove = getEntityId(c) || 1
+    const requestNumber = await getNextSeqNumber(c.env.DB, 'payment_requests', 'request_number', `PR-${dateStr}-`, 3, eidApprove)
 
     const result = await c.env.DB.prepare(`
       INSERT INTO payment_requests (

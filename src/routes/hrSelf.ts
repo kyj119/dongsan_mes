@@ -26,7 +26,7 @@ hrSelfRouter.post('/self-auth', async (c) => {
     const emp = await c.env.DB.prepare(`
       SELECT id, employee_code, name, birth_date, department, position, hire_date, entity_id, status
       FROM employees
-      WHERE employee_code = ? AND status = 'ACTIVE'
+      WHERE employee_code = ? AND status = 'ACTIVE' AND is_deleted = 0
     `).bind(String(employee_code).toUpperCase().trim()).first<any>()
 
     if (!emp) {
@@ -104,7 +104,7 @@ hrSelfRouter.get('/self/certificates/employment', async (c) => {
              ent.business_reg_no
       FROM employees e
       LEFT JOIN entities ent ON ent.id = e.entity_id
-      WHERE e.id = ? AND e.status = 'ACTIVE'
+      WHERE e.id = ? AND e.status = 'ACTIVE' AND e.is_deleted = 0
     `).bind(employeeId).first<any>()
 
     if (!emp) {

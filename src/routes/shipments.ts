@@ -736,10 +736,48 @@ shipmentsRouter.patch('/:id/status', requireRole('ADMIN', 'MANAGER'), async (c) 
 
       await c.env.DB.batch(stmts)
     } else {
-      // 취소가 아닌 단순 상태 변경
-      await c.env.DB.prepare(
-        'UPDATE shipments SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
-      ).bind(status, id).run()
+      // 취소가 아닌 단순 상태 변경 + 주문 상태 동기
+      const stmts: ReturnType<typeof c.env.DB.prepare>[] = [
+        c.env.DB.prepare(
+          'UPDATE shipments SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
+        ).bind(status, id),
+      ]
+
+      // 주문 상태 동기화
+      const orderRow = await c.env.DB.prepare(
+        'SELECT order_id FROM shipments WHERE id = ?'
+      ).bind(id).first<{ order_id: number }>()
+
+      if (orderRow?.order_id) {
+        const user = c.get('user')
+        if (status === 'SHIPPED') {
+          stmts.push(c.env.DB.prepare(
+            `UPDATE orders SET status = 'SHIPPED', updated_at = CURRENT_TIMESTAMP WHERE id = ? AND status != 'SHIPPED'`
+          ).bind(orderRow.order_id))
+        } else if (status === 'DELIVERED') {
+          // 모든 출고가 DELIVERED인지 확인
+          const otherNonDelivered = await c.env.DB.prepare(
+            `SELECT COUNT(*) as cnt FROM shipments WHERE order_id = ? AND id != ? AND status NOT IN ('DELIVERED', 'CANCELLED')`
+          ).bind(orderRow.order_id, id).first<{ cnt: number }>()
+          if (!otherNonDelivered || otherNonDelivered.cnt === 0) {
+            stmts.push(c.env.DB.prepare(
+              `UPDATE orders SET status = 'COMPLETED', updated_at = CURRENT_TIMESTAMP WHERE id = ? AND status NOT IN ('COMPLETED', 'CANCELLED')`
+            ).bind(orderRow.order_id))
+          }
+        } else if (status === 'PENDING') {
+          // PENDING 복귀: 다른 활성 SHIPPED 출고가 없으면 주문을 PRINT_DONE으로
+          const otherShipped = await c.env.DB.prepare(
+            `SELECT COUNT(*) as cnt FROM shipments WHERE order_id = ? AND id != ? AND status = 'SHIPPED'`
+          ).bind(orderRow.order_id, id).first<{ cnt: number }>()
+          if (!otherShipped || otherShipped.cnt === 0) {
+            stmts.push(c.env.DB.prepare(
+              `UPDATE orders SET status = 'PRINT_DONE', updated_at = CURRENT_TIMESTAMP WHERE id = ? AND status = 'SHIPPED'`
+            ).bind(orderRow.order_id))
+          }
+        }
+      }
+
+      await c.env.DB.batch(stmts)
     }
 
     return c.json({ success: true, message: '출고 상태가 변경되었습니다.' })

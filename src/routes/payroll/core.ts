@@ -376,7 +376,7 @@ coreRouter.post('/batch', requireRole('ADMIN', 'MANAGER'), async (c) => {
     if (!payPeriod) return c.json({ success: false, error: 'pay_period 필요' }, 400)
 
     const ef = entityFilter(c, 'e')
-    const empQuery = `SELECT e.id FROM employees e WHERE e.status = 'ACTIVE'${ef.clause}`
+    const empQuery = `SELECT e.id FROM employees e WHERE e.status = 'ACTIVE' AND e.is_deleted = 0${ef.clause}`
     const employees = await c.env.DB.prepare(empQuery).bind(...ef.params).all<{ id: number }>()
     const list = employees.results || []
 

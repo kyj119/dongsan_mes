@@ -14,7 +14,7 @@ interface EmployeeBasicRow {
   id: number; employee_code: string; name: string; department: string
   position: string; hire_date: string; status: string
 }
-interface EmployeeHireDateRow { id: number; hire_date: string }
+interface EmployeeHireDateRow { id: number; hire_date: string; entity_id?: number }
 interface AccruedRow { accrued: number }
 interface LeaveTypeRow { deduction_days: number }
 interface LeaveTypeWithCategoryRow { category: string; deduction_days: number }
@@ -88,7 +88,7 @@ leavesRouter.get('/balances', requireRole('ADMIN', 'MANAGER'), async (c) => {
       FROM employees e
       LEFT JOIN leave_balances lb
         ON lb.employee_id = e.id AND lb.year = ? AND lb.leave_type = 'ANNUAL'
-      WHERE e.status = 'ACTIVE'${ef.clause}
+      WHERE e.status = 'ACTIVE' AND e.is_deleted = 0${ef.clause}
       ORDER BY e.department, e.name
     `).bind(year, ...ef.params).all()
     return c.json({ success: true, data: results, year })
@@ -147,7 +147,7 @@ leavesRouter.post('/accrual/monthly', requireRole('ADMIN'), async (c) => {
     const currentYear = today.getFullYear()
 
     const { results: employees } = await c.env.DB.prepare(`
-      SELECT id, hire_date FROM employees WHERE status = 'ACTIVE' AND hire_date IS NOT NULL
+      SELECT id, hire_date, entity_id FROM employees WHERE status = 'ACTIVE' AND is_deleted = 0 AND hire_date IS NOT NULL
     `).all<EmployeeHireDateRow>()
 
     let processed = 0
@@ -170,16 +170,16 @@ leavesRouter.post('/accrual/monthly', requireRole('ADMIN'), async (c) => {
 
       try {
         await c.env.DB.prepare(`
-          INSERT INTO leave_balances (employee_id, year, leave_type, accrued)
-          VALUES (?, ?, 'ANNUAL', ?)
+          INSERT INTO leave_balances (employee_id, year, leave_type, accrued, entity_id)
+          VALUES (?, ?, 'ANNUAL', ?, ?)
           ON CONFLICT(employee_id, year, leave_type) DO UPDATE SET
             accrued = excluded.accrued, updated_at = CURRENT_TIMESTAMP
-        `).bind(emp.id, currentYear, expected).run()
+        `).bind(emp.id, currentYear, expected, (emp as any).entity_id || 1).run()
 
         await c.env.DB.prepare(`
-          INSERT INTO leave_accrual_logs (employee_id, year, accrual_type, days, reason, run_by)
-          VALUES (?, ?, 'MONTHLY', ?, '입사 1년 미만 월차 자동 적립', ?)
-        `).bind(emp.id, currentYear, delta, user?.id || null).run()
+          INSERT INTO leave_accrual_logs (employee_id, year, accrual_type, days, reason, run_by, entity_id)
+          VALUES (?, ?, 'MONTHLY', ?, '입사 1년 미만 월차 자동 적립', ?, ?)
+        `).bind(emp.id, currentYear, delta, user?.id || null, emp.entity_id || 1).run()
         processed++
       } catch (e: any) {
         console.error(`Accrual error for emp_id=${emp.id}:`, e)
@@ -202,7 +202,7 @@ leavesRouter.post('/accrual/yearly', requireRole('ADMIN'), async (c) => {
     const currentYear = today.getFullYear()
 
     const { results: employees } = await c.env.DB.prepare(`
-      SELECT id, hire_date FROM employees WHERE status = 'ACTIVE' AND hire_date IS NOT NULL
+      SELECT id, hire_date, entity_id FROM employees WHERE status = 'ACTIVE' AND is_deleted = 0 AND hire_date IS NOT NULL
     `).all<EmployeeHireDateRow>()
 
     let processed = 0
@@ -221,16 +221,16 @@ leavesRouter.post('/accrual/yearly', requireRole('ADMIN'), async (c) => {
 
       try {
         await c.env.DB.prepare(`
-          INSERT INTO leave_balances (employee_id, year, leave_type, accrued)
-          VALUES (?, ?, 'ANNUAL', ?)
+          INSERT INTO leave_balances (employee_id, year, leave_type, accrued, entity_id)
+          VALUES (?, ?, 'ANNUAL', ?, ?)
           ON CONFLICT(employee_id, year, leave_type) DO UPDATE SET
             accrued = excluded.accrued, updated_at = CURRENT_TIMESTAMP
-        `).bind(emp.id, currentYear, annual).run()
+        `).bind(emp.id, currentYear, annual, (emp as any).entity_id || 1).run()
 
         await c.env.DB.prepare(`
-          INSERT INTO leave_accrual_logs (employee_id, year, accrual_type, days, reason, run_by)
-          VALUES (?, ?, 'YEARLY', ?, '연간 연차 자동 부여 (근로기준법)', ?)
-        `).bind(emp.id, currentYear, annual - currentAccrued, user?.id || null).run()
+          INSERT INTO leave_accrual_logs (employee_id, year, accrual_type, days, reason, run_by, entity_id)
+          VALUES (?, ?, 'YEARLY', ?, '연간 연차 자동 부여 (근로기준법)', ?, ?)
+        `).bind(emp.id, currentYear, annual - currentAccrued, user?.id || null, emp.entity_id || 1).run()
         processed++
       } catch (e: any) {
         console.error(`Accrual error for emp_id=${emp.id}:`, e)
@@ -255,17 +255,17 @@ leavesRouter.post('/grant', requireRole('ADMIN'), async (c) => {
     }
 
     await c.env.DB.prepare(`
-      INSERT INTO leave_balances (employee_id, year, leave_type, granted_extra)
-      VALUES (?, ?, 'ANNUAL', ?)
+      INSERT INTO leave_balances (employee_id, year, leave_type, granted_extra, entity_id)
+      VALUES (?, ?, 'ANNUAL', ?, ?)
       ON CONFLICT(employee_id, year, leave_type) DO UPDATE SET
         granted_extra = leave_balances.granted_extra + excluded.granted_extra,
         updated_at = CURRENT_TIMESTAMP
-    `).bind(body.employee_id, body.year, body.days).run()
+    `).bind(body.employee_id, body.year, body.days, getEntityId(c)).run()
 
     await c.env.DB.prepare(`
-      INSERT INTO leave_accrual_logs (employee_id, year, accrual_type, days, reason, run_by)
-      VALUES (?, ?, 'TENURE_BONUS', ?, ?, ?)
-    `).bind(body.employee_id, body.year, body.days, body.reason || '별도 부여', user?.id || null).run()
+      INSERT INTO leave_accrual_logs (employee_id, year, accrual_type, days, reason, run_by, entity_id)
+      VALUES (?, ?, 'TENURE_BONUS', ?, ?, ?, ?)
+    `).bind(body.employee_id, body.year, body.days, body.reason || '별도 부여', user?.id || null, getEntityId(c)).run()
 
     return c.json({ success: true })
   } catch (error: any) {
@@ -377,21 +377,21 @@ leavesRouter.patch('/requests/:id/approve', requireRole('ADMIN', 'MANAGER'), asy
         ['HALF_AM', 'HALF_PM', 'QUARTER_1', 'QUARTER_2', 'QUARTER_3', 'QUARTER_4'].includes(req.leave_type)) {
       // 연차계열: ANNUAL 잔여에서 차감
       await c.env.DB.prepare(`
-        INSERT INTO leave_balances (employee_id, year, leave_type, used)
-        VALUES (?, ?, 'ANNUAL', ?)
+        INSERT INTO leave_balances (employee_id, year, leave_type, used, entity_id)
+        VALUES (?, ?, 'ANNUAL', ?, ?)
         ON CONFLICT(employee_id, year, leave_type) DO UPDATE SET
           used = leave_balances.used + excluded.used,
           updated_at = CURRENT_TIMESTAMP
-      `).bind(req.employee_id, year, req.days).run()
+      `).bind(req.employee_id, year, req.days, getEntityId(c)).run()
     } else if (lt?.category === 'SICK' || req.leave_type === 'SICK') {
       // 병가: SICK 잔여에서 차감
       await c.env.DB.prepare(`
-        INSERT INTO leave_balances (employee_id, year, leave_type, used)
-        VALUES (?, ?, 'SICK', ?)
+        INSERT INTO leave_balances (employee_id, year, leave_type, used, entity_id)
+        VALUES (?, ?, 'SICK', ?, ?)
         ON CONFLICT(employee_id, year, leave_type) DO UPDATE SET
           used = leave_balances.used + excluded.used,
           updated_at = CURRENT_TIMESTAMP
-      `).bind(req.employee_id, year, req.days).run()
+      `).bind(req.employee_id, year, req.days, getEntityId(c)).run()
     }
     // 경조휴가(FAMILY)는 별도 잔여 차감 없음 (규정 일수만큼 유급)
 
@@ -545,21 +545,28 @@ leavesRouter.post('/sick-grant', requireRole('ADMIN'), async (c) => {
       targetIds = employee_ids.map(Number)
     } else {
       const { results } = await c.env.DB.prepare(
-        `SELECT id FROM employees WHERE status = 'ACTIVE'`
+        `SELECT id FROM employees WHERE status = 'ACTIVE' AND is_deleted = 0`
       ).all<EmployeeIdRow>()
       targetIds = results.map(r => r.id)
+    }
+
+    // 직원별 entity_id 조회 (배치이므로 직원 소속 법인 사용)
+    const empEntityMap = new Map<number, number>()
+    for (const empId of targetIds) {
+      const emp = await c.env.DB.prepare('SELECT entity_id FROM employees WHERE id = ?').bind(empId).first<{ entity_id: number }>()
+      empEntityMap.set(empId, emp?.entity_id || 1)
     }
 
     let processed = 0
     for (const empId of targetIds) {
       await c.env.DB.prepare(`
-        INSERT INTO leave_balances (employee_id, year, leave_type, accrued, notes)
-        VALUES (?, ?, 'SICK', ?, ?)
+        INSERT INTO leave_balances (employee_id, year, leave_type, accrued, notes, entity_id)
+        VALUES (?, ?, 'SICK', ?, ?, ?)
         ON CONFLICT(employee_id, year, leave_type) DO UPDATE SET
           accrued = excluded.accrued,
           notes = excluded.notes,
           updated_at = CURRENT_TIMESTAMP
-      `).bind(empId, year, days, notes || `유급병가 ${days}일 부여`).run()
+      `).bind(empId, year, days, notes || `유급병가 ${days}일 부여`, empEntityMap.get(empId) || 1).run()
       processed++
     }
 
@@ -599,7 +606,7 @@ leavesRouter.get('/unused-allowance', requireRole('ADMIN', 'MANAGER'), async (c)
         ON lb.employee_id = e.id AND lb.year = ? AND lb.leave_type = 'ANNUAL'
       LEFT JOIN leave_balances sick
         ON sick.employee_id = e.id AND sick.year = ? AND sick.leave_type = 'SICK'
-      WHERE e.status = 'ACTIVE'
+      WHERE e.status = 'ACTIVE' AND e.is_deleted = 0
       ORDER BY e.department, e.name
     `).bind(year, year).all<BalanceRow>()
 

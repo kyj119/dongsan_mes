@@ -3,9 +3,8 @@
 -- 법인별 근태 분리 조회를 위해 employees.entity_id를 attendance에 비정규화
 -- ============================================================================
 
--- entity_id 컬럼이 이미 존재하면 무시 (CREATE TABLE 등으로 이미 추가됨)
-CREATE TABLE IF NOT EXISTS _migration_0240_check (x INTEGER);
-DROP TABLE IF EXISTS _migration_0240_check;
+-- entity_id 컬럼 추가 (이미 존재하면 에러 → wrangler가 무시)
+ALTER TABLE attendance ADD COLUMN entity_id INTEGER DEFAULT 1 REFERENCES entities(id);
 
 -- 기존 데이터: employees.entity_id로 채우기
 UPDATE attendance

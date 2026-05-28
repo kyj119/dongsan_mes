@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import type { HonoEnv } from '../types/env'
 import type { Item, ItemCategory, ApiResponse, PaginatedResponse } from '../types/models'
 import { authMiddleware, requireRole } from '../middleware/auth'
+import { getEntityId } from '../utils/entityFilter'
 
 const itemsRouter = new Hono<HonoEnv>()
 
@@ -944,7 +945,10 @@ itemsRouter.get('/:id/materials', async (c) => {
       }, 400)
     }
 
-    // Get mapped materials with inventory info
+    // Get mapped materials with inventory info (entity별 재고 필터)
+    const entityId = getEntityId(c)
+    const invEntityClause = entityId > 0 ? ' AND inv.entity_id = ?' : ''
+    const invEntityParams = entityId > 0 ? [entityId] : []
     const { results } = await c.env.DB.prepare(`
       SELECT
         pm.id,
@@ -956,10 +960,10 @@ itemsRouter.get('/:id/materials', async (c) => {
         COALESCE(inv.quantity, 0) as current_stock
       FROM product_materials pm
       INNER JOIN items m ON pm.material_item_id = m.id
-      LEFT JOIN inventory inv ON m.id = inv.item_id
+      LEFT JOIN inventory inv ON m.id = inv.item_id${invEntityClause}
       WHERE pm.product_item_id = ?
       ORDER BY pm.is_default DESC, m.item_group ASC, m.width_mm ASC
-    `).bind(productId).all()
+    `).bind(...invEntityParams, productId).all()
 
     return c.json({
       success: true,

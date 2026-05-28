@@ -68,7 +68,7 @@ attendanceRouter.get('/month', async (c) => {
     let empQuery = `
       SELECT id, employee_code, name, department, position, base_salary, hire_date, resignation_date${hasPayType ? ', pay_type' : ''}
       FROM employees
-      WHERE status = ?${ef.clause}
+      WHERE status = ? AND is_deleted = 0${ef.clause}
     `
     const empParams: any[] = [status, ...ef.params]
     if (hasPayType) { empQuery += ` AND (pay_type IS NULL OR pay_type != 'FIXED')` }
