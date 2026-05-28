@@ -152,10 +152,12 @@ bankRouter.get('/transactions', requireRole('ADMIN'), async (c) => {
       SELECT
         bt.*,
         ba.bank_name, ba.account_number, ba.account_holder,
-        c.client_name as matched_client_name, c.representative as matched_client_representative
+        c.client_name as matched_client_name, c.representative as matched_client_representative,
+        ec.name as matched_category_name, ec.icon as matched_category_icon, ec.color as matched_category_color
       FROM bank_transactions bt
       LEFT JOIN bank_accounts ba ON bt.bank_account_id = ba.id
       LEFT JOIN clients c ON bt.matched_client_id = c.id
+      LEFT JOIN expense_categories ec ON bt.matched_category_id = ec.id
       WHERE 1=1${entityFilter(c, 'bt').clause}
     `
     const params: (string | number)[] = [...entityFilter(c, 'bt').params]
@@ -432,10 +434,10 @@ bankRouter.post('/sync-barobill', requireRole('ADMIN'), async (c) => {
       ).all<{ id: number; client_name: string; search_keywords: string | null; balance: number | null }>()
 
       const efSyncRl = entityFilter(c, 'bank_match_rules')
-      const { results: matchRules } = await c.env.DB.prepare(
-        `SELECT counterpart_name, matched_client_id FROM bank_match_rules WHERE 1=1${efSyncRl.clause}`
-      ).bind(...efSyncRl.params).all<{ counterpart_name: string; matched_client_id: number }>()
-      const ruleMap = new Map(matchRules.map(r => [r.counterpart_name, r.matched_client_id]))
+      const { results: syncMatchRules } = await c.env.DB.prepare(
+        `SELECT counterpart_name, matched_client_id, matched_category_id FROM bank_match_rules WHERE 1=1${efSyncRl.clause}`
+      ).bind(...efSyncRl.params).all<{ counterpart_name: string; matched_client_id: number | null; matched_category_id: number | null }>()
+      const syncRuleMap = new Map(syncMatchRules.map(r => [r.counterpart_name, { clientId: r.matched_client_id, categoryId: r.matched_category_id }]))
 
       for (const tx of unmatchedTxs) {
         const txName = (tx.counterpart_name ?? '').trim()
@@ -445,8 +447,17 @@ bankRouter.post('/sync-barobill', requireRole('ADMIN'), async (c) => {
         let bestConfidence = 0
         let bestReason = ''
 
-        if (ruleMap.has(txName)) {
-          bestClientId = ruleMap.get(txName) ?? null
+        const syncRule = syncRuleMap.get(txName)
+        if (syncRule) {
+          if (syncRule.categoryId) {
+            // 비용 카테고리 규칙 → 바로 APPLIED
+            await c.env.DB.prepare(
+              "UPDATE bank_transactions SET match_status = 'APPLIED', matched_category_id = ?, match_confidence = 0.95, match_reason = '학습된 규칙 (비용분류)' WHERE id = ?"
+            ).bind(syncRule.categoryId, tx.id).run()
+            matchedCount++
+            continue
+          }
+          bestClientId = syncRule.clientId
           bestConfidence = 0.95
           bestReason = '학습된 규칙'
         } else {
@@ -491,26 +502,34 @@ bankRouter.post('/sync-barobill', requireRole('ADMIN'), async (c) => {
 // 매칭 규칙 관리
 // ---------------------------------------------------------------------------
 
+// GET /api/bank/expense-categories — 비용 카테고리 목록
+bankRouter.get('/expense-categories', requireRole('ADMIN', 'MANAGER'), async (c) => {
+  try {
+    const ef = entityFilter(c)
+    const { results } = await c.env.DB.prepare(`
+      SELECT id, name, icon, color FROM expense_categories
+      WHERE is_active = 1${ef.clause}
+      ORDER BY sort_order
+    `).bind(...ef.params).all()
+    return c.json({ success: true, data: results })
+  } catch (error) {
+    console.error('Get expense categories error:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
+  }
+})
+
 // GET /api/bank/match-rules — 매칭 규칙 목록
 bankRouter.get('/match-rules', requireRole('ADMIN', 'MANAGER'), async (c) => {
   try {
     const ef = entityFilter(c, 'r')
     const { results } = await c.env.DB.prepare(`
-      SELECT r.*, c.client_name
+      SELECT r.*, c.client_name, ec.name as category_name
       FROM bank_match_rules r
       LEFT JOIN clients c ON r.matched_client_id = c.id
+      LEFT JOIN expense_categories ec ON r.matched_category_id = ec.id
       WHERE 1=1${ef.clause}
       ORDER BY r.match_count DESC
-    `).bind(...ef.params).all<{
-      id: number
-      counterpart_name: string
-      matched_client_id: number
-      match_count: number
-      last_used_at: string
-      created_at: string
-      created_by: number | null
-      client_name: string | null
-    }>()
+    `).bind(...ef.params).all()
 
     return c.json({ success: true, data: results })
   } catch (error) {
@@ -526,34 +545,33 @@ bankRouter.get('/match-rules', requireRole('ADMIN', 'MANAGER'), async (c) => {
 bankRouter.post('/match-rules', requireRole('ADMIN'), async (c) => {
   try {
     const body = await c.req.json()
-    const { counterpart_name, matched_client_id } = body
+    const { counterpart_name, matched_client_id, matched_category_id } = body
     const user = c.get('user')
 
-    if (!counterpart_name || !matched_client_id) {
+    if (!counterpart_name || (!matched_client_id && !matched_category_id)) {
       return c.json({
         success: false,
-        error: 'counterpart_name, matched_client_id 필수'
+        error: 'counterpart_name + (matched_client_id 또는 matched_category_id) 필수'
       }, 400)
     }
 
-    // 거래처 확인
-    const client = await c.env.DB.prepare(
-      'SELECT id FROM clients WHERE id = ? AND is_active = 1'
-    ).bind(matched_client_id).first()
-
-    if (!client) {
-      return c.json({ success: false, error: '거래처를 찾을 수 없습니다' }, 404)
+    if (matched_client_id) {
+      const client = await c.env.DB.prepare(
+        'SELECT id FROM clients WHERE id = ? AND is_active = 1'
+      ).bind(matched_client_id).first()
+      if (!client) return c.json({ success: false, error: '거래처를 찾을 수 없습니다' }, 404)
     }
 
     // INSERT OR REPLACE + match_count 증가 (entity_id별 UNIQUE)
     const res = await c.env.DB.prepare(`
-      INSERT INTO bank_match_rules (counterpart_name, matched_client_id, created_by, match_count, entity_id)
-      VALUES (?, ?, ?, 1, ?)
+      INSERT INTO bank_match_rules (counterpart_name, matched_client_id, matched_category_id, created_by, match_count, entity_id)
+      VALUES (?, ?, ?, ?, 1, ?)
       ON CONFLICT(entity_id, counterpart_name) DO UPDATE SET
         matched_client_id = excluded.matched_client_id,
+        matched_category_id = excluded.matched_category_id,
         match_count = match_count + 1,
         last_used_at = CURRENT_TIMESTAMP
-    `).bind(counterpart_name, matched_client_id, user?.id ?? 1, getEntityId(c) || 1).run()
+    `).bind(counterpart_name, matched_client_id || null, matched_category_id || null, user?.id ?? 1, getEntityId(c) || 1).run()
 
     return c.json({
       success: true,
@@ -574,10 +592,10 @@ bankRouter.put('/match-rules/:id', requireRole('ADMIN'), async (c) => {
   try {
     const id = c.req.param('id')
     const body = await c.req.json()
-    const { matched_client_id } = body
+    const { matched_client_id, matched_category_id } = body
 
-    if (!matched_client_id) {
-      return c.json({ success: false, error: 'matched_client_id 필수' }, 400)
+    if (!matched_client_id && !matched_category_id) {
+      return c.json({ success: false, error: 'matched_client_id 또는 matched_category_id 필수' }, 400)
     }
 
     const rule = await c.env.DB.prepare(
@@ -589,8 +607,8 @@ bankRouter.put('/match-rules/:id', requireRole('ADMIN'), async (c) => {
     }
 
     await c.env.DB.prepare(
-      'UPDATE bank_match_rules SET matched_client_id = ?, last_used_at = CURRENT_TIMESTAMP WHERE id = ?'
-    ).bind(matched_client_id, id).run()
+      'UPDATE bank_match_rules SET matched_client_id = ?, matched_category_id = ?, last_used_at = CURRENT_TIMESTAMP WHERE id = ?'
+    ).bind(matched_client_id || null, matched_category_id || null, id).run()
 
     return c.json({ success: true, message: '규칙이 수정되었습니다' })
   } catch (error) {
@@ -664,16 +682,17 @@ bankRouter.post('/transactions/auto-match', requireRole('ADMIN'), async (c) => {
       balance: number | null
     }>()
 
-    // 3. bank_match_rules 캐시 로드
+    // 3. bank_match_rules 캐시 로드 (거래처 + 비용카테고리 규칙)
     const efRules = entityFilter(c, 'bank_match_rules')
     const { results: matchRules } = await c.env.DB.prepare(`
-      SELECT counterpart_name, matched_client_id FROM bank_match_rules WHERE 1=1${efRules.clause}
+      SELECT counterpart_name, matched_client_id, matched_category_id FROM bank_match_rules WHERE 1=1${efRules.clause}
     `).bind(...efRules.params).all<{
       counterpart_name: string
-      matched_client_id: number
+      matched_client_id: number | null
+      matched_category_id: number | null
     }>()
 
-    const ruleMap = new Map(matchRules.map(r => [r.counterpart_name, r.matched_client_id]))
+    const ruleMap = new Map(matchRules.map(r => [r.counterpart_name, { clientId: r.matched_client_id, categoryId: r.matched_category_id }]))
 
     let matchedCount = 0
 
@@ -686,19 +705,33 @@ bankRouter.post('/transactions/auto-match', requireRole('ADMIN'), async (c) => {
       let bestReason = ''
 
       // Step 1: 먼저 bank_match_rules에서 정확히 일치하는 규칙 찾기
-      if (ruleMap.has(txName)) {
-        bestClientId = (ruleMap.get(txName) as number) ?? null
+      const rule = ruleMap.get(txName)
+      if (rule) {
+        // match_count 증가
+        await c.env.DB.prepare(`
+          UPDATE bank_match_rules
+          SET match_count = match_count + 1, last_used_at = CURRENT_TIMESTAMP
+          WHERE counterpart_name = ?
+        `).bind(txName).run()
+
+        if (rule.categoryId) {
+          // 비용 카테고리 규칙 → 바로 APPLIED
+          await c.env.DB.prepare(`
+            UPDATE bank_transactions
+            SET match_status = 'APPLIED',
+                matched_category_id = ?,
+                matched_client_id = NULL,
+                match_confidence = 0.95,
+                match_reason = '학습된 규칙 (비용분류)'
+            WHERE id = ?
+          `).bind(rule.categoryId, tx.id).run()
+          matchedCount++
+          continue
+        }
+
+        bestClientId = rule.clientId
         bestConfidence = 0.95
         bestReason = '학습된 규칙'
-
-        // match_count 증가 + last_used_at 업데이트
-        if (bestClientId) {
-          await c.env.DB.prepare(`
-            UPDATE bank_match_rules
-            SET match_count = match_count + 1, last_used_at = CURRENT_TIMESTAMP
-            WHERE counterpart_name = ?
-          `).bind(txName).run()
-        }
       } else {
         // Step 2: 규칙이 없으면 기존 로직으로 매칭 시도
         for (const client of clients) {
@@ -780,10 +813,10 @@ bankRouter.post('/transactions/:id/match', requireRole('ADMIN'), async (c) => {
   try {
     const id   = c.req.param('id')
     const body = await c.req.json()
-    const { client_id } = body
+    const { client_id, category_id } = body
 
-    if (!client_id) {
-      return c.json({ success: false, error: 'client_id 필수' }, 400)
+    if (!client_id && !category_id) {
+      return c.json({ success: false, error: 'client_id 또는 category_id 필수' }, 400)
     }
 
     const tx = await c.env.DB.prepare(
@@ -797,6 +830,39 @@ bankRouter.post('/transactions/:id/match', requireRole('ADMIN'), async (c) => {
       return c.json({ success: false, error: '이미 적용된 거래는 변경할 수 없습니다' }, 400)
     }
 
+    const user = c.get('user')
+
+    if (category_id) {
+      // 비용 카테고리 매칭
+      await c.env.DB.prepare(`
+        UPDATE bank_transactions
+        SET match_status = 'APPLIED',
+            matched_category_id = ?,
+            matched_client_id = NULL,
+            matched_by = ?,
+            matched_at = CURRENT_TIMESTAMP,
+            match_confidence = 1.0,
+            match_reason = '비용분류'
+        WHERE id = ?
+      `).bind(category_id, user?.id ?? 1, id).run()
+
+      // 규칙 학습
+      if (tx.counterpart_name && tx.counterpart_name.trim()) {
+        await c.env.DB.prepare(`
+          INSERT INTO bank_match_rules (counterpart_name, matched_client_id, matched_category_id, created_by, match_count, entity_id)
+          VALUES (?, NULL, ?, ?, 1, ?)
+          ON CONFLICT(entity_id, counterpart_name) DO UPDATE SET
+            matched_client_id = NULL,
+            matched_category_id = excluded.matched_category_id,
+            match_count = match_count + 1,
+            last_used_at = CURRENT_TIMESTAMP
+        `).bind(tx.counterpart_name.trim(), category_id, user?.id ?? 1, getEntityId(c) || 1).run()
+      }
+
+      return c.json({ success: true, message: '비용 분류가 적용되었습니다' })
+    }
+
+    // 거래처 매칭 (기존 로직)
     const client = await c.env.DB.prepare(
       'SELECT id FROM clients WHERE id = ? AND is_active = 1'
     ).bind(client_id).first()
@@ -805,11 +871,11 @@ bankRouter.post('/transactions/:id/match', requireRole('ADMIN'), async (c) => {
       return c.json({ success: false, error: '거래처를 찾을 수 없습니다' }, 404)
     }
 
-    const user = c.get('user')
     await c.env.DB.prepare(`
       UPDATE bank_transactions
       SET match_status = 'CONFIRMED',
           matched_client_id = ?,
+          matched_category_id = NULL,
           matched_by = ?,
           matched_at = CURRENT_TIMESTAMP,
           match_confidence = 1.0,
@@ -817,13 +883,14 @@ bankRouter.post('/transactions/:id/match', requireRole('ADMIN'), async (c) => {
       WHERE id = ?
     `).bind(client_id, user?.id ?? 1, id).run()
 
-    // 규칙 학습: counterpart_name이 있으면 bank_match_rules에 추가/업데이트
+    // 규칙 학습
     if (tx.counterpart_name && tx.counterpart_name.trim()) {
       await c.env.DB.prepare(`
-        INSERT INTO bank_match_rules (counterpart_name, matched_client_id, created_by, match_count, entity_id)
-        VALUES (?, ?, ?, 1, ?)
-        ON CONFLICT(counterpart_name) DO UPDATE SET
+        INSERT INTO bank_match_rules (counterpart_name, matched_client_id, matched_category_id, created_by, match_count, entity_id)
+        VALUES (?, ?, NULL, ?, 1, ?)
+        ON CONFLICT(entity_id, counterpart_name) DO UPDATE SET
           matched_client_id = excluded.matched_client_id,
+          matched_category_id = NULL,
           match_count = match_count + 1,
           last_used_at = CURRENT_TIMESTAMP
       `).bind(tx.counterpart_name.trim(), client_id, user?.id ?? 1, getEntityId(c) || 1).run()
@@ -1130,10 +1197,11 @@ bankRouter.post('/transactions/batch-match', requireRole('ADMIN'), async (c) => 
       // 규칙 학습
       if (tx.counterpart_name && tx.counterpart_name.trim()) {
         await c.env.DB.prepare(`
-          INSERT INTO bank_match_rules (counterpart_name, matched_client_id, created_by, match_count, entity_id)
-          VALUES (?, ?, ?, 1, ?)
-          ON CONFLICT(counterpart_name) DO UPDATE SET
+          INSERT INTO bank_match_rules (counterpart_name, matched_client_id, matched_category_id, created_by, match_count, entity_id)
+          VALUES (?, ?, NULL, ?, 1, ?)
+          ON CONFLICT(entity_id, counterpart_name) DO UPDATE SET
             matched_client_id = excluded.matched_client_id,
+            matched_category_id = NULL,
             match_count = match_count + 1,
             last_used_at = CURRENT_TIMESTAMP
         `).bind(tx.counterpart_name.trim(), client_id, user?.id ?? 1, entityId).run()
@@ -1558,21 +1626,29 @@ bankRouter.post('/auto-sync', requireRole('ADMIN'), async (c) => {
         `).bind(...efSync.params).all<{ id: number; amount: number; counterpart_name: string | null; description: string | null; transaction_type: string }>()
 
         const { results: matchRulesSync } = await c.env.DB.prepare(
-          `SELECT counterpart_name, matched_client_id FROM bank_match_rules WHERE 1=1${efSyncRules.clause}`
-        ).bind(...efSyncRules.params).all<{ counterpart_name: string; matched_client_id: number }>()
+          `SELECT counterpart_name, matched_client_id, matched_category_id FROM bank_match_rules WHERE 1=1${efSyncRules.clause}`
+        ).bind(...efSyncRules.params).all<{ counterpart_name: string; matched_client_id: number | null; matched_category_id: number | null }>()
 
-        const ruleMap = new Map(matchRulesSync.map(r => [r.counterpart_name, r.matched_client_id]))
+        const autoRuleMap = new Map(matchRulesSync.map(r => [r.counterpart_name, { clientId: r.matched_client_id, categoryId: r.matched_category_id }]))
 
         for (const tx of unmatchedTxs) {
           const txName = (tx.counterpart_name ?? '').trim()
-          if (!txName || !ruleMap.has(txName)) continue
+          if (!txName || !autoRuleMap.has(txName)) continue
 
-          const clientId = ruleMap.get(txName)!
-          await c.env.DB.prepare(`
-            UPDATE bank_transactions
-            SET match_status = 'CONFIRMED', matched_client_id = ?, match_confidence = 0.95, match_reason = '자동동기화 규칙매칭'
-            WHERE id = ?
-          `).bind(clientId, tx.id).run()
+          const autoRule = autoRuleMap.get(txName)!
+          if (autoRule.categoryId) {
+            await c.env.DB.prepare(`
+              UPDATE bank_transactions
+              SET match_status = 'APPLIED', matched_category_id = ?, match_confidence = 0.95, match_reason = '자동동기화 규칙매칭 (비용분류)'
+              WHERE id = ?
+            `).bind(autoRule.categoryId, tx.id).run()
+          } else if (autoRule.clientId) {
+            await c.env.DB.prepare(`
+              UPDATE bank_transactions
+              SET match_status = 'CONFIRMED', matched_client_id = ?, match_confidence = 0.95, match_reason = '자동동기화 규칙매칭'
+              WHERE id = ?
+            `).bind(autoRule.clientId, tx.id).run()
+          }
           totalMatched++
         }
       } catch (matchErr) {
