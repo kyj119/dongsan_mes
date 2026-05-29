@@ -1753,15 +1753,15 @@ bankRouter.get('/client-search', requireRole('ADMIN', 'MANAGER'), async (c) => {
     const q = (c.req.query('q') || '').trim()
     if (!q || q.length < 1) return c.json({ success: true, data: [] })
 
-    const ef = entityFilter(c, 'c')
+    // clients 테이블에 entity_id 없음 — entityFilter 미적용
     const { results } = await c.env.DB.prepare(`
       SELECT c.id, c.client_name, c.representative, c.business_registration_number, c.balance
       FROM clients c
-      WHERE c.is_active = 1${ef.clause}
+      WHERE c.is_active = 1
         AND (c.client_name LIKE ? OR c.representative LIKE ? OR c.search_keywords LIKE ?)
       ORDER BY c.balance DESC
       LIMIT 15
-    `).bind(...ef.params, `%${q}%`, `%${q}%`, `%${q}%`).all()
+    `).bind(`%${q}%`, `%${q}%`, `%${q}%`).all()
 
     return c.json({ success: true, data: results })
   } catch (error) {
