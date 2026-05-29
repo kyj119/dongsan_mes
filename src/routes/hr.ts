@@ -636,6 +636,29 @@ hrRouter.put('/employees/:id', async (c) => {
       }, 400)
     }
 
+    // 퇴사일자 입력 시 자동 소프트삭제 + status 변경
+    if ('resignation_date' in body && body.resignation_date) {
+      if (!setCols.some(s => s.startsWith('is_deleted'))) {
+        setCols.push('is_deleted = ?')
+        vals.push(1)
+      }
+      if (!setCols.some(s => s.startsWith('status'))) {
+        setCols.push('status = ?')
+        vals.push('RESIGNED')
+      }
+    }
+    // 퇴사일자 삭제 시 소프트삭제 해제
+    if ('resignation_date' in body && !body.resignation_date) {
+      if (!setCols.some(s => s.startsWith('is_deleted'))) {
+        setCols.push('is_deleted = ?')
+        vals.push(0)
+      }
+      if (!setCols.some(s => s.startsWith('status'))) {
+        setCols.push('status = ?')
+        vals.push('ACTIVE')
+      }
+    }
+
     if (existingCols.has('updated_at')) {
       setCols.push(`updated_at = datetime('now')`)
     }

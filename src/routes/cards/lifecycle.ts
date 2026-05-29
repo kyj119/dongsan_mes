@@ -971,9 +971,12 @@ cardsLifecycleRouter.post('/generate/:orderId', async (c) => {
     `).bind(`CARD-${dateStr}-%`, cardEntityId).first<{ max_seq: number }>()
 
     let cardCount = cardSeqRow?.max_seq ?? 0
-    const createdCards = []
+    const createdCards: Array<{ id: number; card_number: string; order_item_id: number; rip_filename: string }> = []
 
-    // Generate cards for each order item
+    // Prepare all card INSERT statements for batch (atomicity)
+    const cardStmts: any[] = []
+    const cardMeta: Array<{ cardNumber: string; orderItemId: number; ripFilename: string }> = []
+
     for (const item of orderItems) {
       cardCount++
       const cardNumber = `CARD-${dateStr}-${String(cardCount).padStart(3, '0')}`
@@ -998,35 +1001,39 @@ cardsLifecycleRouter.post('/generate/:orderId', async (c) => {
       const postProcStr = item.post_processing ? JSON.parse(item.post_processing).join('+') : ''
       const ripFilename = `${cardCount}-${order.client_name} ${item.item_name}(${specs}-${item.quantity}${item.unit})${postProcStr}_${order.delivery_date || '미정'}`
 
-      // Insert card
-      const cardResult = await c.env.DB.prepare(`
-        INSERT INTO cards (
-          card_number, order_id, order_item_id, status,
-          client_name, item_name, category_name,
-          width, height, quantity, unit,
-          rip_filename, post_processing,
-          final_width, final_height,
-          delivery_date, priority,
-          requesting_entity_id
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `).bind(
-        cardNumber, orderId, item.id, 'PRINTING',
-        order.client_name || 'Unknown', item.item_name, item.category_name,
-        item.width || 0, item.height || 0, item.quantity, item.unit || 'EA',
-        ripFilename, item.post_processing,
-        finalWidth, finalHeight,
-        order.delivery_date || null, order.priority || 'NORMAL',
-        getEntityId(c)
-      ).run()
+      cardStmts.push(
+        c.env.DB.prepare(`
+          INSERT INTO cards (
+            card_number, order_id, order_item_id, status,
+            client_name, item_name, category_name,
+            width, height, quantity, unit,
+            rip_filename, post_processing,
+            final_width, final_height,
+            delivery_date, priority,
+            requesting_entity_id
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).bind(
+          cardNumber, orderId, item.id, 'PRINTING',
+          order.client_name || 'Unknown', item.item_name, item.category_name,
+          item.width || 0, item.height || 0, item.quantity, item.unit || 'EA',
+          ripFilename, item.post_processing,
+          finalWidth, finalHeight,
+          order.delivery_date || null, order.priority || 'NORMAL',
+          getEntityId(c)
+        )
+      )
+      cardMeta.push({ cardNumber, orderItemId: item.id, ripFilename })
+    }
 
-      const cardId = cardResult.meta.last_row_id
+    // Batch insert — 전체 성공 또는 전체 롤백 (원자성 보장)
+    const batchResults = await c.env.DB.batch(cardStmts)
 
-      // Add card info to created cards array
+    for (let i = 0; i < batchResults.length; i++) {
       createdCards.push({
-        id: cardId,
-        card_number: cardNumber,
-        order_item_id: item.id,
-        rip_filename: ripFilename
+        id: batchResults[i].meta.last_row_id as number,
+        card_number: cardMeta[i].cardNumber,
+        order_item_id: cardMeta[i].orderItemId,
+        rip_filename: cardMeta[i].ripFilename
       })
     }
 

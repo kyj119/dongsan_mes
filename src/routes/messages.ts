@@ -10,7 +10,7 @@ import { authMiddleware, requireRole } from '../middleware/auth'
 import { sendEmail } from '../services/emailProvider'
 import { baseLayout } from '../services/emailTemplates'
 import { getKakaoProvider, getKakaoSettings } from './kakao'
-import { getEntityId } from '../utils/entityFilter'
+import { entityFilter, getEntityId } from '../utils/entityFilter'
 import type { SMSMessage, ATSMessage } from './kakao'
 import { generatePortalToken } from './portal'
 
@@ -629,6 +629,7 @@ messagesRouter.get('/stats', async (c) => {
   try {
     const db = c.env.DB
     const days = Math.min(90, Math.max(7, parseInt(c.req.query('days') || '30', 10)))
+    const ef = entityFilter(c, '')
 
     // 1. 일별 발송 건수 (최근 N일)
     const dailyQuery = `
@@ -637,11 +638,11 @@ messagesRouter.get('/stats', async (c) => {
              SUM(CASE WHEN status = 'SUCCESS' THEN 1 ELSE 0 END) as success,
              SUM(CASE WHEN status = 'FAILED' THEN 1 ELSE 0 END) as failed
       FROM kakao_send_logs
-      WHERE created_at >= datetime('now', '-${days} days')
+      WHERE created_at >= datetime('now', '-${days} days')${ef.clause}
       GROUP BY DATE(created_at)
       ORDER BY date ASC
     `
-    const { results: daily } = await db.prepare(dailyQuery).all<{ date: string; total: number; success: number; failed: number }>()
+    const { results: daily } = await db.prepare(dailyQuery).bind(...ef.params).all<{ date: string; total: number; success: number; failed: number }>()
 
     // 2. 채널별 통계
     const channelQuery = `
@@ -650,21 +651,21 @@ messagesRouter.get('/stats', async (c) => {
              SUM(CASE WHEN status = 'SUCCESS' THEN 1 ELSE 0 END) as success,
              SUM(CASE WHEN status = 'FAILED' THEN 1 ELSE 0 END) as failed
       FROM kakao_send_logs
-      WHERE created_at >= datetime('now', '-${days} days')
+      WHERE created_at >= datetime('now', '-${days} days')${ef.clause}
       GROUP BY COALESCE(channel, 'kakao')
     `
-    const { results: byChannel } = await db.prepare(channelQuery).all<{ channel: string; total: number; success: number; failed: number }>()
+    const { results: byChannel } = await db.prepare(channelQuery).bind(...ef.params).all<{ channel: string; total: number; success: number; failed: number }>()
 
     // 3. 관련 업무별 통계
     const typeQuery = `
       SELECT COALESCE(related_type, 'direct') as type,
              COUNT(*) as total
       FROM kakao_send_logs
-      WHERE created_at >= datetime('now', '-${days} days')
+      WHERE created_at >= datetime('now', '-${days} days')${ef.clause}
       GROUP BY COALESCE(related_type, 'direct')
       ORDER BY total DESC
     `
-    const { results: byType } = await db.prepare(typeQuery).all<{ type: string; total: number }>()
+    const { results: byType } = await db.prepare(typeQuery).bind(...ef.params).all<{ type: string; total: number }>()
 
     // 4. 전체 요약
     const summaryQuery = `
@@ -673,21 +674,21 @@ messagesRouter.get('/stats', async (c) => {
              SUM(CASE WHEN status = 'FAILED' THEN 1 ELSE 0 END) as failed,
              SUM(CASE WHEN status = 'PENDING' THEN 1 ELSE 0 END) as pending
       FROM kakao_send_logs
-      WHERE created_at >= datetime('now', '-${days} days')
+      WHERE created_at >= datetime('now', '-${days} days')${ef.clause}
     `
-    const summary = await db.prepare(summaryQuery).first<{ total: number; success: number; failed: number; pending: number }>()
+    const summary = await db.prepare(summaryQuery).bind(...ef.params).first<{ total: number; success: number; failed: number; pending: number }>()
 
     // 5. 주요 수신자 Top 10
     const topReceiversQuery = `
       SELECT receiver_name, receiver_num, COUNT(*) as count
       FROM kakao_send_logs
-      WHERE created_at >= datetime('now', '-${days} days')
+      WHERE created_at >= datetime('now', '-${days} days')${ef.clause}
         AND receiver_name IS NOT NULL AND receiver_name != ''
       GROUP BY receiver_name, receiver_num
       ORDER BY count DESC
       LIMIT 10
     `
-    const { results: topReceivers } = await db.prepare(topReceiversQuery).all<{ receiver_name: string; receiver_num: string; count: number }>()
+    const { results: topReceivers } = await db.prepare(topReceiversQuery).bind(...ef.params).all<{ receiver_name: string; receiver_num: string; count: number }>()
 
     return c.json({
       success: true,

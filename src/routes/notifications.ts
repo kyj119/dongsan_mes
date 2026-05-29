@@ -57,9 +57,10 @@ notificationsRouter.get('/', async (c) => {
 notificationsRouter.get('/unread-count', async (c) => {
   try {
     const user = c.get('user')
+    const ef = entityFilter(c, '')
     const result = await c.env.DB.prepare(
-      `SELECT COUNT(*) as count FROM notifications WHERE (user_id = ? OR (user_id IS NULL AND target_role = ?)) AND is_read = 0`
-    ).bind(user.id, user.role).first<{ count: number }>()
+      `SELECT COUNT(*) as count FROM notifications WHERE (user_id = ? OR (user_id IS NULL AND target_role = ?)) AND is_read = 0${ef.clause}`
+    ).bind(user.id, user.role, ...ef.params).first<{ count: number }>()
 
     return c.json({ success: true, count: result?.count || 0 })
   } catch (error) {
@@ -85,9 +86,9 @@ notificationsRouter.get('/nav-badges', async (c) => {
     const [orders, receivables, pr, inspPr, inspOverdue, myReceiving, tasksPending] = await Promise.all([
       db.prepare(`SELECT COUNT(*) as cnt FROM orders WHERE status = 'CONFIRMED'${efOrders}`).bind(...efOrdersParams).first<{ cnt: number }>(),
       db.prepare(`SELECT COUNT(DISTINCT client_id) as cnt FROM orders WHERE status != 'CANCELLED'${efOrders} GROUP BY client_id HAVING SUM(final_amount) - COALESCE((SELECT SUM(amount) FROM payments WHERE payments.client_id = orders.client_id), 0) > 0 AND MIN(created_at) < datetime('now', '-30 days')`).bind(...efOrdersParams).all().then((r) => ({ cnt: r.results?.length || 0 })),
-      db.prepare(`SELECT COUNT(*) as cnt FROM purchase_requests WHERE status = 'PENDING'`).first<{ cnt: number }>(),
-      db.prepare(`SELECT COUNT(*) as cnt FROM inventory_receipts WHERE inspection_status = 'PENDING_REVIEW'`).first<{ cnt: number }>(),
-      db.prepare(`SELECT COUNT(*) as cnt FROM inventory_receipts WHERE inspection_status IS NULL AND status != 'CANCELLED' AND created_at <= datetime('now', '-24 hours')`).first<{ cnt: number }>(),
+      db.prepare(`SELECT COUNT(*) as cnt FROM purchase_requests WHERE status = 'PENDING'${efOrders}`).bind(...efOrdersParams).first<{ cnt: number }>(),
+      db.prepare(`SELECT COUNT(*) as cnt FROM inventory_receipts WHERE inspection_status = 'PENDING_REVIEW'${efOrders}`).bind(...efOrdersParams).first<{ cnt: number }>(),
+      db.prepare(`SELECT COUNT(*) as cnt FROM inventory_receipts WHERE inspection_status IS NULL AND status != 'CANCELLED' AND created_at <= datetime('now', '-24 hours')${efOrders}`).bind(...efOrdersParams).first<{ cnt: number }>(),
       // nav-badge-my-receiving: 내 담당 창고 입고 대기 라인 수
       db.prepare(`
         SELECT COUNT(*) as cnt

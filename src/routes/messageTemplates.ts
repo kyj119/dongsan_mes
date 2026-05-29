@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
+import { entityFilter, getEntityId } from '../utils/entityFilter'
 
 const messageTemplatesRouter = new Hono<HonoEnv>()
 messageTemplatesRouter.use('*', authMiddleware)
@@ -12,11 +13,12 @@ messageTemplatesRouter.get('/', async (c) => {
     const db = c.env.DB
     const channel = c.req.query('channel')
 
-    let query = 'SELECT id, channel, name, subject, content, created_by, created_at, updated_at FROM message_templates'
-    const bindings: any[] = []
+    const ef = entityFilter(c, '')
+    let query = 'SELECT id, channel, name, subject, content, created_by, created_at, updated_at FROM message_templates WHERE 1=1' + ef.clause
+    const bindings: any[] = [...ef.params]
 
     if (channel) {
-      query += ' WHERE channel = ?'
+      query += ' AND channel = ?'
       bindings.push(channel)
     }
     query += ' ORDER BY created_at DESC'
@@ -44,8 +46,8 @@ messageTemplatesRouter.post('/', async (c) => {
     }
 
     const result = await db.prepare(
-      'INSERT INTO message_templates (channel, name, subject, content, created_by) VALUES (?, ?, ?, ?, ?)'
-    ).bind(channel, name, subject || null, content, userId).run() as any
+      'INSERT INTO message_templates (channel, name, subject, content, created_by, entity_id) VALUES (?, ?, ?, ?, ?, ?)'
+    ).bind(channel, name, subject || null, content, userId, getEntityId(c)).run() as any
 
     return c.json({ success: true, data: { id: result.meta.last_row_id } })
   } catch {
