@@ -66,8 +66,8 @@ export function attendancePage(c: Context<HonoEnv>) {
         <!-- 스프레드시트 -->
         <div class="ds-card overflow-hidden">
           <div class="overflow-x-auto" style="max-height:70vh;">
-            <table id="attGrid" class="min-w-full text-xs ds-table-striped">
-              <thead class="bg-gray-50 sticky top-0 z-10">
+            <table id="attGrid" class="min-w-full text-xs ds-table-striped ds-table-fixed">
+              <thead>
                 <tr id="attHeaderRow">
                   <!-- dynamically generated -->
                 </tr>

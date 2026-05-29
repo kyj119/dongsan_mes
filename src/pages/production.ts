@@ -100,16 +100,16 @@ export function productionPage(c: Context<HonoEnv>) {
             </div>
           </div>
           <div class="ds-table-wrap" style="max-height:320px;overflow-y:auto;">
-            <table class="w-full text-sm ds-table ds-table-striped">
-              <thead class="bg-gray-50">
+            <table class="w-full text-sm ds-table ds-table-striped ds-table-fixed">
+              <thead>
                 <tr>
-                  <th class="px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase sticky top-0 bg-gray-50 z-5 whitespace-nowrap">시간</th>
-                  <th class="px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase sticky top-0 bg-gray-50 z-5 whitespace-nowrap">장비</th>
-                  <th class="px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase sticky top-0 bg-gray-50 z-5">파일명</th>
-                  <th class="px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase sticky top-0 bg-gray-50 z-5 whitespace-nowrap">규격(cm)</th>
-                  <th class="px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase sticky top-0 bg-gray-50 z-5 whitespace-nowrap">소요</th>
-                  <th class="px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase sticky top-0 bg-gray-50 z-5 whitespace-nowrap">출력정보</th>
-                  <th class="px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase sticky top-0 bg-gray-50 z-5 whitespace-nowrap">상태</th>
+                  <th class="text-left" style="width:100px">시간</th>
+                  <th class="text-left" style="width:90px">장비</th>
+                  <th class="text-left">파일명</th>
+                  <th class="text-left" style="width:90px">규격(cm)</th>
+                  <th class="text-left" style="width:70px">소요</th>
+                  <th class="text-left" style="width:100px">출력정보</th>
+                  <th class="text-left" style="width:80px">상태</th>
                 </tr>
               </thead>
               <tbody id="recentEventsBody">

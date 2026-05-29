@@ -140,18 +140,18 @@ export function taxInvoicesPage(c: Context<HonoEnv>) {
 
       <!-- 목록 테이블 -->
       <div class="ds-card overflow-hidden">
-        <table class="w-full text-sm ds-table-striped">
-          <thead class="bg-gray-50">
+        <table class="w-full text-sm ds-table-striped ds-table-fixed">
+          <thead>
             <tr>
-              <th class="px-4 py-3 text-left">관리번호</th>
-              <th class="px-4 py-3 text-left">주문번호</th>
-              <th class="px-4 py-3 text-left">거래처</th>
-              <th class="px-4 py-3 text-center">작성일</th>
-              <th class="px-4 py-3 text-right">공급가액</th>
-              <th class="px-4 py-3 text-right">세액</th>
-              <th class="px-4 py-3 text-right">합계</th>
-              <th class="px-4 py-3 text-center">상태</th>
-              <th class="px-4 py-3 text-center">액션</th>
+              <th class="text-left" style="width:120px">관리번호</th>
+              <th class="text-left" style="width:110px">주문번호</th>
+              <th class="text-left">거래처</th>
+              <th class="text-center" style="width:100px">작성일</th>
+              <th class="text-right" style="width:110px">공급가액</th>
+              <th class="text-right" style="width:100px">세액</th>
+              <th class="text-right" style="width:110px">합계</th>
+              <th class="text-center" style="width:90px">상태</th>
+              <th class="text-center" style="width:80px">액션</th>
             </tr>
           </thead>
           <tbody id="invoiceTableBody">
@@ -373,18 +373,18 @@ export function taxInvoicesPage(c: Context<HonoEnv>) {
       <!-- Table -->
       <div class="ds-card overflow-hidden">
         <div class="overflow-x-auto" style="max-height: calc(100vh - 280px); overflow-y: auto;">
-          <table class="w-full ds-table-striped">
+          <table class="w-full ds-table-striped ds-table-fixed">
             <thead>
-              <tr class="bg-gray-50 border-b border-gray-200">
-                <th class="px-4 py-3 text-left text-xs font-semibold text-gray-600">관리번호</th>
-                <th class="px-4 py-3 text-left text-xs font-semibold text-gray-600">거래처</th>
-                <th class="px-4 py-3 text-left text-xs font-semibold text-gray-600">거래일</th>
-                <th class="px-4 py-3 text-left text-xs font-semibold text-gray-600">식별유형</th>
-                <th class="px-4 py-3 text-right text-xs font-semibold text-gray-600">공급가액</th>
-                <th class="px-4 py-3 text-right text-xs font-semibold text-gray-600">세액</th>
-                <th class="px-4 py-3 text-right text-xs font-semibold text-gray-600">합계</th>
-                <th class="px-4 py-3 text-center text-xs font-semibold text-gray-600">상태</th>
-                <th class="px-4 py-3 text-center text-xs font-semibold text-gray-600">액션</th>
+              <tr>
+                <th class="text-left" style="width:120px">관리번호</th>
+                <th class="text-left">거래처</th>
+                <th class="text-left" style="width:100px">거래일</th>
+                <th class="text-left" style="width:90px">식별유형</th>
+                <th class="text-right" style="width:110px">공급가액</th>
+                <th class="text-right" style="width:100px">세액</th>
+                <th class="text-right" style="width:110px">합계</th>
+                <th class="text-center" style="width:90px">상태</th>
+                <th class="text-center" style="width:80px">액션</th>
               </tr>
             </thead>
             <tbody id="receiptsTable">

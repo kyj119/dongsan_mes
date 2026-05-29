@@ -800,8 +800,29 @@ const SHARED_CSS = `
   .ds-table tbody tr:last-child td { border-bottom: none; }
   .ds-table-compact thead th { padding: 6px 8px; }
   .ds-table-compact tbody td { padding: 6px 8px; font-size: var(--fs-xs); }
+  .ds-table-striped { width: 100%; border-collapse: collapse; }
+  .ds-table-striped thead th {
+    padding: 10px 12px; font-size: var(--fs-xs); font-weight: 600;
+    color: var(--c-text-secondary); text-align: left; white-space: nowrap;
+    background: var(--c-surface-secondary); border-bottom: 1px solid var(--c-border);
+    position: sticky; top: 0; z-index: 5;
+  }
+  .ds-table-striped tbody td {
+    padding: 8px 12px; vertical-align: middle;
+    border-bottom: 1px solid var(--c-border-light);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .ds-table-striped tbody td.ds-wrap { white-space: normal; overflow: visible; }
+  .ds-table-striped tbody tr { transition: background var(--transition-fast); }
   .ds-table-striped tbody tr:nth-child(even) { background: var(--c-surface-stripe); }
+  .ds-table-striped tbody tr:hover { background: var(--c-bg); }
   .ds-table-striped tbody tr:nth-child(even):hover { background: var(--c-bg); }
+  .ds-table-striped tbody tr:last-child td { border-bottom: none; }
+  /* 고정 열너비 모드 — th에 width/style 지정 시 사용 */
+  .ds-table-fixed { table-layout: fixed; }
+  /* 컴팩트 변형 (재무보고, IA 등 밀집 테이블) */
+  .ds-table-striped.ds-compact thead th { padding: 6px 8px; }
+  .ds-table-striped.ds-compact tbody td { padding: 4px 8px; font-size: var(--fs-xs); }
 
   /* === DS Bento Grid (Dashboard KPI) === */
   .ds-bento {
@@ -1079,6 +1100,7 @@ const SHARED_CSS = `
   html.dark .ds-table-striped tbody tr:nth-child(even) { background: var(--c-surface-stripe); }
   html.dark .ds-table-striped tbody tr:nth-child(even):hover { background: var(--c-bg); }
   html.dark .ds-table thead th { background: var(--c-surface-secondary); }
+  html.dark .ds-table-striped thead th { background: var(--c-surface-secondary); }
   html.dark .hover\\:bg-gray-50:hover { background-color: #1e293b !important; }
   html.dark .hover\\:bg-blue-50\\/30:hover { background-color: rgba(96,165,250,0.1) !important; }
 </style>`

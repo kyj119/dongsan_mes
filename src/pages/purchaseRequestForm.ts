@@ -66,15 +66,15 @@ export function purchaseRequestFormPage(c: Context<HonoEnv>) {
             </div>
             <div class="overflow-x-auto" style="max-height: calc(100vh - 280px); overflow-y: auto;">
               <table class="w-full text-sm ds-table-striped">
-                <thead class="bg-gray-50">
+                <thead>
                   <tr>
-                    <th class="px-2 py-2 text-left">품목명</th>
-                    <th class="px-2 py-2 text-center w-20">수량</th>
-                    <th class="px-2 py-2 text-center w-24">단위</th>
-                    <th class="px-2 py-2 text-right w-28">예상 단가</th>
-                    <th class="px-2 py-2 text-right w-28">예상 금액</th>
-                    <th class="px-2 py-2 text-left">비고</th>
-                    <th class="px-2 py-2 w-8"></th>
+                    <th>품목명</th>
+                    <th class="text-center w-20">수량</th>
+                    <th class="text-center w-24">단위</th>
+                    <th class="text-right w-28">예상 단가</th>
+                    <th class="text-right w-28">예상 금액</th>
+                    <th>비고</th>
+                    <th class="w-8"></th>
                   </tr>
                 </thead>
                 <tbody id="prItemsBody">

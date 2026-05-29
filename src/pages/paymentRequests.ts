@@ -58,18 +58,18 @@ export function paymentRequestsPage(c: Context<HonoEnv>) {
         <!-- 목록 -->
         <div class="ds-card" style="padding:0;overflow:hidden">
           <div class="overflow-x-auto">
-            <table class="w-full text-xs ds-table-striped">
+            <table class="w-full text-xs ds-table-striped ds-table-fixed">
               <thead>
-                <tr class="bg-gray-50 sticky top-0">
-                  <th class="px-2 py-2 text-left text-gray-600 font-semibold">결의서번호</th>
-                  <th class="px-2 py-2 text-left text-gray-600 font-semibold">신청일</th>
-                  <th class="px-2 py-2 text-left text-gray-600 font-semibold">유형</th>
-                  <th class="px-2 py-2 text-left text-gray-600 font-semibold">지급처</th>
-                  <th class="px-2 py-2 text-right text-gray-600 font-semibold">금액</th>
-                  <th class="px-2 py-2 text-left text-gray-600 font-semibold">사유</th>
-                  <th class="px-2 py-2 text-center text-gray-600 font-semibold">상태</th>
-                  <th class="px-2 py-2 text-center text-gray-600 font-semibold">작성자</th>
-                  <th class="px-2 py-2 text-center text-gray-600 font-semibold">조치</th>
+                <tr class="sticky top-0">
+                  <th class="text-left" style="width:110px">결의서번호</th>
+                  <th class="text-left" style="width:100px">신청일</th>
+                  <th class="text-left" style="width:80px">유형</th>
+                  <th class="text-left">지급처</th>
+                  <th class="text-right" style="width:110px">금액</th>
+                  <th class="text-left">사유</th>
+                  <th class="text-center" style="width:80px">상태</th>
+                  <th class="text-center" style="width:70px">작성자</th>
+                  <th class="text-center" style="width:70px">조치</th>
                 </tr>
               </thead>
               <tbody id="prTableBody">

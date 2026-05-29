@@ -93,15 +93,15 @@ document.addEventListener('DOMContentLoaded', function() {
       </div>
       <div id="tabContentPreview" class="hidden">
         <div class="overflow-x-auto" style="max-height: calc(100vh - 280px); overflow-y: auto;">
-          <table class="w-full text-sm ds-table-striped">
-            <thead class="bg-gray-50">
+          <table class="w-full text-sm ds-table-striped ds-table-fixed">
+            <thead>
               <tr>
-                <th class="px-4 py-2 text-left">품목코드</th>
-                <th class="px-4 py-2 text-left">품목명</th>
-                <th class="px-4 py-2 text-left">단위</th>
-                <th class="px-4 py-2 text-right">기본단가</th>
-                <th class="px-4 py-2 text-right">적용단가</th>
-                <th class="px-4 py-2 text-right">차이</th>
+                <th class="text-left" style="width:100px">품목코드</th>
+                <th class="text-left">품목명</th>
+                <th class="text-left" style="width:60px">단위</th>
+                <th class="text-right" style="width:110px">기본단가</th>
+                <th class="text-right" style="width:110px">적용단가</th>
+                <th class="text-right" style="width:90px">차이</th>
               </tr>
             </thead>
             <tbody id="previewTableBody"></tbody>
@@ -144,16 +144,16 @@ document.addEventListener('DOMContentLoaded', function() {
           </button>
         </div>
         <div class="overflow-x-auto" style="max-height: calc(100vh - 280px); overflow-y: auto;">
-          <table class="w-full text-sm ds-table-striped">
-            <thead class="bg-gray-50">
+          <table class="w-full text-sm ds-table-striped ds-table-fixed">
+            <thead>
               <tr>
-                <th class="px-4 py-3 text-left font-medium text-gray-500">공급업체</th>
-                <th class="px-4 py-3 text-right font-medium text-gray-500">협의단가</th>
-                <th class="px-4 py-3 text-right font-medium text-gray-500">최근매입가</th>
-                <th class="px-4 py-3 text-left font-medium text-gray-500">최근매입일</th>
-                <th class="px-4 py-3 text-right font-medium text-gray-500">차이(%)</th>
-                <th class="px-4 py-3 text-left font-medium text-gray-500">비고</th>
-                <th class="px-4 py-3 text-center font-medium text-gray-500">관리</th>
+                <th class="text-left">공급업체</th>
+                <th class="text-right" style="width:110px">협의단가</th>
+                <th class="text-right" style="width:110px">최근매입가</th>
+                <th class="text-left" style="width:100px">최근매입일</th>
+                <th class="text-right" style="width:80px">차이(%)</th>
+                <th class="text-left">비고</th>
+                <th class="text-center" style="width:70px">관리</th>
               </tr>
             </thead>
             <tbody id="supplierPriceBody"></tbody>

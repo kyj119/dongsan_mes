@@ -49,16 +49,16 @@ export function payrollRatesPage(c: Context) {
           <i class="fas fa-plus mr-1"></i>요율 추가
         </button>
       </div>
-      <table class="w-full ds-table-striped">
-        <thead class="bg-gray-50">
-          <tr class="text-xs font-semibold text-gray-600 uppercase tracking-wider">
-            <th class="px-4 py-2 text-left">보험 종류</th>
-            <th class="px-4 py-2 text-right">전체 요율</th>
-            <th class="px-4 py-2 text-right">근로자 부담</th>
-            <th class="px-4 py-2 text-right">회사 부담</th>
-            <th class="px-4 py-2 text-left">기준</th>
-            <th class="px-4 py-2 text-right">하한/상한</th>
-            <th class="px-4 py-2 text-center">액션</th>
+      <table class="w-full ds-table-striped ds-table-fixed">
+        <thead>
+          <tr>
+            <th class="text-left">보험 종류</th>
+            <th class="text-right" style="width:100px">전체 요율</th>
+            <th class="text-right" style="width:100px">근로자 부담</th>
+            <th class="text-right" style="width:100px">회사 부담</th>
+            <th class="text-left" style="width:110px">기준</th>
+            <th class="text-right" style="width:130px">하한/상한</th>
+            <th class="text-center" style="width:70px">액션</th>
           </tr>
         </thead>
         <tbody id="prRRatesBody" class="text-sm text-gray-900">
@@ -103,17 +103,17 @@ export function payrollRatesPage(c: Context) {
         </div>
       </div>
       <div class="max-h-[600px] overflow-auto">
-        <table class="w-full ds-table-striped">
-          <thead class="bg-gray-50 sticky top-0">
-            <tr class="text-xs font-semibold text-gray-600 uppercase tracking-wider">
-              <th class="px-3 py-2 text-right">월급여 구간</th>
-              <th class="px-3 py-2 text-right">1명</th>
-              <th class="px-3 py-2 text-right">2명</th>
-              <th class="px-3 py-2 text-right">3명</th>
-              <th class="px-3 py-2 text-right">4명</th>
-              <th class="px-3 py-2 text-right">5명</th>
-              <th class="px-3 py-2 text-right">6명+</th>
-              <th class="px-3 py-2 text-center">액션</th>
+        <table class="w-full ds-table-striped ds-table-fixed">
+          <thead class="sticky top-0">
+            <tr>
+              <th class="text-right" style="width:140px">월급여 구간</th>
+              <th class="text-right" style="width:90px">1명</th>
+              <th class="text-right" style="width:90px">2명</th>
+              <th class="text-right" style="width:90px">3명</th>
+              <th class="text-right" style="width:90px">4명</th>
+              <th class="text-right" style="width:90px">5명</th>
+              <th class="text-right" style="width:90px">6명+</th>
+              <th class="text-center" style="width:70px">액션</th>
             </tr>
           </thead>
           <tbody id="prRTaxBody" class="text-sm text-gray-900">

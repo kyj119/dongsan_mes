@@ -43,17 +43,17 @@ export function yearEndManagePage(c: Context<HonoEnv>) {
         <!-- 직원 목록 테이블 -->
         <div class="ds-card overflow-hidden">
           <div class="overflow-x-auto">
-            <table class="w-full text-sm ds-table-striped">
-              <thead class="bg-gray-50 text-xs text-gray-600 font-semibold uppercase tracking-wider">
+            <table class="w-full text-sm ds-table-striped ds-table-fixed">
+              <thead>
                 <tr>
-                  <th class="px-4 py-3 text-left">직원</th>
-                  <th class="px-4 py-3 text-left">부서</th>
-                  <th class="px-4 py-3 text-right">총급여</th>
-                  <th class="px-4 py-3 text-right">결정세액</th>
-                  <th class="px-4 py-3 text-right">기납부세액</th>
-                  <th class="px-4 py-3 text-right">환급/추징</th>
-                  <th class="px-4 py-3 text-center">상태</th>
-                  <th class="px-4 py-3 text-center">작업</th>
+                  <th>직원</th>
+                  <th style="width:100px">부서</th>
+                  <th style="width:110px" class="text-right">총급여</th>
+                  <th style="width:100px" class="text-right">결정세액</th>
+                  <th style="width:100px" class="text-right">기납부세액</th>
+                  <th style="width:100px" class="text-right">환급/추징</th>
+                  <th style="width:80px" class="text-center">상태</th>
+                  <th style="width:80px" class="text-center">작업</th>
                 </tr>
               </thead>
               <tbody id="yeTableBody">

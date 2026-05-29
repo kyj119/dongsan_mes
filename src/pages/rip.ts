@@ -101,17 +101,17 @@ export function ripPage(c: Context<HonoEnv>) {
                         </button>
                     </div>
                     <div class="overflow-x-auto" style="max-height: calc(100vh - 280px); overflow-y: auto;">
-                        <table class="w-full text-sm ds-table-striped">
-                            <thead class="bg-gray-50">
+                        <table class="w-full text-sm ds-table-striped ds-table-fixed">
+                            <thead>
                                 <tr>
-                                    <th class="px-4 py-2 text-left">시간</th>
-                                    <th class="px-4 py-2 text-left">장비</th>
-                                    <th class="px-4 py-2 text-left">프린터</th>
-                                    <th class="px-4 py-2 text-left">파일명</th>
-                                    <th class="px-4 py-2 text-left">상태</th>
-                                    <th class="px-4 py-2 text-left">카드 매칭</th>
-                                    <th class="px-4 py-2 text-left">출력정보</th>
-                                    <th class="px-4 py-2 text-left">크기</th>
+                                    <th class="text-left" style="width:130px">시간</th>
+                                    <th class="text-left" style="width:80px">장비</th>
+                                    <th class="text-left" style="width:100px">프린터</th>
+                                    <th class="text-left">파일명</th>
+                                    <th class="text-left" style="width:80px">상태</th>
+                                    <th class="text-left" style="width:110px">카드 매칭</th>
+                                    <th class="text-left" style="width:100px">출력정보</th>
+                                    <th class="text-left" style="width:80px">크기</th>
                                 </tr>
                             </thead>
                             <tbody id="eventsBody">
@@ -137,16 +137,16 @@ export function ripPage(c: Context<HonoEnv>) {
             <div id="tab-agents" class="tab-panel hidden">
                 <div class="ds-card">
                     <div class="overflow-x-auto" style="max-height: calc(100vh - 280px); overflow-y: auto;">
-                        <table class="w-full text-sm ds-table-striped">
-                            <thead class="bg-gray-50">
+                        <table class="w-full text-sm ds-table-striped ds-table-fixed">
+                            <thead>
                                 <tr>
-                                    <th class="px-4 py-2 text-left">상태</th>
-                                    <th class="px-4 py-2 text-left">장비번호</th>
-                                    <th class="px-4 py-2 text-left">PC명</th>
-                                    <th class="px-4 py-2 text-left">IP 주소</th>
-                                    <th class="px-4 py-2 text-left">버전</th>
-                                    <th class="px-4 py-2 text-left">마지막 접속</th>
-                                    <th class="px-4 py-2 text-left">Print.log 경로</th>
+                                    <th class="text-left" style="width:80px">상태</th>
+                                    <th class="text-left" style="width:80px">장비번호</th>
+                                    <th class="text-left" style="width:120px">PC명</th>
+                                    <th class="text-left" style="width:120px">IP 주소</th>
+                                    <th class="text-left" style="width:70px">버전</th>
+                                    <th class="text-left" style="width:140px">마지막 접속</th>
+                                    <th class="text-left">Print.log 경로</th>
                                 </tr>
                             </thead>
                             <tbody id="agentsBody">

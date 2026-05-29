@@ -25,18 +25,18 @@ export function postProcessingPage(c: Context<HonoEnv>) {
                     </button>
                 </div>
                 <div class="ds-card overflow-x-auto">
-                    <table class="w-full text-sm ds-table-striped">
-                        <thead class="bg-gray-50 border-b">
+                    <table class="w-full text-sm ds-table-striped ds-table-fixed">
+                        <thead>
                             <tr>
-                                <th class="px-4 py-3 text-left">코드</th>
-                                <th class="px-4 py-3 text-left">이름</th>
-                                <th class="px-4 py-3 text-left">단가 방식</th>
-                                <th class="px-4 py-3 text-left">파라미터</th>
-                                <th class="px-4 py-3 text-left">여백 (상/하/좌/우 cm)</th>
-                                <th class="px-4 py-3 text-left">적용 소분류</th>
-                                <th class="px-4 py-3 text-center">상태</th>
-                                <th class="px-4 py-3 text-center" title="현장 카드에 표시 여부">카드</th>
-                                <th class="px-4 py-3 text-center">관리</th>
+                                <th style="width:80px">코드</th>
+                                <th style="width:120px">이름</th>
+                                <th style="width:100px">단가 방식</th>
+                                <th>파라미터</th>
+                                <th style="width:160px">여백 (상/하/좌/우 cm)</th>
+                                <th>적용 소분류</th>
+                                <th style="width:70px" class="text-center">상태</th>
+                                <th style="width:50px" class="text-center" title="현장 카드에 표시 여부">카드</th>
+                                <th style="width:80px" class="text-center">관리</th>
                             </tr>
                         </thead>
                         <tbody id="ppTableBody">
@@ -61,16 +61,16 @@ export function postProcessingPage(c: Context<HonoEnv>) {
                 <div class="ds-card p-4 mb-4">
                     <h3 class="font-bold text-gray-700 mb-3"><i class="fas fa-chart-bar mr-2 text-pink-500"></i>전체 누적 통계</h3>
                     <div class="overflow-x-auto" style="max-height: calc(100vh - 280px); overflow-y: auto;">
-                        <table class="w-full text-sm ds-table-striped">
-                            <thead class="bg-gray-50 border-b">
+                        <table class="w-full text-sm ds-table-striped ds-table-fixed">
+                            <thead>
                                 <tr>
-                                    <th class="px-4 py-2 text-left">후가공</th>
-                                    <th class="px-4 py-2 text-right">적용 건수</th>
-                                    <th class="px-4 py-2 text-right">수량 합계</th>
-                                    <th class="px-4 py-2 text-right">면적 합계</th>
-                                    <th class="px-4 py-2 text-right">주문 수</th>
-                                    <th class="px-4 py-2 text-right">거래처 수</th>
-                                    <th class="px-4 py-2 text-left">비율</th>
+                                    <th style="width:120px">후가공</th>
+                                    <th style="width:90px" class="text-right">적용 건수</th>
+                                    <th style="width:90px" class="text-right">수량 합계</th>
+                                    <th style="width:100px" class="text-right">면적 합계</th>
+                                    <th style="width:80px" class="text-right">주문 수</th>
+                                    <th style="width:80px" class="text-right">거래처 수</th>
+                                    <th>비율</th>
                                 </tr>
                             </thead>
                             <tbody id="totalStatsBody">

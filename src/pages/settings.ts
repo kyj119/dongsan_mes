@@ -231,14 +231,14 @@ ${capsSettingsScript}
             </div>
             <p class="text-sm text-gray-500 mb-4">카테고리별 미디어(원단)/잉크 단가를 설정하면 주문 원가가 자동 계산됩니다. (단위: 원/m²)</p>
             <div class="overflow-x-auto" style="max-height: calc(100vh - 280px); overflow-y: auto;">
-              <table class="w-full text-sm ds-table-striped">
+              <table class="w-full text-sm ds-table-striped ds-table-fixed">
                 <thead>
-                  <tr class="bg-gray-50 text-gray-600 text-xs font-semibold uppercase tracking-wider">
-                    <th class="px-3 py-2 text-left">카테고리</th>
-                    <th class="px-3 py-2 text-right">미디어 단가 (원/m²)</th>
-                    <th class="px-3 py-2 text-right">잉크 단가 (원/m²)</th>
-                    <th class="px-3 py-2 text-left">비고</th>
-                    <th class="px-3 py-2 w-12"></th>
+                  <tr>
+                    <th class="text-left">카테고리</th>
+                    <th class="text-right" style="width:140px">미디어 단가 (원/m²)</th>
+                    <th class="text-right" style="width:140px">잉크 단가 (원/m²)</th>
+                    <th class="text-left">비고</th>
+                    <th style="width:40px"></th>
                   </tr>
                 </thead>
                 <tbody id="costStandardsBody"></tbody>
@@ -293,16 +293,16 @@ ${capsSettingsScript}
             </div>
             <p class="text-sm text-gray-500 mb-4">자재 저장 구역을 등록하고, 각 구역의 발주 담당자를 지정합니다. 품목에 구역을 배정하면 담당자 기준으로 발주를 관리할 수 있습니다.</p>
             <div class="overflow-x-auto" style="max-height: calc(100vh - 280px); overflow-y: auto;">
-              <table class="w-full text-sm ds-table-striped">
+              <table class="w-full text-sm ds-table-striped ds-table-fixed">
                 <thead>
-                  <tr class="bg-gray-50 text-gray-600 text-xs font-semibold uppercase tracking-wider">
-                    <th class="px-3 py-2 text-left">구역명</th>
-                    <th class="px-3 py-2 text-left">코드</th>
-                    <th class="px-3 py-2 text-left">설명</th>
-                    <th class="px-3 py-2 text-left">담당자</th>
-                    <th class="px-3 py-2 text-center">품목 수</th>
-                    <th class="px-3 py-2 text-center">상태</th>
-                    <th class="px-3 py-2 w-20"></th>
+                  <tr>
+                    <th class="text-left">구역명</th>
+                    <th class="text-left" style="width:80px">코드</th>
+                    <th class="text-left">설명</th>
+                    <th class="text-left" style="width:100px">담당자</th>
+                    <th class="text-center" style="width:70px">품목 수</th>
+                    <th class="text-center" style="width:70px">상태</th>
+                    <th style="width:80px"></th>
                   </tr>
                 </thead>
                 <tbody id="storageZonesBody"></tbody>
@@ -464,18 +464,18 @@ ${capsSettingsScript}
               </button>
             </div>
             <div class="overflow-x-auto" style="max-height: 500px; overflow-y: auto;">
-              <table class="w-full text-sm ds-table-striped">
+              <table class="w-full text-sm ds-table-striped ds-table-fixed">
                 <thead>
-                  <tr class="bg-gray-50 text-gray-600 text-xs font-semibold uppercase tracking-wider">
-                    <th class="px-3 py-2 text-left">시작</th>
-                    <th class="px-3 py-2 text-left">상태</th>
-                    <th class="px-3 py-2 text-right">수집</th>
-                    <th class="px-3 py-2 text-right">신규</th>
-                    <th class="px-3 py-2 text-right">갱신</th>
-                    <th class="px-3 py-2 text-right">건너뜀</th>
-                    <th class="px-3 py-2 text-right">오류</th>
-                    <th class="px-3 py-2 text-left">트리거</th>
-                    <th class="px-3 py-2 text-left">범위</th>
+                  <tr>
+                    <th class="text-left" style="width:130px">시작</th>
+                    <th class="text-left" style="width:80px">상태</th>
+                    <th class="text-right" style="width:60px">수집</th>
+                    <th class="text-right" style="width:60px">신규</th>
+                    <th class="text-right" style="width:60px">갱신</th>
+                    <th class="text-right" style="width:60px">건너뜀</th>
+                    <th class="text-right" style="width:60px">오류</th>
+                    <th class="text-left" style="width:80px">트리거</th>
+                    <th class="text-left">범위</th>
                   </tr>
                 </thead>
                 <tbody id="capsSyncLogBody"></tbody>

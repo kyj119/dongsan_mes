@@ -49,19 +49,19 @@ export function insuranceReportsPage(c: Context<HonoEnv>) {
         <!-- 신고서 목록 테이블 -->
         <div class="ds-card overflow-hidden">
           <div class="overflow-x-auto">
-            <table class="w-full text-sm ds-table-striped">
-              <thead class="bg-gray-50 text-xs text-gray-600 font-semibold uppercase tracking-wider">
+            <table class="w-full text-sm ds-table-striped ds-table-fixed">
+              <thead>
                 <tr>
-                  <th class="px-4 py-3 text-center">월</th>
-                  <th class="px-4 py-3 text-center">유형</th>
-                  <th class="px-4 py-3 text-right">인원</th>
-                  <th class="px-4 py-3 text-right">국민연금</th>
-                  <th class="px-4 py-3 text-right">건강보험</th>
-                  <th class="px-4 py-3 text-right">장기요양</th>
-                  <th class="px-4 py-3 text-right">고용보험</th>
-                  <th class="px-4 py-3 text-right">전체 합계</th>
-                  <th class="px-4 py-3 text-center">상태</th>
-                  <th class="px-4 py-3 text-center">작업</th>
+                  <th style="width:60px" class="text-center">월</th>
+                  <th style="width:70px" class="text-center">유형</th>
+                  <th style="width:60px" class="text-right">인원</th>
+                  <th style="width:100px" class="text-right">국민연금</th>
+                  <th style="width:100px" class="text-right">건강보험</th>
+                  <th style="width:100px" class="text-right">장기요양</th>
+                  <th style="width:100px" class="text-right">고용보험</th>
+                  <th style="width:110px" class="text-right">전체 합계</th>
+                  <th style="width:80px" class="text-center">상태</th>
+                  <th style="width:80px" class="text-center">작업</th>
                 </tr>
               </thead>
               <tbody id="irTableBody">
@@ -112,17 +112,17 @@ export function insuranceReportsPage(c: Context<HonoEnv>) {
               <div class="grid grid-cols-3 gap-4 mb-4" id="irDetailSummary"></div>
               <!-- 직원별 테이블 -->
               <div class="overflow-x-auto border rounded-lg">
-                <table class="w-full text-xs ds-table-striped">
-                  <thead class="bg-gray-50 text-gray-600 font-semibold uppercase tracking-wider">
+                <table class="w-full text-xs ds-table-striped ds-compact ds-table-fixed">
+                  <thead>
                     <tr>
-                      <th class="px-3 py-2 text-left">직원</th>
-                      <th class="px-3 py-2 text-right">보수월액</th>
-                      <th class="px-3 py-2 text-right">국민연금</th>
-                      <th class="px-3 py-2 text-right">건강보험</th>
-                      <th class="px-3 py-2 text-right">장기요양</th>
-                      <th class="px-3 py-2 text-right">고용보험</th>
-                      <th class="px-3 py-2 text-right">소계(근로자)</th>
-                      <th class="px-3 py-2 text-right">소계(회사)</th>
+                      <th>직원</th>
+                      <th style="width:100px" class="text-right">보수월액</th>
+                      <th style="width:90px" class="text-right">국민연금</th>
+                      <th style="width:90px" class="text-right">건강보험</th>
+                      <th style="width:90px" class="text-right">장기요양</th>
+                      <th style="width:90px" class="text-right">고용보험</th>
+                      <th style="width:100px" class="text-right">소계(근로자)</th>
+                      <th style="width:100px" class="text-right">소계(회사)</th>
                     </tr>
                   </thead>
                   <tbody id="irDetailTable"></tbody>

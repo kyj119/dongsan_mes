@@ -62,12 +62,12 @@ export function financialReportsPage(c: Context<HonoEnv>) {
 
             <!-- P&L 테이블 -->
             <div class="ds-card overflow-x-auto">
-              <table class="w-full text-xs ds-table-striped">
-                <thead class="bg-gray-50 sticky top-0">
+              <table class="w-full text-xs ds-table-striped ds-table-fixed ds-compact">
+                <thead>
                   <tr>
-                    <th class="px-3 py-2 text-left text-gray-600 font-semibold">항목</th>
-                    <th class="px-3 py-2 text-right text-gray-600 font-semibold" style="font-variant-numeric:tabular-nums;">금액</th>
-                    <th class="px-3 py-2 text-right text-gray-600 font-semibold" style="font-variant-numeric:tabular-nums;">수량/비율</th>
+                    <th class="text-left">항목</th>
+                    <th class="text-right" style="width:120px">금액</th>
+                    <th class="text-right" style="width:100px">수량/비율</th>
                   </tr>
                 </thead>
                 <tbody id="pnlTableBody">
@@ -124,14 +124,14 @@ export function financialReportsPage(c: Context<HonoEnv>) {
 
             <!-- 월별 테이블 -->
             <div class="ds-card overflow-x-auto">
-              <table class="w-full text-xs ds-table-striped">
-                <thead class="bg-gray-50 sticky top-0">
+              <table class="w-full text-xs ds-table-striped ds-table-fixed ds-compact">
+                <thead>
                   <tr>
-                    <th class="px-3 py-2 text-center text-gray-600 font-semibold">월</th>
-                    <th class="px-3 py-2 text-right text-gray-600 font-semibold" style="font-variant-numeric:tabular-nums;">매출</th>
-                    <th class="px-3 py-2 text-right text-gray-600 font-semibold" style="font-variant-numeric:tabular-nums;">비용</th>
-                    <th class="px-3 py-2 text-right text-gray-600 font-semibold" style="font-variant-numeric:tabular-nums;">이익</th>
-                    <th class="px-3 py-2 text-right text-gray-600 font-semibold" style="font-variant-numeric:tabular-nums;">이익률</th>
+                    <th class="text-center" style="width:60px">월</th>
+                    <th class="text-right" style="width:120px">매출</th>
+                    <th class="text-right" style="width:120px">비용</th>
+                    <th class="text-right" style="width:120px">이익</th>
+                    <th class="text-right" style="width:80px">이익률</th>
                   </tr>
                 </thead>
                 <tbody id="monthlyTableBody">
