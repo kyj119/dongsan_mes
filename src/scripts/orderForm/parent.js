@@ -1,97 +1,194 @@
 // orderForm/parent.js — AI 파일·결과 처리 + 부모/자식 행 + 후가공 복원 + 후행 ops (Phase 3.1.C 분할)
 
-            window.onAIFileSelected = function(input) {
-                selectedAIFile = input.files[0];
-                if (selectedAIFile) {
-                    localAIPath = null;
-                    document.getElementById('aiLocalPath').value = '';
-                    var sizeMB = (selectedAIFile.size / 1024 / 1024).toFixed(1);
-                    document.getElementById('aiFileLabel').textContent = selectedAIFile.name + ' (' + sizeMB + 'MB)';
-                    document.getElementById('aiAnalysisBtn').disabled = false;
-                }
-            };
+            // 다중 파일 큐
+            var pendingAIFiles = [];
 
-            // 드래그 앤 드롭 핸들러
-            window.handleAiFileDrop = function(e) {
-                var files = e.dataTransfer.files;
-                if (!files || files.length === 0) return;
-                var file = files[0];
-                var name = file.name.toLowerCase();
-                if (!name.endsWith('.ai') && !name.endsWith('.eps')) {
+            window.onAIFileSelected = function(input) {
+                var files = Array.from(input.files || []);
+                if (!files.length) return;
+                localAIPath = null;
+                document.getElementById('aiLocalPath').value = '';
+                pendingAIFiles = files.filter(function(f) {
+                    var n = f.name.toLowerCase();
+                    return n.endsWith('.ai') || n.endsWith('.eps');
+                });
+                if (!pendingAIFiles.length) {
                     showToast('AI 또는 EPS 파일만 지원합니다.', 'warning');
                     return;
                 }
-                selectedAIFile = file;
+                var label = pendingAIFiles.length === 1
+                    ? pendingAIFiles[0].name + ' (' + (pendingAIFiles[0].size / 1024 / 1024).toFixed(1) + 'MB)'
+                    : pendingAIFiles.length + '개 파일 선택됨';
+                document.getElementById('aiFileLabel').textContent = label;
+                document.getElementById('aiAnalysisBtn').disabled = false;
+            };
+
+            // 드래그 앤 드롭 핸들러 (다중 파일)
+            window.handleAiFileDrop = function(e) {
+                var files = Array.from(e.dataTransfer.files || []);
+                if (!files.length) return;
+                pendingAIFiles = files.filter(function(f) {
+                    var n = f.name.toLowerCase();
+                    return n.endsWith('.ai') || n.endsWith('.eps');
+                });
+                if (!pendingAIFiles.length) {
+                    showToast('AI 또는 EPS 파일만 지원합니다.', 'warning');
+                    return;
+                }
                 localAIPath = null;
                 document.getElementById('aiLocalPath').value = '';
-                var sizeMB = (file.size / 1024 / 1024).toFixed(1);
-                document.getElementById('aiFileLabel').textContent = file.name + ' (' + sizeMB + 'MB)';
+                var label = pendingAIFiles.length === 1
+                    ? pendingAIFiles[0].name + ' (' + (pendingAIFiles[0].size / 1024 / 1024).toFixed(1) + 'MB)'
+                    : pendingAIFiles.length + '개 파일 선택됨';
+                document.getElementById('aiFileLabel').textContent = label;
                 document.getElementById('aiAnalysisBtn').disabled = false;
-                showToast(file.name + ' 파일이 선택되었습니다.', 'success');
+                showToast(pendingAIFiles.length + '개 파일이 선택되었습니다.', 'success');
             };
 
             function onAILocalPathChanged(input) {
                 localAIPath = input.value.trim() || null;
                 if (localAIPath) {
-                    selectedAIFile = null;
-                    document.getElementById('aiFileLabel').textContent = 'AI 파일 선택 (.ai, .eps)';
+                    pendingAIFiles = [];
+                    document.getElementById('aiFileLabel').textContent = 'AI/EPS 파일을 여기에 드래그하거나 클릭하여 선택 (여러 파일 가능)';
                     document.getElementById('aiFileInput').value = '';
                 }
-                document.getElementById('aiAnalysisBtn').disabled = !(localAIPath || selectedAIFile);
+                document.getElementById('aiAnalysisBtn').disabled = !(localAIPath || pendingAIFiles.length);
+            }
+
+            // 503 재시도 헬퍼
+            async function postWithRetry(url, data, config) {
+                try {
+                    return await axios.post(url, data, config);
+                } catch (err503) {
+                    if (err503.response && err503.response.status === 503) {
+                        await new Promise(function(r) { setTimeout(r, 2000); });
+                        return await axios.post(url, data, config);
+                    }
+                    throw err503;
+                }
+            }
+
+            // 단일 파일 업로드 + 분석 대기 (Promise 반환)
+            function analyzeOneFile(file, fileIdx, totalFiles) {
+                return new Promise(function(resolve, reject) {
+                    var statusDiv = document.getElementById('aiAnalysisStatus');
+                    var prefix = totalFiles > 1 ? '[' + (fileIdx + 1) + '/' + totalFiles + '] ' : '';
+
+                    statusDiv.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i> ' + prefix + file.name + ' 업로드 중...';
+
+                    var formData = new FormData();
+                    formData.append('file', file);
+                    axios.post('/api/ai-analysis/upload', formData, {
+                        headers: { 'Content-Type': 'multipart/form-data' },
+                        onUploadProgress: function(e) {
+                            if (e.total) {
+                                var pct = Math.round(e.loaded / e.total * 100);
+                                statusDiv.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i> ' + prefix + file.name + ' 업로드 ' + pct + '%';
+                            }
+                        }
+                    }).then(function(res) {
+                        if (!res.data.success) { reject(new Error(res.data.error || '업로드 실패')); return; }
+                        var thisAnalysisId = res.data.data.id;
+                        statusDiv.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i> ' + prefix + file.name + ' 분석 중...';
+
+                        // 폴링
+                        var elapsed = 0;
+                        var poll = setInterval(async function() {
+                            elapsed += 2000;
+                            if (elapsed > 120000) { clearInterval(poll); reject(new Error(file.name + ' 분석 시간 초과')); return; }
+                            try {
+                                var r = await axios.get('/api/ai-analysis/' + thisAnalysisId);
+                                var d = r.data.data;
+                                if (d.status === 'done') {
+                                    clearInterval(poll);
+                                    resolve({ analysisId: thisAnalysisId, data: d, file: file });
+                                } else if (d.status === 'error') {
+                                    clearInterval(poll);
+                                    reject(new Error(file.name + ': ' + (d.error_message || '분석 오류')));
+                                }
+                            } catch(e) { /* 폴링 에러 무시 */ }
+                        }, 2000);
+                    }).catch(reject);
+                });
             }
 
             async function requestAIAnalysis() {
-                if (!selectedAIFile && !localAIPath) { showToast('파일을 선택하거나 경로를 입력해주세요.', 'warning'); return; }
+                if (!pendingAIFiles.length && !localAIPath) { showToast('파일을 선택하거나 경로를 입력해주세요.', 'warning'); return; }
 
                 const statusDiv = document.getElementById('aiAnalysisStatus');
                 statusDiv.classList.remove('hidden');
                 document.getElementById('aiAnalysisBtn').disabled = true;
                 resolvedFilePath = null;
 
-                // 503 재시도 헬퍼: 503 응답 시 2초 후 1회 재시도
-                async function postWithRetry(url, data, config) {
-                    try {
-                        return await axios.post(url, data, config);
-                    } catch (err503) {
-                        if (err503.response && err503.response.status === 503) {
-                            await new Promise(function(r) { setTimeout(r, 2000); });
-                            return await axios.post(url, data, config);
-                        }
-                        throw err503;
-                    }
-                }
-
                 try {
                     if (localAIPath) {
-                        // 경로 입력 모드 — 청크 없이 바로 pending
+                        // 경로 입력 모드 (단일)
                         statusDiv.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i> 분석 요청 중...';
-                        const res = await postWithRetry('/api/ai-analysis',
-                            { file_path: localAIPath }
-                        );
+                        const res = await postWithRetry('/api/ai-analysis', { file_path: localAIPath });
                         if (!res.data.success) throw new Error(res.data.error || '요청 생성 실패');
                         aiAnalysisId = res.data.data.id;
-                        await axios.patch('/api/ai-analysis/' + aiAnalysisId,
-                            { status: 'pending' }
-                        );
-                    } else {
-                        // 파일 피커 모드 — R2 직접 업로드
-                        statusDiv.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i> 파일 업로드 중...';
-                        var formData = new FormData();
-                        formData.append('file', selectedAIFile);
-                        var res = await axios.post('/api/ai-analysis/upload', formData, {
-                            headers: { 'Content-Type': 'multipart/form-data' },
-                            onUploadProgress: function(e) {
-                                if (e.total) {
-                                    var pct = Math.round(e.loaded / e.total * 100);
-                                    statusDiv.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i> 업로드 중... ' + pct + '%';
-                                }
-                            }
-                        });
-                        if (!res.data.success) throw new Error(res.data.error || '업로드 실패');
-                        aiAnalysisId = res.data.data.id;
+                        await axios.patch('/api/ai-analysis/' + aiAnalysisId, { status: 'pending' });
+                        statusDiv.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i> IllustratorAutomat에서 분석 중... (최대 120초 대기)';
+                        startAnalysisPolling();
+                        return;
                     }
-                    statusDiv.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i> IllustratorAutomat에서 분석 중... (최대 120초 대기)';
-                    startAnalysisPolling();
+
+                    // 다중 파일 순차 분석
+                    var files = pendingAIFiles.slice();
+                    var totalFiles = files.length;
+                    var doneCount = 0;
+                    var errors = [];
+
+                    for (var i = 0; i < files.length; i++) {
+                        try {
+                            var result = await analyzeOneFile(files[i], i, totalFiles);
+                            var d = result.data;
+                            resolvedFilePath = d.file_path || null;
+                            aiAnalysisId = result.analysisId;
+                            var groups = JSON.parse(d.groups_json || '[]');
+                            window._lastAnalysisGroups = groups;
+                            sheetLayoutGroups = groups;
+                            sheetQuantities = {};
+                            groups.forEach(function(_, gi) { sheetQuantities[gi] = 1; });
+
+                            // 파일 기록
+                            if (!window._aiAnalyzedFiles) window._aiAnalyzedFiles = [];
+                            window._aiAnalyzedFiles.push({
+                                file_path: resolvedFilePath || result.file.name,
+                                analysis_id: result.analysisId,
+                                groups_count: groups.length
+                            });
+
+                            // 품목 행 추가
+                            populateRowsFromGroups(groups);
+                            doneCount++;
+                        } catch(fileErr) {
+                            errors.push(fileErr.message);
+                        }
+                    }
+
+                    // 최종 상태 표시
+                    var fileListHtml = (window._aiAnalyzedFiles || []).map(function(f, fi) {
+                        var fname = (f.file_path || '').split(/[/\\]/).pop() || ('파일 ' + (fi+1));
+                        return '<span class="inline-flex items-center gap-1 px-2 py-0.5 bg-green-50 text-green-700 rounded text-xs">'
+                            + '<i class="fas fa-file"></i>' + fname + ' (' + f.groups_count + '그룹)</span>';
+                    }).join(' ');
+
+                    var resultMsg = '<div class="flex flex-wrap items-center gap-2 mb-1">' + fileListHtml + '</div>';
+                    if (errors.length) {
+                        resultMsg += '<div class="text-xs text-red-500 mt-1"><i class="fas fa-exclamation-circle mr-1"></i>' + errors.join(', ') + '</div>';
+                    }
+                    resultMsg += '<button type="button" onclick="resetForNextAIFile()" class="mt-1 px-3 py-1 text-xs bg-blue-100 text-blue-700 rounded hover:bg-blue-200">'
+                        + '<i class="fas fa-plus mr-1"></i>추가 파일 분석</button>';
+                    statusDiv.innerHTML = resultMsg;
+
+                    // 탭 표시
+                    var aiResultTabs = document.getElementById('aiResultTabs');
+                    if (aiResultTabs && doneCount > 0) aiResultTabs.classList.remove('hidden');
+                    if (doneCount > 0) switchAiTab('extract');
+
+                    pendingAIFiles = [];
+                    document.getElementById('aiAnalysisBtn').disabled = false;
 
                 } catch(err) {
                     statusDiv.innerHTML = '<i class="fas fa-times-circle text-red-500 mr-1"></i> 오류: ' + (err.response?.data?.error || err.message);
@@ -160,16 +257,14 @@
             }
 
             window.resetForNextAIFile = function() {
-                // 현재 파일/경로 초기화하여 다음 파일 분석 가능
-                selectedAIFile = null;
+                pendingAIFiles = [];
                 localAIPath = null;
                 aiAnalysisId = null;
                 resolvedFilePath = null;
-                document.getElementById('aiFileLabel').textContent = 'AI 파일 선택 (.ai, .eps)';
+                document.getElementById('aiFileLabel').textContent = 'AI/EPS 파일을 여기에 드래그하거나 클릭하여 선택 (여러 파일 가능)';
                 document.getElementById('aiFileInput').value = '';
                 document.getElementById('aiLocalPath').value = '';
                 document.getElementById('aiAnalysisBtn').disabled = true;
-                // 탭과 결과 영역은 유지 (기존 품목 행 보존)
                 var aiResultTabs = document.getElementById('aiResultTabs');
                 if (aiResultTabs) aiResultTabs.classList.add('hidden');
                 showToast('추가 AI 파일을 선택하거나 경로를 입력하세요.', 'info');

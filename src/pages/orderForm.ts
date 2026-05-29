@@ -135,8 +135,8 @@ export function orderFormPage(c: Context<HonoEnv>) {
                             <div class="flex gap-2 items-center">
                                 <label class="flex-1 border-2 border-dashed border-blue-300 rounded-lg px-3 py-3 text-sm bg-white cursor-pointer hover:bg-blue-50 flex items-center justify-center gap-2 min-w-0 transition-colors">
                                     <i class="fas fa-cloud-upload-alt text-blue-500 flex-shrink-0"></i>
-                                    <span id="aiFileLabel" class="text-gray-400 truncate">AI/EPS 파일을 여기에 드래그하거나 클릭하여 선택</span>
-                                    <input type="file" id="aiFileInput" accept=".ai,.eps" class="hidden" onchange="onAIFileSelected(this)">
+                                    <span id="aiFileLabel" class="text-gray-400 truncate">AI/EPS 파일을 여기에 드래그하거나 클릭하여 선택 (여러 파일 가능)</span>
+                                    <input type="file" id="aiFileInput" accept=".ai,.eps" multiple class="hidden" onchange="onAIFileSelected(this)">
                                 </label>
                                 <button type="button" onclick="requestAIAnalysis()" id="aiAnalysisBtn" disabled
                                     class="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-40 flex items-center gap-1 whitespace-nowrap">
