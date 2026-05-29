@@ -6,7 +6,6 @@
 
 (function() {
   // State
-  var clients = [];
   var transactions = [];
   var accounts = [];
   var currentTab = 'tx';
@@ -145,12 +144,7 @@
     loadStats();
   }, 60 * 60 * 1000);
 
-  // Load clients for dropdown
-  function loadClients() {
-    return axios.get('/api/clients?limit=500').then(function(r) {
-      clients = (r.data.data && r.data.data.clients) ? r.data.data.clients : (r.data.clients || []);
-    }).catch(function() { clients = []; });
-  }
+  // loadClients 제거 — openApplyModal에서 검색형 사용
 
   // Load accounts for filter dropdown
   function loadAccountFilter() {
@@ -251,6 +245,7 @@
       html += '</tr>';
     });
     tbody.innerHTML = html;
+    // 카테고리 추천값은 buildCategorySelect에서 이미 value 설정됨
     bindCheckboxEvents();
     updateSelectionBar();
   }
@@ -293,23 +288,60 @@
 
   function buildCategorySelect(tx, suggestedRule) {
     var presetId = '';
-    if (suggestedRule && suggestedRule.category_id) presetId = suggestedRule.category_id;
+    var presetName = '';
+    if (suggestedRule && suggestedRule.category_id) {
+      presetId = suggestedRule.category_id;
+      presetName = suggestedRule.category_name || '';
+    }
 
-    var html = '<div style="width:130px;">';
-    html += '<select class="form-select text-xs" style="width:100%;padding:3px 6px;" '
-      + 'id="categoryId_' + tx.id + '">';
-    html += '<option value="">비용분류...</option>';
-    expenseCategories.forEach(function(cat) {
-      var sel = (presetId && cat.id == presetId) ? ' selected' : '';
-      html += '<option value="' + cat.id + '"' + sel + '>' + escHtml(cat.name) + '</option>';
-    });
-    html += '</select>';
+    var html = '<div class="relative" style="width:140px;">';
+    html += '<input type="text" class="form-input text-xs" style="width:100%;padding:4px 8px;" placeholder="비용분류..."';
+    html += ' id="categorySearch_' + tx.id + '" value="' + escHtml(presetName) + '"';
+    html += ' oninput="searchCategory(' + tx.id + ', this.value)"';
+    html += ' onfocus="searchCategory(' + tx.id + ', this.value)"';
+    html += '>';
+    html += '<input type="hidden" id="categoryId_' + tx.id + '" value="' + presetId + '">';
+    html += '<div id="categoryDropdown_' + tx.id + '" class="hidden absolute z-50 left-0 right-0 top-full bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto"></div>';
+    html += '</div>';
+
     if (presetId) {
       html += '<div class="text-xs text-purple-500 mt-0.5"><i class="fas fa-robot mr-1"></i>추천</div>';
     }
-    html += '</div>';
     return html;
   }
+
+  // 비용분류 검색 (로컬 필터링, API 불필요)
+  window.searchCategory = function(txId, query) {
+    var dropdown = document.getElementById('categoryDropdown_' + txId);
+    if (!dropdown) return;
+    var q = (query || '').trim().toLowerCase();
+    var filtered = q ? expenseCategories.filter(function(cat) {
+      return cat.name.toLowerCase().indexOf(q) >= 0;
+    }) : expenseCategories;
+
+    if (!filtered.length) {
+      dropdown.innerHTML = '<div class="px-3 py-2 text-xs text-gray-400">검색 결과 없음</div>';
+      dropdown.classList.remove('hidden');
+      return;
+    }
+    var html = '';
+    filtered.forEach(function(cat) {
+      var color = cat.color || '#6d28d9';
+      html += '<div class="px-3 py-2 hover:bg-purple-50 cursor-pointer text-sm border-b border-gray-50" '
+        + 'onclick="selectCategory(' + txId + ',' + cat.id + ',\'' + escHtml(cat.name).replace(/'/g, "\\'") + '\')">';
+      html += '<span class="inline-block w-2 h-2 rounded-full mr-1.5" style="background:' + color + '"></span>';
+      html += '<span class="font-medium">' + escHtml(cat.name) + '</span>';
+      html += '</div>';
+    });
+    dropdown.innerHTML = html;
+    dropdown.classList.remove('hidden');
+  };
+
+  window.selectCategory = function(txId, catId, catName) {
+    document.getElementById('categorySearch_' + txId).value = catName;
+    document.getElementById('categoryId_' + txId).value = catId;
+    document.getElementById('categoryDropdown_' + txId).classList.add('hidden');
+  };
 
   window.toggleMatchType = function(txId) {
     var clientMode = document.getElementById('clientMode_' + txId);
@@ -387,8 +419,12 @@
 
   // 드롭다운 외부 클릭 시 닫기
   document.addEventListener('click', function(e) {
-    if (!e.target.closest('[id^="clientSearch_"]') && !e.target.closest('[id^="clientDropdown_"]')) {
-      document.querySelectorAll('[id^="clientDropdown_"]').forEach(function(el) { el.classList.add('hidden'); });
+    var t = e.target;
+    if (!t.closest('[id^="clientSearch_"]') && !t.closest('[id^="clientDropdown_"]')) {
+      document.querySelectorAll('[id^="clientDropdown_"]:not(.hidden)').forEach(function(el) { el.classList.add('hidden'); });
+    }
+    if (!t.closest('[id^="categorySearch_"]') && !t.closest('[id^="categoryDropdown_"]')) {
+      document.querySelectorAll('[id^="categoryDropdown_"]:not(.hidden)').forEach(function(el) { el.classList.add('hidden'); });
     }
   });
 
@@ -683,24 +719,62 @@
     });
   };
 
-  // Apply modal
+  // Apply modal — 검색형 거래처 선택
   function openApplyModal(txId, preClientId) {
     document.getElementById('applyTxId').value = txId;
-    var sel = document.getElementById('applyClientId');
-    sel.innerHTML = '<option value="">거래처 선택</option>';
-    clients.forEach(function(cl) {
-      var opt = document.createElement('option');
-      opt.value = cl.id;
-      opt.textContent = cl.client_name;
-      if (preClientId && cl.id == preClientId) opt.selected = true;
-      sel.appendChild(opt);
-    });
+    document.getElementById('applyClientId').value = preClientId || '';
     document.getElementById('applyNotes').value = '';
+
+    // 기존 거래처명 가져오기
+    var preClientName = '';
+    if (preClientId) {
+      var searchInput = document.getElementById('clientSearch_' + txId);
+      if (searchInput) preClientName = searchInput.value;
+    }
+    var applySearch = document.getElementById('applyClientSearch');
+    if (applySearch) applySearch.value = preClientName;
+
     document.getElementById('applyModal').classList.add('show');
   }
 
+  // 적용 모달 거래처 검색
+  var applySearchTimer = null;
+  window.searchApplyClient = function(query) {
+    if (applySearchTimer) clearTimeout(applySearchTimer);
+    var dropdown = document.getElementById('applyClientDropdown');
+    if (!query || query.length < 1) { dropdown.classList.add('hidden'); return; }
+
+    applySearchTimer = setTimeout(function() {
+      axios.get('/api/bank/client-search?q=' + encodeURIComponent(query)).then(function(r) {
+        var items = r.data.data || [];
+        if (!items.length) {
+          dropdown.innerHTML = '<div class="px-3 py-2 text-xs text-gray-400">검색 결과 없음</div>';
+          dropdown.classList.remove('hidden');
+          return;
+        }
+        var html = '';
+        items.forEach(function(cl) {
+          var rep = cl.representative ? ' (' + escHtml(cl.representative) + ')' : '';
+          html += '<div class="px-3 py-2 hover:bg-blue-50 cursor-pointer text-sm border-b border-gray-50" onclick="selectApplyClient(' + cl.id + ',\'' + escHtml(cl.client_name).replace(/'/g, "\\'") + '\')">';
+          html += '<span class="font-medium">' + escHtml(cl.client_name) + '</span>' + rep;
+          html += '</div>';
+        });
+        dropdown.innerHTML = html;
+        dropdown.classList.remove('hidden');
+      }).catch(function() { dropdown.classList.add('hidden'); });
+    }, 200);
+  };
+
+  window.selectApplyClient = function(clientId, clientName) {
+    document.getElementById('applyClientSearch').value = clientName;
+    document.getElementById('applyClientId').value = clientId;
+    document.getElementById('applyClientDropdown').classList.add('hidden');
+  };
+
   window.closeApplyModal = function() {
     document.getElementById('applyModal').classList.remove('show');
+    var dd = document.getElementById('applyClientDropdown');
+    if (dd) dd.classList.add('hidden');
   };
 
   window.confirmApply = function() {
@@ -1155,7 +1229,7 @@
   }
 
   // Init
-  Promise.all([loadClients(), loadAccountFilter(), loadMatchRules(), loadExpenseCategories()]).then(function() {
+  Promise.all([loadAccountFilter(), loadMatchRules(), loadExpenseCategories()]).then(function() {
     // 기본값: 미반영 탭
     switchStatusTab('PENDING');
   });

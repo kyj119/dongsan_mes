@@ -711,7 +711,12 @@ export function bankPage(c: Context<HonoEnv>) {
           <div class="space-y-3">
             <div>
               <label class="form-label">거래처 <span class="text-red-500">*</span></label>
-              <select id="applyClientId" class="form-select"></select>
+              <div class="relative">
+                <input type="text" id="applyClientSearch" class="form-input" placeholder="거래처 검색..."
+                  oninput="searchApplyClient(this.value)" onfocus="searchApplyClient(this.value)">
+                <input type="hidden" id="applyClientId">
+                <div id="applyClientDropdown" class="hidden absolute z-50 left-0 right-0 top-full bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto"></div>
+              </div>
             </div>
             <div>
               <label class="form-label">결제 방법</label>
