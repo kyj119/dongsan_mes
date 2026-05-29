@@ -3,7 +3,7 @@
 -- 법인별 연차 적립 이력 분리 (Fixes #244)
 -- ============================================================================
 
-ALTER TABLE leave_accrual_logs ADD COLUMN entity_id INTEGER DEFAULT 1 REFERENCES entities(id);
+ALTER TABLE leave_accrual_logs ADD COLUMN entity_id INTEGER DEFAULT 1;
 
 UPDATE leave_accrual_logs SET entity_id = (
   SELECT e.entity_id FROM employees e WHERE e.id = leave_accrual_logs.employee_id

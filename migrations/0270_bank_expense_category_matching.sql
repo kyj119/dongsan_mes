@@ -6,7 +6,7 @@
 -- ============================================================================
 
 -- 1. bank_transactions에 카테고리 매칭 컬럼 추가
-ALTER TABLE bank_transactions ADD COLUMN matched_category_id INTEGER REFERENCES expense_categories(id);
+ALTER TABLE bank_transactions ADD COLUMN matched_category_id INTEGER;
 CREATE INDEX IF NOT EXISTS idx_bank_tx_category ON bank_transactions(matched_category_id);
 
 -- 2. bank_match_rules 테이블 재생성 (matched_client_id NOT NULL → NULL 허용)
