@@ -1049,17 +1049,13 @@
                 calcItem(parentId);
                 calculateTotal();
 
-                // UI 업데이트
-                var aiResultTabs = document.getElementById('aiResultTabs');
-                if (aiResultTabs) aiResultTabs.classList.add('hidden');
-
-                var statusEl = document.getElementById('aiAnalysisStatus');
-                if (statusEl) {
-                    statusEl.textContent = '시트 배치 확정 완료 — ' + childCount + '개 자식 행 생성';
-                    statusEl.className = 'mt-2 text-sm text-green-600';
-                    statusEl.classList.remove('hidden');
+                // 등록된 그룹 마킹 + 그리드 복귀
+                if (sheetLayoutGroups) {
+                    markGroupsRegistered(sheetLayoutGroups);
                 }
+                // 그리드로 돌아가기 (남은 항목이 있으면 그리드 표시)
+                backToArtboardGrid();
 
-                showToast('시트 배치가 주문 라인에 추가되었습니다.', 'success');
+                showToast('시트 배치가 주문 라인에 추가되었습니다 (' + childCount + '개 자식).', 'success');
             };
 

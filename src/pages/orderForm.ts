@@ -153,33 +153,41 @@ export function orderFormPage(c: Context<HonoEnv>) {
                         </div>
                         <div id="aiAnalysisStatus" class="mt-2 text-sm text-gray-600 hidden"></div>
 
-                        <!-- 분석 결과 탭 (분석 완료 후 표시) -->
+                        <!-- 분석 결과: 아트보드 그리드 + 시트배치 패널 -->
                         <div id="aiResultTabs" class="hidden mt-3">
-                            <div class="flex gap-2 mb-2">
-                                <button type="button" onclick="switchAiTab('extract')" id="tabExtract"
-                                    class="flex-1 px-4 py-3 text-sm font-semibold rounded-lg border-2 border-blue-600 bg-blue-600 text-white hover:bg-blue-700 transition-colors">
-                                    <i class="fas fa-list mr-1"></i>품목 추출
-                                </button>
-                                <button type="button" onclick="switchAiTab('sheet')" id="tabSheet"
-                                    class="flex-1 px-4 py-3 text-sm font-semibold rounded-lg border-2 border-blue-300 bg-white text-blue-600 hover:bg-blue-50 transition-colors">
-                                    <i class="fas fa-th mr-1"></i>시트 배치
-                                </button>
+                            <!-- 아트보드 선택 그리드 -->
+                            <div id="artboardGridPanel" class="bg-white border border-blue-200 rounded-lg p-4">
+                                <div class="flex items-center justify-between mb-3">
+                                    <div class="text-sm font-medium text-gray-700">
+                                        <i class="fas fa-th-large text-blue-500 mr-1"></i>분석 완료 — <span id="gridTotalCount">0</span>개 아트보드
+                                    </div>
+                                    <label class="flex items-center gap-1.5 text-xs text-gray-500 cursor-pointer select-none">
+                                        <input type="checkbox" id="gridCheckAll" onchange="gridToggleAll(this.checked)" class="rounded border-gray-300 text-blue-600"> 전체선택
+                                    </label>
+                                </div>
+                                <div id="gridItems" class="space-y-1 max-h-72 overflow-y-auto"></div>
+                                <div class="flex items-center gap-2 mt-3 pt-3 border-t border-gray-200">
+                                    <span id="gridSelectedInfo" class="text-xs text-gray-500 flex-1">0개 선택</span>
+                                    <button type="button" onclick="gridExtractSelected()" class="px-3 py-2 text-sm font-medium bg-white border border-blue-300 text-blue-600 rounded-lg hover:bg-blue-50 disabled:opacity-40" id="gridBtnExtract" disabled>
+                                        <i class="fas fa-list mr-1"></i>선택 → 개별 등록
+                                    </button>
+                                    <button type="button" onclick="gridSheetSelected()" class="px-3 py-2 text-sm font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-40" id="gridBtnSheet" disabled>
+                                        <i class="fas fa-th mr-1"></i>선택 → 시트배치
+                                    </button>
+                                    <button type="button" onclick="gridExtractAll()" class="px-3 py-2 text-sm font-medium bg-gray-100 text-gray-600 rounded-lg hover:bg-gray-200">
+                                        전체 개별 등록
+                                    </button>
+                                </div>
                             </div>
 
-                            <!-- 품목 추출 탭 내용 -->
-                            <div id="extractPanel" class="hidden bg-white border border-blue-200 rounded-lg p-4">
-                                <div class="text-sm font-medium text-gray-700 mb-2">추출된 그룹</div>
-                                <div id="extractGroupsList" class="mb-3"></div>
-                                <button type="button" onclick="doExtractToLines()" class="w-full py-3 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700">
-                                    <i class="fas fa-plus mr-1"></i> 주문 라인에 추가
+                            <!-- 시트 배치 패널 (그리드에서 시트배치 클릭 시 표시) -->
+                            <div id="sheetLayoutPanel" class="hidden bg-white border border-blue-200 rounded-lg p-4 mt-2">
+                                <button type="button" onclick="backToArtboardGrid()" class="mb-3 text-sm text-blue-600 hover:text-blue-800">
+                                    <i class="fas fa-arrow-left mr-1"></i>아트보드 선택으로 돌아가기
                                 </button>
-                            </div>
-
-                            <!-- 시트 배치 탭 내용 -->
-                            <div id="sheetLayoutPanel" class="hidden bg-white border border-blue-200 rounded-lg p-4">
                                 <!-- 요소 목록 테이블 -->
                                 <div class="mb-4">
-                                    <div class="text-sm font-medium text-gray-700 mb-2">추출된 요소</div>
+                                    <div class="text-sm font-medium text-gray-700 mb-2">시트배치 요소</div>
                                     <table class="w-full text-sm">
                                         <thead>
                                             <tr class="border-b text-gray-500">

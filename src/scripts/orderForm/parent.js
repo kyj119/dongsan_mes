@@ -1,7 +1,8 @@
 // orderForm/parent.js — AI 파일·결과 처리 + 부모/자식 행 + 후가공 복원 + 후행 ops (Phase 3.1.C 분할)
 
-            // 다중 파일 큐
+            // 다중 파일 큐 + 전체 아트보드 누적
             var pendingAIFiles = [];
+            var _allAnalyzedGroups = [];
 
             window.onAIFileSelected = function(input) {
                 var files = Array.from(input.files || []);
@@ -133,7 +134,7 @@
                         return;
                     }
 
-                    // 다중 파일 순차 분석
+                    // 다중 파일 순차 분석 → 그룹 누적 (자동 추출 안 함)
                     var files = pendingAIFiles.slice();
                     var totalFiles = files.length;
                     var doneCount = 0;
@@ -146,10 +147,14 @@
                             resolvedFilePath = d.file_path || null;
                             aiAnalysisId = result.analysisId;
                             var groups = JSON.parse(d.groups_json || '[]');
-                            window._lastAnalysisGroups = groups;
-                            sheetLayoutGroups = groups;
-                            sheetQuantities = {};
-                            groups.forEach(function(_, gi) { sheetQuantities[gi] = 1; });
+                            var fileName = (resolvedFilePath || result.file.name || '').split(/[/\\]/).pop() || ('파일 ' + (i+1));
+
+                            // 각 그룹에 출처 태그 추가
+                            groups.forEach(function(g) {
+                                g._analysis_id = result.analysisId;
+                                g._file_name = fileName;
+                            });
+                            _allAnalyzedGroups = _allAnalyzedGroups.concat(groups);
 
                             // 파일 기록
                             if (!window._aiAnalyzedFiles) window._aiAnalyzedFiles = [];
@@ -158,9 +163,6 @@
                                 analysis_id: result.analysisId,
                                 groups_count: groups.length
                             });
-
-                            // 품목 행 추가
-                            populateRowsFromGroups(groups);
                             doneCount++;
                         } catch(fileErr) {
                             errors.push(fileErr.message);
@@ -182,10 +184,12 @@
                         + '<i class="fas fa-plus mr-1"></i>추가 파일 분석</button>';
                     statusDiv.innerHTML = resultMsg;
 
-                    // 탭 표시
-                    var aiResultTabs = document.getElementById('aiResultTabs');
-                    if (aiResultTabs && doneCount > 0) aiResultTabs.classList.remove('hidden');
-                    if (doneCount > 0) switchAiTab('extract');
+                    // 아트보드 그리드 표시
+                    if (doneCount > 0) {
+                        renderArtboardGrid();
+                        var aiResultTabs = document.getElementById('aiResultTabs');
+                        if (aiResultTabs) aiResultTabs.classList.remove('hidden');
+                    }
 
                     pendingAIFiles = [];
                     document.getElementById('aiAnalysisBtn').disabled = false;
@@ -214,23 +218,22 @@
                             clearInterval(analysisPollingTimer);
                             clearTimeout(timeoutId);
                             analysisPollingTimer = null;
-                            resolvedFilePath = d.file_path || null; // temp 경로 저장 (주문 제출 시 사용)
+                            resolvedFilePath = d.file_path || null;
                             const groups = JSON.parse(d.groups_json || '[]');
                             window._lastAnalysisGroups = groups;
+                            var fileName = (resolvedFilePath || localAIPath || '').split(/[/\\]/).pop() || '파일';
 
-                            sheetLayoutGroups = groups;
-                            sheetQuantities = {};
-                            groups.forEach(function(_, i) { sheetQuantities[i] = 1; });
+                            // 각 그룹에 출처 태그
+                            groups.forEach(function(g) {
+                                g._analysis_id = aiAnalysisId;
+                                g._file_name = fileName;
+                            });
+                            _allAnalyzedGroups = _allAnalyzedGroups.concat(groups);
 
-                            // 탭 표시 + 품목 추출 탭 기본 선택
-                            var aiResultTabs = document.getElementById('aiResultTabs');
-                            if (aiResultTabs) aiResultTabs.classList.remove('hidden');
-                            switchAiTab('extract');
-
-                            // 분석된 파일 기록 (다중 파일 지원)
+                            // 파일 기록
                             if (!window._aiAnalyzedFiles) window._aiAnalyzedFiles = [];
                             window._aiAnalyzedFiles.push({
-                                file_path: resolvedFilePath || (localAIPath || (selectedAIFile ? selectedAIFile.name : '')),
+                                file_path: resolvedFilePath || localAIPath || '',
                                 analysis_id: aiAnalysisId,
                                 groups_count: groups.length
                             });
@@ -244,6 +247,11 @@
                                 + fileListHtml + '</div>'
                                 + '<button type="button" onclick="resetForNextAIFile()" class="mt-1 px-3 py-1 text-xs bg-blue-100 text-blue-700 rounded hover:bg-blue-200">'
                                 + '<i class="fas fa-plus mr-1"></i>추가 파일 분석</button>';
+
+                            // 아트보드 그리드 표시
+                            renderArtboardGrid();
+                            var aiResultTabs = document.getElementById('aiResultTabs');
+                            if (aiResultTabs) aiResultTabs.classList.remove('hidden');
                         } else if (d.status === 'error') {
                             clearInterval(analysisPollingTimer);
                             clearTimeout(timeoutId);
@@ -268,6 +276,156 @@
                 var aiResultTabs = document.getElementById('aiResultTabs');
                 if (aiResultTabs) aiResultTabs.classList.add('hidden');
                 showToast('추가 AI 파일을 선택하거나 경로를 입력하세요.', 'info');
+            };
+
+            // ── 아트보드 선택 그리드 ──────────────────────────────
+            function renderArtboardGrid() {
+                var container = document.getElementById('gridItems');
+                var countEl = document.getElementById('gridTotalCount');
+                if (!container) return;
+
+                // 등록되지 않은 그룹만 표시
+                var pending = _allAnalyzedGroups.filter(function(g) { return !g._registered; });
+                if (countEl) countEl.textContent = pending.length;
+
+                var html = '';
+                pending.forEach(function(g, i) {
+                    var uid = (g._analysis_id || 0) + '_' + g.index;
+                    var wCm = g.width_mm ? (g.width_mm / 10).toFixed(1) : '?';
+                    var hCm = g.height_mm ? (g.height_mm / 10).toFixed(1) : '?';
+                    var thumbSrc = g.thumbnail_base64
+                        ? (g.thumbnail_base64.indexOf('data:') === 0 ? g.thumbnail_base64 : 'data:image/png;base64,' + g.thumbnail_base64)
+                        : '';
+                    var thumbHtml = thumbSrc
+                        ? '<img src="' + thumbSrc + '" class="w-12 h-12 object-contain rounded border bg-white flex-shrink-0">'
+                        : '<div class="w-12 h-12 rounded border bg-gray-100 flex items-center justify-center text-gray-400 text-xs flex-shrink-0">' + (i+1) + '</div>';
+
+                    html += '<div class="flex items-center gap-3 p-2 rounded-lg hover:bg-blue-50 border border-transparent cursor-pointer transition-colors" id="grid-item-' + uid + '" data-uid="' + uid + '" onclick="gridToggleItem(this)">'
+                        + '<input type="checkbox" class="grid-check rounded border-gray-300 text-blue-600 pointer-events-none" data-uid="' + uid + '">'
+                        + thumbHtml
+                        + '<div class="flex-1 min-w-0">'
+                        + '<span class="text-sm font-medium text-gray-800">' + (g.name || 'Group ' + (g.index + 1)) + '</span>'
+                        + '<span class="text-xs text-gray-400 ml-2">' + wCm + ' × ' + hCm + ' cm</span>'
+                        + '</div>'
+                        + '<span class="text-xs text-gray-400 truncate max-w-[120px] flex-shrink-0">' + (g._file_name || '') + '</span>'
+                        + '</div>';
+                });
+                container.innerHTML = html;
+                gridUpdateCount();
+
+                // 그리드 패널 표시, 시트배치 패널 숨김
+                var gridPanel = document.getElementById('artboardGridPanel');
+                var sheetPanel = document.getElementById('sheetLayoutPanel');
+                if (gridPanel) gridPanel.classList.remove('hidden');
+                if (sheetPanel) sheetPanel.classList.add('hidden');
+            }
+
+            window.gridToggleItem = function(row) {
+                var cb = row.querySelector('.grid-check');
+                if (cb) cb.checked = !cb.checked;
+                row.classList.toggle('border-blue-400', cb.checked);
+                row.classList.toggle('bg-blue-50', cb.checked);
+                gridUpdateCount();
+            };
+
+            window.gridToggleAll = function(checked) {
+                document.querySelectorAll('.grid-check').forEach(function(cb) {
+                    cb.checked = checked;
+                    var row = cb.closest('[data-uid]');
+                    if (row) {
+                        row.classList.toggle('border-blue-400', checked);
+                        row.classList.toggle('bg-blue-50', checked);
+                    }
+                });
+                gridUpdateCount();
+            };
+
+            function gridUpdateCount() {
+                var checked = document.querySelectorAll('.grid-check:checked');
+                var total = document.querySelectorAll('.grid-check');
+                var infoEl = document.getElementById('gridSelectedInfo');
+                var btnExtract = document.getElementById('gridBtnExtract');
+                var btnSheet = document.getElementById('gridBtnSheet');
+                if (infoEl) infoEl.textContent = checked.length + '/' + total.length + '개 선택';
+                if (btnExtract) btnExtract.disabled = checked.length === 0;
+                if (btnSheet) btnSheet.disabled = checked.length < 2;
+                // 전체선택 체크박스 동기화
+                var checkAll = document.getElementById('gridCheckAll');
+                if (checkAll) checkAll.checked = total.length > 0 && checked.length === total.length;
+            }
+
+            function getSelectedGroups() {
+                var uids = [];
+                document.querySelectorAll('.grid-check:checked').forEach(function(cb) {
+                    uids.push(cb.getAttribute('data-uid'));
+                });
+                return _allAnalyzedGroups.filter(function(g) {
+                    var uid = (g._analysis_id || 0) + '_' + g.index;
+                    return uids.indexOf(uid) >= 0 && !g._registered;
+                });
+            }
+
+            function markGroupsRegistered(groups) {
+                groups.forEach(function(g) { g._registered = true; });
+                renderArtboardGrid();
+                // 모두 등록되었으면 그리드 패널 숨기기
+                var pending = _allAnalyzedGroups.filter(function(g) { return !g._registered; });
+                if (pending.length === 0) {
+                    var tabs = document.getElementById('aiResultTabs');
+                    if (tabs) tabs.classList.add('hidden');
+                }
+            }
+
+            window.gridExtractSelected = function() {
+                var selected = getSelectedGroups();
+                if (!selected.length) { showToast('항목을 선택하세요.', 'warning'); return; }
+                extractGroupsToLines(selected);
+            };
+
+            window.gridExtractAll = function() {
+                var pending = _allAnalyzedGroups.filter(function(g) { return !g._registered; });
+                if (!pending.length) { showToast('등록할 항목이 없습니다.', 'warning'); return; }
+                extractGroupsToLines(pending);
+            };
+
+            function extractGroupsToLines(groups) {
+                removeEmptyItemRows();
+                var allSameSize = groups.length > 1 && groups.every(function(g) {
+                    var refW = groups[0].width_mm, refH = groups[0].height_mm;
+                    if (!refW || !refH || !g.width_mm || !g.height_mm) return false;
+                    return Math.abs(g.width_mm - refW) / refW < 0.05
+                        && Math.abs(g.height_mm - refH) / refH < 0.05;
+                });
+                if (allSameSize) {
+                    populateAsGroupedItem(groups);
+                } else {
+                    populateRowsFromGroups(groups);
+                }
+                markGroupsRegistered(groups);
+                showToast(groups.length + '개 품목 라인이 추가되었습니다.', 'success');
+            }
+
+            window.gridSheetSelected = function() {
+                var selected = getSelectedGroups();
+                if (selected.length < 2) { showToast('시트배치는 2개 이상 선택하세요.', 'warning'); return; }
+                // sheetLayoutGroups에 선택된 그룹 설정
+                sheetLayoutGroups = selected;
+                sheetQuantities = {};
+                selected.forEach(function(_, i) { sheetQuantities[i] = 1; });
+                // 시트배치 패널 표시
+                var gridPanel = document.getElementById('artboardGridPanel');
+                var sheetPanel = document.getElementById('sheetLayoutPanel');
+                if (gridPanel) gridPanel.classList.add('hidden');
+                if (sheetPanel) sheetPanel.classList.remove('hidden');
+                populateSheetElements(sheetLayoutGroups);
+            };
+
+            // 시트배치에서 그리드로 돌아가기
+            window.backToArtboardGrid = function() {
+                var gridPanel = document.getElementById('artboardGridPanel');
+                var sheetPanel = document.getElementById('sheetLayoutPanel');
+                if (gridPanel) gridPanel.classList.remove('hidden');
+                if (sheetPanel) sheetPanel.classList.add('hidden');
             };
 
             function removeEmptyItemRows() {
@@ -298,9 +456,9 @@
                     const giEl = document.querySelector('[name="ai_group_index_' + id + '"]');
                     if (giEl) giEl.value = group.index;
 
-                    // 현재 분석 요청 ID를 품목 행에 기록 (여러 파일 업로드 시 파일별 추적)
+                    // 분석 요청 ID: 그룹별 개별 추적 (다중 파일 지원)
                     const aiIdEl = document.querySelector('[name="ai_analysis_id_' + id + '"]');
-                    if (aiIdEl && aiAnalysisId) aiIdEl.value = aiAnalysisId;
+                    if (aiIdEl) aiIdEl.value = group._analysis_id || aiAnalysisId || '';
 
                     const wEl = document.querySelector('[name="width_' + id + '"]');
                     const hEl = document.querySelector('[name="height_' + id + '"]');
@@ -554,7 +712,7 @@
                     </button>
                     <input type="hidden" name="parent_client_id_${id}" value="pg${parentId}">
                     <input type="hidden" name="child_ai_group_index_${id}" value="${group.index}">
-                    <input type="hidden" name="child_ai_analysis_id_${id}" value="${aiAnalysisId || ''}">
+                    <input type="hidden" name="child_ai_analysis_id_${id}" value="${group._analysis_id || aiAnalysisId || ''}">
                     ${hiddenSizeHtml}
                     <input type="hidden" name="child_scale_factor_${id}" value="${sf}">
                     <input type="hidden" name="is_child_${id}" value="1">
