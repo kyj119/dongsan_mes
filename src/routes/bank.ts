@@ -494,7 +494,7 @@ bankRouter.post('/sync-barobill', requireRole('ADMIN'), async (c) => {
     })
   } catch (error: any) {
     console.error('Barobill bank sync error:', error)
-    return c.json({ success: false, error: error.message || '서버 오류' }, 500)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다' }, 500)
   }
 })
 
@@ -819,9 +819,10 @@ bankRouter.post('/transactions/:id/match', requireRole('ADMIN'), async (c) => {
       return c.json({ success: false, error: 'client_id 또는 category_id 필수' }, 400)
     }
 
+    const ef = entityFilter(c, 'bank_transactions')
     const tx = await c.env.DB.prepare(
-      "SELECT id, match_status, counterpart_name FROM bank_transactions WHERE id = ?"
-    ).bind(id).first<{ id: number; match_status: string; counterpart_name: string | null }>()
+      `SELECT id, match_status, counterpart_name FROM bank_transactions WHERE id = ?${ef.clause}`
+    ).bind(id, ...ef.params).first<{ id: number; match_status: string; counterpart_name: string | null }>()
 
     if (!tx) {
       return c.json({ success: false, error: '거래내역을 찾을 수 없습니다' }, 404)
@@ -913,9 +914,10 @@ bankRouter.post('/transactions/:id/apply', requireRole('ADMIN'), async (c) => {
     const user = c.get('user')
     const body = await c.req.json().catch(() => ({})) as any
 
+    const ef = entityFilter(c, 'bank_transactions')
     const tx = await c.env.DB.prepare(
-      'SELECT id, bank_account_id, transaction_date, transaction_time, transaction_type, amount, balance_after, counterpart_name, description, match_status, matched_client_id, matched_payment_id, entity_id FROM bank_transactions WHERE id = ?'
-    ).bind(id).first<{
+      `SELECT id, bank_account_id, transaction_date, transaction_time, transaction_type, amount, balance_after, counterpart_name, description, match_status, matched_client_id, matched_payment_id, entity_id FROM bank_transactions WHERE id = ?${ef.clause}`
+    ).bind(id, ...ef.params).first<{
       id: number
       transaction_date: string
       amount: number
@@ -1036,9 +1038,10 @@ bankRouter.post('/transactions/batch-apply', requireRole('ADMIN'), async (c) => 
 
     // Bulk-fetch all transactions in one query instead of N individual SELECTs
     const placeholders = transaction_ids.map(() => '?').join(', ')
+    const ef = entityFilter(c, 'bank_transactions')
     const { results: txRows } = await c.env.DB.prepare(
-      `SELECT id, transaction_date, amount, match_status, matched_client_id, counterpart_name, description FROM bank_transactions WHERE id IN (${placeholders})`
-    ).bind(...transaction_ids).all<{
+      `SELECT id, transaction_date, amount, match_status, matched_client_id, counterpart_name, description FROM bank_transactions WHERE id IN (${placeholders})${ef.clause}`
+    ).bind(...transaction_ids, ...ef.params).all<{
       id: number
       transaction_date: string
       amount: number
@@ -1151,9 +1154,10 @@ bankRouter.post('/transactions/batch-match', requireRole('ADMIN'), async (c) => 
     // Bulk-fetch transactions
     const txIds = matches.map(m => m.transaction_id)
     const placeholders = txIds.map(() => '?').join(', ')
+    const ef = entityFilter(c, 'bank_transactions')
     const { results: txRows } = await c.env.DB.prepare(
-      `SELECT id, match_status, counterpart_name FROM bank_transactions WHERE id IN (${placeholders})`
-    ).bind(...txIds).all<{
+      `SELECT id, match_status, counterpart_name FROM bank_transactions WHERE id IN (${placeholders})${ef.clause}`
+    ).bind(...txIds, ...ef.params).all<{
       id: number; match_status: string; counterpart_name: string | null
     }>()
     const txMap = new Map(txRows.map(row => [row.id, row]))
@@ -1570,8 +1574,8 @@ bankRouter.post('/auto-sync', requireRole('ADMIN'), async (c) => {
         if (!accNum) continue
 
         const bankAcc = await c.env.DB.prepare(
-          'SELECT id FROM bank_accounts WHERE account_number = ? AND is_active = 1'
-        ).bind(accNum).first() as { id: number } | null
+          'SELECT id, entity_id FROM bank_accounts WHERE account_number = ? AND is_active = 1'
+        ).bind(accNum).first() as { id: number; entity_id: number } | null
         if (!bankAcc) continue
 
         for (const dateStr of dates) {
@@ -1597,12 +1601,12 @@ bankRouter.post('/auto-sync', requireRole('ADMIN'), async (c) => {
 
               await c.env.DB.prepare(`
                 INSERT INTO bank_transactions (bank_account_id, transaction_date, transaction_time, transaction_type, amount, balance_after, counterpart_name, description, codef_transaction_id, match_status, entity_id)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'UNMATCHED', 1)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'UNMATCHED', ?)
               `).bind(
                 bankAcc.id, txDate, txTime, txType, amount,
                 parseFloat(item.Balance || '0'),
                 item.TransRemark1 || null, item.TransOffice || null,
-                refKey || null
+                refKey || null, bankAcc.entity_id ?? getEntityId(c)
               ).run()
               totalInserted++
             }

@@ -16,7 +16,8 @@ import {
 import { getEntityId, entityFilter } from '../../utils/entityFilter'
 
 const coreRouter = new Hono<HonoEnv>()
-coreRouter.use('/*', authMiddleware)
+// 급여 계산(급여 산출 결과)은 전 라우트 ADMIN/MANAGER 전용
+coreRouter.use('/*', authMiddleware, requireRole('ADMIN', 'MANAGER'))
 
 // A: 급여 계산 — 원본 라인 357-700 + 800-1013
 coreRouter.post('/preview', async (c) => {

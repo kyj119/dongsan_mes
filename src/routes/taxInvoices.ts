@@ -113,13 +113,15 @@ async function issueTaxInvoice(
   db: D1Database,
   taxInvoiceId: number,
   userId: number,
-  env: any
+  env: any,
+  entityId?: number
 ): Promise<{ success: boolean; error?: string; data?: any }> {
+  const entityScope = entityId != null && entityId !== 0 ? ' AND ti.entity_id = ?' : ''
   const existing = await db.prepare(
     `SELECT ti.*, o.order_number FROM tax_invoices ti
      LEFT JOIN orders o ON ti.order_id = o.id
-     WHERE ti.id = ?`
-  ).bind(taxInvoiceId).first<TaxInvoiceWithOrder>()
+     WHERE ti.id = ?${entityScope}`
+  ).bind(...(entityScope ? [taxInvoiceId, entityId] : [taxInvoiceId])).first<TaxInvoiceWithOrder>()
 
   if (!existing) {
     return { success: false, error: '세금계산서를 찾을 수 없습니다.' }
@@ -570,19 +572,20 @@ taxInvoicesRouter.get('/order/:orderId', async (c) => {
     const orderId = parseInt(c.req.param('orderId'))
 
     // junction 테이블도 함께 검색 (단건 order_id 컬럼 + junction 테이블)
+    const ef = entityFilter(c, 'ti')
     const { results } = await c.env.DB.prepare(`
       SELECT ti.*, o.order_number
       FROM tax_invoices ti
       LEFT JOIN orders o ON ti.order_id = o.id
-      WHERE ti.order_id = ?
+      WHERE ti.order_id = ?${ef.clause}
       UNION
       SELECT ti.*, o.order_number
       FROM tax_invoices ti
       JOIN tax_invoice_orders tio ON tio.tax_invoice_id = ti.id
       LEFT JOIN orders o ON ti.order_id = o.id
-      WHERE tio.order_id = ?
+      WHERE tio.order_id = ?${ef.clause}
       ORDER BY created_at DESC
-    `).bind(orderId, orderId).all()
+    `).bind(orderId, ...ef.params, orderId, ...ef.params).all()
 
     return c.json({ success: true, data: results })
   } catch (error) {
@@ -769,7 +772,7 @@ taxInvoicesRouter.post('/batch-create', requireRole('ADMIN', 'MANAGER'), async (
 
         // auto_issue 처리
         if (body.auto_issue) {
-          const issueRes = await issueTaxInvoice(c.env.DB, taxInvoiceId, user.id, c.env)
+          const issueRes = await issueTaxInvoice(c.env.DB, taxInvoiceId, user.id, c.env, getEntityId(c))
           if (!issueRes.success) {
             results.push({ client_id: group.client_id, client_name: client.client_name, success: false, error: issueRes.error, invoice_id: taxInvoiceId, invoice_number: invoiceNumber })
             failCount++
@@ -804,12 +807,13 @@ taxInvoicesRouter.get('/:id', async (c) => {
   try {
     const id = parseInt(c.req.param('id'))
 
+    const ef = entityFilter(c, 'ti')
     const invoice = await c.env.DB.prepare(`
       SELECT ti.*, o.order_number
       FROM tax_invoices ti
       LEFT JOIN orders o ON ti.order_id = o.id
-      WHERE ti.id = ?
-    `).bind(id).first()
+      WHERE ti.id = ?${ef.clause}
+    `).bind(id, ...ef.params).first()
 
     if (!invoice) {
       return c.json({ success: false, error: '세금계산서를 찾을 수 없습니다.' }, 404)
@@ -1008,7 +1012,7 @@ taxInvoicesRouter.post('/', requireRole('ADMIN', 'MANAGER'), async (c) => {
 
       // auto_issue 처리
       if (body.auto_issue) {
-        const issueRes = await issueTaxInvoice(c.env.DB, taxInvoiceId, user.id, c.env)
+        const issueRes = await issueTaxInvoice(c.env.DB, taxInvoiceId, user.id, c.env, getEntityId(c))
         if (!issueRes.success) {
           return c.json({ success: false, error: issueRes.error, data: { invoice_id: taxInvoiceId, invoice_number: invoiceNumber, ...(issueRes.data || {}) } }, 400)
         }
@@ -1134,7 +1138,7 @@ taxInvoicesRouter.post('/', requireRole('ADMIN', 'MANAGER'), async (c) => {
 
     // auto_issue 처리
     if (body.auto_issue) {
-      const issueRes = await issueTaxInvoice(c.env.DB, taxInvoiceId, user.id, c.env)
+      const issueRes = await issueTaxInvoice(c.env.DB, taxInvoiceId, user.id, c.env, getEntityId(c))
       if (!issueRes.success) {
         return c.json({ success: false, error: issueRes.error, data: { invoice_id: taxInvoiceId, invoice_number: invoiceNumber, ...(issueRes.data || {}) } }, 400)
       }
@@ -1169,9 +1173,10 @@ taxInvoicesRouter.patch('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
       }>
     }>()
 
+    const ef = entityFilter(c)
     const existing = await c.env.DB.prepare(
-      'SELECT id, status FROM tax_invoices WHERE id = ?'
-    ).bind(id).first<{ id: number; status: string }>()
+      `SELECT id, status FROM tax_invoices WHERE id = ?${ef.clause}`
+    ).bind(id, ...ef.params).first<{ id: number; status: string }>()
 
     if (!existing) {
       return c.json({ success: false, error: '세금계산서를 찾을 수 없습니다.' }, 404)
@@ -1257,9 +1262,10 @@ taxInvoicesRouter.delete('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
   try {
     const id = parseInt(c.req.param('id'))
 
+    const ef = entityFilter(c)
     const existing = await c.env.DB.prepare(
-      'SELECT id, status FROM tax_invoices WHERE id = ?'
-    ).bind(id).first<{ id: number; status: string }>()
+      `SELECT id, status FROM tax_invoices WHERE id = ?${ef.clause}`
+    ).bind(id, ...ef.params).first<{ id: number; status: string }>()
 
     if (!existing) {
       return c.json({ success: false, error: '세금계산서를 찾을 수 없습니다.' }, 404)
@@ -1287,7 +1293,7 @@ taxInvoicesRouter.post('/:id/issue', requireRole('ADMIN', 'MANAGER'), async (c) 
     const id = parseInt(c.req.param('id'))
     const user = c.get('user')
 
-    const result = await issueTaxInvoice(c.env.DB, id, user.id, c.env)
+    const result = await issueTaxInvoice(c.env.DB, id, user.id, c.env, getEntityId(c))
     if (!result.success) {
       return c.json({ success: false, error: result.error, data: result.data }, result.data?.providerError ? 400 : 400)
     }
@@ -1326,11 +1332,12 @@ taxInvoicesRouter.post('/:id/modify', requireRole('ADMIN', 'MANAGER'), async (c)
     }
 
     // 원본 계산서 조회 (ISSUED 또는 SENT 상태만)
+    const ef = entityFilter(c, 'ti')
     const original = await c.env.DB.prepare(`
       SELECT ti.*, o.order_number FROM tax_invoices ti
       LEFT JOIN orders o ON ti.order_id = o.id
-      WHERE ti.id = ?
-    `).bind(id).first<TaxInvoiceWithOrder>()
+      WHERE ti.id = ?${ef.clause}
+    `).bind(id, ...ef.params).first<TaxInvoiceWithOrder>()
 
     if (!original) {
       return c.json({ success: false, error: '세금계산서를 찾을 수 없습니다.' }, 404)
@@ -1479,9 +1486,10 @@ taxInvoicesRouter.post('/:id/cancel', requireRole('ADMIN'), async (c) => {
     const user = c.get('user')
     const { cancel_reason } = await c.req.json<{ cancel_reason?: string }>()
 
+    const ef = entityFilter(c)
     const existing = await c.env.DB.prepare(
-      'SELECT id, status FROM tax_invoices WHERE id = ?'
-    ).bind(id).first<{ id: number; status: string }>()
+      `SELECT id, status FROM tax_invoices WHERE id = ?${ef.clause}`
+    ).bind(id, ...ef.params).first<{ id: number; status: string }>()
 
     if (!existing) {
       return c.json({ success: false, error: '세금계산서를 찾을 수 없습니다.' }, 404)
@@ -1743,7 +1751,7 @@ taxInvoicesRouter.post('/monthly-create', async (c) => {
 
         // auto_issue
         if (body.auto_issue) {
-          const issueResult = await issueTaxInvoice(c.env.DB, taxInvoiceId as number, user?.id || 1, c.env)
+          const issueResult = await issueTaxInvoice(c.env.DB, taxInvoiceId as number, user?.id || 1, c.env, getEntityId(c))
           created.push({ invoice_number: invoiceNumber, client_name: group.client_name, issued: issueResult.success })
         } else {
           created.push({ invoice_number: invoiceNumber, client_name: group.client_name, issued: false })
@@ -1774,9 +1782,10 @@ taxInvoicesRouter.post('/:id/refresh-status', async (c) => {
   const id = parseInt(c.req.param('id'))
 
   try {
+    const ef = entityFilter(c)
     const invoice = await db.prepare(
-      `SELECT id, invoice_number, status, supplier_brn FROM tax_invoices WHERE id = ?`
-    ).bind(id).first<{ id: number; invoice_number: string; status: string; supplier_brn: string }>()
+      `SELECT id, invoice_number, status, supplier_brn FROM tax_invoices WHERE id = ?${ef.clause}`
+    ).bind(id, ...ef.params).first<{ id: number; invoice_number: string; status: string; supplier_brn: string }>()
 
     if (!invoice) {
       return c.json({ success: false, error: '세금계산서를 찾을 수 없습니다.' }, 404)
@@ -1862,9 +1871,10 @@ taxInvoicesRouter.post('/:id/retry', async (c) => {
   const id = parseInt(c.req.param('id'))
 
   try {
+    const ef = entityFilter(c)
     const invoice = await db.prepare(
-      `SELECT id, status, invoice_number FROM tax_invoices WHERE id = ?`
-    ).bind(id).first<{ id: number; status: string; invoice_number: string }>()
+      `SELECT id, status, invoice_number FROM tax_invoices WHERE id = ?${ef.clause}`
+    ).bind(id, ...ef.params).first<{ id: number; status: string; invoice_number: string }>()
 
     if (!invoice) {
       return c.json({ success: false, error: '세금계산서를 찾을 수 없습니다.' }, 404)
@@ -1919,9 +1929,10 @@ taxInvoicesRouter.post('/:id/send-email', async (c) => {
   const body: { email?: string } = await c.req.json<{ email?: string }>().catch(() => ({}))
 
   try {
+    const ef = entityFilter(c)
     const invoice = await db.prepare(
-      `SELECT id, invoice_number, status, supplier_brn, buyer_email FROM tax_invoices WHERE id = ?`
-    ).bind(id).first<{ id: number; invoice_number: string; status: string; supplier_brn: string; buyer_email: string | null }>()
+      `SELECT id, invoice_number, status, supplier_brn, buyer_email FROM tax_invoices WHERE id = ?${ef.clause}`
+    ).bind(id, ...ef.params).first<{ id: number; invoice_number: string; status: string; supplier_brn: string; buyer_email: string | null }>()
 
     if (!invoice) return c.json({ success: false, error: '세금계산서를 찾을 수 없습니다.' }, 404)
     if (!['ISSUED', 'SENT', 'NTS_SUCCESS'].includes(invoice.status)) {
@@ -1949,9 +1960,10 @@ taxInvoicesRouter.get('/:id/print-url', async (c) => {
   const id = parseInt(c.req.param('id'))
 
   try {
+    const ef = entityFilter(c)
     const invoice = await db.prepare(
-      `SELECT id, invoice_number, status, supplier_brn FROM tax_invoices WHERE id = ?`
-    ).bind(id).first<{ id: number; invoice_number: string; status: string; supplier_brn: string }>()
+      `SELECT id, invoice_number, status, supplier_brn FROM tax_invoices WHERE id = ?${ef.clause}`
+    ).bind(id, ...ef.params).first<{ id: number; invoice_number: string; status: string; supplier_brn: string }>()
 
     if (!invoice) return c.json({ success: false, error: '세금계산서를 찾을 수 없습니다.' }, 404)
     if (!['ISSUED', 'SENT', 'NTS_SUCCESS', 'NTS_FAILED'].includes(invoice.status)) {

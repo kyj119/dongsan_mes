@@ -586,17 +586,18 @@ shipmentsRouter.patch('/:id', requireRole('ADMIN', 'MANAGER', 'OPERATOR'), async
     const id = c.req.param('id')
     const body = await c.req.json<{ label_count?: number; box_count?: number; tracking_number?: string }>()
 
+    const ef = entityFilter(c)
     // 1차: shipment ID로 조회
-    let shipment = await c.env.DB.prepare('SELECT id FROM shipments WHERE id = ?').bind(id).first()
+    let shipment = await c.env.DB.prepare(`SELECT id FROM shipments WHERE id = ?${ef.clause}`).bind(id, ...ef.params).first()
 
     // 2차: 없으면 order_id로 조회 (프론트엔드가 주문 ID를 보내는 경우)
     if (!shipment) {
-      shipment = await c.env.DB.prepare('SELECT id FROM shipments WHERE order_id = ?').bind(id).first()
+      shipment = await c.env.DB.prepare(`SELECT id FROM shipments WHERE order_id = ?${ef.clause}`).bind(id, ...ef.params).first()
     }
 
     // 3차: 그래도 없으면 해당 주문에 대한 shipment 자동 생성
     if (!shipment) {
-      const order = await c.env.DB.prepare('SELECT id, order_number, delivery_method FROM orders WHERE id = ?').bind(id).first<{ id: number; order_number: string; delivery_method: string | null }>()
+      const order = await c.env.DB.prepare(`SELECT id, order_number, delivery_method FROM orders WHERE id = ?${ef.clause}`).bind(id, ...ef.params).first<{ id: number; order_number: string; delivery_method: string | null }>()
       if (!order) {
         return c.json({ success: false, error: '주문 또는 출고 정보를 찾을 수 없습니다.' }, 404)
       }
@@ -613,7 +614,7 @@ shipmentsRouter.patch('/:id', requireRole('ADMIN', 'MANAGER', 'OPERATOR'), async
         `INSERT INTO shipments (shipment_number, order_id, delivery_type, entity_id) VALUES (?, ?, ?, ?)`
       ).bind(shipmentNumber, order.id, deliveryType, getEntityId(c) || 1).run()
 
-      shipment = await c.env.DB.prepare('SELECT id FROM shipments WHERE order_id = ?').bind(id).first()
+      shipment = await c.env.DB.prepare(`SELECT id FROM shipments WHERE order_id = ?${ef.clause}`).bind(id, ...ef.params).first()
     }
 
     if (!shipment) {
@@ -671,7 +672,8 @@ shipmentsRouter.patch('/:id/status', requireRole('ADMIN', 'MANAGER'), async (c) 
       return c.json({ success: false, error: '유효하지 않은 상태입니다.' }, 400)
     }
 
-    const shipment = await c.env.DB.prepare('SELECT id, status FROM shipments WHERE id = ?').bind(id).first<{ id: number; status: string }>()
+    const ef = entityFilter(c)
+    const shipment = await c.env.DB.prepare(`SELECT id, status FROM shipments WHERE id = ?${ef.clause}`).bind(id, ...ef.params).first<{ id: number; status: string }>()
     if (!shipment) {
       return c.json({ success: false, error: '출고 정보를 찾을 수 없습니다.' }, 404)
     }
@@ -802,9 +804,10 @@ shipmentsRouter.patch('/:orderId/ship', requireRole('ADMIN', 'MANAGER'), async (
     const user = c.get('user')
 
     // 주문 확인
+    const ef = entityFilter(c)
     const order = await c.env.DB.prepare(
-      'SELECT id, order_number, status, client_id, delivery_method FROM orders WHERE id = ?'
-    ).bind(orderId).first<{ id: number; order_number: string; status: string; client_id: number; delivery_method: string | null }>()
+      `SELECT id, order_number, status, client_id, delivery_method FROM orders WHERE id = ?${ef.clause}`
+    ).bind(orderId, ...ef.params).first<{ id: number; order_number: string; status: string; client_id: number; delivery_method: string | null }>()
     if (!order) return c.json({ success: false, error: '주문을 찾을 수 없습니다.' }, 404)
 
     // 모든 order_items.shipment_ready 확인

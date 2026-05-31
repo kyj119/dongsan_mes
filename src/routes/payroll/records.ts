@@ -7,7 +7,8 @@ import type { HonoEnv } from '../../types/env'
 import { authMiddleware, requireRole } from '../../middleware/auth'
 
 const recordsRouter = new Hono<HonoEnv>()
-recordsRouter.use('/*', authMiddleware)
+// 급여 레코드(급여·공제·연락처 PII)는 전 라우트 ADMIN/MANAGER 전용
+recordsRouter.use('/*', authMiddleware, requireRole('ADMIN', 'MANAGER'))
 
 recordsRouter.get('/', async (c) => {
   try {

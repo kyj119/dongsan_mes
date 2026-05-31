@@ -56,7 +56,7 @@
     allSuggestions.forEach(function(s) {
       if (s.supplier_id && !seen[s.supplier_id]) {
         seen[s.supplier_id] = true;
-        select.innerHTML += '<option value="' + s.supplier_id + '">' + (s.supplier_name || '공급처 ' + s.supplier_id) + '</option>';
+        select.innerHTML += '<option value="' + s.supplier_id + '">' + escHtml(s.supplier_name || '공급처 ' + s.supplier_id) + '</option>';
       }
     });
   }

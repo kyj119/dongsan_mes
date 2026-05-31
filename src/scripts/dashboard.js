@@ -116,7 +116,7 @@ async function loadDashboardStats() {
                         '<div class="flex items-center justify-between p-3 bg-amber-50 rounded-lg">' +
                         '<div class="flex items-center gap-2">' +
                         '<span class="w-2 h-2 bg-amber-500 rounded-full"></span>' +
-                        '<span class="font-medium text-sm">' + name + '</span></div>' +
+                        '<span class="font-medium text-sm">' + escapeHtml(name) + '</span></div>' +
                         '<span class="font-bold text-amber-700">' + count + '건</span></div>'
                     ).join('');
                 }

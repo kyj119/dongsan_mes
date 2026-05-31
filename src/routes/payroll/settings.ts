@@ -9,7 +9,8 @@ import { authMiddleware, requireRole } from '../../middleware/auth'
 import { calcOfficialMonthlyTax } from './shared'
 
 const settingsRouter = new Hono<HonoEnv>()
-settingsRouter.use('/*', authMiddleware)
+// 요율/세액표 조회·수정은 전 라우트 ADMIN/MANAGER 전용 (삭제는 per-route ADMIN)
+settingsRouter.use('/*', authMiddleware, requireRole('ADMIN', 'MANAGER'))
 
 // 원본 라인 786-799 + 1014-1213 + 1597-1631
 settingsRouter.get('/rates/:year', async (c) => {

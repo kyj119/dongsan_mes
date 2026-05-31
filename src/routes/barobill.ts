@@ -51,7 +51,8 @@ barobillRouter.get('/status', async (c) => {
     const balance = await getBarobillBalance(config)
     return c.json({ success: true, data: { balance, isTest: config.isTest, corpNum: config.corpNum } })
   } catch (error: any) {
-    return c.json({ success: false, error: error.message }, 500)
+    console.error('Barobill API error:', error)
+    return c.json({ success: false, error: '바로빌 요청 처리 중 오류가 발생했습니다' }, 500)
   }
 })
 
@@ -66,7 +67,8 @@ barobillRouter.get('/cards', async (c) => {
     const cards = await getCardList(config)
     return c.json({ success: true, data: cards })
   } catch (error: any) {
-    return c.json({ success: false, error: error.message }, 500)
+    console.error('Barobill API error:', error)
+    return c.json({ success: false, error: '바로빌 요청 처리 중 오류가 발생했습니다' }, 500)
   }
 })
 
@@ -89,7 +91,8 @@ barobillRouter.get('/cards/logs', async (c) => {
       return c.json({ success: false, error: 'date(YYYYMMDD) 또는 month(YYYYMM) 필수' }, 400)
     }
   } catch (error: any) {
-    return c.json({ success: false, error: error.message }, 500)
+    console.error('Barobill API error:', error)
+    return c.json({ success: false, error: '바로빌 요청 처리 중 오류가 발생했습니다' }, 500)
   }
 })
 
@@ -104,7 +107,8 @@ barobillRouter.get('/bank-accounts', async (c) => {
     const accounts = await getBankAccountList(config)
     return c.json({ success: true, data: accounts })
   } catch (error: any) {
-    return c.json({ success: false, error: error.message }, 500)
+    console.error('Barobill API error:', error)
+    return c.json({ success: false, error: '바로빌 요청 처리 중 오류가 발생했습니다' }, 500)
   }
 })
 
@@ -128,7 +132,8 @@ barobillRouter.get('/bank-accounts/logs', async (c) => {
       return c.json({ success: false, error: 'date(YYYYMMDD) 또는 month(YYYYMM) 필수' }, 400)
     }
   } catch (error: any) {
-    return c.json({ success: false, error: error.message }, 500)
+    console.error('Barobill API error:', error)
+    return c.json({ success: false, error: '바로빌 요청 처리 중 오류가 발생했습니다' }, 500)
   }
 })
 

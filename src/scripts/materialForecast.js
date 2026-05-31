@@ -71,7 +71,7 @@ function renderMaterialTable() {
 
         html += '<tr class="' + rowBg + ' hover:bg-gray-100">';
         html += '<td class="px-3 py-2">' + statusBadge + '</td>';
-        html += '<td class="px-3 py-2 font-medium">' + m.item_name + '</td>';
+        html += '<td class="px-3 py-2 font-medium">' + escapeHtml(m.item_name) + '</td>';
         html += '<td class="px-3 py-2 text-right text-gray-600">' + widthCm + '</td>';
         html += '<td class="px-3 py-2 text-right font-medium">' + m.current_stock_yd.toLocaleString() + '</td>';
         html += '<td class="px-3 py-2 text-right">' + m.avg_daily_consumption_yd + ' yd/일</td>';
@@ -89,7 +89,7 @@ function populateTrendSelector() {
     sel.innerHTML = '<option value="">원단 선택...</option>';
     allMaterialData.forEach(function(m) {
         if (m.trend_30d && m.trend_30d.length > 0) {
-            sel.innerHTML += '<option value="' + m.item_id + '">' + m.item_name + ' (' + Math.round(m.width_mm/10) + 'cm)</option>';
+            sel.innerHTML += '<option value="' + m.item_id + '">' + escapeHtml(m.item_name) + ' (' + Math.round(m.width_mm/10) + 'cm)</option>';
         }
     });
 }

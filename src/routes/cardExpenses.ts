@@ -41,7 +41,7 @@ cardExpRouter.get('/cards', requireRole('ADMIN', 'MANAGER'), async (c) => {
 cardExpRouter.post('/cards', requireRole('ADMIN'), async (c) => {
   try {
     const body = await c.req.json()
-    const { card_name, card_company, card_number_last4, holder_name, monthly_limit, payment_day, assigned_user_id } = body
+    const { card_name, card_company, card_number_last4, holder_name, monthly_limit, cutoff_day, payment_day, assigned_user_id } = body
     if (!card_name || !card_company) {
       return c.json({ success: false, error: 'card_name, card_company 필수' }, 400)
     }
@@ -58,9 +58,9 @@ cardExpRouter.post('/cards', requireRole('ADMIN'), async (c) => {
     }
 
     const result = await c.env.DB.prepare(`
-      INSERT INTO corporate_cards (card_name, card_company, card_number_last4, holder_name, monthly_limit, payment_day, assigned_user_id, entity_id)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `).bind(card_name, card_company, card_number_last4 || null, holder_name || null, monthly_limit || 0, payment_day || 15, assigned_user_id || null, entityId).run()
+      INSERT INTO corporate_cards (card_name, card_company, card_number_last4, holder_name, monthly_limit, cutoff_day, payment_day, assigned_user_id, entity_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).bind(card_name, card_company, card_number_last4 || null, holder_name || null, monthly_limit || 0, cutoff_day || 15, payment_day || 15, assigned_user_id || null, entityId).run()
     return c.json({ success: true, data: { id: result.meta.last_row_id }, message: '카드 등록 완료' })
   } catch (error) {
     console.error('Create card error:', error)
@@ -73,7 +73,7 @@ cardExpRouter.put('/cards/:id', requireRole('ADMIN'), async (c) => {
   try {
     const id = c.req.param('id')
     const body = await c.req.json()
-    const { card_name, card_company, card_number_last4, holder_name, monthly_limit, payment_day, assigned_user_id } = body
+    const { card_name, card_company, card_number_last4, holder_name, monthly_limit, cutoff_day, payment_day, assigned_user_id } = body
     await c.env.DB.prepare(`
       UPDATE corporate_cards
       SET card_name = COALESCE(?, card_name),
@@ -81,11 +81,12 @@ cardExpRouter.put('/cards/:id', requireRole('ADMIN'), async (c) => {
           card_number_last4 = COALESCE(?, card_number_last4),
           holder_name = COALESCE(?, holder_name),
           monthly_limit = COALESCE(?, monthly_limit),
+          cutoff_day = COALESCE(?, cutoff_day),
           payment_day = COALESCE(?, payment_day),
           assigned_user_id = ?,
           updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
-    `).bind(card_name || null, card_company || null, card_number_last4 || null, holder_name || null, monthly_limit ?? null, payment_day ?? null, assigned_user_id ?? null, id).run()
+    `).bind(card_name || null, card_company || null, card_number_last4 || null, holder_name || null, monthly_limit ?? null, cutoff_day ?? null, payment_day ?? null, assigned_user_id ?? null, id).run()
     return c.json({ success: true, message: '카드 수정 완료' })
   } catch (error) {
     console.error('Update card error:', error)
@@ -267,10 +268,33 @@ cardExpRouter.post('/sync', requireRole('ADMIN'), async (c) => {
 // GET /api/card-expenses/transactions
 cardExpRouter.get('/transactions', requireRole('ADMIN', 'MANAGER'), async (c) => {
   try {
-    const { card_id, date_start, date_end, status, category_id } = c.req.query()
+    const q = c.req.query()
+    // 프론트는 start_date/end_date를 보냄 — date_start/date_end 별칭도 호환
+    const ds = q.start_date || q.date_start
+    const de = q.end_date || q.date_end
     const ef = entityFilter(c, 'ct')
 
-    let query = `
+    let where = `WHERE 1=1${ef.clause}`
+    const params: (string | number)[] = [...ef.params]
+    if (q.id) { where += ' AND ct.id = ?'; params.push(q.id) }
+    if (q.card_id) { where += ' AND ct.card_id = ?'; params.push(q.card_id) }
+    if (ds) { where += ' AND ct.transaction_date >= ?'; params.push(ds.replace(/-/g, '')) }
+    if (de) { where += ' AND ct.transaction_date <= ?'; params.push(de.replace(/-/g, '')) }
+    if (q.status) { where += ' AND ct.status = ?'; params.push(q.status) }
+    if (q.category_id) { where += ' AND ct.category_id = ?'; params.push(q.category_id) }
+    if (q.search) { where += ' AND ct.merchant_name LIKE ?'; params.push('%' + q.search + '%') }
+
+    // 총 건수 (동일 WHERE)
+    const countRow = await c.env.DB.prepare(
+      `SELECT COUNT(*) as cnt FROM card_transactions ct ${where}`
+    ).bind(...params).first<{ cnt: number }>()
+    const total = countRow?.cnt || 0
+
+    const page = Math.max(1, Number(q.page) || 1)
+    const limit = Math.min(Math.max(1, Number(q.limit) || 50), 200)
+    const offset = (page - 1) * limit
+
+    const { results } = await c.env.DB.prepare(`
       SELECT ct.*, cc.card_name, cc.card_company, cc.card_number_last4,
              cc.holder_name, u.name as assigned_user_name,
              ec.name as category_name, ec.icon as category_icon, ec.color as category_color
@@ -278,20 +302,12 @@ cardExpRouter.get('/transactions', requireRole('ADMIN', 'MANAGER'), async (c) =>
       LEFT JOIN corporate_cards cc ON ct.card_id = cc.id
       LEFT JOIN users u ON cc.assigned_user_id = u.id
       LEFT JOIN expense_categories ec ON ct.category_id = ec.id
-      WHERE 1=1${ef.clause}
-    `
-    const params: (string | number)[] = [...ef.params]
-    if (card_id) { query += ' AND ct.card_id = ?'; params.push(card_id) }
-    if (date_start) { query += ' AND ct.transaction_date >= ?'; params.push(date_start.replace(/-/g, '')) }
-    if (date_end) { query += ' AND ct.transaction_date <= ?'; params.push(date_end.replace(/-/g, '')) }
-    if (status) { query += ' AND ct.status = ?'; params.push(status) }
-    if (category_id) { query += ' AND ct.category_id = ?'; params.push(category_id) }
-    query += ' ORDER BY ct.transaction_date DESC, ct.transaction_time DESC'
+      ${where}
+      ORDER BY ct.transaction_date DESC, ct.transaction_time DESC
+      LIMIT ? OFFSET ?
+    `).bind(...params, limit, offset).all()
 
-    const { results } = params.length > 0
-      ? await c.env.DB.prepare(query).bind(...params).all()
-      : await c.env.DB.prepare(query).all()
-    return c.json({ success: true, data: results })
+    return c.json({ success: true, data: results, pagination: { total, page, limit } })
   } catch (error) {
     console.error('Get transactions error:', error)
     return c.json({ success: false, error: '서버 오류' }, 500)
@@ -319,11 +335,12 @@ cardExpRouter.put('/transactions/:id', requireRole('ADMIN', 'MANAGER'), async (c
     if (status) { sets.push('status = ?'); params.push(status) }
     params.push(id)
 
-    await c.env.DB.prepare(`UPDATE card_transactions SET ${sets.join(', ')} WHERE id = ?`).bind(...params).run()
+    const ef = entityFilter(c)
+    await c.env.DB.prepare(`UPDATE card_transactions SET ${sets.join(', ')} WHERE id = ?${ef.clause}`).bind(...params, ...ef.params).run()
 
     // 자동 분류 규칙 학습
     if (category_id) {
-      const tx = await c.env.DB.prepare('SELECT merchant_name FROM card_transactions WHERE id = ?').bind(id).first<{ merchant_name: string | null }>()
+      const tx = await c.env.DB.prepare(`SELECT merchant_name FROM card_transactions WHERE id = ?${ef.clause}`).bind(id, ...ef.params).first<{ merchant_name: string | null }>()
       if (tx?.merchant_name) {
         const entityId = getEntityId(c)
         await c.env.DB.prepare(`
@@ -353,7 +370,8 @@ cardExpRouter.post('/transactions/:id/receipt', requireRole('ADMIN', 'MANAGER'),
     await (c.env as any).R2_BUCKET.put(key, await file.arrayBuffer(), { httpMetadata: { contentType: file.type } })
 
     const imageUrl = `/api/card-expenses/receipt-image/${key}`
-    await c.env.DB.prepare('UPDATE card_transactions SET receipt_image_url = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').bind(imageUrl, id).run()
+    const ef = entityFilter(c)
+    await c.env.DB.prepare(`UPDATE card_transactions SET receipt_image_url = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?${ef.clause}`).bind(imageUrl, id, ...ef.params).run()
     return c.json({ success: true, data: { url: imageUrl }, message: '영수증 업로드 완료' })
   } catch (error) {
     console.error('Receipt upload error:', error)
@@ -362,7 +380,7 @@ cardExpRouter.post('/transactions/:id/receipt', requireRole('ADMIN', 'MANAGER'),
 })
 
 // GET /api/card-expenses/receipt-image/* — R2 이미지 서빙
-cardExpRouter.get('/receipt-image/*', async (c) => {
+cardExpRouter.get('/receipt-image/*', requireRole('ADMIN', 'MANAGER'), async (c) => {
   try {
     const key = c.req.path.replace('/api/card-expenses/receipt-image/', '')
     const obj = await (c.env as any).R2_BUCKET.get(key)
@@ -425,7 +443,8 @@ cardExpRouter.post('/transactions/:id/match-bank', requireRole('ADMIN'), async (
     const id = c.req.param('id')
     const { bank_transaction_id } = await c.req.json()
     if (!bank_transaction_id) return c.json({ success: false, error: 'bank_transaction_id 필수' }, 400)
-    await c.env.DB.prepare('UPDATE card_transactions SET matched_bank_tx_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').bind(bank_transaction_id, id).run()
+    const ef = entityFilter(c)
+    await c.env.DB.prepare(`UPDATE card_transactions SET matched_bank_tx_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?${ef.clause}`).bind(bank_transaction_id, id, ...ef.params).run()
     return c.json({ success: true, message: '통장 대사 완료' })
   } catch (error) {
     return c.json({ success: false, error: '서버 오류' }, 500)
@@ -586,9 +605,10 @@ cardExpRouter.post('/transactions/bulk-classify', requireRole('ADMIN', 'MANAGER'
       return c.json({ success: false, error: 'ids, category_id 필수' }, 400)
     }
     const ph = ids.map(() => '?').join(', ')
+    const ef = entityFilter(c)
     await c.env.DB.prepare(
-      `UPDATE card_transactions SET category_id = ?, status = 'CLASSIFIED', updated_at = CURRENT_TIMESTAMP WHERE id IN (${ph})`
-    ).bind(category_id, ...ids).run()
+      `UPDATE card_transactions SET category_id = ?, status = 'CLASSIFIED', updated_at = CURRENT_TIMESTAMP WHERE id IN (${ph})${ef.clause}`
+    ).bind(category_id, ...ids, ...ef.params).run()
     return c.json({ success: true, data: { classified: ids.length }, message: `${ids.length}건 분류 완료` })
   } catch (error) {
     return c.json({ success: false, error: '서버 오류' }, 500)
@@ -644,9 +664,10 @@ cardExpRouter.post('/transactions/create-requests', requireRole('ADMIN'), async 
       return c.json({ success: false, error: 'ids 필수' }, 400)
     }
     const ph = ids.map(() => '?').join(', ')
+    const ef = entityFilter(c)
     await c.env.DB.prepare(
-      `UPDATE card_transactions SET status = 'REQUESTED', updated_at = CURRENT_TIMESTAMP WHERE id IN (${ph}) AND status = 'CLASSIFIED'`
-    ).bind(...ids).run()
+      `UPDATE card_transactions SET status = 'REQUESTED', updated_at = CURRENT_TIMESTAMP WHERE id IN (${ph}) AND status = 'CLASSIFIED'${ef.clause}`
+    ).bind(...ids, ...ef.params).run()
     return c.json({ success: true, data: { created: ids.length }, message: `${ids.length}건 결의 요청 완료` })
   } catch (error) {
     return c.json({ success: false, error: '서버 오류' }, 500)

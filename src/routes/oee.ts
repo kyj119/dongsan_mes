@@ -142,7 +142,8 @@ oee.post('/calculate', requireRole('ADMIN', 'MANAGER'), async (c) => {
 
     return c.json({ success: true, data: { date: targetDate, equipmentCount: equipments.length } })
   } catch (e: any) {
-    return c.json({ success: false, error: e.message }, 500)
+    console.error('oee error:', e)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다' }, 500)
   }
 })
 

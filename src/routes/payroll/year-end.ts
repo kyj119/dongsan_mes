@@ -8,7 +8,8 @@ import { authMiddleware, requireRole } from '../../middleware/auth'
 import { entityFilter, getEntityId } from '../../utils/entityFilter'
 
 const yearEndRouter = new Hono<HonoEnv>()
-yearEndRouter.use('/*', authMiddleware)
+// 연말정산(직원 급여·정산 데이터)은 전 라우트 ADMIN/MANAGER 전용
+yearEndRouter.use('/*', authMiddleware, requireRole('ADMIN', 'MANAGER'))
 
 // 연말정산 전용 헬퍼 (원본 1554~1589)
 // ── 연말정산 계산 헬퍼 ──

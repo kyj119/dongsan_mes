@@ -95,9 +95,10 @@ cashFlowRouter.put('/fixed-expenses/:id', requireRole('ADMIN'), async (c) => {
     fields.push('updated_at = CURRENT_TIMESTAMP')
     params.push(id)
 
+    const ef = entityFilter(c)
     await c.env.DB.prepare(
-      `UPDATE fixed_expenses SET ${fields.join(', ')} WHERE id = ?`
-    ).bind(...params).run()
+      `UPDATE fixed_expenses SET ${fields.join(', ')} WHERE id = ?${ef.clause}`
+    ).bind(...params, ...ef.params).run()
 
     return c.json({ success: true })
   } catch (error) {
@@ -109,9 +110,10 @@ cashFlowRouter.put('/fixed-expenses/:id', requireRole('ADMIN'), async (c) => {
 cashFlowRouter.delete('/fixed-expenses/:id', requireRole('ADMIN'), async (c) => {
   try {
     const id = c.req.param('id')
+    const ef = entityFilter(c)
     await c.env.DB.prepare(
-      'UPDATE fixed_expenses SET is_active = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
-    ).bind(id).run()
+      `UPDATE fixed_expenses SET is_active = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ?${ef.clause}`
+    ).bind(id, ...ef.params).run()
     return c.json({ success: true })
   } catch (error) {
     console.error('src/routes/cashFlow.ts error:', error)
@@ -221,9 +223,10 @@ cashFlowRouter.put('/loans/:id', requireRole('ADMIN'), async (c) => {
     fields.push('updated_at = CURRENT_TIMESTAMP')
     params.push(id)
 
+    const ef = entityFilter(c)
     await c.env.DB.prepare(
-      `UPDATE loans SET ${fields.join(', ')} WHERE id = ?`
-    ).bind(...params).run()
+      `UPDATE loans SET ${fields.join(', ')} WHERE id = ?${ef.clause}`
+    ).bind(...params, ...ef.params).run()
 
     return c.json({ success: true })
   } catch (error) {
@@ -246,6 +249,10 @@ cashFlowRouter.post('/loans/:id/rate-change', requireRole('ADMIN'), async (c) =>
       return c.json({ success: false, error: '적용일과 금리를 입력해주세요.' }, 400)
     }
 
+    const ef = entityFilter(c)
+    const ownLoan = await c.env.DB.prepare(`SELECT id FROM loans WHERE id = ?${ef.clause}`).bind(id, ...ef.params).first()
+    if (!ownLoan) return c.json({ success: false, error: '대출을 찾을 수 없습니다.' }, 404)
+
     await c.env.DB.batch([
       c.env.DB.prepare(`
         INSERT INTO loan_rate_history (loan_id, effective_date, rate, changed_by, notes, entity_id)
@@ -266,13 +273,14 @@ cashFlowRouter.post('/loans/:id/rate-change', requireRole('ADMIN'), async (c) =>
 cashFlowRouter.get('/loans/:id/rate-history', requireRole('ADMIN'), async (c) => {
   try {
     const id = c.req.param('id')
+    const ef = entityFilter(c, 'lrh')
     const { results } = await c.env.DB.prepare(`
       SELECT lrh.*, u.name as changed_by_name
       FROM loan_rate_history lrh
       LEFT JOIN users u ON lrh.changed_by = u.id
-      WHERE lrh.loan_id = ?
+      WHERE lrh.loan_id = ?${ef.clause}
       ORDER BY lrh.effective_date DESC
-    `).bind(id).all()
+    `).bind(id, ...ef.params).all()
     return c.json({ success: true, data: results })
   } catch (error) {
     console.error('src/routes/cashFlow.ts error:', error)
@@ -288,13 +296,14 @@ cashFlowRouter.get('/loans/:id/schedule', requireRole('ADMIN'), async (c) => {
   try {
     const id = c.req.param('id')
 
+    const ef = entityFilter(c)
     // 기존 스케줄 조회
     const { results } = await c.env.DB.prepare(`
-      SELECT id, loan_id, payment_number, scheduled_date, principal_amount, interest_amount, total_amount, actual_paid_amount, actual_paid_date, status, notes, created_at FROM loan_payments WHERE loan_id = ? ORDER BY payment_number
-    `).bind(id).all()
+      SELECT id, loan_id, payment_number, scheduled_date, principal_amount, interest_amount, total_amount, actual_paid_amount, actual_paid_date, status, notes, created_at FROM loan_payments WHERE loan_id = ?${ef.clause} ORDER BY payment_number
+    `).bind(id, ...ef.params).all()
 
     // 대출 정보도 함께
-    const loan = await c.env.DB.prepare('SELECT id, loan_number, creditor, description, original_amount, current_balance, rate_type, current_rate, repayment_type, start_date, maturity_date, monthly_payment_day, monthly_payment_amount, notes, is_active, created_at FROM loans WHERE id = ?').bind(id).first()
+    const loan = await c.env.DB.prepare(`SELECT id, loan_number, creditor, description, original_amount, current_balance, rate_type, current_rate, repayment_type, start_date, maturity_date, monthly_payment_day, monthly_payment_amount, notes, is_active, created_at FROM loans WHERE id = ?${ef.clause}`).bind(id, ...ef.params).first()
 
     return c.json({ success: true, data: { loan, payments: results } })
   } catch (error) {
@@ -307,7 +316,8 @@ cashFlowRouter.get('/loans/:id/schedule', requireRole('ADMIN'), async (c) => {
 cashFlowRouter.post('/loans/:id/generate-schedule', requireRole('ADMIN'), async (c) => {
   try {
     const id = c.req.param('id')
-    const loan = await c.env.DB.prepare('SELECT id, start_date, maturity_date, current_rate, current_balance, monthly_payment_day, repayment_type FROM loans WHERE id = ?').bind(id).first<{
+    const ef = entityFilter(c)
+    const loan = await c.env.DB.prepare(`SELECT id, start_date, maturity_date, current_rate, current_balance, monthly_payment_day, repayment_type FROM loans WHERE id = ?${ef.clause}`).bind(id, ...ef.params).first<{
       start_date: string; maturity_date: string; current_rate: number;
       current_balance: number; monthly_payment_day: number | null;
       repayment_type: string
@@ -397,9 +407,10 @@ cashFlowRouter.post('/loans/:id/payments/:pid/pay', requireRole('ADMIN'), async 
     const { id, pid } = c.req.param()
     const body = await c.req.json<{ actual_paid_amount: number; actual_paid_date: string; notes?: string }>()
 
+    const ef = entityFilter(c)
     const payment = await c.env.DB.prepare(
-      'SELECT id, loan_id, payment_number, total_amount, principal_amount FROM loan_payments WHERE id = ? AND loan_id = ?'
-    ).bind(pid, id).first<{ total_amount: number; principal_amount: number }>()
+      `SELECT id, loan_id, payment_number, total_amount, principal_amount FROM loan_payments WHERE id = ? AND loan_id = ?${ef.clause}`
+    ).bind(pid, id, ...ef.params).first<{ total_amount: number; principal_amount: number }>()
     if (!payment) return c.json({ success: false, error: '상환 스케줄을 찾을 수 없습니다.' }, 404)
 
     const status = body.actual_paid_amount >= payment.total_amount ? 'PAID' : 'PARTIAL'
@@ -498,11 +509,12 @@ cashFlowRouter.get('/projection', requireRole('ADMIN'), async (c) => {
       try {
         const prevMonth = new Date(d.getFullYear(), d.getMonth() - 1, 1)
         const prevYM = `${prevMonth.getFullYear()}${String(prevMonth.getMonth() + 1).padStart(2, '0')}`
+        const efCard = entityFilter(c, 'ct')
         const cardExp = await c.env.DB.prepare(`
           SELECT COALESCE(SUM(CASE WHEN ct.approval_type != 'CANCEL' THEN ct.amount ELSE 0 END), 0) as total
           FROM card_transactions ct
-          WHERE ct.transaction_date >= ? AND ct.transaction_date <= ?
-        `).bind(prevYM + '01', prevYM + '31').first<{ total: number }>()
+          WHERE ct.transaction_date >= ? AND ct.transaction_date <= ?${efCard.clause}
+        `).bind(prevYM + '01', prevYM + '31', ...efCard.params).first<{ total: number }>()
         cardPayment = cardExp?.total || 0
       } catch (_) { /* card_transactions 테이블 없을 수 있음 */ }
 
@@ -595,6 +607,57 @@ cashFlowRouter.get('/calendar', requireRole('ADMIN'), async (c) => {
       payment_date: string; total: number; cnt: number
     }>()
 
+    // 법인카드 결제 예정 — 카드사별 집계
+    // 마감 주기: 전월 cutoff_day+1 ~ 당월 cutoff_day 사용분 → 당월 payment_day에 결제
+    const efCards = entityFilter(c, 'cc')
+    let cardPaymentItems: { card_company: string; payment_day: number; total: number }[] = []
+    try {
+      const { results: activeCards } = await c.env.DB.prepare(`
+        SELECT cc.id, cc.card_company, cc.cutoff_day, cc.payment_day
+        FROM corporate_cards cc
+        WHERE cc.is_active = 1${efCards.clause}
+      `).bind(...efCards.params).all<{
+        id: number; card_company: string; cutoff_day: number; payment_day: number
+      }>()
+
+      // 카드별 마감 기간 내 거래액 합산
+      for (const card of (activeCards || [])) {
+        const cutoff = card.cutoff_day || 15
+        // 마감 기간: 전월 cutoff+1 ~ 당월 cutoff
+        const prevMonth = new Date(y, m - 2, 1) // m is 1-based, Date month is 0-based
+        const prevY = prevMonth.getFullYear()
+        const prevM = prevMonth.getMonth() + 1
+        const billingStart = `${prevY}-${String(prevM).padStart(2, '0')}-${String(Math.min(cutoff + 1, 28)).padStart(2, '0')}`
+        const billingEnd = `${y}-${String(m).padStart(2, '0')}-${String(Math.min(cutoff, lastDay)).padStart(2, '0')}`
+
+        const efTxSum = entityFilter(c)
+        const txSum = await c.env.DB.prepare(`
+          SELECT COALESCE(SUM(CASE WHEN approval_type != 'CANCEL' THEN amount ELSE -amount END), 0) as total
+          FROM card_transactions
+          WHERE card_id = ? AND transaction_date >= ? AND transaction_date <= ?${efTxSum.clause}
+        `).bind(card.id, billingStart.replace(/-/g, ''), billingEnd.replace(/-/g, ''), ...efTxSum.params).first<{ total: number }>()
+
+        if (txSum && txSum.total > 0) {
+          cardPaymentItems.push({
+            card_company: card.card_company,
+            payment_day: card.payment_day || 15,
+            total: txSum.total
+          })
+        }
+      }
+    } catch (e) {
+      // cutoff_day 칼럼 미존재 시 무시
+      console.error('Card payment calendar error:', e)
+    }
+
+    // 카드사별로 합산 (같은 카드사 + 같은 결제일)
+    const cardByCompany: Record<string, { company: string; day: number; total: number }> = {}
+    for (const cp of cardPaymentItems) {
+      const k = `${cp.card_company}_${cp.payment_day}`
+      if (!cardByCompany[k]) cardByCompany[k] = { company: cp.card_company, day: cp.payment_day, total: 0 }
+      cardByCompany[k].total += cp.total
+    }
+
     // 일별 데이터 조합
     const days: Record<string, { type: string; name: string; amount: number; category?: string; status?: string }[]> = {}
     for (let d = 1; d <= lastDay; d++) {
@@ -639,6 +702,16 @@ cashFlowRouter.get('/calendar', requireRole('ADMIN'), async (c) => {
     for (const p of paymentItems) {
       if (days[p.payment_date]) {
         days[p.payment_date].push({ type: 'INCOME', name: `입금 ${p.cnt}건`, amount: p.total })
+      }
+    }
+
+    // 카드 결제 배치
+    for (const k of Object.keys(cardByCompany)) {
+      const cp = cardByCompany[k]
+      const day = Math.min(cp.day, lastDay)
+      const dateStr = `${y}-${String(m).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+      if (days[dateStr]) {
+        days[dateStr].push({ type: 'CARD', name: `${cp.company} 결제`, amount: cp.total })
       }
     }
 

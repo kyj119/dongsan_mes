@@ -65,9 +65,9 @@ async function loadCategoryOptions() {
     var selOpts = '<option value="">분류 선택</option>';
     var bulkOpts = '<option value="">분류 선택...</option>';
     allCategories.forEach(function(c) {
-      opts += '<option value="' + c.id + '">' + c.name + '</option>';
-      selOpts += '<option value="' + c.id + '">' + c.name + '</option>';
-      bulkOpts += '<option value="' + c.id + '">' + c.name + '</option>';
+      opts += '<option value="' + c.id + '">' + escapeHtml(c.name) + '</option>';
+      selOpts += '<option value="' + c.id + '">' + escapeHtml(c.name) + '</option>';
+      bulkOpts += '<option value="' + c.id + '">' + escapeHtml(c.name) + '</option>';
     });
     document.getElementById('filterCategory').innerHTML = opts;
     var txCat = document.getElementById('txCategory');
@@ -145,7 +145,7 @@ async function loadTransactions() {
     // 분류 옵션 HTML 미리 생성
     var catOptionsHtml = '<option value="">-</option>';
     allCategories.forEach(function(c) {
-      catOptionsHtml += '<option value="' + c.id + '">' + c.name + '</option>';
+      catOptionsHtml += '<option value="' + c.id + '">' + escapeHtml(c.name) + '</option>';
     });
 
     data.forEach(function(tx) {
@@ -167,7 +167,8 @@ async function loadTransactions() {
       var assignee = tx.assigned_user_name || tx.holder_name || '';
 
       // 영수증 아이콘
-      var receiptIcon = (tx.receipt_image_url || tx.receipt_data) ? ' <i class="fas fa-paperclip text-blue-400" style="font-size:9px" title="영수증"></i>' : '';
+      var hasReceipt = !!(tx.receipt_image_url || tx.receipt_data);
+      var receiptIcon = hasReceipt ? ' <i class="fas fa-check-circle text-green-500" style="font-size:9px" title="영수증 첨부됨"></i>' : '';
 
       row.innerHTML =
         '<td class="px-1 py-1.5 text-center"><input type="checkbox" class="tx-check" data-id="' + tx.id + '" ' + (selectedTxIds.has(tx.id) ? 'checked' : '') + ' onchange="toggleTxSelect(' + tx.id + ', this.checked)"></td>' +
@@ -178,7 +179,13 @@ async function loadTransactions() {
         '<td class="px-1 py-1"><select class="w-full border border-gray-200 rounded px-1 py-0.5 text-xs bg-white" onchange="quickClassify(' + tx.id + ', this.value)" data-cat-select="' + tx.id + '">' + catOptionsHtml.replace('value="' + (tx.category_id || '') + '"', 'value="' + (tx.category_id || '') + '" selected') + '</select></td>' +
         '<td class="px-1 py-1"><input type="text" class="w-full border border-gray-200 rounded px-1.5 py-0.5 text-xs" value="' + escapeHtml(tx.memo || '') + '" placeholder="적요..." onblur="quickMemo(' + tx.id + ', this.value)" data-memo-input="' + tx.id + '"></td>' +
         '<td class="px-1 py-1.5 text-center"><span class="status-pill" style="' + (statusColors[tx.status] || '') + ';font-size:10px">' + (statusLabels[tx.status] || tx.status) + '</span></td>' +
-        '<td class="px-1 py-1.5 text-center"><button onclick="openEditTx(' + tx.id + ')" class="text-gray-400 hover:text-blue-600" title="상세"><i class="fas fa-ellipsis-v text-xs"></i></button></td>';
+        '<td class="px-1 py-1.5 text-center whitespace-nowrap">' +
+          '<label class="' + (hasReceipt ? 'text-green-500' : 'text-gray-400') + ' hover:text-green-600 cursor-pointer mr-1" title="' + (hasReceipt ? '영수증 교체' : '영수증 첨부') + '">' +
+            '<i class="fas ' + (hasReceipt ? 'fa-check-circle' : 'fa-camera') + ' text-xs"></i>' +
+            '<input type="file" accept="image/*,.pdf" class="hidden" onchange="quickReceipt(' + tx.id + ', this)">' +
+          '</label>' +
+          '<button onclick="openEditTx(' + tx.id + ')" class="text-gray-400 hover:text-blue-600" title="상세"><i class="fas fa-ellipsis-v text-xs"></i></button>' +
+        '</td>';
       tbody.appendChild(row);
     });
 
@@ -310,6 +317,7 @@ async function editCard(id) {
   document.getElementById('cardLast4').value = card.card_number_last4 || '';
   document.getElementById('cardLimit').value = card.monthly_limit ? fmtMoneyInput(card.monthly_limit) : '';
   document.getElementById('cardHolder').value = card.holder_name || '';
+  document.getElementById('cardCutoffDay').value = card.cutoff_day || 15;
   document.getElementById('cardPayDay').value = card.payment_day || 15;
   var assignSel = document.getElementById('cardAssignedUser');
   if (assignSel) assignSel.value = card.assigned_user_id || '';
@@ -325,6 +333,7 @@ async function saveCard() {
     card_number_last4: document.getElementById('cardLast4').value.trim(),
     holder_name: document.getElementById('cardHolder').value.trim(),
     monthly_limit: parseMoney(document.getElementById('cardLimit').value) || 0,
+    cutoff_day: parseInt(document.getElementById('cardCutoffDay').value) || 15,
     payment_day: parseInt(document.getElementById('cardPayDay').value) || 15,
     assigned_user_id: parseInt(document.getElementById('cardAssignedUser').value) || null
   };
@@ -452,9 +461,8 @@ var editTxData = null;
 async function openEditTx(id) {
   // 거래 데이터 가져오기
   try {
-    var res = await axios.get('/api/card-expenses/transactions?card_id=&date_start=&date_end=');
-    var all = res.data.data || [];
-    editTxData = all.find(function(t) { return t.id === id; });
+    var res = await axios.get('/api/card-expenses/transactions?id=' + id);
+    editTxData = (res.data.data || [])[0];
   } catch(e) { /* fallback */ }
 
   if (!editTxData) {
@@ -472,7 +480,7 @@ async function openEditTx(id) {
   var catSel = document.getElementById('editTxCategory');
   catSel.innerHTML = '<option value="">미분류</option>';
   allCategories.forEach(function(c) {
-    catSel.innerHTML += '<option value="' + c.id + '"' + (editTxData.category_id == c.id ? ' selected' : '') + '>' + c.name + '</option>';
+    catSel.innerHTML += '<option value="' + c.id + '"' + (editTxData.category_id == c.id ? ' selected' : '') + '>' + escapeHtml(c.name) + '</option>';
   });
 
   document.getElementById('editTxMemo').value = editTxData.memo || '';
@@ -542,6 +550,23 @@ async function quickMemo(txId, memo) {
   try {
     await axios.put('/api/card-expenses/transactions/' + txId, { memo: memo || null });
   } catch (e) { showToast('메모 저장 실패', 'error'); }
+}
+
+// ===== Quick Receipt Upload =====
+async function quickReceipt(txId, input) {
+  if (!input.files || !input.files[0]) return;
+  var formData = new FormData();
+  formData.append('file', input.files[0]);
+  try {
+    await axios.post('/api/card-expenses/transactions/' + txId + '/receipt', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    });
+    showToast('영수증 첨부 완료', 'success');
+    loadTransactions();
+  } catch (e) {
+    showToast('영수증 업로드 실패', 'error');
+  }
+  input.value = '';
 }
 
 // ===== CSV Import =====

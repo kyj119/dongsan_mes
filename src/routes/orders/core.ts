@@ -629,7 +629,8 @@ ordersCoreRouter.patch('/:id/output-folder', async (c) => {
     await c.env.DB.prepare('UPDATE orders SET output_folder = ? WHERE id = ?').bind(output_folder, id).run()
     return c.json({ success: true })
   } catch (err: any) {
-    return c.json({ success: false, error: err.message }, 500)
+    console.error('orders output_folder error:', err)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다' }, 500)
   }
 })
 

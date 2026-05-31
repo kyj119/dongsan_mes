@@ -29,7 +29,7 @@ aiInsights.get('/credit-risk/summary', async (c) => {
     return c.json({ success: true, data: { by_grade: results, high_risk: highRisk } })
   } catch (e: any) {
     console.error('credit-risk/summary error:', e)
-    return c.json({ success: false, error: e.message || '서버 오류' }, 500)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다' }, 500)
   }
 })
 

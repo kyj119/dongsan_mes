@@ -645,6 +645,7 @@ printEventsRouter.get('/agents', authMiddleware, async (c) => {
 printEventsRouter.get('/stats', authMiddleware, async (c) => {
   try {
     const { days = '7' } = c.req.query()
+    const ef = entityFilter(c)
 
     // Today summary
     const todaySummary = await c.env.DB.prepare(`
@@ -654,8 +655,8 @@ printEventsRouter.get('/stats', authMiddleware, async (c) => {
         COUNT(CASE WHEN print_status = 'CANCEL' THEN 1 END) as cancel_count,
         COUNT(*) as total_count
       FROM print_events
-      WHERE date(created_at) = date('now')
-    `).first<TodaySummaryRow>()
+      WHERE date(created_at) = date('now')${ef.clause}
+    `).bind(...ef.params).first<TodaySummaryRow>()
 
     // Daily breakdown
     const { results: daily } = await c.env.DB.prepare(`
@@ -666,27 +667,28 @@ printEventsRouter.get('/stats', authMiddleware, async (c) => {
         COUNT(CASE WHEN print_status = 'CANCEL' THEN 1 END) as cancel_count,
         COUNT(*) as total_count
       FROM print_events
-      WHERE date(created_at) >= date('now', ? || ' days')
+      WHERE date(created_at) >= date('now', ? || ' days')${ef.clause}
       GROUP BY date(created_at)
       ORDER BY date DESC
-    `).bind(`-${days}`).all()
+    `).bind(`-${days}`, ...ef.params).all()
 
     // Top agents today
     const { results: topAgents } = await c.env.DB.prepare(`
       SELECT agent_id, COUNT(*) as count,
         COUNT(CASE WHEN print_status = 'OK' THEN 1 END) as ok_count
       FROM print_events
-      WHERE date(created_at) = date('now')
+      WHERE date(created_at) = date('now')${ef.clause}
       GROUP BY agent_id
       ORDER BY count DESC
       LIMIT 10
-    `).all()
+    `).bind(...ef.params).all()
 
     // Recent events (last 20)
     const { results: recent } = await c.env.DB.prepare(`
       SELECT id, agent_id, card_number, card_id, order_number, file_path, file_name, printer_name, print_status, print_started_at, print_completed_at, output_width, output_height, dpi, equipment_id, copy_total, print_duration_sec, created_at FROM print_events
+      WHERE 1=1${ef.clause}
       ORDER BY created_at DESC LIMIT 20
-    `).all()
+    `).bind(...ef.params).all()
 
     return c.json({
       success: true,
