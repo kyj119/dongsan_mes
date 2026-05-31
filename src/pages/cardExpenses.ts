@@ -339,6 +339,10 @@ export function cardExpensesPage(c: Context<HonoEnv>) {
                 <input type="text" id="cardHolder" placeholder="사용자명" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
               </div>
               <div>
+                <label class="text-sm font-semibold text-gray-700 mb-1 block">마감일 (매월)</label>
+                <input type="number" id="cardCutoffDay" min="1" max="31" value="15" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="카드사 마감일">
+              </div>
+              <div>
                 <label class="text-sm font-semibold text-gray-700 mb-1 block">결제일 (매월)</label>
                 <input type="number" id="cardPayDay" min="1" max="31" value="15" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
               </div>

@@ -431,7 +431,7 @@ function renderCalendar(data) {
     var isToday = data.year === today.getFullYear() && data.month === today.getMonth() + 1 && d === today.getDate();
 
     var pills = items.slice(0, 3).map(function(item) {
-      var color = item.type === 'INCOME' ? 'bg-green-500' : item.type === 'REVENUE' ? 'bg-emerald-400' : item.type === 'LOAN' ? 'bg-orange-500' : 'bg-red-400';
+      var color = item.type === 'INCOME' ? 'bg-green-500' : item.type === 'REVENUE' ? 'bg-emerald-400' : item.type === 'LOAN' ? 'bg-orange-500' : item.type === 'CARD' ? 'bg-purple-500' : 'bg-red-400';
       return '<div class="' + color + ' text-white text-[9px] px-1 rounded truncate leading-4">' + esc(item.name) + '</div>';
     }).join('');
     if (items.length > 3) pills += '<div class="text-[9px] text-gray-400">+' + (items.length - 3) + '</div>';
@@ -455,8 +455,8 @@ window.openDayDetail = function(dateStr, items) {
     content = '<div class="space-y-2">' + items.map(function(item) {
       var isIn = item.type === 'INCOME' || item.type === 'REVENUE';
       if (isIn) totalIn += item.amount; else totalOut += item.amount;
-      var icon = isIn ? 'fa-arrow-down text-green-600' : 'fa-arrow-up text-red-600';
-      var typeLabel = item.type === 'INCOME' ? '입금' : item.type === 'REVENUE' ? '매출' : item.type === 'LOAN' ? '대출상환' : '고정비';
+      var icon = isIn ? 'fa-arrow-down text-green-600' : item.type === 'CARD' ? 'fa-credit-card text-purple-600' : 'fa-arrow-up text-red-600';
+      var typeLabel = item.type === 'INCOME' ? '입금' : item.type === 'REVENUE' ? '매출' : item.type === 'LOAN' ? '대출상환' : item.type === 'CARD' ? '카드결제' : '고정비';
       return '<div class="flex items-center justify-between p-2 bg-gray-50 rounded">'
         + '<div class="flex items-center gap-2"><i class="fas ' + icon + '"></i><div><div class="text-sm font-medium">' + esc(item.name) + '</div><div class="text-xs text-gray-500">' + typeLabel + '</div></div></div>'
         + '<div class="text-sm font-bold ' + (isIn ? 'text-green-600' : 'text-red-600') + '">' + (isIn ? '+' : '-') + fmt(item.amount) + '</div>'
