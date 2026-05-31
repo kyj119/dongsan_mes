@@ -71,6 +71,9 @@ design_preview.html
 # Playwright MCP
 .playwright-mcp/
 
+# Debug/test screenshots
+screenshots/
+
 # Claude local settings (session-specific)
 .claude/settings.local.json
 .claude/scheduled_tasks.lock
