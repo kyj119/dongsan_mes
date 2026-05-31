@@ -66,14 +66,14 @@ export function attendancePage(c: Context<HonoEnv>) {
         <!-- 스프레드시트 -->
         <div class="ds-card overflow-hidden">
           <div class="overflow-x-auto" style="max-height:70vh;">
-            <table id="attGrid" class="min-w-full text-xs ds-table-striped ds-table-fixed">
+            <table id="attGrid" class="text-xs ds-table-striped" style="table-layout:fixed">
               <thead>
                 <tr id="attHeaderRow">
                   <!-- dynamically generated -->
                 </tr>
               </thead>
               <tbody id="attBody">
-                <tr><td colspan="40" class="text-center py-12 text-gray-400">월을 선택하고 검색 버튼을 눌러주세요.</td></tr>
+                <tr><td colspan="38" class="text-center py-12 text-gray-400">월을 선택하고 검색 버튼을 눌러주세요.</td></tr>
               </tbody>
             </table>
           </div>

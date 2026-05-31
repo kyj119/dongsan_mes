@@ -245,6 +245,42 @@ attendanceRouter.patch('/bulk', requireRole('ADMIN', 'MANAGER'), async (c) => {
           overtime_hours = 0
         }
 
+        // ── 근태유형별 기준시간으로 지각·조퇴 재계산 ──
+        const FULL_LEAVE = ['VACATION', 'SICK', 'FAMILY_EVENT', 'HOLIDAY', 'ABSENT']
+        if (FULL_LEAVE.includes(attendance_type)) {
+          // 종일 휴가: 지각·조퇴 0
+          late_minutes = 0
+          early_leave_hours = 0
+        } else {
+          // 유형별 기준 출퇴근 시간
+          const scheduleIn: Record<string, string> = {
+            NORMAL: '08:30', HALF_AM: '13:00', HALF_PM: '08:30',
+            QUARTER_1: '10:00', QUARTER_2: '08:30', QUARTER_3: '08:30', QUARTER_4: '08:30'
+          }
+          const scheduleOut: Record<string, string> = {
+            NORMAL: '18:00', HALF_AM: '18:00', HALF_PM: '12:00',
+            QUARTER_1: '18:00', QUARTER_2: '18:00', QUARTER_3: '18:00', QUARTER_4: '16:00'
+          }
+          // 지각 재계산: 실제 출근 - 기준 출근
+          if (check_in_time) {
+            const expIn = scheduleIn[attendance_type] || '08:30'
+            const expInMs = new Date(`${work_date}T${expIn}:00`).getTime()
+            const actualInMs = new Date(check_in_time).getTime()
+            if (!isNaN(expInMs) && !isNaN(actualInMs)) {
+              late_minutes = Math.max(0, Math.round((actualInMs - expInMs) / 60000))
+            }
+          }
+          // 조퇴 재계산: 기준 퇴근 - 실제 퇴근
+          if (check_out_time) {
+            const expOut = scheduleOut[attendance_type] || '18:00'
+            const expOutMs = new Date(`${work_date}T${expOut}:00`).getTime()
+            const actualOutMs = new Date(check_out_time).getTime()
+            if (!isNaN(expOutMs) && !isNaN(actualOutMs)) {
+              early_leave_hours = Math.max(0, Math.round(((expOutMs - actualOutMs) / 3600000) * 2) / 2)
+            }
+          }
+        }
+
         // 동적 SQL 구성 — late_minutes / source 컬럼 유무에 따라
         const baseCols = ['employee_id', 'work_date', 'check_in_time', 'check_out_time',
           'work_hours', 'overtime_hours', 'early_hours', 'early_leave_hours', 'holiday_work_hours']

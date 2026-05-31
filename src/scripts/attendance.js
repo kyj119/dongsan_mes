@@ -26,6 +26,11 @@
     var parts = yyyymm.split('-');
     return new Date(parseInt(parts[0], 10), parseInt(parts[1], 10), 0).getDate();
   }
+  // 숫자 → 컴팩트 표시 (정수면 정수, 소수면 소수점 유지. 예: 3→"3", 7.5→"7.5", 0.25→"0.25")
+  function fmtNum(v) {
+    var n = parseFloat(v) || 0;
+    return n % 1 === 0 ? String(Math.round(n)) : String(Math.round(n * 100) / 100);
+  }
   // 소수점 시간 → hh:mm 변환 (예: 8.5 → "08:30", 0 → "00:00")
   function fmtHM(h) {
     var v = parseFloat(h) || 0;
@@ -223,30 +228,28 @@
 
     // 헤더: 체크박스 | 직원 | 1일~N일 | 집계
     var headHtml = '';
-    headHtml += '<th class="px-2 py-2 border-b border-gray-200 bg-gray-50 sticky left-0 z-20"><input type="checkbox" id="attSelectAll" onchange="attendanceToggleAll(this.checked)"></th>';
-    headHtml += '<th class="px-3 py-2 border-b border-gray-200 bg-gray-50 sticky left-8 z-20 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider min-w-[120px]">직원</th>';
-    for (var d = 1; d <= state.daysInMonth; d++) {
-      var dateStr = state.month + '-' + pad(d);
-      var dow = new Date(dateStr).getDay();
-      var dowClass = (dow === 0) ? 'text-red-600' : (dow === 6 ? 'text-blue-600' : 'text-gray-600');
-      var dowBg = (dow === 0 || dow === 6) ? ' bg-gray-100' : ' bg-gray-50';
-      headHtml += '<th class="px-1 py-2 border-b border-gray-200' + dowBg + ' text-center text-[10px] font-semibold ' + dowClass + '" title="' + dateStr + '">' + d + '</th>';
+    headHtml += '<th class="py-2 border-b border-gray-200 bg-gray-50 sticky left-0 z-20" style="width:32px"><input type="checkbox" id="attSelectAll" onchange="attendanceToggleAll(this.checked)"></th>';
+    headHtml += '<th class="px-2 py-2 border-b border-gray-200 bg-gray-50 sticky left-8 z-20 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider" style="width:120px">직원</th>';
+    for (var d = 1; d <= 31; d++) {
+      if (d <= state.daysInMonth) {
+        var dateStr = state.month + '-' + pad(d);
+        var dow = new Date(dateStr).getDay();
+        var dowClass = (dow === 0) ? 'text-red-600' : (dow === 6 ? 'text-blue-600' : 'text-gray-600');
+        var dowBg = (dow === 0 || dow === 6) ? ' bg-gray-100' : ' bg-gray-50';
+        headHtml += '<th class="px-0 py-2 border-b border-gray-200' + dowBg + ' text-center text-[10px] font-semibold ' + dowClass + '" style="width:36px" title="' + dateStr + '">' + d + '</th>';
+      } else {
+        headHtml += '<th class="px-0 py-2 border-b border-gray-200 bg-gray-100 text-center text-[10px] text-gray-300" style="width:36px"></th>';
+      }
     }
-    headHtml += '<th class="px-2 py-2 border-b border-gray-200 bg-gray-50 text-center text-xs font-semibold text-gray-600">출근</th>';
-    headHtml += '<th class="px-2 py-2 border-b border-gray-200 bg-gray-50 text-center text-xs font-semibold text-gray-600">지각</th>';
-    headHtml += '<th class="px-2 py-2 border-b border-gray-200 bg-gray-50 text-center text-xs font-semibold text-gray-600">조퇴</th>';
-    headHtml += '<th class="px-2 py-2 border-b border-gray-200 bg-gray-50 text-center text-xs font-semibold text-gray-600">결근</th>';
-    headHtml += '<th class="px-2 py-2 border-b border-gray-200 bg-gray-50 text-center text-xs font-semibold text-gray-600">연차</th>';
-    headHtml += '<th class="px-2 py-2 border-b border-gray-200 bg-gray-50 text-center text-xs font-semibold text-gray-600">병가</th>';
-    headHtml += '<th class="px-2 py-2 border-b border-gray-200 bg-gray-50 text-center text-xs font-semibold text-gray-600">휴일</th>';
-    headHtml += '<th class="px-2 py-2 border-b border-gray-200 bg-gray-50 text-center text-xs font-semibold text-gray-600">조기(h)</th>';
-    headHtml += '<th class="px-2 py-2 border-b border-gray-200 bg-gray-50 text-center text-xs font-semibold text-gray-600">연장(h)</th>';
-    headHtml += '<th class="px-2 py-2 border-b border-gray-200 bg-gray-50 text-center text-xs font-semibold text-gray-600">조퇴(h)</th>';
-    headHtml += '<th class="px-2 py-2 border-b border-gray-200 bg-gray-50 text-center text-xs font-semibold text-gray-600">휴일(h)</th>';
+    headHtml += '<th class="px-1 py-2 border-b border-gray-200 bg-gray-50 text-center text-xs font-semibold text-gray-600 whitespace-nowrap" style="width:36px">결근</th>';
+    headHtml += '<th class="px-1 py-2 border-b border-gray-200 bg-gray-50 text-center text-xs font-semibold text-gray-600 whitespace-nowrap" style="width:50px">연차</th>';
+    headHtml += '<th class="px-1 py-2 border-b border-gray-200 bg-gray-50 text-center text-xs font-semibold text-gray-600 whitespace-nowrap" style="width:36px">지각</th>';
+    headHtml += '<th class="px-1 py-2 border-b border-gray-200 bg-gray-50 text-center text-xs font-semibold text-gray-600 whitespace-nowrap" style="width:50px">연장</th>';
+    headHtml += '<th class="px-1 py-2 border-b border-gray-200 bg-gray-50 text-center text-xs font-semibold text-gray-600 whitespace-nowrap" style="width:50px">휴일</th>';
     headerRow.innerHTML = headHtml;
 
     if (state.employees.length === 0) {
-      body.innerHTML = '<tr><td colspan="' + (state.daysInMonth + 13) + '" class="text-center py-12">'
+      body.innerHTML = '<tr><td colspan="38" class="text-center py-12">'
         + '<i class="fas fa-users text-3xl mb-3 block text-gray-300"></i>'
         + '<div class="text-sm text-gray-500">조회된 직원이 없습니다</div>'
         + '</td></tr>';
@@ -257,7 +260,14 @@
     state.employees.forEach(function (emp) {
       var summary = { work: 0, late: 0, earlyLeave: 0, absent: 0, vacation: 0, holiday: 0, early: 0, ot: 0, elHours: 0, holWork: 0, sick: 0, halfDay: 0 };
       var cells = '';
-      for (var d = 1; d <= state.daysInMonth; d++) {
+      // 뱃지용 짧은 hh:mm (앞자리 0 제거: "1:30" 형식)
+      function shortHM(v) { var h = Math.floor(v); var m = Math.round((v - h) * 60); if (m >= 60) { h++; m = 0; } return h + ':' + pad(m); }
+      for (var d = 1; d <= 31; d++) {
+        if (d > state.daysInMonth) {
+          // 해당 월에 없는 날 → 빈 비활성 셀
+          cells += '<td class="border border-gray-100 bg-gray-100" style="padding:1px"><div style="height:30px"></div></td>';
+          continue;
+        }
         var dateStr = state.month + '-' + pad(d);
         var dow = new Date(dateStr).getDay();
         var rec = state.recordsMap[key(emp.id, dateStr)];
@@ -272,13 +282,28 @@
           else if (t === 'NORMAL') summary.work++;
           else if (t === 'VACATION') summary.vacation++;
           else if (t === 'HOLIDAY') summary.holiday++;
-          else if (t === 'HALF_AM' || t === 'HALF_PM' || t.startsWith('QUARTER_')) { summary.vacation += 0; summary.halfDay++; summary.work++; }
+          else if (t === 'HALF_AM' || t === 'HALF_PM') { summary.vacation += 0.5; summary.halfDay++; summary.work++; }
+          else if (t.startsWith('QUARTER_')) { summary.vacation += 0.25; summary.halfDay++; summary.work++; }
           else if (t === 'SICK') summary.sick++;
           else if (t === 'FAMILY_EVENT') summary.vacation++;
-          // 지각: late_minutes > 0 (타입과 무관)
-          if (lateMins > 0) summary.late++;
-          // 조퇴: early_leave_hours > 0 (타입과 무관)
-          if (elh > 0) summary.earlyLeave++;
+          // 휴가 타입별 지각·조퇴 카운트 규칙
+          // 풀타임 휴가: 둘 다 제외
+          if (t === 'VACATION' || t === 'SICK' || t === 'FAMILY_EVENT' || t === 'HOLIDAY' || t === 'ABSENT') {
+            // skip
+          }
+          // 오전 오프(HALF_AM, QUARTER_1): 지각 제외, 조퇴는 카운트
+          else if (t === 'HALF_AM' || t === 'QUARTER_1') {
+            if (elh > 0) summary.earlyLeave++;
+          }
+          // 오후 오프(HALF_PM, QUARTER_4): 조퇴 제외, 지각은 카운트
+          else if (t === 'HALF_PM' || t === 'QUARTER_4') {
+            if (lateMins > 0) summary.late++;
+          }
+          // 그 외(NORMAL, QUARTER_2, QUARTER_3): 둘 다 카운트
+          else {
+            if (lateMins > 0) summary.late++;
+            if (elh > 0) summary.earlyLeave++;
+          }
           summary.early += eh;
           summary.ot += ot;
           summary.elHours += elh;
@@ -287,12 +312,8 @@
         var dirtyMark = state.dirty[key(emp.id, dateStr)] ? ' ring-2 ring-blue-400' : '';
         var label = rec ? typeLabel(t) : '';
         var color = rec ? typeColor(t) : 'bg-white text-gray-300 border-gray-100';
-        // 뱃지: 조기출근+연장근무(상단), 지각(우하), 조퇴(하단 중앙)
-        // 뱃지용 짧은 hh:mm (앞자리 0 제거: "1:30" 형식)
-        function shortHM(v) { var h = Math.floor(v); var m = Math.round((v - h) * 60); if (m >= 60) { h++; m = 0; } return h + ':' + pad(m); }
         var otBadge = '', earlyBadge = '';
         if (eh > 0 && ot > 0) {
-          // 복합 뱃지: 조기출근 + 연장근무 동시 → 상단 전체폭 합산
           otBadge = '<span class="absolute top-0 left-0 right-0 text-[7px] text-white px-0.5 rounded-b leading-tight text-center" style="background:linear-gradient(90deg,#2563eb 50%,#dc2626 50%);">' + shortHM(eh) + '|+' + shortHM(ot) + '</span>';
         } else if (ot > 0) {
           otBadge = '<span class="absolute top-0 right-0 text-[7px] bg-red-600 text-white px-0.5 rounded-bl leading-tight">+' + shortHM(ot) + '</span>';
@@ -312,18 +333,15 @@
             }
           }
         }
-        // 이상 감지 마크
         var anomaly = rec ? detectAnomaly(rec, dateStr) : '';
         var anomalyMark = anomaly ? '<span class="absolute top-0 left-1/2 -translate-x-1/2 w-1.5 h-1.5 rounded-full bg-red-500" title="' + escapeHtml(anomaly) + '"></span>' : '';
-
-        // 주말 배경
         var weekendBg = (dow === 0 || dow === 6) ? ' bg-gray-50' : '';
 
-        cells += '<td class="border border-gray-100 p-0 relative' + weekendBg + '">'
+        cells += '<td class="border border-gray-100 relative' + weekendBg + '" style="padding:1px">'
           + '<div class="att-cell cursor-pointer text-center text-[11px] font-semibold border rounded relative overflow-hidden ' + color + dirtyMark + '" '
           + 'data-emp="' + emp.id + '" data-date="' + dateStr + '" '
           + (tooltip ? 'title="' + tooltip + '" ' : '')
-          + 'style="width:30px;height:30px;line-height:28px;margin:1px auto;">'
+          + 'style="width:100%;height:30px;line-height:28px;">'
           + label
           + otBadge
           + earlyBadge
@@ -344,17 +362,11 @@
         + '<div class="text-[10px] text-gray-500">' + escapeHtml(emp.employee_code) + ' · ' + deptLabel + '</div>'
         + '</td>'
         + cells
-        + '<td class="px-2 py-1 border-b border-gray-100 text-center text-sm font-medium text-gray-900">' + summary.work + '</td>'
-        + '<td class="px-2 py-1 border-b border-gray-100 text-center text-sm font-medium ' + (summary.late > 0 ? 'text-amber-600' : 'text-gray-400') + '">' + summary.late + '</td>'
-        + '<td class="px-2 py-1 border-b border-gray-100 text-center text-sm font-medium ' + (summary.earlyLeave > 0 ? 'text-amber-600' : 'text-gray-400') + '">' + summary.earlyLeave + '</td>'
-        + '<td class="px-2 py-1 border-b border-gray-100 text-center text-sm font-medium ' + (summary.absent > 0 ? 'text-red-600' : 'text-gray-400') + '">' + summary.absent + '</td>'
-        + '<td class="px-2 py-1 border-b border-gray-100 text-center text-sm font-medium ' + (summary.vacation > 0 ? 'text-blue-600' : 'text-gray-400') + '">' + summary.vacation + '</td>'
-        + '<td class="px-2 py-1 border-b border-gray-100 text-center text-sm font-medium ' + (summary.sick > 0 ? 'text-purple-600' : 'text-gray-400') + '">' + summary.sick + '</td>'
-        + '<td class="px-2 py-1 border-b border-gray-100 text-center text-sm font-medium text-gray-400">' + summary.holiday + '</td>'
-        + '<td class="px-2 py-1 border-b border-gray-100 text-center text-sm font-medium ' + (summary.early > 0 ? 'text-blue-600' : 'text-gray-400') + '">' + fmtHM(summary.early) + '</td>'
-        + '<td class="px-2 py-1 border-b border-gray-100 text-center text-sm font-medium ' + (summary.ot > 0 ? 'text-red-600' : 'text-gray-400') + '">' + fmtHM(summary.ot) + '</td>'
-        + '<td class="px-2 py-1 border-b border-gray-100 text-center text-sm font-medium ' + (summary.elHours > 0 ? 'text-amber-600' : 'text-gray-400') + '">' + fmtHM(summary.elHours) + '</td>'
-        + '<td class="px-2 py-1 border-b border-gray-100 text-center text-sm font-medium ' + (summary.holWork > 0 ? 'text-green-600' : 'text-gray-400') + '">' + fmtHM(summary.holWork) + '</td>'
+        + '<td class="px-1 py-1 border-b border-gray-100 text-center text-xs font-medium ' + (summary.absent > 0 ? 'text-red-600' : 'text-gray-300') + '">' + (summary.absent || '-') + '</td>'
+        + '<td class="px-1 py-1 border-b border-gray-100 text-center text-xs font-medium ' + (summary.vacation > 0 ? 'text-blue-600' : 'text-gray-300') + '">' + (summary.vacation > 0 ? fmtNum(summary.vacation) : '-') + '</td>'
+        + '<td class="px-1 py-1 border-b border-gray-100 text-center text-xs font-medium ' + (summary.late > 0 ? 'text-amber-600' : 'text-gray-300') + '">' + (summary.late || '-') + '</td>'
+        + '<td class="px-1 py-1 border-b border-gray-100 text-center text-xs font-medium ' + ((summary.early + summary.ot) > 0 ? 'text-red-600' : 'text-gray-300') + '">' + ((summary.early + summary.ot) > 0 ? fmtNum(summary.early + summary.ot) : '-') + '</td>'
+        + '<td class="px-1 py-1 border-b border-gray-100 text-center text-xs font-medium ' + (summary.holWork > 0 ? 'text-green-600' : 'text-gray-300') + '">' + (summary.holWork > 0 ? fmtNum(summary.holWork) : '-') + '</td>'
         + '</tr>';
     });
     body.innerHTML = rowsHtml;
@@ -445,12 +457,39 @@
     rec.check_in_time = inTime ? (e.date + 'T' + inTime + ':00') : null;
     rec.check_out_time = outTime ? (e.date + 'T' + outTime + ':00') : null;
     rec.work_hours = parseFloat(document.getElementById('attDetailHours').value) || 0;
-    rec.late_minutes = parseInt(document.getElementById('attDetailLateMin').value) || 0;
     rec.early_hours = parseFloat(document.getElementById('attDetailEarly').value) || 0;
     rec.overtime_hours = parseFloat(document.getElementById('attDetailOt').value) || 0;
-    rec.early_leave_hours = parseFloat(document.getElementById('attDetailEarlyLeave').value) || 0;
     rec.holiday_work_hours = parseFloat(document.getElementById('attDetailHolidayWork').value) || 0;
     rec.notes = document.getElementById('attDetailNotes').value || null;
+
+    // 근태유형별 기준시간으로 지각·조퇴 자동 재계산
+    var FULL_LEAVE = ['VACATION', 'SICK', 'FAMILY_EVENT', 'HOLIDAY', 'ABSENT'];
+    var schedIn = { NORMAL:'08:30', HALF_AM:'13:00', HALF_PM:'08:30', QUARTER_1:'10:00', QUARTER_2:'08:30', QUARTER_3:'08:30', QUARTER_4:'08:30' };
+    var schedOut = { NORMAL:'18:00', HALF_AM:'18:00', HALF_PM:'12:00', QUARTER_1:'18:00', QUARTER_2:'18:00', QUARTER_3:'18:00', QUARTER_4:'16:00' };
+    var typ = rec.attendance_type;
+    if (FULL_LEAVE.indexOf(typ) >= 0) {
+      rec.late_minutes = 0;
+      rec.early_leave_hours = 0;
+    } else {
+      // 지각: 실제출근 - 기준출근
+      if (inTime) {
+        var expIn = schedIn[typ] || '08:30';
+        var actInMs = new Date(e.date + 'T' + inTime + ':00').getTime();
+        var expInMs = new Date(e.date + 'T' + expIn + ':00').getTime();
+        rec.late_minutes = Math.max(0, Math.round((actInMs - expInMs) / 60000));
+      } else {
+        rec.late_minutes = parseInt(document.getElementById('attDetailLateMin').value) || 0;
+      }
+      // 조퇴: 기준퇴근 - 실제퇴근
+      if (outTime) {
+        var expOut = schedOut[typ] || '18:00';
+        var actOutMs = new Date(e.date + 'T' + outTime + ':00').getTime();
+        var expOutMs = new Date(e.date + 'T' + expOut + ':00').getTime();
+        rec.early_leave_hours = Math.max(0, Math.round(((expOutMs - actOutMs) / 3600000) * 2) / 2);
+      } else {
+        rec.early_leave_hours = parseFloat(document.getElementById('attDetailEarlyLeave').value) || 0;
+      }
+    }
     bumpSource(rec);
     state.recordsMap[k] = rec;
     state.dirty[k] = true;
