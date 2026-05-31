@@ -1806,6 +1806,7 @@ ordersCoreRouter.delete('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
       c.env.DB.prepare('DELETE FROM order_items WHERE order_id = ?').bind(id),
       c.env.DB.prepare('DELETE FROM order_status_history WHERE order_id = ?').bind(id),
       c.env.DB.prepare('DELETE FROM tax_invoice_orders WHERE order_id = ?').bind(id),
+      c.env.DB.prepare('DELETE FROM order_ai_files WHERE order_id = ?').bind(id),
       c.env.DB.prepare('DELETE FROM auto_process_jobs WHERE order_id = ?').bind(id),
       c.env.DB.prepare('DELETE FROM orders WHERE id = ?').bind(id),
     ])
@@ -2038,6 +2039,7 @@ ordersCoreRouter.put('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
         c.env.DB.prepare('UPDATE print_events SET card_id = NULL WHERE card_id IN (SELECT id FROM cards WHERE order_id = ?)').bind(id),
         c.env.DB.prepare('DELETE FROM card_items WHERE card_id IN (SELECT id FROM cards WHERE order_id = ?)').bind(id),
         c.env.DB.prepare('DELETE FROM cards WHERE order_id = ?').bind(id),
+        c.env.DB.prepare("DELETE FROM auto_process_jobs WHERE order_id = ? AND status IN ('pending','processing','failed')").bind(id),
         c.env.DB.prepare('DELETE FROM order_items WHERE order_id = ?').bind(id),
       ])
     }

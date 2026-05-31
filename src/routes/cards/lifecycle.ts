@@ -736,6 +736,7 @@ cardsLifecycleRouter.patch('/:id/ship', requireRole('ADMIN', 'MANAGER'), async (
     `).bind(card.order_id).first<{ total: number; shipped: number }>()
 
     let orderShipped = false
+    let prevOrderStatus = ''
     const allShipped = progress && progress.total > 0 && progress.total === progress.shipped
 
     // 5. 모두 출고되었으면 주문 상태를 SHIPPED로 변경
@@ -745,6 +746,7 @@ cardsLifecycleRouter.patch('/:id/ship', requireRole('ADMIN', 'MANAGER'), async (
       ).bind(card.order_id).first<{ status: string }>()
 
       if (order && order.status !== 'SHIPPED' && order.status !== 'CANCELLED') {
+        prevOrderStatus = order.status
         await c.env.DB.batch([
           c.env.DB.prepare(
             `UPDATE orders SET status = 'SHIPPED', updated_at = datetime('now') WHERE id = ?`
@@ -847,7 +849,26 @@ cardsLifecycleRouter.patch('/:id/ship', requireRole('ADMIN', 'MANAGER'), async (
         }
       }
     } catch (shipErr) {
-      console.error('shipment record creation failed (card ship continues):', shipErr)
+      // #308: 출고 기록 생성 실패 시 카드/주문 출고 상태를 보상 롤백 (불일치 방지)
+      console.error('shipment record creation failed — rolling back card ship:', shipErr)
+      try {
+        const undo: ReturnType<typeof c.env.DB.prepare>[] = [
+          c.env.DB.prepare('UPDATE cards SET shipped_at = NULL WHERE id = ?').bind(id)
+        ]
+        if (orderShipped) {
+          undo.push(c.env.DB.prepare(
+            `UPDATE orders SET status = ?, updated_at = datetime('now') WHERE id = ?`
+          ).bind(prevOrderStatus, card.order_id))
+          undo.push(c.env.DB.prepare(`
+            INSERT INTO order_status_history (order_id, from_status, to_status, changed_by, change_reason)
+            VALUES (?, 'SHIPPED', ?, ?, '출고 기록 생성 실패로 롤백')
+          `).bind(card.order_id, prevOrderStatus, user?.id || 1))
+        }
+        await c.env.DB.batch(undo)
+      } catch (undoErr) {
+        console.error('shipment rollback also failed:', undoErr)
+      }
+      return c.json({ success: false, error: '출고 기록 생성에 실패하여 출고를 취소했습니다. 다시 시도해주세요.' }, 500)
     }
 
     // 6. 응답

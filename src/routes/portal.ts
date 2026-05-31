@@ -120,7 +120,7 @@ portal.post('/auth/login', async (c) => {
       SELECT ca.*, cl.client_name as client_name
       FROM client_accounts ca
       JOIN clients cl ON ca.client_id = cl.id
-      WHERE ca.login_id = ? AND ca.is_active = 1
+      WHERE ca.login_id = ? AND ca.is_active = 1 AND cl.is_active = 1
     `).bind(login_id).first<ClientAccountRow>()
 
     if (!account) {

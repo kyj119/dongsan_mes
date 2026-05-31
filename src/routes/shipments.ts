@@ -412,6 +412,18 @@ shipmentsRouter.post('/', requireRole('ADMIN', 'MANAGER', 'DESIGNER'), async (c)
     const order = await c.env.DB.prepare(`SELECT id, order_number, status FROM orders WHERE id = ?${ef.clause}`).bind(body.order_id, ...ef.params).first<{ id: number; order_number: string; status: string }>()
     if (!order) return c.json({ success: false, error: '주문을 찾을 수 없습니다.' }, 404)
 
+    // #298: 수동 지정 카드(card_ids)의 출고 가능 여부 검증 — PRINT_DONE 또는 이미 출고된 카드만 (출고 레코드 생성 전)
+    if (body.card_ids && body.card_ids.length > 0) {
+      const ph = body.card_ids.map(() => '?').join(', ')
+      const { results: invalidCards } = await c.env.DB.prepare(`
+        SELECT id, card_number FROM cards
+        WHERE id IN (${ph}) AND status != 'PRINT_DONE' AND shipped_at IS NULL
+      `).bind(...body.card_ids).all<{ id: number; card_number: string }>()
+      if (invalidCards.length > 0) {
+        return c.json({ success: false, error: `출고 불가 카드(PRINT_DONE 아님): ${invalidCards.map(x => x.card_number || x.id).join(', ')}` }, 400)
+      }
+    }
+
     // 출고번호 생성 (#148: entity별 독립 시퀀스)
     const today = new Date()
     const dateStr = today.toISOString().split('T')[0].replace(/-/g, '')
@@ -667,7 +679,7 @@ shipmentsRouter.patch('/:id/status', requireRole('ADMIN', 'MANAGER'), async (c) 
       return c.json({ success: false, error: '상태를 입력해주세요.' }, 400)
     }
 
-    const validStatuses = ['PENDING', 'SHIPPED', 'DELIVERED', 'CANCELLED']
+    const validStatuses = ['PREPARING', 'SHIPPED', 'IN_TRANSIT', 'DELIVERED', 'CANCELLED']
     if (!validStatuses.includes(status)) {
       return c.json({ success: false, error: '유효하지 않은 상태입니다.' }, 400)
     }
@@ -728,8 +740,18 @@ shipmentsRouter.patch('/:id/status', requireRole('ADMIN', 'MANAGER'), async (c) 
               'UPDATE orders SET auto_complete_date = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
             ).bind(orderRow.order_id))
           }
+        } else if (orderInfo?.status === 'COMPLETED') {
+          // #292: 완료 주문에서 출고 취소 → 더 이상 완료 아님, SHIPPED로 복원
+          const user = c.get('user')
+          stmts.push(c.env.DB.prepare(
+            `UPDATE orders SET status = 'SHIPPED', auto_complete_date = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?`
+          ).bind(orderRow.order_id))
+          stmts.push(c.env.DB.prepare(`
+            INSERT INTO order_status_history (order_id, from_status, to_status, changed_by, change_reason)
+            VALUES (?, 'COMPLETED', 'SHIPPED', ?, '출고 취소로 주문 상태 복원')
+          `).bind(orderRow.order_id, user?.id || 1))
         } else {
-          // SHIPPED가 아닌 경우에도 auto_complete_date는 리셋
+          // SHIPPED/COMPLETED가 아닌 경우에도 auto_complete_date는 리셋
           stmts.push(c.env.DB.prepare(
             'UPDATE orders SET auto_complete_date = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
           ).bind(orderRow.order_id))
@@ -766,8 +788,13 @@ shipmentsRouter.patch('/:id/status', requireRole('ADMIN', 'MANAGER'), async (c) 
               `UPDATE orders SET status = 'COMPLETED', updated_at = CURRENT_TIMESTAMP WHERE id = ? AND status NOT IN ('COMPLETED', 'CANCELLED')`
             ).bind(orderRow.order_id))
           }
-        } else if (status === 'PENDING') {
-          // PENDING 복귀: 다른 활성 SHIPPED 출고가 없으면 주문을 PRINT_DONE으로
+        } else if (status === 'IN_TRANSIT') {
+          // #305: 배송중 — 여전히 출고 상태이므로 주문을 SHIPPED로 유지/설정
+          stmts.push(c.env.DB.prepare(
+            `UPDATE orders SET status = 'SHIPPED', updated_at = CURRENT_TIMESTAMP WHERE id = ? AND status != 'SHIPPED'`
+          ).bind(orderRow.order_id))
+        } else if (status === 'PREPARING') {
+          // #305: 출고 준비중 복귀 — 다른 활성 SHIPPED 출고가 없으면 주문을 PRINT_DONE으로
           const otherShipped = await c.env.DB.prepare(
             `SELECT COUNT(*) as cnt FROM shipments WHERE order_id = ? AND id != ? AND status = 'SHIPPED'`
           ).bind(orderRow.order_id, id).first<{ cnt: number }>()

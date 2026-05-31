@@ -225,22 +225,19 @@ scanRouter.post('/action', async (c) => {
           return c.json({ success: false, error: '수량을 입력하세요.' }, 400)
         }
         const entityId = getEntityId(c)
-        // #169: 재고 변경 + inventory_transactions 감사 기록 원자적 처리
-        await c.env.DB.prepare(`
-          UPDATE items SET current_stock = current_stock + ?, updated_at = CURRENT_TIMESTAMP
-          WHERE id = ?
-        `).bind(body.quantity, body.id).run()
-
-        const afterRow = await c.env.DB.prepare(
-          'SELECT current_stock FROM items WHERE id = ?'
-        ).bind(body.id).first<{ current_stock: number }>()
-
-        await c.env.DB.prepare(`
-          INSERT INTO inventory_transactions
-          (item_id, transaction_type, transaction_date, quantity, reference_type, balance_after, reason, handled_by, entity_id)
-          VALUES (?, 'IN', DATE('now'), ?, 'SCAN', ?, ?, ?, ?)
-        `).bind(body.id, body.quantity, afterRow?.current_stock ?? 0,
-          body.notes || '스캔 입고', user?.id || 1, entityId).run()
+        // #169 + #289: 재고 변경 + 감사 기록을 단일 batch로 원자적 처리 (balance_after는 서브쿼리)
+        await c.env.DB.batch([
+          c.env.DB.prepare(`
+            UPDATE items SET current_stock = current_stock + ?, updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+          `).bind(body.quantity, body.id),
+          c.env.DB.prepare(`
+            INSERT INTO inventory_transactions
+            (item_id, transaction_type, transaction_date, quantity, reference_type, balance_after, reason, handled_by, entity_id)
+            VALUES (?, 'IN', DATE('now'), ?, 'SCAN', (SELECT current_stock FROM items WHERE id = ?), ?, ?, ?)
+          `).bind(body.id, body.quantity, body.id,
+            body.notes || '스캔 입고', user?.id || 1, entityId)
+        ])
 
         return c.json({ success: true, message: `${body.quantity}개 입고 처리되었습니다.` })
       }
@@ -260,16 +257,12 @@ scanRouter.post('/action', async (c) => {
           return c.json({ success: false, error: '재고가 부족합니다.' }, 400)
         }
 
-        // #169: inventory_transactions 감사 기록
-        const afterRow2 = await c.env.DB.prepare(
-          'SELECT current_stock FROM items WHERE id = ?'
-        ).bind(body.id).first<{ current_stock: number }>()
-
+        // #169 + #289: 감사 기록 — balance_after를 서브쿼리로 (중간 SELECT 제거, race 차단)
         await c.env.DB.prepare(`
           INSERT INTO inventory_transactions
           (item_id, transaction_type, transaction_date, quantity, reference_type, balance_after, reason, handled_by, entity_id)
-          VALUES (?, 'OUT', DATE('now'), ?, 'SCAN', ?, ?, ?, ?)
-        `).bind(body.id, body.quantity, afterRow2?.current_stock ?? 0,
+          VALUES (?, 'OUT', DATE('now'), ?, 'SCAN', (SELECT current_stock FROM items WHERE id = ?), ?, ?, ?)
+        `).bind(body.id, body.quantity, body.id,
           body.notes || '스캔 출고', user?.id || 1, entityId2).run()
 
         return c.json({ success: true, message: `${body.quantity}개 출고 처리되었습니다.` })

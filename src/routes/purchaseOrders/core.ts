@@ -1516,9 +1516,12 @@ poCoreRouter.post('/:id/receive', async (c) => {
 
       await c.env.DB.batch(stmts)
     } catch (batchErr) {
-      // 보상 트랜잭션: 이미 삽입된 부모 receipt 삭제
+      // 보상 트랜잭션: 이미 삽입된 부모 receipt + 자식 items 삭제 (#311 고아 방지)
       try {
-        await c.env.DB.prepare(`DELETE FROM inventory_receipts WHERE id = ?`).bind(receiptId).run()
+        await c.env.DB.batch([
+          c.env.DB.prepare(`DELETE FROM inventory_receipt_items WHERE receipt_id = ?`).bind(receiptId),
+          c.env.DB.prepare(`DELETE FROM inventory_receipts WHERE id = ?`).bind(receiptId)
+        ])
       } catch (_) { /* best effort */ }
       throw batchErr
     }
@@ -1789,6 +1792,8 @@ poCoreRouter.delete('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
       await c.env.DB.batch([
         c.env.DB.prepare('DELETE FROM purchase_order_items WHERE po_id = ?').bind(id),
         c.env.DB.prepare('DELETE FROM po_status_history WHERE po_id = ?').bind(id),
+        // #312: 발주 삭제 시 관련 비용조정의 po_id를 NULL 처리 (조정 레코드 자체는 보존)
+        c.env.DB.prepare('UPDATE purchase_adjustments SET po_id = NULL WHERE po_id = ?').bind(id),
         c.env.DB.prepare('DELETE FROM purchase_orders WHERE id = ?').bind(id)
       ])
 
