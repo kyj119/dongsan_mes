@@ -333,8 +333,8 @@ function renderMrpResult(result) {
   </div>`;
 
   if (result.results.length > 0) {
-    html += `<div class="overflow-x-auto"><table class="w-full text-sm">
-      <thead><tr class="bg-gray-100 border-b">
+    html += `<div class="overflow-x-auto"><table class="w-full ds-table-striped">
+      <thead><tr>
         <th class="px-3 py-2 text-left">원재료</th>
         <th class="px-3 py-2 text-right">소요량</th>
         <th class="px-3 py-2 text-right">현재 재고</th>

@@ -307,7 +307,7 @@ async function viewDetail(id) {
       + '<div class="mt-6">'
       + '<h4 class="text-sm font-bold text-gray-700 mb-2"><i class="fas fa-truck-loading mr-1"></i>입고 이력 (<span id="receiptsCount">0</span>건)</h4>'
       + '<div id="poReceiptsContainer" class="border border-gray-200 rounded overflow-hidden">'
-      + '<table class="w-full text-sm"><thead class="bg-gray-50"><tr>'
+      + '<table class="w-full text-sm ds-table-striped"><thead class="bg-gray-50"><tr>'
       + '<th class="px-3 py-2 text-left">입고번호</th>'
       + '<th class="px-3 py-2 text-center">입고일</th>'
       + '<th class="px-3 py-2 text-right">라인</th>'

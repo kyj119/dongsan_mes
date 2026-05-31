@@ -45,7 +45,7 @@ async function loadOverview() {
   var projChart = document.getElementById('projectionChart');
   if (projChart) projChart.innerHTML = '<div class="text-center py-8 text-gray-400"><i class="fas fa-spinner fa-spin text-2xl mb-2"></i><p>로딩 중...</p></div>';
   var projTable = document.getElementById('projectionTable');
-  if (projTable) projTable.innerHTML = '<tr><td colspan="7" class="text-center py-8 text-gray-400"><i class="fas fa-spinner fa-spin text-2xl mb-2"></i><br>로딩 중...</td></tr>';
+  if (projTable) projTable.innerHTML = '<tr><td colspan="8" class="text-center py-8 text-gray-400"><i class="fas fa-spinner fa-spin text-2xl mb-2"></i><br>로딩 중...</td></tr>';
   try {
     var [sumRes, projRes] = await Promise.all([
       axios.get('/api/cash-flow/summary'),

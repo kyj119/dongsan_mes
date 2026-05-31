@@ -296,6 +296,7 @@ ${capsSettingsScript}
               <table class="w-full text-sm ds-table-striped ds-table-fixed">
                 <thead>
                   <tr>
+                    <th class="text-left" style="width:90px">법인</th>
                     <th class="text-left">구역명</th>
                     <th class="text-left" style="width:80px">코드</th>
                     <th class="text-left">설명</th>

@@ -316,13 +316,13 @@ window.leavesLoadAllowance = async function() {
   var year = document.getElementById('lvAllowYear') ? document.getElementById('lvAllowYear').value : new Date().getFullYear();
   var tbody = document.getElementById('lvAllowanceBody');
   if (!tbody) return;
-  tbody.innerHTML = '<tr><td colspan="9" class="text-center text-gray-400 py-6"><i class="fas fa-spinner fa-spin text-2xl mb-2"></i><br>로딩 중...</td></tr>';
+  tbody.innerHTML = '<tr><td colspan="8" class="text-center text-gray-400 py-6"><i class="fas fa-spinner fa-spin text-2xl mb-2"></i><br>로딩 중...</td></tr>';
   try {
     var res = await axios.get('/api/leaves/unused-allowance', { params: { year: year } });
     var d = res.data.data || {};
     var rows = d.employees || [];
     if (!rows.length) {
-      tbody.innerHTML = '<tr><td colspan="9" class="text-center text-gray-400 py-6">데이터 없음</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="8" class="text-center text-gray-400 py-6">데이터 없음</td></tr>';
       return;
     }
     var fmtW = function(n) { return n ? n.toLocaleString() : '0'; };

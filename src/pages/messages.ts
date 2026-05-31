@@ -63,7 +63,7 @@ export function messagesPage(c: Context<HonoEnv>) {
       <button onclick="loadLogs()" class="ds-btn ds-btn-primary text-sm"><i class="fas fa-search mr-1"></i>조회</button>
     </div>
     <div class="ds-card overflow-hidden">
-      <table class="w-full text-sm">
+      <table class="w-full ds-table-striped">
         <thead class="bg-gray-50">
           <tr>
             <th class="px-4 py-3 text-left text-xs font-semibold text-gray-600">발송일시</th>

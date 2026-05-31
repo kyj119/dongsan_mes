@@ -137,7 +137,7 @@ async function loadTransactions() {
     tbody.innerHTML = '';
 
     if (!data.length) {
-      tbody.innerHTML = '<tr><td colspan="8" class="text-center py-10 text-gray-400"><i class="fas fa-credit-card text-3xl mb-2 block text-gray-300"></i>카드 사용 내역이 없습니다</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="9" class="text-center py-10 text-gray-400"><i class="fas fa-credit-card text-3xl mb-2 block text-gray-300"></i>카드 사용 내역이 없습니다</td></tr>';
       document.getElementById('txPagination').innerHTML = '';
       return;
     }

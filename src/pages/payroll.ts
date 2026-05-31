@@ -309,7 +309,7 @@ export function payrollPage(c: Context<HonoEnv>) {
               <input type="number" id="prRatesYear" value="2026" class="border rounded px-2 py-1 text-xs w-24" />
               <button onclick="payrollLoadRates()" class="ds-btn ds-btn-primary text-xs">조회</button>
             </div>
-            <table class="w-full text-sm">
+            <table class="w-full text-sm ds-table-striped">
               <thead class="bg-gray-50 text-xs text-gray-600 uppercase">
                 <tr>
                   <th class="px-3 py-2 text-left">보험</th>

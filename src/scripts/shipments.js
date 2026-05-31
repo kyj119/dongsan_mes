@@ -93,9 +93,11 @@ async function loadShipmentsByDate() {
   currentDate = date; // 항상 동기화
 
   // 로딩 표시
+  var secCols = { freight: 7, daesintaekbae: 7, hanjin: 5, quick: 5, etc: 4 };
   ['freight', 'daesintaekbae', 'hanjin', 'quick', 'etc'].forEach(function(sec) {
     var tbody = document.getElementById('tbody-' + sec);
-    if (tbody) tbody.innerHTML = '<tr><td colspan="10" class="px-4 py-2"><div class="ds-skeleton ds-skeleton-row"></div></td></tr><tr><td colspan="10" class="px-4 py-2"><div class="ds-skeleton ds-skeleton-row"></div></td></tr><tr><td colspan="10" class="px-4 py-2"><div class="ds-skeleton ds-skeleton-row"></div></td></tr>';
+    var cs = secCols[sec] || 7;
+    if (tbody) tbody.innerHTML = '<tr><td colspan="' + cs + '" class="px-4 py-2"><div class="ds-skeleton ds-skeleton-row"></div></td></tr><tr><td colspan="' + cs + '" class="px-4 py-2"><div class="ds-skeleton ds-skeleton-row"></div></td></tr><tr><td colspan="' + cs + '" class="px-4 py-2"><div class="ds-skeleton ds-skeleton-row"></div></td></tr>';
   });
 
   try {

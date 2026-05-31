@@ -184,7 +184,7 @@ async function viewQuotation(id) {
       + '</div>'
       + '<h4 class="font-semibold mb-2 text-sm text-gray-700">견적 품목</h4>'
       + '<div class="overflow-x-auto">'
-      + '<table class="w-full text-sm"><thead class="bg-gray-50"><tr>'
+      + '<table class="ds-table-striped ds-table-fixed text-sm"><thead class="bg-gray-50"><tr>'
       + '<th class="px-3 py-2 text-left">품명</th>'
       + '<th class="px-3 py-2 text-center">규격</th>'
       + '<th class="px-3 py-2 text-center">수량</th>'
@@ -203,7 +203,7 @@ async function viewQuotation(id) {
     if (convertedOrders.length > 0) {
       var ordersHtml = '<h4 class="font-semibold mt-5 mb-2 text-sm text-gray-700">'
         + '<i class="fas fa-link mr-1 text-blue-500"></i>이 견적서로 생성된 주문 (' + convertedOrders.length + '건)</h4>'
-        + '<div class="overflow-x-auto"><table class="w-full text-xs border rounded">'
+        + '<div class="overflow-x-auto"><table class="ds-table-striped ds-table-fixed text-xs">'
         + '<thead class="bg-blue-50"><tr>'
         + '<th class="px-3 py-2 text-left">주문번호</th>'
         + '<th class="px-3 py-2 text-center">상태</th>'
