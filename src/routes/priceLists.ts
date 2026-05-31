@@ -69,8 +69,8 @@ priceListsRouter.patch('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
 
     const ef = entityFilter(c, 'price_lists')
     const existing = await c.env.DB.prepare(
-      `SELECT id FROM price_lists WHERE id = ?${ef.clause}`
-    ).bind(id, ...ef.params).first()
+      `SELECT id, name, adjustment_percent FROM price_lists WHERE id = ?${ef.clause}`
+    ).bind(id, ...ef.params).first<{ id: number; name: string; adjustment_percent: number }>()
 
     if (!existing) {
       return c.json({ success: false, error: 'Price list not found' }, 404)
@@ -102,6 +102,23 @@ priceListsRouter.patch('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
     await c.env.DB.prepare(`
       UPDATE price_lists SET ${updates.join(', ')} WHERE id = ?
     `).bind(...params).run()
+
+    // 단가표 정책(조정률) 변경 이력 기록 (#309)
+    if (body.adjustment_percent !== undefined && existing.adjustment_percent !== body.adjustment_percent) {
+      try {
+        await c.env.DB.prepare(
+          `INSERT INTO price_change_history (target_type, target_id, target_name, field_name, old_value, new_value, changed_by, entity_id)
+           VALUES ('PRICE_LIST', ?, ?, 'adjustment_percent', ?, ?, ?, ?)`
+        ).bind(
+          id,
+          body.name || existing.name,
+          String(existing.adjustment_percent),
+          String(body.adjustment_percent),
+          c.get('user')?.id ?? null,
+          getEntityId(c)
+        ).run()
+      } catch (_) { /* 이력 실패해도 메인 로직 영향 없음 */ }
+    }
 
     return c.json({ success: true })
   } catch (error) {

@@ -1460,20 +1460,21 @@ hrRouter.get('/certificates/employment/:employeeId', async (c) => {
     // certificate_number 자동 채번: CERT-YYYYMMDD-NNN
     const today = new Date()
     const dateStr = today.toISOString().slice(0, 10).replace(/-/g, '')
+    const eidCert = emp.entity_id || 1
     const { results: countResult } = await c.env.DB.prepare(`
-      SELECT COUNT(*) as cnt FROM certificate_logs WHERE issue_date = ?
-    `).bind(today.toISOString().slice(0, 10)).all<{ cnt: number }>().catch(() => ({ results: [{ cnt: 0 }] }))
+      SELECT COUNT(*) as cnt FROM certificate_logs WHERE issue_date = ? AND entity_id = ?
+    `).bind(today.toISOString().slice(0, 10), eidCert).all<{ cnt: number }>().catch(() => ({ results: [{ cnt: 0 }] }))
     const seq = ((countResult?.[0]?.cnt) || 0) + 1
     const certificateNumber = `CERT-${dateStr}-${String(seq).padStart(3, '0')}`
 
-    // 발급 로그 저장 (테이블 없으면 무시)
+    // 발급 로그 저장 (#301: entity별 번호 독립)
     try {
       await c.env.DB.prepare(`
-        INSERT INTO certificate_logs (employee_id, certificate_number, certificate_type, purpose, issue_date, created_at)
-        VALUES (?, ?, 'EMPLOYMENT', ?, ?, datetime('now'))
-      `).bind(employeeId, certificateNumber, purpose, today.toISOString().slice(0, 10)).run()
-    } catch {
-      // certificate_logs 테이블 없으면 무시
+        INSERT INTO certificate_logs (employee_id, certificate_number, certificate_type, purpose, issue_date, entity_id, created_at)
+        VALUES (?, ?, 'EMPLOYMENT', ?, ?, ?, datetime('now'))
+      `).bind(employeeId, certificateNumber, purpose, today.toISOString().slice(0, 10), eidCert).run()
+    } catch (certErr) {
+      console.error('certificate_logs insert failed:', certErr)
     }
 
     const html = renderEmploymentCertificateHTML({

@@ -351,6 +351,10 @@ leavesRouter.post('/requests', async (c) => {
 
     return c.json({ success: true, data: { id: result.meta.last_row_id, days } })
   } catch (error: any) {
+    // #294: 동일 직원·유형·기간의 활성 신청이 이미 있으면 409
+    if (error?.message && /UNIQUE constraint failed/i.test(error.message)) {
+      return c.json({ success: false, error: '이미 동일한 휴가 신청이 존재합니다.' }, 409)
+    }
     console.error('leaves request create error:', error)
     return c.json({ success: false, error: '서버 오류가 발생했습니다.', detail: '서버 오류가 발생했습니다' }, 500)
   }

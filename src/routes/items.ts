@@ -448,13 +448,13 @@ itemsRouter.patch('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
           const user = (c.get('user'))?.username || 'system'
           if (updates.base_price !== undefined && updates.base_price !== old.base_price) {
             await c.env.DB.prepare(
-              `INSERT INTO price_change_history (target_type, target_id, field_name, old_value, new_value, changed_by) VALUES ('ITEM', ?, 'base_price', ?, ?, ?)`
-            ).bind(parseInt(id), old.base_price || 0, updates.base_price || 0, user).run()
+              `INSERT INTO price_change_history (target_type, target_id, field_name, old_value, new_value, changed_by, entity_id) VALUES ('ITEM', ?, 'base_price', ?, ?, ?, ?)`
+            ).bind(parseInt(id), old.base_price || 0, updates.base_price || 0, user, getEntityId(c)).run()
           }
           if (updates.sales_price !== undefined && updates.sales_price !== old.sales_price) {
             await c.env.DB.prepare(
-              `INSERT INTO price_change_history (target_type, target_id, field_name, old_value, new_value, changed_by) VALUES ('ITEM', ?, 'sales_price', ?, ?, ?)`
-            ).bind(parseInt(id), old.sales_price || 0, updates.sales_price || 0, user).run()
+              `INSERT INTO price_change_history (target_type, target_id, field_name, old_value, new_value, changed_by, entity_id) VALUES ('ITEM', ?, 'sales_price', ?, ?, ?, ?)`
+            ).bind(parseInt(id), old.sales_price || 0, updates.sales_price || 0, user, getEntityId(c)).run()
           }
         }
       } catch (_) { /* 이력 실패해도 무시 */ }
@@ -867,9 +867,9 @@ itemsRouter.put('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
     if (existing.base_price !== undefined && newPrice !== existing.base_price) {
       try {
         await c.env.DB.prepare(
-          `INSERT INTO price_change_history (target_type, target_id, field_name, old_value, new_value, changed_by)
-           VALUES ('ITEM', ?, 'base_price', ?, ?, ?)`
-        ).bind(parseInt(id), existing.base_price || 0, newPrice, (c.get('user'))?.username || 'system').run()
+          `INSERT INTO price_change_history (target_type, target_id, field_name, old_value, new_value, changed_by, entity_id)
+           VALUES ('ITEM', ?, 'base_price', ?, ?, ?, ?)`
+        ).bind(parseInt(id), existing.base_price || 0, newPrice, (c.get('user'))?.username || 'system', getEntityId(c)).run()
       } catch (_) { /* 이력 실패해도 메인 로직 영향 없음 */ }
     }
 

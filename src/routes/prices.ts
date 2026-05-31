@@ -478,13 +478,14 @@ pricesRouter.get('/item-detail/:id', async (c) => {
     `).bind(itemId).all()
 
     // 최근 변경 이력
+    const efHistory = entityFilter(c)
     const { results: history } = await c.env.DB.prepare(`
       SELECT id, field_name, old_value, new_value, old_price, new_price, changed_by,
              changed_at
       FROM price_change_history
-      WHERE target_type = 'ITEM' AND target_id = ?
+      WHERE target_type = 'ITEM' AND target_id = ?${efHistory.clause}
       ORDER BY id DESC LIMIT 20
-    `).bind(itemId).all()
+    `).bind(itemId, ...efHistory.params).all()
 
     // 최근 매입 거래
     const { results: recentPurchases } = await c.env.DB.prepare(`
@@ -687,13 +688,14 @@ pricesRouter.get('/price-history', async (c) => {
     const { item_id, target_type, limit: limitStr } = c.req.query()
     const limit = parseInt(limitStr || '50')
 
+    const ef = entityFilter(c, 'pch')
     let sql = `
       SELECT pch.*, i.item_name, i.item_code
       FROM price_change_history pch
       LEFT JOIN items i ON pch.target_type = 'ITEM' AND pch.target_id = i.id
-      WHERE 1=1
+      WHERE 1=1${ef.clause}
     `
-    const binds: any[] = []
+    const binds: any[] = [...ef.params]
 
     if (item_id) { sql += ' AND pch.target_id = ? AND pch.target_type = ?'; binds.push(parseInt(item_id), 'ITEM') }
     else if (target_type) { sql += ' AND pch.target_type = ?'; binds.push(target_type) }

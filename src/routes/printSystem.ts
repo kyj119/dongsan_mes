@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
+import { getEntityId, entityFilter } from '../utils/entityFilter'
 
 // ============================================================================
 // Row types for D1 generic queries
@@ -195,8 +196,8 @@ printSystemRouter.patch('/methods/:id', requireRole('ADMIN', 'MANAGER'), async (
       if (oldMethod) {
         const userId = c.get('user')?.id || null
         await c.env.DB.prepare(
-          "INSERT INTO price_change_history (target_type, target_id, target_name, old_price, new_price, changed_by) VALUES ('METHOD', ?, ?, ?, ?, ?)"
-        ).bind(id, oldMethod.name, oldMethod.price_per_sqm, price_per_sqm, userId).run()
+          "INSERT INTO price_change_history (target_type, target_id, target_name, old_price, new_price, changed_by, entity_id) VALUES ('METHOD', ?, ?, ?, ?, ?, ?)"
+        ).bind(id, oldMethod.name, oldMethod.price_per_sqm, price_per_sqm, userId, getEntityId(c)).run()
       }
     }
 
@@ -727,8 +728,8 @@ printSystemRouter.put('/media/:id', requireRole('ADMIN', 'MANAGER'), async (c) =
       if (oldMedia) {
         const userId = c.get('user')?.id || null
         await c.env.DB.prepare(
-          "INSERT INTO price_change_history (target_type, target_id, target_name, old_price, new_price, changed_by) VALUES ('MEDIA', ?, ?, ?, ?, ?)"
-        ).bind(id, oldMedia.name, oldMedia.price_per_unit, price_per_unit, userId).run()
+          "INSERT INTO price_change_history (target_type, target_id, target_name, old_price, new_price, changed_by, entity_id) VALUES ('MEDIA', ?, ?, ?, ?, ?, ?)"
+        ).bind(id, oldMedia.name, oldMedia.price_per_unit, price_per_unit, userId, getEntityId(c)).run()
       }
     }
 
@@ -901,8 +902,8 @@ printSystemRouter.patch('/media/group/:groupName/price', requireRole('ADMIN', 'M
       if (newPrice < 0) newPrice = 0
 
       historyStmts.push(c.env.DB.prepare(
-        "INSERT INTO price_change_history (target_type, target_id, target_name, old_price, new_price, changed_by) VALUES ('MEDIA', ?, ?, ?, ?, ?)"
-      ).bind(media.id, media.name, oldPrice, newPrice, userId))
+        "INSERT INTO price_change_history (target_type, target_id, target_name, old_price, new_price, changed_by, entity_id) VALUES ('MEDIA', ?, ?, ?, ?, ?, ?)"
+      ).bind(media.id, media.name, oldPrice, newPrice, userId, getEntityId(c)))
 
       mediaUpdateStmts.push(c.env.DB.prepare(
         "UPDATE print_media SET price_per_unit = ?, updated_at = datetime('now') WHERE id = ?"
@@ -974,8 +975,8 @@ printSystemRouter.patch('/media/group/:groupName/bulk', requireRole('ADMIN', 'MA
           const old = await c.env.DB.prepare('SELECT price_per_unit, name FROM print_media WHERE id = ?').bind(u.id).first<PriceUnitNameRow>()
           if (old && old.price_per_unit !== u.price_per_unit) {
             await c.env.DB.prepare(
-              "INSERT INTO price_change_history (target_type, target_id, target_name, old_price, new_price, changed_by) VALUES ('MEDIA', ?, ?, ?, ?, ?)"
-            ).bind(u.id, old.name, old.price_per_unit, u.price_per_unit, userId).run()
+              "INSERT INTO price_change_history (target_type, target_id, target_name, old_price, new_price, changed_by, entity_id) VALUES ('MEDIA', ?, ?, ?, ?, ?, ?)"
+            ).bind(u.id, old.name, old.price_per_unit, u.price_per_unit, userId, getEntityId(c)).run()
           }
         }
 
@@ -1108,13 +1109,14 @@ printSystemRouter.get('/price-history', async (c) => {
     const { target_type, target_id, limit: limitStr } = c.req.query()
     const limit = parseInt(limitStr || '20') || 20
 
+    const ef = entityFilter(c, 'pch')
     let query = `
       SELECT pch.*, u.name as changed_by_name
       FROM price_change_history pch
       LEFT JOIN users u ON pch.changed_by = u.id
-      WHERE 1=1
+      WHERE 1=1${ef.clause}
     `
-    const params: any[] = []
+    const params: any[] = [...ef.params]
 
     if (target_type) {
       query += ' AND pch.target_type = ?'

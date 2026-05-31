@@ -1557,9 +1557,9 @@ poCoreRouter.post('/:id/receive', async (c) => {
         ).bind(p.unitPrice, p.itemId).run()
 
         await c.env.DB.prepare(
-          `INSERT INTO price_change_history (target_type, target_id, field_name, old_value, new_value, changed_by)
-           VALUES ('ITEM', ?, 'base_price', ?, ?, ?)`
-        ).bind(p.itemId, oldItem.base_price, p.unitPrice, user?.username || 'system').run()
+          `INSERT INTO price_change_history (target_type, target_id, field_name, old_value, new_value, changed_by, entity_id)
+           VALUES ('ITEM', ?, 'base_price', ?, ?, ?, ?)`
+        ).bind(p.itemId, oldItem.base_price, p.unitPrice, user?.username || 'system', getEntityId(c)).run()
 
         priceUpdates.push({ itemId: p.itemId, name: oldItem.item_name, old: oldItem.base_price, new_: p.unitPrice })
 
@@ -1583,9 +1583,9 @@ poCoreRouter.post('/:id/receive', async (c) => {
               )
               updateStmts.push(
                 c.env.DB.prepare(
-                  `INSERT INTO price_change_history (target_type, target_id, field_name, old_value, new_value, changed_by)
-                   VALUES ('ITEM', ?, 'base_price', ?, ?, ?)`
-                ).bind(gi.id, gi.base_price, p.unitPrice, user?.username || 'system')
+                  `INSERT INTO price_change_history (target_type, target_id, field_name, old_value, new_value, changed_by, entity_id)
+                   VALUES ('ITEM', ?, 'base_price', ?, ?, ?, ?)`
+                ).bind(gi.id, gi.base_price, p.unitPrice, user?.username || 'system', getEntityId(c))
               )
               priceUpdates.push({ itemId: gi.id, name: gi.item_name, old: gi.base_price, new_: p.unitPrice })
             }

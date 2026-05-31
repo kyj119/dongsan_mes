@@ -17,17 +17,19 @@ cashReceiptsRouter.use('/*', authMiddleware, requireRole('ADMIN', 'MANAGER'))
 // ────────────────────────────────────────────────────────────────────────────
 // 공통 헬퍼: 관리번호 채번 (CR-YYYY-NNNN)
 // ────────────────────────────────────────────────────────────────────────────
-async function generateReceiptNumber(db: D1Database): Promise<string> {
+async function generateReceiptNumber(db: D1Database, entityId: number): Promise<string> {
   const year = new Date().getFullYear()
+  // #290: 법인별 독립 채번 — entity 프리픽스로 글로벌 UNIQUE와 충돌 없이 분리
+  const prefix = `CR-E${entityId}-${year}-`
   const lastRow = await db.prepare(
     `SELECT receipt_number FROM cash_receipts WHERE receipt_number LIKE ? ORDER BY receipt_number DESC LIMIT 1`
-  ).bind(`CR-${year}-%`).first<{ receipt_number: string }>()
+  ).bind(`${prefix}%`).first<{ receipt_number: string }>()
   let nextSeq = 1
   if (lastRow?.receipt_number) {
     const parts = lastRow.receipt_number.split('-')
     nextSeq = Number(parts[parts.length - 1]) + 1
   }
-  return `CR-${year}-${String(nextSeq).padStart(4, '0')}`
+  return `${prefix}${String(nextSeq).padStart(4, '0')}`
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -214,7 +216,7 @@ cashReceiptsRouter.post('/', requireRole('ADMIN', 'MANAGER'), async (c) => {
       return c.json({ success: false, error: 'identity_number는 필수입니다.' }, 400)
     }
 
-    const receiptNumber = await generateReceiptNumber(c.env.DB)
+    const receiptNumber = await generateReceiptNumber(c.env.DB, getEntityId(c) || 1)
     const receiptType = body.receipt_type || 'EXPENSE'
     const tradeType = body.trade_type || 'CONSUMER'
     const serviceAmount = body.service_amount || 0
