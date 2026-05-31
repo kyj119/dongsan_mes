@@ -23,6 +23,10 @@ PowerShell 빌드/검증 명령 + 다음 세션 TODO + `memory/session-context.m
 
 ### 대화 스타일 & 환경
 - 한국어 대화, 코드/명령어 영어. 존댓말 + 간결. 반복 금지.
+- **응답 간결화 (필수)**: 결론·핵심 먼저. 불필요한 서론/맥락 재진술/장황한 설명 제거. 묻지 않은 부가 설명 금지(필요 시 1줄 제안).
+  - 표·불릿 우선, 산문 최소화. 정상·통과·문제없는 부분은 "이상 없음" 한 줄로 압축, 나열 금지.
+  - 리뷰/검증/감사 결과: 조치 필요한 항목만 심각도·우선순위순으로. 근거는 `file:line` + 1줄.
+  - 도구 실행 전 의도 설명은 1줄 이내. 완료 보고는 "무엇을·결과" 위주, 과정 생략.
 - OS: Windows, PowerShell | IDE: VS Code + Claude Code | 경로: `C:\Users\user\dongsan_mes`
 - 세션 시작 시 `.claude/PROJECT_STATUS.md` 읽기 (MEMORY.md는 auto-memory 자동 로드)
 - 작업 시작/완료/차단 시 PROJECT_STATUS.md 업데이트
