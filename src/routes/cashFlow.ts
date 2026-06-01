@@ -84,7 +84,10 @@ cashFlowRouter.put('/fixed-expenses/:id', requireRole('ADMIN'), async (c) => {
     const fields: string[] = []
     const params: any[] = []
 
+    // #314: 컬럼 allowlist — 클라이언트 키를 컬럼명으로 직접 사용하던 SQL injection 차단
+    const ALLOWED_FIELDS = ['name', 'category', 'amount', 'frequency', 'payment_day', 'start_date', 'end_date', 'counterpart_name', 'notes', 'is_active']
     for (const [key, value] of Object.entries(body)) {
+      if (!ALLOWED_FIELDS.includes(key)) continue
       if (value !== undefined) {
         fields.push(`${key} = ?`)
         params.push(value)
