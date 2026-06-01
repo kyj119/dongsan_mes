@@ -42,12 +42,12 @@ aiInsights.get('/credit-risk/:clientId', async (c) => {
     SELECT
       COUNT(*) as total_orders,
       COALESCE(SUM(final_amount), 0) as total_revenue,
-      COALESCE(SUM(final_amount) - SUM(COALESCE(paid_amount, 0)), 0) as outstanding,
+      COALESCE(SUM(final_amount), 0) - COALESCE((SELECT SUM(amount) FROM payments WHERE client_id = ?), 0) as outstanding,
       MIN(order_date) as first_order,
       MAX(order_date) as last_order
     FROM orders
     WHERE client_id = ? AND status NOT IN ('CANCELLED', 'DELETED', 'QUOTATION')
-  `).bind(clientId).first<any>()
+  `).bind(clientId, clientId).first<any>()
 
   // 평균 수금일 (입금까지 걸린 일수)
   const avgDays = await c.env.DB.prepare(`
@@ -64,7 +64,6 @@ aiInsights.get('/credit-risk/:clientId', async (c) => {
     WHERE client_id = ? AND status NOT IN ('CANCELLED','DELETED','QUOTATION')
       AND billing_status = 'BILLED'
       AND julianday('now') - julianday(billed_at) > 30
-      AND (paid_amount IS NULL OR paid_amount < final_amount)
   `).bind(clientId).first<{ cnt: number }>()
 
   // 거래 기간 (월)
@@ -128,10 +127,9 @@ aiInsights.post('/credit-risk/calculate-all', requireRole('ADMIN', 'MANAGER'), a
     SELECT o.client_id,
       COUNT(*) as total_orders,
       COALESCE(SUM(o.final_amount), 0) as total_revenue,
-      COALESCE(SUM(o.final_amount) - SUM(COALESCE(o.paid_amount, 0)), 0) as outstanding,
+      COALESCE(SUM(o.final_amount), 0) - COALESCE((SELECT SUM(amount) FROM payments WHERE client_id = o.client_id), 0) as outstanding,
       SUM(CASE WHEN o.billing_status = 'BILLED'
            AND julianday('now') - julianday(o.billed_at) > 30
-           AND (o.paid_amount IS NULL OR o.paid_amount < o.final_amount)
            THEN 1 ELSE 0 END) as overdue_count
     FROM orders o
     JOIN clients c ON o.client_id = c.id AND c.is_active = 1

@@ -102,7 +102,7 @@ insuranceReportsRouter.post('/generate', async (c) => {
               COALESCE(p.employer_long_term_care, p.long_term_care_insurance) as employer_ltc,
               COALESCE(p.employer_employment_insurance, 0) as employer_ei,
               COALESCE(p.employer_industrial_accident, 0) as employer_ia,
-              e.name, e.rrn, e.employee_code
+              e.name, e.resident_number as rrn, e.employee_code
        FROM payroll p
        JOIN employees e ON p.employee_id = e.id AND e.is_deleted = 0
        WHERE p.pay_period = ?

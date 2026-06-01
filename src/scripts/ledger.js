@@ -1116,6 +1116,7 @@ async function loadPurchaseClientLedger(clientId) {
             }
 
             var pBody = document.getElementById('pPaymentsBody');
+            if (!pBody) { console.warn('[ledger] #pPaymentsBody not found'); return; }
             pBody.innerHTML = '';
             var payments = d.payments || [];
             if (payments.length === 0) {

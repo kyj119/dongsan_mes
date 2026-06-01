@@ -317,7 +317,7 @@ portal.get('/orders', async (c) => {
 
     let query = `
       SELECT
-        o.id, o.order_number, o.order_date, o.due_date, o.status, o.total_amount, o.delivery_method,
+        o.id, o.order_number, o.order_date, o.delivery_date as due_date, o.status, o.total_amount, o.delivery_method,
         (SELECT COUNT(*) FROM cards WHERE order_id = o.id) as total_cards,
         (SELECT COUNT(*) FROM cards WHERE order_id = o.id AND status IN ('PRINT_DONE', 'SHIPPED')) as done_cards,
         (SELECT tracking_number FROM shipments WHERE order_id = o.id ORDER BY id DESC LIMIT 1) as tracking_number,
@@ -413,18 +413,23 @@ portal.get('/balance', async (c) => {
   try {
     const user = c.get('portalUser')
 
+    // #317: 'ledger' 테이블 미존재 → orders(BILLED)+payments로 재작성. 회계반영(BILLED)된 미결제 주문을 미수 항목으로 표시.
     const { results } = await c.env.DB.prepare(`
-      SELECT l.id, l.order_id, l.total_amount, l.paid_amount, l.balance, l.billing_date,
-             o.order_number
-      FROM ledger l
-      LEFT JOIN orders o ON l.order_id = o.id
-      WHERE l.client_id = ? AND l.balance > 0
-      ORDER BY l.billing_date DESC
+      SELECT o.id as order_id, o.order_number,
+             COALESCE(o.billed_amount, o.final_amount, 0) as total_amount,
+             0 as paid_amount,
+             COALESCE(o.billed_amount, o.final_amount, 0) as balance,
+             o.billed_at as billing_date
+      FROM orders o
+      WHERE o.client_id = ? AND o.billing_status = 'BILLED'
+      ORDER BY o.billed_at DESC
     `).bind(user.portal_client_id).all()
 
+    // 총 미수 = 전체 청구(BILLED) − 전체 입금 (거래처 실 미수, 입금은 주문단위 배분 불가하므로 합계로 차감)
     const total = await c.env.DB.prepare(
-      `SELECT SUM(balance) as total FROM ledger WHERE client_id = ? AND balance > 0`
-    ).bind(user.portal_client_id).first<SumRow>()
+      `SELECT COALESCE((SELECT SUM(CASE WHEN billing_status='BILLED' THEN COALESCE(billed_amount, final_amount, 0) ELSE 0 END) FROM orders WHERE client_id = ?), 0)
+            - COALESCE((SELECT SUM(amount) FROM payments WHERE client_id = ?), 0) as total`
+    ).bind(user.portal_client_id, user.portal_client_id).first<SumRow>()
 
     return c.json({ success: true, data: { items: results, totalBalance: total?.total || 0 } })
   } catch (e) {

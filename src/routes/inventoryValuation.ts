@@ -140,7 +140,7 @@ inventoryValuation.get('/price-alerts', requireRole('ADMIN', 'MANAGER'), async (
 
   // 법인별 가중평균 입고 단가 계산
   const { results: entityAvgs } = await c.env.DB.prepare(`
-    SELECT it.item_id, i.item_code, i.item_name, it.entity_id, e.entity_name,
+    SELECT it.item_id, i.item_code, i.item_name, it.entity_id, e.name as entity_name,
       ROUND(SUM(it.total_amount) / NULLIF(SUM(it.quantity), 0), 2) as avg_price,
       SUM(it.quantity) as total_qty
     FROM inventory_transactions it

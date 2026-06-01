@@ -490,7 +490,7 @@ kakaoRouter.post('/send-tax-invoice', async (c) => {
     const taxInvoice = await db.prepare(
       `SELECT ti.*, c.client_name, c.mobile
        FROM tax_invoices ti
-       LEFT JOIN clients c ON ti.client_id = c.id
+       LEFT JOIN clients c ON ti.buyer_client_id = c.id
        WHERE ti.id = ?${tief.clause}`
     ).bind(taxInvoiceId, ...tief.params).first<TaxInvoiceJoinRow>()
 

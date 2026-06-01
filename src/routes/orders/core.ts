@@ -1186,9 +1186,9 @@ ordersCoreRouter.post('/', async (c) => {
       } else if (creditClient?.credit_limit && creditClient.credit_limit > 0) {
         const balRow = await c.env.DB.prepare(`
           SELECT COALESCE(SUM(CASE WHEN final_amount > 0 THEN final_amount ELSE 0 END), 0)
-                 - COALESCE(SUM(CASE WHEN paid_amount > 0 THEN paid_amount ELSE 0 END), 0) as balance
+                 - COALESCE((SELECT SUM(amount) FROM payments WHERE client_id = ?), 0) as balance
           FROM orders WHERE client_id = ? AND status NOT IN ('CANCELLED','DELETED','QUOTATION')
-        `).bind(orderData.client_id).first<{ balance: number }>()
+        `).bind(orderData.client_id, orderData.client_id).first<{ balance: number }>()
         const balance = balRow?.balance || 0
         if (balance >= creditClient.credit_limit) {
           creditBlocked = true
@@ -1206,9 +1206,9 @@ ordersCoreRouter.post('/', async (c) => {
 
         const balRow2 = await c.env.DB.prepare(`
           SELECT COALESCE(SUM(CASE WHEN final_amount > 0 THEN final_amount ELSE 0 END), 0)
-                 - COALESCE(SUM(CASE WHEN paid_amount > 0 THEN paid_amount ELSE 0 END), 0) as balance
+                 - COALESCE((SELECT SUM(amount) FROM payments WHERE client_id = ?), 0) as balance
           FROM orders WHERE client_id = ? AND status NOT IN ('CANCELLED','DELETED','QUOTATION')
-        `).bind(orderData.client_id).first<{ balance: number }>()
+        `).bind(orderData.client_id, orderData.client_id).first<{ balance: number }>()
 
         const creditInfo = await c.env.DB.prepare(
           `SELECT credit_limit FROM clients WHERE id = ?`

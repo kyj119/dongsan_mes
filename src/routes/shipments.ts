@@ -372,7 +372,7 @@ shipmentsRouter.get('/:id', async (c) => {
     if (!shipment) return c.json({ success: false, error: '출고 정보를 찾을 수 없습니다.' }, 404)
 
     const { results: items } = await c.env.DB.prepare(`
-      SELECT si.*, c.card_number, c.category,
+      SELECT si.*, c.card_number, c.category_name as category,
              oi.item_name, oi.quantity as order_qty, oi.width, oi.height
       FROM shipment_items si
       LEFT JOIN cards c ON si.card_id = c.id
@@ -784,8 +784,9 @@ shipmentsRouter.patch('/:id/status', requireRole('ADMIN', 'MANAGER'), async (c) 
             `SELECT COUNT(*) as cnt FROM shipments WHERE order_id = ? AND id != ? AND status NOT IN ('DELIVERED', 'CANCELLED')`
           ).bind(orderRow.order_id, id).first<{ cnt: number }>()
           if (!otherNonDelivered || otherNonDelivered.cnt === 0) {
+            // #300: orders.status CHECK에 COMPLETED 없음 → 배달완료 시 출고완료일만 스탬프(주문은 SHIPPED 유지). 옵션b
             stmts.push(c.env.DB.prepare(
-              `UPDATE orders SET status = 'COMPLETED', updated_at = CURRENT_TIMESTAMP WHERE id = ? AND status NOT IN ('COMPLETED', 'CANCELLED')`
+              `UPDATE orders SET auto_complete_date = COALESCE(auto_complete_date, date('now')), updated_at = CURRENT_TIMESTAMP WHERE id = ? AND status NOT IN ('CANCELLED')`
             ).bind(orderRow.order_id))
           }
         } else if (status === 'IN_TRANSIT') {

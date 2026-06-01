@@ -358,7 +358,7 @@ productionReportsRouter.get('/consumption', async (c) => {
     // 품목별 출고(소비) 집계
     const { results: consumption } = await c.env.DB.prepare(`
       SELECT
-        ii.id as item_id,
+        ii.item_id as item_id,
         i.item_name,
         i.category,
         i.unit,
@@ -366,12 +366,12 @@ productionReportsRouter.get('/consumption', async (c) => {
         COALESCE(SUM(CASE WHEN it.transaction_type = 'IN' THEN it.quantity ELSE 0 END), 0) as total_received,
         ii.quantity as current_stock,
         COALESCE(ii.safe_stock, 0) as safety_stock
-      FROM inventory_items ii
+      FROM inventory ii
       JOIN items i ON ii.item_id = i.id
-      LEFT JOIN inventory_transactions it ON it.item_id = ii.id
+      LEFT JOIN inventory_transactions it ON it.item_id = ii.item_id
         AND date(it.transaction_date) >= ? AND date(it.transaction_date) <= ?
       WHERE i.is_active = 1
-      GROUP BY ii.id
+      GROUP BY ii.item_id
       HAVING total_consumed > 0 OR total_received > 0
       ORDER BY total_consumed DESC
       LIMIT 30

@@ -185,13 +185,14 @@ clientsRouter.get('/:id/credit-check', async (c) => {
 
     // 미수금 합계 조회
     const ef = entityFilter(c, 'o')
+    const efp = entityFilter(c, 'p')
     const ar = await c.env.DB.prepare(`
       SELECT COALESCE(SUM(CASE WHEN o.final_amount > 0 THEN o.final_amount ELSE 0 END), 0)
-           - COALESCE(SUM(CASE WHEN o.paid_amount > 0 THEN o.paid_amount ELSE 0 END), 0) as balance
+           - COALESCE((SELECT SUM(p.amount) FROM payments p WHERE p.client_id = ?${efp.clause}), 0) as balance
       FROM orders o
       WHERE o.client_id = ? AND o.status NOT IN ('CANCELLED','DELETED','QUOTATION')
         ${ef.clause}
-    `).bind(id, ...ef.params).first<{ balance: number }>()
+    `).bind(id, ...efp.params, id, ...ef.params).first<{ balance: number }>()
     const balance = ar?.balance || 0
 
     if (balance >= client.credit_limit) {
