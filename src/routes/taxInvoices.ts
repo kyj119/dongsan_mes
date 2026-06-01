@@ -6,6 +6,7 @@ import { authMiddleware, requireRole } from '../middleware/auth'
 import { sendEmail } from '../services/emailProvider'
 import { renderTemplate } from '../services/emailTemplates'
 import { getEntityId, entityFilter } from '../utils/entityFilter'
+import { getNextSeqNumber } from '../utils/sequenceGenerator'
 
 /** 바로빌 TaxProvider 반환 */
 async function getTaxProvider(db: D1Database, env: any, corpNum: string): Promise<TaxProvider | null> {
@@ -839,6 +840,270 @@ taxInvoicesRouter.get('/:id', async (c) => {
   }
 })
 
+// ============================================================================
+// POST /direct — 직접 발행 (주문 없이 세금계산서 발행) — issue #310 방안 A
+// ----------------------------------------------------------------------------
+// 주문 없이 세금계산서를 발행하면, 매출채권(AR)이 정상 경로(주문 BILLED)로
+// 흐르도록 최소 백업 주문을 order_type='DIRECT_INVOICE', billing_status='BILLED'
+// 로 자동 생성하고 clients.balance를 증액한다. (단일 진실 공급원 = orders/AR)
+// 취소 시 POST /:id/cancel 에서 이 백업 주문을 CANCELLED + balance 롤백한다.
+// ============================================================================
+taxInvoicesRouter.post('/direct', requireRole('ADMIN', 'MANAGER'), async (c) => {
+  try {
+    const body = await c.req.json<{
+      client_id?: number
+      buyer_client_id?: number
+      buyer_email?: string
+      invoice_type?: string
+      issue_date?: string
+      notes?: string
+      supply_amount?: number
+      vat_amount?: number
+      total_amount?: number
+      items?: Array<{
+        item_date?: string
+        item_name: string
+        specification?: string
+        quantity?: number
+        unit_price?: number
+        amount?: number        // 공급가액
+        supply_amount?: number // amount 별칭 (둘 중 하나)
+        tax_amount?: number
+        vat_included?: boolean
+        notes?: string
+        sort_order?: number
+      }>
+      auto_issue?: boolean
+    }>()
+
+    const buyerClientId = body.buyer_client_id || body.client_id
+    if (!buyerClientId) {
+      return c.json({ success: false, error: 'client_id(거래처)는 필수입니다.' }, 400)
+    }
+
+    const settings = await getCompanySettings(c.env.DB, getEntityId(c))
+    if (!settings.company_business_registration_number) {
+      return c.json({ success: false, error: '회사 사업자등록번호가 설정되어 있지 않습니다.' }, 400)
+    }
+
+    // 거래처(buyer) 조회
+    const client = await c.env.DB.prepare(
+      'SELECT id, client_name, business_registration_number, representative, address, business_type, business_item, email FROM clients WHERE id = ?'
+    ).bind(buyerClientId).first<ClientRow>()
+    if (!client) {
+      return c.json({ success: false, error: '거래처를 찾을 수 없습니다.' }, 404)
+    }
+    if (!client.business_registration_number) {
+      return c.json({ success: false, error: '거래처에 사업자등록번호가 등록되어 있지 않습니다.' }, 400)
+    }
+
+    const issueDate = body.issue_date || new Date().toISOString().slice(0, 10)
+    const user = c.get('user')
+    const entityId = getEntityId(c) || 1
+    const vatRate = 0.1
+
+    // ── 금액 산정: items 우선, 없으면 헤더 금액 사용 ──
+    const items = Array.isArray(body.items) ? body.items : []
+    const normItems = items.map((it, i) => {
+      const supply = it.supply_amount != null
+        ? parseFloat(String(it.supply_amount))
+        : (it.amount != null
+            ? parseFloat(String(it.amount))
+            : (parseFloat(String(it.unit_price ?? 0)) || 0) * (parseFloat(String(it.quantity ?? 1)) || 0))
+      const supplyAmt = Math.round(supply) || 0
+      const taxAmt = it.tax_amount != null
+        ? Math.round(parseFloat(String(it.tax_amount))) || 0
+        : (it.vat_included === false ? 0 : Math.round(supplyAmt * vatRate))
+      return {
+        item_date: it.item_date || issueDate,
+        item_name: it.item_name || '품목',
+        specification: it.specification || null,
+        quantity: parseFloat(String(it.quantity ?? 1)) || 1,
+        unit_price: parseFloat(String(it.unit_price ?? 0)) || 0,
+        supply_amount: supplyAmt,
+        tax_amount: taxAmt,
+        vat_included: it.vat_included === false ? 0 : 1,
+        notes: it.notes || null,
+        sort_order: it.sort_order ?? i,
+      }
+    })
+
+    let supplyAmount: number
+    let taxAmount: number
+    if (normItems.length > 0) {
+      supplyAmount = normItems.reduce((s, it) => s + it.supply_amount, 0)
+      taxAmount = normItems.reduce((s, it) => s + it.tax_amount, 0)
+    } else {
+      supplyAmount = Math.round(parseFloat(String(body.supply_amount ?? 0))) || 0
+      taxAmount = body.vat_amount != null
+        ? Math.round(parseFloat(String(body.vat_amount))) || 0
+        : Math.round(supplyAmount * vatRate)
+    }
+    let totalAmount = body.total_amount != null
+      ? Math.round(parseFloat(String(body.total_amount))) || 0
+      : supplyAmount + taxAmount
+    // total이 합계와 어긋나면 합계로 보정 (정합성 우선)
+    if (totalAmount !== supplyAmount + taxAmount) totalAmount = supplyAmount + taxAmount
+
+    if (totalAmount <= 0) {
+      return c.json({ success: false, error: '발행 금액이 0원입니다. 품목 또는 금액을 입력해주세요.' }, 400)
+    }
+
+    // ── 1) 백업 주문 INSERT (billing_status=BILLED, order_type=DIRECT_INVOICE) ──
+    const today = new Date()
+    const dateStr = today.toISOString().split('T')[0].replace(/-/g, '')
+    const orderNumber = await getNextSeqNumber(c.env.DB, 'orders', 'order_number', `DI-${dateStr}-`, 3, entityId)
+
+    // status='SHIPPED': 직접발행은 생산 파이프라인을 거치지 않고 이미 납품/정산된
+    // 거래를 청구하는 것이므로 종결 상태가 적절. (CONFIRMED는 생산 대기로 보드/리스트
+    // 에 노출됨) eligible-orders는 tax_invoice_orders 링크로 이미 제외됨.
+    const orderResult = await c.env.DB.prepare(`
+      INSERT INTO orders (
+        order_number, client_id, status, order_type,
+        order_year, order_month, order_date,
+        total_amount, vat_amount, final_amount,
+        billing_status, billed_at, billed_by, billed_amount,
+        notes, created_by, entity_id,
+        created_at, updated_at
+      ) VALUES (
+        ?, ?, 'SHIPPED', 'DIRECT_INVOICE',
+        ?, ?, ?,
+        ?, ?, ?,
+        'BILLED', CURRENT_TIMESTAMP, ?, ?,
+        ?, ?, ?,
+        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+      )
+    `).bind(
+      orderNumber, buyerClientId,
+      today.getFullYear(), today.getMonth() + 1, issueDate,
+      supplyAmount, taxAmount, totalAmount,
+      user?.id || null, totalAmount,
+      body.notes || '직접발행 세금계산서', user?.id || 1, entityId
+    ).run()
+
+    const orderId = orderResult.meta.last_row_id as number
+    const invoiceNumber = await generateInvoiceNumber(c.env.DB, entityId)
+    const invoiceType = body.invoice_type || 'NORMAL'
+
+    // ── 2) 원자적 batch: balance 증액 + tax_invoice INSERT (AR 핵심 불변식) ──
+    // 잔액 증액(b)과 세금계산서/백업주문(BILLED) 연결을 한 트랜잭션으로 묶어
+    // 부분 실패 시 전체 롤백. (백업 주문 INSERT는 위에서 BILLED로 이미 생성됨 —
+    // 이 batch가 실패하면 아래 catch에서 보상 처리로 주문/잔액을 정리)
+    let taxInvoiceId: number
+    try {
+      const batchRes = await c.env.DB.batch([
+        // (b) 매출채권 잔액 증액 (정상 BILLED 경로 미러 — orders/core.ts:531)
+        c.env.DB.prepare(
+          'UPDATE clients SET balance = balance + ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
+        ).bind(totalAmount, buyerClientId),
+        // (c) 세금계산서 INSERT (백업 주문에 연결)
+        c.env.DB.prepare(`
+          INSERT INTO tax_invoices (
+            invoice_number, order_id, invoice_type,
+            supplier_brn, supplier_name, supplier_representative,
+            supplier_address, supplier_business_type, supplier_business_item,
+            buyer_client_id, buyer_brn, buyer_name, buyer_representative,
+            buyer_address, buyer_business_type, buyer_business_item, buyer_email,
+            supply_amount, tax_amount, total_amount,
+            status, issue_date, notes,
+            entity_id,
+            created_at, updated_at
+          ) VALUES (
+            ?, ?, ?,
+            ?, ?, ?,
+            ?, ?, ?,
+            ?, ?, ?, ?,
+            ?, ?, ?, ?,
+            ?, ?, ?,
+            'DRAFT', ?, ?,
+            ?,
+            CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+          )
+        `).bind(
+          invoiceNumber, orderId, invoiceType,
+          settings.company_business_registration_number,
+          settings.company_name || '',
+          settings.company_representative || null,
+          settings.company_address || null,
+          settings.company_business_type || null,
+          settings.company_business_item || null,
+          buyerClientId,
+          client.business_registration_number,
+          client.client_name,
+          client.representative || null,
+          client.address || null,
+          client.business_type || null,
+          client.business_item || null,
+          body.buyer_email || client.email || null,
+          supplyAmount, taxAmount, totalAmount,
+          issueDate,
+          body.notes || null,
+          entityId
+        ),
+      ])
+      taxInvoiceId = batchRes[1].meta.last_row_id as number
+    } catch (batchErr) {
+      // 보상: 위에서 생성한 백업 주문 제거 (잔액은 이 batch가 atomic이라 미반영)
+      await c.env.DB.prepare('DELETE FROM orders WHERE id = ?').bind(orderId).run().catch(() => {})
+      throw batchErr
+    }
+
+    // ── 3) junction + order_items + tax_invoice_items (원자적 batch) ──
+    // 기존 create 핸들러와 동일 패턴: 헤더(주문/계산서) 확정 후 자식 행 일괄 INSERT
+    const childStmts: any[] = [
+      c.env.DB.prepare(
+        'INSERT OR IGNORE INTO tax_invoice_orders (tax_invoice_id, order_id) VALUES (?, ?)'
+      ).bind(taxInvoiceId, orderId)
+    ]
+    for (const it of normItems) {
+      // (d-1) order_items — 원장/AR 상세에 라인 품목 표시
+      childStmts.push(
+        c.env.DB.prepare(`
+          INSERT INTO order_items (
+            order_id, item_name, quantity, unit, unit_price, amount, vat_included, sort_order, created_at, updated_at
+          ) VALUES (?, ?, ?, 'EA', ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        `).bind(orderId, it.item_name, it.quantity, it.unit_price, it.supply_amount, it.vat_included, it.sort_order)
+      )
+      // (d-2) tax_invoice_items — 계산서 상세
+      childStmts.push(
+        c.env.DB.prepare(`
+          INSERT INTO tax_invoice_items (
+            tax_invoice_id, item_date, item_name, specification,
+            quantity, unit_price, supply_amount, tax_amount, notes, sort_order
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).bind(
+          taxInvoiceId, it.item_date, it.item_name, it.specification,
+          it.quantity, it.unit_price, it.supply_amount, it.tax_amount, it.notes, it.sort_order
+        )
+      )
+    }
+    await c.env.DB.batch(childStmts)
+
+    // auto_issue 처리 (옵션)
+    if (body.auto_issue) {
+      const issueRes = await issueTaxInvoice(c.env.DB, taxInvoiceId, user.id, c.env, entityId)
+      if (!issueRes.success) {
+        return c.json({ success: false, error: issueRes.error, data: { invoice_id: taxInvoiceId, invoice_number: invoiceNumber, order_id: orderId, order_number: orderNumber, ...(issueRes.data || {}) } }, 400)
+      }
+      return c.json({ success: true, data: { ...issueRes.data, order_id: orderId, order_number: orderNumber, direct_issue: true, auto_issued: true } }, 201)
+    }
+
+    const detail = await c.env.DB.prepare(`
+      SELECT ti.*, o.order_number FROM tax_invoices ti
+      LEFT JOIN orders o ON ti.order_id = o.id
+      WHERE ti.id = ?
+    `).bind(taxInvoiceId).first()
+    const { results: createdItems } = await c.env.DB.prepare(
+      'SELECT id, tax_invoice_id, item_date, item_name, specification, quantity, unit_price, supply_amount, tax_amount, notes, sort_order FROM tax_invoice_items WHERE tax_invoice_id = ? ORDER BY sort_order'
+    ).bind(taxInvoiceId).all()
+
+    return c.json({ success: true, data: { ...detail, items: createdItems, order_id: orderId, order_number: orderNumber, direct_issue: true } }, 201)
+  } catch (error) {
+    console.error('src/routes/taxInvoices.ts [direct] error:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
+  }
+})
+
 // POST / — Create draft from order (단건 또는 묶음 발행, auto_issue 옵션 지원)
 taxInvoicesRouter.post('/', requireRole('ADMIN', 'MANAGER'), async (c) => {
   try {
@@ -1528,9 +1793,35 @@ taxInvoicesRouter.post('/:id/cancel', requireRole('ADMIN'), async (c) => {
         ).bind(orderId, id).first<{ cnt: number }>()
 
         if (!otherValid || otherValid.cnt === 0) {
-          await c.env.DB.prepare(
-            `UPDATE orders SET billing_status = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?`
-          ).bind(orderId).run()
+          // 직접발행(#310 방안 A) 백업 주문이면: 발행 시 증액한 AR을 롤백하고
+          // 주문 자체를 CANCELLED 처리한다. (일반 주문은 기존 동작 유지 — billing_status만 초기화)
+          const ord = await c.env.DB.prepare(
+            `SELECT order_type, billing_status, billed_amount, final_amount, client_id FROM orders WHERE id = ?`
+          ).bind(orderId).first<{ order_type: string | null; billing_status: string | null; billed_amount: number | null; final_amount: number | null; client_id: number }>()
+
+          if (ord?.order_type === 'DIRECT_INVOICE') {
+            // BILLED 상태에서만 잔액 롤백 (이중 롤백 방지)
+            const reverseStmts: any[] = []
+            if (ord.billing_status === 'BILLED') {
+              const reverseAmount = ord.billed_amount || ord.final_amount || 0
+              reverseStmts.push(
+                c.env.DB.prepare(
+                  `UPDATE clients SET balance = balance - ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`
+                ).bind(reverseAmount, ord.client_id)
+              )
+            }
+            reverseStmts.push(
+              c.env.DB.prepare(
+                `UPDATE orders SET status = 'CANCELLED', billing_status = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?`
+              ).bind(orderId)
+            )
+            await c.env.DB.batch(reverseStmts)
+          } else {
+            // 일반 주문: 기존 동작 — billing_status만 초기화 (balance는 손대지 않음)
+            await c.env.DB.prepare(
+              `UPDATE orders SET billing_status = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?`
+            ).bind(orderId).run()
+          }
         }
       }
     } catch (_err) {
