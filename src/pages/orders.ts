@@ -157,23 +157,22 @@ export function ordersPage(c: Context<HonoEnv>) {
           <button onclick="clearBulkSelection()" class="ds-btn ds-btn-secondary ds-btn-sm">선택 해제</button>
         </div>
       </div>
-      <div id="bulkActionSpacer" class="ds-bulk-bar-spacer"></div>
-
       <!-- 주문 테이블 -->
       <div class="ds-card" style="padding:0;overflow:hidden;">
         <div class="ds-table-wrap" style="max-height: calc(100vh - 280px); overflow-y: auto;">
           <table class="ds-table ds-table-striped hover-actions">
             <thead>
               <tr>
-                <th style="text-align:center;width:40px"><input type="checkbox" id="selectAllOrders" onchange="toggleSelectAll(this)" class="rounded border-gray-300"></th>
-                <th style="width:130px">주문번호</th>
-                <th>거래처</th>
-                <th style="width:95px">납기일</th>
-                <th style="width:110px;text-align:right">금액</th>
-                <th style="width:85px">상태</th>
-                <th style="width:85px">회계반영</th>
-                <th style="width:95px">등록일</th>
-                <th style="width:70px">액션</th>
+                <th style="text-align:center;width:36px"><input type="checkbox" id="selectAllOrders" onchange="toggleSelectAll(this)" class="rounded border-gray-300"></th>
+                <th style="width:112px">주문번호</th>
+                <th style="width:120px">거래처</th>
+                <th>품목</th>
+                <th style="width:90px">납기일</th>
+                <th style="width:96px;text-align:right">금액</th>
+                <th style="width:84px">상태</th>
+                <th style="width:78px;text-align:center">회계반영</th>
+                <th style="width:80px">등록일</th>
+                <th style="width:116px;text-align:center">액션</th>
               </tr>
             </thead>
             <tbody id="ordersTable">
@@ -183,6 +182,7 @@ export function ordersPage(c: Context<HonoEnv>) {
         <!-- 페이지네이션 -->
         <div id="ordersPagination" class="px-6 py-3 flex items-center gap-2 flex-wrap" style="border-top:1px solid var(--c-border)"></div>
       </div>
+      <div id="bulkActionSpacer" class="ds-bulk-bar-spacer"></div>
 
       <!-- 상태변경 모달 -->
       <div id="statusChangeModal" class="ds-modal-overlay hidden">

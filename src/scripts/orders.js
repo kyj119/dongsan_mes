@@ -327,7 +327,7 @@ async function loadOrders() {
       const tbody = document.getElementById('ordersTable');
 
       if (orders.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="9" class="text-center py-12"><i class="fas fa-inbox text-3xl mb-3 block text-gray-300"></i><div class="text-sm text-gray-500 mb-1">주문이 없습니다.</div></td></tr>';
+        tbody.innerHTML = '<tr><td colspan="10" class="text-center py-12"><i class="fas fa-inbox text-3xl mb-3 block text-gray-300"></i><div class="text-sm text-gray-500 mb-1">주문이 없습니다.</div></td></tr>';
         renderPagination(pagination || null);
         return;
       }
@@ -348,46 +348,49 @@ async function loadOrders() {
         const billingBadge = order.billing_status
           ? `<span class="px-2 py-0.5 text-xs rounded-full ${billingColor}">${billingText}</span>`
           : `<span class="text-xs text-gray-400">-</span>`;
+        // 회계반영 대상(출고/배송완료 + 미반영)이면 클릭 버튼, 아니면 배지 (#4 — 대상만 노출해 "눌러도 실패" 방지)
+        const isBillable = (order.status === 'SHIPPED' || order.status === 'COMPLETED') && (!order.billing_status || order.billing_status === '');
+        const billingCell = isBillable
+          ? `<button onclick="event.stopPropagation(); setBillingStatusFromList(${order.id})" class="px-2 py-0.5 text-xs rounded bg-blue-600 text-white hover:bg-blue-700" title="회계반영"><i class="fas fa-check text-[9px] mr-0.5"></i>반영</button>`
+          : billingBadge;
+        const itemMore = order.item_count > 1 ? ` <span class="text-xs text-gray-400">외 ${order.item_count - 1}</span>` : '';
         return `
           <tr class="hover:bg-gray-50" data-order-id="${order.id}" data-status="${order.status}">
-            <td class="px-3 py-4 text-center">
+            <td class="px-2 py-2.5 text-center">
               <input type="checkbox" class="order-checkbox rounded border-gray-300" data-order-id="${order.id}" onchange="toggleOrderSelect(this)" ${selectedOrderIds.has(order.id) ? 'checked' : ''}>
             </td>
-            <td class="px-6 py-4 whitespace-nowrap">
+            <td class="px-2 py-2.5 whitespace-nowrap">
               <div class="text-sm font-medium text-gray-900">${escapeHtml(order.order_number)}${priorityBadge}</div>
             </td>
-            <td class="px-6 py-4 whitespace-nowrap">
-              <div class="text-sm text-gray-900">${escapeHtml(order.client_name || '-')}</div>
+            <td class="px-2 py-2.5">
+              <div class="text-sm text-gray-900 truncate" title="${escapeHtml(order.client_name || '')}">${escapeHtml(order.client_name || '-')}</div>
             </td>
-            <td class="px-6 py-4 whitespace-nowrap">
+            <td class="px-2 py-2.5">
+              <div class="text-sm text-gray-700 truncate" title="${escapeHtml(order.main_item_name || '')}">${escapeHtml(order.main_item_name || '-')}${itemMore}</div>
+            </td>
+            <td class="px-2 py-2.5 whitespace-nowrap">
               <div class="text-sm text-gray-900">${escapeHtml(order.delivery_date || '-')}${urgencyBadge}</div>
-              <div class="text-xs text-gray-400 mt-0.5">${escapeHtml(deliveryLabel)}</div>
+              <div class="text-xs text-gray-400">${escapeHtml(deliveryLabel)}</div>
             </td>
-            <td class="px-6 py-4 whitespace-nowrap text-right tabular-nums">
-              <div class="text-sm text-gray-900">${order.final_amount?.toLocaleString() || '0'}원${order.has_pending_prices ? '<span class="ml-1 px-1.5 py-0.5 text-[10px] rounded bg-amber-100 text-amber-700 font-bold">미정</span>' : ''}</div>
+            <td class="px-2 py-2.5 whitespace-nowrap text-right tabular-nums">
+              <div class="text-sm text-gray-900">${order.final_amount?.toLocaleString() || '0'}원${order.has_pending_prices ? '<span class="ml-1 px-1 text-[10px] rounded bg-amber-100 text-amber-700 font-bold">미정</span>' : ''}</div>
             </td>
-            <td class="px-6 py-4 whitespace-nowrap">
+            <td class="px-2 py-2.5 whitespace-nowrap">
               <span class="px-2 inline-flex items-center text-xs leading-5 font-semibold rounded-full ${getStatusColor(order.status)}">
                 <i class="${getStatusIcon(order.status)} text-[7px] mr-1"></i>${getStatusText(order.status)}
-              </span>${order.total_cards > 0 && order.shipped_cards > 0 && order.shipped_cards < order.total_cards ? '<span class="ml-1 px-1.5 py-0.5 text-[10px] rounded bg-amber-100 text-amber-700">' + order.shipped_cards + '/' + order.total_cards + ' 출고</span>' : ''}
+              </span>
             </td>
-            <td class="px-6 py-4 whitespace-nowrap">
-              ${billingBadge}
+            <td class="px-2 py-2.5 whitespace-nowrap text-center">
+              ${billingCell}
             </td>
-            <td class="px-6 py-4 whitespace-nowrap">
-              <div class="text-sm text-gray-500">${new Date(order.created_at).toLocaleDateString('ko-KR')}</div>
+            <td class="px-2 py-2.5 whitespace-nowrap">
+              <div class="text-xs text-gray-500">${new Date(order.created_at).toLocaleDateString('ko-KR')}</div>
             </td>
-            <td class="px-6 py-4 whitespace-nowrap text-sm act-col">
-              <button onclick="viewOrder(${order.id})" class="text-blue-600 hover:text-blue-900 mr-3">
-                <i class="fas fa-eye"></i> 상세
-              </button>
-              <button onclick="showStatusChangeModal(${order.id}, '${order.status}')" class="text-green-600 hover:text-green-900 mr-3">
-                <i class="fas fa-sync-alt"></i> 상태변경
-              </button>
-              <button onclick="openInvoice(${order.id})" class="text-purple-600 hover:text-purple-900 text-sm mr-3"><i class="fas fa-file-invoice"></i> 명세서</button>
-              ${['CONFIRMED','PRINTING','PRINT_DONE','SHIPPED'].indexOf(order.status) >= 0
-                ? `<button onclick="event.stopPropagation(); sendOrderNotice(${order.id},'${escapeHtml(order.client_name || '')}','${escapeHtml(order.contact_mobile || order.client_mobile || '')}','${escapeHtml(order.contact_phone || order.client_phone || '')}','${escapeHtml(order.order_number || '')}','${escapeHtml(order.client_email || '')}','${escapeHtml(order.client_fax || '')}',${order.client_id || 0})" class="text-blue-500 hover:text-blue-700 text-sm" title="접수 확인 발송"><i class="fas fa-paper-plane text-xs"></i></button>`
-                : ''}
+            <td class="px-2 py-2.5 whitespace-nowrap text-center text-sm">
+              <button onclick="viewOrder(${order.id})" class="text-blue-600 hover:text-blue-900 mx-1" title="상세"><i class="fas fa-eye"></i></button>
+              <button onclick="showStatusChangeModal(${order.id}, '${order.status}')" class="text-green-600 hover:text-green-900 mx-1" title="상태변경"><i class="fas fa-sync-alt"></i></button>
+              <button onclick="openInvoice(${order.id})" class="text-purple-600 hover:text-purple-900 mx-1" title="명세서"><i class="fas fa-file-invoice"></i></button>
+              <button onclick="event.stopPropagation(); sendOrderNotice(${order.id},'${escapeHtml(order.client_name || '')}','${escapeHtml(order.contact_mobile || order.client_mobile || '')}','${escapeHtml(order.contact_phone || order.client_phone || '')}','${escapeHtml(order.order_number || '')}','${escapeHtml(order.client_email || '')}','${escapeHtml(order.client_fax || '')}',${order.client_id || 0})" class="text-blue-500 hover:text-blue-700 mx-1" title="메시지 발송"><i class="fas fa-paper-plane"></i></button>
             </td>
           </tr>
         `;
@@ -401,7 +404,7 @@ async function loadOrders() {
   } catch (error) {
     console.error('Load orders error:', error);
     document.getElementById('ordersTable').innerHTML =
-      '<tr><td colspan="9" class="ds-empty" style="color:var(--c-danger)">주문 목록을 불러오는데 실패했습니다.</td></tr>';
+      '<tr><td colspan="10" class="ds-empty" style="color:var(--c-danger)">주문 목록을 불러오는데 실패했습니다.</td></tr>';
   }
 }
 
@@ -848,9 +851,9 @@ function showOrderModal(order, cards, autoJobs) {
               }
             </div>
             <div class="flex gap-2" id="billingActions_${order.id}">
-              ${!order.billing_status || order.billing_status === ''
+              ${(!order.billing_status || order.billing_status === '') && (order.status === 'SHIPPED' || order.status === 'COMPLETED')
                 ? '<button onclick="setBillingStatus(' + order.id + ', \'BILLED\')" class="px-3 py-1.5 text-xs font-medium rounded bg-blue-600 text-white hover:bg-blue-700"><i class="fas fa-check mr-1"></i>회계반영</button>'
-                : ''}
+                : (!order.billing_status || order.billing_status === '') ? '<span class="text-xs text-gray-400">출고완료 후 회계반영 가능</span>' : ''}
               ${order.billing_status === 'BILLED'
                 ? '<button onclick="setBillingStatus(' + order.id + ', \'PAID\')" class="px-3 py-1.5 text-xs font-medium rounded bg-green-600 text-white hover:bg-green-700"><i class="fas fa-won-sign mr-1"></i>수금완료</button>'
                   + '<button onclick="setBillingStatus(' + order.id + ', \'\')" class="px-3 py-1.5 text-xs font-medium rounded bg-gray-400 text-white hover:bg-gray-500">취소</button>'
@@ -1121,13 +1124,25 @@ async function setBillingStatus(orderId, status) {
     var res = await axios.patch('/api/orders/' + orderId + '/billing-status', { billing_status: status });
     if (res.data.success) {
       showToast(label + ' 처리 완료', 'success');
-      document.getElementById('orderModal').remove();
+      var _m = document.getElementById('orderModal'); if (_m) _m.remove();
       loadOrders();
     } else {
       showToast('처리 실패: ' + (res.data.error || ''), 'error');
     }
   } catch(e) {
     showToast('처리 오류: ' + (e.response?.data?.error || e.message), 'error');
+  }
+}
+
+// 리스트에서 직접 회계반영 (모달 없이, #4)
+async function setBillingStatusFromList(orderId) {
+  if (!(await showConfirm('이 주문을 회계반영 처리하시겠습니까?'))) return;
+  try {
+    var res = await axios.patch('/api/orders/' + orderId + '/billing-status', { billing_status: 'BILLED' });
+    if (res.data.success) { showToast('회계반영 완료', 'success'); loadOrders(); }
+    else showToast('회계반영 실패: ' + (res.data.error || ''), 'error');
+  } catch(e) {
+    showToast('회계반영 실패: ' + (e.response?.data?.error || e.message), 'error');
   }
 }
 

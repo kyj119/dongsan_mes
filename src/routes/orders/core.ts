@@ -268,7 +268,9 @@ ordersCoreRouter.get('/', async (c) => {
         u.name as created_by_name,
         (SELECT COUNT(*) FROM cards WHERE order_id = o.id) as total_cards,
         (SELECT COUNT(*) FROM cards WHERE order_id = o.id AND shipped_at IS NOT NULL) as shipped_cards,
-        (SELECT CASE WHEN COUNT(*) > 0 THEN 1 ELSE 0 END FROM order_items WHERE order_id = o.id AND price_status = 'PENDING') as has_pending_prices
+        (SELECT CASE WHEN COUNT(*) > 0 THEN 1 ELSE 0 END FROM order_items WHERE order_id = o.id AND price_status = 'PENDING') as has_pending_prices,
+        (SELECT item_name FROM order_items WHERE order_id = o.id AND (parent_item_id IS NULL OR parent_item_id = 0) ORDER BY id LIMIT 1) as main_item_name,
+        (SELECT COUNT(*) FROM order_items WHERE order_id = o.id AND (parent_item_id IS NULL OR parent_item_id = 0)) as item_count
       FROM orders o
       LEFT JOIN clients c ON o.client_id = c.id
       LEFT JOIN users u ON o.created_by = u.id
@@ -483,10 +485,10 @@ ordersCoreRouter.patch('/:id/bill', requireRole('ADMIN', 'MANAGER'), async (c) =
       return c.json({ success: false, error: 'Order not found' }, 404)
     }
 
-    if (order.status !== 'SHIPPED') {
+    if (order.status !== 'SHIPPED' && order.status !== 'COMPLETED') {
       return c.json({
         success: false,
-        error: '출고(SHIPPED) 상태인 주문만 회계반영할 수 있습니다'
+        error: '출고완료 후(출고/배송완료) 주문만 회계반영할 수 있습니다'
       }, 400)
     }
 
@@ -556,8 +558,8 @@ ordersCoreRouter.patch('/:id/billing-status', requireRole('ADMIN', 'MANAGER'), a
 
     if (newStatus === 'BILLED') {
       // 회계반영: SHIPPED 상태만 가능
-      if (order.status !== 'SHIPPED') {
-        return c.json({ success: false, error: '출고완료 상태인 주문만 회계반영 가능합니다' }, 400)
+      if (order.status !== 'SHIPPED' && order.status !== 'COMPLETED') {
+        return c.json({ success: false, error: '출고완료 후(출고/배송완료) 주문만 회계반영 가능합니다' }, 400)
       }
       const billedAmount = Number(order.final_amount) || 0
       // #83 + #168: 원자적 처리 + 이중 실행 방지
