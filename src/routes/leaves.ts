@@ -15,7 +15,6 @@ interface EmployeeBasicRow {
   position: string; hire_date: string; status: string
 }
 interface EmployeeHireDateRow { id: number; hire_date: string; entity_id?: number }
-interface AccruedRow { accrued: number }
 interface LeaveTypeRow { deduction_days: number }
 interface LeaveTypeWithCategoryRow { category: string; deduction_days: number }
 interface LeaveRequestRow {
@@ -60,6 +59,26 @@ function calcMonthlyAccrualUpTo(hireDate: string, asOf: Date = new Date()): numb
   const months = (asOf.getFullYear() - hire.getFullYear()) * 12 + (asOf.getMonth() - hire.getMonth())
   if (months <= 0) return 0
   return Math.min(11, months)
+}
+
+/**
+ * 연차(ANNUAL) 현재 적립값을 직원ID→accrued 맵으로 일괄 조회한다 (#321 N+1 제거).
+ * 직원별 SELECT를 단일 WHERE id IN (...) 한 방으로 대체.
+ */
+async function loadAnnualAccruedMap(
+  c: { env: HonoEnv['Bindings'] },
+  employeeIds: number[],
+  year: number
+): Promise<Map<number, number>> {
+  const map = new Map<number, number>()
+  if (employeeIds.length === 0) return map
+  const placeholders = employeeIds.map(() => '?').join(',')
+  const { results } = await c.env.DB.prepare(
+    `SELECT employee_id, accrued FROM leave_balances
+     WHERE year = ? AND leave_type = 'ANNUAL' AND employee_id IN (${placeholders})`
+  ).bind(year, ...employeeIds).all<{ employee_id: number; accrued: number }>()
+  for (const row of results) map.set(row.employee_id, row.accrued || 0)
+  return map
 }
 
 // ============================================================================
@@ -153,18 +172,17 @@ leavesRouter.post('/accrual/monthly', requireRole('ADMIN'), async (c) => {
     let processed = 0
     const errors: string[] = []
 
+    // 현재 적립값 일괄 조회 — 직원별 SELECT N+1 제거 (#321)
+    const accruedMap = await loadAnnualAccruedMap(c, employees.map(e => e.id), currentYear)
+
     for (const emp of employees) {
       const expected = calcMonthlyAccrualUpTo(emp.hire_date, today)
       const annual = calcAnnualEntitlement(emp.hire_date, today)
       if (annual >= 15) continue // 1년 이상 → 월차 대상 아님
       if (expected <= 0) continue
 
-      // 현재 적립값 확인
-      const existing = await c.env.DB.prepare(
-        `SELECT accrued FROM leave_balances WHERE employee_id = ? AND year = ? AND leave_type = 'ANNUAL'`
-      ).bind(emp.id, currentYear).first<AccruedRow>()
-
-      const currentAccrued = existing?.accrued || 0
+      // 현재 적립값 확인 (사전 로드된 맵에서 룩업)
+      const currentAccrued = accruedMap.get(emp.id) || 0
       const delta = expected - currentAccrued
       if (delta <= 0) continue
 
@@ -208,15 +226,14 @@ leavesRouter.post('/accrual/yearly', requireRole('ADMIN'), async (c) => {
     let processed = 0
     const errors: string[] = []
 
+    // 현재 적립값 일괄 조회 — 직원별 SELECT N+1 제거 (#321)
+    const accruedMap = await loadAnnualAccruedMap(c, employees.map(e => e.id), currentYear)
+
     for (const emp of employees) {
       const annual = calcAnnualEntitlement(emp.hire_date, today)
       if (annual <= 0) continue
 
-      const existing = await c.env.DB.prepare(
-        `SELECT accrued FROM leave_balances WHERE employee_id = ? AND year = ? AND leave_type = 'ANNUAL'`
-      ).bind(emp.id, currentYear).first<AccruedRow>()
-
-      const currentAccrued = existing?.accrued || 0
+      const currentAccrued = accruedMap.get(emp.id) || 0
       if (currentAccrued >= annual) continue
 
       try {
@@ -554,25 +571,29 @@ leavesRouter.post('/sick-grant', requireRole('ADMIN'), async (c) => {
       targetIds = results.map(r => r.id)
     }
 
-    // 직원별 entity_id 조회 (배치이므로 직원 소속 법인 사용)
+    // 직원별 entity_id 조회 — 단일 IN 쿼리 1회 (N+1 제거, #321)
     const empEntityMap = new Map<number, number>()
-    for (const empId of targetIds) {
-      const emp = await c.env.DB.prepare('SELECT entity_id FROM employees WHERE id = ?').bind(empId).first<{ entity_id: number }>()
-      empEntityMap.set(empId, emp?.entity_id || 1)
+    if (targetIds.length > 0) {
+      const placeholders = targetIds.map(() => '?').join(',')
+      const { results: empRows } = await c.env.DB.prepare(
+        `SELECT id, entity_id FROM employees WHERE id IN (${placeholders})`
+      ).bind(...targetIds).all<{ id: number; entity_id: number }>()
+      for (const row of empRows) empEntityMap.set(row.id, row.entity_id || 1)
     }
 
-    let processed = 0
-    for (const empId of targetIds) {
-      await c.env.DB.prepare(`
+    // INSERT는 batch 1회로 묶음 (per-row try/catch 없음 → 기존 all-or-nothing 동작 유지, #321)
+    const sickStmts = targetIds.map(empId =>
+      c.env.DB.prepare(`
         INSERT INTO leave_balances (employee_id, year, leave_type, accrued, notes, entity_id)
         VALUES (?, ?, 'SICK', ?, ?, ?)
         ON CONFLICT(employee_id, year, leave_type) DO UPDATE SET
           accrued = excluded.accrued,
           notes = excluded.notes,
           updated_at = CURRENT_TIMESTAMP
-      `).bind(empId, year, days, notes || `유급병가 ${days}일 부여`, empEntityMap.get(empId) || 1).run()
-      processed++
-    }
+      `).bind(empId, year, days, notes || `유급병가 ${days}일 부여`, empEntityMap.get(empId) || 1)
+    )
+    if (sickStmts.length > 0) await c.env.DB.batch(sickStmts)
+    const processed = sickStmts.length
 
     return c.json({ success: true, data: { processed, year, days } })
   } catch (error: any) {

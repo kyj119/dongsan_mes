@@ -439,6 +439,8 @@ bankRouter.post('/sync-barobill', requireRole('ADMIN'), async (c) => {
       ).bind(...efSyncRl.params).all<{ counterpart_name: string; matched_client_id: number | null; matched_category_id: number | null }>()
       const syncRuleMap = new Map(syncMatchRules.map(r => [r.counterpart_name, { clientId: r.matched_client_id, categoryId: r.matched_category_id }]))
 
+      // UPDATE를 모아 단일 batch로 실행 (#321 N+1 제거). per-row try/catch 없음 → 동작 동일.
+      const syncUpdateStmts: D1PreparedStatement[] = []
       for (const tx of unmatchedTxs) {
         const txName = (tx.counterpart_name ?? '').trim()
         if (!txName) continue
@@ -451,9 +453,9 @@ bankRouter.post('/sync-barobill', requireRole('ADMIN'), async (c) => {
         if (syncRule) {
           if (syncRule.categoryId) {
             // 비용 카테고리 규칙 → 바로 APPLIED
-            await c.env.DB.prepare(
+            syncUpdateStmts.push(c.env.DB.prepare(
               "UPDATE bank_transactions SET match_status = 'APPLIED', matched_category_id = ?, match_confidence = 0.95, match_reason = '학습된 규칙 (비용분류)' WHERE id = ?"
-            ).bind(syncRule.categoryId, tx.id).run()
+            ).bind(syncRule.categoryId, tx.id))
             matchedCount++
             continue
           }
@@ -473,12 +475,13 @@ bankRouter.post('/sync-barobill', requireRole('ADMIN'), async (c) => {
         }
 
         if (bestConfidence >= 0.5 && bestClientId !== null) {
-          await c.env.DB.prepare(
+          syncUpdateStmts.push(c.env.DB.prepare(
             "UPDATE bank_transactions SET match_status = 'SUGGESTED', matched_client_id = ?, match_confidence = ?, match_reason = ? WHERE id = ?"
-          ).bind(bestClientId, bestConfidence, bestReason, tx.id).run()
+          ).bind(bestClientId, bestConfidence, bestReason, tx.id))
           matchedCount++
         }
       }
+      if (syncUpdateStmts.length > 0) await c.env.DB.batch(syncUpdateStmts)
     }
 
     return c.json({
@@ -696,6 +699,9 @@ bankRouter.post('/transactions/auto-match', requireRole('ADMIN'), async (c) => {
 
     let matchedCount = 0
 
+    // UPDATE(거래상태 + 규칙 match_count)를 모아 단일 batch 실행 (#321 N+1 제거). per-row try/catch 없음 → 동작 동일.
+    const matchUpdateStmts: D1PreparedStatement[] = []
+
     for (const tx of unmatchedTxs) {
       const txName = (tx.counterpart_name ?? '').trim()
       if (!txName) continue
@@ -708,15 +714,15 @@ bankRouter.post('/transactions/auto-match', requireRole('ADMIN'), async (c) => {
       const rule = ruleMap.get(txName)
       if (rule) {
         // match_count 증가
-        await c.env.DB.prepare(`
+        matchUpdateStmts.push(c.env.DB.prepare(`
           UPDATE bank_match_rules
           SET match_count = match_count + 1, last_used_at = CURRENT_TIMESTAMP
           WHERE counterpart_name = ?
-        `).bind(txName).run()
+        `).bind(txName))
 
         if (rule.categoryId) {
           // 비용 카테고리 규칙 → 바로 APPLIED
-          await c.env.DB.prepare(`
+          matchUpdateStmts.push(c.env.DB.prepare(`
             UPDATE bank_transactions
             SET match_status = 'APPLIED',
                 matched_category_id = ?,
@@ -724,7 +730,7 @@ bankRouter.post('/transactions/auto-match', requireRole('ADMIN'), async (c) => {
                 match_confidence = 0.95,
                 match_reason = '학습된 규칙 (비용분류)'
             WHERE id = ?
-          `).bind(rule.categoryId, tx.id).run()
+          `).bind(rule.categoryId, tx.id))
           matchedCount++
           continue
         }
@@ -778,17 +784,19 @@ bankRouter.post('/transactions/auto-match', requireRole('ADMIN'), async (c) => {
       // 신뢰도 기반 상태 분리: >= 0.8 → CONFIRMED, 0.5~0.8 → SUGGESTED
       if (bestConfidence >= 0.5 && bestClientId !== null) {
         const autoStatus = bestConfidence >= 0.8 ? 'CONFIRMED' : 'SUGGESTED'
-        await c.env.DB.prepare(`
+        matchUpdateStmts.push(c.env.DB.prepare(`
           UPDATE bank_transactions
           SET match_status = ?,
               matched_client_id = ?,
               match_confidence = ?,
               match_reason = ?
           WHERE id = ?
-        `).bind(autoStatus, bestClientId, bestConfidence, bestReason, tx.id).run()
+        `).bind(autoStatus, bestClientId, bestConfidence, bestReason, tx.id))
         matchedCount++
       }
     }
+
+    if (matchUpdateStmts.length > 0) await c.env.DB.batch(matchUpdateStmts)
 
     return c.json({
       success: true,
@@ -1635,26 +1643,29 @@ bankRouter.post('/auto-sync', requireRole('ADMIN'), async (c) => {
 
         const autoRuleMap = new Map(matchRulesSync.map(r => [r.counterpart_name, { clientId: r.matched_client_id, categoryId: r.matched_category_id }]))
 
+        // UPDATE를 모아 단일 batch 실행 (#321 N+1 제거). per-row try/catch 없음(외부 try/catch만) → 동작 동일.
+        const autoSyncStmts: D1PreparedStatement[] = []
         for (const tx of unmatchedTxs) {
           const txName = (tx.counterpart_name ?? '').trim()
           if (!txName || !autoRuleMap.has(txName)) continue
 
           const autoRule = autoRuleMap.get(txName)!
           if (autoRule.categoryId) {
-            await c.env.DB.prepare(`
+            autoSyncStmts.push(c.env.DB.prepare(`
               UPDATE bank_transactions
               SET match_status = 'APPLIED', matched_category_id = ?, match_confidence = 0.95, match_reason = '자동동기화 규칙매칭 (비용분류)'
               WHERE id = ?
-            `).bind(autoRule.categoryId, tx.id).run()
+            `).bind(autoRule.categoryId, tx.id))
           } else if (autoRule.clientId) {
-            await c.env.DB.prepare(`
+            autoSyncStmts.push(c.env.DB.prepare(`
               UPDATE bank_transactions
               SET match_status = 'CONFIRMED', matched_client_id = ?, match_confidence = 0.95, match_reason = '자동동기화 규칙매칭'
               WHERE id = ?
-            `).bind(autoRule.clientId, tx.id).run()
+            `).bind(autoRule.clientId, tx.id))
           }
           totalMatched++
         }
+        if (autoSyncStmts.length > 0) await c.env.DB.batch(autoSyncStmts)
       } catch (matchErr) {
         // 자동매칭 실패는 치명적이 아님
       }
