@@ -48,23 +48,29 @@ interface TodaySummaryRow { ok_count: number; error_count: number; cancel_count:
 
 // ─── 카드 매칭 헬퍼 ───
 // 파일명에서 order_number + file_seq를 추출하고, print_file_map → fallback regex 순으로 카드 조회
-async function resolveCard(db: D1Database, extractedName: string): Promise<{
+async function resolveCard(db: D1Database, extractedName: string, entityId?: number): Promise<{
   cardId: number | null, cardNumber: string | null, orderNumber: string | null, orderItemId: number | null
 }> {
+  // entity가 알려진 경우 print_file_map 조회를 해당 entity로 한정 (per-entity unique index 대응)
+  const entClause = entityId != null ? ' AND entity_id = ?' : ''
   // 1차: file_map 조회 (YYYYMMDD-NNN-FFF 패턴)
   const seqMatch = extractedName.match(/^(\d{8}-\d{3})-(\d{3})/)
   if (seqMatch) {
     const orderNum = seqMatch[1]
     const fileSeq = Number(seqMatch[2])
+    const binds: any[] = [orderNum, fileSeq]
+    if (entityId != null) binds.push(entityId)
     const map = await db.prepare(
-      'SELECT card_id, card_number, order_item_id FROM print_file_map WHERE order_number = ? AND file_seq = ?'
-    ).bind(orderNum, fileSeq).first<FileMapRow>()
+      `SELECT card_id, card_number, order_item_id FROM print_file_map WHERE order_number = ? AND file_seq = ?${entClause}`
+    ).bind(...binds).first<FileMapRow>()
     if (map) return { cardId: map.card_id, cardNumber: map.card_number, orderNumber: orderNum, orderItemId: map.order_item_id || null }
   }
-  // 2차: 파일명 직접 매칭
+  // 2차: 파일명 직접 매칭 (entity 한정 시 교차 매칭 방지)
+  const fnBinds: any[] = [extractedName]
+  if (entityId != null) fnBinds.push(entityId)
   const fnMap = await db.prepare(
-    'SELECT card_id, card_number, order_number, order_item_id FROM print_file_map WHERE file_name = ?'
-  ).bind(extractedName).first<FileMapRow>()
+    `SELECT card_id, card_number, order_number, order_item_id FROM print_file_map WHERE file_name = ?${entClause}`
+  ).bind(...fnBinds).first<FileMapRow>()
   if (fnMap) return { cardId: fnMap.card_id, cardNumber: fnMap.card_number, orderNumber: fnMap.order_number, orderItemId: fnMap.order_item_id || null }
   // 3차: 기존 regex fallback (order_number만)
   const orderMatch = extractedName.match(/(\d{8}-\d{3})/)
@@ -162,15 +168,26 @@ printEventsRouter.post('/file-map', agentKeyMiddleware, async (c) => {
       return c.json({ success: false, error: 'order_number, file_seq, file_name required' }, 400)
     }
 
+    // entity_id: 카드에서 유도 (agent endpoint이므로 user context 없음), fallback 1
+    let mapEntityId = 1
+    if (card_id) {
+      const card = await c.env.DB.prepare('SELECT entity_id FROM cards WHERE id = ?').bind(card_id).first<{ entity_id: number }>()
+      if (card?.entity_id) mapEntityId = card.entity_id
+    } else if (card_number) {
+      const card = await c.env.DB.prepare('SELECT entity_id FROM cards WHERE card_number = ?').bind(card_number).first<{ entity_id: number }>()
+      if (card?.entity_id) mapEntityId = card.entity_id
+    }
+
     await c.env.DB.prepare(`
-      INSERT INTO print_file_map (order_number, file_seq, card_id, card_number, order_item_id, file_name)
-      VALUES (?, ?, ?, ?, ?, ?)
+      INSERT INTO print_file_map (order_number, file_seq, card_id, card_number, order_item_id, file_name, entity_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(order_number, file_seq) DO UPDATE SET
         card_id = excluded.card_id,
         card_number = excluded.card_number,
         order_item_id = excluded.order_item_id,
-        file_name = excluded.file_name
-    `).bind(order_number, file_seq, card_id || null, card_number || null, order_item_id || null, file_name).run()
+        file_name = excluded.file_name,
+        entity_id = excluded.entity_id
+    `).bind(order_number, file_seq, card_id || null, card_number || null, order_item_id || null, file_name, mapEntityId).run()
 
     return c.json({ success: true, data: { order_number, file_seq, card_number } })
   } catch (error) {

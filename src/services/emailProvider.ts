@@ -136,6 +136,7 @@ export async function sendEmail(
             status: 'SENT',
             errorMessage: `Fallback: ${errorMsg}`,
             sentBy: meta?.sentBy,
+            entityId: meta?.entityId,
           })
           return { success: true, id: retryData.id }
         }
@@ -150,6 +151,7 @@ export async function sendEmail(
         status: 'FAILED',
         errorMessage: errorMsg,
         sentBy: meta?.sentBy,
+        entityId: meta?.entityId,
       })
       return { success: false, error: errorMsg }
     }
@@ -162,6 +164,7 @@ export async function sendEmail(
       relatedId: meta?.relatedId,
       status: 'SENT',
       sentBy: meta?.sentBy,
+      entityId: meta?.entityId,
     })
 
     return { success: true, id: data.id }
@@ -176,6 +179,7 @@ export async function sendEmail(
       status: 'FAILED',
       errorMessage: errorMsg,
       sentBy: meta?.sentBy,
+      entityId: meta?.entityId,
     }).catch(() => {})
     return { success: false, error: errorMsg }
   }
@@ -191,10 +195,11 @@ async function logEmail(db: D1Database, log: {
   status: string
   errorMessage?: string
   sentBy?: number
+  entityId?: number
 }) {
   await db.prepare(`
-    INSERT INTO email_logs (template, recipient_email, recipient_name, subject, related_type, related_id, status, error_message, sent_by)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO email_logs (template, recipient_email, recipient_name, subject, related_type, related_id, status, error_message, sent_by, entity_id)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).bind(
     log.template,
     log.recipientEmail,
@@ -205,5 +210,6 @@ async function logEmail(db: D1Database, log: {
     log.status,
     log.errorMessage || null,
     log.sentBy || null,
+    log.entityId ?? 1,
   ).run()
 }

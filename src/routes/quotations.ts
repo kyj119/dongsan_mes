@@ -27,10 +27,10 @@ quotationsRouter.use('/*', authMiddleware, requireAnyPagePermission('/quotations
 
 // ===== 헬퍼 =====
 
-// 견적번호 생성: Q-YYYYMMDD-NNN
-async function generateQuotationNumber(db: any): Promise<string> {
+// 견적번호 생성: Q-YYYYMMDD-NNN (entity별 카운터)
+async function generateQuotationNumber(db: any, entityId?: number): Promise<string> {
   const dateStr = new Date().toISOString().split('T')[0].replace(/-/g, '')
-  return getNextSeqNumber(db, 'quotations', 'quotation_number', `Q-${dateStr}-`)
+  return getNextSeqNumber(db, 'quotations', 'quotation_number', `Q-${dateStr}-`, 3, entityId)
 }
 
 // 만료 견적서 자동 마킹 (read-time check)
@@ -192,7 +192,7 @@ quotationsRouter.post('/', async (c) => {
       return c.json({ success: false, error: '품목이 비어있습니다.' }, 400)
     }
 
-    const quotationNumber = await generateQuotationNumber(c.env.DB)
+    const quotationNumber = await generateQuotationNumber(c.env.DB, getEntityId(c))
     const today = new Date()
 
     // VAT rate

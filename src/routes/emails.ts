@@ -3,6 +3,7 @@ import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
 import { sendEmail } from '../services/emailProvider'
 import { renderTemplate, type TemplateName } from '../services/emailTemplates'
+import { entityFilter, getEntityId } from '../utils/entityFilter'
 
 const emailsRouter = new Hono<HonoEnv>()
 emailsRouter.use('/*', authMiddleware)
@@ -39,6 +40,12 @@ emailsRouter.get('/logs', requireRole('ADMIN', 'MANAGER'), async (c) => {
     if (date_to) {
       whereClauses.push('DATE(el.created_at) <= ?')
       params.push(date_to)
+    }
+
+    const ef = entityFilter(c, 'el')
+    if (ef.clause) {
+      whereClauses.push(ef.clause.replace(/^ AND /, ''))
+      params.push(...ef.params)
     }
 
     const where = whereClauses.length > 0 ? 'WHERE ' + whereClauses.join(' AND ') : ''
@@ -114,6 +121,7 @@ emailsRouter.post('/send', requireRole('ADMIN', 'MANAGER'), async (c) => {
       relatedType: body.relatedType,
       relatedId: body.relatedId,
       sentBy: user?.id,
+      entityId: getEntityId(c),
     })
 
     if (!result.success) {
