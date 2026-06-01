@@ -27,6 +27,8 @@ export function ledgerPage(c: Context<HonoEnv>) {
       /* ds-table-striped가 th에 text-align:left를 강제 → 숫자 헤더가 값(오른쪽)과 어긋남. th의 정렬 클래스 복원 */
       .ds-table.led-tbl thead th.text-right{text-align:right}
       .ds-table.led-tbl thead th.text-center{text-align:center}
+      /* 원장 모달(.ds-modal): 콘텐츠를 패딩 없이 박스에 직접 배치 → 헤더가 상단·전폭 버튼이 둥근 모서리(12px)에 붙어 잘림. 박스 내부 패딩 부여 (원장 페이지 한정, clientDetailModal=.modal 미해당) */
+      .ds-modal-overlay > .ds-modal{padding:var(--space-xl)}
     `,
     pageContent: `
         <!-- 회계반영 대기 배너 -->
