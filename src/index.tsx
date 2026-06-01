@@ -242,6 +242,8 @@ app.use('/api/users/change-password', rateLimitMiddleware(5, 60000))  // 분당 
 app.use('/api/portal/auth/change-password', rateLimitMiddleware(5, 60000))  // 분당 5회
 app.use('/api/auth/refresh', rateLimitMiddleware(10, 60000))  // 분당 10회
 app.use('/api/hr/self-auth', rateLimitMiddleware(5, 60000))  // 분당 5회
+app.use('/api/portal/verify-document', rateLimitMiddleware(10, 60000))  // #314 사업자번호 브루트포스 방지 (분당 10회)
+app.use('/api/portal/verify-token', rateLimitMiddleware(30, 60000))  // #314 분당 30회
 
 // Mount API routers (hrSelf는 인증 미들웨어 없이 먼저 마운트)
 app.route('/api/hr', hrSelfRouter)

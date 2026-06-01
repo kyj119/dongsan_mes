@@ -30,7 +30,4 @@
 			"bucket_name": "dongsan-files"
 		}
 	]
-	// #314 rate limit: Pages는 wrangler "unsafe" 바인딩 미지원 → CF 대시보드에서 등록.
-	//   Pages 프로젝트 webapp → Settings → Functions → Bindings → Rate limiting
-	//   바인딩명 PORTAL_RL, simple { limit:20, period:60 }. 등록 시 portal.ts의 가드가 자동 활성화.
 }
