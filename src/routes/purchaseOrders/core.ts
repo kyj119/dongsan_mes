@@ -1416,8 +1416,8 @@ poCoreRouter.post('/:id/receive', async (c) => {
     const receiptResult = await c.env.DB.prepare(`
       INSERT INTO inventory_receipts (
         receipt_number, receipt_date, supplier, total_amount,
-        status, received_by, notes, po_id, supplier_id
-      ) VALUES (?, ?, ?, ?, 'COMPLETED', ?, ?, ?, ?)
+        status, received_by, notes, po_id, supplier_id, entity_id
+      ) VALUES (?, ?, ?, ?, 'COMPLETED', ?, ?, ?, ?, ?)
     `).bind(
       receiptNumber,
       receiptDate,
@@ -1426,7 +1426,8 @@ poCoreRouter.post('/:id/receive', async (c) => {
       user?.id || 1,
       notes || null,
       parseInt(id),
-      po.supplier_id || null
+      po.supplier_id || null,
+      getEntityId(c) || 1
     ).run()
 
     const receiptId = receiptResult.meta.last_row_id

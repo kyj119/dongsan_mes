@@ -265,13 +265,14 @@ bom.post('/mrp/runs/:id/create-pr', async (c) => {
 
     // PR 생성
     const prResult = await c.env.DB.prepare(`
-      INSERT INTO purchase_requests (request_number, requester_id, urgency, status, reason, notes)
-      VALUES (?, ?, 'NORMAL', 'PENDING', ?, ?)
+      INSERT INTO purchase_requests (request_number, requester_id, urgency, status, reason, notes, entity_id)
+      VALUES (?, ?, 'NORMAL', 'PENDING', ?, ?, ?)
     `).bind(
       requestNumber,
       user?.id,
       `MRP 자동 생성 (실행 #${runId})`,
-      `MRP 실행 결과 부족 자재 ${shortfalls.length}건`
+      `MRP 실행 결과 부족 자재 ${shortfalls.length}건`,
+      getEntityId(c) || 1
     ).run()
 
     const prId = prResult.meta?.last_row_id as number
@@ -288,15 +289,16 @@ bom.post('/mrp/runs/:id/create-pr', async (c) => {
     // PR 품목 INSERT + MRP 결과 UPDATE를 batch로 일괄 처리
     const batchStmts: D1PreparedStatement[] = shortfalls.flatMap((s: any, i: number) => [
       c.env.DB.prepare(`
-        INSERT INTO purchase_request_items (request_id, item_id, item_name, quantity, unit, sort_order, notes)
-        VALUES (?, ?, ?, ?, 'EA', ?, ?)
+        INSERT INTO purchase_request_items (request_id, item_id, item_name, quantity, unit, sort_order, notes, entity_id)
+        VALUES (?, ?, ?, ?, 'EA', ?, ?, ?)
       `).bind(
         prId,
         invMap.get(s.material_item_id) || null,
         s.material_name,
         Math.ceil(s.shortfall),
         i,
-        `MRP 부족량: ${s.shortfall.toFixed(2)}`
+        `MRP 부족량: ${s.shortfall.toFixed(2)}`,
+        getEntityId(c) || 1
       ),
       c.env.DB.prepare(
         `UPDATE mrp_results SET auto_pr_id = ? WHERE id = ?`

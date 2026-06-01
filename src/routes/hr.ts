@@ -225,14 +225,19 @@ hrRouter.post('/attendance/checkin', async (c) => {
       return c.json({ success: false, error: 'Already checked in today' }, 400)
     }
 
+    // 직원의 소속 법인(entity) 도출 (없으면 현재 컨텍스트 → 1)
+    const empEntity = await c.env.DB.prepare(`SELECT entity_id FROM employees WHERE id = ?`).bind(employee_id).first<{ entity_id: number }>()
+    const attendanceEntityId = empEntity?.entity_id || getEntityId(c) || 1
+
     // Insert check-in record
     await c.env.DB.prepare(`
-      INSERT INTO attendance (employee_id, work_date, check_in_time, attendance_type, status)
-      VALUES (?, ?, ?, 'NORMAL', 'PRESENT')
+      INSERT INTO attendance (employee_id, work_date, check_in_time, attendance_type, status, entity_id)
+      VALUES (?, ?, ?, 'NORMAL', 'PRESENT', ?)
     `).bind(
       employee_id,
       work_date || new Date().toISOString().split('T')[0],
-      new Date().toISOString()
+      new Date().toISOString(),
+      attendanceEntityId
     ).run()
 
     return c.json({ success: true, data: { message: 'Checked in successfully' } })
@@ -766,9 +771,13 @@ hrRouter.post('/attendances', async (c) => {
       overtime_hours = Math.max(0, work_hours - 8)
     }
 
+    // 직원의 소속 법인(entity) 도출 (없으면 현재 컨텍스트 → 1)
+    const empEntity = await c.env.DB.prepare(`SELECT entity_id FROM employees WHERE id = ?`).bind(employee_id).first<{ entity_id: number }>()
+    const attendanceEntityId = empEntity?.entity_id || getEntityId(c) || 1
+
     const result = await c.env.DB.prepare(`
-      INSERT INTO attendance (employee_id, work_date, check_in_time, check_out_time, work_hours, overtime_hours, attendance_type, status, notes)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO attendance (employee_id, work_date, check_in_time, check_out_time, work_hours, overtime_hours, attendance_type, status, notes, entity_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(employee_id, work_date) DO UPDATE SET
         check_in_time = excluded.check_in_time,
         check_out_time = excluded.check_out_time,
@@ -782,7 +791,8 @@ hrRouter.post('/attendances', async (c) => {
       employee_id, date,
       check_in ? `${date}T${check_in}` : null,
       check_out ? `${date}T${check_out}` : null,
-      work_hours, overtime_hours, attendance_type, status, notes || null
+      work_hours, overtime_hours, attendance_type, status, notes || null,
+      attendanceEntityId
     ).run()
 
     return c.json({ success: true, data: { id: result.meta.last_row_id } })

@@ -409,7 +409,7 @@ shipmentsRouter.post('/', requireRole('ADMIN', 'MANAGER', 'DESIGNER'), async (c)
 
     // 주문 확인 (#123: entity_id 필터 추가)
     const ef = entityFilter(c)
-    const order = await c.env.DB.prepare(`SELECT id, order_number, status FROM orders WHERE id = ?${ef.clause}`).bind(body.order_id, ...ef.params).first<{ id: number; order_number: string; status: string }>()
+    const order = await c.env.DB.prepare(`SELECT id, order_number, status, entity_id FROM orders WHERE id = ?${ef.clause}`).bind(body.order_id, ...ef.params).first<{ id: number; order_number: string; status: string; entity_id: number | null }>()
     if (!order) return c.json({ success: false, error: '주문을 찾을 수 없습니다.' }, 404)
 
     // #298: 수동 지정 카드(card_ids)의 출고 가능 여부 검증 — PRINT_DONE 또는 이미 출고된 카드만 (출고 레코드 생성 전)
@@ -443,7 +443,7 @@ shipmentsRouter.post('/', requireRole('ADMIN', 'MANAGER', 'DESIGNER'), async (c)
       body.delivery_type || 'DELIVERY',
       body.courier_name || null, body.tracking_number || null,
       body.receiver_name || null, body.receiver_phone || null, body.receiver_address || null,
-      body.notes || null, user?.id || 1, eid
+      body.notes || null, user?.id || 1, order.entity_id ?? eid
     ).run()
 
     const shipmentId = result.meta.last_row_id
@@ -609,7 +609,7 @@ shipmentsRouter.patch('/:id', requireRole('ADMIN', 'MANAGER', 'OPERATOR'), async
 
     // 3차: 그래도 없으면 해당 주문에 대한 shipment 자동 생성
     if (!shipment) {
-      const order = await c.env.DB.prepare(`SELECT id, order_number, delivery_method FROM orders WHERE id = ?${ef.clause}`).bind(id, ...ef.params).first<{ id: number; order_number: string; delivery_method: string | null }>()
+      const order = await c.env.DB.prepare(`SELECT id, order_number, delivery_method, entity_id FROM orders WHERE id = ?${ef.clause}`).bind(id, ...ef.params).first<{ id: number; order_number: string; delivery_method: string | null; entity_id: number | null }>()
       if (!order) {
         return c.json({ success: false, error: '주문 또는 출고 정보를 찾을 수 없습니다.' }, 404)
       }
@@ -624,7 +624,7 @@ shipmentsRouter.patch('/:id', requireRole('ADMIN', 'MANAGER', 'OPERATOR'), async
 
       await c.env.DB.prepare(
         `INSERT INTO shipments (shipment_number, order_id, delivery_type, entity_id) VALUES (?, ?, ?, ?)`
-      ).bind(shipmentNumber, order.id, deliveryType, getEntityId(c) || 1).run()
+      ).bind(shipmentNumber, order.id, deliveryType, order.entity_id ?? (getEntityId(c) || 1)).run()
 
       shipment = await c.env.DB.prepare(`SELECT id FROM shipments WHERE order_id = ?${ef.clause}`).bind(id, ...ef.params).first()
     }

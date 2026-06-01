@@ -314,11 +314,12 @@ prRouter.post('/', async (c) => {
     const prResult = await c.env.DB.prepare(`
       INSERT INTO purchase_requests (
         request_number, requester_id, supplier_id, urgency, status, reason, notes,
-        created_at, updated_at
-      ) VALUES (?, ?, ?, ?, 'PENDING', ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        created_at, updated_at, entity_id
+      ) VALUES (?, ?, ?, ?, 'PENDING', ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, ?)
     `).bind(
       requestNumber, user?.id || 1, data.supplier_id || null,
-      data.urgency || 'NORMAL', data.reason || null, data.notes || null
+      data.urgency || 'NORMAL', data.reason || null, data.notes || null,
+      getEntityId(c) || 1
     ).run()
 
     const requestId = prResult.meta.last_row_id
@@ -393,12 +394,12 @@ prRouter.put('/:id', async (c) => {
       c.env.DB.prepare(`
         INSERT INTO purchase_request_items (
           request_id, item_id, item_name, category_name,
-          quantity, unit, estimated_unit_price, sort_order, notes
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+          quantity, unit, estimated_unit_price, sort_order, notes, entity_id
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).bind(
         Number(id), item.item_id || null, item.item_name, item.category_name || null,
         Number(item.quantity) || 1, item.unit || 'EA',
-        Number(item.estimated_unit_price) || 0, i, item.notes || null
+        Number(item.estimated_unit_price) || 0, i, item.notes || null, getEntityId(c) || 1
       )
     )
     await c.env.DB.batch([deleteStmt, ...insertStmts])

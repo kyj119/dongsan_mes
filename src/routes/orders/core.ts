@@ -1247,9 +1247,9 @@ ordersCoreRouter.post('/', async (c) => {
         // batch 2: approval_steps + credit_overrides 원자적 생성
         await c.env.DB.batch([
           c.env.DB.prepare(`
-            INSERT INTO approval_steps (request_id, step_order, approver_role, label, status)
-            VALUES (?, 1, 'ADMIN', '경리/관리자 승인', 'PENDING')
-          `).bind(aprId),
+            INSERT INTO approval_steps (request_id, step_order, approver_role, label, status, entity_id)
+            VALUES (?, 1, 'ADMIN', '경리/관리자 승인', 'PENDING', ?)
+          `).bind(aprId, entityId || 1),
           c.env.DB.prepare(`
             INSERT INTO credit_overrides (order_id, client_id, credit_limit, balance_at_time, order_amount, approval_request_id, entity_id)
             VALUES (?, ?, ?, ?, ?, ?, ?)

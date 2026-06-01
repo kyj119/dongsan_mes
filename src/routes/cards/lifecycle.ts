@@ -787,8 +787,8 @@ cardsLifecycleRouter.patch('/:id/ship', requireRole('ADMIN', 'MANAGER'), async (
 
         // 주문 정보 조회
         const orderInfo = await c.env.DB.prepare(
-          'SELECT delivery_method, delivery_info, contact_phone FROM orders WHERE id = ?'
-        ).bind(card.order_id).first<{ delivery_method: string | null; delivery_info: string | null; contact_phone: string | null }>()
+          'SELECT delivery_method, delivery_info, contact_phone, entity_id FROM orders WHERE id = ?'
+        ).bind(card.order_id).first<{ delivery_method: string | null; delivery_info: string | null; contact_phone: string | null; entity_id: number | null }>()
 
         // delivery_method → delivery_type 매핑 (CHECK 제약: DELIVERY, PICKUP, FREIGHT, QUICK)
         const dtMap: Record<string, string> = {
@@ -807,7 +807,7 @@ cardsLifecycleRouter.patch('/:id/ship', requireRole('ADMIN', 'MANAGER'), async (
           orderInfo?.delivery_method || null,
           orderInfo?.delivery_info || null,
           user?.id || 1,
-          getEntityId(c) || 1
+          orderInfo?.entity_id ?? (getEntityId(c) || 1)
         ).run()
 
         const shipmentId = shipmentResult.meta?.last_row_id

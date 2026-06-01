@@ -37,13 +37,13 @@ dashboardRouter.get('/stats', async (c) => {
         (SELECT COUNT(*) FROM cards WHERE status = 'PRINT_DONE'${cf.clause}) as done_cards,
         (SELECT COUNT(*) FROM cards WHERE status = 'HOLD'${cf.clause}) as hold_cards,
         (SELECT SUM(final_amount) FROM orders WHERE 1=1${ef.clause}) as total_revenue,
-        (SELECT COUNT(*) FROM orders WHERE date(created_at) = date('now') AND status != 'CANCELLED'${ef.clause}) as today_order_count,
-        (SELECT SUM(final_amount) FROM orders WHERE date(created_at) = date('now') AND status != 'CANCELLED'${ef.clause}) as today_revenue,
-        (SELECT COUNT(*) FROM orders WHERE strftime('%Y-%m', created_at) = strftime('%Y-%m', 'now') AND status != 'CANCELLED'${ef.clause}) as month_order_count,
-        (SELECT SUM(final_amount) FROM orders WHERE strftime('%Y-%m', created_at) = strftime('%Y-%m', 'now') AND status != 'CANCELLED'${ef.clause}) as month_revenue,
-        (SELECT SUM(final_amount) FROM orders WHERE strftime('%Y-%m', created_at) = strftime('%Y-%m', date('now', '-1 month')) AND status != 'CANCELLED'${ef.clause}) as prev_month_revenue,
-        (SELECT COUNT(*) FROM orders WHERE strftime('%Y-%m', created_at) = strftime('%Y-%m', date('now', '-1 month')) AND status != 'CANCELLED'${ef.clause}) as prev_month_order_count,
-        (SELECT SUM(final_amount) FROM orders WHERE date(created_at) >= date('now', '-7 days') AND status != 'CANCELLED'${ef.clause}) as week_revenue,
+        (SELECT COUNT(*) FROM orders WHERE created_at >= date('now') AND created_at < date('now', '+1 day') AND status != 'CANCELLED'${ef.clause}) as today_order_count,
+        (SELECT SUM(final_amount) FROM orders WHERE created_at >= date('now') AND created_at < date('now', '+1 day') AND status != 'CANCELLED'${ef.clause}) as today_revenue,
+        (SELECT COUNT(*) FROM orders WHERE created_at >= date('now', 'start of month') AND created_at < date('now', 'start of month', '+1 month') AND status != 'CANCELLED'${ef.clause}) as month_order_count,
+        (SELECT SUM(final_amount) FROM orders WHERE created_at >= date('now', 'start of month') AND created_at < date('now', 'start of month', '+1 month') AND status != 'CANCELLED'${ef.clause}) as month_revenue,
+        (SELECT SUM(final_amount) FROM orders WHERE created_at >= date('now', 'start of month', '-1 month') AND created_at < date('now', 'start of month') AND status != 'CANCELLED'${ef.clause}) as prev_month_revenue,
+        (SELECT COUNT(*) FROM orders WHERE created_at >= date('now', 'start of month', '-1 month') AND created_at < date('now', 'start of month') AND status != 'CANCELLED'${ef.clause}) as prev_month_order_count,
+        (SELECT SUM(final_amount) FROM orders WHERE created_at >= date('now', '-7 days') AND status != 'CANCELLED'${ef.clause}) as week_revenue,
         (SELECT COUNT(*) FROM cards WHERE status = 'PRINT_DONE'${cf.clause}) as shipment_ready_count,
         (SELECT COUNT(*) FROM orders WHERE delivery_date = date('now') AND status NOT IN ('SHIPPED','CANCELLED')${ef.clause}) as today_shipment_due,
         (SELECT COUNT(*) FROM orders WHERE priority='URGENT' AND status NOT IN ('SHIPPED','CANCELLED')${ef.clause}) as urgent_count,
@@ -53,7 +53,7 @@ dashboardRouter.get('/stats', async (c) => {
         (SELECT ROUND(
           COUNT(CASE WHEN o2.status = 'SHIPPED' AND date(o2.updated_at) <= date(o2.delivery_date) THEN 1 END) * 100.0 /
           NULLIF(COUNT(*), 0), 1)
-         FROM orders o2 WHERE o2.status IN ('SHIPPED') AND strftime('%Y-%m', o2.created_at) = strftime('%Y-%m', 'now') AND o2.delivery_date IS NOT NULL${ef.clause}
+         FROM orders o2 WHERE o2.status IN ('SHIPPED') AND o2.created_at >= date('now', 'start of month') AND o2.created_at < date('now', 'start of month', '+1 month') AND o2.delivery_date IS NOT NULL${ef.clause}
         ) as on_time_rate
     `).bind(...[
       ...ef.params, // total_orders
@@ -133,7 +133,7 @@ dashboardRouter.get('/stats/daily', async (c) => {
         COUNT(*) as order_count,
         SUM(final_amount) as revenue
       FROM orders
-      WHERE date(created_at) >= date('now', '-7 days')${ef.clause}
+      WHERE created_at >= date('now', '-7 days')${ef.clause}
       GROUP BY date(created_at)
       ORDER BY date(created_at) DESC
     `).bind(...ef.params).all()
@@ -161,7 +161,7 @@ dashboardRouter.get('/stats/weekly', async (c) => {
         COUNT(*) as order_count,
         SUM(final_amount) as revenue
       FROM orders
-      WHERE date(created_at) >= date('now', '-28 days')${ef.clause}
+      WHERE created_at >= date('now', '-28 days')${ef.clause}
       GROUP BY strftime('%Y-W%W', created_at)
       ORDER BY week DESC
     `).bind(...ef.params).all()
@@ -189,7 +189,7 @@ dashboardRouter.get('/stats/monthly', async (c) => {
         COUNT(*) as order_count,
         SUM(final_amount) as revenue
       FROM orders
-      WHERE date(created_at) >= date('now', '-180 days')${ef.clause}
+      WHERE created_at >= date('now', '-180 days')${ef.clause}
       GROUP BY strftime('%Y-%m', created_at)
       ORDER BY month DESC
     `).bind(...ef.params).all()
@@ -469,7 +469,7 @@ dashboardRouter.get('/stats/weekly-trend', async (c) => {
         COUNT(*) as order_count,
         COALESCE(SUM(final_amount), 0) as revenue
       FROM orders
-      WHERE date(created_at) >= date('now', '-6 days')
+      WHERE created_at >= date('now', '-6 days')
         AND status != 'CANCELLED'${ef.clause}
       GROUP BY date(created_at)
       ORDER BY date ASC
@@ -536,7 +536,7 @@ dashboardRouter.get('/stats/production-today', async (c) => {
         SUM(CASE WHEN pe.print_status = 'CANCEL' THEN 1 ELSE 0 END) as cancel_count,
         SUM(CASE WHEN pe.print_status = 'ERROR' THEN 1 ELSE 0 END) as error_count
       FROM print_events pe
-      WHERE date(pe.created_at) = date('now')
+      WHERE pe.created_at >= date('now') AND pe.created_at < date('now', '+1 day')
     `).first()
 
     const { results: byEquipment } = await c.env.DB.prepare(`
@@ -545,7 +545,7 @@ dashboardRouter.get('/stats/production-today', async (c) => {
         SUM(CASE WHEN pe.print_status = 'OK' THEN 1 ELSE 0 END) as ok_count
       FROM print_events pe
       LEFT JOIN equipment e ON pe.equipment_id = e.id
-      WHERE date(pe.created_at) = date('now')
+      WHERE pe.created_at >= date('now') AND pe.created_at < date('now', '+1 day')
       GROUP BY pe.equipment_id
       ORDER BY total DESC
     `).all()
@@ -579,7 +579,7 @@ dashboardRouter.get('/stats/uptime-weekly', async (c) => {
         SUM(CASE WHEN pe.print_status = 'OK' THEN 1 ELSE 0 END) as ok_events
       FROM print_events pe
       LEFT JOIN equipment e ON pe.equipment_id = e.id
-      WHERE date(pe.created_at) >= date('now', '-6 days')
+      WHERE pe.created_at >= date('now', '-6 days')
       GROUP BY pe.equipment_id
       ORDER BY total_events DESC
     `).all()

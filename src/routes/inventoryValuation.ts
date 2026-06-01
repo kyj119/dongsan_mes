@@ -101,9 +101,9 @@ inventoryValuation.post('/fifo-layer', requireRole('ADMIN', 'MANAGER'), async (c
   }
 
   await c.env.DB.prepare(`
-    INSERT INTO inventory_fifo_layers (item_id, receipt_date, receipt_id, original_quantity, remaining_quantity, unit_cost)
-    VALUES (?, date('now'), ?, ?, ?, ?)
-  `).bind(item_id, receipt_id || null, quantity, quantity, unit_cost).run()
+    INSERT INTO inventory_fifo_layers (item_id, receipt_date, receipt_id, original_quantity, remaining_quantity, unit_cost, entity_id)
+    VALUES (?, date('now'), ?, ?, ?, ?, ?)
+  `).bind(item_id, receipt_id || null, quantity, quantity, unit_cost, getEntityId(c) || 1).run()
 
   return c.json({ success: true })
 })
