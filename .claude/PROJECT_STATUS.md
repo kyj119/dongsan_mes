@@ -20,8 +20,8 @@
 
 ## 🟡 대기 중 (사용자 선택/승인 필요)
 
-### [포털 rate-limit 바인딩] — CF 대시보드 등록 대기 (2026-06-01)
-- portal verify-token/verify-document 가드 코드 배포됨 → CF Pages 'webapp' → Settings → Functions → Bindings → Rate limiting → `PORTAL_RL`, limit 20/period 60 등록 시 자동 활성
+### [포털 rate-limit] — 코드 완료, 프로덕션 배포 대기 (2026-06-01)
+- portal verify-document/verify-token에 기존 `rateLimitMiddleware`(10·30/분) 적용(commit 4a2fc28, origin push됨). **prod 미배포**(75e76b3c=비활성) → 다음 배포 시 활성. (Cloudflare 바인딩 방식은 Pages 미지원으로 폐기)
 ### [#310 직접발행 폼] — 실사용 검증 대기 (2026-06-01)
 - 백엔드(POST /tax-invoices/direct)+UI 배포됨. 세금계산서 '직접발행' 첫 발행 테스트 권장 (tax_invoices 0건)
 
