@@ -210,7 +210,7 @@ export async function generateCardsForOrder(params: GenerateCardsParams): Promis
           requesting_entity_id
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).bind(
-        cardNumber, orderId, null, 'PRINTING',
+        cardNumber, orderId, null, 'PRINT_PENDING',
         client?.client_name || 'Unknown', category, category,
         cardWidth, cardHeight, totalQty, (firstItem.unit as string) || 'EA',
         ripFilename, JSON.stringify(uniquePP),
@@ -253,7 +253,7 @@ ordersCoreRouter.use('/*', authMiddleware, requireAnyPagePermission('/orders', '
 
 ordersCoreRouter.get('/', async (c) => {
   try {
-    const { page = '1', limit = '50', status = '', search = '', sort = 'created_at_desc', date_from = '', date_to = '', exclude_status = '', priority = '', amount_min = '', amount_max = '', delivery_method = '', billing_status = '' } = c.req.query()
+    const { page = '1', limit = '50', status = '', search = '', sort = 'created_at_desc', date_from = '', date_to = '', exclude_status = '', priority = '', amount_min = '', amount_max = '', delivery_method = '', billing_status = '', overdue = '' } = c.req.query()
     const safeLimit = Math.min(parseInt(limit) || 50, 200)
     const offset = (parseInt(page) - 1) * safeLimit
 
@@ -353,6 +353,11 @@ ordersCoreRouter.get('/', async (c) => {
       }
     }
 
+    // 출고지연: 납기일 경과 + 미출고(SHIPPED/COMPLETED/취소/견적 제외)
+    if (overdue === '1') {
+      whereClauses.push("o.delivery_date IS NOT NULL AND o.delivery_date != '' AND o.delivery_date < date('now') AND o.status NOT IN ('SHIPPED','COMPLETED','CANCELLED','QUOTATION')")
+    }
+
     if (whereClauses.length > 0) {
       query += ' WHERE ' + whereClauses.join(' AND ')
     }
@@ -440,6 +445,10 @@ ordersCoreRouter.get('/', async (c) => {
         countWhereClauses.push('o.billing_status = ?')
         countParams.push(billing_status)
       }
+    }
+
+    if (overdue === '1') {
+      countWhereClauses.push("o.delivery_date IS NOT NULL AND o.delivery_date != '' AND o.delivery_date < date('now') AND o.status NOT IN ('SHIPPED','COMPLETED','CANCELLED','QUOTATION')")
     }
 
     if (countWhereClauses.length > 0) {

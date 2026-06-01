@@ -263,6 +263,7 @@ function resetAllFilters() {
   document.getElementById('statusFilter').value = '';
   document.getElementById('deliveryMethodFilter').value = '';
   document.getElementById('billingStatusFilter').value = '';
+  var _ov = document.getElementById('overdueFilter'); if (_ov) _ov.checked = false;
   document.getElementById('priorityFilter').value = '';
   document.getElementById('sortBy').value = 'created_at_desc';
   document.getElementById('orderDateFrom').value = '';
@@ -305,6 +306,7 @@ async function loadOrders() {
     const priorityFilter = document.getElementById('priorityFilter')?.value || '';
     const deliveryMethodFilter = document.getElementById('deliveryMethodFilter')?.value || '';
     const billingStatusFilter = document.getElementById('billingStatusFilter')?.value || '';
+    const overdueFilter = document.getElementById('overdueFilter')?.checked || false;
 
     localStorage.setItem('orders_filter_search', searchQuery);
     localStorage.setItem('orders_filter_status', statusFilter);
@@ -325,6 +327,7 @@ async function loadOrders() {
     if (priorityFilter) params.append('priority', priorityFilter);
     if (deliveryMethodFilter) params.append('delivery_method', deliveryMethodFilter);
     if (billingStatusFilter) params.append('billing_status', billingStatusFilter);
+    if (overdueFilter) params.append('overdue', '1');
     params.append('sort', sortBy);
     params.append('page', String(currentPage));
     params.append('limit', '50');
@@ -1269,6 +1272,7 @@ async function exportOrdersCsv() {
     var priorityFilter = document.getElementById('priorityFilter')?.value || '';
     var deliveryMethodFilter = document.getElementById('deliveryMethodFilter')?.value || '';
     var billingStatusFilter = document.getElementById('billingStatusFilter')?.value || '';
+    var overdueFilter = document.getElementById('overdueFilter')?.checked || false;
 
     if (searchQuery) params.append('search', searchQuery);
     if (statusFilter) params.append('status', statusFilter);
@@ -1276,6 +1280,7 @@ async function exportOrdersCsv() {
     if (priorityFilter) params.append('priority', priorityFilter);
     if (deliveryMethodFilter) params.append('delivery_method', deliveryMethodFilter);
     if (billingStatusFilter) params.append('billing_status', billingStatusFilter);
+    if (overdueFilter) params.append('overdue', '1');
     params.append('sort', sortBy);
     if (dateFrom) params.append('date_from', dateFrom);
     if (dateTo) params.append('date_to', dateTo);

@@ -22,6 +22,8 @@ export function ledgerPage(c: Context<HonoEnv>) {
       #clientDetailModal .modal-header{position:sticky;top:0;background:#fff;border-bottom:1px solid #e5e7eb;padding:12px 24px;z-index:10}
       #clientDetailModal .ds-table td{font-size:13px}
       #transactionsTableBody .tx-badge{display:inline-block;min-width:52px;text-align:center;padding:2px 6px;font-size:11px;font-weight:600;border-radius:4px;white-space:nowrap}
+      /* 거래처별 원장 표: 헤더/바디/합계 패딩 통일로 열 정렬 (specificity 0,2,2 > ds-table-striped, Tailwind px-4 무력화) */
+      .ds-table.led-tbl thead th, .ds-table.led-tbl tbody td, .ds-table.led-tbl tfoot td{padding:6px 8px}
     `,
     pageContent: `
         <!-- 회계반영 대기 배너 -->
@@ -168,7 +170,7 @@ export function ledgerPage(c: Context<HonoEnv>) {
                     </div>
                 </div>
                 <div class="overflow-x-auto" style="max-height: calc(100vh - 280px); overflow-y: auto;">
-                    <table class="ds-table ds-table-compact ds-table-striped">
+                    <table class="ds-table ds-table-compact ds-table-striped led-tbl">
                         <thead>
                             <tr>
                                 <th class="text-left">코드</th>

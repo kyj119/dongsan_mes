@@ -727,7 +727,8 @@ arRouter.get('/settlement', async (c) => {
       .map(cl => {
         const o = orderMap.get(cl.id)
         const p = paymentMap.get(cl.id)
-        if (!o && !p) return null
+        // 기간 무거래라도 이월 미수 잔액(balance ≠ 0)이 있으면 포함
+        if (!o && !p && !(Number(cl.balance) || 0)) return null
         return {
           id: cl.id,
           client_code: cl.client_code,

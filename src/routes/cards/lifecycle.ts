@@ -1034,7 +1034,7 @@ cardsLifecycleRouter.post('/generate/:orderId', async (c) => {
             requesting_entity_id
           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `).bind(
-          cardNumber, orderId, item.id, 'PRINTING',
+          cardNumber, orderId, item.id, 'PRINT_PENDING',
           order.client_name || 'Unknown', item.item_name, item.category_name,
           item.width || 0, item.height || 0, item.quantity, item.unit || 'EA',
           ripFilename, item.post_processing,
