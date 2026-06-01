@@ -64,6 +64,7 @@ description: "동산기획 ERP+MES UI 일관성 가이드. 프론트엔드 작�
 - 헤더: `bg-gray-50 text-gray-600 text-xs font-semibold sticky top-0 z-5`
 - 행: `hover:bg-blue-50/30 border-b border-gray-100`
 - 숫자 셀: `tabular-nums text-right`
+- **헤더 정렬**: 숫자/상태 헤더는 `<th class="text-right">`/`text-center` 그대로 사용. `.ds-table(-striped) thead th`가 `text-align:left`를 강제하지만 **layout.ts 전역 규칙**(`.ds-table thead th.text-right/.text-center/.text-left`, 특정성 0,2,2)이 유틸을 복원 → **페이지별 `thead th{text-align}` 패치 금지**(단일 소스)
 - 액션 버튼: 호버 시에만 노출
 - 줄무늬: `ds-table-striped` (짝수행 `#f8fafc`)
 - 밀도 토글: `ds-table-compact`

@@ -24,9 +24,7 @@ export function ledgerPage(c: Context<HonoEnv>) {
       #transactionsTableBody .tx-badge{display:inline-block;min-width:52px;text-align:center;padding:2px 6px;font-size:11px;font-weight:600;border-radius:4px;white-space:nowrap}
       /* 거래처별 원장 표: 헤더/바디/합계 패딩 통일 (specificity 0,2,2 > ds-table-striped, Tailwind px-4 무력화) */
       .ds-table.led-tbl thead th, .ds-table.led-tbl tbody td, .ds-table.led-tbl tfoot td{padding:6px 8px}
-      /* ds-table-striped가 th에 text-align:left를 강제 → 숫자 헤더가 값(오른쪽)과 어긋남. th의 정렬 클래스 복원 */
-      .ds-table.led-tbl thead th.text-right{text-align:right}
-      .ds-table.led-tbl thead th.text-center{text-align:center}
+      /* th 정렬 유틸(text-right/center) 복원은 layout.ts 전역 규칙에서 처리 (단일 소스) */
       /* 원장 모달(.ds-modal): 콘텐츠를 패딩 없이 박스에 직접 배치 → 헤더가 상단·전폭 버튼이 둥근 모서리(12px)에 붙어 잘림. 박스 내부 패딩 부여 (원장 페이지 한정, clientDetailModal=.modal 미해당) */
       .ds-modal-overlay > .ds-modal{padding:var(--space-xl)}
     `,

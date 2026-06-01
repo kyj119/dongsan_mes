@@ -818,6 +818,12 @@ const SHARED_CSS = `
   .ds-table-striped tbody tr:hover { background: var(--c-bg); }
   .ds-table-striped tbody tr:nth-child(even):hover { background: var(--c-bg); }
   .ds-table-striped tbody tr:last-child td { border-bottom: none; }
+  /* [전역] 표 헤더 정렬 유틸 복원: .ds-table(-striped) thead th의 강제 text-align:left가
+     th의 .text-right/.text-center/.text-left 유틸(특정성 0,1,0)을 (0,1,2)로 덮어써
+     숫자·상태 헤더가 값과 어긋나는 문제 → 유틸 우선(0,2,2)으로 모든 페이지 일괄 정렬. */
+  .ds-table thead th.text-right, .ds-table-striped thead th.text-right { text-align: right; }
+  .ds-table thead th.text-center, .ds-table-striped thead th.text-center { text-align: center; }
+  .ds-table thead th.text-left, .ds-table-striped thead th.text-left { text-align: left; }
   /* 고정 열너비 모드 — th에 width/style 지정 시 사용 */
   .ds-table-fixed { table-layout: fixed; }
   /* 컴팩트 변형 (재무보고, IA 등 밀집 테이블) */
