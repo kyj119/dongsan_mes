@@ -61,11 +61,14 @@ export function migrationPage(c: Context<HonoEnv>) {
               <i class="fas fa-won-sign text-lg text-gray-400 mb-1 block"></i>
               <span class="text-xs text-gray-600">입금 이력</span>
             </button>
+            <!-- #318: 세금계산서 이관은 백엔드(/api/migration/tax_invoices/preview·import) 미구현 →
+                 404 방지를 위해 UI 옵션 숨김. 백엔드 구현 시 이 버튼 복원.
             <button onclick="selectImportType('tax_invoices')" data-type="tax_invoices"
               class="import-type-btn border rounded-lg p-3 text-center hover:border-blue-400 transition-colors">
               <i class="fas fa-receipt text-lg text-gray-400 mb-1 block"></i>
               <span class="text-xs text-gray-600">세금계산서</span>
             </button>
+            -->
             <button onclick="selectImportType('opening_balances')" data-type="opening_balances"
               class="import-type-btn border rounded-lg p-3 text-center hover:border-blue-400 transition-colors">
               <i class="fas fa-balance-scale text-lg text-gray-400 mb-1 block"></i>

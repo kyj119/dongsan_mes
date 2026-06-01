@@ -1565,11 +1565,12 @@
                     // 저장 제안 팝업 (기존 showConfirm 활용)
                     var msg = '단가가 변경되었습니다 (' + basePrice.toLocaleString() + '원 → ' + newPrice.toLocaleString() + '원).\n이 거래처의 기본 단가로 저장할까요?';
                     showConfirm(msg, function() {
-                        axios.post('/api/prices', {
+                        // #318: POST /api/prices 없음 → /client-item-prices (upsert)로 리포인트.
+                        // 백엔드 body: { client_id, item_id, price, notes? }. 'context'는 미사용이라 제거.
+                        axios.post('/api/prices/client-item-prices', {
                             item_id: parseInt(itemId),
                             client_id: parseInt(clientId),
-                            price: newPrice,
-                            context: 'sales'
+                            price: newPrice
                         }).then(function() {
                             showToast('거래처 단가가 저장되었습니다.', 'success');
                         }).catch(function() {
