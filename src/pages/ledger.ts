@@ -434,6 +434,15 @@ export function ledgerPage(c: Context<HonoEnv>) {
                             <span class="text-gray-400">최근지급 <span id="pClientLastPayment">-</span></span>
                         </span>
                     </div>
+                    <!-- 조회 기간 컨트롤 (모달 독립, 기본=페이지 기간) -->
+                    <div class="flex items-center gap-2 mt-2 flex-wrap">
+                        <span class="text-xs text-gray-500"><i class="far fa-calendar-alt mr-1"></i>조회기간</span>
+                        <input type="date" id="modalStartDate" class="ds-input" style="width:142px;padding:3px 8px;font-size:12px" onchange="applyModalPeriod()">
+                        <span class="text-gray-400 text-xs">~</span>
+                        <input type="date" id="modalEndDate" class="ds-input" style="width:142px;padding:3px 8px;font-size:12px" onchange="applyModalPeriod()">
+                        <button onclick="setModalPeriodThisYear()" class="ds-btn ds-btn-ghost ds-btn-sm" style="font-size:12px;padding:2px 8px">올해</button>
+                        <button onclick="setModalPeriodAll()" class="ds-btn ds-btn-ghost ds-btn-sm" style="font-size:12px;padding:2px 8px">전체</button>
+                    </div>
                     <div id="dualBalanceSection" class="mt-1"></div>
                 </div>
 

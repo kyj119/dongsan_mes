@@ -11,7 +11,7 @@ var allClients = [];
 var currentDateFilter = { startDate: '', endDate: '' };
 var _adjustmentOrderList = [];
 var agingMap = {}; // client_id -> { aging_days, aging_category }
-var modalContext = { clientId: null, clientName: '', mode: 'sales' };
+var modalContext = { clientId: null, clientName: '', mode: 'sales', startDate: '', endDate: '' };
 
 // Date helpers
 function setQuickDate(key) {
@@ -21,14 +21,14 @@ function setQuickDate(key) {
     var sd = '', ed = '';
 
     if (key === 'thisMonth') {
-        sd = new Date(y, m, 1).toISOString().split('T')[0];
-        ed = new Date(y, m + 1, 0).toISOString().split('T')[0];
+        sd = fmtLocalDate(new Date(y, m, 1));
+        ed = fmtLocalDate(new Date(y, m + 1, 0));
     } else if (key === 'lastMonth') {
-        sd = new Date(y, m - 1, 1).toISOString().split('T')[0];
-        ed = new Date(y, m, 0).toISOString().split('T')[0];
+        sd = fmtLocalDate(new Date(y, m - 1, 1));
+        ed = fmtLocalDate(new Date(y, m, 0));
     } else if (key === '3months') {
-        sd = new Date(y, m - 2, 1).toISOString().split('T')[0];
-        ed = new Date(y, m + 1, 0).toISOString().split('T')[0];
+        sd = fmtLocalDate(new Date(y, m - 2, 1));
+        ed = fmtLocalDate(new Date(y, m + 1, 0));
     } else if (key === 'thisYear') {
         sd = y + '-01-01';
         ed = y + '-12-31';
@@ -57,6 +57,12 @@ function applyDateFilter() {
     loadSettlement();
     loadMonthlySummary();
     if (selectedClientId) {
+        // 페이지 기간 변경 시 열려있는 상세 모달 기간도 동기화 (기본=동일)
+        modalContext.startDate = currentDateFilter.startDate;
+        modalContext.endDate = currentDateFilter.endDate;
+        var _msd = document.getElementById('modalStartDate'), _med = document.getElementById('modalEndDate');
+        if (_msd) _msd.value = modalContext.startDate;
+        if (_med) _med.value = modalContext.endDate;
         loadClientDetail(selectedClientId);
     }
     var pContent = document.getElementById('purchaseContent');
@@ -72,6 +78,21 @@ function getDateParams() {
     if (currentDateFilter.startDate) p += '&startDate=' + currentDateFilter.startDate;
     if (currentDateFilter.endDate) p += '&endDate=' + currentDateFilter.endDate;
     return p;
+}
+
+// 상세 모달 전용 조회기간 (페이지 기간과 독립, 기본값은 페이지 기간)
+function getModalDateParams() {
+    var p = '';
+    if (modalContext.startDate) p += '&startDate=' + modalContext.startDate;
+    if (modalContext.endDate) p += '&endDate=' + modalContext.endDate;
+    return p;
+}
+
+// 로컬 날짜 YYYY-MM-DD (toISOString의 UTC 변환으로 인한 하루 밀림 방지)
+function fmtLocalDate(dt) {
+    var mm = String(dt.getMonth() + 1).padStart(2, '0');
+    var dd = String(dt.getDate()).padStart(2, '0');
+    return dt.getFullYear() + '-' + mm + '-' + dd;
 }
 
 // Load settlement + clients
@@ -168,6 +189,12 @@ function openDetailModal(clientId, clientName, mode) {
     modalContext.clientId = clientId;
     modalContext.clientName = clientName;
     modalContext.mode = mode || 'sales';
+    // 모달 조회기간 = 페이지 기간(기본). 모달 헤더 컨트롤에 반영.
+    modalContext.startDate = currentDateFilter.startDate || '';
+    modalContext.endDate = currentDateFilter.endDate || '';
+    var _msd = document.getElementById('modalStartDate'), _med = document.getElementById('modalEndDate');
+    if (_msd) _msd.value = modalContext.startDate;
+    if (_med) _med.value = modalContext.endDate;
     document.getElementById('modalClientName').textContent = clientName;
     document.getElementById('clientDetailModal').classList.remove('hidden');
     document.body.style.overflow = 'hidden';
@@ -203,7 +230,7 @@ function selectClient(clientId, clientName) {
     selectedClientName = clientName;
 
     // Set today as default payment date
-    document.getElementById('paymentDate').value = new Date().toISOString().split('T')[0];
+    document.getElementById('paymentDate').value = fmtLocalDate(new Date());
 
     // Highlight row
     document.querySelectorAll('#clientsTableBody .client-row').forEach(function(r) {
@@ -218,10 +245,36 @@ function closeDetail() {
     closeDetailModal();
 }
 
+// ===== 상세 모달 조회기간 컨트롤 (페이지 기간과 독립) =====
+function applyModalPeriod() {
+    var msd = document.getElementById('modalStartDate'), med = document.getElementById('modalEndDate');
+    modalContext.startDate = msd ? msd.value : '';
+    modalContext.endDate = med ? med.value : '';
+    if (!modalContext.clientId) return;
+    if (modalContext.mode === 'purchase') {
+        loadPurchaseClientLedger(modalContext.clientId);  // 매입은 날짜 미사용(전체)
+    } else {
+        loadClientDetail(modalContext.clientId);
+    }
+}
+function setModalPeriodThisYear() {
+    var y = new Date().getFullYear();
+    var msd = document.getElementById('modalStartDate'), med = document.getElementById('modalEndDate');
+    if (msd) msd.value = y + '-01-01';
+    if (med) med.value = fmtLocalDate(new Date());
+    applyModalPeriod();
+}
+function setModalPeriodAll() {
+    var msd = document.getElementById('modalStartDate'), med = document.getElementById('modalEndDate');
+    if (msd) msd.value = '';   // 빈 값 = 전체(하한 없음)
+    if (med) med.value = '';
+    applyModalPeriod();
+}
+
 // Load client detail (transactions + payments)
 async function loadClientDetail(clientId) {
     try {
-        var url = '/api/ledger/client/' + clientId + '?' + getDateParams().substring(1);
+        var url = '/api/ledger/client/' + clientId + '?' + getModalDateParams().substring(1);
         var res = await axios.get(url);
         if (res.data.success) {
             var d = res.data.data;
@@ -322,7 +375,23 @@ async function loadClientDetail(clientId) {
                 }
             });
 
-            if ((d.transactions || []).length === 0) {
+            // ── 전기이월 행 (조회 시작일 이전 잔액) — 최신순 목록의 맨 아래 ──
+            var openingBal = (d.summary && d.summary.opening_balance) || 0;
+            if (Math.round(openingBal) !== 0) {
+                var obRow = document.createElement('tr');
+                obRow.className = 'border-t-2 border-gray-300 bg-gray-100';
+                obRow.innerHTML =
+                    '<td class="px-3 py-2 text-gray-500 whitespace-nowrap text-xs">' + (modalContext.startDate || '') + '</td>' +
+                    '<td class="px-2 py-2 text-center"><span class="tx-badge bg-gray-300 text-gray-700">전기이월</span></td>' +
+                    '<td class="px-3 py-2 text-sm text-gray-500 italic">조회 시작일 이전 잔액</td>' +
+                    '<td class="px-3 py-2"></td>' +
+                    '<td class="px-3 py-2"></td>' +
+                    '<td class="px-3 py-2 text-right tabular-nums text-sm font-semibold ' + (openingBal > 0 ? 'text-red-600' : 'text-green-600') + '">' + openingBal.toLocaleString() + '</td>' +
+                    '<td></td>';
+                txBody.appendChild(obRow);
+            }
+
+            if ((d.transactions || []).length === 0 && Math.round(openingBal) === 0) {
                 txBody.innerHTML = '<tr><td colspan="7" class="text-center py-10"><i class="fas fa-receipt text-3xl mb-2 block text-gray-300"></i><div class="text-sm text-gray-400">거래 내역이 없습니다</div></td></tr>';
             }
         }
@@ -1981,8 +2050,8 @@ var _ledgerStatementData = null; // 마지막 로드된 거래처 데이터 캐�
 
 function buildLedgerStatementHtml(clientName, transactions, summary) {
     var today = new Date().toISOString().split('T')[0];
-    var sd = currentDateFilter.startDate || '';
-    var ed = currentDateFilter.endDate || '';
+    var sd = modalContext.startDate || '';
+    var ed = modalContext.endDate || '';
     var periodText = sd && ed ? sd + ' ~ ' + ed : (sd || ed || '전체 기간');
 
     var h = '<div style="font-family:Malgun Gothic,sans-serif;color:#000;width:780px;padding:10px;">';
@@ -2037,6 +2106,18 @@ function buildLedgerStatementHtml(clientName, transactions, summary) {
           + '<td style="border:1px solid #ddd;padding:3px 6px;font-size:8pt;text-align:right;font-weight:bold;">' + tx.balance.toLocaleString() + '</td></tr>';
     });
 
+    // 전기이월 행 (조회 시작일 이전 잔액) — 최신순 목록의 맨 아래
+    var openBal = summary.opening_balance || 0;
+    if (Math.round(openBal) !== 0) {
+        h += '<tr style="background:#eee;font-weight:bold;">'
+          + '<td style="border:1px solid #ddd;padding:3px 6px;font-size:8pt;text-align:center;">' + (sd || '') + '</td>'
+          + '<td style="border:1px solid #ddd;padding:3px 6px;font-size:8pt;text-align:center;">전기이월</td>'
+          + '<td style="border:1px solid #ddd;padding:3px 6px;font-size:8pt;">조회 시작일 이전 잔액</td>'
+          + '<td style="border:1px solid #ddd;padding:3px 6px;font-size:8pt;"></td>'
+          + '<td style="border:1px solid #ddd;padding:3px 6px;font-size:8pt;"></td>'
+          + '<td style="border:1px solid #ddd;padding:3px 6px;font-size:8pt;text-align:right;">' + openBal.toLocaleString() + '</td></tr>';
+    }
+
     // 합계
     h += '<tr style="background:#e5e5e5;font-weight:bold;">'
       + '<td colspan="3" style="border:1px solid #999;padding:5px 8px;font-size:9pt;text-align:center;">합계</td>'
@@ -2054,7 +2135,9 @@ function printLedgerStatement() {
     area.style.display = 'block';
     var ps = document.createElement('style');
     ps.id = 'ledgerPrintStyle';
-    ps.textContent = '@media print { body > *:not(#ledgerPrintArea) { display:none !important; } #ledgerPrintArea { display:block !important; } } @page { size: A4 portrait; margin: 10mm; }';
+    // 인쇄영역이 페이지 컨테이너에 중첩되어 있어 'body 직계자식 숨김' 방식은 조상까지 숨겨 백지가 됨.
+    // visibility 기반(중첩 무관)으로 인쇄영역만 노출 + 페이지 좌상단 고정.
+    ps.textContent = '@media print { body * { visibility: hidden !important; } #ledgerPrintArea, #ledgerPrintArea * { visibility: visible !important; } #ledgerPrintArea { display:block !important; position:absolute; left:0; top:0; width:100%; } } @page { size: A4 portrait; margin: 10mm; }';
     document.head.appendChild(ps);
     setTimeout(function() {
         window.print();

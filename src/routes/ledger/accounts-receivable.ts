@@ -142,8 +142,9 @@ arRouter.get('/client/:clientId', async (c) => {
   try {
     const clientId = c.req.param('clientId')
     const { endDate } = c.req.query()
-    // 기본 6개월 제한 (startDate 미지정 시) — 무제한 쿼리로 인한 성능 저하 방지
-    const startDate = c.req.query('startDate') || new Date(Date.now() - 180 * 86400000).toISOString().substring(0, 10)
+    // startDate 미지정 = 전체 기간(하한 없음). 프론트는 항상 페이지 기간을 전달하고, '전체' 버튼만 빈 값 전송.
+    // 전기이월(opening) 계산이 잔액 정확성을 보장하므로 6개월 강제 제한 불필요.
+    const startDate = c.req.query('startDate') || ''
 
     // Get client info
     const client = await c.env.DB.prepare(
@@ -255,6 +256,35 @@ arRouter.get('/client/:clientId', async (c) => {
     adjQuery += ' ORDER BY created_at ASC'
     const { results: adjustments } = await c.env.DB.prepare(adjQuery).bind(...adjParams).all<AdjustmentRow>()
 
+    // ===== 전기이월(opening, 조회 시작일 이전 잔액) + 전체 정합성(all-time) 계산 =====
+    // 어느 기간을 조회해도 잔액이 정확하도록: opening = 시작일 이전 전체 거래 잔액. startDate='' 이면 opening=0(전체).
+    const { clause: oOrdEf, params: oOrdEfP } = entityFilter(c)
+    const ordSums = await c.env.DB.prepare(`
+      SELECT
+        COALESCE(SUM(CASE WHEN billing_status = 'BILLED' THEN COALESCE(billed_amount, final_amount, 0) ELSE 0 END), 0) AS all_debit,
+        COALESCE(SUM(CASE WHEN billing_status = 'BILLED' AND date(created_at) < ? THEN COALESCE(billed_amount, final_amount, 0) ELSE 0 END), 0) AS open_debit
+      FROM orders WHERE client_id = ?${oOrdEf}
+    `).bind(startDate, clientId, ...oOrdEfP).first<{ all_debit: number; open_debit: number }>()
+
+    const { clause: oPayEf, params: oPayEfP } = entityFilter(c)
+    const paySums = await c.env.DB.prepare(`
+      SELECT
+        COALESCE(SUM(amount), 0) AS all_credit,
+        COALESCE(SUM(CASE WHEN date(payment_date) < ? THEN amount ELSE 0 END), 0) AS open_credit
+      FROM payments WHERE client_id = ?${oPayEf}
+    `).bind(startDate, clientId, ...oPayEfP).first<{ all_credit: number; open_credit: number }>()
+
+    const { clause: oAdjEf, params: oAdjEfP } = entityFilter(c)
+    const adjSums = await c.env.DB.prepare(`
+      SELECT
+        COALESCE(SUM(amount), 0) AS all_adj,
+        COALESCE(SUM(CASE WHEN date(created_at) < ? THEN amount ELSE 0 END), 0) AS open_adj
+      FROM adjustments WHERE client_id = ?${oAdjEf}
+    `).bind(startDate, clientId, ...oAdjEfP).first<{ all_adj: number; open_adj: number }>()
+
+    const opening_balance = (Number(ordSums?.open_debit) || 0) - (Number(paySums?.open_credit) || 0) - (Number(adjSums?.open_adj) || 0)
+    const all_time_balance = (Number(ordSums?.all_debit) || 0) - (Number(paySums?.all_credit) || 0) - (Number(adjSums?.all_adj) || 0)
+
     const totalPayments = payments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0)
     const totalAdjustments = adjustments.reduce((sum, a) => sum + (Number(a.amount) || 0), 0)
 
@@ -262,9 +292,10 @@ arRouter.get('/client/:clientId', async (c) => {
     const totalBilled = orders.reduce((sum, o) => {
       return o.billing_status === 'BILLED' ? sum + (Number(o.billed_amount) || Number(o.final_amount) || 0) : sum
     }, 0)
-    const calculated_balance = totalBilled - totalPayments - totalAdjustments
+    const period_net = totalBilled - totalPayments - totalAdjustments
+    const ending_balance = opening_balance + period_net  // 기말 잔액 = 전기이월 + 기간 증감
     const cached_balance = client.balance || 0
-    const has_discrepancy = Math.abs(calculated_balance - cached_balance) > 0.01
+    const has_discrepancy = Math.abs(all_time_balance - cached_balance) > 0.01
 
     // Find last payment date
     const lastPayment = payments.length > 0 ? payments[payments.length - 1] : null
@@ -319,8 +350,8 @@ arRouter.get('/client/:clientId', async (c) => {
       }))
     ].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
 
-    // Calculate running balance (ascending order)
-    let runningBalance = 0
+    // Calculate running balance (ascending order) — 전기이월에서 시작
+    let runningBalance = opening_balance
     const transactionsWithBalance = transactions.map(t => {
       runningBalance += t.debit - t.credit
       return {
@@ -337,8 +368,10 @@ arRouter.get('/client/:clientId', async (c) => {
           total_orders: totalBilled,
           total_payments: totalPayments,
           total_adjustments: totalAdjustments,
-          balance: calculated_balance,
-          calculated_balance,
+          opening_balance,
+          balance: ending_balance,
+          period_net,
+          calculated_balance: all_time_balance,
           cached_balance,
           has_discrepancy,
           last_payment_date: lastPayment ? lastPayment.payment_date : null
