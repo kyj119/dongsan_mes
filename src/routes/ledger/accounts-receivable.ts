@@ -747,6 +747,32 @@ arRouter.get('/settlement', async (c) => {
       ? await c.env.DB.prepare(paymentQuery).bind(...paymentParams).all<PaymentAggRow>()
       : await c.env.DB.prepare(paymentQuery).all<PaymentAggRow>()
 
+    // Step 2.5: 전체기간 실 미수 집계 (entity 필터) — 캐시 clients.balance가 stale(0)이어도 미수 거래처 누락 방지
+    const { clause: allOrdEf, params: allOrdEfP } = entityFilter(c, 'o')
+    const { results: allOrderResults } = await c.env.DB.prepare(`
+      SELECT client_id, COALESCE(SUM(CASE WHEN billing_status = 'BILLED' THEN COALESCE(billed_amount, final_amount, 0) ELSE 0 END), 0) as billed
+      FROM orders o WHERE status != 'CANCELLED'${allOrdEf}
+      GROUP BY client_id
+    `).bind(...allOrdEfP).all<{ client_id: number; billed: number }>()
+
+    const { clause: allPayEf, params: allPayEfP } = entityFilter(c, 'p')
+    const { results: allPaymentResults } = await c.env.DB.prepare(`
+      SELECT client_id, COALESCE(SUM(amount), 0) as paid
+      FROM payments p WHERE 1=1${allPayEf}
+      GROUP BY client_id
+    `).bind(...allPayEfP).all<{ client_id: number; paid: number }>()
+
+    const { clause: allAdjEf, params: allAdjEfP } = entityFilter(c, 'a')
+    const { results: allAdjResults } = await c.env.DB.prepare(`
+      SELECT client_id, COALESCE(SUM(amount), 0) as adj
+      FROM adjustments a WHERE 1=1${allAdjEf}
+      GROUP BY client_id
+    `).bind(...allAdjEfP).all<{ client_id: number; adj: number }>()
+
+    const billedMap = new Map(allOrderResults.map(r => [r.client_id, Number(r.billed) || 0]))
+    const paidMap = new Map(allPaymentResults.map(r => [r.client_id, Number(r.paid) || 0]))
+    const adjMap = new Map(allAdjResults.map(r => [r.client_id, Number(r.adj) || 0]))
+
     // Step 3: Get active clients
     const { results: clients } = await c.env.DB.prepare(
       'SELECT id, client_code, client_name, balance FROM clients WHERE is_active = 1'
@@ -760,13 +786,15 @@ arRouter.get('/settlement', async (c) => {
       .map(cl => {
         const o = orderMap.get(cl.id)
         const p = paymentMap.get(cl.id)
-        // 기간 무거래라도 이월 미수 잔액(balance ≠ 0)이 있으면 포함
-        if (!o && !p && !(Number(cl.balance) || 0)) return null
+        // 실 미수 잔액(전체기간 청구-입금-감액) — 상세(all_time)와 동일 기준, entity-aware
+        const realBalance = (billedMap.get(cl.id) || 0) - (paidMap.get(cl.id) || 0) - (adjMap.get(cl.id) || 0)
+        // 기간 무거래라도 실 미수 잔액(또는 캐시 잔액)이 있으면 포함 → stale 캐시로 인한 누락 방지
+        if (!o && !p && Math.round(realBalance) === 0 && !(Number(cl.balance) || 0)) return null
         return {
           id: cl.id,
           client_code: cl.client_code,
           client_name: cl.client_name,
-          balance: cl.balance || 0,
+          balance: Math.round(realBalance) !== 0 ? realBalance : (cl.balance || 0),
           order_count: o?.order_count || 0,
           total_sales: o?.total_sales || 0,
           total_payments: p?.total_payments || 0
