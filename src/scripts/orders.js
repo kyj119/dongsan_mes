@@ -463,7 +463,15 @@ async function confirmStatusChange() {
       status: newStatus
     });
     if (response.data.success) {
+      var _changedId = _statusChangeOrderId;
       closeStatusModal();
+      // 즉시 반영(optimistic): 전체 재조회 전에 해당 행 상태를 바로 갱신 (반영 지연·깜빡임 방지)
+      var _row = document.querySelector('#ordersTable tr[data-order-id="' + _changedId + '"]');
+      if (_row && typeof getStatusColor === 'function') {
+        _row.dataset.status = newStatus;
+        var _sc = _row.querySelector('td:nth-child(7)');
+        if (_sc) _sc.innerHTML = '<span class="px-2 inline-flex items-center text-xs leading-5 font-semibold rounded-full ' + getStatusColor(newStatus) + '"><i class="' + getStatusIcon(newStatus) + ' text-[7px] mr-1"></i>' + getStatusText(newStatus) + '</span>';
+      }
       loadOrderStats();
       loadOrders();
       // Phase 5: 자재 부족 경고
