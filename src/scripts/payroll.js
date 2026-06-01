@@ -39,7 +39,7 @@ async function prLoadEmployeeOptions() {
       for (var i = 0; i < prEmployees.length; i++) {
         var e = prEmployees[i];
         if (e.status && e.status !== 'ACTIVE') continue;
-        opts += '<option value="' + e.id + '" data-base="' + (e.base_salary || 0) + '">' + (e.employee_code || '') + ' ' + (e.name || '') + ' (' + (e.department || '') + ')</option>';
+        opts += '<option value="' + e.id + '" data-base="' + (e.base_salary || 0) + '">' + escapeHtml(e.employee_code || '') + ' ' + escapeHtml(e.name || '') + ' (' + escapeHtml(e.department || '') + ')</option>';
       }
       sel.innerHTML = opts;
     }
@@ -122,9 +122,9 @@ window.payrollLoad = async function() {
 
       html += '<tr>' +
         '<td class="px-2 py-2 text-center"><input type="checkbox" onchange="payrollToggleRow(' + r.id + ', this.checked)" ' + (prSelected[r.id] ? 'checked' : '') + '></td>' +
-        '<td class="px-3 py-2">' + (r.employee_code || '') + '</td>' +
-        '<td class="px-3 py-2 font-medium">' + (r.employee_name || '') + syncedMark + '</td>' +
-        '<td class="px-3 py-2 text-xs text-gray-600">' + (r.department || '') + ' / ' + (r.position || '') + '</td>' +
+        '<td class="px-3 py-2">' + escapeHtml(r.employee_code || '') + '</td>' +
+        '<td class="px-3 py-2 font-medium">' + escapeHtml(r.employee_name || '') + syncedMark + '</td>' +
+        '<td class="px-3 py-2 text-xs text-gray-600">' + escapeHtml(r.department || '') + ' / ' + escapeHtml(r.position || '') + '</td>' +
         '<td class="px-3 py-2 text-right tabular-nums">' + fmtMoney(r.base_salary) + '</td>' +
         '<td class="px-3 py-2 text-right tabular-nums ' + (otHrs > 0 ? 'text-amber-700 font-medium' : 'text-gray-400') + '">' + otHrs.toFixed(1) + '</td>' +
         '<td class="px-3 py-2 text-right tabular-nums">' + fmtMoney(r.overtime_pay) + '</td>' +

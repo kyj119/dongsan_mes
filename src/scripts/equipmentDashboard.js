@@ -121,7 +121,7 @@ function renderUtilizationChart() {
       : '<span class="status-badge offline">오프라인</span>';
 
     html += '<div style="display:flex;align-items:center;gap:12px;padding:8px 0;border-bottom:1px solid var(--c-border);">';
-    html += '  <div style="min-width:120px;font-size:13px;font-weight:600;color:#374151;">' + eq.name + '</div>';
+    html += '  <div style="min-width:120px;font-size:13px;font-weight:600;color:#374151;">' + escapeHtml(eq.name) + '</div>';
     html += '  <div style="min-width:80px;">' + statusBadge + '</div>';
     html += '  <div class="utilization-bar">';
     html += '    <div class="utilization-bar-fill" style="background:' + color + ';opacity:0.15;">';
@@ -159,7 +159,7 @@ function renderEquipmentTable() {
       : 0;
 
     html += '<tr>';
-    html += '  <td style="font-weight:600;color:#374151;">' + eq.name + '</td>';
+    html += '  <td style="font-weight:600;color:#374151;">' + escapeHtml(eq.name) + '</td>';
     html += '  <td style="text-align:center;">' + statusBadge + '</td>';
     html += '  <td style="text-align:right;color:#3b82f6;font-weight:600;">' + eq.totalPrints.toLocaleString() + '</td>';
     html += '  <td style="text-align:center;color:#10b981;font-weight:600;">' + eq.successRate + '%</td>';

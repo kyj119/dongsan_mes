@@ -73,7 +73,7 @@ function renderEquipmentTable(data) {
     data.forEach(function(e) {
         var pct = totalSqm > 0 ? Math.round((e.sqm || 0) / totalSqm * 100) : 0;
         html += '<tr class="hover:bg-gray-50">';
-        html += '<td class="px-3 py-2 font-medium">' + e.equipment_name + '</td>';
+        html += '<td class="px-3 py-2 font-medium">' + escapeHtml(e.equipment_name) + '</td>';
         html += '<td class="px-3 py-2 text-right">' + e.total + '</td>';
         html += '<td class="px-3 py-2 text-right font-medium">' + (e.sqm || 0).toLocaleString(undefined, {maximumFractionDigits:1}) + '</td>';
         html += '<td class="px-3 py-2 text-right">';
@@ -149,8 +149,8 @@ function renderOverdueTable(data) {
         var statusColor = isOverdue ? 'text-red-600 font-bold' : 'text-amber-600';
 
         html += '<tr class="hover:bg-gray-50">';
-        html += '<td class="px-3 py-2"><a href="/orders?search=' + o.order_number + '" class="text-blue-600 hover:underline">' + o.order_number + '</a></td>';
-        html += '<td class="px-3 py-2">' + (o.client_name || '-') + '</td>';
+        html += '<td class="px-3 py-2"><a href="/orders?search=' + encodeURIComponent(o.order_number) + '" class="text-blue-600 hover:underline">' + escapeHtml(o.order_number) + '</a></td>';
+        html += '<td class="px-3 py-2">' + escapeHtml(o.client_name || '-') + '</td>';
         html += '<td class="px-3 py-2 ' + statusColor + '">' + o.due_date + (isOverdue ? ' (지연)' : '') + '</td>';
         html += '<td class="px-3 py-2">' + o.status + '</td>';
         html += '<td class="px-3 py-2 text-right">' + o.item_count + '</td>';

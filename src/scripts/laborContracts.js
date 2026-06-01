@@ -126,7 +126,7 @@ window.lcLoad = async function() {
       var deptName = LC_DEPT[r.department] || r.department || '-';
 
       html += '<tr class="hover:bg-gray-50">'
-        + '<td class="px-3 py-2 text-left font-medium">' + (r.employee_name || '-') + '<div class="text-[10px] text-gray-400">' + (r.employee_code || '') + '</div></td>'
+        + '<td class="px-3 py-2 text-left font-medium">' + escapeHtml(r.employee_name || '-') + '<div class="text-[10px] text-gray-400">' + escapeHtml(r.employee_code || '') + '</div></td>'
         + '<td class="px-3 py-2 text-left text-xs">' + deptName + '</td>'
         + '<td class="px-3 py-2 text-left text-xs">' + (r.entity_name || '-') + '</td>'
         + '<td class="px-3 py-2 text-left text-xs">' + lcContractTypeName(r.contract_type) + '</td>'

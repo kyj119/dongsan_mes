@@ -165,10 +165,10 @@ async function viewLogDetail(receiptNum) {
         var st = statusMap[String(msg.state || msg.reportState || '0')] || { label: '알 수 없음', color: 'gray' };
         html += '<div class="border rounded-lg p-3 mb-2">';
         html += '<div class="flex items-center justify-between mb-2">';
-        html += '<span class="font-medium">' + (msg.receiveNum || msg.rcv || '-') + ' ' + (msg.receiveName || msg.rcvnm || '') + '</span>';
+        html += '<span class="font-medium">' + escapeHtml(msg.receiveNum || msg.rcv || '-') + ' ' + escapeHtml(msg.receiveName || msg.rcvnm || '') + '</span>';
         html += '<span class="px-2 py-0.5 rounded-full text-xs font-medium bg-' + st.color + '-50 text-' + st.color + '-700">' + st.label + '</span>';
         html += '</div>';
-        if (msg.resultMessage || msg.resultCode) html += '<div class="text-xs text-gray-500">결과: ' + (msg.resultMessage || '') + ' (코드: ' + (msg.resultCode || '') + ')</div>';
+        if (msg.resultMessage || msg.resultCode) html += '<div class="text-xs text-gray-500">결과: ' + escapeHtml(msg.resultMessage || '') + ' (코드: ' + escapeHtml(msg.resultCode || '') + ')</div>';
         if (msg.sentDT || msg.sendDT) html += '<div class="text-xs text-gray-400 mt-1">발송: ' + (msg.sentDT || msg.sendDT || '') + '</div>';
         if (msg.altResultCode) html += '<div class="text-xs text-amber-600 mt-1">대체문자: ' + (msg.altResultCode === 1 ? '성공' : '실패 (' + msg.altResultCode + ')') + '</div>';
         html += '</div>';

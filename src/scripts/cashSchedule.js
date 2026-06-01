@@ -217,7 +217,7 @@ window.schOpenDayDetail = async function(dateStr) {
         html += '<div class="text-xs font-medium">' + it.source_type + ' <span class="' + typeClass + '">' + it.flow_type + '</span></div>';
         html += '<div>' + statusBadge + '</div>';
         html += '</div>';
-        html += '<div class="text-[11px] text-gray-600">' + (it.client_name || it.description || '-') + '</div>';
+        html += '<div class="text-[11px] text-gray-600">' + escapeHtml(it.client_name || it.description || '-') + '</div>';
         html += '<div class="text-sm font-bold tabular-nums text-gray-900">' + fmt(it.amount) + '</div>';
         html += '<div class="flex gap-1 pt-1">';
         if (it.status !== 'DONE') {
