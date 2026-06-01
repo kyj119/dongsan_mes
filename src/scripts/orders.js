@@ -122,16 +122,28 @@ async function bulkShipSelected() {
 
 async function bulkBillingConfirm() {
   if (selectedOrderIds.size === 0) return;
-  if (!(await showConfirm(selectedOrderIds.size + '건의 주문을 회계반영 처리하시겠습니까?'))) return;
+  // #4: 회계반영 대상(출고완료/배송완료)만 추출 — 비대상은 400을 유발하므로 사전 제외(콘솔 에러 방지)
+  var eligible = [], skipped = 0;
+  selectedOrderIds.forEach(function(id) {
+    var row = document.querySelector('tr[data-order-id="' + id + '"]');
+    var st = row && row.dataset.status;
+    if (st === 'SHIPPED' || st === 'COMPLETED') eligible.push(id);
+    else skipped++;
+  });
+  if (eligible.length === 0) {
+    showToast('회계반영 대상(출고완료/배송완료) 주문이 없습니다' + (skipped ? ' — ' + skipped + '건 제외' : ''), 'warning');
+    return;
+  }
+  if (!(await showConfirm(eligible.length + '건의 주문을 회계반영 처리하시겠습니까?' + (skipped ? '\n(출고 전 ' + skipped + '건은 제외됩니다)' : '')))) return;
   var success = 0, fail = 0;
-  for (var id of selectedOrderIds) {
+  for (var id of eligible) {
     try {
       var res = await axios.patch('/api/orders/' + id + '/billing-status', { billing_status: 'BILLED' });
       if (res.data.success) success++;
       else fail++;
     } catch(e) { fail++; }
   }
-  showToast(success + '건 회계반영 완료' + (fail > 0 ? ', ' + fail + '건 실패' : ''), fail > 0 ? 'warning' : 'success');
+  showToast(success + '건 회계반영 완료' + (fail > 0 ? ', ' + fail + '건 실패' : '') + (skipped ? ', ' + skipped + '건 제외' : ''), fail > 0 ? 'warning' : 'success');
   clearBulkSelection();
   loadOrders();
 }
@@ -353,7 +365,8 @@ async function loadOrders() {
         const billingCell = isBillable
           ? `<button onclick="event.stopPropagation(); setBillingStatusFromList(${order.id})" class="px-2 py-0.5 text-xs rounded bg-blue-600 text-white hover:bg-blue-700" title="회계반영"><i class="fas fa-check text-[9px] mr-0.5"></i>반영</button>`
           : billingBadge;
-        const itemMore = order.item_count > 1 ? ` <span class="text-xs text-gray-400">외 ${order.item_count - 1}</span>` : '';
+        const spec = (order.main_item_width && order.main_item_height) ? ` <span class="text-xs text-gray-500">[${order.main_item_width}×${order.main_item_height}]</span>` : '';
+        const itemMore = order.item_count > 1 ? ` <span class="text-xs text-gray-400">외 ${order.item_count - 1}건</span>` : '';
         return `
           <tr class="hover:bg-gray-50" data-order-id="${order.id}" data-status="${order.status}">
             <td class="px-2 py-2.5 text-center">
@@ -366,7 +379,7 @@ async function loadOrders() {
               <div class="text-sm text-gray-900 truncate" title="${escapeHtml(order.client_name || '')}">${escapeHtml(order.client_name || '-')}</div>
             </td>
             <td class="px-2 py-2.5">
-              <div class="text-sm text-gray-700 truncate" title="${escapeHtml(order.main_item_name || '')}">${escapeHtml(order.main_item_name || '-')}${itemMore}</div>
+              <div class="text-sm text-gray-700 truncate" title="${escapeHtml(order.main_item_name || '')}">${escapeHtml(order.main_item_name || '-')}${spec}${itemMore}</div>
             </td>
             <td class="px-2 py-2.5 whitespace-nowrap">
               <div class="text-sm text-gray-900">${escapeHtml(order.delivery_date || '-')}${urgencyBadge}</div>
@@ -386,7 +399,7 @@ async function loadOrders() {
             <td class="px-2 py-2.5 whitespace-nowrap">
               <div class="text-xs text-gray-500">${new Date(order.created_at).toLocaleDateString('ko-KR')}</div>
             </td>
-            <td class="px-2 py-2.5 whitespace-nowrap text-center text-sm">
+            <td class="px-2 py-2.5 whitespace-nowrap text-center text-sm ord-act">
               <button onclick="viewOrder(${order.id})" class="text-blue-600 hover:text-blue-900 mx-1" title="상세"><i class="fas fa-eye"></i></button>
               <button onclick="showStatusChangeModal(${order.id}, '${order.status}')" class="text-green-600 hover:text-green-900 mx-1" title="상태변경"><i class="fas fa-sync-alt"></i></button>
               <button onclick="openInvoice(${order.id})" class="text-purple-600 hover:text-purple-900 mx-1" title="명세서"><i class="fas fa-file-invoice"></i></button>

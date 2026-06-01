@@ -158,21 +158,26 @@ export function ordersPage(c: Context<HonoEnv>) {
         </div>
       </div>
       <!-- 주문 테이블 -->
+      <style>
+        /* 주문 리스트 전용: 셀 패딩 통일(헤더/바디 정렬) + 좁은 컬럼 '...' 잘림 방지 (specificity 0,2,2 > ds-table-striped 0,1,2) */
+        .ds-table.ord-tbl thead th, .ds-table.ord-tbl tbody td { padding: 7px 8px; }
+        .ds-table.ord-tbl td.ord-act { overflow: visible; }
+      </style>
       <div class="ds-card" style="padding:0;overflow:hidden;">
         <div class="ds-table-wrap" style="max-height: calc(100vh - 280px); overflow-y: auto;">
-          <table class="ds-table ds-table-striped hover-actions">
+          <table class="ds-table ds-table-striped ord-tbl">
             <thead>
               <tr>
                 <th style="text-align:center;width:36px"><input type="checkbox" id="selectAllOrders" onchange="toggleSelectAll(this)" class="rounded border-gray-300"></th>
-                <th style="width:112px">주문번호</th>
-                <th style="width:120px">거래처</th>
+                <th style="width:108px">주문번호</th>
+                <th style="width:150px">거래처</th>
                 <th>품목</th>
-                <th style="width:90px">납기일</th>
+                <th style="width:100px">납기일</th>
                 <th style="width:96px;text-align:right">금액</th>
-                <th style="width:84px">상태</th>
-                <th style="width:78px;text-align:center">회계반영</th>
-                <th style="width:80px">등록일</th>
-                <th style="width:116px;text-align:center">액션</th>
+                <th style="width:86px">상태</th>
+                <th style="width:82px;text-align:center">회계반영</th>
+                <th style="width:78px">등록일</th>
+                <th style="width:130px;text-align:center">액션</th>
               </tr>
             </thead>
             <tbody id="ordersTable">
