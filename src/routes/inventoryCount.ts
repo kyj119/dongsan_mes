@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
-import { getEntityId } from '../utils/entityFilter'
+import { getEntityId, entityFilter } from '../utils/entityFilter'
 
 const inventoryCountRouter = new Hono<HonoEnv>()
 inventoryCountRouter.use('/*', authMiddleware, requireRole('ADMIN', 'MANAGER'))
@@ -13,8 +13,9 @@ inventoryCountRouter.get('/', async (c) => {
     const offset = parseInt(c.req.query('offset') || '0')
     const status = c.req.query('status')
 
-    let query = 'SELECT id, count_number, count_date, count_type, status, submitted_at, approved_at, notes FROM inventory_counts WHERE 1=1'
-    const params: any[] = []
+    const ef = entityFilter(c)  // #279: 법인별 격리
+    let query = 'SELECT id, count_number, count_date, count_type, status, submitted_at, approved_at, notes FROM inventory_counts WHERE 1=1' + ef.clause
+    const params: any[] = [...ef.params]
 
     if (status) {
       query += ' AND status = ?'
@@ -27,7 +28,7 @@ inventoryCountRouter.get('/', async (c) => {
     const { results } = await c.env.DB.prepare(query).bind(...params).all()
 
     // 전체 개수
-    let countQuery = 'SELECT COUNT(*) as cnt FROM inventory_counts WHERE 1=1'
+    let countQuery = 'SELECT COUNT(*) as cnt FROM inventory_counts WHERE 1=1' + ef.clause
     if (status) {
       countQuery += ' AND status = ?'
     }

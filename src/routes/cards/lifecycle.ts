@@ -115,6 +115,13 @@ cardsLifecycleRouter.patch('/bulk/status', requireRole('ADMIN', 'MANAGER', 'OPER
     `).bind(...card_ids, ...efBulk.params).all<BulkCard>()
     const cardMap = new Map(existingCards.map(c => [c.id, c]))
 
+    // #282: 카드 상태 전이 규칙 (완료 카드가 출력중으로 역행 방지)
+    const VALID_TRANSITIONS: Record<string, string[]> = {
+      PRINTING: ['PRINT_DONE', 'HOLD'],
+      PRINT_DONE: ['HOLD'],
+      HOLD: ['PRINTING', 'PRINT_DONE'],
+    }
+
     // batch 문 구성
     const batchStmts: D1PreparedStatement[] = []
     let updated = 0
@@ -122,6 +129,10 @@ cardsLifecycleRouter.patch('/bulk/status', requireRole('ADMIN', 'MANAGER', 'OPER
     for (const cardId of card_ids) {
       const card = cardMap.get(cardId)
       if (!card) continue
+      if (card.status === status) continue  // 동일 상태 no-op (history 중복 방지)
+      if (!(VALID_TRANSITIONS[card.status] || []).includes(status)) {
+        return c.json({ success: false, error: `${card.status} → ${status} 전환 불가 (카드 ${cardId})` }, 400)
+      }
 
       if (status === 'HOLD') {
         batchStmts.push(

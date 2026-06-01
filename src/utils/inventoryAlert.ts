@@ -60,21 +60,6 @@ export async function triggerLowStockAlert(
 }
 
 /**
- * 재고 부족 알림용 SMS 본문 생성
- */
-export function buildStockAlertSMS(
-  items: StockAlertItem[],
-  context: string,
-): string {
-  const header = `[동산MES] ${context}`
-  const lines = items.slice(0, 10).map(i =>
-    `${i.item_name}: ${i.current_stock}/${i.safe_stock}${i.unit}`
-  )
-  if (items.length > 10) lines.push(`외 ${items.length - 10}건`)
-  return `${header}\n${lines.join('\n')}\n주간발주에서 확인하세요.`
-}
-
-/**
  * 주간 발주 분석 요약 SMS 본문 생성
  */
 export function buildWeeklyPurchaseSMS(summary: {

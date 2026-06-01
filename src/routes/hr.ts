@@ -457,7 +457,6 @@ hrRouter.post('/employees', async (c) => {
       'caps_id', 'caps_site_id', 'caps_sync_enabled',
       'pay_type',
       'emergency_contact', 'emergency_phone', 'notes',
-      'entity_id',
       'overtime_daily_hours', 'overtime_work_days',
     ]
 
@@ -491,6 +490,14 @@ hrRouter.post('/employees', async (c) => {
       cols.push('status')
       placeholders.push('?')
       values.push('ACTIVE')
+    }
+
+    // #322: entity_id는 서버에서 강제 (클라이언트 임의 법인 지정 차단). ADMIN 전체모드(0)만 body 허용.
+    if (validCols.has('entity_id')) {
+      const eid = getEntityId(c)
+      cols.push('entity_id')
+      placeholders.push('?')
+      values.push(eid === 0 ? (Number(body.entity_id) || 1) : eid)
     }
 
     const sql = `INSERT INTO employees (${cols.join(', ')}) VALUES (${placeholders.join(', ')})`
