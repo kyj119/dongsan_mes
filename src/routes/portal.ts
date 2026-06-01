@@ -540,6 +540,12 @@ portal.post('/generate-token', authMiddleware, requireRole('ADMIN', 'MANAGER'), 
 // GET /api/portal/verify-token?t=xxx — 공개 API (미들웨어 없음)
 portal.get('/verify-token', async (c) => {
   try {
+    // #314: brute-force 방지 rate limit (IP 기준). 바인딩 미구성 시 가드로 무시.
+    if (c.env.PORTAL_RL) {
+      const ip = c.req.header('CF-Connecting-IP') || 'unknown'
+      const { success } = await c.env.PORTAL_RL.limit({ key: 'vt:' + ip })
+      if (!success) return c.json({ success: false, error: '요청이 너무 많습니다. 잠시 후 다시 시도해주세요.' }, 429)
+    }
     const t = c.req.query('t')
     if (!t) {
       return c.json({ success: false, error: '토큰이 필요합니다.' }, 400)
@@ -604,6 +610,12 @@ export async function generatePortalToken(
 // POST /verify-document — 사업자등록번호 인증 후 거래 문서 반환
 portal.post('/verify-document', async (c) => {
   try {
+    // #314: brute-force 방지 rate limit (IP 기준). 바인딩 미구성 시 가드로 무시.
+    if (c.env.PORTAL_RL) {
+      const ip = c.req.header('CF-Connecting-IP') || 'unknown'
+      const { success } = await c.env.PORTAL_RL.limit({ key: 'vd:' + ip })
+      if (!success) return c.json({ success: false, error: '요청이 너무 많습니다. 잠시 후 다시 시도해주세요.' }, 429)
+    }
     const { token, brn } = await c.req.json() as { token: string; brn: string }
 
     if (!token || !brn) {

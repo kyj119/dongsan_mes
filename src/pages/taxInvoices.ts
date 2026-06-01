@@ -132,6 +132,9 @@ export function taxInvoicesPage(c: Context<HonoEnv>) {
             class="ds-input" onkeydown="if(event.key==='Enter')loadInvoices(1)">
         </div>
         <div class="ds-filter-actions">
+          <button onclick="openDirectIssueModal()" class="ds-btn ds-btn-sm" style="background:#0d9488;color:#fff">
+            <i class="fas fa-file-circle-plus" style="margin-right:4px"></i>직접발행
+          </button>
           <button onclick="switchMainTab('unbilled')" class="ds-btn ds-btn-primary ds-btn-sm">
             <i class="fas fa-plus" style="margin-right:4px"></i>새 세금계산서
           </button>
@@ -312,6 +315,97 @@ export function taxInvoicesPage(c: Context<HonoEnv>) {
         <div class="flex justify-end mt-4">
           <button onclick="document.getElementById('batchResultModal').classList.add('hidden');loadInvoices(1)"
             class="ds-btn ds-btn-primary ds-btn-sm font-medium">확인</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== 직접발행 모달 (주문 없이 세금계산서 발행, issue #310 방안 A) ===== -->
+    <div id="directIssueModal" class="ds-modal-overlay hidden">
+      <div class="ds-modal w-full max-h-[90vh] overflow-y-auto" style="max-width:46rem">
+        <div class="sticky top-0 bg-white border-b px-6 py-4 flex items-center justify-between z-10">
+          <h3 class="text-lg font-bold"><i class="fas fa-file-circle-plus text-teal-600 mr-2"></i>세금계산서 직접발행</h3>
+          <button onclick="closeDirectIssueModal()" class="text-gray-400 hover:text-gray-600 text-2xl leading-none">&times;</button>
+        </div>
+        <div class="px-6 py-4 space-y-4">
+          <p class="text-xs text-gray-400"><i class="fas fa-info-circle mr-1"></i>주문 없이 거래처에 직접 세금계산서를 발행합니다. 발행 시 매출(미수금)이 함께 반영됩니다.</p>
+
+          <!-- 거래처 선택 -->
+          <div>
+            <label class="ds-label">거래처 <span class="text-red-500">*</span></label>
+            <input type="hidden" id="diClientId">
+            <div class="flex gap-2">
+              <input type="text" id="diClientSearch" class="ds-input flex-1" placeholder="거래처명 입력 후 Enter로 검색"
+                onkeydown="if(event.key==='Enter'){event.preventDefault();searchDirectClient();}">
+              <button type="button" onclick="searchDirectClient()" class="ds-btn ds-btn-sm" style="white-space:nowrap">
+                <i class="fas fa-search mr-1"></i>검색
+              </button>
+            </div>
+            <div id="diClientResults" class="hidden mt-1 border rounded-lg max-h-44 overflow-y-auto bg-white shadow-sm"></div>
+            <div id="diClientSelected" class="hidden mt-1.5 text-sm text-teal-700 font-medium"></div>
+          </div>
+
+          <!-- 발행일 -->
+          <div>
+            <label class="ds-label">발행일(작성일) <span class="text-red-500">*</span></label>
+            <input type="date" id="diIssueDate" class="ds-input" style="max-width:14rem">
+          </div>
+
+          <!-- 품목 행 -->
+          <div>
+            <div class="flex items-center justify-between mb-1">
+              <label class="ds-label" style="margin:0">품목 <span class="text-red-500">*</span></label>
+              <button type="button" onclick="addDirectItemRow()" class="ds-btn ds-btn-sm">
+                <i class="fas fa-plus mr-1"></i>행 추가
+              </button>
+            </div>
+            <div class="border rounded-lg overflow-hidden">
+              <table class="w-full text-sm">
+                <thead>
+                  <tr class="bg-gray-50 text-gray-500 text-xs">
+                    <th class="text-left px-2 py-1.5 font-medium">품목명</th>
+                    <th class="text-right px-2 py-1.5 font-medium" style="width:90px">수량</th>
+                    <th class="text-right px-2 py-1.5 font-medium" style="width:120px">단가</th>
+                    <th class="text-right px-2 py-1.5 font-medium" style="width:130px">금액(공급가)</th>
+                    <th class="px-2 py-1.5" style="width:36px"></th>
+                  </tr>
+                </thead>
+                <tbody id="diItemRows"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- 합계 -->
+          <div class="bg-gray-50 rounded-lg p-3 grid grid-cols-3 gap-3 text-sm">
+            <div>
+              <div class="text-xs text-gray-500 mb-0.5">공급가액</div>
+              <div id="diSupplyDisplay" class="font-bold text-gray-800 text-right">0</div>
+            </div>
+            <div>
+              <div class="text-xs text-gray-500 mb-0.5">세액(10%)</div>
+              <div id="diVatDisplay" class="font-bold text-gray-800 text-right">0</div>
+            </div>
+            <div>
+              <div class="text-xs text-gray-500 mb-0.5">합계</div>
+              <div id="diTotalDisplay" class="font-bold text-teal-700 text-right">0</div>
+            </div>
+          </div>
+
+          <!-- 비고 -->
+          <div>
+            <label class="ds-label">비고</label>
+            <textarea id="diNotes" rows="2" class="ds-input resize-none" placeholder="(선택)"></textarea>
+          </div>
+
+          <!-- 발행 후 즉시 전송 옵션 -->
+          <label class="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
+            <input type="checkbox" id="diAutoIssue"> 작성 후 즉시 발행(국세청 전송)
+          </label>
+        </div>
+        <div class="sticky bottom-0 bg-gray-50 border-t px-6 py-4 flex gap-3 justify-end">
+          <button onclick="closeDirectIssueModal()" class="px-4 py-2 bg-gray-200 rounded hover:bg-gray-300 text-sm">취소</button>
+          <button id="diSubmitBtn" onclick="submitDirectIssue()" class="ds-btn ds-btn-sm font-medium" style="background:#0d9488;color:#fff">
+            <i class="fas fa-paper-plane mr-1"></i>발행
+          </button>
         </div>
       </div>
     </div>

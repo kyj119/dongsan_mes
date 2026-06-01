@@ -1116,3 +1116,218 @@ async function runSyncFromInvoicePage() {
     showToast('동기화 오류: ' + (e.response?.data?.error || e.message), 'error');
   }
 }
+
+// ==================== 직접발행 (주문 없이 세금계산서 발행, issue #310 방안 A) ====================
+
+var _diRowSeq = 0;
+
+// 로컬 기준 오늘 날짜 (toISOString의 UTC off-by-one 회피)
+function _diToday() {
+  var d = new Date();
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+
+function _diNum(v) {
+  return parseFloat(String(v == null ? '' : v).replace(/[^0-9.\-]/g, '')) || 0;
+}
+
+function openDirectIssueModal() {
+  var modal = document.getElementById('directIssueModal');
+  if (!modal) { console.warn('[taxInvoices] #directIssueModal not found'); return; }
+  // 초기화
+  var idEl = document.getElementById('diClientId');
+  var searchEl = document.getElementById('diClientSearch');
+  var selEl = document.getElementById('diClientSelected');
+  var resEl = document.getElementById('diClientResults');
+  var dateEl = document.getElementById('diIssueDate');
+  var notesEl = document.getElementById('diNotes');
+  var autoEl = document.getElementById('diAutoIssue');
+  if (idEl) idEl.value = '';
+  if (searchEl) searchEl.value = '';
+  if (selEl) { selEl.classList.add('hidden'); selEl.textContent = ''; }
+  if (resEl) { resEl.classList.add('hidden'); resEl.innerHTML = ''; }
+  if (dateEl) dateEl.value = _diToday();
+  if (notesEl) notesEl.value = '';
+  if (autoEl) autoEl.checked = false;
+  // 품목 행 초기화: 1행
+  var rows = document.getElementById('diItemRows');
+  if (rows) rows.innerHTML = '';
+  addDirectItemRow();
+  recalcDirectTotals();
+  modal.classList.remove('hidden');
+  if (searchEl) setTimeout(function() { searchEl.focus(); }, 50);
+}
+
+function closeDirectIssueModal() {
+  var modal = document.getElementById('directIssueModal');
+  if (modal) modal.classList.add('hidden');
+}
+
+async function searchDirectClient() {
+  var searchEl = document.getElementById('diClientSearch');
+  var resEl = document.getElementById('diClientResults');
+  if (!searchEl || !resEl) { console.warn('[taxInvoices] direct client search elements not found'); return; }
+  var q = searchEl.value.trim();
+  if (!q) { showToast('거래처명을 입력하세요.', 'warning'); return; }
+  resEl.classList.remove('hidden');
+  resEl.innerHTML = '<div class="px-3 py-2 text-sm text-gray-400"><i class="fas fa-spinner fa-spin mr-1"></i>검색 중...</div>';
+  try {
+    var res = await axios.get('/api/clients?search=' + encodeURIComponent(q) + '&limit=50');
+    var clients = (res.data && res.data.data && res.data.data.clients) ? res.data.data.clients : [];
+    if (clients.length === 0) {
+      resEl.innerHTML = '<div class="px-3 py-2 text-sm text-gray-400">검색 결과가 없습니다.</div>';
+      return;
+    }
+    resEl.innerHTML = clients.map(function(cl) {
+      var safeName = escapeHtml(cl.client_name || '').replace(/'/g, "\\'");
+      var brn = cl.business_registration_number ? ' · ' + escapeHtml(cl.business_registration_number) : '';
+      return '<div class="px-3 py-2 text-sm hover:bg-teal-50 cursor-pointer border-b last:border-0" '
+        + 'onclick="selectDirectClient(' + cl.id + ',\'' + safeName + '\')">'
+        + '<span class="font-medium text-gray-800">' + escapeHtml(cl.client_name || '') + '</span>'
+        + '<span class="text-xs text-gray-400">' + brn + '</span>'
+        + '</div>';
+    }).join('');
+  } catch(e) {
+    resEl.innerHTML = '<div class="px-3 py-2 text-sm text-red-400">검색 오류: ' + escapeHtml(e.message || '') + '</div>';
+  }
+}
+
+function selectDirectClient(id, name) {
+  var idEl = document.getElementById('diClientId');
+  var selEl = document.getElementById('diClientSelected');
+  var resEl = document.getElementById('diClientResults');
+  if (idEl) idEl.value = id;
+  if (selEl) { selEl.innerHTML = '<i class="fas fa-check-circle mr-1"></i>선택: ' + escapeHtml(name); selEl.classList.remove('hidden'); }
+  if (resEl) { resEl.classList.add('hidden'); resEl.innerHTML = ''; }
+}
+
+function addDirectItemRow() {
+  var tbody = document.getElementById('diItemRows');
+  if (!tbody) { console.warn('[taxInvoices] #diItemRows not found'); return; }
+  var rid = 'diRow_' + (_diRowSeq++);
+  var tr = document.createElement('tr');
+  tr.id = rid;
+  tr.className = 'border-t';
+  tr.innerHTML =
+      '<td class="px-2 py-1"><input type="text" class="ds-input di-name" style="min-height:30px" placeholder="품목명"></td>'
+    + '<td class="px-2 py-1"><input type="text" inputmode="numeric" class="ds-input di-qty text-right" style="min-height:30px" value="1" oninput="recalcDirectRow(\'' + rid + '\')"></td>'
+    + '<td class="px-2 py-1"><input type="text" inputmode="numeric" class="ds-input di-price text-right" style="min-height:30px" value="0" oninput="recalcDirectRow(\'' + rid + '\')"></td>'
+    + '<td class="px-2 py-1"><input type="text" inputmode="numeric" class="ds-input di-amount text-right" style="min-height:30px" value="0" oninput="recalcDirectTotals()"></td>'
+    + '<td class="px-2 py-1 text-center"><button type="button" onclick="removeDirectItemRow(\'' + rid + '\')" class="text-gray-300 hover:text-red-500" title="삭제"><i class="fas fa-times"></i></button></td>';
+  tbody.appendChild(tr);
+}
+
+function removeDirectItemRow(rid) {
+  var tbody = document.getElementById('diItemRows');
+  var tr = document.getElementById(rid);
+  if (!tbody || !tr) return;
+  if (tbody.querySelectorAll('tr').length <= 1) {
+    showToast('최소 1개 품목이 필요합니다.', 'warning');
+    return;
+  }
+  tr.parentNode.removeChild(tr);
+  recalcDirectTotals();
+}
+
+// 수량/단가 변경 시 금액 자동 계산 (금액을 수동 편집하면 그 값 우선)
+function recalcDirectRow(rid) {
+  var tr = document.getElementById(rid);
+  if (!tr) return;
+  var qty = _diNum(tr.querySelector('.di-qty').value);
+  var price = _diNum(tr.querySelector('.di-price').value);
+  var amtEl = tr.querySelector('.di-amount');
+  if (amtEl) amtEl.value = String(Math.round(qty * price));
+  recalcDirectTotals();
+}
+
+function recalcDirectTotals() {
+  var tbody = document.getElementById('diItemRows');
+  if (!tbody) return;
+  var supply = 0;
+  tbody.querySelectorAll('tr').forEach(function(tr) {
+    supply += _diNum(tr.querySelector('.di-amount').value);
+  });
+  supply = Math.round(supply);
+  var vat = Math.round(supply * 0.1);
+  var total = supply + vat;
+  var sEl = document.getElementById('diSupplyDisplay');
+  var vEl = document.getElementById('diVatDisplay');
+  var tEl = document.getElementById('diTotalDisplay');
+  if (sEl) sEl.textContent = supply.toLocaleString();
+  if (vEl) vEl.textContent = vat.toLocaleString();
+  if (tEl) tEl.textContent = total.toLocaleString();
+}
+
+async function submitDirectIssue() {
+  var clientId = (document.getElementById('diClientId') || {}).value;
+  var issueDate = (document.getElementById('diIssueDate') || {}).value;
+  var notes = (document.getElementById('diNotes') || {}).value || '';
+  var autoIssue = !!(document.getElementById('diAutoIssue') || {}).checked;
+  if (!clientId) { showToast('거래처를 선택하세요.', 'warning'); return; }
+  if (!issueDate) { showToast('발행일을 선택하세요.', 'warning'); return; }
+
+  // 품목 수집
+  var tbody = document.getElementById('diItemRows');
+  var items = [];
+  var supplyTotal = 0;
+  if (tbody) {
+    tbody.querySelectorAll('tr').forEach(function(tr, i) {
+      var name = (tr.querySelector('.di-name').value || '').trim();
+      var qty = _diNum(tr.querySelector('.di-qty').value);
+      var price = _diNum(tr.querySelector('.di-price').value);
+      var amount = Math.round(_diNum(tr.querySelector('.di-amount').value));
+      // 빈 행(품목명 없고 금액 0) 스킵
+      if (!name && amount === 0) return;
+      supplyTotal += amount;
+      items.push({
+        item_name: name || '품목',
+        quantity: qty || 1,
+        unit_price: price || 0,
+        supply_amount: amount,
+        sort_order: i
+      });
+    });
+  }
+  if (items.length === 0) { showToast('품목을 1개 이상 입력하세요.', 'warning'); return; }
+  if (supplyTotal <= 0) { showToast('공급가액이 0원입니다. 금액을 입력하세요.', 'warning'); return; }
+
+  var supplyAmount = Math.round(supplyTotal);
+  var vatAmount = Math.round(supplyAmount * 0.1);
+  var totalAmount = supplyAmount + vatAmount;
+
+  var payload = {
+    client_id: parseInt(clientId, 10),
+    issue_date: issueDate,
+    invoice_type: 'NORMAL',
+    notes: notes,
+    supply_amount: supplyAmount,
+    vat_amount: vatAmount,
+    total_amount: totalAmount,
+    items: items,
+    auto_issue: autoIssue
+  };
+
+  var btn = document.getElementById('diSubmitBtn');
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i>발행 중...'; }
+  try {
+    var res = await axios.post('/api/tax-invoices/direct', payload);
+    if (res.data.success) {
+      showToast(autoIssue ? '세금계산서가 발행(전송)되었습니다.' : '세금계산서가 작성되었습니다.', 'success');
+      closeDirectIssueModal();
+      switchMainTab('list');
+      loadInvoices(1);
+    } else {
+      showToast('직접발행 실패: ' + (res.data.error || ''), 'error');
+    }
+  } catch(e) {
+    showToast('직접발행 오류: ' + (e.response && e.response.data ? e.response.data.error : e.message), 'error');
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-paper-plane mr-1"></i>발행'; }
+  }
+}
+
+// 모달 외부 클릭 닫기
+(function() {
+  var dim = document.getElementById('directIssueModal');
+  if (dim) dim.addEventListener('click', function(e) { if (e.target === this) this.classList.add('hidden'); });
+})();

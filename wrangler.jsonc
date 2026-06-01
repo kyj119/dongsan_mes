@@ -29,5 +29,16 @@
 			"binding": "R2_BUCKET",
 			"bucket_name": "dongsan-files"
 		}
-	]
+	],
+	// #314: portal 인증 엔드포인트 brute-force 방지 — Cloudflare 네이티브 Rate Limiting 바인딩
+	"unsafe": {
+		"bindings": [
+			{
+				"name": "PORTAL_RL",
+				"type": "ratelimit",
+				"namespace_id": "1001",
+				"simple": { "limit": 20, "period": 60 }
+			}
+		]
+	}
 }
