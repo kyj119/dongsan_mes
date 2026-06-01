@@ -364,9 +364,9 @@ function renderRecipientList(items) {
     var badge = item.role ? '<span class="text-xs bg-gray-100 text-gray-500 rounded px-1.5 py-0.5">' + item.role + '</span>' : '';
     if (item.dept) badge = '<span class="text-xs bg-gray-100 text-gray-500 rounded px-1.5 py-0.5">' + item.dept + '</span>';
     return '<label class="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-gray-50 cursor-pointer border-b border-gray-50' + disabledCls + '">'
-      + '<input type="checkbox" class="w-4 h-4 text-blue-600 rounded recipient-check" data-id="' + item.id + '" data-name="' + (item.name || '').replace(/"/g, '&quot;') + '" data-phone="' + (item.phone || '') + '" data-email="' + (item.email || '') + '"' + checkedAttr + disabledAttr + ' onchange="onRecipientCheck(this)">'
+      + '<input type="checkbox" class="w-4 h-4 text-blue-600 rounded recipient-check" data-id="' + item.id + '" data-name="' + escapeHtml(item.name || '') + '" data-phone="' + (item.phone || '') + '" data-email="' + (item.email || '') + '"' + checkedAttr + disabledAttr + ' onchange="onRecipientCheck(this)">'
       + '<div class="flex-1 min-w-0">'
-      + '<div class="flex items-center gap-2"><span class="text-sm font-medium text-gray-800">' + (item.name || '-') + '</span>' + badge + '</div>'
+      + '<div class="flex items-center gap-2"><span class="text-sm font-medium text-gray-800">' + escapeHtml(item.name || '-') + '</span>' + badge + '</div>'
       + '<div class="text-xs text-gray-400">' + (contact || '연락처 없음') + '</div>'
       + '</div>'
       + '</label>';
@@ -857,7 +857,7 @@ function renderTopReceivers(receivers) {
   el.innerHTML = receivers.map(function(r, i) {
     return '<div class="flex items-center gap-3 py-1">'
       + '<span class="text-xs text-gray-400 w-5">' + (i + 1) + '</span>'
-      + '<span class="text-sm font-medium text-gray-800 flex-1">' + (r.receiver_name || '-') + '</span>'
+      + '<span class="text-sm font-medium text-gray-800 flex-1">' + escapeHtml(r.receiver_name || '-') + '</span>'
       + '<span class="text-xs text-gray-500">' + (r.receiver_num || '') + '</span>'
       + '<span class="text-xs font-medium text-blue-600 w-10 text-right">' + r.count + '건</span>'
       + '</div>';

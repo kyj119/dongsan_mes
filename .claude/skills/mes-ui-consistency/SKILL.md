@@ -69,6 +69,12 @@ description: "동산기획 ERP+MES UI 일관성 가이드. 프론트엔드 작�
 - 줄무늬: `ds-table-striped` (짝수행 `#f8fafc`)
 - 밀도 토글: `ds-table-compact`
 
+## 6.5 XSS / 이스케이프 (필수)
+- 사용자 입력 필드(`*name`, `*_name`, `notes`, `description`, `memo`, `message`, `*_message`, `content`)를 innerHTML / 템플릿 리터럴 / `+=` HTML에 삽입할 땐 **전역 `window.escapeHtml(...)`로 반드시 감쌀 것**.
+- URL/속성(href, src, query) 컨텍스트는 `encodeURIComponent` 사용.
+- **로컬 `esc` 복사본 만들지 말 것** — 전역 `window.escapeHtml`로 단일화.
+- `escapeHtml`은 `& < > " '`를 이스케이프하므로 속성값(`data-*`, `title`)에도 그대로 사용 가능. 별도 `.replace(/"/g,...)` 불필요.
+
 ## 7. 필터/폼
 - 필터: `bg-white rounded-lg border p-3 shadow-sm`, 검색은 `flex-1`, 액션 `ml-auto`
 - 폼 라벨: `text-sm font-medium`, 입력: `text-sm`, 포커스 링: 은은한 그레이 쉐도우
