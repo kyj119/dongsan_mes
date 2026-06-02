@@ -14,7 +14,7 @@
 
 - (없음)
 
-> **직전 세션 결과 (2026-06-02 PM-3)**: **한진 E2E(entity 99) 워크플로우 점검 → 치명 버그 2건 발견·수정·배포.** ①카드 생성 차단(1cb77e9가 status='PRINT_PENDING' 도입했으나 cards.status CHECK 미갱신 → 2026-06-01 이후 PRODUCTION 주문 생성 전부 500): 마이그 0284로 CHECK 확장(prod 적용). ②card_number를 order_number.split로 만들어 E{eid} 주문 같은날·법인 충돌: order_number 전체 기반으로 수정. ③#330 회귀(cards.entity_id 없음→orders 조인) 수정. 한진 리스트 착선불/수량 실데이터 검증 통과. (commits 3dff91c, 18769f7)
+> **직전 세션 결과 (2026-06-02 PM-3)**: **한진 E2E(entity 99) 워크플로우 점검 → 치명 버그 2건 발견·수정·배포.** ①카드 생성 차단(1cb77e9가 status='PRINT_PENDING' 도입했으나 cards.status CHECK 미갱신 → 2026-06-01 이후 PRODUCTION 주문 생성 전부 500): 마이그 0284로 CHECK 확장(prod 적용). ②card_number를 order_number.split로 만들어 E{eid} 주문 같은날·법인 충돌: order_number 전체 기반으로 수정. ③#330 회귀(cards.entity_id 없음→orders 조인) 수정. 한진 리스트 착선불/수량 실데이터 검증 통과. **전 법인(1/2/3) 라이브 검증**: 각 법인 PRODUCTION 주문 생성→카드 PRINT_PENDING·card_number `E{eid}-…-01`(법인 유일)·격리 확인→완전 정리(잔여 0·번호 반환). 실데이터 피해 0건. (commits 3dff91c, 18769f7)
 
 > **직전 세션 결과 (2026-06-02 PM-2)**: 출고/배송 페이지 수정 3건 — 한진/대신 리스트 착선불 한글화(`payTypeKo`)·수량 중복 버그 수정(`items` 초기화), 전체 라벨→선택 항목만 출력, 계산서 발행 링크 제거. 배포 + 5/8 실데이터 검증 통과 (commit b261673)
 
@@ -62,7 +62,8 @@
 - **🔴 발견2 (CRITICAL, pre-existing `1cb77e9`)**: 카드 INSERT status='PRINT_PENDING'인데 `cards.status` CHECK는 0022의 `('PRINTING','PRINT_DONE','HOLD')`만 허용 → 카드 생성 전건 `CHECK constraint failed` → **PRODUCTION 주문 생성 500** (마지막 정상 카드 2026-06-01 04:24, 이후 실법인 production 주문 미생성으로 미발현). → **마이그 0284**: cards 재생성 + CHECK에 PRINT_PENDING/RIP_WAITING/SHIPPED 추가 (prod 136행 보존 적용).
 - **🟠 발견3 (E{eid} 채번 후속)**: `generateCardsForOrder`가 card_number를 `order_number.split('-')[0]/[1]`로 생성 → `E99-…-004`가 `E99-날짜-{cardIndex}`가 되어 같은날·법인 2번째+ 주문 **card_number(UNIQUE) 충돌**. → `${order_number}-${cardIndex}` 전체 기반(역호환·전역유일)으로 수정.
 - **🔴 발견1 (내 회귀)**: #330이 없는 컬럼 `cards.entity_id` 참조 → 스케줄 라우트 500. `order_id→orders.entity_id` 격리로 재수정(`cards/queries.ts` 패턴). cards는 봇 오탐 — `feedback-autoscan-false-positives` 갱신.
-- **검증**: entity 99 PRODUCTION 주문 2건 연속 → 카드 PRINT_PENDING 생성, card_number `…-004-01`/`…-005-01` 구분(충돌 없음). 테스트 데이터 정리 완료. commits 3dff91c, 18769f7
+- **검증(entity 99)**: PRODUCTION 주문 2건 연속 → 카드 PRINT_PENDING 생성, card_number `…-004-01`/`…-005-01` 구분(충돌 없음). 테스트 데이터 정리 완료.
+- **라이브 검증(법인 1/2/3)**: 각 법인 실 PRODUCTION 주문 1건 생성 → `E{eid}-20260602-001` + 카드 `E{eid}-…-001-01`(법인 유일·PRINT_PENDING)·entity_id·수량 정확 → **완전 정리**(card_items/cards/order_items/status_history/activity_logs/orders 각 3건, 잔여 0, 번호 MAX기반 반환). 주문생성=알림 없음(logActivity만). **버그 창에 실 production 주문 0건 → 실데이터 피해 0건** 확정. commits 3dff91c, 18769f7
 
 ### 출고/배송 페이지 수정 3건 (2026-06-02 PM-2)
 - **착·선불 한글화**: `shipping_payment`(PREPAID/COLLECT)를 출고 확인 리스트(한진·대신)에 raw 영문 출력 → `payTypeKo()`로 선불/착불 표기
