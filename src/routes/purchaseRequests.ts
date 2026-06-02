@@ -309,7 +309,8 @@ prRouter.post('/', async (c) => {
     const today = new Date()
     const dateStr = today.toISOString().split('T')[0].replace(/-/g, '')
 
-    const requestNumber = await getNextSeqNumber(c.env.DB, 'purchase_requests', 'request_number', `PR-${dateStr}-`)
+    // #329: 법인코드 E{eid} 내장 — 멀티법인 번호 충돌 방지 (행 entity_id와 동일 eid 사용)
+    const requestNumber = await getNextEntitySeqNumber(c.env.DB, 'purchase_requests', 'request_number', getEntityId(c) || 1, dateStr, { base: 'PR-' })
 
     const prResult = await c.env.DB.prepare(`
       INSERT INTO purchase_requests (
@@ -822,7 +823,12 @@ prRouter.delete('/:id', async (c) => {
       }, 400)
     }
 
-    await c.env.DB.prepare(`DELETE FROM purchase_requests WHERE id = ?`).bind(id).run()
+    // #324: D1 FK 미강제 → 자식 명시 정리 (원자적 batch)
+    await c.env.DB.batch([
+      c.env.DB.prepare(`DELETE FROM purchase_request_items WHERE request_id = ?`).bind(id),
+      c.env.DB.prepare(`DELETE FROM pr_status_history WHERE request_id = ?`).bind(id),
+      c.env.DB.prepare(`DELETE FROM purchase_requests WHERE id = ?`).bind(id),
+    ])
 
     return c.json({ success: true })
   } catch (error) {

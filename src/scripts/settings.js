@@ -7,7 +7,7 @@ var SETTING_KEYS = [
   'tax_provider', 'tax_default_email',
   'email_from_name', 'email_from_address'
 ];
-var CHECKBOX_KEYS = ['tax_test_mode', 'tax_auto_issue', 'email_enabled'];
+var CHECKBOX_KEYS = ['tax_test_mode', 'tax_auto_issue', 'email_enabled', 'po_auto_approve_enabled'];
 
 // ── 회사 정보 키 ──
 var COMPANY_KEYS = [
@@ -60,6 +60,12 @@ async function loadSettings() {
         var el = document.getElementById('s_' + key);
         if (el) el.checked = data[key] === '1';
       });
+      // #326: 빠른 발주 자동승인 한도 (data-money — 콤마 포맷 표시)
+      var autoApproveLimitEl = document.getElementById('s_po_auto_approve_limit');
+      if (autoApproveLimitEl) {
+        var lim = data.po_auto_approve_limit;
+        autoApproveLimitEl.value = (lim != null && lim !== '') ? Number(lim).toLocaleString('ko-KR') : '';
+      }
       var secretEl = document.getElementById('taxSecretStatus');
       if (secretEl) {
         if (data.tax_secret_key_configured === '1') {
@@ -208,6 +214,42 @@ function saveEmailSettings() {
   saveSectionSettings(EMAIL_KEYS, EMAIL_CHECKBOX_KEYS, 'saveEmailBtn', 'emailSaveMsg');
 }
 
+// 빠른 발주 자동승인 설정 저장 (#326)
+// 한도는 data-money라 콤마 포함 → parseMoney로 정수 정규화 후 저장 (백엔드는 Number(value)로 비교)
+async function saveAutoApproveSettings() {
+  var enabledEl = document.getElementById('s_po_auto_approve_enabled');
+  var limitEl = document.getElementById('s_po_auto_approve_limit');
+  var btn = document.getElementById('saveAutoApproveBtn');
+  var msg = document.getElementById('autoApproveSaveMsg');
+  if (!enabledEl || !limitEl || !btn || !msg) { console.warn('[settings] saveAutoApproveSettings: 필드 없음'); return; }
+
+  var limit = window.parseMoney(limitEl.value);
+  var settings = {
+    po_auto_approve_enabled: enabledEl.checked ? '1' : '0',
+    po_auto_approve_limit: String(limit == null ? 0 : limit)
+  };
+
+  var originalText = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = '저장 중...';
+  try {
+    var res = await axios.patch('/api/settings', { settings: settings });
+    if (res.data.success) {
+      msg.className = 'mt-3 text-center text-sm text-green-600';
+      msg.textContent = '저장되었습니다.';
+      msg.classList.remove('hidden');
+      setTimeout(function() { msg.classList.add('hidden'); }, 3000);
+    }
+  } catch (err) {
+    msg.className = 'mt-3 text-center text-sm text-red-600';
+    msg.textContent = '저장 실패: ' + (err.response && err.response.data && err.response.data.error || err.message);
+    msg.classList.remove('hidden');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = originalText;
+  }
+}
+
 // ── 바로빌 연결 테스트 ──
 async function testBarobillConnection() {
   var btn = document.getElementById('testBarobillBtn');
@@ -241,36 +283,7 @@ async function testBarobillConnection() {
   }
 }
 
-async function sendTestEmail() {
-  var to = document.getElementById('testEmailTo').value.trim();
-  if (!to) { showToast('수신 이메일 주소를 입력하세요.', 'warning'); return; }
-
-  var btn = document.getElementById('testEmailBtn');
-  var msg = document.getElementById('testEmailMsg');
-  btn.disabled = true;
-  btn.textContent = '발송 중...';
-
-  try {
-    var res = await axios.post('/api/emails/test', { to: to });
-    if (res.data.success) {
-      msg.className = 'mt-2 text-sm text-green-600';
-      msg.textContent = '테스트 이메일이 발송되었습니다. 수신함을 확인하세요.';
-      msg.classList.remove('hidden');
-    } else {
-      msg.className = 'mt-2 text-sm text-red-600';
-      msg.textContent = '발송 실패: ' + (res.data.error || '알 수 없는 오류');
-      msg.classList.remove('hidden');
-    }
-  } catch (err) {
-    msg.className = 'mt-2 text-sm text-red-600';
-    msg.textContent = '발송 실패: ' + (err.response && err.response.data ? err.response.data.error : err.message);
-    msg.classList.remove('hidden');
-  } finally {
-    btn.disabled = false;
-    btn.textContent = '테스트 발송';
-    setTimeout(function() { msg.classList.add('hidden'); }, 5000);
-  }
-}
+// #328: orphan sendTestEmail 제거 — settings 페이지에 testEmail UI 없음(실동작은 emailLogs.js/activityLog 페이지)
 
 // ── 원가 기준 ──
 var costStandards = [];

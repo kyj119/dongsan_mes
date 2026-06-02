@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import { authMiddleware, requireRole } from '../middleware/auth'
 import type { HonoEnv } from '../types/env'
 import { getEntityId, entityFilter } from '../utils/entityFilter'
+import { getNextEntitySeqNumber } from '../utils/sequenceGenerator'
 import { triggerLowStockAlert } from '../utils/inventoryAlert'
 
 const inventoryRouter = new Hono<HonoEnv>()
@@ -273,13 +274,9 @@ inventoryRouter.post('/receipts', async (c) => {
 
     const entityId = getEntityId(c) || 1
 
-    // Generate receipt number
+    // Generate receipt number (#329: 법인코드 E{eid} 내장 + MAX 기반 — 글로벌 COUNT 멀티법인 충돌 방지)
     const today = new Date().toISOString().split('T')[0].replace(/-/g, '')
-    const countRow = await c.env.DB.prepare(
-      `SELECT COUNT(*) as count FROM inventory_receipts WHERE receipt_number LIKE ?`
-    ).bind(`RCV-${today}%`).first<{ count: number }>()
-    const sequence = ((countRow?.count || 0) + 1).toString().padStart(3, '0')
-    const receiptNumber = `RCV-${today}-${sequence}`
+    const receiptNumber = await getNextEntitySeqNumber(c.env.DB, 'inventory_receipts', 'receipt_number', entityId, today, { base: 'RCV-' })
 
     const totalAmount = items.reduce((sum: number, item: any) => sum + (item.quantity * item.unit_price), 0)
 

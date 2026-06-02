@@ -36,35 +36,38 @@ aiInsights.get('/credit-risk/summary', async (c) => {
 // ─── 거래처 미수금 리스크 스코어링 ───────────────────────────────────────────
 aiInsights.get('/credit-risk/:clientId', async (c) => {
   const clientId = Number(c.req.param('clientId'))
+  // clients는 법인 공유 테이블 → client_id만으로 격리 불가. orders/payments에 entity 필터 적용 (#333)
+  const ef = entityFilter(c)       // orders/payments (alias 없음)
+  const efP = entityFilter(c, 'p') // payments p
 
   // 거래 데이터 수집
   const stats = await c.env.DB.prepare(`
     SELECT
       COUNT(*) as total_orders,
       COALESCE(SUM(final_amount), 0) as total_revenue,
-      COALESCE(SUM(final_amount), 0) - COALESCE((SELECT SUM(amount) FROM payments WHERE client_id = ?), 0) as outstanding,
+      COALESCE(SUM(final_amount), 0) - COALESCE((SELECT SUM(amount) FROM payments WHERE client_id = ?${ef.clause}), 0) as outstanding,
       MIN(order_date) as first_order,
       MAX(order_date) as last_order
     FROM orders
-    WHERE client_id = ? AND status NOT IN ('CANCELLED', 'DELETED', 'QUOTATION')
-  `).bind(clientId, clientId).first<any>()
+    WHERE client_id = ?${ef.clause} AND status NOT IN ('CANCELLED', 'DELETED', 'QUOTATION')
+  `).bind(clientId, ...ef.params, clientId, ...ef.params).first<any>()
 
   // 평균 수금일 (입금까지 걸린 일수)
   const avgDays = await c.env.DB.prepare(`
     SELECT AVG(julianday(p.payment_date) - julianday(o.order_date)) as avg_days
     FROM payments p
     JOIN orders o ON o.client_id = p.client_id
-    WHERE p.client_id = ? AND p.payment_date IS NOT NULL AND o.order_date IS NOT NULL
-  `).bind(clientId).first<{ avg_days: number }>()
+    WHERE p.client_id = ?${efP.clause} AND p.payment_date IS NOT NULL AND o.order_date IS NOT NULL
+  `).bind(clientId, ...efP.params).first<{ avg_days: number }>()
 
   // 연체 횟수 (30일 초과 미수금 이력)
   const overdueCount = await c.env.DB.prepare(`
     SELECT COUNT(*) as cnt
     FROM orders
-    WHERE client_id = ? AND status NOT IN ('CANCELLED','DELETED','QUOTATION')
+    WHERE client_id = ?${ef.clause} AND status NOT IN ('CANCELLED','DELETED','QUOTATION')
       AND billing_status = 'BILLED'
       AND julianday('now') - julianday(billed_at) > 30
-  `).bind(clientId).first<{ cnt: number }>()
+  `).bind(clientId, ...ef.params).first<{ cnt: number }>()
 
   // 거래 기간 (월)
   const tradingMonths = stats?.first_order

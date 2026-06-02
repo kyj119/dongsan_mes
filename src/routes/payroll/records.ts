@@ -5,6 +5,7 @@
 import { Hono } from 'hono'
 import type { HonoEnv } from '../../types/env'
 import { authMiddleware, requireRole } from '../../middleware/auth'
+import { getEntityId, entityFilter } from '../../utils/entityFilter'
 
 const recordsRouter = new Hono<HonoEnv>()
 // 급여 레코드(급여·공제·연락처 PII)는 전 라우트 ADMIN/MANAGER 전용
@@ -19,6 +20,8 @@ recordsRouter.get('/', async (c) => {
     const params: any[] = []
     if (period) { clauses.push('p.pay_period = ?'); params.push(period) }
     if (status) { clauses.push('p.status = ?'); params.push(status) }
+    const entityId = getEntityId(c)
+    if (entityId !== 0) { clauses.push('p.entity_id = ?'); params.push(entityId) }
     const where = 'WHERE ' + clauses.join(' AND ')
 
     const rows = await c.env.DB.prepare(
@@ -45,10 +48,11 @@ recordsRouter.get('/', async (c) => {
 // ============================================================================
 recordsRouter.get('/:id', async (c) => {
   const id = Number(c.req.param('id'))
+  const efP = entityFilter(c, 'p')
   const row = await c.env.DB.prepare(
     `SELECT p.*, e.name as employee_name, e.employee_code, e.department, e.position
-     FROM payroll p JOIN employees e ON p.employee_id = e.id WHERE p.id = ?`
-  ).bind(id).first()
+     FROM payroll p JOIN employees e ON p.employee_id = e.id WHERE p.id = ?${efP.clause}`
+  ).bind(id, ...efP.params).first()
   if (!row) return c.json({ success: false, error: '없음' }, 404)
   return c.json({ success: true, data: row })
 })
@@ -60,9 +64,10 @@ recordsRouter.get('/:id', async (c) => {
 recordsRouter.patch('/:id/approve', requireRole('ADMIN', 'MANAGER'), async (c) => {
   const id = Number(c.req.param('id'))
   const user = c.get('user')
+  const ef = entityFilter(c)
   await c.env.DB.prepare(
-    `UPDATE payroll SET status='APPROVED', approved_by=?, approved_at=datetime('now'), updated_at=datetime('now') WHERE id=?`
-  ).bind(user?.id || null, id).run()
+    `UPDATE payroll SET status='APPROVED', approved_by=?, approved_at=datetime('now'), updated_at=datetime('now') WHERE id=?${ef.clause}`
+  ).bind(user?.id || null, id, ...ef.params).run()
   return c.json({ success: true })
 })
 
@@ -72,9 +77,10 @@ recordsRouter.patch('/:id/approve', requireRole('ADMIN', 'MANAGER'), async (c) =
 // ============================================================================
 recordsRouter.patch('/:id/pay', requireRole('ADMIN', 'MANAGER'), async (c) => {
   const id = Number(c.req.param('id'))
+  const ef = entityFilter(c)
   await c.env.DB.prepare(
-    `UPDATE payroll SET status='PAID', paid_at=datetime('now'), updated_at=datetime('now') WHERE id=?`
-  ).bind(id).run()
+    `UPDATE payroll SET status='PAID', paid_at=datetime('now'), updated_at=datetime('now') WHERE id=?${ef.clause}`
+  ).bind(id, ...ef.params).run()
   return c.json({ success: true })
 })
 
@@ -84,10 +90,11 @@ recordsRouter.patch('/:id/pay', requireRole('ADMIN', 'MANAGER'), async (c) => {
 // ============================================================================
 recordsRouter.delete('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
   const id = Number(c.req.param('id'))
-  const row = await c.env.DB.prepare(`SELECT status FROM payroll WHERE id = ?`).bind(id).first<{ status: string }>()
+  const ef = entityFilter(c)
+  const row = await c.env.DB.prepare(`SELECT status FROM payroll WHERE id = ?${ef.clause}`).bind(id, ...ef.params).first<{ status: string }>()
   if (!row) return c.json({ success: false, error: '없음' }, 404)
   if (row.status !== 'PENDING') return c.json({ success: false, error: 'PENDING 상태만 삭제 가능' }, 400)
-  await c.env.DB.prepare(`DELETE FROM payroll WHERE id = ?`).bind(id).run()
+  await c.env.DB.prepare(`DELETE FROM payroll WHERE id = ?${ef.clause}`).bind(id, ...ef.params).run()
   return c.json({ success: true })
 })
 

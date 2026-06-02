@@ -105,51 +105,7 @@ function renderPagination(containerId, currentPage, totalPages, loadFn) {
   container.innerHTML = html;
 }
 
-// ── 입고대기 발주 목록 ──
-async function loadPendingPOs(page) {
-  pendingPage = page || 1;
-  var tbody = document.getElementById('pendingTableBody');
-  if (tbody) tbody.innerHTML = '<tr><td colspan="6" class="px-4 py-8 text-center text-gray-500">로딩 중...</td></tr>';
-  try {
-    var url = '/api/purchase-orders?receiving=1&sort=expected_date_asc&page=' + pendingPage + '&limit=20';
-    var res = await axios.get(url);
-    if (!res.data.success) { throw new Error(res.data.error || '조회 실패'); }
-    var items = res.data.data || [];
-    var pagination = res.data.pagination || {};
-    if (!tbody) return;
-    if (items.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="6" class="px-4 py-8 text-center text-gray-500">입고 대기 발주서가 없습니다.</td></tr>';
-      document.getElementById('pendingPagination').innerHTML = '';
-      return;
-    }
-    tbody.innerHTML = items.map(function(po) {
-      var badge = '<span class="px-2 py-0.5 rounded text-xs font-medium '
-        + (statusColors[po.status] || 'bg-gray-100 text-gray-700') + '">'
-        + (statusLabels[po.status] || po.status) + '</span>';
-      var isOverdue = po.expected_date && (po.status === 'CONFIRMED' || po.status === 'PARTIAL_RECEIVED')
-        && new Date(po.expected_date) < new Date(new Date().toDateString());
-      var rowClass = isOverdue ? 'border-t hover:bg-red-50 bg-red-50 cursor-pointer' : 'border-t hover:bg-gray-50 cursor-pointer';
-      var actions = '<div class="flex gap-1 justify-center">'
-        + '<button onclick="event.stopPropagation();viewDetail(' + po.id + ')" class="px-2 py-1 text-xs bg-gray-100 rounded hover:bg-gray-200" title="상세"><i class="fas fa-eye"></i></button>';
-      if (po.status === 'CONFIRMED' || po.status === 'PARTIAL_RECEIVED') {
-        actions += '<button onclick="event.stopPropagation();openReceiveModal(' + po.id + ')" class="px-2 py-1 text-xs bg-amber-50 text-amber-700 rounded hover:bg-amber-100" title="입고처리"><i class="fas fa-truck-loading"></i></button>';
-      }
-      actions += '</div>';
-      return '<tr class="' + rowClass + '" ondblclick="viewDetail(' + po.id + ')">'
-        + '<td class="px-4 py-3 font-medium text-blue-700 cursor-pointer hover:underline" onclick="viewDetail(' + po.id + ')">' + escapeHtml(po.po_number || '-') + '</td>'
-        + '<td class="px-4 py-3">' + escapeHtml(po.supplier_name || '-') + '</td>'
-        + '<td class="px-4 py-3 text-center">' + (po.order_date || '-') + '</td>'
-        + '<td class="px-4 py-3 text-center">' + (po.expected_date || '-') + getDueBadge(po.expected_date, po.status) + '</td>'
-        + '<td class="px-4 py-3 text-center">' + badge + '</td>'
-        + '<td class="px-4 py-3">' + actions + '</td>'
-        + '</tr>';
-    }).join('');
-    renderPagination('pendingPagination', pendingPage, pagination.total_pages, 'loadPendingPOs');
-  } catch(e) {
-    console.error('loadPendingPOs error:', e);
-    if (tbody) tbody.innerHTML = '<tr><td colspan="6" class="px-4 py-8 text-center text-red-500">조회 실패: ' + escapeHtml(e.message) + '</td></tr>';
-  }
-}
+// #328: dead loadPendingPOs 제거 — pendingTableBody/pendingPagination 부재(페이지는 카드형 poCardList), 실경로는 loadReceivingQueue
 
 // ── 입고이력 ──
 async function loadReceiptHistory(page) {

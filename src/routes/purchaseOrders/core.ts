@@ -1795,6 +1795,8 @@ poCoreRouter.delete('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
         c.env.DB.prepare('DELETE FROM po_status_history WHERE po_id = ?').bind(id),
         // #312: 발주 삭제 시 관련 비용조정의 po_id를 NULL 처리 (조정 레코드 자체는 보존)
         c.env.DB.prepare('UPDATE purchase_adjustments SET po_id = NULL WHERE po_id = ?').bind(id),
+        // #324: 매입 인보이스 댕글링 방지 — po_id NULL 처리 (인보이스 레코드 보존)
+        c.env.DB.prepare('UPDATE purchase_invoices SET po_id = NULL WHERE po_id = ?').bind(id),
         c.env.DB.prepare('DELETE FROM purchase_orders WHERE id = ?').bind(id)
       ])
 

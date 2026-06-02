@@ -1198,7 +1198,8 @@ ordersCoreRouter.post('/', async (c) => {
       if (creditBlocked) {
         // #163: 여신 초과 — 결재 요청 원자적 생성
         const today2 = new Date().toISOString().slice(0, 10).replace(/-/g, '')
-        const aprNumber = await getNextSeqNumber(c.env.DB, 'approval_requests', 'request_number', `APR-${today2}-`)
+        // #329: 법인코드 E{eid} 내장 — 멀티법인 번호 충돌 방지 (행 entity_id와 동일 eid 사용)
+        const aprNumber = await getNextEntitySeqNumber(c.env.DB, 'approval_requests', 'request_number', getEntityId(c) || 1, today2, { base: 'APR-' })
 
         const clientName = await c.env.DB.prepare(
           `SELECT client_name FROM clients WHERE id = ?`
@@ -1214,7 +1215,7 @@ ordersCoreRouter.post('/', async (c) => {
           `SELECT credit_limit FROM clients WHERE id = ?`
         ).bind(orderData.client_id).first<{ credit_limit: number }>()
 
-        const entityId = getEntityId(c)
+        const entityId = getEntityId(c) || 1 // #329: 번호 E{eid}와 행 entity_id 일치 보장
 
         // batch 1: 주문 credit_status + approval_requests 원자적 생성
         const batchResults = await c.env.DB.batch([
@@ -1690,11 +1691,12 @@ ordersCoreRouter.delete('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
   try {
     const id = c.req.param('id')
     const user = c.get('user')
+    const efOrd = entityFilter(c) // 타 법인 주문 삭제 IDOR 방지 — #333
 
     // Check if order exists (status, client_id, final_amount 포함)
     const order = await c.env.DB.prepare(`
-      SELECT id, order_number, status, client_id, final_amount, billing_status, billed_amount FROM orders WHERE id = ?
-    `).bind(id).first<{ id: number; order_number: string; status: string; client_id: number; final_amount: number; billing_status: string | null; billed_amount: number | null }>()
+      SELECT id, order_number, status, client_id, final_amount, billing_status, billed_amount FROM orders WHERE id = ?${efOrd.clause}
+    `).bind(id, ...efOrd.params).first<{ id: number; order_number: string; status: string; client_id: number; final_amount: number; billing_status: string | null; billed_amount: number | null }>()
 
     if (!order) {
       return c.json({
@@ -1809,6 +1811,10 @@ ordersCoreRouter.delete('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
       c.env.DB.prepare('DELETE FROM waste_records WHERE card_id IN (SELECT id FROM cards WHERE order_id = ?)').bind(id),
       c.env.DB.prepare('UPDATE print_events SET card_id = NULL WHERE card_id IN (SELECT id FROM cards WHERE order_id = ?)').bind(id),
       c.env.DB.prepare('DELETE FROM card_items WHERE card_id IN (SELECT id FROM cards WHERE order_id = ?)').bind(id),
+      // #332: cards 참조 잔여 (cards 삭제 전) — tasks/print_file_map은 이력 보존(SET NULL), work_records는 card_id NOT NULL이라 DELETE
+      c.env.DB.prepare('UPDATE tasks SET card_id = NULL WHERE card_id IN (SELECT id FROM cards WHERE order_id = ?)').bind(id),
+      c.env.DB.prepare('DELETE FROM work_records WHERE card_id IN (SELECT id FROM cards WHERE order_id = ?)').bind(id),
+      c.env.DB.prepare('UPDATE print_file_map SET card_id = NULL WHERE card_id IN (SELECT id FROM cards WHERE order_id = ?)').bind(id),
       // #116: order_id 기반 정리
       c.env.DB.prepare('DELETE FROM customer_claims WHERE order_id = ?').bind(id),
       c.env.DB.prepare('DELETE FROM returns WHERE order_id = ?').bind(id),
@@ -1821,6 +1827,8 @@ ordersCoreRouter.delete('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
       c.env.DB.prepare('DELETE FROM tax_invoice_orders WHERE order_id = ?').bind(id),
       c.env.DB.prepare('DELETE FROM order_ai_files WHERE order_id = ?').bind(id),
       c.env.DB.prepare('DELETE FROM auto_process_jobs WHERE order_id = ?').bind(id),
+      // #332: tasks.order_id 이력 보존 (SET NULL)
+      c.env.DB.prepare('UPDATE tasks SET order_id = NULL WHERE order_id = ?').bind(id),
       c.env.DB.prepare('DELETE FROM orders WHERE id = ?').bind(id),
     ])
 

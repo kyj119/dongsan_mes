@@ -124,9 +124,10 @@ notificationsRouter.get('/nav-badges', async (c) => {
 notificationsRouter.patch('/read-all', async (c) => {
   try {
     const user = c.get('user')
+    const ef = entityFilter(c) // #327: 역할 브로드캐스트 알림을 타 법인까지 읽음 처리 방지
     await c.env.DB.prepare(
-      `UPDATE notifications SET is_read = 1 WHERE (user_id = ? OR (user_id IS NULL AND target_role = ?)) AND is_read = 0`
-    ).bind(user.id, user.role).run()
+      `UPDATE notifications SET is_read = 1 WHERE (user_id = ? OR (user_id IS NULL AND target_role = ?)) AND is_read = 0${ef.clause}`
+    ).bind(user.id, user.role, ...ef.params).run()
     return c.json({ success: true })
   } catch (error) {
     console.error('src/routes/notifications.ts error:', error)
@@ -139,9 +140,10 @@ notificationsRouter.patch('/:id/read', async (c) => {
   try {
     const user = c.get('user')
     const id = c.req.param('id')
+    const ef = entityFilter(c) // #327: 역할 브로드캐스트 알림을 타 법인까지 읽음 처리 방지
     await c.env.DB.prepare(
-      `UPDATE notifications SET is_read = 1 WHERE id = ? AND (user_id = ? OR (user_id IS NULL AND target_role = ?))`
-    ).bind(id, user.id, user.role).run()
+      `UPDATE notifications SET is_read = 1 WHERE id = ? AND (user_id = ? OR (user_id IS NULL AND target_role = ?))${ef.clause}`
+    ).bind(id, user.id, user.role, ...ef.params).run()
     return c.json({ success: true })
   } catch (error) {
     console.error('src/routes/notifications.ts error:', error)

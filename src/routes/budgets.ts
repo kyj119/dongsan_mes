@@ -128,7 +128,9 @@ budgets.get('/vs-actual', async (c) => {
 // ─── 예산 삭제 ──────────────────────────────────────────────────────────────
 budgets.delete('/:id', requireRole('ADMIN'), async (c) => {
   const id = Number(c.req.param('id'))
-  await c.env.DB.prepare(`DELETE FROM budgets WHERE id = ?`).bind(id).run()
+  // entity 스코프: 타 법인 예산 삭제 IDOR 방지 — #333
+  const ef = entityFilter(c)
+  await c.env.DB.prepare(`DELETE FROM budgets WHERE id = ?${ef.clause}`).bind(id, ...ef.params).run()
   return c.json({ success: true })
 })
 

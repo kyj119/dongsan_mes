@@ -9,6 +9,7 @@ import type { HonoEnv } from '../../types/env'
 import { authMiddleware, requireRole } from '../../middleware/auth'
 import { requireAnyPagePermission } from '../../middleware/permissions'
 import { logActivity } from '../../utils/activityLog'
+import { entityFilter } from '../../utils/entityFilter'
 
 const cardsSchedulingRouter = new Hono<HonoEnv>()
 cardsSchedulingRouter.use('/*', authMiddleware, requireAnyPagePermission('/cards', '/orders'))
@@ -20,10 +21,11 @@ cardsSchedulingRouter.put('/schedule/assign/:id', async (c) => {
     const id = c.req.param('id')
     const user = c.get('user')
     const { equipment_id } = await c.req.json()
+    const ef = entityFilter(c)
 
     const card = await c.env.DB.prepare(
-      'SELECT id, equipment_id, card_number FROM cards WHERE id = ?'
-    ).bind(id).first<{ id: number; equipment_id: number | null; card_number: string }>()
+      `SELECT id, equipment_id, card_number FROM cards WHERE id = ?${ef.clause}`
+    ).bind(id, ...ef.params).first<{ id: number; equipment_id: number | null; card_number: string }>()
 
     if (!card) {
       return c.json({ success: false, error: 'Card not found' }, 404)
@@ -42,8 +44,8 @@ cardsSchedulingRouter.put('/schedule/assign/:id', async (c) => {
     }
 
     await c.env.DB.prepare(
-      'UPDATE cards SET equipment_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
-    ).bind(equipment_id || null, id).run()
+      `UPDATE cards SET equipment_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?${ef.clause}`
+    ).bind(equipment_id || null, id, ...ef.params).run()
 
     await logActivity({
       db: c.env.DB, userId: user?.id, userName: user?.username,
@@ -71,18 +73,19 @@ cardsSchedulingRouter.put('/schedule/priority/:id', async (c) => {
     if (typeof priority !== 'number' || priority < 0 || priority > 99) {
       return c.json({ success: false, error: 'Priority must be 0-99' }, 400)
     }
+    const ef = entityFilter(c)
 
     const card = await c.env.DB.prepare(
-      'SELECT id FROM cards WHERE id = ?'
-    ).bind(id).first()
+      `SELECT id FROM cards WHERE id = ?${ef.clause}`
+    ).bind(id, ...ef.params).first()
 
     if (!card) {
       return c.json({ success: false, error: 'Card not found' }, 404)
     }
 
     await c.env.DB.prepare(
-      'UPDATE cards SET priority = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
-    ).bind(priority, id).run()
+      `UPDATE cards SET priority = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?${ef.clause}`
+    ).bind(priority, id, ...ef.params).run()
 
     return c.json({ success: true, message: '우선순위 변경 완료' })
   } catch (error) {
@@ -107,8 +110,9 @@ cardsSchedulingRouter.patch('/bulk/priority', requireRole('ADMIN', 'MANAGER'), a
       return c.json({ success: false, error: 'Priority must be 0-99' }, 400)
     }
 
+    const ef = entityFilter(c)
     const stmts = card_ids.map((id: number) =>
-      c.env.DB.prepare('UPDATE cards SET priority = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').bind(priority, id)
+      c.env.DB.prepare(`UPDATE cards SET priority = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?${ef.clause}`).bind(priority, id, ...ef.params)
     )
     for (let i = 0; i < stmts.length; i += 80) {
       await c.env.DB.batch(stmts.slice(i, i + 80))
@@ -130,8 +134,9 @@ cardsSchedulingRouter.patch('/:id', async (c) => {
   try {
     const id = c.req.param('id')
     const body = await c.req.json()
+    const ef = entityFilter(c)
 
-    const card = await c.env.DB.prepare('SELECT id FROM cards WHERE id = ?').bind(id).first()
+    const card = await c.env.DB.prepare(`SELECT id FROM cards WHERE id = ?${ef.clause}`).bind(id, ...ef.params).first()
     if (!card) {
       return c.json({ success: false, error: 'Card not found' }, 404)
     }
@@ -148,9 +153,9 @@ cardsSchedulingRouter.patch('/:id', async (c) => {
     }
 
     updates.push('updated_at = CURRENT_TIMESTAMP')
-    params.push(id)
+    params.push(id, ...ef.params)
 
-    await c.env.DB.prepare(`UPDATE cards SET ${updates.join(', ')} WHERE id = ?`).bind(...params).run()
+    await c.env.DB.prepare(`UPDATE cards SET ${updates.join(', ')} WHERE id = ?${ef.clause}`).bind(...params).run()
 
     return c.json({ success: true, message: 'Card updated' })
   } catch (error) {

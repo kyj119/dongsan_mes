@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
+import { getEntityId } from '../utils/entityFilter'
 
 const migrationRouter = new Hono<HonoEnv>()
 
@@ -80,9 +81,9 @@ migrationRouter.post('/clients/import', async (c) => {
 
     // 이관 로그 생성
     const logResult = await db.prepare(`
-      INSERT INTO migration_logs (migration_type, status, total_rows, started_at, created_by)
-      VALUES ('clients', 'RUNNING', ?, CURRENT_TIMESTAMP, ?)
-    `).bind(clients.length, user?.id || null).run()
+      INSERT INTO migration_logs (migration_type, status, total_rows, started_at, created_by, entity_id)
+      VALUES ('clients', 'RUNNING', ?, CURRENT_TIMESTAMP, ?, ?)
+    `).bind(clients.length, user?.id || null, getEntityId(c) || 1).run()
     const logId = logResult.meta.last_row_id
 
     let imported = 0, skipped = 0, errorCount = 0
@@ -210,9 +211,9 @@ migrationRouter.post('/items/import', async (c) => {
 
     const db = c.env.DB
     const logResult = await db.prepare(`
-      INSERT INTO migration_logs (migration_type, status, total_rows, started_at, created_by)
-      VALUES ('items', 'RUNNING', ?, CURRENT_TIMESTAMP, ?)
-    `).bind(items.length, user?.id || null).run()
+      INSERT INTO migration_logs (migration_type, status, total_rows, started_at, created_by, entity_id)
+      VALUES ('items', 'RUNNING', ?, CURRENT_TIMESTAMP, ?, ?)
+    `).bind(items.length, user?.id || null, getEntityId(c) || 1).run()
     const logId = logResult.meta.last_row_id
 
     let imported = 0, skipped = 0, errorCount = 0
@@ -349,9 +350,9 @@ migrationRouter.post('/orders/import', async (c) => {
 
     const db = c.env.DB
     const logResult = await db.prepare(`
-      INSERT INTO migration_logs (migration_type, status, total_rows, started_at, created_by)
-      VALUES ('orders', 'RUNNING', ?, CURRENT_TIMESTAMP, ?)
-    `).bind(orders.length, user?.id || null).run()
+      INSERT INTO migration_logs (migration_type, status, total_rows, started_at, created_by, entity_id)
+      VALUES ('orders', 'RUNNING', ?, CURRENT_TIMESTAMP, ?, ?)
+    `).bind(orders.length, user?.id || null, getEntityId(c) || 1).run()
     const logId = logResult.meta.last_row_id
 
     let imported = 0, skipped = 0, errorCount = 0
@@ -482,9 +483,9 @@ migrationRouter.post('/payments/import', async (c) => {
 
     const db = c.env.DB
     const logResult = await db.prepare(`
-      INSERT INTO migration_logs (migration_type, status, total_rows, started_at, created_by)
-      VALUES ('payments', 'RUNNING', ?, CURRENT_TIMESTAMP, ?)
-    `).bind(payments.length, user?.id || null).run()
+      INSERT INTO migration_logs (migration_type, status, total_rows, started_at, created_by, entity_id)
+      VALUES ('payments', 'RUNNING', ?, CURRENT_TIMESTAMP, ?, ?)
+    `).bind(payments.length, user?.id || null, getEntityId(c) || 1).run()
     const logId = logResult.meta.last_row_id
 
     let imported = 0, skipped = 0, errorCount = 0
@@ -565,9 +566,9 @@ migrationRouter.post('/opening-balances', async (c) => {
 
     const db = c.env.DB
     const logResult = await db.prepare(`
-      INSERT INTO migration_logs (migration_type, status, total_rows, started_at, created_by)
-      VALUES ('opening_balances', 'RUNNING', ?, CURRENT_TIMESTAMP, ?)
-    `).bind(balances.length, user?.id || null).run()
+      INSERT INTO migration_logs (migration_type, status, total_rows, started_at, created_by, entity_id)
+      VALUES ('opening_balances', 'RUNNING', ?, CURRENT_TIMESTAMP, ?, ?)
+    `).bind(balances.length, user?.id || null, getEntityId(c) || 1).run()
     const logId = logResult.meta.last_row_id
 
     let imported = 0, errorCount = 0

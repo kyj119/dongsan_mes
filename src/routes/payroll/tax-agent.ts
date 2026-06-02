@@ -5,6 +5,7 @@
 import { Hono } from 'hono'
 import type { HonoEnv } from '../../types/env'
 import { authMiddleware, requireRole } from '../../middleware/auth'
+import { entityFilter } from '../../utils/entityFilter'
 
 const taxAgentRouter = new Hono<HonoEnv>()
 taxAgentRouter.use('/*', authMiddleware)
@@ -71,22 +72,23 @@ taxAgentRouter.get('/tax-agent/changes', requireRole('ADMIN', 'MANAGER'), async 
     const user = c.get('user')
     const unmask = user?.role === 'ADMIN'
     const { first, last } = monthBounds(period)
+    const ef = entityFilter(c) // employees PII는 법인별 격리 (#333)
 
     // 이번 달 입사자
     const { results: hires } = await c.env.DB.prepare(
       `SELECT employee_code, name, resident_number, hire_date, department, position, base_salary
        FROM employees
-       WHERE hire_date BETWEEN ? AND ?
+       WHERE hire_date BETWEEN ? AND ?${ef.clause}
        ORDER BY hire_date`
-    ).bind(first, last).all<{ employee_code: string; name: string; resident_number: string | null; hire_date: string; department: string; position: string; base_salary: number }>()
+    ).bind(first, last, ...ef.params).all<{ employee_code: string; name: string; resident_number: string | null; hire_date: string; department: string; position: string; base_salary: number }>()
 
     // 이번 달 퇴사자
     const { results: quits } = await c.env.DB.prepare(
       `SELECT employee_code, name, resident_number, hire_date, resignation_date, department, position, base_salary
        FROM employees
-       WHERE resignation_date BETWEEN ? AND ?
+       WHERE resignation_date BETWEEN ? AND ?${ef.clause}
        ORDER BY resignation_date`
-    ).bind(first, last).all<{ employee_code: string; name: string; resident_number: string | null; hire_date: string; resignation_date: string; department: string; position: string; base_salary: number }>()
+    ).bind(first, last, ...ef.params).all<{ employee_code: string; name: string; resident_number: string | null; hire_date: string; resignation_date: string; department: string; position: string; base_salary: number }>()
 
     const rows: string[] = []
     rows.push([
@@ -124,6 +126,7 @@ taxAgentRouter.get('/tax-agent/payroll', requireRole('ADMIN', 'MANAGER'), async 
     }
     const user = c.get('user')
     const unmask = user?.role === 'ADMIN'
+    const efP = entityFilter(c, 'p') // 급여 PII는 법인별 격리 (#333)
 
     const { results } = await c.env.DB.prepare(
       `SELECT
@@ -134,9 +137,9 @@ taxAgentRouter.get('/tax-agent/payroll', requireRole('ADMIN', 'MANAGER'), async 
          e.bank_name, e.bank_account
        FROM payroll p
        JOIN employees e ON p.employee_id = e.id
-       WHERE p.pay_period = ?
+       WHERE p.pay_period = ?${efP.clause}
        ORDER BY e.department, e.name`
-    ).bind(period).all<{
+    ).bind(period, ...efP.params).all<{
       employee_code: string; name: string; resident_number: string | null; department: string; position: string
       hire_date: string; resignation_date: string | null; employee_status: string
       base_salary: number; bonus: number | null; overtime_pay: number | null; night_pay: number | null; holiday_pay: number | null
@@ -196,6 +199,7 @@ taxAgentRouter.get('/tax-agent/annual', requireRole('ADMIN', 'MANAGER'), async (
     }
     const user = c.get('user')
     const unmask = user?.role === 'ADMIN'
+    const efE = entityFilter(c, 'e') // employees PII는 법인별 격리 (#333)
 
     // 해당 연도의 모든 급여 데이터를 직원별로 집계
     // 주의: payroll 테이블에 taxable_salary 컬럼 없음 → total_salary를 과세대상으로 사용
@@ -214,9 +218,9 @@ taxAgentRouter.get('/tax-agent/annual', requireRole('ADMIN', 'MANAGER'), async (
          p.net_pay
        FROM employees e
        LEFT JOIN payroll p ON p.employee_id = e.id AND substr(p.pay_period, 1, 4) = ?
-       WHERE e.hire_date IS NULL OR substr(e.hire_date, 1, 4) <= ?
+       WHERE (e.hire_date IS NULL OR substr(e.hire_date, 1, 4) <= ?)${efE.clause}
        ORDER BY e.department, e.name, p.pay_period`
-    ).bind(year, year).all<{
+    ).bind(year, year, ...efE.params).all<{
       employee_id: number; employee_code: string; name: string; resident_number: string | null
       department: string; position: string; hire_date: string; resignation_date: string | null; employee_status: string
       pay_period: string | null; total_salary: number | null
@@ -348,12 +352,16 @@ taxAgentRouter.get('/tax-agent/roster', requireRole('ADMIN', 'MANAGER'), async (
         notes
       FROM employees`
     const params: any[] = []
+    const conds: string[] = []
     if (statusFilter === 'active') {
-      sql += ` WHERE status = 'ACTIVE'`
+      conds.push(`status = 'ACTIVE'`)
     } else if (statusFilter === 'resigned') {
-      sql += ` WHERE status = 'RESIGNED'`
+      conds.push(`status = 'RESIGNED'`)
     }
-    // 'all'이면 필터 없음
+    // 'all'이면 status 필터 없음
+    const ef = entityFilter(c) // employees PII는 법인별 격리 (#333)
+    if (ef.clause) { conds.push('entity_id = ?'); params.push(...ef.params) }
+    if (conds.length) sql += ' WHERE ' + conds.join(' AND ')
     sql += ` ORDER BY department, name`
 
     const { results } = await c.env.DB.prepare(sql).bind(...params).all<{

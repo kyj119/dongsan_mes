@@ -595,10 +595,11 @@ arRouter.put('/payment/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
     const id = c.req.param('id')
     const body = await c.req.json()
 
-    // Get existing payment
+    // Get existing payment (entity 스코프: 타 법인 수금 수정 IDOR 방지 — #333)
+    const efPay = entityFilter(c)
     const existing = await c.env.DB.prepare(
-      'SELECT id, client_id, payment_date, amount, payment_method, reference_number, notes, created_at FROM payments WHERE id = ?'
-    ).bind(id).first<PaymentRow>()
+      `SELECT id, client_id, payment_date, amount, payment_method, reference_number, notes, created_at FROM payments WHERE id = ?${efPay.clause}`
+    ).bind(id, ...efPay.params).first<PaymentRow>()
 
     if (!existing) {
       return c.json({ success: false, error: '입금 내역을 찾을 수 없습니다' }, 404)
@@ -666,10 +667,11 @@ arRouter.delete('/payment/:id', requireRole('ADMIN'), async (c) => {
   try {
     const id = c.req.param('id')
 
-    // Get existing payment
+    // Get existing payment (entity 스코프: 타 법인 수금 삭제 IDOR 방지 — #333)
+    const efPay = entityFilter(c)
     const existing = await c.env.DB.prepare(
-      'SELECT id, client_id, payment_date, amount, payment_method, reference_number, notes, created_at FROM payments WHERE id = ?'
-    ).bind(id).first<PaymentRow>()
+      `SELECT id, client_id, payment_date, amount, payment_method, reference_number, notes, created_at FROM payments WHERE id = ?${efPay.clause}`
+    ).bind(id, ...efPay.params).first<PaymentRow>()
 
     if (!existing) {
       return c.json({ success: false, error: '입금 내역을 찾을 수 없습니다' }, 404)

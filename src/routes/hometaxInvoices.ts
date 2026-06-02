@@ -274,7 +274,7 @@ hometaxInvoicesRouter.post('/jobs/:id/fetch', requireRole('ADMIN', 'MANAGER'), a
 
         stmts.push(
           db.prepare(`
-            INSERT INTO hometax_invoices (
+            INSERT OR IGNORE INTO hometax_invoices (
               job_id, invoice_type, nts_confirm_number, issue_date, send_date,
               supply_amount, tax_amount, total_amount,
               issuer_corp_num, issuer_corp_name, issuer_ceo_name,
