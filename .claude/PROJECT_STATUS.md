@@ -14,7 +14,9 @@
 
 - (없음)
 
-> **직전 세션 결과 (2026-06-02 PM-4)**: **기성품/유통 즉시출고 기능 구현·배포·E2E검증 (Phase 1+2)** — `items.production_required` 도입(0285, GOODS/MATERIAL=0·그 외 UI 수동), `getCardGroup` 최우선 분기(태극기 등 기성품 카드 미생성·즉시 ready), 카드 PRINT_DONE→shipment_ready 전파, 완료 파이프라인(bulk-ship/sync-statuses/in-transit) PRINT_DONE 게이트 제거→유통/기성도 SHIPPED 전이. **Phase 3**: 출고 시 기성/유통 라인 재고차감 일반화(order_type 무관·음수허용·멱등) + 주문서 재고부족 경고. **추가 드리프트 수정**: cards.print_done_at·shipped_by 누락(0286, 카드완료/출고 경로 pre-existing 500 정정). E2E 99 전 단계 검증 통과(재고 100→95 멱등 등). **남은 작업: 태극기 등 기성 PRODUCT를 품목 UI에서 '기성품' 지정**(GOODS/MATERIAL은 자동). (commits 9c90306, 4f75790)
+> **다음 세션 TODO**: ①향후 기성 PRODUCT는 품목 UI '기성품' 토글로 지정(코드 완비) ②혼합주문(제작+기성) 부분출고·재고차감 실사용 모니터링 ③cards 외 스키마 드리프트 의심 시 PRAGMA 확인 ④미사용 `/orders/ready-orders`(프론트 미연결) ⑤#329(3) withSeqRetry INSERT 래핑(후순위) ⑥로컬 dev:d1 중복 3개 정리
+
+> **직전 세션 결과 (2026-06-02 PM-4)**: **기성품/유통 즉시출고 — 전체 완료(Phase 1+2+3 + UI 클릭검증 + 태극기 9종 지정).** `items.production_required`(0285, GOODS/MATERIAL=0·그 외 UI), getCardGroup 최우선 분기(카테고리보다 우선), 카드 PRINT_DONE→shipment_ready 전파, 완료 파이프라인 PRINT_DONE 게이트 제거(유통/기성도 SHIPPED), 출고 재고차감 일반화(음수허용·멱등), 주문서 재고부족 경고. 드리프트 수정: cards.print_done_at·shipped_by(0286). UI 클릭검증(토글 저장·경고 토스트)+태극기 9종 지정 완료. (commits 9c90306, 4f75790, d5ad1b6)
 
 > **직전 세션 결과 (2026-06-02 PM-3)**: **한진 E2E(entity 99) 워크플로우 점검 → 치명 버그 2건 발견·수정·배포.** ①카드 생성 차단(1cb77e9가 status='PRINT_PENDING' 도입했으나 cards.status CHECK 미갱신 → 2026-06-01 이후 PRODUCTION 주문 생성 전부 500): 마이그 0284로 CHECK 확장(prod 적용). ②card_number를 order_number.split로 만들어 E{eid} 주문 같은날·법인 충돌: order_number 전체 기반으로 수정. ③#330 회귀(cards.entity_id 없음→orders 조인) 수정. 한진 리스트 착선불/수량 실데이터 검증 통과. **전 법인(1/2/3) 라이브 검증**: 각 법인 PRODUCTION 주문 생성→카드 PRINT_PENDING·card_number `E{eid}-…-01`(법인 유일)·격리 확인→완전 정리(잔여 0·번호 반환). 실데이터 피해 0건. (commits 3dff91c, 18769f7)
 
