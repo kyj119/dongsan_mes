@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 4 -->
-<!-- last_run_at: 2026-06-02T13:30:00+09:00 -->
+<!-- last_run_area: 5 -->
+<!-- last_run_at: 2026-06-02T15:30:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,12 +8,23 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | 1 (I-025) |
+| 🆕 new | 2 (I-025, I-026) |
 | ✔️ done | 33 |
 | ❌ rejected | 2 |
 
 > ⚠️ **백로그 ↔ GitHub 비동기 (Area 6 정리 필요)**: 이전 "new" 11건(I-013~I-024, #32~#46)이 GitHub에서 **전부 closed** 확인(open 0건). 지난 세션 "이슈 29건 전수 종료"에 포함된 것으로 추정 → 다음 Area 6에서 done/rejected 확정. 아래 New 표는 잠정 보존.
 
+> **Area 5 보안 (2026-06-02T15:30):**
+> - **방법**: 백엔드/프론트 3개 에이전트 병렬 — SQLi+인증 / XSS+에러노출+rate / 보안헤더+시크릿+CORS
+> - **SQLi 0건**: 1,206개 `DB.prepare` 전수 — entityFilter·`.bind()`·ORDER BY 화이트리스트(`cards/queries.ts:302,802`)·`PRAGMA table_info` ALLOWED_TABLES(`attendance.ts:31`) 전부 안전
+> - **인증 누락 0건**: 전 라우터 authMiddleware/portalAuth/agentKey/verifySelfToken 적절 보호
+> - **rate limit 누락 0건**: login/change-password/refresh/self-auth/verify-document/verify-token 8개 커버(`index.tsx:239-246`)
+> - **신규 이슈 #338(I-026)**: 하드코딩/약한 자격증명 2건 — hr.ts 주민번호 AES 키 `'fallback-dev-key'` 폴백 4곳(HIGH-data) + users.ts reset-password 기본값 `'password'`(MED). **이전 Area 5(#314) "하드코딩 시크릿 없음" 단언이 놓친 net-new**
+> - **#335에 코멘트 추가**: 서버사이드 템플릿 XSS(laborContract.ts/employmentCertificate.ts `c.html()` 무이스케이프) — 클라이언트 escapeHtml과 다른 코드경로라 #335가 놓침. 잔여 클라이언트 누락분(invoice/quotation 인쇄빌더, activityLog, hr.js)도 함께 기재
+> - **동기화 메모**: 오늘 더 이른 Area 5 산출물 = #335(저장형 XSS, open) / #336(CI 폴백 자격증명, open) / #337(debug 엔드포인트+error.message, open). 백로그 last_run_area가 4로 미동기였음 → 이번 실행에서 정정. #314(closed)는 직전 Area 5 자동수정(XSS 11건+SQLi cashFlow)
+> - **오탐 차단**: CORS `!origin → '*'`(`index.tsx:213`) — Bearer 토큰 인증(쿠키 미사용)이라 브라우저 CORS만 영향+브라우저는 항상 Origin 전송 → 실질 무해, 이슈화 보류. rate limiter in-memory Map(`rateLimit.ts:6`) isolate 분산 한계 — 기존 인지 사항
+> - 자동 수정 0건(전부 동작/정책 변경 또는 #335 검토 대기 XSS), 신규 이슈 1건(#338), 코멘트 1건(#335)
+>
 > **Area 4 데이터 정합성 (2026-06-02T13:30):**
 > - **방법**: 프로덕션 D1 직접접근 불가(API 토큰 없음) → 278개 마이그레이션을 로컬 D1에 적용해 **실제 해석 스키마**(169테이블·424인덱스) ground truth 확보 + 코드 정적분석 병행
 > - **자동 수정 A-009**: PO 번호 생성 entity 필터 누락 3곳(core.ts reorder/quick + templates.ts) → 정규 시퀀스 경로(getNextSeqNumber+getEntityId)로 정렬, 0281 복합 UNIQUE 정합. verify 통과, commit e8c8992
@@ -95,6 +106,9 @@
 | ID | 제목 | 영역 | Issue | 공수 |
 |----|------|------|-------|------|
 | I-025 | order_templates entity_id 부재 — 주문 템플릿 전 법인 공유 | Area 4 | #334 | ~1일 |
+| I-026 | 하드코딩/약한 자격증명: hr.ts 주민번호 키 폴백 + reset-password 기본값 | Area 5 | #338 | 30분~반나절 |
+
+> ⚠️ 오늘 더 이른 Area 5 산출물(open, 미검토): #335 저장형 XSS / #336 CI 폴백 자격증명 / #337 debug+error.message — Area 6 reconciliation 대상.
 
 > 아래 I-013~I-024는 GitHub closed 확인됨 — Area 6 reconciliation 대기 (잠정 보존)
 
