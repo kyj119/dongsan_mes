@@ -14,9 +14,9 @@
 
 - (없음)
 
-> **다음 세션 예정 (사용자 지시)**: **GitHub 오픈 이슈 전수 수정** — #323(홈택스 세금계산서 재수집 중복 INSERT·dedup 부재), #324(부모 삭제 시 자식 고아 레코드 cascade), #325(entity_id INSERT 누락 잔여·order_items 위치는 코멘트 참고), #326(saveAutoApproveSettings 미정의·금액 콤마파싱 주의), #327(entity 필터 일관성·알림 read 우선), #328(프론트 dead/orphan 핸들러 정리)
+> **직전 세션 결과 (2026-06-02 PM)**: **GitHub 오픈 이슈 11건(#323~333) 전수 수정·배포·close** — 보안격리(payroll/cards/AR/budgets/aiInsights), cascade(주문/발주요청), 채번 E{eid} 확장, 홈택스/nts dedup(마이그 0282·0283 prod 적용), saveAutoApprove 복구, dead code 정리. prod 스모크 통과. (오픈 이슈 0건)
 
-> **직전 세션 결과 (2026-06-02)**: 채번 경계 버그 근본수정(E{eid} 내장 채번) + 견적서 개편(표·품목·전환 prefill) + 생산주문서 유통품목 행 단순화 + 전체 페이지 점검(storageZones CRITICAL 수정·배포, 이슈 #326~328 등록)
+> **직전 세션 결과 (2026-06-02 AM)**: 채번 경계 버그 근본수정(E{eid} 내장 채번) + 견적서 개편(표·품목·전환 prefill) + 생산주문서 유통품목 행 단순화 + 전체 페이지 점검(storageZones CRITICAL 수정·배포, 이슈 #326~328 등록)
 
 ---
 
@@ -52,6 +52,14 @@
 ---
 
 ## 🟢 최근 완료 (2026-06-02)
+
+### GitHub 오픈 이슈 11건(#323~333) 전수 수정·배포·close (2026-06-02 PM)
+- **보안/멀티법인 격리(HIGH)**: #330 cards/scheduling 4라우트 IDOR, #331/#333 payroll 5라우트+tax-agent CSV(PII)+DELETE IDOR(orders/AR수금/budgets)+aiInsights 교차집계, #327 알림 read 필터. 패턴: `entityFilter`(entityId=0 전체모드는 필터 생략 → ADMIN 교차조회 정책 자동 충족)
+- **데이터정합성**: #323 홈택스 INSERT OR IGNORE+UNIQUE(0282), #329 채번 E{eid} 확장(approval/PR/inventory) + nts_approval UNIQUE(0283), #324 발주요청/발주 cascade, #332 주문삭제 cascade(tasks/work_records/print_file_map)
+- **기능/정리**: #326 saveAutoApproveSettings 복구(parseMoney 콤마제거), #325 migration_logs 5건 보강, #328 dead 4건 삭제+recalc 버튼 복구
+- **봇 오탐 3건 검증·제외**: order_items(entity_id 컬럼 없음), cash_receipts·mrp_runs(이미 E{eid} 내장). auto-scan/auto-improve 이슈는 스키마/코드 대조 필수
+- 마이그레이션 0282/0283 **prod 적용 완료**(3테이블 중복 0건, DELETE 무영향). commit 1aaf44f, 배포 https://webapp-9i0.pages.dev, prod 스모크(엔드포인트 200·UI 콘솔에러 0) 통과
+- **후속 분리**: #329(3) withSeqRetry INSERT 래핑(충돌은 법인별 카운터로 완화), #327 집계 엔드포인트(단일에이전트 교차 설계)
 
 ### 채번 경계 버그 근본수정 — 견적서 저장 500 장애 (2026-06-02)
 - **원인**: `quotation_number` 등 `*_number`가 **컬럼레벨 전역 UNIQUE**인데 채번은 **법인별 MAX** → E2E(entity 99)가 오늘자 001~007 선점 시 실법인이 001 생성 시도 → `UNIQUE constraint failed` 500
