@@ -12,9 +12,11 @@
 
 ## 🔴 현재 진행 중
 
-- **자금 예측/계획 일원화** (캐시플로 탭→`/cash-schedule` 흡수): **Phase 1+2 완료(백엔드)**, **Phase 3(UI 흡수) 대기**. 설계 → `memory/project-cashflow-unification.md`
+- **자금 예측/계획 일원화** (캐시플로 탭→`/cash-schedule` 흡수): **Phase 1~3 완료(백엔드+UI)**, **Phase 4~5(실적↔계획 연결·정리) 대기**. 런타임 검증은 스테이징 배포 시(로컬 로그인 미가능). 설계 → `memory/project-cashflow-unification.md`
 
-> **다음 세션 TODO**: ①향후 기성 PRODUCT는 품목 UI '기성품' 토글로 지정(코드 완비) ②혼합주문(제작+기성) 부분출고·재고차감 실사용 모니터링 ③cards 외 스키마 드리프트 의심 시 PRAGMA 확인 ④#329(3) withSeqRetry INSERT 래핑(후순위) ⑤로컬 dev:d1 중복 3개 정리 ⑥자금 일원화 Phase 3(UI: cashFlow.js+탭HTML 이관·달력 일원화·bank.ts 정리) → Phase 4~5(연결·정리). 카드 예측은 corporate_cards에 cutoff_day/payment_day 추가 후
+> **다음 세션 TODO**: ①향후 기성 PRODUCT는 품목 UI '기성품' 토글로 지정(코드 완비) ②혼합주문(제작+기성) 부분출고·재고차감 실사용 모니터링 ③cards 외 스키마 드리프트 의심 시 PRAGMA 확인 ④#329(3) withSeqRetry INSERT 래핑(후순위) ⑤로컬 dev:d1 중복 3개 정리 ⑥자금 일원화 Phase 4~5(실적↔계획 연결: 실잔액→시작잔액·은행매칭→DONE·미수금↔입금예정 / 정리·배포). 카드 예측은 corporate_cards에 cutoff_day/payment_day 추가 후. **스테이징 배포해 /cash-schedule 5탭 런타임 검증 필요**
+
+> **직전 세션 결과 (2026-06-03) — Phase 3(UI 흡수) 완료**: 캐시플로 탭을 `/cash-schedule`로 흡수 → **자금계획 5탭**(자금계획·월별요약·고정비·대출·추정자금일보). `cashFlow.js` IIFE 재작성(fmt 충돌 격리·자동초기화 제거·projection→monthly·달력 제거·로더 window 노출), onclick `\'` 이스케이프 수정, `switchScheduleTab` 5탭 확장, `bank.ts` 캐시플로 탭/스크립트 제거(은행연동만), `/cash-flow`→`/cash-schedule` 리다이렉트, summary GET MANAGER 허용. 정적검증 통과(typecheck/build/ID정합성23/이스케이프). **런타임 검증 미실시**(로컬 admin 로그인 불가) → 스테이징 배포 후 5탭 전환·콘솔에러·API 확인 필요.
 
 > **직전 세션 결과 (2026-06-03)**: **자금 예측/계획 일원화 Phase 1+2 완료(백엔드).** 캐시플로 탭(`/bank`)을 `/cash-schedule`로 흡수하는 통합의 백엔드. ①신규 `cashflowEngine.ts` 하이브리드 합성 헬퍼(물질화 cash_schedule + 온더플라이 고정비·대출·미청구주문 예상입금). ②`forecast` 헬퍼 기반 재작성, 신규 `GET /schedule/monthly`(거친 projection 대체). ③cash_schedule 조회/수정/삭제 전부 `entity_id` 필터(법인격리+보안). ④`auto-generate` FIXED 생성 제거(온더플라이 통일·이중계산 차단). ⑤고정비/대출 GET을 MANAGER 허용(변경은 ADMIN). 카드 예측은 `corporate_cards` cutoff/payment_day 부재로 백로그. typecheck/build/SQL 검증 통과. **Phase 3(UI: cashFlow.js 488줄+탭HTML 이관·달력 일원화·bank.ts 정리) 대기.**
 

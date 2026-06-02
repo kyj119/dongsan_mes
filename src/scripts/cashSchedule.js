@@ -329,15 +329,19 @@ window.schSave = async function() {
 };
 
 window.switchScheduleTab = function(tab) {
-  ['schedule', 'forecast'].forEach(function(t) {
-    var btn = document.getElementById('tab' + (t === 'schedule' ? 'Schedule' : 'Forecast'));
-    var panel = document.getElementById((t === 'schedule' ? 'schedule' : 'forecast') + 'Panel');
+  // schedule(자금계획) | monthly(월별요약) | fixed(고정비) | loans(대출) | forecast(추정자금일보)
+  // monthly/fixed/loans 로더는 cashFlow.js(IIFE)가 window에 노출
+  ['schedule', 'monthly', 'fixed', 'loans', 'forecast'].forEach(function(t) {
+    var btn = document.getElementById('tab' + t.charAt(0).toUpperCase() + t.slice(1));
+    var panel = document.getElementById(t + 'Panel');
+    if (!btn || !panel) return;
     if (t === tab) {
       btn.className = 'px-4 py-2 text-sm font-medium border-b-2 border-blue-600 text-blue-600 flex items-center gap-2';
       panel.classList.remove('hidden');
-      if (t === 'forecast' && !schForecastData) {
-        loadForecast();
-      }
+      if (t === 'forecast' && !schForecastData) loadForecast();
+      if (t === 'monthly' && window.loadMonthly) window.loadMonthly();
+      if (t === 'fixed' && window.loadFixedExpenses) window.loadFixedExpenses();
+      if (t === 'loans' && window.loadLoans) window.loadLoans();
     } else {
       btn.className = 'px-4 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700 flex items-center gap-2';
       panel.classList.add('hidden');

@@ -729,7 +729,7 @@ cashFlowRouter.get('/calendar', requireRole('ADMIN'), async (c) => {
 // 요약 통계
 // ============================================================================
 
-cashFlowRouter.get('/summary', requireRole('ADMIN'), async (c) => {
+cashFlowRouter.get('/summary', requireRole('ADMIN', 'MANAGER'), async (c) => {
   try {
     const now = new Date()
     const yearMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`

@@ -461,7 +461,7 @@ app.get('/delivery-analytics', pageAuthMiddleware, requirePagePermission('/deliv
 app.get('/demand-analytics', (c) => c.redirect('/reports?tab=demand'))
 app.get('/inventory-count', (c) => c.redirect('/inventory#tab=count'))
 app.get('/cost-analysis', (c) => c.redirect('/production-reports?tab=cost'))
-app.get('/cash-flow', (c) => c.redirect('/bank?tab=cashflow'))
+app.get('/cash-flow', (c) => c.redirect('/cash-schedule'))
 app.get('/facility', pageAuthMiddleware, requireAdminPage(), facilityPage)
 app.get('/bom', pageAuthMiddleware, requirePagePermission('/bom'), bomPage)
 app.get('/scan', pageAuthMiddleware, requirePagePermission('/scan'), scanPage)

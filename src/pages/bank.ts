@@ -2,7 +2,6 @@ import type { Context } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { renderPage } from '../layout'
 import bankScript from '../scripts/bank.js?raw'
-import cashFlowScript from '../scripts/cashFlow.js?raw'
 
 export function bankPage(c: Context<HonoEnv>) {
   return renderPage(c, {
@@ -48,18 +47,6 @@ export function bankPage(c: Context<HonoEnv>) {
     `,
     pageContent: `
       <div>
-        <!-- 상위 탭: 자금 관리 선택 -->
-        <div class="flex border-b mb-4">
-          <button onclick="switchFinanceTab('bank')" id="finTabBank" class="px-5 py-3 text-sm font-medium border-b-2 border-blue-600 text-blue-600">
-            <i class="fas fa-university mr-1"></i>은행 연동
-          </button>
-          <button onclick="switchFinanceTab('cashflow')" id="finTabCashflow" class="px-5 py-3 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">
-            <i class="fas fa-money-bill-wave mr-1"></i>캐시플로
-          </button>
-        </div>
-
-        <!-- 은행 연동 탭 내용 -->
-        <div id="finBankContent">
           <!-- 바로빌 연결 상태 -->
           <div id="barobillStatusBar" class="flex items-center justify-between bg-gray-50 border border-gray-200 rounded-lg px-4 py-2 mb-4 text-sm">
             <span class="text-gray-400"><i class="fas fa-plug mr-1"></i>바로빌 연결 확인 중...</span>
@@ -287,181 +274,6 @@ export function bankPage(c: Context<HonoEnv>) {
             <div class="text-center py-10 text-gray-400">로딩 중...</div>
           </div>
         </div>
-        </div>
-
-        <!-- #328: 카드수수료 dead markup 제거 — /card-expenses 페이지로 이동, cardFee.js 미import + 강제 hidden 상태였음 -->
-
-        <!-- 캐시플로 탭 내용 -->
-        <div id="finCashflowContent" class="hidden">
-          <!-- 탭 네비게이션 -->
-          <div class="flex border-b mb-6 gap-1">
-            <button onclick="switchCashFlowTab('overview')" id="tab-overview" class="px-4 py-2 text-sm font-medium border-b-2 border-blue-600 text-blue-600">캐시플로 현황</button>
-            <button onclick="switchCashFlowTab('fixed')" id="tab-fixed" class="px-4 py-2 text-sm font-medium text-gray-500 hover:text-gray-700">고정비 관리</button>
-            <button onclick="switchCashFlowTab('loans')" id="tab-loans" class="px-4 py-2 text-sm font-medium text-gray-500 hover:text-gray-700">대출 관리</button>
-            <button onclick="switchCashFlowTab('calendar')" id="tab-calendar" class="px-4 py-2 text-sm font-medium text-gray-500 hover:text-gray-700">달력</button>
-          </div>
-
-          <!-- 탭 1: 캐시플로 현황 -->
-          <div id="panel-overview">
-            <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-              <div class="ds-card p-4">
-                <div class="text-sm text-gray-500">이번달 수입</div>
-                <div id="kpiIncome" class="text-2xl font-bold text-green-600 mt-1">-</div>
-              </div>
-              <div class="ds-card p-4">
-                <div class="text-sm text-gray-500">이번달 지출</div>
-                <div id="kpiExpense" class="text-2xl font-bold text-red-600 mt-1">-</div>
-              </div>
-              <div class="ds-card p-4">
-                <div class="text-sm text-gray-500">순 현금흐름</div>
-                <div id="kpiNet" class="text-2xl font-bold mt-1">-</div>
-              </div>
-              <div class="ds-card p-4">
-                <div class="text-sm text-gray-500">대출 잔액 합계</div>
-                <div id="kpiLoanBalance" class="text-2xl font-bold text-purple-600 mt-1">-</div>
-              </div>
-            </div>
-
-            <div class="ds-card p-6 mb-6">
-              <h3 class="text-lg font-bold mb-4">6개월 캐시플로 프로젝션</h3>
-              <div id="projectionChart" class="space-y-3"></div>
-            </div>
-
-            <div class="ds-card p-6">
-              <h3 class="text-lg font-bold mb-4">월별 상세</h3>
-              <div class="overflow-x-auto" style="max-height: calc(100vh - 280px); overflow-y: auto;">
-                <table class="w-full text-sm ds-table-striped">
-                  <thead>
-                    <tr class="bg-gray-50 text-gray-600">
-                      <th class="px-3 py-2 text-left">월</th>
-                      <th class="px-3 py-2 text-right">수입</th>
-                      <th class="px-3 py-2 text-right">고정비</th>
-                      <th class="px-3 py-2 text-right">대출상환</th>
-                      <th class="px-3 py-2 text-right">카드결제</th>
-                      <th class="px-3 py-2 text-right">구매비</th>
-                      <th class="px-3 py-2 text-right">순 현금흐름</th>
-                      <th class="px-3 py-2 text-right">누적</th>
-                    </tr>
-                  </thead>
-                  <tbody id="projectionTable"></tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-
-          <!-- 탭 2: 고정비 관리 -->
-          <div id="panel-fixed" class="hidden">
-            <div class="ds-card p-6">
-              <div class="flex items-center justify-between mb-4">
-                <h3 class="text-lg font-bold"><i class="fas fa-file-invoice-dollar text-blue-600 mr-2"></i>고정비 목록</h3>
-                <button onclick="openFixedExpenseModal()" class="ds-btn ds-btn-primary ds-btn-sm">
-                  <i class="fas fa-plus mr-1"></i>추가
-                </button>
-              </div>
-              <div class="overflow-x-auto" style="max-height: calc(100vh - 280px); overflow-y: auto;">
-                <table class="w-full text-sm ds-table-striped">
-                  <thead>
-                    <tr class="bg-gray-50 text-gray-600">
-                      <th class="px-3 py-2 text-left">이름</th>
-                      <th class="px-3 py-2 text-left">분류</th>
-                      <th class="px-3 py-2 text-right">금액</th>
-                      <th class="px-3 py-2 text-center">주기</th>
-                      <th class="px-3 py-2 text-center">납부일</th>
-                      <th class="px-3 py-2 text-left">기간</th>
-                      <th class="px-3 py-2 text-center">상태</th>
-                      <th class="px-3 py-2 w-20"></th>
-                    </tr>
-                  </thead>
-                  <tbody id="fixedExpenseTable"></tbody>
-                </table>
-              </div>
-              <div id="noFixedMsg" class="text-center text-gray-400 py-6 hidden">등록된 고정비가 없습니다.</div>
-            </div>
-          </div>
-
-          <!-- 탭 3: 대출 관리 -->
-          <div id="panel-loans" class="hidden">
-            <div class="ds-card p-6 mb-6">
-              <div class="flex items-center justify-between mb-4">
-                <h3 class="text-lg font-bold"><i class="fas fa-university text-purple-600 mr-2"></i>대출 목록</h3>
-                <button onclick="openLoanModal()" class="ds-btn ds-btn-primary ds-btn-sm">
-                  <i class="fas fa-plus mr-1"></i>추가
-                </button>
-              </div>
-              <div class="overflow-x-auto" style="max-height: calc(100vh - 280px); overflow-y: auto;">
-                <table class="w-full text-sm ds-table-striped">
-                  <thead>
-                    <tr class="bg-gray-50 text-gray-600">
-                      <th class="px-3 py-2 text-left">대출기관</th>
-                      <th class="px-3 py-2 text-left">대출번호</th>
-                      <th class="px-3 py-2 text-right">원금</th>
-                      <th class="px-3 py-2 text-right">잔액</th>
-                      <th class="px-3 py-2 text-center">금리(%)</th>
-                      <th class="px-3 py-2 text-center">상환방식</th>
-                      <th class="px-3 py-2 text-left">만기일</th>
-                      <th class="px-3 py-2 w-28"></th>
-                    </tr>
-                  </thead>
-                  <tbody id="loanTable"></tbody>
-                </table>
-              </div>
-              <div id="noLoanMsg" class="text-center text-gray-400 py-6 hidden">등록된 대출이 없습니다.</div>
-            </div>
-
-            <!-- 대출 상세 (선택 시 표시) -->
-            <div id="loanDetailPanel" class="hidden">
-              <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <div class="ds-card p-6">
-                  <h4 class="font-bold mb-3"><i class="fas fa-chart-line text-orange-500 mr-2"></i>금리 변동 이력</h4>
-                  <div id="rateHistoryTable"></div>
-                  <button onclick="openRateChangeModal()" class="mt-3 px-3 py-1.5 border border-gray-300 text-gray-700 bg-white rounded-lg hover:bg-gray-50 text-sm">
-                    <i class="fas fa-edit mr-1"></i>금리 변경
-                  </button>
-                </div>
-                <div class="ds-card p-6">
-                  <h4 class="font-bold mb-3"><i class="fas fa-calendar-check text-green-600 mr-2"></i>상환 스케줄</h4>
-                  <div class="flex gap-2 mb-3">
-                    <button onclick="generateSchedule()" class="ds-btn ds-btn-primary ds-btn-sm">
-                      <i class="fas fa-sync mr-1"></i>스케줄 생성
-                    </button>
-                  </div>
-                  <div id="scheduleTable" class="max-h-96 overflow-y-auto"></div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <!-- 탭 4: 달력 -->
-          <div id="panel-calendar" class="hidden">
-            <div class="ds-card p-6">
-              <div class="flex items-center justify-between mb-4">
-                <button onclick="changeMonth(-1)" class="px-3 py-1.5 bg-gray-200 rounded-lg hover:bg-gray-300 text-sm"><i class="fas fa-chevron-left"></i></button>
-                <h3 id="calendarTitle" class="text-lg font-bold"></h3>
-                <button onclick="changeMonth(1)" class="px-3 py-1.5 bg-gray-200 rounded-lg hover:bg-gray-300 text-sm"><i class="fas fa-chevron-right"></i></button>
-              </div>
-              <div class="grid grid-cols-7 gap-px bg-gray-200 border border-gray-200 rounded-lg overflow-hidden">
-                <div class="bg-gray-50 p-2 text-center text-xs font-bold text-red-500">일</div>
-                <div class="bg-gray-50 p-2 text-center text-xs font-bold">월</div>
-                <div class="bg-gray-50 p-2 text-center text-xs font-bold">화</div>
-                <div class="bg-gray-50 p-2 text-center text-xs font-bold">수</div>
-                <div class="bg-gray-50 p-2 text-center text-xs font-bold">목</div>
-                <div class="bg-gray-50 p-2 text-center text-xs font-bold">금</div>
-                <div class="bg-gray-50 p-2 text-center text-xs font-bold text-blue-500">토</div>
-              </div>
-              <div id="calendarGrid" class="grid grid-cols-7 gap-px bg-gray-200 border-x border-b border-gray-200 rounded-b-lg overflow-hidden"></div>
-            </div>
-            <!-- 일별 상세 모달 -->
-            <div id="dayDetailModal" class="ds-modal-overlay hidden">
-              <div class="ds-modal p-6 w-full max-h-[80vh] overflow-y-auto" style="max-width:28rem">
-                <div class="flex items-center justify-between mb-4">
-                  <h3 id="dayDetailTitle" class="font-bold text-lg"></h3>
-                  <button onclick="closeDayDetail()" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times"></i></button>
-                </div>
-                <div id="dayDetailContent"></div>
-              </div>
-            </div>
-          </div>
-        </div>
       </div>
 
       <!-- Account Modal (Add/Edit) -->
@@ -664,32 +476,7 @@ export function bankPage(c: Context<HonoEnv>) {
 
     `,
     pageScript: `
-      window.switchFinanceTab = function(tab) {
-        var tabs = ['bank', 'cashflow'];
-        var contents = { bank: 'finBankContent', cashflow: 'finCashflowContent' };
-        var buttons = { bank: 'finTabBank', cashflow: 'finTabCashflow' };
-        tabs.forEach(function(t) {
-          var content = document.getElementById(contents[t]);
-          var btn = document.getElementById(buttons[t]);
-          if (t === tab) {
-            if (content) content.classList.remove('hidden');
-            if (btn) { btn.classList.remove('border-transparent', 'text-gray-500'); btn.classList.add('border-blue-600', 'text-blue-600'); }
-          } else {
-            if (content) content.classList.add('hidden');
-            if (btn) { btn.classList.remove('border-blue-600', 'text-blue-600'); btn.classList.add('border-transparent', 'text-gray-500'); }
-          }
-        });
-      };
-      (function() {
-        var p = new URLSearchParams(window.location.search);
-        if (p.get('tab') === 'cashflow' || window.location.hash === '#cashflow') {
-          window.switchFinanceTab('cashflow');
-        }
-      })();
-
       ${bankScript}
-
-      ${cashFlowScript}
     `
   })
 }
