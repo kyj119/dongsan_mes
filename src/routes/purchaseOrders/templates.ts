@@ -187,7 +187,7 @@ templatesRouter.post('/from-template/:templateId', async (c) => {
     // 발주번호 생성
     const today = new Date()
     const dateStr = today.toISOString().split('T')[0].replace(/-/g, '')
-    const poNumber = await getNextSeqNumber(c.env.DB, 'purchase_orders', 'po_number', `${dateStr}-P`)
+    const poNumber = await getNextSeqNumber(c.env.DB, 'purchase_orders', 'po_number', `${dateStr}-P`, 3, getEntityId(c))
 
     // 품목별 수량/단가 오버라이드 적용 + 금액 계산
     const overrides = item_overrides || {}

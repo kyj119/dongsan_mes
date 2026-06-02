@@ -1840,15 +1840,8 @@ poCoreRouter.post('/:id/reorder', requireRole('ADMIN', 'MANAGER'), async (c) => 
 
     // 새 PO 번호 생성
     const today = new Date().toISOString().slice(0, 10).replace(/-/g, '')
-    const lastPo = await c.env.DB.prepare(
-      `SELECT po_number FROM purchase_orders WHERE po_number LIKE ? ORDER BY po_number DESC LIMIT 1`
-    ).bind(`${today}-P%`).first<{ po_number: string }>()
-    let seq = 1
-    if (lastPo) {
-      const lastSeq = parseInt(lastPo.po_number.split('-P')[1])
-      if (!isNaN(lastSeq)) seq = lastSeq + 1
-    }
-    const poNumber = `${today}-P${String(seq).padStart(3, '0')}`
+    // entity별 시퀀스 (0281 복합 UNIQUE(entity_id, po_number) 정합 — 정규 생성 경로와 동일)
+    const poNumber = await getNextSeqNumber(c.env.DB, 'purchase_orders', 'po_number', `${today}-P`, 3, getEntityId(c))
 
     // 새 PO 생성
     const result = await c.env.DB.prepare(`
@@ -1964,15 +1957,8 @@ poCoreRouter.post('/quick', requireRole('ADMIN', 'MANAGER'), async (c) => {
 
     // PO 번호 생성
     const today = new Date().toISOString().slice(0, 10).replace(/-/g, '')
-    const lastPo = await c.env.DB.prepare(
-      `SELECT po_number FROM purchase_orders WHERE po_number LIKE ? ORDER BY po_number DESC LIMIT 1`
-    ).bind(`${today}-P%`).first<{ po_number: string }>()
-    let seq = 1
-    if (lastPo) {
-      const lastSeq = parseInt(lastPo.po_number.split('-P')[1])
-      if (!isNaN(lastSeq)) seq = lastSeq + 1
-    }
-    const poNumber = `${today}-P${String(seq).padStart(3, '0')}`
+    // entity별 시퀀스 (0281 복합 UNIQUE(entity_id, po_number) 정합 — 정규 생성 경로와 동일)
+    const poNumber = await getNextSeqNumber(c.env.DB, 'purchase_orders', 'po_number', `${today}-P`, 3, getEntityId(c))
 
     // PO 생성
     const result = await c.env.DB.prepare(`
