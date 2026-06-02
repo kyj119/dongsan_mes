@@ -177,6 +177,19 @@
                     var itType = (item.item_type || '').toUpperCase();
                     applyDistRowMode(id, itType === 'GOODS' || itType === 'MATERIAL');
 
+                    // 기성품/유통 재고 부족 경고 (Phase 3) — 차단 X, 안내만. 출고 시 마이너스 허용
+                    if (item.id) {
+                        axios.get('/api/items/' + item.id + '/stock').then(function(r) {
+                            var d = r.data && r.data.data;
+                            if (!d || d.production_required !== 0) return; // 기성/유통(제작 불필요)만 대상
+                            var qtyEl = document.querySelector('[name="quantity_' + id + '"]');
+                            var qty = qtyEl ? (parseFloat(qtyEl.value) || 1) : 1;
+                            if (d.stock < qty) {
+                                showToast('⚠️ ' + item.name + ' 재고 부족 (현재 ' + d.stock + ' / 주문 ' + qty + ') — 출고 시 마이너스 처리됩니다', 'warning');
+                            }
+                        }).catch(function(){});
+                    }
+
                     calcItem(id);
                     var subcat = item.sub_category || item.media_subcategory_name || '';
                     loadItemPP(id, subcat);

@@ -6,6 +6,7 @@ import { sendEmail } from '../services/emailProvider'
 import { renderTemplate } from '../services/emailTemplates'
 import { entityFilter, getEntityId } from '../utils/entityFilter'
 import { getNextSeqNumber, withSeqRetry } from '../utils/sequenceGenerator'
+import { deductStockLinesOnShip } from '../utils/stockShip'
 
 const shipmentsRouter = new Hono<HonoEnv>()
 shipmentsRouter.use('/*', authMiddleware, requirePagePermission('/shipments'))
@@ -834,8 +835,8 @@ shipmentsRouter.patch('/:orderId/ship', requireRole('ADMIN', 'MANAGER'), async (
     // 주문 확인
     const ef = entityFilter(c)
     const order = await c.env.DB.prepare(
-      `SELECT id, order_number, status, client_id, delivery_method FROM orders WHERE id = ?${ef.clause}`
-    ).bind(orderId, ...ef.params).first<{ id: number; order_number: string; status: string; client_id: number; delivery_method: string | null }>()
+      `SELECT id, order_number, status, client_id, delivery_method, entity_id FROM orders WHERE id = ?${ef.clause}`
+    ).bind(orderId, ...ef.params).first<{ id: number; order_number: string; status: string; client_id: number; delivery_method: string | null; entity_id: number | null }>()
     if (!order) return c.json({ success: false, error: '주문을 찾을 수 없습니다.' }, 404)
 
     // 모든 order_items.shipment_ready 확인
@@ -860,6 +861,9 @@ shipmentsRouter.patch('/:orderId/ship', requireRole('ADMIN', 'MANAGER'), async (
         `UPDATE orders SET auto_complete_date = date('now', '+' || ? || ' days'), updated_at = CURRENT_TIMESTAMP WHERE id = ? AND auto_complete_date IS NULL`
       ).bind(delayDays, orderId)
     ])
+
+    // 기성품/유통(production_required=0) 라인 재고 차감 (Phase 3) — 멱등(중복 OUT 스킵)
+    await deductStockLinesOnShip(c.env.DB, Number(orderId), order.entity_id || getEntityId(c) || 1)
 
     return c.json({ success: true, message: '출고 처리되었습니다. 동기화 후 출고완료 상태로 전이됩니다.' })
   } catch (err) {

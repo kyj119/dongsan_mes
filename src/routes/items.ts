@@ -474,6 +474,21 @@ itemsRouter.patch('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
   }
 })
 
+// 현재고 + 제작필요 여부 (주문서 재고부족 경고용) — /:id 보다 먼저 등록
+itemsRouter.get('/:id/stock', async (c) => {
+  try {
+    const id = Number(c.req.param('id'))
+    const entityId = getEntityId(c) || 1
+    const item = await c.env.DB.prepare('SELECT production_required FROM items WHERE id = ?').bind(id).first<{ production_required: number }>()
+    if (!item) return c.json({ success: false, error: 'not found' }, 404)
+    const inv = await c.env.DB.prepare('SELECT COALESCE(quantity, 0) as quantity FROM inventory WHERE item_id = ? AND entity_id = ?').bind(id, entityId).first<{ quantity: number }>()
+    return c.json({ success: true, data: { production_required: item.production_required, stock: inv?.quantity ?? 0 } })
+  } catch (error) {
+    console.error('src/routes/items.ts stock error:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다' }, 500)
+  }
+})
+
 // Get item by ID
 itemsRouter.get('/:id', async (c) => {
   try {
