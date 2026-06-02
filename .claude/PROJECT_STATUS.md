@@ -12,9 +12,9 @@
 
 ## 🔴 현재 진행 중
 
-- **자금 예측/계획 일원화** (캐시플로 탭→`/cash-schedule` 흡수): **Phase 1~4 완료 + 프로덕션 배포·검증 완료**. 5탭 단일 허브, 하이브리드 예측 엔진, 실잔액→시작잔액 prefill(실동작 PASS), 은행매칭→cash_schedule DONE 연동. 잔여(백로그): **4-3 미수금↔입금예정 표시**, **카드 예측**(corporate_cards에 cutoff_day/payment_day 추가 후), 월별요약 KPI수입 일관성(summary↔monthly 소스차이). apply→DONE은 운영 중 첫 입금적용 시 자연 검증. 설계 → `memory/project-cashflow-unification.md`
+- **자금 예측/계획 일원화** (캐시플로 탭→`/cash-schedule` 흡수): **Phase 1~4 + 프로덕션 배포·검증 완료**(5탭 허브·하이브리드 엔진·시작잔액 prefill·은행매칭→DONE). **▶ 다음 예정 작업: 4-3 미수금↔입금예정 표시** (receivables ↔ cash_schedule IN 연결, 키 client_id). 후속 백로그: 카드 예측(corporate_cards에 cutoff_day/payment_day 추가 후)·월별요약 KPI수입 일관성·apply→DONE 운영 자연검증. 설계 → `memory/project-cashflow-unification.md`
 
-> **다음 세션 TODO**: ①향후 기성 PRODUCT는 품목 UI '기성품' 토글로 지정(코드 완비) ②혼합주문(제작+기성) 부분출고·재고차감 실사용 모니터링 ③cards 외 스키마 드리프트 의심 시 PRAGMA 확인 ④#329(3) withSeqRetry INSERT 래핑(후순위) ⑤로컬 dev:d1 중복 3개 정리 ⑥자금 일원화 잔여(백로그): 4-3 미수금↔입금예정 표시, 카드 예측(corporate_cards에 cutoff_day/payment_day 추가 후), 월별요약 KPI수입 일관성, apply→DONE 운영 자연검증 모니터링 ⑦프로덕션 admin 비번 'password' 보안 점검
+> **다음 세션 TODO**: ①향후 기성 PRODUCT는 품목 UI '기성품' 토글로 지정(코드 완비) ②혼합주문(제작+기성) 부분출고·재고차감 실사용 모니터링 ③cards 외 스키마 드리프트 의심 시 PRAGMA 확인 ④#329(3) withSeqRetry INSERT 래핑(후순위) ⑤로컬 dev:d1 중복 3개 정리 ⑥**[예정] 자금 일원화 4-3 미수금↔입금예정 표시** (receivables ↔ cash_schedule IN, 키 client_id) ⑦자금 후속(백로그): 카드 예측(corporate_cards cutoff/payment_day 추가 후), 월별요약 KPI수입 일관성, apply→DONE 운영검증 ⑧DB 초기화 시 마이그(0106·0071) 재적용+permission_pages seed / 프로덕션 admin 비번 'password' 변경(용준님 예정)
 
 > **직전 세션 결과 (2026-06-03) — Phase 1~3 프로덕션 검증 + Phase 4 핵심**: Phase 1~3을 프로덕션(webapp-9i0.pages.dev) 배포 후 Playwright 검증 — 5탭 전환·6 API(200)·렌더·콘솔에러0·`/bank` 캐시플로 제거·리다이렉트 전부 PASS. 하이브리드 엔진 실DB 동작 확인(추정자금일보 92행, 고정비 온더플라이 반영). **Phase 4 핵심 구현**: ①`GET /schedule/bank-balance`(계좌별 최신 balance_after 합산)→추정자금일보 시작잔액 자동 prefill ②`bank.ts` apply+batch-apply에 cash_schedule 자동 DONE 연동(client_id+IN+ORDER+금액정확일치+동일법인, try/catch 격리·보조). build/node-check 통과, **미배포**. ※참고: 월별요약 KPI수입(summary 실입금)≠월별표(monthly 예상입금) 소스차이=4-3 개선대상. 프로덕션 admin 비번 'password' 보안점검 권장.
 
