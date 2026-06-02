@@ -10,7 +10,7 @@ cashFlowRouter.use('/*', authMiddleware)
 // 고정비 CRUD
 // ============================================================================
 
-cashFlowRouter.get('/fixed-expenses', requireRole('ADMIN'), async (c) => {
+cashFlowRouter.get('/fixed-expenses', requireRole('ADMIN', 'MANAGER'), async (c) => {
   try {
     const { category = '', active = '1' } = c.req.query()
     const clauses: string[] = ['1=1']
@@ -128,7 +128,7 @@ cashFlowRouter.delete('/fixed-expenses/:id', requireRole('ADMIN'), async (c) => 
 // 대출 CRUD
 // ============================================================================
 
-cashFlowRouter.get('/loans', requireRole('ADMIN'), async (c) => {
+cashFlowRouter.get('/loans', requireRole('ADMIN', 'MANAGER'), async (c) => {
   try {
     const { active = '1' } = c.req.query()
     const clauses: string[] = []
@@ -273,7 +273,7 @@ cashFlowRouter.post('/loans/:id/rate-change', requireRole('ADMIN'), async (c) =>
   }
 })
 
-cashFlowRouter.get('/loans/:id/rate-history', requireRole('ADMIN'), async (c) => {
+cashFlowRouter.get('/loans/:id/rate-history', requireRole('ADMIN', 'MANAGER'), async (c) => {
   try {
     const id = c.req.param('id')
     const ef = entityFilter(c, 'lrh')
@@ -295,7 +295,7 @@ cashFlowRouter.get('/loans/:id/rate-history', requireRole('ADMIN'), async (c) =>
 // 상환 스케줄
 // ============================================================================
 
-cashFlowRouter.get('/loans/:id/schedule', requireRole('ADMIN'), async (c) => {
+cashFlowRouter.get('/loans/:id/schedule', requireRole('ADMIN', 'MANAGER'), async (c) => {
   try {
     const id = c.req.param('id')
 

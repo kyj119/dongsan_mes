@@ -1,6 +1,6 @@
 # PROJECT_STATUS.md — 프로젝트 현황판
 
-> **최종 업데이트**: 2026-06-02
+> **최종 업데이트**: 2026-06-03
 
 ---
 
@@ -12,9 +12,11 @@
 
 ## 🔴 현재 진행 중
 
-- (없음)
+- **자금 예측/계획 일원화** (캐시플로 탭→`/cash-schedule` 흡수): **Phase 1+2 완료(백엔드)**, **Phase 3(UI 흡수) 대기**. 설계 → `memory/project-cashflow-unification.md`
 
-> **다음 세션 TODO**: ①향후 기성 PRODUCT는 품목 UI '기성품' 토글로 지정(코드 완비) ②혼합주문(제작+기성) 부분출고·재고차감 실사용 모니터링 ③cards 외 스키마 드리프트 의심 시 PRAGMA 확인 ④#329(3) withSeqRetry INSERT 래핑(후순위) ⑤로컬 dev:d1 중복 3개 정리
+> **다음 세션 TODO**: ①향후 기성 PRODUCT는 품목 UI '기성품' 토글로 지정(코드 완비) ②혼합주문(제작+기성) 부분출고·재고차감 실사용 모니터링 ③cards 외 스키마 드리프트 의심 시 PRAGMA 확인 ④#329(3) withSeqRetry INSERT 래핑(후순위) ⑤로컬 dev:d1 중복 3개 정리 ⑥자금 일원화 Phase 3(UI: cashFlow.js+탭HTML 이관·달력 일원화·bank.ts 정리) → Phase 4~5(연결·정리). 카드 예측은 corporate_cards에 cutoff_day/payment_day 추가 후
+
+> **직전 세션 결과 (2026-06-03)**: **자금 예측/계획 일원화 Phase 1+2 완료(백엔드).** 캐시플로 탭(`/bank`)을 `/cash-schedule`로 흡수하는 통합의 백엔드. ①신규 `cashflowEngine.ts` 하이브리드 합성 헬퍼(물질화 cash_schedule + 온더플라이 고정비·대출·미청구주문 예상입금). ②`forecast` 헬퍼 기반 재작성, 신규 `GET /schedule/monthly`(거친 projection 대체). ③cash_schedule 조회/수정/삭제 전부 `entity_id` 필터(법인격리+보안). ④`auto-generate` FIXED 생성 제거(온더플라이 통일·이중계산 차단). ⑤고정비/대출 GET을 MANAGER 허용(변경은 ADMIN). 카드 예측은 `corporate_cards` cutoff/payment_day 부재로 백로그. typecheck/build/SQL 검증 통과. **Phase 3(UI: cashFlow.js 488줄+탭HTML 이관·달력 일원화·bank.ts 정리) 대기.**
 
 > **직전 세션 결과 (2026-06-02 PM-4)**: **기성품/유통 즉시출고 — 전체 완료(Phase 1+2+3 + UI 클릭검증 + 태극기 9종 지정).** `items.production_required`(0285, GOODS/MATERIAL=0·그 외 UI), getCardGroup 최우선 분기(카테고리보다 우선), 카드 PRINT_DONE→shipment_ready 전파, 완료 파이프라인 PRINT_DONE 게이트 제거(유통/기성도 SHIPPED), 출고 재고차감 일반화(음수허용·멱등), 주문서 재고부족 경고. 드리프트 수정: cards.print_done_at·shipped_by(0286). UI 클릭검증(토글 저장·경고 토스트)+태극기 9종 지정 완료. (commits 9c90306, 4f75790, d5ad1b6)
 
