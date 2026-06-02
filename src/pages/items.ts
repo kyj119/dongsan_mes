@@ -434,6 +434,15 @@ export function itemsPage(c: Context<HonoEnv>) {
                                     <div class="mt-2 text-xs text-blue-600" id="autoCodePreview">자동 배정: PM-XXXX</div>
                                 </div>
 
+                                <!-- 0-1. 기성품(제작 불필요·즉시 출고) -->
+                                <div id="fieldStockReady">
+                                    <label class="flex items-center gap-2 cursor-pointer">
+                                        <input type="checkbox" id="itemStockReady" class="w-4 h-4 text-blue-600 rounded focus:ring-blue-500">
+                                        <span class="text-sm font-semibold text-gray-700">기성품 (제작 안 함 · 주문 즉시 출고 가능)</span>
+                                    </label>
+                                    <div class="text-xs text-gray-500 mt-0.5 ml-6">체크 시 생산(카드) 없이 재고에서 즉시 출고. 태극기 호수별 등 기성 제품에 사용. (상품/원자재는 자동 적용)</div>
+                                </div>
+
                                 <!-- 1. 품목명 -->
                                 <div>
                                     <label class="block text-sm font-semibold text-gray-700 mb-1">품목명 <span class="text-red-500">*</span></label>

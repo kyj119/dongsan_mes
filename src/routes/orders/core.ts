@@ -14,6 +14,9 @@ import { getEntityCompanyInfo } from '../../utils/entitySettings'
 
 // card_group 결정 함수: 품목의 카드 그룹(생산 라인)을 결정
 function getCardGroup(item: any): string | null {
+  // 0. 기성품/유통(production_required=0): 제작 불필요 → 카드 미생성 (카테고리 매칭보다 우선)
+  //    태극기 호수별 등 "생산 카테고리"라도 기성품이면 여기서 즉시 제외 → shipment_ready로 즉시 출고
+  if (item.production_required === 0) return null
   // 1. print_method_id가 있으면 → print_methods.card_group 사용
   if (item.print_method_card_group) return item.print_method_card_group
   // 2. category 기반 판단 (기존 품목 호환)
@@ -51,7 +54,7 @@ export async function generateCardsForOrder(params: GenerateCardsParams): Promis
 
   const { results: orderItems } = await db.prepare(`
     SELECT oi.*, i.category, i.sub_category, i.print_method_id, i.print_media_id,
-           i.item_type, pm.card_group as print_method_card_group
+           i.item_type, i.production_required, pm.card_group as print_method_card_group
     FROM order_items oi
     LEFT JOIN items i ON oi.item_id = i.id
     LEFT JOIN print_methods pm ON i.print_method_id = pm.id
@@ -748,8 +751,8 @@ ordersCoreRouter.get('/in-transit', requireRole('ADMIN', 'MANAGER'), async (c) =
              c.client_name
       FROM orders o
       JOIN clients c ON o.client_id = c.id
-      WHERE o.status = 'PRINT_DONE'
-        AND o.auto_complete_date IS NOT NULL
+      WHERE o.auto_complete_date IS NOT NULL
+        AND o.status NOT IN ('SHIPPED', 'COMPLETED', 'CANCELLED')
         ${ef.clause}
       ORDER BY o.auto_complete_date ASC
     `).bind(...ef.params).all()
@@ -2423,11 +2426,15 @@ ordersCoreRouter.post('/sync-statuses', requireRole('ADMIN', 'MANAGER'), async (
 
     // Step 1: 출고완료 자동 전이 — auto_complete_date 도래 + 모든 카드 출고완료
     const ef = entityFilter(c, 'o')
+    // 출고완료 전이: auto_complete_date 도래 + 미출고 카드 없음 (PRINT_DONE 가정 제거).
+    //   · 제작 주문: status=PRINT_DONE + 카드 전부 출고
+    //   · 기성/유통 주문: status=CONFIRMED + 카드 없음(NOT EXISTS 자동 충족) → 동일하게 전이
+    //   auto_complete_date는 출고 처리 시에만 설정되므로 "출고됨" 신호로 신뢰 가능
     const { results: toShip } = await db.prepare(`
-      SELECT o.id, o.delivery_method FROM orders o
-      WHERE o.status = 'PRINT_DONE'
-        AND o.auto_complete_date IS NOT NULL
+      SELECT o.id, o.status, o.delivery_method FROM orders o
+      WHERE o.auto_complete_date IS NOT NULL
         AND o.auto_complete_date <= date('now')
+        AND o.status NOT IN ('SHIPPED', 'COMPLETED', 'CANCELLED', 'QUOTATION', 'HOLD')
         AND NOT EXISTS (SELECT 1 FROM cards c WHERE c.order_id = o.id AND c.shipped_at IS NULL)
         ${ef.clause}
     `).bind(...ef.params).all()
@@ -2436,17 +2443,18 @@ ordersCoreRouter.post('/sync-statuses', requireRole('ADMIN', 'MANAGER'), async (
       const method = ((order.delivery_method as string) || '').trim()
       const isQuick = method === '방문수령' || method === '직접수령' || method === '직접배송' || method === '퀵'
       const billableDays = isQuick ? 1 : 2
+      const fromStatus = (order.status as string) || 'CONFIRMED'
 
       await db.prepare(`
         UPDATE orders SET status = 'SHIPPED', updated_at = CURRENT_TIMESTAMP,
           billable_after = date('now', '+' || ? || ' days')
-        WHERE id = ? AND status = 'PRINT_DONE'
-      `).bind(billableDays, order.id).run()
+        WHERE id = ? AND status = ?
+      `).bind(billableDays, order.id, fromStatus).run()
 
       await db.prepare(`
         INSERT INTO order_status_history (order_id, from_status, to_status, changed_by, change_reason)
-        VALUES (?, 'PRINT_DONE', 'SHIPPED', ?, '동기화: 출고완료 자동 전이')
-      `).bind(order.id, user?.id || null).run()
+        VALUES (?, ?, 'SHIPPED', ?, '동기화: 출고완료 자동 전이')
+      `).bind(order.id, fromStatus, user?.id || null).run()
     }
 
     // Step 2: 회계반영 자동 전이 — auto_billing=1 거래처 + billable_after 도래

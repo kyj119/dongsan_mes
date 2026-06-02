@@ -82,6 +82,10 @@ async function editItem(id) {
             var itemType = item.item_type || 'PRODUCT';
             selectItemType(itemType);
 
+            // 기성품 체크박스 복원 (production_required=0 → 기성품/즉시출고)
+            var stockEl = document.getElementById('itemStockReady');
+            if (stockEl) stockEl.checked = (item.production_required === 0);
+
             // 타입 설정 후 대분류 복원 (selectItemType이 옵션을 재구성하므로 이후에 설정)
             var catVal = item.category_name || item.category || item.category_direct || '';
             document.getElementById('itemCategory').value = catVal;
@@ -173,7 +177,11 @@ async function saveItem(event) {
             var el = document.getElementById('itemStorageZone');
             var v = el ? el.value : '';
             return v ? parseInt(v) : null;
-        })()
+        })(),
+        // 기성품/유통: GOODS·MATERIAL은 항상 제작불필요(0), PRODUCT는 '기성품' 체크박스로 결정
+        production_required: (selectedItemType === 'GOODS' || selectedItemType === 'MATERIAL')
+            ? 0
+            : (((document.getElementById('itemStockReady') || {}).checked) ? 0 : 1)
     };
 
     // 원자재 추가 필드

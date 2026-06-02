@@ -425,7 +425,7 @@ itemsRouter.patch('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
   try {
     const id = c.req.param('id')
     const updates = await c.req.json()
-    const allowedFields = ['item_name', 'specification', 'width_mm', 'parent_media_id', 'sub_category', 'base_price', 'unit', 'sales_price', 'is_sales_item', 'item_group', 'is_purchase_item']
+    const allowedFields = ['item_name', 'specification', 'width_mm', 'parent_media_id', 'sub_category', 'base_price', 'unit', 'sales_price', 'is_sales_item', 'item_group', 'is_purchase_item', 'production_required']
     const setClauses: string[] = []
     const params: any[] = []
 
@@ -479,7 +479,7 @@ itemsRouter.get('/:id', async (c) => {
   try {
     const id = c.req.param('id')
     const item = await c.env.DB.prepare(`
-      SELECT id, category_id, subcategory_id, item_code, item_name, description, unit, base_price, sales_price, is_active, item_type, category, sub_category, is_sales_item, is_purchase_item, pricing_method, item_group, group_sort, width_mm, storage_zone_id, is_favorite, print_method_id, print_media_id, parent_media_id, code_prefix, specification, created_at, updated_at FROM items WHERE id = ?
+      SELECT id, category_id, subcategory_id, item_code, item_name, description, unit, base_price, sales_price, is_active, item_type, category, sub_category, is_sales_item, is_purchase_item, pricing_method, item_group, group_sort, width_mm, storage_zone_id, is_favorite, print_method_id, print_media_id, parent_media_id, code_prefix, specification, production_required, created_at, updated_at FROM items WHERE id = ?
     `).bind(id).first()
 
     if (!item) {
@@ -635,8 +635,8 @@ itemsRouter.post('/', requireRole('ADMIN', 'MANAGER'), async (c) => {
         base_price, description, is_active,
         is_sales_item, is_purchase_item, pricing_method, width_mm,
         item_group, group_sort, item_type, category_id, item_code, storage_zone_id,
-        code_prefix, parent_media_id, specification
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        code_prefix, parent_media_id, specification, production_required
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).bind(
       itemData.item_name,
       itemData.category,
@@ -657,7 +657,9 @@ itemsRouter.post('/', requireRole('ADMIN', 'MANAGER'), async (c) => {
       itemData.storage_zone_id ?? null,
       codePrefix || null,
       itemData.parent_media_id || null,
-      itemData.specification || null
+      itemData.specification || null,
+      // 기성품/유통: 제작 불필요 기본값 — GOODS/MATERIAL=0, 그 외=1 (UI에서 수동 조정)
+      itemData.production_required !== undefined ? (itemData.production_required ? 1 : 0) : (['GOODS', 'MATERIAL'].includes(itemType) ? 0 : 1)
     ).run()
 
     return c.json({
@@ -727,8 +729,8 @@ itemsRouter.post('/bulk', requireRole('ADMIN', 'MANAGER'), async (c) => {
           item_name, category, sub_category, unit,
           base_price, description, is_active,
           is_sales_item, is_purchase_item, pricing_method, width_mm,
-          item_group, group_sort, item_type, category_id, item_code
-        ) VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          item_group, group_sort, item_type, category_id, item_code, production_required
+        ) VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).bind(
         itemName,
         base.category,
@@ -744,7 +746,8 @@ itemsRouter.post('/bulk', requireRole('ADMIN', 'MANAGER'), async (c) => {
         i + 1,
         itemType,
         categoryId,
-        itemCode
+        itemCode,
+        ['GOODS', 'MATERIAL'].includes(itemType) ? 0 : 1
       ).run()
 
       created.push(result.meta.last_row_id as number)
@@ -817,6 +820,12 @@ itemsRouter.put('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
     const widthMmParams = itemData.width_mm !== undefined
       ? [itemData.width_mm || null] : []
 
+    // production_required(제작 필요/기성품): 전송 시에만 갱신, 미전송 시 기존값 보존
+    const prodReqClause = itemData.production_required !== undefined
+      ? 'production_required = ?,' : ''
+    const prodReqParams = itemData.production_required !== undefined
+      ? [itemData.production_required ? 1 : 0] : []
+
     // Update item
     await c.env.DB.prepare(`
       UPDATE items SET
@@ -838,6 +847,7 @@ itemsRouter.put('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
         storage_zone_id = ?,
         parent_media_id = ?,
         specification = ?,
+        ${prodReqClause}
         updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
     `).bind(
@@ -859,6 +869,7 @@ itemsRouter.put('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
       itemData.storage_zone_id ?? null,
       itemData.parent_media_id ?? null,
       itemData.specification || null,
+      ...prodReqParams,
       id
     ).run()
 

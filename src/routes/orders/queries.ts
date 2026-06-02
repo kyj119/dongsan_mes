@@ -201,10 +201,12 @@ ordersQueriesRouter.patch('/bulk-ship', async (c) => {
         FROM cards WHERE order_id = ?
       `).bind(orderId).first<{ total: number; done: number; shipped: number }>()
 
-      if (!check || check.total === 0) {
-        results.push({ id: orderId, success: false, error: '카드가 없습니다' })
+      if (!check) {
+        results.push({ id: orderId, success: false, error: '주문 조회 실패' })
         continue
       }
+      // check.total === 0 (전 라인 기성/유통 = 카드 없음): 카드 출고는 스킵하고
+      // 아래 allShipped 경로로 즉시 출고완료 처리 (auto_complete + 재고차감)
 
       // 카드 출고 + 주문 상태 전환을 batch로 원자적 처리
       // Step 1: 카드 출고 처리

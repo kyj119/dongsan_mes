@@ -43,6 +43,15 @@ async function syncOrderStatusFromCards(db: D1Database, orderId: number) {
 
   if (!snapshot || snapshot.card_count === 0) return
 
+  // 제작 라인 readiness 전파: PRINT_DONE 카드에 연결된 order_item을 shipment_ready=1로
+  // (기성/유통 라인은 생성 시 이미 1 → 이로써 출고/완료 게이트가 라인 단위로 통일됨)
+  await db.prepare(`
+    UPDATE order_items SET shipment_ready = 1
+    WHERE order_id = ?
+      AND COALESCE(shipment_ready, 0) = 0
+      AND id IN (SELECT ci.order_item_id FROM card_items ci JOIN cards c ON c.id = ci.card_id WHERE c.order_id = ? AND c.status = 'PRINT_DONE')
+  `).bind(orderId, orderId).run()
+
   const skipStatuses = ['SHIPPED', 'CANCELLED', 'HOLD']
   if (skipStatuses.includes(snapshot.order_status)) return
 
