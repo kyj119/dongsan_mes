@@ -116,7 +116,7 @@ export function shipmentsPage(c: Context<HonoEnv>) {
               <i class="fas fa-paper-plane mr-1"></i>선택 발송
             </button>
             <button onclick="printAllSection('freight')" class="px-3 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700">
-              <i class="fas fa-print mr-1"></i>전체 라벨 출력
+              <i class="fas fa-print mr-1"></i>선택 라벨 출력
             </button>
             <button onclick="confirmShipSection('freight')" class="px-3 py-1 text-xs bg-emerald-600 text-white rounded hover:bg-emerald-700">
               <i class="fas fa-truck mr-1"></i>출고 확정
@@ -150,7 +150,7 @@ export function shipmentsPage(c: Context<HonoEnv>) {
               <i class="fas fa-paper-plane mr-1"></i>선택 발송
             </button>
             <button onclick="printAllSection('daesintaekbae')" class="px-3 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700">
-              <i class="fas fa-print mr-1"></i>전체 라벨 출력
+              <i class="fas fa-print mr-1"></i>선택 라벨 출력
             </button>
             <button onclick="confirmShipSection('daesintaekbae')" class="px-3 py-1 text-xs bg-emerald-600 text-white rounded hover:bg-emerald-700">
               <i class="fas fa-truck mr-1"></i>출고 확정

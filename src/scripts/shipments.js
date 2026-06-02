@@ -146,7 +146,7 @@ async function loadShipmentsByDate() {
           delivery_date: s.delivery_date || '',
           notes: s.notes || '',
           reception_location: s.reception_location || '',
-          items: s.items || [],
+          items: [], // 아래 concat에서 모든 shipment(첫 건 포함) items를 1회씩 누적 — s.items로 초기화하면 첫 주문 2배 중복
           item_summaries: [],
           shipments: [],
           total_cards: 0,
@@ -191,6 +191,13 @@ function getItemSummaryText(grp) {
   return texts.join(' / ');
 }
 
+// 착/선불 한글 변환 (shipping_payment: PREPAID/COLLECT, 레거시 COD)
+function payTypeKo(v) {
+  if (v === 'PREPAID') return '선불';
+  if (v === 'COLLECT' || v === 'COD') return '착불';
+  return v || '';
+}
+
 function getShipmentIds(grp) {
   return grp.shipments.map(function(s) { return s.id; });
 }
@@ -232,9 +239,7 @@ function renderFreightSection() {
 
     return '<tr class="border-t hover:bg-blue-50">'
       + '<td class="px-3 py-2 w-8"><input type="checkbox" id="cb-freight-' + escapeHtml(key) + '" ' + (isChecked ? 'checked' : '') + ' onchange="toggleShipmentCheck(\'freight\',\'' + escapeHtml(key) + '\',this.checked)" class="rounded"></td>'
-      + '<td class="px-3 py-2 font-medium">' + escapeHtml(grp.client_name)
-      + '<a href="/tax-invoices?search=' + encodeURIComponent(grp.client_name) + '" class="text-xs text-blue-600 hover:underline ml-2"><i class="fas fa-file-invoice mr-1"></i>계산서 발행</a>'
-      + '</td>'
+      + '<td class="px-3 py-2 font-medium">' + escapeHtml(grp.client_name)      + '</td>'
       + '<td class="px-3 py-2">' + terminalHtml + '</td>'
       + '<td class="px-3 py-2 text-xs text-gray-500 hidden md:table-cell max-w-[160px] truncate">' + escapeHtml(itemSummary) + '</td>'
       + '<td class="px-3 py-2 text-center">'
@@ -272,9 +277,7 @@ function renderDaesintaekbaeSection() {
     // ID 접두어 'd-' 사용: 대신택배 전용 (대신화물과 ID 충돌 방지)
     return '<tr class="border-t hover:bg-green-50">'
       + '<td class="px-3 py-2 w-8"><input type="checkbox" id="cb-daesintaekbae-' + escapeHtml(key) + '" ' + (isChecked ? 'checked' : '') + ' onchange="toggleShipmentCheck(\'daesintaekbae\',\'' + escapeHtml(key) + '\',this.checked)" class="rounded"></td>'
-      + '<td class="px-3 py-2 font-medium">' + escapeHtml(grp.client_name)
-      + '<a href="/tax-invoices?search=' + encodeURIComponent(grp.client_name) + '" class="text-xs text-blue-600 hover:underline ml-2"><i class="fas fa-file-invoice mr-1"></i>계산서 발행</a>'
-      + '</td>'
+      + '<td class="px-3 py-2 font-medium">' + escapeHtml(grp.client_name)      + '</td>'
       + '<td class="px-3 py-2 text-sm">'
       + '<input type="text" id="d-addr-' + escapeHtml(key) + '" value="' + escapeHtml(addr) + '"'
       + ' class="ds-input px-2 py-1 text-xs w-full border rounded" placeholder="배송주소">'
@@ -311,9 +314,7 @@ function renderHanjinSection() {
     var isChecked = selectedShipments['hanjin'] && selectedShipments['hanjin'].has(key);
     return '<tr class="border-t hover:bg-orange-50">'
       + '<td class="px-3 py-2 w-8"><input type="checkbox" id="cb-hanjin-' + escapeHtml(key) + '" ' + (isChecked ? 'checked' : '') + ' onchange="toggleShipmentCheck(\'hanjin\',\'' + escapeHtml(key) + '\',this.checked)" class="rounded"></td>'
-      + '<td class="px-3 py-2 font-medium">' + escapeHtml(grp.client_name)
-      + '<a href="/tax-invoices?search=' + encodeURIComponent(grp.client_name) + '" class="text-xs text-blue-600 hover:underline ml-2"><i class="fas fa-file-invoice mr-1"></i>계산서 발행</a>'
-      + '</td>'
+      + '<td class="px-3 py-2 font-medium">' + escapeHtml(grp.client_name)      + '</td>'
       + '<td class="px-3 py-2 text-sm text-gray-600 max-w-[180px] truncate">' + escapeHtml(addr || '-') + '</td>'
       + '<td class="px-3 py-2">'
       + '<input type="text" id="track-' + escapeHtml(key) + '" value="' + escapeHtml(tracking) + '"'
@@ -340,9 +341,7 @@ function renderQuickSection() {
     var isChecked = selectedShipments['quick'] && selectedShipments['quick'].has(key);
     return '<tr class="border-t hover:bg-gray-50">'
       + '<td class="px-3 py-2 w-8"><input type="checkbox" id="cb-quick-' + escapeHtml(key) + '" ' + (isChecked ? 'checked' : '') + ' onchange="toggleShipmentCheck(\'quick\',\'' + escapeHtml(key) + '\',this.checked)" class="rounded"></td>'
-      + '<td class="px-3 py-2 font-medium">' + escapeHtml(grp.client_name)
-      + '<a href="/tax-invoices?search=' + encodeURIComponent(grp.client_name) + '" class="text-xs text-blue-600 hover:underline ml-2"><i class="fas fa-file-invoice mr-1"></i>계산서 발행</a>'
-      + '</td>'
+      + '<td class="px-3 py-2 font-medium">' + escapeHtml(grp.client_name)      + '</td>'
       + '<td class="px-3 py-2 text-sm text-gray-600">' + escapeHtml(grp.receiver_address || '-') + '</td>'
       + '<td class="px-3 py-2 text-sm">' + escapeHtml(grp.contact_phone || '-') + '</td>'
       + '<td class="px-3 py-2 text-center">'
@@ -366,9 +365,7 @@ function renderEtcSection() {
   tbody.innerHTML = keys.map(function(key) {
     var grp = etcGroups[key];
     return '<tr class="border-t">'
-      + '<td class="px-3 py-2 font-medium">' + escapeHtml(grp.client_name)
-      + '<a href="/tax-invoices?search=' + encodeURIComponent(grp.client_name) + '" class="text-xs text-blue-600 hover:underline ml-2"><i class="fas fa-file-invoice mr-1"></i>계산서 발행</a>'
-      + '</td>'
+      + '<td class="px-3 py-2 font-medium">' + escapeHtml(grp.client_name)      + '</td>'
       + '<td class="px-3 py-2 text-xs text-gray-500">' + escapeHtml(grp.delivery_type) + '</td>'
       + '<td class="px-3 py-2 text-xs text-gray-500">' + escapeHtml(grp.courier_name || '-') + '</td>'
       + '<td class="px-3 py-2 text-sm">' + escapeHtml(grp.receiver_address || '-') + '</td>'
@@ -536,8 +533,10 @@ async function printQuickGuide(key) {
 async function printAllSection(section) {
   var map = section === 'freight' ? freightGroups : daesintaekbaeGroups;
   var carrier = section === 'freight' ? null : '대신택배';
-  var keys = Object.keys(map);
-  if (!keys.length) { showToast('출력할 내용이 없습니다.', 'warning'); return; }
+  // 선택된 거래처만 출력 (체크박스로 선택)
+  var selected = selectedShipments[section] || new Set();
+  var keys = Object.keys(map).filter(function(k) { return selected.has(k); });
+  if (!keys.length) { showToast('라벨을 출력할 거래처를 선택해주세요.', 'warning'); return; }
 
   var allHtml = '';
   var prefix = section === 'freight' ? 'f-' : 'd-';
@@ -668,8 +667,8 @@ function printShipmentList(carrier) {
       // 출고방법
       var method = grp.delivery_method || grp.courier_name || '';
 
-      // 착/선불 (shipping_payment 필드)
-      var payType = grp.shipping_payment || '';
+      // 착/선불 (shipping_payment 필드) — 한글 표기
+      var payType = payTypeKo(grp.shipping_payment);
 
       // 배송처 주소
       var address = grp.receiver_address || grp.delivery_address || grp.client_address || '';
