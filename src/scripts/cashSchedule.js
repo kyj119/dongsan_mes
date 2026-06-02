@@ -338,7 +338,7 @@ window.switchScheduleTab = function(tab) {
     if (t === tab) {
       btn.className = 'px-4 py-2 text-sm font-medium border-b-2 border-blue-600 text-blue-600 flex items-center gap-2';
       panel.classList.remove('hidden');
-      if (t === 'forecast' && !schForecastData) loadForecast();
+      if (t === 'forecast' && !schForecastData) prefillThenForecast();
       if (t === 'monthly' && window.loadMonthly) window.loadMonthly();
       if (t === 'fixed' && window.loadFixedExpenses) window.loadFixedExpenses();
       if (t === 'loans' && window.loadLoans) window.loadLoans();
@@ -348,6 +348,24 @@ window.switchScheduleTab = function(tab) {
     }
   });
 };
+
+// Phase 4: 추정자금일보 첫 진입 시 은행 실잔액을 시작잔액에 자동 prefill (사용자 미입력 시에만)
+async function prefillBankBalance() {
+  try {
+    var el = document.getElementById('fcStartBalance');
+    if (!el) return;
+    var cur = (el.value || '').replace(/[^\d.-]/g, '');
+    if (cur && cur !== '0') return; // 사용자가 이미 입력한 값은 건드리지 않음
+    var res = await axios.get('/api/cash-flow/schedule/bank-balance');
+    if (res.data.success) {
+      el.value = Math.round(res.data.data.total_balance || 0).toLocaleString();
+    }
+  } catch (e) { console.warn('[cashSchedule] bank-balance prefill 실패', e); }
+}
+async function prefillThenForecast() {
+  await prefillBankBalance();
+  loadForecast();
+}
 
 window.loadForecast = async function() {
   try {

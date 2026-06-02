@@ -12,9 +12,11 @@
 
 ## 🔴 현재 진행 중
 
-- **자금 예측/계획 일원화** (캐시플로 탭→`/cash-schedule` 흡수): **Phase 1~3 완료(백엔드+UI)**, **Phase 4~5(실적↔계획 연결·정리) 대기**. 런타임 검증은 스테이징 배포 시(로컬 로그인 미가능). 설계 → `memory/project-cashflow-unification.md`
+- **자금 예측/계획 일원화** (캐시플로 탭→`/cash-schedule` 흡수): **Phase 1~3 프로덕션 검증 완료** + **Phase 4 핵심 완료**(실잔액→시작잔액·은행매칭→cash_schedule DONE). 잔여: 4-3(미수금↔입금예정 표시, 백로그)·Phase 5(Phase 4 배포검증). **Phase 4 미배포** — bank.ts apply/batch-apply 자금 로직 변경분 프로덕션 반영·검증 필요. 설계 → `memory/project-cashflow-unification.md`
 
 > **다음 세션 TODO**: ①향후 기성 PRODUCT는 품목 UI '기성품' 토글로 지정(코드 완비) ②혼합주문(제작+기성) 부분출고·재고차감 실사용 모니터링 ③cards 외 스키마 드리프트 의심 시 PRAGMA 확인 ④#329(3) withSeqRetry INSERT 래핑(후순위) ⑤로컬 dev:d1 중복 3개 정리 ⑥자금 일원화 Phase 4~5(실적↔계획 연결: 실잔액→시작잔액·은행매칭→DONE·미수금↔입금예정 / 정리·배포). 카드 예측은 corporate_cards에 cutoff_day/payment_day 추가 후. **스테이징 배포해 /cash-schedule 5탭 런타임 검증 필요**
+
+> **직전 세션 결과 (2026-06-03) — Phase 1~3 프로덕션 검증 + Phase 4 핵심**: Phase 1~3을 프로덕션(webapp-9i0.pages.dev) 배포 후 Playwright 검증 — 5탭 전환·6 API(200)·렌더·콘솔에러0·`/bank` 캐시플로 제거·리다이렉트 전부 PASS. 하이브리드 엔진 실DB 동작 확인(추정자금일보 92행, 고정비 온더플라이 반영). **Phase 4 핵심 구현**: ①`GET /schedule/bank-balance`(계좌별 최신 balance_after 합산)→추정자금일보 시작잔액 자동 prefill ②`bank.ts` apply+batch-apply에 cash_schedule 자동 DONE 연동(client_id+IN+ORDER+금액정확일치+동일법인, try/catch 격리·보조). build/node-check 통과, **미배포**. ※참고: 월별요약 KPI수입(summary 실입금)≠월별표(monthly 예상입금) 소스차이=4-3 개선대상. 프로덕션 admin 비번 'password' 보안점검 권장.
 
 > **직전 세션 결과 (2026-06-03) — Phase 3(UI 흡수) 완료**: 캐시플로 탭을 `/cash-schedule`로 흡수 → **자금계획 5탭**(자금계획·월별요약·고정비·대출·추정자금일보). `cashFlow.js` IIFE 재작성(fmt 충돌 격리·자동초기화 제거·projection→monthly·달력 제거·로더 window 노출), onclick `\'` 이스케이프 수정, `switchScheduleTab` 5탭 확장, `bank.ts` 캐시플로 탭/스크립트 제거(은행연동만), `/cash-flow`→`/cash-schedule` 리다이렉트, summary GET MANAGER 허용. 정적검증 통과(typecheck/build/ID정합성23/이스케이프). **런타임 검증 미실시**(로컬 admin 로그인 불가) → 스테이징 배포 후 5탭 전환·콘솔에러·API 확인 필요.
 

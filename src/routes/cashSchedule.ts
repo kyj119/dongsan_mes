@@ -477,4 +477,30 @@ cashScheduleRouter.get('/schedule/monthly', requireRole('ADMIN', 'MANAGER'), asy
   }
 })
 
+// 은행 실잔액 합계 — 추정자금일보 시작잔액 자동 주입용 (Phase 4 연결)
+// bank_accounts에 잔액 컬럼이 없어 계좌별 최신 bank_transactions.balance_after 합산
+cashScheduleRouter.get('/schedule/bank-balance', requireRole('ADMIN', 'MANAGER'), async (c) => {
+  try {
+    const ef = entityFilter(c, 'ba')
+    const row = await c.env.DB.prepare(`
+      SELECT COALESCE(SUM(latest.balance_after), 0) AS total_balance,
+             COUNT(latest.bank_account_id) AS account_count
+      FROM bank_accounts ba
+      JOIN (
+        SELECT bt1.bank_account_id, bt1.balance_after
+        FROM bank_transactions bt1
+        WHERE bt1.id = (
+          SELECT MAX(bt2.id) FROM bank_transactions bt2
+          WHERE bt2.bank_account_id = bt1.bank_account_id
+        )
+      ) latest ON latest.bank_account_id = ba.id
+      WHERE ba.is_active = 1${ef.clause}
+    `).bind(...ef.params).first<{ total_balance: number; account_count: number }>()
+    return c.json({ success: true, data: { total_balance: row?.total_balance || 0, account_count: row?.account_count || 0 } })
+  } catch (error) {
+    console.error('cashSchedule bank-balance error:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
+  }
+})
+
 export default cashScheduleRouter

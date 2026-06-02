@@ -1011,6 +1011,24 @@ bankRouter.post('/transactions/:id/apply', requireRole('ADMIN'), async (c) => {
       'UPDATE bank_transactions SET matched_payment_id = ? WHERE id = ?'
     ).bind(paymentId, id).run()
 
+    // Phase 4: 대응하는 입금예정(cash_schedule)을 자동 DONE 처리.
+    // 보조 연동 — 실패해도 입금 적용 자체엔 영향 없음. 금액 정확 일치 + 동일 법인 건만(보수적).
+    try {
+      const amt = parseFloat(String(tx.amount))
+      await c.env.DB.prepare(`
+        UPDATE cash_schedule
+        SET status = 'DONE', bank_transaction_id = ?, actual_date = ?, actual_amount = ?, updated_at = CURRENT_TIMESTAMP
+        WHERE id = (
+          SELECT id FROM cash_schedule
+          WHERE client_id = ? AND flow_type = 'IN' AND source_type = 'ORDER'
+            AND status IN ('PENDING', 'OVERDUE') AND amount = ? AND entity_id = ?
+          ORDER BY schedule_date ASC LIMIT 1
+        )
+      `).bind(id, payDate, amt, clientId, amt, (tx as any).entity_id).run()
+    } catch (e) {
+      console.warn('cash_schedule DONE 연동 실패(입금 적용은 정상):', e)
+    }
+
     return c.json({
       success: true,
       data: {
@@ -1048,7 +1066,7 @@ bankRouter.post('/transactions/batch-apply', requireRole('ADMIN'), async (c) => 
     const placeholders = transaction_ids.map(() => '?').join(', ')
     const ef = entityFilter(c, 'bank_transactions')
     const { results: txRows } = await c.env.DB.prepare(
-      `SELECT id, transaction_date, amount, match_status, matched_client_id, counterpart_name, description FROM bank_transactions WHERE id IN (${placeholders})${ef.clause}`
+      `SELECT id, transaction_date, amount, match_status, matched_client_id, counterpart_name, description, entity_id FROM bank_transactions WHERE id IN (${placeholders})${ef.clause}`
     ).bind(...transaction_ids, ...ef.params).all<{
       id: number
       transaction_date: string
@@ -1115,6 +1133,21 @@ bankRouter.post('/transactions/batch-apply', requireRole('ADMIN'), async (c) => 
               matched_at = CURRENT_TIMESTAMP
           WHERE id = ?
         `).bind(payResult.payment_id, user?.id ?? 1, txId).run()
+
+        // Phase 4: 대응 입금예정(cash_schedule) 자동 DONE (보조 — 실패해도 적용엔 영향 없음)
+        try {
+          const amt = parseFloat(String(tx.amount))
+          await c.env.DB.prepare(`
+            UPDATE cash_schedule
+            SET status = 'DONE', bank_transaction_id = ?, actual_date = ?, actual_amount = ?, updated_at = CURRENT_TIMESTAMP
+            WHERE id = (
+              SELECT id FROM cash_schedule
+              WHERE client_id = ? AND flow_type = 'IN' AND source_type = 'ORDER'
+                AND status IN ('PENDING', 'OVERDUE') AND amount = ? AND entity_id = ?
+              ORDER BY schedule_date ASC LIMIT 1
+            )
+          `).bind(txId, payDate, amt, effectiveClientId, amt, (tx as any).entity_id).run()
+        } catch (e) { console.warn('cash_schedule DONE 연동 실패(batch):', e) }
 
         results.push({ id: txId, success: true, payment_id: payResult.payment_id })
       } catch (err) {
