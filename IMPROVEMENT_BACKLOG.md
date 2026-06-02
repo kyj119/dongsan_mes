@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 3 -->
-<!-- last_run_at: 2026-05-14T13:30:00+09:00 -->
+<!-- last_run_area: 4 -->
+<!-- last_run_at: 2026-06-02T13:30:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,10 +8,20 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | 11 |
-| ✔️ done | 32 |
+| 🆕 new | 1 (I-025) |
+| ✔️ done | 33 |
 | ❌ rejected | 2 |
 
+> ⚠️ **백로그 ↔ GitHub 비동기 (Area 6 정리 필요)**: 이전 "new" 11건(I-013~I-024, #32~#46)이 GitHub에서 **전부 closed** 확인(open 0건). 지난 세션 "이슈 29건 전수 종료"에 포함된 것으로 추정 → 다음 Area 6에서 done/rejected 확정. 아래 New 표는 잠정 보존.
+
+> **Area 4 데이터 정합성 (2026-06-02T13:30):**
+> - **방법**: 프로덕션 D1 직접접근 불가(API 토큰 없음) → 278개 마이그레이션을 로컬 D1에 적용해 **실제 해석 스키마**(169테이블·424인덱스) ground truth 확보 + 코드 정적분석 병행
+> - **자동 수정 A-009**: PO 번호 생성 entity 필터 누락 3곳(core.ts reorder/quick + templates.ts) → 정규 시퀀스 경로(getNextSeqNumber+getEntityId)로 정렬, 0281 복합 UNIQUE 정합. verify 통과, commit e8c8992
+> - **신규 이슈 #334(I-025)**: order_templates entity_id 부재 — 주문 템플릿 전 법인 공유 (격리 갭)
+> - **오탐 차단 2건**(에이전트 보고 → ground truth 반증): tax_invoices `idx_ti_number_entity` UNIQUE 이미 존재 / shipments `shipment_number` 전역 UNIQUE(복합보다 강함)
+> - **인덱스 후보 37건 교차검증**: 대부분 오탐(컬럼 존재하나 실제 hot query path 아님). print_file_map·returns·cash_receipts hot path는 이미 인덱스 보유 확인. inventory_receipts.po_id만 저빈도 WHERE(core.ts:445) — 영향 미미로 이슈화 보류
+> - 자동 수정 1건(A-009), 신규 이슈 1건(#334)
+>
 > **Area 3 UX/기능 감사 (2026-05-14T13:30):**
 > - 75개 페이지/스크립트 전수 UX 패턴 분석 (검색·필터·페이지네이션·빈상태·로딩)
 > - approvals.js 3탭 결재 목록 검색·필터·페이지네이션 전무 → #43 등록 (MEDIUM, 2~3h)
@@ -84,6 +94,12 @@
 
 | ID | 제목 | 영역 | Issue | 공수 |
 |----|------|------|-------|------|
+| I-025 | order_templates entity_id 부재 — 주문 템플릿 전 법인 공유 | Area 4 | #334 | ~1일 |
+
+> 아래 I-013~I-024는 GitHub closed 확인됨 — Area 6 reconciliation 대기 (잠정 보존)
+
+| ID | 제목 | 영역 | Issue | 공수 |
+|----|------|------|-------|------|
 | I-013 | 보안 헤더 전무 (CSP/X-Frame-Options/HSTS/X-Content-Type) | Area 5 | #32 | 1~2h |
 | I-014 | /api/portal/auth/change-password rate limit 누락 | Area 5 | #33 | 30분 |
 | I-015 | XSS 잔여: approvals.js(119-276) + cards.js document.write | Area 5 | #34 | 2~3h |
@@ -102,6 +118,7 @@
 
 | ID | 제목 | 커밋 | 날짜 |
 |----|------|------|------|
+| A-009 | PO 번호 생성 entity 필터 누락 3곳 → 정규 시퀀스 경로 정렬 (reorder/quick/templates) | e8c8992 | 2026-06-02 |
 | A-008 | try-catch 누락 17핸들러 (permissions/finishing/messageTemplates/iaAuto) | 60ee8b8 | 2026-05-14 |
 | A-006 | XSS escapeHtml 5건 (approvals/invoice/purchaseInvoice/quotation/clients) | e099b20 | 2026-05-13 |
 | A-005 | tax_invoice_items/orders tax_invoice_id 인덱스 추가 (0193 migration) | 1b3a698 | 2026-05-13 |
