@@ -14,7 +14,7 @@
 
 - (없음)
 
-> **다음 세션 TODO**: ①향후 기성 PRODUCT는 품목 UI '기성품' 토글로 지정(코드 완비) ②혼합주문(제작+기성) 부분출고·재고차감 실사용 모니터링 ③cards 외 스키마 드리프트 의심 시 PRAGMA 확인 ④미사용 `/orders/ready-orders`(프론트 미연결) ⑤#329(3) withSeqRetry INSERT 래핑(후순위) ⑥로컬 dev:d1 중복 3개 정리
+> **다음 세션 TODO**: ①향후 기성 PRODUCT는 품목 UI '기성품' 토글로 지정(코드 완비) ②혼합주문(제작+기성) 부분출고·재고차감 실사용 모니터링 ③cards 외 스키마 드리프트 의심 시 PRAGMA 확인 ④#329(3) withSeqRetry INSERT 래핑(후순위) ⑤로컬 dev:d1 중복 3개 정리
 
 > **직전 세션 결과 (2026-06-02 PM-4)**: **기성품/유통 즉시출고 — 전체 완료(Phase 1+2+3 + UI 클릭검증 + 태극기 9종 지정).** `items.production_required`(0285, GOODS/MATERIAL=0·그 외 UI), getCardGroup 최우선 분기(카테고리보다 우선), 카드 PRINT_DONE→shipment_ready 전파, 완료 파이프라인 PRINT_DONE 게이트 제거(유통/기성도 SHIPPED), 출고 재고차감 일반화(음수허용·멱등), 주문서 재고부족 경고. 드리프트 수정: cards.print_done_at·shipped_by(0286). UI 클릭검증(토글 저장·경고 토스트)+태극기 9종 지정 완료. (commits 9c90306, 4f75790, d5ad1b6)
 

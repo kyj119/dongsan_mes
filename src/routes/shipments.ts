@@ -187,64 +187,6 @@ shipmentsRouter.get('/daily', async (c) => {
 })
 
 // ============================================================================
-// GET /ready-orders - 출고 가능 주문 목록 (PRINT_DONE 카드가 있는 주문)
-// ============================================================================
-shipmentsRouter.get('/ready-orders', async (c) => {
-  try {
-    const efReady = entityFilter(c, 'o')
-    const { results } = await c.env.DB.prepare(`
-      SELECT o.id, o.order_number, o.delivery_date, o.delivery_method, o.delivery_info,
-             o.delivery_time, o.status, o.final_amount,
-             cl.client_name, cl.phone as client_phone, cl.address as client_address,
-             COUNT(c.id) as total_cards,
-             SUM(CASE WHEN c.status = 'PRINT_DONE' AND c.shipped_at IS NULL THEN 1 ELSE 0 END) as ready_cards,
-             SUM(CASE WHEN c.shipped_at IS NOT NULL THEN 1 ELSE 0 END) as shipped_cards
-      FROM orders o
-      JOIN clients cl ON o.client_id = cl.id
-      LEFT JOIN cards c ON c.order_id = o.id
-      WHERE o.status IN ('PRINT_DONE', 'CONFIRMED', 'PRINTING')${efReady.clause}
-      GROUP BY o.id
-      HAVING ready_cards > 0
-      ORDER BY o.delivery_date ASC NULLS LAST
-    `).bind(...efReady.params).all()
-
-    // 품목 상세 일괄 조회
-    interface ReadyOrderRow { id: number; [key: string]: unknown }
-    interface ReadyItemRow { order_id: number; item_name: string; category_name: string | null; width: number | null; height: number | null; quantity: number; unit: string | null; card_number: string | null; card_status: string | null; card_shipped_at: string | null }
-    const orderIds = (results as ReadyOrderRow[]).map(r => r.id)
-    const ordersWithItems = results as (ReadyOrderRow & { items?: ReadyItemRow[] })[]
-
-    if (orderIds.length > 0) {
-      const placeholders = orderIds.map(() => '?').join(',')
-      const { results: itemRows } = await c.env.DB.prepare(`
-        SELECT oi.order_id, oi.item_name, oi.category_name, oi.width, oi.height,
-               oi.quantity, oi.unit, c.card_number, c.status as card_status, c.shipped_at as card_shipped_at
-        FROM order_items oi
-        LEFT JOIN cards c ON c.order_item_id = oi.id
-        WHERE oi.order_id IN (${placeholders}) AND oi.parent_item_id IS NULL
-        ORDER BY oi.order_id, oi.id
-      `).bind(...orderIds).all<ReadyItemRow>()
-
-      // order_id별로 그룹핑
-      const itemsByOrder: Record<number, ReadyItemRow[]> = {}
-      for (const item of itemRows) {
-        if (!itemsByOrder[item.order_id]) itemsByOrder[item.order_id] = []
-        itemsByOrder[item.order_id].push(item)
-      }
-
-      for (const order of ordersWithItems) {
-        order.items = itemsByOrder[order.id] || []
-      }
-    }
-
-    return c.json({ success: true, data: ordersWithItems })
-  } catch (error) {
-    console.error('src/routes/shipments.ts error:', error)
-    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
-  }
-})
-
-// ============================================================================
 // GET /dashboard/counts - 출고 카운트 (사이드바 뱃지용)
 // ※ /:id 보다 먼저 등록해야 "dashboard"가 :id로 매칭되지 않음
 // ============================================================================
