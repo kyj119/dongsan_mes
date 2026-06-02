@@ -14,6 +14,8 @@
 
 - (없음)
 
+> **직전 세션 결과 (2026-06-02 PM-4)**: **기성품/유통 즉시출고 기능 구현·배포·E2E검증 (Phase 1+2)** — `items.production_required` 도입(0285, GOODS/MATERIAL=0·그 외 UI 수동), `getCardGroup` 최우선 분기(태극기 등 기성품 카드 미생성·즉시 ready), 카드 PRINT_DONE→shipment_ready 전파, 완료 파이프라인(bulk-ship/sync-statuses/in-transit) PRINT_DONE 게이트 제거→유통/기성도 SHIPPED 전이. **추가 드리프트 수정**: cards.print_done_at·shipped_by 누락(0286, 카드완료/출고 경로 pre-existing 500 정정). E2E 99 검증 통과. **Phase 3(재고차감 일반화·주문서 재고부족 경고) 대기.** (commit 9c90306)
+
 > **직전 세션 결과 (2026-06-02 PM-3)**: **한진 E2E(entity 99) 워크플로우 점검 → 치명 버그 2건 발견·수정·배포.** ①카드 생성 차단(1cb77e9가 status='PRINT_PENDING' 도입했으나 cards.status CHECK 미갱신 → 2026-06-01 이후 PRODUCTION 주문 생성 전부 500): 마이그 0284로 CHECK 확장(prod 적용). ②card_number를 order_number.split로 만들어 E{eid} 주문 같은날·법인 충돌: order_number 전체 기반으로 수정. ③#330 회귀(cards.entity_id 없음→orders 조인) 수정. 한진 리스트 착선불/수량 실데이터 검증 통과. **전 법인(1/2/3) 라이브 검증**: 각 법인 PRODUCTION 주문 생성→카드 PRINT_PENDING·card_number `E{eid}-…-01`(법인 유일)·격리 확인→완전 정리(잔여 0·번호 반환). 실데이터 피해 0건. (commits 3dff91c, 18769f7)
 
 > **직전 세션 결과 (2026-06-02 PM-2)**: 출고/배송 페이지 수정 3건 — 한진/대신 리스트 착선불 한글화(`payTypeKo`)·수량 중복 버그 수정(`items` 초기화), 전체 라벨→선택 항목만 출력, 계산서 발행 링크 제거. 배포 + 5/8 실데이터 검증 통과 (commit b261673)
@@ -25,6 +27,10 @@
 ---
 
 ## 🟡 대기 중 (사용자 선택/승인 필요)
+
+### [기성품/유통 즉시출고 Phase 3] — 재고차감 일반화 + 주문서 경고 (Phase 1+2 완료·배포됨)
+- **Phase 3 잔여**: ①출고 시 모든 FROM_STOCK(production_required=0) 라인 재고차감(음수 허용·order_type 무관, 현재는 order_type=DISTRIBUTION만) ②주문서 작성 시 기성/유통 품목 재고부족 경고(차단X, 음수 허용). 결정: 마이너스 허용+경고, 유통도 동일.
+- **기성품 지정**: GOODS/MATERIAL 자동 0. 태극기 호수별 등 기성 PRODUCT는 품목 관리 UI '기성품' 토글로 용준님이 수동 지정 필요(현재 미지정 상태).
 
 ### [포털 rate-limit] — ✅ 프로덕션 배포됨 (2026-06-02)
 - portal verify-document/verify-token에 `rateLimitMiddleware`(10·30/분) 적용(commit 4a2fc28). HEAD(1bd6d01) 빌드에 포함되어 2026-06-02 배포들(60ff92fb~57788bef)로 **prod 활성화**. (Cloudflare 바인딩 방식은 Pages 미지원으로 폐기)
