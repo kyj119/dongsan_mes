@@ -66,9 +66,7 @@ export async function generateCardsForOrder(params: GenerateCardsParams): Promis
     (finMethods || []).map((m): [string, number] => [m.name as string, (m.margin_cm as number) || 0])
   )
 
-  const orderNumberParts = orderNumber.split('-')
-  const orderSeq = orderNumberParts[1]
-  const orderDate = orderNumberParts[0]
+  // (카드번호는 주문번호 전체 기반으로 생성 — 아래 cardNumber 참조)
 
   // orderItems rows from JOIN query — typed as Record<string, unknown>
   type OIRow = Record<string, unknown>
@@ -130,7 +128,8 @@ export async function generateCardsForOrder(params: GenerateCardsParams): Promis
       : cardGroup === 'TRANSFER_FLAG' ? '전사/태극기'
       : cardGroup === 'SIGN' ? '간판' : cardGroup
     cardIndex++
-    const cardNumber = `${orderDate}-${orderSeq}-${String(cardIndex).padStart(2, '0')}`
+    // #card_number: order_number 전체 기반 (E{eid} 접두 호환 + 전역 유일). split([0]/[1]) 방식은 E{eid} 채번에서 같은날·법인 충돌
+    const cardNumber = `${orderNumber}-${String(cardIndex).padStart(2, '0')}`
 
     // PP 합집합 (code 기준 중복 제거)
     const mergedPPMap = new Map<string, any>()
