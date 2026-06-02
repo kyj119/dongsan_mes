@@ -14,6 +14,8 @@
 
 - (없음)
 
+> **직전 세션 결과 (2026-06-02 PM-2)**: 출고/배송 페이지 수정 3건 — 한진/대신 리스트 착선불 한글화(`payTypeKo`)·수량 중복 버그 수정(`items` 초기화), 전체 라벨→선택 항목만 출력, 계산서 발행 링크 제거. 배포 + 5/8 실데이터 검증 통과 (commit b261673)
+
 > **직전 세션 결과 (2026-06-02 PM)**: **GitHub 오픈 이슈 11건(#323~333) 전수 수정·배포·close** — 보안격리(payroll/cards/AR/budgets/aiInsights), cascade(주문/발주요청), 채번 E{eid} 확장, 홈택스/nts dedup(마이그 0282·0283 prod 적용), saveAutoApprove 복구, dead code 정리. prod 스모크 통과. (오픈 이슈 0건)
 
 > **직전 세션 결과 (2026-06-02 AM)**: 채번 경계 버그 근본수정(E{eid} 내장 채번) + 견적서 개편(표·품목·전환 prefill) + 생산주문서 유통품목 행 단순화 + 전체 페이지 점검(storageZones CRITICAL 수정·배포, 이슈 #326~328 등록)
@@ -52,6 +54,13 @@
 ---
 
 ## 🟢 최근 완료 (2026-06-02)
+
+### 출고/배송 페이지 수정 3건 (2026-06-02 PM-2)
+- **착·선불 한글화**: `shipping_payment`(PREPAID/COLLECT)를 출고 확인 리스트(한진·대신)에 raw 영문 출력 → `payTypeKo()`로 선불/착불 표기
+- **수량 중복 버그**: 거래처 그룹화 시 `items: s.items`로 초기화 후 아래 concat에서 첫 주문 items를 재합산 → **첫 주문 품목·수량 2배** → `items: []` 초기화로 수정
+- **전체 라벨 출력 → 선택 항목만**: `printAllSection`이 전체 키 순회 → 체크된(`selectedShipments`) 거래처만 출력 + 버튼명 "선택 라벨 출력"
+- **계산서 발행 링크 제거**: 5개 섹션(화물/택배/한진/퀵/기타)의 `/tax-invoices` 링크 삭제
+- 배포 + **5/8 실데이터 검증**: 7개 그룹 raw=화면 수량 완전 일치(중복 없음), 착선불 선불/착불 정상, 거래처 출고방법 분리 케이스(현대광고 대신택배2+용차1) 정확. commit b261673
 
 ### GitHub 오픈 이슈 11건(#323~333) 전수 수정·배포·close (2026-06-02 PM)
 - **보안/멀티법인 격리(HIGH)**: #330 cards/scheduling 4라우트 IDOR, #331/#333 payroll 5라우트+tax-agent CSV(PII)+DELETE IDOR(orders/AR수금/budgets)+aiInsights 교차집계, #327 알림 read 필터. 패턴: `entityFilter`(entityId=0 전체모드는 필터 생략 → ADMIN 교차조회 정책 자동 충족)
