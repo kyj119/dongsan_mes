@@ -89,6 +89,9 @@ description: 자율 점검·개선 에이전트. 6개 영역을 순환하며 실
 
 **자동 수정 가능**: 인덱스 추가 (마이그레이션), 데이터 정합성 경고
 
+> **🧭 Ground-truth 기법 (Area 4)**: 프로덕션 D1 직접 접근 불가 시 → `migrations/*.sql` 전체를 로컬 D1에 적용해 **실제 해석 스키마**(테이블/인덱스/UNIQUE) 확보 후 정적분석과 교차검증.
+> 인덱스·UNIQUE 누락 후보는 대부분 오탐(컬럼 존재하나 hot query path 아님 / 이미 복합 인덱스 존재) → ground truth로 반증 필수. (Area 4에서 tax_invoices·shipments 2건 오탐 차단)
+
 ---
 
 ### 🟣 Area 5: 보안 + 인프라
@@ -104,9 +107,16 @@ description: 자율 점검·개선 에이전트. 6개 영역을 순환하며 실
 - Cloudflare Workers 설정 (호환성 플래그, 보안 헤더)
 - GitHub Actions 보안 (시크릿 접근, 권한 범위)
 
+**필수 grep (Area 5 #338 net-new)**:
+- 시크릿 폴백: `grep -rnE "c\.env\.[A-Z_]+ *\|\| *'" src` → 암호화 키/JWT 폴백 리터럴
+- 기본 비밀번호: `body.password || '리터럴'`, CI yml `secrets.X || 'admin'`
+- 이전 #314가 "하드코딩 없음" 단언으로 놓쳤던 패턴 → 매 Area 5 반복
+
 **오탐 제외**:
 - `webhooks.ts allowedPrefixes` Popbill IP 목록 → 의도적 보안 화이트리스트, 하드코딩 아님
 - dev server 전용 취약점 (vite/esbuild SSRF 등) → 프로덕션 영향 없음, 보고 가치 없음
+- CORS `!origin → '*'` (index.tsx:213) → Bearer 인증(쿠키 미사용)이라 실질 무해
+- rate limiter in-memory Map (rateLimit.ts:6) → isolate 분산 한계는 기존 인지 아키텍처 제약
 
 **자동 수정 가능**: escapeHtml 추가, SQL 바인딩 수정
 

@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 5 -->
-<!-- last_run_at: 2026-06-02T15:30:00+09:00 -->
+<!-- last_run_area: 6 -->
+<!-- last_run_at: 2026-06-02T17:00:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,12 +8,23 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | 2 (I-025, I-026) |
-| ✔️ done | 33 |
+| 🆕 new | 5 (I-025~I-029, 전부 open) |
+| ✔️ done | 44 |
 | ❌ rejected | 2 |
 
-> ⚠️ **백로그 ↔ GitHub 비동기 (Area 6 정리 필요)**: 이전 "new" 11건(I-013~I-024, #32~#46)이 GitHub에서 **전부 closed** 확인(open 0건). 지난 세션 "이슈 29건 전수 종료"에 포함된 것으로 추정 → 다음 Area 6에서 done/rejected 확정. 아래 New 표는 잠정 보존.
-
+> **Area 6 자기 진화 (2026-06-02T17:00):**
+> - **GitHub ↔ 백로그 동기화 완료**: open auto-improve 이슈는 5건(#334~#338)뿐, 나머지 전부 closed 재확인
+> - **I-013~I-024 (11건, #32~#46) → done 확정**: 각 이슈 코멘트/코드 교차검증
+>   - 완료 코멘트 명시: #32(보안헤더 3종, HSTS/CSP는 근거와 함께 보류)·#33(change-pw rate limit)·#34(XSS escapeHtml 39개소)·#35(dashboard e2e spec)
+>   - 코멘트無 → 코드로 구현 확인: #39(SELECT* 157→8)·#37(printSystem batch 적용, 채번부 순차는 주석 근거)·#38·#45
+>   - owner 논의로 기능 확장 후 closed: #43(결재 연계)·#44(작업큐 통합)·#46(가동시간 기반 가동률, 코멘트 👍)
+> - **신규 open 3건 new 표 편입**: #335(I-027 저장형 XSS)·#336(I-028 CI 폴백 자격증명)·#337(I-029 debug+error.message) — 이전 세션 last_run_area 미동기로 누락됐던 잔여
+> - **탐지 규칙 강화 (스킬 2개 업데이트)**:
+>   - security-audit + auto-improve: 시크릿 폴백 grep 규칙 `c.env.X || '리터럴'` 명문화 (#314가 놓치고 #338이 net-new로 잡은 패턴)
+>   - auto-improve Area 4: ground-truth 기법(로컬 D1에 migrations 적용→실제 스키마 교차검증) 문서화
+> - **오탐 패턴 2건 추가**: CORS `!origin→'*'`(Bearer 인증), rate limiter in-memory Map(아키텍처 제약) — 양 스킬 + 하단 표 갱신
+> - 자동 수정 0건(메타 정리), 신규 이슈 0건(정리 전용)
+>
 > **Area 5 보안 (2026-06-02T15:30):**
 > - **방법**: 백엔드/프론트 3개 에이전트 병렬 — SQLi+인증 / XSS+에러노출+rate / 보안헤더+시크릿+CORS
 > - **SQLi 0건**: 1,206개 `DB.prepare` 전수 — entityFilter·`.bind()`·ORDER BY 화이트리스트(`cards/queries.ts:302,802`)·`PRAGMA table_info` ALLOWED_TABLES(`attendance.ts:31`) 전부 안전
@@ -103,28 +114,15 @@
 
 ## 🆕 New (미검토)
 
+> 전부 GitHub open + 👍 미수신. 용준님 리뷰 대기.
+
 | ID | 제목 | 영역 | Issue | 공수 |
 |----|------|------|-------|------|
 | I-025 | order_templates entity_id 부재 — 주문 템플릿 전 법인 공유 | Area 4 | #334 | ~1일 |
 | I-026 | 하드코딩/약한 자격증명: hr.ts 주민번호 키 폴백 + reset-password 기본값 | Area 5 | #338 | 30분~반나절 |
-
-> ⚠️ 오늘 더 이른 Area 5 산출물(open, 미검토): #335 저장형 XSS / #336 CI 폴백 자격증명 / #337 debug+error.message — Area 6 reconciliation 대상.
-
-> 아래 I-013~I-024는 GitHub closed 확인됨 — Area 6 reconciliation 대기 (잠정 보존)
-
-| ID | 제목 | 영역 | Issue | 공수 |
-|----|------|------|-------|------|
-| I-013 | 보안 헤더 전무 (CSP/X-Frame-Options/HSTS/X-Content-Type) | Area 5 | #32 | 1~2h |
-| I-014 | /api/portal/auth/change-password rate limit 누락 | Area 5 | #33 | 30분 |
-| I-015 | XSS 잔여: approvals.js(119-276) + cards.js document.write | Area 5 | #34 | 2~3h |
-| I-016 | 대시보드 E2E 커버리지 부재 — 전면 재설계 후 회귀 테스트 없음 | Area 1 | #35 | 2~3h |
-| I-018 | N+1: printSystem.ts rebuildItemPrices + 대량생성 이중루프 | Area 2 | #37 | 2~3h |
-| I-019 | N+1: settings.ts PATCH + priceLists.ts assign-clients | Area 2 | #38 | 30분 |
-| I-020 | SELECT * 잔여 157건 (hometaxInvoices/inventoryCount/finishing 등) | Area 2 | #39 | 2~3h |
-| I-021 | approvals.js 결재 목록 검색·필터·페이지네이션 전무 | Area 3 | #43 | 2~3h |
-| I-022 | tasks.js limit:200 하드코딩 — 200건+ 실패 태스크 미표시 | Area 3 | #44 | 30분 |
-| I-023 | deliveryAnalytics + financialReports CSV 내보내기 없음 | Area 3 | #45 | 2h |
-| I-024 | 대시보드 장비 가동률 % KPI 부재 | Area 3 | #46 | 1~2h |
+| I-027 | 저장형 XSS — escapeHtml 누락 다수 (포털 등 7개 스크립트) | Area 5 | #335 | 2~3h |
+| I-028 | CI 폴백 자격증명 admin/password — 프로덕션 대상 (deploy/e2e yml) | Area 5 | #336 | 30분 |
+| I-029 | 프로덕션 debug 엔드포인트 잔존 + error.message 노출 (admin 전용 LOW) | Area 5 | #337 | 30분 |
 
 ---
 
@@ -145,6 +143,17 @@
 
 | ID | 제목 | 커밋/Issue | 날짜 |
 |----|------|-----------|------|
+| I-013 | 보안 헤더 추가 (X-Frame-Options/X-Content-Type/Referrer-Policy, HSTS/CSP 보류) | #32 | 2026-05-13 |
+| I-014 | /api/portal/auth/change-password rate limit 적용 | #33 | 2026-05-13 |
+| I-015 | XSS 잔여 escapeHtml 39개소 (approvals.js 24 + cards.js 15) | #34 | 2026-05-13 |
+| I-016 | 대시보드 E2E 추가 (e2e/dashboard.spec.ts, 0e67ac6) | #35 | 2026-05-14 |
+| I-018 | N+1 printSystem.ts batch 적용 (채번 필요부는 순차 유지) | #37 | 2026-05-14 |
+| I-019 | N+1 settings.ts + priceLists.ts assign-clients | #38 | 2026-05-14 |
+| I-020 | SELECT * 잔여 정리 (157→8건) | #39 | 2026-05-14 |
+| I-021 | approvals 결재 페이지 — 기존 업무흐름 결재 연계로 확장 (owner 논의) | #43 | 2026-05-14 |
+| I-022 | tasks.js 작업큐 — 사이드바 통합 검토 (owner 논의) | #44 | 2026-05-14 |
+| I-023 | deliveryAnalytics + financialReports CSV 내보내기 | #45 | 2026-05-14 |
+| I-024 | 장비 가동률 KPI — 근무시간 기반 가동시간 측정으로 확장 (owner 👍) | #46 | 2026-05-14 |
 | I-017 | try-catch 누락 17핸들러 자동 수정 (permissions/finishing/messageTemplates/iaAuto) | A-008 / 60ee8b8 | 2026-05-14 |
 | D-001 | shipment_items UNIQUE(shipment_id, card_id) 제약 추가 (0194 migration) | #31 | 2026-05-13 |
 | I-015partial | 스모크 커버리지 55→88 엔드포인트 확대 | #15 | 2026-05-13 |
@@ -197,6 +206,9 @@
 | `webhooks.ts` `allowedPrefixes` Popbill IP 목록 | 의도적 보안 화이트리스트, 하드코딩 아님 | Area 5 (#20) |
 | dev server 전용 취약점 (vite/esbuild SSRF 등) | 프로덕션 영향 없음, 개발자 PC 전용 | Area 1 (#23 거절) |
 | disabled 필드에 이유 힌트 없음 | 용준님: 불필요 (F-004 거절 패턴) | Area 3 (#10 거절) |
+| CORS `!origin → '*'` (`index.tsx:213`) | Bearer 토큰 인증(쿠키 미사용) — 브라우저는 항상 Origin 전송, 실질 무해 | Area 5 (2026-06-02) |
+| rate limiter in-memory `Map` (`rateLimit.ts:6`) | isolate 분산 한계는 기존 인지 아키텍처 제약, 신규 이슈 아님 | Area 5 (2026-06-02) |
+| 인덱스/UNIQUE 누락 후보 (ground-truth 미확인) | 로컬 D1 실제 스키마로 반증 필수 — 대부분 이미 존재하거나 hot path 아님 | Area 4 (2026-06-02) |
 
 ---
 

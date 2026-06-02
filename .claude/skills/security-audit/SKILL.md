@@ -37,7 +37,12 @@ review-checklist과의 차이: review-checklist은 **변경 파일** 코드 리�
 | 5 | 민감정보 노출 | error.message 직접 반환, password_hash 응답, 소스맵 | 전체 |
 | 6 | CORS/CSRF | origin 와일드카드, 쿠키 기반 인증 여부 | `src/index.tsx` |
 | 7 | 비즈니스 로직 | 금액 조작, balance 이중 처리, 동시성 | 원장/주문 |
-| 8 | 인프라/설정 | wrangler 시크릿, IP 하드코딩, rate limiting, 보안 헤더 | 설정 파일 |
+| 8 | 인프라/설정 | wrangler 시크릿, IP 하드코딩, rate limiting, 보안 헤더, **시크릿 폴백** | 설정 파일, `src/routes/*.ts` |
+
+> **🔑 시크릿 폴백 탐지 규칙 (Area 5 #338 net-new)**: `c.env.SECRET || '리터럴'` 패턴 전수 스캔.
+> `grep -rnE "c\.env\.[A-Z_]+ *\|\| *'"` — 암호화 키/JWT/비밀번호 폴백이 소스에 박히면 git 접근자 복호화/우회 가능.
+> 또한 `body.password || 'literal'` 등 **기본 비밀번호 폴백**(reset-password)도 대상. CI yml의 `secrets.X || 'admin'` 폴백도 포함.
+> ⚠️ 이전 점검(#314)이 "하드코딩 시크릿 없음"으로 단언했으나 이 패턴을 놓침 → **매 Area 5 필수 grep**.
 
 ## 실행 워크플로우
 
@@ -73,6 +78,8 @@ review-checklist과의 차이: review-checklist은 **변경 파일** 코드 리�
 |------|------|
 | `webhooks.ts allowedPrefixes` Popbill IP 목록 | 의도적 보안 화이트리스트 — 하드코딩이 아님 |
 | vite/esbuild dev server SSRF (GHSA-67mh 등) | 로컬 dev server 전용, 프로덕션 영향 없음 |
+| CORS `!origin → '*'` (`index.tsx:213`) | Bearer 토큰 인증(쿠키 미사용) — 브라우저는 항상 Origin 전송, 실질 무해 |
+| rate limiter in-memory `Map` (`rateLimit.ts:6`) | isolate 분산 한계는 기존 인지 사항(아키텍처 제약), 신규 이슈 아님 |
 
 ## 정기 점검 권장
 - 매 배포 전: `/security-audit api`
