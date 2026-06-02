@@ -5,14 +5,23 @@
  *   - PATCH /bulk/priority, PATCH /:id (notes/priority/delivery_date)
  */
 import { Hono } from 'hono'
+import type { Context } from 'hono'
 import type { HonoEnv } from '../../types/env'
 import { authMiddleware, requireRole } from '../../middleware/auth'
 import { requireAnyPagePermission } from '../../middleware/permissions'
 import { logActivity } from '../../utils/activityLog'
-import { entityFilter } from '../../utils/entityFilter'
+import { getEntityId } from '../../utils/entityFilter'
 
 const cardsSchedulingRouter = new Hono<HonoEnv>()
 cardsSchedulingRouter.use('/*', authMiddleware, requireAnyPagePermission('/cards', '/orders'))
+
+// cards 테이블에는 entity_id 컬럼이 없음 → 소유 법인은 order_id→orders.entity_id로 격리 (cards/queries.ts 패턴)
+// entityId=0(ADMIN 전체모드)은 필터 생략. #330 (entity_id 직접 참조 오류 수정)
+function cardEntityScope(c: Context<HonoEnv>): { clause: string; params: number[] } {
+  const entityId = getEntityId(c)
+  if (entityId === 0) return { clause: '', params: [] }
+  return { clause: ' AND order_id IN (SELECT id FROM orders WHERE entity_id = ?)', params: [entityId] }
+}
 
 
 // ── 스케줄: 카드 장비 배정 ──
@@ -21,7 +30,7 @@ cardsSchedulingRouter.put('/schedule/assign/:id', async (c) => {
     const id = c.req.param('id')
     const user = c.get('user')
     const { equipment_id } = await c.req.json()
-    const ef = entityFilter(c)
+    const ef = cardEntityScope(c)
 
     const card = await c.env.DB.prepare(
       `SELECT id, equipment_id, card_number FROM cards WHERE id = ?${ef.clause}`
@@ -73,7 +82,7 @@ cardsSchedulingRouter.put('/schedule/priority/:id', async (c) => {
     if (typeof priority !== 'number' || priority < 0 || priority > 99) {
       return c.json({ success: false, error: 'Priority must be 0-99' }, 400)
     }
-    const ef = entityFilter(c)
+    const ef = cardEntityScope(c)
 
     const card = await c.env.DB.prepare(
       `SELECT id FROM cards WHERE id = ?${ef.clause}`
@@ -110,7 +119,7 @@ cardsSchedulingRouter.patch('/bulk/priority', requireRole('ADMIN', 'MANAGER'), a
       return c.json({ success: false, error: 'Priority must be 0-99' }, 400)
     }
 
-    const ef = entityFilter(c)
+    const ef = cardEntityScope(c)
     const stmts = card_ids.map((id: number) =>
       c.env.DB.prepare(`UPDATE cards SET priority = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?${ef.clause}`).bind(priority, id, ...ef.params)
     )
@@ -134,7 +143,7 @@ cardsSchedulingRouter.patch('/:id', async (c) => {
   try {
     const id = c.req.param('id')
     const body = await c.req.json()
-    const ef = entityFilter(c)
+    const ef = cardEntityScope(c)
 
     const card = await c.env.DB.prepare(`SELECT id FROM cards WHERE id = ?${ef.clause}`).bind(id, ...ef.params).first()
     if (!card) {
