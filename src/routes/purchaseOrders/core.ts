@@ -8,7 +8,7 @@ import type { PurchaseOrder, PurchaseOrderItem, ApiResponse, PaginatedResponse }
 import { authMiddleware, requireRole } from '../../middleware/auth'
 import { requireAnyPagePermission } from '../../middleware/permissions'
 import { getEntityId, entityFilter } from '../../utils/entityFilter'
-import { getNextSeqNumber, withSeqRetry } from '../../utils/sequenceGenerator'
+import { getNextSeqNumber, getNextEntitySeqNumber, withSeqRetry } from '../../utils/sequenceGenerator'
 import { getEntityCompanyInfo } from '../../utils/entitySettings'
 
 const poCoreRouter = new Hono<HonoEnv>()
@@ -855,7 +855,7 @@ poCoreRouter.post('/', requireRole('ADMIN', 'MANAGER'), async (c) => {
     const today = new Date()
     const dateStr = today.toISOString().split('T')[0].replace(/-/g, '')
 
-    const poNumber = await getNextSeqNumber(c.env.DB, 'purchase_orders', 'po_number', `${dateStr}-P`, 3, getEntityId(c))
+    const poNumber = await getNextEntitySeqNumber(c.env.DB, 'purchase_orders', 'po_number', getEntityId(c) || 1, dateStr, { suffix: 'P' })
 
     // 금액 계산
     let totalAmount = 0
@@ -903,7 +903,7 @@ poCoreRouter.post('/', requireRole('ADMIN', 'MANAGER'), async (c) => {
       initialStatus === 'CONFIRMED' ? (user?.id || 1) : null,
       data.delivery_date || null,
       data.delivery_location || null,
-      getEntityId(c)
+      getEntityId(c) || 1
     ).run()
 
     const poId = poResult.meta.last_row_id
@@ -1669,7 +1669,7 @@ poCoreRouter.post('/:id/copy', requireRole('ADMIN', 'MANAGER'), async (c) => {
     const today = new Date()
     const dateStr = today.toISOString().split('T')[0].replace(/-/g, '')
 
-    const newPoNumber = await getNextSeqNumber(c.env.DB, 'purchase_orders', 'po_number', `${dateStr}-P`, 3, getEntityId(c))
+    const newPoNumber = await getNextEntitySeqNumber(c.env.DB, 'purchase_orders', 'po_number', getEntityId(c) || 1, dateStr, { suffix: 'P' })
 
     // 새 발주 INSERT (DRAFT 상태, balance 미반영)
     const newPoResult = await c.env.DB.prepare(`

@@ -3,7 +3,7 @@ import type { HonoEnv } from '../types/env'
 import type { PurchaseRequest, PurchaseRequestItem, ApiResponse, PaginatedResponse } from '../types/models'
 import { authMiddleware, requireRole } from '../middleware/auth'
 import { getEntityId, entityFilter } from '../utils/entityFilter'
-import { getNextSeqNumber, withSeqRetry } from '../utils/sequenceGenerator'
+import { getNextSeqNumber, getNextEntitySeqNumber, withSeqRetry } from '../utils/sequenceGenerator'
 
 const prRouter = new Hono<HonoEnv>()
 
@@ -578,7 +578,7 @@ prRouter.post('/:id/convert', requireRole('ADMIN'), async (c) => {
     const today = new Date()
     const dateStr = today.toISOString().split('T')[0].replace(/-/g, '')
 
-    const poNumber = await getNextSeqNumber(c.env.DB, 'purchase_orders', 'po_number', `${dateStr}-P`)
+    const poNumber = await getNextEntitySeqNumber(c.env.DB, 'purchase_orders', 'po_number', getEntityId(c) || 1, dateStr, { suffix: 'P' })
 
     // INSERT purchase_orders (DRAFT 상태)
     const poResult = await c.env.DB.prepare(`
@@ -715,7 +715,7 @@ prRouter.post('/:id/auto-convert', requireRole('ADMIN'), async (c) => {
       if (!group.supplierId) continue // 미지정 그룹 건너뜀
 
       // PO 번호 생성 (루프 내에서 매번 최신 max_seq 조회)
-      const poNumber = await getNextSeqNumber(c.env.DB, 'purchase_orders', 'po_number', `${dateStr}-P`)
+      const poNumber = await getNextEntitySeqNumber(c.env.DB, 'purchase_orders', 'po_number', getEntityId(c) || 1, dateStr, { suffix: 'P' })
 
       // 금액 계산 (admin 값 우선)
       let totalAmount = 0

@@ -3,7 +3,7 @@ import type { HonoEnv } from '../../types/env'
 import type { Order, OrderItem, ApiResponse, PaginatedResponse } from '../../types/models'
 import { authMiddleware, requireRole } from '../../middleware/auth'
 import { requireAnyPagePermission } from '../../middleware/permissions'
-import { getNextSeqNumber, withSeqRetry } from '../../utils/sequenceGenerator'
+import { getNextSeqNumber, getNextEntitySeqNumber, withSeqRetry } from '../../utils/sequenceGenerator'
 import { logActivity } from '../../utils/activityLog'
 import { notifyRoles } from '../../utils/notify'
 import { recalculateOrderCosts } from '../../utils/costCalculator'
@@ -87,7 +87,7 @@ ordersOpsRouter.post('/:id/copy', requireRole('ADMIN', 'MANAGER', 'DESIGNER'), a
       String(today.getMonth() + 1).padStart(2, '0') +
       String(today.getDate()).padStart(2, '0')
 
-    const newOrderNumber = await getNextSeqNumber(c.env.DB, 'orders', 'order_number', `${dateStr}-`)
+    const newOrderNumber = await getNextEntitySeqNumber(c.env.DB, 'orders', 'order_number', getEntityId(c) || 1, dateStr)
 
     // Insert new order
     const orderResult = await c.env.DB.prepare(`
@@ -121,7 +121,7 @@ ordersOpsRouter.post('/:id/copy', requireRole('ADMIN', 'MANAGER', 'DESIGNER'), a
       original.contact_phone || null,
       original.contact_mobile || null,
       original.shipping_payment || null,
-      getEntityId(c)
+      getEntityId(c) || 1
     ).run()
 
     const newOrderId = orderResult.meta.last_row_id

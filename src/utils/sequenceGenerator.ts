@@ -29,6 +29,34 @@ export async function getNextSeqNumber(
 }
 
 /**
+ * 법인코드(E{eid})를 번호에 내장해 법인별로 채번한다.
+ * 번호 문자열이 법인별로 달라지므로 전역 UNIQUE·복합 UNIQUE(entity_id, number) 양쪽과 호환된다.
+ *
+ * ⚠️ eid는 반드시 해당 행에 저장하는 entity_id와 동일해야 한다.
+ *    불일치 시 per-entity MAX 스캔이 그 행을 놓쳐 같은 번호를 재생성 → UNIQUE 충돌.
+ *
+ * @param eid     법인 ID (행 entity_id와 동일)
+ * @param dateStr YYYYMMDD
+ * @param opts.base   날짜 앞 접두 (예: 'Q-', 'PR-', 'DI-', 기본 '')
+ * @param opts.suffix 시퀀스 앞 접미 (예: 'P' → ...-P001, 기본 '')
+ * @example getNextEntitySeqNumber(db,'orders','order_number',1,'20260601') // E1-20260601-001
+ */
+export async function getNextEntitySeqNumber(
+  db: D1Database,
+  table: string,
+  column: string,
+  eid: number,
+  dateStr: string,
+  opts?: { base?: string; suffix?: string; pad?: number }
+): Promise<string> {
+  const base = opts?.base ?? ''
+  const suffix = opts?.suffix ?? ''
+  const pad = opts?.pad ?? 3
+  const prefix = `${base}E${eid}-${dateStr}-${suffix}`
+  return getNextSeqNumber(db, table, column, prefix, pad, eid)
+}
+
+/**
  * UNIQUE 충돌 시 번호를 재생성하며 최대 maxRetries번 재시도한다.
  * fn 안에서 getNextSeqNumber + INSERT를 함께 수행해야 한다.
  */

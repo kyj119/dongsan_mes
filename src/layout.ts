@@ -2962,7 +2962,8 @@ function _doItemSearch(q) {
         + 'data-subcat="' + (subcat || '').replace(/"/g, '') + '" '
         + 'data-pricing-method="' + pm + '" '
         + 'data-spec="' + (it.specification || '').replace(/"/g, '') + '" '
-        + 'data-width-mm="' + (it.width_mm || '') + '">'
+        + 'data-width-mm="' + (it.width_mm || '') + '" '
+        + 'data-item-type="' + (it.item_type || '') + '">'
         + '<td class="px-4 py-2 font-mono text-xs text-blue-600">' + (it.item_code || '') + '</td>'
         + '<td class="px-4 py-2 font-medium">' + (it.item_name || '') + pmBadge + '</td>'
         + '<td class="px-4 py-2 text-xs text-gray-500">' + catStr + '</td>'
@@ -2985,7 +2986,8 @@ function _doItemSearch(q) {
             sub_category: this.dataset.subcat,
             pricing_method: this.dataset.pricingMethod,
             specification: this.dataset.spec,
-            width_mm: this.dataset.widthMm
+            width_mm: this.dataset.widthMm,
+            item_type: this.dataset.itemType
           });
         }
         document.getElementById('itemSearchModal').remove();

@@ -66,22 +66,28 @@ export function quotationsPage(c: Context<HonoEnv>) {
       </div>
 
       <!-- 견적 목록 테이블 -->
+      <style>
+        /* 견적 리스트 전용: 헤더/바디 셀 패딩 통일(정렬 일치) + 액션 컬럼 잘림 방지 (주문 리스트 ord-tbl과 동일 패턴) */
+        .ds-table.quot-tbl thead th, .ds-table.quot-tbl tbody td { padding: 7px 8px; }
+        .ds-table.quot-tbl td.quot-act { overflow: visible; }
+      </style>
       <div class="ds-card" style="padding:0;overflow:hidden;">
         <div class="ds-table-wrap">
-          <table class="ds-table ds-table-striped">
+          <table class="ds-table ds-table-striped quot-tbl">
             <thead>
               <tr>
-                <th style="width:130px">견적번호</th>
-                <th>거래처</th>
+                <th style="width:140px">견적번호</th>
+                <th style="width:150px">거래처</th>
+                <th>품목</th>
                 <th style="width:110px;text-align:right">금액</th>
                 <th style="width:95px;text-align:center">유효기한</th>
                 <th style="width:85px;text-align:center">상태</th>
-                <th style="width:95px;text-align:center">작성일</th>
-                <th style="width:70px;text-align:center">액션</th>
+                <th style="width:90px;text-align:center">작성일</th>
+                <th style="width:118px;text-align:center">액션</th>
               </tr>
             </thead>
             <tbody id="quotTableBody">
-              <tr><td colspan="7" class="px-4 py-8 text-center" style="color:var(--c-text-muted)">로딩 중...</td></tr>
+              <tr><td colspan="8" class="px-4 py-8 text-center" style="color:var(--c-text-muted)">로딩 중...</td></tr>
             </tbody>
           </table>
         </div>

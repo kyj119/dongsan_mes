@@ -6,7 +6,7 @@ import { authMiddleware, requireRole } from '../middleware/auth'
 import { sendEmail } from '../services/emailProvider'
 import { renderTemplate } from '../services/emailTemplates'
 import { getEntityId, entityFilter } from '../utils/entityFilter'
-import { getNextSeqNumber } from '../utils/sequenceGenerator'
+import { getNextSeqNumber, getNextEntitySeqNumber } from '../utils/sequenceGenerator'
 
 /** 바로빌 TaxProvider 반환 */
 async function getTaxProvider(db: D1Database, env: any, corpNum: string): Promise<TaxProvider | null> {
@@ -952,7 +952,7 @@ taxInvoicesRouter.post('/direct', requireRole('ADMIN', 'MANAGER'), async (c) => 
     // ── 1) 백업 주문 INSERT (billing_status=BILLED, order_type=DIRECT_INVOICE) ──
     const today = new Date()
     const dateStr = today.toISOString().split('T')[0].replace(/-/g, '')
-    const orderNumber = await getNextSeqNumber(c.env.DB, 'orders', 'order_number', `DI-${dateStr}-`, 3, entityId)
+    const orderNumber = await getNextEntitySeqNumber(c.env.DB, 'orders', 'order_number', entityId, dateStr, { base: 'DI-' })
 
     // status='SHIPPED': 직접발행은 생산 파이프라인을 거치지 않고 이미 납품/정산된
     // 거래를 청구하는 것이므로 종결 상태가 적절. (CONFIRMED는 생산 대기로 보드/리스트

@@ -3,7 +3,7 @@ import type { HonoEnv } from '../../types/env'
 import type { Order, OrderItem, ApiResponse, PaginatedResponse } from '../../types/models'
 import { authMiddleware, requireRole } from '../../middleware/auth'
 import { requireAnyPagePermission } from '../../middleware/permissions'
-import { getNextSeqNumber, withSeqRetry } from '../../utils/sequenceGenerator'
+import { getNextSeqNumber, getNextEntitySeqNumber, withSeqRetry } from '../../utils/sequenceGenerator'
 import { logActivity } from '../../utils/activityLog'
 import { notifyRoles } from '../../utils/notify'
 import { recalculateOrderCosts } from '../../utils/costCalculator'
@@ -848,7 +848,7 @@ ordersCoreRouter.post('/', async (c) => {
     const today = new Date()
     const dateStr = today.toISOString().split('T')[0].replace(/-/g, '')
 
-    const orderNumber = await getNextSeqNumber(c.env.DB, 'orders', 'order_number', `${dateStr}-`, 3, getEntityId(c) || 1)
+    const orderNumber = await getNextEntitySeqNumber(c.env.DB, 'orders', 'order_number', getEntityId(c) || 1, dateStr)
 
     // pricing_method batch 조회 (AREA 계산 분기용)
     const itemIdsForPricing = [...new Set(
@@ -957,7 +957,7 @@ ordersCoreRouter.post('/', async (c) => {
       orderData.contact_mobile || null,
       orderData.shipping_payment || null,
       validUntil,
-      getEntityId(c),
+      getEntityId(c) || 1,
       (() => {
         const slItem = orderData.items.find((it: any) => it.sheet_layout_params && !it.parent_client_id)
         return slItem?.sheet_layout_params || null

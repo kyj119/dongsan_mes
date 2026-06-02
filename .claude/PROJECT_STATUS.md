@@ -1,6 +1,6 @@
 # PROJECT_STATUS.md — 프로젝트 현황판
 
-> **최종 업데이트**: 2026-06-01
+> **최종 업데이트**: 2026-06-02
 
 ---
 
@@ -14,14 +14,16 @@
 
 - (없음)
 
-> **직전 세션 결과 (2026-06-01)**: 거래처원장 전기이월·실계산 미수·인쇄 수정 + 표헤더 전역정렬 + GitHub 이슈 29건 전수 종료
+> **다음 세션 예정 (사용자 지시)**: **GitHub 오픈 이슈 전수 수정** — #323(홈택스 세금계산서 재수집 중복 INSERT·dedup 부재), #324(부모 삭제 시 자식 고아 레코드 cascade), #325(entity_id INSERT 누락 잔여·order_items 위치는 코멘트 참고), #326(saveAutoApproveSettings 미정의·금액 콤마파싱 주의), #327(entity 필터 일관성·알림 read 우선), #328(프론트 dead/orphan 핸들러 정리)
+
+> **직전 세션 결과 (2026-06-02)**: 채번 경계 버그 근본수정(E{eid} 내장 채번) + 견적서 개편(표·품목·전환 prefill) + 생산주문서 유통품목 행 단순화 + 전체 페이지 점검(storageZones CRITICAL 수정·배포, 이슈 #326~328 등록)
 
 ---
 
 ## 🟡 대기 중 (사용자 선택/승인 필요)
 
-### [포털 rate-limit] — 코드 완료, 프로덕션 배포 대기 (2026-06-01)
-- portal verify-document/verify-token에 기존 `rateLimitMiddleware`(10·30/분) 적용(commit 4a2fc28, origin push됨). **prod 미배포**(75e76b3c=비활성) → 다음 배포 시 활성. (Cloudflare 바인딩 방식은 Pages 미지원으로 폐기)
+### [포털 rate-limit] — ✅ 프로덕션 배포됨 (2026-06-02)
+- portal verify-document/verify-token에 `rateLimitMiddleware`(10·30/분) 적용(commit 4a2fc28). HEAD(1bd6d01) 빌드에 포함되어 2026-06-02 배포들(60ff92fb~57788bef)로 **prod 활성화**. (Cloudflare 바인딩 방식은 Pages 미지원으로 폐기)
 ### [#310 직접발행 폼] — 실사용 검증 대기 (2026-06-01)
 - 백엔드(POST /tax-invoices/direct)+UI 배포됨. 세금계산서 '직접발행' 첫 발행 테스트 권장 (tax_invoices 0건)
 
@@ -46,6 +48,32 @@
 ### [RIP 전송] — 코드 완료, 현장 테스트 대기 (외부 의존)
 ### [LogWatcher PrintExp] — 구현 완료, 현장 배포 대기 (외부 의존)
 ### [한진택배 자동화] — 솔루션 선정 대기 (사용자 결정 필요)
+
+---
+
+## 🟢 최근 완료 (2026-06-02)
+
+### 채번 경계 버그 근본수정 — 견적서 저장 500 장애 (2026-06-02)
+- **원인**: `quotation_number` 등 `*_number`가 **컬럼레벨 전역 UNIQUE**인데 채번은 **법인별 MAX** → E2E(entity 99)가 오늘자 001~007 선점 시 실법인이 001 생성 시도 → `UNIQUE constraint failed` 500
+- **해결**: 번호에 법인코드 `E{eid}` 내장(`getNextEntitySeqNumber`, sequenceGenerator.ts). 문자열이 법인별로 달라 전역·복합 UNIQUE 양쪽 호환 → **스키마 변경 없음**
+- 적용: quotations(`Q-E{eid}-`)·orders(`E{eid}-`)·purchase_orders(`E{eid}-…-P`)·payment_requests(`PR-E{eid}-`) **12 호출부**. 불변식: 번호 E{eid}=행 entity_id(`getEntityId(c)||1` 통일)
+- 프로덕션 검증: `Q-E2-20260601-001`(entity 2), `E2-20260601-001`(entity 2) 정상 생성. 규칙 → `memory/project-entity-policy`
+
+### 견적서 관리 개편 (2026-06-02)
+- 저장 후 → `/quotations` 리다이렉트(양식 페이지 대신)
+- 표 레이아웃: 주문 `ord-tbl` 패턴 이식(헤더/바디 패딩 통일) + **품목 컬럼**(품목명+규격+외 N건) 추가, 액션 아이콘화
+- **견적서→주문 전환 = 주문폼 prefill 기본화**: 즉시생성/confirm 제거, `/order-form?quotation_id=`로 이동(기존 `loadQuotationForPrefill` 활용) → 납품일막힘(#134) 자연 해소. 한계: prefill은 기본 필드만(후가공·번들 제외)
+
+### 생산 주문서 유통 품목 행 자동 단순화 (2026-06-02)
+- 생산 주문서에서 `item_type=GOODS/MATERIAL` 품목 선택 시 그 행만: 가로·세로 비활성 + 후가공·마감 섹션 숨김 + '유통' 뱃지. 생산품 선택 시 원복
+- 한 주문서로 생산+유통 혼합(서버는 이미 품목별 분기). `layout.ts` 모달 콜백에 item_type 전달 + `itemRow.js applyDistRowMode`. 서버 무변경. 로컬 브라우저 검증(GOODS 단순화/PRODUCT 원복)
+
+### 전체 페이지 점검 (auto-scan, 2026-06-02)
+- 정적(백엔드 95파일+프론트, 에이전트 2) + 동적 18페이지(Playwright 로컬 e2e_tester) + 프로덕션 데이터정합성
+- **🔴 CRITICAL 수정+배포**: 설정>창고구역 탭 "구역 추가/수정" 크래시(settings 모달에 `zoneModalEntity/Default` 누락) → settings.ts에 두 필드 추가. 재현→수정→재검증(modal OK)
+- **이슈 등록**: #326(HIGH `saveAutoApproveSettings` 미정의), #327(LOW entity필터 일관성), #328(LOW dead code) + #325 코멘트(order_items INSERT 위치)
+- 데이터정합성 **0건**, `/bank`·`/card-expenses` 로컬 500은 **스키마 드리프트**(프로덕션 컬럼 존재 확인, 정상)
+- 배포 6회: 60ff92fb→1688cbab→a24fbf89→c0957421→86fc9bb5→57788bef
 
 ---
 

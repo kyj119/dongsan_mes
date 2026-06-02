@@ -12,6 +12,7 @@
                             </div>
                             <span class="font-bold text-gray-700 text-sm" id="item_label_${id}">품목 #${id}</span>
                             <span id="item_check_${id}" class="hidden text-green-500 text-sm"><i class="fas fa-check-circle"></i></span>
+                            <span id="item_dist_badge_${id}" class="hidden text-xs px-1.5 py-0.5 rounded bg-teal-50 text-teal-700 font-medium"><i class="fas fa-box mr-0.5"></i>유통</span>
                         </div>
                         <button type="button" onclick="removeItem(${id})" class="text-red-400 hover:text-red-600 text-xs px-2 py-1 rounded hover:bg-red-50">
                             <i class="fas fa-trash mr-1"></i>삭제
@@ -100,6 +101,30 @@
                 </div>`;
             }
 
+            // 유통 품목(GOODS/부자재) 행: 인쇄 전용 칸(가로·세로) 비활성 + 후가공/마감 섹션 숨김 + '유통' 뱃지.
+            // 생산 품목으로 다시 바꾸면 원복.
+            function applyDistRowMode(id, isDist) {
+                [['width_' + id, '90'], ['height_' + id, '60']].forEach(function(pair) {
+                    var el = document.querySelector('[name="' + pair[0] + '"]');
+                    if (!el) return;
+                    el.disabled = isDist;
+                    if (isDist) {
+                        el.value = '';
+                        el.placeholder = '-';
+                        el.classList.add('bg-gray-100', 'text-gray-400');
+                    } else {
+                        el.placeholder = pair[1];
+                        el.classList.remove('bg-gray-100', 'text-gray-400');
+                    }
+                });
+                var ppSec = document.getElementById('pp_section_' + id);
+                var finSec = document.getElementById('finishing_section_' + id);
+                if (ppSec) ppSec.classList.toggle('hidden', isDist);
+                if (finSec) finSec.classList.toggle('hidden', isDist);
+                var badge = document.getElementById('item_dist_badge_' + id);
+                if (badge) badge.classList.toggle('hidden', !isDist);
+            }
+
             function setupAutocomplete(id) {
                 const input = document.querySelector(`[name="item_search_${id}"]`);
                 const dd = document.getElementById(`item_dd_${id}`);
@@ -148,6 +173,10 @@
                     var checkEl = document.getElementById('item_check_' + id);
                     if (checkEl) checkEl.classList.remove('hidden');
 
+                    // 유통 품목(GOODS/부자재)이면 인쇄 전용 칸/섹션 단순화
+                    var itType = (item.item_type || '').toUpperCase();
+                    applyDistRowMode(id, itType === 'GOODS' || itType === 'MATERIAL');
+
                     calcItem(id);
                     var subcat = item.sub_category || item.media_subcategory_name || '';
                     loadItemPP(id, subcat);
@@ -175,7 +204,8 @@
                                 unit: it.unit || 'EA', category: it.category || it.category_direct || '',
                                 sub_category: it.sub_category || it.sub_category_direct || '',
                                 pricing_method: it.pricing_method || 'FIXED',
-                                specification: it.specification || ''
+                                specification: it.specification || '',
+                                item_type: it.item_type || ''
                             });
                         } else if (items.length > 1 && openModal) {
                             window.openItemSearchModal({ type: 'sales', search: q, onSelect: applyItemSelection });

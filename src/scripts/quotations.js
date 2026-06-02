@@ -72,14 +72,14 @@ async function loadQuotations(page) {
   } catch(e) {
     console.error('loadQuotations error:', e);
     document.getElementById('quotTableBody').innerHTML =
-      '<tr><td colspan="7" class="px-4 py-8 text-center text-red-500">불러오기 실패</td></tr>';
+      '<tr><td colspan="8" class="px-4 py-8 text-center text-red-500">불러오기 실패</td></tr>';
   }
 }
 
 function renderQuotationTable(orders) {
   var tbody = document.getElementById('quotTableBody');
   if (!orders || orders.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="7"><div class="ds-empty"><i class="fas fa-file-invoice"></i><p>견적 내역이 없습니다</p></div></td></tr>';
+    tbody.innerHTML = '<tr><td colspan="8"><div class="ds-empty"><i class="fas fa-file-invoice"></i><p>견적 내역이 없습니다</p></div></td></tr>';
     return;
   }
   tbody.innerHTML = orders.map(function(q) {
@@ -91,25 +91,31 @@ function renderQuotationTable(orders) {
     var createdDate = (q.created_at || '').substring(0, 10);
     var amount = (parseFloat(q.final_amount) || 0).toLocaleString() + '원';
 
-    var actions = '<div class="flex gap-1 items-center">';
-    actions += '<button onclick="viewQuotation(' + q.id + ')" class="text-blue-600 hover:text-blue-900 mr-2"><i class="fas fa-eye"></i> 상세</button>';
+    var spec = (q.main_item_width && q.main_item_height) ? ' <span class="text-xs text-gray-500">[' + q.main_item_width + '×' + q.main_item_height + ']</span>' : '';
+    var itemMore = (q.item_count > 1) ? ' <span class="text-xs text-gray-400">외 ' + (q.item_count - 1) + '건</span>' : '';
+    var itemCell = '<div class="truncate" title="' + escapeHtml(q.main_item_name || '') + '">'
+      + (q.main_item_name ? escapeHtml(q.main_item_name) : '<span class="text-gray-400">-</span>') + spec + itemMore + '</div>';
+
+    var actions = '<div class="flex gap-3 items-center justify-center">';
+    actions += '<button onclick="event.stopPropagation();viewQuotation(' + q.id + ')" class="text-blue-600 hover:text-blue-900" title="상세"><i class="fas fa-eye"></i></button>';
     if (quotStat !== 'cancelled') {
-      actions += '<a href="/quotation-form/' + q.id + '" class="text-green-600 hover:text-green-900 mr-2"><i class="fas fa-edit"></i> 수정</a>';
+      actions += '<a href="/quotation-form/' + q.id + '" onclick="event.stopPropagation()" class="text-green-600 hover:text-green-900" title="수정"><i class="fas fa-edit"></i></a>';
     }
-    actions += '<a href="/quotation/' + q.id + '" target="_blank" class="text-purple-600 hover:text-purple-900 mr-2"><i class="fas fa-print"></i> 인쇄</a>';
+    actions += '<a href="/quotation/' + q.id + '" target="_blank" onclick="event.stopPropagation()" class="text-purple-600 hover:text-purple-900" title="인쇄"><i class="fas fa-print"></i></a>';
     if (quotStat !== 'cancelled') {
-      actions += '<button onclick="deleteQuotation(' + q.id + ')" class="text-red-400 hover:text-red-700"><i class="fas fa-trash"></i></button>';
+      actions += '<button onclick="event.stopPropagation();deleteQuotation(' + q.id + ')" class="text-red-400 hover:text-red-700" title="삭제"><i class="fas fa-trash"></i></button>';
     }
     actions += '</div>';
 
     return '<tr class="border-t hover:bg-gray-50 cursor-pointer" ondblclick="viewQuotation(' + q.id + ')">'
-      + '<td class="px-4 py-3 font-medium text-teal-700">' + (q.quotation_number || '-') + '</td>'
-      + '<td class="px-4 py-3">' + (q.client_name || '-') + '</td>'
-      + '<td class="px-4 py-3 text-right font-medium">' + amount + '</td>'
-      + '<td class="px-4 py-3 text-center">' + validUntilCell + '</td>'
-      + '<td class="px-4 py-3 text-center">' + badge + '</td>'
-      + '<td class="px-4 py-3 text-center text-gray-500">' + createdDate + '</td>'
-      + '<td class="px-4 py-3">' + actions + '</td>'
+      + '<td class="font-medium text-teal-700">' + (q.quotation_number || '-') + '</td>'
+      + '<td>' + (q.client_name || '-') + '</td>'
+      + '<td>' + itemCell + '</td>'
+      + '<td class="text-right font-medium">' + amount + '</td>'
+      + '<td class="text-center">' + validUntilCell + '</td>'
+      + '<td class="text-center">' + badge + '</td>'
+      + '<td class="text-center text-gray-500">' + createdDate + '</td>'
+      + '<td class="quot-act">' + actions + '</td>'
       + '</tr>';
   }).join('');
 }
@@ -248,40 +254,11 @@ async function deleteQuotation(id) {
   }
 }
 
-// Phase 3.2: 견적서 → 주문 생성 흐름
-// 두 가지 옵션:
-//   (a) 즉시 생성 (수정 없이 그대로 변환) — convertToOrder
-//   (b) 수정 가능한 prefill (orderForm으로 redirect) — convertToOrderEdit
-async function convertToOrder(id) {
-  if (!(await showConfirm('이 견적서로 새 주문을 생성하시겠습니까?\n견적서 원본은 보존되며 별도 주문이 생성됩니다.\n\n[확인] 즉시 생성  [취소] 검토 후 생성 (주문서 편집 화면)'))) {
-    // 취소 누르면 검토 화면으로
-    window.location.href = '/order-form?quotation_id=' + id;
-    return;
-  }
-  try {
-    var res = await axios.post('/api/quotations/' + id + '/convert-to-order', {});
-    if (res.data.success) {
-      showToast(res.data.message || '주문이 생성되었습니다.', 'success');
-      loadStats();
-      loadQuotations(quotCurrentPage);
-    } else {
-      if (res.data.meta && res.data.meta.expired) {
-        if (await showConfirm('만료된 견적서입니다. 강제로 주문을 생성하시겠습니까?', { danger: true })) {
-          var r2 = await axios.post('/api/quotations/' + id + '/convert-to-order', { force: true });
-          if (r2.data.success) {
-            showToast(r2.data.message || '주문이 생성되었습니다.', 'success');
-            loadStats(); loadQuotations(quotCurrentPage);
-          } else {
-            showToast('전환 실패: ' + (r2.data.error || ''), 'error');
-          }
-        }
-      } else {
-        showToast('전환 실패: ' + (res.data.error || ''), 'error');
-      }
-    }
-  } catch(e) {
-    showToast('전환 중 오류: ' + (e.response && e.response.data ? e.response.data.error : e.message), 'error');
-  }
+// 견적서 → 주문 전환: 견적 정보를 주문서 입력 양식에 prefill하여 이동.
+// 사용자가 납품일 등 추가 정보를 폼에서 입력/검토 후 저장하면 주문이 생성되고,
+// orders.quotation_id로 견적서와 자동 연결된다 (orderForm: loadQuotationForPrefill).
+function convertToOrder(id) {
+  window.location.href = '/order-form?quotation_id=' + id;
 }
 
 // 모달 외부 클릭 시 닫기

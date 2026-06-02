@@ -4,7 +4,7 @@ import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
 import { requirePagePermission } from '../middleware/permissions'
 import { getEntityId, entityFilter } from '../utils/entityFilter'
-import { getNextSeqNumber, withSeqRetry } from '../utils/sequenceGenerator'
+import { getNextSeqNumber, getNextEntitySeqNumber, withSeqRetry } from '../utils/sequenceGenerator'
 
 const paymentRequestsRouter = new Hono<HonoEnv>()
 paymentRequestsRouter.use('/*', authMiddleware, requirePagePermission('/payment-requests'))
@@ -86,7 +86,7 @@ paymentRequestsRouter.post('/', async (c) => {
     const today = new Date()
     const dateStr = today.toISOString().substring(0, 10).replace(/-/g, '')
     const eid = getEntityId(c) || 1
-    const requestNumber = await getNextSeqNumber(c.env.DB, 'payment_requests', 'request_number', `PR-${dateStr}-`, 3, eid)
+    const requestNumber = await getNextEntitySeqNumber(c.env.DB, 'payment_requests', 'request_number', eid, dateStr, { base: 'PR-' })
 
     const result = await c.env.DB.prepare(`
       INSERT INTO payment_requests (
@@ -109,7 +109,7 @@ paymentRequestsRouter.post('/', async (c) => {
       body.attachment_url || null,
       body.notes || null,
       user?.id || null,
-      getEntityId(c)
+      eid
     ).run()
 
     return c.json({ success: true, data: { id: result.meta.last_row_id, request_number: requestNumber }, message: '지출결의서가 생성되었습니다.' })
@@ -145,7 +145,7 @@ paymentRequestsRouter.post('/from-po/:poId', async (c) => {
     const today = new Date()
     const dateStr = today.toISOString().substring(0, 10).replace(/-/g, '')
     const eidApprove = getEntityId(c) || 1
-    const requestNumber = await getNextSeqNumber(c.env.DB, 'payment_requests', 'request_number', `PR-${dateStr}-`, 3, eidApprove)
+    const requestNumber = await getNextEntitySeqNumber(c.env.DB, 'payment_requests', 'request_number', eidApprove, dateStr, { base: 'PR-' })
 
     const result = await c.env.DB.prepare(`
       INSERT INTO payment_requests (
@@ -163,7 +163,7 @@ paymentRequestsRouter.post('/from-po/:poId', async (c) => {
       `발주서 ${po.po_number} 매입대금 지급`,
       poId,
       user?.id || null,
-      getEntityId(c)
+      eidApprove
     ).run()
 
     return c.json({ success: true, data: { id: result.meta.last_row_id, request_number: requestNumber } })

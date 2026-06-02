@@ -650,6 +650,10 @@ ${capsSettingsScript}
                 <input type="text" id="zoneModalName" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500" placeholder="예: 원단창고">
               </div>
               <div>
+                <label class="block text-sm font-semibold text-gray-700 mb-1">법인 <span class="text-red-500">*</span></label>
+                <select id="zoneModalEntity" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"></select>
+              </div>
+              <div>
                 <label class="block text-sm font-semibold text-gray-700 mb-1">코드</label>
                 <input type="text" id="zoneModalCode" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500" placeholder="예: WH-01 (선택)">
               </div>
@@ -668,10 +672,14 @@ ${capsSettingsScript}
                   <label class="block text-sm font-semibold text-gray-700 mb-1">정렬 순서</label>
                   <input type="number" id="zoneModalSort" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500" value="0" min="0">
                 </div>
-                <div class="flex items-end pb-1">
+                <div class="flex items-end pb-1 gap-4">
                   <label class="flex items-center gap-2 cursor-pointer">
                     <input type="checkbox" id="zoneModalActive" class="w-4 h-4 text-blue-600 rounded focus:ring-blue-500" checked>
                     <span class="text-sm text-gray-700">활성</span>
+                  </label>
+                  <label class="flex items-center gap-2 cursor-pointer">
+                    <input type="checkbox" id="zoneModalDefault" class="w-4 h-4 text-blue-600 rounded focus:ring-blue-500">
+                    <span class="text-sm text-gray-700">기본 출고 창고</span>
                   </label>
                 </div>
               </div>

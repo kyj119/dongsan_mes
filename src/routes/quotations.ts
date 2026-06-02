@@ -20,7 +20,7 @@ import { authMiddleware, requireRole } from '../middleware/auth'
 import { requireAnyPagePermission } from '../middleware/permissions'
 import { logActivity } from '../utils/activityLog'
 import { getEntityId, entityFilter } from '../utils/entityFilter'
-import { getNextSeqNumber, withSeqRetry } from '../utils/sequenceGenerator'
+import { getNextSeqNumber, getNextEntitySeqNumber, withSeqRetry } from '../utils/sequenceGenerator'
 
 const quotationsRouter = new Hono<HonoEnv>()
 quotationsRouter.use('/*', authMiddleware, requireAnyPagePermission('/quotations', '/orders'))
@@ -28,9 +28,9 @@ quotationsRouter.use('/*', authMiddleware, requireAnyPagePermission('/quotations
 // ===== 헬퍼 =====
 
 // 견적번호 생성: Q-YYYYMMDD-NNN (entity별 카운터)
-async function generateQuotationNumber(db: any, entityId?: number): Promise<string> {
+async function generateQuotationNumber(db: any, entityId: number): Promise<string> {
   const dateStr = new Date().toISOString().split('T')[0].replace(/-/g, '')
-  return getNextSeqNumber(db, 'quotations', 'quotation_number', `Q-${dateStr}-`, 3, entityId)
+  return getNextEntitySeqNumber(db, 'quotations', 'quotation_number', entityId, dateStr, { base: 'Q-' })
 }
 
 // 만료 견적서 자동 마킹 (read-time check)
@@ -61,7 +61,11 @@ quotationsRouter.get('/', async (c) => {
 
     let query = `
       SELECT q.*, c.client_name, u.name as created_by_name,
-        (SELECT COUNT(*) FROM orders o WHERE o.quotation_id = q.id) as actual_order_count
+        (SELECT COUNT(*) FROM orders o WHERE o.quotation_id = q.id) as actual_order_count,
+        (SELECT item_name FROM quotation_items WHERE quotation_id = q.id AND (parent_id IS NULL OR parent_id = 0) ORDER BY sort_order, id LIMIT 1) as main_item_name,
+        (SELECT width FROM quotation_items WHERE quotation_id = q.id AND (parent_id IS NULL OR parent_id = 0) ORDER BY sort_order, id LIMIT 1) as main_item_width,
+        (SELECT height FROM quotation_items WHERE quotation_id = q.id AND (parent_id IS NULL OR parent_id = 0) ORDER BY sort_order, id LIMIT 1) as main_item_height,
+        (SELECT COUNT(*) FROM quotation_items WHERE quotation_id = q.id AND (parent_id IS NULL OR parent_id = 0)) as item_count
       FROM quotations q
       LEFT JOIN clients c ON q.client_id = c.id
       LEFT JOIN users u ON q.created_by = u.id
@@ -192,7 +196,7 @@ quotationsRouter.post('/', async (c) => {
       return c.json({ success: false, error: '품목이 비어있습니다.' }, 400)
     }
 
-    const quotationNumber = await generateQuotationNumber(c.env.DB, getEntityId(c))
+    const quotationNumber = await generateQuotationNumber(c.env.DB, getEntityId(c) || 1)
     const today = new Date()
 
     // VAT rate
@@ -566,7 +570,7 @@ quotationsRouter.post('/:id/convert-to-order', requireRole('ADMIN', 'MANAGER'), 
     // 주문번호 생성
     const today = new Date()
     const dateStr = today.toISOString().split('T')[0].replace(/-/g, '')
-    const orderNumber = await getNextSeqNumber(c.env.DB, 'orders', 'order_number', `${dateStr}-`, 3, quotation.entity_id || 1)
+    const orderNumber = await getNextEntitySeqNumber(c.env.DB, 'orders', 'order_number', quotation.entity_id || 1, dateStr)
 
     // #209: 낙관적 잠금 — 변환 중 견적서 수정 여부 확인
     const current = await c.env.DB.prepare(
