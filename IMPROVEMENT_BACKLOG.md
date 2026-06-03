@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 2 -->
-<!-- last_run_at: 2026-06-03T14:30:00+09:00 -->
+<!-- last_run_area: 3 -->
+<!-- last_run_at: 2026-06-03T18:00:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,10 +8,20 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | 8 (I-025~I-032, 전부 open) |
+| 🆕 new | 12 (I-025~I-036, 전부 open) |
 | ✔️ done | 44 |
 | ❌ rejected | 2 |
 
+> **Area 3 UX/기능 감사 (2026-06-03T18:00):**
+> - **방법**: 병렬 에이전트 3개 — 영업·회계 / 생산·재고·구매 / 대시보드·HR·포털. 75+ 페이지 .ts(HTML)↔.js(동작) 대조로 검색·필터·빈상태·페이지네이션·journey 링크·KPI 점검
+> - **🔧 자동 수정 A-011 (재고 집계 버그)**: `inventory.js:160` "총 N개 품목"이 페이지 slice 건수(`items.length`, 최대 20)를 표시 → 품목 수백개여도 항상 20 표시. API는 이미 `pagination.total` 반환 중. `renderInventoryTable(items, total)`로 전체 COUNT 전달하도록 수정. verify(typecheck+build, 351 modules) 통과
+> - **핵심 패턴 발견 — Dead-filter 3건 (#343, I-033)**: **백엔드 라우트가 필터 파라미터를 이미 WHERE 처리하는데 프론트가 안 보내 도달 불가**. paymentRequests 날짜(routes:21-22)·production 출력이력 장비/상태/날짜(printEvents:574)·portal orders 상태(portal:329, +count쿼리 status 누락 버그). input만 붙이면 즉시 가치 → ROI 최고
+> - **포털 셀프서비스 갭 (#344, I-034)**: 세금계산서 다운로드 부재+50건 하드캡(portal:451)·미수금 aging 부재(사내 대시보드는 30/60/90 풀제공)·재주문 native `prompt()`(고객대면 모바일 UX). 포털 도입 목적 약화
+> - **회계 CSV/검색 (#345, I-035)**: taxInvoices CSV 부재(ledger/bank/financialReports엔 다 있음)·cashSchedule CSV·paymentRequests 지급처/사유 검색
+> - **필터·드릴다운 (#346, I-036)**: 연차 부서 필터 부재(잔여현황/미사용수당)·불량률 리포트→검수 상세 드릴다운 단절
+> - **이상 없음 확인**: orders/clients/quotations/taxInvoices 필터·CSV·페이지네이션·empty-state·journey 체인 완비. 대시보드 KPI 8종+aging/저재고/설비부하 충실. 급여·근태·activityLog·messages 양호. HR limit:500은 SMB 직원규모상 무해. **silent-fail(깨진 getElementById) 미발견**
+> - 자동 수정 1건(A-011), 신규 이슈 4건(#343~#346)
+>
 > **Area 2 코드 품질 (2026-06-03T14:30):**
 > - **방법**: 병렬 에이전트 2개 — entity_id 격리 / N+1·auth·타입. 의존성 설치 후 `tsc --noEmit` PASS·라우트 등록 83/83·utils 미사용 export 0건 직접 확인
 > - **authMiddleware 누락 0건**: 83 라우터 전수 — portal/hrSelf/auth/webhooks 공개는 의도적, 집계 라우터는 서브라우터 위임. 신규 없음
@@ -144,6 +154,10 @@
 | I-030 | E2E 프로덕션 테스트 연속 RED — auth 픽스처 cold-start 타임아웃 + crud-order 주문생성 실패 | Area 1 | #340 | 2~3h |
 | I-031 | N+1 쿼리 batch 미전환 다수 — cashFlow 예측 핫패스(72쿼리) 우선 + import/child INSERT 루프 | Area 2 | #341 | 3h~ |
 | I-032 | rip.ts 설비 자식 entity_id 미배선 (equipment 전역공유, 격리 정책 판단 필요) | Area 2 | #342 | 1일 or 갭아님 |
+| I-033 | Dead-filter 3건 — 백엔드 기구현 필터 UI 미노출 (지출결의서 날짜/생산 출력이력/포털 주문 상태+count버그) | Area 3 | #343 | ~3h |
+| I-034 | 포털 셀프서비스 갭 — 세금계산서 다운로드+50캡 / 미수금 aging / 재주문 prompt() | Area 3 | #344 | 3~4h |
+| I-035 | 회계 CSV·검색 — taxInvoices CSV / cashSchedule CSV / 지출결의서 지급처·사유 검색 | Area 3 | #345 | ~2h |
+| I-036 | 필터·드릴다운 — 연차 부서 필터 / 불량률 리포트→검수 드릴다운 | Area 3 | #346 | 3~4h |
 
 ---
 
@@ -151,7 +165,8 @@
 
 | ID | 제목 | 커밋 | 날짜 |
 |----|------|------|------|
-| A-010 | Deploy 차단 복구 — wrangler `--commit-message=<sha>` 고정 (한글 커밋메시지 100B 절단→UTF-8 깨짐 차단) | (이번 커밋) | 2026-06-03 |
+| A-011 | 재고 목록 "총 N개 품목" 집계 버그 — 페이지 slice 건수(최대 20) 대신 `pagination.total` 전체 COUNT 표시 | (이번 커밋) | 2026-06-03 |
+| A-010 | Deploy 차단 복구 — wrangler `--commit-message=<sha>` 고정 (한글 커밋메시지 100B 절단→UTF-8 깨짐 차단) | e396f2e | 2026-06-03 |
 | A-009 | PO 번호 생성 entity 필터 누락 3곳 → 정규 시퀀스 경로 정렬 (reorder/quick/templates) | e8c8992 | 2026-06-02 |
 | A-008 | try-catch 누락 17핸들러 (permissions/finishing/messageTemplates/iaAuto) | 60ee8b8 | 2026-05-14 |
 | A-006 | XSS escapeHtml 5건 (approvals/invoice/purchaseInvoice/quotation/clients) | e099b20 | 2026-05-13 |
