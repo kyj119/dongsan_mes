@@ -59,7 +59,11 @@ jobs:
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: pages deploy dist --project-name=webapp --branch=main
+          # --commit-message는 ASCII(커밋 SHA)로 고정.
+          # 미지정 시 wrangler가 한글 git 커밋 메시지를 자동 전송하는데,
+          # Cloudflare가 ~100바이트에서 절단하며 멀티바이트 문자를 쪼개
+          # "Invalid commit message, must be valid UTF-8" [8000111]로 배포가 실패함.
+          command: pages deploy dist --project-name=webapp --branch=main --commit-message="${{ github.sha }}"
 
       - name: Wait for deployment to propagate
         run: sleep 20

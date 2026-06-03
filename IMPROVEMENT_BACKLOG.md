@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 6 -->
-<!-- last_run_at: 2026-06-02T17:00:00+09:00 -->
+<!-- last_run_area: 1 -->
+<!-- last_run_at: 2026-06-03T10:30:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,10 +8,19 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | 5 (I-025~I-029, 전부 open) |
+| 🆕 new | 6 (I-025~I-030, 전부 open) |
 | ✔️ done | 44 |
 | ❌ rejected | 2 |
 
+> **Area 1 프로덕션 헬스 (2026-06-03T10:30):**
+> - **방법**: GitHub Actions 최근 15런 분석 + 프로덕션 헬스(샌드박스 egress는 Cloudflare 엣지 403 차단으로 직접 호출 불가 → CI 로그 기반 판정)
+> - **🔴 자동 수정 A-010 (배포 파이프라인 복구)**: 최근 2개 push(Area 5·6 docs)의 **Deploy 실패**. Cloudflare API `Invalid commit message, must be valid UTF-8 [8000111]`. **근본 원인 = byte 길이**: Area 4(98B) 성공 / Area 5(119B)·6(106B) 실패 — 모두 유효 UTF-8이나 Cloudflare가 ~100B에서 commit message를 절단하며 **한글 멀티바이트 절단** → 깨진 UTF-8. wrangler가 git 메시지를 자동 전송하던 것을 `--commit-message="${{ github.sha }}"`(ASCII 고정)로 차단. `deploy.yml:62`. verify(typecheck+build) 통과
+>   - **기능 영향 없음 재확인**: Area 5·6은 docs-only 커밋이라 dist/ 동일 → 실제 프로덕션 기능은 마지막 코드 배포(A-009/e8c8992) 기준 정상. 다만 파이프라인 RED라 **다음 실코드 변경도 배포 불가** 상태였음 (구조적 차단 해소)
+> - **신규 이슈 #340 (I-030, E2E CI 신뢰도)**: E2E 프로덕션 테스트 다수 날짜 연속 RED — `fixtures.ts:59` authedPage `waitForURL` 30s 타임아웃(cold start, flaky) + `crud-order-lifecycle.spec.ts:57` 주문생성 `res.success=false`(hard fail, 프로덕션 직접 주문생성=데이터 오염 설계). 안전 자동수정 불가 → 이슈
+> - **E2E 게이팅 확인**: e2e.yml은 deploy 성공 시에만 실행(`workflow_run conclusion==success`) → 배포가 막혀 최근 E2E run들이 `skipped`로 표시되던 것. A-010으로 deploy 복구되면 E2E도 재가동됨
+> - typecheck PASS·build PASS(351 modules, 4.9MB worker)·npm ci 정상. Daily D1 Backup 정상 success
+> - 자동 수정 1건(A-010), 신규 이슈 1건(#340)
+>
 > **Area 6 자기 진화 (2026-06-02T17:00):**
 > - **GitHub ↔ 백로그 동기화 완료**: open auto-improve 이슈는 5건(#334~#338)뿐, 나머지 전부 closed 재확인
 > - **I-013~I-024 (11건, #32~#46) → done 확정**: 각 이슈 코멘트/코드 교차검증
@@ -123,6 +132,7 @@
 | I-027 | 저장형 XSS — escapeHtml 누락 다수 (포털 등 7개 스크립트) | Area 5 | #335 | 2~3h |
 | I-028 | CI 폴백 자격증명 admin/password — 프로덕션 대상 (deploy/e2e yml) | Area 5 | #336 | 30분 |
 | I-029 | 프로덕션 debug 엔드포인트 잔존 + error.message 노출 (admin 전용 LOW) | Area 5 | #337 | 30분 |
+| I-030 | E2E 프로덕션 테스트 연속 RED — auth 픽스처 cold-start 타임아웃 + crud-order 주문생성 실패 | Area 1 | #340 | 2~3h |
 
 ---
 
@@ -130,6 +140,7 @@
 
 | ID | 제목 | 커밋 | 날짜 |
 |----|------|------|------|
+| A-010 | Deploy 차단 복구 — wrangler `--commit-message=<sha>` 고정 (한글 커밋메시지 100B 절단→UTF-8 깨짐 차단) | (이번 커밋) | 2026-06-03 |
 | A-009 | PO 번호 생성 entity 필터 누락 3곳 → 정규 시퀀스 경로 정렬 (reorder/quick/templates) | e8c8992 | 2026-06-02 |
 | A-008 | try-catch 누락 17핸들러 (permissions/finishing/messageTemplates/iaAuto) | 60ee8b8 | 2026-05-14 |
 | A-006 | XSS escapeHtml 5건 (approvals/invoice/purchaseInvoice/quotation/clients) | e099b20 | 2026-05-13 |
