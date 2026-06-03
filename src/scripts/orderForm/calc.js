@@ -465,6 +465,7 @@
                         category_name: document.querySelector(`[name="category_name_${id}"]`)?.value || '',
                         width: wVal ? parseFloat(wVal) : null,
                         height: hVal ? parseFloat(hVal) : null,
+                        specification: (document.querySelector(`[name="spec_${id}"]`)?.value || '').trim() || null,
                         scale_factor: sfVal ? parseFloat(sfVal) : 1,
                         quantity: parseInt(document.querySelector(`[name="quantity_${id}"]`)?.value || 1),
                         unit: document.querySelector(`[name="item_unit_${id}"]`)?.value || 'EA',

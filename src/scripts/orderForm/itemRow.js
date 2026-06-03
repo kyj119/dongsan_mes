@@ -32,8 +32,9 @@
                             <div id="item_dd_${id}" class="item-dd hidden"></div>
                         </div>
                         <div>
-                            <label class="block text-xs font-medium text-gray-600 mb-0.5">가로(cm)</label>
+                            <label id="dim_label_${id}" class="block text-xs font-medium text-gray-600 mb-0.5">가로(cm)</label>
                             <input type="number" name="width_${id}" min="0" step="0.1" placeholder="90" class="w-full px-2 py-1.5 border border-gray-300 rounded text-sm" oninput="calcItem(${id})">
+                            <input type="text" name="spec_${id}" placeholder="폭 등 규격" class="hidden w-full px-2 py-1.5 border border-gray-300 rounded text-sm">
                         </div>
                         <div>
                             <label class="block text-xs font-medium text-gray-600 mb-0.5">세로(cm)</label>
@@ -123,6 +124,16 @@
                 if (finSec) finSec.classList.toggle('hidden', isDist);
                 var badge = document.getElementById('item_dist_badge_' + id);
                 if (badge) badge.classList.toggle('hidden', !isDist);
+                // 유통품목: 가로(cm) 숨기고 규격(폭 등) 자유 텍스트 입력 표시 (생산품목 복귀 시 원복)
+                var widthEl = document.querySelector('[name="width_' + id + '"]');
+                var specEl = document.querySelector('[name="spec_' + id + '"]');
+                var dimLbl = document.getElementById('dim_label_' + id);
+                if (specEl && widthEl) {
+                    specEl.classList.toggle('hidden', !isDist);
+                    widthEl.classList.toggle('hidden', isDist);
+                    if (dimLbl) dimLbl.textContent = isDist ? '규격' : '가로(cm)';
+                    if (!isDist) specEl.value = '';
+                }
             }
 
             function setupAutocomplete(id) {
@@ -175,7 +186,13 @@
 
                     // 유통 품목(GOODS/부자재)이면 인쇄 전용 칸/섹션 단순화
                     var itType = (item.item_type || '').toUpperCase();
-                    applyDistRowMode(id, itType === 'GOODS' || itType === 'MATERIAL');
+                    var isDistItem = itType === 'GOODS' || itType === 'MATERIAL';
+                    applyDistRowMode(id, isDistItem);
+                    // 유통품목이면 품목 마스터 규격을 규격칸에 자동채움(수정 가능)
+                    if (isDistItem) {
+                        var specSel = document.querySelector('[name="spec_' + id + '"]');
+                        if (specSel && !specSel.value) specSel.value = item.specification || '';
+                    }
 
                     // 기성품/유통 재고 부족 경고 (Phase 3) — 차단 X, 안내만. 출고 시 마이너스 허용
                     if (item.id) {

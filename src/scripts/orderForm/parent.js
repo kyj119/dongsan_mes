@@ -1092,6 +1092,13 @@
                         set('ai_group_index', item.ai_group_index != null ? item.ai_group_index : '');
                         set('ai_analysis_id', item.ai_analysis_id || '');
 
+                        // 유통품목 규격 복원: specification이 있으면 규격칸 표시 + 인쇄 전용칸 비활성 (수정 시 규격 손실 방지)
+                        if (item.specification) {
+                            applyDistRowMode(id, true);
+                            var specEdit = document.querySelector('[name="spec_' + id + '"]');
+                            if (specEdit) specEdit.value = item.specification;
+                        }
+
                         var pmRestoreVal = item.pricing_method || 'FIXED';
                         set('pricing_method', pmRestoreVal);
                         if (pmRestoreVal === 'AREA') {

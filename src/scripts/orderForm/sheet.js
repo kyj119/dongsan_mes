@@ -51,7 +51,10 @@
                             content: document.querySelector('[name="content_' + id + '"]')?.value || null,
                             width: (() => { const v = document.querySelector('[name="width_' + id + '"]')?.value; return v ? parseFloat(v) : null; })(),
                             height: (() => { const v = document.querySelector('[name="height_' + id + '"]')?.value; return v ? parseFloat(v) : null; })(),
-                            quantity: qty, unit: 'EA', unit_price: unitPrice,
+                            quantity: qty,
+                            unit: (document.querySelector('[name="item_unit_' + id + '"]')?.value || 'EA'),
+                            unit_price: unitPrice,
+                            specification: (document.querySelector('[name="spec_' + id + '"]')?.value || '').trim() || null,
                             vat_included: 1, sort_order: idx + 1, post_processing: [],
                         });
                     });
