@@ -180,6 +180,9 @@ export function shipmentsPage(c: Context<HonoEnv>) {
         <div class="flex items-center justify-between px-4 py-3 bg-white border-b border-gray-200">
           <h3 class="text-sm font-semibold text-gray-700"><i class="fas fa-shipping-fast mr-1"></i>한진택배</h3>
           <div class="flex items-center gap-2">
+            <button onclick="downloadHanjinExcel()" class="px-2 py-1 text-xs border border-gray-300 text-gray-600 rounded hover:bg-gray-50" title="선택(없으면 전체) 한진 출고건을 한진 대량등록 양식 엑셀로 다운로드">
+              <i class="fas fa-file-excel mr-1"></i>한진 업로드 엑셀
+            </button>
             <button id="btnSendHanjin" onclick="openShipmentSendModal('hanjin')" class="px-2 py-1 text-xs border border-gray-300 text-gray-600 rounded hover:bg-gray-50 hidden">
               <i class="fas fa-paper-plane mr-1"></i>선택 발송
             </button>

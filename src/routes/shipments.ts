@@ -7,6 +7,7 @@ import { renderTemplate } from '../services/emailTemplates'
 import { entityFilter, getEntityId } from '../utils/entityFilter'
 import { getNextSeqNumber, withSeqRetry } from '../utils/sequenceGenerator'
 import { deductStockLinesOnShip } from '../utils/stockShip'
+import { getEntityCompanyInfo } from '../utils/entitySettings'
 
 const shipmentsRouter = new Hono<HonoEnv>()
 shipmentsRouter.use('/*', authMiddleware, requirePagePermission('/shipments'))
@@ -810,6 +811,50 @@ shipmentsRouter.patch('/:orderId/ship', requireRole('ADMIN', 'MANAGER'), async (
     return c.json({ success: true, message: '출고 처리되었습니다. 동기화 후 출고완료 상태로 전이됩니다.' })
   } catch (err) {
     return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
+  }
+})
+
+// ============================================================================
+// POST /hanjin-export - 한진 대량등록(송장출력 요청) 엑셀(CSV) 생성
+//   보내는분 = 법인 회사정보(entities), 받는분 = 프론트 전달, 출고번호 = H-{date}-{client_id}
+// ============================================================================
+shipmentsRouter.post('/hanjin-export', async (c) => {
+  try {
+    const body = await c.req.json<{
+      date?: string
+      targets?: Array<{ client_id?: number; client_name?: string; phone?: string; address?: string; item?: string }>
+    }>()
+    const targets = body.targets || []
+    if (!targets.length) return c.json({ success: false, error: '발송 대상이 없습니다.' }, 400)
+
+    const dateStr = (body.date || '').replace(/-/g, '')
+    const company = await getEntityCompanyInfo(c.env.DB, getEntityId(c) || 1)
+
+    const header = ['출고번호', '보내시는 분', '보내시는 분 전화', '보내는분담당자', '보내는분담당자HP', '보내는분총주소', '받으시는 분', '받으시는 분 전화', '받는분담당자', '받는분우편번호', '받는분총주소', '내품명1']
+    const esc = (v: unknown) => {
+      const s = (v ?? '').toString()
+      return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s
+    }
+    const rows = targets.map((t) => [
+      `H-${dateStr}-${t.client_id ?? ''}`,        // 출고번호(import 1:1 매칭 키)
+      company.company_name || '',
+      company.company_phone || '',
+      company.company_representative || '',
+      '',
+      company.company_address || '',
+      t.client_name || '',
+      (t.phone || '').replace(/[^0-9]/g, ''),     // 받는분 전화: 숫자만
+      '',
+      '',
+      t.address || '',
+      t.item || '',
+    ].map(esc).join(','))
+
+    const csv = '﻿' + header.join(',') + '\n' + rows.join('\n')  // UTF-8 BOM(엑셀 한글)
+    return c.json({ success: true, data: { csv, count: targets.length } })
+  } catch (error) {
+    console.error('src/routes/shipments.ts POST /hanjin-export error:', error)
+    return c.json({ success: false, error: '한진 엑셀 생성 실패' }, 500)
   }
 })
 

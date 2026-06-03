@@ -300,6 +300,38 @@ function renderDaesintaekbaeSection() {
 }
 
 // --- 한진택배 ---
+// 한진 대량등록(송장출력 요청) 엑셀 다운로드 — 선택(없으면 전체) 한진 출고 거래처
+function downloadHanjinExcel() {
+  var selected = selectedShipments['hanjin'];
+  var keys = Object.keys(hanjinGroups);
+  if (selected && selected.size > 0) keys = keys.filter(function(k) { return selected.has(k); });
+  if (!keys.length) { showToast('한진 출고 건이 없습니다', 'warning'); return; }
+  var date = document.getElementById('shipDate').value;
+  var targets = keys.map(function(key) {
+    var grp = hanjinGroups[key];
+    return {
+      client_id: grp.client_id,
+      client_name: grp.client_name,
+      phone: grp.mobile || grp.contact_phone || '',
+      address: grp.receiver_address || grp.delivery_address || '',
+      item: getItemSummaryText(grp)
+    };
+  });
+  axios.post('/api/shipments/hanjin-export', { date: date, targets: targets }).then(function(res) {
+    if (!res.data.success) { showToast(res.data.error || '엑셀 생성 실패', 'error'); return; }
+    var blob = new Blob([res.data.data.csv], { type: 'text/csv;charset=utf-8;' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = '한진업로드_' + (date || '') + '.csv';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    showToast(targets.length + '건 한진 업로드 엑셀 다운로드', 'success');
+  }).catch(function(e) {
+    showToast('엑셀 생성 오류: ' + (e.response && e.response.data ? e.response.data.error : e.message), 'error');
+  });
+}
+
 function renderHanjinSection() {
   var tbody = document.getElementById('tbody-hanjin');
   var keys = Object.keys(hanjinGroups);
