@@ -189,7 +189,7 @@ arRouter.get('/client/:clientId', async (c) => {
     interface OrderItemLine {
       order_id: number; item_name: string | null; width: number | null; height: number | null
       quantity: number; unit: string | null; unit_price: number | null; amount: number | null
-      vat_included: number | null; content: string | null
+      vat_included: number | null; content: string | null; specification: string | null
     }
     const orderIds = orders.map(o => o.id)
     let orderItemsMap = new Map<number, OrderItemLine[]>()
@@ -200,7 +200,7 @@ arRouter.get('/client/:clientId', async (c) => {
       for (const chunk of chunks) {
         const ph = chunk.map(() => '?').join(',')
         const { results: items } = await c.env.DB.prepare(`
-          SELECT order_id, item_name, width, height, quantity, unit, unit_price, amount, vat_included, content
+          SELECT order_id, item_name, width, height, quantity, unit, unit_price, amount, vat_included, content, specification
           FROM order_items WHERE order_id IN (${ph}) AND parent_item_id IS NULL
           ORDER BY sort_order ASC
         `).bind(...chunk).all<OrderItemLine>()
@@ -318,7 +318,7 @@ arRouter.get('/client/:clientId', async (c) => {
         final_amount: o.final_amount,
         items: (orderItemsMap.get(o.id) || []).map(item => ({
           item_name: item.item_name || '-',
-          spec: item.width && item.height ? `${item.width}×${item.height}` : '',
+          spec: item.specification || (item.width && item.height ? `${item.width}×${item.height}` : ''),
           content: item.content || '',
           quantity: item.quantity || 0,
           unit: item.unit || 'EA',

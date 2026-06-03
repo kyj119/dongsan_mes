@@ -186,9 +186,15 @@ function renderAllSections() {
 }
 
 function getItemSummaryText(grp) {
-  var texts = grp.item_summaries.filter(Boolean);
-  if (!texts.length) return '-';
-  return texts.join(' / ');
+  // 내품명(한진 송장·알림 품목): 대표품목 + '외 N건' (N = 나머지 품목 건수)
+  var items = (grp.items || []).filter(function(it) { return it && it.item_name; });
+  if (items.length) {
+    var first = items[0].item_name;
+    return items.length === 1 ? first : (first + ' 외 ' + (items.length - 1) + '건');
+  }
+  // fallback: 품목 배열이 없으면 기존 요약 문자열
+  var texts = (grp.item_summaries || []).filter(Boolean);
+  return texts.length ? texts.join(' / ') : '-';
 }
 
 // 착/선불 한글 변환 (shipping_payment: PREPAID/COLLECT, 레거시 COD)

@@ -68,7 +68,8 @@ function buildInvoiceHalf(data, copyLabel, fullPage) {
         totalVat += vat;
         totalQty += (it.quantity || 0);
         var spec = '';
-        if (it.width && it.height) spec = it.width + 'x' + it.height + 'cm';
+        if (it.specification) spec = it.specification;            // 유통품목 등 규격 텍스트 우선
+        else if (it.width && it.height) spec = it.width + 'x' + it.height + 'cm';
         var itemNameDisplay = (it.item_name || '') + (it.content ? '[' + it.content + ']' : '');
         itemRows += '<tr>'
             + '<td>' + (i+1) + '</td>'

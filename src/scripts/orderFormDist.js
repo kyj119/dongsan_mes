@@ -125,10 +125,11 @@
                 var html = '<tr id="distItem-' + id + '" class="border-b border-gray-100">'
                     + '<td class="py-3 px-3 relative">'
                     + '<input type="hidden" name="dist_item_id_' + id + '">'
+                    + '<input type="hidden" name="dist_unit_' + id + '">'
                     + '<input type="text" name="dist_item_search_' + id + '" placeholder="품목명 또는 코드 검색..." autocomplete="off"'
                     + ' class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">'
                     + '</td>'
-                    + '<td class="py-3 px-3"><input type="text" name="dist_spec_' + id + '" readonly class="w-full px-3 py-2 border border-gray-200 rounded-lg bg-gray-50"></td>'
+                    + '<td class="py-3 px-3"><input type="text" name="dist_spec_' + id + '" placeholder="폭 등 규격" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"></td>'
                     + '<td class="py-3 px-3"><input type="number" name="dist_qty_' + id + '" value="1" min="1" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-center" oninput="calcDistItem(' + id + ')"></td>'
                     + '<td class="py-3 px-3"><input type="text" inputmode="numeric" data-money name="dist_price_' + id + '" value="0" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-right" oninput="calcDistItem(' + id + ')"></td>'
                     + '<td class="py-3 px-3 text-right"><span id="dist_amount_' + id + '" class="font-medium text-blue-700">0원</span></td>'
@@ -156,7 +157,10 @@
                 function applyDistItem(item) {
                     hidId.value = item.id;
                     input.value = item.name;
+                    // 품목 규격 자동채움(수정 가능). 단위는 hidden에 보관 → 제출 시 저장(명세서 단위 표시)
                     document.querySelector('[name="dist_spec_' + id + '"]').value = item.specification || '';
+                    var unitEl = document.querySelector('[name="dist_unit_' + id + '"]');
+                    if (unitEl) unitEl.value = item.unit || 'EA';
                     var price = parseInt(item.price) || 0;
                     document.querySelector('[name="dist_price_' + id + '"]').value = fmtMoneyInput(price);
                     calcDistItem(id);
@@ -344,13 +348,16 @@
                     var unitPrice = parseMoney((document.querySelector('[name="dist_price_' + id + '"]') || {}).value);
                     var amount = qty * unitPrice;
                     var vatCheck = document.getElementById('distVatIncluded');
+                    var spec = ((document.querySelector('[name="dist_spec_' + id + '"]') || {}).value || '').trim();
+                    var unit = (document.querySelector('[name="dist_unit_' + id + '"]') || {}).value || 'EA';
                     items.push({
                         item_id: itemId ? parseInt(itemId) : null,
                         item_name: itemName.trim(),
+                        specification: spec || null,
                         width: null,
                         height: null,
                         quantity: qty,
-                        unit: 'EA',
+                        unit: unit,
                         unit_price: unitPrice,
                         amount: amount,
                         vat_included: vatCheck && vatCheck.checked ? 1 : 0,

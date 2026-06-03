@@ -70,6 +70,7 @@ interface OrderRow {
 
 interface OrderItemRow {
   item_name: string
+  specification: string | null
   width: number | null
   height: number | null
   quantity: number
@@ -659,13 +660,13 @@ portal.post('/verify-document', async (c) => {
       }
 
       const { results: items } = await c.env.DB.prepare(`
-        SELECT item_name, width, height, quantity, unit, unit_price, amount
+        SELECT item_name, specification, width, height, quantity, unit, unit_price, amount
         FROM order_items WHERE order_id = ? AND parent_item_id IS NULL ORDER BY sort_order
       `).bind(order.id).all<OrderItemRow>()
 
       const invoiceItems = (items || []).map((i) => ({
         item_name: i.item_name,
-        spec: (i.width && i.height) ? `${i.width}x${i.height}cm` : '',
+        spec: i.specification || ((i.width && i.height) ? `${i.width}x${i.height}cm` : ''),
         quantity: i.quantity,
         unit_price: i.unit_price,
         amount: i.amount

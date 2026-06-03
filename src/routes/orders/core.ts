@@ -1038,9 +1038,9 @@ ordersCoreRouter.post('/', async (c) => {
           order_id, item_id, item_name, category_name,
           width, height, quantity, unit,
           unit_price, amount, vat_included,
-          post_processing, content, sort_order,
+          post_processing, content, specification, sort_order,
           ai_group_index, scale_factor, ai_analysis_id, parent_item_id, finishing, price_status
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?)
       `).bind(
         orderId,
         item.item_id || null,
@@ -1055,6 +1055,7 @@ ordersCoreRouter.post('/', async (c) => {
         item.vat_included !== undefined ? (item.vat_included ? 1 : 0) : 1,
         item.post_processing || item.paper || null,
         item.content || item.print || null,
+        item.specification || null,
         idx,
         item.ai_group_index !== undefined ? item.ai_group_index : null,
         item.scale_factor || 1,
@@ -1089,9 +1090,9 @@ ordersCoreRouter.post('/', async (c) => {
             order_id, item_id, item_name, category_name,
             width, height, quantity, unit,
             unit_price, amount, vat_included,
-            post_processing, content, sort_order,
+            post_processing, content, specification, sort_order,
             ai_group_index, scale_factor, ai_analysis_id, parent_item_id
-          ) VALUES (?, NULL, ?, NULL, ?, ?, ?, ?, 0, 0, 1, NULL, ?, ?, ?, ?, ?, ?)
+          ) VALUES (?, NULL, ?, NULL, ?, ?, ?, ?, 0, 0, 1, NULL, ?, ?, ?, ?, ?, ?, ?)
         `).bind(
           orderId,
           item.item_name || '',
@@ -1100,6 +1101,7 @@ ordersCoreRouter.post('/', async (c) => {
           item.quantity || 1,
           item.unit || 'EA',
           item.content || null,
+          item.specification || null,
           parentOnlyCount + i,
           item.ai_group_index !== undefined ? item.ai_group_index : null,
           item.scale_factor || 1,
@@ -2129,9 +2131,9 @@ ordersCoreRouter.put('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
           order_id, item_id, item_name, category_name,
           width, height, quantity, unit,
           unit_price, amount, vat_included,
-          post_processing, content, sort_order,
+          post_processing, content, specification, sort_order,
           ai_group_index, scale_factor, ai_analysis_id, parent_item_id, finishing, price_status
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?)
       `).bind(
         id,
         item.item_id || null,
@@ -2146,6 +2148,7 @@ ordersCoreRouter.put('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
         item.vat_included !== undefined ? (item.vat_included ? 1 : 0) : 1,
         item.post_processing || item.paper || null,
         item.content || item.print || null,
+        item.specification || null,
         i,
         item.ai_group_index !== undefined ? item.ai_group_index : null,
         item.scale_factor || 1,
@@ -2172,9 +2175,9 @@ ordersCoreRouter.put('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
           order_id, item_id, item_name, category_name,
           width, height, quantity, unit,
           unit_price, amount, vat_included,
-          post_processing, content, sort_order,
+          post_processing, content, specification, sort_order,
           ai_group_index, scale_factor, ai_analysis_id, parent_item_id
-        ) VALUES (?, NULL, ?, NULL, ?, ?, ?, ?, 0, 0, 1, NULL, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, NULL, ?, NULL, ?, ?, ?, ?, 0, 0, 1, NULL, ?, ?, ?, ?, ?, ?, ?)
       `).bind(
         id,
         item.item_name || '',
@@ -2183,6 +2186,7 @@ ordersCoreRouter.put('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
         item.quantity || 1,
         item.unit || 'EA',
         item.content || null,
+        item.specification || null,
         putParentOnlyCount + i,
         item.ai_group_index !== undefined ? item.ai_group_index : null,
         item.scale_factor || 1,

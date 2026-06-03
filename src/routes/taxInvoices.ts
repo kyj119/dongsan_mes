@@ -754,7 +754,7 @@ taxInvoicesRouter.post('/batch-create', requireRole('ADMIN', 'MANAGER'), async (
           ...(allOrderItems as Array<Record<string, unknown>>).map((oi, idx: number) => {
             const itemAmount = parseFloat(String(oi.amount)) || 0
             const itemTax = oi.vat_included ? Math.round(itemAmount * vatRate) : 0
-            const spec = (oi.width && oi.height) ? `${oi.width}x${oi.height}` : null
+            const spec = (oi.specification as string | null) || ((oi.width && oi.height) ? `${oi.width}x${oi.height}` : null)
             return c.env.DB.prepare(`
               INSERT INTO tax_invoice_items (
                 tax_invoice_id, item_date, item_name, specification,
