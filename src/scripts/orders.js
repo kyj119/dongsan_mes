@@ -52,28 +52,31 @@ function updateBulkBar() {
     bar.classList.add('visible');
     if (spacer) spacer.classList.add('visible');
     count.textContent = selectedOrderIds.size;
-    // 선택된 주문들의 상태 수집 → 공통 전이 가능 상태만 표시
+    // 선택된 주문들의 상태 수집 → 도달 가능한 목표 상태 합집합(union) 표시
+    // (교집합 아님: 상태가 섞여도 목표를 고르면 가능한 주문만 변경 — bulkChangeStatus에서 분류)
+    // SHIPPED(출고)는 카드 확인이 필요해 제외 → 별도 '일괄 출고' 버튼으로 유도
     var statuses = new Set();
     selectedOrderIds.forEach(function(id) {
       var row = document.querySelector('tr[data-order-id="' + id + '"]');
       if (row && row.dataset.status) statuses.add(row.dataset.status);
     });
-    var validNext = null;
+    var validNext = new Set();
     statuses.forEach(function(s) {
-      var next = new Set(STATUS_TRANSITIONS[s] || []);
-      if (validNext === null) validNext = next;
-      else {
-        var intersection = new Set();
-        next.forEach(function(n) { if (validNext.has(n)) intersection.add(n); });
-        validNext = intersection;
-      }
+      (STATUS_TRANSITIONS[s] || []).forEach(function(n) {
+        if (n !== 'SHIPPED') validNext.add(n);
+      });
     });
     var sel = document.getElementById('bulkStatusSelect');
     if (sel) {
-      sel.innerHTML = '<option value="">상태 선택</option>';
-      (validNext || new Set()).forEach(function(s) {
-        sel.innerHTML += '<option value="' + s + '">' + (STATUS_LABELS[s] || s) + '</option>';
-      });
+      if (validNext.size === 0) {
+        sel.innerHTML = '<option value="">변경 가능 상태 없음</option>';
+      } else {
+        sel.innerHTML = '<option value="">상태 선택</option>';
+        // 워크플로 순서 고정 표시
+        ['CONFIRMED', 'PRINTING', 'PRINT_DONE'].forEach(function(s) {
+          if (validNext.has(s)) sel.innerHTML += '<option value="' + s + '">' + (STATUS_LABELS[s] || s) + '</option>';
+        });
+      }
     }
   } else {
     bar.classList.remove('visible');
@@ -122,50 +125,110 @@ async function bulkShipSelected() {
 
 async function bulkBillingConfirm() {
   if (selectedOrderIds.size === 0) return;
-  // #4: 회계반영 대상(출고완료/배송완료)만 추출 — 비대상은 400을 유발하므로 사전 제외(콘솔 에러 방지)
-  var eligible = [], skipped = 0;
+  // 분류: 대상(출고/배송완료 + 미반영) / 이미반영(BILLED·PAID) / 출고 전
+  var targets = [], skipped = [];
   selectedOrderIds.forEach(function(id) {
     var row = document.querySelector('tr[data-order-id="' + id + '"]');
     var st = row && row.dataset.status;
-    if (st === 'SHIPPED' || st === 'COMPLETED') eligible.push(id);
-    else skipped++;
+    var bs = row && row.dataset.billingStatus;
+    var label = (row && row.dataset.orderNumber) || ('#' + id);
+    if (bs === 'BILLED') { skipped.push({ label: label, reason: '이미 회계반영됨' }); return; }
+    if (bs === 'PAID') { skipped.push({ label: label, reason: '이미 수금완료됨' }); return; }
+    if (st === 'SHIPPED' || st === 'COMPLETED') targets.push({ id: id, label: label });
+    else skipped.push({ label: label, reason: '출고 전 (' + getStatusText(st) + ')' });
   });
-  if (eligible.length === 0) {
-    showToast('회계반영 대상(출고완료/배송완료) 주문이 없습니다' + (skipped ? ' — ' + skipped + '건 제외' : ''), 'warning');
+  if (targets.length === 0) {
+    showBulkResultModal('회계반영 결과', [], skipped);
     return;
   }
-  if (!(await showConfirm(eligible.length + '건의 주문을 회계반영 처리하시겠습니까?' + (skipped ? '\n(출고 전 ' + skipped + '건은 제외됩니다)' : '')))) return;
-  var success = 0, fail = 0;
-  for (var id of eligible) {
+  if (!(await showConfirm(targets.length + '건을 회계반영 처리하시겠습니까?' + (skipped.length ? '\n(' + skipped.length + '건은 대상 아님 → 제외)' : '')))) return;
+  var changed = [];
+  for (var t of targets) {
     try {
-      var res = await axios.patch('/api/orders/' + id + '/billing-status', { billing_status: 'BILLED' });
-      if (res.data.success) success++;
-      else fail++;
-    } catch(e) { fail++; }
+      var res = await axios.patch('/api/orders/' + t.id + '/billing-status', { billing_status: 'BILLED' });
+      if (res.data.success) changed.push(t.label);
+      else skipped.push({ label: t.label, reason: res.data.error || '실패' });
+    } catch(e) { skipped.push({ label: t.label, reason: (e.response && e.response.data && e.response.data.error) || e.message || '오류' }); }
   }
-  showToast(success + '건 회계반영 완료' + (fail > 0 ? ', ' + fail + '건 실패' : '') + (skipped ? ', ' + skipped + '건 제외' : ''), fail > 0 ? 'warning' : 'success');
   clearBulkSelection();
+  loadOrderStats();
   loadOrders();
+  showBulkResultModal('회계반영 결과', changed, skipped);
 }
 
 async function bulkChangeStatus() {
   var newStatus = document.getElementById('bulkStatusSelect').value;
   if (!newStatus) { showFieldError('bulkStatusSelect', '변경할 상태를 선택하세요.'); return; }
   if (selectedOrderIds.size === 0) return;
-  if (!(await showConfirm(selectedOrderIds.size + '건의 주문을 ' + getStatusText(newStatus) + '(으)로 변경하시겠습니까?'))) return;
 
-  var success = 0, fail = 0;
-  for (var id of selectedOrderIds) {
-    try {
-      var res = await axios.patch('/api/orders/' + id + '/status', { status: newStatus });
-      if (res.data.success) success++;
-      else fail++;
-    } catch(e) { fail++; }
+  // 목표 상태 기준 분류: 변경 가능 / 이미 동일 / 전이 불가(사유)
+  var targets = [], skipped = [];
+  selectedOrderIds.forEach(function(id) {
+    var row = document.querySelector('tr[data-order-id="' + id + '"]');
+    var cur = row && row.dataset.status;
+    var label = (row && row.dataset.orderNumber) || ('#' + id);
+    if (!cur) { skipped.push({ label: label, reason: '상태 불명' }); return; }
+    if (cur === newStatus) { skipped.push({ label: label, reason: '이미 ' + getStatusText(newStatus) }); return; }
+    if ((STATUS_TRANSITIONS[cur] || []).indexOf(newStatus) === -1) {
+      skipped.push({ label: label, reason: getStatusText(cur) + ' → ' + getStatusText(newStatus) + ' 불가' });
+      return;
+    }
+    targets.push({ id: id, label: label });
+  });
+
+  if (targets.length === 0) {
+    showBulkResultModal('상태변경 결과', [], skipped, getStatusText(newStatus));
+    return;
   }
-  showToast(success + '건 변경 완료' + (fail > 0 ? ', ' + fail + '건 실패' : ''), fail > 0 ? 'warning' : 'success');
+  if (!(await showConfirm(targets.length + '건을 ' + getStatusText(newStatus) + '(으)로 변경하시겠습니까?' + (skipped.length ? '\n(' + skipped.length + '건은 변경 불가 → 제외)' : '')))) return;
+
+  var changed = [];
+  for (var t of targets) {
+    try {
+      var res = await axios.patch('/api/orders/' + t.id + '/status', { status: newStatus });
+      if (res.data.success) changed.push(t.label);
+      else skipped.push({ label: t.label, reason: res.data.error || '실패' });
+    } catch(e) { skipped.push({ label: t.label, reason: (e.response && e.response.data && e.response.data.error) || e.message || '오류' }); }
+  }
   clearBulkSelection();
   loadOrderStats();
   loadOrders();
+  showBulkResultModal('상태변경 결과', changed, skipped, getStatusText(newStatus));
+}
+
+// 일괄 처리 결과 리포트 (상태변경·회계반영 공용)
+function showBulkResultModal(title, changed, skipped, targetLabel) {
+  var titleEl = document.getElementById('bulkResultTitle');
+  var body = document.getElementById('bulkResultBody');
+  var modal = document.getElementById('bulkResultModal');
+  if (!titleEl || !body || !modal) {
+    // 모달 미존재 시 토스트로 폴백
+    showToast((changed.length) + '건 처리' + (skipped.length ? ', ' + skipped.length + '건 제외' : ''), skipped.length ? 'warning' : 'success');
+    return;
+  }
+  titleEl.textContent = title;
+  var html = '';
+  html += '<div class="text-sm font-semibold text-green-700 mb-1"><i class="fas fa-check-circle mr-1"></i>'
+        + changed.length + '건 변경' + (targetLabel ? ' → ' + escapeHtml(targetLabel) : '') + '</div>';
+  if (changed.length) {
+    html += '<div class="text-xs text-gray-600 mb-3 pl-5">' + changed.map(escapeHtml).join(', ') + '</div>';
+  }
+  if (skipped.length) {
+    html += '<div class="text-sm font-semibold text-gray-500 mb-1 ' + (changed.length ? 'mt-2' : '') + '">'
+          + '<i class="fas fa-forward mr-1"></i>' + skipped.length + '건 건너뜀</div>';
+    html += '<ul class="text-xs text-gray-600 pl-5 space-y-0.5">';
+    skipped.forEach(function(s) {
+      html += '<li>· <span class="font-medium">' + escapeHtml(s.label) + '</span> — ' + escapeHtml(s.reason) + '</li>';
+    });
+    html += '</ul>';
+  }
+  body.innerHTML = html;
+  modal.classList.remove('hidden');
+}
+
+function closeBulkResultModal() {
+  var m = document.getElementById('bulkResultModal');
+  if (m) m.classList.add('hidden');
 }
 
 // 긴급도 계산
@@ -184,7 +247,7 @@ function getOrderUrgency(deliveryDate) {
 }
 
 function getStatusText(status) {
-  const m = { CONFIRMED:'확정', PRINTING:'출력중', PRINT_DONE:'출력완료', SHIPPED:'출고완료', CANCELLED:'취소' };
+  const m = { CONFIRMED:'확정', PRINTING:'출력중', PRINT_DONE:'출력완료', SHIPPED:'출고완료', COMPLETED:'배송완료', CANCELLED:'취소' };
   return m[status] || status;
 }
 
@@ -371,7 +434,7 @@ async function loadOrders() {
         const spec = (order.main_item_width && order.main_item_height) ? ` <span class="text-xs text-gray-500">[${order.main_item_width}×${order.main_item_height}]</span>` : '';
         const itemMore = order.item_count > 1 ? ` <span class="text-xs text-gray-400">외 ${order.item_count - 1}건</span>` : '';
         return `
-          <tr class="hover:bg-gray-50" data-order-id="${order.id}" data-status="${order.status}">
+          <tr class="hover:bg-gray-50" data-order-id="${order.id}" data-status="${order.status}" data-billing-status="${order.billing_status || ''}" data-order-number="${escapeHtml(order.order_number || ('#' + order.id))}">
             <td class="px-2 py-2.5 text-center">
               <input type="checkbox" class="order-checkbox rounded border-gray-300" data-order-id="${order.id}" onchange="toggleOrderSelect(this)" ${selectedOrderIds.has(order.id) ? 'checked' : ''}>
             </td>

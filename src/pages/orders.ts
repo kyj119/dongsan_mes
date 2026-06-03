@@ -247,6 +247,19 @@ export function ordersPage(c: Context<HonoEnv>) {
           </div>
         </div>
       </div>
+
+      <!-- 일괄 처리 결과 리포트 모달 (상태변경·회계반영 공용) -->
+      <div id="bulkResultModal" class="ds-modal-overlay hidden" style="z-index:60">
+        <div class="ds-modal" style="width:420px;max-width:92vw">
+          <div class="ds-modal-header">
+            <h3 class="ds-card-title" id="bulkResultTitle">처리 결과</h3>
+          </div>
+          <div class="ds-modal-body" id="bulkResultBody" style="max-height:60vh;overflow-y:auto"></div>
+          <div class="ds-modal-footer">
+            <button onclick="closeBulkResultModal()" class="ds-btn ds-btn-primary">확인</button>
+          </div>
+        </div>
+      </div>
     `,
     pageScript,
   })
