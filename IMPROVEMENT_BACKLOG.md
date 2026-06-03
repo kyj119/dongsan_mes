@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 3 -->
-<!-- last_run_at: 2026-06-03T18:00:00+09:00 -->
+<!-- last_run_area: 4 -->
+<!-- last_run_at: 2026-06-03T21:30:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,10 +8,18 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | 12 (I-025~I-036, 전부 open) |
+| 🆕 new | 14 (I-025~I-038, 전부 open) |
 | ✔️ done | 44 |
 | ❌ rejected | 2 |
 
+> **Area 4 데이터 정합성 (2026-06-03T21:30):**
+> - **방법**: ground-truth — 278개 마이그레이션을 로컬 D1(node:sqlite)에 전량 적용(FAIL 0) → 실제 해석 스키마 170테이블·501인덱스 확보 후 정적분석 교차검증. entity_id 커버리지 / UNIQUE 제약 entity 포함 여부 / FK 인덱스 hot-path / 번호 생성기 entity 정합 점검
+> - **🐛 신규 이슈 #348 (I-038) — 전역 UNIQUE가 entity 복합 UNIQUE 무력화**: orders/purchase_orders/quotations/payment_requests는 0266/0272/0281에서 `UNIQUE(entity_id,*_number)`를 추가했으나 **CREATE TABLE 시점의 테이블레벨 전역 `UNIQUE(*_number)`가 잔존** → 더 엄격한 전역 제약이 복합을 무력화. 생성기(`sequenceGenerator.ts:20`)는 entityId 전달 시 per-entity MAX인데 **prefix에 법인 식별자 없음**(po `${dateStr}-P`, quote `Q-`, pr `PR-`) → 다법인 시 법인2 첫 전표가 법인1과 동일번호 생성→전역 UNIQUE 거부→withSeqRetry 동일번호 재생성→**생성 실패**. ground-truth INSERT로 4종 전부 거부 실측. 현재 entity 1 수렴이라 잠복, 다법인 시작 시 즉시 발화. **스키마 재빌드+번호정책 결정 필요 → 자동수정 안 함**
+> - **#347 (I-037) 백로그 편입**: cards.status CHECK(3값) ↔ 코드 어휘(PRINT_PENDING 등) 분기 — 이전 Area 4 산출물이나 백로그 미기록분 정리
+> - **오탐 차단 4건**(ground-truth 반증): shipments(`SHP-E${eid}-` prefix로 전역 유일, 정합)·purchase_requests/returns/claims/approvals(생성기 entityId 미전달=전역번호, 정합)·inventory_release_items.release_id(SELECT WHERE 경로 없음, INSERT 전용 `inventory.ts:555` → hot path 아님)·child/이력/마스터(clients/items/equipment) entity_id 부재(상속/의도적 전역공유)
+> - **이상 없음 확인**: entity_id NULLABLE 2건(activity_logs 다형성·migration_logs ADMIN로그)은 기존 인지 오탐. 자식-item 부모FK 인덱스 order_items/shipment_items/tax_invoice_items/receipt_items/count_items/po_items/journal_lines 전부 보유. cards는 `requesting_entity_id`로 격리
+> - 자동 수정 0건(스키마 재빌드는 런타임 검증 불가+정책 결정 필요), 신규 이슈 1건(#348), 백로그 편입 1건(#347)
+>
 > **Area 3 UX/기능 감사 (2026-06-03T18:00):**
 > - **방법**: 병렬 에이전트 3개 — 영업·회계 / 생산·재고·구매 / 대시보드·HR·포털. 75+ 페이지 .ts(HTML)↔.js(동작) 대조로 검색·필터·빈상태·페이지네이션·journey 링크·KPI 점검
 > - **🔧 자동 수정 A-011 (재고 집계 버그)**: `inventory.js:160` "총 N개 품목"이 페이지 slice 건수(`items.length`, 최대 20)를 표시 → 품목 수백개여도 항상 20 표시. API는 이미 `pagination.total` 반환 중. `renderInventoryTable(items, total)`로 전체 COUNT 전달하도록 수정. verify(typecheck+build, 351 modules) 통과
@@ -158,6 +166,8 @@
 | I-034 | 포털 셀프서비스 갭 — 세금계산서 다운로드+50캡 / 미수금 aging / 재주문 prompt() | Area 3 | #344 | 3~4h |
 | I-035 | 회계 CSV·검색 — taxInvoices CSV / cashSchedule CSV / 지출결의서 지급처·사유 검색 | Area 3 | #345 | ~2h |
 | I-036 | 필터·드릴다운 — 연차 부서 필터 / 불량률 리포트→검수 드릴다운 | Area 3 | #346 | 3~4h |
+| I-037 | cards.status CHECK(3값) ↔ 코드 어휘(PRINT_PENDING/RIP_WAITING 등) 분기 — 클린 DB 재빌드 시 카드 생성 실패 | Area 4 | #347 | 반나절 |
+| I-038 | 전역 UNIQUE가 entity 복합 UNIQUE 무력화 — 다법인 시 주문/발주/견적/지출결의서 번호 충돌로 생성 실패(잠복) | Area 4 | #348 | 1~4h |
 
 ---
 
