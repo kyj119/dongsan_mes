@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 4 -->
-<!-- last_run_at: 2026-06-03T21:30:00+09:00 -->
+<!-- last_run_area: 5 -->
+<!-- last_run_at: 2026-06-03T23:30:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,10 +8,20 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | 14 (I-025~I-038, 전부 open) |
+| 🆕 new | 15 (I-025~I-039, 전부 open) |
 | ✔️ done | 44 |
 | ❌ rejected | 2 |
 
+> **Area 5 보안 (2026-06-03T23:30):**
+> - **방법**: 병렬 에이전트 3개 — SQLi·동적쿼리 / 인가·IDOR·멀티테넌시 / SSRF·시크릿·업로드·인프라. 발견은 전부 owner 직접 코드 검증.
+> - **🔧 자동 수정 A-012 (CAPS 시크릿 노출 차단)**: `caps.ts:728` 레거시 `GET /api/caps/settings`가 `relay_db_password`+`worker_api_key`를 **평문 반환**. 동급 `GET /sites`(443-446)는 의도적으로 두 컬럼 제외 → 정렬. 프론트(`capsSettings.js:18`)는 `/sites`만 사용, `/settings` 소비처 0건 + 비번 input `placeholder="변경 시에만"`(프리필 안 함)이라 무해. MANAGER 탈취 시 CAPS relay DB 비번/워커 API키 획득 경로 제거. verify(typecheck+build, 351 modules) 통과
+> - **🔧 자동 수정 A-013 (업로드 파일명 sanitize)**: `aiAnalysis.ts:155` R2 키에 `file.name` 미검증 삽입 → `../`/특수문자/헤더(`\r\n`) 인젝션 가능(LOW, ADMIN전용). `replace(/[^a-zA-Z0-9._-]/g,'_').slice(0,200)`로 정규화. escapeHtml류 방어적 sanitize라 자동수정 허용 범위. verify 통과
+> - **🐛 신규 이슈 #349 (I-039, HIGH) — hr.ts 멀티테넌시 격리 갭 4건**: #322가 직원 INSERT에만 entity_id 서버강제, **UPDATE/단건GET/payrolls/certificate는 누락**. (1)`PUT /employees/:id`(556,628-639,680) entity_id **mass-assignment** + WHERE 격리없음(타법인 직원 이동+급여변조) (2)`GET /employees/:id`·`/detail` PII 조회 (3)`GET /payrolls` 전법인 급여 (4)`certificate/employment` 타법인 증명서 발급. PII/급여+쓰기라 #334/#342보다 영향 큼. 다법인 read/write 경계+ADMIN전체모드 분기로 런타임 검증 불가 → **자동수정 안 함**, #322 패턴 정렬 권고
+> - **SQLi 0건**: 2,335개 `prepare()` 전수 — ORDER BY는 `sortOptions[k]` 딕셔너리 룩업·LIKE/IN은 `?` 바인딩·동적 SET는 고정배열 화이트리스트·PRAGMA는 ALLOWED_TABLES/리터럴. 사용자입력 직접보간 0
+> - **인가/포털/셀프 이상 없음**: portal(고정 portal_client_id+`AND client_id=?`)·hrSelf(`payload.sub`)·users/permissions/payroll(requireRole) 전부 적절. JWT exp/HS256 명시검증. rate limit 8엔드포인트 커버. 보안헤더 3종 전역(CSP/HSTS 보류 유지)
+> - **오탐 차단**: cardExpenses 업로드 MIME 미검증 → `X-Content-Type-Options:nosniff`(index.tsx:234)로 브라우저 실행 차단. env폴백/reset-pw 기본값은 기존 #338
+> - 자동 수정 2건(A-012, A-013), 신규 이슈 1건(#349)
+>
 > **Area 4 데이터 정합성 (2026-06-03T21:30):**
 > - **방법**: ground-truth — 278개 마이그레이션을 로컬 D1(node:sqlite)에 전량 적용(FAIL 0) → 실제 해석 스키마 170테이블·501인덱스 확보 후 정적분석 교차검증. entity_id 커버리지 / UNIQUE 제약 entity 포함 여부 / FK 인덱스 hot-path / 번호 생성기 entity 정합 점검
 > - **🐛 신규 이슈 #348 (I-038) — 전역 UNIQUE가 entity 복합 UNIQUE 무력화**: orders/purchase_orders/quotations/payment_requests는 0266/0272/0281에서 `UNIQUE(entity_id,*_number)`를 추가했으나 **CREATE TABLE 시점의 테이블레벨 전역 `UNIQUE(*_number)`가 잔존** → 더 엄격한 전역 제약이 복합을 무력화. 생성기(`sequenceGenerator.ts:20`)는 entityId 전달 시 per-entity MAX인데 **prefix에 법인 식별자 없음**(po `${dateStr}-P`, quote `Q-`, pr `PR-`) → 다법인 시 법인2 첫 전표가 법인1과 동일번호 생성→전역 UNIQUE 거부→withSeqRetry 동일번호 재생성→**생성 실패**. ground-truth INSERT로 4종 전부 거부 실측. 현재 entity 1 수렴이라 잠복, 다법인 시작 시 즉시 발화. **스키마 재빌드+번호정책 결정 필요 → 자동수정 안 함**
@@ -168,6 +178,7 @@
 | I-036 | 필터·드릴다운 — 연차 부서 필터 / 불량률 리포트→검수 드릴다운 | Area 3 | #346 | 3~4h |
 | I-037 | cards.status CHECK(3값) ↔ 코드 어휘(PRINT_PENDING/RIP_WAITING 등) 분기 — 클린 DB 재빌드 시 카드 생성 실패 | Area 4 | #347 | 반나절 |
 | I-038 | 전역 UNIQUE가 entity 복합 UNIQUE 무력화 — 다법인 시 주문/발주/견적/지출결의서 번호 충돌로 생성 실패(잠복) | Area 4 | #348 | 1~4h |
+| I-039 | hr.ts 멀티테넌시 격리 갭 4건 — PUT entity_id mass-assignment + 단건GET/payrolls/certificate entityFilter 누락(#322 미적용 경로) | Area 5 | #349 | 2~3h |
 
 ---
 
@@ -175,7 +186,9 @@
 
 | ID | 제목 | 커밋 | 날짜 |
 |----|------|------|------|
-| A-011 | 재고 목록 "총 N개 품목" 집계 버그 — 페이지 slice 건수(최대 20) 대신 `pagination.total` 전체 COUNT 표시 | (이번 커밋) | 2026-06-03 |
+| A-013 | aiAnalysis 업로드 R2 키 `file.name` sanitize — path traversal/헤더 인젝션 방어(LOW, ADMIN전용) | (이번 커밋) | 2026-06-03 |
+| A-012 | CAPS `GET /settings` 시크릿 노출 차단 — `relay_db_password`+`worker_api_key` 응답 제거(GET /sites 패턴 정렬) | (이번 커밋) | 2026-06-03 |
+| A-011 | 재고 목록 "총 N개 품목" 집계 버그 — 페이지 slice 건수(최대 20) 대신 `pagination.total` 전체 COUNT 표시 | 44bd3ed | 2026-06-03 |
 | A-010 | Deploy 차단 복구 — wrangler `--commit-message=<sha>` 고정 (한글 커밋메시지 100B 절단→UTF-8 깨짐 차단) | e396f2e | 2026-06-03 |
 | A-009 | PO 번호 생성 entity 필터 누락 3곳 → 정규 시퀀스 경로 정렬 (reorder/quick/templates) | e8c8992 | 2026-06-02 |
 | A-008 | try-catch 누락 17핸들러 (permissions/finishing/messageTemplates/iaAuto) | 60ee8b8 | 2026-05-14 |

@@ -725,7 +725,7 @@ capsRouter.post('/sync/trigger', async (c) => {
 capsRouter.get('/settings', async (c) => {
   try {
     const { results } = await c.env.DB.prepare(
-      `SELECT id, name, relay_db_host, relay_db_port, relay_db_engine, relay_db_name, relay_db_user, relay_db_password, relay_table, sync_enabled, sync_interval_min, sync_lookback_days, worker_endpoint, worker_api_key, ignored_fpids, last_sync_ok_at, last_unmapped, is_active, created_at FROM caps_sites WHERE is_active = 1 ORDER BY created_at`
+      `SELECT id, name, relay_db_host, relay_db_port, relay_db_engine, relay_db_name, relay_db_user, relay_table, sync_enabled, sync_interval_min, sync_lookback_days, worker_endpoint, ignored_fpids, last_sync_ok_at, last_unmapped, is_active, created_at FROM caps_sites WHERE is_active = 1 ORDER BY created_at`
     ).all()
     return c.json({ success: true, data: results || [] })
   } catch (err) {
