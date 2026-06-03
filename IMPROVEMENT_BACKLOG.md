@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 1 -->
-<!-- last_run_at: 2026-06-03T10:30:00+09:00 -->
+<!-- last_run_area: 2 -->
+<!-- last_run_at: 2026-06-03T14:30:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,10 +8,19 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | 6 (I-025~I-030, 전부 open) |
+| 🆕 new | 8 (I-025~I-032, 전부 open) |
 | ✔️ done | 44 |
 | ❌ rejected | 2 |
 
+> **Area 2 코드 품질 (2026-06-03T14:30):**
+> - **방법**: 병렬 에이전트 2개 — entity_id 격리 / N+1·auth·타입. 의존성 설치 후 `tsc --noEmit` PASS·라우트 등록 83/83·utils 미사용 export 0건 직접 확인
+> - **authMiddleware 누락 0건**: 83 라우터 전수 — portal/hrSelf/auth/webhooks 공개는 의도적, 집계 라우터는 서브라우터 위임. 신규 없음
+> - **타입 에러 0**: tsc 통과. `as any`는 45→70(routes)이나 신규분 전부 외부입력(`req.json() as any`)/env 바인딩/D1 결과 관행 캐스트 — 위험 패턴 아님(타입 우회 버그 은폐 없음). `(c.env as any)` 4건만 타입 보강 후보(저우선, 이슈화 보류)
+> - **신규 이슈 #341(I-031, N+1 미전환)**: cashFlow.ts:456 현금흐름 예측 핫패스(12개월×6쿼리=72) 최우선 + purchaseRequests read N+1 + import 루프(clients/cardExpenses/kakao/attendance) + child INSERT 루프들. **자동수정 안 함**: read 집계 재작성은 정합성 검증 필요, INSERT 루프는 leaves.ts 행별 try-catch 에러수집/2-pass last_row_id 의존이라 batch 전환 시 에러·트랜잭션 시맨틱 변경(런타임 검증 불가 환경)
+> - **신규 이슈 #342(I-032, rip.ts entity_id 미배선)**: equipment_consumables·maintenance_schedules가 0237에서 entity_id 추가됐으나 rip.ts 전체 entity 처리 전무. 단 **부모 equipment가 전역 공유(entity_id 없음)** → 자식만 격리는 반쪽 정합, 설비 전역공유 유지/법인분리 정책 판단 필요(owner 결정). 현재 전부 entity 1로 수렴해 실질 위협 낮음
+> - **오탐 차단 4건**(엄밀 재검): activity_logs.entity_id(다형성 참조), attendance/employees(동적컬럼+getEntityId fallback/#322 서버강제), migration_logs(ADMIN 운영로그), 채번/2-pass parent 루프(순차 불가피)
+> - 자동 수정 0건(안전+런타임검증 기준 미충족), 신규 이슈 2건(#341, #342)
+>
 > **Area 1 프로덕션 헬스 (2026-06-03T10:30):**
 > - **방법**: GitHub Actions 최근 15런 분석 + 프로덕션 헬스(샌드박스 egress는 Cloudflare 엣지 403 차단으로 직접 호출 불가 → CI 로그 기반 판정)
 > - **🔴 자동 수정 A-010 (배포 파이프라인 복구)**: 최근 2개 push(Area 5·6 docs)의 **Deploy 실패**. Cloudflare API `Invalid commit message, must be valid UTF-8 [8000111]`. **근본 원인 = byte 길이**: Area 4(98B) 성공 / Area 5(119B)·6(106B) 실패 — 모두 유효 UTF-8이나 Cloudflare가 ~100B에서 commit message를 절단하며 **한글 멀티바이트 절단** → 깨진 UTF-8. wrangler가 git 메시지를 자동 전송하던 것을 `--commit-message="${{ github.sha }}"`(ASCII 고정)로 차단. `deploy.yml:62`. verify(typecheck+build) 통과
@@ -133,6 +142,8 @@
 | I-028 | CI 폴백 자격증명 admin/password — 프로덕션 대상 (deploy/e2e yml) | Area 5 | #336 | 30분 |
 | I-029 | 프로덕션 debug 엔드포인트 잔존 + error.message 노출 (admin 전용 LOW) | Area 5 | #337 | 30분 |
 | I-030 | E2E 프로덕션 테스트 연속 RED — auth 픽스처 cold-start 타임아웃 + crud-order 주문생성 실패 | Area 1 | #340 | 2~3h |
+| I-031 | N+1 쿼리 batch 미전환 다수 — cashFlow 예측 핫패스(72쿼리) 우선 + import/child INSERT 루프 | Area 2 | #341 | 3h~ |
+| I-032 | rip.ts 설비 자식 entity_id 미배선 (equipment 전역공유, 격리 정책 판단 필요) | Area 2 | #342 | 1일 or 갭아님 |
 
 ---
 
