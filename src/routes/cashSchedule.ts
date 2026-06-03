@@ -6,6 +6,7 @@ import { authMiddleware, requireRole } from '../middleware/auth'
 import { requirePagePermission } from '../middleware/permissions'
 import { entityFilter, getEntityId } from '../utils/entityFilter'
 import { buildCashflowDays } from '../utils/cashflowEngine'
+import { computeExpectedPaymentDate } from '../utils/paymentSchedule'
 
 interface DailyAggRow {
   schedule_date: string
@@ -35,6 +36,10 @@ interface BilledOrderRow {
   order_number: string
   payment_days: number
   client_name: string | null
+  payment_cycle_type: string | null
+  closing_day: number | null
+  payment_month_offset: number | null
+  payment_day: number | null
 }
 
 interface ConfirmedPORow {
@@ -288,7 +293,8 @@ cashScheduleRouter.post('/schedule/auto-generate', requireRole('ADMIN'), async (
     const { results: billedOrders } = await c.env.DB.prepare(`
       SELECT o.id, o.client_id, o.billed_amount, o.billed_at, o.order_number,
         COALESCE(c.payment_terms_days, 30) as payment_days,
-        c.client_name
+        c.client_name,
+        c.payment_cycle_type, c.closing_day, c.payment_month_offset, c.payment_day
       FROM orders o
       LEFT JOIN clients c ON c.id = o.client_id
       WHERE o.billing_status = 'BILLED' AND o.billed_at IS NOT NULL${ef.clause}
@@ -300,9 +306,13 @@ cashScheduleRouter.post('/schedule/auto-generate', requireRole('ADMIN'), async (
     `).bind(...ef.params).all<BilledOrderRow>()
 
     for (const order of billedOrders) {
-      const billedDate = new Date(order.billed_at)
-      const dueDate = new Date(billedDate.getTime() + (order.payment_days || 30) * 86400000)
-      const dueDateStr = dueDate.toISOString().substring(0, 10)
+      const dueDateStr = computeExpectedPaymentDate(order.billed_at, {
+        payment_cycle_type: order.payment_cycle_type,
+        payment_terms_days: order.payment_days,
+        closing_day: order.closing_day,
+        payment_month_offset: order.payment_month_offset,
+        payment_day: order.payment_day,
+      })
 
       batchStmts.push(
         c.env.DB.prepare(`

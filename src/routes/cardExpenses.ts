@@ -7,6 +7,7 @@ import { Hono } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
 import { entityFilter, getEntityId } from '../utils/entityFilter'
+import { getEntityCorpNum } from '../utils/entitySettings'
 
 const cardExpRouter = new Hono<HonoEnv>()
 cardExpRouter.use('/*', authMiddleware)
@@ -154,9 +155,9 @@ cardExpRouter.post('/sync', requireRole('ADMIN'), async (c) => {
     const certKey = isTest ? (c.env as any).BAROBILL_CERT_KEY : (c.env as any).BAROBILL_CERT_KEY_PROD
     if (!certKey) return c.json({ success: false, error: 'BAROBILL_CERT_KEY 미설정' }, 400)
 
-    const corpNumRow = await c.env.DB.prepare("SELECT setting_value FROM settings WHERE setting_key = 'company_business_registration_number'").first() as { setting_value: string } | null
-    const corpNum = (corpNumRow?.setting_value || '').replace(/-/g, '')
-    if (!corpNum) return c.json({ success: false, error: '사업자등록번호 미설정' }, 400)
+    // CorpNum은 법인별 (각 법인 자체 사업자번호 회원사). CERTKEY는 단일 파트너 키.
+    const corpNum = await getEntityCorpNum(c.env.DB, getEntityId(c))
+    if (!corpNum) return c.json({ success: false, error: '사업자등록번호 미설정 (법인별 corpNum 확인)' }, 400)
 
     const senderIdRow = await c.env.DB.prepare("SELECT setting_value FROM settings WHERE setting_key = 'barobill_sender_id'").first() as { setting_value: string } | null
     const config = { certKey, corpNum, isTest, senderId: senderIdRow?.setting_value || 'DONGSAN' }

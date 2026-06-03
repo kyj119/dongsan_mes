@@ -10,6 +10,7 @@
 import type { Context } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { entityFilter } from './entityFilter'
+import { computeExpectedPaymentDate } from './paymentSchedule'
 
 export interface CashflowItem {
   flow: 'IN' | 'OUT'
@@ -27,8 +28,6 @@ export interface CashflowDay {
   out: number
   items: CashflowItem[]
 }
-
-const isoDay = (d: Date) => d.toISOString().substring(0, 10)
 
 /** from~to(YYYY-MM-DD, inclusive)에 걸치는 'YYYY-MM' 월 목록 */
 function monthsBetween(from: string, to: string): { y: number; m: number; lastDay: number }[] {
@@ -140,7 +139,8 @@ export async function buildCashflowDays(
   const efOrd = entityFilter(c, 'o')
   const { results: orderRows } = await c.env.DB.prepare(`
     SELECT o.order_number, o.final_amount, o.delivery_date, o.created_at,
-           COALESCE(cl.payment_terms_days, 30) AS terms, cl.client_name
+           COALESCE(cl.payment_terms_days, 30) AS terms, cl.client_name,
+           cl.payment_cycle_type, cl.closing_day, cl.payment_month_offset, cl.payment_day
     FROM orders o
     LEFT JOIN clients cl ON cl.id = o.client_id
     WHERE o.status NOT IN ('CANCELLED', 'DRAFT')
@@ -150,11 +150,16 @@ export async function buildCashflowDays(
   `).bind(...efOrd.params).all<{
     order_number: string; final_amount: number; delivery_date: string | null
     created_at: string; terms: number; client_name: string | null
+    payment_cycle_type: string | null; closing_day: number | null
+    payment_month_offset: number | null; payment_day: number | null
   }>()
   for (const o of orderRows) {
     const base = o.delivery_date || (o.created_at || '').substring(0, 10)
     if (!base) continue
-    const due = isoDay(new Date(new Date(base).getTime() + (o.terms || 30) * 86400000))
+    const due = computeExpectedPaymentDate(base, {
+      payment_cycle_type: o.payment_cycle_type, payment_terms_days: o.terms,
+      closing_day: o.closing_day, payment_month_offset: o.payment_month_offset, payment_day: o.payment_day,
+    })
     add(due, {
       flow: 'IN', type: 'ORDER_EXPECTED',
       name: `${o.client_name || ''} 예상입금 (주문 ${o.order_number})`.trim(),

@@ -123,6 +123,7 @@ import { quotationPage } from './pages/quotation'
 import { quotationsPage } from './pages/quotations'
 import { quotationFormPage } from './pages/quotationForm'
 import { purchaseInvoicePage } from './pages/purchaseInvoice'
+import { purchaseInvoicesPage } from './pages/purchaseInvoices'
 import { settingsPage } from './pages/settings'
 import { purchaseOrdersPage } from './pages/purchaseOrders'
 import { purchaseOrderFormPage } from './pages/purchaseOrderForm'
@@ -431,6 +432,7 @@ app.get('/quotations', pageAuthMiddleware, requirePagePermission('/quotations'),
 app.get('/quotation-form', pageAuthMiddleware, requirePagePermission('/quotations'), quotationFormPage)
 app.get('/quotation-form/:id', pageAuthMiddleware, requirePagePermission('/quotations'), quotationFormPage)
 app.get('/purchase-invoice/:poId', pageAuthMiddleware, requirePagePermission('/purchase-orders'), purchaseInvoicePage)
+app.get('/purchase-invoices', pageAuthMiddleware, requirePagePermission('/purchase-orders'), purchaseInvoicesPage)
 app.get('/settings', pageAuthMiddleware, requireAdminPage(), settingsPage)
 app.get('/cost-settings', (c) => c.redirect('/settings#tab=cost'))
 app.get('/purchase-orders', pageAuthMiddleware, requirePagePermission('/purchase-orders'), purchaseOrdersPage)

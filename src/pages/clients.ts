@@ -219,10 +219,13 @@ export function clientsPage(c: Context<HonoEnv>) {
               <div>
                 <label class="ds-label">배송방식</label>
                 <select id="clientModalDeliveryMethod" class="ds-input">
-                  <option value="SAME">소재지 동일</option>
-                  <option value="FREIGHT">화물</option>
-                  <option value="DIRECT">직배송</option>
-                  <option value="PICKUP">방문수령</option>
+                  <option value="대신택배">대신택배</option>
+                  <option value="대신화물">대신화물</option>
+                  <option value="한진택배">한진택배</option>
+                  <option value="직배">직배</option>
+                  <option value="용차">용차</option>
+                  <option value="퀵">퀵</option>
+                  <option value="방문수령">방문수령</option>
                 </select>
               </div>
               <div class="col-span-1 md:col-span-2">
@@ -243,6 +246,30 @@ export function clientsPage(c: Context<HonoEnv>) {
               <div class="col-span-1 md:col-span-2">
                 <label class="ds-label">검색 키워드</label>
                 <textarea id="clientModalSearchKeywords" rows="2" class="ds-input" placeholder="검색에 사용할 키워드 (쉼표로 구분)"></textarea>
+              </div>
+              <div class="col-span-1 md:col-span-2" style="border-top:1px solid #e5e7eb;padding-top:10px">
+                <label class="ds-label">결제 주기 <span class="text-xs font-normal" style="color:var(--c-primary)">(미수금 회수예측)</span></label>
+                <div class="flex flex-wrap items-center gap-2">
+                  <select id="clientModalCycleType" class="ds-input" style="width:auto" onchange="onCycleTypeChange()">
+                    <option value="NET_DAYS">청구건별</option>
+                    <option value="MONTHLY">월정산</option>
+                    <option value="THRESHOLD">누적 임계(후순위)</option>
+                  </select>
+                  <div id="cycleNetWrap" class="flex items-center gap-1">
+                    <span class="text-sm" style="color:#6b7280">청구일 +</span>
+                    <input type="number" id="clientModalTermsDays" class="ds-input" style="width:80px" placeholder="30" min="0">
+                    <span class="text-sm" style="color:#6b7280">일</span>
+                  </div>
+                  <div id="cycleMonthlyWrap" class="hidden items-center gap-1" style="flex-wrap:wrap">
+                    <input type="number" id="clientModalClosingDay" class="ds-input" style="width:140px" placeholder="마감일(빈칸=말일)" min="1" max="31">
+                    <select id="clientModalMonthOffset" class="ds-input" style="width:auto">
+                      <option value="0">당월</option>
+                      <option value="1">익월</option>
+                      <option value="2">익익월</option>
+                    </select>
+                    <input type="number" id="clientModalPayDay" class="ds-input" style="width:140px" placeholder="결제일(빈칸=말일)" min="1" max="31">
+                  </div>
+                </div>
               </div>
               <div class="col-span-1 md:col-span-2">
                 <label class="ds-label">이체 정보</label>

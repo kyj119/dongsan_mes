@@ -95,6 +95,7 @@ export function receivingPage(c: Context<HonoEnv>) {
                 <th style="width:80px" class="text-center">합격수량</th>
                 <th style="width:90px" class="text-center">불합격수량</th>
                 <th style="width:80px" class="text-center">검수자</th>
+                <th style="width:90px" class="text-center">거래명세서</th>
               </tr>
             </thead>
             <tbody id="historyTableBody">

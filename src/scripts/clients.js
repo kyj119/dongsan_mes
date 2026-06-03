@@ -271,8 +271,28 @@ function showAddClientModal() {
     if (plSel) plSel.value = '';
     var ppSel = document.getElementById('clientModalPricePolicy');
     if (ppSel) ppSel.value = '';
+    var cycleSel = document.getElementById('clientModalCycleType');
+    if (cycleSel) {
+        cycleSel.value = 'NET_DAYS';
+        document.getElementById('clientModalTermsDays').value = '';
+        document.getElementById('clientModalClosingDay').value = '';
+        document.getElementById('clientModalMonthOffset').value = '1';
+        document.getElementById('clientModalPayDay').value = '';
+        if (window.onCycleTypeChange) onCycleTypeChange();
+    }
     document.getElementById('clientModal').classList.remove('hidden');
 }
+
+// 결제 주기 유형에 따라 입력 필드 토글 (4-3a)
+window.onCycleTypeChange = function() {
+    var typeEl = document.getElementById('clientModalCycleType');
+    if (!typeEl) return;
+    var isMonthly = typeEl.value === 'MONTHLY';
+    var net = document.getElementById('cycleNetWrap');
+    var monthly = document.getElementById('cycleMonthlyWrap');
+    if (net) net.classList.toggle('hidden', isMonthly);
+    if (monthly) monthly.classList.toggle('hidden', !isMonthly);
+};
 
 async function editClient(clientId) {
     try {
@@ -305,6 +325,15 @@ async function editClient(clientId) {
             document.getElementById('clientModalDeliveryMethod').value = c.delivery_method || 'SAME';
             document.getElementById('clientModalDeliveryAddress').value = c.delivery_address || '';
             document.getElementById('clientModalNotes').value = c.notes || '';
+            // 결제 주기 (미수금 회수예측 4-3a)
+            if (document.getElementById('clientModalCycleType')) {
+                document.getElementById('clientModalCycleType').value = c.payment_cycle_type || 'NET_DAYS';
+                document.getElementById('clientModalTermsDays').value = (c.payment_terms_days != null ? c.payment_terms_days : '');
+                document.getElementById('clientModalClosingDay').value = (c.closing_day != null ? c.closing_day : '');
+                document.getElementById('clientModalMonthOffset').value = (c.payment_month_offset != null ? c.payment_month_offset : 1);
+                document.getElementById('clientModalPayDay').value = (c.payment_day != null ? c.payment_day : '');
+                if (window.onCycleTypeChange) onCycleTypeChange();
+            }
             document.getElementById('clientModal').classList.remove('hidden');
         }
     } catch (error) {
@@ -340,9 +369,14 @@ async function saveClient() {
         price_policy_id: pricePolicyId ? parseInt(pricePolicyId) : null,
         search_keywords: document.getElementById('clientModalSearchKeywords').value || null,
         transfer_info: document.getElementById('clientModalTransferInfo').value || null,
-        delivery_method: document.getElementById('clientModalDeliveryMethod').value || 'SAME',
+        delivery_method: document.getElementById('clientModalDeliveryMethod').value || '방문수령',
         delivery_address: document.getElementById('clientModalDeliveryAddress').value.trim() || null,
-        notes: document.getElementById('clientModalNotes').value || null
+        notes: document.getElementById('clientModalNotes').value || null,
+        payment_cycle_type: document.getElementById('clientModalCycleType') ? document.getElementById('clientModalCycleType').value : 'NET_DAYS',
+        payment_terms_days: (function(){ var v = document.getElementById('clientModalTermsDays'); return v && v.value !== '' ? parseInt(v.value) : null; })(),
+        closing_day: (function(){ var v = document.getElementById('clientModalClosingDay'); return v && v.value !== '' ? parseInt(v.value) : null; })(),
+        payment_month_offset: (function(){ var v = document.getElementById('clientModalMonthOffset'); return v ? parseInt(v.value) : 1; })(),
+        payment_day: (function(){ var v = document.getElementById('clientModalPayDay'); return v && v.value !== '' ? parseInt(v.value) : null; })()
     };
 
     try {

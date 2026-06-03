@@ -299,6 +299,55 @@ poCoreRouter.get('/export/csv', async (c) => {
 // ============================================================================
 // GET /templates - 템플릿 목록
 // ============================================================================
+// ── 거래명세서 첨부 (입고 건당) — 법인카드 영수증 R2 패턴 재사용 ──
+// POST /receipts/:receiptId/statement — 거래명세서 파일 업로드
+poCoreRouter.post('/receipts/:receiptId/statement', requireRole('ADMIN', 'MANAGER'), async (c) => {
+  try {
+    const receiptId = c.req.param('receiptId')
+    const ef = entityFilter(c)
+    const own = await c.env.DB.prepare(
+      `SELECT id FROM inventory_receipts WHERE id = ?${ef.clause}`
+    ).bind(receiptId, ...ef.params).first()
+    if (!own) return c.json({ success: false, error: '입고 내역을 찾을 수 없습니다.' }, 404)
+
+    const formData = await c.req.formData()
+    const file = formData.get('file') as File | null
+    if (!file) return c.json({ success: false, error: '파일 필수' }, 400)
+
+    const ext = (file.name.split('.').pop() || 'jpg').toLowerCase()
+    const key = `po-statements/${new Date().toISOString().slice(0, 10)}/${receiptId}_${Date.now()}.${ext}`
+    await (c.env as any).R2_BUCKET.put(key, await file.arrayBuffer(), { httpMetadata: { contentType: file.type } })
+
+    await c.env.DB.prepare(
+      `UPDATE inventory_receipts SET statement_file_key = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?${ef.clause}`
+    ).bind(key, receiptId, ...ef.params).run()
+    return c.json({ success: true, data: { key }, message: '거래명세서 첨부 완료' })
+  } catch (error) {
+    console.error('statement upload error:', error)
+    return c.json({ success: false, error: '서버 오류' }, 500)
+  }
+})
+
+// GET /receipts/:receiptId/statement — 거래명세서 파일 서빙 (key는 DB에서 조회, URL 미노출)
+poCoreRouter.get('/receipts/:receiptId/statement', async (c) => {
+  try {
+    const receiptId = c.req.param('receiptId')
+    const ef = entityFilter(c)
+    const row = await c.env.DB.prepare(
+      `SELECT statement_file_key FROM inventory_receipts WHERE id = ?${ef.clause}`
+    ).bind(receiptId, ...ef.params).first<{ statement_file_key: string | null }>()
+    if (!row || !row.statement_file_key) return c.json({ success: false, error: '첨부 없음' }, 404)
+    const obj = await (c.env as any).R2_BUCKET.get(row.statement_file_key)
+    if (!obj) return c.json({ success: false, error: '파일 없음' }, 404)
+    const headers = new Headers()
+    headers.set('Content-Type', obj.httpMetadata?.contentType || 'application/octet-stream')
+    headers.set('Cache-Control', 'private, max-age=3600')
+    return new Response(obj.body, { headers })
+  } catch (error) {
+    return c.json({ success: false, error: '서버 오류' }, 500)
+  }
+})
+
 poCoreRouter.get('/receipts', async (c) => {
   try {
     const {
@@ -315,7 +364,7 @@ poCoreRouter.get('/receipts', async (c) => {
     let query = `
       SELECT
         ir.id, ir.receipt_number, ir.receipt_date, ir.inspection_status,
-        ir.total_amount, ir.notes, ir.po_id, ir.created_at,
+        ir.total_amount, ir.notes, ir.po_id, ir.created_at, ir.statement_file_key,
         po.po_number, po.expected_date,
         c.client_name as supplier_name,
         u.name as inspector_name,
@@ -531,7 +580,7 @@ poCoreRouter.get('/:id/invoice', async (c) => {
 
     const { results: items } = await c.env.DB.prepare(`
       SELECT id, po_id, item_id, item_name, category_name, quantity, received_quantity,
-             unit, unit_price, amount, vat_included, sort_order, notes,
+             unit, unit_price, price_status, amount, vat_included, sort_order, notes,
              accepted_quantity, rejected_quantity, storage_zone_id, line_status,
              received_by, received_at, created_at, updated_at
       FROM purchase_order_items WHERE po_id = ? ORDER BY sort_order ASC
@@ -932,9 +981,9 @@ poCoreRouter.post('/', requireRole('ADMIN', 'MANAGER'), async (c) => {
         INSERT INTO purchase_order_items (
           po_id, item_id, item_name, category_name,
           quantity, received_quantity, unit,
-          unit_price, amount, vat_included,
+          unit_price, price_status, amount, vat_included,
           sort_order, notes
-        ) VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?)
       `).bind(
         poId,
         item.item_id || null,
@@ -943,6 +992,7 @@ poCoreRouter.post('/', requireRole('ADMIN', 'MANAGER'), async (c) => {
         item.quantity || 1,
         unit,
         item.unit_price || 0,
+        item.price_status === 'PENDING' ? 'PENDING' : 'CONFIRMED',
         itemAmount,
         item.vat_included !== undefined ? (item.vat_included ? 1 : 0) : 1,
         i,
@@ -1120,9 +1170,9 @@ poCoreRouter.put('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
         INSERT INTO purchase_order_items (
           po_id, item_id, item_name, category_name,
           quantity, received_quantity, unit,
-          unit_price, amount, vat_included,
+          unit_price, price_status, amount, vat_included,
           sort_order, notes
-        ) VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?)
       `).bind(
         parseInt(id),
         item.item_id || null,
@@ -1131,6 +1181,7 @@ poCoreRouter.put('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
         item.quantity || 1,
         unit,
         item.unit_price || 0,
+        item.price_status === 'PENDING' ? 'PENDING' : 'CONFIRMED',
         itemAmount,
         item.vat_included !== undefined ? (item.vat_included ? 1 : 0) : 1,
         i,

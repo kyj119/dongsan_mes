@@ -76,7 +76,7 @@ export function orderFormPage(c: Context<HonoEnv>) {
                                 <input type="text" id="receptionLocation" placeholder="예: 동산인쇄" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
                             </div>
                             <div>
-                                <label class="block text-sm font-medium text-gray-700 mb-2">배송처 주소</label>
+                                <label id="deliveryInfoLabel" class="block text-sm font-medium text-gray-700 mb-2">배송처 주소</label>
                                 <div class="flex gap-2">
                                     <input type="text" id="deliveryInfo" placeholder="예: 서울시 중구 을지로 123" class="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
                                     <button type="button" onclick="openPostcodeSearch(function(r){ var el=document.getElementById('deliveryInfo'); el.value=(r.postal?'['+r.postal+'] ':'')+r.address; el.focus(); })" class="px-3 py-2 text-sm font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 rounded border border-blue-200 whitespace-nowrap">
@@ -411,7 +411,7 @@ function orderFormDistPage(c: Context<HonoEnv>) {
                                 <input type="text" id="receptionLocation" placeholder="예: 동산인쇄" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
                             </div>
                             <div>
-                                <label class="block text-sm font-medium text-gray-700 mb-2">배송처 주소</label>
+                                <label id="deliveryAddressLabel" class="block text-sm font-medium text-gray-700 mb-2">배송처 주소</label>
                                 <div class="flex gap-2">
                                     <input type="text" id="deliveryAddress" placeholder="예: 서울시 중구 을지로 123" class="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
                                     <button type="button" onclick="openPostcodeSearch(function(r){ var el=document.getElementById('deliveryAddress'); el.value=(r.postal?'['+r.postal+'] ':'')+r.address; el.focus(); })" class="px-3 py-2 text-sm font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 rounded border border-blue-200 whitespace-nowrap">

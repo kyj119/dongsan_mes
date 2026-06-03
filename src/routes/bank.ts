@@ -8,6 +8,8 @@ import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
 import { createPayment, validatePayment, preparePaymentStatements } from '../lib/payments'
 import { entityFilter, getEntityId } from '../utils/entityFilter'
+import { getEntityCorpNum } from '../utils/entitySettings'
+import { loadProvision, agingCategoryToBucket, effectiveLossRate } from '../utils/provisionMatrix'
 
 const bankRouter = new Hono<HonoEnv>()
 
@@ -320,10 +322,8 @@ bankRouter.post('/sync-barobill', requireRole('ADMIN'), async (c) => {
     const certKey = isTest ? c.env.BAROBILL_CERT_KEY : c.env.BAROBILL_CERT_KEY_PROD
     if (!certKey) return c.json({ success: false, error: 'BAROBILL_CERT_KEY 미설정' }, 400)
 
-    const corpNumRow = await c.env.DB.prepare(
-      "SELECT setting_value FROM settings WHERE setting_key = 'company_business_registration_number'"
-    ).first() as { setting_value: string } | null
-    const corpNum = (corpNumRow?.setting_value || '').replace(/-/g, '')
+    // CorpNum은 법인별 (각 법인 자체 사업자번호 회원사). CERTKEY는 단일 파트너 키.
+    const corpNum = await getEntityCorpNum(c.env.DB, getEntityId(c))
     if (!corpNum) return c.json({ success: false, error: '사업자등록번호 미설정' }, 400)
 
     const senderIdRow = await c.env.DB.prepare(
@@ -1579,10 +1579,8 @@ bankRouter.post('/auto-sync', requireRole('ADMIN'), async (c) => {
       return c.json({ success: false, error: 'BAROBILL_CERT_KEY 미설정' }, 400)
     }
 
-    const corpNumRow = await c.env.DB.prepare(
-      "SELECT setting_value FROM settings WHERE setting_key = 'company_business_registration_number'"
-    ).first() as { setting_value: string } | null
-    const corpNum = (corpNumRow?.setting_value || '').replace(/-/g, '')
+    // CorpNum은 법인별 (각 법인 자체 사업자번호 회원사). CERTKEY는 단일 파트너 키.
+    const corpNum = await getEntityCorpNum(c.env.DB, getEntityId(c))
     if (!corpNum) {
       return c.json({ success: false, error: '사업자등록번호 미설정' }, 400)
     }
@@ -1728,7 +1726,7 @@ bankRouter.get('/receivables', requireRole('ADMIN', 'MANAGER'), async (c) => {
     // clients 테이블에는 entity_id가 없으므로 entityFilter 미사용
     const { results: receivables } = await c.env.DB.prepare(`
       SELECT
-        c.id, c.client_name, c.representative, c.balance,
+        c.id, c.client_name, c.representative, c.balance, c.credit_risk_grade,
         (SELECT MAX(p.payment_date) FROM payments p WHERE p.client_id = c.id) as last_payment_date,
         (SELECT COUNT(*) FROM payments p WHERE p.client_id = c.id) as total_payments,
         (SELECT SUM(p.amount) FROM payments p WHERE p.client_id = c.id
@@ -1741,15 +1739,21 @@ bankRouter.get('/receivables', requireRole('ADMIN', 'MANAGER'), async (c) => {
       client_name: string
       representative: string | null
       balance: number
+      credit_risk_grade: string | null
       last_payment_date: string | null
       total_payments: number
       recent_90d_payments: number | null
     }>()
 
+    // provision matrix (회수율) 로드 — 4-3b
+    const provision = await loadProvision(c.env.DB)
+
     // 에이징 분석 (30/60/90일 초과)
     const today = new Date()
     const summary = {
       total_receivable: 0,
+      total_expected_collection: 0, // 위험조정 예상 회수액
+      total_expected_loss: 0,       // 예상 손실(충당)
       client_count: receivables.length,
       aging_30: 0,   // 30일 이내 입금 있음 (정상)
       aging_60: 0,   // 31~60일
@@ -1783,7 +1787,14 @@ bankRouter.get('/receivables', requireRole('ADMIN', 'MANAGER'), async (c) => {
         }
       }
 
-      return { ...r, aging_category }
+      const bucket = agingCategoryToBucket(aging_category)
+      const loss_rate = effectiveLossRate(bucket, r.credit_risk_grade, provision)
+      const expected_collection = Math.round(r.balance * (1 - loss_rate))
+      const expected_loss = r.balance - expected_collection
+      summary.total_expected_collection += expected_collection
+      summary.total_expected_loss += expected_loss
+
+      return { ...r, aging_category, loss_rate, collection_rate: 1 - loss_rate, expected_collection, expected_loss }
     })
 
     return c.json({ success: true, data: { summary, clients } })

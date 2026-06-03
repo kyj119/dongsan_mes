@@ -406,7 +406,7 @@ async function loadOrders() {
               <button onclick="viewOrder(${order.id})" class="text-blue-600 hover:text-blue-900 mx-1" title="상세"><i class="fas fa-eye"></i></button>
               <button onclick="showStatusChangeModal(${order.id}, '${order.status}')" class="text-green-600 hover:text-green-900 mx-1" title="상태변경"><i class="fas fa-sync-alt"></i></button>
               <button onclick="openInvoice(${order.id})" class="text-purple-600 hover:text-purple-900 mx-1" title="명세서"><i class="fas fa-file-invoice"></i></button>
-              <button onclick="event.stopPropagation(); sendOrderNotice(${order.id},'${escapeHtml(order.client_name || '')}','${escapeHtml(order.contact_mobile || order.client_mobile || '')}','${escapeHtml(order.contact_phone || order.client_phone || '')}','${escapeHtml(order.order_number || '')}','${escapeHtml(order.client_email || '')}','${escapeHtml(order.client_fax || '')}',${order.client_id || 0})" class="text-blue-500 hover:text-blue-700 mx-1" title="메시지 발송"><i class="fas fa-paper-plane"></i></button>
+              <button onclick="event.stopPropagation(); sendOrderNotice(${order.id},'${escapeHtml(order.client_name || '')}','${escapeHtml(order.contact_mobile || order.client_mobile || '')}','${escapeHtml(order.contact_phone || order.client_phone || '')}','${escapeHtml(order.order_number || '')}','${escapeHtml(order.client_email || '')}','${escapeHtml(order.client_fax || '')}',${order.client_id || 0},'${escapeHtml(formatOrderItemSummary(order))}')" class="text-blue-500 hover:text-blue-700 mx-1" title="메시지 발송"><i class="fas fa-paper-plane"></i></button>
             </td>
           </tr>
         `;
@@ -1430,19 +1430,30 @@ function openQuotationView(orderId) {
 
 // ─── 메시지 발송 ──────────────────────────────────────────────────────────────
 
-function sendOrderNotice(orderId, clientName, mobile, contactPhone, orderNumber, clientEmail, clientFax, clientId) {
+// 품목 요약: 메인품목[규격][내용] 외 n건 (주문 목록 데이터 기반)
+function formatOrderItemSummary(order) {
+  var s = order.main_item_name || '';
+  if (!s) return '';
+  if (order.main_item_width && order.main_item_height) s += '[' + order.main_item_width + '×' + order.main_item_height + ']';
+  if (order.main_item_content) s += '[' + order.main_item_content + ']';
+  if (order.item_count > 1) s += ' 외 ' + (order.item_count - 1) + '건';
+  return s;
+}
+
+function sendOrderNotice(orderId, clientName, mobile, contactPhone, orderNumber, clientEmail, clientFax, clientId, itemSummary) {
   if (typeof window.openSendMessage !== 'function') {
     showToast('메시지 발송 기능을 사용할 수 없습니다', 'error');
     return;
   }
   var phone = mobile || contactPhone || '';
   var today = new Date().toISOString().slice(0, 10);
+  var items = itemSummary || '';
   window.openSendMessage({
     receiver: { name: clientName, phone: phone, email: clientEmail || '', fax: clientFax || '' },
     context: { type: 'orders', id: orderId, client_id: clientId },
     defaultChannel: 'kakao',
-    defaultContent: clientName + '님, 동산기획입니다.\n\n주문이 접수되었습니다.\n\n■ 주문번호: ' + orderNumber + '\n\n진행 상황은 추후 안내드리겠습니다.\n감사합니다.\n\n문의: 042-523-1982',
-    autoTemplate: '026040001087',
-    templateVars: { '고객명': clientName, '품목': orderNumber, '날짜': today },
+    defaultContent: clientName + '님, 동산기획입니다.\n\n주문이 정상 접수되었습니다.\n\n■ 주문번호: ' + orderNumber + '\n■ 품목: ' + items + '\n■ 접수일: ' + today + '\n\n진행 상황은 추후 안내드리겠습니다.\n감사합니다.\n\n문의: 042-523-1982',
+    autoTemplate: 'order_received',
+    templateVars: { '고객명': clientName, '주문번호': orderNumber, '품목': items, '날짜': today },
   });
 }

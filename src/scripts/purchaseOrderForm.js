@@ -389,6 +389,7 @@ function createItemRowHtml(idx, data) {
   var unit = data.unit || 'EA';
   var price = data.unit_price || 0;
   var amount = data.amount || (qty * price);
+  var pricePending = (data.price_status === 'PENDING');
   var vatChecked = (data.vat_included !== undefined) ? (data.vat_included ? ' checked' : '') : ' checked';
   var notes = escapeHtml(data.notes || '');
 
@@ -411,11 +412,14 @@ function createItemRowHtml(idx, data) {
     + '<input type="text" id="item_unit_' + idx + '" value="' + escapeHtml(unit) + '" class="text-center">'
     + '</td>'
     + '<td>'
-    + '<input type="text" inputmode="numeric" data-money id="item_price_' + idx + '" value="' + (Number(price) || 0).toLocaleString('ko-KR') + '" class="text-right"'
-    + ' oninput="calcRowAmount(' + idx + ')">'
+    + '<input type="text" inputmode="numeric" data-money id="item_price_' + idx + '" value="' + (pricePending ? '' : (Number(price) || 0).toLocaleString('ko-KR')) + '" class="text-right"' + (pricePending ? ' disabled style="background:#f3f4f6"' : '')
+    + ' oninput="calcRowAmount(' + idx + ')" placeholder="' + (pricePending ? '미정' : '') + '">'
+    + '<label class="block text-center" style="font-size:10px;margin-top:2px;color:#6b7280;cursor:pointer" title="단가 미정 — 매입확정 시 입력">'
+    + '<input type="checkbox" id="item_price_pending_' + idx + '"' + (pricePending ? ' checked' : '') + ' onchange="togglePricePending(' + idx + ')" style="vertical-align:middle"> 단가미정'
+    + '</label>'
     + '</td>'
     + '<td>'
-    + '<input type="text" id="item_amount_' + idx + '" value="' + (Number(amount) || 0).toLocaleString('ko-KR') + '" readonly class="text-right">'
+    + '<input type="text" id="item_amount_' + idx + '" value="' + (pricePending ? '미정' : (Number(amount) || 0).toLocaleString('ko-KR')) + '" readonly class="text-right">'
     + '</td>'
     + '<td class="text-center" style="padding:6px 4px">'
     + '<input type="checkbox" id="item_vat_' + idx + '"' + vatChecked
@@ -564,10 +568,30 @@ function onItemBlur(idx) {
 // ══════════════════════════════════════════════════════
 function calcRowAmount(idx) {
   var qty = parseFloat(document.getElementById('item_qty_' + idx).value) || 0;
-  var price = parseMoney(document.getElementById('item_price_' + idx).value);
+  var pendingEl = document.getElementById('item_price_pending_' + idx);
+  var pending = !!(pendingEl && pendingEl.checked);
+  var price = pending ? 0 : parseMoney(document.getElementById('item_price_' + idx).value);
   var amount = qty * price;
-  document.getElementById('item_amount_' + idx).value = fmtMoneyInput(amount);
+  document.getElementById('item_amount_' + idx).value = pending ? '미정' : fmtMoneyInput(amount);
   calcTotals();
+}
+
+// 단가 미정 토글: 단가 입력 비활성 + 금액 '미정'
+function togglePricePending(idx) {
+  var pendingEl = document.getElementById('item_price_pending_' + idx);
+  var priceEl = document.getElementById('item_price_' + idx);
+  if (!pendingEl || !priceEl) return;
+  if (pendingEl.checked) {
+    priceEl.value = '';
+    priceEl.disabled = true;
+    priceEl.style.background = '#f3f4f6';
+    priceEl.placeholder = '미정';
+  } else {
+    priceEl.disabled = false;
+    priceEl.style.background = '';
+    priceEl.placeholder = '';
+  }
+  calcRowAmount(idx);
 }
 
 function calcTotals() {
@@ -624,6 +648,7 @@ async function loadPOData(id) {
           unit_price: it.unit_price || 0,
           amount: it.amount || 0,
           vat_included: it.vat_included,
+          price_status: it.price_status || 'CONFIRMED',
           notes: it.notes || ''
         });
       });
@@ -652,7 +677,9 @@ async function savePO(status) {
     var idx = row.id.replace('item-row-', '');
     var itemName = document.getElementById('item_name_' + idx).value.trim();
     var qty = parseFloat(document.getElementById('item_qty_' + idx).value) || 0;
-    var price = parseMoney(document.getElementById('item_price_' + idx).value);
+    var pendingEl = document.getElementById('item_price_pending_' + idx);
+    var pricePending = !!(pendingEl && pendingEl.checked);
+    var price = pricePending ? 0 : parseMoney(document.getElementById('item_price_' + idx).value);
     if (itemName && qty > 0) {
       items.push({
         item_id: document.getElementById('item_id_' + idx).value || null,
@@ -661,8 +688,9 @@ async function savePO(status) {
         quantity: qty,
         unit: document.getElementById('item_unit_' + idx).value || 'EA',
         unit_price: price,
-        amount: qty * price,
+        amount: pricePending ? 0 : (qty * price),
         vat_included: document.getElementById('item_vat_' + idx).checked ? 1 : 0,
+        price_status: pricePending ? 'PENDING' : 'CONFIRMED',
         notes: document.getElementById('item_notes_' + idx) ? document.getElementById('item_notes_' + idx).value.trim() || null : null
       });
     }

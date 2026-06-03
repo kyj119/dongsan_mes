@@ -813,17 +813,18 @@ function openShipmentSendModal(section) {
 }
 
 function getDefaultShipmentMessage(section, groups, selected) {
-  var date = document.getElementById('shipDate').value;
+  // 알림톡 등록 템플릿과 글자 일치: 변수는 #{} 그대로 두고 서버 resolveMsg가 치환.
+  // 배송수단별로 본문이 1줄(배송 문구)만 다름 → 카카오 템플릿 분리 등록(shipment_freight/hanjin/parcel/pickup_ready)
   if (section === 'freight') {
-    return '#{고객명}님, 동산기획입니다.\n\n주문하신 제품이 발송되었습니다.\n\n■ 품목: #{품목}\n■ 배송: 대신화물\n■ 터미널: #{터미널}\n■ 출고일: ' + date + '\n\n문의: 042-523-1982';
+    return '#{고객명}님, 동산기획입니다.\n\n주문하신 제품이 발송되었습니다.\n\n■ 품목: #{품목}\n■ 배송: 대신화물\n■ 터미널: #{터미널}\n■ 출고일: #{날짜}\n\n문의: 042-523-1982';
   } else if (section === 'hanjin') {
-    return '#{고객명}님, 동산기획입니다.\n\n주문하신 제품이 발송되었습니다.\n\n■ 품목: #{품목}\n■ 배송: 한진택배\n■ 송장번호: #{송장번호}\n■ 출고일: ' + date + '\n\n문의: 042-523-1982';
+    return '#{고객명}님, 동산기획입니다.\n\n주문하신 제품이 발송되었습니다.\n\n■ 품목: #{품목}\n■ 배송: 한진택배\n■ 송장번호: #{송장번호}\n■ 출고일: #{날짜}\n\n문의: 042-523-1982';
   } else if (section === 'daesintaekbae') {
-    return '#{고객명}님, 동산기획입니다.\n\n주문하신 제품이 발송되었습니다.\n\n■ 품목: #{품목}\n■ 배송: 대신택배\n■ 출고일: ' + date + '\n\n문의: 042-523-1982';
+    return '#{고객명}님, 동산기획입니다.\n\n주문하신 제품이 발송되었습니다.\n\n■ 품목: #{품목}\n■ 배송: 대신택배\n■ 출고일: #{날짜}\n\n문의: 042-523-1982';
   } else if (section === 'quick') {
-    return '#{고객명}님, 동산기획입니다.\n\n주문하신 제품이 출고 준비 완료되었습니다.\n방문 수령 가능합니다.\n\n■ 품목: #{품목}\n■ 출고일: ' + date + '\n\n문의: 042-523-1982';
+    return '#{고객명}님, 동산기획입니다.\n\n주문하신 제품이 출고 준비 완료되었습니다.\n방문 수령 가능합니다.\n\n■ 품목: #{품목}\n■ 출고일: #{날짜}\n\n문의: 042-523-1982';
   }
-  return '#{고객명}님, 동산기획입니다.\n\n주문하신 제품이 출고되었습니다.\n\n■ 출고일: ' + date + '\n\n문의: 042-523-1982';
+  return '#{고객명}님, 동산기획입니다.\n\n주문하신 제품이 출고되었습니다.\n\n■ 출고일: #{날짜}\n\n문의: 042-523-1982';
 }
 
 function fillShipTemplateSelect() {
@@ -832,13 +833,14 @@ function fillShipTemplateSelect() {
     return '<option value="' + escapeHtml(t.templateCode) + '">' + escapeHtml(t.templateName) + '</option>';
   }).join('');
 
-  // 섹션별 자동 선택
-  var autoCode = '';
-  if (shipSendSection === 'quick') {
-    autoCode = 'pickup_ready';
-  } else if (shipSendSection === 'freight' || shipSendSection === 'hanjin' || shipSendSection === 'daesintaekbae') {
-    autoCode = 'shipment_sent';
-  }
+  // 섹션별 자동 선택 — 배송수단별 본문이 달라 템플릿 분리 (바로빌에 동일 코드로 등록 필요)
+  var autoCodeMap = {
+    freight: 'shipment_freight',
+    hanjin: 'shipment_hanjin',
+    daesintaekbae: 'shipment_parcel',
+    quick: 'pickup_ready'
+  };
+  var autoCode = autoCodeMap[shipSendSection] || '';
 
   if (autoCode) {
     sel.value = autoCode;

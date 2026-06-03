@@ -2,6 +2,8 @@
             var itemCount = 0;
             var searchTimers = {};
             var isSubmitting = false;
+            var _clientAddress = '';          // 거래처 사업장 주소 (택배 등 기본 배송지)
+            var _clientDeliveryAddress = '';  // 거래처 배송지/터미널 (대신화물)
 
             // ===== 거래처 검색 =====
             function handleClientEnter(e) {
@@ -95,17 +97,23 @@
                 axios.get('/api/clients/' + id).then(function(res) {
                     if (res.data && res.data.success && res.data.data) {
                         var cl = res.data.data;
-                        var addrEl = document.getElementById('deliveryAddress');
-                        if (addrEl && !addrEl.value) addrEl.value = cl.delivery_address || cl.address || '';
                         var phoneEl = document.getElementById('contactPhone');
                         if (phoneEl && !phoneEl.value) phoneEl.value = cl.phone || '';
                         var mobileEl = document.getElementById('contactMobile');
                         if (mobileEl && !mobileEl.value) mobileEl.value = cl.mobile || '';
-                        // 거래처 기본 배송방법 설정
-                        if (cl.delivery_method) {
-                            var dmEl = document.getElementById('distDeliveryMethod');
-                            if (dmEl) { dmEl.value = cl.delivery_method; onDistDeliveryMethodChange(); }
+                        // 거래처 배송 정보 보관 (거래처/방식 변경 시 syncDeliveryInfoDist가 사용)
+                        _clientAddress = cl.address || '';
+                        _clientDeliveryAddress = cl.delivery_address || '';
+                        // 거래처 기본 배송방법 → 출고방법 자동선택 (한글 1:1, 구 enum 호환)
+                        var dmEl = document.getElementById('distDeliveryMethod');
+                        if (dmEl && cl.delivery_method) {
+                            var DM_MAP = { 'SAME': '대신택배', 'FREIGHT': '대신화물', 'DIRECT': '직배', 'PICKUP': '방문수령' };
+                            var mapped = DM_MAP[cl.delivery_method] || cl.delivery_method;
+                            var hasOpt = Array.prototype.some.call(dmEl.options, function(o) { return o.value === mapped; });
+                            if (hasOpt) dmEl.value = mapped;
                         }
+                        // 라벨 전환 + 배송지 자동 채움 (거래처 변경 시 새 거래처 정보 반영)
+                        onDistDeliveryMethodChange();
                     }
                 }).catch(function() {});
             }
@@ -285,6 +293,32 @@
                     if (!needsPayment) spSelect.value = '';
                     if (spLabel) spLabel.innerHTML = needsPayment ? '선불/착불 <span class="text-red-500">*</span>' : '선불/착불';
                 }
+
+                // 대신화물: 배송처 주소를 "화물 터미널"로 안내 (저장 시 거래처 기본 터미널 갱신)
+                var addrLabel = document.getElementById('deliveryAddressLabel');
+                var addrInput = document.getElementById('deliveryAddress');
+                if (addrLabel) {
+                    if (method === '대신화물') {
+                        addrLabel.textContent = '화물 터미널';
+                        if (addrInput) addrInput.placeholder = '예: 대전 대신화물 터미널';
+                    } else {
+                        addrLabel.textContent = '배송처 주소';
+                        if (addrInput) addrInput.placeholder = '예: 서울시 중구 을지로 123';
+                    }
+                }
+                // 거래처/방식 변경 시 배송지 동기화 (대신화물=터미널, 그 외=사업장 주소)
+                syncDeliveryInfoDist();
+            }
+
+            // 현재 배송방식에 맞는 거래처 배송지를 deliveryAddress에 채움 (거래처/방식 변경 대응)
+            function syncDeliveryInfoDist() {
+                if (!_clientAddress && !_clientDeliveryAddress) return; // 거래처 미선택 → 기존값 유지
+                var input = document.getElementById('deliveryAddress');
+                if (!input) return;
+                var method = document.getElementById('distDeliveryMethod').value;
+                input.value = (method === '대신화물')
+                    ? (_clientDeliveryAddress || _clientAddress || '')
+                    : (_clientAddress || _clientDeliveryAddress || '');
             }
 
             // ===== 폼 제출 =====
@@ -356,6 +390,15 @@
                     var res = await axios.post('/api/orders', orderData);
                     if (res.data.success) {
                         showToast('유통 주문이 등록되었습니다.', 'success');
+                        // 대신화물 터미널이 거래처 기본값과 다르면 거래처 기본 터미널 자동 갱신 + 알림
+                        var _dm = document.getElementById('distDeliveryMethod').value;
+                        var _term = (document.getElementById('deliveryAddress').value || '').trim();
+                        if (_dm === '대신화물' && orderData.client_id && _term && _term !== (_clientDeliveryAddress || '').trim()) {
+                            try {
+                                await axios.patch('/api/clients/' + orderData.client_id, { delivery_address: _term });
+                                showToast('거래처 기본 터미널을 갱신했습니다: ' + _term, 'info');
+                            } catch (e) { /* 거래처 갱신 실패는 주문 등록에 영향 없음 */ }
+                        }
                         if (res.data.material_warnings && res.data.material_warnings.length > 0) {
                             var wl = res.data.material_warnings.map(function(w) { return w.material_name + ': 부족 ' + w.shortfall + ' ' + w.unit; });
                             alert('자재 부족 경고 ' + res.data.material_warnings.length + '건\n\n' + wl.join('\n'));

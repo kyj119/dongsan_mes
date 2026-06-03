@@ -111,7 +111,7 @@ function renderPagination(containerId, currentPage, totalPages, loadFn) {
 async function loadReceiptHistory(page) {
   historyPage = page || 1;
   var tbody = document.getElementById('historyTableBody');
-  if (tbody) tbody.innerHTML = '<tr><td colspan="8" class="px-4 py-8 text-center text-gray-500">로딩 중...</td></tr>';
+  if (tbody) tbody.innerHTML = '<tr><td colspan="9" class="px-4 py-8 text-center text-gray-500">로딩 중...</td></tr>';
   try {
     var dateFrom = document.getElementById('historyDateFrom').value;
     var dateTo = document.getElementById('historyDateTo').value;
@@ -128,7 +128,7 @@ async function loadReceiptHistory(page) {
     var pagination = res.data.pagination || {};
     if (!tbody) return;
     if (items.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="8" class="px-4 py-8 text-center text-gray-500">입고 이력이 없습니다.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="9" class="px-4 py-8 text-center text-gray-500">입고 이력이 없습니다.</td></tr>';
       document.getElementById('historyPagination').innerHTML = '';
       return;
     }
@@ -145,14 +145,38 @@ async function loadReceiptHistory(page) {
         + '<td class="px-4 py-3 text-center text-green-700 font-medium">' + (r.total_accepted || 0) + '</td>'
         + '<td class="px-4 py-3 text-center text-red-700 font-medium">' + (r.total_rejected || 0) + '</td>'
         + '<td class="px-4 py-3 text-center">' + escapeHtml(r.inspector_name || '-') + '</td>'
+        + '<td class="px-4 py-3 text-center">' + (r.statement_file_key
+          ? '<a href="/api/purchase-orders/receipts/' + r.id + '/statement" target="_blank" class="text-blue-600 hover:underline text-xs"><i class="fas fa-file-invoice"></i> 보기</a>'
+          : '<button onclick="receivingAttachStatement(' + r.id + ')" class="text-gray-500 hover:text-blue-600 text-xs" title="거래명세서 첨부"><i class="fas fa-paperclip"></i> 첨부</button>')
+        + '</td>'
         + '</tr>';
     }).join('');
     renderPagination('historyPagination', historyPage, pagination.total_pages, 'loadReceiptHistory');
   } catch(e) {
     console.error('loadReceiptHistory error:', e);
-    if (tbody) tbody.innerHTML = '<tr><td colspan="8" class="px-4 py-8 text-center text-red-500">조회 실패: ' + escapeHtml(e.message) + '</td></tr>';
+    if (tbody) tbody.innerHTML = '<tr><td colspan="9" class="px-4 py-8 text-center text-red-500">조회 실패: ' + escapeHtml(e.message) + '</td></tr>';
   }
 }
+
+// ── 거래명세서 첨부 (입고 건당) ──
+window.receivingAttachStatement = function(receiptId) {
+  var input = document.createElement('input');
+  input.type = 'file';
+  input.accept = 'image/*,application/pdf';
+  input.onchange = async function() {
+    if (!input.files || !input.files[0]) return;
+    var fd = new FormData();
+    fd.append('file', input.files[0]);
+    try {
+      var res = await axios.post('/api/purchase-orders/receipts/' + receiptId + '/statement', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+      if (res.data.success) { showToast('거래명세서 첨부 완료', 'success'); loadReceiptHistory(historyPage); }
+      else { showToast('첨부 실패: ' + (res.data.error || ''), 'error'); }
+    } catch(e) {
+      showToast('첨부 오류: ' + (e.response && e.response.data ? e.response.data.error : e.message), 'error');
+    }
+  };
+  input.click();
+};
 
 
 // ── 검수 이력 로드 ──

@@ -53,6 +53,8 @@ export async function getEntityCompanyInfo(
 
 /**
  * 바로빌 등 외부 Provider에 필요한 corpNum을 entity에서 조회.
+ * 바로빌은 단일 파트너 CERTKEY + 회원사별 CorpNum 모델(검증 완료). 각 법인(동산기획·선명·청주)은
+ * 자체 사업자번호로 회원사 등록 완료 → entity별 자체 corpNum 사용 (#14 재확정 2026-06-03: 청주도 자체 BRN).
  * 폴백: settings의 company_business_registration_number
  */
 export async function getEntityCorpNum(

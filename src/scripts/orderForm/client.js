@@ -4,6 +4,8 @@
             var itemCount = 0;
             var searchTimers = {};
             var editMode = null; // 수정 모드일 때 주문 ID 저장
+            var _clientAddress = '';          // 거래처 사업장 주소 (택배 등 기본 배송지)
+            var _clientDeliveryAddress = '';  // 거래처 배송지/터미널 (대신화물)
             function handleClientEnter(e) {
                 if (e.key !== 'Enter') return;
                 e.preventDefault();
@@ -106,11 +108,17 @@
                         var mobileEl = document.getElementById('contactMobile');
                         if (phoneEl) phoneEl.value = cl.phone || '';
                         if (mobileEl) mobileEl.value = cl.mobile || '';
-                        // 배송처 주소: 비어있을 때만 거래처 주소로 채움
-                        var delInfoEl = document.getElementById('deliveryInfo');
-                        if (delInfoEl && !delInfoEl.value && cl.address) {
-                            delInfoEl.value = cl.address;
+                        // 거래처 배송 정보 보관 (거래처/방식 변경 시 syncDeliveryInfo가 사용)
+                        _clientAddress = cl.address || '';
+                        _clientDeliveryAddress = cl.delivery_address || '';
+                        // 거래처 기본 배송방식 → 출고방법 자동선택 (한글 1:1)
+                        var dmEl = document.getElementById('deliveryMethod');
+                        if (dmEl && cl.delivery_method) {
+                            var hasOpt = Array.prototype.some.call(dmEl.options, function(o) { return o.value === cl.delivery_method; });
+                            if (hasOpt) dmEl.value = cl.delivery_method;
                         }
+                        // 라벨 전환 + 배송지 자동 채움 (거래처 변경 시 새 거래처 정보 반영)
+                        onDeliveryMethodChange();
                     }
                 }).catch(function(err) { console.error('[orderForm] 거래처 정보 자동입력 실패', err); });
                 // 여신 체크
@@ -206,6 +214,32 @@
                     if (!needsPayment) spSelect.value = '';
                     if (spLabel) spLabel.innerHTML = needsPayment ? '선불/착불 <span class="text-red-500">*</span>' : '선불/착불';
                 }
+
+                // 대신화물: 배송처 주소를 "화물 터미널"로 안내 (저장 시 거래처 기본 터미널 갱신)
+                var addrLabel = document.getElementById('deliveryInfoLabel');
+                var addrInput = document.getElementById('deliveryInfo');
+                if (addrLabel) {
+                    if (method === '대신화물') {
+                        addrLabel.textContent = '화물 터미널';
+                        if (addrInput) addrInput.placeholder = '예: 대전 대신화물 터미널';
+                    } else {
+                        addrLabel.textContent = '배송처 주소';
+                        if (addrInput) addrInput.placeholder = '예: 서울시 중구 을지로 123';
+                    }
+                }
+                // 거래처/방식 변경 시 배송지 동기화 (대신화물=터미널, 그 외=사업장 주소)
+                syncDeliveryInfo();
+            }
+
+            // 현재 배송방식에 맞는 거래처 배송지를 deliveryInfo에 채움 (거래처/방식 변경 대응)
+            function syncDeliveryInfo() {
+                if (!_clientAddress && !_clientDeliveryAddress) return; // 거래처 미선택(편집 등) → 기존값 유지
+                var input = document.getElementById('deliveryInfo');
+                if (!input) return;
+                var method = document.getElementById('deliveryMethod').value;
+                input.value = (method === '대신화물')
+                    ? (_clientDeliveryAddress || _clientAddress || '')
+                    : (_clientAddress || _clientDeliveryAddress || '');
             }
 
             async function loadData() {

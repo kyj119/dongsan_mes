@@ -593,6 +593,15 @@
                             msg += '\n\n[자재 부족 ' + res.data.material_warnings.length + '건]\n' + wl.join('\n');
                         }
                         showToast(msg, 'warning');
+                        // 대신화물 터미널이 거래처 기본값과 다르면 거래처 기본 터미널 자동 갱신
+                        var _dm = document.getElementById('deliveryMethod').value;
+                        var _term = (document.getElementById('deliveryInfo').value || '').trim();
+                        if (_dm === '대신화물' && orderData.client_id && _term && _term !== (_clientDeliveryAddress || '').trim()) {
+                            try {
+                                await axios.patch('/api/clients/' + orderData.client_id, { delivery_address: _term });
+                                showToast('거래처 기본 터미널을 갱신했습니다: ' + _term, 'info');
+                            } catch (e) { /* 거래처 갱신 실패는 주문 등록에 영향 없음 */ }
+                        }
                         // 견적서 폼이면 견적서 관리로, 아니면 주문 관리로
                         if (window.location.pathname.includes('quotation-form')) {
                             window.location.href = '/quotations';

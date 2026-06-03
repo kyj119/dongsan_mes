@@ -182,10 +182,14 @@ export function bankPage(c: Context<HonoEnv>) {
         <!-- Tab 2: 미수금 현황 -->
         <div id="tabContentReceivables" class="tab-content">
           <!-- 미수금 KPI -->
-          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-5" id="receivablesKpi">
+          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4 mb-5" id="receivablesKpi">
             <div class="kpi-card bg-white border border-gray-200 rounded-lg">
               <div class="text-xs font-medium text-gray-500">총 미수금</div>
               <div class="text-xl font-bold text-red-600" id="rcvTotal">-</div>
+            </div>
+            <div class="kpi-card bg-white border border-gray-200 rounded-lg">
+              <div class="text-xs font-medium text-blue-700">예상 회수액 <span class="text-[10px] text-gray-400">(위험조정)</span></div>
+              <div class="text-xl font-bold text-blue-600" id="rcvExpected">-</div>
             </div>
             <div class="kpi-card bg-white border border-gray-200 rounded-lg">
               <div class="text-xs font-medium text-green-700">정상 (30일 이내)</div>
@@ -213,6 +217,8 @@ export function bankPage(c: Context<HonoEnv>) {
                     <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">거래처</th>
                     <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">대표자</th>
                     <th class="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase">미수금</th>
+                    <th class="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase">예상회수율</th>
+                    <th class="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase">예상회수액</th>
                     <th class="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase">최근 입금일</th>
                     <th class="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase">총 입금 횟수</th>
                     <th class="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase">최근 90일 입금</th>
@@ -220,7 +226,7 @@ export function bankPage(c: Context<HonoEnv>) {
                   </tr>
                 </thead>
                 <tbody id="receivablesTableBody">
-                  <tr><td colspan="7" class="text-center py-10 text-gray-400">로딩 중...</td></tr>
+                  <tr><td colspan="9" class="text-center py-10 text-gray-400">로딩 중...</td></tr>
                 </tbody>
               </table>
             </div>

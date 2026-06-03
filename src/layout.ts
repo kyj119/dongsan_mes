@@ -38,6 +38,7 @@ const MENU_ITEMS: MenuGroup[] = [
       { path: '/weekly-purchase', icon: 'fa-calendar-week', label: '주간 일괄 발주', roles: ['ADMIN', 'MANAGER'] },
       { path: '/inspections', icon: 'fa-clipboard-check', label: '검수 템플릿 (고급)', roles: ['ADMIN'], badgeId: 'nav-badge-insp' },
       { path: '/receiving', icon: 'fa-truck-loading', label: '입고 관리', roles: ['ADMIN', 'MANAGER', 'OPERATOR'], badgeId: 'nav-badge-my-receiving' },
+      { path: '/purchase-invoices', icon: 'fa-file-invoice-dollar', label: '매입확정', roles: ['ADMIN', 'MANAGER'] },
     ],
   },
   {

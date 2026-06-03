@@ -11,6 +11,8 @@ import type { BarobillConfig } from '../services/barobillClient'
 import { getBarobillBalance } from '../services/barobillClient'
 import { getCardList, getDailyCardLog, getMonthlyCardLog } from '../services/barobillCard'
 import { getBankAccountList, getDailyBankLog, getMonthlyBankLog } from '../services/barobillBank'
+import { getEntityId } from '../utils/entityFilter'
+import { getEntityCorpNum } from '../utils/entitySettings'
 
 const barobillRouter = new Hono<HonoEnv>()
 barobillRouter.use('/*', authMiddleware, requireRole('ADMIN', 'MANAGER'))
@@ -23,14 +25,13 @@ async function getConfig(c: any): Promise<BarobillConfig> {
   ).first() as { setting_value: string } | null
   const isTest = testModeRow?.setting_value !== '0'
 
+  // CERTKEY는 단일 파트너 키(전역 env) — 바로빌은 1 CERTKEY + 회원사별 CorpNum 모델(검증 완료)
   const certKey = isTest ? c.env.BAROBILL_CERT_KEY : c.env.BAROBILL_CERT_KEY_PROD
   if (!certKey) throw new Error('BAROBILL_CERT_KEY 환경변수 미설정')
 
-  const corpNumRow = await c.env.DB.prepare(
-    "SELECT setting_value FROM settings WHERE setting_key = 'company_business_registration_number'"
-  ).first() as { setting_value: string } | null
-  const corpNum = (corpNumRow?.setting_value || '').replace(/-/g, '')
-  if (!corpNum || corpNum.length !== 10) throw new Error('사업자등록번호 미설정')
+  // CorpNum은 법인별 (각 법인 자체 사업자번호로 회원사 등록 — 청주 포함)
+  const corpNum = await getEntityCorpNum(c.env.DB, getEntityId(c))
+  if (!corpNum || corpNum.length !== 10) throw new Error('사업자등록번호 미설정 (법인별 corpNum 확인)')
 
   const senderIdRow = await c.env.DB.prepare(
     "SELECT setting_value FROM settings WHERE setting_key = 'barobill_sender_id'"

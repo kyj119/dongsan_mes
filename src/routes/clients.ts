@@ -222,9 +222,10 @@ clientsRouter.get('/:id', async (c) => {
     const client = await c.env.DB.prepare(
       `SELECT id, client_code, client_name, representative, business_registration_number,
               business_type, business_item, phone, mobile, fax, email, address, postal_code,
-              transfer_info, is_active, balance, client_type, delivery_method, auto_billing,
+              transfer_info, is_active, balance, client_type, delivery_method, delivery_address, auto_billing,
               price_policy_id, notes, invoice_method, address_detail,
-              search_keywords, created_at, updated_at
+              search_keywords, payment_cycle_type, payment_terms_days, closing_day,
+              payment_month_offset, payment_day, created_at, updated_at
        FROM clients WHERE id = ?`
     ).bind(id).first()
 
@@ -259,9 +260,10 @@ clientsRouter.get('/:id/detail', async (c) => {
     const client = await c.env.DB.prepare(
       `SELECT id, client_code, client_name, representative, business_registration_number,
               business_type, business_item, phone, mobile, fax, email, address, postal_code,
-              transfer_info, is_active, balance, client_type, delivery_method, auto_billing,
+              transfer_info, is_active, balance, client_type, delivery_method, delivery_address, auto_billing,
               price_policy_id, notes, invoice_method, address_detail,
-              search_keywords, created_at, updated_at
+              search_keywords, payment_cycle_type, payment_terms_days, closing_day,
+              payment_month_offset, payment_day, created_at, updated_at
        FROM clients WHERE id = ?`
     ).bind(id).first()
 
@@ -655,7 +657,7 @@ clientsRouter.post('/import', async (c) => {
             clientData.transfer_info || null,
             clientData.is_active !== undefined ? clientData.is_active : 1,
             clientData.business_registration_number || null,
-            clientData.delivery_method || 'SAME',
+            clientData.delivery_method || '방문수령',
             clientData.delivery_address || null,
             clientData.invoice_method || clientData.invoice_type || 'PER_ORDER',
             existing.id
@@ -686,7 +688,7 @@ clientsRouter.post('/import', async (c) => {
             clientData.transfer_info || null,
             clientData.is_active !== undefined ? clientData.is_active : 1,
             clientData.business_registration_number || null,
-            clientData.delivery_method || 'SAME',
+            clientData.delivery_method || '방문수령',
             clientData.delivery_address || null,
             clientData.invoice_method || clientData.invoice_type || 'PER_ORDER'
           ).run()
@@ -774,8 +776,8 @@ clientsRouter.post('/', requireRole('ADMIN', 'MANAGER'), async (c) => {
         client_code, client_name, representative, business_type, business_item,
         phone, mobile, fax, email, address, search_keywords, transfer_info, is_active,
         business_registration_number, client_type, price_list_id, auto_billing,
-        price_policy_id
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        price_policy_id, payment_cycle_type, payment_terms_days, closing_day, payment_month_offset, payment_day
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).bind(
       clientData.client_code,
       clientData.client_name,
@@ -794,7 +796,12 @@ clientsRouter.post('/', requireRole('ADMIN', 'MANAGER'), async (c) => {
       clientType,
       priceListId,
       clientData.auto_billing ? 1 : 0,
-      pricePolicyId
+      pricePolicyId,
+      clientData.payment_cycle_type || 'NET_DAYS',
+      clientData.payment_terms_days ?? null,
+      clientData.closing_day ?? null,
+      clientData.payment_month_offset ?? 1,
+      clientData.payment_day ?? null
     ).run()
 
     return c.json({
@@ -904,8 +911,8 @@ clientsRouter.patch('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
       params.push(clientData.is_active)
     }
     if (clientData.delivery_method !== undefined) {
-      if (!['SAME', 'FREIGHT', 'DIRECT', 'PICKUP'].includes(clientData.delivery_method)) {
-        return c.json({ success: false, error: 'delivery_method must be SAME, FREIGHT, DIRECT, or PICKUP' }, 400)
+      if (!['대신택배', '대신화물', '한진택배', '직배', '용차', '퀵', '방문수령'].includes(clientData.delivery_method)) {
+        return c.json({ success: false, error: 'delivery_method must be one of: 대신택배, 대신화물, 한진택배, 직배, 용차, 퀵, 방문수령' }, 400)
       }
       updates.push('delivery_method = ?')
       params.push(clientData.delivery_method)
@@ -930,6 +937,30 @@ clientsRouter.patch('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
     if (clientData.price_policy_id !== undefined) {
       updates.push('price_policy_id = ?')
       params.push(clientData.price_policy_id || null)
+    }
+    // 결제 주기 (미수금 회수예측 4-3a)
+    if (clientData.payment_cycle_type !== undefined) {
+      if (!['NET_DAYS', 'MONTHLY', 'THRESHOLD'].includes(clientData.payment_cycle_type)) {
+        return c.json({ success: false, error: 'payment_cycle_type must be NET_DAYS, MONTHLY, or THRESHOLD' }, 400)
+      }
+      updates.push('payment_cycle_type = ?')
+      params.push(clientData.payment_cycle_type)
+    }
+    if (clientData.payment_terms_days !== undefined) {
+      updates.push('payment_terms_days = ?')
+      params.push(clientData.payment_terms_days)
+    }
+    if (clientData.closing_day !== undefined) {
+      updates.push('closing_day = ?')
+      params.push(clientData.closing_day)
+    }
+    if (clientData.payment_month_offset !== undefined) {
+      updates.push('payment_month_offset = ?')
+      params.push(clientData.payment_month_offset)
+    }
+    if (clientData.payment_day !== undefined) {
+      updates.push('payment_day = ?')
+      params.push(clientData.payment_day)
     }
 
     updates.push('updated_at = CURRENT_TIMESTAMP')
