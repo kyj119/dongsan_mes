@@ -19,7 +19,7 @@ interface ShipmentData {
   deliveryType: string       // 택배, 화물, 직접배송
   courierName?: string       // 택배사명
   trackingNumber?: string    // 운송장번호
-  items: Array<{ itemName: string; quantity: number; width?: number; height?: number }>
+  items: Array<{ itemName: string; quantity: number; width?: number; height?: number; specification?: string | null }>
   notes?: string
 }
 
@@ -27,7 +27,7 @@ function renderShipmentNotice(data: ShipmentData): TemplateResult {
   const subject = `[동산기획] 출고 알림 - ${data.orderNumber}`
 
   const itemRows = data.items.map(item => {
-    const size = item.width && item.height ? `${item.width}×${item.height}mm` : '-'
+    const size = item.specification ? item.specification : (item.width && item.height ? `${item.width}×${item.height}mm` : '-')
     return `<tr>
       <td style="padding:8px 12px;border-bottom:1px solid #eee;">${item.itemName}</td>
       <td style="padding:8px 12px;border-bottom:1px solid #eee;text-align:center;">${size}</td>

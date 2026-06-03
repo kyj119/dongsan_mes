@@ -464,7 +464,7 @@ shipmentsRouter.post('/', requireRole('ADMIN', 'MANAGER', 'DESIGNER'), async (c)
 
       if (client?.email) {
         const { results: shipItems } = await c.env.DB.prepare(`
-          SELECT oi.item_name, oi.quantity, oi.width, oi.height
+          SELECT oi.item_name, oi.quantity, oi.width, oi.height, oi.specification
           FROM shipment_items si
           LEFT JOIN cards cd ON si.card_id = cd.id
           LEFT JOIN order_items oi ON cd.order_item_id = oi.id
@@ -479,11 +479,12 @@ shipmentsRouter.post('/', requireRole('ADMIN', 'MANAGER', 'DESIGNER'), async (c)
           deliveryType: body.delivery_type || 'DELIVERY',
           courierName: body.courier_name,
           trackingNumber: body.tracking_number,
-          items: (shipItems as { item_name: string | null; quantity: number | null; width: number | null; height: number | null }[]).map(i => ({
+          items: (shipItems as { item_name: string | null; quantity: number | null; width: number | null; height: number | null; specification: string | null }[]).map(i => ({
             itemName: i.item_name || '품목',
             quantity: i.quantity || 1,
             width: i.width,
             height: i.height,
+            specification: i.specification,
           })),
           notes: body.notes,
         })

@@ -43,7 +43,7 @@ interface OrderEmailRow {
   client_id: number; status: string
 }
 interface EmailItemRow {
-  item_name: string; width: number | null; height: number | null
+  item_name: string; width: number | null; height: number | null; specification: string | null
   quantity: number; unit: string; unit_price: number; amount: number; vat_included: number
 }
 interface SettingRow { setting_key: string; setting_value: string | null }
@@ -328,7 +328,7 @@ ordersOpsRouter.post('/:id/send-email', requireRole('ADMIN', 'MANAGER'), async (
 
     // 주문 품목 조회 (부모/단독 행만)
     const { results: items } = await c.env.DB.prepare(`
-      SELECT item_name, width, height, quantity, unit, unit_price, amount, vat_included
+      SELECT item_name, width, height, specification, quantity, unit, unit_price, amount, vat_included
       FROM order_items
       WHERE order_id = ? AND parent_item_id IS NULL
       ORDER BY sort_order ASC
@@ -361,9 +361,9 @@ ordersOpsRouter.post('/:id/send-email', requireRole('ADMIN', 'MANAGER'), async (
 
     // 품목 테이블 행 생성
     const itemRows = items.map((item) => {
-      const sizeStr = item.width && item.height
-        ? `${item.width}x${item.height}cm`
-        : ''
+      const sizeStr = item.specification
+        ? item.specification
+        : (item.width && item.height ? `${item.width}x${item.height}cm` : '')
       return `
         <tr>
           <td style="padding:6px 10px;border:1px solid #ddd;">${item.item_name}</td>

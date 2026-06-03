@@ -845,7 +845,7 @@ function showOrderModal(order, cards, autoJobs) {
     const rowNum = isChild ? '' : itemCounter;
     const rowClass = isChild ? 'bg-green-50' : '';
     const namePrefix = isChild ? '└ ' : '';
-    const sizeStr = (item.width && item.height) ? `${item.width}×${item.height}cm` : '-';
+    const sizeStr = item.specification ? escapeHtml(item.specification) : ((item.width && item.height) ? `${item.width}×${item.height}cm` : '-');
     let ppText = '-';
     if (item.post_processing) {
       try {
