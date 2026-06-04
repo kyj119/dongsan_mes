@@ -108,6 +108,13 @@ export function usersPage(c: Context<HonoEnv>) {
                 <input type="tel" id="f_phone" class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
                   placeholder="선택사항">
               </div>
+              <div class="md:col-span-2">
+                <label class="flex items-center gap-2 text-sm cursor-pointer">
+                  <input type="checkbox" id="f_coordinator" class="rounded border-gray-300 text-blue-600">
+                  <span class="font-medium text-gray-700">코디네이터 (전 법인 주문 교차 열람)</span>
+                </label>
+                <p class="text-xs text-gray-400 mt-1 ml-6">접수·분배 담당. 체크 시 소속 법인과 무관하게 모든 법인 주문을 열람합니다.</p>
+              </div>
             </div>
             <div class="flex justify-end gap-3 mt-6">
               <button type="button" onclick="closeModal()"

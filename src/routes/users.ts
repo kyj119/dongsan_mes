@@ -17,7 +17,7 @@ usersRouter.get('/', requireAdmin, async (c) => {
 
     let query = `
       SELECT u.id, u.username, u.name, u.email, u.phone, u.role, u.is_active,
-        u.last_login_at, u.created_at, u.updated_at, u.default_entity_id,
+        u.last_login_at, u.created_at, u.updated_at, u.default_entity_id, u.is_coordinator,
         e.short_name as entity_name
       FROM users u
       LEFT JOIN entities e ON e.id = u.default_entity_id
@@ -89,7 +89,7 @@ usersRouter.post('/change-password', async (c) => {
 usersRouter.post('/', requireAdmin, async (c) => {
   try {
     const body = await c.req.json()
-    const { username, password, name, email, phone, role, default_entity_id } = body
+    const { username, password, name, email, phone, role, default_entity_id, is_coordinator } = body
 
     if (!username || !password || !name || !role) {
       return c.json({ success: false, error: 'username, password, name, role은 필수입니다.' }, 400)
@@ -108,9 +108,9 @@ usersRouter.post('/', requireAdmin, async (c) => {
 
     const hashedPassword = await hashPassword(password)
     const result = await c.env.DB.prepare(`
-      INSERT INTO users (username, password_hash, name, email, phone, role, is_active, default_entity_id)
-      VALUES (?, ?, ?, ?, ?, ?, 1, ?)
-    `).bind(username, hashedPassword, name, email ?? null, phone ?? null, role, default_entity_id || 1).run()
+      INSERT INTO users (username, password_hash, name, email, phone, role, is_active, default_entity_id, is_coordinator)
+      VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?)
+    `).bind(username, hashedPassword, name, email ?? null, phone ?? null, role, default_entity_id || 1, is_coordinator ? 1 : 0).run()
 
     const created = await c.env.DB.prepare(
       `SELECT id, username, name, email, phone, role, is_active, created_at, updated_at FROM users WHERE rowid = ?`
@@ -171,7 +171,7 @@ usersRouter.patch('/:id', requireAdmin, async (c) => {
     }
 
     const body = await c.req.json()
-    const { name, role, is_active, email, phone, default_entity_id } = body
+    const { name, role, is_active, email, phone, default_entity_id, is_coordinator } = body
 
     // 마지막 활성 ADMIN 강등/비활성화 차단 — 시스템 잠금 방지
     const isCurrentlyActiveAdmin = existing.role === 'ADMIN' && existing.is_active === 1
@@ -218,6 +218,10 @@ usersRouter.patch('/:id', requireAdmin, async (c) => {
     if (default_entity_id !== undefined) {
       updates.push('default_entity_id = ?')
       params.push(default_entity_id)
+    }
+    if (is_coordinator !== undefined) {
+      updates.push('is_coordinator = ?')
+      params.push(is_coordinator ? 1 : 0)
     }
 
     if (updates.length === 0) {

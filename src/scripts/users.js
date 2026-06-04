@@ -80,6 +80,7 @@
     document.getElementById('f_email').value = '';
     document.getElementById('f_phone').value = '';
     if (document.getElementById('f_entity')) document.getElementById('f_entity').value = '1';
+    if (document.getElementById('f_coordinator')) document.getElementById('f_coordinator').checked = false;
     document.getElementById('usernameField').style.display = '';
     document.getElementById('passwordField').style.display = '';
     document.getElementById('f_username').disabled = false;
@@ -97,6 +98,7 @@
     document.getElementById('f_email').value = u.email || '';
     document.getElementById('f_phone').value = u.phone || '';
     if (document.getElementById('f_entity')) document.getElementById('f_entity').value = String(u.default_entity_id || 1);
+    if (document.getElementById('f_coordinator')) document.getElementById('f_coordinator').checked = !!u.is_coordinator;
     document.getElementById('usernameField').style.display = '';
     document.getElementById('passwordField').style.display = 'none';
     document.getElementById('f_username').disabled = true;
@@ -114,12 +116,14 @@
     var isCreate = !id;
 
     var entityEl = document.getElementById('f_entity');
+    var coordEl = document.getElementById('f_coordinator');
     var payload = {
       name: document.getElementById('f_name').value.trim(),
       role: document.getElementById('f_role').value,
       email: document.getElementById('f_email').value.trim() || null,
       phone: document.getElementById('f_phone').value.trim() || null,
       default_entity_id: entityEl ? parseInt(entityEl.value) || 1 : 1,
+      is_coordinator: coordEl && coordEl.checked ? 1 : 0,
     };
 
     if (isCreate) {

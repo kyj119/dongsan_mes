@@ -40,6 +40,7 @@ export interface AuthUser {
   username: string;
   role: string;
   entityId: number;
+  is_coordinator?: number; // 1 = 멀티법인 코디네이터(전 법인 주문 교차 열람)
 }
 
 export interface User {

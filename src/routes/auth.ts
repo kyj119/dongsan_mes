@@ -18,7 +18,7 @@ auth.post('/login', rateLimitMiddleware(10, 60000), async (c) => {
 
     // 사용자 조회 (users 테이블에서)
     const user = await c.env.DB.prepare(
-      'SELECT id, username, password_hash, name, email, role, default_entity_id FROM users WHERE username = ? AND is_active = 1'
+      'SELECT id, username, password_hash, name, email, role, default_entity_id, is_coordinator FROM users WHERE username = ? AND is_active = 1'
     ).bind(username).first()
 
     if (!user) {
@@ -49,6 +49,7 @@ auth.post('/login', rateLimitMiddleware(10, 60000), async (c) => {
       username: user.username,
       role: user.role,
       entityId: defaultEntityId,
+      is_coordinator: Number((user as Record<string, unknown>).is_coordinator) ? 1 : 0,
       exp: Math.floor(Date.now() / 1000) + (60 * 60 * 8), // 8시간 유효
     }
 
@@ -140,6 +141,7 @@ auth.post('/refresh', async (c) => {
       username: payload.username,
       role: payload.role,
       entityId: payload.entityId || 1,
+      is_coordinator: (payload as Record<string, unknown>).is_coordinator ? 1 : 0,
       exp: now + (60 * 60 * 8),
     }
     const newToken = await sign(newPayload, jwtSecret, 'HS256')
@@ -204,6 +206,7 @@ auth.post('/switch-entity', authMiddleware, async (c) => {
       username: user.username,
       role: user.role,
       entityId: entity_id,
+      is_coordinator: user.is_coordinator ? 1 : 0,
       exp: Math.floor(Date.now() / 1000) + (60 * 60 * 8),
     }
     const token = await sign(newPayload, c.env.JWT_SECRET, 'HS256')
