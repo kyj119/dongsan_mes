@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 1 -->
-<!-- last_run_at: 2026-06-04T14:30:00+09:00 -->
+<!-- last_run_area: 2 -->
+<!-- last_run_at: 2026-06-04T18:00:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,12 +8,20 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | 11 (I-026~I-029,I-031,I-033~I-039 중 미검토분) |
+| 🆕 new | 13 (I-026~I-029,I-031,I-033~I-041 중 미검토분) |
 | ✅ approved | 2 (I-032/#342 — 전용 세션 대기 / I-030/#340 — 👍 확인, 급성 RED 해소·잔여만 대기) |
 | 👀 reviewed | 1 (I-025/#334 — dead orphan router 재분류, owner (가)/(나) 결정 대기) |
 | ✔️ done | 44 |
 | ❌ rejected | 2 |
 
+> **Area 2 코드 품질 (2026-06-04T18:00):**
+> - **방법**: 병렬 에이전트 2개 — entity_id 격리 / N+1·auth·type·dead code. 의존성 설치 후 baseline `tsc --noEmit` PASS + `vite build` PASS(351 modules, 4.94MB) 확인.
+> - **🐛 신규 이슈 #350 (I-040, N+1 신규 클러스터)**: #341 미포함분. **급여 모듈이 #341 스캔 범위 밖이었음** — `payroll/core.ts:387` POST /batch(직원당 5~7쿼리×N, 그중 `loadOvertimeSettings`·`getSettings`는 **루프 불변인데 매 직원 재조회** → hoist만으로 N×2 즉시 감소·시맨틱 무변) + `payroll/core.ts:530` sync-attendance(직원당 집계+UPDATE) 둘 다 전직원 월마감 핫패스. 부차: PO core 품목 루프(912 POST/1100 PUT 조건부 SELECT+INSERT), `payroll/settings.ts:244` tax-table generate(~900 순차 INSERT), printSystem:650 product_materials M×N SELECT, 저빈도 INSERT 루프 5건. taxInvoices:628 batch-create group SELECT는 재확인필요(B-009가 item INSERT만 batch화). **batch/집계 전환은 트랜잭션·에러시맨틱 변화 + 런타임 검증 불가 → 자동수정 안 함**
+> - **🐛 신규 이슈 #351 (I-041, dead code + 잠재 크래시)**: entity_id 스캔 부수발견. `hr.ts:806` POST /api/hr/payrolls가 **마이그레이션에 없는 `payrolls`(복수) 테이블 INSERT** → 호출 시 `no such table` 크래시. `hr.ts:296` GET도 호출처 0건 orphan. 실급여기능은 `/api/payroll` 모듈로 완전 이관됨. 도달성 선검증(grep "hr/payrolls" → 0건). **라우트 삭제는 자동수정 금지(#334 동일) → 이슈로 보고**. #349 item3(GET /payrolls 격리갭)을 **dead endpoint로 재분류**하는 교차참조 코멘트 #349에 추가
+> - **신규 격리갭 0건**: 모든 entity_id 보유 테이블 INSERT가 getEntityId 또는 부모FK로 격리. authMiddleware 누락 0건(printEvents POST 4개는 `agentKeyMiddleware` 의도적), dead code(utils export) 0건, `as any` 신규 위험 0건(orders/queries.ts:232·core.ts:2203은 가드 존재 오탐)
+> - **오탐 차단**: inventory_count_items/status_history류(부모FK 격리), po_templates/settings/cost_standards/finishing_methods/bom_items(전사 공유 마스터), mrp_results(run_id 간접격리), printSystem createLinkedItem(채번 순차 불가피)
+> - 자동 수정 0건(batch전환 런타임검증 불가+라우트삭제 금지), 신규 이슈 2건(#350, #351), 교차참조 코멘트 1건(#349)
+>
 > **Area 1 프로덕션 헬스 (2026-06-04T14:30):**
 > - **방법**: GitHub Actions 최근 20런 분석 + 로컬 verify. 샌드박스 egress는 Cloudflare 엣지 차단(`curl` HTTP 000) → 직접 API 호출 불가, CI 로그 기반 판정.
 > - **🟢 파이프라인 완전 복구 확인 (A-010 효과 검증)**: 직전 Area 1에서 복구한 deploy(`--commit-message=<sha>`) 이후 **Deploy #136~141 + E2E #153~160 전부 success**. 이전 RED/skipped는 #134·#135(06-02, A-010 이전) deploy failure→E2E skip 캐스케이드가 마지막. 최신 커밋 6744e36 → Deploy #141 + E2E #160 그린(테스트 단계 2분17초 실제 실행·통과). Daily D1 Backup #18 정상.
@@ -204,6 +212,8 @@
 | I-037 | cards.status CHECK(3값) ↔ 코드 어휘(PRINT_PENDING/RIP_WAITING 등) 분기 — 클린 DB 재빌드 시 카드 생성 실패 | Area 4 | #347 | 반나절 |
 | I-038 | 전역 UNIQUE가 entity 복합 UNIQUE 무력화 — 다법인 시 주문/발주/견적/지출결의서 번호 충돌로 생성 실패(잠복) | Area 4 | #348 | 1~4h |
 | I-039 | hr.ts 멀티테넌시 격리 갭 4건 — PUT entity_id mass-assignment + 단건GET/payrolls/certificate entityFilter 누락(#322 미적용 경로) | Area 5 | #349 | 2~3h |
+| I-040 | N+1 신규 클러스터 — 급여 일괄/근태동기화 핫패스(전직원×5~7쿼리, 루프불변 hoist 즉효) + 발주 품목 루프 (#341 미포함) | Area 2 | #350 | hoist 20분 / 전체 ~4h |
+| I-041 | dead code+크래시 — hr.ts orphan 급여 엔드포인트 2개(POST는 없는 payrolls 테이블 INSERT), /api/payroll로 대체됨 | Area 2 | #351 | 30분~1h |
 
 ---
 
