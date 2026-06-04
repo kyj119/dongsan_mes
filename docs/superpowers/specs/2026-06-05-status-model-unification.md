@@ -1,6 +1,6 @@
 # 카드/주문 상태 모델 단일화 (Status Model Unification)
 
-작성: 2026-06-05 | 상태: **Phase 1~4 구현 완료 + 로컬 E2E 검증 / prod 미배포**
+작성: 2026-06-05 | 상태: **Phase 1~4 prod 배포·검증 완료** (dep 3b40ebf4, 커밋 8df452b)
 
 ## 구현·검증 결과 (2026-06-05)
 - **Phase 1~4 코드 완료**, typecheck+build 통과. 마이그 `0298` 생성.
@@ -9,10 +9,10 @@
   - #1: 유통주문(카드없음) `PATCH /api/orders/bulk-ship` → `status=SHIPPED` 즉시 + `billable_after`(+4d) + history 기록.
   - #2: `status=PRINT_PENDING` 카드 → `/api/cards/board` summary `pending=1` + `kanban_column=rip_waiting` 목록 노출. (구 쿼리로는 0=불가시 재현.)
   - #3: 코드 단일화(printEvents). 실 print-event 시뮬레이션은 미수행(로직·빌드 검증).
-- **🔴 최대 미결 — prod `cards.status` CHECK 미확인(권한차단)**: 0284(PRINT_PENDING 추가) prod 적용 여부에 따라 #2 원인이 갈림.
-  - 0284 미적용 → core.ts:244 `INSERT 'PRINT_PENDING'`가 CHECK 위반 → **카드 생성 실패가 #2의 진짜 원인. Phase 1(보드) 단독으론 미해결, 마이그(0284/0296/0298) prod 적용이 실제 fix.**
-  - 0284 적용 → Phase 1으로 #2 해결.
-- **배포 플랜**: ①prod CHECK 확인 → ②마이그 0298(+미적용 0284/0296) `db:console:prod --file` 직접 적용 → ③`deploy:prod`(ASCII 커밋 우회) → ④prod 스모크 + #1·2·3 실검증(배포 전 최근 IA 주문 status 스냅샷 비교).
+- **✅ prod 배포·검증 완료 (2026-06-05)**: prod `cards.status` CHECK = PRINT_PENDING 허용 확인 → **#2는 "생성됐으나 보드 미표시"형**(prod에 PRINT_PENDING 카드 27건이 숨겨져 있었음, INSERT 실패 아님). 마이그 `0298` prod 직접적용(`execute --remote --file`, 0행 멱등=RIP_WAITING/PRINT_ERROR 카드 없음) → 커밋 `210585e` → `wrangler pages deploy`(ASCII 커밋) → 봇 `7b53f98`(A-014) 분기 머지 `8df452b`·재배포(A-014 보존)·origin push.
+  - **prod 검증**: 보드 출력대기 목록에 PRINT_PENDING 카드 노출(E1-20260603-001-01 등, 배포 전 0건 노출) / `/cards`·`/hr` 200 / #1 로컬 실라우트 E2E PASS(유통 bulk-ship→즉시 SHIPPED) / #3 baseline 주문 CONFIRMED 정상.
+  - **▶ 잔여**: 용준님 실사용 UI 확인(새주문 카드 출력대기 노출 / 유통 출고→즉시 출고완료 / IA 출력전 미점프).
+- **⚠️ 운영 교훈**: 봇(auto-improve)이 origin/main에 push → CI 자동배포 가능. 수동 `wrangler pages deploy` 전 반드시 `git fetch + merge`(안 하면 봇 수정 덮음). 이번 세션도 A-014 머지 후 재배포함.
 - **후속(저우선)**: 상태 라벨 단일소스화(clientDetail.js·orders.js·portalOrders.js 각자 statusLabels 보유).
 
 ---
