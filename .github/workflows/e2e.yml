@@ -5,9 +5,9 @@
 #   - 매일 한국시간 오전 9시 (UTC 0시)
 #   - 수동 실행 (workflow_dispatch)
 #
-# 필요한 GitHub Secrets (선택):
-#   E2E_USER   기본 admin
-#   E2E_PASS   기본 password
+# 필요한 GitHub Secrets (필수):
+#   E2E_USER   E2E 테스트 계정 — 평문 폴백 제거(#336), 미설정 시 로그인 실패
+#   E2E_PASS   E2E 테스트 비밀번호
 #
 # 결과:
 #   - 실패 시 playwright-report HTML 아티팩트 업로드
@@ -59,8 +59,8 @@ jobs:
       - name: Run Playwright tests (production)
         env:
           E2E_BASE_URL: https://webapp-9i0.pages.dev
-          E2E_USER: ${{ secrets.E2E_USER || 'admin' }}
-          E2E_PASS: ${{ secrets.E2E_PASS || 'password' }}
+          E2E_USER: ${{ secrets.E2E_USER }}
+          E2E_PASS: ${{ secrets.E2E_PASS }}
           CI: true
         run: npm run e2e
 

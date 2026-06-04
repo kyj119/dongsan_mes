@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
+import { entityFilter } from '../utils/entityFilter'  // #339: ai_analysis_requests 법인 격리
 
 const aiLayoutRouter = new Hono<HonoEnv>()
 aiLayoutRouter.use('/*', authMiddleware, requireRole('ADMIN'))
@@ -16,10 +17,11 @@ aiLayoutRouter.post('/', async (c) => {
       return c.json({ success: false, error: 'mode must be individual or combined' }, 400)
     }
 
-    // 기존 analysis_id 유효성 확인
+    // 기존 analysis_id 유효성 확인 (#339: 자기 법인 분석만)
+    const efA = entityFilter(c)
     const analysis = await c.env.DB.prepare(
-      `SELECT id, file_path, groups_json FROM ai_analysis_requests WHERE id = ?`
-    ).bind(body.analysis_id).first()
+      `SELECT id, file_path, groups_json FROM ai_analysis_requests WHERE id = ?${efA.clause}`
+    ).bind(body.analysis_id, ...efA.params).first()
     if (!analysis) {
       return c.json({ success: false, error: 'analysis_id not found' }, 404)
     }
@@ -41,14 +43,15 @@ aiLayoutRouter.post('/', async (c) => {
 aiLayoutRouter.get('/', async (c) => {
   try {
     const status = c.req.query('status') || 'pending'
+    const efA = entityFilter(c, 'a')  // #339: 조인된 분석의 법인 격리
     const { results } = await c.env.DB.prepare(
       `SELECT r.id, r.analysis_id, r.mode, r.status, r.error_message, r.created_at,
               a.file_path, a.groups_json
        FROM ai_layout_requests r
        JOIN ai_analysis_requests a ON r.analysis_id = a.id
-       WHERE r.status = ?
+       WHERE r.status = ?${efA.clause}
        ORDER BY r.created_at ASC LIMIT 5`
-    ).bind(status).all()
+    ).bind(status, ...efA.params).all()
 
     return c.json({ success: true, data: results })
   } catch (error) {

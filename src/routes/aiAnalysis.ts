@@ -97,23 +97,24 @@ aiAnalysisRouter.get('/batch-results', async (c) => {
 
     let query: string
     let binds: any[]
+    const ef = entityFilter(c)  // #339: 법인 격리 (admin 글로벌 entity 0 → 빈 절)
 
     if (idsParam) {
       const ids = idsParam.split(',').map(Number).filter(n => !isNaN(n))
       if (ids.length === 0) return c.json({ success: false, error: 'ids 파라미터 오류' }, 400)
       const placeholders = ids.map(() => '?').join(',')
       query = `SELECT id, file_path, status, groups_json, error_message, created_at, updated_at
-               FROM ai_analysis_requests WHERE id IN (${placeholders}) ORDER BY id ASC`
-      binds = ids
+               FROM ai_analysis_requests WHERE id IN (${placeholders})${ef.clause} ORDER BY id ASC`
+      binds = [...ids, ...ef.params]
     } else if (fromId && toId) {
       query = `SELECT id, file_path, status, groups_json, error_message, created_at, updated_at
-               FROM ai_analysis_requests WHERE id >= ? AND id <= ? ORDER BY id ASC LIMIT 200`
-      binds = [Number(fromId), Number(toId)]
+               FROM ai_analysis_requests WHERE id >= ? AND id <= ?${ef.clause} ORDER BY id ASC LIMIT 200`
+      binds = [Number(fromId), Number(toId), ...ef.params]
     } else {
       // 최근 50건
       query = `SELECT id, file_path, status, groups_json, error_message, created_at, updated_at
-               FROM ai_analysis_requests ORDER BY id DESC LIMIT 50`
-      binds = []
+               FROM ai_analysis_requests WHERE 1=1${ef.clause} ORDER BY id DESC LIMIT 50`
+      binds = [...ef.params]
     }
 
     type AnalysisRow = { id: number; file_path: string; status: string; groups_json: string | null; error_message: string | null; created_at: string; updated_at: string }
@@ -178,9 +179,10 @@ aiAnalysisRouter.post('/upload', async (c) => {
 aiAnalysisRouter.get('/:id/download', async (c) => {
   try {
     const id = c.req.param('id')
+    const ef = entityFilter(c)  // #339: 법인 격리
     const row = await c.env.DB.prepare(
-      'SELECT file_path FROM ai_analysis_requests WHERE id = ?'
-    ).bind(id).first<{ file_path: string }>()
+      `SELECT file_path FROM ai_analysis_requests WHERE id = ?${ef.clause}`
+    ).bind(id, ...ef.params).first<{ file_path: string }>()
     if (!row) return c.json({ success: false, error: 'Not found' }, 404)
 
     // R2 경로인 경우
@@ -274,11 +276,12 @@ aiAnalysisRouter.get('/', async (c) => {
 aiAnalysisRouter.get('/:id', async (c) => {
   try {
     const id = c.req.param('id')
+    const ef = entityFilter(c)  // #339: 법인 격리
     const row = await c.env.DB.prepare(
       `SELECT id, file_path, status, groups_json, error_message,
               retry_count, max_retries, last_error_at, created_at, updated_at
-       FROM ai_analysis_requests WHERE id = ?`
-    ).bind(id).first()
+       FROM ai_analysis_requests WHERE id = ?${ef.clause}`
+    ).bind(id, ...ef.params).first()
 
     if (!row) return c.json({ success: false, error: 'Not found' }, 404)
     return c.json({ success: true, data: row })

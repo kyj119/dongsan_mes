@@ -9,8 +9,8 @@
 #                          → "Edit Cloudflare Workers" 템플릿으로 생성
 #                          (Account: All accounts, Zone resources: 불필요)
 #   CLOUDFLARE_ACCOUNT_ID  Cloudflare 대시보드 우측 사이드바에서 복사
-#   SMOKE_USER  (선택)    스모크 테스트용 계정 — 미설정 시 'admin'
-#   SMOKE_PASS  (선택)    스모크 테스트용 비밀번호 — 미설정 시 'password'
+#   SMOKE_USER  (필수)    스모크 테스트용 계정 — 미설정 시 빈 값으로 스모크 로그인 실패
+#   SMOKE_PASS  (필수)    스모크 테스트용 비밀번호 — 평문 폴백 제거(#336)
 #
 # 실패 시 동작:
 #   - typecheck/build 실패 → 배포 차단
@@ -67,8 +67,8 @@ jobs:
       - name: Smoke test (production)
         env:
           SMOKE_URL: https://webapp-9i0.pages.dev
-          SMOKE_USER: ${{ secrets.SMOKE_USER || 'admin' }}
-          SMOKE_PASS: ${{ secrets.SMOKE_PASS || 'password' }}
+          SMOKE_USER: ${{ secrets.SMOKE_USER }}
+          SMOKE_PASS: ${{ secrets.SMOKE_PASS }}
           SMOKE_CONCURRENCY: '4'
         run: node scripts/smoke.cjs
         continue-on-error: false

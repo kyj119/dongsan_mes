@@ -325,6 +325,8 @@ const SHARED_CSS = `
     --shadow-xl: 0 20px 25px rgba(0,0,0,0.6);
   }
   html, body { background: var(--c-bg); overscroll-behavior: none; }
+  /* 스크롤바 유무에 따른 가로 layout shift 방지: 스크롤바 거터 항상 예약 (전역) */
+  html { scrollbar-gutter: stable; }
   body { font-family: var(--font-family); color: var(--c-text); -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; min-height: 100vh; }
 
   /* === Sidebar === */

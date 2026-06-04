@@ -31,7 +31,6 @@ import productionRouter from './routes/production'
 import aiAnalysisRouter from './routes/aiAnalysis'
 import aiLayoutRouter from './routes/aiLayout'
 import tasksRouter from './routes/tasks'
-import templatesRouter from './routes/templates'
 import ppRouter from './routes/postProcessing'
 import printEventsRouter from './routes/printEvents'
 import settingsRouter from './routes/settings'
@@ -273,7 +272,7 @@ app.route('/api/ai', aiInsightsRouter)
 app.route('/api/ai-analysis', aiAnalysisRouter)
 app.route('/api/ai-layout', aiLayoutRouter)
 app.route('/api/tasks', tasksRouter)
-app.route('/api/templates', templatesRouter)
+// #334: /api/templates (order_templates) = UI 미연결 orphan 라우터 제거. templates.ts + 마이그 drop(0297)
 app.route('/api/post-processing', ppRouter)
 app.route('/api/print-events', printEventsRouter)
 app.route('/api/settings', settingsRouter)
@@ -346,10 +345,8 @@ app.get('/api/db-test', authMiddleware, requireAdmin, async (c) => {
     const result = await c.env.DB.prepare('SELECT 1 as test').first()
     return c.json({ status: 'ok', db_connected: true, result })
   } catch (error) {
-    return c.json({
-      status: 'error', db_connected: false,
-      error: error instanceof Error ? error.message : 'Unknown error'
-    }, 500)
+    console.error('GET /api/db-test error:', error)  // #337: error.message 노출 제거
+    return c.json({ status: 'error', db_connected: false, error: '서버 오류가 발생했습니다.' }, 500)
   }
 })
 
@@ -366,26 +363,12 @@ app.get('/api/stats', authMiddleware, requireAdmin, async (c) => {
     `).first()
     return c.json({ success: true, data: stats })
   } catch (error) {
-    return c.json({ success: false, error: error instanceof Error ? error.message : 'Unknown error' }, 500)
+    console.error('GET /api/stats error:', error)  // #337: error.message 노출 제거
+    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
   }
 })
 
-app.get('/api/debug/cards', authMiddleware, requireAdmin, async (c) => {
-  try {
-    const { results } = await c.env.DB.prepare(`
-      SELECT status, rip_status, COUNT(*) as cnt
-      FROM cards GROUP BY status, rip_status ORDER BY status, rip_status
-    `).all()
-    const { results: orderCounts } = await c.env.DB.prepare(`
-      SELECT o.status as order_status, COUNT(c.id) as card_cnt
-      FROM cards c LEFT JOIN orders o ON c.order_id = o.id
-      GROUP BY o.status
-    `).all()
-    return c.json({ card_counts: results, order_counts: orderCounts })
-  } catch (error) {
-    return c.json({ error: error instanceof Error ? error.message : 'Unknown error' }, 500)
-  }
-})
+// #337: /api/debug/cards 디버그 잔재 제거 (프로덕션 위생)
 
 // Catch-all for unmatched API routes (must be after all route mounts)
 app.all('/api/*', (c) => c.json({ success: false, error: 'Not Found' }, 404))

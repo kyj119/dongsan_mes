@@ -4,6 +4,13 @@ import { requirePagePermission } from '../middleware/permissions'
 import type { HonoEnv } from '../types/env'
 import { encryptPII, decryptPII } from '../utils/crypto'
 import { getEntityId, entityFilter } from '../utils/entityFilter'
+
+// #338: PII(주민등록번호) 암호화 키 — JWT_SECRET 재사용하되 하드코딩 폴백('fallback-dev-key') 제거.
+// 미설정 시 명시적 실패 → 평문 박제 키로 암호화되어 git 접근자가 복호화하는 사고 차단.
+function requirePiiKey(jwtSecret: string | undefined): string {
+  if (!jwtSecret) throw new Error('PII encryption key (JWT_SECRET) is not configured')
+  return jwtSecret
+}
 import { renderEmploymentCertificateHTML } from '../templates/employmentCertificate'
 
 const hrRouter = new Hono<HonoEnv>()
@@ -144,12 +151,13 @@ hrRouter.get('/employees', async (c) => {
 hrRouter.get('/employees/:id', async (c) => {
   try {
     const id = c.req.param('id')
+    const ef = entityFilter(c, 'e')  // #349: 단건 조회 법인 격리 (타 법인 직원 ID 추측 차단)
     const { results } = await c.env.DB.prepare(`
       SELECT e.*, u.username
       FROM employees e
       LEFT JOIN users u ON e.user_id = u.id
-      WHERE e.id = ?
-    `).bind(id).all()
+      WHERE e.id = ?${ef.clause}
+    `).bind(id, ...ef.params).all()
 
     if (results.length === 0) {
       return c.json({ success: false, error: 'Employee not found' }, 404)
@@ -439,7 +447,7 @@ hrRouter.post('/employees', async (c) => {
     }
     // RRN 암호화 (평문 → AES-256-GCM)
     if (body.resident_number && !body.resident_number.startsWith('aes:')) {
-      const piiKey = c.env.JWT_SECRET || 'fallback-dev-key'
+      const piiKey = requirePiiKey(c.env.JWT_SECRET)
       body.resident_number = await encryptPII(body.resident_number, piiKey)
     }
 
@@ -552,8 +560,8 @@ hrRouter.put('/employees/:id', async (c) => {
       'pay_type',
       // 비상연락망 / 메모
       'emergency_contact', 'emergency_phone', 'notes',
-      // 소속 법인
-      'entity_id',
+      // 소속 법인 — #349: mass-assignment 차단을 위해 ALLOWED에서 제외.
+      //   body로 임의 entity_id 변경 불가. 아래 ADMIN 전체모드(0) 가드로만 변경 허용.
       // 고정연장
       'overtime_daily_hours', 'overtime_work_days',
     ]
@@ -579,7 +587,7 @@ hrRouter.put('/employees/:id', async (c) => {
     }
     // RRN 암호화 (평문 → AES-256-GCM)
     if (body.resident_number && !body.resident_number.startsWith('aes:')) {
-      const piiKey = c.env.JWT_SECRET || 'fallback-dev-key'
+      const piiKey = requirePiiKey(c.env.JWT_SECRET)
       body.resident_number = await encryptPII(body.resident_number, piiKey)
     }
 
@@ -587,9 +595,11 @@ hrRouter.put('/employees/:id', async (c) => {
     // 현재 DB 값과 비교하여 실제 변경이 있을 때만 체크
     const SALARY_FIELDS = ['pay_type', 'base_salary', 'hourly_rate', 'position_allowance',
       'vehicle_allowance', 'meal_allowance_fixed', 'special_bonus_fixed', 'other_allowance_fixed']
+    // #349: 타 법인 직원 수정 차단 — 자기 법인 직원만 게이트(ADMIN 전체모드 entity 0은 빈 절로 전체 허용)
+    const ef = entityFilter(c)
     const currentEmp = await c.env.DB.prepare(
-      `SELECT id, pay_type, base_salary, hourly_rate, position_allowance, vehicle_allowance, meal_allowance_fixed, special_bonus_fixed, other_allowance_fixed FROM employees WHERE id = ?`
-    ).bind(id).first<any>()
+      `SELECT id, pay_type, base_salary, hourly_rate, position_allowance, vehicle_allowance, meal_allowance_fixed, special_bonus_fixed, other_allowance_fixed FROM employees WHERE id = ?${ef.clause}`
+    ).bind(id, ...ef.params).first<any>()
     if (!currentEmp) {
       return c.json({ success: false, error: '직원을 찾을 수 없습니다.' }, 404)
     }
@@ -636,6 +646,13 @@ hrRouter.put('/employees/:id', async (c) => {
       if (typeof v === 'boolean') vals.push(v ? 1 : 0)
       else if (v === '') vals.push(null)
       else vals.push(v)
+    }
+
+    // #349/#322: entity_id mass-assignment 차단 — ADMIN 전체모드(0)만 body로 소속 법인 변경 허용
+    const sessionEid = getEntityId(c)
+    if (sessionEid === 0 && body.entity_id != null && existingCols.has('entity_id')) {
+      setCols.push('entity_id = ?')
+      vals.push(Number(body.entity_id) || 1)
     }
 
     if (setCols.length === 0) {
@@ -688,7 +705,7 @@ hrRouter.put('/employees/:id', async (c) => {
     // RRN 복호화 + 마스킹
     const user = c.get('user')
     if (updated?.resident_number) {
-      const piiKey = c.env.JWT_SECRET || 'fallback-dev-key'
+      const piiKey = requirePiiKey(c.env.JWT_SECRET)
       const decrypted = await decryptPII(String(updated.resident_number), piiKey)
       if (user?.role === 'ADMIN') {
         updated.resident_number = decrypted
@@ -932,12 +949,13 @@ hrRouter.get('/employees/:id/detail', async (c) => {
     const year = c.req.query('year') || new Date().getFullYear().toString()
 
     // 1) 직원 프로필 + users.username
+    const ef = entityFilter(c, 'e')  // #349: detail 조회 법인 격리 (PII 복호화 경로)
     const employee = await c.env.DB.prepare(`
       SELECT e.*, u.username
       FROM employees e
       LEFT JOIN users u ON e.user_id = u.id
-      WHERE e.id = ?
-    `).bind(id).first<any>()
+      WHERE e.id = ?${ef.clause}
+    `).bind(id, ...ef.params).first<any>()
 
     if (!employee) {
       return c.json({ success: false, error: '직원을 찾을 수 없습니다.' }, 404)
@@ -946,7 +964,7 @@ hrRouter.get('/employees/:id/detail', async (c) => {
     // RRN 복호화 + 마스킹 (ADMIN만 원본)
     const user = c.get('user')
     if (employee.resident_number) {
-      const piiKey = c.env.JWT_SECRET || 'fallback-dev-key'
+      const piiKey = requirePiiKey(c.env.JWT_SECRET)
       const decrypted = await decryptPII(String(employee.resident_number), piiKey)
       if (user?.role === 'ADMIN') {
         employee.resident_number = decrypted
@@ -1462,13 +1480,14 @@ hrRouter.get('/certificates/employment/:employeeId', async (c) => {
     const purpose = c.req.query('purpose') || '제출용'
 
     // employee + entity JOIN
+    const ef = entityFilter(c, 'e')  // #349: 증명서 발급 법인 격리
     const emp = await c.env.DB.prepare(`
       SELECT e.*, ent.name as entity_name, ent.representative, ent.address as entity_address,
              ent.business_reg_no
       FROM employees e
       LEFT JOIN entities ent ON ent.id = e.entity_id
-      WHERE e.id = ? AND e.status = 'ACTIVE'
-    `).bind(employeeId).first<any>()
+      WHERE e.id = ? AND e.status = 'ACTIVE'${ef.clause}
+    `).bind(employeeId, ...ef.params).first<any>()
 
     if (!emp) {
       return c.json({ success: false, error: '직원을 찾을 수 없습니다.' }, 404)

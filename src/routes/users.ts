@@ -140,7 +140,11 @@ usersRouter.post('/:id/reset-password', requireAdmin, async (c) => {
     }
 
     const body = await c.req.json().catch(() => ({})) as { password?: string }
-    const newPw = body.password || 'password'
+    // #338: 예측 가능한 기본값('password') 제거 — 비밀번호 필수화
+    const newPw = typeof body.password === 'string' ? body.password.trim() : ''
+    if (!newPw) {
+      return c.json({ success: false, error: '새 비밀번호를 입력하세요.' }, 400)
+    }
 
     const hashedPassword = await hashPassword(newPw)
     await c.env.DB.prepare(
