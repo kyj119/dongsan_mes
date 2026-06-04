@@ -2,7 +2,7 @@ import { Hono } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
 import { getEntityId, entityFilter } from '../utils/entityFilter'
-import { getNextSeqNumber, withSeqRetry } from '../utils/sequenceGenerator'
+import { getNextEntitySeqNumber, withSeqRetry } from '../utils/sequenceGenerator'
 
 const claims = new Hono<HonoEnv>()
 claims.use('*', authMiddleware)
@@ -75,9 +75,9 @@ claims.post('/', async (c) => {
     return c.json({ success: false, error: 'order_id, client_id, description 필수' }, 400)
   }
 
-  // 번호 생성
+  // 번호 생성 — 법인코드 E{eid} 내장 (행 entity_id와 동일 eid). 채번 경로 통일.
   const today = new Date().toISOString().slice(0, 10).replace(/-/g, '')
-  const claimNumber = await getNextSeqNumber(c.env.DB, 'customer_claims', 'claim_number', `CLM-${today}-`)
+  const claimNumber = await getNextEntitySeqNumber(c.env.DB, 'customer_claims', 'claim_number', getEntityId(c) || 1, today, { base: 'CLM-' })
 
   const result = await c.env.DB.prepare(`
     INSERT INTO customer_claims (claim_number, order_id, client_id, claim_date, claim_type, description, claimed_amount, quality_issue_id, entity_id, created_by)
