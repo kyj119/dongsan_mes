@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 5 -->
-<!-- last_run_at: 2026-06-03T23:30:00+09:00 -->
+<!-- last_run_area: 6 -->
+<!-- last_run_at: 2026-06-04T10:00:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,10 +8,22 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | 15 (I-025~I-039, 전부 open) |
+| 🆕 new | 12 (I-026~I-031,I-033~I-039 중 미검토분) |
+| ✅ approved | 1 (I-032/#342 — owner "(나)로 진행", 전용 세션 대기) |
+| 👀 reviewed | 1 (I-025/#334 — dead orphan router 재분류, owner (가)/(나) 결정 대기) |
 | ✔️ done | 44 |
 | ❌ rejected | 2 |
 
+> **Area 6 자기 진화 (2026-06-04T10:00):**
+> - **GitHub ↔ 백로그 동기화**: open auto-improve 이슈 15건(#334~#349, #339 제외) 전수 대조. GraphQL `reactions` 필드는 null 반환(MCP 한계) → 👍 판정은 `issue_read get_comments`의 코멘트별 reactions로 확인.
+> - **owner 피드백 3건 처리**:
+>   - **#334 (I-025) → 👀 reviewed로 재분류**: owner "주문 템플릿 기능 아직 없는 것 같은데 재점검" → 전수 추적 결과 **`/api/templates`(templatesRouter)는 index.tsx:275에 마운트만 되고 프론트 호출처 0건인 orphan 라우터**. `order_templates` 테이블 참조도 `templates.ts` 단 1파일. 실제 쓰이는 "템플릿"은 전부 별도 기능(purchase-orders/inspections/kakao/approvals templates, 각각 다른 테이블). → entity_id 격리 갭은 **UI 도달 불가**, 보안이 아니라 **dead code 사안**. (가)삭제(라우터+마운트 제거+drop 마이그레이션) / (나)향후 도입 시 설계 — owner 결정 대기. ⚠️ 라우트 삭제는 자동수정 금지라 직접 제거 안 함.
+>   - **#342 (I-032) → ✅ approved**: owner "(나)로 진행 — 사실상 법인별 설비가 달라 운영 겹치지 않을 듯". (나)=equipment부터 entity_id 도입 + rip.ts 전반(INSERT getEntityId + 목록/조회 entityFilter) 격리 배선. **DB 스키마 변경 + 비즈니스 로직 + 데이터 보정(~1일)** = 패트롤 자동수정 금지 범위 → 직접 구현 안 함, **전용 구현 세션 대기**. owner 단서상 실질 긴급도는 낮음(현재 전부 entity 1 수렴).
+>   - **#335 (I-027)**: 직전 Area 5 서버사이드 템플릿 XSS 교차참조 코멘트에 owner 👍 → laborContract/employmentCertificate `c.html()` 무이스케이프도 #335 범위 포함 확정. (escapeHtml 추가는 자동수정 허용 범위지만 7+스크립트 대규모라 #335 단위로 일괄 처리 권장)
+> - **🧬 탐지 규칙 신설 — 도달성(reachability) 선검증**: entity_id 격리 갭을 멀티테넌시 **보안** 이슈로 분류하기 전, 해당 라우터/엔드포인트가 프론트(`src/scripts`·`src/pages`)에서 실제 호출되는지 `grep "api/<path>"` 확인. **호출처 0건이면 orphan 라우터 = dead code 사안**(보안 영향 없음). #334가 보안 갭으로 잘못 보고됐던 근본 원인. auto-improve(Area 2·5) + entity-audit 스킬 + 하단 오탐표에 반영.
+> - **오탐 차단**: `/api/cash-flow` 이중 마운트(index.tsx:300 cashFlowRouter + 324 cashScheduleRouter) — Hono 동일 prefix 복수 라우터, 서브경로 비충돌 = 의도적, 버그 아님.
+> - 자동 수정 0건(메타 정리), 신규 이슈 0건, owner 피드백 동기화 3건, 탐지 규칙 1건 신설
+>
 > **Area 5 보안 (2026-06-03T23:30):**
 > - **방법**: 병렬 에이전트 3개 — SQLi·동적쿼리 / 인가·IDOR·멀티테넌시 / SSRF·시크릿·업로드·인프라. 발견은 전부 owner 직접 코드 검증.
 > - **🔧 자동 수정 A-012 (CAPS 시크릿 노출 차단)**: `caps.ts:728` 레거시 `GET /api/caps/settings`가 `relay_db_password`+`worker_api_key`를 **평문 반환**. 동급 `GET /sites`(443-446)는 의도적으로 두 컬럼 제외 → 정렬. 프론트(`capsSettings.js:18`)는 `/sites`만 사용, `/settings` 소비처 0건 + 비번 input `placeholder="변경 시에만"`(프리필 안 함)이라 무해. MANAGER 탈취 시 CAPS relay DB 비번/워커 API키 획득 경로 제거. verify(typecheck+build, 351 modules) 통과
@@ -158,20 +170,25 @@
 
 ---
 
+## ✅ Approved / 👀 Reviewed (owner 피드백 수신)
+
+| ID | 제목 | 영역 | Issue | 상태 | 비고 |
+|----|------|------|-------|------|------|
+| I-025 | order_templates → **dead orphan 라우터로 재분류** (보안 아님) | Area 4 | #334 | 👀 reviewed | owner 재점검 요청→추적완료. (가)삭제/(나)보류 결정 대기 |
+| I-032 | rip.ts 설비 자식 entity_id 배선 | Area 2 | #342 | ✅ approved | owner "(나)로 진행". 스키마+로직+데이터보정 ~1일, 전용 세션 대기 |
+
 ## 🆕 New (미검토)
 
 > 전부 GitHub open + 👍 미수신. 용준님 리뷰 대기.
 
 | ID | 제목 | 영역 | Issue | 공수 |
 |----|------|------|-------|------|
-| I-025 | order_templates entity_id 부재 — 주문 템플릿 전 법인 공유 | Area 4 | #334 | ~1일 |
 | I-026 | 하드코딩/약한 자격증명: hr.ts 주민번호 키 폴백 + reset-password 기본값 | Area 5 | #338 | 30분~반나절 |
-| I-027 | 저장형 XSS — escapeHtml 누락 다수 (포털 등 7개 스크립트) | Area 5 | #335 | 2~3h |
+| I-027 | 저장형 XSS — escapeHtml 누락 다수 (포털 등 7개 스크립트, 서버템플릿 포함 👍) | Area 5 | #335 | 2~3h |
 | I-028 | CI 폴백 자격증명 admin/password — 프로덕션 대상 (deploy/e2e yml) | Area 5 | #336 | 30분 |
 | I-029 | 프로덕션 debug 엔드포인트 잔존 + error.message 노출 (admin 전용 LOW) | Area 5 | #337 | 30분 |
 | I-030 | E2E 프로덕션 테스트 연속 RED — auth 픽스처 cold-start 타임아웃 + crud-order 주문생성 실패 | Area 1 | #340 | 2~3h |
 | I-031 | N+1 쿼리 batch 미전환 다수 — cashFlow 예측 핫패스(72쿼리) 우선 + import/child INSERT 루프 | Area 2 | #341 | 3h~ |
-| I-032 | rip.ts 설비 자식 entity_id 미배선 (equipment 전역공유, 격리 정책 판단 필요) | Area 2 | #342 | 1일 or 갭아님 |
 | I-033 | Dead-filter 3건 — 백엔드 기구현 필터 UI 미노출 (지출결의서 날짜/생산 출력이력/포털 주문 상태+count버그) | Area 3 | #343 | ~3h |
 | I-034 | 포털 셀프서비스 갭 — 세금계산서 다운로드+50캡 / 미수금 aging / 재주문 prompt() | Area 3 | #344 | 3~4h |
 | I-035 | 회계 CSV·검색 — taxInvoices CSV / cashSchedule CSV / 지출결의서 지급처·사유 검색 | Area 3 | #345 | ~2h |
@@ -269,6 +286,7 @@
 | CORS `!origin → '*'` (`index.tsx:213`) | Bearer 토큰 인증(쿠키 미사용) — 브라우저는 항상 Origin 전송, 실질 무해 | Area 5 (2026-06-02) |
 | rate limiter in-memory `Map` (`rateLimit.ts:6`) | isolate 분산 한계는 기존 인지 아키텍처 제약, 신규 이슈 아님 | Area 5 (2026-06-02) |
 | 인덱스/UNIQUE 누락 후보 (ground-truth 미확인) | 로컬 D1 실제 스키마로 반증 필수 — 대부분 이미 존재하거나 hot path 아님 | Area 4 (2026-06-02) |
+| orphan 라우터의 entity_id 격리 갭 (프론트 호출처 0건) | UI 도달 불가 = dead code 사안이지 보안 아님. 격리 갭 보고 전 `grep "api/<path>" src/scripts src/pages` 도달성 선검증 필수 | Area 6 (#334, 2026-06-04) |
 
 ---
 

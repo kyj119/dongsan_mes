@@ -49,6 +49,8 @@ description: 자율 점검·개선 에이전트. 6개 영역을 순환하며 실
 
 **자동 수정 가능**: entity_id 누락, 타입 불일치, dead code 제거
 
+> **🧭 도달성(reachability) 선검증 (Area 2·5 #334)**: entity_id 격리 갭을 **멀티테넌시 보안 이슈**로 분류하기 전, 해당 라우터/엔드포인트가 프론트에서 실제 호출되는지 확인 — `grep -rn "api/<path>" src/scripts src/pages`. **호출처 0건이면 orphan 라우터 = dead code 사안**(보안 영향 없음, 삭제/정리 권고로 분류). index.tsx에 `app.route()` 마운트만 돼 있다고 "사용 중"이 아님. (#334 order_templates가 보안 갭으로 오분류됐던 근본 원인 — `/api/templates`는 마운트만 되고 프론트 호출 0건)
+
 ---
 
 ### 🟢 Area 3: UX/기능 감사 (가장 중요)
@@ -149,6 +151,7 @@ description: 자율 점검·개선 에이전트. 6개 영역을 순환하며 실
 - 비활성 필드 UI 힌트 제안 (disabled 이유 표시 등 미세 UX) → 불필요 판단 (F-004 패턴)
 - dev server 전용 취약점 → 프로덕션 영향 없음
 - 의도적 IP 화이트리스트 코드 → 보안 제어 목적
+- **orphan 라우터의 entity_id 격리 갭** (프론트 호출처 0건) → 보안 아니라 dead code. 격리 갭 보고 전 도달성 선검증 필수 (#334)
 
 ---
 
