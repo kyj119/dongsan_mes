@@ -152,8 +152,9 @@ aiAnalysisRouter.post('/upload', async (c) => {
 
     const analysisId = result!.id
 
-    // R2에 소스 파일 업로드
-    const r2Key = `sources/${analysisId}/${file.name}`
+    // R2에 소스 파일 업로드 (file.name sanitize: path traversal / 헤더 인젝션 방어)
+    const safeName = (file.name || 'file').replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 200)
+    const r2Key = `sources/${analysisId}/${safeName}`
     await c.env.R2_BUCKET.put(r2Key, file.stream(), {
       httpMetadata: {
         contentType: file.type || 'application/octet-stream',

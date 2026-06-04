@@ -22,6 +22,7 @@ TRIGGERS: routes 파일 수정 후, 배포 전, "entity 감사", "entity audit",
    - ID로 단건 조회하는 경우 (WHERE id = ?)
    - INSERT/UPDATE/DELETE 문의 서브쿼리
    - 이미 entity_id가 JOIN 조건에 포함된 경우
+   - **orphan 라우터** — 격리 갭을 보안 이슈로 보고하기 전, 해당 라우터가 프론트에서 호출되는지 `grep -rn "api/<path>" src/scripts src/pages`로 도달성 확인. 호출처 0건이면 dead code(보안 무관)로 분류. index.tsx의 `app.route()` 마운트만으로 "사용 중" 단정 금지 (#334 order_templates)
 
 ## 검사 실행
 

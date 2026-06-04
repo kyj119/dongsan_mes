@@ -82,7 +82,7 @@ async function loadInventory() {
             allItems = data.items;
             totalPages = data.pagination.total_pages;
 
-            renderInventoryTable(data.items);
+            renderInventoryTable(data.items, data.pagination.total);
             updatePagination(data.pagination);
             updateAdjustSelect(data.items);
         }
@@ -95,7 +95,7 @@ async function loadInventory() {
 // loadAllPurchaseItems 제거됨 — 입고는 /receiving 페이지에서 처리
 
 // Render inventory table with stock level highlighting
-function renderInventoryTable(items) {
+function renderInventoryTable(items, total) {
     var tbody = document.getElementById('inventoryTableBody');
     tbody.innerHTML = '';
 
@@ -157,7 +157,7 @@ function renderInventoryTable(items) {
         tbody.appendChild(row);
     });
 
-    document.getElementById('totalCount').textContent = items.length;
+    document.getElementById('totalCount').textContent = (total != null ? total : items.length);
 }
 
 // Update pagination
