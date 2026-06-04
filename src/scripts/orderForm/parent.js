@@ -772,15 +772,9 @@
 
             // ── 수정 모드 진입 처리 ──────────────────────────────────────────
 
-            // 상태 텍스트/색상 (order-form 내부용)
+            // 상태 텍스트/색상 (order-form 내부용) — 라벨은 단일 소스(window.MES_STATUS)
             function getStatusText(status) {
-                const map = {
-                    'CONFIRMED': '확정',
-                    'PRINTING': '출력중',
-                    'PRINT_DONE': '출력완료', 'SHIPPED': '출고완료',
-                    'HOLD': '보류', 'CANCELLED': '취소'
-                };
-                return map[status] || status;
+                return window.MES_STATUS.orderLabel(status);
             }
             function getStatusColor(status) {
                 const map = {

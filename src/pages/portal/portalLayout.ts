@@ -2,6 +2,8 @@
 // 고객 포털 레이아웃 (사이드바 없음, 상단 네비게이션)
 // ============================================================================
 
+import { STATUS_LABELS_JS } from '../../utils/statusLabels'
+
 export function renderPortalPage(options: {
   title: string
   content: string
@@ -58,6 +60,9 @@ export function renderPortalPage(options: {
     ${options.content}
   </main>
 
+  <script>
+${STATUS_LABELS_JS}
+  </script>
   <script>
     // 포털 인증 설정
     const portalToken = localStorage.getItem('portalToken');

@@ -42,7 +42,7 @@ var STATUS_TRANSITIONS = {
   PRINT_DONE: ['SHIPPED', 'PRINTING', 'CONFIRMED'],
   SHIPPED: []
 };
-var STATUS_LABELS = { QUOTATION: '견적', CONFIRMED: '확정', PRINTING: '출력중', PRINT_DONE: '출력완료', SHIPPED: '출고완료', CANCELLED: '취소' };
+var STATUS_LABELS = window.MES_STATUS.orderLabels; // 단일 소스 (layout 주입)
 
 function updateBulkBar() {
   var bar = document.getElementById('bulkActionBar');
@@ -247,8 +247,7 @@ function getOrderUrgency(deliveryDate) {
 }
 
 function getStatusText(status) {
-  const m = { CONFIRMED:'확정', PRINTING:'출력중', PRINT_DONE:'출력완료', SHIPPED:'출고완료', COMPLETED:'배송완료', CANCELLED:'취소' };
-  return m[status] || status;
+  return window.MES_STATUS.orderLabel(status); // 단일 소스
 }
 
 function getStatusIcon(status) {
@@ -606,13 +605,12 @@ function showCardConfirmModal(orderId, targetStatus, pendingCards) {
   _cardConfirmStatus = targetStatus;
   _cardConfirmPending = pendingCards || [];
 
-  var STATUS_KR = { PRINTING: '출력중', CONFIRMED: '확정', RIP_WAITING: 'RIP대기', HOLD: '보류' };
   var html = '<div class="mb-3 text-sm text-gray-600">인쇄 미완료 카드 <b class="text-red-600">' + _cardConfirmPending.length + '건</b>이 있습니다. 각 카드를 확정(출고) 또는 취소(보류) 처리해주세요.</div>'
     + '<div class="space-y-2 max-h-60 overflow-y-auto">';
   _cardConfirmPending.forEach(function(card) {
     html += '<div class="flex items-center justify-between p-2 bg-gray-50 rounded border" id="cardRow_' + card.id + '">'
       + '<div><span class="font-mono text-sm font-semibold">' + escapeHtml(card.card_number) + '</span>'
-      + ' <span class="ml-2 px-1.5 py-0.5 text-xs rounded bg-amber-100 text-amber-700">' + (STATUS_KR[card.status] || card.status) + '</span></div>'
+      + ' <span class="ml-2 px-1.5 py-0.5 text-xs rounded bg-amber-100 text-amber-700">' + window.MES_STATUS.cardLabel(card.status) + '</span></div>'
       + '<div class="flex gap-1">'
       + '<button onclick="setCardAction(' + card.id + ',&#39;confirm&#39;)" class="px-2 py-1 text-xs rounded bg-green-100 text-green-700 hover:bg-green-200 card-action-btn" data-card="' + card.id + '" data-action="">확정</button>'
       + '<button onclick="setCardAction(' + card.id + ',&#39;cancel&#39;)" class="px-2 py-1 text-xs rounded bg-red-100 text-red-700 hover:bg-red-200 card-action-btn" data-card="' + card.id + '" data-action="">취소</button>'
@@ -748,18 +746,14 @@ function buildOrderCardsSection(order, cards) {
   var cardRows = '';
   for (var ki = 0; ki < cards.length; ki++) {
     var c = cards[ki];
-    var statusBadge = '';
-    if (c.shipped_at) {
-      statusBadge = '<span class="px-1.5 py-0.5 rounded text-xs font-semibold bg-green-50 text-green-700">출고완료</span>';
-    } else if (c.status === 'PRINT_DONE') {
-      statusBadge = '<span class="px-1.5 py-0.5 rounded text-xs font-semibold bg-green-50 text-green-700">출력완료</span>';
-    } else if (c.status === 'PRINTING') {
-      statusBadge = '<span class="px-1.5 py-0.5 rounded text-xs font-semibold bg-blue-50 text-blue-700">출력중</span>';
-    } else if (c.status === 'HOLD') {
-      statusBadge = '<span class="px-1.5 py-0.5 rounded text-xs font-semibold bg-gray-200 text-gray-600">보류</span>';
-    } else {
-      statusBadge = '<span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-semibold bg-amber-50 text-amber-700"><i class="far fa-clock text-[7px] mr-1"></i>대기</span>';
-    }
+    // 색/아이콘은 상태별 로컬, 라벨은 단일 소스(window.MES_STATUS)
+    var cStatus = c.shipped_at ? 'SHIPPED' : c.status;
+    var badgeColor = ({
+      SHIPPED: 'bg-green-50 text-green-700', PRINT_DONE: 'bg-green-50 text-green-700',
+      PRINTING: 'bg-blue-50 text-blue-700', HOLD: 'bg-gray-200 text-gray-600'
+    })[cStatus] || 'bg-amber-50 text-amber-700';
+    var pendingIcon = (cStatus === 'PRINT_PENDING' || cStatus === 'RIP_WAITING') ? '<i class="far fa-clock text-[7px] mr-1"></i>' : '';
+    var statusBadge = '<span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-semibold ' + badgeColor + '">' + pendingIcon + window.MES_STATUS.cardLabel(cStatus) + '</span>';
     cardRows += '<tr class="border-b border-gray-100">'
       + '<td class="px-3 py-1.5 text-xs font-mono text-gray-500">' + (c.card_number || '-') + '</td>'
       + '<td class="px-3 py-1.5 text-xs">' + (c.category_name || '-') + '</td>'

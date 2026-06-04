@@ -100,15 +100,9 @@
   }
 
   function getCardStatusLabel(status) {
-    var labels = {
-      'PRINTING': '인쇄중',
-      'PRINT_DONE': '출력완료',
-      'POST_PROCESSING': '후가공중',
-      'DONE': '완료',
-      'HOLD': '보류',
-      'SHIPPED': '출고됨'
-    };
-    return labels[status] || status || '';
+    // 표준 카드 상태 = 단일 소스(window.MES_STATUS), 이 대시보드 전용 보조 상태만 로컬
+    var extra = { POST_PROCESSING: '후가공중', DONE: '완료' };
+    return window.MES_STATUS.cardLabels[status] || extra[status] || status || '';
   }
 
   window.shipOrder = async function(orderId) {

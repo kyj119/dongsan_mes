@@ -518,7 +518,7 @@ async function loadRecentActivity() {
     // 최근 주문
     var ordersEl = document.getElementById('recentOrdersList');
     var orders = data.recent_orders || [];
-    var orderStatusLabels = { CONFIRMED:'확정', PRINTING:'생산중', PRINT_DONE:'출력완료', SHIPPED:'출고완료', CANCELLED:'취소', QUOTATION:'견적' };
+    var orderStatusLabels = window.MES_STATUS.orderLabels; // 단일 소스 (PRINTING=출력중)
     var orderStatusColors = { CONFIRMED:'text-blue-500', PRINTING:'text-blue-600', PRINT_DONE:'text-green-600', SHIPPED:'text-purple-600', CANCELLED:'text-red-400', QUOTATION:'text-amber-600' };
     if (ordersEl) {
       if (orders.length === 0) {

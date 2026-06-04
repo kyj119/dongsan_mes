@@ -13,7 +13,7 @@ function formatHours(hours) {
   return Number(hours).toFixed(1) + '시간';
 }
 
-var statusLabels = { PRINT_PENDING: '대기', PRINTING: '인쇄중', PRINT_DONE: '인쇄완료', HOLD: '보류' };
+var statusLabels = window.MES_STATUS.cardLabels; // 단일 소스
 var statusColors = { PRINT_PENDING: 'text-amber-600', PRINTING: 'text-blue-600', PRINT_DONE: 'text-green-600', HOLD: 'text-red-600' };
 
 // ── 바 차트 헬퍼 ──

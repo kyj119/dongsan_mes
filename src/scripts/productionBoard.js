@@ -59,13 +59,15 @@ async function refreshSummary() {
 
 // ── 상태 탭 렌더 ──────────────────────────────────────────────────────────────
 function renderStatusTabs(summary) {
+  // 라벨 단일 소스(window.MES_STATUS). '전체'만 상태 무관.
+  var S = window.MES_STATUS;
   var tabs = [
-    { key: '',              label: '전체',     count: summary.total },
-    { key: 'PRINT_PENDING', label: '출력 전',  count: summary.pending },
-    { key: 'PRINTING',      label: '출력중',   count: summary.printing },
-    { key: 'PRINT_DONE',    label: '출력완료', count: summary.done },
-    { key: 'SHIPPED',       label: '출고완료', count: summary.shipped },
-    { key: 'HOLD',          label: 'HOLD',     count: summary.hold }
+    { key: '',              label: '전체',                    count: summary.total },
+    { key: 'PRINT_PENDING', label: S.cardLabel('PRINT_PENDING'), count: summary.pending },
+    { key: 'PRINTING',      label: S.cardLabel('PRINTING'),     count: summary.printing },
+    { key: 'PRINT_DONE',    label: S.cardLabel('PRINT_DONE'),   count: summary.done },
+    { key: 'SHIPPED',       label: S.cardLabel('SHIPPED'),      count: summary.shipped },
+    { key: 'HOLD',          label: S.cardLabel('HOLD'),         count: summary.hold }
   ];
 
   var html = '';
@@ -455,14 +457,11 @@ function calcDday(dateStr) {
 }
 
 function getStatusBadge(status, shippedAt) {
-  if (shippedAt) return '<span class="s-badge s-shipped"><i class="fas fa-truck" style="font-size:9px"></i> 출고완료</span>';
-  var map = {
-    'PRINTING': '<span class="s-badge s-printing">출력중</span>',
-    'PRINT_DONE': '<span class="s-badge s-done">출력완료</span>',
-    'HOLD': '<span class="s-badge s-hold">HOLD</span>',
-    'PRINT_PENDING': '<span class="s-badge s-pending">대기</span>'
-  };
-  return map[status] || '<span class="s-badge s-pending">' + (status || '-') + '</span>';
+  // 라벨 단일 소스(window.MES_STATUS), CSS 클래스만 상태별 로컬
+  var S = window.MES_STATUS;
+  if (shippedAt) return '<span class="s-badge s-shipped"><i class="fas fa-truck" style="font-size:9px"></i> ' + S.cardLabel('SHIPPED') + '</span>';
+  var cls = { PRINTING: 's-printing', PRINT_DONE: 's-done', HOLD: 's-hold', PRINT_PENDING: 's-pending' };
+  return '<span class="s-badge ' + (cls[status] || 's-pending') + '">' + S.cardLabel(status || '-') + '</span>';
 }
 
 function getPPBadge(ppStatus, ppNames) {

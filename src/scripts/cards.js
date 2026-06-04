@@ -62,13 +62,8 @@ function restoreKanbanFilters() {
     } catch(e) {}
 }
 
-// ===== Status Labels =====
-var statusLabels = {
-    'PRINT_PENDING': '출력대기',
-    'PRINTING': '출력중',
-    'PRINT_DONE': '출력완료',
-    'HOLD': '보류'
-};
+// ===== Status Labels — 단일 소스 (window.MES_STATUS, layout 주입). SHIPPED/폐기값 포함 =====
+var statusLabels = window.MES_STATUS.cardLabels;
 
 // ===== Urgency =====
 function getUrgency(deliveryDate) {

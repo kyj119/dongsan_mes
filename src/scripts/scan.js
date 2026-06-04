@@ -172,19 +172,17 @@ function getDetailLabels(type) {
 function formatDetailValue(key, val, type) {
   // 상태 뱃지
   if (key === 'status') {
-    var statusMap = {
-      'PRINT_PENDING': '<span class="badge-status badge-warning">출력 대기</span>',
-      'PRINTING': '<span class="badge-status badge-info">출력 중</span>',
-      'PRINT_DONE': '<span class="badge-status badge-success">출력 완료</span>',
-      'PP_DONE': '<span class="badge-status badge-success">후가공 완료</span>',
-      'CONFIRMED': '<span class="badge-status badge-info">확정</span>',
-      'IN_PRODUCTION': '<span class="badge-status badge-warning">생산중</span>',
-      'SHIPPED': '<span class="badge-status badge-success">출고완료</span>',
-      'ACTIVE': '<span class="badge-status badge-success">가동중</span>',
-      'IDLE': '<span class="badge-status badge-secondary">대기</span>',
-      'MAINTENANCE': '<span class="badge-status badge-warning">정비중</span>',
+    // 카드/주문 라벨 = 단일 소스(window.MES_STATUS). CSS 클래스 + 장비/보조 상태만 로컬.
+    var cls = {
+      PRINT_PENDING: 'badge-warning', PRINTING: 'badge-info', PRINT_DONE: 'badge-success', SHIPPED: 'badge-success',
+      PP_DONE: 'badge-success', CONFIRMED: 'badge-info', IN_PRODUCTION: 'badge-warning',
+      ACTIVE: 'badge-success', IDLE: 'badge-secondary', MAINTENANCE: 'badge-warning'
     };
-    return statusMap[val] || '<span class="badge-status badge-secondary">' + escHtml(val) + '</span>';
+    var extra = { PP_DONE: '후가공 완료', IN_PRODUCTION: '생산중', ACTIVE: '가동중', IDLE: '대기', MAINTENANCE: '정비중' };
+    var S = window.MES_STATUS;
+    var label = S.cardLabels[val] || S.orderLabels[val] || extra[val];
+    if (!label) return '<span class="badge-status badge-secondary">' + escHtml(val) + '</span>';
+    return '<span class="badge-status ' + (cls[val] || 'badge-secondary') + '">' + label + '</span>';
   }
   // 금액
   if (key === 'total_amount' || key === 'base_price' || key === 'sales_price') {

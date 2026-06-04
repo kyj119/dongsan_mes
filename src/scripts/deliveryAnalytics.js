@@ -131,12 +131,7 @@ function renderDwellChart() {
 
   // 상태별 정렬 순서
   const statusOrder = ['CONFIRMED', 'PRINTING', 'PRINT_DONE', 'SHIPPED'];
-  const statusLabel = {
-    'CONFIRMED': '확정',
-    'PRINTING': '인쇄 중',
-    'PRINT_DONE': '인쇄완료',
-    'SHIPPED': '출고'
-  };
+  const statusLabel = window.MES_STATUS.orderLabels; // 단일 소스
   const statusColor = {
     'CONFIRMED': '#3b82f6',
     'PRINTING': '#f59e0b',

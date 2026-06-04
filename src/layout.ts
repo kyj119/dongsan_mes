@@ -1,6 +1,7 @@
 // src/layout.ts — 공유 레이아웃 (사이드바 + 상단 바)
 import type { Context } from 'hono'
 import type { HonoEnv } from './types/env'
+import { STATUS_LABELS_JS } from './utils/statusLabels'
 
 interface MenuItem {
   path: string
@@ -3174,6 +3175,7 @@ export function appLayout(opts: AppLayoutOptions): string {
       </div>
     </div>
     <script>
+${STATUS_LABELS_JS}
 ${SHARED_AUTH_JS}
     </script>
     <script>

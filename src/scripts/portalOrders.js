@@ -8,15 +8,20 @@
   if (el && window.dsSkeleton) el.innerHTML = dsSkeleton.table(5, 6);
 })();
 
-var STATUS_MAP = {
-  'QUOTATION': { label: '견적', color: 'gray', step: 0 },
-  'CONFIRMED': { label: '확정', color: 'blue', step: 1 },
-  'PRINTING': { label: '생산 중', color: 'amber', step: 2 },
-  'PRINT_DONE': { label: '출력 완료', color: 'green', step: 3 },
-  'SHIPPED': { label: '출고', color: 'green', step: 4 },
-  'HOLD': { label: '보류', color: 'red', step: -1 },
-  'CANCELLED': { label: '취소', color: 'red', step: -1 }
+// 라벨은 단일 소스(window.MES_STATUS), color/step만 포털 로컬
+var STATUS_META = {
+  'QUOTATION': { color: 'gray', step: 0 },
+  'CONFIRMED': { color: 'blue', step: 1 },
+  'PRINTING': { color: 'amber', step: 2 },
+  'PRINT_DONE': { color: 'green', step: 3 },
+  'SHIPPED': { color: 'green', step: 4 },
+  'HOLD': { color: 'red', step: -1 },
+  'CANCELLED': { color: 'red', step: -1 }
 };
+var STATUS_MAP = {};
+Object.keys(STATUS_META).forEach(function(k) {
+  STATUS_MAP[k] = { label: window.MES_STATUS.orderLabel(k), color: STATUS_META[k].color, step: STATUS_META[k].step };
+});
 
 // 상태별 뱃지 클래스
 var STATUS_BADGE_CLS = {
@@ -66,10 +71,10 @@ function renderTrackingButton(tracking_number, courier_name) {
 
 function renderStepper(status) {
   var steps = [
-    { key: 'CONFIRMED', icon: 'fa-check-circle', label: '확정' },
-    { key: 'PRINTING', icon: 'fa-print', label: '생산' },
-    { key: 'PRINT_DONE', icon: 'fa-check-double', label: '출력완료' },
-    { key: 'SHIPPED', icon: 'fa-shipping-fast', label: '출고' }
+    { key: 'CONFIRMED', icon: 'fa-check-circle' },
+    { key: 'PRINTING', icon: 'fa-print' },
+    { key: 'PRINT_DONE', icon: 'fa-check-double' },
+    { key: 'SHIPPED', icon: 'fa-shipping-fast' }
   ];
   var info = STATUS_MAP[status] || { step: 0 };
   var currentStep = info.step;
@@ -87,7 +92,7 @@ function renderStepper(status) {
       + (isActive ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-400')
       + (isCurrent ? ' ring-2 ring-offset-1 ring-blue-300' : '') + '">';
     html += '<i class="fas ' + step.icon + '"></i></div>';
-    html += '<span class="text-xs mt-1 text-center ' + (isActive ? 'text-blue-600 font-medium' : 'text-gray-400') + '">' + step.label + '</span>';
+    html += '<span class="text-xs mt-1 text-center ' + (isActive ? 'text-blue-600 font-medium' : 'text-gray-400') + '">' + window.MES_STATUS.orderLabel(step.key) + '</span>';
     html += '</div>';
 
     // 연결선 (마지막 제외)

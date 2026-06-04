@@ -1,10 +1,6 @@
 var cdData = null;
 
-var statusLabels = {
-  'QUOTATION': '견적', 'CONFIRMED': '확정',
-  'PRINTING': '출력중', 'PRINT_DONE': '출력완료', 'SHIPPED': '출고',
-  'HOLD': '보류', 'CANCELLED': '취소'
-};
+var statusLabels = window.MES_STATUS.orderLabels; // 단일 소스 (layout 주입)
 var statusColors = {
   'QUOTATION': 'bg-gray-100 text-gray-600',
   'CONFIRMED': 'bg-blue-50 text-blue-700', 'PRINTING': 'bg-amber-50 text-amber-700',
