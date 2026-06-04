@@ -6,7 +6,7 @@ import { Hono } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
 import { getEntityId, entityFilter } from '../utils/entityFilter'
-import { getNextSeqNumber, withSeqRetry } from '../utils/sequenceGenerator'
+import { getNextEntitySeqNumber, withSeqRetry } from '../utils/sequenceGenerator'
 import { getConsumptionForecast } from '../utils/consumptionForecast'
 import { buildWeeklyPurchaseSMS } from '../utils/inventoryAlert'
 import { getKakaoProvider, getKakaoSettings } from './kakao'
@@ -239,8 +239,8 @@ weeklyPurchaseRouter.post('/create-prs', async (c) => {
     const today = new Date().toISOString().split('T')[0].replace(/-/g, '')
 
     for (const [, group] of groups) {
-      // PR 번호 생성
-      const requestNumber = await getNextSeqNumber(c.env.DB, 'purchase_requests', 'request_number', `PR-${today}-`)
+      // PR 번호 생성 — 법인코드 E{eid} 내장 (행 entity_id와 동일 eid). 채번 경로 통일.
+      const requestNumber = await getNextEntitySeqNumber(c.env.DB, 'purchase_requests', 'request_number', entityId, today, { base: 'PR-' })
 
       // 긴급도: 그룹 내 가장 높은 긴급도 사용
       const urgencyPriority: Record<string, number> = { URGENT: 0, HIGH: 1, NORMAL: 2, LOW: 3 }

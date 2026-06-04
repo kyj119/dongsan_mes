@@ -5,7 +5,7 @@
 import { Hono } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
-import { getNextSeqNumber, withSeqRetry } from '../utils/sequenceGenerator'
+import { getNextEntitySeqNumber, withSeqRetry } from '../utils/sequenceGenerator'
 import { entityFilter, getEntityId } from '../utils/entityFilter'
 import { runMrpCalculation } from '../utils/mrpCalculator'
 
@@ -259,9 +259,9 @@ bom.post('/mrp/runs/:id/create-pr', async (c) => {
       return c.json({ success: false, error: '부족 자재가 없습니다.' }, 400)
     }
 
-    // PR 번호 생성
+    // PR 번호 생성 — 법인코드 E{eid} 내장 (행 entity_id와 동일 eid). 채번 경로 통일.
     const today = new Date().toISOString().slice(0, 10).replace(/-/g, '')
-    const requestNumber = await getNextSeqNumber(c.env.DB, 'purchase_requests', 'request_number', `PR-${today}-`)
+    const requestNumber = await getNextEntitySeqNumber(c.env.DB, 'purchase_requests', 'request_number', getEntityId(c) || 1, today, { base: 'PR-' })
 
     // PR 생성
     const prResult = await c.env.DB.prepare(`
