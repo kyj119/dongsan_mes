@@ -1,6 +1,6 @@
 # 2026-06-04 브레인스토밍 — 주문접수 법인 협업 (유연한 그릇 + 사람 판단)
 
-> 상태: **설계 확정(방향 전환 후)**, 구현 착수 전.
+> 상태: **Phase 1~3 구현·런타임검증·prod 배포 완료** (2026-06-04, 커밋 `402bb1a`·`034cbf0`, 마이그 `0292` prod 적용). **재고차감 entity 정책 결정·구현 완료(담당법인 우선 COALESCE, 미배포)**. 후속(미착수): 코디네이터 교차 가시성 권한 · 유통폼/견적 담당 셀렉트. 구현 상태 상세 → `.claude/PROJECT_STATUS.md`, 메모리 `design-order-intake-split`.
 > 출처: 2026-06-04 세션. 법인 2분리(동산/선명) 혼합주문 접수 구조.
 > ⚠️ **이 문서는 동일 세션 초반의 "강제 분리(수주→법인별 주문서 2단)" 설계를 폐기하고 전면 교체한 버전.** 폐기 이유는 §1. 구버전 잔재(receipts 테이블·통합배송 정교화·권한 EXISTS)는 §11 참조.
 
@@ -130,7 +130,7 @@ ALTER TABLE order_items ADD COLUMN assignment_status TEXT;          -- NULL | PE
 |--------|------|------|------|
 | 🔴 높음 | **카드 작업 큐가 `orders.entity_id`로 필터** | `cards/queries.ts` 9곳 `entityFilter(c,'o')`(104·141·184·292·444·483·579·739·744). 반면 `dashboard.ts`·`equipmentQueue.ts`·`cards/lifecycle.ts:1011`·`search.ts`는 **이미 `requesting_entity_id` 기준** | ① `generateCardsForOrder`가 `requesting_entity_id`에 **담당 법인**(`assigned_entity_id`) 주입(현재 로그인법인, `core.ts:224`) ② queries.ts 9곳을 `requesting_entity_id` 기준 전환 |
 | 🔴 높음 | **`orders.entity_id`=로그인 법인**(청구법인 불일치 가능) | `orders/core.ts:963` `entity_id=getEntityId(c)`. 받은 법인 ≠ 최종 청구 법인일 수 있음(동산 코디가 받았으나 간판 완제품 청구는 선명) | 주문 생성 UI에 **청구 법인 명시 선택** 추가(현재 자동). Phase 1 포함 |
-| 🟠 중간 | **재고차감 entity 기준** | `inventory.ts` 차감 시 `entity_id=getEntityId(c)` | 타법인 담당 품목 재고를 **담당 법인 재고**에서 깔지 청구 법인에서 깔지 정책 결정(§10) |
+| ✅ 완료 | **재고차감 entity 기준** | `stockShip.ts`·`autoDeductInventory.ts` 둘 다 `orders.entity_id`였음 | **담당법인 우선 `COALESCE(assigned_entity_id, orders.entity_id)`로 전환**(출고=라인별 assigned, 생산=`cards.requesting_entity_id`). row 부재 시 `INSERT OR IGNORE`(음수 허용). 감사로그 entity_id 보정. 미배포(§10) |
 | 🟠 중간 | **작업 큐 card 단위(품목 담당 미표시)** | `cards/queries.ts` order_items 미조인 | 큐에 `LEFT JOIN order_items` + `assigned_entity_id` SELECT(Phase 2) |
 
 > **핵심 발견**: spec의 "타법인 담당 공정을 `requesting_entity_id`로 그 법인 큐에 표시" 가정은 **인프라가 이미 광범위 존재**(dashboard·장비큐·lifecycle·search). 다만 **주 작업 큐 `cards/queries.ts`만 `orders.entity_id` 기준**이라, 그 9곳 전환 + `generateCardsForOrder` 주입이 핵심 선결 작업. **현재 `requesting_entity_id == orders.entity_id`(로그인법인 동일 주입)라 불일치가 표면화 안 됐을 뿐.** → spec 방향은 기술적으로 타당, 단 위 2개(🔴)가 Phase 1~2의 핵심.
@@ -139,7 +139,7 @@ ALTER TABLE order_items ADD COLUMN assignment_status TEXT;          -- NULL | PE
 
 ## 10. 미결 / 후속
 
-- **재고차감 entity 기준**(점검 #3): 타법인 담당 품목의 재고를 **담당 법인 재고**에서 차감할지 청구 법인에서 할지. 현재 `inventory.ts`는 로그인 법인 기준 → 담당 법인으로 바꿀지 정책 결정.
+- ~~**재고차감 entity 기준**(점검 #3)~~ **✅ 결정·구현(2026-06-04)**: **담당 법인 우선** — 재고는 물리적 실체이므로 자재를 실제 보유·소비한 법인(담당) 재고에서 차감해야 매출(청구법인)/재고(담당법인)/내부정산이 3분리 정합. `COALESCE(assigned_entity_id, orders.entity_id)` 전환(출고 `stockShip.ts` 라인별, 생산 `autoDeductInventory.ts`는 `cards.requesting_entity_id` 기준). 담당법인 재고 row 부재 시 `INSERT OR IGNORE`로 0 생성 후 음수 차감. `inventory_auto_deductions.entity_id` 보정. 일반 주문(assigned NULL)은 청구법인 fallback=회귀 0. typecheck/build/로컬 가드 검증 통과, **미배포**.
 - **독립 제품 청구 분리**: 한 주문에서 고객 매출을 두 법인으로 나눠야 하는 빈도. 높으면 보조 설계 추가.
 - **내부 정산 단가 기준**: 타법인 공정값을 어떻게 산정(단가표? 협의가?).
 - **담당 자동추천 정확도**: 카드그룹 기반 추천의 적중률 — 운영하며 보정.

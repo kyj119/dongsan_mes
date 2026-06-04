@@ -64,7 +64,7 @@ export async function autoDeductInventory(
     // 3. card에서 order_item_id 또는 order_id 조회
     const card = await db
       .prepare(
-        `SELECT id, order_id, order_item_id
+        `SELECT id, order_id, order_item_id, requesting_entity_id
          FROM cards
          WHERE id = ?`
       )
@@ -152,15 +152,25 @@ export async function autoDeductInventory(
     // 6. 차감량 계산 (mm → yd 변환: 914.4mm = 1yd)
     const deductedLengthYd = (outputHeightMm / 914.4) * copyTotal
 
-    // 7. 주문의 entity_id 조회 → 해당 법인 재고에서 차감
+    // 7. 차감 법인 = COALESCE(cards.requesting_entity_id, orders.entity_id)
+    //    requesting_entity_id = 담당 법인(Phase 2 주입). 타법인 담당 공정의 원단은 그 담당 법인 재고에서 차감(물리 정합).
+    //    미지정이면 청구(주문) 법인 fallback.
     let entityId = 1
-    if (card.order_id) {
+    if (card.requesting_entity_id) {
+      entityId = card.requesting_entity_id
+    } else if (card.order_id) {
       const orderRow = await db
         .prepare(`SELECT entity_id FROM orders WHERE id = ?`)
         .bind(card.order_id)
         .first() as any
       if (orderRow?.entity_id) entityId = orderRow.entity_id
     }
+
+    // 담당 법인 재고 row 부재 시 0으로 생성 → UPDATE silent miss 방지(음수 차감 허용)
+    await db
+      .prepare(`INSERT OR IGNORE INTO inventory (item_id, entity_id, quantity) VALUES (?, ?, 0)`)
+      .bind(selectedMaterial.material_item_id, entityId)
+      .run()
 
     const inventoryRow = await db
       .prepare(`SELECT quantity FROM inventory WHERE item_id = ? AND entity_id = ?`)
@@ -193,8 +203,8 @@ export async function autoDeductInventory(
           `INSERT INTO inventory_auto_deductions (
             print_event_id, material_item_id, deducted_length_mm, deducted_length_yd,
             output_width_mm, output_height_mm, copy_total, inventory_before, inventory_after,
-            matched_width_mm, card_id, order_number
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+            matched_width_mm, card_id, order_number, entity_id
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
         )
         .bind(
           printEventId,
@@ -208,7 +218,8 @@ export async function autoDeductInventory(
           inventoryAfter,
           selectedMaterial.width_mm,
           cardId,
-          printEvent.order_number || null
+          printEvent.order_number || null,
+          entityId
         )
         .run()
     } catch (insertError: any) {
