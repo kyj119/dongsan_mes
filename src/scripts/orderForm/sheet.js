@@ -91,6 +91,35 @@
                 }
             };
 
+            // 법인 목록 로드 (품목 담당·청구 법인 셀렉트용)
+            (function loadEntities() {
+                if (typeof axios === 'undefined') return;
+                axios.get('/api/auth/entities').then(function(res) {
+                    if (!res.data || !res.data.success) return;
+                    window.__entities = res.data.data || [];
+                    var be = document.getElementById('billingEntity');
+                    if (be) {
+                        var opts = '<option value="">자동 (내 법인)</option>';
+                        window.__entities.forEach(function(e) {
+                            var nm = window.escapeHtml ? window.escapeHtml(e.short_name || e.name) : (e.short_name || e.name);
+                            opts += '<option value="' + e.id + '">' + nm + '</option>';
+                        });
+                        be.innerHTML = opts;
+                    }
+                    // entities 로드 전 생성된 품목 행의 담당 셀렉트 갱신 (첫 행 타이밍 대응)
+                    var assignOpts = '<option value="">자동</option>';
+                    window.__entities.forEach(function(e) {
+                        var nm = window.escapeHtml ? window.escapeHtml(e.short_name || e.name) : (e.short_name || e.name);
+                        assignOpts += '<option value="' + e.id + '">' + nm + '</option>';
+                    });
+                    document.querySelectorAll('[name^="assigned_entity_"]').forEach(function(sel) {
+                        var cur = sel.value;
+                        sel.innerHTML = assignOpts;
+                        if (cur) sel.value = cur;
+                    });
+                }).catch(function() {});
+            })();
+
             document.getElementById('addItemBtn').addEventListener('click', addItemRow);
 
             document.getElementById('addBundleBtn').addEventListener('click', function() {

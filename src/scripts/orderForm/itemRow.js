@@ -1,5 +1,16 @@
 // orderForm/itemRow.js — 품목 행 빌드/자동완성/추가/삭제/스케일 (Phase 3.1.C 분할)
 
+            // 품목 담당 법인 셀렉트 옵션 (멀티법인 협업). window.__entities는 sheet.js init에서 로드.
+            function entityAssignOptions() {
+                var list = window.__entities || [];
+                var opts = '<option value="">자동</option>';
+                list.forEach(function(e) {
+                    var nm = window.escapeHtml ? window.escapeHtml(e.short_name || e.name) : (e.short_name || e.name);
+                    opts += '<option value="' + e.id + '">' + nm + '</option>';
+                });
+                return opts;
+            }
+
             function buildItemHtml(id) {
                 return `<div class="border border-gray-200 rounded-lg p-3 mb-2 bg-gray-50" id="item-${id}">
                     <input type="hidden" name="ai_group_index_${id}" value="">
@@ -78,6 +89,10 @@
                                 <input type="checkbox" name="price_pending_${id}" class="rounded border-gray-300 text-amber-600" onchange="onPricePendingChange(${id})">
                                 <span class="text-gray-700">단가 미정</span>
                             </label>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-medium text-gray-600 mb-0.5" title="생산 담당 법인. 자동=청구 법인이 담당">담당</label>
+                            <select name="assigned_entity_${id}" class="w-full px-2 py-1.5 border border-gray-300 rounded text-sm">${entityAssignOptions()}</select>
                         </div>
                     </div>
                     <div class="pt-2 border-t border-gray-200" id="pp_section_${id}">

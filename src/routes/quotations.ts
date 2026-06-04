@@ -623,8 +623,9 @@ quotationsRouter.post('/:id/convert-to-order', requireRole('ADMIN', 'MANAGER'), 
           order_id, item_id, item_name, category_name,
           width, height, quantity, unit, unit_price, amount, vat_included,
           post_processing, content, sort_order,
-          ai_group_index, scale_factor, parent_item_id, finishing
-        ) VALUES (?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, NULL, ?)
+          ai_group_index, scale_factor, parent_item_id, finishing,
+          assigned_entity_id, assignment_status
+        ) VALUES (?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, NULL, ?, NULL, NULL)
       `).bind(
         orderId, qi.item_id, qi.item_name,
         qi.width, qi.height, qi.quantity, qi.unit,
@@ -641,8 +642,9 @@ quotationsRouter.post('/:id/convert-to-order', requireRole('ADMIN', 'MANAGER'), 
         INSERT INTO order_items (
           order_id, item_name, width, height, quantity, unit,
           unit_price, amount, vat_included, content, sort_order,
-          ai_group_index, scale_factor, parent_item_id
-        ) VALUES (?, ?, ?, ?, ?, ?, 0, 0, 1, ?, ?, ?, ?, ?)
+          ai_group_index, scale_factor, parent_item_id,
+          assigned_entity_id, assignment_status
+        ) VALUES (?, ?, ?, ?, ?, ?, 0, 0, 1, ?, ?, ?, ?, ?, NULL, NULL)
       `).bind(
         orderId, qi.item_name, qi.width, qi.height, qi.quantity, qi.unit,
         qi.content, qi.sort_order, qi.ai_group_index, qi.scale_factor,

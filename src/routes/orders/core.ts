@@ -32,6 +32,23 @@ function getCardGroup(item: any): string | null {
   return 'OUTPUT'
 }
 
+// 담당 법인 자동추천: 품목의 카드그룹(생산 라인) 기준으로 생산/공정 담당 법인을 추천한다.
+// 멀티법인 협업(유연한 그릇) — 추천일 뿐이며 코디네이터가 UI에서 수정 가능.
+// 반환 NULL = 청구 법인(billingEntityId)이 담당 → 단일 법인·자기 법인 품목은 태그 불필요(투명).
+// 법인 ID: 동산기획=1, 선명=2 (entities 시드 기준 고정).
+const ENTITY_DONGSAN = 1
+const ENTITY_SEONMYEONG = 2
+export function recommendAssignedEntity(item: any, billingEntityId: number | null): number | null {
+  const group = getCardGroup(item)
+  let entity: number | null = null
+  if (group === 'SIGN') entity = ENTITY_SEONMYEONG                                  // 간판 → 선명
+  else if (group === 'OUTPUT' || group === 'TRANSFER_FLAG') entity = ENTITY_DONGSAN // 현수막·솔벤·UV·평판·전사·태극기 → 동산
+  // group === null (유통·상품·부자재) → 추천 없음(청구 법인 담당)
+  // 추천이 청구 법인과 같으면 태그 불필요 → NULL (단일 법인 주문 투명)
+  if (entity === null || entity === billingEntityId) return null
+  return entity
+}
+
 // ── 카드 생성 공통 함수 (POST/PUT 중복 제거) ──
 export interface GenerateCardsParams {
   db: D1Database
@@ -923,6 +940,10 @@ ordersCoreRouter.post('/', async (c) => {
     const orderType = orderData.order_type === 'DISTRIBUTION' ? 'DISTRIBUTION' : 'PRODUCTION'
     // Phase 3.2: source_quotation_id 받으면 orders.quotation_id에 저장 (견적서 → 주문 prefill 흐름)
     const sourceQuotationId = orderData.source_quotation_id || orderData.quotation_id || null
+    // 청구(매출) 법인: 명시값 우선, 없으면 로그인 법인 (코디네이터가 타법인 주문 접수 시 명시 선택)
+    const billingEntityId = (orderData.billing_entity_id && Number(orderData.billing_entity_id) > 0)
+      ? Number(orderData.billing_entity_id)
+      : (getEntityId(c) || 1)
     const orderResult = await c.env.DB.prepare(`
       INSERT INTO orders (
         order_number, client_id, status, order_year, order_month,
@@ -960,7 +981,7 @@ ordersCoreRouter.post('/', async (c) => {
       orderData.contact_mobile || null,
       orderData.shipping_payment || null,
       validUntil,
-      getEntityId(c) || 1,
+      billingEntityId,
       (() => {
         const slItem = orderData.items.find((it: any) => it.sheet_layout_params && !it.parent_client_id)
         return slItem?.sheet_layout_params || null
@@ -1032,15 +1053,22 @@ ordersCoreRouter.post('/', async (c) => {
     }
 
     // Pass 1: batch insert parent/regular rows
-    const pass1Stmts = parentItems.map(({ idx, item, itemName, categoryName, unit, itemAmount }) =>
-      c.env.DB.prepare(`
+    const orderEntityId = billingEntityId
+    const pass1Stmts = parentItems.map(({ idx, item, itemName, categoryName, unit, itemAmount }) => {
+      // 담당 법인: 요청 명시값 우선, 없으면 카드그룹 기반 추천. NULL=청구 법인 담당(투명)
+      const assignedEntity = (item.assigned_entity_id !== undefined && item.assigned_entity_id !== null)
+        ? item.assigned_entity_id
+        : recommendAssignedEntity({ ...item, category_name: categoryName }, orderEntityId)
+      const assignmentStatus = assignedEntity ? (item.assignment_status || 'PENDING') : null
+      return c.env.DB.prepare(`
         INSERT INTO order_items (
           order_id, item_id, item_name, category_name,
           width, height, quantity, unit,
           unit_price, amount, vat_included,
           post_processing, content, specification, sort_order,
-          ai_group_index, scale_factor, ai_analysis_id, parent_item_id, finishing, price_status
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?)
+          ai_group_index, scale_factor, ai_analysis_id, parent_item_id, finishing, price_status,
+          assigned_entity_id, assignment_status
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?)
       `).bind(
         orderId,
         item.item_id || null,
@@ -1061,9 +1089,11 @@ ordersCoreRouter.post('/', async (c) => {
         item.scale_factor || 1,
         item.ai_analysis_id || null,
         item.finishing || null,
-        item.price_status || 'CONFIRMED'
+        item.price_status || 'CONFIRMED',
+        assignedEntity,
+        assignmentStatus
       )
-    )
+    })
 
     const clientIdMap = new Map<string, number>()
     if (pass1Stmts.length > 0) {
@@ -1091,8 +1121,9 @@ ordersCoreRouter.post('/', async (c) => {
             width, height, quantity, unit,
             unit_price, amount, vat_included,
             post_processing, content, specification, sort_order,
-            ai_group_index, scale_factor, ai_analysis_id, parent_item_id
-          ) VALUES (?, NULL, ?, NULL, ?, ?, ?, ?, 0, 0, 1, NULL, ?, ?, ?, ?, ?, ?, ?)
+            ai_group_index, scale_factor, ai_analysis_id, parent_item_id,
+            assigned_entity_id, assignment_status
+          ) VALUES (?, NULL, ?, NULL, ?, ?, ?, ?, 0, 0, 1, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `).bind(
           orderId,
           item.item_name || '',
@@ -1106,7 +1137,9 @@ ordersCoreRouter.post('/', async (c) => {
           item.ai_group_index !== undefined ? item.ai_group_index : null,
           item.scale_factor || 1,
           item.ai_analysis_id || null,
-          parentDbId
+          parentDbId,
+          item.assigned_entity_id || null,
+          (item.assigned_entity_id ? (item.assignment_status || 'PENDING') : null)
         )
       )
     }
@@ -2126,14 +2159,19 @@ ordersCoreRouter.put('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
         }
       }
 
+      const putAssignedEntity = (item.assigned_entity_id !== undefined && item.assigned_entity_id !== null)
+        ? item.assigned_entity_id
+        : recommendAssignedEntity({ ...item, category_name: categoryName }, getEntityId(c) || 1)
+      const putAssignmentStatus = putAssignedEntity ? (item.assignment_status || 'PENDING') : null
       const putInsertResult = await c.env.DB.prepare(`
         INSERT INTO order_items (
           order_id, item_id, item_name, category_name,
           width, height, quantity, unit,
           unit_price, amount, vat_included,
           post_processing, content, specification, sort_order,
-          ai_group_index, scale_factor, ai_analysis_id, parent_item_id, finishing, price_status
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?)
+          ai_group_index, scale_factor, ai_analysis_id, parent_item_id, finishing, price_status,
+          assigned_entity_id, assignment_status
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?)
       `).bind(
         id,
         item.item_id || null,
@@ -2154,7 +2192,9 @@ ordersCoreRouter.put('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
         item.scale_factor || 1,
         item.ai_analysis_id || null,
         item.finishing || null,
-        item.price_status || 'CONFIRMED'
+        item.price_status || 'CONFIRMED',
+        putAssignedEntity,
+        putAssignmentStatus
       ).run()
 
       if (item.client_group_id) {
@@ -2176,8 +2216,9 @@ ordersCoreRouter.put('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
           width, height, quantity, unit,
           unit_price, amount, vat_included,
           post_processing, content, specification, sort_order,
-          ai_group_index, scale_factor, ai_analysis_id, parent_item_id
-        ) VALUES (?, NULL, ?, NULL, ?, ?, ?, ?, 0, 0, 1, NULL, ?, ?, ?, ?, ?, ?, ?)
+          ai_group_index, scale_factor, ai_analysis_id, parent_item_id,
+          assigned_entity_id, assignment_status
+        ) VALUES (?, NULL, ?, NULL, ?, ?, ?, ?, 0, 0, 1, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).bind(
         id,
         item.item_name || '',
@@ -2191,7 +2232,9 @@ ordersCoreRouter.put('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
         item.ai_group_index !== undefined ? item.ai_group_index : null,
         item.scale_factor || 1,
         item.ai_analysis_id || null,
-        parentDbId
+        parentDbId,
+        item.assigned_entity_id || null,
+        (item.assigned_entity_id ? (item.assignment_status || 'PENDING') : null)
       ).run()
     }
 

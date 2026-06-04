@@ -472,6 +472,7 @@
                         unit_price: parseMoney(document.querySelector(`[name="unit_price_${id}"]`)?.value),
                         pricing_method: pmItem,
                         vat_included: document.querySelector(`[name="vat_${id}"]`)?.checked ? 1 : 0,
+                        assigned_entity_id: (document.querySelector(`[name="assigned_entity_${id}"]`)?.value ? parseInt(document.querySelector(`[name="assigned_entity_${id}"]`).value) : undefined),
                         post_processing: JSON.stringify(pp),
                         finishing: (function() {
                             var finObj = {
@@ -554,6 +555,7 @@
 
                 const orderData = {
                     client_id: parseInt(clientId),
+                    billing_entity_id: document.getElementById('billingEntity')?.value ? parseInt(document.getElementById('billingEntity').value) : undefined,
                     delivery_date: document.getElementById('deliveryDate').value,
                     priority: document.getElementById('priority').value,
                     reception_location: document.getElementById('receptionLocation').value,

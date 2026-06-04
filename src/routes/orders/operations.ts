@@ -28,6 +28,7 @@ interface OrderItemCopyRow {
   unit_price: number; amount: number; vat_included: number
   post_processing: string | null; content: string | null; specification: string | null; sort_order: number
   scale_factor: number; ai_group_index: number | null; parent_item_id: number | null
+  assigned_entity_id: number | null; assignment_status: string | null
 }
 interface MaxSeqRow { max_seq: number }
 interface QuotationRow {
@@ -77,7 +78,7 @@ ordersOpsRouter.post('/:id/copy', requireRole('ADMIN', 'MANAGER', 'DESIGNER'), a
       SELECT id, order_id, item_id, item_name, category_name,
              width, height, quantity, unit, unit_price, amount, vat_included,
              post_processing, content, specification, sort_order, parent_item_id,
-             scale_factor, ai_group_index
+             scale_factor, ai_group_index, assigned_entity_id, assignment_status
       FROM order_items WHERE order_id = ? ORDER BY sort_order ASC
     `).bind(id).all<OrderItemCopyRow>()
 
@@ -139,45 +140,9 @@ ordersOpsRouter.post('/:id/copy', requireRole('ADMIN', 'MANAGER', 'DESIGNER'), a
           width, height, quantity, unit,
           unit_price, amount, vat_included,
           post_processing, content, specification, sort_order,
-          scale_factor, ai_group_index, parent_item_id
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
-      `).bind(
-        newOrderId,
-        item.item_id || null,
-        item.item_name,
-        item.category_name || null,
-        item.width || null,
-        item.height || null,
-        item.quantity,
-        item.unit || 'EA',
-        item.unit_price,
-        item.amount,
-        item.vat_included,
-        item.post_processing || null,
-        item.content || null,
-        item.specification || null,
-        item.sort_order,
-        item.scale_factor || 1,
-        item.ai_group_index !== undefined ? item.ai_group_index : null
-      ).run()
-
-      copyIdMap.set(item.id as number, insertResult.meta.last_row_id as number)
-    }
-
-    // Pass 2: child rows → resolve parent_item_id via mapping
-    for (const item of originalItems) {
-      if (item.parent_item_id === null || item.parent_item_id === undefined) continue
-
-      const newParentId = copyIdMap.get(item.parent_item_id as number) ?? null
-
-      await c.env.DB.prepare(`
-        INSERT INTO order_items (
-          order_id, item_id, item_name, category_name,
-          width, height, quantity, unit,
-          unit_price, amount, vat_included,
-          post_processing, content, specification, sort_order,
-          scale_factor, ai_group_index, parent_item_id
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          scale_factor, ai_group_index, parent_item_id,
+          assigned_entity_id, assignment_status
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?)
       `).bind(
         newOrderId,
         item.item_id || null,
@@ -196,7 +161,49 @@ ordersOpsRouter.post('/:id/copy', requireRole('ADMIN', 'MANAGER', 'DESIGNER'), a
         item.sort_order,
         item.scale_factor || 1,
         item.ai_group_index !== undefined ? item.ai_group_index : null,
-        newParentId
+        item.assigned_entity_id || null,
+        item.assignment_status || null
+      ).run()
+
+      copyIdMap.set(item.id as number, insertResult.meta.last_row_id as number)
+    }
+
+    // Pass 2: child rows → resolve parent_item_id via mapping
+    for (const item of originalItems) {
+      if (item.parent_item_id === null || item.parent_item_id === undefined) continue
+
+      const newParentId = copyIdMap.get(item.parent_item_id as number) ?? null
+
+      await c.env.DB.prepare(`
+        INSERT INTO order_items (
+          order_id, item_id, item_name, category_name,
+          width, height, quantity, unit,
+          unit_price, amount, vat_included,
+          post_processing, content, specification, sort_order,
+          scale_factor, ai_group_index, parent_item_id,
+          assigned_entity_id, assignment_status
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).bind(
+        newOrderId,
+        item.item_id || null,
+        item.item_name,
+        item.category_name || null,
+        item.width || null,
+        item.height || null,
+        item.quantity,
+        item.unit || 'EA',
+        item.unit_price,
+        item.amount,
+        item.vat_included,
+        item.post_processing || null,
+        item.content || null,
+        item.specification || null,
+        item.sort_order,
+        item.scale_factor || 1,
+        item.ai_group_index !== undefined ? item.ai_group_index : null,
+        newParentId,
+        item.assigned_entity_id || null,
+        item.assignment_status || null
       ).run()
     }
 
