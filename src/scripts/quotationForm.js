@@ -4,6 +4,32 @@ var itemCount = 0;
 var searchTimers = {};
 var editMode = null; // 수정 모드일 때 주문 ID 저장
 
+// ── 품목 담당 법인 셀렉트 (멀티법인 협업) ──
+// 견적 단계 품목별 담당 지정 → 견적→주문 전환 시 order_items.assigned_entity_id로 carry.
+function entityAssignOptions() {
+    var list = window.__entities || [];
+    var opts = '<option value="">자동</option>';
+    list.forEach(function(e) {
+        var nm = window.escapeHtml ? window.escapeHtml(e.short_name || e.name) : (e.short_name || e.name);
+        opts += '<option value="' + e.id + '">' + nm + '</option>';
+    });
+    return opts;
+}
+function loadEntities() {
+    if (typeof axios === 'undefined') return;
+    axios.get('/api/auth/entities').then(function(res) {
+        if (!res.data || !res.data.success) return;
+        window.__entities = res.data.data || [];
+        // entities 로드 전 생성된 행의 담당 셀렉트 갱신 (첫 행/수정 prefill 타이밍 대응)
+        // data-assigned: 옵션 미생성 상태에서 set된 값이 유실되지 않도록 보존(수정 모드 레이스)
+        document.querySelectorAll('[name^="assigned_entity_"]').forEach(function(sel) {
+            var cur = sel.getAttribute('data-assigned') || sel.value;
+            sel.innerHTML = entityAssignOptions();
+            if (cur) sel.value = cur;
+        });
+    }).catch(function() {});
+}
+
 // ── 거래처 검색 ──────────────────────────────────────────────
 
 function handleClientEnter(e) {
@@ -155,6 +181,10 @@ function buildItemHtml(id) {
                 <label class="block text-xs font-medium text-gray-600 mb-1">내용</label>
                 <input type="text" name="content_${id}" placeholder="예: 홍보용 현수막 (선택)"
                        class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
+            </div>
+            <div>
+                <label class="block text-xs font-medium text-gray-600 mb-1">담당</label>
+                <select name="assigned_entity_${id}" class="w-full px-2 py-2 border border-gray-300 rounded-lg text-sm">${entityAssignOptions()}</select>
             </div>
             <div class="flex items-end pb-1">
                 <label class="flex items-center gap-2 text-sm cursor-pointer">
@@ -420,6 +450,11 @@ async function loadQuotation(id) {
             if (vatEl) vatEl.checked = item.vat_included !== 0;
             var contentEl = document.querySelector('[name="content_' + rowId + '"]');
             if (contentEl) contentEl.value = item.content || '';
+            var assignEl = document.querySelector('[name="assigned_entity_' + rowId + '"]');
+            if (assignEl && item.assigned_entity_id) {
+                assignEl.setAttribute('data-assigned', item.assigned_entity_id);
+                assignEl.value = item.assigned_entity_id;
+            }
             var pmEl = document.querySelector('[name="pricing_method_' + rowId + '"]');
             if (pmEl) pmEl.value = item.pricing_method || 'FIXED';
             calcItem(rowId);
@@ -486,6 +521,7 @@ document.getElementById('quotationForm').addEventListener('submit', async functi
             vat_included: (document.querySelector('[name="vat_' + id + '"]') || {}).checked ? 1 : 0,
             content: (document.querySelector('[name="content_' + id + '"]') || {}).value || '',
             post_processing: '[]',
+            assigned_entity_id: (function() { var v = (document.querySelector('[name="assigned_entity_' + id + '"]') || {}).value; return v ? parseInt(v) : undefined; })(),
             sort_order: idx + 1
         });
     });
@@ -563,6 +599,8 @@ document.getElementById('addItemBtn').addEventListener('click', function() {
 });
 
 (function init() {
+    // 법인 목록 로드 (품목 담당 셀렉트용)
+    loadEntities();
     // 유효기한 기본값: 오늘 + 30일
     var d = new Date();
     d.setDate(d.getDate() + 30);

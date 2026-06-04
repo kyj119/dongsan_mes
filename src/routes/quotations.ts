@@ -165,7 +165,7 @@ quotationsRouter.get('/:id', async (c) => {
     await markExpiredIfNeeded(c.env.DB, quotation)
 
     const { results: items } = await c.env.DB.prepare(`
-      SELECT id, quotation_id, item_id, item_name, width, height, scale_factor, quantity, unit, unit_price, amount, content, post_processing, finishing, pricing_method, parent_id, sort_order, ai_group_index, media_subcategory_name, print_method_id, print_method_name, print_media_id, print_media_name, created_at FROM quotation_items WHERE quotation_id = ? ORDER BY sort_order ASC, id ASC
+      SELECT id, quotation_id, item_id, item_name, width, height, scale_factor, quantity, unit, unit_price, amount, content, post_processing, finishing, pricing_method, parent_id, sort_order, ai_group_index, media_subcategory_name, print_method_id, print_method_name, print_media_id, print_media_name, assigned_entity_id, created_at FROM quotation_items WHERE quotation_id = ? ORDER BY sort_order ASC, id ASC
     `).bind(id).all()
 
     const { results: convertedOrders } = await c.env.DB.prepare(`
@@ -289,8 +289,8 @@ quotationsRouter.post('/', async (c) => {
           quantity, unit, unit_price, amount, content, post_processing,
           finishing, pricing_method, sort_order, ai_group_index,
           media_subcategory_name, print_method_id, print_method_name,
-          print_media_id, print_media_name, entity_id
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          print_media_id, print_media_name, entity_id, assigned_entity_id
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).bind(
         quotationId, item.item_id || null, item.item_name || 'Unknown',
         w, h, item.scale_factor || 1,
@@ -302,7 +302,8 @@ quotationsRouter.post('/', async (c) => {
         item.media_subcategory_name || null,
         item.print_method_id || null, item.print_method_name || null,
         item.print_media_id || null, item.print_media_name || null,
-        getEntityId(c) || 1
+        getEntityId(c) || 1,
+        item.assigned_entity_id || null
       ).run()
 
       if (item.client_group_id) {
@@ -320,8 +321,8 @@ quotationsRouter.post('/', async (c) => {
         INSERT INTO quotation_items (
           quotation_id, item_name, width, height, scale_factor,
           quantity, unit, unit_price, amount, content,
-          parent_id, sort_order, ai_group_index, entity_id
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?, ?, ?, ?)
+          parent_id, sort_order, ai_group_index, entity_id, assigned_entity_id
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?, ?, ?, ?, ?)
       `).bind(
         quotationId, item.item_name || '',
         w, h, item.scale_factor || 1,
@@ -329,7 +330,8 @@ quotationsRouter.post('/', async (c) => {
         item.content || null, parentDbId,
         parentCount + i,
         item.ai_group_index != null ? item.ai_group_index : null,
-        getEntityId(c) || 1
+        getEntityId(c) || 1,
+        item.assigned_entity_id || null
       ).run()
     }
 
@@ -553,7 +555,7 @@ quotationsRouter.post('/:id/convert-to-order', requireRole('ADMIN', 'MANAGER'), 
     }
 
     const { results: qItems } = await c.env.DB.prepare(
-      `SELECT id, quotation_id, item_id, item_name, width, height, scale_factor, quantity, unit, unit_price, amount, content, post_processing, finishing, pricing_method, parent_id, sort_order, ai_group_index, media_subcategory_name, print_method_id, print_method_name, print_media_id, print_media_name, created_at FROM quotation_items WHERE quotation_id = ? ORDER BY sort_order, id`
+      `SELECT id, quotation_id, item_id, item_name, width, height, scale_factor, quantity, unit, unit_price, amount, content, post_processing, finishing, pricing_method, parent_id, sort_order, ai_group_index, media_subcategory_name, print_method_id, print_method_name, print_media_id, print_media_name, assigned_entity_id, created_at FROM quotation_items WHERE quotation_id = ? ORDER BY sort_order, id`
     ).bind(id).all<Record<string, unknown>>()
     if (!qItems || qItems.length === 0) {
       return c.json({ success: false, error: '견적서에 품목이 없습니다.' }, 400)
@@ -625,13 +627,14 @@ quotationsRouter.post('/:id/convert-to-order', requireRole('ADMIN', 'MANAGER'), 
           post_processing, content, sort_order,
           ai_group_index, scale_factor, parent_item_id, finishing,
           assigned_entity_id, assignment_status
-        ) VALUES (?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, NULL, ?, NULL, NULL)
+        ) VALUES (?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, NULL, ?, ?, NULL)
       `).bind(
         orderId, qi.item_id, qi.item_name,
         qi.width, qi.height, qi.quantity, qi.unit,
         qi.unit_price, qi.amount,
         qi.post_processing, qi.content, qi.sort_order,
-        qi.ai_group_index, qi.scale_factor, qi.finishing
+        qi.ai_group_index, qi.scale_factor, qi.finishing,
+        qi.assigned_entity_id ?? null
       ).run()
       qParentToOrderId.set(qi.id as number, ins.meta.last_row_id as number)
     }
@@ -644,11 +647,12 @@ quotationsRouter.post('/:id/convert-to-order', requireRole('ADMIN', 'MANAGER'), 
           unit_price, amount, vat_included, content, sort_order,
           ai_group_index, scale_factor, parent_item_id,
           assigned_entity_id, assignment_status
-        ) VALUES (?, ?, ?, ?, ?, ?, 0, 0, 1, ?, ?, ?, ?, ?, NULL, NULL)
+        ) VALUES (?, ?, ?, ?, ?, ?, 0, 0, 1, ?, ?, ?, ?, ?, ?, NULL)
       `).bind(
         orderId, qi.item_name, qi.width, qi.height, qi.quantity, qi.unit,
         qi.content, qi.sort_order, qi.ai_group_index, qi.scale_factor,
-        parentOrderItemId
+        parentOrderItemId,
+        qi.assigned_entity_id ?? null
       ).run()
     }
 

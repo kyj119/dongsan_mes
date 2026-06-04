@@ -5,6 +5,32 @@
             var _clientAddress = '';          // 거래처 사업장 주소 (택배 등 기본 배송지)
             var _clientDeliveryAddress = '';  // 거래처 배송지/터미널 (대신화물)
 
+            // ===== 품목 담당 법인 셀렉트 (멀티법인 협업) =====
+            // 유통/GOODS 품목은 카드그룹 없어 자동추천 없음 → 수동 지정용.
+            // 담당 지정 시 출고 재고차감이 해당 법인 재고에서 이뤄짐(COALESCE).
+            function entityAssignOptions() {
+                var list = window.__entities || [];
+                var opts = '<option value="">자동</option>';
+                list.forEach(function(e) {
+                    var nm = window.escapeHtml ? window.escapeHtml(e.short_name || e.name) : (e.short_name || e.name);
+                    opts += '<option value="' + e.id + '">' + nm + '</option>';
+                });
+                return opts;
+            }
+            (function loadEntities() {
+                if (typeof axios === 'undefined') return;
+                axios.get('/api/auth/entities').then(function(res) {
+                    if (!res.data || !res.data.success) return;
+                    window.__entities = res.data.data || [];
+                    // entities 로드 전 생성된 행의 담당 셀렉트 갱신 (첫 행 타이밍 대응)
+                    document.querySelectorAll('[name^="assigned_entity_"]').forEach(function(sel) {
+                        var cur = sel.value;
+                        sel.innerHTML = entityAssignOptions();
+                        if (cur) sel.value = cur;
+                    });
+                }).catch(function() {});
+            })();
+
             // ===== 거래처 검색 =====
             function handleClientEnter(e) {
                 if (e.key !== 'Enter') return;
@@ -130,6 +156,7 @@
                     + ' class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">'
                     + '</td>'
                     + '<td class="py-3 px-3"><input type="text" name="dist_spec_' + id + '" placeholder="폭 등 규격" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"></td>'
+                    + '<td class="py-3 px-3"><select name="assigned_entity_' + id + '" class="w-full px-2 py-2 border border-gray-300 rounded-lg text-sm">' + entityAssignOptions() + '</select></td>'
                     + '<td class="py-3 px-3"><input type="number" name="dist_qty_' + id + '" value="1" min="1" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-center" oninput="calcDistItem(' + id + ')"></td>'
                     + '<td class="py-3 px-3"><input type="text" inputmode="numeric" data-money name="dist_price_' + id + '" value="0" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-right" oninput="calcDistItem(' + id + ')"></td>'
                     + '<td class="py-3 px-3 text-right"><span id="dist_amount_' + id + '" class="font-medium text-blue-700">0원</span></td>'
@@ -350,6 +377,7 @@
                     var vatCheck = document.getElementById('distVatIncluded');
                     var spec = ((document.querySelector('[name="dist_spec_' + id + '"]') || {}).value || '').trim();
                     var unit = (document.querySelector('[name="dist_unit_' + id + '"]') || {}).value || 'EA';
+                    var assignedVal = (document.querySelector('[name="assigned_entity_' + id + '"]') || {}).value;
                     items.push({
                         item_id: itemId ? parseInt(itemId) : null,
                         item_name: itemName.trim(),
@@ -361,6 +389,7 @@
                         unit_price: unitPrice,
                         amount: amount,
                         vat_included: vatCheck && vatCheck.checked ? 1 : 0,
+                        assigned_entity_id: assignedVal ? parseInt(assignedVal) : undefined,
                         sort_order: idx + 1
                     });
                 });
