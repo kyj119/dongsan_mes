@@ -35,10 +35,10 @@ export async function deductStockLinesOnShip(
     if (!ln.item_id || !ln.qty) continue
     // 담당 법인 우선, NULL이면 청구 법인 fallback
     const lineEntity = Number(ln.entity_id) || entityId
-    // 중복 차감 방지 (주문×품목 단위 — 담당 법인 무관)
+    // 중복 차감 방지 (주문×품목×법인 단위 — 같은 품목이 복수 법인 담당으로 분할돼도 각각 차감/멱등)
     const dup = await db.prepare(
-      `SELECT 1 FROM inventory_transactions WHERE reference_type = 'ORDER' AND reference_id = ? AND item_id = ? AND transaction_type = 'OUT' LIMIT 1`
-    ).bind(orderId, ln.item_id).first()
+      `SELECT 1 FROM inventory_transactions WHERE reference_type = 'ORDER' AND reference_id = ? AND item_id = ? AND entity_id = ? AND transaction_type = 'OUT' LIMIT 1`
+    ).bind(orderId, ln.item_id, lineEntity).first()
     if (dup) continue
 
     // 담당 법인 재고 row 부재 시 0으로 생성(음수 차감 허용) → UPDATE silent miss 방지

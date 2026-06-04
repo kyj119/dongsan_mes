@@ -139,7 +139,9 @@ ALTER TABLE order_items ADD COLUMN assignment_status TEXT;          -- NULL | PE
 
 ## 10. 미결 / 후속
 
-- ~~**재고차감 entity 기준**(점검 #3)~~ **✅ 결정·구현(2026-06-04)**: **담당 법인 우선** — 재고는 물리적 실체이므로 자재를 실제 보유·소비한 법인(담당) 재고에서 차감해야 매출(청구법인)/재고(담당법인)/내부정산이 3분리 정합. `COALESCE(assigned_entity_id, orders.entity_id)` 전환(출고 `stockShip.ts` 라인별, 생산 `autoDeductInventory.ts`는 `cards.requesting_entity_id` 기준). 담당법인 재고 row 부재 시 `INSERT OR IGNORE`로 0 생성 후 음수 차감. `inventory_auto_deductions.entity_id` 보정. 일반 주문(assigned NULL)은 청구법인 fallback=회귀 0. typecheck/build/로컬 가드 검증 통과, **미배포**.
+- ~~**재고차감 entity 기준**(점검 #3)~~ **✅ 결정·구현·배포(2026-06-04)**: **담당 법인 우선** — 재고는 물리적 실체이므로 자재를 실제 보유·소비한 법인(담당) 재고에서 차감해야 매출(청구법인)/재고(담당법인)/내부정산이 3분리 정합. `COALESCE(assigned_entity_id, orders.entity_id)` 전환(출고 `stockShip.ts` 라인별, 생산 `autoDeductInventory.ts`는 `cards.requesting_entity_id` 기준). 담당법인 재고 row 부재 시 `INSERT OR IGNORE`로 0 생성 후 음수 차감. `inventory_auto_deductions.entity_id` 보정. 일반 주문(assigned NULL)은 청구법인 fallback=회귀 0.
+  - **실증(로컬 E2E, 배포 함수 SQL)**: 현실적 혼합주문(다른 품목→다른 담당) 정상 — 담당 선명품목 entity2 −5, 청구품목 entity99 −3, 거래기록 entity별 분리.
+  - **⚠️ 엣지 발견·수정(마이그 0293)**: `inventory_transactions` 부분 UNIQUE 인덱스가 `entity_id` 미포함 → **같은 품목**을 한 주문에서 복수 법인 담당으로 분할 시 stockShip item단위 dedup이 두 번째 그룹 silent skip(한 법인만 차감). **수정**: 인덱스에 `entity_id` 추가(`0293`, DROP+CREATE만) + dedup `AND entity_id=?`(주문×품목×법인 멱등). 재검증 PASS(같은 품목 99→97·2→95, 거래기록 2행).
 - **독립 제품 청구 분리**: 한 주문에서 고객 매출을 두 법인으로 나눠야 하는 빈도. 높으면 보조 설계 추가.
 - **내부 정산 단가 기준**: 타법인 공정값을 어떻게 산정(단가표? 협의가?).
 - **담당 자동추천 정확도**: 카드그룹 기반 추천의 적중률 — 운영하며 보정.
