@@ -46,7 +46,7 @@ window.hrLoadEmployees = async function() {
     if (dept) params.department = dept;
     if (pos) params.position = pos;
     if (status) params.status = status;
-    if (q) params.q = q;
+    if (q) params.search = q;
     params.limit = 500;
 
     var res = await axios.get('/api/hr/employees', { params: params });

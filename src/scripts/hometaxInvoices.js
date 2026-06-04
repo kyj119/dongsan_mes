@@ -211,16 +211,17 @@
       limit: pageSize
     };
     if (type) params.type = type;
-    if (startDate) params.start_date = startDate;
-    if (endDate) params.end_date = endDate;
+    if (startDate) params.date_from = startDate;
+    if (endDate) params.date_to = endDate;
     if (matchStatus) params.match_status = matchStatus;
     if (search) params.search = search;
 
     axios.get('/api/hometax-invoices', { params: params }).then(function(r) {
-      var data = r.data.data || r.data || {};
-      invoices = data.items || data || [];
-      var total = data.total || 0;
-      var totalPages = Math.ceil(total / pageSize);
+      var resp = r.data || {};
+      invoices = resp.data || [];
+      var pag = resp.pagination || {};
+      var total = pag.total || 0;
+      var totalPages = pag.total_pages || Math.ceil(total / pageSize) || 1;
 
       displayInvoices(invoices);
 

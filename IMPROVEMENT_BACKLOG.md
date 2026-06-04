@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 2 -->
-<!-- last_run_at: 2026-06-04T18:00:00+09:00 -->
+<!-- last_run_area: 3 -->
+<!-- last_run_at: 2026-06-04T22:00:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,11 +8,20 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | 13 (I-026~I-029,I-031,I-033~I-041 중 미검토분) |
+| 🆕 new | 16 (I-026~I-029,I-031,I-033~I-044 중 미검토분) |
 | ✅ approved | 2 (I-032/#342 — 전용 세션 대기 / I-030/#340 — 👍 확인, 급성 RED 해소·잔여만 대기) |
 | 👀 reviewed | 1 (I-025/#334 — dead orphan router 재분류, owner (가)/(나) 결정 대기) |
 | ✔️ done | 44 |
 | ❌ rejected | 2 |
+
+> **Area 3 UX/기능 감사 (2026-06-04T22:00):**
+> - **방법**: 병렬 에이전트 3개(opus) — 영업·회계 / 생산·재고·구매 / HR·대시보드·설정. 라우트 쿼리파라미터 ↔ 프론트 JS 전송 대조로 dead-filter·silent-fail 집중. baseline verify PASS(tsc clean + build 351 modules 4.99MB).
+> - **🔧 자동 수정 A-014 (silent-fail JS 버그 3건)**: 전부 HTML/API 무변경 순수 JS 버그라 직접 수정(A-011 선례). ① `hr.js:49` 직원 검색 `params.q`→`params.search` — **route는 `search` 수신(hr.ts:49,89)인데 front가 `q` 전송 → HR 핵심 검색 항상 무력**(입력 무반응). ② `hometaxInvoices.js:222` 페이지네이션 총건수 항상 0 — route는 `{data:[], pagination:{total}}` 반환인데 front가 `data.total`(배열.total=undefined) 읽음 → "총 0건" 표시·2페이지+ 접근 불가. ③ `hometaxInvoices.js:214` 날짜 파라미터 `start_date/end_date`→`date_from/date_to`(route 기대값 정렬, dead-filter 복원). verify(tsc+build) 통과.
+> - **🐛 신규 이슈 #352 (I-042, HIGH bug)**: 현금영수증 탭 필터 전체 무력 — `taxInvoices.ts` 통합페이지에 `statusFilter/dateFrom/dateTo/searchInput` ID가 세금계산서탭(110-131)+현금영수증탭(428-452) **중복** → `getElementById`가 첫(세금계산서) 요소만 집어 현금영수증 탭 필터값 무시 + `cashReceipts.js:64` 날짜 파라미터도 `dateFrom`(route는 `date_from`) 불일치. **HTML ID 리네임 필요(구조변경) → 자동수정 금지**, A-014 동종 JS버그와 분리.
+> - **🐛 신규 이슈 #353 (I-043, dead-filter 클러스터 2탄)**: #343 미포함 6건 — 생산보드 category(queries.ts:781)·원가 자동차감 원단/날짜+50하드캡(costs.ts:223)·메시지로그 날짜(kakao.ts:1053)·활동로그 user_id(activityLogs.ts:20)·휴가신청 from/to+200하드캡(leaves.ts:307, #346 동탭)·매입인보이스 match_status+100하드캡(purchaseInvoices.ts:11). +LOW(활동로그 드롭다운 SHIPMENT/QUOTATION 정합·demandAnalytics 기간고정·inventoryDashboard 검색·attendance status). 전부 백엔드 기구현/UI 미노출.
+> - **🐛 신규 이슈 #354 (I-044)**: 검수결과 목록 — 필터 placeholder가 receipt_id/supplier_id **원시 ID 직접입력(사용불가)** + overall_result/날짜 미지원 + LIMIT 100 하드캡 + CSV 부재(peer productionReports는 보유).
+> - **이상 없음 확인**: bank/cardExpenses/shipmentsDashboard/prices/vatReports/deliveryAnalytics/financialReports/ledger/payroll/tasks/reports/emailLogs/receiving/postProcessing/weeklyPurchase/bom 등 필터·CSV·empty·페이징 적정. 대시보드 stats orphan 라우트 6종(dashboard.ts) = 미사용 dead code(누락 KPI 아님, 영향 없음).
+> - 자동 수정 1건(A-014, 3개 JS버그), 신규 이슈 3건(#352~#354)
 
 > **Area 2 코드 품질 (2026-06-04T18:00):**
 > - **방법**: 병렬 에이전트 2개 — entity_id 격리 / N+1·auth·type·dead code. 의존성 설치 후 baseline `tsc --noEmit` PASS + `vite build` PASS(351 modules, 4.94MB) 확인.
@@ -214,6 +223,9 @@
 | I-039 | hr.ts 멀티테넌시 격리 갭 4건 — PUT entity_id mass-assignment + 단건GET/payrolls/certificate entityFilter 누락(#322 미적용 경로) | Area 5 | #349 | 2~3h |
 | I-040 | N+1 신규 클러스터 — 급여 일괄/근태동기화 핫패스(전직원×5~7쿼리, 루프불변 hoist 즉효) + 발주 품목 루프 (#341 미포함) | Area 2 | #350 | hoist 20분 / 전체 ~4h |
 | I-041 | dead code+크래시 — hr.ts orphan 급여 엔드포인트 2개(POST는 없는 payrolls 테이블 INSERT), /api/payroll로 대체됨 | Area 2 | #351 | 30분~1h |
+| I-042 | 현금영수증 탭 필터 전체 무력 — 중복 element ID 셰도잉 + 날짜 파라미터 불일치(HTML 리네임 필요) | Area 3 | #352 | 30분 |
+| I-043 | Dead-filter 클러스터 2탄 6건 — 생산보드 category/원가 자동차감/메시지로그 날짜/활동로그 user/휴가신청 날짜/매입인보이스 match_status (백엔드 기구현 미노출) | Area 3 | #353 | ~5h |
+| I-044 | 검수결과 목록 — 원시 ID 직접입력 필터(사용불가)+상태/날짜 필터·페이지네이션·CSV 부재 | Area 3 | #354 | ~3h |
 
 ---
 
@@ -221,6 +233,7 @@
 
 | ID | 제목 | 커밋 | 날짜 |
 |----|------|------|------|
+| A-014 | silent-fail JS 버그 3건 — HR 직원검색 `q`→`search`(핵심검색 무력) + 홈택스 페이지네이션 총건수 0(`data.total`→`pagination.total`) + 홈택스 날짜 파라미터 `start_date`→`date_from` | (이번 커밋) | 2026-06-04 |
 | A-013 | aiAnalysis 업로드 R2 키 `file.name` sanitize — path traversal/헤더 인젝션 방어(LOW, ADMIN전용) | (이번 커밋) | 2026-06-03 |
 | A-012 | CAPS `GET /settings` 시크릿 노출 차단 — `relay_db_password`+`worker_api_key` 응답 제거(GET /sites 패턴 정렬) | (이번 커밋) | 2026-06-03 |
 | A-011 | 재고 목록 "총 N개 품목" 집계 버그 — 페이지 slice 건수(최대 20) 대신 `pagination.total` 전체 COUNT 표시 | 44bd3ed | 2026-06-03 |
