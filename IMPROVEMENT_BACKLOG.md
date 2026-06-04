@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 6 -->
-<!-- last_run_at: 2026-06-04T10:00:00+09:00 -->
+<!-- last_run_area: 1 -->
+<!-- last_run_at: 2026-06-04T14:30:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,12 +8,20 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | 12 (I-026~I-031,I-033~I-039 중 미검토분) |
-| ✅ approved | 1 (I-032/#342 — owner "(나)로 진행", 전용 세션 대기) |
+| 🆕 new | 11 (I-026~I-029,I-031,I-033~I-039 중 미검토분) |
+| ✅ approved | 2 (I-032/#342 — 전용 세션 대기 / I-030/#340 — 👍 확인, 급성 RED 해소·잔여만 대기) |
 | 👀 reviewed | 1 (I-025/#334 — dead orphan router 재분류, owner (가)/(나) 결정 대기) |
 | ✔️ done | 44 |
 | ❌ rejected | 2 |
 
+> **Area 1 프로덕션 헬스 (2026-06-04T14:30):**
+> - **방법**: GitHub Actions 최근 20런 분석 + 로컬 verify. 샌드박스 egress는 Cloudflare 엣지 차단(`curl` HTTP 000) → 직접 API 호출 불가, CI 로그 기반 판정.
+> - **🟢 파이프라인 완전 복구 확인 (A-010 효과 검증)**: 직전 Area 1에서 복구한 deploy(`--commit-message=<sha>`) 이후 **Deploy #136~141 + E2E #153~160 전부 success**. 이전 RED/skipped는 #134·#135(06-02, A-010 이전) deploy failure→E2E skip 캐스케이드가 마지막. 최신 커밋 6744e36 → Deploy #141 + E2E #160 그린(테스트 단계 2분17초 실제 실행·통과). Daily D1 Backup #18 정상.
+> - **로컬 verify PASS**: `npm ci` 후 typecheck(tsc --noEmit) PASS + build PASS(351 modules, 4.94MB worker).
+> - **#340(I-030) → ✅ approved 재분류 + 전제 해소**: issue_read 결과 **reactions +1=1 = owner 👍 승인** 확인(GraphQL null 한계로 직전 Area 6에서 미포착). 동시에 제목 "지속 RED" 전제가 **E2E 8연속 그린(스케줄 #154/#159 포함)**으로 해소. cold-start flaky(fixtures.ts:59)는 8런 미발화 → 급성 신호무력화 해소. **egress 차단으로 prod E2E 검증 불가 → 픽스처 안정화 자동수정 제외**(전용 세션 권장, 긴급도 하향). ⚠️ crud-order 운영데이터 오염은 그린 상태에서 매 스케줄 run마다 활성(설계 결정 대기) → #340 코멘트로 상태 갱신.
+> - **오탐/이상 없음**: deploy failure 2건은 전부 A-010 이전 구간, 이후 0건. queued/stuck run 없음. workflow_run 게이팅(deploy success→E2E) 정상 작동.
+> - 자동 수정 0건(파이프라인 정상, egress 차단으로 E2E 변경 검증 불가), 신규 이슈 0건, owner 승인 동기화 1건(#340)
+>
 > **Area 6 자기 진화 (2026-06-04T10:00):**
 > - **GitHub ↔ 백로그 동기화**: open auto-improve 이슈 15건(#334~#349, #339 제외) 전수 대조. GraphQL `reactions` 필드는 null 반환(MCP 한계) → 👍 판정은 `issue_read get_comments`의 코멘트별 reactions로 확인.
 > - **owner 피드백 3건 처리**:
@@ -175,6 +183,7 @@
 | ID | 제목 | 영역 | Issue | 상태 | 비고 |
 |----|------|------|-------|------|------|
 | I-025 | order_templates → **dead orphan 라우터로 재분류** (보안 아님) | Area 4 | #334 | 👀 reviewed | owner 재점검 요청→추적완료. (가)삭제/(나)보류 결정 대기 |
+| I-030 | E2E 프로덕션 RED — auth 픽스처 cold-start + crud-order 주문생성 | Area 1 | #340 | ✅ approved | 👍 확인. 급성 RED는 A-010으로 해소(8연속 그린). 픽스처 안정화는 egress 차단으로 검증불가→전용세션, crud-order 격리는 설계결정 대기 |
 | I-032 | rip.ts 설비 자식 entity_id 배선 | Area 2 | #342 | ✅ approved | owner "(나)로 진행". 스키마+로직+데이터보정 ~1일, 전용 세션 대기 |
 
 ## 🆕 New (미검토)
@@ -187,7 +196,6 @@
 | I-027 | 저장형 XSS — escapeHtml 누락 다수 (포털 등 7개 스크립트, 서버템플릿 포함 👍) | Area 5 | #335 | 2~3h |
 | I-028 | CI 폴백 자격증명 admin/password — 프로덕션 대상 (deploy/e2e yml) | Area 5 | #336 | 30분 |
 | I-029 | 프로덕션 debug 엔드포인트 잔존 + error.message 노출 (admin 전용 LOW) | Area 5 | #337 | 30분 |
-| I-030 | E2E 프로덕션 테스트 연속 RED — auth 픽스처 cold-start 타임아웃 + crud-order 주문생성 실패 | Area 1 | #340 | 2~3h |
 | I-031 | N+1 쿼리 batch 미전환 다수 — cashFlow 예측 핫패스(72쿼리) 우선 + import/child INSERT 루프 | Area 2 | #341 | 3h~ |
 | I-033 | Dead-filter 3건 — 백엔드 기구현 필터 UI 미노출 (지출결의서 날짜/생산 출력이력/포털 주문 상태+count버그) | Area 3 | #343 | ~3h |
 | I-034 | 포털 셀프서비스 갭 — 세금계산서 다운로드+50캡 / 미수금 aging / 재주문 prompt() | Area 3 | #344 | 3~4h |
