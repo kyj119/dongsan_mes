@@ -890,11 +890,18 @@ ordersCoreRouter.post('/', async (c) => {
     const aiAnalysisId: number | null = orderData.ai_analysis_id || null
     const layoutId: number | null = orderData.layout_id || null
 
+    // 청구(매출) 법인: 명시값 우선, 없으면 로그인 법인 (코디네이터가 타법인 주문 접수 시 명시 선택)
+    // ⚠️ 불변식 "번호 E{eid} = 행 entity_id" → 채번도 billingEntityId 기준이어야 함(세션 법인 X).
+    //    billing_entity_id ≠ 세션 법인일 때(코디 타법인 접수) 번호 접두와 entity_id 불일치 버그 방지.
+    const billingEntityId = (orderData.billing_entity_id && Number(orderData.billing_entity_id) > 0)
+      ? Number(orderData.billing_entity_id)
+      : (getEntityId(c) || 1)
+
     // Generate order number (without ORD- prefix)
     const today = new Date()
     const dateStr = today.toISOString().split('T')[0].replace(/-/g, '')
 
-    const orderNumber = await getNextEntitySeqNumber(c.env.DB, 'orders', 'order_number', getEntityId(c) || 1, dateStr)
+    const orderNumber = await getNextEntitySeqNumber(c.env.DB, 'orders', 'order_number', billingEntityId, dateStr)
 
     // pricing_method batch 조회 (AREA 계산 분기용)
     const itemIdsForPricing = [...new Set(
@@ -966,10 +973,7 @@ ordersCoreRouter.post('/', async (c) => {
     const orderType = orderData.order_type === 'DISTRIBUTION' ? 'DISTRIBUTION' : 'PRODUCTION'
     // Phase 3.2: source_quotation_id 받으면 orders.quotation_id에 저장 (견적서 → 주문 prefill 흐름)
     const sourceQuotationId = orderData.source_quotation_id || orderData.quotation_id || null
-    // 청구(매출) 법인: 명시값 우선, 없으면 로그인 법인 (코디네이터가 타법인 주문 접수 시 명시 선택)
-    const billingEntityId = (orderData.billing_entity_id && Number(orderData.billing_entity_id) > 0)
-      ? Number(orderData.billing_entity_id)
-      : (getEntityId(c) || 1)
+    // billingEntityId는 위(채번 전)에서 계산됨 — 번호 접두와 entity_id 일치 보장
     const orderResult = await c.env.DB.prepare(`
       INSERT INTO orders (
         order_number, client_id, status, order_year, order_month,
