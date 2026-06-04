@@ -590,6 +590,18 @@ cardsLifecycleRouter.patch('/:id/status', async (c) => {
           `).bind(parseInt(id), safeCategory, reason || '', reportedBy, getEntityId(c) || 1).run()
         }
       }
+    } else if (status === 'PRINT_ERROR') {
+      // 단일 상태축(Phase 4): 출력오류는 별도 status가 아니라 rip_status='ERROR'로 기록.
+      // 카드 main status는 유지 → 보드 버킷에서 사라지지 않고 재출력 대기로 노출.
+      if (rip_file_path) {
+        await c.env.DB.prepare(
+          "UPDATE cards SET rip_status = 'ERROR', rip_file_path = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?"
+        ).bind(rip_file_path, id).run()
+      } else {
+        await c.env.DB.prepare(
+          "UPDATE cards SET rip_status = 'ERROR', updated_at = CURRENT_TIMESTAMP WHERE id = ?"
+        ).bind(id).run()
+      }
     } else {
       // PRINT_DONE 전환 시 후가공 상태 자동 설정
       if (status === 'PRINT_DONE') {
@@ -1269,9 +1281,9 @@ cardsLifecycleRouter.patch('/:id/revert', async (c) => {
       return c.json({ success: false, error: '출력완료 상태의 카드만 되돌릴 수 있습니다.' }, 400)
     }
 
-    // 카드를 RIP_WAITING으로 되돌림
+    // 카드를 출력대기(PRINT_PENDING)로 되돌림 — 단일 상태축(Phase 4). rip_status도 초기화하여 재RIP 가능.
     await c.env.DB.prepare(
-      "UPDATE cards SET status = 'RIP_WAITING', print_done_at = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?"
+      "UPDATE cards SET status = 'PRINT_PENDING', rip_status = NULL, print_done_at = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?"
     ).bind(id).run()
 
     // card_items의 print_completed도 모두 초기화

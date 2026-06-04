@@ -239,10 +239,12 @@ cardsQueriesRouter.get('/', async (c) => {
 
     // kanban_column이 지정되면 status 파라미터 무시하고 칸반 컬럼 조건 적용
     if (kanban_column) {
+      // 단일 상태축: 대기=PRINT_PENDING, 출력중=PRINTING(LogWatcher 감지), 완료=PRINT_DONE.
+      // RIP 진행(rip_status)은 출력대기 내부 디테일(배지)로만 표시 — 컬럼 분기 기준 아님.
       if (kanban_column === 'rip_waiting') {
-        query += ` AND c.status = 'PRINTING' AND (c.rip_status IS NULL OR c.rip_status = '' OR c.rip_status = 'ERROR')`
+        query += ` AND c.status = 'PRINT_PENDING'`
       } else if (kanban_column === 'printing') {
-        query += ` AND c.status = 'PRINTING' AND c.rip_status IN ('QUEUED', 'SENT')`
+        query += ` AND c.status = 'PRINTING'`
       } else if (kanban_column === 'print_done') {
         query += ` AND c.status = 'PRINT_DONE'`
       }
@@ -397,9 +399,9 @@ cardsQueriesRouter.get('/', async (c) => {
 
     if (kanban_column) {
       if (kanban_column === 'rip_waiting') {
-        countQuery += ` AND c.status = 'PRINTING' AND (c.rip_status IS NULL OR c.rip_status = '' OR c.rip_status = 'ERROR')`
+        countQuery += ` AND c.status = 'PRINT_PENDING'`
       } else if (kanban_column === 'printing') {
-        countQuery += ` AND c.status = 'PRINTING' AND c.rip_status IN ('QUEUED', 'SENT')`
+        countQuery += ` AND c.status = 'PRINTING'`
       } else if (kanban_column === 'print_done') {
         countQuery += ` AND c.status = 'PRINT_DONE'`
       }
@@ -484,8 +486,8 @@ cardsQueriesRouter.get('/kanban-summary', async (c) => {
 
     const colCountSql = `
       SELECT
-        SUM(CASE WHEN c.status = 'PRINTING' AND (c.rip_status IS NULL OR c.rip_status = '' OR c.rip_status = 'ERROR') THEN 1 ELSE 0 END) as rip_waiting,
-        SUM(CASE WHEN c.status = 'PRINTING' AND c.rip_status IN ('QUEUED', 'SENT') THEN 1 ELSE 0 END) as printing,
+        SUM(CASE WHEN c.status = 'PRINT_PENDING' THEN 1 ELSE 0 END) as rip_waiting,
+        SUM(CASE WHEN c.status = 'PRINTING' THEN 1 ELSE 0 END) as printing,
         SUM(CASE WHEN c.status = 'PRINT_DONE' THEN 1 ELSE 0 END) as print_done,
         SUM(CASE WHEN c.status = 'HOLD' THEN 1 ELSE 0 END) as hold
       FROM cards c
@@ -745,8 +747,8 @@ cardsQueriesRouter.get('/board', async (c) => {
     const { results: statusCounts } = await c.env.DB.prepare(`
       SELECT
         COUNT(*) as total,
-        SUM(CASE WHEN c.status = 'PRINTING' AND (c.rip_status IS NULL OR c.rip_status = '' OR c.rip_status = 'ERROR') THEN 1 ELSE 0 END) as pending,
-        SUM(CASE WHEN c.status = 'PRINTING' AND c.rip_status IN ('QUEUED','SENT') THEN 1 ELSE 0 END) as printing,
+        SUM(CASE WHEN c.status = 'PRINT_PENDING' THEN 1 ELSE 0 END) as pending,
+        SUM(CASE WHEN c.status = 'PRINTING' THEN 1 ELSE 0 END) as printing,
         SUM(CASE WHEN c.status = 'PRINT_DONE' AND c.shipped_at IS NULL THEN 1 ELSE 0 END) as done,
         SUM(CASE WHEN c.shipped_at IS NOT NULL THEN 1 ELSE 0 END) as shipped,
         SUM(CASE WHEN c.status = 'HOLD' THEN 1 ELSE 0 END) as hold
@@ -770,9 +772,9 @@ cardsQueriesRouter.get('/board', async (c) => {
     } else if (status === 'PRINT_DONE') {
       where += ` AND c.status = 'PRINT_DONE' AND c.shipped_at IS NULL`
     } else if (status === 'PRINTING') {
-      where += ` AND c.status = 'PRINTING' AND c.rip_status IN ('QUEUED','SENT')`
+      where += ` AND c.status = 'PRINTING'`
     } else if (status === 'PRINT_PENDING') {
-      where += ` AND c.status = 'PRINTING' AND (c.rip_status IS NULL OR c.rip_status = '' OR c.rip_status = 'ERROR')`
+      where += ` AND c.status = 'PRINT_PENDING'`
     } else if (status === 'HOLD') {
       where += ` AND c.status = 'HOLD'`
     }

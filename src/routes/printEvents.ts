@@ -244,8 +244,10 @@ printEventsRouter.post('/', agentKeyMiddleware, async (c) => {
         cardId = card.id
         // Auto-update card status for OK — 타일 인식 방식
         if (print_status === 'OK' && card.status !== 'PRINT_DONE') {
-          // PRINTING 상태로 전환 (아직 RIP_WAITING이면)
-          if (card.status === 'RIP_WAITING') {
+          // 실제 인쇄 감지(LogWatcher OK) → 대기 카드를 출력중으로 전환.
+          // 단일 상태축: PRINT_PENDING(표준) 및 레거시 RIP_WAITING 모두 포함.
+          // PRINTING 진입 트리거는 이 LogWatcher 경로(및 수동 scan)로만 단일화 (#3).
+          if (card.status === 'PRINT_PENDING' || card.status === 'RIP_WAITING') {
             await c.env.DB.prepare(
               "UPDATE cards SET status = 'PRINTING', updated_at = CURRENT_TIMESTAMP WHERE id = ?"
             ).bind(card.id).run()

@@ -435,15 +435,16 @@ const SHARED_CSS = `
   .nav-item i { width: 24px; text-align: center; font-size: 16px; flex-shrink: 0; }
 
   .group-label {
-    font-size: 10px;
+    font-size: 11px;
+    font-weight: 600;
     text-transform: uppercase;
-    letter-spacing: 0.08em;
-    color: var(--c-text-secondary);
+    letter-spacing: 0.06em;
+    color: #cbd5e1;
     padding: 12px 18px 4px;
     opacity: 0;
     height: 0;
     overflow: hidden;
-    transition: opacity var(--transition-fast), height var(--transition-fast);
+    transition: opacity var(--transition-fast), height var(--transition-fast), color var(--transition-fast);
   }
   .sidebar:hover .group-label {
     opacity: 1;
@@ -480,11 +481,14 @@ const SHARED_CSS = `
   .sidebar.pinned .sidebar-pin-btn { color: var(--c-primary); transform: rotate(0deg); opacity: 1; }
 
   /* Collapsible groups */
-  .group-header { cursor: pointer; display: flex; align-items: center; justify-content: space-between; padding-right: 14px; }
-  .group-chevron { font-size: 10px !important; width: auto !important; transition: transform var(--transition-fast); margin-left: 0 !important; }
+  .group-header { cursor: pointer; display: flex; align-items: center; justify-content: space-between; padding-right: 14px; transition: background var(--transition-fast); }
+  .group-header:hover { background: var(--c-sidebar-hover); }
+  .group-header:hover .group-label, .group-header:hover .group-chevron { color: var(--c-sidebar-text-active); }
+  .group-chevron { font-size: 11px !important; width: auto !important; color: var(--c-text-muted); transition: transform var(--transition-fast), color var(--transition-fast); margin-left: 0 !important; }
   .group-items.collapsed { display: none; }
   .group-items.collapsed + .group-sep { margin-top: 2px; }
-  .group-header.collapsed .group-chevron { transform: rotate(-90deg); }
+  .group-header.collapsed .group-chevron { transform: rotate(-90deg); color: var(--c-sidebar-text); }
+  .group-header.collapsed .group-label { opacity: 0.55; }
 
   /* Favorites */
   .sidebar-favorites { border-bottom: 1px solid var(--c-sidebar-border); padding: 4px 0; }

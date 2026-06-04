@@ -187,6 +187,7 @@ ordersQueriesRouter.patch('/bulk-bill', requireRole('ADMIN', 'MANAGER'), async (
 // PATCH /api/orders/bulk-ship - 일괄 출고완료 처리
 ordersQueriesRouter.patch('/bulk-ship', async (c) => {
   try {
+    const user = c.get('user')
     const { order_ids } = await c.req.json<{ order_ids: number[] }>()
     if (!order_ids || order_ids.length === 0) {
       return c.json({ success: false, error: 'order_ids is required' }, 400)
@@ -234,13 +235,30 @@ ordersQueriesRouter.patch('/bulk-ship', async (c) => {
         // 기성품/유통(production_required=0) 라인 재고 차감 — order_type 무관, 혼합주문 기성 라인 포함 (Phase 3)
         const orderEntityId = (orderInfo as any)?.entity_id || getEntityId(c) || 1
         await deductStockLinesOnShip(c.env.DB, Number(orderId), orderEntityId)
-        // auto_complete_date 설정: 직접수령/방문수령/퀵은 +1일, 배송은 +2일
         const isQuick = method === '방문수령' || method === '직접수령' || method === '직접배송' || method === '퀵' || method.toUpperCase() === 'PICKUP'
         const delayDays = isQuick ? 1 : 2
-        await c.env.DB.prepare(
-          `UPDATE orders SET auto_complete_date = date('now', '+' || ? || ' days'), updated_at = datetime('now') WHERE id = ? AND auto_complete_date IS NULL`
-        ).bind(delayDays, orderId).run()
-        results.push({ id: orderId, success: true, shipped_cards: shippedCards, order_shipped: true })
+        // #1: 출고처리 즉시 SHIPPED 전이 (지연 sync 의존 제거 — 유통/기성 주문이 출고처리 후 바로 출고완료로 표시).
+        //   청구 타이밍 보존: 기존 2단 지연(출고→완료 delayDays + 완료→청구 delayDays)의 총합을 billable_after에 반영.
+        //   auto_complete_date는 호환 위해 오늘로 설정(이미 도래 처리). 미수금/회계 전이 시점 불변.
+        const fromRow = await c.env.DB.prepare(`SELECT status FROM orders WHERE id = ?`).bind(orderId).first<{ status: string }>()
+        const fromStatus = fromRow?.status || 'CONFIRMED'
+        let orderShipped = false
+        if (fromStatus !== 'SHIPPED' && fromStatus !== 'CANCELLED') {
+          const upd = await c.env.DB.prepare(
+            `UPDATE orders SET status = 'SHIPPED', updated_at = datetime('now'),
+               billable_after = date('now', '+' || ? || ' days'),
+               auto_complete_date = COALESCE(auto_complete_date, date('now'))
+             WHERE id = ? AND status = ?`
+          ).bind(delayDays * 2, orderId, fromStatus).run()
+          orderShipped = (upd.meta.changes ?? 0) > 0
+          if (orderShipped) {
+            await c.env.DB.prepare(
+              `INSERT INTO order_status_history (order_id, from_status, to_status, changed_by, change_reason)
+               VALUES (?, ?, 'SHIPPED', ?, '출고처리 즉시 전이')`
+            ).bind(orderId, fromStatus, user?.id || null).run()
+          }
+        }
+        results.push({ id: orderId, success: true, shipped_cards: shippedCards, order_shipped: orderShipped || fromStatus === 'SHIPPED' })
       } else {
         // 미출고 카드 상세 정보 포함 (프론트에서 안내 표시용)
         const { results: unshippedCards } = await c.env.DB.prepare(`

@@ -64,6 +64,7 @@ function restoreKanbanFilters() {
 
 // ===== Status Labels =====
 var statusLabels = {
+    'PRINT_PENDING': '출력대기',
     'PRINTING': '출력중',
     'PRINT_DONE': '출력완료',
     'HOLD': '보류'
@@ -133,7 +134,7 @@ async function loadKanban() {
         '/api/cards?kanban_column=print_done&exclude_order_status=SHIPPED' + baseParams,
         '/api/cards?status=HOLD' + baseParams
     ];
-    var colNames = ['RIP대기', '출력중', '출력완료', '보류'];
+    var colNames = ['출력대기', '출력중', '출력완료', '보류'];
     var colEls = ['listInProgress', 'listInProgress', 'listPrintDone', null];
     var fetched = [[], [], [], []];
     var errors = [];
@@ -914,7 +915,7 @@ function renderKanbanKpi() {
     }
     // KPI 2: 컬럼별 카드 수
     var ripEl = document.getElementById('kpiRipWaiting');
-    if (ripEl) ripEl.textContent = 'RIP대기 ' + ((summary && summary.rip_waiting) || 0);
+    if (ripEl) ripEl.textContent = '출력대기 ' + ((summary && summary.rip_waiting) || 0);
     var printingEl = document.getElementById('kpiPrinting');
     if (printingEl) printingEl.textContent = '출력중 ' + ((summary && summary.printing) || 0);
     var doneEl = document.getElementById('kpiPrintDone');

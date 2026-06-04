@@ -5,7 +5,7 @@
     if (!cardId || isNaN(parseInt(cardId))) { document.getElementById('cdRoot').innerHTML = '<p class="text-center py-20 text-gray-400">카드 ID가 올바르지 않습니다.</p>'; return; }
 
     var esc = window.escapeHtml || function(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); };
-    var statusLabels = { PRINTING: '출력중', PRINT_DONE: '출력완료', HOLD: '보류', RIP_WAITING: 'RIP대기', SHIPPED: '출고완료' };
+    var statusLabels = { PRINT_PENDING: '출력대기', PRINTING: '출력중', PRINT_DONE: '출력완료', HOLD: '보류', RIP_WAITING: '출력대기', SHIPPED: '출고완료' };
 
     async function load() {
         try {

@@ -792,24 +792,38 @@ shipmentsRouter.patch('/:orderId/ship', requireRole('ADMIN', 'MANAGER'), async (
       return c.json({ success: false, error: `미완료 품목이 ${notReady.length}건 있습니다.` }, 400)
     }
 
-    // #180: 카드 출고 + auto_complete_date 원자적 처리
     const method = (order.delivery_method || '').trim()
     const isQuick = method === '방문수령' || method === '직접수령' || method === '직접배송' || method === '퀵'
     const delayDays = isQuick ? 1 : 2
-    await c.env.DB.batch([
-      c.env.DB.prepare(
-        `UPDATE cards SET shipped_at = CURRENT_TIMESTAMP, shipped_by = ?
-         WHERE order_id = ? AND status = 'PRINT_DONE' AND shipped_at IS NULL`
-      ).bind(user?.id || null, orderId),
-      c.env.DB.prepare(
-        `UPDATE orders SET auto_complete_date = date('now', '+' || ? || ' days'), updated_at = CURRENT_TIMESTAMP WHERE id = ? AND auto_complete_date IS NULL`
-      ).bind(delayDays, orderId)
-    ])
+
+    // 카드 출고 처리 (PRINT_DONE 카드에 shipped_at)
+    await c.env.DB.prepare(
+      `UPDATE cards SET shipped_at = CURRENT_TIMESTAMP, shipped_by = ?
+       WHERE order_id = ? AND status = 'PRINT_DONE' AND shipped_at IS NULL`
+    ).bind(user?.id || null, orderId).run()
 
     // 기성품/유통(production_required=0) 라인 재고 차감 (Phase 3) — 멱등(중복 OUT 스킵)
     await deductStockLinesOnShip(c.env.DB, Number(orderId), order.entity_id || getEntityId(c) || 1)
 
-    return c.json({ success: true, message: '출고 처리되었습니다. 동기화 후 출고완료 상태로 전이됩니다.' })
+    // #1: 출고처리 즉시 SHIPPED 전이 (지연 sync 의존 제거). 청구 타이밍은 기존 2단 지연 총합 보존.
+    let orderShipped = false
+    if (order.status !== 'SHIPPED' && order.status !== 'CANCELLED') {
+      const upd = await c.env.DB.prepare(
+        `UPDATE orders SET status = 'SHIPPED', updated_at = CURRENT_TIMESTAMP,
+           billable_after = date('now', '+' || ? || ' days'),
+           auto_complete_date = COALESCE(auto_complete_date, date('now'))
+         WHERE id = ? AND status = ?`
+      ).bind(delayDays * 2, orderId, order.status).run()
+      orderShipped = (upd.meta.changes ?? 0) > 0
+      if (orderShipped) {
+        await c.env.DB.prepare(
+          `INSERT INTO order_status_history (order_id, from_status, to_status, changed_by, change_reason)
+           VALUES (?, ?, 'SHIPPED', ?, '출고처리 즉시 전이')`
+        ).bind(orderId, order.status, user?.id || null).run()
+      }
+    }
+
+    return c.json({ success: true, message: '출고완료 처리되었습니다.' })
   } catch (err) {
     return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
   }
