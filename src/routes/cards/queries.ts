@@ -11,7 +11,7 @@ import type { HonoEnv } from '../../types/env'
 import type { Card, ApiResponse } from '../../types/models'
 import { authMiddleware } from '../../middleware/auth'
 import { requireAnyPagePermission } from '../../middleware/permissions'
-import { entityFilter } from '../../utils/entityFilter'
+import { cardEntityFilter } from '../../utils/entityFilter'
 
 // ── Row types for D1 query results ──
 interface EquipmentRow {
@@ -101,7 +101,7 @@ cardsQueriesRouter.get('/schedule/queues', async (c) => {
     `).all<EquipmentRow>()
 
     // 2. 전체 PRINTING 카드를 한 번에 조회 후 장비별 그룹핑 (N+1 → 1 쿼리)
-    const ef2 = entityFilter(c, 'o')
+    const ef2 = cardEntityFilter(c, 'c')
     const { results: allPrintingCards } = await c.env.DB.prepare(`
       SELECT c.id, c.card_number, c.client_name, c.item_name, c.category_name,
         c.delivery_date, c.priority, c.status, c.rip_status, c.rip_preset,
@@ -138,7 +138,7 @@ cardsQueriesRouter.get('/schedule/queues', async (c) => {
 // ── 스케줄: 미배정 카드 조회 ──
 cardsQueriesRouter.get('/schedule/unassigned', async (c) => {
   try {
-    const efUn = entityFilter(c, 'o')
+    const efUn = cardEntityFilter(c, 'c')
     const { results } = await c.env.DB.prepare(`
       SELECT c.id, c.card_number, c.client_name, c.item_name, c.category_name,
         c.delivery_date, c.priority, c.status, c.rip_status,
@@ -181,7 +181,7 @@ cardsQueriesRouter.get('/debug-counts', async (c) => {
 // Get distinct category list from active cards
 cardsQueriesRouter.get('/categories', async (c) => {
   try {
-    const efCat = entityFilter(c, 'o')
+    const efCat = cardEntityFilter(c, 'c')
     const { results } = await c.env.DB.prepare(`
       SELECT DISTINCT c.category_name
       FROM cards c
@@ -289,7 +289,7 @@ cardsQueriesRouter.get('/', async (c) => {
       params.push(exclude_order_status)
     }
 
-    const ef = entityFilter(c, 'o')
+    const ef = cardEntityFilter(c, 'c')
     query += ef.clause
     params.push(...ef.params)
 
@@ -441,7 +441,7 @@ cardsQueriesRouter.get('/', async (c) => {
       countParams.push(exclude_order_status)
     }
 
-    const efCount = entityFilter(c, 'o')
+    const efCount = cardEntityFilter(c, 'c')
     countQuery += efCount.clause
     countParams.push(...efCount.params)
 
@@ -480,7 +480,7 @@ cardsQueriesRouter.get('/kanban-summary', async (c) => {
       categoryParams.push(category)
     }
 
-    const efKanban = entityFilter(c, 'o')
+    const efKanban = cardEntityFilter(c, 'c')
 
     const colCountSql = `
       SELECT
@@ -576,7 +576,7 @@ cardsQueriesRouter.get('/kanban-summary', async (c) => {
 // Daily print stats (must be before /:id)
 cardsQueriesRouter.get('/stats/daily', async (c) => {
   try {
-    const efDaily = entityFilter(c, 'o')
+    const efDaily = cardEntityFilter(c, 'c')
     const { results } = await c.env.DB.prepare(`
       SELECT
         date(c.updated_at) as date,
@@ -736,12 +736,12 @@ cardsQueriesRouter.get('/board', async (c) => {
     const { status = '', category = '', sort = 'urgency',
             offset: offsetStr = '0', limit: limitStr = '20',
             summary_only = '' } = c.req.query()
-    const ef = entityFilter(c, 'o')
+    const ef = cardEntityFilter(c, 'c')
     const offset = parseInt(offsetStr) || 0
     const limit = Math.min(parseInt(limitStr) || 20, 50)
 
     // ── Summary counts (always needed) ──
-    const efSummary = entityFilter(c, 'o')
+    const efSummary = cardEntityFilter(c, 'c')
     const { results: statusCounts } = await c.env.DB.prepare(`
       SELECT
         COUNT(*) as total,

@@ -107,13 +107,21 @@ export async function generateCardsForOrder(params: GenerateCardsParams): Promis
     (i) => i.parent_item_id !== null && i.parent_item_id !== undefined
   )
 
-  const itemsByCardGroup = new Map<string, Array<{ item: OIRow; ppJson: string | null; qty: number }>>()
+  // 카드 그룹핑: 카드그룹 × 담당법인(assigned_entity_id). 타법인 담당 품목은 별도 카드로 그 법인(requesting_entity_id)에 배정.
+  // assigned_entity_id NULL = 청구 법인(entityId) 담당 → 단일 법인 주문은 기존과 동일(전부 entityId).
+  const effEntityOf = (it: OIRow): number | null => {
+    const a = it.assigned_entity_id
+    return (a !== null && a !== undefined) ? Number(a) : (entityId ?? null)
+  }
+  const itemsByCardGroup = new Map<string, Array<{ item: OIRow; ppJson: string | null; qty: number; cardGroup: string; reqEntity: number | null }>>()
 
   for (const item of regularItems) {
     const cg = getCardGroup(item)
     if (!cg) continue
-    if (!itemsByCardGroup.has(cg)) itemsByCardGroup.set(cg, [])
-    itemsByCardGroup.get(cg)!.push({ item, ppJson: (item.post_processing as string) || null, qty: (item.quantity as number) || 0 })
+    const ee = effEntityOf(item)
+    const key = `${cg}__${ee ?? 'null'}`
+    if (!itemsByCardGroup.has(key)) itemsByCardGroup.set(key, [])
+    itemsByCardGroup.get(key)!.push({ item, ppJson: (item.post_processing as string) || null, qty: (item.quantity as number) || 0, cardGroup: cg, reqEntity: ee })
   }
 
   for (const child of childItems) {
@@ -121,8 +129,10 @@ export async function generateCardsForOrder(params: GenerateCardsParams): Promis
     if (!parent) continue
     const cg = getCardGroup(parent)
     if (!cg) continue
-    if (!itemsByCardGroup.has(cg)) itemsByCardGroup.set(cg, [])
-    itemsByCardGroup.get(cg)!.push({ item: child, ppJson: (parent.post_processing as string) || null, qty: 1 })
+    const ee = effEntityOf(parent)  // 자식은 부모 담당 법인 상속
+    const key = `${cg}__${ee ?? 'null'}`
+    if (!itemsByCardGroup.has(key)) itemsByCardGroup.set(key, [])
+    itemsByCardGroup.get(key)!.push({ item: child, ppJson: (parent.post_processing as string) || null, qty: 1, cardGroup: cg, reqEntity: ee })
   }
 
   // shipment_ready: 카드 미생성 품목은 바로 출고 준비 완료
@@ -143,7 +153,9 @@ export async function generateCardsForOrder(params: GenerateCardsParams): Promis
   const cardGroupEntries: Array<{ cardNumber: string; entries: Array<{ item: OIRow; ppJson: string | null; qty: number }> }> = []
 
   let cardIndex = 0
-  for (const [cardGroup, entries] of itemsByCardGroup) {
+  for (const [, entries] of itemsByCardGroup) {
+    const cardGroup = entries[0].cardGroup
+    const reqEntity = entries[0].reqEntity
     const category = cardGroup === 'OUTPUT' ? '출력'
       : cardGroup === 'TRANSFER_FLAG' ? '전사/태극기'
       : cardGroup === 'SIGN' ? '간판' : cardGroup
@@ -238,7 +250,7 @@ export async function generateCardsForOrder(params: GenerateCardsParams): Promis
         deliveryDate || null, cardPriority,
         cardFinishing ? JSON.stringify(cardFinishing) : null,
         notes || null,
-        entityId ?? null
+        reqEntity ?? null
       )
     )
   }
@@ -1323,9 +1335,27 @@ ordersCoreRouter.post('/', async (c) => {
         deliveryDate: orderData.delivery_date || null,
         priority: orderData.priority || 'NORMAL',
         notes: orderData.notes || null,
-        entityId: getEntityId(c)
+        entityId: billingEntityId
       })
     }
+
+    // ── 타법인 배정 알림: 타법인 담당(assigned_entity_id ≠ 청구법인) 품목이 있으면 그 법인에 알림 (멀티법인 협업) ──
+    try {
+      const { results: crossEntities } = await c.env.DB.prepare(
+        `SELECT DISTINCT assigned_entity_id AS eid FROM order_items
+         WHERE order_id = ? AND assigned_entity_id IS NOT NULL AND assigned_entity_id != ?`
+      ).bind(orderId, billingEntityId).all<{ eid: number }>()
+      for (const row of (crossEntities || [])) {
+        await notifyRoles(
+          c.env.DB,
+          ['DESIGNER', 'MANAGER'],
+          '타법인 작업 배정',
+          `주문 ${orderNumber}에 귀 법인 담당 품목이 배정되었습니다.`,
+          '/orders',
+          row.eid as number
+        )
+      }
+    } catch (_) { /* 알림 실패는 주문 생성에 영향 없음 */ }
 
     // ── C. Thumbnail extraction: for each created card, look up AI group thumbnail ──
     // Only attempt if the order has an ai_analysis_id or any item has one
