@@ -9,7 +9,7 @@ import { notifyRoles } from '../../utils/notify'
 import { recalculateOrderCosts } from '../../utils/costCalculator'
 import { checkMaterialShortage } from '../../utils/materialShortageCheck'
 import { sendEmail } from '../../services/emailProvider'
-import { getEntityId, entityFilter } from '../../utils/entityFilter'
+import { getEntityId, entityFilter, orderVisibilityFilter } from '../../utils/entityFilter'
 import { getEntityCompanyInfo } from '../../utils/entitySettings'
 
 // card_group 결정 함수: 품목의 카드 그룹(생산 라인)을 결정
@@ -304,16 +304,18 @@ ordersCoreRouter.get('/', async (c) => {
         (SELECT width FROM order_items WHERE order_id = o.id AND (parent_item_id IS NULL OR parent_item_id = 0) ORDER BY id LIMIT 1) as main_item_width,
         (SELECT height FROM order_items WHERE order_id = o.id AND (parent_item_id IS NULL OR parent_item_id = 0) ORDER BY id LIMIT 1) as main_item_height,
         (SELECT content FROM order_items WHERE order_id = o.id AND (parent_item_id IS NULL OR parent_item_id = 0) ORDER BY id LIMIT 1) as main_item_content,
-        (SELECT COUNT(*) FROM order_items WHERE order_id = o.id AND (parent_item_id IS NULL OR parent_item_id = 0)) as item_count
+        (SELECT COUNT(*) FROM order_items WHERE order_id = o.id AND (parent_item_id IS NULL OR parent_item_id = 0)) as item_count,
+        e.short_name as entity_name
       FROM orders o
       LEFT JOIN clients c ON o.client_id = c.id
       LEFT JOIN users u ON o.created_by = u.id
+      LEFT JOIN entities e ON e.id = o.entity_id
     `
     const params: any[] = []
     const whereClauses: string[] = []
 
-    // Entity filter (멀티사업자)
-    const ef = entityFilter(c, 'o')
+    // 주문 가시성 필터 (멀티법인 협업): 소유(청구) 법인 + 담당 품목 보유 법인. ADMIN/코디네이터는 전체.
+    const ef = orderVisibilityFilter(c, 'o')
     if (ef.params.length > 0) {
       whereClauses.push(ef.clause.replace(' AND ', ''))
       params.push(...ef.params)
@@ -415,8 +417,8 @@ ordersCoreRouter.get('/', async (c) => {
     const countParams: any[] = []
     const countWhereClauses: string[] = []
 
-    // Entity filter (멀티사업자)
-    const efCount = entityFilter(c, 'o')
+    // 주문 가시성 필터 (목록과 일치)
+    const efCount = orderVisibilityFilter(c, 'o')
     if (efCount.params.length > 0) {
       countWhereClauses.push(efCount.clause.replace(' AND ', ''))
       countParams.push(...efCount.params)
@@ -835,6 +837,18 @@ ordersCoreRouter.get('/:id', async (c) => {
       WHERE oi.order_id = ?
       ORDER BY oi.sort_order ASC
     `).bind(id).all()
+
+    // 주문 가시성 (멀티법인 격리·IDOR 차단): 소유(청구) 법인 + 담당 품목 보유 법인만 열람.
+    // ADMIN(entityId=0)/코디네이터는 전체. 권한 없으면 존재 비노출 위해 404.
+    const viewerEntity = getEntityId(c)
+    const viewerUser = c.get('user') as { is_coordinator?: number } | undefined
+    if (viewerEntity !== 0 && !viewerUser?.is_coordinator) {
+      const ownEntity = Number((order as any).entity_id)
+      const hasAssigned = (items || []).some((it: any) => Number(it.assigned_entity_id) === viewerEntity)
+      if (ownEntity !== viewerEntity && !hasAssigned) {
+        return c.json({ success: false, error: 'Order not found' }, 404)
+      }
+    }
 
     const response: ApiResponse<any> = {
       success: true,

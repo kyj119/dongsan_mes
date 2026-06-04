@@ -433,13 +433,18 @@ async function loadOrders() {
           : billingBadge;
         const spec = (order.main_item_width && order.main_item_height) ? ` <span class="text-xs text-gray-500">[${order.main_item_width}×${order.main_item_height}]</span>` : '';
         const itemMore = order.item_count > 1 ? ` <span class="text-xs text-gray-400">외 ${order.item_count - 1}건</span>` : '';
+        // 타법인 배지 (멀티법인 협업): 내 법인 담당 품목이 있어 보이는 타 청구법인 주문 표시
+        const viewerEntity = (window.__currentEntityId != null) ? Number(window.__currentEntityId) : (parseInt(localStorage.getItem('entityId')) || 0);
+        const crossBadge = (viewerEntity > 0 && order.entity_id && Number(order.entity_id) !== viewerEntity)
+          ? ` <span class="px-1.5 py-0.5 text-[10px] rounded bg-purple-100 text-purple-700 font-bold" title="타법인 주문 — 내 법인 담당 품목 포함">${escapeHtml(order.entity_name || '타법인')}</span>`
+          : '';
         return `
           <tr class="hover:bg-gray-50" data-order-id="${order.id}" data-status="${order.status}" data-billing-status="${order.billing_status || ''}" data-order-number="${escapeHtml(order.order_number || ('#' + order.id))}">
             <td class="px-2 py-2.5 text-center">
               <input type="checkbox" class="order-checkbox rounded border-gray-300" data-order-id="${order.id}" onchange="toggleOrderSelect(this)" ${selectedOrderIds.has(order.id) ? 'checked' : ''}>
             </td>
             <td class="px-2 py-2.5 whitespace-nowrap">
-              <div class="text-sm font-medium text-gray-900">${escapeHtml(order.order_number)}${priorityBadge}</div>
+              <div class="text-sm font-medium text-gray-900">${escapeHtml(order.order_number)}${priorityBadge}${crossBadge}</div>
             </td>
             <td class="px-2 py-2.5">
               <div class="text-sm text-gray-900 truncate" title="${escapeHtml(order.client_name || '')}">${escapeHtml(order.client_name || '-')}</div>

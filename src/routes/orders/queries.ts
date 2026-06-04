@@ -7,7 +7,7 @@ import { logActivity } from '../../utils/activityLog'
 import { notifyRoles } from '../../utils/notify'
 import { recalculateOrderCosts } from '../../utils/costCalculator'
 import { sendEmail } from '../../services/emailProvider'
-import { getEntityId, entityFilter } from '../../utils/entityFilter'
+import { getEntityId, entityFilter, orderVisibilityFilter } from '../../utils/entityFilter'
 import { deductStockLinesOnShip } from '../../utils/stockShip'
 
 const ordersQueriesRouter = new Hono<HonoEnv>()
@@ -44,9 +44,10 @@ ordersQueriesRouter.get('/quotations/expired', async (c) => {
 // Get order statistics (must be before /:id to avoid route conflict)
 ordersQueriesRouter.get('/stats', async (c) => {
   try {
-    const ef = entityFilter(c)
+    // 주문 가시성 필터 (목록과 일치): 소유(청구) + 담당 품목 보유 법인. EXISTS 상관 위해 alias 'o' 필수.
+    const ef = orderVisibilityFilter(c, 'o')
     const statsQuery = ef.params.length > 0
-      ? `SELECT status, COUNT(*) as count FROM orders WHERE entity_id = ? GROUP BY status`
+      ? `SELECT o.status AS status, COUNT(*) as count FROM orders o WHERE 1=1${ef.clause} GROUP BY o.status`
       : `SELECT status, COUNT(*) as count FROM orders GROUP BY status`
     const { results } = ef.params.length > 0
       ? await c.env.DB.prepare(statsQuery).bind(...ef.params).all()
