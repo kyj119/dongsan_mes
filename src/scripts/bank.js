@@ -893,7 +893,7 @@
   function loadReceivables() {
     var tbody = document.getElementById('receivablesTableBody');
     if (!tbody) return;
-    tbody.innerHTML = '<tr><td colspan="9" class="text-center py-8 text-gray-400"><i class="fas fa-spinner fa-spin mr-1"></i>로딩 중...</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="10" class="text-center py-8 text-gray-400"><i class="fas fa-spinner fa-spin mr-1"></i>로딩 중...</td></tr>';
 
     axios.get('/api/bank/receivables').then(function(r) {
       var data = r.data.data || {};
@@ -913,7 +913,7 @@
       document.getElementById('rcvCritical').textContent = ((summary.aging_over || 0) + (summary.no_payment || 0)) + '개사';
 
       if (!clientList.length) {
-        tbody.innerHTML = '<tr><td colspan="9" class="text-center py-10 text-gray-400">미수금이 있는 거래처가 없습니다</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="10" class="text-center py-10 text-gray-400">미수금이 있는 거래처가 없습니다</td></tr>';
         return;
       }
 
@@ -932,6 +932,7 @@
         html += '<td class="px-3 py-2 font-medium text-gray-800">' + escHtml(cl.client_name) + '</td>';
         html += '<td class="px-3 py-2 text-sm text-gray-500">' + escHtml(cl.representative || '') + '</td>';
         html += '<td class="px-3 py-2 text-right font-semibold text-red-600 tabular-nums">' + Number(cl.balance).toLocaleString() + '원</td>';
+        html += '<td class="px-3 py-2 text-center text-sm text-gray-600 tabular-nums">' + (cl.expected_payment_date || '-') + '</td>';
         html += '<td class="px-3 py-2 text-center text-sm tabular-nums text-gray-700">' + Math.round((cl.collection_rate != null ? cl.collection_rate : 1) * 100) + '%</td>';
         html += '<td class="px-3 py-2 text-right text-sm font-medium text-blue-600 tabular-nums">' + (cl.expected_collection != null ? Number(cl.expected_collection).toLocaleString() + '원' : '-') + '</td>';
         html += '<td class="px-3 py-2 text-center text-sm text-gray-600">' + (cl.last_payment_date || '-') + '</td>';
@@ -942,7 +943,7 @@
       });
       tbody.innerHTML = html;
     }).catch(function() {
-      tbody.innerHTML = '<tr><td colspan="9" class="text-center py-8 text-red-400">미수금 현황 로딩 실패</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="10" class="text-center py-8 text-red-400">미수금 현황 로딩 실패</td></tr>';
     });
   }
 

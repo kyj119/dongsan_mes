@@ -217,6 +217,7 @@ export function bankPage(c: Context<HonoEnv>) {
                     <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">거래처</th>
                     <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">대표자</th>
                     <th class="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase">미수금</th>
+                    <th class="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase">예상 입금일</th>
                     <th class="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase">예상회수율</th>
                     <th class="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase">예상회수액</th>
                     <th class="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase">최근 입금일</th>
@@ -226,7 +227,7 @@ export function bankPage(c: Context<HonoEnv>) {
                   </tr>
                 </thead>
                 <tbody id="receivablesTableBody">
-                  <tr><td colspan="9" class="text-center py-10 text-gray-400">로딩 중...</td></tr>
+                  <tr><td colspan="10" class="text-center py-10 text-gray-400">로딩 중...</td></tr>
                 </tbody>
               </table>
             </div>

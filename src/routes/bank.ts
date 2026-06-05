@@ -10,6 +10,7 @@ import { createPayment, validatePayment, preparePaymentStatements } from '../lib
 import { entityFilter, getEntityId } from '../utils/entityFilter'
 import { getEntityCorpNum } from '../utils/entitySettings'
 import { loadProvision, agingCategoryToBucket, effectiveLossRate } from '../utils/provisionMatrix'
+import { computeExpectedPaymentDate } from '../utils/paymentSchedule'
 
 const bankRouter = new Hono<HonoEnv>()
 
@@ -1727,10 +1728,13 @@ bankRouter.get('/receivables', requireRole('ADMIN', 'MANAGER'), async (c) => {
     const { results: receivables } = await c.env.DB.prepare(`
       SELECT
         c.id, c.client_name, c.representative, c.balance, c.credit_risk_grade,
+        c.payment_cycle_type, c.payment_terms_days, c.closing_day, c.payment_month_offset, c.payment_day,
         (SELECT MAX(p.payment_date) FROM payments p WHERE p.client_id = c.id) as last_payment_date,
         (SELECT COUNT(*) FROM payments p WHERE p.client_id = c.id) as total_payments,
         (SELECT SUM(p.amount) FROM payments p WHERE p.client_id = c.id
-         AND p.payment_date >= date('now', '-90 days')) as recent_90d_payments
+         AND p.payment_date >= date('now', '-90 days')) as recent_90d_payments,
+        (SELECT MIN(o.billed_at) FROM orders o
+         WHERE o.client_id = c.id AND o.billing_status = 'BILLED' AND o.billed_at IS NOT NULL) as earliest_billed_at
       FROM clients c
       WHERE c.is_active = 1 AND c.balance > 0
       ORDER BY c.balance DESC
@@ -1740,9 +1744,15 @@ bankRouter.get('/receivables', requireRole('ADMIN', 'MANAGER'), async (c) => {
       representative: string | null
       balance: number
       credit_risk_grade: string | null
+      payment_cycle_type: string | null
+      payment_terms_days: number | null
+      closing_day: number | null
+      payment_month_offset: number | null
+      payment_day: number | null
       last_payment_date: string | null
       total_payments: number
       recent_90d_payments: number | null
+      earliest_billed_at: string | null
     }>()
 
     // provision matrix (회수율) 로드 — 4-3b
@@ -1794,7 +1804,15 @@ bankRouter.get('/receivables', requireRole('ADMIN', 'MANAGER'), async (c) => {
       summary.total_expected_collection += expected_collection
       summary.total_expected_loss += expected_loss
 
-      return { ...r, aging_category, loss_rate, collection_rate: 1 - loss_rate, expected_collection, expected_loss }
+      // 예상 입금일: 최초 미입금 청구건(billed_at) + 거래처 결제주기. 청구건 없으면 null.
+      const expected_payment_date = r.earliest_billed_at
+        ? computeExpectedPaymentDate(r.earliest_billed_at, {
+            payment_cycle_type: r.payment_cycle_type, payment_terms_days: r.payment_terms_days,
+            closing_day: r.closing_day, payment_month_offset: r.payment_month_offset, payment_day: r.payment_day,
+          })
+        : null
+
+      return { ...r, aging_category, loss_rate, collection_rate: 1 - loss_rate, expected_collection, expected_loss, expected_payment_date }
     })
 
     return c.json({ success: true, data: { summary, clients } })

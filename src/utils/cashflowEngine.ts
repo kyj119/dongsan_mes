@@ -158,9 +158,11 @@ export async function buildCashflowDays(
     })
   }
 
-  // ── 4) 온더플라이: 미청구 확정주문 예상입금 ─────────────────────────────
-  //   billing_status != 'BILLED' (청구되면 auto-generate가 cash_schedule ORDER로 물질화 → 자동 전환)
+  // ── 4) 온더플라이: 주문 예상입금 (4a 미청구 확정주문 + 4b 청구 미수금) ──────
   const efOrd = entityFilter(c, 'o')
+
+  // 4a) 미청구 확정주문: 아직 청구 전이라 clients.balance(미수)에 미포함 → final_amount로 합성.
+  //     청구되면 4b(미수금)로 자동 이동(billing_status='BILLED' 분기).
   const { results: orderRows } = await c.env.DB.prepare(`
     SELECT o.order_number, o.final_amount, o.delivery_date, o.created_at,
            COALESCE(cl.payment_terms_days, 30) AS terms, cl.client_name,
@@ -189,6 +191,73 @@ export async function buildCashflowDays(
       name: `${o.client_name || ''} 예상입금 (주문 ${o.order_number})`.trim(),
       amount: Number(o.final_amount) || 0, materialized: false,
     })
+  }
+
+  // 4b) 청구 미수금: BILLED인데 cash_schedule에 미물질화된 주문을 ORDER_EXPECTED(IN)로 합성.
+  //   금액 정합: 주문별 payments 할당이 없는 데이터 모델 → 거래처 미수(clients.balance,
+  //   이미 수금이 차감된 실잔액)를 거래처별 cap으로 사용 → 부분수금/완납분 자동 반영.
+  //   이중계산 방지: balance에서 '이미 물질화된 PENDING/OVERDUE ORDER 합계'(전 기간)를 뺀 잔여만 분배.
+  //   (물질화분은 위 §1에서 기간 내 행으로 별도 표시됨)
+  const { results: billedRows } = await c.env.DB.prepare(`
+    SELECT o.id, o.order_number, o.billed_amount, o.billed_at, o.client_id, cl.client_name,
+           COALESCE(cl.payment_terms_days, 30) AS terms,
+           cl.payment_cycle_type, cl.closing_day, cl.payment_month_offset, cl.payment_day
+    FROM orders o
+    LEFT JOIN clients cl ON cl.id = o.client_id
+    WHERE o.billing_status = 'BILLED' AND o.billed_at IS NOT NULL AND o.billed_amount > 0
+      AND NOT EXISTS (
+        SELECT 1 FROM cash_schedule cs WHERE cs.source_type = 'ORDER' AND cs.source_id = o.id
+      )${efOrd.clause}
+    LIMIT 1000
+  `).bind(...efOrd.params).all<{
+    id: number; order_number: string; billed_amount: number; billed_at: string; client_id: number
+    client_name: string | null; terms: number; payment_cycle_type: string | null
+    closing_day: number | null; payment_month_offset: number | null; payment_day: number | null
+  }>()
+
+  if (billedRows.length > 0) {
+    // 거래처별 잔여 미수 = balance − 이미 물질화된 PENDING/OVERDUE ORDER 합계(전 기간).
+    // clients는 entity_id 없음(법인 공유) → entityFilter 미적용.
+    const { results: balRows } = await c.env.DB.prepare(`
+      SELECT cl.id AS client_id, cl.balance,
+        COALESCE((SELECT SUM(cs.amount) FROM cash_schedule cs
+                  WHERE cs.client_id = cl.id AND cs.flow_type = 'IN' AND cs.source_type = 'ORDER'
+                    AND cs.status IN ('PENDING', 'OVERDUE')), 0) AS materialized_pending
+      FROM clients cl WHERE cl.balance > 0
+    `).all<{ client_id: number; balance: number; materialized_pending: number }>()
+    const residualByClient = new Map<number, number>()
+    for (const b of balRows) {
+      residualByClient.set(b.client_id, Math.max(0, (Number(b.balance) || 0) - (Number(b.materialized_pending) || 0)))
+    }
+
+    // 거래처별 그룹 → 예상입금일 오름차순(빠른 건부터) 분배, 각 주문 billed_amount 상한, 잔여 소진 시 중단.
+    const byClient = new Map<number, { order_number: string; client_name: string | null; billed: number; due: string }[]>()
+    for (const o of billedRows) {
+      let due = computeExpectedPaymentDate(o.billed_at, {
+        payment_cycle_type: o.payment_cycle_type, payment_terms_days: o.terms,
+        closing_day: o.closing_day, payment_month_offset: o.payment_month_offset, payment_day: o.payment_day,
+      })
+      if (due < from) due = from   // 연체분(예상일이 과거)은 예측 시작일에 표시 — 미수는 즉시 회수 대상
+      const list = byClient.get(o.client_id) ?? []
+      list.push({ order_number: o.order_number, client_name: o.client_name, billed: Number(o.billed_amount) || 0, due })
+      byClient.set(o.client_id, list)
+    }
+    for (const [clientId, list] of byClient) {
+      let residual = residualByClient.get(clientId) ?? 0
+      if (residual <= 0) continue   // 미수 잔액 없음(완납) → 합성 안 함
+      list.sort((a, b) => (a.due < b.due ? -1 : a.due > b.due ? 1 : 0))
+      for (const it of list) {
+        if (residual <= 0) break
+        const amt = Math.min(it.billed, residual)
+        if (amt <= 0) continue
+        residual -= amt
+        add(it.due, {
+          flow: 'IN', type: 'ORDER_EXPECTED',
+          name: `${it.client_name || ''} 미수 예상입금 (주문 ${it.order_number})`.trim(),
+          amount: amt, materialized: false,
+        })
+      }
+    }
   }
 
   return days
