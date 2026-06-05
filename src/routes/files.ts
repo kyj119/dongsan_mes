@@ -43,10 +43,15 @@ filesRouter.post('/upload', requireRole('ADMIN', 'MANAGER', 'DESIGNER'), async (
 
     if (!file) return c.json({ success: false, error: 'No file provided' }, 400)
 
+    // R2 키 구성요소 sanitize (path traversal / 키 인젝션 방어, A-013 패턴)
+    const safeName = (file.name || 'file').replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 200)
+    const safeFolder = (folder || 'sources').replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 100)
+    const safeAnalysisId = analysisId ? analysisId.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 100) : ''
+
     // R2 키 생성: sources/{analysis_id}/{filename}
-    const key = analysisId
-      ? `${folder}/${analysisId}/${file.name}`
-      : `${folder}/${Date.now()}_${file.name}`
+    const key = safeAnalysisId
+      ? `${safeFolder}/${safeAnalysisId}/${safeName}`
+      : `${safeFolder}/${Date.now()}_${safeName}`
 
     // R2에 업로드
     await c.env.R2_BUCKET.put(key, file.stream(), {
