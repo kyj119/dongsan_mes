@@ -11,9 +11,9 @@
   - #3: 코드 단일화(printEvents). 실 print-event 시뮬레이션은 미수행(로직·빌드 검증).
 - **✅ prod 배포·검증 완료 (2026-06-05)**: prod `cards.status` CHECK = PRINT_PENDING 허용 확인 → **#2는 "생성됐으나 보드 미표시"형**(prod에 PRINT_PENDING 카드 27건이 숨겨져 있었음, INSERT 실패 아님). 마이그 `0298` prod 직접적용(`execute --remote --file`, 0행 멱등=RIP_WAITING/PRINT_ERROR 카드 없음) → 커밋 `210585e` → `wrangler pages deploy`(ASCII 커밋) → 봇 `7b53f98`(A-014) 분기 머지 `8df452b`·재배포(A-014 보존)·origin push.
   - **prod 검증**: 보드 출력대기 목록에 PRINT_PENDING 카드 노출(E1-20260603-001-01 등, 배포 전 0건 노출) / `/cards`·`/hr` 200 / #1 로컬 실라우트 E2E PASS(유통 bulk-ship→즉시 SHIPPED) / #3 baseline 주문 CONFIRMED 정상.
-  - **▶ 잔여**: 용준님 실사용 UI 확인(새주문 카드 출력대기 노출 / 유통 출고→즉시 출고완료 / IA 출력전 미점프).
+  - **✅ 실사용 UI 확인 완료(2026-06-05, prod Playwright)**: (a)생산보드 '출력 전' 6=PRINT_PENDING 노출 (b)유통주문(E99-20260604-017) 생성→출고처리→즉시 '출고완료' UI 배지(테스트분 취소) (c)PRINT_PENDING 카드 보유 주문 5건 모두 '확정' 유지=출력중 미점프.
 - **⚠️ 운영 교훈**: 봇(auto-improve)이 origin/main에 push → CI 자동배포 가능. 수동 `wrangler pages deploy` 전 반드시 `git fetch + merge`(안 하면 봇 수정 덮음). 이번 세션도 A-014 머지 후 재배포함.
-- **후속(저우선)**: 상태 라벨 단일소스화(clientDetail.js·orders.js·portalOrders.js 각자 statusLabels 보유).
+- **✅ 상태 라벨 단일소스화 완료(2026-06-05, 커밋 `b9b03ea`, prod 배포·검증)**: `src/utils/statusLabels.ts`에 CARD/ORDER 표준 라벨 단일 정의 + `STATUS_LABELS_JS` → `window.MES_STATUS`(layout.ts·portalLayout.ts 양쪽 주입). 16개 스크립트(cards·cardDetail·clientDetail·orders·orderForm/parent·dashboard·deliveryAnalytics·productionBoard·productionReports·scan·shipmentsDashboard·portal·portalOrders 등) 중복 라벨맵 제거·전역 참조. 색/아이콘/스텝/CSS는 페이지별 유지. 값 불일치 교정(출고·출고됨→출고완료 / 생산중·인쇄중→출력중 / 출력 전·대기→출력대기), cards.js SHIPPED 누락 보강, RIP_WAITING/PRINT_ERROR 폐기값→출력대기 호환, 포털대시보드(portal.js) PRINTING/PRINT_DONE 키누락 영문노출 잠재버그 해소.
 
 ---
 작성 당시 계획: 설계 확정, Phase 1 착수
