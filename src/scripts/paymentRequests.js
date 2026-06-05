@@ -18,12 +18,16 @@ window.loadPaymentRequests = async function() {
     var toEl = document.getElementById('prFilterTo');
     var from = fromEl ? fromEl.value : '';
     var to = toEl ? toEl.value : '';
+    var searchEl = document.getElementById('prFilterSearch');
+    var search = searchEl ? searchEl.value.trim() : '';
     var qs = [];
     if (status) qs.push('status=' + status);
     if (type) qs.push('type=' + type);
     // #343: 라우트가 from/to로 request_date 범위 필터 기구현
     if (from) qs.push('from=' + from);
     if (to) qs.push('to=' + to);
+    // #345: 지급처/사유 키워드 검색
+    if (search) qs.push('search=' + encodeURIComponent(search));
     var res = await axios.get('/api/payment-requests' + (qs.length ? '?' + qs.join('&') : ''));
     if (!res.data.success) return;
     renderPrTable(res.data.data || []);

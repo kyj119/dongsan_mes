@@ -49,6 +49,7 @@ export function paymentRequestsPage(c: Context<HonoEnv>) {
           <input id="prFilterFrom" type="date" class="border rounded px-2 py-1 text-xs" title="시작일(청구일)">
           <span class="text-gray-400 text-xs">~</span>
           <input id="prFilterTo" type="date" class="border rounded px-2 py-1 text-xs" title="종료일(청구일)">
+          <input id="prFilterSearch" type="text" placeholder="지급처/사유 검색" class="border rounded px-2 py-1 text-xs" onkeydown="if(event.key==='Enter')loadPaymentRequests()">
           <button onclick="loadPaymentRequests()" class="px-3 py-1.5 text-xs border border-gray-300 text-gray-700 bg-white rounded hover:bg-gray-50">
             <i class="fas fa-search mr-1"></i>검색
           </button>

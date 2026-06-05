@@ -92,6 +92,54 @@ async function loadInvoices(page) {
   }
 }
 
+// #345: 세금계산서 목록 CSV 내보내기 (현재 필터 기준 전량)
+function tiCsvCell(v) {
+  var s = (v === null || v === undefined) ? '' : String(v);
+  if (/[",\n]/.test(s)) s = '"' + s.replace(/"/g, '""') + '"';
+  return s;
+}
+async function exportInvoicesCsv() {
+  var status = document.getElementById('statusFilter').value;
+  var search = document.getElementById('searchInput').value;
+  var dateFrom = document.getElementById('dateFrom').value;
+  var dateTo = document.getElementById('dateTo').value;
+  var url = '/api/tax-invoices?page=1&limit=1000'
+    + '&status=' + encodeURIComponent(status)
+    + '&search=' + encodeURIComponent(search)
+    + '&date_from=' + encodeURIComponent(dateFrom)
+    + '&date_to=' + encodeURIComponent(dateTo);
+  try {
+    var res = await axios.get(url);
+    if (!res.data.success) { showToast('내보내기 실패', 'error'); return; }
+    var items = res.data.data || [];
+    if (!items.length) { showToast('내보낼 데이터가 없습니다.', 'warning'); return; }
+    var headers = ['계산서번호', '주문번호', '거래처', '작성일', '공급가액', '세액', '합계', '상태'];
+    var rows = items.map(function(inv) {
+      return [
+        inv.invoice_number || '',
+        inv.order_number || (inv.order_numbers || ''),
+        inv.buyer_name || '',
+        inv.issue_date || '',
+        inv.supply_amount || 0,
+        inv.tax_amount || 0,
+        inv.total_amount || 0,
+        statusLabels[inv.status] || inv.status || ''
+      ].map(tiCsvCell).join(',');
+    });
+    var csv = '﻿' + headers.join(',') + '\n' + rows.join('\n');
+    var blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    var link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = 'tax_invoices_' + new Date().toISOString().slice(0, 10) + '.csv';
+    link.click();
+    URL.revokeObjectURL(link.href);
+    showToast('CSV 다운로드 완료', 'success');
+  } catch (e) {
+    showToast('내보내기 오류: ' + (e.message || ''), 'error');
+  }
+}
+window.exportInvoicesCsv = exportInvoicesCsv;
+
 function displayInvoices(items) {
   var tbody = document.getElementById('invoiceTableBody');
   if (!items || items.length === 0) {

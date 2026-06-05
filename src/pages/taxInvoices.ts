@@ -132,6 +132,9 @@ export function taxInvoicesPage(c: Context<HonoEnv>) {
             class="ds-input" onkeydown="if(event.key==='Enter')loadInvoices(1)">
         </div>
         <div class="ds-filter-actions">
+          <button onclick="exportInvoicesCsv()" class="ds-btn ds-btn-sm" title="현재 필터 기준 CSV 내보내기">
+            <i class="fas fa-file-csv" style="margin-right:4px"></i>CSV
+          </button>
           <button onclick="openDirectIssueModal()" class="ds-btn ds-btn-sm" style="background:#0d9488;color:#fff">
             <i class="fas fa-file-circle-plus" style="margin-right:4px"></i>직접발행
           </button>

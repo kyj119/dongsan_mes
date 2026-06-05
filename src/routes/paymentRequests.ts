@@ -12,7 +12,7 @@ paymentRequestsRouter.use('/*', authMiddleware, requirePagePermission('/payment-
 // 목록
 paymentRequestsRouter.get('/', async (c) => {
   try {
-    const { status, from, to, type } = c.req.query()
+    const { status, from, to, type, search } = c.req.query()
     const clauses: string[] = []
     const params: any[] = []
     const ef = entityFilter(c, 'pr')
@@ -20,6 +20,12 @@ paymentRequestsRouter.get('/', async (c) => {
     if (type) { clauses.push('pr.request_type = ?'); params.push(type) }
     if (from) { clauses.push('pr.request_date >= ?'); params.push(from) }
     if (to) { clauses.push('pr.request_date <= ?'); params.push(to) }
+    // #345: 지급처/사유/거래처명 키워드 검색
+    if (search) {
+      clauses.push('(pr.recipient_name LIKE ? OR pr.description LIKE ? OR c.client_name LIKE ?)')
+      const kw = `%${search}%`
+      params.push(kw, kw, kw)
+    }
     if (ef.clause) { clauses.push(ef.clause.replace(' AND ', '')); params.push(...ef.params) }
 
     const where = clauses.length ? 'WHERE ' + clauses.join(' AND ') : ''
