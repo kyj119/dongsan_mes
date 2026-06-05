@@ -44,6 +44,7 @@ export const approvalsPage = (c: Context<HonoEnv>) => {
               <option value="BAD_DEBT_WRITEOFF">미수금 탕감</option>
               <option value="LEAVE_ATTENDANCE">휴가/근태</option>
               <option value="SHIPMENT_HOLD">출고 승인</option>
+              <option value="CREDIT_OVERRIDE">여신한도 초과</option>
               <option value="GENERAL">일반</option>
             </select>
             <select id="my-status-filter" class="border rounded px-2 py-1.5 text-sm" onchange="filterMyRequests()">
@@ -85,6 +86,7 @@ export const approvalsPage = (c: Context<HonoEnv>) => {
               <option value="BAD_DEBT_WRITEOFF">미수금 탕감</option>
               <option value="LEAVE_ATTENDANCE">휴가/근태</option>
               <option value="SHIPMENT_HOLD">출고 승인</option>
+              <option value="CREDIT_OVERRIDE">여신한도 초과</option>
               <option value="GENERAL">일반</option>
             </select>
             <select id="all-status-filter" class="border rounded px-2 py-1.5 text-sm" onchange="filterAllRequests()">

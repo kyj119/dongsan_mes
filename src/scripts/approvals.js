@@ -168,6 +168,7 @@ var TYPE_MAP = {
   DISCOUNT:         { label: '할인 승인', icon: 'fa-percent', cls: 'bg-amber-50 text-amber-700 border-amber-200' },
   EQUIPMENT_PURCHASE:{ label: '장비 구매', icon: 'fa-wrench', cls: 'bg-indigo-50 text-indigo-700 border-indigo-200' },
   EXPENSE_CLAIM:    { label: '경비 청구', icon: 'fa-receipt', cls: 'bg-lime-50 text-lime-700 border-lime-200' },
+  CREDIT_OVERRIDE:  { label: '여신한도 초과', icon: 'fa-shield-halved', cls: 'bg-red-50 text-red-700 border-red-200' },
   GENERAL:          { label: '일반', icon: 'fa-file-lines', cls: 'bg-gray-50 text-gray-700 border-gray-200' },
 };
 
