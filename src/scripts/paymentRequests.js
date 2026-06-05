@@ -14,9 +14,16 @@ window.loadPaymentRequests = async function() {
   try {
     var status = document.getElementById('prFilterStatus').value;
     var type = document.getElementById('prFilterType').value;
+    var fromEl = document.getElementById('prFilterFrom');
+    var toEl = document.getElementById('prFilterTo');
+    var from = fromEl ? fromEl.value : '';
+    var to = toEl ? toEl.value : '';
     var qs = [];
     if (status) qs.push('status=' + status);
     if (type) qs.push('type=' + type);
+    // #343: 라우트가 from/to로 request_date 범위 필터 기구현
+    if (from) qs.push('from=' + from);
+    if (to) qs.push('to=' + to);
     var res = await axios.get('/api/payment-requests' + (qs.length ? '?' + qs.join('&') : ''));
     if (!res.data.success) return;
     renderPrTable(res.data.data || []);

@@ -336,9 +336,14 @@ portal.get('/orders', async (c) => {
 
     const { results } = await c.env.DB.prepare(query).bind(...params).all()
 
-    const countResult = await c.env.DB.prepare(
-      `SELECT COUNT(*) as cnt FROM orders WHERE client_id = ?`
-    ).bind(user.portal_client_id).first<CountRow>()
+    // #343: count 쿼리도 status 필터를 동일 적용 (페이지네이션 total 정합)
+    let countQuery = `SELECT COUNT(*) as cnt FROM orders WHERE client_id = ?`
+    const countParams: any[] = [user.portal_client_id]
+    if (status) {
+      countQuery += ` AND status = ?`
+      countParams.push(status)
+    }
+    const countResult = await c.env.DB.prepare(countQuery).bind(...countParams).first<CountRow>()
 
     return c.json({ success: true, data: { orders: results, total: countResult?.cnt || 0 } })
   } catch (e) {

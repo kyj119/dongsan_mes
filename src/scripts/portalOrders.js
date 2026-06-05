@@ -165,7 +165,11 @@ function renderCardProgress(progress) {
 async function loadOrders(page) {
   currentPage = page || 1;
   try {
-    var res = await axios.get('/api/portal/orders?page=' + currentPage);
+    // #343: 상태 필터 전달 (라우트 status 파라미터 기구현)
+    var statusEl = document.getElementById('orders-status-filter');
+    var status = statusEl ? statusEl.value : '';
+    var url = '/api/portal/orders?page=' + currentPage + (status ? '&status=' + encodeURIComponent(status) : '');
+    var res = await axios.get(url);
     var data = res.data.data;
     renderOrders(data.orders, data.total);
   } catch (e) { console.error(e); }

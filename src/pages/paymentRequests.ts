@@ -46,6 +46,9 @@ export function paymentRequestsPage(c: Context<HonoEnv>) {
             <option value="EXPENSE">경비</option>
             <option value="OTHER">기타</option>
           </select>
+          <input id="prFilterFrom" type="date" class="border rounded px-2 py-1 text-xs" title="시작일(청구일)">
+          <span class="text-gray-400 text-xs">~</span>
+          <input id="prFilterTo" type="date" class="border rounded px-2 py-1 text-xs" title="종료일(청구일)">
           <button onclick="loadPaymentRequests()" class="px-3 py-1.5 text-xs border border-gray-300 text-gray-700 bg-white rounded hover:bg-gray-50">
             <i class="fas fa-search mr-1"></i>검색
           </button>
