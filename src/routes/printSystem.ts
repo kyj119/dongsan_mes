@@ -1065,10 +1065,12 @@ printSystemRouter.get('/items-for-order', async (c) => {
 
     let query = `
       SELECT i.*, pm.name as method_name, pm.code as method_code, pmed.name as media_name,
-             pmed.media_type, pmed.roll_width_cm, pmed.sheet_width_cm, pmed.sheet_height_cm
+             pmed.media_type, pmed.roll_width_cm, pmed.sheet_width_cm, pmed.sheet_height_cm,
+             psub.subcat_name as media_subcategory_name
       FROM items i
       JOIN print_methods pm ON pm.id = i.print_method_id
       JOIN print_media pmed ON pmed.id = i.print_media_id
+      LEFT JOIN pp_applicable_subcategories psub ON psub.id = pmed.subcategory_id
       WHERE i.is_active = 1 AND i.print_method_id IS NOT NULL
         AND pm.code != 'TRANSFER'
     `

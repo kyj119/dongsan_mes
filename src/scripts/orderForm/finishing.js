@@ -145,7 +145,7 @@
                 container.innerHTML = '<span class="text-gray-400">로딩 중...</span>';
 
                 if (!subcat) {
-                    container.innerHTML = '<span class="text-gray-400 text-xs">소분류 미지정 품목 (후가공 없음)</span>';
+                    container.innerHTML = '<span class="text-gray-400 text-xs">소분류 미지정 — 후가공을 표시하려면 소재(또는 품목)에 소분류를 지정하세요</span>';
                     return;
                 }
 
