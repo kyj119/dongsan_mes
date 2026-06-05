@@ -453,89 +453,128 @@ cashFlowRouter.get('/projection', requireRole('ADMIN'), async (c) => {
       card_payments: number; purchase_expenses: number; total_expenses: number; net_cash_flow: number; cumulative?: number
     }[] = []
 
+    // #341: 월 루프×6쿼리(N+1) → 월별 GROUP BY 집계로 통합 (72→6쿼리, 결과값 불변)
+    const monthsList: { ym: string; monthStart: string; monthEnd: string; prevYM: string }[] = []
     for (let i = 0; i < monthCount; i++) {
       const d = new Date(now.getFullYear(), now.getMonth() + i, 1)
-      const yearMonth = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
-      const monthStart = yearMonth + '-01'
-      const monthEnd = yearMonth + '-' + new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate()
+      const ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+      const monthStart = ym + '-01'
+      const monthEnd = ym + '-' + new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate()
+      const prev = new Date(d.getFullYear(), d.getMonth() - 1, 1)
+      const prevYM = `${prev.getFullYear()}${String(prev.getMonth() + 1).padStart(2, '0')}`
+      monthsList.push({ ym, monthStart, monthEnd, prevYM })
+    }
+    const rangeStart = monthsList[0].monthStart
+    const rangeEnd = monthsList[monthsList.length - 1].monthEnd
 
-      // 매출 (주문 금액)
-      const revenue = await c.env.DB.prepare(`
-        SELECT COALESCE(SUM(final_amount), 0) as total
-        FROM orders
-        WHERE status NOT IN ('CANCELLED', 'DRAFT')
-          AND DATE(created_at) BETWEEN ? AND ?${efOrders.clause}
-      `).bind(monthStart, monthEnd, ...efOrders.params).first<{ total: number }>()
+    const buildMap = (rows: any[]): Map<string, number> => {
+      const m = new Map<string, number>()
+      for (const r of rows || []) m.set(String(r.ym), Number(r.total) || 0)
+      return m
+    }
 
-      // 입금 (결제)
-      const payments = await c.env.DB.prepare(`
-        SELECT COALESCE(SUM(amount), 0) as total
-        FROM payments WHERE payment_date BETWEEN ? AND ?${efPayments.clause}
-      `).bind(monthStart, monthEnd, ...efPayments.params).first<{ total: number }>()
+    // 매출 (주문) — 월별 집계
+    const { results: revRows } = await c.env.DB.prepare(`
+      SELECT strftime('%Y-%m', created_at) as ym, COALESCE(SUM(final_amount), 0) as total
+      FROM orders
+      WHERE status NOT IN ('CANCELLED', 'DRAFT')
+        AND DATE(created_at) BETWEEN ? AND ?${efOrders.clause}
+      GROUP BY ym
+    `).bind(rangeStart, rangeEnd, ...efOrders.params).all()
+    const revMap = buildMap(revRows)
 
-      // 고정비
-      const efFixed = entityFilter(c)
-      const fixedExp = await c.env.DB.prepare(`
-        SELECT COALESCE(SUM(amount), 0) as total
-        FROM fixed_expenses
-        WHERE is_active = 1
-          AND start_date <= ?
-          AND (end_date IS NULL OR end_date >= ?)
-          AND (
-            frequency = 'MONTHLY'
-            OR (frequency = 'QUARTERLY' AND (CAST(strftime('%m', ?) AS INTEGER) - CAST(strftime('%m', start_date) AS INTEGER)) % 3 = 0)
-            OR (frequency = 'YEARLY' AND strftime('%m', ?) = strftime('%m', start_date))
-          )${efFixed.clause}
-      `).bind(monthEnd, monthStart, monthStart, monthStart, ...efFixed.params).first<{ total: number }>()
+    // 입금 (결제) — 월별 집계
+    const { results: payRows } = await c.env.DB.prepare(`
+      SELECT strftime('%Y-%m', payment_date) as ym, COALESCE(SUM(amount), 0) as total
+      FROM payments WHERE payment_date BETWEEN ? AND ?${efPayments.clause}
+      GROUP BY ym
+    `).bind(rangeStart, rangeEnd, ...efPayments.params).all()
+    const payMap = buildMap(payRows)
 
-      // 대출 상환
-      const efLoan = entityFilter(c)
-      const loanPay = await c.env.DB.prepare(`
-        SELECT COALESCE(SUM(lp.total_amount), 0) as total
-        FROM loan_payments lp
-        JOIN loans l ON lp.loan_id = l.id
-        WHERE lp.scheduled_date BETWEEN ? AND ?
-          AND lp.status IN ('SCHEDULED', 'OVERDUE')${efLoan.clause.replace('entity_id', 'l.entity_id')}
-      `).bind(monthStart, monthEnd, ...efLoan.params).first<{ total: number }>()
+    // 대출 상환 — 월별 집계
+    const efLoan = entityFilter(c)
+    const { results: loanRows } = await c.env.DB.prepare(`
+      SELECT strftime('%Y-%m', lp.scheduled_date) as ym, COALESCE(SUM(lp.total_amount), 0) as total
+      FROM loan_payments lp
+      JOIN loans l ON lp.loan_id = l.id
+      WHERE lp.scheduled_date BETWEEN ? AND ?
+        AND lp.status IN ('SCHEDULED', 'OVERDUE')${efLoan.clause.replace('entity_id', 'l.entity_id')}
+      GROUP BY ym
+    `).bind(rangeStart, rangeEnd, ...efLoan.params).all()
+    const loanMap = buildMap(loanRows)
 
-      // 구매 (발주)
-      const efPurchase = entityFilter(c)
-      const purchaseExp = await c.env.DB.prepare(`
-        SELECT COALESCE(SUM(final_amount), 0) as total
-        FROM purchase_orders
-        WHERE status NOT IN ('CANCELLED', 'DRAFT')
-          AND order_date BETWEEN ? AND ?${efPurchase.clause}
-      `).bind(monthStart, monthEnd, ...efPurchase.params).first<{ total: number }>()
+    // 구매 (발주) — 월별 집계
+    const efPurchase = entityFilter(c)
+    const { results: purRows } = await c.env.DB.prepare(`
+      SELECT strftime('%Y-%m', order_date) as ym, COALESCE(SUM(final_amount), 0) as total
+      FROM purchase_orders
+      WHERE status NOT IN ('CANCELLED', 'DRAFT')
+        AND order_date BETWEEN ? AND ?${efPurchase.clause}
+      GROUP BY ym
+    `).bind(rangeStart, rangeEnd, ...efPurchase.params).all()
+    const purMap = buildMap(purRows)
 
-      // 카드 결제 예정 (전월 사용분이 이번달 결제)
-      let cardPayment = 0
-      try {
-        const prevMonth = new Date(d.getFullYear(), d.getMonth() - 1, 1)
-        const prevYM = `${prevMonth.getFullYear()}${String(prevMonth.getMonth() + 1).padStart(2, '0')}`
-        const efCard = entityFilter(c, 'ct')
-        const cardExp = await c.env.DB.prepare(`
-          SELECT COALESCE(SUM(CASE WHEN ct.approval_type != 'CANCEL' THEN ct.amount ELSE 0 END), 0) as total
-          FROM card_transactions ct
-          WHERE ct.transaction_date >= ? AND ct.transaction_date <= ?${efCard.clause}
-        `).bind(prevYM + '01', prevYM + '31', ...efCard.params).first<{ total: number }>()
-        cardPayment = cardExp?.total || 0
-      } catch (_) { /* card_transactions 테이블 없을 수 있음 */ }
+    // 카드 결제 예정 (전월 사용분) — usage월(YYYYMM) 집계 후 결제월 = usage+1
+    const cardMap = new Map<string, number>() // key: usage YYYYMM
+    try {
+      const firstPrev = monthsList[0].prevYM
+      const lastPrev = monthsList[monthsList.length - 1].prevYM
+      const efCard = entityFilter(c, 'ct')
+      const { results: cardRows } = await c.env.DB.prepare(`
+        SELECT substr(ct.transaction_date, 1, 6) as ym,
+               COALESCE(SUM(CASE WHEN ct.approval_type != 'CANCEL' THEN ct.amount ELSE 0 END), 0) as total
+        FROM card_transactions ct
+        WHERE substr(ct.transaction_date, 1, 6) BETWEEN ? AND ?${efCard.clause}
+        GROUP BY ym
+      `).bind(firstPrev, lastPrev, ...efCard.params).all()
+      for (const r of cardRows || []) cardMap.set(String((r as any).ym), Number((r as any).total) || 0)
+    } catch (_) { /* card_transactions 테이블 없을 수 있음 */ }
 
-      const income = (i === 0) ? (payments?.total || 0) : (revenue?.total || 0)
-      const expenses = (fixedExp?.total || 0) + (loanPay?.total || 0) + (purchaseExp?.total || 0) + cardPayment
+    // 고정비 — frequency 조건이 월별 가변이라 활성 행 1회 조회 후 JS 매핑
+    const efFixed = entityFilter(c)
+    const { results: fixedRows } = await c.env.DB.prepare(`
+      SELECT amount, start_date, end_date, frequency
+      FROM fixed_expenses WHERE is_active = 1${efFixed.clause}
+    `).bind(...efFixed.params).all<{ amount: number; start_date: string; end_date: string | null; frequency: string }>()
+    const fixedForMonth = (monthStart: string, monthEnd: string): number => {
+      const msMonth = parseInt(monthStart.slice(5, 7), 10)
+      let total = 0
+      for (const f of fixedRows || []) {
+        if (!(f.start_date <= monthEnd)) continue
+        if (!(f.end_date === null || f.end_date >= monthStart)) continue
+        const startMonth = parseInt(String(f.start_date).slice(5, 7), 10)
+        let include = false
+        if (f.frequency === 'MONTHLY') include = true
+        else if (f.frequency === 'QUARTERLY') include = ((msMonth - startMonth) % 3) === 0
+        else if (f.frequency === 'YEARLY') include = msMonth === startMonth
+        if (include) total += Number(f.amount) || 0
+      }
+      return total
+    }
+
+    monthsList.forEach((mo, i) => {
+      const revTotal = revMap.get(mo.ym) || 0
+      const payTotal = payMap.get(mo.ym) || 0
+      const fixedTotal = fixedForMonth(mo.monthStart, mo.monthEnd)
+      const loanTotal = loanMap.get(mo.ym) || 0
+      const purTotal = purMap.get(mo.ym) || 0
+      const cardPayment = cardMap.get(mo.prevYM) || 0
+
+      const income = (i === 0) ? payTotal : revTotal
+      const expenses = fixedTotal + loanTotal + purTotal + cardPayment
       const net = income - expenses
 
       projections.push({
-        month: yearMonth,
+        month: mo.ym,
         income: Math.round(income),
-        fixed_expenses: Math.round(fixedExp?.total || 0),
-        loan_payments: Math.round(loanPay?.total || 0),
-        purchase_expenses: Math.round(purchaseExp?.total || 0),
+        fixed_expenses: Math.round(fixedTotal),
+        loan_payments: Math.round(loanTotal),
+        purchase_expenses: Math.round(purTotal),
         card_payments: Math.round(cardPayment),
         total_expenses: Math.round(expenses),
         net_cash_flow: Math.round(net),
       })
-    }
+    })
 
     // 누적 계산
     let cumulative = 0
