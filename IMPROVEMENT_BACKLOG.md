@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 3 -->
-<!-- last_run_at: 2026-06-04T22:00:00+09:00 -->
+<!-- last_run_area: 5 -->
+<!-- last_run_at: 2026-06-05T06:00:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,12 +8,33 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | 16 (I-026~I-029,I-031,I-033~I-044 중 미검토분) |
+| 🆕 new | 17 (I-026~I-029,I-031,I-033~I-036,I-039~I-047 중 미검토분; **I-046/#356 HIGH 격리클러스터 신규**) |
 | ✅ approved | 2 (I-032/#342 — 전용 세션 대기 / I-030/#340 — 👍 확인, 급성 RED 해소·잔여만 대기) |
 | 👀 reviewed | 1 (I-025/#334 — dead orphan router 재분류, owner (가)/(나) 결정 대기) |
-| ✔️ done | 44 |
-| ❌ rejected | 2 |
+| ✔️ done | 45 |
+| ❌ rejected | 3 |
 
+> ⚠️ **다음 Area 6 자기진화 시 GitHub 전수 재동기 필요**: open auto-improve 이슈는 14건(#335·336·340·341·342·343·344·345·346·350·351·352·353·354)뿐. 백로그 New에 남은 #337/#338/#349/#334 등은 GitHub closed 가능성 → 종료사유 대조 후 done/rejected 재분류 요망.
+
+> **Area 5 보안 (2026-06-05T06:00):**
+> - **방법**: 병렬 에이전트 3개(SQLi·동적쿼리 / 인가·IDOR·멀티테넌시 / XSS·시크릿·rate·업로드·에러노출). baseline tsc PASS. HIGH 2건 owner 직접 코드 검증(insuranceReports·paymentRequests list-vs-detail 대조).
+> - **🐛 신규 이슈 #356 (I-046, HIGH) — 멀티테넌시 격리 갭 클러스터 6모듈**: #349(hr.ts) 동일 패턴 확장. 같은 라우터의 **list는 `entityFilter` 적용, `/:id` 상세·변경 핸들러는 `WHERE id=?`만** → 비-ADMIN이 임의 id로 타법인 도달. ① insuranceReports `:64` GET/:id가 `rrn`(**주민번호**)+급여 노출 ② paymentRequests `:50/177/198/210` 지출결의서(계좌·금액) — 가드가 page-permission만(role 무관) ③ cashReceipts `:166/273/...` `identity_number`(주민/사업자번호) ④ purchaseRequests `:237/357/809`(DESIGNER 무체크) ⑤ inventoryCount approve가 **호출자 getEntityId로 재고차감** → 정합성 훼손 ⑥ leaves approve가 **호출자 entity로 잔여차감**. 전부 프론트 호출처 존재(도달 가능). orphan(보안 아님) 별도: leaves.ts:449 DELETE(**role 가드 없음**)·attendance:350·tasks:64. **자동수정 안 함**(ADMIN entityId=0 전체모드 분기·런타임 검증 불가, #349 동일 사유).
+> - **🐛 신규 이슈 #357 (I-047, MED) — 업로드 검증 부재**: cardExpenses:369·po/core.ts:317이 `ext=file.name.split('.').pop()`를 R2 키에 raw 사용(ext에 `/` 주입 가능)+크기/MIME 미검증. files.ts orphan 업로드도 동일. ext/MIME 화이트리스트는 거부 동작 변경이라 이슈.
+> - **🔧 자동 수정 A-015 (files.ts R2 키 sanitize)**: `files.ts:46-49` 업로드가 `${folder}/${analysisId}/${file.name}` raw 조합(3요소 클라 제어, 키 인젝션) → **A-013(aiAnalysis) 패턴 그대로** 세 요소 `replace(/[^a-zA-Z0-9._-]/g,'_').slice(...)` 정규화. 표시명은 contentDisposition encodeURIComponent로 보존(동작 무변). verify(tsc+build 4.99MB) 통과. orphan이라 우선순위 낮으나 방어적 sanitize는 자동수정 허용 범위.
+> - **#335 코멘트 추가**: escapeHtml 헬퍼 전무 스크립트 5건(bom/users/deliveryAnalytics/migration/iaBatchTest)을 #335 우산이슈에 합산(Area6 "escapeHtml 일괄=#335" 결정 일관, 자동수정 분산 회피). settings.ts:230 error.message는 ADMIN 진단 성격 LOW로 #337 동급 보류.
+> - **이상 없음/오탐 차단**: SQLi 0건(prepare 2,294 전수 — ORDER BY 딕셔너리·IN/LIKE 바인딩·PRAGMA ALLOWED_TABLES). authMiddleware 누락 0건(공개 portal/hrSelf/auth/webhooks 의도). mass-assignment 0건(hr.ts eid===0에서만 body.entity_id). rate limit 신규 누락 0건(reset-pw는 ADMIN 전용). 시크릿 폴백 `c.env.X||'...'` 0건. cardExpenses/cashSchedule/fixedAssets/budgets/bank `/:id` 격리 정상.
+> - 자동 수정 1건(A-015), 신규 이슈 2건(#356,#357), 코멘트 1건(#335)
+>
+> **Area 4 데이터 정합성 (2026-06-05T02:00):**
+> - **방법**: ground-truth — 295개 마이그레이션을 로컬 D1(node:sqlite v22)에 전량 적용(FAIL 0) → 실제 해석 스키마 170테이블·506인덱스 확보. 이전 Area 4(0281까지) 이후 신규 0282~0298 집중 + 전 status CHECK ↔ 코드 어휘 전수 대조(병렬 에이전트 1개). baseline tsc --noEmit PASS.
+> - **🐛 신규 이슈 #355 (I-045, HIGH bug) — 여신초과 주문 생성 전면 실패**: `orders/core.ts:1295`가 `approval_requests.type='CREDIT_OVERRIDE'`로 INSERT하나 **CHECK(0202, 9값)에 CREDIT_OVERRIDE 없음** → ground-truth 직접 INSERT로 CHECK 위반 실측. `creditBlocked`(잔액≥여신한도) 주문 시 batch(core.ts:1289) throw→outer catch(:1561) 500. 주문 row는 :978-1034에서 이미 커밋 → **고아 주문**(credit_status NULL·승인요청/카드 0). #163 여신승인 워크플로 비작동. `grep CREDIT_OVERRIDE` = core.ts 단 1곳 쓰기만(조회 0건) → enum 미편입. **스키마 재빌드(CHECK ALTER 불가)라 자동수정 금지**. prod CHECK 확인 권장(#347 선례).
+> - **#347 (I-037) → ✔️ done**: owner가 0284/0296(7값 CHECK superset)+0298(레거시 RIP_WAITING/PRINT_ERROR 이관)로 해소 후 closed(👍). cards.status 라이브 쓰기도 `lifecycle.ts:593`이 PRINT_ERROR를 status 대신 rip_status='ERROR'로 기록(보드 버킷 유지) → 정합 확인. 백로그 stale 정정.
+> - **#348 (I-038) → ❌ rejected**: owner `not_planned`(👍) 종료. ground-truth 재확인 시 전역 UNIQUE(orders/po/quotations/payment_requests) **여전히 잔존**하나 운영이 entity 1 수렴이라 의도적 보류. 재보고 안 함.
+> - **멀티법인 협업 기능(0292/0294 assigned_entity, 0293 inventory_tx UNIQUE+entity) 정합 확인**: 카드 생성(`core.ts:112 effEntityOf`)이 assigned_entity_id 우선→requesting_entity_id 주입, 품목 SELECT `oi.*` 포함, 재고차감(`stockShip.ts:40`) dedup 키가 0293 새 UNIQUE 컬럼셋과 정확히 일치(이중차감 방지). end-to-end 정합, 버그 0.
+> - **CHECK 전수 대조(34 status 컬럼)**: #355 외 위반 0. orders/cards/shipments/approval_steps/card_transactions 등 하드코딩 리터럴 전부 CHECK 내. 사용자입력 미검증 8건(po.status/items.item_type/shipments.delivery_type 등 `body.x||default` 미화이트리스트)은 기본값 유효+잠재리스크라 확정위반서 제외(저우선).
+> - **오탐 차단**: NOT NULL ADD COLUMN(0285/0287/0288/0295) 전부 DEFAULT 보유(prod 안전). FK 인덱스 미보유 대부분 `*_by→users` 감사컬럼(hot path 아님). ar_provision_rates/ar_grade_multipliers(0289) 전역 config(entity_id 의도적 부재).
+> - 자동 수정 0건(스키마 재빌드 런타임 검증 불가+비즈로직), 신규 이슈 1건(#355), 백로그 정정 2건(#347 done, #348 rejected)
+>
 > **Area 3 UX/기능 감사 (2026-06-04T22:00):**
 > - **방법**: 병렬 에이전트 3개(opus) — 영업·회계 / 생산·재고·구매 / HR·대시보드·설정. 라우트 쿼리파라미터 ↔ 프론트 JS 전송 대조로 dead-filter·silent-fail 집중. baseline verify PASS(tsc clean + build 351 modules 4.99MB).
 > - **🔧 자동 수정 A-014 (silent-fail JS 버그 3건)**: 전부 HTML/API 무변경 순수 JS 버그라 직접 수정(A-011 선례). ① `hr.js:49` 직원 검색 `params.q`→`params.search` — **route는 `search` 수신(hr.ts:49,89)인데 front가 `q` 전송 → HR 핵심 검색 항상 무력**(입력 무반응). ② `hometaxInvoices.js:222` 페이지네이션 총건수 항상 0 — route는 `{data:[], pagination:{total}}` 반환인데 front가 `data.total`(배열.total=undefined) 읽음 → "총 0건" 표시·2페이지+ 접근 불가. ③ `hometaxInvoices.js:214` 날짜 파라미터 `start_date/end_date`→`date_from/date_to`(route 기대값 정렬, dead-filter 복원). verify(tsc+build) 통과.
@@ -218,8 +239,9 @@
 | I-034 | 포털 셀프서비스 갭 — 세금계산서 다운로드+50캡 / 미수금 aging / 재주문 prompt() | Area 3 | #344 | 3~4h |
 | I-035 | 회계 CSV·검색 — taxInvoices CSV / cashSchedule CSV / 지출결의서 지급처·사유 검색 | Area 3 | #345 | ~2h |
 | I-036 | 필터·드릴다운 — 연차 부서 필터 / 불량률 리포트→검수 드릴다운 | Area 3 | #346 | 3~4h |
-| I-037 | cards.status CHECK(3값) ↔ 코드 어휘(PRINT_PENDING/RIP_WAITING 등) 분기 — 클린 DB 재빌드 시 카드 생성 실패 | Area 4 | #347 | 반나절 |
-| I-038 | 전역 UNIQUE가 entity 복합 UNIQUE 무력화 — 다법인 시 주문/발주/견적/지출결의서 번호 충돌로 생성 실패(잠복) | Area 4 | #348 | 1~4h |
+| I-046 | **[HIGH]** 멀티테넌시 격리 갭 클러스터 6모듈 — list는 entityFilter, /:id 상세·변경은 누락(insuranceReports rrn/paymentRequests/cashReceipts PII + inventoryCount/leaves 정합성 훼손), #349 패턴 확장 | Area 5 | #356 | 2~3h |
+| I-047 | [MED] 파일 업로드 검증 부재 — ext 화이트리스트/크기상한/MIME 미검증(cardExpenses/po/files), 키 인젝션은 A-015 자동수정 | Area 5 | #357 | ~1h |
+| I-045 | **[HIGH]** 여신초과 주문 생성 전면 실패 — approval_requests.type='CREDIT_OVERRIDE'가 CHECK(0202,9값)에 없음 → batch 위반·500·고아주문, #163 여신승인 비작동 | Area 4 | #355 | 2~3h / 우회 10분 |
 | I-039 | hr.ts 멀티테넌시 격리 갭 4건 — PUT entity_id mass-assignment + 단건GET/payrolls/certificate entityFilter 누락(#322 미적용 경로) | Area 5 | #349 | 2~3h |
 | I-040 | N+1 신규 클러스터 — 급여 일괄/근태동기화 핫패스(전직원×5~7쿼리, 루프불변 hoist 즉효) + 발주 품목 루프 (#341 미포함) | Area 2 | #350 | hoist 20분 / 전체 ~4h |
 | I-041 | dead code+크래시 — hr.ts orphan 급여 엔드포인트 2개(POST는 없는 payrolls 테이블 INSERT), /api/payroll로 대체됨 | Area 2 | #351 | 30분~1h |
@@ -233,6 +255,7 @@
 
 | ID | 제목 | 커밋 | 날짜 |
 |----|------|------|------|
+| A-015 | files.ts 업로드 R2 키 sanitize — `${folder}/${analysisId}/${file.name}` raw 조합(3요소 클라 제어, 키 인젝션) → A-013 패턴 정규화 (orphan, 동작 무변) | (이번 커밋) | 2026-06-05 |
 | A-014 | silent-fail JS 버그 3건 — HR 직원검색 `q`→`search`(핵심검색 무력) + 홈택스 페이지네이션 총건수 0(`data.total`→`pagination.total`) + 홈택스 날짜 파라미터 `start_date`→`date_from` | (이번 커밋) | 2026-06-04 |
 | A-013 | aiAnalysis 업로드 R2 키 `file.name` sanitize — path traversal/헤더 인젝션 방어(LOW, ADMIN전용) | (이번 커밋) | 2026-06-03 |
 | A-012 | CAPS `GET /settings` 시크릿 노출 차단 — `relay_db_password`+`worker_api_key` 응답 제거(GET /sites 패턴 정렬) | (이번 커밋) | 2026-06-03 |
@@ -251,6 +274,7 @@
 
 | ID | 제목 | 커밋/Issue | 날짜 |
 |----|------|-----------|------|
+| I-037 | cards.status CHECK 분기 — 0284/0296(7값 superset)+0298(레거시 상태 이관)로 해소, lifecycle.ts PRINT_ERROR→rip_status 처리 | #347 | 2026-06-04 |
 | I-013 | 보안 헤더 추가 (X-Frame-Options/X-Content-Type/Referrer-Policy, HSTS/CSP 보류) | #32 | 2026-05-13 |
 | I-014 | /api/portal/auth/change-password rate limit 적용 | #33 | 2026-05-13 |
 | I-015 | XSS 잔여 escapeHtml 39개소 (approvals.js 24 + cards.js 15) | #34 | 2026-05-13 |
@@ -302,6 +326,7 @@
 |----|------|------|-------|
 | I-009 | vite/esbuild dev server SSRF (GHSA-67mh) | "로컬 서버 전용이라 크게 문제 없음" — 프로덕션 영향 없음 | #23 |
 | F-004 | 납품시간 disabled 이유 표시 | 용준님: "필요 없음" | #10 |
+| I-038 | 전역 UNIQUE가 entity 복합 UNIQUE 무력화 (다법인 번호충돌 잠복) | owner not_planned — 운영 entity 1 수렴, 의도적 보류 | #348 |
 
 ---
 
