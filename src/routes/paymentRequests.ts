@@ -50,6 +50,7 @@ paymentRequestsRouter.get('/', async (c) => {
 paymentRequestsRouter.get('/:id', async (c) => {
   try {
     const id = c.req.param('id')
+    const ef = entityFilter(c, 'pr')
     const result = await c.env.DB.prepare(`
       SELECT pr.*,
         cr.name as creator_name,
@@ -61,8 +62,8 @@ paymentRequestsRouter.get('/:id', async (c) => {
       LEFT JOIN users ap ON ap.id = pr.approved_by
       LEFT JOIN clients c ON c.id = pr.recipient_client_id
       LEFT JOIN purchase_orders po ON po.id = pr.related_po_id
-      WHERE pr.id = ?
-    `).bind(id).first()
+      WHERE pr.id = ?${ef.clause}
+    `).bind(id, ...ef.params).first()
 
     if (!result) return c.json({ success: false, error: '없음' }, 404)
     return c.json({ success: true, data: result })
@@ -186,7 +187,9 @@ paymentRequestsRouter.patch('/:id', async (c) => {
     if (updates.length === 0) return c.json({ success: false, error: '변경할 항목 없음' }, 400)
     updates.push('updated_at = CURRENT_TIMESTAMP')
     params.push(id)
-    await c.env.DB.prepare(`UPDATE payment_requests SET ${updates.join(', ')} WHERE id = ? AND status = 'DRAFT'`).bind(...params).run()
+    const ef = entityFilter(c, '')
+    params.push(...ef.params)
+    await c.env.DB.prepare(`UPDATE payment_requests SET ${updates.join(', ')} WHERE id = ? AND status = 'DRAFT'${ef.clause}`).bind(...params).run()
     return c.json({ success: true, message: '수정되었습니다.' })
   } catch (error) {
     console.error('payment-requests update error:', error)
@@ -198,7 +201,8 @@ paymentRequestsRouter.patch('/:id', async (c) => {
 paymentRequestsRouter.delete('/:id', async (c) => {
   try {
     const id = c.req.param('id')
-    await c.env.DB.prepare('DELETE FROM payment_requests WHERE id = ? AND status = ?').bind(id, 'DRAFT').run()
+    const ef = entityFilter(c, '')
+    await c.env.DB.prepare(`DELETE FROM payment_requests WHERE id = ? AND status = ?${ef.clause}`).bind(id, 'DRAFT', ...ef.params).run()
     return c.json({ success: true, message: '삭제되었습니다.' })
   } catch (error) {
     console.error('payment-requests delete error:', error)
@@ -210,10 +214,11 @@ paymentRequestsRouter.delete('/:id', async (c) => {
 paymentRequestsRouter.patch('/:id/submit', async (c) => {
   try {
     const id = c.req.param('id')
+    const ef = entityFilter(c, '')
     await c.env.DB.prepare(`
       UPDATE payment_requests SET status = 'PENDING', updated_at = CURRENT_TIMESTAMP
-      WHERE id = ? AND status = 'DRAFT'
-    `).bind(id).run()
+      WHERE id = ? AND status = 'DRAFT'${ef.clause}
+    `).bind(id, ...ef.params).run()
     return c.json({ success: true, message: '결재 상신되었습니다.' })
   } catch (error) {
     console.error('payment-requests submit error:', error)
@@ -227,15 +232,16 @@ paymentRequestsRouter.patch('/:id/approve', requireRole('ADMIN', 'MANAGER'), asy
     const id = c.req.param('id')
     const user = c.get('user')
 
-    // 먼저 현재 데이터를 읽은 후 batch로 원자적 업데이트
+    // 먼저 현재 데이터를 읽은 후 batch로 원자적 업데이트 (타법인 결의서 승인 차단)
+    const ef = entityFilter(c, '')
     const pr = await c.env.DB.prepare(
-      'SELECT id, request_date, request_type, recipient_client_id, recipient_name, amount, description, status FROM payment_requests WHERE id = ?'
-    ).bind(id).first<Record<string, unknown>>()
+      `SELECT id, request_date, request_type, recipient_client_id, recipient_name, amount, description, status, entity_id FROM payment_requests WHERE id = ?${ef.clause}`
+    ).bind(id, ...ef.params).first<Record<string, unknown>>()
     if (!pr || pr.status !== 'PENDING') {
       return c.json({ success: false, error: '승인 가능한 상태가 아닙니다.' }, 400)
     }
 
-    // batch: 승인 + 자금 예정 등록을 단일 왕복으로 처리
+    // batch: 승인 + 자금 예정 등록을 단일 왕복으로 처리 (cash_schedule는 결의서 행의 entity로 귀속)
     await c.env.DB.batch([
       c.env.DB.prepare(`
         UPDATE payment_requests SET status = 'APPROVED', approved_by = ?, approved_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
@@ -247,7 +253,7 @@ paymentRequestsRouter.patch('/:id/approve', requireRole('ADMIN', 'MANAGER'), asy
       `).bind(
         pr.request_date, pr.request_type || 'OTHER', pr.id, pr.recipient_client_id, pr.amount,
         `[지출결의] ${pr.recipient_name} ${pr.description}`,
-        user?.id || null, getEntityId(c)
+        user?.id || null, pr.entity_id
       )
     ])
 
@@ -263,10 +269,11 @@ paymentRequestsRouter.patch('/:id/reject', requireRole('ADMIN', 'MANAGER'), asyn
   try {
     const id = c.req.param('id')
     const { reject_reason } = await c.req.json() as { reject_reason?: string }
+    const ef = entityFilter(c, '')
     await c.env.DB.prepare(`
       UPDATE payment_requests SET status = 'REJECTED', reject_reason = ?, updated_at = CURRENT_TIMESTAMP
-      WHERE id = ? AND status = 'PENDING'
-    `).bind(reject_reason || null, id).run()
+      WHERE id = ? AND status = 'PENDING'${ef.clause}
+    `).bind(reject_reason || null, id, ...ef.params).run()
     return c.json({ success: true, message: '반려되었습니다.' })
   } catch (error) {
     console.error('payment-requests reject error:', error)
@@ -281,9 +288,10 @@ paymentRequestsRouter.patch('/:id/pay', requireRole('ADMIN', 'MANAGER'), async (
     const user = c.get('user')
     const { bank_transaction_id, paid_at } = await c.req.json<{ bank_transaction_id?: string; paid_at?: string }>()
 
+    const ef = entityFilter(c, '')
     const pr2 = await c.env.DB.prepare(
-      'SELECT id, request_date, amount, status FROM payment_requests WHERE id = ?'
-    ).bind(id).first<Record<string, unknown>>()
+      `SELECT id, request_date, amount, status FROM payment_requests WHERE id = ?${ef.clause}`
+    ).bind(id, ...ef.params).first<Record<string, unknown>>()
     if (!pr2 || pr2.status !== 'APPROVED') {
       return c.json({ success: false, error: '이체 가능한 상태가 아닙니다.' }, 400)
     }

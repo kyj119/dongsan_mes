@@ -166,13 +166,14 @@ cashReceiptsRouter.get('/', async (c) => {
 cashReceiptsRouter.get('/:id', async (c) => {
   try {
     const id = parseInt(c.req.param('id'))
+    const ef = entityFilter(c, 'cr')
 
     const receipt = await c.env.DB.prepare(`
       SELECT cr.*, cl.client_name
       FROM cash_receipts cr
       LEFT JOIN clients cl ON cr.client_id = cl.id
-      WHERE cr.id = ?
-    `).bind(id).first()
+      WHERE cr.id = ?${ef.clause}
+    `).bind(id, ...ef.params).first()
 
     if (!receipt) {
       return c.json({ success: false, error: '현금영수증을 찾을 수 없습니다.' }, 404)
@@ -275,9 +276,10 @@ cashReceiptsRouter.post('/:id/issue', requireRole('ADMIN', 'MANAGER'), async (c)
     const id = parseInt(c.req.param('id'))
     const user = c.get('user')
 
+    const ef = entityFilter(c, '')
     const existing = await c.env.DB.prepare(
-      'SELECT id, receipt_number, status, trade_date, trade_type, identity_number, item_name, supply_amount, tax_amount, service_amount, total_amount, nts_approval_number FROM cash_receipts WHERE id = ?'
-    ).bind(id).first<CashReceiptRow>()
+      `SELECT id, receipt_number, status, trade_date, trade_type, identity_number, item_name, supply_amount, tax_amount, service_amount, total_amount, nts_approval_number FROM cash_receipts WHERE id = ?${ef.clause}`
+    ).bind(id, ...ef.params).first<CashReceiptRow>()
 
     if (!existing) {
       return c.json({ success: false, error: '현금영수증을 찾을 수 없습니다.' }, 404)
@@ -321,9 +323,10 @@ cashReceiptsRouter.post('/:id/cancel', requireRole('ADMIN', 'MANAGER'), async (c
       cancel_reason?: string
     }>()
 
+    const ef = entityFilter(c, '')
     const existing = await c.env.DB.prepare(
-      'SELECT id, receipt_number, status, trade_date, trade_type, identity_number, item_name, supply_amount, tax_amount, service_amount, total_amount, nts_approval_number FROM cash_receipts WHERE id = ?'
-    ).bind(id).first<CashReceiptRow>()
+      `SELECT id, receipt_number, status, trade_date, trade_type, identity_number, item_name, supply_amount, tax_amount, service_amount, total_amount, nts_approval_number FROM cash_receipts WHERE id = ?${ef.clause}`
+    ).bind(id, ...ef.params).first<CashReceiptRow>()
 
     if (!existing) {
       return c.json({ success: false, error: '현금영수증을 찾을 수 없습니다.' }, 404)
@@ -373,9 +376,10 @@ cashReceiptsRouter.delete('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => 
   try {
     const id = parseInt(c.req.param('id'))
 
+    const ef = entityFilter(c, '')
     const existing = await c.env.DB.prepare(
-      'SELECT id, status FROM cash_receipts WHERE id = ?'
-    ).bind(id).first<{ id: number; status: string }>()
+      `SELECT id, status FROM cash_receipts WHERE id = ?${ef.clause}`
+    ).bind(id, ...ef.params).first<{ id: number; status: string }>()
 
     if (!existing) {
       return c.json({ success: false, error: '현금영수증을 찾을 수 없습니다.' }, 404)
@@ -384,7 +388,7 @@ cashReceiptsRouter.delete('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => 
       return c.json({ success: false, error: '임시저장 상태의 현금영수증만 삭제할 수 있습니다.' }, 400)
     }
 
-    await c.env.DB.prepare('DELETE FROM cash_receipts WHERE id = ?').bind(id).run()
+    await c.env.DB.prepare(`DELETE FROM cash_receipts WHERE id = ?${ef.clause}`).bind(id, ...ef.params).run()
 
     return c.json({ success: true, data: { id } })
   } catch (error) {

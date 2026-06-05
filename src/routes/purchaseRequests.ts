@@ -239,6 +239,7 @@ prRouter.get('/:id', async (c) => {
     const user = c.get('user')
     const id = c.req.param('id')
 
+    const efDetail = entityFilter(c, 'pr')
     const request = await c.env.DB.prepare(`
       SELECT pr.*, u.name as requester_name, c.client_name as supplier_name,
              ab.name as approved_by_name
@@ -246,8 +247,8 @@ prRouter.get('/:id', async (c) => {
       JOIN users u ON pr.requester_id = u.id
       LEFT JOIN clients c ON pr.supplier_id = c.id
       LEFT JOIN users ab ON pr.approved_by = ab.id
-      WHERE pr.id = ?
-    `).bind(id).first<PurchaseRequest & { requester_name: string; supplier_name: string | null; approved_by_name: string | null }>()
+      WHERE pr.id = ?${efDetail.clause}
+    `).bind(id, ...efDetail.params).first<PurchaseRequest & { requester_name: string; supplier_name: string | null; approved_by_name: string | null }>()
 
     if (!request) {
       return c.json({ success: false, error: '발주 요청을 찾을 수 없습니다.' }, 404)
@@ -360,7 +361,8 @@ prRouter.put('/:id', async (c) => {
     const id = c.req.param('id')
     const data = await c.req.json()
 
-    const pr = await c.env.DB.prepare(`SELECT id, requester_id, supplier_id, urgency, status FROM purchase_requests WHERE id = ?`).bind(id).first<PurchaseRequest>()
+    const efPut = entityFilter(c, '')
+    const pr = await c.env.DB.prepare(`SELECT id, requester_id, supplier_id, urgency, status FROM purchase_requests WHERE id = ?${efPut.clause}`).bind(id, ...efPut.params).first<PurchaseRequest>()
     if (!pr) return c.json({ success: false, error: '발주 요청을 찾을 수 없습니다.' }, 404)
     if (user?.role === 'MANAGER' && pr.requester_id !== user.id) {
       return c.json({ success: false, error: '접근 권한이 없습니다.' }, 403)
@@ -811,7 +813,8 @@ prRouter.delete('/:id', async (c) => {
     const user = c.get('user')
     const id = c.req.param('id')
 
-    const pr = await c.env.DB.prepare(`SELECT id, requester_id, status FROM purchase_requests WHERE id = ?`).bind(id).first<PurchaseRequest>()
+    const efDel = entityFilter(c, '')
+    const pr = await c.env.DB.prepare(`SELECT id, requester_id, status FROM purchase_requests WHERE id = ?${efDel.clause}`).bind(id, ...efDel.params).first<PurchaseRequest>()
     if (!pr) return c.json({ success: false, error: '발주 요청을 찾을 수 없습니다.' }, 404)
     if (user?.role === 'MANAGER' && pr.requester_id !== user.id) {
       return c.json({ success: false, error: '접근 권한이 없습니다.' }, 403)

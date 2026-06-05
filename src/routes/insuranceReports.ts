@@ -64,7 +64,8 @@ insuranceReportsRouter.get('/annual-summary', async (c) => {
 insuranceReportsRouter.get('/:id', async (c) => {
   try {
     const id = Number(c.req.param('id'))
-    const report = await c.env.DB.prepare(`SELECT id, year, month, report_type, status, employee_count, total_national_pension, total_health_insurance, total_long_term_care, total_employment_insurance, total_industrial_accident, employer_national_pension, employer_health_insurance, employer_long_term_care, employer_employment_insurance, grand_total_employee, grand_total_employer, grand_total, submitted_at, confirmed_by, confirmed_at, created_at, updated_at FROM insurance_reports WHERE id = ?`).bind(id).first<any>()
+    const ef = entityFilter(c, '')
+    const report = await c.env.DB.prepare(`SELECT id, year, month, report_type, status, employee_count, total_national_pension, total_health_insurance, total_long_term_care, total_employment_insurance, total_industrial_accident, employer_national_pension, employer_health_insurance, employer_long_term_care, employer_employment_insurance, grand_total_employee, grand_total_employer, grand_total, submitted_at, confirmed_by, confirmed_at, created_at, updated_at FROM insurance_reports WHERE id = ?${ef.clause}`).bind(id, ...ef.params).first<any>()
     if (!report) return c.json({ success: false, error: '신고서 없음' }, 404)
 
     const details = await c.env.DB.prepare(
@@ -208,9 +209,10 @@ insuranceReportsRouter.put('/:id/submit', async (c) => {
   try {
     const id = Number(c.req.param('id'))
     const now = new Date().toISOString()
+    const ef = entityFilter(c, '')
     await c.env.DB.prepare(
-      `UPDATE insurance_reports SET status = 'SUBMITTED', submitted_at = ?, updated_at = ? WHERE id = ?`
-    ).bind(now, now, id).run()
+      `UPDATE insurance_reports SET status = 'SUBMITTED', submitted_at = ?, updated_at = ? WHERE id = ?${ef.clause}`
+    ).bind(now, now, id, ...ef.params).run()
     return c.json({ success: true })
   } catch (err: any) {
     console.error('Insurance reports submit error:', err)
@@ -227,9 +229,10 @@ insuranceReportsRouter.put('/:id/confirm', async (c) => {
     const id = Number(c.req.param('id'))
     const user = c.get('user')
     const now = new Date().toISOString()
+    const ef = entityFilter(c, '')
     await c.env.DB.prepare(
-      `UPDATE insurance_reports SET status = 'CONFIRMED', confirmed_by = ?, confirmed_at = ?, updated_at = ? WHERE id = ?`
-    ).bind(user?.id || null, now, now, id).run()
+      `UPDATE insurance_reports SET status = 'CONFIRMED', confirmed_by = ?, confirmed_at = ?, updated_at = ? WHERE id = ?${ef.clause}`
+    ).bind(user?.id || null, now, now, id, ...ef.params).run()
     return c.json({ success: true })
   } catch (err: any) {
     console.error('Insurance reports confirm error:', err)

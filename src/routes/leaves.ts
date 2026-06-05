@@ -382,11 +382,14 @@ leavesRouter.patch('/requests/:id/approve', requireRole('ADMIN', 'MANAGER'), asy
     const user = c.get('user')
     const id = Number(c.req.param('id'))
 
+    // #356: 타법인 휴가신청 승인 차단 + 차감은 신청 행의 entity로 귀속
+    const ef = entityFilter(c, '')
     const req = await c.env.DB.prepare(
-      `SELECT id, employee_id, leave_type, start_date, end_date, days, reason, status, approved_by, approved_at, rejection_reason FROM leave_requests WHERE id = ?`
-    ).bind(id).first<LeaveRequestRow>()
+      `SELECT id, employee_id, leave_type, start_date, end_date, days, reason, status, approved_by, approved_at, rejection_reason, entity_id FROM leave_requests WHERE id = ?${ef.clause}`
+    ).bind(id, ...ef.params).first<LeaveRequestRow & { entity_id: number }>()
     if (!req) return c.json({ success: false, error: '신청을 찾을 수 없습니다.' }, 404)
     if (req.status !== 'PENDING') return c.json({ success: false, error: '이미 처리된 신청입니다.' }, 400)
+    const reqEntityId = req.entity_id || getEntityId(c)
 
     // 잔여 차감: leave_types에서 카테고리 확인
     const lt = await c.env.DB.prepare(
@@ -403,7 +406,7 @@ leavesRouter.patch('/requests/:id/approve', requireRole('ADMIN', 'MANAGER'), asy
         ON CONFLICT(employee_id, year, leave_type) DO UPDATE SET
           used = leave_balances.used + excluded.used,
           updated_at = CURRENT_TIMESTAMP
-      `).bind(req.employee_id, year, req.days, getEntityId(c)).run()
+      `).bind(req.employee_id, year, req.days, reqEntityId).run()
     } else if (lt?.category === 'SICK' || req.leave_type === 'SICK') {
       // 병가: SICK 잔여에서 차감
       await c.env.DB.prepare(`
@@ -412,13 +415,13 @@ leavesRouter.patch('/requests/:id/approve', requireRole('ADMIN', 'MANAGER'), asy
         ON CONFLICT(employee_id, year, leave_type) DO UPDATE SET
           used = leave_balances.used + excluded.used,
           updated_at = CURRENT_TIMESTAMP
-      `).bind(req.employee_id, year, req.days, getEntityId(c)).run()
+      `).bind(req.employee_id, year, req.days, reqEntityId).run()
     }
     // 경조휴가(FAMILY)는 별도 잔여 차감 없음 (규정 일수만큼 유급)
 
     await c.env.DB.prepare(`
-      UPDATE leave_requests SET status = 'APPROVED', approved_by = ?, approved_at = CURRENT_TIMESTAMP WHERE id = ?
-    `).bind(user?.id || null, id).run()
+      UPDATE leave_requests SET status = 'APPROVED', approved_by = ?, approved_at = CURRENT_TIMESTAMP WHERE id = ?${ef.clause}
+    `).bind(user?.id || null, id, ...ef.params).run()
 
     return c.json({ success: true })
   } catch (error: any) {
@@ -432,11 +435,12 @@ leavesRouter.patch('/requests/:id/reject', requireRole('ADMIN', 'MANAGER'), asyn
     const user = c.get('user')
     const id = Number(c.req.param('id'))
     const body: { reason?: string } = await c.req.json<{ reason?: string }>().catch(() => ({}))
+    const ef = entityFilter(c, '')
 
     await c.env.DB.prepare(`
       UPDATE leave_requests SET status = 'REJECTED', approved_by = ?, approved_at = CURRENT_TIMESTAMP, rejection_reason = ?
-      WHERE id = ? AND status = 'PENDING'
-    `).bind(user?.id || null, body.reason || null, id).run()
+      WHERE id = ? AND status = 'PENDING'${ef.clause}
+    `).bind(user?.id || null, body.reason || null, id, ...ef.params).run()
 
     return c.json({ success: true })
   } catch (error: any) {
@@ -449,9 +453,10 @@ leavesRouter.patch('/requests/:id/reject', requireRole('ADMIN', 'MANAGER'), asyn
 leavesRouter.delete('/requests/:id', async (c) => {
   try {
     const id = Number(c.req.param('id'))
+    const ef = entityFilter(c, '')
     await c.env.DB.prepare(
-      `DELETE FROM leave_requests WHERE id = ? AND status = 'PENDING'`
-    ).bind(id).run()
+      `DELETE FROM leave_requests WHERE id = ? AND status = 'PENDING'${ef.clause}`
+    ).bind(id, ...ef.params).run()
     return c.json({ success: true })
   } catch (error: any) {
     console.error('leaves cancel error:', error)

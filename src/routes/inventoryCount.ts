@@ -120,10 +120,11 @@ inventoryCountRouter.post('/', async (c) => {
 inventoryCountRouter.get('/:id', async (c) => {
   try {
     const id = parseInt(c.req.param('id'))
+    const ef = entityFilter(c)
 
     const count = await c.env.DB.prepare(`
-      SELECT id, count_number, count_date, count_type, status, submitted_by, submitted_at, approved_by, approved_at, notes, created_at FROM inventory_counts WHERE id = ?
-    `).bind(id).first()
+      SELECT id, count_number, count_date, count_type, status, submitted_by, submitted_at, approved_by, approved_at, notes, created_at FROM inventory_counts WHERE id = ?${ef.clause}
+    `).bind(id, ...ef.params).first()
 
     if (!count) {
       return c.json({ success: false, error: 'Count not found' }, 404)
@@ -158,6 +159,15 @@ inventoryCountRouter.put('/:id/items', async (c) => {
     const body = await c.req.json<{ items?: { id: number; system_quantity: string; counted_quantity: string; notes?: string }[] }>()
     const { items = [] } = body
 
+    // 타법인 실사 항목 수정 차단: 부모 count가 호출자 법인 소속인지 확인
+    const efItems = entityFilter(c)
+    const ownCount = await c.env.DB.prepare(
+      `SELECT id FROM inventory_counts WHERE id = ?${efItems.clause}`
+    ).bind(countId, ...efItems.params).first()
+    if (!ownCount) {
+      return c.json({ success: false, error: 'Count not found' }, 404)
+    }
+
     // 일괄 업데이트 (batch)
     if (items.length > 0) {
       await c.env.DB.batch(
@@ -187,12 +197,13 @@ inventoryCountRouter.patch('/:id/submit', async (c) => {
   try {
     const countId = parseInt(c.req.param('id'))
     const userId = c.req.header('X-User-Id') || 'system'
+    const ef = entityFilter(c)
 
     const result = await c.env.DB.prepare(`
       UPDATE inventory_counts
       SET status = 'SUBMITTED', submitted_by = ?, submitted_at = CURRENT_TIMESTAMP
-      WHERE id = ? AND status = 'DRAFT'
-    `).bind(userId, countId).run()
+      WHERE id = ? AND status = 'DRAFT'${ef.clause}
+    `).bind(userId, countId, ...ef.params).run()
 
     if ((result.meta.changes || 0) === 0) {
       return c.json({ success: false, error: 'Count not found or already submitted' }, 400)
@@ -211,10 +222,11 @@ inventoryCountRouter.patch('/:id/approve', async (c) => {
     const countId = parseInt(c.req.param('id'))
     const userId = c.req.header('X-User-Id') || 'system'
 
-    // 먼저 count 조회
+    // 먼저 count 조회 (타법인 실사 승인 차단)
+    const ef = entityFilter(c)
     const count = await c.env.DB.prepare(`
-      SELECT id, count_number, count_date, count_type, status, submitted_by, submitted_at, approved_by, approved_at, notes, created_at FROM inventory_counts WHERE id = ?
-    `).bind(countId).first<{ status: string }>()
+      SELECT id, count_number, count_date, count_type, status, submitted_by, submitted_at, approved_by, approved_at, notes, created_at, entity_id FROM inventory_counts WHERE id = ?${ef.clause}
+    `).bind(countId, ...ef.params).first<{ status: string; entity_id: number }>()
 
     if (!count || count.status !== 'SUBMITTED') {
       return c.json({ success: false, error: 'Count not found or not submitted' }, 400)
@@ -226,7 +238,8 @@ inventoryCountRouter.patch('/:id/approve', async (c) => {
     `).bind(countId).all<{ item_id: number; system_quantity: number; counted_quantity: number }>()
 
     // #152: 재고 보정 + 상태 변경을 단일 batch로 원자화 (이중 조정 방지)
-    const entityId = getEntityId(c) || 1
+    // #356: 호출자 entity가 아닌 실사 행의 entity로 보정 (타법인 재고 오조정 방지)
+    const entityId = count.entity_id || getEntityId(c) || 1
     const batchStmts = (countItems || []).flatMap((item) => [
       c.env.DB.prepare(`
         UPDATE inventory SET quantity = ?, last_updated = CURRENT_TIMESTAMP
