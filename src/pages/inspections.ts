@@ -73,21 +73,35 @@ export async function inspectionsPage(c: Context) {
         <!-- Results Tab Content -->
         <div id="resultsContent" class="hidden">
           <div class="ds-card ds-card-compact mb-4">
-            <div class="flex gap-3 items-end">
+            <div class="flex gap-3 items-end flex-wrap">
               <div>
-                <label class="ds-label">입고번호</label>
-                <input type="text" id="resultsReceiptFilter" placeholder="receipt_id"
-                  class="ds-input w-32"
-                  onkeydown="if(event.key==='Enter')inspectionsLoadResults()">
+                <label class="ds-label">공급업체</label>
+                <select id="resultsSupplierFilter" class="ds-input w-40" onchange="inspectionsLoadResults()">
+                  <option value="">전체</option>
+                </select>
               </div>
               <div>
-                <label class="ds-label">공급업체 ID</label>
-                <input type="text" id="resultsSupplierFilter" placeholder="supplier_id"
-                  class="ds-input w-32"
-                  onkeydown="if(event.key==='Enter')inspectionsLoadResults()">
+                <label class="ds-label">결과</label>
+                <select id="resultsStatusFilter" class="ds-input w-28" onchange="inspectionsLoadResults()">
+                  <option value="">전체</option>
+                  <option value="PASSED">합격</option>
+                  <option value="FAILED">불합격</option>
+                  <option value="PARTIAL">부분합격</option>
+                </select>
+              </div>
+              <div>
+                <label class="ds-label">시작일</label>
+                <input type="date" id="resultsDateFrom" class="ds-input w-36" onchange="inspectionsLoadResults()">
+              </div>
+              <div>
+                <label class="ds-label">종료일</label>
+                <input type="date" id="resultsDateTo" class="ds-input w-36" onchange="inspectionsLoadResults()">
               </div>
               <button onclick="inspectionsLoadResults()" class="ds-btn ds-btn-primary">
                 <i class="fas fa-search mr-1"></i>조회
+              </button>
+              <button onclick="inspectionsExportCSV()" class="px-4 py-2 text-sm border border-gray-300 text-gray-700 bg-white rounded-lg hover:bg-gray-50">
+                <i class="fas fa-file-csv mr-1"></i>CSV
               </button>
             </div>
           </div>
@@ -108,6 +122,7 @@ export async function inspectionsPage(c: Context) {
               </tbody>
             </table>
           </div>
+          <div id="resultsPagination" class="flex items-center justify-end gap-2 mt-3"></div>
         </div>
 
         <!-- Review Tab Content -->

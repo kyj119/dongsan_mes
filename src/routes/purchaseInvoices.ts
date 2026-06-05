@@ -9,10 +9,18 @@ purchaseInvoices.use('*', authMiddleware)
 // ─── 매입 인보이스 목록 ──────────────────────────────────────────────────────
 purchaseInvoices.get('/', async (c) => {
   const status = c.req.query('match_status')
+  const page = Math.max(1, parseInt(c.req.query('page') || '1'))
+  const limit = Math.min(Math.max(parseInt(c.req.query('limit') || '50'), 1), 200)
+  const offset = (page - 1) * limit
   const eFilter = entityFilter(c, 'pi')
   let where = `WHERE 1=1 ${eFilter.clause}`
   const binds: any[] = [...eFilter.params]
   if (status) { where += ' AND pi.match_status = ?'; binds.push(status) }
+
+  const countRow = await c.env.DB.prepare(
+    `SELECT COUNT(*) as count FROM purchase_invoices pi ${where}`
+  ).bind(...binds).first<{ count: number }>()
+  const total = countRow?.count ?? 0
 
   const { results } = await c.env.DB.prepare(`
     SELECT pi.*, cl.client_name as supplier_name, po.po_number
@@ -20,10 +28,14 @@ purchaseInvoices.get('/', async (c) => {
     LEFT JOIN clients cl ON pi.supplier_id = cl.id
     LEFT JOIN purchase_orders po ON pi.po_id = po.id
     ${where}
-    ORDER BY pi.invoice_date DESC LIMIT 100
-  `).bind(...binds).all()
+    ORDER BY pi.invoice_date DESC LIMIT ? OFFSET ?
+  `).bind(...binds, limit, offset).all()
 
-  return c.json({ success: true, data: results })
+  return c.json({
+    success: true,
+    data: results,
+    pagination: { page, limit, total, total_pages: Math.ceil(total / limit) }
+  })
 })
 
 // ─── 매입확정 대기 목록 (단가 미정·입고완료 PO) ─────────────────────────────

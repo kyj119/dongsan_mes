@@ -115,12 +115,19 @@
     } catch (e) { showToast('확정 오류: ' + (e.response && e.response.data ? e.response.data.error : e.message), 'error'); }
   };
 
-  async function loadInvoices() {
+  var invPage = 1;
+  async function loadInvoices(page) {
+    invPage = page || invPage || 1;
     var tb = document.getElementById('invoicesBody');
     if (tb) tb.innerHTML = '<tr><td colspan="7" class="px-4 py-8 text-center text-gray-500">로딩 중...</td></tr>';
     try {
-      var res = await axios.get('/api/purchase-invoices');
+      // #353: 매칭상태 필터 + 페이지네이션 (라우트 match_status/page/limit 기구현)
+      var params = { page: invPage, limit: 50 };
+      var mf = document.getElementById('invMatchFilter');
+      if (mf && mf.value) params.match_status = mf.value;
+      var res = await axios.get('/api/purchase-invoices', { params: params });
       var rows = res.data.data || [];
+      renderInvoicesPagination(res.data.pagination);
       if (!tb) return;
       if (rows.length === 0) { tb.innerHTML = '<tr><td colspan="7" class="px-4 py-8 text-center text-gray-500">매입 인보이스가 없습니다.</td></tr>'; return; }
       tb.innerHTML = rows.map(function(r) {
@@ -149,6 +156,21 @@
   function payBadge(s) {
     return badge({ UNPAID: 'bg-amber-100 text-amber-700|미지급', PARTIAL: 'bg-blue-100 text-blue-700|부분지급', PAID: 'bg-green-100 text-green-700|지급완료' }, s);
   }
+
+  // #353: 매입 인보이스 페이지네이션
+  function renderInvoicesPagination(pg) {
+    var el = document.getElementById('invoicesPagination');
+    if (!el) return;
+    if (!pg || pg.total_pages <= 1) {
+      el.innerHTML = pg ? '<span class="text-xs text-gray-500">총 ' + pg.total + '건</span>' : '';
+      return;
+    }
+    el.innerHTML =
+      '<button onclick="loadInvoices(' + (pg.page - 1) + ')" class="px-2 py-1 text-xs border rounded disabled:opacity-40"' + (pg.page <= 1 ? ' disabled' : '') + '><i class="fas fa-chevron-left"></i></button>'
+      + '<span class="text-xs text-gray-500">' + pg.page + ' / ' + pg.total_pages + ' (총 ' + pg.total + '건)</span>'
+      + '<button onclick="loadInvoices(' + (pg.page + 1) + ')" class="px-2 py-1 text-xs border rounded disabled:opacity-40"' + (pg.page >= pg.total_pages ? ' disabled' : '') + '><i class="fas fa-chevron-right"></i></button>';
+  }
+  window.loadInvoices = loadInvoices;
 
   loadPending();
 })();

@@ -1,6 +1,10 @@
 // ===== 원가분석 페이지 스크립트 =====
 var analysisData = {};
 var deductionsList = [];
+// #353: 자동차감 이력 필터/페이지네이션
+var deductOffset = 0;
+var deductLimit = 50;
+var knownMaterials = {};
 
 // ===== 번호 포맷팅 =====
 function formatCurrency(n) {
@@ -138,17 +142,29 @@ async function loadDeductions() {
   tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:32px;color:#9ca3af;"><i class="fas fa-spinner fa-spin"></i> 로딩 중...</td></tr>';
 
   try {
-    var params = new URLSearchParams({ limit: '50' });
+    // #353: 원단/날짜 필터 + 페이지네이션 (라우트 기구현)
+    var params = new URLSearchParams({ limit: String(deductLimit), offset: String(deductOffset) });
+    var mEl = document.getElementById('deductMaterial');
+    var fEl = document.getElementById('deductDateFrom');
+    var tEl = document.getElementById('deductDateTo');
+    if (mEl && mEl.value) params.append('material_item_id', mEl.value);
+    if (fEl && fEl.value) params.append('date_from', fEl.value);
+    if (tEl && tEl.value) params.append('date_to', tEl.value);
     var res = await axios.get('/api/costs/deductions?' + params.toString());
     deductionsList = res.data.data || [];
+    updateMaterialOptions(deductionsList);
+    renderDeductPagination(res.data.total || 0);
 
     var rows = deductionsList.map(function(d) {
       var dedLength = parseFloat(d.deducted_length_mm) || 0;
       var outputSize = (parseFloat(d.output_width_mm) || 0) + ' x ' + (parseFloat(d.output_height_mm) || 0);
+      var matName = d.item_name
+        ? (d.item_name + (d.item_code ? ' (' + d.item_code + ')' : ''))
+        : (d.material_item_id != null ? ('#' + d.material_item_id) : '-');
 
       return '<tr>'
         + '<td style="padding:10px 12px;font-family:monospace;font-size:12px;">' + escapeHtml(d.order_number || '-') + '</td>'
-        + '<td style="padding:10px 12px;font-size:12px;color:#666;">' + escapeHtml(d.material_item_id || '-') + '</td>'
+        + '<td style="padding:10px 12px;font-size:12px;color:#666;">' + escapeHtml(matName) + '</td>'
         + '<td style="padding:10px 12px;text-align:right;font-family:monospace;font-size:12px;">' + formatNumber(dedLength, 1) + 'mm</td>'
         + '<td style="padding:10px 12px;text-align:center;font-size:12px;">' + formatNumber(d.matched_width_mm, 0) + '</td>'
         + '<td style="padding:10px 12px;text-align:center;font-size:12px;">' + outputSize + '</td>'
@@ -162,6 +178,56 @@ async function loadDeductions() {
     var msg = (e.response && e.response.data && e.response.data.error) ? e.response.data.error : e.message;
     tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:48px;"><div style="display:flex;flex-direction:column;align-items:center;"><i class="fas fa-exclamation-circle" style="font-size:36px;color:#fca5a5;margin-bottom:12px;"></i><p style="color:#dc2626;font-size:13px;margin:0;">로드 실패</p><p style="color:#9ca3af;font-size:11px;margin:4px 0 0 0;">' + escapeHtml(msg) + '</p></div></td></tr>';
   }
+}
+
+// #353: 원단 필터 옵션 누적 (응답에 등장하는 원단 기준)
+function updateMaterialOptions(list) {
+  var sel = document.getElementById('deductMaterial');
+  if (!sel) return;
+  var added = false;
+  (list || []).forEach(function(d) {
+    if (d.material_item_id != null && !(d.material_item_id in knownMaterials)) {
+      knownMaterials[d.material_item_id] = d.item_name || ('#' + d.material_item_id);
+      added = true;
+    }
+  });
+  if (!added) return;
+  var cur = sel.value;
+  var ids = Object.keys(knownMaterials).sort(function(a, b) {
+    return String(knownMaterials[a]).localeCompare(String(knownMaterials[b]));
+  });
+  sel.innerHTML = '<option value="">전체 원단</option>' + ids.map(function(id) {
+    return '<option value="' + id + '">' + escapeHtml(knownMaterials[id]) + '</option>';
+  }).join('');
+  sel.value = cur;
+}
+
+function filterDeductions() {
+  deductOffset = 0;
+  loadDeductions();
+}
+
+function renderDeductPagination(total) {
+  var el = document.getElementById('deductPagination');
+  if (!el) return;
+  if (total <= deductLimit) {
+    el.innerHTML = '<span style="font-size:12px;color:#9ca3af;">총 ' + total + '건</span>';
+    return;
+  }
+  var page = Math.floor(deductOffset / deductLimit) + 1;
+  var totalPages = Math.max(1, Math.ceil(total / deductLimit));
+  var btn = 'padding:4px 10px;font-size:12px;border:1px solid #d1d5db;border-radius:6px;background:#fff;cursor:pointer;';
+  var btnOff = btn + 'opacity:0.4;cursor:not-allowed;';
+  el.innerHTML =
+    '<button onclick="deductPage(-1)" ' + (page <= 1 ? 'disabled' : '') + ' style="' + (page <= 1 ? btnOff : btn) + '"><i class="fas fa-chevron-left"></i></button>'
+    + '<span style="font-size:12px;color:#6b7280;">' + page + ' / ' + totalPages + ' (총 ' + total + '건)</span>'
+    + '<button onclick="deductPage(1)" ' + (page >= totalPages ? 'disabled' : '') + ' style="' + (page >= totalPages ? btnOff : btn) + '"><i class="fas fa-chevron-right"></i></button>';
+}
+
+function deductPage(delta) {
+  deductOffset += delta * deductLimit;
+  if (deductOffset < 0) deductOffset = 0;
+  loadDeductions();
 }
 
 // ===== 원가 분석 데이터 로드 =====

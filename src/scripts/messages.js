@@ -74,6 +74,11 @@ async function loadLogs(page) {
   if (search) params.search = search;
   if (channel) params.channel = channel;
   if (status) params.status = status;
+  // #353: 발송일 범위 필터 (라우트 date_from/date_to 기구현)
+  var dfEl = document.getElementById('logDateFrom');
+  var dtEl = document.getElementById('logDateTo');
+  if (dfEl && dfEl.value) params.date_from = dfEl.value;
+  if (dtEl && dtEl.value) params.date_to = dtEl.value;
 
   try {
     var res = await axios.get('/api/kakao/logs', { params: params });

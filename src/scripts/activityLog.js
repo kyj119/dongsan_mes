@@ -4,7 +4,7 @@ var actionLabels = {
   CREATE: '생성', STATUS_CHANGE: '상태변경', UPDATE: '수정', DELETE: '삭제'
 };
 var entityLabels = {
-  ORDER: '주문', CARD: '카드', PAYMENT: '결제', CLIENT: '거래처', SHIPMENT: '출고'
+  ORDER: '주문', CARD: '카드', PAYMENT: '결제', CLIENT: '거래처', SHIPMENT: '출고', QUOTATION: '견적'
 };
 var actionColors = {
   CREATE: 'bg-green-50 text-green-700',
@@ -32,11 +32,14 @@ async function loadLogs() {
     var entityType = document.getElementById('entityTypeFilter').value || '';
     var dateFrom = document.getElementById('logDateFrom').value || '';
     var dateTo = document.getElementById('logDateTo').value || '';
+    var userEl = document.getElementById('userFilter');
+    var userId = userEl ? userEl.value : '';
 
     if (search) params.append('search', search);
     if (entityType) params.append('entity_type', entityType);
     if (dateFrom) params.append('date_from', dateFrom);
     if (dateTo) params.append('date_to', dateTo);
+    if (userId) params.append('user_id', userId);  // #353: 라우트 user_id 기구현
     params.append('page', String(currentPage));
     params.append('limit', '50');
 
@@ -113,4 +116,22 @@ function goLogPage(n) {
   loadLogs();
 }
 
+// #353: 사용자 필터 옵션 (/api/users — ADMIN 전용, MANAGER는 403이면 graceful 스킵)
+async function loadUserOptions() {
+  var sel = document.getElementById('userFilter');
+  if (!sel) return;
+  try {
+    var res = await authFetch('/api/users');
+    if (!res.ok) return; // MANAGER 등 권한 없음 → 전체만
+    var data = await res.json();
+    if (!data.success) return;
+    var users = data.data || [];
+    sel.innerHTML = '<option value="">전체 사용자</option>' + users.map(function(u) {
+      var label = (u.name || u.username || ('#' + u.id));
+      return '<option value="' + u.id + '">' + escapeHtml(label) + '</option>';
+    }).join('');
+  } catch (e) { /* graceful */ }
+}
+
+loadUserOptions();
 loadLogs();

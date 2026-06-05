@@ -1,4 +1,7 @@
 (function() {
+  // #354: 검수결과 페이지네이션/드롭다운 상태
+  var inspResultsPage = 1
+  var inspSuppliersLoaded = false
   // 탭 전환
   window.inspectionsSwitchTab = function(tab) {
     document.getElementById('templatesContent').classList.toggle('hidden', tab !== 'templates')
@@ -181,13 +184,19 @@
   window.inspectionsCloseTemplateModal = function() {
     document.getElementById('templateModal').classList.add('hidden')
   }
-  window.inspectionsLoadResults = async function() {
+  window.inspectionsLoadResults = async function(page) {
+    inspResultsPage = page || inspResultsPage || 1
+    if (!inspSuppliersLoaded) inspectionsLoadSuppliers()
     const tbody = document.getElementById('resultsTableBody')
-    const receipt = document.getElementById('resultsReceiptFilter').value.trim()
-    const supplier = document.getElementById('resultsSupplierFilter').value.trim()
-    const params = []
-    if (receipt) params.push('receipt_id=' + encodeURIComponent(receipt))
-    if (supplier) params.push('supplier_id=' + encodeURIComponent(supplier))
+    const sEl = document.getElementById('resultsSupplierFilter')
+    const stEl = document.getElementById('resultsStatusFilter')
+    const dfEl = document.getElementById('resultsDateFrom')
+    const dtEl = document.getElementById('resultsDateTo')
+    const params = ['page=' + inspResultsPage, 'limit=50']
+    if (sEl && sEl.value) params.push('supplier_id=' + encodeURIComponent(sEl.value))
+    if (stEl && stEl.value) params.push('overall_result=' + encodeURIComponent(stEl.value))
+    if (dfEl && dfEl.value) params.push('date_from=' + dfEl.value)
+    if (dtEl && dtEl.value) params.push('date_to=' + dtEl.value)
     tbody.innerHTML = Array(5).fill(
       '<tr class="border-b border-gray-100">' +
         '<td class="px-4 py-3"><div class="ds-skeleton ds-skeleton-row"></div></td>' +
@@ -199,8 +208,9 @@
       '</tr>'
     ).join('')
     try {
-      const res = await axios.get('/api/inspections/results' + (params.length ? '?' + params.join('&') : ''))
+      const res = await axios.get('/api/inspections/results?' + params.join('&'))
       const list = res.data.data || []
+      renderInspPagination(res.data.pagination)
       if (list.length === 0) {
         tbody.innerHTML = '<tr><td colspan="6" class="px-4 py-8 text-center text-gray-400"><i class="fas fa-history text-3xl mb-3 block text-gray-300"></i><div class="text-sm mb-1">검수 결과가 없습니다.</div></td></tr>'
         return
@@ -228,6 +238,60 @@
       tbody.innerHTML = '<tr><td colspan="6" class="px-4 py-8 text-center text-red-500">조회 실패: ' + (e.message || e) + '</td></tr>'
     }
   }
+
+  // #354: 공급업체 드롭다운 옵션 (검수 이력 등장 공급업체)
+  window.inspectionsLoadSuppliers = async function() {
+    const sel = document.getElementById('resultsSupplierFilter')
+    if (!sel) return
+    try {
+      const res = await axios.get('/api/inspections/results/suppliers')
+      const list = res.data.data || []
+      const cur = sel.value
+      sel.innerHTML = '<option value="">전체</option>' + list.map(function(s) {
+        return '<option value="' + s.supplier_id + '">' + escapeHtml(s.supplier_name || ('#' + s.supplier_id)) + '</option>'
+      }).join('')
+      sel.value = cur
+      inspSuppliersLoaded = true
+    } catch (e) { /* graceful */ }
+  }
+
+  // #354: 페이지네이션
+  function renderInspPagination(pg) {
+    const el = document.getElementById('resultsPagination')
+    if (!el) return
+    if (!pg || pg.total_pages <= 1) {
+      el.innerHTML = pg ? '<span class="text-xs text-gray-500">총 ' + pg.total + '건</span>' : ''
+      return
+    }
+    el.innerHTML =
+      '<button onclick="inspectionsLoadResults(' + (pg.page - 1) + ')" class="px-2 py-1 text-xs border rounded disabled:opacity-40"' + (pg.page <= 1 ? ' disabled' : '') + '><i class="fas fa-chevron-left"></i></button>'
+      + '<span class="text-xs text-gray-500">' + pg.page + ' / ' + pg.total_pages + ' (총 ' + pg.total + '건)</span>'
+      + '<button onclick="inspectionsLoadResults(' + (pg.page + 1) + ')" class="px-2 py-1 text-xs border rounded disabled:opacity-40"' + (pg.page >= pg.total_pages ? ' disabled' : '') + '><i class="fas fa-chevron-right"></i></button>'
+  }
+
+  // #354: CSV 내보내기 (현재 필터 기준 전체)
+  window.inspectionsExportCSV = async function() {
+    const sEl = document.getElementById('resultsSupplierFilter')
+    const stEl = document.getElementById('resultsStatusFilter')
+    const dfEl = document.getElementById('resultsDateFrom')
+    const dtEl = document.getElementById('resultsDateTo')
+    const params = []
+    if (sEl && sEl.value) params.push('supplier_id=' + encodeURIComponent(sEl.value))
+    if (stEl && stEl.value) params.push('overall_result=' + encodeURIComponent(stEl.value))
+    if (dfEl && dfEl.value) params.push('date_from=' + dfEl.value)
+    if (dtEl && dtEl.value) params.push('date_to=' + dtEl.value)
+    try {
+      const res = await axios.get('/api/inspections/results/export/csv' + (params.length ? '?' + params.join('&') : ''), { responseType: 'blob' })
+      const blob = new Blob([res.data], { type: 'text/csv;charset=utf-8;' })
+      const link = document.createElement('a')
+      link.href = URL.createObjectURL(blob)
+      link.download = 'inspection_results_' + new Date().toISOString().slice(0, 10) + '.csv'
+      link.click()
+      URL.revokeObjectURL(link.href)
+      showToast('CSV 다운로드 완료', 'success')
+    } catch (e) { showToast('CSV 내보내기 실패', 'error') }
+  }
+
   window.inspectionsOpenResultDetail = async function(id) {
     const body = document.getElementById('resultDetailBody')
     body.innerHTML = '<div class="p-6 text-center text-gray-500">로딩 중...</div>'
@@ -344,6 +408,21 @@
     }
   }
 
-  // 페이지 진입 시 자동 실행
-  window.inspectionsLoadTemplates()
+  // 페이지 진입 시 자동 실행 (#346: URL 파라미터로 초기 탭/필터 — 불량률 리포트 드릴다운)
+  ;(function inspectionsInit() {
+    try {
+      var p = new URLSearchParams(window.location.search)
+      if (p.get('tab') === 'results') {
+        var stEl = document.getElementById('resultsStatusFilter')
+        var dfEl = document.getElementById('resultsDateFrom')
+        var dtEl = document.getElementById('resultsDateTo')
+        if (stEl && p.get('result')) stEl.value = p.get('result')
+        if (dfEl && p.get('from')) dfEl.value = p.get('from')
+        if (dtEl && p.get('to')) dtEl.value = p.get('to')
+        window.inspectionsSwitchTab('results') // 세팅된 필터로 loadResults 호출
+        return
+      }
+    } catch (e) { /* fallthrough to default */ }
+    window.inspectionsLoadTemplates()
+  })()
 })()

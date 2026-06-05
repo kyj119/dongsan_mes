@@ -71,7 +71,14 @@ window.switchLogTab = function(tab) {
                 <option value="CARD">카드</option>
                 <option value="PAYMENT">결제</option>
                 <option value="CLIENT">거래처</option>
-                <option value="SHIPMENT">출고</option>
+                <option value="QUOTATION">견적</option>
+              </select>
+            </div>
+            <div class="min-w-[130px]">
+              <label class="block text-xs text-gray-500 mb-1">사용자</label>
+              <select id="userFilter" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                onchange="currentPage=1;loadLogs();">
+                <option value="">전체 사용자</option>
               </select>
             </div>
             <div>

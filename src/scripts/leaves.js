@@ -65,10 +65,13 @@ window.leavesSwitchTab = function(tab) {
 
 window.leavesLoadBalances = async function() {
   var year = document.getElementById('lvYear').value || new Date().getFullYear();
+  var deptEl = document.getElementById('lvBalanceDept'); // #346: 부서 필터
   var tbody = document.getElementById('lvBalancesBody');
   tbody.innerHTML = '<tr><td colspan="9" class="text-center text-gray-400 py-6"><i class="fas fa-spinner fa-spin text-2xl mb-2"></i><br>로딩 중...</td></tr>';
   try {
-    var res = await axios.get('/api/leaves/balances', { params: { year: year } });
+    var balParams = { year: year };
+    if (deptEl && deptEl.value) balParams.department = deptEl.value;
+    var res = await axios.get('/api/leaves/balances', { params: balParams });
     var rows = res.data.data || [];
     if (!rows.length) {
       tbody.innerHTML = '<tr><td colspan="9" class="text-center text-gray-400 py-6">데이터 없음</td></tr>';
@@ -96,10 +99,16 @@ window.leavesLoadBalances = async function() {
 
 window.leavesLoadRequests = async function() {
   var status = document.getElementById('lvReqStatus').value;
+  var fromEl = document.getElementById('lvReqFrom'); // #353: 날짜 범위 필터
+  var toEl = document.getElementById('lvReqTo');
   var tbody = document.getElementById('lvRequestsBody');
   tbody.innerHTML = '<tr><td colspan="9" class="text-center text-gray-400 py-6"><i class="fas fa-spinner fa-spin text-2xl mb-2"></i><br>로딩 중...</td></tr>';
   try {
-    var res = await axios.get('/api/leaves/requests', { params: status ? { status: status } : {} });
+    var reqParams = {};
+    if (status) reqParams.status = status;
+    if (fromEl && fromEl.value) reqParams.from = fromEl.value;
+    if (toEl && toEl.value) reqParams.to = toEl.value;
+    var res = await axios.get('/api/leaves/requests', { params: reqParams });
     var rows = res.data.data || [];
     if (!rows.length) {
       tbody.innerHTML = '<tr><td colspan="9" class="text-center text-gray-400 py-6">신청 내역 없음</td></tr>';
@@ -314,11 +323,14 @@ window.leavesSubmitGrant = async function() {
 // 미사용 연차수당 조회
 window.leavesLoadAllowance = async function() {
   var year = document.getElementById('lvAllowYear') ? document.getElementById('lvAllowYear').value : new Date().getFullYear();
+  var deptEl = document.getElementById('lvAllowanceDept'); // #346: 부서 필터
   var tbody = document.getElementById('lvAllowanceBody');
   if (!tbody) return;
   tbody.innerHTML = '<tr><td colspan="8" class="text-center text-gray-400 py-6"><i class="fas fa-spinner fa-spin text-2xl mb-2"></i><br>로딩 중...</td></tr>';
   try {
-    var res = await axios.get('/api/leaves/unused-allowance', { params: { year: year } });
+    var allowParams = { year: year };
+    if (deptEl && deptEl.value) allowParams.department = deptEl.value;
+    var res = await axios.get('/api/leaves/unused-allowance', { params: allowParams });
     var d = res.data.data || {};
     var rows = d.employees || [];
     if (!rows.length) {

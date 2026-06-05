@@ -39,6 +39,17 @@ export function leavesPage(c: Context<HonoEnv>) {
           <div class="ds-card p-3 flex items-center gap-2">
             <label class="text-xs text-gray-600">기준 연도</label>
             <select id="lvYear" class="border rounded px-2 py-1 text-xs"></select>
+            <select id="lvBalanceDept" class="border rounded px-2 py-1 text-xs" onchange="leavesLoadBalances()" title="부서">
+              <option value="">전체 부서</option>
+              <option value="ADMIN_DEPT">사무직</option>
+              <option value="DESIGN">디자인</option>
+              <option value="SALES">영업</option>
+              <option value="TRANSFER">전사</option>
+              <option value="SIGN">간판</option>
+              <option value="PRINTING">출력</option>
+              <option value="PRODUCTION">생산직</option>
+              <option value="EXECUTIVE">임원</option>
+            </select>
             <button onclick="leavesLoadBalances()" class="ds-btn ds-btn-primary text-xs">
               <i class="fas fa-search mr-1"></i>조회
             </button>
@@ -79,6 +90,9 @@ export function leavesPage(c: Context<HonoEnv>) {
               <option value="APPROVED">승인</option>
               <option value="REJECTED">반려</option>
             </select>
+            <input type="date" id="lvReqFrom" class="border rounded px-2 py-1 text-xs" title="시작일(이후)">
+            <span class="text-gray-400 text-xs">~</span>
+            <input type="date" id="lvReqTo" class="border rounded px-2 py-1 text-xs" title="종료일(이전)">
             <button onclick="leavesLoadRequests()" class="ds-btn ds-btn-primary text-xs">
               <i class="fas fa-search mr-1"></i>검색
             </button>
@@ -114,6 +128,17 @@ export function leavesPage(c: Context<HonoEnv>) {
           <div class="ds-card p-3 flex items-center gap-2">
             <label class="text-xs text-gray-600">기준 연도</label>
             <select id="lvAllowYear" class="border rounded px-2 py-1 text-xs"></select>
+            <select id="lvAllowanceDept" class="border rounded px-2 py-1 text-xs" onchange="leavesLoadAllowance()" title="부서">
+              <option value="">전체 부서</option>
+              <option value="ADMIN_DEPT">사무직</option>
+              <option value="DESIGN">디자인</option>
+              <option value="SALES">영업</option>
+              <option value="TRANSFER">전사</option>
+              <option value="SIGN">간판</option>
+              <option value="PRINTING">출력</option>
+              <option value="PRODUCTION">생산직</option>
+              <option value="EXECUTIVE">임원</option>
+            </select>
             <button onclick="leavesLoadAllowance()" class="ds-btn ds-btn-primary text-xs">
               <i class="fas fa-search mr-1"></i>조회
             </button>

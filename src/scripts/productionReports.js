@@ -429,6 +429,10 @@ async function loadUptime() {
 // ── 불량률 ──
 async function loadDefects() {
   try {
+    // #346: 불합격 검수 드릴다운 링크에 현재 기간 반영
+    var inspectLink = document.getElementById('defectsInspectLink');
+    if (inspectLink) inspectLink.href = '/inspections?tab=results&result=FAILED&' + getDateParams();
+
     var res = await axios.get('/api/production-reports/defects?' + getDateParams());
     if (!res.data.success) return;
     var d = res.data.data;

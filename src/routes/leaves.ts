@@ -89,7 +89,10 @@ async function loadAnnualAccruedMap(
 leavesRouter.get('/balances', requireRole('ADMIN', 'MANAGER'), async (c) => {
   try {
     const year = Number(c.req.query('year') || new Date().getFullYear())
+    const department = c.req.query('department') || '' // #346: 부서 필터
     const ef = entityFilter(c, 'lb')
+    const deptClause = department ? ' AND e.department = ?' : ''
+    const deptParams = department ? [department] : []
     const { results } = await c.env.DB.prepare(`
       SELECT
         e.id as employee_id,
@@ -107,9 +110,9 @@ leavesRouter.get('/balances', requireRole('ADMIN', 'MANAGER'), async (c) => {
       FROM employees e
       LEFT JOIN leave_balances lb
         ON lb.employee_id = e.id AND lb.year = ? AND lb.leave_type = 'ANNUAL'
-      WHERE e.status = 'ACTIVE' AND e.is_deleted = 0${ef.clause}
+      WHERE e.status = 'ACTIVE' AND e.is_deleted = 0${ef.clause}${deptClause}
       ORDER BY e.department, e.name
-    `).bind(year, ...ef.params).all()
+    `).bind(year, ...ef.params, ...deptParams).all()
     return c.json({ success: true, data: results, year })
   } catch (error: any) {
     console.error('leaves balances error:', error)
@@ -614,6 +617,9 @@ leavesRouter.post('/sick-grant', requireRole('ADMIN'), async (c) => {
 leavesRouter.get('/unused-allowance', requireRole('ADMIN', 'MANAGER'), async (c) => {
   try {
     const year = Number(c.req.query('year') || new Date().getFullYear())
+    const department = c.req.query('department') || '' // #346: 부서 필터
+    const deptClause = department ? ' AND e.department = ?' : ''
+    const deptParams = department ? [department] : []
 
     // 직원별 연차 잔여 + 기본급(일급 계산용)
     const { results } = await c.env.DB.prepare(`
@@ -636,9 +642,9 @@ leavesRouter.get('/unused-allowance', requireRole('ADMIN', 'MANAGER'), async (c)
         ON lb.employee_id = e.id AND lb.year = ? AND lb.leave_type = 'ANNUAL'
       LEFT JOIN leave_balances sick
         ON sick.employee_id = e.id AND sick.year = ? AND sick.leave_type = 'SICK'
-      WHERE e.status = 'ACTIVE' AND e.is_deleted = 0
+      WHERE e.status = 'ACTIVE' AND e.is_deleted = 0${deptClause}
       ORDER BY e.department, e.name
-    `).bind(year, year).all<BalanceRow>()
+    `).bind(year, year, ...deptParams).all<BalanceRow>()
 
     // 미사용 연차수당 계산: 기본급 / 209시간 * 8 * 잔여일수
     // (통상임금 시급 = 월급 / 209, 일급 = 시급 * 8)
@@ -656,7 +662,9 @@ leavesRouter.get('/unused-allowance', requireRole('ADMIN', 'MANAGER'), async (c)
       }
     })
 
-    return c.json({ success: true, data })
+    // #346: 프론트(leaves.js)가 d.employees·d.total_unused_allowance 형태를 기대 — 정합 수정
+    const totalUnused = data.reduce((s, r) => s + (r.unused_allowance || 0), 0)
+    return c.json({ success: true, data: { employees: data, total_unused_allowance: totalUnused } })
   } catch (error) {
     console.error('src/routes/leaves.ts unused-allowance error:', error)
     return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)

@@ -1,6 +1,7 @@
 /* ── 생산 현황 보드 ─────────────────────────────────────────────────────────── */
 var boardData = [];
 var currentFilter = 'PRINT_PENDING';
+var currentCategory = '';
 var currentOffset = 0;
 var pageSize = 20;
 var hasMore = false;
@@ -15,8 +16,27 @@ var lbCloseTimer = null;
   loadBoard();
   var sortEl = document.getElementById('sortSelect');
   if (sortEl) sortEl.addEventListener('change', function () { loadBoard(); });
+  var catEl = document.getElementById('categoryFilter');
+  if (catEl) catEl.addEventListener('change', function () { currentCategory = catEl.value; loadBoard(); });
+  loadCategoryOptions();
   startAutoRefresh();
 })();
+
+// ── #353: 품목군 필터 옵션 (GET /api/cards/categories 기구현) ──
+async function loadCategoryOptions() {
+  var sel = document.getElementById('categoryFilter');
+  if (!sel) { console.warn('[productionBoard] #categoryFilter not found'); return; }
+  try {
+    var res = await axios.get('/api/cards/categories');
+    if (!res.data.success) return;
+    var cats = res.data.data || [];
+    var cur = sel.value;
+    sel.innerHTML = '<option value="">전체 품목군</option>' + cats.map(function (n) {
+      return '<option value="' + escapeHtml(n) + '">' + escapeHtml(n) + '</option>';
+    }).join('');
+    sel.value = cur;
+  } catch (e) { console.error('loadCategoryOptions error:', e); }
+}
 
 // ── 데이터 로드 ───────────────────────────────────────────────────────────────
 async function loadBoard(append) {
@@ -25,6 +45,7 @@ async function loadBoard(append) {
     var offset = append ? currentOffset + pageSize : 0;
     var params = '?sort=' + sort + '&limit=' + (pageSize + 1) + '&offset=' + offset;
     if (currentFilter) params += '&status=' + currentFilter;
+    if (currentCategory) params += '&category=' + encodeURIComponent(currentCategory);
 
     var res = await axios.get('/api/cards/board' + params);
     if (!res.data.success) return;

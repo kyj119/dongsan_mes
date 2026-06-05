@@ -99,6 +99,22 @@ export function productionPage(c: Context<HonoEnv>) {
               </button>
             </div>
           </div>
+          <!-- #343: 출력이력 필터 (장비/상태/날짜) — 라우트 기구현 -->
+          <div class="flex flex-wrap items-center gap-2 px-4 py-2 border-b border-gray-100 bg-gray-50/40">
+            <select id="evFilterAgent" onchange="applyEventFilters()" class="border rounded px-2 py-1 text-xs" title="장비">
+              <option value="">전체 장비</option>
+            </select>
+            <select id="evFilterStatus" onchange="applyEventFilters()" class="border rounded px-2 py-1 text-xs" title="상태">
+              <option value="">전체 상태</option>
+              <option value="OK">정상</option>
+              <option value="ERROR">오류</option>
+              <option value="CANCEL">취소</option>
+            </select>
+            <input id="evFilterDate" type="date" onchange="applyEventFilters()" class="border rounded px-2 py-1 text-xs" title="출력일">
+            <button onclick="resetEventFilters()" class="px-2 py-1 text-[10px] text-gray-400 hover:text-gray-600" title="필터 초기화">
+              <i class="fas fa-times mr-0.5"></i>초기화
+            </button>
+          </div>
           <div class="ds-table-wrap" style="max-height:320px;overflow-y:auto;">
             <table class="w-full text-sm ds-table ds-table-striped ds-table-fixed">
               <thead>

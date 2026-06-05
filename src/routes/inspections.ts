@@ -288,25 +288,110 @@ inspectionsRouter.get('/results', async (c) => {
   try {
     const receiptId = c.req.query('receipt_id')
     const supplierId = c.req.query('supplier_id')
+    // #354: 결과상태·검수일 범위 필터 + 페이지네이션
+    const overallResult = c.req.query('overall_result')
+    const dateFrom = c.req.query('date_from')
+    const dateTo = c.req.query('date_to')
+    const page = Math.max(1, parseInt(c.req.query('page') || '1'))
+    const limit = Math.min(Math.max(parseInt(c.req.query('limit') || '50'), 1), 200)
+    const offset = (page - 1) * limit
     const ef = entityFilter(c, 'ir')
 
-    let sql = `
+    const buildWhere = () => {
+      let w = `WHERE 1=1${ef.clause}`
+      const p: any[] = [...ef.params]
+      if (receiptId) { w += ' AND ir.receipt_id = ?'; p.push(receiptId) }
+      if (supplierId) { w += ' AND rec.supplier_id = ?'; p.push(supplierId) }
+      if (overallResult) { w += ' AND ir.overall_result = ?'; p.push(overallResult) }
+      if (dateFrom) { w += ' AND DATE(ir.inspected_at) >= ?'; p.push(dateFrom) }
+      if (dateTo) { w += ' AND DATE(ir.inspected_at) <= ?'; p.push(dateTo) }
+      return { w, p }
+    }
+    const { w, p } = buildWhere()
+
+    const countRow = await c.env.DB.prepare(
+      `SELECT COUNT(*) as cnt FROM inspection_results ir LEFT JOIN inventory_receipts rec ON ir.receipt_id = rec.id ${w}`
+    ).bind(...p).first<{ cnt: number }>()
+    const total = countRow?.cnt ?? 0
+
+    const sql = `
       SELECT ir.*, u.name as inspector_name,
-        rec.receipt_number, rec.supplier as supplier_name
+        rec.receipt_number, rec.supplier as supplier_name, rec.supplier_id
       FROM inspection_results ir
       LEFT JOIN users u ON ir.inspector_id = u.id
       LEFT JOIN inventory_receipts rec ON ir.receipt_id = rec.id
-      WHERE 1=1${ef.clause}
+      ${w}
+      ORDER BY ir.inspected_at DESC LIMIT ? OFFSET ?
     `
-    const params: any[] = [...ef.params]
-    if (receiptId) { sql += ' AND ir.receipt_id = ?'; params.push(receiptId) }
-    if (supplierId) { sql += ' AND rec.supplier_id = ?'; params.push(supplierId) }
-    sql += ' ORDER BY ir.inspected_at DESC LIMIT 100'
-
-    const { results } = await c.env.DB.prepare(sql).bind(...params).all()
-    return c.json({ success: true, data: results })
+    const { results } = await c.env.DB.prepare(sql).bind(...p, limit, offset).all()
+    return c.json({
+      success: true,
+      data: results,
+      pagination: { page, limit, total, total_pages: Math.ceil(total / limit) }
+    })
   } catch (error) {
     console.error('inspections results GET error:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
+  }
+})
+
+// GET /results/suppliers - 검수 이력에 등장한 공급업체 목록 (#354 드롭다운용)
+inspectionsRouter.get('/results/suppliers', async (c) => {
+  try {
+    const ef = entityFilter(c, 'ir')
+    const { results } = await c.env.DB.prepare(`
+      SELECT DISTINCT rec.supplier_id, rec.supplier as supplier_name
+      FROM inspection_results ir
+      JOIN inventory_receipts rec ON ir.receipt_id = rec.id
+      WHERE rec.supplier_id IS NOT NULL${ef.clause}
+      ORDER BY supplier_name
+    `).bind(...ef.params).all()
+    return c.json({ success: true, data: results || [] })
+  } catch (error) {
+    console.error('inspections suppliers GET error:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
+  }
+})
+
+// GET /results/export/csv - 검수 결과 CSV (#354, 현재 필터 기준 전체)
+inspectionsRouter.get('/results/export/csv', async (c) => {
+  try {
+    const receiptId = c.req.query('receipt_id')
+    const supplierId = c.req.query('supplier_id')
+    const overallResult = c.req.query('overall_result')
+    const dateFrom = c.req.query('date_from')
+    const dateTo = c.req.query('date_to')
+    const ef = entityFilter(c, 'ir')
+
+    let w = `WHERE 1=1${ef.clause}`
+    const p: any[] = [...ef.params]
+    if (receiptId) { w += ' AND ir.receipt_id = ?'; p.push(receiptId) }
+    if (supplierId) { w += ' AND rec.supplier_id = ?'; p.push(supplierId) }
+    if (overallResult) { w += ' AND ir.overall_result = ?'; p.push(overallResult) }
+    if (dateFrom) { w += ' AND DATE(ir.inspected_at) >= ?'; p.push(dateFrom) }
+    if (dateTo) { w += ' AND DATE(ir.inspected_at) <= ?'; p.push(dateTo) }
+
+    const { results } = await c.env.DB.prepare(`
+      SELECT ir.inspected_at, rec.receipt_number, rec.supplier as supplier_name,
+        u.name as inspector_name, ir.overall_result, ir.notes
+      FROM inspection_results ir
+      LEFT JOIN users u ON ir.inspector_id = u.id
+      LEFT JOIN inventory_receipts rec ON ir.receipt_id = rec.id
+      ${w}
+      ORDER BY ir.inspected_at DESC LIMIT 5000
+    `).bind(...p).all()
+
+    const { generateCsv, csvResponse } = await import('../utils/csv')
+    const labelMap: Record<string, string> = { PASSED: '합격', FAILED: '불합격', PARTIAL: '부분합격' }
+    const headers = ['검수일시', '입고번호', '공급업체', '검수자', '결과', '비고']
+    const rows = (results || []).map((r: any) => [
+      (r.inspected_at || '').slice(0, 16).replace('T', ' '),
+      r.receipt_number || '', r.supplier_name || '', r.inspector_name || '',
+      labelMap[r.overall_result] || r.overall_result || '', r.notes || ''
+    ])
+    return csvResponse(c, `검수결과_${new Date().toISOString().slice(0, 10)}.csv`, generateCsv(headers, rows))
+  } catch (error) {
+    console.error('inspections CSV export error:', error)
     return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
   }
 })

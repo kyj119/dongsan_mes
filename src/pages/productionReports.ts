@@ -244,6 +244,12 @@ window.switchProdAnalysisTab = function(tab) {
 
             <!-- 불량률 패널 -->
             <div id="panelDefects" class="hidden">
+                <div class="flex justify-end mb-3">
+                    <a id="defectsInspectLink" href="/inspections?tab=results&result=FAILED"
+                       class="text-xs px-3 py-1.5 border border-gray-300 text-gray-700 bg-white rounded hover:bg-gray-50">
+                        <i class="fas fa-clipboard-check mr-1"></i>해당 기간 불합격 검수 보기
+                    </a>
+                </div>
                 <div class="grid grid-cols-2 gap-6">
                     <div class="ds-card p-6">
                         <h3 class="text-sm font-bold text-gray-700 mb-3"><i class="fas fa-exclamation-triangle text-red-500 mr-1"></i>장비별 불량률</h3>
@@ -432,10 +438,17 @@ window.switchProdAnalysisTab = function(tab) {
 
               <!-- 자동차감 이력 테이블 -->
               <div class="ds-card" style="padding:0;overflow:hidden;">
-                <div style="padding:var(--space-md);border-bottom:1px solid var(--c-border);display:flex;align-items:center;justify-content:space-between;">
+                <div style="padding:var(--space-md);border-bottom:1px solid var(--c-border);display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;">
                   <h2 class="ds-card-title">
-                    <i class="fas fa-history" style="color:#8b5cf6;margin-right:8px"></i>자동차감 이력 (최근 50건)
+                    <i class="fas fa-history" style="color:#8b5cf6;margin-right:8px"></i>자동차감 이력
                   </h2>
+                  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+                    <select id="deductMaterial" class="ds-input" style="width:auto" onchange="filterDeductions()" title="원단">
+                      <option value="">전체 원단</option>
+                    </select>
+                    <input type="date" id="deductDateFrom" class="ds-input" style="width:140px" onchange="filterDeductions()" title="차감일 시작" />
+                    <input type="date" id="deductDateTo" class="ds-input" style="width:140px" onchange="filterDeductions()" title="차감일 종료" />
+                  </div>
                 </div>
                 <div class="ds-table-wrap">
                   <table id="deductionTable" class="ds-table ds-table-compact ds-table-striped">
@@ -455,6 +468,7 @@ window.switchProdAnalysisTab = function(tab) {
                     </tbody>
                   </table>
                 </div>
+                <div id="deductPagination" style="display:flex;justify-content:flex-end;gap:8px;align-items:center;padding:var(--space-md);"></div>
               </div>
 
             </div>

@@ -72,6 +72,9 @@ export function cashSchedulePage(c: Context<HonoEnv>) {
             <button onclick="schCheckOverdue()" class="px-3 py-1.5 text-xs border border-red-300 text-red-700 bg-red-50 rounded hover:bg-red-100">
               <i class="fas fa-exclamation-triangle mr-1"></i>연체체크
             </button>
+            <button onclick="schExportCSV()" class="px-3 py-1.5 text-xs border border-gray-300 text-gray-700 bg-white rounded hover:bg-gray-50" title="현재 월 자금일정 CSV">
+              <i class="fas fa-file-csv mr-1"></i>CSV
+            </button>
             <button onclick="schOpenAddModal()" class="ds-btn ds-btn-primary text-xs">
               <i class="fas fa-plus mr-1"></i>예정 등록
             </button>

@@ -231,6 +231,9 @@ export function productionBoardPage(c: Context<HonoEnv>) {
         <div class="board-header">
           <div class="board-filters" id="statusTabs"></div>
           <div class="board-actions">
+            <select id="categoryFilter" class="text-sm border rounded px-2 py-1" title="품목군">
+              <option value="">전체 품목군</option>
+            </select>
             <select id="sortSelect" class="text-sm border rounded px-2 py-1">
               <option value="urgency">긴급도순</option>
               <option value="delivery_asc">납기순</option>

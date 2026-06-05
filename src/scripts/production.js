@@ -184,6 +184,9 @@ async function loadAgents() {
         + '<span>오프라인 ' + (summary.offline || 0) + '</span></span>';
     }
 
+    // #343: 출력이력 장비 필터 옵션 채우기
+    populateAgentFilter(agents);
+
     var listEl = document.getElementById('agentList');
     if (!agents || agents.length === 0) {
       listEl.innerHTML =
@@ -227,6 +230,13 @@ async function loadRecentEvents() {
 
   try {
     var url = '/api/print-events?page=' + eventsPage + '&limit=50';
+    // #343: 출력이력 필터 (장비/상태/날짜) — 라우트 기구현
+    var afEl = document.getElementById('evFilterAgent');
+    var sfEl = document.getElementById('evFilterStatus');
+    var dfEl = document.getElementById('evFilterDate');
+    if (afEl && afEl.value) url += '&agent_id=' + encodeURIComponent(afEl.value);
+    if (sfEl && sfEl.value) url += '&status=' + encodeURIComponent(sfEl.value);
+    if (dfEl && dfEl.value) url += '&date=' + encodeURIComponent(dfEl.value);
     var res = await axios.get(url);
     if (!res.data.success) throw new Error('API 오류');
 
@@ -312,6 +322,38 @@ function changeEventsPage(delta) {
 }
 
 window.changeEventsPage = changeEventsPage;
+
+// ── #343: 출력이력 필터 ──
+function populateAgentFilter(agents) {
+  var sel = document.getElementById('evFilterAgent');
+  if (!sel) { console.warn('[production] #evFilterAgent not found'); return; }
+  var cur = sel.value;
+  var opts = '<option value="">전체 장비</option>';
+  (agents || []).forEach(function(a) {
+    var id = a.agent_id || '';
+    if (!id) return;
+    var name = a.printer_name || a.agent_id;
+    opts += '<option value="' + escapeHtml(id) + '">' + escapeHtml(name) + '</option>';
+  });
+  sel.innerHTML = opts;
+  sel.value = cur; // 새로고침 후 선택 유지
+}
+
+function applyEventFilters() {
+  eventsPage = 1;
+  loadRecentEvents();
+}
+
+function resetEventFilters() {
+  ['evFilterAgent', 'evFilterStatus', 'evFilterDate'].forEach(function(id) {
+    var el = document.getElementById(id);
+    if (el) el.value = '';
+  });
+  applyEventFilters();
+}
+
+window.applyEventFilters = applyEventFilters;
+window.resetEventFilters = resetEventFilters;
 
 // ── 실제 출력매수 입력 ──
 async function showActualPrintedInput(eventId, copyTotal) {

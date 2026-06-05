@@ -224,41 +224,42 @@ costsRouter.get('/deductions', async (c) => {
     const dateFrom = c.req.query('date_from')
     const dateTo = c.req.query('date_to')
 
-    const ef = entityFilter(c, '')
-    let query = 'SELECT id, print_event_id, material_item_id, deducted_length_mm, deducted_length_yd, output_width_mm, output_height_mm, copy_total, inventory_before, inventory_after, matched_width_mm, card_id, order_number, created_at FROM inventory_auto_deductions WHERE 1=1' + ef.clause
+    const ef = entityFilter(c, 'd')
+    // #353: items JOIN으로 원단명 표시 (material_item_id 숫자 노출 해소)
+    let query = 'SELECT d.id, d.print_event_id, d.material_item_id, d.deducted_length_mm, d.deducted_length_yd, d.output_width_mm, d.output_height_mm, d.copy_total, d.inventory_before, d.inventory_after, d.matched_width_mm, d.card_id, d.order_number, d.created_at, it.item_name, it.item_code FROM inventory_auto_deductions d LEFT JOIN items it ON d.material_item_id = it.id WHERE 1=1' + ef.clause
     const params: any[] = [...ef.params]
 
     if (materialItemId) {
-      query += ' AND material_item_id = ?'
+      query += ' AND d.material_item_id = ?'
       params.push(parseInt(materialItemId))
     }
     if (dateFrom) {
-      query += " AND DATE(created_at) >= ?"
+      query += " AND DATE(d.created_at) >= ?"
       params.push(dateFrom)
     }
     if (dateTo) {
-      query += " AND DATE(created_at) <= ?"
+      query += " AND DATE(d.created_at) <= ?"
       params.push(dateTo)
     }
 
-    query += ' ORDER BY created_at DESC LIMIT ? OFFSET ?'
+    query += ' ORDER BY d.created_at DESC LIMIT ? OFFSET ?'
     params.push(limit, offset)
 
     const { results } = await c.env.DB.prepare(query).bind(...params).all()
 
     // 전체 개수
-    let countQuery = 'SELECT COUNT(*) as cnt FROM inventory_auto_deductions WHERE 1=1' + ef.clause
+    let countQuery = 'SELECT COUNT(*) as cnt FROM inventory_auto_deductions d WHERE 1=1' + ef.clause
     const countParams: any[] = [...ef.params]
     if (materialItemId) {
-      countQuery += ' AND material_item_id = ?'
+      countQuery += ' AND d.material_item_id = ?'
       countParams.push(parseInt(materialItemId))
     }
     if (dateFrom) {
-      countQuery += " AND DATE(created_at) >= ?"
+      countQuery += " AND DATE(d.created_at) >= ?"
       countParams.push(dateFrom)
     }
     if (dateTo) {
-      countQuery += " AND DATE(created_at) <= ?"
+      countQuery += " AND DATE(d.created_at) <= ?"
       countParams.push(dateTo)
     }
 

@@ -33,6 +33,16 @@ export function purchaseInvoicesPage(c: Context<HonoEnv>) {
       </div>
 
       <div id="panelInvoices" class="hidden">
+        <div class="flex items-center gap-2 mb-3">
+          <select id="invMatchFilter" onchange="loadInvoices(1)" class="border rounded px-2 py-1 text-sm" title="매칭상태">
+            <option value="">전체 매칭상태</option>
+            <option value="MATCHED">정상</option>
+            <option value="PRICE_VARIANCE">단가차이</option>
+            <option value="QUANTITY_VARIANCE">수량차이</option>
+            <option value="UNMATCHED">미매칭</option>
+            <option value="DISPUTED">분쟁</option>
+          </select>
+        </div>
         <div class="ds-card overflow-hidden">
           <table class="ds-table w-full">
             <thead><tr>
@@ -42,6 +52,7 @@ export function purchaseInvoicesPage(c: Context<HonoEnv>) {
             <tbody id="invoicesBody"></tbody>
           </table>
         </div>
+        <div id="invoicesPagination" class="flex items-center justify-end gap-2 mt-3"></div>
       </div>
 
       <!-- 매입확정 모달 -->

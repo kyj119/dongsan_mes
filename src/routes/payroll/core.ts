@@ -384,6 +384,10 @@ coreRouter.post('/batch', requireRole('ADMIN', 'MANAGER'), async (c) => {
     const user = c.get('user')
     let created = 0
     let skipped = 0
+    // #350: 루프 불변값 hoist — 직원과 무관해 매 iteration 재조회 불필요 (N×2 쿼리 제거, 결과값 불변)
+    const otSettings = await loadOvertimeSettings(c.env.DB)
+    const batchSettings = await getSettings(c.env.DB, ['payroll_meal_allowance_nontax_max'])
+    const mealMax = Number(batchSettings.payroll_meal_allowance_nontax_max || 200000)
     for (const emp of list) {
       // 이미 있으면 스킵
       const exists = await c.env.DB.prepare(
@@ -404,7 +408,6 @@ coreRouter.post('/batch', requireRole('ADMIN', 'MANAGER'), async (c) => {
 
       // 고정연장시간 자동 계산
       const batchFixedOtHours = (Number(empRow?.overtime_daily_hours) || 0) * (Number(empRow?.overtime_work_days) || 22)
-      const otSettings = await loadOvertimeSettings(c.env.DB)
       const batchOt = calcOvertimePay({
         baseSalary: base_salary,
         monthlyWorkHours: otSettings.monthlyWorkHours,
@@ -424,8 +427,6 @@ coreRouter.post('/batch', requireRole('ADMIN', 'MANAGER'), async (c) => {
         empDefaults.position_allowance + empDefaults.vehicle_allowance + empDefaults.other_allowance_fixed
       const meal_total = empDefaults.meal_allowance_fixed
 
-      const settings = await getSettings(c.env.DB, ['payroll_meal_allowance_nontax_max'])
-      const mealMax = Number(settings.payroll_meal_allowance_nontax_max || 200000)
       const nontax_meal = Math.min(meal_total, mealMax)
       const tax_meal = meal_total - nontax_meal
 
