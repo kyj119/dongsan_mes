@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 1 -->
-<!-- last_run_at: 2026-06-05T14:00:00+09:00 -->
+<!-- last_run_area: 2 -->
+<!-- last_run_at: 2026-06-05T18:00:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,7 +8,7 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | 15 (open auto-improve 17건 − approved 2건; #336은 코드측 해소·이슈 open 잔존) |
+| 🆕 new | 16 (open auto-improve 18건 − approved 2건; #336은 코드측 해소·이슈 open 잔존) |
 | ✅ approved | 2 (I-032/#342 — 전용 세션 대기 / I-030/#340 — 👍 확인, 급성 RED 해소·잔여만 대기) |
 | 👀 reviewed | 0 |
 | ✔️ done | 49 |
@@ -16,6 +16,13 @@
 
 > ✅ **GitHub 전수 재동기 완료 (Area 6, 2026-06-05T10:00)**: open auto-improve 정확히 17건 = New 15 + approved 2(#342/#340). 이전 경고대로 #334/#337/#338/#349는 GitHub closed(completed) 확인 → **a7a15cc 실제 수정·배포·검증 + 코드 교차검증 통과 → done 이관**. #336은 a7a15cc로 코드측(yml 폴백 제거) 해소됐으나 owner 일괄 close 시 누락 → open 잔존(운영 계정점검만 잔여, 상태 코멘트 추가).
 
+> **Area 2 코드 품질 (2026-06-05T18:00):**
+> - **방법**: 병렬 에이전트 2개(Explore) — entity_id 격리·IDOR 비대칭 / N+1·auth·타입·dead code. baseline `npm ci`+tsc --noEmit PASS. HIGH 1건은 owner 직접 코드 검증(approvals.ts list↔/:id 대조 + approve 가드 강도 + 3테이블 entity_id 컬럼 확인).
+> - **🐛 신규 이슈 #358 (I-048, HIGH bug) — 전자결재 멀티테넌시 격리 갭, #356 패턴 7번째 모듈**: `approvals.ts` list(`:95`)는 `entityFilter(c,'ar')`(주석 `#86`) 적용하나 `/:id` 전 계열은 `WHERE id=?`만. 3테이블(approval_requests/steps/attachments) 전부 entity_id 보유(INSERT `:185/:200/:476` getEntityId 주입)→필터 가능한데 read/mutate 누락. ① `GET /:id`(`:222`) **완전 무가드** `ar.*` 노출(타법인 결재 제목·금액·내용·여신/지출 reference + 첨부) ② `GET /:id/attachments/:attachId`(`:487`) 첨부 file_data 다운로드 ③ approve(`:311`)/reject(`:376`) 가드가 approver_id/**전역 role**/ADMIN뿐 → entity A MANAGER가 entity B 결재 승인→`handlePostApproval`이 `purchase_requests.status='APPROVED'`·`orders.credit_status` 연쇄=**정합성 훼손** ④ PUT/submit는 status만 검증 ⑤ `/pending`(`:147`)도 전역 role만. **자동수정 안 함**(ADMIN entityId=0 전체모드 분기+mutate 권한 시맨틱 변경+egress 차단 런타임 검증 불가, #349/#356 동일 사유). #356에 7번째 모듈 교차참조 코멘트 추가.
+> - **N+1 net-new 0건(이슈 가치)**: 에이전트 보고 중 payroll/core.ts:407/427(loadOvertimeSettings·getSettings 루프불변)·printSystem:650·PO core 품목루프·cardExpenses import는 전부 #341/#350 기보고. **신규는 bank.ts:1112(입금 일괄적용 조건부 UPDATE)·ledger/accounts-receivable.ts:1052(잔액 정합성 수정 UPDATE 루프)뿐 — 둘 다 관리자/배치 엔드포인트(hot-path 아님)** + batch 전환은 트랜잭션·에러 시맨틱 변화로 #341/#350 기결정(자동수정 금지)에 흡수 → 노이즈 회피로 이슈화 보류.
+> - **이상 없음**: authMiddleware 누락 0건(cards/hrSelf/ledger/orders/payroll/purchaseOrders/webhooks 전부 aggregator·서브라우터 위임·의도적 공개). 타입 위험 `as any` 신규 0건(req.json/env 바인딩 관행). dead code(unmounted 라우터/orphan export) 0건. 신규 entity_id INSERT 격리갭 0건(approvals 외 전 테이블 getEntityId 또는 부모FK 상속).
+> - 자동 수정 0건(HIGH는 런타임 검증 불가+권한 시맨틱), 신규 이슈 1건(#358), 교차참조 코멘트 1건(#356)
+>
 > **Area 1 프로덕션 헬스 (2026-06-05T14:00):**
 > - **방법**: GitHub Actions 최근 30런 분석 + 로컬 verify + 번들 한도 검증. egress는 여전히 Cloudflare 엣지 403 차단(`curl /` `/api/health` → 403) → 직접 20-API 호출 불가, E2E(실제 prod 페이지 브라우저 검증: login/dashboard/cards/items/orders/clients)를 헬스 신호로 사용.
 > - **🟢 파이프라인 정상**: 최근 30런 = Deploy 14/14 success · E2E 13 success/1 cancelled/1 failure · Daily D1 Backup success. **최신 런(E2E #26998904137 06:16, Deploy #26998857163 06:14) 전부 green**. queued/stuck run 0건.
@@ -255,6 +262,7 @@
 | I-035 | 회계 CSV·검색 — taxInvoices CSV / cashSchedule CSV / 지출결의서 지급처·사유 검색 | Area 3 | #345 | ~2h |
 | I-036 | 필터·드릴다운 — 연차 부서 필터 / 불량률 리포트→검수 드릴다운 | Area 3 | #346 | 3~4h |
 | I-046 | **[HIGH]** 멀티테넌시 격리 갭 클러스터 6모듈 — list는 entityFilter, /:id 상세·변경은 누락(insuranceReports rrn/paymentRequests/cashReceipts PII + inventoryCount/leaves 정합성 훼손), #349 패턴 확장 | Area 5 | #356 | 2~3h |
+| I-048 | **[HIGH]** 전자결재 격리 갭 (#356 7번째 모듈) — list만 entityFilter, GET /:id 무가드 재무노출 + approve/reject 전역 role로 타법인 purchase_requests/credit_status 정합성 훼손 | Area 2 | #358 | ~2h |
 | I-047 | [MED] 파일 업로드 검증 부재 — ext 화이트리스트/크기상한/MIME 미검증(cardExpenses/po/files), 키 인젝션은 A-015 자동수정 | Area 5 | #357 | ~1h |
 | I-045 | **[HIGH]** 여신초과 주문 생성 전면 실패 — approval_requests.type='CREDIT_OVERRIDE'가 CHECK(0202,9값)에 없음 → batch 위반·500·고아주문, #163 여신승인 비작동 | Area 4 | #355 | 2~3h / 우회 10분 |
 | I-040 | N+1 신규 클러스터 — 급여 일괄/근태동기화 핫패스(전직원×5~7쿼리, 루프불변 hoist 즉효) + 발주 품목 루프 (#341 미포함) | Area 2 | #350 | hoist 20분 / 전체 ~4h |
