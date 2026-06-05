@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 2 -->
-<!-- last_run_at: 2026-06-05T18:00:00+09:00 -->
+<!-- last_run_area: 3 -->
+<!-- last_run_at: 2026-06-05T22:00:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,7 +8,7 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | 16 (open auto-improve 18건 − approved 2건; #336은 코드측 해소·이슈 open 잔존) |
+| 🆕 new | 17 (open auto-improve 19건 − approved 2건; #336은 코드측 해소·이슈 open 잔존) |
 | ✅ approved | 2 (I-032/#342 — 전용 세션 대기 / I-030/#340 — 👍 확인, 급성 RED 해소·잔여만 대기) |
 | 👀 reviewed | 0 |
 | ✔️ done | 49 |
@@ -16,6 +16,14 @@
 
 > ✅ **GitHub 전수 재동기 완료 (Area 6, 2026-06-05T10:00)**: open auto-improve 정확히 17건 = New 15 + approved 2(#342/#340). 이전 경고대로 #334/#337/#338/#349는 GitHub closed(completed) 확인 → **a7a15cc 실제 수정·배포·검증 + 코드 교차검증 통과 → done 이관**. #336은 a7a15cc로 코드측(yml 폴백 제거) 해소됐으나 owner 일괄 close 시 누락 → open 잔존(운영 계정점검만 잔여, 상태 코멘트 추가).
 
+> **Area 3 UX/기능 감사 (2026-06-05T22:00):**
+> - **방법**: 병렬 에이전트 3개(Explore) — 영업·회계 / 생산·재고·구매 / HR·대시보드·설정. dead-filter·silent-fail·중복ID·하드캡 집중. baseline `npm ci`+tsc --noEmit+build PASS. **에이전트 보고 전수 owner 직접 코드 검증**(노이즈 차단). 코드베이스 Area 3 4회차 — 한계효용 체감.
+> - **🐛 신규 이슈 #359 (I-049, MED bug) — 지출결의서 목록 LIMIT 200 하드캡 + 페이지네이션·총건수 전무**: `paymentRequests.ts:45` `LIMIT 200` 고정, 응답 `{success,data}`만(total/page 없음), `paymentRequests.js:31` page/limit 미전송·페이지네이션 UI·총건수 표시 전무. 지출결의서는 단조증가 재무전표 → 201건+ silent truncation, #345로 추가된 검색결과도 동일 캡에 걸림. #353 캡클러스터(leaves/purchaseInvoices/costs)에 paymentRequests 미포함분 + #343(날짜)·#345(검색/CSV) 별개 측면. **자동수정 안 함**(응답형식 변경+UI=금지범위). #353/#345 모두 closed라 신규 이슈.
+> - **🔴 오탐 5건 차단(에이전트 MED/HIGH 보고 → 코드 반증)**: ① deliveryAnalytics CSV `from||default`(`:14`)=쿼리 우선이지 덮어쓰기 아님, 프론트도 from/to 정상전송(`deliveryAnalytics.js:37-49`) ② cardExpenses 날짜필터 — `cardExpenses.js:126` start_date/end_date 정상전송, 라우트 `:275` 별칭 처리 ③ payroll.js 직원로드 — `:32` 주석까지 달고 `d.employees` 정상처리 ④ leaves 직원드롭다운 — `leaves.js:396` `lvSetupEmployeeSearch`로 배선됨 ⑤ messages 시간대 — UTC ISO 날짜 일관성, 너무 사변적(LOW 미만).
+> - **중복 차단(에이전트 재보고 → #353 기보고)**: purchaseInvoices match_status+LIMIT 100(#353-6), leaves 날짜+LIMIT 200(#353-5), activityLog user_id 드롭다운(#353-4). quotations item_name 검색은 백엔드 검색범위 확장(버그 아닌 기능갭, 저가치).
+> - **이상 없음**: 하드코딩 LIMIT 전수(`grep "LIMIT [0-9]"`) — dashboard top-N(5/10/20)·items 자동완성(50)·inventory PENDING_REVIEW 작업큐(100)·bom MRP runs(저빈도 50)는 전부 의도적/자연제한. paymentRequests만 list-truncation 갭.
+> - 자동 수정 0건(유일 net-new는 응답형식+UI 변경=금지범위), 신규 이슈 1건(#359), 오탐 5건·중복 3건 차단
+>
 > **Area 2 코드 품질 (2026-06-05T18:00):**
 > - **방법**: 병렬 에이전트 2개(Explore) — entity_id 격리·IDOR 비대칭 / N+1·auth·타입·dead code. baseline `npm ci`+tsc --noEmit PASS. HIGH 1건은 owner 직접 코드 검증(approvals.ts list↔/:id 대조 + approve 가드 강도 + 3테이블 entity_id 컬럼 확인).
 > - **🐛 신규 이슈 #358 (I-048, HIGH bug) — 전자결재 멀티테넌시 격리 갭, #356 패턴 7번째 모듈**: `approvals.ts` list(`:95`)는 `entityFilter(c,'ar')`(주석 `#86`) 적용하나 `/:id` 전 계열은 `WHERE id=?`만. 3테이블(approval_requests/steps/attachments) 전부 entity_id 보유(INSERT `:185/:200/:476` getEntityId 주입)→필터 가능한데 read/mutate 누락. ① `GET /:id`(`:222`) **완전 무가드** `ar.*` 노출(타법인 결재 제목·금액·내용·여신/지출 reference + 첨부) ② `GET /:id/attachments/:attachId`(`:487`) 첨부 file_data 다운로드 ③ approve(`:311`)/reject(`:376`) 가드가 approver_id/**전역 role**/ADMIN뿐 → entity A MANAGER가 entity B 결재 승인→`handlePostApproval`이 `purchase_requests.status='APPROVED'`·`orders.credit_status` 연쇄=**정합성 훼손** ④ PUT/submit는 status만 검증 ⑤ `/pending`(`:147`)도 전역 role만. **자동수정 안 함**(ADMIN entityId=0 전체모드 분기+mutate 권한 시맨틱 변경+egress 차단 런타임 검증 불가, #349/#356 동일 사유). #356에 7번째 모듈 교차참조 코멘트 추가.
@@ -270,6 +278,7 @@
 | I-042 | 현금영수증 탭 필터 전체 무력 — 중복 element ID 셰도잉 + 날짜 파라미터 불일치(HTML 리네임 필요) | Area 3 | #352 | 30분 |
 | I-043 | Dead-filter 클러스터 2탄 6건 — 생산보드 category/원가 자동차감/메시지로그 날짜/활동로그 user/휴가신청 날짜/매입인보이스 match_status (백엔드 기구현 미노출) | Area 3 | #353 | ~5h |
 | I-044 | 검수결과 목록 — 원시 ID 직접입력 필터(사용불가)+상태/날짜 필터·페이지네이션·CSV 부재 | Area 3 | #354 | ~3h |
+| I-049 | [MED bug] 지출결의서 목록 LIMIT 200 하드캡 + 페이지네이션·총건수 전무 — 201건+ silent truncation (재무전표 단조증가, 검색결과도 동일 캡) | Area 3 | #359 | ~1h |
 
 ---
 
