@@ -1,6 +1,8 @@
 // 근로계약서(시급직) HTML 템플릿 — 인쇄/PDF 출력용
 // entity 파라미터로 법인별 회사명/대표자/주소 자동 치환
 
+import { escapeHtml as esc } from '../utils/escapeHtml'
+
 function formatDate(dateStr: string): string {
   if (!dateStr) return ''
   const d = new Date(dateStr)
@@ -307,7 +309,7 @@ export function renderLaborContractHTML(data: {
       <div class="contract-title">근 로 계 약 서</div>
 
       <p class="preamble">
-        ${entity.name} (이하 "사용자"라 한다)와(과) ${employee.name} (이하 "근로자"라 한다)는
+        ${esc(entity.name)} (이하 "사용자"라 한다)와(과) ${esc(employee.name)} (이하 "근로자"라 한다)는
         다음과 같이 근로계약을 체결하고 이를 성실히 이행할 것을 약정한다.
       </p>
 
@@ -322,30 +324,30 @@ export function renderLaborContractHTML(data: {
           </tr>
           <tr>
             <th>상호(법인명)</th>
-            <td>${entity.name}</td>
+            <td>${esc(entity.name)}</td>
             <th>대표자</th>
-            <td>${entity.representative}</td>
+            <td>${esc(entity.representative)}</td>
           </tr>
           <tr>
             <th>소재지</th>
-            <td colspan="3">${entity.address}</td>
+            <td colspan="3">${esc(entity.address)}</td>
           </tr>
           <tr>
             <td class="header-cell" colspan="4">근 로 자</td>
           </tr>
           <tr>
             <th>성 명</th>
-            <td colspan="3">${employee.name}</td>
+            <td colspan="3">${esc(employee.name)}</td>
           </tr>
           <tr>
             <th>생년월일</th>
-            <td>${employee.birth_date}</td>
+            <td>${esc(employee.birth_date)}</td>
             <th>연락처</th>
-            <td>${employee.phone}</td>
+            <td>${esc(employee.phone)}</td>
           </tr>
           <tr>
             <th>주 소</th>
-            <td colspan="3">${employee.address}</td>
+            <td colspan="3">${esc(employee.address)}</td>
           </tr>
         </table>
       </div>
@@ -354,8 +356,8 @@ export function renderLaborContractHTML(data: {
       <div class="article">
         <div class="article-title">제2조 (담당업무 및 취업장소)</div>
         <div class="article-body">
-          <p>1) 담당업무: ${contract.job_description}</p>
-          <p>2) 취업장소: ${entity.address}</p>
+          <p>1) 담당업무: ${esc(contract.job_description)}</p>
+          <p>2) 취업장소: ${esc(entity.address)}</p>
         </div>
       </div>
 
@@ -501,15 +503,15 @@ export function renderLaborContractHTML(data: {
             <table class="sig-table">
               <tr>
                 <th>상 호</th>
-                <td>${entity.name}</td>
+                <td>${esc(entity.name)}</td>
               </tr>
               <tr>
                 <th>대 표 자</th>
-                <td>${entity.representative}</td>
+                <td>${esc(entity.representative)}</td>
               </tr>
               <tr>
                 <th>소 재 지</th>
-                <td>${entity.address}</td>
+                <td>${esc(entity.address)}</td>
               </tr>
               <tr class="sig-stamp-row">
                 <th>인</th>
@@ -522,15 +524,15 @@ export function renderLaborContractHTML(data: {
             <table class="sig-table">
               <tr>
                 <th>성 명</th>
-                <td>${employee.name}</td>
+                <td>${esc(employee.name)}</td>
               </tr>
               <tr>
                 <th>생년월일</th>
-                <td>${employee.birth_date}</td>
+                <td>${esc(employee.birth_date)}</td>
               </tr>
               <tr>
                 <th>주 소</th>
-                <td>${employee.address}</td>
+                <td>${esc(employee.address)}</td>
               </tr>
               <tr class="sig-stamp-row">
                 <th>서명</th>

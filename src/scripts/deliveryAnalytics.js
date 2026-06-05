@@ -1,4 +1,6 @@
 // ===== 납기 분석 페이지 스크립트 =====
+// #335: XSS 방어 — 주문번호/거래처/품목명 HTML 이스케이프
+var esc = window.escapeHtml || function(s) { if (s === null || s === undefined) return ''; return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;'); };
 var deliveryData = [];
 var dwellTimeData = [];
 var delayedOrders = [];
@@ -225,10 +227,10 @@ function renderDelayedOrders() {
 
     html += `
       <tr>
-        <td style="font-weight:600;color:#3b82f6;"><a href="javascript:void(0)" onclick="openOrder('${order.id}')" style="text-decoration:none;color:inherit;">${order.number}</a></td>
-        <td>${order.client_name || '-'}</td>
-        <td>${order.item_name || '-'}</td>
-        <td style="text-align:center;font-size:12px;">${order.size || '-'}</td>
+        <td style="font-weight:600;color:#3b82f6;"><a href="javascript:void(0)" onclick="openOrder('${order.id}')" style="text-decoration:none;color:inherit;">${esc(order.number)}</a></td>
+        <td>${esc(order.client_name || '-')}</td>
+        <td>${esc(order.item_name || '-')}</td>
+        <td style="text-align:center;font-size:12px;">${esc(order.size || '-')}</td>
         <td style="text-align:center;">${order.quantity || '-'}</td>
         <td style="text-align:center;font-size:12px;">${formatDate(dueDate)}</td>
         <td style="text-align:center;">

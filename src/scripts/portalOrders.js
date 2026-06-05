@@ -2,6 +2,9 @@
 // 고객 포털 주문 내역 스크립트
 // ============================================================================
 
+// #335: XSS 방어 — 표시 텍스트 HTML 이스케이프 (외부 고객 포털)
+var esc = window.escapeHtml || function(s) { if (s === null || s === undefined) return ''; return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;'); };
+
 // Skeleton loading
 (function() {
   var el = document.getElementById('orders-tbody');
@@ -122,8 +125,8 @@ function renderShipmentInfo(shipments) {
     html += '<div class="bg-gray-50 rounded-lg p-3 mb-2">';
     html += '<div class="flex items-center justify-between">';
     html += '<div>';
-    if (s.courier_name) html += '<span class="text-sm font-medium">' + s.courier_name + '</span>';
-    if (s.tracking_number) html += '<span class="text-sm text-gray-500 ml-2">' + s.tracking_number + '</span>';
+    if (s.courier_name) html += '<span class="text-sm font-medium">' + esc(s.courier_name) + '</span>';
+    if (s.tracking_number) html += '<span class="text-sm text-gray-500 ml-2">' + esc(s.tracking_number) + '</span>';
     html += '</div>';
 
     // 배송 조회 버튼
@@ -184,7 +187,7 @@ function renderOrders(orders, total) {
     var trackingBtn = renderTrackingButton(o.tracking_number, o.courier_name);
 
     return '<tr class="hover:bg-blue-50 border-b cursor-pointer" onclick="viewOrder(' + o.id + ')">'
-      + '<td class="px-3 py-2 text-sm font-mono">' + o.order_number + '</td>'
+      + '<td class="px-3 py-2 text-sm font-mono">' + esc(o.order_number) + '</td>'
       + '<td class="px-3 py-2 text-sm">' + (o.order_date || '-') + '</td>'
       + '<td class="px-3 py-2 text-sm">' + (o.due_date || '-') + '</td>'
       + '<td class="px-3 py-2 text-sm">'
@@ -193,7 +196,7 @@ function renderOrders(orders, total) {
       + '</td>'
       + '<td class="px-3 py-2 text-sm text-right">' + (o.total_amount ? Number(o.total_amount).toLocaleString() + '원' : '-') + '</td>'
       + '<td class="px-3 py-2 text-sm">'
-      +   (trackingBtn || (o.delivery_method || '-'))
+      +   (trackingBtn || esc(o.delivery_method || '-'))
       + '</td>'
       + '</tr>';
   }).join('');
@@ -231,8 +234,8 @@ function showOrderDetail(order, items, shipments, card_progress) {
 
   var itemRows = items.map(function(i) {
     return '<tr class="border-b">'
-      + '<td class="px-3 py-2 text-sm">' + i.item_name + '</td>'
-      + '<td class="px-3 py-2 text-sm">' + (i.width || '-') + ' x ' + (i.height || '-') + '</td>'
+      + '<td class="px-3 py-2 text-sm">' + esc(i.item_name) + '</td>'
+      + '<td class="px-3 py-2 text-sm">' + esc(i.width || '-') + ' x ' + esc(i.height || '-') + '</td>'
       + '<td class="px-3 py-2 text-sm text-right">' + i.quantity + '</td>'
       + '<td class="px-3 py-2 text-sm text-right">' + (i.amount ? Number(i.amount).toLocaleString() + '원' : '-') + '</td>'
       + '</tr>';

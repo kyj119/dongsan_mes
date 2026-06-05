@@ -1,5 +1,7 @@
 ﻿(function() {
     var currentPage = 1;
+    // #335: XSS 방어 — 메일 제목/수신자/오류 메시지 HTML 이스케이프
+    var esc = window.escapeHtml || function(s) { if (s === null || s === undefined) return ''; return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;'); };
 
     loadData();
 
@@ -45,16 +47,16 @@
             var templateLabel = getTemplateLabel(item.template);
             var statusBadge = item.status === 'SENT'
                 ? '<span class="px-2 py-1 bg-green-50 text-green-700 rounded text-xs">성공</span>'
-                : '<span class="px-2 py-1 bg-red-50 text-red-700 rounded text-xs" title="' + (item.error_message || '') + '">실패</span>';
+                : '<span class="px-2 py-1 bg-red-50 text-red-700 rounded text-xs" title="' + esc(item.error_message || '') + '">실패</span>';
             var dt = item.created_at ? item.created_at.replace('T', ' ').substring(0, 16) : '-';
 
             return '<tr class="border-b hover:bg-gray-50">' +
                 '<td class="px-4 py-3 text-gray-500 text-xs">' + dt + '</td>' +
                 '<td class="px-4 py-3"><span class="px-2 py-1 bg-blue-50 text-blue-700 rounded text-xs">' + templateLabel + '</span></td>' +
-                '<td class="px-4 py-3">' + (item.recipient_name ? item.recipient_name + '<br>' : '') + '<span class="text-gray-500 text-xs">' + item.recipient_email + '</span></td>' +
-                '<td class="px-4 py-3 max-w-xs truncate">' + item.subject + '</td>' +
+                '<td class="px-4 py-3">' + (item.recipient_name ? esc(item.recipient_name) + '<br>' : '') + '<span class="text-gray-500 text-xs">' + esc(item.recipient_email) + '</span></td>' +
+                '<td class="px-4 py-3 max-w-xs truncate">' + esc(item.subject) + '</td>' +
                 '<td class="px-4 py-3 text-center">' + statusBadge + '</td>' +
-                '<td class="px-4 py-3 text-gray-500 text-xs">' + (item.sent_by_name || '-') + '</td>' +
+                '<td class="px-4 py-3 text-gray-500 text-xs">' + esc(item.sent_by_name || '-') + '</td>' +
             '</tr>';
         }).join('');
     }

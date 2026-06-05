@@ -1,6 +1,10 @@
 ﻿(function() {
 
   var resetTargetId = null;
+  // #335: XSS 방어 — 사용자명/아이디 HTML 이스케이프
+  var esc = window.escapeHtml || function(s) { if (s === null || s === undefined) return ''; return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;'); };
+  // onclick JS 문자열 인자용 이스케이프 (따옴표/역슬래시)
+  function jsStr(s) { return String(s == null ? '' : s).replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '\\"').replace(/</g, '\\x3C'); }
 
   function getRoleBadge(role) {
     var labels = { ADMIN: '관리자', MANAGER: '매니저', DESIGNER: '디자이너', OPERATOR: '현장' };
@@ -28,15 +32,15 @@
       var toggleLabel = u.is_active ? '비활성화' : '활성화';
       var toggleClass = u.is_active ? 'text-amber-600 hover:text-amber-700' : 'text-green-600 hover:text-green-700';
       return '<tr class="border-b hover:bg-gray-50">' +
-        '<td class="px-4 py-3 font-medium text-gray-900">' + (u.name || '-') + '</td>' +
-        '<td class="px-4 py-3 text-gray-600 font-mono text-sm">' + (u.username || '-') + '</td>' +
+        '<td class="px-4 py-3 font-medium text-gray-900">' + esc(u.name || '-') + '</td>' +
+        '<td class="px-4 py-3 text-gray-600 font-mono text-sm">' + esc(u.username || '-') + '</td>' +
         '<td class="px-4 py-3">' + getRoleBadge(u.role) + '</td>' +
         '<td class="px-4 py-3">' + statusBadge + '</td>' +
         '<td class="px-4 py-3 text-gray-500 text-sm">' + formatDate(u.last_login_at) + '</td>' +
         '<td class="px-4 py-3">' +
           '<div class="flex gap-3 items-center">' +
             '<button data-user-json="' + JSON.stringify(u).replace(/"/g, '&quot;') + '" onclick="showEditModal(JSON.parse(this.getAttribute(\'data-user-json\')))" class="text-blue-600 hover:text-blue-700 text-sm font-medium">수정</button>' +
-            '<button onclick="showResetModal(' + u.id + ', \'' + (u.name || u.username) + '\')" class="text-orange-500 hover:text-orange-700 text-sm font-medium">비번 초기화</button>' +
+            '<button onclick="showResetModal(' + u.id + ', \'' + jsStr(u.name || u.username) + '\')" class="text-orange-500 hover:text-orange-700 text-sm font-medium">비번 초기화</button>' +
             '<button onclick="toggleActive(' + u.id + ', ' + (u.is_active ? 'false' : 'true') + ')" class="' + toggleClass + ' text-sm font-medium">' + toggleLabel + '</button>' +
           '</div>' +
         '</td>' +
@@ -66,7 +70,7 @@
       })
       .catch(function(err) {
         document.getElementById('usersTableWrap').innerHTML =
-          '<div class="text-center py-12 text-red-400"><i class="fas fa-exclamation-circle text-3xl mb-3"></i><p>불러오기 실패: ' + (err.response && err.response.data && err.response.data.error || err.message) + '</p></div>';
+          '<div class="text-center py-12 text-red-400"><i class="fas fa-exclamation-circle text-3xl mb-3"></i><p>불러오기 실패: ' + esc(err.response && err.response.data && err.response.data.error || err.message) + '</p></div>';
       });
   };
 

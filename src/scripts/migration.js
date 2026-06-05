@@ -2,6 +2,9 @@
 // 이카운트 → dongsan_mes 데이터 이관 스크립트
 // ============================================================
 
+// #335: XSS 방어 — 업로드 Excel 미리보기/대사 결과 HTML 이스케이프
+const esc = window.escapeHtml || function(s) { if (s === null || s === undefined) return ''; return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;'); };
+
 let currentImportType = null;
 let parsedData = [];
 let currentVerifyType = null;
@@ -390,7 +393,7 @@ async function requestPreview() {
   } catch (err) {
     console.error('preview error:', err);
     document.getElementById('previewTable').innerHTML =
-      `<p class="text-sm text-red-500 py-4 text-center">미리보기 실패: ${err.response?.data?.error || err.message}</p>`;
+      `<p class="text-sm text-red-500 py-4 text-center">미리보기 실패: ${esc(err.response?.data?.error || err.message)}</p>`;
   }
 }
 
@@ -422,7 +425,7 @@ function renderPreviewTable(data, type) {
 
       return `<tr class="border-b border-gray-100 hover:bg-blue-50/30">
         <td class="px-2 py-1 text-gray-400">${i + 1}</td>
-        ${fieldKeys.map(k => `<td class="px-2 py-1" style="color:#212529;max-width:150px;" class="truncate">${row[k] ?? ''}</td>`).join('')}
+        ${fieldKeys.map(k => `<td class="px-2 py-1" style="color:#212529;max-width:150px;" class="truncate">${esc(row[k] ?? '')}</td>`).join('')}
         <td class="px-2 py-1 text-center">
           <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium ${badgeClass}">
             <i class="fas ${badgeIcon} text-[7px] mr-0.5"></i>${matchStatus}
@@ -696,11 +699,11 @@ function renderVerifyResult(data, type) {
         </tr></thead>
         <tbody>${data.results.filter(r => r.status !== 'MATCH').concat(data.results.filter(r => r.status === 'MATCH')).map(r => `
           <tr class="border-b border-gray-100 hover:bg-blue-50/30">
-            <td class="px-2 py-1" style="color:#212529;">${r.client_code}</td>
-            <td class="px-2 py-1" style="color:#212529;">${r.client_name || ''}</td>
-            <td class="px-2 py-1 text-gray-500">${r.system_name || '-'}</td>
+            <td class="px-2 py-1" style="color:#212529;">${esc(r.client_code)}</td>
+            <td class="px-2 py-1" style="color:#212529;">${esc(r.client_name || '')}</td>
+            <td class="px-2 py-1 text-gray-500">${esc(r.system_name || '-')}</td>
             <td class="px-2 py-1 text-center">${statusBadge(r.status)}</td>
-            <td class="px-2 py-1 text-gray-400">${r.diffs?.join(', ') || ''}</td>
+            <td class="px-2 py-1 text-gray-400">${esc(r.diffs?.join(', ') || '')}</td>
           </tr>`).join('')}
         </tbody>
       </table>`;
@@ -728,8 +731,8 @@ function renderVerifyResult(data, type) {
             r.status === 'MISSING' ? 'fa-times-circle' : 'fa-exclamation-triangle';
 
           return `<tr class="border-b border-gray-100 hover:bg-blue-50/30 ${r.status === 'MISMATCH' ? 'bg-amber-50/20' : ''}">
-            <td class="px-2 py-1" style="color:#212529;">${r.client_code}</td>
-            <td class="px-2 py-1" style="color:#212529;">${r.client_name || ''}</td>
+            <td class="px-2 py-1" style="color:#212529;">${esc(r.client_code)}</td>
+            <td class="px-2 py-1" style="color:#212529;">${esc(r.client_name || '')}</td>
             <td class="px-2 py-1 text-right" style="font-variant-numeric:tabular-nums;">${(r.ecount_balance || 0).toLocaleString()}</td>
             <td class="px-2 py-1 text-right" style="font-variant-numeric:tabular-nums;">${r.system_balance !== null ? r.system_balance.toLocaleString() : '-'}</td>
             <td class="px-2 py-1 text-right font-medium ${r.diff > 0 ? 'text-red-600' : r.diff < 0 ? 'text-blue-600' : ''}" style="font-variant-numeric:tabular-nums;">${r.diff !== null ? r.diff.toLocaleString() : '-'}</td>
@@ -750,7 +753,7 @@ function renderVerifyResult(data, type) {
         <table class="w-full text-xs"><thead><tr class="bg-amber-50">
           <th class="px-2 py-1 text-left text-amber-700">주문번호</th><th class="px-2 py-1 text-left text-amber-700">거래처</th><th class="px-2 py-1 text-right text-amber-700">금액</th><th class="px-2 py-1 text-center text-amber-700">조치</th>
         </tr></thead><tbody>${data.results.filter(r => r.status === 'ECOUNT_ONLY').map(r => `
-          <tr class="border-b border-amber-100"><td class="px-2 py-1">${r.ecount_order_number}</td><td class="px-2 py-1">${r.ecount_client_name || r.ecount_client_code}</td>
+          <tr class="border-b border-amber-100"><td class="px-2 py-1">${esc(r.ecount_order_number)}</td><td class="px-2 py-1">${esc(r.ecount_client_name || r.ecount_client_code)}</td>
           <td class="px-2 py-1 text-right" style="font-variant-numeric:tabular-nums;">${(r.ecount_amount || 0).toLocaleString()}</td>
           <td class="px-2 py-1 text-center"><a href="/order-form" class="text-blue-600 hover:underline text-[10px]">주문 생성</a></td></tr>
         `).join('')}</tbody></table></div>`;
@@ -761,7 +764,7 @@ function renderVerifyResult(data, type) {
         <table class="w-full text-xs"><thead><tr class="bg-blue-50">
           <th class="px-2 py-1 text-left text-blue-700">주문번호</th><th class="px-2 py-1 text-left text-blue-700">거래처</th><th class="px-2 py-1 text-right text-blue-700">금액</th>
         </tr></thead><tbody>${data.system_only_list.map(o => `
-          <tr class="border-b border-blue-100"><td class="px-2 py-1">${o.order_number}</td><td class="px-2 py-1">${o.client_name || o.client_code}</td>
+          <tr class="border-b border-blue-100"><td class="px-2 py-1">${esc(o.order_number)}</td><td class="px-2 py-1">${esc(o.client_name || o.client_code)}</td>
           <td class="px-2 py-1 text-right" style="font-variant-numeric:tabular-nums;">${(o.final_amount || 0).toLocaleString()}</td></tr>
         `).join('')}</tbody></table></div>`;
     }

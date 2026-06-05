@@ -1,6 +1,8 @@
 // 재직증명서 HTML 템플릿 — 인쇄/PDF 출력용
 // entity 파라미터로 법인별 회사명/대표자/주소 자동 치환
 
+import { escapeHtml as esc } from '../utils/escapeHtml'
+
 function formatDate(dateStr: string): string {
   if (!dateStr) return ''
   const d = new Date(dateStr)
@@ -175,26 +177,26 @@ export function renderEmploymentCertificateHTML(data: {
 
   <div class="page-wrapper">
     <div class="certificate">
-      <div class="cert-number">증명번호: ${certificate_number}</div>
+      <div class="cert-number">증명번호: ${esc(certificate_number)}</div>
 
       <div class="cert-title">재 직 증 명 서</div>
 
       <table class="info-table">
         <tr>
           <th>성 명</th>
-          <td>${employee.name}</td>
+          <td>${esc(employee.name)}</td>
           <th>사원번호</th>
-          <td>${employee.employee_code}</td>
+          <td>${esc(employee.employee_code)}</td>
         </tr>
         <tr>
           <th>생년월일</th>
-          <td>${employee.birth_date}</td>
+          <td>${esc(employee.birth_date)}</td>
           <th>부 서</th>
-          <td>${employee.department}</td>
+          <td>${esc(employee.department)}</td>
         </tr>
         <tr>
           <th>직 위</th>
-          <td>${employee.position}</td>
+          <td>${esc(employee.position)}</td>
           <th>입사일자</th>
           <td>${formatDate(employee.hire_date)}</td>
         </tr>
@@ -207,17 +209,17 @@ export function renderEmploymentCertificateHTML(data: {
       <table class="cert-purpose">
         <tr>
           <th>용 도</th>
-          <td>${purpose}</td>
+          <td>${esc(purpose)}</td>
         </tr>
       </table>
 
       <div class="cert-footer">
         <div class="cert-date">${formatDate(issue_date)}</div>
         <div class="cert-company">
-          <div>${entity.name}</div>
-          <div>사업자등록번호: ${entity.business_reg_no}</div>
-          <div>주소: ${entity.address}</div>
-          <div style="margin-top:8px;">대표이사 ${entity.representative} <span class="stamp-placeholder">직인</span></div>
+          <div>${esc(entity.name)}</div>
+          <div>사업자등록번호: ${esc(entity.business_reg_no)}</div>
+          <div>주소: ${esc(entity.address)}</div>
+          <div style="margin-top:8px;">대표이사 ${esc(entity.representative)} <span class="stamp-placeholder">직인</span></div>
         </div>
       </div>
     </div>

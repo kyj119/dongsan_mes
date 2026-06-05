@@ -2,6 +2,9 @@
 // BOM/MRP 프론트엔드
 // ============================================================================
 
+// #335: XSS 방어 — 자유 텍스트(자재/품목/카테고리명) HTML 이스케이프
+var esc = window.escapeHtml || function(s) { if (s === null || s === undefined) return ''; return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;'); };
+
 // Skeleton loading
 (function() {
   var el = document.getElementById('bom-tbody');
@@ -89,14 +92,14 @@ function renderBomTable() {
   let html = '';
   Object.entries(groups).forEach(([group, items]) => {
     html += `<tr class="bg-gray-50"><td colspan="7" class="px-4 py-2 font-semibold text-gray-700">
-      <i class="fas fa-folder-open mr-2 text-blue-500"></i>${group} (${items.length}건)</td></tr>`;
+      <i class="fas fa-folder-open mr-2 text-blue-500"></i>${esc(group)} (${items.length}건)</td></tr>`;
     items.forEach(b => {
       html += `<tr class="hover:bg-blue-50 border-b">
-        <td class="px-4 py-2 text-sm">${b.category_name || '-'}</td>
-        <td class="px-4 py-2 text-sm">${b.item_display_name || '-'}</td>
-        <td class="px-4 py-2 text-sm font-medium">${b.material_name}</td>
+        <td class="px-4 py-2 text-sm">${esc(b.category_name || '-')}</td>
+        <td class="px-4 py-2 text-sm">${esc(b.item_display_name || '-')}</td>
+        <td class="px-4 py-2 text-sm font-medium">${esc(b.material_name)}</td>
         <td class="px-4 py-2 text-sm text-right">${b.usage_per_sqm?.toFixed(3) || '0'}</td>
-        <td class="px-4 py-2 text-sm text-center">${b.usage_unit}</td>
+        <td class="px-4 py-2 text-sm text-center">${esc(b.usage_unit)}</td>
         <td class="px-4 py-2 text-sm text-right">${((b.waste_factor - 1) * 100).toFixed(1)}%</td>
         <td class="px-4 py-2 text-sm text-center">
           <button onclick="openBomEditModal(${b.id})" class="text-blue-600 hover:text-blue-700 mr-2" title="수정"><i class="fas fa-edit"></i></button>
@@ -114,8 +117,8 @@ function openBomAddModal() {
   const existing = document.getElementById('bom-modal');
   if (existing) existing.remove();
 
-  const catOptions = categoriesList.map(c => `<option value="${c.category_name}">${c.category_name}</option>`).join('');
-  const matOptions = materialsList.map(m => `<option value="${m.id}" data-name="${m.item_name}">${m.item_name} (재고: ${m.quantity || 0})</option>`).join('');
+  const catOptions = categoriesList.map(c => `<option value="${esc(c.category_name)}">${esc(c.category_name)}</option>`).join('');
+  const matOptions = materialsList.map(m => `<option value="${m.id}" data-name="${esc(m.item_name)}">${esc(m.item_name)} (재고: ${m.quantity || 0})</option>`).join('');
 
   const html = `<div id="bom-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
     <div class="bg-white rounded-lg shadow-xl w-full max-w-lg p-6">
@@ -345,7 +348,7 @@ function renderMrpResult(result) {
     result.results.forEach(r => {
       const isShort = r.shortfall > 0;
       html += `<tr class="${isShort ? 'bg-red-50' : ''} border-b">
-        <td class="px-3 py-2 ${isShort ? 'font-semibold text-red-700' : ''}">${r.material_name}</td>
+        <td class="px-3 py-2 ${isShort ? 'font-semibold text-red-700' : ''}">${esc(r.material_name)}</td>
         <td class="px-3 py-2 text-right">${r.required_quantity.toFixed(2)}</td>
         <td class="px-3 py-2 text-right">${r.current_stock.toFixed(2)}</td>
         <td class="px-3 py-2 text-right">${r.on_order_quantity.toFixed(2)}</td>
@@ -393,11 +396,11 @@ function renderMrpHistory() {
   }
 
   tbody.innerHTML = mrpRuns.map(r => `<tr class="hover:bg-blue-50 border-b">
-    <td class="px-3 py-2 text-sm font-mono">${r.run_number}</td>
+    <td class="px-3 py-2 text-sm font-mono">${esc(r.run_number)}</td>
     <td class="px-3 py-2 text-sm"><span class="px-2 py-0.5 rounded text-xs ${r.run_type === 'AUTO' ? 'bg-green-50 text-green-700' : r.run_type === 'ORDER' ? 'bg-blue-50 text-blue-700' : 'bg-gray-100 text-gray-800'}">${r.run_type}</span></td>
     <td class="px-3 py-2 text-sm text-right">${r.total_materials || 0}</td>
     <td class="px-3 py-2 text-sm text-right ${r.shortfall_count > 0 ? 'text-red-600 font-bold' : 'text-green-600'}">${r.shortfall_count || 0}</td>
-    <td class="px-3 py-2 text-sm">${r.run_by_name || '-'}</td>
+    <td class="px-3 py-2 text-sm">${esc(r.run_by_name || '-')}</td>
     <td class="px-3 py-2 text-sm">${new Date(r.created_at).toLocaleString('ko-KR')}</td>
     <td class="px-3 py-2 text-sm text-center">
       <button onclick="viewMrpDetail(${r.id})" class="text-blue-600 hover:text-blue-700" title="상세"><i class="fas fa-search"></i></button>

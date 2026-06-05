@@ -1,4 +1,6 @@
 ﻿var currentReportTab = 'monthly';
+// #335: XSS 방어 — 거래처명 등 자유 텍스트 HTML 이스케이프
+var esc = window.escapeHtml || function(s) { if (s === null || s === undefined) return ''; return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;'); };
 
 function switchReportTab(tab) {
   currentReportTab = tab;
@@ -115,7 +117,7 @@ async function loadClientRevenue() {
       var balColor = (c.balance || 0) > 0 ? 'text-red-600 font-medium' : 'text-green-600';
       return '<tr class="border-t hover:bg-gray-50">'
         + '<td class="px-4 py-3 text-center text-gray-400 font-bold">' + (i+1) + '</td>'
-        + '<td class="px-4 py-3 font-medium">' + c.client_name + '</td>'
+        + '<td class="px-4 py-3 font-medium">' + esc(c.client_name) + '</td>'
         + '<td class="px-4 py-3 text-right">' + fmt(c.total_orders) + '</td>'
         + '<td class="px-4 py-3 text-right font-medium text-blue-600">' + fmt(c.total_revenue) + '원</td>'
         + '<td class="px-4 py-3 text-right">' + fmt(Math.round(c.avg_order_amount)) + '원</td>'
@@ -588,7 +590,7 @@ async function loadComparison() {
       el.innerHTML = clients.map(function(cl) {
         var color = isIncrease ? 'text-green-600' : 'text-red-600';
         return '<div class="flex justify-between items-center text-sm py-1 border-b border-gray-100">'
-          + '<span class="font-medium">' + cl.client_name + '</span>'
+          + '<span class="font-medium">' + esc(cl.client_name) + '</span>'
           + '<span class="' + color + ' font-bold">' + (cl.change > 0 ? '+' : '') + fmt(cl.change) + '원</span>'
           + '</div>';
       }).join('');

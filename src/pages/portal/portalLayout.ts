@@ -64,6 +64,18 @@ export function renderPortalPage(options: {
 ${STATUS_LABELS_JS}
   </script>
   <script>
+    // XSS 방어: 전역 HTML 이스케이프 (#335) — 외부 고객 포털
+    window.escapeHtml = function(str) {
+      if (str === null || str === undefined) return '';
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+    };
+  </script>
+  <script>
     // 포털 인증 설정
     const portalToken = localStorage.getItem('portalToken');
     const portalUser = JSON.parse(localStorage.getItem('portalUser') || '{}');
