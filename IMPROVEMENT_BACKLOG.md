@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 5 -->
-<!-- last_run_at: 2026-06-05T06:00:00+09:00 -->
+<!-- last_run_area: 6 -->
+<!-- last_run_at: 2026-06-05T10:00:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,14 +8,23 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | 17 (I-026~I-029,I-031,I-033~I-036,I-039~I-047 중 미검토분; **I-046/#356 HIGH 격리클러스터 신규**) |
+| 🆕 new | 15 (open auto-improve 17건 − approved 2건; #336은 코드측 해소·이슈 open 잔존) |
 | ✅ approved | 2 (I-032/#342 — 전용 세션 대기 / I-030/#340 — 👍 확인, 급성 RED 해소·잔여만 대기) |
-| 👀 reviewed | 1 (I-025/#334 — dead orphan router 재분류, owner (가)/(나) 결정 대기) |
-| ✔️ done | 45 |
+| 👀 reviewed | 0 |
+| ✔️ done | 49 |
 | ❌ rejected | 3 |
 
-> ⚠️ **다음 Area 6 자기진화 시 GitHub 전수 재동기 필요**: open auto-improve 이슈는 14건(#335·336·340·341·342·343·344·345·346·350·351·352·353·354)뿐. 백로그 New에 남은 #337/#338/#349/#334 등은 GitHub closed 가능성 → 종료사유 대조 후 done/rejected 재분류 요망.
+> ✅ **GitHub 전수 재동기 완료 (Area 6, 2026-06-05T10:00)**: open auto-improve 정확히 17건 = New 15 + approved 2(#342/#340). 이전 경고대로 #334/#337/#338/#349는 GitHub closed(completed) 확인 → **a7a15cc 실제 수정·배포·검증 + 코드 교차검증 통과 → done 이관**. #336은 a7a15cc로 코드측(yml 폴백 제거) 해소됐으나 owner 일괄 close 시 누락 → open 잔존(운영 계정점검만 잔여, 상태 코멘트 추가).
 
+> **Area 6 자기 진화 (2026-06-05T10:00):**
+> - **GitHub ↔ 백로그 전수 재동기**: open auto-improve 17건 = New 15 + approved 2(#342/#340) 정합 확인. 백로그가 open으로 추적하던 #334/#337/#338/#349가 GitHub에서 closed(completed) → 종료사유·코멘트·**코드 교차검증**으로 done 확정.
+> - **done 이관 4건 (전부 a7a15cc 단일 커밋, 코드 교차검증 통과)**: #334(I-025, templates.ts 삭제+drop마이그 0297, `ls templates.ts`→없음 확인)·#337(I-029, `/api/debug/cards` 제거+error.message 제네릭, 잔여는 주석뿐)·#338(I-026, `fallback-dev-key` 제거→requirePiiKey+reset-pw 필수화)·#349(I-039, 단건GET/detail/증명서 entityFilter+PUT mass-assignment 차단). #334는 도달성 규칙으로 보안→dead-code 재분류 후 owner (가)승인→삭제까지 **전 생애주기 완결**(규칙 유효성 입증).
+> - **#336 (I-028) close 누락 발견**: a7a15cc가 deploy.yml/e2e.yml 폴백 자격증명(`secrets.X||'admin'`)을 **이미 제거**(grep으로 `secrets.SMOKE_USER` 단독 확인)했으나 owner가 13:06 일괄 close 시 #336/#339만 누락. 코드측 해소 + 운영(프로덕션 admin/password 계정 점검)만 owner 잔여 → **상태 코멘트 추가**(자가 close는 운영 잔여+owner 권한이라 보류).
+> - **#349 item3 ↔ #351 교차참조 확정**: GET /payrolls 격리갭은 호출처 0건 dead-endpoint(#351 범위)로 #349 코멘트에 이미 재분류 기록됨. #351은 open 유지(POST /payrolls 크래시 + orphan 정리 대기).
+> - **🧬 탐지 규칙 신설 — IDOR 비대칭(list-vs-detail)**: 같은 라우터 list는 `entityFilter`, `/:id` 상세·변경은 `WHERE id=?`만 = 격리 누락 버그. approve/차감이 호출자 getEntityId면 정합성 훼손까지. **#349/#356 HIGH 6모듈 클러스터를 이 규칙으로 발견** → security-audit SKILL(IDOR 비대칭 callout)+auto-improve SKILL(Area 5)에 codify. 도달성 선검증(#334) 결합.
+> - **오탐 패턴 신규 0건**: 도달성 규칙(#334)은 오탐이 아니라 유효 입증됨(전 생애주기 완결). 기존 오탐표 유지.
+> - 자동 수정 0건(메타 정리), 신규 이슈 0건, done 이관 4건, GitHub 코멘트 1건(#336), 탐지 규칙 1건 신설(스킬 2개 갱신)
+>
 > **Area 5 보안 (2026-06-05T06:00):**
 > - **방법**: 병렬 에이전트 3개(SQLi·동적쿼리 / 인가·IDOR·멀티테넌시 / XSS·시크릿·rate·업로드·에러노출). baseline tsc PASS. HIGH 2건 owner 직접 코드 검증(insuranceReports·paymentRequests list-vs-detail 대조).
 > - **🐛 신규 이슈 #356 (I-046, HIGH) — 멀티테넌시 격리 갭 클러스터 6모듈**: #349(hr.ts) 동일 패턴 확장. 같은 라우터의 **list는 `entityFilter` 적용, `/:id` 상세·변경 핸들러는 `WHERE id=?`만** → 비-ADMIN이 임의 id로 타법인 도달. ① insuranceReports `:64` GET/:id가 `rrn`(**주민번호**)+급여 노출 ② paymentRequests `:50/177/198/210` 지출결의서(계좌·금액) — 가드가 page-permission만(role 무관) ③ cashReceipts `:166/273/...` `identity_number`(주민/사업자번호) ④ purchaseRequests `:237/357/809`(DESIGNER 무체크) ⑤ inventoryCount approve가 **호출자 getEntityId로 재고차감** → 정합성 훼손 ⑥ leaves approve가 **호출자 entity로 잔여차감**. 전부 프론트 호출처 존재(도달 가능). orphan(보안 아님) 별도: leaves.ts:449 DELETE(**role 가드 없음**)·attendance:350·tasks:64. **자동수정 안 함**(ADMIN entityId=0 전체모드 분기·런타임 검증 불가, #349 동일 사유).
@@ -220,7 +229,6 @@
 
 | ID | 제목 | 영역 | Issue | 상태 | 비고 |
 |----|------|------|-------|------|------|
-| I-025 | order_templates → **dead orphan 라우터로 재분류** (보안 아님) | Area 4 | #334 | 👀 reviewed | owner 재점검 요청→추적완료. (가)삭제/(나)보류 결정 대기 |
 | I-030 | E2E 프로덕션 RED — auth 픽스처 cold-start + crud-order 주문생성 | Area 1 | #340 | ✅ approved | 👍 확인. 급성 RED는 A-010으로 해소(8연속 그린). 픽스처 안정화는 egress 차단으로 검증불가→전용세션, crud-order 격리는 설계결정 대기 |
 | I-032 | rip.ts 설비 자식 entity_id 배선 | Area 2 | #342 | ✅ approved | owner "(나)로 진행". 스키마+로직+데이터보정 ~1일, 전용 세션 대기 |
 
@@ -230,10 +238,8 @@
 
 | ID | 제목 | 영역 | Issue | 공수 |
 |----|------|------|-------|------|
-| I-026 | 하드코딩/약한 자격증명: hr.ts 주민번호 키 폴백 + reset-password 기본값 | Area 5 | #338 | 30분~반나절 |
 | I-027 | 저장형 XSS — escapeHtml 누락 다수 (포털 등 7개 스크립트, 서버템플릿 포함 👍) | Area 5 | #335 | 2~3h |
-| I-028 | CI 폴백 자격증명 admin/password — 프로덕션 대상 (deploy/e2e yml) | Area 5 | #336 | 30분 |
-| I-029 | 프로덕션 debug 엔드포인트 잔존 + error.message 노출 (admin 전용 LOW) | Area 5 | #337 | 30분 |
+| I-028 | CI 폴백 자격증명 admin/password — **코드측 해소(a7a15cc), 운영 계정점검만 잔여** (이슈 open, close 누락) | Area 5 | #336 | 운영점검 |
 | I-031 | N+1 쿼리 batch 미전환 다수 — cashFlow 예측 핫패스(72쿼리) 우선 + import/child INSERT 루프 | Area 2 | #341 | 3h~ |
 | I-033 | Dead-filter 3건 — 백엔드 기구현 필터 UI 미노출 (지출결의서 날짜/생산 출력이력/포털 주문 상태+count버그) | Area 3 | #343 | ~3h |
 | I-034 | 포털 셀프서비스 갭 — 세금계산서 다운로드+50캡 / 미수금 aging / 재주문 prompt() | Area 3 | #344 | 3~4h |
@@ -242,7 +248,6 @@
 | I-046 | **[HIGH]** 멀티테넌시 격리 갭 클러스터 6모듈 — list는 entityFilter, /:id 상세·변경은 누락(insuranceReports rrn/paymentRequests/cashReceipts PII + inventoryCount/leaves 정합성 훼손), #349 패턴 확장 | Area 5 | #356 | 2~3h |
 | I-047 | [MED] 파일 업로드 검증 부재 — ext 화이트리스트/크기상한/MIME 미검증(cardExpenses/po/files), 키 인젝션은 A-015 자동수정 | Area 5 | #357 | ~1h |
 | I-045 | **[HIGH]** 여신초과 주문 생성 전면 실패 — approval_requests.type='CREDIT_OVERRIDE'가 CHECK(0202,9값)에 없음 → batch 위반·500·고아주문, #163 여신승인 비작동 | Area 4 | #355 | 2~3h / 우회 10분 |
-| I-039 | hr.ts 멀티테넌시 격리 갭 4건 — PUT entity_id mass-assignment + 단건GET/payrolls/certificate entityFilter 누락(#322 미적용 경로) | Area 5 | #349 | 2~3h |
 | I-040 | N+1 신규 클러스터 — 급여 일괄/근태동기화 핫패스(전직원×5~7쿼리, 루프불변 hoist 즉효) + 발주 품목 루프 (#341 미포함) | Area 2 | #350 | hoist 20분 / 전체 ~4h |
 | I-041 | dead code+크래시 — hr.ts orphan 급여 엔드포인트 2개(POST는 없는 payrolls 테이블 INSERT), /api/payroll로 대체됨 | Area 2 | #351 | 30분~1h |
 | I-042 | 현금영수증 탭 필터 전체 무력 — 중복 element ID 셰도잉 + 날짜 파라미터 불일치(HTML 리네임 필요) | Area 3 | #352 | 30분 |
@@ -274,6 +279,10 @@
 
 | ID | 제목 | 커밋/Issue | 날짜 |
 |----|------|-----------|------|
+| I-025 | order_templates orphan 라우터 — 도달성 규칙으로 dead-code 재분류→owner (가)승인→삭제(templates.ts+drop마이그 0297, prod 404 확인) | #334 / a7a15cc | 2026-06-04 |
+| I-026 | 하드코딩/약한 자격증명 — `fallback-dev-key` 제거(requirePiiKey 4곳) + reset-password 기본값 'password' 제거→필수화(400) | #338 / a7a15cc | 2026-06-04 |
+| I-029 | 프로덕션 debug 엔드포인트 — `/api/debug/cards` 제거 + db-test/stats error.message 제네릭화 | #337 / a7a15cc | 2026-06-04 |
+| I-039 | hr.ts 멀티테넌시 격리 갭 — 단건GET/detail/증명서 entityFilter 보강 + PUT entity_id mass-assignment 차단(item3 GET/payrolls는 #351 dead-code) | #349 / a7a15cc | 2026-06-04 |
 | I-037 | cards.status CHECK 분기 — 0284/0296(7값 superset)+0298(레거시 상태 이관)로 해소, lifecycle.ts PRINT_ERROR→rip_status 처리 | #347 | 2026-06-04 |
 | I-013 | 보안 헤더 추가 (X-Frame-Options/X-Content-Type/Referrer-Policy, HSTS/CSP 보류) | #32 | 2026-05-13 |
 | I-014 | /api/portal/auth/change-password rate limit 적용 | #33 | 2026-05-13 |

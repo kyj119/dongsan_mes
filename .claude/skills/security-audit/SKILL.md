@@ -44,6 +44,12 @@ review-checklist과의 차이: review-checklist은 **변경 파일** 코드 리�
 > 또한 `body.password || 'literal'` 등 **기본 비밀번호 폴백**(reset-password)도 대상. CI yml의 `secrets.X || 'admin'` 폴백도 포함.
 > ⚠️ 이전 점검(#314)이 "하드코딩 시크릿 없음"으로 단언했으나 이 패턴을 놓침 → **매 Area 5 필수 grep**.
 
+> **🔓 IDOR 비대칭 탐지 규칙 (Area 5 #349/#356, HIGH 클러스터 6모듈)**: 같은 라우터에서 **목록(list)은 `entityFilter` 적용**하면서 **단건 조회/변경 핸들러(`GET/PUT/PATCH/DELETE /:id`, submit/approve/cancel)는 `WHERE id = ?`만** 쓰는 비대칭 = 의도적 전역공유가 아니라 **격리 누락 버그**.
+> - 판별: list가 `entityFilter`를 쓰면 격리 의도가 명확 → 같은 파일의 `/:id` 핸들러에 `entityFilter` 없으면 비-ADMIN이 임의 id로 타법인 도달(PII/재무 열람·변경).
+> - 추가 위험: approve/차감 로직이 **대상 행의 entity가 아니라 호출자 `getEntityId(c)`** 를 쓰면 엉뚱한 법인 재고/연차 차감 = 데이터 정합성 훼손(#356 inventoryCount/leaves).
+> - **선행 도달성 검증 필수**(#334): `grep "api/<path>" src/scripts src/pages` 호출처 0건이면 보안 아닌 dead-code.
+> - grep 출발점: 라우터에서 `entityFilter(c,` 쓰는 파일을 찾고 → 같은 파일 `/:id` 핸들러의 `WHERE id = ?` 가 `ef.clause`/`ef.params` 없이 단독인지 대조.
+
 ## 실행 워크플로우
 
 ### 전체 점검
