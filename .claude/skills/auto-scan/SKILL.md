@@ -110,7 +110,7 @@ GET /api/activity-logs?page=1&limit=5
 
 ### Phase 2: 코드 정적 분석 (subagent 1개)
 
-haiku 에이전트에게 위임:
+subagent(Explore)에게 위임:
 
 1. **entityFilter 누락**: `grep -rL "entityFilter\|getEntityId" src/routes/*.ts` → 법인 데이터 접근하면서 필터 없는 파일 탐지
 2. **getElementById 불일치**: 최근 수정된 scripts/*.js의 getElementById 대상이 pages/*.ts에 있는지
@@ -118,7 +118,7 @@ haiku 에이전트에게 위임:
 
 ### Phase 3: 데이터 정합성 (subagent 1개)
 
-haiku 에이전트에게 위임 (`npx wrangler d1 execute webapp-production --remote`):
+subagent에게 위임 (`npx wrangler d1 execute webapp-production --remote`):
 
 ```sql
 -- 고아 레코드

@@ -37,15 +37,15 @@ disable-model-invocation: true
 ### 운영 모니터링 (종합)
 
 "모니터링", "시스템 점검", "에러 확인", "운영 상태" 같은 요청 시 실행.
-**Fan-out → Fan-in 패턴** (CLAUDE.md 패턴 A 참조).
+**Fan-out → Fan-in 패턴** (병렬 수집 → 종합. 위임 방식 → `references/agent-team-guide.md`).
 
 #### Phase 1: 병렬 수집 (에이전트 4개 동시 실행)
-**Agent 1 (haiku)**: 웹 서버 — workerd 프로세스 확인, API 헬스 체크
-**Agent 2 (sonnet)**: IA 로그 — ia_diag/error/debug.log 최근 내용, 에러 패턴 분류
-**Agent 3 (haiku)**: 에이전트 하트비트 — agent_heartbeats 테이블 조회, 10분+ 비활성 경고
-**Agent 4 (sonnet)**: DB 정합성 — 주요 테이블 레코드 수, 카드 미생성 주문 탐지
+**Agent 1**: 웹 서버 — workerd 프로세스 확인, API 헬스 체크
+**Agent 2**: IA 로그 — ia_diag/error/debug.log 최근 내용, 에러 패턴 분류
+**Agent 3**: 에이전트 하트비트 — agent_heartbeats 테이블 조회, 10분+ 비활성 경고
+**Agent 4**: DB 정합성 — 주요 테이블 레코드 수, 카드 미생성 주문 탐지
 
-#### Phase 2: 종합 (PM이 직접 또는 1개 sonnet 에이전트)
+#### Phase 2: 종합 (직접 또는 1개 에이전트)
 - 4개 결과를 "시스템 상태" 테이블 1개로 병합
 - 🔴(장애) / 🟡(경고) / 🟢(정상) 3단계로 심각도 환산
 - 권장 조치는 장애·경고가 있을 때만 표시

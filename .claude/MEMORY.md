@@ -1,6 +1,9 @@
-# MEMORY.md — 자동 학습 기록
+# MEMORY.md — 자동 학습 기록 (⚠️ DEPRECATED 2026-06-05)
 
-> 실수와 교훈만 기록. 프로젝트 환경/특이사항은 CLAUDE.md에서 관리.
+> ⚠️ **이 파일은 더 이상 사용하지 않습니다.** 실수·교훈 기록은 auto-memory 시스템으로 이전 완료:
+> `~/.claude/projects/C--Users-user-dongsan-mes/memory/bug-history.md` + `feedback-*.md`(17개).
+> 자동 로드되는 인덱스 = 같은 디렉토리의 `MEMORY.md`(이 파일과 동명이지만 별개).
+> 아래는 2026-03~04 과거 교훈 **보존본(역사 참조용)**. **새 교훈은 auto-memory에 기록할 것.**
 
 ## 실수 & 교훈
 

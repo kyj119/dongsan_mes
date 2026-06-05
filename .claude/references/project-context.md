@@ -26,12 +26,12 @@
 - **독립 페이지**: invoice.ts, quotation.ts, purchaseInvoice.ts — 자체 HTML
 > 상세 흐름도: `architecture-flow.md`
 
-## 에이전트 팀
-- **opus는 오케스트레이터(PM) 전용** — 개별 작업에 opus 금지
-- **haiku**: 읽기 전용, 수집, 상태 확인 (log, sync-jsx, db-reset-seed 등)
-- **sonnet**: 코드 생성/수정, 분석+판단 (review-checklist, deploy-verify, security-audit 등)
-- **중형 이상 기능**: dispatch 전 설계 계약서(인터페이스 명세) 작성 필수
-- **통합 검증**: 모든 에이전트 완료 후 `npm run typecheck` + 계약서 대조
+## 작업 위임 (Opus 4.8 단일 모델)
+- **메인 루프 = Opus 4.8(1M)**. 대부분 **인라인(직접) 처리**로 충분.
+- 위임 모드: **Explore**(넓은 코드 탐색, 결론만) / **Plan**(구현 전략) / **Workflow**(4+파일·전수감사·다중검증, ⚠️사용자 opt-in 필수).
+- 모델 티어(haiku/sonnet/opus) 배정은 **폐기** — SKILL.md에 `model:` 필드 없어 실효 없었고, 메인이 opus라 자기모순이었음.
+- **중형 이상 기능**: dispatch 전 설계 계약서(인터페이스 명세) 작성 필수.
+- **통합 검증**: 모든 위임 완료 후 `npm run typecheck` + 계약서 대조.
 > 상세: `agent-team-guide.md`
 
 ## 작업 원칙 (확장)

@@ -41,21 +41,18 @@ cd C:/Users/user/dongsan_mes && npm run db:migrate:local
 ```bash
 cd C:/Users/user/dongsan_mes
 
-# 자동 탐지: seed.sql을 먼저, 나머지 seed_*.sql을 이름순으로 실행
+# 자동 탐지: 루트의 seed*.sql 전부를 이름순으로 실행 (외래키 의존성은 파일명 정렬로 해결)
 ls seed*.sql | sort
 ```
 
 실행 순서 규칙:
-1. `seed.sql` — 항상 첫 번째 (기본 시드, users, 설정)
-2. `seed_*.sql` — 파일명 알파벳순 (외래키 의존성은 파일명 정렬에 의해 자연 해결)
+- `seed*.sql` 전부 — 파일명 알파벳순 (외래키 의존성은 파일명 정렬에 의해 자연 해결).
+- 현재 파일: `seed_data.sql`, `seed_hr.sql`, `seed_inventory.sql` (별도 `seed.sql` 단수 파일은 **없음** — 전부 `seed_*.sql` 패턴).
 
 각 파일을 순차 실행:
 ```bash
-# 먼저 seed.sql
-npx wrangler d1 execute webapp-production --local --file=./seed.sql
-
-# 나머지 seed_*.sql 파일을 이름순으로
-for f in $(ls seed_*.sql | sort); do
+# 루트 seed*.sql 전부를 이름순으로
+for f in $(ls seed*.sql | sort); do
   echo "실행: $f"
   npx wrangler d1 execute webapp-production --local --file=./$f
 done
@@ -84,7 +81,7 @@ npm run dev:d1 로 서버를 재시작하세요.
 - `npm run db:reset` — 초기화 + 기본 시드만
 - `npm run db:reset:full` — 초기화 + 전체 시드
 
-단, 이 스크립트들에 `seed_data.sql`과 `seed_new_items.sql`이 포함되어 있는지 확인 필요.
+단, 이 스크립트들이 현재 seed 파일(`seed_data.sql`·`seed_hr.sql`·`seed_inventory.sql`)을 모두 포함하는지 확인 필요.
 
 ## 주의사항
 

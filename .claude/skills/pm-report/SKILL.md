@@ -37,13 +37,13 @@ git log --oneline -5
 ### 종합 모드
 
 "PM 보고", "종합 보고서", "전체 현황 분석" 같은 요청 시 실행.
-**Fan-out → Fan-in 패턴** (CLAUDE.md 패턴 A 참조).
+**Fan-out → Fan-in 패턴** (병렬 수집 → 종합. 위임 방식 → `references/agent-team-guide.md`).
 
 #### Phase 1: 병렬 수집 (에이전트 4개 동시 실행)
-**Agent 1 (haiku)**: Git & 코드 변경 — 최근 10커밋 요약, 변경 파일 패턴 분석
-**Agent 2 (sonnet)**: 코드 품질 — 대형 파일(100KB+), TODO/FIXME, 빈 catch 블록
-**Agent 3 (haiku)**: 문서 동기화 — CLAUDE.md/README.md 숫자 vs 실제 파일 비교
-**Agent 4 (sonnet)**: DB & 기획 — 마이그레이션 상태 + plans/ 미착수 기획안 목록
+**Agent 1**: Git & 코드 변경 — 최근 10커밋 요약, 변경 파일 패턴 분석
+**Agent 2**: 코드 품질 — 대형 파일(100KB+), TODO/FIXME, 빈 catch 블록
+**Agent 3**: 문서 동기화 — CLAUDE.md/README.md 숫자 vs 실제 파일 비교
+**Agent 4**: DB & 기획 — 마이그레이션 상태 + plans/ 미착수 기획안 목록
 
 #### Phase 2: 종합 (PM이 직접 병합)
 - 4개 결과를 "프로젝트 요약 + 코드 품질 경고 + 다음 권장 작업" 3섹션으로 구조화

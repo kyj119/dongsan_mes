@@ -294,13 +294,7 @@ gh issue comment {number} --body "🤔 구현 중 질문:\n\n{질문 내용}\n\n
 - **상태**: ✔️ done
 ```
 
-## 에이전트 모델 배정
+## 에이전트 배정
 
-| 작업 | 모델 | 이유 |
-|------|------|------|
-| API health check | haiku | 단순 HTTP 요청 |
-| 코드 패턴 스캔 | sonnet | 복잡한 패턴 매칭 |
-| UX 감사 | opus | 비즈니스 맥락 이해 필요 |
-| DB 쿼리 분석 | sonnet | SQL 이해 |
-| 보안 스캔 | sonnet | 취약점 패턴 |
-| 자기 진화 | opus | 메타 추론 |
+각 영역은 빌트인 **Explore**(읽기·탐색) 또는 general-purpose로 병렬 위임. 모델은 메인(Opus 4.8) 상속 — 오버라이드 기본 생략.
+> 구 haiku/sonnet/opus 티어 배정은 **폐기**(2026-06-05). 상세 → `references/agent-team-guide.md`

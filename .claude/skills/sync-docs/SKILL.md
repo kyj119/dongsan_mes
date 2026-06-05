@@ -13,7 +13,7 @@ description: "프로젝트 문서 동기화 및 정합성 검증. CLAUDE.md, PRO
 
 ## 실행 워크플로우
 
-아래 5개 검증을 병렬 에이전트(haiku)로 동시 실행한 뒤, 결과를 모아서 수정한다.
+아래 5개 검증을 병렬 에이전트로 동시 실행한 뒤, 결과를 모아서 수정한다. (모델은 메인 상속 — 오버라이드 기본 생략)
 
 ### Phase 1: 병렬 수집 (에이전트 5개)
 
@@ -50,8 +50,10 @@ ls seed_*.sql 2>/dev/null | wc -l    # Seed 파일
 - 최종 업데이트 날짜가 오늘인지
 - 🗑️ 정리 필요 섹션에 삭제 대기 항목이 실제로 존재하는지
 
-#### Agent 4 — MEMORY.md 교훈 검증
-이번 세션에서 발생한 실수, 반복 패턴, 사용자 수정 요청이 MEMORY.md에 기록되었는지 확인한다.
+#### Agent 4 — auto-memory 교훈 검증
+이번 세션에서 발생한 실수, 반복 패턴, 사용자 수정 요청이 **auto-memory**에 기록되었는지 확인한다.
+기록 위치: `~/.claude/projects/.../memory/` 아래 `feedback-*.md`(작업/판단 교훈) 또는 `bug-history.md`(기술 실수) 신규/갱신 + `MEMORY.md` 인덱스에 1줄 포인터.
+> ⚠️ `.claude/MEMORY.md`는 **deprecated** — 여기에 새 교훈을 기록하지 말 것.
 
 기록 대상 판별 기준:
 - 사용자가 "아니야", "그게 아니라", "다시" 등으로 수정을 요청한 경우
@@ -81,7 +83,7 @@ design-decisions.md와 관련 SKILL.md 파일이 실제 코드와 일치하는�
 
 #### 사용자 확인 후 수정
 - PROJECT_STATUS.md의 항목 이동 (진행중→완료, 대기→진행중)
-- MEMORY.md 교훈 추가 (추가할 내용을 보여주고 확인)
+- auto-memory 교훈 추가 (`feedback-*.md`/`bug-history.md` + `MEMORY.md` 인덱스 1줄, 내용 확인 후)
 - design-decisions.md 새 섹션 추가
 - SKILL.md 내용 변경
 
@@ -108,7 +110,7 @@ design-decisions.md와 관련 SKILL.md 파일이 실제 코드와 일치하는�
 | 문서 | 변경 내용 | 상태 |
 |------|----------|------|
 | PROJECT_STATUS.md | UI 개선 작업 완료 기록 추가 | ✅ 반영 |
-| MEMORY.md | 에이전트 파일 잘림 교훈 추가 | ✅ 반영 |
+| auto-memory | feedback: 에이전트 파일 잘림 교훈 추가 | ✅ 반영 |
 
 ## ⚠️ 확인 필요
 - (수동 확인이 필요한 항목이 있으면 여기에)
@@ -121,15 +123,10 @@ design-decisions.md와 관련 SKILL.md 파일이 실제 코드와 일치하는�
 
 ---
 
-## 에이전트 모델 배정
+## 에이전트 배정
 
-| 에이전트 | 모델 | 이유 |
-|---------|------|------|
-| Agent 1 (규모 검증) | haiku | 단순 카운트 + 비교 |
-| Agent 2 (라우트 검증) | haiku | 파일 목록 대조 |
-| Agent 3 (STATUS 검증) | haiku | 텍스트 비교 |
-| Agent 4 (MEMORY 검증) | haiku | 대화 맥락 판단이 약간 필요하지만 haiku로 충분 |
-| Agent 5 (설계+SKILL) | sonnet | CSS 값 대조 등 코드 이해 필요 |
+5개 검증은 **읽기·대조 위주**라 빌트인 **Explore**(또는 general-purpose)로 병렬 실행. 모델은 메인(Opus 4.8) 상속 — 오버라이드 기본 생략.
+> 구 haiku/sonnet 티어 배정은 **폐기**(2026-06-05). 상세 → `references/agent-team-guide.md`
 
 ---
 
