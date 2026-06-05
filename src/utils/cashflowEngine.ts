@@ -11,6 +11,7 @@ import type { Context } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { entityFilter } from './entityFilter'
 import { computeExpectedPaymentDate } from './paymentSchedule'
+import { buildExpenseEstimator, type EstimateMethod } from './expenseEstimator'
 
 export interface CashflowItem {
   flow: 'IN' | 'OUT'
@@ -20,6 +21,7 @@ export interface CashflowItem {
   status?: string
   materialized: boolean           // true=cash_schedule 행(은행매칭 DONE 대상), false=온더플라이
   schedule_id?: number            // 물질화 행 id
+  estimated?: boolean             // true=과거 실적 추정치(변동비, 확정 전)
 }
 
 export interface CashflowDay {
@@ -91,16 +93,24 @@ export async function buildCashflowDays(
 
   const months = monthsBetween(from, to)
 
-  // ── 2) 온더플라이: 고정비 ───────────────────────────────────────────────
+  // ── 2) 온더플라이: 고정비 (ESTIMATED는 연결 카테고리 과거 실적으로 월별 추정) ──
   const efFixed = entityFilter(c)
   const { results: fixedRows } = await c.env.DB.prepare(`
-    SELECT name, category, amount, payment_day, frequency, start_date, end_date
+    SELECT name, category, amount, payment_day, frequency, start_date, end_date,
+           amount_type, estimate_method, linked_category_id
     FROM fixed_expenses
     WHERE is_active = 1 AND start_date <= ? AND (end_date IS NULL OR end_date >= ?)${efFixed.clause}
   `).bind(to, from, ...efFixed.params).all<{
     name: string; category: string; amount: number; payment_day: number | null
     frequency: string; start_date: string | null; end_date: string | null
+    amount_type: string | null; estimate_method: string | null; linked_category_id: number | null
   }>()
+  // ESTIMATED 고정비는 연결 카테고리(card/bank 실적)로 추정 → estimator 일괄 빌드(쿼리 폭발 방지)
+  const estCatIds = fixedRows
+    .filter((fe) => fe.amount_type === 'ESTIMATED' && fe.linked_category_id != null)
+    .map((fe) => fe.linked_category_id as number)
+  const estimator = await buildExpenseEstimator(c, estCatIds, from.substring(0, 7), to.substring(0, 7))
+
   for (const fe of fixedRows) {
     const startMonth = Number((fe.start_date || '').split('-')[1] || '1')
     for (const { y, m, lastDay } of months) {
@@ -109,9 +119,23 @@ export async function buildCashflowDays(
       const day = Math.min(fe.payment_day || 1, lastDay)
       const dateStr = `${y}-${String(m).padStart(2, '0')}-${String(day).padStart(2, '0')}`
       if (fe.end_date && dateStr > fe.end_date) continue
+
+      // 변동비(ESTIMATED): 해당 월 추정치로 대체, 실적 없으면 등록 금액(amount)으로 폴백
+      let amount = Number(fe.amount) || 0
+      let estimated = false
+      if (fe.amount_type === 'ESTIMATED' && fe.linked_category_id != null) {
+        const ym = `${y}-${String(m).padStart(2, '0')}`
+        const est = estimator.estimate(
+          fe.linked_category_id,
+          (fe.estimate_method as EstimateMethod) || 'AVG_3M',
+          ym
+        )
+        if (est != null) { amount = est; estimated = true }
+      }
       add(dateStr, {
-        flow: 'OUT', type: 'FIXED', name: `${fe.name} (${fe.category})`,
-        amount: Number(fe.amount) || 0, materialized: false,
+        flow: 'OUT', type: 'FIXED',
+        name: `${fe.name} (${fe.category})${estimated ? '·추정' : ''}`,
+        amount, materialized: false, estimated,
       })
     }
   }
