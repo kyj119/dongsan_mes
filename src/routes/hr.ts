@@ -300,54 +300,8 @@ hrRouter.post('/attendance/checkout', async (c) => {
   }
 })
 
-// Get payroll records (실제 테이블: payroll - 단수형)
-hrRouter.get('/payrolls', async (c) => {
-  try {
-    const { employee_id, pay_period, limit = '100' } = c.req.query()
-    const safeLimit = Math.min(parseInt(limit) || 100, 500)
-
-    let query = `
-      SELECT
-        p.*,
-        p.net_pay as net_salary,
-        e.employee_code,
-        e.name as employee_name,
-        e.department,
-        e.position
-      FROM payroll p
-      LEFT JOIN employees e ON p.employee_id = e.id
-      WHERE e.is_deleted = 0
-    `
-    const params: any[] = []
-
-    if (employee_id) {
-      query += ` AND p.employee_id = ?`
-      params.push(employee_id)
-    }
-
-    if (pay_period) {
-      query += ` AND p.pay_period = ?`
-      params.push(pay_period)
-    }
-
-    query += ` ORDER BY p.pay_period DESC, e.employee_code LIMIT ?`
-    params.push(safeLimit)
-
-    const { results } = await c.env.DB.prepare(query).bind(...params).all()
-
-    return c.json({
-      success: true,
-      data: {
-        items: results,
-        payrolls: results  // backwards compat
-      }
-    })
-  } catch (error: any) {
-    console.error('Failed to get payroll:', error)
-    console.error('HR error:', error)
-    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
-  }
-})
+// #351: 레거시 급여 GET/POST 엔드포인트 제거 — /api/payroll(payrollRouter)로 완전 대체된 orphan.
+//        (GET /payrolls: 호출처 0건 dead code / POST /payrolls: 존재하지 않는 payrolls 테이블 INSERT → 호출 시 크래시)
 
 // Get attendance records (실제 테이블: attendance - 단수형)
 hrRouter.get('/attendances', async (c) => {
@@ -819,51 +773,7 @@ hrRouter.post('/attendances', async (c) => {
   }
 })
 
-// Create payroll
-hrRouter.post('/payrolls', async (c) => {
-  try {
-    const body = await c.req.json()
-    const {
-      employee_id,
-      pay_period,
-      base_salary,
-      meal_allowance = 0,
-      transport_allowance = 0,
-      other_allowances = 0,
-      overtime_pay = 0,
-      national_pension = 0,
-      health_insurance = 0,
-      employment_insurance = 0,
-      income_tax = 0,
-      payment_status = 'PENDING'
-    } = body
-
-    const total_allowances = parseFloat(meal_allowance) + parseFloat(transport_allowance) + parseFloat(other_allowances) + parseFloat(overtime_pay)
-    const total_deductions = parseFloat(national_pension) + parseFloat(health_insurance) + parseFloat(employment_insurance) + parseFloat(income_tax)
-    const net_salary = parseFloat(base_salary) + total_allowances - total_deductions
-
-    const result = await c.env.DB.prepare(`
-      INSERT INTO payrolls (
-        employee_id, pay_period, base_salary,
-        meal_allowance, transport_allowance, other_allowances, overtime_pay,
-        national_pension, health_insurance, employment_insurance, income_tax,
-        total_allowances, total_deductions, net_salary, payment_status
-      )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).bind(
-      employee_id, pay_period, base_salary,
-      meal_allowance, transport_allowance, other_allowances, overtime_pay,
-      national_pension, health_insurance, employment_insurance, income_tax,
-      total_allowances, total_deductions, net_salary, payment_status
-    ).run()
-
-    return c.json({ success: true, data: { id: result.meta.last_row_id } })
-  } catch (error: any) {
-    console.error('Failed to create payroll:', error)
-    console.error('HR error:', error)
-    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
-  }
-})
+// #351: POST /payrolls 제거 (위 GET와 함께) — payroll 생성은 /api/payroll 모듈 사용.
 
 // Get HR statistics
 hrRouter.get('/stats', async (c) => {
