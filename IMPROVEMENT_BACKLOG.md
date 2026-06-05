@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 3 -->
-<!-- last_run_at: 2026-06-05T22:00:00+09:00 -->
+<!-- last_run_area: 4 -->
+<!-- last_run_at: 2026-06-06T02:00:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,14 +8,22 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | 17 (open auto-improve 19건 − approved 2건; #336은 코드측 해소·이슈 open 잔존) |
+| 🆕 new | 16 (open auto-improve 18건 − approved 2건; #336은 코드측 해소·이슈 open 잔존) |
 | ✅ approved | 2 (I-032/#342 — 전용 세션 대기 / I-030/#340 — 👍 확인, 급성 RED 해소·잔여만 대기) |
 | 👀 reviewed | 0 |
-| ✔️ done | 49 |
+| ✔️ done | 50 |
 | ❌ rejected | 3 |
 
 > ✅ **GitHub 전수 재동기 완료 (Area 6, 2026-06-05T10:00)**: open auto-improve 정확히 17건 = New 15 + approved 2(#342/#340). 이전 경고대로 #334/#337/#338/#349는 GitHub closed(completed) 확인 → **a7a15cc 실제 수정·배포·검증 + 코드 교차검증 통과 → done 이관**. #336은 a7a15cc로 코드측(yml 폴백 제거) 해소됐으나 owner 일괄 close 시 누락 → open 잔존(운영 계정점검만 잔여, 상태 코멘트 추가).
 
+> **Area 4 데이터 정합성 (2026-06-06T02:00):**
+> - **방법**: ground-truth — 297개 마이그레이션(0299/0300 신규 포함)을 로컬 D1(node:sqlite v22)에 전량 적용(**FAIL 0**) → 실제 해석 스키마 171테이블·511인덱스 확보. 직전 Area 4(0298까지) 이후 신규 표면(0299 정기변동비용·0300 #355 CHECK수정)에 집중 + 비원자적 고아생성 패턴 일반화 스캔(Explore 1개). baseline `npm ci`+tsc PASS + build PASS(360 modules, 5.0MB).
+> - **#355 (I-045) → ✔️ done (owner가 0300으로 해소, GitHub closed-completed 확인)**: owner가 **(가)안** 채택 — `0300_approval_type_add_credit_override.sql`로 approval_requests/approval_templates 재빌드, CHECK에 `CREDIT_OVERRIDE` 추가. ground-truth 재적용으로 두 테이블 CHECK에 CREDIT_OVERRIDE 포함 **실측 확인** + 0300 CREATE TABLE 컬럼이 실제 스키마와 정확히 일치(id 명시보존 → FK 참조 무손상) + `orders/core.ts:1294` INSERT 12컬럼 전수 존재 + 여신 batch2(approval_steps status='PENDING'·credit_overrides) CHECK 정합 → **여신초과 주문 플로우 end-to-end 작동 복구**. 백로그 New 표 stale 정정.
+> - **🔴 오탐 3건 차단 (Explore 고아생성 보고 → owner 직접 코드 반증)**: ① quotations.ts:589-657 견적→주문 전환 ② orders/operations.ts:94-208 주문복사 ③ shipments.ts:556-575 자동출고 — 전부 "비원자적 다중 INSERT, 두번째가 실패하면 고아" 추측. **반증**: `order_items`에 **CHECK 제약이 전혀 없고**(전 컬럼 nullable/default) → #355 같은 **확정 실패 트리거 부재**. shipments는 재조회 NULL을 에러메시지로 처리(고아 아님). #355는 CHECK 리터럴 100% 누락=확정장애라 보고가치였으나, 이들은 거의 모든 다중문 코드에 해당하는 일반적 비원자성 → 노이즈. 오탐표 신규 1건 등재.
+> - **0299 정기변동비용 정합 확인**: `recurring_expense_actuals`(entity_id NOT NULL DEFAULT 1·UNIQUE(fixed_expense_id,period)·3인덱스 정합) + fixed_expenses 신규 3컬럼(amount_type/estimate_method/linked_category_id). `cashflowEngine.ts`가 ESTIMATED 고정비를 estimator로 추정(읽기전용 예측, est 없으면 amount 폴백·method 없으면 AVG_3M 폴백 = graceful). 신규 3컬럼 CHECK 부재이나 estimator 폴백으로 잘못된 값도 안전. 정합 버그 0. (단 recurring_expense_actuals **writer 0건** = variance 추적 미배선 — owner 진행중 신규기능 잔여, Area 3 영역이라 미보고.)
+> - **이상 없음**: CHECK 전수(34 status/type 컬럼) — #355 해소 후 위반 0(직전회차 전수+이번 신규분 재확인). entity_id NOT NULL 신규표 정합. FK 인덱스 hot-path 미보유 0(linked_category_id는 fixed_expenses 소규모 config라 불필요).
+> - 자동 수정 0건(net-new 정합성 버그 없음·#355는 owner 선해소), 신규 이슈 0건, 백로그 정정 1건(#355 done), 오탐표 신규 1건
+>
 > **Area 3 UX/기능 감사 (2026-06-05T22:00):**
 > - **방법**: 병렬 에이전트 3개(Explore) — 영업·회계 / 생산·재고·구매 / HR·대시보드·설정. dead-filter·silent-fail·중복ID·하드캡 집중. baseline `npm ci`+tsc --noEmit+build PASS. **에이전트 보고 전수 owner 직접 코드 검증**(노이즈 차단). 코드베이스 Area 3 4회차 — 한계효용 체감.
 > - **🐛 신규 이슈 #359 (I-049, MED bug) — 지출결의서 목록 LIMIT 200 하드캡 + 페이지네이션·총건수 전무**: `paymentRequests.ts:45` `LIMIT 200` 고정, 응답 `{success,data}`만(total/page 없음), `paymentRequests.js:31` page/limit 미전송·페이지네이션 UI·총건수 표시 전무. 지출결의서는 단조증가 재무전표 → 201건+ silent truncation, #345로 추가된 검색결과도 동일 캡에 걸림. #353 캡클러스터(leaves/purchaseInvoices/costs)에 paymentRequests 미포함분 + #343(날짜)·#345(검색/CSV) 별개 측면. **자동수정 안 함**(응답형식 변경+UI=금지범위). #353/#345 모두 closed라 신규 이슈.
@@ -272,7 +280,6 @@
 | I-046 | **[HIGH]** 멀티테넌시 격리 갭 클러스터 6모듈 — list는 entityFilter, /:id 상세·변경은 누락(insuranceReports rrn/paymentRequests/cashReceipts PII + inventoryCount/leaves 정합성 훼손), #349 패턴 확장 | Area 5 | #356 | 2~3h |
 | I-048 | **[HIGH]** 전자결재 격리 갭 (#356 7번째 모듈) — list만 entityFilter, GET /:id 무가드 재무노출 + approve/reject 전역 role로 타법인 purchase_requests/credit_status 정합성 훼손 | Area 2 | #358 | ~2h |
 | I-047 | [MED] 파일 업로드 검증 부재 — ext 화이트리스트/크기상한/MIME 미검증(cardExpenses/po/files), 키 인젝션은 A-015 자동수정 | Area 5 | #357 | ~1h |
-| I-045 | **[HIGH]** 여신초과 주문 생성 전면 실패 — approval_requests.type='CREDIT_OVERRIDE'가 CHECK(0202,9값)에 없음 → batch 위반·500·고아주문, #163 여신승인 비작동 | Area 4 | #355 | 2~3h / 우회 10분 |
 | I-040 | N+1 신규 클러스터 — 급여 일괄/근태동기화 핫패스(전직원×5~7쿼리, 루프불변 hoist 즉효) + 발주 품목 루프 (#341 미포함) | Area 2 | #350 | hoist 20분 / 전체 ~4h |
 | I-041 | dead code+크래시 — hr.ts orphan 급여 엔드포인트 2개(POST는 없는 payrolls 테이블 INSERT), /api/payroll로 대체됨 | Area 2 | #351 | 30분~1h |
 | I-042 | 현금영수증 탭 필터 전체 무력 — 중복 element ID 셰도잉 + 날짜 파라미터 불일치(HTML 리네임 필요) | Area 3 | #352 | 30분 |
@@ -305,6 +312,7 @@
 
 | ID | 제목 | 커밋/Issue | 날짜 |
 |----|------|-----------|------|
+| I-045 | 여신초과 주문 전면실패 — owner가 (가)안 0300 마이그(approval_requests/templates 재빌드, CHECK에 CREDIT_OVERRIDE 추가)로 해소. ground-truth 재적용+INSERT 컬럼 정합 실측 검증 | #355 / 0300 | 2026-06-05 |
 | I-025 | order_templates orphan 라우터 — 도달성 규칙으로 dead-code 재분류→owner (가)승인→삭제(templates.ts+drop마이그 0297, prod 404 확인) | #334 / a7a15cc | 2026-06-04 |
 | I-026 | 하드코딩/약한 자격증명 — `fallback-dev-key` 제거(requirePiiKey 4곳) + reset-password 기본값 'password' 제거→필수화(400) | #338 / a7a15cc | 2026-06-04 |
 | I-029 | 프로덕션 debug 엔드포인트 — `/api/debug/cards` 제거 + db-test/stats error.message 제네릭화 | #337 / a7a15cc | 2026-06-04 |
@@ -378,6 +386,7 @@
 | rate limiter in-memory `Map` (`rateLimit.ts:6`) | isolate 분산 한계는 기존 인지 아키텍처 제약, 신규 이슈 아님 | Area 5 (2026-06-02) |
 | 인덱스/UNIQUE 누락 후보 (ground-truth 미확인) | 로컬 D1 실제 스키마로 반증 필수 — 대부분 이미 존재하거나 hot path 아님 | Area 4 (2026-06-02) |
 | orphan 라우터의 entity_id 격리 갭 (프론트 호출처 0건) | UI 도달 불가 = dead code 사안이지 보안 아님. 격리 갭 보고 전 `grep "api/<path>" src/scripts src/pages` 도달성 선검증 필수 | Area 6 (#334, 2026-06-04) |
+| 비원자적 다중 INSERT "고아 가능" (확정 실패 트리거 부재) | 부모→자식 별도 `.run()`이라도 자식 테이블에 CHECK/NOT-NULL 위반 등 **확정적 실패 트리거가 없으면** 거의 모든 다중문 코드에 해당하는 일반적 비원자성일 뿐 = 노이즈. #355류로 보고하려면 100% 실패하는 구체 트리거(CHECK 누락 리터럴 등) 실증 필요. order_items는 CHECK 0·전컬럼 nullable이라 견적전환/복사 비원자성은 오탐 | Area 4 (2026-06-06) |
 
 ---
 
