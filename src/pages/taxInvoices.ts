@@ -422,10 +422,10 @@ export function taxInvoicesPage(c: Context<HonoEnv>) {
       <!-- Filter Bar -->
       <div class="ds-card p-4 mb-6">
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
-          <!-- Status Filter -->
+          <!-- Status Filter (#352: 세금계산서 탭과 ID 충돌 방지 — cr 프리픽스) -->
           <div>
-            <label for="statusFilter" class="block text-sm font-medium text-gray-700 mb-1">상태</label>
-            <select id="statusFilter" class="w-full border border-gray-300 rounded px-3 py-2 text-sm bg-white">
+            <label for="crStatusFilter" class="block text-sm font-medium text-gray-700 mb-1">상태</label>
+            <select id="crStatusFilter" class="w-full border border-gray-300 rounded px-3 py-2 text-sm bg-white">
               <option value="">전체</option>
               <option value="DRAFT">작성중</option>
               <option value="ISSUED">발행완료</option>
@@ -438,18 +438,18 @@ export function taxInvoicesPage(c: Context<HonoEnv>) {
 
           <!-- Date Range -->
           <div>
-            <label for="dateFrom" class="block text-sm font-medium text-gray-700 mb-1">시작일</label>
-            <input type="date" id="dateFrom" class="w-full border border-gray-300 rounded px-3 py-2 text-sm">
+            <label for="crDateFrom" class="block text-sm font-medium text-gray-700 mb-1">시작일</label>
+            <input type="date" id="crDateFrom" class="w-full border border-gray-300 rounded px-3 py-2 text-sm">
           </div>
           <div>
-            <label for="dateTo" class="block text-sm font-medium text-gray-700 mb-1">종료일</label>
-            <input type="date" id="dateTo" class="w-full border border-gray-300 rounded px-3 py-2 text-sm">
+            <label for="crDateTo" class="block text-sm font-medium text-gray-700 mb-1">종료일</label>
+            <input type="date" id="crDateTo" class="w-full border border-gray-300 rounded px-3 py-2 text-sm">
           </div>
 
           <!-- Search -->
           <div>
-            <label for="searchInput" class="block text-sm font-medium text-gray-700 mb-1">검색</label>
-            <input type="text" id="searchInput" placeholder="거래처명 또는 식별번호" class="w-full border border-gray-300 rounded px-3 py-2 text-sm">
+            <label for="crSearch" class="block text-sm font-medium text-gray-700 mb-1">검색</label>
+            <input type="text" id="crSearch" placeholder="거래처명 또는 식별번호" class="w-full border border-gray-300 rounded px-3 py-2 text-sm">
           </div>
 
           <!-- Actions -->

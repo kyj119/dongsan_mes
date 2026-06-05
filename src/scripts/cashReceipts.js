@@ -52,17 +52,24 @@ function formatDate(dateStr) {
 function loadReceipts(page) {
   currentPage = page || 1;
 
-  var status = document.getElementById('statusFilter').value;
-  var dateFrom = document.getElementById('dateFrom').value;
-  var dateTo = document.getElementById('dateTo').value;
-  var search = document.getElementById('searchInput').value;
+  // #352: 현금영수증 탭 전용 고유 ID(cr*) 참조 — 세금계산서 탭 ID 셰도잉 방지
+  var statusEl = document.getElementById('crStatusFilter');
+  var dateFromEl = document.getElementById('crDateFrom');
+  var dateToEl = document.getElementById('crDateTo');
+  var searchEl = document.getElementById('crSearch');
+  if (!statusEl || !dateFromEl || !dateToEl || !searchEl) { console.warn('[cashReceipts] cr filter element not found'); return; }
+  var status = statusEl.value;
+  var dateFrom = dateFromEl.value;
+  var dateTo = dateToEl.value;
+  var search = searchEl.value;
 
   var params = new URLSearchParams();
   params.append('page', currentPage);
   params.append('limit', 20);
   if (status) params.append('status', status);
-  if (dateFrom) params.append('dateFrom', dateFrom);
-  if (dateTo) params.append('dateTo', dateTo);
+  // #352: 라우트는 date_from/date_to 수신 (dateFrom/dateTo 아님)
+  if (dateFrom) params.append('date_from', dateFrom);
+  if (dateTo) params.append('date_to', dateTo);
   if (search) params.append('search', search);
 
   axios.get('/api/cash-receipts?' + params.toString())
