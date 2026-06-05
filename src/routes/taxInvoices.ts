@@ -8,8 +8,8 @@ import { renderTemplate } from '../services/emailTemplates'
 import { getEntityId, entityFilter } from '../utils/entityFilter'
 import { getNextSeqNumber, getNextEntitySeqNumber } from '../utils/sequenceGenerator'
 
-/** 바로빌 TaxProvider 반환 */
-async function getTaxProvider(db: D1Database, env: any, corpNum: string): Promise<TaxProvider | null> {
+/** 바로빌 TaxProvider 반환 (포털 세금계산서 다운로드에서도 재사용 — #344) */
+export async function getTaxProvider(db: D1Database, env: any, corpNum: string): Promise<TaxProvider | null> {
   const testModeRow = await db.prepare(
     "SELECT setting_value FROM settings WHERE setting_key = 'barobill_test_mode'"
   ).first<{ setting_value: string }>()

@@ -10,7 +10,10 @@ export const portalBalancePage = (c: Context) => {
           <h1 class="text-2xl font-bold text-gray-800">미수금 현황</h1>
           <p id="portal-client-name" class="text-sm text-gray-500 mt-1"></p>
         </div>
-        <div class="text-xl font-bold text-red-600" id="total-balance">-</div>
+        <div class="text-right">
+          <div class="text-xl font-bold text-red-600" id="total-balance">-</div>
+          <div id="overdue-summary" class="text-xs text-gray-500 mt-1"></div>
+        </div>
       </div>
       <div id="balance-table-wrap" class="bg-white rounded-lg shadow">
         <div class="overflow-x-auto" style="max-height: calc(100vh - 280px); overflow-y: auto;">
@@ -18,6 +21,7 @@ export const portalBalancePage = (c: Context) => {
             <thead><tr class="bg-gray-50 border-b text-sm text-gray-600">
               <th class="px-3 py-3 text-left">주문번호</th>
               <th class="px-3 py-3 text-left">청구일</th>
+              <th class="px-3 py-3 text-right">경과일</th>
               <th class="px-3 py-3 text-right">청구액</th>
               <th class="px-3 py-3 text-right">수금액</th>
               <th class="px-3 py-3 text-right">잔액</th>

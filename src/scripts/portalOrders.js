@@ -304,16 +304,46 @@ function showOrderDetail(order, items, shipments, card_progress) {
 
 // ─── 재주문 요청 ─────────────────────────────────────────────────────────────
 
-async function requestReorder(orderId) {
-  var desc = prompt('재주문 요청 사항을 입력해주세요:', '이전 주문과 동일하게 재주문 요청합니다.');
-  if (!desc) return;
+// #344: native prompt() → 포털 모달 (모바일 UX)
+function closeReorderModal() {
+  var m = document.getElementById('reorder-modal');
+  if (m) m.remove();
+}
 
+function requestReorder(orderId) {
+  var existing = document.getElementById('reorder-modal');
+  if (existing) existing.remove();
+  var defaultMsg = '이전 주문과 동일하게 재주문 요청합니다.';
+  var html = '<div id="reorder-modal" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onclick="if(event.target===this)this.remove()">'
+    + '<div class="bg-white rounded-lg shadow-xl w-full max-w-md" onclick="event.stopPropagation()">'
+    + '<div class="px-5 py-4 border-b flex justify-between items-center">'
+    +   '<h3 class="text-lg font-bold text-gray-800"><i class="fas fa-redo mr-2 text-blue-600"></i>재주문 요청</h3>'
+    +   '<button onclick="closeReorderModal()" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times"></i></button>'
+    + '</div>'
+    + '<div class="p-5">'
+    +   '<label class="block text-sm text-gray-600 mb-2">요청 사항</label>'
+    +   '<textarea id="reorder-desc" rows="4" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500">' + defaultMsg + '</textarea>'
+    + '</div>'
+    + '<div class="px-5 py-4 border-t flex justify-end gap-2">'
+    +   '<button onclick="closeReorderModal()" class="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm hover:bg-gray-50">취소</button>'
+    +   '<button onclick="submitReorder(' + orderId + ')" class="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700">요청 보내기</button>'
+    + '</div>'
+    + '</div></div>';
+  document.body.insertAdjacentHTML('beforeend', html);
+  setTimeout(function() { var t = document.getElementById('reorder-desc'); if (t) t.focus(); }, 50);
+}
+
+async function submitReorder(orderId) {
+  var descEl = document.getElementById('reorder-desc');
+  var desc = descEl ? descEl.value.trim() : '';
+  if (!desc) { showToast('요청 사항을 입력해주세요.', 'warning'); return; }
   try {
     await axios.post('/api/portal/reorder', {
       reference_order_id: orderId,
       description: desc,
     });
-    document.getElementById('order-detail-modal') && document.getElementById('order-detail-modal').remove();
+    var rm = document.getElementById('reorder-modal'); if (rm) rm.remove();
+    var odm = document.getElementById('order-detail-modal'); if (odm) odm.remove();
     showToast('재주문 요청이 접수되었습니다. 담당자가 확인 후 연락드리겠습니다.', 'warning');
   } catch (e) {
     showToast((e.response && e.response.data && e.response.data.error) || '요청 실패', 'error');

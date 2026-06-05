@@ -9,6 +9,7 @@ import type { PortalUser } from '../middleware/portalAuth'
 import { hashPassword, verifyPassword } from '../utils/crypto'
 import { authMiddleware, requireRole } from '../middleware/auth'
 import { entityFilter, getEntityId } from '../utils/entityFilter'
+import { getTaxProvider } from './taxInvoices' // #344: 포털 세금계산서 다운로드
 
 // ─── DB Row 타입 ────────────────────────────────────────────────────────────
 
@@ -449,18 +450,61 @@ portal.get('/balance', async (c) => {
 portal.get('/invoices', async (c) => {
   try {
     const user = c.get('portalUser')
+    // #344: 연도 필터 + 페이지네이션 (LIMIT 50 하드캡 해제)
+    const year = c.req.query('year')
+    const page = Math.max(1, parseInt(c.req.query('page') || '1'))
+    const limit = Math.min(Math.max(parseInt(c.req.query('limit') || '20'), 1), 100)
+    const offset = (page - 1) * limit
+
+    let where = 'WHERE buyer_client_id = ?'
+    const binds: any[] = [user.portal_client_id]
+    if (year) { where += " AND strftime('%Y', issue_date) = ?"; binds.push(year) }
+
+    const countRow = await c.env.DB.prepare(
+      `SELECT COUNT(*) as cnt FROM tax_invoices ${where}`
+    ).bind(...binds).first<{ cnt: number }>()
+    const total = countRow?.cnt ?? 0
 
     const { results } = await c.env.DB.prepare(`
       SELECT id, invoice_number, issue_date, supply_amount, tax_amount, total_amount, status
       FROM tax_invoices
-      WHERE buyer_client_id = ?
-      ORDER BY issue_date DESC LIMIT 50
-    `).bind(user.portal_client_id).all()
+      ${where}
+      ORDER BY issue_date DESC LIMIT ? OFFSET ?
+    `).bind(...binds, limit, offset).all()
 
-    return c.json({ success: true, data: results })
+    return c.json({
+      success: true,
+      data: results,
+      pagination: { page, limit, total, total_pages: Math.ceil(total / limit) }
+    })
   } catch (e) {
     console.error('src/routes/portal.ts error:', e)
     return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
+  }
+})
+
+// #344: 포털 세금계산서 인쇄/PDF URL (buyer_client_id 검증, 사내 print-url 로직 재사용)
+portal.get('/invoices/:id/print-url', portalAuthMiddleware, async (c) => {
+  try {
+    const user = c.get('portalUser')
+    const id = parseInt(c.req.param('id'))
+    const invoice = await c.env.DB.prepare(
+      `SELECT id, invoice_number, status, supplier_brn FROM tax_invoices WHERE id = ? AND buyer_client_id = ?`
+    ).bind(id, user.portal_client_id).first<{ id: number; invoice_number: string; status: string; supplier_brn: string }>()
+
+    if (!invoice) return c.json({ success: false, error: '세금계산서를 찾을 수 없습니다.' }, 404)
+    if (!['ISSUED', 'SENT', 'NTS_SUCCESS', 'NTS_FAILED'].includes(invoice.status)) {
+      return c.json({ success: false, error: '발행된 세금계산서만 조회 가능합니다.' })
+    }
+
+    const provider = await getTaxProvider(c.env.DB, c.env, invoice.supplier_brn.replace(/-/g, ''))
+    if (!provider) return c.json({ success: false, error: '발행처 설정이 없습니다.' })
+
+    const result = await provider.getPrintURL(invoice.invoice_number)
+    return c.json({ success: true, data: { url: result.url } })
+  } catch (e) {
+    console.error('src/routes/portal.ts print-url error:', e)
+    return c.json({ success: false, error: '인쇄 URL 조회에 실패했습니다.' }, 500)
   }
 })
 

@@ -85,18 +85,45 @@ function renderBalance(items, totalBalance) {
   const tbody = document.getElementById('balance-tbody');
   if (!tbody) return;
 
+  const summaryEl = document.getElementById('overdue-summary');
+
   if (!items || items.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="5" class="text-center py-8 text-gray-500">미수금이 없습니다.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="6" class="text-center py-8 text-gray-500">미수금이 없습니다.</td></tr>';
+    if (summaryEl) summaryEl.textContent = '';
     return;
   }
 
-  tbody.innerHTML = items.map(i => `<tr class="border-b">
-    <td class="px-3 py-2 text-sm font-mono">${i.order_number || '-'}</td>
-    <td class="px-3 py-2 text-sm">${i.billing_date || '-'}</td>
-    <td class="px-3 py-2 text-sm text-right">${Number(i.total_amount || 0).toLocaleString()}원</td>
-    <td class="px-3 py-2 text-sm text-right text-green-600">${Number(i.paid_amount || 0).toLocaleString()}원</td>
-    <td class="px-3 py-2 text-sm text-right font-semibold text-red-600">${Number(i.balance || 0).toLocaleString()}원</td>
-  </tr>`).join('');
+  // #344: 청구일 기준 경과일(aging) + 30일↑ 연체 강조
+  const now = new Date();
+  let overdueCount = 0;
+  tbody.innerHTML = items.map(i => {
+    const bdStr = i.billing_date ? String(i.billing_date).slice(0, 10) : '';
+    let agingTxt = '-';
+    let rowCls = 'border-b';
+    let agingCls = 'text-gray-500';
+    if (bdStr) {
+      const days = Math.floor((now - new Date(bdStr)) / 86400000);
+      if (days >= 0) {
+        agingTxt = days + '일';
+        if (days >= 30) { overdueCount++; rowCls = 'border-b bg-red-50'; agingCls = 'text-red-600 font-semibold'; }
+        else if (days >= 15) { agingCls = 'text-amber-600'; }
+      }
+    }
+    return `<tr class="${rowCls}">
+      <td class="px-3 py-2 text-sm font-mono">${i.order_number || '-'}</td>
+      <td class="px-3 py-2 text-sm">${bdStr || '-'}</td>
+      <td class="px-3 py-2 text-sm text-right ${agingCls}">${agingTxt}</td>
+      <td class="px-3 py-2 text-sm text-right">${Number(i.total_amount || 0).toLocaleString()}원</td>
+      <td class="px-3 py-2 text-sm text-right text-green-600">${Number(i.paid_amount || 0).toLocaleString()}원</td>
+      <td class="px-3 py-2 text-sm text-right font-semibold text-red-600">${Number(i.balance || 0).toLocaleString()}원</td>
+    </tr>`;
+  }).join('');
+
+  if (summaryEl) {
+    summaryEl.innerHTML = overdueCount > 0
+      ? '<span class="text-red-600 font-medium"><i class="fas fa-exclamation-triangle mr-1"></i>30일 이상 경과 ' + overdueCount + '건</span>'
+      : '<span class="text-gray-400">연체 없음</span>';
+  }
 }
 
 document.addEventListener('DOMContentLoaded', initBalance);
