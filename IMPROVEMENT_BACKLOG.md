@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 6 -->
-<!-- last_run_at: 2026-06-05T10:00:00+09:00 -->
+<!-- last_run_area: 1 -->
+<!-- last_run_at: 2026-06-05T14:00:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -16,6 +16,15 @@
 
 > ✅ **GitHub 전수 재동기 완료 (Area 6, 2026-06-05T10:00)**: open auto-improve 정확히 17건 = New 15 + approved 2(#342/#340). 이전 경고대로 #334/#337/#338/#349는 GitHub closed(completed) 확인 → **a7a15cc 실제 수정·배포·검증 + 코드 교차검증 통과 → done 이관**. #336은 a7a15cc로 코드측(yml 폴백 제거) 해소됐으나 owner 일괄 close 시 누락 → open 잔존(운영 계정점검만 잔여, 상태 코멘트 추가).
 
+> **Area 1 프로덕션 헬스 (2026-06-05T14:00):**
+> - **방법**: GitHub Actions 최근 30런 분석 + 로컬 verify + 번들 한도 검증. egress는 여전히 Cloudflare 엣지 403 차단(`curl /` `/api/health` → 403) → 직접 20-API 호출 불가, E2E(실제 prod 페이지 브라우저 검증: login/dashboard/cards/items/orders/clients)를 헬스 신호로 사용.
+> - **🟢 파이프라인 정상**: 최근 30런 = Deploy 14/14 success · E2E 13 success/1 cancelled/1 failure · Daily D1 Backup success. **최신 런(E2E #26998904137 06:16, Deploy #26998857163 06:14) 전부 green**. queued/stuck run 0건.
+> - **E2E 단일 failure(#26964968046, 06-04 16:25) = #340 알려진 패턴**: ① crud-order-lifecycle:33 주문생성 hard-fail(프로덕션 직접 주문생성=데이터오염 설계) ② authedPage cold-start 30s 타임아웃(fixtures.ts:59) 3건 **flaky(retry로 전부 통과)**. 직후 상태모델 단일화 배포(16:30) 이후 **E2E 13연속 green → 자가복구**. cancelled(03:25)는 10초 뒤 새 push의 concurrency 취소(정상).
+> - **로컬 verify PASS**: `npm ci`→typecheck(tsc --noEmit) PASS + build PASS(360 modules, _worker.js raw 5.0MB / **gzip 1.00MB**). 번들 한도: 배포 14/14 성공 = 실제 한도(유료 10MB) 대비 ~10% 점유, 헤드룸 충분(raw 4.2→5.0MB 완만 성장). 우려 없음.
+> - **#340(I-030) 상태 유지**: 픽스처 cold-start 안정화는 egress 차단으로 prod 검증 불가→전용 세션(approved), crud-order 격리는 설계결정 대기. 13연속 green으로 급성도 낮음. 안전 자동수정 없음.
+> - **오탐/이상 없음**: deploy failure 0건(A-010 이후 지속). egress 403은 샌드박스 IP 차단(기존 인지)이라 헬스 이상 아님.
+> - 자동 수정 0건(파이프라인 정상·egress 차단으로 E2E 변경 검증 불가), 신규 이슈 0건
+>
 > **Area 6 자기 진화 (2026-06-05T10:00):**
 > - **GitHub ↔ 백로그 전수 재동기**: open auto-improve 17건 = New 15 + approved 2(#342/#340) 정합 확인. 백로그가 open으로 추적하던 #334/#337/#338/#349가 GitHub에서 closed(completed) → 종료사유·코멘트·**코드 교차검증**으로 done 확정.
 > - **done 이관 4건 (전부 a7a15cc 단일 커밋, 코드 교차검증 통과)**: #334(I-025, templates.ts 삭제+drop마이그 0297, `ls templates.ts`→없음 확인)·#337(I-029, `/api/debug/cards` 제거+error.message 제네릭, 잔여는 주석뿐)·#338(I-026, `fallback-dev-key` 제거→requirePiiKey+reset-pw 필수화)·#349(I-039, 단건GET/detail/증명서 entityFilter+PUT mass-assignment 차단). #334는 도달성 규칙으로 보안→dead-code 재분류 후 owner (가)승인→삭제까지 **전 생애주기 완결**(규칙 유효성 입증).
