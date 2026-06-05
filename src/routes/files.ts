@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
+import { validateUpload } from '../utils/uploadValidation'
 
 const filesRouter = new Hono<HonoEnv>()
 filesRouter.use('/*', authMiddleware)
@@ -42,6 +43,14 @@ filesRouter.post('/upload', requireRole('ADMIN', 'MANAGER', 'DESIGNER'), async (
     const analysisId = formData.get('analysis_id') as string
 
     if (!file) return c.json({ success: false, error: 'No file provided' }, 400)
+
+    // #357: 크기·확장자 검증 (소스/디자인 파일 — 50MB, 이미지/PDF/디자인 포맷)
+    const v = validateUpload(file, {
+      maxBytes: 50 * 1024 * 1024,
+      allowedMimePrefixes: ['image/', 'application/pdf', 'application/postscript', 'application/octet-stream'],
+      allowedExts: ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'pdf', 'ai', 'eps', 'psd', 'tif', 'tiff'],
+    })
+    if (!v.ok) return c.json({ success: false, error: v.error }, 400)
 
     // R2 키 구성요소 sanitize (path traversal / 키 인젝션 방어, A-013 패턴)
     const safeName = (file.name || 'file').replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 200)

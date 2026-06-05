@@ -10,6 +10,7 @@ import { requireAnyPagePermission } from '../../middleware/permissions'
 import { getEntityId, entityFilter } from '../../utils/entityFilter'
 import { getNextSeqNumber, getNextEntitySeqNumber, withSeqRetry } from '../../utils/sequenceGenerator'
 import { getEntityCompanyInfo } from '../../utils/entitySettings'
+import { validateUpload } from '../../utils/uploadValidation'
 
 const poCoreRouter = new Hono<HonoEnv>()
 // 데이터 권한: /purchase-orders 또는 /receiving 페이지 권한이 있어야 진입.
@@ -314,7 +315,10 @@ poCoreRouter.post('/receipts/:receiptId/statement', requireRole('ADMIN', 'MANAGE
     const file = formData.get('file') as File | null
     if (!file) return c.json({ success: false, error: '파일 필수' }, 400)
 
-    const ext = (file.name.split('.').pop() || 'jpg').toLowerCase()
+    // #357: 크기·MIME·확장자 검증 (거래명세서 = 이미지/PDF, 10MB)
+    const v = validateUpload(file)
+    if (!v.ok) return c.json({ success: false, error: v.error }, 400)
+    const ext = v.ext
     const key = `po-statements/${new Date().toISOString().slice(0, 10)}/${receiptId}_${Date.now()}.${ext}`
     await (c.env as any).R2_BUCKET.put(key, await file.arrayBuffer(), { httpMetadata: { contentType: file.type } })
 

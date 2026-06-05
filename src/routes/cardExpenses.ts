@@ -8,6 +8,7 @@ import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
 import { entityFilter, getEntityId } from '../utils/entityFilter'
 import { getEntityCorpNum } from '../utils/entitySettings'
+import { validateUpload } from '../utils/uploadValidation'
 
 const cardExpRouter = new Hono<HonoEnv>()
 cardExpRouter.use('/*', authMiddleware)
@@ -366,7 +367,10 @@ cardExpRouter.post('/transactions/:id/receipt', requireRole('ADMIN', 'MANAGER'),
     const file = formData.get('file') as File | null
     if (!file) return c.json({ success: false, error: '파일 필수' }, 400)
 
-    const ext = file.name.split('.').pop() || 'jpg'
+    // #357: 크기·MIME·확장자 검증 (영수증 = 이미지/PDF, 10MB)
+    const v = validateUpload(file)
+    if (!v.ok) return c.json({ success: false, error: v.error }, 400)
+    const ext = v.ext
     const key = `receipts/${new Date().toISOString().slice(0, 10)}/${id}_${Date.now()}.${ext}`
     await (c.env as any).R2_BUCKET.put(key, await file.arrayBuffer(), { httpMetadata: { contentType: file.type } })
 
@@ -384,6 +388,8 @@ cardExpRouter.post('/transactions/:id/receipt', requireRole('ADMIN', 'MANAGER'),
 cardExpRouter.get('/receipt-image/*', requireRole('ADMIN', 'MANAGER'), async (c) => {
   try {
     const key = c.req.path.replace('/api/card-expenses/receipt-image/', '')
+    // #357: path traversal 가드
+    if (!key || key.includes('..') || key.includes('\\')) return c.json({ success: false, error: '잘못된 경로' }, 400)
     const obj = await (c.env as any).R2_BUCKET.get(key)
     if (!obj) return c.json({ success: false, error: '이미지 없음' }, 404)
     const headers = new Headers()
