@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 1 -->
-<!-- last_run_at: 2026-06-06T14:00:00+09:00 -->
+<!-- last_run_area: 2 -->
+<!-- last_run_at: 2026-06-06T18:00:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,12 +8,19 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | 6 (open 실측 — #360/#359/#358/#350/#341/#336) |
+| 🆕 new | 7 (open 실측 — #361/#360/#359/#358/#350/#341/#336) |
 | ✅ approved | 2 (I-032/#342 — 전용 세션 대기 / I-030/#340 — 👍 확인, 급성 RED 해소·잔여만 대기) |
 | 👀 reviewed | 0 |
 | ✔️ done | 61 (closed-pending-verification 11건 코드 교차검증 후 done 확정 — Area 6, 06-06T10:00) |
 | ❌ rejected | 3 |
 
+> **Area 2 코드 품질 (2026-06-06T18:00):**
+> - **방법**: baseline `npm ci`+tsc --noEmit PASS. 코드베이스 Area 2 5회차(#341/#342/#350/#351/#356/#358/#360) — 한계효용 체감 → **최근 변경 표면**(#343/#345/#351/#352/#357 owner 적용분) + **덜 다룬 각도**(silent-fail·models↔스키마)에 집중. 병렬 Explore 2개(IDOR 비대칭 잔여 / silent-fail+N+1) + 후보 전수 owner 직접 코드 검증(오탐 차단).
+> - **🐛 신규 이슈 #361 (I-050, MED bug) — autoProcess 멀티테넌시 격리 갭, #356 클러스터 10번째 모듈**: `autoProcess.ts` list(`GET /pending` `:189`)는 `entityFilter(c,'auto_process_jobs')` 적용하나 `/:id` 변경계열 전부 `WHERE id=?`만 — ① `PATCH /:id`(`:245`) 타법인 작업 상태/output 변조 ② `GET /order/:orderId`(`:266`) 타법인 가공작업 열람 ③ `POST /:id/approve`(`:290`) 타법인 작업 승인+저장경로 생성 ④ `POST /:id/retry`(`:341`) pending 되돌림+파라미터 변조. auto_process_jobs entity_id 보유(0261 ADD+idx) + INSERT `getEntityId` 주입(`:172`)인데 read/mutate 무시. 도달성 확인(orders.js:717/1026/1052). **전체 라우터 `requireRole('ADMIN')`(`:8`)이라 #358보다 심각도 낮음** — 단 ADMIN도 기본 자기법인(default_entity_id non-zero, `auth.ts:179`)이라 entity A 관리자가 entity B 작업 변조 가능. **자동수정 안 함**(ADMIN entityId=0 분기+권한 시맨틱+**PATCH는 외부 IllustratorAutomat 폴링이라 entity 격리 추가 시 통합 깨질 위험**+egress 차단 검증불가, #356/#358/#360 동일 사유).
+> - **🔴 오탐/dead 2건 차단 (IDOR 에이전트 보고 → owner 직접 반증)**: ① `attendance.ts DELETE /:id`(`:350`) entity_id 보유하나 **프론트 호출처 0건**(attendance.js는 month GET·bulk PATCH뿐) = dead endpoint, 보안 아님(#334 도달성 규칙). ② `tasks.ts GET/:id·PATCH/:id` — list(`GET /` `:33`)가 **entityFilter 미사용** = 격리 의도 증거 없음 → **IDOR 비대칭 규칙 미충족**(전역 작업큐 가능성)+호출처 0건. 비대칭 규칙은 "list가 entityFilter를 쓰는 것"이 격리 의도의 전제 → list 자체가 미적용이면 규칙 부적용.
+> - **이상 없음**: silent-fail(getElementById ID↔TS 페이지 + 프론트 param↔라우트 query 대조) — 최근 변경 paymentRequests/taxInvoices/cashReceipts/portal/hr/hometaxInvoices 전수 **0건**(#352 cr* prefix·#345 param 정합 재확인). N+1 신규 0건(paymentRequests batch()/Promise.all 정상). authMiddleware 누락 0건. 타입 `as any` 신규 위험 0건.
+> - 자동 수정 0건(net-new는 IDOR 격리=런타임 검증불가+권한 시맨틱), 신규 이슈 1건(#361), 오탐/dead 2건 차단
+>
 > **Area 1 프로덕션 헬스 (2026-06-06T14:00):**
 > - **방법**: GitHub Actions 최근 30런 분석 + 로컬 verify + 최신 E2E 잡 단계 실측. egress는 여전히 Cloudflare 엣지 403 차단(`curl https://webapp-9i0.pages.dev/` `/api/health` → **403** 0.03~0.4s) → 샌드박스 IP 차단이라 직접 20-API 호출 불가, E2E(실제 prod 페이지 브라우저 검증)를 헬스 신호로 사용.
 > - **🟢 파이프라인 완전 green**: 최근 30런 = Deploy 11/11 success · E2E 18 success/1 cancelled(#172 concurrency 취소, 정상) · Daily D1 Backup #20 success. queued/stuck run 0건. **최신 런(E2E #185 id 27057109950 08:11, Deploy #164 id 27057086027 08:10) 전부 green** — HEAD 9e1165d(Area 6 docs 커밋) 기준.
