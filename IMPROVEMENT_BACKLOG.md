@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 6 -->
-<!-- last_run_at: 2026-06-06T10:00:00+09:00 -->
+<!-- last_run_area: 1 -->
+<!-- last_run_at: 2026-06-06T14:00:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -14,6 +14,15 @@
 | ✔️ done | 61 (closed-pending-verification 11건 코드 교차검증 후 done 확정 — Area 6, 06-06T10:00) |
 | ❌ rejected | 3 |
 
+> **Area 1 프로덕션 헬스 (2026-06-06T14:00):**
+> - **방법**: GitHub Actions 최근 30런 분석 + 로컬 verify + 최신 E2E 잡 단계 실측. egress는 여전히 Cloudflare 엣지 403 차단(`curl https://webapp-9i0.pages.dev/` `/api/health` → **403** 0.03~0.4s) → 샌드박스 IP 차단이라 직접 20-API 호출 불가, E2E(실제 prod 페이지 브라우저 검증)를 헬스 신호로 사용.
+> - **🟢 파이프라인 완전 green**: 최근 30런 = Deploy 11/11 success · E2E 18 success/1 cancelled(#172 concurrency 취소, 정상) · Daily D1 Backup #20 success. queued/stuck run 0건. **최신 런(E2E #185 id 27057109950 08:11, Deploy #164 id 27057086027 08:10) 전부 green** — HEAD 9e1165d(Area 6 docs 커밋) 기준.
+> - **최신 E2E no-op green 아님 실측**: #185 잡(id 79863395342) "Run Playwright tests (production)" 단계 08:12:14→08:13:59 = **1m45s 실제 실행**, **run_attempt=1(재시도 0)**, 전 스텝 success. → #340 패턴(crud-order hard-fail·authedPage cold-start flaky) **이번 런 미발화**, prod login/dashboard/cards/items/orders/clients 페이지 정상 로드·통과 확인.
+> - **로컬 verify PASS**: `npm ci`→tsc --noEmit PASS + build PASS(360 modules, _worker.js 5.0MB raw). 배포 11/11 성공 = 유료 10MB 한도 대비 ~10% 점유, 헤드룸 충분.
+> - **#340(I-030) 상태 유지(approved)**: 14+ 연속 E2E green + 최신 attempt-1 클린으로 급성 RED 완전 해소. 픽스처 cold-start 안정화는 egress 차단으로 prod 검증 불가(전용 세션), crud-order 격리는 설계결정 대기. 급성도 낮아 추가 코멘트 보류(직전 06-04 코멘트로 상태 동기 완료).
+> - **오탐/이상 없음**: deploy failure 0건(A-010 이후 지속). egress 403은 샌드박스 IP 차단(기존 인지)이라 헬스 이상 아님. open auto-improve 8건(new 6+approved 2) stats 정합 재확인.
+> - 자동 수정 0건(파이프라인 정상·egress 차단으로 E2E 변경 검증 불가), 신규 이슈 0건
+>
 > **Area 6 자기 진화 (2026-06-06T10:00):**
 > - **closed-pending-verification 11건 → 전부 ✔️ done 확정** (rejected 0): owner가 06-05T06:08~06-06T00:13 일괄 close한 #335/#343/#344/#345/#346/#351/#352/#353/#354/#356/#357. 11건 전부 owner **완료 코멘트 + 커밋 동반** 확인. 핵심 보안·버그 5건 **코드 교차검증 통과**: #351(`INTO payrolls`/`hr/payrolls` grep 0=orphan 제거), #357(`utils/uploadValidation.ts` 존재), #356(`insuranceReports.ts` entityFilter 6회=list+/:id 보강), #352(`cashReceipts.js` cr* prefix 4개=ID 셰도잉 해소), #335(da5f0ca escapeHtml 7스크립트+서버템플릿2+portalLayout 전역주입). 나머지 6건(#343/#344/#345/#346/#353/#354)은 단일커밋(0c04fad/0ce9c42 등) UX 활성화, 완료 코멘트 prod 스모크 통과 명시.
 > - **#335 portalBalance.js 잔여 XSS 판정 (Area 5 위임) → 잔여 아님 확정**: `portalBalance.js:93-99` 미수금표는 `order_number`(시스템 채번)·`billing_date`(날짜)·`Number(...).toLocaleString()`(숫자강제)만 보간 = **free-text 사용자입력 싱크 없음**. `showTokenError`는 서버 하드코딩/서버제어 메시지. Area 5 저위험 판정 코드로 재확인.
