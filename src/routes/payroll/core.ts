@@ -388,18 +388,28 @@ coreRouter.post('/batch', requireRole('ADMIN', 'MANAGER'), async (c) => {
     const otSettings = await loadOvertimeSettings(c.env.DB)
     const batchSettings = await getSettings(c.env.DB, ['payroll_meal_allowance_nontax_max'])
     const mealMax = Number(batchSettings.payroll_meal_allowance_nontax_max || 200000)
+    // #350: exists·empRow 직원별 조회(N+1) → IN절 prefetch (결과값 불변, INSERT는 순차 유지)
+    const empIds = list.map((e) => e.id)
+    const existsSet = new Set<number>()
+    const empRowMap = new Map<number, any>()
+    if (empIds.length > 0) {
+      const ph = empIds.map(() => '?').join(',')
+      const { results: existRows } = await c.env.DB.prepare(
+        `SELECT employee_id FROM payroll WHERE pay_period = ? AND employee_id IN (${ph})`
+      ).bind(payPeriod, ...empIds).all<{ employee_id: number }>()
+      for (const r of existRows || []) existsSet.add(r.employee_id)
+      const { results: empRows } = await c.env.DB.prepare(
+        `SELECT id, base_salary, hourly_rate, overtime_daily_hours, overtime_work_days,
+                dependents_count, income_tax_table_option FROM employees WHERE id IN (${ph})`
+      ).bind(...empIds).all<any>()
+      for (const r of empRows || []) empRowMap.set(r.id, r)
+    }
     for (const emp of list) {
       // 이미 있으면 스킵
-      const exists = await c.env.DB.prepare(
-        `SELECT id FROM payroll WHERE employee_id = ? AND pay_period = ?`
-      ).bind(emp.id, payPeriod).first()
-      if (exists) { skipped++; continue }
+      if (existsSet.has(emp.id)) { skipped++; continue }
 
       // preview 로직 재사용 — 직원 고정수당 + 보험 토글을 기본값으로 반영
-      const empRow = await c.env.DB.prepare(
-        `SELECT base_salary, hourly_rate, overtime_daily_hours, overtime_work_days,
-                dependents_count, income_tax_table_option FROM employees WHERE id = ?`
-      ).bind(emp.id).first<any>()
+      const empRow = empRowMap.get(emp.id)
       const empDefaults = await loadEmployeeDefaults(c.env.DB, emp.id)
       const base_salary = Number(empRow?.base_salary || 0)
       const dependents = Math.max(1, Number(empRow?.dependents_count || 1))
