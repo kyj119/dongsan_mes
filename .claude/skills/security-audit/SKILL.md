@@ -44,6 +44,11 @@ review-checklist과의 차이: review-checklist은 **변경 파일** 코드 리�
 > 또한 `body.password || 'literal'` 등 **기본 비밀번호 폴백**(reset-password)도 대상. CI yml의 `secrets.X || 'admin'` 폴백도 포함.
 > ⚠️ 이전 점검(#314)이 "하드코딩 시크릿 없음"으로 단언했으나 이 패턴을 놓침 → **매 Area 5 필수 grep**.
 
+> **🧯 XSS 오탐 차단 — "escapeHtml 헬퍼 전무"는 취약 증거 아님 (Area 6 #335)**: `layout.ts:1185`가 `window.escapeHtml`를 **전역 정의**(+`portalLayout.ts` 포털용) → 모든 `src/scripts/*.js`가 로컬 정의 없이 전역 헬퍼 호출 가능.
+> - `grep -c escapeHtml` = 0 이라고 XSS로 보고 금지. **올바른 판정**: 실제 `innerHTML`(또는 `c.html()` 서버 템플릿) 싱크의 **보간값이 (a)사용자 제어 free-text 이고 (b)미escape**인지 직접 확인.
+> - 싱크 아님: `Number(x).toLocaleString()` 강제 숫자, 시스템 채번코드(order_number/card_number 등), 서버 하드코딩/서버제어 문자열. (#335 portalBalance.js 미수금표가 이 사유로 잔여 오탐)
+> - 진짜 대상: 거래처명·품목명·메모·직무기술서 등 **관리자/사용자 자유입력 마스터**가 escape 없이 innerHTML/`<option>`/`c.html()`에 들어가는 곳.
+
 > **🔓 IDOR 비대칭 탐지 규칙 (Area 5 #349/#356, HIGH 클러스터 6모듈)**: 같은 라우터에서 **목록(list)은 `entityFilter` 적용**하면서 **단건 조회/변경 핸들러(`GET/PUT/PATCH/DELETE /:id`, submit/approve/cancel)는 `WHERE id = ?`만** 쓰는 비대칭 = 의도적 전역공유가 아니라 **격리 누락 버그**.
 > - 판별: list가 `entityFilter`를 쓰면 격리 의도가 명확 → 같은 파일의 `/:id` 핸들러에 `entityFilter` 없으면 비-ADMIN이 임의 id로 타법인 도달(PII/재무 열람·변경).
 > - 추가 위험: approve/차감 로직이 **대상 행의 entity가 아니라 호출자 `getEntityId(c)`** 를 쓰면 엉뚱한 법인 재고/연차 차감 = 데이터 정합성 훼손(#356 inventoryCount/leaves).

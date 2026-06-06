@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 5 -->
-<!-- last_run_at: 2026-06-06T06:00:00+09:00 -->
+<!-- last_run_area: 6 -->
+<!-- last_run_at: 2026-06-06T10:00:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -11,11 +11,16 @@
 | 🆕 new | 6 (open 실측 — #360/#359/#358/#350/#341/#336) |
 | ✅ approved | 2 (I-032/#342 — 전용 세션 대기 / I-030/#340 — 👍 확인, 급성 RED 해소·잔여만 대기) |
 | 👀 reviewed | 0 |
-| ✔️ done | 50 (+ closed-pending-verification 11건 — Area 6 분류 위임) |
+| ✔️ done | 61 (closed-pending-verification 11건 코드 교차검증 후 done 확정 — Area 6, 06-06T10:00) |
 | ❌ rejected | 3 |
 
-> ⚠️ **GitHub 대규모 close 발견 (Area 5, 2026-06-06T06:00)**: open auto-improve **실측 8건** = New 6(#360/#359/#358/#350/#341/#336) + approved 2(#342/#340). 직전 동기(06-05T10:00) 이후 owner가 **11건 일괄 close**(#335/#343/#344/#345/#346/#351/#352/#353/#354/#356/#357, 06-05T06:08~06-06T00:13). done/rejected 분류 + 코드 교차검증은 **차기 Area 6 위임** — done/rejected 카운트는 미반영(보수적 유지). New 표는 open 실측 기준으로 정정함.
-
+> **Area 6 자기 진화 (2026-06-06T10:00):**
+> - **closed-pending-verification 11건 → 전부 ✔️ done 확정** (rejected 0): owner가 06-05T06:08~06-06T00:13 일괄 close한 #335/#343/#344/#345/#346/#351/#352/#353/#354/#356/#357. 11건 전부 owner **완료 코멘트 + 커밋 동반** 확인. 핵심 보안·버그 5건 **코드 교차검증 통과**: #351(`INTO payrolls`/`hr/payrolls` grep 0=orphan 제거), #357(`utils/uploadValidation.ts` 존재), #356(`insuranceReports.ts` entityFilter 6회=list+/:id 보강), #352(`cashReceipts.js` cr* prefix 4개=ID 셰도잉 해소), #335(da5f0ca escapeHtml 7스크립트+서버템플릿2+portalLayout 전역주입). 나머지 6건(#343/#344/#345/#346/#353/#354)은 단일커밋(0c04fad/0ce9c42 등) UX 활성화, 완료 코멘트 prod 스모크 통과 명시.
+> - **#335 portalBalance.js 잔여 XSS 판정 (Area 5 위임) → 잔여 아님 확정**: `portalBalance.js:93-99` 미수금표는 `order_number`(시스템 채번)·`billing_date`(날짜)·`Number(...).toLocaleString()`(숫자강제)만 보간 = **free-text 사용자입력 싱크 없음**. `showTokenError`는 서버 하드코딩/서버제어 메시지. Area 5 저위험 판정 코드로 재확인.
+> - **🧬 오탐 패턴 신설 — "escapeHtml 헬퍼 전무(grep -c escapeHtml=0) → XSS"는 오탐 생성기**: `layout.ts:1185`가 `window.escapeHtml` **전역 정의**(+`portalLayout.ts` 포털용) → 모든 스크립트가 로컬 정의 없이 전역 헬퍼 사용 가능. 파일에 escapeHtml 미정의 ≠ 취약. **올바른 판정**: 실제 `innerHTML` 싱크의 보간값이 (a)사용자 제어 free-text **이고** (b)미escape 인지 확인. `Number()` 강제 숫자·시스템 채번코드(order_number)·서버 하드코딩 문자열은 싱크 아님. 직전 06-05 #335 코멘트가 bom.js/users.js 등 5건을 "escapeHtml 전무"로 묶어 보고했던 휴리스틱 = 이 FP 패턴(owner도 da5f0ca에서 실제 싱크만 선별 적용·"bank.js already escaped=FP" 명시). security-audit + auto-improve SKILL(Area 5)·FP표 등재.
+> - **GitHub ↔ 백로그 전수 재동기**: open auto-improve **8건**(New 6+approved 2) 정합 재확인. closed 40건 중 최근 범위(#334~#357) 전부 추적 완료. #274~#333 구간은 이전 사이클 집계(done 50)에 반영됨 — 재감사 저가치로 보류.
+> - 자동 수정 0건(메타 정리), 신규 이슈 0건, done 이관 11건, 오탐 패턴 1건 신설(스킬 2개 갱신)
+>
 > **Area 5 보안 (2026-06-06T06:00):**
 > - **방법**: 병렬 에이전트 3개(Explore) — SQLi·시크릿·CI / IDOR·인가·멀티테넌시 / XSS·업로드·rate. baseline `npm ci`+tsc --noEmit PASS + build PASS(360 modules, 5.0MB). 직전 Area 5(06-05T06:00 #356/#357) + 06-06T00:13 추가 Area 5(#360) 직후라 표면 3중 감사 → 한계효용 체감. **에이전트 보고 전수 owner 직접 코드 검증**(오탐 차단).
 > - **🟢 net-new 0건 — 3개 에이전트 발견 전부 중복/오탐**:
@@ -287,7 +292,7 @@
 | I-040 | N+1 신규 클러스터 — 급여 일괄/근태동기화 핫패스(전직원×5~7쿼리, 루프불변 hoist 즉효) + 발주 품목 루프 (#341 미포함) | Area 2 | #350 | hoist 20분 / 전체 ~4h |
 | I-049 | [MED bug] 지출결의서 목록 LIMIT 200 하드캡 + 페이지네이션·총건수 전무 — 201건+ silent truncation (재무전표 단조증가, 검색결과도 동일 캡) | Area 3 | #359 | ~1h |
 
-> 📦 **closed-pending-verification (11건, Area 6 done/rejected 분류 위임)**: #335(I-027)·#343(I-033)·#344(I-034)·#345(I-035)·#346(I-036)·#351(I-041)·#352(I-042)·#353(I-043)·#354(I-044)·#356(I-046)·#357(I-047). owner가 06-05T06:08~06-06T00:13 일괄 close. 코드 교차검증 후 done/rejected 확정 필요.
+> ✅ closed-pending-verification 11건은 Area 6(06-06T10:00)에서 코드 교차검증 후 **전부 done 확정** → Done 표로 이관 완료.
 
 ---
 
@@ -314,6 +319,17 @@
 
 | ID | 제목 | 커밋/Issue | 날짜 |
 |----|------|-----------|------|
+| I-046 | 멀티테넌시 격리 갭 6모듈 — /:id 상세·변경 entityFilter 보강 + inventoryCount/leaves 차감을 row entity_id 기준화(호출자 아님)로 교차훼손 차단. 코드검증: insuranceReports entityFilter 6회 | #356 / 6a8cb35 | 2026-06-05 |
+| I-047 | 파일 업로드 검증 부재 — `utils/uploadValidation.ts` 신설(size/MIME/ext 화이트리스트) cardExpenses/po/files 적용 + receipt-image path-traversal 가드. 코드검증: 파일 존재 | #357 / 3baa38a | 2026-06-05 |
+| I-027 | 저장형 XSS — escapeHtml 클라 7스크립트 + 서버템플릿 2종 + portalLayout 전역주입. portalBalance.js 잔여는 free-text 싱크 부재로 비대상(Area 6 검증) | #335 / da5f0ca | 2026-06-05 |
+| I-041 | hr.ts 레거시 급여 endpoint 2개 제거(POST가 미존재 payrolls 테이블 INSERT→크래시, 호출처 0). 코드검증: `INTO payrolls` grep 0 | #351 / 9fdfdf4 | 2026-06-05 |
+| I-042 | 현금영수증 탭 필터 무력 — 중복 element ID를 cr* prefix로 셰도잉 해소 + 날짜 파라미터 date_from/date_to 정렬. 코드검증: cashReceipts.js cr* 4개 | #352 / a742d27 | 2026-06-05 |
+| I-033 | Dead-filter 3건 — 지출결의 날짜·포털주문 상태(869fcf9) + 생산 출력이력 장비/상태/날짜(printEvents 연결) | #343 / 0c04fad | 2026-06-05 |
+| I-034 | 포털 셀프서비스 3건 — 세금계산서 PDF다운로드+페이지네이션 / 미수금 aging / 재주문 모달 | #344 / 0ce9c42 | 2026-06-05 |
+| I-035 | 회계 내보내기·검색 — 세금계산서 CSV+지출결의 지급처/사유 검색(29e9fbc) + cashSchedule 월별 CSV | #345 / 0c04fad | 2026-06-05 |
+| I-036 | 필터·드릴다운 — 연차 부서필터 + 불량률→검수 드릴다운 + 미사용수당 응답정합 버그(48명 정상렌더) | #346 / 0c04fad | 2026-06-05 |
+| I-043 | Dead-filter 클러스터 2탄 — 생산보드/원가/메시지/활동로그/매입/휴가 6건 백엔드 필터 UI 활성화+페이지네이션 | #353 / 0c04fad | 2026-06-05 |
+| I-044 | 검수결과 목록 — 공급업체 드롭다운·결과상태·검수일범위·페이지네이션·CSV export(원시 ID 입력 해소) | #354 / 0c04fad | 2026-06-05 |
 | I-045 | 여신초과 주문 전면실패 — owner가 (가)안 0300 마이그(approval_requests/templates 재빌드, CHECK에 CREDIT_OVERRIDE 추가)로 해소. ground-truth 재적용+INSERT 컬럼 정합 실측 검증 | #355 / 0300 | 2026-06-05 |
 | I-025 | order_templates orphan 라우터 — 도달성 규칙으로 dead-code 재분류→owner (가)승인→삭제(templates.ts+drop마이그 0297, prod 404 확인) | #334 / a7a15cc | 2026-06-04 |
 | I-026 | 하드코딩/약한 자격증명 — `fallback-dev-key` 제거(requirePiiKey 4곳) + reset-password 기본값 'password' 제거→필수화(400) | #338 / a7a15cc | 2026-06-04 |
@@ -390,6 +406,7 @@
 | orphan 라우터의 entity_id 격리 갭 (프론트 호출처 0건) | UI 도달 불가 = dead code 사안이지 보안 아님. 격리 갭 보고 전 `grep "api/<path>" src/scripts src/pages` 도달성 선검증 필수 | Area 6 (#334, 2026-06-04) |
 | 비원자적 다중 INSERT "고아 가능" (확정 실패 트리거 부재) | 부모→자식 별도 `.run()`이라도 자식 테이블에 CHECK/NOT-NULL 위반 등 **확정적 실패 트리거가 없으면** 거의 모든 다중문 코드에 해당하는 일반적 비원자성일 뿐 = 노이즈. #355류로 보고하려면 100% 실패하는 구체 트리거(CHECK 누락 리터럴 등) 실증 필요. order_items는 CHECK 0·전컬럼 nullable이라 견적전환/복사 비원자성은 오탐 | Area 4 (2026-06-06) |
 | rate-limit "누락" 보고 (라우트 파일에 inline 미들웨어 없음) | rate limit은 라우트 파일이 아니라 `index.tsx`에서 `app.use('/api/...', rateLimitMiddleware(...))`로 **앱 레벨 전역 등록**(240-246: auth/portal login·users/portal change-pw·refresh·self-auth·verify-document·verify-token). 라우트 핸들러만 보면 항상 inline 부재로 오탐 — 보고 전 index.tsx 등록처 grep 필수 | Area 5 (2026-06-06) |
+| "escapeHtml 헬퍼 전무(`grep -c escapeHtml`=0) → XSS" | `layout.ts:1185`가 `window.escapeHtml`를 **전역 정의**(+`portalLayout.ts` 포털용) → 모든 스크립트가 로컬 정의 없이 전역 헬퍼 호출 가능. 파일에 escapeHtml 미정의/미참조 ≠ 취약. 올바른 판정: 실제 `innerHTML` 싱크의 보간값이 (a)사용자 제어 free-text **이고** (b)미escape인지 확인. `Number()` 강제 숫자·시스템 채번코드(order_number 등)·서버 하드코딩 문자열은 싱크 아님 | Area 6 (2026-06-06) |
 
 ---
 
