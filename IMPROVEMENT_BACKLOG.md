@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 4 -->
-<!-- last_run_at: 2026-06-06T02:00:00+09:00 -->
+<!-- last_run_area: 5 -->
+<!-- last_run_at: 2026-06-06T06:00:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,14 +8,24 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | 16 (open auto-improve 18건 − approved 2건; #336은 코드측 해소·이슈 open 잔존) |
+| 🆕 new | 6 (open 실측 — #360/#359/#358/#350/#341/#336) |
 | ✅ approved | 2 (I-032/#342 — 전용 세션 대기 / I-030/#340 — 👍 확인, 급성 RED 해소·잔여만 대기) |
 | 👀 reviewed | 0 |
-| ✔️ done | 50 |
+| ✔️ done | 50 (+ closed-pending-verification 11건 — Area 6 분류 위임) |
 | ❌ rejected | 3 |
 
-> ✅ **GitHub 전수 재동기 완료 (Area 6, 2026-06-05T10:00)**: open auto-improve 정확히 17건 = New 15 + approved 2(#342/#340). 이전 경고대로 #334/#337/#338/#349는 GitHub closed(completed) 확인 → **a7a15cc 실제 수정·배포·검증 + 코드 교차검증 통과 → done 이관**. #336은 a7a15cc로 코드측(yml 폴백 제거) 해소됐으나 owner 일괄 close 시 누락 → open 잔존(운영 계정점검만 잔여, 상태 코멘트 추가).
+> ⚠️ **GitHub 대규모 close 발견 (Area 5, 2026-06-06T06:00)**: open auto-improve **실측 8건** = New 6(#360/#359/#358/#350/#341/#336) + approved 2(#342/#340). 직전 동기(06-05T10:00) 이후 owner가 **11건 일괄 close**(#335/#343/#344/#345/#346/#351/#352/#353/#354/#356/#357, 06-05T06:08~06-06T00:13). done/rejected 분류 + 코드 교차검증은 **차기 Area 6 위임** — done/rejected 카운트는 미반영(보수적 유지). New 표는 open 실측 기준으로 정정함.
 
+> **Area 5 보안 (2026-06-06T06:00):**
+> - **방법**: 병렬 에이전트 3개(Explore) — SQLi·시크릿·CI / IDOR·인가·멀티테넌시 / XSS·업로드·rate. baseline `npm ci`+tsc --noEmit PASS + build PASS(360 modules, 5.0MB). 직전 Area 5(06-05T06:00 #356/#357) + 06-06T00:13 추가 Area 5(#360) 직후라 표면 3중 감사 → 한계효용 체감. **에이전트 보고 전수 owner 직접 코드 검증**(오탐 차단).
+> - **🟢 net-new 0건 — 3개 에이전트 발견 전부 중복/오탐**:
+>   - IDOR 에이전트: `quotations.ts` GET/PUT/DELETE `/:id` 격리 누락(entity_id 보유인데 list만 entityFilter) → **#360 기보고**(06-06T00:13, quotations+corporate_cards 상위집합). cardExpenses corporate_cards는 에이전트가 누락했고 #360이 더 완전 → 중복.
+>   - XSS/rate 에이전트: **rate-limit 누락 5건(portal login/users·portal change-pw/verify-token) 전부 오탐** — `index.tsx:240-246`이 `app.use()`로 앱 레벨 전역 등록(라우트 파일 inline 미들웨어만 보고 놓침). portalBalance.js innerHTML 미escape 2건(`showTokenError` 서버 하드코딩 메시지 + 미수금표 숫자/날짜)은 저위험 + #335(escapeHtml 우산, 06-05 close) 범위 → 신규 아님.
+>   - SQLi/시크릿/CI 에이전트: **SQLi 0(prepare 2,294 전수) / 시크릿 폴백 `c.env.X||'lit'` 0 / CI `secrets.X||'admin'` 0 — 전부 clean**. LOW 3건(error.message 노출: tasks.ts:304·fax.ts:87·settings.ts:230)은 전부 authMiddleware/requireRole 보호 엔드포인트 → #337(done) 처리방침(ADMIN 진단 LOW=보류) 동일, 이슈화 부적합.
+> - **🧬 오탐 패턴 신설 — rate-limit "누락" 보고**: rate limit은 `index.tsx`에서 `app.use('/api/...', rateLimitMiddleware)` 앱 레벨 등록(240-246)이라 **라우트 파일만 보면 항상 inline 미들웨어 부재로 오탐**. 보고 전 index.tsx 등록처 확인 필수. FP표 등재.
+> - **⚠️ GitHub 대규모 close 발견(Area 6 위임)**: open auto-improve 8건으로 축소. New 표 추적 11건(#335/#343/#344/#345/#346/#351/#352/#353/#354/#356/#357)이 owner 일괄 close(06-05T06:08~06-06T00:13). done/rejected 분류 + 코드 교차검증은 **차기 Area 6 위임**. New 표·stats는 open 실측 기준 정정. portalBalance.js escapeHtml 잔여 여부도 #335 해소내용 대조해 Area 6에서 판정 권장.
+> - 자동 수정 0건(net-new 없음), 신규 이슈 0건(전부 중복/오탐), 백로그 정정(New 표 11건 제거·#360 편입·stats), 오탐 패턴 1건 신설
+>
 > **Area 4 데이터 정합성 (2026-06-06T02:00):**
 > - **방법**: ground-truth — 297개 마이그레이션(0299/0300 신규 포함)을 로컬 D1(node:sqlite v22)에 전량 적용(**FAIL 0**) → 실제 해석 스키마 171테이블·511인덱스 확보. 직전 Area 4(0298까지) 이후 신규 표면(0299 정기변동비용·0300 #355 CHECK수정)에 집중 + 비원자적 고아생성 패턴 일반화 스캔(Explore 1개). baseline `npm ci`+tsc PASS + build PASS(360 modules, 5.0MB).
 > - **#355 (I-045) → ✔️ done (owner가 0300으로 해소, GitHub closed-completed 확인)**: owner가 **(가)안** 채택 — `0300_approval_type_add_credit_override.sql`로 approval_requests/approval_templates 재빌드, CHECK에 `CREDIT_OVERRIDE` 추가. ground-truth 재적용으로 두 테이블 CHECK에 CREDIT_OVERRIDE 포함 **실측 확인** + 0300 CREATE TABLE 컬럼이 실제 스키마와 정확히 일치(id 명시보존 → FK 참조 무손상) + `orders/core.ts:1294` INSERT 12컬럼 전수 존재 + 여신 batch2(approval_steps status='PENDING'·credit_overrides) CHECK 정합 → **여신초과 주문 플로우 end-to-end 작동 복구**. 백로그 New 표 stale 정정.
@@ -266,26 +276,18 @@
 
 ## 🆕 New (미검토)
 
-> 전부 GitHub open + 👍 미수신. 용준님 리뷰 대기.
+> 전부 GitHub open + 👍 미수신. 용준님 리뷰 대기. (open 실측 6건 — 2026-06-06T06:00 정정)
 
 | ID | 제목 | 영역 | Issue | 공수 |
 |----|------|------|-------|------|
-| I-027 | 저장형 XSS — escapeHtml 누락 다수 (포털 등 7개 스크립트, 서버템플릿 포함 👍) | Area 5 | #335 | 2~3h |
+| I-050 | **[HIGH]** 멀티테넌시 IDOR 비대칭 — quotations(견적 GET/PUT/DELETE /:id) + 법인카드 corporate_cards(PUT/DELETE) 격리 누락 (#356 클러스터 8~9번째 모듈) | Area 5 | #360 | ~2h |
 | I-028 | CI 폴백 자격증명 admin/password — **코드측 해소(a7a15cc), 운영 계정점검만 잔여** (이슈 open, close 누락) | Area 5 | #336 | 운영점검 |
 | I-031 | N+1 쿼리 batch 미전환 다수 — cashFlow 예측 핫패스(72쿼리) 우선 + import/child INSERT 루프 | Area 2 | #341 | 3h~ |
-| I-033 | Dead-filter 3건 — 백엔드 기구현 필터 UI 미노출 (지출결의서 날짜/생산 출력이력/포털 주문 상태+count버그) | Area 3 | #343 | ~3h |
-| I-034 | 포털 셀프서비스 갭 — 세금계산서 다운로드+50캡 / 미수금 aging / 재주문 prompt() | Area 3 | #344 | 3~4h |
-| I-035 | 회계 CSV·검색 — taxInvoices CSV / cashSchedule CSV / 지출결의서 지급처·사유 검색 | Area 3 | #345 | ~2h |
-| I-036 | 필터·드릴다운 — 연차 부서 필터 / 불량률 리포트→검수 드릴다운 | Area 3 | #346 | 3~4h |
-| I-046 | **[HIGH]** 멀티테넌시 격리 갭 클러스터 6모듈 — list는 entityFilter, /:id 상세·변경은 누락(insuranceReports rrn/paymentRequests/cashReceipts PII + inventoryCount/leaves 정합성 훼손), #349 패턴 확장 | Area 5 | #356 | 2~3h |
 | I-048 | **[HIGH]** 전자결재 격리 갭 (#356 7번째 모듈) — list만 entityFilter, GET /:id 무가드 재무노출 + approve/reject 전역 role로 타법인 purchase_requests/credit_status 정합성 훼손 | Area 2 | #358 | ~2h |
-| I-047 | [MED] 파일 업로드 검증 부재 — ext 화이트리스트/크기상한/MIME 미검증(cardExpenses/po/files), 키 인젝션은 A-015 자동수정 | Area 5 | #357 | ~1h |
 | I-040 | N+1 신규 클러스터 — 급여 일괄/근태동기화 핫패스(전직원×5~7쿼리, 루프불변 hoist 즉효) + 발주 품목 루프 (#341 미포함) | Area 2 | #350 | hoist 20분 / 전체 ~4h |
-| I-041 | dead code+크래시 — hr.ts orphan 급여 엔드포인트 2개(POST는 없는 payrolls 테이블 INSERT), /api/payroll로 대체됨 | Area 2 | #351 | 30분~1h |
-| I-042 | 현금영수증 탭 필터 전체 무력 — 중복 element ID 셰도잉 + 날짜 파라미터 불일치(HTML 리네임 필요) | Area 3 | #352 | 30분 |
-| I-043 | Dead-filter 클러스터 2탄 6건 — 생산보드 category/원가 자동차감/메시지로그 날짜/활동로그 user/휴가신청 날짜/매입인보이스 match_status (백엔드 기구현 미노출) | Area 3 | #353 | ~5h |
-| I-044 | 검수결과 목록 — 원시 ID 직접입력 필터(사용불가)+상태/날짜 필터·페이지네이션·CSV 부재 | Area 3 | #354 | ~3h |
 | I-049 | [MED bug] 지출결의서 목록 LIMIT 200 하드캡 + 페이지네이션·총건수 전무 — 201건+ silent truncation (재무전표 단조증가, 검색결과도 동일 캡) | Area 3 | #359 | ~1h |
+
+> 📦 **closed-pending-verification (11건, Area 6 done/rejected 분류 위임)**: #335(I-027)·#343(I-033)·#344(I-034)·#345(I-035)·#346(I-036)·#351(I-041)·#352(I-042)·#353(I-043)·#354(I-044)·#356(I-046)·#357(I-047). owner가 06-05T06:08~06-06T00:13 일괄 close. 코드 교차검증 후 done/rejected 확정 필요.
 
 ---
 
@@ -387,6 +389,7 @@
 | 인덱스/UNIQUE 누락 후보 (ground-truth 미확인) | 로컬 D1 실제 스키마로 반증 필수 — 대부분 이미 존재하거나 hot path 아님 | Area 4 (2026-06-02) |
 | orphan 라우터의 entity_id 격리 갭 (프론트 호출처 0건) | UI 도달 불가 = dead code 사안이지 보안 아님. 격리 갭 보고 전 `grep "api/<path>" src/scripts src/pages` 도달성 선검증 필수 | Area 6 (#334, 2026-06-04) |
 | 비원자적 다중 INSERT "고아 가능" (확정 실패 트리거 부재) | 부모→자식 별도 `.run()`이라도 자식 테이블에 CHECK/NOT-NULL 위반 등 **확정적 실패 트리거가 없으면** 거의 모든 다중문 코드에 해당하는 일반적 비원자성일 뿐 = 노이즈. #355류로 보고하려면 100% 실패하는 구체 트리거(CHECK 누락 리터럴 등) 실증 필요. order_items는 CHECK 0·전컬럼 nullable이라 견적전환/복사 비원자성은 오탐 | Area 4 (2026-06-06) |
+| rate-limit "누락" 보고 (라우트 파일에 inline 미들웨어 없음) | rate limit은 라우트 파일이 아니라 `index.tsx`에서 `app.use('/api/...', rateLimitMiddleware(...))`로 **앱 레벨 전역 등록**(240-246: auth/portal login·users/portal change-pw·refresh·self-auth·verify-document·verify-token). 라우트 핸들러만 보면 항상 inline 부재로 오탐 — 보고 전 index.tsx 등록처 grep 필수 | Area 5 (2026-06-06) |
 
 ---
 
