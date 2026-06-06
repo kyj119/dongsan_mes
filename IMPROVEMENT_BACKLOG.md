@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 2 -->
-<!-- last_run_at: 2026-06-06T18:00:00+09:00 -->
+<!-- last_run_area: 3 -->
+<!-- last_run_at: 2026-06-06T22:00:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,12 +8,20 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | 7 (open 실측 — #361/#360/#359/#358/#350/#341/#336) |
+| 🆕 new | 9 (open 실측 — #363/#362/#361/#360/#359/#358/#350/#341/#336) |
 | ✅ approved | 2 (I-032/#342 — 전용 세션 대기 / I-030/#340 — 👍 확인, 급성 RED 해소·잔여만 대기) |
 | 👀 reviewed | 0 |
 | ✔️ done | 61 (closed-pending-verification 11건 코드 교차검증 후 done 확정 — Area 6, 06-06T10:00) |
 | ❌ rejected | 3 |
 
+> **Area 3 UX/기능 감사 (2026-06-06T22:00):**
+> - **방법**: baseline `npm ci`+tsc --noEmit PASS + build PASS(360 modules, 5.0MB). 코드베이스 Area 3 **5회차** — dead-filter·하드캡·getElementById silent-fail은 고갈 → **덜 다룬 각도**(catch 블록 로드실패 UX·CSV 일관성·journey)에 병렬 Explore 2개(영업·회계 / 생산·재고·HR·대시보드). 에이전트 보고 전수 owner 직접 코드 검증(오탐 차단).
+> - **🐛 신규 이슈 #362 (MED bug) — 주요 데이터 로드 실패 시 스켈레톤 영구 잔류**: ① `dashboard.js:203-205` `loadDashboardStats` catch가 `console.error`만 → `/api/dashboard/stats` 실패 시 `kpiArea` `.ds-skeleton` 미교체(복구는 `if(success)` `:38` 안에만) = **랜딩 대시보드 영구 스켈레톤** ② `paymentRequests.js:34-36` 동일 패턴(skeleton 잔류). 사용자는 "무한 로딩"으로 오인. peer 정상사례 `quotations.js:72`(에러행)·`receiving.js:156`(에러행)·`cashSchedule.js:40`(showToast). **이전 Area 3는 silent-fail을 ID/param 불일치 각도로만 봤고 catch-UX는 미감사 각도**. **자동수정 안 함**(user-facing 에러 UI 추가=Area 3 제안범위, 문구/재시도 디자인 owner 위임).
+> - **🟡 신규 이슈 #363 (improvement) — CSV 일관성 갭 3건**: purchaseRequests(peer purchaseOrders `exportPoCsv` 보유)·receiving(peer shipments/productionReports)·cashSchedule(peer ledger/financialReports/bank) CSV 전무(grep 0). 발주요청·입고이력은 감사·정산 추적 거래이력이라 가치 높음. **백로그 정확성 갭 동반 발견**: I-035/#345가 "cashSchedule 월별 CSV done" 기록했으나 커밋 29e9fbc는 taxInvoices CSV+검색만 구현 = cashSchedule CSV 실제 미구현(#363으로 신규 추적, Area 6 정정 권장). 신규 기능 추가라 이슈 보고.
+> - **🔴 오탐/저가치 드롭 (에이전트 보고 → owner 코드 반증)**: ① productionBoard.js:223 `JSON.parse(post_processing)` 방어 try/catch + `:442` 썸네일 placeholder catch = **의도적 graceful degradation**, 버그 아님 ② productionBoard lightbox에 카드편집 링크 부재 = 보드는 **읽기전용 칸반 설계**, journey 갭 아님(저가치) ③ dashboard "생산현황(출고대기)" sub-KPI 클릭링크 부재 = 미세 인터랙션 일관성(F-004류 저가치) ④ productionBoard 상태탭 카운트 "-" = 로드 전 일시상태.
+> - **이상 없음**: empty-state(inventory/purchaseOrders/hr/bom/paymentRequests 등 전수 "데이터 없음" 메시지 보유)·로딩 skeleton·pagination(orders/quotations/clients)·에러 toast(폼류) 일관 구현. taxInvoices 현금영수증탭 cr* prefix(#352)·ledger→tax-invoices 링크 정상.
+> - 자동 수정 0건(Area 3 제안 전용, 에러-UX·CSV 전부 UI/기능 추가), 신규 이슈 2건(#362,#363), 오탐/저가치 4건 드롭
+>
 > **Area 2 코드 품질 (2026-06-06T18:00):**
 > - **방법**: baseline `npm ci`+tsc --noEmit PASS. 코드베이스 Area 2 5회차(#341/#342/#350/#351/#356/#358/#360) — 한계효용 체감 → **최근 변경 표면**(#343/#345/#351/#352/#357 owner 적용분) + **덜 다룬 각도**(silent-fail·models↔스키마)에 집중. 병렬 Explore 2개(IDOR 비대칭 잔여 / silent-fail+N+1) + 후보 전수 owner 직접 코드 검증(오탐 차단).
 > - **🐛 신규 이슈 #361 (I-050, MED bug) — autoProcess 멀티테넌시 격리 갭, #356 클러스터 10번째 모듈**: `autoProcess.ts` list(`GET /pending` `:189`)는 `entityFilter(c,'auto_process_jobs')` 적용하나 `/:id` 변경계열 전부 `WHERE id=?`만 — ① `PATCH /:id`(`:245`) 타법인 작업 상태/output 변조 ② `GET /order/:orderId`(`:266`) 타법인 가공작업 열람 ③ `POST /:id/approve`(`:290`) 타법인 작업 승인+저장경로 생성 ④ `POST /:id/retry`(`:341`) pending 되돌림+파라미터 변조. auto_process_jobs entity_id 보유(0261 ADD+idx) + INSERT `getEntityId` 주입(`:172`)인데 read/mutate 무시. 도달성 확인(orders.js:717/1026/1052). **전체 라우터 `requireRole('ADMIN')`(`:8`)이라 #358보다 심각도 낮음** — 단 ADMIN도 기본 자기법인(default_entity_id non-zero, `auth.ts:179`)이라 entity A 관리자가 entity B 작업 변조 가능. **자동수정 안 함**(ADMIN entityId=0 분기+권한 시맨틱+**PATCH는 외부 IllustratorAutomat 폴링이라 entity 격리 추가 시 통합 깨질 위험**+egress 차단 검증불가, #356/#358/#360 동일 사유).
@@ -297,10 +305,12 @@
 
 ## 🆕 New (미검토)
 
-> 전부 GitHub open + 👍 미수신. 용준님 리뷰 대기. (open 실측 6건 — 2026-06-06T06:00 정정)
+> 전부 GitHub open + 👍 미수신. 용준님 리뷰 대기. (open 실측 new 9건 — 2026-06-06T22:00 정정)
 
 | ID | 제목 | 영역 | Issue | 공수 |
 |----|------|------|-------|------|
+| I-052 | [MED bug] 주요 데이터 로드 실패 시 스켈레톤 영구 잔류 + 에러피드백 전무 — 대시보드/지출결의서 catch가 console.error만(무한 로딩 오인). catch-UX 미감사 각도 | Area 3 | #362 | ~40분 |
+| I-051 | [improvement] CSV 내보내기 일관성 갭 — 발주요청·입고이력·자금계획(peer 전부 보유). #345 "cashSchedule CSV done" 기록 부정확 동반발견 | Area 3 | #363 | ~1.5h |
 | I-050 | **[HIGH]** 멀티테넌시 IDOR 비대칭 — quotations(견적 GET/PUT/DELETE /:id) + 법인카드 corporate_cards(PUT/DELETE) 격리 누락 (#356 클러스터 8~9번째 모듈) | Area 5 | #360 | ~2h |
 | I-028 | CI 폴백 자격증명 admin/password — **코드측 해소(a7a15cc), 운영 계정점검만 잔여** (이슈 open, close 누락) | Area 5 | #336 | 운영점검 |
 | I-031 | N+1 쿼리 batch 미전환 다수 — cashFlow 예측 핫패스(72쿼리) 우선 + import/child INSERT 루프 | Area 2 | #341 | 3h~ |
