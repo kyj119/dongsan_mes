@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 6 -->
-<!-- last_run_at: 2026-06-07T22:00:00+09:00 -->
+<!-- last_run_area: 1 -->
+<!-- last_run_at: 2026-06-08T02:00:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -14,6 +14,14 @@
 | ✔️ done | 61 (closed-pending-verification 11건 코드 교차검증 후 done 확정 — Area 6, 06-06T10:00) |
 | ❌ rejected | 3 |
 
+> **Area 1 프로덕션 헬스 (2026-06-08T02:00):**
+> - **방법**: GitHub Actions 최근 30런 분석 + 로컬 verify + 실패 런 잡 로그 실측. egress는 여전히 Cloudflare 엣지 403 차단(`curl /api/health`→**403** 0.51s, `/`→**403** 0.08s) → 샌드박스 IP 차단이라 직접 20-API 호출 불가, E2E(실제 prod 페이지 브라우저 검증)를 헬스 신호로 사용.
+> - **🟢 파이프라인 사실상 green (1건 transient 자가복구)**: 최근 30런 = Deploy **#158~170 전부 success** · E2E **#178~192 중 #189만 failure 나머지 success** · Daily D1 Backup #20/#21 success. queued/stuck run 0건. **최신 런(E2E #192 id 27087003269 08:10, Deploy #170 08:09) 전부 green** — HEAD 889ca7a(직전 Area 6 커밋) 기준.
+> - **E2E #189 단일 failure = 알려진 #340 패턴, 동일커밋 자가복구**: id 27077838607(06-07 00:18, **e4772b2**) 잡 로그 실측 — `1 failed: crud-order-lifecycle.spec.ts:33 주문생성`(프로덕션 직접 주문생성 hard-fail, 설계 데이터오염 이슈) + `3 flaky: crud-clients/crud-order 거래처생성/dashboard`(cold-start, retry 통과) + `21 passed`. **동일 커밋 e4772b2의 다음 런 E2E #190(schedule, 04:00)은 전부 success** → transient, 코드 회귀 아님. #340(approved) 픽스처 cold-start 안정화는 egress 차단으로 prod 검증 불가(전용 세션 대기), crud-order 격리는 설계결정 대기. 급성도 낮아 추가 코멘트 보류.
+> - **로컬 verify PASS**: `npm ci`→tsc --noEmit PASS + build PASS(360 modules, _worker.js 5.0MB raw). 배포 13/13 성공 = 유료 10MB 한도 대비 ~10% 점유, 헤드룸 충분.
+> - **오탐/이상 없음**: deploy failure 0건(A-010 이후 지속). egress 403은 샌드박스 IP 차단(기존 인지)이라 헬스 이상 아님. open auto-improve **13건**(new 11 + approved 2: #342/#340) stats 정합 재확인.
+> - 자동 수정 0건(파이프라인 정상·egress 차단으로 E2E 변경 검증 불가), 신규 이슈 0건
+>
 > **Area 6 자기 진화 (2026-06-07T22:00):**
 > - **GitHub ↔ 백로그 전수 재동기 — 변경 0건(clean)**: open auto-improve **13건**(new 11: #365/#364/#363/#362/#361/#360/#359/#358/#350/#341/#336 + approved 2: #342/#340) 실측 = 백로그 stats 정합. closed 목록 최신 updated_at=#356(06-06T00:13) → **직전 Area 6(06-06T10:00) 11건 done 확정 이후 신규 close 0건**. done 61/rejected 3 유지. 이관할 항목 없음.
 > - **🔧 백로그 정확성 정정 (#363 지적 검증·확정)**: `I-035/#345`가 "cashSchedule 월별 CSV done"으로 기록됐으나, **commit 29e9fbc 본문이 "(#345 (2) cashSchedule CSV는 LOW 미처리)" 명시** + `grep csv src/scripts/cashSchedule.js` **0건** = cashSchedule CSV 실제 미구현. #345는 전체로 owner close(taxInvoices CSV+지출결의 검색은 구현)이나 cashSchedule CSV 서브항목은 **#363으로 신규 추적 중**. done 표 I-035 행에 정정 주석 추가(커밋 해시도 0c04fad→29e9fbc 정정).
