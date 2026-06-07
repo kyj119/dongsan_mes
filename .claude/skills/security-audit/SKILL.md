@@ -53,6 +53,7 @@ review-checklist과의 차이: review-checklist은 **변경 파일** 코드 리�
 > - 판별: list가 `entityFilter`를 쓰면 격리 의도가 명확 → 같은 파일의 `/:id` 핸들러에 `entityFilter` 없으면 비-ADMIN이 임의 id로 타법인 도달(PII/재무 열람·변경).
 > - 추가 위험: approve/차감 로직이 **대상 행의 entity가 아니라 호출자 `getEntityId(c)`** 를 쓰면 엉뚱한 법인 재고/연차 차감 = 데이터 정합성 훼손(#356 inventoryCount/leaves).
 > - **선행 도달성 검증 필수**(#334): `grep "api/<path>" src/scripts src/pages` 호출처 0건이면 보안 아닌 dead-code.
+> - **⚠️ 도달성 규칙 예외 (#365)**: "호출처 0건 = 무해"는 **UI 트리거형 격리 갭**(`/:id` 핸들러가 특정 화면에서만 호출)에 한정. **클라이언트 제공 키로 raw 리소스를 서빙하는 범용 엔드포인트**(R2 파일 프록시 `files.ts` GET `/*`, generic download-by-key 등)는 프론트 참조 0건이어도 **인증된 직접 HTTP 호출 자체가 공격표면** — 키가 구조적이거나 다른 응답에 노출되면 도달 가능. 이런 경우 0-refs로 dead-code 강등 금지, 보안 이슈로 보고.
 > - grep 출발점: 라우터에서 `entityFilter(c,` 쓰는 파일을 찾고 → 같은 파일 `/:id` 핸들러의 `WHERE id = ?` 가 `ef.clause`/`ef.params` 없이 단독인지 대조.
 
 ## 실행 워크플로우

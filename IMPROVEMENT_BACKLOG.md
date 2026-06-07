@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 5 -->
-<!-- last_run_at: 2026-06-07T18:00:00+09:00 -->
+<!-- last_run_area: 6 -->
+<!-- last_run_at: 2026-06-07T22:00:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -14,6 +14,13 @@
 | ✔️ done | 61 (closed-pending-verification 11건 코드 교차검증 후 done 확정 — Area 6, 06-06T10:00) |
 | ❌ rejected | 3 |
 
+> **Area 6 자기 진화 (2026-06-07T22:00):**
+> - **GitHub ↔ 백로그 전수 재동기 — 변경 0건(clean)**: open auto-improve **13건**(new 11: #365/#364/#363/#362/#361/#360/#359/#358/#350/#341/#336 + approved 2: #342/#340) 실측 = 백로그 stats 정합. closed 목록 최신 updated_at=#356(06-06T00:13) → **직전 Area 6(06-06T10:00) 11건 done 확정 이후 신규 close 0건**. done 61/rejected 3 유지. 이관할 항목 없음.
+> - **🔧 백로그 정확성 정정 (#363 지적 검증·확정)**: `I-035/#345`가 "cashSchedule 월별 CSV done"으로 기록됐으나, **commit 29e9fbc 본문이 "(#345 (2) cashSchedule CSV는 LOW 미처리)" 명시** + `grep csv src/scripts/cashSchedule.js` **0건** = cashSchedule CSV 실제 미구현. #345는 전체로 owner close(taxInvoices CSV+지출결의 검색은 구현)이나 cashSchedule CSV 서브항목은 **#363으로 신규 추적 중**. done 표 I-035 행에 정정 주석 추가(커밋 해시도 0c04fad→29e9fbc 정정).
+> - **🧬 탐지 규칙 강화 — 도달성 규칙(#334)의 "범용 서빙 프록시" 예외 codify**: #365(`files.ts` GET `/*` R2 프록시 격리 우회) 검증에서 확립. "호출처 0건=dead code"는 **UI 트리거형 격리 갭**에만 적용 — **클라 제공 키로 raw 리소스를 DB·entity·역할 검증 없이 서빙하는 범용 엔드포인트**(R2 파일 프록시 등)는 프론트 참조 0건이어도 **인증된 직접 HTTP 호출이 공격표면**(키 구조적·타 응답 노출로 도달 가능) → dead-code 강등 금지, 보안 이슈. files.ts:12 코드 직접 재확인(authMiddleware+path-traversal 가드만, R2.get 전 DB조회 0). **3개 스킬+FP표 갱신**: security-audit SKILL(도달성 callout 예외) + auto-improve SKILL(Area 2 reachability callout + Area 6 학습패턴) + 백로그 FP표 orphan 행.
+> - **이상 없음**: approved 2건(#342 설비 entity_id 전용세션 / #340 E2E 픽스처 전용세션)은 Area 6 범위 밖 유지. 기존 FP표 9개 패턴 유효성 재확인(신규 오탐 보고 0). baseline `npm ci`+tsc --noEmit PASS.
+> - 자동 수정 0건(메타 정리·문서), 신규 이슈 0건, done 이관 0건(신규 close 없음), 백로그 정정 1건(I-035), 탐지 규칙 강화 1건(#365 예외, 스킬 2개+FP표 갱신)
+>
 > **Area 5 보안 (2026-06-07T18:00):**
 > - **방법**: baseline `npm ci`+tsc --noEmit PASS + build PASS(360 modules, exit0). Area 5 6회+ 감사로 한계효용 체감 + 최근 코드커밋이 전부 직전 감사완료분(#345~#356) → **덜 다룬 각도**로 전환: IDOR 비대칭(list-vs-detail)은 10모듈 고갈 → (1)mass-assignment (2)권한검사 누락 (3)인증/토큰 (4)**파일 다운로드 IDOR** (5)PII노출. 병렬 Explore 2개 + 발견 전수 owner 직접 코드 검증(오탐 차단).
 > - **🐛 신규 이슈 #365 (HIGH bug) — `/api/files/*` 범용 R2 프록시 격리 우회**: `files.ts:12` GET이 `authMiddleware`만(임의 역할) + path-traversal 가드뿐, **DB조회·entity·소유권·역할 검증 전무**로 생 R2 키 서빙. 같은 `R2_BUCKET`의 전용 다운로드는 격리 적용(po `/receipts/:id/statement` entityFilter·aiAnalysis `/:id/download` entityFilter #339·cardExpenses `/receipt-image/*` ADMIN/MANAGER게이트)인데 `/api/files/<같은키>`로 **전부 우회** → 임의 역할(STAFF 포함)·타법인이 거래명세서·영수증·소스 다운로드. 라이브 마운트(index.tsx:310). **프론트 참조 0건이나** 도달성 규칙(#334)의 "orphan=무해"는 UI트리거형 격리갭 한정 — 범용 파일서빙 프록시는 **인증된 직접 HTTP호출이 공격표면**(키는 구조적+응답노출). 역할 우회(STAFF→ADMIN/MANAGER 영수증)는 단일법인에서도 즉시 발화. 부수: cardExpenses `/receipt-image/*`도 raw키·entity 미격리(ADMIN/MANAGER 게이트라 우선순위 낮음). **자동수정 안 함**(라우트 삭제 or 인증격리 시맨틱 변경 + egress 차단 런타임 검증불가, #356/#358/#360/#361 동일 사유).
@@ -367,7 +374,7 @@
 | I-042 | 현금영수증 탭 필터 무력 — 중복 element ID를 cr* prefix로 셰도잉 해소 + 날짜 파라미터 date_from/date_to 정렬. 코드검증: cashReceipts.js cr* 4개 | #352 / a742d27 | 2026-06-05 |
 | I-033 | Dead-filter 3건 — 지출결의 날짜·포털주문 상태(869fcf9) + 생산 출력이력 장비/상태/날짜(printEvents 연결) | #343 / 0c04fad | 2026-06-05 |
 | I-034 | 포털 셀프서비스 3건 — 세금계산서 PDF다운로드+페이지네이션 / 미수금 aging / 재주문 모달 | #344 / 0ce9c42 | 2026-06-05 |
-| I-035 | 회계 내보내기·검색 — 세금계산서 CSV+지출결의 지급처/사유 검색(29e9fbc) + cashSchedule 월별 CSV | #345 / 0c04fad | 2026-06-05 |
+| I-035 | 회계 내보내기·검색 — 세금계산서 CSV+지출결의 지급처/사유 검색(29e9fbc). ⚠️**정정(Area6 06-07)**: cashSchedule CSV는 29e9fbc에서 "LOW 미처리" 명시로 **미구현** → #363으로 신규 추적 중 (기존 "월별 CSV done" 기록은 부정확) | #345 / 29e9fbc | 2026-06-05 |
 | I-036 | 필터·드릴다운 — 연차 부서필터 + 불량률→검수 드릴다운 + 미사용수당 응답정합 버그(48명 정상렌더) | #346 / 0c04fad | 2026-06-05 |
 | I-043 | Dead-filter 클러스터 2탄 — 생산보드/원가/메시지/활동로그/매입/휴가 6건 백엔드 필터 UI 활성화+페이지네이션 | #353 / 0c04fad | 2026-06-05 |
 | I-044 | 검수결과 목록 — 공급업체 드롭다운·결과상태·검수일범위·페이지네이션·CSV export(원시 ID 입력 해소) | #354 / 0c04fad | 2026-06-05 |
@@ -444,7 +451,7 @@
 | CORS `!origin → '*'` (`index.tsx:213`) | Bearer 토큰 인증(쿠키 미사용) — 브라우저는 항상 Origin 전송, 실질 무해 | Area 5 (2026-06-02) |
 | rate limiter in-memory `Map` (`rateLimit.ts:6`) | isolate 분산 한계는 기존 인지 아키텍처 제약, 신규 이슈 아님 | Area 5 (2026-06-02) |
 | 인덱스/UNIQUE 누락 후보 (ground-truth 미확인) | 로컬 D1 실제 스키마로 반증 필수 — 대부분 이미 존재하거나 hot path 아님 | Area 4 (2026-06-02) |
-| orphan 라우터의 entity_id 격리 갭 (프론트 호출처 0건) | UI 도달 불가 = dead code 사안이지 보안 아님. 격리 갭 보고 전 `grep "api/<path>" src/scripts src/pages` 도달성 선검증 필수 | Area 6 (#334, 2026-06-04) |
+| orphan 라우터의 entity_id 격리 갭 (프론트 호출처 0건) | UI 도달 불가 = dead code 사안이지 보안 아님. 격리 갭 보고 전 `grep "api/<path>" src/scripts src/pages` 도달성 선검증 필수. **⚠️ 예외(#365)**: 클라 제공 키로 raw 리소스 서빙하는 범용 프록시(R2 파일 `files.ts` GET `/*` 등)는 0-refs여도 인증된 직접 HTTP 호출이 공격표면 → dead-code 강등 금지, 보안 이슈 | Area 6 (#334, 2026-06-04 / 예외 #365 2026-06-07) |
 | 비원자적 다중 INSERT "고아 가능" (확정 실패 트리거 부재) | 부모→자식 별도 `.run()`이라도 자식 테이블에 CHECK/NOT-NULL 위반 등 **확정적 실패 트리거가 없으면** 거의 모든 다중문 코드에 해당하는 일반적 비원자성일 뿐 = 노이즈. #355류로 보고하려면 100% 실패하는 구체 트리거(CHECK 누락 리터럴 등) 실증 필요. order_items는 CHECK 0·전컬럼 nullable이라 견적전환/복사 비원자성은 오탐 | Area 4 (2026-06-06) |
 | rate-limit "누락" 보고 (라우트 파일에 inline 미들웨어 없음) | rate limit은 라우트 파일이 아니라 `index.tsx`에서 `app.use('/api/...', rateLimitMiddleware(...))`로 **앱 레벨 전역 등록**(240-246: auth/portal login·users/portal change-pw·refresh·self-auth·verify-document·verify-token). 라우트 핸들러만 보면 항상 inline 부재로 오탐 — 보고 전 index.tsx 등록처 grep 필수 | Area 5 (2026-06-06) |
 | "escapeHtml 헬퍼 전무(`grep -c escapeHtml`=0) → XSS" | `layout.ts:1185`가 `window.escapeHtml`를 **전역 정의**(+`portalLayout.ts` 포털용) → 모든 스크립트가 로컬 정의 없이 전역 헬퍼 호출 가능. 파일에 escapeHtml 미정의/미참조 ≠ 취약. 올바른 판정: 실제 `innerHTML` 싱크의 보간값이 (a)사용자 제어 free-text **이고** (b)미escape인지 확인. `Number()` 강제 숫자·시스템 채번코드(order_number 등)·서버 하드코딩 문자열은 싱크 아님 | Area 6 (2026-06-06) |
