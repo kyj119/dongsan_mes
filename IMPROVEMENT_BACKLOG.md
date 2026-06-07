@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 2 -->
-<!-- last_run_at: 2026-06-08T06:00:00+09:00 -->
+<!-- last_run_area: 3 -->
+<!-- last_run_at: 2026-06-08T10:00:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -14,6 +14,16 @@
 | ✔️ done | 61 (closed-pending-verification 11건 코드 교차검증 후 done 확정 — Area 6, 06-06T10:00) |
 | ❌ rejected | 3 |
 
+> **Area 3 UX/기능 감사 (2026-06-08T10:00):**
+> - **방법**: baseline `npm ci`+tsc --noEmit PASS + build PASS(360 modules, _worker.js 5.0MB). 코드베이스 Area 3 **6회차** — 기존 각도(dead-filter·하드캡·getElementById silent-fail·catch-UX#362·CSV일관성#363) 고갈 → **덜 다룬 4각도**로 전환: (A1)파괴적 액션 confirm 부재 (A2)변경(생성/수정/삭제) 후 목록 미갱신·성공피드백 부재 (B1)폼 클라이언트 검증 피드백 부재 (B2)페이지간 journey 단절(navigation 링크). 병렬 Explore 2개 + owner 직접 스팟체크(오탐 차단).
+> - **🟢 net-new 0건 — 4각도 전부 이미 성숙/일관 구현**:
+>   - **A1 파괴적 confirm**: 삭제/취소/승인거부/비활성 mutation 전수 — 전부 `showConfirm(...,{danger:true})` 또는 네이티브 `confirm`/`prompt` 게이트 보유. peer 정상: orders.js:1255·clients.js:399·purchaseOrders.js:440·taxInvoices.js:734·leaves.js:254·approvals.js:388·paymentRequests.js:152. **owner 스팟체크 검증**: storageZones.js:209·priceLists.js:161(에이전트 미언급 파일)도 showConfirm+load+showToast 정상 = 0건 결론 신뢰.
+>   - **A2 변경후 갱신/피드백**: mutation 성공 후 전부 `load()/reload()` 재호출 또는 modal 재로드 + `showToast`. 오탐 드롭: equipment.js:626(`openDetail`)·inspections.js:173(`loadTemplates`)·payroll.js:468(`payrollLoad`)·payrollRates.js:159·purchaseOrderForm.js:824(:742 GET 재로드) — 전부 갱신됨.
+>   - **B1 폼 검증**: purchaseOrderForm/quotationForm/purchaseRequestForm/taxInvoices/cashReceipts/hr 등 주요 폼 전부 필수값·금액·수량·날짜·품목행 검증 + `showToast` 피드백 보유(quotationForm.js:489-504·purchaseOrderForm.js:698). 저가치 드롭: cashReceipts.js:204(totalAmount 자동계산)·purchaseRequestForm 공급업체 선택(null 허용).
+>   - **B2 journey**: 핵심 경로 연결됨 — 주문↔견적·거래처→원장(clientDetail→/ledger)·주문→카드현황(/cards?search). 제외: 견적상세→전환주문 역링크(단방향 정책 허용)·세금계산서상세→원장(목록 거래처 클릭으로 해결)·F-004류 미세 인터랙션.
+> - **이상 없음**: open auto-improve **13건**(new 11 + approved 2: #342/#340) stats 정합 재확인. Area 3 4각도 성숙도 높음 → 차기 6회차+는 한계효용 체감, 신규 페이지 추가분 표면에 집중 권장.
+> - 자동 수정 0건(Area 3 제안 전용), 신규 이슈 0건(4각도 전부 일관 구현), 오탐/저가치 드롭 다수
+>
 > **Area 2 코드 품질 (2026-06-08T06:00):**
 > - **방법**: baseline `npm ci`+tsc --noEmit PASS + build PASS(360 modules, _worker.js 5.0MB). Area 2 **7회차** — IDOR 비대칭(#356~#361 10모듈 클러스터)·N+1·entity_id·silent-fail(getElementById) 고갈 → **덜 다룬 2각도**로 전환: (A)floating-promise/누락 await·백엔드 에러삼킴 (B)금액 계산 정확성(VAT 반올림·balance 부호·NaN)·models.ts↔스키마 drift. 병렬 Explore 2개 + 발견 전수 owner 직접 코드·런타임 검증(오탐 차단).
 > - **🟢 net-new 0건 — 두 각도 발견 전부 오탐/의도적 best-effort**:
