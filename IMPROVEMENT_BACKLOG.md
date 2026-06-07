@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 4 -->
-<!-- last_run_at: 2026-06-07T14:00:00+09:00 -->
+<!-- last_run_area: 5 -->
+<!-- last_run_at: 2026-06-07T18:00:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,12 +8,19 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | 10 (open 실측 — #364/#363/#362/#361/#360/#359/#358/#350/#341/#336) |
+| 🆕 new | 11 (open 실측 — #365/#364/#363/#362/#361/#360/#359/#358/#350/#341/#336) |
 | ✅ approved | 2 (I-032/#342 — 전용 세션 대기 / I-030/#340 — 👍 확인, 급성 RED 해소·잔여만 대기) |
 | 👀 reviewed | 0 |
 | ✔️ done | 61 (closed-pending-verification 11건 코드 교차검증 후 done 확정 — Area 6, 06-06T10:00) |
 | ❌ rejected | 3 |
 
+> **Area 5 보안 (2026-06-07T18:00):**
+> - **방법**: baseline `npm ci`+tsc --noEmit PASS + build PASS(360 modules, exit0). Area 5 6회+ 감사로 한계효용 체감 + 최근 코드커밋이 전부 직전 감사완료분(#345~#356) → **덜 다룬 각도**로 전환: IDOR 비대칭(list-vs-detail)은 10모듈 고갈 → (1)mass-assignment (2)권한검사 누락 (3)인증/토큰 (4)**파일 다운로드 IDOR** (5)PII노출. 병렬 Explore 2개 + 발견 전수 owner 직접 코드 검증(오탐 차단).
+> - **🐛 신규 이슈 #365 (HIGH bug) — `/api/files/*` 범용 R2 프록시 격리 우회**: `files.ts:12` GET이 `authMiddleware`만(임의 역할) + path-traversal 가드뿐, **DB조회·entity·소유권·역할 검증 전무**로 생 R2 키 서빙. 같은 `R2_BUCKET`의 전용 다운로드는 격리 적용(po `/receipts/:id/statement` entityFilter·aiAnalysis `/:id/download` entityFilter #339·cardExpenses `/receipt-image/*` ADMIN/MANAGER게이트)인데 `/api/files/<같은키>`로 **전부 우회** → 임의 역할(STAFF 포함)·타법인이 거래명세서·영수증·소스 다운로드. 라이브 마운트(index.tsx:310). **프론트 참조 0건이나** 도달성 규칙(#334)의 "orphan=무해"는 UI트리거형 격리갭 한정 — 범용 파일서빙 프록시는 **인증된 직접 HTTP호출이 공격표면**(키는 구조적+응답노출). 역할 우회(STAFF→ADMIN/MANAGER 영수증)는 단일법인에서도 즉시 발화. 부수: cardExpenses `/receipt-image/*`도 raw키·entity 미격리(ADMIN/MANAGER 게이트라 우선순위 낮음). **자동수정 안 함**(라우트 삭제 or 인증격리 시맨틱 변경 + egress 차단 런타임 검증불가, #356/#358/#360/#361 동일 사유).
+> - **🔴 오탐 차단 (에이전트 보고 → owner 코드 반증)**: ① insuranceReports.ts:72 "rrn 평문 노출 HIGH" → **오탐**: rrn은 `employees.resident_number`(`encryptPII` AES-256-GCM, `aes:` 접두)에서 복사된 **암호문** 반환 + report 레벨 `entityFilter`(:68)로 IDOR 아님. ② tax-agent PII 마스킹 불일치 → maskRrn 정상동작·ADMIN unmask 의도적, 버그 아님. ③ portal 토큰 재사용(expires_at만, revocation 부재) → 매직링크 설계 선택, LOW·기능변경이라 미보고.
+> - **이상 없음**: mass-assignment 전수(users/clients/items/orders/permissions/hr PUT·PATCH 전부 화이트리스트 or ADMIN eid=0 분기, #349 hr.ts 기수정) net-new 0. 권한검사(role변경/permission/reset-pw/approve 전부 requireRole+소유권) 적정. JWT HS256·exp·시크릿폴백 0(`c.env.X||'lit'` grep 0). 포털 client_id 격리·rate-limit(index.tsx:240-246 전역)·XSS(window.escapeHtml 전역) 정상.
+> - 자동 수정 0건(net-new는 인증격리 시맨틱+런타임 검증불가), 신규 이슈 1건(#365), 오탐 3건 차단
+>
 > **Area 4 데이터 정합성 (2026-06-07T14:00):**
 > - **방법**: ground-truth — 297개 마이그레이션 로컬 D1(node:sqlite v22) 전량 적용(**FAIL 0**, 171테이블/511인덱스). 마이그레이션 표면이 직전 Area 4(0300)와 동일 → **덜 다룬 각도**로 전환: (1)트리거·DEFAULT↔CHECK 충돌 (2)FK cascade 부모DELETE 고아 (3)denormalized 집계필드 drift(prior 5사이클 미감사). baseline `npm ci`+tsc PASS + build PASS(360 modules, exit0). 에이전트 보고 owner 직접 코드 검증.
 > - **🟡 신규 이슈 #364 (LOW cleanup) — 죽은 레거시 테이블 inventory_items 잔존**: 현행 재고는 `inventory`(quantity/safe_stock)인데 origin 레거시 `inventory_items`(current_stock/safety_stock, 0003 생성)가 **빈 채로 스키마 잔존** + **src 참조 0건**(grep). `0134`(2026-04-15)이 4개 자식 FK를 inventory_items→items로 이미 재지정 후 비어있음 확인. 런타임 영향 없음(데이터 정합성 버그 아님)이나 **split-brain 혼선 위험**(이름이 재고 테이블처럼 보여 향후 오용 시 재고 데이터 분기). **자동수정 안 함**(테이블 DROP=스키마 변경, 프로덕션 0행 확인 후 권장).
