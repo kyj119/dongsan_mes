@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 3 -->
-<!-- last_run_at: 2026-06-06T22:00:00+09:00 -->
+<!-- last_run_area: 4 -->
+<!-- last_run_at: 2026-06-07T14:00:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,12 +8,20 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | 9 (open 실측 — #363/#362/#361/#360/#359/#358/#350/#341/#336) |
+| 🆕 new | 10 (open 실측 — #364/#363/#362/#361/#360/#359/#358/#350/#341/#336) |
 | ✅ approved | 2 (I-032/#342 — 전용 세션 대기 / I-030/#340 — 👍 확인, 급성 RED 해소·잔여만 대기) |
 | 👀 reviewed | 0 |
 | ✔️ done | 61 (closed-pending-verification 11건 코드 교차검증 후 done 확정 — Area 6, 06-06T10:00) |
 | ❌ rejected | 3 |
 
+> **Area 4 데이터 정합성 (2026-06-07T14:00):**
+> - **방법**: ground-truth — 297개 마이그레이션 로컬 D1(node:sqlite v22) 전량 적용(**FAIL 0**, 171테이블/511인덱스). 마이그레이션 표면이 직전 Area 4(0300)와 동일 → **덜 다룬 각도**로 전환: (1)트리거·DEFAULT↔CHECK 충돌 (2)FK cascade 부모DELETE 고아 (3)denormalized 집계필드 drift(prior 5사이클 미감사). baseline `npm ci`+tsc PASS + build PASS(360 modules, exit0). 에이전트 보고 owner 직접 코드 검증.
+> - **🟡 신규 이슈 #364 (LOW cleanup) — 죽은 레거시 테이블 inventory_items 잔존**: 현행 재고는 `inventory`(quantity/safe_stock)인데 origin 레거시 `inventory_items`(current_stock/safety_stock, 0003 생성)가 **빈 채로 스키마 잔존** + **src 참조 0건**(grep). `0134`(2026-04-15)이 4개 자식 FK를 inventory_items→items로 이미 재지정 후 비어있음 확인. 런타임 영향 없음(데이터 정합성 버그 아님)이나 **split-brain 혼선 위험**(이름이 재고 테이블처럼 보여 향후 오용 시 재고 데이터 분기). **자동수정 안 함**(테이블 DROP=스키마 변경, 프로덕션 0행 확인 후 권장).
+> - **🔵 denormalized 잔액 정합 — 완전 대칭 확인(clean)**: `clients.balance`(미수금)·`purchase_balance`(매입채무) 갱신 전 경로 정/역 대칭 — 주문BILLING(core.ts:565↔636)·세금계산서 직접발행(taxInvoices:997↔1809)·입금(AR:639↔684)·감액(AR:1211↔1278)·발주확정(PO:1251↔1257)·지급(AP:403↔518)·매입감액(AP:596↔664). soft/hard delete 이중차감은 status=CANCELLED 필터로 차단. **영구 drift 가능성 없음**(방어코드 우수).
+> - **🔵 재고 수량 정합(clean)**: `inventory.quantity` UPDATE 7경로 대칭 ledger — 입고+(inventory.ts:306/623)·출고-(stockShip:51)·반품복원+(returns:127)·자동차감-및역+(autoDeduct:186/230)·실사조정(inventoryCount:245)·입고확정(PO:1533). MAX(0,...) 클램프는 방어적.
+> - **이상 없음**: 트리거 0개. DEFAULT↔CHECK 충돌 0건. FK 151 NO_ACTION이나 주요 aggregate(orders/PO/tax_invoices/PR/quotations) DELETE는 자식 명시적 cascade 정리(orders/core.ts:1895-1918 18테이블)로 고아 방어 + D1 기본 FK enforce. DELETE-고아 각도는 저수율(소유 자식 대부분 CASCADE 정의 또는 코드 정리).
+> - 자동 수정 0건(net-new 정합성 버그 없음·#364는 스키마 DROP), 신규 이슈 1건(#364), denorm/재고 2각도 clean 확인
+>
 > **Area 3 UX/기능 감사 (2026-06-06T22:00):**
 > - **방법**: baseline `npm ci`+tsc --noEmit PASS + build PASS(360 modules, 5.0MB). 코드베이스 Area 3 **5회차** — dead-filter·하드캡·getElementById silent-fail은 고갈 → **덜 다룬 각도**(catch 블록 로드실패 UX·CSV 일관성·journey)에 병렬 Explore 2개(영업·회계 / 생산·재고·HR·대시보드). 에이전트 보고 전수 owner 직접 코드 검증(오탐 차단).
 > - **🐛 신규 이슈 #362 (MED bug) — 주요 데이터 로드 실패 시 스켈레톤 영구 잔류**: ① `dashboard.js:203-205` `loadDashboardStats` catch가 `console.error`만 → `/api/dashboard/stats` 실패 시 `kpiArea` `.ds-skeleton` 미교체(복구는 `if(success)` `:38` 안에만) = **랜딩 대시보드 영구 스켈레톤** ② `paymentRequests.js:34-36` 동일 패턴(skeleton 잔류). 사용자는 "무한 로딩"으로 오인. peer 정상사례 `quotations.js:72`(에러행)·`receiving.js:156`(에러행)·`cashSchedule.js:40`(showToast). **이전 Area 3는 silent-fail을 ID/param 불일치 각도로만 봤고 catch-UX는 미감사 각도**. **자동수정 안 함**(user-facing 에러 UI 추가=Area 3 제안범위, 문구/재시도 디자인 owner 위임).
