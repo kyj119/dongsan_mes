@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 1 -->
-<!-- last_run_at: 2026-06-08T02:00:00+09:00 -->
+<!-- last_run_area: 2 -->
+<!-- last_run_at: 2026-06-08T06:00:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -14,6 +14,15 @@
 | ✔️ done | 61 (closed-pending-verification 11건 코드 교차검증 후 done 확정 — Area 6, 06-06T10:00) |
 | ❌ rejected | 3 |
 
+> **Area 2 코드 품질 (2026-06-08T06:00):**
+> - **방법**: baseline `npm ci`+tsc --noEmit PASS + build PASS(360 modules, _worker.js 5.0MB). Area 2 **7회차** — IDOR 비대칭(#356~#361 10모듈 클러스터)·N+1·entity_id·silent-fail(getElementById) 고갈 → **덜 다룬 2각도**로 전환: (A)floating-promise/누락 await·백엔드 에러삼킴 (B)금액 계산 정확성(VAT 반올림·balance 부호·NaN)·models.ts↔스키마 drift. 병렬 Explore 2개 + 발견 전수 owner 직접 코드·런타임 검증(오탐 차단).
+> - **🟢 net-new 0건 — 두 각도 발견 전부 오탐/의도적 best-effort**:
+>   - **금액 각도(B)**: VAT 부동소수점 누적(quotations.ts:226/389) → **오탐**: `itemAmount`가 `:223`에서 `Math.round(/100)*100`로 **100원 단위 선반올림** → `×0.1`은 항상 10의 배수(정수). node 2000건 누적 스트레스 `Number.isInteger=true` 실증 = drift 불가. quotations↔taxInvoices "반올림 불일치"도 견적은 추정·세금계산서는 `Math.round`+`:946` 정합보정(`total≠supply+tax면 강제정렬`)이라 발행단계 권위계산 정상. balance 부호오류 → **오탐**(Area 4가 정/역 대칭 검증 완료, 추측 시나리오). NaN → **오탐**(`Number(x)||0`이 NaN→0 가드). 타입 drift(number↔REAL/INTEGER) → 정상 TS 관행, 버그 아님.
+>   - **에러삼킴 각도(A)**: purchaseInvoices.ts:150/190 catch 무시 → **의도적 best-effort**(`:131` "best-effort, receive Phase4와 동일 정책" + `:164-166` 주석 명시). 핵심 write(PO item 단가·inventory valuation·PO총액·invoice INSERT)는 try **밖**, 부차 denormalized 물질화(supplier 단가이력·cash_schedule)만 best-effort. quotations.ts:111 lazy-expiry `.catch(()=>{})` = 다음 조회 재시도(무해). inspections.ts:269·taxInvoices.ts:1047 = batch 실패 후 **보상(rollback) DELETE catch**(보상 자체 실패는 더 할 게 없음, 정상).
+> - **🧬 오탐 패턴 2건 신설**: ① "VAT/금액 부동소수점 누적 → 신고 오차"는 **금액이 사전에 원/100원 단위 정수로 반올림되면 ×세율이 정수배라 drift 불가** → 보고 전 누적 직전 값이 정수인지 확인 필수(node Number.isInteger 실증). ② "catch가 success 숨김 → 데이터손실"은 **try 안이 부차 denormalized 물질화(가격이력·cash_schedule 등 재계산 가능 파생)이고 주석에 best-effort 명시**면 의도적 설계 → 핵심 비즈니스 write가 try 밖이면 오탐. 보상(rollback) catch도 정상. FP표 2행 + auto-improve SKILL(Area 2) 갱신.
+> - **이상 없음**: open auto-improve **13건**(new 11 + approved 2: #342/#340) stats 정합 재확인. baseline PASS.
+> - 자동 수정 0건(net-new 없음), 신규 이슈 0건(전부 오탐/의도적 best-effort), 오탐 패턴 2건 신설(스킬+FP표 갱신)
+>
 > **Area 1 프로덕션 헬스 (2026-06-08T02:00):**
 > - **방법**: GitHub Actions 최근 30런 분석 + 로컬 verify + 실패 런 잡 로그 실측. egress는 여전히 Cloudflare 엣지 403 차단(`curl /api/health`→**403** 0.51s, `/`→**403** 0.08s) → 샌드박스 IP 차단이라 직접 20-API 호출 불가, E2E(실제 prod 페이지 브라우저 검증)를 헬스 신호로 사용.
 > - **🟢 파이프라인 사실상 green (1건 transient 자가복구)**: 최근 30런 = Deploy **#158~170 전부 success** · E2E **#178~192 중 #189만 failure 나머지 success** · Daily D1 Backup #20/#21 success. queued/stuck run 0건. **최신 런(E2E #192 id 27087003269 08:10, Deploy #170 08:09) 전부 green** — HEAD 889ca7a(직전 Area 6 커밋) 기준.
@@ -463,6 +472,8 @@
 | 비원자적 다중 INSERT "고아 가능" (확정 실패 트리거 부재) | 부모→자식 별도 `.run()`이라도 자식 테이블에 CHECK/NOT-NULL 위반 등 **확정적 실패 트리거가 없으면** 거의 모든 다중문 코드에 해당하는 일반적 비원자성일 뿐 = 노이즈. #355류로 보고하려면 100% 실패하는 구체 트리거(CHECK 누락 리터럴 등) 실증 필요. order_items는 CHECK 0·전컬럼 nullable이라 견적전환/복사 비원자성은 오탐 | Area 4 (2026-06-06) |
 | rate-limit "누락" 보고 (라우트 파일에 inline 미들웨어 없음) | rate limit은 라우트 파일이 아니라 `index.tsx`에서 `app.use('/api/...', rateLimitMiddleware(...))`로 **앱 레벨 전역 등록**(240-246: auth/portal login·users/portal change-pw·refresh·self-auth·verify-document·verify-token). 라우트 핸들러만 보면 항상 inline 부재로 오탐 — 보고 전 index.tsx 등록처 grep 필수 | Area 5 (2026-06-06) |
 | "escapeHtml 헬퍼 전무(`grep -c escapeHtml`=0) → XSS" | `layout.ts:1185`가 `window.escapeHtml`를 **전역 정의**(+`portalLayout.ts` 포털용) → 모든 스크립트가 로컬 정의 없이 전역 헬퍼 호출 가능. 파일에 escapeHtml 미정의/미참조 ≠ 취약. 올바른 판정: 실제 `innerHTML` 싱크의 보간값이 (a)사용자 제어 free-text **이고** (b)미escape인지 확인. `Number()` 강제 숫자·시스템 채번코드(order_number 등)·서버 하드코딩 문자열은 싱크 아님 | Area 6 (2026-06-06) |
+| VAT/금액 "부동소수점 누적 → 신고 오차" | 금액이 누적 **직전에 원/100원 단위 정수로 반올림**되면(예: quotations.ts:223 `Math.round(itemAmount/100)*100`) `×세율(0.1)`은 항상 10의 배수=정수라 IEEE754 drift 불가. node `Number.isInteger(누적값)` 실증으로 반증 필수. 견적(추정)↔세금계산서(`Math.round`+정합보정 `total≠supply+tax면 강제정렬`) 반올림 "불일치"도 발행단계가 권위계산이라 버그 아님. number↔REAL/INTEGER 타입표기 차이도 정상 TS | Area 2 (2026-06-08) |
+| catch가 success 숨김 "데이터손실" (best-effort 물질화/보상) | try 안이 **부차 denormalized 물질화**(가격이력·cash_schedule 등 언제든 재계산 가능한 파생 데이터)이고 **주석에 best-effort 명시**(예: purchaseInvoices.ts:131/164 "receive Phase4와 동일 정책")면 의도적 설계. 핵심 비즈니스 write(주문/인보이스/잔액)가 try **밖**이면 오탐. batch 실패 후 보상(rollback) DELETE의 `.catch(()=>{})`도 보상 자체 실패는 더 할 게 없으므로 정상. 보고하려면 **핵심 mutation**이 삼켜지고 사용자에게 success로 보이는 구체 경로 실증 필요 | Area 2 (2026-06-08) |
 
 ---
 

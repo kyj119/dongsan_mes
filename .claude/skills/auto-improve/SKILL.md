@@ -53,6 +53,10 @@ description: 자율 점검·개선 에이전트. 6개 영역을 순환하며 실
 >
 > **⚠️ 도달성 규칙 예외 — 범용 서빙 프록시 (Area 5·6 #365)**: 위 "0건=dead code"는 **UI 트리거형 격리 갭**(특정 화면에서만 호출되는 `/:id` 핸들러)에만 적용. **클라이언트 제공 키로 raw 리소스를 서빙하는 범용 엔드포인트**(R2 파일 프록시 `files.ts` GET `/*`·generic download-by-key)는 프론트 참조 0건이어도 **인증된 직접 HTTP 호출이 곧 공격표면**(키가 구조적이거나 다른 API 응답에 노출돼 추측·도달 가능) → dead-code로 강등하지 말고 보안 이슈로 보고. 판별 기준: 핸들러가 (a)UI 컨텍스트 없이 임의 식별자/키만으로 (b)DB·entity·역할 검증 없이 리소스를 반환하면 도달성 무관하게 공격표면.
 
+> **🚫 오탐 — 금액 부동소수점 누적 (Area 2 2026-06-08, 7회차)**: "VAT/금액을 반올림 없이 누적해 원 단위 신고 오차"는 **금액이 누적 직전에 정수로 반올림**되면(예: `quotations.ts:223` `Math.round(itemAmount/100)*100` → 100원 단위 정수, `×0.1`=10의 배수=정수) IEEE754 drift 불가. 보고 전 `node -e "...Number.isInteger(누적값)"`로 반증 필수. 견적(추정 금액)↔세금계산서(`Math.round` per-item + `total≠supply+tax면 강제정렬` 정합보정) "반올림 불일치"도 발행단계가 권위계산이라 버그 아님. models.ts `number`↔스키마 `REAL/INTEGER` 타입 표기차도 정상 TS(D1 바인딩 관행).
+
+> **🚫 오탐 — best-effort catch "데이터손실" (Area 2 2026-06-08)**: catch가 에러를 잡고 `{success:true}` 반환해도, try 안이 **부차 denormalized 물질화**(가격이력·cash_schedule 등 언제든 재계산 가능한 파생)이고 **주석에 best-effort 명시**(예: `purchaseInvoices.ts:131/164` "receive Phase4와 동일 정책")면 의도적 설계. **핵심 비즈니스 write(주문/인보이스/잔액/재고)가 try 밖**이면 오탐. batch 실패 후 보상(rollback) `DELETE ... .catch(()=>{})`도 보상 자체 실패는 더 할 게 없어 정상. 보고하려면 **핵심 mutation**이 삼켜지고도 success로 응답하는 구체 경로를 실증.
+
 ---
 
 ### 🟢 Area 3: UX/기능 감사 (가장 중요)
