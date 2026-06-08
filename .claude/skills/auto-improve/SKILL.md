@@ -100,6 +100,10 @@ description: 자율 점검·개선 에이전트. 6개 영역을 순환하며 실
 > **🧭 Ground-truth 기법 (Area 4)**: 프로덕션 D1 직접 접근 불가 시 → `migrations/*.sql` 전체를 로컬 D1에 적용해 **실제 해석 스키마**(테이블/인덱스/UNIQUE) 확보 후 정적분석과 교차검증.
 > 인덱스·UNIQUE 누락 후보는 대부분 오탐(컬럼 존재하나 hot query path 아님 / 이미 복합 인덱스 존재) → ground truth로 반증 필수. (Area 4에서 tax_invoices·shipments 2건 오탐 차단)
 
+> **🕒 업무일자 UTC vs KST 탐지 규칙 (Area 4 #366, 2026-06-08)**: SQLite `date('now')`/`datetime('now')`는 **UTC**라, **업무 의미를 갖는 날짜**(처분일·주문일·자동완료일·납기경과·연체판정 등)에 raw로 쓰면 KST 00:00~09:00 입력 건이 하루 전일로 어긋남. 같은 코드베이스가 KST를 알고 있음이 증거 = `hr.ts:801` `Date.now()+9h`·`hr.ts:816` `'now','+9 hours'`(근태) → KST가 의도인데 나머지 미보정 = 불일치.
+> - **우선순위**: 저장되는 DATE 컬럼(`disposed_at`/`order_date`/`auto_complete_date`)은 시간정보 없어 **영구 off-by-one**(회계 귀속·매출 집계 직결) > 비교 필터(매 쿼리 재계산되어 9시 이후 정상화, 일시적).
+> - 탐지: `grep -rn "date('now')\|datetime('now')" src/routes` 후 각 사용처가 (a)업무일자(비즈니스 의미) 인지 (b)순수 감사 타임스탬프(`created_at`/`updated_at`=UTC 정상)인지 분류. 업무일자는 `'+9 hours'` 보정 필요. **자동수정 금지**(날짜 시맨틱=비즈니스 로직, 사용처 분류 선행, 잘못 보정 시 UTC 감사로그 훼손).
+
 ---
 
 ### 🟣 Area 5: 보안 + 인프라
@@ -121,6 +125,7 @@ description: 자율 점검·개선 에이전트. 6개 영역을 순환하며 실
 - 이전 #314가 "하드코딩 없음" 단언으로 놓쳤던 패턴 → 매 Area 5 반복
 
 > **🔓 IDOR 비대칭 탐지 규칙 (Area 5 #349/#356)**: 같은 라우터에서 **목록(list)은 `entityFilter` 적용**하면서 **단건 조회/변경(`GET/PUT/PATCH/DELETE /:id`, submit/approve/cancel)은 `WHERE id = ?`만** 쓰면 = 의도적 전역공유 아니라 **격리 누락 버그**. list가 entityFilter를 쓰는 게 격리 의도의 증거. approve/차감이 호출자 `getEntityId(c)`를 쓰면 정합성 훼손까지. **단, 보고 전 도달성 선검증(#334)** — 호출처 0건이면 dead-code. 6모듈 클러스터(#356)를 이 규칙으로 발견. egress 차단 환경에선 런타임 검증 불가라 자동수정 금지, 이슈 보고.
+> - **변종 — 클라이언트 플래그로 필터 무력화(#368)**: list가 필터를 갖춰도 `?all_entities=1`류 쿼리 파라미터를 **역할 검증 없이** 신뢰해 필터를 끄면 우회(storageZones.ts:13/21, STAFF가 전 법인 열람). 비대칭 규칙은 "list가 필터를 쓴다"가 전제라 이 변종을 놓침 → `grep -rn "c.req.query(" src/routes` 중 entity/필터 분기를 제어하는 파라미터가 ADMIN/`getEntityId===0` 게이팅 없이 동작하는지 점검. (security-audit SKILL에 상세 codify)
 
 **오탐 제외**:
 - `webhooks.ts allowedPrefixes` Popbill IP 목록 → 의도적 보안 화이트리스트, 하드코딩 아님

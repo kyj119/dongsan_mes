@@ -59,6 +59,10 @@ review-checklist과의 차이: review-checklist은 **변경 파일** 코드 리�
 > - **⚠️ 도달성 규칙 예외 (#365)**: "호출처 0건 = 무해"는 **UI 트리거형 격리 갭**(`/:id` 핸들러가 특정 화면에서만 호출)에 한정. **클라이언트 제공 키로 raw 리소스를 서빙하는 범용 엔드포인트**(R2 파일 프록시 `files.ts` GET `/*`, generic download-by-key 등)는 프론트 참조 0건이어도 **인증된 직접 HTTP 호출 자체가 공격표면** — 키가 구조적이거나 다른 응답에 노출되면 도달 가능. 이런 경우 0-refs로 dead-code 강등 금지, 보안 이슈로 보고.
 > - grep 출발점: 라우터에서 `entityFilter(c,` 쓰는 파일을 찾고 → 같은 파일 `/:id` 핸들러의 `WHERE id = ?` 가 `ef.clause`/`ef.params` 없이 단독인지 대조.
 
+> **🔓 클라이언트 제공 플래그로 entity 필터 무력화 (Area 5 #368, 2026-06-08)**: IDOR 비대칭의 변종 — 목록 핸들러가 entity 필터를 **갖추고 있어도**, 클라이언트가 보낸 쿼리 파라미터(`?all_entities=1` 등)를 **역할 검증 없이 신뢰**해 필터를 끄면 우회 가능. `storageZones.ts:13` `c.req.query('all_entities')==='1'` → `:21` entity 필터 생략에 role 게이트 0 → 임의 STAFF가 전 법인 데이터 열람.
+> - 비대칭 규칙(list-vs-detail)은 "list가 필터를 쓴다"가 전제라 **이 변종을 놓침**(list가 필터를 쓰되 클라가 끌 수 있음).
+> - 탐지: `grep -rn "c.req.query(" src/routes` 중 결과가 **entity/필터 분기를 제어**하는 것을 찾아, 그 분기 앞에 `requireRole`/ADMIN·`getEntityId(c)===0` 게이트가 있는지 확인. 관리 페이지 전용 파라미터(`all_entities`, `include_inactive`+격리 등)는 ADMIN/MANAGER로 게이팅돼야 함. 프론트가 "관리 페이지에서만 보낸다"는 건 보호가 아님(직접 HTTP 호출로 복제 가능).
+
 ## 실행 워크플로우
 
 ### 전체 점검

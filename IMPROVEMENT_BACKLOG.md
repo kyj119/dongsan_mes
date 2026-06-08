@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 5 -->
-<!-- last_run_at: 2026-06-08T18:00:00+09:00 -->
+<!-- last_run_area: 6 -->
+<!-- last_run_at: 2026-06-08T22:00:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -14,6 +14,15 @@
 | ✔️ done | 61 (closed-pending-verification 11건 코드 교차검증 후 done 확정 — Area 6, 06-06T10:00) |
 | ❌ rejected | 3 |
 
+> **Area 6 자기 진화 (2026-06-08T22:00):**
+> - **GitHub ↔ 백로그 전수 재동기 — 변경 0건(clean)**: open auto-improve **16건** 실측 = new 14(#368/#367/#366/#365/#364/#363/#362/#361/#360/#359/#358/#350/#341/#336) + approved 2(#342/#340) = 백로그 stats 정합. closed 목록 최신 updated_at=**#356(06-06T00:13)** → 직전 Area 6(06-07T22:00) 이후 **신규 close 0건**. done 61/rejected 3 유지. 이관할 항목 없음. baseline `npm ci`+tsc --noEmit PASS.
+> - **🧬 탐지 규칙 강화 2건 (직전 Area 6 이후 사이클의 net-new 패턴 codify, owner 직접 코드 검증 후)**:
+>   - **#368 클라이언트 플래그로 entity 필터 무력화 — IDOR 비대칭의 변종**: list가 `entityFilter`를 갖춰도 `?all_entities=1`류 쿼리 파라미터를 **역할 검증 없이** 신뢰해 필터를 끄면 우회. 기존 list-vs-detail 규칙은 "list가 필터를 쓴다"가 전제라 이 변종을 놓침. **ground-truth 검증**: `storageZones.ts:13/21` GET 핸들러가 authMiddleware만(role 0) + `all_entities`는 전 코드베이스에서 storageZones 단독(grep)=고유 갭. → security-audit SKILL(신규 callout) + auto-improve SKILL(Area 5 IDOR 규칙 변종 sub-bullet) codify. 탐지 출발점 = `grep -rn "c.req.query(" src/routes` 중 entity/필터 분기 제어 파라미터의 게이팅 여부.
+>   - **#366 업무일자 UTC vs KST 탐지 규칙 — Area 4 신규 각도**: SQLite `date('now')`(UTC)를 업무 의미 날짜에 raw 사용 시 KST 00:00~09:00 입력 건 하루 어긋남. **ground-truth 검증**: `hr.ts:801/816`은 `+9 hours` 보정(KST 의도 확립)인데 `fixedAssets.ts:153 disposed_at`·`orders/operations.ts:103 order_date`는 raw `date('now')` = 불일치 실측. 저장 DATE(영구 off-by-one, 회계 귀속) > 비교 필터(일시) 우선순위. → auto-improve SKILL(Area 4 callout) codify. 탐지 = `grep -rn "date('now')" src/routes` 후 업무일자/감사타임스탬프 분류.
+> - **오탐 패턴 신규 0건**: 두 패턴은 **true-positive 탐지 규칙**(이슈 #368/#366으로 이미 보고됨)이라 FP표가 아닌 스킬 callout에 등재. 기존 FP표 11개 패턴 유효성 재확인(신규 오탐 보고 0).
+> - **이상 없음**: approved 2건(#342 설비 entity_id 전용세션 / #340 E2E 픽스처 전용세션)은 Area 6 범위 밖 유지. 직전 사이클(Area 1~5, 06-08) 산출 — Area 2 FP패턴 2건·Area 5 #367 CSV injection은 이미 스킬 반영 완료(중복 codify 회피).
+> - 자동 수정 0건(메타 정리·문서), 신규 이슈 0건, done 이관 0건(신규 close 없음), 탐지 규칙 강화 2건(#368 스킬 2개 + #366 스킬 1개)
+>
 > **Area 5 보안 (2026-06-08T18:00):**
 > - **방법**: baseline `npm ci`+tsc --noEmit PASS. Area 5 **7회차** — IDOR 비대칭(#356~#365 10모듈)·SQLi·rate·XSS·PII·파일프록시(#365) 고갈 → **덜 다룬 4각도**로 전환: (A)엔티티 컨텍스트 전환 인가(entityId=0/default_entity_id 전환 자체 게이팅 = 멀티테넌시 토대) (B)자기서비스 권한상승(hrSelf/profile/change-pw/reset) (C)JWT 발급·갱신 (D)CSV formula injection + 에러/로그 민감정보. 병렬 Explore 2개 + 발견 전수 owner 직접 코드 검증(오탐 차단).
 > - **🐛 신규 이슈 #367 (MED bug) — CSV Formula Injection 전 내보내기 미가드**: CSV 헬퍼 4개(`csv.ts:3-10` generateCsv escape·`:60-67` escapeCsvField·`payroll/tax-agent.ts:21-28` csvField·`shipments.ts:849-852` 한진 esc) 전부 선행 `=+-@`(탭/CR) 미이스케이프 → 거래처명·품목명·주소·적요 등 **자유입력**이 셀에 그대로 들어가 다운로드 PC Excel에서 `=HYPERLINK(...)`/DDE 수식 실행. generateCsv 소비처 8라우트(PO/orders/생산실적/손익/원장AR·AP/납기분석/reports). 발화는 ①주입+②권한자 export+Excel오픈 조건이나 HYPERLINK류 유출은 무경고 가능 → MED. **자동수정 안 함**(4구현 일괄 + **금융 음수금액 텍스트화 회귀 위험**(숫자-안전 가드 `isNaN(Number(str))` 필요) + egress export 검증불가).
