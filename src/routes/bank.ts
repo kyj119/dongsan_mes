@@ -11,6 +11,7 @@ import { entityFilter, getEntityId } from '../utils/entityFilter'
 import { getEntityCorpNum } from '../utils/entitySettings'
 import { loadProvision, agingCategoryToBucket, effectiveLossRate } from '../utils/provisionMatrix'
 import { computeExpectedPaymentDate } from '../utils/paymentSchedule'
+import { escapeCsvField } from '../utils/csv'
 
 const bankRouter = new Hono<HonoEnv>()
 
@@ -1520,12 +1521,13 @@ bankRouter.get('/transactions/export', requireRole('ADMIN'), async (c) => {
         typeMap[row.transaction_type] || row.transaction_type,
         row.amount,
         row.balance_after ?? '',
-        (row.counterpart_name || '').replace(/"/g, '""'),
-        (row.description || '').replace(/"/g, '""'),
+        row.counterpart_name || '',
+        row.description || '',
         statusMap[row.match_status] || row.match_status,
-        (row.matched_client_name || '').replace(/"/g, '""')
+        row.matched_client_name || ''
       ]
-      csv += fields.map(f => `"${f}"`).join(',') + '\n'
+      // #367: 공용 formula injection 가드 + CSV 이스케이프(필요시 따옴표 감쌈)
+      csv += fields.map(escapeCsvField).join(',') + '\n'
     }
 
     return new Response(csv, {

@@ -6,6 +6,7 @@ import { Hono } from 'hono'
 import type { HonoEnv } from '../../types/env'
 import { authMiddleware, requireRole } from '../../middleware/auth'
 import { entityFilter } from '../../utils/entityFilter'
+import { escapeCsvField } from '../../utils/csv'
 
 const taxAgentRouter = new Hono<HonoEnv>()
 taxAgentRouter.use('/*', authMiddleware)
@@ -17,14 +18,9 @@ taxAgentRouter.use('/*', authMiddleware)
 //       한국 엑셀 기본 인코딩(CP949)에서도 한글이 깨지지 않도록 UTF-8 BOM 포함.
 // ============================================================================
 
-/** CSV 한 필드를 안전하게 이스케이프 — 쉼표/큰따옴표/개행 포함 시 따옴표 감쌈 */
+/** CSV 한 필드 이스케이프 — #367 공용 가드(formula injection)로 위임 */
 function csvField(v: any): string {
-  if (v == null) return ''
-  const s = String(v)
-  if (s.includes(',') || s.includes('"') || s.includes('\n') || s.includes('\r')) {
-    return '"' + s.replace(/"/g, '""') + '"'
-  }
-  return s
+  return escapeCsvField(v)
 }
 
 /** 주민등록번호 마스킹 (뒷 6자리 ***) — 세무사 CSV는 원본 필요하지만, ADMIN이 아닐 때는 마스킹 */

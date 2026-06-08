@@ -1,15 +1,7 @@
 export function generateCsv(headers: string[], rows: (string | number | null | undefined)[][]): string {
   const BOM = '\uFEFF'  // UTF-8 BOM for Excel compatibility
-  const escape = (val: any) => {
-    if (val == null) return ''
-    const str = String(val)
-    if (str.includes(',') || str.includes('"') || str.includes('\n')) {
-      return '"' + str.replace(/"/g, '""') + '"'
-    }
-    return str
-  }
-  const headerLine = headers.map(escape).join(',')
-  const dataLines = rows.map(row => row.map(escape).join(','))
+  const headerLine = headers.map(escapeCsvField).join(',')
+  const dataLines = rows.map(row => row.map(escapeCsvField).join(','))
   return BOM + [headerLine, ...dataLines].join('\r\n')
 }
 
@@ -57,9 +49,18 @@ export function csvStreamResponse(filename: string, headers: string[], rows: (st
   })
 }
 
-function escapeCsvField(val: any): string {
+/**
+ * CSV 한 필드 이스케이프 + #367 formula(수식) injection 가드 — 전 CSV 내보내기의 단일 소스.
+ * - 선행 =,+,-,@,탭,CR 인 '비숫자' 문자열 앞에 ' 프리픽스 → Excel/스프레드시트의 수식 실행
+ *   (=HYPERLINK/WEBSERVICE 데이터유출·DDE) 차단.
+ * - 음수/콤마 포함 숫자(-1000, -1,234)는 Number로 파싱되어 보존 → 금융 CSV 텍스트화 회귀 방지.
+ */
+export function escapeCsvField(val: any): string {
   if (val == null) return ''
-  const str = String(val)
+  let str = String(val)
+  if (typeof val !== 'number' && /^[=+\-@\t\r]/.test(str) && isNaN(Number(str.replace(/,/g, '')))) {
+    str = "'" + str
+  }
   if (str.includes(',') || str.includes('"') || str.includes('\n')) {
     return '"' + str.replace(/"/g, '""') + '"'
   }

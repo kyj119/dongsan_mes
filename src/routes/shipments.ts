@@ -8,6 +8,7 @@ import { entityFilter, getEntityId } from '../utils/entityFilter'
 import { getNextSeqNumber, withSeqRetry } from '../utils/sequenceGenerator'
 import { deductStockLinesOnShip } from '../utils/stockShip'
 import { getEntityCompanyInfo } from '../utils/entitySettings'
+import { escapeCsvField } from '../utils/csv'
 
 const shipmentsRouter = new Hono<HonoEnv>()
 shipmentsRouter.use('/*', authMiddleware, requirePagePermission('/shipments'))
@@ -846,10 +847,7 @@ shipmentsRouter.post('/hanjin-export', async (c) => {
     const company = await getEntityCompanyInfo(c.env.DB, getEntityId(c) || 1)
 
     const header = ['출고번호', '보내시는 분', '보내시는 분 전화', '보내는분담당자', '보내는분담당자HP', '보내는분총주소', '받으시는 분', '받으시는 분 전화', '받는분담당자', '받는분우편번호', '받는분총주소', '내품명1']
-    const esc = (v: unknown) => {
-      const s = (v ?? '').toString()
-      return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s
-    }
+    const esc = escapeCsvField  // #367: 공용 formula injection 가드 적용
     const rows = targets.map((t) => [
       `H-${dateStr}-${t.client_id ?? ''}`,        // 출고번호(import 1:1 매칭 키)
       company.company_name || '',
