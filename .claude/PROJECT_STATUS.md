@@ -1,6 +1,6 @@
 # PROJECT_STATUS.md — 프로젝트 현황판
 
-> **최종 업데이트**: 2026-06-05
+> **최종 업데이트**: 2026-06-08
 > 완료 이력 → `PROJECT_STATUS_ARCHIVE.md` (매 세션 읽을 필요 없음, 필요 시 참조)
 
 ---
@@ -53,8 +53,10 @@
 ### [GitHub 이슈 백로그]
 - **✅ 처리완료·배포·close(2026-06-05)**: #355·356·335·351·352·357·349 + **#343·#345·#353·#354·#346**(커밋 `0c04fad`) + **#344**(커밋 `0ce9c42`) — dead-filter(생산보드/원가/메시지/활동로그/매입)·CSV(cashSchedule·검수)·검수 공급업체 드롭다운·연차 부서필터·휴가 날짜·불량률→검수 드릴다운·**미사용수당 정합버그 수정** + **포털 셀프서비스**(세금계산서 다운로드/연도필터/페이지네이션·미수금 aging·재주문 모달). prod 배포(`webapp-9i0.pages.dev`), 사내 9페이지 스모크 통과·포털 신규 라우트 401 확인. **▶ 포털 실동작은 포털 계정 실사용 검증 권장**
 - **N+1 검증세션(2026-06-06)**: **#341 cashFlow projection 집계(72→6쿼리)·#350 payroll hoist+exists/empRow prefetch 검증·배포 완료**(커밋 `1737ebc`·`fa4d196`, dep `fdf92b4c`). 검증법=cashFlow는 프로덕션 baseline 비교(months 1/3/6/12 완전일치), payroll은 로컬 48명 더미월 실행→DELETE 롤백→재실행 비교(48행 완전일치). **잔여=write batch**(purchaseRequests PR→PO·import루프·sync-attendance·PO품목·child INSERT): baseline 비교 구조적 불가(실행=상태변경) → 스테이징/실데이터 스냅샷 준비 후 별도 세션. **로컬 D1에 cashFlow/orders/payments 데이터 0건**이라 read 검증은 프로덕션 의존
-- **보류**: #342(equipment entity_id, 다법인 도입 직전 전용세션), #340(E2E CI 인프라·외부의존)
+- **✅ 이슈 일괄 처리·배포·코멘트(2026-06-08, close는 owner)**: 11건. **IDOR 보안**(#349/#356 entityFilter 패턴): #358(approvals 10핸들러)·#360(quotations GET/PUT/DELETE/:id+convert·cardExpenses cards)·#361(autoProcess 4, /pending 동일필터라 폴링안전)·#365(files.ts GET→requireRole ADMIN)·#368(storage-zones all_entities ADMIN/MANAGER 게이트+/:id 격리)+(정합)PO `/receipts` 목록 entityFilter. **개선**: #359(지출결의서 page/limit+COUNT 페이지네이션)·#362(dashboard·지출결의서 로드실패 스켈레톤 에러UI)·#363(발주요청·입고이력·자금계획 /export/csv, 전부 entityFilter)·#364(inventory_items DROP 마이그0301 **prod 적용완료**, 0행 확인). **#367** CSV formula injection 공용가드(escapeCsvField 단일화, bank.ts 포함 5개 escaper 위임, 숫자 보존). **#366** 업무일자 UTC→KST(+9h): ①회계일 저장(disposed_at·복사 order_date) ②비교필터 카테고리A 11곳(delivery/expected/연체/오늘납기). 커밋 `f9c7ee4`·`1a1247e`·`f216721`·`a6bd8cd`. 단일법인 동작무변(다법인 전환 시 격리 발화). 메모리 [feedback-deploy-push-divergence] 추가
+- **보류**: #342(equipment entity_id, 다법인 도입 직전 전용세션), #340(E2E CI 인프라·외부의존), #341·#350 잔여(write경로 N+1, 실데이터 검증세션)
 - **owner 운영**: #336 프로덕션 admin/password 교체(+CI SMOKE/E2E 시크릿 갱신)
+- **GitHub 후속(미착수)**: #366 카테고리B(대시보드 created_at "오늘"KPI, created_at +9h 래핑 필요·업무시간 정상이라 저우선)·발주목록 `/export/csv`+발주 목록 핸들러 entityFilter(#358계열 신규 발견, 별도 이슈화 권장)·#358~368 owner close 검토 대기
 
 ---
 
