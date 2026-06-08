@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 3 -->
-<!-- last_run_at: 2026-06-08T10:00:00+09:00 -->
+<!-- last_run_area: 4 -->
+<!-- last_run_at: 2026-06-08T14:00:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,12 +8,20 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | 11 (open 실측 — #365/#364/#363/#362/#361/#360/#359/#358/#350/#341/#336) |
+| 🆕 new | 12 (open 실측 — #366/#365/#364/#363/#362/#361/#360/#359/#358/#350/#341/#336) |
 | ✅ approved | 2 (I-032/#342 — 전용 세션 대기 / I-030/#340 — 👍 확인, 급성 RED 해소·잔여만 대기) |
 | 👀 reviewed | 0 |
 | ✔️ done | 61 (closed-pending-verification 11건 코드 교차검증 후 done 확정 — Area 6, 06-06T10:00) |
 | ❌ rejected | 3 |
 
+> **Area 4 데이터 정합성 (2026-06-08T14:00):**
+> - **방법**: ground-truth — 297 마이그레이션 로컬 D1(node:sqlite v22) 전량 적용(**FAIL 0**, 172테이블/511인덱스) + write-path 교차검증. Area 4 **7회차** — 기존 각도(마이그레이션 적용·CHECK↔코드·balance/재고 대칭·FK cascade·트리거·비원자 고아#FP·dead table#364) 고갈 → **ground-truth가 놓치는 사각 + 덜 다룬 각도**로 전환: (A)`ADD COLUMN NOT NULL`(no DEFAULT) 프로덕션 실패 (B)집계 합계 denorm drift (C)UNIQUE vs soft-delete 재삽입 충돌 (D)timezone UTC vs KST 업무일자 (E)entity_id DEFAULT 일관성. 병렬 Explore 2개 + 발견 전수 owner 직접 코드 검증(오탐 차단).
+> - **🐛 신규 이슈 #366 (MED bug) — 업무일자 UTC `date('now')` 사용으로 KST 새벽 입력 건 하루 어긋남**: SQLite `'now'`는 UTC인데 **업무 의미 날짜**가 raw `date('now')`로 기록/비교됨. ① **저장(영구 off-by-one)**: `fixedAssets.ts:153 disposed_at`(처분일=회계인식일)·`orders/operations.ts:105 order_date`(복사, 매출귀속)·`shipments.ts:449/814·orders/queries.ts:250 auto_complete_date`. ② **비교 필터(일시)**: PO 납기경과(`purchaseOrders/core.ts:78/135/271`)·AR 연체(`accounts-receivable.ts:1145`)·카드 납기창(`cards/queries.ts:271-430`)·dashboard "오늘". **핵심 증거 = 불일치**: `hr.ts:800-801`은 `// KST 기준 오늘 (UTC+9)` + `todayKst`/`'+9 hours'`로 보정(근태) → KST 의도 확립인데 나머지 미보정. 발화는 KST 00:00~09:00(37.5%) 한정이나 ①저장값은 영구·회계귀속 직결. **자동수정 안 함**(날짜 시맨틱=비즈니스 로직 변경 + 사용처 분류 선행 + egress 차단 검증불가, 잘못 보정 시 정상 UTC 감사로그 훼손 위험).
+> - **🔴 오탐 차단 (에이전트 보고 → owner 코드 반증)**: ① **nts_approval_number UNIQUE vs CANCELLED** → 오탐: `0283` 주석 "국세청 승인번호 **중복수집 방지**" 무결성 가드. NTS 발행마다 고유번호 → CANCELLED 원본(원번호)·재발행(새번호) 같은 번호 공유 불가 → 충돌 불성립. ② **shipment_number UNIQUE vs CANCELLED** → 오탐: 순차채번, 취소후 재출고는 새번호, 재사용 경로 0. ③ **집계 합계 denorm drift** → 오탐(비원자성 기등록 FP): orders/quotations/PO/tax_invoices 자식 변경은 **PUT 전체재구성 1경로뿐**(개별 item PATCH 부재)+부모 합계 자식기준 재계산. "batch실패/동시접근 drift"는 확정 실패 트리거 없는 일반 비원자성. tax_invoices `/direct`도 "헤더후 자식" 의도패턴(`:1052` 주석).
+> - **🔵 entity_id DEFAULT 일관성 clean**: ground-truth 전수 — entity_id 보유 97테이블 **전부 DEFAULT 1**(비-1 default 0건). 예외 `entity_settings`(엔티티 자체)·`activity_logs`/`migration_logs`(감사로그 entity무관)뿐. 트랜잭션 INSERT는 `getEntityId` 명시주입.
+> - **이상 없음**: 마이그레이션 297 FAIL 0, `ADD COLUMN NOT NULL`(no DEFAULT) **0건**(프로덕션 마이그 실패 리스크 없음), 트리거 0개. leave_requests UNIQUE 재신청 충돌은 `leaves.ts:372` catch로 graceful + 의도적 dedup 가능성 → 저가치 드롭.
+> - 자동 수정 0건(net-new는 날짜 시맨틱 변경·검증불가), 신규 이슈 1건(#366), 오탐 3건 차단, entity_id 일관성 clean
+>
 > **Area 3 UX/기능 감사 (2026-06-08T10:00):**
 > - **방법**: baseline `npm ci`+tsc --noEmit PASS + build PASS(360 modules, _worker.js 5.0MB). 코드베이스 Area 3 **6회차** — 기존 각도(dead-filter·하드캡·getElementById silent-fail·catch-UX#362·CSV일관성#363) 고갈 → **덜 다룬 4각도**로 전환: (A1)파괴적 액션 confirm 부재 (A2)변경(생성/수정/삭제) 후 목록 미갱신·성공피드백 부재 (B1)폼 클라이언트 검증 피드백 부재 (B2)페이지간 journey 단절(navigation 링크). 병렬 Explore 2개 + owner 직접 스팟체크(오탐 차단).
 > - **🟢 net-new 0건 — 4각도 전부 이미 성숙/일관 구현**:
