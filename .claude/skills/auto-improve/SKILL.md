@@ -57,6 +57,10 @@ description: 자율 점검·개선 에이전트. 6개 영역을 순환하며 실
 
 > **🚫 오탐 — best-effort catch "데이터손실" (Area 2 2026-06-08)**: catch가 에러를 잡고 `{success:true}` 반환해도, try 안이 **부차 denormalized 물질화**(가격이력·cash_schedule 등 언제든 재계산 가능한 파생)이고 **주석에 best-effort 명시**(예: `purchaseInvoices.ts:131/164` "receive Phase4와 동일 정책")면 의도적 설계. **핵심 비즈니스 write(주문/인보이스/잔액/재고)가 try 밖**이면 오탐. batch 실패 후 보상(rollback) `DELETE ... .catch(()=>{})`도 보상 자체 실패는 더 할 게 없어 정상. 보고하려면 **핵심 mutation**이 삼켜지고도 success로 응답하는 구체 경로를 실증.
 
+> **⚖️ 트랜잭션 원자성 — 보고 기준 (Area 2 #369, 2026-06-09)**: "핵심 write가 `DB.batch()` 없이 분리 await 실행 → 부분실패 시 고아/불일치"는 **대부분 오탐**. 분리가 강제된 정상 패턴부터 배제:
+> - **구조적 강제 = 정상**: 부모 INSERT가 `result.meta.last_row_id`를 받아 자식 INSERT에 써야 하면 부모는 batch 밖에 둘 수밖에 없음(bank.ts apply matched_payment_id·shipments.ts 출고헤더·orders/core.ts 주문헤더). 중간에 READ가 끼어(`balance_after` 산출용 잔량조회 등) batch를 둘로 나눠야 하는 것도 구조적. 이들은 단순 "2번째 write 실패하면?"이라 **확정 트리거 없는 일반 비원자성 = 노이즈**.
+> - **보고 가능 = ① 확정 재현 트리거 + ② 회피 가능성**: ① 멱등 가드 부재로 **재시도/중복제출이 destructive write(재고차감·금액차감)를 반복**하는 구체 경로(부분실패→500→목록 잔류→재클릭, 또는 버튼 비활성화 없는 더블클릭). ② 분리가 last_row_id 강제가 아니라 read 끼임이면 **read를 메모리 산출로 대체해 단일 batch화 가능** → 설계로 고칠 수 있는 진짜 갭. #369(inventory inspection-decision CANCELLED)가 둘 다 충족: 멱등 가드 0 + balance_after 메모리 산출로 원자화 가능. 보고 전 (a)해당 mutation이 재고/금액/잔액 변경인지 (b)선행상태 가드(`WHERE status!=...`)·프론트 버튼 재진입 가드가 있는지 확인.
+
 ---
 
 ### 🟢 Area 3: UX/기능 감사 (가장 중요)

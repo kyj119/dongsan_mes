@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 1 -->
-<!-- last_run_at: 2026-06-09T02:00:00+09:00 -->
+<!-- last_run_area: 2 -->
+<!-- last_run_at: 2026-06-09T06:00:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,12 +8,21 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | 14 (open 실측 — #368/#367/#366/#365/#364/#363/#362/#361/#360/#359/#358/#350/#341/#336) |
+| 🆕 new | 15 (open 실측 — #369/#368/#367/#366/#365/#364/#363/#362/#361/#360/#359/#358/#350/#341/#336) |
 | ✅ approved | 2 (I-032/#342 — 전용 세션 대기 / I-030/#340 — 👍 확인, 급성 RED 해소·잔여만 대기) |
 | 👀 reviewed | 0 |
 | ✔️ done | 61 (closed-pending-verification 11건 코드 교차검증 후 done 확정 — Area 6, 06-06T10:00) |
 | ❌ rejected | 3 |
 
+> **Area 2 코드 품질 (2026-06-09T06:00):**
+> - **방법**: baseline `npm ci`+tsc --noEmit PASS. Area 2 **8회차** — 기존 각도(IDOR 비대칭 #356~#361 11모듈·N+1 #341/#350·entity_id·silent-fail·금액·best-effort catch) 고갈 → **덜 다룬 2각도**로 전환: (A)트랜잭션 원자성(핵심 write가 batch 없이 분리 실행되어 부분실패 시 정합성 손상) (B)프론트↔백엔드 데이터 계약 불일치(응답 필드/파라미터/형식). 병렬 Explore 2개 + 발견 전수 owner 직접 코드 검증(오탐 차단).
+> - **🐛 신규 이슈 #369 (MED bug) — 입고검수 전량취소 멱등 가드 부재 + 비원자 실행 → 재고 이중차감**: `inventory.ts:393-466` `PATCH /receipts/:id/inspection-decision` CANCELLED 분기가 ① **멱등 가드 전무**(핸들러 진입 시 receipt 현재 상태 미검사, 차감/최종UPDATE에 `status!='CANCELLED'` 가드 없음) + ② **비원자**(재고차감 batch→잔량read→역분개 batch→receipt UPDATE 3분리, read 끼어 단일 batch 불가). **확정 재현 경로**: (A)부분실패—차감 commit 후 역분개/receipt UPDATE 실패→500→receipt PENDING_REVIEW 잔류(`:382` 목록에 남음)→프론트(inspections.js:396 에러시 reload 안함, 버튼 잔류)→재클릭 시 **재차감**. (B)중복제출—`inspectionsDecide`(:403) 요청중 버튼 비활성화·재진입 가드 없음→더블클릭 2회 차감. 영향: `inventory.quantity` 과차감(MAX(0) 클램프하나 잔여재고 있으면 실수량 초과 차감)+중복 RECEIPT_CANCEL 분개. **자동수정 안 함**(멱등가드·원자화=비즈니스 로직/실행 시맨틱 변경+egress 차단 검증불가). 수정방향: balance_after 메모리 산출로 단일 batch 원자화 + 선행상태 가드.
+> - **🔴 트랜잭션 원자성 오탐 차단 (에이전트 5건 보고 → owner 코드 반증)**: ① **bank.ts apply(`:1006~1029`)** → cash_schedule 후속 UPDATE는 `try/catch`+주석 "보조 연동, 실패해도 입금 적용 영향없음"=best-effort FP / matched_payment_id는 batch `last_row_id` 의존이라 **구조적 batch 밖 강제**(payment·잔액·match_status는 이미 단일 batch 원자) → 저가치. ② **shipments.ts POST(`:379~458`)** → 출고헤더만 분리(shipmentId=last_row_id 의존), 카드/items/auto_complete는 **이미 단일 batch 원자**(주석 #195) → 구조적 강제+확정 트리거 없음=노이즈. ③ **orders/core.ts POST** → 헤더 INSERT 분리(last_row_id)+quotations `.catch()` best-effort+order_items batch → 동일 구조 노이즈. ④⑤ bank batch-apply 루프도 동일 best-effort. **inventory #369만 net-new인 이유**: 분리가 last_row_id 강제가 아니라 read 끼임(메모리 산출로 회피 가능) + **멱등 가드 부재라는 확정 트리거** 보유.
+> - **🔵 API 계약 정합 — clean**: 프론트↔라우트 페이지네이션 필드(`page/limit/total/total_pages`)·응답 형식(`{success,data,pagination}`)·필터 파라미터·배열/객체 구조 전수 일치(purchaseOrders/clients/activityLogs/cardExpenses/costs/emails/inventory/kakao 등). 프론트도 `||0`/`?.`/기본값 방어 패턴. net-new 0건.
+> - **🧬 탐지 규칙 강화 1건 (트랜잭션 원자성 오탐 패턴 codify)**: "다중 write가 batch 없이 분리 실행→부분실패 시 고아/불일치"는 **분리가 `last_row_id` 의존(자식 INSERT가 부모 auto-increment id 필요)이거나 중간 read 끼임이면 구조적 강제**라 일반 비원자성 노이즈. **보고 기준 = 확정 재현 트리거**(멱등 가드 부재로 재시도/중복제출이 destructive write를 반복하는 구체 경로) **+ 회피 가능성**(read를 메모리 산출로 대체해 단일 batch화 가능). 단순 "2번째 write 실패하면?"은 FP. → auto-improve SKILL(Area 2) callout 추가.
+> - **이상 없음**: open auto-improve **16건**(new 15 + approved 2: #342/#340) stats 정합. baseline PASS.
+> - 자동 수정 0건(net-new는 멱등/원자 시맨틱 변경·검증불가), 신규 이슈 1건(#369), 트랜잭션 원자성 오탐 4건 차단, API 계약 clean, 탐지 규칙 강화 1건
+>
 > **Area 1 프로덕션 헬스 (2026-06-09T02:00):**
 > - **방법**: GitHub Actions 최근 30런(actions_list) 분석 + 로컬 verify + 최신 런 잡 단계 실측. egress는 여전히 Cloudflare 엣지 403 차단(`curl /api/health`→**403** 0.25s, `/`→**403** 0.61s) = 샌드박스 IP 차단이라 직접 20-API 호출 불가, E2E(실제 prod 페이지 브라우저 검증)를 헬스 신호로 사용.
 > - **🟢 파이프라인 사실상 green (30런 중 29 success / 1 failure)**: Deploy **#173~180 전부 success** · E2E **#193~203 전부 success** · Daily D1 Backup #22 success. 유일 failure = **E2E #189(e4772b2, 06-07T00:18)** — 직전 Area 1에서 분석한 **#340 패턴**(crud-order prod 직접 주문생성 hard-fail + authedPage cold-start flaky). **동일 커밋 e4772b2의 다음 런 E2E #190(schedule 04:00)=success** → transient 자가복구, 코드 회귀 아님. 이후 #191~203(13런) 연속 green. queued/stuck 0건.
