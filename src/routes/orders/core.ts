@@ -389,7 +389,7 @@ ordersCoreRouter.get('/', async (c) => {
 
     // 출고지연: 납기일 경과 + 미출고(SHIPPED/COMPLETED/취소/견적 제외)
     if (overdue === '1') {
-      whereClauses.push("o.delivery_date IS NOT NULL AND o.delivery_date != '' AND o.delivery_date < date('now') AND o.status NOT IN ('SHIPPED','COMPLETED','CANCELLED','QUOTATION')")
+      whereClauses.push("o.delivery_date IS NOT NULL AND o.delivery_date != '' AND o.delivery_date < date('now', '+9 hours') AND o.status NOT IN ('SHIPPED','COMPLETED','CANCELLED','QUOTATION')")
     }
 
     if (whereClauses.length > 0) {
@@ -482,7 +482,7 @@ ordersCoreRouter.get('/', async (c) => {
     }
 
     if (overdue === '1') {
-      countWhereClauses.push("o.delivery_date IS NOT NULL AND o.delivery_date != '' AND o.delivery_date < date('now') AND o.status NOT IN ('SHIPPED','COMPLETED','CANCELLED','QUOTATION')")
+      countWhereClauses.push("o.delivery_date IS NOT NULL AND o.delivery_date != '' AND o.delivery_date < date('now', '+9 hours') AND o.status NOT IN ('SHIPPED','COMPLETED','CANCELLED','QUOTATION')")
     }
 
     if (countWhereClauses.length > 0) {

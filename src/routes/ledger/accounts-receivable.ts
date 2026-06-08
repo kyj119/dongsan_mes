@@ -1142,7 +1142,7 @@ arRouter.get('/overdue', async (c) => {
       JOIN clients c ON o.client_id = c.id
       WHERE o.billing_status = 'BILLED'
         AND (o.billing_status != 'PAID' OR o.billing_status IS NULL)
-        AND date(o.billed_at, '+' || COALESCE(c.overdue_alert_days, 30) || ' days') < date('now')
+        AND date(o.billed_at, '+' || COALESCE(c.overdue_alert_days, 30) || ' days') < date('now', '+9 hours')
         ${overdueEf}
       GROUP BY c.id, c.client_name, c.overdue_alert_days
       ORDER BY overdue_amount DESC

@@ -45,7 +45,7 @@ dashboardRouter.get('/stats', async (c) => {
         (SELECT COUNT(*) FROM orders WHERE created_at >= date('now', 'start of month', '-1 month') AND created_at < date('now', 'start of month') AND status != 'CANCELLED'${ef.clause}) as prev_month_order_count,
         (SELECT SUM(final_amount) FROM orders WHERE created_at >= date('now', '-7 days') AND status != 'CANCELLED'${ef.clause}) as week_revenue,
         (SELECT COUNT(*) FROM cards WHERE status = 'PRINT_DONE'${cf.clause}) as shipment_ready_count,
-        (SELECT COUNT(*) FROM orders WHERE delivery_date = date('now') AND status NOT IN ('SHIPPED','CANCELLED')${ef.clause}) as today_shipment_due,
+        (SELECT COUNT(*) FROM orders WHERE delivery_date = date('now', '+9 hours') AND status NOT IN ('SHIPPED','CANCELLED')${ef.clause}) as today_shipment_due,
         (SELECT COUNT(*) FROM orders WHERE priority='URGENT' AND status NOT IN ('SHIPPED','CANCELLED')${ef.clause}) as urgent_count,
         (SELECT COUNT(*) FROM orders WHERE id IN (SELECT DISTINCT order_id FROM order_items WHERE price_status = 'PENDING') AND status NOT IN ('CANCELLED','SHIPPED')${ef.clause}) as pending_price_orders,
         (SELECT COALESCE(SUM(final_amount),0) FROM orders WHERE billing_status='BILLED' AND strftime('%Y-%m',billed_at)=strftime('%Y-%m','now')${ef.clause}) as month_billed,
@@ -395,7 +395,7 @@ dashboardRouter.get('/overdue-pos', async (c) => {
       LEFT JOIN clients c ON po.supplier_id = c.id
       WHERE po.status IN ('CONFIRMED', 'PARTIAL_RECEIVED')
         AND po.expected_date IS NOT NULL
-        AND po.expected_date < date('now')${ef.clause}
+        AND po.expected_date < date('now', '+9 hours')${ef.clause}
       ORDER BY po.expected_date ASC
       LIMIT 20
     `).bind(...ef.params).all()
@@ -447,7 +447,7 @@ dashboardRouter.get('/stats/today-due', async (c) => {
         c.client_name
       FROM orders o
       LEFT JOIN clients c ON o.client_id = c.id
-      WHERE o.delivery_date <= date('now')
+      WHERE o.delivery_date <= date('now', '+9 hours')
         AND o.status NOT IN ('SHIPPED', 'CANCELLED', 'QUOTATION')${ef.clause}
       ORDER BY o.delivery_date ASC, o.priority DESC
       LIMIT 20

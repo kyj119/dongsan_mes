@@ -75,7 +75,7 @@ poCoreRouter.get('/', async (c) => {
     }
 
     if (overdue === '1') {
-      whereClauses.push("po.status IN ('CONFIRMED', 'PARTIAL_RECEIVED') AND po.expected_date IS NOT NULL AND po.expected_date < date('now')")
+      whereClauses.push("po.status IN ('CONFIRMED', 'PARTIAL_RECEIVED') AND po.expected_date IS NOT NULL AND po.expected_date < date('now', '+9 hours')")
     }
 
     if (ef.clause) {
@@ -132,7 +132,7 @@ poCoreRouter.get('/', async (c) => {
       countParams.push(parseInt(supplier_id))
     }
     if (overdue === '1') {
-      countWhereClauses.push("po.status IN ('CONFIRMED', 'PARTIAL_RECEIVED') AND po.expected_date IS NOT NULL AND po.expected_date < date('now')")
+      countWhereClauses.push("po.status IN ('CONFIRMED', 'PARTIAL_RECEIVED') AND po.expected_date IS NOT NULL AND po.expected_date < date('now', '+9 hours')")
     }
     if (ef.clause) {
       countWhereClauses.push(ef.clause.replace(' AND ', ''))
@@ -189,7 +189,7 @@ poCoreRouter.get('/stats', async (c) => {
     const overdue = await c.env.DB.prepare(`
       SELECT COUNT(*) as count FROM purchase_orders
       WHERE status IN ('CONFIRMED', 'PARTIAL_RECEIVED')
-        AND expected_date IS NOT NULL AND expected_date < date('now')${efAnd}
+        AND expected_date IS NOT NULL AND expected_date < date('now', '+9 hours')${efAnd}
     `).bind(...ef.params).first<{ count: number }>()
     stats.overdue = overdue?.count || 0
 
@@ -198,8 +198,8 @@ poCoreRouter.get('/stats', async (c) => {
       SELECT COUNT(*) as count FROM purchase_orders
       WHERE status IN ('CONFIRMED', 'PARTIAL_RECEIVED')
         AND expected_date IS NOT NULL
-        AND expected_date >= date('now')
-        AND expected_date <= date('now', '+3 days')${efAnd}
+        AND expected_date >= date('now', '+9 hours')
+        AND expected_date <= date('now', '+9 hours', '+3 days')${efAnd}
     `).bind(...ef.params).first<{ count: number }>()
     stats.upcoming = upcoming?.count || 0
 
@@ -268,7 +268,7 @@ poCoreRouter.get('/export/csv', async (c) => {
     if (date_to) { whereClauses.push('po.order_date <= ?'); params.push(date_to) }
     if (supplier_id) { whereClauses.push('po.supplier_id = ?'); params.push(parseInt(supplier_id)) }
     if (overdue === '1') {
-      whereClauses.push("po.status IN ('CONFIRMED', 'PARTIAL_RECEIVED') AND po.expected_date IS NOT NULL AND po.expected_date < date('now')")
+      whereClauses.push("po.status IN ('CONFIRMED', 'PARTIAL_RECEIVED') AND po.expected_date IS NOT NULL AND po.expected_date < date('now', '+9 hours')")
     }
     if (whereClauses.length > 0) query += ' WHERE ' + whereClauses.join(' AND ')
     query += ' ORDER BY po.created_at DESC LIMIT 5000'

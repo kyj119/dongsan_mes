@@ -170,7 +170,7 @@ aiInsights.get('/bottleneck', async (c) => {
     SELECT e.id, e.name, e.daily_capacity,
       COUNT(c.id) as queue_depth,
       COALESCE(SUM(c.estimated_minutes), 0) as total_queue_minutes,
-      SUM(CASE WHEN c.delivery_date <= date('now', '+2 days') THEN 1 ELSE 0 END) as urgent_count,
+      SUM(CASE WHEN c.delivery_date <= date('now', '+9 hours', '+2 days') THEN 1 ELSE 0 END) as urgent_count,
       MIN(c.delivery_date) as earliest_deadline
     FROM equipment e
     LEFT JOIN cards c ON c.equipment_id = e.id AND c.status = 'PRINTING'
