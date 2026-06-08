@@ -150,7 +150,7 @@ fixedAssets.patch('/:id/dispose', requireRole('ADMIN'), async (c) => {
   const { disposal_amount, disposal_reason } = await c.req.json()
 
   await c.env.DB.prepare(`
-    UPDATE fixed_assets SET status = 'DISPOSED', disposed_at = date('now'),
+    UPDATE fixed_assets SET status = 'DISPOSED', disposed_at = date('now', '+9 hours'),
       disposal_amount = ?, disposal_reason = ?, updated_at = CURRENT_TIMESTAMP
     WHERE id = ?
   `).bind(disposal_amount || 0, disposal_reason || null, id).run()

@@ -100,7 +100,7 @@ ordersOpsRouter.post('/:id/copy', requireRole('ADMIN', 'MANAGER', 'DESIGNER'), a
         notes, internal_notes, created_by,
         priority, delivery_method, delivery_time,
         contact_phone, contact_mobile, shipping_payment, entity_id
-      ) VALUES (?, ?, 'CONFIRMED', ?, ?, ?, ?, ?, date('now'), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, 'CONFIRMED', ?, ?, ?, ?, ?, date('now', '+9 hours'), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).bind(
       newOrderNumber,
       original.client_id,

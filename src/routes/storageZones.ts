@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
-import { getEntityId } from '../utils/entityFilter'
+import { getEntityId, entityFilter } from '../utils/entityFilter'
 
 const storageZonesRouter = new Hono<HonoEnv>()
 storageZonesRouter.use('/*', authMiddleware)
@@ -10,7 +10,9 @@ storageZonesRouter.use('/*', authMiddleware)
 storageZonesRouter.get('/', async (c) => {
   try {
     const includeInactive = c.req.query('include_inactive') === '1'
-    const allEntities = c.req.query('all_entities') === '1'
+    // #368: all_entities(전 법인 열람)는 ADMIN/MANAGER만 신뢰 — 일반 사용자가 파라미터로 격리 우회 차단
+    const user = c.get('user')
+    const allEntities = c.req.query('all_entities') === '1' && (user?.role === 'ADMIN' || user?.role === 'MANAGER')
     const entityId = getEntityId(c)
     const params: any[] = []
     let where = ''
@@ -63,12 +65,13 @@ storageZonesRouter.get('/my', async (c) => {
 storageZonesRouter.get('/:id', async (c) => {
   try {
     const id = c.req.param('id')
+    const ef = entityFilter(c, 'sz')  // #368: 단건 조회 법인 격리 (list로 id 수집 후 직접 호출 차단)
     const zone = await c.env.DB.prepare(`
       SELECT sz.*, u.name as manager_name
       FROM storage_zones sz
       LEFT JOIN users u ON sz.manager_id = u.id
-      WHERE sz.id = ?
-    `).bind(id).first()
+      WHERE sz.id = ?${ef.clause}
+    `).bind(id, ...ef.params).first()
 
     if (!zone) return c.json({ success: false, error: '구역을 찾을 수 없습니다.' }, 404)
 
@@ -158,10 +161,12 @@ storageZonesRouter.put('/:id', requireRole('ADMIN'), async (c) => {
       is_default?: number
     }>()
 
-    const zone = await c.env.DB.prepare('SELECT id, entity_id FROM storage_zones WHERE id = ?').bind(id).first<{ id: number; entity_id: number }>()
+    const ef = entityFilter(c)  // #368: 타법인 구역 수정 차단
+    const zone = await c.env.DB.prepare('SELECT id, entity_id FROM storage_zones WHERE id = ?' + ef.clause).bind(id, ...ef.params).first<{ id: number; entity_id: number }>()
     if (!zone) return c.json({ success: false, error: '구역을 찾을 수 없습니다.' }, 404)
 
-    const entityId = body.entity_id ?? zone.entity_id
+    // #368: entity_id 재배정은 전체모드(0)에서만 허용 — 비전체모드 ADMIN은 타법인 이관 불가
+    const entityId = (getEntityId(c) === 0 && body.entity_id != null) ? body.entity_id : zone.entity_id
 
     // 이름 중복 체크 (같은 법인 내, 자기 자신 제외)
     if (body.zone_name) {
@@ -214,7 +219,8 @@ storageZonesRouter.delete('/:id', requireRole('ADMIN'), async (c) => {
   try {
     const id = c.req.param('id')
 
-    const zone = await c.env.DB.prepare('SELECT id, zone_name FROM storage_zones WHERE id = ?').bind(id).first<{ id: number; zone_name: string }>()
+    const ef = entityFilter(c)  // #368: 타법인 구역 삭제 차단
+    const zone = await c.env.DB.prepare('SELECT id, zone_name FROM storage_zones WHERE id = ?' + ef.clause).bind(id, ...ef.params).first<{ id: number; zone_name: string }>()
     if (!zone) return c.json({ success: false, error: '구역을 찾을 수 없습니다.' }, 404)
 
     // 배정된 품목 확인
