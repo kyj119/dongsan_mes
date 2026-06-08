@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 4 -->
-<!-- last_run_at: 2026-06-08T14:00:00+09:00 -->
+<!-- last_run_area: 5 -->
+<!-- last_run_at: 2026-06-08T18:00:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,12 +8,20 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | 12 (open 실측 — #366/#365/#364/#363/#362/#361/#360/#359/#358/#350/#341/#336) |
+| 🆕 new | 14 (open 실측 — #368/#367/#366/#365/#364/#363/#362/#361/#360/#359/#358/#350/#341/#336) |
 | ✅ approved | 2 (I-032/#342 — 전용 세션 대기 / I-030/#340 — 👍 확인, 급성 RED 해소·잔여만 대기) |
 | 👀 reviewed | 0 |
 | ✔️ done | 61 (closed-pending-verification 11건 코드 교차검증 후 done 확정 — Area 6, 06-06T10:00) |
 | ❌ rejected | 3 |
 
+> **Area 5 보안 (2026-06-08T18:00):**
+> - **방법**: baseline `npm ci`+tsc --noEmit PASS. Area 5 **7회차** — IDOR 비대칭(#356~#365 10모듈)·SQLi·rate·XSS·PII·파일프록시(#365) 고갈 → **덜 다룬 4각도**로 전환: (A)엔티티 컨텍스트 전환 인가(entityId=0/default_entity_id 전환 자체 게이팅 = 멀티테넌시 토대) (B)자기서비스 권한상승(hrSelf/profile/change-pw/reset) (C)JWT 발급·갱신 (D)CSV formula injection + 에러/로그 민감정보. 병렬 Explore 2개 + 발견 전수 owner 직접 코드 검증(오탐 차단).
+> - **🐛 신규 이슈 #367 (MED bug) — CSV Formula Injection 전 내보내기 미가드**: CSV 헬퍼 4개(`csv.ts:3-10` generateCsv escape·`:60-67` escapeCsvField·`payroll/tax-agent.ts:21-28` csvField·`shipments.ts:849-852` 한진 esc) 전부 선행 `=+-@`(탭/CR) 미이스케이프 → 거래처명·품목명·주소·적요 등 **자유입력**이 셀에 그대로 들어가 다운로드 PC Excel에서 `=HYPERLINK(...)`/DDE 수식 실행. generateCsv 소비처 8라우트(PO/orders/생산실적/손익/원장AR·AP/납기분석/reports). 발화는 ①주입+②권한자 export+Excel오픈 조건이나 HYPERLINK류 유출은 무경고 가능 → MED. **자동수정 안 함**(4구현 일괄 + **금융 음수금액 텍스트화 회귀 위험**(숫자-안전 가드 `isNaN(Number(str))` 필요) + egress export 검증불가).
+> - **🐛 신규 이슈 #368 (MED bug) — storageZones `all_entities=1` 쿼리로 entity 격리 우회, IDOR 11번째 모듈**: `storageZones.ts:13/22` GET 목록이 클라 제공 `all_entities=1`을 **역할검증 없이** 신뢰해 entity 필터 생략 → 임의 STAFF가 `?all_entities=1`로 전 법인 구역+담당자+품목수 열람. `all_entities`는 이 모듈에만 존재(전수 grep)=고유 갭. 프론트 관리페이지(`storageZones.js:27`)가 이 파라미터로 호출하나 API에 호출자 검증 0. 부수: `GET /:id`(`:70`) entity필터 무(프론트 0-refs orphan #334이나 GET목록으로 id수집 후 직접호출 도달)·PUT/DELETE(ADMIN게이트, entity무필터, body.entity_id 재배정). **자동수정 안 함**(역할/인가 시맨틱+egress 검증불가).
+> - **🔵 인증/인가 토대 검증 — clean (수많은 IDOR 이슈의 "ADMIN 기본 자기법인" 전제가 토대에서 성립)**: ① `auth.ts:169` `/switch-entity` — entity_id=0(전체모드)은 ADMIN만(`role!=='ADMIN'→403`), 일반 사용자는 본인 `default_entity_id` 일치 법인만(`!=entity_id→403`). login은 DB default_entity_id만 신뢰, 요청 override 불가. `X-Entity-Id`류 헤더/쿼리 override 0건(grep). ② 자기서비스 권한상승 0 — `/me` PATCH 부재, `/change-password` 현재비번검증+비번만, users PATCH requireAdmin+화이트리스트, hr PUT 급여필드 ADMIN/MANAGER게이트+entity_id mass-assign 차단(#349). ③ JWT refresh DB 재검증 없이 클레임 복사(`auth.ts:119`)는 stateless 일반한계+role변경 권한 ADMIN뿐이라 단독 악용경로 없음(보고 대상 아님).
+> - **🔴 오탐/저가치 드롭**: settings.ts:230 바로빌 error.message 노출(ADMIN requireRole 게이트=기존 LOW 보류 방침)·shipments.ts:514 내부 fetch Authorization 헤더(직접 로깅 없음, 정상 전파).
+> - 자동 수정 0건(net-new는 출력/인가 시맨틱+egress 검증불가), 신규 이슈 2건(#367 CSV injection·#368 storageZones 우회), 인증/인가 토대 clean 확인, 오탐 2건 드롭
+>
 > **Area 4 데이터 정합성 (2026-06-08T14:00):**
 > - **방법**: ground-truth — 297 마이그레이션 로컬 D1(node:sqlite v22) 전량 적용(**FAIL 0**, 172테이블/511인덱스) + write-path 교차검증. Area 4 **7회차** — 기존 각도(마이그레이션 적용·CHECK↔코드·balance/재고 대칭·FK cascade·트리거·비원자 고아#FP·dead table#364) 고갈 → **ground-truth가 놓치는 사각 + 덜 다룬 각도**로 전환: (A)`ADD COLUMN NOT NULL`(no DEFAULT) 프로덕션 실패 (B)집계 합계 denorm drift (C)UNIQUE vs soft-delete 재삽입 충돌 (D)timezone UTC vs KST 업무일자 (E)entity_id DEFAULT 일관성. 병렬 Explore 2개 + 발견 전수 owner 직접 코드 검증(오탐 차단).
 > - **🐛 신규 이슈 #366 (MED bug) — 업무일자 UTC `date('now')` 사용으로 KST 새벽 입력 건 하루 어긋남**: SQLite `'now'`는 UTC인데 **업무 의미 날짜**가 raw `date('now')`로 기록/비교됨. ① **저장(영구 off-by-one)**: `fixedAssets.ts:153 disposed_at`(처분일=회계인식일)·`orders/operations.ts:105 order_date`(복사, 매출귀속)·`shipments.ts:449/814·orders/queries.ts:250 auto_complete_date`. ② **비교 필터(일시)**: PO 납기경과(`purchaseOrders/core.ts:78/135/271`)·AR 연체(`accounts-receivable.ts:1145`)·카드 납기창(`cards/queries.ts:271-430`)·dashboard "오늘". **핵심 증거 = 불일치**: `hr.ts:800-801`은 `// KST 기준 오늘 (UTC+9)` + `todayKst`/`'+9 hours'`로 보정(근태) → KST 의도 확립인데 나머지 미보정. 발화는 KST 00:00~09:00(37.5%) 한정이나 ①저장값은 영구·회계귀속 직결. **자동수정 안 함**(날짜 시맨틱=비즈니스 로직 변경 + 사용처 분류 선행 + egress 차단 검증불가, 잘못 보정 시 정상 UTC 감사로그 훼손 위험).

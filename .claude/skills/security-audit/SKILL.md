@@ -32,6 +32,7 @@ review-checklist과의 차이: review-checklist은 **변경 파일** 코드 리�
 |---|---------|----------|------|
 | 1 | SQL Injection | prepare 내 변수 직접 삽입, ORDER BY 동적, IN 절 | `src/routes/*.ts` |
 | 2 | XSS | innerHTML+사용자 데이터, 서버 템플릿 미이스케이프 | `src/pages/*.ts`, `src/scripts/*.js` |
+| 2b | CSV Formula Injection | CSV 셀 선행 `=+-@`(탭/CR) 미가드 → Excel 수식 실행 | CSV export 헬퍼/라우트 |
 | 3 | 인증/인가 | authMiddleware 미적용, requireRole 누락, JWT 시크릿 | `src/routes/*.ts`, `src/middleware/` |
 | 4 | IDOR | 소유권 미확인, 포털 client_id 변조, 경로 조작 | 주요 라우터 |
 | 5 | 민감정보 노출 | error.message 직접 반환, password_hash 응답, 소스맵 | 전체 |
@@ -43,6 +44,8 @@ review-checklist과의 차이: review-checklist은 **변경 파일** 코드 리�
 > `grep -rnE "c\.env\.[A-Z_]+ *\|\| *'"` — 암호화 키/JWT/비밀번호 폴백이 소스에 박히면 git 접근자 복호화/우회 가능.
 > 또한 `body.password || 'literal'` 등 **기본 비밀번호 폴백**(reset-password)도 대상. CI yml의 `secrets.X || 'admin'` 폴백도 포함.
 > ⚠️ 이전 점검(#314)이 "하드코딩 시크릿 없음"으로 단언했으나 이 패턴을 놓침 → **매 Area 5 필수 grep**.
+
+> **📤 CSV Formula Injection 탐지 (Area 5 #367, 2026-06-08)**: CSV export 셀 값이 자유입력(거래처명/품목명/메모/적요)이고 헬퍼가 선행 `=` `+` `-` `@`(탭/CR)를 이스케이프 안 하면 다운로드 PC Excel에서 수식 실행(`=HYPERLINK` 유출/DDE). `,"` 개행만 따옴표 처리는 부족. **이 코드베이스 CSV 헬퍼 4개 산재**(csv.ts generateCsv/escapeCsvField·payroll/tax-agent csvField·shipments 인라인 esc) — 전수 점검 필수. 가드는 **금융 음수금액 보존**(`typeof!=='number' && isNaN(Number(str))` 조건)으로.
 
 > **🧯 XSS 오탐 차단 — "escapeHtml 헬퍼 전무"는 취약 증거 아님 (Area 6 #335)**: `layout.ts:1185`가 `window.escapeHtml`를 **전역 정의**(+`portalLayout.ts` 포털용) → 모든 `src/scripts/*.js`가 로컬 정의 없이 전역 헬퍼 호출 가능.
 > - `grep -c escapeHtml` = 0 이라고 XSS로 보고 금지. **올바른 판정**: 실제 `innerHTML`(또는 `c.html()` 서버 템플릿) 싱크의 **보간값이 (a)사용자 제어 free-text 이고 (b)미escape**인지 직접 확인.

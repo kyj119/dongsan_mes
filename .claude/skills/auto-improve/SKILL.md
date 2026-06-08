@@ -130,6 +130,8 @@ description: 자율 점검·개선 에이전트. 6개 영역을 순환하며 실
 - **rate-limit "누락" 보고 (라우트 파일에 inline 미들웨어 없음)** → rate limit은 `index.tsx`에서 `app.use('/api/...', rateLimitMiddleware(...))`로 **앱 레벨 전역 등록**(240-246: auth/portal login·users/portal change-pw·refresh·self-auth·verify-document·verify-token). 라우트 핸들러만 보면 항상 inline 부재로 오탐 → 보고 전 index.tsx 등록처 확인 필수 (Area 5 2026-06-06)
 - **"escapeHtml 헬퍼 전무(`grep -c escapeHtml`=0) → XSS"** → `layout.ts:1185`가 `window.escapeHtml`를 **전역 정의**(+`portalLayout.ts` 포털용). 모든 스크립트가 로컬 정의 없이 전역 헬퍼 호출 가능 → 파일에 escapeHtml 미정의/미참조는 취약 증거 **아님**. 올바른 판정: 실제 `innerHTML` 싱크의 보간값이 (a)사용자 제어 free-text **이고** (b)미escape인지 직접 확인. `Number()` 강제 숫자·시스템 채번코드(order_number)·서버 하드코딩 문자열은 싱크 아님 (Area 6 2026-06-06, #335 portalBalance.js 잔여 오탐 차단)
 
+> **📤 CSV Formula Injection 탐지 (Area 5 #367, 2026-06-08)**: CSV export 헬퍼가 셀 값의 **선행 `=` `+` `-` `@`(탭/CR)**를 이스케이프하지 않으면 자유입력(거래처명·품목명·메모 등)이 다운로드 PC Excel에서 수식 실행(HYPERLINK 유출/DDE). `,"` 개행만 따옴표 처리하는 건 **부족**. 점검: `grep -rn "includes(','" src` 후 각 CSV 헬퍼가 선행 특수문자 가드하는지. **이 코드베이스는 4개 구현 산재**(csv.ts generateCsv/escapeCsvField·tax-agent csvField·shipments 인라인 esc) — 하나만 고치면 우회. 가드 추가 시 **금융 음수금액(`-1000`)이 텍스트로 깨지지 않게 숫자-안전**(`typeof val!=='number' && /^[=+\-@\t\r]/.test(str) && isNaN(Number(str))`) 필수.
+
 **자동 수정 가능**: escapeHtml 추가, SQL 바인딩 수정
 
 ---
