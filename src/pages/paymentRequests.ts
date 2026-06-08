@@ -82,6 +82,7 @@ export function paymentRequestsPage(c: Context<HonoEnv>) {
             </table>
           </div>
         </div>
+        <div id="prPagination" class="flex items-center justify-center gap-1 py-3"></div>
       </div>
 
       <!-- 작성/수정 모달 -->

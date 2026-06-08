@@ -98,6 +98,52 @@ cashScheduleRouter.get('/schedule', requireRole('ADMIN', 'MANAGER'), async (c) =
   }
 })
 
+// 예정 목록 CSV (현재 필터 기준) — /schedule/:id 류보다 먼저 등록
+cashScheduleRouter.get('/schedule/export/csv', requireRole('ADMIN', 'MANAGER'), async (c) => {
+  try {
+    const { from, to, status, flow_type, source_type } = c.req.query()
+    if (!from || !to) return c.json({ success: false, error: 'from, to 파라미터 필요' }, 400)
+
+    const ef = entityFilter(c, 'cs')
+    const clauses: string[] = ['cs.schedule_date BETWEEN ? AND ?']
+    const params: any[] = [from, to]
+    if (ef.params.length) { clauses.push('cs.entity_id = ?'); params.push(...ef.params) }
+    if (status) { clauses.push('cs.status = ?'); params.push(status) }
+    if (flow_type) { clauses.push('cs.flow_type = ?'); params.push(flow_type) }
+    if (source_type) { clauses.push('cs.source_type = ?'); params.push(source_type) }
+
+    const { results } = await c.env.DB.prepare(`
+      SELECT cs.schedule_date, cs.flow_type, cs.source_type, cs.amount, cs.description, cs.status,
+        c.client_name
+      FROM cash_schedule cs
+      LEFT JOIN clients c ON c.id = cs.client_id
+      WHERE ${clauses.join(' AND ')}
+      ORDER BY cs.schedule_date ASC, cs.flow_type DESC
+      LIMIT 5000
+    `).bind(...params).all()
+
+    const flowLabels: Record<string, string> = { IN: '수입', OUT: '지출' }
+    const statusLabels: Record<string, string> = { PENDING: '예정', DONE: '완료', OVERDUE: '연체' }
+
+    const headers = ['예정일', '구분', '출처', '거래처', '내용', '금액', '상태']
+    const rows = (results || []).map((r: any) => [
+      r.schedule_date || '',
+      flowLabels[r.flow_type] || r.flow_type || '',
+      r.source_type || '',
+      r.client_name || '',
+      r.description || '',
+      Number(r.amount) || 0,
+      statusLabels[r.status] || r.status || ''
+    ])
+
+    const { generateCsv, csvResponse } = await import('../utils/csv')
+    return csvResponse(c, `자금계획_${new Date().toISOString().slice(0, 10)}.csv`, generateCsv(headers, rows))
+  } catch (error) {
+    console.error('cashSchedule CSV export error:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
+  }
+})
+
 // 캘린더 (월간)
 cashScheduleRouter.get('/schedule/calendar', requireRole('ADMIN', 'MANAGER'), async (c) => {
   try {

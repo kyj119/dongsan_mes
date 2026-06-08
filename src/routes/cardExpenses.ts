@@ -76,6 +76,7 @@ cardExpRouter.put('/cards/:id', requireRole('ADMIN'), async (c) => {
     const id = c.req.param('id')
     const body = await c.req.json()
     const { card_name, card_company, card_number_last4, holder_name, monthly_limit, cutoff_day, payment_day, assigned_user_id } = body
+    const ef = entityFilter(c)  // #360: 타법인 법인카드 수정 차단
     await c.env.DB.prepare(`
       UPDATE corporate_cards
       SET card_name = COALESCE(?, card_name),
@@ -87,8 +88,8 @@ cardExpRouter.put('/cards/:id', requireRole('ADMIN'), async (c) => {
           payment_day = COALESCE(?, payment_day),
           assigned_user_id = ?,
           updated_at = CURRENT_TIMESTAMP
-      WHERE id = ?
-    `).bind(card_name || null, card_company || null, card_number_last4 || null, holder_name || null, monthly_limit ?? null, cutoff_day ?? null, payment_day ?? null, assigned_user_id ?? null, id).run()
+      WHERE id = ?${ef.clause}
+    `).bind(card_name || null, card_company || null, card_number_last4 || null, holder_name || null, monthly_limit ?? null, cutoff_day ?? null, payment_day ?? null, assigned_user_id ?? null, id, ...ef.params).run()
     return c.json({ success: true, message: '카드 수정 완료' })
   } catch (error) {
     console.error('Update card error:', error)
@@ -100,7 +101,8 @@ cardExpRouter.put('/cards/:id', requireRole('ADMIN'), async (c) => {
 cardExpRouter.delete('/cards/:id', requireRole('ADMIN'), async (c) => {
   try {
     const id = c.req.param('id')
-    await c.env.DB.prepare('UPDATE corporate_cards SET is_active = 0 WHERE id = ?').bind(id).run()
+    const ef = entityFilter(c)  // #360: 타법인 법인카드 비활성화 차단
+    await c.env.DB.prepare(`UPDATE corporate_cards SET is_active = 0 WHERE id = ?${ef.clause}`).bind(id, ...ef.params).run()
     return c.json({ success: true, message: '카드 삭제 완료' })
   } catch (error) {
     return c.json({ success: false, error: '서버 오류' }, 500)

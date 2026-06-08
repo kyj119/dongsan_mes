@@ -241,9 +241,11 @@ autoProcessRouter.patch('/:id', async (c) => {
 
     values.push(id)
 
+    // #361: 타법인 작업 결과 변조 차단. /pending이 동일 entityFilter라 폴링 에이전트는 자기 entity job만 받아 PATCH → 무영향(entity=0이면 no-op)
+    const ef = entityFilter(c)
     await c.env.DB.prepare(
-      `UPDATE auto_process_jobs SET ${updates.join(', ')} WHERE id = ?`
-    ).bind(...values).run()
+      `UPDATE auto_process_jobs SET ${updates.join(', ')} WHERE id = ?${ef.clause}`
+    ).bind(...values, ...ef.params).run()
 
     return c.json({ success: true })
   } catch (error) {
@@ -257,15 +259,16 @@ autoProcessRouter.patch('/:id', async (c) => {
 autoProcessRouter.get('/order/:orderId', async (c) => {
   try {
     const orderId = parseInt(c.req.param('orderId'))
+    const ef = entityFilter(c, 'apj')  // #361: 타법인 주문 가공작업(파일경로·썸네일) 열람 차단
     const result = await c.env.DB.prepare(
       `SELECT apj.*, oi.width, oi.height,
               i.item_name as item_name
        FROM auto_process_jobs apj
        LEFT JOIN order_items oi ON apj.order_item_id = oi.id
        LEFT JOIN items i ON oi.item_id = i.id
-       WHERE apj.order_id = ?
+       WHERE apj.order_id = ?${ef.clause}
        ORDER BY apj.ai_group_index ASC`
-    ).bind(orderId).all()
+    ).bind(orderId, ...ef.params).all()
 
     return c.json({ success: true, jobs: result.results || [] })
   } catch (error) {
@@ -282,13 +285,14 @@ autoProcessRouter.post('/:id/approve', async (c) => {
     const user = c.get('user')
 
     // job 조회
+    const ef = entityFilter(c, 'apj')  // #361: 타법인 작업 승인(저장경로 생성) 차단
     const job = await c.env.DB.prepare(
       `SELECT apj.*, o.order_number, oi.item_id
        FROM auto_process_jobs apj
        JOIN orders o ON apj.order_id = o.id
        JOIN order_items oi ON apj.order_item_id = oi.id
-       WHERE apj.id = ?`
-    ).bind(id).first<{ status: string; order_id: number; order_number: string; item_id: number; [key: string]: unknown }>()
+       WHERE apj.id = ?${ef.clause}`
+    ).bind(id, ...ef.params).first<{ status: string; order_id: number; order_number: string; item_id: number; [key: string]: unknown }>()
 
     if (!job) return c.json({ success: false, error: '작업을 찾을 수 없습니다' }, 404)
     if (job.status !== 'done') return c.json({ success: false, error: '완료된 작업만 승인 가능합니다' }, 400)
@@ -337,9 +341,10 @@ autoProcessRouter.post('/:id/retry', async (c) => {
     }>()
 
     // 기존 job 조회
+    const ef = entityFilter(c)  // #361: 타법인 작업 재가공/파라미터(scale·finishing) 변조 차단
     const job = await c.env.DB.prepare(
-      `SELECT id, order_id, order_item_id, ai_analysis_id, ai_group_index, source_path, product, width_cm, height_cm, finishing, scale_factor, clip_bounds, margins, status, ia_params, output_eps_path, output_png_path, output_png_base64, error_message, saved_path FROM auto_process_jobs WHERE id = ?`
-    ).bind(id).first<{ scale_factor: number; finishing: string; clip_bounds: string; source_path: string; [key: string]: unknown }>()
+      `SELECT id, order_id, order_item_id, ai_analysis_id, ai_group_index, source_path, product, width_cm, height_cm, finishing, scale_factor, clip_bounds, margins, status, ia_params, output_eps_path, output_png_path, output_png_base64, error_message, saved_path FROM auto_process_jobs WHERE id = ?${ef.clause}`
+    ).bind(id, ...ef.params).first<{ scale_factor: number; finishing: string; clip_bounds: string; source_path: string; [key: string]: unknown }>()
     if (!job) return c.json({ success: false, error: '작업을 찾을 수 없습니다' }, 404)
 
     // 파라미터 업데이트

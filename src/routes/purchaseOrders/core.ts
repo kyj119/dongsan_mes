@@ -298,6 +298,71 @@ poCoreRouter.get('/export/csv', async (c) => {
 })
 
 // ============================================================================
+// GET /receipts/export/csv - 입고이력 CSV (현재 필터 기준, /receipts/:receiptId 보다 먼저 등록)
+// ============================================================================
+poCoreRouter.get('/receipts/export/csv', async (c) => {
+  try {
+    const { inspection_status = '', date_from = '', date_to = '', search = '' } = c.req.query()
+
+    const ef = entityFilter(c, 'ir')
+    let query = `
+      SELECT
+        ir.receipt_number, ir.receipt_date, ir.inspection_status, ir.notes,
+        po.po_number,
+        c.client_name as supplier_name,
+        u.name as inspector_name,
+        (SELECT COUNT(*) FROM inventory_receipt_items WHERE receipt_id = ir.id) as item_count,
+        (SELECT COALESCE(SUM(accepted_quantity), 0) FROM inventory_receipt_items WHERE receipt_id = ir.id) as total_accepted,
+        (SELECT COALESCE(SUM(rejected_quantity), 0) FROM inventory_receipt_items WHERE receipt_id = ir.id) as total_rejected
+      FROM inventory_receipts ir
+      LEFT JOIN purchase_orders po ON ir.po_id = po.id
+      LEFT JOIN clients c ON ir.supplier_id = c.id
+      LEFT JOIN users u ON ir.received_by = u.id
+    `
+    const params: any[] = []
+    const whereClauses: string[] = []
+    if (ef.clause) { whereClauses.push(ef.clause.replace(' AND ', '')); params.push(...ef.params) }
+    if (inspection_status) { whereClauses.push('ir.inspection_status = ?'); params.push(inspection_status) }
+    if (date_from) { whereClauses.push('ir.receipt_date >= ?'); params.push(date_from) }
+    if (date_to) { whereClauses.push('ir.receipt_date <= ?'); params.push(date_to) }
+    if (search) {
+      whereClauses.push('(ir.receipt_number LIKE ? OR po.po_number LIKE ? OR c.client_name LIKE ?)')
+      const p = `%${search}%`
+      params.push(p, p, p)
+    }
+    if (whereClauses.length > 0) query += ' WHERE ' + whereClauses.join(' AND ')
+    query += ' ORDER BY ir.created_at DESC LIMIT 5000'
+
+    const { results } = await c.env.DB.prepare(query).bind(...params).all()
+
+    const inspLabels: Record<string, string> = {
+      NORMAL: '정상', PENDING_REVIEW: '확인대기', WAITING_RESHIP: '재입고대기',
+      CANCELLED: '취소', PASSED: '합격', PARTIAL: '부분합격', FAILED: '불합격'
+    }
+
+    const headers = ['입고번호', '입고일', '발주번호', '공급업체', '검수상태', '품목수', '합격수량', '불합격수량', '검수자', '비고']
+    const rows = (results || []).map((r: any) => [
+      r.receipt_number || '',
+      (r.receipt_date || '').slice(0, 10),
+      r.po_number || '',
+      r.supplier_name || '',
+      inspLabels[r.inspection_status] || r.inspection_status || '',
+      r.item_count || 0,
+      r.total_accepted || 0,
+      r.total_rejected || 0,
+      r.inspector_name || '',
+      r.notes || ''
+    ])
+
+    const { generateCsv, csvResponse } = await import('../../utils/csv')
+    return csvResponse(c, `입고이력_${new Date().toISOString().slice(0, 10)}.csv`, generateCsv(headers, rows))
+  } catch (error) {
+    console.error('receiving CSV export error:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
+  }
+})
+
+// ============================================================================
 // GET /templates - 템플릿 목록
 // ============================================================================
 // ── 거래명세서 첨부 (입고 건당) — 법인카드 영수증 R2 패턴 재사용 ──
@@ -383,6 +448,10 @@ poCoreRouter.get('/receipts', async (c) => {
     const params: any[] = []
     const whereClauses: string[] = []
 
+    // #363/IDOR: 입고이력 목록 법인 격리 (신규 /receipts/export/csv와 정합. entity_id 컬럼 0232 존재)
+    const ef = entityFilter(c, 'ir')
+    if (ef.clause) { whereClauses.push(ef.clause.replace(' AND ', '')); params.push(...ef.params) }
+
     if (inspection_status) {
       whereClauses.push('ir.inspection_status = ?')
       params.push(inspection_status)
@@ -418,6 +487,8 @@ poCoreRouter.get('/receipts', async (c) => {
     `
     const countParams: any[] = []
     const countWhereClauses: string[] = []
+
+    if (ef.clause) { countWhereClauses.push(ef.clause.replace(' AND ', '')); countParams.push(...ef.params) }
 
     if (inspection_status) {
       countWhereClauses.push('ir.inspection_status = ?')

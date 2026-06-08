@@ -538,6 +538,33 @@ async function autoConvertToPO(id) {
   }
 }
 
+// CSV 내보내기 (현재 화면 필터 반영)
+async function exportPrCsv() {
+  try {
+    var params = new URLSearchParams();
+    var searchEl = document.getElementById('prSearchInput');
+    var statusEl = document.getElementById('prStatusFilter');
+    var urgencyEl = document.getElementById('prUrgencyFilter');
+    var search = searchEl ? searchEl.value : '';
+    var status = statusEl ? statusEl.value : '';
+    var urgency = urgencyEl ? urgencyEl.value : '';
+    if (search) params.set('search', search);
+    if (status) params.set('status', status);
+    if (urgency) params.set('urgency', urgency);
+    var res = await authFetch('/api/purchase-requests/export/csv?' + params.toString());
+    if (!res.ok) throw new Error('서버 오류');
+    var blob = await res.blob();
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = '발주요청_' + new Date().toISOString().slice(0, 10) + '.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+  } catch(e) {
+    showToast('CSV 내보내기 실패: ' + e.message, 'error');
+  }
+}
+
 // 모달 외부 클릭 시 닫기
 document.getElementById('prDetailModal').addEventListener('click', function(e) {
   if (e.target === this) this.classList.add('hidden');

@@ -149,14 +149,15 @@ quotationsRouter.get('/', async (c) => {
 quotationsRouter.get('/:id', async (c) => {
   try {
     const id = c.req.param('id')
+    const ef = entityFilter(c, 'q')  // #360: 단건 조회 법인 격리 (타법인 견적 단가·금액·거래처 노출 차단)
     const quotation = await c.env.DB.prepare(`
       SELECT q.*, c.client_name, c.business_registration_number, c.address,
         u.name as created_by_name
       FROM quotations q
       LEFT JOIN clients c ON q.client_id = c.id
       LEFT JOIN users u ON q.created_by = u.id
-      WHERE q.id = ?
-    `).bind(id).first() as any
+      WHERE q.id = ?${ef.clause}
+    `).bind(id, ...ef.params).first() as any
 
     if (!quotation) {
       return c.json({ success: false, error: '견적서를 찾을 수 없습니다.' }, 404)
@@ -358,9 +359,10 @@ quotationsRouter.put('/:id', async (c) => {
     const user = c.get('user')
     const body = await c.req.json()
 
+    const ef = entityFilter(c)  // #360: 타법인 견적서 수정 차단
     const existing = await c.env.DB.prepare(
-      `SELECT id, status, client_id FROM quotations WHERE id = ?`
-    ).bind(id).first<{ id: number; status: string; client_id: number }>()
+      `SELECT id, status, client_id FROM quotations WHERE id = ?${ef.clause}`
+    ).bind(id, ...ef.params).first<{ id: number; status: string; client_id: number }>()
     if (!existing) return c.json({ success: false, error: '견적서를 찾을 수 없습니다.' }, 404)
     if (existing.status !== 'ACTIVE') {
       return c.json({ success: false, error: `현재 상태(${existing.status})에서는 수정할 수 없습니다.` }, 400)
@@ -499,9 +501,10 @@ quotationsRouter.delete('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
   try {
     const id = c.req.param('id')
     const user = c.get('user')
+    const ef = entityFilter(c)  // #360: 타법인 견적서 취소 차단
     const quotation = await c.env.DB.prepare(
-      `SELECT id, quotation_number, status FROM quotations WHERE id = ?`
-    ).bind(id).first<{ id: number; quotation_number: string; status: string }>()
+      `SELECT id, quotation_number, status FROM quotations WHERE id = ?${ef.clause}`
+    ).bind(id, ...ef.params).first<{ id: number; quotation_number: string; status: string }>()
     if (!quotation) return c.json({ success: false, error: '견적서를 찾을 수 없습니다.' }, 404)
 
     await c.env.DB.prepare(
@@ -529,9 +532,10 @@ quotationsRouter.post('/:id/convert-to-order', requireRole('ADMIN', 'MANAGER'), 
     const body = await c.req.json().catch(() => ({}))
     const force = body.force === true
 
+    const ef = entityFilter(c)  // #360: 타법인 견적서 주문전환 차단
     const quotation = await markExpiredIfNeeded(
       c.env.DB,
-      await c.env.DB.prepare(`SELECT id, quotation_number, client_id, entity_id, status, quotation_date, delivery_date, valid_until, total_amount, vat_amount, discount_amount, final_amount, delivery_method, delivery_time, delivery_info, contact_phone, contact_mobile, shipping_payment, notes, internal_notes, first_converted_at, converted_count, created_by, updated_by, created_at, updated_at FROM quotations WHERE id = ?`).bind(id).first() as any
+      await c.env.DB.prepare(`SELECT id, quotation_number, client_id, entity_id, status, quotation_date, delivery_date, valid_until, total_amount, vat_amount, discount_amount, final_amount, delivery_method, delivery_time, delivery_info, contact_phone, contact_mobile, shipping_payment, notes, internal_notes, first_converted_at, converted_count, created_by, updated_by, created_at, updated_at FROM quotations WHERE id = ?${ef.clause}`).bind(id, ...ef.params).first() as any
     )
     if (!quotation) return c.json({ success: false, error: '견적서를 찾을 수 없습니다.' }, 404)
     if (quotation.status === 'CANCELLED') {

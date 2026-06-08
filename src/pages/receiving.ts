@@ -80,6 +80,9 @@ export function receivingPage(c: Context<HonoEnv>) {
           <button onclick="loadReceiptHistory(1)" class="ds-btn ds-btn-primary text-sm">
             <i class="fas fa-search mr-1"></i>조회
           </button>
+          <button onclick="exportReceivingCsv()" class="px-3 py-2 text-sm border border-gray-300 text-gray-700 bg-white rounded-lg hover:bg-gray-50">
+            <i class="fas fa-file-csv mr-1"></i>CSV
+          </button>
         </div>
 
         <!-- 입고이력 테이블 -->

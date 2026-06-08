@@ -55,6 +55,10 @@ export function purchaseRequestsPage(c: Context<HonoEnv>) {
           <option value="HIGH">높음</option>
           <option value="URGENT">긴급</option>
         </select>
+        <button onclick="exportPrCsv()"
+          class="px-3 py-2 text-sm border border-gray-300 text-gray-700 bg-white rounded-lg hover:bg-gray-50">
+          <i class="fas fa-file-csv mr-1"></i>CSV
+        </button>
         <button onclick="window.location.href='/purchase-request-form'"
           class="ds-btn ds-btn-primary text-sm font-medium">
           <i class="fas fa-plus mr-1"></i>새 발주 요청

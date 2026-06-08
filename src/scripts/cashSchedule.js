@@ -133,44 +133,33 @@ function renderSchedule() {
   document.getElementById('schCalendarContainer').innerHTML = html;
 }
 
-// #345: 현재 월 자금일정 CSV 내보내기
-window.schExportCSV = function() {
-  if (!schCalendarData || !schCalendarData.days) { showToast('내보낼 데이터가 없습니다', 'info'); return; }
-  var flowLabel = { IN: '수입', OUT: '지출' };
-  var statusLabel = { DONE: '완료', PENDING: '예정' };
-  var bom = String.fromCharCode(0xFEFF);
-  var csv = bom + '일자,구분,출처,거래처,내용,예정액,상태\n';
-  var days = schCalendarData.days;
-  var dates = Object.keys(days).sort();
-  var count = 0;
-  dates.forEach(function(dateStr) {
-    var items = days[dateStr].items || [];
-    items.forEach(function(it) {
-      var cols = [
-        it.schedule_date || dateStr,
-        flowLabel[it.flow_type] || it.flow_type || '',
-        it.source_type || '',
-        it.client_name || '',
-        it.description || '',
-        String(Number(it.amount) || 0),
-        statusLabel[it.status] || it.status || ''
-      ];
-      csv += cols.map(function(v, i) {
-        return i === 5 ? v : ('"' + String(v).replace(/"/g, '""') + '"');
-      }).join(',') + '\n';
-      count++;
-    });
-  });
-  if (count === 0) { showToast('내보낼 데이터가 없습니다', 'info'); return; }
-  var fname = 'cash_schedule_' + schCurrentYear + '-' + String(schCurrentMonth).padStart(2, '0') + '.csv';
-  var blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-  var link = document.createElement('a');
-  link.href = URL.createObjectURL(blob);
-  link.download = fname;
-  link.click();
-  URL.revokeObjectURL(link.href);
-  showToast('CSV 다운로드 완료', 'success');
+// #363: 현재 월 자금일정 CSV 내보내기 (서버 엔드포인트 — 일관성 패턴)
+window.exportCashScheduleCsv = async function() {
+  try {
+    var y = schCurrentYear;
+    var m = schCurrentMonth;
+    if (!y || !m) { showToast('내보낼 기간이 없습니다', 'info'); return; }
+    var from = y + '-' + String(m).padStart(2, '0') + '-01';
+    var lastDay = new Date(y, m, 0).getDate();
+    var to = y + '-' + String(m).padStart(2, '0') + '-' + String(lastDay).padStart(2, '0');
+    var params = new URLSearchParams();
+    params.set('from', from);
+    params.set('to', to);
+    var res = await authFetch('/api/cash-flow/schedule/export/csv?' + params.toString());
+    if (!res.ok) throw new Error('서버 오류');
+    var blob = await res.blob();
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = '자금계획_' + new Date().toISOString().slice(0, 10) + '.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+  } catch(e) {
+    showToast('CSV 내보내기 실패: ' + e.message, 'error');
+  }
 };
+// 기존 버튼 호환 alias
+window.schExportCSV = window.exportCashScheduleCsv;
 
 window.schPrevMonth = function() {
   schCurrentMonth--;

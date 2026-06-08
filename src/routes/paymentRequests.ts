@@ -29,6 +29,20 @@ paymentRequestsRouter.get('/', async (c) => {
     if (ef.clause) { clauses.push(ef.clause.replace(' AND ', '')); params.push(...ef.params) }
 
     const where = clauses.length ? 'WHERE ' + clauses.join(' AND ') : ''
+
+    // #359: 200 하드캡 → page/limit 페이지네이션 + 총건수 (silent truncation 제거)
+    const page = Math.max(1, parseInt(c.req.query('page') || '1'))
+    const limit = Math.min(Math.max(parseInt(c.req.query('limit') || '50'), 1), 200)
+    const offset = (page - 1) * limit
+
+    const countRow = await c.env.DB.prepare(`
+      SELECT COUNT(*) as cnt
+      FROM payment_requests pr
+      LEFT JOIN clients c ON c.id = pr.recipient_client_id
+      ${where}
+    `).bind(...params).first<{ cnt: number }>()
+    const total = countRow?.cnt ?? 0
+
     const { results } = await c.env.DB.prepare(`
       SELECT pr.*,
         cr.name as creator_name,
@@ -42,10 +56,14 @@ paymentRequestsRouter.get('/', async (c) => {
       LEFT JOIN purchase_orders po ON po.id = pr.related_po_id
       ${where}
       ORDER BY pr.request_date DESC, pr.id DESC
-      LIMIT 200
-    `).bind(...params).all()
+      LIMIT ? OFFSET ?
+    `).bind(...params, limit, offset).all()
 
-    return c.json({ success: true, data: results })
+    return c.json({
+      success: true,
+      data: results,
+      pagination: { page, limit, total, total_pages: Math.ceil(total / limit) }
+    })
   } catch (error) {
     console.error('payment-requests list error:', error)
     return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)

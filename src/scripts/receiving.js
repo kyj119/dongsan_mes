@@ -158,6 +158,37 @@ async function loadReceiptHistory(page) {
   }
 }
 
+// ── 입고이력 CSV 내보내기 (현재 화면 필터 반영) ──
+async function exportReceivingCsv() {
+  try {
+    var params = new URLSearchParams();
+    var dateFromEl = document.getElementById('historyDateFrom');
+    var dateToEl = document.getElementById('historyDateTo');
+    var statusEl = document.getElementById('historyStatus');
+    var searchEl = document.getElementById('historySearch');
+    var dateFrom = dateFromEl ? dateFromEl.value : '';
+    var dateTo = dateToEl ? dateToEl.value : '';
+    var status = statusEl ? statusEl.value : '';
+    var search = searchEl ? searchEl.value : '';
+    if (dateFrom) params.set('date_from', dateFrom);
+    if (dateTo) params.set('date_to', dateTo);
+    if (status) params.set('inspection_status', status);
+    if (search) params.set('search', search);
+    var res = await authFetch('/api/purchase-orders/receipts/export/csv?' + params.toString());
+    if (!res.ok) throw new Error('서버 오류');
+    var blob = await res.blob();
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = '입고이력_' + new Date().toISOString().slice(0, 10) + '.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+  } catch(e) {
+    showToast('CSV 내보내기 실패: ' + e.message, 'error');
+  }
+}
+window.exportReceivingCsv = exportReceivingCsv;
+
 // ── 거래명세서 첨부 (입고 건당) ──
 window.receivingAttachStatement = function(receiptId) {
   var input = document.createElement('input');

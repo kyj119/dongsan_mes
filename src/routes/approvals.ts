@@ -136,6 +136,7 @@ approvals.get('/pending', async (c) => {
     const userId = c.get('user')?.id
     const userRole = c.get('user')?.role
 
+    const ef = entityFilter(c, 'ar')  // #358: 대기 결재 법인 격리 (전역 role 매칭으로 타법인 가시 차단)
     const { results } = await c.env.DB.prepare(`
       SELECT ar.*, u.name as requester_name, ast.step_order, ast.label as step_label
       FROM approval_requests ar
@@ -144,9 +145,9 @@ approvals.get('/pending', async (c) => {
       WHERE ar.status IN ('PENDING', 'IN_REVIEW')
         AND ast.status = 'PENDING'
         AND ast.step_order = ar.current_step
-        AND (ast.approver_id = ? OR ast.approver_role = ?)
+        AND (ast.approver_id = ? OR ast.approver_role = ?)${ef.clause}
       ORDER BY ar.created_at DESC
-    `).bind(userId, userRole).all()
+    `).bind(userId, userRole, ...ef.params).all()
 
     return c.json({ success: true, data: results })
   } catch (e) {
@@ -223,12 +224,13 @@ approvals.get('/:id', async (c) => {
   try {
     const id = Number(c.req.param('id'))
 
+    const ef = entityFilter(c, 'ar')  // #358: 단건 조회 법인 격리 (타법인 결재 금액·내용 노출 차단)
     const request = await c.env.DB.prepare(`
       SELECT ar.*, u.name as requester_name
       FROM approval_requests ar
       LEFT JOIN users u ON ar.requester_id = u.id
-      WHERE ar.id = ?
-    `).bind(id).first()
+      WHERE ar.id = ?${ef.clause}
+    `).bind(id, ...ef.params).first()
 
     if (!request) return c.json({ success: false, error: '결재 요청을 찾을 수 없습니다.' }, 404)
 
@@ -259,9 +261,10 @@ approvals.put('/:id', async (c) => {
     const body = await c.req.json()
     const { title, content, amount } = body
 
+    const ef = entityFilter(c)  // #358: 타법인 결재 수정 차단
     const req = await c.env.DB.prepare(
-      `SELECT status FROM approval_requests WHERE id = ?`
-    ).bind(id).first() as { status: string } | null
+      `SELECT status FROM approval_requests WHERE id = ?${ef.clause}`
+    ).bind(id, ...ef.params).first() as { status: string } | null
 
     if (!req || req.status !== 'DRAFT') {
       return c.json({ success: false, error: 'DRAFT 상태에서만 수정 가능합니다.' }, 400)
@@ -284,9 +287,10 @@ approvals.post('/:id/submit', async (c) => {
   try {
     const id = Number(c.req.param('id'))
 
+    const ef = entityFilter(c)  // #358: 타법인 결재 상신 차단
     const req = await c.env.DB.prepare(
-      `SELECT status, total_steps FROM approval_requests WHERE id = ?`
-    ).bind(id).first() as { status: string; total_steps: number } | null
+      `SELECT status, total_steps FROM approval_requests WHERE id = ?${ef.clause}`
+    ).bind(id, ...ef.params).first() as { status: string; total_steps: number } | null
 
     if (!req || req.status !== 'DRAFT') {
       return c.json({ success: false, error: 'DRAFT 상태에서만 상신 가능합니다.' }, 400)
@@ -315,9 +319,10 @@ approvals.post('/:id/approve', async (c) => {
     const userRole = c.get('user')?.role
     const body = await c.req.json()
 
+    const ef = entityFilter(c)  // #358: 타법인 결재 승인 차단 (credit/purchase 상태 연쇄 보호)
     const req = await c.env.DB.prepare(
-      `SELECT id, status, current_step, total_steps, reference_type, reference_id FROM approval_requests WHERE id = ?`
-    ).bind(id).first<{ status: string; current_step: number; total_steps: number; reference_type: string | null; reference_id: number | null }>()
+      `SELECT id, status, current_step, total_steps, reference_type, reference_id FROM approval_requests WHERE id = ?${ef.clause}`
+    ).bind(id, ...ef.params).first<{ status: string; current_step: number; total_steps: number; reference_type: string | null; reference_id: number | null }>()
     if (!req || !['PENDING', 'IN_REVIEW'].includes(req.status)) {
       return c.json({ success: false, error: '승인 가능한 상태가 아닙니다.' }, 400)
     }
@@ -380,9 +385,10 @@ approvals.post('/:id/reject', async (c) => {
     const userRole = c.get('user')?.role
     const body = await c.req.json()
 
+    const ef = entityFilter(c)  // #358: 타법인 결재 반려 차단 (credit_status 연쇄 보호)
     const req = await c.env.DB.prepare(
-      `SELECT id, status, current_step, reference_type, reference_id FROM approval_requests WHERE id = ?`
-    ).bind(id).first<{ status: string; current_step: number; reference_type: string | null; reference_id: number | null }>()
+      `SELECT id, status, current_step, reference_type, reference_id FROM approval_requests WHERE id = ?${ef.clause}`
+    ).bind(id, ...ef.params).first<{ status: string; current_step: number; reference_type: string | null; reference_id: number | null }>()
     if (!req || !['PENDING', 'IN_REVIEW'].includes(req.status)) {
       return c.json({ success: false, error: '반려 가능한 상태가 아닙니다.' }, 400)
     }
@@ -441,9 +447,10 @@ approvals.post('/:id/cancel', async (c) => {
     const id = Number(c.req.param('id'))
     const userId = c.get('user')?.id
 
+    const ef = entityFilter(c)  // #358: 타법인 결재 취소 차단
     const req = await c.env.DB.prepare(
-      `SELECT requester_id, status FROM approval_requests WHERE id = ?`
-    ).bind(id).first<{ requester_id: number; status: string }>()
+      `SELECT requester_id, status FROM approval_requests WHERE id = ?${ef.clause}`
+    ).bind(id, ...ef.params).first<{ requester_id: number; status: string }>()
 
     if (!req || req.requester_id !== userId) {
       return c.json({ success: false, error: '본인의 요청만 취소 가능합니다.' }, 403)
@@ -472,6 +479,13 @@ approvals.post('/:id/attachments', async (c) => {
     const body = await c.req.json()
     const { file_name, file_type, file_data } = body
 
+    // #358: 부모 결재 법인 격리 — 타법인 결재에 첨부 추가 차단
+    const ef = entityFilter(c)
+    const parent = await c.env.DB.prepare(
+      `SELECT id FROM approval_requests WHERE id = ?${ef.clause}`
+    ).bind(id, ...ef.params).first()
+    if (!parent) return c.json({ success: false, error: '결재 요청을 찾을 수 없습니다.' }, 404)
+
     const result = await c.env.DB.prepare(`
       INSERT INTO approval_attachments (request_id, file_name, file_type, file_data, uploaded_by, entity_id)
       VALUES (?, ?, ?, ?, ?, ?)
@@ -487,9 +501,10 @@ approvals.post('/:id/attachments', async (c) => {
 approvals.get('/:id/attachments/:attachId', async (c) => {
   try {
     const attachId = Number(c.req.param('attachId'))
+    const ef = entityFilter(c)  // #358: 타법인 첨부 파일 본문 다운로드 차단
     const att = await c.env.DB.prepare(
-      `SELECT id, request_id, file_name, file_type, file_data, uploaded_by, created_at FROM approval_attachments WHERE id = ?`
-    ).bind(attachId).first()
+      `SELECT id, request_id, file_name, file_type, file_data, uploaded_by, created_at FROM approval_attachments WHERE id = ?${ef.clause}`
+    ).bind(attachId, ...ef.params).first()
     if (!att) return c.json({ success: false, error: '첨부 파일을 찾을 수 없습니다.' }, 404)
     return c.json({ success: true, data: att })
   } catch (e) {
@@ -505,6 +520,7 @@ approvals.get('/badge/count', async (c) => {
     const userId = c.get('user')?.id
     const userRole = c.get('user')?.role
 
+    const ef = entityFilter(c, 'ar')  // #358: 대기 건수 법인 격리
     const result = await c.env.DB.prepare(`
       SELECT COUNT(*) as cnt
       FROM approval_requests ar
@@ -512,8 +528,8 @@ approvals.get('/badge/count', async (c) => {
       WHERE ar.status IN ('PENDING', 'IN_REVIEW')
         AND ast.status = 'PENDING'
         AND ast.step_order = ar.current_step
-        AND (ast.approver_id = ? OR ast.approver_role = ?)
-    `).bind(userId, userRole).first() as { cnt: number }
+        AND (ast.approver_id = ? OR ast.approver_role = ?)${ef.clause}
+    `).bind(userId, userRole, ...ef.params).first() as { cnt: number }
 
     return c.json({ success: true, data: { count: result?.cnt || 0 } })
   } catch (e) {

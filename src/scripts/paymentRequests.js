@@ -8,9 +8,11 @@
 
 function fmt(n) { return (n || 0).toLocaleString(); }
 var prEditingId = null;
+var prCurrentPage = 1;
 // 초기화는 파일 맨 아래에서 실행 (window.* 함수 정의 이후)
 
-window.loadPaymentRequests = async function() {
+window.loadPaymentRequests = async function(page) {
+  prCurrentPage = page || 1;
   try {
     var status = document.getElementById('prFilterStatus').value;
     var type = document.getElementById('prFilterType').value;
@@ -28,11 +30,17 @@ window.loadPaymentRequests = async function() {
     if (to) qs.push('to=' + to);
     // #345: 지급처/사유 키워드 검색
     if (search) qs.push('search=' + encodeURIComponent(search));
+    // #359: 페이지네이션
+    qs.push('page=' + prCurrentPage);
     var res = await axios.get('/api/payment-requests' + (qs.length ? '?' + qs.join('&') : ''));
     if (!res.data.success) return;
     renderPrTable(res.data.data || []);
+    renderPrPagination(res.data.pagination);
   } catch (e) {
     console.error('load pr error:', e);
+    // #362: 로드 실패 시 스켈레톤 잔류 방지 — 에러 행 + 재시도 버튼
+    var tb = document.getElementById('prTableBody');
+    if (tb) tb.innerHTML = '<tr><td colspan="9" class="px-4 py-8 text-center text-red-500"><i class="fas fa-exclamation-triangle mr-1"></i>불러오기 실패 <button onclick="loadPaymentRequests()" class="underline text-blue-600 ml-1">다시 시도</button></td></tr>';
   }
 };
 
@@ -88,6 +96,21 @@ function renderPrTable(rows) {
       + '<td class="px-2 py-1.5 text-center">' + actions + '</td>'
       + '</tr>';
   }).join('');
+}
+
+// #359: 페이지네이션 컨트롤 + 총건수 (peer: quotations.js renderQuotPagination)
+function renderPrPagination(p) {
+  var container = document.getElementById('prPagination');
+  if (!container) return;
+  if (!p) { container.innerHTML = ''; return; }
+  var html = '<span class="text-xs text-gray-500 mr-3">총 ' + (p.total || 0) + '건</span>';
+  if (p.total_pages > 1) {
+    for (var i = 1; i <= p.total_pages; i++) {
+      html += '<button onclick="loadPaymentRequests(' + i + ')" class="px-2.5 py-1 mx-0.5 rounded text-xs '
+        + (i === p.page ? 'bg-blue-600 text-white' : 'bg-gray-100 hover:bg-gray-200 text-gray-700') + '">' + i + '</button>';
+    }
+  }
+  container.innerHTML = html;
 }
 
 window.prOpenAddModal = function() {

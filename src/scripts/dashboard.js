@@ -202,6 +202,12 @@ async function loadDashboardStats() {
         }
     } catch (error) {
         console.error('Load dashboard stats error:', error);
+        // #362: 로드 실패 시 스켈레톤 영구잔류 방지 — 에러 메시지 + 재시도 버튼
+        var kpiAreaErr = document.getElementById('kpiArea');
+        if (kpiAreaErr && kpiAreaErr.querySelector('.ds-skeleton')) {
+            kpiAreaErr.innerHTML = '<div class="ds-card" style="grid-column:1/-1;text-align:center;padding:32px;color:var(--c-danger)"><i class="fas fa-exclamation-triangle" style="font-size:24px;display:block;margin-bottom:8px"></i><div style="margin-bottom:12px">대시보드 데이터를 불러오지 못했습니다</div><button onclick="loadDashboardStats()" class="ds-btn ds-btn-sm" style="background:var(--c-primary);color:#fff"><i class="fas fa-redo mr-1"></i>다시 시도</button></div>';
+        }
+        if (window.showToast) showToast('대시보드 로드 실패', 'error');
     }
 }
 

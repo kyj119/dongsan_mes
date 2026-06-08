@@ -232,6 +232,74 @@ prRouter.post('/:id/comments', async (c) => {
 })
 
 // ============================================================================
+// GET /export/csv - 발주 요청 CSV (현재 필터 기준, /:id 보다 먼저 등록)
+// ============================================================================
+prRouter.get('/export/csv', async (c) => {
+  try {
+    const user = c.get('user')
+    const { status = '', urgency = '', search = '', date_from = '', date_to = '' } = c.req.query()
+
+    let query = `
+      SELECT
+        pr.request_number, pr.created_at, pr.urgency, pr.status,
+        u.name as requester_name,
+        c.client_name as supplier_name,
+        (SELECT COALESCE(SUM(COALESCE(pri.admin_quantity, pri.quantity) * COALESCE(pri.admin_unit_price, pri.estimated_unit_price)), 0)
+         FROM purchase_request_items pri WHERE pri.request_id = pr.id) as total_amount
+      FROM purchase_requests pr
+      JOIN users u ON pr.requester_id = u.id
+      LEFT JOIN clients c ON pr.supplier_id = c.id
+    `
+    const params: any[] = []
+    const whereClauses: string[] = []
+
+    const ef = entityFilter(c, 'pr')
+    if (ef.clause) {
+      whereClauses.push(ef.clause.replace(' AND ', ''))
+      params.push(...ef.params)
+    }
+    if (user?.role === 'MANAGER') {
+      whereClauses.push('pr.requester_id = ?')
+      params.push(user.id)
+    }
+    if (status) { whereClauses.push('pr.status = ?'); params.push(status) }
+    if (urgency) { whereClauses.push('pr.urgency = ?'); params.push(urgency) }
+    if (search) {
+      whereClauses.push('(pr.request_number LIKE ? OR u.name LIKE ? OR c.client_name LIKE ?)')
+      const searchPattern = `%${search}%`
+      params.push(searchPattern, searchPattern, searchPattern)
+    }
+    if (date_from) { whereClauses.push('pr.created_at >= ?'); params.push(date_from) }
+    if (date_to) { whereClauses.push('pr.created_at <= ?'); params.push(date_to + ' 23:59:59') }
+
+    if (whereClauses.length > 0) query += ' WHERE ' + whereClauses.join(' AND ')
+    query += ' ORDER BY pr.created_at DESC LIMIT 5000'
+
+    const { results } = await c.env.DB.prepare(query).bind(...params).all()
+
+    const urgencyLabels: Record<string, string> = { LOW: '낮음', NORMAL: '보통', HIGH: '높음', URGENT: '긴급' }
+    const statusLabels: Record<string, string> = { PENDING: '승인대기', APPROVED: '승인됨', REJECTED: '반려', CONVERTED: '발주전환' }
+
+    const headers = ['요청번호', '요청일', '요청자', '공급처(추천)', '긴급도', '상태', '예상금액']
+    const rows = (results || []).map((r: any) => [
+      r.request_number || '',
+      (r.created_at || '').slice(0, 10),
+      r.requester_name || '',
+      r.supplier_name || '',
+      urgencyLabels[r.urgency] || r.urgency || '',
+      statusLabels[r.status] || r.status || '',
+      r.total_amount || 0
+    ])
+
+    const { generateCsv, csvResponse } = await import('../utils/csv')
+    return csvResponse(c, `발주요청_${new Date().toISOString().slice(0, 10)}.csv`, generateCsv(headers, rows))
+  } catch (error) {
+    console.error('purchaseRequests CSV export error:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
+  }
+})
+
+// ============================================================================
 // GET /:id - 발주 요청 상세
 // ============================================================================
 prRouter.get('/:id', async (c) => {

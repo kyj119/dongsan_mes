@@ -7,9 +7,10 @@ const filesRouter = new Hono<HonoEnv>()
 filesRouter.use('/*', authMiddleware)
 
 // ============================================================================
-// GET /api/files/* — R2 파일 서빙 (인증 필수, Workers 프록시)
+// GET /api/files/* — R2 파일 서빙 (#365: ADMIN 전용 — 범용 프록시가 전용 엔드포인트의
+//   entity/역할 격리를 우회하던 IDOR 완화. frontend 미사용, 외부 폴링은 ADMIN 토큰)
 // ============================================================================
-filesRouter.get('/*', async (c) => {
+filesRouter.get('/*', requireRole('ADMIN'), async (c) => {
   try {
     const key = c.req.path.replace('/api/files/', '')
     if (!key) return c.json({ success: false, error: 'File key required' }, 400)
