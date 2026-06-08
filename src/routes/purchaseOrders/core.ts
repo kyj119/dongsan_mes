@@ -259,6 +259,10 @@ poCoreRouter.get('/export/csv', async (c) => {
     const params: any[] = []
     const whereClauses: string[] = []
 
+    // #358계열: 발주목록 CSV 법인 격리 — GET / 목록(entityFilter po)과 정합, 타법인 발주 export 차단
+    const ef = entityFilter(c, 'po')
+    if (ef.clause) { whereClauses.push(ef.clause.replace(' AND ', '')); params.push(...ef.params) }
+
     if (status) { whereClauses.push('po.status = ?'); params.push(status) }
     if (search) {
       whereClauses.push('(po.po_number LIKE ? OR c.client_name LIKE ?)')
