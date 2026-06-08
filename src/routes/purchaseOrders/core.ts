@@ -545,7 +545,8 @@ poCoreRouter.get('/:id/inspections', async (c) => {
   try {
     const id = c.req.param('id')
 
-    const po = await c.env.DB.prepare(`SELECT id FROM purchase_orders WHERE id = ?`).bind(id).first()
+    const ef = entityFilter(c)  // #358계열: 발주 검수이력 조회 법인 격리
+    const po = await c.env.DB.prepare(`SELECT id FROM purchase_orders WHERE id = ?${ef.clause}`).bind(id, ...ef.params).first()
     if (!po) {
       return c.json({ success: false, error: 'Purchase order not found' }, 404)
     }
@@ -629,6 +630,7 @@ poCoreRouter.get('/:id/invoice', async (c) => {
   try {
     const id = c.req.param('id')
 
+    const ef = entityFilter(c, 'po')  // #358계열: 발주 인보이스 조회 법인 격리
     const po = await c.env.DB.prepare(`
       SELECT
         po.*,
@@ -639,8 +641,8 @@ poCoreRouter.get('/:id/invoice', async (c) => {
       FROM purchase_orders po
       LEFT JOIN clients c ON po.supplier_id = c.id
       LEFT JOIN users u ON po.created_by = u.id
-      WHERE po.id = ?
-    `).bind(id).first()
+      WHERE po.id = ?${ef.clause}
+    `).bind(id, ...ef.params).first()
 
     if (!po) {
       return c.json({ success: false, error: 'Purchase order not found' }, 404)
@@ -893,6 +895,7 @@ poCoreRouter.get('/:id', async (c) => {
   try {
     const id = c.req.param('id')
 
+    const ef = entityFilter(c, 'po')  // #358계열: 발주 단건 조회 법인 격리
     const po = await c.env.DB.prepare(`
       SELECT
         po.*,
@@ -901,8 +904,8 @@ poCoreRouter.get('/:id', async (c) => {
       FROM purchase_orders po
       LEFT JOIN clients c ON po.supplier_id = c.id
       LEFT JOIN users u ON po.created_by = u.id
-      WHERE po.id = ?
-    `).bind(id).first()
+      WHERE po.id = ?${ef.clause}
+    `).bind(id, ...ef.params).first()
 
     if (!po) {
       return c.json({ success: false, error: 'Purchase order not found' }, 404)
@@ -1121,12 +1124,13 @@ poCoreRouter.put('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
     const id = c.req.param('id')
     const data = await c.req.json()
 
+    const ef = entityFilter(c)  // #358계열: 발주 수정 법인 격리
     const po = await c.env.DB.prepare(`
       SELECT id, status, supplier_id, final_amount, discount_amount,
              order_date, expected_date, notes, internal_notes,
              delivery_date, delivery_location
-      FROM purchase_orders WHERE id = ?
-    `).bind(id).first<PurchaseOrder & { delivery_date?: string; delivery_location?: string; discount_amount: number }>()
+      FROM purchase_orders WHERE id = ?${ef.clause}
+    `).bind(id, ...ef.params).first<PurchaseOrder & { delivery_date?: string; delivery_location?: string; discount_amount: number }>()
 
     if (!po) {
       return c.json({ success: false, error: 'Purchase order not found' }, 404)
@@ -1294,10 +1298,11 @@ poCoreRouter.patch('/:id/status', requireRole('ADMIN', 'MANAGER'), async (c) => 
       return c.json({ success: false, error: 'status is required' }, 400)
     }
 
+    const ef = entityFilter(c)  // #358계열: 발주 단건 변경 법인 격리
     const po = await c.env.DB.prepare(`
       SELECT id, status, supplier_id, final_amount
-      FROM purchase_orders WHERE id = ?
-    `).bind(id).first<PurchaseOrder>()
+      FROM purchase_orders WHERE id = ?${ef.clause}
+    `).bind(id, ...ef.params).first<PurchaseOrder>()
 
     if (!po) {
       return c.json({ success: false, error: 'Purchase order not found' }, 404)
@@ -1394,10 +1399,11 @@ poCoreRouter.post('/:id/receive', async (c) => {
       return c.json({ success: false, error: 'items are required' }, 400)
     }
 
+    const ef = entityFilter(c)  // #358계열: 발주 입고처리 법인 격리
     const po = await c.env.DB.prepare(`
       SELECT id, status, supplier_id
-      FROM purchase_orders WHERE id = ?
-    `).bind(id).first<PurchaseOrder>()
+      FROM purchase_orders WHERE id = ?${ef.clause}
+    `).bind(id, ...ef.params).first<PurchaseOrder>()
 
     if (!po) {
       return c.json({ success: false, error: 'Purchase order not found' }, 404)
@@ -1779,12 +1785,13 @@ poCoreRouter.post('/:id/copy', requireRole('ADMIN', 'MANAGER'), async (c) => {
     const user = c.get('user')
     const id = c.req.param('id')
 
+    const ef = entityFilter(c)  // #358계열: 발주 복사 원본 법인 격리 (타법인 발주 복사 차단)
     const po = await c.env.DB.prepare(`
       SELECT id, po_number, supplier_id, expected_date,
              total_amount, vat_amount, discount_amount, final_amount,
              notes, internal_notes
-      FROM purchase_orders WHERE id = ?
-    `).bind(id).first<PurchaseOrder>()
+      FROM purchase_orders WHERE id = ?${ef.clause}
+    `).bind(id, ...ef.params).first<PurchaseOrder>()
 
     if (!po) {
       return c.json({ success: false, error: 'Purchase order not found' }, 404)
@@ -1878,10 +1885,11 @@ poCoreRouter.delete('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
     const user = c.get('user')
     const id = c.req.param('id')
 
+    const ef = entityFilter(c)  // #358계열: 발주 단건 변경 법인 격리
     const po = await c.env.DB.prepare(`
       SELECT id, status, supplier_id, final_amount
-      FROM purchase_orders WHERE id = ?
-    `).bind(id).first<PurchaseOrder>()
+      FROM purchase_orders WHERE id = ?${ef.clause}
+    `).bind(id, ...ef.params).first<PurchaseOrder>()
 
     if (!po) {
       return c.json({ success: false, error: 'Purchase order not found' }, 404)
@@ -1955,11 +1963,12 @@ poCoreRouter.post('/:id/reorder', requireRole('ADMIN', 'MANAGER'), async (c) => 
     const targetStatus = body.status || 'CONFIRMED'
 
     // 원본 PO 조회
+    const ef = entityFilter(c)  // #358계열: 발주 재주문 원본 법인 격리 (타법인 발주 재주문 차단)
     const originalPo = await c.env.DB.prepare(`
       SELECT id, po_number, supplier_id, expected_date, delivery_location,
              total_amount, vat_amount, discount_amount, final_amount, notes
-      FROM purchase_orders WHERE id = ?
-    `).bind(id).first<PurchaseOrder & { delivery_location?: string }>()
+      FROM purchase_orders WHERE id = ?${ef.clause}
+    `).bind(id, ...ef.params).first<PurchaseOrder & { delivery_location?: string }>()
     if (!originalPo) {
       return c.json({ success: false, error: '원본 발주서를 찾을 수 없습니다.' }, 404)
     }
