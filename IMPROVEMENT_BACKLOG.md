@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 6 -->
-<!-- last_run_at: 2026-06-08T22:00:00+09:00 -->
+<!-- last_run_area: 1 -->
+<!-- last_run_at: 2026-06-09T02:00:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -14,6 +14,14 @@
 | ✔️ done | 61 (closed-pending-verification 11건 코드 교차검증 후 done 확정 — Area 6, 06-06T10:00) |
 | ❌ rejected | 3 |
 
+> **Area 1 프로덕션 헬스 (2026-06-09T02:00):**
+> - **방법**: GitHub Actions 최근 30런(actions_list) 분석 + 로컬 verify + 최신 런 잡 단계 실측. egress는 여전히 Cloudflare 엣지 403 차단(`curl /api/health`→**403** 0.25s, `/`→**403** 0.61s) = 샌드박스 IP 차단이라 직접 20-API 호출 불가, E2E(실제 prod 페이지 브라우저 검증)를 헬스 신호로 사용.
+> - **🟢 파이프라인 사실상 green (30런 중 29 success / 1 failure)**: Deploy **#173~180 전부 success** · E2E **#193~203 전부 success** · Daily D1 Backup #22 success. 유일 failure = **E2E #189(e4772b2, 06-07T00:18)** — 직전 Area 1에서 분석한 **#340 패턴**(crud-order prod 직접 주문생성 hard-fail + authedPage cold-start flaky). **동일 커밋 e4772b2의 다음 런 E2E #190(schedule 04:00)=success** → transient 자가복구, 코드 회귀 아님. 이후 #191~203(13런) 연속 green. queued/stuck 0건.
+> - **최신 런 no-op green 아님 실측**: **E2E #203**(id 27131216372, HEAD **395d846**) "Run Playwright tests (production)" 단계 10:22:06→10:24:09 = **2m3s 실제 실행**, **run_attempt=1**(재시도 0), 전 스텝 success. Deploy #180(395d846)도 green. #340 패턴 이번 런 미발화.
+> - **로컬 verify PASS**: `npm ci`→tsc --noEmit PASS + build PASS(360 modules, _worker.js 5.05MB raw). 유료 10MB 한도 대비 ~10% 점유, 헤드룸 충분.
+> - **오탐/이상 없음**: deploy failure 0건 지속. egress 403은 샌드박스 IP 차단(기존 인지)이라 헬스 이상 아님. open auto-improve **16건**(new 14 + approved 2: #342/#340) stats 정합 재확인. #340(approved)은 egress 차단으로 prod 픽스처 검증 불가 → 전용 세션 대기 유지(13+ 연속 green으로 급성도 낮음).
+> - 자동 수정 0건(파이프라인 정상·egress 차단으로 E2E 변경 검증 불가), 신규 이슈 0건
+>
 > **Area 6 자기 진화 (2026-06-08T22:00):**
 > - **GitHub ↔ 백로그 전수 재동기 — 변경 0건(clean)**: open auto-improve **16건** 실측 = new 14(#368/#367/#366/#365/#364/#363/#362/#361/#360/#359/#358/#350/#341/#336) + approved 2(#342/#340) = 백로그 stats 정합. closed 목록 최신 updated_at=**#356(06-06T00:13)** → 직전 Area 6(06-07T22:00) 이후 **신규 close 0건**. done 61/rejected 3 유지. 이관할 항목 없음. baseline `npm ci`+tsc --noEmit PASS.
 > - **🧬 탐지 규칙 강화 2건 (직전 Area 6 이후 사이클의 net-new 패턴 codify, owner 직접 코드 검증 후)**:
