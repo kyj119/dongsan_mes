@@ -50,6 +50,12 @@ description: 자율 점검·개선 에이전트. 6개 영역을 순환하며 실
 **자동 수정 가능**: entity_id 누락, 타입 불일치, dead code 제거
 
 > **🧭 도달성(reachability) 선검증 (Area 2·5 #334)**: entity_id 격리 갭을 **멀티테넌시 보안 이슈**로 분류하기 전, 해당 라우터/엔드포인트가 프론트에서 실제 호출되는지 확인 — `grep -rn "api/<path>" src/scripts src/pages`. **호출처 0건이면 orphan 라우터 = dead code 사안**(보안 영향 없음, 삭제/정리 권고로 분류). index.tsx에 `app.route()` 마운트만 돼 있다고 "사용 중"이 아님. (#334 order_templates가 보안 갭으로 오분류됐던 근본 원인 — `/api/templates`는 마운트만 되고 프론트 호출 0건)
+>
+> **⚠️ 도달성 규칙 예외 — 범용 서빙 프록시 (Area 5·6 #365)**: 위 "0건=dead code"는 **UI 트리거형 격리 갭**(특정 화면에서만 호출되는 `/:id` 핸들러)에만 적용. **클라이언트 제공 키로 raw 리소스를 서빙하는 범용 엔드포인트**(R2 파일 프록시 `files.ts` GET `/*`·generic download-by-key)는 프론트 참조 0건이어도 **인증된 직접 HTTP 호출이 곧 공격표면**(키가 구조적이거나 다른 API 응답에 노출돼 추측·도달 가능) → dead-code로 강등하지 말고 보안 이슈로 보고. 판별 기준: 핸들러가 (a)UI 컨텍스트 없이 임의 식별자/키만으로 (b)DB·entity·역할 검증 없이 리소스를 반환하면 도달성 무관하게 공격표면.
+
+> **🚫 오탐 — 금액 부동소수점 누적 (Area 2 2026-06-08, 7회차)**: "VAT/금액을 반올림 없이 누적해 원 단위 신고 오차"는 **금액이 누적 직전에 정수로 반올림**되면(예: `quotations.ts:223` `Math.round(itemAmount/100)*100` → 100원 단위 정수, `×0.1`=10의 배수=정수) IEEE754 drift 불가. 보고 전 `node -e "...Number.isInteger(누적값)"`로 반증 필수. 견적(추정 금액)↔세금계산서(`Math.round` per-item + `total≠supply+tax면 강제정렬` 정합보정) "반올림 불일치"도 발행단계가 권위계산이라 버그 아님. models.ts `number`↔스키마 `REAL/INTEGER` 타입 표기차도 정상 TS(D1 바인딩 관행).
+
+> **🚫 오탐 — best-effort catch "데이터손실" (Area 2 2026-06-08)**: catch가 에러를 잡고 `{success:true}` 반환해도, try 안이 **부차 denormalized 물질화**(가격이력·cash_schedule 등 언제든 재계산 가능한 파생)이고 **주석에 best-effort 명시**(예: `purchaseInvoices.ts:131/164` "receive Phase4와 동일 정책")면 의도적 설계. **핵심 비즈니스 write(주문/인보이스/잔액/재고)가 try 밖**이면 오탐. batch 실패 후 보상(rollback) `DELETE ... .catch(()=>{})`도 보상 자체 실패는 더 할 게 없어 정상. 보고하려면 **핵심 mutation**이 삼켜지고도 success로 응답하는 구체 경로를 실증.
 
 ---
 
@@ -94,6 +100,10 @@ description: 자율 점검·개선 에이전트. 6개 영역을 순환하며 실
 > **🧭 Ground-truth 기법 (Area 4)**: 프로덕션 D1 직접 접근 불가 시 → `migrations/*.sql` 전체를 로컬 D1에 적용해 **실제 해석 스키마**(테이블/인덱스/UNIQUE) 확보 후 정적분석과 교차검증.
 > 인덱스·UNIQUE 누락 후보는 대부분 오탐(컬럼 존재하나 hot query path 아님 / 이미 복합 인덱스 존재) → ground truth로 반증 필수. (Area 4에서 tax_invoices·shipments 2건 오탐 차단)
 
+> **🕒 업무일자 UTC vs KST 탐지 규칙 (Area 4 #366, 2026-06-08)**: SQLite `date('now')`/`datetime('now')`는 **UTC**라, **업무 의미를 갖는 날짜**(처분일·주문일·자동완료일·납기경과·연체판정 등)에 raw로 쓰면 KST 00:00~09:00 입력 건이 하루 전일로 어긋남. 같은 코드베이스가 KST를 알고 있음이 증거 = `hr.ts:801` `Date.now()+9h`·`hr.ts:816` `'now','+9 hours'`(근태) → KST가 의도인데 나머지 미보정 = 불일치.
+> - **우선순위**: 저장되는 DATE 컬럼(`disposed_at`/`order_date`/`auto_complete_date`)은 시간정보 없어 **영구 off-by-one**(회계 귀속·매출 집계 직결) > 비교 필터(매 쿼리 재계산되어 9시 이후 정상화, 일시적).
+> - 탐지: `grep -rn "date('now')\|datetime('now')" src/routes` 후 각 사용처가 (a)업무일자(비즈니스 의미) 인지 (b)순수 감사 타임스탬프(`created_at`/`updated_at`=UTC 정상)인지 분류. 업무일자는 `'+9 hours'` 보정 필요. **자동수정 금지**(날짜 시맨틱=비즈니스 로직, 사용처 분류 선행, 잘못 보정 시 UTC 감사로그 훼손).
+
 ---
 
 ### 🟣 Area 5: 보안 + 인프라
@@ -115,12 +125,17 @@ description: 자율 점검·개선 에이전트. 6개 영역을 순환하며 실
 - 이전 #314가 "하드코딩 없음" 단언으로 놓쳤던 패턴 → 매 Area 5 반복
 
 > **🔓 IDOR 비대칭 탐지 규칙 (Area 5 #349/#356)**: 같은 라우터에서 **목록(list)은 `entityFilter` 적용**하면서 **단건 조회/변경(`GET/PUT/PATCH/DELETE /:id`, submit/approve/cancel)은 `WHERE id = ?`만** 쓰면 = 의도적 전역공유 아니라 **격리 누락 버그**. list가 entityFilter를 쓰는 게 격리 의도의 증거. approve/차감이 호출자 `getEntityId(c)`를 쓰면 정합성 훼손까지. **단, 보고 전 도달성 선검증(#334)** — 호출처 0건이면 dead-code. 6모듈 클러스터(#356)를 이 규칙으로 발견. egress 차단 환경에선 런타임 검증 불가라 자동수정 금지, 이슈 보고.
+> - **변종 — 클라이언트 플래그로 필터 무력화(#368)**: list가 필터를 갖춰도 `?all_entities=1`류 쿼리 파라미터를 **역할 검증 없이** 신뢰해 필터를 끄면 우회(storageZones.ts:13/21, STAFF가 전 법인 열람). 비대칭 규칙은 "list가 필터를 쓴다"가 전제라 이 변종을 놓침 → `grep -rn "c.req.query(" src/routes` 중 entity/필터 분기를 제어하는 파라미터가 ADMIN/`getEntityId===0` 게이팅 없이 동작하는지 점검. (security-audit SKILL에 상세 codify)
 
 **오탐 제외**:
 - `webhooks.ts allowedPrefixes` Popbill IP 목록 → 의도적 보안 화이트리스트, 하드코딩 아님
 - dev server 전용 취약점 (vite/esbuild SSRF 등) → 프로덕션 영향 없음, 보고 가치 없음
 - CORS `!origin → '*'` (index.tsx:213) → Bearer 인증(쿠키 미사용)이라 실질 무해
 - rate limiter in-memory Map (rateLimit.ts:6) → isolate 분산 한계는 기존 인지 아키텍처 제약
+- **rate-limit "누락" 보고 (라우트 파일에 inline 미들웨어 없음)** → rate limit은 `index.tsx`에서 `app.use('/api/...', rateLimitMiddleware(...))`로 **앱 레벨 전역 등록**(240-246: auth/portal login·users/portal change-pw·refresh·self-auth·verify-document·verify-token). 라우트 핸들러만 보면 항상 inline 부재로 오탐 → 보고 전 index.tsx 등록처 확인 필수 (Area 5 2026-06-06)
+- **"escapeHtml 헬퍼 전무(`grep -c escapeHtml`=0) → XSS"** → `layout.ts:1185`가 `window.escapeHtml`를 **전역 정의**(+`portalLayout.ts` 포털용). 모든 스크립트가 로컬 정의 없이 전역 헬퍼 호출 가능 → 파일에 escapeHtml 미정의/미참조는 취약 증거 **아님**. 올바른 판정: 실제 `innerHTML` 싱크의 보간값이 (a)사용자 제어 free-text **이고** (b)미escape인지 직접 확인. `Number()` 강제 숫자·시스템 채번코드(order_number)·서버 하드코딩 문자열은 싱크 아님 (Area 6 2026-06-06, #335 portalBalance.js 잔여 오탐 차단)
+
+> **📤 CSV Formula Injection 탐지 (Area 5 #367, 2026-06-08)**: CSV export 헬퍼가 셀 값의 **선행 `=` `+` `-` `@`(탭/CR)**를 이스케이프하지 않으면 자유입력(거래처명·품목명·메모 등)이 다운로드 PC Excel에서 수식 실행(HYPERLINK 유출/DDE). `,"` 개행만 따옴표 처리하는 건 **부족**. 점검: `grep -rn "includes(','" src` 후 각 CSV 헬퍼가 선행 특수문자 가드하는지. **이 코드베이스는 4개 구현 산재**(csv.ts generateCsv/escapeCsvField·tax-agent csvField·shipments 인라인 esc) — 하나만 고치면 우회. 가드 추가 시 **금융 음수금액(`-1000`)이 텍스트로 깨지지 않게 숫자-안전**(`typeof val!=='number' && /^[=+\-@\t\r]/.test(str) && isNaN(Number(str))`) 필수.
 
 **자동 수정 가능**: escapeHtml 추가, SQL 바인딩 수정
 
@@ -153,7 +168,7 @@ description: 자율 점검·개선 에이전트. 6개 영역을 순환하며 실
 - 비활성 필드 UI 힌트 제안 (disabled 이유 표시 등 미세 UX) → 불필요 판단 (F-004 패턴)
 - dev server 전용 취약점 → 프로덕션 영향 없음
 - 의도적 IP 화이트리스트 코드 → 보안 제어 목적
-- **orphan 라우터의 entity_id 격리 갭** (프론트 호출처 0건) → 보안 아니라 dead code. 격리 갭 보고 전 도달성 선검증 필수 (#334)
+- **orphan 라우터의 entity_id 격리 갭** (프론트 호출처 0건) → 보안 아니라 dead code. 격리 갭 보고 전 도달성 선검증 필수 (#334). **단 예외**: 클라 제공 키로 raw 리소스 서빙하는 범용 프록시(R2 파일 등)는 0-refs여도 직접 HTTP 호출이 공격표면 → 보안 이슈 (#365)
 
 ---
 

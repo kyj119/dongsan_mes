@@ -1,6 +1,6 @@
 # Improvement Backlog
 <!-- last_run_area: 6 -->
-<!-- last_run_at: 2026-06-05T10:00:00+09:00 -->
+<!-- last_run_at: 2026-06-08T22:00:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,14 +8,159 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | 15 (open auto-improve 17건 − approved 2건; #336은 코드측 해소·이슈 open 잔존) |
+| 🆕 new | 14 (open 실측 — #368/#367/#366/#365/#364/#363/#362/#361/#360/#359/#358/#350/#341/#336) |
 | ✅ approved | 2 (I-032/#342 — 전용 세션 대기 / I-030/#340 — 👍 확인, 급성 RED 해소·잔여만 대기) |
 | 👀 reviewed | 0 |
-| ✔️ done | 49 |
+| ✔️ done | 61 (closed-pending-verification 11건 코드 교차검증 후 done 확정 — Area 6, 06-06T10:00) |
 | ❌ rejected | 3 |
 
-> ✅ **GitHub 전수 재동기 완료 (Area 6, 2026-06-05T10:00)**: open auto-improve 정확히 17건 = New 15 + approved 2(#342/#340). 이전 경고대로 #334/#337/#338/#349는 GitHub closed(completed) 확인 → **a7a15cc 실제 수정·배포·검증 + 코드 교차검증 통과 → done 이관**. #336은 a7a15cc로 코드측(yml 폴백 제거) 해소됐으나 owner 일괄 close 시 누락 → open 잔존(운영 계정점검만 잔여, 상태 코멘트 추가).
-
+> **Area 6 자기 진화 (2026-06-08T22:00):**
+> - **GitHub ↔ 백로그 전수 재동기 — 변경 0건(clean)**: open auto-improve **16건** 실측 = new 14(#368/#367/#366/#365/#364/#363/#362/#361/#360/#359/#358/#350/#341/#336) + approved 2(#342/#340) = 백로그 stats 정합. closed 목록 최신 updated_at=**#356(06-06T00:13)** → 직전 Area 6(06-07T22:00) 이후 **신규 close 0건**. done 61/rejected 3 유지. 이관할 항목 없음. baseline `npm ci`+tsc --noEmit PASS.
+> - **🧬 탐지 규칙 강화 2건 (직전 Area 6 이후 사이클의 net-new 패턴 codify, owner 직접 코드 검증 후)**:
+>   - **#368 클라이언트 플래그로 entity 필터 무력화 — IDOR 비대칭의 변종**: list가 `entityFilter`를 갖춰도 `?all_entities=1`류 쿼리 파라미터를 **역할 검증 없이** 신뢰해 필터를 끄면 우회. 기존 list-vs-detail 규칙은 "list가 필터를 쓴다"가 전제라 이 변종을 놓침. **ground-truth 검증**: `storageZones.ts:13/21` GET 핸들러가 authMiddleware만(role 0) + `all_entities`는 전 코드베이스에서 storageZones 단독(grep)=고유 갭. → security-audit SKILL(신규 callout) + auto-improve SKILL(Area 5 IDOR 규칙 변종 sub-bullet) codify. 탐지 출발점 = `grep -rn "c.req.query(" src/routes` 중 entity/필터 분기 제어 파라미터의 게이팅 여부.
+>   - **#366 업무일자 UTC vs KST 탐지 규칙 — Area 4 신규 각도**: SQLite `date('now')`(UTC)를 업무 의미 날짜에 raw 사용 시 KST 00:00~09:00 입력 건 하루 어긋남. **ground-truth 검증**: `hr.ts:801/816`은 `+9 hours` 보정(KST 의도 확립)인데 `fixedAssets.ts:153 disposed_at`·`orders/operations.ts:103 order_date`는 raw `date('now')` = 불일치 실측. 저장 DATE(영구 off-by-one, 회계 귀속) > 비교 필터(일시) 우선순위. → auto-improve SKILL(Area 4 callout) codify. 탐지 = `grep -rn "date('now')" src/routes` 후 업무일자/감사타임스탬프 분류.
+> - **오탐 패턴 신규 0건**: 두 패턴은 **true-positive 탐지 규칙**(이슈 #368/#366으로 이미 보고됨)이라 FP표가 아닌 스킬 callout에 등재. 기존 FP표 11개 패턴 유효성 재확인(신규 오탐 보고 0).
+> - **이상 없음**: approved 2건(#342 설비 entity_id 전용세션 / #340 E2E 픽스처 전용세션)은 Area 6 범위 밖 유지. 직전 사이클(Area 1~5, 06-08) 산출 — Area 2 FP패턴 2건·Area 5 #367 CSV injection은 이미 스킬 반영 완료(중복 codify 회피).
+> - 자동 수정 0건(메타 정리·문서), 신규 이슈 0건, done 이관 0건(신규 close 없음), 탐지 규칙 강화 2건(#368 스킬 2개 + #366 스킬 1개)
+>
+> **Area 5 보안 (2026-06-08T18:00):**
+> - **방법**: baseline `npm ci`+tsc --noEmit PASS. Area 5 **7회차** — IDOR 비대칭(#356~#365 10모듈)·SQLi·rate·XSS·PII·파일프록시(#365) 고갈 → **덜 다룬 4각도**로 전환: (A)엔티티 컨텍스트 전환 인가(entityId=0/default_entity_id 전환 자체 게이팅 = 멀티테넌시 토대) (B)자기서비스 권한상승(hrSelf/profile/change-pw/reset) (C)JWT 발급·갱신 (D)CSV formula injection + 에러/로그 민감정보. 병렬 Explore 2개 + 발견 전수 owner 직접 코드 검증(오탐 차단).
+> - **🐛 신규 이슈 #367 (MED bug) — CSV Formula Injection 전 내보내기 미가드**: CSV 헬퍼 4개(`csv.ts:3-10` generateCsv escape·`:60-67` escapeCsvField·`payroll/tax-agent.ts:21-28` csvField·`shipments.ts:849-852` 한진 esc) 전부 선행 `=+-@`(탭/CR) 미이스케이프 → 거래처명·품목명·주소·적요 등 **자유입력**이 셀에 그대로 들어가 다운로드 PC Excel에서 `=HYPERLINK(...)`/DDE 수식 실행. generateCsv 소비처 8라우트(PO/orders/생산실적/손익/원장AR·AP/납기분석/reports). 발화는 ①주입+②권한자 export+Excel오픈 조건이나 HYPERLINK류 유출은 무경고 가능 → MED. **자동수정 안 함**(4구현 일괄 + **금융 음수금액 텍스트화 회귀 위험**(숫자-안전 가드 `isNaN(Number(str))` 필요) + egress export 검증불가).
+> - **🐛 신규 이슈 #368 (MED bug) — storageZones `all_entities=1` 쿼리로 entity 격리 우회, IDOR 11번째 모듈**: `storageZones.ts:13/22` GET 목록이 클라 제공 `all_entities=1`을 **역할검증 없이** 신뢰해 entity 필터 생략 → 임의 STAFF가 `?all_entities=1`로 전 법인 구역+담당자+품목수 열람. `all_entities`는 이 모듈에만 존재(전수 grep)=고유 갭. 프론트 관리페이지(`storageZones.js:27`)가 이 파라미터로 호출하나 API에 호출자 검증 0. 부수: `GET /:id`(`:70`) entity필터 무(프론트 0-refs orphan #334이나 GET목록으로 id수집 후 직접호출 도달)·PUT/DELETE(ADMIN게이트, entity무필터, body.entity_id 재배정). **자동수정 안 함**(역할/인가 시맨틱+egress 검증불가).
+> - **🔵 인증/인가 토대 검증 — clean (수많은 IDOR 이슈의 "ADMIN 기본 자기법인" 전제가 토대에서 성립)**: ① `auth.ts:169` `/switch-entity` — entity_id=0(전체모드)은 ADMIN만(`role!=='ADMIN'→403`), 일반 사용자는 본인 `default_entity_id` 일치 법인만(`!=entity_id→403`). login은 DB default_entity_id만 신뢰, 요청 override 불가. `X-Entity-Id`류 헤더/쿼리 override 0건(grep). ② 자기서비스 권한상승 0 — `/me` PATCH 부재, `/change-password` 현재비번검증+비번만, users PATCH requireAdmin+화이트리스트, hr PUT 급여필드 ADMIN/MANAGER게이트+entity_id mass-assign 차단(#349). ③ JWT refresh DB 재검증 없이 클레임 복사(`auth.ts:119`)는 stateless 일반한계+role변경 권한 ADMIN뿐이라 단독 악용경로 없음(보고 대상 아님).
+> - **🔴 오탐/저가치 드롭**: settings.ts:230 바로빌 error.message 노출(ADMIN requireRole 게이트=기존 LOW 보류 방침)·shipments.ts:514 내부 fetch Authorization 헤더(직접 로깅 없음, 정상 전파).
+> - 자동 수정 0건(net-new는 출력/인가 시맨틱+egress 검증불가), 신규 이슈 2건(#367 CSV injection·#368 storageZones 우회), 인증/인가 토대 clean 확인, 오탐 2건 드롭
+>
+> **Area 4 데이터 정합성 (2026-06-08T14:00):**
+> - **방법**: ground-truth — 297 마이그레이션 로컬 D1(node:sqlite v22) 전량 적용(**FAIL 0**, 172테이블/511인덱스) + write-path 교차검증. Area 4 **7회차** — 기존 각도(마이그레이션 적용·CHECK↔코드·balance/재고 대칭·FK cascade·트리거·비원자 고아#FP·dead table#364) 고갈 → **ground-truth가 놓치는 사각 + 덜 다룬 각도**로 전환: (A)`ADD COLUMN NOT NULL`(no DEFAULT) 프로덕션 실패 (B)집계 합계 denorm drift (C)UNIQUE vs soft-delete 재삽입 충돌 (D)timezone UTC vs KST 업무일자 (E)entity_id DEFAULT 일관성. 병렬 Explore 2개 + 발견 전수 owner 직접 코드 검증(오탐 차단).
+> - **🐛 신규 이슈 #366 (MED bug) — 업무일자 UTC `date('now')` 사용으로 KST 새벽 입력 건 하루 어긋남**: SQLite `'now'`는 UTC인데 **업무 의미 날짜**가 raw `date('now')`로 기록/비교됨. ① **저장(영구 off-by-one)**: `fixedAssets.ts:153 disposed_at`(처분일=회계인식일)·`orders/operations.ts:105 order_date`(복사, 매출귀속)·`shipments.ts:449/814·orders/queries.ts:250 auto_complete_date`. ② **비교 필터(일시)**: PO 납기경과(`purchaseOrders/core.ts:78/135/271`)·AR 연체(`accounts-receivable.ts:1145`)·카드 납기창(`cards/queries.ts:271-430`)·dashboard "오늘". **핵심 증거 = 불일치**: `hr.ts:800-801`은 `// KST 기준 오늘 (UTC+9)` + `todayKst`/`'+9 hours'`로 보정(근태) → KST 의도 확립인데 나머지 미보정. 발화는 KST 00:00~09:00(37.5%) 한정이나 ①저장값은 영구·회계귀속 직결. **자동수정 안 함**(날짜 시맨틱=비즈니스 로직 변경 + 사용처 분류 선행 + egress 차단 검증불가, 잘못 보정 시 정상 UTC 감사로그 훼손 위험).
+> - **🔴 오탐 차단 (에이전트 보고 → owner 코드 반증)**: ① **nts_approval_number UNIQUE vs CANCELLED** → 오탐: `0283` 주석 "국세청 승인번호 **중복수집 방지**" 무결성 가드. NTS 발행마다 고유번호 → CANCELLED 원본(원번호)·재발행(새번호) 같은 번호 공유 불가 → 충돌 불성립. ② **shipment_number UNIQUE vs CANCELLED** → 오탐: 순차채번, 취소후 재출고는 새번호, 재사용 경로 0. ③ **집계 합계 denorm drift** → 오탐(비원자성 기등록 FP): orders/quotations/PO/tax_invoices 자식 변경은 **PUT 전체재구성 1경로뿐**(개별 item PATCH 부재)+부모 합계 자식기준 재계산. "batch실패/동시접근 drift"는 확정 실패 트리거 없는 일반 비원자성. tax_invoices `/direct`도 "헤더후 자식" 의도패턴(`:1052` 주석).
+> - **🔵 entity_id DEFAULT 일관성 clean**: ground-truth 전수 — entity_id 보유 97테이블 **전부 DEFAULT 1**(비-1 default 0건). 예외 `entity_settings`(엔티티 자체)·`activity_logs`/`migration_logs`(감사로그 entity무관)뿐. 트랜잭션 INSERT는 `getEntityId` 명시주입.
+> - **이상 없음**: 마이그레이션 297 FAIL 0, `ADD COLUMN NOT NULL`(no DEFAULT) **0건**(프로덕션 마이그 실패 리스크 없음), 트리거 0개. leave_requests UNIQUE 재신청 충돌은 `leaves.ts:372` catch로 graceful + 의도적 dedup 가능성 → 저가치 드롭.
+> - 자동 수정 0건(net-new는 날짜 시맨틱 변경·검증불가), 신규 이슈 1건(#366), 오탐 3건 차단, entity_id 일관성 clean
+>
+> **Area 3 UX/기능 감사 (2026-06-08T10:00):**
+> - **방법**: baseline `npm ci`+tsc --noEmit PASS + build PASS(360 modules, _worker.js 5.0MB). 코드베이스 Area 3 **6회차** — 기존 각도(dead-filter·하드캡·getElementById silent-fail·catch-UX#362·CSV일관성#363) 고갈 → **덜 다룬 4각도**로 전환: (A1)파괴적 액션 confirm 부재 (A2)변경(생성/수정/삭제) 후 목록 미갱신·성공피드백 부재 (B1)폼 클라이언트 검증 피드백 부재 (B2)페이지간 journey 단절(navigation 링크). 병렬 Explore 2개 + owner 직접 스팟체크(오탐 차단).
+> - **🟢 net-new 0건 — 4각도 전부 이미 성숙/일관 구현**:
+>   - **A1 파괴적 confirm**: 삭제/취소/승인거부/비활성 mutation 전수 — 전부 `showConfirm(...,{danger:true})` 또는 네이티브 `confirm`/`prompt` 게이트 보유. peer 정상: orders.js:1255·clients.js:399·purchaseOrders.js:440·taxInvoices.js:734·leaves.js:254·approvals.js:388·paymentRequests.js:152. **owner 스팟체크 검증**: storageZones.js:209·priceLists.js:161(에이전트 미언급 파일)도 showConfirm+load+showToast 정상 = 0건 결론 신뢰.
+>   - **A2 변경후 갱신/피드백**: mutation 성공 후 전부 `load()/reload()` 재호출 또는 modal 재로드 + `showToast`. 오탐 드롭: equipment.js:626(`openDetail`)·inspections.js:173(`loadTemplates`)·payroll.js:468(`payrollLoad`)·payrollRates.js:159·purchaseOrderForm.js:824(:742 GET 재로드) — 전부 갱신됨.
+>   - **B1 폼 검증**: purchaseOrderForm/quotationForm/purchaseRequestForm/taxInvoices/cashReceipts/hr 등 주요 폼 전부 필수값·금액·수량·날짜·품목행 검증 + `showToast` 피드백 보유(quotationForm.js:489-504·purchaseOrderForm.js:698). 저가치 드롭: cashReceipts.js:204(totalAmount 자동계산)·purchaseRequestForm 공급업체 선택(null 허용).
+>   - **B2 journey**: 핵심 경로 연결됨 — 주문↔견적·거래처→원장(clientDetail→/ledger)·주문→카드현황(/cards?search). 제외: 견적상세→전환주문 역링크(단방향 정책 허용)·세금계산서상세→원장(목록 거래처 클릭으로 해결)·F-004류 미세 인터랙션.
+> - **이상 없음**: open auto-improve **13건**(new 11 + approved 2: #342/#340) stats 정합 재확인. Area 3 4각도 성숙도 높음 → 차기 6회차+는 한계효용 체감, 신규 페이지 추가분 표면에 집중 권장.
+> - 자동 수정 0건(Area 3 제안 전용), 신규 이슈 0건(4각도 전부 일관 구현), 오탐/저가치 드롭 다수
+>
+> **Area 2 코드 품질 (2026-06-08T06:00):**
+> - **방법**: baseline `npm ci`+tsc --noEmit PASS + build PASS(360 modules, _worker.js 5.0MB). Area 2 **7회차** — IDOR 비대칭(#356~#361 10모듈 클러스터)·N+1·entity_id·silent-fail(getElementById) 고갈 → **덜 다룬 2각도**로 전환: (A)floating-promise/누락 await·백엔드 에러삼킴 (B)금액 계산 정확성(VAT 반올림·balance 부호·NaN)·models.ts↔스키마 drift. 병렬 Explore 2개 + 발견 전수 owner 직접 코드·런타임 검증(오탐 차단).
+> - **🟢 net-new 0건 — 두 각도 발견 전부 오탐/의도적 best-effort**:
+>   - **금액 각도(B)**: VAT 부동소수점 누적(quotations.ts:226/389) → **오탐**: `itemAmount`가 `:223`에서 `Math.round(/100)*100`로 **100원 단위 선반올림** → `×0.1`은 항상 10의 배수(정수). node 2000건 누적 스트레스 `Number.isInteger=true` 실증 = drift 불가. quotations↔taxInvoices "반올림 불일치"도 견적은 추정·세금계산서는 `Math.round`+`:946` 정합보정(`total≠supply+tax면 강제정렬`)이라 발행단계 권위계산 정상. balance 부호오류 → **오탐**(Area 4가 정/역 대칭 검증 완료, 추측 시나리오). NaN → **오탐**(`Number(x)||0`이 NaN→0 가드). 타입 drift(number↔REAL/INTEGER) → 정상 TS 관행, 버그 아님.
+>   - **에러삼킴 각도(A)**: purchaseInvoices.ts:150/190 catch 무시 → **의도적 best-effort**(`:131` "best-effort, receive Phase4와 동일 정책" + `:164-166` 주석 명시). 핵심 write(PO item 단가·inventory valuation·PO총액·invoice INSERT)는 try **밖**, 부차 denormalized 물질화(supplier 단가이력·cash_schedule)만 best-effort. quotations.ts:111 lazy-expiry `.catch(()=>{})` = 다음 조회 재시도(무해). inspections.ts:269·taxInvoices.ts:1047 = batch 실패 후 **보상(rollback) DELETE catch**(보상 자체 실패는 더 할 게 없음, 정상).
+> - **🧬 오탐 패턴 2건 신설**: ① "VAT/금액 부동소수점 누적 → 신고 오차"는 **금액이 사전에 원/100원 단위 정수로 반올림되면 ×세율이 정수배라 drift 불가** → 보고 전 누적 직전 값이 정수인지 확인 필수(node Number.isInteger 실증). ② "catch가 success 숨김 → 데이터손실"은 **try 안이 부차 denormalized 물질화(가격이력·cash_schedule 등 재계산 가능 파생)이고 주석에 best-effort 명시**면 의도적 설계 → 핵심 비즈니스 write가 try 밖이면 오탐. 보상(rollback) catch도 정상. FP표 2행 + auto-improve SKILL(Area 2) 갱신.
+> - **이상 없음**: open auto-improve **13건**(new 11 + approved 2: #342/#340) stats 정합 재확인. baseline PASS.
+> - 자동 수정 0건(net-new 없음), 신규 이슈 0건(전부 오탐/의도적 best-effort), 오탐 패턴 2건 신설(스킬+FP표 갱신)
+>
+> **Area 1 프로덕션 헬스 (2026-06-08T02:00):**
+> - **방법**: GitHub Actions 최근 30런 분석 + 로컬 verify + 실패 런 잡 로그 실측. egress는 여전히 Cloudflare 엣지 403 차단(`curl /api/health`→**403** 0.51s, `/`→**403** 0.08s) → 샌드박스 IP 차단이라 직접 20-API 호출 불가, E2E(실제 prod 페이지 브라우저 검증)를 헬스 신호로 사용.
+> - **🟢 파이프라인 사실상 green (1건 transient 자가복구)**: 최근 30런 = Deploy **#158~170 전부 success** · E2E **#178~192 중 #189만 failure 나머지 success** · Daily D1 Backup #20/#21 success. queued/stuck run 0건. **최신 런(E2E #192 id 27087003269 08:10, Deploy #170 08:09) 전부 green** — HEAD 889ca7a(직전 Area 6 커밋) 기준.
+> - **E2E #189 단일 failure = 알려진 #340 패턴, 동일커밋 자가복구**: id 27077838607(06-07 00:18, **e4772b2**) 잡 로그 실측 — `1 failed: crud-order-lifecycle.spec.ts:33 주문생성`(프로덕션 직접 주문생성 hard-fail, 설계 데이터오염 이슈) + `3 flaky: crud-clients/crud-order 거래처생성/dashboard`(cold-start, retry 통과) + `21 passed`. **동일 커밋 e4772b2의 다음 런 E2E #190(schedule, 04:00)은 전부 success** → transient, 코드 회귀 아님. #340(approved) 픽스처 cold-start 안정화는 egress 차단으로 prod 검증 불가(전용 세션 대기), crud-order 격리는 설계결정 대기. 급성도 낮아 추가 코멘트 보류.
+> - **로컬 verify PASS**: `npm ci`→tsc --noEmit PASS + build PASS(360 modules, _worker.js 5.0MB raw). 배포 13/13 성공 = 유료 10MB 한도 대비 ~10% 점유, 헤드룸 충분.
+> - **오탐/이상 없음**: deploy failure 0건(A-010 이후 지속). egress 403은 샌드박스 IP 차단(기존 인지)이라 헬스 이상 아님. open auto-improve **13건**(new 11 + approved 2: #342/#340) stats 정합 재확인.
+> - 자동 수정 0건(파이프라인 정상·egress 차단으로 E2E 변경 검증 불가), 신규 이슈 0건
+>
+> **Area 6 자기 진화 (2026-06-07T22:00):**
+> - **GitHub ↔ 백로그 전수 재동기 — 변경 0건(clean)**: open auto-improve **13건**(new 11: #365/#364/#363/#362/#361/#360/#359/#358/#350/#341/#336 + approved 2: #342/#340) 실측 = 백로그 stats 정합. closed 목록 최신 updated_at=#356(06-06T00:13) → **직전 Area 6(06-06T10:00) 11건 done 확정 이후 신규 close 0건**. done 61/rejected 3 유지. 이관할 항목 없음.
+> - **🔧 백로그 정확성 정정 (#363 지적 검증·확정)**: `I-035/#345`가 "cashSchedule 월별 CSV done"으로 기록됐으나, **commit 29e9fbc 본문이 "(#345 (2) cashSchedule CSV는 LOW 미처리)" 명시** + `grep csv src/scripts/cashSchedule.js` **0건** = cashSchedule CSV 실제 미구현. #345는 전체로 owner close(taxInvoices CSV+지출결의 검색은 구현)이나 cashSchedule CSV 서브항목은 **#363으로 신규 추적 중**. done 표 I-035 행에 정정 주석 추가(커밋 해시도 0c04fad→29e9fbc 정정).
+> - **🧬 탐지 규칙 강화 — 도달성 규칙(#334)의 "범용 서빙 프록시" 예외 codify**: #365(`files.ts` GET `/*` R2 프록시 격리 우회) 검증에서 확립. "호출처 0건=dead code"는 **UI 트리거형 격리 갭**에만 적용 — **클라 제공 키로 raw 리소스를 DB·entity·역할 검증 없이 서빙하는 범용 엔드포인트**(R2 파일 프록시 등)는 프론트 참조 0건이어도 **인증된 직접 HTTP 호출이 공격표면**(키 구조적·타 응답 노출로 도달 가능) → dead-code 강등 금지, 보안 이슈. files.ts:12 코드 직접 재확인(authMiddleware+path-traversal 가드만, R2.get 전 DB조회 0). **3개 스킬+FP표 갱신**: security-audit SKILL(도달성 callout 예외) + auto-improve SKILL(Area 2 reachability callout + Area 6 학습패턴) + 백로그 FP표 orphan 행.
+> - **이상 없음**: approved 2건(#342 설비 entity_id 전용세션 / #340 E2E 픽스처 전용세션)은 Area 6 범위 밖 유지. 기존 FP표 9개 패턴 유효성 재확인(신규 오탐 보고 0). baseline `npm ci`+tsc --noEmit PASS.
+> - 자동 수정 0건(메타 정리·문서), 신규 이슈 0건, done 이관 0건(신규 close 없음), 백로그 정정 1건(I-035), 탐지 규칙 강화 1건(#365 예외, 스킬 2개+FP표 갱신)
+>
+> **Area 5 보안 (2026-06-07T18:00):**
+> - **방법**: baseline `npm ci`+tsc --noEmit PASS + build PASS(360 modules, exit0). Area 5 6회+ 감사로 한계효용 체감 + 최근 코드커밋이 전부 직전 감사완료분(#345~#356) → **덜 다룬 각도**로 전환: IDOR 비대칭(list-vs-detail)은 10모듈 고갈 → (1)mass-assignment (2)권한검사 누락 (3)인증/토큰 (4)**파일 다운로드 IDOR** (5)PII노출. 병렬 Explore 2개 + 발견 전수 owner 직접 코드 검증(오탐 차단).
+> - **🐛 신규 이슈 #365 (HIGH bug) — `/api/files/*` 범용 R2 프록시 격리 우회**: `files.ts:12` GET이 `authMiddleware`만(임의 역할) + path-traversal 가드뿐, **DB조회·entity·소유권·역할 검증 전무**로 생 R2 키 서빙. 같은 `R2_BUCKET`의 전용 다운로드는 격리 적용(po `/receipts/:id/statement` entityFilter·aiAnalysis `/:id/download` entityFilter #339·cardExpenses `/receipt-image/*` ADMIN/MANAGER게이트)인데 `/api/files/<같은키>`로 **전부 우회** → 임의 역할(STAFF 포함)·타법인이 거래명세서·영수증·소스 다운로드. 라이브 마운트(index.tsx:310). **프론트 참조 0건이나** 도달성 규칙(#334)의 "orphan=무해"는 UI트리거형 격리갭 한정 — 범용 파일서빙 프록시는 **인증된 직접 HTTP호출이 공격표면**(키는 구조적+응답노출). 역할 우회(STAFF→ADMIN/MANAGER 영수증)는 단일법인에서도 즉시 발화. 부수: cardExpenses `/receipt-image/*`도 raw키·entity 미격리(ADMIN/MANAGER 게이트라 우선순위 낮음). **자동수정 안 함**(라우트 삭제 or 인증격리 시맨틱 변경 + egress 차단 런타임 검증불가, #356/#358/#360/#361 동일 사유).
+> - **🔴 오탐 차단 (에이전트 보고 → owner 코드 반증)**: ① insuranceReports.ts:72 "rrn 평문 노출 HIGH" → **오탐**: rrn은 `employees.resident_number`(`encryptPII` AES-256-GCM, `aes:` 접두)에서 복사된 **암호문** 반환 + report 레벨 `entityFilter`(:68)로 IDOR 아님. ② tax-agent PII 마스킹 불일치 → maskRrn 정상동작·ADMIN unmask 의도적, 버그 아님. ③ portal 토큰 재사용(expires_at만, revocation 부재) → 매직링크 설계 선택, LOW·기능변경이라 미보고.
+> - **이상 없음**: mass-assignment 전수(users/clients/items/orders/permissions/hr PUT·PATCH 전부 화이트리스트 or ADMIN eid=0 분기, #349 hr.ts 기수정) net-new 0. 권한검사(role변경/permission/reset-pw/approve 전부 requireRole+소유권) 적정. JWT HS256·exp·시크릿폴백 0(`c.env.X||'lit'` grep 0). 포털 client_id 격리·rate-limit(index.tsx:240-246 전역)·XSS(window.escapeHtml 전역) 정상.
+> - 자동 수정 0건(net-new는 인증격리 시맨틱+런타임 검증불가), 신규 이슈 1건(#365), 오탐 3건 차단
+>
+> **Area 4 데이터 정합성 (2026-06-07T14:00):**
+> - **방법**: ground-truth — 297개 마이그레이션 로컬 D1(node:sqlite v22) 전량 적용(**FAIL 0**, 171테이블/511인덱스). 마이그레이션 표면이 직전 Area 4(0300)와 동일 → **덜 다룬 각도**로 전환: (1)트리거·DEFAULT↔CHECK 충돌 (2)FK cascade 부모DELETE 고아 (3)denormalized 집계필드 drift(prior 5사이클 미감사). baseline `npm ci`+tsc PASS + build PASS(360 modules, exit0). 에이전트 보고 owner 직접 코드 검증.
+> - **🟡 신규 이슈 #364 (LOW cleanup) — 죽은 레거시 테이블 inventory_items 잔존**: 현행 재고는 `inventory`(quantity/safe_stock)인데 origin 레거시 `inventory_items`(current_stock/safety_stock, 0003 생성)가 **빈 채로 스키마 잔존** + **src 참조 0건**(grep). `0134`(2026-04-15)이 4개 자식 FK를 inventory_items→items로 이미 재지정 후 비어있음 확인. 런타임 영향 없음(데이터 정합성 버그 아님)이나 **split-brain 혼선 위험**(이름이 재고 테이블처럼 보여 향후 오용 시 재고 데이터 분기). **자동수정 안 함**(테이블 DROP=스키마 변경, 프로덕션 0행 확인 후 권장).
+> - **🔵 denormalized 잔액 정합 — 완전 대칭 확인(clean)**: `clients.balance`(미수금)·`purchase_balance`(매입채무) 갱신 전 경로 정/역 대칭 — 주문BILLING(core.ts:565↔636)·세금계산서 직접발행(taxInvoices:997↔1809)·입금(AR:639↔684)·감액(AR:1211↔1278)·발주확정(PO:1251↔1257)·지급(AP:403↔518)·매입감액(AP:596↔664). soft/hard delete 이중차감은 status=CANCELLED 필터로 차단. **영구 drift 가능성 없음**(방어코드 우수).
+> - **🔵 재고 수량 정합(clean)**: `inventory.quantity` UPDATE 7경로 대칭 ledger — 입고+(inventory.ts:306/623)·출고-(stockShip:51)·반품복원+(returns:127)·자동차감-및역+(autoDeduct:186/230)·실사조정(inventoryCount:245)·입고확정(PO:1533). MAX(0,...) 클램프는 방어적.
+> - **이상 없음**: 트리거 0개. DEFAULT↔CHECK 충돌 0건. FK 151 NO_ACTION이나 주요 aggregate(orders/PO/tax_invoices/PR/quotations) DELETE는 자식 명시적 cascade 정리(orders/core.ts:1895-1918 18테이블)로 고아 방어 + D1 기본 FK enforce. DELETE-고아 각도는 저수율(소유 자식 대부분 CASCADE 정의 또는 코드 정리).
+> - 자동 수정 0건(net-new 정합성 버그 없음·#364는 스키마 DROP), 신규 이슈 1건(#364), denorm/재고 2각도 clean 확인
+>
+> **Area 3 UX/기능 감사 (2026-06-06T22:00):**
+> - **방법**: baseline `npm ci`+tsc --noEmit PASS + build PASS(360 modules, 5.0MB). 코드베이스 Area 3 **5회차** — dead-filter·하드캡·getElementById silent-fail은 고갈 → **덜 다룬 각도**(catch 블록 로드실패 UX·CSV 일관성·journey)에 병렬 Explore 2개(영업·회계 / 생산·재고·HR·대시보드). 에이전트 보고 전수 owner 직접 코드 검증(오탐 차단).
+> - **🐛 신규 이슈 #362 (MED bug) — 주요 데이터 로드 실패 시 스켈레톤 영구 잔류**: ① `dashboard.js:203-205` `loadDashboardStats` catch가 `console.error`만 → `/api/dashboard/stats` 실패 시 `kpiArea` `.ds-skeleton` 미교체(복구는 `if(success)` `:38` 안에만) = **랜딩 대시보드 영구 스켈레톤** ② `paymentRequests.js:34-36` 동일 패턴(skeleton 잔류). 사용자는 "무한 로딩"으로 오인. peer 정상사례 `quotations.js:72`(에러행)·`receiving.js:156`(에러행)·`cashSchedule.js:40`(showToast). **이전 Area 3는 silent-fail을 ID/param 불일치 각도로만 봤고 catch-UX는 미감사 각도**. **자동수정 안 함**(user-facing 에러 UI 추가=Area 3 제안범위, 문구/재시도 디자인 owner 위임).
+> - **🟡 신규 이슈 #363 (improvement) — CSV 일관성 갭 3건**: purchaseRequests(peer purchaseOrders `exportPoCsv` 보유)·receiving(peer shipments/productionReports)·cashSchedule(peer ledger/financialReports/bank) CSV 전무(grep 0). 발주요청·입고이력은 감사·정산 추적 거래이력이라 가치 높음. **백로그 정확성 갭 동반 발견**: I-035/#345가 "cashSchedule 월별 CSV done" 기록했으나 커밋 29e9fbc는 taxInvoices CSV+검색만 구현 = cashSchedule CSV 실제 미구현(#363으로 신규 추적, Area 6 정정 권장). 신규 기능 추가라 이슈 보고.
+> - **🔴 오탐/저가치 드롭 (에이전트 보고 → owner 코드 반증)**: ① productionBoard.js:223 `JSON.parse(post_processing)` 방어 try/catch + `:442` 썸네일 placeholder catch = **의도적 graceful degradation**, 버그 아님 ② productionBoard lightbox에 카드편집 링크 부재 = 보드는 **읽기전용 칸반 설계**, journey 갭 아님(저가치) ③ dashboard "생산현황(출고대기)" sub-KPI 클릭링크 부재 = 미세 인터랙션 일관성(F-004류 저가치) ④ productionBoard 상태탭 카운트 "-" = 로드 전 일시상태.
+> - **이상 없음**: empty-state(inventory/purchaseOrders/hr/bom/paymentRequests 등 전수 "데이터 없음" 메시지 보유)·로딩 skeleton·pagination(orders/quotations/clients)·에러 toast(폼류) 일관 구현. taxInvoices 현금영수증탭 cr* prefix(#352)·ledger→tax-invoices 링크 정상.
+> - 자동 수정 0건(Area 3 제안 전용, 에러-UX·CSV 전부 UI/기능 추가), 신규 이슈 2건(#362,#363), 오탐/저가치 4건 드롭
+>
+> **Area 2 코드 품질 (2026-06-06T18:00):**
+> - **방법**: baseline `npm ci`+tsc --noEmit PASS. 코드베이스 Area 2 5회차(#341/#342/#350/#351/#356/#358/#360) — 한계효용 체감 → **최근 변경 표면**(#343/#345/#351/#352/#357 owner 적용분) + **덜 다룬 각도**(silent-fail·models↔스키마)에 집중. 병렬 Explore 2개(IDOR 비대칭 잔여 / silent-fail+N+1) + 후보 전수 owner 직접 코드 검증(오탐 차단).
+> - **🐛 신규 이슈 #361 (I-050, MED bug) — autoProcess 멀티테넌시 격리 갭, #356 클러스터 10번째 모듈**: `autoProcess.ts` list(`GET /pending` `:189`)는 `entityFilter(c,'auto_process_jobs')` 적용하나 `/:id` 변경계열 전부 `WHERE id=?`만 — ① `PATCH /:id`(`:245`) 타법인 작업 상태/output 변조 ② `GET /order/:orderId`(`:266`) 타법인 가공작업 열람 ③ `POST /:id/approve`(`:290`) 타법인 작업 승인+저장경로 생성 ④ `POST /:id/retry`(`:341`) pending 되돌림+파라미터 변조. auto_process_jobs entity_id 보유(0261 ADD+idx) + INSERT `getEntityId` 주입(`:172`)인데 read/mutate 무시. 도달성 확인(orders.js:717/1026/1052). **전체 라우터 `requireRole('ADMIN')`(`:8`)이라 #358보다 심각도 낮음** — 단 ADMIN도 기본 자기법인(default_entity_id non-zero, `auth.ts:179`)이라 entity A 관리자가 entity B 작업 변조 가능. **자동수정 안 함**(ADMIN entityId=0 분기+권한 시맨틱+**PATCH는 외부 IllustratorAutomat 폴링이라 entity 격리 추가 시 통합 깨질 위험**+egress 차단 검증불가, #356/#358/#360 동일 사유).
+> - **🔴 오탐/dead 2건 차단 (IDOR 에이전트 보고 → owner 직접 반증)**: ① `attendance.ts DELETE /:id`(`:350`) entity_id 보유하나 **프론트 호출처 0건**(attendance.js는 month GET·bulk PATCH뿐) = dead endpoint, 보안 아님(#334 도달성 규칙). ② `tasks.ts GET/:id·PATCH/:id` — list(`GET /` `:33`)가 **entityFilter 미사용** = 격리 의도 증거 없음 → **IDOR 비대칭 규칙 미충족**(전역 작업큐 가능성)+호출처 0건. 비대칭 규칙은 "list가 entityFilter를 쓰는 것"이 격리 의도의 전제 → list 자체가 미적용이면 규칙 부적용.
+> - **이상 없음**: silent-fail(getElementById ID↔TS 페이지 + 프론트 param↔라우트 query 대조) — 최근 변경 paymentRequests/taxInvoices/cashReceipts/portal/hr/hometaxInvoices 전수 **0건**(#352 cr* prefix·#345 param 정합 재확인). N+1 신규 0건(paymentRequests batch()/Promise.all 정상). authMiddleware 누락 0건. 타입 `as any` 신규 위험 0건.
+> - 자동 수정 0건(net-new는 IDOR 격리=런타임 검증불가+권한 시맨틱), 신규 이슈 1건(#361), 오탐/dead 2건 차단
+>
+> **Area 1 프로덕션 헬스 (2026-06-06T14:00):**
+> - **방법**: GitHub Actions 최근 30런 분석 + 로컬 verify + 최신 E2E 잡 단계 실측. egress는 여전히 Cloudflare 엣지 403 차단(`curl https://webapp-9i0.pages.dev/` `/api/health` → **403** 0.03~0.4s) → 샌드박스 IP 차단이라 직접 20-API 호출 불가, E2E(실제 prod 페이지 브라우저 검증)를 헬스 신호로 사용.
+> - **🟢 파이프라인 완전 green**: 최근 30런 = Deploy 11/11 success · E2E 18 success/1 cancelled(#172 concurrency 취소, 정상) · Daily D1 Backup #20 success. queued/stuck run 0건. **최신 런(E2E #185 id 27057109950 08:11, Deploy #164 id 27057086027 08:10) 전부 green** — HEAD 9e1165d(Area 6 docs 커밋) 기준.
+> - **최신 E2E no-op green 아님 실측**: #185 잡(id 79863395342) "Run Playwright tests (production)" 단계 08:12:14→08:13:59 = **1m45s 실제 실행**, **run_attempt=1(재시도 0)**, 전 스텝 success. → #340 패턴(crud-order hard-fail·authedPage cold-start flaky) **이번 런 미발화**, prod login/dashboard/cards/items/orders/clients 페이지 정상 로드·통과 확인.
+> - **로컬 verify PASS**: `npm ci`→tsc --noEmit PASS + build PASS(360 modules, _worker.js 5.0MB raw). 배포 11/11 성공 = 유료 10MB 한도 대비 ~10% 점유, 헤드룸 충분.
+> - **#340(I-030) 상태 유지(approved)**: 14+ 연속 E2E green + 최신 attempt-1 클린으로 급성 RED 완전 해소. 픽스처 cold-start 안정화는 egress 차단으로 prod 검증 불가(전용 세션), crud-order 격리는 설계결정 대기. 급성도 낮아 추가 코멘트 보류(직전 06-04 코멘트로 상태 동기 완료).
+> - **오탐/이상 없음**: deploy failure 0건(A-010 이후 지속). egress 403은 샌드박스 IP 차단(기존 인지)이라 헬스 이상 아님. open auto-improve 8건(new 6+approved 2) stats 정합 재확인.
+> - 자동 수정 0건(파이프라인 정상·egress 차단으로 E2E 변경 검증 불가), 신규 이슈 0건
+>
+> **Area 6 자기 진화 (2026-06-06T10:00):**
+> - **closed-pending-verification 11건 → 전부 ✔️ done 확정** (rejected 0): owner가 06-05T06:08~06-06T00:13 일괄 close한 #335/#343/#344/#345/#346/#351/#352/#353/#354/#356/#357. 11건 전부 owner **완료 코멘트 + 커밋 동반** 확인. 핵심 보안·버그 5건 **코드 교차검증 통과**: #351(`INTO payrolls`/`hr/payrolls` grep 0=orphan 제거), #357(`utils/uploadValidation.ts` 존재), #356(`insuranceReports.ts` entityFilter 6회=list+/:id 보강), #352(`cashReceipts.js` cr* prefix 4개=ID 셰도잉 해소), #335(da5f0ca escapeHtml 7스크립트+서버템플릿2+portalLayout 전역주입). 나머지 6건(#343/#344/#345/#346/#353/#354)은 단일커밋(0c04fad/0ce9c42 등) UX 활성화, 완료 코멘트 prod 스모크 통과 명시.
+> - **#335 portalBalance.js 잔여 XSS 판정 (Area 5 위임) → 잔여 아님 확정**: `portalBalance.js:93-99` 미수금표는 `order_number`(시스템 채번)·`billing_date`(날짜)·`Number(...).toLocaleString()`(숫자강제)만 보간 = **free-text 사용자입력 싱크 없음**. `showTokenError`는 서버 하드코딩/서버제어 메시지. Area 5 저위험 판정 코드로 재확인.
+> - **🧬 오탐 패턴 신설 — "escapeHtml 헬퍼 전무(grep -c escapeHtml=0) → XSS"는 오탐 생성기**: `layout.ts:1185`가 `window.escapeHtml` **전역 정의**(+`portalLayout.ts` 포털용) → 모든 스크립트가 로컬 정의 없이 전역 헬퍼 사용 가능. 파일에 escapeHtml 미정의 ≠ 취약. **올바른 판정**: 실제 `innerHTML` 싱크의 보간값이 (a)사용자 제어 free-text **이고** (b)미escape 인지 확인. `Number()` 강제 숫자·시스템 채번코드(order_number)·서버 하드코딩 문자열은 싱크 아님. 직전 06-05 #335 코멘트가 bom.js/users.js 등 5건을 "escapeHtml 전무"로 묶어 보고했던 휴리스틱 = 이 FP 패턴(owner도 da5f0ca에서 실제 싱크만 선별 적용·"bank.js already escaped=FP" 명시). security-audit + auto-improve SKILL(Area 5)·FP표 등재.
+> - **GitHub ↔ 백로그 전수 재동기**: open auto-improve **8건**(New 6+approved 2) 정합 재확인. closed 40건 중 최근 범위(#334~#357) 전부 추적 완료. #274~#333 구간은 이전 사이클 집계(done 50)에 반영됨 — 재감사 저가치로 보류.
+> - 자동 수정 0건(메타 정리), 신규 이슈 0건, done 이관 11건, 오탐 패턴 1건 신설(스킬 2개 갱신)
+>
+> **Area 5 보안 (2026-06-06T06:00):**
+> - **방법**: 병렬 에이전트 3개(Explore) — SQLi·시크릿·CI / IDOR·인가·멀티테넌시 / XSS·업로드·rate. baseline `npm ci`+tsc --noEmit PASS + build PASS(360 modules, 5.0MB). 직전 Area 5(06-05T06:00 #356/#357) + 06-06T00:13 추가 Area 5(#360) 직후라 표면 3중 감사 → 한계효용 체감. **에이전트 보고 전수 owner 직접 코드 검증**(오탐 차단).
+> - **🟢 net-new 0건 — 3개 에이전트 발견 전부 중복/오탐**:
+>   - IDOR 에이전트: `quotations.ts` GET/PUT/DELETE `/:id` 격리 누락(entity_id 보유인데 list만 entityFilter) → **#360 기보고**(06-06T00:13, quotations+corporate_cards 상위집합). cardExpenses corporate_cards는 에이전트가 누락했고 #360이 더 완전 → 중복.
+>   - XSS/rate 에이전트: **rate-limit 누락 5건(portal login/users·portal change-pw/verify-token) 전부 오탐** — `index.tsx:240-246`이 `app.use()`로 앱 레벨 전역 등록(라우트 파일 inline 미들웨어만 보고 놓침). portalBalance.js innerHTML 미escape 2건(`showTokenError` 서버 하드코딩 메시지 + 미수금표 숫자/날짜)은 저위험 + #335(escapeHtml 우산, 06-05 close) 범위 → 신규 아님.
+>   - SQLi/시크릿/CI 에이전트: **SQLi 0(prepare 2,294 전수) / 시크릿 폴백 `c.env.X||'lit'` 0 / CI `secrets.X||'admin'` 0 — 전부 clean**. LOW 3건(error.message 노출: tasks.ts:304·fax.ts:87·settings.ts:230)은 전부 authMiddleware/requireRole 보호 엔드포인트 → #337(done) 처리방침(ADMIN 진단 LOW=보류) 동일, 이슈화 부적합.
+> - **🧬 오탐 패턴 신설 — rate-limit "누락" 보고**: rate limit은 `index.tsx`에서 `app.use('/api/...', rateLimitMiddleware)` 앱 레벨 등록(240-246)이라 **라우트 파일만 보면 항상 inline 미들웨어 부재로 오탐**. 보고 전 index.tsx 등록처 확인 필수. FP표 등재.
+> - **⚠️ GitHub 대규모 close 발견(Area 6 위임)**: open auto-improve 8건으로 축소. New 표 추적 11건(#335/#343/#344/#345/#346/#351/#352/#353/#354/#356/#357)이 owner 일괄 close(06-05T06:08~06-06T00:13). done/rejected 분류 + 코드 교차검증은 **차기 Area 6 위임**. New 표·stats는 open 실측 기준 정정. portalBalance.js escapeHtml 잔여 여부도 #335 해소내용 대조해 Area 6에서 판정 권장.
+> - 자동 수정 0건(net-new 없음), 신규 이슈 0건(전부 중복/오탐), 백로그 정정(New 표 11건 제거·#360 편입·stats), 오탐 패턴 1건 신설
+>
+> **Area 4 데이터 정합성 (2026-06-06T02:00):**
+> - **방법**: ground-truth — 297개 마이그레이션(0299/0300 신규 포함)을 로컬 D1(node:sqlite v22)에 전량 적용(**FAIL 0**) → 실제 해석 스키마 171테이블·511인덱스 확보. 직전 Area 4(0298까지) 이후 신규 표면(0299 정기변동비용·0300 #355 CHECK수정)에 집중 + 비원자적 고아생성 패턴 일반화 스캔(Explore 1개). baseline `npm ci`+tsc PASS + build PASS(360 modules, 5.0MB).
+> - **#355 (I-045) → ✔️ done (owner가 0300으로 해소, GitHub closed-completed 확인)**: owner가 **(가)안** 채택 — `0300_approval_type_add_credit_override.sql`로 approval_requests/approval_templates 재빌드, CHECK에 `CREDIT_OVERRIDE` 추가. ground-truth 재적용으로 두 테이블 CHECK에 CREDIT_OVERRIDE 포함 **실측 확인** + 0300 CREATE TABLE 컬럼이 실제 스키마와 정확히 일치(id 명시보존 → FK 참조 무손상) + `orders/core.ts:1294` INSERT 12컬럼 전수 존재 + 여신 batch2(approval_steps status='PENDING'·credit_overrides) CHECK 정합 → **여신초과 주문 플로우 end-to-end 작동 복구**. 백로그 New 표 stale 정정.
+> - **🔴 오탐 3건 차단 (Explore 고아생성 보고 → owner 직접 코드 반증)**: ① quotations.ts:589-657 견적→주문 전환 ② orders/operations.ts:94-208 주문복사 ③ shipments.ts:556-575 자동출고 — 전부 "비원자적 다중 INSERT, 두번째가 실패하면 고아" 추측. **반증**: `order_items`에 **CHECK 제약이 전혀 없고**(전 컬럼 nullable/default) → #355 같은 **확정 실패 트리거 부재**. shipments는 재조회 NULL을 에러메시지로 처리(고아 아님). #355는 CHECK 리터럴 100% 누락=확정장애라 보고가치였으나, 이들은 거의 모든 다중문 코드에 해당하는 일반적 비원자성 → 노이즈. 오탐표 신규 1건 등재.
+> - **0299 정기변동비용 정합 확인**: `recurring_expense_actuals`(entity_id NOT NULL DEFAULT 1·UNIQUE(fixed_expense_id,period)·3인덱스 정합) + fixed_expenses 신규 3컬럼(amount_type/estimate_method/linked_category_id). `cashflowEngine.ts`가 ESTIMATED 고정비를 estimator로 추정(읽기전용 예측, est 없으면 amount 폴백·method 없으면 AVG_3M 폴백 = graceful). 신규 3컬럼 CHECK 부재이나 estimator 폴백으로 잘못된 값도 안전. 정합 버그 0. (단 recurring_expense_actuals **writer 0건** = variance 추적 미배선 — owner 진행중 신규기능 잔여, Area 3 영역이라 미보고.)
+> - **이상 없음**: CHECK 전수(34 status/type 컬럼) — #355 해소 후 위반 0(직전회차 전수+이번 신규분 재확인). entity_id NOT NULL 신규표 정합. FK 인덱스 hot-path 미보유 0(linked_category_id는 fixed_expenses 소규모 config라 불필요).
+> - 자동 수정 0건(net-new 정합성 버그 없음·#355는 owner 선해소), 신규 이슈 0건, 백로그 정정 1건(#355 done), 오탐표 신규 1건
+>
+> **Area 3 UX/기능 감사 (2026-06-05T22:00):**
+> - **방법**: 병렬 에이전트 3개(Explore) — 영업·회계 / 생산·재고·구매 / HR·대시보드·설정. dead-filter·silent-fail·중복ID·하드캡 집중. baseline `npm ci`+tsc --noEmit+build PASS. **에이전트 보고 전수 owner 직접 코드 검증**(노이즈 차단). 코드베이스 Area 3 4회차 — 한계효용 체감.
+> - **🐛 신규 이슈 #359 (I-049, MED bug) — 지출결의서 목록 LIMIT 200 하드캡 + 페이지네이션·총건수 전무**: `paymentRequests.ts:45` `LIMIT 200` 고정, 응답 `{success,data}`만(total/page 없음), `paymentRequests.js:31` page/limit 미전송·페이지네이션 UI·총건수 표시 전무. 지출결의서는 단조증가 재무전표 → 201건+ silent truncation, #345로 추가된 검색결과도 동일 캡에 걸림. #353 캡클러스터(leaves/purchaseInvoices/costs)에 paymentRequests 미포함분 + #343(날짜)·#345(검색/CSV) 별개 측면. **자동수정 안 함**(응답형식 변경+UI=금지범위). #353/#345 모두 closed라 신규 이슈.
+> - **🔴 오탐 5건 차단(에이전트 MED/HIGH 보고 → 코드 반증)**: ① deliveryAnalytics CSV `from||default`(`:14`)=쿼리 우선이지 덮어쓰기 아님, 프론트도 from/to 정상전송(`deliveryAnalytics.js:37-49`) ② cardExpenses 날짜필터 — `cardExpenses.js:126` start_date/end_date 정상전송, 라우트 `:275` 별칭 처리 ③ payroll.js 직원로드 — `:32` 주석까지 달고 `d.employees` 정상처리 ④ leaves 직원드롭다운 — `leaves.js:396` `lvSetupEmployeeSearch`로 배선됨 ⑤ messages 시간대 — UTC ISO 날짜 일관성, 너무 사변적(LOW 미만).
+> - **중복 차단(에이전트 재보고 → #353 기보고)**: purchaseInvoices match_status+LIMIT 100(#353-6), leaves 날짜+LIMIT 200(#353-5), activityLog user_id 드롭다운(#353-4). quotations item_name 검색은 백엔드 검색범위 확장(버그 아닌 기능갭, 저가치).
+> - **이상 없음**: 하드코딩 LIMIT 전수(`grep "LIMIT [0-9]"`) — dashboard top-N(5/10/20)·items 자동완성(50)·inventory PENDING_REVIEW 작업큐(100)·bom MRP runs(저빈도 50)는 전부 의도적/자연제한. paymentRequests만 list-truncation 갭.
+> - 자동 수정 0건(유일 net-new는 응답형식+UI 변경=금지범위), 신규 이슈 1건(#359), 오탐 5건·중복 3건 차단
+>
+> **Area 2 코드 품질 (2026-06-05T18:00):**
+> - **방법**: 병렬 에이전트 2개(Explore) — entity_id 격리·IDOR 비대칭 / N+1·auth·타입·dead code. baseline `npm ci`+tsc --noEmit PASS. HIGH 1건은 owner 직접 코드 검증(approvals.ts list↔/:id 대조 + approve 가드 강도 + 3테이블 entity_id 컬럼 확인).
+> - **🐛 신규 이슈 #358 (I-048, HIGH bug) — 전자결재 멀티테넌시 격리 갭, #356 패턴 7번째 모듈**: `approvals.ts` list(`:95`)는 `entityFilter(c,'ar')`(주석 `#86`) 적용하나 `/:id` 전 계열은 `WHERE id=?`만. 3테이블(approval_requests/steps/attachments) 전부 entity_id 보유(INSERT `:185/:200/:476` getEntityId 주입)→필터 가능한데 read/mutate 누락. ① `GET /:id`(`:222`) **완전 무가드** `ar.*` 노출(타법인 결재 제목·금액·내용·여신/지출 reference + 첨부) ② `GET /:id/attachments/:attachId`(`:487`) 첨부 file_data 다운로드 ③ approve(`:311`)/reject(`:376`) 가드가 approver_id/**전역 role**/ADMIN뿐 → entity A MANAGER가 entity B 결재 승인→`handlePostApproval`이 `purchase_requests.status='APPROVED'`·`orders.credit_status` 연쇄=**정합성 훼손** ④ PUT/submit는 status만 검증 ⑤ `/pending`(`:147`)도 전역 role만. **자동수정 안 함**(ADMIN entityId=0 전체모드 분기+mutate 권한 시맨틱 변경+egress 차단 런타임 검증 불가, #349/#356 동일 사유). #356에 7번째 모듈 교차참조 코멘트 추가.
+> - **N+1 net-new 0건(이슈 가치)**: 에이전트 보고 중 payroll/core.ts:407/427(loadOvertimeSettings·getSettings 루프불변)·printSystem:650·PO core 품목루프·cardExpenses import는 전부 #341/#350 기보고. **신규는 bank.ts:1112(입금 일괄적용 조건부 UPDATE)·ledger/accounts-receivable.ts:1052(잔액 정합성 수정 UPDATE 루프)뿐 — 둘 다 관리자/배치 엔드포인트(hot-path 아님)** + batch 전환은 트랜잭션·에러 시맨틱 변화로 #341/#350 기결정(자동수정 금지)에 흡수 → 노이즈 회피로 이슈화 보류.
+> - **이상 없음**: authMiddleware 누락 0건(cards/hrSelf/ledger/orders/payroll/purchaseOrders/webhooks 전부 aggregator·서브라우터 위임·의도적 공개). 타입 위험 `as any` 신규 0건(req.json/env 바인딩 관행). dead code(unmounted 라우터/orphan export) 0건. 신규 entity_id INSERT 격리갭 0건(approvals 외 전 테이블 getEntityId 또는 부모FK 상속).
+> - 자동 수정 0건(HIGH는 런타임 검증 불가+권한 시맨틱), 신규 이슈 1건(#358), 교차참조 코멘트 1건(#356)
+>
+> **Area 1 프로덕션 헬스 (2026-06-05T14:00):**
+> - **방법**: GitHub Actions 최근 30런 분석 + 로컬 verify + 번들 한도 검증. egress는 여전히 Cloudflare 엣지 403 차단(`curl /` `/api/health` → 403) → 직접 20-API 호출 불가, E2E(실제 prod 페이지 브라우저 검증: login/dashboard/cards/items/orders/clients)를 헬스 신호로 사용.
+> - **🟢 파이프라인 정상**: 최근 30런 = Deploy 14/14 success · E2E 13 success/1 cancelled/1 failure · Daily D1 Backup success. **최신 런(E2E #26998904137 06:16, Deploy #26998857163 06:14) 전부 green**. queued/stuck run 0건.
+> - **E2E 단일 failure(#26964968046, 06-04 16:25) = #340 알려진 패턴**: ① crud-order-lifecycle:33 주문생성 hard-fail(프로덕션 직접 주문생성=데이터오염 설계) ② authedPage cold-start 30s 타임아웃(fixtures.ts:59) 3건 **flaky(retry로 전부 통과)**. 직후 상태모델 단일화 배포(16:30) 이후 **E2E 13연속 green → 자가복구**. cancelled(03:25)는 10초 뒤 새 push의 concurrency 취소(정상).
+> - **로컬 verify PASS**: `npm ci`→typecheck(tsc --noEmit) PASS + build PASS(360 modules, _worker.js raw 5.0MB / **gzip 1.00MB**). 번들 한도: 배포 14/14 성공 = 실제 한도(유료 10MB) 대비 ~10% 점유, 헤드룸 충분(raw 4.2→5.0MB 완만 성장). 우려 없음.
+> - **#340(I-030) 상태 유지**: 픽스처 cold-start 안정화는 egress 차단으로 prod 검증 불가→전용 세션(approved), crud-order 격리는 설계결정 대기. 13연속 green으로 급성도 낮음. 안전 자동수정 없음.
+> - **오탐/이상 없음**: deploy failure 0건(A-010 이후 지속). egress 403은 샌드박스 IP 차단(기존 인지)이라 헬스 이상 아님.
+> - 자동 수정 0건(파이프라인 정상·egress 차단으로 E2E 변경 검증 불가), 신규 이슈 0건
+>
 > **Area 6 자기 진화 (2026-06-05T10:00):**
 > - **GitHub ↔ 백로그 전수 재동기**: open auto-improve 17건 = New 15 + approved 2(#342/#340) 정합 확인. 백로그가 open으로 추적하던 #334/#337/#338/#349가 GitHub에서 closed(completed) → 종료사유·코멘트·**코드 교차검증**으로 done 확정.
 > - **done 이관 4건 (전부 a7a15cc 단일 커밋, 코드 교차검증 통과)**: #334(I-025, templates.ts 삭제+drop마이그 0297, `ls templates.ts`→없음 확인)·#337(I-029, `/api/debug/cards` 제거+error.message 제네릭, 잔여는 주석뿐)·#338(I-026, `fallback-dev-key` 제거→requirePiiKey+reset-pw 필수화)·#349(I-039, 단건GET/detail/증명서 entityFilter+PUT mass-assignment 차단). #334는 도달성 규칙으로 보안→dead-code 재분류 후 owner (가)승인→삭제까지 **전 생애주기 완결**(규칙 유효성 입증).
@@ -234,25 +379,20 @@
 
 ## 🆕 New (미검토)
 
-> 전부 GitHub open + 👍 미수신. 용준님 리뷰 대기.
+> 전부 GitHub open + 👍 미수신. 용준님 리뷰 대기. (open 실측 new 9건 — 2026-06-06T22:00 정정)
 
 | ID | 제목 | 영역 | Issue | 공수 |
 |----|------|------|-------|------|
-| I-027 | 저장형 XSS — escapeHtml 누락 다수 (포털 등 7개 스크립트, 서버템플릿 포함 👍) | Area 5 | #335 | 2~3h |
+| I-052 | [MED bug] 주요 데이터 로드 실패 시 스켈레톤 영구 잔류 + 에러피드백 전무 — 대시보드/지출결의서 catch가 console.error만(무한 로딩 오인). catch-UX 미감사 각도 | Area 3 | #362 | ~40분 |
+| I-051 | [improvement] CSV 내보내기 일관성 갭 — 발주요청·입고이력·자금계획(peer 전부 보유). #345 "cashSchedule CSV done" 기록 부정확 동반발견 | Area 3 | #363 | ~1.5h |
+| I-050 | **[HIGH]** 멀티테넌시 IDOR 비대칭 — quotations(견적 GET/PUT/DELETE /:id) + 법인카드 corporate_cards(PUT/DELETE) 격리 누락 (#356 클러스터 8~9번째 모듈) | Area 5 | #360 | ~2h |
 | I-028 | CI 폴백 자격증명 admin/password — **코드측 해소(a7a15cc), 운영 계정점검만 잔여** (이슈 open, close 누락) | Area 5 | #336 | 운영점검 |
 | I-031 | N+1 쿼리 batch 미전환 다수 — cashFlow 예측 핫패스(72쿼리) 우선 + import/child INSERT 루프 | Area 2 | #341 | 3h~ |
-| I-033 | Dead-filter 3건 — 백엔드 기구현 필터 UI 미노출 (지출결의서 날짜/생산 출력이력/포털 주문 상태+count버그) | Area 3 | #343 | ~3h |
-| I-034 | 포털 셀프서비스 갭 — 세금계산서 다운로드+50캡 / 미수금 aging / 재주문 prompt() | Area 3 | #344 | 3~4h |
-| I-035 | 회계 CSV·검색 — taxInvoices CSV / cashSchedule CSV / 지출결의서 지급처·사유 검색 | Area 3 | #345 | ~2h |
-| I-036 | 필터·드릴다운 — 연차 부서 필터 / 불량률 리포트→검수 드릴다운 | Area 3 | #346 | 3~4h |
-| I-046 | **[HIGH]** 멀티테넌시 격리 갭 클러스터 6모듈 — list는 entityFilter, /:id 상세·변경은 누락(insuranceReports rrn/paymentRequests/cashReceipts PII + inventoryCount/leaves 정합성 훼손), #349 패턴 확장 | Area 5 | #356 | 2~3h |
-| I-047 | [MED] 파일 업로드 검증 부재 — ext 화이트리스트/크기상한/MIME 미검증(cardExpenses/po/files), 키 인젝션은 A-015 자동수정 | Area 5 | #357 | ~1h |
-| I-045 | **[HIGH]** 여신초과 주문 생성 전면 실패 — approval_requests.type='CREDIT_OVERRIDE'가 CHECK(0202,9값)에 없음 → batch 위반·500·고아주문, #163 여신승인 비작동 | Area 4 | #355 | 2~3h / 우회 10분 |
+| I-048 | **[HIGH]** 전자결재 격리 갭 (#356 7번째 모듈) — list만 entityFilter, GET /:id 무가드 재무노출 + approve/reject 전역 role로 타법인 purchase_requests/credit_status 정합성 훼손 | Area 2 | #358 | ~2h |
 | I-040 | N+1 신규 클러스터 — 급여 일괄/근태동기화 핫패스(전직원×5~7쿼리, 루프불변 hoist 즉효) + 발주 품목 루프 (#341 미포함) | Area 2 | #350 | hoist 20분 / 전체 ~4h |
-| I-041 | dead code+크래시 — hr.ts orphan 급여 엔드포인트 2개(POST는 없는 payrolls 테이블 INSERT), /api/payroll로 대체됨 | Area 2 | #351 | 30분~1h |
-| I-042 | 현금영수증 탭 필터 전체 무력 — 중복 element ID 셰도잉 + 날짜 파라미터 불일치(HTML 리네임 필요) | Area 3 | #352 | 30분 |
-| I-043 | Dead-filter 클러스터 2탄 6건 — 생산보드 category/원가 자동차감/메시지로그 날짜/활동로그 user/휴가신청 날짜/매입인보이스 match_status (백엔드 기구현 미노출) | Area 3 | #353 | ~5h |
-| I-044 | 검수결과 목록 — 원시 ID 직접입력 필터(사용불가)+상태/날짜 필터·페이지네이션·CSV 부재 | Area 3 | #354 | ~3h |
+| I-049 | [MED bug] 지출결의서 목록 LIMIT 200 하드캡 + 페이지네이션·총건수 전무 — 201건+ silent truncation (재무전표 단조증가, 검색결과도 동일 캡) | Area 3 | #359 | ~1h |
+
+> ✅ closed-pending-verification 11건은 Area 6(06-06T10:00)에서 코드 교차검증 후 **전부 done 확정** → Done 표로 이관 완료.
 
 ---
 
@@ -279,6 +419,18 @@
 
 | ID | 제목 | 커밋/Issue | 날짜 |
 |----|------|-----------|------|
+| I-046 | 멀티테넌시 격리 갭 6모듈 — /:id 상세·변경 entityFilter 보강 + inventoryCount/leaves 차감을 row entity_id 기준화(호출자 아님)로 교차훼손 차단. 코드검증: insuranceReports entityFilter 6회 | #356 / 6a8cb35 | 2026-06-05 |
+| I-047 | 파일 업로드 검증 부재 — `utils/uploadValidation.ts` 신설(size/MIME/ext 화이트리스트) cardExpenses/po/files 적용 + receipt-image path-traversal 가드. 코드검증: 파일 존재 | #357 / 3baa38a | 2026-06-05 |
+| I-027 | 저장형 XSS — escapeHtml 클라 7스크립트 + 서버템플릿 2종 + portalLayout 전역주입. portalBalance.js 잔여는 free-text 싱크 부재로 비대상(Area 6 검증) | #335 / da5f0ca | 2026-06-05 |
+| I-041 | hr.ts 레거시 급여 endpoint 2개 제거(POST가 미존재 payrolls 테이블 INSERT→크래시, 호출처 0). 코드검증: `INTO payrolls` grep 0 | #351 / 9fdfdf4 | 2026-06-05 |
+| I-042 | 현금영수증 탭 필터 무력 — 중복 element ID를 cr* prefix로 셰도잉 해소 + 날짜 파라미터 date_from/date_to 정렬. 코드검증: cashReceipts.js cr* 4개 | #352 / a742d27 | 2026-06-05 |
+| I-033 | Dead-filter 3건 — 지출결의 날짜·포털주문 상태(869fcf9) + 생산 출력이력 장비/상태/날짜(printEvents 연결) | #343 / 0c04fad | 2026-06-05 |
+| I-034 | 포털 셀프서비스 3건 — 세금계산서 PDF다운로드+페이지네이션 / 미수금 aging / 재주문 모달 | #344 / 0ce9c42 | 2026-06-05 |
+| I-035 | 회계 내보내기·검색 — 세금계산서 CSV+지출결의 지급처/사유 검색(29e9fbc). ⚠️**정정(Area6 06-07)**: cashSchedule CSV는 29e9fbc에서 "LOW 미처리" 명시로 **미구현** → #363으로 신규 추적 중 (기존 "월별 CSV done" 기록은 부정확) | #345 / 29e9fbc | 2026-06-05 |
+| I-036 | 필터·드릴다운 — 연차 부서필터 + 불량률→검수 드릴다운 + 미사용수당 응답정합 버그(48명 정상렌더) | #346 / 0c04fad | 2026-06-05 |
+| I-043 | Dead-filter 클러스터 2탄 — 생산보드/원가/메시지/활동로그/매입/휴가 6건 백엔드 필터 UI 활성화+페이지네이션 | #353 / 0c04fad | 2026-06-05 |
+| I-044 | 검수결과 목록 — 공급업체 드롭다운·결과상태·검수일범위·페이지네이션·CSV export(원시 ID 입력 해소) | #354 / 0c04fad | 2026-06-05 |
+| I-045 | 여신초과 주문 전면실패 — owner가 (가)안 0300 마이그(approval_requests/templates 재빌드, CHECK에 CREDIT_OVERRIDE 추가)로 해소. ground-truth 재적용+INSERT 컬럼 정합 실측 검증 | #355 / 0300 | 2026-06-05 |
 | I-025 | order_templates orphan 라우터 — 도달성 규칙으로 dead-code 재분류→owner (가)승인→삭제(templates.ts+drop마이그 0297, prod 404 확인) | #334 / a7a15cc | 2026-06-04 |
 | I-026 | 하드코딩/약한 자격증명 — `fallback-dev-key` 제거(requirePiiKey 4곳) + reset-password 기본값 'password' 제거→필수화(400) | #338 / a7a15cc | 2026-06-04 |
 | I-029 | 프로덕션 debug 엔드포인트 — `/api/debug/cards` 제거 + db-test/stats error.message 제네릭화 | #337 / a7a15cc | 2026-06-04 |
@@ -351,7 +503,12 @@
 | CORS `!origin → '*'` (`index.tsx:213`) | Bearer 토큰 인증(쿠키 미사용) — 브라우저는 항상 Origin 전송, 실질 무해 | Area 5 (2026-06-02) |
 | rate limiter in-memory `Map` (`rateLimit.ts:6`) | isolate 분산 한계는 기존 인지 아키텍처 제약, 신규 이슈 아님 | Area 5 (2026-06-02) |
 | 인덱스/UNIQUE 누락 후보 (ground-truth 미확인) | 로컬 D1 실제 스키마로 반증 필수 — 대부분 이미 존재하거나 hot path 아님 | Area 4 (2026-06-02) |
-| orphan 라우터의 entity_id 격리 갭 (프론트 호출처 0건) | UI 도달 불가 = dead code 사안이지 보안 아님. 격리 갭 보고 전 `grep "api/<path>" src/scripts src/pages` 도달성 선검증 필수 | Area 6 (#334, 2026-06-04) |
+| orphan 라우터의 entity_id 격리 갭 (프론트 호출처 0건) | UI 도달 불가 = dead code 사안이지 보안 아님. 격리 갭 보고 전 `grep "api/<path>" src/scripts src/pages` 도달성 선검증 필수. **⚠️ 예외(#365)**: 클라 제공 키로 raw 리소스 서빙하는 범용 프록시(R2 파일 `files.ts` GET `/*` 등)는 0-refs여도 인증된 직접 HTTP 호출이 공격표면 → dead-code 강등 금지, 보안 이슈 | Area 6 (#334, 2026-06-04 / 예외 #365 2026-06-07) |
+| 비원자적 다중 INSERT "고아 가능" (확정 실패 트리거 부재) | 부모→자식 별도 `.run()`이라도 자식 테이블에 CHECK/NOT-NULL 위반 등 **확정적 실패 트리거가 없으면** 거의 모든 다중문 코드에 해당하는 일반적 비원자성일 뿐 = 노이즈. #355류로 보고하려면 100% 실패하는 구체 트리거(CHECK 누락 리터럴 등) 실증 필요. order_items는 CHECK 0·전컬럼 nullable이라 견적전환/복사 비원자성은 오탐 | Area 4 (2026-06-06) |
+| rate-limit "누락" 보고 (라우트 파일에 inline 미들웨어 없음) | rate limit은 라우트 파일이 아니라 `index.tsx`에서 `app.use('/api/...', rateLimitMiddleware(...))`로 **앱 레벨 전역 등록**(240-246: auth/portal login·users/portal change-pw·refresh·self-auth·verify-document·verify-token). 라우트 핸들러만 보면 항상 inline 부재로 오탐 — 보고 전 index.tsx 등록처 grep 필수 | Area 5 (2026-06-06) |
+| "escapeHtml 헬퍼 전무(`grep -c escapeHtml`=0) → XSS" | `layout.ts:1185`가 `window.escapeHtml`를 **전역 정의**(+`portalLayout.ts` 포털용) → 모든 스크립트가 로컬 정의 없이 전역 헬퍼 호출 가능. 파일에 escapeHtml 미정의/미참조 ≠ 취약. 올바른 판정: 실제 `innerHTML` 싱크의 보간값이 (a)사용자 제어 free-text **이고** (b)미escape인지 확인. `Number()` 강제 숫자·시스템 채번코드(order_number 등)·서버 하드코딩 문자열은 싱크 아님 | Area 6 (2026-06-06) |
+| VAT/금액 "부동소수점 누적 → 신고 오차" | 금액이 누적 **직전에 원/100원 단위 정수로 반올림**되면(예: quotations.ts:223 `Math.round(itemAmount/100)*100`) `×세율(0.1)`은 항상 10의 배수=정수라 IEEE754 drift 불가. node `Number.isInteger(누적값)` 실증으로 반증 필수. 견적(추정)↔세금계산서(`Math.round`+정합보정 `total≠supply+tax면 강제정렬`) 반올림 "불일치"도 발행단계가 권위계산이라 버그 아님. number↔REAL/INTEGER 타입표기 차이도 정상 TS | Area 2 (2026-06-08) |
+| catch가 success 숨김 "데이터손실" (best-effort 물질화/보상) | try 안이 **부차 denormalized 물질화**(가격이력·cash_schedule 등 언제든 재계산 가능한 파생 데이터)이고 **주석에 best-effort 명시**(예: purchaseInvoices.ts:131/164 "receive Phase4와 동일 정책")면 의도적 설계. 핵심 비즈니스 write(주문/인보이스/잔액)가 try **밖**이면 오탐. batch 실패 후 보상(rollback) DELETE의 `.catch(()=>{})`도 보상 자체 실패는 더 할 게 없으므로 정상. 보고하려면 **핵심 mutation**이 삼켜지고 사용자에게 success로 보이는 구체 경로 실증 필요 | Area 2 (2026-06-08) |
 
 ---
 
