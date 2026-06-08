@@ -1,6 +1,6 @@
 # PROJECT_STATUS.md — 프로젝트 현황판
 
-> **최종 업데이트**: 2026-06-08
+> **최종 업데이트**: 2026-06-09
 > 완료 이력 → `PROJECT_STATUS_ARCHIVE.md` (매 세션 읽을 필요 없음, 필요 시 참조)
 
 ---
@@ -56,7 +56,8 @@
 - **✅ 이슈 일괄 처리·배포·코멘트(2026-06-08, close는 owner)**: 11건. **IDOR 보안**(#349/#356 entityFilter 패턴): #358(approvals 10핸들러)·#360(quotations GET/PUT/DELETE/:id+convert·cardExpenses cards)·#361(autoProcess 4, /pending 동일필터라 폴링안전)·#365(files.ts GET→requireRole ADMIN)·#368(storage-zones all_entities ADMIN/MANAGER 게이트+/:id 격리)+(정합)PO `/receipts` 목록 entityFilter. **개선**: #359(지출결의서 page/limit+COUNT 페이지네이션)·#362(dashboard·지출결의서 로드실패 스켈레톤 에러UI)·#363(발주요청·입고이력·자금계획 /export/csv, 전부 entityFilter)·#364(inventory_items DROP 마이그0301 **prod 적용완료**, 0행 확인). **#367** CSV formula injection 공용가드(escapeCsvField 단일화, bank.ts 포함 5개 escaper 위임, 숫자 보존). **#366** 업무일자 UTC→KST(+9h): ①회계일 저장(disposed_at·복사 order_date) ②비교필터 카테고리A 11곳(delivery/expected/연체/오늘납기). 커밋 `f9c7ee4`·`1a1247e`·`f216721`·`a6bd8cd`. 단일법인 동작무변(다법인 전환 시 격리 발화). 메모리 [feedback-deploy-push-divergence] 추가
 - **보류**: #342(equipment entity_id, 다법인 도입 직전 전용세션), #340(E2E CI 인프라·외부의존), #341·#350 잔여(write경로 N+1, 실데이터 검증세션)
 - **owner 운영**: #336 프로덕션 admin/password 교체(+CI SMOKE/E2E 시크릿 갱신)
-- **GitHub 후속(미착수)**: #366 카테고리B(대시보드 created_at "오늘"KPI, created_at +9h 래핑 필요·업무시간 정상이라 저우선)·발주목록 `/export/csv`+발주 목록 핸들러 entityFilter(#358계열 신규 발견, 별도 이슈화 권장)·#358~368 owner close 검토 대기
+- **✅ 발주(purchase_orders) IDOR 전수 수정·배포(#371, 2026-06-09)**: 목록(GET /)만 격리돼 있고 **export+/:id 9핸들러 미격리**였음 → GET /:id·/invoice·/inspections·PUT·PATCH status·DELETE·receive·copy(원본)·reorder(원본) 조회부 + /export/csv에 entityFilter 추가(커밋 `5c77a67`·`58b37a9`, dep `33065000`). 자식테이블(po_id)·최종 DELETE는 부모 격리로 게이트. prod 발주 0건이라 /:id positive 실측 불가(존재X→404·빌드로 갈음). 잔여=`templates/:id`·`stock-alerts/:id`(별도 테이블) 점검
+- **GitHub 후속(미착수)**: #366 카테고리B(대시보드 created_at "오늘"KPI, created_at +9h 래핑 필요·업무시간 정상이라 저우선)·#358~371 owner close 검토 대기·templates/stock-alerts /:id IDOR 점검
 
 ---
 
