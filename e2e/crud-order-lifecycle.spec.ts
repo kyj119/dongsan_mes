@@ -20,6 +20,7 @@ test.describe.serial('주문 생성 → 상태 전이 → 카드 생성', () => 
   let orderId: number
   let orderNumber: string
   let cardIds: number[] = []
+  let cardTestOrderId: number | undefined
 
   test('테스트 거래처 생성', async ({ writeApi }) => {
     const res = await writeApi.post('/api/clients', {
@@ -140,7 +141,7 @@ test.describe.serial('주문 생성 → 상태 전이 → 카드 생성', () => 
       ],
     })
     expect(orderRes.success).toBe(true)
-    const cardTestOrderId = orderRes.data.id
+    cardTestOrderId = orderRes.data.id
 
     const res = await writeApi.post(`/api/cards/generate/${cardTestOrderId}`)
 
@@ -157,14 +158,15 @@ test.describe.serial('주문 생성 → 상태 전이 → 카드 생성', () => 
     expect(cardsRes.success).toBe(true)
   })
 
-  test('Cleanup', async ({ writeApi }) => {
-    // 주문 취소 (cancel endpoint 사용)
-    if (orderId) {
-      await writeApi.patch(`/api/orders/${orderId}/cancel`, { reason: 'E2E cleanup' })
-        .catch(() => {}) // cancel 없으면 무시
+  // 생성 데이터 완전 정리(#340) — 직전 테스트가 실패해 serial이 중단돼도 실행되도록 afterAll 사용.
+  // 주문 DELETE는 1차=소프트취소(CONFIRMED 이후 → CANCELLED), 2차=하드삭제(행·카드·order_items·shipments 전량 cascade, ADMIN 전용).
+  // e2e_tester=ADMIN/entity99라 두 번 호출로 잔여 0 → 프로덕션 DB에 테스트 데이터 누적 방지. 그 후 거래처 삭제.
+  test.afterAll(async ({ writeApi }) => {
+    for (const oid of [orderId, cardTestOrderId]) {
+      if (!oid) continue
+      await writeApi.del(`/api/orders/${oid}`).catch(() => {})  // 1차: 소프트 취소(CANCELLED)
+      await writeApi.del(`/api/orders/${oid}`).catch(() => {})  // 2차: 하드 삭제(완전 제거)
     }
-
-    // 거래처 삭제 시도 (주문 있으면 실패 — 허용)
     if (clientId) {
       await writeApi.del(`/api/clients/${clientId}`).catch(() => {})
     }
