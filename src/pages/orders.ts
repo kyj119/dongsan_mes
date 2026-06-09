@@ -168,7 +168,8 @@ export function ordersPage(c: Context<HonoEnv>) {
       <style>
         /* 주문 리스트 전용: 셀 패딩 통일(헤더/바디 정렬) + 좁은 컬럼 '...' 잘림 방지 (specificity 0,2,2 > ds-table-striped 0,1,2) */
         .ds-table.ord-tbl thead th, .ds-table.ord-tbl tbody td { padding: 7px 8px; }
-        .ds-table.ord-tbl td.ord-act { overflow: visible; }
+        /* 액션 아이콘 + 납기일 '지연' 뱃지가 좁은 셀에서 '...'로 잘리지 않도록 (specificity 0,3,1 > ds-table-striped 0,1,2) */
+        .ds-table.ord-tbl td.ord-act, .ds-table.ord-tbl td.ord-due { overflow: visible; }
       </style>
       <div class="ds-card" style="padding:0;overflow:hidden;">
         <div class="ds-table-wrap" style="max-height: calc(100vh - 280px); overflow-y: auto;">

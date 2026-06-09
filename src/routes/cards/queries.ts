@@ -268,18 +268,19 @@ cardsQueriesRouter.get('/', async (c) => {
 
     // urgency filter: maps urgency label to delivery_date range relative to today
     if (urgency) {
+      // half-open 구간으로 표현해 컬럼에 date() 함수 미적용 → idx_cards_delivery 활용 (date() 비교와 결과 동일)
       if (urgency === 'urgent') {
-        // D-0 or overdue: delivery_date <= today
-        query += ` AND date(c.delivery_date) <= date('now', '+9 hours')`
+        // D-0 or overdue: delivery_date <= today  →  < 내일
+        query += ` AND c.delivery_date < date('now', '+9 hours', '+1 day')`
       } else if (urgency === 'high') {
-        // D-1: exactly tomorrow
-        query += ` AND date(c.delivery_date) = date('now', '+9 hours', '+1 day')`
+        // D-1: exactly tomorrow  →  [내일, 모레)
+        query += ` AND c.delivery_date >= date('now', '+9 hours', '+1 day') AND c.delivery_date < date('now', '+9 hours', '+2 days')`
       } else if (urgency === 'normal') {
-        // D-2 or D-3: within 2-3 days from now
-        query += ` AND date(c.delivery_date) >= date('now', '+9 hours', '+2 days') AND date(c.delivery_date) <= date('now', '+9 hours', '+3 days')`
+        // D-2 or D-3  →  [+2일, +4일)
+        query += ` AND c.delivery_date >= date('now', '+9 hours', '+2 days') AND c.delivery_date < date('now', '+9 hours', '+4 days')`
       } else if (urgency === 'low') {
         // D-4 or later
-        query += ` AND date(c.delivery_date) >= date('now', '+9 hours', '+4 days')`
+        query += ` AND c.delivery_date >= date('now', '+9 hours', '+4 days')`
       }
     }
 
@@ -424,14 +425,15 @@ cardsQueriesRouter.get('/', async (c) => {
     }
 
     if (urgency) {
+      // 메인 쿼리와 동일한 half-open 구간 (sargable)
       if (urgency === 'urgent') {
-        countQuery += ` AND date(c.delivery_date) <= date('now', '+9 hours')`
+        countQuery += ` AND c.delivery_date < date('now', '+9 hours', '+1 day')`
       } else if (urgency === 'high') {
-        countQuery += ` AND date(c.delivery_date) = date('now', '+9 hours', '+1 day')`
+        countQuery += ` AND c.delivery_date >= date('now', '+9 hours', '+1 day') AND c.delivery_date < date('now', '+9 hours', '+2 days')`
       } else if (urgency === 'normal') {
-        countQuery += ` AND date(c.delivery_date) >= date('now', '+9 hours', '+2 days') AND date(c.delivery_date) <= date('now', '+9 hours', '+3 days')`
+        countQuery += ` AND c.delivery_date >= date('now', '+9 hours', '+2 days') AND c.delivery_date < date('now', '+9 hours', '+4 days')`
       } else if (urgency === 'low') {
-        countQuery += ` AND date(c.delivery_date) >= date('now', '+9 hours', '+4 days')`
+        countQuery += ` AND c.delivery_date >= date('now', '+9 hours', '+4 days')`
       }
     }
 
@@ -504,7 +506,7 @@ cardsQueriesRouter.get('/kanban-summary', async (c) => {
       FROM cards c
       JOIN orders o ON c.order_id = o.id
       WHERE c.status NOT IN ('PRINT_DONE', 'HOLD')
-        AND date(c.delivery_date) < date('now', '+9 hours')${categoryFilter}${efKanban.clause}
+        AND c.delivery_date < date('now', '+9 hours')${categoryFilter}${efKanban.clause}
     `
     const overdueRow = await c.env.DB.prepare(overdueSql).bind(...categoryParams, ...efKanban.params).first<OverdueRow>()
 
@@ -516,7 +518,7 @@ cardsQueriesRouter.get('/kanban-summary', async (c) => {
       FROM cards c
       JOIN orders o ON c.order_id = o.id
       WHERE c.status != 'HOLD'
-        AND date(o.delivery_date) <= date('now', '+9 hours')
+        AND o.delivery_date < date('now', '+9 hours', '+1 day')
         AND o.status NOT IN ('SHIPPED', 'CANCELLED')
     `
     const deliveryParams: any[] = []
@@ -538,7 +540,7 @@ cardsQueriesRouter.get('/kanban-summary', async (c) => {
       FROM cards c
       JOIN orders o ON c.order_id = o.id
       WHERE c.status != 'HOLD'
-        AND date(o.delivery_date) <= date('now', '+9 hours')
+        AND o.delivery_date < date('now', '+9 hours', '+1 day')
         AND o.status NOT IN ('SHIPPED', 'CANCELLED')
     `
     const todayParams: any[] = []

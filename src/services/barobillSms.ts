@@ -108,7 +108,7 @@ export class BarobillSmsProvider {
       </SendATKakaotalk>`
 
     const result = await callSoap('KakaoTalk', 'SendATKakaotalk', body)
-    return { receiptNum: result || '', code: result ? 1 : 0, message: result ? '발송 성공' : '발송 실패' }
+    return interpretReceipt(result)
   }
 
   private async sendATSBulk(params: any): Promise<SendResult> {
@@ -165,7 +165,7 @@ export class BarobillSmsProvider {
           SendDT: params.sndDT || '',
           RefKey: '',
         })
-        return { receiptNum: result || '', code: result ? 1 : 0, message: result ? '발송 성공' : '발송 실패' }
+        return interpretReceipt(result)
       } else {
         return await this.sendSMSBulk(params, 'SMS')
       }
@@ -196,7 +196,7 @@ export class BarobillSmsProvider {
           SendDT: params.sndDT || '',
           RefKey: '',
         })
-        return { receiptNum: result || '', code: result ? 1 : 0, message: result ? '발송 성공' : '발송 실패' }
+        return interpretReceipt(result)
       } else {
         return await this.sendSMSBulk(params, 'LMS')
       }
@@ -238,21 +238,47 @@ export class BarobillSmsProvider {
   // 조회
   // ========================================================================
 
-  /** 알림톡 템플릿 목록 */
+  /** 카카오 알림톡 채널(발신 프로필) 목록 */
+  async listChannels(): Promise<Array<{ channelId: string; channelName: string; status: number }>> {
+    const result = await barobillCall(this.config, 'KakaoTalk' as any, 'GetKakaotalkChannels', {})
+    return parseXmlArray(result, 'KakaotalkChannel')
+      .map(ch => ({
+        channelId: ch.ChannelId || '',
+        channelName: ch.ChannelName || '',
+        status: parseInt(ch.Status || '0', 10),
+      }))
+      .filter(ch => ch.channelId)
+  }
+
+  /**
+   * 알림톡 템플릿 목록
+   * 바로빌 GetKakaotalkTemplates는 ChannelId가 필수다(빈값 → 에러코드 -31301).
+   * 따라서 채널을 먼저 조회한 뒤 채널별 템플릿을 합산한다.
+   * 응답 필드(WSDL): KakaotalkTemplate.{ChannelId, TemplateName, TemplateContent, Status(3=승인)}
+   */
   async listATSTemplate(): Promise<ATSTemplate[]> {
     try {
-      const result = await barobillCall(this.config, 'KakaoTalk' as any, 'GetKakaotalkTemplates', { ID: '' })
-      const items = parseXmlArray(result, 'KakaotalkTemplate')
-      return items.map(t => ({
-        templateCode: t.TemplateName || t.TemplateCode || '',
-        templateName: t.TemplateName || '',
-        template: t.Template || '',
-        plusFriendID: t.ChannelID || t.PlusFriendID || '',
-        ads: '',
-        appendix: '',
-        btns: [],
-        state: t.State || 'S',
-      }))
+      const channels = await this.listChannels()
+      const all: ATSTemplate[] = []
+      for (const ch of channels) {
+        const result = await barobillCall(this.config, 'KakaoTalk' as any, 'GetKakaotalkTemplates', { ChannelId: ch.channelId })
+        for (const t of parseXmlArray(result, 'KakaotalkTemplate')) {
+          const status = parseInt(t.Status || '0', 10)
+          // 음수 Status = 바로빌 에러코드(예: -31301) → 스킵
+          if (!t.TemplateName || status < 0) continue
+          all.push({
+            templateCode: t.TemplateName,        // 발송 시 TemplateName으로 지정
+            templateName: t.TemplateName,
+            template: t.TemplateContent || '',
+            plusFriendID: t.ChannelId || ch.channelId,
+            ads: '',
+            appendix: t.TemplateExtra || '',
+            btns: [],
+            state: String(status),               // 3 = 승인
+          })
+        }
+      }
+      return all
     } catch (err) {
       console.error('listATSTemplate error:', err)
       return []
@@ -346,4 +372,17 @@ export class BarobillSmsProvider {
 
 function esc(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+}
+
+/**
+ * 바로빌 단건 발송 결과 해석.
+ * 바로빌은 성공 시 양수 접수번호, 실패 시 음수 에러코드를 같은 필드로 반환한다.
+ * 음수도 truthy라 `result ? 1 : 0`으로는 실패를 성공으로 오판정 → 반드시 숫자 부호로 판별.
+ */
+function interpretReceipt(result: string): SendResult {
+  const num = parseInt(result, 10)
+  if (result && !isNaN(num) && num > 0) {
+    return { receiptNum: result, code: num, message: '발송 성공' }
+  }
+  return { receiptNum: '', code: isNaN(num) ? 0 : num, message: `발송 실패 (바로빌 코드: ${result || 'empty'})` }
 }

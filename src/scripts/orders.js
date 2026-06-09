@@ -451,7 +451,7 @@ async function loadOrders() {
             <td class="px-2 py-2.5">
               <div class="text-sm text-gray-700 truncate" title="${escapeHtml(order.main_item_name || '')}">${escapeHtml(order.main_item_name || '-')}${spec}${itemMore}</div>
             </td>
-            <td class="px-2 py-2.5 whitespace-nowrap">
+            <td class="px-2 py-2.5 whitespace-nowrap ord-due">
               <div class="text-sm text-gray-900">${escapeHtml(order.delivery_date || '-')}${urgencyBadge}</div>
               <div class="text-xs text-gray-400">${escapeHtml(deliveryLabel)}</div>
             </td>
@@ -459,9 +459,7 @@ async function loadOrders() {
               <div class="text-sm text-gray-900">${order.final_amount?.toLocaleString() || '0'}원${order.has_pending_prices ? '<span class="ml-1 px-1 text-[10px] rounded bg-amber-100 text-amber-700 font-bold">미정</span>' : ''}</div>
             </td>
             <td class="px-2 py-2.5 whitespace-nowrap">
-              <span class="px-2 inline-flex items-center text-xs leading-5 font-semibold rounded-full ${getStatusColor(order.status)}">
-                <i class="${getStatusIcon(order.status)} text-[7px] mr-1"></i>${getStatusText(order.status)}
-              </span>
+              <span class="px-2 inline-flex items-center text-xs leading-5 font-semibold rounded-full ${getStatusColor(order.status)}">${getStatusText(order.status)}</span>
             </td>
             <td class="px-2 py-2.5 whitespace-nowrap text-center">
               ${billingCell}
@@ -537,7 +535,7 @@ async function confirmStatusChange() {
       if (_row && typeof getStatusColor === 'function') {
         _row.dataset.status = newStatus;
         var _sc = _row.querySelector('td:nth-child(7)');
-        if (_sc) _sc.innerHTML = '<span class="px-2 inline-flex items-center text-xs leading-5 font-semibold rounded-full ' + getStatusColor(newStatus) + '"><i class="' + getStatusIcon(newStatus) + ' text-[7px] mr-1"></i>' + getStatusText(newStatus) + '</span>';
+        if (_sc) _sc.innerHTML = '<span class="px-2 inline-flex items-center text-xs leading-5 font-semibold rounded-full ' + getStatusColor(newStatus) + '">' + getStatusText(newStatus) + '</span>';
       }
       loadOrderStats();
       loadOrders();
