@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 3 -->
-<!-- last_run_at: 2026-06-09T10:00:00+09:00 -->
+<!-- last_run_area: 4 -->
+<!-- last_run_at: 2026-06-09T14:00:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,12 +8,20 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | 6 (open 실측 06-09T10:00 — #372/#369/#366/#350/#341/#336. 직전 세션(1899049) 11건 close로 #358~#368 등 다수 closed → done/rejected 분류는 Area 6 검증 대기) |
-| ✅ approved | 2 (I-032/#342 — 전용 세션 대기 / I-030/#340 — 👍 확인, 급성 RED 해소·잔여만 대기) |
+| 🆕 new | 2 (open auto-improve **실측 06-09T14:00** — #373(신규 Area 4)·#372(Area 3). 직전 open이던 #366/#369/#350/#341/#336/#342/#340이 **전부 close**됨(세션정리 e3b0af6 "8건 처리·전건 close") → done/rejected 분류 Area 6 검증 대기) |
+| ✅ approved | 0 (직전 approved #342/#340 모두 close — Area 6에서 done/rejected 확정 필요) |
 | 👀 reviewed | 0 |
-| ✔️ done | 61 (+직전 세션 11건 close 06-09 — done/rejected 분류 Area 6 검증 대기) |
+| ✔️ done | 61 (+06-09 대량 close 다수 — #366(KST 완료)·#369·#350·#341·#342·#340 등 done 후보, 분류 Area 6 검증 대기) |
 | ❌ rejected | 3 |
 
+> **Area 4 데이터 정합성 (2026-06-09T14:00):**
+> - **방법**: ground-truth — 299 마이그레이션 로컬 D1(node:sqlite) 전량 적용(**FAIL 0**, 171테이블/509인덱스) + baseline `npm ci`+tsc --noEmit PASS. Area 4 **8회차** — 기존 각도(마이그레이션·CHECK↔코드·balance/재고 대칭·FK cascade·트리거·비원자 고아#FP·dead table#364·UTC/KST#366·entity_id DEFAULT) 고갈 → **시의성 + 덜 다룬 각도** 병렬 Explore 2개: (A)방금 랜딩된 #366 KST 수정 5커밋이 신규 불일치 도입했는지 (B)크로스테이블 상태머신 정합성(정방향은 연관상태 갱신, 역방향 취소/삭제가 롤백 누락). 발견 전수 owner 직접 코드 검증(오탐 차단).
+> - **🐛 신규 이슈 #373 (MED bug) — 입고검수 CANCELLED 시 재고만 역분개, PO status·received_quantity 미롤백**: PO 입고(`purchaseOrders/core.ts:receive`)에 거부수량 있으면 receipt `inspection_status='PENDING_REVIEW'`(`:1567`) + `purchase_order_items.received_quantity` 누적 + `purchase_orders.status`→RECEIVED/PARTIAL 전이(`:1382/1391`). 관리자 반려(`inspections.js:406`→`inventory.ts:413-466` CANCELLED)는 ✅재고 역분개·✅RECEIPT_CANCEL 트랜잭션·✅receipt status=CANCELLED 처리하나 ❌`received_quantity` 미감산 + ❌PO status 미롤백(`inventory.ts` 핸들러가 purchase_orders 미참조, grep 0). **잔류 모순**: 재고는 빠졌는데 PO는 RECEIVED 영구 잔류 + `remaining=quantity-received_quantity`(`:1494`) 오계산 → 취소수량 **재입고 불가**(400 차단). 발화=입고 시 거부수량(실무 빈번)→PENDING_REVIEW→반려. **도달성 확인**(inspections.js:406). **#369와 별개**(#369=재고측 멱등/원자성 이미 수정, 본건=PO측 롤백). **자동수정 안 함**(롤백 정책=비즈니스 로직+egress 검증불가).
+> - **🔵 #366 KST 수정 5커밋 검증 — net-new 불일치 0(clean)**: 공용 헬퍼 `kstDate/kstDateOf/kstMonth`(`utils/kstDate.ts`) **단일 정의**. 잔여 raw `date('now')`(`auto_complete_date` shipments:735/814·orders/queries:250, `billable_after`)는 **write·read 둘 다 UTC로 자기일관**(스케줄링 트리거, core.ts:2532 `<=date('now')` 비교) → **owner가 #366에서 명시적 의도 축소**("저장↔비교 UTC 자기일관, 저장만 바꾸면 자동완료 타이밍 깨짐, 동시처리 필요해 제외"). 이중보정·혼합저장 0건. `purchase_orders.order_date` 기본값(`core.ts:996/2018/2135`)도 전 경로 UTC 일관(read `:211`도 UTC) → owner가 백엔드 date churn 디프리오("byte-identical, 리스크>가치, 점진 채택"). #366 표시층+백엔드 핵심 완료로 close(06-09T04:00). **KST 각도는 owner 신선 처리, 보고할 net-new 없음**.
+> - **🔴 크로스테이블 오탐 차단 (에이전트 6갭 보고 → owner 코드 반증)**: ① **주문 soft-delete가 shipped 카드 미HOLD**(`orders/core.ts:1842` `shipped_at IS NULL` 가드) → **의도적**(이미 출고된 실물은 un-ship 불가, 가드 deliberate). ② **출고취소→카드 PRINTING 잔류** → 추측(확정 트리거 없음). ③ **견적 convert_count 미감산**(order 삭제 시) → audit 카운트+`force=true` escape hatch 의도 설계. ④ **세금계산서 취소 billed_at/billed_by 잔류**(billing_status=NULL만) → cosmetic audit, 재billing 시 덮어씀+balance 이중계산은 미입증(FP 위험) 드롭. ⑤ **카드→주문 역동기 부재** → 추측. **#373만 net-new인 이유**: 정상 실행 경로(검수 반려)에서 재고-PO 상태가 확정적으로 분기 + 재입고 차단이라는 구체 영향 보유.
+> - **이상 없음**: 마이그레이션 299 FAIL 0, 트리거 0개. open auto-improve 실측 2건(#372/#373). baseline PASS.
+> - 자동 수정 0건(net-new는 롤백 시맨틱=비즈니스 로직·검증불가), 신규 이슈 1건(#373), KST 5커밋 clean 검증, 크로스테이블 오탐 5건 차단
+>
 > **Area 3 UX/기능 감사 (2026-06-09T10:00):**
 > - **방법**: baseline `npm ci`+tsc --noEmit PASS. Area 3 **7회차** — 기존 각도(dead-filter·하드캡(리스트표시)·getElementById silent-fail·catch-UX #362·CSV누락 #363·파괴적 confirm·변경후갱신·폼검증·journey) 고갈 → **덜 다룬 2각도** 병렬 Explore: (A)거래 리스트 검색범위 부족+실무 필터(날짜/상태) 부재 (B)정렬 불가+페이지네이션/대량로드 캡+빈상태 CTA. 발견 전수 owner 직접 코드 검증.
 > - **🟡 신규 이슈 #372 (improvement, small) — CSV export 5곳 `LIMIT 5000` 무경고 silent truncation**: `purchaseOrders/core.ts:278`(발주목록)·`:338`(입고이력)·`inspections.ts:381`(검수결과)·`purchaseRequests.ts:276`(발주요청)·`cashSchedule.ts:122`(현금일정) CSV export가 전부 필터 후 `LIMIT 5000` + **잘림 표시 전무** → 필터링 결과 >5000행이면 사용자가 일부만 받은 줄 모르고 **정산·세무 대사를 불완전 데이터로** 수행. 발화는 저빈도(대부분 월 날짜필터로 좁힘)이나 **잘림을 인지할 수 없는 구조**가 원칙 위반·감사데이터 직결 → LOW. **자동수정 안 함**(경고 전달방식=UX 판단+egress export 검증불가). 수정: `LIMIT 5001` 조회→초과 감지→CSV 안내행/`X-Truncated` 헤더+toast(헬퍼 1개 5곳 적용).
