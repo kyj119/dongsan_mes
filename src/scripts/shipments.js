@@ -828,7 +828,11 @@ function openShipmentSendModal(section) {
 
   document.getElementById('shipSendBtnText').textContent = selected.size + '건 발송';
 
-  // 템플릿 로드 (카카오톡용)
+  // 기본 메시지(폴백) — 먼저 설정. 아래 fillShipTemplateSelect가 템플릿 자동선택 시
+  // onShipTemplateChange로 '실제 등록 템플릿 본문'을 덮어써 항상 템플릿과 일치하도록 한다.
+  document.getElementById('shipSendContent').value = getDefaultShipmentMessage(section, groups, selected);
+
+  // 템플릿 로드 (카카오톡용) — 로드/자동선택 후 실제 템플릿 본문이 우선 적용됨
   if (shipTemplatesCache.length === 0) {
     axios.get('/api/kakao/templates').then(function(res) {
       if (res.data.success) {
@@ -840,9 +844,6 @@ function openShipmentSendModal(section) {
     fillShipTemplateSelect();
   }
 
-  // 기본 메시지
-  document.getElementById('shipSendContent').value = getDefaultShipmentMessage(section, groups, selected);
-
   var modal = document.getElementById('shipmentSendModal');
   modal.classList.remove('hidden');
   modal.onclick = function(e) {
@@ -851,8 +852,9 @@ function openShipmentSendModal(section) {
 }
 
 function getDefaultShipmentMessage(section, groups, selected) {
-  // 알림톡 등록 템플릿과 글자 일치: 변수는 #{} 그대로 두고 서버 resolveMsg가 치환.
-  // 배송수단별로 본문이 1줄(배송 문구)만 다름 → 카카오 템플릿 분리 등록(shipment_freight/hanjin/parcel/pickup_ready)
+  // 폴백 본문(템플릿 로드 전/직접작성용). 알림톡 발송 시엔 fillShipTemplateSelect가
+  // 실제 등록 템플릿(대신화물 출고/대신택배 출고/방문 수령 준비 완료) 본문으로 덮어쓴다.
+  // 변수는 #{} 그대로 두고 서버 resolveMsg가 치환.
   if (section === 'freight') {
     return '#{고객명}님, 동산기획입니다.\n\n주문하신 제품이 발송되었습니다.\n\n■ 품목: #{품목}\n■ 배송: 대신화물\n■ 터미널: #{터미널}\n■ 출고일: #{날짜}\n\n문의: 042-523-1982';
   } else if (section === 'hanjin') {
@@ -871,12 +873,12 @@ function fillShipTemplateSelect() {
     return '<option value="' + escapeHtml(t.templateCode) + '">' + escapeHtml(t.templateName) + '</option>';
   }).join('');
 
-  // 섹션별 자동 선택 — 배송수단별 본문이 달라 템플릿 분리 (바로빌에 동일 코드로 등록 필요)
+  // 섹션별 자동 선택 — value는 실제 바로빌 등록 템플릿명과 일치(드롭다운 option value=templateName).
+  // 한진택배는 승인 템플릿 미등록 → 자동선택 없음(등록 후 추가). 미수금 템플릿은 출고용 아님.
   var autoCodeMap = {
-    freight: 'shipment_freight',
-    hanjin: 'shipment_hanjin',
-    daesintaekbae: 'shipment_parcel',
-    quick: 'pickup_ready'
+    freight: '대신화물 출고',
+    daesintaekbae: '대신택배 출고',
+    quick: '방문 수령 준비 완료'
   };
   var autoCode = autoCodeMap[shipSendSection] || '';
 
