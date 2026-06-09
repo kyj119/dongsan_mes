@@ -124,8 +124,8 @@ migrationRouter.post('/clients/import', async (c) => {
           await db.prepare(`
             INSERT INTO clients (client_code, client_name, representative, business_type, business_item,
               phone, mobile, fax, email, address, business_registration_number, search_keywords, transfer_info,
-              credit_limit, is_active)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+              credit_limit, is_active, delivery_method)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           `).bind(
             row.client_code, row.client_name,
             row.representative || null, row.business_type || null,
@@ -134,7 +134,8 @@ migrationRouter.post('/clients/import', async (c) => {
             row.business_registration_number || null,
             row.search_keywords || null, row.transfer_info || null,
             row.credit_limit || 0,
-            row.is_active !== undefined ? row.is_active : 1
+            row.is_active !== undefined ? row.is_active : 1,
+            row.delivery_method || '방문수령'
           ).run()
         }
         imported++

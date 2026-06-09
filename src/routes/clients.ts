@@ -775,9 +775,9 @@ clientsRouter.post('/', requireRole('ADMIN', 'MANAGER'), async (c) => {
       INSERT INTO clients (
         client_code, client_name, representative, business_type, business_item,
         phone, mobile, fax, email, address, search_keywords, transfer_info, is_active,
-        business_registration_number, client_type, price_list_id, auto_billing,
+        business_registration_number, delivery_method, client_type, price_list_id, auto_billing,
         price_policy_id, payment_cycle_type, payment_terms_days, closing_day, payment_month_offset, payment_day
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).bind(
       clientData.client_code,
       clientData.client_name,
@@ -793,6 +793,7 @@ clientsRouter.post('/', requireRole('ADMIN', 'MANAGER'), async (c) => {
       clientData.transfer_info || null,
       clientData.is_active !== undefined ? clientData.is_active : 1,
       clientData.business_registration_number || null,
+      clientData.delivery_method || '방문수령',
       clientType,
       priceListId,
       clientData.auto_billing ? 1 : 0,

@@ -322,7 +322,7 @@ async function editClient(clientId) {
             }
             document.getElementById('clientModalSearchKeywords').value = c.search_keywords || '';
             document.getElementById('clientModalTransferInfo').value = c.transfer_info || '';
-            document.getElementById('clientModalDeliveryMethod').value = c.delivery_method || 'SAME';
+            document.getElementById('clientModalDeliveryMethod').value = c.delivery_method || '방문수령';
             document.getElementById('clientModalDeliveryAddress').value = c.delivery_address || '';
             document.getElementById('clientModalNotes').value = c.notes || '';
             // 결제 주기 (미수금 회수예측 4-3a)
@@ -465,7 +465,7 @@ async function importExcel() {
                 search_keywords: findVal(row, ['search_keywords', '검색창내용']),
                 transfer_info: findVal(row, ['transfer_info', '이체정보']),
                 business_registration_number: findVal(row, ['business_registration_number', '사업자등록번호']) || null,
-                delivery_method: findVal(row, ['delivery_method', '배송방식']) || 'SAME',
+                delivery_method: findVal(row, ['delivery_method', '배송방식']) || '방문수령',
                 delivery_address: findVal(row, ['delivery_address', '배송지', '지점명']),
                 invoice_method: findVal(row, ['invoice_method', 'invoice_type', '계산서유형']) || 'PER_ORDER',
                 is_active: 1
