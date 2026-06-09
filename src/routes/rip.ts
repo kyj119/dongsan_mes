@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole, agentKeyMiddleware } from '../middleware/auth'
+import { getEntityId, entityFilter } from '../utils/entityFilter'
 
 // ─── D1 row types ───────────────────────────────────────────────────────────
 
@@ -227,6 +228,7 @@ ripRouter.get('/status', authMiddleware, async (c) => {
 
 ripRouter.get('/equipment', authMiddleware, async (c) => {
   try {
+    const ef = entityFilter(c, 'e')  // #342 설비 법인 격리
     const { results: equipmentList } = await c.env.DB.prepare(`
       SELECT e.id, e.name, e.printer_name, e.ip_address, e.status,
         e.head_count, e.location_zone, e.location_x, e.location_y,
@@ -240,9 +242,9 @@ ripRouter.get('/equipment', authMiddleware, async (c) => {
         END as agent_status
       FROM equipment e
       LEFT JOIN agent_heartbeats ah ON ah.equipment_id = e.id
-      WHERE e.status = 'ACTIVE'
+      WHERE e.status = 'ACTIVE'${ef.clause}
       ORDER BY e.id
-    `).all<EquipmentRow>()
+    `).bind(...ef.params).all<EquipmentRow>()
 
     // 프리셋 일괄 조회 (N+1 → 단일 쿼리)
     const eqIds = equipmentList.map((eq) => eq.id)
@@ -286,9 +288,9 @@ ripRouter.post('/equipment', authMiddleware, requireRole('ADMIN'), async (c) => 
     }
 
     await c.env.DB.prepare(`
-      INSERT INTO equipment (id, name, printer_name, ip_address)
-      VALUES (?, ?, ?, ?)
-    `).bind(id, name, printer_name || null, ip_address || null).run()
+      INSERT INTO equipment (id, name, printer_name, ip_address, entity_id)
+      VALUES (?, ?, ?, ?, ?)
+    `).bind(id, name, printer_name || null, ip_address || null, getEntityId(c) || 1).run()
 
     const equipment = await c.env.DB.prepare(
       'SELECT id, name, printer_name, ip_address, status, equipment_status, head_count, location_x, location_y, location_zone, zone_id, daily_capacity, size_type, notes, created_at, updated_at FROM equipment WHERE id = ?'
@@ -311,9 +313,10 @@ ripRouter.put('/equipment/:id', authMiddleware, requireRole('ADMIN'), async (c) 
     const equipId = c.req.param('id')
     const body = await c.req.json()
 
+    const ef = entityFilter(c)  // #342 타법인 설비 수정 차단
     const existing = await c.env.DB.prepare(
-      'SELECT id FROM equipment WHERE id = ?'
-    ).bind(equipId).first()
+      `SELECT id FROM equipment WHERE id = ?${ef.clause}`
+    ).bind(equipId, ...ef.params).first()
 
     if (!existing) {
       return c.json({ success: false, error: 'Equipment not found' }, 404)
@@ -451,8 +454,8 @@ ripRouter.get('/equipment/:id', authMiddleware, async (c) => {
         END as agent_status
       FROM equipment e
       LEFT JOIN agent_heartbeats ah ON ah.equipment_id = e.id
-      WHERE e.id = ?
-    `).bind(equipId).first<EquipmentRow>()
+      WHERE e.id = ?${entityFilter(c, 'e').clause}
+    `).bind(equipId, ...entityFilter(c, 'e').params).first<EquipmentRow>()
 
     if (!equipment) {
       return c.json({ success: false, error: 'Equipment not found' }, 404)
@@ -504,9 +507,10 @@ ripRouter.patch('/equipment/:id/status', authMiddleware, async (c) => {
       return c.json({ success: false, error: `상태는 ${validStatuses.join('|')} 중 하나여야 합니다` }, 400)
     }
 
+    const ef = entityFilter(c)  // #342
     const existing = await c.env.DB.prepare(
-      'SELECT id, equipment_status FROM equipment WHERE id = ?'
-    ).bind(equipId).first<{ id: string; equipment_status: string | null }>()
+      `SELECT id, equipment_status FROM equipment WHERE id = ?${ef.clause}`
+    ).bind(equipId, ...ef.params).first<{ id: string; equipment_status: string | null }>()
 
     if (!existing) {
       return c.json({ success: false, error: 'Equipment not found' }, 404)
@@ -549,9 +553,10 @@ ripRouter.put('/equipment/:id/capacity', authMiddleware, requireRole('ADMIN', 'M
       return c.json({ success: false, error: '일일 용량은 0 이상의 숫자여야 합니다' }, 400)
     }
 
+    const ef = entityFilter(c)  // #342
     const existing = await c.env.DB.prepare(
-      'SELECT id FROM equipment WHERE id = ?'
-    ).bind(equipId).first()
+      `SELECT id FROM equipment WHERE id = ?${ef.clause}`
+    ).bind(equipId, ...ef.params).first()
 
     if (!existing) {
       return c.json({ success: false, error: 'Equipment not found' }, 404)
@@ -578,9 +583,10 @@ ripRouter.patch('/equipment/:id/position', authMiddleware, requireRole('ADMIN', 
     const equipId = c.req.param('id')
     const { location_x, location_y, location_zone } = await c.req.json()
 
+    const ef = entityFilter(c)  // #342
     await c.env.DB.prepare(
-      'UPDATE equipment SET location_x = ?, location_y = ?, location_zone = COALESCE(?, location_zone), updated_at = CURRENT_TIMESTAMP WHERE id = ?'
-    ).bind(location_x, location_y, location_zone || null, equipId).run()
+      `UPDATE equipment SET location_x = ?, location_y = ?, location_zone = COALESCE(?, location_zone), updated_at = CURRENT_TIMESTAMP WHERE id = ?${ef.clause}`
+    ).bind(location_x, location_y, location_zone || null, equipId, ...ef.params).run()
 
     return c.json({ success: true })
   } catch (error) {
@@ -603,9 +609,10 @@ ripRouter.post('/equipment/:id/heads', authMiddleware, requireRole('ADMIN', 'MAN
       return c.json({ success: false, error: '헤드 수는 1~16 사이여야 합니다' }, 400)
     }
 
+    const ef = entityFilter(c)  // #342
     const equipment = await c.env.DB.prepare(
-      'SELECT id FROM equipment WHERE id = ?'
-    ).bind(equipId).first()
+      `SELECT id FROM equipment WHERE id = ?${ef.clause}`
+    ).bind(equipId, ...ef.params).first()
 
     if (!equipment) {
       return c.json({ success: false, error: 'Equipment not found' }, 404)
@@ -816,6 +823,7 @@ ripRouter.delete('/equipment/:id/maintenance/:logId', authMiddleware, requireRol
 ripRouter.get('/equipment/:id/consumables', authMiddleware, async (c) => {
   try {
     const equipId = c.req.param('id')
+    const ef = entityFilter(c)  // #342 소모품 법인 격리
     const { results } = await c.env.DB.prepare(`
       SELECT id, equipment_id, name, replacement_cycle_days, last_replaced_at, next_due_at, quantity_on_hand, notes, created_at, updated_at,
         CASE
@@ -824,9 +832,9 @@ ripRouter.get('/equipment/:id/consumables', authMiddleware, async (c) => {
           ELSE 'OK'
         END as due_status
       FROM equipment_consumables
-      WHERE equipment_id = ?
+      WHERE equipment_id = ?${ef.clause}
       ORDER BY next_due_at ASC NULLS LAST
-    `).bind(equipId).all()
+    `).bind(equipId, ...ef.params).all()
 
     return c.json({ success: true, data: results })
   } catch (error) {
@@ -849,9 +857,10 @@ ripRouter.post('/equipment/:id/consumables', authMiddleware, requireRole('ADMIN'
       return c.json({ success: false, error: '소모품 이름은 필수입니다' }, 400)
     }
 
+    const ef = entityFilter(c)  // #342
     const equipment = await c.env.DB.prepare(
-      'SELECT id FROM equipment WHERE id = ?'
-    ).bind(equipId).first()
+      `SELECT id FROM equipment WHERE id = ?${ef.clause}`
+    ).bind(equipId, ...ef.params).first()
 
     if (!equipment) {
       return c.json({ success: false, error: 'Equipment not found' }, 404)
@@ -864,13 +873,14 @@ ripRouter.post('/equipment/:id/consumables', authMiddleware, requireRole('ADMIN'
       : null
 
     const result = await c.env.DB.prepare(`
-      INSERT INTO equipment_consumables (equipment_id, name, replacement_cycle_days, last_replaced_at, next_due_at, quantity_on_hand, notes)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO equipment_consumables (equipment_id, name, replacement_cycle_days, last_replaced_at, next_due_at, quantity_on_hand, notes, entity_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `).bind(
       equipId, body.name, cycleDays,
       lastReplaced, nextDue,
       body.quantity_on_hand || 0,
-      body.notes || null
+      body.notes || null,
+      getEntityId(c) || 1
     ).run()
 
     return c.json({ success: true, data: { id: result.meta.last_row_id } }, 201)
@@ -890,9 +900,10 @@ ripRouter.put('/equipment/:id/consumables/:cid', authMiddleware, requireRole('AD
     const cid = c.req.param('cid')
     const body = await c.req.json()
 
+    const ef = entityFilter(c)  // #342
     const existing = await c.env.DB.prepare(
-      'SELECT id, equipment_id, name, replacement_cycle_days, last_replaced_at, next_due_at, quantity_on_hand, notes, created_at, updated_at FROM equipment_consumables WHERE id = ?'
-    ).bind(cid).first<ConsumableRow>()
+      `SELECT id, equipment_id, name, replacement_cycle_days, last_replaced_at, next_due_at, quantity_on_hand, notes, created_at, updated_at FROM equipment_consumables WHERE id = ?${ef.clause}`
+    ).bind(cid, ...ef.params).first<ConsumableRow>()
 
     if (!existing) {
       return c.json({ success: false, error: 'Consumable not found' }, 404)
@@ -941,9 +952,10 @@ ripRouter.post('/equipment/:id/consumables/:cid/replace', authMiddleware, async 
     const cid = c.req.param('cid')
     const user = c.get('user')
 
+    const ef = entityFilter(c)  // #342
     const consumable = await c.env.DB.prepare(
-      'SELECT id, equipment_id, name, replacement_cycle_days, last_replaced_at, next_due_at, quantity_on_hand, notes FROM equipment_consumables WHERE id = ? AND equipment_id = ?'
-    ).bind(cid, equipId).first<ConsumableRow>()
+      `SELECT id, equipment_id, name, replacement_cycle_days, last_replaced_at, next_due_at, quantity_on_hand, notes FROM equipment_consumables WHERE id = ? AND equipment_id = ?${ef.clause}`
+    ).bind(cid, equipId, ...ef.params).first<ConsumableRow>()
 
     if (!consumable) {
       return c.json({ success: false, error: 'Consumable not found' }, 404)
@@ -980,7 +992,8 @@ ripRouter.post('/equipment/:id/consumables/:cid/replace', authMiddleware, async 
 ripRouter.delete('/equipment/:id/consumables/:cid', authMiddleware, requireRole('ADMIN', 'MANAGER'), async (c) => {
   try {
     const cid = c.req.param('cid')
-    await c.env.DB.prepare('DELETE FROM equipment_consumables WHERE id = ?').bind(cid).run()
+    const ef = entityFilter(c)  // #342
+    await c.env.DB.prepare(`DELETE FROM equipment_consumables WHERE id = ?${ef.clause}`).bind(cid, ...ef.params).run()
     return c.json({ success: true })
   } catch (error) {
     console.error('src/routes/rip.ts error:', error)
@@ -1000,6 +1013,7 @@ ripRouter.delete('/equipment/:id/consumables/:cid', authMiddleware, requireRole(
 ripRouter.get('/equipment/:id/schedules', authMiddleware, async (c) => {
   try {
     const equipId = c.req.param('id')
+    const ef = entityFilter(c)  // #342 정비 스케줄 법인 격리
     const { results } = await c.env.DB.prepare(`
       SELECT id, equipment_id, title, description, interval_days, checklist, last_performed_at, next_due_at, is_active, created_at, updated_at,
         CASE
@@ -1008,9 +1022,9 @@ ripRouter.get('/equipment/:id/schedules', authMiddleware, async (c) => {
           ELSE 'OK'
         END as due_status
       FROM maintenance_schedules
-      WHERE equipment_id = ? AND is_active = 1
+      WHERE equipment_id = ? AND is_active = 1${ef.clause}
       ORDER BY next_due_at ASC NULLS LAST
-    `).bind(equipId).all()
+    `).bind(equipId, ...ef.params).all()
 
     return c.json({ success: true, data: results })
   } catch (error) {
@@ -1033,9 +1047,10 @@ ripRouter.post('/equipment/:id/schedules', authMiddleware, requireRole('ADMIN', 
       return c.json({ success: false, error: '제목과 주기(일)는 필수입니다' }, 400)
     }
 
+    const ef = entityFilter(c)  // #342
     const equipment = await c.env.DB.prepare(
-      'SELECT id FROM equipment WHERE id = ?'
-    ).bind(equipId).first()
+      `SELECT id FROM equipment WHERE id = ?${ef.clause}`
+    ).bind(equipId, ...ef.params).first()
 
     if (!equipment) {
       return c.json({ success: false, error: 'Equipment not found' }, 404)
@@ -1044,11 +1059,11 @@ ripRouter.post('/equipment/:id/schedules', authMiddleware, requireRole('ADMIN', 
     const nextDue = new Date(Date.now() + body.interval_days * 86400000).toISOString().substring(0, 10)
 
     const result = await c.env.DB.prepare(`
-      INSERT INTO maintenance_schedules (equipment_id, title, description, interval_days, checklist, next_due_at)
-      VALUES (?, ?, ?, ?, ?, ?)
+      INSERT INTO maintenance_schedules (equipment_id, title, description, interval_days, checklist, next_due_at, entity_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
     `).bind(
       equipId, body.title, body.description || null,
-      body.interval_days, body.checklist || null, nextDue
+      body.interval_days, body.checklist || null, nextDue, getEntityId(c) || 1
     ).run()
 
     return c.json({ success: true, data: { id: result.meta.last_row_id } }, 201)
@@ -1070,9 +1085,10 @@ ripRouter.post('/equipment/:id/schedules/:sid/complete', authMiddleware, async (
     const user = c.get('user')
     const body = await c.req.json()
 
+    const ef = entityFilter(c)  // #342
     const schedule = await c.env.DB.prepare(
-      'SELECT id, equipment_id, title, description, interval_days, checklist, last_performed_at, next_due_at, is_active FROM maintenance_schedules WHERE id = ? AND equipment_id = ?'
-    ).bind(sid, equipId).first<ScheduleRow>()
+      `SELECT id, equipment_id, title, description, interval_days, checklist, last_performed_at, next_due_at, is_active FROM maintenance_schedules WHERE id = ? AND equipment_id = ?${ef.clause}`
+    ).bind(sid, equipId, ...ef.params).first<ScheduleRow>()
 
     if (!schedule) {
       return c.json({ success: false, error: 'Schedule not found' }, 404)
@@ -1111,9 +1127,10 @@ ripRouter.post('/equipment/:id/schedules/:sid/complete', authMiddleware, async (
 ripRouter.delete('/equipment/:id/schedules/:sid', authMiddleware, requireRole('ADMIN', 'MANAGER'), async (c) => {
   try {
     const sid = c.req.param('sid')
+    const ef = entityFilter(c)  // #342
     await c.env.DB.prepare(
-      'UPDATE maintenance_schedules SET is_active = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
-    ).bind(sid).run()
+      `UPDATE maintenance_schedules SET is_active = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ?${ef.clause}`
+    ).bind(sid, ...ef.params).run()
     return c.json({ success: true })
   } catch (error) {
     return c.json({
@@ -1216,6 +1233,7 @@ ripRouter.get('/equipment/:id/stats', authMiddleware, async (c) => {
 
 ripRouter.get('/maintenance/alerts', authMiddleware, async (c) => {
   try {
+    const ef = entityFilter(c, 'e')  // #342 설비 법인 격리
     // 교체 기한 도래 소모품
     const { results: consumableAlerts } = await c.env.DB.prepare(`
       SELECT ec.*, e.name as equipment_name,
@@ -1225,11 +1243,11 @@ ripRouter.get('/maintenance/alerts', authMiddleware, async (c) => {
         END as alert_type
       FROM equipment_consumables ec
       JOIN equipment e ON ec.equipment_id = e.id
-      WHERE e.status = 'ACTIVE'
+      WHERE e.status = 'ACTIVE'${ef.clause}
         AND ec.next_due_at IS NOT NULL
         AND ec.next_due_at <= date('now', '+7 days')
       ORDER BY ec.next_due_at ASC
-    `).all()
+    `).bind(...ef.params).all()
 
     // 정비 기한 도래 스케줄
     const { results: scheduleAlerts } = await c.env.DB.prepare(`
@@ -1240,11 +1258,11 @@ ripRouter.get('/maintenance/alerts', authMiddleware, async (c) => {
         END as alert_type
       FROM maintenance_schedules ms
       JOIN equipment e ON ms.equipment_id = e.id
-      WHERE e.status = 'ACTIVE' AND ms.is_active = 1
+      WHERE e.status = 'ACTIVE' AND ms.is_active = 1${ef.clause}
         AND ms.next_due_at IS NOT NULL
         AND ms.next_due_at <= date('now', '+7 days')
       ORDER BY ms.next_due_at ASC
-    `).all()
+    `).bind(...ef.params).all()
 
     return c.json({
       success: true,
@@ -1946,15 +1964,16 @@ ripRouter.get('/card-items/:cardId', authMiddleware, async (c) => {
 
 ripRouter.get('/maintenance/dashboard', authMiddleware, async (c) => {
   try {
+    const ef = entityFilter(c, 'e')  // #342 설비 법인 격리
     // 최근 30일 정비 이력 요약
     const { results: recentLogs } = await c.env.DB.prepare(`
       SELECT ml.*, e.name as equipment_name
       FROM maintenance_logs ml
       JOIN equipment e ON ml.equipment_id = e.id
-      WHERE ml.performed_at >= date('now', '-30 days')
+      WHERE ml.performed_at >= date('now', '-30 days')${ef.clause}
       ORDER BY ml.performed_at DESC
       LIMIT 50
-    `).all()
+    `).bind(...ef.params).all()
 
     // 장비별 정비 비용/다운타임 집계 (최근 90일)
     const { results: costSummary } = await c.env.DB.prepare(`
@@ -1964,10 +1983,10 @@ ripRouter.get('/maintenance/dashboard', authMiddleware, async (c) => {
         COALESCE(SUM(ml.downtime_minutes), 0) as total_downtime_min
       FROM maintenance_logs ml
       JOIN equipment e ON ml.equipment_id = e.id
-      WHERE ml.performed_at >= date('now', '-90 days')
+      WHERE ml.performed_at >= date('now', '-90 days')${ef.clause}
       GROUP BY ml.equipment_id
       ORDER BY total_cost DESC
-    `).all()
+    `).bind(...ef.params).all()
 
     // PM 스케줄 현황
     const { results: schedules } = await c.env.DB.prepare(`
@@ -1979,9 +1998,9 @@ ripRouter.get('/maintenance/dashboard', authMiddleware, async (c) => {
         END as due_status
       FROM maintenance_schedules ms
       JOIN equipment e ON ms.equipment_id = e.id
-      WHERE ms.is_active = 1
+      WHERE ms.is_active = 1${ef.clause}
       ORDER BY ms.next_due_at ASC
-    `).all()
+    `).bind(...ef.params).all()
 
     // 소모품 현황
     const { results: consumables } = await c.env.DB.prepare(`
@@ -1993,18 +2012,18 @@ ripRouter.get('/maintenance/dashboard', authMiddleware, async (c) => {
         END as due_status
       FROM equipment_consumables ec
       JOIN equipment e ON ec.equipment_id = e.id
-      WHERE e.status = 'ACTIVE'
+      WHERE e.status = 'ACTIVE'${ef.clause}
       ORDER BY ec.next_due_at ASC
-    `).all()
+    `).bind(...ef.params).all()
 
     // 프린터 헤드 상태
     const { results: heads } = await c.env.DB.prepare(`
       SELECT eh.*, e.name as equipment_name
       FROM equipment_heads eh
       JOIN equipment e ON eh.equipment_id = e.id
-      WHERE e.status = 'ACTIVE'
+      WHERE e.status = 'ACTIVE'${ef.clause}
       ORDER BY e.name, eh.head_number
-    `).all()
+    `).bind(...ef.params).all()
 
     // KPI
     const overdue = schedules.filter((s: any) => s.due_status === 'OVERDUE').length
