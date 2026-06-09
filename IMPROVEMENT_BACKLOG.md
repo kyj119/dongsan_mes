@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 6 -->
-<!-- last_run_at: 2026-06-09T22:00:00+09:00 -->
+<!-- last_run_area: 1 -->
+<!-- last_run_at: 2026-06-10T02:00:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,12 +8,20 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | 2 (open auto-improve **실측 06-09T22:00** — #373(Area 4 입고검수 PO롤백)·#372(Area 3 CSV truncation). Area 6에서 GitHub 전수 재동기 — open=정확히 이 2건) |
+| 🆕 new | 3 (open auto-improve **실측 06-10T02:00** — #374(Area 1 smoke 로그인 재시도)·#373(Area 4 입고검수 PO롤백)·#372(Area 3 CSV truncation)) |
 | ✅ approved | 0 (직전 approved #342/#340 모두 done 확정·이관 — Area 6 검증 완료) |
 | 👀 reviewed | 0 |
 | ✔️ done | 78 (61 + **06-09 신규 close 17건 전부 done 확정**: #336/#340/#341/#342/#350/#358/#359/#360/#361/#362/#363/#364/#365/#366/#367/#368/#369 — commit 증거+close 코멘트 전수 검증, rejected 0건) |
 | ❌ rejected | 3 |
 
+> **Area 1 프로덕션 헬스 (2026-06-10T02:00):**
+> - **방법**: GitHub Actions 최근 30런(actions_list, total 467) 분석 + 로컬 `npm ci`+`tsc --noEmit`+build + 실패 런 잡 로그 실측. egress는 이번엔 **000**(연결 자체 차단, 직전 403에서 악화 — 샌드박스 IP 네트워크 차단)이라 직접 20-API 호출 불가, Actions/스모크/E2E를 헬스 신호로 사용.
+> - **🟡 신규 이슈 #374 (improvement, small) — 배포 스모크 로그인 단일 시도(재시도 부재)로 cold-start 일시 500이 deploy 게이트 파손**: 최신 **Deploy 27219723469**(HEAD `0fef951`, 06-09T16:13)가 failure — post-deploy `scripts/smoke.cjs:202` `login()`이 **1회 fetch 후 5xx 즉시 throw**, 프로덕션 cold-start D1에서 login(`auth.ts:20`→`:78` catch가 500 변환) 일시 500을 흡수 못 함. `0fef951`은 **docs-only 커밋**(BACKLOG.md만)이라 직전 통과 `9bf1cb2`와 백엔드 **byte-identical** = 코드 회귀 불가. **자가검증**: 같은 커밋 **3h 후 Daily D1 Backup(27229599620, 19:12)=success** → D1·worker 정상, 500은 1회성 transient. 동반 **E2E(27219818172) skipped**(deploy 게이트로 커버리지 손실). cold-start transient가 CI 게이트 깬 **2번째**(직전 E2E #189/#340). 수정: login에 bounded 재시도(5xx/연결오류 2~3회 backoff) 또는 health warm-up ping. **자동수정 안 함**(deploy 게이트 관용성=owner 정책 + egress 차단 검증 불가, #340과 별개 파일·단계).
+> - **🟢 파이프라인 사실상 green (30런 중 위 1 transient만 failure)**: Deploy `5c1e11f`~`9bf1cb2` 13런 연속 success, E2E 동일 전부 success(`a8f7eb7` cancelled 1 = 재트리거 정상). queued/stuck 0건. 유일 failure가 코드무관 transient.
+> - **로컬 verify PASS**: `npm ci`→`tsc --noEmit` clean + build PASS(**366 modules**, `_worker.js` 5.07MB raw — 직전 360→366 모듈, 유료 10MB 대비 ~10% 점유 헤드룸 충분).
+> - **오탐/이상 없음**: deploy 코드결함 failure 0건 지속. egress 000은 샌드박스 IP 차단(기존 인지). open auto-improve **3건**(#374/#373/#372) stats 정합.
+> - 자동 수정 0건(파이프라인 정상·게이트 관용성=owner 판단·egress 차단), 신규 이슈 1건(#374)
+>
 > **Area 6 자기 진화 (2026-06-09T22:00):**
 > - **GitHub ↔ 백로그 전수 재동기 — 17건 done 확정·테이블 대량 정정**: 직전 Area 6(06-08T22:00) 당시 closed 최신=#356(06-06)이었으나, 이후 **17건이 신규 close**(06-08T23:27 10건: #358~#368 / 06-09 7건: #336·#340·#341·#342·#350·#366·#369). **전수 분류 = done(rejected 0)**, 증거 2종 교차검증:
 >   - **commit 직접 매핑(15건)**: #341→ba53c76·#350→108b738(N+1) / #342→5e97f82(설비 entity_id) / #340→e8429cb·9e5dbcb(crud-order 격리) / #369→d1c8b89(멱등가드 원자화) / #366→b8d2f0d·7b64d04·10315d6(KST 표시층+회계DATE) / #368→b6d845d(storage-zones IDOR) / #367→06ff136(CSV injection 가드) / #358→16915ed·b9ae24e(발주 IDOR 9핸들러) / #360·#361·#362·#363·#365·#359→b2b170a(IDOR 4 + UX/CSV 4 묶음).
