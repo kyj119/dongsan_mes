@@ -99,6 +99,11 @@ const ENDPOINTS = [
   { path: '/api/payment-requests?limit=10', name: 'paymentRequests.list' },
   { path: `/api/financial/pnl?from=${FIRST_OF_MONTH}&to=${TODAY}`, name: 'financial.pnl' },
   { path: `/api/financial/pnl/monthly?year=${yyyy}`, name: 'financial.pnlMonthly' },
+  { path: '/api/financial/balance-snapshot', name: 'financial.balanceSnapshot' },
+  { path: `/api/financial/export/csv?type=pnl&from=${FIRST_OF_MONTH}&to=${TODAY}`, name: 'financial.exportCsv' },
+  { path: `/api/insurance-reports?year=${yyyy}`, name: 'insuranceReports.list' },
+  { path: `/api/insurance-reports/annual-summary?year=${yyyy}`, name: 'insuranceReports.annualSummary' },
+  { path: '/api/insurance-reports/1', name: 'insuranceReports.detail', allow404: true },
 
   // 구매/재고
   { path: '/api/purchase-orders?limit=10', name: 'purchaseOrders.list' },
@@ -134,6 +139,16 @@ const ENDPOINTS = [
   { path: '/api/forecast/capacity-analysis', name: 'forecast.capacity' },
   { path: '/api/forecast/client-forecast', name: 'forecast.client' },
   { path: '/api/costs', name: 'costs.list' },
+
+  // OEE / 설비종합효율
+  { path: '/api/oee/daily', name: 'oee.daily' },
+  { path: '/api/oee/trend', name: 'oee.trend' },
+  { path: '/api/oee/summary', name: 'oee.summary' },
+
+  // 클레임 / 고객 불량
+  { path: '/api/claims/defect-codes', name: 'claims.defectCodes' },
+  { path: '/api/claims?limit=10', name: 'claims.list' },
+  { path: '/api/claims/analytics', name: 'claims.analytics' },
 
   // 관리
   { path: '/api/users', name: 'users.list' },
