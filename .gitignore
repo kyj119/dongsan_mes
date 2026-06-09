@@ -110,6 +110,15 @@ IllustratorAutomat/test-data/input/
 LogWatcher/TNSRip-X1/CMS Demo Sample/
 tmp_*.csv
 tmp_*.json
+# === PII/데이터 덤프 재유입 방지 (history purge 2026-06-09) ===
+tmp_*
+*.hwp
+*.hwpx
+품목정보.xlsx
+/57825320
+# 로컬 스크래치 (untracked)
+arxiv_*.txt
+queue*.txt
 tools/8월/_preview/
 tools/9월/_preview/
 tools/10월/_preview/
