@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 5 -->
-<!-- last_run_at: 2026-06-09T18:00:00+09:00 -->
+<!-- last_run_area: 6 -->
+<!-- last_run_at: 2026-06-09T22:00:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,12 +8,22 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | 2 (open auto-improve **실측 06-09T18:00 재확인** — #373(Area 4)·#372(Area 3). Area 5 net-new 0건이라 변동 없음. 직전 open이던 #366/#369/#350/#341/#336/#342/#340 전부 close → done/rejected 분류 Area 6 검증 대기) |
-| ✅ approved | 0 (직전 approved #342/#340 모두 close — Area 6에서 done/rejected 확정 필요) |
+| 🆕 new | 2 (open auto-improve **실측 06-09T22:00** — #373(Area 4 입고검수 PO롤백)·#372(Area 3 CSV truncation). Area 6에서 GitHub 전수 재동기 — open=정확히 이 2건) |
+| ✅ approved | 0 (직전 approved #342/#340 모두 done 확정·이관 — Area 6 검증 완료) |
 | 👀 reviewed | 0 |
-| ✔️ done | 61 (+06-09 대량 close 다수 — #366(KST 완료)·#369·#350·#341·#342·#340 등 done 후보, 분류 Area 6 검증 대기) |
+| ✔️ done | 78 (61 + **06-09 신규 close 17건 전부 done 확정**: #336/#340/#341/#342/#350/#358/#359/#360/#361/#362/#363/#364/#365/#366/#367/#368/#369 — commit 증거+close 코멘트 전수 검증, rejected 0건) |
 | ❌ rejected | 3 |
 
+> **Area 6 자기 진화 (2026-06-09T22:00):**
+> - **GitHub ↔ 백로그 전수 재동기 — 17건 done 확정·테이블 대량 정정**: 직전 Area 6(06-08T22:00) 당시 closed 최신=#356(06-06)이었으나, 이후 **17건이 신규 close**(06-08T23:27 10건: #358~#368 / 06-09 7건: #336·#340·#341·#342·#350·#366·#369). **전수 분류 = done(rejected 0)**, 증거 2종 교차검증:
+>   - **commit 직접 매핑(15건)**: #341→ba53c76·#350→108b738(N+1) / #342→5e97f82(설비 entity_id) / #340→e8429cb·9e5dbcb(crud-order 격리) / #369→d1c8b89(멱등가드 원자화) / #366→b8d2f0d·7b64d04·10315d6(KST 표시층+회계DATE) / #368→b6d845d(storage-zones IDOR) / #367→06ff136(CSV injection 가드) / #358→16915ed·b9ae24e(발주 IDOR 9핸들러) / #360·#361·#362·#363·#365·#359→b2b170a(IDOR 4 + UX/CSV 4 묶음).
+>   - **close 코멘트 직접 확인(commit 모호 3건)**: #336=owner **위험수용 close**(코드측 평문폴백 제거 a7a15cc 완료, pbkdf2 해시저장 확인, admin/password는 테스트전용 간주) / #364=`0301_drop_inventory_items.sql` prod 적용(0행 확인 후 DROP) / #340=crud-order cleanup `afterAll`+소프트취소·하드삭제 2회로 prod 오염 0(cold-start 픽스처는 owner가 별도 분리).
+> - **테이블 stale 대량 정정**: Approved 표(#340 I-030·#342 I-032)·New 표(#336·#341·#350·#358·#359·#360·#362·#363) 전부 이미 done인데 잔류 → Done 표로 이관, 양 표 비움. New 표를 실제 open(#372·#373)으로 교체. done 61→**78**, approved 2→0.
+> - **🧬 FP 표 SKILL 동기화 2건 추가**(단일소스 — SKILL엔 있으나 백로그 표 누락): ① **무인증 self-service auth "브루트포스/열거 HIGH" 과대평가**(Area 5 #—, hr self-auth/portal verify-document = 의도적 공개 2팩터+rate limit 전역, SKILL.md:141) ② **트랜잭션 원자성 "분리 write 부분실패 고아"**(Area 2 #369, last_row_id 구조강제·중간 read 끼임이면 노이즈, 보고기준=멱등가드 부재+회피가능성, SKILL.md:60).
+> - **오탐 패턴 신규 0건**: 17건 close 전부 true-positive(수정완료)라 FP표 net-new 없음. 기존 13개 FP 패턴 유효성 재확인. 스킬 파일(auto-improve/security-audit) 직전 사이클들에서 이미 codify 완료 — 중복 등재 회피.
+> - **이상 없음**: open 정확히 2건(#372 improvement·#373 bug, 둘 다 👍 미수신 미검토). baseline `npm ci`+tsc --noEmit PASS.
+> - 자동 수정 0건(메타·문서 동기화), 신규 이슈 0건, **done 이관 17건**, 테이블 정정(Approved/New 비움), FP표 2행 추가
+>
 > **Area 5 보안 (2026-06-09T18:00):**
 > - **방법**: baseline `npm ci`+tsc --noEmit PASS. Area 5 **8회차** — IDOR 비대칭(#356~#368 11모듈)·SQLi·rate·XSS·PII·파일프록시(#365)·CSV injection(#367)·엔티티전환 인가·JWT·webhook 고갈 → **시의성 + 덜 다룬 각도** 병렬 Explore 2개: (A)방금 랜딩된 5c1e11f facility.ts equipment·cards 격리 수정이 #356식 비대칭 갭을 남겼는지 완전성 검증 (B)웹훅/콜백/외부연동 엔드포인트 인증·서명 검증. 발견 전수 owner 직접 코드 검증(오탐 차단).
 > - **🟢 net-new 0건 — 모든 각도 clean 또는 오탐**:
@@ -414,27 +424,18 @@
 
 ## ✅ Approved / 👀 Reviewed (owner 피드백 수신)
 
-| ID | 제목 | 영역 | Issue | 상태 | 비고 |
-|----|------|------|-------|------|------|
-| I-030 | E2E 프로덕션 RED — auth 픽스처 cold-start + crud-order 주문생성 | Area 1 | #340 | ✅ approved | 👍 확인. 급성 RED는 A-010으로 해소(8연속 그린). 픽스처 안정화는 egress 차단으로 검증불가→전용세션, crud-order 격리는 설계결정 대기 |
-| I-032 | rip.ts 설비 자식 entity_id 배선 | Area 2 | #342 | ✅ approved | owner "(나)로 진행". 스키마+로직+데이터보정 ~1일, 전용 세션 대기 |
+> **비어 있음** — 직전 approved 2건(#340 I-030·#342 I-032)은 06-09 구현·close 완료 → Done 표 이관(Area 6 06-09T22:00).
 
 ## 🆕 New (미검토)
 
-> 전부 GitHub open + 👍 미수신. 용준님 리뷰 대기. (open 실측 new 9건 — 2026-06-06T22:00 정정)
+> 전부 GitHub open + 👍 미수신. 용준님 리뷰 대기. (open **실측 2건** — 2026-06-09T22:00 Area 6 전수 재동기)
 
 | ID | 제목 | 영역 | Issue | 공수 |
 |----|------|------|-------|------|
-| I-052 | [MED bug] 주요 데이터 로드 실패 시 스켈레톤 영구 잔류 + 에러피드백 전무 — 대시보드/지출결의서 catch가 console.error만(무한 로딩 오인). catch-UX 미감사 각도 | Area 3 | #362 | ~40분 |
-| I-051 | [improvement] CSV 내보내기 일관성 갭 — 발주요청·입고이력·자금계획(peer 전부 보유). #345 "cashSchedule CSV done" 기록 부정확 동반발견 | Area 3 | #363 | ~1.5h |
-| I-050 | **[HIGH]** 멀티테넌시 IDOR 비대칭 — quotations(견적 GET/PUT/DELETE /:id) + 법인카드 corporate_cards(PUT/DELETE) 격리 누락 (#356 클러스터 8~9번째 모듈) | Area 5 | #360 | ~2h |
-| I-028 | CI 폴백 자격증명 admin/password — **코드측 해소(a7a15cc), 운영 계정점검만 잔여** (이슈 open, close 누락) | Area 5 | #336 | 운영점검 |
-| I-031 | N+1 쿼리 batch 미전환 다수 — cashFlow 예측 핫패스(72쿼리) 우선 + import/child INSERT 루프 | Area 2 | #341 | 3h~ |
-| I-048 | **[HIGH]** 전자결재 격리 갭 (#356 7번째 모듈) — list만 entityFilter, GET /:id 무가드 재무노출 + approve/reject 전역 role로 타법인 purchase_requests/credit_status 정합성 훼손 | Area 2 | #358 | ~2h |
-| I-040 | N+1 신규 클러스터 — 급여 일괄/근태동기화 핫패스(전직원×5~7쿼리, 루프불변 hoist 즉효) + 발주 품목 루프 (#341 미포함) | Area 2 | #350 | hoist 20분 / 전체 ~4h |
-| I-049 | [MED bug] 지출결의서 목록 LIMIT 200 하드캡 + 페이지네이션·총건수 전무 — 201건+ silent truncation (재무전표 단조증가, 검색결과도 동일 캡) | Area 3 | #359 | ~1h |
+| I-061 | [MED bug] 입고검수 CANCELLED 시 재고만 역분개·PO status/received_quantity 미롤백 → PO 영구 RECEIVED 잔류 + 취소수량 재입고 불가(400 차단). #369(재고측)와 별개 PO측 롤백 | Area 4 | #373 | ~1.5h |
+| I-060 | [improvement] CSV export 5곳 `LIMIT 5000` 무경고 silent truncation — 정산/감사 다운로드 불완전 가능(발주목록/입고이력/검수결과/발주요청/현금일정). 잘림 감지+경고 헬퍼 1개 5곳 적용 | Area 3 | #372 | ~1.5h |
 
-> ✅ closed-pending-verification 11건은 Area 6(06-06T10:00)에서 코드 교차검증 후 **전부 done 확정** → Done 표로 이관 완료.
+> ✅ 직전 New 8건(#336·#341·#350·#358·#359·#360·#362·#363) + Approved 2건(#340·#342) + 무ID close 7건(#361·#364·#365·#366·#367·#368·#369)은 Area 6(06-09T22:00) 전수 검증 후 **17건 전부 done 확정** → Done 표 이관.
 
 ---
 
@@ -461,6 +462,23 @@
 
 | ID | 제목 | 커밋/Issue | 날짜 |
 |----|------|-----------|------|
+| I-061b | 입고검수 전량취소(inspection-decision CANCELLED) 멱등 가드 부재 + 비원자 재고 이중차감 — `inventory.ts:414-421` 멱등 가드 + 단일 batch 원자화. (#373=PO측 롤백은 별개 open) | #369 / d1c8b89 | 2026-06-09 |
+| I-059 | 업무일자 UTC `date('now')` KST 미보정 — 표시층 formatKST 일괄 + 대시보드 created_at KPI + 회계 DATE컬럼 day-boundary KST 보정. 백엔드 자기일관 churn은 owner 디프리오 | #366 / b8d2f0d·7b64d04 | 2026-06-09 |
+| I-058 | storage-zones 목록 `all_entities=1` 쿼리파라미터로 entity 격리 우회(IDOR 11번째, 역할검증 없이 필터 무력화) | #368 / b6d845d | 2026-06-09 |
+| I-057 | CSV Formula Injection — 모든 CSV 내보내기 `=+-@` 선행 미가드 → 공용 `escapeCsvField` 단일화 가드(음수금액 숫자-안전) | #367 / 06ff136 | 2026-06-09 |
+| I-056 | /api/files/* 범용 R2 프록시 격리 우회(HIGH) — 인증만 통과하면 임의 역할·타법인 전 파일 다운로드 | #365 / b2b170a | 2026-06-09 |
+| I-055 | 죽은 레거시 테이블 inventory_items 잔존(LOW cleanup) — `0301_drop_inventory_items.sql` prod 0행 확인 후 DROP | #364 / f9c7ee4 | 2026-06-09 |
+| I-054 | autoProcess 멀티테넌시 IDOR 비대칭(클러스터 10번째) — /pending만 entityFilter, 변경 핸들러 무가드 | #361 / b2b170a | 2026-06-09 |
+| I-052 | 주요 데이터 로드 실패 시 스켈레톤 영구 잔류 + 에러피드백 전무 — 대시보드/지출결의서 catch-UX 보강 | #362 / b2b170a | 2026-06-09 |
+| I-051 | CSV 내보내기 일관성 갭 — 발주요청·입고이력·자금계획 export 추가(peer 정합) | #363 / b2b170a | 2026-06-09 |
+| I-050 | 멀티테넌시 IDOR 비대칭(HIGH) — quotations + 법인카드 corporate_cards /:id 격리 보강 (#356 8~9번째) | #360 / b2b170a | 2026-06-09 |
+| I-049 | 지출결의서 목록 LIMIT 200 하드캡 → 페이지네이션·총건수 추가(silent truncation 해소) | #359 / b2b170a | 2026-06-09 |
+| I-048 | 전자결재(approvals) 멀티테넌시 격리 갭(HIGH, #356 7번째) — list만 entityFilter였던 GET/:id·approve/reject 전 계열 entity 격리 (발주 9핸들러 포함) | #358 / 16915ed | 2026-06-09 |
+| I-040 | N+1 신규 클러스터 — 급여 일괄/근태동기화 핫패스(전직원×5~7쿼리) + 발주 품목 루프 batch 전환 | #350 / 108b738 | 2026-06-09 |
+| I-031 | N+1 batch 미전환 — PR→PO 변환 recentPO N+1 제거 + child INSERT batch (cashFlow 핫패스) | #341 / ba53c76 | 2026-06-09 |
+| I-032 | rip.ts 설비 자식 테이블 entity_id 배선 — 설비 법인 격리 적용(스키마+로직+데이터보정). 직전 approved | #342 / 5e97f82 | 2026-06-09 |
+| I-030 | E2E 프로덕션 crud-order 운영데이터 오염 격리 — afterAll cleanup(소프트취소+하드삭제 2회)로 prod 누적 0. cold-start 픽스처는 owner 별도 분리. 직전 approved | #340 / e8429cb | 2026-06-09 |
+| I-028 | CI 폴백 자격증명 admin/password — 코드측 평문폴백 제거(a7a15cc). owner **위험수용 close**(pbkdf2 해시저장 확인, admin/password 테스트전용 간주) | #336 / a7a15cc | 2026-06-09 |
 | I-046 | 멀티테넌시 격리 갭 6모듈 — /:id 상세·변경 entityFilter 보강 + inventoryCount/leaves 차감을 row entity_id 기준화(호출자 아님)로 교차훼손 차단. 코드검증: insuranceReports entityFilter 6회 | #356 / 6a8cb35 | 2026-06-05 |
 | I-047 | 파일 업로드 검증 부재 — `utils/uploadValidation.ts` 신설(size/MIME/ext 화이트리스트) cardExpenses/po/files 적용 + receipt-image path-traversal 가드. 코드검증: 파일 존재 | #357 / 3baa38a | 2026-06-05 |
 | I-027 | 저장형 XSS — escapeHtml 클라 7스크립트 + 서버템플릿 2종 + portalLayout 전역주입. portalBalance.js 잔여는 free-text 싱크 부재로 비대상(Area 6 검증) | #335 / da5f0ca | 2026-06-05 |
@@ -551,6 +569,8 @@
 | "escapeHtml 헬퍼 전무(`grep -c escapeHtml`=0) → XSS" | `layout.ts:1185`가 `window.escapeHtml`를 **전역 정의**(+`portalLayout.ts` 포털용) → 모든 스크립트가 로컬 정의 없이 전역 헬퍼 호출 가능. 파일에 escapeHtml 미정의/미참조 ≠ 취약. 올바른 판정: 실제 `innerHTML` 싱크의 보간값이 (a)사용자 제어 free-text **이고** (b)미escape인지 확인. `Number()` 강제 숫자·시스템 채번코드(order_number 등)·서버 하드코딩 문자열은 싱크 아님 | Area 6 (2026-06-06) |
 | VAT/금액 "부동소수점 누적 → 신고 오차" | 금액이 누적 **직전에 원/100원 단위 정수로 반올림**되면(예: quotations.ts:223 `Math.round(itemAmount/100)*100`) `×세율(0.1)`은 항상 10의 배수=정수라 IEEE754 drift 불가. node `Number.isInteger(누적값)` 실증으로 반증 필수. 견적(추정)↔세금계산서(`Math.round`+정합보정 `total≠supply+tax면 강제정렬`) 반올림 "불일치"도 발행단계가 권위계산이라 버그 아님. number↔REAL/INTEGER 타입표기 차이도 정상 TS | Area 2 (2026-06-08) |
 | catch가 success 숨김 "데이터손실" (best-effort 물질화/보상) | try 안이 **부차 denormalized 물질화**(가격이력·cash_schedule 등 언제든 재계산 가능한 파생 데이터)이고 **주석에 best-effort 명시**(예: purchaseInvoices.ts:131/164 "receive Phase4와 동일 정책")면 의도적 설계. 핵심 비즈니스 write(주문/인보이스/잔액)가 try **밖**이면 오탐. batch 실패 후 보상(rollback) DELETE의 `.catch(()=>{})`도 보상 자체 실패는 더 할 게 없으므로 정상. 보고하려면 **핵심 mutation**이 삼켜지고 사용자에게 success로 보이는 구체 경로 실증 필요 | Area 2 (2026-06-08) |
+| 트랜잭션 원자성 "분리 write 부분실패 → 고아/불일치" | `DB.batch()` 없이 분리 await 실행이라도 **분리가 구조적으로 강제**되면 노이즈: ① 부모 INSERT가 `result.meta.last_row_id`를 자식에 써야 함(bank apply·shipments 헤더·orders 헤더) ② 중간 READ(`balance_after` 잔량조회)가 끼어 batch 분할 불가피. 단순 "2번째 write 실패하면?"은 확정 트리거 없는 일반 비원자성. **보고 가능 = ①확정 재현 트리거**(멱등 가드 부재로 재시도/중복제출이 destructive write 반복 — 부분실패→500→목록잔류→재클릭, 버튼 재진입 가드 없는 더블클릭) **+ ②회피 가능성**(read를 메모리 산출로 대체해 단일 batch화 가능). #369가 둘 다 충족(보고됨). 보고 전 (a)재고/금액/잔액 변경인지 (b)선행상태 가드(`WHERE status!=...`)·프론트 버튼 재진입 가드 확인 | Area 2 (#369, 2026-06-09) |
+| 무인증 self-service auth "브루트포스/열거 HIGH" 과대평가 | `/api/hr/self-auth`(사원번호+생년월일6자리)·portal `/verify-document`(토큰+BRN)처럼 **계정 없는 사용자용 간이 2팩터**는 authMiddleware 부재가 **설계 의도**(공개 진입점). 보고 전 ① `index.tsx:240-246` rate limit 전역 등록 확인(self-auth 5/분·verify-document 10/분 이미 적용) ② 두 팩터 결합(열거가능 식별자+추측가능 비밀)이 동일 코드베이스의 이미 "설계 정상" 판정 패턴과 동형인지 확인. IP-rate-limit 로테이션 한계·timing-attack(단일쿼리+문자열비교)은 모든 로그인 공통. **진짜 보고 대상**: rate limit 미등록 / 단일 팩터 인증 / scope·만료 없는 영구 토큰 발급 | Area 5 (2026-06-09) |
 
 ---
 
