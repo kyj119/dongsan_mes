@@ -18,6 +18,7 @@
     "test": "curl http://localhost:3000",
     "smoke": "node scripts/smoke.cjs",
     "verify:items": "node scripts/verify-items.mjs",
+    "check:dom": "node scripts/check-dom-refs.cjs",
     "db:migrate:local": "wrangler d1 migrations apply webapp-production --local",
     "db:migrate:prod": "wrangler d1 migrations apply webapp-production --remote",
     "db:seed": "wrangler d1 execute webapp-production --local --file=./seed/seed_users.sql && wrangler d1 execute webapp-production --local --file=./seed/seed_data.sql",

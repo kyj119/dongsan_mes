@@ -154,7 +154,9 @@ grep -rn "FROM orders\|FROM payments\|FROM purchase_orders\|FROM tax_invoices\|F
 
 `src/pages/*.ts`와 `src/scripts/*.js`가 쌍으로 동작하므로, 한쪽을 변경하면 반드시 상대 파일도 확인.
 
-**탐지 방법:**
+**자동 lint (권장):** `npm run check:dom` — 정적 `getElementById('X')` 참조 중 src 전체에 정의처(`id="X"`/`.id=`/`badgeId`)가 없는 건을 보고(silent-fail 후보). 변경 파일만: `node scripts/check-dom-refs.cjs src/scripts/CHANGED.js`. (getElementById 4,500+ 전수 null-가드는 로직 파괴 위험으로 미적용 — 이 교차검증으로 대체. #3)
+
+**수동 탐지 방법:**
 ```bash
 # 1. 변경된 스크립트에서 참조하는 모든 ID 추출
 grep -oP "getElementById\(['\"]([^'\"]+)['\"]\)" src/scripts/CHANGED.js | sort -u > /tmp/js_ids.txt
