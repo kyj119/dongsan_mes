@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 2 -->
-<!-- last_run_at: 2026-06-09T06:00:00+09:00 -->
+<!-- last_run_area: 3 -->
+<!-- last_run_at: 2026-06-09T10:00:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,12 +8,19 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | 15 (open 실측 — #369/#368/#367/#366/#365/#364/#363/#362/#361/#360/#359/#358/#350/#341/#336) |
+| 🆕 new | 6 (open 실측 06-09T10:00 — #372/#369/#366/#350/#341/#336. 직전 세션(1899049) 11건 close로 #358~#368 등 다수 closed → done/rejected 분류는 Area 6 검증 대기) |
 | ✅ approved | 2 (I-032/#342 — 전용 세션 대기 / I-030/#340 — 👍 확인, 급성 RED 해소·잔여만 대기) |
 | 👀 reviewed | 0 |
-| ✔️ done | 61 (closed-pending-verification 11건 코드 교차검증 후 done 확정 — Area 6, 06-06T10:00) |
+| ✔️ done | 61 (+직전 세션 11건 close 06-09 — done/rejected 분류 Area 6 검증 대기) |
 | ❌ rejected | 3 |
 
+> **Area 3 UX/기능 감사 (2026-06-09T10:00):**
+> - **방법**: baseline `npm ci`+tsc --noEmit PASS. Area 3 **7회차** — 기존 각도(dead-filter·하드캡(리스트표시)·getElementById silent-fail·catch-UX #362·CSV누락 #363·파괴적 confirm·변경후갱신·폼검증·journey) 고갈 → **덜 다룬 2각도** 병렬 Explore: (A)거래 리스트 검색범위 부족+실무 필터(날짜/상태) 부재 (B)정렬 불가+페이지네이션/대량로드 캡+빈상태 CTA. 발견 전수 owner 직접 코드 검증.
+> - **🟡 신규 이슈 #372 (improvement, small) — CSV export 5곳 `LIMIT 5000` 무경고 silent truncation**: `purchaseOrders/core.ts:278`(발주목록)·`:338`(입고이력)·`inspections.ts:381`(검수결과)·`purchaseRequests.ts:276`(발주요청)·`cashSchedule.ts:122`(현금일정) CSV export가 전부 필터 후 `LIMIT 5000` + **잘림 표시 전무** → 필터링 결과 >5000행이면 사용자가 일부만 받은 줄 모르고 **정산·세무 대사를 불완전 데이터로** 수행. 발화는 저빈도(대부분 월 날짜필터로 좁힘)이나 **잘림을 인지할 수 없는 구조**가 원칙 위반·감사데이터 직결 → LOW. **자동수정 안 함**(경고 전달방식=UX 판단+egress export 검증불가). 수정: `LIMIT 5001` 조회→초과 감지→CSV 안내행/`X-Truncated` 헤더+toast(헬퍼 1개 5곳 적용).
+> - **🔵 4각도 clean (owner 검증)**: ① **검색범위** — clients(name/code/keywords/brn/phone/mobile `:74`)·orders·quotations·purchaseOrders·shipments·taxInvoices·paymentRequests 전부 실무 컬럼 LIKE 완비, F-001(phone) **기수정**. ② **날짜/상태 필터** — orders·taxInvoices(`:379`)·shipments(`:37`)·paymentRequests 전부 date_from/to+status 구현. ③ **정렬** — quotations(`:94` amount_desc)·purchaseOrders(`:90` final_amount_desc/expected_date_asc)·clients(`:116` last_order) sort 파라미터 구현, 거래 리스트 정렬 갭 0. ④ **빈상태 CTA** — quotations/paymentRequests "데이터 없음" 텍스트만(CTA 버튼 없음)이나 운영중 시스템·온보딩 사용자 기준 저가치 드롭.
+> - **이상 없음**: Area 3 5각도 성숙도 높음(2사이클 연속 핵심 갭 0). open auto-improve 실측 8건(new 6 + approved 2: #342/#340). baseline PASS.
+> - 자동 수정 0건(Area 3 제안 전용), 신규 이슈 1건(#372), 4각도 clean, 백로그 stats 정정(직전 11건 close 반영 — open 7→8)
+>
 > **Area 2 코드 품질 (2026-06-09T06:00):**
 > - **방법**: baseline `npm ci`+tsc --noEmit PASS. Area 2 **8회차** — 기존 각도(IDOR 비대칭 #356~#361 11모듈·N+1 #341/#350·entity_id·silent-fail·금액·best-effort catch) 고갈 → **덜 다룬 2각도**로 전환: (A)트랜잭션 원자성(핵심 write가 batch 없이 분리 실행되어 부분실패 시 정합성 손상) (B)프론트↔백엔드 데이터 계약 불일치(응답 필드/파라미터/형식). 병렬 Explore 2개 + 발견 전수 owner 직접 코드 검증(오탐 차단).
 > - **🐛 신규 이슈 #369 (MED bug) — 입고검수 전량취소 멱등 가드 부재 + 비원자 실행 → 재고 이중차감**: `inventory.ts:393-466` `PATCH /receipts/:id/inspection-decision` CANCELLED 분기가 ① **멱등 가드 전무**(핸들러 진입 시 receipt 현재 상태 미검사, 차감/최종UPDATE에 `status!='CANCELLED'` 가드 없음) + ② **비원자**(재고차감 batch→잔량read→역분개 batch→receipt UPDATE 3분리, read 끼어 단일 batch 불가). **확정 재현 경로**: (A)부분실패—차감 commit 후 역분개/receipt UPDATE 실패→500→receipt PENDING_REVIEW 잔류(`:382` 목록에 남음)→프론트(inspections.js:396 에러시 reload 안함, 버튼 잔류)→재클릭 시 **재차감**. (B)중복제출—`inspectionsDecide`(:403) 요청중 버튼 비활성화·재진입 가드 없음→더블클릭 2회 차감. 영향: `inventory.quantity` 과차감(MAX(0) 클램프하나 잔여재고 있으면 실수량 초과 차감)+중복 RECEIPT_CANCEL 분개. **자동수정 안 함**(멱등가드·원자화=비즈니스 로직/실행 시맨틱 변경+egress 차단 검증불가). 수정방향: balance_after 메모리 산출로 단일 batch 원자화 + 선행상태 가드.
