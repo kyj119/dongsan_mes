@@ -559,7 +559,7 @@ async function loadMigrationLogs() {
             <td class="px-2 py-1.5 text-right text-green-600" style="font-variant-numeric:tabular-nums;">${(l.imported_rows || 0).toLocaleString()}</td>
             <td class="px-2 py-1.5 text-right text-gray-400" style="font-variant-numeric:tabular-nums;">${(l.skipped_rows || 0).toLocaleString()}</td>
             <td class="px-2 py-1.5 text-right ${l.error_rows > 0 ? 'text-red-600 font-medium' : 'text-gray-400'}" style="font-variant-numeric:tabular-nums;">${(l.error_rows || 0).toLocaleString()}</td>
-            <td class="px-2 py-1.5 text-gray-400">${l.completed_at ? new Date(l.completed_at).toLocaleString('ko') : '-'}</td>
+            <td class="px-2 py-1.5 text-gray-400">${formatKST(l.completed_at)}</td>
           </tr>`).join('')}
         </tbody>
       </table>`;
@@ -809,7 +809,7 @@ async function loadStatusReport() {
               <td class="px-2 py-1.5" style="color:#212529;">${typeLabels[l.migration_type] || l.migration_type}</td>
               <td class="px-2 py-1.5 text-center"><span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium ${l.status === 'COMPLETED' ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-gray-600'}">${l.status}</span></td>
               <td class="px-2 py-1.5 text-right" style="font-variant-numeric:tabular-nums;">${(l.imported || 0).toLocaleString()}</td>
-              <td class="px-2 py-1.5 text-gray-400">${l.last_completed ? new Date(l.last_completed).toLocaleString('ko') : '-'}</td>
+              <td class="px-2 py-1.5 text-gray-400">${formatKST(l.last_completed)}</td>
             </tr>`).join('')}
           </tbody>
         </table>`;

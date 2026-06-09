@@ -131,7 +131,7 @@
 
       var period = (job.start_date || '') + ' ~ ' + (job.end_date || '');
       var typeLabel = job.type === 'SALES' ? '매출' : job.type === 'PURCHASE' ? '매입' : job.type;
-      var createdAt = job.created_at ? new Date(job.created_at).toLocaleDateString('ko-KR') : '-';
+      var createdAt = formatKST(job.created_at, 'date');
 
       var actionHtml = '';
       if (state !== 0 && state !== 1) {
@@ -246,7 +246,7 @@
       var matchStatus = inv.match_status || 'UNMATCHED';
       var matchLabel = matchLabels[matchStatus] || matchStatus;
       var matchColor = matchColors[matchStatus] || 'bg-gray-100 text-gray-600';
-      var date = inv.issue_date ? new Date(inv.issue_date).toLocaleDateString('ko-KR') : '-';
+      var date = formatKST(inv.issue_date, 'date');
 
       var actionHtml = '';
       if (matchStatus === 'UNMATCHED' || matchStatus === 'MISMATCH') {
@@ -325,7 +325,7 @@
       hometaxOnlyHtml = '<tr class="table-row"><td colspan="4" class="text-center text-gray-500 py-6">데이터 없음</td></tr>';
     } else {
       hometaxOnly.forEach(function(h) {
-        var date = h.issue_date ? new Date(h.issue_date).toLocaleDateString('ko-KR') : '-';
+        var date = formatKST(h.issue_date, 'date');
         hometaxOnlyHtml += '<tr class="table-row">' +
           '<td>' + escapeHtml(h.authorization_number || '-') + '</td>' +
           '<td>' + escapeHtml(h.supplier_name || '-') + '</td>' +
@@ -343,7 +343,7 @@
       systemOnlyHtml = '<tr class="table-row"><td colspan="4" class="text-center text-gray-500 py-6">데이터 없음</td></tr>';
     } else {
       systemOnly.forEach(function(s) {
-        var date = s.issue_date ? new Date(s.issue_date).toLocaleDateString('ko-KR') : '-';
+        var date = formatKST(s.issue_date, 'date');
         systemOnlyHtml += '<tr class="table-row">' +
           '<td>' + escapeHtml(s.invoice_id || '-') + '</td>' +
           '<td>' + escapeHtml(s.supplier_name || '-') + '</td>' +

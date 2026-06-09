@@ -467,7 +467,7 @@ async function loadOrders() {
               ${billingCell}
             </td>
             <td class="px-2 py-2.5 whitespace-nowrap">
-              <div class="text-xs text-gray-500">${new Date(order.created_at).toLocaleDateString('ko-KR')}</div>
+              <div class="text-xs text-gray-500">${formatKST(order.created_at, 'date')}</div>
             </td>
             <td class="px-2 py-2.5 whitespace-nowrap text-center text-sm ord-act">
               <button onclick="viewOrder(${order.id})" class="text-blue-600 hover:text-blue-900 mx-1" title="상세"><i class="fas fa-eye"></i></button>
@@ -758,7 +758,7 @@ function buildOrderCardsSection(order, cards) {
       + '<td class="px-3 py-1.5 text-xs font-mono text-gray-500">' + (c.card_number || '-') + '</td>'
       + '<td class="px-3 py-1.5 text-xs">' + (c.category_name || '-') + '</td>'
       + '<td class="px-3 py-1.5 text-xs text-center">' + statusBadge + '</td>'
-      + '<td class="px-3 py-1.5 text-xs text-gray-400">' + (c.shipped_at ? new Date(c.shipped_at).toLocaleString('ko-KR') : '-') + '</td>'
+      + '<td class="px-3 py-1.5 text-xs text-gray-400">' + (c.shipped_at ? formatKST(c.shipped_at) : '-') + '</td>'
       + '</tr>';
   }
   var shipBtnHtml = '';
@@ -886,7 +886,7 @@ function showOrderModal(order, cards, autoJobs) {
             <div><label class="text-sm font-medium text-gray-600">출고방법</label><p class="text-lg">${escapeHtml(order.delivery_method || '-')}${order.delivery_time ? ' ' + escapeHtml(order.delivery_time) : ' (미정)'}</p></div>
             <div><label class="text-sm font-medium text-gray-600">배송처 주소</label><p class="text-lg">${escapeHtml(order.delivery_info || '-')}</p></div>
             <div><label class="text-sm font-medium text-gray-600">우선순위</label><p class="text-lg">${order.priority === 'URGENT' ? '<span class="px-2 py-1 rounded-full bg-red-50 text-red-700 font-bold text-sm">긴급</span>' : '<span class="text-gray-500">일반</span>'}</p></div>
-            <div><label class="text-sm font-medium text-gray-600">등록일</label><p class="text-lg">${new Date(order.created_at).toLocaleString('ko-KR')}</p></div>
+            <div><label class="text-sm font-medium text-gray-600">등록일</label><p class="text-lg">${formatKST(order.created_at)}</p></div>
             <div><label class="text-sm font-medium text-gray-600">등록자</label><p class="text-lg">${order.created_by_name || '-'}</p></div>
             ${order.quotation_id ? `<div class="col-span-2 bg-blue-50 border border-blue-200 rounded p-3"><label class="text-sm font-medium text-blue-700"><i class="fas fa-link mr-1"></i>견적서 연결</label><p class="text-sm mt-1">이 주문은 견적서 <a href="/quotations#${order.quotation_id}" class="font-bold text-blue-700 underline hover:text-blue-900">#${order.quotation_id}${order.quotation_number ? ' (' + escapeHtml(order.quotation_number) + ')' : ''}</a>에서 생성되었습니다.</p></div>` : ''}
           </div>

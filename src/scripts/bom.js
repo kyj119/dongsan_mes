@@ -401,7 +401,7 @@ function renderMrpHistory() {
     <td class="px-3 py-2 text-sm text-right">${r.total_materials || 0}</td>
     <td class="px-3 py-2 text-sm text-right ${r.shortfall_count > 0 ? 'text-red-600 font-bold' : 'text-green-600'}">${r.shortfall_count || 0}</td>
     <td class="px-3 py-2 text-sm">${esc(r.run_by_name || '-')}</td>
-    <td class="px-3 py-2 text-sm">${new Date(r.created_at).toLocaleString('ko-KR')}</td>
+    <td class="px-3 py-2 text-sm">${formatKST(r.created_at)}</td>
     <td class="px-3 py-2 text-sm text-center">
       <button onclick="viewMrpDetail(${r.id})" class="text-blue-600 hover:text-blue-700" title="상세"><i class="fas fa-search"></i></button>
     </td>

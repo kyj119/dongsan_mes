@@ -971,7 +971,7 @@
     }
     var html = '';
     allRules.forEach(function(rule) {
-      var lastUsed = rule.last_used_at ? new Date(rule.last_used_at).toLocaleDateString('ko-KR') : '-';
+      var lastUsed = formatKST(rule.last_used_at, 'date');
       html += '<tr class="tx-row">';
       html += '<td class="px-3 py-2 font-medium text-gray-800"><i class="fas fa-tag text-blue-400 mr-1 text-xs"></i>' + escHtml(rule.counterpart_name) + '</td>';
       var matchTarget = '';

@@ -1631,7 +1631,7 @@ function buildDefectsHtml(defects) {
       + '<span class="px-1.5 py-0.5 rounded text-xs font-medium ' + (statusColors[d.status] || 'bg-gray-100') + '">' + (statusLabels[d.status] || d.status) + '</span>'
       + '<span class="text-xs font-medium">' + (catLabels[d.defect_category] || d.defect_category || '') + '</span>'
       + '<span class="text-xs text-gray-500 flex-1">' + (d.description || '') + '</span>'
-      + '<span class="text-xs text-gray-400 whitespace-nowrap">' + (d.reported_at ? new Date(d.reported_at).toLocaleDateString('ko-KR') : '') + '</span>'
+      + '<span class="text-xs text-gray-400 whitespace-nowrap">' + (d.reported_at ? formatKST(d.reported_at, 'date') : '') + '</span>'
       + '</div>';
   }).join('');
   return '<div class="mt-3 bg-amber-50 rounded p-2">'
@@ -1772,7 +1772,7 @@ function showCardModal(card, history, defects, siblingCards) {
             var dotColor = h.to_status === 'PRINT_DONE' ? '#16a34a' : h.to_status === 'HOLD' ? '#ef4444' : '#3b82f6';
             histHtml += '<div style="display:flex;align-items:flex-start;gap:8px;padding:4px 0;font-size:11px">';
             histHtml += '<div style="width:8px;height:8px;border-radius:50%;background:' + dotColor + ';margin-top:4px;flex-shrink:0"></div>';
-            histHtml += '<span style="color:#9ca3af;white-space:nowrap;flex-shrink:0;width:70px">' + new Date(h.created_at).toLocaleString('ko-KR', {month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}) + '</span>';
+            histHtml += '<span style="color:#9ca3af;white-space:nowrap;flex-shrink:0;width:70px">' + formatKST(h.created_at, null, {month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}) + '</span>';
             histHtml += '<span style="color:#374151">' + fromLabel + ' → <b>' + toLabel + '</b>'
                 + (h.change_reason ? ' <span style="color:#9ca3af">(' + escapeHtml(h.change_reason) + ')</span>' : '') + '</span>';
             histHtml += '</div>';

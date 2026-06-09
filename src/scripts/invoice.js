@@ -91,7 +91,7 @@ function buildInvoiceHalf(data, copyLabel, fullPage) {
     var koreanAmount = '일금 ' + numberToKorean(finalAmount) + '원정';
 
     var orderDate = order.order_date || order.created_at || '';
-    if (orderDate) { try { orderDate = new Date(orderDate).toLocaleDateString('ko-KR'); } catch(e){} }
+    if (orderDate) { orderDate = formatKST(orderDate, 'date'); }
 
     var stampImg = co.company_stamp_base64
         ? '<img src="' + co.company_stamp_base64 + '" style="position:absolute;right:-6px;top:50%;transform:translateY(-50%);width:44px;height:44px;opacity:0.8;z-index:10">'

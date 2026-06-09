@@ -194,7 +194,7 @@ function formatDetailValue(key, val, type) {
   }
   // 날짜
   if (key === 'shipped_at' || key === 'created_at' || key === 'order_date') {
-    return val ? new Date(val).toLocaleString('ko-KR') : '-';
+    return formatKST(val);
   }
   return escHtml(String(val));
 }

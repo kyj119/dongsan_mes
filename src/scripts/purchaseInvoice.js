@@ -84,10 +84,10 @@ function buildPOSheet(data) {
     var koreanAmount = '일금 ' + numberToKorean(finalAmount) + '원정';
 
     var poDate = po.order_date || po.created_at || '';
-    if (poDate) { try { poDate = new Date(poDate).toLocaleDateString('ko-KR'); } catch(e){} }
+    if (poDate) { poDate = formatKST(poDate, 'date'); }
 
     var deliveryDate = po.delivery_date || po.expected_date || '';
-    if (deliveryDate) { try { deliveryDate = new Date(deliveryDate).toLocaleDateString('ko-KR'); } catch(e){} }
+    if (deliveryDate) { deliveryDate = formatKST(deliveryDate, 'date'); }
 
     var logoHtml = co.company_logo_base64
         ? '<img class="po-logo" src="' + co.company_logo_base64 + '" alt="로고">'

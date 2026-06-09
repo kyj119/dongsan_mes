@@ -86,11 +86,11 @@ function buildQuotationHalf(data, copyLabel, fullPage, validUntil, isExpired) {
     var koreanAmount = '일금 ' + numberToKorean(finalAmount) + '원정';
 
     var orderDate = order.order_date || order.created_at || '';
-    if (orderDate) { try { orderDate = new Date(orderDate).toLocaleDateString('ko-KR'); } catch(e){} }
+    if (orderDate) { orderDate = formatKST(orderDate, 'date'); }
 
     var validUntilStr = '';
     if (validUntil) {
-        try { validUntilStr = new Date(validUntil).toLocaleDateString('ko-KR'); } catch(e){ validUntilStr = validUntil; }
+        validUntilStr = formatKST(validUntil, 'date');
     }
 
     var stampImg = co.company_stamp_base64

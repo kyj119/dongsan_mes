@@ -235,7 +235,7 @@
                 var from = statusLabels[h.from_status] || h.from_status || '-';
                 var to = statusLabels[h.to_status] || h.to_status;
                 html += '<div class="flex gap-3 py-1.5 text-xs">';
-                html += '<span class="text-gray-400 w-24 flex-shrink-0">' + new Date(h.created_at).toLocaleString('ko-KR', {month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}) + '</span>';
+                html += '<span class="text-gray-400 w-24 flex-shrink-0">' + formatKST(h.created_at, null, {month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}) + '</span>';
                 html += '<span>' + esc(from) + ' → <b>' + esc(to) + '</b></span>';
                 html += '</div>';
             });

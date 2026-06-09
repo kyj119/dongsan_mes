@@ -14,9 +14,7 @@
 
   function formatDate(str) {
     if (!str) return '-';
-    try {
-      return new Date(str).toLocaleDateString('ko-KR', { year: '2-digit', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
-    } catch(e) { return str; }
+    return formatKST(str, 'date', { year: '2-digit', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
   }
 
   function renderTable(users) {
