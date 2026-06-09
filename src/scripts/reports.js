@@ -8,6 +8,7 @@ function switchReportTab(tab) {
   tabs.forEach(function(t) {
     var btn = document.getElementById('tab' + t.charAt(0).toUpperCase() + t.slice(1));
     var panel = document.getElementById(t + 'Panel');
+    if (!btn || !panel) { console.warn('[reports] tab elements not found: ' + t); return; }
     if (t === tab) {
       btn.className = 'px-6 py-3 text-sm font-medium border-b-2 border-blue-600 text-blue-600';
       panel.classList.remove('hidden');
@@ -19,7 +20,9 @@ function switchReportTab(tab) {
 }
 
 function getMonths() {
-  return document.getElementById('periodMonths').value || '6';
+  var el = document.getElementById('periodMonths');
+  if (!el) { console.warn('[reports] #periodMonths not found'); return '6'; }
+  return el.value || '6';
 }
 
 function fmt(n) { return (n || 0).toLocaleString(); }
@@ -59,15 +62,20 @@ async function loadMonthlySummary() {
       totalOrd += m.order_count || 0;
     });
 
-    document.getElementById('rptTotalRevenue').textContent = fmt(totalRev) + '원';
-    document.getElementById('rptTotalPayments').textContent = fmt(totalPay) + '원';
-    document.getElementById('rptTotalOrders').textContent = fmt(totalOrd) + '건';
+    var elTotRev = document.getElementById('rptTotalRevenue'); if (!elTotRev) { console.warn('[reports] #rptTotalRevenue not found'); return; }
+    elTotRev.textContent = fmt(totalRev) + '원';
+    var elTotPay = document.getElementById('rptTotalPayments'); if (!elTotPay) { console.warn('[reports] #rptTotalPayments not found'); return; }
+    elTotPay.textContent = fmt(totalPay) + '원';
+    var elTotOrd = document.getElementById('rptTotalOrders'); if (!elTotOrd) { console.warn('[reports] #rptTotalOrders not found'); return; }
+    elTotOrd.textContent = fmt(totalOrd) + '건';
     var rate = totalRev > 0 ? Math.round((totalPay / totalRev) * 100) : 0;
-    document.getElementById('rptCollectionRate').textContent = rate + '%';
+    var elCollRate = document.getElementById('rptCollectionRate'); if (!elCollRate) { console.warn('[reports] #rptCollectionRate not found'); return; }
+    elCollRate.textContent = rate + '%';
 
     // Bar chart
     var maxVal = Math.max.apply(null, data.map(function(m) { return Math.max(m.revenue || 0, m.payments || 0); })) || 1;
     var chartArea = document.getElementById('monthlyChartArea');
+    if (!chartArea) { console.warn('[reports] #monthlyChartArea not found'); return; }
     var reversed = data.slice().reverse();
     chartArea.innerHTML = reversed.map(function(m) {
       var revW = Math.round(((m.revenue || 0) / maxVal) * 100);
@@ -86,6 +94,7 @@ async function loadMonthlySummary() {
 
     // Table
     var tbody = document.getElementById('monthlyTableBody');
+    if (!tbody) { console.warn('[reports] #monthlyTableBody not found'); return; }
     tbody.innerHTML = reversed.map(function(m) {
       var r = (m.revenue || 0) > 0 ? Math.round(((m.payments || 0) / (m.revenue || 1)) * 100) : 0;
       var rColor = r >= 80 ? 'text-green-600' : r >= 50 ? 'text-amber-600' : 'text-red-600';
@@ -112,6 +121,7 @@ async function loadClientRevenue() {
     var totalRev = clients.reduce(function(s, c) { return s + (c.total_revenue || 0); }, 0) || 1;
 
     var tbody = document.getElementById('clientsTableBody2');
+    if (!tbody) { console.warn('[reports] #clientsTableBody2 not found'); return; }
     tbody.innerHTML = clients.map(function(c, i) {
       var pct = Math.round(((c.total_revenue || 0) / totalRev) * 100);
       var balColor = (c.balance || 0) > 0 ? 'text-red-600 font-medium' : 'text-green-600';
@@ -146,6 +156,7 @@ async function loadItemAnalysis() {
     var maxCat = Math.max.apply(null, categories.map(function(c) { return c.total_revenue || 0; })) || 1;
     var catColors = ['bg-blue-500', 'bg-green-500', 'bg-purple-500', 'bg-orange-500', 'bg-red-500', 'bg-amber-500', 'bg-blue-600', 'bg-pink-500'];
     var categoryChart = document.getElementById('categoryChart');
+    if (!categoryChart) { console.warn('[reports] #categoryChart not found'); return; }
     categoryChart.innerHTML = categories.map(function(c, i) {
       var pct = Math.round(((c.total_revenue || 0) / maxCat) * 100);
       return '<div class="flex items-center gap-3">'
@@ -158,6 +169,7 @@ async function loadItemAnalysis() {
 
     // Items table
     var tbody = document.getElementById('itemsTableBody');
+    if (!tbody) { console.warn('[reports] #itemsTableBody not found'); return; }
     tbody.innerHTML = items.map(function(item) {
       return '<tr class="border-t hover:bg-gray-50">'
         + '<td class="px-4 py-2"><span class="font-medium">' + (item.item_name || '-') + '</span>'
@@ -184,6 +196,7 @@ async function loadDesignerStats() {
     var designers = res.data.data || [];
 
     var tbody = document.getElementById('designersTableBody');
+    if (!tbody) { console.warn('[reports] #designersTableBody not found'); return; }
     tbody.innerHTML = designers.map(function(d) {
       var total = (d.completed_count || 0) + (d.in_progress_count || 0);
       var completionRate = total > 0 ? Math.round(((d.completed_count || 0) / total) * 100) : 0;
@@ -209,7 +222,8 @@ async function loadDesignerStats() {
 
 // 5. Margin Analysis
 async function loadMarginAnalysis() {
-  var months = document.getElementById('periodMonths').value;
+  var elMonths = document.getElementById('periodMonths'); if (!elMonths) { console.warn('[reports] #periodMonths not found'); return; }
+  var months = elMonths.value;
   try {
     var res = await authFetch('/api/reports/margin-analysis?months=' + months);
     var json = await res.json();
@@ -222,13 +236,18 @@ async function loadMarginAnalysis() {
 
     // 요약 카드
     var fmtWon = function(n) { return (n || 0).toLocaleString() + '원'; };
-    document.getElementById('mgTotalRevenue').textContent = fmtWon(summary.total_revenue);
-    document.getElementById('mgTotalCost').textContent = fmtWon(summary.total_cost);
-    document.getElementById('mgTotalProfit').textContent = fmtWon(summary.total_profit);
-    document.getElementById('mgAvgMargin').textContent = (summary.avg_margin_rate || 0).toFixed(1) + '%';
+    var elMgRev = document.getElementById('mgTotalRevenue'); if (!elMgRev) { console.warn('[reports] #mgTotalRevenue not found'); return; }
+    elMgRev.textContent = fmtWon(summary.total_revenue);
+    var elMgCost = document.getElementById('mgTotalCost'); if (!elMgCost) { console.warn('[reports] #mgTotalCost not found'); return; }
+    elMgCost.textContent = fmtWon(summary.total_cost);
+    var elMgProfit = document.getElementById('mgTotalProfit'); if (!elMgProfit) { console.warn('[reports] #mgTotalProfit not found'); return; }
+    elMgProfit.textContent = fmtWon(summary.total_profit);
+    var elMgAvgMargin = document.getElementById('mgAvgMargin'); if (!elMgAvgMargin) { console.warn('[reports] #mgAvgMargin not found'); return; }
+    elMgAvgMargin.textContent = (summary.avg_margin_rate || 0).toFixed(1) + '%';
 
     // 카테고리별
     var catEl = document.getElementById('mgByCategory');
+    if (!catEl) { console.warn('[reports] #mgByCategory not found'); return; }
     if (!by_category || by_category.length === 0) {
       catEl.innerHTML = '<div class="text-center text-gray-400 py-4 text-sm">원가 데이터가 없습니다</div>';
     } else {
@@ -249,6 +268,7 @@ async function loadMarginAnalysis() {
 
     // 월별 추이
     var monthEl = document.getElementById('mgByMonth');
+    if (!monthEl) { console.warn('[reports] #mgByMonth not found'); return; }
     if (!by_month || by_month.length === 0) {
       monthEl.innerHTML = '<div class="text-center text-gray-400 py-4 text-sm">데이터 없음</div>';
     } else {
@@ -271,6 +291,7 @@ async function loadMarginAnalysis() {
 
     // 저마진 주문
     var tbody = document.getElementById('mgLowMarginBody');
+    if (!tbody) { console.warn('[reports] #mgLowMarginBody not found'); return; }
     if (!low_margin_orders || low_margin_orders.length === 0) {
       tbody.innerHTML = '<tr><td colspan="6" class="text-center text-gray-400 py-4">데이터 없음</td></tr>';
     } else {
@@ -310,6 +331,7 @@ function gradeBadge(grade) {
 function renderClientMarginTable(tbodyId, clients) {
   var fmtWon = function(n) { return (n || 0).toLocaleString() + '원'; };
   var tbody = document.getElementById(tbodyId);
+  if (!tbody) { console.warn('[reports] #' + tbodyId + ' not found'); return; }
   if (!clients || clients.length === 0) {
     tbody.innerHTML = '<tr><td colspan="4" class="text-center text-gray-400 py-4">데이터 없음</td></tr>';
     return;
@@ -331,7 +353,8 @@ function renderClientMarginTable(tbodyId, clients) {
 }
 
 async function loadClientMargin() {
-  var months = document.getElementById('periodMonths').value;
+  var elMonths = document.getElementById('periodMonths'); if (!elMonths) { console.warn('[reports] #periodMonths not found'); return; }
+  var months = elMonths.value;
   try {
     var res = await axios.get('/api/reports/margin-by-client?months=' + months);
     if (!res.data.success) return;
@@ -347,6 +370,7 @@ async function loadClientMargin() {
     });
     var total = (data.all || []).length || 1;
     var distEl = document.getElementById('mgGradeDistribution');
+    if (!distEl) { console.warn('[reports] #mgGradeDistribution not found'); return; }
     distEl.innerHTML = ['A', 'B', 'C', 'D'].map(function(g) {
       var count = gradeCount[g] || 0;
       var pct = Math.round(count / total * 100);
@@ -371,13 +395,18 @@ async function loadReceivablesAnalysis() {
     var d = res.data.data;
 
     // 요약 카드
-    document.getElementById('rcTotalAR').textContent = fmt(d.summary.total_ar) + '원';
-    document.getElementById('rcARClients').textContent = d.summary.ar_client_count + '곳';
-    document.getElementById('rcMonthBilled').textContent = fmt(d.summary.month_billed) + '원';
-    document.getElementById('rcMonthCollected').textContent = fmt(d.summary.month_collected) + '원';
+    var elRcAR = document.getElementById('rcTotalAR'); if (!elRcAR) { console.warn('[reports] #rcTotalAR not found'); return; }
+    elRcAR.textContent = fmt(d.summary.total_ar) + '원';
+    var elRcClients = document.getElementById('rcARClients'); if (!elRcClients) { console.warn('[reports] #rcARClients not found'); return; }
+    elRcClients.textContent = d.summary.ar_client_count + '곳';
+    var elRcBilled = document.getElementById('rcMonthBilled'); if (!elRcBilled) { console.warn('[reports] #rcMonthBilled not found'); return; }
+    elRcBilled.textContent = fmt(d.summary.month_billed) + '원';
+    var elRcCollected = document.getElementById('rcMonthCollected'); if (!elRcCollected) { console.warn('[reports] #rcMonthCollected not found'); return; }
+    elRcCollected.textContent = fmt(d.summary.month_collected) + '원';
 
     // Aging 차트
     var agingEl = document.getElementById('rcAgingChart');
+    if (!agingEl) { console.warn('[reports] #rcAgingChart not found'); return; }
     var totalAR = d.summary.total_ar || 1;
     var agingColors = ['bg-green-400', 'bg-amber-400', 'bg-orange-400', 'bg-red-500'];
     agingEl.innerHTML = d.aging.map(function(a, i) {
@@ -396,6 +425,7 @@ async function loadReceivablesAnalysis() {
 
     // 월별 수금 추이
     var trendEl = document.getElementById('rcMonthlyTrend');
+    if (!trendEl) { console.warn('[reports] #rcMonthlyTrend not found'); return; }
     var trend = (d.monthly_trend || []).slice().reverse();
     var maxTrend = Math.max.apply(null, trend.map(function(t) { return Math.max(parseFloat(t.revenue) || 0, parseFloat(t.payments) || 0); })) || 1;
     trendEl.innerHTML = trend.map(function(t) {
@@ -416,6 +446,7 @@ async function loadReceivablesAnalysis() {
 
     // TOP 15 테이블
     var tbody = document.getElementById('rcTopClientsBody');
+    if (!tbody) { console.warn('[reports] #rcTopClientsBody not found'); return; }
     tbody.innerHTML = (d.top_clients || []).map(function(cl, i) {
       var balance = parseFloat(cl.balance) || 0;
       var daysClass = (cl.days_overdue || 0) > 90 ? 'text-red-600 font-bold' : (cl.days_overdue || 0) > 60 ? 'text-orange-600' : '';
@@ -444,13 +475,18 @@ async function loadProductionAnalysis() {
     var d = res.data.data;
 
     // 요약 카드
-    document.getElementById('prOkCount').textContent = fmt(d.summary.ok_count) + '건';
-    document.getElementById('prErrorCount').textContent = fmt(d.summary.error_count) + '건';
-    document.getElementById('prQualityCount').textContent = fmt(d.summary.quality_issues) + '건';
-    document.getElementById('prMaintCost').textContent = fmt(d.summary.maintenance_cost) + '원';
+    var elPrOk = document.getElementById('prOkCount'); if (!elPrOk) { console.warn('[reports] #prOkCount not found'); return; }
+    elPrOk.textContent = fmt(d.summary.ok_count) + '건';
+    var elPrErr = document.getElementById('prErrorCount'); if (!elPrErr) { console.warn('[reports] #prErrorCount not found'); return; }
+    elPrErr.textContent = fmt(d.summary.error_count) + '건';
+    var elPrQual = document.getElementById('prQualityCount'); if (!elPrQual) { console.warn('[reports] #prQualityCount not found'); return; }
+    elPrQual.textContent = fmt(d.summary.quality_issues) + '건';
+    var elPrMaint = document.getElementById('prMaintCost'); if (!elPrMaint) { console.warn('[reports] #prMaintCost not found'); return; }
+    elPrMaint.textContent = fmt(d.summary.maintenance_cost) + '원';
 
     // 장비별 테이블
     var eqBody = document.getElementById('prEquipmentBody');
+    if (!eqBody) { console.warn('[reports] #prEquipmentBody not found'); return; }
     var equipments = d.by_equipment || [];
     if (equipments.length === 0) {
       eqBody.innerHTML = '<tr><td colspan="4" class="px-4 py-8 text-center text-gray-400">출력 이벤트 데이터가 없습니다</td></tr>';
@@ -469,6 +505,7 @@ async function loadProductionAnalysis() {
 
     // 월별 출력 추이
     var monthChart = document.getElementById('prMonthlyChart');
+    if (!monthChart) { console.warn('[reports] #prMonthlyChart not found'); return; }
     var months = (d.by_month || []).slice().reverse();
     var maxPrint = Math.max.apply(null, months.map(function(m) { return m.total || 0; })) || 1;
     if (months.length === 0) {
@@ -489,6 +526,7 @@ async function loadProductionAnalysis() {
 
     // 불량 유형 분포
     var defectEl = document.getElementById('prDefectChart');
+    if (!defectEl) { console.warn('[reports] #prDefectChart not found'); return; }
     var defects = d.defect_types || [];
     if (defects.length === 0) {
       defectEl.innerHTML = '<div class="text-center text-gray-400 py-4 text-sm">불량 데이터가 없습니다</div>';
@@ -521,8 +559,10 @@ function initComparison() {
 }
 
 async function loadComparison() {
-  var baseMonth = document.getElementById('cpBaseMonth').value;
-  var compareType = document.getElementById('cpCompareType').value;
+  var elBaseMonth = document.getElementById('cpBaseMonth'); if (!elBaseMonth) { console.warn('[reports] #cpBaseMonth not found'); return; }
+  var elCompareType = document.getElementById('cpCompareType'); if (!elCompareType) { console.warn('[reports] #cpCompareType not found'); return; }
+  var baseMonth = elBaseMonth.value;
+  var compareType = elCompareType.value;
   if (!baseMonth) { showToast('기준월을 선택하세요', 'warning'); return; }
 
   try {
@@ -532,6 +572,7 @@ async function loadComparison() {
 
     // 기간 라벨
     var label = document.getElementById('cpPeriodLabel');
+    if (!label) { console.warn('[reports] #cpPeriodLabel not found'); return; }
     label.textContent = d.base_month + ' vs ' + d.comp_month + ' (' + (d.compare_type === 'YOY' ? '전년 동기' : '전월') + ')';
 
     // KPI 카드
@@ -551,6 +592,7 @@ async function loadComparison() {
     ];
 
     var kpiEl = document.getElementById('cpKPICards');
+    if (!kpiEl) { console.warn('[reports] #cpKPICards not found'); return; }
     kpiEl.innerHTML = kpis.map(function(k) {
       var baseVal = k.noFmt ? k.base : fmt(k.base);
       return '<div class="bg-white rounded-lg shadow p-4">'
@@ -564,6 +606,7 @@ async function loadComparison() {
 
     // 카테고리 비교
     var catBody = document.getElementById('cpCategoryBody');
+    if (!catBody) { console.warn('[reports] #cpCategoryBody not found'); return; }
     var cats = d.categories || [];
     if (cats.length === 0) {
       catBody.innerHTML = '<tr><td colspan="4" class="text-center text-gray-400 py-4">데이터 없음</td></tr>';
@@ -583,6 +626,7 @@ async function loadComparison() {
     // 거래처 변동
     function renderClientChanges(elId, clients, isIncrease) {
       var el = document.getElementById(elId);
+      if (!el) { console.warn('[reports] #' + elId + ' not found'); return; }
       if (!clients || clients.length === 0) {
         el.innerHTML = '<div class="text-sm text-gray-400">변동 없음</div>';
         return;

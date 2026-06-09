@@ -5,8 +5,10 @@ function fmt(n) { return (n || 0).toLocaleString(); }
 // 초기화는 파일 맨 아래에서 실행 (window.* 함수 정의 이후)
 
 window.loadVatSummary = async function() {
-  var year = document.getElementById('vatYear').value;
-  var quarter = document.getElementById('vatQuarter').value;
+  var elYear = document.getElementById('vatYear'); if (!elYear) { console.warn('[vatReports] #vatYear not found'); return; }
+  var elQuarter = document.getElementById('vatQuarter'); if (!elQuarter) { console.warn('[vatReports] #vatQuarter not found'); return; }
+  var year = elYear.value;
+  var quarter = elQuarter.value;
   var salesPanel = document.getElementById('vatSalesPanel');
   if (salesPanel) salesPanel.innerHTML = '<div class="text-center py-8 text-gray-400"><i class="fas fa-spinner fa-spin text-2xl mb-2"></i><p>로딩 중...</p></div>';
   var purPanel = document.getElementById('vatPurchasePanel');
@@ -23,12 +25,18 @@ window.loadVatSummary = async function() {
 };
 
 function renderVatSummary(d) {
-  document.getElementById('vatSalesCount').textContent = d.sales.count;
-  document.getElementById('vatSalesSupply').textContent = fmt(d.sales.supply_amount);
-  document.getElementById('vatSalesTax').textContent = '세액 ' + fmt(d.sales.tax_amount);
-  document.getElementById('vatPurchaseSupply').textContent = fmt(d.purchase.supply_amount);
-  document.getElementById('vatPurchaseTax').textContent = '세액 ' + fmt(d.purchase.tax_amount);
-  document.getElementById('vatPayable').textContent = fmt(d.payable_tax);
+  var elSalesCount = document.getElementById('vatSalesCount'); if (!elSalesCount) { console.warn('[vatReports] #vatSalesCount not found'); return; }
+  elSalesCount.textContent = d.sales.count;
+  var elSalesSupply = document.getElementById('vatSalesSupply'); if (!elSalesSupply) { console.warn('[vatReports] #vatSalesSupply not found'); return; }
+  elSalesSupply.textContent = fmt(d.sales.supply_amount);
+  var elSalesTax = document.getElementById('vatSalesTax'); if (!elSalesTax) { console.warn('[vatReports] #vatSalesTax not found'); return; }
+  elSalesTax.textContent = '세액 ' + fmt(d.sales.tax_amount);
+  var elPurSupply = document.getElementById('vatPurchaseSupply'); if (!elPurSupply) { console.warn('[vatReports] #vatPurchaseSupply not found'); return; }
+  elPurSupply.textContent = fmt(d.purchase.supply_amount);
+  var elPurTax = document.getElementById('vatPurchaseTax'); if (!elPurTax) { console.warn('[vatReports] #vatPurchaseTax not found'); return; }
+  elPurTax.textContent = '세액 ' + fmt(d.purchase.tax_amount);
+  var elPayable = document.getElementById('vatPayable'); if (!elPayable) { console.warn('[vatReports] #vatPayable not found'); return; }
+  elPayable.textContent = fmt(d.payable_tax);
 
   // 매출 목록
   var salesHtml = '';
@@ -57,7 +65,8 @@ function renderVatSummary(d) {
   } else {
     salesHtml = '<p class="text-sm text-gray-400 text-center py-6">해당 기간 매출 세금계산서가 없습니다.</p>';
   }
-  document.getElementById('vatSalesPanel').innerHTML = salesHtml;
+  var elSalesPanel = document.getElementById('vatSalesPanel'); if (!elSalesPanel) { console.warn('[vatReports] #vatSalesPanel not found'); return; }
+  elSalesPanel.innerHTML = salesHtml;
 
   // 매입 목록
   var purHtml = '';
@@ -86,13 +95,15 @@ function renderVatSummary(d) {
   } else {
     purHtml = '<p class="text-sm text-gray-400 text-center py-6">해당 기간 매입 세금계산서가 없습니다. (홈택스 수집 후 표시됨)</p>';
   }
-  document.getElementById('vatPurchasePanel').innerHTML = purHtml;
+  var elPurPanel = document.getElementById('vatPurchasePanel'); if (!elPurPanel) { console.warn('[vatReports] #vatPurchasePanel not found'); return; }
+  elPurPanel.innerHTML = purHtml;
 }
 
 window.switchVatTab = function(tab) {
   ['sales', 'purchase', 'history'].forEach(function(t) {
     var btn = document.getElementById('tabVat' + t.charAt(0).toUpperCase() + t.slice(1));
     var panel = document.getElementById('vat' + t.charAt(0).toUpperCase() + t.slice(1) + 'Panel');
+    if (!btn || !panel) { console.warn('[vatReports] tab elements not found: ' + t); return; }
     if (t === tab) {
       btn.className = 'px-4 py-2 text-sm font-medium border-b-2 border-blue-600 text-blue-600';
       panel.classList.remove('hidden');
@@ -110,7 +121,8 @@ async function loadVatHistory() {
     if (!res.data.success) return;
     var list = res.data.data || [];
     if (!list.length) {
-      document.getElementById('vatHistoryPanel').innerHTML = '<p class="text-sm text-gray-400 text-center py-6">신고 이력이 없습니다.</p>';
+      var elHistEmpty = document.getElementById('vatHistoryPanel'); if (!elHistEmpty) { console.warn('[vatReports] #vatHistoryPanel not found'); return; }
+      elHistEmpty.innerHTML = '<p class="text-sm text-gray-400 text-center py-6">신고 이력이 없습니다.</p>';
       return;
     }
     var html = '<table class="w-full text-xs"><thead><tr class="bg-gray-50">'
@@ -143,7 +155,8 @@ async function loadVatHistory() {
         + '</tr>';
     });
     html += '</tbody></table>';
-    document.getElementById('vatHistoryPanel').innerHTML = html;
+    var elHist = document.getElementById('vatHistoryPanel'); if (!elHist) { console.warn('[vatReports] #vatHistoryPanel not found'); return; }
+    elHist.innerHTML = html;
   } catch (e) {
     console.error('vat history error:', e);
   }
@@ -223,6 +236,7 @@ window.exportVatExcel = function() {
 (function init() {
   var year = new Date().getFullYear();
   var sel = document.getElementById('vatYear');
+  if (!sel) { console.warn('[vatReports] #vatYear not found'); return; }
   for (var y = year - 2; y <= year + 1; y++) {
     var opt = document.createElement('option');
     opt.value = y;
@@ -232,7 +246,8 @@ window.exportVatExcel = function() {
   }
   var month = new Date().getMonth() + 1;
   var quarter = Math.ceil(month / 3);
-  document.getElementById('vatQuarter').value = quarter;
+  var elQ = document.getElementById('vatQuarter'); if (!elQ) { console.warn('[vatReports] #vatQuarter not found'); return; }
+  elQ.value = quarter;
   window.loadVatSummary();
   window.loadVatHistory();
 })();

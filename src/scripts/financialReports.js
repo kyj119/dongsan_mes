@@ -19,8 +19,10 @@ function fmt(n) { return (n || 0).toLocaleString(); }
 // ============================================================
 
 window.loadPnl = async function() {
-  var from = document.getElementById('pnlFromDate').value;
-  var to = document.getElementById('pnlToDate').value;
+  var elFromDate = document.getElementById('pnlFromDate'); if (!elFromDate) { console.warn('[financialReports] #pnlFromDate not found'); return; }
+  var elToDate = document.getElementById('pnlToDate'); if (!elToDate) { console.warn('[financialReports] #pnlToDate not found'); return; }
+  var from = elFromDate.value;
+  var to = elToDate.value;
 
   if (!from || !to) {
     showToast('기간을 선택해주세요.', 'warning');
@@ -53,25 +55,33 @@ function renderPnl(d) {
   var netMargin = d.net_profit.margin_pct || 0;
 
   // KPI 카드
-  document.getElementById('pnlRevenue').textContent = fmt(revenue);
-  document.getElementById('pnlRevenueCount').textContent = d.revenue.order_count + '건';
+  var elRevenue = document.getElementById('pnlRevenue'); if (!elRevenue) { console.warn('[financialReports] #pnlRevenue not found'); return; }
+  elRevenue.textContent = fmt(revenue);
+  var elRevenueCount = document.getElementById('pnlRevenueCount'); if (!elRevenueCount) { console.warn('[financialReports] #pnlRevenueCount not found'); return; }
+  elRevenueCount.textContent = d.revenue.order_count + '건';
 
-  document.getElementById('pnlGrossProfit').textContent = fmt(grossProfit);
-  document.getElementById('pnlGrossProfitMargin').textContent = grossMargin.toFixed(1) + '%';
+  var elGrossProfit = document.getElementById('pnlGrossProfit'); if (!elGrossProfit) { console.warn('[financialReports] #pnlGrossProfit not found'); return; }
+  elGrossProfit.textContent = fmt(grossProfit);
+  var elGrossMargin = document.getElementById('pnlGrossProfitMargin'); if (!elGrossMargin) { console.warn('[financialReports] #pnlGrossProfitMargin not found'); return; }
+  elGrossMargin.textContent = grossMargin.toFixed(1) + '%';
 
   var opProfitColor = opProfit < 0 ? 'color:#DC2626;' : '';
   var netProfitColor = netProfit < 0 ? 'color:#DC2626;' : '';
   var opProfitEl = document.getElementById('pnlOperatingProfit');
+  if (!opProfitEl) { console.warn('[financialReports] #pnlOperatingProfit not found'); return; }
   opProfitEl.style.cssText = opProfitColor + 'font-variant-numeric:tabular-nums;';
   opProfitEl.className = opProfit < 0 ? '' : 'text-gray-900';
   opProfitEl.textContent = fmt(opProfit);
-  document.getElementById('pnlOperatingMargin').textContent = opMargin.toFixed(1) + '%';
+  var elOpMargin = document.getElementById('pnlOperatingMargin'); if (!elOpMargin) { console.warn('[financialReports] #pnlOperatingMargin not found'); return; }
+  elOpMargin.textContent = opMargin.toFixed(1) + '%';
 
   var netProfitEl = document.getElementById('pnlNetProfit');
+  if (!netProfitEl) { console.warn('[financialReports] #pnlNetProfit not found'); return; }
   netProfitEl.style.cssText = netProfitColor + 'font-variant-numeric:tabular-nums;';
   netProfitEl.className = netProfit < 0 ? '' : 'text-gray-900';
   netProfitEl.textContent = fmt(netProfit);
-  document.getElementById('pnlNetMargin').textContent = netMargin.toFixed(1) + '%';
+  var elNetMargin = document.getElementById('pnlNetMargin'); if (!elNetMargin) { console.warn('[financialReports] #pnlNetMargin not found'); return; }
+  elNetMargin.textContent = netMargin.toFixed(1) + '%';
 
   // P&L 테이블
   var html = '';
@@ -131,7 +141,8 @@ function renderPnl(d) {
     + '<td class="px-3 py-3 text-right">' + netMargin.toFixed(1) + '%</td>'
     + '</tr>';
 
-  document.getElementById('pnlTableBody').innerHTML = html;
+  var elPnlBody = document.getElementById('pnlTableBody'); if (!elPnlBody) { console.warn('[financialReports] #pnlTableBody not found'); return; }
+  elPnlBody.innerHTML = html;
 }
 
 // ============================================================
@@ -139,7 +150,8 @@ function renderPnl(d) {
 // ============================================================
 
 window.loadMonthlyPnl = async function() {
-  var year = document.getElementById('monthlyYear').value;
+  var elMonthlyYear = document.getElementById('monthlyYear'); if (!elMonthlyYear) { console.warn('[financialReports] #monthlyYear not found'); return; }
+  var year = elMonthlyYear.value;
 
   try {
     var res = await axios.get('/api/financial/pnl/monthly?year=' + year);
@@ -166,10 +178,14 @@ function renderMonthlyPnl(d) {
     : 0;
 
   // KPI 카드
-  document.getElementById('monthlyYearRevenue').textContent = fmt(yearTotal.revenue);
-  document.getElementById('monthlyYearProfit').textContent = fmt(yearTotal.profit);
-  document.getElementById('monthlyAvgRevenue').textContent = fmt(avgRevenue);
-  document.getElementById('monthlyAvgMargin').textContent = avgMargin.toFixed(1) + '%';
+  var elYearRev = document.getElementById('monthlyYearRevenue'); if (!elYearRev) { console.warn('[financialReports] #monthlyYearRevenue not found'); return; }
+  elYearRev.textContent = fmt(yearTotal.revenue);
+  var elYearProfit = document.getElementById('monthlyYearProfit'); if (!elYearProfit) { console.warn('[financialReports] #monthlyYearProfit not found'); return; }
+  elYearProfit.textContent = fmt(yearTotal.profit);
+  var elAvgRev = document.getElementById('monthlyAvgRevenue'); if (!elAvgRev) { console.warn('[financialReports] #monthlyAvgRevenue not found'); return; }
+  elAvgRev.textContent = fmt(avgRevenue);
+  var elAvgMargin = document.getElementById('monthlyAvgMargin'); if (!elAvgMargin) { console.warn('[financialReports] #monthlyAvgMargin not found'); return; }
+  elAvgMargin.textContent = avgMargin.toFixed(1) + '%';
 
   // 월별 테이블
   var html = '';
@@ -185,7 +201,8 @@ function renderMonthlyPnl(d) {
       + '</tr>';
   });
 
-  document.getElementById('monthlyTableBody').innerHTML = html || '<tr><td colspan="5" class="px-3 py-12 text-center"><div class="flex flex-col items-center"><i class="fas fa-chart-line text-4xl text-gray-300 mb-3"></i><p class="text-gray-500 text-sm">데이터가 없습니다</p></div></td></tr>';
+  var elMonthlyBody = document.getElementById('monthlyTableBody'); if (!elMonthlyBody) { console.warn('[financialReports] #monthlyTableBody not found'); return; }
+  elMonthlyBody.innerHTML = html || '<tr><td colspan="5" class="px-3 py-12 text-center"><div class="flex flex-col items-center"><i class="fas fa-chart-line text-4xl text-gray-300 mb-3"></i><p class="text-gray-500 text-sm">데이터가 없습니다</p></div></td></tr>';
 }
 
 function renderMonthlyChart(d) {
@@ -339,21 +356,28 @@ function renderBalanceSnapshot(d) {
   var ap = liabilities.accounts_payable || 0;
   var loans = liabilities.loans || 0;
 
-  document.getElementById('snapshotCash').textContent = fmt(cash);
-  document.getElementById('snapshotAr').textContent = fmt(ar);
-  document.getElementById('snapshotInventory').textContent = fmt(inventory);
-  document.getElementById('snapshotAp').textContent = fmt(ap);
-  document.getElementById('snapshotLoans').textContent = fmt(loans);
+  var elCash = document.getElementById('snapshotCash'); if (!elCash) { console.warn('[financialReports] #snapshotCash not found'); return; }
+  elCash.textContent = fmt(cash);
+  var elAr = document.getElementById('snapshotAr'); if (!elAr) { console.warn('[financialReports] #snapshotAr not found'); return; }
+  elAr.textContent = fmt(ar);
+  var elInv = document.getElementById('snapshotInventory'); if (!elInv) { console.warn('[financialReports] #snapshotInventory not found'); return; }
+  elInv.textContent = fmt(inventory);
+  var elAp = document.getElementById('snapshotAp'); if (!elAp) { console.warn('[financialReports] #snapshotAp not found'); return; }
+  elAp.textContent = fmt(ap);
+  var elLoans = document.getElementById('snapshotLoans'); if (!elLoans) { console.warn('[financialReports] #snapshotLoans not found'); return; }
+  elLoans.textContent = fmt(loans);
 
   var netAssetsColor = netAssets < 0 ? 'color:#DC2626;' : 'color:#16A34A;';
-  document.getElementById('snapshotNetAssets').style.cssText = netAssetsColor + 'font-variant-numeric:tabular-nums;';
-  document.getElementById('snapshotNetAssets').textContent = fmt(netAssets);
+  var elNetAssets = document.getElementById('snapshotNetAssets'); if (!elNetAssets) { console.warn('[financialReports] #snapshotNetAssets not found'); return; }
+  elNetAssets.style.cssText = netAssetsColor + 'font-variant-numeric:tabular-nums;';
+  elNetAssets.textContent = fmt(netAssets);
 
   // 타임스탐프
   if (d.snapshot_at) {
     var date = new Date(d.snapshot_at);
     var timeStr = date.toLocaleString('ko-KR');
-    document.getElementById('snapshotTimestamp').textContent = '기준: ' + timeStr;
+    var elTimestamp = document.getElementById('snapshotTimestamp'); if (!elTimestamp) { console.warn('[financialReports] #snapshotTimestamp not found'); return; }
+    elTimestamp.textContent = '기준: ' + timeStr;
   }
 
   showToast('재무 스냅샷이 갱신되었습니다.', 'success');
@@ -368,6 +392,7 @@ window.switchFinancialTab = function(tab) {
   ['pnl', 'monthly', 'snapshot'].forEach(function(t) {
     var btn = document.getElementById('tab' + (t === 'pnl' ? 'Pnl' : t === 'monthly' ? 'Monthly' : 'Snapshot'));
     var panel = document.getElementById(t + 'Panel');
+    if (!btn || !panel) { console.warn('[financialReports] tab elements not found: ' + t); return; }
 
     if (t === tab) {
       btn.className = 'px-4 py-3 text-sm font-medium border-b-2 border-blue-600 text-blue-600 flex items-center gap-2';
@@ -392,12 +417,15 @@ window.exportFinancialCsv = async function() {
     var url;
     var filename;
     if (currentFinancialTab === 'monthly') {
-      var year = document.getElementById('monthlyYear').value;
+      var elMy = document.getElementById('monthlyYear'); if (!elMy) { console.warn('[financialReports] #monthlyYear not found'); return; }
+      var year = elMy.value;
       url = '/api/financial/export/csv?type=monthly&year=' + year;
       filename = '월별추이_' + year + '.csv';
     } else {
-      var from = document.getElementById('pnlFromDate').value;
-      var to = document.getElementById('pnlToDate').value;
+      var elFd = document.getElementById('pnlFromDate'); if (!elFd) { console.warn('[financialReports] #pnlFromDate not found'); return; }
+      var elTd = document.getElementById('pnlToDate'); if (!elTd) { console.warn('[financialReports] #pnlToDate not found'); return; }
+      var from = elFd.value;
+      var to = elTd.value;
       if (!from || !to) {
         showToast('기간을 선택해주세요.', 'warning');
         return;
@@ -425,6 +453,7 @@ window.exportFinancialCsv = async function() {
 (function init() {
   var year = new Date().getFullYear();
   var sel = document.getElementById('monthlyYear');
+  if (!sel) { console.warn('[financialReports] #monthlyYear not found'); return; }
   for (var y = year - 2; y <= year + 2; y++) {
     var opt = document.createElement('option');
     opt.value = y;
@@ -436,8 +465,10 @@ window.exportFinancialCsv = async function() {
   var today = new Date();
   var from = new Date(today.getFullYear(), today.getMonth(), 1);
   var to = new Date(today.getFullYear(), today.getMonth() + 1, 0);
-  document.getElementById('pnlFromDate').value = from.toISOString().split('T')[0];
-  document.getElementById('pnlToDate').value = to.toISOString().split('T')[0];
+  var elInitFrom = document.getElementById('pnlFromDate'); if (!elInitFrom) { console.warn('[financialReports] #pnlFromDate not found'); return; }
+  var elInitTo = document.getElementById('pnlToDate'); if (!elInitTo) { console.warn('[financialReports] #pnlToDate not found'); return; }
+  elInitFrom.value = from.toISOString().split('T')[0];
+  elInitTo.value = to.toISOString().split('T')[0];
 
   window.loadPnl();
 })();

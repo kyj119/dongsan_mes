@@ -46,8 +46,10 @@
 
   // ── 목록 조회 ──
   window.irLoadList = function() {
-    var year = document.getElementById('irYear').value || currentYear;
-    var month = document.getElementById('irMonth').value || '';
+    var elYear = document.getElementById('irYear'); if (!elYear) { console.warn('[insuranceReports] #irYear not found'); return; }
+    var elMonth = document.getElementById('irMonth'); if (!elMonth) { console.warn('[insuranceReports] #irMonth not found'); return; }
+    var year = elYear.value || currentYear;
+    var month = elMonth.value || '';
     axios.get('/api/insurance-reports', { params: { year: year, month: month || undefined } })
       .then(function(res) {
         var data = (res.data && res.data.data) || [];
@@ -66,10 +68,14 @@
       employerTotal += Number(r.grand_total_employer || 0);
       grandTotal += Number(r.grand_total || 0);
     });
-    document.getElementById('irStatCount').textContent = data.length;
-    document.getElementById('irStatEmployee').textContent = fmt(empTotal);
-    document.getElementById('irStatEmployer').textContent = fmt(employerTotal);
-    document.getElementById('irStatTotal').textContent = fmt(grandTotal);
+    var elStatCount = document.getElementById('irStatCount'); if (!elStatCount) { console.warn('[insuranceReports] #irStatCount not found'); return; }
+    elStatCount.textContent = data.length;
+    var elStatEmp = document.getElementById('irStatEmployee'); if (!elStatEmp) { console.warn('[insuranceReports] #irStatEmployee not found'); return; }
+    elStatEmp.textContent = fmt(empTotal);
+    var elStatEmployer = document.getElementById('irStatEmployer'); if (!elStatEmployer) { console.warn('[insuranceReports] #irStatEmployer not found'); return; }
+    elStatEmployer.textContent = fmt(employerTotal);
+    var elStatTotal = document.getElementById('irStatTotal'); if (!elStatTotal) { console.warn('[insuranceReports] #irStatTotal not found'); return; }
+    elStatTotal.textContent = fmt(grandTotal);
   }
 
   function statusBadge(s) {
@@ -94,6 +100,7 @@
 
   function renderTable(data) {
     var tbody = document.getElementById('irTableBody');
+    if (!tbody) { console.warn('[insuranceReports] #irTableBody not found'); return; }
     if (!data.length) {
       tbody.innerHTML = '<tr><td colspan="10" class="text-center text-gray-400 py-10"><i class="fas fa-inbox text-2xl mb-2 block"></i>신고서가 없습니다. "신고서 생성"을 클릭하세요.</td></tr>';
       return;
@@ -122,15 +129,19 @@
 
   // ── 생성 모달 ──
   window.irOpenGenerateModal = function() {
-    document.getElementById('irGenModal').classList.remove('hidden');
+    var el = document.getElementById('irGenModal'); if (!el) { console.warn('[insuranceReports] #irGenModal not found'); return; }
+    el.classList.remove('hidden');
   };
   window.irCloseGenModal = function() {
-    document.getElementById('irGenModal').classList.add('hidden');
+    var el = document.getElementById('irGenModal'); if (!el) { console.warn('[insuranceReports] #irGenModal not found'); return; }
+    el.classList.add('hidden');
   };
 
   window.irGenerate = function() {
-    var year = document.getElementById('irGenYear').value;
-    var month = document.getElementById('irGenMonth').value;
+    var elGenYear = document.getElementById('irGenYear'); if (!elGenYear) { console.warn('[insuranceReports] #irGenYear not found'); return; }
+    var elGenMonth = document.getElementById('irGenMonth'); if (!elGenMonth) { console.warn('[insuranceReports] #irGenMonth not found'); return; }
+    var year = elGenYear.value;
+    var month = elGenMonth.value;
     if (!year || !month) { showToast('연도와 월을 선택하세요', 'warning'); return; }
 
     axios.post('/api/insurance-reports/generate', { year: Number(year), month: Number(month) })
@@ -156,13 +167,16 @@
         var details = res.data.data.details;
 
         // 요약
-        document.getElementById('irDetailSummary').innerHTML =
+        var elDetailSummary = document.getElementById('irDetailSummary');
+        if (!elDetailSummary) { console.warn('[insuranceReports] #irDetailSummary not found'); return; }
+        elDetailSummary.innerHTML =
           '<div class="bg-blue-50 rounded-lg p-3 border border-blue-100"><div class="text-xs text-blue-600 font-medium">근로자 부담</div><div class="text-xl font-bold text-blue-800 tabular-nums mt-1">' + fmt(rpt.grand_total_employee) + '</div></div>' +
           '<div class="bg-amber-50 rounded-lg p-3 border border-amber-100"><div class="text-xs text-amber-600 font-medium">회사 부담</div><div class="text-xl font-bold text-amber-800 tabular-nums mt-1">' + fmt(rpt.grand_total_employer) + '</div></div>' +
           '<div class="bg-gray-50 rounded-lg p-3 border border-gray-200"><div class="text-xs text-gray-500 font-medium">전체 합계</div><div class="text-xl font-bold text-gray-900 tabular-nums mt-1">' + fmt(rpt.grand_total) + '</div></div>';
 
         // 직원별 테이블
         var tbody = document.getElementById('irDetailTable');
+        if (!tbody) { console.warn('[insuranceReports] #irDetailTable not found'); return; }
         tbody.innerHTML = details.map(function(d) {
           var empSub = Number(d.national_pension||0) + Number(d.health_insurance||0) + Number(d.long_term_care||0) + Number(d.employment_insurance||0);
           var corpSub = Number(d.employer_national_pension||0) + Number(d.employer_health_insurance||0) + Number(d.employer_long_term_care||0) + Number(d.employer_employment_insurance||0) + Number(d.employer_industrial_accident||0);
@@ -179,10 +193,13 @@
         }).join('');
 
         // 버튼 표시
-        document.getElementById('irSubmitBtn').classList.toggle('hidden', rpt.status !== 'DRAFT');
-        document.getElementById('irConfirmBtn').classList.toggle('hidden', rpt.status !== 'SUBMITTED');
+        var elSubmitBtn = document.getElementById('irSubmitBtn'); if (!elSubmitBtn) { console.warn('[insuranceReports] #irSubmitBtn not found'); return; }
+        elSubmitBtn.classList.toggle('hidden', rpt.status !== 'DRAFT');
+        var elConfirmBtn = document.getElementById('irConfirmBtn'); if (!elConfirmBtn) { console.warn('[insuranceReports] #irConfirmBtn not found'); return; }
+        elConfirmBtn.classList.toggle('hidden', rpt.status !== 'SUBMITTED');
 
-        document.getElementById('irDetailModal').classList.remove('hidden');
+        var elDetailModal = document.getElementById('irDetailModal'); if (!elDetailModal) { console.warn('[insuranceReports] #irDetailModal not found'); return; }
+        elDetailModal.classList.remove('hidden');
       })
       .catch(function(e) {
         showToast('조회 실패: ' + ((e.response && e.response.data && e.response.data.error) || e.message), 'error');
@@ -190,7 +207,8 @@
   };
 
   window.irCloseDetail = function() {
-    document.getElementById('irDetailModal').classList.add('hidden');
+    var el = document.getElementById('irDetailModal'); if (!el) { console.warn('[insuranceReports] #irDetailModal not found'); return; }
+    el.classList.add('hidden');
     currentDetailId = null;
   };
 

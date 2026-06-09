@@ -38,6 +38,7 @@ function switchMainTab(tab) {
   var periodPanel = document.getElementById('mainPanelPeriod');
   var dailyBtn = document.getElementById('mainTabDaily');
   var periodBtn = document.getElementById('mainTabPeriod');
+  if (!dailyPanel || !periodPanel || !dailyBtn || !periodBtn) { console.warn('[productionReports] main tab elements not found'); return; }
 
   if (tab === 'daily') {
     dailyPanel.classList.remove('hidden');
@@ -66,12 +67,14 @@ function getToday() {
 }
 
 function setToday() {
-  document.getElementById('reportDate').value = getToday();
+  var el = document.getElementById('reportDate'); if (!el) { console.warn('[productionReports] #reportDate not found'); return; }
+  el.value = getToday();
   loadDailySummary();
 }
 
 function changeDailyDate(delta) {
   var input = document.getElementById('reportDate');
+  if (!input) { console.warn('[productionReports] #reportDate not found'); return; }
   var d = new Date(input.value);
   d.setDate(d.getDate() + delta);
   input.value = d.toISOString().substring(0, 10);
@@ -79,7 +82,8 @@ function changeDailyDate(delta) {
 }
 
 async function loadDailySummary() {
-  var date = document.getElementById('reportDate').value;
+  var elDate = document.getElementById('reportDate'); if (!elDate) { console.warn('[productionReports] #reportDate not found'); return; }
+  var date = elDate.value;
   if (!date) return;
 
   try {
@@ -88,11 +92,16 @@ async function loadDailySummary() {
     var d = res.data.data;
 
     // KPI
-    document.getElementById('kpiPrints').textContent = d.ok_count;
-    document.getElementById('kpiOk').textContent = d.ok_count;
-    document.getElementById('kpiError').textContent = d.error_count + d.cancel_count;
-    document.getElementById('kpiSqm').textContent = (d.total_sqm || 0).toLocaleString(undefined, {maximumFractionDigits:1});
-    document.getElementById('kpiRate').textContent = (d.completion_rate || 0) + '%';
+    var elKpiPrints = document.getElementById('kpiPrints'); if (!elKpiPrints) { console.warn('[productionReports] #kpiPrints not found'); return; }
+    elKpiPrints.textContent = d.ok_count;
+    var elKpiOk = document.getElementById('kpiOk'); if (!elKpiOk) { console.warn('[productionReports] #kpiOk not found'); return; }
+    elKpiOk.textContent = d.ok_count;
+    var elKpiError = document.getElementById('kpiError'); if (!elKpiError) { console.warn('[productionReports] #kpiError not found'); return; }
+    elKpiError.textContent = d.error_count + d.cancel_count;
+    var elKpiSqm = document.getElementById('kpiSqm'); if (!elKpiSqm) { console.warn('[productionReports] #kpiSqm not found'); return; }
+    elKpiSqm.textContent = (d.total_sqm || 0).toLocaleString(undefined, {maximumFractionDigits:1});
+    var elKpiRate = document.getElementById('kpiRate'); if (!elKpiRate) { console.warn('[productionReports] #kpiRate not found'); return; }
+    elKpiRate.textContent = (d.completion_rate || 0) + '%';
     var equipArr = d.by_equipment || [];
     var overdueArr = d.overdue_orders || d.overdue || [];
     if (document.getElementById('kpiCardDone')) document.getElementById('kpiCardDone').textContent = d.card_completed || 0;
@@ -116,6 +125,7 @@ async function loadDailySummary() {
 
 function renderEquipmentTable(data) {
   var el = document.getElementById('equipmentTable');
+  if (!el) { console.warn('[productionReports] #equipmentTable not found'); return; }
   if (!data || data.length === 0) {
     el.innerHTML = '<div class="text-center py-4 text-gray-400 text-sm">출력 데이터 없음</div>';
     return;
@@ -156,6 +166,7 @@ function renderEquipmentTable(data) {
 
 function renderHourlyChart(data) {
   var el = document.getElementById('hourlyChart');
+  if (!el) { console.warn('[productionReports] #hourlyChart not found'); return; }
   if (!data || data.length === 0) {
     el.innerHTML = '<div class="text-center py-4 text-gray-400 text-sm">출력 데이터 없음</div>';
     return;
@@ -192,6 +203,7 @@ function renderHourlyChart(data) {
 
 function renderOverdueTable(data) {
   var el = document.getElementById('overdueTable');
+  if (!el) { console.warn('[productionReports] #overdueTable not found'); return; }
   if (!data || data.length === 0) {
     el.innerHTML = '<div class="text-center py-4 text-green-600 text-sm"><i class="fas fa-check-circle mr-1"></i> 미완료 주문 없음</div>';
     return;
@@ -261,7 +273,10 @@ function switchReportTab(tab) {
 }
 
 function getDateParams() {
-  return 'from=' + document.getElementById('dateFrom').value + '&to=' + document.getElementById('dateTo').value;
+  var elFrom = document.getElementById('dateFrom');
+  var elTo = document.getElementById('dateTo');
+  if (!elFrom || !elTo) { console.warn('[productionReports] #dateFrom/#dateTo not found'); return 'from=&to='; }
+  return 'from=' + elFrom.value + '&to=' + elTo.value;
 }
 
 function loadCurrentTab() {
@@ -281,10 +296,14 @@ async function loadProduction() {
     if (!res.data.success) return;
     var d = res.data.data;
     var t = d.totals || {};
-    document.getElementById('prodTotal').textContent = (t.total_prints || 0).toLocaleString();
-    document.getElementById('prodOk').textContent = (t.ok_count || 0).toLocaleString();
-    document.getElementById('prodError').textContent = ((t.error_count || 0) + (t.cancel_count || 0)).toLocaleString();
-    document.getElementById('prodCards').textContent = (t.card_count || 0).toLocaleString();
+    var elProdTotal = document.getElementById('prodTotal'); if (!elProdTotal) { console.warn('[productionReports] #prodTotal not found'); return; }
+    elProdTotal.textContent = (t.total_prints || 0).toLocaleString();
+    var elProdOk = document.getElementById('prodOk'); if (!elProdOk) { console.warn('[productionReports] #prodOk not found'); return; }
+    elProdOk.textContent = (t.ok_count || 0).toLocaleString();
+    var elProdError = document.getElementById('prodError'); if (!elProdError) { console.warn('[productionReports] #prodError not found'); return; }
+    elProdError.textContent = ((t.error_count || 0) + (t.cancel_count || 0)).toLocaleString();
+    var elProdCards = document.getElementById('prodCards'); if (!elProdCards) { console.warn('[productionReports] #prodCards not found'); return; }
+    elProdCards.textContent = (t.card_count || 0).toLocaleString();
 
     // 장비별
     var equipData = d.by_equipment || [];
@@ -300,7 +319,8 @@ async function loadProduction() {
         + (errRate > 0 ? '<span class="text-red-500 w-10 text-right">' + errRate + '%</span>' : '<span class="text-gray-300 w-10 text-right">0%</span>')
         + '</div>';
     });
-    document.getElementById('prodByEquipment').innerHTML = equipHtml;
+    var elProdByEquip = document.getElementById('prodByEquipment'); if (!elProdByEquip) { console.warn('[productionReports] #prodByEquipment not found'); return; }
+    elProdByEquip.innerHTML = equipHtml;
 
     // 구역별
     var zoneData = d.by_zone || [];
@@ -309,7 +329,8 @@ async function loadProduction() {
     zoneData.forEach(function(z) {
       zoneHtml += renderBar(z.ok_count, maxZone, z.zone, 'bg-green-500');
     });
-    document.getElementById('prodByZone').innerHTML = zoneHtml;
+    var elProdByZone = document.getElementById('prodByZone'); if (!elProdByZone) { console.warn('[productionReports] #prodByZone not found'); return; }
+    elProdByZone.innerHTML = zoneHtml;
 
     // 일별 추이
     var dailyData = d.daily || [];
@@ -319,7 +340,8 @@ async function loadProduction() {
       var dateLabel = dd.date ? dd.date.substring(5, 10) : '';
       dailyHtml += renderBar(dd.ok_count, maxDaily, dateLabel, 'bg-blue-500');
     });
-    document.getElementById('prodDaily').innerHTML = dailyHtml;
+    var elProdDaily = document.getElementById('prodDaily'); if (!elProdDaily) { console.warn('[productionReports] #prodDaily not found'); return; }
+    elProdDaily.innerHTML = dailyHtml;
 
   } catch(e) { console.error('Load production error:', e); }
 }
@@ -344,7 +366,8 @@ async function loadPostProcessing() {
         + '<span class="text-gray-400 w-16 text-[10px]">진행:' + t.printing + ' 완료:' + t.done + '</span>'
         + '</div>';
     });
-    document.getElementById('ppByType').innerHTML = typeHtml;
+    var elPpByType = document.getElementById('ppByType'); if (!elPpByType) { console.warn('[productionReports] #ppByType not found'); return; }
+    elPpByType.innerHTML = typeHtml;
 
     // 카테고리별
     var catData = d.by_category || [];
@@ -353,7 +376,8 @@ async function loadPostProcessing() {
     catData.forEach(function(c) {
       catHtml += renderBar(c.count, maxCat, c.category, 'bg-purple-500');
     });
-    document.getElementById('ppByCategory').innerHTML = catHtml;
+    var elPpByCat = document.getElementById('ppByCategory'); if (!elPpByCat) { console.warn('[productionReports] #ppByCategory not found'); return; }
+    elPpByCat.innerHTML = catHtml;
 
   } catch(e) { console.error('Load post-processing error:', e); }
 }
@@ -421,7 +445,8 @@ async function loadUptime() {
       });
       html += '</tbody></table></div>';
     }
-    document.getElementById('uptimeData').innerHTML = html;
+    var elUptime = document.getElementById('uptimeData'); if (!elUptime) { console.warn('[productionReports] #uptimeData not found'); return; }
+    elUptime.innerHTML = html;
 
   } catch(e) { console.error('Load uptime error:', e); }
 }
@@ -455,7 +480,8 @@ async function loadDefects() {
         + '</div>'
         + '</div>';
     });
-    document.getElementById('defectsByEquipment').innerHTML = eqHtml;
+    var elDefByEquip = document.getElementById('defectsByEquipment'); if (!elDefByEquip) { console.warn('[productionReports] #defectsByEquipment not found'); return; }
+    elDefByEquip.innerHTML = eqHtml;
 
     // 월별 추이
     var mData = d.monthly_trend || [];
@@ -471,7 +497,8 @@ async function loadDefects() {
         + '<span class="text-gray-400 w-20">(' + m.defects + '/' + m.total + ')</span>'
         + '</div>';
     });
-    document.getElementById('defectsMonthly').innerHTML = mHtml;
+    var elDefMonthly = document.getElementById('defectsMonthly'); if (!elDefMonthly) { console.warn('[productionReports] #defectsMonthly not found'); return; }
+    elDefMonthly.innerHTML = mHtml;
 
     // 불량 접수 유형별 (quality_issues)
     var qiData = d.quality_issues || [];
@@ -514,7 +541,8 @@ async function loadConsumption() {
         + '<span class="w-20 ' + stockClass + ' text-right">재고: ' + (item.current_stock || 0) + '</span>'
         + '</div>';
     });
-    document.getElementById('consumptionByItem').innerHTML = itemHtml;
+    var elConsItem = document.getElementById('consumptionByItem'); if (!elConsItem) { console.warn('[productionReports] #consumptionByItem not found'); return; }
+    elConsItem.innerHTML = itemHtml;
 
     // 월별 소비 추이
     var monthly = d.monthly || [];
@@ -530,7 +558,8 @@ async function loadConsumption() {
         + (cost ? '<span class="text-gray-400 w-24 text-right">' + cost + '</span>' : '')
         + '</div>';
     });
-    document.getElementById('consumptionMonthly').innerHTML = mHtml;
+    var elConsMonthly = document.getElementById('consumptionMonthly'); if (!elConsMonthly) { console.warn('[productionReports] #consumptionMonthly not found'); return; }
+    elConsMonthly.innerHTML = mHtml;
 
   } catch(e) { console.error('Load consumption error:', e); }
 }
@@ -553,9 +582,12 @@ async function loadPrintDuration() {
     });
     var avgSec = totalCount > 0 ? Math.round(totalSec / totalCount) : 0;
 
-    document.getElementById('durAvg').textContent = formatDuration(avgSec);
-    document.getElementById('durTotalHours').textContent = totalHours.toFixed(1) + 'h';
-    document.getElementById('durCount').textContent = totalCount.toLocaleString() + '건';
+    var elDurAvg = document.getElementById('durAvg'); if (!elDurAvg) { console.warn('[productionReports] #durAvg not found'); return; }
+    elDurAvg.textContent = formatDuration(avgSec);
+    var elDurTotal = document.getElementById('durTotalHours'); if (!elDurTotal) { console.warn('[productionReports] #durTotalHours not found'); return; }
+    elDurTotal.textContent = totalHours.toFixed(1) + 'h';
+    var elDurCount = document.getElementById('durCount'); if (!elDurCount) { console.warn('[productionReports] #durCount not found'); return; }
+    elDurCount.textContent = totalCount.toLocaleString() + '건';
 
     // 장비별
     var maxAvg = equipData.length > 0 ? Math.max.apply(null, equipData.map(function(e) { return e.avg_sec || 0; })) : 1;
@@ -570,7 +602,8 @@ async function loadPrintDuration() {
         + '<span class="text-gray-400 w-14 text-right text-[10px]">' + (eq.total_hours || 0) + 'h</span>'
         + '</div>';
     });
-    document.getElementById('durByEquipment').innerHTML = eqHtml;
+    var elDurByEquip = document.getElementById('durByEquipment'); if (!elDurByEquip) { console.warn('[productionReports] #durByEquipment not found'); return; }
+    elDurByEquip.innerHTML = eqHtml;
 
     // 일별
     var maxDailyDur = dailyData.length > 0 ? Math.max.apply(null, dailyData.map(function(dd) { return dd.avg_sec || 0; })) : 1;
@@ -585,12 +618,14 @@ async function loadPrintDuration() {
         + '<span class="text-gray-400 w-10 text-right text-[10px]">' + (dd.print_count || 0) + '</span>'
         + '</div>';
     });
-    document.getElementById('durDaily').innerHTML = dayHtml;
+    var elDurDaily = document.getElementById('durDaily'); if (!elDurDaily) { console.warn('[productionReports] #durDaily not found'); return; }
+    elDurDaily.innerHTML = dayHtml;
 
     // 프린터별 규격 대비 인쇄시간
     var psByPrinter = d.by_printer_size || [];
     if (psByPrinter.length === 0) {
-      document.getElementById('durByPrinterSize').innerHTML = '<div class="text-center text-gray-400 text-sm py-4">데이터 없음</div>';
+      var elPSE = document.getElementById('durByPrinterSize'); if (!elPSE) { console.warn('[productionReports] #durByPrinterSize not found'); return; }
+      elPSE.innerHTML = '<div class="text-center text-gray-400 text-sm py-4">데이터 없음</div>';
     } else {
       // 프린터별로 그룹핑
       var printers = {};
@@ -626,7 +661,8 @@ async function loadPrintDuration() {
         });
         psHtml += '</tbody></table></div>';
       });
-      document.getElementById('durByPrinterSize').innerHTML = psHtml;
+      var elPS = document.getElementById('durByPrinterSize'); if (!elPS) { console.warn('[productionReports] #durByPrinterSize not found'); return; }
+      elPS.innerHTML = psHtml;
     }
 
   } catch(e) { console.error('Load print duration error:', e); }
@@ -666,7 +702,8 @@ async function loadCardDwellTime() {
       });
       sHtml += '</tbody></table>';
     }
-    document.getElementById('dwellByStatus').innerHTML = sHtml;
+    var elDwellStatus = document.getElementById('dwellByStatus'); if (!elDwellStatus) { console.warn('[productionReports] #dwellByStatus not found'); return; }
+    elDwellStatus.innerHTML = sHtml;
 
     // 카테고리별
     var maxCatHours = catData.length > 0 ? Math.max.apply(null, catData.map(function(c) { return c.avg_hours || 0; })) : 1;
@@ -683,7 +720,8 @@ async function loadCardDwellTime() {
         + '<span class="text-gray-400 w-10 text-right text-[10px]">' + (c.count || 0) + '건</span>'
         + '</div>';
     });
-    document.getElementById('dwellByCategory').innerHTML = cHtml;
+    var elDwellCat = document.getElementById('dwellByCategory'); if (!elDwellCat) { console.warn('[productionReports] #dwellByCategory not found'); return; }
+    elDwellCat.innerHTML = cHtml;
 
   } catch(e) { console.error('Load card dwell time error:', e); }
 }
@@ -708,5 +746,7 @@ async function exportProductionCsv() {
 }
 
 // ── 초기 로드: 일일 생산 탭 기본 ──
-document.getElementById('reportDate').value = getToday();
+var elInitDate = document.getElementById('reportDate');
+if (elInitDate) elInitDate.value = getToday();
+else console.warn('[productionReports] #reportDate not found');
 loadDailySummary();

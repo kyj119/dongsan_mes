@@ -12,8 +12,10 @@ function initDeliveryAnalytics() {
   thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
   const formatDate = (d) => d.toISOString().split('T')[0];
-  document.getElementById('dateFrom').value = formatDate(thirtyDaysAgo);
-  document.getElementById('dateTo').value = formatDate(today);
+  var elFrom = document.getElementById('dateFrom'); if (!elFrom) { console.warn('[deliveryAnalytics] #dateFrom not found'); return; }
+  var elTo = document.getElementById('dateTo'); if (!elTo) { console.warn('[deliveryAnalytics] #dateTo not found'); return; }
+  elFrom.value = formatDate(thirtyDaysAgo);
+  elTo.value = formatDate(today);
 
   loadDeliveryAnalytics();
 }
@@ -25,8 +27,10 @@ function resetFilters() {
   thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
   const formatDate = (d) => d.toISOString().split('T')[0];
-  document.getElementById('dateFrom').value = formatDate(thirtyDaysAgo);
-  document.getElementById('dateTo').value = formatDate(today);
+  var elFrom = document.getElementById('dateFrom'); if (!elFrom) { console.warn('[deliveryAnalytics] #dateFrom not found'); return; }
+  var elTo = document.getElementById('dateTo'); if (!elTo) { console.warn('[deliveryAnalytics] #dateTo not found'); return; }
+  elFrom.value = formatDate(thirtyDaysAgo);
+  elTo.value = formatDate(today);
 
   loadDeliveryAnalytics();
 }
@@ -34,8 +38,10 @@ function resetFilters() {
 // ===== 주요 데이터 로드 =====
 async function loadDeliveryAnalytics() {
   try {
-    const from = document.getElementById('dateFrom').value;
-    const to = document.getElementById('dateTo').value;
+    const elFrom = document.getElementById('dateFrom'); if (!elFrom) { console.warn('[deliveryAnalytics] #dateFrom not found'); return; }
+    const elTo = document.getElementById('dateTo'); if (!elTo) { console.warn('[deliveryAnalytics] #dateTo not found'); return; }
+    const from = elFrom.value;
+    const to = elTo.value;
 
     if (!from || !to) {
       showToast('기간을 선택해주세요.', 'warning');
@@ -73,7 +79,8 @@ async function loadDeliveryStats(from, to) {
     }).length;
 
     const onTimeRate = deliveryData.length > 0 ? Math.round((onTimeCount / deliveryData.length) * 100) : 0;
-    document.getElementById('onTimeRate').innerHTML = onTimeRate + '<span class="unit">%</span>';
+    var elOnTime = document.getElementById('onTimeRate'); if (!elOnTime) { console.warn('[deliveryAnalytics] #onTimeRate not found'); return; }
+    elOnTime.innerHTML = onTimeRate + '<span class="unit">%</span>';
 
     // 평균 처리시간 계산 (created_at → shipped_at)
     const processTimes = deliveryData
@@ -87,7 +94,8 @@ async function loadDeliveryStats(from, to) {
     const avgProcessTime = processTimes.length > 0
       ? Math.round(processTimes.reduce((a, b) => a + b, 0) / processTimes.length * 10) / 10
       : 0;
-    document.getElementById('avgProcessTime').innerHTML = avgProcessTime + '<span class="unit">시간</span>';
+    var elAvg = document.getElementById('avgProcessTime'); if (!elAvg) { console.warn('[deliveryAnalytics] #avgProcessTime not found'); return; }
+    elAvg.innerHTML = avgProcessTime + '<span class="unit">시간</span>';
 
   } catch (error) {
     console.error('Error loading delivery stats:', error);
@@ -100,7 +108,8 @@ async function loadDueToday() {
     const res = await authFetch('/api/dashboard/stats/today-due', { method: 'GET' });
     const data = await res.json();
     const count = data.data?.count || 0;
-    document.getElementById('dueTodayCount').innerHTML = count + '<span class="unit">건</span>';
+    var elDueToday = document.getElementById('dueTodayCount'); if (!elDueToday) { console.warn('[deliveryAnalytics] #dueTodayCount not found'); return; }
+    elDueToday.innerHTML = count + '<span class="unit">건</span>';
   } catch (error) {
     console.error('Error loading due today:', error);
   }
@@ -125,6 +134,7 @@ async function loadDwellTime(from, to) {
 // ===== 체류시간 차트 렌더 =====
 function renderDwellChart() {
   const container = document.getElementById('dwellTimeContent');
+  if (!container) { console.warn('[deliveryAnalytics] #dwellTimeContent not found'); return; }
 
   if (!dwellTimeData || dwellTimeData.length === 0) {
     container.innerHTML = '<div style="text-align:center;padding:32px;color:#9ca3af;font-size:13px;">데이터가 없습니다.</div>';
@@ -199,7 +209,8 @@ async function loadDelayedOrders(from, to) {
     renderDelayedOrders();
 
     // 지연 건수 업데이트
-    document.getElementById('delayedCount').innerHTML = delayedOrders.length + '<span class="unit">건</span>';
+    var elDelayed = document.getElementById('delayedCount'); if (!elDelayed) { console.warn('[deliveryAnalytics] #delayedCount not found'); return; }
+    elDelayed.innerHTML = delayedOrders.length + '<span class="unit">건</span>';
   } catch (error) {
     console.error('Error loading delayed orders:', error);
   }
@@ -209,6 +220,7 @@ async function loadDelayedOrders(from, to) {
 function renderDelayedOrders() {
   const tbody = document.getElementById('delayedOrdersBody');
   const countEl = document.getElementById('delayedTableCount');
+  if (!tbody || !countEl) { console.warn('[deliveryAnalytics] #delayedOrdersBody/#delayedTableCount not found'); return; }
 
   if (!delayedOrders || delayedOrders.length === 0) {
     tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:32px;color:#9ca3af;"><i class="fas fa-check-circle"></i> 지연 주문이 없습니다.</td></tr>';
@@ -279,8 +291,10 @@ function openOrder(orderId) {
 // ===== CSV 내보내기 =====
 async function exportDeliveryAnalyticsCsv() {
   try {
-    var from = document.getElementById('dateFrom').value;
-    var to = document.getElementById('dateTo').value;
+    var elFrom = document.getElementById('dateFrom'); if (!elFrom) { console.warn('[deliveryAnalytics] #dateFrom not found'); return; }
+    var elTo = document.getElementById('dateTo'); if (!elTo) { console.warn('[deliveryAnalytics] #dateTo not found'); return; }
+    var from = elFrom.value;
+    var to = elTo.value;
     if (!from || !to) {
       showToast('기간을 선택해주세요.', 'warning');
       return;
