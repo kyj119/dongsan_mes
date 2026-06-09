@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 4 -->
-<!-- last_run_at: 2026-06-09T14:00:00+09:00 -->
+<!-- last_run_area: 5 -->
+<!-- last_run_at: 2026-06-09T18:00:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,12 +8,22 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | 2 (open auto-improve **실측 06-09T14:00** — #373(신규 Area 4)·#372(Area 3). 직전 open이던 #366/#369/#350/#341/#336/#342/#340이 **전부 close**됨(세션정리 e3b0af6 "8건 처리·전건 close") → done/rejected 분류 Area 6 검증 대기) |
+| 🆕 new | 2 (open auto-improve **실측 06-09T18:00 재확인** — #373(Area 4)·#372(Area 3). Area 5 net-new 0건이라 변동 없음. 직전 open이던 #366/#369/#350/#341/#336/#342/#340 전부 close → done/rejected 분류 Area 6 검증 대기) |
 | ✅ approved | 0 (직전 approved #342/#340 모두 close — Area 6에서 done/rejected 확정 필요) |
 | 👀 reviewed | 0 |
 | ✔️ done | 61 (+06-09 대량 close 다수 — #366(KST 완료)·#369·#350·#341·#342·#340 등 done 후보, 분류 Area 6 검증 대기) |
 | ❌ rejected | 3 |
 
+> **Area 5 보안 (2026-06-09T18:00):**
+> - **방법**: baseline `npm ci`+tsc --noEmit PASS. Area 5 **8회차** — IDOR 비대칭(#356~#368 11모듈)·SQLi·rate·XSS·PII·파일프록시(#365)·CSV injection(#367)·엔티티전환 인가·JWT·webhook 고갈 → **시의성 + 덜 다룬 각도** 병렬 Explore 2개: (A)방금 랜딩된 5c1e11f facility.ts equipment·cards 격리 수정이 #356식 비대칭 갭을 남겼는지 완전성 검증 (B)웹훅/콜백/외부연동 엔드포인트 인증·서명 검증. 발견 전수 owner 직접 코드 검증(오탐 차단).
+> - **🟢 net-new 0건 — 모든 각도 clean 또는 오탐**:
+>   - **시의성: 5c1e11f facility.ts 격리 수정 = complete**: 커밋이 지목한 5위치(`/zones` equipment count `:23`·`/layout-data` equipment WHERE `:125`·cards count `:118`·cards GROUP BY `:136`·`/equipment/:id/zone` UPDATE `:265`) **전부 entityFilter/cardEntityFilter 적용**. facility.ts 13핸들러 중 entity-scoped 테이블(equipment `entity_id` 0302·cards `requesting_entity_id` 0284) 터치하는 5핸들러 모두 list↔write 대칭 → **#356식 비대칭 갭 0**. 공유테이블(facility_zones/inventory_locations/facility_settings, entity_id 컬럼 무)은 정당 면제. INSERT 경로(rip.ts:291 equipment·orders/core.ts:253·lifecycle.ts:1075 cards) 전부 `getEntityId(c)` 주입. 인접 `cards/scheduling.ts` 4핸들러도 `cardEntityScope`(order_id→orders.entity_id, entityId=0 ADMIN전체모드 생략 `:20-24`)를 SELECT+UPDATE 대칭 적용 → clean.
+>   - **🚫 `/api/hr/self-auth` HIGH 주장 오탐 차단 (에이전트 과대평가 → owner 코드 반증)**: 에이전트가 "사원번호 열거+생년월일6자리 추측으로 임의 직원 토큰 생성 HIGH"로 보고했으나 **rate limit 5/분 이미 적용**(`index.tsx:244`). authMiddleware 없는 건 **계정 없는 직원용 간이 2팩터(사원번호+생년월일) 설계 의도** + 동일 코드베이스의 portal `/verify-document`(토큰+BRN, 직전 06-08 감사 "설계 정상" 판정)와 **동형**. rate-limit-by-IP 로테이션 한계는 모든 로그인 공통+기존 인지 아키텍처 제약(rateLimit.ts in-memory). timing-attack도 두 분기 모두 단일쿼리+문자열비교라 유의미 차이 없음. 토큰 scope='employee-self'+30분 만료+증명서/계약서 read만 = 저가치. → **드롭**. (SKILL FP 목록 codify)
+>   - **웹훅/포털토큰/카카오/autoProcess/files 인증 clean**: `webhooks.ts`=빈 파일(바로빌 자체 콜백, 미구현)·`kakao.ts:44`=ADMIN/MANAGER 전역·`autoProcess.ts:8`=ADMIN 전역·`files.ts:7`=authMiddleware 전역. 포털 매직링크 토큰=`crypto.randomUUID()` 32hex(2^128)+`verify-document`는 토큰+BRN 대조(`portal.ts:655`)+rate limit 10/분 → 적절. 무인증 엔드포인트(login/health/self-auth/portal verify)는 전부 의도적 공개+rate limit 게이트.
+>   - **서버 템플릿 XSS clean**: `templates/employmentCertificate.ts`·`laborContract.ts` 전 보간값 `esc()` 적용(#335). **SQLi clean**: 동적 `ORDER BY ${orderBy}` 4곳(orders/PO/cards/queries) 전부 `sortOptions[sort] || default` **리터럴 화이트리스트 맵** 조회(raw 입력 미interpolation), `bank.ts:183` IN절도 `?` placeholder 바인딩. **mass-assignment clean**: `hr.ts:467/607` body.entity_id는 `sessionEid===0`(ADMIN 전체모드) 게이팅(#349), migration은 ADMIN 전용.
+> - **이상 없음**: Area 5 성숙도 매우 높음(2사이클 연속 net-new 0, IDOR 클러스터 전수 처리됨). 에러 메시지 노출(migration error_details=ADMIN 임포트 기능, 나머지 console.error)=저수율 드롭. open auto-improve 실측 2건(#372/#373). baseline PASS.
+> - 자동 수정 0건(net-new 없음), 신규 이슈 0건, **시의성 facility 수정 완전성 검증(complete)** + 오탐 1건 차단(hr self-auth HIGH 과대평가) + **FP 패턴 1건 신설**(무인증 self-service auth rate-limited 엔드포인트 → SKILL Area 5 오탐 제외 codify)
+>
 > **Area 4 데이터 정합성 (2026-06-09T14:00):**
 > - **방법**: ground-truth — 299 마이그레이션 로컬 D1(node:sqlite) 전량 적용(**FAIL 0**, 171테이블/509인덱스) + baseline `npm ci`+tsc --noEmit PASS. Area 4 **8회차** — 기존 각도(마이그레이션·CHECK↔코드·balance/재고 대칭·FK cascade·트리거·비원자 고아#FP·dead table#364·UTC/KST#366·entity_id DEFAULT) 고갈 → **시의성 + 덜 다룬 각도** 병렬 Explore 2개: (A)방금 랜딩된 #366 KST 수정 5커밋이 신규 불일치 도입했는지 (B)크로스테이블 상태머신 정합성(정방향은 연관상태 갱신, 역방향 취소/삭제가 롤백 누락). 발견 전수 owner 직접 코드 검증(오탐 차단).
 > - **🐛 신규 이슈 #373 (MED bug) — 입고검수 CANCELLED 시 재고만 역분개, PO status·received_quantity 미롤백**: PO 입고(`purchaseOrders/core.ts:receive`)에 거부수량 있으면 receipt `inspection_status='PENDING_REVIEW'`(`:1567`) + `purchase_order_items.received_quantity` 누적 + `purchase_orders.status`→RECEIVED/PARTIAL 전이(`:1382/1391`). 관리자 반려(`inspections.js:406`→`inventory.ts:413-466` CANCELLED)는 ✅재고 역분개·✅RECEIPT_CANCEL 트랜잭션·✅receipt status=CANCELLED 처리하나 ❌`received_quantity` 미감산 + ❌PO status 미롤백(`inventory.ts` 핸들러가 purchase_orders 미참조, grep 0). **잔류 모순**: 재고는 빠졌는데 PO는 RECEIVED 영구 잔류 + `remaining=quantity-received_quantity`(`:1494`) 오계산 → 취소수량 **재입고 불가**(400 차단). 발화=입고 시 거부수량(실무 빈번)→PENDING_REVIEW→반려. **도달성 확인**(inspections.js:406). **#369와 별개**(#369=재고측 멱등/원자성 이미 수정, 본건=PO측 롤백). **자동수정 안 함**(롤백 정책=비즈니스 로직+egress 검증불가).
