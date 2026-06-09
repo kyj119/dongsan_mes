@@ -1,6 +1,6 @@
 # PROJECT_STATUS.md — 프로젝트 현황판
 
-> **최종 업데이트**: 2026-06-09
+> **최종 업데이트**: 2026-06-10
 > 완료 이력 → `PROJECT_STATUS_ARCHIVE.md` (매 세션 읽을 필요 없음, 필요 시 참조)
 
 ---
@@ -13,6 +13,7 @@
 
 ## 🔴 현재 진행 중
 
+- **🟢 세션3 알림톡 실발송·UI·성능 (2026-06-10) — prod 배포·검증 완료**: ①**카카오 알림톡 실발송 성공**(커밋 `9bf1cb2e`): 3 root-cause 버그를 바로빌 공식 오류코드로 확정(dev.barobill.co.kr SPA를 Playwright로 렌더해 읽음). SenderID 빈값→**-24005**(사업자·아이디 불일치)=연동아이디 `DONGSAN` 채움 / SmsReply='Y' 무효→**-31325**(대체문자 유형오류)=유효값 E/A/N(기본 N, `smsReplyOf`) / 성공판정=알림톡 접수번호는 비숫자 SendKey라 음수만 실패로 수정(`interpretReceipt`). **SendKey `BB_3148184311_AT_3901210_260609` 수신·실착신 확인(용준님)**. 부수: listATSTemplate(ChannelId 필수·필드명) 4템플릿 정상, 대량발송 ArrayOfString 해석, 중복호출 제거, 로그 음수 SUCCESS 오기록 3건 정정. ②**주문관리 테이블 잘림**(`67a5248d`): 상태 아이콘 제거('...')+납기일 ord-due overflow(지연 뱃지). ③**카드 로딩**(마이그 `0304` prod 적용): 복합 인덱스+date sargable, API 45–72ms. ④**출고 수동발송 정합**(`0a329a02`): autoCodeMap 실제 템플릿명. 상세→`session-context`, 메모리 `project-alimtalk-status`.
 - **🟢 세션2 코드품질·멀티테넌시·배송버그 (2026-06-09) — prod 배포·검증 완료**: ①**저장소 위생**: PII 8건 git filter-repo 제거+force-push(협업자 re-clone 필수), layout.ts 3259→228 분할, getElementById lint(`npm run check:dom`)·hooks(settings.json)/docs(archive)/seed(seed/) 정리. ②**equipment/cards 멀티테넌시 격리**(#342 0302): facility·equipmentQueue·cards/queries·dashboard·aiInsights에 entityFilter('e')/cardEntityFilter('c'=requesting_entity_id) 배선(커밋 `5c1e11f0`·`d40dc096`·`3796ef84`). zero-filter(caps/hrSelf/payroll-shared)=정상 스코핑. ③**리포트 6스크립트 getElementById 가드**(`aea1de3e`). ④**마이그 추적 동기화**: 로컬 0299~0302·prod 0282~0303 마커검증→기록(양쪽 미적용 0). ⑤**회계/리포트 smoke+11·e2e+6**(`dea5fc31`, smoke 103/103). ⑥**delivery_method 'SAME' 버그**(`c4042d35`): 생성/임포트 INSERT가 필드 누락→DEFAULT 'SAME' 저장. INSERT 명시화(`\|\| '방문수령'`)+클라 폴백 한글화+마이그`0303`(prod 227→0). DEFAULT 변경은 FK CASCADE 위험으로 미수행. **prod 실검증: e2e_tester 미전송 생성→'방문수령'**. 상세→`session-context`.
 - **🟢 GitHub 이슈 8건 배치 처리 (2026-06-09) — prod 배포·전건 closed**: #369(입고취소 멱등 가드+balance_after 메모리산출 단일 batch 원자화)·#342(설비 entity_id 격리(나)+마이그 `0302`+rip.ts 전경로 배선)·#370(독촉 이력 테이블 배선+zoneSummary+레거시/dead code 정리)·#340(crud-order E2E DELETE 2회로 잔여0)·#350(sync-attendance GROUP BY·PO IN절·priority3 batch)·#341(p1 recentPO window prefetch, p2/p3는 부분성공 유지로 미전환)·#336(CI 폴백 기제거+위험수용)·#366(표시층 `formatKST`+백엔드 `utils/kstDate.ts`, **대시보드 '오늘'KPI created_at UTC비교 9h누락버그 prod실측·수정** old2→new12). 배포 e159f95e·b7be5241·01b7b7ae·2639f76e. **신규 date 코드는 kstDate/formatKST 사용**(`reference-kst-helpers`). 상세→`session-context`.
 - **🟢 카드/주문 상태모델 단일화 (#1·2·3·4) — prod 배포·검증 완료**: 이중 상태모델(PRINT_PENDING vs PRINTING+rip_status) 충돌이 공통원인. 4 Phase 배포(P1 보드버킷 status기준→#2 / P2 PRINTING=LogWatcher단일화→#3 / P3 유통 즉시SHIPPED→#1 / P4 레거시 마이그0298). **prod 검증: 보드 출력대기에 PRINT_PENDING 카드 노출**, #1 유통 bulk-ship→즉시 SHIPPED, #3 baseline 주문 CONFIRMED 정상. **✅ 실사용 UI 확인 완료(2026-06-05, prod Playwright)**. **✅ 상태 라벨 단일소스화 완료(커밋 `b9b03ea`)**: `src/utils/statusLabels.ts`→`window.MES_STATUS`(layout+portalLayout 주입)→16스크립트 전역참조. **✅ origin/main 동기화 완료**(현 `e598392`). 설계 → `docs/superpowers/specs/2026-06-05-status-model-unification.md`, 메모리 `session-context`.
@@ -21,7 +22,7 @@
 - **매입 관리 — 입고·매입확정 분리**: **P1~P3 전체 prod 배포 완료**. P1(6c72eb4b) 발주 단가미정(`price_status`)·입고 거래명세서 첨부(`statement_file_key`,R2,마이그 `0287`). P2(9949a74c) 매입확정 페이지 `/purchase-invoices`. P3(d2f76f4c) 매입확정 시 `cash_schedule` OUT(지급예정) UPSERT. **▶ 용준님 실사용 테스트 대기**. 잔여: 그룹연쇄(price_linked)·부분확정 후순위.
 - **자금 예측/계획 일원화**: **Phase 1~4 + 4-3 미수금↔입금예정 + prod 배포·검증 완료**(5탭 허브·하이브리드 엔진·시작잔액 prefill·은행매칭→DONE). **✅ 4-3(커밋 `607b3e4`)**: cashflowEngine ④에 BILLED-미물질화 주문을 ORDER_EXPECTED로 합성(거래처 balance cap·이중계산 방지) + `/bank` 미수금 탭 '예상 입금일'. **▶ 백로그: 카드 예측**(corporate_cards에 cutoff_day/payment_day 추가 후)·월별요약 KPI수입 일관성·apply→DONE 운영검증. 설계 → `memory/project-cashflow-unification.md`
 
-> **다음 세션 TODO**: ①향후 기성 PRODUCT는 품목 UI '기성품' 토글로 지정(코드 완비) ②혼합주문(제작+기성) 부분출고·재고차감 실사용 모니터링 ③cards 외 스키마 드리프트 의심 시 PRAGMA 확인 ④#329(3) withSeqRetry INSERT 래핑(후순위) ⑤로컬 dev:d1 중복 정리 ⑥자금 후속(백로그): 카드 예측(corporate_cards cutoff/payment_day 추가 후), 월별요약 KPI수입 일관성 ⑦DB 초기화 시 마이그(0106·0071) 재적용+permission_pages seed / **[#336 closed·위험수용]** admin/password 강화는 owner 수용으로 보류(원하면 codebase hashPassword로 prod UPDATE 가능) ⑧**한진 송장 자동화**: export(엑셀 일괄) prod 완료 / import(송장 일괄입력) 대기=한진 양식·출고번호 보존 확인 후 ⑨**[용준님] 바로빌 알림톡 템플릿 6종 등록·검수**(문안 `docs/kakao-alimtalk-templates.md`) ⑩**[용준님] 거래처 배송방식 개별 정리**(생성버그 수정완료=신규는 '방문수령' 저장. 기존 '방문수령' 통합분 중 실제 택배/화물 거래처는 개별 정리 필요) ⑪바로빌 `order_received` 등록 후 `orders.js` autoTemplate 확정 ⑫**주문접수 멀티법인 협업 후속(미착수)**: (a)Phase 4 내부정산 집계(spec §9~11) (b)Phase 5 거래처 셀프 주문 포털 (c)[용준님] 코디네이터 사용자 지정(`/users` 토글, 지정 후 재로그인 필수) (d)실사용 검증=유통/견적 담당 실저장·타법인 교차열람 ⑬**[#366 선택잔여]** 타 8파일 `date('now','+9 hours')` 리터럴 ~24곳 헬퍼 점진치환 + 일/주/월 추이차트 그룹핑 KST 버킷(우선순위 낮음) ⑭**[#342 후속]** equipment 격리 — facility/equipmentQueue/cards-queries/dashboard/aiInsights는 배선 완료(세션2). **잔여=scheduling/printSystem의 equipment 읽기** 다법인 운영 시작 시 배선 ⑮**[#372 미착수]** CSV export 5엔드포인트 LIMIT 5000 silent truncation 경고/페이지네이션
+> **다음 세션 TODO**: ①향후 기성 PRODUCT는 품목 UI '기성품' 토글로 지정(코드 완비) ②혼합주문(제작+기성) 부분출고·재고차감 실사용 모니터링 ③cards 외 스키마 드리프트 의심 시 PRAGMA 확인 ④#329(3) withSeqRetry INSERT 래핑(후순위) ⑤로컬 dev:d1 중복 정리 ⑥자금 후속(백로그): 카드 예측(corporate_cards cutoff/payment_day 추가 후), 월별요약 KPI수입 일관성 ⑦DB 초기화 시 마이그(0106·0071) 재적용+permission_pages seed / **[#336 closed·위험수용]** admin/password 강화는 owner 수용으로 보류(원하면 codebase hashPassword로 prod UPDATE 가능) ⑧**한진 송장 자동화**: export(엑셀 일괄) prod 완료 / import(송장 일괄입력) 대기=한진 양식·출고번호 보존 확인 후 ⑨**✅ 알림톡 발송 동작 확정(2026-06-10)** — 템플릿 4종 승인·실발송 성공. **잔여=출고 자동발송 구현(option C, order.delivery_method 매핑)·한진 템플릿 등록·`barobill_test_mode=0` go-live** ⑩**[용준님] 거래처 배송방식 개별 정리**(생성버그 수정완료=신규는 '방문수령' 저장. 기존 '방문수령' 통합분 중 실제 택배/화물 거래처는 개별 정리 필요) ⑪바로빌 `order_received` 등록 후 `orders.js` autoTemplate 확정 ⑫**주문접수 멀티법인 협업 후속(미착수)**: (a)Phase 4 내부정산 집계(spec §9~11) (b)Phase 5 거래처 셀프 주문 포털 (c)[용준님] 코디네이터 사용자 지정(`/users` 토글, 지정 후 재로그인 필수) (d)실사용 검증=유통/견적 담당 실저장·타법인 교차열람 ⑬**[#366 선택잔여]** 타 8파일 `date('now','+9 hours')` 리터럴 ~24곳 헬퍼 점진치환 + 일/주/월 추이차트 그룹핑 KST 버킷(우선순위 낮음) ⑭**[#342 후속]** equipment 격리 — facility/equipmentQueue/cards-queries/dashboard/aiInsights는 배선 완료(세션2). **잔여=scheduling/printSystem의 equipment 읽기** 다법인 운영 시작 시 배선 ⑮**[#372 미착수]** CSV export 5엔드포인트 LIMIT 5000 silent truncation 경고/페이지네이션
 
 ---
 
@@ -38,14 +39,15 @@
 
 ### [바로빌 전환] — 통합 완료, 잔여 작업 대기
 - 전환 완료: `messaging_provider=barobill`, 실데이터 조회 성공. 통장→수금 반자동 플로우 구현됨. 자금관리 탭 정리 완료(바로빌 통장 탭→은행 연동 통합).
-- **대기**: SMS 발신번호 승인, **알림톡 템플릿 등록·검수**(문안 6종 `docs/kakao-alimtalk-templates.md`), 나머지 카드/계좌 등록
+- **✅ 알림톡 발송 동작 확정(2026-06-10)**: 템플릿 4종(대신화물 출고·대신택배 출고·방문 수령 준비 완료·미수금) 승인 완료, 실발송 성공(SendKey 수신). 3버그(SenderID/SmsReply/성공판정) 수정·배포(커밋 9bf1cb2e). **대기**: SMS 발신번호 승인(대체문자 E/A용), 한진택배 템플릿 등록, **barobill_test_mode=0 전환(go-live)**, 나머지 카드/계좌 등록
 - **알림톡 코드 정합 완료**(2026-06-03): 출고 4종·주문접수·미수금 템플릿 코드 연동. **버튼 미전송**(sendATS) → 링크는 본문. **한진 송장 수동입력**(자동화 조사 완료)
 
 ### [선명2 CAPS Worker 설치] — PC 설정 대기
 - S2 사이트 DB 등록 완료, API_KEY 발급됨. 선명2 PC에 caps-worker 폴더 복사 + .env 설정 + 실행 필요
 
 ### [배송 관리 최적화] — 출고 대기 보드
-- 배송방법별 그룹화 + 마감시간 카운트다운 + 일괄 출고 + 카카오톡 자동 발송
+- 배송방법별 그룹화 + 마감시간 카운트다운 + 일괄 출고 + 카카오톡 발송
+- **✅ 수동 알림톡 발송 정합(2026-06-10, 커밋 0a329a02)**: autoCodeMap 실제 템플릿명 교정 + 모달 본문순서. **자동발송=다음 세션**(option C, order.delivery_method 매핑; 트리거 shipments.ts:504 이미 배선, template_code+resolveMsg만 채우면 됨). '배송' 381건은 E2E noise였음(실데이터는 택배사 정상 지정)
 ### [기존 계약 일괄 등록] — 엑셀 import 스크립트 제공 대기
 ### [라벨 프린터 인쇄] — 프린터 모델 확인 필요 (외부 의존)
 ### [RIP 전송] — 코드 완료, 현장 테스트 대기 (외부 의존)

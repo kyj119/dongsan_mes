@@ -7,7 +7,7 @@
 |----|------|--------|
 | A | Print.log 모니터링 — LogWatcher | 5초 폴링, EUC-KR, 바이너리 파싱, 하트비트 |
 | B | 묶음 주문 확정 워크플로우 | ai_layout_requests, Z드라이브 복사, 롤백 |
-| C | 카카오톡 알림 (미구현) | notifications 테이블 |
+| C | 카카오톡 알림톡 발송 (구현·동작 2026-06-10) | 바로빌 KakaoTalk.asmx; SenderID=연동ID·SmsReply E/A/N·성공판정=음수아님 → memory [project-alimtalk-status] |
 | D | 현장 카드 인쇄 | QR, 썸네일, 긴급도 알고리즘 |
 | E | 묶음 주문 두 가지 유형 | parent_item_id, PackGroups |
 | F | 납품 방법 7종 | HANJIN, DAESHIN, QUICK, DIRECT, PICKUP, TRUCK |
