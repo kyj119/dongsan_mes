@@ -29,8 +29,9 @@ equipmentQueue.get('/:equipmentId/queue', async (c) => {
 // ─── 전체 장비 부하 현황 ──────────────────────────────────────────────────────
 equipmentQueue.get('/workload', async (c) => {
   const entityId = getEntityId(c)
-  const entityClause = entityId > 0 ? ' AND c.requesting_entity_id = ?' : ''
-  const entityParams = entityId > 0 ? [entityId] : []
+  const entityClause = entityId > 0 ? ' AND c.requesting_entity_id = ?' : ''  // cards 격리
+  const eqClause = entityId > 0 ? ' AND e.entity_id = ?' : ''                 // equipment 격리(0302 #342)
+  const entityParams = entityId > 0 ? [entityId, entityId] : []              // 순서: cards(JOIN)→equipment(WHERE)
 
   const { results } = await c.env.DB.prepare(`
     SELECT e.id, e.name, e.daily_capacity, e.avg_print_minutes_per_sqm,
@@ -40,7 +41,7 @@ equipmentQueue.get('/workload', async (c) => {
       MIN(c.delivery_date) as earliest_deadline
     FROM equipment e
     LEFT JOIN cards c ON c.equipment_id = e.id AND c.status = 'PRINTING'${entityClause}
-    WHERE e.status = 'ACTIVE'
+    WHERE e.status = 'ACTIVE'${eqClause}
     GROUP BY e.id
     ORDER BY total_estimated_minutes DESC
   `).bind(...entityParams).all()

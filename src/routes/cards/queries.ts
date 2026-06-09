@@ -11,7 +11,7 @@ import type { HonoEnv } from '../../types/env'
 import type { Card, ApiResponse } from '../../types/models'
 import { authMiddleware } from '../../middleware/auth'
 import { requireAnyPagePermission } from '../../middleware/permissions'
-import { cardEntityFilter } from '../../utils/entityFilter'
+import { cardEntityFilter, entityFilter } from '../../utils/entityFilter'
 
 // ── Row types for D1 query results ──
 interface EquipmentRow {
@@ -83,11 +83,13 @@ cardsQueriesRouter.use('/*', authMiddleware, requireAnyPagePermission('/cards', 
 // ── 스케줄: 장비별 작업 큐 조회 ──
 cardsQueriesRouter.get('/schedule/queues', async (c) => {
   try {
-    // 1. 활성 장비 목록 + 큐 카운트 + 일일 용량
+    // 1. 활성 장비 목록 + 큐 카운트 + 일일 용량 (equipment·cards 법인 격리 — 0302 #342)
+    const efEq = entityFilter(c, 'e')        // equipment(entity_id)
+    const efCnt = cardEntityFilter(c, 'c')   // queue_count 카드(requesting_entity_id)
     const { results: equipmentList } = await c.env.DB.prepare(`
       SELECT e.id, e.name, e.equipment_status, COALESCE(e.daily_capacity, 0) as daily_capacity,
         e.location_zone,
-        (SELECT COUNT(*) FROM cards c WHERE c.equipment_id = e.id AND c.status = 'PRINTING') as queue_count,
+        (SELECT COUNT(*) FROM cards c WHERE c.equipment_id = e.id AND c.status = 'PRINTING'${efCnt.clause}) as queue_count,
         ah.last_seen_at,
         CASE
           WHEN ah.last_seen_at IS NULL THEN 'OFFLINE'
@@ -96,9 +98,9 @@ cardsQueriesRouter.get('/schedule/queues', async (c) => {
         END as agent_status
       FROM equipment e
       LEFT JOIN agent_heartbeats ah ON ah.equipment_id = e.id
-      WHERE e.status = 'ACTIVE'
+      WHERE e.status = 'ACTIVE'${efEq.clause}
       ORDER BY e.name
-    `).all<EquipmentRow>()
+    `).bind(...efCnt.params, ...efEq.params).all<EquipmentRow>()
 
     // 2. 전체 PRINTING 카드를 한 번에 조회 후 장비별 그룹핑 (N+1 → 1 쿼리)
     const ef2 = cardEntityFilter(c, 'c')
