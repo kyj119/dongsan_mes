@@ -238,7 +238,7 @@ function renderMyRequests() {
     <td class="px-3 py-2 text-sm">${escapeHtml(r.title)}</td>
     <td class="px-3 py-2 text-sm text-right">${r.amount ? Number(r.amount).toLocaleString() + '원' : '-'}</td>
     <td class="px-3 py-2 text-sm">${statusBadge(r.status)}</td>
-    <td class="px-3 py-2 text-sm">${new Date(r.created_at).toLocaleDateString('ko-KR')}</td>
+    <td class="px-3 py-2 text-sm">${formatKST(r.created_at, 'date')}</td>
   </tr>`).join('');
 }
 
@@ -264,7 +264,7 @@ function renderAllRequests() {
     <td class="px-3 py-2 text-sm">${escapeHtml(r.requester_name || '-')}</td>
     <td class="px-3 py-2 text-sm text-right">${r.amount ? Number(r.amount).toLocaleString() + '원' : '-'}</td>
     <td class="px-3 py-2 text-sm">${statusBadge(r.status)}</td>
-    <td class="px-3 py-2 text-sm">${new Date(r.created_at).toLocaleDateString('ko-KR')}</td>
+    <td class="px-3 py-2 text-sm">${formatKST(r.created_at, 'date')}</td>
   </tr>`).join('');
 }
 
@@ -301,7 +301,7 @@ function showDetailModal(request, steps, attachments) {
         <div class="text-sm font-medium">${escapeHtml(s.label || s.step_order + '단계')}</div>
         <div class="text-xs text-gray-500">${escapeHtml(s.approver_name || s.approver_role || '-')}</div>
         ${s.comment ? `<div class="text-xs text-gray-600 mt-1 bg-gray-50 p-2 rounded">${escapeHtml(s.comment)}</div>` : ''}
-        ${s.acted_at ? `<div class="text-xs text-gray-400 mt-1">${new Date(s.acted_at).toLocaleString('ko-KR')}</div>` : ''}
+        ${s.acted_at ? `<div class="text-xs text-gray-400 mt-1">${formatKST(s.acted_at)}</div>` : ''}
       </div>
       <div>${statusBadge(s.status)}</div>
     </div>`;
@@ -338,7 +338,7 @@ function showDetailModal(request, steps, attachments) {
           <div><span class="text-gray-500">요청자:</span> ${escapeHtml(request.requester_name)}</div>
           <div><span class="text-gray-500">금액:</span> ${request.amount ? Number(request.amount).toLocaleString() + '원' : '-'}</div>
           <div><span class="text-gray-500">상태:</span> ${statusBadge(request.status)}</div>
-          <div><span class="text-gray-500">요청일:</span> ${new Date(request.created_at).toLocaleDateString('ko-KR')}</div>
+          <div><span class="text-gray-500">요청일:</span> ${formatKST(request.created_at, 'date')}</div>
         </div>
 
         <div class="mb-4 p-3 bg-gray-50 rounded">

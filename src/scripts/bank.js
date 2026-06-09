@@ -723,7 +723,7 @@
     }
     var html = '';
     accounts.forEach(function(a) {
-      var syncTime = a.last_synced_at ? new Date(a.last_synced_at).toLocaleString('ko-KR') : '동기화 안됨';
+      var syncTime = a.last_synced_at ? formatKST(a.last_synced_at) : '동기화 안됨';
       var connBadge = '';
       html += '<div class="account-card">';
       html += '<div class="flex items-center gap-4">';

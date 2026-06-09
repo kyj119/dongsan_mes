@@ -1192,6 +1192,36 @@ window.escapeHtml = function(str) {
     .replace(/'/g, '&#039;');
 };
 
+// === KST 시간 헬퍼 (전역) — #366 ===
+// 정책: 저장은 UTC(불변·감사 표준), 표시는 항상 한국시간(Asia/Seoul).
+// SQLite 타임스탬프("YYYY-MM-DD HH:MM:SS", tz 표식 없음)를 new Date()로 바로 파싱하면
+// 브라우저 로컬로 해석돼 9시간 이르게 표시됨 → 이 헬퍼로 UTC→KST 변환을 단일화.
+window.toKstDate = function(ts) {
+  if (ts === null || ts === undefined || ts === '') return null;
+  var s = String(ts).trim();
+  // 순수 날짜("YYYY-MM-DD", 길이 10)는 시각·tz 모호성 없음
+  if (s.length === 10 && s.charAt(4) === '-' && s.charAt(7) === '-') return new Date(s + 'T00:00:00');
+  var iso = s.indexOf('T') === -1 ? s.replace(' ', 'T') : s;
+  var timePart = iso.length > 11 ? iso.slice(11) : '';
+  var hasTz = timePart.indexOf('Z') !== -1 || timePart.indexOf('+') !== -1 || timePart.indexOf('-') !== -1;
+  if (!hasTz) iso += 'Z'; // tz 표식 없으면 UTC로 간주 (SQLite CURRENT_TIMESTAMP)
+  var d = new Date(iso);
+  return isNaN(d.getTime()) ? null : d;
+};
+// 한국시간 표시. mode: 'date' | 'time' | (기본)전체. 잘못된 값은 원본/'-'.
+window.formatKST = function(ts, mode, opts) {
+  var d = window.toKstDate(ts);
+  if (!d) return (ts === null || ts === undefined || ts === '') ? '-' : String(ts);
+  var o = Object.assign({ timeZone: 'Asia/Seoul' }, opts || {});
+  if (mode === 'date') return d.toLocaleDateString('ko-KR', o);
+  if (mode === 'time') return d.toLocaleTimeString('ko-KR', o);
+  return d.toLocaleString('ko-KR', o);
+};
+// 한국 기준 오늘 "YYYY-MM-DD" (업무일 계산용, 프론트)
+window.kstToday = function() {
+  return new Date(Date.now() + 9 * 3600 * 1000).toISOString().slice(0, 10);
+};
+
 // === Chart Color Constants (표준 차트 팔레트) ===
 window.CHART_COLORS = ['#2563eb', '#16a34a', '#f59e0b', '#dc2626', '#9333ea', '#ec4899', '#06b6d4', '#84cc16'];
 window.CHART_BG_CLASSES = ['bg-blue-600', 'bg-green-600', 'bg-amber-500', 'bg-red-600', 'bg-purple-600', 'bg-pink-500', 'bg-cyan-500', 'bg-lime-500'];
