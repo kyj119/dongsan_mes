@@ -1,7 +1,13 @@
 import { Hono } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
+import { entityFilter, cardEntityFilter } from '../utils/entityFilter'
 
+// 멀티테넌시 모델 (감사 2026-06-09):
+// - equipment(entity_id, 0302 #342 "법인별 설비 분리")·cards(requesting_entity_id, 0150) = 법인 격리
+//   → entityFilter(e)/cardEntityFilter(c) 적용. ADMIN 전체모드(entityId=0)는 필터 생략(현행 동작 유지).
+// - facility_zones·inventory_locations·facility_settings·agent_heartbeats = entity_id 없음 = 전사 공용
+//   (물리 구역/보관위치/시설설정/모니터링은 법인 무관 단일 시설 데이터).
 const facilityRouter = new Hono<HonoEnv>()
 facilityRouter.use('/*', authMiddleware)
 
@@ -11,14 +17,15 @@ facilityRouter.use('/*', authMiddleware)
 
 facilityRouter.get('/zones', async (c) => {
   try {
+    const ef = entityFilter(c, 'e')  // equipment 격리 (구역별 설비 수). inventory_locations는 전사 공용
     const { results } = await c.env.DB.prepare(`
       SELECT fz.*,
-        (SELECT COUNT(*) FROM equipment e WHERE e.zone_id = fz.id) as equipment_count,
+        (SELECT COUNT(*) FROM equipment e WHERE e.zone_id = fz.id${ef.clause}) as equipment_count,
         (SELECT COUNT(*) FROM inventory_locations il WHERE il.zone_id = fz.id AND il.is_active = 1) as location_count
       FROM facility_zones fz
       WHERE fz.is_active = 1
       ORDER BY fz.sort_order
-    `).all()
+    `).bind(...ef.params).all()
     return c.json({ success: true, data: results })
   } catch (error) {
     console.error('src/routes/facility.ts error:', error)
@@ -97,33 +104,38 @@ facilityRouter.delete('/zones/:id', requireRole('ADMIN'), async (c) => {
 
 facilityRouter.get('/layout-data', async (c) => {
   try {
+    const equipEf = entityFilter(c, 'e')       // equipment 격리 (entity_id)
+    const cardEf = cardEntityFilter(c, 'c')    // cards 격리 (requesting_entity_id)
     const [zonesRes, equipRes, locsRes, cardsRes] = await Promise.all([
+      // facility_zones: entity_id 없음 = 전사 공용(물리 구역)
       c.env.DB.prepare(`
         SELECT id, name, description, color, sort_order, bounds, is_active, created_at, updated_at FROM facility_zones WHERE is_active = 1 ORDER BY sort_order
       `).all(),
+      // 바인드 순서: cards 서브쿼리(SELECT절)가 equipment WHERE보다 앞 → cardEf, equipEf 순
       c.env.DB.prepare(`
         SELECT e.id, e.name, e.printer_name, e.equipment_status, e.location_x, e.location_y,
           e.location_zone, e.zone_id, e.status,
-          (SELECT COUNT(*) FROM cards c WHERE c.equipment_id = e.id AND c.status IN ('PRINT_PENDING','PRINTING')) as active_cards,
+          (SELECT COUNT(*) FROM cards c WHERE c.equipment_id = e.id AND c.status IN ('PRINT_PENDING','PRINTING')${cardEf.clause}) as active_cards,
           ah.last_heartbeat, ah.is_printing
         FROM equipment e
         LEFT JOIN (
           SELECT equipment_id, MAX(last_seen_at) as last_heartbeat, is_printing
           FROM agent_heartbeats GROUP BY equipment_id
         ) ah ON ah.equipment_id = e.id
-        WHERE e.status = 'ACTIVE'
-      `).all(),
+        WHERE e.status = 'ACTIVE'${equipEf.clause}
+      `).bind(...cardEf.params, ...equipEf.params).all(),
+      // inventory_locations: entity_id 없음 = 전사 공용(물리 보관위치)
       c.env.DB.prepare(`
         SELECT id, zone_id, name, location_x, location_y, location_type, description, is_active, created_at FROM inventory_locations WHERE is_active = 1
       `).all(),
-      // 구역별 오늘 작업 수
+      // 구역별 오늘 작업 수 (cards 격리)
       c.env.DB.prepare(`
         SELECT e.zone_id, COUNT(c.id) as card_count
         FROM cards c
         JOIN equipment e ON c.equipment_id = e.id
-        WHERE c.status IN ('PRINT_PENDING','PRINTING') AND e.zone_id IS NOT NULL
+        WHERE c.status IN ('PRINT_PENDING','PRINTING') AND e.zone_id IS NOT NULL${cardEf.clause}
         GROUP BY e.zone_id
-      `).all(),
+      `).bind(...cardEf.params).all(),
     ])
 
     const zoneCards: Record<number, number> = {}
@@ -249,7 +261,8 @@ facilityRouter.patch('/equipment/:id/zone', requireRole('ADMIN'), async (c) => {
   try {
     const id = c.req.param('id')
     const { zone_id } = await c.req.json<{ zone_id: number | null }>()
-    await c.env.DB.prepare('UPDATE equipment SET zone_id = ? WHERE id = ?').bind(zone_id, id).run()
+    const ef = entityFilter(c)  // 타법인 설비 이동 차단 (ADMIN 전체모드는 생략)
+    await c.env.DB.prepare(`UPDATE equipment SET zone_id = ? WHERE id = ?${ef.clause}`).bind(zone_id, id, ...ef.params).run()
     return c.json({ success: true })
   } catch (error) {
     console.error('src/routes/facility.ts error:', error)

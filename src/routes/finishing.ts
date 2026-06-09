@@ -5,6 +5,10 @@ import { authMiddleware, requireRole } from '../middleware/auth'
 const finishingRouter = new Hono<HonoEnv>()
 finishingRouter.use('/*', authMiddleware)
 
+// 멀티테넌시 (감사 2026-06-09): finishing_methods·finishing_presets는 entity_id 없음 = 전사 공용.
+// 후가공 방법/프리셋 정의는 마스터·카탈로그 데이터로, BOM·품목·단가와 동일하게 법인 공유 정책.
+// → entityFilter 미적용이 의도된 설계. (법인별 후가공 단가가 필요해지면 별도 entity 스코프 검토)
+
 // GET /methods?group=output|transfer (optional filter)
 finishingRouter.get('/methods', async (c) => {
   try {
