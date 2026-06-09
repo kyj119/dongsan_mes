@@ -3,6 +3,7 @@ import type { HonoEnv } from '../types/env'
 import { authMiddleware } from '../middleware/auth'
 import { requirePagePermission } from '../middleware/permissions'
 import { entityFilter, getEntityId } from '../utils/entityFilter'
+import { kstDate, kstDateOf, kstMonth } from '../utils/kstDate'
 
 /** cards 테이블용 엔티티 필터 (requesting_entity_id 컬럼 사용) */
 function cardEntityFilter(c: any, tableAlias?: string): { clause: string; params: number[] } {
@@ -37,15 +38,15 @@ dashboardRouter.get('/stats', async (c) => {
         (SELECT COUNT(*) FROM cards WHERE status = 'PRINT_DONE'${cf.clause}) as done_cards,
         (SELECT COUNT(*) FROM cards WHERE status = 'HOLD'${cf.clause}) as hold_cards,
         (SELECT SUM(final_amount) FROM orders WHERE 1=1${ef.clause}) as total_revenue,
-        (SELECT COUNT(*) FROM orders WHERE created_at >= date('now') AND created_at < date('now', '+1 day') AND status != 'CANCELLED'${ef.clause}) as today_order_count,
-        (SELECT SUM(final_amount) FROM orders WHERE created_at >= date('now') AND created_at < date('now', '+1 day') AND status != 'CANCELLED'${ef.clause}) as today_revenue,
-        (SELECT COUNT(*) FROM orders WHERE created_at >= date('now', 'start of month') AND created_at < date('now', 'start of month', '+1 month') AND status != 'CANCELLED'${ef.clause}) as month_order_count,
-        (SELECT SUM(final_amount) FROM orders WHERE created_at >= date('now', 'start of month') AND created_at < date('now', 'start of month', '+1 month') AND status != 'CANCELLED'${ef.clause}) as month_revenue,
-        (SELECT SUM(final_amount) FROM orders WHERE created_at >= date('now', 'start of month', '-1 month') AND created_at < date('now', 'start of month') AND status != 'CANCELLED'${ef.clause}) as prev_month_revenue,
-        (SELECT COUNT(*) FROM orders WHERE created_at >= date('now', 'start of month', '-1 month') AND created_at < date('now', 'start of month') AND status != 'CANCELLED'${ef.clause}) as prev_month_order_count,
-        (SELECT SUM(final_amount) FROM orders WHERE created_at >= date('now', '-7 days') AND status != 'CANCELLED'${ef.clause}) as week_revenue,
+        (SELECT COUNT(*) FROM orders WHERE ${kstDateOf('created_at')} = ${kstDate()} AND status != 'CANCELLED'${ef.clause}) as today_order_count,
+        (SELECT SUM(final_amount) FROM orders WHERE ${kstDateOf('created_at')} = ${kstDate()} AND status != 'CANCELLED'${ef.clause}) as today_revenue,
+        (SELECT COUNT(*) FROM orders WHERE ${kstMonth('created_at')} = ${kstMonth()} AND status != 'CANCELLED'${ef.clause}) as month_order_count,
+        (SELECT SUM(final_amount) FROM orders WHERE ${kstMonth('created_at')} = ${kstMonth()} AND status != 'CANCELLED'${ef.clause}) as month_revenue,
+        (SELECT SUM(final_amount) FROM orders WHERE ${kstMonth('created_at')} = ${kstMonth("'now'", "'start of month'", "'-1 month'")} AND status != 'CANCELLED'${ef.clause}) as prev_month_revenue,
+        (SELECT COUNT(*) FROM orders WHERE ${kstMonth('created_at')} = ${kstMonth("'now'", "'start of month'", "'-1 month'")} AND status != 'CANCELLED'${ef.clause}) as prev_month_order_count,
+        (SELECT SUM(final_amount) FROM orders WHERE created_at >= ${kstDate("'-7 days'")} AND status != 'CANCELLED'${ef.clause}) as week_revenue,
         (SELECT COUNT(*) FROM cards WHERE status = 'PRINT_DONE'${cf.clause}) as shipment_ready_count,
-        (SELECT COUNT(*) FROM orders WHERE delivery_date = date('now', '+9 hours') AND status NOT IN ('SHIPPED','CANCELLED')${ef.clause}) as today_shipment_due,
+        (SELECT COUNT(*) FROM orders WHERE delivery_date = ${kstDate()} AND status NOT IN ('SHIPPED','CANCELLED')${ef.clause}) as today_shipment_due,
         (SELECT COUNT(*) FROM orders WHERE priority='URGENT' AND status NOT IN ('SHIPPED','CANCELLED')${ef.clause}) as urgent_count,
         (SELECT COUNT(*) FROM orders WHERE id IN (SELECT DISTINCT order_id FROM order_items WHERE price_status = 'PENDING') AND status NOT IN ('CANCELLED','SHIPPED')${ef.clause}) as pending_price_orders,
         (SELECT COALESCE(SUM(final_amount),0) FROM orders WHERE billing_status='BILLED' AND strftime('%Y-%m',billed_at)=strftime('%Y-%m','now')${ef.clause}) as month_billed,
@@ -53,7 +54,7 @@ dashboardRouter.get('/stats', async (c) => {
         (SELECT ROUND(
           COUNT(CASE WHEN o2.status = 'SHIPPED' AND date(o2.updated_at) <= date(o2.delivery_date) THEN 1 END) * 100.0 /
           NULLIF(COUNT(*), 0), 1)
-         FROM orders o2 WHERE o2.status IN ('SHIPPED') AND o2.created_at >= date('now', 'start of month') AND o2.created_at < date('now', 'start of month', '+1 month') AND o2.delivery_date IS NOT NULL${ef.clause}
+         FROM orders o2 WHERE o2.status IN ('SHIPPED') AND ${kstMonth('o2.created_at')} = ${kstMonth()} AND o2.delivery_date IS NOT NULL${ef.clause}
         ) as on_time_rate
     `).bind(...[
       ...ef.params, // total_orders
@@ -395,7 +396,7 @@ dashboardRouter.get('/overdue-pos', async (c) => {
       LEFT JOIN clients c ON po.supplier_id = c.id
       WHERE po.status IN ('CONFIRMED', 'PARTIAL_RECEIVED')
         AND po.expected_date IS NOT NULL
-        AND po.expected_date < date('now', '+9 hours')${ef.clause}
+        AND po.expected_date < ${kstDate()}${ef.clause}
       ORDER BY po.expected_date ASC
       LIMIT 20
     `).bind(...ef.params).all()
@@ -447,7 +448,7 @@ dashboardRouter.get('/stats/today-due', async (c) => {
         c.client_name
       FROM orders o
       LEFT JOIN clients c ON o.client_id = c.id
-      WHERE o.delivery_date <= date('now', '+9 hours')
+      WHERE o.delivery_date <= ${kstDate()}
         AND o.status NOT IN ('SHIPPED', 'CANCELLED', 'QUOTATION')${ef.clause}
       ORDER BY o.delivery_date ASC, o.priority DESC
       LIMIT 20
@@ -536,7 +537,7 @@ dashboardRouter.get('/stats/production-today', async (c) => {
         SUM(CASE WHEN pe.print_status = 'CANCEL' THEN 1 ELSE 0 END) as cancel_count,
         SUM(CASE WHEN pe.print_status = 'ERROR' THEN 1 ELSE 0 END) as error_count
       FROM print_events pe
-      WHERE pe.created_at >= date('now') AND pe.created_at < date('now', '+1 day')
+      WHERE ${kstDateOf('pe.created_at')} = ${kstDate()}
     `).first()
 
     const { results: byEquipment } = await c.env.DB.prepare(`
@@ -545,7 +546,7 @@ dashboardRouter.get('/stats/production-today', async (c) => {
         SUM(CASE WHEN pe.print_status = 'OK' THEN 1 ELSE 0 END) as ok_count
       FROM print_events pe
       LEFT JOIN equipment e ON pe.equipment_id = e.id
-      WHERE pe.created_at >= date('now') AND pe.created_at < date('now', '+1 day')
+      WHERE ${kstDateOf('pe.created_at')} = ${kstDate()}
       GROUP BY pe.equipment_id
       ORDER BY total DESC
     `).all()
@@ -619,7 +620,7 @@ dashboardRouter.get('/stats/equipment-utilization', async (c) => {
         MAX(pe.print_completed_at) as last_print
       FROM print_events pe
       LEFT JOIN equipment e ON pe.equipment_id = e.id
-      WHERE date(pe.print_started_at) = date('now')
+      WHERE ${kstDateOf('pe.print_started_at')} = ${kstDate()}
       GROUP BY pe.equipment_id
       ORDER BY total_sec DESC
     `).all()
