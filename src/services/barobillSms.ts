@@ -66,18 +66,8 @@ export class BarobillSmsProvider {
   }): Promise<SendResult> {
     try {
       if (params.messages.length === 1) {
-        // 단건 발송
-        const msg = params.messages[0]
-        const result = await barobillCall(this.config, 'KakaoTalk' as any, 'SendATKakaotalk', {
-          SenderID: '',
-          TemplateName: params.templateCode,
-          SendDT: params.sndDT || '',
-          SmsReply: params.altSendType === 'C' ? 'Y' : 'N',
-          SmsSenderNum: params.snd,
-          KakaotalkMessage: null,  // 복합 타입은 별도 처리
-        })
-        // 단건은 복합 XML이 필요 — raw SOAP 구성
-        return await this.sendATSSingle(params, msg)
+        // 단건: KakaotalkMessage(복합 타입)가 필요해 raw SOAP로 직접 구성 (sendATSSingle)
+        return await this.sendATSSingle(params, params.messages[0])
       } else {
         // 다건 발송
         return await this.sendATSBulk(params)
@@ -138,7 +128,7 @@ export class BarobillSmsProvider {
       </SendATKakaotalks>`
 
     const result = await callSoap('KakaoTalk', 'SendATKakaotalks', body)
-    return { receiptNum: result || '', code: result ? 1 : 0, message: result ? '발송 성공' : '발송 실패' }
+    return interpretBulkResult(result)
   }
 
   // ========================================================================
@@ -231,7 +221,7 @@ export class BarobillSmsProvider {
       </SendMessages>`
 
     const result = await callSoap('SMS', 'SendMessages', body)
-    return { receiptNum: result || '', code: result ? 1 : 0, message: result ? '발송 성공' : '발송 실패' }
+    return interpretReceipt(result)
   }
 
   // ========================================================================
@@ -385,4 +375,27 @@ function interpretReceipt(result: string): SendResult {
     return { receiptNum: result, code: num, message: '발송 성공' }
   }
   return { receiptNum: '', code: isNaN(num) ? 0 : num, message: `발송 실패 (바로빌 코드: ${result || 'empty'})` }
+}
+
+/**
+ * 바로빌 다건 발송 결과 해석 (SendATKakaotalks → ArrayOfString).
+ * <string>접수번호|에러코드</string> 반복 — 양수=접수(성공), 음수/0=에러.
+ * 배열이 아니면(단일 문자열) interpretReceipt로 폴백.
+ */
+function interpretBulkResult(result: string): SendResult {
+  const re = /<string>(.*?)<\/string>/gs
+  const items: string[] = []
+  let m: RegExpExecArray | null
+  while ((m = re.exec(result)) !== null) items.push((m[1] || '').trim())
+  if (items.length === 0) return interpretReceipt(result)
+  let ok = 0, fail = 0, firstReceipt = '', firstErr = 0
+  for (const v of items) {
+    const n = parseInt(v, 10)
+    if (v && !isNaN(n) && n > 0) { ok++; if (!firstReceipt) firstReceipt = v }
+    else { fail++; if (firstErr === 0) firstErr = isNaN(n) ? 0 : n }
+  }
+  if (ok > 0) {
+    return { receiptNum: firstReceipt, code: ok, message: `발송 접수 ${ok}건${fail ? `, 실패 ${fail}건` : ''}` }
+  }
+  return { receiptNum: '', code: firstErr, message: `발송 실패 (${fail}건, 바로빌 코드: ${firstErr || 'empty'})` }
 }
