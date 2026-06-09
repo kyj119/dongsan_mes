@@ -668,9 +668,11 @@ prRouter.post('/:id/convert', requireRole('ADMIN'), async (c) => {
 
     const poId = poResult.meta.last_row_id
 
+    // #341 child INSERT 루프 → batch (poId 확정·에러수집 없음 → 시맨틱 동일)
+    const convItemStmts: D1PreparedStatement[] = []
     for (const item of poItems) {
       const itemAmount = item.unit_price * item.quantity
-      await c.env.DB.prepare(`
+      convItemStmts.push(c.env.DB.prepare(`
         INSERT INTO purchase_order_items (
           po_id, item_id, item_name, category_name,
           quantity, received_quantity, unit, unit_price, amount, vat_included,
@@ -680,7 +682,10 @@ prRouter.post('/:id/convert', requireRole('ADMIN'), async (c) => {
         poId, item.item_id, item.item_name, item.category_name,
         item.quantity, item.unit, item.unit_price, itemAmount,
         item.sort_order, item.notes
-      ).run()
+      ))
+    }
+    for (let i = 0; i < convItemStmts.length; i += 80) {
+      await c.env.DB.batch(convItemStmts.slice(i, i + 80))
     }
 
     await c.env.DB.prepare(`
@@ -732,23 +737,38 @@ prRouter.post('/:id/auto-convert', requireRole('ADMIN'), async (c) => {
     // 각 품목의 최근 공급업체 조회 후 그룹화
     const supplierGroups = new Map<number | string, { supplierId: number | null, supplierName: string, items: PurchaseRequestItem[] }>()
 
+    // #341 품목별 recentPO 공급업체 N+1 → item_id IN절 단일 window 쿼리 prefetch (ROW_NUMBER로 "최근 1건" 동일 의미)
+    const riItemIds = requestItems.filter((ri) => ri.item_id).map((ri) => ri.item_id as number)
+    const recentSupplierMap: Record<number, { supplier_id: number | null; client_name: string | null }> = {}
+    if (riItemIds.length > 0) {
+      const efPo = entityFilter(c, 'po')
+      const ph = riItemIds.map(() => '?').join(',')
+      const { results: recentRows } = await c.env.DB.prepare(`
+        WITH ranked AS (
+          SELECT poi.item_id AS item_id, po.supplier_id AS supplier_id, c.client_name AS client_name,
+            ROW_NUMBER() OVER (PARTITION BY poi.item_id ORDER BY po.created_at DESC) AS rn
+          FROM purchase_order_items poi
+          JOIN purchase_orders po ON poi.po_id = po.id
+          LEFT JOIN clients c ON po.supplier_id = c.id
+          WHERE poi.item_id IN (${ph}) AND poi.received_quantity > 0${efPo.clause}
+        )
+        SELECT item_id, supplier_id, client_name FROM ranked WHERE rn = 1
+      `).bind(...riItemIds, ...efPo.params).all<{ item_id: number; supplier_id: number | null; client_name: string | null }>()
+      for (const r of (recentRows || [])) recentSupplierMap[r.item_id] = { supplier_id: r.supplier_id, client_name: r.client_name }
+    }
+    // pr.supplier_id 공급업체명 (루프 불변) 1회 조회 → 매 품목 재조회 제거
+    let prSupplierName = '공급업체'
+    if (pr.supplier_id) {
+      const supplierRow = await c.env.DB.prepare('SELECT client_name FROM clients WHERE id = ?').bind(pr.supplier_id).first<{ client_name: string }>()
+      prSupplierName = supplierRow?.client_name || '공급업체'
+    }
+
     for (const ri of requestItems) {
       let supplierId: number | null = null
       let supplierName = '미지정'
 
       if (ri.item_id) {
-        // 해당 품목의 최근 입고 이력에서 공급업체 조회
-        const efPo = entityFilter(c, 'po')
-        const recentPO = await c.env.DB.prepare(`
-          SELECT po.supplier_id, c.client_name
-          FROM purchase_order_items poi
-          JOIN purchase_orders po ON poi.po_id = po.id
-          LEFT JOIN clients c ON po.supplier_id = c.id
-          WHERE poi.item_id = ? AND poi.received_quantity > 0${efPo.clause}
-          ORDER BY po.created_at DESC
-          LIMIT 1
-        `).bind(ri.item_id, ...efPo.params).first<{ supplier_id: number | null; client_name: string | null }>()
-
+        const recentPO = recentSupplierMap[ri.item_id as number]
         if (recentPO && recentPO.supplier_id) {
           supplierId = recentPO.supplier_id
           supplierName = recentPO.client_name || '공급업체'
@@ -758,8 +778,7 @@ prRouter.post('/:id/auto-convert', requireRole('ADMIN'), async (c) => {
       // 이력이 없으면 PR의 공급업체 사용
       if (!supplierId && pr.supplier_id) {
         supplierId = pr.supplier_id
-        const supplierRow = await c.env.DB.prepare('SELECT client_name FROM clients WHERE id = ?').bind(pr.supplier_id).first<{ client_name: string }>()
-        supplierName = supplierRow?.client_name || '공급업체'
+        supplierName = prSupplierName
       }
 
       const groupKey = supplierId || 'unassigned'
@@ -817,10 +836,11 @@ prRouter.post('/:id/auto-convert', requireRole('ADMIN'), async (c) => {
 
       const poId = poResult.meta.last_row_id
 
-      // PO Items INSERT
+      // PO Items INSERT — #341 child INSERT 루프 → batch (poId 확정·에러수집 없음)
+      const autoItemStmts: D1PreparedStatement[] = []
       for (let i = 0; i < poItems.length; i++) {
         const item = poItems[i]
-        await c.env.DB.prepare(`
+        autoItemStmts.push(c.env.DB.prepare(`
           INSERT INTO purchase_order_items (
             po_id, item_id, item_name, category_name,
             quantity, received_quantity, unit, unit_price, amount, vat_included,
@@ -830,7 +850,10 @@ prRouter.post('/:id/auto-convert', requireRole('ADMIN'), async (c) => {
           poId, item.item_id || null, item.item_name, item.category_name || null,
           item.qty, item.unit || 'EA', item.price, item.amount,
           i, item.notes || null
-        ).run()
+        ))
+      }
+      for (let i = 0; i < autoItemStmts.length; i += 80) {
+        await c.env.DB.batch(autoItemStmts.slice(i, i + 80))
       }
 
       // 상태 이력
