@@ -411,44 +411,59 @@ inventoryRouter.patch('/receipts/:id/inspection-decision',
     const cancelEntityId = getEntityId(c) || 1
 
     if (receiptStatus === 'CANCELLED') {
+      // #369 멱등 가드: 이미 취소된 receipt면 재차감 없이 멱등 반환 (재시도/중복제출 이중차감 방지)
+      const curReceipt = await c.env.DB.prepare(
+        `SELECT inspection_status, status FROM inventory_receipts WHERE id = ?`
+      ).bind(id).first<{ inspection_status: string | null; status: string | null }>()
+      if (!curReceipt) return c.json({ success: false, error: '입고 정보를 찾을 수 없습니다.' }, 404)
+      if (curReceipt.status === 'CANCELLED') {
+        return c.json({ success: true, data: { id: Number(id), inspection_status: 'CANCELLED', receipt_status: 'CANCELLED', idempotent: true } })
+      }
+
       const { results: receiptItems } = await c.env.DB.prepare(
         `SELECT item_id, received_quantity FROM inventory_receipt_items WHERE receipt_id = ?`
       ).bind(id).all()
 
       const validItems = (receiptItems || []).filter((ri) => ri.item_id && (ri.received_quantity as number) > 0)
+
+      // 차감 전 현재 잔량 1회 조회 → balance_after를 메모리에서 산출(= max(0, 현재−입고)) → 차감 후 read 제거
+      const cancelBalMap: Record<number, number> = {}
       if (validItems.length > 0) {
-        // 재고 차감 (entity_id 조건 추가)
-        await c.env.DB.batch(
-          validItems.map((ri) =>
-            c.env.DB.prepare(`UPDATE inventory SET quantity = MAX(0, quantity - ?), last_updated = CURRENT_TIMESTAMP WHERE item_id = ? AND entity_id = ?`)
-              .bind(ri.received_quantity, ri.item_id, cancelEntityId)
-          )
-        )
-        // 잔량 조회 + 역분개 트랜잭션
         const cancelItemIds = validItems.map((ri) => ri.item_id)
         const cancelPh = cancelItemIds.map(() => '?').join(',')
         const { results: cancelBalances } = await c.env.DB.prepare(
           `SELECT item_id, quantity FROM inventory WHERE item_id IN (${cancelPh}) AND entity_id = ?`
         ).bind(...cancelItemIds, cancelEntityId).all()
-        const cancelBalMap: Record<number, number> = {}
         for (const b of cancelBalances) cancelBalMap[b.item_id as number] = b.quantity as number
+      }
 
-        await c.env.DB.batch(
-          validItems.map((ri) =>
-            c.env.DB.prepare(
-              `INSERT INTO inventory_transactions (item_id, transaction_type, quantity, balance_after, reference_type, reference_id, notes, handled_by, transaction_date, entity_id)
-               VALUES (?, 'OUT', ?, ?, 'RECEIPT_CANCEL', ?, ?, ?, datetime('now'), ?)`
-            ).bind(
-              ri.item_id, ri.received_quantity, cancelBalMap[ri.item_id as number] || 0,
-              Number(id), '입고 취소 역분개', c.get('user')?.id || null, cancelEntityId
-            )
+      // 차감 + 역분개 + receipt 상태변경을 단일 batch(트랜잭션)로 원자 실행
+      // → "차감됨 ⇔ CANCELLED 표기됨" 보장 → 부분실패 후 재시도가 위 멱등 가드와 결합해 안전
+      const ops: D1PreparedStatement[] = []
+      for (const ri of validItems) {
+        const before = cancelBalMap[ri.item_id as number] || 0
+        const after = Math.max(0, before - (ri.received_quantity as number))
+        ops.push(
+          c.env.DB.prepare(`UPDATE inventory SET quantity = MAX(0, quantity - ?), last_updated = CURRENT_TIMESTAMP WHERE item_id = ? AND entity_id = ?`)
+            .bind(ri.received_quantity, ri.item_id, cancelEntityId)
+        )
+        ops.push(
+          c.env.DB.prepare(
+            `INSERT INTO inventory_transactions (item_id, transaction_type, quantity, balance_after, reference_type, reference_id, notes, handled_by, transaction_date, entity_id)
+             VALUES (?, 'OUT', ?, ?, 'RECEIPT_CANCEL', ?, ?, ?, datetime('now'), ?)`
+          ).bind(
+            ri.item_id, ri.received_quantity, after,
+            Number(id), '입고 취소 역분개', c.get('user')?.id || null, cancelEntityId
           )
         )
       }
-
-      await c.env.DB.prepare(
-        `UPDATE inventory_receipts SET inspection_status = ?, status = ?, notes = COALESCE(notes || char(10), '') || ? WHERE id = ?`
-      ).bind(inspStatus, receiptStatus, decisionLog, id).run()
+      // receipt 상태변경 — WHERE에 선행상태 가드(동시성 추가 방어)
+      ops.push(
+        c.env.DB.prepare(
+          `UPDATE inventory_receipts SET inspection_status = ?, status = ?, notes = COALESCE(notes || char(10), '') || ? WHERE id = ? AND COALESCE(status, '') <> 'CANCELLED'`
+        ).bind(inspStatus, receiptStatus, decisionLog, id)
+      )
+      await c.env.DB.batch(ops)
     } else if (receiptStatus) {
       await c.env.DB.prepare(
         `UPDATE inventory_receipts SET inspection_status = ?, status = ?, notes = COALESCE(notes || char(10), '') || ? WHERE id = ?`

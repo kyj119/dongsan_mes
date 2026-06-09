@@ -393,18 +393,24 @@
   }
 
   // 검수 확인 결정 처리
+  var inspectionsDecideInFlight = false  // #369 중복 제출 가드 (더블클릭/재시도 이중차감 방지)
   window.inspectionsDecide = async function(receiptId, decision) {
+    if (inspectionsDecideInFlight) return
     const labels = { PARTIAL_ACCEPT: '부분수령 확정', WAITING_RESHIP: '재입고 대기', CANCELLED: '전량 취소' }
     const danger = decision === 'CANCELLED'
     const ok = await showConfirm('"' + labels[decision] + '" 으로 처리합니다. 계속할까요?', { danger: danger })
     if (!ok) return
     const notes = prompt('결정 메모 (선택)', '')
+    inspectionsDecideInFlight = true
     try {
       await axios.patch('/api/inventory/receipts/' + receiptId + '/inspection-decision', { decision: decision, notes: notes || '' })
       showToast(labels[decision] + ' 처리 완료', 'success')
       inspectionsLoadReview()
     } catch (e) {
       showToast('처리 실패: ' + ((e.response && e.response.data && e.response.data.error) || e.message), 'error')
+      inspectionsLoadReview()  // #369 에러 시에도 목록 reload → 서버 상태와 동기화(잔류 버튼 재클릭 방지)
+    } finally {
+      inspectionsDecideInFlight = false
     }
   }
 
