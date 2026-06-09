@@ -25,7 +25,7 @@
 
 ## 주의사항 (다음 세션 필수 확인)
 - ⚠️ **협업자(kyj119) re-clone 필수** — 히스토리 재작성으로 전 커밋 SHA 변경. `git pull` 금지.
-- ⚠️ **백업 미러 보존**: `../dongsan_mes_backup.git`(7.3G). 이상 없음 확정 시에만 `rm -rf` 가능.
+- ✅ **백업 미러 삭제됨**: 검증 완료 후 7.23G 회수(2026-06-09). 롤백 소스 없음 — 원격 `0d7fea21`이 정본.
 - ⚠️ **GitHub dangling**: 원격 옛 커밋이 일정기간 dangling 보관 → 완전삭제 필요 시 GitHub Support. 저장소 public이면 과거 캐시 잔존 가능.
 - ⚠️ **`.git` 7.3G**: 우리가 지운 8건(~22MB) 아닌 **다른 대량 바이너리(publish/exe/tools 등)가 히스토리에 박힘** — 별도 다이어트 미승인 이슈.
 - ⚠️ **settings.json hooks 재승인**: 공유 이동된 6개 hook은 다음 세션 시작 시 Claude Code 승인 프롬프트 가능.
@@ -35,4 +35,3 @@
 - (#3 후속) `npm run check:dom` 8건 후보 개별 검토: pendingTableBody(#328 dead 확인)·token-login-note·itemSearch·pPaymentsBody 실 silent-fail 여부.
 - (#5 후속) 활성 상태 PROJECT_STATUS 일원화는 부분만 — ROADMAP/HANJIN/IMPROVEMENT_BACKLOG는 유지. 추가 통합 검토.
 - (선택) `.git` 7.3G 다이어트 — 히스토리 바이너리 제거 여부 사용자 결정 필요(또 force-push 동반).
-- 백업 미러 정리 시점 결정.
