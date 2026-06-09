@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
-import { entityFilter } from '../utils/entityFilter'
+import { entityFilter, cardEntityFilter } from '../utils/entityFilter'
 
 const aiInsights = new Hono<HonoEnv>()
 aiInsights.use('*', authMiddleware)
@@ -165,7 +165,9 @@ aiInsights.post('/credit-risk/calculate-all', requireRole('ADMIN', 'MANAGER'), a
 
 // ─── 생산 병목 탐지 (Phase 2 기초) ──────────────────────────────────────────
 aiInsights.get('/bottleneck', async (c) => {
-  // 장비별 현재 큐 깊이 + 예상 처리시간 + 납기 위험
+  // 장비별 현재 큐 깊이 + 예상 처리시간 + 납기 위험 (equipment·cards 법인 격리 — 0302 #342)
+  const efEq = entityFilter(c, 'e')        // equipment(entity_id)
+  const efCard = cardEntityFilter(c, 'c')  // 큐 카드(requesting_entity_id)
   const { results } = await c.env.DB.prepare(`
     SELECT e.id, e.name, e.daily_capacity,
       COUNT(c.id) as queue_depth,
@@ -173,12 +175,12 @@ aiInsights.get('/bottleneck', async (c) => {
       SUM(CASE WHEN c.delivery_date <= date('now', '+9 hours', '+2 days') THEN 1 ELSE 0 END) as urgent_count,
       MIN(c.delivery_date) as earliest_deadline
     FROM equipment e
-    LEFT JOIN cards c ON c.equipment_id = e.id AND c.status = 'PRINTING'
-    WHERE e.status = 'ACTIVE'
+    LEFT JOIN cards c ON c.equipment_id = e.id AND c.status = 'PRINTING'${efCard.clause}
+    WHERE e.status = 'ACTIVE'${efEq.clause}
     GROUP BY e.id
     HAVING queue_depth > 0
     ORDER BY total_queue_minutes DESC
-  `).all()
+  `).bind(...efCard.params, ...efEq.params).all()
 
   // 병목 판정: 큐 처리시간 > 8시간 (1일 용량 초과)
   const bottlenecks = (results || []).filter((r: any) => r.total_queue_minutes > 480)

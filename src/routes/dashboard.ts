@@ -502,9 +502,11 @@ dashboardRouter.get('/stats/card-distribution', async (c) => {
 // 장비별 부하 현황 (대시보드 위젯)
 dashboardRouter.get('/equipment-load', async (c) => {
   try {
+    const efEq = entityFilter(c, 'e')        // equipment(entity_id, 0302 #342)
+    const efCnt = cardEntityFilter(c, 'c')   // queue_count 카드(requesting_entity_id)
     const { results } = await c.env.DB.prepare(`
       SELECT e.id, e.name, e.equipment_status, COALESCE(e.daily_capacity, 0) as daily_capacity,
-        (SELECT COUNT(*) FROM cards c WHERE c.equipment_id = e.id AND c.status = 'PRINTING') as queue_count,
+        (SELECT COUNT(*) FROM cards c WHERE c.equipment_id = e.id AND c.status = 'PRINTING'${efCnt.clause}) as queue_count,
         ah.last_seen_at,
         CASE
           WHEN ah.last_seen_at IS NULL THEN 'OFFLINE'
@@ -513,9 +515,9 @@ dashboardRouter.get('/equipment-load', async (c) => {
         END as agent_status
       FROM equipment e
       LEFT JOIN agent_heartbeats ah ON ah.equipment_id = e.id
-      WHERE e.status = 'ACTIVE'
+      WHERE e.status = 'ACTIVE'${efEq.clause}
       ORDER BY e.name
-    `).all()
+    `).bind(...efCnt.params, ...efEq.params).all()
 
     return c.json({ success: true, data: results })
   } catch (error) {

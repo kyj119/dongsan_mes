@@ -32,7 +32,7 @@
 - ⚠️ Bash 작업디렉토리가 세션 중 `cd src/routes`로 이동했었음 — 절대경로/`git -C` 사용 권장.
 
 ## 다음 세션 TODO
-- **(보류) equipment(0302) partial-miss 중 dashboard/aiInsights 2곳** — production-board(equipmentQueue /workload·cards/queries /schedule/queues)는 **격리 적용 완료**(equipment WHERE + queue_count 서브쿼리). dashboard.ts:514·aiInsights.ts:175는 "전사 운영 가시성"(경영진 대시보드·병목탐지) 의도 여부 검토 후 결정=보류. (zero-filter 라우트 caps/hrSelf/payroll-shared는 다른 유효 스코핑=정상)
+- ✅ **(완료) equipment(0302) partial-miss 4곳 전부 격리** — equipmentQueue /workload·cards/queries /schedule/queues·dashboard /equipment-load·aiInsights /bottleneck. equipment WHERE(entity_id) + cards(requesting_entity_id, JOIN/queue_count 서브쿼리) 적용. dashboard는 로컬 cardEntityFilter 사용. (zero-filter 라우트 caps/hrSelf/payroll-shared는 다른 유효 스코핑=정상)
 - (#3 후속) `npm run check:dom` 8건 후보 개별 검토: pendingTableBody(#328 dead 확인)·token-login-note·itemSearch·pPaymentsBody 실 silent-fail 여부.
 - (#5 후속) 활성 상태 PROJECT_STATUS 일원화는 부분만 — ROADMAP/HANJIN/IMPROVEMENT_BACKLOG는 유지. 추가 통합 검토.
 - (선택) `.git` 7.3G 다이어트 — 히스토리 바이너리 제거 여부 사용자 결정 필요(또 force-push 동반).
