@@ -525,6 +525,30 @@ export function ledgerPage(c: Context<HonoEnv>) {
                                 </table>
                             </div>
                         </div>
+                        <!-- 독촉 이력 (collection logs) — #370 등록 이력 조회/삭제 -->
+                        <div class="ds-card mt-4" style="padding:0">
+                            <div class="p-3 border-b">
+                                <h3 class="text-sm font-bold text-gray-700">
+                                    <i class="fas fa-bell text-purple-500 mr-1"></i>독촉 이력
+                                </h3>
+                            </div>
+                            <div class="overflow-x-auto" style="max-height:240px;overflow-y:auto">
+                                <table class="ds-table ds-table-compact ds-table-striped">
+                                    <thead>
+                                        <tr>
+                                            <th class="text-left">연락일</th>
+                                            <th class="text-left">방법</th>
+                                            <th class="text-left">담당</th>
+                                            <th class="text-left">약속일</th>
+                                            <th class="text-right">약속금액</th>
+                                            <th class="text-left">메모</th>
+                                            <th></th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="collectionLogsBody" class="divide-y"></tbody>
+                                </table>
+                            </div>
+                        </div>
                     </div>
                     <!-- End detailSection -->
 

@@ -250,6 +250,8 @@ export function equipmentPage(c: Context<HonoEnv>) {
                             </div>
                         </div>
                     </div>
+                    <!-- 구역별 요약 (#370 renderZoneSummary 대상 컨테이너) -->
+                    <div id="zoneSummary" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2 mt-3"></div>
                 </div>
             </div>
 

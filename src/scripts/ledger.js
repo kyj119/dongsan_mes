@@ -239,6 +239,7 @@ function selectClient(clientId, clientName) {
 
     openDetailModal(clientId, clientName, 'sales');
     loadClientDetail(clientId);
+    loadCollectionLogs(clientId);  // #370 독촉 이력 조회 (등록/삭제 완결)
 }
 
 function closeDetail() {
@@ -456,93 +457,11 @@ async function recalculateBalance(clientId) {
     }
 }
 
-// Load payments for edit/delete
-async function loadPayments(clientId) {
-    try {
-        var url = '/api/ledger/payments?clientId=' + clientId + getDateParams();
-        var res = await axios.get(url);
-        if (res.data.success) {
-            var tbody = document.getElementById('paymentsTableBody');
-            if (!tbody) return;
-            tbody.innerHTML = '';
-            var payments = res.data.data || [];
-
-            if (payments.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="7" class="text-center py-10"><i class="fas fa-coins text-3xl mb-2 block text-gray-300"></i><div class="text-sm text-gray-400">입금 내역이 없습니다</div></td></tr>';
-                return;
-            }
-
-            var canEdit = currentUserRole === 'ADMIN' || currentUserRole === 'MANAGER';
-            var canDelete = currentUserRole === 'ADMIN';
-
-            payments.forEach(function(p) {
-                var row = document.createElement('tr');
-                row.className = 'hover:bg-gray-50';
-                var actions = '';
-                if (canEdit) {
-                    actions += '<button onclick="editPayment(' + p.id + ')" class="px-2 py-1 text-xs text-orange-600 hover:bg-orange-50 rounded"><i class="fas fa-edit"></i></button>';
-                }
-                if (canDelete) {
-                    actions += '<button onclick="deletePayment(' + p.id + ', ' + p.amount + ')" class="px-2 py-1 text-xs text-red-600 hover:bg-red-50 rounded ml-1"><i class="fas fa-trash"></i></button>';
-                }
-                row.innerHTML =
-                    '<td class="px-4 py-2">' + (p.payment_date || '') + '</td>' +
-                    '<td class="px-4 py-2 text-right font-medium text-green-700">' + (p.amount || 0).toLocaleString() + '원</td>' +
-                    '<td class="px-4 py-2">' + (p.payment_method || '-') + '</td>' +
-                    '<td class="px-4 py-2 text-gray-500">' + (p.reference_number || '-') + '</td>' +
-                    '<td class="px-4 py-2 text-gray-500">' + (p.notes || '-') + '</td>' +
-                    '<td class="px-4 py-2 text-gray-500">' + (p.created_by_name || '-') + '</td>' +
-                    '<td class="px-4 py-2 text-center act-col">' + (actions || '-') + '</td>';
-                tbody.appendChild(row);
-            });
-        }
-    } catch (e) {
-        console.error('Payments load error:', e);
-    }
-}
+// #370 loadPayments / loadAdjustments / renderAdjustmentsTable 제거 — 미배선 dead code.
+//   (대상 DOM paymentsTableBody·adjustmentsTableBody가 src 어디에도 없고 호출처 0건.
+//    입금·감액은 거래 내역 통합 타임라인 transactionsTableBody에 이미 표시됨.)
 
 // ===== 감액 관리 =====
-async function loadAdjustments(clientId) {
-    try {
-        var res = await axios.get('/api/ledger/adjustments/' + clientId);
-        if (res.data.success) {
-            renderAdjustmentsTable(res.data.data || []);
-        }
-    } catch (e) {
-        console.error('Adjustments load error:', e);
-        showToast('감액 이력 조회 실패', 'error');
-    }
-}
-
-function renderAdjustmentsTable(adjustments) {
-    var tbody = document.getElementById('adjustmentsTableBody');
-    if (!tbody) return;
-
-    if (adjustments.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="6" class="text-center py-10"><i class="fas fa-minus-circle text-3xl mb-2 block text-gray-300"></i><div class="text-sm text-gray-400">감액 이력이 없습니다</div></td></tr>';
-        return;
-    }
-
-    var canDelete = currentUserRole === 'ADMIN';
-    tbody.innerHTML = '';
-    adjustments.forEach(function(adj) {
-        var typeLabel = { DISCOUNT:'할인', CLAIM:'클레임', RETURN:'반품', OTHER:'기타' }[adj.type] || adj.type;
-        var row = document.createElement('tr');
-        row.className = 'hover:bg-gray-50';
-        var delBtn = canDelete
-            ? '<button onclick="deleteAdjustment(' + adj.id + ', ' + adj.amount + ')" class="px-2 py-1 text-xs text-red-600 hover:bg-red-50 rounded"><i class="fas fa-trash"></i></button>'
-            : '-';
-        row.innerHTML =
-            '<td class="px-4 py-2 text-gray-500">' + formatDate(adj.created_at) + '</td>' +
-            '<td class="px-4 py-2"><span class="px-2 py-0.5 bg-orange-100 text-orange-700 rounded text-xs">' + typeLabel + '</span></td>' +
-            '<td class="px-4 py-2 text-right font-medium text-orange-700">-' + Number(adj.amount).toLocaleString() + '원</td>' +
-            '<td class="px-4 py-2 text-gray-600">' + (adj.reason || '-') + '</td>' +
-            '<td class="px-4 py-2 text-gray-500">' + (adj.order_number || '-') + '</td>' +
-            '<td class="px-4 py-2 text-center act-col">' + delBtn + '</td>';
-        tbody.appendChild(row);
-    });
-}
-
 function openAdjustmentModal() {
     if (!selectedClientId) {
         showToast('거래처를 먼저 선택해주세요', 'warning');

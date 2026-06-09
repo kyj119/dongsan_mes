@@ -250,7 +250,8 @@
                     var extractPanel = document.getElementById('extractPanel');
                     if (extractPanel) {
                         extractPanel.classList.remove('hidden');
-                        populateExtractGroupsList();
+                        // #370 populateExtractGroupsList 제거 — extractGroupsList/extractPanel DOM이 페이지에 없는 레거시 경로.
+                        //   현행 추출 UI는 gridExtractAll()(parent.js), 추출 자체는 doExtractToLines가 sheetLayoutGroups 직접 사용.
                     }
                 }
             };
@@ -261,30 +262,7 @@
                 return el ? (parseInt(el.value, 10) || 1) : 1;
             }
 
-            // ── 품목 추출 패널: 그룹 목록 표시 ──
-            function populateExtractGroupsList() {
-                var container = document.getElementById('extractGroupsList');
-                if (!container || !sheetLayoutGroups) return;
-                container.innerHTML = '';
-                sheetLayoutGroups.forEach(function(g, i) {
-                    var wCm = g.width_mm ? (g.width_mm / 10).toFixed(1) : '?';
-                    var hCm = g.height_mm ? (g.height_mm / 10).toFixed(1) : '?';
-                    var thumbHtml = '';
-                    if (g.thumbnail_base64) {
-                        var b64 = g.thumbnail_base64;
-                        if (b64.indexOf('data:') !== 0) b64 = 'data:image/png;base64,' + b64;
-                        thumbHtml = '<img src="' + b64 + '" class="w-12 h-12 object-contain rounded border flex-shrink-0">';
-                    } else {
-                        var color = COLORS[i % COLORS.length];
-                        thumbHtml = '<div class="w-12 h-12 rounded border flex items-center justify-center text-white font-bold" style="background:' + color + '">' + String.fromCharCode(65 + i) + '</div>';
-                    }
-                    container.insertAdjacentHTML('beforeend',
-                        '<div class="flex items-center gap-3 py-2 border-b border-gray-100">'
-                        + thumbHtml
-                        + '<div class="text-sm text-gray-700">그룹 ' + (i + 1) + ' — <b>' + wCm + ' × ' + hCm + ' cm</b> (파일 크기)</div>'
-                        + '</div>');
-                });
-            }
+            // #370 populateExtractGroupsList 제거 — 레거시(extractGroupsList DOM 미존재). gridExtractAll로 대체됨.
 
             window.doExtractToLines = function() {
                 if (!sheetLayoutGroups || sheetLayoutGroups.length === 0) return;
