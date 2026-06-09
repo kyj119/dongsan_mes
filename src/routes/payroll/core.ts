@@ -538,10 +538,14 @@ coreRouter.post('/sync-attendance', requireRole('ADMIN', 'MANAGER'), async (c) =
     // overtime 요율 설정 로드
     const otSettings = await loadOvertimeSettings(c.env.DB)
 
-    for (const t of (targets || [])) {
-      // 근태 집계
-      const agg = await c.env.DB.prepare(`
-        SELECT
+    const targetList = (targets || [])
+    if (targetList.length > 0) {
+      // #350 근태 집계: 직원별 N+1 SELECT → IN절 단일 GROUP BY (CASE/SUM 식 동일, 출력 동등).
+      //   미출근 직원은 GROUP BY 결과에 없음 → aggMap 미존재 시 0 기본값으로 기존 .first() NULL→0과 동일.
+      const aggEmpIds = targetList.map((t) => t.employee_id)
+      const aggPh = aggEmpIds.map(() => '?').join(',')
+      const { results: aggRows } = await c.env.DB.prepare(`
+        SELECT employee_id,
           COUNT(*) as total_days,
           SUM(CASE WHEN attendance_type NOT IN ('ABSENT', 'VACATION', 'HOLIDAY') THEN 1 ELSE 0 END) as work_days,
           SUM(CASE WHEN attendance_type = 'ABSENT' OR status = 'ABSENT' THEN 1 ELSE 0 END) as absent_days,
@@ -550,49 +554,63 @@ coreRouter.post('/sync-attendance', requireRole('ADMIN', 'MANAGER'), async (c) =
           SUM(COALESCE(overtime_hours, 0)) as total_overtime,
           SUM(COALESCE(work_hours, 0)) as total_work_hours
         FROM attendance
-        WHERE employee_id = ?
+        WHERE employee_id IN (${aggPh})
           AND strftime('%Y-%m', work_date) = ?
-      `).bind(t.employee_id, payPeriod).first<any>()
+        GROUP BY employee_id
+      `).bind(...aggEmpIds, payPeriod).all<any>()
+      const aggMap: Record<number, any> = {}
+      for (const a of (aggRows || [])) aggMap[a.employee_id as number] = a
 
-      const work_days = Number(agg?.work_days || 0)
-      const absent_days = Number(agg?.absent_days || 0)
-      const late_count = Number(agg?.late_count || 0)
-      const leave_used_days = Number(agg?.leave_used_days || 0)
-      const overtime_hours = Number(agg?.total_overtime || 0)
+      const syncStmts: D1PreparedStatement[] = []
+      for (const t of targetList) {
+        const agg = aggMap[t.employee_id as number]
+        const work_days = Number(agg?.work_days || 0)
+        const absent_days = Number(agg?.absent_days || 0)
+        const late_count = Number(agg?.late_count || 0)
+        const leave_used_days = Number(agg?.leave_used_days || 0)
+        const overtime_hours = Number(agg?.total_overtime || 0)
 
-      // 연장근로수당 재계산
-      const ot = calcOvertimePay({
-        baseSalary: Number(t.base_salary || 0),
-        monthlyWorkHours: otSettings.monthlyWorkHours,
-        overtimeHours: overtime_hours,
-        nightHours: 0,
-        holidayHours: 0,
-        overtimeMul: otSettings.overtimeMul,
-        nightMul: otSettings.nightMul,
-        holidayMul: otSettings.holidayMul,
-        holidayOverMul: otSettings.holidayOverMul,
-      })
+        // 연장근로수당 재계산
+        const ot = calcOvertimePay({
+          baseSalary: Number(t.base_salary || 0),
+          monthlyWorkHours: otSettings.monthlyWorkHours,
+          overtimeHours: overtime_hours,
+          nightHours: 0,
+          holidayHours: 0,
+          overtimeMul: otSettings.overtimeMul,
+          nightMul: otSettings.nightMul,
+          holidayMul: otSettings.holidayMul,
+          holidayOverMul: otSettings.holidayOverMul,
+        })
 
-      await c.env.DB.prepare(`
-        UPDATE payroll
-        SET work_days = ?,
-            absent_days = ?,
-            late_count = ?,
-            leave_used_days = ?,
-            overtime_hours = ?,
-            overtime_pay = ?,
-            attendance_synced_at = datetime('now'),
-            updated_at = datetime('now')
-        WHERE id = ?
-      `).bind(work_days, absent_days, late_count, leave_used_days, overtime_hours, ot.overtime_pay, t.id).run()
+        syncStmts.push(
+          c.env.DB.prepare(`
+            UPDATE payroll
+            SET work_days = ?,
+                absent_days = ?,
+                late_count = ?,
+                leave_used_days = ?,
+                overtime_hours = ?,
+                overtime_pay = ?,
+                attendance_synced_at = datetime('now'),
+                updated_at = datetime('now')
+            WHERE id = ?
+          `).bind(work_days, absent_days, late_count, leave_used_days, overtime_hours, ot.overtime_pay, t.id)
+        )
 
-      synced++
-      details.push({
-        payroll_id: t.id,
-        employee_id: t.employee_id,
-        work_days, absent_days, late_count, leave_used_days,
-        overtime_hours, overtime_pay: ot.overtime_pay
-      })
+        synced++
+        details.push({
+          payroll_id: t.id,
+          employee_id: t.employee_id,
+          work_days, absent_days, late_count, leave_used_days,
+          overtime_hours, overtime_pay: ot.overtime_pay
+        })
+      }
+
+      // UPDATE 배치 실행 (D1 batch 한도 고려 80개씩 분할)
+      for (let i = 0; i < syncStmts.length; i += 80) {
+        await c.env.DB.batch(syncStmts.slice(i, i + 80))
+      }
     }
 
     return c.json({

@@ -240,20 +240,24 @@ settingsRouter.post('/tax-table/generate', requireRole('ADMIN', 'MANAGER'), asyn
     await c.env.DB.prepare(`DELETE FROM income_tax_table WHERE year = ?`).bind(year).run()
 
     let inserted = 0
-    // 배치 INSERT (D1은 prepare + bind 개별 호출이 안전)
+    // #350 ~900회 순차 INSERT → batch (구간세액은 메모리 계산, last_row_id 의존 없음)
+    const taxStmts: D1PreparedStatement[] = []
     for (let pay = min; pay < max; pay += step) {
       const payMid = pay + Math.floor(step / 2) // 구간 중앙값으로 계산 (보수적)
       const deps: number[] = []
       for (let d = 1; d <= 11; d++) {
         deps.push(calcOfficialMonthlyTax(payMid, d))
       }
-      await c.env.DB.prepare(
+      taxStmts.push(c.env.DB.prepare(
         `INSERT INTO income_tax_table (year, monthly_pay_min, monthly_pay_max,
           dependents_1, dependents_2, dependents_3, dependents_4, dependents_5,
           dependents_6, dependents_7, dependents_8, dependents_9, dependents_10, dependents_11)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-      ).bind(year, pay, pay + step, ...deps).run()
+      ).bind(year, pay, pay + step, ...deps))
       inserted++
+    }
+    for (let i = 0; i < taxStmts.length; i += 80) {
+      await c.env.DB.batch(taxStmts.slice(i, i + 80))
     }
 
     return c.json({ success: true, data: { inserted, year, min, max, step } })

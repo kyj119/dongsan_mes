@@ -1039,7 +1039,20 @@ poCoreRouter.post('/', requireRole('ADMIN', 'MANAGER'), async (c) => {
 
     const poId = poResult.meta.last_row_id
 
-    // INSERT purchase_order_items
+    // INSERT purchase_order_items — #350 item_id→item_name N+1 SELECT를 IN절 prefetch로 제거 + batch
+    const poiLookupIds = data.items
+      .filter((it: any) => it.item_id && !(it.item_name || null))
+      .map((it: any) => it.item_id)
+    const poiItemMeta: Record<number, { item_name: string; category: string; unit: string }> = {}
+    if (poiLookupIds.length > 0) {
+      const ph = poiLookupIds.map(() => '?').join(',')
+      const { results: metaRows } = await c.env.DB.prepare(
+        `SELECT id, item_name, category, unit FROM items WHERE id IN (${ph})`
+      ).bind(...poiLookupIds).all<{ id: number; item_name: string; category: string; unit: string }>()
+      for (const m of (metaRows || [])) poiItemMeta[m.id as number] = m
+    }
+
+    const poiStmts: D1PreparedStatement[] = []
     for (let i = 0; i < data.items.length; i++) {
       const item = data.items[i]
       let itemName = item.item_name || null
@@ -1047,9 +1060,7 @@ poCoreRouter.post('/', requireRole('ADMIN', 'MANAGER'), async (c) => {
       let unit = item.unit || 'EA'
 
       if (item.item_id && !itemName) {
-        const itemDetail = await c.env.DB.prepare(`
-          SELECT item_name, category, unit FROM items WHERE id = ?
-        `).bind(item.item_id).first<{ item_name: string; category: string; unit: string }>()
+        const itemDetail = poiItemMeta[item.item_id]
         if (itemDetail) {
           itemName = itemDetail.item_name
           categoryName = itemDetail.category
@@ -1059,7 +1070,7 @@ poCoreRouter.post('/', requireRole('ADMIN', 'MANAGER'), async (c) => {
 
       const itemAmount = (item.unit_price || 0) * (item.quantity || 1)
 
-      await c.env.DB.prepare(`
+      poiStmts.push(c.env.DB.prepare(`
         INSERT INTO purchase_order_items (
           po_id, item_id, item_name, category_name,
           quantity, received_quantity, unit,
@@ -1079,7 +1090,10 @@ poCoreRouter.post('/', requireRole('ADMIN', 'MANAGER'), async (c) => {
         item.vat_included !== undefined ? (item.vat_included ? 1 : 0) : 1,
         i,
         item.notes || null
-      ).run()
+      ))
+    }
+    for (let i = 0; i < poiStmts.length; i += 80) {
+      await c.env.DB.batch(poiStmts.slice(i, i + 80))
     }
 
     // 상태 이력 기록 (DRAFT 초기 항상 추가)
@@ -1230,6 +1244,20 @@ poCoreRouter.put('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
       DELETE FROM purchase_order_items WHERE po_id = ?
     `).bind(id).run()
 
+    // #350 item_id→item_name N+1 SELECT를 IN절 prefetch로 제거 + batch
+    const poiLookupIds = data.items
+      .filter((it: any) => it.item_id && !(it.item_name || null))
+      .map((it: any) => it.item_id)
+    const poiItemMeta: Record<number, { item_name: string; category: string; unit: string }> = {}
+    if (poiLookupIds.length > 0) {
+      const ph = poiLookupIds.map(() => '?').join(',')
+      const { results: metaRows } = await c.env.DB.prepare(
+        `SELECT id, item_name, category, unit FROM items WHERE id IN (${ph})`
+      ).bind(...poiLookupIds).all<{ id: number; item_name: string; category: string; unit: string }>()
+      for (const m of (metaRows || [])) poiItemMeta[m.id as number] = m
+    }
+
+    const poiStmts: D1PreparedStatement[] = []
     for (let i = 0; i < data.items.length; i++) {
       const item = data.items[i]
       let itemName = item.item_name || null
@@ -1237,9 +1265,7 @@ poCoreRouter.put('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
       let unit = item.unit || 'EA'
 
       if (item.item_id && !itemName) {
-        const itemDetail = await c.env.DB.prepare(`
-          SELECT item_name, category, unit FROM items WHERE id = ?
-        `).bind(item.item_id).first<{ item_name: string; category: string; unit: string }>()
+        const itemDetail = poiItemMeta[item.item_id]
         if (itemDetail) {
           itemName = itemDetail.item_name
           categoryName = itemDetail.category
@@ -1249,7 +1275,7 @@ poCoreRouter.put('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
 
       const itemAmount = (item.unit_price || 0) * (item.quantity || 1)
 
-      await c.env.DB.prepare(`
+      poiStmts.push(c.env.DB.prepare(`
         INSERT INTO purchase_order_items (
           po_id, item_id, item_name, category_name,
           quantity, received_quantity, unit,
@@ -1269,7 +1295,10 @@ poCoreRouter.put('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
         item.vat_included !== undefined ? (item.vat_included ? 1 : 0) : 1,
         i,
         item.notes || null
-      ).run()
+      ))
+    }
+    for (let i = 0; i < poiStmts.length; i += 80) {
+      await c.env.DB.batch(poiStmts.slice(i, i + 80))
     }
 
     return c.json({

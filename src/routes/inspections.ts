@@ -79,15 +79,19 @@ inspectionsRouter.post('/templates', requireRole('ADMIN'), async (c) => {
 
     // 검수 항목 저장
     if (body.items?.length) {
+      const tplItemStmts: D1PreparedStatement[] = []  // #350 단순 INSERT 루프 → batch
       for (let i = 0; i < body.items.length; i++) {
         const item = body.items[i]
-        await c.env.DB.prepare(`
+        tplItemStmts.push(c.env.DB.prepare(`
           INSERT INTO inspection_template_items (template_id, check_item, check_type, description, is_required, sort_order)
           VALUES (?, ?, ?, ?, ?, ?)
         `).bind(
           templateId, item.check_item, item.check_type || 'PASS_FAIL',
           item.description || null, item.is_required !== false ? 1 : 0, i + 1
-        ).run()
+        ))
+      }
+      for (let i = 0; i < tplItemStmts.length; i += 80) {
+        await c.env.DB.batch(tplItemStmts.slice(i, i + 80))
       }
     }
 

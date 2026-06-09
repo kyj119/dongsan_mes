@@ -321,13 +321,17 @@ yearEndRouter.post('/year-end-settlement/:employeeId', requireRole('ADMIN', 'MAN
 
     // 공제 증빙 항목 저장 (기존 삭제 후 재삽입)
     if (body.deduction_items && Array.isArray(body.deduction_items)) {
-      await c.env.DB.prepare(`DELETE FROM year_end_deduction_items WHERE settlement_id = ?`).bind(settlementId).run()
+      // #350 DELETE + INSERT 루프 → 단일 batch (원자 교체, deduction_items 소량)
+      const deductStmts: D1PreparedStatement[] = [
+        c.env.DB.prepare(`DELETE FROM year_end_deduction_items WHERE settlement_id = ?`).bind(settlementId)
+      ]
       for (const item of body.deduction_items) {
-        await c.env.DB.prepare(
+        deductStmts.push(c.env.DB.prepare(
           `INSERT INTO year_end_deduction_items (settlement_id, category, sub_category, description, amount, deductible_amount)
            VALUES (?, ?, ?, ?, ?, ?)`
-        ).bind(settlementId, item.category, item.sub_category || null, item.description || null, Number(item.amount || 0), Number(item.deductible_amount || 0)).run()
+        ).bind(settlementId, item.category, item.sub_category || null, item.description || null, Number(item.amount || 0), Number(item.deductible_amount || 0)))
       }
+      await c.env.DB.batch(deductStmts)
     }
 
     return c.json({

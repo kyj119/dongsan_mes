@@ -55,8 +55,9 @@ stockAlertsRouter.post('/stock-alerts/check', requireRole('ADMIN', 'MANAGER'), a
     `).all() as any
 
     let created = 0
+    const alertStmts: D1PreparedStatement[] = []  // #350 단순 INSERT 루프 → batch
     for (const item of lowItems) {
-      await c.env.DB.prepare(`
+      alertStmts.push(c.env.DB.prepare(`
         INSERT INTO stock_alerts (item_id, alert_type, current_quantity, threshold_quantity, entity_id)
         VALUES (?, ?, ?, ?, ?)
       `).bind(
@@ -65,8 +66,11 @@ stockAlertsRouter.post('/stock-alerts/check', requireRole('ADMIN', 'MANAGER'), a
         item.quantity,
         item.reorder_point,
         getEntityId(c) || 1
-      ).run()
+      ))
       created++
+    }
+    for (let i = 0; i < alertStmts.length; i += 80) {
+      await c.env.DB.batch(alertStmts.slice(i, i + 80))
     }
 
     return c.json({ success: true, data: { created, total_low: lowItems.length }, message: `${created}건의 재고 부족 알림이 생성되었습니다.` })
