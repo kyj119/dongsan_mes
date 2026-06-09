@@ -83,10 +83,10 @@ export class BarobillSmsProvider {
       <SendATKakaotalk xmlns="http://ws.baroservice.com/">
         <CERTKEY>${esc(this.config.certKey)}</CERTKEY>
         <CorpNum>${esc(this.config.corpNum)}</CorpNum>
-        <SenderID></SenderID>
+        <SenderID>${esc(this.config.senderId || '')}</SenderID>
         <TemplateName>${esc(params.templateCode)}</TemplateName>
         <SendDT>${esc(params.sndDT || '')}</SendDT>
-        <SmsReply>${params.altSendType === 'C' ? 'Y' : 'N'}</SmsReply>
+        <SmsReply>${smsReplyOf(params.altSendType)}</SmsReply>
         <SmsSenderNum>${esc(params.snd)}</SmsSenderNum>
         <KakaotalkMessage>
           <ReceiverName>${esc(msg.rcvnm)}</ReceiverName>
@@ -119,10 +119,10 @@ export class BarobillSmsProvider {
       <SendATKakaotalks xmlns="http://ws.baroservice.com/">
         <CERTKEY>${esc(this.config.certKey)}</CERTKEY>
         <CorpNum>${esc(this.config.corpNum)}</CorpNum>
-        <SenderID></SenderID>
+        <SenderID>${esc(this.config.senderId || '')}</SenderID>
         <TemplateName>${esc(params.templateCode)}</TemplateName>
         <SendDT>${esc(params.sndDT || '')}</SendDT>
-        <SmsReply>${params.altSendType === 'C' ? 'Y' : 'N'}</SmsReply>
+        <SmsReply>${smsReplyOf(params.altSendType)}</SmsReply>
         <SmsSenderNum>${esc(params.snd)}</SmsSenderNum>
         <KakaotalkMessages>${msgsXml}</KakaotalkMessages>
       </SendATKakaotalks>`
@@ -365,21 +365,37 @@ function esc(s: string): string {
 }
 
 /**
+ * SmsReply(대체문자 발송 옵션) 정규화 — 바로빌 유효값: E(템플릿 동일내용 발송)/A(지정 대체문자)/N(미발송).
+ * 'Y'는 유효값이 아니라 -31325 "대체문자 유형 오류"를 유발했음.
+ * 대체문자(E/A)는 SMS 발신번호 사전등록이 필요하므로, 명시적으로 'E'/'A'일 때만 사용하고
+ * 그 외(레거시 'C'/'Y', 빈값 등)는 'N'(미발송)으로 처리해 알림톡이 안전하게 발송되도록 한다.
+ */
+function smsReplyOf(altSendType: string | undefined): 'E' | 'A' | 'N' {
+  if (altSendType === 'E') return 'E'
+  if (altSendType === 'A') return 'A'
+  return 'N'
+}
+
+/**
  * 바로빌 단건 발송 결과 해석.
- * 바로빌은 성공 시 양수 접수번호, 실패 시 음수 에러코드를 같은 필드로 반환한다.
- * 음수도 truthy라 `result ? 1 : 0`으로는 실패를 성공으로 오판정 → 반드시 숫자 부호로 판별.
+ * 바로빌 반환(레퍼런스): 실패=음수 문자열(오류코드), 성공=그 외.
+ *  - 알림톡 성공 접수번호 = '숫자형식이 아닌 문자열'(예: 영문/혼합 SendKey)
+ *  - SMS/LMS 성공 접수번호 = 양수
+ *  → '음수면 실패, 그 외 비어있지 않으면 성공'으로 통일 (양수만 성공으로 보면 알림톡 SendKey를 실패로 오판정)
  */
 function interpretReceipt(result: string): SendResult {
-  const num = parseInt(result, 10)
-  if (result && !isNaN(num) && num > 0) {
-    return { receiptNum: result, code: num, message: '발송 성공' }
+  const r = (result || '').trim()
+  if (!r) return { receiptNum: '', code: 0, message: '발송 실패 (빈 응답)' }
+  const num = Number(r)
+  if (Number.isFinite(num) && num < 0) {
+    return { receiptNum: '', code: Math.trunc(num), message: `발송 실패 (바로빌 코드: ${r})` }
   }
-  return { receiptNum: '', code: isNaN(num) ? 0 : num, message: `발송 실패 (바로빌 코드: ${result || 'empty'})` }
+  return { receiptNum: r, code: 1, message: '발송 성공' }
 }
 
 /**
  * 바로빌 다건 발송 결과 해석 (SendATKakaotalks → ArrayOfString).
- * <string>접수번호|에러코드</string> 반복 — 양수=접수(성공), 음수/0=에러.
+ * <string>접수번호|에러코드</string> 반복 — 음수=에러, 그 외(비숫자 SendKey 등)=접수(성공).
  * 배열이 아니면(단일 문자열) interpretReceipt로 폴백.
  */
 function interpretBulkResult(result: string): SendResult {
@@ -390,9 +406,9 @@ function interpretBulkResult(result: string): SendResult {
   if (items.length === 0) return interpretReceipt(result)
   let ok = 0, fail = 0, firstReceipt = '', firstErr = 0
   for (const v of items) {
-    const n = parseInt(v, 10)
-    if (v && !isNaN(n) && n > 0) { ok++; if (!firstReceipt) firstReceipt = v }
-    else { fail++; if (firstErr === 0) firstErr = isNaN(n) ? 0 : n }
+    const n = Number(v)
+    if (Number.isFinite(n) && n < 0) { fail++; if (firstErr === 0) firstErr = Math.trunc(n) }
+    else if (v) { ok++; if (!firstReceipt) firstReceipt = v }
   }
   if (ok > 0) {
     return { receiptNum: firstReceipt, code: ok, message: `발송 접수 ${ok}건${fail ? `, 실패 ${fail}건` : ''}` }
