@@ -3,10 +3,8 @@
 ## 사용자 선호사항 (용준님)
 
 ### 작업 원칙
-- **추론 먼저, 실행 나중**: 요청→추론("왜?"→"진짜 목적?"→"연쇄 영향?")→"제가 이해한 바" 요약→확인. 신규 기능·구조 변경 시 brainstorming 스킬 먼저.
+- **추론 먼저, 100% 이해 후 실행**: 요청→추론("왜?"→"진짜 목적?"→"연쇄 영향?")→"제가 이해한 바" 요약→확인. 추측 진행 금지. 모호(범위 불분명/2해석/영향 불확실) 시 즉시 질문: "제가 이해한 게 맞는지" + bullet 3~5개 + 가/나/다 선택지. 신규 기능·구조 변경 시 brainstorming 스킬 먼저.
 - **작업 전 확인 필수**: 되돌리기 어려운 작업은 사용자 확인. 임의 진행 금지.
-- **100% 이해 후 진행**: 추측 진행 금지. 질문으로 확인.
-- **모호→즉시 질문**: 범위 불분명/2가지 해석/영향 불확실 → "제가 이해한 게 맞는지" + bullet 3~5개 + 가/나/다 선택지.
 - **feature→verify→next**: 기능 완료→검증(`npm run build && npm run smoke`)→다음 착수.
 - **타입 체크 필수**: 백엔드→`npm run verify`, 전체→`npm run build && npm run smoke`.
 - **subagent dispatch**: typecheck 포함 의무화. 라우트 수정 시 stats/count/badge 포함.
@@ -50,13 +48,13 @@ npm run db:reset          # DB 초기화
 > ⚠️ `dev:d1`은 `dist/`를 서빙. 코드 수정 시 반드시 `npm run build` 먼저.
 
 ## 알려진 함정 (Critical)
-### Template Literal 이스케이프 (`src/layout.ts`)
-`layout.ts`는 백틱 템플릿. onclick에서 `\'` → 그냥 `'` 출력됨. 반드시 `\\'` 사용.
+### Template Literal 이스케이프 (`src/layout/*.ts`)
+`src/layout/sidebar.ts`·`topbar.ts`는 백틱 템플릿. onclick에서 `\'` → 그냥 `'` 출력됨. 반드시 `\\'` 사용.
 ```js
 // ❌ onclick="func(\'' + val + '\')"
 // ✅ onclick="func(\\'' + val + '\\')"
 ```
-`src/scripts/*.js`는 `?raw` import이므로 이 문제 없음.
+`src/scripts/*.js`(전역 클라 JS = `src/scripts/layout/shell.js`)는 `?raw` import이므로 이 문제 없음. (layout.ts 3259→228줄 분할, 2026-06-09 #2)
 
 ### HTML↔JS Silent Fail 방지
 `?raw` import된 JS의 `getElementById` 대상 ID가 변경되면 silent fail.
