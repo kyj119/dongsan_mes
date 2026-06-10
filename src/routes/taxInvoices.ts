@@ -293,10 +293,15 @@ async function issueTaxInvoice(
     if (updated?.order_id && !orderIds.includes(updated.order_id)) orderIds.push(updated.order_id)
     if (orderIds.length > 0) {
       const ph = orderIds.map(() => '?').join(',')
-      // 가드: billing_status NULL(청구 전 정상 상태)도 매칭하도록 IS NOT 사용 (`!= 'BILLED'`는 NULL 미매칭 → 발행 후에도 미청구로 남아 자동 sync 재청구 위험)
-      await db.prepare(
-        `UPDATE orders SET billing_status = 'BILLED', updated_at = CURRENT_TIMESTAMP WHERE id IN (${ph}) AND billing_status IS NOT 'BILLED'`
-      ).bind(...orderIds).run()
+      // split billing P3: 그룹 BILLED(청구 정본) + orders 미러. 가드: NULL도 매칭하도록 IS NOT 사용(`!= 'BILLED'`는 NULL 미매칭 버그).
+      await db.batch([
+        db.prepare(
+          `UPDATE order_billing_groups SET billing_status = 'BILLED', billed_at = CURRENT_TIMESTAMP WHERE order_id IN (${ph}) AND billing_status IS NOT 'BILLED' AND billing_status IS NOT 'PAID'`
+        ).bind(...orderIds),
+        db.prepare(
+          `UPDATE orders SET billing_status = 'BILLED', updated_at = CURRENT_TIMESTAMP WHERE id IN (${ph}) AND billing_status IS NOT 'BILLED'`
+        ).bind(...orderIds)
+      ])
     }
   } catch (_billingErr) {
     console.error('[taxInvoices] billing_status 업데이트 실패 — 수동 확인 필요 (invoice:', taxInvoiceId, '):', _billingErr)
@@ -993,10 +998,11 @@ taxInvoicesRouter.post('/direct', requireRole('ADMIN', 'MANAGER'), async (c) => 
     let taxInvoiceId: number
     try {
       const batchRes = await c.env.DB.batch([
-        // (b) 매출채권 잔액 증액 (정상 BILLED 경로 미러 — orders/core.ts:531)
-        c.env.DB.prepare(
-          'UPDATE clients SET balance = balance + ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
-        ).bind(totalAmount, buyerClientId),
+        // (b) split billing P3: 백업 주문의 청구그룹 생성(BILLED) — balance 캐시 대체, (거래처×법인) 미수금 파생 소스
+        c.env.DB.prepare(`
+          INSERT INTO order_billing_groups (order_id, entity_id, billing_status, supply_amount, tax_amount, billed_amount, billed_at, billed_by)
+          VALUES (?, ?, 'BILLED', ?, ?, ?, CURRENT_TIMESTAMP, ?)
+        `).bind(orderId, entityId, supplyAmount, taxAmount, totalAmount, user?.id || null),
         // (c) 세금계산서 INSERT (백업 주문에 연결)
         c.env.DB.prepare(`
           INSERT INTO tax_invoices (
@@ -1824,18 +1830,18 @@ taxInvoicesRouter.post('/:id/cancel', requireRole('ADMIN'), async (c) => {
             // 주문 자체를 CANCELLED 처리한다. (일반 주문은 기존 동작 유지 — billing_status만 초기화)
             const ord = ordMap.get(orderId)
             if (ord?.order_type === 'DIRECT_INVOICE') {
-              // BILLED 상태에서만 잔액 롤백 (이중 롤백 방지)
-              if (ord.billing_status === 'BILLED') {
-                const reverseAmount = ord.billed_amount || ord.final_amount || 0
-                cancelStmts.push(c.env.DB.prepare(
-                  `UPDATE clients SET balance = balance - ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`
-                ).bind(reverseAmount, ord.client_id))
-              }
+              // split billing P3: balance 캐시 미사용 — status='CANCELLED'로 미수금 파생에서 자동 제외.
+              cancelStmts.push(c.env.DB.prepare(
+                `UPDATE order_billing_groups SET billing_status = NULL WHERE order_id = ?`
+              ).bind(orderId))
               cancelStmts.push(c.env.DB.prepare(
                 `UPDATE orders SET status = 'CANCELLED', billing_status = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?`
               ).bind(orderId))
             } else {
-              // 일반 주문: 기존 동작 — billing_status만 초기화 (balance는 손대지 않음)
+              // split billing P3: 일반 주문 — 그룹 + orders billing_status 초기화 (청구 취소). balance 미사용.
+              cancelStmts.push(c.env.DB.prepare(
+                `UPDATE order_billing_groups SET billing_status = NULL, billed_at = NULL, billed_by = NULL WHERE order_id = ?`
+              ).bind(orderId))
               cancelStmts.push(c.env.DB.prepare(
                 `UPDATE orders SET billing_status = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?`
               ).bind(orderId))

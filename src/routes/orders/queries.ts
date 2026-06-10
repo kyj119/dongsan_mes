@@ -158,8 +158,12 @@ ordersQueriesRouter.patch('/bulk-bill', requireRole('ADMIN', 'MANAGER'), async (
 
       const billedAmount = Number(order.final_amount) || 0
 
-      // 주문 BILLED + 거래처 balance 업데이트 (각 주문당 2문 → batch에서 순차 실행)
-      // 가드: billing_status가 NULL(청구 전 정상 상태)도 매칭하도록 IS NOT 사용 (`!= 'BILLED'`는 NULL 미매칭 → 상태 미반영+balance 이중증액 버그)
+      // split billing P3: 그룹 BILLED + orders 미러 (balance 캐시 미사용 — 미수금 파생). 각 주문당 2문.
+      // 가드: NULL(청구 전 정상)도 매칭하도록 IS NOT 사용 (`!= 'BILLED'`는 NULL 미매칭 버그). 청크 80=짝수라 주문쌍 분할 없음.
+      billStmts.push(c.env.DB.prepare(`
+          UPDATE order_billing_groups SET billing_status = 'BILLED', billed_at = CURRENT_TIMESTAMP, billed_by = ?
+          WHERE order_id = ? AND billing_status IS NOT 'BILLED' AND billing_status IS NOT 'PAID'
+        `).bind(user?.id || null, orderId))
       billStmts.push(c.env.DB.prepare(`
           UPDATE orders
           SET billing_status = 'BILLED',
@@ -170,9 +174,6 @@ ordersQueriesRouter.patch('/bulk-bill', requireRole('ADMIN', 'MANAGER'), async (
               updated_at = CURRENT_TIMESTAMP
           WHERE id = ? AND billing_status IS NOT 'BILLED'
         `).bind(user?.id || null, billedAmount, normalizedReceiptType, orderId))
-      billStmts.push(c.env.DB.prepare(
-        'UPDATE clients SET balance = balance + ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
-      ).bind(billedAmount, order.client_id))
 
       order.billing_status = 'BILLED'  // 동일 요청 내 중복 orderId 재처리 방지 (순차 동작 보존)
       billedCount++

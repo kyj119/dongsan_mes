@@ -111,6 +111,37 @@ export async function recalcOrderBillingGroups(db: D1Database, orderId: number):
   if (stmts.length > 0) await db.batch(stmts)
 }
 
+// ── 청구 상태를 그룹 단위로 설정 (split billing P3) ──
+// order_billing_groups 가 청구 정본. orders.billing_status/billed_* 는 미러(롤백용, P5 후 제거).
+// balance 캐시는 사용 안 함 — 미수금은 (order_billing_groups[BILLED] − payments − adjustments) 파생.
+// status: 'BILLED'(청구) | 'PAID'(수금) | null(취소). 반환: orders 행이 실제 변경됐는지(이중 실행 방지).
+// ⚠️ NULL!='BILLED'는 SQLite에서 NULL → `IS NOT 'BILLED'` 사용(미청구 NULL 매칭).
+export async function setOrderBillingStatus(
+  db: D1Database, orderId: number, status: 'BILLED' | 'PAID' | null, billedBy: number | null
+): Promise<boolean> {
+  if (status === 'BILLED') {
+    const r = await db.batch([
+      db.prepare(`UPDATE order_billing_groups SET billing_status = 'BILLED', billed_at = CURRENT_TIMESTAMP, billed_by = ?
+                  WHERE order_id = ? AND billing_status IS NOT 'BILLED' AND billing_status IS NOT 'PAID'`).bind(billedBy, orderId),
+      db.prepare(`UPDATE orders SET billing_status = 'BILLED', billed_at = CURRENT_TIMESTAMP, billed_by = ?, billed_amount = final_amount, updated_at = CURRENT_TIMESTAMP
+                  WHERE id = ? AND billing_status IS NOT 'BILLED' AND billing_status IS NOT 'PAID'`).bind(billedBy, orderId)
+    ])
+    return ((r[1].meta.changes as number) || 0) > 0
+  } else if (status === 'PAID') {
+    const r = await db.batch([
+      db.prepare(`UPDATE order_billing_groups SET billing_status = 'PAID' WHERE order_id = ? AND billing_status = 'BILLED'`).bind(orderId),
+      db.prepare(`UPDATE orders SET billing_status = 'PAID', updated_at = CURRENT_TIMESTAMP WHERE id = ? AND billing_status = 'BILLED'`).bind(orderId)
+    ])
+    return ((r[1].meta.changes as number) || 0) > 0
+  } else {
+    const r = await db.batch([
+      db.prepare(`UPDATE order_billing_groups SET billing_status = NULL, billed_at = NULL, billed_by = NULL WHERE order_id = ?`).bind(orderId),
+      db.prepare(`UPDATE orders SET billing_status = NULL, billed_at = NULL, billed_by = NULL, billed_amount = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?`).bind(orderId)
+    ])
+    return ((r[1].meta.changes as number) || 0) > 0
+  }
+}
+
 // ── 카드 생성 공통 함수 (POST/PUT 중복 제거) ──
 export interface GenerateCardsParams {
   db: D1Database
@@ -607,34 +638,15 @@ ordersCoreRouter.patch('/:id/bill', requireRole('ADMIN', 'MANAGER'), async (c) =
       return c.json({ success: false, error: '단가 미정 품목이 있는 주문은 회계반영할 수 없습니다. 먼저 단가를 확정해주세요.' }, 400)
     }
 
-    const maxAmount = parseFloat(String(order.final_amount)) || 0
-    const billedAmount = body.billed_amount !== undefined
-      ? Math.min(Math.max(0, parseFloat(String(body.billed_amount)) || 0), maxAmount * 1.5)
-      : maxAmount
-
-    // #83 + #168: 원자적 처리 + 이중 실행 방지 (billing_status 조건 추가)
-    const batchResult = await c.env.DB.batch([
-      c.env.DB.prepare(`
-        UPDATE orders
-        SET billing_status = 'BILLED',
-            billed_at = CURRENT_TIMESTAMP,
-            billed_by = ?,
-            billed_amount = ?,
-            updated_at = CURRENT_TIMESTAMP
-        WHERE id = ? AND billing_status IS NULL
-      `).bind(user?.id || null, billedAmount, id),
-      c.env.DB.prepare(
-        'UPDATE clients SET balance = balance + ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
-      ).bind(billedAmount, order.client_id)
-    ])
-
-    if (!batchResult[0].meta.changes) {
+    // split billing P3: 청구를 그룹 단위로 — 그룹 BILLED + orders 미러. balance 캐시 미사용(미수금 파생).
+    const billed = await setOrderBillingStatus(c.env.DB, Number(id), 'BILLED', user?.id || null)
+    if (!billed) {
       return c.json({ success: false, error: '이미 처리된 주문입니다 (동시 요청 감지)' }, 409)
     }
 
     return c.json({
       success: true,
-      data: { billing_status: 'BILLED', billed_amount: billedAmount }
+      data: { billing_status: 'BILLED' }
     })
   } catch (error) {
     console.error('Bill order error:', error)
@@ -668,57 +680,21 @@ ordersCoreRouter.patch('/:id/billing-status', requireRole('ADMIN', 'MANAGER'), a
       if (order.status !== 'SHIPPED' && order.status !== 'COMPLETED') {
         return c.json({ success: false, error: '출고완료 후(출고/배송완료) 주문만 회계반영 가능합니다' }, 400)
       }
-      const billedAmount = Number(order.final_amount) || 0
-      // #83 + #168: 원자적 처리 + 이중 실행 방지
-      const batchStmts: any[] = [
-        c.env.DB.prepare(`
-          UPDATE orders SET billing_status = 'BILLED', billed_at = CURRENT_TIMESTAMP, billed_by = ?, billed_amount = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND (billing_status IS NULL OR billing_status = '')
-        `).bind(user?.id || null, billedAmount, id)
-      ]
-      if (oldStatus !== 'BILLED' && oldStatus !== 'PAID') {
-        batchStmts.push(
-          c.env.DB.prepare(
-            'UPDATE clients SET balance = balance + ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
-          ).bind(billedAmount, order.client_id)
-        )
-      }
-      await c.env.DB.batch(batchStmts)
+      // split billing P3: 그룹 단위 BILLED + orders 미러 (balance 캐시 미사용 — 미수금 파생)
+      await setOrderBillingStatus(c.env.DB, Number(id), 'BILLED', user?.id || null)
     } else if (newStatus === 'PAID') {
       // 수금완료
       if (oldStatus !== 'BILLED') {
         return c.json({ success: false, error: '회계반영된 주문만 수금완료 처리할 수 있습니다' }, 400)
       }
-      const billedAmount = order.billed_amount || Number(order.final_amount) || 0
-      // #83 + #168: 원자적 처리 + 이중 실행 방지
-      await c.env.DB.batch([
-        c.env.DB.prepare(`
-          UPDATE orders SET billing_status = 'PAID', updated_at = CURRENT_TIMESTAMP WHERE id = ? AND billing_status = 'BILLED'
-        `).bind(id),
-        c.env.DB.prepare(
-          'UPDATE clients SET balance = balance - ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
-        ).bind(billedAmount, order.client_id)
-      ])
+      await setOrderBillingStatus(c.env.DB, Number(id), 'PAID', user?.id || null)
     } else {
       // 회계반영 취소 (빈 문자열)
-      if (oldStatus === 'BILLED') {
-        const billedAmount = order.billed_amount || Number(order.final_amount) || 0
-        // #83: 원자적 처리
-        await c.env.DB.batch([
-          c.env.DB.prepare(
-            'UPDATE clients SET balance = balance - ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
-          ).bind(billedAmount, order.client_id),
-          c.env.DB.prepare(`
-            UPDATE orders SET billing_status = NULL, billed_at = NULL, billed_by = NULL, billed_amount = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?
-          `).bind(id)
-        ])
-      } else if (oldStatus === 'PAID') {
+      if (oldStatus === 'PAID') {
         // PAID에서 되돌리기는 허용하지 않음
         return c.json({ success: false, error: '수금완료 상태에서는 직접 미확인으로 변경할 수 없습니다' }, 400)
-      } else {
-        await c.env.DB.prepare(`
-          UPDATE orders SET billing_status = NULL, billed_at = NULL, billed_by = NULL, billed_amount = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?
-        `).bind(id).run()
       }
+      await setOrderBillingStatus(c.env.DB, Number(id), null, user?.id || null)
     }
 
     return c.json({ success: true, data: { billing_status: newStatus || null } })
@@ -1937,15 +1913,8 @@ ordersCoreRouter.delete('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
         `).bind(user.id, id),
       ]
 
-      // BILLED 주문만 balance 차감 (미확정 주문은 balance에 미반영 상태)
-      if (order.billing_status === 'BILLED' && order.final_amount && order.final_amount !== 0) {
-        softDeleteStmts.push(c.env.DB.prepare(`
-          UPDATE clients
-          SET balance = balance - ?,
-              updated_at = CURRENT_TIMESTAMP
-          WHERE id = ?
-        `).bind(order.billed_amount || order.final_amount, order.client_id))
-      }
+      // split billing P3: balance 캐시 미사용. 미수금은 order_billing_groups[BILLED] 파생이며
+      // status != 'CANCELLED' 필터로 취소 주문은 자동 제외 → 별도 차감 불필요.
 
       await c.env.DB.batch(softDeleteStmts)
 
@@ -1964,20 +1933,10 @@ ordersCoreRouter.delete('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
       }, 403)
     }
 
-    // 하드 삭제 전 balance 역산
-    // CANCELLED+BILLED: 소프트삭제 시 이미 차감됨 → 이중 차감 방지
-    // 미BILLED: balance에 미반영 상태 → 역산 불필요
-    // BILLED이면서 CANCELLED 아닌 경우만 차감 (직접 하드삭제하는 극히 드문 케이스)
-    if (order.status !== 'CANCELLED' && order.billing_status === 'BILLED' && order.final_amount && order.final_amount !== 0) {
-      await c.env.DB.prepare(`
-        UPDATE clients
-        SET balance = balance - ?,
-            updated_at = CURRENT_TIMESTAMP
-        WHERE id = ?
-      `).bind(order.billed_amount || order.final_amount, order.client_id).run()
-    }
+    // split billing P3: balance 캐시 미사용 — 하드 삭제 시 order_billing_groups 도 함께 삭제(아래 batch).
+    // 미수금은 파생이므로 별도 역산 불필요.
 
-    // #87: 원자적 삭제 (db.batch — 전체 ���공 또는 전체 롤백)
+    // #87: 원자적 삭제 (db.batch — 전체 성공 또는 전체 롤백)
     await c.env.DB.batch([
       // #116: card_id 기반 정리 (cards 삭제 전에 먼저, #117 FK 미강제 대응)
       c.env.DB.prepare('DELETE FROM card_status_history WHERE card_id IN (SELECT id FROM cards WHERE order_id = ?)').bind(id),
@@ -1997,6 +1956,7 @@ ordersCoreRouter.delete('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
       c.env.DB.prepare('DELETE FROM shipments WHERE order_id = ?').bind(id),
       c.env.DB.prepare('DELETE FROM cards WHERE order_id = ?').bind(id),
       c.env.DB.prepare('DELETE FROM order_items WHERE order_id = ?').bind(id),
+      c.env.DB.prepare('DELETE FROM order_billing_groups WHERE order_id = ?').bind(id),  // split billing P3
       c.env.DB.prepare('DELETE FROM order_status_history WHERE order_id = ?').bind(id),
       c.env.DB.prepare('DELETE FROM tax_invoice_orders WHERE order_id = ?').bind(id),
       c.env.DB.prepare('DELETE FROM order_ai_files WHERE order_id = ?').bind(id),
@@ -2142,48 +2102,9 @@ ordersCoreRouter.put('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
       id
     ).run()
 
-    // BILLED 주문만 balance 반영 (회계반영 전 주문은 balance에 미반영)
-    if (existingOrder.billing_status === 'BILLED') {
-      const oldClientId = existingOrder.client_id
-      const oldFinalAmount = existingOrder.final_amount || 0
-      const newClientId = orderData.client_id
-
-      if (oldClientId === newClientId) {
-        const diff = finalAmount - oldFinalAmount
-        if (diff !== 0) {
-          await c.env.DB.prepare(`
-            UPDATE clients
-            SET balance = balance + ?,
-                updated_at = CURRENT_TIMESTAMP
-            WHERE id = ?
-          `).bind(diff, newClientId).run()
-        }
-      } else {
-        if (oldFinalAmount !== 0) {
-          await c.env.DB.prepare(`
-            UPDATE clients
-            SET balance = balance - ?,
-                updated_at = CURRENT_TIMESTAMP
-            WHERE id = ?
-          `).bind(oldFinalAmount, oldClientId).run()
-        }
-        if (finalAmount !== 0) {
-          await c.env.DB.prepare(`
-            UPDATE clients
-            SET balance = balance + ?,
-                updated_at = CURRENT_TIMESTAMP
-            WHERE id = ?
-          `).bind(finalAmount, newClientId).run()
-        }
-      }
-
-      // billed_amount도 동기화
-      if (finalAmount !== oldFinalAmount) {
-        await c.env.DB.prepare(
-          'UPDATE orders SET billed_amount = ? WHERE id = ?'
-        ).bind(finalAmount, id).run()
-      }
-    }
+    // split billing P3: balance 캐시 미사용. BILLED(청구 확정) 주문의 금액 수정은 미수금 파생에
+    // 자동 반영되지 않는다 — order_billing_groups 가 동결(발행된 세금계산서 보호)되므로.
+    // 청구 후 금액 변경분은 adjustment(감액/증액)로 처리한다.
 
     // ── 카드 보존 판단을 order_items 삭제 전에 수행 ──
     // CONFIRMED 상태에서만 카드 삭제+재생성
@@ -2540,14 +2461,7 @@ ordersCoreRouter.patch('/:id/cancel', requireRole('ADMIN', 'MANAGER'), async (c)
       }
     }
 
-    // BILLED 상태면 balance 롤백
-    if (order.billing_status === 'BILLED' && order.final_amount && order.final_amount !== 0) {
-      cancelStmts.push(
-        c.env.DB.prepare(`
-          UPDATE clients SET balance = balance - ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?
-        `).bind(order.billed_amount || order.final_amount, order.client_id)
-      )
-    }
+    // split billing P3: balance 캐시 미사용 — 미수금은 status != 'CANCELLED' 파생이라 취소 시 자동 제외.
 
     // 이력 기록
     cancelStmts.push(
@@ -2687,8 +2601,9 @@ ordersCoreRouter.post('/sync-statuses', requireRole('ADMIN', 'MANAGER'), async (
     const toBillStmts: D1PreparedStatement[] = []
     for (const order of toBill) {
       // #146/#121: billing_status + balance 원자적 업데이트
+      // split billing P3: 그룹 BILLED + orders 미러 (balance 캐시 미사용). 청크 80=짝수라 주문쌍 분할 없음(원자성).
+      toBillStmts.push(db.prepare(`UPDATE order_billing_groups SET billing_status = 'BILLED', billed_at = CURRENT_TIMESTAMP, billed_by = ? WHERE order_id = ? AND billing_status IS NOT 'BILLED' AND billing_status IS NOT 'PAID'`).bind(user?.id || null, order.id))
       toBillStmts.push(db.prepare(`UPDATE orders SET billing_status = 'BILLED', billed_at = CURRENT_TIMESTAMP, billed_by = ?, billed_amount = final_amount, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND billing_status IS NULL`).bind(user?.id || null, order.id))
-      toBillStmts.push(db.prepare(`UPDATE clients SET balance = balance + (SELECT final_amount FROM orders WHERE id = ?), updated_at = CURRENT_TIMESTAMP WHERE id = ?`).bind(order.id, order.client_id))
     }
     for (let i = 0; i < toBillStmts.length; i += 80) {
       await db.batch(toBillStmts.slice(i, i + 80))
@@ -2711,8 +2626,9 @@ ordersCoreRouter.post('/sync-statuses', requireRole('ADMIN', 'MANAGER'), async (
     const noInvStmts: D1PreparedStatement[] = []
     for (const order of noInvoice) {
       // #146/#121: billing_status + balance 원자적 업데이트
+      // split billing P3: 그룹 BILLED + orders 미러 (balance 캐시 미사용). 청크 80=짝수라 주문쌍 분할 없음(원자성).
+      noInvStmts.push(db.prepare(`UPDATE order_billing_groups SET billing_status = 'BILLED', billed_at = CURRENT_TIMESTAMP, billed_by = ? WHERE order_id = ? AND billing_status IS NOT 'BILLED' AND billing_status IS NOT 'PAID'`).bind(user?.id || null, order.id))
       noInvStmts.push(db.prepare(`UPDATE orders SET billing_status = 'BILLED', billed_at = CURRENT_TIMESTAMP, billed_by = ?, billed_amount = final_amount, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND billing_status IS NULL`).bind(user?.id || null, order.id))
-      noInvStmts.push(db.prepare(`UPDATE clients SET balance = balance + (SELECT final_amount FROM orders WHERE id = ?), updated_at = CURRENT_TIMESTAMP WHERE id = ?`).bind(order.id, order.client_id))
     }
     for (let i = 0; i < noInvStmts.length; i += 80) {
       await db.batch(noInvStmts.slice(i, i + 80))

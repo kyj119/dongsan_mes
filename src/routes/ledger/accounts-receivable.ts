@@ -7,6 +7,25 @@ import { logActivity } from '../../utils/activityLog'
 import { notifyRoles } from '../../utils/notify'
 import { getEntityId, entityFilter } from '../../utils/entityFilter'
 
+// ── split billing P3: (거래처) 미수금 파생 — order_billing_groups[BILLED] − payments − adjustments ──
+// clients.balance 캐시 대체. entityFilter 적용(현재 사용자 법인 = 청구 법인 기준).
+async function deriveClientBalance(c: Context<HonoEnv>, clientId: number | string): Promise<number> {
+  const { clause: gEf, params: gP } = entityFilter(c, 'g')
+  const billed = await c.env.DB.prepare(
+    `SELECT COALESCE(SUM(g.billed_amount), 0) AS v FROM order_billing_groups g JOIN orders o ON o.id = g.order_id
+     WHERE o.client_id = ? AND g.billing_status = 'BILLED' AND o.status != 'CANCELLED'${gEf}`
+  ).bind(clientId, ...gP).first<{ v: number }>()
+  const { clause: pEf, params: pP } = entityFilter(c, 'p')
+  const paid = await c.env.DB.prepare(
+    `SELECT COALESCE(SUM(amount), 0) AS v FROM payments p WHERE client_id = ?${pEf}`
+  ).bind(clientId, ...pP).first<{ v: number }>()
+  const { clause: aEf, params: aP } = entityFilter(c, 'a')
+  const adj = await c.env.DB.prepare(
+    `SELECT COALESCE(SUM(amount), 0) AS v FROM adjustments a WHERE client_id = ?${aEf}`
+  ).bind(clientId, ...aP).first<{ v: number }>()
+  return (Number(billed?.v) || 0) - (Number(paid?.v) || 0) - (Number(adj?.v) || 0)
+}
+
 // ── Row types for D1 .first<T>() / .all<T>() ──
 
 interface ClientRow {
@@ -258,13 +277,15 @@ arRouter.get('/client/:clientId', async (c) => {
 
     // ===== 전기이월(opening, 조회 시작일 이전 잔액) + 전체 정합성(all-time) 계산 =====
     // 어느 기간을 조회해도 잔액이 정확하도록: opening = 시작일 이전 전체 거래 잔액. startDate='' 이면 opening=0(전체).
-    const { clause: oOrdEf, params: oOrdEfP } = entityFilter(c)
+    // split billing P3: 청구 정본 = order_billing_groups(청구 법인별). entity 필터도 g.entity_id 기준.
+    const { clause: gOrdEf, params: gOrdEfP } = entityFilter(c, 'g')
     const ordSums = await c.env.DB.prepare(`
       SELECT
-        COALESCE(SUM(CASE WHEN billing_status = 'BILLED' THEN COALESCE(billed_amount, final_amount, 0) ELSE 0 END), 0) AS all_debit,
-        COALESCE(SUM(CASE WHEN billing_status = 'BILLED' AND date(created_at) < ? THEN COALESCE(billed_amount, final_amount, 0) ELSE 0 END), 0) AS open_debit
-      FROM orders WHERE client_id = ?${oOrdEf}
-    `).bind(startDate, clientId, ...oOrdEfP).first<{ all_debit: number; open_debit: number }>()
+        COALESCE(SUM(CASE WHEN g.billing_status = 'BILLED' THEN COALESCE(g.billed_amount, 0) ELSE 0 END), 0) AS all_debit,
+        COALESCE(SUM(CASE WHEN g.billing_status = 'BILLED' AND date(o.created_at) < ? THEN COALESCE(g.billed_amount, 0) ELSE 0 END), 0) AS open_debit
+      FROM order_billing_groups g JOIN orders o ON o.id = g.order_id
+      WHERE o.client_id = ? AND o.status != 'CANCELLED'${gOrdEf}
+    `).bind(startDate, clientId, ...gOrdEfP).first<{ all_debit: number; open_debit: number }>()
 
     const { clause: oPayEf, params: oPayEfP } = entityFilter(c)
     const paySums = await c.env.DB.prepare(`
@@ -294,8 +315,9 @@ arRouter.get('/client/:clientId', async (c) => {
     }, 0)
     const period_net = totalBilled - totalPayments - totalAdjustments
     const ending_balance = opening_balance + period_net  // 기말 잔액 = 전기이월 + 기간 증감
-    const cached_balance = client.balance || 0
-    const has_discrepancy = Math.abs(all_time_balance - cached_balance) > 0.01
+    // split billing P3: clients.balance 캐시 폐기 → 파생값(all_time_balance) 사용. 불일치 개념 없음.
+    const cached_balance = all_time_balance
+    const has_discrepancy = false
 
     // Find last payment date
     const lastPayment = payments.length > 0 ? payments[payments.length - 1] : null
@@ -633,23 +655,12 @@ arRouter.put('/payment/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
         id
       )
     ]
-    if (amountDiff !== 0) {
-      batchStmts.push(
-        c.env.DB.prepare(
-          'UPDATE clients SET balance = balance - ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
-        ).bind(amountDiff, existing.client_id)
-      )
-    }
+    // split billing P3: balance 캐시 미사용 — 입금 수정만 반영(미수금은 파생).
     await c.env.DB.batch(batchStmts)
-
-    // Get updated balance
-    const client = await c.env.DB.prepare(
-      'SELECT balance FROM clients WHERE id = ?'
-    ).bind(existing.client_id).first<{ balance: number }>()
 
     return c.json({
       success: true,
-      data: { new_balance: client?.balance || 0 },
+      data: { new_balance: await deriveClientBalance(c, existing.client_id) },
       message: '입금 내역이 수정되었습니다'
     })
   } catch (error) {
@@ -677,26 +688,18 @@ arRouter.delete('/payment/:id', requireRole('ADMIN'), async (c) => {
       return c.json({ success: false, error: '입금 내역을 찾을 수 없습니다' }, 404)
     }
 
-    // D1 batch: 결제 삭제 + 잔액 복구 + 은행거래 매칭 해제를 원자적으로 처리
+    // split billing P3: balance 캐시 미사용 — 결제 삭제 + 은행거래 매칭 해제만 (미수금은 파생).
     await c.env.DB.batch([
       c.env.DB.prepare('DELETE FROM payments WHERE id = ?').bind(id),
-      c.env.DB.prepare(
-        'UPDATE clients SET balance = balance + ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
-      ).bind(existing.amount, existing.client_id),
       // #93: 결제 삭제 시 은행거래 매칭 해제
       c.env.DB.prepare(
         `UPDATE bank_transactions SET match_status = 'UNMATCHED', matched_payment_id = NULL, updated_at = CURRENT_TIMESTAMP WHERE matched_payment_id = ?`
       ).bind(id),
     ])
 
-    // Get updated balance
-    const client = await c.env.DB.prepare(
-      'SELECT balance FROM clients WHERE id = ?'
-    ).bind(existing.client_id).first<{ balance: number }>()
-
     return c.json({
       success: true,
-      data: { new_balance: client?.balance || 0 },
+      data: { new_balance: await deriveClientBalance(c, existing.client_id) },
       message: '입금 내역이 삭제되었습니다'
     })
   } catch (error) {
@@ -714,8 +717,8 @@ arRouter.get('/settlement', async (c) => {
   try {
     const { startDate, endDate } = c.req.query()
 
-    // Build order date filter
-    const { clause: settlOrderEf, params: settlOrderEfParams } = entityFilter(c, 'o')
+    // Build order date filter — split billing P3: 미수금/매출은 청구 법인(order_billing_groups.entity_id) 기준
+    const { clause: settlOrderEf, params: settlOrderEfParams } = entityFilter(c, 'g')
     let orderFilter = settlOrderEf
     const orderParams: any[] = [...settlOrderEfParams]
     if (startDate) { orderFilter += ' AND date(o.created_at) >= ?'; orderParams.push(startDate) }
@@ -730,10 +733,11 @@ arRouter.get('/settlement', async (c) => {
 
     // Step 1: Get per-client order totals
     const orderQuery = `
-      SELECT client_id, COUNT(*) as order_count,
-        COALESCE(SUM(CASE WHEN billing_status = 'BILLED' THEN billed_amount ELSE 0 END), 0) as total_sales
-      FROM orders o WHERE status != 'CANCELLED' ${orderFilter}
-      GROUP BY client_id
+      SELECT o.client_id, COUNT(DISTINCT o.id) as order_count,
+        COALESCE(SUM(CASE WHEN g.billing_status = 'BILLED' THEN g.billed_amount ELSE 0 END), 0) as total_sales
+      FROM order_billing_groups g JOIN orders o ON o.id = g.order_id
+      WHERE o.status != 'CANCELLED' ${orderFilter}
+      GROUP BY o.client_id
     `
     const { results: orderResults } = orderParams.length > 0
       ? await c.env.DB.prepare(orderQuery).bind(...orderParams).all<OrderAggRow>()
@@ -750,11 +754,12 @@ arRouter.get('/settlement', async (c) => {
       : await c.env.DB.prepare(paymentQuery).all<PaymentAggRow>()
 
     // Step 2.5: 전체기간 실 미수 집계 (entity 필터) — 캐시 clients.balance가 stale(0)이어도 미수 거래처 누락 방지
-    const { clause: allOrdEf, params: allOrdEfP } = entityFilter(c, 'o')
+    const { clause: allOrdEf, params: allOrdEfP } = entityFilter(c, 'g')
     const { results: allOrderResults } = await c.env.DB.prepare(`
-      SELECT client_id, COALESCE(SUM(CASE WHEN billing_status = 'BILLED' THEN COALESCE(billed_amount, final_amount, 0) ELSE 0 END), 0) as billed
-      FROM orders o WHERE status != 'CANCELLED'${allOrdEf}
-      GROUP BY client_id
+      SELECT o.client_id, COALESCE(SUM(CASE WHEN g.billing_status = 'BILLED' THEN COALESCE(g.billed_amount, 0) ELSE 0 END), 0) as billed
+      FROM order_billing_groups g JOIN orders o ON o.id = g.order_id
+      WHERE o.status != 'CANCELLED'${allOrdEf}
+      GROUP BY o.client_id
     `).bind(...allOrdEfP).all<{ client_id: number; billed: number }>()
 
     const { clause: allPayEf, params: allPayEfP } = entityFilter(c, 'p')
@@ -790,13 +795,13 @@ arRouter.get('/settlement', async (c) => {
         const p = paymentMap.get(cl.id)
         // 실 미수 잔액(전체기간 청구-입금-감액) — 상세(all_time)와 동일 기준, entity-aware
         const realBalance = (billedMap.get(cl.id) || 0) - (paidMap.get(cl.id) || 0) - (adjMap.get(cl.id) || 0)
-        // 기간 무거래라도 실 미수 잔액(또는 캐시 잔액)이 있으면 포함 → stale 캐시로 인한 누락 방지
-        if (!o && !p && Math.round(realBalance) === 0 && !(Number(cl.balance) || 0)) return null
+        // split billing P3: clients.balance 캐시 폐기 → realBalance(order_billing_groups 파생)만 사용
+        if (!o && !p && Math.round(realBalance) === 0) return null
         return {
           id: cl.id,
           client_code: cl.client_code,
           client_name: cl.client_name,
-          balance: Math.round(realBalance) !== 0 ? realBalance : (cl.balance || 0),
+          balance: realBalance,
           order_count: o?.order_count || 0,
           total_sales: o?.total_sales || 0,
           total_payments: p?.total_payments || 0
@@ -966,7 +971,8 @@ arRouter.get('/payments', async (c) => {
 
 // 잔액 정합성 집계 쿼리 빌더 (단일 JOIN — N+1 방지)
 function buildIntegrityQuery(c: Context<HonoEnv>): { query: string; params: number[] } {
-  const { clause: oEf, params: oParams } = entityFilter(c)
+  // split billing P3: billed 소스 = order_billing_groups(청구 법인 g 기준)
+  const { clause: oEf, params: oParams } = entityFilter(c, 'g')
   const { clause: pEf, params: pParams } = entityFilter(c)
   const { clause: aEf, params: aParams } = entityFilter(c)
   const query = `
@@ -976,8 +982,8 @@ function buildIntegrityQuery(c: Context<HonoEnv>): { query: string; params: numb
     COALESCE(a.v, 0) as total_adj
   FROM clients c
   LEFT JOIN (
-    SELECT client_id, SUM(CASE WHEN billing_status = 'BILLED' THEN billed_amount ELSE 0 END) as v
-    FROM orders WHERE 1=1${oEf} GROUP BY client_id
+    SELECT o.client_id, SUM(CASE WHEN g.billing_status = 'BILLED' THEN g.billed_amount ELSE 0 END) as v
+    FROM order_billing_groups g JOIN orders o ON o.id = g.order_id WHERE o.status != 'CANCELLED'${oEf} GROUP BY o.client_id
   ) o ON o.client_id = c.id
   LEFT JOIN (
     SELECT client_id, SUM(amount) as v FROM payments WHERE 1=1${pEf} GROUP BY client_id
@@ -1082,11 +1088,12 @@ arRouter.post('/recalculate/:clientId', requireRole('ADMIN', 'MANAGER'), async (
       return c.json({ success: false, error: 'Client not found' }, 404)
     }
 
-    // 실계산: BILLED 주문 합계
-    const { clause: recalcOrderEf, params: recalcOrderEfParams } = entityFilter(c)
+    // 실계산: BILLED 청구그룹 합계 (split billing P3: 청구 법인 g 기준)
+    const { clause: recalcOrderEf, params: recalcOrderEfParams } = entityFilter(c, 'g')
     const billedRow = await c.env.DB.prepare(`
-      SELECT COALESCE(SUM(CASE WHEN billing_status = 'BILLED' THEN billed_amount ELSE 0 END), 0) as total_billed
-      FROM orders WHERE client_id = ?${recalcOrderEf}
+      SELECT COALESCE(SUM(CASE WHEN g.billing_status = 'BILLED' THEN g.billed_amount ELSE 0 END), 0) as total_billed
+      FROM order_billing_groups g JOIN orders o ON o.id = g.order_id
+      WHERE o.client_id = ? AND o.status != 'CANCELLED'${recalcOrderEf}
     `).bind(clientId, ...recalcOrderEfParams).first<{ total_billed: number }>()
 
     // 입금 합계
@@ -1206,20 +1213,12 @@ arRouter.post('/adjustment', requireRole('ADMIN', 'MANAGER'), async (c) => {
       getEntityId(c)
     ).run()
 
-    // 미수금 감소 (감액 → balance 차감)
-    await c.env.DB.prepare(
-      'UPDATE clients SET balance = balance - ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
-    ).bind(amount, body.client_id).run()
-
-    const updatedClient = await c.env.DB.prepare(
-      'SELECT balance FROM clients WHERE id = ?'
-    ).bind(body.client_id).first<{ balance: number }>()
-
+    // split billing P3: balance 캐시 미사용 — 감액 INSERT만 (미수금은 파생).
     return c.json({
       success: true,
       data: {
         id: result.meta.last_row_id,
-        new_balance: updatedClient?.balance || 0
+        new_balance: await deriveClientBalance(c, body.client_id)
       }
     })
   } catch (error) {
@@ -1273,18 +1272,10 @@ arRouter.delete('/adjustment/:id', requireRole('ADMIN'), async (c) => {
 
     await c.env.DB.prepare('DELETE FROM adjustments WHERE id = ?').bind(id).run()
 
-    // 감액 복원 (balance 증가)
-    await c.env.DB.prepare(
-      'UPDATE clients SET balance = balance + ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
-    ).bind(existing.amount, existing.client_id).run()
-
-    const updatedClient = await c.env.DB.prepare(
-      'SELECT balance FROM clients WHERE id = ?'
-    ).bind(existing.client_id).first<{ balance: number }>()
-
+    // split billing P3: balance 캐시 미사용 — 감액 삭제만 (미수금은 파생).
     return c.json({
       success: true,
-      data: { new_balance: updatedClient?.balance || 0 }
+      data: { new_balance: await deriveClientBalance(c, existing.client_id) }
     })
   } catch (error) {
     console.error('Delete adjustment error:', error)
