@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 2 -->
-<!-- last_run_at: 2026-06-10T06:00:00+09:00 -->
+<!-- last_run_area: 3 -->
+<!-- last_run_at: 2026-06-10T10:00:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,12 +8,19 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | 6 (open auto-improve **실측 06-10T06:00** — 신규 #377(Area 2 AI auto_process_jobs `items.name` 컬럼오류 HIGH)·#378(Area 2 출고알림톡 일괄발송 실패 오보고 MED)·#379(Area 2 printSystem N+1) + 기존 #374·#373·#372) |
+| 🆕 new | 7 (open auto-improve **실측 06-10T10:00** — 신규 #380(Area 3 대시보드 납기준수율 KPI 부정확 MED) + #377(Area 2 AI auto_process_jobs `items.name` 컬럼오류 HIGH)·#378(Area 2 출고알림톡 일괄발송 실패 오보고 MED)·#379(Area 2 printSystem N+1) + 기존 #374·#373·#372) |
 | ✅ approved | 0 (직전 approved #342/#340 모두 done 확정·이관 — Area 6 검증 완료) |
 | 👀 reviewed | 0 |
 | ✔️ done | 78 (61 + **06-09 신규 close 17건 전부 done 확정**: #336/#340/#341/#342/#350/#358/#359/#360/#361/#362/#363/#364/#365/#366/#367/#368/#369 — commit 증거+close 코멘트 전수 검증, rejected 0건) |
 | ❌ rejected | 3 |
 
+> **Area 3 UX/기능 감사 (2026-06-10T10:00):**
+> - **방법**: baseline `npm ci`+`tsc --noEmit` PASS + build PASS(exit 0). Area 3 **8회차** — 기존 각도(dead-filter·하드캡·getElementById silent-fail·catch-UX·CSV누락#372·confirm·변경후갱신·폼검증·journey·검색범위·날짜/상태필터·정렬·빈상태) 성숙 → **덜 다룬 2각도** 병렬 Explore: (A)대시보드 KPI 실질가치(SKILL 고가치 명시) (B)리스트 페이지네이션 완전성+로딩상태. 발견 전수 owner 직접 코드 검증(shipped_at 컬럼 ground-truth·멱등성·updated_at 갱신경로).
+> - **🟡 신규 이슈 #380 (MED bug) — 대시보드 납기 준수율 KPI 2중 결함**: 상단 카드 항상노출(`pages/dashboard.ts:79`) on_time_rate(`routes/dashboard.ts:54-58`)가 ① **`orders.updated_at`을 출고일 프록시로 사용** — orders엔 `shipped_at` 컬럼 자체 없음(실제 출고일=`cards.shipped_at` 0041·`shipments.shipped_at` 0052, grep 전수). updated_at은 모든 수정 시 갱신 → 정시출고 주문을 며칠 뒤 회계반영(`PATCH /:id/billing-status` `core.ts:613`이 updated_at 갱신, bulkBillingConfirm이 SHIPPED 대상=실무 흔함)하면 `date(updated_at)>delivery_date`→**"지연" 오집계**(과소집계 방향). ② **분모 `status IN ('SHIPPED')`가 COMPLETED 주문 제외**(출고 후 완료전이=`orders.js:137`) → 표본 편향. 리포팅 전용(트랜잭션 손상 아님) MED. **자동수정 안 함**(KPI 계산식=비즈니스 로직: 출고일 권위소스·부분출고 기준·월 귀속 owner 판단 + egress 검증불가). 수정=출고일을 cards/shipments.shipped_at에서 산출 + 분모 COMPLETED 포함.
+> - **🔵 clean/저가치 드롭**: ① 대시보드 나머지 KPI(매출/수금률/미수금/Aging)=실제 쿼리 정상, on_time_rate만 결함. ② **페이지네이션 부재**(tasks.ts LIMIT500·waste.ts 200·returns.ts 100·notifications≤50) — 전부 필터 보유+내부 운영리스트, 데이터 성장 전까지 LOW 보류. ③ **로딩/버튼 상태** — CSV/bulk 버튼 disabled/spinner 없으나 bulk-ship(출력완료만)·bulk-billing(BILLED/PAID 스킵)=서버측 멱등→더블클릭 비파괴적, CSV 중복 무해, 전역 `dsSkeleton` 리스트 광범위 적용 → cosmetic 드롭.
+> - **이상 없음**: open auto-improve **7건**(#380/#377/#378/#379/#374/#373/#372) stats 정합. baseline PASS.
+> - 자동 수정 0건(Area 3 제안 전용 + net-new는 KPI 계산식=비즈니스 로직), 신규 이슈 1건(#380 MED), clean/저가치 3각도
+>
 > **Area 2 코드 품질 (2026-06-10T06:00):**
 > - **방법**: baseline `npm ci`+`tsc --noEmit` PASS + build PASS(366 modules, _worker.js 5.07MB). Area 2 **9회차** — 기존 각도(IDOR 비대칭·N+1 #341/#350·entity_id·best-effort catch·트랜잭션 원자성 #369·금액·API계약) 성숙 → **시의성**(최근 churn 큰 알림톡/SMS 통합, barobillSms.ts 4커밋) + **신선 스캔**(entity_id INSERT·N+1·authMiddleware) 병렬 Explore 2개. 발견 전수 owner 직접 코드 검증(컬럼 ground-truth·도달성·catch 흐름).
 > - **🔴 신규 이슈 #377 (HIGH bug) — AI 주문 자동가공 `auto_process_jobs` 생성 전체 침묵 실패**: `orders/core.ts:1489` `SELECT name FROM items`가 **존재하지 않는 컬럼** 조회(items 컬럼=`item_name`, ground-truth migrations 전수 — `name` ADD/RENAME 0건, 같은 파일 `:1071`/`:2200`은 `item_name` 사용). SQLite/D1에서 매 실행 `no such column` throw → **try(`:1435`)/catch(`:1527` best-effort console.error)** 안이라 루프 첫 반복에서 탈출 → `auto_process_jobs` INSERT(`:1509`) **전혀 미실행** + 주문은 정상생성(에러 무표시). `aiAnalysisId`(`:890`) 있는 모든 AI 디자인 주문에서 일러스트레이터 자동가공 파이프라인 침묵 실패. 파일분할(06-05) 이전부터 잔존(최근 회귀 아님). **자동수정 안 함**(컬럼 수정 시 휴면 자동화 파이프라인이 프로덕션 활성화=되돌리기 어려운 외부영향 + egress 차단으로 다운스트림 IA자동화 검증 불가). 수정=`item_name` + 루프 전 N+1 배치(IN 1쿼리).
