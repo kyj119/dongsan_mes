@@ -1229,7 +1229,7 @@ async function searchDirectClient() {
     resEl.innerHTML = clients.map(function(cl) {
       var safeName = escapeHtml(cl.client_name || '').replace(/'/g, "\\'");
       var brn = cl.business_registration_number ? ' · ' + escapeHtml(cl.business_registration_number) : '';
-      return '<div class="px-3 py-2 text-sm hover:bg-teal-50 cursor-pointer border-b last:border-0" '
+      return '<div class="px-3 py-2 text-sm hover:bg-blue-50 cursor-pointer border-b last:border-0" '
         + 'onclick="selectDirectClient(' + cl.id + ',\'' + safeName + '\')">'
         + '<span class="font-medium text-gray-800">' + escapeHtml(cl.client_name || '') + '</span>'
         + '<span class="text-xs text-gray-400">' + brn + '</span>'

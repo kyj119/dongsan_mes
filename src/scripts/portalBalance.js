@@ -47,7 +47,7 @@ function showTokenError(msg) {
   if (container) {
     container.innerHTML = `
       <div class="flex flex-col items-center justify-center py-20 text-center">
-        <div class="text-5xl mb-4">🔗</div>
+        <div class="text-5xl mb-4"><i class="fas fa-link"></i></div>
         <h2 class="text-xl font-bold text-gray-700 mb-2">링크를 사용할 수 없습니다</h2>
         <p class="text-gray-500 mb-6">${msg}</p>
         <a href="/portal/login" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">로그인 페이지로</a>

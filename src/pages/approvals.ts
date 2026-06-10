@@ -77,7 +77,7 @@ export const approvalsPage = (c: Context<HonoEnv>) => {
       <div id="tab-all" class="tab-content hidden">
         <div class="ds-card">
           <div class="p-4 border-b flex flex-wrap items-center gap-2">
-            <h2 class="text-lg font-bold mr-auto"><i class="fas fa-list mr-2 text-purple-600"></i>전체 결재 현황</h2>
+            <h2 class="text-lg font-bold mr-auto"><i class="fas fa-list mr-2 text-blue-600"></i>전체 결재 현황</h2>
             <input id="all-search" type="text" placeholder="검색 (제목, 번호, 요청자)" class="border rounded px-3 py-1.5 text-sm w-48" oninput="filterAllRequests()">
             <select id="all-type-filter" class="border rounded px-2 py-1.5 text-sm" onchange="filterAllRequests()">
               <option value="">전체 유형</option>

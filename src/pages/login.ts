@@ -13,7 +13,7 @@ export function loginPage(c: Context<HonoEnv>) {
         <script src="https://cdn.tailwindcss.com"></script>
         <link href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css" rel="stylesheet">
     </head>
-    <body class="bg-gradient-to-br from-blue-500 to-purple-600 min-h-screen flex items-center justify-center">
+    <body class="bg-gradient-to-br from-blue-500 to-blue-700 min-h-screen flex items-center justify-center">
         <div class="bg-white rounded-lg shadow-2xl p-8 w-full max-w-md">
             <div class="text-center mb-8">
                 <div class="inline-block p-4 bg-blue-100 rounded-full mb-4">

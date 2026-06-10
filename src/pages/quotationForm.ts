@@ -30,14 +30,14 @@ export function quotationFormPage(c: Context<HonoEnv>) {
                   <label class="block text-sm font-medium text-gray-700 mb-2">거래처 <span class="text-red-500">*</span></label>
                   <input type="text" id="clientSearch" placeholder="거래처명 입력 후 Enter" autocomplete="off"
                     onkeydown="handleClientEnter(event)"
-                    class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500">
+                    class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
                   <input type="hidden" id="clientId">
                   <div id="clientModal"></div>
                 </div>
                 <div>
                   <label class="block text-sm font-medium text-gray-700 mb-2">유효기한 <span class="text-red-500">*</span></label>
                   <input type="date" id="validUntil" required
-                    class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500">
+                    class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
                 </div>
               </div>
             </div>
@@ -46,7 +46,7 @@ export function quotationFormPage(c: Context<HonoEnv>) {
             <div class="mb-6">
               <div class="flex justify-between items-center mb-4 border-b pb-2">
                 <h2 class="text-xl font-bold text-gray-800"><i class="fas fa-box mr-2"></i>견적 품목</h2>
-                <button type="button" id="addItemBtn" class="px-4 py-2 bg-teal-500 text-white rounded hover:bg-teal-600">
+                <button type="button" id="addItemBtn" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">
                   <i class="fas fa-plus mr-2"></i>품목 추가
                 </button>
               </div>
@@ -75,7 +75,7 @@ export function quotationFormPage(c: Context<HonoEnv>) {
             <div class="mb-6">
               <label class="block text-sm font-medium text-gray-700 mb-2">비고</label>
               <textarea id="notes" rows="3"
-                class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500"
+                class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
                 placeholder="특이사항을 입력하세요"></textarea>
             </div>
 
@@ -84,7 +84,7 @@ export function quotationFormPage(c: Context<HonoEnv>) {
               <button type="button" onclick="history.back()" class="px-6 py-2 border border-gray-300 text-gray-700 rounded hover:bg-gray-100">
                 <i class="fas fa-times mr-2"></i>취소
               </button>
-              <button type="submit" id="submitBtn" class="px-6 py-2 bg-teal-500 text-white rounded hover:bg-teal-600">
+              <button type="submit" id="submitBtn" class="px-6 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">
                 <i class="fas fa-save mr-2"></i>저장
               </button>
             </div>

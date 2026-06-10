@@ -1864,7 +1864,7 @@ function _doItemSearch(q) {
         html += '<tr><td colspan="5" class="border-b-2 border-gray-200"></td></tr>';
       }
       var pm = it.pricing_method || 'FIXED';
-      var pmBadge = pm === 'AREA' ? ' <span class="text-xs text-purple-600 font-medium">[㎡]</span>' : '';
+      var pmBadge = pm === 'AREA' ? ' <span class="text-xs text-blue-600 font-medium">[㎡]</span>' : '';
       var cat = it.category || it.category_direct || it.category_name || '';
       var subcat = it.sub_category || it.sub_category_direct || '';
       var catStr = cat + (subcat ? ' > ' + subcat : '');

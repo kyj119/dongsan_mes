@@ -86,7 +86,7 @@ function renderQuotationTable(orders) {
     var quotStat = getQuotStatus(q);
     var badge = getQuotStatusBadge(q);
     var validUntilCell = q.valid_until
-      ? '<span class="' + (quotStat === 'expired' ? 'text-red-500 font-medium' : 'text-teal-700') + '">' + q.valid_until + '</span>'
+      ? '<span class="' + (quotStat === 'expired' ? 'text-red-500 font-medium' : 'text-blue-700') + '">' + q.valid_until + '</span>'
       : '<span class="text-gray-400">-</span>';
     var createdDate = (q.created_at || '').substring(0, 10);
     var amount = (parseFloat(q.final_amount) || 0).toLocaleString() + '원';
@@ -101,14 +101,14 @@ function renderQuotationTable(orders) {
     if (quotStat !== 'cancelled') {
       actions += '<a href="/quotation-form/' + q.id + '" onclick="event.stopPropagation()" class="text-green-600 hover:text-green-900" title="수정"><i class="fas fa-edit"></i></a>';
     }
-    actions += '<a href="/quotation/' + q.id + '" target="_blank" onclick="event.stopPropagation()" class="text-purple-600 hover:text-purple-900" title="인쇄"><i class="fas fa-print"></i></a>';
+    actions += '<a href="/quotation/' + q.id + '" target="_blank" onclick="event.stopPropagation()" class="text-blue-600 hover:text-blue-900" title="인쇄"><i class="fas fa-print"></i></a>';
     if (quotStat !== 'cancelled') {
       actions += '<button onclick="event.stopPropagation();deleteQuotation(' + q.id + ')" class="text-red-400 hover:text-red-700" title="삭제"><i class="fas fa-trash"></i></button>';
     }
     actions += '</div>';
 
     return '<tr class="border-t hover:bg-gray-50 cursor-pointer" ondblclick="viewQuotation(' + q.id + ')">'
-      + '<td class="font-medium text-teal-700">' + (q.quotation_number || '-') + '</td>'
+      + '<td class="font-medium text-blue-700">' + (q.quotation_number || '-') + '</td>'
       + '<td>' + (q.client_name || '-') + '</td>'
       + '<td>' + itemCell + '</td>'
       + '<td class="text-right font-medium">' + amount + '</td>'
@@ -159,14 +159,14 @@ async function viewQuotation(id) {
     var quotStat = getQuotStatus(order);
     var badge = getQuotStatusBadge(order);
     var validUntilDisplay = order.valid_until
-      ? '<span class="' + (quotStat === 'expired' ? 'text-red-500 font-medium' : 'text-teal-700 font-medium') + '">'
+      ? '<span class="' + (quotStat === 'expired' ? 'text-red-500 font-medium' : 'text-blue-700 font-medium') + '">'
         + order.valid_until + (quotStat === 'expired' ? ' (만료)' : '') + '</span>'
       : '-';
 
     document.getElementById('quotDetailContent').innerHTML =
       '<div class="flex justify-between items-start mb-4">'
       + '<div>'
-      + '<h3 class="text-lg font-bold"><i class="fas fa-file-alt text-teal-600 mr-2"></i>'
+      + '<h3 class="text-lg font-bold"><i class="fas fa-file-alt text-blue-600 mr-2"></i>'
       + (order.quotation_number || order.order_number || '') + '</h3>'
       + '<div class="mt-1">' + badge + '</div>'
       + '</div>'

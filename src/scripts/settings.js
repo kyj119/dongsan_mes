@@ -433,25 +433,25 @@ async function testMsgBarobillConnection() {
   var iconEl = document.getElementById('msgBarobillIcon');
   var textEl = document.getElementById('msgBarobillText');
   var detailEl = document.getElementById('msgBarobillDetail');
-  if (iconEl) iconEl.textContent = '⏳';
+  if (iconEl) iconEl.innerHTML = '<i class="fas fa-spinner fa-spin text-gray-400"></i>';
   if (textEl) textEl.textContent = '연결 확인 중...';
 
   try {
     var balRes = await axios.get('/api/kakao/balance');
     if (balRes.data.success) {
       var b = balRes.data.data;
-      if (iconEl) iconEl.textContent = '✅';
+      if (iconEl) iconEl.innerHTML = '<i class="fas fa-circle-check text-green-600"></i>';
       if (textEl) { textEl.textContent = '바로빌 연결 정상'; textEl.className = 'text-sm font-medium text-green-700'; }
       if (detailEl) detailEl.textContent = '포인트 조회 성공';
       document.getElementById('msgConnBalance').textContent = (b.remain_point || 0).toLocaleString() + '원';
       document.getElementById('msgConnUnitCost').textContent = (b.unit_cost || 0) + '원';
     } else {
-      if (iconEl) iconEl.textContent = '❌';
+      if (iconEl) iconEl.innerHTML = '<i class="fas fa-circle-xmark text-red-600"></i>';
       if (textEl) { textEl.textContent = '바로빌 연결 실패'; textEl.className = 'text-sm font-medium text-red-700'; }
       if (detailEl) detailEl.textContent = balRes.data.error || '';
     }
   } catch(e) {
-    if (iconEl) iconEl.textContent = '❌';
+    if (iconEl) iconEl.innerHTML = '<i class="fas fa-circle-xmark text-red-600"></i>';
     if (textEl) { textEl.textContent = '바로빌 연결 실패'; textEl.className = 'text-sm font-medium text-red-700'; }
     if (detailEl) detailEl.textContent = '네트워크 오류';
   }

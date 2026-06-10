@@ -579,7 +579,7 @@
                             <input type="hidden" name="item_unit_${id}" value="EA">
                             <input type="hidden" name="category_name_${id}">
                             <input type="hidden" name="item_subcat_${id}">
-                            <input type="text" name="item_search_${id}" placeholder="🔍 품목명 검색..." autocomplete="off"
+                            <input type="text" name="item_search_${id}" placeholder="품목명 검색..." autocomplete="off"
                                    class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-green-500">
                             <div id="item_dd_${id}" class="item-dd hidden"></div>
                         </div>
@@ -1099,8 +1099,8 @@
                             var wRestoreEl = document.querySelector('[name="width_' + id + '"]');
                             var hRestoreEl = document.querySelector('[name="height_' + id + '"]');
                             var priceLblRestore = document.getElementById('unit_price_label_' + id);
-                            if (wRestoreEl) { wRestoreEl.classList.add('border-purple-500'); wRestoreEl.classList.remove('border-gray-300'); }
-                            if (hRestoreEl) { hRestoreEl.classList.add('border-purple-500'); hRestoreEl.classList.remove('border-gray-300'); }
+                            if (wRestoreEl) { wRestoreEl.classList.add('border-blue-500'); wRestoreEl.classList.remove('border-gray-300'); }
+                            if (hRestoreEl) { hRestoreEl.classList.add('border-blue-500'); hRestoreEl.classList.remove('border-gray-300'); }
                             if (priceLblRestore) priceLblRestore.textContent = '단가 (원/㎡)';
                         }
 

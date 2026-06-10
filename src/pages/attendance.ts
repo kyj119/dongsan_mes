@@ -28,7 +28,7 @@ export function attendancePage(c: Context<HonoEnv>) {
             <button onclick="attendanceLoadMonth()" class="ds-btn ds-btn-primary text-sm font-medium">
               <i class="fas fa-search mr-1"></i> 검색
             </button>
-            <button onclick="attendanceSyncCaps()" id="attCapsSyncBtn" class="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700">
+            <button onclick="attendanceSyncCaps()" id="attCapsSyncBtn" class="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700">
               <i class="fas fa-sync-alt mr-1"></i> CAPS 동기화
             </button>
             <div class="flex-1"></div>

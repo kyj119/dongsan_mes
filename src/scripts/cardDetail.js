@@ -203,7 +203,7 @@
         items.forEach(function(it) {
             var isDone = it.print_completed === 1;
             html += '<div class="flex items-center gap-3 py-2 border-b border-gray-100 ' + (isDone ? 'opacity-50' : '') + '">';
-            html += '<span class="text-lg">' + (isDone ? '☑' : '☐') + '</span>';
+            html += '<span class="text-lg">' + (isDone ? '<i class="fas fa-square-check text-green-600"></i>' : '<i class="far fa-square text-gray-400"></i>') + '</span>';
             html += '<span class="flex-1 text-sm ' + (isDone ? 'line-through text-gray-400' : 'text-gray-700') + '">' + esc(it.item_name || '') + '</span>';
             html += '<span class="text-xs text-gray-400">' + Math.round(it.width || 0) + '×' + Math.round(it.height || 0) + '</span>';
             html += '<span class="text-sm font-bold text-blue-600">' + (it.quantity || 1) + '장</span>';
@@ -218,7 +218,7 @@
         } else if (card.status === 'HOLD') {
             html += '<button onclick="quickAction(\'PRINTING\')" class="px-4 py-2 bg-blue-600 text-white rounded text-sm hover:bg-blue-700"><i class="fas fa-play mr-1"></i>재개</button>';
         } else if (card.status === 'PRINT_DONE') {
-            html += '<button onclick="shipCard()" class="px-4 py-2 bg-emerald-600 text-white rounded text-sm hover:bg-emerald-700"><i class="fas fa-truck mr-1"></i>출고</button>';
+            html += '<button onclick="shipCard()" class="px-4 py-2 bg-green-600 text-white rounded text-sm hover:bg-green-700"><i class="fas fa-truck mr-1"></i>출고</button>';
         }
         html += '</div>';
         html += '</div></div>'; // end cd-production

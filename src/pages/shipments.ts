@@ -118,7 +118,7 @@ export function shipmentsPage(c: Context<HonoEnv>) {
             <button onclick="printAllSection('freight')" class="px-3 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700">
               <i class="fas fa-print mr-1"></i>선택 라벨 출력
             </button>
-            <button onclick="confirmShipSection('freight')" class="px-3 py-1 text-xs bg-emerald-600 text-white rounded hover:bg-emerald-700">
+            <button onclick="confirmShipSection('freight')" class="px-3 py-1 text-xs bg-green-600 text-white rounded hover:bg-green-700">
               <i class="fas fa-truck mr-1"></i>출고 확정
             </button>
           </div>
@@ -152,7 +152,7 @@ export function shipmentsPage(c: Context<HonoEnv>) {
             <button onclick="printAllSection('daesintaekbae')" class="px-3 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700">
               <i class="fas fa-print mr-1"></i>선택 라벨 출력
             </button>
-            <button onclick="confirmShipSection('daesintaekbae')" class="px-3 py-1 text-xs bg-emerald-600 text-white rounded hover:bg-emerald-700">
+            <button onclick="confirmShipSection('daesintaekbae')" class="px-3 py-1 text-xs bg-green-600 text-white rounded hover:bg-green-700">
               <i class="fas fa-truck mr-1"></i>출고 확정
             </button>
           </div>
@@ -186,7 +186,7 @@ export function shipmentsPage(c: Context<HonoEnv>) {
             <button id="btnSendHanjin" onclick="openShipmentSendModal('hanjin')" class="px-2 py-1 text-xs border border-gray-300 text-gray-600 rounded hover:bg-gray-50 hidden">
               <i class="fas fa-paper-plane mr-1"></i>선택 발송
             </button>
-            <button onclick="confirmShipSection('hanjin')" class="px-3 py-1 text-xs bg-emerald-600 text-white rounded hover:bg-emerald-700">
+            <button onclick="confirmShipSection('hanjin')" class="px-3 py-1 text-xs bg-green-600 text-white rounded hover:bg-green-700">
               <i class="fas fa-truck mr-1"></i>출고 확정
             </button>
           </div>
@@ -253,11 +253,11 @@ export function shipmentsPage(c: Context<HonoEnv>) {
 
       <!-- 배송 중 (출고 처리됨, SHIPPED 대기) -->
       <div id="sectionInTransit" class="mb-6 ds-card overflow-hidden hidden">
-        <div class="flex items-center justify-between px-4 py-3 bg-indigo-50 border-b border-indigo-100">
-          <h3 class="text-sm font-semibold text-indigo-700"><i class="fas fa-truck-moving mr-1"></i>배송 중 <span id="badgeInTransit" class="ml-1 px-2 py-0.5 rounded-full text-xs bg-indigo-100 text-indigo-700">0건</span></h3>
+        <div class="flex items-center justify-between px-4 py-3 bg-blue-50 border-b border-blue-100">
+          <h3 class="text-sm font-semibold text-blue-700"><i class="fas fa-truck-moving mr-1"></i>배송 중 <span id="badgeInTransit" class="ml-1 px-2 py-0.5 rounded-full text-xs bg-blue-100 text-blue-700">0건</span></h3>
           <div class="flex items-center gap-2">
             <span id="syncLastTime" class="text-xs text-gray-400"></span>
-            <button onclick="runSyncStatuses()" class="px-3 py-1 text-xs bg-indigo-600 text-white rounded hover:bg-indigo-700">
+            <button onclick="runSyncStatuses()" class="px-3 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700">
               <i class="fas fa-sync-alt mr-1"></i>상태 동기화
             </button>
           </div>

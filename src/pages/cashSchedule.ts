@@ -164,7 +164,7 @@ export function cashSchedulePage(c: Context<HonoEnv>) {
             <div class="ds-card p-4"><div class="text-sm text-gray-500">이번달 수입</div><div id="kpiIncome" class="text-2xl font-bold text-green-600 mt-1">-</div></div>
             <div class="ds-card p-4"><div class="text-sm text-gray-500">이번달 지출</div><div id="kpiExpense" class="text-2xl font-bold text-red-600 mt-1">-</div></div>
             <div class="ds-card p-4"><div class="text-sm text-gray-500">순 현금흐름</div><div id="kpiNet" class="text-2xl font-bold mt-1">-</div></div>
-            <div class="ds-card p-4"><div class="text-sm text-gray-500">대출 잔액 합계</div><div id="kpiLoanBalance" class="text-2xl font-bold text-purple-600 mt-1">-</div></div>
+            <div class="ds-card p-4"><div class="text-sm text-gray-500">대출 잔액 합계</div><div id="kpiLoanBalance" class="text-2xl font-bold mt-1">-</div></div>
           </div>
           <div class="ds-card p-6">
             <h3 class="text-lg font-bold mb-4">6개월 현금흐름 전망</h3>
@@ -223,7 +223,7 @@ export function cashSchedulePage(c: Context<HonoEnv>) {
         <div id="loansPanel" class="hidden space-y-4">
           <div class="ds-card p-6">
             <div class="flex items-center justify-between mb-4">
-              <h3 class="text-lg font-bold"><i class="fas fa-university text-purple-600 mr-2"></i>대출 목록</h3>
+              <h3 class="text-lg font-bold"><i class="fas fa-university text-blue-600 mr-2"></i>대출 목록</h3>
               <button onclick="openLoanModal()" class="ds-btn ds-btn-primary ds-btn-sm">
                 <i class="fas fa-plus mr-1"></i>추가
               </button>

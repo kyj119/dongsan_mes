@@ -75,7 +75,7 @@ function buildPrintMediaTable(items, groupName) {
     var html = '<div class="flex items-center gap-2 p-2 bg-gray-50 border-b text-xs">'
         + '<label class="flex items-center gap-1 cursor-pointer"><input type="checkbox" onchange="toggleMediaGroupAll(this,\'' + gn + '\')" class="h-3.5 w-3.5"> 전체선택</label>'
         + '<button onclick="bulkChangeMethodsForGroup(\'' + gn + '\')" class="px-2 py-1 bg-blue-50 text-blue-700 rounded hover:bg-blue-100">출력방식 일괄</button>'
-        + '<button onclick="bulkChangeSizesForGroup(\'' + gn + '\')" class="px-2 py-1 bg-purple-50 text-purple-700 rounded hover:bg-purple-100">규격 일괄</button>'
+        + '<button onclick="bulkChangeSizesForGroup(\'' + gn + '\')" class="px-2 py-1 bg-blue-50 text-blue-700 rounded hover:bg-blue-100">규격 일괄</button>'
         + '</div>';
 
     html += '<table class="w-full text-xs ds-table-striped" style="table-layout:fixed"><thead><tr class="text-gray-500 text-left">'
@@ -261,7 +261,7 @@ window.openMediaGroupModal = function(groupName) {
         + 'class="px-3 py-1.5 bg-amber-50 text-amber-700 rounded hover:bg-amber-100"><i class="fas fa-coins mr-1"></i>단가 일괄 조정</button>'
         + '</div>'
         + '<button onclick="saveUnifiedMediaGroup(\'' + escapedGroup + '\')" '
-        + 'class="px-5 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 text-sm font-medium">저장</button>'
+        + 'class="px-5 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm font-medium">저장</button>'
         + '</div></div></div>';
     document.body.appendChild(modal);
     modal.addEventListener('click', function(e) { if (e.target === modal) modal.remove(); });
@@ -929,7 +929,7 @@ window.bulkChangeSizesForGroup = function(groupName) {
         + '<input type="number" id="bulkSizeH" class="w-20 border rounded px-2 py-1" placeholder="세로cm">'
         + '</div>'
         + '<div class="flex gap-2">'
-        + '<button onclick="applyBulkSizes()" class="flex-1 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700">적용</button>'
+        + '<button onclick="applyBulkSizes()" class="flex-1 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">적용</button>'
         + '<button onclick="this.closest(\'.fixed\').remove()" class="flex-1 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200">취소</button>'
         + '</div></div>';
     document.body.appendChild(modal);

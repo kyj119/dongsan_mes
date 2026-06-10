@@ -16,7 +16,7 @@ function loadPriceLists() {
       var isDefault = pl.is_default ? ' <span class="text-xs bg-amber-50 text-amber-700 px-2 py-0.5 rounded">기본</span>' : '';
       var percentText = pl.adjustment_percent > 0 ? '+' + pl.adjustment_percent + '%' : pl.adjustment_percent + '%';
       var percentColor = pl.adjustment_percent > 0 ? 'text-red-600' : (pl.adjustment_percent < 0 ? 'text-blue-600' : 'text-gray-600');
-      var selected = selectedPriceListId == pl.id ? 'ring-2 ring-purple-500' : '';
+      var selected = selectedPriceListId == pl.id ? 'ring-2 ring-blue-500' : '';
 
       html += '<div class="border rounded-lg p-4 cursor-pointer hover:shadow-md transition ' + selected + '" onclick="selectPriceList(' + pl.id + ')">'
         + '<div class="flex justify-between items-start mb-2">'
@@ -53,12 +53,12 @@ function switchTab(tab) {
   var contentPreview = document.getElementById('tabContentPreview');
 
   if (tab === 'clients') {
-    tabClients.className = 'px-4 py-2 text-sm font-medium border-b-2 border-purple-600 text-purple-600';
+    tabClients.className = 'px-4 py-2 text-sm font-medium border-b-2 border-blue-600 text-blue-600';
     tabPreview.className = 'px-4 py-2 text-sm font-medium text-gray-500 hover:text-gray-700';
     contentClients.classList.remove('hidden');
     contentPreview.classList.add('hidden');
   } else {
-    tabPreview.className = 'px-4 py-2 text-sm font-medium border-b-2 border-purple-600 text-purple-600';
+    tabPreview.className = 'px-4 py-2 text-sm font-medium border-b-2 border-blue-600 text-blue-600';
     tabClients.className = 'px-4 py-2 text-sm font-medium text-gray-500 hover:text-gray-700';
     contentPreview.classList.remove('hidden');
     contentClients.classList.add('hidden');

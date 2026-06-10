@@ -873,7 +873,7 @@
                 if (result.rotated_count > 0) {
                     html += '<div class="flex-1 p-2 bg-white rounded border text-center">';
                     html += '<div class="text-xs text-gray-500">회전</div>';
-                    html += '<div class="font-bold text-purple-600">' + result.rotated_count + '개</div>';
+                    html += '<div class="font-bold text-blue-600">' + result.rotated_count + '개</div>';
                     html += '</div>';
                 }
 

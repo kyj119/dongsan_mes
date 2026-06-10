@@ -575,7 +575,7 @@ ${capsSettingsScript}
           </div>
 
           <div class="ds-card p-6">
-            <h3 class="text-lg font-bold text-gray-800 mb-6"><i class="fas fa-envelope mr-2 text-purple-500"></i>이메일 설정</h3>
+            <h3 class="text-lg font-bold text-gray-800 mb-6"><i class="fas fa-envelope mr-2 text-gray-500"></i>이메일 설정</h3>
             <div class="space-y-5">
               <div class="flex items-center justify-between">
                 <div>
@@ -583,7 +583,7 @@ ${capsSettingsScript}
                 </div>
                 <label class="relative inline-flex items-center cursor-pointer">
                   <input type="checkbox" id="msgSettingEmailEnabled" class="sr-only peer">
-                  <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-purple-600"></div>
+                  <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
                 </label>
               </div>
               <div>

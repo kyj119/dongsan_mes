@@ -57,14 +57,14 @@ export function taxInvoicesPage(c: Context<HonoEnv>) {
       </div>
 
       <!-- 동기화 바 -->
-      <div id="billingSyncBar" class="hidden bg-indigo-50 border border-indigo-200 rounded-lg p-3 mb-4">
+      <div id="billingSyncBar" class="hidden bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4">
         <div class="flex items-center justify-between">
-          <span class="text-sm text-indigo-700">
+          <span class="text-sm text-blue-700">
             <i class="fas fa-sync-alt mr-1"></i>상태 동기화: 출고완료 → 회계반영 자동 전이
           </span>
           <div class="flex items-center gap-2">
             <span id="syncLastTimeInvoice" class="text-xs text-gray-400"></span>
-            <button onclick="runSyncFromInvoicePage()" class="px-3 py-1.5 bg-indigo-600 text-white rounded text-xs hover:bg-indigo-700 font-medium">
+            <button onclick="runSyncFromInvoicePage()" class="px-3 py-1.5 bg-blue-600 text-white rounded text-xs hover:bg-blue-700 font-medium">
               <i class="fas fa-sync-alt mr-1"></i>동기화 실행
             </button>
           </div>
@@ -326,7 +326,7 @@ export function taxInvoicesPage(c: Context<HonoEnv>) {
     <div id="directIssueModal" class="ds-modal-overlay hidden">
       <div class="ds-modal w-full max-h-[90vh] overflow-y-auto" style="max-width:46rem">
         <div class="sticky top-0 bg-white border-b px-6 py-4 flex items-center justify-between z-10">
-          <h3 class="text-lg font-bold"><i class="fas fa-file-circle-plus text-teal-600 mr-2"></i>세금계산서 직접발행</h3>
+          <h3 class="text-lg font-bold"><i class="fas fa-file-circle-plus text-blue-600 mr-2"></i>세금계산서 직접발행</h3>
           <button onclick="closeDirectIssueModal()" class="text-gray-400 hover:text-gray-600 text-2xl leading-none">&times;</button>
         </div>
         <div class="px-6 py-4 space-y-4">
@@ -344,7 +344,7 @@ export function taxInvoicesPage(c: Context<HonoEnv>) {
               </button>
             </div>
             <div id="diClientResults" class="hidden mt-1 border rounded-lg max-h-44 overflow-y-auto bg-white shadow-sm"></div>
-            <div id="diClientSelected" class="hidden mt-1.5 text-sm text-teal-700 font-medium"></div>
+            <div id="diClientSelected" class="hidden mt-1.5 text-sm text-blue-700 font-medium"></div>
           </div>
 
           <!-- 발행일 -->
@@ -389,7 +389,7 @@ export function taxInvoicesPage(c: Context<HonoEnv>) {
             </div>
             <div>
               <div class="text-xs text-gray-500 mb-0.5">합계</div>
-              <div id="diTotalDisplay" class="font-bold text-teal-700 text-right">0</div>
+              <div id="diTotalDisplay" class="font-bold text-blue-700 text-right">0</div>
             </div>
           </div>
 

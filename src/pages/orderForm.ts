@@ -316,7 +316,7 @@ export function orderFormPage(c: Context<HonoEnv>) {
                         <button type="button" onclick="history.back()" class="px-6 py-2 border border-gray-300 text-gray-700 rounded hover:bg-gray-100">
                             <i class="fas fa-times mr-2"></i>취소
                         </button>
-                        <button type="button" id="quotationBtn" onclick="submitAsQuotation()" class="px-6 py-2 bg-teal-500 text-white rounded hover:bg-teal-600">
+                        <button type="button" id="quotationBtn" onclick="submitAsQuotation()" class="px-6 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">
                             <i class="fas fa-file-alt mr-2"></i>견적서로 저장
                         </button>
                         <button type="submit" id="submitBtn" class="px-6 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">

@@ -286,7 +286,7 @@ export function equipmentPage(c: Context<HonoEnv>) {
                         <div class="mb-6">
                             <div class="flex items-center justify-between mb-2">
                                 <h4 class="font-semibold text-sm">프린트 헤드</h4>
-                                <button onclick="openHeadSetup()" id="btnHeadSetup" class="text-xs px-2 py-1 bg-cyan-50 text-cyan-600 border border-cyan-200 rounded hover:bg-cyan-100">
+                                <button onclick="openHeadSetup()" id="btnHeadSetup" class="text-xs px-2 py-1 bg-blue-50 text-blue-600 border border-blue-200 rounded hover:bg-blue-100">
                                     <i class="fas fa-cog mr-1"></i>헤드 설정
                                 </button>
                             </div>
@@ -297,7 +297,7 @@ export function equipmentPage(c: Context<HonoEnv>) {
                         <div class="mb-6">
                             <div class="flex items-center justify-between mb-2">
                                 <h4 class="font-semibold text-sm">인쇄 프리셋</h4>
-                                <button onclick="openPresetModal()" class="text-xs px-2 py-1 bg-cyan-50 text-cyan-600 border border-cyan-200 rounded hover:bg-cyan-100">
+                                <button onclick="openPresetModal()" class="text-xs px-2 py-1 bg-blue-50 text-blue-600 border border-blue-200 rounded hover:bg-blue-100">
                                     <i class="fas fa-plus mr-1"></i>추가
                                 </button>
                             </div>
@@ -308,7 +308,7 @@ export function equipmentPage(c: Context<HonoEnv>) {
                         <div class="mb-6">
                             <div class="flex items-center justify-between mb-2">
                                 <h4 class="font-semibold text-sm"><i class="fas fa-box text-amber-500 mr-1"></i>소모품</h4>
-                                <button onclick="openConsumableModal()" class="text-xs px-2 py-1 bg-cyan-50 text-cyan-600 border border-cyan-200 rounded hover:bg-cyan-100">
+                                <button onclick="openConsumableModal()" class="text-xs px-2 py-1 bg-blue-50 text-blue-600 border border-blue-200 rounded hover:bg-blue-100">
                                     <i class="fas fa-plus mr-1"></i>추가
                                 </button>
                             </div>
@@ -319,7 +319,7 @@ export function equipmentPage(c: Context<HonoEnv>) {
                         <div class="mb-6">
                             <div class="flex items-center justify-between mb-2">
                                 <h4 class="font-semibold text-sm"><i class="fas fa-calendar-check text-blue-500 mr-1"></i>정비 스케줄</h4>
-                                <button onclick="openScheduleModal()" class="text-xs px-2 py-1 bg-cyan-50 text-cyan-600 border border-cyan-200 rounded hover:bg-cyan-100">
+                                <button onclick="openScheduleModal()" class="text-xs px-2 py-1 bg-blue-50 text-blue-600 border border-blue-200 rounded hover:bg-blue-100">
                                     <i class="fas fa-plus mr-1"></i>추가
                                 </button>
                             </div>
@@ -338,7 +338,7 @@ export function equipmentPage(c: Context<HonoEnv>) {
                         <div>
                             <div class="flex items-center justify-between mb-2">
                                 <h4 class="font-semibold text-sm">유지보수 이력</h4>
-                                <button onclick="openMaintenanceModal()" class="text-xs px-2 py-1 bg-cyan-50 text-cyan-600 border border-cyan-200 rounded hover:bg-cyan-100">
+                                <button onclick="openMaintenanceModal()" class="text-xs px-2 py-1 bg-blue-50 text-blue-600 border border-blue-200 rounded hover:bg-blue-100">
                                     <i class="fas fa-plus mr-1"></i>기록 추가
                                 </button>
                             </div>

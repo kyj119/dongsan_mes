@@ -286,7 +286,7 @@ async function loadRecentEvents() {
         if (ev.print_status === 'CANCEL') {
           if (ev.actual_printed !== null && ev.actual_printed !== undefined) {
             layoutInfo += '<br><span class="text-[10px] text-orange-600">'
-              + '✔ 실제 ' + ev.actual_printed + '매 (' + escapeHtml(ev.actual_printed_by) + ')</span>';
+              + '<i class="fas fa-check mr-0.5"></i>실제 ' + ev.actual_printed + '매 (' + escapeHtml(ev.actual_printed_by) + ')</span>';
           } else {
             layoutInfo += '<br><button onclick="showActualPrintedInput(' + ev.id + ', ' + ev.copy_total + ')" '
               + 'class="text-[10px] bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded hover:bg-orange-200 mt-1">'

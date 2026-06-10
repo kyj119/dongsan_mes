@@ -81,7 +81,7 @@ function openClientModal(query, clients) {
         + '</div>'
         + '<div class="p-4 border-b">'
         + '<input type="text" id="modalClientSearch" value="' + (query || '').replace(/"/g, '&quot;') + '"'
-        + ' placeholder="거래처명 검색 후 Enter" class="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-teal-500"'
+        + ' placeholder="거래처명 검색 후 Enter" class="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500"'
         + ' onkeydown="handleModalClientSearch(event)" autofocus>'
         + '<div class="text-xs text-gray-400 mt-1">' + (clients.length > 0 ? clients.length + '건 검색됨' : '검색 결과 없음') + '</div>'
         + '</div>'
@@ -143,7 +143,7 @@ function buildItemHtml(id) {
                 <input type="hidden" name="item_unit_${id}" value="EA">
                 <input type="hidden" name="category_name_${id}">
                 <input type="text" name="item_search_${id}" placeholder="품목명 검색..." autocomplete="off"
-                       class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-500">
+                       class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500">
                 <div id="item_dd_${id}" class="item-dd hidden"></div>
             </div>
             <div>
@@ -188,7 +188,7 @@ function buildItemHtml(id) {
             </div>
             <div class="flex items-end pb-1">
                 <label class="flex items-center gap-2 text-sm cursor-pointer">
-                    <input type="checkbox" name="vat_${id}" checked class="rounded border-gray-300 text-teal-600" onchange="calculateTotal()">
+                    <input type="checkbox" name="vat_${id}" checked class="rounded border-gray-300 text-blue-600" onchange="calculateTotal()">
                     <span class="text-gray-700">부가세 포함</span>
                 </label>
             </div>
@@ -219,12 +219,12 @@ function setupAutocomplete(id) {
         var hInp = document.querySelector('[name="height_' + id + '"]');
         var priceLbl = document.getElementById('unit_price_label_' + id);
         if (pm === 'AREA') {
-            if (wInp) { wInp.classList.add('border-purple-500'); wInp.classList.remove('border-gray-300'); }
-            if (hInp) { hInp.classList.add('border-purple-500'); hInp.classList.remove('border-gray-300'); }
+            if (wInp) { wInp.classList.add('border-blue-500'); wInp.classList.remove('border-gray-300'); }
+            if (hInp) { hInp.classList.add('border-blue-500'); hInp.classList.remove('border-gray-300'); }
             if (priceLbl) priceLbl.textContent = '단가 (원/㎡)';
         } else {
-            if (wInp) { wInp.classList.remove('border-purple-500'); wInp.classList.add('border-gray-300'); }
-            if (hInp) { hInp.classList.remove('border-purple-500'); hInp.classList.add('border-gray-300'); }
+            if (wInp) { wInp.classList.remove('border-blue-500'); wInp.classList.add('border-gray-300'); }
+            if (hInp) { hInp.classList.remove('border-blue-500'); hInp.classList.add('border-gray-300'); }
             if (priceLbl) priceLbl.textContent = '단가 (원)';
         }
         calcItem(id);

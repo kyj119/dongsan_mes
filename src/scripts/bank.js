@@ -305,7 +305,7 @@
     html += '</div>';
 
     if (presetId) {
-      html += '<div class="text-xs text-purple-500 mt-0.5"><i class="fas fa-robot mr-1"></i>추천</div>';
+      html += '<div class="text-xs text-gray-500 mt-0.5"><i class="fas fa-robot mr-1"></i>추천</div>';
     }
     return html;
   }
@@ -327,7 +327,7 @@
     var html = '';
     filtered.forEach(function(cat) {
       var color = cat.color || '#6d28d9';
-      html += '<div class="px-3 py-2 hover:bg-purple-50 cursor-pointer text-sm border-b border-gray-50" '
+      html += '<div class="px-3 py-2 hover:bg-blue-50 cursor-pointer text-sm border-b border-gray-50" '
         + 'onclick="selectCategory(' + txId + ',' + cat.id + ',\'' + escHtml(cat.name).replace(/'/g, "\\'") + '\')">';
       html += '<span class="inline-block w-2 h-2 rounded-full mr-1.5" style="background:' + color + '"></span>';
       html += '<span class="font-medium">' + escHtml(cat.name) + '</span>';
@@ -978,7 +978,7 @@
       if (rule.matched_client_id && rule.client_name) {
         matchTarget = '<i class="fas fa-user text-blue-400 mr-1 text-xs"></i>' + escHtml(rule.client_name);
       } else if (rule.matched_category_id && rule.category_name) {
-        matchTarget = '<i class="fas fa-tag text-purple-400 mr-1 text-xs"></i>' + escHtml(rule.category_name);
+        matchTarget = '<i class="fas fa-tag text-gray-400 mr-1 text-xs"></i>' + escHtml(rule.category_name);
       } else {
         matchTarget = '<span class="text-gray-400">(삭제됨)</span>';
       }

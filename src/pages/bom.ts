@@ -68,7 +68,7 @@ export const bomPage = (c: Context<HonoEnv>) => {
       <div id="tab-history" class="tab-content hidden">
         <div class="ds-card">
           <div class="p-4 border-b">
-            <h2 class="text-lg font-bold"><i class="fas fa-history mr-2 text-purple-600"></i>MRP 실행 이력</h2>
+            <h2 class="text-lg font-bold"><i class="fas fa-history mr-2 text-gray-500"></i>MRP 실행 이력</h2>
           </div>
           <div class="overflow-x-auto" style="max-height: calc(100vh - 280px); overflow-y: auto;">
             <table class="w-full ds-table-striped">

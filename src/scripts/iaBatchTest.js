@@ -248,16 +248,16 @@ function renderResultCard(r) {
                             let metaBadges = '';
                             if (hasVision) {
                                 if (visionIsText) {
-                                    metaBadges += `<span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-red-100 text-red-700">🚫 텍스트 (${g.vision_confidence})</span> `;
+                                    metaBadges += `<span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-red-100 text-red-700"><i class="fas fa-ban mr-0.5"></i>텍스트 (${g.vision_confidence})</span> `;
                                 } else if (visionIsDesign) {
-                                    metaBadges += `<span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-green-100 text-green-700">✓ 디자인 (${g.vision_confidence})</span> `;
+                                    metaBadges += `<span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-green-100 text-green-700"><i class="fas fa-check mr-0.5"></i>디자인 (${g.vision_confidence})</span> `;
                                 } else if (visionIsMixed) {
-                                    metaBadges += `<span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-100 text-amber-700">⚠ 혼합 (${g.vision_confidence})</span> `;
+                                    metaBadges += `<span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-100 text-amber-700"><i class="fas fa-triangle-exclamation mr-0.5"></i>혼합 (${g.vision_confidence})</span> `;
                                 }
                             } else {
                                 // Vision 미완료 — 메타데이터 기반 표시
                                 if (g.has_image) {
-                                    metaBadges += '<span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-green-100 text-green-700">🖼 이미지</span> ';
+                                    metaBadges += '<span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-green-100 text-green-700"><i class="fas fa-image mr-0.5"></i>이미지</span> ';
                                 } else {
                                     metaBadges += '<span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-gray-100 text-gray-500 animate-pulse">분류 대기</span> ';
                                 }

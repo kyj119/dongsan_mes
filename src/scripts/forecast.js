@@ -163,7 +163,7 @@ async function loadCapacity() {
           + '<span class="w-10 text-xs text-gray-500 text-right">' + h.hour + '시</span>'
           + '<div class="flex-1 h-3 bg-gray-100 rounded-full overflow-hidden">'
           + '<div class="h-full ' + color + ' rounded-full" style="width:' + Math.max(pct, 1) + '%"></div></div>'
-          + '<span class="w-14 text-right text-xs">' + fmt(h.count) + (isPeak ? ' 🔥' : '') + '</span>'
+          + '<span class="w-14 text-right text-xs">' + fmt(h.count) + (isPeak ? ' <i class="fas fa-fire text-red-500"></i>' : '') + '</span>'
           + '</div>';
       }).join('');
     }

@@ -120,7 +120,7 @@ export function bankPage(c: Context<HonoEnv>) {
                 <button onclick="syncBarobillBank()" id="syncBarobillBtn" class="ds-btn ds-btn-primary ds-btn-sm flex items-center gap-1">
                   <i class="fas fa-sync-alt"></i> 바로빌 동기화
                 </button>
-                <button onclick="runAutoMatch()" class="px-3 py-1.5 text-xs font-medium rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 flex items-center gap-1">
+                <button onclick="runAutoMatch()" class="px-3 py-1.5 text-xs font-medium rounded-lg bg-green-600 text-white hover:bg-green-700 flex items-center gap-1">
                   <i class="fas fa-magic"></i> 자동매칭
                 </button>
                 <div class="relative" id="moreActionsWrap">
@@ -167,10 +167,10 @@ export function bankPage(c: Context<HonoEnv>) {
           <div id="floatingSelectionBar" class="hidden fixed bottom-6 left-1/2 -translate-x-1/2 z-40 bg-gray-900 text-white rounded-xl shadow-2xl px-5 py-3 flex items-center gap-4" style="min-width:420px;">
             <span class="text-sm"><b id="selectedCount">0</b>건 선택</span>
             <div class="border-l border-gray-600 h-5"></div>
-            <button onclick="batchMatch()" class="px-3 py-1.5 text-xs font-medium rounded-lg bg-indigo-500 hover:bg-indigo-400 flex items-center gap-1">
+            <button onclick="batchMatch()" class="px-3 py-1.5 text-xs font-medium rounded-lg bg-blue-600 text-white hover:bg-blue-700 flex items-center gap-1">
               <i class="fas fa-link"></i> 일괄 매칭
             </button>
-            <button onclick="batchApply()" class="px-3 py-1.5 text-xs font-medium rounded-lg bg-blue-500 hover:bg-blue-400 flex items-center gap-1">
+            <button onclick="batchApply()" class="px-3 py-1.5 text-xs font-medium rounded-lg bg-blue-600 text-white hover:bg-blue-700 flex items-center gap-1">
               <i class="fas fa-check-double"></i> 일괄 적용
             </button>
             <button onclick="clearSelection()" class="ml-auto px-2 py-1 text-xs text-gray-400 hover:text-white">

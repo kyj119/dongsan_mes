@@ -82,7 +82,7 @@ export function priceManagementPage(c: Context<HonoEnv>) {
               <button type="button" onclick="printSalesList()" class="px-4 py-2 bg-green-600 text-white rounded-lg text-sm hover:bg-green-700">
                 <i class="fas fa-print mr-1"></i>인쇄
               </button>
-              <button type="button" onclick="openFaxModal()" class="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm hover:bg-indigo-700">
+              <button type="button" onclick="openFaxModal()" class="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700">
                 <i class="fas fa-fax mr-1"></i>팩스
               </button>
             </div>
@@ -103,7 +103,7 @@ export function priceManagementPage(c: Context<HonoEnv>) {
       <div id="pmHistoryModal" class="ds-modal-overlay hidden flex items-center justify-center">
         <div class="ds-modal p-6" style="max-width:800px; max-height:80vh; overflow-y:auto">
           <div class="flex justify-between items-center mb-4">
-            <h3 class="text-lg font-bold"><i class="fas fa-history text-purple-500 mr-2"></i>단가 변경 이력</h3>
+            <h3 class="text-lg font-bold"><i class="fas fa-history text-gray-500 mr-2"></i>단가 변경 이력</h3>
             <div class="flex items-center gap-3">
               <select id="pmHistoryLimit" onchange="loadHistory()" class="px-3 py-1.5 border border-gray-300 rounded text-sm">
                 <option value="50">최근 50건</option>
@@ -121,7 +121,7 @@ export function priceManagementPage(c: Context<HonoEnv>) {
       <div id="faxModal" class="ds-modal-overlay hidden flex items-center justify-center">
         <div class="ds-modal p-6" style="max-width:400px">
           <div class="flex justify-between items-center mb-4">
-            <h3 class="text-lg font-bold"><i class="fas fa-fax text-indigo-500 mr-2"></i>단가표 팩스 발송</h3>
+            <h3 class="text-lg font-bold"><i class="fas fa-fax text-blue-600 mr-2"></i>단가표 팩스 발송</h3>
             <button onclick="closeFaxModal()" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times"></i></button>
           </div>
           <div class="space-y-3">
@@ -137,7 +137,7 @@ export function priceManagementPage(c: Context<HonoEnv>) {
           </div>
           <div class="flex justify-end gap-2 mt-4">
             <button onclick="closeFaxModal()" class="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm hover:bg-gray-50">취소</button>
-            <button onclick="sendFax()" id="faxSendBtn" class="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm hover:bg-indigo-700"><i class="fas fa-paper-plane mr-1"></i>발송</button>
+            <button onclick="sendFax()" id="faxSendBtn" class="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700"><i class="fas fa-paper-plane mr-1"></i>발송</button>
           </div>
         </div>
       </div>

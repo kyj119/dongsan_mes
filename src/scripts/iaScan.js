@@ -1165,7 +1165,7 @@ function renderPreview() {
     html += '<div class="flex items-center gap-2">';
     html += '<span class="font-medium">원본:</span> <span class="truncate flex-1" title="' + esc(row.original_file || '') + '">' + shortName(row.original_file || '') + '</span>';
     if (row.margin_w !== undefined && row.margin_w !== '') {
-      html += '<span class="text-purple-600 font-mono">여백 W:' + row.margin_w + ' H:' + (row.margin_h || '?') + 'mm</span>';
+      html += '<span class="text-blue-600 font-mono">여백 W:' + row.margin_w + ' H:' + (row.margin_h || '?') + 'mm</span>';
     }
     html += '</div>';
   }
@@ -1214,7 +1214,7 @@ function renderPreview() {
     var shared = parseInt(row.shared_original_count) || 0;
     html += '<div class="text-[10px] mt-1 flex justify-between">';
     if (shared > 1) {
-      html += '<span class="text-amber-600 font-medium">⚠ 이 원본에 ' + shared + '개 시안 포함</span>';
+      html += '<span class="text-amber-600 font-medium"><i class="fas fa-triangle-exclamation mr-0.5"></i>이 원본에 ' + shared + '개 시안 포함</span>';
     } else {
       html += '<span></span>';
     }

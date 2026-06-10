@@ -116,7 +116,7 @@
         '<td class="px-3 py-2 text-right ' + stockClass + '">' + fmt(s.current_stock) + '</td>' +
         '<td class="px-3 py-2 text-right text-gray-600">' + fmt(s.safe_stock) + '</td>' +
         '<td class="px-3 py-2 text-right text-blue-600">' + fmt(s.weekly_avg) + '/w</td>' +
-        '<td class="px-3 py-2 text-right text-purple-600">' + fmt(s.mrp_demand) + '</td>' +
+        '<td class="px-3 py-2 text-right text-blue-600">' + fmt(s.mrp_demand) + '</td>' +
         '<td class="px-3 py-2 text-right text-gray-500">' + fmt(s.on_order) + '</td>' +
         '<td class="px-3 py-2 text-right">' +
           '<input type="number" class="qty-input w-20 border border-gray-300 rounded px-2 py-1 text-right text-sm" ' +

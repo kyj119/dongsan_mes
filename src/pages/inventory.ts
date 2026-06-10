@@ -135,7 +135,7 @@ export function inventoryPage(c: Context<HonoEnv>) {
             <!-- Inventory Table -->
             <div class="ds-card p-6">
                 <h2 class="text-xl font-bold mb-4">
-                    <i class="fas fa-list text-teal-600 mr-2"></i>재고 현황
+                    <i class="fas fa-list text-blue-600 mr-2"></i>재고 현황
                 </h2>
                 <div class="overflow-x-auto" style="max-height: calc(100vh - 280px); overflow-y: auto;">
                     <table class="w-full text-sm ds-table-striped">
@@ -282,7 +282,7 @@ export function inventoryPage(c: Context<HonoEnv>) {
                 <div class="ds-modal p-6 max-h-[80vh] overflow-y-auto" style="max-width:56rem">
                     <div class="flex justify-between items-center mb-4">
                         <h3 class="text-xl font-bold">
-                            <i class="fas fa-history text-teal-600 mr-2"></i>
+                            <i class="fas fa-history text-gray-500 mr-2"></i>
                             거래 이력 - <span id="modalItemName"></span>
                         </h3>
                         <button id="closeModal" class="text-gray-500 hover:text-gray-700">
@@ -312,7 +312,7 @@ export function inventoryPage(c: Context<HonoEnv>) {
             <!-- Adjustment Modal (재고 조정) -->
             <div id="adjustmentModal" class="ds-modal-overlay hidden">
                 <div class="ds-modal p-6" style="max-width:42rem">
-                    <h3 class="text-xl font-bold mb-4"><i class="fas fa-adjust text-purple-600 mr-2"></i>재고 조정</h3>
+                    <h3 class="text-xl font-bold mb-4"><i class="fas fa-adjust text-blue-600 mr-2"></i>재고 조정</h3>
                     <div class="space-y-4">
                         <div class="grid grid-cols-2 gap-4">
                             <div>
@@ -382,7 +382,7 @@ export function inventoryPage(c: Context<HonoEnv>) {
                     </div>
                     <div class="mt-6 flex justify-end gap-2">
                         <button id="cancelSettings" class="px-4 py-2 bg-gray-300 rounded hover:bg-gray-400">취소</button>
-                        <button id="submitSettings" class="px-4 py-2 bg-teal-600 text-white rounded hover:bg-teal-700">저장</button>
+                        <button id="submitSettings" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">저장</button>
                     </div>
                 </div>
             </div>

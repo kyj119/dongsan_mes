@@ -109,7 +109,7 @@ export function uiGuidePage(c: Context<HonoEnv>) {
         <div class="flex items-center gap-4 flex-wrap">
           <span class="w-20 text-xs font-medium" style="color:#6b7280;">Primary</span>
           <button class="px-4 py-2 text-sm bg-blue-600 text-white rounded hover:bg-blue-700"><i class="fas fa-plus mr-1"></i>새 주문</button>
-          <button class="px-3 py-1.5 text-xs bg-blue-600 text-white rounded hover:bg-blue-700"><i class="fas fa-search mr-1"></i>조회</button>
+          <button class="px-3 py-1.5 text-xs bg-blue-600 text-white rounded hover:bg-blue-700"><i class="fas fa-search mr-1"></i>검색</button>
           <code class="text-[10px]" style="color:#9ca3af;">bg-blue-600 text-white</code>
         </div>
         <div class="flex items-center gap-4 flex-wrap">
@@ -247,7 +247,7 @@ export function uiGuidePage(c: Context<HonoEnv>) {
           </div>
           <div class="ml-auto flex items-end gap-2">
             <button class="text-xs hover:underline" style="color:#6b7280;">초기화</button>
-            <button class="px-3 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700"><i class="fas fa-search mr-1"></i>조회</button>
+            <button class="px-3 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700"><i class="fas fa-search mr-1"></i>검색</button>
           </div>
         </div>
       </div>

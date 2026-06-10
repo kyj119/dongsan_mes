@@ -11,7 +11,7 @@ export function postProcessingPage(c: Context<HonoEnv>) {
         <div class="container mx-auto px-4 py-6">
             <!-- 탭 네비게이션 -->
             <div class="flex gap-1 mb-4 border-b">
-                <button onclick="switchTab('list')" id="tab-list" class="px-4 py-2 text-sm font-medium border-b-2 border-pink-600 text-pink-700">후가공 관리</button>
+                <button onclick="switchTab('list')" id="tab-list" class="px-4 py-2 text-sm font-medium border-b-2 border-blue-600 text-blue-700">후가공 관리</button>
                 <button onclick="switchTab('finishing')" id="tab-finishing" class="px-4 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">마감 방식</button>
                 <button onclick="switchTab('stats')" id="tab-stats" class="px-4 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">사용 통계</button>
             </div>
@@ -59,7 +59,7 @@ export function postProcessingPage(c: Context<HonoEnv>) {
 
                 <!-- 전체 누적 통계 -->
                 <div class="ds-card p-4 mb-4">
-                    <h3 class="font-bold text-gray-700 mb-3"><i class="fas fa-chart-bar mr-2 text-pink-500"></i>전체 누적 통계</h3>
+                    <h3 class="font-bold text-gray-700 mb-3"><i class="fas fa-chart-bar mr-2 text-blue-600"></i>전체 누적 통계</h3>
                     <div class="overflow-x-auto" style="max-height: calc(100vh - 280px); overflow-y: auto;">
                         <table class="w-full text-sm ds-table-striped ds-table-fixed">
                             <thead>

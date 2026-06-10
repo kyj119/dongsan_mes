@@ -23,7 +23,7 @@
                             </div>
                             <span class="font-bold text-gray-700 text-sm" id="item_label_${id}">품목 #${id}</span>
                             <span id="item_check_${id}" class="hidden text-green-500 text-sm"><i class="fas fa-check-circle"></i></span>
-                            <span id="item_dist_badge_${id}" class="hidden text-xs px-1.5 py-0.5 rounded bg-teal-50 text-teal-700 font-medium"><i class="fas fa-box mr-0.5"></i>유통</span>
+                            <span id="item_dist_badge_${id}" class="hidden text-xs px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 font-medium"><i class="fas fa-box mr-0.5"></i>유통</span>
                         </div>
                         <button type="button" onclick="removeItem(${id})" class="text-red-400 hover:text-red-600 text-xs px-2 py-1 rounded hover:bg-red-50">
                             <i class="fas fa-trash mr-1"></i>삭제
@@ -177,12 +177,12 @@
                     var hInp = document.querySelector('[name="height_' + id + '"]');
                     var priceLbl = document.getElementById('unit_price_label_' + id);
                     if (pm === 'AREA') {
-                        if (wInp) { wInp.classList.add('border-purple-500'); wInp.classList.remove('border-gray-300'); }
-                        if (hInp) { hInp.classList.add('border-purple-500'); hInp.classList.remove('border-gray-300'); }
+                        if (wInp) { wInp.classList.add('border-blue-500'); wInp.classList.remove('border-gray-300'); }
+                        if (hInp) { hInp.classList.add('border-blue-500'); hInp.classList.remove('border-gray-300'); }
                         if (priceLbl) priceLbl.textContent = '단가 (원/㎡)';
                     } else {
-                        if (wInp) { wInp.classList.remove('border-purple-500'); wInp.classList.add('border-gray-300'); }
-                        if (hInp) { hInp.classList.remove('border-purple-500'); hInp.classList.add('border-gray-300'); }
+                        if (wInp) { wInp.classList.remove('border-blue-500'); wInp.classList.add('border-gray-300'); }
+                        if (hInp) { hInp.classList.remove('border-blue-500'); hInp.classList.add('border-gray-300'); }
                         if (priceLbl) priceLbl.textContent = '단가 (원)';
                     }
                     // FIXED 품목에 규격 정보 표시

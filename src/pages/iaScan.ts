@@ -78,7 +78,7 @@ export function iaScanPage(c: Context<HonoEnv>) {
       <div class="text-[10px] text-gray-400">미검수</div>
     </div>
     <div class="bg-white rounded-lg border p-2.5 text-center">
-      <div class="text-xl font-bold text-purple-600" id="statBB">0%</div>
+      <div class="text-xl font-bold text-gray-900" id="statBB">0%</div>
       <div class="text-[10px] text-gray-400">BB 추출</div>
     </div>
     <div class="bg-white rounded-lg border p-2.5 text-center">
@@ -183,7 +183,7 @@ export function iaScanPage(c: Context<HonoEnv>) {
         <button id="btnBulkApproveSameOutput" onclick="bulkApproveSameOutput()" class="px-2 py-1 text-[10px] bg-green-50 text-green-700 border border-green-200 rounded hover:bg-green-100 hidden" title="같은 출력 파일의 행을 일괄 승인">
           <i class="fas fa-copy mr-0.5"></i>같은 출력 일괄
         </button>
-        <button id="btnBulkApproveClientDate" onclick="bulkApproveClientDate()" class="px-2 py-1 text-[10px] bg-purple-50 text-purple-700 border border-purple-200 rounded hover:bg-purple-100 hidden" title="같은 거래처+날짜의 행을 일괄 승인">
+        <button id="btnBulkApproveClientDate" onclick="bulkApproveClientDate()" class="px-2 py-1 text-[10px] bg-blue-50 text-blue-700 border border-blue-200 rounded hover:bg-blue-100 hidden" title="같은 거래처+날짜의 행을 일괄 승인">
           <i class="fas fa-users mr-0.5"></i>거래처+날짜 일괄
         </button>
         <button onclick="resetFilters()" class="text-[10px] text-gray-400 hover:text-blue-600 underline">초기화</button>
@@ -280,7 +280,7 @@ export function iaScanPage(c: Context<HonoEnv>) {
         <div class="text-[10px] text-gray-400">실패/거부</div>
       </div>
       <div class="bg-white rounded-lg border p-2.5 text-center">
-        <div class="text-xl font-bold text-purple-600" id="gStatUnique">0</div>
+        <div class="text-xl font-bold text-gray-900" id="gStatUnique">0</div>
         <div class="text-[10px] text-gray-400">고유 번호</div>
       </div>
     </div>

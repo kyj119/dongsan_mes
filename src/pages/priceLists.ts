@@ -61,7 +61,7 @@ document.addEventListener('DOMContentLoaded', function() {
   <div id="salesTabContent" class="block">
     <div class="ds-card p-6 mb-6">
       <div class="flex justify-between items-center mb-4">
-        <h2 class="text-xl font-bold"><i class="fas fa-layer-group text-purple-600 mr-2"></i>매출 단가표 관리</h2>
+        <h2 class="text-xl font-bold"><i class="fas fa-layer-group text-blue-600 mr-2"></i>매출 단가표 관리</h2>
         <button onclick="showAddPriceListModal()" class="ds-btn ds-btn-primary text-sm">
           <i class="fas fa-plus mr-1"></i>단가표 추가
         </button>
@@ -84,7 +84,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
       <!-- Tabs: 배정 거래처 / 적용 단가 미리보기 -->
       <div class="flex border-b mb-4">
-        <button id="tabClients" onclick="switchTab('clients')" class="px-4 py-2 text-sm font-medium border-b-2 border-purple-600 text-purple-600">배정 거래처 (<span id="assignedCount">0</span>)</button>
+        <button id="tabClients" onclick="switchTab('clients')" class="px-4 py-2 text-sm font-medium border-b-2 border-blue-600 text-blue-600">배정 거래처 (<span id="assignedCount">0</span>)</button>
         <button id="tabPreview" onclick="switchTab('preview')" class="px-4 py-2 text-sm font-medium text-gray-500 hover:text-gray-700">적용 단가 미리보기</button>
       </div>
 

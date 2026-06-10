@@ -99,7 +99,7 @@ export function iaBatchTestPage(c: Context<HonoEnv>) {
                 <!-- 결과 그리드 -->
                 <div id="resultsGrid" class="space-y-4">
                     <div class="text-center py-12 text-gray-400">
-                        <div class="text-4xl mb-3">📋</div>
+                        <div class="text-4xl mb-3"><i class="fas fa-clipboard-list"></i></div>
                         <div class="text-sm">배치 테스트를 등록하거나 ID 범위로 검색하세요</div>
                     </div>
                 </div>

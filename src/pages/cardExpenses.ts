@@ -64,7 +64,7 @@ export function cardExpensesPage(c: Context<HonoEnv>) {
             <div class="flex items-center gap-2 text-xs">
               <span class="px-2 py-1 rounded-full bg-blue-50 text-blue-700 font-medium">이번달 <b id="kpiTotalAmount">-</b></span>
               <span class="px-2 py-1 rounded-full bg-amber-50 text-amber-700 font-medium">미분류 <b id="kpiUnclassified">-</b></span>
-              <span class="px-2 py-1 rounded-full bg-purple-50 text-purple-700 font-medium">대기 <b id="kpiClassified">-</b></span>
+              <span class="px-2 py-1 rounded-full bg-gray-100 text-gray-600 font-medium">대기 <b id="kpiClassified">-</b></span>
               <span class="px-2 py-1 rounded-full bg-green-50 text-green-700 font-medium">승인 <b id="kpiApproved">-</b></span>
             </div>
           </div>
@@ -79,7 +79,7 @@ export function cardExpensesPage(c: Context<HonoEnv>) {
               <button onclick="switchCardStatus('APPROVED')" id="csTabApproved" class="px-3 py-1 text-xs font-medium rounded-full bg-gray-100 text-gray-600 hover:bg-gray-200">승인</button>
             </div>
             <div class="flex items-center gap-2">
-              <button onclick="syncBarobillCards()" id="syncCardBtn" class="px-3 py-1.5 text-xs font-medium rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 flex items-center gap-1">
+              <button onclick="syncBarobillCards()" id="syncCardBtn" class="px-3 py-1.5 text-xs font-medium rounded-lg bg-green-600 text-white hover:bg-green-700 flex items-center gap-1">
                 <i class="fas fa-sync-alt"></i> 동기화
               </button>
               <button onclick="openAddTxModal()" class="ds-btn ds-btn-primary ds-btn-sm flex items-center gap-1">
@@ -127,10 +127,10 @@ export function cardExpensesPage(c: Context<HonoEnv>) {
           <select id="bulkCategory" class="bg-gray-800 text-white border border-gray-600 rounded-lg px-2 py-1 text-xs">
             <option value="">분류 선택...</option>
           </select>
-          <button onclick="bulkClassify()" class="px-3 py-1.5 text-xs font-medium rounded-lg bg-indigo-500 hover:bg-indigo-400 flex items-center gap-1">
+          <button onclick="bulkClassify()" class="px-3 py-1.5 text-xs font-medium rounded-lg bg-blue-600 text-white hover:bg-blue-700 flex items-center gap-1">
             <i class="fas fa-tags"></i> 일괄 분류
           </button>
-          <button onclick="bulkCreateRequests()" class="px-3 py-1.5 text-xs font-medium rounded-lg bg-emerald-500 hover:bg-emerald-400 flex items-center gap-1">
+          <button onclick="bulkCreateRequests()" class="px-3 py-1.5 text-xs font-medium rounded-lg bg-green-600 text-white hover:bg-green-700 flex items-center gap-1">
             <i class="fas fa-file-signature"></i> 결의 생성
           </button>
           <button onclick="clearSelection()" class="ml-auto px-2 py-1 text-xs text-gray-400 hover:text-white">
@@ -163,7 +163,7 @@ export function cardExpensesPage(c: Context<HonoEnv>) {
           </div>
           <div class="ds-card ds-card-compact card-stat" style="border-color:#8b5cf6">
             <div class="ds-label mb-1">다음 결제일</div>
-            <div class="text-xl font-bold text-purple-600 text-right" id="scheduleNextDate">-</div>
+            <div class="text-xl font-bold text-right" id="scheduleNextDate">-</div>
           </div>
         </div>
         <div class="ds-card" style="padding:0">
@@ -192,7 +192,7 @@ export function cardExpensesPage(c: Context<HonoEnv>) {
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
           <!-- 카테고리별 -->
           <div class="ds-card">
-            <h3 class="text-sm font-bold text-gray-700 mb-3"><i class="fas fa-chart-pie text-purple-500 mr-2"></i>경비 분류별</h3>
+            <h3 class="text-sm font-bold text-gray-700 mb-3"><i class="fas fa-chart-pie text-blue-600 mr-2"></i>경비 분류별</h3>
             <div id="reportCategoryBars" class="space-y-2"></div>
           </div>
           <!-- 카드별 -->
@@ -206,7 +206,7 @@ export function cardExpensesPage(c: Context<HonoEnv>) {
       <!-- ===== 경비 분류 탭 ===== -->
       <div id="categoriesContent" style="display:none">
         <div class="flex justify-between items-center mb-4">
-          <h2 class="text-sm font-bold text-gray-700"><i class="fas fa-tags text-purple-500 mr-2"></i>경비 분류 관리</h2>
+          <h2 class="text-sm font-bold text-gray-700"><i class="fas fa-tags text-blue-600 mr-2"></i>경비 분류 관리</h2>
           <button onclick="openAddCategoryModal()" class="ds-btn ds-btn-primary ds-btn-sm">
             <i class="fas fa-plus mr-1"></i>분류 추가
           </button>
@@ -256,7 +256,7 @@ export function cardExpensesPage(c: Context<HonoEnv>) {
               <input type="date" id="feeDateStart" class="ds-input" style="width:140px;">
               <span class="text-gray-400">~</span>
               <input type="date" id="feeDateEnd" class="ds-input" style="width:140px;">
-              <button onclick="loadFeeSummary()" class="ds-btn ds-btn-primary ds-btn-sm"><i class="fas fa-search mr-1"></i>조회</button>
+              <button onclick="loadFeeSummary()" class="ds-btn ds-btn-primary ds-btn-sm"><i class="fas fa-search mr-1"></i>검색</button>
             </div>
           </div>
           <div id="feeSummaryArea"><div class="text-center py-6 text-gray-400">기간을 선택하고 조회를 클릭하세요</div></div>
@@ -365,7 +365,7 @@ export function cardExpensesPage(c: Context<HonoEnv>) {
       <div id="categoryModal" class="ds-modal-overlay hidden">
         <div class="ds-modal p-6" style="max-width:380px">
           <div class="flex justify-between items-center mb-4">
-            <h3 class="text-lg font-bold text-gray-800"><i class="fas fa-tag text-purple-500 mr-2"></i>경비 분류</h3>
+            <h3 class="text-lg font-bold text-gray-800"><i class="fas fa-tag text-blue-600 mr-2"></i>경비 분류</h3>
             <button onclick="closeCategoryModal()" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times"></i></button>
           </div>
           <input type="hidden" id="editCategoryId">
@@ -387,7 +387,7 @@ export function cardExpensesPage(c: Context<HonoEnv>) {
           </div>
           <div class="flex justify-end gap-2 mt-6">
             <button onclick="closeCategoryModal()" class="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm hover:bg-gray-50">취소</button>
-            <button onclick="saveCategory()" class="px-4 py-2 bg-purple-600 text-white rounded-lg text-sm hover:bg-purple-700"><i class="fas fa-save mr-1"></i>저장</button>
+            <button onclick="saveCategory()" class="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700"><i class="fas fa-save mr-1"></i>저장</button>
           </div>
         </div>
       </div>

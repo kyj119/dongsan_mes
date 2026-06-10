@@ -384,13 +384,13 @@ function closeModal() {
 function switchTab(tab) {
     document.querySelectorAll('[id^="panel-"]').forEach(function(el) { el.classList.add('hidden'); });
     document.querySelectorAll('[id^="tab-"]').forEach(function(el) {
-        el.classList.remove('border-pink-600', 'text-pink-700');
+        el.classList.remove('border-blue-600', 'text-blue-700');
         el.classList.add('border-transparent', 'text-gray-500');
     });
     document.getElementById('panel-' + tab).classList.remove('hidden');
     var tabBtn = document.getElementById('tab-' + tab);
     tabBtn.classList.remove('border-transparent', 'text-gray-500');
-    tabBtn.classList.add('border-pink-600', 'text-pink-700');
+    tabBtn.classList.add('border-blue-600', 'text-blue-700');
     if (tab === 'stats') loadStats();
     if (tab === 'finishing') { loadFinishingTab(); }
 }

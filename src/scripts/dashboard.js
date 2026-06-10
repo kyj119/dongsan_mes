@@ -232,7 +232,7 @@ async function loadReceivables() {
             var over30 = (d.aging && d.aging.over_30 || 0) + (d.aging && d.aging.over_60 || 0) + (d.aging && d.aging.over_90 || 0);
             var over30Text = '30일+ ' + over30.toLocaleString() + '원';
             if (over30 > 0) {
-                over30El.innerHTML = '<span class="text-red-500 font-semibold">⚠ ' + over30Text + '</span>';
+                over30El.innerHTML = '<span class="text-red-500 font-semibold"><i class="fas fa-triangle-exclamation mr-0.5"></i>' + over30Text + '</span>';
             } else {
                 over30El.textContent = '연체 없음';
             }

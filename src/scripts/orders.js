@@ -470,7 +470,7 @@ async function loadOrders() {
             <td class="px-2 py-2.5 whitespace-nowrap text-center text-sm ord-act">
               <button onclick="viewOrder(${order.id})" class="text-blue-600 hover:text-blue-900 mx-1" title="상세"><i class="fas fa-eye"></i></button>
               <button onclick="showStatusChangeModal(${order.id}, '${order.status}')" class="text-green-600 hover:text-green-900 mx-1" title="상태변경"><i class="fas fa-sync-alt"></i></button>
-              <button onclick="openInvoice(${order.id})" class="text-purple-600 hover:text-purple-900 mx-1" title="명세서"><i class="fas fa-file-invoice"></i></button>
+              <button onclick="openInvoice(${order.id})" class="text-blue-600 hover:text-blue-900 mx-1" title="명세서"><i class="fas fa-file-invoice"></i></button>
               <button onclick="event.stopPropagation(); sendOrderNotice(${order.id},'${escapeHtml(order.client_name || '')}','${escapeHtml(order.contact_mobile || order.client_mobile || '')}','${escapeHtml(order.contact_phone || order.client_phone || '')}','${escapeHtml(order.order_number || '')}','${escapeHtml(order.client_email || '')}','${escapeHtml(order.client_fax || '')}',${order.client_id || 0},'${escapeHtml(formatOrderItemSummary(order))}')" class="text-blue-500 hover:text-blue-700 mx-1" title="메시지 발송"><i class="fas fa-paper-plane"></i></button>
             </td>
           </tr>
@@ -1013,7 +1013,7 @@ function buildAutoProcessSection(order, jobs) {
   }
 
   return '<div class="mt-4 mb-4">'
-    + '<h3 class="text-lg font-bold mb-3"><i class="fas fa-magic mr-2 text-purple-600"></i>자동가공 결과</h3>'
+    + '<h3 class="text-lg font-bold mb-3"><i class="fas fa-magic mr-2 text-blue-600"></i>자동가공 결과</h3>'
     + '<div class="space-y-2">' + rows + '</div>'
     + '</div>';
 }

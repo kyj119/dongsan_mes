@@ -63,7 +63,7 @@ export function messagesPage(c: Context<HonoEnv>) {
       <input type="date" id="logDateFrom" class="border border-gray-300 rounded-lg px-3 py-2 text-sm" title="발송일 시작">
       <span class="text-gray-400 text-sm">~</span>
       <input type="date" id="logDateTo" class="border border-gray-300 rounded-lg px-3 py-2 text-sm" title="발송일 종료">
-      <button onclick="loadLogs()" class="ds-btn ds-btn-primary text-sm"><i class="fas fa-search mr-1"></i>조회</button>
+      <button onclick="loadLogs()" class="ds-btn ds-btn-primary text-sm"><i class="fas fa-search mr-1"></i>검색</button>
     </div>
     <div class="ds-card overflow-hidden">
       <table class="w-full ds-table-striped">
@@ -89,18 +89,18 @@ export function messagesPage(c: Context<HonoEnv>) {
       <div class="mb-6">
         <div class="text-sm font-bold text-gray-700 mb-3">1. 발송 채널</div>
         <div class="flex gap-2 flex-wrap">
-          <button onclick="setBulkChannel('kakao')" id="bulkChKakao" class="px-4 py-2 rounded-full text-sm font-medium bg-blue-50 border-2 border-blue-500 text-blue-700">💬 카카오톡</button>
-          <button onclick="setBulkChannel('sms')" id="bulkChSms" class="px-4 py-2 rounded-full text-sm font-medium bg-white border border-gray-300 text-gray-600 hover:border-gray-400">📱 문자</button>
-          <button onclick="setBulkChannel('email')" id="bulkChEmail" class="px-4 py-2 rounded-full text-sm font-medium bg-white border border-gray-300 text-gray-600 hover:border-gray-400">📧 이메일</button>
-          <button disabled class="px-4 py-2 rounded-full text-sm font-medium bg-gray-100 border border-gray-200 text-gray-400 cursor-not-allowed">📠 팩스 (준비 중)</button>
+          <button onclick="setBulkChannel('kakao')" id="bulkChKakao" class="px-4 py-2 rounded-full text-sm font-medium bg-blue-50 border-2 border-blue-500 text-blue-700"><i class="fas fa-comment mr-1"></i>카카오톡</button>
+          <button onclick="setBulkChannel('sms')" id="bulkChSms" class="px-4 py-2 rounded-full text-sm font-medium bg-white border border-gray-300 text-gray-600 hover:border-gray-400"><i class="fas fa-sms mr-1"></i>문자</button>
+          <button onclick="setBulkChannel('email')" id="bulkChEmail" class="px-4 py-2 rounded-full text-sm font-medium bg-white border border-gray-300 text-gray-600 hover:border-gray-400"><i class="fas fa-envelope mr-1"></i>이메일</button>
+          <button disabled class="px-4 py-2 rounded-full text-sm font-medium bg-gray-100 border border-gray-200 text-gray-400 cursor-not-allowed"><i class="fas fa-fax mr-1"></i>팩스 (준비 중)</button>
         </div>
       </div>
       <div class="mb-6">
         <div class="text-sm font-bold text-gray-700 mb-3">2. 수신자</div>
         <div class="flex gap-2 flex-wrap mb-3">
-          <button onclick="openRecipientPicker('employees')" id="bulkTgtEmployees" class="px-4 py-2 rounded-full text-sm font-medium bg-green-50 border-2 border-green-500 text-green-700">👥 직원 선택</button>
-          <button onclick="openRecipientPicker('clients')" id="bulkTgtClients" class="px-4 py-2 rounded-full text-sm font-medium bg-white border border-gray-300 text-gray-600 hover:border-gray-400">🏢 거래처 선택</button>
-          <button onclick="setBulkTarget('custom')" id="bulkTgtCustom" class="px-4 py-2 rounded-full text-sm font-medium bg-white border border-gray-300 text-gray-600 hover:border-gray-400">✏️ 직접 입력</button>
+          <button onclick="openRecipientPicker('employees')" id="bulkTgtEmployees" class="px-4 py-2 rounded-full text-sm font-medium bg-green-50 border-2 border-green-500 text-green-700"><i class="fas fa-users mr-1"></i>직원 선택</button>
+          <button onclick="openRecipientPicker('clients')" id="bulkTgtClients" class="px-4 py-2 rounded-full text-sm font-medium bg-white border border-gray-300 text-gray-600 hover:border-gray-400"><i class="fas fa-building mr-1"></i>거래처 선택</button>
+          <button onclick="setBulkTarget('custom')" id="bulkTgtCustom" class="px-4 py-2 rounded-full text-sm font-medium bg-white border border-gray-300 text-gray-600 hover:border-gray-400"><i class="fas fa-pen mr-1"></i>직접 입력</button>
         </div>
         <div id="bulkTargetInfo" class="text-sm text-green-600 mb-2"></div>
         <!-- 선택된 수신자 태그 표시 영역 -->
@@ -157,10 +157,10 @@ export function messagesPage(c: Context<HonoEnv>) {
 
   <div id="panelTemplates" class="hidden">
     <div class="flex gap-2 mb-4">
-      <button onclick="switchTplSubTab('kakao')" id="tplSubKakao" class="px-4 py-2 rounded-lg text-sm font-medium bg-yellow-50 border border-yellow-400 text-yellow-800">💬 카카오톡</button>
-      <button onclick="switchTplSubTab('sms')" id="tplSubSms" class="px-4 py-2 rounded-lg text-sm font-medium bg-white border border-gray-300 text-gray-600 hover:border-gray-400">📱 문자</button>
-      <button onclick="switchTplSubTab('email')" id="tplSubEmail" class="px-4 py-2 rounded-lg text-sm font-medium bg-white border border-gray-300 text-gray-600 hover:border-gray-400">📧 이메일</button>
-      <button onclick="switchTplSubTab('fax')" id="tplSubFax" class="px-4 py-2 rounded-lg text-sm font-medium bg-white border border-gray-300 text-gray-600 hover:border-gray-400">📠 팩스</button>
+      <button onclick="switchTplSubTab('kakao')" id="tplSubKakao" class="px-4 py-2 rounded-lg text-sm font-medium bg-yellow-50 border border-yellow-400 text-yellow-800"><i class="fas fa-comment mr-1"></i>카카오톡</button>
+      <button onclick="switchTplSubTab('sms')" id="tplSubSms" class="px-4 py-2 rounded-lg text-sm font-medium bg-white border border-gray-300 text-gray-600 hover:border-gray-400"><i class="fas fa-sms mr-1"></i>문자</button>
+      <button onclick="switchTplSubTab('email')" id="tplSubEmail" class="px-4 py-2 rounded-lg text-sm font-medium bg-white border border-gray-300 text-gray-600 hover:border-gray-400"><i class="fas fa-envelope mr-1"></i>이메일</button>
+      <button onclick="switchTplSubTab('fax')" id="tplSubFax" class="px-4 py-2 rounded-lg text-sm font-medium bg-white border border-gray-300 text-gray-600 hover:border-gray-400"><i class="fas fa-fax mr-1"></i>팩스</button>
     </div>
     <div id="tplPanelKakao">
       <div class="flex items-center justify-between mb-3">

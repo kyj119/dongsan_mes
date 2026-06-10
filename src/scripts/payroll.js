@@ -106,7 +106,7 @@ window.payrollLoad = async function() {
       var actions = '<button onclick="payrollSyncOne(' + r.id + ')" class="text-amber-600 hover:text-amber-800 mx-1" title="이 직원 근태 동기화"><i class="fas fa-sync-alt"></i></button>';
       actions += '<button onclick="payrollOpenEditModal(' + r.id + ')" class="text-blue-600 hover:text-blue-800 mx-1" title="수정"><i class="fas fa-edit"></i></button>';
       actions += '<button onclick="payrollOpenSlip(' + r.id + ')" class="text-gray-600 hover:text-gray-800 mx-1" title="명세서"><i class="fas fa-file-invoice-dollar"></i></button>';
-      actions += '<button onclick="payrollOpenYearEnd(' + r.employee_id + ',\'' + year + '\')" class="text-purple-600 hover:text-purple-800 mx-1" title="연말정산"><i class="fas fa-file-contract"></i></button>';
+      actions += '<button onclick="payrollOpenYearEnd(' + r.employee_id + ',\'' + year + '\')" class="text-blue-600 hover:text-blue-800 mx-1" title="연말정산"><i class="fas fa-file-contract"></i></button>';
       actions += '<button onclick="sendPayslipNotice(' + r.id + ',' + r.employee_id + ',\'' + prEscName + '\',\'' + prEscPhone + '\',\'' + prEscPeriod + '\')" class="text-green-600 hover:text-green-800 mx-1" title="명세서 발송"><i class="fas fa-paper-plane"></i></button>';
       if (r.status === 'PENDING') {
         actions += '<button onclick="payrollApprove(' + r.id + ')" class="text-green-600 hover:text-green-800 mx-1" title="승인"><i class="fas fa-check"></i></button>';

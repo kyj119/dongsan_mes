@@ -170,7 +170,7 @@ function loadItemDetail(itemId) {
     }
     html += '</div>';
     // 이력
-    html += '<div><h4 class="text-sm font-bold text-gray-700 mb-2"><i class="fas fa-history mr-1 text-purple-500"></i>변경 이력</h4>';
+    html += '<div><h4 class="text-sm font-bold text-gray-700 mb-2"><i class="fas fa-history mr-1 text-gray-500"></i>변경 이력</h4>';
     if (d.history && d.history.length) {
       html += '<table class="w-full text-xs"><thead class="bg-white"><tr><th class="px-3 py-1.5 text-right text-gray-500">이전</th><th class="px-3 py-1.5 text-center"></th><th class="px-3 py-1.5 text-right text-gray-500">변경</th><th class="px-3 py-1.5 text-left text-gray-500">변경자</th><th class="px-3 py-1.5 text-center text-gray-500">일시</th></tr></thead><tbody>';
       d.history.forEach(function(h) {
