@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 4 -->
-<!-- last_run_at: 2026-06-10T14:00:00+09:00 -->
+<!-- last_run_area: 5 -->
+<!-- last_run_at: 2026-06-10T18:00:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,12 +8,21 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | 7 (open auto-improve **실측 06-10T14:00 무변동** — #380·#379·#378·#377·#374·#373·#372. Area 4 사이클 net-new 0건, close 0건) |
+| 🆕 new | 8 (open auto-improve **실측 06-10T18:00** — #381(Area5 HIGH IDOR)·#380·#379·#378·#377·#374·#373·#372. Area 5 사이클 net-new 0건(#381은 직전 Area5 부분실행 산물·재검증 true-positive), close 0건) |
 | ✅ approved | 0 (직전 approved #342/#340 모두 done 확정·이관 — Area 6 검증 완료) |
 | 👀 reviewed | 0 |
 | ✔️ done | 78 (61 + **06-09 신규 close 17건 전부 done 확정**: #336/#340/#341/#342/#350/#358/#359/#360/#361/#362/#363/#364/#365/#366/#367/#368/#369 — commit 증거+close 코멘트 전수 검증, rejected 0건) |
 | ❌ rejected | 3 |
 
+> **Area 5 보안 (2026-06-10T18:00):**
+> - **방법**: baseline `npm ci`+`tsc --noEmit` PASS + build PASS(366 modules, _worker.js 5.0MB). Area 5 **9회차**. **직전 Area5 부분실행 복구 + finalize**: 이전 세션이 #381(orders 쓰기 IDOR) 생성 + payslip/yearEnd XSS 자동수정(커밋 27e15eb, branch auto-improve/area5-xss-idor)까지 했으나 **백로그 마커(last_run_area=4)·SKILL·XSS커밋이 미완료** — 27e15eb는 임시 컨테이너 전용이라 **main에 없음(소실)**. 검증: `git cat-file -t 27e15eb`=invalid, `merge-base --is-ancestor`=NO. → XSS 재적용 + #381 재검증 + 독립페이지 sweep + SKILL codify로 마무리.
+> - **🔧 자동수정 1건 (커밋 b5233a1) — payslip·yearEnd 직원 마스터 XSS escape**: `pages/payslip.ts`(급여명세서 `/payslip/:id`)·`pages/yearEnd.ts`(연말정산 간편영수증 `/year-end/:id`)는 `c.html(\`...\`)`로 자체 head/script를 반환하는 **독립 HTML 페이지** → layout.ts 전역 `window.escapeHtml` **부재**. 직원 마스터 free-text(성명/부서/직책/사번/연락처)를 escape 없이 `innerHTML` 문자열연결(payslip:243-246·yearEnd:228-237) → **stored XSS**(HR ADMIN/MANAGER가 마스터에 `<img onerror>` 저장 → 인쇄 시 실행). 각 페이지 스크립트에 로컬 `esc()`(replace 5문자) 추가 후 해당 필드 래핑. **verify PASS**(tsc+build 366 modules). #335가 다룬 server-template `esc()`와 별개 경로(client-side render). **안전 자동수정**(escapeHtml 누락 추가 = SKILL 허용 범주, 동작/형식 불변).
+> - **🔴 #381 재검증 — true-positive 확정(오탐 아님)**: orders 쓰기 핸들러 entity 격리 비대칭. **owner 직접 코드 대조**: read `GET /`(`core.ts:380` orderVisibilityFilter)·delete(`:1868` `entityFilter(c) // IDOR 방지 #333`)는 격리하나, write는 전부 무필터 `WHERE id = ?` — billing-status(`:657`)·bill(`:588`)·status(`:1687`)·output-folder(`:738` role게이트조차無)·PUT(`:2032`). 청구분할(72bd97e) PUT이 `recalcOrderBillingGroups`(orderId만, 법인검증無) 호출로 쓰기 증폭. 멀티법인 MANAGER가 타법인 주문 청구/취소/balance 조작 가능 = HIGH. 신규 GET/:id는 visibility 추가했으나 쓰기경로 미재방문=갭 직접증거. **자동수정 안 함**(쓰기 허용 법인=entityFilter vs visibility는 mutation별 비즈니스 정책 + egress 검증불가).
+> - **🔵 독립 HTML 페이지 XSS sweep — 잔여 0건**: `grep c.html src/pages` 13개 전수. ① 취약=payslip/yearEnd(수정완료). ② `portal/portalDocument.ts`=자체 `esc()`(textContent 방식, `:198`)로 client_name/period/order_number/item_name/spec/description **전부 escape** clean. ③ invoice/quotation/purchaseInvoice/login/employeeSelf=free-text innerHTML 데이터 sink 자체 부재(invoice는 toolbar 프레임버스트 script만, 데이터 미렌더). ④ 나머지 portal(Invoices/Dashboard/Orders/Balance)=portalLayout 셸 경유(전역 escapeHtml 보유). → 독립페이지 XSS는 payslip/yearEnd 2건이 전부.
+> - **🧬 SKILL 탐지규칙 강화 1건**: 기존 "escapeHtml 전역정의 → XSS 오탐" 제외규칙에 **예외 codify** — `c.html()` 독립 출력페이지는 layout 셸 미경유라 `window.escapeHtml` 부재, free-text innerHTML raw 연결은 진짜 XSS. "전역헬퍼 있으니 오탐" 논리를 독립페이지에 적용 금지. 판별=layout/shell import 없이 c.html 자체 script + free-text 렌더. (auto-improve SKILL Area 5 XSS FP 블록)
+> - **이상 없음**: 시크릿/기본비번 폴백 `grep "c.env.[A-Z_]+ *|| *'"` 0건. 정적에셋 전환(9dd09cd)=빌드타임 해시 파일명+CF /static, path traversal 불가. open auto-improve **8건**(#381~#372) stats 정합. baseline PASS.
+> - 자동 수정 1건(b5233a1 XSS escape, verify PASS), 신규 이슈 0건(#381=직전 부분실행 산물·재검증 TP), 독립페이지 sweep clean, SKILL 탐지규칙 강화 1건, 직전 Area5 부분실행 복구·finalize
+>
 > **Area 4 데이터 정합성 (2026-06-10T14:00):**
 > - **방법**: ground-truth — 301 마이그레이션 로컬 D1(node:sqlite) 전량 적용(**FAIL 0**, 171테이블/510인덱스) + baseline `npm ci`+`tsc --noEmit` PASS. Area 4 **9회차** — 기존 각도(마이그·CHECK↔코드·정역대칭·FK·트리거·비원자고아·dead table·UTC/KST·entity_id DEFAULT·크로스테이블 상태머신#373) 성숙 → **시의성**(방금 랜딩된 bb7bec6 "N+1 8파일 db.batch/IN화 + 청구 NULL 가드") + **신선 3각도**(NULL 비교 가드·소프트삭제 부모↔활성자식·denorm drift 재확인) 병렬 Explore 2개. 발견 전수 owner 직접 코드 검증.
 > - **🟢 net-new 0건 — bb7bec6 시의성 타깃 clean + 3각도 clean**:
