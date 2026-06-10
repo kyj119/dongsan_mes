@@ -174,6 +174,13 @@ export function yearEndPage(c: Context<HonoEnv>) {
       if (parts.length !== 2) return rrn;
       return parts[0] + '-' + parts[1].charAt(0) + '******';
     }
+    // 독립 HTML 페이지(전역 escapeHtml 없음) — 직원 마스터 free-text의 XSS 방지
+    function esc(s) {
+      if (s == null) return '';
+      return String(s).replace(/[&<>"']/g, function(ch) {
+        return ch === '&' ? '&amp;' : ch === '<' ? '&lt;' : ch === '>' ? '&gt;' : ch === '"' ? '&quot;' : '&#39;';
+      });
+    }
 
     function render(data) {
       var emp = data.employee;
@@ -225,16 +232,16 @@ export function yearEndPage(c: Context<HonoEnv>) {
         '<div class="sec-title">Ⅰ. 소득자 인적사항</div>' +
         '<table class="info">' +
           '<tr>' +
-            '<td class="label">사번</td><td class="value">' + (emp.employee_code || '-') + '</td>' +
-            '<td class="label">성명</td><td class="value">' + (emp.name || '-') + '</td>' +
+            '<td class="label">사번</td><td class="value">' + esc(emp.employee_code || '-') + '</td>' +
+            '<td class="label">성명</td><td class="value">' + esc(emp.name || '-') + '</td>' +
           '</tr>' +
           '<tr>' +
             '<td class="label">주민등록번호</td><td class="value">' + maskRrn(emp.rrn) + '</td>' +
-            '<td class="label">연락처</td><td class="value">' + (emp.phone || '-') + '</td>' +
+            '<td class="label">연락처</td><td class="value">' + esc(emp.phone || '-') + '</td>' +
           '</tr>' +
           '<tr>' +
-            '<td class="label">부서</td><td class="value">' + (emp.department || '-') + '</td>' +
-            '<td class="label">직책</td><td class="value">' + (emp.position || '-') + '</td>' +
+            '<td class="label">부서</td><td class="value">' + esc(emp.department || '-') + '</td>' +
+            '<td class="label">직책</td><td class="value">' + esc(emp.position || '-') + '</td>' +
           '</tr>' +
           '<tr>' +
             '<td class="label">입사일</td><td class="value">' + (emp.hire_date || '-') + '</td>' +
