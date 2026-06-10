@@ -1390,28 +1390,25 @@ ordersCoreRouter.post('/', async (c) => {
         GROUP BY c.id
       `).bind(orderId).all()
 
-      // Cache analysis results to avoid redundant DB lookups
+      // N+1 제거: 분석 결과를 IN(...)으로 일괄 선조회 후 thumbnail UPDATE는 db.batch로 묶음
+      const thumbAnalysisIds = [...new Set((cardsForThumb as any[]).map((r) => r.ai_analysis_id as number))]
       const analysisCache = new Map<number, Record<string, unknown>[]>()
+      if (thumbAnalysisIds.length > 0) {
+        const aph = thumbAnalysisIds.map(() => '?').join(',')
+        const { results: aRows } = await c.env.DB.prepare(
+          `SELECT id, groups_json FROM ai_analysis_requests WHERE id IN (${aph})`
+        ).bind(...thumbAnalysisIds).all<{ id: number; groups_json: string | null }>()
+        for (const a of aRows) {
+          let parsed: Record<string, unknown>[] = []
+          if (a.groups_json) { try { parsed = JSON.parse(a.groups_json) } catch (_) { parsed = [] } }
+          analysisCache.set(a.id, parsed)
+        }
+      }
 
+      const thumbStmts: D1PreparedStatement[] = []
       for (const row of cardsForThumb) {
         const analysisId = row.ai_analysis_id as number
         const groupIndex = row.ai_group_index as number
-
-        if (!analysisCache.has(analysisId)) {
-          const analysis = await c.env.DB.prepare(
-            'SELECT groups_json FROM ai_analysis_requests WHERE id = ?'
-          ).bind(analysisId).first<{ groups_json: string | null }>()
-          if (analysis?.groups_json) {
-            try {
-              analysisCache.set(analysisId, JSON.parse(analysis.groups_json))
-            } catch (_) {
-              analysisCache.set(analysisId, [])
-            }
-          } else {
-            analysisCache.set(analysisId, [])
-          }
-        }
-
         const groups = analysisCache.get(analysisId) || []
         // ai_group_index === -1 means "whole file" → use first group's thumbnail
         const matchedGroup = groupIndex === -1
@@ -1420,10 +1417,13 @@ ordersCoreRouter.post('/', async (c) => {
 
         if (matchedGroup?.thumbnail_base64) {
           const thumbnailUrl = `data:image/png;base64,${matchedGroup.thumbnail_base64 as string}`
-          await c.env.DB.prepare(
+          thumbStmts.push(c.env.DB.prepare(
             'UPDATE cards SET thumbnail_url = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
-          ).bind(thumbnailUrl, row.card_id).run()
+          ).bind(thumbnailUrl, row.card_id))
         }
+      }
+      for (let i = 0; i < thumbStmts.length; i += 80) {
+        await c.env.DB.batch(thumbStmts.slice(i, i + 80))
       }
     } catch (_thumbErr) {
       // Thumbnail extraction failure must not break order creation
@@ -1480,14 +1480,25 @@ ordersCoreRouter.post('/', async (c) => {
             return { w: 0, h: 0 }
           }
 
+          // N+1 제거: 품목명을 IN(...)으로 일괄 선조회 후 INSERT는 db.batch로 묶음
+          const aiItemIds = [...new Set((aiItems as any[]).map((oi) => oi.item_id as number).filter((v) => v != null))]
+          const itemNameMap = new Map<number, string>()
+          if (aiItemIds.length > 0) {
+            const iph = aiItemIds.map(() => '?').join(',')
+            const { results: nameRows } = await c.env.DB.prepare(
+              `SELECT id, name FROM items WHERE id IN (${iph})`
+            ).bind(...aiItemIds).all<{ id: number; name: string }>()
+            for (const nr of nameRows) itemNameMap.set(nr.id, nr.name)
+          }
+
+          const jobStmts: D1PreparedStatement[] = []
           for (const oi of aiItems) {
             const gIdx = (oi.ai_group_index as number) ?? 0
             const group = groups[gIdx]
             if (!group) continue
 
             const finishing = [oi.finishing, oi.finishing2, oi.finishing3].filter(Boolean).join('+')
-            const itemInfo = await c.env.DB.prepare('SELECT name FROM items WHERE id = ?').bind(oi.item_id).first<{ name: string }>()
-            const productName = itemInfo?.name || ''
+            const productName = itemNameMap.get(oi.item_id as number) || ''
             const scale = (oi.scale_factor as number) || _getScale(productName, (oi.width as number) || 0)
             const margins = _getMargins(finishing)
             const mL = margins.w / 10.0 / scale, mR = margins.w / 10.0 / scale
@@ -1506,7 +1517,7 @@ ordersCoreRouter.post('/', async (c) => {
               thumbSize: 300, scaleFactor: scale, clipBounds,
             }
 
-            await c.env.DB.prepare(
+            jobStmts.push(c.env.DB.prepare(
               `INSERT INTO auto_process_jobs
                (order_id, order_item_id, ai_analysis_id, ai_group_index,
                 source_path, product, width_cm, height_cm, finishing,
@@ -1519,7 +1530,10 @@ ordersCoreRouter.post('/', async (c) => {
               JSON.stringify({ L: mL, R: mR, T: mT, B: mB }),
               JSON.stringify(iaParams),
               getEntityId(c)
-            ).run()
+            ))
+          }
+          for (let i = 0; i < jobStmts.length; i += 80) {
+            await c.env.DB.batch(jobStmts.slice(i, i + 80))
           }
           if (aiItems.length > 0) autoProcessStarted = true
           }
@@ -1639,24 +1653,22 @@ ordersCoreRouter.patch('/:id/status', requireRole('ADMIN', 'MANAGER'), async (c)
         })
       }
 
-      // 확인 응답 처리: 확정된 카드 → PRINT_DONE + shipped_at
+      // 확인 응답 처리: 확정된 카드 → PRINT_DONE + shipped_at (N+1 제거: IN(...) 1쿼리)
       if (confirmed_card_ids && confirmed_card_ids.length > 0) {
-        for (const cardId of confirmed_card_ids) {
-          await c.env.DB.prepare(`
-            UPDATE cards SET status = 'PRINT_DONE', shipped_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
-            WHERE id = ? AND order_id = ?
-          `).bind(cardId, id).run()
-        }
+        const cph = (confirmed_card_ids as number[]).map(() => '?').join(',')
+        await c.env.DB.prepare(`
+          UPDATE cards SET status = 'PRINT_DONE', shipped_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+          WHERE order_id = ? AND id IN (${cph})
+        `).bind(id, ...confirmed_card_ids).run()
       }
 
-      // 취소된 카드 → HOLD 처리
+      // 취소된 카드 → HOLD 처리 (N+1 제거: IN(...) 1쿼리)
       if (cancelled_card_ids && cancelled_card_ids.length > 0) {
-        for (const cardId of cancelled_card_ids) {
-          await c.env.DB.prepare(`
-            UPDATE cards SET status = 'HOLD', updated_at = CURRENT_TIMESTAMP
-            WHERE id = ? AND order_id = ?
-          `).bind(cardId, id).run()
-        }
+        const xph = (cancelled_card_ids as number[]).map(() => '?').join(',')
+        await c.env.DB.prepare(`
+          UPDATE cards SET status = 'HOLD', updated_at = CURRENT_TIMESTAMP
+          WHERE order_id = ? AND id IN (${xph})
+        `).bind(id, ...cancelled_card_ids).run()
       }
 
       // PRINT_DONE 카드 중 shipped_at 없는 것도 일괄 출고 처리
@@ -2173,8 +2185,25 @@ ordersCoreRouter.put('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
 
     // Insert updated order items — two-pass for parent_item_id support
     // Pass 1: parent/regular rows (no parent_client_id) → collect DB IDs
+    // N+1 제거: 품목 상세 IN(...) 일괄 선조회 + INSERT db.batch(부모 last_row_id는 결과 인덱스로 매핑)
     const putClientIdMap = new Map<string, number>()
 
+    const putLookupIds = [...new Set(
+      (orderData.items as any[])
+        .filter((it: any) => it.item_id && !it.item_name)
+        .map((it: any) => it.item_id as number)
+    )]
+    const putItemDetailMap = new Map<number, { item_name: string; category: string; unit: string }>()
+    if (putLookupIds.length > 0) {
+      const dph = putLookupIds.map(() => '?').join(',')
+      const { results: detailRows } = await c.env.DB.prepare(
+        `SELECT id, item_name, category, unit FROM items WHERE id IN (${dph})`
+      ).bind(...putLookupIds).all<{ id: number; item_name: string; category: string; unit: string }>()
+      for (const dr of detailRows) putItemDetailMap.set(dr.id, { item_name: dr.item_name, category: dr.category, unit: dr.unit })
+    }
+
+    const putParentStmts: D1PreparedStatement[] = []
+    const putParentClientGroupIds: (string | null)[] = []
     for (let i = 0; i < orderData.items.length; i++) {
       const item = orderData.items[i]
       if (item.parent_client_id) continue  // 자식 행은 2단계에서 처리
@@ -2196,10 +2225,7 @@ ordersCoreRouter.put('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
       let unit = item.unit || 'EA'
 
       if (item.item_id && !itemName) {
-        const itemDetail = await c.env.DB.prepare(`
-          SELECT item_name, category, unit FROM items WHERE id = ?
-        `).bind(item.item_id).first<{ item_name: string; category: string; unit: string }>()
-
+        const itemDetail = putItemDetailMap.get(item.item_id)
         if (itemDetail) {
           itemName = itemDetail.item_name
           categoryName = itemDetail.category
@@ -2211,7 +2237,7 @@ ordersCoreRouter.put('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
         ? item.assigned_entity_id
         : recommendAssignedEntity({ ...item, category_name: categoryName }, getEntityId(c) || 1)
       const putAssignmentStatus = putAssignedEntity ? (item.assignment_status || 'PENDING') : null
-      const putInsertResult = await c.env.DB.prepare(`
+      putParentStmts.push(c.env.DB.prepare(`
         INSERT INTO order_items (
           order_id, item_id, item_name, category_name,
           width, height, quantity, unit,
@@ -2243,22 +2269,27 @@ ordersCoreRouter.put('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
         item.price_status || 'CONFIRMED',
         putAssignedEntity,
         putAssignmentStatus
-      ).run()
-
-      if (item.client_group_id) {
-        putClientIdMap.set(item.client_group_id, putInsertResult.meta.last_row_id as number)
+      ))
+      putParentClientGroupIds.push(item.client_group_id || null)
+    }
+    if (putParentStmts.length > 0) {
+      const putParentResults = await c.env.DB.batch(putParentStmts)
+      for (let i = 0; i < putParentClientGroupIds.length; i++) {
+        const cg = putParentClientGroupIds[i]
+        if (cg) putClientIdMap.set(cg, putParentResults[i].meta.last_row_id as number)
       }
     }
 
-    // Pass 2: child rows (has parent_client_id) → resolve parent DB ID
+    // Pass 2: child rows (has parent_client_id) → resolve parent DB ID (N+1 제거: db.batch)
     const putParentOnlyCount = orderData.items.filter((i: any) => !i.parent_client_id).length
+    const putChildStmts: D1PreparedStatement[] = []
     for (let i = 0; i < orderData.items.length; i++) {
       const item = orderData.items[i]
       if (!item.parent_client_id) continue
 
       const parentDbId = putClientIdMap.get(item.parent_client_id) ?? null
 
-      await c.env.DB.prepare(`
+      putChildStmts.push(c.env.DB.prepare(`
         INSERT INTO order_items (
           order_id, item_id, item_name, category_name,
           width, height, quantity, unit,
@@ -2283,8 +2314,9 @@ ordersCoreRouter.put('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
         parentDbId,
         item.assigned_entity_id || null,
         (item.assigned_entity_id ? (item.assignment_status || 'PENDING') : null)
-      ).run()
+      ))
     }
+    if (putChildStmts.length > 0) await c.env.DB.batch(putChildStmts)
 
     // #124: 카드 보존 경로 — card_items 재매핑 (item_id + sort_order 기준)
     if (cardsPreserved && savedCardItemMappings.length > 0) {
@@ -2535,22 +2567,27 @@ ordersCoreRouter.post('/sync-statuses', requireRole('ADMIN', 'MANAGER'), async (
         ${ef.clause}
     `).bind(...ef.params).all()
 
+    // N+1 제거: 주문당 UPDATE + 이력 INSERT를 db.batch로 묶음 (청크 80, 짝수라 쌍 분할 없음)
+    const shipStmts: D1PreparedStatement[] = []
     for (const order of toShip) {
       const method = ((order.delivery_method as string) || '').trim()
       const isQuick = method === '방문수령' || method === '직접수령' || method === '직접배송' || method === '퀵'
       const billableDays = isQuick ? 1 : 2
       const fromStatus = (order.status as string) || 'CONFIRMED'
 
-      await db.prepare(`
+      shipStmts.push(db.prepare(`
         UPDATE orders SET status = 'SHIPPED', updated_at = CURRENT_TIMESTAMP,
           billable_after = date('now', '+' || ? || ' days')
         WHERE id = ? AND status = ?
-      `).bind(billableDays, order.id, fromStatus).run()
+      `).bind(billableDays, order.id, fromStatus))
 
-      await db.prepare(`
+      shipStmts.push(db.prepare(`
         INSERT INTO order_status_history (order_id, from_status, to_status, changed_by, change_reason)
         VALUES (?, ?, 'SHIPPED', ?, '동기화: 출고완료 자동 전이')
-      `).bind(order.id, fromStatus, user?.id || null).run()
+      `).bind(order.id, fromStatus, user?.id || null))
+    }
+    for (let i = 0; i < shipStmts.length; i += 80) {
+      await db.batch(shipStmts.slice(i, i + 80))
     }
 
     // Step 2: 회계반영 자동 전이 — auto_billing=1 거래처 + billable_after 도래
@@ -2567,12 +2604,15 @@ ordersCoreRouter.post('/sync-statuses', requireRole('ADMIN', 'MANAGER'), async (
         ${ef.clause}
     `).bind(...ef.params).all()
 
+    // N+1 제거: 주문당 per-order batch → 전체를 청크 80 batch로 묶음 (짝수라 주문쌍 분할 없음 → 원자성 보존)
+    const toBillStmts: D1PreparedStatement[] = []
     for (const order of toBill) {
       // #146/#121: billing_status + balance 원자적 업데이트
-      await db.batch([
-        db.prepare(`UPDATE orders SET billing_status = 'BILLED', billed_at = CURRENT_TIMESTAMP, billed_by = ?, billed_amount = final_amount, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND billing_status IS NULL`).bind(user?.id || null, order.id),
-        db.prepare(`UPDATE clients SET balance = balance + (SELECT final_amount FROM orders WHERE id = ?), updated_at = CURRENT_TIMESTAMP WHERE id = ?`).bind(order.id, order.client_id),
-      ])
+      toBillStmts.push(db.prepare(`UPDATE orders SET billing_status = 'BILLED', billed_at = CURRENT_TIMESTAMP, billed_by = ?, billed_amount = final_amount, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND billing_status IS NULL`).bind(user?.id || null, order.id))
+      toBillStmts.push(db.prepare(`UPDATE clients SET balance = balance + (SELECT final_amount FROM orders WHERE id = ?), updated_at = CURRENT_TIMESTAMP WHERE id = ?`).bind(order.id, order.client_id))
+    }
+    for (let i = 0; i < toBillStmts.length; i += 80) {
+      await db.batch(toBillStmts.slice(i, i + 80))
     }
 
     // Step 3: CARD/ISSUED_BY_OTHER 거래처 — 발행 불필요, 자동 BILLED
@@ -2588,12 +2628,15 @@ ordersCoreRouter.post('/sync-statuses', requireRole('ADMIN', 'MANAGER'), async (
         ${ef.clause}
     `).bind(...ef.params).all()
 
+    // N+1 제거: 주문당 per-order batch → 전체를 청크 80 batch로 묶음 (짝수라 주문쌍 분할 없음 → 원자성 보존)
+    const noInvStmts: D1PreparedStatement[] = []
     for (const order of noInvoice) {
       // #146/#121: billing_status + balance 원자적 업데이트
-      await db.batch([
-        db.prepare(`UPDATE orders SET billing_status = 'BILLED', billed_at = CURRENT_TIMESTAMP, billed_by = ?, billed_amount = final_amount, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND billing_status IS NULL`).bind(user?.id || null, order.id),
-        db.prepare(`UPDATE clients SET balance = balance + (SELECT final_amount FROM orders WHERE id = ?), updated_at = CURRENT_TIMESTAMP WHERE id = ?`).bind(order.id, order.client_id),
-      ])
+      noInvStmts.push(db.prepare(`UPDATE orders SET billing_status = 'BILLED', billed_at = CURRENT_TIMESTAMP, billed_by = ?, billed_amount = final_amount, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND billing_status IS NULL`).bind(user?.id || null, order.id))
+      noInvStmts.push(db.prepare(`UPDATE clients SET balance = balance + (SELECT final_amount FROM orders WHERE id = ?), updated_at = CURRENT_TIMESTAMP WHERE id = ?`).bind(order.id, order.client_id))
+    }
+    for (let i = 0; i < noInvStmts.length; i += 80) {
+      await db.batch(noInvStmts.slice(i, i + 80))
     }
 
     const billedCount = toBill.length + noInvoice.length

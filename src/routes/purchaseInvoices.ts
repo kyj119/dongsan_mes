@@ -107,57 +107,87 @@ purchaseInvoices.post('/confirm', requireRole('ADMIN', 'MANAGER'), async (c) => 
   const invoiceItems: Array<{ po_item_id: number; item_id: number | null; quantity: number; unit_price: number; amount: number }> = []
 
   // 1) 품목별: poi 단가·price_status 갱신 + 입고라인/원장 valuation 정정
+  // 검증 선행 (부분 기록 방지 — 하나라도 무효면 어떤 쓰기도 하지 않음)
   for (const it of items) {
-    const price = Number(it.unit_price)
-    if (!it.po_item_id || !(price > 0)) {
+    if (!it.po_item_id || !(Number(it.unit_price) > 0)) {
       return c.json({ success: false, error: '모든 품목의 실단가(>0)를 입력하세요.' }, 400)
     }
-    const poi = await c.env.DB.prepare(
-      `SELECT id, item_id, quantity, received_quantity FROM purchase_order_items WHERE id = ? AND po_id = ?`
-    ).bind(it.po_item_id, po_id).first<{ id: number; item_id: number | null; quantity: number; received_quantity: number }>()
+  }
+  // N+1 제거: poi 일괄 조회 후 UPDATE를 db.batch로 묶음
+  const poItemIds = (items as any[]).map((it: any) => it.po_item_id)
+  const poiPlaceholders = poItemIds.map(() => '?').join(',')
+  const { results: poiRows } = await c.env.DB.prepare(
+    `SELECT id, item_id, quantity, received_quantity FROM purchase_order_items WHERE po_id = ? AND id IN (${poiPlaceholders})`
+  ).bind(po_id, ...poItemIds).all<{ id: number; item_id: number | null; quantity: number; received_quantity: number }>()
+  const poiMap = new Map<number, { id: number; item_id: number | null; quantity: number; received_quantity: number }>()
+  for (const r of poiRows) poiMap.set(r.id, r)
+
+  const confirmStmts: D1PreparedStatement[] = []
+  for (const it of items) {
+    const price = Number(it.unit_price)
+    const poi = poiMap.get(it.po_item_id)
     if (!poi) continue
     const recvQty = poi.received_quantity || poi.quantity || 0
 
     // poi: 발주 단가 확정
-    await c.env.DB.prepare(
+    confirmStmts.push(c.env.DB.prepare(
       `UPDATE purchase_order_items SET unit_price = ?, amount = ? * quantity, price_status = 'CONFIRMED', updated_at = CURRENT_TIMESTAMP WHERE id = ?`
-    ).bind(price, price, poi.id).run()
+    ).bind(price, price, poi.id))
 
     // 입고 라인 valuation 정정
-    await c.env.DB.prepare(
+    confirmStmts.push(c.env.DB.prepare(
       `UPDATE inventory_receipt_items SET unit_price = ?, amount = received_quantity * ? WHERE po_item_id = ?`
-    ).bind(price, price, poi.id).run()
+    ).bind(price, price, poi.id))
 
     // 재고 원장(inventory_transactions) valuation 정정 — 이 PO의 입고 건 한정
     if (poi.item_id) {
-      await c.env.DB.prepare(
+      confirmStmts.push(c.env.DB.prepare(
         `UPDATE inventory_transactions SET unit_price = ?, total_amount = quantity * ?
          WHERE item_id = ? AND reference_type = 'PURCHASE'
            AND reference_id IN (SELECT id FROM inventory_receipts WHERE po_id = ?)`
-      ).bind(price, price, poi.item_id, po_id).run()
+      ).bind(price, price, poi.item_id, po_id))
     }
 
     invoiceItems.push({ po_item_id: poi.id, item_id: poi.item_id, quantity: recvQty, unit_price: price, amount: recvQty * price })
   }
+  for (let i = 0; i < confirmStmts.length; i += 80) {
+    await c.env.DB.batch(confirmStmts.slice(i, i + 80))
+  }
 
   // 2) 매입처 단가 + base_price upsert (best-effort, receive Phase4와 동일 정책)
   try {
+    // N+1 제거: base_price 일괄 조회 후 upsert/UPDATE/history를 db.batch로 묶음
+    const priceItemIds = [...new Set(invoiceItems.filter((ii) => ii.item_id).map((ii) => ii.item_id as number))]
+    const basePriceMap = new Map<number, number>()
+    if (priceItemIds.length > 0) {
+      const bph = priceItemIds.map(() => '?').join(',')
+      const { results: baseRows } = await c.env.DB.prepare(
+        `SELECT id, base_price FROM items WHERE id IN (${bph})`
+      ).bind(...priceItemIds).all<{ id: number; base_price: number }>()
+      for (const r of baseRows) basePriceMap.set(r.id, r.base_price)
+    }
+    const priceStmts: D1PreparedStatement[] = []
     for (const ii of invoiceItems) {
       if (!ii.item_id) continue
       if (po.supplier_id) {
-        await c.env.DB.prepare(
+        priceStmts.push(c.env.DB.prepare(
           `INSERT INTO client_item_prices (client_id, item_id, price) VALUES (?, ?, ?)
            ON CONFLICT(client_id, item_id) DO UPDATE SET price = ?, updated_at = CURRENT_TIMESTAMP`
-        ).bind(po.supplier_id, ii.item_id, ii.unit_price, ii.unit_price).run()
+        ).bind(po.supplier_id, ii.item_id, ii.unit_price, ii.unit_price))
       }
-      const oldItem = await c.env.DB.prepare('SELECT base_price FROM items WHERE id = ?').bind(ii.item_id).first<{ base_price: number }>()
-      if (oldItem && oldItem.base_price !== ii.unit_price) {
-        await c.env.DB.prepare('UPDATE items SET base_price = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').bind(ii.unit_price, ii.item_id).run()
-        await c.env.DB.prepare(
+      const oldBase = basePriceMap.get(ii.item_id)
+      if (oldBase !== undefined && oldBase !== ii.unit_price) {
+        priceStmts.push(c.env.DB.prepare('UPDATE items SET base_price = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').bind(ii.unit_price, ii.item_id))
+        priceStmts.push(c.env.DB.prepare(
           `INSERT INTO price_change_history (target_type, target_id, field_name, old_value, new_value, changed_by, entity_id)
            VALUES ('ITEM', ?, 'base_price', ?, ?, ?, ?)`
-        ).bind(ii.item_id, oldItem.base_price, ii.unit_price, user?.username || 'system', eid).run()
+        ).bind(ii.item_id, oldBase, ii.unit_price, user?.username || 'system', eid))
+        // 동일 품목이 여러 PO 라인으로 들어온 경우 순차 SELECT-after-UPDATE 의미 보존
+        basePriceMap.set(ii.item_id, ii.unit_price)
       }
+    }
+    for (let i = 0; i < priceStmts.length; i += 80) {
+      await c.env.DB.batch(priceStmts.slice(i, i + 80))
     }
   } catch (e) { console.error('confirm price upsert error:', e) }
 

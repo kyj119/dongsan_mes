@@ -142,20 +142,25 @@ ordersQueriesRouter.patch('/bulk-bill', requireRole('ADMIN', 'MANAGER'), async (
 
     let billedCount = 0
 
-    for (const orderId of order_ids) {
-      const order = await c.env.DB.prepare(
-        'SELECT id, status, client_id, final_amount, billing_status FROM orders WHERE id = ?'
-      ).bind(orderId).first<{ id: number; status: string; client_id: number; final_amount: number; billing_status: string }>()
+    // N+1 제거: 주문 일괄 조회 후 BILLED + balance UPDATE를 batch로 묶음 (청크 80, 짝수라 주문쌍 분할 없음 → 주문별 원자성 보존)
+    const billPh = order_ids.map(() => '?').join(',')
+    const { results: billOrderRows } = await c.env.DB.prepare(
+      `SELECT id, status, client_id, final_amount, billing_status FROM orders WHERE id IN (${billPh})`
+    ).bind(...order_ids).all<{ id: number; status: string; client_id: number; final_amount: number; billing_status: string }>()
+    const billOrderMap = new Map<number, { id: number; status: string; client_id: number; final_amount: number; billing_status: string }>()
+    for (const o of billOrderRows) billOrderMap.set(o.id, o)
 
+    const billStmts: D1PreparedStatement[] = []
+    for (const orderId of order_ids) {
+      const order = billOrderMap.get(orderId)
       if (!order || order.status !== 'SHIPPED') continue
       if (order.billing_status === 'BILLED') continue
 
       const billedAmount = Number(order.final_amount) || 0
 
-      // D1 batch: 주문 BILLED + 거래처 balance 원자적 업데이트
-      // 하나라도 실패하면 둘 다 롤백됨
-      await c.env.DB.batch([
-        c.env.DB.prepare(`
+      // 주문 BILLED + 거래처 balance 업데이트 (각 주문당 2문 → batch에서 순차 실행)
+      // 가드: billing_status가 NULL(청구 전 정상 상태)도 매칭하도록 IS NOT 사용 (`!= 'BILLED'`는 NULL 미매칭 → 상태 미반영+balance 이중증액 버그)
+      billStmts.push(c.env.DB.prepare(`
           UPDATE orders
           SET billing_status = 'BILLED',
               billed_at = CURRENT_TIMESTAMP,
@@ -163,14 +168,17 @@ ordersQueriesRouter.patch('/bulk-bill', requireRole('ADMIN', 'MANAGER'), async (
               billed_amount = ?,
               receipt_type = COALESCE(?, receipt_type),
               updated_at = CURRENT_TIMESTAMP
-          WHERE id = ? AND billing_status != 'BILLED'
-        `).bind(user?.id || null, billedAmount, normalizedReceiptType, orderId),
-        c.env.DB.prepare(
-          'UPDATE clients SET balance = balance + ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
-        ).bind(billedAmount, order.client_id)
-      ])
+          WHERE id = ? AND billing_status IS NOT 'BILLED'
+        `).bind(user?.id || null, billedAmount, normalizedReceiptType, orderId))
+      billStmts.push(c.env.DB.prepare(
+        'UPDATE clients SET balance = balance + ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
+      ).bind(billedAmount, order.client_id))
 
+      order.billing_status = 'BILLED'  // 동일 요청 내 중복 orderId 재처리 방지 (순차 동작 보존)
       billedCount++
+    }
+    for (let i = 0; i < billStmts.length; i += 80) {
+      await c.env.DB.batch(billStmts.slice(i, i + 80))
     }
 
     return c.json({ success: true, data: { billed: billedCount } })
@@ -195,23 +203,18 @@ ordersQueriesRouter.patch('/bulk-ship', async (c) => {
 
     const results: { id: number; success: boolean; error?: string; shipped_cards?: number; order_shipped?: boolean; remaining?: number; unshipped_cards?: { id: number; card_number: string; status: string }[] }[] = []
 
+    // N+1 제거: 읽기전용 주문 메타(delivery_method/order_type/entity_id) 일괄 선조회.
+    //   (미사용 dead COUNT 쿼리도 제거 — 값 미참조·COUNT는 항상 row 반환이라 !check 미발동)
+    //   카드 출고 UPDATE→remaining 확인→deductStockLinesOnShip→상태전이는 read-after-write 순차의존이라 batch 불가, 유지.
+    const shipPh = order_ids.map(() => '?').join(',')
+    const { results: orderInfoRows } = await c.env.DB.prepare(
+      `SELECT id, delivery_method, order_type, entity_id FROM orders WHERE id IN (${shipPh})`
+    ).bind(...order_ids).all<{ id: number; delivery_method: string | null; order_type: string | null; entity_id: number | null }>()
+    const orderInfoMap = new Map<number, { delivery_method: string | null; order_type: string | null; entity_id: number | null }>()
+    for (const o of orderInfoRows) orderInfoMap.set(o.id, o)
+
     for (const orderId of order_ids) {
-      // 해당 주문의 카드 현황 조회
-      const check = await c.env.DB.prepare(`
-        SELECT COUNT(*) as total,
-               SUM(CASE WHEN status = 'PRINT_DONE' THEN 1 ELSE 0 END) as done,
-               SUM(CASE WHEN shipped_at IS NOT NULL THEN 1 ELSE 0 END) as shipped
-        FROM cards WHERE order_id = ?
-      `).bind(orderId).first<{ total: number; done: number; shipped: number }>()
-
-      if (!check) {
-        results.push({ id: orderId, success: false, error: '주문 조회 실패' })
-        continue
-      }
-      // check.total === 0 (전 라인 기성/유통 = 카드 없음): 카드 출고는 스킵하고
-      // 아래 allShipped 경로로 즉시 출고완료 처리 (auto_complete + 재고차감)
-
-      // 카드 출고 + 주문 상태 전환을 batch로 원자적 처리
+      // 카드 출고 + 주문 상태 전환 (per-order 순차 처리)
       // Step 1: 카드 출고 처리
       const updateResult = await c.env.DB.prepare(`
         UPDATE cards SET shipped_at = CURRENT_TIMESTAMP
@@ -220,9 +223,7 @@ ordersQueriesRouter.patch('/bulk-ship', async (c) => {
       const shippedCards = updateResult.meta.changes ?? 0
 
       // Step 2: 출고 후 전체 카드 확인 → 모두 출고면 auto_complete_date 설정 (동기화 시 SHIPPED 전이)
-      const orderInfo = await c.env.DB.prepare(
-        `SELECT delivery_method, order_type, entity_id FROM orders WHERE id = ?`
-      ).bind(orderId).first<{ delivery_method: string | null; order_type: string | null; entity_id: number | null }>()
+      const orderInfo = orderInfoMap.get(orderId) || null
       const method = (orderInfo?.delivery_method || '').trim()
 
       // 모든 카드 출고 완료 확인

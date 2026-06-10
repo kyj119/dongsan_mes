@@ -293,8 +293,9 @@ async function issueTaxInvoice(
     if (updated?.order_id && !orderIds.includes(updated.order_id)) orderIds.push(updated.order_id)
     if (orderIds.length > 0) {
       const ph = orderIds.map(() => '?').join(',')
+      // 가드: billing_status NULL(청구 전 정상 상태)도 매칭하도록 IS NOT 사용 (`!= 'BILLED'`는 NULL 미매칭 → 발행 후에도 미청구로 남아 자동 sync 재청구 위험)
       await db.prepare(
-        `UPDATE orders SET billing_status = 'BILLED', updated_at = CURRENT_TIMESTAMP WHERE id IN (${ph}) AND billing_status != 'BILLED'`
+        `UPDATE orders SET billing_status = 'BILLED', updated_at = CURRENT_TIMESTAMP WHERE id IN (${ph}) AND billing_status IS NOT 'BILLED'`
       ).bind(...orderIds).run()
     }
   } catch (_billingErr) {
@@ -1368,12 +1369,12 @@ taxInvoicesRouter.post('/', requireRole('ADMIN', 'MANAGER'), async (c) => {
     ).bind(body.order_id).all()
 
     const vatRate = 0.1
-    for (const oi of orderItems as Array<Record<string, unknown>>) {
+    // N+1 제거: tax_invoice_items INSERT를 db.batch로 일괄 처리 (청크 80)
+    const tiItemStmts = (orderItems as Array<Record<string, unknown>>).map((oi) => {
       const itemAmount = parseFloat(String(oi.amount)) || 0
       const itemTax = oi.vat_included ? Math.round(itemAmount * vatRate) : 0
       const spec = (oi.width && oi.height) ? `${oi.width}x${oi.height}` : null
-
-      await c.env.DB.prepare(`
+      return c.env.DB.prepare(`
         INSERT INTO tax_invoice_items (
           tax_invoice_id, item_date, item_name, specification,
           quantity, unit_price, supply_amount, tax_amount, sort_order
@@ -1388,7 +1389,10 @@ taxInvoicesRouter.post('/', requireRole('ADMIN', 'MANAGER'), async (c) => {
         itemAmount,
         itemTax,
         oi.sort_order
-      ).run()
+      )
+    })
+    for (let i = 0; i < tiItemStmts.length; i += 80) {
+      await c.env.DB.batch(tiItemStmts.slice(i, i + 80))
     }
 
     const created = await c.env.DB.prepare(`
@@ -1674,10 +1678,14 @@ taxInvoicesRouter.post('/:id/modify', requireRole('ADMIN', 'MANAGER'), async (c)
       'SELECT order_id FROM tax_invoice_orders WHERE tax_invoice_id = ?'
     ).bind(id).all()
 
-    for (const row of origOrders as Array<{ order_id: number }>) {
-      await c.env.DB.prepare(
+    // N+1 제거: junction INSERT를 db.batch로 일괄 처리 (청크 80)
+    const junctionStmts = (origOrders as Array<{ order_id: number }>).map((row) =>
+      c.env.DB.prepare(
         'INSERT OR IGNORE INTO tax_invoice_orders (tax_invoice_id, order_id) VALUES (?, ?)'
-      ).bind(newInvoiceId, row.order_id).run()
+      ).bind(newInvoiceId, row.order_id)
+    )
+    for (let i = 0; i < junctionStmts.length; i += 80) {
+      await c.env.DB.batch(junctionStmts.slice(i, i + 80))
     }
 
     // 품목: body.items가 있으면 수정된 품목, 없으면 원본 복사
@@ -1705,8 +1713,9 @@ taxInvoicesRouter.post('/:id/modify', requireRole('ADMIN', 'MANAGER'), async (c)
           sort_order: i
         }))
 
-    for (const it of itemsToInsert) {
-      await c.env.DB.prepare(`
+    // N+1 제거: tax_invoice_items INSERT를 db.batch로 일괄 처리 (청크 80)
+    const modifyItemStmts = itemsToInsert.map((it) =>
+      c.env.DB.prepare(`
         INSERT INTO tax_invoice_items (
           tax_invoice_id, item_date, item_name, specification,
           quantity, unit_price, supply_amount, tax_amount, notes, sort_order
@@ -1715,7 +1724,10 @@ taxInvoicesRouter.post('/:id/modify', requireRole('ADMIN', 'MANAGER'), async (c)
         newInvoiceId, it.item_date, it.item_name, it.specification,
         it.quantity, it.unit_price, it.supply_amount, it.tax_amount,
         it.notes, it.sort_order
-      ).run()
+      )
+    )
+    for (let i = 0; i < modifyItemStmts.length; i += 80) {
+      await c.env.DB.batch(modifyItemStmts.slice(i, i + 80))
     }
 
     // body.items가 있으면 합산 금액 재계산하여 헤더 갱신
@@ -1784,45 +1796,53 @@ taxInvoicesRouter.post('/:id/cancel', requireRole('ADMIN'), async (c) => {
       ).bind(id, id).all()
       const orderIds = (linkedOrders as Array<{ order_id: number }>).map(r => r.order_id).filter(Boolean)
 
-      for (const orderId of orderIds) {
-        // 이 주문에 연결된 다른 유효 계산서가 있는지 확인
-        const otherValid = await c.env.DB.prepare(
-          `SELECT COUNT(*) as cnt FROM tax_invoice_orders tio
+      if (orderIds.length > 0) {
+        const oph = orderIds.map(() => '?').join(',')
+        // N+1 제거: ① 다른 유효 계산서 보유 여부 일괄 조회 (GROUP BY → cnt>0인 주문만 등장)
+        const { results: otherValidRows } = await c.env.DB.prepare(
+          `SELECT tio.order_id as order_id, COUNT(*) as cnt FROM tax_invoice_orders tio
            JOIN tax_invoices ti ON tio.tax_invoice_id = ti.id
-           WHERE tio.order_id = ? AND ti.id != ? AND ti.status NOT IN ('CANCELLED', 'DRAFT')`
-        ).bind(orderId, id).first<{ cnt: number }>()
+           WHERE tio.order_id IN (${oph}) AND ti.id != ? AND ti.status NOT IN ('CANCELLED', 'DRAFT')
+           GROUP BY tio.order_id`
+        ).bind(...orderIds, id).all<{ order_id: number; cnt: number }>()
+        const otherValidMap = new Map<number, number>()
+        for (const r of otherValidRows) otherValidMap.set(r.order_id, r.cnt)
 
-        if (!otherValid || otherValid.cnt === 0) {
-          // 직접발행(#310 방안 A) 백업 주문이면: 발행 시 증액한 AR을 롤백하고
-          // 주문 자체를 CANCELLED 처리한다. (일반 주문은 기존 동작 유지 — billing_status만 초기화)
-          const ord = await c.env.DB.prepare(
-            `SELECT order_type, billing_status, billed_amount, final_amount, client_id FROM orders WHERE id = ?`
-          ).bind(orderId).first<{ order_type: string | null; billing_status: string | null; billed_amount: number | null; final_amount: number | null; client_id: number }>()
+        // ② 초기화 대상 주문 상세 일괄 조회
+        const { results: ordRows } = await c.env.DB.prepare(
+          `SELECT id, order_type, billing_status, billed_amount, final_amount, client_id FROM orders WHERE id IN (${oph})`
+        ).bind(...orderIds).all<{ id: number; order_type: string | null; billing_status: string | null; billed_amount: number | null; final_amount: number | null; client_id: number }>()
+        const ordMap = new Map<number, { order_type: string | null; billing_status: string | null; billed_amount: number | null; final_amount: number | null; client_id: number }>()
+        for (const r of ordRows) ordMap.set(r.id, r)
 
-          if (ord?.order_type === 'DIRECT_INVOICE') {
-            // BILLED 상태에서만 잔액 롤백 (이중 롤백 방지)
-            const reverseStmts: any[] = []
-            if (ord.billing_status === 'BILLED') {
-              const reverseAmount = ord.billed_amount || ord.final_amount || 0
-              reverseStmts.push(
-                c.env.DB.prepare(
+        // 연결 주문 수 = bounded-small → 전체 단일 batch로 주문별 원자성 보존
+        const cancelStmts: any[] = []
+        for (const orderId of orderIds) {
+          const cnt = otherValidMap.get(orderId) || 0
+          if (cnt === 0) {
+            // 직접발행(#310 방안 A) 백업 주문이면: 발행 시 증액한 AR을 롤백하고
+            // 주문 자체를 CANCELLED 처리한다. (일반 주문은 기존 동작 유지 — billing_status만 초기화)
+            const ord = ordMap.get(orderId)
+            if (ord?.order_type === 'DIRECT_INVOICE') {
+              // BILLED 상태에서만 잔액 롤백 (이중 롤백 방지)
+              if (ord.billing_status === 'BILLED') {
+                const reverseAmount = ord.billed_amount || ord.final_amount || 0
+                cancelStmts.push(c.env.DB.prepare(
                   `UPDATE clients SET balance = balance - ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`
-                ).bind(reverseAmount, ord.client_id)
-              )
-            }
-            reverseStmts.push(
-              c.env.DB.prepare(
+                ).bind(reverseAmount, ord.client_id))
+              }
+              cancelStmts.push(c.env.DB.prepare(
                 `UPDATE orders SET status = 'CANCELLED', billing_status = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?`
-              ).bind(orderId)
-            )
-            await c.env.DB.batch(reverseStmts)
-          } else {
-            // 일반 주문: 기존 동작 — billing_status만 초기화 (balance는 손대지 않음)
-            await c.env.DB.prepare(
-              `UPDATE orders SET billing_status = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?`
-            ).bind(orderId).run()
+              ).bind(orderId))
+            } else {
+              // 일반 주문: 기존 동작 — billing_status만 초기화 (balance는 손대지 않음)
+              cancelStmts.push(c.env.DB.prepare(
+                `UPDATE orders SET billing_status = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?`
+              ).bind(orderId))
+            }
           }
         }
+        if (cancelStmts.length > 0) await c.env.DB.batch(cancelStmts)
       }
     } catch (_err) {
       console.warn('세금계산서 취소 - billing_status 초기화 오류:', _err)
@@ -2021,11 +2041,14 @@ taxInvoicesRouter.post('/monthly-create', async (c) => {
 
         const taxInvoiceId = insertResult.meta.last_row_id
 
-        // tax_invoice_orders 연결
-        for (const order of group.orders) {
-          await c.env.DB.prepare(
+        // tax_invoice_orders 연결 — N+1 제거: db.batch 일괄 처리 (청크 80)
+        const orderLinkStmts = group.orders.map((order) =>
+          c.env.DB.prepare(
             'INSERT INTO tax_invoice_orders (tax_invoice_id, order_id) VALUES (?, ?)'
-          ).bind(taxInvoiceId, order.order_id).run()
+          ).bind(taxInvoiceId, order.order_id)
+        )
+        for (let i = 0; i < orderLinkStmts.length; i += 80) {
+          await c.env.DB.batch(orderLinkStmts.slice(i, i + 80))
         }
 
         // 품목 합산 행 추가

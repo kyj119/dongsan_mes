@@ -89,9 +89,9 @@ templatesRouter.post('/templates', async (c) => {
 
     const templateId = (result as { id: number }).id
 
-    for (let i = 0; i < items.length; i++) {
-      const item = items[i]
-      await c.env.DB.prepare(`
+    // N+1 제거: 품목 INSERT를 db.batch로 일괄 처리 (청크 80)
+    const itemStmts = (items as any[]).map((item: any, i: number) =>
+      c.env.DB.prepare(`
         INSERT INTO po_template_items (
           template_id, item_id, item_name, category_name,
           quantity, unit, unit_price, vat_included, sort_order
@@ -106,7 +106,10 @@ templatesRouter.post('/templates', async (c) => {
         Number(item.unit_price) || 0,
         item.vat_included ? 1 : 0,
         i
-      ).run()
+      )
+    )
+    for (let i = 0; i < itemStmts.length; i += 80) {
+      await c.env.DB.batch(itemStmts.slice(i, i + 80))
     }
 
     return c.json({
@@ -234,9 +237,9 @@ templatesRouter.post('/from-template/:templateId', async (c) => {
 
     const poId = poResult.meta.last_row_id
 
-    for (let i = 0; i < items.length; i++) {
-      const item = items[i]
-      await c.env.DB.prepare(`
+    // N+1 제거: 발주 품목 INSERT를 db.batch로 일괄 처리 (청크 80)
+    const poItemStmts = items.map((item, i) =>
+      c.env.DB.prepare(`
         INSERT INTO purchase_order_items (
           po_id, item_id, item_name, category_name,
           quantity, received_quantity, unit,
@@ -255,7 +258,10 @@ templatesRouter.post('/from-template/:templateId', async (c) => {
         item.vat_included ? 1 : 0,
         i,
         item.notes || null
-      ).run()
+      )
+    )
+    for (let i = 0; i < poItemStmts.length; i += 80) {
+      await c.env.DB.batch(poItemStmts.slice(i, i + 80))
     }
 
     // 상태 이력

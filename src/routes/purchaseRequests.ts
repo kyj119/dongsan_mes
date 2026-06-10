@@ -394,9 +394,9 @@ prRouter.post('/', async (c) => {
 
     const requestId = prResult.meta.last_row_id
 
-    for (let i = 0; i < data.items.length; i++) {
-      const item = data.items[i]
-      await c.env.DB.prepare(`
+    // N+1 제거: 품목 INSERT를 db.batch로 일괄 처리 (청크 80)
+    const prItemStmts = (data.items as any[]).map((item: any, i: number) =>
+      c.env.DB.prepare(`
         INSERT INTO purchase_request_items (
           request_id, item_id, item_name, category_name,
           quantity, unit, estimated_unit_price, sort_order, notes, entity_id
@@ -405,7 +405,10 @@ prRouter.post('/', async (c) => {
         requestId, item.item_id || null, item.item_name, item.category_name || null,
         Number(item.quantity) || 1, item.unit || 'EA',
         Number(item.estimated_unit_price) || 0, i, item.notes || null, getEntityId(c)
-      ).run()
+      )
+    )
+    for (let i = 0; i < prItemStmts.length; i += 80) {
+      await c.env.DB.batch(prItemStmts.slice(i, i + 80))
     }
 
     await c.env.DB.prepare(`
@@ -537,16 +540,21 @@ prRouter.patch('/:id/approve', requireRole('ADMIN'), async (c) => {
     `).bind(newSupplierId, user?.id || 1, id).run()
 
     if (data.items && data.items.length > 0) {
-      for (const itemUpdate of data.items) {
-        if (!itemUpdate.request_item_id) continue
-        await c.env.DB.prepare(`
-          UPDATE purchase_request_items SET admin_quantity = ?, admin_unit_price = ?
-          WHERE id = ? AND request_id = ?
-        `).bind(
-          itemUpdate.admin_quantity !== undefined ? Number(itemUpdate.admin_quantity) : null,
-          itemUpdate.admin_unit_price !== undefined ? Number(itemUpdate.admin_unit_price) : null,
-          itemUpdate.request_item_id, Number(id)
-        ).run()
+      // N+1 제거: 품목 admin 수량/단가 UPDATE를 db.batch로 일괄 처리 (청크 80)
+      const adminUpdateStmts = (data.items as any[])
+        .filter((itemUpdate: any) => itemUpdate.request_item_id)
+        .map((itemUpdate: any) =>
+          c.env.DB.prepare(`
+            UPDATE purchase_request_items SET admin_quantity = ?, admin_unit_price = ?
+            WHERE id = ? AND request_id = ?
+          `).bind(
+            itemUpdate.admin_quantity !== undefined ? Number(itemUpdate.admin_quantity) : null,
+            itemUpdate.admin_unit_price !== undefined ? Number(itemUpdate.admin_unit_price) : null,
+            itemUpdate.request_item_id, Number(id)
+          )
+        )
+      for (let i = 0; i < adminUpdateStmts.length; i += 80) {
+        await c.env.DB.batch(adminUpdateStmts.slice(i, i + 80))
       }
     }
 

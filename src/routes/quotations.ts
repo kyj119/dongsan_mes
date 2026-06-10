@@ -267,8 +267,9 @@ quotationsRouter.post('/', async (c) => {
 
     const quotationId = result.meta.last_row_id as number
 
-    // 품목 삽입 (부모/자식 2-pass)
-    const clientIdMap = new Map<string, number>()
+    // 품목 삽입 (부모/자식 2-pass) — N+1 제거: db.batch 일괄 처리 (PUT 핸들러와 동일 패턴)
+    const parentInsertStmts: D1PreparedStatement[] = []
+    const parentClientGroupIds: (string | null)[] = []
     for (let i = 0; i < body.items.length; i++) {
       const item = body.items[i]
       if (item.parent_client_id) continue
@@ -284,7 +285,7 @@ quotationsRouter.post('/', async (c) => {
       }
       amount = Math.round(amount / 100) * 100
 
-      const ins = await c.env.DB.prepare(`
+      parentInsertStmts.push(c.env.DB.prepare(`
         INSERT INTO quotation_items (
           quotation_id, item_id, item_name, width, height, scale_factor,
           quantity, unit, unit_price, amount, content, post_processing,
@@ -305,20 +306,28 @@ quotationsRouter.post('/', async (c) => {
         item.print_media_id || null, item.print_media_name || null,
         getEntityId(c) || 1,
         item.assigned_entity_id || null
-      ).run()
+      ))
+      parentClientGroupIds.push(item.client_group_id || null)
+    }
 
-      if (item.client_group_id) {
-        clientIdMap.set(item.client_group_id, ins.meta.last_row_id as number)
+    const clientIdMap = new Map<string, number>()
+    if (parentInsertStmts.length > 0) {
+      const parentResults = await c.env.DB.batch(parentInsertStmts)
+      for (let i = 0; i < parentClientGroupIds.length; i++) {
+        const cgId = parentClientGroupIds[i]
+        if (cgId) clientIdMap.set(cgId, parentResults[i].meta.last_row_id as number)
       }
     }
-    const parentCount = body.items.filter((i: any) => !i.parent_client_id).length
+
+    const parentCount = parentInsertStmts.length
+    const childStmts: D1PreparedStatement[] = []
     for (let i = 0; i < body.items.length; i++) {
       const item = body.items[i]
       if (!item.parent_client_id) continue
       const parentDbId = clientIdMap.get(item.parent_client_id) ?? null
       const w = item.width_mm || item.width || 0
       const h = item.height_mm || item.height || 0
-      await c.env.DB.prepare(`
+      childStmts.push(c.env.DB.prepare(`
         INSERT INTO quotation_items (
           quotation_id, item_name, width, height, scale_factor,
           quantity, unit, unit_price, amount, content,
@@ -333,8 +342,9 @@ quotationsRouter.post('/', async (c) => {
         item.ai_group_index != null ? item.ai_group_index : null,
         getEntityId(c) || 1,
         item.assigned_entity_id || null
-      ).run()
+      ))
     }
+    if (childStmts.length > 0) await c.env.DB.batch(childStmts)
 
     await logActivity({
       db: c.env.DB, userId: user?.id, userName: user?.username,
@@ -620,11 +630,13 @@ quotationsRouter.post('/:id/convert-to-order', requireRole('ADMIN', 'MANAGER'), 
 
     const orderId = orderResult.meta.last_row_id as number
 
-    // 품목 복사 (parent_id 매핑)
+    // 품목 복사 (parent_id 매핑) — N+1 제거: 부모/자식 db.batch 일괄 처리
     const qParentToOrderId = new Map<number, number>()
+    const parentStmts: D1PreparedStatement[] = []
+    const parentQIds: number[] = []
     for (const qi of qItems) {
       if (qi.parent_id != null) continue
-      const ins = await c.env.DB.prepare(`
+      parentStmts.push(c.env.DB.prepare(`
         INSERT INTO order_items (
           order_id, item_id, item_name, category_name,
           width, height, quantity, unit, unit_price, amount, vat_included,
@@ -639,13 +651,21 @@ quotationsRouter.post('/:id/convert-to-order', requireRole('ADMIN', 'MANAGER'), 
         qi.post_processing, qi.content, qi.sort_order,
         qi.ai_group_index, qi.scale_factor, qi.finishing,
         qi.assigned_entity_id ?? null
-      ).run()
-      qParentToOrderId.set(qi.id as number, ins.meta.last_row_id as number)
+      ))
+      parentQIds.push(qi.id as number)
     }
+    if (parentStmts.length > 0) {
+      const parentResults = await c.env.DB.batch(parentStmts)
+      for (let i = 0; i < parentQIds.length; i++) {
+        qParentToOrderId.set(parentQIds[i], parentResults[i].meta.last_row_id as number)
+      }
+    }
+
+    const convChildStmts: D1PreparedStatement[] = []
     for (const qi of qItems) {
       if (qi.parent_id == null) continue
       const parentOrderItemId = qParentToOrderId.get(qi.parent_id as number) ?? null
-      await c.env.DB.prepare(`
+      convChildStmts.push(c.env.DB.prepare(`
         INSERT INTO order_items (
           order_id, item_name, width, height, quantity, unit,
           unit_price, amount, vat_included, content, sort_order,
@@ -657,8 +677,9 @@ quotationsRouter.post('/:id/convert-to-order', requireRole('ADMIN', 'MANAGER'), 
         qi.content, qi.sort_order, qi.ai_group_index, qi.scale_factor,
         parentOrderItemId,
         qi.assigned_entity_id ?? null
-      ).run()
+      ))
     }
+    if (convChildStmts.length > 0) await c.env.DB.batch(convChildStmts)
 
     // 주문 상태 이력
     await c.env.DB.prepare(`

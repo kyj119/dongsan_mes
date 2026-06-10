@@ -618,14 +618,16 @@ ripRouter.post('/equipment/:id/heads', authMiddleware, requireRole('ADMIN', 'MAN
       return c.json({ success: false, error: 'Equipment not found' }, 404)
     }
 
-    // 기존 헤드 삭제 후 재생성
-    await c.env.DB.prepare('DELETE FROM equipment_heads WHERE equipment_id = ?').bind(equipId).run()
-
+    // 기존 헤드 삭제 후 재생성 (N+1 제거: DELETE + INSERT를 db.batch로 원자적 처리)
+    const headStmts: D1PreparedStatement[] = [
+      c.env.DB.prepare('DELETE FROM equipment_heads WHERE equipment_id = ?').bind(equipId)
+    ]
     for (let i = 1; i <= head_count; i++) {
-      await c.env.DB.prepare(
+      headStmts.push(c.env.DB.prepare(
         'INSERT INTO equipment_heads (equipment_id, head_number, status) VALUES (?, ?, ?)'
-      ).bind(equipId, i, 'NORMAL').run()
+      ).bind(equipId, i, 'NORMAL'))
     }
+    await c.env.DB.batch(headStmts)
 
     // equipment.head_count 업데이트
     await c.env.DB.prepare(
@@ -1678,6 +1680,44 @@ ripRouter.post('/send-items-bulk', authMiddleware, async (c) => {
     const errors: Array<{ card_item_id: number; error: string }> = []
     const cardIdsToUpdate = new Set<number>()
 
+    // N+1 제거: card_item / equipment / preset 를 IN(...)으로 일괄 선조회
+    const validItems = items.filter((it) =>
+      Number.isInteger(it.card_item_id) && it.card_item_id > 0 &&
+      it.equipment_id?.trim() && it.rip_preset?.trim()
+    )
+    const cardItemIds = [...new Set(validItems.map((it) => it.card_item_id))]
+    const equipmentIds = [...new Set(validItems.map((it) => it.equipment_id))]
+
+    const cardItemMap = new Map<number, { id: number; card_id: number; rip_status: string | null; card_number: string; card_status: string; item_name: string | null }>()
+    if (cardItemIds.length > 0) {
+      const ph = cardItemIds.map(() => '?').join(',')
+      const { results: ciRows } = await c.env.DB.prepare(`
+        SELECT ci.id, ci.card_id, ci.rip_status,
+               c.card_number, c.status as card_status,
+               oi.item_name
+        FROM card_items ci
+        JOIN cards c ON ci.card_id = c.id
+        JOIN order_items oi ON ci.order_item_id = oi.id
+        WHERE ci.id IN (${ph})
+      `).bind(...cardItemIds).all<{ id: number; card_id: number; rip_status: string | null; card_number: string; card_status: string; item_name: string | null }>()
+      for (const r of ciRows) cardItemMap.set(r.id, r)
+    }
+
+    const activeEquipment = new Set<string>()
+    const presetSet = new Set<string>()
+    if (equipmentIds.length > 0) {
+      const ph = equipmentIds.map(() => '?').join(',')
+      const { results: eqRows } = await c.env.DB.prepare(
+        `SELECT id FROM equipment WHERE status = 'ACTIVE' AND id IN (${ph})`
+      ).bind(...equipmentIds).all<{ id: string | number }>()
+      for (const r of eqRows) activeEquipment.add(String(r.id))
+      const { results: presetRows } = await c.env.DB.prepare(
+        `SELECT equipment_id, preset_name FROM equipment_presets WHERE equipment_id IN (${ph})`
+      ).bind(...equipmentIds).all<{ equipment_id: string | number; preset_name: string }>()
+      for (const r of presetRows) presetSet.add(`${r.equipment_id}|${r.preset_name}`)
+    }
+
+    const updateStmts: D1PreparedStatement[] = []
     for (const item of items) {
       if (!Number.isInteger(item.card_item_id) || item.card_item_id <= 0 ||
           !item.equipment_id?.trim() || !item.rip_preset?.trim()) {
@@ -1685,17 +1725,7 @@ ripRouter.post('/send-items-bulk', authMiddleware, async (c) => {
         continue
       }
 
-      // card_item 조회
-      const cardItem = await c.env.DB.prepare(`
-        SELECT ci.id, ci.card_id, ci.rip_status,
-               c.card_number, c.status as card_status,
-               oi.item_name
-        FROM card_items ci
-        JOIN cards c ON ci.card_id = c.id
-        JOIN order_items oi ON ci.order_item_id = oi.id
-        WHERE ci.id = ?
-      `).bind(item.card_item_id).first<{ id: number; card_id: number; rip_status: string | null; card_number: string; card_status: string; item_name: string | null }>()
-
+      const cardItem = cardItemMap.get(item.card_item_id)
       if (!cardItem) {
         errors.push({ card_item_id: item.card_item_id, error: 'Not found' })
         continue
@@ -1706,41 +1736,36 @@ ripRouter.post('/send-items-bulk', authMiddleware, async (c) => {
         continue
       }
 
-      // 장비 + 프리셋 검증
-      const equipment = await c.env.DB.prepare(
-        "SELECT id FROM equipment WHERE id = ? AND status = 'ACTIVE'"
-      ).bind(item.equipment_id).first()
-
-      if (!equipment) {
+      if (!activeEquipment.has(item.equipment_id)) {
         errors.push({ card_item_id: item.card_item_id, error: 'Equipment inactive' })
         continue
       }
 
-      const preset = await c.env.DB.prepare(
-        'SELECT id FROM equipment_presets WHERE equipment_id = ? AND preset_name = ?'
-      ).bind(item.equipment_id, item.rip_preset).first()
-
-      if (!preset) {
+      if (!presetSet.has(`${item.equipment_id}|${item.rip_preset}`)) {
         errors.push({ card_item_id: item.card_item_id, error: 'Preset not found' })
         continue
       }
 
-      // 업데이트
-      await c.env.DB.prepare(`
+      // 업데이트 (batch 수집)
+      updateStmts.push(c.env.DB.prepare(`
         UPDATE card_items SET
           rip_equipment_id = ?, rip_preset = ?, rip_status = 'QUEUED', rip_queued_at = CURRENT_TIMESTAMP
         WHERE id = ?
-      `).bind(item.equipment_id, item.rip_preset, item.card_item_id).run()
+      `).bind(item.equipment_id, item.rip_preset, item.card_item_id))
 
       cardIdsToUpdate.add(cardItem.card_id)
+      cardItem.rip_status = 'QUEUED'  // 동일 요청 내 중복 card_item_id는 'Already QUEUED' 처리 (순차 동작 보존)
       results.push({ card_item_id: item.card_item_id, rip_status: 'QUEUED' })
     }
 
-    // 카드 rip_status 일괄 동기화 (중복 제거)
+    // 카드 rip_status 동기화 (중복 제거) — 같은 batch에 수집
     for (const cardId of cardIdsToUpdate) {
-      await c.env.DB.prepare(`
+      updateStmts.push(c.env.DB.prepare(`
         UPDATE cards SET rip_status = 'QUEUED', updated_at = CURRENT_TIMESTAMP WHERE id = ?
-      `).bind(cardId).run()
+      `).bind(cardId))
+    }
+    for (let i = 0; i < updateStmts.length; i += 80) {
+      await c.env.DB.batch(updateStmts.slice(i, i + 80))
     }
 
     return c.json({ success: true, data: { sent: results, errors } })
