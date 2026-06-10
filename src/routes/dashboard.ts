@@ -319,17 +319,27 @@ dashboardRouter.get('/stats/receivables', async (c) => {
     const ef = entityFilter(c, 'o')
     const efP = entityFilter(c, 'p')
 
-    // TOP 10 clients by balance
+    // TOP 10 clients by balance — split billing P3: clients.balance 캐시 폐기 → 미수금 파생(청구 법인 g 기준)
+    const efBalG = entityFilter(c, 'g')
+    const efBalP = entityFilter(c, 'p2')
+    const efBalA = entityFilter(c, 'a2')
     const { results: topClients } = await c.env.DB.prepare(`
-      SELECT
-        c.id, c.client_code, c.client_name, c.balance,
-        (SELECT MAX(p.payment_date) FROM payments p WHERE p.client_id = c.id${efP.clause}) as last_payment_date,
-        (SELECT COUNT(*) FROM orders o WHERE o.client_id = c.id AND o.billing_status = 'BILLED'${ef.clause}) as billed_order_count
-      FROM clients c
-      WHERE c.is_active = 1 AND c.balance > 0
-      ORDER BY c.balance DESC
+      SELECT * FROM (
+        SELECT
+          c.id, c.client_code, c.client_name,
+          (
+            (SELECT COALESCE(SUM(g.billed_amount), 0) FROM order_billing_groups g JOIN orders o ON o.id = g.order_id WHERE o.client_id = c.id AND g.billing_status = 'BILLED' AND o.status != 'CANCELLED'${efBalG.clause})
+            - (SELECT COALESCE(SUM(amount), 0) FROM payments p2 WHERE p2.client_id = c.id${efBalP.clause})
+            - (SELECT COALESCE(SUM(amount), 0) FROM adjustments a2 WHERE a2.client_id = c.id${efBalA.clause})
+          ) as balance,
+          (SELECT MAX(p.payment_date) FROM payments p WHERE p.client_id = c.id${efP.clause}) as last_payment_date,
+          (SELECT COUNT(*) FROM orders o WHERE o.client_id = c.id AND o.billing_status = 'BILLED'${ef.clause}) as billed_order_count
+        FROM clients c
+        WHERE c.is_active = 1
+      ) WHERE balance > 0
+      ORDER BY balance DESC
       LIMIT 10
-    `).bind(...efP.params, ...ef.params).all()
+    `).bind(...efBalG.params, ...efBalP.params, ...efBalA.params, ...efP.params, ...ef.params).all()
 
     // Aging buckets (연체 구간)
     const aging = await c.env.DB.prepare(`

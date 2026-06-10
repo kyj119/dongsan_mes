@@ -74,9 +74,7 @@ export function preparePaymentStatements(
       data.created_by,
       data.entity_id ?? 1
     ),
-    db.prepare(
-      'UPDATE clients SET balance = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
-    ).bind(newBalance, data.client_id),
+    // split billing P3: clients.balance 캐시 미사용 — 미수금은 order_billing_groups[BILLED] 파생.
   ]
 }
 

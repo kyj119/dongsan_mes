@@ -571,7 +571,7 @@ arRouter.post('/payment', requireRole('ADMIN', 'MANAGER'), async (c) => {
       success: true,
       data: {
         id: result.payment_id,
-        new_balance: result.new_balance
+        new_balance: await deriveClientBalance(c, paymentData.client_id)  // split billing P3: 파생
       },
       message: '입금이 등록되었습니다'
     })
@@ -1136,20 +1136,22 @@ arRouter.post('/recalculate/:clientId', requireRole('ADMIN', 'MANAGER'), async (
 // GET /overdue - 미수금 경고 목록
 arRouter.get('/overdue', async (c) => {
   try {
-    const { clause: overdueEf, params: overdueEfParams } = entityFilter(c, 'o')
+    // split billing P3: 미수금 경고도 청구그룹(청구 법인 g) 기준
+    const { clause: overdueEf, params: overdueEfParams } = entityFilter(c, 'g')
     const { results } = await c.env.DB.prepare(`
       SELECT
         c.id as client_id,
         c.client_name,
         c.overdue_alert_days,
-        COUNT(o.id) as overdue_count,
-        COALESCE(SUM(o.billed_amount), 0) as overdue_amount,
-        MIN(o.billed_at) as oldest_billed_at
-      FROM orders o
+        COUNT(DISTINCT o.id) as overdue_count,
+        COALESCE(SUM(g.billed_amount), 0) as overdue_amount,
+        MIN(g.billed_at) as oldest_billed_at
+      FROM order_billing_groups g
+      JOIN orders o ON o.id = g.order_id
       JOIN clients c ON o.client_id = c.id
-      WHERE o.billing_status = 'BILLED'
-        AND (o.billing_status != 'PAID' OR o.billing_status IS NULL)
-        AND date(o.billed_at, '+' || COALESCE(c.overdue_alert_days, 30) || ' days') < date('now', '+9 hours')
+      WHERE g.billing_status = 'BILLED'
+        AND o.status != 'CANCELLED'
+        AND date(g.billed_at, '+' || COALESCE(c.overdue_alert_days, 30) || ' days') < date('now', '+9 hours')
         ${overdueEf}
       GROUP BY c.id, c.client_name, c.overdue_alert_days
       ORDER BY overdue_amount DESC
@@ -1380,30 +1382,40 @@ arRouter.get('/receivables', async (c) => {
     const { sort = 'balance_desc', min_balance = '0', overdue_only = '' } = c.req.query()
     const minBalance = parseFloat(min_balance)
 
+    // split billing P3: clients.balance 캐시 폐기 → (거래처 미수금) 파생. billed=order_billing_groups[BILLED](청구법인 g), 미수=billed−payments−adjustments.
+    const { clause: balGEf, params: balGP } = entityFilter(c, 'g')
+    const { clause: balPEf, params: balPP } = entityFilter(c, 'p')
+    const { clause: balAEf, params: balAP } = entityFilter(c, 'a')
     const { clause: recvPayEf, params: recvPayEfParams } = entityFilter(c, 'p')
-    const { clause: recvOrdEf1, params: recvOrdEf1Params } = entityFilter(c, 'o')
-    const { clause: recvOrdEf2, params: recvOrdEf2Params } = entityFilter(c, 'o')
+    const { clause: cntGEf, params: cntGP } = entityFilter(c, 'g')
+    const { clause: oldGEf, params: oldGP } = entityFilter(c, 'g')
     const { clause: recvPayEf2, params: recvPayEf2Params } = entityFilter(c, 'p')
     const { results: clients } = await c.env.DB.prepare(`
-      SELECT
-        c.id,
-        c.client_code,
-        c.client_name,
-        c.balance,
-        (SELECT MAX(p.payment_date) FROM payments p WHERE p.client_id = c.id${recvPayEf}) as last_payment_date,
-        (SELECT COUNT(*) FROM orders o WHERE o.client_id = c.id AND o.billing_status = 'BILLED'${recvOrdEf1}) as billed_order_count,
-        (SELECT MIN(o.billed_at) FROM orders o
-         WHERE o.client_id = c.id AND o.billing_status = 'BILLED'${recvOrdEf2}
-           AND NOT EXISTS (
-             SELECT 1 FROM payments p
-             WHERE p.client_id = c.id${recvPayEf2}
-               AND p.amount >= o.billed_amount
-               AND p.payment_date >= o.billed_at
-           )
-        ) as oldest_unpaid_date
-      FROM clients c
-      WHERE c.is_active = 1 AND c.balance > ?
-    `).bind(...recvPayEfParams, ...recvOrdEf1Params, ...recvOrdEf2Params, ...recvPayEf2Params, minBalance).all<ReceivableClientRow>()
+      SELECT * FROM (
+        SELECT
+          c.id,
+          c.client_code,
+          c.client_name,
+          (
+            (SELECT COALESCE(SUM(g.billed_amount), 0) FROM order_billing_groups g JOIN orders o ON o.id = g.order_id WHERE o.client_id = c.id AND g.billing_status = 'BILLED' AND o.status != 'CANCELLED'${balGEf})
+            - (SELECT COALESCE(SUM(p.amount), 0) FROM payments p WHERE p.client_id = c.id${balPEf})
+            - (SELECT COALESCE(SUM(a.amount), 0) FROM adjustments a WHERE a.client_id = c.id${balAEf})
+          ) as balance,
+          (SELECT MAX(p.payment_date) FROM payments p WHERE p.client_id = c.id${recvPayEf}) as last_payment_date,
+          (SELECT COUNT(*) FROM order_billing_groups g JOIN orders o ON o.id = g.order_id WHERE o.client_id = c.id AND g.billing_status = 'BILLED' AND o.status != 'CANCELLED'${cntGEf}) as billed_order_count,
+          (SELECT MIN(g.billed_at) FROM order_billing_groups g JOIN orders o ON o.id = g.order_id
+           WHERE o.client_id = c.id AND g.billing_status = 'BILLED' AND o.status != 'CANCELLED'${oldGEf}
+             AND NOT EXISTS (
+               SELECT 1 FROM payments p
+               WHERE p.client_id = c.id${recvPayEf2}
+                 AND p.amount >= g.billed_amount
+                 AND p.payment_date >= g.billed_at
+             )
+          ) as oldest_unpaid_date
+        FROM clients c
+        WHERE c.is_active = 1
+      ) WHERE balance > ?
+    `).bind(...balGP, ...balPP, ...balAP, ...recvPayEfParams, ...cntGP, ...oldGP, ...recvPayEf2Params, minBalance).all<ReceivableClientRow>()
 
     // aging_days, aging_category 계산 (JS에서)
     const today = new Date()
@@ -1512,7 +1524,7 @@ arRouter.get('/receivables/:clientId/orders', async (c) => {
         client: {
           id: client.id,
           client_name: client.client_name,
-          balance: Number(client.balance) || 0
+          balance: await deriveClientBalance(c, clientId)  // split billing P3: 캐시 폐기 → 파생
         },
         orders: orders.map(o => ({
           ...o,
@@ -1544,23 +1556,31 @@ arRouter.get('/receivables/:clientId/orders', async (c) => {
 arRouter.post('/receivables/check-overdue', requireRole('ADMIN', 'MANAGER'), async (c) => {
   try {
     // 30일 초과 연체 거래처 조회
-    const { clause: checkOverdueEf, params: checkOverdueEfParams } = entityFilter(c, 'o')
+    // split billing P3: clients.balance 캐시 폐기 → 청구그룹 파생(청구 법인 g 기준)
+    const { clause: coPayEf, params: coPayP } = entityFilter(c, 'p')
+    const { clause: coAdjEf, params: coAdjP } = entityFilter(c, 'a')
+    const { clause: checkOverdueEf, params: checkOverdueEfParams } = entityFilter(c, 'g')
     const { results: overdueClients } = await c.env.DB.prepare(`
       SELECT
         c.id,
         c.client_name,
-        c.balance,
-        MIN(o.billed_at) as oldest_billed_at,
-        CAST(julianday('now') - julianday(MIN(o.billed_at)) AS INTEGER) as overdue_days
+        (
+          COALESCE(SUM(g.billed_amount), 0)
+          - (SELECT COALESCE(SUM(amount), 0) FROM payments p WHERE p.client_id = c.id${coPayEf})
+          - (SELECT COALESCE(SUM(amount), 0) FROM adjustments a WHERE a.client_id = c.id${coAdjEf})
+        ) as balance,
+        MIN(g.billed_at) as oldest_billed_at,
+        CAST(julianday('now') - julianday(MIN(g.billed_at)) AS INTEGER) as overdue_days
       FROM clients c
       JOIN orders o ON o.client_id = c.id
+      JOIN order_billing_groups g ON g.order_id = o.id
       WHERE c.is_active = 1
-        AND c.balance > 0
-        AND o.billing_status = 'BILLED'${checkOverdueEf}
-      GROUP BY c.id, c.client_name, c.balance
-      HAVING overdue_days > 30
+        AND o.status != 'CANCELLED'
+        AND g.billing_status = 'BILLED'${checkOverdueEf}
+      GROUP BY c.id, c.client_name
+      HAVING balance > 0 AND overdue_days > 30
       ORDER BY overdue_days DESC
-    `).bind(...checkOverdueEfParams).all<OverdueClientRow>()
+    `).bind(...coPayP, ...coAdjP, ...checkOverdueEfParams).all<OverdueClientRow>()
 
     let alertsCreated = 0
     const checked = overdueClients.length
@@ -1714,7 +1734,7 @@ arRouter.post('/collection-logs', async (c) => {
             ORDER BY order_date ASC LIMIT 10
           `).bind(body.client_id, ...emailOrdEfParams, ...emailPayEfParams).all<UnpaidOrderRow>()
 
-          const balance = Number(client.balance) || body.amount_requested || 0
+          const balance = (await deriveClientBalance(c, body.client_id)) || body.amount_requested || 0  // split billing P3: 파생
           const firstOrderDate = unpaidOrders[0]?.order_date
           const agingDays = firstOrderDate
             ? Math.floor((Date.now() - new Date(firstOrderDate).getTime()) / 86400000)
@@ -2152,6 +2172,10 @@ arRouter.get('/profit-summary', async (c) => {
 arRouter.get('/collection-period', async (c) => {
   try {
     const ef = entityFilter(c, 'o')
+    // split billing P3: 미수 잔액은 청구그룹(청구 법인) 파생
+    const cpGEf = entityFilter(c, 'g')
+    const cpPEf = entityFilter(c, 'p2')
+    const cpAEf = entityFilter(c, 'a2')
 
     // 거래처별: 주문 생성일 ~ 마지막 입금일 평균 차이 계산
     // 완납된 주문(balance = 0, 입금 있음) 기준
@@ -2159,7 +2183,11 @@ arRouter.get('/collection-period', async (c) => {
       SELECT
         c.id as client_id,
         c.client_name,
-        c.balance,
+        (
+          (SELECT COALESCE(SUM(g.billed_amount), 0) FROM order_billing_groups g JOIN orders o2 ON o2.id = g.order_id WHERE o2.client_id = c.id AND g.billing_status = 'BILLED' AND o2.status != 'CANCELLED'${cpGEf.clause})
+          - (SELECT COALESCE(SUM(amount), 0) FROM payments p2 WHERE p2.client_id = c.id${cpPEf.clause})
+          - (SELECT COALESCE(SUM(amount), 0) FROM adjustments a2 WHERE a2.client_id = c.id${cpAEf.clause})
+        ) as balance,
         COUNT(DISTINCT sub.order_id) as settled_orders,
         ROUND(AVG(sub.days_to_pay), 0) as avg_days,
         MIN(sub.days_to_pay) as min_days,
@@ -2184,7 +2212,7 @@ arRouter.get('/collection-period', async (c) => {
       GROUP BY c.id
       HAVING settled_orders >= 2
       ORDER BY avg_days DESC
-    `).bind(...ef.params).all<{
+    `).bind(...cpGEf.params, ...cpPEf.params, ...cpAEf.params, ...ef.params).all<{
       client_id: number; client_name: string; balance: number
       settled_orders: number; avg_days: number; min_days: number; max_days: number
       last_payment_date: string | null

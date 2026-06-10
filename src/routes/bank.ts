@@ -1328,11 +1328,8 @@ bankRouter.post('/transactions/:id/unapply', requireRole('ADMIN'), async (c) => 
       ).bind(tx.matched_payment_id).first<{ id: number; client_id: number; amount: number }>()
 
       if (payment) {
-        // #261: balance 복원 + payment 삭제 + transaction 상태 복원을 원자적 처리
+        // split billing P3: clients.balance 캐시 미사용 — payment 삭제 + transaction 상태 복원만 (미수금 파생)
         await c.env.DB.batch([
-          c.env.DB.prepare(
-            'UPDATE clients SET balance = balance + ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
-          ).bind(payment.amount, payment.client_id),
           c.env.DB.prepare('DELETE FROM payments WHERE id = ?').bind(tx.matched_payment_id),
           c.env.DB.prepare(`
             UPDATE bank_transactions
