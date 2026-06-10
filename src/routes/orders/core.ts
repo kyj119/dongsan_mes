@@ -49,6 +49,68 @@ export function recommendAssignedEntity(item: any, billingEntityId: number | nul
   return entity
 }
 
+// ── 청구 법인 분할: order_billing_groups 재계산 (split billing P2) ──
+// 설계: docs/superpowers/specs/2026-06-10-split-billing-by-entity.md
+// 품목 assigned_entity_id 별로 청구그룹을 (재)생성. NULL 담당 = 주(主)법인(orders.entity_id) 귀속.
+// 금액: supply = 그룹 품목 amount 합, tax/discount = 주문 vat/discount를 비례배분(주법인 잔차 흡수),
+//       billed_amount = supply + tax − discount(예상 청구액, billing_status=NULL).
+// ⚠️ 불변식: BILLED/PAID 그룹이 하나라도 있으면 재분할 금지(이미 발행된 세금계산서 보호) → 그대로 둠.
+// orders/order_items 만 읽어 자기완결적 → POST/PUT 양쪽에서 저장 직후 한 줄 호출.
+export async function recalcOrderBillingGroups(db: D1Database, orderId: number): Promise<void> {
+  const order = await db.prepare(
+    `SELECT entity_id, vat_amount, discount_amount FROM orders WHERE id = ?`
+  ).bind(orderId).first<{ entity_id: number; vat_amount: number; discount_amount: number }>()
+  if (!order) return
+  const mainEntity = Number(order.entity_id) || 1
+
+  // 동결: 이미 청구(BILLED/PAID)된 그룹이 있으면 품목 기준 재분할 금지(불변식)
+  const { results: existing } = await db.prepare(
+    `SELECT billing_status FROM order_billing_groups WHERE order_id = ?`
+  ).bind(orderId).all<{ billing_status: string | null }>()
+  if ((existing || []).some(g => g.billing_status === 'BILLED' || g.billing_status === 'PAID')) return
+
+  // 품목 → 법인별 집계 (assigned_entity_id NULL → 주법인). 자식/PENDING 품목은 amount=0 → 기여 0.
+  const { results: rows } = await db.prepare(`
+    SELECT COALESCE(assigned_entity_id, ?) AS eid,
+           CAST(COALESCE(SUM(amount), 0) AS INTEGER) AS supply,
+           CAST(COALESCE(SUM(CASE WHEN vat_included = 1 THEN amount ELSE 0 END), 0) AS INTEGER) AS vat_base
+    FROM order_items
+    WHERE order_id = ?
+    GROUP BY COALESCE(assigned_entity_id, ?)
+  `).bind(mainEntity, orderId, mainEntity).all<{ eid: number; supply: number; vat_base: number }>()
+
+  // 재생성(동결 아닌 경우만 도달): 기존 NULL상태 그룹 제거 후 새로 INSERT
+  await db.prepare(`DELETE FROM order_billing_groups WHERE order_id = ?`).bind(orderId).run()
+  if (!rows || rows.length === 0) return
+
+  const totalSupply = rows.reduce((s, r) => s + Number(r.supply), 0)
+  const totalVatBase = rows.reduce((s, r) => s + Number(r.vat_base), 0)
+  const orderVat = Math.round(Number(order.vat_amount) || 0)
+  const orderDiscount = Math.round(Number(order.discount_amount) || 0)
+
+  // 주법인 그룹을 마지막에 두어 라운딩 잔차 흡수(없으면 마지막 그룹이 흡수)
+  const ordered = [...rows].sort((a, b) => (a.eid === mainEntity ? 1 : 0) - (b.eid === mainEntity ? 1 : 0))
+  let taxAcc = 0, discAcc = 0
+  const stmts = ordered.map((r, i) => {
+    const isLast = i === ordered.length - 1
+    let tax: number, disc: number
+    if (isLast) {
+      tax = orderVat - taxAcc
+      disc = orderDiscount - discAcc
+    } else {
+      tax = totalVatBase > 0 ? Math.round(orderVat * Number(r.vat_base) / totalVatBase) : 0
+      disc = totalSupply > 0 ? Math.round(orderDiscount * Number(r.supply) / totalSupply) : 0
+      taxAcc += tax; discAcc += disc
+    }
+    const billed = Number(r.supply) + tax - disc
+    return db.prepare(`
+      INSERT INTO order_billing_groups (order_id, entity_id, billing_status, supply_amount, tax_amount, billed_amount)
+      VALUES (?, ?, NULL, ?, ?, ?)
+    `).bind(orderId, r.eid, Number(r.supply), tax, billed)
+  })
+  if (stmts.length > 0) await db.batch(stmts)
+}
+
 // ── 카드 생성 공통 함수 (POST/PUT 중복 제거) ──
 export interface GenerateCardsParams {
   db: D1Database
@@ -850,11 +912,22 @@ ordersCoreRouter.get('/:id', async (c) => {
       }
     }
 
+    // split billing P2: 청구그룹(법인별 청구 단위) — 상세 화면 요약 표시용
+    const { results: billingGroups } = await c.env.DB.prepare(`
+      SELECT g.id, g.entity_id, g.billing_status, g.supply_amount, g.tax_amount, g.billed_amount,
+             g.billed_at, g.tax_invoice_id, e.name AS entity_name, e.short_name AS entity_short_name
+      FROM order_billing_groups g
+      LEFT JOIN entities e ON e.id = g.entity_id
+      WHERE g.order_id = ?
+      ORDER BY g.entity_id ASC
+    `).bind(id).all()
+
     const response: ApiResponse<any> = {
       success: true,
       data: {
         ...order,
-        items
+        items,
+        billing_groups: billingGroups || []
       }
     }
 
@@ -1176,6 +1249,9 @@ ordersCoreRouter.post('/', async (c) => {
     if (pass2Stmts.length > 0) {
       await c.env.DB.batch(pass2Stmts)
     }
+
+    // split billing P2: 품목 담당법인별 청구그룹 생성/재계산
+    await recalcOrderBillingGroups(c.env.DB, orderId)
 
     // Insert status history
     await c.env.DB.prepare(`
@@ -2317,6 +2393,9 @@ ordersCoreRouter.put('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
       ))
     }
     if (putChildStmts.length > 0) await c.env.DB.batch(putChildStmts)
+
+    // split billing P2: 품목 담당법인별 청구그룹 재계산(BILLED/PAID 동결은 헬퍼가 처리)
+    await recalcOrderBillingGroups(c.env.DB, parseInt(id))
 
     // #124: 카드 보존 경로 — card_items 재매핑 (item_id + sort_order 기준)
     if (cardsPreserved && savedCardItemMappings.length > 0) {

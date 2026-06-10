@@ -62,10 +62,10 @@ export function orderFormPage(c: Context<HonoEnv>) {
                                 </select>
                             </div>
                             <div>
-                                <label class="block text-sm font-medium text-gray-700 mb-2">청구 법인 <span class="text-gray-400 text-xs font-normal">(자동=내 법인)</span></label>
-                                <select id="billingEntity" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
-                                    <option value="">자동 (내 법인)</option>
-                                </select>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">청구 법인 <span class="text-gray-400 text-xs font-normal">(품목 담당별 자동 분할)</span></label>
+                                <div id="billingGroupsHint" class="w-full px-4 py-2 border border-gray-200 rounded-lg bg-gray-50 min-h-[42px] flex flex-wrap items-center gap-1.5 text-sm">
+                                    <span class="text-gray-400">품목을 추가하면 청구 법인이 표시됩니다</span>
+                                </div>
                             </div>
                             <div>
                                 <label class="block text-sm font-medium text-gray-700 mb-2">전화번호</label>

@@ -92,7 +92,7 @@
                         </div>
                         <div>
                             <label class="block text-xs font-medium text-gray-600 mb-0.5" title="생산 담당 법인. 자동=청구 법인이 담당">담당</label>
-                            <select name="assigned_entity_${id}" class="w-full px-2 py-1.5 border border-gray-300 rounded text-sm">${entityAssignOptions()}</select>
+                            <select name="assigned_entity_${id}" onchange="if(window.updateBillingHint)window.updateBillingHint()" class="w-full px-2 py-1.5 border border-gray-300 rounded text-sm">${entityAssignOptions()}</select>
                         </div>
                     </div>
                     <div class="pt-2 border-t border-gray-200" id="pp_section_${id}">

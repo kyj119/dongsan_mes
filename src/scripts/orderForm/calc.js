@@ -173,7 +173,46 @@
                 var ppTotalEl = document.getElementById('totalPPCost');
                 if (ppTotalEl) ppTotalEl.textContent = ppTotal > 0 ? ppTotal.toLocaleString() : '0';
                 document.getElementById('grandTotal').textContent = Math.max(0, Math.round(total) + vat + ppTotal - discount).toLocaleString();
+                updateBillingHint();
             }
+
+            // split billing P2: 품목 담당법인별 청구 법인 도출 표시(셀렉트 대체).
+            // 명시 담당법인은 그 법인이 청구, 미지정('자동')은 백엔드가 생산라인(카드그룹)/접수법인 기준 배정.
+            function updateBillingHint() {
+                var hint = document.getElementById('billingGroupsHint');
+                if (!hint) return;
+                var entities = window.__entities || [];
+                function nameOf(eid) {
+                    for (var i = 0; i < entities.length; i++) {
+                        if (String(entities[i].id) === String(eid)) return entities[i].short_name || entities[i].name;
+                    }
+                    return '법인' + eid;
+                }
+                function esc(s) { return window.escapeHtml ? window.escapeHtml(s) : s; }
+                var counts = {}, order = [], autoCount = 0, itemCount = 0;
+                document.querySelectorAll('#itemsContainer > [id^="item-"]').forEach(function(row) {
+                    var id = row.id.replace('item-', '');
+                    var isChildInput = row.querySelector('[name^="is_child_"]');
+                    if (isChildInput && isChildInput.value === '1') return; // 자식 행 제외(부모 담당에 귀속)
+                    itemCount++;
+                    var sel = document.querySelector('[name="assigned_entity_' + id + '"]');
+                    var v = sel ? sel.value : '';
+                    if (v) { if (!(v in counts)) { counts[v] = 0; order.push(v); } counts[v]++; }
+                    else autoCount++;
+                });
+                if (itemCount === 0) {
+                    hint.innerHTML = '<span class="text-gray-400">품목을 추가하면 청구 법인이 표시됩니다</span>';
+                    return;
+                }
+                var chips = order.map(function(eid) {
+                    return '<span class="inline-flex items-center px-2 py-0.5 rounded bg-blue-50 text-blue-700 text-xs font-medium border border-blue-200">' + esc(nameOf(eid)) + ' ' + counts[eid] + '건</span>';
+                });
+                if (autoCount > 0) {
+                    chips.push('<span class="inline-flex items-center px-2 py-0.5 rounded bg-gray-100 text-gray-600 text-xs border border-gray-200" title="담당 미지정 — 생산 라인(카드그룹) 또는 접수 법인 기준으로 저장 시 자동 배정됩니다">자동 ' + autoCount + '건</span>');
+                }
+                hint.innerHTML = chips.join(' ');
+            }
+            window.updateBillingHint = updateBillingHint;
 
             // Enter 키 스마트 동작 (폼 제출 방지 + 필드별 편의 기능)
             document.getElementById('orderForm').addEventListener('keydown', function(e) {
@@ -555,7 +594,6 @@
 
                 const orderData = {
                     client_id: parseInt(clientId),
-                    billing_entity_id: document.getElementById('billingEntity')?.value ? parseInt(document.getElementById('billingEntity').value) : undefined,
                     delivery_date: document.getElementById('deliveryDate').value,
                     priority: document.getElementById('priority').value,
                     reception_location: document.getElementById('receptionLocation').value,

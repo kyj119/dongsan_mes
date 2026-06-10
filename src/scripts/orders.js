@@ -831,6 +831,37 @@ function buildCostSummary(items, order) {
   </div>`;
 }
 
+// split billing P2: 청구 법인 분할 요약(혼합주문만). 품목 담당법인별 청구그룹을 금액·상태와 함께 표시.
+function buildBillingGroupsSection(order) {
+  var groups = order.billing_groups || [];
+  if (groups.length <= 1) return '';  // 단일 청구법인은 총액 표시로 충분 → 분할 섹션 생략
+  var rows = groups.map(function(g) {
+    var nm = g.entity_short_name || g.entity_name || ('법인 ' + g.entity_id);
+    var st = g.billing_status === 'PAID'
+      ? '<span class="px-2 py-0.5 rounded text-xs bg-green-50 text-green-700">수금완료</span>'
+      : g.billing_status === 'BILLED'
+        ? '<span class="px-2 py-0.5 rounded text-xs bg-blue-50 text-blue-700">회계반영</span>'
+        : '<span class="px-2 py-0.5 rounded text-xs bg-gray-100 text-gray-500">미청구</span>';
+    return '<tr class="border-b border-gray-100">'
+      + '<td class="px-3 py-1.5 text-sm font-medium">' + escapeHtml(nm) + '</td>'
+      + '<td class="px-3 py-1.5 text-sm text-right tabular-nums">' + (g.supply_amount || 0).toLocaleString() + '원</td>'
+      + '<td class="px-3 py-1.5 text-sm text-right tabular-nums">' + (g.tax_amount || 0).toLocaleString() + '원</td>'
+      + '<td class="px-3 py-1.5 text-sm text-right tabular-nums font-semibold">' + (g.billed_amount || 0).toLocaleString() + '원</td>'
+      + '<td class="px-3 py-1.5 text-center">' + st + '</td>'
+      + '</tr>';
+  }).join('');
+  return '<div class="mt-6 mb-2">'
+    + '<h3 class="text-sm font-bold text-gray-600 mb-2"><i class="fas fa-building mr-1 text-blue-500"></i>청구 법인 분할 <span class="font-normal text-gray-400">(' + groups.length + '개 법인 — 품목 담당 기준)</span></h3>'
+    + '<div class="overflow-x-auto border border-gray-200 rounded">'
+    + '<table class="w-full text-sm ds-table-striped"><thead class="bg-gray-50"><tr>'
+    + '<th class="px-3 py-1.5 text-left text-xs font-medium text-gray-500">청구 법인</th>'
+    + '<th class="px-3 py-1.5 text-right text-xs font-medium text-gray-500">공급가</th>'
+    + '<th class="px-3 py-1.5 text-right text-xs font-medium text-gray-500">세액</th>'
+    + '<th class="px-3 py-1.5 text-right text-xs font-medium text-gray-500">청구금액</th>'
+    + '<th class="px-3 py-1.5 text-center text-xs font-medium text-gray-500">상태</th>'
+    + '</tr></thead><tbody>' + rows + '</tbody></table></div></div>';
+}
+
 function showOrderModal(order, cards, autoJobs) {
   cards = cards || [];
   autoJobs = autoJobs || [];
@@ -918,6 +949,7 @@ function showOrderModal(order, cards, autoJobs) {
               <div class="text-xl font-bold text-gray-700"><span>총 금액:</span> <span>${order.final_amount?.toLocaleString() || 0}원</span></div>
             </div>
           </div>
+          ${buildBillingGroupsSection(order)}
           <div id="orderTimeline_${order.id}" class="mt-6 border-t pt-4">
             <h3 class="text-sm font-bold text-gray-600 mb-2"><i class="fas fa-history mr-1"></i>상태 이력</h3>
             <div class="ds-skeleton ds-skeleton-text" style="width:60%"></div>

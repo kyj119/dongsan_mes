@@ -97,15 +97,7 @@
                 axios.get('/api/auth/entities').then(function(res) {
                     if (!res.data || !res.data.success) return;
                     window.__entities = res.data.data || [];
-                    var be = document.getElementById('billingEntity');
-                    if (be) {
-                        var opts = '<option value="">자동 (내 법인)</option>';
-                        window.__entities.forEach(function(e) {
-                            var nm = window.escapeHtml ? window.escapeHtml(e.short_name || e.name) : (e.short_name || e.name);
-                            opts += '<option value="' + e.id + '">' + nm + '</option>';
-                        });
-                        be.innerHTML = opts;
-                    }
+                    // split billing P2: 주문 레벨 '청구 법인' 셀렉트 폐기 → 품목 담당별 도출 표시(updateBillingHint)
                     // entities 로드 전 생성된 품목 행의 담당 셀렉트 갱신 (첫 행 타이밍 대응)
                     var assignOpts = '<option value="">자동</option>';
                     window.__entities.forEach(function(e) {
@@ -117,6 +109,7 @@
                         sel.innerHTML = assignOpts;
                         if (cur) sel.value = cur;
                     });
+                    if (window.updateBillingHint) window.updateBillingHint();
                 }).catch(function() {});
             })();
 
