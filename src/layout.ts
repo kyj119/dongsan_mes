@@ -5,7 +5,10 @@ import { STATUS_LABELS_JS } from './utils/statusLabels'
 import { sidebarHTML } from './layout/sidebar'
 import { topBarHTML } from './layout/topbar'
 import { SHARED_CSS } from './layout/shared-styles'
-import SHARED_AUTH_JS from './scripts/layout/shell.js?raw'
+import { ASSET_MANIFEST } from './generated/asset-manifest'
+
+// 정적 에셋 URL 헬퍼 (해시 파일명 → 불변 캐시). manifest = scripts/build-assets.mjs 생성
+const assetUrl = (name: keyof typeof ASSET_MANIFEST) => `/static/${ASSET_MANIFEST[name]}`
 
 interface AppLayoutOptions {
   title: string
@@ -176,8 +179,8 @@ export function appLayout(opts: AppLayoutOptions): string {
     </div>
     <script>
 ${STATUS_LABELS_JS}
-${SHARED_AUTH_JS}
     </script>
+    <script src="${assetUrl('shell')}"></script>
     <script>
 // === Global ESC key handler ===
 document.addEventListener('keydown', function(e) {
