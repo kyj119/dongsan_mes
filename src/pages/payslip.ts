@@ -193,6 +193,14 @@ export function payslipPage(c: Context<HonoEnv>) {
       return (parseInt(n) || 0).toLocaleString('ko-KR');
     }
 
+    // 독립 HTML 페이지(전역 escapeHtml 없음) — 직원 마스터 free-text의 XSS 방지
+    function esc(s) {
+      if (s == null) return '';
+      return String(s).replace(/[&<>"']/g, function(ch) {
+        return ch === '&' ? '&amp;' : ch === '<' ? '&lt;' : ch === '>' ? '&gt;' : ch === '"' ? '&quot;' : '&#39;';
+      });
+    }
+
     function renderSlip(p) {
       var allowTotal = (parseInt(p.overtime_pay || 0) + parseInt(p.night_pay || 0) + parseInt(p.holiday_pay || 0) +
         parseInt(p.meal_allowance || 0) + parseInt(p.transportation_allowance || 0) + parseInt(p.other_allowance || 0) +
@@ -240,10 +248,10 @@ export function payslipPage(c: Context<HonoEnv>) {
           '<div class="slip-company">동산기획</div>' +
         '</div>' +
         '<div class="slip-meta">' +
-          '<div class="meta-row"><div class="meta-label">사번</div><div class="meta-value">' + (p.employee_code || '-') + '</div></div>' +
-          '<div class="meta-row"><div class="meta-label">성명</div><div class="meta-value">' + (p.employee_name || '-') + '</div></div>' +
-          '<div class="meta-row"><div class="meta-label">부서</div><div class="meta-value">' + (p.department || '-') + '</div></div>' +
-          '<div class="meta-row"><div class="meta-label">직책</div><div class="meta-value">' + (p.position || '-') + '</div></div>' +
+          '<div class="meta-row"><div class="meta-label">사번</div><div class="meta-value">' + esc(p.employee_code || '-') + '</div></div>' +
+          '<div class="meta-row"><div class="meta-label">성명</div><div class="meta-value">' + esc(p.employee_name || '-') + '</div></div>' +
+          '<div class="meta-row"><div class="meta-label">부서</div><div class="meta-value">' + esc(p.department || '-') + '</div></div>' +
+          '<div class="meta-row"><div class="meta-label">직책</div><div class="meta-value">' + esc(p.position || '-') + '</div></div>' +
         '</div>' +
         '<div class="slip-grid">' +
           '<div>' +
