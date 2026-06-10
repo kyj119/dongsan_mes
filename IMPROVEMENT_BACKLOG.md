@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 3 -->
-<!-- last_run_at: 2026-06-10T10:00:00+09:00 -->
+<!-- last_run_area: 4 -->
+<!-- last_run_at: 2026-06-10T14:00:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,12 +8,24 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | 7 (open auto-improve **실측 06-10T10:00** — 신규 #380(Area 3 대시보드 납기준수율 KPI 부정확 MED) + #377(Area 2 AI auto_process_jobs `items.name` 컬럼오류 HIGH)·#378(Area 2 출고알림톡 일괄발송 실패 오보고 MED)·#379(Area 2 printSystem N+1) + 기존 #374·#373·#372) |
+| 🆕 new | 7 (open auto-improve **실측 06-10T14:00 무변동** — #380·#379·#378·#377·#374·#373·#372. Area 4 사이클 net-new 0건, close 0건) |
 | ✅ approved | 0 (직전 approved #342/#340 모두 done 확정·이관 — Area 6 검증 완료) |
 | 👀 reviewed | 0 |
 | ✔️ done | 78 (61 + **06-09 신규 close 17건 전부 done 확정**: #336/#340/#341/#342/#350/#358/#359/#360/#361/#362/#363/#364/#365/#366/#367/#368/#369 — commit 증거+close 코멘트 전수 검증, rejected 0건) |
 | ❌ rejected | 3 |
 
+> **Area 4 데이터 정합성 (2026-06-10T14:00):**
+> - **방법**: ground-truth — 301 마이그레이션 로컬 D1(node:sqlite) 전량 적용(**FAIL 0**, 171테이블/510인덱스) + baseline `npm ci`+`tsc --noEmit` PASS. Area 4 **9회차** — 기존 각도(마이그·CHECK↔코드·정역대칭·FK·트리거·비원자고아·dead table·UTC/KST·entity_id DEFAULT·크로스테이블 상태머신#373) 성숙 → **시의성**(방금 랜딩된 bb7bec6 "N+1 8파일 db.batch/IN화 + 청구 NULL 가드") + **신선 3각도**(NULL 비교 가드·소프트삭제 부모↔활성자식·denorm drift 재확인) 병렬 Explore 2개. 발견 전수 owner 직접 코드 검증.
+> - **🟢 net-new 0건 — bb7bec6 시의성 타깃 clean + 3각도 clean**:
+>   - **시의성: bb7bec6 batch 재작성 = clean(회귀 0)**. ① **billing_status NULL 가드 수정 정확**: `orders/queries.ts:171`·`taxInvoices.ts:298`의 `billing_status != 'BILLED'` → `IS NOT 'BILLED'`(SQLite `IS NOT <리터럴>`은 NULL도 매칭) = 선재 이중청구 버그(NULL=청구전 정상상태가 가드 미통과 → 매 bulk-bill마다 balance 증액) **정상 수정**. ② **빈 배열 IN() 가드 전수 존재**(core.ts:1396·purchaseInvoices.ts:162·rip.ts:1708·quotations.ts:314). ③ **IN()/batch 결과 매핑 정합**(convert-to-order 별도 카운트 배열·rip send-items-bulk·purchaseInvoices in-loop 맵 갱신로 SELECT-after-UPDATE 보존).
+>   - **🚫 서브에이전트 HIGH 2건 오탐 차단 (owner 직접 코드 반증)**: Explore가 `orders/core.ts:2206-2281`·`quotations.ts:273-320`의 부모-자식 2-pass batch에서 "`parentStmts.push`는 자식 continue로 건너뛰는데 `parentClientGroupIds.push`는 무조건 실행 → 배열 길이 불일치 → 자식이 잘못된 부모 매핑(HIGH 데이터손상)"으로 보고. **반증**: 두 push(`core.ts:2240`/`2273`, `quotations.ts:288`/`310`)가 **같은 루프 안 같은 `if(parent_client_id) continue`(2209/275, 루프 최상단) 뒤**에 위치 → 자식 행은 continue로 **둘 다** 건너뜀 → 두 배열 길이 동일(=부모 수) → `parentResults[i]` 인덱스 정합. 에이전트가 continue 위치를 오독(2273 push를 무조건으로 착각). → **드롭**(탐지규칙 codify).
+>   - **NULL 비교 가드(각도 A) — 잔여 0건**: bb7bec6 2곳 외 NULL 비교 필요 경로 무. `accounts-receivable.ts:2020`=`(billing_status IS NULL OR != 'BILLED')` 명시 처리·`inventory.ts:356`=status NOT NULL DEFAULT라 무관.
+>   - **소프트삭제 부모↔활성자식(각도 B) — clean**: `clients.ts:1009` 거래처 soft-delete 전 `COUNT(orders WHERE client_id)` 체크로 활성 자식 있으면 차단 → 고아 활성자식 불가.
+>   - **denorm drift(각도 C) — clean(재확인)**: order_items·purchase_order_items·inventory_receipt_items 모두 **개별 PATCH/DELETE 엔드포인트 부재**, PUT 전체재구성만 → 부모 합계 항상 재계산. inspection-decision은 상태만 변경(수량 불변).
+>   - **CHECK↔status 쓰기(독립 점검) — clean**: orders `COMPLETED`=CHECK 미포함+쓰기경로 0건(읽기측 dead, #380 코멘트 기확인). cards 단일축(0298) 정합 — `lifecycle.ts:593` PRINT_ERROR는 status 유지+`rip_status='ERROR'`만 씀(0298 의도 일치). `rip.ts:1638`·`printEvents.ts:250`의 `RIP_WAITING` 참조=0298 후 쓰기경로 무→절대 매칭 안 되는 dead read-term(무해 cosmetic).
+> - **이상 없음**: 마이그레이션 301 FAIL 0, 트리거 0개. open auto-improve 실측 7건(#380/#379/#378/#377/#374/#373/#372) stats 정합. baseline PASS.
+> - 자동 수정 0건(net-new 없음), 신규 이슈 0건, bb7bec6 시의성 clean 검증, **서브에이전트 HIGH 오탐 2건 차단**(배열 인덱스 정렬 오독), 3각도 clean, 탐지규칙 강화 1건
+>
 > **Area 3 UX/기능 감사 (2026-06-10T10:00):**
 > - **방법**: baseline `npm ci`+`tsc --noEmit` PASS + build PASS(exit 0). Area 3 **8회차** — 기존 각도(dead-filter·하드캡·getElementById silent-fail·catch-UX·CSV누락#372·confirm·변경후갱신·폼검증·journey·검색범위·날짜/상태필터·정렬·빈상태) 성숙 → **덜 다룬 2각도** 병렬 Explore: (A)대시보드 KPI 실질가치(SKILL 고가치 명시) (B)리스트 페이지네이션 완전성+로딩상태. 발견 전수 owner 직접 코드 검증(shipped_at 컬럼 ground-truth·멱등성·updated_at 갱신경로).
 > - **🟡 신규 이슈 #380 (MED bug) — 대시보드 납기 준수율 KPI 2중 결함**: 상단 카드 항상노출(`pages/dashboard.ts:79`) on_time_rate(`routes/dashboard.ts:54-58`)가 ① **`orders.updated_at`을 출고일 프록시로 사용** — orders엔 `shipped_at` 컬럼 자체 없음(실제 출고일=`cards.shipped_at` 0041·`shipments.shipped_at` 0052, grep 전수). updated_at은 모든 수정 시 갱신 → 정시출고 주문을 며칠 뒤 회계반영(`PATCH /:id/billing-status` `core.ts:613`이 updated_at 갱신, bulkBillingConfirm이 SHIPPED 대상=실무 흔함)하면 `date(updated_at)>delivery_date`→**"지연" 오집계**(과소집계 방향). ② **분모 `status IN ('SHIPPED')`가 COMPLETED 주문 제외**(출고 후 완료전이=`orders.js:137`) → 표본 편향. 리포팅 전용(트랜잭션 손상 아님) MED. **자동수정 안 함**(KPI 계산식=비즈니스 로직: 출고일 권위소스·부분출고 기준·월 귀속 owner 판단 + egress 검증불가). 수정=출고일을 cards/shipments.shipped_at에서 산출 + 분모 COMPLETED 포함.
