@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 1 -->
-<!-- last_run_at: 2026-06-10T02:00:00+09:00 -->
+<!-- last_run_area: 2 -->
+<!-- last_run_at: 2026-06-10T06:00:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,12 +8,21 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | 3 (open auto-improve **실측 06-10T02:00** — #374(Area 1 smoke 로그인 재시도)·#373(Area 4 입고검수 PO롤백)·#372(Area 3 CSV truncation)) |
+| 🆕 new | 6 (open auto-improve **실측 06-10T06:00** — 신규 #377(Area 2 AI auto_process_jobs `items.name` 컬럼오류 HIGH)·#378(Area 2 출고알림톡 일괄발송 실패 오보고 MED)·#379(Area 2 printSystem N+1) + 기존 #374·#373·#372) |
 | ✅ approved | 0 (직전 approved #342/#340 모두 done 확정·이관 — Area 6 검증 완료) |
 | 👀 reviewed | 0 |
 | ✔️ done | 78 (61 + **06-09 신규 close 17건 전부 done 확정**: #336/#340/#341/#342/#350/#358/#359/#360/#361/#362/#363/#364/#365/#366/#367/#368/#369 — commit 증거+close 코멘트 전수 검증, rejected 0건) |
 | ❌ rejected | 3 |
 
+> **Area 2 코드 품질 (2026-06-10T06:00):**
+> - **방법**: baseline `npm ci`+`tsc --noEmit` PASS + build PASS(366 modules, _worker.js 5.07MB). Area 2 **9회차** — 기존 각도(IDOR 비대칭·N+1 #341/#350·entity_id·best-effort catch·트랜잭션 원자성 #369·금액·API계약) 성숙 → **시의성**(최근 churn 큰 알림톡/SMS 통합, barobillSms.ts 4커밋) + **신선 스캔**(entity_id INSERT·N+1·authMiddleware) 병렬 Explore 2개. 발견 전수 owner 직접 코드 검증(컬럼 ground-truth·도달성·catch 흐름).
+> - **🔴 신규 이슈 #377 (HIGH bug) — AI 주문 자동가공 `auto_process_jobs` 생성 전체 침묵 실패**: `orders/core.ts:1489` `SELECT name FROM items`가 **존재하지 않는 컬럼** 조회(items 컬럼=`item_name`, ground-truth migrations 전수 — `name` ADD/RENAME 0건, 같은 파일 `:1071`/`:2200`은 `item_name` 사용). SQLite/D1에서 매 실행 `no such column` throw → **try(`:1435`)/catch(`:1527` best-effort console.error)** 안이라 루프 첫 반복에서 탈출 → `auto_process_jobs` INSERT(`:1509`) **전혀 미실행** + 주문은 정상생성(에러 무표시). `aiAnalysisId`(`:890`) 있는 모든 AI 디자인 주문에서 일러스트레이터 자동가공 파이프라인 침묵 실패. 파일분할(06-05) 이전부터 잔존(최근 회귀 아님). **자동수정 안 함**(컬럼 수정 시 휴면 자동화 파이프라인이 프로덕션 활성화=되돌리기 어려운 외부영향 + egress 차단으로 다운스트림 IA자동화 검증 불가). 수정=`item_name` + 루프 전 N+1 배치(IN 1쿼리).
+> - **🟡 신규 이슈 #378 (MED bug, 시의성) — 출고 알림톡 일괄발송 부분/전체 실패를 "N건 발송 완료"로 오보고**: `kakao.ts:923 POST /send-shipment-bulk` 응답이 **`status`/실패건수 누락** + `sent_count=targets.length`(성공 수 아님). `interpretBulkResult`(`barobillSms.ts:401`)는 ok/fail을 알지만 라우트가 안 내려보냄 → 프론트(`shipments.js:981`)가 무조건 `success` 토스트. 부분 실패(10중 5)·전량 실패(바로빌 오류코드는 throw 아님) 모두 "10건 발송 완료" 녹색 표시 → 고객 미통지 + 운영자 무인지. 대조: 단건 `/send`(`:355`)·`/send-sms-bulk`(`:909`)는 `status` 포함=정상, **shipment-bulk만 누락**=회귀. **자동수정 안 함**(API 응답형식+프론트 UX 변경 + egress 발송검증 불가). 수정=interpretBulkResult ok/fail 명시반환 + 응답 fail_count/status + 프론트 분기.
+> - **🔵 신규 이슈 #379 (improvement, small) — printSystem N+1 2곳**: `/media/bulk`(`:650-669` 2중루프, createdItems×createdRM 건별 SELECT — media id 이미 메모리 보유라 재조회 불요)·`/repair-links`(`:1157-1197` 3중 N+1, products×materials, ~3000쿼리). setup/repair 저빈도라 LOW. **자동수정 안 함**(batch+JOIN 매칭 시맨틱 변경 검증불가, 저빈도 급성도 낮음). 수정=메모리 매칭+`DB.batch()`.
+> - **🔵 clean 검증**: ① **entity_id INSERT** routes 전수+ground-truth — clean(`items`는 법인공유 entity_id 무, 0267 주석 확인 → printSystem items INSERT 정상). ② **authMiddleware** 마운트 라우터 전수 clean(공개 엔드포인트만 무인증). ③ **cards/queries.ts** 커밋 67a5248 urgency 필터(date() 제거→반개구간) 로직 정확·인덱스 개선=정상. ④ 알림톡 단건/SMS-bulk·중복발송 가드(1955cb7)·템플릿 자동선택·entity_id 격리(`kakao.ts:1022`)=clean.
+> - **이상 없음**: open auto-improve **6건**(#377/#378/#379/#374/#373/#372) stats 정합. baseline PASS.
+> - 자동 수정 0건(전부 동작변경/외부영향·검증불가), 신규 이슈 3건(#377 HIGH·#378 MED·#379 small), clean 4각도
+>
 > **Area 1 프로덕션 헬스 (2026-06-10T02:00):**
 > - **방법**: GitHub Actions 최근 30런(actions_list, total 467) 분석 + 로컬 `npm ci`+`tsc --noEmit`+build + 실패 런 잡 로그 실측. egress는 이번엔 **000**(연결 자체 차단, 직전 403에서 악화 — 샌드박스 IP 네트워크 차단)이라 직접 20-API 호출 불가, Actions/스모크/E2E를 헬스 신호로 사용.
 > - **🟡 신규 이슈 #374 (improvement, small) — 배포 스모크 로그인 단일 시도(재시도 부재)로 cold-start 일시 500이 deploy 게이트 파손**: 최신 **Deploy 27219723469**(HEAD `0fef951`, 06-09T16:13)가 failure — post-deploy `scripts/smoke.cjs:202` `login()`이 **1회 fetch 후 5xx 즉시 throw**, 프로덕션 cold-start D1에서 login(`auth.ts:20`→`:78` catch가 500 변환) 일시 500을 흡수 못 함. `0fef951`은 **docs-only 커밋**(BACKLOG.md만)이라 직전 통과 `9bf1cb2`와 백엔드 **byte-identical** = 코드 회귀 불가. **자가검증**: 같은 커밋 **3h 후 Daily D1 Backup(27229599620, 19:12)=success** → D1·worker 정상, 500은 1회성 transient. 동반 **E2E(27219818172) skipped**(deploy 게이트로 커버리지 손실). cold-start transient가 CI 게이트 깬 **2번째**(직전 E2E #189/#340). 수정: login에 bounded 재시도(5xx/연결오류 2~3회 backoff) 또는 health warm-up ping. **자동수정 안 함**(deploy 게이트 관용성=owner 정책 + egress 차단 검증 불가, #340과 별개 파일·단계).
