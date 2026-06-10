@@ -517,7 +517,7 @@ ${capsSettingsScript}
             <h3 class="text-lg font-bold text-gray-800 mb-4"><i class="fas fa-plug mr-2 text-blue-500"></i>바로빌 연동 상태</h3>
             <div class="space-y-3">
               <div class="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
-                <span id="msgBarobillIcon" class="text-lg">⏳</span>
+                <span id="msgBarobillIcon" class="text-lg"><i class="fas fa-spinner fa-spin text-gray-400"></i></span>
                 <div class="flex-1">
                   <div class="text-sm font-medium" id="msgBarobillText">확인 중...</div>
                   <div class="text-xs text-gray-400" id="msgBarobillDetail"></div>
