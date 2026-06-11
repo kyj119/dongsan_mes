@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 1 -->
-<!-- last_run_at: 2026-06-11T08:30:00+09:00 -->
+<!-- last_run_area: 2 -->
+<!-- last_run_at: 2026-06-11T12:00:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,14 +8,23 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | 10 (open auto-improve **실측 06-11T08:30 Area 1** — #383·#382·#381·#380·#379·#378·#377·#374·#373·#372. 02:00 8건 + #382(04:09)·#383(08:30) 2건 신규. ⚠️ #377·#378은 코드 수정 머지됨(eadba44/9be309d)이나 GitHub 이슈 open 잔류 → 차기 Area 6 close 동기화 필요) |
+| 🆕 new | 11 (open auto-improve **실측 06-11T12:00 Area 2** — #385·#384(신규 2건)·#383·#382·#381·#380·#379·#378·#377·#374·#373. ⚠️ #377·#378은 코드 수정 머지됨(eadba44/9be309d)이나 GitHub 이슈 open 잔류 → 차기 Area 6 close 동기화 필요. #372는 owner 피드백 수신 → reviewed로 이동) |
 | ✅ approved | 0 (직전 approved #342/#340 모두 done 확정·이관 — Area 6 검증 완료) |
-| 👀 reviewed | 0 |
+| 👀 reviewed | 1 (#372 CSV truncation — owner 코멘트 "3번으로 진행, 최대 5000 제한" 06-11T00:25. ⚠️**모호**: #372 3번=페이지네이션 스트리밍(전량)인데 "5000 제한 유지"와 모순 → 구현 전 의도 확인 필요. 승인처리 워크플로우 대상) |
 | ✔️ done | 78 (61 + **06-09 신규 close 17건 전부 done 확정**: #336/#340/#341/#342/#350/#358/#359/#360/#361/#362/#363/#364/#365/#366/#367/#368/#369 — commit 증거+close 코멘트 전수 검증, rejected 0건) |
 | ❌ rejected | 3 |
 
 > 📦 **과거 사이클 로그**(아래 6블록 이전분)는 `IMPROVEMENT_BACKLOG_ARCHIVE.md`로 이관됨 (2026-06-10 정리). 신규 로그는 계속 이 파일 상단에 추가.
 
+> **Area 2 코드 품질 (2026-06-11T12:00):**
+> - **방법**: baseline `npm ci`+`tsc --noEmit` PASS + build PASS(369 modules, _worker.js 5.10MB). Area 2 **10회차** — 시의성(최근 churn: cashflow CARD_EXPECTED f449797·kakao 알림톡 Phase2 1de61d1·split billing P4/P5·workbench 신규 b0df71c) + 전수 스캔(entity_id INSERT·존재X 컬럼·N+1·authMiddleware) 병렬 Explore 2개. 발견 전수 owner 직접 코드 검증 + **node:sqlite empirical 재현**.
+> - **🔧 자동수정 1건 (A-017, 커밋 본 사이클) — workbench.ts 존재하지 않는 컬럼 `cl.name` 3곳**: `src/routes/workbench.ts:22/28/56`이 `cl.name`(clients alias) 참조 — clients 테이블은 `client_name`만 보유(0001:45, `ALTER ... ADD name` 0건 ground-truth). 매 호출 `no such column: cl.name` throw → 신규 workbench 시안검수 페이지(b0df71c, 06-11) 주문목록/검색 **전체 500**. **안전 자동수정 판정**(↔#377 대비): read-only SELECT, 외부 자동화 트리거 無, 응답 alias 이미 `as client_name`이라 형식 불변, entity 귀속·쓰기 시맨틱 무관 = 순수 read 오타. verify PASS(tsc clean + build 369). #377(items.name)·#384(cards.entity_id)와 동일 컬럼오타 클래스나 부작용 없어 직접 수정.
+> - **🔴 신규 이슈 #384 (HIGH bug) — printEvents.ts `SELECT entity_id FROM cards` 5곳, cards엔 `requesting_entity_id`만**: `printEvents.ts:32/174/177/280/477`이 존재X 컬럼 조회(0150:15 cards만 requesting_entity_id, 0284 재생성·인덱스도 동일, entity_id ADD 0건). **node:sqlite empirical**: NULL 반환 아니라 **`no such column` throw**(COALESCE도 prepare 단계라 못 막음 — 에이전트 "NULL→1" 보고 정정). 영향: cardId 매칭 성공(정상 경로) 시 280/477 throw→라우트 catch→**print_events 기록 500**, 174/177→print_file_map 등록 500, 32→quality_issues 침묵 미생성(#377형). throw 안 나는 경로(cardId NULL)는 entity 1 고정=법인2 인쇄 오귀속. **자동수정 안 함**(↔workbench): 멀티테넌시 entity 쓰기 시맨틱 변경 + quality_issues dormant write 활성화(#377형) + requesting_entity_id NULL 유도정책(order entity fallback?)=비즈니스 로직 + LogWatcher 외부연동 egress 검증불가.
+> - **🟡 신규 이슈 #385 (LOW-MED bug, 시의성) — 출고 알림톡 품목요약 card_id 경유 단일조인**: `kakao.ts:459-463`(알림톡 Phase2)이 shipment_items를 `card_id→cards→order_item_id`로만 조인 → 주문단위 출고(card_id NULL, 0052:41 주석) 행 품목명 누락 → "제품" 폴백 발송. shipment_items는 card_id/order_item_id 양 경로 보유(카드출고=card_id만, 주문단위=order_item_id). 같은 코드베이스 `shipments.ts:324`는 직접 경로도 사용=혼재. 수정=COALESCE 양 경로. **자동수정 안 함**(쿼리 시맨틱 변경 + 발송 egress 검증불가).
+> - **🔵 clean 검증**: ① **entity_id INSERT** 98개 INSERT 전수+ground-truth clean(orders/PO/quotations/taxInvoices/production/payroll/attendance 전부 entity_id 또는 requesting_entity_id 주입. items·*_status_history·*_report_details는 FK 유추 공유테이블=정상 면제). ② **authMiddleware** workbench(`:10` authMiddleware+requireRole) 포함 마운트 라우터 clean(공개=의도). ③ **cashflowEngine.ts:212-217** Promise.all 일괄조회=N+1 無. ④ **split billing** order_billing_groups entity_id 필수컬럼 보유. ⑤ kakao_send_logs entity_id=0261 ALTER 존재.
+> - **이상 없음**: open auto-improve **11건**(#373~#385, #372는 reviewed 이동) stats 정합. baseline PASS.
+> - 자동 수정 1건(A-017 workbench cl.name, verify PASS), 신규 이슈 2건(#384 HIGH·#385 LOW-MED), clean 5각도, **node:sqlite empirical로 throw vs NULL 정정**, #372 owner 피드백 reviewed 반영
+>
 > **Area 1 프로덕션 헬스 (2026-06-11T08:30):**
 > - **방법**: GitHub Actions 최근 30런(total 508) 분석 + 실패 잡 로그 실측 + 로컬 `npm ci`+`tsc --noEmit`+build PASS. egress **000**(샌드박스 IP 차단, `curl mes.dongsanplan.com/api/health`·`/`=000) → 직접 20-API 호출 불가, E2E의 라이브 prod API 응답형식 테스트(cards-api/dashboard/report-routes/quotations)를 헬스 신호로 사용.
 > - **🟢 현재 파이프라인 green (최근 5 E2E 연속 success)**: HEAD `dce9f50`(E2E 27326697277)·`20f0690`·`8d7009f`·`51c207b`·`24bb493` 전부 success. Deploy 동일 success. build PASS(366 modules, _worker.js 5.07MB raw, 유료 10MB 대비 ~10% 헤드룸).
@@ -103,14 +112,21 @@
 >
 ## ✅ Approved / 👀 Reviewed (owner 피드백 수신)
 
-> **비어 있음** — 직전 approved 2건(#340 I-030·#342 I-032)은 06-09 구현·close 완료 → Done 표 이관(Area 6 06-09T22:00).
+> **👀 Reviewed 1건 (owner 피드백 수신, 미구현)**:
+> | ID | 제목 | 영역 | Issue | owner 피드백 |
+> |----|------|------|-------|------|
+> | I-060 | [improvement] CSV export 5곳 `LIMIT 5000` 무경고 silent truncation — 정산/감사 다운로드 불완전 가능 | Area 3 | #372 | "3번으로 진행해줘 최대 페이지 표시수량을 5000으로 제한하고 사실상 5000을 넘는 경우는 많이 없을것 같은대"(06-11T00:25). ⚠️**모호**: #372 옵션3=페이지네이션 스트리밍(전량 다운로드)인데 "5000 제한 유지"와 모순 → 구현 전 owner에게 의도 확인 필요(옵션1 잘림경고 + 5000 유지를 뜻하는 듯). 승인처리 워크플로우에서 처리. |
+>
+> (이전 approved 2건 #340 I-030·#342 I-032은 06-09 구현·close 완료 → Done 표 이관, Area 6 06-09T22:00.)
 
 ## 🆕 New (미검토)
 
-> 전부 GitHub open + 👍 미수신. 용준님 리뷰 대기. (open **실측 10건** — 2026-06-11T08:30 Area 1. 02:00 8건 + #382·#383 2건 보충)
+> 전부 GitHub open + 👍 미수신. 용준님 리뷰 대기. (open **실측 11건** — 2026-06-11T12:00 Area 2. #384·#385 신규 2건 + #372는 reviewed 이동)
 
 | ID | 제목 | 영역 | Issue | 공수 |
 |----|------|------|-------|------|
+| I-071 | [HIGH bug] printEvents.ts `SELECT entity_id FROM cards` 5곳 — cards엔 `requesting_entity_id`만(존재X 컬럼). node:sqlite empirical=`no such column` **throw**(NULL 아님). cardId 매칭 성공 시 print_events/print_file_map 기록 500 + quality_issues 침묵 미생성 + 미throw경로 entity 1 고정(법인 오귀속). #377/workbench와 동일 컬럼오타 클래스 | Area 2 | #384 | ~1h |
+| I-070 | [LOW-MED bug] 출고 알림톡 품목요약 card_id 경유 단일조인 — `kakao.ts:459` shipment_items를 card_id→cards→order_item_id로만 조인 → 주문단위 출고(card_id NULL) 품목명 누락 "제품" 폴백. 수정=COALESCE 양 경로 | Area 2 | #385 | ~30m |
 | I-069 | [improvement] shell.js 정적에셋 외부화 **불완전 revert** — 런타임은 `layout.ts:181` `?raw` 인라인 복귀(prod green)인데 `build-assets.mjs`가 매 빌드마다 dead `/static/shell.<hash>.js`(소비처 0)·미사용 `ASSET_MANIFEST`(import 0) 생성 = 재외부화 오배선 시 MIME 2회다운 재현 트랩. #382(게이트 방어)의 보완(트랩 제거) | Area 1 | #383 | ~30m |
 | I-068 | [improvement] 배포 게이트 `smoke.cjs`는 `/api/*` 전용 — 프론트 부트스트랩/MIME 장애를 못 잡아 shell.js 2회 prod 다운이 "Deploy 성공"으로 통과(E2E만 ~5분 후 적발). smoke에 경량 프론트 단언(`/` HTML 200+text/html+셸 마커) 추가 | Area 1 | #382 | ~1h |
 | I-067 | [HIGH bug] orders 쓰기 엔드포인트 entity 격리 비대칭(IDOR) — read/delete는 격리, billing-status/cancel/PUT/bill/status/output-folder는 무필터 `WHERE id=?` → 멀티법인 MANAGER가 타법인 주문 청구/취소/balance 조작. 청구분할(72bd97e) PUT이 쓰기 증폭 | Area 5 | #381 | ~2h |
@@ -120,7 +136,6 @@
 | I-063 | [HIGH bug] AI 주문 자동가공 `auto_process_jobs` 생성 전체 침묵 실패 — `SELECT name FROM items`(존재X 컬럼, 실제=item_name) 매 실행 throw → best-effort catch가 은폐, INSERT 미실행. 수정=item_name+N+1 배치 | Area 2 | #377 | ~30m |
 | I-062 | [improvement] 배포 스모크 로그인 단일시도(재시도 부재) → cold-start 일시 500이 deploy 게이트 파손 + E2E skip. bounded 재시도 or health warm-up ping | Area 1 | #374 | ~30m |
 | I-061 | [MED bug] 입고검수 CANCELLED 시 재고만 역분개·PO status/received_quantity 미롤백 → PO 영구 RECEIVED 잔류 + 취소수량 재입고 불가(400 차단). #369(재고측)와 별개 PO측 롤백 | Area 4 | #373 | ~1.5h |
-| I-060 | [improvement] CSV export 5곳 `LIMIT 5000` 무경고 silent truncation — 정산/감사 다운로드 불완전 가능(발주목록/입고이력/검수결과/발주요청/현금일정). 잘림 감지+경고 헬퍼 1개 5곳 적용 | Area 3 | #372 | ~1.5h |
 
 > ✅ 직전 New 8건(#336·#341·#350·#358·#359·#360·#362·#363) + Approved 2건(#340·#342) + 무ID close 7건(#361·#364·#365·#366·#367·#368·#369)은 Area 6(06-09T22:00) 전수 검증 후 **17건 전부 done 확정** → Done 표 이관.
 
@@ -130,6 +145,7 @@
 
 | ID | 제목 | 커밋 | 날짜 |
 |----|------|------|------|
+| A-017 | workbench.ts 존재하지 않는 컬럼 `cl.name` 3곳(`:22/28/56`) → `cl.client_name`. clients 테이블은 `client_name`만(0001:45, `ADD name` 0건 ground-truth) → 매 호출 `no such column: cl.name` throw로 신규 workbench 시안검수 페이지(b0df71c) 주문목록/검색 전체 500. read-only SELECT + 응답 alias 이미 `as client_name`(형식 불변) + 외부효과·entity 귀속 무관 = 안전 자동수정(↔#384는 쓰기/멀티테넌시라 이슈). verify PASS(tsc clean + build 369 modules) | (이번 커밋) | 2026-06-11 |
 | A-016 | shell.js 정적에셋 prod 2회 장애 복구 — `9dd09cd` 파일럿이 shell.js를 `/static`으로 외부화했으나 CF Pages **Git 자동빌드**에서 `_routes.json`의 `/static/* 제외`가 미적용 → 워커가 `/static/shell.js`를 Content-Type 빈값('')으로 서빙 → 브라우저 strict MIME 실행거부 → `shell.js` 사망(전 페이지 axios 인증헤더/법인스위처 초기화 실패, 401+무한로딩). `144addf`의 `_headers` Content-Type 명시 시도는 자동빌드 환경서 불충분 → **최종 해결 = 인라인 `?raw` 복귀**(`/static`·`_routes.json`·빌드순서 의존 전무, 워커 +75KB 안정성 우선). (직전 세션 픽스, Area 6 기록 보충) | 24bb493 (144addf 경유) | 2026-06-11 |
 | A-015 | files.ts 업로드 R2 키 sanitize — `${folder}/${analysisId}/${file.name}` raw 조합(3요소 클라 제어, 키 인젝션) → A-013 패턴 정규화 (orphan, 동작 무변) | (이번 커밋) | 2026-06-05 |
 | A-014 | silent-fail JS 버그 3건 — HR 직원검색 `q`→`search`(핵심검색 무력) + 홈택스 페이지네이션 총건수 0(`data.total`→`pagination.total`) + 홈택스 날짜 파라미터 `start_date`→`date_from` | (이번 커밋) | 2026-06-04 |

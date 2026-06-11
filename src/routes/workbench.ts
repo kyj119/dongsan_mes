@@ -19,13 +19,13 @@ workbenchRouter.get('/orders', async (c) => {
     let where = `o.ai_analysis_id IS NOT NULL`
     const params: unknown[] = []
     if (q) {
-      where += ` AND (o.order_number LIKE ? OR cl.name LIKE ?)`
+      where += ` AND (o.order_number LIKE ? OR cl.client_name LIKE ?)`
       params.push(`%${q}%`, `%${q}%`)
     }
 
     const { results } = await c.env.DB.prepare(`
       SELECT o.id, o.order_number, o.created_at, o.status, o.ai_analysis_id,
-             cl.name as client_name,
+             cl.client_name as client_name,
              (SELECT COUNT(*) FROM order_items oi WHERE oi.order_id = o.id) as item_count,
              (SELECT COUNT(*) FROM order_items oi WHERE oi.order_id = o.id AND oi.ai_group_index IS NOT NULL) as matched_count,
              ar.status as analysis_status
@@ -53,7 +53,7 @@ workbenchRouter.get('/analyses/:orderId', async (c) => {
     const ef = orderVisibilityFilter(c, 'o')
     const order = await c.env.DB.prepare(`
       SELECT o.id, o.order_number, o.ai_analysis_id, o.ai_file_path,
-             cl.name as client_name
+             cl.client_name as client_name
       FROM orders o
       LEFT JOIN clients cl ON cl.id = o.client_id
       WHERE o.id = ?${ef.clause}
