@@ -58,8 +58,12 @@
 | `2026-06-11-hanjin-courier-decision.md` | 택배 솔루션 선정 + import 선행 확인 | 용준님 결정·외부 의존 |
 | `2026-06-11-client-self-order-portal.md` | 거래처 셀프 주문 Phase 5 골격 | brainstorming 대기 |
 | `2026-06-11-web-canvas-ia-workbench.md` | 웹 캔버스 IA 워크벤치 (뷰어·검수+시트 배치) — IA 오프셋 디버깅 대체 | 방향 확정·PoC 대기 |
-| `2026-06-03-receivables-purchase-barobill-brainstorm.md` | 미수금·매입·바로빌 설계 | 실사용 검증 단계 |
-| `2026-06-05-status-model-unification.md` · `2026-06-05-recurring-variable-expense.md` · `static-assets-migration.md` | 완료/진행 설계 원본 | 참고 |
+| `2026-06-03-receivables-purchase-barobill-brainstorm.md` | 미수금·매입·바로빌 설계 — 본체 배포 완료 | 잔여 3건 실사용 후 |
+| `2026-06-05-recurring-variable-expense.md` | 정기변동비 — P1~3 배포, P4·5 잔여 | 카드예측과 동세션 확정 |
+| `2026-06-10-split-billing-by-entity.md` (+PLAN) | 분할 청구 — P5 진행 중, P6=다법인 실거래 후 | 구현 중 (로컬) |
+| `2026-06-11-static-assets-rootcause-redesign.md` | 정적 에셋 근본원인 + 옵션 A | PoC 승인 (저우선) |
+| `2026-06-11-claude-queue-runner.md` | 작업 큐 러너 | ✅ 구축 완료 |
+| ~~`2026-06-05-status-model-unification.md`~~ · ~~`docs/design/static-assets-migration.md`~~ | 완료/무효 | → `docs/archive/`로 이동 (2026-06-11) |
 
 ### ✅ 일회성·날짜 리뷰 → `docs/archive/` 이동 완료 (2026-06-10)
 `comprehensive-review-2026-05-04.md` · `concurrency-safety-report.md` · `proposal-2026-05-01.md` · `review-10items-2026-05-01.md` · `roadmap-operator-improvements.md` · `verification-checklist-2026-05-01.md` · `verification-checklist-2026-05-02.md` · `work-order-usage-research.md`

@@ -1,6 +1,6 @@
 # 정기 변동비용(준고정비) 관리 — 설계 spec
 
-> 작성: 2026-06-05 | 상태: 설계 확정, 구현 전 (Phase 1 대기)
+> 작성: 2026-06-05 | 상태(2026-06-11 정정): **Phase 1~3 구현·배포 완료**(마이그 0299, `expenseEstimator.ts`, cashflowEngine 분기 — 커밋 8a786c4). **잔여 Phase 4(실적 정산·variance)·5(UI) = 카드예측 spec(`2026-06-11-card-cashflow-forecast.md`)과 동세션 진행 확정** — 같은 cashflowEngine·카드/은행 매칭 영역. 선행 조건: split-billing P5-continued(cashflowEngine 수정 중) 완료 후
 > 배경: 통신비·전기세처럼 매달 정기 발생하나 금액이 변동되는 비용을 "고정비처럼" 관리
 
 ## 1. 문제 정의
@@ -71,7 +71,9 @@ CREATE TABLE recurring_expense_actuals (
 | 1 | 마이그레이션 (fixed_expenses 확장 + actuals 테이블) | 1차 |
 | 2 | 추정 엔진 util (category 실적 → 추정치) | 1차 |
 | 3 | 자금예측 통합 (cashflowEngine 온더플라이 ESTIMATED 주입, **이중계산 방지**) | 1차 |
-| 4 | 추정→실적 정산 (카드/은행 매칭 시 actuals 기록 + variance) | 2차 |
+| 4 | 추정→실적 정산 (카드/은행 매칭 시 actuals 기록 + variance) + **은행 분류 키워드 부분일치 보강** | 2차 |
+
+> **Phase 4 필수 보강 (2026-06-11 용준님 케이스)**: 은행 출금처명이 가변 suffix(예: `KT1234567801`→`KT1234567802` 매달 변동)면 현행 정확일치 룰(`bank.ts:442` Map)이 매달 깨짐 → 카드의 `expense_auto_rules` 패턴(`merchant_name.includes(keyword)`)과 동일한 **키워드 부분일치**를 은행 카테고리 분류에도 적용. "KT" 룰 1개로 전 변형 자동 분류 → 정산 루프가 완전 무인화됨.
 | 5 | UI (고정비 탭 추정 항목 뱃지 + 월별 추정vs실적 추이 + 손익 집계) | 2차 |
 
 ## 7. 기존 인프라 (재활용)

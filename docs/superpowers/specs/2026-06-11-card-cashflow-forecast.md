@@ -1,7 +1,8 @@
 # 법인카드 자금 예측 — 자금 일원화 후속 백로그
 
 - **작성일**: 2026-06-11
-- **상태**: ✅ **설계 확정 (2026-06-11 용준님 결정)** — D1=가(일시불 가정, 1차) · D2=가(실적+AVG_3M 혼합) · D3=가(기존 OUT 흐름에 CARD_EXPECTED). 구현 착수 가능
+- **상태**: ✅ **설계 확정 (2026-06-11 용준님 결정)** — D1=가(일시불 가정, 1차) · D2=가(실적+AVG_3M 혼합) · D3=가(기존 OUT 흐름에 CARD_EXPECTED)
+- **세션 구성 (2026-06-11 확정)**: **정기변동비 잔여 Phase 4·5**(`2026-06-05-recurring-variable-expense.md`)와 **동세션** — 같은 cashflowEngine·매칭 영역. **선행 조건: split-billing P5-continued 완료 후** (cashflowEngine 동시 수정 충돌 방지)
 - **추가 확인(2026-06-11)**: `cutoff_day`·`payment_day`는 카드 CRUD API가 이미 사용 중(`cardExpenses.ts:63-88`, DEFAULT 15) — 스키마·UI 완비. `card_transactions.installments`도 기존재(0231)·기록 중이라 **할부 반영(D1-나)은 2차에 로직만 추가하면 됨**
 - **관련**: PROJECT_STATUS TODO ⑥, `memory/project-cashflow-unification.md`, cashflowEngine
 - **목표**: 법인카드 청구 예정액을 cashflowEngine OUT 흐름에 합성 — 자금 예측 마지막 갭

@@ -157,3 +157,6 @@ EdgeAgent/obj/
 *.tsbuildinfo
 .claude/.tsbuildinfo
 .claude/.dom-baseline
+queue/logs/
+queue/running/
+.claude/.queue-runner.lock
