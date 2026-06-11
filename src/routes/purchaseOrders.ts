@@ -15,11 +15,14 @@ import type { HonoEnv } from '../types/env'
 import poCoreRouter from './purchaseOrders/core'
 import templatesRouter from './purchaseOrders/templates'
 import stockAlertsRouter from './purchaseOrders/stock-alerts'
+import poQueriesRouter from './purchaseOrders/po-queries'
 
 const poRouter = new Hono<HonoEnv>()
 
+// 대형파일 분할: 구체 경로 서브라우터들을 core(/:id) 앞에 마운트 (섀도잉 방지).
 poRouter.route('/', templatesRouter)
 poRouter.route('/', stockAlertsRouter)
+poRouter.route('/', poQueriesRouter)
 poRouter.route('/', poCoreRouter)
 
 export default poRouter
