@@ -93,9 +93,9 @@ autoProcessRouter.post('/start', async (c) => {
     if (itemIds.length > 0) {
       const placeholders = itemIds.map(() => '?').join(', ')
       const { results: itemRows } = await c.env.DB.prepare(
-        `SELECT id, name FROM items WHERE id IN (${placeholders})`
-      ).bind(...itemIds).all<{ id: number; name: string }>()
-      itemNameMap = new Map(itemRows.map(row => [row.id, row.name]))
+        `SELECT id, item_name FROM items WHERE id IN (${placeholders})`
+      ).bind(...itemIds).all<{ id: number; item_name: string }>()
+      itemNameMap = new Map(itemRows.map(row => [row.id, row.item_name]))
     }
 
     for (const item of items.results as unknown as OrderItemRow[]) {
@@ -186,6 +186,15 @@ autoProcessRouter.post('/start', async (c) => {
 // IllustratorAutomat 폴링: 대기 중인 작업 조회
 autoProcessRouter.get('/pending', async (c) => {
   try {
+    // #377: ia_auto_enabled 플래그 게이트 (기본 OFF). OFF면 폴링 에이전트에 빈 목록 반환 → 자동가공 정지.
+    // 운영: OFF→stale pending 정리→수동 테스트 1건→ON (settings.ia_auto_enabled='1')
+    const flagRow = await c.env.DB.prepare(
+      "SELECT setting_value FROM settings WHERE setting_key = 'ia_auto_enabled'"
+    ).first<{ setting_value: string }>()
+    if (flagRow?.setting_value !== '1') {
+      return c.json({ success: true, jobs: [], gated: true })
+    }
+
     const ef = entityFilter(c, 'auto_process_jobs')
     const result = await c.env.DB.prepare(
       `SELECT id, order_id, order_item_id, source_path, product,
@@ -299,9 +308,9 @@ autoProcessRouter.post('/:id/approve', async (c) => {
 
     // 품목 대분류 조회
     const item = await c.env.DB.prepare(
-      `SELECT name, category FROM items WHERE id = ?`
-    ).bind(job.item_id).first<{ name: string; category: string | null }>()
-    const category = item?.category || item?.name || '기타'
+      `SELECT item_name, category FROM items WHERE id = ?`
+    ).bind(job.item_id).first<{ item_name: string; category: string | null }>()
+    const category = item?.category || item?.item_name || '기타'
 
     // 저장 경로 생성: Z:\[품목 대분류]\YYYY\MM\DD\주문번호\
     const now = new Date()
