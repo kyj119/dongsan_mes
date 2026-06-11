@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 2 -->
-<!-- last_run_at: 2026-06-11T12:00:00+09:00 -->
+<!-- last_run_area: 4 -->
+<!-- last_run_at: 2026-06-11T20:00:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,14 +8,34 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | 11 (open auto-improve **실측 06-11T12:00 Area 2** — #385·#384(신규 2건)·#383·#382·#381·#380·#379·#378·#377·#374·#373. ⚠️ #377·#378은 코드 수정 머지됨(eadba44/9be309d)이나 GitHub 이슈 open 잔류 → 차기 Area 6 close 동기화 필요. #372는 owner 피드백 수신 → reviewed로 이동) |
+| 🆕 new | 13 (open auto-improve **실측 06-11T20:00 Area 4** — #388·#387·#386 신규 3건 + #385·#384·#383·#382·#381·#379·#378·#377·#374·#373. ⚠️ #377·#378은 코드 수정 머지됨(eadba44/9be309d)이나 GitHub 이슈 open 잔류 → 차기 Area 6 close 동기화 필요) |
 | ✅ approved | 0 (직전 approved #342/#340 모두 done 확정·이관 — Area 6 검증 완료) |
 | 👀 reviewed | 1 (#372 CSV truncation — owner 코멘트 "3번으로 진행, 최대 5000 제한" 06-11T00:25. ⚠️**모호**: #372 3번=페이지네이션 스트리밍(전량)인데 "5000 제한 유지"와 모순 → 구현 전 의도 확인 필요. 승인처리 워크플로우 대상) |
-| ✔️ done | 78 (61 + **06-09 신규 close 17건 전부 done 확정**: #336/#340/#341/#342/#350/#358/#359/#360/#361/#362/#363/#364/#365/#366/#367/#368/#369 — commit 증거+close 코멘트 전수 검증, rejected 0건) |
+| ✔️ done | 79 (78 + **#380 done-sync**: 커밋 6b06512 `fix(dashboard): #380 — 납기 준수율 KPI 재정의`가 결함1(updated_at→COALESCE 권위 출고일)·결함2(SHIPPED→SHIPPED+COMPLETED) 모두 해소, 월귀속도 created_at→delivery_date. Area 3 직접 git 검증 후 close) |
 | ❌ rejected | 3 |
 
 > 📦 **과거 사이클 로그**(아래 6블록 이전분)는 `IMPROVEMENT_BACKLOG_ARCHIVE.md`로 이관됨 (2026-06-10 정리). 신규 로그는 계속 이 파일 상단에 추가.
 
+> **Area 4 데이터 정합성 (2026-06-11T20:00):**
+> - **방법**: ground-truth — 305 마이그레이션 로컬 D1(node:sqlite) 전량 적용(**FAIL 0**, 172테이블/515인덱스) + baseline `npm ci`+`tsc --noEmit` PASS + build PASS(383 modules, _worker.js 5.10MB). Area 4 **10회차** — 시의성(최근 churn: split billing 0305/0306 order_billing_groups·workbench 0307·ia_auto 0308·equipment_entity 0302) + 신선 각도(CHECK↔쓰기값·UTC/KST 업무일자·신규 entity_id NULL) 병렬 Explore 2개. 발견 전수 owner 직접 코드 Read 검증.
+> - **🔴 신규 이슈 #386 (MED bug) — split billing DRAFT 삭제가 obg.tax_invoice_id 미정리(cancel 경로와 비대칭)**: `createSplitInvoices`(helpers.ts:422)가 DRAFT 생성 시 그룹을 무조건 링크(tax_invoice_id=draftId, billing_status=NULL), 그런데 DRAFT 삭제(manage.ts:140-144)는 junction/items/header만 지우고 **obg.tax_invoice_id 미정리** → dangling 참조. 취소 경로(issue.ts:707)는 정확히 비움=비대칭 증거. 영향: ① issue.ts:261 재링크 `WHERE tax_invoice_id IS NULL`이 dangling 그룹 건너뜀(재링크 차단) ② orders/core.ts:427 주문상세에 phantom 계산서 노출. 재무/AR은 billing_status='BILLED' 필터라 영향 미미. **자동수정 안 함**: 재무 delete 경로 write 추가 + egress 검증불가(저위험이나 청구 데이터).
+> - **🟡 신규 이슈 #387 (MED bug) — 청구그룹 동결이 order-wide → 혼합주문 미청구 entity stale 청구**: `recalcOrderBillingGroups`(helpers.ts:60-64) freeze가 BILLED/PAID 그룹 하나라도 있으면 **전 그룹 동결**(all-or-nothing). 혼합법인 주문 부분청구 후 미청구 entity 품목 편집(PUT, update.ts:39-46이 BILLED 주문 편집 허용) 시 그 그룹 미갱신 → createSplitInvoices(helpers.ts:357)가 stale supply_amount 읽어 옛 금액 청구. order_items 합 ≠ 그룹 합. **자동수정 안 함**: 동결 불변식=비즈니스 정책(가:NULL그룹만 recalc / 나:편집 차단 / 다:경고) + 그룹합 정합 리스크 + 보수적 freeze는 문서화된 의도(helpers.ts:51).
+> - **🟡 신규 이슈 #388 (MED bug, #366 클래스) — 출고/재고 stored 업무일자 raw date('now') UTC off-by-one**: ① billable_after(shipments.ts:814·queries.ts:251, TEXT) 자동회계반영 게이트 구동 ② auto_complete_date(shipments.ts:815·queries.ts:252, TEXT) ③ inventory_fifo_layers.receipt_date(inventoryValuation.ts:105, DATE) FIFO 원가 정렬. KST 00~09시 작업분이 전일로 영구 기록(stored=자가정상화 안 됨, #366 우선순위 규칙). #366(b8d2f0d)이 처분일/order_date는 보정했으나 이 3종 미처리. **자동수정 안 함**(SKILL Area 4: 날짜 시맨틱=비즈니스 로직, 저장↔비교 양측 동시보정 선행, 잘못 보정 시 데이터 훼손).
+> - **🚫 서브에이전트 오탐 1건 차단 (group 합 검증 누락 "HIGH")**: Explore A가 createSplitInvoices에 "그룹 합 ≈ 주문 총액 검증 부재로 라운딩 누적 시 청구 불일치(55k+46k=101k≠110k)"를 HIGH 보고. **반증**: helpers.ts:85-104가 **라운딩 잔차를 마지막 그룹이 흡수**(`tax=orderVat-taxAcc`·`disc=orderDiscount-discAcc`, supply=정수 SUM) → 그룹 합 = totalSupply+orderVat-orderDiscount **항상 정확**. 에이전트 시나리오(supply 라운딩 오차)는 supply가 정수 SUM이라 발생 불가 → **드롭**(탐지규칙 codify).
+> - **🔵 clean 검증**: ① **각도 A CHECK↔쓰기값**: cards.status(0296/0298 7값) lifecycle.ts VALID_TRANSITIONS 검증+rip_status 별도축, approval type CREDIT_OVERRIDE(0300) orders/create.ts:449 정확 — 코드 쓰기 리터럴 전부 CHECK 내. ② **각도 C 신규 entity_id**: equipment(0302 getEntityId 주입)·order_billing_groups(0305 NOT NULL, 백필+명시 r.eid)·recurring_expense_actuals(0299 NOT NULL DEFAULT 1 미사용 phase) 전부 정상. ③ **Finding #1 외 split billing**: 주문삭제 obg CASCADE(core.ts:573)·발행 링크(helpers.ts:422)·2-pass batch 인덱스 정합·비례배분 잔차흡수 정확.
+> - **이상 없음**: 마이그레이션 305 FAIL 0, 트리거 0개. open auto-improve **13건**(#373~#388, #372 reviewed 별도) stats 정합. baseline PASS.
+> - 자동 수정 0건(전부 write/date 시맨틱·정책 변경=검증불가), 신규 이슈 3건(#386·#387·#388 전부 MED), 서브에이전트 오탐 1건 차단(잔차흡수 오독), clean 3각도
+>
+> **Area 3 UX/기능 감사 (2026-06-11T16:00):**
+> - **방법**: baseline `npm ci`+`tsc --noEmit` PASS + build PASS(383 modules, _worker.js 5.10MB). Area 3 **9회차** — 시의성(최근 churn: AR 원장 5분할 ar-helpers~ar-ledger·taxInvoices 4분할 queries/issue/batch/manage) + 신선 각도(분할 후 프론트↔API 정합·getElementById silent-fail·변경후갱신·빈상태·폼검증·KPI 데이터소스) 병렬 Explore 2개. 발견 전수 owner 직접 코드 검증 + git blame로 시점 확정.
+> - **🔧 자동수정 1건 (A-018, 커밋 본 사이클) — 대시보드 납기준수율 KPI 라벨 정정**: `scripts/dashboard.js:47`이 skeleton 교체 시 KPI 그리드를 `innerHTML`로 재구성하며 "이번 달 **출고 기준**"으로 노출 → 권위 서버템플릿 `pages/dashboard.ts:85`/title("**납기 기준**")과 불일치. #380 수정(6b06512) 후 메트릭이 `strftime('%Y-%m', o2.delivery_date)` = **delivery_date 기준 버킷**이므로 "납기 기준"이 정답 → JS 라벨을 권위본에 정합. **안전 자동수정 판정**: 사실-정정(메트릭 정의상 명확한 정답 존재) + 기존 권위 사본에 정렬(A-014 silent-fail 정정 클래스) + 동작/데이터 무변·텍스트만. verify PASS(tsc clean + build 383).
+> - **🟢 #380 done-sync (직접 git 검증)**: 커밋 `6b06512 fix(dashboard): #380 — 납기 준수율 KPI 재정의`가 #380 두 결함 모두 해소 확정(`git log -L`로 diff 실측). 결함1: `o2.updated_at` 단독 → `COALESCE(MAX(shipments.shipped_at), MAX(cards.shipped_at), updated_at)` 권위 출고일. 결함2: `status IN ('SHIPPED')` → `IN ('SHIPPED','COMPLETED')`. 보너스: 월귀속 `created_at`→`delivery_date`. GitHub #380 open 잔류였으나 close+코멘트 처리.
+> - **🚫 서브에이전트 오탐 1건 차단 (billable_after "누락")**: Explore A가 `orders/core.ts` GET `/`의 SELECT에 `billable_after`가 빠져 taxInvoices.js 정산대기 필터가 작동 불능(CRITICAL)이라 보고. **반증**: 해당 SELECT는 `o.*`(core.ts:32)로 시작 → orders 전 컬럼 포함, `billable_after`는 migration 0178 ALTER로 추가된 실제 컬럼이므로 `o.*`에 포함되어 정상 반환. 에이전트가 `o.*` 뒤 명시 JOIN 필드 목록만 보고 "명시 누락"으로 오독(자기모순 — 본문에 `o.*` 인용하고도 누락 주장). → **드롭**(탐지규칙 codify).
+> - **🔵 clean 검증**: ① **AR 5분할**(ar-helpers/ar-payments/ar-receivables/ar-dunning/ar-ledger) API 경로(`/api/ledger/*`)·entityFilter·빈상태 처리 프론트 정합. ② **taxInvoices 4분할** date_from/date_to/status/search 파라미터 프론트↔백엔드 매칭, 동적 element ID(accordionBody_/chevron_) 정상. ③ **변경후갱신**: orders/payments/inventory mutation 후 load/refresh 호출 정합. ④ **빈상태**(inventory/orders/approvals/insuranceReports) 메시지 보유. ⑤ **폼검증**(purchaseOrderForm/paymentRequests/inventory) 필수값·수량 검증. ⑥ ledger.js missing ID(ledgerPrintStyle/pPaymentsBody)는 동적생성=정상.
+> - **🔵 저가치 드롭**: paymentRequests/cashReceipts 스크립트는 있으나 HTML에 CSV export 버튼 없음(cashSchedule엔 있음) = 일관성 갭이나 기능결함 아님 + #372(CSV) 계열 → LOW 보류.
+> - **이상 없음**: open auto-improve **10건**(#373~#385, #380 close, #372 reviewed) stats 정합. baseline PASS.
+> - 자동 수정 1건(A-018 라벨 정정, verify PASS), 신규 이슈 0건, **#380 done-sync(git 검증 close)**, 서브에이전트 오탐 1건 차단(o.* 컬럼 포함 오독), clean 6각도
+>
 > **Area 2 코드 품질 (2026-06-11T12:00):**
 > - **방법**: baseline `npm ci`+`tsc --noEmit` PASS + build PASS(369 modules, _worker.js 5.10MB). Area 2 **10회차** — 시의성(최근 churn: cashflow CARD_EXPECTED f449797·kakao 알림톡 Phase2 1de61d1·split billing P4/P5·workbench 신규 b0df71c) + 전수 스캔(entity_id INSERT·존재X 컬럼·N+1·authMiddleware) 병렬 Explore 2개. 발견 전수 owner 직접 코드 검증 + **node:sqlite empirical 재현**.
 > - **🔧 자동수정 1건 (A-017, 커밋 본 사이클) — workbench.ts 존재하지 않는 컬럼 `cl.name` 3곳**: `src/routes/workbench.ts:22/28/56`이 `cl.name`(clients alias) 참조 — clients 테이블은 `client_name`만 보유(0001:45, `ALTER ... ADD name` 0건 ground-truth). 매 호출 `no such column: cl.name` throw → 신규 workbench 시안검수 페이지(b0df71c, 06-11) 주문목록/검색 **전체 500**. **안전 자동수정 판정**(↔#377 대비): read-only SELECT, 외부 자동화 트리거 無, 응답 alias 이미 `as client_name`이라 형식 불변, entity 귀속·쓰기 시맨틱 무관 = 순수 read 오타. verify PASS(tsc clean + build 369). #377(items.name)·#384(cards.entity_id)와 동일 컬럼오타 클래스나 부작용 없어 직접 수정.
@@ -121,16 +141,18 @@
 
 ## 🆕 New (미검토)
 
-> 전부 GitHub open + 👍 미수신. 용준님 리뷰 대기. (open **실측 11건** — 2026-06-11T12:00 Area 2. #384·#385 신규 2건 + #372는 reviewed 이동)
+> 전부 GitHub open + 👍 미수신. 용준님 리뷰 대기. (open **실측 13건** — 2026-06-11T20:00 Area 4. #386·#387·#388 신규, #372는 reviewed 별도)
 
 | ID | 제목 | 영역 | Issue | 공수 |
 |----|------|------|-------|------|
+| I-074 | [MED bug] split billing 출고/재고 stored 업무일자 raw date('now') UTC off-by-one — billable_after(shipments.ts:814·queries.ts:251)·auto_complete_date(:815/:252)·fifo receipt_date(inventoryValuation.ts:105). KST 00~09시 작업분 전일 영구기록(stored), #366(b8d2f0d)이 처분일/order_date는 보정했으나 이 3종 미처리. 회계/COGS 귀속 1일 밀림 | Area 4 | #388 | ~1h |
+| I-073 | [MED bug] split billing 청구그룹 동결 order-wide — recalcOrderBillingGroups freeze(helpers.ts:60-64)가 BILLED/PAID 1개라도 있으면 전 그룹 동결. 혼합주문 부분청구 후 미청구 entity 품목 편집 시 그룹 미갱신 → createSplitInvoices가 stale 금액 청구. 정책 결정 필요(NULL그룹만 recalc/편집차단/경고) | Area 4 | #387 | ~2h |
+| I-072 | [MED bug] split billing DRAFT 계산서 삭제가 obg.tax_invoice_id 미정리 — createSplitInvoices(helpers.ts:422)는 링크하나 manage.ts:140 DELETE는 미정리 → dangling. 취소 경로(issue.ts:707)는 정리=비대칭. issue.ts:261 재링크 차단 + 주문상세 phantom 노출 | Area 4 | #386 | ~20m |
 | I-071 | [HIGH bug] printEvents.ts `SELECT entity_id FROM cards` 5곳 — cards엔 `requesting_entity_id`만(존재X 컬럼). node:sqlite empirical=`no such column` **throw**(NULL 아님). cardId 매칭 성공 시 print_events/print_file_map 기록 500 + quality_issues 침묵 미생성 + 미throw경로 entity 1 고정(법인 오귀속). #377/workbench와 동일 컬럼오타 클래스 | Area 2 | #384 | ~1h |
 | I-070 | [LOW-MED bug] 출고 알림톡 품목요약 card_id 경유 단일조인 — `kakao.ts:459` shipment_items를 card_id→cards→order_item_id로만 조인 → 주문단위 출고(card_id NULL) 품목명 누락 "제품" 폴백. 수정=COALESCE 양 경로 | Area 2 | #385 | ~30m |
 | I-069 | [improvement] shell.js 정적에셋 외부화 **불완전 revert** — 런타임은 `layout.ts:181` `?raw` 인라인 복귀(prod green)인데 `build-assets.mjs`가 매 빌드마다 dead `/static/shell.<hash>.js`(소비처 0)·미사용 `ASSET_MANIFEST`(import 0) 생성 = 재외부화 오배선 시 MIME 2회다운 재현 트랩. #382(게이트 방어)의 보완(트랩 제거) | Area 1 | #383 | ~30m |
 | I-068 | [improvement] 배포 게이트 `smoke.cjs`는 `/api/*` 전용 — 프론트 부트스트랩/MIME 장애를 못 잡아 shell.js 2회 prod 다운이 "Deploy 성공"으로 통과(E2E만 ~5분 후 적발). smoke에 경량 프론트 단언(`/` HTML 200+text/html+셸 마커) 추가 | Area 1 | #382 | ~1h |
 | I-067 | [HIGH bug] orders 쓰기 엔드포인트 entity 격리 비대칭(IDOR) — read/delete는 격리, billing-status/cancel/PUT/bill/status/output-folder는 무필터 `WHERE id=?` → 멀티법인 MANAGER가 타법인 주문 청구/취소/balance 조작. 청구분할(72bd97e) PUT이 쓰기 증폭 | Area 5 | #381 | ~2h |
-| I-066 | [MED bug] 대시보드 납기 준수율 KPI — `orders.updated_at`을 출고일 프록시로 사용(shipped_at 컬럼 부재) → 회계반영이 정시출고를 "지연" 오집계. 권위소스=cards/shipments.shipped_at. (결함2 COMPLETED 분모는 도달불가 no-op — #380 코멘트 정정) | Area 3 | #380 | ~1h |
 | I-065 | [improvement] printSystem N+1 2곳 — /media/bulk(2중루프 건별 SELECT, media id 메모리 보유라 재조회 불요)·/repair-links(3중 N+1 ~3000쿼리). setup/repair 저빈도 LOW | Area 2 | #379 | ~1.5h |
 | I-064 | [MED bug] 출고 알림톡 일괄발송 부분/전체 실패를 "N건 발송 완료"로 오보고 — send-shipment-bulk 응답 status/fail_count 누락 + sent_count=targets.length. 단건/SMS-bulk는 정상=회귀 | Area 2 | #378 | ~1h |
 | I-063 | [HIGH bug] AI 주문 자동가공 `auto_process_jobs` 생성 전체 침묵 실패 — `SELECT name FROM items`(존재X 컬럼, 실제=item_name) 매 실행 throw → best-effort catch가 은폐, INSERT 미실행. 수정=item_name+N+1 배치 | Area 2 | #377 | ~30m |
@@ -145,6 +167,7 @@
 
 | ID | 제목 | 커밋 | 날짜 |
 |----|------|------|------|
+| A-018 | 대시보드 납기준수율 KPI 라벨 오기 정정 — `scripts/dashboard.js:47`이 skeleton 교체 시 KPI 그리드 재구성하며 "이번 달 **출고 기준**" 노출, 권위 서버템플릿 `pages/dashboard.ts:85`/title은 "**납기 기준**". #380 수정(6b06512) 후 메트릭이 `delivery_date` 기준 월버킷이므로 "납기 기준"이 정답 → JS 라벨을 권위본에 정합. 사실-정정+기존 사본 정렬(A-014 클래스), 동작/데이터 무변 텍스트만. verify PASS(tsc clean+build 383) | (이번 커밋) | 2026-06-11 |
 | A-017 | workbench.ts 존재하지 않는 컬럼 `cl.name` 3곳(`:22/28/56`) → `cl.client_name`. clients 테이블은 `client_name`만(0001:45, `ADD name` 0건 ground-truth) → 매 호출 `no such column: cl.name` throw로 신규 workbench 시안검수 페이지(b0df71c) 주문목록/검색 전체 500. read-only SELECT + 응답 alias 이미 `as client_name`(형식 불변) + 외부효과·entity 귀속 무관 = 안전 자동수정(↔#384는 쓰기/멀티테넌시라 이슈). verify PASS(tsc clean + build 369 modules) | (이번 커밋) | 2026-06-11 |
 | A-016 | shell.js 정적에셋 prod 2회 장애 복구 — `9dd09cd` 파일럿이 shell.js를 `/static`으로 외부화했으나 CF Pages **Git 자동빌드**에서 `_routes.json`의 `/static/* 제외`가 미적용 → 워커가 `/static/shell.js`를 Content-Type 빈값('')으로 서빙 → 브라우저 strict MIME 실행거부 → `shell.js` 사망(전 페이지 axios 인증헤더/법인스위처 초기화 실패, 401+무한로딩). `144addf`의 `_headers` Content-Type 명시 시도는 자동빌드 환경서 불충분 → **최종 해결 = 인라인 `?raw` 복귀**(`/static`·`_routes.json`·빌드순서 의존 전무, 워커 +75KB 안정성 우선). (직전 세션 픽스, Area 6 기록 보충) | 24bb493 (144addf 경유) | 2026-06-11 |
 | A-015 | files.ts 업로드 R2 키 sanitize — `${folder}/${analysisId}/${file.name}` raw 조합(3요소 클라 제어, 키 인젝션) → A-013 패턴 정규화 (orphan, 동작 무변) | (이번 커밋) | 2026-06-05 |
@@ -166,6 +189,7 @@
 
 | ID | 제목 | 커밋/Issue | 날짜 |
 |----|------|-----------|------|
+| I-066 | 대시보드 납기 준수율 KPI 2중 결함 — 결함1(updated_at 출고일 프록시)→`COALESCE(MAX(shipments.shipped_at),MAX(cards.shipped_at),updated_at)` 권위 출고일 + 결함2(SHIPPED 분모만)→`IN('SHIPPED','COMPLETED')` + 월귀속 created_at→delivery_date. Area 3(06-11) git 직접 검증 후 close. 라벨 정정(A-018) 동반 | #380 / 6b06512 | 2026-06-11 |
 | I-061b | 입고검수 전량취소(inspection-decision CANCELLED) 멱등 가드 부재 + 비원자 재고 이중차감 — `inventory.ts:414-421` 멱등 가드 + 단일 batch 원자화. (#373=PO측 롤백은 별개 open) | #369 / d1c8b89 | 2026-06-09 |
 | I-059 | 업무일자 UTC `date('now')` KST 미보정 — 표시층 formatKST 일괄 + 대시보드 created_at KPI + 회계 DATE컬럼 day-boundary KST 보정. 백엔드 자기일관 churn은 owner 디프리오 | #366 / b8d2f0d·7b64d04 | 2026-06-09 |
 | I-058 | storage-zones 목록 `all_entities=1` 쿼리파라미터로 entity 격리 우회(IDOR 11번째, 역할검증 없이 필터 무력화) | #368 / b6d845d | 2026-06-09 |
