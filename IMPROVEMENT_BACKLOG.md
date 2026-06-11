@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 5 -->
-<!-- last_run_at: 2026-06-10T18:00:00+09:00 -->
+<!-- last_run_area: 6 -->
+<!-- last_run_at: 2026-06-11T02:00:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,12 +8,22 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | 8 (open auto-improve **실측 06-10T18:00** — #381(Area5 HIGH IDOR)·#380·#379·#378·#377·#374·#373·#372. Area 5 사이클 net-new 0건(#381은 직전 Area5 부분실행 산물·재검증 true-positive), close 0건) |
+| 🆕 new | 8 (open auto-improve **실측 06-11T02:00 Area 6 전수 재동기** — #381·#380·#379·#378·#377·#374·#373·#372. New 표가 직전 2행만 유지(stale)였던 것을 **8행 전수 반영**. 직전 Area 6(06-09T22:00) 이후 신규 close 0건, GitHub↔백로그 done 정합) |
 | ✅ approved | 0 (직전 approved #342/#340 모두 done 확정·이관 — Area 6 검증 완료) |
 | 👀 reviewed | 0 |
 | ✔️ done | 78 (61 + **06-09 신규 close 17건 전부 done 확정**: #336/#340/#341/#342/#350/#358/#359/#360/#361/#362/#363/#364/#365/#366/#367/#368/#369 — commit 증거+close 코멘트 전수 검증, rejected 0건) |
 | ❌ rejected | 3 |
 
+> **Area 6 자기 진화 (2026-06-11T02:00):**
+> - **방법**: baseline `npm ci`+`tsc --noEmit` PASS + build PASS(366 modules, _worker.js 5.00MB). GitHub open/closed 전수 대조 + 직전 5개 사이클(Area1~5, 06-10) 산출물의 백로그·SKILL 반영 완결성 검증.
+> - **🟢 GitHub↔백로그 done 동기화 — 이관 0건(clean)**: closed auto-improve 최신 updated_at=**#366(06-09T04:00)** → 직전 Area 6(06-09T22:00) **이전** = 신규 close 0건. open auto-improve **정확히 8건**(#372/#373/#374/#377/#378/#379/#380/#381) 실측 = stats 정합. done 78/rejected 3 유지. #380 단일 코멘트는 **auto-improve 자체 정정**(Area 4 ground-truth가 결함2=no-op 지적)이지 owner 피드백 아님, 👍 0 → 8건 전부 new 유지.
+> - **📋 New 표 stale 정정 (핵심 동기화 갭) — 2행→8행**: Area 1~5(06-10)가 #374/#377/#378/#379/#380/#381 6건을 생성하며 **stats 내러티브·count는 갱신**했으나 **New 표 본문은 직전 Area6(06-09T22:00) 시점 2행(#372/#373)에 고정**(각 사이클이 자기 영역 외 표는 미터치). Area 6에서 누락 6건에 ID 부여(I-062~I-067) + 표 전수 반영 → 표↔stats↔GitHub 3자 정합 복원.
+> - **🧬 FP표 ↔ SKILL 단일소스 동기화 2건**(SKILL엔 codify됐으나 백로그 FP표 누락): ① **batch 결과 배열 인덱스 "정렬 불일치" 오독**(Area 4 06-10, SKILL.md:64) — 부모-자식 2-pass batch에서 stmt배열+메타배열을 같은 `continue` 가드 뒤 push하면 길이 동일=정합인데 서브에이전트가 "한쪽만 continue 건너뜀"으로 오독해 HIGH 과대보고(2건 차단). ② **독립 HTML 페이지 escapeHtml 예외**(Area 5 06-10, SKILL.md:143) — `c.html()` 자체 출력페이지(payslip/yearEnd)는 layout 셸 미경유라 `window.escapeHtml` 부재 → "전역헬퍼 있으니 XSS 오탐" 논리 적용 금지(진짜 stored XSS). 기존 escapeHtml FP행에 ⚠️예외 병기.
+> - **🔧 A-016 기록 보충 — shell.js 정적에셋 prod 2회 장애 복구(24bb493, 144addf 경유)**: 직전 세션 픽스(이 patrol 외)이나 Auto-fixed 표 미기재 → Area 6에서 기록. `9dd09cd` 파일럿이 shell.js를 `/static` 외부화했으나 CF Pages **Git 자동빌드**에서 `_routes.json` `/static/* 제외` 미적용 → 워커가 Content-Type 빈값('')으로 서빙 → strict MIME 실행거부 → `shell.js` 사망(전 페이지 401+무한로딩). 144addf의 `_headers` Content-Type 명시도 자동빌드서 불충분 → **최종 해결=인라인 `?raw` 복귀**(/static·_routes.json·빌드순서 의존 전무).
+> - **🧬 SKILL Area 1 학습패턴 신설 — 정적에셋 MIME 회귀는 smoke(API)로 미탐지**: smoke.cjs는 API 직접호출이라 프론트 `shell.js` MIME 실행거부를 **구조적으로 못 잡음**. 정적에셋 파이프라인(`build-assets.mjs` `_headers`/Content-Type) 변경 시 회귀 신호는 **E2E 콘솔에러·shell.js 로드 확인**에 의존 → Area 1 헬스 점검에 codify(144addf 클래스 재발 방지).
+> - **이상 없음**: baseline PASS. Approved/Reviewed 표 비어있음 유지(owner 미피드백). rejected 3 유지.
+> - 자동 수정 0건(메타·문서 동기화), 신규 이슈 0건, done 이관 0건, **New 표 6행 보충(stale 정정)**, FP표 2건 동기화, A-016 기록, SKILL Area 1 학습패턴 1건
+>
 > **Area 5 보안 (2026-06-10T18:00):**
 > - **방법**: baseline `npm ci`+`tsc --noEmit` PASS + build PASS(366 modules, _worker.js 5.0MB). Area 5 **9회차**. **직전 Area5 부분실행 복구 + finalize**: 이전 세션이 #381(orders 쓰기 IDOR) 생성 + payslip/yearEnd XSS 자동수정(커밋 27e15eb, branch auto-improve/area5-xss-idor)까지 했으나 **백로그 마커(last_run_area=4)·SKILL·XSS커밋이 미완료** — 27e15eb는 임시 컨테이너 전용이라 **main에 없음(소실)**. 검증: `git cat-file -t 27e15eb`=invalid, `merge-base --is-ancestor`=NO. → XSS 재적용 + #381 재검증 + 독립페이지 sweep + SKILL codify로 마무리.
 > - **🔧 자동수정 1건 (커밋 b5233a1) — payslip·yearEnd 직원 마스터 XSS escape**: `pages/payslip.ts`(급여명세서 `/payslip/:id`)·`pages/yearEnd.ts`(연말정산 간편영수증 `/year-end/:id`)는 `c.html(\`...\`)`로 자체 head/script를 반환하는 **독립 HTML 페이지** → layout.ts 전역 `window.escapeHtml` **부재**. 직원 마스터 free-text(성명/부서/직책/사번/연락처)를 escape 없이 `innerHTML` 문자열연결(payslip:243-246·yearEnd:228-237) → **stored XSS**(HR ADMIN/MANAGER가 마스터에 `<img onerror>` 저장 → 인쇄 시 실행). 각 페이지 스크립트에 로컬 `esc()`(replace 5문자) 추가 후 해당 필드 래핑. **verify PASS**(tsc+build 366 modules). #335가 다룬 server-template `esc()`와 별개 경로(client-side render). **안전 자동수정**(escapeHtml 누락 추가 = SKILL 허용 범주, 동작/형식 불변).
@@ -473,10 +483,16 @@
 
 ## 🆕 New (미검토)
 
-> 전부 GitHub open + 👍 미수신. 용준님 리뷰 대기. (open **실측 2건** — 2026-06-09T22:00 Area 6 전수 재동기)
+> 전부 GitHub open + 👍 미수신. 용준님 리뷰 대기. (open **실측 8건** — 2026-06-11T02:00 Area 6 전수 재동기. 직전 표가 2행 stale였던 것을 8행 전수 반영)
 
 | ID | 제목 | 영역 | Issue | 공수 |
 |----|------|------|-------|------|
+| I-067 | [HIGH bug] orders 쓰기 엔드포인트 entity 격리 비대칭(IDOR) — read/delete는 격리, billing-status/cancel/PUT/bill/status/output-folder는 무필터 `WHERE id=?` → 멀티법인 MANAGER가 타법인 주문 청구/취소/balance 조작. 청구분할(72bd97e) PUT이 쓰기 증폭 | Area 5 | #381 | ~2h |
+| I-066 | [MED bug] 대시보드 납기 준수율 KPI — `orders.updated_at`을 출고일 프록시로 사용(shipped_at 컬럼 부재) → 회계반영이 정시출고를 "지연" 오집계. 권위소스=cards/shipments.shipped_at. (결함2 COMPLETED 분모는 도달불가 no-op — #380 코멘트 정정) | Area 3 | #380 | ~1h |
+| I-065 | [improvement] printSystem N+1 2곳 — /media/bulk(2중루프 건별 SELECT, media id 메모리 보유라 재조회 불요)·/repair-links(3중 N+1 ~3000쿼리). setup/repair 저빈도 LOW | Area 2 | #379 | ~1.5h |
+| I-064 | [MED bug] 출고 알림톡 일괄발송 부분/전체 실패를 "N건 발송 완료"로 오보고 — send-shipment-bulk 응답 status/fail_count 누락 + sent_count=targets.length. 단건/SMS-bulk는 정상=회귀 | Area 2 | #378 | ~1h |
+| I-063 | [HIGH bug] AI 주문 자동가공 `auto_process_jobs` 생성 전체 침묵 실패 — `SELECT name FROM items`(존재X 컬럼, 실제=item_name) 매 실행 throw → best-effort catch가 은폐, INSERT 미실행. 수정=item_name+N+1 배치 | Area 2 | #377 | ~30m |
+| I-062 | [improvement] 배포 스모크 로그인 단일시도(재시도 부재) → cold-start 일시 500이 deploy 게이트 파손 + E2E skip. bounded 재시도 or health warm-up ping | Area 1 | #374 | ~30m |
 | I-061 | [MED bug] 입고검수 CANCELLED 시 재고만 역분개·PO status/received_quantity 미롤백 → PO 영구 RECEIVED 잔류 + 취소수량 재입고 불가(400 차단). #369(재고측)와 별개 PO측 롤백 | Area 4 | #373 | ~1.5h |
 | I-060 | [improvement] CSV export 5곳 `LIMIT 5000` 무경고 silent truncation — 정산/감사 다운로드 불완전 가능(발주목록/입고이력/검수결과/발주요청/현금일정). 잘림 감지+경고 헬퍼 1개 5곳 적용 | Area 3 | #372 | ~1.5h |
 
@@ -488,6 +504,7 @@
 
 | ID | 제목 | 커밋 | 날짜 |
 |----|------|------|------|
+| A-016 | shell.js 정적에셋 prod 2회 장애 복구 — `9dd09cd` 파일럿이 shell.js를 `/static`으로 외부화했으나 CF Pages **Git 자동빌드**에서 `_routes.json`의 `/static/* 제외`가 미적용 → 워커가 `/static/shell.js`를 Content-Type 빈값('')으로 서빙 → 브라우저 strict MIME 실행거부 → `shell.js` 사망(전 페이지 axios 인증헤더/법인스위처 초기화 실패, 401+무한로딩). `144addf`의 `_headers` Content-Type 명시 시도는 자동빌드 환경서 불충분 → **최종 해결 = 인라인 `?raw` 복귀**(`/static`·`_routes.json`·빌드순서 의존 전무, 워커 +75KB 안정성 우선). (직전 세션 픽스, Area 6 기록 보충) | 24bb493 (144addf 경유) | 2026-06-11 |
 | A-015 | files.ts 업로드 R2 키 sanitize — `${folder}/${analysisId}/${file.name}` raw 조합(3요소 클라 제어, 키 인젝션) → A-013 패턴 정규화 (orphan, 동작 무변) | (이번 커밋) | 2026-06-05 |
 | A-014 | silent-fail JS 버그 3건 — HR 직원검색 `q`→`search`(핵심검색 무력) + 홈택스 페이지네이션 총건수 0(`data.total`→`pagination.total`) + 홈택스 날짜 파라미터 `start_date`→`date_from` | (이번 커밋) | 2026-06-04 |
 | A-013 | aiAnalysis 업로드 R2 키 `file.name` sanitize — path traversal/헤더 인젝션 방어(LOW, ADMIN전용) | (이번 커밋) | 2026-06-03 |
@@ -611,7 +628,8 @@
 | orphan 라우터의 entity_id 격리 갭 (프론트 호출처 0건) | UI 도달 불가 = dead code 사안이지 보안 아님. 격리 갭 보고 전 `grep "api/<path>" src/scripts src/pages` 도달성 선검증 필수. **⚠️ 예외(#365)**: 클라 제공 키로 raw 리소스 서빙하는 범용 프록시(R2 파일 `files.ts` GET `/*` 등)는 0-refs여도 인증된 직접 HTTP 호출이 공격표면 → dead-code 강등 금지, 보안 이슈 | Area 6 (#334, 2026-06-04 / 예외 #365 2026-06-07) |
 | 비원자적 다중 INSERT "고아 가능" (확정 실패 트리거 부재) | 부모→자식 별도 `.run()`이라도 자식 테이블에 CHECK/NOT-NULL 위반 등 **확정적 실패 트리거가 없으면** 거의 모든 다중문 코드에 해당하는 일반적 비원자성일 뿐 = 노이즈. #355류로 보고하려면 100% 실패하는 구체 트리거(CHECK 누락 리터럴 등) 실증 필요. order_items는 CHECK 0·전컬럼 nullable이라 견적전환/복사 비원자성은 오탐 | Area 4 (2026-06-06) |
 | rate-limit "누락" 보고 (라우트 파일에 inline 미들웨어 없음) | rate limit은 라우트 파일이 아니라 `index.tsx`에서 `app.use('/api/...', rateLimitMiddleware(...))`로 **앱 레벨 전역 등록**(240-246: auth/portal login·users/portal change-pw·refresh·self-auth·verify-document·verify-token). 라우트 핸들러만 보면 항상 inline 부재로 오탐 — 보고 전 index.tsx 등록처 grep 필수 | Area 5 (2026-06-06) |
-| "escapeHtml 헬퍼 전무(`grep -c escapeHtml`=0) → XSS" | `layout.ts:1185`가 `window.escapeHtml`를 **전역 정의**(+`portalLayout.ts` 포털용) → 모든 스크립트가 로컬 정의 없이 전역 헬퍼 호출 가능. 파일에 escapeHtml 미정의/미참조 ≠ 취약. 올바른 판정: 실제 `innerHTML` 싱크의 보간값이 (a)사용자 제어 free-text **이고** (b)미escape인지 확인. `Number()` 강제 숫자·시스템 채번코드(order_number 등)·서버 하드코딩 문자열은 싱크 아님 | Area 6 (2026-06-06) |
+| "escapeHtml 헬퍼 전무(`grep -c escapeHtml`=0) → XSS" | `layout.ts:1185`가 `window.escapeHtml`를 **전역 정의**(+`portalLayout.ts` 포털용) → 모든 스크립트가 로컬 정의 없이 전역 헬퍼 호출 가능. 파일에 escapeHtml 미정의/미참조 ≠ 취약. 올바른 판정: 실제 `innerHTML` 싱크의 보간값이 (a)사용자 제어 free-text **이고** (b)미escape인지 확인. `Number()` 강제 숫자·시스템 채번코드(order_number 등)·서버 하드코딩 문자열은 싱크 아님. **⚠️ 예외(Area 5 06-10)**: `c.html()`로 자체 `<head>/<script>`를 통째 반환하는 **독립 출력페이지**(`pages/payslip.ts`·`pages/yearEnd.ts` = `/payslip/:id`·`/year-end/:id` 인쇄경로)는 layout 셸 미경유라 `window.escapeHtml` **부재** → "전역헬퍼 있으니 오탐" 논리 적용 금지. 직원 마스터 free-text를 innerHTML raw 연결하면 **진짜 stored XSS**(로컬 `esc()` 추가가 정답·안전 자동수정). 판별: 파일이 layout/shell import 없이 c.html 안에 자체 script + free-text 렌더 | Area 6 (2026-06-06 / 예외 06-10) |
+| batch 결과 배열 인덱스 "정렬 불일치" 오독 | 부모-자식 2-pass batch에서 stmt배열(`parentStmts[]`)과 메타배열(`parentClientGroupIds[]`)을 같은 루프에서 push 후 `results[i]`로 매핑할 때 "한쪽은 `continue`로 건너뛰는데 다른 쪽은 무조건 실행→길이 불일치→매핑 깨짐 HIGH"로 보고하기 전, **두 push가 같은 `continue` 가드 뒤에 있는지** 확인. `if(parent_client_id) continue`가 **루프 최상단**이면 자식 행은 두 push를 **모두** 건너뛰어 길이 동일=정합(orders/core.ts:2207-2280·quotations.ts:273-320이 이 형태, 정상). 서브에이전트가 continue 위치를 오독해 HIGH 과대보고 2건 차단. 회피=(a)continue 줄 위치가 첫 push보다 위인지 (b)두 push 사이 별도 조건 push 있는지 직접 Read | Area 4 (2026-06-10) |
 | VAT/금액 "부동소수점 누적 → 신고 오차" | 금액이 누적 **직전에 원/100원 단위 정수로 반올림**되면(예: quotations.ts:223 `Math.round(itemAmount/100)*100`) `×세율(0.1)`은 항상 10의 배수=정수라 IEEE754 drift 불가. node `Number.isInteger(누적값)` 실증으로 반증 필수. 견적(추정)↔세금계산서(`Math.round`+정합보정 `total≠supply+tax면 강제정렬`) 반올림 "불일치"도 발행단계가 권위계산이라 버그 아님. number↔REAL/INTEGER 타입표기 차이도 정상 TS | Area 2 (2026-06-08) |
 | catch가 success 숨김 "데이터손실" (best-effort 물질화/보상) | try 안이 **부차 denormalized 물질화**(가격이력·cash_schedule 등 언제든 재계산 가능한 파생 데이터)이고 **주석에 best-effort 명시**(예: purchaseInvoices.ts:131/164 "receive Phase4와 동일 정책")면 의도적 설계. 핵심 비즈니스 write(주문/인보이스/잔액)가 try **밖**이면 오탐. batch 실패 후 보상(rollback) DELETE의 `.catch(()=>{})`도 보상 자체 실패는 더 할 게 없으므로 정상. 보고하려면 **핵심 mutation**이 삼켜지고 사용자에게 success로 보이는 구체 경로 실증 필요 | Area 2 (2026-06-08) |
 | 트랜잭션 원자성 "분리 write 부분실패 → 고아/불일치" | `DB.batch()` 없이 분리 await 실행이라도 **분리가 구조적으로 강제**되면 노이즈: ① 부모 INSERT가 `result.meta.last_row_id`를 자식에 써야 함(bank apply·shipments 헤더·orders 헤더) ② 중간 READ(`balance_after` 잔량조회)가 끼어 batch 분할 불가피. 단순 "2번째 write 실패하면?"은 확정 트리거 없는 일반 비원자성. **보고 가능 = ①확정 재현 트리거**(멱등 가드 부재로 재시도/중복제출이 destructive write 반복 — 부분실패→500→목록잔류→재클릭, 버튼 재진입 가드 없는 더블클릭) **+ ②회피 가능성**(read를 메모리 산출로 대체해 단일 batch화 가능). #369가 둘 다 충족(보고됨). 보고 전 (a)재고/금액/잔액 변경인지 (b)선행상태 가드(`WHERE status!=...`)·프론트 버튼 재진입 가드 확인 | Area 2 (#369, 2026-06-09) |
