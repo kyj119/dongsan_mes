@@ -416,7 +416,8 @@ async function issueForClient(ci) {
     };
     var res = await axios.post('/api/tax-invoices', body);
     if (res.data.success) {
-      showToast(cl.client_name + ' 발행 완료', 'success');
+      var sc = res.data.data && res.data.data.split_count;
+      showToast(cl.client_name + ' 발행 완료' + (sc > 1 ? ' (' + sc + '개 법인 분할)' : ''), 'success');
       document.getElementById('clientDone_' + ci).classList.remove('hidden');
       var section = document.getElementById('clientSection_' + ci);
       if (section) {
@@ -466,7 +467,8 @@ async function submitBatchIssue() {
       };
       var res = await axios.post('/api/tax-invoices', body);
       if (res.data.success) {
-        results.success.push(cl.client_name + ' (' + orderIds.length + '건)');
+        var sc2 = res.data.data && res.data.data.split_count;
+        results.success.push(cl.client_name + ' (' + orderIds.length + '건' + (sc2 > 1 ? ', ' + sc2 + '개 법인 분할' : '') + ')');
         document.getElementById('clientDone_' + ci).classList.remove('hidden');
         var section = document.getElementById('clientSection_' + ci);
         if (section) { section.style.opacity = '0.5'; section.style.pointerEvents = 'none'; }

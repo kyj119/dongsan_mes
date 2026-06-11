@@ -283,23 +283,30 @@ async function issueTaxInvoice(
     }
   }
 
-  // 연결된 주문들의 billing_status를 BILLED로 업데이트
+  // P4 split billing: 이 계산서(법인)의 청구그룹만 BILLED + group↔invoice 연결.
+  // orders 미러는 그 주문의 전(全) 그룹이 BILLED/PAID일 때만 갱신(혼합주문 부분청구 대응).
+  // 가드: NULL(미청구)도 매칭하도록 IS NOT 사용(SQLite `NULL != 'BILLED'`=NULL 버그 회피).
   try {
+    const invEntity = Number(updated?.entity_id) || Number(existing.entity_id) || null
     const { results: linkedOrders } = await db.prepare(
       `SELECT order_id FROM tax_invoice_orders WHERE tax_invoice_id = ?`
     ).bind(taxInvoiceId).all()
     const orderIds = (linkedOrders as Array<{ order_id: number }>).map(r => r.order_id).filter(Boolean)
     // 직접 연결된 order_id도 포함
     if (updated?.order_id && !orderIds.includes(updated.order_id)) orderIds.push(updated.order_id)
-    if (orderIds.length > 0) {
+    if (orderIds.length > 0 && invEntity) {
       const ph = orderIds.map(() => '?').join(',')
-      // split billing P3: 그룹 BILLED(청구 정본) + orders 미러. 가드: NULL도 매칭하도록 IS NOT 사용(`!= 'BILLED'`는 NULL 미매칭 버그).
       await db.batch([
+        // 이 법인 그룹만 청구확정 + 발행 계산서 연결
         db.prepare(
-          `UPDATE order_billing_groups SET billing_status = 'BILLED', billed_at = CURRENT_TIMESTAMP WHERE order_id IN (${ph}) AND billing_status IS NOT 'BILLED' AND billing_status IS NOT 'PAID'`
-        ).bind(...orderIds),
+          `UPDATE order_billing_groups SET billing_status = 'BILLED', billed_at = CURRENT_TIMESTAMP, billed_by = ?, tax_invoice_id = ?
+           WHERE order_id IN (${ph}) AND entity_id = ? AND billing_status IS NOT 'BILLED' AND billing_status IS NOT 'PAID'`
+        ).bind(userId, taxInvoiceId, ...orderIds, invEntity),
+        // orders 미러: 그 주문의 모든 그룹이 청구완료된 경우에만 BILLED
         db.prepare(
-          `UPDATE orders SET billing_status = 'BILLED', updated_at = CURRENT_TIMESTAMP WHERE id IN (${ph}) AND billing_status IS NOT 'BILLED'`
+          `UPDATE orders SET billing_status = 'BILLED', updated_at = CURRENT_TIMESTAMP
+           WHERE id IN (${ph}) AND billing_status IS NOT 'BILLED'
+             AND NOT EXISTS (SELECT 1 FROM order_billing_groups g WHERE g.order_id = orders.id AND COALESCE(g.billing_status,'') NOT IN ('BILLED','PAID'))`
         ).bind(...orderIds)
       ])
     }
@@ -308,6 +315,149 @@ async function issueTaxInvoice(
   }
 
   return { success: true, data: { ...updated, items } }
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// P4 split billing: 선택 주문들을 **생산법인별**로 분할해 법인당 1장의 세금계산서 생성.
+// 청구그룹(order_billing_groups) 기준으로 법인을 가르고, 각 법인 회사정보·채번·금액·품목으로 발행.
+// 단일법인 주문 = 1장 (기존 동작 동일). 혼합주문 = 법인 수만큼 N장.
+// 반환: 법인별 생성 결과. autoIssue 시 issueTaxInvoice(법인 스코프) 호출.
+// ────────────────────────────────────────────────────────────────────────────
+interface SplitBuyer {
+  id: number
+  business_registration_number: string | null
+  client_name: string
+  representative?: string | null
+  address?: string | null
+  business_type?: string | null
+  business_item?: string | null
+  email?: string | null
+}
+async function createSplitInvoices(
+  db: D1Database,
+  env: any,
+  params: {
+    orderIds: number[]
+    buyer: SplitBuyer
+    buyerEmail?: string | null
+    issueDate: string
+    notes?: string | null
+    itemMode: 'detail' | 'summary'
+    summaryLabel?: string
+    autoIssue?: boolean
+    userId: number
+  }
+): Promise<Array<{ entity_id: number; invoice_id: number; invoice_number: string; supply: number; tax: number; total: number; issued: boolean; error?: string }>> {
+  const { orderIds, buyer, issueDate } = params
+  if (!orderIds.length) return []
+  const ph = orderIds.map(() => '?').join(',')
+
+  // 청구그룹 → 법인별 집계 (supply/tax는 recalc·마이그가 채운 값). 그룹별 group_id 보유.
+  const { results: grows } = await db.prepare(
+    `SELECT g.id AS group_id, g.order_id, g.entity_id,
+            CAST(COALESCE(g.supply_amount,0) AS INTEGER) AS supply,
+            CAST(COALESCE(g.tax_amount,0)    AS INTEGER) AS tax
+     FROM order_billing_groups g WHERE g.order_id IN (${ph})`
+  ).bind(...orderIds).all<{ group_id: number; order_id: number; entity_id: number; supply: number; tax: number }>()
+
+  // 법인별 그룹화
+  const byEntity = new Map<number, { supply: number; tax: number; orderIds: Set<number>; groupIds: number[] }>()
+  for (const g of grows) {
+    let e = byEntity.get(g.entity_id)
+    if (!e) { e = { supply: 0, tax: 0, orderIds: new Set(), groupIds: [] }; byEntity.set(g.entity_id, e) }
+    e.supply += Number(g.supply) || 0
+    e.tax += Number(g.tax) || 0
+    e.orderIds.add(g.order_id)
+    e.groupIds.push(g.group_id)
+  }
+
+  const out: Array<{ entity_id: number; invoice_id: number; invoice_number: string; supply: number; tax: number; total: number; issued: boolean; error?: string }> = []
+
+  for (const [entityId, agg] of byEntity) {
+    const supplyAmount = agg.supply
+    const taxAmount = agg.tax
+    const totalAmount = supplyAmount + taxAmount
+    if (totalAmount <= 0) {
+      out.push({ entity_id: entityId, invoice_id: 0, invoice_number: '', supply: 0, tax: 0, total: 0, issued: false, error: '금액 0 (주문 재저장 필요 — 청구그룹 금액 미산정)' })
+      continue
+    }
+    const entOrderIds = [...agg.orderIds]
+    const supplier = await getCompanySettings(db, entityId)
+    if (!supplier.company_business_registration_number) {
+      out.push({ entity_id: entityId, invoice_id: 0, invoice_number: '', supply: supplyAmount, tax: taxAmount, total: totalAmount, issued: false, error: `법인 ${entityId} 사업자등록번호 미설정` })
+      continue
+    }
+    const invoiceNumber = await generateInvoiceNumber(db, entityId)
+
+    const ins = await db.prepare(`
+      INSERT INTO tax_invoices (
+        invoice_number, order_id, invoice_type,
+        supplier_brn, supplier_name, supplier_representative,
+        supplier_address, supplier_business_type, supplier_business_item,
+        buyer_client_id, buyer_brn, buyer_name, buyer_representative,
+        buyer_address, buyer_business_type, buyer_business_item, buyer_email,
+        supply_amount, tax_amount, total_amount,
+        status, issue_date, notes, entity_id,
+        created_at, updated_at
+      ) VALUES (?, ?, 'NORMAL', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'DRAFT', ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+    `).bind(
+      invoiceNumber, entOrderIds[0],
+      supplier.company_business_registration_number, supplier.company_name || '',
+      supplier.company_representative || null, supplier.company_address || null,
+      supplier.company_business_type || null, supplier.company_business_item || null,
+      buyer.id, buyer.business_registration_number, buyer.client_name,
+      buyer.representative || null, buyer.address || null,
+      buyer.business_type || null, buyer.business_item || null,
+      params.buyerEmail || buyer.email || null,
+      supplyAmount, taxAmount, totalAmount,
+      issueDate, params.notes || null, entityId
+    ).run()
+    const taxInvoiceId = ins.meta.last_row_id as number
+
+    // junction(이 법인 주문) + group↔invoice 연결 + 품목
+    const eph = entOrderIds.map(() => '?').join(',')
+    const stmts: D1PreparedStatement[] = [
+      ...entOrderIds.map(oid =>
+        db.prepare('INSERT OR IGNORE INTO tax_invoice_orders (tax_invoice_id, order_id) VALUES (?, ?)').bind(taxInvoiceId, oid)
+      ),
+      db.prepare(`UPDATE order_billing_groups SET tax_invoice_id = ? WHERE id IN (${agg.groupIds.map(() => '?').join(',')})`).bind(taxInvoiceId, ...agg.groupIds),
+    ]
+    if (params.itemMode === 'summary') {
+      stmts.push(db.prepare(`
+        INSERT INTO tax_invoice_items (tax_invoice_id, item_date, item_name, quantity, unit_price, supply_amount, tax_amount, sort_order)
+        VALUES (?, ?, ?, 1, ?, ?, ?, 1)
+      `).bind(taxInvoiceId, issueDate, params.summaryLabel || '합산', supplyAmount, supplyAmount, taxAmount))
+    } else {
+      // 이 법인 담당 품목만 (COALESCE(assigned_entity_id, 주법인) = entityId)
+      const { results: items } = await db.prepare(
+        `SELECT oi.item_name, oi.specification, oi.width, oi.height, oi.quantity, oi.unit_price, oi.amount, oi.vat_included
+         FROM order_items oi JOIN orders o ON o.id = oi.order_id
+         WHERE oi.order_id IN (${eph}) AND COALESCE(oi.assigned_entity_id, o.entity_id) = ?
+         ORDER BY oi.order_id, oi.sort_order`
+      ).bind(...entOrderIds, entityId).all<Record<string, unknown>>()
+      const vatRate = 0.1
+      items.forEach((oi, idx) => {
+        const itemAmount = parseFloat(String(oi.amount)) || 0
+        const itemTax = oi.vat_included ? Math.round(itemAmount * vatRate) : 0
+        const spec = (oi.specification as string | null) || ((oi.width && oi.height) ? `${oi.width}x${oi.height}` : null)
+        stmts.push(db.prepare(`
+          INSERT INTO tax_invoice_items (tax_invoice_id, item_date, item_name, specification, quantity, unit_price, supply_amount, tax_amount, sort_order)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).bind(taxInvoiceId, issueDate, oi.item_name, spec, oi.quantity, parseFloat(String(oi.unit_price)) || 0, itemAmount, itemTax, idx))
+      })
+    }
+    for (let i = 0; i < stmts.length; i += 80) await db.batch(stmts.slice(i, i + 80))
+
+    let issued = false
+    let issueErr: string | undefined
+    if (params.autoIssue) {
+      const r = await issueTaxInvoice(db, taxInvoiceId, params.userId, env, entityId)
+      issued = r.success
+      if (!r.success) issueErr = r.error
+    }
+    out.push({ entity_id: entityId, invoice_id: taxInvoiceId, invoice_number: invoiceNumber, supply: supplyAmount, tax: taxAmount, total: totalAmount, issued, error: issueErr })
+  }
+  return out
 }
 
 // GET /test-connection — 바로빌 연결 테스트 (잔여 포인트 조회)
@@ -694,102 +844,31 @@ taxInvoicesRouter.post('/batch-create', requireRole('ADMIN', 'MANAGER'), async (
           continue
         }
 
-        const invoiceNumber = await generateInvoiceNumber(c.env.DB, getEntityId(c))
-        const supplyAmount = orders.reduce((sum: number, o) => sum + (parseFloat(String(o.total_amount)) || 0), 0)
-        const taxAmount = orders.reduce((sum: number, o) => sum + (parseFloat(String(o.vat_amount)) || 0), 0)
-        const totalAmount = supplyAmount + taxAmount
-        const firstOrder = orders[0]
-
-        const insertResult = await c.env.DB.prepare(`
-          INSERT INTO tax_invoices (
-            invoice_number, order_id, invoice_type,
-            supplier_brn, supplier_name, supplier_representative,
-            supplier_address, supplier_business_type, supplier_business_item,
-            buyer_client_id, buyer_brn, buyer_name, buyer_representative,
-            buyer_address, buyer_business_type, buyer_business_item, buyer_email,
-            supply_amount, tax_amount, total_amount,
-            status, issue_date, notes,
-            entity_id,
-            created_at, updated_at
-          ) VALUES (
-            ?, ?, 'NORMAL',
-            ?, ?, ?,
-            ?, ?, ?,
-            ?, ?, ?, ?,
-            ?, ?, ?, ?,
-            ?, ?, ?,
-            'DRAFT', ?, NULL,
-            ?,
-            CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
-          )
-        `).bind(
-          invoiceNumber, orderIds[0],
-          settings.company_business_registration_number,
-          settings.company_name || '',
-          settings.company_representative || null,
-          settings.company_address || null,
-          settings.company_business_type || null,
-          settings.company_business_item || null,
-          group.client_id,
-          client.business_registration_number,
-          client.client_name,
-          client.representative || null,
-          client.address || null,
-          client.business_type || null,
-          client.business_item || null,
-          group.buyer_email || client.email || null,
-          supplyAmount, taxAmount, totalAmount,
+        // P4 split billing: 선택 주문을 생산법인별로 분할 → 법인당 1장 생성 (단일법인=1장).
+        const created = await createSplitInvoices(c.env.DB, c.env, {
+          orderIds,
+          buyer: client,
+          buyerEmail: group.buyer_email,
           issueDate,
-          getEntityId(c)
-        ).run()
-
-        const taxInvoiceId = insertResult.meta.last_row_id
-
-        // #162: junction + items 단일 batch로 원자적 처리
-        const oiPh = orderIds.map(() => '?').join(',')
-        const { results: allOrderItems } = await c.env.DB.prepare(
-          `SELECT oi.*, oi.order_id FROM order_items oi WHERE oi.order_id IN (${oiPh}) ORDER BY oi.order_id, oi.sort_order`
-        ).bind(...orderIds).all()
-
-        const vatRate = 0.1
-        const batchStmts = [
-          ...orderIds.map((oid: number) =>
-            c.env.DB.prepare('INSERT OR IGNORE INTO tax_invoice_orders (tax_invoice_id, order_id) VALUES (?, ?)')
-              .bind(taxInvoiceId, oid)
-          ),
-          ...(allOrderItems as Array<Record<string, unknown>>).map((oi, idx: number) => {
-            const itemAmount = parseFloat(String(oi.amount)) || 0
-            const itemTax = oi.vat_included ? Math.round(itemAmount * vatRate) : 0
-            const spec = (oi.specification as string | null) || ((oi.width && oi.height) ? `${oi.width}x${oi.height}` : null)
-            return c.env.DB.prepare(`
-              INSERT INTO tax_invoice_items (
-                tax_invoice_id, item_date, item_name, specification,
-                quantity, unit_price, supply_amount, tax_amount, sort_order
-              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            `).bind(
-              taxInvoiceId, issueDate, oi.item_name, spec,
-              oi.quantity, parseFloat(String(oi.unit_price)) || 0,
-              itemAmount, itemTax, idx
-            )
-          })
-        ]
-        if (batchStmts.length > 0) await c.env.DB.batch(batchStmts)
-
-        let invoiceResult: any = { invoice_id: taxInvoiceId, invoice_number: invoiceNumber }
-
-        // auto_issue 처리
-        if (body.auto_issue) {
-          const issueRes = await issueTaxInvoice(c.env.DB, taxInvoiceId, user.id, c.env, getEntityId(c))
-          if (!issueRes.success) {
-            results.push({ client_id: group.client_id, client_name: client.client_name, success: false, error: issueRes.error, invoice_id: taxInvoiceId, invoice_number: invoiceNumber })
-            failCount++
-            continue
-          }
-          invoiceResult = { ...invoiceResult, issued: true }
+          itemMode: 'detail',
+          autoIssue: body.auto_issue,
+          userId: user.id,
+        })
+        if (created.length === 0) {
+          results.push({ client_id: group.client_id, client_name: client.client_name, success: false, error: '청구그룹이 없습니다 (주문 재저장 필요).' })
+          failCount++
+          continue
         }
-
-        results.push({ client_id: group.client_id, client_name: client.client_name, success: true, ...invoiceResult })
-        successCount++
+        for (const inv of created) {
+          const ok = inv.invoice_id > 0 && (!body.auto_issue || inv.issued)
+          if (ok) {
+            results.push({ client_id: group.client_id, client_name: client.client_name, entity_id: inv.entity_id, success: true, invoice_id: inv.invoice_id, invoice_number: inv.invoice_number, issued: inv.issued })
+            successCount++
+          } else {
+            results.push({ client_id: group.client_id, client_name: client.client_name, entity_id: inv.entity_id, success: false, error: inv.error || '발행 실패', invoice_id: inv.invoice_id || undefined, invoice_number: inv.invoice_number || undefined })
+            failCount++
+          }
+        }
       } catch (groupErr) {
         console.error('Batch issue error for client:', group.client_id, groupErr)
         const client = body.groups.find(g => g.client_id === group.client_id)
@@ -1086,6 +1165,11 @@ taxInvoicesRouter.post('/direct', requireRole('ADMIN', 'MANAGER'), async (c) => 
     }
     await c.env.DB.batch(childStmts)
 
+    // P4: 백업주문 청구그룹(이미 BILLED)을 이 계산서에 연결
+    await c.env.DB.prepare(
+      `UPDATE order_billing_groups SET tax_invoice_id = ? WHERE order_id = ? AND tax_invoice_id IS NULL`
+    ).bind(taxInvoiceId, orderId).run()
+
     // auto_issue 처리 (옵션)
     if (body.auto_issue) {
       const issueRes = await issueTaxInvoice(c.env.DB, taxInvoiceId, user.id, c.env, entityId)
@@ -1136,12 +1220,12 @@ taxInvoicesRouter.post('/', requireRole('ADMIN', 'MANAGER'), async (c) => {
       return c.json({ success: false, error: '회사 사업자등록번호가 설정되어 있지 않습니다.' }, 400)
     }
 
-    const invoiceNumber = await generateInvoiceNumber(c.env.DB, getEntityId(c))
+    // P4: 채번은 createSplitInvoices가 법인별로 수행 (generateInvoiceNumber(entityId)).
     const issueDate = body.issue_date || new Date().toISOString().slice(0, 10)
     const user = c.get('user')
 
     // ──────────────────────────────────────────────
-    // 묶음 발행 로직
+    // 묶음 발행 로직 (생산법인별 분할 → 법인당 1장)
     // ──────────────────────────────────────────────
     if (isBulk) {
       const orderIds = body.order_ids!
@@ -1182,116 +1266,34 @@ taxInvoicesRouter.post('/', requireRole('ADMIN', 'MANAGER'), async (c) => {
         return c.json({ success: false, error: '거래처에 사업자등록번호가 등록되어 있지 않습니다.' }, 400)
       }
 
-      // 금액 합산
-      const supplyAmount = orders.reduce((sum: number, o) => sum + (parseFloat(String(o.total_amount)) || 0), 0)
-      const taxAmount = orders.reduce((sum: number, o) => sum + (parseFloat(String(o.vat_amount)) || 0), 0)
-      const totalAmount = supplyAmount + taxAmount
-
-      const insertResult = await c.env.DB.prepare(`
-        INSERT INTO tax_invoices (
-          invoice_number, order_id, invoice_type,
-          supplier_brn, supplier_name, supplier_representative,
-          supplier_address, supplier_business_type, supplier_business_item,
-          buyer_client_id, buyer_brn, buyer_name, buyer_representative,
-          buyer_address, buyer_business_type, buyer_business_item, buyer_email,
-          supply_amount, tax_amount, total_amount,
-          status, issue_date, notes,
-          entity_id,
-          created_at, updated_at
-        ) VALUES (
-          ?, ?, 'NORMAL',
-          ?, ?, ?,
-          ?, ?, ?,
-          ?, ?, ?, ?,
-          ?, ?, ?, ?,
-          ?, ?, ?,
-          'DRAFT', ?, ?,
-          ?,
-          CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
-        )
-      `).bind(
-        invoiceNumber, orderIds[0],
-        settings.company_business_registration_number,
-        settings.company_name || '',
-        settings.company_representative || null,
-        settings.company_address || null,
-        settings.company_business_type || null,
-        settings.company_business_item || null,
-        firstOrder.client_id,
-        firstOrder.business_registration_number,
-        firstOrder.client_name,
-        firstOrder.representative || null,
-        firstOrder.address || null,
-        firstOrder.business_type || null,
-        firstOrder.business_item || null,
-        body.buyer_email || firstOrder.client_email || null,
-        supplyAmount, taxAmount, totalAmount,
+      const fo = firstOrder as any
+      const created = await createSplitInvoices(c.env.DB, c.env, {
+        orderIds,
+        buyer: {
+          id: Number(fo.client_id),
+          business_registration_number: fo.business_registration_number,
+          client_name: String(fo.client_name || ''),
+          representative: fo.representative ?? null,
+          address: fo.address ?? null,
+          business_type: fo.business_type ?? null,
+          business_item: fo.business_item ?? null,
+          email: fo.client_email ?? null,
+        },
+        buyerEmail: body.buyer_email,
         issueDate,
-        body.notes || null,
-        getEntityId(c)
-      ).run()
-
-      const taxInvoiceId = insertResult.meta.last_row_id
-
-      // #162: junction + items 단일 batch로 원자적 처리
-      const vatRate = 0.1
-      const junctionStmts = orderIds.map((oid: number) =>
-        c.env.DB.prepare('INSERT OR IGNORE INTO tax_invoice_orders (tax_invoice_id, order_id) VALUES (?, ?)')
-          .bind(taxInvoiceId, oid)
-      )
-
-      // 모든 주문의 order_items 일괄 조회
-      const oiPlaceholders = orderIds.map(() => '?').join(',')
-      const { results: allOrderItems } = await c.env.DB.prepare(
-        `SELECT item_name, width, height, quantity, unit_price, amount, vat_included, sort_order, order_id
-         FROM order_items WHERE order_id IN (${oiPlaceholders}) ORDER BY order_id, sort_order`
-      ).bind(...orderIds).all()
-
-      const itemStmts = (allOrderItems as Array<Record<string, unknown>>).map((oi, idx: number) => {
-        const itemAmount = parseFloat(String(oi.amount)) || 0
-        const itemTax = oi.vat_included ? Math.round(itemAmount * vatRate) : 0
-        const spec = (oi.width && oi.height) ? `${oi.width}x${oi.height}` : null
-        return c.env.DB.prepare(`
-          INSERT INTO tax_invoice_items (
-            tax_invoice_id, item_date, item_name, specification,
-            quantity, unit_price, supply_amount, tax_amount, sort_order
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `).bind(taxInvoiceId, issueDate, oi.item_name, spec,
-          oi.quantity, parseFloat(String(oi.unit_price)) || 0,
-          itemAmount, itemTax, idx)
+        notes: body.notes,
+        itemMode: 'detail',
+        autoIssue: body.auto_issue,
+        userId: user.id,
       })
-
-      const allStmts = [...junctionStmts, ...itemStmts]
-      if (allStmts.length > 0) await c.env.DB.batch(allStmts)
-
-      const created = await c.env.DB.prepare(`
-        SELECT ti.*, o.order_number FROM tax_invoices ti
-        LEFT JOIN orders o ON ti.order_id = o.id
-        WHERE ti.id = ?
-      `).bind(taxInvoiceId).first()
-
-      const { results: createdItems } = await c.env.DB.prepare(
-        'SELECT id, tax_invoice_id, item_date, item_name, specification, quantity, unit_price, supply_amount, tax_amount, notes, sort_order FROM tax_invoice_items WHERE tax_invoice_id = ? ORDER BY sort_order'
-      ).bind(taxInvoiceId).all()
-
-      const { results: linkedOrders } = await c.env.DB.prepare(`
-        SELECT o.id, o.order_number, o.order_date, o.total_amount, o.vat_amount
-        FROM tax_invoice_orders tio
-        JOIN orders o ON tio.order_id = o.id
-        WHERE tio.tax_invoice_id = ?
-        ORDER BY o.order_date ASC, o.id ASC
-      `).bind(taxInvoiceId).all()
-
-      // auto_issue 처리
-      if (body.auto_issue) {
-        const issueRes = await issueTaxInvoice(c.env.DB, taxInvoiceId, user.id, c.env, getEntityId(c))
-        if (!issueRes.success) {
-          return c.json({ success: false, error: issueRes.error, data: { invoice_id: taxInvoiceId, invoice_number: invoiceNumber, ...(issueRes.data || {}) } }, 400)
-        }
-        return c.json({ success: true, data: { ...issueRes.data, orders: linkedOrders, auto_issued: true } }, 201)
+      if (created.length === 0) {
+        return c.json({ success: false, error: '청구그룹이 없습니다. 주문을 다시 저장해주세요.' }, 400)
       }
-
-      return c.json({ success: true, data: { ...created, items: createdItems, orders: linkedOrders } }, 201)
+      const failed = created.filter(x => x.invoice_id === 0 || (body.auto_issue && !x.issued))
+      if (failed.length === created.length) {
+        return c.json({ success: false, error: failed[0]?.error || '발행 실패', data: { invoices: created } }, 400)
+      }
+      return c.json({ success: true, data: { invoices: created, split_count: created.length, auto_issued: !!body.auto_issue } }, 201)
     }
 
     // ──────────────────────────────────────────────
@@ -1313,114 +1315,34 @@ taxInvoicesRouter.post('/', requireRole('ADMIN', 'MANAGER'), async (c) => {
       return c.json({ success: false, error: '거래처에 사업자등록번호가 등록되어 있지 않습니다.' }, 400)
     }
 
-    const supplyAmount = parseFloat(String(order.total_amount)) || 0
-    const taxAmount = parseFloat(String(order.vat_amount)) || 0
-    const totalAmount = supplyAmount + taxAmount
-
-    const insertResult = await c.env.DB.prepare(`
-      INSERT INTO tax_invoices (
-        invoice_number, order_id, invoice_type,
-        supplier_brn, supplier_name, supplier_representative,
-        supplier_address, supplier_business_type, supplier_business_item,
-        buyer_client_id, buyer_brn, buyer_name, buyer_representative,
-        buyer_address, buyer_business_type, buyer_business_item, buyer_email,
-        supply_amount, tax_amount, total_amount,
-        status, issue_date, notes,
-        entity_id,
-        created_at, updated_at
-      ) VALUES (
-        ?, ?, 'NORMAL',
-        ?, ?, ?,
-        ?, ?, ?,
-        ?, ?, ?, ?,
-        ?, ?, ?, ?,
-        ?, ?, ?,
-        'DRAFT', ?, ?,
-        ?,
-        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
-      )
-    `).bind(
-      invoiceNumber, body.order_id,
-      settings.company_business_registration_number,
-      settings.company_name || '',
-      settings.company_representative || null,
-      settings.company_address || null,
-      settings.company_business_type || null,
-      settings.company_business_item || null,
-      order.client_id,
-      order.business_registration_number,
-      order.client_name,
-      order.representative || null,
-      order.address || null,
-      order.business_type || null,
-      order.business_item || null,
-      body.buyer_email || order.client_email || null,
-      supplyAmount, taxAmount, totalAmount,
+    // P4 split billing: 단건도 혼합주문이면 생산법인별 분할 → N장 (단일법인=1장, 기존 동일).
+    const created = await createSplitInvoices(c.env.DB, c.env, {
+      orderIds: [body.order_id!],
+      buyer: {
+        id: Number(order.client_id),
+        business_registration_number: order.business_registration_number,
+        client_name: order.client_name,
+        representative: order.representative ?? null,
+        address: order.address ?? null,
+        business_type: order.business_type ?? null,
+        business_item: order.business_item ?? null,
+        email: (order as any).client_email ?? null,
+      },
+      buyerEmail: body.buyer_email,
       issueDate,
-      body.notes || null,
-      getEntityId(c)
-    ).run()
-
-    const taxInvoiceId = insertResult.meta.last_row_id
-
-    // junction 테이블에 단건 연결
-    await c.env.DB.prepare(
-      'INSERT OR IGNORE INTO tax_invoice_orders (tax_invoice_id, order_id) VALUES (?, ?)'
-    ).bind(taxInvoiceId, body.order_id).run()
-
-    // Copy order_items -> tax_invoice_items
-    const { results: orderItems } = await c.env.DB.prepare(
-      `SELECT item_name, width, height, quantity, unit_price, amount, vat_included, sort_order
-       FROM order_items WHERE order_id = ? ORDER BY sort_order`
-    ).bind(body.order_id).all()
-
-    const vatRate = 0.1
-    // N+1 제거: tax_invoice_items INSERT를 db.batch로 일괄 처리 (청크 80)
-    const tiItemStmts = (orderItems as Array<Record<string, unknown>>).map((oi) => {
-      const itemAmount = parseFloat(String(oi.amount)) || 0
-      const itemTax = oi.vat_included ? Math.round(itemAmount * vatRate) : 0
-      const spec = (oi.width && oi.height) ? `${oi.width}x${oi.height}` : null
-      return c.env.DB.prepare(`
-        INSERT INTO tax_invoice_items (
-          tax_invoice_id, item_date, item_name, specification,
-          quantity, unit_price, supply_amount, tax_amount, sort_order
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `).bind(
-        taxInvoiceId,
-        issueDate,
-        oi.item_name,
-        spec,
-        oi.quantity,
-        parseFloat(String(oi.unit_price)) || 0,
-        itemAmount,
-        itemTax,
-        oi.sort_order
-      )
+      notes: body.notes,
+      itemMode: 'detail',
+      autoIssue: body.auto_issue,
+      userId: user.id,
     })
-    for (let i = 0; i < tiItemStmts.length; i += 80) {
-      await c.env.DB.batch(tiItemStmts.slice(i, i + 80))
+    if (created.length === 0) {
+      return c.json({ success: false, error: '청구그룹이 없습니다. 주문을 다시 저장해주세요.' }, 400)
     }
-
-    const created = await c.env.DB.prepare(`
-      SELECT ti.*, o.order_number FROM tax_invoices ti
-      LEFT JOIN orders o ON ti.order_id = o.id
-      WHERE ti.id = ?
-    `).bind(taxInvoiceId).first()
-
-    const { results: createdItems } = await c.env.DB.prepare(
-      'SELECT id, tax_invoice_id, item_date, item_name, specification, quantity, unit_price, supply_amount, tax_amount, notes, sort_order FROM tax_invoice_items WHERE tax_invoice_id = ? ORDER BY sort_order'
-    ).bind(taxInvoiceId).all()
-
-    // auto_issue 처리
-    if (body.auto_issue) {
-      const issueRes = await issueTaxInvoice(c.env.DB, taxInvoiceId, user.id, c.env, getEntityId(c))
-      if (!issueRes.success) {
-        return c.json({ success: false, error: issueRes.error, data: { invoice_id: taxInvoiceId, invoice_number: invoiceNumber, ...(issueRes.data || {}) } }, 400)
-      }
-      return c.json({ success: true, data: { ...issueRes.data, auto_issued: true } }, 201)
+    const failedS = created.filter(x => x.invoice_id === 0 || (body.auto_issue && !x.issued))
+    if (failedS.length === created.length) {
+      return c.json({ success: false, error: failedS[0]?.error || '발행 실패', data: { invoices: created } }, 400)
     }
-
-    return c.json({ success: true, data: { ...created, items: createdItems } }, 201)
+    return c.json({ success: true, data: { invoices: created, split_count: created.length, auto_issued: !!body.auto_issue } }, 201)
   } catch (error) {
     console.error('src/routes/taxInvoices.ts error:', error)
     return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
@@ -1791,67 +1713,62 @@ taxInvoicesRouter.post('/:id/cancel', requireRole('ADMIN'), async (c) => {
       WHERE id = ?
     `).bind(user.id, cancel_reason || null, id).run()
 
-    // 취소된 계산서에 연결된 주문들의 billing_status 초기화
-    // 다른 유효 계산서(ISSUED/SENT/NTS_SUCCESS)가 없는 주문만 초기화
+    // P4 split billing: 이 계산서가 청구한 청구그룹만 초기화 (group.tax_invoice_id = id).
+    // 타 법인 그룹·계산서는 불변 → "다른 유효 계산서" 체크는 그룹 스코프로 자연 처리.
     try {
-      const { results: linkedOrders } = await c.env.DB.prepare(
-        `SELECT DISTINCT tio.order_id FROM tax_invoice_orders tio
-         WHERE tio.tax_invoice_id = ?
-         UNION
-         SELECT order_id FROM tax_invoices WHERE id = ? AND order_id IS NOT NULL`
-      ).bind(id, id).all()
-      const orderIds = (linkedOrders as Array<{ order_id: number }>).map(r => r.order_id).filter(Boolean)
+      // 정상 경로: 발행 시 연결된 그룹. 레거시 미연결 폴백: 연결주문 × 이 계산서 법인 그룹.
+      let groups = (await c.env.DB.prepare(
+        `SELECT g.id as group_id, g.order_id, o.order_type
+         FROM order_billing_groups g JOIN orders o ON o.id = g.order_id
+         WHERE g.tax_invoice_id = ?`
+      ).bind(id).all<{ group_id: number; order_id: number; order_type: string | null }>()).results
 
-      if (orderIds.length > 0) {
-        const oph = orderIds.map(() => '?').join(',')
-        // N+1 제거: ① 다른 유효 계산서 보유 여부 일괄 조회 (GROUP BY → cnt>0인 주문만 등장)
-        const { results: otherValidRows } = await c.env.DB.prepare(
-          `SELECT tio.order_id as order_id, COUNT(*) as cnt FROM tax_invoice_orders tio
-           JOIN tax_invoices ti ON tio.tax_invoice_id = ti.id
-           WHERE tio.order_id IN (${oph}) AND ti.id != ? AND ti.status NOT IN ('CANCELLED', 'DRAFT')
-           GROUP BY tio.order_id`
-        ).bind(...orderIds, id).all<{ order_id: number; cnt: number }>()
-        const otherValidMap = new Map<number, number>()
-        for (const r of otherValidRows) otherValidMap.set(r.order_id, r.cnt)
-
-        // ② 초기화 대상 주문 상세 일괄 조회
-        const { results: ordRows } = await c.env.DB.prepare(
-          `SELECT id, order_type, billing_status, billed_amount, final_amount, client_id FROM orders WHERE id IN (${oph})`
-        ).bind(...orderIds).all<{ id: number; order_type: string | null; billing_status: string | null; billed_amount: number | null; final_amount: number | null; client_id: number }>()
-        const ordMap = new Map<number, { order_type: string | null; billing_status: string | null; billed_amount: number | null; final_amount: number | null; client_id: number }>()
-        for (const r of ordRows) ordMap.set(r.id, r)
-
-        // 연결 주문 수 = bounded-small → 전체 단일 batch로 주문별 원자성 보존
-        const cancelStmts: any[] = []
-        for (const orderId of orderIds) {
-          const cnt = otherValidMap.get(orderId) || 0
-          if (cnt === 0) {
-            // 직접발행(#310 방안 A) 백업 주문이면: 발행 시 증액한 AR을 롤백하고
-            // 주문 자체를 CANCELLED 처리한다. (일반 주문은 기존 동작 유지 — billing_status만 초기화)
-            const ord = ordMap.get(orderId)
-            if (ord?.order_type === 'DIRECT_INVOICE') {
-              // split billing P3: balance 캐시 미사용 — status='CANCELLED'로 미수금 파생에서 자동 제외.
-              cancelStmts.push(c.env.DB.prepare(
-                `UPDATE order_billing_groups SET billing_status = NULL WHERE order_id = ?`
-              ).bind(orderId))
-              cancelStmts.push(c.env.DB.prepare(
-                `UPDATE orders SET status = 'CANCELLED', billing_status = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?`
-              ).bind(orderId))
-            } else {
-              // split billing P3: 일반 주문 — 그룹 + orders billing_status 초기화 (청구 취소). balance 미사용.
-              cancelStmts.push(c.env.DB.prepare(
-                `UPDATE order_billing_groups SET billing_status = NULL, billed_at = NULL, billed_by = NULL WHERE order_id = ?`
-              ).bind(orderId))
-              cancelStmts.push(c.env.DB.prepare(
-                `UPDATE orders SET billing_status = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?`
-              ).bind(orderId))
-            }
-          }
+      if (groups.length === 0) {
+        const inv = await c.env.DB.prepare(`SELECT entity_id FROM tax_invoices WHERE id = ?`).bind(id).first<{ entity_id: number }>()
+        const { results: linkedOrders } = await c.env.DB.prepare(
+          `SELECT DISTINCT tio.order_id FROM tax_invoice_orders tio WHERE tio.tax_invoice_id = ?
+           UNION SELECT order_id FROM tax_invoices WHERE id = ? AND order_id IS NOT NULL`
+        ).bind(id, id).all<{ order_id: number }>()
+        const oids = linkedOrders.map(r => r.order_id).filter(Boolean)
+        if (oids.length > 0 && inv?.entity_id) {
+          const ph = oids.map(() => '?').join(',')
+          groups = (await c.env.DB.prepare(
+            `SELECT g.id as group_id, g.order_id, o.order_type FROM order_billing_groups g JOIN orders o ON o.id = g.order_id
+             WHERE g.order_id IN (${ph}) AND g.entity_id = ?`
+          ).bind(...oids, inv.entity_id).all<{ group_id: number; order_id: number; order_type: string | null }>()).results
         }
-        if (cancelStmts.length > 0) await c.env.DB.batch(cancelStmts)
+      }
+
+      if (groups.length > 0) {
+        const groupIds = groups.map(g => g.group_id)
+        const affectedOrders = [...new Set(groups.map(g => g.order_id))]
+        const directBackup = [...new Set(groups.filter(g => g.order_type === 'DIRECT_INVOICE').map(g => g.order_id))]
+        const gph = groupIds.map(() => '?').join(',')
+        const oph = affectedOrders.map(() => '?').join(',')
+        const cancelStmts: any[] = [
+          // 그룹 청구 초기화 + 계산서 연결 해제
+          c.env.DB.prepare(
+            `UPDATE order_billing_groups SET billing_status = NULL, billed_at = NULL, billed_by = NULL, tax_invoice_id = NULL WHERE id IN (${gph})`
+          ).bind(...groupIds),
+          // orders 미러: 그 주문 전 그룹이 청구완료된 경우만 BILLED 유지, 아니면 NULL (부분 취소 반영)
+          c.env.DB.prepare(
+            `UPDATE orders SET billing_status = CASE WHEN NOT EXISTS (
+                 SELECT 1 FROM order_billing_groups g WHERE g.order_id = orders.id AND COALESCE(g.billing_status,'') NOT IN ('BILLED','PAID')
+               ) THEN 'BILLED' ELSE NULL END,
+               updated_at = CURRENT_TIMESTAMP WHERE id IN (${oph})`
+          ).bind(...affectedOrders),
+        ]
+        // 직접발행(#310) 백업 주문은 주문 자체 CANCELLED → 미수금 파생에서 자동 제외
+        if (directBackup.length > 0) {
+          const dph = directBackup.map(() => '?').join(',')
+          cancelStmts.push(c.env.DB.prepare(
+            `UPDATE orders SET status = 'CANCELLED', billing_status = NULL, updated_at = CURRENT_TIMESTAMP WHERE id IN (${dph})`
+          ).bind(...directBackup))
+        }
+        await c.env.DB.batch(cancelStmts)
       }
     } catch (_err) {
-      console.warn('세금계산서 취소 - billing_status 초기화 오류:', _err)
+      console.warn('세금계산서 취소 - 청구그룹 초기화 오류:', _err)
     }
 
     const updated = await c.env.DB.prepare(`
@@ -2004,77 +1921,43 @@ taxInvoicesRouter.post('/monthly-create', async (c) => {
       grouped[row.client_id].tax += parseFloat(String(row.vat_amount)) || 0
     }
 
-    const companySettings = await getCompanySettings(c.env.DB, getEntityId(c))
-    const created: Array<{ invoice_number: string; client_name: string; issued: boolean }> = []
+    const created: Array<{ invoice_number: string; client_name: string; issued: boolean; entity_id?: number }> = []
     const errors: Array<{ client_name: string; error: string }> = []
 
+    // P4 split billing: 거래처별 월합산도 생산법인별 분할 → (거래처×법인) 1장. 같은 법인끼리만 합산.
     for (const group of Object.values(grouped)) {
       try {
-        const invoiceNumber = await generateInvoiceNumber(c.env.DB, getEntityId(c))
-
-        const insertResult = await c.env.DB.prepare(`
-          INSERT INTO tax_invoices (
-            invoice_number, order_id, buyer_client_id, issue_date, status,
-            supplier_brn, supplier_name, supplier_representative, supplier_address,
-            supplier_business_type, supplier_business_item,
-            buyer_brn, buyer_name, buyer_representative, buyer_address, buyer_email,
-            supply_amount, tax_amount, total_amount,
-            entity_id,
-            created_by, created_at, updated_at
-          ) VALUES (?, ?, ?, ?, 'DRAFT', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-        `).bind(
-          invoiceNumber,
-          group.orders[0].order_id,
-          group.client_id,
+        const g = group as any
+        const orderIds = group.orders.map((o) => o.order_id)
+        const invs = await createSplitInvoices(c.env.DB, c.env, {
+          orderIds,
+          buyer: {
+            id: group.client_id,
+            business_registration_number: g.business_registration_number ?? null,
+            client_name: group.client_name,
+            representative: g.representative ?? null,
+            address: g.address ?? null,
+            business_type: g.business_type ?? null,
+            business_item: g.business_item ?? null,
+            email: g.buyer_email ?? null,
+          },
+          buyerEmail: g.buyer_email ?? null,
           issueDate,
-          companySettings['company_business_registration_number'] || '',
-          companySettings['company_name'] || '',
-          companySettings['company_representative'] || '',
-          companySettings['company_address'] || '',
-          companySettings['company_business_type'] || '',
-          companySettings['company_business_item'] || '',
-          group.business_registration_number || '',
-          group.client_name || '',
-          group.representative || '',
-          group.address || '',
-          group.buyer_email || '',
-          group.supply,
-          group.tax,
-          group.supply + group.tax,
-          getEntityId(c),
-          user?.id || 1
-        ).run()
-
-        const taxInvoiceId = insertResult.meta.last_row_id
-
-        // tax_invoice_orders 연결 — N+1 제거: db.batch 일괄 처리 (청크 80)
-        const orderLinkStmts = group.orders.map((order) =>
-          c.env.DB.prepare(
-            'INSERT INTO tax_invoice_orders (tax_invoice_id, order_id) VALUES (?, ?)'
-          ).bind(taxInvoiceId, order.order_id)
-        )
-        for (let i = 0; i < orderLinkStmts.length; i += 80) {
-          await c.env.DB.batch(orderLinkStmts.slice(i, i + 80))
+          itemMode: 'summary',
+          summaryLabel: `${body.year}년 ${body.month}월 합산`,
+          autoIssue: body.auto_issue,
+          userId: user?.id || 1,
+        })
+        if (invs.length === 0) {
+          errors.push({ client_name: group.client_name, error: '청구그룹이 없습니다.' })
+          continue
         }
-
-        // 품목 합산 행 추가
-        await c.env.DB.prepare(`
-          INSERT INTO tax_invoice_items (tax_invoice_id, sort_order, item_name, quantity, unit_price, supply_amount, tax_amount)
-          VALUES (?, 1, ?, 1, ?, ?, ?)
-        `).bind(
-          taxInvoiceId,
-          `${body.year}년 ${body.month}월 합산 (${group.orders.length}건)`,
-          group.supply,
-          group.supply,
-          group.tax
-        ).run()
-
-        // auto_issue
-        if (body.auto_issue) {
-          const issueResult = await issueTaxInvoice(c.env.DB, taxInvoiceId as number, user?.id || 1, c.env, getEntityId(c))
-          created.push({ invoice_number: invoiceNumber, client_name: group.client_name, issued: issueResult.success })
-        } else {
-          created.push({ invoice_number: invoiceNumber, client_name: group.client_name, issued: false })
+        for (const inv of invs) {
+          if (inv.invoice_id === 0) {
+            errors.push({ client_name: group.client_name, error: inv.error || '생성 실패' })
+          } else {
+            created.push({ invoice_number: inv.invoice_number, client_name: group.client_name, issued: inv.issued, entity_id: inv.entity_id })
+          }
         }
       } catch (err) {
         console.error('Bulk create tax invoice error for client:', group.client_name, err)
