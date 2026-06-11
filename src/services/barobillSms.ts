@@ -26,10 +26,17 @@ export interface ATSMessage {
   }>
 }
 
+export interface SendItemResult {
+  ok: boolean
+  receiptNum: string   // 성공 시 SendKey/접수번호
+  code: number         // 실패 시 음수 바로빌 오류코드, 성공 시 1
+}
+
 export interface SendResult {
   receiptNum: string
   code: number
   message: string
+  results?: SendItemResult[]   // #378: 건별 결과(입력 순서). 단건/다건 모두 채움 → 부분실패 식별·재발송용
 }
 
 export interface ATSTemplate {
@@ -385,12 +392,13 @@ function smsReplyOf(altSendType: string | undefined): 'E' | 'A' | 'N' {
  */
 function interpretReceipt(result: string): SendResult {
   const r = (result || '').trim()
-  if (!r) return { receiptNum: '', code: 0, message: '발송 실패 (빈 응답)' }
+  if (!r) return { receiptNum: '', code: 0, message: '발송 실패 (빈 응답)', results: [{ ok: false, receiptNum: '', code: 0 }] }
   const num = Number(r)
   if (Number.isFinite(num) && num < 0) {
-    return { receiptNum: '', code: Math.trunc(num), message: `발송 실패 (바로빌 코드: ${r})` }
+    const code = Math.trunc(num)
+    return { receiptNum: '', code, message: `발송 실패 (바로빌 코드: ${r})`, results: [{ ok: false, receiptNum: '', code }] }
   }
-  return { receiptNum: r, code: 1, message: '발송 성공' }
+  return { receiptNum: r, code: 1, message: '발송 성공', results: [{ ok: true, receiptNum: r, code: 1 }] }
 }
 
 /**
@@ -405,13 +413,21 @@ function interpretBulkResult(result: string): SendResult {
   while ((m = re.exec(result)) !== null) items.push((m[1] || '').trim())
   if (items.length === 0) return interpretReceipt(result)
   let ok = 0, fail = 0, firstReceipt = '', firstErr = 0
+  const results: SendItemResult[] = []
   for (const v of items) {
     const n = Number(v)
-    if (Number.isFinite(n) && n < 0) { fail++; if (firstErr === 0) firstErr = Math.trunc(n) }
-    else if (v) { ok++; if (!firstReceipt) firstReceipt = v }
+    if (Number.isFinite(n) && n < 0) {
+      const code = Math.trunc(n); fail++; if (firstErr === 0) firstErr = code
+      results.push({ ok: false, receiptNum: '', code })
+    } else if (v) {
+      ok++; if (!firstReceipt) firstReceipt = v
+      results.push({ ok: true, receiptNum: v, code: 1 })
+    } else {
+      results.push({ ok: false, receiptNum: '', code: 0 })  // 빈 항목: 정렬 보존(집계엔 미포함 — 기존 동작 유지)
+    }
   }
   if (ok > 0) {
-    return { receiptNum: firstReceipt, code: ok, message: `발송 접수 ${ok}건${fail ? `, 실패 ${fail}건` : ''}` }
+    return { receiptNum: firstReceipt, code: ok, message: `발송 접수 ${ok}건${fail ? `, 실패 ${fail}건` : ''}`, results }
   }
-  return { receiptNum: '', code: firstErr, message: `발송 실패 (${fail}건, 바로빌 코드: ${firstErr || 'empty'})` }
+  return { receiptNum: '', code: firstErr, message: `발송 실패 (${fail}건, 바로빌 코드: ${firstErr || 'empty'})`, results }
 }

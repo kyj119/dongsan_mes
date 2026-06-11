@@ -977,18 +977,102 @@ async function sendShipmentBulk() {
 
     var res = await axios.post('/api/kakao/send-shipment-bulk', payload);
     if (res.data.success) {
-      var d = res.data.data;
-      showToast((d.sent_count || targets.length) + '건 발송 완료', 'success');
-      closeShipmentSendModal();
-      // 해당 섹션 체크 해제
-      selectedShipments[shipSendSection] = new Set();
-      updateSendButton(shipSendSection);
+      var d = res.data.data || {};
+      var status = d.status || 'SUCCESS';
+      if (status === 'SUCCESS') {
+        showToast(((d.sent_count != null) ? d.sent_count : targets.length) + '건 발송 완료', 'success');
+        closeShipmentSendModal();
+        // 해당 섹션 체크 해제
+        selectedShipments[shipSendSection] = new Set();
+        updateSendButton(shipSendSection);
+      } else {
+        // #378: 부분/전량 실패 → 결과 모달(성공N/실패M + 실패목록 + 실패건 재발송)
+        closeShipmentSendModal();
+        showShipmentSendResult(d, payload);
+      }
     } else {
       showToast(res.data.error || '발송 실패', 'error');
     }
   } catch(e) {
     showToast('발송 오류: ' + (e.response && e.response.data ? e.response.data.error : e.message), 'error');
   }
+}
+
+// #378: 일괄 발송 결과 모달 (성공/실패 집계 + 실패 목록 + 실패 건만 재발송)
+function showShipmentSendResult(d, originalPayload) {
+  var total = (d.total != null) ? d.total : ((d.sent_count || 0) + (d.fail_count || 0));
+  var ok = d.sent_count || 0;
+  var fail = d.fail_count || 0;
+  var failures = d.failures || [];
+  var existing = document.getElementById('shipSendResultOverlay');
+  if (existing) existing.remove();
+
+  var rows = failures.map(function(f) {
+    return '<tr class="border-t border-gray-100">'
+      + '<td class="px-3 py-2 text-sm">' + escapeHtml(f.client_name || '-') + '</td>'
+      + '<td class="px-3 py-2 text-sm">' + escapeHtml(f.mobile || '-') + '</td>'
+      + '<td class="px-3 py-2 text-sm text-red-600">' + escapeHtml(f.reason || '발송 실패') + '</td>'
+      + '</tr>';
+  }).join('');
+
+  var statusColor = (fail === 0) ? 'text-green-600' : (ok === 0 ? 'text-red-600' : 'text-amber-600');
+  var listHtml = failures.length
+    ? ('<div class="px-5 overflow-y-auto flex-1"><table class="w-full text-left"><thead><tr class="text-xs text-gray-500">'
+        + '<th class="px-3 py-1">거래처</th><th class="px-3 py-1">수신번호</th><th class="px-3 py-1">사유</th>'
+        + '</tr></thead><tbody>' + rows + '</tbody></table></div>')
+    : '';
+  var resendBtnHtml = (fail > 0)
+    ? '<button id="shipSendResultResend" class="ds-btn ds-btn-primary text-sm">실패 ' + fail + '건 재발송</button>'
+    : '';
+
+  var html = '<div id="shipSendResultOverlay" class="fixed inset-0 bg-black/40 z-[60] flex items-center justify-center p-4">'
+    + '<div class="bg-white rounded-lg shadow-xl w-full max-w-lg max-h-[80vh] flex flex-col">'
+    + '<div class="px-5 py-4 border-b flex items-center justify-between">'
+    + '<h3 class="text-base font-semibold">발송 결과</h3>'
+    + '<button id="shipSendResultClose" class="text-gray-400 hover:text-gray-600 text-xl leading-none">&times;</button>'
+    + '</div>'
+    + '<div class="px-5 py-3 text-sm font-medium ' + statusColor + '">성공 ' + ok + '건 / 실패 ' + fail + '건 (총 ' + total + '건)</div>'
+    + listHtml
+    + '<div class="px-5 py-4 border-t flex justify-end gap-2">' + resendBtnHtml
+    + '<button id="shipSendResultDismiss" class="ds-btn text-sm">닫기</button></div>'
+    + '</div></div>';
+  document.body.insertAdjacentHTML('beforeend', html);
+
+  var overlay = document.getElementById('shipSendResultOverlay');
+  if (!overlay) { console.warn('[shipments] #shipSendResultOverlay not found'); return; }
+  function close() { if (overlay) overlay.remove(); }
+  var closeBtn = document.getElementById('shipSendResultClose'); if (closeBtn) closeBtn.addEventListener('click', close);
+  var dismissBtn = document.getElementById('shipSendResultDismiss'); if (dismissBtn) dismissBtn.addEventListener('click', close);
+  overlay.addEventListener('click', function(e) { if (e.target === overlay) close(); });
+
+  var resendBtn = document.getElementById('shipSendResultResend');
+  if (resendBtn) resendBtn.addEventListener('click', async function() {
+    var failKeys = {};
+    failures.forEach(function(f) { failKeys[(f.client_name || '') + '|' + (f.mobile || '')] = true; });
+    var retryTargets = (originalPayload.targets || []).filter(function(t) {
+      return failKeys[(t.client_name || '') + '|' + (t.mobile || '')];
+    });
+    if (retryTargets.length === 0) { showToast('재발송 대상이 없습니다', 'warning'); return; }
+    resendBtn.disabled = true; resendBtn.textContent = '재발송 중...';
+    try {
+      var retryPayload = Object.assign({}, originalPayload, { targets: retryTargets });
+      var res = await axios.post('/api/kakao/send-shipment-bulk', retryPayload);
+      close();
+      if (res.data.success) {
+        var rd = res.data.data || {};
+        if ((rd.status || 'SUCCESS') === 'SUCCESS') {
+          showToast(retryTargets.length + '건 재발송 완료', 'success');
+        } else {
+          showShipmentSendResult(rd, retryPayload);
+        }
+      } else {
+        showToast(res.data.error || '재발송 실패', 'error');
+      }
+    } catch (e) {
+      resendBtn.disabled = false; resendBtn.textContent = '실패 ' + fail + '건 재발송';
+      showToast('재발송 오류: ' + (e.response && e.response.data ? e.response.data.error : e.message), 'error');
+    }
+  });
 }
 
 // ========== 배송 중 (In-Transit) ==========

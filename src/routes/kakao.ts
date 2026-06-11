@@ -999,7 +999,35 @@ kakaoRouter.post('/send-shipment-bulk', async (c) => {
 
     const templateLabel = channel === 'alimtalk' ? (template_code || 'ATS') : (subject ? 'LMS' : 'SMS')
 
-    // 로그 저장 (bulk 대표 1건)
+    // #378: 건별 결과로 성공/실패 집계 (이전엔 sent_count=targets.length라 부분/전량 실패도 전량 성공 오보고)
+    const itemResults = sendResult!.results
+    let okCount: number, failCount: number
+    let failures: Array<{ client_name: string; mobile: string; shipment_ids: any[]; reason: string }> = []
+    if (itemResults && itemResults.length === targets.length) {
+      targets.forEach((t: any, i: number) => {
+        const r = itemResults[i]
+        if (!r.ok) failures.push({
+          client_name: t.client_name || '',
+          mobile: t.mobile || '',
+          shipment_ids: t.shipment_ids || [],
+          reason: r.code < 0 ? `바로빌 오류코드 ${r.code}` : '발송 실패'
+        })
+      })
+      failCount = failures.length
+      okCount = targets.length - failCount
+    } else {
+      // 건별 식별 불가(SMS 다건 등) → 대표 결과로 전량 판정
+      const allOk = !!sendResult!.receiptNum
+      okCount = allOk ? targets.length : 0
+      failCount = allOk ? 0 : targets.length
+      if (!allOk) failures = targets.map((t: any) => ({
+        client_name: t.client_name || '', mobile: t.mobile || '', shipment_ids: t.shipment_ids || [],
+        reason: sendResult!.message || '발송 실패'
+      }))
+    }
+    const status = failCount === 0 ? 'SUCCESS' : (okCount === 0 ? 'FAILED' : 'PARTIAL')
+
+    // 로그 저장 (bulk 대표 1건 — 실제 성공/실패 수 반영)
     await db.prepare(
       `INSERT INTO kakao_send_logs (
         receipt_num, template_code, receiver_num, receiver_name,
@@ -1015,9 +1043,9 @@ kakaoRouter.post('/send-shipment-bulk', async (c) => {
       null,
       content,
       content,
-      sendResult!.receiptNum ? 'SUCCESS' : 'FAILED',
+      status,
       sendResult!.code || 0,
-      sendResult!.message || '',
+      `성공 ${okCount} / 실패 ${failCount} — ${sendResult!.message || ''}`,
       userId,
       getEntityId(c)
     ).run()
@@ -1025,7 +1053,11 @@ kakaoRouter.post('/send-shipment-bulk', async (c) => {
     return c.json({
       success: true,
       data: {
-        sent_count: targets.length,
+        status,
+        total: targets.length,
+        sent_count: okCount,
+        fail_count: failCount,
+        failures,
         receipt_num: sendResult!.receiptNum,
         code: sendResult!.code,
         message: sendResult!.message
