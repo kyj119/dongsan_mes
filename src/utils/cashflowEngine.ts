@@ -6,7 +6,7 @@
 //   - 물질화: cash_schedule (ORDER 청구입금 / PURCHASE 발주지급 / 수동 TAX·PAYROLL·OTHER·LOAN)
 //             단 source_type='FIXED'는 제외 (고정비는 온더플라이로 통일 → 이중계산 방지)
 //   - 온더플라이: 고정비(fixed_expenses), 대출(loan_payments), 미청구 확정주문 예상입금(orders)
-//   - 카드: corporate_cards에 cutoff_day/payment_day 부재 → 범위 외 (스키마 보강 후 백로그)
+//   - 카드: corporate_cards.cutoff_day/payment_day 기반 청구 예정(CARD_EXPECTED) — 일시불 가정·실적+AVG_3M 혼합
 import type { Context } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { entityFilter } from './entityFilter'
@@ -251,6 +251,93 @@ export async function buildCashflowDays(
           flow: 'IN', type: 'ORDER_EXPECTED',
           name: `${it.client_name || ''} 미수 예상입금 (주문 ${it.order_number})`.trim(),
           amount: amt, materialized: false,
+        })
+      }
+    }
+  }
+
+  // ── 5) 온더플라이: 법인카드 청구 예정 (CARD_EXPECTED) ──────────────────
+  //   카드별 청구 = Σ card_transactions[직전 cutoff+1 ~ cutoff] → payment_day에 OUT.
+  //   청산 cycle: payment_day > cutoff_day면 당월 마감분(동월결제), else 전월 마감분(익월결제).
+  //   미마감/미래 cycle = 진행분 실적 + 잔여일 × 최근90일 일평균(AVG_3M). 일시불 가정(D1-가, 할부는 2차).
+  //   이중계산 가드: cash_schedule source_type='CARD' OUT 있는 달은 §1에서 합산 → skip.
+  const efCard = entityFilter(c, 'cc')
+  const { results: cardRows } = await c.env.DB.prepare(`
+    SELECT id, card_name, COALESCE(cutoff_day, 15) AS cutoff_day, COALESCE(payment_day, 15) AS payment_day
+    FROM corporate_cards cc WHERE is_active = 1${efCard.clause}
+  `).bind(...efCard.params).all<{ id: number; card_name: string; cutoff_day: number; payment_day: number }>()
+
+  if (cardRows.length > 0) {
+    const pad2 = (n: number) => String(n).padStart(2, '0')
+    const toYmd = (d: Date) => `${d.getUTCFullYear()}${pad2(d.getUTCMonth() + 1)}${pad2(d.getUTCDate())}`
+    const ymdToDate = (s: string) => new Date(Date.UTC(+s.slice(0, 4), +s.slice(4, 6) - 1, +s.slice(6, 8)))
+    const addDays = (s: string, n: number) => { const d = ymdToDate(s); d.setUTCDate(d.getUTCDate() + n); return toYmd(d) }
+    const daysInclusive = (a: string, b: string) => (b < a ? 0 : Math.round((ymdToDate(b).getTime() - ymdToDate(a).getTime()) / 86400000) + 1)
+
+    // 오늘(KST) YYYYMMDD
+    const todayRow = await c.env.DB.prepare(`SELECT strftime('%Y%m%d', date('now','+9 hours')) AS t`).first<{ t: string }>()
+    const todayYmd = todayRow?.t || toYmd(new Date())
+
+    // 거래 일괄 조회 (가장 이른 cycleStart + AVG_3M 90일 포함 → from-100일부터)
+    const earliest = addDays(from.replace(/-/g, ''), -100)
+    const latest = to.replace(/-/g, '')
+    const efTx = entityFilter(c, 'ct')
+    const { results: txRows } = await c.env.DB.prepare(`
+      SELECT card_id, transaction_date, amount FROM card_transactions ct
+      WHERE transaction_date BETWEEN ? AND ?${efTx.clause}
+    `).bind(earliest, latest, ...efTx.params).all<{ card_id: number; transaction_date: string; amount: number }>()
+    const txByCard = new Map<number, { d: string; a: number }[]>()
+    for (const t of txRows) {
+      const l = txByCard.get(t.card_id) ?? []
+      l.push({ d: String(t.transaction_date), a: Number(t.amount) || 0 })
+      txByCard.set(t.card_id, l)
+    }
+
+    // 이중계산 가드: 수동 카드 OUT(cash_schedule source_type='CARD')이 있는 달은 합성 skip
+    const efCardCs = entityFilter(c, 'cs')
+    const { results: manualCardCs } = await c.env.DB.prepare(`
+      SELECT DISTINCT strftime('%Y-%m', cs.schedule_date) AS ym FROM cash_schedule cs
+      WHERE cs.source_type = 'CARD' AND cs.flow_type = 'OUT' AND cs.status != 'CANCELLED'${efCardCs.clause}
+    `).bind(...efCardCs.params).all<{ ym: string }>()
+    const manualCardMonths = new Set(manualCardCs.map((r) => r.ym))
+
+    const since90 = addDays(todayYmd, -90)
+    for (const card of cardRows) {
+      const tx = txByCard.get(card.id) ?? []
+      const sum90 = tx.reduce((s, t) => (t.d >= since90 && t.d <= todayYmd ? s + t.a : s), 0)
+      const dailyAvg = sum90 / 90
+      for (const { y, m, lastDay } of months) {
+        const ym = `${y}-${pad2(m)}`
+        if (manualCardMonths.has(ym)) continue
+        const payDay = Math.min(card.payment_day, lastDay)
+        const paymentDate = `${y}-${pad2(m)}-${pad2(payDay)}`
+        if (paymentDate < from || paymentDate > to) continue
+
+        // 이 결제가 청산하는 cycle의 마감(close) 월
+        const sameMonth = card.payment_day > card.cutoff_day
+        let ccY = y, ccM = m
+        if (!sameMonth) { ccM = m - 1; if (ccM === 0) { ccM = 12; ccY = y - 1 } }
+        const ccLast = new Date(ccY, ccM, 0).getDate()
+        const cutoff = Math.min(card.cutoff_day, ccLast)
+        const cycleEnd = `${ccY}${pad2(ccM)}${pad2(cutoff)}`
+        // cycleStart = 직전월 cutoff + 1일
+        let psY = ccY, psM = ccM - 1; if (psM === 0) { psM = 12; psY = ccY - 1 }
+        const psLast = new Date(psY, psM, 0).getDate()
+        const prevCutoff = Math.min(card.cutoff_day, psLast)
+        const cycleStart = addDays(`${psY}${pad2(psM)}${pad2(prevCutoff)}`, 1)
+
+        const actualEnd = cycleEnd < todayYmd ? cycleEnd : todayYmd
+        const actual = actualEnd >= cycleStart
+          ? tx.reduce((s, t) => (t.d >= cycleStart && t.d <= actualEnd ? s + t.a : s), 0) : 0
+        const projStart = todayYmd >= cycleStart ? addDays(todayYmd, 1) : cycleStart
+        const projDays = cycleEnd >= projStart ? daysInclusive(projStart, cycleEnd) : 0
+        const amount = Math.round(actual + projDays * dailyAvg)
+        if (amount <= 0) continue
+        const estimated = projDays > 0
+        add(paymentDate, {
+          flow: 'OUT', type: 'CARD_EXPECTED',
+          name: `${card.card_name} 카드대금${estimated ? '·추정' : ''}`,
+          amount, materialized: false, estimated,
         })
       }
     }
