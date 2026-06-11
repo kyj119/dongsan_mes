@@ -378,7 +378,7 @@ kakaoRouter.post('/send-shipment', async (c) => {
     // 출고 정보 조회
     const sef = entityFilter(c, 'o')
     const shipment = await db.prepare(
-      `SELECT s.*, o.order_number, c.client_name, c.mobile
+      `SELECT s.*, o.order_number, o.delivery_method, c.client_name, c.mobile
        FROM shipments s
        LEFT JOIN orders o ON s.order_id = o.id
        LEFT JOIN clients c ON o.client_id = c.id
@@ -393,12 +393,6 @@ kakaoRouter.post('/send-shipment', async (c) => {
       return c.json({ success: false, error: '거래처 휴대폰 번호가 없습니다.' }, 400)
     }
 
-    // 템플릿 코드 확인
-    const templateCode = body.template_code
-    if (!templateCode) {
-      return c.json({ success: false, error: 'template_code는 필수입니다.' }, 400)
-    }
-
     // 카카오 설정 일괄 조회
     const kakaoSettings = await getKakaoSettings(db)
     if (!kakaoSettings.enabled) {
@@ -408,13 +402,80 @@ kakaoRouter.post('/send-shipment', async (c) => {
       return c.json({ success: false, error: '발신번호가 설정되지 않았습니다.' }, 400)
     }
 
-    // 발송 내용 구성
-    const content = body.content || `주문 ${shipment.order_number} 출고되었습니다.`
+    // #alimtalk Phase2: 멱등 가드 — 이미 해당 출고로 발송 성공 로그 있으면 재발송 skip
+    const dup = await db.prepare(
+      `SELECT 1 FROM kakao_send_logs WHERE related_type = 'shipments' AND related_id = ? AND status = 'SUCCESS' LIMIT 1`
+    ).bind(shipmentId).first()
+    if (dup) {
+      return c.json({ success: true, data: { status: 'SKIPPED', reason: 'already_sent', message: '이미 발송됨(멱등 skip)' } })
+    }
+
+    // #alimtalk Phase2: 템플릿 코드 해석 — 미지정 시 delivery_method → 승인 템플릿명(autoCodeMap과 동일).
+    // 한진택배=템플릿 미등록(D3=가) / 기타 미매핑 → 발송 skip + 로그(자동발송 미동작 추적)
+    let templateCode: string = body.template_code || ''
+    const deliveryMethod = ((shipment.delivery_method as string) || '').trim()
+    if (!templateCode) {
+      const AUTO_TEMPLATE_BY_METHOD: Record<string, string> = {
+        '대신화물': '대신화물 출고',
+        '대신택배': '대신택배 출고',
+        '방문수령': '방문 수령 준비 완료',
+        '직접수령': '방문 수령 준비 완료',
+      }
+      const resolved = AUTO_TEMPLATE_BY_METHOD[deliveryMethod]
+      if (!resolved) {
+        await db.prepare(
+          `INSERT INTO kakao_send_logs (
+            receipt_num, template_code, receiver_num, receiver_name,
+            related_type, related_id, client_id, content, alt_content,
+            status, result_code, result_message, sent_by, entity_id
+          ) VALUES ('', ?, ?, ?, 'shipments', ?, ?, '', '', 'SKIPPED', 0, ?, ?, ?)`
+        ).bind(
+          deliveryMethod || '(미지정)', shipment.mobile, shipment.client_name,
+          shipmentId, shipment.client_id,
+          `자동발송 skip: 미매핑 배송수단(${deliveryMethod || '미지정'})`,
+          userId, getEntityId(c)
+        ).run()
+        return c.json({ success: true, data: { status: 'SKIPPED', reason: 'unmapped_delivery_method', delivery_method: deliveryMethod } })
+      }
+      templateCode = resolved
+    }
 
     // 바로빌 Provider 생성
     const provider = await getKakaoProvider(c)
     if (!provider) {
       return c.json({ success: false, error: '바로빌 연동이 설정되지 않았습니다.' }, 400)
+    }
+
+    // #alimtalk Phase2: 발송 내용 — 본문 미지정 시 등록 템플릿 본문 조회 + 변수 치환(등록본과 글자단위 일치 필수)
+    let content: string = body.content || ''
+    if (!content) {
+      let tplBody = ''
+      try {
+        const templates = await provider.listATSTemplate()
+        const tpl = templates.find(t => t.templateCode === templateCode || t.templateName === templateCode)
+        tplBody = tpl?.template || ''
+      } catch (_e) { /* 조회 실패 시 폴백 본문 */ }
+      // 품목 요약: 대표품목 외 N건
+      const { results: shipItems } = await db.prepare(
+        `SELECT oi.item_name FROM shipment_items si
+         LEFT JOIN cards cd ON si.card_id = cd.id
+         LEFT JOIN order_items oi ON cd.order_item_id = oi.id
+         WHERE si.shipment_id = ?`
+      ).bind(shipmentId).all<{ item_name: string | null }>()
+      const names = ((shipItems || []).map(r => r.item_name).filter(Boolean)) as string[]
+      const itemSummary = names.length === 0 ? '제품'
+        : names.length === 1 ? names[0]
+        : `${names[0]} 외 ${names.length - 1}건`
+      const dateRow = await db.prepare(`SELECT date('now','+9 hours') as d`).first<{ d: string }>()
+      const dateStr = dateRow?.d || ''
+      const base = tplBody || `#{고객명}님, 동산기획입니다.\n\n주문하신 제품이 발송되었습니다.\n\n■ 품목: #{품목}\n■ 출고일: #{날짜}\n\n문의: 042-523-1982`
+      content = base
+        .replace(/#\{고객명\}/g, shipment.client_name || '고객')
+        .replace(/#\{품목\}/g, itemSummary)
+        .replace(/#\{터미널\}/g, (shipment.receiver_address as string) || '')
+        .replace(/#\{송장번호\}/g, (shipment.tracking_number as string) || '')
+        .replace(/#\{배송방법\}/g, deliveryMethod)
+        .replace(/#\{날짜\}/g, dateStr)
     }
 
     // 알림톡 발송
