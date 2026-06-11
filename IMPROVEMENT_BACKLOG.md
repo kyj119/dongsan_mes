@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 6 -->
-<!-- last_run_at: 2026-06-11T02:00:00+09:00 -->
+<!-- last_run_area: 1 -->
+<!-- last_run_at: 2026-06-11T08:30:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,7 +8,7 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | 8 (open auto-improve **실측 06-11T02:00 Area 6 전수 재동기** — #381·#380·#379·#378·#377·#374·#373·#372. New 표가 직전 2행만 유지(stale)였던 것을 **8행 전수 반영**. 직전 Area 6(06-09T22:00) 이후 신규 close 0건, GitHub↔백로그 done 정합) |
+| 🆕 new | 10 (open auto-improve **실측 06-11T08:30 Area 1** — #383·#382·#381·#380·#379·#378·#377·#374·#373·#372. 02:00 8건 + #382(04:09)·#383(08:30) 2건 신규. ⚠️ #377·#378은 코드 수정 머지됨(eadba44/9be309d)이나 GitHub 이슈 open 잔류 → 차기 Area 6 close 동기화 필요) |
 | ✅ approved | 0 (직전 approved #342/#340 모두 done 확정·이관 — Area 6 검증 완료) |
 | 👀 reviewed | 0 |
 | ✔️ done | 78 (61 + **06-09 신규 close 17건 전부 done 확정**: #336/#340/#341/#342/#350/#358/#359/#360/#361/#362/#363/#364/#365/#366/#367/#368/#369 — commit 증거+close 코멘트 전수 검증, rejected 0건) |
@@ -16,6 +16,16 @@
 
 > 📦 **과거 사이클 로그**(아래 6블록 이전분)는 `IMPROVEMENT_BACKLOG_ARCHIVE.md`로 이관됨 (2026-06-10 정리). 신규 로그는 계속 이 파일 상단에 추가.
 
+> **Area 1 프로덕션 헬스 (2026-06-11T08:30):**
+> - **방법**: GitHub Actions 최근 30런(total 508) 분석 + 실패 잡 로그 실측 + 로컬 `npm ci`+`tsc --noEmit`+build PASS. egress **000**(샌드박스 IP 차단, `curl mes.dongsanplan.com/api/health`·`/`=000) → 직접 20-API 호출 불가, E2E의 라이브 prod API 응답형식 테스트(cards-api/dashboard/report-routes/quotations)를 헬스 신호로 사용.
+> - **🟢 현재 파이프라인 green (최근 5 E2E 연속 success)**: HEAD `dce9f50`(E2E 27326697277)·`20f0690`·`8d7009f`·`51c207b`·`24bb493` 전부 success. Deploy 동일 success. build PASS(366 modules, _worker.js 5.07MB raw, 유료 10MB 대비 ~10% 헤드룸).
+> - **🔴 06-10 12:16~23:52 E2E 6연속 failure 클러스터 = shell.js MIME 단일장애(복구됨)**: 실패 잡 로그 실측(run 27275557961 job 80555833178) = **17 failed / 19 passed**, 전 실패가 `authedPage.evaluate`에서 `window.axios` 사용(`Error: page.evaluate: M…`) → 셸 부트스트랩(shell.js) MIME 실행거부로 axios 미초기화 증상. 외부화 파일럿(9dd09cd)→Content-Type 패치(144addf) 동안 prod 다운, **인라인 `?raw` 복귀(24bb493, 06-11 00:08)로 복구** → 이후 5런 green. Area 6(02:00) A-016 기록과 일치.
+> - **🟡 신규 이슈 2건 (Area 1 헬스 분석 산물)**:
+>   - **#382 (improvement) — 배포 게이트 smoke.cjs가 프론트 장애를 못 잡음**: `smoke.cjs`는 `/api/*`만 fetch(login `:202`+엔드포인트 루프), `/` HTML·셸 스크립트 미검증 → 워커 API 200이면 프론트가 죽어도(MIME) smoke PASS=Deploy success(녹색·알림無). 06-10 2회 다운이 **smoke success인데 직후 E2E failure**로 직접 증명. 수정=smoke에 경량 프론트 부트스트랩 단언. **자동수정 안 함**(게이트 정의 변경=owner 정책+egress 검증불가). *(04:09 부분 Area 1 런 산물, 본 사이클서 백로그 편입)*
+>   - **#383 (improvement) — shell.js 외부화 불완전 revert(재회귀 트랩)**: 런타임만 인라인 복귀(`layout.ts:10/181` `?raw`=라이브, prod green 이유)했고 **build-assets.mjs 머신은 미제거** → 매 빌드가 dead `/static/shell.<hash>.js`(`/static` 참조 grep 0)·미사용 `ASSET_MANIFEST`(repo 전수 import 0, 생성기 자신만 기록) 생산. `<script src="/static/${ASSET_MANIFEST.shell}">` 오배선 시 MIME 2회다운 정확히 재현. #382(게이트 방어)의 보완=트랩 자체 제거. **자동수정 안 함**(빌드/배포 파이프라인 변경, `_routes.json` 생성 주체 전환=되돌리기 어려운 prod 영향 + egress로 배포 검증 불가).
+> - **이상 없음**: deploy 코드결함 failure 0건. 06-10 장애는 단일 클래스(shell.js MIME)·복구·기록 완료. open auto-improve **10건**(#372~#383) stats 정합.
+> - 자동 수정 0건(파이프라인 정상·게이트/빌드 변경=owner 판단·egress 차단), 신규 이슈 2건(#382·#383, 둘 다 Area 1 헬스), 06-10 장애 root-cause 실측 확정
+>
 > **Area 6 자기 진화 (2026-06-11T02:00):**
 > - **방법**: baseline `npm ci`+`tsc --noEmit` PASS + build PASS(366 modules, _worker.js 5.00MB). GitHub open/closed 전수 대조 + 직전 5개 사이클(Area1~5, 06-10) 산출물의 백로그·SKILL 반영 완결성 검증.
 > - **🟢 GitHub↔백로그 done 동기화 — 이관 0건(clean)**: closed auto-improve 최신 updated_at=**#366(06-09T04:00)** → 직전 Area 6(06-09T22:00) **이전** = 신규 close 0건. open auto-improve **정확히 8건**(#372/#373/#374/#377/#378/#379/#380/#381) 실측 = stats 정합. done 78/rejected 3 유지. #380 단일 코멘트는 **auto-improve 자체 정정**(Area 4 ground-truth가 결함2=no-op 지적)이지 owner 피드백 아님, 👍 0 → 8건 전부 new 유지.
@@ -97,10 +107,12 @@
 
 ## 🆕 New (미검토)
 
-> 전부 GitHub open + 👍 미수신. 용준님 리뷰 대기. (open **실측 8건** — 2026-06-11T02:00 Area 6 전수 재동기. 직전 표가 2행 stale였던 것을 8행 전수 반영)
+> 전부 GitHub open + 👍 미수신. 용준님 리뷰 대기. (open **실측 10건** — 2026-06-11T08:30 Area 1. 02:00 8건 + #382·#383 2건 보충)
 
 | ID | 제목 | 영역 | Issue | 공수 |
 |----|------|------|-------|------|
+| I-069 | [improvement] shell.js 정적에셋 외부화 **불완전 revert** — 런타임은 `layout.ts:181` `?raw` 인라인 복귀(prod green)인데 `build-assets.mjs`가 매 빌드마다 dead `/static/shell.<hash>.js`(소비처 0)·미사용 `ASSET_MANIFEST`(import 0) 생성 = 재외부화 오배선 시 MIME 2회다운 재현 트랩. #382(게이트 방어)의 보완(트랩 제거) | Area 1 | #383 | ~30m |
+| I-068 | [improvement] 배포 게이트 `smoke.cjs`는 `/api/*` 전용 — 프론트 부트스트랩/MIME 장애를 못 잡아 shell.js 2회 prod 다운이 "Deploy 성공"으로 통과(E2E만 ~5분 후 적발). smoke에 경량 프론트 단언(`/` HTML 200+text/html+셸 마커) 추가 | Area 1 | #382 | ~1h |
 | I-067 | [HIGH bug] orders 쓰기 엔드포인트 entity 격리 비대칭(IDOR) — read/delete는 격리, billing-status/cancel/PUT/bill/status/output-folder는 무필터 `WHERE id=?` → 멀티법인 MANAGER가 타법인 주문 청구/취소/balance 조작. 청구분할(72bd97e) PUT이 쓰기 증폭 | Area 5 | #381 | ~2h |
 | I-066 | [MED bug] 대시보드 납기 준수율 KPI — `orders.updated_at`을 출고일 프록시로 사용(shipped_at 컬럼 부재) → 회계반영이 정시출고를 "지연" 오집계. 권위소스=cards/shipments.shipped_at. (결함2 COMPLETED 분모는 도달불가 no-op — #380 코멘트 정정) | Area 3 | #380 | ~1h |
 | I-065 | [improvement] printSystem N+1 2곳 — /media/bulk(2중루프 건별 SELECT, media id 메모리 보유라 재조회 불요)·/repair-links(3중 N+1 ~3000쿼리). setup/repair 저빈도 LOW | Area 2 | #379 | ~1.5h |
