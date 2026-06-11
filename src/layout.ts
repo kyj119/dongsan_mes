@@ -5,10 +5,9 @@ import { STATUS_LABELS_JS } from './utils/statusLabels'
 import { sidebarHTML } from './layout/sidebar'
 import { topBarHTML } from './layout/topbar'
 import { SHARED_CSS } from './layout/shared-styles'
-import { ASSET_MANIFEST } from './generated/asset-manifest'
-
-// 정적 에셋 URL 헬퍼 (해시 파일명 → 불변 캐시). manifest = scripts/build-assets.mjs 생성
-const assetUrl = (name: keyof typeof ASSET_MANIFEST) => `/static/${ASSET_MANIFEST[name]}`
+// shell.js는 워커 인라인(?raw). 정적 /static 서빙은 CF Pages 자동빌드에서 _routes.json 제외가
+// 불안정해 prod 2회 장애(2026-06-11) → 인라인 복귀. 재시도 시 [[feedback-static-asset-mime]] 참조.
+import SHARED_AUTH_JS from './scripts/layout/shell.js?raw'
 
 interface AppLayoutOptions {
   title: string
@@ -179,8 +178,8 @@ export function appLayout(opts: AppLayoutOptions): string {
     </div>
     <script>
 ${STATUS_LABELS_JS}
+${SHARED_AUTH_JS}
     </script>
-    <script src="${assetUrl('shell')}"></script>
     <script>
 // === Global ESC key handler ===
 document.addEventListener('keydown', function(e) {
