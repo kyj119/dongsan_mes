@@ -16,6 +16,7 @@ import poCoreRouter from './purchaseOrders/core'
 import templatesRouter from './purchaseOrders/templates'
 import stockAlertsRouter from './purchaseOrders/stock-alerts'
 import poQueriesRouter from './purchaseOrders/po-queries'
+import poReceiptsRouter from './purchaseOrders/po-receipts'
 
 const poRouter = new Hono<HonoEnv>()
 
@@ -23,6 +24,7 @@ const poRouter = new Hono<HonoEnv>()
 poRouter.route('/', templatesRouter)
 poRouter.route('/', stockAlertsRouter)
 poRouter.route('/', poQueriesRouter)
+poRouter.route('/', poReceiptsRouter)
 poRouter.route('/', poCoreRouter)
 
 export default poRouter
