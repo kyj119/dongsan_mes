@@ -152,3 +152,8 @@ EdgeAgent/obj/
 !tools/*.txt
 !tools/mesopen/
 !tools/mesopen/**
+
+# Claude Code 최적화
+*.tsbuildinfo
+.claude/.tsbuildinfo
+.claude/.dom-baseline

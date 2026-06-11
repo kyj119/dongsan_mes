@@ -9,6 +9,13 @@ description: "동산기획 ERP+MES 보안 취약점 점검 (OWASP Top 10). TRIGG
 
 review-checklist과의 차이: review-checklist은 **변경 파일** 코드 리뷰, 이 스킬은 **프로젝트 전체** 보안 감사.
 
+## ⚡ 병렬 실행 규칙 (필수)
+
+전체 모드(8개 카테고리)는 메인 루프 순차 스캔 금지 — 카테고리를 3묶음(①1·2·2b ②3·4 ③5~8)으로 나눠 `Agent(subagent_type:"Explore")` **병렬** dispatch:
+- 각 프롬프트에 해당 카테고리의 grep 패턴(`references/security-checks.md`)과 오탐 차단 규칙(아래 🧯·시크릿 폴백 등)을 포함
+- 보고 형식: `file:line — 심각도 — 패턴 — 근거 1줄` (파일 덤프 금지)
+- 메인 루프 = 발견 전수 직접 코드 검증(서브에이전트 오탐 이력: 배열 인덱스 오독 HIGH 2건) → 심각도 분류 → 보고. 수정은 메인 단독
+
 ## 실행 모드
 
 - `/security-audit` → 전체 (8개 카테고리)

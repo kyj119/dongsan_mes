@@ -1,3 +1,8 @@
+---
+name: migration-check
+description: 신규 마이그레이션 SQL을 프로덕션 스키마와 대조하여 안전성 검증 (테이블/컬럼 존재, NOT NULL DEFAULT). 트리거: migrations 파일 생성/수정, 마이그레이션 검증, migration check
+---
+
 # 마이그레이션 검증
 
 새 마이그레이션 파일 생성 시 자동으로 프로덕션 스키마와 대조하여 안전성을 검증한다.

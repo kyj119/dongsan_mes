@@ -1,0 +1,13 @@
+{
+  "_usage": "필요 시에만 로드: claude --mcp-config .claude/mcp-optional.json (illustrator/excel 작업 세션 전용)",
+  "mcpServers": {
+    "illustrator": {
+      "command": "illustrator-mcp-server",
+      "args": []
+    },
+    "excel": {
+      "command": "C:\\Users\\user\\.local\\mcp-excel\\mcp-excel.exe",
+      "args": []
+    }
+  }
+}

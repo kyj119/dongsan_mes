@@ -6,6 +6,8 @@
     "jsx": "react-jsx",
     "jsxImportSource": "hono/jsx",
     "strict": true,
+    "incremental": true,
+    "tsBuildInfoFile": ".claude/.tsbuildinfo",
     "skipLibCheck": true,
     "moduleResolution": "bundler",
     "resolveJsonModule": true,

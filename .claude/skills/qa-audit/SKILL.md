@@ -1,3 +1,8 @@
+---
+name: qa-audit
+description: Playwright MCP로 MES 전체 페이지 자동 순회 QA 감사 (콘솔 에러, 깨진 UI, API 실패 탐지). 트리거: QA 감사, 전체 감사, full audit, qa audit
+---
+
 # QA 전체 감사 (Full Audit)
 
 Playwright MCP로 MES 전체 페이지를 자동 순회하며 문제를 탐지하는 스킬.
@@ -35,6 +40,14 @@ Playwright MCP로 MES 전체 페이지를 자동 순회하며 문제를 탐지�
 /qa-audit full     # Level 1~4 포함
 /qa-audit quick    # Level 1만 (빠른 체크)
 ```
+
+## ⚡ 병렬 실행 규칙 (필수)
+
+- **Level 1·3 (Playwright 순회·시나리오)**: 브라우저 단일 인스턴스라 **순차 유지** (병렬 금지)
+- **Level 2 (API 헬스체크)**: 브라우저 불필요 — curl 병렬 또는 Explore 1개에 위임해 Level 1과 **동시 진행**
+- **Level 4 (코드 레벨)**: review-checklist·security-audit의 정적 검사를 `Agent(subagent_type:"Explore")` **병렬 fan-out**으로 — 파일 묶음 분담, 보고는 `file:line+1줄`만 회수(덤프 금지)
+- 발견은 메인 루프가 전수 직접 검증 후 보고. 수정은 메인 단독(병렬 쓰기 금지)
+- 빌드·smoke 실행이 필요하면 **background로 돌리고** 다음 Level 진행
 
 ## 출력 형식
 ```

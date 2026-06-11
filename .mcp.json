@@ -8,17 +8,9 @@
       "command": "npx",
       "args": ["@cloudflare/mcp-server-cloudflare@latest"],
       "env": {
-        "CLOUDFLARE_API_TOKEN": "H-jDLf0vK0cVKsHd5s1WOAogvejYBPqU_d0tvXDQ",
-        "CLOUDFLARE_ACCOUNT_ID": "6ba86eff602e131700555cf836927720"
+        "CLOUDFLARE_API_TOKEN": "${CLOUDFLARE_API_TOKEN}",
+        "CLOUDFLARE_ACCOUNT_ID": "${CLOUDFLARE_ACCOUNT_ID}"
       }
-    },
-    "illustrator": {
-      "command": "illustrator-mcp-server",
-      "args": []
-    },
-    "excel": {
-      "command": "C:\\Users\\user\\.local\\mcp-excel\\mcp-excel.exe",
-      "args": []
     }
   }
 }
