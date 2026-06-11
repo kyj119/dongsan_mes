@@ -52,9 +52,14 @@ dashboardRouter.get('/stats', async (c) => {
         (SELECT COALESCE(SUM(final_amount),0) FROM orders WHERE billing_status='BILLED' AND strftime('%Y-%m',billed_at)=strftime('%Y-%m','now')${ef.clause}) as month_billed,
         (SELECT COALESCE(SUM(amount),0) FROM payments WHERE strftime('%Y-%m',payment_date)=strftime('%Y-%m','now')${ef.clause}) as month_paid,
         (SELECT ROUND(
-          COUNT(CASE WHEN o2.status = 'SHIPPED' AND date(o2.updated_at) <= date(o2.delivery_date) THEN 1 END) * 100.0 /
+          COUNT(CASE WHEN date(
+            COALESCE(
+              (SELECT MAX(sh.shipped_at) FROM shipments sh WHERE sh.order_id = o2.id),
+              (SELECT MAX(cd.shipped_at) FROM cards cd WHERE cd.order_id = o2.id),
+              o2.updated_at
+            ), '+9 hours') <= o2.delivery_date THEN 1 END) * 100.0 /
           NULLIF(COUNT(*), 0), 1)
-         FROM orders o2 WHERE o2.status IN ('SHIPPED') AND ${kstMonth('o2.created_at')} = ${kstMonth()} AND o2.delivery_date IS NOT NULL${ef.clause}
+         FROM orders o2 WHERE o2.status IN ('SHIPPED','COMPLETED') AND strftime('%Y-%m', o2.delivery_date) = ${kstMonth()} AND o2.delivery_date IS NOT NULL${ef.clause}
         ) as on_time_rate
     `).bind(...[
       ...ef.params, // total_orders

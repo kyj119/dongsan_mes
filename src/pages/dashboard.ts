@@ -76,13 +76,13 @@ export function dashboardPage(c: Context<HonoEnv>) {
                     <div class="text-xs mt-1 tabular-nums" style="color:var(--c-text-muted)" id="statCollectionDetail">이번 달</div>
                 </div>
                 <!-- 납기 준수율 -->
-                <div class="ds-card ds-card-compact cursor-pointer" onclick="location.href='/orders'" title="주문 관리 (납기 현황)">
+                <div class="ds-card ds-card-compact cursor-pointer" onclick="location.href='/orders'" title="이번 달 납기(delivery_date) 주문 중 완전출고일이 납기일 이내인 비율 — 클릭: 주문 관리">
                     <div class="flex items-center justify-between mb-1">
                         <div class="text-sm" style="color:var(--c-text-secondary)">납기 준수율</div>
                         <i class="fas fa-calendar-check text-xs" style="color:var(--c-success);opacity:0.6"></i>
                     </div>
                     <div class="text-3xl font-bold tabular-nums" id="statOnTimeRate">-</div>
-                    <div class="text-xs mt-1" style="color:var(--c-text-muted)">이번 달 출고 기준</div>
+                    <div class="text-xs mt-1" style="color:var(--c-text-muted)">이번 달 납기 기준</div>
                 </div>
             </div>
 
