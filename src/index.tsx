@@ -64,6 +64,7 @@ import portalRouter from './routes/portal'
 import { iaAuto } from './routes/iaAuto'
 import inventoryCountRouter from './routes/inventoryCount'
 import autoProcessRouter from './routes/autoProcess'
+import workbenchRouter from './routes/workbench'
 import storageZonesRouter from './routes/storageZones'
 import permissionsRouter from './routes/permissions'
 import inspectionsRouter from './routes/inspections'
@@ -113,6 +114,7 @@ import { usersPage } from './pages/users'
 import { postProcessingPage } from './pages/postProcessing'
 import { equipmentPage } from './pages/equipment'
 import { maintenancePage } from './pages/maintenance'
+import { workbenchPage } from './pages/workbench'
 import { iaScanPage } from './pages/iaScan'
 import { iaAutoProcessPage } from './pages/iaAutoProcess'
 import { iaBatchTestPage } from './pages/iaBatchTest'
@@ -307,6 +309,7 @@ app.route('/api/portal', portalRouter)
 app.route('/api/ia-auto', iaAuto)
 app.route('/api/inventory-counts', inventoryCountRouter)
 app.route('/api/auto-process', autoProcessRouter)
+app.route('/api/workbench', workbenchRouter)
 app.route('/api/files', filesRouter)
 app.route('/api/storage-zones', storageZonesRouter)
 app.route('/api/permissions', permissionsRouter)
@@ -404,6 +407,7 @@ app.get('/users', pageAuthMiddleware, requireAdminPage(), usersPage)
 app.get('/post-processing', pageAuthMiddleware, requirePagePermission('/post-processing'), postProcessingPage)
 app.get('/equipment', pageAuthMiddleware, requirePagePermission('/equipment'), equipmentPage)
 app.get('/maintenance', pageAuthMiddleware, requirePagePermission('/maintenance'), maintenancePage)
+app.get('/workbench', pageAuthMiddleware, requirePagePermission('/workbench'), workbenchPage)
 app.get('/ia-scan', pageAuthMiddleware, requireAdminPage(), iaScanPage)
 app.get('/ia-auto', pageAuthMiddleware, requireAdminPage(), iaAutoProcessPage)
 app.get('/ia-batch-test', pageAuthMiddleware, requireAdminPage(), iaBatchTestPage)
