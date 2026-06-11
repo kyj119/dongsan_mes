@@ -568,7 +568,7 @@ async function handlePostApproval(db: D1Database, req: any) {
         ])
 
         // 카드 생성 (생산 진입)
-        const { generateCardsForOrder } = await import('./orders/core')
+        const { generateCardsForOrder } = await import('./orders/helpers')
         await generateCardsForOrder({
           db,
           orderId: order.id,
