@@ -158,97 +158,93 @@ export async function buildCashflowDays(
     })
   }
 
-  // ── 4) 온더플라이: 주문 예상입금 (4a 미청구 확정주문 + 4b 청구 미수금) ──────
-  const efOrd = entityFilter(c, 'o')
-
-  // 4a) 미청구 확정주문: 아직 청구 전이라 clients.balance(미수)에 미포함 → final_amount로 합성.
-  //     청구되면 4b(미수금)로 자동 이동(billing_status='BILLED' 분기).
-  const { results: orderRows } = await c.env.DB.prepare(`
-    SELECT o.order_number, o.final_amount, o.delivery_date, o.created_at,
-           COALESCE(cl.payment_terms_days, 30) AS terms, cl.client_name,
-           cl.payment_cycle_type, cl.closing_day, cl.payment_month_offset, cl.payment_day
-    FROM orders o
+  // ── 4) 온더플라이: 주문 예상입금 — split billing P5: 청구그룹(주문×법인) 단위 ──
+  //   §4a 미청구 그룹(billing_status≠BILLED) → 예상입금(그룹 금액, 납기 기준)
+  //   §4b 청구 그룹(BILLED·미물질화) → 미수 예상입금(거래처×법인 파생잔여 cap, billed_at 기준)
+  //   ⚠️ 그룹 단위라 혼합주문 부분청구 시 §4a↔§4b 이중계산 없음 + clients.balance(P3 폐기·stale) 미사용.
+  const efG = entityFilter(c, 'g')
+  const { results: grpRows } = await c.env.DB.prepare(`
+    SELECT g.order_id, g.entity_id, g.billing_status,
+           CAST(COALESCE(g.billed_amount, g.supply_amount + COALESCE(g.tax_amount, 0), 0) AS INTEGER) AS amount,
+           g.billed_at, o.order_number, o.delivery_date, o.created_at, o.client_id, cl.client_name,
+           COALESCE(cl.payment_terms_days, 30) AS terms,
+           cl.payment_cycle_type, cl.closing_day, cl.payment_month_offset, cl.payment_day,
+           (SELECT COUNT(*) FROM cash_schedule cs WHERE cs.source_type = 'ORDER' AND cs.source_id = g.order_id AND cs.entity_id = g.entity_id) AS materialized
+    FROM order_billing_groups g
+    JOIN orders o ON o.id = g.order_id
     LEFT JOIN clients cl ON cl.id = o.client_id
-    WHERE o.status NOT IN ('CANCELLED', 'DRAFT')
-      AND (o.billing_status IS NULL OR o.billing_status != 'BILLED')
-      AND o.final_amount > 0${efOrd.clause}
-    LIMIT 1000
-  `).bind(...efOrd.params).all<{
-    order_number: string; final_amount: number; delivery_date: string | null
-    created_at: string; terms: number; client_name: string | null
+    WHERE o.status NOT IN ('CANCELLED', 'DRAFT')${efG.clause}
+    LIMIT 2000
+  `).bind(...efG.params).all<{
+    order_id: number; entity_id: number; billing_status: string | null; amount: number
+    billed_at: string | null; order_number: string; delivery_date: string | null; created_at: string
+    client_id: number; client_name: string | null; terms: number
     payment_cycle_type: string | null; closing_day: number | null
-    payment_month_offset: number | null; payment_day: number | null
+    payment_month_offset: number | null; payment_day: number | null; materialized: number
   }>()
-  for (const o of orderRows) {
-    const base = o.delivery_date || (o.created_at || '').substring(0, 10)
+
+  // 4a) 미청구 그룹: 청구 전 → 그룹 금액으로 예상입금 합성(납기 기준). 청구되면 §4b로 이동.
+  for (const g of grpRows) {
+    if (g.billing_status === 'BILLED') continue
+    if (!(Number(g.amount) > 0)) continue
+    const base = g.delivery_date || (g.created_at || '').substring(0, 10)
     if (!base) continue
     const due = computeExpectedPaymentDate(base, {
-      payment_cycle_type: o.payment_cycle_type, payment_terms_days: o.terms,
-      closing_day: o.closing_day, payment_month_offset: o.payment_month_offset, payment_day: o.payment_day,
+      payment_cycle_type: g.payment_cycle_type, payment_terms_days: g.terms,
+      closing_day: g.closing_day, payment_month_offset: g.payment_month_offset, payment_day: g.payment_day,
     })
     add(due, {
       flow: 'IN', type: 'ORDER_EXPECTED',
-      name: `${o.client_name || ''} 예상입금 (주문 ${o.order_number})`.trim(),
-      amount: Number(o.final_amount) || 0, materialized: false,
+      name: `${g.client_name || ''} 예상입금 (주문 ${g.order_number})`.trim(),
+      amount: Number(g.amount) || 0, materialized: false,
     })
   }
 
-  // 4b) 청구 미수금: BILLED인데 cash_schedule에 미물질화된 주문을 ORDER_EXPECTED(IN)로 합성.
-  //   금액 정합: 주문별 payments 할당이 없는 데이터 모델 → 거래처 미수(clients.balance,
-  //   이미 수금이 차감된 실잔액)를 거래처별 cap으로 사용 → 부분수금/완납분 자동 반영.
-  //   이중계산 방지: balance에서 '이미 물질화된 PENDING/OVERDUE ORDER 합계'(전 기간)를 뺀 잔여만 분배.
-  //   (물질화분은 위 §1에서 기간 내 행으로 별도 표시됨)
-  const { results: billedRows } = await c.env.DB.prepare(`
-    SELECT o.id, o.order_number, o.billed_amount, o.billed_at, o.client_id, cl.client_name,
-           COALESCE(cl.payment_terms_days, 30) AS terms,
-           cl.payment_cycle_type, cl.closing_day, cl.payment_month_offset, cl.payment_day
-    FROM orders o
-    LEFT JOIN clients cl ON cl.id = o.client_id
-    WHERE o.billing_status = 'BILLED' AND o.billed_at IS NOT NULL AND o.billed_amount > 0
-      AND NOT EXISTS (
-        SELECT 1 FROM cash_schedule cs WHERE cs.source_type = 'ORDER' AND cs.source_id = o.id
-      )${efOrd.clause}
-    LIMIT 1000
-  `).bind(...efOrd.params).all<{
-    id: number; order_number: string; billed_amount: number; billed_at: string; client_id: number
-    client_name: string | null; terms: number; payment_cycle_type: string | null
-    closing_day: number | null; payment_month_offset: number | null; payment_day: number | null
-  }>()
-
-  if (billedRows.length > 0) {
-    // 거래처별 잔여 미수 = balance − 이미 물질화된 PENDING/OVERDUE ORDER 합계(전 기간).
-    // clients는 entity_id 없음(법인 공유) → entityFilter 미적용.
-    const { results: balRows } = await c.env.DB.prepare(`
-      SELECT cl.id AS client_id, cl.balance,
-        COALESCE((SELECT SUM(cs.amount) FROM cash_schedule cs
-                  WHERE cs.client_id = cl.id AND cs.flow_type = 'IN' AND cs.source_type = 'ORDER'
-                    AND cs.status IN ('PENDING', 'OVERDUE')), 0) AS materialized_pending
-      FROM clients cl WHERE cl.balance > 0
-    `).all<{ client_id: number; balance: number; materialized_pending: number }>()
-    const residualByClient = new Map<number, number>()
-    for (const b of balRows) {
-      residualByClient.set(b.client_id, Math.max(0, (Number(b.balance) || 0) - (Number(b.materialized_pending) || 0)))
+  // 4b) 청구 그룹(BILLED·미물질화) → 미수 예상입금. cap = (거래처×법인) 파생 미수잔여.
+  //   파생잔여 = Σ BILLED그룹 − payments − adjustments − 이미 물질화된 PENDING/OVERDUE(전 기간).
+  //   (clients.balance P3 폐기 → 파생. 물질화분은 §1에서 별도 표시 → 잔여만 분배해 이중계산 방지.)
+  const billedGroups = grpRows.filter(g => g.billing_status === 'BILLED' && Number(g.materialized) === 0 && Number(g.amount) > 0)
+  if (billedGroups.length > 0) {
+    const ckey = (cid: number, eid: number) => cid + ':' + eid
+    const efP = entityFilter(c)
+    const efA = entityFilter(c)
+    const efCsB = entityFilter(c, 'cs')
+    const [bAgg, pAgg, aAgg, mAgg] = await Promise.all([
+      c.env.DB.prepare(`SELECT o.client_id, g.entity_id, COALESCE(SUM(g.billed_amount), 0) AS v FROM order_billing_groups g JOIN orders o ON o.id = g.order_id WHERE g.billing_status = 'BILLED' AND o.status != 'CANCELLED'${efG.clause} GROUP BY o.client_id, g.entity_id`).bind(...efG.params).all<{ client_id: number; entity_id: number; v: number }>(),
+      c.env.DB.prepare(`SELECT client_id, entity_id, COALESCE(SUM(amount), 0) AS v FROM payments WHERE 1=1${efP.clause} GROUP BY client_id, entity_id`).bind(...efP.params).all<{ client_id: number; entity_id: number; v: number }>(),
+      c.env.DB.prepare(`SELECT client_id, entity_id, COALESCE(SUM(amount), 0) AS v FROM adjustments WHERE 1=1${efA.clause} GROUP BY client_id, entity_id`).bind(...efA.params).all<{ client_id: number; entity_id: number; v: number }>(),
+      c.env.DB.prepare(`SELECT cs.client_id, cs.entity_id, COALESCE(SUM(cs.amount), 0) AS v FROM cash_schedule cs WHERE cs.flow_type = 'IN' AND cs.source_type = 'ORDER' AND cs.status IN ('PENDING', 'OVERDUE')${efCsB.clause} GROUP BY cs.client_id, cs.entity_id`).bind(...efCsB.params).all<{ client_id: number; entity_id: number; v: number }>(),
+    ])
+    const billedByCE = new Map<string, number>(), paidByCE = new Map<string, number>(), adjByCE = new Map<string, number>(), matByCE = new Map<string, number>()
+    for (const r of bAgg.results) billedByCE.set(ckey(r.client_id, r.entity_id), Number(r.v) || 0)
+    for (const r of pAgg.results) paidByCE.set(ckey(r.client_id, r.entity_id), Number(r.v) || 0)
+    for (const r of aAgg.results) adjByCE.set(ckey(r.client_id, r.entity_id), Number(r.v) || 0)
+    for (const r of mAgg.results) matByCE.set(ckey(r.client_id, r.entity_id), Number(r.v) || 0)
+    const residualByCE = new Map<string, number>()
+    for (const k of billedByCE.keys()) {
+      residualByCE.set(k, Math.max(0, (billedByCE.get(k) || 0) - (paidByCE.get(k) || 0) - (adjByCE.get(k) || 0) - (matByCE.get(k) || 0)))
     }
 
-    // 거래처별 그룹 → 예상입금일 오름차순(빠른 건부터) 분배, 각 주문 billed_amount 상한, 잔여 소진 시 중단.
-    const byClient = new Map<number, { order_number: string; client_name: string | null; billed: number; due: string }[]>()
-    for (const o of billedRows) {
-      let due = computeExpectedPaymentDate(o.billed_at, {
-        payment_cycle_type: o.payment_cycle_type, payment_terms_days: o.terms,
-        closing_day: o.closing_day, payment_month_offset: o.payment_month_offset, payment_day: o.payment_day,
+    // (거래처×법인)별 그룹 → 예상입금일 오름차순(빠른 건부터) 분배, 그룹 금액 상한, 잔여 소진 시 중단.
+    const byCE = new Map<string, { order_number: string; client_name: string | null; amount: number; due: string }[]>()
+    for (const g of billedGroups) {
+      let due = computeExpectedPaymentDate(g.billed_at || (g.created_at || '').substring(0, 10), {
+        payment_cycle_type: g.payment_cycle_type, payment_terms_days: g.terms,
+        closing_day: g.closing_day, payment_month_offset: g.payment_month_offset, payment_day: g.payment_day,
       })
       if (due < from) due = from   // 연체분(예상일이 과거)은 예측 시작일에 표시 — 미수는 즉시 회수 대상
-      const list = byClient.get(o.client_id) ?? []
-      list.push({ order_number: o.order_number, client_name: o.client_name, billed: Number(o.billed_amount) || 0, due })
-      byClient.set(o.client_id, list)
+      const k = ckey(g.client_id, g.entity_id)
+      const list = byCE.get(k) ?? []
+      list.push({ order_number: g.order_number, client_name: g.client_name, amount: Number(g.amount) || 0, due })
+      byCE.set(k, list)
     }
-    for (const [clientId, list] of byClient) {
-      let residual = residualByClient.get(clientId) ?? 0
+    for (const [k, list] of byCE) {
+      let residual = residualByCE.get(k) ?? 0
       if (residual <= 0) continue   // 미수 잔액 없음(완납) → 합성 안 함
       list.sort((a, b) => (a.due < b.due ? -1 : a.due > b.due ? 1 : 0))
       for (const it of list) {
         if (residual <= 0) break
-        const amt = Math.min(it.billed, residual)
+        const amt = Math.min(it.amount, residual)
         if (amt <= 0) continue
         residual -= amt
         add(it.due, {
