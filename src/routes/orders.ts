@@ -13,6 +13,7 @@ import ordersCoreRouter from './orders/core'
 import ordersQueriesRouter from './orders/queries'
 import ordersOpsRouter from './orders/operations'
 import ordersLifecycleRouter from './orders/lifecycle'
+import ordersCreateRouter from './orders/create'
 
 const ordersRouter = new Hono<HonoEnv>()
 
@@ -21,6 +22,7 @@ const ordersRouter = new Hono<HonoEnv>()
 ordersRouter.route('/', ordersQueriesRouter)
 ordersRouter.route('/', ordersOpsRouter)
 ordersRouter.route('/', ordersLifecycleRouter)
+ordersRouter.route('/', ordersCreateRouter)
 ordersRouter.route('/', ordersCoreRouter)
 
 export default ordersRouter
