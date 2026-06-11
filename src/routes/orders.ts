@@ -12,13 +12,15 @@ import type { HonoEnv } from '../types/env'
 import ordersCoreRouter from './orders/core'
 import ordersQueriesRouter from './orders/queries'
 import ordersOpsRouter from './orders/operations'
+import ordersLifecycleRouter from './orders/lifecycle'
 
 const ordersRouter = new Hono<HonoEnv>()
 
 // 주의: 라우트 매칭 우선순위 — 구체 경로(quotations/expired, stats 등)가 /:id 보다 먼저 평가되어야 함
-// queries(구체 경로) → operations(/:id/copy 등 POST 특수) → core(CRUD + /:id) 순서로 마운트
+// queries(구체 경로) → operations(/:id/copy 등 POST 특수) → lifecycle(/:id/bill·status·cancel 등 전이) → core(CRUD + /:id) 순서로 마운트
 ordersRouter.route('/', ordersQueriesRouter)
 ordersRouter.route('/', ordersOpsRouter)
+ordersRouter.route('/', ordersLifecycleRouter)
 ordersRouter.route('/', ordersCoreRouter)
 
 export default ordersRouter
