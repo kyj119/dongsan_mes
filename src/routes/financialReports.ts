@@ -33,25 +33,27 @@ financialReportsRouter.get('/pnl', async (c) => {
     const { from, to } = c.req.query()
     if (!from || !to) return c.json({ success: false, error: 'from, to 파라미터 필요' }, 400)
 
-    const ef = entityFilter(c)
+    // P5 split billing: 매출=청구그룹(생산법인) 기준. 단일법인 주문은 group.billed_amount==orders.billed_amount라 무변화.
+    const ef = entityFilter(c, 'g')
 
-    // 1. 매출 — 청구 완료된 주문
+    // 1. 매출 — 청구 완료된 청구그룹(주문×법인)
     const salesRow = await c.env.DB.prepare(`
       SELECT
-        COUNT(*) as order_count,
-        COALESCE(SUM(billed_amount), 0) as total_billed,
-        COALESCE(SUM(final_amount), 0) as total_final
-      FROM orders
-      WHERE billing_status = 'BILLED'
-        AND date(billed_at) BETWEEN ? AND ?${ef.clause}
+        COUNT(DISTINCT g.order_id) as order_count,
+        COALESCE(SUM(g.billed_amount), 0) as total_billed,
+        COALESCE(SUM(g.billed_amount), 0) as total_final
+      FROM order_billing_groups g JOIN orders o ON o.id = g.order_id
+      WHERE g.billing_status = 'BILLED' AND o.status != 'CANCELLED'
+        AND date(g.billed_at) BETWEEN ? AND ?${ef.clause}
     `).bind(from, to, ...ef.params).first<SalesRow>()
 
-    // 2. 매출원가 — 주문에 연결된 cost (있으면)
+    // 2. 매출원가 — 청구된 주문에 연결된 cost (주문 단위 — 혼합주문 비분할, 한계)
     const costRow = await c.env.DB.prepare(`
       SELECT COALESCE(SUM(material_cost + labor_cost + overhead_cost), 0) as total_cost
       FROM order_costs
       WHERE order_id IN (
-        SELECT id FROM orders WHERE billing_status = 'BILLED' AND date(billed_at) BETWEEN ? AND ?${ef.clause}
+        SELECT DISTINCT g.order_id FROM order_billing_groups g JOIN orders o ON o.id = g.order_id
+        WHERE g.billing_status = 'BILLED' AND o.status != 'CANCELLED' AND date(g.billed_at) BETWEEN ? AND ?${ef.clause}
       )
     `).bind(from, to, ...ef.params).first<CostRow>().catch((): CostRow => ({ total_cost: 0 }))
 
@@ -160,15 +162,16 @@ financialReportsRouter.get('/pnl', async (c) => {
 financialReportsRouter.get('/pnl/monthly', async (c) => {
   try {
     const year = Number(c.req.query('year') || new Date().getFullYear())
-    const ef = entityFilter(c)
+    // P5 split billing: 월별 매출=청구그룹 기준
+    const ef = entityFilter(c, 'g')
 
     const { results: salesRows } = await c.env.DB.prepare(`
       SELECT
-        strftime('%m', billed_at) as month,
-        COALESCE(SUM(billed_amount), 0) as revenue
-      FROM orders
-      WHERE billing_status = 'BILLED'
-        AND strftime('%Y', billed_at) = ?${ef.clause}
+        strftime('%m', g.billed_at) as month,
+        COALESCE(SUM(g.billed_amount), 0) as revenue
+      FROM order_billing_groups g JOIN orders o ON o.id = g.order_id
+      WHERE g.billing_status = 'BILLED' AND o.status != 'CANCELLED'
+        AND strftime('%Y', g.billed_at) = ?${ef.clause}
       GROUP BY month
       ORDER BY month
     `).bind(String(year), ...ef.params).all<MonthlyRevenueRow>()
@@ -322,16 +325,18 @@ financialReportsRouter.get('/export/csv', async (c) => {
       const to = c.req.query('to')
       if (!from || !to) return c.json({ success: false, error: 'from, to 파라미터 필요' }, 400)
 
-      const ef = entityFilter(c)
+      // P5 split billing: 매출=청구그룹(생산법인) 기준
+      const ef = entityFilter(c, 'g')
 
       const salesRow = await c.env.DB.prepare(`
-        SELECT COUNT(*) as order_count, COALESCE(SUM(billed_amount), 0) as total_billed, COALESCE(SUM(final_amount), 0) as total_final
-        FROM orders WHERE billing_status = 'BILLED' AND date(billed_at) BETWEEN ? AND ?${ef.clause}
+        SELECT COUNT(DISTINCT g.order_id) as order_count, COALESCE(SUM(g.billed_amount), 0) as total_billed, COALESCE(SUM(g.billed_amount), 0) as total_final
+        FROM order_billing_groups g JOIN orders o ON o.id = g.order_id
+        WHERE g.billing_status = 'BILLED' AND o.status != 'CANCELLED' AND date(g.billed_at) BETWEEN ? AND ?${ef.clause}
       `).bind(from, to, ...ef.params).first<SalesRow>()
 
       const costRow = await c.env.DB.prepare(`
         SELECT COALESCE(SUM(material_cost + labor_cost + overhead_cost), 0) as total_cost
-        FROM order_costs WHERE order_id IN (SELECT id FROM orders WHERE billing_status = 'BILLED' AND date(billed_at) BETWEEN ? AND ?${ef.clause})
+        FROM order_costs WHERE order_id IN (SELECT DISTINCT g.order_id FROM order_billing_groups g JOIN orders o ON o.id = g.order_id WHERE g.billing_status = 'BILLED' AND o.status != 'CANCELLED' AND date(g.billed_at) BETWEEN ? AND ?${ef.clause})
       `).bind(from, to, ...ef.params).first<CostRow>().catch((): CostRow => ({ total_cost: 0 }))
 
       const expenseRow = await c.env.DB.prepare(`
@@ -370,11 +375,13 @@ financialReportsRouter.get('/export/csv', async (c) => {
 
     // type === 'monthly'
     const year = Number(c.req.query('year') || new Date().getFullYear())
-    const ef = entityFilter(c)
+    // P5 split billing: 월별 매출=청구그룹 기준
+    const ef = entityFilter(c, 'g')
 
     const { results: salesRows } = await c.env.DB.prepare(`
-      SELECT strftime('%m', billed_at) as month, COALESCE(SUM(billed_amount), 0) as revenue
-      FROM orders WHERE billing_status = 'BILLED' AND strftime('%Y', billed_at) = ?${ef.clause}
+      SELECT strftime('%m', g.billed_at) as month, COALESCE(SUM(g.billed_amount), 0) as revenue
+      FROM order_billing_groups g JOIN orders o ON o.id = g.order_id
+      WHERE g.billing_status = 'BILLED' AND o.status != 'CANCELLED' AND strftime('%Y', g.billed_at) = ?${ef.clause}
       GROUP BY month ORDER BY month
     `).bind(String(year), ...ef.params).all<MonthlyRevenueRow>()
 

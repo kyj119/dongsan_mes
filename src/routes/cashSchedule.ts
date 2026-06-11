@@ -333,23 +333,27 @@ cashScheduleRouter.post('/schedule/auto-generate', requireRole('ADMIN'), async (
 
     const batchStmts: D1PreparedStatement[] = []
 
-    const ef = entityFilter(c, 'o')
+    // P5 split billing: 입금예정=청구그룹(주문×법인) 기준. 혼합주문은 법인별 입금예정 분리.
+    // entity_id=g.entity_id(청구법인), 중복방지에 entity 차원 추가(같은 주문 다법인 그룹 각각 물질화).
+    const ef = entityFilter(c, 'g')
 
-    // 1. 청구 완료된 주문 → 입금 예정 (LIMIT 500 안전장치)
+    // 1. 청구 완료된 청구그룹 → 입금 예정 (LIMIT 500 안전장치)
     const { results: billedOrders } = await c.env.DB.prepare(`
-      SELECT o.id, o.client_id, o.billed_amount, o.billed_at, o.order_number,
+      SELECT g.order_id as id, g.entity_id as billing_entity_id, o.client_id,
+        g.billed_amount, g.billed_at, o.order_number,
         COALESCE(c.payment_terms_days, 30) as payment_days,
         c.client_name,
         c.payment_cycle_type, c.closing_day, c.payment_month_offset, c.payment_day
-      FROM orders o
+      FROM order_billing_groups g
+      JOIN orders o ON o.id = g.order_id
       LEFT JOIN clients c ON c.id = o.client_id
-      WHERE o.billing_status = 'BILLED' AND o.billed_at IS NOT NULL${ef.clause}
+      WHERE g.billing_status = 'BILLED' AND g.billed_at IS NOT NULL AND o.status != 'CANCELLED'${ef.clause}
         AND NOT EXISTS (
           SELECT 1 FROM cash_schedule cs
-          WHERE cs.source_type = 'ORDER' AND cs.source_id = o.id
+          WHERE cs.source_type = 'ORDER' AND cs.source_id = g.order_id AND cs.entity_id = g.entity_id
         )
       LIMIT 500
-    `).bind(...ef.params).all<BilledOrderRow>()
+    `).bind(...ef.params).all<BilledOrderRow & { billing_entity_id: number }>()
 
     for (const order of billedOrders) {
       const dueDateStr = computeExpectedPaymentDate(order.billed_at, {
@@ -368,7 +372,7 @@ cashScheduleRouter.post('/schedule/auto-generate', requireRole('ADMIN'), async (
           dueDateStr, order.id, order.client_id,
           order.billed_amount,
           `${order.client_name || ''} 입금예정 (주문 ${order.order_number})`,
-          user?.id || null, getEntityId(c)
+          user?.id || null, order.billing_entity_id
         )
       )
       inserted++

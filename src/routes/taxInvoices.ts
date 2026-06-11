@@ -889,7 +889,8 @@ taxInvoicesRouter.post('/batch-create', requireRole('ADMIN', 'MANAGER'), async (
 })
 
 // GET /:id — Single tax invoice detail
-taxInvoicesRouter.get('/:id', async (c) => {
+// '/:id{[0-9]+}': 숫자 ID만 매칭 → 뒤에 등록된 정적 라우트(GET /monthly-eligible 등)가 섀도잉되지 않도록.
+taxInvoicesRouter.get('/:id{[0-9]+}', async (c) => {
   try {
     const id = parseInt(c.req.param('id'))
 
