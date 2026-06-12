@@ -640,9 +640,9 @@ ordersCreateRouter.post('/', async (c) => {
           if (aiItemIds.length > 0) {
             const iph = aiItemIds.map(() => '?').join(',')
             const { results: nameRows } = await c.env.DB.prepare(
-              `SELECT id, name FROM items WHERE id IN (${iph})`
-            ).bind(...aiItemIds).all<{ id: number; name: string }>()
-            for (const nr of nameRows) itemNameMap.set(nr.id, nr.name)
+              `SELECT id, item_name FROM items WHERE id IN (${iph})`
+            ).bind(...aiItemIds).all<{ id: number; item_name: string }>()
+            for (const nr of nameRows) itemNameMap.set(nr.id, nr.item_name)
           }
 
           const jobStmts: D1PreparedStatement[] = []
