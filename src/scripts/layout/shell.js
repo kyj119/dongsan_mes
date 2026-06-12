@@ -517,6 +517,44 @@ if (__userStr) {
     } catch(e) { console.error('User parse error:', e); }
 }
 
+// ═══ Entities 공용 캐시 + 헬퍼 (법인 select 동적화) ═══
+// 향후 사업자 추가 시 DB(entities) INSERT만으로 모든 select/라벨에 자동 반영 (하드코딩 제거).
+(function(){
+    function __escEnt(s){ return String(s == null ? '' : s).replace(/[&<>"]/g, function(c){ return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'})[c]; }); }
+    window.__entities = window.__entities || null;
+    window.__entitiesPromise = window.__entitiesPromise || null;
+    window.loadEntities = function() {
+        if (window.__entities) return Promise.resolve(window.__entities);
+        if (window.__entitiesPromise) return window.__entitiesPromise;
+        var tk = localStorage.getItem('token');
+        window.__entitiesPromise = fetch('/api/auth/entities', { headers: tk ? { 'Authorization': 'Bearer ' + tk } : {} })
+            .then(function(r){ return r.json(); })
+            .then(function(d){ window.__entities = (d && d.success && d.data) ? d.data : []; return window.__entities; })
+            .catch(function(){ window.__entities = []; return window.__entities; });
+        return window.__entitiesPromise;
+    };
+    // id → 약칭(short_name). 캐시 미로드 시 id 문자열 fallback.
+    window.entityName = function(id) {
+        if (id == null || id === '') return '-';
+        var list = window.__entities || [];
+        for (var i = 0; i < list.length; i++) { if (list[i].id === Number(id)) return list[i].short_name; }
+        return String(id);
+    };
+    // select 옵션을 entities로 채우고 selectedId 선택 (async — entities 로드 후).
+    window.fillEntitySelect = function(sel, selectedId, opts) {
+        if (!sel) return Promise.resolve();
+        opts = opts || {};
+        return window.loadEntities().then(function(list){
+            var html = opts.includeAll ? '<option value="0">전체 (합산)</option>' : '';
+            for (var i = 0; i < list.length; i++) {
+                html += '<option value="' + list[i].id + '">' + __escEnt(list[i].short_name) + '</option>';
+            }
+            sel.innerHTML = html;
+            if (selectedId != null && selectedId !== '') sel.value = String(selectedId);
+        });
+    };
+})();
+
 // ═══ Entity Switcher (법인 전환) ═══
 var __currentEntityId = 1;
 (function initEntitySwitcher() {
@@ -538,15 +576,12 @@ var __currentEntityId = 1;
         if (n) n.textContent = '-';
         return;
     }
-    fetch('/api/auth/entities', {
-        headers: { 'Authorization': 'Bearer ' + __et }
-    }).then(function(r) { return r.json(); }).then(function(data) {
-        if (!data.success || !data.data || data.data.length === 0) {
+    window.loadEntities().then(function(entities) {
+        if (!entities || entities.length === 0) {
             var n2 = document.getElementById('entityName');
             if (n2) n2.textContent = '-';
             return;
         }
-        var entities = data.data;
         var nameEl = document.getElementById('entityName');
         var ddEl = document.getElementById('entityDropdown');
         var arrowEl = document.getElementById('entityArrow');

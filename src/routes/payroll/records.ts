@@ -26,9 +26,11 @@ recordsRouter.get('/', async (c) => {
 
     const rows = await c.env.DB.prepare(
       `SELECT p.*, e.name as employee_name, e.employee_code, e.department, e.position,
-              e.base_salary as employee_base_salary, e.mobile as employee_mobile
+              e.base_salary as employee_base_salary, e.mobile as employee_mobile,
+              ent.name as entity_name
        FROM payroll p
        JOIN employees e ON p.employee_id = e.id
+       LEFT JOIN entities ent ON ent.id = p.entity_id
        ${where}
        ORDER BY e.department, e.name`
     ).bind(...params).all()
@@ -50,8 +52,10 @@ recordsRouter.get('/:id', async (c) => {
   const id = Number(c.req.param('id'))
   const efP = entityFilter(c, 'p')
   const row = await c.env.DB.prepare(
-    `SELECT p.*, e.name as employee_name, e.employee_code, e.department, e.position
-     FROM payroll p JOIN employees e ON p.employee_id = e.id WHERE p.id = ?${efP.clause}`
+    `SELECT p.*, e.name as employee_name, e.employee_code, e.department, e.position,
+            ent.name as entity_name
+     FROM payroll p JOIN employees e ON p.employee_id = e.id
+     LEFT JOIN entities ent ON ent.id = p.entity_id WHERE p.id = ?${efP.clause}`
   ).bind(id, ...efP.params).first()
   if (!row) return c.json({ success: false, error: '없음' }, 404)
   return c.json({ success: true, data: row })

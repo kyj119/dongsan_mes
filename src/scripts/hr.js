@@ -1,7 +1,7 @@
 // 인사 관리 - 직원 목록 전용 (근태/급여는 별도 페이지로 분리)
 
 var DEPT_NAMES = { ADMIN_DEPT: '사무직', DESIGN: '디자인', SALES: '영업', TRANSFER: '전사', SIGN: '간판', PRINTING: '출력', PRODUCTION: '생산직', EXECUTIVE: '임원' };
-var ENTITY_NAMES = { 1: '동산기획', 2: '선명', 3: '동산기획 청주' };
+// 법인명은 window.entityName(id) 사용 (shell.js 공용 헬퍼, DB 기반 — 하드코딩 제거)
 var POSITION_NAMES = {
   STAFF: '사원', SENIOR_STAFF: '주임', ASSISTANT_MANAGER: '대리', MANAGER: '과장',
   DEPUTY_GENERAL_MANAGER: '차장', GENERAL_MANAGER: '부장', DIRECTOR: '이사', CEO: '대표이사'
@@ -74,7 +74,7 @@ window.hrLoadEmployees = async function() {
       html += '<tr class="border-b border-gray-100 hover:bg-blue-50 cursor-pointer" onclick="hrOpenDetail(' + e.id + ')">' +
         '<td class="px-4 py-3 font-medium">' + hrEscape(e.employee_code) + '</td>' +
         '<td class="px-4 py-3 font-semibold text-gray-900">' + hrEscape(e.name) + payBadge + '</td>' +
-        '<td class="px-4 py-3 text-gray-600">' + (e.entity_name || ENTITY_NAMES[e.entity_id] || '-') + '</td>' +
+        '<td class="px-4 py-3 text-gray-600">' + (e.entity_name || (window.entityName ? window.entityName(e.entity_id) : '-')) + '</td>' +
         '<td class="px-4 py-3 text-gray-700">' + (DEPT_NAMES[e.department] || e.department || '-') + '</td>' +
         '<td class="px-4 py-3 text-gray-700">' + (POSITION_NAMES[e.position] || e.position || '-') + '</td>' +
         '<td class="px-4 py-3 text-gray-600">' + hrEscape(e.phone || '-') + '</td>' +
@@ -148,6 +148,13 @@ window.hrOpenEmployeeModal = async function() {
   modal.classList.add('flex');
   var form = document.getElementById('hrEmployeeForm');
   form.reset();
+
+  // 소속법인 select 동적 채우기 (기본 = 현재 법인 모드)
+  var entSel = form.querySelector('select[name="entity_id"]');
+  if (entSel && window.fillEntitySelect) {
+    var curEnt = parseInt(localStorage.getItem('entityId')) || 0;
+    window.fillEntitySelect(entSel, curEnt > 0 ? curEnt : null);
+  }
 
   // 입사일자 = 오늘 (KST)
   var todayKst = new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
@@ -249,4 +256,38 @@ window.hrCloseEmployeeModal = function() {
 
   window.hrLoadStats();
   window.hrLoadEmployees();
+
+  // 셀렉트 마스터 동적 로드 — 하드코딩 옵션은 API 실패 시 폴백 (감사 2026-06-12)
+  axios.get('/api/auth/entities').then(function (res) {
+    var list = (res.data && res.data.data) || [];
+    if (!list.length) return;
+    ENTITY_NAMES = {};
+    var opts = '';
+    list.forEach(function (e) {
+      ENTITY_NAMES[e.id] = e.name || e.short_name;
+      var nm = String(e.name || e.short_name).replace(/[&<>"']/g, function (ch) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch];
+      });
+      opts += '<option value="' + e.id + '">' + nm + '</option>';
+    });
+    var sel = document.querySelector('select[name="entity_id"]');
+    if (sel) { var cur = sel.value; sel.innerHTML = opts; if (cur) sel.value = cur; }
+  }).catch(function () { /* 폴백: 하드코딩 옵션 유지 */ });
+
+  axios.get('/api/caps/sites').then(function (res) {
+    var list = (res.data && res.data.data) || [];
+    if (!list.length) return;
+    var sel = document.querySelector('select[name="caps_site_id"]');
+    if (!sel) return;
+    var esc = function (s) {
+      return String(s == null ? '' : s).replace(/[&<>"']/g, function (ch) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch];
+      });
+    };
+    var cur = sel.value;
+    sel.innerHTML = '<option value="">— 미설정 —</option>' + list.map(function (s) {
+      return '<option value="' + esc(s.id) + '">' + esc(s.name) + ' (' + esc(s.id) + ')</option>';
+    }).join('');
+    if (cur) sel.value = cur;
+  }).catch(function () { /* 폴백: 하드코딩 옵션 유지 */ });
 })();

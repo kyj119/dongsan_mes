@@ -138,11 +138,7 @@ export function hrPage(c: Context<HonoEnv>) {
                   </select>
                 </div>
                 <div><label class="block text-xs text-gray-500 mb-1">소속법인</label>
-                  <select name="entity_id" class="w-full border border-gray-300 rounded px-2 py-1.5 text-sm">
-                    <option value="1">동산기획</option>
-                    <option value="2">선명</option>
-                    <option value="3">동산기획 청주</option>
-                  </select>
+                  <select name="entity_id" class="w-full border border-gray-300 rounded px-2 py-1.5 text-sm"></select>
                 </div>
                 <div><label class="block text-xs text-gray-500 mb-1">부서 <span class="text-red-500">*</span></label>
                   <select name="department" required class="w-full border border-gray-300 rounded px-2 py-1.5 text-sm">

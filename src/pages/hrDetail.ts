@@ -102,11 +102,7 @@ export function hrDetailPage(c: Context<HonoEnv>) {
                 <div><label class="block text-xs text-gray-500 mb-1">생년월일</label><input data-field="birth_date" type="date" class="hrd-input w-full border border-gray-200 rounded px-2 py-1.5 text-sm" disabled></div>
                 <div><label class="block text-xs text-gray-500 mb-1">주민등록번호</label><input data-field="resident_number" data-format="rrn" maxlength="14" class="hrd-input w-full border border-gray-200 rounded px-2 py-1.5 text-sm tabular-nums" placeholder="000000-0000000" disabled></div>
                 <div><label class="block text-xs text-gray-500 mb-1">소속법인</label>
-                  <select data-field="entity_id" class="hrd-input w-full border border-gray-200 rounded px-2 py-1.5 text-sm" disabled>
-                    <option value="1">동산기획</option>
-                    <option value="2">선명</option>
-                    <option value="3">동산기획 청주</option>
-                  </select>
+                  <select data-field="entity_id" class="hrd-input w-full border border-gray-200 rounded px-2 py-1.5 text-sm" disabled></select>
                 </div>
                 <div><label class="block text-xs text-gray-500 mb-1">부서</label>
                   <select data-field="department" class="hrd-input w-full border border-gray-200 rounded px-2 py-1.5 text-sm" disabled>

@@ -9,7 +9,7 @@
 })();
 
 var DEPT_NAMES = { ADMIN_DEPT: '사무직', DESIGN: '디자인', SALES: '영업', TRANSFER: '전사', SIGN: '간판', PRINTING: '출력', PRODUCTION: '생산직', EXECUTIVE: '임원' };
-var ENTITY_NAMES = { 1: '동산기획', 2: '선명', 3: '동산기획 청주' };
+// 법인명은 window.entityName(id) 사용 (shell.js 공용 헬퍼)
 var POSITION_NAMES = {
   STAFF: '사원', SENIOR_STAFF: '주임', ASSISTANT_MANAGER: '대리', MANAGER: '과장',
   DEPUTY_GENERAL_MANAGER: '차장', GENERAL_MANAGER: '부장', DIRECTOR: '이사', CEO: '대표이사'
@@ -439,6 +439,9 @@ function hrdPopulateForm(emp) {
     var cf = checks[j].getAttribute('data-field');
     checks[j].checked = !!(emp[cf] === 1 || emp[cf] === '1' || emp[cf] === true);
   }
+  // 소속법인 select 동적 채우기 + 현재값 선택 (DB entities 기반)
+  var hrdEntSel = document.querySelector('#hrdManageCard [data-field="entity_id"]');
+  if (hrdEntSel && window.fillEntitySelect) window.fillEntitySelect(hrdEntSel, emp.entity_id);
   // 포맷터 이벤트 바인딩 (한 번만)
   hrdBindFormatters();
 }
@@ -787,11 +790,53 @@ function hrdBindSalaryCalc() {
   }
 }
 
+// ============================================================================
+// 셀렉트 마스터 동적 로드 — 하드코딩 옵션은 API 실패 시 폴백 (감사 2026-06-12)
+// ============================================================================
+function hrdEsc(s) {
+  if (window.escapeHtml) return window.escapeHtml(String(s == null ? '' : s));
+  return String(s == null ? '' : s).replace(/[&<>"']/g, function (ch) {
+    return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch];
+  });
+}
+
+function hrdLoadSelectMasters() {
+  // 소속법인 — entities 마스터
+  axios.get('/api/auth/entities').then(function (res) {
+    var list = (res.data && res.data.data) || [];
+    if (!list.length) return;
+    var sel = document.querySelector('#hrdManageCard [data-field="entity_id"]');
+    if (sel) {
+      var desired = (window.HRD_CURRENT_EMP && HRD_CURRENT_EMP.entity_id != null) ? String(HRD_CURRENT_EMP.entity_id) : sel.value;
+      sel.innerHTML = list.map(function (e) {
+        return '<option value="' + e.id + '">' + hrdEsc(e.name || e.short_name) + '</option>';
+      }).join('');
+      if (desired) sel.value = desired;
+    }
+    ENTITY_NAMES = {};
+    list.forEach(function (e) { ENTITY_NAMES[e.id] = e.name || e.short_name; });
+  }).catch(function () { /* 폴백: 하드코딩 옵션 유지 */ });
+
+  // CAPS 사이트 — caps_sites 마스터
+  axios.get('/api/caps/sites').then(function (res) {
+    var list = (res.data && res.data.data) || [];
+    if (!list.length) return;
+    var sel = document.querySelector('#hrdManageCard [data-field="caps_site_id"]');
+    if (!sel) return;
+    var desired = (window.HRD_CURRENT_EMP && HRD_CURRENT_EMP.caps_site_id) ? String(HRD_CURRENT_EMP.caps_site_id) : sel.value;
+    sel.innerHTML = '<option value="">— 미설정 —</option>' + list.map(function (s) {
+      return '<option value="' + hrdEsc(s.id) + '">' + hrdEsc(s.name) + ' (' + hrdEsc(s.id) + ')</option>';
+    }).join('');
+    if (desired) sel.value = desired;
+  }).catch(function () { /* 폴백: 하드코딩 옵션 유지 */ });
+}
+
 (function hrdInit() {
   var input = document.getElementById('hrdMonth');
   if (input && !input.value) {
     var now = new Date();
     input.value = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0');
   }
+  hrdLoadSelectMasters();
   window.hrdLoadDetail();
 })();

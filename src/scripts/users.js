@@ -81,7 +81,7 @@
     document.getElementById('f_role').value = 'OPERATOR';
     document.getElementById('f_email').value = '';
     document.getElementById('f_phone').value = '';
-    if (document.getElementById('f_entity')) document.getElementById('f_entity').value = '1';
+    if (window.fillEntitySelect) window.fillEntitySelect(document.getElementById('f_entity'), 1);
     if (document.getElementById('f_coordinator')) document.getElementById('f_coordinator').checked = false;
     document.getElementById('usernameField').style.display = '';
     document.getElementById('passwordField').style.display = '';
@@ -99,7 +99,7 @@
     document.getElementById('f_role').value = u.role || 'OPERATOR';
     document.getElementById('f_email').value = u.email || '';
     document.getElementById('f_phone').value = u.phone || '';
-    if (document.getElementById('f_entity')) document.getElementById('f_entity').value = String(u.default_entity_id || 1);
+    if (window.fillEntitySelect) window.fillEntitySelect(document.getElementById('f_entity'), u.default_entity_id || 1);
     if (document.getElementById('f_coordinator')) document.getElementById('f_coordinator').checked = !!u.is_coordinator;
     document.getElementById('usernameField').style.display = '';
     document.getElementById('passwordField').style.display = 'none';

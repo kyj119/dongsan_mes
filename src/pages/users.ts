@@ -92,11 +92,7 @@ export function usersPage(c: Context<HonoEnv>) {
               </div>
               <div>
                 <label class="block text-sm font-medium text-gray-700 mb-1">소속 법인</label>
-                <select id="f_entity" class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500">
-                  <option value="1">동산기획</option>
-                  <option value="2">선명</option>
-                  <option value="3">동산기획(청주)</option>
-                </select>
+                <select id="f_entity" class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"></select>
               </div>
               <div>
                 <label class="block text-sm font-medium text-gray-700 mb-1">이메일</label>
