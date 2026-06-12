@@ -132,7 +132,6 @@ export function hrDetailPage(c: Context<HonoEnv>) {
                 </div>
                 <div><label class="block text-xs text-gray-500 mb-1">직책</label><input data-field="job_title" class="hrd-input w-full border border-gray-200 rounded px-2 py-1.5 text-sm" disabled></div>
                 <div><label class="block text-xs text-gray-500 mb-1">이메일</label><input data-field="email" type="email" class="hrd-input w-full border border-gray-200 rounded px-2 py-1.5 text-sm" disabled></div>
-                <div><label class="block text-xs text-gray-500 mb-1">전화번호</label><input data-field="phone" data-format="phone" maxlength="13" class="hrd-input w-full border border-gray-200 rounded px-2 py-1.5 text-sm tabular-nums" placeholder="02-1234-5678" disabled></div>
                 <div><label class="block text-xs text-gray-500 mb-1">휴대폰</label><input data-field="mobile" data-format="mobile" maxlength="13" class="hrd-input w-full border border-gray-200 rounded px-2 py-1.5 text-sm tabular-nums" placeholder="010-1234-5678" disabled></div>
                 <div class="col-span-3">
                   <label class="block text-xs text-gray-500 mb-1">주소</label>
@@ -154,6 +153,7 @@ export function hrDetailPage(c: Context<HonoEnv>) {
                     <option value="PART_TIME">시간제</option>
                   </select>
                 </div>
+                <div class="col-span-3"><label class="block text-xs text-gray-500 mb-1">특이사항 / 메모</label><textarea data-field="notes" rows="3" class="hrd-input w-full border border-gray-200 rounded px-2 py-1.5 text-sm" placeholder="직원 특이사항·메모 (예: 건강, 근무 특이사항, 비상연락 등)" disabled></textarea></div>
               </div>
             </section>
 

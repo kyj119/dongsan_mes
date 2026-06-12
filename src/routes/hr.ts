@@ -151,7 +151,10 @@ hrRouter.get('/employees', async (c) => {
 hrRouter.get('/employees/:id', async (c) => {
   try {
     const id = c.req.param('id')
-    const ef = entityFilter(c, 'e')  // #349: 단건 조회 법인 격리 (타 법인 직원 ID 추측 차단)
+    // #349: 단건 조회 법인 격리(타 법인 직원 ID 추측 차단). 단 ADMIN은 전 법인 직원 조회 허용
+    //   — 소속법인 변경 후에도 현재 모드에서 상세를 끊김 없이 유지 (2026-06-12).
+    const sessionUser = c.get('user') as { role?: string } | undefined
+    const ef = sessionUser?.role === 'ADMIN' ? { clause: '', params: [] as number[] } : entityFilter(c, 'e')
     const { results } = await c.env.DB.prepare(`
       SELECT e.*, u.username
       FROM employees e
@@ -549,8 +552,10 @@ hrRouter.put('/employees/:id', async (c) => {
     // 현재 DB 값과 비교하여 실제 변경이 있을 때만 체크
     const SALARY_FIELDS = ['pay_type', 'base_salary', 'hourly_rate', 'position_allowance',
       'vehicle_allowance', 'meal_allowance_fixed', 'special_bonus_fixed', 'other_allowance_fixed']
-    // #349: 타 법인 직원 수정 차단 — 자기 법인 직원만 게이트(ADMIN 전체모드 entity 0은 빈 절로 전체 허용)
-    const ef = entityFilter(c)
+    // #349: 타 법인 직원 수정 차단 — 비ADMIN은 자기 법인 직원만. ADMIN은 전 법인 수정 허용
+    //   (소속법인 변경 후 '계속 보기'에서 재편집·저장 시 404 방지 — 2026-06-12).
+    const sessionUserP = c.get('user') as { role?: string } | undefined
+    const ef = sessionUserP?.role === 'ADMIN' ? { clause: '', params: [] as number[] } : entityFilter(c)
     const currentEmp = await c.env.DB.prepare(
       `SELECT id, pay_type, base_salary, hourly_rate, position_allowance, vehicle_allowance, meal_allowance_fixed, special_bonus_fixed, other_allowance_fixed FROM employees WHERE id = ?${ef.clause}`
     ).bind(id, ...ef.params).first<any>()
@@ -868,7 +873,9 @@ hrRouter.get('/employees/:id/detail', async (c) => {
     const year = c.req.query('year') || new Date().getFullYear().toString()
 
     // 1) 직원 프로필 + users.username
-    const ef = entityFilter(c, 'e')  // #349: detail 조회 법인 격리 (PII 복호화 경로)
+    // #349: detail 조회 법인 격리(PII 복호화 경로). 단 ADMIN은 전 법인 직원 조회 허용 (2026-06-12).
+    const sessionUserD = c.get('user') as { role?: string } | undefined
+    const ef = sessionUserD?.role === 'ADMIN' ? { clause: '', params: [] as number[] } : entityFilter(c, 'e')
     const employee = await c.env.DB.prepare(`
       SELECT e.*, u.username
       FROM employees e
