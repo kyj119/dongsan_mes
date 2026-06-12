@@ -35,6 +35,9 @@ export function payrollRatesPage(c: Context) {
       <button id="prRTab2" onclick="prRSwitchTab(2)" class="px-4 py-2 text-sm font-semibold border-b-2 border-transparent text-gray-500 hover:text-gray-700">
         <i class="fas fa-table mr-1"></i>근로소득 간이세액표
       </button>
+      <button id="prRTab3" onclick="prRSwitchTab(3)" class="px-4 py-2 text-sm font-semibold border-b-2 border-transparent text-gray-500 hover:text-gray-700">
+        <i class="fas fa-calendar-day mr-1"></i>공휴일
+      </button>
     </div>
   </div>
 
@@ -139,6 +142,57 @@ export function payrollRatesPage(c: Context) {
         <li>CSV 헤더: <code class="bg-white px-1 rounded">monthly_pay_min,monthly_pay_max,dependents_1,...,dependents_11</code></li>
         <li>표에 없는 구간은 공식 계산식으로 자동 fallback 처리됩니다.</li>
       </ul>
+    </div>
+  </div>
+
+  <!-- Tab 3: 공휴일 -->
+  <div id="prRPane3" class="hidden">
+    <div class="bg-white border border-gray-200 rounded-lg">
+      <div class="flex items-center justify-between px-4 py-3 border-b border-gray-200 flex-wrap gap-2">
+        <div class="font-semibold text-gray-900">법정공휴일 달력</div>
+        <div class="flex items-center gap-2">
+          <input type="number" id="prRHolYearInput" value="2026" class="w-24 border rounded px-2 py-1.5 text-sm text-right" />
+          <button onclick="prRLoadHolidays()" class="border border-gray-300 bg-white text-gray-700 rounded-lg px-3 py-1.5 text-sm hover:bg-gray-50"><i class="fas fa-sync-alt mr-1"></i>조회</button>
+          <button onclick="prRLoadDefaultHolidays()" class="border border-blue-300 bg-blue-50 text-blue-700 rounded-lg px-3 py-1.5 text-sm hover:bg-blue-100"><i class="fas fa-download mr-1"></i>기본 공휴일 불러오기</button>
+          <button onclick="prROpenAddHoliday()" class="bg-blue-600 text-white rounded-lg px-3 py-1.5 text-sm hover:bg-blue-700"><i class="fas fa-plus mr-1"></i>추가</button>
+        </div>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="w-full ds-table-striped ds-table-fixed text-sm">
+          <thead class="bg-gray-50 text-xs text-gray-600">
+            <tr><th class="text-left px-4 py-2" style="width:150px">날짜</th><th class="text-left px-4 py-2" style="width:80px">요일</th><th class="text-left px-4 py-2">명칭</th><th class="text-center px-4 py-2" style="width:70px">삭제</th></tr>
+          </thead>
+          <tbody id="prRHolBody"><tr><td colspan="4" class="text-center text-gray-400 py-6">조회를 눌러주세요</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+    <div class="mt-4 p-4 bg-amber-50 border border-amber-100 rounded-lg text-sm text-amber-900">
+      <div class="font-semibold mb-1"><i class="fas fa-info-circle mr-1"></i>공휴일 사용 안내</div>
+      <ul class="list-disc ml-5 space-y-1 text-xs text-amber-800">
+        <li>여기 등록된 날짜(+토·일)에 근무하면 <strong>휴일근로</strong>로 분류되어 휴일수당(×1.5)이 지급됩니다.</li>
+        <li><strong>기본 공휴일 불러오기</strong>로 표준 공휴일 적재 후, <strong>음력·대체공휴일 날짜는 반드시 검증/수정</strong>하세요.</li>
+        <li>이미 동기화된 근태에 소급 적용: 아래에서 월을 입력하고 <strong>재분류</strong> 실행 → <strong>급여 관리 → 근태 불러오기</strong> 순서로 반영합니다.</li>
+        <li class="flex items-center gap-1 pt-1">월 <input type="text" id="prRReclassPeriod" placeholder="2026-06" class="border rounded px-2 py-0.5 text-xs w-24" />
+          <button onclick="prRReclassifyHolidays()" class="ml-1 border border-amber-300 bg-white text-amber-800 rounded px-2 py-0.5 text-xs hover:bg-amber-100"><i class="fas fa-redo mr-1"></i>근태 공휴일 재분류</button></li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<!-- 공휴일 추가 모달 -->
+<div id="prRHolModal" class="ds-modal-overlay hidden items-center justify-center">
+  <div class="ds-modal mx-4" style="max-width:24rem">
+    <div class="flex items-center justify-between px-5 py-3 border-b border-gray-200">
+      <h3 class="text-base font-semibold text-gray-900">공휴일 추가</h3>
+      <button onclick="prRCloseAddHoliday()" class="text-gray-400 hover:text-gray-700"><i class="fas fa-times"></i></button>
+    </div>
+    <div class="p-5 space-y-3">
+      <div><label class="text-xs text-gray-600">날짜 (YYYY-MM-DD)</label><input type="text" id="prRHolDate" placeholder="2026-08-15" class="w-full border rounded px-2 py-1.5 text-sm" /></div>
+      <div><label class="text-xs text-gray-600">명칭</label><input type="text" id="prRHolName" placeholder="광복절" class="w-full border rounded px-2 py-1.5 text-sm" /></div>
+    </div>
+    <div class="px-5 py-3 border-t border-gray-200 flex justify-end gap-2">
+      <button onclick="prRCloseAddHoliday()" class="px-3 py-1.5 text-sm text-gray-600">취소</button>
+      <button onclick="prRSaveHoliday()" class="px-3 py-1.5 text-sm bg-blue-600 text-white rounded">저장</button>
     </div>
   </div>
 </div>

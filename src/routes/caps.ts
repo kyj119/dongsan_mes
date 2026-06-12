@@ -101,6 +101,13 @@ capsRouter.post('/ingest', async (c) => {
 
     let ignoredCount = 0
 
+    // 공휴일(법정공휴일) 집합 — 토·일 외에 이 날짜도 휴일근로로 분류
+    const holidaySet = new Set<string>()
+    try {
+      const { results: hdays } = await c.env.DB.prepare(`SELECT holiday_date FROM holidays`).all<{ holiday_date: string }>()
+      for (const h of (hdays || [])) holidaySet.add(String(h.holiday_date))
+    } catch (_) { /* holidays 테이블 미적용 환경 — 토/일만 휴일 처리 */ }
+
     // ========== 헬퍼 함수 (루프 밖) ==========
     const parseTime = (t: any): string | null => {
       if (!t) return null
@@ -245,7 +252,7 @@ capsRouter.post('/ingest', async (c) => {
         else if (inMinVal < 0) attType = 'ABSENT'
 
         const dayOfWeek = new Date(workDate).getDay()
-        if (dayOfWeek === 0 || dayOfWeek === 6) {
+        if (dayOfWeek === 0 || dayOfWeek === 6 || holidaySet.has(workDate)) {
           attType = 'HOLIDAY'
           holidayWorkHours = workHours
           overtimeHours = 0

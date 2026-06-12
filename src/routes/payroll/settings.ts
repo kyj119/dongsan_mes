@@ -267,4 +267,106 @@ settingsRouter.post('/tax-table/generate', requireRole('ADMIN', 'MANAGER'), asyn
   }
 })
 
+// ============================================================================
+// 공휴일(법정공휴일) 달력 — 평일 공휴일 근무를 휴일근로로 인정
+// ============================================================================
+
+// GET /api/payroll/holidays?year=2026
+settingsRouter.get('/holidays', async (c) => {
+  try {
+    const year = c.req.query('year')
+    let q = `SELECT holiday_date, name FROM holidays`
+    const binds: any[] = []
+    if (year) { q += ` WHERE substr(holiday_date,1,4) = ?`; binds.push(String(year)) }
+    q += ` ORDER BY holiday_date`
+    const { results } = await c.env.DB.prepare(q).bind(...binds).all()
+    return c.json({ success: true, data: results || [] })
+  } catch (err) {
+    console.error('holidays list error:', err)
+    return c.json({ success: false, error: '서버 오류' }, 500)
+  }
+})
+
+// POST /api/payroll/holidays  body: { holiday_date, name }
+settingsRouter.post('/holidays', requireRole('ADMIN', 'MANAGER'), async (c) => {
+  try {
+    const body = await c.req.json<{ holiday_date?: string; name?: string }>()
+    const date = String(body.holiday_date || '').trim()
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return c.json({ success: false, error: '날짜 형식 YYYY-MM-DD' }, 400)
+    await c.env.DB.prepare(
+      `INSERT INTO holidays (holiday_date, name) VALUES (?, ?)
+       ON CONFLICT(holiday_date) DO UPDATE SET name = excluded.name`
+    ).bind(date, String(body.name || '공휴일').trim() || '공휴일').run()
+    return c.json({ success: true })
+  } catch (err) {
+    console.error('holidays add error:', err)
+    return c.json({ success: false, error: '서버 오류' }, 500)
+  }
+})
+
+// DELETE /api/payroll/holidays/:date
+settingsRouter.delete('/holidays/:date', requireRole('ADMIN', 'MANAGER'), async (c) => {
+  try {
+    await c.env.DB.prepare(`DELETE FROM holidays WHERE holiday_date = ?`).bind(c.req.param('date')).run()
+    return c.json({ success: true })
+  } catch (err) {
+    return c.json({ success: false, error: '서버 오류' }, 500)
+  }
+})
+
+// POST /api/payroll/holidays/load-defaults  body: { year }
+// 표준 공휴일 적재(중복 무시). 음력·대체공휴일은 연도별이라 2026만 포함, 그 외 연도는 고정일만.
+// ⚠️ 적재 후 목록에서 날짜 검증/수정 권장(특히 대체공휴일).
+settingsRouter.post('/holidays/load-defaults', requireRole('ADMIN', 'MANAGER'), async (c) => {
+  try {
+    const body = await c.req.json<{ year?: number }>().catch(() => ({} as { year?: number }))
+    const year = Number(body.year) || new Date().getFullYear()
+    const fixed: [string, string][] = [
+      ['01-01', '신정'], ['03-01', '삼일절'], ['05-05', '어린이날'], ['06-06', '현충일'],
+      ['08-15', '광복절'], ['10-03', '개천절'], ['10-09', '한글날'], ['12-25', '성탄절'],
+    ]
+    const list: [string, string][] = fixed.map(([md, nm]) => [`${year}-${md}`, nm])
+    if (year === 2026) {
+      const lunar: [string, string][] = [
+        ['2026-02-16', '설날 연휴'], ['2026-02-17', '설날'], ['2026-02-18', '설날 연휴'],
+        ['2026-03-02', '삼일절 대체휴일'], ['2026-05-24', '부처님오신날'], ['2026-05-25', '부처님오신날 대체휴일'],
+        ['2026-08-17', '광복절 대체휴일'], ['2026-09-24', '추석 연휴'], ['2026-09-25', '추석'],
+        ['2026-09-26', '추석 연휴'], ['2026-09-28', '추석 대체휴일'], ['2026-10-05', '개천절 대체휴일'],
+      ]
+      list.push(...lunar)
+    }
+    const stmts = list.map(([d, nm]) =>
+      c.env.DB.prepare(`INSERT OR IGNORE INTO holidays (holiday_date, name) VALUES (?, ?)`).bind(d, nm)
+    )
+    for (let i = 0; i < stmts.length; i += 50) await c.env.DB.batch(stmts.slice(i, i + 50))
+    return c.json({ success: true, data: { year, count: list.length } })
+  } catch (err) {
+    console.error('holidays load-defaults error:', err)
+    return c.json({ success: false, error: '서버 오류' }, 500)
+  }
+})
+
+// POST /api/payroll/holidays/reclassify  body: { pay_period: 'YYYY-MM' }
+// 해당 월 근태 중 공휴일(평일) 날짜를 HOLIDAY로 재분류(CAPS 자동분만). 이후 '근태 불러오기'로 급여 반영.
+settingsRouter.post('/holidays/reclassify', requireRole('ADMIN', 'MANAGER'), async (c) => {
+  try {
+    const body = await c.req.json<{ pay_period?: string }>()
+    const period = String(body.pay_period || '')
+    if (!/^\d{4}-\d{2}$/.test(period)) return c.json({ success: false, error: 'pay_period 형식 YYYY-MM' }, 400)
+    const res = await c.env.DB.prepare(`
+      UPDATE attendance
+      SET attendance_type = 'HOLIDAY', holiday_work_hours = COALESCE(work_hours, 0), overtime_hours = 0,
+          updated_at = datetime('now')
+      WHERE strftime('%Y-%m', work_date) = ?
+        AND work_date IN (SELECT holiday_date FROM holidays)
+        AND attendance_type != 'HOLIDAY'
+        AND source = 'CAPS'
+    `).bind(period).run()
+    return c.json({ success: true, data: { reclassified: res.meta.changes || 0 } })
+  } catch (err) {
+    console.error('holidays reclassify error:', err)
+    return c.json({ success: false, error: '서버 오류' }, 500)
+  }
+})
+
 export default settingsRouter

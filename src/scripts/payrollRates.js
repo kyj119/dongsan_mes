@@ -22,16 +22,80 @@ var prRInsuranceLabels = {
 };
 
 window.prRSwitchTab = function(n) {
-  document.getElementById('prRPane1').classList.toggle('hidden', n !== 1);
-  document.getElementById('prRPane2').classList.toggle('hidden', n !== 2);
-  document.getElementById('prRTab1').classList.toggle('border-blue-600', n === 1);
-  document.getElementById('prRTab1').classList.toggle('text-blue-600', n === 1);
-  document.getElementById('prRTab1').classList.toggle('border-transparent', n !== 1);
-  document.getElementById('prRTab1').classList.toggle('text-gray-500', n !== 1);
-  document.getElementById('prRTab2').classList.toggle('border-blue-600', n === 2);
-  document.getElementById('prRTab2').classList.toggle('text-blue-600', n === 2);
-  document.getElementById('prRTab2').classList.toggle('border-transparent', n !== 2);
-  document.getElementById('prRTab2').classList.toggle('text-gray-500', n !== 2);
+  [1,2,3].forEach(function(i){
+    var pane = document.getElementById('prRPane'+i);
+    if (pane) pane.classList.toggle('hidden', n !== i);
+    var tab = document.getElementById('prRTab'+i);
+    if (tab){
+      tab.classList.toggle('border-blue-600', n === i);
+      tab.classList.toggle('text-blue-600', n === i);
+      tab.classList.toggle('border-transparent', n !== i);
+      tab.classList.toggle('text-gray-500', n !== i);
+    }
+  });
+  if (n === 3 && !prRHolLoaded) { prRHolLoaded = true; prRLoadHolidays(); }
+};
+
+// ───────── 공휴일 달력 ─────────
+var prRHolLoaded = false;
+var PR_WEEKDAY = ['일','월','화','수','목','금','토'];
+window.prRLoadHolidays = async function() {
+  var year = document.getElementById('prRHolYearInput').value || '2026';
+  var body = document.getElementById('prRHolBody');
+  try {
+    var res = await axios.get('/api/payroll/holidays', { params: { year: year } });
+    var rows = (res.data && res.data.data) || [];
+    if (!rows.length) { body.innerHTML = '<tr><td colspan="4" class="text-center text-gray-400 py-6">등록된 공휴일이 없습니다. "기본 공휴일 불러오기"를 눌러주세요.</td></tr>'; return; }
+    body.innerHTML = rows.map(function(r){
+      var d = new Date(r.holiday_date + 'T00:00:00');
+      var wd = PR_WEEKDAY[d.getDay()] || '';
+      var wkend = (d.getDay() === 0 || d.getDay() === 6);
+      return '<tr><td class="px-4 py-2 tabular-nums">' + escapeHtml(r.holiday_date) + '</td>' +
+        '<td class="px-4 py-2 ' + (wkend ? 'text-red-500' : '') + '">' + wd + '</td>' +
+        '<td class="px-4 py-2">' + escapeHtml(r.name || '') + '</td>' +
+        '<td class="px-4 py-2 text-center"><button onclick="prRDeleteHoliday(\'' + r.holiday_date + '\')" class="text-red-500 hover:text-red-700"><i class="fas fa-trash"></i></button></td></tr>';
+    }).join('');
+  } catch (e) { body.innerHTML = '<tr><td colspan="4" class="text-center text-red-500 py-6">로드 실패</td></tr>'; }
+};
+window.prRLoadDefaultHolidays = async function() {
+  var year = Number(document.getElementById('prRHolYearInput').value || '2026');
+  if (!(await showConfirm(year + '년 표준 공휴일을 불러옵니다.\n(음력·대체공휴일 날짜는 적재 후 검증/수정하세요)'))) return;
+  try {
+    var res = await axios.post('/api/payroll/holidays/load-defaults', { year: year });
+    if (res.data && res.data.success) { showToast((res.data.data.count) + '건 적재 — 날짜 검증 권장', 'success'); prRLoadHolidays(); }
+  } catch (e) { showToast('불러오기 실패', 'error'); }
+};
+window.prROpenAddHoliday = function() {
+  document.getElementById('prRHolDate').value = '';
+  document.getElementById('prRHolName').value = '';
+  document.getElementById('prRHolModal').classList.remove('hidden');
+  document.getElementById('prRHolModal').classList.add('flex');
+};
+window.prRCloseAddHoliday = function() {
+  var m = document.getElementById('prRHolModal'); m.classList.add('hidden'); m.classList.remove('flex');
+};
+window.prRSaveHoliday = async function() {
+  var date = document.getElementById('prRHolDate').value.trim();
+  var name = document.getElementById('prRHolName').value.trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) { showToast('날짜 형식 YYYY-MM-DD', 'warning'); return; }
+  try {
+    await axios.post('/api/payroll/holidays', { holiday_date: date, name: name || '공휴일' });
+    prRCloseAddHoliday(); showToast('추가되었습니다', 'success'); prRLoadHolidays();
+  } catch (e) { showToast('추가 실패', 'error'); }
+};
+window.prRDeleteHoliday = async function(date) {
+  if (!(await showConfirm(date + ' 공휴일을 삭제하시겠습니까?', { danger: true }))) return;
+  try { await axios.delete('/api/payroll/holidays/' + date); prRLoadHolidays(); }
+  catch (e) { showToast('삭제 실패', 'error'); }
+};
+window.prRReclassifyHolidays = async function() {
+  var period = document.getElementById('prRReclassPeriod').value.trim();
+  if (!/^\d{4}-\d{2}$/.test(period)) { showToast('월 형식 YYYY-MM', 'warning'); return; }
+  if (!(await showConfirm(period + ' 근태를 공휴일 기준으로 재분류합니다.\n이후 [급여 관리 → 근태 불러오기]로 급여에 반영하세요.'))) return;
+  try {
+    var res = await axios.post('/api/payroll/holidays/reclassify', { pay_period: period });
+    if (res.data && res.data.success) showToast(res.data.data.reclassified + '건 재분류 — 이제 근태 불러오기 실행', 'success');
+  } catch (e) { showToast('재분류 실패', 'error'); }
 };
 
 window.prRLoadAll = function() {
