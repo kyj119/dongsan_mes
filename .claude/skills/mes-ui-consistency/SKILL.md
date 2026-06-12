@@ -68,6 +68,7 @@ description: "동산기획 ERP+MES UI 일관성 가이드. 프론트엔드 작�
 - 액션 버튼: 호버 시에만 노출
 - 줄무늬: `ds-table-striped` (짝수행 `#f8fafc`)
 - 밀도 토글: `ds-table-compact`
+- **고정형(table-layout: fixed) 원칙 (필수)**: 컬럼이 많거나 금액(가변 자릿수) 위주인 표는 반드시 `table-layout: fixed` + 명시적 컬럼 너비(`<colgroup><col style="width:..">` 또는 `th` width)로 만든다. 기본 auto-layout(=내용에 따라 너비가 변하는 "움직이는 형식")은 **금지** — 셀 값이 `0`↔큰 숫자로 바뀔 때 컬럼 폭이 출렁여 정렬/헤더가 어긋난다. 넘치는 셀은 `white-space:nowrap; overflow:hidden; text-overflow:ellipsis`로 클립하고, 전체 폭은 가로 스크롤(`overflow-x-auto`)로 처리. 컬럼이 너무 많으면 **탭/섹션으로 분리**(예: 급여대장=지급·공제 / 회사부담금=별도 탭).
 
 ## 6.5 XSS / 이스케이프 (필수)
 - 사용자 입력 필드(`*name`, `*_name`, `notes`, `description`, `memo`, `message`, `*_message`, `content`)를 innerHTML / 템플릿 리터럴 / `+=` HTML에 삽입할 땐 **전역 `window.escapeHtml(...)`로 반드시 감쌀 것**.
@@ -88,6 +89,7 @@ description: "동산기획 ERP+MES UI 일관성 가이드. 프론트엔드 작�
 - [ ] 카드 숫자 기본 `#212529`, 위험만 시맨틱 색상
 - [ ] 뱃지에 아이콘+텍스트+색상 3요소 (bg-*-50)
 - [ ] 테이블 액션 호버 시에만 노출, `tabular-nums`
+- [ ] 와이드/금액 테이블은 `table-layout: fixed` + 고정 컬럼 너비 (auto-layout "움직이는 형식" 금지), 넘치면 탭 분리
 - [ ] CTA Primary Blue, 검색 버튼 "검색", 이모지 미사용
 
 ### 비주얼+UX

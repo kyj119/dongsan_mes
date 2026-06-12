@@ -131,15 +131,15 @@ export function payrollPage(c: Context<HonoEnv>) {
           </div>
         </div>
 
-        <!-- 급여대장 (확장 뷰) -->
+        <!-- 급여대장 (확장 뷰 — 고정형 표 + 탭) -->
         <div id="prLedgerCard" class="ds-card overflow-hidden hidden">
           <div class="flex items-center justify-between px-4 py-2 border-b border-gray-200 bg-gray-50 flex-wrap gap-2">
-            <div class="text-sm font-semibold text-gray-700">
-              <i class="fas fa-table-cells mr-1 text-gray-500"></i>급여대장
-              <span id="prLedgerPeriod" class="text-xs font-normal text-gray-400 ml-1"></span>
+            <div class="flex items-end gap-1">
+              <button id="prLedgerTabMain" onclick="payrollSwitchLedgerTab('main')" class="px-3 py-1.5 text-xs font-semibold border-b-2 border-blue-600 text-blue-700">급여대장</button>
+              <button id="prLedgerTabEmp" onclick="payrollSwitchLedgerTab('emp')" class="px-3 py-1.5 text-xs font-semibold border-b-2 border-transparent text-gray-500 hover:text-gray-700">회사부담금</button>
+              <span id="prLedgerPeriod" class="text-xs font-normal text-gray-400 ml-2 pb-1"></span>
             </div>
-            <div class="flex items-center gap-3">
-              <label class="flex items-center gap-1 text-xs text-gray-600"><input type="checkbox" id="prLedgerEmployer" onchange="payrollRenderLedger()" checked> 회사부담분</label>
+            <div class="flex items-center gap-2">
               <button onclick="payrollLedgerPrint()" class="px-2 py-1 text-xs border border-gray-300 rounded hover:bg-gray-100"><i class="fas fa-print mr-1"></i>인쇄</button>
               <button onclick="payrollLedgerExportCsv()" class="px-2 py-1 text-xs border border-gray-300 rounded hover:bg-gray-100"><i class="fas fa-file-csv mr-1"></i>CSV</button>
             </div>
@@ -150,17 +150,25 @@ export function payrollPage(c: Context<HonoEnv>) {
         </div>
 
         <style>
-          .ds-ledger { border-collapse: collapse; font-variant-numeric: tabular-nums; white-space: nowrap; }
-          .ds-ledger th, .ds-ledger td { border: 1px solid #e5e7eb; padding: 3px 8px; }
-          .ds-ledger thead th { background: #f8fafc; position: sticky; top: 0; z-index: 2; font-weight: 600; }
+          /* 급여대장: 고정형(table-layout:fixed) — 값이 바뀌어도 컬럼 폭 불변 */
+          .ds-ledger { border-collapse: collapse; table-layout: fixed; font-variant-numeric: tabular-nums; }
+          .ds-ledger th, .ds-ledger td { border: 1px solid #e5e7eb; padding: 3px 6px; box-sizing: border-box; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; line-height: 1.35; }
+          .ds-ledger thead th { background: #f1f5f9; font-weight: 600; }
           .ds-ledger td.num, .ds-ledger th.num { text-align: right; }
-          .ds-ledger .lft { text-align: left; }
+          .ds-ledger td.lft, .ds-ledger th.lft { text-align: left; }
+          .ds-ledger .stick { position: sticky; background: #fff; z-index: 1; }
+          .ds-ledger thead .stick { z-index: 3; background: #f1f5f9; }
           .ds-ledger .grp-pay { background: #eff6ff; }
           .ds-ledger .grp-ded { background: #fef2f2; }
-          .ds-ledger .grp-emp { background: #f9fafb; }
-          .ds-ledger .subtotal td { background: #f1f5f9; font-weight: 600; }
-          .ds-ledger .grandtotal td { background: #e2e8f0; font-weight: 700; }
+          .ds-ledger .grp-emp { background: #f0fdf4; }
+          .ds-ledger .grp-sum { background: #fefce8; }
+          .ds-ledger .b { font-weight: 600; }
+          .ds-ledger tbody tr.subtotal td { background: #eef2f7; font-weight: 600; }
+          .ds-ledger tbody tr.subtotal .stick { background: #eef2f7; }
+          .ds-ledger tbody tr.grandtotal td { background: #dbe3ec; font-weight: 700; }
+          .ds-ledger tbody tr.grandtotal .stick { background: #dbe3ec; }
           .ds-ledger tbody tr:hover td { background: #fafafa; }
+          .ds-ledger tbody tr:hover .stick { background: #fafafa; }
         </style>
       </div>
 

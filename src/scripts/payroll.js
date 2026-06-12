@@ -789,30 +789,72 @@ window.sendPayslipBulk = async function() {
 };
 
 // ============================================================================
-// 급여대장 (확장 뷰) — 수당/공제 항목 전개 + 부서/전체 합계 + 인쇄 + CSV
+// 급여대장 (확장 뷰) — 고정형(table-layout:fixed) + 탭(급여대장 / 회사부담금)
 //   기존 /payroll 목록(currentPayrollData) 재사용. API 변경 없음.
+//   컬럼은 descriptor 배열로 정의 → 고정 너비 colgroup·헤더·본문·합계·CSV 공통 생성.
 // ============================================================================
 window.payrollLedgerMode = false;
+window.payrollLedgerTab = 'main';   // 'main'=급여대장(지급/공제) | 'emp'=회사부담금
 
-var PR_LEDGER_PAY = [
-  ['기본급','base_salary'],['연장수당','overtime_pay'],['야간','night_pay'],['휴일','holiday_pay'],
-  ['식대','meal_allowance'],['교통','transportation_allowance'],['기타수당','other_allowance'],
-  ['상여','bonus'],['연차수당','annual_leave_pay']
+// descriptor: {key,label,w,group,kind,sticky?,bold?,calc?}
+//   group: id|pay|ded|net|emp|sum     kind: text|dept|pos|num|calc
+var LEDGER_MAIN_COLS = [
+  {key:'employee_code', label:'사번', w:60, group:'id', kind:'text', sticky:0},
+  {key:'employee_name', label:'성명', w:78, group:'id', kind:'text', sticky:60},
+  {key:'department', label:'부서', w:64, group:'id', kind:'dept'},
+  {key:'position', label:'직급', w:56, group:'id', kind:'pos'},
+  {key:'base_salary', label:'기본급', w:94, group:'pay', kind:'num'},
+  {key:'overtime_pay', label:'연장', w:84, group:'pay', kind:'num'},
+  {key:'night_pay', label:'야간', w:72, group:'pay', kind:'num'},
+  {key:'holiday_pay', label:'휴일', w:72, group:'pay', kind:'num'},
+  {key:'meal_allowance', label:'식대', w:74, group:'pay', kind:'num'},
+  {key:'transportation_allowance', label:'교통', w:72, group:'pay', kind:'num'},
+  {key:'other_allowance', label:'기타', w:80, group:'pay', kind:'num'},
+  {key:'bonus', label:'상여', w:80, group:'pay', kind:'num'},
+  {key:'annual_leave_pay', label:'연차', w:72, group:'pay', kind:'num'},
+  {key:'total_salary', label:'지급계', w:102, group:'pay', kind:'num', bold:true},
+  {key:'national_pension', label:'국민연금', w:84, group:'ded', kind:'num'},
+  {key:'health_insurance', label:'건강', w:78, group:'ded', kind:'num'},
+  {key:'long_term_care_insurance', label:'장기요양', w:82, group:'ded', kind:'num'},
+  {key:'employment_insurance', label:'고용', w:72, group:'ded', kind:'num'},
+  {key:'income_tax', label:'소득세', w:86, group:'ded', kind:'num'},
+  {key:'local_tax', label:'지방세', w:74, group:'ded', kind:'num'},
+  {key:'other_deduction', label:'기타', w:74, group:'ded', kind:'num'},
+  {key:'total_deduction', label:'공제계', w:102, group:'ded', kind:'num', bold:true},
+  {key:'net_pay', label:'실지급', w:110, group:'net', kind:'num', bold:true}
 ];
-var PR_LEDGER_DED = [
-  ['국민연금','national_pension'],['건강보험','health_insurance'],['장기요양','long_term_care_insurance'],
-  ['고용보험','employment_insurance'],['소득세','income_tax'],['지방세','local_tax'],['기타공제','other_deduction']
+var LEDGER_EMP_COLS = [
+  {key:'employee_code', label:'사번', w:60, group:'id', kind:'text', sticky:0},
+  {key:'employee_name', label:'성명', w:78, group:'id', kind:'text', sticky:60},
+  {key:'department', label:'부서', w:64, group:'id', kind:'dept'},
+  {key:'position', label:'직급', w:56, group:'id', kind:'pos'},
+  {key:'employer_national_pension', label:'국민연금', w:92, group:'emp', kind:'num'},
+  {key:'employer_health_insurance', label:'건강', w:86, group:'emp', kind:'num'},
+  {key:'employer_long_term_care', label:'장기요양', w:88, group:'emp', kind:'num'},
+  {key:'employer_employment_insurance', label:'고용', w:80, group:'emp', kind:'num'},
+  {key:'employer_industrial_accident', label:'산재', w:80, group:'emp', kind:'num'},
+  {key:'__emp_total', label:'부담계', w:104, group:'emp', kind:'calc', calc:'emp', bold:true},
+  {key:'total_salary', label:'지급총액', w:108, group:'sum', kind:'num'},
+  {key:'__labor', label:'총인건비', w:118, group:'sum', kind:'calc', calc:'labor', bold:true}
 ];
-var PR_LEDGER_EMP = [
-  ['국민연금','employer_national_pension'],['건강보험','employer_health_insurance'],['장기요양','employer_long_term_care'],
-  ['고용보험','employer_employment_insurance'],['산재','employer_industrial_accident']
-];
+var LEDGER_GROUP = {
+  id:{label:'',cls:''}, pay:{label:'지 급',cls:'grp-pay'}, ded:{label:'공 제',cls:'grp-ded'},
+  net:{label:'',cls:''}, emp:{label:'회사부담 (사업주)',cls:'grp-emp'}, sum:{label:'인건비',cls:'grp-sum'}
+};
 
 function prNum(r, k){ return parseFloat(r[k] || 0) || 0; }
 function prLC(n){ return (Math.round(n) || 0).toLocaleString('ko-KR'); }
 function prDeptLabel(d){ return (window.DEPT_NAMES && window.DEPT_NAMES[d]) || d || '(미지정)'; }
 function prPosLabel(p){ return (window.POSITION_NAMES && window.POSITION_NAMES[p]) || p || ''; }
-function prLedgerEmpOn(){ var el = document.getElementById('prLedgerEmployer'); return el ? el.checked : true; }
+function prEmpTotal(r){ return prNum(r,'employer_national_pension')+prNum(r,'employer_health_insurance')+prNum(r,'employer_long_term_care')+prNum(r,'employer_employment_insurance')+prNum(r,'employer_industrial_accident'); }
+function prLedgerCols(){ return window.payrollLedgerTab === 'emp' ? LEDGER_EMP_COLS : LEDGER_MAIN_COLS; }
+function prColVal(c, r){
+  if (c.kind === 'num') return prNum(r, c.key);
+  if (c.kind === 'calc') return c.calc === 'emp' ? prEmpTotal(r) : (prNum(r,'total_salary') + prEmpTotal(r));
+  return 0;
+}
+function prColCls(c){ return (c.kind==='num'||c.kind==='calc'?'num':'lft') + (LEDGER_GROUP[c.group].cls?(' '+LEDGER_GROUP[c.group].cls):'') + (c.bold?' b':'') + (c.sticky!=null?' stick':''); }
+function prColStyle(c){ return c.sticky!=null ? ' style="left:'+c.sticky+'px"' : ''; }
 
 window.payrollToggleLedger = function(){
   window.payrollLedgerMode = !window.payrollLedgerMode;
@@ -831,120 +873,116 @@ window.payrollToggleLedger = function(){
   }
 };
 
-function prLedgerEmptyTotals(emp){
-  var t = { _count:0, total_salary:0, total_deduction:0, net_pay:0, emp_total:0, labor:0 };
-  PR_LEDGER_PAY.forEach(function(c){ t[c[1]]=0; });
-  PR_LEDGER_DED.forEach(function(c){ t[c[1]]=0; });
-  if (emp) PR_LEDGER_EMP.forEach(function(c){ t[c[1]]=0; });
-  return t;
+window.payrollSwitchLedgerTab = function(tab){
+  window.payrollLedgerTab = tab;
+  var m = document.getElementById('prLedgerTabMain'), e = document.getElementById('prLedgerTabEmp');
+  var on = 'border-blue-600 text-blue-700', off = 'border-transparent text-gray-500 hover:text-gray-700';
+  if (m) m.className = 'px-3 py-1.5 text-xs font-semibold border-b-2 ' + (tab==='main'?on:off);
+  if (e) e.className = 'px-3 py-1.5 text-xs font-semibold border-b-2 ' + (tab==='emp'?on:off);
+  payrollRenderLedger();
+};
+
+function prLedgerEmptyTotals(cols){ var t={_count:0}; cols.forEach(function(c){ if(c.kind==='num'||c.kind==='calc') t[c.key]=0; }); return t; }
+function prLedgerAccum(t, cols, r){ t._count++; cols.forEach(function(c){ if(c.kind==='num'||c.kind==='calc') t[c.key]+=prColVal(c,r); }); }
+
+function prLedgerHead(cols){
+  var cg = '<colgroup>' + cols.map(function(c){ return '<col style="width:'+c.w+'px">'; }).join('') + '</colgroup>';
+  var r1='', r2='', i=0;
+  while (i < cols.length){
+    var c = cols[i];
+    if (c.group==='id' || c.group==='net'){
+      r1 += '<th rowspan="2" class="'+prColCls(c)+'"'+prColStyle(c)+'>'+c.label+'</th>';
+      i++;
+    } else {
+      var g=c.group, j=i, span=0;
+      while (j<cols.length && cols[j].group===g){ span++; j++; }
+      r1 += '<th colspan="'+span+'" class="'+(LEDGER_GROUP[g].cls||'')+'" style="text-align:center">'+LEDGER_GROUP[g].label+'</th>';
+      for (var k=i;k<j;k++){ r2 += '<th class="num '+(LEDGER_GROUP[cols[k].group].cls||'')+(cols[k].bold?' b':'')+'">'+cols[k].label+'</th>'; }
+      i = j;
+    }
+  }
+  return cg + '<thead><tr>'+r1+'</tr><tr>'+r2+'</tr></thead>';
 }
-function prLedgerAccum(t, r, emp){
-  t._count++;
-  PR_LEDGER_PAY.forEach(function(c){ t[c[1]] += prNum(r,c[1]); });
-  PR_LEDGER_DED.forEach(function(c){ t[c[1]] += prNum(r,c[1]); });
-  t.total_salary += prNum(r,'total_salary');
-  t.total_deduction += prNum(r,'total_deduction');
-  t.net_pay += prNum(r,'net_pay');
-  if (emp){ var e=0; PR_LEDGER_EMP.forEach(function(c){ var v=prNum(r,c[1]); t[c[1]]+=v; e+=v; }); t.emp_total+=e; t.labor += prNum(r,'total_salary')+e; }
+function prLedgerDataRow(cols, r){
+  var html = '<tr>';
+  cols.forEach(function(c){
+    var v;
+    if (c.kind==='text') v = escapeHtml(r[c.key]||'');
+    else if (c.kind==='dept') v = escapeHtml(prDeptLabel(r.department));
+    else if (c.kind==='pos') v = escapeHtml(prPosLabel(r.position));
+    else v = prLC(prColVal(c, r));
+    html += '<td class="'+prColCls(c)+'"'+prColStyle(c)+'>'+v+'</td>';
+  });
+  return html + '</tr>';
+}
+function prLedgerTotalRow(cols, label, t, cls){
+  var html = '<tr class="'+cls+'">';
+  cols.forEach(function(c){
+    var v = '';
+    if (c.key==='employee_name') v = escapeHtml(label);
+    else if (c.key==='position') v = t._count + '명';
+    else if (c.kind==='num'||c.kind==='calc') v = prLC(t[c.key]||0);
+    html += '<td class="'+prColCls(c)+'"'+prColStyle(c)+'>'+v+'</td>';
+  });
+  return html + '</tr>';
 }
 
 window.payrollRenderLedger = function(){
   var table = document.getElementById('prLedgerTable');
   if (!table) return;
   var rows = currentPayrollData || [];
+  var cols = prLedgerCols();
   var periodEl = document.getElementById('prLedgerPeriod');
   if (periodEl) periodEl.textContent = rows.length ? ('· ' + (rows[0].pay_period || '') + ' · ' + rows.length + '명') : '';
-  if (!rows.length){ table.innerHTML = '<tbody><tr><td style="padding:24px;text-align:center;color:#9ca3af">급여 내역이 없습니다 (조회 또는 일괄생성 먼저)</td></tr></tbody>'; return; }
-  var emp = prLedgerEmpOn();
-
-  var h = '<thead><tr>';
-  h += '<th class="lft" rowspan="2">사번</th><th class="lft" rowspan="2">이름</th><th class="lft" rowspan="2">부서</th><th class="lft" rowspan="2">직급</th>';
-  h += '<th class="grp-pay" colspan="' + (PR_LEDGER_PAY.length+1) + '">지급</th>';
-  h += '<th class="grp-ded" colspan="' + (PR_LEDGER_DED.length+1) + '">공제</th>';
-  h += '<th class="num" rowspan="2">실지급</th>';
-  if (emp) h += '<th class="grp-emp" colspan="' + (PR_LEDGER_EMP.length+2) + '">회사부담</th>';
-  h += '</tr><tr>';
-  PR_LEDGER_PAY.forEach(function(c){ h += '<th class="num grp-pay">'+c[0]+'</th>'; });
-  h += '<th class="num grp-pay">지급계</th>';
-  PR_LEDGER_DED.forEach(function(c){ h += '<th class="num grp-ded">'+c[0]+'</th>'; });
-  h += '<th class="num grp-ded">공제계</th>';
-  if (emp){ PR_LEDGER_EMP.forEach(function(c){ h += '<th class="num grp-emp">'+c[0]+'</th>'; }); h += '<th class="num grp-emp">부담계</th><th class="num grp-emp">총인건비</th>'; }
-  h += '</tr></thead>';
+  var totalW = cols.reduce(function(s,c){ return s+c.w; }, 0);
+  table.style.width = totalW + 'px';
+  if (!rows.length){ table.innerHTML = '<tbody><tr><td style="padding:24px;text-align:center;color:#9ca3af;border:none">급여 내역이 없습니다 (조회 또는 일괄생성 먼저)</td></tr></tbody>'; return; }
 
   var byDept = {}, order = [];
   rows.forEach(function(r){ var d=r.department||''; if(!byDept[d]){byDept[d]=[];order.push(d);} byDept[d].push(r); });
   var multiDept = order.length > 1;
-  var grand = prLedgerEmptyTotals(emp);
+  var grand = prLedgerEmptyTotals(cols);
   var body = '<tbody>';
   order.forEach(function(dept){
-    var sub = prLedgerEmptyTotals(emp);
-    byDept[dept].forEach(function(r){ body += prLedgerRowHtml(r, emp); prLedgerAccum(sub,r,emp); prLedgerAccum(grand,r,emp); });
-    if (multiDept) body += prLedgerTotalRowHtml(prDeptLabel(dept)+' 소계', sub, emp, 'subtotal');
+    var sub = prLedgerEmptyTotals(cols);
+    byDept[dept].forEach(function(r){ body += prLedgerDataRow(cols, r); prLedgerAccum(sub, cols, r); prLedgerAccum(grand, cols, r); });
+    if (multiDept) body += prLedgerTotalRow(cols, prDeptLabel(dept)+' 소계', sub, 'subtotal');
   });
-  body += prLedgerTotalRowHtml('전체 합계', grand, emp, 'grandtotal');
+  body += prLedgerTotalRow(cols, '전체 합계', grand, 'grandtotal');
   body += '</tbody>';
-  table.innerHTML = h + body;
+  table.innerHTML = prLedgerHead(cols) + body;
 };
-
-function prLedgerRowHtml(r, emp){
-  var html = '<tr>';
-  html += '<td class="lft">'+escapeHtml(r.employee_code||'')+'</td>';
-  html += '<td class="lft">'+escapeHtml(r.employee_name||'')+'</td>';
-  html += '<td class="lft">'+escapeHtml(prDeptLabel(r.department))+'</td>';
-  html += '<td class="lft">'+escapeHtml(prPosLabel(r.position))+'</td>';
-  PR_LEDGER_PAY.forEach(function(c){ html += '<td class="num grp-pay">'+prLC(prNum(r,c[1]))+'</td>'; });
-  html += '<td class="num grp-pay" style="font-weight:600">'+prLC(prNum(r,'total_salary'))+'</td>';
-  PR_LEDGER_DED.forEach(function(c){ html += '<td class="num grp-ded">'+prLC(prNum(r,c[1]))+'</td>'; });
-  html += '<td class="num grp-ded" style="font-weight:600;color:#dc2626">'+prLC(prNum(r,'total_deduction'))+'</td>';
-  html += '<td class="num" style="font-weight:700;color:#15803d">'+prLC(prNum(r,'net_pay'))+'</td>';
-  if (emp){ var e=0; PR_LEDGER_EMP.forEach(function(c){ var v=prNum(r,c[1]); html+='<td class="num grp-emp">'+prLC(v)+'</td>'; e+=v; }); html+='<td class="num grp-emp" style="font-weight:600">'+prLC(e)+'</td><td class="num grp-emp" style="font-weight:700">'+prLC(prNum(r,'total_salary')+e)+'</td>'; }
-  html += '</tr>';
-  return html;
-}
-function prLedgerTotalRowHtml(label, t, emp, cls){
-  var html = '<tr class="'+cls+'">';
-  html += '<td class="lft"></td><td class="lft">'+escapeHtml(label)+'</td><td class="lft"></td><td class="num">'+t._count+'명</td>';
-  PR_LEDGER_PAY.forEach(function(c){ html += '<td class="num grp-pay">'+prLC(t[c[1]])+'</td>'; });
-  html += '<td class="num grp-pay">'+prLC(t.total_salary)+'</td>';
-  PR_LEDGER_DED.forEach(function(c){ html += '<td class="num grp-ded">'+prLC(t[c[1]])+'</td>'; });
-  html += '<td class="num grp-ded" style="color:#dc2626">'+prLC(t.total_deduction)+'</td>';
-  html += '<td class="num" style="color:#15803d">'+prLC(t.net_pay)+'</td>';
-  if (emp){ PR_LEDGER_EMP.forEach(function(c){ html += '<td class="num grp-emp">'+prLC(t[c[1]])+'</td>'; }); html += '<td class="num grp-emp">'+prLC(t.emp_total)+'</td><td class="num grp-emp">'+prLC(t.labor)+'</td>'; }
-  html += '</tr>';
-  return html;
-}
 
 function prCsvCell(s){ s=String(s); return /[",\n]/.test(s) ? '"'+s.replace(/"/g,'""')+'"' : s; }
 window.payrollLedgerExportCsv = function(){
   var rows = currentPayrollData || [];
   if (!rows.length){ if (typeof showToast==='function') showToast('내보낼 급여 내역이 없습니다','warning'); return; }
-  var emp = prLedgerEmpOn();
-  var head = ['사번','이름','부서','직급'];
-  PR_LEDGER_PAY.forEach(function(c){ head.push(c[0]); }); head.push('지급계');
-  PR_LEDGER_DED.forEach(function(c){ head.push(c[0]); }); head.push('공제계');
-  head.push('실지급');
-  if (emp){ PR_LEDGER_EMP.forEach(function(c){ head.push('회사부담_'+c[0]); }); head.push('회사부담계','총인건비'); }
-  var lines = [head.join(',')];
+  var cols = prLedgerCols();
+  var lines = [cols.map(function(c){ return c.label; }).join(',')];
+  var grand = prLedgerEmptyTotals(cols);
   rows.forEach(function(r){
-    var v = [prCsvCell(r.employee_code||''), prCsvCell(r.employee_name||''), prCsvCell(prDeptLabel(r.department)), prCsvCell(prPosLabel(r.position))];
-    PR_LEDGER_PAY.forEach(function(c){ v.push(Math.round(prNum(r,c[1]))); }); v.push(Math.round(prNum(r,'total_salary')));
-    PR_LEDGER_DED.forEach(function(c){ v.push(Math.round(prNum(r,c[1]))); }); v.push(Math.round(prNum(r,'total_deduction')));
-    v.push(Math.round(prNum(r,'net_pay')));
-    if (emp){ var e=0; PR_LEDGER_EMP.forEach(function(c){ var x=Math.round(prNum(r,c[1])); v.push(x); e+=x; }); v.push(e, Math.round(prNum(r,'total_salary'))+e); }
+    var v = cols.map(function(c){
+      if (c.kind==='text') return prCsvCell(r[c.key]||'');
+      if (c.kind==='dept') return prCsvCell(prDeptLabel(r.department));
+      if (c.kind==='pos') return prCsvCell(prPosLabel(r.position));
+      return Math.round(prColVal(c, r));
+    });
     lines.push(v.join(','));
+    prLedgerAccum(grand, cols, r);
   });
-  var grand = prLedgerEmptyTotals(emp); rows.forEach(function(r){ prLedgerAccum(grand,r,emp); });
-  var tv = ['','전체 합계','',grand._count];
-  PR_LEDGER_PAY.forEach(function(c){ tv.push(Math.round(grand[c[1]])); }); tv.push(Math.round(grand.total_salary));
-  PR_LEDGER_DED.forEach(function(c){ tv.push(Math.round(grand[c[1]])); }); tv.push(Math.round(grand.total_deduction));
-  tv.push(Math.round(grand.net_pay));
-  if (emp){ PR_LEDGER_EMP.forEach(function(c){ tv.push(Math.round(grand[c[1]])); }); tv.push(Math.round(grand.emp_total), Math.round(grand.labor)); }
+  var tv = cols.map(function(c){
+    if (c.key==='employee_name') return '전체 합계';
+    if (c.key==='position') return grand._count + '명';
+    if (c.kind==='num'||c.kind==='calc') return Math.round(grand[c.key]||0);
+    return '';
+  });
   lines.push(tv.join(','));
   var csv = '﻿' + lines.join('\r\n');
   var period = (rows[0] && rows[0].pay_period) || '';
+  var name = (window.payrollLedgerTab==='emp' ? '회사부담금' : '급여대장') + '_' + period;
   var blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
   var a = document.createElement('a');
-  a.href = URL.createObjectURL(blob); a.download = '급여대장_'+period+'.csv';
+  a.href = URL.createObjectURL(blob); a.download = name + '.csv';
   document.body.appendChild(a); a.click(); document.body.removeChild(a);
   setTimeout(function(){ URL.revokeObjectURL(a.href); }, 1000);
 };
@@ -953,21 +991,23 @@ window.payrollLedgerPrint = function(){
   var table = document.getElementById('prLedgerTable');
   if (!table || !(currentPayrollData||[]).length){ if (typeof showToast==='function') showToast('인쇄할 급여 내역이 없습니다','warning'); return; }
   var period = (currentPayrollData[0] && currentPayrollData[0].pay_period) || '';
+  var title = (window.payrollLedgerTab==='emp' ? '회사부담금 명세' : '급여대장') + ' — ' + period;
+  var inner = table.innerHTML.replace(/<colgroup[\s\S]*?<\/colgroup>/, '');   // 인쇄는 페이지폭 맞춤(auto)
   var w = window.open('', '_blank');
   if (!w){ if (typeof showToast==='function') showToast('팝업이 차단되었습니다','error'); return; }
   var style = '<style>'
-    + '@page { size: A4 landscape; margin: 8mm; }'
+    + '@page { size: A4 landscape; margin: 7mm; }'
     + 'body { font-family: "Malgun Gothic", sans-serif; margin:0; }'
     + 'h2 { font-size: 13px; margin: 0 0 6px; }'
-    + 'table { border-collapse: collapse; font-size: 8px; width: 100%; font-variant-numeric: tabular-nums; }'
-    + 'th, td { border: 1px solid #999; padding: 2px 4px; white-space: nowrap; }'
+    + 'table { border-collapse: collapse; table-layout: auto; width: 100%; font-size: 8px; font-variant-numeric: tabular-nums; }'
+    + 'th, td { border: 1px solid #999; padding: 2px 3px; white-space: nowrap; text-align: right; }'
+    + 'th.lft, td.lft { text-align: left; }'
     + 'th { background: #eee; }'
-    + '.num { text-align: right; } .lft { text-align: left; }'
-    + '.subtotal td, .grandtotal td { background: #eee; font-weight: bold; }'
+    + '.subtotal td, .grandtotal td { background: #eee; font-weight: bold; } .b { font-weight: bold; }'
     + '</style>';
-  w.document.write('<html><head><title>급여대장 '+period+'</title><meta charset="utf-8">'+style+'</head><body>');
-  w.document.write('<h2>급여대장 — '+period+'</h2>');
-  w.document.write('<table>'+table.innerHTML+'</table>');
+  w.document.write('<html><head><title>'+title+'</title><meta charset="utf-8">'+style+'</head><body>');
+  w.document.write('<h2>'+title+'</h2>');
+  w.document.write('<table>'+inner+'</table>');
   w.document.write('</body></html>');
   w.document.close();
   setTimeout(function(){ w.focus(); w.print(); }, 350);
