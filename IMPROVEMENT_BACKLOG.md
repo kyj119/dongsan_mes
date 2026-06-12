@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 3 -->
-<!-- last_run_at: 2026-06-13T01:00:00+09:00 -->
+<!-- last_run_area: 4 -->
+<!-- last_run_at: 2026-06-13T05:00:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,14 +8,24 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | 13 (open auto-improve **재실측 06-13T01:00 Area 3** — #391·#390·#389·#388·#387·#386·#385·#384·#383·#382·#381·#379·#374. → open 14건 = 13 new + #372 reviewed. Area 3 net-new 0건·done-sync 0건이라 카운트 불변, GitHub 실측 14건 정합) |
-| ✅ approved | 0 (직전 approved #342/#340 모두 done 확정·이관 — Area 6 검증 완료) |
-| 👀 reviewed | 1 (#372 CSV truncation — owner 코멘트 "3번으로 진행, 최대 5000 제한" 06-11T00:25. ⚠️**모호**: #372 3번=페이지네이션 스트리밍(전량)인데 "5000 제한 유지"와 모순 → 구현 전 의도 확인 필요. 승인처리 워크플로우 대상) |
-| ✔️ done | 82 (81 + **#373 done-sync (Area 1 본 사이클)**: 커밋 `4adc9b1`이 입고검수 CANCELLED 분기에 PO status 롤백(received/accepted/rejected 역산 + line_status·purchase_orders.status 재산정 + po_status_history) + 재고 역분개를 accepted_quantity 기준으로 정밀화 + 단일 batch 원자실행(#369 멱등가드 보존) → RECEIVED 영구잔류·재입고 차단 해소. standalone(po_id NULL) 제외. 코드 직접 대조 close) |
+| 🆕 new | 3 (**Area 4 본 사이클 신규** — #394 inventoryCount 재고실사 승인 INSERT 컬럼부재 HIGH·#395 split billing freeze tax_invoice_id 무시 MED·#396 주문편집 work_records 고아 LOW. 직전 13 new는 owner가 06-12T17:10 일괄 close-completed → done 이관) |
+| ✅ approved | 0 |
+| 👀 reviewed | 0 (#372 CSV도 owner close-completed → done 이관) |
+| ✔️ done | 96 (82 + **직전 open 14건 owner 일괄 close-completed**[#372 reviewed + #374·#379·#381~#391 13 new]. not_planned 라벨검색 = #348 과거 1건뿐 → 14건 전부 completed 확정. 06-12 owner 대량 픽스 커밋(644fbab #389/#390·645ae53 #372/#379·3f8fd0d #382/#383·83ded42 #387·c17e944 #375/#383). **GitHub open auto-improve 실측 0건** 정합) |
 | ❌ rejected | 3 |
 
 > 📦 **과거 사이클 로그**(아래 6블록 이전분)는 `IMPROVEMENT_BACKLOG_ARCHIVE.md`로 이관됨 (2026-06-10 정리). 신규 로그는 계속 이 파일 상단에 추가.
 
+> **Area 4 데이터 정합성 (2026-06-13T05:00):**
+> - **방법**: ground-truth — 308 마이그레이션 로컬 D1(node:sqlite) 전량 적용(**FAIL 0**, 173테이블/516인덱스) + baseline `npm ci`+`tsc --noEmit` PASS + build PASS(392 modules, _worker.js 5.15MB). HEAD=remote main=`c17e944`(#375/#383), clean tree. Area 4 **11회차** — 시의성(최근 churn: holidays 0311·entity4 오다플래그 0309·resigned 복구 0310·split billing 0305/0306·workbench 0307·ia_auto 0308) + 신선 각도(CHECK↔쓰기값·entity_id NULL·고아생성·인덱스·entity4 격리·휴일 날짜정합) 병렬 Explore 2개. 발견 전수 owner 직접 코드 Read + migrations ground-truth 대조.
+> - **🔴 신규 이슈 #394 (HIGH bug) — 재고실사 승인 INSERT 존재X 컬럼, inventory_adjustments 스키마 혼동**: `inventoryCount.ts:249` `PATCH /:id/approve`가 `inventory_transactions`에 `quantity_before/quantity_after/quantity_change/created_by`(전부 부재) INSERT + NOT NULL `transaction_date`/`balance_after` 누락. 이 4컬럼은 **별도 테이블 `inventory_adjustments`**(0003·0134) 소속 — 작성 시 혼동. ground-truth 0003·0134 둘 다 `inventory_transactions`는 `quantity/balance_after/transaction_date/handled_by`만. 도입커밋 `54648ac`부터 이 컬럼셋 = **재고실사 승인 도입 이래 100% throw**(영구깨짐, 회귀 아님). 단일 batch라 inventory 보정 UPDATE+status APPROVED 전체 롤백→500, count SUBMITTED 영구잔류, 실사 차이 장부 미반영. #152(원자성)·#279(entity)·#22(N+1)·#356(IDOR)이 같은 핸들러 다뤘으나 **컬럼셋 미검증**. 수정=`inventory.ts:505` 정상패턴(quantity=delta·balance_after=counted·transaction_date·handled_by). **자동수정 안 함**: 컬럼명 사실-정정이나 **현재 100%실패 중인 재고 stock-quantity write 활성화**(#384/#377 dormant-write 클래스) + egress 검증불가.
+> - **🟡 신규 이슈 #395 (MED bug, #387 독립) — split billing freeze가 tax_invoice_id 미인정**: `orders/helpers.ts:67` `recalcOrderBillingGroups` 동결식별이 `billing_status IN ('BILLED','PAID')`만(`:64-66` SELECT가 tax_invoice_id 미read), DELETE(`:86`)가 `billing_status IS NULL` 그룹을 tax_invoice_id 보유와 무관 삭제, 재INSERT(`:113`) tax_invoice_id 미세팅 → **billing_status=NULL + tax_invoice_id NOT NULL** 그룹은 주문편집(매 수정 recalc) 시 발행 계산서 링크 소실. 발생원: 0306 backfill(2)이 비취소 계산서를 `billing_status='BILLED'` 전제 없이 링크. 소비처 `core.ts:427`(주문상세)·`issue.ts:679`. AR(BILLED기준)엔 미포함이라 금액영향 제한적, 표시 매핑 고아가 주피해. owner 검증=`COUNT(*) WHERE billing_status IS NULL AND tax_invoice_id IS NOT NULL`. **자동수정 안 함**: 재무 write+데이터의존 reachability.
+> - **🔵 신규 이슈 #396 (LOW bug) — 주문편집 카드 재생성이 work_records 미정리**: `orders/update.ts:188-198` 재생성 batch가 card_status_history/quality_issues/waste_records/card_items/cards 삭제하나 **work_records 누락**, 정식삭제 `core.ts:563`은 포함=비대칭. cards(`:195`) 삭제로 고아 work_records 누적(D1 FK 미강제). work_records 조회 대부분 `JOIN cards`라 silent 제외=영향 작음. **자동수정 안 함**: 편집맥락 생산이력 삭제 적절성=정책(waste_records는 이미 삭제하므로 일관성상 추가가 맞으나 owner 확인).
+> - **🔵 clean 검증 (오탐 회피)**: ① **entity4(오다플래그) 격리**: `FROM entities WHERE is_active=1` 전수순회는 `auth.ts:159` 법인스위처 1곳뿐(급여사용자 노출 정상). 대시보드/리포트 전부 `entityFilter(c)` 스코프 → entity4 주문/생산/매출 0건이라 빈행/0매출 노출 경로·강제 주문성 write 경로 無. ② **holidays(0311) 날짜정합**: `holiday_date`('YYYY-MM-DD')↔`attendance.work_date` 비교 일관(payroll/core.ts:635 `work_date IN (SELECT holiday_date)`·caps.ts·attendance.ts:118 substr), 휴일근로 ×1.5(shared.ts:58) 정상, best-effort NULL안전. ③ **resigned(0310) 목록집계**: hr.ts `is_deleted=0`만 필터 status 선택적=RESIGNED 기본노출(0310 의도), 복구조건 명시삭제 안전구분. 급여 batch ACTIVE필터는 중도퇴사 최종급여 수동처리(단일저장/sync 무필터)=의도. ④ **CHECK↔쓰기값**: cards/orders.status 전이 validStatuses+validTransitions 가드(lifecycle.ts), adjustments validTypes — 전부 CHECK 내. ⑤ **entity_id NULL**: 트랜잭션테이블 대부분 `DEFAULT 1`(누락해도 1), order_billing_groups(NOT NULL no-default)도 helpers.ts:115/issue.ts:175 명시바인딩. ⑥ **고아/CASCADE**: 주문삭제 core.ts:555-580 전 자식 수동 cascade(#117 FK미강제 인지). ⑦ **인덱스**: cards/orders/order_items hot-path 복합인덱스 풍부, 누락 0(ground-truth 516인덱스 대조). ⑧ **#387 수정(83ded42) 비례배분**: 잔차 주법인 흡수 정합, order_items 합=그룹 supply 합.
+> - **🟢 GitHub↔백로그 대규모 done-sync (직전 14 open → 0)**: owner가 06-12T17:10 직전 open auto-improve **14건 전부 일괄 close-completed**(#372 reviewed + #374·#379·#381~#391 13 new). not_planned 라벨검색=#348 과거 1건뿐 → 14건 completed 확정. 06-12 대량 픽스 커밋군(644fbab·645ae53·3f8fd0d·83ded42·c17e944) 실재. **GitHub open auto-improve 실측 0건** = stats new 3(본 사이클 신규만)·done 96 정합. ⚠️ 개별 done-sync 코드대조는 차기 Area 6 위임(본 사이클은 Area 4 집중, not_planned=1 증거로 일괄 completed 처리).
+> - **이상 없음**: 마이그레이션 308 FAIL 0, 트리거 0개. baseline PASS. holidays/entity4/resigned/split billing churn에 CHECK·entity_id·고아 회귀 0.
+> - 자동 수정 0건(전부 재고/재무 write 활성화·정책=검증불가), 신규 이슈 3건(#394 HIGH·#395 MED·#396 LOW), **done-sync 14건 일괄 이관(owner 처리)**, clean 8각도, ground-truth 308마이그레이션 FAIL 0
+>
 > **Area 3 UX/기능 감사 (2026-06-13T01:00):**
 > - **방법**: baseline `npm ci`+`tsc --noEmit` PASS + build PASS(392 modules, _worker.js 5.14MB). HEAD=remote main=`46cf5cf`(PM3 급여 후속·이슈 #392/#393), clean tree. Area 3 **10회차** — 시의성(최근 churn: 급여/HR 대량 — Phase 1b 고정연장 분해 3704abf·급여대장·근태연동·공휴일달력) + 신선 각도(프론트↔API 필드 라운드트립·getElementById silent-fail·빈상태·cross-page 네비·변경후갱신·검색필터) 병렬 Explore 2개(급여/HR + 대시보드/흐름). 발견 전수 owner 직접 코드 Read 검증.
 > - **🟢 net-new 0건 — 두 Explore 모두 오탐만 산출, Area 3 성숙 확정**:
