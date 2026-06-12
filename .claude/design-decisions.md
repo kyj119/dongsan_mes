@@ -19,6 +19,7 @@
 | AE | CODEF API 전면 제거 | 월 80만원, codef.ts 삭제, 이메일 파싱 대안 |
 | AF | BOM 법인 간 공유 | entity_id 미추가, 전 법인 공통 |
 | AL | 자금관리 바로빌통장 탭 통합 | 은행연동으로 합침, barobillView.js 삭제 |
+| BF | 휴일/공휴일 derive-at-read 단일소스 | holidays 달력(마이그0311) + 토·일 = 유일소스. 근태·급여가 날짜에서 휴일 파생, attendance mutate(재분류)·반영버튼 금지 → memory [design-holiday-derive] |
 
 ## 금액 포맷 → `references/decisions-money.md`
 | ID | 제목 | 키워드 |
@@ -69,3 +70,6 @@
 | AW | cash_receipt 취소 시 역산 불필요 | 현재 발행 시 balance/journal 미사용, 향후 회계 연동 시 재검토 |
 | BA | entity 분리 전체 감사 (174 테이블) | docs/entity-separation-map.md, 86완료/0버그/28간접/42공유/18시스템. migration 0264로 14건 해소 |
 | BB | 카드 페이지 역할 분리 | 오퍼레이터=뷰어(board→detail), 관리자=칸반+KPI, 자동화 우선. 인쇄 유지 |
+| BC | 부서/직급/고용형태 SSOT | src/constants/hr.ts(DEPARTMENTS/POSITIONS/EMPLOYMENT_TYPES), deptOptions()헬퍼, layout HR_ENUMS_JS→window.DEPT_NAMES. 사무직=ADMIN_DEPT → memory [design-hr-enum-ssot] |
+| BD | 고정연장 포괄임금 분해 | calcInclusivePay, 시급=base÷225.5(209+고정OT×1.5), 기본급=시급×209, 고정연장수당=총액−기본급, batch/sync → memory [design-payroll-inclusive-overtime] |
+| BE | 급여대장 고정형+회사부담탭 | /payroll 확장토글, table-layout:fixed 고정형, 급여대장/회사부담금 2탭, 수당·공제 전개+합계+인쇄·CSV → memory [design-payroll-ledger] |

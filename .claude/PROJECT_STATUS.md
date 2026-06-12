@@ -1,6 +1,6 @@
 # PROJECT_STATUS.md — 프로젝트 현황판
 
-> **최종 업데이트**: 2026-06-12 PM (★HR 인사/급여 다수 개선 — 소속법인 변경 버그·오다플래그(entity4)+법인select 동적화·404해결·전화번호/메모·생년월일 flatpickr·퇴사≠삭제, 전부 prod 배포·검증·push / 이전: 대형파일 분할 전체 완료)
+> **최종 업데이트**: 2026-06-12 PM2 (★급여/인사 시스템 대규모 개선 — 부서/직급 SSOT·고정연장 포괄임금 분해·급여대장(고정형+회사부담탭)·4대보험2026요율·야간휴일수당·공휴일달력(derive 단일소스). 전부 prod 배포·Playwright검증·push / 이전: 소속법인변경·flatpickr 등 HR개선)
 > 완료 이력 → `PROJECT_STATUS_ARCHIVE.md` (매 세션 읽을 필요 없음, 필요 시 참조)
 
 ---
@@ -13,6 +13,17 @@
 
 ## 🔴 현재 진행 중
 
+- **✅ [2026-06-12 PM2] 급여/인사 시스템 대규모 개선 — 전부 prod 배포·Playwright 검증·push 완료**:
+  - **CAPS 사이트**(DB만): 대전본사→동산기획 rename, 선명2(S2) 삭제. `caps_sites`는 코드 아닌 데이터.
+  - **월 인건비**(`hr.ts` /stats): payroll 미생성 시 `net_pay` 빈값→'-' 버그 → **재직 base_salary + 이번달 근태(연장/야간/휴일) 추정** 하이브리드, '예상' 부제. KST 월 보정.
+  - **부서/직급/고용형태 SSOT**: `src/constants/hr.ts` 신규(DEPARTMENTS/POSITIONS/EMPLOYMENT_TYPES + deptOptions() 헬퍼 + HR_ENUMS_JS) + `layout.ts` 전역주입(`window.DEPT_NAMES/POSITION_NAMES/EMPLOYMENT_NAMES`). **8파일 하드코딩 제거**(드롭다운 6 + JS맵 3). **`attendance.ts` 필터 OFFICE≠ADMIN_DEPT 버그 수정**. 등록모달 생산직·고정연장 추가(상세모달 일치). 커밋 `9f2f8797`.
+  - **고정연장(포괄임금) 급여계산**(`payroll/shared.ts` `calcInclusivePay` + `core.ts` batch/sync): 입력 기본급=포괄총액 → 통상시급=base÷(209+고정OT×1.5=**225.5**), 기본급=시급×209, 고정연장수당=총액−기본급. 기존 `base×225.5/209` 부풀림(~8%) 제거. sync=전체 재계산(공제·실지급). 프론트(÷225.5)와 일치.
+  - **급여대장**(`payroll.ts/js`, 커밋 `b79f61c6`): /payroll 확장토글, **table-layout:fixed 고정형** + **급여대장/회사부담금 2탭**, 수당·공제 항목 전개, 부서·전체 합계, 인쇄(가로A4)·CSV. 디자인MD §6에 표 고정형 규칙 추가.
+  - **4대보험 2026 요율**(앱 API 적재: 국민연금9·건강7.09·장기요양12.95·고용1.8·산재0.7%) + **야간·휴일 배율 1.5**(settings). 산재·국민연금상한 추정치 → 검증권장.
+  - **야간/휴일 근태연동**(`core.ts` sync, 커밋 `3f5c799d`): attendance 야간(caps_night_min)·휴일근로 → 수당 계산·지급.
+  - **공휴일 달력**(마이그 `0311_holidays.sql`, `payroll/settings.ts` CRUD/load-defaults, payrollRates '공휴일' 탭): `holidays` 테이블 단일소스. 커밋 `447d9ca6`·`1c137ae0`.
+  - **휴일 derive-at-read 리팩토링**(커밋 `503573c8`): 근태·급여가 **날짜에서 휴일 파생**(토·일+공휴일 달력). attendance mutate(재분류 엔드포인트)·'공휴일 반영' 버튼 **제거** → 드리프트·이중로직 해소. 근태 그리드 공휴일=휴일/휴일근무 표시(결근 아님).
+  - 교훈→[[design-payroll-inclusive-overtime]]·[[design-holiday-derive]]·[[design-hr-enum-ssot]]·[[design-payroll-ledger]].
 - **✅ [2026-06-12 PM] HR 인사/급여 다수 개선 — 전부 prod 배포·검증(Playwright)·push 완료**:
   - ① **소속법인 변경 "저장+무반영" 버그**(`57185811`): PUT `entity_id` 가드 ADMIN 전체모드(0)→**ADMIN 역할**로 완화(#349 비ADMIN 차단 보존), 거부 시 `warnings` 토스트.
   - ② **개인사업자 '오다플래그'(entity 4)**(마이그 0309) + **법인 select 전면 동적화**(shell.js 공용헬퍼 `loadEntities/entityName/fillEntitySelect`, 하드코딩 제거 → 향후 사업자 추가 = `entities` INSERT만) + **급여명세서 entity화**(payroll GET entities JOIN, payslip.ts 회사명 동적) (`827402a4`). 오다플래그=급여/인사 전용(주문·재고 미사용).
