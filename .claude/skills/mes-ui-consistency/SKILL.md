@@ -79,6 +79,7 @@ description: "동산기획 ERP+MES UI 일관성 가이드. 프론트엔드 작�
 - 필터: `bg-white rounded-lg border p-3 shadow-sm`, 검색은 `flex-1`, 액션 `ml-auto`
 - 폼 라벨: `text-sm font-medium`, 입력: `text-sm`, 포커스 링: 은은한 그레이 쉐도우
 - 금액 입력: `type="text" inputmode="numeric" data-money` (상세 → decisions-money.md)
+- 날짜 입력: `type="text" class="js-fp" maxlength="10" inputmode="numeric" placeholder="예: 2020-01-15"` + 폼 로드/모달 시 `window.hrInitDatePickers(rootSel)` 호출(flatpickr 달력 — 헤더 년도 빠른 선택 + 텍스트 자동하이픈 병행). **native `type="date"` 지양**(년도 점프 불편).
 
 ## 체크리스트
 
