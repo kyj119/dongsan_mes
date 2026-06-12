@@ -281,11 +281,14 @@
         var eh = rec ? Number(rec.early_hours || 0) : 0;
         var elh = rec ? Number(rec.early_leave_hours || 0) : 0;
         var hwh = rec ? Number(rec.holiday_work_hours || 0) : 0;
-        // 공휴일(달력) 날짜는 결근/정상이 아니라 휴일로 표시 — 근무했으면 휴일근무(시간 반영). 휴가류는 유지.
-        if (rec && state.holidays && state.holidays[dateStr] && t !== 'HOLIDAY'
+        // 휴일(공휴일 달력 + 토·일)은 결근/정상이 아니라 휴일로 표시 — 근무했으면 휴일근무(시간 반영). 휴가류는 유지.
+        // (날짜에서 파생 = 단일 소스. 급여도 동일 규칙으로 파생하므로 일관)
+        var isHolDate = (state.holidays && state.holidays[dateStr]) || dow === 0 || dow === 6;
+        if (rec && isHolDate && t !== 'HOLIDAY'
             && ['VACATION', 'SICK', 'FAMILY_EVENT', 'HALF_AM', 'HALF_PM', 'QUARTER_1', 'QUARTER_2', 'QUARTER_3', 'QUARTER_4'].indexOf(t) < 0) {
           t = 'HOLIDAY';
           if (hwh === 0 && Number(rec.work_hours || 0) > 0) hwh = Number(rec.work_hours);
+          ot = 0; eh = 0; elh = 0;  // 휴일은 연장/조기/조퇴 아님 — 배지 숨김
         }
         var lateMins = rec ? Number(rec.late_minutes || 0) : 0;
         if (rec) {
@@ -661,22 +664,6 @@
     if (m && m.value) loadMonth();
   })();
 
-  // 공휴일 반영 — 이 달 공휴일 날짜 근태를 휴일/휴일근무로 확정(재분류) + 급여 재계산
-  async function applyHolidays() {
-    if (!state.month) { showToast('월을 먼저 조회하세요.', 'warning'); return; }
-    if (!(await showConfirm(state.month + ' 공휴일 날짜의 근태를 휴일/휴일근무로 확정하고 급여에 반영합니다.\n계속할까요?'))) return;
-    try {
-      var rc = await axios.post('/api/payroll/holidays/reclassify', { pay_period: state.month });
-      var n = (rc.data && rc.data.data && rc.data.data.reclassified) || 0;
-      await axios.post('/api/payroll/sync-attendance', { pay_period: state.month });
-      showToast(n + '건 휴일 반영 + 급여 재계산 완료', 'success');
-      loadMonth();
-    } catch (e) {
-      var msg = (e.response && e.response.data && e.response.data.error) || e.message;
-      showToast('반영 실패: ' + msg, 'error');
-    }
-  }
-
   // 전역 핸들러 등록
   window.attendanceLoadMonth = loadMonth;
   window.attendanceSaveAll = saveAll;
@@ -686,5 +673,4 @@
   window.attendanceCloseDetail = closeDetail;
   window.attendanceApplyDetail = applyDetail;
   window.attendanceSyncCaps = syncCaps;
-  window.attendanceApplyHolidays = applyHolidays;
 })();

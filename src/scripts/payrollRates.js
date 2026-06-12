@@ -88,15 +88,6 @@ window.prRDeleteHoliday = async function(date) {
   try { await axios.delete('/api/payroll/holidays/' + date); prRLoadHolidays(); }
   catch (e) { showToast('삭제 실패', 'error'); }
 };
-window.prRReclassifyHolidays = async function() {
-  var period = document.getElementById('prRReclassPeriod').value.trim();
-  if (!/^\d{4}-\d{2}$/.test(period)) { showToast('월 형식 YYYY-MM', 'warning'); return; }
-  if (!(await showConfirm(period + ' 근태를 공휴일 기준으로 재분류합니다.\n이후 [급여 관리 → 근태 불러오기]로 급여에 반영하세요.'))) return;
-  try {
-    var res = await axios.post('/api/payroll/holidays/reclassify', { pay_period: period });
-    if (res.data && res.data.success) showToast(res.data.data.reclassified + '건 재분류 — 이제 근태 불러오기 실행', 'success');
-  } catch (e) { showToast('재분류 실패', 'error'); }
-};
 
 window.prRLoadAll = function() {
   var year = document.getElementById('prRYear').value;

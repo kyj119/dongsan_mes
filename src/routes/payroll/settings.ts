@@ -346,27 +346,6 @@ settingsRouter.post('/holidays/load-defaults', requireRole('ADMIN', 'MANAGER'), 
   }
 })
 
-// POST /api/payroll/holidays/reclassify  body: { pay_period: 'YYYY-MM' }
-// 해당 월 근태 중 공휴일(평일) 날짜를 HOLIDAY로 재분류(CAPS 자동분만). 이후 '근태 불러오기'로 급여 반영.
-settingsRouter.post('/holidays/reclassify', requireRole('ADMIN', 'MANAGER'), async (c) => {
-  try {
-    const body = await c.req.json<{ pay_period?: string }>()
-    const period = String(body.pay_period || '')
-    if (!/^\d{4}-\d{2}$/.test(period)) return c.json({ success: false, error: 'pay_period 형식 YYYY-MM' }, 400)
-    const res = await c.env.DB.prepare(`
-      UPDATE attendance
-      SET attendance_type = 'HOLIDAY', holiday_work_hours = COALESCE(work_hours, 0), overtime_hours = 0,
-          updated_at = datetime('now')
-      WHERE strftime('%Y-%m', work_date) = ?
-        AND work_date IN (SELECT holiday_date FROM holidays)
-        AND attendance_type != 'HOLIDAY'
-        AND source = 'CAPS'
-    `).bind(period).run()
-    return c.json({ success: true, data: { reclassified: res.meta.changes || 0 } })
-  } catch (err) {
-    console.error('holidays reclassify error:', err)
-    return c.json({ success: false, error: '서버 오류' }, 500)
-  }
-})
+// (구) /holidays/reclassify 제거 — 휴일은 급여 sync/그리드가 날짜에서 파생하므로 attendance mutate 불필요.
 
 export default settingsRouter

@@ -29,9 +29,6 @@ export function attendancePage(c: Context<HonoEnv>) {
             <button onclick="attendanceSyncCaps()" id="attCapsSyncBtn" class="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700">
               <i class="fas fa-sync-alt mr-1"></i> CAPS 동기화
             </button>
-            <button onclick="attendanceApplyHolidays()" class="px-3 py-2 border border-red-200 bg-red-50 text-red-700 rounded-lg text-sm font-medium hover:bg-red-100" title="이 달 공휴일 날짜의 근태를 휴일/휴일근무로 확정하고 급여에 반영">
-              <i class="fas fa-calendar-day mr-1"></i> 공휴일 반영
-            </button>
             <div class="flex-1"></div>
             <div id="attAnomalyCount" class="text-xs text-gray-500"></div>
             <div id="attLastSync" class="text-xs text-gray-500 tabular-nums"></div>

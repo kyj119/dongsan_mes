@@ -565,20 +565,30 @@ coreRouter.post('/sync-attendance', requireRole('ADMIN', 'MANAGER'), async (c) =
       //   미출근 직원은 GROUP BY 결과에 없음 → aggMap 미존재 시 0 기본값으로 기존 .first() NULL→0과 동일.
       const aggEmpIds = targetList.map((t) => t.employee_id)
       const aggPh = aggEmpIds.map(() => '?').join(',')
+      // 휴일 판정은 날짜에서 파생(단일 소스): 공휴일 달력(holidays) + 토·일.
+      //   휴일 날짜의 work_hours → 휴일근로, 비휴일의 overtime_hours → 연장, 휴일은 결근/근무일에서 제외.
+      //   → attendance 레코드 mutate(재분류) 불필요. 달력만 바꾸면 자동 반영.
       const { results: aggRows } = await c.env.DB.prepare(`
+        WITH att AS (
+          SELECT *,
+            (CASE WHEN work_date IN (SELECT holiday_date FROM holidays)
+                    OR CAST(strftime('%w', work_date) AS INTEGER) IN (0, 6)
+                  THEN 1 ELSE 0 END) AS is_hol
+          FROM attendance
+          WHERE employee_id IN (${aggPh})
+            AND strftime('%Y-%m', work_date) = ?
+        )
         SELECT employee_id,
           COUNT(*) as total_days,
-          SUM(CASE WHEN attendance_type NOT IN ('ABSENT', 'VACATION', 'HOLIDAY') THEN 1 ELSE 0 END) as work_days,
-          SUM(CASE WHEN attendance_type = 'ABSENT' OR status = 'ABSENT' THEN 1 ELSE 0 END) as absent_days,
-          SUM(CASE WHEN attendance_type = 'LATE' THEN 1 ELSE 0 END) as late_count,
+          SUM(CASE WHEN is_hol = 0 AND attendance_type NOT IN ('ABSENT', 'VACATION', 'HOLIDAY') THEN 1 ELSE 0 END) as work_days,
+          SUM(CASE WHEN is_hol = 0 AND (attendance_type = 'ABSENT' OR status = 'ABSENT') THEN 1 ELSE 0 END) as absent_days,
+          SUM(CASE WHEN is_hol = 0 AND attendance_type = 'LATE' THEN 1 ELSE 0 END) as late_count,
           SUM(CASE WHEN attendance_type = 'VACATION' OR status = 'VACATION' THEN 1 ELSE 0 END) as leave_used_days,
-          SUM(COALESCE(overtime_hours, 0)) as total_overtime,
-          SUM(COALESCE(holiday_work_hours, 0)) as total_holiday,
+          SUM(CASE WHEN is_hol = 0 THEN COALESCE(overtime_hours, 0) ELSE 0 END) as total_overtime,
+          SUM(CASE WHEN is_hol = 1 THEN COALESCE(work_hours, 0) ELSE 0 END) as total_holiday,
           SUM(COALESCE(caps_night_min, 0)) / 60.0 as total_night,
           SUM(COALESCE(work_hours, 0)) as total_work_hours
-        FROM attendance
-        WHERE employee_id IN (${aggPh})
-          AND strftime('%Y-%m', work_date) = ?
+        FROM att
         GROUP BY employee_id
       `).bind(...aggEmpIds, payPeriod).all<any>()
       const aggMap: Record<number, any> = {}

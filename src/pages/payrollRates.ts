@@ -171,9 +171,7 @@ export function payrollRatesPage(c: Context) {
       <ul class="list-disc ml-5 space-y-1 text-xs text-amber-800">
         <li>여기 등록된 날짜(+토·일)에 근무하면 <strong>휴일근로</strong>로 분류되어 휴일수당(×1.5)이 지급됩니다.</li>
         <li><strong>기본 공휴일 불러오기</strong>로 표준 공휴일 적재 후, <strong>음력·대체공휴일 날짜는 반드시 검증/수정</strong>하세요.</li>
-        <li>이미 동기화된 근태에 소급 적용: 아래에서 월을 입력하고 <strong>재분류</strong> 실행 → <strong>급여 관리 → 근태 불러오기</strong> 순서로 반영합니다.</li>
-        <li class="flex items-center gap-1 pt-1">월 <input type="text" id="prRReclassPeriod" placeholder="2026-06" class="border rounded px-2 py-0.5 text-xs w-24" />
-          <button onclick="prRReclassifyHolidays()" class="ml-1 border border-amber-300 bg-white text-amber-800 rounded px-2 py-0.5 text-xs hover:bg-amber-100"><i class="fas fa-redo mr-1"></i>근태 공휴일 재분류</button></li>
+        <li>달력만 등록/수정하면 <strong>근태 화면에 즉시</strong>, <strong>급여는 [급여 관리 → 근태 불러오기]</strong> 시 자동 반영됩니다(날짜 기준 파생 — 별도 재분류 불필요).</li>
       </ul>
     </div>
   </div>
