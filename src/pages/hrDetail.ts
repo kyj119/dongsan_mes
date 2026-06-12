@@ -1,6 +1,7 @@
 import type { Context } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { renderPage } from '../layout'
+import { deptOptions, positionOptions, employmentTypeOptions } from '../constants/hr'
 import pageScript from '../scripts/hrDetail.js?raw'
 
 export function hrDetailPage(c: Context<HonoEnv>) {
@@ -106,28 +107,12 @@ export function hrDetailPage(c: Context<HonoEnv>) {
                 </div>
                 <div><label class="block text-xs text-gray-500 mb-1">부서</label>
                   <select data-field="department" class="hrd-input w-full border border-gray-200 rounded px-2 py-1.5 text-sm" disabled>
-                    <option value="">-</option>
-                    <option value="ADMIN_DEPT">사무직</option>
-                    <option value="DESIGN">디자인</option>
-                    <option value="SALES">영업</option>
-                    <option value="TRANSFER">전사</option>
-                    <option value="SIGN">간판</option>
-                    <option value="PRINTING">출력</option>
-                    <option value="PRODUCTION">생산직</option>
-                    <option value="EXECUTIVE">임원</option>
+                    ${deptOptions({ lead: '-' })}
                   </select>
                 </div>
                 <div><label class="block text-xs text-gray-500 mb-1">직위</label>
                   <select data-field="position" class="hrd-input w-full border border-gray-200 rounded px-2 py-1.5 text-sm" disabled>
-                    <option value="">-</option>
-                    <option value="STAFF">사원</option>
-                    <option value="SENIOR_STAFF">주임</option>
-                    <option value="ASSISTANT_MANAGER">대리</option>
-                    <option value="MANAGER">과장</option>
-                    <option value="DEPUTY_GENERAL_MANAGER">차장</option>
-                    <option value="GENERAL_MANAGER">부장</option>
-                    <option value="DIRECTOR">이사</option>
-                    <option value="CEO">대표이사</option>
+                    ${positionOptions({ lead: '-' })}
                   </select>
                 </div>
                 <div><label class="block text-xs text-gray-500 mb-1">직책</label><input data-field="job_title" class="hrd-input w-full border border-gray-200 rounded px-2 py-1.5 text-sm" disabled></div>
@@ -148,9 +133,7 @@ export function hrDetailPage(c: Context<HonoEnv>) {
                 <div><label class="block text-xs text-gray-500 mb-1">퇴사일자</label><input data-field="resignation_date" data-format="date" maxlength="10" inputmode="numeric" placeholder="예: 2026-06-30" class="hrd-input js-fp w-full border border-gray-200 rounded px-2 py-1.5 text-sm tabular-nums" disabled></div>
                 <div><label class="block text-xs text-gray-500 mb-1">고용형태</label>
                   <select data-field="employment_type" class="hrd-input w-full border border-gray-200 rounded px-2 py-1.5 text-sm" disabled>
-                    <option value="FULL_TIME">정규직</option>
-                    <option value="CONTRACT">계약직</option>
-                    <option value="PART_TIME">시간제</option>
+                    ${employmentTypeOptions()}
                   </select>
                 </div>
                 <div class="col-span-3"><label class="block text-xs text-gray-500 mb-1">특이사항 / 메모</label><textarea data-field="notes" rows="3" class="hrd-input w-full border border-gray-200 rounded px-2 py-1.5 text-sm" placeholder="직원 특이사항·메모 (예: 건강, 근무 특이사항, 비상연락 등)" disabled></textarea></div>

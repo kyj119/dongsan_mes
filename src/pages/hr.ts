@@ -1,6 +1,7 @@
 import type { Context } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { renderPage } from '../layout'
+import { deptOptions, positionOptions, employmentTypeOptions } from '../constants/hr'
 import pageScript from '../scripts/hr.js?raw'
 
 export function hrPage(c: Context<HonoEnv>) {
@@ -29,7 +30,7 @@ export function hrPage(c: Context<HonoEnv>) {
           <div class="ds-card p-5">
             <div class="text-xs text-gray-500">월 인건비</div>
             <div class="text-3xl font-bold text-gray-900 mt-1" id="hrMonthlyPayroll">-</div>
-            <div class="text-xs text-gray-400 mt-1">이번 달 총액</div>
+            <div class="text-xs text-gray-400 mt-1" id="hrMonthlyPayrollSub">이번 달 총액</div>
           </div>
         </div>
 
@@ -38,26 +39,10 @@ export function hrPage(c: Context<HonoEnv>) {
           <div class="flex flex-wrap items-center gap-3">
             <input id="hrSearch" type="text" placeholder="사번/이름 검색" class="flex-1 min-w-[200px] border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500" />
             <select id="hrFilterDept" class="border border-gray-300 rounded-lg px-3 py-2 text-sm">
-              <option value="">전체 부서</option>
-              <option value="ADMIN_DEPT">사무직</option>
-              <option value="DESIGN">디자인</option>
-              <option value="SALES">영업</option>
-              <option value="TRANSFER">전사</option>
-              <option value="SIGN">간판</option>
-              <option value="PRINTING">출력</option>
-              <option value="PRODUCTION">생산직</option>
-              <option value="EXECUTIVE">임원</option>
+              ${deptOptions({ lead: '전체 부서' })}
             </select>
             <select id="hrFilterPosition" class="border border-gray-300 rounded-lg px-3 py-2 text-sm">
-              <option value="">전체 직급</option>
-              <option value="STAFF">사원</option>
-              <option value="SENIOR_STAFF">주임</option>
-              <option value="ASSISTANT_MANAGER">대리</option>
-              <option value="MANAGER">과장</option>
-              <option value="DEPUTY_GENERAL_MANAGER">차장</option>
-              <option value="GENERAL_MANAGER">부장</option>
-              <option value="DIRECTOR">이사</option>
-              <option value="CEO">대표이사</option>
+              ${positionOptions({ lead: '전체 직급' })}
             </select>
             <select id="hrFilterStatus" class="border border-gray-300 rounded-lg px-3 py-2 text-sm">
               <option value="ACTIVE">재직</option>
@@ -132,9 +117,7 @@ export function hrPage(c: Context<HonoEnv>) {
                 <div><label class="block text-xs text-gray-500 mb-1">주민등록번호</label><input type="text" name="resident_number" maxlength="14" placeholder="000000-0000000" class="w-full border border-gray-300 rounded px-2 py-1.5 text-sm tabular-nums"></div>
                 <div><label class="block text-xs text-gray-500 mb-1">고용 유형 <span class="text-red-500">*</span></label>
                   <select name="employment_type" required class="w-full border border-gray-300 rounded px-2 py-1.5 text-sm">
-                    <option value="FULL_TIME">정규직</option>
-                    <option value="CONTRACT">계약직</option>
-                    <option value="PART_TIME">시간제</option>
+                    ${employmentTypeOptions()}
                   </select>
                 </div>
                 <div><label class="block text-xs text-gray-500 mb-1">소속법인</label>
@@ -142,27 +125,12 @@ export function hrPage(c: Context<HonoEnv>) {
                 </div>
                 <div><label class="block text-xs text-gray-500 mb-1">부서 <span class="text-red-500">*</span></label>
                   <select name="department" required class="w-full border border-gray-300 rounded px-2 py-1.5 text-sm">
-                    <option value="">선택</option>
-                    <option value="ADMIN_DEPT">사무직</option>
-                    <option value="DESIGN">디자인</option>
-                    <option value="SALES">영업</option>
-                    <option value="TRANSFER">전사</option>
-                    <option value="SIGN">간판</option>
-                    <option value="PRINTING">출력</option>
-                    <option value="EXECUTIVE">임원</option>
+                    ${deptOptions({ lead: '선택' })}
                   </select>
                 </div>
                 <div><label class="block text-xs text-gray-500 mb-1">직급 <span class="text-red-500">*</span></label>
                   <select name="position" required class="w-full border border-gray-300 rounded px-2 py-1.5 text-sm">
-                    <option value="">선택</option>
-                    <option value="STAFF">사원</option>
-                    <option value="SENIOR_STAFF">주임</option>
-                    <option value="ASSISTANT_MANAGER">대리</option>
-                    <option value="MANAGER">과장</option>
-                    <option value="DEPUTY_GENERAL_MANAGER">차장</option>
-                    <option value="GENERAL_MANAGER">부장</option>
-                    <option value="DIRECTOR">이사</option>
-                    <option value="CEO">대표이사</option>
+                    ${positionOptions({ lead: '선택' })}
                   </select>
                 </div>
                 <div><label class="block text-xs text-gray-500 mb-1">직책</label><input type="text" name="job_title" class="w-full border border-gray-300 rounded px-2 py-1.5 text-sm"></div>
@@ -207,6 +175,10 @@ export function hrPage(c: Context<HonoEnv>) {
               <div class="grid grid-cols-3 gap-3">
                 <div><label class="block text-xs text-gray-500 mb-1">기본급 (원)</label><input type="text" inputmode="numeric" data-money name="base_salary" class="w-full border border-gray-300 rounded px-2 py-1.5 text-sm text-right tabular-nums"></div>
                 <div><label class="block text-xs text-gray-500 mb-1">시급 (원/시간제)</label><input type="text" inputmode="numeric" data-money name="hourly_rate" class="w-full border border-gray-300 rounded px-2 py-1.5 text-sm text-right tabular-nums"></div>
+                <div class="flex items-center gap-2 pt-5">
+                  <input type="checkbox" id="hrNewOvertimeToggle" class="w-4 h-4 rounded accent-blue-600">
+                  <label for="hrNewOvertimeToggle" class="text-sm text-gray-700 cursor-pointer">고정연장 적용 <span class="text-gray-400">(아침 30분)</span></label>
+                </div>
                 <div><label class="block text-xs text-gray-500 mb-1">직책수당 (원)</label><input type="text" inputmode="numeric" data-money name="position_allowance" class="w-full border border-gray-300 rounded px-2 py-1.5 text-sm text-right tabular-nums"></div>
                 <div><label class="block text-xs text-gray-500 mb-1">차량유지비 (원)</label><input type="text" inputmode="numeric" data-money name="vehicle_allowance" class="w-full border border-gray-300 rounded px-2 py-1.5 text-sm text-right tabular-nums"></div>
                 <div><label class="block text-xs text-gray-500 mb-1">식대 (원)</label><input type="text" inputmode="numeric" data-money name="meal_allowance_fixed" class="w-full border border-gray-300 rounded px-2 py-1.5 text-sm text-right tabular-nums"></div>

@@ -1,11 +1,9 @@
 // 인사 관리 - 직원 목록 전용 (근태/급여는 별도 페이지로 분리)
 
-var DEPT_NAMES = { ADMIN_DEPT: '사무직', DESIGN: '디자인', SALES: '영업', TRANSFER: '전사', SIGN: '간판', PRINTING: '출력', PRODUCTION: '생산직', EXECUTIVE: '임원' };
+// 부서·직급 라벨은 layout HR_ENUMS_JS 주입 (window.DEPT_NAMES/POSITION_NAMES = src/constants/hr.ts SSOT)
+var DEPT_NAMES = window.DEPT_NAMES || {};
 // 법인명은 window.entityName(id) 사용 (shell.js 공용 헬퍼, DB 기반 — 하드코딩 제거)
-var POSITION_NAMES = {
-  STAFF: '사원', SENIOR_STAFF: '주임', ASSISTANT_MANAGER: '대리', MANAGER: '과장',
-  DEPUTY_GENERAL_MANAGER: '차장', GENERAL_MANAGER: '부장', DIRECTOR: '이사', CEO: '대표이사'
-};
+var POSITION_NAMES = window.POSITION_NAMES || {};
 
 function hrEscape(str) {
   if (str == null) return '';
@@ -25,6 +23,8 @@ window.hrLoadStats = async function() {
     document.getElementById('hrTodayAttendance').textContent = s.today_attendance || 0;
     document.getElementById('hrAvgWorkHours').textContent = s.avg_work_hours ? Number(s.avg_work_hours).toFixed(1) + 'h' : '-';
     document.getElementById('hrMonthlyPayroll').textContent = s.monthly_payroll ? (Number(s.monthly_payroll) / 10000).toFixed(0) + '만' : '-';
+    var hrPaySub = document.getElementById('hrMonthlyPayrollSub');
+    if (hrPaySub) hrPaySub.textContent = s.monthly_payroll_estimated ? '이번 달 예상 (기본급+근태)' : '이번 달 총액';
   } catch (e) {
     console.error('인사 통계 로드 실패', e);
   }
@@ -244,6 +244,14 @@ window.hrCloseEmployeeModal = function() {
           data[f] = isNaN(n) ? null : n;
         }
       });
+
+      // 고정연장 토글 → overtime_daily_hours(0.5/0) + overtime_work_days(22)
+      // (상세 수정 모달과 동일 의미: 체크 시 아침 30분 고정연장)
+      var hrOtToggle = formEl.querySelector('#hrNewOvertimeToggle');
+      if (hrOtToggle && hrOtToggle.checked) {
+        data.overtime_daily_hours = 0.5;
+        data.overtime_work_days = 22;
+      }
 
       try {
         await axios.post('/api/hr/employees', data);

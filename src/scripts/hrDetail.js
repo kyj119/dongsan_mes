@@ -8,13 +8,11 @@
   if (el2 && window.dsSkeleton) el2.innerHTML = dsSkeleton.table(3, 5);
 })();
 
-var DEPT_NAMES = { ADMIN_DEPT: '사무직', DESIGN: '디자인', SALES: '영업', TRANSFER: '전사', SIGN: '간판', PRINTING: '출력', PRODUCTION: '생산직', EXECUTIVE: '임원' };
+// 부서·직급·고용형태 라벨은 layout HR_ENUMS_JS 주입 (window.* = src/constants/hr.ts SSOT)
+var DEPT_NAMES = window.DEPT_NAMES || {};
 // 법인명은 window.entityName(id) 사용 (shell.js 공용 헬퍼)
-var POSITION_NAMES = {
-  STAFF: '사원', SENIOR_STAFF: '주임', ASSISTANT_MANAGER: '대리', MANAGER: '과장',
-  DEPUTY_GENERAL_MANAGER: '차장', GENERAL_MANAGER: '부장', DIRECTOR: '이사', CEO: '대표이사'
-};
-var EMPLOYMENT_NAMES = { FULL_TIME: '정규직', CONTRACT: '계약직', PART_TIME: '시간제' };
+var POSITION_NAMES = window.POSITION_NAMES || {};
+var EMPLOYMENT_NAMES = window.EMPLOYMENT_NAMES || {};
 
 function hrdGetEmployeeId() {
   var el = document.querySelector('[data-employee-id]');

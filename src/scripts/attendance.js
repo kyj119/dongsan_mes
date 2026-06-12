@@ -352,7 +352,7 @@
           + '</div></td>';
       }
 
-      var deptLabel = emp.department === 'OFFICE' ? '사무' : emp.department === 'PRODUCTION' ? '생산' : emp.department === 'SALES' ? '영업' : (emp.department || '');
+      var deptLabel = (window.DEPT_NAMES && window.DEPT_NAMES[emp.department]) || emp.department || '';
 
       rowsHtml += '<tr class="hover:bg-gray-50">'
         + '<td class="px-2 py-1 border-b border-gray-100 bg-white sticky left-0 z-10">'

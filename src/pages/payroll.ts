@@ -32,6 +32,9 @@ export function payrollPage(c: Context<HonoEnv>) {
           <button onclick="payrollSyncAttendance()" class="px-3 py-1.5 text-xs border border-blue-300 text-blue-700 bg-blue-50 rounded hover:bg-blue-100" title="해당 월 attendance 테이블의 연장근무/근무일수/지각/결근을 급여에 반영">
             <i class="fas fa-sync-alt mr-1"></i>근태 불러오기
           </button>
+          <button onclick="payrollToggleLedger()" id="prLedgerBtn" class="px-3 py-1.5 text-xs border border-gray-300 text-gray-700 bg-white rounded hover:bg-gray-50" title="급여대장(수당·공제 항목 전개) 보기 전환">
+            <i class="fas fa-table-cells mr-1"></i>급여대장
+          </button>
           <button onclick="payrollOpenBatchSlip()" class="px-3 py-1.5 text-xs border border-gray-300 text-gray-700 bg-white rounded hover:bg-gray-50" title="해당 월 전 직원 급여명세서를 새 창에서 일괄 인쇄">
             <i class="fas fa-print mr-1"></i>일괄 명세서
           </button>
@@ -101,7 +104,7 @@ export function payrollPage(c: Context<HonoEnv>) {
         </div>
 
         <!-- 급여 목록 테이블 -->
-        <div class="ds-card overflow-hidden">
+        <div class="ds-card overflow-hidden" id="prCompactCard">
           <div class="overflow-x-auto">
             <table class="w-full text-sm ds-table-striped">
               <thead class="bg-gray-50 text-xs text-gray-600 uppercase tracking-wider">
@@ -127,6 +130,38 @@ export function payrollPage(c: Context<HonoEnv>) {
             </table>
           </div>
         </div>
+
+        <!-- 급여대장 (확장 뷰) -->
+        <div id="prLedgerCard" class="ds-card overflow-hidden hidden">
+          <div class="flex items-center justify-between px-4 py-2 border-b border-gray-200 bg-gray-50 flex-wrap gap-2">
+            <div class="text-sm font-semibold text-gray-700">
+              <i class="fas fa-table-cells mr-1 text-gray-500"></i>급여대장
+              <span id="prLedgerPeriod" class="text-xs font-normal text-gray-400 ml-1"></span>
+            </div>
+            <div class="flex items-center gap-3">
+              <label class="flex items-center gap-1 text-xs text-gray-600"><input type="checkbox" id="prLedgerEmployer" onchange="payrollRenderLedger()" checked> 회사부담분</label>
+              <button onclick="payrollLedgerPrint()" class="px-2 py-1 text-xs border border-gray-300 rounded hover:bg-gray-100"><i class="fas fa-print mr-1"></i>인쇄</button>
+              <button onclick="payrollLedgerExportCsv()" class="px-2 py-1 text-xs border border-gray-300 rounded hover:bg-gray-100"><i class="fas fa-file-csv mr-1"></i>CSV</button>
+            </div>
+          </div>
+          <div class="overflow-x-auto">
+            <table id="prLedgerTable" class="ds-ledger"></table>
+          </div>
+        </div>
+
+        <style>
+          .ds-ledger { border-collapse: collapse; font-variant-numeric: tabular-nums; white-space: nowrap; }
+          .ds-ledger th, .ds-ledger td { border: 1px solid #e5e7eb; padding: 3px 8px; }
+          .ds-ledger thead th { background: #f8fafc; position: sticky; top: 0; z-index: 2; font-weight: 600; }
+          .ds-ledger td.num, .ds-ledger th.num { text-align: right; }
+          .ds-ledger .lft { text-align: left; }
+          .ds-ledger .grp-pay { background: #eff6ff; }
+          .ds-ledger .grp-ded { background: #fef2f2; }
+          .ds-ledger .grp-emp { background: #f9fafb; }
+          .ds-ledger .subtotal td { background: #f1f5f9; font-weight: 600; }
+          .ds-ledger .grandtotal td { background: #e2e8f0; font-weight: 700; }
+          .ds-ledger tbody tr:hover td { background: #fafafa; }
+        </style>
       </div>
 
       <!-- 급여 작성/수정 모달 -->

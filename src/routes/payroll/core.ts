@@ -9,6 +9,7 @@ import { authMiddleware, requireRole } from '../../middleware/auth'
 import {
   getSettings,
   calcOvertimePay,
+  calcInclusivePay,
   loadOvertimeSettings,
   calcDeductions,
   loadEmployeeDefaults,
@@ -418,18 +419,29 @@ coreRouter.post('/batch', requireRole('ADMIN', 'MANAGER'), async (c) => {
 
       // 고정연장시간 자동 계산
       const batchFixedOtHours = (Number(empRow?.overtime_daily_hours) || 0) * (Number(empRow?.overtime_work_days) || 22)
-      const batchOt = calcOvertimePay({
-        baseSalary: base_salary,
-        monthlyWorkHours: otSettings.monthlyWorkHours,
-        overtimeHours: batchFixedOtHours,
-        nightHours: 0,
-        holidayHours: 0,
-        overtimeMul: otSettings.overtimeMul,
-        nightMul: otSettings.nightMul,
-        holidayMul: otSettings.holidayMul,
-        holidayOverMul: otSettings.holidayOverMul,
-      })
-      const batch_overtime_pay = batchOt.overtime_pay
+      // 고정연장(포괄임금) 직원: 입력 기본급=포괄 총액 → 통상시급(÷225.5) 기준 분해.
+      //   payBase=기본급(시급×209), batch_overtime_pay=고정연장수당(총액−기본급). 일괄생성 시점엔 추가연장 0.
+      // 일반 직원: 분해 없음(payBase=base_salary, 연장수당 0 — 근태는 sync에서 반영).
+      let payBase = base_salary
+      let batch_overtime_pay = 0
+      let batchOtHours = 0
+      if (batchFixedOtHours > 0) {
+        const inc = calcInclusivePay({
+          inclusiveBase: base_salary,
+          baseMonthlyHours: otSettings.monthlyWorkHours,
+          fixedOTHours: batchFixedOtHours,
+          extraOTHours: 0,
+          nightHours: 0,
+          holidayHours: 0,
+          overtimeMul: otSettings.overtimeMul,
+          nightMul: otSettings.nightMul,
+          holidayMul: otSettings.holidayMul,
+          holidayOverMul: otSettings.holidayOverMul,
+        })
+        payBase = inc.regular_base
+        batch_overtime_pay = inc.overtime_pay
+        batchOtHours = inc.overtime_hours
+      }
 
       // 고정 수당
       const bonus_fixed = empDefaults.special_bonus_fixed
@@ -440,8 +452,8 @@ coreRouter.post('/batch', requireRole('ADMIN', 'MANAGER'), async (c) => {
       const nontax_meal = Math.min(meal_total, mealMax)
       const tax_meal = meal_total - nontax_meal
 
-      const total_salary = base_salary + batch_overtime_pay + bonus_fixed + other_allowance_fixed_total + meal_total
-      const taxable_pay = base_salary + batch_overtime_pay + bonus_fixed + other_allowance_fixed_total + tax_meal
+      const total_salary = payBase + batch_overtime_pay + bonus_fixed + other_allowance_fixed_total + meal_total
+      const taxable_pay = payBase + batch_overtime_pay + bonus_fixed + other_allowance_fixed_total + tax_meal
 
       const d = await calcDeductions(c.env.DB, {
         taxablePay: taxable_pay, dependents, taxOption, year,
@@ -469,8 +481,8 @@ coreRouter.post('/batch', requireRole('ADMIN', 'MANAGER'), async (c) => {
           total_deduction, net_pay, status, created_by, entity_id, created_at, updated_at
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'PENDING', ?, ?, datetime('now'), datetime('now'))`
       ).bind(
-        emp.id, payPeriod, pay_date, base_salary,
-        batch_overtime_pay, batchFixedOtHours,
+        emp.id, payPeriod, pay_date, payBase,
+        batch_overtime_pay, batchOtHours,
         meal_total, other_allowance_fixed_total, bonus_fixed,
         nontax_meal, taxable_pay, total_salary,
         d.national_pension, d.health_insurance, d.long_term_care_insurance,
@@ -519,10 +531,19 @@ coreRouter.post('/sync-attendance', requireRole('ADMIN', 'MANAGER'), async (c) =
 
     const employeeIds: number[] = Array.isArray(body.employee_ids) ? body.employee_ids : []
 
-    // 대상 급여 레코드 조회
+    // 대상 급여 레코드 조회 — 직원 포괄총액(emp_base)·고정연장 설정 + 저장된 수당/비과세 함께 로드
+    // (sync에서 total_salary/공제/실지급까지 일관 재계산하기 위함)
     let targetQuery = `
-      SELECT p.id, p.employee_id, p.base_salary
+      SELECT p.id, p.employee_id,
+             p.meal_allowance, p.transportation_allowance, p.other_allowance,
+             p.annual_leave_pay, p.bonus, p.night_pay, p.holiday_pay,
+             p.nontax_meal, p.nontax_transport, p.nontax_childcare, p.other_deduction,
+             e.base_salary AS emp_base,
+             COALESCE(e.overtime_daily_hours, 0) AS odh,
+             COALESCE(e.overtime_work_days, 22) AS owd,
+             e.dependents_count, e.income_tax_table_option
       FROM payroll p
+      JOIN employees e ON e.id = p.employee_id
       WHERE p.pay_period = ?
     `
     const targetParams: any[] = [payPeriod]
@@ -561,6 +582,7 @@ coreRouter.post('/sync-attendance', requireRole('ADMIN', 'MANAGER'), async (c) =
       const aggMap: Record<number, any> = {}
       for (const a of (aggRows || [])) aggMap[a.employee_id as number] = a
 
+      const syncYear = Number(payPeriod.slice(0, 4)) || new Date().getFullYear()
       const syncStmts: D1PreparedStatement[] = []
       for (const t of targetList) {
         const agg = aggMap[t.employee_id as number]
@@ -568,34 +590,100 @@ coreRouter.post('/sync-attendance', requireRole('ADMIN', 'MANAGER'), async (c) =
         const absent_days = Number(agg?.absent_days || 0)
         const late_count = Number(agg?.late_count || 0)
         const leave_used_days = Number(agg?.leave_used_days || 0)
-        const overtime_hours = Number(agg?.total_overtime || 0)
+        const extraOT = Number(agg?.total_overtime || 0)   // 실제 근태 연장시간
 
-        // 연장근로수당 재계산
-        const ot = calcOvertimePay({
-          baseSalary: Number(t.base_salary || 0),
-          monthlyWorkHours: otSettings.monthlyWorkHours,
-          overtimeHours: overtime_hours,
-          nightHours: 0,
-          holidayHours: 0,
-          overtimeMul: otSettings.overtimeMul,
-          nightMul: otSettings.nightMul,
-          holidayMul: otSettings.holidayMul,
-          holidayOverMul: otSettings.holidayOverMul,
+        const empBase = Number(t.emp_base || 0)
+        const fixedOTHours = Number(t.odh || 0) * Number(t.owd || 22)
+
+        // 연장수당 + 기본급 분해 재계산
+        let newBase: number, overtime_pay: number, overtime_hours: number
+        if (fixedOTHours > 0) {
+          // 고정연장(포괄임금): 통상시급(÷225.5) 기준 분해 + 추가연장 가산
+          const inc = calcInclusivePay({
+            inclusiveBase: empBase,
+            baseMonthlyHours: otSettings.monthlyWorkHours,
+            fixedOTHours,
+            extraOTHours: extraOT,
+            nightHours: 0,
+            holidayHours: 0,
+            overtimeMul: otSettings.overtimeMul,
+            nightMul: otSettings.nightMul,
+            holidayMul: otSettings.holidayMul,
+            holidayOverMul: otSettings.holidayOverMul,
+          })
+          newBase = inc.regular_base
+          overtime_pay = inc.overtime_pay
+          overtime_hours = inc.overtime_hours
+        } else {
+          // 일반 직원: 기본급 그대로 + 근태 연장만 가산
+          const ot = calcOvertimePay({
+            baseSalary: empBase,
+            monthlyWorkHours: otSettings.monthlyWorkHours,
+            overtimeHours: extraOT,
+            nightHours: 0,
+            holidayHours: 0,
+            overtimeMul: otSettings.overtimeMul,
+            nightMul: otSettings.nightMul,
+            holidayMul: otSettings.holidayMul,
+            holidayOverMul: otSettings.holidayOverMul,
+          })
+          newBase = empBase
+          overtime_pay = ot.overtime_pay
+          overtime_hours = extraOT
+        }
+
+        // 총급여/과세/공제/실지급 일관 재계산 (저장된 수당 + 재계산 연장 기준)
+        const nightPay = Number(t.night_pay || 0)
+        const holidayPay = Number(t.holiday_pay || 0)
+        const meal = Number(t.meal_allowance || 0)
+        const transport = Number(t.transportation_allowance || 0)
+        const otherAllow = Number(t.other_allowance || 0)
+        const annual = Number(t.annual_leave_pay || 0)
+        const bonusVal = Number(t.bonus || 0)
+        const total_salary = newBase + overtime_pay + nightPay + holidayPay + meal + transport + otherAllow + annual + bonusVal
+        const nontax = Number(t.nontax_meal || 0) + Number(t.nontax_transport || 0) + Number(t.nontax_childcare || 0)
+        const taxable_pay = total_salary - nontax
+
+        const empDefaults = await loadEmployeeDefaults(c.env.DB, t.employee_id)
+        const d = await calcDeductions(c.env.DB, {
+          taxablePay: taxable_pay,
+          dependents: Math.max(1, Number(t.dependents_count || 1)),
+          taxOption: String(t.income_tax_table_option || '100'),
+          year: syncYear,
+          applyNationalPension: empDefaults.insurance_apply_national_pension,
+          applyHealth: empDefaults.insurance_apply_health,
+          applyLongTermCare: empDefaults.insurance_apply_long_term_care,
+          applyEmployment: empDefaults.insurance_apply_employment,
+          applyIndustrialAccident: empDefaults.insurance_apply_industrial_accident,
         })
+        const otherDeduction = Number(t.other_deduction || 0)
+        const total_deduction = d.total_deduction + otherDeduction
+        const net_pay = total_salary - total_deduction
 
         syncStmts.push(
           c.env.DB.prepare(`
             UPDATE payroll
-            SET work_days = ?,
-                absent_days = ?,
-                late_count = ?,
-                leave_used_days = ?,
-                overtime_hours = ?,
-                overtime_pay = ?,
-                attendance_synced_at = datetime('now'),
-                updated_at = datetime('now')
+            SET base_salary = ?, overtime_hours = ?, overtime_pay = ?,
+                work_days = ?, absent_days = ?, late_count = ?, leave_used_days = ?,
+                taxable_pay = ?, total_salary = ?,
+                national_pension = ?, health_insurance = ?, long_term_care_insurance = ?,
+                employment_insurance = ?, income_tax = ?, local_tax = ?,
+                employer_national_pension = ?, employer_health_insurance = ?, employer_long_term_care = ?,
+                employer_employment_insurance = ?, employer_industrial_accident = ?,
+                total_deduction = ?, net_pay = ?,
+                attendance_synced_at = datetime('now'), updated_at = datetime('now')
             WHERE id = ?
-          `).bind(work_days, absent_days, late_count, leave_used_days, overtime_hours, ot.overtime_pay, t.id)
+          `).bind(
+            newBase, overtime_hours, overtime_pay,
+            work_days, absent_days, late_count, leave_used_days,
+            taxable_pay, total_salary,
+            d.national_pension, d.health_insurance, d.long_term_care_insurance,
+            d.employment_insurance, d.income_tax, d.local_tax,
+            d.employer_national_pension, d.employer_health_insurance, d.employer_long_term_care,
+            d.employer_employment_insurance, d.employer_industrial_accident,
+            total_deduction, net_pay,
+            t.id
+          )
         )
 
         synced++
@@ -603,7 +691,7 @@ coreRouter.post('/sync-attendance', requireRole('ADMIN', 'MANAGER'), async (c) =
           payroll_id: t.id,
           employee_id: t.employee_id,
           work_days, absent_days, late_count, leave_used_days,
-          overtime_hours, overtime_pay: ot.overtime_pay
+          overtime_hours, overtime_pay, base_salary: newBase, total_salary, net_pay
         })
       }
 

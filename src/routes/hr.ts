@@ -4,6 +4,7 @@ import { requirePagePermission } from '../middleware/permissions'
 import type { HonoEnv } from '../types/env'
 import { encryptPII, decryptPII } from '../utils/crypto'
 import { getEntityId, entityFilter } from '../utils/entityFilter'
+import { calcOvertimePay, loadOvertimeSettings } from './payroll/shared'
 
 // #338: PII(주민등록번호) 암호화 키 — JWT_SECRET 재사용하되 하드코딩 폴백('fallback-dev-key') 제거.
 // 미설정 시 명시적 실패 → 평문 박제 키로 암호화되어 git 접근자가 복호화하는 사고 차단.
@@ -827,15 +828,71 @@ hrRouter.get('/stats', async (c) => {
         AND a.work_hours > 0${efE.clause}
     `).bind(...efE.params).all<{ avg_hours: number }>()
 
-    // Monthly payroll total (실제 테이블: payroll 단수형, 컬럼: net_pay)
+    // ── 월 인건비 (이번 달 급여 지출) ───────────────────────────────────
+    // KST 기준 이번 달.
+    //   1) 이번 달 급여명세(payroll)가 있으면 실제 지급총액(total_salary) 합계
+    //   2) 없으면(=미생성) 재직 직원 기본급 + 이번 달 근태 기반 추가수당(연장/야간/휴일) 추정
     // payroll 테이블에는 entity_id 없음 → employees JOIN으로 필터
-    const thisMonth = new Date().toISOString().slice(0, 7)
-    const { results: payrollResults } = await c.env.DB.prepare(`
-      SELECT SUM(p.net_pay) as total
+    const thisMonth = new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 7)
+
+    const { results: payrollActual } = await c.env.DB.prepare(`
+      SELECT COALESCE(SUM(p.total_salary), 0) as total, COUNT(*) as cnt
       FROM payroll p
       INNER JOIN employees e ON e.id = p.employee_id
       WHERE p.pay_period = ?${efE.clause}
-    `).bind(thisMonth, ...efE.params).all<{ total: number }>()
+    `).bind(thisMonth, ...efE.params).all<{ total: number; cnt: number }>()
+
+    let monthlyPayroll = 0
+    let payrollEstimated = false
+    if (payrollActual[0] && Number(payrollActual[0].cnt) > 0) {
+      // 실제 급여명세 존재 → 지급총액 합계
+      monthlyPayroll = Number(payrollActual[0].total) || 0
+    } else {
+      // 추정: 재직 직원 기본급 + 이번 달 근태 기반 추가수당 (실제 급여 계산식 재사용)
+      payrollEstimated = true
+      const otSettings = await loadOvertimeSettings(c.env.DB)
+      const { results: emps } = await c.env.DB.prepare(`
+        SELECT e.id, COALESCE(e.base_salary, 0) AS base_salary
+        FROM employees e
+        WHERE e.status = 'ACTIVE' AND e.is_deleted = 0${efE.clause}
+      `).bind(...efE.params).all<{ id: number; base_salary: number }>()
+
+      // 이번 달 근태 집계 (연장/휴일/야간) — 직원별
+      const { results: attAgg } = await c.env.DB.prepare(`
+        SELECT a.employee_id AS eid,
+               SUM(COALESCE(a.overtime_hours, 0)) AS ot,
+               SUM(COALESCE(a.holiday_work_hours, 0)) AS hol,
+               SUM(COALESCE(a.caps_night_min, 0)) / 60.0 AS night
+        FROM attendance a
+        INNER JOIN employees e ON e.id = a.employee_id
+        WHERE strftime('%Y-%m', a.work_date) = ?
+          AND e.status = 'ACTIVE' AND e.is_deleted = 0${efE.clause}
+        GROUP BY a.employee_id
+      `).bind(thisMonth, ...efE.params).all<{ eid: number; ot: number; hol: number; night: number }>()
+      const attMap: Record<number, { ot: number; hol: number; night: number }> = {}
+      for (const r of attAgg) attMap[r.eid] = { ot: Number(r.ot) || 0, hol: Number(r.hol) || 0, night: Number(r.night) || 0 }
+
+      for (const emp of emps) {
+        const base = Number(emp.base_salary) || 0
+        const att = attMap[emp.id]
+        let premium = 0
+        if (att && base > 0) {
+          const ot = calcOvertimePay({
+            baseSalary: base,
+            monthlyWorkHours: otSettings.monthlyWorkHours,
+            overtimeHours: att.ot,
+            nightHours: att.night,
+            holidayHours: att.hol,
+            overtimeMul: otSettings.overtimeMul,
+            nightMul: otSettings.nightMul,
+            holidayMul: otSettings.holidayMul,
+            holidayOverMul: otSettings.holidayOverMul,
+          })
+          premium = ot.overtime_pay + ot.night_pay + ot.holiday_pay
+        }
+        monthlyPayroll += base + premium
+      }
+    }
 
     return c.json({
       success: true,
@@ -843,7 +900,8 @@ hrRouter.get('/stats', async (c) => {
         total_employees: totalResults[0].total || 0,
         today_attendance: attendanceResults[0].present || 0,
         avg_work_hours: avgHoursResults[0].avg_hours || 0,
-        monthly_payroll: payrollResults[0].total || 0,
+        monthly_payroll: monthlyPayroll,
+        monthly_payroll_estimated: payrollEstimated,
         departments: deptResults
       }
     })

@@ -1,6 +1,7 @@
 import type { Context } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { renderPage } from '../layout'
+import { deptOptions } from '../constants/hr'
 import pageScript from '../scripts/laborContracts.js?raw'
 
 export function laborContractsPage(c: Context<HonoEnv>) {
@@ -29,15 +30,7 @@ export function laborContractsPage(c: Context<HonoEnv>) {
         <div class="ds-card p-3 flex items-center gap-2 flex-wrap">
           <input type="text" id="lcSearch" placeholder="직원 검색..." class="border rounded px-2 py-1 text-xs w-40" onkeydown="if(event.key==='Enter')lcLoad()">
           <select id="lcDeptFilter" class="border rounded px-2 py-1 text-xs" onchange="lcLoad()">
-            <option value="">전체 부서</option>
-            <option value="ADMIN_DEPT">사무직</option>
-            <option value="DESIGN">디자인</option>
-            <option value="SALES">영업</option>
-            <option value="TRANSFER">전사</option>
-            <option value="SIGN">간판</option>
-            <option value="PRINTING">출력</option>
-            <option value="PRODUCTION">생산직</option>
-            <option value="EXECUTIVE">임원</option>
+            ${deptOptions({ lead: '전체 부서' })}
           </select>
           <select id="lcStatusFilter" class="border rounded px-2 py-1 text-xs" onchange="lcLoad()">
             <option value="">전체 상태</option>

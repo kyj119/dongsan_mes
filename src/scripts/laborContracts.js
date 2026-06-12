@@ -1,7 +1,8 @@
 // 근로계약 관리 스크립트
 
-var LC_DEPT = {'ADMIN_DEPT':'사무직','DESIGN':'디자인','SALES':'영업','TRANSFER':'전사','SIGN':'간판','PRINTING':'출력','PRODUCTION':'생산직','EXECUTIVE':'임원'};
-var LC_POS = {'STAFF':'사원','SENIOR_STAFF':'주임','ASSISTANT_MANAGER':'대리','MANAGER':'과장','DEPUTY_GENERAL_MANAGER':'차장','GENERAL_MANAGER':'부장','DIRECTOR':'이사','CEO':'대표이사'};
+// 부서·직급 라벨은 layout HR_ENUMS_JS 주입 (window.DEPT_NAMES/POSITION_NAMES = src/constants/hr.ts SSOT)
+var LC_DEPT = window.DEPT_NAMES || {};
+var LC_POS = window.POSITION_NAMES || {};
 // 법인명은 window.entityName(id) 사용 (shell.js 공용 헬퍼)
 
 var lcEditId = 0;

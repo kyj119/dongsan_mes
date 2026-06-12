@@ -1,6 +1,7 @@
 import type { Context } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { renderPage } from '../layout'
+import { deptOptions } from '../constants/hr'
 import pageScript from '../scripts/leaves.js?raw'
 
 export function leavesPage(c: Context<HonoEnv>) {
@@ -40,15 +41,7 @@ export function leavesPage(c: Context<HonoEnv>) {
             <label class="text-xs text-gray-600">기준 연도</label>
             <select id="lvYear" class="border rounded px-2 py-1 text-xs"></select>
             <select id="lvBalanceDept" class="border rounded px-2 py-1 text-xs" onchange="leavesLoadBalances()" title="부서">
-              <option value="">전체 부서</option>
-              <option value="ADMIN_DEPT">사무직</option>
-              <option value="DESIGN">디자인</option>
-              <option value="SALES">영업</option>
-              <option value="TRANSFER">전사</option>
-              <option value="SIGN">간판</option>
-              <option value="PRINTING">출력</option>
-              <option value="PRODUCTION">생산직</option>
-              <option value="EXECUTIVE">임원</option>
+              ${deptOptions({ lead: '전체 부서' })}
             </select>
             <button onclick="leavesLoadBalances()" class="ds-btn ds-btn-primary text-xs">
               <i class="fas fa-search mr-1"></i>조회
@@ -129,15 +122,7 @@ export function leavesPage(c: Context<HonoEnv>) {
             <label class="text-xs text-gray-600">기준 연도</label>
             <select id="lvAllowYear" class="border rounded px-2 py-1 text-xs"></select>
             <select id="lvAllowanceDept" class="border rounded px-2 py-1 text-xs" onchange="leavesLoadAllowance()" title="부서">
-              <option value="">전체 부서</option>
-              <option value="ADMIN_DEPT">사무직</option>
-              <option value="DESIGN">디자인</option>
-              <option value="SALES">영업</option>
-              <option value="TRANSFER">전사</option>
-              <option value="SIGN">간판</option>
-              <option value="PRINTING">출력</option>
-              <option value="PRODUCTION">생산직</option>
-              <option value="EXECUTIVE">임원</option>
+              ${deptOptions({ lead: '전체 부서' })}
             </select>
             <button onclick="leavesLoadAllowance()" class="ds-btn ds-btn-primary text-xs">
               <i class="fas fa-search mr-1"></i>조회

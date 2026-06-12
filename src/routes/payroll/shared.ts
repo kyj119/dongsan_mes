@@ -64,6 +64,53 @@ export function calcOvertimePay(input: OvertimeInput): OvertimeResult {
   return { hourly_wage, overtime_pay, night_pay, holiday_pay }
 }
 
+// ============================================================================
+// 고정연장(포괄임금) 분해 계산
+// 입력 기본급 = 포괄 총액(고정연장 30분 포함). 프론트(직원수정·근로계약)와 동일 로직.
+//   통상시급 = round(총액 / (209 + 고정OT시간 × 연장배율))      // 0.5×22×1.5 → ÷225.5
+//   기본급(regular) = 시급 × 209
+//   고정연장수당 = 총액 − 기본급                                  // 분해, 합 = 총액(정확)
+//   추가연장수당 = 시급 × 연장배율 × 실제근태연장시간            // 근태 발생분 별도 가산
+//   → overtime_pay = 고정연장수당 + 추가연장수당
+// ============================================================================
+export interface InclusivePayInput {
+  inclusiveBase: number      // 입력 기본급(포괄 총액)
+  baseMonthlyHours: number   // 월 소정근로시간 (기본 209)
+  fixedOTHours: number       // 고정연장 시간 = overtime_daily_hours × overtime_work_days (예: 11)
+  extraOTHours: number       // 실제 근태 연장시간 (일괄생성=0, 근태동기화=attendance overtime_hours)
+  nightHours: number
+  holidayHours: number
+  overtimeMul: number
+  nightMul: number
+  holidayMul: number
+  holidayOverMul: number
+}
+export interface InclusivePayResult {
+  hourly_wage: number
+  regular_base: number       // 분해된 기본급 → payroll.base_salary
+  overtime_pay: number       // 고정연장수당 + 추가연장수당
+  overtime_hours: number     // 고정OT + 추가OT
+  night_pay: number
+  holiday_pay: number
+}
+export function calcInclusivePay(input: InclusivePayInput): InclusivePayResult {
+  const otPremiumHours = input.fixedOTHours * input.overtimeMul       // 11 × 1.5 = 16.5
+  const divisor = input.baseMonthlyHours + otPremiumHours             // 209 + 16.5 = 225.5
+  const hourly = divisor > 0 ? Math.round(input.inclusiveBase / divisor) : 0
+  const regular_base = hourly * input.baseMonthlyHours                // 시급 × 209
+  const fixedOTPay = input.inclusiveBase - regular_base               // 총액 − 기본급 (정확 분해)
+  const extraOTPay = Math.floor(hourly * input.overtimeMul * input.extraOTHours / 10) * 10
+  const overtime_pay = fixedOTPay + extraOTPay
+  const overtime_hours = input.fixedOTHours + input.extraOTHours
+  const night_pay = Math.floor(hourly * input.nightMul * input.nightHours / 10) * 10
+  const holidayNormal = Math.min(input.holidayHours, 8)
+  const holidayOver = Math.max(0, input.holidayHours - 8)
+  const holiday_pay =
+    Math.floor(hourly * input.holidayMul * holidayNormal / 10) * 10 +
+    Math.floor(hourly * input.holidayOverMul * holidayOver / 10) * 10
+  return { hourly_wage: hourly, regular_base, overtime_pay, overtime_hours, night_pay, holiday_pay }
+}
+
 export async function loadOvertimeSettings(db: D1Database) {
   const s = await getSettings(db, [
     'payroll_default_work_hours',

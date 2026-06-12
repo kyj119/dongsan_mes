@@ -1,6 +1,7 @@
 import type { Context } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { renderPage } from '../layout'
+import { deptOptions } from '../constants/hr'
 import pageScript from '../scripts/attendance.js?raw'
 
 export function attendancePage(c: Context<HonoEnv>) {
@@ -19,10 +20,7 @@ export function attendancePage(c: Context<HonoEnv>) {
             <div class="flex items-center gap-2">
               <label class="text-sm font-semibold text-gray-700">부서</label>
               <select id="attDept" class="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500">
-                <option value="">전체</option>
-                <option value="OFFICE">사무직</option>
-                <option value="PRODUCTION">생산직</option>
-                <option value="SALES">영업</option>
+                ${deptOptions({ lead: '전체' })}
               </select>
             </div>
             <button onclick="attendanceLoadMonth()" class="ds-btn ds-btn-primary text-sm font-medium">

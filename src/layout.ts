@@ -2,6 +2,7 @@
 import type { Context } from 'hono'
 import type { HonoEnv } from './types/env'
 import { STATUS_LABELS_JS } from './utils/statusLabels'
+import { HR_ENUMS_JS } from './constants/hr'
 import { sidebarHTML } from './layout/sidebar'
 import { topBarHTML } from './layout/topbar'
 import { SHARED_CSS } from './layout/shared-styles'
@@ -181,6 +182,7 @@ export function appLayout(opts: AppLayoutOptions): string {
     </div>
     <script>
 ${STATUS_LABELS_JS}
+${HR_ENUMS_JS}
 ${SHARED_AUTH_JS}
     </script>
     <script>
