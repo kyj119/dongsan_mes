@@ -456,10 +456,12 @@ kakaoRouter.post('/send-shipment', async (c) => {
         tplBody = tpl?.template || ''
       } catch (_e) { /* 조회 실패 시 폴백 본문 */ }
       // 품목 요약: 대표품목 외 N건
+      // #385: 카드 출고(card_id 경유)·주문단위 출고(order_item_id 직접) 두 경로 COALESCE
       const { results: shipItems } = await db.prepare(
-        `SELECT oi.item_name FROM shipment_items si
+        `SELECT COALESCE(cdoi.item_name, oi.item_name) AS item_name FROM shipment_items si
          LEFT JOIN cards cd ON si.card_id = cd.id
-         LEFT JOIN order_items oi ON cd.order_item_id = oi.id
+         LEFT JOIN order_items cdoi ON cd.order_item_id = cdoi.id
+         LEFT JOIN order_items oi ON si.order_item_id = oi.id
          WHERE si.shipment_id = ?`
       ).bind(shipmentId).all<{ item_name: string | null }>()
       const names = ((shipItems || []).map(r => r.item_name).filter(Boolean)) as string[]

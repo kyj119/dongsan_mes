@@ -248,8 +248,8 @@ ordersQueriesRouter.patch('/bulk-ship', async (c) => {
         if (fromStatus !== 'SHIPPED' && fromStatus !== 'CANCELLED') {
           const upd = await c.env.DB.prepare(
             `UPDATE orders SET status = 'SHIPPED', updated_at = datetime('now'),
-               billable_after = date('now', '+' || ? || ' days'),
-               auto_complete_date = COALESCE(auto_complete_date, date('now'))
+               billable_after = date('now', '+9 hours', '+' || ? || ' days'),
+               auto_complete_date = COALESCE(auto_complete_date, date('now', '+9 hours'))
              WHERE id = ? AND status = ?`
           ).bind(delayDays * 2, orderId, fromStatus).run()
           orderShipped = (upd.meta.changes ?? 0) > 0

@@ -93,7 +93,13 @@ insuranceReportsRouter.post('/generate', async (c) => {
 
     const payPeriod = `${year}-${String(month).padStart(2, '0')}`
 
-    // 해당 월 급여 데이터 조회 (PAID/APPROVED/PENDING)
+    // #393: 4대보험은 사업장(법인)별 신고 — 특정 법인 컨텍스트 필수(전체모드 0 거부)
+    const entityId = getEntityId(c)
+    if (!entityId) {
+      return c.json({ success: false, error: '4대보험은 사업장(법인)별 신고입니다. 상단에서 특정 법인을 선택한 후 생성하세요.' }, 400)
+    }
+
+    // 해당 월 급여 데이터 조회 (PAID/APPROVED/PENDING) — #393: 법인 한정
     const payrolls = await c.env.DB.prepare(
       `SELECT p.employee_id, p.base_salary, p.taxable_pay,
               p.national_pension, p.health_insurance, p.long_term_care_insurance,
@@ -106,18 +112,18 @@ insuranceReportsRouter.post('/generate', async (c) => {
               e.name, e.resident_number as rrn, e.employee_code
        FROM payroll p
        JOIN employees e ON p.employee_id = e.id AND e.is_deleted = 0
-       WHERE p.pay_period = ?
+       WHERE p.pay_period = ? AND p.entity_id = ?
        AND p.status IN ('PAID', 'APPROVED', 'PENDING')
        ORDER BY e.name`
-    ).bind(payPeriod).all()
+    ).bind(payPeriod, entityId).all()
 
     const rows = payrolls.results || []
     if (!rows.length) return c.json({ success: false, error: `${payPeriod} 급여 데이터가 없습니다` }, 400)
 
-    // 기존 MONTHLY 신고서가 있으면 삭제 후 재생성
+    // 기존 MONTHLY 신고서가 있으면 삭제 후 재생성 (#393: 법인별 1건)
     const existing = await c.env.DB.prepare(
-      `SELECT id FROM insurance_reports WHERE year = ? AND month = ? AND report_type = 'MONTHLY'`
-    ).bind(year, month).first<any>()
+      `SELECT id FROM insurance_reports WHERE year = ? AND month = ? AND report_type = 'MONTHLY' AND entity_id = ?`
+    ).bind(year, month, entityId).first<any>()
 
     if (existing) {
       await c.env.DB.prepare(`DELETE FROM insurance_report_details WHERE report_id = ?`).bind(existing.id).run()
@@ -162,7 +168,7 @@ insuranceReportsRouter.post('/generate', async (c) => {
       totals.np, totals.hi, totals.ltc, totals.ei, totals.eia,
       totals.enp, totals.ehi, totals.eltc, totals.eei,
       grandEmployee, grandEmployer, grandEmployee + grandEmployer,
-      now, now, getEntityId(c) || 1
+      now, now, entityId
     ).run()
 
     const reportId = Number(ins.meta?.last_row_id || 0)

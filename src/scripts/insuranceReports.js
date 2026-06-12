@@ -102,7 +102,7 @@
     var tbody = document.getElementById('irTableBody');
     if (!tbody) { console.warn('[insuranceReports] #irTableBody not found'); return; }
     if (!data.length) {
-      tbody.innerHTML = '<tr><td colspan="10" class="text-center text-gray-400 py-10"><i class="fas fa-inbox text-2xl mb-2 block"></i>신고서가 없습니다. "신고서 생성"을 클릭하세요.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="11" class="text-center text-gray-400 py-10"><i class="fas fa-inbox text-2xl mb-2 block"></i>신고서가 없습니다. "신고서 생성"을 클릭하세요.</td></tr>';
       return;
     }
     tbody.innerHTML = data.map(function(r) {
@@ -118,6 +118,7 @@
         '<td class="px-4 py-3 text-right tabular-nums text-sm">' + fmt(hiTotal) + '</td>' +
         '<td class="px-4 py-3 text-right tabular-nums text-sm">' + fmt(ltcTotal) + '</td>' +
         '<td class="px-4 py-3 text-right tabular-nums text-sm">' + fmt(eiTotal) + '</td>' +
+        '<td class="px-4 py-3 text-right tabular-nums text-sm text-amber-600">' + fmt(r.total_industrial_accident) + '</td>' +
         '<td class="px-4 py-3 text-right tabular-nums font-medium">' + fmt(r.grand_total) + '</td>' +
         '<td class="px-4 py-3 text-center">' + statusBadge(r.status) + '</td>' +
         '<td class="px-4 py-3 text-center">' +
@@ -187,6 +188,7 @@
             '<td class="px-3 py-2 text-right tabular-nums">' + fmt(d.health_insurance) + '</td>' +
             '<td class="px-3 py-2 text-right tabular-nums">' + fmt(d.long_term_care) + '</td>' +
             '<td class="px-3 py-2 text-right tabular-nums">' + fmt(d.employment_insurance) + '</td>' +
+            '<td class="px-3 py-2 text-right tabular-nums text-amber-600">' + fmt(d.employer_industrial_accident) + '</td>' +
             '<td class="px-3 py-2 text-right tabular-nums font-medium text-blue-700">' + fmt(empSub) + '</td>' +
             '<td class="px-3 py-2 text-right tabular-nums font-medium text-amber-700">' + fmt(corpSub) + '</td>' +
           '</tr>';

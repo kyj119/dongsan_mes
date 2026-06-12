@@ -231,7 +231,7 @@ hrRouter.post('/attendance/checkin', async (c) => {
     // Check if already checked in today
     const { results: existing } = await c.env.DB.prepare(`
       SELECT id FROM attendance WHERE employee_id = ? AND work_date = ?
-    `).bind(employee_id, work_date || new Date().toISOString().split('T')[0]).all()
+    `).bind(employee_id, work_date || new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().split('T')[0]).all()
 
     if (existing.length > 0) {
       return c.json({ success: false, error: 'Already checked in today' }, 400)
@@ -247,7 +247,7 @@ hrRouter.post('/attendance/checkin', async (c) => {
       VALUES (?, ?, ?, 'NORMAL', 'PRESENT', ?)
     `).bind(
       employee_id,
-      work_date || new Date().toISOString().split('T')[0],
+      work_date || new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().split('T')[0],
       new Date().toISOString(),
       attendanceEntityId
     ).run()
@@ -268,7 +268,7 @@ hrRouter.post('/attendance/checkout', async (c) => {
     // Get check-in record
     const { results } = await c.env.DB.prepare(`
       SELECT id, check_in_time, check_out_time FROM attendance WHERE employee_id = ? AND work_date = ?
-    `).bind(employee_id, work_date || new Date().toISOString().split('T')[0]).all()
+    `).bind(employee_id, work_date || new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().split('T')[0]).all()
 
     if (results.length === 0) {
       return c.json({ success: false, error: 'No check-in record found' }, 404)

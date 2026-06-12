@@ -510,7 +510,7 @@ ordersLifecycleRouter.post('/sync-statuses', requireRole('ADMIN', 'MANAGER'), as
     const { results: toShip } = await db.prepare(`
       SELECT o.id, o.status, o.delivery_method FROM orders o
       WHERE o.auto_complete_date IS NOT NULL
-        AND o.auto_complete_date <= date('now')
+        AND o.auto_complete_date <= date('now', '+9 hours')
         AND o.status NOT IN ('SHIPPED', 'COMPLETED', 'CANCELLED', 'QUOTATION', 'HOLD')
         AND NOT EXISTS (SELECT 1 FROM cards c WHERE c.order_id = o.id AND c.shipped_at IS NULL)
         ${ef.clause}
@@ -526,7 +526,7 @@ ordersLifecycleRouter.post('/sync-statuses', requireRole('ADMIN', 'MANAGER'), as
 
       shipStmts.push(db.prepare(`
         UPDATE orders SET status = 'SHIPPED', updated_at = CURRENT_TIMESTAMP,
-          billable_after = date('now', '+' || ? || ' days')
+          billable_after = date('now', '+9 hours', '+' || ? || ' days')
         WHERE id = ? AND status = ?
       `).bind(billableDays, order.id, fromStatus))
 
@@ -546,7 +546,7 @@ ordersLifecycleRouter.post('/sync-statuses', requireRole('ADMIN', 'MANAGER'), as
       WHERE o.status = 'SHIPPED'
         AND o.billing_status IS NULL
         AND o.billable_after IS NOT NULL
-        AND o.billable_after <= date('now')
+        AND o.billable_after <= date('now', '+9 hours')
         AND o.final_amount > 0
         AND NOT EXISTS (SELECT 1 FROM order_items oi WHERE oi.order_id = o.id AND oi.price_status = 'PENDING')
         AND c.auto_billing = 1
@@ -572,7 +572,7 @@ ordersLifecycleRouter.post('/sync-statuses', requireRole('ADMIN', 'MANAGER'), as
       WHERE o.status = 'SHIPPED'
         AND o.billing_status IS NULL
         AND o.billable_after IS NOT NULL
-        AND o.billable_after <= date('now')
+        AND o.billable_after <= date('now', '+9 hours')
         AND o.final_amount > 0
         AND c.invoice_method IN ('CARD', 'ISSUED_BY_OTHER')
         ${ef.clause}

@@ -447,7 +447,7 @@ shipmentsRouter.post('/', requireRole('ADMIN', 'MANAGER', 'DESIGNER'), async (c)
         const delayDays = isQuick ? 1 : 2
         batchStmts.push(
           c.env.DB.prepare(
-            `UPDATE orders SET auto_complete_date = date('now', '+' || ? || ' days'), updated_at = CURRENT_TIMESTAMP WHERE id = ? AND auto_complete_date IS NULL`
+            `UPDATE orders SET auto_complete_date = date('now', '+9 hours', '+' || ? || ' days'), updated_at = CURRENT_TIMESTAMP WHERE id = ? AND auto_complete_date IS NULL`
           ).bind(delayDays, body.order_id)
         )
       }
@@ -732,7 +732,7 @@ shipmentsRouter.patch('/:id/status', requireRole('ADMIN', 'MANAGER'), async (c) 
           if (!otherNonDelivered || otherNonDelivered.cnt === 0) {
             // #300: orders.status CHECK에 COMPLETED 없음 → 배달완료 시 출고완료일만 스탬프(주문은 SHIPPED 유지). 옵션b
             stmts.push(c.env.DB.prepare(
-              `UPDATE orders SET auto_complete_date = COALESCE(auto_complete_date, date('now')), updated_at = CURRENT_TIMESTAMP WHERE id = ? AND status NOT IN ('CANCELLED')`
+              `UPDATE orders SET auto_complete_date = COALESCE(auto_complete_date, date('now', '+9 hours')), updated_at = CURRENT_TIMESTAMP WHERE id = ? AND status NOT IN ('CANCELLED')`
             ).bind(orderRow.order_id))
           }
         } else if (status === 'IN_TRANSIT') {
@@ -811,8 +811,8 @@ shipmentsRouter.patch('/:orderId/ship', requireRole('ADMIN', 'MANAGER'), async (
     if (order.status !== 'SHIPPED' && order.status !== 'CANCELLED') {
       const upd = await c.env.DB.prepare(
         `UPDATE orders SET status = 'SHIPPED', updated_at = CURRENT_TIMESTAMP,
-           billable_after = date('now', '+' || ? || ' days'),
-           auto_complete_date = COALESCE(auto_complete_date, date('now'))
+           billable_after = date('now', '+9 hours', '+' || ? || ' days'),
+           auto_complete_date = COALESCE(auto_complete_date, date('now', '+9 hours'))
          WHERE id = ? AND status = ?`
       ).bind(delayDays * 2, orderId, order.status).run()
       orderShipped = (upd.meta.changes ?? 0) > 0

@@ -59,13 +59,14 @@ export function insuranceReportsPage(c: Context<HonoEnv>) {
                   <th style="width:100px" class="text-right">건강보험</th>
                   <th style="width:100px" class="text-right">장기요양</th>
                   <th style="width:100px" class="text-right">고용보험</th>
+                  <th style="width:90px" class="text-right">산재<span class="text-gray-400">(회사)</span></th>
                   <th style="width:110px" class="text-right">전체 합계</th>
                   <th style="width:80px" class="text-center">상태</th>
                   <th style="width:80px" class="text-center">작업</th>
                 </tr>
               </thead>
               <tbody id="irTableBody">
-                <tr><td colspan="10" class="text-center text-gray-400 py-10"><i class="fas fa-spinner fa-spin mr-2"></i>불러오는 중...</td></tr>
+                <tr><td colspan="11" class="text-center text-gray-400 py-10"><i class="fas fa-spinner fa-spin mr-2"></i>불러오는 중...</td></tr>
               </tbody>
             </table>
           </div>
@@ -121,6 +122,7 @@ export function insuranceReportsPage(c: Context<HonoEnv>) {
                       <th style="width:90px" class="text-right">건강보험</th>
                       <th style="width:90px" class="text-right">장기요양</th>
                       <th style="width:90px" class="text-right">고용보험</th>
+                      <th style="width:90px" class="text-right">산재<span class="text-gray-400">(회사)</span></th>
                       <th style="width:100px" class="text-right">소계(근로자)</th>
                       <th style="width:100px" class="text-right">소계(회사)</th>
                     </tr>

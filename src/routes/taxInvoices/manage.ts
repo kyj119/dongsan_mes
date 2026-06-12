@@ -140,6 +140,8 @@ taxInvoicesManageRouter.delete('/:id', requireRole('ADMIN', 'MANAGER'), async (c
     await c.env.DB.batch([
       c.env.DB.prepare('DELETE FROM tax_invoice_items WHERE tax_invoice_id = ?').bind(id),
       c.env.DB.prepare('DELETE FROM tax_invoice_orders WHERE tax_invoice_id = ?').bind(id),
+      // #386: split billing — DRAFT 삭제 시 청구그룹 링크 정리 (cancel 경로와 대칭, dangling 참조 방지)
+      c.env.DB.prepare('UPDATE order_billing_groups SET tax_invoice_id = NULL WHERE tax_invoice_id = ?').bind(id),
       c.env.DB.prepare('DELETE FROM tax_invoices WHERE id = ?').bind(id),
     ])
 
