@@ -175,6 +175,9 @@
       (data.records || []).forEach(function (r) {
         state.recordsMap[key(r.employee_id, r.work_date)] = r;
       });
+      // 법정공휴일 맵 (날짜 → 명칭) — 그리드 휴일 컬럼 표시용
+      state.holidays = {};
+      (data.holidays || []).forEach(function (h) { state.holidays[h.holiday_date] = h.name || '공휴일'; });
       // 마지막 CAPS 동기화 정보
       var lastSyncEl = document.getElementById('attLastSync');
       if (lastSyncEl) {
@@ -234,9 +237,12 @@
       if (d <= state.daysInMonth) {
         var dateStr = state.month + '-' + pad(d);
         var dow = new Date(dateStr).getDay();
-        var dowClass = (dow === 0) ? 'text-red-600' : (dow === 6 ? 'text-blue-600' : 'text-gray-600');
-        var dowBg = (dow === 0 || dow === 6) ? ' bg-gray-100' : ' bg-gray-50';
-        headHtml += '<th class="px-0 py-2 border-b border-gray-200' + dowBg + ' text-center text-[10px] font-semibold ' + dowClass + '" style="width:36px" title="' + dateStr + '">' + d + '</th>';
+        var holName = (state.holidays && state.holidays[dateStr]) || '';
+        var dowClass = (dow === 0 || holName) ? 'text-red-600' : (dow === 6 ? 'text-blue-600' : 'text-gray-600');
+        var dowBg = (dow === 0 || dow === 6 || holName) ? ' bg-gray-100' : ' bg-gray-50';
+        var holMark = holName ? '<span class="block w-1 h-1 rounded-full bg-red-500 mx-auto" style="margin-top:1px"></span>' : '';
+        var thTitle = holName ? (dateStr + ' · ' + holName) : dateStr;
+        headHtml += '<th class="px-0 py-2 border-b border-gray-200' + dowBg + ' text-center text-[10px] font-semibold ' + dowClass + '" style="width:36px" title="' + escapeHtml(thTitle) + '">' + d + holMark + '</th>';
       } else {
         headHtml += '<th class="px-0 py-2 border-b border-gray-200 bg-gray-100 text-center text-[10px] text-gray-300" style="width:36px"></th>';
       }
@@ -335,7 +341,8 @@
         }
         var anomaly = rec ? detectAnomaly(rec, dateStr) : '';
         var anomalyMark = anomaly ? '<span class="absolute top-0 left-1/2 -translate-x-1/2 w-1.5 h-1.5 rounded-full bg-red-500" title="' + escapeHtml(anomaly) + '"></span>' : '';
-        var weekendBg = (dow === 0 || dow === 6) ? ' bg-gray-50' : '';
+        var holNameCell = (state.holidays && state.holidays[dateStr]) || '';
+        var weekendBg = holNameCell ? ' bg-red-50' : ((dow === 0 || dow === 6) ? ' bg-gray-50' : '');
 
         cells += '<td class="border border-gray-100 relative' + weekendBg + '" style="padding:1px">'
           + '<div class="att-cell cursor-pointer text-center text-[11px] font-semibold border rounded relative overflow-hidden ' + color + dirtyMark + '" '

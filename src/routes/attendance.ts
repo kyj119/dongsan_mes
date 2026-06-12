@@ -111,12 +111,22 @@ attendanceRouter.get('/month', async (c) => {
       } catch (_) { /* 테이블 없으면 무시 */ }
     }
 
+    // 해당 월 법정공휴일 (그리드에 휴일 컬럼 표시용)
+    let holidays: { holiday_date: string; name: string }[] = []
+    try {
+      const { results: hrows } = await c.env.DB.prepare(
+        `SELECT holiday_date, name FROM holidays WHERE substr(holiday_date, 1, 7) = ?`
+      ).bind(month).all<{ holiday_date: string; name: string }>()
+      holidays = hrows || []
+    } catch (_) { /* holidays 테이블 미적용 환경 — 주말만 표시 */ }
+
     return c.json({
       success: true,
       data: {
         month,
         employees: employees || [],
         records: records || [],
+        holidays,
         has_caps: hasCapsCols,
         last_sync: lastSync
       }
