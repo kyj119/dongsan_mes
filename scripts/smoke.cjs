@@ -234,20 +234,22 @@ async function login() {
 }
 
 // #382: 프론트 부트스트랩 게이트 — API가 200이어도 셸 스크립트 MIME 거부 시 전 페이지 무한로딩.
-//   '/' = 200 + text/html + (인라인 셸 마커 switchEntity) 또는 외부 <script src> 셸 스크립트의 실행가능 JS MIME 검증.
+//   인증 레이아웃 페이지(/dashboard) = 200 + text/html + (인라인 셸 마커 switchEntity) 또는
+//   외부 <script src> 셸 스크립트의 실행가능 JS MIME 검증. (로그인 '/'은 셸 미포함이라 부적합)
 //   06-10 shell.js 2회 prod 다운이 deploy smoke를 그냥 통과했던 갭을 메움.
 async function checkFrontBootstrap() {
-  const url = `${BASE}/`
+  const path = '/dashboard'  // 셸이 인라인되는 인증 레이아웃 페이지(워커가 무인증에도 HTML 서빙, 클라 JS가 게이트)
+  const url = `${BASE}${path}`
   let res, html = ''
   try {
     res = await fetch(url, { headers: { Accept: 'text/html' } })
     html = await res.text()
   } catch (err) {
-    return { ok: false, detail: `'/' 요청 실패: ${err.message}` }
+    return { ok: false, detail: `'${path}' 요청 실패: ${err.message}` }
   }
   const ct = res.headers.get('content-type') || ''
   if (res.status !== 200 || !/text\/html/i.test(ct)) {
-    return { ok: false, detail: `'/' status=${res.status} content-type='${ct}' (200 text/html 기대)` }
+    return { ok: false, detail: `'${path}' status=${res.status} content-type='${ct}' (200 text/html 기대)` }
   }
   if (/switchEntity/.test(html)) return { ok: true, detail: '인라인 셸 마커(switchEntity) 확인' }
   // 외부 셸 스크립트 참조 시 그 스크립트의 MIME 검증 (재외부화 시 MIME 거부 클래스 탐지)
