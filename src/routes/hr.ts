@@ -602,11 +602,18 @@ hrRouter.put('/employees/:id', async (c) => {
       else vals.push(v)
     }
 
-    // #349/#322: entity_id mass-assignment 차단 — ADMIN 전체모드(0)만 body로 소속 법인 변경 허용
-    const sessionEid = getEntityId(c)
-    if (sessionEid === 0 && body.entity_id != null && existingCols.has('entity_id')) {
-      setCols.push('entity_id = ?')
-      vals.push(Number(body.entity_id) || 1)
+    // #349/#322: entity_id mass-assignment 차단 — ADMIN 역할만 소속 법인 변경 허용 (2026-06-12: 전체모드 조건 → 역할 조건으로 완화)
+    //   기존 "전체모드(0)에서만" 조건은 일반 법인 모드의 ADMIN 저장을 조용히 무시해 "저장됨+무변경" 함정 유발.
+    //   비ADMIN의 임의 법인 변경 차단(#349 의도)은 유지, 거부 시 warnings로 명시 반환.
+    const sessionUser = c.get('user') as { role?: string } | undefined
+    const entityChangeWarnings: string[] = []
+    if (body.entity_id != null && existingCols.has('entity_id')) {
+      if (sessionUser?.role === 'ADMIN') {
+        setCols.push('entity_id = ?')
+        vals.push(Number(body.entity_id) || 1)
+      } else {
+        entityChangeWarnings.push('소속법인 변경은 ADMIN 권한이 필요해 반영되지 않았습니다.')
+      }
     }
 
     if (setCols.length === 0) {
@@ -668,12 +675,14 @@ hrRouter.put('/employees/:id', async (c) => {
       }
     }
 
+    const allWarnings = [
+      ...(skippedCols.length > 0 ? [`다음 필드는 DB에 컬럼이 없어 저장되지 않았습니다: ${skippedCols.join(', ')}`] : []),
+      ...entityChangeWarnings,
+    ]
     return c.json({
       success: true,
       data: updated,
-      warnings: skippedCols.length > 0
-        ? [`다음 필드는 DB에 컬럼이 없어 저장되지 않았습니다: ${skippedCols.join(', ')}`]
-        : undefined,
+      warnings: allWarnings.length > 0 ? allWarnings : undefined,
     })
   } catch (error: any) {
     console.error('hr.ts [PUT /employees/:id]:', error)
