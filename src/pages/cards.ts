@@ -1,7 +1,14 @@
 import type { Context } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { renderPage } from '../layout'
-import pageScript from '../scripts/cards.js?raw'
+// 대형파일 분할(2026-06-12): cards.js 2642줄 → 5청크 ?raw 결합. 원순서 join='\n'으로
+// 결과가 원본과 내용 동일(동작 보존). 초기화/DnD는 misc(마지막)에 위치(호이스팅).
+import cardsCore from '../scripts/cards/core.js?raw'
+import cardsActions from '../scripts/cards/actions.js?raw'
+import cardsRip from '../scripts/cards/rip.js?raw'
+import cardsDetail from '../scripts/cards/detail.js?raw'
+import cardsMisc from '../scripts/cards/misc.js?raw'
+const pageScript = [cardsCore, cardsActions, cardsRip, cardsDetail, cardsMisc].join('\n')
 
 export function cardsPage(c: Context<HonoEnv>) {
   return renderPage(c, {
