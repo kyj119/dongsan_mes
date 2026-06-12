@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 6 -->
-<!-- last_run_at: 2026-06-12T12:00:00+09:00 -->
+<!-- last_run_area: 1 -->
+<!-- last_run_at: 2026-06-12T17:00:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,13 +8,21 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | 11 (open auto-improve **재실측 06-12T12:00 Area 6** — #388·#387·#386·#385·#384·#383·#382·#381·#379·#374·#373. **#377·#378 done-sync close 완료**(아래) → open 12건 = 11 new + #372 reviewed) |
+| 🆕 new | 10 (open auto-improve **재실측 06-12T17:00 Area 1** — #388·#387·#386·#385·#384·#383·#382·#381·#379·#374. **#373 done-sync close 완료**(아래) → open 11건 = 10 new + #372 reviewed) |
 | ✅ approved | 0 (직전 approved #342/#340 모두 done 확정·이관 — Area 6 검증 완료) |
 | 👀 reviewed | 1 (#372 CSV truncation — owner 코멘트 "3번으로 진행, 최대 5000 제한" 06-11T00:25. ⚠️**모호**: #372 3번=페이지네이션 스트리밍(전량)인데 "5000 제한 유지"와 모순 → 구현 전 의도 확인 필요. 승인처리 워크플로우 대상) |
-| ✔️ done | 81 (79 + **#378 done-sync**: 커밋 9be309d가 send-shipment-bulk status/fail_count/failures[] + 프론트 결과모달 추가로 부분/전량 실패 오보고 해소 + **#377 done-sync**: eadba44(autoProcess.ts /start·/approve item_name + ia_auto_enabled 게이트) + **96e98d2(이번 사이클, create.ts:643 주문생성 자동가공 경로 item_name 잔여분)** 두 경로 모두 정정) |
+| ✔️ done | 82 (81 + **#373 done-sync (Area 1 본 사이클)**: 커밋 `4adc9b1`이 입고검수 CANCELLED 분기에 PO status 롤백(received/accepted/rejected 역산 + line_status·purchase_orders.status 재산정 + po_status_history) + 재고 역분개를 accepted_quantity 기준으로 정밀화 + 단일 batch 원자실행(#369 멱등가드 보존) → RECEIVED 영구잔류·재입고 차단 해소. standalone(po_id NULL) 제외. 코드 직접 대조 close) |
 | ❌ rejected | 3 |
 
 > 📦 **과거 사이클 로그**(아래 6블록 이전분)는 `IMPROVEMENT_BACKLOG_ARCHIVE.md`로 이관됨 (2026-06-10 정리). 신규 로그는 계속 이 파일 상단에 추가.
+
+> **Area 1 프로덕션 헬스 (2026-06-12T17:00):**
+> - **방법**: GitHub Actions 최근 30런(total 564) 분석 + baseline `npm ci`+`tsc --noEmit` PASS + build PASS(392 modules, _worker.js 5.14MB). egress **000**(샌드박스 IP 차단, `curl health/`=000) → 직접 20-API 호출 불가, Deploy/E2E 결과를 헬스 신호로 사용. HEAD=remote main=`447d9ca`(detached HEAD로 시작했으나 `git ls-remote`로 refs/heads/main 일치 확정), clean tree.
+> - **🟢 파이프라인 완전 green — HR/급여 churn 무회귀**: HEAD `447d9ca`(E2E 27...·Deploy 둘 다 success). 최근 30런 중 **1 cancelled(`d7585b2` E2E, 재트리거 정상)** 외 전부 success. 06-12 HR/payroll 대량 churn(법정공휴일 달력·야간/휴일수당 근태연동·급여대장 재설계·flatpickr·entity4 오다플래그 등 10+커밋) Deploy/E2E 전부 green — 회귀 0. queued/stuck 0.
+> - **🟢 #373 done-sync (커밋 4adc9b1, 직접 코드 대조 close)**: 입고검수 CANCELLED 분기에 ① PO status 롤백(`purchase_order_items` received/accepted/rejected 역산 + `line_status` 재계산 + `purchase_orders.status` RECEIVED/PARTIAL_RECEIVED/CONFIRMED 재산정 + `po_status_history` 기록) ② 재고 역분개를 received→**accepted_quantity 기준**으로 정밀화(거부분 과차감 방지, 동반수정) ③ 단일 `DB.batch()` 원자실행(#369 멱등가드 보존) ④ standalone(po_id NULL) 제외. 이슈 본문 "수정 방향"과 정확히 합치 → **close(completed)**. done 81→82, new 11→10, open 12→11(10 new + #372 reviewed).
+> - **이상 없음**: deploy 코드결함 failure 0. open auto-improve **11건**(#374·#379·#381·#382·#383·#384·#385·#386·#387·#388 10 new + #372 reviewed) stats 정합. baseline PASS. #382·#383(shell.js 정적에셋 트랩)은 open 유지 — build 산출 `shell.568a7995.js` + manifest 여전히 생성(런타임은 `?raw` 인라인이라 prod green, #383이 정확히 이 트랩을 추적 중, 신규 아님).
+> - 자동 수정 0건(파이프라인 정상·코드 무변경), 신규 이슈 0건, **#373 done-sync close**, HR/payroll 대량 churn 회귀 0 확인
+
 
 > **Area 6 자기 진화 (2026-06-12T12:00):**
 > - **방법**: baseline `npm ci`+`tsc --noEmit` PASS + build PASS(391 modules, _worker.js 5.12MB). GitHub open/closed 전수 대조 + 직전 사이클(Area 5, 06-12T08:30)이 플래그한 **#377·#378 done-sync 미완** 후속처리 + 컬럼오타 클래스 재발(create.ts) git 추적. **인프라 특이사항**: 컨테이너가 detached HEAD(99159a9)로 시작 + shallow clone(depth 94) → 로컬 `origin/main` 추적ref(4993fa7)가 stale로 "unrelated histories" 오인 유발. `git ls-remote --heads`로 **실제 refs/heads/main = 99159a9 확정**(working base와 동일) → 정상 fast-forward 경로 확인, force/merge 회피.
