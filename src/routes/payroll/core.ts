@@ -13,6 +13,8 @@ import {
   loadOvertimeSettings,
   calcDeductions,
   loadEmployeeDefaults,
+  loadAllEmployeeDefaults,
+  loadInsuranceRates,
 } from './shared'
 import { getEntityId, entityFilter } from '../../utils/entityFilter'
 
@@ -461,13 +463,16 @@ coreRouter.post('/batch', requireRole('ADMIN', 'MANAGER'), async (c) => {
       ).bind(...empIds).all<any>()
       for (const r of empRows || []) empRowMap.set(r.id, r)
     }
+    // #389: 직원별 N+1(PRAGMA+SELECT) 제거 — 고정수당/보험토글·요율을 루프 밖 1회 prefetch
+    const batchDefaultsMap = await loadAllEmployeeDefaults(c.env.DB, empIds)
+    const batchRatesCache = await loadInsuranceRates(c.env.DB, Number(payPeriod.slice(0, 4)))
     for (const emp of list) {
       // 이미 있으면 스킵
       if (existsSet.has(emp.id)) { skipped++; continue }
 
       // preview 로직 재사용 — 직원 고정수당 + 보험 토글을 기본값으로 반영
       const empRow = empRowMap.get(emp.id)
-      const empDefaults = await loadEmployeeDefaults(c.env.DB, emp.id)
+      const empDefaults = batchDefaultsMap.get(emp.id) || await loadEmployeeDefaults(c.env.DB, emp.id)
       const base_salary = Number(empRow?.base_salary || 0)
       const dependents = Math.max(1, Number(empRow?.dependents_count || 1))
       const taxOption = String(empRow?.income_tax_table_option || '100')
@@ -518,6 +523,7 @@ coreRouter.post('/batch', requireRole('ADMIN', 'MANAGER'), async (c) => {
         applyLongTermCare: empDefaults.insurance_apply_long_term_care,
         applyEmployment: empDefaults.insurance_apply_employment,
         applyIndustrialAccident: empDefaults.insurance_apply_industrial_accident,
+        ratesCache: batchRatesCache,
       })
       const fixed_other_deduction = empDefaults.mutual_aid_fee + empDefaults.other_deduction_fixed
       const net_pay = total_salary - d.total_deduction - fixed_other_deduction
@@ -551,14 +557,13 @@ coreRouter.post('/batch', requireRole('ADMIN', 'MANAGER'), async (c) => {
     }
 
     // 스킵된 직원 이름 함께 반환 (UX 개선)
+    // #390: existsSet(실제 스킵 ID)으로 조회 — 기존 pay_period 전체 조회는 created까지 포함해 과대보고
     let skippedNames: string[] = []
-    if (skipped > 0) {
-      const { results: skippedRows } = await c.env.DB.prepare(`
-        SELECT e.name
-        FROM payroll p
-        JOIN employees e ON p.employee_id = e.id
-        WHERE p.pay_period = ? AND e.status = 'ACTIVE'
-      `).bind(payPeriod).all<{ name: string }>()
+    if (existsSet.size > 0) {
+      const sph = [...existsSet].map(() => '?').join(',')
+      const { results: skippedRows } = await c.env.DB.prepare(
+        `SELECT name FROM employees WHERE id IN (${sph})`
+      ).bind(...existsSet).all<{ name: string }>()
       skippedNames = (skippedRows || []).map((r: any) => r.name)
     }
 
@@ -651,6 +656,9 @@ coreRouter.post('/sync-attendance', requireRole('ADMIN', 'MANAGER'), async (c) =
       for (const a of (aggRows || [])) aggMap[a.employee_id as number] = a
 
       const syncYear = Number(payPeriod.slice(0, 4)) || new Date().getFullYear()
+      // #389: 직원별 N+1(PRAGMA+SELECT·요율) 제거 — 루프 밖 1회 prefetch
+      const syncDefaultsMap = await loadAllEmployeeDefaults(c.env.DB, targetList.map((t: any) => Number(t.employee_id)))
+      const syncRatesCache = await loadInsuranceRates(c.env.DB, syncYear)
       const syncStmts: D1PreparedStatement[] = []
       for (const t of targetList) {
         const agg = aggMap[t.employee_id as number]
@@ -717,7 +725,7 @@ coreRouter.post('/sync-attendance', requireRole('ADMIN', 'MANAGER'), async (c) =
         const nontax = Number(t.nontax_meal || 0) + Number(t.nontax_transport || 0) + Number(t.nontax_childcare || 0)
         const taxable_pay = total_salary - nontax
 
-        const empDefaults = await loadEmployeeDefaults(c.env.DB, t.employee_id)
+        const empDefaults = syncDefaultsMap.get(Number(t.employee_id)) || await loadEmployeeDefaults(c.env.DB, t.employee_id)
         const d = await calcDeductions(c.env.DB, {
           taxablePay: taxable_pay,
           dependents: Math.max(1, Number(t.dependents_count || 1)),
@@ -728,6 +736,7 @@ coreRouter.post('/sync-attendance', requireRole('ADMIN', 'MANAGER'), async (c) =
           applyLongTermCare: empDefaults.insurance_apply_long_term_care,
           applyEmployment: empDefaults.insurance_apply_employment,
           applyIndustrialAccident: empDefaults.insurance_apply_industrial_accident,
+          ratesCache: syncRatesCache,
         })
         const otherDeduction = Number(t.other_deduction || 0)
         const total_deduction = d.total_deduction + otherDeduction

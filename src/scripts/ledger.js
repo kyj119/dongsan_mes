@@ -1033,38 +1033,8 @@ async function loadPurchaseClientLedger(clientId) {
             if ((d.transactions || []).length === 0) {
                 txBody.innerHTML = '<tr><td colspan="6" class="text-center py-10"><i class="fas fa-receipt text-3xl mb-2 block text-gray-300"></i><div class="text-sm text-gray-400">거래 내역이 없습니다</div></td></tr>';
             }
-
-            var pBody = document.getElementById('pPaymentsBody');
-            if (!pBody) { console.warn('[ledger] #pPaymentsBody not found'); return; }
-            pBody.innerHTML = '';
-            var payments = d.payments || [];
-            if (payments.length === 0) {
-                pBody.innerHTML = '<tr><td colspan="7" class="text-center py-10"><i class="fas fa-coins text-3xl mb-2 block text-gray-300"></i><div class="text-sm text-gray-400">지급 내역이 없습니다</div></td></tr>';
-            } else {
-                payments.forEach(function(p) {
-                    var row = document.createElement('tr');
-                    row.className = 'hover:bg-gray-50';
-                    row.innerHTML =
-                        '<td class="px-4 py-2">' + (p.payment_date || '') + '</td>' +
-                        '<td class="px-4 py-2 text-right font-medium text-green-700">' + (p.amount || 0).toLocaleString() + '원</td>' +
-                        '<td class="px-4 py-2">' + (p.payment_method || '-') + '</td>' +
-                        '<td class="px-4 py-2 text-gray-500">' + (p.reference_number || '-') + '</td>' +
-                        '<td class="px-4 py-2 text-gray-500">' + (p.notes || '-') + '</td>' +
-                        '<td class="px-4 py-2 text-gray-500">' + (p.created_by_name || '-') + '</td>' +
-                        '<td class="px-4 py-2 text-center act-col">' +
-                        '<button onclick="editPurchasePayment(this)" ' +
-                        'data-id="' + p.id + '" ' +
-                        'data-date="' + (p.payment_date || '') + '" ' +
-                        'data-amount="' + (p.amount || 0) + '" ' +
-                        'data-method="' + (p.payment_method || '계좌이체') + '" ' +
-                        'data-ref="' + (p.reference_number || '') + '" ' +
-                        'data-notes="' + (p.notes || '') + '" ' +
-                        'class="text-blue-500 hover:text-blue-700 mr-2 text-sm"><i class="fas fa-edit"></i></button>' +
-                        '<button onclick="deletePurchasePayment(' + p.id + ', ' + (p.amount || 0) + ')" class="text-red-500 hover:text-red-700 text-sm"><i class="fas fa-trash"></i></button>' +
-                        '</td>';
-                    pBody.appendChild(row);
-                });
-            }
+            // #376: dead pPaymentsBody 렌더 블록 제거 — 백엔드 미반환(d.payments 없음)·요소 부재.
+            //        지급 내역은 통합 #pTransactionsBody(발주/지급 뱃지)에 이미 표시됨.
         }
     } catch (e) {
         console.error('Purchase client ledger error:', e);

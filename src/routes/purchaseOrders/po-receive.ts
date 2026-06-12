@@ -121,6 +121,25 @@ poReceiveRouter.post('/:id/receive', async (c) => {
     let summaryAccepted = 0
     let summaryRejected = 0
 
+    // #389: inventory/items 건별 조회 N+1 제거 — item_ids로 IN-prefetch (루프 내 재고 쓰기 없음 → 등가)
+    const poEntityIdPrefetch = getEntityId(c) || 1
+    const recvItemIds = [...new Set(
+      receiveItems.map((ri: any) => poItemMap.get(ri.po_item_id)?.item_id).filter((x: any) => x != null)
+    )] as number[]
+    const invQtyMap = new Map<number, number>()
+    const itemZoneMap = new Map<number, number | null>()
+    if (recvItemIds.length > 0) {
+      const iph = recvItemIds.map(() => '?').join(',')
+      const { results: invRows } = await c.env.DB.prepare(
+        `SELECT item_id, quantity FROM inventory WHERE entity_id = ? AND item_id IN (${iph})`
+      ).bind(poEntityIdPrefetch, ...recvItemIds).all<{ item_id: number; quantity: number }>()
+      for (const r of (invRows || [])) invQtyMap.set(Number(r.item_id), Number(r.quantity))
+      const { results: zoneRows } = await c.env.DB.prepare(
+        `SELECT id, storage_zone_id FROM items WHERE id IN (${iph})`
+      ).bind(...recvItemIds).all<{ id: number; storage_zone_id: number | null }>()
+      for (const r of (zoneRows || [])) itemZoneMap.set(Number(r.id), r.storage_zone_id ?? null)
+    }
+
     for (const ri of receiveItems) {
       const poItem = poItemMap.get(ri.po_item_id)!
       const receiveQty: number = Number(ri.received_quantity ?? ri.quantity ?? 0)
@@ -132,21 +151,18 @@ poReceiveRouter.post('/:id/receive', async (c) => {
 
       let balanceAfter = 0
       let hasInventoryRow = false
-      const poEntityId = getEntityId(c) || 1
+      const poEntityId = poEntityIdPrefetch
       if (poItem.item_id && acceptedQty > 0) {
-        const invRow = await c.env.DB.prepare(
-          `SELECT quantity FROM inventory WHERE item_id = ? AND entity_id = ?`
-        ).bind(poItem.item_id, poEntityId).first<{ quantity: number }>()
-        const currentStock = Number(invRow?.quantity || 0)
-        hasInventoryRow = !!invRow
+        // #389: prefetch된 inventory 맵 사용 (루프 내 재고 미변경 → 건별 조회와 동일)
+        hasInventoryRow = invQtyMap.has(poItem.item_id as number)
+        const currentStock = invQtyMap.get(poItem.item_id as number) || 0
         balanceAfter = currentStock + acceptedQty
       }
 
-      // 품목의 storage_zone_id 미리 조회 (batch 안에서 await 방지)
+      // 품목의 storage_zone_id (#389: prefetch된 items 맵 사용)
       let itemZoneId: number | null = null
       if (poItem.item_id && !hasInventoryRow) {
-        const zRow = await c.env.DB.prepare('SELECT storage_zone_id FROM items WHERE id = ?').bind(poItem.item_id).first<{ storage_zone_id: number | null }>()
-        itemZoneId = zRow?.storage_zone_id ?? null
+        itemZoneId = itemZoneMap.get(poItem.item_id as number) ?? null
       }
 
       perItemPrep.push({

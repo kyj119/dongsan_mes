@@ -1,8 +1,4 @@
-﻿// Skeleton loading
-(function() {
-  var el = document.getElementById('pendingTableBody');
-  if (el && window.dsSkeleton) el.innerHTML = dsSkeleton.table(5, 6);
-})();
+﻿// #376: dead 스켈레톤 IIFE 제거 — pendingTableBody 부재(카드형 poCardList 사용)
 
 var currentTab = 'pending';
 var pendingPage = 1;

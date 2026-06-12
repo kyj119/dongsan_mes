@@ -154,6 +154,8 @@ export interface CalcInput {
   applyLongTermCare?: boolean
   applyEmployment?: boolean
   applyIndustrialAccident?: boolean
+  // #389: 일괄 처리 시 year별 요율을 미리 1회 로드해 주입(루프 N+1 제거). 미지정이면 매 호출 조회(하위호환).
+  ratesCache?: Record<string, InsuranceRate>
 }
 
 export interface CalcResult {
@@ -251,6 +253,17 @@ export async function lookupIncomeTax(db: D1Database, year: number, monthlyPay: 
   return { tax: calcOfficialMonthlyTax(monthlyPay, safeDeps), rowId: null }
 }
 
+/** #389: 연도별 4대보험 요율 맵 로드(일괄 처리 시 루프 밖 1회 호출 후 calcDeductions input.ratesCache로 주입). */
+export async function loadInsuranceRates(db: D1Database, year: number): Promise<Record<string, InsuranceRate>> {
+  const ratesRow = await db.prepare(
+    `SELECT insurance_type, total_rate, employee_rate, employer_rate, base, min_base, max_base
+     FROM insurance_rates WHERE year = ?`
+  ).bind(year).all<InsuranceRate>().catch(() => ({ results: [] as InsuranceRate[] }))
+  const rates: Record<string, InsuranceRate> = {}
+  for (const r of (ratesRow.results || [])) rates[r.insurance_type] = r
+  return rates
+}
+
 export async function calcDeductions(db: D1Database, input: CalcInput): Promise<CalcResult> {
   const { taxablePay, dependents, taxOption, year } = input
   // 토글: 명시되지 않으면 true (적용) — 기존 호출자 하위호환
@@ -260,13 +273,8 @@ export async function calcDeductions(db: D1Database, input: CalcInput): Promise<
   const applyEi = input.applyEmployment !== false
   const applyIa = input.applyIndustrialAccident !== false
 
-  // 1) 4대보험 요율 조회
-  const ratesRow = await db.prepare(
-    `SELECT insurance_type, total_rate, employee_rate, employer_rate, base, min_base, max_base
-     FROM insurance_rates WHERE year = ?`
-  ).bind(year).all<InsuranceRate>().catch(() => ({ results: [] as InsuranceRate[] }))
-  const rates: Record<string, InsuranceRate> = {}
-  for (const r of (ratesRow.results || [])) rates[r.insurance_type] = r
+  // 1) 4대보험 요율 조회 (#389: 주입된 ratesCache 우선, 미지정 시 조회 — 하위호환·동일 결과)
+  const rates: Record<string, InsuranceRate> = input.ratesCache ?? await loadInsuranceRates(db, year)
 
   // 2) 국민연금 — 상하한 적용
   let pensionBase = taxablePay
@@ -384,4 +392,50 @@ export async function loadEmployeeDefaults(db: D1Database, employeeId: number): 
     }
   } catch (_) { /* 컬럼 없음 — defaults 그대로 */ }
   return defaults
+}
+
+// #389: loadEmployeeDefaults의 일괄 버전 — PRAGMA 1회 + employees IN절 1회로 N+1 제거.
+// 직원별 호출과 결과 동일(같은 컬럼 가드·기본값 fallback). 미존재 id는 Map에서 누락 → 호출부에서 defaults 사용.
+export async function loadAllEmployeeDefaults(db: D1Database, employeeIds: number[]): Promise<Map<number, EmployeeDefaults>> {
+  const map = new Map<number, EmployeeDefaults>()
+  const ids = [...new Set(employeeIds)].filter((id) => id != null)
+  if (ids.length === 0) return map
+  const mkDefaults = (): EmployeeDefaults => ({
+    position_allowance: 0, vehicle_allowance: 0, meal_allowance_fixed: 0,
+    special_bonus_fixed: 0, other_allowance_fixed: 0, mutual_aid_fee: 0, other_deduction_fixed: 0,
+    insurance_apply_national_pension: true, insurance_apply_health: true,
+    insurance_apply_long_term_care: true, insurance_apply_employment: true,
+    insurance_apply_industrial_accident: true,
+  })
+  const pickNum = ['position_allowance','vehicle_allowance','meal_allowance_fixed','special_bonus_fixed','other_allowance_fixed','mutual_aid_fee','other_deduction_fixed']
+  const pickBool = ['insurance_apply_national_pension','insurance_apply_health','insurance_apply_long_term_care','insurance_apply_employment','insurance_apply_industrial_accident']
+  try {
+    const { results: colInfo } = await db.prepare(`PRAGMA table_info(employees)`).all()
+    const cols = new Set((colInfo as { name: string }[]).map((r) => r.name))
+    const selectable = [...pickNum, ...pickBool].filter((c) => cols.has(c))
+    if (selectable.length === 0) {
+      for (const id of ids) map.set(id, mkDefaults())
+      return map
+    }
+    const ph = ids.map(() => '?').join(',')
+    const { results: rows } = await db.prepare(
+      `SELECT id, ${selectable.join(', ')} FROM employees WHERE id IN (${ph})`
+    ).bind(...ids).all<any>()
+    const rowById = new Map<number, any>()
+    for (const r of (rows || [])) rowById.set(Number(r.id), r)
+    for (const id of ids) {
+      const d = mkDefaults()
+      const row = rowById.get(id)
+      if (row) {
+        const dd = d as unknown as Record<string, number | boolean>
+        for (const k of pickNum) { if (row[k] != null) dd[k] = Number(row[k]) || 0 }
+        for (const k of pickBool) { if (row[k] != null) dd[k] = Number(row[k]) === 1 }
+      }
+      map.set(id, d)
+    }
+  } catch (_) {
+    // 조회 실패 — 전부 defaults (loadEmployeeDefaults 동작과 동일)
+    for (const id of ids) if (!map.has(id)) map.set(id, mkDefaults())
+  }
+  return map
 }
