@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 2 -->
-<!-- last_run_at: 2026-06-12T21:00:00+09:00 -->
+<!-- last_run_area: 3 -->
+<!-- last_run_at: 2026-06-13T01:00:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,7 +8,7 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | 13 (open auto-improve **재실측 06-12T21:00 Area 2** — #391·#390·#389 신규 3건 추가 + #388·#387·#386·#385·#384·#383·#382·#381·#379·#374. → open 14건 = 13 new + #372 reviewed) |
+| 🆕 new | 13 (open auto-improve **재실측 06-13T01:00 Area 3** — #391·#390·#389·#388·#387·#386·#385·#384·#383·#382·#381·#379·#374. → open 14건 = 13 new + #372 reviewed. Area 3 net-new 0건·done-sync 0건이라 카운트 불변, GitHub 실측 14건 정합) |
 | ✅ approved | 0 (직전 approved #342/#340 모두 done 확정·이관 — Area 6 검증 완료) |
 | 👀 reviewed | 1 (#372 CSV truncation — owner 코멘트 "3번으로 진행, 최대 5000 제한" 06-11T00:25. ⚠️**모호**: #372 3번=페이지네이션 스트리밍(전량)인데 "5000 제한 유지"와 모순 → 구현 전 의도 확인 필요. 승인처리 워크플로우 대상) |
 | ✔️ done | 82 (81 + **#373 done-sync (Area 1 본 사이클)**: 커밋 `4adc9b1`이 입고검수 CANCELLED 분기에 PO status 롤백(received/accepted/rejected 역산 + line_status·purchase_orders.status 재산정 + po_status_history) + 재고 역분개를 accepted_quantity 기준으로 정밀화 + 단일 batch 원자실행(#369 멱등가드 보존) → RECEIVED 영구잔류·재입고 차단 해소. standalone(po_id NULL) 제외. 코드 직접 대조 close) |
@@ -16,6 +16,14 @@
 
 > 📦 **과거 사이클 로그**(아래 6블록 이전분)는 `IMPROVEMENT_BACKLOG_ARCHIVE.md`로 이관됨 (2026-06-10 정리). 신규 로그는 계속 이 파일 상단에 추가.
 
+> **Area 3 UX/기능 감사 (2026-06-13T01:00):**
+> - **방법**: baseline `npm ci`+`tsc --noEmit` PASS + build PASS(392 modules, _worker.js 5.14MB). HEAD=remote main=`46cf5cf`(PM3 급여 후속·이슈 #392/#393), clean tree. Area 3 **10회차** — 시의성(최근 churn: 급여/HR 대량 — Phase 1b 고정연장 분해 3704abf·급여대장·근태연동·공휴일달력) + 신선 각도(프론트↔API 필드 라운드트립·getElementById silent-fail·빈상태·cross-page 네비·변경후갱신·검색필터) 병렬 Explore 2개(급여/HR + 대시보드/흐름). 발견 전수 owner 직접 코드 Read 검증.
+> - **🟢 net-new 0건 — 두 Explore 모두 오탐만 산출, Area 3 성숙 확정**:
+>   - **🚫 서브에이전트 오탐 2건 차단(owner 직접 코드 반증)**: ① **급여 폼 필드명 round-trip 데이터손실 "HIGH"** → Explore A가 폼이 `meal`/`transport`로 보내는데 편집로드는 `meal_allowance`/`transportation_allowance`로 읽어 "저장 시 손실"이라 보고(자기모순 — 본문에 "필드명 맞음 ✓"이라 적고도 보고). **반증**: save 핸들러 `core.ts:294` `body.meal != null ? Number(body.meal) : ...` → `meal_allowance` 컬럼 저장. **폼키(`meal`)→서버 read(`body.meal`)→DB컬럼(`meal_allowance`)→편집로드(`p.meal_allowance`)** 4단계 라운드트립 전부 정합 = 정상(서버가 단축키 변환). → 드롭(SKILL Area 3 FP codify). ② **주문→카드 cross-page 네비게이션 "부재 MED"** → Explore B가 `orders.ts` 목록표에 카드 링크 없다고 보고. **반증**: 주문 상세모달 `orders.js:989`에 `<button onclick="location.href='/cards?search='+order.order_number">카드 현황</button>`이 status 조건부(CONFIRMED/PRINTING/PRINT_DONE/SHIPPED) 존재. 링크는 정적 page.ts 테이블이 아니라 JS-렌더 상세모달에 있음 → 드롭(SKILL Area 3 FP codify).
+>   - **🔵 clean 검증**: ① **getElementById silent-fail**: payroll.js 58개 ID 전수 → 전부 `payroll.ts`에 정적 `id="..."` 존재(0 누락). dashboard.js 위험 ID(dashPendingReview·overduePoCount·equipUtilization 등) 전부 page 실존. ② **빈상태**: payroll(payroll.js:80 "급여 내역 없음"+`+일괄생성` CTA)·orders(orders.js:406 inbox)·cards(cards/core.js:260/268 "진행중인 카드 없음·주문확정 시 자동생성")·dashboard(9섹션 ds-empty) 전부 처리. ③ **변경후갱신**: orders bulk/status·shipments confirmShip·payroll save 후 load 호출 정합. ④ **검색/필터**: 거래처(name/brn/phone/keyword)·주문/출고/세금계산서 date_from~to+status 완비. ⑤ **대시보드 KPI**: 8카드 `/api/dashboard/stats` 응답 매칭, 납기준수율 라벨 "납기 기준"(A-018 정정 유지).
+> - **이상 없음**: open auto-improve **14건**(#374·#379·#381~#391 13 new + #372 reviewed) GitHub 실측 정합. baseline PASS. 최근 Phase 1b(3704abf)는 preview/save 고정연장 분해만 변경 — #390 skipped_names 쿼리(core.ts:556) 미변경 = done-sync 없음. #392/#393(보험 신고서)은 PM3 owner 직접 등록(auto-improve 라벨 아님, 본 사이클 무관).
+> - 자동 수정 0건(net-new 없음), 신규 이슈 0건, done-sync 0건, 서브에이전트 오탐 2건 차단(필드 라운드트립 오독·상세모달 링크 미확인), SKILL Area 3 FP 탐지규칙 2건 codify
+>
 > **Area 2 코드 품질 (2026-06-12T21:00):**
 > - **방법**: baseline `npm ci`+`tsc --noEmit` PASS + build PASS(392 modules, _worker.js 5.14MB). HEAD=remote main=`503573c`(휴일 날짜파생 단일소스), clean tree. Area 2 **11회차** — 시의성(최근 churn: 휴일/근태/급여 대량 — 503573c·1c137ae·b77d1e2·447d9ca·3f5c799·b79f61c) + 전수 스캔(존재X컬럼·entity_id INSERT·N+1·authMiddleware·best-effort catch) 병렬 Explore 2개. 발견 전수 owner 직접 코드 Read + migrations ground-truth 대조.
 > - **🟡 신규 이슈 #389 (improvement, small) — 급여 batch/sync-attendance N+1 (#350 잔여)**: `payroll/core.ts:414`(batch)·`:664`(sync) 루프 내 `loadEmployeeDefaults`(shared.ts:350 = **PRAGMA table_info + SELECT WHERE id=? 매 호출**) + `calcDeductions`(shared.ts:264 insurance_rates `WHERE year=?`, year는 batch 내 상수) 미hoist. #350이 exists/empRow/근태집계는 IN-prefetch했으나 loadEmployeeDefaults 누락. 직원 100명 = batch당 ~300+ 왕복. **월 필수** 작업이라 #379(printSystem setup, 저빈도)보다 발화 빈도 높음. 동일 클래스 추가 위치: `po-receive.ts:124-162`(입고 품목당 inventory+items.storage_zone_id SELECT, LOW). **자동수정 안 함**: 급여=재무 핵심계산, prefetch가 컬럼가드·fallback 시맨틱 정확 복제 필요 + egress 검증불가(#379 동일 판정).

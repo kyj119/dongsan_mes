@@ -93,6 +93,10 @@ description: 자율 점검·개선 에이전트. 6개 영역을 순환하며 실
 
 **자동 수정 불가** — IMPROVEMENT_BACKLOG.md에 구체적 제안 기록
 
+> **🚫 오탐 — 프론트 필드명 ≠ DB 컬럼명 "round-trip 데이터 손실" (Area 3 2026-06-12, 11회차)**: 폼 payload가 `meal`/`transport`로 보내는데 편집모달 로드는 `meal_allowance`/`transportation_allowance`로 읽으면 "필드명 불일치 → 저장 시 데이터 손실"로 보고하기 전, **서버 핸들러의 매핑을 확인**. 이 코드베이스는 `core.ts:294` `body.meal != null ? Number(body.meal) : ...` → `meal_allowance` 컬럼에 저장하는 식으로 **프론트 단축필드(`meal`) → 서버 read(`body.meal`) → DB 컬럼(`meal_allowance`) → 편집로드(`p.meal_allowance`)** 전체 라운드트립이 정합. 프론트 전송키와 DB 컬럼명이 다른 건 정상 패턴(서버가 변환). **보고 전 확인**: ① 폼이 보내는 키(`prGetFormPayload`) ② 서버 save 핸들러가 그 키를 읽는지(`body.<키>`) ③ 저장 컬럼 ④ 편집로드가 그 컬럼을 읽는지 — 4단계 전부 추적해야 "손실"인지 판정 가능. 한쪽(전송키 vs 로드키)만 보고 불일치 단정 금지(서브에이전트가 자기모순으로 "필드명 맞음 ✓"이라 적고도 HIGH 보고한 사례 차단).
+
+> **🚫 오탐 — "페이지 간 네비게이션 링크 부재" (Area 3 2026-06-12, 11회차)**: 주문→카드, 출고→회계반영 등 cross-page 진입 링크가 "없다"고 보고하기 전, **pages/*.ts 정적 템플릿뿐 아니라 scripts/*.js의 JS-렌더 상세모달·액션버튼까지** grep. 이 코드베이스의 cross-page 링크는 대부분 **목록 행이 아니라 상세모달/액션버튼**에 있음 — 예: orders 목록표(`orders.ts`)엔 카드 링크가 없지만 주문 상세모달(`orders.js:989`)에 `<button onclick="location.href='/cards?search='+order.order_number">카드 현황</button>`이 status 조건부로 존재. **보고 전 확인**: `grep -rn "/cards\|/tax-invoices" src/scripts src/pages`로 **양쪽 전수** 후에도 0건일 때만 보고. 서브에이전트가 page.ts 테이블만 보고 "링크 없음"으로 오독한 사례 차단(상세모달 미확인).
+
 ---
 
 ### 🔵 Area 4: 데이터 정합성
