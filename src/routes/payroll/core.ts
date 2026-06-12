@@ -573,6 +573,8 @@ coreRouter.post('/sync-attendance', requireRole('ADMIN', 'MANAGER'), async (c) =
           SUM(CASE WHEN attendance_type = 'LATE' THEN 1 ELSE 0 END) as late_count,
           SUM(CASE WHEN attendance_type = 'VACATION' OR status = 'VACATION' THEN 1 ELSE 0 END) as leave_used_days,
           SUM(COALESCE(overtime_hours, 0)) as total_overtime,
+          SUM(COALESCE(holiday_work_hours, 0)) as total_holiday,
+          SUM(COALESCE(caps_night_min, 0)) / 60.0 as total_night,
           SUM(COALESCE(work_hours, 0)) as total_work_hours
         FROM attendance
         WHERE employee_id IN (${aggPh})
@@ -590,22 +592,25 @@ coreRouter.post('/sync-attendance', requireRole('ADMIN', 'MANAGER'), async (c) =
         const absent_days = Number(agg?.absent_days || 0)
         const late_count = Number(agg?.late_count || 0)
         const leave_used_days = Number(agg?.leave_used_days || 0)
-        const extraOT = Number(agg?.total_overtime || 0)   // 실제 근태 연장시간
+        const extraOT = Number(agg?.total_overtime || 0)    // 실제 근태 연장시간
+        const nightHrs = Number(agg?.total_night || 0)      // 야간근로시간 (caps_night_min/60)
+        const holidayHrs = Number(agg?.total_holiday || 0)  // 휴일근로시간
 
         const empBase = Number(t.emp_base || 0)
         const fixedOTHours = Number(t.odh || 0) * Number(t.owd || 22)
 
-        // 연장수당 + 기본급 분해 재계산
+        // 연장/야간/휴일수당 + 기본급 분해 재계산 (야간·휴일은 근태 기준 가산)
         let newBase: number, overtime_pay: number, overtime_hours: number
+        let nightPay: number, holidayPay: number
         if (fixedOTHours > 0) {
-          // 고정연장(포괄임금): 통상시급(÷225.5) 기준 분해 + 추가연장 가산
+          // 고정연장(포괄임금): 통상시급(÷225.5) 기준 분해 + 추가연장/야간/휴일 가산
           const inc = calcInclusivePay({
             inclusiveBase: empBase,
             baseMonthlyHours: otSettings.monthlyWorkHours,
             fixedOTHours,
             extraOTHours: extraOT,
-            nightHours: 0,
-            holidayHours: 0,
+            nightHours: nightHrs,
+            holidayHours: holidayHrs,
             overtimeMul: otSettings.overtimeMul,
             nightMul: otSettings.nightMul,
             holidayMul: otSettings.holidayMul,
@@ -614,14 +619,16 @@ coreRouter.post('/sync-attendance', requireRole('ADMIN', 'MANAGER'), async (c) =
           newBase = inc.regular_base
           overtime_pay = inc.overtime_pay
           overtime_hours = inc.overtime_hours
+          nightPay = inc.night_pay
+          holidayPay = inc.holiday_pay
         } else {
-          // 일반 직원: 기본급 그대로 + 근태 연장만 가산
+          // 일반 직원: 기본급 그대로 + 근태 연장/야간/휴일 가산
           const ot = calcOvertimePay({
             baseSalary: empBase,
             monthlyWorkHours: otSettings.monthlyWorkHours,
             overtimeHours: extraOT,
-            nightHours: 0,
-            holidayHours: 0,
+            nightHours: nightHrs,
+            holidayHours: holidayHrs,
             overtimeMul: otSettings.overtimeMul,
             nightMul: otSettings.nightMul,
             holidayMul: otSettings.holidayMul,
@@ -630,11 +637,11 @@ coreRouter.post('/sync-attendance', requireRole('ADMIN', 'MANAGER'), async (c) =
           newBase = empBase
           overtime_pay = ot.overtime_pay
           overtime_hours = extraOT
+          nightPay = ot.night_pay
+          holidayPay = ot.holiday_pay
         }
 
-        // 총급여/과세/공제/실지급 일관 재계산 (저장된 수당 + 재계산 연장 기준)
-        const nightPay = Number(t.night_pay || 0)
-        const holidayPay = Number(t.holiday_pay || 0)
+        // 총급여/과세/공제/실지급 일관 재계산 (고정수당 + 재계산 연장/야간/휴일)
         const meal = Number(t.meal_allowance || 0)
         const transport = Number(t.transportation_allowance || 0)
         const otherAllow = Number(t.other_allowance || 0)
@@ -664,6 +671,7 @@ coreRouter.post('/sync-attendance', requireRole('ADMIN', 'MANAGER'), async (c) =
           c.env.DB.prepare(`
             UPDATE payroll
             SET base_salary = ?, overtime_hours = ?, overtime_pay = ?,
+                night_pay = ?, holiday_pay = ?,
                 work_days = ?, absent_days = ?, late_count = ?, leave_used_days = ?,
                 taxable_pay = ?, total_salary = ?,
                 national_pension = ?, health_insurance = ?, long_term_care_insurance = ?,
@@ -675,6 +683,7 @@ coreRouter.post('/sync-attendance', requireRole('ADMIN', 'MANAGER'), async (c) =
             WHERE id = ?
           `).bind(
             newBase, overtime_hours, overtime_pay,
+            nightPay, holidayPay,
             work_days, absent_days, late_count, leave_used_days,
             taxable_pay, total_salary,
             d.national_pension, d.health_insurance, d.long_term_care_insurance,

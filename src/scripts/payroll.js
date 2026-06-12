@@ -124,7 +124,7 @@ window.payrollLoad = async function() {
         '<td class="px-2 py-2 text-center"><input type="checkbox" onchange="payrollToggleRow(' + r.id + ', this.checked)" ' + (prSelected[r.id] ? 'checked' : '') + '></td>' +
         '<td class="px-3 py-2">' + escapeHtml(r.employee_code || '') + '</td>' +
         '<td class="px-3 py-2 font-medium">' + escapeHtml(r.employee_name || '') + syncedMark + '</td>' +
-        '<td class="px-3 py-2 text-xs text-gray-600">' + escapeHtml(r.department || '') + ' / ' + escapeHtml(r.position || '') + '</td>' +
+        '<td class="px-3 py-2 text-xs text-gray-600">' + escapeHtml(prDeptLabel(r.department)) + ' / ' + escapeHtml(prPosLabel(r.position)) + '</td>' +
         '<td class="px-3 py-2 text-right tabular-nums">' + fmtMoney(r.base_salary) + '</td>' +
         '<td class="px-3 py-2 text-right tabular-nums ' + (otHrs > 0 ? 'text-amber-700 font-medium' : 'text-gray-400') + '">' + otHrs.toFixed(1) + '</td>' +
         '<td class="px-3 py-2 text-right tabular-nums">' + fmtMoney(r.overtime_pay) + '</td>' +
