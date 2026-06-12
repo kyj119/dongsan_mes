@@ -48,7 +48,10 @@ export function recommendAssignedEntity(item: any, billingEntityId: number | nul
 // 품목 assigned_entity_id 별로 청구그룹을 (재)생성. NULL 담당 = 주(主)법인(orders.entity_id) 귀속.
 // 금액: supply = 그룹 품목 amount 합, tax/discount = 주문 vat/discount를 비례배분(주법인 잔차 흡수),
 //       billed_amount = supply + tax − discount(예상 청구액, billing_status=NULL).
-// ⚠️ 불변식: BILLED/PAID 그룹이 하나라도 있으면 재분할 금지(이미 발행된 세금계산서 보호) → 그대로 둠.
+// ⚠️ 동결(#387): BILLED/PAID 그룹(이미 발행된 세금계산서)은 그룹 단위로 보존하고, 미청구(NULL) 그룹만 재계산.
+//   기존엔 BILLED 그룹이 하나라도 있으면 주문 전체 재분할을 막아(order-wide freeze) 혼합주문 부분청구 후
+//   미청구 법인 품목 편집이 그룹에 반영 안 됐다 → 미청구 그룹만 현재 품목 기준 재산정.
+//   ★완전 미청구 주문(동결 그룹 0)은 기존과 byte-identical 동작(잔여=주문 총액, 전 그룹 재계산).
 // orders/order_items 만 읽어 자기완결적 → POST/PUT 양쪽에서 저장 직후 한 줄 호출.
 export async function recalcOrderBillingGroups(db: D1Database, orderId: number): Promise<void> {
   const order = await db.prepare(
@@ -57,11 +60,16 @@ export async function recalcOrderBillingGroups(db: D1Database, orderId: number):
   if (!order) return
   const mainEntity = Number(order.entity_id) || 1
 
-  // 동결: 이미 청구(BILLED/PAID)된 그룹이 있으면 품목 기준 재분할 금지(불변식)
+  // 동결 그룹 식별: BILLED/PAID는 보존, 그 법인은 재계산 대상에서 제외.
   const { results: existing } = await db.prepare(
-    `SELECT billing_status FROM order_billing_groups WHERE order_id = ?`
-  ).bind(orderId).all<{ billing_status: string | null }>()
-  if ((existing || []).some(g => g.billing_status === 'BILLED' || g.billing_status === 'PAID')) return
+    `SELECT entity_id, billing_status, supply_amount, tax_amount, billed_amount FROM order_billing_groups WHERE order_id = ?`
+  ).bind(orderId).all<{ entity_id: number; billing_status: string | null; supply_amount: number; tax_amount: number; billed_amount: number }>()
+  const frozen = (existing || []).filter(g => g.billing_status === 'BILLED' || g.billing_status === 'PAID')
+  const frozenEntities = new Set(frozen.map(g => Number(g.entity_id)))
+  // 동결분이 이미 가져간 세액/할인 = 주문 총액에서 차감 후 잔여를 미청구 그룹이 나눠 가짐.
+  const frozenTax = frozen.reduce((s, g) => s + Math.round(Number(g.tax_amount) || 0), 0)
+  const frozenDiscount = frozen.reduce((s, g) =>
+    s + (Math.round(Number(g.supply_amount) || 0) + Math.round(Number(g.tax_amount) || 0) - Math.round(Number(g.billed_amount) || 0)), 0)
 
   // 품목 → 법인별 집계 (assigned_entity_id NULL → 주법인). 자식/PENDING 품목은 amount=0 → 기여 0.
   const { results: rows } = await db.prepare(`
@@ -73,27 +81,31 @@ export async function recalcOrderBillingGroups(db: D1Database, orderId: number):
     GROUP BY COALESCE(assigned_entity_id, ?)
   `).bind(mainEntity, orderId, mainEntity).all<{ eid: number; supply: number; vat_base: number }>()
 
-  // 재생성(동결 아닌 경우만 도달): 기존 NULL상태 그룹 제거 후 새로 INSERT
-  await db.prepare(`DELETE FROM order_billing_groups WHERE order_id = ?`).bind(orderId).run()
-  if (!rows || rows.length === 0) return
+  // 미청구(NULL) 그룹만 제거(동결 그룹은 보존). 그 후 동결 안 된 법인만 현재 품목으로 재INSERT.
+  await db.prepare(
+    `DELETE FROM order_billing_groups WHERE order_id = ? AND (billing_status IS NULL OR billing_status NOT IN ('BILLED','PAID'))`
+  ).bind(orderId).run()
 
-  const totalSupply = rows.reduce((s, r) => s + Number(r.supply), 0)
-  const totalVatBase = rows.reduce((s, r) => s + Number(r.vat_base), 0)
-  const orderVat = Math.round(Number(order.vat_amount) || 0)
-  const orderDiscount = Math.round(Number(order.discount_amount) || 0)
+  const unbilledRows = (rows || []).filter(r => !frozenEntities.has(Number(r.eid)))
+  if (unbilledRows.length === 0) return
+
+  const totalSupply = unbilledRows.reduce((s, r) => s + Number(r.supply), 0)
+  const totalVatBase = unbilledRows.reduce((s, r) => s + Number(r.vat_base), 0)
+  const remVat = Math.round(Number(order.vat_amount) || 0) - frozenTax       // 미청구분이 나눠 가질 잔여 세액
+  const remDiscount = Math.round(Number(order.discount_amount) || 0) - frozenDiscount
 
   // 주법인 그룹을 마지막에 두어 라운딩 잔차 흡수(없으면 마지막 그룹이 흡수)
-  const ordered = [...rows].sort((a, b) => (a.eid === mainEntity ? 1 : 0) - (b.eid === mainEntity ? 1 : 0))
+  const ordered = [...unbilledRows].sort((a, b) => (a.eid === mainEntity ? 1 : 0) - (b.eid === mainEntity ? 1 : 0))
   let taxAcc = 0, discAcc = 0
   const stmts = ordered.map((r, i) => {
     const isLast = i === ordered.length - 1
     let tax: number, disc: number
     if (isLast) {
-      tax = orderVat - taxAcc
-      disc = orderDiscount - discAcc
+      tax = remVat - taxAcc
+      disc = remDiscount - discAcc
     } else {
-      tax = totalVatBase > 0 ? Math.round(orderVat * Number(r.vat_base) / totalVatBase) : 0
-      disc = totalSupply > 0 ? Math.round(orderDiscount * Number(r.supply) / totalSupply) : 0
+      tax = totalVatBase > 0 ? Math.round(remVat * Number(r.vat_base) / totalVatBase) : 0
+      disc = totalSupply > 0 ? Math.round(remDiscount * Number(r.supply) / totalSupply) : 0
       taxAcc += tax; discAcc += disc
     }
     const billed = Number(r.supply) + tax - disc
