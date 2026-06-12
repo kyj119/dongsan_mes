@@ -119,14 +119,16 @@ cashScheduleRouter.get('/schedule/export/csv', requireRole('ADMIN', 'MANAGER'), 
       LEFT JOIN clients c ON c.id = cs.client_id
       WHERE ${clauses.join(' AND ')}
       ORDER BY cs.schedule_date ASC, cs.flow_type DESC
-      LIMIT 5000
+      LIMIT 5001
     `).bind(...params).all()
+    const truncated = (results || []).length > 5000  // #372
+    const exportRows = truncated ? (results || []).slice(0, 5000) : (results || [])
 
     const flowLabels: Record<string, string> = { IN: '수입', OUT: '지출' }
     const statusLabels: Record<string, string> = { PENDING: '예정', DONE: '완료', OVERDUE: '연체' }
 
     const headers = ['예정일', '구분', '출처', '거래처', '내용', '금액', '상태']
-    const rows = (results || []).map((r: any) => [
+    const rows = exportRows.map((r: any) => [
       r.schedule_date || '',
       flowLabels[r.flow_type] || r.flow_type || '',
       r.source_type || '',
@@ -136,8 +138,8 @@ cashScheduleRouter.get('/schedule/export/csv', requireRole('ADMIN', 'MANAGER'), 
       statusLabels[r.status] || r.status || ''
     ])
 
-    const { generateCsv, csvResponse } = await import('../utils/csv')
-    return csvResponse(c, `자금계획_${new Date().toISOString().slice(0, 10)}.csv`, generateCsv(headers, rows))
+    const { generateCsv, csvResponse, CSV_TRUNCATION_NOTE } = await import('../utils/csv')
+    return csvResponse(c, `자금계획_${new Date().toISOString().slice(0, 10)}.csv`, generateCsv(headers, rows, { footerNote: truncated ? CSV_TRUNCATION_NOTE : undefined }))
   } catch (error) {
     console.error('cashSchedule CSV export error:', error)
     return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)

@@ -382,18 +382,20 @@ inspectionsRouter.get('/results/export/csv', async (c) => {
       LEFT JOIN users u ON ir.inspector_id = u.id
       LEFT JOIN inventory_receipts rec ON ir.receipt_id = rec.id
       ${w}
-      ORDER BY ir.inspected_at DESC LIMIT 5000
+      ORDER BY ir.inspected_at DESC LIMIT 5001
     `).bind(...p).all()
+    const truncated = (results || []).length > 5000  // #372
+    const exportRows = truncated ? (results || []).slice(0, 5000) : (results || [])
 
-    const { generateCsv, csvResponse } = await import('../utils/csv')
+    const { generateCsv, csvResponse, CSV_TRUNCATION_NOTE } = await import('../utils/csv')
     const labelMap: Record<string, string> = { PASSED: '합격', FAILED: '불합격', PARTIAL: '부분합격' }
     const headers = ['검수일시', '입고번호', '공급업체', '검수자', '결과', '비고']
-    const rows = (results || []).map((r: any) => [
+    const rows = exportRows.map((r: any) => [
       (r.inspected_at || '').slice(0, 16).replace('T', ' '),
       r.receipt_number || '', r.supplier_name || '', r.inspector_name || '',
       labelMap[r.overall_result] || r.overall_result || '', r.notes || ''
     ])
-    return csvResponse(c, `검수결과_${new Date().toISOString().slice(0, 10)}.csv`, generateCsv(headers, rows))
+    return csvResponse(c, `검수결과_${new Date().toISOString().slice(0, 10)}.csv`, generateCsv(headers, rows, { footerNote: truncated ? CSV_TRUNCATION_NOTE : undefined }))
   } catch (error) {
     console.error('inspections CSV export error:', error)
     return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)

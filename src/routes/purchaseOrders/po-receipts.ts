@@ -48,9 +48,11 @@ poReceiptsRouter.get('/receipts/export/csv', async (c) => {
       params.push(p, p, p)
     }
     if (whereClauses.length > 0) query += ' WHERE ' + whereClauses.join(' AND ')
-    query += ' ORDER BY ir.created_at DESC LIMIT 5000'
+    query += ' ORDER BY ir.created_at DESC LIMIT 5001'  // #372: 캡+1 조회로 잘림 감지
 
     const { results } = await c.env.DB.prepare(query).bind(...params).all()
+    const truncated = (results || []).length > 5000
+    const exportRows = truncated ? (results || []).slice(0, 5000) : (results || [])
 
     const inspLabels: Record<string, string> = {
       NORMAL: '정상', PENDING_REVIEW: '확인대기', WAITING_RESHIP: '재입고대기',
@@ -58,7 +60,7 @@ poReceiptsRouter.get('/receipts/export/csv', async (c) => {
     }
 
     const headers = ['입고번호', '입고일', '발주번호', '공급업체', '검수상태', '품목수', '합격수량', '불합격수량', '검수자', '비고']
-    const rows = (results || []).map((r: any) => [
+    const rows = exportRows.map((r: any) => [
       r.receipt_number || '',
       (r.receipt_date || '').slice(0, 10),
       r.po_number || '',
@@ -71,8 +73,8 @@ poReceiptsRouter.get('/receipts/export/csv', async (c) => {
       r.notes || ''
     ])
 
-    const { generateCsv, csvResponse } = await import('../../utils/csv')
-    return csvResponse(c, `입고이력_${new Date().toISOString().slice(0, 10)}.csv`, generateCsv(headers, rows))
+    const { generateCsv, csvResponse, CSV_TRUNCATION_NOTE } = await import('../../utils/csv')
+    return csvResponse(c, `입고이력_${new Date().toISOString().slice(0, 10)}.csv`, generateCsv(headers, rows, { footerNote: truncated ? CSV_TRUNCATION_NOTE : undefined }))
   } catch (error) {
     console.error('receiving CSV export error:', error)
     return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)

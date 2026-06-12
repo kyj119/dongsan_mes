@@ -273,15 +273,17 @@ prRouter.get('/export/csv', async (c) => {
     if (date_to) { whereClauses.push('pr.created_at <= ?'); params.push(date_to + ' 23:59:59') }
 
     if (whereClauses.length > 0) query += ' WHERE ' + whereClauses.join(' AND ')
-    query += ' ORDER BY pr.created_at DESC LIMIT 5000'
+    query += ' ORDER BY pr.created_at DESC LIMIT 5001'  // #372: 캡+1 조회로 잘림 감지
 
     const { results } = await c.env.DB.prepare(query).bind(...params).all()
+    const truncated = (results || []).length > 5000
+    const exportRows = truncated ? (results || []).slice(0, 5000) : (results || [])
 
     const urgencyLabels: Record<string, string> = { LOW: '낮음', NORMAL: '보통', HIGH: '높음', URGENT: '긴급' }
     const statusLabels: Record<string, string> = { PENDING: '승인대기', APPROVED: '승인됨', REJECTED: '반려', CONVERTED: '발주전환' }
 
     const headers = ['요청번호', '요청일', '요청자', '공급처(추천)', '긴급도', '상태', '예상금액']
-    const rows = (results || []).map((r: any) => [
+    const rows = exportRows.map((r: any) => [
       r.request_number || '',
       (r.created_at || '').slice(0, 10),
       r.requester_name || '',
@@ -291,8 +293,8 @@ prRouter.get('/export/csv', async (c) => {
       r.total_amount || 0
     ])
 
-    const { generateCsv, csvResponse } = await import('../utils/csv')
-    return csvResponse(c, `발주요청_${new Date().toISOString().slice(0, 10)}.csv`, generateCsv(headers, rows))
+    const { generateCsv, csvResponse, CSV_TRUNCATION_NOTE } = await import('../utils/csv')
+    return csvResponse(c, `발주요청_${new Date().toISOString().slice(0, 10)}.csv`, generateCsv(headers, rows, { footerNote: truncated ? CSV_TRUNCATION_NOTE : undefined }))
   } catch (error) {
     console.error('purchaseRequests CSV export error:', error)
     return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)

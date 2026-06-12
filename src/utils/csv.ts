@@ -1,8 +1,19 @@
-export function generateCsv(headers: string[], rows: (string | number | null | undefined)[][]): string {
+// #372: CSV export silent truncation \uBC29\uC9C0 \u2014 \uCEA1 + \uC798\uB9BC \uC548\uB0B4 \uB2E8\uC77C \uC18C\uC2A4.
+//   \uAC01 export\uB294 LIMIT (CSV_EXPORT_CAP+1)\uB85C \uC870\uD68C \uD6C4 \uCD08\uACFC \uC2DC generateCsv\uC758 footerNote\uB85C \uC548\uB0B4\uD589 \uCD94\uAC00.
+export const CSV_EXPORT_CAP = 5000
+export const CSV_TRUNCATION_NOTE = `\u203B \uACB0\uACFC\uAC00 ${CSV_EXPORT_CAP}\uAC74\uC744 \uCD08\uACFC\uD558\uC5EC \uC77C\uBD80(${CSV_EXPORT_CAP}\uAC74)\uB9CC \uB0B4\uBCF4\uB0C8\uC2B5\uB2C8\uB2E4. \uAE30\uAC04/\uD544\uD130\uB97C \uC881\uD600 \uB2E4\uC2DC \uBC1B\uC73C\uC138\uC694.`
+
+export function generateCsv(
+  headers: string[],
+  rows: (string | number | null | undefined)[][],
+  opts?: { footerNote?: string }
+): string {
   const BOM = '\uFEFF'  // UTF-8 BOM for Excel compatibility
   const headerLine = headers.map(escapeCsvField).join(',')
   const dataLines = rows.map(row => row.map(escapeCsvField).join(','))
-  return BOM + [headerLine, ...dataLines].join('\r\n')
+  const lines = [headerLine, ...dataLines]
+  if (opts?.footerNote) lines.push(escapeCsvField(opts.footerNote))
+  return BOM + lines.join('\r\n')
 }
 
 export function csvResponse(c: any, filename: string, csvContent: string) {

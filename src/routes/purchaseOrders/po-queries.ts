@@ -123,9 +123,11 @@ poQueriesRouter.get('/export/csv', async (c) => {
       whereClauses.push("po.status IN ('CONFIRMED', 'PARTIAL_RECEIVED') AND po.expected_date IS NOT NULL AND po.expected_date < date('now', '+9 hours')")
     }
     if (whereClauses.length > 0) query += ' WHERE ' + whereClauses.join(' AND ')
-    query += ' ORDER BY po.created_at DESC LIMIT 5000'
+    query += ' ORDER BY po.created_at DESC LIMIT 5001'  // #372: 캡+1 조회로 잘림 감지
 
     const { results } = await c.env.DB.prepare(query).bind(...params).all()
+    const truncated = (results || []).length > 5000
+    const exportRows = truncated ? (results || []).slice(0, 5000) : (results || [])
 
     const statusLabels: Record<string, string> = {
       DRAFT: '임시저장', CONFIRMED: '발주확정', PARTIAL_RECEIVED: '부분입고',
@@ -133,16 +135,16 @@ poQueriesRouter.get('/export/csv', async (c) => {
     }
 
     const headers = ['발주번호', '공급업체', '발주일', '납기일', '금액', '상태', '비고', '작성자', '등록일']
-    const rows = (results || []).map((po: Record<string, unknown>) => [
+    const rows = exportRows.map((po: Record<string, unknown>) => [
       po.po_number as string, po.supplier_name as string, po.order_date as string, po.expected_date as string | null,
       po.final_amount as number, statusLabels[po.status as string] || (po.status as string),
       po.notes as string | null, po.created_by_name as string | null,
       po.created_at ? new Date(po.created_at as string).toLocaleDateString('ko-KR') : ''
     ])
 
-    const { generateCsv, csvResponse } = await import('../../utils/csv')
+    const { generateCsv, csvResponse, CSV_TRUNCATION_NOTE } = await import('../../utils/csv')
     const today = new Date().toISOString().slice(0, 10)
-    return csvResponse(c, `발주목록_${today}.csv`, generateCsv(headers, rows))
+    return csvResponse(c, `발주목록_${today}.csv`, generateCsv(headers, rows, { footerNote: truncated ? CSV_TRUNCATION_NOTE : undefined }))
   } catch (error) {
     console.error('src/routes/purchaseOrders.ts error:', error)
     return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)

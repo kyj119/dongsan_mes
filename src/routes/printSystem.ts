@@ -645,28 +645,39 @@ printSystemRouter.post('/media/bulk', requireRole('ADMIN', 'MANAGER'), async (c)
     }
 
     // ═══ Step 4: product_materials 자동 연결 (출력 품목 ↔ 원자재) ═══
+    // #379: 건별 재조회(N×M) 제거 — print_media_id/parent_media_id를 IN-prefetch 후 메모리 매칭 + batch INSERT
     let pmLinked = 0
     if (createdItems.length > 0 && createdRM.length > 0) {
+      const prodIds = createdItems.map((p: any) => p.id).filter((x: any) => x != null) as number[]
+      const rmIds = createdRM.map((r: any) => r.id).filter((x: any) => x != null) as number[]
+      const prodMediaMap = new Map<number, number>()
+      const rmParentMap = new Map<number, number>()
+      if (prodIds.length > 0 && rmIds.length > 0) {
+        const pph = prodIds.map(() => '?').join(',')
+        const { results: prodRows } = await c.env.DB.prepare(
+          `SELECT id, print_media_id FROM items WHERE id IN (${pph})`
+        ).bind(...prodIds).all<{ id: number; print_media_id: number | null }>()
+        for (const r of (prodRows || [])) if (r.print_media_id != null) prodMediaMap.set(Number(r.id), Number(r.print_media_id))
+        const rph = rmIds.map(() => '?').join(',')
+        const { results: rmRows } = await c.env.DB.prepare(
+          `SELECT id, parent_media_id FROM items WHERE id IN (${rph})`
+        ).bind(...rmIds).all<{ id: number; parent_media_id: number | null }>()
+        for (const r of (rmRows || [])) if (r.parent_media_id != null) rmParentMap.set(Number(r.id), Number(r.parent_media_id))
+      }
+      const linkStmts: D1PreparedStatement[] = []
       for (const product of createdItems) {
-        // product의 print_media_id와 같은 parent_media_id를 가진 원자재 연결
-        const productItem = await c.env.DB.prepare(
-          'SELECT print_media_id FROM items WHERE id = ?'
-        ).bind(product.id).first<PrintMediaIdRow>()
-        if (!productItem?.print_media_id) continue
-
+        const pMedia = prodMediaMap.get(Number(product.id))
+        if (pMedia == null) continue
         for (const rm of createdRM) {
-          const rmItem = await c.env.DB.prepare(
-            'SELECT parent_media_id FROM items WHERE id = ?'
-          ).bind(rm.id).first<{ parent_media_id: number | null }>()
-          if (rmItem?.parent_media_id === productItem.print_media_id) {
-            await c.env.DB.prepare(`
-              INSERT OR IGNORE INTO product_materials (product_item_id, material_item_id, is_default)
-              VALUES (?, ?, 0)
-            `).bind(product.id, rm.id).run()
+          if (rmParentMap.get(Number(rm.id)) === pMedia) {
+            linkStmts.push(c.env.DB.prepare(
+              `INSERT OR IGNORE INTO product_materials (product_item_id, material_item_id, is_default) VALUES (?, ?, 0)`
+            ).bind(product.id, rm.id))
             pmLinked++
           }
         }
       }
+      for (let i = 0; i < linkStmts.length; i += 80) await c.env.DB.batch(linkStmts.slice(i, i + 80))
     }
 
     return c.json({
@@ -1148,38 +1159,39 @@ printSystemRouter.post('/repair-links', requireRole('ADMIN'), async (c) => {
     const db = c.env.DB
     let pmmCreated = 0, pmCreated = 0, groupFixed = 0
 
+    // #379: 3개 루프 모두 건별 쿼리(N·N×M) → batch로 일괄. INSERT OR IGNORE 카운트는 batch 결과 meta.changes 합산으로 보존.
+    const sumChanges = (results: D1Result[]) => results.reduce((s, r) => s + ((r.meta?.changes as number) || 0), 0)
+    const runBatchCounting = async (stmts: D1PreparedStatement[]): Promise<number> => {
+      let n = 0
+      for (let i = 0; i < stmts.length; i += 80) n += sumChanges(await db.batch(stmts.slice(i, i + 80)))
+      return n
+    }
+
     // 1. print_method_media 복구: items에서 method+media 조합이 있는데 연결 테이블에 없는 경우
     const { results: missingPMM } = await db.prepare(`
       SELECT DISTINCT print_method_id, print_media_id
       FROM items
       WHERE print_method_id IS NOT NULL AND print_media_id IS NOT NULL AND is_active = 1
     `).all<RepairPMMRow>()
-    for (const r of missingPMM) {
-      const res = await db.prepare(`
-        INSERT OR IGNORE INTO print_method_media (print_method_id, print_media_id, created_at)
-        VALUES (?, ?, datetime('now'))
-      `).bind(r.print_method_id, r.print_media_id).run()
-      if (res.meta?.changes > 0) pmmCreated++
-    }
+    const pmmStmts = (missingPMM || []).map((r) => db.prepare(`
+      INSERT OR IGNORE INTO print_method_media (print_method_id, print_media_id, created_at)
+      VALUES (?, ?, datetime('now'))
+    `).bind(r.print_method_id, r.print_media_id))
+    pmmCreated = await runBatchCounting(pmmStmts)
 
-    // 2. product_materials 복구: parent_media_id 매칭
-    const { results: products } = await db.prepare(`
-      SELECT id, print_media_id FROM items
-      WHERE print_method_id IS NOT NULL AND print_media_id IS NOT NULL AND is_active = 1 AND item_type = 'PRODUCT'
-    `).all<RepairProductRow>()
-    for (const p of products) {
-      const { results: materials } = await db.prepare(`
-        SELECT id FROM items
-        WHERE parent_media_id = ? AND item_type = 'MATERIAL' AND is_active = 1
-      `).bind(p.print_media_id).all<IdRow>()
-      for (const m of materials) {
-        const res = await db.prepare(`
-          INSERT OR IGNORE INTO product_materials (product_item_id, material_item_id, is_default)
-          VALUES (?, ?, 0)
-        `).bind(p.id, m.id).run()
-        if (res.meta?.changes > 0) pmCreated++
-      }
-    }
+    // 2. product_materials 복구: parent_media_id 매칭 — 단일 self-JOIN으로 (product, material) 쌍 일괄 도출
+    const { results: pmPairs } = await db.prepare(`
+      SELECT pi.id AS product_id, mi.id AS material_id
+      FROM items pi
+      JOIN items mi ON mi.parent_media_id = pi.print_media_id
+      WHERE pi.item_type = 'PRODUCT' AND pi.print_method_id IS NOT NULL AND pi.print_media_id IS NOT NULL AND pi.is_active = 1
+        AND mi.item_type = 'MATERIAL' AND mi.is_active = 1
+    `).all<{ product_id: number; material_id: number }>()
+    const pmStmts = (pmPairs || []).map((r) => db.prepare(`
+      INSERT OR IGNORE INTO product_materials (product_item_id, material_item_id, is_default)
+      VALUES (?, ?, 0)
+    `).bind(r.product_id, r.material_id))
+    pmCreated = await runBatchCounting(pmStmts)
 
     // 3. item_group 복구: parent_media_id → print_media.media_group
     const { results: noGroup } = await db.prepare(`
@@ -1188,13 +1200,11 @@ printSystemRouter.post('/repair-links', requireRole('ADMIN'), async (c) => {
       JOIN print_media pm ON i.parent_media_id = pm.id
       WHERE i.item_group IS NULL AND i.parent_media_id IS NOT NULL AND i.is_active = 1
     `).all<RepairGroupRow>()
-    for (const r of noGroup) {
-      if (r.media_group) {
-        await db.prepare("UPDATE items SET item_group = ?, updated_at = datetime('now') WHERE id = ?")
-          .bind(r.media_group, r.id).run()
-        groupFixed++
-      }
-    }
+    const groupStmts = (noGroup || [])
+      .filter((r) => r.media_group)
+      .map((r) => db.prepare("UPDATE items SET item_group = ?, updated_at = datetime('now') WHERE id = ?").bind(r.media_group, r.id))
+    groupFixed = groupStmts.length
+    for (let i = 0; i < groupStmts.length; i += 80) await db.batch(groupStmts.slice(i, i + 80))
 
     return c.json({
       success: true,
