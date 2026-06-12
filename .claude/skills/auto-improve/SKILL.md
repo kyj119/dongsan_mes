@@ -51,6 +51,8 @@ description: 자율 점검·개선 에이전트. 6개 영역을 순환하며 실
 
 **자동 수정 가능**: entity_id 누락, 타입 불일치, dead code 제거
 
+> **🔁 파일분할 후 "부분 픽스" 회귀 — 컬럼오타/안티패턴은 코드베이스 전수 재grep 후 close (Area 6 #377, 2026-06-12)**: 같은 버그(예: `items.name` 미존재 컬럼)가 **분할 전 단일파일과 분할 후 산재 위치 양쪽**에 존재하면, 이슈가 지목한 라인만 픽스하고 close하면 형제 경로가 잔존. 실증: #377 원 위치 `orders/core.ts:1489`가 분할로 `autoProcess.ts`(/start·/approve)와 `orders/create.ts:643`(주문생성 자동가공)로 흩어졌는데 owner 픽스 `eadba44`가 autoProcess.ts만 정정 → create.ts 잔존(best-effort catch에 삼켜져 `auto_process_jobs` 영구 미생성). **규칙**: ① 컬럼오타/로직버그 픽스·done-sync 검증 시 반드시 `grep -rn "<안티패턴>" src`로 **코드베이스 전수 재확인**(`SELECT .* name FROM items` 등) 후에야 close. ② done-sync에서 "커밋이 이슈 픽스함"을 신뢰하기 전, 이슈 본문이 지목한 **원 라인이 파일분할로 이동했는지** + 그 이동처가 픽스에 포함됐는지 git 추적. items.name 클래스 누적 = #377(2경로)·#384(cards.entity_id 5곳)·A-017(workbench cl.name) → 동일 클래스가 반복 산재하므로 "한 곳 고침"≠"전수 해소".
+
 > **🧭 도달성(reachability) 선검증 (Area 2·5 #334)**: entity_id 격리 갭을 **멀티테넌시 보안 이슈**로 분류하기 전, 해당 라우터/엔드포인트가 프론트에서 실제 호출되는지 확인 — `grep -rn "api/<path>" src/scripts src/pages`. **호출처 0건이면 orphan 라우터 = dead code 사안**(보안 영향 없음, 삭제/정리 권고로 분류). index.tsx에 `app.route()` 마운트만 돼 있다고 "사용 중"이 아님. (#334 order_templates가 보안 갭으로 오분류됐던 근본 원인 — `/api/templates`는 마운트만 되고 프론트 호출 0건)
 >
 > **⚠️ 도달성 규칙 예외 — 범용 서빙 프록시 (Area 5·6 #365)**: 위 "0건=dead code"는 **UI 트리거형 격리 갭**(특정 화면에서만 호출되는 `/:id` 핸들러)에만 적용. **클라이언트 제공 키로 raw 리소스를 서빙하는 범용 엔드포인트**(R2 파일 프록시 `files.ts` GET `/*`·generic download-by-key)는 프론트 참조 0건이어도 **인증된 직접 HTTP 호출이 곧 공격표면**(키가 구조적이거나 다른 API 응답에 노출돼 추측·도달 가능) → dead-code로 강등하지 말고 보안 이슈로 보고. 판별 기준: 핸들러가 (a)UI 컨텍스트 없이 임의 식별자/키만으로 (b)DB·entity·역할 검증 없이 리소스를 반환하면 도달성 무관하게 공격표면.

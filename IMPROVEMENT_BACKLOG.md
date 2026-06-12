@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 5 -->
-<!-- last_run_at: 2026-06-12T08:30:00+09:00 -->
+<!-- last_run_area: 6 -->
+<!-- last_run_at: 2026-06-12T12:00:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,14 +8,22 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | 13 (open auto-improve **재실측 06-12T08:30 Area 5** — #388·#387·#386·#385·#384·#383·#382·#381·#379·#378·#377·#374·#373. 이번 사이클 net-new 0. ⚠️ #377·#378은 코드 수정 머지됨(eadba44/9be309d)이나 GitHub 이슈 open 잔류 → 차기 Area 6 close 동기화 필요) |
+| 🆕 new | 11 (open auto-improve **재실측 06-12T12:00 Area 6** — #388·#387·#386·#385·#384·#383·#382·#381·#379·#374·#373. **#377·#378 done-sync close 완료**(아래) → open 12건 = 11 new + #372 reviewed) |
 | ✅ approved | 0 (직전 approved #342/#340 모두 done 확정·이관 — Area 6 검증 완료) |
 | 👀 reviewed | 1 (#372 CSV truncation — owner 코멘트 "3번으로 진행, 최대 5000 제한" 06-11T00:25. ⚠️**모호**: #372 3번=페이지네이션 스트리밍(전량)인데 "5000 제한 유지"와 모순 → 구현 전 의도 확인 필요. 승인처리 워크플로우 대상) |
-| ✔️ done | 79 (78 + **#380 done-sync**: 커밋 6b06512 `fix(dashboard): #380 — 납기 준수율 KPI 재정의`가 결함1(updated_at→COALESCE 권위 출고일)·결함2(SHIPPED→SHIPPED+COMPLETED) 모두 해소, 월귀속도 created_at→delivery_date. Area 3 직접 git 검증 후 close) |
+| ✔️ done | 81 (79 + **#378 done-sync**: 커밋 9be309d가 send-shipment-bulk status/fail_count/failures[] + 프론트 결과모달 추가로 부분/전량 실패 오보고 해소 + **#377 done-sync**: eadba44(autoProcess.ts /start·/approve item_name + ia_auto_enabled 게이트) + **96e98d2(이번 사이클, create.ts:643 주문생성 자동가공 경로 item_name 잔여분)** 두 경로 모두 정정) |
 | ❌ rejected | 3 |
 
 > 📦 **과거 사이클 로그**(아래 6블록 이전분)는 `IMPROVEMENT_BACKLOG_ARCHIVE.md`로 이관됨 (2026-06-10 정리). 신규 로그는 계속 이 파일 상단에 추가.
 
+> **Area 6 자기 진화 (2026-06-12T12:00):**
+> - **방법**: baseline `npm ci`+`tsc --noEmit` PASS + build PASS(391 modules, _worker.js 5.12MB). GitHub open/closed 전수 대조 + 직전 사이클(Area 5, 06-12T08:30)이 플래그한 **#377·#378 done-sync 미완** 후속처리 + 컬럼오타 클래스 재발(create.ts) git 추적. **인프라 특이사항**: 컨테이너가 detached HEAD(99159a9)로 시작 + shallow clone(depth 94) → 로컬 `origin/main` 추적ref(4993fa7)가 stale로 "unrelated histories" 오인 유발. `git ls-remote --heads`로 **실제 refs/heads/main = 99159a9 확정**(working base와 동일) → 정상 fast-forward 경로 확인, force/merge 회피.
+> - **🔧 자동수정 1건 (A-019, 커밋 96e98d2 본 사이클) — #377 잔여분: 주문생성 자동가공 `create.ts:643` items.name→item_name**: #377 원 지목 위치(`orders/core.ts:1489`)가 파일분할로 `orders/create.ts:643`(D.자동가공 블록)으로 이동했는데, owner의 #377 픽스(`eadba44`)는 **autoProcess.ts /start·/approve만** 정정하고 이 주문생성 경로를 누락 → `SELECT id, name FROM items`(no such column: name) 잔존, best-effort catch(`:695`)에 삼켜져 `auto_process_jobs` INSERT 지속 미실행. `item_name`으로 정정(autoProcess.ts:96·#377 픽스와 동일). **안전 자동수정 판정**: ① 컬럼명 사실-정정(A-017 workbench cl.name·A-014 클래스) ② 원 이슈의 "휴면 write 활성화" 블로커가 **owner 머지 eadba44의 `ia_auto_enabled` 게이트(0308, 기본 OFF)로 이미 해소** — job 생성돼도 `/pending` 서빙이 게이트라 C# 워커 미노출 ③ owner가 이미 승인·머지한 동일 정정의 누락분 완성. verify PASS(tsc clean + build 391).
+> - **🟢 GitHub↔백로그 done-sync 2건 (직전 Area 5가 플래그한 후속)**: ① **#378** — `9be309d`가 send-shipment-bulk 응답에 status(SUCCESS/PARTIAL/FAILED)·sent_count(실성공)·fail_count·failures[] + 프론트 결과모달(실패건 재발송) 추가로 부분/전량 실패 오보고 해소. 코드 직접 대조(kakao.ts:1063~·shipments.js:982/1001) 확정 → **close(completed)**. ② **#377** — eadba44(수동 경로) + 96e98d2(주문생성 경로, 위 A-019) 두 경로 모두 정정 완료 → **close(completed)**. 둘 다 코멘트로 근거 명시 후 close. done 79→81, new 13→11, open 14→12(11 new + #372 reviewed).
+> - **🧬 SKILL 탐지규칙 강화 1건 — 파일분할 후 "부분 픽스" 회귀 점검**: 동일 버그가 분할 전 파일(core.ts:1489)과 분할 후 산재 위치(autoProcess.ts + create.ts) **양쪽에 존재**할 때, 이슈가 지목한 라인만 보고 픽스하면 형제 경로가 잔존. #377이 정확히 이 패턴(eadba44가 autoProcess.ts만 고치고 create.ts 누락). 점검법: 컬럼오타/로직버그 픽스 시 **`grep`으로 같은 안티패턴(`SELECT .* name FROM items` 등)을 코드베이스 전수 재확인** 후 close. (Area 2/6 codify — items.name 클래스 #377·#384·A-017 누적 3건)
+> - **이상 없음**: baseline PASS. Approved 표 비어있음 유지. rejected 3 유지. `SELECT .* name FROM items` 잔여 재grep — create.ts 수정 후 **0건**(printSystem pm.name=print_methods alias·entities/employees/finishing_methods의 name은 해당 테이블 실컬럼=정상).
+> - 자동 수정 1건(A-019 create.ts item_name, verify PASS), 신규 이슈 0건, **done-sync 2건 close(#377·#378)**, SKILL 탐지규칙 1건(분할 후 부분픽스 회귀)
+>
 > **Area 5 보안 (2026-06-12T08:30):**
 > - **방법**: baseline `npm ci`+`tsc --noEmit` PASS + build PASS(383 modules). Area 5 **10회차** — 시의성(최근 churn: purchaseOrders/core.ts **5분할** f428617~6c89232 = po-queries/po-receipts/po-receive/po-special + templates/stock-alerts, 바렐 `purchaseOrders.ts` 집계) + 신선 4각도(시크릿폴백·CSV injection·독립페이지 XSS·ORDER BY/IN SQLi) 병렬 Explore 2개. 발견 전수 owner 직접 코드 Read + **git 분할직전 커밋(bb7bec6) 대조**.
 > - **🟢 net-new 0건 — PO 5분할 보안 회귀 0 + 4각도 clean**:
@@ -150,7 +158,7 @@
 
 ## 🆕 New (미검토)
 
-> 전부 GitHub open + 👍 미수신. 용준님 리뷰 대기. (open **실측 13건** — 2026-06-11T20:00 Area 4. #386·#387·#388 신규, #372는 reviewed 별도)
+> 전부 GitHub open + 👍 미수신. 용준님 리뷰 대기. (open **실측 11건** — 2026-06-12T12:00 Area 6. #377·#378 done-sync close로 13→11, #372는 reviewed 별도)
 
 | ID | 제목 | 영역 | Issue | 공수 |
 |----|------|------|-------|------|
@@ -163,8 +171,6 @@
 | I-068 | [improvement] 배포 게이트 `smoke.cjs`는 `/api/*` 전용 — 프론트 부트스트랩/MIME 장애를 못 잡아 shell.js 2회 prod 다운이 "Deploy 성공"으로 통과(E2E만 ~5분 후 적발). smoke에 경량 프론트 단언(`/` HTML 200+text/html+셸 마커) 추가 | Area 1 | #382 | ~1h |
 | I-067 | [HIGH bug] orders 쓰기 엔드포인트 entity 격리 비대칭(IDOR) — read/delete는 격리, billing-status/cancel/PUT/bill/status/output-folder는 무필터 `WHERE id=?` → 멀티법인 MANAGER가 타법인 주문 청구/취소/balance 조작. 청구분할(72bd97e) PUT이 쓰기 증폭 | Area 5 | #381 | ~2h |
 | I-065 | [improvement] printSystem N+1 2곳 — /media/bulk(2중루프 건별 SELECT, media id 메모리 보유라 재조회 불요)·/repair-links(3중 N+1 ~3000쿼리). setup/repair 저빈도 LOW | Area 2 | #379 | ~1.5h |
-| I-064 | [MED bug] 출고 알림톡 일괄발송 부분/전체 실패를 "N건 발송 완료"로 오보고 — send-shipment-bulk 응답 status/fail_count 누락 + sent_count=targets.length. 단건/SMS-bulk는 정상=회귀 | Area 2 | #378 | ~1h |
-| I-063 | [HIGH bug] AI 주문 자동가공 `auto_process_jobs` 생성 전체 침묵 실패 — `SELECT name FROM items`(존재X 컬럼, 실제=item_name) 매 실행 throw → best-effort catch가 은폐, INSERT 미실행. 수정=item_name+N+1 배치 | Area 2 | #377 | ~30m |
 | I-062 | [improvement] 배포 스모크 로그인 단일시도(재시도 부재) → cold-start 일시 500이 deploy 게이트 파손 + E2E skip. bounded 재시도 or health warm-up ping | Area 1 | #374 | ~30m |
 | I-061 | [MED bug] 입고검수 CANCELLED 시 재고만 역분개·PO status/received_quantity 미롤백 → PO 영구 RECEIVED 잔류 + 취소수량 재입고 불가(400 차단). #369(재고측)와 별개 PO측 롤백 | Area 4 | #373 | ~1.5h |
 
@@ -176,6 +182,7 @@
 
 | ID | 제목 | 커밋 | 날짜 |
 |----|------|------|------|
+| A-019 | #377 잔여분 — 주문생성 자동가공 `orders/create.ts:643` `SELECT id, name FROM items`(존재X 컬럼)→`item_name`. #377 원 위치(core.ts:1489)가 파일분할로 create.ts D.자동가공 블록으로 이동했고 owner 픽스 eadba44는 autoProcess.ts만 정정·이 경로 누락 → best-effort catch(:695)에 삼켜져 `auto_process_jobs` 미생성 지속. autoProcess.ts:96·eadba44와 동일 정정. 휴면 write 활성화 우려는 eadba44의 `ia_auto_enabled` 게이트(0308 기본 OFF)로 이미 해소(서빙 게이트라 job 생성돼도 미노출). 안전 자동수정(컬럼 사실-정정 A-017 클래스 + owner 승인 정정의 누락분 완성). verify PASS(tsc clean+build 391) | 96e98d2 | 2026-06-12 |
 | A-018 | 대시보드 납기준수율 KPI 라벨 오기 정정 — `scripts/dashboard.js:47`이 skeleton 교체 시 KPI 그리드 재구성하며 "이번 달 **출고 기준**" 노출, 권위 서버템플릿 `pages/dashboard.ts:85`/title은 "**납기 기준**". #380 수정(6b06512) 후 메트릭이 `delivery_date` 기준 월버킷이므로 "납기 기준"이 정답 → JS 라벨을 권위본에 정합. 사실-정정+기존 사본 정렬(A-014 클래스), 동작/데이터 무변 텍스트만. verify PASS(tsc clean+build 383) | (이번 커밋) | 2026-06-11 |
 | A-017 | workbench.ts 존재하지 않는 컬럼 `cl.name` 3곳(`:22/28/56`) → `cl.client_name`. clients 테이블은 `client_name`만(0001:45, `ADD name` 0건 ground-truth) → 매 호출 `no such column: cl.name` throw로 신규 workbench 시안검수 페이지(b0df71c) 주문목록/검색 전체 500. read-only SELECT + 응답 alias 이미 `as client_name`(형식 불변) + 외부효과·entity 귀속 무관 = 안전 자동수정(↔#384는 쓰기/멀티테넌시라 이슈). verify PASS(tsc clean + build 369 modules) | (이번 커밋) | 2026-06-11 |
 | A-016 | shell.js 정적에셋 prod 2회 장애 복구 — `9dd09cd` 파일럿이 shell.js를 `/static`으로 외부화했으나 CF Pages **Git 자동빌드**에서 `_routes.json`의 `/static/* 제외`가 미적용 → 워커가 `/static/shell.js`를 Content-Type 빈값('')으로 서빙 → 브라우저 strict MIME 실행거부 → `shell.js` 사망(전 페이지 axios 인증헤더/법인스위처 초기화 실패, 401+무한로딩). `144addf`의 `_headers` Content-Type 명시 시도는 자동빌드 환경서 불충분 → **최종 해결 = 인라인 `?raw` 복귀**(`/static`·`_routes.json`·빌드순서 의존 전무, 워커 +75KB 안정성 우선). (직전 세션 픽스, Area 6 기록 보충) | 24bb493 (144addf 경유) | 2026-06-11 |
@@ -198,6 +205,8 @@
 
 | ID | 제목 | 커밋/Issue | 날짜 |
 |----|------|-----------|------|
+| I-064 | 출고 알림톡 일괄발송 부분/전체 실패 "N건 발송 완료" 오보고 — send-shipment-bulk 응답에 status(SUCCESS/PARTIAL/FAILED)·sent_count(실성공)·fail_count·failures[] 추가 + interpretBulkResult 건별 results[] + 프론트 결과모달(실패건 재발송). Area 6(06-12) 코드 직접 대조 후 close | #378 / 9be309d | 2026-06-12 |
+| I-063 | AI 주문 자동가공 `auto_process_jobs` 침묵 실패(items.name 존재X 컬럼 throw) — 수동경로(autoProcess.ts /start·/approve)는 eadba44에서 item_name 정정+ia_auto_enabled 게이트, 주문생성경로(create.ts:643 잔여분)는 Area 6 A-019(96e98d2)에서 정정. 두 경로 완료 후 close | #377 / eadba44+96e98d2 | 2026-06-12 |
 | I-066 | 대시보드 납기 준수율 KPI 2중 결함 — 결함1(updated_at 출고일 프록시)→`COALESCE(MAX(shipments.shipped_at),MAX(cards.shipped_at),updated_at)` 권위 출고일 + 결함2(SHIPPED 분모만)→`IN('SHIPPED','COMPLETED')` + 월귀속 created_at→delivery_date. Area 3(06-11) git 직접 검증 후 close. 라벨 정정(A-018) 동반 | #380 / 6b06512 | 2026-06-11 |
 | I-061b | 입고검수 전량취소(inspection-decision CANCELLED) 멱등 가드 부재 + 비원자 재고 이중차감 — `inventory.ts:414-421` 멱등 가드 + 단일 batch 원자화. (#373=PO측 롤백은 별개 open) | #369 / d1c8b89 | 2026-06-09 |
 | I-059 | 업무일자 UTC `date('now')` KST 미보정 — 표시층 formatKST 일괄 + 대시보드 created_at KPI + 회계 DATE컬럼 day-boundary KST 보정. 백엔드 자기일관 churn은 owner 디프리오 | #366 / b8d2f0d·7b64d04 | 2026-06-09 |
