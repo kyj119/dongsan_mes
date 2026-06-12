@@ -150,6 +150,9 @@ export function payrollPage(c: Context<HonoEnv>) {
         </div>
 
         <style>
+          /* 급여 목록표: 고정형 — 금액 길이에 무관하게 컬럼 폭 불변(헤더 width 기준). 가변 컬럼(부서/직급)은 잘림 처리 */
+          #prCompactCard table { table-layout: fixed; }
+          #prCompactCard th, #prCompactCard td { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
           /* 급여대장: 고정형(table-layout:fixed) — 값이 바뀌어도 컬럼 폭 불변 */
           .ds-ledger { border-collapse: collapse; table-layout: fixed; font-variant-numeric: tabular-nums; }
           .ds-ledger th, .ds-ledger td { border: 1px solid #e5e7eb; padding: 3px 6px; box-sizing: border-box; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; line-height: 1.35; }

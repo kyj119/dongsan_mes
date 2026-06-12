@@ -1,6 +1,6 @@
 # PROJECT_STATUS.md — 프로젝트 현황판
 
-> **최종 업데이트**: 2026-06-12 PM2 (★급여/인사 시스템 대규모 개선 — 부서/직급 SSOT·고정연장 포괄임금 분해·급여대장(고정형+회사부담탭)·4대보험2026요율·야간휴일수당·공휴일달력(derive 단일소스). 전부 prod 배포·Playwright검증·push / 이전: 소속법인변경·flatpickr 등 HR개선)
+> **최종 업데이트**: 2026-06-12 PM3 (급여 후속 — 4대보험 2026 요율 검증·수정[국민연금9.5%·상한637만·건강7.19%·장기요양13.14%]·법인3·4 급여생성+전체sync 46명·Phase1b 단건 고정연장 분해·공휴일 검증. DB 반영 완료, 코드 3건 ▶배포대기 / 이전 PM2: 부서직급SSOT·포괄임금·급여대장·요율·공휴일달력)
 > 완료 이력 → `PROJECT_STATUS_ARCHIVE.md` (매 세션 읽을 필요 없음, 필요 시 참조)
 
 ---
@@ -13,13 +13,19 @@
 
 ## 🔴 현재 진행 중
 
+- **✅ [2026-06-12 PM3] 급여 후속 — 요율 검증·수정 + 법인3·4 급여 + Phase 1b (DB 반영 완료, 코드 3건 ▶배포 대기)**:
+  - **4대보험 2026 요율 수정**(`insurance_rates` prod UPDATE): 국민연금 9→**9.5%**(2026.1 연금개혁)·상한 617→**637만**·하한 39→**40만**, 건강 7.09→**7.19%**, 장기요양 12.95→**13.14%**. 고용 1.8 유지. **산재 0.7%=고지서 대기**(근로복지공단 토탈서비스). **▶ 2026.7 국민연금 상한 659만/하한 41만 재조정**(year 단위 1행 구조라 수동 UPDATE 필요). 정본 → [[payroll-insurance-rates-2026]].
+  - **법인3·4 급여 미생성 해결**: 오다플래그(4) 8명 + 청주(3) 1명 2026-06 batch 생성(switch-entity별 호출 → entity_id 정상, 전체모드 0 오염 방지) + 전체 46명 sync(새 요율·휴일근무 반영, 법인4 휴일수당 183,020). 안혜옥(emp11 base_salary 0→400만 설정·재계산, 음수 net 해소).
+  - **Phase 1b 단건 급여 고정연장 분해**(`core.ts` preview/save): batch/sync와 일관, **이중분해 방지**(emp.base_salary 원본 기준 + body.overtime_hours=총연장 해석 → 추가분만). build OK. → [[design-payroll-inclusive-overtime]].
+  - **공휴일 2026 검증**: DB 21건 정상(요일·음력·대체 전수 대조). `load-defaults` 코드에 지방선거(06-03) 보완.
+  - **▶ 배포 대기**: load-defaults·Phase1b·`#prCompactCard` 목록표 고정형 = `npm run verify` PASS·**미배포**. 배포 시 커밋+push(CF 자동빌드)+Playwright 단건급여 검증.
 - **✅ [2026-06-12 PM2] 급여/인사 시스템 대규모 개선 — 전부 prod 배포·Playwright 검증·push 완료**:
   - **CAPS 사이트**(DB만): 대전본사→동산기획 rename, 선명2(S2) 삭제. `caps_sites`는 코드 아닌 데이터.
   - **월 인건비**(`hr.ts` /stats): payroll 미생성 시 `net_pay` 빈값→'-' 버그 → **재직 base_salary + 이번달 근태(연장/야간/휴일) 추정** 하이브리드, '예상' 부제. KST 월 보정.
   - **부서/직급/고용형태 SSOT**: `src/constants/hr.ts` 신규(DEPARTMENTS/POSITIONS/EMPLOYMENT_TYPES + deptOptions() 헬퍼 + HR_ENUMS_JS) + `layout.ts` 전역주입(`window.DEPT_NAMES/POSITION_NAMES/EMPLOYMENT_NAMES`). **8파일 하드코딩 제거**(드롭다운 6 + JS맵 3). **`attendance.ts` 필터 OFFICE≠ADMIN_DEPT 버그 수정**. 등록모달 생산직·고정연장 추가(상세모달 일치). 커밋 `9f2f8797`.
   - **고정연장(포괄임금) 급여계산**(`payroll/shared.ts` `calcInclusivePay` + `core.ts` batch/sync): 입력 기본급=포괄총액 → 통상시급=base÷(209+고정OT×1.5=**225.5**), 기본급=시급×209, 고정연장수당=총액−기본급. 기존 `base×225.5/209` 부풀림(~8%) 제거. sync=전체 재계산(공제·실지급). 프론트(÷225.5)와 일치.
   - **급여대장**(`payroll.ts/js`, 커밋 `b79f61c6`): /payroll 확장토글, **table-layout:fixed 고정형** + **급여대장/회사부담금 2탭**, 수당·공제 항목 전개, 부서·전체 합계, 인쇄(가로A4)·CSV. 디자인MD §6에 표 고정형 규칙 추가.
-  - **4대보험 2026 요율**(앱 API 적재: 국민연금9·건강7.09·장기요양12.95·고용1.8·산재0.7%) + **야간·휴일 배율 1.5**(settings). 산재·국민연금상한 추정치 → 검증권장.
+  - **4대보험 2026 요율**(앱 API 적재) + **야간·휴일 배율 1.5**(settings). ✅ **PM3에서 검증·수정 완료**(국민연금 9.5%·637만, 건강 7.19%, 장기요양 13.14% — 위 PM3 항목 참조). 산재 고지서 대기·7월 상한 재조정 TODO.
   - **야간/휴일 근태연동**(`core.ts` sync, 커밋 `3f5c799d`): attendance 야간(caps_night_min)·휴일근로 → 수당 계산·지급.
   - **공휴일 달력**(마이그 `0311_holidays.sql`, `payroll/settings.ts` CRUD/load-defaults, payrollRates '공휴일' 탭): `holidays` 테이블 단일소스. 커밋 `447d9ca6`·`1c137ae0`.
   - **휴일 derive-at-read 리팩토링**(커밋 `503573c8`): 근태·급여가 **날짜에서 휴일 파생**(토·일+공휴일 달력). attendance mutate(재분류 엔드포인트)·'공휴일 반영' 버튼 **제거** → 드리프트·이중로직 해소. 근태 그리드 공휴일=휴일/휴일근무 표시(결근 아님).

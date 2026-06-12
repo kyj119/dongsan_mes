@@ -47,26 +47,54 @@ coreRouter.post('/preview', async (c) => {
     const transMax = Number(settings.payroll_transport_allowance_nontax_max || 200000)
     const childMax = Number(settings.payroll_childcare_allowance_nontax_max || 200000)
 
-    const base_salary = Number(body.base_salary ?? emp.base_salary ?? 0)
+    const base_input = Number(body.base_salary ?? emp.base_salary ?? 0)
 
     // 고정연장시간: overtime_daily_hours × overtime_work_days (기본 0)
     const fixedOvertimeHours = (Number(emp.overtime_daily_hours) || 0) * (Number(emp.overtime_work_days) || 22)
-    // body.overtime_hours 입력 시 수동 오버라이드, 없으면 고정연장시간 자동 적용
-    const overtime_hours = body.overtime_hours != null ? Number(body.overtime_hours) : fixedOvertimeHours
     const night_hours = Number(body.night_hours || 0)
     const holiday_hours = Number(body.holiday_hours || 0)
     const otSettings = await loadOvertimeSettings(c.env.DB)
-    const ot = calcOvertimePay({
-      baseSalary: base_salary,
-      monthlyWorkHours: otSettings.monthlyWorkHours,
-      overtimeHours: overtime_hours,
-      nightHours: night_hours,
-      holidayHours: holiday_hours,
-      overtimeMul: otSettings.overtimeMul,
-      nightMul: otSettings.nightMul,
-      holidayMul: otSettings.holidayMul,
-      holidayOverMul: otSettings.holidayOverMul,
-    })
+    // 고정연장(포괄임금) 직원: 입력 기본급=포괄총액 → 통상시급(÷225.5) 분해 (batch/sync와 일관, Phase 1b).
+    //   추가 연장 = body.overtime_hours(기본 0). 일반 직원: 기본급 그대로 + body 연장/야간/휴일 가산.
+    let base_salary: number
+    let overtime_hours: number
+    let ot: { hourly_wage: number; overtime_pay: number; night_pay: number; holiday_pay: number }
+    if (fixedOvertimeHours > 0) {
+      // 포괄총액 원본(emp.base_salary) 기준 분해 — body.base_salary(편집 시 저장된 분해값)를 쓰면 이중분해됨.
+      // body.overtime_hours = 총 연장시간(고정+추가) → 추가분만 추출 → 저장값 재로드해도 동일(라운드트립 일관).
+      const inclusiveBase = Number(emp.base_salary || 0)
+      const totalOT = body.overtime_hours != null ? Number(body.overtime_hours) : fixedOvertimeHours
+      const extraOT = Math.max(0, totalOT - fixedOvertimeHours)
+      const inc = calcInclusivePay({
+        inclusiveBase,
+        baseMonthlyHours: otSettings.monthlyWorkHours,
+        fixedOTHours: fixedOvertimeHours,
+        extraOTHours: extraOT,
+        nightHours: night_hours,
+        holidayHours: holiday_hours,
+        overtimeMul: otSettings.overtimeMul,
+        nightMul: otSettings.nightMul,
+        holidayMul: otSettings.holidayMul,
+        holidayOverMul: otSettings.holidayOverMul,
+      })
+      base_salary = inc.regular_base
+      overtime_hours = inc.overtime_hours
+      ot = { hourly_wage: inc.hourly_wage, overtime_pay: inc.overtime_pay, night_pay: inc.night_pay, holiday_pay: inc.holiday_pay }
+    } else {
+      base_salary = base_input
+      overtime_hours = body.overtime_hours != null ? Number(body.overtime_hours) : 0
+      ot = calcOvertimePay({
+        baseSalary: base_salary,
+        monthlyWorkHours: otSettings.monthlyWorkHours,
+        overtimeHours: overtime_hours,
+        nightHours: night_hours,
+        holidayHours: holiday_hours,
+        overtimeMul: otSettings.overtimeMul,
+        nightMul: otSettings.nightMul,
+        holidayMul: otSettings.holidayMul,
+        holidayOverMul: otSettings.holidayOverMul,
+      })
+    }
 
     // body에 금액이 명시적으로 있으면 그것을 우선, 아니면 자동계산값 사용
     const overtime_pay = body.overtime_pay != null ? Number(body.overtime_pay) : ot.overtime_pay
@@ -200,26 +228,54 @@ coreRouter.post('/save', requireRole('ADMIN', 'MANAGER'), async (c) => {
       pay_date = next.toISOString().slice(0, 10)
     }
 
-    const base_salary = Number(body.base_salary ?? emp.base_salary ?? 0)
+    const base_input = Number(body.base_salary ?? emp.base_salary ?? 0)
 
     // 고정연장시간: overtime_daily_hours × overtime_work_days (기본 0)
     const fixedOvertimeHours = (Number(emp.overtime_daily_hours) || 0) * (Number(emp.overtime_work_days) || 22)
-    // body.overtime_hours 입력 시 수동 오버라이드, 없으면 고정연장시간 자동 적용
-    const overtime_hours_in = body.overtime_hours != null ? Number(body.overtime_hours) : fixedOvertimeHours
     const night_hours_in = Number(body.night_hours || 0)
     const holiday_hours_in = Number(body.holiday_hours || 0)
     const otSettings = await loadOvertimeSettings(c.env.DB)
-    const ot = calcOvertimePay({
-      baseSalary: base_salary,
-      monthlyWorkHours: otSettings.monthlyWorkHours,
-      overtimeHours: overtime_hours_in,
-      nightHours: night_hours_in,
-      holidayHours: holiday_hours_in,
-      overtimeMul: otSettings.overtimeMul,
-      nightMul: otSettings.nightMul,
-      holidayMul: otSettings.holidayMul,
-      holidayOverMul: otSettings.holidayOverMul,
-    })
+    // 고정연장(포괄임금) 직원: 입력 기본급=포괄총액 → 통상시급(÷225.5) 분해 (batch/sync와 일관, Phase 1b).
+    //   추가 연장 = body.overtime_hours(기본 0). 일반 직원: 기본급 그대로 + body 연장/야간/휴일 가산.
+    let base_salary: number
+    let overtime_hours_calc: number
+    let ot: { hourly_wage: number; overtime_pay: number; night_pay: number; holiday_pay: number }
+    if (fixedOvertimeHours > 0) {
+      // 포괄총액 원본(emp.base_salary) 기준 분해 — body.base_salary(편집 시 저장된 분해값)를 쓰면 이중분해됨.
+      // body.overtime_hours = 총 연장시간(고정+추가) → 추가분만 추출 → 저장값 재로드해도 동일(라운드트립 일관).
+      const inclusiveBase = Number(emp.base_salary || 0)
+      const totalOT = body.overtime_hours != null ? Number(body.overtime_hours) : fixedOvertimeHours
+      const extraOT = Math.max(0, totalOT - fixedOvertimeHours)
+      const inc = calcInclusivePay({
+        inclusiveBase,
+        baseMonthlyHours: otSettings.monthlyWorkHours,
+        fixedOTHours: fixedOvertimeHours,
+        extraOTHours: extraOT,
+        nightHours: night_hours_in,
+        holidayHours: holiday_hours_in,
+        overtimeMul: otSettings.overtimeMul,
+        nightMul: otSettings.nightMul,
+        holidayMul: otSettings.holidayMul,
+        holidayOverMul: otSettings.holidayOverMul,
+      })
+      base_salary = inc.regular_base
+      overtime_hours_calc = inc.overtime_hours
+      ot = { hourly_wage: inc.hourly_wage, overtime_pay: inc.overtime_pay, night_pay: inc.night_pay, holiday_pay: inc.holiday_pay }
+    } else {
+      base_salary = base_input
+      overtime_hours_calc = body.overtime_hours != null ? Number(body.overtime_hours) : 0
+      ot = calcOvertimePay({
+        baseSalary: base_salary,
+        monthlyWorkHours: otSettings.monthlyWorkHours,
+        overtimeHours: overtime_hours_calc,
+        nightHours: night_hours_in,
+        holidayHours: holiday_hours_in,
+        overtimeMul: otSettings.overtimeMul,
+        nightMul: otSettings.nightMul,
+        holidayMul: otSettings.holidayMul,
+        holidayOverMul: otSettings.holidayOverMul,
+      })
+    }
 
     const overtime_pay = body.overtime_pay != null ? Number(body.overtime_pay) : ot.overtime_pay
     const night_pay = body.night_pay != null ? Number(body.night_pay) : ot.night_pay
@@ -264,7 +320,7 @@ coreRouter.post('/save', requireRole('ADMIN', 'MANAGER'), async (c) => {
     })
 
     const work_days = Number(body.work_days || 0)
-    const overtime_hours = overtime_hours_in
+    const overtime_hours = overtime_hours_calc
     const absent_days = Number(body.absent_days || 0)
     const late_count = Number(body.late_count || 0)
     const leave_used_days = Number(body.leave_used_days || 0)
