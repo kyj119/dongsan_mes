@@ -409,27 +409,36 @@ inventoryRouter.patch('/receipts/:id/inspection-decision',
     const decisionLog = '[' + new Date().toISOString().slice(0,16).replace('T',' ') + ' 결정] ' + decision + (notes ? ': ' + notes : '')
 
     const cancelEntityId = getEntityId(c) || 1
+    // #373: CANCELLED 분기에서 PO 롤백 결과를 응답에 노출하기 위해 호이스팅
+    let poRollback: {
+      items: Array<{ poItemId: number; recv: number; acc: number; rej: number }>
+      newStatus: string
+      prevStatus: string
+    } | null = null
 
     if (receiptStatus === 'CANCELLED') {
       // #369 멱등 가드: 이미 취소된 receipt면 재차감 없이 멱등 반환 (재시도/중복제출 이중차감 방지)
       const curReceipt = await c.env.DB.prepare(
-        `SELECT inspection_status, status FROM inventory_receipts WHERE id = ?`
-      ).bind(id).first<{ inspection_status: string | null; status: string | null }>()
+        `SELECT inspection_status, status, po_id FROM inventory_receipts WHERE id = ?`
+      ).bind(id).first<{ inspection_status: string | null; status: string | null; po_id: number | null }>()
       if (!curReceipt) return c.json({ success: false, error: '입고 정보를 찾을 수 없습니다.' }, 404)
       if (curReceipt.status === 'CANCELLED') {
         return c.json({ success: true, data: { id: Number(id), inspection_status: 'CANCELLED', receipt_status: 'CANCELLED', idempotent: true } })
       }
 
       const { results: receiptItems } = await c.env.DB.prepare(
-        `SELECT item_id, received_quantity FROM inventory_receipt_items WHERE receipt_id = ?`
+        `SELECT item_id, received_quantity, accepted_quantity, rejected_quantity, po_item_id
+           FROM inventory_receipt_items WHERE receipt_id = ?`
       ).bind(id).all()
 
-      const validItems = (receiptItems || []).filter((ri) => ri.item_id && (ri.received_quantity as number) > 0)
+      // 재고 역분개는 '합격분(accepted_quantity)'만 차감 — 정방향(po-receive)이 합격분만 입고했기 때문.
+      //   received_quantity로 빼면 거부분까지 과차감되어 정상재고가 훼손됨(#373 동반수정).
+      const invItems = (receiptItems || []).filter((ri) => ri.item_id && (ri.accepted_quantity as number) > 0)
 
-      // 차감 전 현재 잔량 1회 조회 → balance_after를 메모리에서 산출(= max(0, 현재−입고)) → 차감 후 read 제거
+      // 차감 전 현재 잔량 1회 조회 → balance_after를 메모리에서 산출(= max(0, 현재−합격분)) → 차감 후 read 제거
       const cancelBalMap: Record<number, number> = {}
-      if (validItems.length > 0) {
-        const cancelItemIds = validItems.map((ri) => ri.item_id)
+      if (invItems.length > 0) {
+        const cancelItemIds = invItems.map((ri) => ri.item_id)
         const cancelPh = cancelItemIds.map(() => '?').join(',')
         const { results: cancelBalances } = await c.env.DB.prepare(
           `SELECT item_id, quantity FROM inventory WHERE item_id IN (${cancelPh}) AND entity_id = ?`
@@ -437,26 +446,104 @@ inventoryRouter.patch('/receipts/:id/inspection-decision',
         for (const b of cancelBalances) cancelBalMap[b.item_id as number] = b.quantity as number
       }
 
-      // 차감 + 역분개 + receipt 상태변경을 단일 batch(트랜잭션)로 원자 실행
-      // → "차감됨 ⇔ CANCELLED 표기됨" 보장 → 부분실패 후 재시도가 위 멱등 가드와 결합해 안전
+      // ── #373: PO 측 상태 롤백 사전계산 (po_id 있는 입고만; standalone 입고는 PO 없음) ──
+      // '전량 취소' 시맨틱 → 이 receipt가 PO에 누적시킨 received/accepted/rejected를 그대로 역산하고
+      //   line_status·purchase_orders.status를 재산정. (미롤백 시 PO가 RECEIVED에 잔류 → 재입고 400 차단)
+      const poId = curReceipt.po_id
+      if (poId) {
+        // receipt 라인 → po_item별 누적분 집계 (동일 po_item 다중라인 방어)
+        const aggByPoItem: Record<number, { recv: number; acc: number; rej: number }> = {}
+        for (const ri of (receiptItems || [])) {
+          const pid = ri.po_item_id as number | null
+          if (!pid) continue
+          const a = aggByPoItem[pid] || (aggByPoItem[pid] = { recv: 0, acc: 0, rej: 0 })
+          a.recv += Number(ri.received_quantity || 0)
+          a.acc += Number(ri.accepted_quantity || 0)
+          a.rej += Number(ri.rejected_quantity || 0)
+        }
+        const rollbackItems = Object.entries(aggByPoItem).map(([pid, v]) => ({
+          poItemId: Number(pid), recv: v.recv, acc: v.acc, rej: v.rej,
+        }))
+
+        if (rollbackItems.length > 0) {
+          const po = await c.env.DB.prepare(`SELECT status FROM purchase_orders WHERE id = ?`)
+            .bind(poId).first<{ status: string }>()
+          const { results: allPoItems } = await c.env.DB.prepare(
+            `SELECT id, quantity, received_quantity FROM purchase_order_items WHERE po_id = ?`
+          ).bind(poId).all()
+
+          const rbMap: Record<number, number> = {}
+          for (const r of rollbackItems) rbMap[r.poItemId] = r.recv
+
+          // 롤백 후 received_quantity 기준 PO status 재산정 (정방향 willAllReceived 대칭)
+          let allReceived = (allPoItems || []).length > 0
+          let anyReceived = false
+          for (const pi of (allPoItems || [])) {
+            const qty = Number(pi.quantity || 0)
+            const newRecv = Math.max(0, Number(pi.received_quantity || 0) - (rbMap[pi.id as number] || 0))
+            if (!(qty > 0 && newRecv >= qty)) allReceived = false
+            if (newRecv > 0) anyReceived = true
+          }
+          const newPoStatus = allReceived ? 'RECEIVED' : anyReceived ? 'PARTIAL_RECEIVED' : 'CONFIRMED'
+          poRollback = { items: rollbackItems, newStatus: newPoStatus, prevStatus: po?.status || '' }
+        }
+      }
+
+      // 차감 + 역분개 + (PO 롤백) + receipt 상태변경을 단일 batch(트랜잭션)로 원자 실행
+      // → "차감됨 ⇔ CANCELLED 표기됨 ⇔ PO 롤백됨" 보장 → 부분실패 후 재시도가 위 멱등 가드와 결합해 안전
       const ops: D1PreparedStatement[] = []
-      for (const ri of validItems) {
+      for (const ri of invItems) {
+        const acc = ri.accepted_quantity as number
         const before = cancelBalMap[ri.item_id as number] || 0
-        const after = Math.max(0, before - (ri.received_quantity as number))
+        const after = Math.max(0, before - acc)
         ops.push(
           c.env.DB.prepare(`UPDATE inventory SET quantity = MAX(0, quantity - ?), last_updated = CURRENT_TIMESTAMP WHERE item_id = ? AND entity_id = ?`)
-            .bind(ri.received_quantity, ri.item_id, cancelEntityId)
+            .bind(acc, ri.item_id, cancelEntityId)
         )
         ops.push(
           c.env.DB.prepare(
             `INSERT INTO inventory_transactions (item_id, transaction_type, quantity, balance_after, reference_type, reference_id, notes, handled_by, transaction_date, entity_id)
              VALUES (?, 'OUT', ?, ?, 'RECEIPT_CANCEL', ?, ?, ?, datetime('now'), ?)`
           ).bind(
-            ri.item_id, ri.received_quantity, after,
-            Number(id), '입고 취소 역분개', c.get('user')?.id || null, cancelEntityId
+            ri.item_id, acc, after,
+            Number(id), '입고 취소 역분개(합격분)', c.get('user')?.id || null, cancelEntityId
           )
         )
       }
+
+      // #373: PO 라인 received/accepted/rejected 역산 + line_status 재계산
+      if (poRollback) {
+        for (const r of poRollback.items) {
+          ops.push(
+            c.env.DB.prepare(
+              `UPDATE purchase_order_items
+                  SET received_quantity = MAX(0, received_quantity - ?),
+                      accepted_quantity = MAX(0, accepted_quantity - ?),
+                      rejected_quantity = MAX(0, rejected_quantity - ?),
+                      line_status = CASE
+                        WHEN MAX(0, received_quantity - ?) >= quantity AND quantity > 0 THEN 'RECEIVED'
+                        WHEN MAX(0, received_quantity - ?) > 0 THEN 'PARTIAL'
+                        ELSE 'PENDING' END,
+                      updated_at = CURRENT_TIMESTAMP
+                WHERE id = ? AND po_id = ?`
+            ).bind(r.recv, r.acc, r.rej, r.recv, r.recv, r.poItemId, poId)
+          )
+        }
+        // PO 헤더 status 재산정 (사전계산값)
+        ops.push(
+          c.env.DB.prepare(`UPDATE purchase_orders SET status = ?, updated_by = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`)
+            .bind(poRollback.newStatus, c.get('user')?.id || 1, poId)
+        )
+        if (poRollback.newStatus !== poRollback.prevStatus && poRollback.prevStatus) {
+          ops.push(
+            c.env.DB.prepare(
+              `INSERT INTO po_status_history (po_id, from_status, to_status, changed_by, change_reason)
+               VALUES (?, ?, ?, ?, '입고 검수 전량취소 롤백')`
+            ).bind(poId, poRollback.prevStatus, poRollback.newStatus, c.get('user')?.id || 1)
+          )
+        }
+      }
+
       // receipt 상태변경 — WHERE에 선행상태 가드(동시성 추가 방어)
       ops.push(
         c.env.DB.prepare(
@@ -473,7 +560,10 @@ inventoryRouter.patch('/receipts/:id/inspection-decision',
         `UPDATE inventory_receipts SET inspection_status = ?, notes = COALESCE(notes || char(10), '') || ? WHERE id = ?`
       ).bind(inspStatus, decisionLog, id).run()
     }
-    return c.json({ success: true, data: { id: Number(id), inspection_status: inspStatus, receipt_status: receiptStatus } })
+    return c.json({ success: true, data: {
+      id: Number(id), inspection_status: inspStatus, receipt_status: receiptStatus,
+      po_status: poRollback ? poRollback.newStatus : undefined
+    } })
   } catch (err: any) {
     console.error('inspection-decision error:', err)
     return c.json({ success: false, error: '결정 처리 실패', detail: '서버 오류가 발생했습니다' }, 500)
