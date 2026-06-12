@@ -658,28 +658,7 @@ cardsQueriesRouter.get('/defects/list', async (c) => {
 })
 
 
-// GET /api/cards/by-number/:cardNumber — LogWatcher/EdgeAgent lookup.
-// Must be registered BEFORE `/:id` so the 2-segment path wins.
-cardsQueriesRouter.get('/by-number/:cardNumber', async (c) => {
-  try {
-    const cardNumber = c.req.param('cardNumber')
-    // #375: 멀티법인 격리 — ADMIN(entityId=0) 토큰은 필터 생략, 비관리자는 자기 법인 카드만
-    const efBn = cardEntityFilter(c, 'c')
-    const row = await c.env.DB.prepare(`
-      SELECT c.*, o.order_number
-      FROM cards c
-      LEFT JOIN orders o ON c.order_id = o.id
-      WHERE c.card_number = ?${efBn.clause}
-    `).bind(cardNumber, ...efBn.params).first()
-    if (!row) return c.json({ success: false, error: 'Card not found' }, 404)
-    return c.json({ success: true, data: row })
-  } catch (error) {
-    console.error('cards by-number error:', error)
-    return c.json({ success: false, error: 'Server error' }, 500)
-  }
-})
-
-
+// (GET /by-number/:cardNumber 는 #375로 cards.ts 상위에 이동 — agent-key 겸용 인증)
 
 // 불량 통계 (최근 30일, defect_category별)
 cardsQueriesRouter.get('/defect-stats', async (c) => {

@@ -89,3 +89,34 @@ export const agentKeyMiddleware = createMiddleware<HonoEnv>(async (c, next) => {
   }
   await next()
 })
+
+// #375: 카드 조회용 결합 인증 — X-Agent-Key(LogWatcher/EdgeAgent) → 전역(법인 무관, entityId=0),
+//   아니면 일반 JWT(사용자 → 자기 법인 한정). 에이전트는 교차법인 카드 매칭이 정당하므로 전역 허용,
+//   사용자 토큰은 cardEntityFilter로 자기 법인만. (by-number 등 에이전트 겸용 조회에 사용)
+export const agentKeyOrAuthMiddleware = createMiddleware<HonoEnv>(async (c, next) => {
+  const agentKey = c.req.header('X-Agent-Key')
+  if (agentKey) {
+    const expectedKey = c.env.AGENT_API_KEY
+    if (expectedKey && agentKey === expectedKey) {
+      c.set('entityId', 0)  // 에이전트 = 전역 조회(법인 필터 생략)
+      await next()
+      return
+    }
+    return c.json({ success: false, error: 'Invalid API key' }, 401)
+  }
+  // agent-key 없으면 일반 JWT 인증 (authMiddleware와 동일 시맨틱)
+  const authHeader = c.req.header('Authorization')
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return c.json({ success: false, message: 'Unauthorized - No token provided' }, 401)
+  }
+  try {
+    const payload = await verify(authHeader.substring(7), c.env.JWT_SECRET, 'HS256')
+    const authUser = payload as unknown as AuthUser
+    c.set('user', authUser)
+    c.set('entityId', (authUser.entityId != null) ? authUser.entityId : 1)
+    await next()
+  } catch (error) {
+    console.error('agentKeyOrAuth middleware error:', error)
+    return c.json({ success: false, message: 'Unauthorized - Invalid token' }, 401)
+  }
+})

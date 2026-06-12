@@ -15,11 +15,34 @@
  */
 import { Hono } from 'hono'
 import type { HonoEnv } from '../types/env'
+import { agentKeyOrAuthMiddleware } from '../middleware/auth'
+import { cardEntityFilter } from '../utils/entityFilter'
 import cardsQueriesRouter from './cards/queries'
 import cardsSchedulingRouter from './cards/scheduling'
 import cardsLifecycleRouter from './cards/lifecycle'
 
 const cardsRouter = new Hono<HonoEnv>()
+
+// #375: GET /by-number/:cardNumber — LogWatcher/EdgeAgent 겸용 카드 조회.
+//   queries 라우터(authMiddleware 강제 = JWT 필수)보다 먼저 등록해 매칭 우선.
+//   X-Agent-Key → 전역(교차법인, entityId=0) / JWT 사용자 → cardEntityFilter로 자기 법인만(IDOR 차단).
+cardsRouter.get('/by-number/:cardNumber', agentKeyOrAuthMiddleware, async (c) => {
+  try {
+    const cardNumber = c.req.param('cardNumber')
+    const efBn = cardEntityFilter(c, 'c')
+    const row = await c.env.DB.prepare(`
+      SELECT c.*, o.order_number
+      FROM cards c
+      LEFT JOIN orders o ON c.order_id = o.id
+      WHERE c.card_number = ?${efBn.clause}
+    `).bind(cardNumber, ...efBn.params).first()
+    if (!row) return c.json({ success: false, error: 'Card not found' }, 404)
+    return c.json({ success: true, data: row })
+  } catch (error) {
+    console.error('cards by-number error:', error)
+    return c.json({ success: false, error: 'Server error' }, 500)
+  }
+})
 
 // 인증/권한 미들웨어는 각 서브 라우터가 자체 적용 (이중 적용 안 함)
 // 매칭 순서: 구체 경로 우선
