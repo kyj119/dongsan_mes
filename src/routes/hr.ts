@@ -631,23 +631,16 @@ hrRouter.put('/employees/:id', async (c) => {
       }, 400)
     }
 
-    // 퇴사일자 입력 시 자동 소프트삭제 + status 변경
+    // 퇴사일자 입력/삭제 시 status만 자동 전환. ⚠️ is_deleted는 건드리지 않는다 — 퇴사 ≠ 삭제.
+    //   (2026-06-12: 기존엔 퇴사 시 is_deleted=1로 소프트삭제해 목록 쿼리(is_deleted=0)에서 영영 사라졌다.
+    //    퇴사자는 status='RESIGNED'로 남아 '퇴사' 필터로 조회 가능해야 한다. 명시적 삭제는 DELETE 핸들러만.)
     if ('resignation_date' in body && body.resignation_date) {
-      if (!setCols.some(s => s.startsWith('is_deleted'))) {
-        setCols.push('is_deleted = ?')
-        vals.push(1)
-      }
       if (!setCols.some(s => s.startsWith('status'))) {
         setCols.push('status = ?')
         vals.push('RESIGNED')
       }
     }
-    // 퇴사일자 삭제 시 소프트삭제 해제
     if ('resignation_date' in body && !body.resignation_date) {
-      if (!setCols.some(s => s.startsWith('is_deleted'))) {
-        setCols.push('is_deleted = ?')
-        vals.push(0)
-      }
       if (!setCols.some(s => s.startsWith('status'))) {
         setCols.push('status = ?')
         vals.push('ACTIVE')
