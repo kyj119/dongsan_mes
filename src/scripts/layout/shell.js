@@ -555,6 +555,25 @@ if (__userStr) {
     };
 })();
 
+// ═══ 날짜 입력 flatpickr 달력 초기화 (공용) ═══
+// .js-fp 클래스가 붙은 input에 flatpickr 적용. 년/월 헤더로 빠른 이동(생년월일처럼 오래된 날짜에 유용).
+// allowInput:true → 텍스트 직접 입력도 허용(자동하이픈과 병행). CDN 미로드 시 안전하게 무시.
+window.hrInitDatePickers = function(rootSel) {
+    if (typeof flatpickr === 'undefined') return;
+    var root = rootSel ? document.querySelector(rootSel) : document;
+    if (!root) return;
+    var els = root.querySelectorAll('.js-fp');
+    for (var i = 0; i < els.length; i++) {
+        if (els[i]._flatpickr) els[i]._flatpickr.destroy();
+        flatpickr(els[i], {
+            dateFormat: 'Y-m-d',
+            allowInput: true,
+            disableMobile: true,
+            locale: (window.flatpickr && flatpickr.l10ns && flatpickr.l10ns.ko) ? flatpickr.l10ns.ko : undefined
+        });
+    }
+};
+
 // ═══ Entity Switcher (법인 전환) ═══
 var __currentEntityId = 1;
 (function initEntitySwitcher() {

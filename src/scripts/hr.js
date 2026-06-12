@@ -148,13 +148,13 @@ function hrAttachAutoFormat(modal) {
       rrn.value = hrFormatRRN(rrn.value);
     });
   }
-  var birth = modal.querySelector('input[name="birth_date"]');
-  if (birth && !birth.dataset.fmtBound) {
-    birth.dataset.fmtBound = '1';
-    birth.addEventListener('input', function() {
-      birth.value = hrFormatDate(birth.value);
-    });
-  }
+  ['birth_date', 'hire_date', 'resignation_date'].forEach(function(dname) {
+    var del = modal.querySelector('input[name="' + dname + '"]');
+    if (del && !del.dataset.fmtBound) {
+      del.dataset.fmtBound = '1';
+      del.addEventListener('input', function() { del.value = hrFormatDate(del.value); });
+    }
+  });
 }
 
 window.hrOpenEmployeeModal = async function() {
@@ -178,6 +178,8 @@ window.hrOpenEmployeeModal = async function() {
 
   // 자동 포맷 바인딩
   hrAttachAutoFormat(modal);
+  // 날짜 input flatpickr 달력 초기화
+  if (window.hrInitDatePickers) window.hrInitDatePickers('#hrEmployeeForm');
 
   // 금액 input 자동 콤마 바인딩 (전역 헬퍼)
   if (typeof window.bindMoneyInputs === 'function') window.bindMoneyInputs(modal);

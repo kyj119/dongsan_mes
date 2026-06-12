@@ -453,6 +453,8 @@ function hrdPopulateForm(emp) {
   if (hrdEntSel && window.fillEntitySelect) window.fillEntitySelect(hrdEntSel, emp.entity_id);
   // 포맷터 이벤트 바인딩 (한 번만)
   hrdBindFormatters();
+  // 날짜 input flatpickr 달력 초기화 (값 채운 뒤 — 현재 값이 달력 기본일로 인식됨)
+  if (window.hrInitDatePickers) window.hrInitDatePickers('#hrdManageCard');
 }
 
 // 입력 실시간 포맷터 바인딩

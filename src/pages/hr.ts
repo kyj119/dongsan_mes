@@ -128,7 +128,7 @@ export function hrPage(c: Context<HonoEnv>) {
                 <div><label class="block text-xs text-gray-500 mb-1">사원번호 <span class="text-red-500">*</span> <span class="text-[10px] text-gray-400">(자동 생성)</span></label><input type="text" name="employee_code" required readonly class="w-full border border-gray-300 bg-gray-50 rounded px-2 py-1.5 text-sm text-gray-700 tabular-nums"></div>
                 <div><label class="block text-xs text-gray-500 mb-1">성명 <span class="text-red-500">*</span></label><input type="text" name="name" required class="w-full border border-gray-300 rounded px-2 py-1.5 text-sm focus:ring-2 focus:ring-blue-500"></div>
                 <div><label class="block text-xs text-gray-500 mb-1">영문명</label><input type="text" name="name_eng" class="w-full border border-gray-300 rounded px-2 py-1.5 text-sm"></div>
-                <div><label class="block text-xs text-gray-500 mb-1">생년월일</label><input type="text" name="birth_date" maxlength="10" inputmode="numeric" placeholder="예: 1990-01-15" class="w-full border border-gray-300 rounded px-2 py-1.5 text-sm tabular-nums"></div>
+                <div><label class="block text-xs text-gray-500 mb-1">생년월일</label><input type="text" name="birth_date" maxlength="10" inputmode="numeric" placeholder="예: 1990-01-15" class="js-fp w-full border border-gray-300 rounded px-2 py-1.5 text-sm tabular-nums"></div>
                 <div><label class="block text-xs text-gray-500 mb-1">주민등록번호</label><input type="text" name="resident_number" maxlength="14" placeholder="000000-0000000" class="w-full border border-gray-300 rounded px-2 py-1.5 text-sm tabular-nums"></div>
                 <div><label class="block text-xs text-gray-500 mb-1">고용 유형 <span class="text-red-500">*</span></label>
                   <select name="employment_type" required class="w-full border border-gray-300 rounded px-2 py-1.5 text-sm">
@@ -166,8 +166,8 @@ export function hrPage(c: Context<HonoEnv>) {
                   </select>
                 </div>
                 <div><label class="block text-xs text-gray-500 mb-1">직책</label><input type="text" name="job_title" class="w-full border border-gray-300 rounded px-2 py-1.5 text-sm"></div>
-                <div><label class="block text-xs text-gray-500 mb-1">입사일자 <span class="text-red-500">*</span></label><input type="date" name="hire_date" required class="w-full border border-gray-300 rounded px-2 py-1.5 text-sm"></div>
-                <div><label class="block text-xs text-gray-500 mb-1">퇴사일자</label><input type="date" name="resignation_date" class="w-full border border-gray-300 rounded px-2 py-1.5 text-sm"></div>
+                <div><label class="block text-xs text-gray-500 mb-1">입사일자 <span class="text-red-500">*</span></label><input type="text" name="hire_date" required maxlength="10" inputmode="numeric" placeholder="예: 2020-01-15" class="js-fp w-full border border-gray-300 rounded px-2 py-1.5 text-sm tabular-nums"></div>
+                <div><label class="block text-xs text-gray-500 mb-1">퇴사일자</label><input type="text" name="resignation_date" maxlength="10" inputmode="numeric" placeholder="예: 2026-06-30" class="js-fp w-full border border-gray-300 rounded px-2 py-1.5 text-sm tabular-nums"></div>
                 <div><label class="block text-xs text-gray-500 mb-1">이메일</label><input type="email" name="email" class="w-full border border-gray-300 rounded px-2 py-1.5 text-sm"></div>
                 <div><label class="block text-xs text-gray-500 mb-1">전화번호</label><input type="tel" name="phone" placeholder="02-1234-5678" class="w-full border border-gray-300 rounded px-2 py-1.5 text-sm tabular-nums"></div>
                 <div><label class="block text-xs text-gray-500 mb-1">휴대폰</label><input type="tel" name="mobile" placeholder="010-1234-5678" class="w-full border border-gray-300 rounded px-2 py-1.5 text-sm tabular-nums"></div>
