@@ -198,26 +198,72 @@ const COLOR = {
 
 function log(msg) { process.stdout.write(msg + '\n') }
 function warn(msg) { process.stderr.write(msg + '\n') }
+function sleep(ms) { return new Promise((r) => setTimeout(r, ms)) }
 
+// #374: 막 배포된 worker는 cold-start D1로 login이 일시 5xx/연결오류를 낼 수 있음.
+//   5xx·연결오류에 한해 bounded 재시도(backoff 1.5s·3s). 4xx(인증실패)·성공은 즉시 종료 → 진짜 장애는 여전히 잡힘.
 async function login() {
   const url = `${BASE}/api/auth/login`
-  let res
+  const MAX = 3
+  for (let attempt = 1; attempt <= MAX; attempt++) {
+    let res
+    try {
+      res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: USER, password: PASS }),
+      })
+    } catch (err) {
+      if (attempt < MAX) { warn(`  로그인 연결 실패(${attempt}/${MAX}) — cold-start 추정, ${attempt * 1.5}s 후 재시도`); await sleep(attempt * 1500); continue }
+      throw new Error(`로그인 요청 실패(연결 불가): ${err.message}. 서버가 ${BASE}에서 떠 있는지 확인하세요.`)
+    }
+    if (res.status >= 500 && attempt < MAX) {
+      warn(`  로그인 ${res.status}(${attempt}/${MAX}) — cold-start transient 추정, ${attempt * 1.5}s 후 재시도`)
+      await sleep(attempt * 1500)
+      continue
+    }
+    const text = await res.text()
+    let data
+    try { data = JSON.parse(text) } catch { data = null }
+    if (!res.ok || !data || !data.success || !data.data || !data.data.token) {
+      throw new Error(`로그인 실패 ${res.status}: ${text.slice(0, 200)}`)
+    }
+    return data.data.token
+  }
+  throw new Error('로그인 실패: 재시도 횟수 초과')
+}
+
+// #382: 프론트 부트스트랩 게이트 — API가 200이어도 셸 스크립트 MIME 거부 시 전 페이지 무한로딩.
+//   '/' = 200 + text/html + (인라인 셸 마커 switchEntity) 또는 외부 <script src> 셸 스크립트의 실행가능 JS MIME 검증.
+//   06-10 shell.js 2회 prod 다운이 deploy smoke를 그냥 통과했던 갭을 메움.
+async function checkFrontBootstrap() {
+  const url = `${BASE}/`
+  let res, html = ''
   try {
-    res = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username: USER, password: PASS }),
-    })
+    res = await fetch(url, { headers: { Accept: 'text/html' } })
+    html = await res.text()
   } catch (err) {
-    throw new Error(`로그인 요청 실패(연결 불가): ${err.message}. 서버가 ${BASE}에서 떠 있는지 확인하세요.`)
+    return { ok: false, detail: `'/' 요청 실패: ${err.message}` }
   }
-  const text = await res.text()
-  let data
-  try { data = JSON.parse(text) } catch { data = null }
-  if (!res.ok || !data || !data.success || !data.data || !data.data.token) {
-    throw new Error(`로그인 실패 ${res.status}: ${text.slice(0, 200)}`)
+  const ct = res.headers.get('content-type') || ''
+  if (res.status !== 200 || !/text\/html/i.test(ct)) {
+    return { ok: false, detail: `'/' status=${res.status} content-type='${ct}' (200 text/html 기대)` }
   }
-  return data.data.token
+  if (/switchEntity/.test(html)) return { ok: true, detail: '인라인 셸 마커(switchEntity) 확인' }
+  // 외부 셸 스크립트 참조 시 그 스크립트의 MIME 검증 (재외부화 시 MIME 거부 클래스 탐지)
+  const m = html.match(/<script[^>]+src=["']([^"']*shell[^"']*\.js)["']/i) || html.match(/<script[^>]+src=["'](\/static\/[^"']+\.js)["']/i)
+  if (m) {
+    const ref = m[1]
+    const sUrl = ref.startsWith('http') ? ref : `${BASE}${ref.startsWith('/') ? '' : '/'}${ref}`
+    let sres
+    try { sres = await fetch(sUrl) } catch (err) { return { ok: false, detail: `셸 스크립트 fetch 실패: ${err.message}` } }
+    const sct = sres.headers.get('content-type') || ''
+    if (sres.status !== 200 || !/(text|application)\/(java|ecma)script/i.test(sct)) {
+      return { ok: false, detail: `셸 스크립트 ${sUrl} status=${sres.status} content-type='${sct}' (실행가능 JS MIME 기대 — MIME 거부 클래스)` }
+    }
+    return { ok: true, detail: `외부 셸 스크립트 MIME 정상(${sct})` }
+  }
+  return { ok: false, detail: '인라인 셸 마커도 외부 셸 스크립트도 없음 — 부트스트랩 누락 의심' }
 }
 
 async function hit(token, ep) {
@@ -346,6 +392,12 @@ async function main() {
   }
   log(`${COLOR.green}✓ 로그인 성공${COLOR.reset}`)
 
+  // #382: 프론트 부트스트랩 게이트 (API 200 + 셸 정상 둘 다 통과해야 배포 green)
+  log(`${COLOR.cyan}▶ 프론트 부트스트랩 검증: ${BASE}/${COLOR.reset}`)
+  const front = await checkFrontBootstrap()
+  if (front.ok) log(`${COLOR.green}✓ 프론트 정상${COLOR.reset}  ${COLOR.dim}${front.detail}${COLOR.reset}`)
+  else warn(`${COLOR.red}✗ 프론트 부트스트랩 실패: ${front.detail}${COLOR.reset}`)
+
   log(`${COLOR.cyan}▶ ${ENDPOINTS.length}개 엔드포인트 호출 (동시 ${CONCURRENCY})${COLOR.reset}`)
   const t0 = Date.now()
   const results = await runBatch(token, ENDPOINTS)
@@ -353,7 +405,7 @@ async function main() {
   log(`${COLOR.dim}완료: ${elapsed}s${COLOR.reset}`)
 
   const allPass = printResults(results)
-  process.exit(allPass ? 0 : 1)
+  process.exit(allPass && front.ok ? 0 : 1)
 }
 
 main().catch(err => {
