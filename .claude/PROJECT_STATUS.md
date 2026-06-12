@@ -13,19 +13,20 @@
 
 ## 🔴 현재 진행 중
 
-- **✅ [2026-06-12 PM3] 급여 후속 — 요율 검증·수정 + 법인3·4 급여 + Phase 1b (DB 반영 완료, 코드 3건 ▶배포 대기)**:
-  - **4대보험 2026 요율 수정**(`insurance_rates` prod UPDATE): 국민연금 9→**9.5%**(2026.1 연금개혁)·상한 617→**637만**·하한 39→**40만**, 건강 7.09→**7.19%**, 장기요양 12.95→**13.14%**. 고용 1.8 유지. **산재 0.7%=고지서 대기**(근로복지공단 토탈서비스). **▶ 2026.7 국민연금 상한 659만/하한 41만 재조정**(year 단위 1행 구조라 수동 UPDATE 필요). 정본 → [[payroll-insurance-rates-2026]].
+- **✅ [2026-06-12 PM3] 급여 후속 — 요율 검증·수정 + 법인3·4 급여 + Phase 1b + 산재 0.9% + 신고서 점검 — 전부 prod 반영·배포·Playwright 검증·이슈등록 완료**:
+  - **4대보험 2026 요율 수정**(`insurance_rates` prod UPDATE): 국민연금 9→**9.5%**(2026.1 연금개혁)·상한 617→**637만**·하한 39→**40만**, 건강 7.09→**7.19%**, 장기요양 12.95→**13.14%**. 고용 1.8 유지. **산재 0.7→0.9% 확정 입력**(2026-06-12, 출판·인쇄·제본업 표준, 전 46명 sync 회사부담 반영·net 불변). **▶ 2026.7 국민연금 상한 659만/하한 41만 재조정**(year 단위 1행 구조라 수동 UPDATE 필요). 정본 → [[payroll-insurance-rates-2026]].
   - **법인3·4 급여 미생성 해결**: 오다플래그(4) 8명 + 청주(3) 1명 2026-06 batch 생성(switch-entity별 호출 → entity_id 정상, 전체모드 0 오염 방지) + 전체 46명 sync(새 요율·휴일근무 반영, 법인4 휴일수당 183,020). 안혜옥(emp11 base_salary 0→400만 설정·재계산, 음수 net 해소).
   - **Phase 1b 단건 급여 고정연장 분해**(`core.ts` preview/save): batch/sync와 일관, **이중분해 방지**(emp.base_salary 원본 기준 + body.overtime_hours=총연장 해석 → 추가분만). build OK. → [[design-payroll-inclusive-overtime]].
   - **공휴일 2026 검증**: DB 21건 정상(요일·음력·대체 전수 대조). `load-defaults` 코드에 지방선거(06-03) 보완.
-  - **▶ 배포 대기**: load-defaults·Phase1b·`#prCompactCard` 목록표 고정형 = `npm run verify` PASS·**미배포**. 배포 시 커밋+push(CF 자동빌드)+Playwright 단건급여 검증.
+  - **✅ 배포 완료**: load-defaults·Phase1b·`#prCompactCard` 목록표 고정형 = 커밋 `3704abf8` push→CF 자동빌드→Playwright 검증(김기섭 포괄 2,700,000→base 2,502,357+연장 197,643, 시급 11,973 분해 정상).
+  - **산재 0.9% 전수 검증 + 4대보험 신고서 점검**: 급여대장 회사부담금 탭(법인별 산재=동산711,410·선명335,150·청주28,800·오다187,540, 계 **1,262,900**) + 4대보험 신고서 생성→상세(`소계회사−소계근로자=산재`)→삭제로 0.9% 정상 확인. **신고서 구조 이슈 2건 등록** — **#392**(산재 컬럼 미표시: 회사부담 소계/전체합계에만 합산), **#393**(신고서 생성 entity 필터 누락 `insuranceReports.ts:109` → 전 법인 합산·entity_id=1 저장).
 - **✅ [2026-06-12 PM2] 급여/인사 시스템 대규모 개선 — 전부 prod 배포·Playwright 검증·push 완료**:
   - **CAPS 사이트**(DB만): 대전본사→동산기획 rename, 선명2(S2) 삭제. `caps_sites`는 코드 아닌 데이터.
   - **월 인건비**(`hr.ts` /stats): payroll 미생성 시 `net_pay` 빈값→'-' 버그 → **재직 base_salary + 이번달 근태(연장/야간/휴일) 추정** 하이브리드, '예상' 부제. KST 월 보정.
   - **부서/직급/고용형태 SSOT**: `src/constants/hr.ts` 신규(DEPARTMENTS/POSITIONS/EMPLOYMENT_TYPES + deptOptions() 헬퍼 + HR_ENUMS_JS) + `layout.ts` 전역주입(`window.DEPT_NAMES/POSITION_NAMES/EMPLOYMENT_NAMES`). **8파일 하드코딩 제거**(드롭다운 6 + JS맵 3). **`attendance.ts` 필터 OFFICE≠ADMIN_DEPT 버그 수정**. 등록모달 생산직·고정연장 추가(상세모달 일치). 커밋 `9f2f8797`.
   - **고정연장(포괄임금) 급여계산**(`payroll/shared.ts` `calcInclusivePay` + `core.ts` batch/sync): 입력 기본급=포괄총액 → 통상시급=base÷(209+고정OT×1.5=**225.5**), 기본급=시급×209, 고정연장수당=총액−기본급. 기존 `base×225.5/209` 부풀림(~8%) 제거. sync=전체 재계산(공제·실지급). 프론트(÷225.5)와 일치.
   - **급여대장**(`payroll.ts/js`, 커밋 `b79f61c6`): /payroll 확장토글, **table-layout:fixed 고정형** + **급여대장/회사부담금 2탭**, 수당·공제 항목 전개, 부서·전체 합계, 인쇄(가로A4)·CSV. 디자인MD §6에 표 고정형 규칙 추가.
-  - **4대보험 2026 요율**(앱 API 적재) + **야간·휴일 배율 1.5**(settings). ✅ **PM3에서 검증·수정 완료**(국민연금 9.5%·637만, 건강 7.19%, 장기요양 13.14% — 위 PM3 항목 참조). 산재 고지서 대기·7월 상한 재조정 TODO.
+  - **4대보험 2026 요율**(앱 API 적재) + **야간·휴일 배율 1.5**(settings). ✅ **PM3에서 검증·수정 완료**(국민연금 9.5%·637만, 건강 7.19%, 장기요양 13.14% — 위 PM3 항목 참조). 산재 0.9% 확정·7월 상한 재조정 TODO.
   - **야간/휴일 근태연동**(`core.ts` sync, 커밋 `3f5c799d`): attendance 야간(caps_night_min)·휴일근로 → 수당 계산·지급.
   - **공휴일 달력**(마이그 `0311_holidays.sql`, `payroll/settings.ts` CRUD/load-defaults, payrollRates '공휴일' 탭): `holidays` 테이블 단일소스. 커밋 `447d9ca6`·`1c137ae0`.
   - **휴일 derive-at-read 리팩토링**(커밋 `503573c8`): 근태·급여가 **날짜에서 휴일 파생**(토·일+공휴일 달력). attendance mutate(재분류 엔드포인트)·'공휴일 반영' 버튼 **제거** → 드리프트·이중로직 해소. 근태 그리드 공휴일=휴일/휴일근무 표시(결근 아님).
@@ -103,7 +104,7 @@
 ### [GitHub 이슈 백로그]
 - **보류**: #342(equipment entity_id, 다법인 도입 직전 전용세션), #340(E2E CI 인프라·외부의존), #341·#350 잔여(write경로 N+1, 실데이터 검증세션)
 - **owner 운영**: #336 프로덕션 admin/password 교체(+CI SMOKE/E2E 시크릿 갱신)
-- **남은 open 이슈 8건**: ⏸️owner/검증세션=#336(prod 비번)·#340(E2E CI)·#341·#350(write경로 N+1)·#342(설비 entity 다법인 시점) / 🆕미착수 actionable=**#369**(입고검수 전량취소 멱등·재고 이중차감)·**#370**(HTML↔JS silent-fail, 독촉이력 조회/삭제 등 5건) / 부분=**#366** ②카테고리B(대시보드 created_at "오늘"KPI, 저우선)·templates/stock-alerts /:id IDOR 점검(별도)
+- **남은 open 이슈**: ⏸️owner/검증세션=#336(prod 비번)·#340(E2E CI)·#341·#350(write경로 N+1)·#342(설비 entity 다법인 시점) / 🆕미착수 actionable=**#369**(입고검수 전량취소 멱등·재고 이중차감)·**#370**(HTML↔JS silent-fail, 독촉이력 조회/삭제 등 5건)·**#392**(4대보험 신고서 산재 컬럼 미표시)·**#393**(4대보험 신고서 생성 entity 필터 누락=전 법인 합산) / 부분=**#366** ②카테고리B(대시보드 created_at "오늘"KPI, 저우선)·templates/stock-alerts /:id IDOR 점검(별도)
 
 ---
 
