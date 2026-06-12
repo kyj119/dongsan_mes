@@ -10,7 +10,7 @@ import type { Order } from '../../types/models'
 import { authMiddleware, requireRole } from '../../middleware/auth'
 import { requireAnyPagePermission } from '../../middleware/permissions'
 import { recalculateOrderCosts } from '../../utils/costCalculator'
-import { getEntityId } from '../../utils/entityFilter'
+import { getEntityId, entityFilter } from '../../utils/entityFilter'
 import { recommendAssignedEntity, recalcOrderBillingGroups, generateCardsForOrder } from './helpers'
 
 const ordersUpdateRouter = new Hono<HonoEnv>()
@@ -24,9 +24,11 @@ ordersUpdateRouter.put('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
     const orderData = await c.req.json()
 
     // Check if order exists (client_id, final_amount 포함하여 balance 차액 계산에 활용)
+    // #381: 멀티법인 IDOR 차단 — 소유 법인 주문만 수정 (전체 품목/금액 재작성·청구그룹 재계산)
+    const efPut = entityFilter(c, 'orders')
     const existingOrder = await c.env.DB.prepare(`
-      SELECT id, status, client_id, final_amount, order_number, billing_status FROM orders WHERE id = ?
-    `).bind(id).first<{ id: number; status: string; client_id: number; final_amount: number; order_number: string; billing_status: string | null }>()
+      SELECT id, status, client_id, final_amount, order_number, billing_status FROM orders WHERE id = ?${efPut.clause}
+    `).bind(id, ...efPut.params).first<{ id: number; status: string; client_id: number; final_amount: number; order_number: string; billing_status: string | null }>()
 
     if (!existingOrder) {
       return c.json({

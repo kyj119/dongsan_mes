@@ -15,6 +15,25 @@ function calcPrintDuration(startedAt: string | null, completedAt: string | null)
   return Math.round((end - start) / 1000)
 }
 
+// 카드 entity 유도: cards.requesting_entity_id 우선, NULL이면 order로 fallback, 그래도 없으면 1
+// (#384: cards 테이블 컬럼은 entity_id가 아니라 requesting_entity_id — entity_id 조회는 throw)
+async function deriveCardEntityId(
+  db: D1Database, opts: { cardId?: number | null; cardNumber?: string | null }
+): Promise<number> {
+  const { cardId, cardNumber } = opts
+  let row: { entity_id: number | null } | null = null
+  if (cardId) {
+    row = await db.prepare(
+      'SELECT COALESCE(c.requesting_entity_id, o.entity_id) AS entity_id FROM cards c LEFT JOIN orders o ON c.order_id = o.id WHERE c.id = ?'
+    ).bind(cardId).first<{ entity_id: number | null }>()
+  } else if (cardNumber) {
+    row = await db.prepare(
+      'SELECT COALESCE(c.requesting_entity_id, o.entity_id) AS entity_id FROM cards c LEFT JOIN orders o ON c.order_id = o.id WHERE c.card_number = ?'
+    ).bind(cardNumber).first<{ entity_id: number | null }>()
+  }
+  return row?.entity_id || 1
+}
+
 // 인쇄 에러/취소 → quality_issues 자동 등록 헬퍼
 async function autoCreateQualityIssue(
   db: D1Database, cardId: number, printStatus: string, agentId: string,
@@ -27,10 +46,12 @@ async function autoCreateQualityIssue(
     : `인쇄 취소 자동 감지 (${copyTotal}매 중 취소, ${agentId})`
   try {
     // #85: reported_by=NULL (시스템 자동 감지), entity_id는 카드에서 가져오되 fallback 안전 처리
+    // #384: cards.requesting_entity_id 우선, NULL이면 order entity, 그래도 없으면 1
+    const entityId = await deriveCardEntityId(db, { cardId })
     await db.prepare(`
       INSERT INTO quality_issues (card_id, issue_type, defect_category, description, status, reported_by, reported_at, entity_id)
-      VALUES (?, ?, ?, ?, 'REPORTED', NULL, CURRENT_TIMESTAMP, COALESCE((SELECT entity_id FROM cards WHERE id = ?), 1))
-    `).bind(cardId, issueType, defectCategory, description, cardId).run()
+      VALUES (?, ?, ?, ?, 'REPORTED', NULL, CURRENT_TIMESTAMP, ?)
+    `).bind(cardId, issueType, defectCategory, description, entityId).run()
   } catch (e) {
     console.warn('[printEvents] autoCreateQualityIssue failed:', e)
   }
@@ -169,14 +190,8 @@ printEventsRouter.post('/file-map', agentKeyMiddleware, async (c) => {
     }
 
     // entity_id: 카드에서 유도 (agent endpoint이므로 user context 없음), fallback 1
-    let mapEntityId = 1
-    if (card_id) {
-      const card = await c.env.DB.prepare('SELECT entity_id FROM cards WHERE id = ?').bind(card_id).first<{ entity_id: number }>()
-      if (card?.entity_id) mapEntityId = card.entity_id
-    } else if (card_number) {
-      const card = await c.env.DB.prepare('SELECT entity_id FROM cards WHERE card_number = ?').bind(card_number).first<{ entity_id: number }>()
-      if (card?.entity_id) mapEntityId = card.entity_id
-    }
+    // #384: cards.requesting_entity_id (NULL이면 order entity)
+    const mapEntityId = await deriveCardEntityId(c.env.DB, { cardId: card_id, cardNumber: card_number })
 
     await c.env.DB.prepare(`
       INSERT INTO print_file_map (order_number, file_seq, card_id, card_number, order_item_id, file_name, entity_id)
@@ -276,9 +291,8 @@ printEventsRouter.post('/', agentKeyMiddleware, async (c) => {
     const durationSec = calcPrintDuration(print_started_at, print_completed_at)
 
     // entity_id: 카드에서 유도 (agent endpoint이므로 user context 없음)
-    const eventEntityId = cardId
-      ? (await c.env.DB.prepare('SELECT entity_id FROM cards WHERE id = ?').bind(cardId).first<{ entity_id: number }>())?.entity_id || 1
-      : 1
+    // #384: cards.requesting_entity_id (NULL이면 order entity)
+    const eventEntityId = await deriveCardEntityId(c.env.DB, { cardId })
 
     // Insert event
     const result = await c.env.DB.prepare(`
@@ -472,10 +486,8 @@ printEventsRouter.post('/batch', agentKeyMiddleware, async (c) => {
 
         const evtDuration = calcPrintDuration(evt.print_started_at, evt.print_completed_at)
 
-        // entity_id: 카드에서 유도
-        const batchEntityId = cardId
-          ? (await c.env.DB.prepare('SELECT entity_id FROM cards WHERE id = ?').bind(cardId).first<{ entity_id: number }>())?.entity_id || 1
-          : 1
+        // entity_id: 카드에서 유도 (#384: requesting_entity_id, NULL이면 order entity)
+        const batchEntityId = await deriveCardEntityId(c.env.DB, { cardId })
 
         const batchResult = await c.env.DB.prepare(`
           INSERT INTO print_events (

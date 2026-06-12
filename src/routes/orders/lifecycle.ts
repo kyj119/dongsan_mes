@@ -27,11 +27,13 @@ ordersLifecycleRouter.patch('/:id/bill', requireRole('ADMIN', 'MANAGER'), async 
     const user = c.get('user')
     const body = await c.req.json().catch(() => ({})) as { billed_amount?: number }
 
+    // #381: 멀티법인 IDOR 차단 — 소유 법인(orders.entity_id)만 청구 처리 (DELETE #333 선례)
+    const efBill = entityFilter(c, 'orders')
     const order = await c.env.DB.prepare(
       `SELECT id, status, client_id, final_amount, billing_status,
         (SELECT CASE WHEN COUNT(*) > 0 THEN 1 ELSE 0 END FROM order_items WHERE order_id = orders.id AND price_status = 'PENDING') as has_pending_prices
-       FROM orders WHERE id = ?`
-    ).bind(id).first<{ id: number; status: string; client_id: number; final_amount: number; billing_status: string | null; has_pending_prices: number }>()
+       FROM orders WHERE id = ?${efBill.clause}`
+    ).bind(id, ...efBill.params).first<{ id: number; status: string; client_id: number; final_amount: number; billing_status: string | null; has_pending_prices: number }>()
 
     if (!order) {
       return c.json({ success: false, error: 'Order not found' }, 404)
@@ -79,9 +81,11 @@ ordersLifecycleRouter.patch('/:id/billing-status', requireRole('ADMIN', 'MANAGER
     const user = c.get('user')
     const { billing_status: newStatus } = await c.req.json() as { billing_status: string }
 
+    // #381: 멀티법인 IDOR 차단 — 소유 법인만 청구상태 변경
+    const efBs = entityFilter(c, 'orders')
     const order = await c.env.DB.prepare(
-      'SELECT id, status, client_id, final_amount, billing_status, billed_amount FROM orders WHERE id = ?'
-    ).bind(id).first<{ id: number; status: string; client_id: number; final_amount: number; billing_status: string | null; billed_amount: number | null }>()
+      `SELECT id, status, client_id, final_amount, billing_status, billed_amount FROM orders WHERE id = ?${efBs.clause}`
+    ).bind(id, ...efBs.params).first<{ id: number; status: string; client_id: number; final_amount: number; billing_status: string | null; billed_amount: number | null }>()
 
     if (!order) {
       return c.json({ success: false, error: 'Order not found' }, 404)
@@ -125,7 +129,10 @@ ordersLifecycleRouter.patch('/:id/output-folder', async (c) => {
     const id = c.req.param('id')
     const { output_folder } = await c.req.json()
     if (!output_folder) return c.json({ success: false, error: 'output_folder required' }, 400)
-    await c.env.DB.prepare('UPDATE orders SET output_folder = ? WHERE id = ?').bind(output_folder, id).run()
+    // #381: 멀티법인 IDOR 차단 — 소유 법인 주문만 변경 (0건이면 404)
+    const efOf = entityFilter(c, 'orders')
+    const r = await c.env.DB.prepare(`UPDATE orders SET output_folder = ? WHERE id = ?${efOf.clause}`).bind(output_folder, id, ...efOf.params).run()
+    if (!r.meta.changes) return c.json({ success: false, error: 'Order not found' }, 404)
     return c.json({ success: true })
   } catch (err: any) {
     console.error('orders output_folder error:', err)
@@ -158,8 +165,9 @@ ordersLifecycleRouter.patch('/:id/status', requireRole('ADMIN', 'MANAGER'), asyn
       'SHIPPED':    [],
     }
 
-    // Get current status
-    const order = await c.env.DB.prepare('SELECT status, client_id, final_amount, order_number, delivery_date FROM orders WHERE id = ?').bind(id).first<{ status: string; client_id: number; final_amount: number; order_number: string; delivery_date: string | null }>()
+    // Get current status (#381: 소유 법인만 상태 변경)
+    const efSt = entityFilter(c, 'orders')
+    const order = await c.env.DB.prepare(`SELECT status, client_id, final_amount, order_number, delivery_date FROM orders WHERE id = ?${efSt.clause}`).bind(id, ...efSt.params).first<{ status: string; client_id: number; final_amount: number; order_number: string; delivery_date: string | null }>()
 
     if (!order) {
       return c.json({
@@ -348,9 +356,11 @@ ordersLifecycleRouter.patch('/:id/cancel', requireRole('ADMIN', 'MANAGER'), asyn
       return c.json({ success: false, error: '취소 이유를 선택해주세요.' }, 400)
     }
 
+    // #381: 소유 법인만 취소 (재무 역분개 IDOR 차단)
+    const efCx = entityFilter(c, 'orders')
     const order = await c.env.DB.prepare(
-      'SELECT id, status, order_number, client_id, billing_status, billed_amount, final_amount FROM orders WHERE id = ?'
-    ).bind(id).first<{ id: number; status: string; order_number: string; client_id: number; billing_status: string | null; billed_amount: number | null; final_amount: number }>()
+      `SELECT id, status, order_number, client_id, billing_status, billed_amount, final_amount FROM orders WHERE id = ?${efCx.clause}`
+    ).bind(id, ...efCx.params).first<{ id: number; status: string; order_number: string; client_id: number; billing_status: string | null; billed_amount: number | null; final_amount: number }>()
     if (!order) return c.json({ success: false, error: '주문을 찾을 수 없습니다.' }, 404)
 
     if (order.status === 'CANCELLED') {
@@ -442,9 +452,11 @@ ordersLifecycleRouter.patch('/:id/restore', requireRole('ADMIN', 'MANAGER'), asy
     const id = c.req.param('id')
     const user = c.get('user')
 
+    // #381: 소유 법인만 복구
+    const efRs = entityFilter(c, 'orders')
     const order = await c.env.DB.prepare(
-      'SELECT id, status, order_number FROM orders WHERE id = ?'
-    ).bind(id).first<{ id: number; status: string; order_number: string }>()
+      `SELECT id, status, order_number FROM orders WHERE id = ?${efRs.clause}`
+    ).bind(id, ...efRs.params).first<{ id: number; status: string; order_number: string }>()
     if (!order) return c.json({ success: false, error: '주문을 찾을 수 없습니다.' }, 404)
 
     if (order.status !== 'CANCELLED') {

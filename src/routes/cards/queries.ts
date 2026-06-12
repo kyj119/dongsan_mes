@@ -165,18 +165,23 @@ cardsQueriesRouter.get('/schedule/unassigned', async (c) => {
 
 // Debug: card counts by status/rip_status
 cardsQueriesRouter.get('/debug-counts', async (c) => {
+  // #375: 멀티법인 격리 — 비관리자는 자기 법인 카드만 집계
+  const efDbg = cardEntityFilter(c)        // ' AND requesting_entity_id = ?' or ''
+  const efDbgC = cardEntityFilter(c, 'c')  // ' AND c.requesting_entity_id = ?' or ''
   const { results } = await c.env.DB.prepare(`
     SELECT status, rip_status, COUNT(*) as cnt
     FROM cards
+    WHERE 1=1${efDbg.clause}
     GROUP BY status, rip_status
     ORDER BY status, rip_status
-  `).all()
+  `).bind(...efDbg.params).all()
   const { results: orderCounts } = await c.env.DB.prepare(`
     SELECT o.status as order_status, COUNT(c.id) as card_cnt
     FROM cards c
     LEFT JOIN orders o ON c.order_id = o.id
+    WHERE 1=1${efDbgC.clause}
     GROUP BY o.status
-  `).all()
+  `).bind(...efDbgC.params).all()
   return c.json({ success: true, data: { card_counts: results, order_status_counts: orderCounts } })
 })
 
@@ -636,6 +641,9 @@ cardsQueriesRouter.get('/defects/list', async (c) => {
     if (date_from) { wheres.push('qi.created_at >= ?'); params.push(date_from) }
     if (date_to) { wheres.push('qi.created_at <= ?'); params.push(date_to + ' 23:59:59') }
     if (equipment_id) { wheres.push('c.equipment_id = ?'); params.push(parseInt(equipment_id)) }
+    // #375: 멀티법인 격리 — quality_issues.entity_id (NOT NULL DEFAULT 1) 직접 필터
+    const efDef = entityFilter(c)
+    if (efDef.params.length) { wheres.push('qi.entity_id = ?'); params.push(...efDef.params) }
 
     if (wheres.length > 0) query += ' WHERE ' + wheres.join(' AND ')
     query += ' ORDER BY qi.created_at DESC LIMIT ? OFFSET ?'
@@ -655,12 +663,14 @@ cardsQueriesRouter.get('/defects/list', async (c) => {
 cardsQueriesRouter.get('/by-number/:cardNumber', async (c) => {
   try {
     const cardNumber = c.req.param('cardNumber')
+    // #375: 멀티법인 격리 — ADMIN(entityId=0) 토큰은 필터 생략, 비관리자는 자기 법인 카드만
+    const efBn = cardEntityFilter(c, 'c')
     const row = await c.env.DB.prepare(`
       SELECT c.*, o.order_number
       FROM cards c
       LEFT JOIN orders o ON c.order_id = o.id
-      WHERE c.card_number = ?
-    `).bind(cardNumber).first()
+      WHERE c.card_number = ?${efBn.clause}
+    `).bind(cardNumber, ...efBn.params).first()
     if (!row) return c.json({ success: false, error: 'Card not found' }, 404)
     return c.json({ success: true, data: row })
   } catch (error) {
@@ -678,15 +688,19 @@ cardsQueriesRouter.get('/defect-stats', async (c) => {
     const startDate = date_from || new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10)
     const endDate = (date_to || new Date().toISOString().slice(0, 10)) + ' 23:59:59'
 
+    // #375: 멀티법인 격리 — quality_issues.entity_id / cards.requesting_entity_id 필터
+    const ef = entityFilter(c, 'qi')          // ' AND qi.entity_id = ?' or ''
+    const efCards = cardEntityFilter(c)       // ' AND requesting_entity_id = ?' or ''
+
     // 유형별 통계
     const { results: byCategory } = await c.env.DB.prepare(`
       SELECT qi.defect_category, COUNT(*) as count,
         SUM(CASE WHEN qi.status = 'RESOLVED' THEN 1 ELSE 0 END) as resolved,
         SUM(CASE WHEN qi.status = 'OPEN' THEN 1 ELSE 0 END) as open_count
       FROM quality_issues qi
-      WHERE qi.created_at >= ? AND qi.created_at <= ? AND qi.card_id IS NOT NULL
+      WHERE qi.created_at >= ? AND qi.created_at <= ? AND qi.card_id IS NOT NULL${ef.clause}
       GROUP BY qi.defect_category ORDER BY count DESC
-    `).bind(startDate, endDate).all()
+    `).bind(startDate, endDate, ...ef.params).all()
 
     // 장비별 통계
     const { results: byEquipment } = await c.env.DB.prepare(`
@@ -694,25 +708,25 @@ cardsQueriesRouter.get('/defect-stats', async (c) => {
       FROM quality_issues qi
       LEFT JOIN cards c ON qi.card_id = c.id
       LEFT JOIN equipment eq ON c.equipment_id = eq.id
-      WHERE qi.created_at >= ? AND qi.created_at <= ? AND qi.card_id IS NOT NULL AND c.equipment_id IS NOT NULL
+      WHERE qi.created_at >= ? AND qi.created_at <= ? AND qi.card_id IS NOT NULL AND c.equipment_id IS NOT NULL${ef.clause}
       GROUP BY c.equipment_id ORDER BY count DESC
-    `).bind(startDate, endDate).all()
+    `).bind(startDate, endDate, ...ef.params).all()
 
     // 일별 추이
     const { results: daily } = await c.env.DB.prepare(`
       SELECT date(qi.created_at) as date, COUNT(*) as count
       FROM quality_issues qi
-      WHERE qi.created_at >= ? AND qi.created_at <= ? AND qi.card_id IS NOT NULL
+      WHERE qi.created_at >= ? AND qi.created_at <= ? AND qi.card_id IS NOT NULL${ef.clause}
       GROUP BY date(qi.created_at) ORDER BY date ASC
-    `).bind(startDate, endDate).all()
+    `).bind(startDate, endDate, ...ef.params).all()
 
     // 전체 불량률 (해당 기간 카드 대비)
     const totalCards = await c.env.DB.prepare(`
       SELECT COUNT(DISTINCT qi.card_id) as defect_cards,
-        (SELECT COUNT(*) FROM cards WHERE created_at >= ?) as total_cards
+        (SELECT COUNT(*) FROM cards WHERE created_at >= ?${efCards.clause}) as total_cards
       FROM quality_issues qi
-      WHERE qi.created_at >= ? AND qi.created_at <= ?
-    `).bind(startDate, startDate, endDate).first<DefectRateRow>()
+      WHERE qi.created_at >= ? AND qi.created_at <= ?${ef.clause}
+    `).bind(startDate, ...efCards.params, startDate, endDate, ...ef.params).first<DefectRateRow>()
 
     return c.json({
       success: true,
