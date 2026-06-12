@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 1 -->
-<!-- last_run_at: 2026-06-12T17:00:00+09:00 -->
+<!-- last_run_area: 2 -->
+<!-- last_run_at: 2026-06-12T21:00:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,7 +8,7 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | 10 (open auto-improve **재실측 06-12T17:00 Area 1** — #388·#387·#386·#385·#384·#383·#382·#381·#379·#374. **#373 done-sync close 완료**(아래) → open 11건 = 10 new + #372 reviewed) |
+| 🆕 new | 13 (open auto-improve **재실측 06-12T21:00 Area 2** — #391·#390·#389 신규 3건 추가 + #388·#387·#386·#385·#384·#383·#382·#381·#379·#374. → open 14건 = 13 new + #372 reviewed) |
 | ✅ approved | 0 (직전 approved #342/#340 모두 done 확정·이관 — Area 6 검증 완료) |
 | 👀 reviewed | 1 (#372 CSV truncation — owner 코멘트 "3번으로 진행, 최대 5000 제한" 06-11T00:25. ⚠️**모호**: #372 3번=페이지네이션 스트리밍(전량)인데 "5000 제한 유지"와 모순 → 구현 전 의도 확인 필요. 승인처리 워크플로우 대상) |
 | ✔️ done | 82 (81 + **#373 done-sync (Area 1 본 사이클)**: 커밋 `4adc9b1`이 입고검수 CANCELLED 분기에 PO status 롤백(received/accepted/rejected 역산 + line_status·purchase_orders.status 재산정 + po_status_history) + 재고 역분개를 accepted_quantity 기준으로 정밀화 + 단일 batch 원자실행(#369 멱등가드 보존) → RECEIVED 영구잔류·재입고 차단 해소. standalone(po_id NULL) 제외. 코드 직접 대조 close) |
@@ -16,6 +16,16 @@
 
 > 📦 **과거 사이클 로그**(아래 6블록 이전분)는 `IMPROVEMENT_BACKLOG_ARCHIVE.md`로 이관됨 (2026-06-10 정리). 신규 로그는 계속 이 파일 상단에 추가.
 
+> **Area 2 코드 품질 (2026-06-12T21:00):**
+> - **방법**: baseline `npm ci`+`tsc --noEmit` PASS + build PASS(392 modules, _worker.js 5.14MB). HEAD=remote main=`503573c`(휴일 날짜파생 단일소스), clean tree. Area 2 **11회차** — 시의성(최근 churn: 휴일/근태/급여 대량 — 503573c·1c137ae·b77d1e2·447d9ca·3f5c799·b79f61c) + 전수 스캔(존재X컬럼·entity_id INSERT·N+1·authMiddleware·best-effort catch) 병렬 Explore 2개. 발견 전수 owner 직접 코드 Read + migrations ground-truth 대조.
+> - **🟡 신규 이슈 #389 (improvement, small) — 급여 batch/sync-attendance N+1 (#350 잔여)**: `payroll/core.ts:414`(batch)·`:664`(sync) 루프 내 `loadEmployeeDefaults`(shared.ts:350 = **PRAGMA table_info + SELECT WHERE id=? 매 호출**) + `calcDeductions`(shared.ts:264 insurance_rates `WHERE year=?`, year는 batch 내 상수) 미hoist. #350이 exists/empRow/근태집계는 IN-prefetch했으나 loadEmployeeDefaults 누락. 직원 100명 = batch당 ~300+ 왕복. **월 필수** 작업이라 #379(printSystem setup, 저빈도)보다 발화 빈도 높음. 동일 클래스 추가 위치: `po-receive.ts:124-162`(입고 품목당 inventory+items.storage_zone_id SELECT, LOW). **자동수정 안 함**: 급여=재무 핵심계산, prefetch가 컬럼가드·fallback 시맨틱 정확 복제 필요 + egress 검증불가(#379 동일 판정).
+> - **🔵 신규 이슈 #390 (LOW bug) — 급여 일괄생성 skipped_names 과대보고**: `core.ts:500-504`가 `SELECT e.name FROM payroll p JOIN employees e WHERE p.pay_period=? AND e.status='ACTIVE'`로 스킵 조건(existsSet) 미반영 → 루프 종료시점 payroll에 created+skipped 공존 → **created 직원 이름까지 skipped_names에 혼입**. created/skipped 카운트는 정상(existsSet 기반), 표시용 이름 목록만 부정확. 수정=`SELECT name FROM employees WHERE id IN (existsSet)`. **자동수정 안 함**(급여 엔드포인트 응답값 변경+egress 검증불가, 표시용 LOW라 보고 — read-only 정정이라 직접수정도 가능, 코멘트 요청 시).
+> - **🟡 신규 이슈 #391 (MED bug, #366/#388 클래스) — 근태 체크인 work_date raw UTC**: `hr.ts:250` `work_date || new Date().toISOString().split('T')[0]`(UTC) → KST 00~09시 출근이 전일로 영구 기록(stored DATE off-by-one). 같은 파일 stats(`hr.ts:809` `Date.now()+9h`·`:824` `'+9 hours'`)는 KST 의도=불일치 증거. 급여 sync(`core.ts:579` `strftime('%Y-%m', work_date)=payPeriod`)로 전파 → 월경계 새벽 근무 집계 누락/오귀속(야간/휴일수당 근태연동 3f5c799 영향권). #388(출고/재고)과 동일 클래스·다른 모듈(HR). CAPS 1차소스라 빈도 제한적이나 stored DATE라 자가정상화 안 됨. **자동수정 안 함**(SKILL Area 4 날짜 시맨틱=비즈니스 로직, 저장↔비교 양측 일관성 선행).
+> - **🚫 서브에이전트 오탐 차단 3건**: ① **휴일 파생 미동기화 "Architecture Bug"** → 503573c가 **의도적으로 도입한 단일소스 설계**(`core.ts:568-570` 주석 "휴일 판정 날짜에서 파생, attendance mutate 불필요, 달력만 바꾸면 자동반영")가 정답인데 에이전트가 결함으로 오독 → 드롭. ② **cards/lifecycle.ts entity 격리** → 에이전트 자체 "오탐 가능성 고", order 조인 권한 보호 + Area 5 사안(Area 2 무관) → 드롭. ③ **po-queries.ts:68 `.replace('entity_id','po.entity_id')`** → `efAnd`=`' AND entity_id = ?'`에 'entity_id' 단일 출현 → `' AND po.entity_id = ?'` **정확 변환**(중복 없음), 버그 아님 → 드롭.
+> - **🔵 clean 검증**: ① **존재X 컬럼**: holiday/attendance/payroll 관련 SELECT/INSERT 전수 migrations 대조 — 0건(0311 holidays·0287 PO items·0040 receipt items·0305 orders billing 전부 실컬럼). ② **entity_id INSERT**: attendance(hr.ts:246 attendanceEntityId)·payroll(core.ts:492 getEntityId) 주입 정상. ③ **authMiddleware**: 배럴 라우터 자식 전수 적용. ④ **best-effort catch**: 핵심 mutation try 밖(보상 트랜잭션 po-receive.ts:283-291 정상). ⑤ CAPS 근태수집(caps.ts:188-198) IN절 prefetch=N+1 無.
+> - **이상 없음**: open auto-improve **14건**(#389·#390·#391 신규 + #374·#379·#381~#388 10 + #372 reviewed) stats 정합. baseline PASS. 휴일/근태/급여 대량 churn에 존재X컬럼·entity_id·auth 회귀 0.
+> - 자동 수정 0건(전부 재무 시맨틱·날짜·표시용 = 검증불가/정책), 신규 이슈 3건(#389 improvement·#390 LOW bug·#391 MED bug), 서브에이전트 오탐 3건 차단(휴일파생 단일소스 오독·cards Area5 혼동·replace 정상), clean 5각도
+>
 > **Area 1 프로덕션 헬스 (2026-06-12T17:00):**
 > - **방법**: GitHub Actions 최근 30런(total 564) 분석 + baseline `npm ci`+`tsc --noEmit` PASS + build PASS(392 modules, _worker.js 5.14MB). egress **000**(샌드박스 IP 차단, `curl health/`=000) → 직접 20-API 호출 불가, Deploy/E2E 결과를 헬스 신호로 사용. HEAD=remote main=`447d9ca`(detached HEAD로 시작했으나 `git ls-remote`로 refs/heads/main 일치 확정), clean tree.
 > - **🟢 파이프라인 완전 green — HR/급여 churn 무회귀**: HEAD `447d9ca`(E2E 27...·Deploy 둘 다 success). 최근 30런 중 **1 cancelled(`d7585b2` E2E, 재트리거 정상)** 외 전부 success. 06-12 HR/payroll 대량 churn(법정공휴일 달력·야간/휴일수당 근태연동·급여대장 재설계·flatpickr·entity4 오다플래그 등 10+커밋) Deploy/E2E 전부 green — 회귀 0. queued/stuck 0.
