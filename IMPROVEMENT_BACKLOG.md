@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 4 -->
-<!-- last_run_at: 2026-06-11T20:00:00+09:00 -->
+<!-- last_run_area: 5 -->
+<!-- last_run_at: 2026-06-12T08:30:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,7 +8,7 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | 13 (open auto-improve **실측 06-11T20:00 Area 4** — #388·#387·#386 신규 3건 + #385·#384·#383·#382·#381·#379·#378·#377·#374·#373. ⚠️ #377·#378은 코드 수정 머지됨(eadba44/9be309d)이나 GitHub 이슈 open 잔류 → 차기 Area 6 close 동기화 필요) |
+| 🆕 new | 13 (open auto-improve **재실측 06-12T08:30 Area 5** — #388·#387·#386·#385·#384·#383·#382·#381·#379·#378·#377·#374·#373. 이번 사이클 net-new 0. ⚠️ #377·#378은 코드 수정 머지됨(eadba44/9be309d)이나 GitHub 이슈 open 잔류 → 차기 Area 6 close 동기화 필요) |
 | ✅ approved | 0 (직전 approved #342/#340 모두 done 확정·이관 — Area 6 검증 완료) |
 | 👀 reviewed | 1 (#372 CSV truncation — owner 코멘트 "3번으로 진행, 최대 5000 제한" 06-11T00:25. ⚠️**모호**: #372 3번=페이지네이션 스트리밍(전량)인데 "5000 제한 유지"와 모순 → 구현 전 의도 확인 필요. 승인처리 워크플로우 대상) |
 | ✔️ done | 79 (78 + **#380 done-sync**: 커밋 6b06512 `fix(dashboard): #380 — 납기 준수율 KPI 재정의`가 결함1(updated_at→COALESCE 권위 출고일)·결함2(SHIPPED→SHIPPED+COMPLETED) 모두 해소, 월귀속도 created_at→delivery_date. Area 3 직접 git 검증 후 close) |
@@ -16,6 +16,15 @@
 
 > 📦 **과거 사이클 로그**(아래 6블록 이전분)는 `IMPROVEMENT_BACKLOG_ARCHIVE.md`로 이관됨 (2026-06-10 정리). 신규 로그는 계속 이 파일 상단에 추가.
 
+> **Area 5 보안 (2026-06-12T08:30):**
+> - **방법**: baseline `npm ci`+`tsc --noEmit` PASS + build PASS(383 modules). Area 5 **10회차** — 시의성(최근 churn: purchaseOrders/core.ts **5분할** f428617~6c89232 = po-queries/po-receipts/po-receive/po-special + templates/stock-alerts, 바렐 `purchaseOrders.ts` 집계) + 신선 4각도(시크릿폴백·CSV injection·독립페이지 XSS·ORDER BY/IN SQLi) 병렬 Explore 2개. 발견 전수 owner 직접 코드 Read + **git 분할직전 커밋(bb7bec6) 대조**.
+> - **🟢 net-new 0건 — PO 5분할 보안 회귀 0 + 4각도 clean**:
+>   - **시의성: PO 분할 = 보안 속성 완전 보존(git 대조)**. ① **authMiddleware**: 7개 서브라우터 전부 자체 `.use('/*', authMiddleware, requireAnyPagePermission('/purchase-orders','/receiving'))` 재선언(누락 0). ② **마운트 순서**: `purchaseOrders.ts:30-36` 구체경로(templates/stock-alerts/queries/receipts/receive/special) 전부 → core(`/:id`) 마지막 = 섀도잉 방지 정확. ③ **entityFilter 대칭**: receive(po-receive.ts:30 `#358계열`)·copy/reorder(po-special.ts:26/129)·invoice(po-queries.ts:159)·inspections(po-receipts.ts:262)·statement(po-receipts.ts:90/121)·receiving-queue(po-receipts.ts:402) 단건/변경 전부 `entityFilter(c[,'po'/'ir'])` 적용. ④ **requireRole**: 분할 전(bb7bec6) core.ts와 핸들러별 동일(POST/PUT/DELETE/status/copy/reorder/quick=ADMIN/MANAGER, receive만 무게이트=분할 전부터 동일).
+>   - **🚫 서브에이전트 "HIGH" 오탐 2건 차단**: ① **`POST /:id/receive` requireRole 부재 = "STAFF 입고 가능 HIGH"** → 반증: 라우터 `requireAnyPagePermission`(`permissions.ts:66`)이 role별 `getAccessiblePages` 조회 후 미보유 403 = **실제 RBAC**. `/receiving` 권한 부여 role(창고 입고담당)만 도달 = 의도된 page-permission 접근모델. 입고는 ADMIN/MANAGER가 아니라 창고담당 업무라 requireRole 미적용 정상(분할 전부터 동일, 에이전트 본인도 "회귀 아님" 인정). → **드롭**(SKILL FP codify). ② **보상 DELETE entity_id 미필터**(po-receive.ts:287) → 같은 요청 내 방금 INSERT한 receiptId의 best-effort 롤백, 에이전트도 "race condition 필요·악용 어려움" 인정 = 노이즈. SKILL 기존 "보상 rollback DELETE 정상" 규칙 해당 → 드롭.
+>   - **신선 4각도 clean**: ① 시크릿 폴백 `grep "c.env.[A-Z_]+ *|| *'"` **0건**(.github yml 포함). ② CSV injection: `utils/csv.ts:58` `escapeCsvField` 선행 `=+-@\t\r` 가드 + 숫자-안전(음수금액 보존), 4구현(csv/tax-agent/po-queries `generateCsv`) 전부 중앙 헬퍼 경유. shipments는 CSV export 자체 없음(list/stats만). ③ 독립 HTML XSS: `grep c.html src/pages` 13개 — payslip/yearEnd 로컬 `esc()`(기수정)·portalDocument `esc()`(textContent)·나머지 free-text innerHTML sink 부재 = 잔여 0. ④ ORDER BY: quotations/orders/cards/PO 6곳 전부 `sortOptions[sort] || default` 화이트리스트, IN절 `?` placeholder+bind.
+> - **이상 없음**: open auto-improve **14건**(#373~#388 13 new + #372 reviewed) stats 정합. baseline PASS. #381(orders 쓰기 IDOR)은 별개 모듈(orders, PO 아님)이라 본 사이클 무관·open 유지.
+> - 자동 수정 0건(net-new 없음), 신규 이슈 0건, **PO 5분할 보안회귀 0 git 대조 확정**, 서브에이전트 HIGH 오탐 2건 차단(page-permission gating·보상 DELETE), 신선 4각도 clean, SKILL 탐지규칙 2건 codify(분할 보안점검 체크리스트 + page-permission gating FP)
+>
 > **Area 4 데이터 정합성 (2026-06-11T20:00):**
 > - **방법**: ground-truth — 305 마이그레이션 로컬 D1(node:sqlite) 전량 적용(**FAIL 0**, 172테이블/515인덱스) + baseline `npm ci`+`tsc --noEmit` PASS + build PASS(383 modules, _worker.js 5.10MB). Area 4 **10회차** — 시의성(최근 churn: split billing 0305/0306 order_billing_groups·workbench 0307·ia_auto 0308·equipment_entity 0302) + 신선 각도(CHECK↔쓰기값·UTC/KST 업무일자·신규 entity_id NULL) 병렬 Explore 2개. 발견 전수 owner 직접 코드 Read 검증.
 > - **🔴 신규 이슈 #386 (MED bug) — split billing DRAFT 삭제가 obg.tax_invoice_id 미정리(cancel 경로와 비대칭)**: `createSplitInvoices`(helpers.ts:422)가 DRAFT 생성 시 그룹을 무조건 링크(tax_invoice_id=draftId, billing_status=NULL), 그런데 DRAFT 삭제(manage.ts:140-144)는 junction/items/header만 지우고 **obg.tax_invoice_id 미정리** → dangling 참조. 취소 경로(issue.ts:707)는 정확히 비움=비대칭 증거. 영향: ① issue.ts:261 재링크 `WHERE tax_invoice_id IS NULL`이 dangling 그룹 건너뜀(재링크 차단) ② orders/core.ts:427 주문상세에 phantom 계산서 노출. 재무/AR은 billing_status='BILLED' 필터라 영향 미미. **자동수정 안 함**: 재무 delete 경로 write 추가 + egress 검증불가(저위험이나 청구 데이터).
