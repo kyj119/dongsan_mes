@@ -337,6 +337,14 @@ function hrdFmtRRN(v) {
   return d.slice(0, 6) + '-' + d.slice(6);
 }
 
+// 생년월일 자동 하이픈 (YYYYMMDD → YYYY-MM-DD). 숫자만 입력해도 칸이 나뉜다.
+function hrdFmtDate(v) {
+  var d = String(v == null ? '' : v).replace(/\D/g, '').slice(0, 8);
+  if (d.length <= 4) return d;
+  if (d.length <= 6) return d.slice(0, 4) + '-' + d.slice(4);
+  return d.slice(0, 4) + '-' + d.slice(4, 6) + '-' + d.slice(6);
+}
+
 function hrdFmtMobilePhone(v) {
   var d = String(v == null ? '' : v).replace(/\D/g, '').slice(0, 11);
   if (d.length < 4) return d;
@@ -429,6 +437,7 @@ function hrdPopulateForm(emp) {
     // 포맷 적용
     var fmt = el.getAttribute('data-format');
     if (fmt === 'rrn') val = hrdFmtRRN(val);
+    else if (fmt === 'date') val = hrdFmtDate(val);
     else if (fmt === 'phone') val = hrdFmtTelPhone(val);
     else if (fmt === 'mobile') val = hrdFmtMobilePhone(val);
     else if (el.getAttribute('data-money') === '1') val = hrdFmtMoneyInput(val);
@@ -462,6 +471,7 @@ function hrdBindFormatters() {
         var raw = el.value;
         var formatted = raw;
         if (fmt === 'rrn') formatted = hrdFmtRRN(raw);
+        else if (fmt === 'date') formatted = hrdFmtDate(raw);
         else if (fmt === 'phone') formatted = hrdFmtTelPhone(raw);
         else if (fmt === 'mobile') formatted = hrdFmtMobilePhone(raw);
         else if (isMoney) formatted = hrdFmtMoneyInput(raw);

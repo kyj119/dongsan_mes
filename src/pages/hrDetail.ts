@@ -99,7 +99,7 @@ export function hrDetailPage(c: Context<HonoEnv>) {
               <h4 class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">기본 정보</h4>
               <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 <div><label class="block text-xs text-gray-500 mb-1">성명</label><input data-field="name" class="hrd-input w-full border border-gray-200 rounded px-2 py-1.5 text-sm" disabled></div>
-                <div><label class="block text-xs text-gray-500 mb-1">생년월일</label><input data-field="birth_date" type="date" class="hrd-input w-full border border-gray-200 rounded px-2 py-1.5 text-sm" disabled></div>
+                <div><label class="block text-xs text-gray-500 mb-1">생년월일</label><input data-field="birth_date" data-format="date" maxlength="10" inputmode="numeric" placeholder="예: 1990-01-15" class="hrd-input w-full border border-gray-200 rounded px-2 py-1.5 text-sm tabular-nums" disabled></div>
                 <div><label class="block text-xs text-gray-500 mb-1">주민등록번호</label><input data-field="resident_number" data-format="rrn" maxlength="14" class="hrd-input w-full border border-gray-200 rounded px-2 py-1.5 text-sm tabular-nums" placeholder="000000-0000000" disabled></div>
                 <div><label class="block text-xs text-gray-500 mb-1">소속법인</label>
                   <select data-field="entity_id" class="hrd-input w-full border border-gray-200 rounded px-2 py-1.5 text-sm" disabled></select>

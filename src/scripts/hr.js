@@ -123,6 +123,14 @@ function hrFormatRRN(v) {
   return d.slice(0, 6) + '-' + d.slice(6);
 }
 
+// 생년월일 자동 하이픈 (YYYYMMDD → YYYY-MM-DD)
+function hrFormatDate(v) {
+  var d = String(v || '').replace(/\D/g, '').slice(0, 8);
+  if (d.length <= 4) return d;
+  if (d.length <= 6) return d.slice(0, 4) + '-' + d.slice(4);
+  return d.slice(0, 4) + '-' + d.slice(4, 6) + '-' + d.slice(6);
+}
+
 function hrAttachAutoFormat(modal) {
   ['phone', 'mobile', 'emergency_phone'].forEach(function(name) {
     var el = modal.querySelector('input[name="' + name + '"]');
@@ -138,6 +146,13 @@ function hrAttachAutoFormat(modal) {
     rrn.dataset.fmtBound = '1';
     rrn.addEventListener('input', function() {
       rrn.value = hrFormatRRN(rrn.value);
+    });
+  }
+  var birth = modal.querySelector('input[name="birth_date"]');
+  if (birth && !birth.dataset.fmtBound) {
+    birth.dataset.fmtBound = '1';
+    birth.addEventListener('input', function() {
+      birth.value = hrFormatDate(birth.value);
     });
   }
 }
