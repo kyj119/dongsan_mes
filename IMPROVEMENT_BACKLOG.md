@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 2 -->
-<!-- last_run_at: 2026-06-14T02:00:00+09:00 -->
+<!-- last_run_area: 3 -->
+<!-- last_run_at: 2026-06-14T06:00:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,7 +8,7 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | 8 (**GitHub open auto-improve 실측 8건** — #394 재고실사 승인 INSERT 컬럼부재 HIGH·#395 split billing freeze tax_invoice_id 무시 MED·#396 주문편집 work_records 고아 LOW [Area 4] · #397 year-end rrn 존재X컬럼 HIGH·#398 ledger payment/:id 단건GET entityFilter 누락 MED · #399 quotation.js 견적서 stored XSS MED [Area 5] · #400 배포후 smoke 로그인 cold-start false-fail LOW [Area 1] · **#401 근태 일괄저장 N+1 entity_id 재조회 small [본 Area 2 사이클 신규]**) |
+| 🆕 new | 9 (**GitHub open auto-improve 실측 9건** — #394 재고실사 승인 INSERT 컬럼부재 HIGH·#395 split billing freeze tax_invoice_id 무시 MED·#396 주문편집 work_records 고아 LOW [Area 4] · #397 year-end rrn 존재X컬럼 HIGH·#398 ledger payment/:id 단건GET entityFilter 누락 MED · #399 quotation.js 견적서 stored XSS MED [Area 5] · #400 배포후 smoke 로그인 cold-start false-fail LOW [Area 1] · #401 근태 일괄저장 N+1 entity_id 재조회 small [Area 2] · **#402 드릴다운 쿼리파라미터 목적지(orders/ledger/cards) init 미read MED [본 Area 3 사이클 신규]**) |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 (#372 CSV도 owner close-completed → done 이관) |
 | ✔️ done | 96 (82 + **직전 open 14건 owner 일괄 close-completed**[#372 reviewed + #374·#379·#381~#391 13 new]. not_planned 라벨검색 = #348 과거 1건뿐 → 14건 전부 completed 확정. 06-12 owner 대량 픽스 커밋(644fbab #389/#390·645ae53 #372/#379·3f8fd0d #382/#383·83ded42 #387·c17e944 #375/#383). **GitHub open auto-improve 실측 0건** 정합) |
@@ -16,6 +16,15 @@
 
 > 📦 **과거 사이클 로그**(아래 6블록 이전분)는 `IMPROVEMENT_BACKLOG_ARCHIVE.md`로 이관됨 (2026-06-10 정리). 신규 로그는 계속 이 파일 상단에 추가.
 
+> **Area 3 UX/기능 감사 (2026-06-14T06:00):**
+> - **방법**: baseline `npm ci`(82 pkg)+build PASS(393 modules, _worker.js 5.15MB). HEAD=remote main=`41a6008`(직전 Area 2 backlog), clean tree. Area 3 **11회차** — 시의성(최근 churn: 휴가→근태 자동연동 `173c42f`) + 신선 각도(드릴다운 쿼리파라미터 passthrough·HTML↔JS silent-fail·빈상태·검색필터·변경후갱신·대시보드 KPI) 병렬 Explore 2개(휴가/근태 + 대시보드/주문흐름). 발견 전수 owner 직접 코드 Read 검증.
+> - **🟢 신규 이슈 #402 (MED bug) — 드릴다운 네비 쿼리파라미터를 목적지 페이지가 init에서 미read**: 대시보드/주문 카드가 명시적 쿼리링크를 생성하나 목적지 init이 `window.location.search` 미read → 필터 미적용 침묵 붕괴. **4건 확인**: ① `dashboard.js:42` `/orders?priority=URGENT`→`orders.js:1411-1429` localStorage만 복원(URL 무시, `:1061/:1086`은 모달 `view`뿐) ② `dashboard.js:155` `/ledger?search=`→`ledger.js` URL 미read ③ `dashboard.js:249` `/ledger?client_id=`→ledger selectClient은 row onclick만 ④ `orders.js:989` `/cards?search=`→`cards/core.js:54` localStorage `saved.search`만. **정답 패턴 코드베이스 실존**(`inspections.js:420` #346 드릴다운 URLSearchParams init·`equipment.js:1049` `?tab=`) → 글로벌 핸들러 없는 per-page IIFE 책임인데 orders/ledger/cards만 누락 = 오버사이트. **자동수정 안 함**: Area 3 issue-only + URL↔localStorage 우선순위·새로고침 시맨틱=UX판단 + egress 드릴다운 end-to-end 검증불가. 방향 명확(#346 패턴 복제).
+> - **🚫 서브에이전트 오탐/저가치 정리 5건**: ① **미수금 TOP10 entity 필터 불일치 "MED"** → **FP**: 서브에이전트가 "payments/adjustments entity_id 미보유 가능성"으로 추정 보고했으나 ground-truth 반증 — `payments`(entity_id #398)·`adjustments`(0150 ALTER 추가) 모두 `dashboard.ts:337-338` `efBalP`/`efBalA` clause 적용됨 = 이미 정합 → 드롭. ② 납기준수율 NULL "MED" → JS `rate||0` 폴백으로 0% 표시 정상(데이터0 vs 준수0 구분 불가는 cosmetic) → 드롭. ③ 장비 가동 0분 "신규/미사용 배지" → 미세 UX(F-004 비활성 힌트 클래스) → 드롭. ④ 후가공 실시간 SSE/WebSocket → 구조 변경(서브에이전트도 "당장 필수 아님" 자인) → 드롭. ⑤ taxInvoices 빈필터 전체노출 → 권한 필터로 무해(서브에이전트도 "실제 문제 아님" 자인) → 드롭.
+> - **🔵 clean 검증 (휴가/근태 신규 churn — Explore A 전수 통과)**: ① **HTML↔JS silent-fail**: leaves.js 50+ `getElementById` 전부 leaves.ts에 정적 id 존재·attendance.js 30+ 전부 attendance.ts 매칭(0 누락). ② **빈상태**: 직원잔여(leaves.js:77)·휴가신청(:114)·미사용수당(:337)·근태그리드(attendance.js:259) 전부 안내+초기 placeholder. ③ **검색/필터**: leaves(연도/부서·상태/날짜범위)·attendance(월/부서) 필요충분. ④ **변경후갱신**: 휴가승인/반려→leavesLoadRequests·근태저장→loadMonth·CAPS동기화→45s setTimeout loadMonth(toast+버튼상태 정상 UX). ⑤ **에러처리**: 전 catch `e.response.data.error||e.message` 표시(silent 0). ⑥ **휴가→근태 연동**: markLeaveAttendance best-effort(승인 자체는 try밖 유지)·CAPS sync 시 LEAVE 행 attendance_type/status 보존. ⑦ **cross-page**: leaves↔attendance 사이드바 메뉴 이동 정상(직접 링크 불필요).
+> - **🟢 backlog↔GitHub sync clean (변동 0 → #402 추가)**: open auto-improve **실측 8건**(#394~#401) = 직전 stats `new=8` 정합 확인 후 #402 편입 → `new=9`. done=96·rejected=3·approved=0·reviewed=0 유지. 직전 Area 2 이후 owner 신규 close/머지 0건(41a6008=backlog 문서커밋만).
+> - **이상 없음**: baseline build PASS. 휴가/근태 신규 churn UX 회귀 0(HTML↔JS·빈상태·필터·갱신·에러 7각도 clean). 드릴다운 외 net-new 0.
+> - 자동 수정 0건(Area 3 issue-only), 신규 이슈 1건(#402 드릴다운 쿼리파라미터 MED), 서브에이전트 오탐/저가치 5건 정리(entity필터 FP ground-truth 반증 포함), clean 7각도(휴가/근태), done-sync 0건(변동 없음)
+>
 > **Area 2 코드 품질 (2026-06-14T02:00):**
 > - **방법**: baseline `npm ci`(82 pkg)+build PASS(393 modules, _worker.js 5.15MB). HEAD=remote main=`0c8db87`(직전 Area 1 backlog), clean tree. Area 2 **12회차** — 시의성(최근 churn: 휴가→근태 자동연동 신규 `173c42f` — leaveAttendance.ts/leaves.ts/caps.ts) + 전수 스캔(존재X컬럼 INSERT 컬럼셋 diff·entity_id INSERT·N+1·authMiddleware) 병렬 Explore 2개. 발견 전수 owner 직접 코드 Read + migrations ground-truth 대조.
 > - **🟡 신규 이슈 #401 (improvement, small, #389 클래스) — 근태 월별 일괄저장 N+1 entity_id 재조회**: `attendance.ts:209` `PATCH /bulk`(ADMIN/MANAGER) 루프가 **항목마다** `SELECT entity_id FROM employees WHERE id=?`(`:305`) 1왕복. 호출처 `attendance.js:602` saveAll이 **월별 근태 그리드 dirty 셀 전체**(직원×일자)를 한 번에 전송 → 같은 직원이 일자마다 반복되어 entity_id가 직원당 ~22회 중복조회(30명 월마감 = 고유 30명인데 수백 회 조회). 수정=루프 전 `WHERE id IN (...)` IN-prefetch 맵 + fallback(`empMap.get(id) ?? getEntityId(c) ?? 1`) 보존. **자동수정 안 함**: 읽기 prefetch이나 근태 write 핸들러 루프 구조 변경 + egress 차단 대량 UPSERT 회귀 검증 불가(#389 동일 판정 — write-path N+1 prefetch는 owner 검증). 참고 저우선 동일클래스: bank.ts:378(계좌 루프, 계좌 소수+외부API 지배=영향미미)·migration.ts:43/177/300/446(import preview 100cap, admin 1회성).
