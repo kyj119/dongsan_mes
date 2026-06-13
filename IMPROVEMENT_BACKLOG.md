@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 5 -->
-<!-- last_run_at: 2026-06-13T14:00:00+09:00 -->
+<!-- last_run_area: 6 -->
+<!-- last_run_at: 2026-06-13T18:00:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -16,6 +16,15 @@
 
 > 📦 **과거 사이클 로그**(아래 6블록 이전분)는 `IMPROVEMENT_BACKLOG_ARCHIVE.md`로 이관됨 (2026-06-10 정리). 신규 로그는 계속 이 파일 상단에 추가.
 
+> **Area 6 자기 진화 (2026-06-13T18:00):**
+> - **방법**: baseline `npm ci`(82 pkg)+build PASS(393 modules, _worker.js 5.15MB). HEAD=remote main=`7ae01a4`(직전 Area 5 backlog), clean tree. GitHub open/closed 전수 대조 + 직전 사이클들이 다발 보고한 **존재X 컬럼 클래스**(#377·#384·#394·#397·A-017·A-019 누적 6건) 메타분석 + 미수정 open 6건 ground-truth 재검증.
+> - **🟢 backlog↔GitHub sync clean (변동 0)**: open auto-improve **실측 6건**(#394·#395·#396 Area4 · #397·#398·#399 Area5) = stats `new=6` 정합. 직전 사이클 이후 owner 신규 close/머지 **0건**(최근 커밋 7ae01a4/c00fc3c/ee5a3d7/173c42f 전부 backlog·leaves XSS·휴가근태 — open 6건 미터치). done=96·rejected=3·approved=0·reviewed=0 전부 유지. **직전 사이클 위임분("개별 done-sync 코드대조 14건")**: 14건은 owner close-completed + not_planned=1(#348뿐) 증거로 이미 completed 확정 + 06-12 픽스커밋군(644fbab·645ae53·3f8fd0d·83ded42·c17e944) 실재 → 재대조 한계효용 낮음, 종결 처리.
+> - **🔬 open 2건 HIGH ground-truth 재검증 (FP 아님 확정)**: ① **#394** — `quantity_before/quantity_after/adjustment_quantity`는 `inventory_adjustments`(0134:99-112) 소속, `inventory_transactions`(0003·0134)엔 부재 확인 → 컬럼혼동 valid. ② **#397** — `employees.rrn` 미존재(migrations 내 `rrn` 1건은 insurance_reports, employees 아님), 실컬럼은 `resident_number` → valid. 두 HIGH 모두 사실-정정 클래스로 detection 건전.
+> - **🧹 존재X-컬럼 proactive 형제 sweep (net-new 0)**: `INSERT INTO inventory_transactions` 전수 8곳 컬럼셋 diff → **inventoryCount.ts:249(#394) 1곳만 outlier**(나머지 7곳 scan/returns/po-receive/inventory ×4 전부 `transaction_date/quantity/balance_after/handled_by` 정상). 1/8 정밀 격리 = detection 오버리치 없음. 신규 형제 버그 0.
+> - **🧬 SKILL 탐지규칙 강화 1건 — "존재X 컬럼" standing scan + "INSERT 컬럼셋 diff" 레시피 codify**: 누적 6건으로 **최고 생산성 클래스**(매번 기능 100% 영구사망) 승격. ① 매 Area 2/4 standing scan 지정 ② 빠른 격리법: 같은 테이블 INSERT 전수 grep 후 컬럼목록 나란히 diff → outlier=typo(다른 테이블 스키마 혼동), SELECT는 컬럼 교집합 이탈분 ③ ground-truth(`grep migrations`) 0건 확정 + alias/동명컬럼 FP 배제(#397 resident_number·`as rrn`) ④ 자동수정 판정: read-only 오타=직접(A-017/A-019), 재고/재무 dormant-write 활성화=owner(#394/#384).
+> - **이상 없음**: baseline build PASS. approved 표 비어있음·rejected 3 유지. 존재X-컬럼 형제 sweep 0건.
+> - 자동 수정 0건(open 6건 전부 owner 검증대기·dormant-write 활성화), 신규 이슈 0건, done-sync 0건(변동 없음), HIGH 2건 FP-재검증 valid, proactive sweep net-new 0, SKILL 탐지규칙 1건 강화(존재X-컬럼 standing scan + diff 레시피)
+>
 > **Area 5 보안 (2026-06-13T14:00):**
 > - **방법**: baseline `npm ci`(82 pkg)+build PASS(393 modules, _worker.js 5.15MB). HEAD=remote main=`ee5a3d7`(휴가→근태 자동연동 머지), clean tree. Area 5 **11회차** — 시의성(최근 churn: HR 휴가→근태 자동연동 신규 `173c42f` — leaveAttendance.ts/leaves.ts/caps.ts) + 신선 4각도(독립HTML XSS·SPA innerHTML 싱크·시크릿폴백·CSV injection) 병렬 Explore 2개. 발견 전수 owner 직접 코드 Read + 도달성(`grep src/scripts src/pages`) 검증. ⚠️ tsc는 env에 `@cloudflare/workers-types` 미설치로 TS2688만 발생(코드오류 아님) → **build(vite SSR)가 권위 검증**, `?raw` 클라 JS는 tsc 대상도 아님.
 > - **🔧 자동수정 1건 (A-020, 커밋 `c00fc3c` 본 사이클) — 휴가 목록/신청 stored XSS (leaves.js)**: `src/scripts/leaves.js` 3개 테이블(연차현황 `:85-87`·휴가신청 `:125-130`·미사용수당 `:347-348`)이 `r.reason`(직원 자유입력)·`r.name`·`r.department`·`r.employee_name` 등 free-text를 escape 없이 `innerHTML` 렌더. **같은 파일 드롭다운(`:185-187`)은 이미 `lvEscapeHtml` 적용**했으나 표 행만 누락 = 비일관(단순 오버사이트). **공격**: 직원이 휴가신청 `reason`에 `<img src=x onerror=...>` 저장 → HR 관리자(ADMIN/MANAGER)가 휴가신청 탭 열면 **고권한 세션에서 실행**(휴가 일괄승인·급여 조작 등). `lvEscapeHtml`(`:13`, 5문자 `&<>"'` 견고)로 user-controlled 필드 전수 래핑(날짜/숫자/lvLeaveTypeLabel/lvStatusBadge=싱크 아님 제외). **안전 자동수정 판정**: escapeHtml 누락 추가(SKILL 허용 범주)·동작 무변(정상 텍스트는 출력 동일)·churn 항목(시의성). build PASS(393 modules).
