@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 1 -->
-<!-- last_run_at: 2026-06-13T22:00:00+09:00 -->
+<!-- last_run_area: 2 -->
+<!-- last_run_at: 2026-06-14T02:00:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,7 +8,7 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | 7 (**GitHub open auto-improve 실측 7건** — #394 재고실사 승인 INSERT 컬럼부재 HIGH·#395 split billing freeze tax_invoice_id 무시 MED·#396 주문편집 work_records 고아 LOW [Area 4] · #397 year-end rrn 존재X컬럼 HIGH·#398 ledger payment/:id 단건GET entityFilter 누락 MED · #399 quotation.js 견적서 stored XSS MED [Area 5] · **#400 배포후 smoke 로그인 cold-start false-fail LOW [본 Area 1 사이클 신규]**) |
+| 🆕 new | 8 (**GitHub open auto-improve 실측 8건** — #394 재고실사 승인 INSERT 컬럼부재 HIGH·#395 split billing freeze tax_invoice_id 무시 MED·#396 주문편집 work_records 고아 LOW [Area 4] · #397 year-end rrn 존재X컬럼 HIGH·#398 ledger payment/:id 단건GET entityFilter 누락 MED · #399 quotation.js 견적서 stored XSS MED [Area 5] · #400 배포후 smoke 로그인 cold-start false-fail LOW [Area 1] · **#401 근태 일괄저장 N+1 entity_id 재조회 small [본 Area 2 사이클 신규]**) |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 (#372 CSV도 owner close-completed → done 이관) |
 | ✔️ done | 96 (82 + **직전 open 14건 owner 일괄 close-completed**[#372 reviewed + #374·#379·#381~#391 13 new]. not_planned 라벨검색 = #348 과거 1건뿐 → 14건 전부 completed 확정. 06-12 owner 대량 픽스 커밋(644fbab #389/#390·645ae53 #372/#379·3f8fd0d #382/#383·83ded42 #387·c17e944 #375/#383). **GitHub open auto-improve 실측 0건** 정합) |
@@ -16,6 +16,15 @@
 
 > 📦 **과거 사이클 로그**(아래 6블록 이전분)는 `IMPROVEMENT_BACKLOG_ARCHIVE.md`로 이관됨 (2026-06-10 정리). 신규 로그는 계속 이 파일 상단에 추가.
 
+> **Area 2 코드 품질 (2026-06-14T02:00):**
+> - **방법**: baseline `npm ci`(82 pkg)+build PASS(393 modules, _worker.js 5.15MB). HEAD=remote main=`0c8db87`(직전 Area 1 backlog), clean tree. Area 2 **12회차** — 시의성(최근 churn: 휴가→근태 자동연동 신규 `173c42f` — leaveAttendance.ts/leaves.ts/caps.ts) + 전수 스캔(존재X컬럼 INSERT 컬럼셋 diff·entity_id INSERT·N+1·authMiddleware) 병렬 Explore 2개. 발견 전수 owner 직접 코드 Read + migrations ground-truth 대조.
+> - **🟡 신규 이슈 #401 (improvement, small, #389 클래스) — 근태 월별 일괄저장 N+1 entity_id 재조회**: `attendance.ts:209` `PATCH /bulk`(ADMIN/MANAGER) 루프가 **항목마다** `SELECT entity_id FROM employees WHERE id=?`(`:305`) 1왕복. 호출처 `attendance.js:602` saveAll이 **월별 근태 그리드 dirty 셀 전체**(직원×일자)를 한 번에 전송 → 같은 직원이 일자마다 반복되어 entity_id가 직원당 ~22회 중복조회(30명 월마감 = 고유 30명인데 수백 회 조회). 수정=루프 전 `WHERE id IN (...)` IN-prefetch 맵 + fallback(`empMap.get(id) ?? getEntityId(c) ?? 1`) 보존. **자동수정 안 함**: 읽기 prefetch이나 근태 write 핸들러 루프 구조 변경 + egress 차단 대량 UPSERT 회귀 검증 불가(#389 동일 판정 — write-path N+1 prefetch는 owner 검증). 참고 저우선 동일클래스: bank.ts:378(계좌 루프, 계좌 소수+외부API 지배=영향미미)·migration.ts:43/177/300/446(import preview 100cap, admin 1회성).
+> - **🚫 서브에이전트 오탐/저가치 정리 4건**: ① `inventoryCount.ts:249` 존재X컬럼 = **기보고 #394**(net-new 아님). ② `leaves.ts:204` leave_accrual_logs `run_at` VALUES 미포함 "ISSUE" → **DEFAULT CURRENT_TIMESTAMP로 자동충족 정상**(에이전트 본인도 "기능상 이상 없음" 자인) → 드롭. ③ migration.ts N+1 4곳 = admin import preview 100cap 1회성 → 저가치(참고만). ④ bank.ts N+1 = 계좌 수 소수 + getDailyBankLog 외부 codef API가 지배적 → 영향 미미(참고만).
+> - **🔵 clean 검증 (휴가→근태 신규코드)**: ① **존재X 컬럼**: leaveAttendance.ts:54 attendance INSERT(employee_id/work_date/attendance_type/status/source/entity_id/late_minutes/early_leave_hours)·leaves.ts leave_accrual_logs/leave_balances/leave_requests INSERT 전수 migrations 0240/0110/0264 대조 — 실컬럼 정합 0 부재. ② **entity_id INSERT**: leaves(leave_balances/leave_requests/leave_accrual_logs 전부 `getEntityId(c)`/`emp.entity_id||1` 바인딩)·caps.ts:327(`empEntityMap[id]||1`)·attendance UPSERT(`empRow?.entity_id||getEntityId(c)||1`) 정상. ③ **N+1**: leaves accrual(`loadAnnualAccruedMap` IN-prefetch)·sick-grant(`id IN` prefetch)·caps ingest(employee_id+work_date IN 일괄)·payroll sync(#389 수정 후 loadAllEmployeeDefaults+loadInsuranceRates hoist) 전부 해소 확인. ④ **best-effort catch**: leaves approve/reject의 `markLeaveAttendance`/`clearLeaveAttendance`는 try-catch best-effort(승인 자체는 유지)=의도된 설계, 핵심 mutation(휴가 승인 write)은 try 밖. ⑤ **날짜 시맨틱**: leaveAttendance enumerateDates(`+'T00:00:00Z'` UTC자정→ISO slice, DATE 타입이라 TZ 독립)·caps work_date(CAPS 원본 문자열 직접)·payroll `strftime('%Y-%m', work_date)` 정합 — off-by-one 없음. ⑥ **authMiddleware**: 배럴 자식 라우터 전수 적용, accounts-receivable aggregator는 자식별 auth.
+> - **🟢 backlog↔GitHub sync clean (변동 0 → #401 추가)**: open auto-improve **실측 7건**(#394~#400) = 직전 stats `new=7` 정합 확인 후 #401 편입 → `new=8`. done=96·rejected=3·approved=0·reviewed=0 유지. 직전 Area 1 이후 owner 신규 close/머지 0건(0c8db87=backlog 문서커밋만).
+> - **이상 없음**: baseline build PASS. 휴가→근태 신규코드 존재X컬럼·entity_id·N+1·날짜 회귀 0. 존재X컬럼 net-new 0(전수 INSERT 컬럼셋 diff, #394 1곳만 outlier 재확인).
+> - 자동 수정 0건(write-path N+1=owner 검증·#389 동일 판정), 신규 이슈 1건(#401 근태 일괄저장 N+1 small), 서브에이전트 오탐/저가치 4건 정리, clean 6각도, done-sync 0건(변동 없음)
+>
 > **Area 1 프로덕션 헬스 (2026-06-13T22:00):**
 > - **방법**: GitHub Actions 최근 25런(total 598) 분석 + baseline `npm ci`(82 pkg)+build PASS(393 modules, _worker.js 5.15MB). HEAD=remote main=`485fad6`(직전 Area 6 backlog 문서커밋), clean tree. egress 차단(curl prod=불가)이라 **Deploy/E2E/smoke 결과를 헬스 신호로 사용**. Area 1 **12회차**.
 > - **🟢 현재 파이프라인 green**: HEAD `485fad6` E2E(`success`)+Deploy(`success`, 06-13T08:08). 최근 25런 중 1 cancelled(`74c5b9d` schedule, workflow_run는 success=정상 재트리거) + 2 skipped(deploy fail 후속 E2E) 외 대부분 success.
