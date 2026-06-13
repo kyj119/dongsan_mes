@@ -7,8 +7,14 @@
 import { Hono } from 'hono'
 import { authMiddleware, requireRole } from '../middleware/auth'
 import type { HonoEnv } from '../types/env'
+import { LEAVE_ATTENDANCE_TYPES } from '../utils/leaveAttendance'
 
 const capsRouter = new Hono<HonoEnv>()
+
+// 큐06: CAPS 동기화가 보존해야 할 휴가/특수 근태유형 — 출퇴근 시각은 갱신하되 유형/상태는 덮어쓰지 않음.
+const CAPS_PRESERVE_TYPES = [...LEAVE_ATTENDANCE_TYPES, 'SICK', 'FAMILY_EVENT', 'HOLIDAY']
+const CAPS_PRESERVE_SQL = CAPS_PRESERVE_TYPES.map((t) => `'${t}'`).join(',')
+const CAPS_PRESERVE_STATUS_SQL = ['VACATION', 'SICK', 'FAMILY_EVENT', 'HOLIDAY'].map((t) => `'${t}'`).join(',')
 
 // ---------- 워커 인증 헬퍼 ----------
 async function verifyAgentKey(db: any, providedKey: string, siteId?: string): Promise<{ valid: boolean; site?: any }> {
@@ -279,9 +285,10 @@ capsRouter.post('/ingest', async (c) => {
               UPDATE attendance SET
                 check_in_time = ?, check_out_time = ?,
                 work_hours = ?, overtime_hours = ?, early_hours = ?,
-                early_leave_hours = ?, holiday_work_hours = ?,
-                late_minutes = ?,
-                attendance_type = ?, status = 'PRESENT',
+                early_leave_hours = CASE WHEN attendance_type IN (${CAPS_PRESERVE_SQL}) THEN 0 ELSE ? END, holiday_work_hours = ?,
+                late_minutes = CASE WHEN attendance_type IN (${CAPS_PRESERVE_SQL}) THEN 0 ELSE ? END,
+                attendance_type = CASE WHEN attendance_type IN (${CAPS_PRESERVE_SQL}) THEN attendance_type ELSE ? END,
+                status = CASE WHEN attendance_type IN (${CAPS_PRESERVE_STATUS_SQL}) THEN status ELSE 'PRESENT' END,
                 source = 'CAPS', caps_site_id = ?,
                 caps_fpid = ?, caps_e_idno = ?,
                 caps_late_min = ?, caps_early_min = ?,

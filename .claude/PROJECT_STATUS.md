@@ -1,6 +1,6 @@
 # PROJECT_STATUS.md — 프로젝트 현황판
 
-> **최종 업데이트**: 2026-06-12 PM3 (급여 후속 — 4대보험 2026 요율 검증·수정[국민연금9.5%·상한637만·건강7.19%·장기요양13.14%]·법인3·4 급여생성+전체sync 46명·Phase1b 단건 고정연장 분해·공휴일 검증. DB 반영 완료, 코드 3건 ▶배포대기 / 이전 PM2: 부서직급SSOT·포괄임금·급여대장·요율·공휴일달력)
+> **최종 업데이트**: 2026-06-13 (GitHub 이슈 18건 전수 픽스·prod 배포·close[보안HIGH 3건 포함] + 정적에셋 파이프라인 완전제거 + 휴가→근태 연동[커밋·미배포] / 이전 PM3: 4대보험 2026 요율·산재 0.9%·법인3·4 급여)
 > 완료 이력 → `PROJECT_STATUS_ARCHIVE.md` (매 세션 읽을 필요 없음, 필요 시 참조)
 
 ---
@@ -13,6 +13,9 @@
 
 ## 🔴 현재 진행 중
 
+- **✅ [2026-06-13] GitHub 이슈 18건 전수 픽스·prod 배포·close + 휴가→근태 연동(▶커밋·미배포)**:
+  - **이슈 18건**(승인분 전수, 봇이슈라 코드/스키마 대조 후 수정 → 각 이슈에 처리 코멘트 후 close): **보안HIGH** #384(printEvents `cards.entity_id`→`requesting_entity_id`+order폴백)·#375(cards 4엔드포인트 entity필터, by-number는 agent-key겸용 인증으로 분리)·#381(orders 쓰기 7핸들러 소유법인 IDOR 가드). **MED/개선** #388·#391(UTC업무일자→KST 저장+비교)·#392·#393(4대보험 신고서 산재컬럼·사업장별 entity)·#386·#387(split billing DRAFT링크정리·**동결 그룹단위 정밀화**)·#385(출고알림톡 품목 COALESCE)·#389·#390(급여 N+1 prefetch·skipped_names)·#372·#379(CSV truncation경고·printSystem N+1 batch)·#376(죽은 getElementById)·#374·#382·#383(**정적에셋 파이프라인 완전제거**: build:assets 삭제, hono플러그인 `_routes.json {exclude:[]}` 자체생성=MIME장애 클래스 구조소멸. smoke 로그인재시도+프론트부트스트랩 게이트). 커밋 `018ec4d0`·`70d8d0cc`·`644fbabe`·`645ae537`·`3f8fd0d8`·`83ded42c`·`c17e9448`. **prod smoke 103/103 + 프론트게이트 + by-number 3종 검증**.
+  - **휴가→근태 자동연동(큐06)** — ▶**커밋됨·미배포**: `leaves.ts` 승인→`markLeaveAttendance`(start~end 날짜별 attendance UPSERT)·반려/삭제→`clearLeaveAttendance` 롤백, `caps.ts` 동기화 가드(휴가 attendance_type/status 보존·출퇴근시각 갱신·지각0), 신규 `utils/leaveAttendance.ts`. **★결정**: 반차/반반차=attendance_type 코드 그대로(시간맵 기준출근 지각보정), **종일휴가(ANNUAL/SICK/경조)=`VACATION`**(payroll work_days `NOT IN(ABSENT,VACATION,HOLIDAY)` 정합 — raw 'ANNUAL'은 근무일 오집계). `source='LEAVE'`로 CAPS skip 회피. **★승인-취소 엔드포인트 없어 롤백은 PENDING만 도달(방어배선, 필요시 cancel-approved 추가)**. verify(393모듈)+로컬 SQL 7/7 PASS. 정본→[[design-leave-attendance-link]]. **▶다음: prod 배포 + 실 반차 승인 E2E**.
 - **✅ [2026-06-12 PM3] 급여 후속 — 요율 검증·수정 + 법인3·4 급여 + Phase 1b + 산재 0.9% + 신고서 점검 — 전부 prod 반영·배포·Playwright 검증·이슈등록 완료**:
   - **4대보험 2026 요율 수정**(`insurance_rates` prod UPDATE): 국민연금 9→**9.5%**(2026.1 연금개혁)·상한 617→**637만**·하한 39→**40만**, 건강 7.09→**7.19%**, 장기요양 12.95→**13.14%**. 고용 1.8 유지. **산재 0.7→0.9% 확정 입력**(2026-06-12, 출판·인쇄·제본업 표준, 전 46명 sync 회사부담 반영·net 불변). **▶ 2026.7 국민연금 상한 659만/하한 41만 재조정**(year 단위 1행 구조라 수동 UPDATE 필요). 정본 → [[payroll-insurance-rates-2026]].
   - **법인3·4 급여 미생성 해결**: 오다플래그(4) 8명 + 청주(3) 1명 2026-06 batch 생성(switch-entity별 호출 → entity_id 정상, 전체모드 0 오염 방지) + 전체 46명 sync(새 요율·휴일근무 반영, 법인4 휴일수당 183,020). 안혜옥(emp11 base_salary 0→400만 설정·재계산, 음수 net 해소).

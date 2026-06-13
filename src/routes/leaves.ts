@@ -8,6 +8,7 @@ import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
 import { requirePagePermission } from '../middleware/permissions'
 import { entityFilter, getEntityId } from '../utils/entityFilter'
+import { markLeaveAttendance, clearLeaveAttendance } from '../utils/leaveAttendance'
 
 // ---------- D1 row shapes ----------
 interface EmployeeBasicRow {
@@ -426,6 +427,16 @@ leavesRouter.patch('/requests/:id/approve', requireRole('ADMIN', 'MANAGER'), asy
       UPDATE leave_requests SET status = 'APPROVED', approved_by = ?, approved_at = CURRENT_TIMESTAMP WHERE id = ?${ef.clause}
     `).bind(user?.id || null, id, ...ef.params).run()
 
+    // 큐06: 승인된 휴가를 근태에 마킹(날짜별) — 반차 지각 오판정 방지. 베스트에포트(실패해도 승인은 유지).
+    try {
+      await markLeaveAttendance(c.env.DB, {
+        employeeId: req.employee_id, leaveType: req.leave_type,
+        startDate: req.start_date, endDate: req.end_date, entityId: reqEntityId
+      })
+    } catch (e) {
+      console.warn('[leaves] markLeaveAttendance failed (승인은 유지):', e)
+    }
+
     return c.json({ success: true })
   } catch (error: any) {
     console.error('leaves approve error:', error)
@@ -440,10 +451,20 @@ leavesRouter.patch('/requests/:id/reject', requireRole('ADMIN', 'MANAGER'), asyn
     const body: { reason?: string } = await c.req.json<{ reason?: string }>().catch(() => ({}))
     const ef = entityFilter(c, '')
 
+    // 큐06: 롤백 대비 — 요청의 직원/기간 확보(반려는 PENDING만이라 마킹은 보통 없으나, 방어적 정리)
+    const rj = await c.env.DB.prepare(
+      `SELECT employee_id, start_date, end_date FROM leave_requests WHERE id = ?${ef.clause}`
+    ).bind(id, ...ef.params).first<{ employee_id: number; start_date: string; end_date: string }>()
+
     await c.env.DB.prepare(`
       UPDATE leave_requests SET status = 'REJECTED', approved_by = ?, approved_at = CURRENT_TIMESTAMP, rejection_reason = ?
       WHERE id = ? AND status = 'PENDING'${ef.clause}
     `).bind(user?.id || null, body.reason || null, id, ...ef.params).run()
+
+    if (rj) {
+      try { await clearLeaveAttendance(c.env.DB, { employeeId: rj.employee_id, startDate: rj.start_date, endDate: rj.end_date }) }
+      catch (e) { console.warn('[leaves] clearLeaveAttendance (reject) failed:', e) }
+    }
 
     return c.json({ success: true })
   } catch (error: any) {
@@ -457,9 +478,17 @@ leavesRouter.delete('/requests/:id', async (c) => {
   try {
     const id = Number(c.req.param('id'))
     const ef = entityFilter(c, '')
+    // 큐06: 롤백 대비 — 삭제 전 직원/기간 확보(취소 시 휴가 마킹 정리)
+    const dr = await c.env.DB.prepare(
+      `SELECT employee_id, start_date, end_date FROM leave_requests WHERE id = ?${ef.clause}`
+    ).bind(id, ...ef.params).first<{ employee_id: number; start_date: string; end_date: string }>()
     await c.env.DB.prepare(
       `DELETE FROM leave_requests WHERE id = ? AND status = 'PENDING'${ef.clause}`
     ).bind(id, ...ef.params).run()
+    if (dr) {
+      try { await clearLeaveAttendance(c.env.DB, { employeeId: dr.employee_id, startDate: dr.start_date, endDate: dr.end_date }) }
+      catch (e) { console.warn('[leaves] clearLeaveAttendance (delete) failed:', e) }
+    }
     return c.json({ success: true })
   } catch (error: any) {
     console.error('leaves cancel error:', error)
