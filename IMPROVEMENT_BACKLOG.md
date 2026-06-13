@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 6 -->
-<!-- last_run_at: 2026-06-13T18:00:00+09:00 -->
+<!-- last_run_area: 1 -->
+<!-- last_run_at: 2026-06-13T22:00:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,13 +8,21 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | 6 (**GitHub open auto-improve 실측 6건** — #394 재고실사 승인 INSERT 컬럼부재 HIGH·#395 split billing freeze tax_invoice_id 무시 MED·#396 주문편집 work_records 고아 LOW [Area 4] · #397 year-end rrn 존재X컬럼 HIGH·#398 ledger payment/:id 단건GET entityFilter 누락 MED [직전 09:11 Area 5, backlog 미반영분] · **#399 quotation.js 견적서 stored XSS MED [본 Area 5 사이클 신규]**) |
+| 🆕 new | 7 (**GitHub open auto-improve 실측 7건** — #394 재고실사 승인 INSERT 컬럼부재 HIGH·#395 split billing freeze tax_invoice_id 무시 MED·#396 주문편집 work_records 고아 LOW [Area 4] · #397 year-end rrn 존재X컬럼 HIGH·#398 ledger payment/:id 단건GET entityFilter 누락 MED · #399 quotation.js 견적서 stored XSS MED [Area 5] · **#400 배포후 smoke 로그인 cold-start false-fail LOW [본 Area 1 사이클 신규]**) |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 (#372 CSV도 owner close-completed → done 이관) |
 | ✔️ done | 96 (82 + **직전 open 14건 owner 일괄 close-completed**[#372 reviewed + #374·#379·#381~#391 13 new]. not_planned 라벨검색 = #348 과거 1건뿐 → 14건 전부 completed 확정. 06-12 owner 대량 픽스 커밋(644fbab #389/#390·645ae53 #372/#379·3f8fd0d #382/#383·83ded42 #387·c17e944 #375/#383). **GitHub open auto-improve 실측 0건** 정합) |
 | ❌ rejected | 3 |
 
 > 📦 **과거 사이클 로그**(아래 6블록 이전분)는 `IMPROVEMENT_BACKLOG_ARCHIVE.md`로 이관됨 (2026-06-10 정리). 신규 로그는 계속 이 파일 상단에 추가.
+
+> **Area 1 프로덕션 헬스 (2026-06-13T22:00):**
+> - **방법**: GitHub Actions 최근 25런(total 598) 분석 + baseline `npm ci`(82 pkg)+build PASS(393 modules, _worker.js 5.15MB). HEAD=remote main=`485fad6`(직전 Area 6 backlog 문서커밋), clean tree. egress 차단(curl prod=불가)이라 **Deploy/E2E/smoke 결과를 헬스 신호로 사용**. Area 1 **12회차**.
+> - **🟢 현재 파이프라인 green**: HEAD `485fad6` E2E(`success`)+Deploy(`success`, 06-13T08:08). 최근 25런 중 1 cancelled(`74c5b9d` schedule, workflow_run는 success=정상 재트리거) + 2 skipped(deploy fail 후속 E2E) 외 대부분 success.
+> - **🟡 신규 이슈 #400 (improvement, small) — 배포후 smoke 로그인 cold-start false-fail (#374 후속)**: 06-12~13 연속 2배포(`51a2253`·`02071f7`)가 **Deploy 성공**(`Deployment complete!`)인데 **post-deploy smoke 로그인만 500**으로 잡 fail → "즉시 확인 필요" 알람. 로그인 요청 **~31초** 후 generic catch 500 = 갓 배포된 worker D1 **cold-start 지연**(코드결함 아님, auth.ts:11 정상). **두 실패 모두 직후 `96ff8a6`(3분뒤) 자동회복** = prod 무중단. **#374 재시도(`3f8fd0d` smoke.cjs:205, MAX=3·backoff4.5s)가 이미 있는데도 `02071f7`은 retry 포함하고도 실패**(`git merge-base --is-ancestor 3f8fd0d 02071f7`=true) → 깊은 cold-start에선 3회 윈도 내 매 시도 slow-500. 근본: `main():382` 첫 네트워크호출=게이트 `login()`이 cold-start 비용 직접 부담, 워밍업 핑 부재. **자동수정 안 함**: test-harness지만 CI 게이트 5xx 관용도=owner 안전망(과도완화=진짜 장애 마스킹), 워밍업핑 vs 재시도확대 선택은 owner 판단. 권장=게이트 로그인 앞 경량 워밍업 핑(관용도 불변).
+> - **🟢 backlog↔GitHub sync clean (변동 0 → #400 추가)**: open auto-improve **실측 6건**(#394~#399) = 직전 stats `new=6` 정합 확인 후 #400 편입 → `new=7`. done=96·rejected=3·approved=0·reviewed=0 유지. 직전 Area 6 이후 owner 신규 close/머지 0건(485fad6=backlog 문서커밋만).
+> - **이상 없음**: baseline build PASS. deploy 코드결함 failure 0(2건은 smoke 로그인 transient). E2E 콘솔에러/shell.js MIME 회귀 0(smoke 프론트 부트스트랩 게이트 #382 green).
+> - 자동 수정 0건(파이프라인 정상·CI 게이트 관용도=owner 판단), 신규 이슈 1건(#400 smoke cold-start LOW), done-sync 0건(변동 없음), 현재 prod green 확인
 
 > **Area 6 자기 진화 (2026-06-13T18:00):**
 > - **방법**: baseline `npm ci`(82 pkg)+build PASS(393 modules, _worker.js 5.15MB). HEAD=remote main=`7ae01a4`(직전 Area 5 backlog), clean tree. GitHub open/closed 전수 대조 + 직전 사이클들이 다발 보고한 **존재X 컬럼 클래스**(#377·#384·#394·#397·A-017·A-019 누적 6건) 메타분석 + 미수정 open 6건 ground-truth 재검증.

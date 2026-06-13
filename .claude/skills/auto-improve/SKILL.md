@@ -33,6 +33,8 @@ description: 자율 점검·개선 에이전트. 6개 영역을 순환하며 실
 
 **자동 수정 가능**: E2E 실패 원인이 명확한 코드 버그일 때
 
+> **🧊 배포후 smoke 로그인 500 = D1 cold-start transient (Area 1 #400·#374, 2026-06-13)**: Deploy 단계는 `✨ Deployment complete!`로 성공했는데 **post-deploy smoke 로그인만 500**으로 잡 fail("즉시 확인 필요" 알람)이면 **코드 버그가 아니라 갓 배포된 worker의 D1 cold-start 지연**일 가능성 높음. 판별: ① 로그인 응답이 **수십초 지연 후 generic catch 500**(`로그인 처리 중 오류`)인지(즉시 4xx는 진짜 인증실패) ② **직후 배포(다음 커밋)에서 자동 회복**됐는지 — 둘 다 yes면 transient(prod 무중단, 배포 자체 성공). `smoke.cjs:205` login()이 #374로 5xx 재시도(MAX=3)를 갖췄으나 **깊은 cold-start엔 3회 윈도가 부족**(#400 `02071f7`은 retry 포함하고도 fail). **재발 자체를 코드결함으로 오판 말 것** — Deploy success + 다음배포 green이면 헬스 정상. 진짜 보고대상은 **연속 배포가 모두 같은 실패**(자동회복 안 됨)이거나 deploy 단계 자체 failure(빌드/wrangler).
+
 > **🧯 학습된 패턴 — 정적에셋 MIME/Content-Type 회귀는 smoke(API)로 미탐지 (Area 1, 9dd09cd→144addf→24bb493 2026-06-11, prod 2회 다운)**: 클라 셸 `shell.js`를 `/static`으로 **외부화**(9dd09cd 파일럿)하면, CF Pages **Git 자동빌드** 환경에서 `_routes.json`의 `/static/* 제외`가 미적용되어 워커가 `/static/shell.js`를 **Content-Type 빈값('')으로 서빙** → 브라우저 strict MIME가 "not executable"로 **실행 거부** → `shell.js`(axios 인증헤더·법인 스위처 초기화) 사망 → **전 페이지 API 401 + 무한 로딩 + 법인 미표시**. `_headers`에 Content-Type 명시(144addf)도 자동빌드선 불충분 → **최종 해결 = 인라인 `?raw` 복귀**(24bb493: shell.js를 워커 HTML에 직접 포함 → /static·_routes.json·_headers·빌드순서 의존 전무, 자동/수동 배포 무조건 동작). **핵심 교훈 2가지**: ① `scripts/smoke.cjs`는 API를 직접 fetch라 이 프론트 실행 실패를 **구조적으로 못 잡음**(로그인 API 200이어도 UI는 죽음) → 회귀 신호는 **E2E 콘솔에러·shell.js 로드 확인**에만 잡힘. ② CF Pages Git 자동빌드는 `_routes.json`/`_headers`/빌드순서를 신뢰 못 함 → 핵심 부트스트랩 스크립트는 외부화보다 인라인이 robust. 점검 트리거 = `build-assets.mjs`·`_headers`·`_routes.json`·`/static/*` 파이프라인 변경 시 + Area 1 헬스에서 prod 페이지 콘솔에러 1개라도 있으면 MIME/shell 로드부터 의심.
 
 ---
