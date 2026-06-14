@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 6 -->
-<!-- last_run_at: 2026-06-14T18:00:00+09:00 -->
+<!-- last_run_area: 1 -->
+<!-- last_run_at: 2026-06-14T22:00:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -16,6 +16,14 @@
 
 > 📦 **과거 사이클 로그**(아래 6블록 이전분)는 `IMPROVEMENT_BACKLOG_ARCHIVE.md`로 이관됨 (2026-06-10 정리). 신규 로그는 계속 이 파일 상단에 추가.
 
+> **Area 1 프로덕션 헬스 (2026-06-14T22:00):**
+> - **방법**: GitHub Actions 최근 30런(total 612) 분석 + baseline `npm ci`(82 pkg)+build PASS(393 modules, _worker.js 5.15MB). HEAD=remote main=`5fcca87`(직전 Area 6 A-022 XSS 자동수정+backlog), clean tree. egress 차단(curl prod 불가)이라 **Deploy/E2E/smoke 결과를 헬스 신호로 사용**. Area 1 **13회차**.
+> - **🟢 현재 파이프라인 완전 green**: HEAD `5fcca87` E2E(`success` 06-14T08:15)+Deploy(`success` 06-14T08:13). 최근 30런 conclusion 집계 = **success 26·cancelled 2·skipped 1·failure 1**. cancelled 2건(`817bd18`/`74c5b9d`)은 전부 **schedule 트리거 E2E**(각 head_sha의 push workflow_run E2E는 success = 중복 schedule런 자동취소 정상). skipped 1건은 deploy fail 후속 E2E.
+> - **🟢 유일 failure = 기보고 #400 (재발 0)**: 30런 중 단 1건 failure = `02071f7` Deploy(06-12T16:58 push) — **이미 #400로 보고된 배포후 smoke 로그인 cold-start false-fail**(배포 자체 성공·직후 `96ff8a6` 자동회복). 그 이후 **06-12~06-14 ~10배포 전부 Deploy+E2E green**(0c8db87·485fad6·7ae01a4·ee5a3d7·74c5b9d·2d57ac3·41a6008·817bd18·5ebc10d·5fcca87) → **#400 재발 0건**, transient(LOW) 판정 재확인. net-new deploy 코드결함 failure 0.
+> - **🟢 backlog↔GitHub sync clean (변동 0)**: open auto-improve **실측 10건**(#394~#402+#406) = stats `new=10` 정합. 직전 Area 6 이후 owner 신규 close/머지 0건(5fcca87=A-022 XSS 자동수정+backlog, open 10건 미터치). done=96·rejected=3·approved=0·reviewed=0 유지.
+> - **이상 없음**: baseline build PASS. deploy 코드결함 failure 0(유일 1건=#400 transient). E2E 콘솔에러/shell.js MIME 회귀 0(smoke 프론트 부트스트랩 게이트 green). Daily D1 Backup schedule 2런 전부 success(백업 파이프라인 정상).
+> - 자동 수정 0건(파이프라인 정상·신규 코드 churn 없음), 신규 이슈 0건(#400 재발 0=이미 보고·net-new failure 없음), done-sync 0건(변동 없음), 현재 prod green 확인
+>
 > **Area 6 자기 진화 (2026-06-14T18:00):**
 > - **방법**: baseline `npm ci`(82 pkg)+build PASS(393 modules, _worker.js 5.15MB). HEAD=remote main=`5ebc10d`(직전 Area 5 A-021 XSS 자동수정+backlog), clean tree. Area 6 **신선 각도** — 직전 Area 5가 A-021을 자동수정하며 **A-020·A-021·#399 누적 3사이클 동일 클래스**(SPA `innerHTML` free-text 미escape XSS)가 드러나 "존재X 컬럼"급 반복 클래스로 판단 → **proactive 형제 sweep**(Explore 1개, src/scripts 106파일 전수) + open 신규(#406) ground-truth 재검증 + GitHub sync.
 > - **🔧 자동수정 1건 (A-022, 본 사이클) — purchaseRequestForm.js + postProcessing.js stored XSS 8 sink (escapeHtml 누락)**: 형제 sweep로 **net-new 2파일 발견**(A-020/A-021/#399 동형). ① **`src/scripts/purchaseRequestForm.js`** — 구매요청 폼 검색 드롭다운: `:154` `it.item_name`(품목명)·`:155` `it.item_code`·`:195` `cl.client_name`(거래처명) 미escape `innerHTML`. **같은 라인이 onmousedown 속성용 `.replace(/'/g,…)` escape는 적용(`:151/:193`)하면서 HTML 텍스트 노드는 누락** = 전형적 오버사이트. STAFF가 품목/거래처 마스터에 페이로드 저장 → 구매요청 작성자(드롭다운 렌더) 세션 실행(MED). ② **`src/scripts/postProcessing.js`** — `:31` `group`(group_name)·`:36` `s.subcat_name`·`:63` subcategory_names split `n`·`:66` `option_code`·`:67` `option_name` 미escape. **같은 파일 `:521~624`는 이미 escapeHtml 적용**(드롭다운/select)하면서 테이블/체크박스 행만 누락 = leaves.js/quotation.js 동형. ADMIN 후가공 마스터 자유입력 → 후가공 관리 표 + 주문폼 옵션 렌더 시 실행(LOW~MED). 두 파일 모두 `renderPage`(셸) 경유 확정(purchaseRequestForm.ts `renderPage`·postProcessing.js 자체 `escapeHtml` 4회 사용 실증) → `window.escapeHtml`(shell.js:62 전역) 가용. **안전 자동수정 판정**: 단순 드롭다운/테이블/체크박스 렌더(quotation.js #399 복합 문서 렌더러 아님 → A-020/A-021 선례 적용)·escapeHtml 추가(SKILL 허용)·동작 무변. Explore가 놓친 `group`(31)·`option_code`(66)도 같은 클래스라 함께 하드닝. build PASS(393 modules).
