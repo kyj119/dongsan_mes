@@ -182,7 +182,7 @@
           var empSub = Number(d.national_pension||0) + Number(d.health_insurance||0) + Number(d.long_term_care||0) + Number(d.employment_insurance||0);
           var corpSub = Number(d.employer_national_pension||0) + Number(d.employer_health_insurance||0) + Number(d.employer_long_term_care||0) + Number(d.employer_employment_insurance||0) + Number(d.employer_industrial_accident||0);
           return '<tr class="hover:bg-gray-50 border-b border-gray-100">' +
-            '<td class="px-3 py-2"><div class="font-medium">' + (d.employee_name||'-') + '</div></td>' +
+            '<td class="px-3 py-2"><div class="font-medium">' + escapeHtml(d.employee_name||'-') + '</div></td>' +
             '<td class="px-3 py-2 text-right tabular-nums">' + fmt(d.base_salary) + '</td>' +
             '<td class="px-3 py-2 text-right tabular-nums">' + fmt(d.national_pension) + '</td>' +
             '<td class="px-3 py-2 text-right tabular-nums">' + fmt(d.health_insurance) + '</td>' +

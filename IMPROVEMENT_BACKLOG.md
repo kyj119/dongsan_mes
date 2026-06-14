@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 4 -->
-<!-- last_run_at: 2026-06-14T10:00:00+09:00 -->
+<!-- last_run_area: 5 -->
+<!-- last_run_at: 2026-06-14T14:00:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -16,6 +16,15 @@
 
 > 📦 **과거 사이클 로그**(아래 6블록 이전분)는 `IMPROVEMENT_BACKLOG_ARCHIVE.md`로 이관됨 (2026-06-10 정리). 신규 로그는 계속 이 파일 상단에 추가.
 
+> **Area 5 보안 (2026-06-14T14:00):**
+> - **방법**: baseline `npm ci`(82 pkg)+build PASS(393 modules). HEAD=remote main=`817bd18`(직전 Area 4 backlog), clean tree. Area 5 **12회차** — 직전 사이클 이후 코드 churn 0(백로그 문서커밋만)이라 신선 각도: ① SQL injection 동적쿼리 전수(ORDER BY/컬럼명 보간·LIKE 직접보간·IN절·WHERE 조립) ② **stored XSS innerHTML 싱크 형제 sweep**(#399/A-020 후속 — 전 SPA 스크립트) ③ 에러메시지 노출. 병렬 Explore 2개 + 발견 전수 owner 직접 코드 Read + 도달성/입력권한 검증.
+> - **🔧 자동수정 1건 (A-021, 본 사이클) — 활동로그·4대보험 상세 stored XSS (escapeHtml 누락)**: A-020(leaves.js) 동일 클래스 형제 2건. ① **`src/scripts/activityLog.js:79/81/82`** — 활동로그 표 행이 `log.user_name`·`log.entity_label`·`detailText`(raw `log.details`)를 escape 없이 `innerHTML` 렌더. **권한상승형 priv-esc 확정**: `entityLabel`에 **`client.client_name`(거래처명=STAFF 자유입력, ar-payments.ts:65·ar-dunning.ts:436)** + `details:cancelText`(주문취소 사유 자유입력, lifecycle.ts:437)가 들어감 → STAFF가 거래처명/취소사유에 `<img src=x onerror=...>` 저장 → **ADMIN이 활동로그 열람 시 고권한 세션 실행**. **같은 파일 `:131`은 이미 `escapeHtml(label)` 적용**(사용자 드롭다운)했으나 표 행만 누락 = A-020 leaves.js와 동형 오버사이트. ② **`src/scripts/insuranceReports.js:185`** — 4대보험 상세 모달이 `d.employee_name`(직원명, HR 자유입력) escape 없이 렌더(MED, HR→HR 동권한 tier). 두 페이지 모두 `renderPage`(layout 셸) 경유 → `window.escapeHtml`(shell.js:62 전역) 가용(activityLog.js bare 호출 실증). **안전 자동수정 판정**: escapeHtml 누락 추가(SKILL 허용 범주)·동작 무변(정상 텍스트 출력 동일)·단순 테이블 렌더(quotation.js #399와 달리 복합 문서 렌더러 아님 → A-020 leaves.js 선례 적용). build PASS(393 modules).
+> - **🟢 SQLi 전수 clean (취약점 0건)**: 동적쿼리 전수 — ORDER BY는 하드코딩 `sortOptions` 화이트리스트, 동적 컬럼/필드 보간 없음, LIKE는 `bind('%'+x+'%')`(직접보간 0), IN절은 `.map(()=>'?').join(',')` 플레이스홀더, WHERE 조립은 값이 전부 `?` 바인딩(`entityFilter`/`efAnd` 헬퍼 포함). kakao.ts:1186·messages.ts:387 조건 문자열 join도 조건은 하드코딩+값은 바인딩=안전. **사용자 입력이 화이트리스트 없이 SQL 문자열에 보간되는 곳 0건.**
+> - **🚫 에러메시지 노출 드롭 (저가치·기존 인지 패턴)**: settings.ts:230(바로빌)·fax.ts:87(팩스)·tasks.ts:304(폴백)이 `e.message` 응답 노출하나 — ① 이 코드베이스 전역이 `catch ... e.message` 표시 = 기존 인지 수용 패턴(직전 사이클 clean 검증 명시) ② 노출값이 외부API(바로빌/팩스) 에러 또는 폴백 DB 에러로 **SQL 원문·스택·내부경로 노출 아님** ③ generic 메시지 prefix 동반 → net-new 보안 이슈 아님, 드롭.
+> - **🟢 backlog↔GitHub sync clean (변동 0)**: open auto-improve **실측 10건**(#394~#402+#406) = 직전 stats `new=10` 정합. 직전 Area 4 이후 owner 신규 close/머지 0건(817bd18=backlog 문서커밋만). done=96·rejected=3·approved=0·reviewed=0 유지. A-021은 GitHub 이슈 아닌 직접 자동수정(A-020 동일 처리).
+> - **이상 없음**: baseline build PASS. SQLi 전수 0건. 에러메시지 SQL/스택 노출 0. 독립HTML XSS(payslip/yearEnd/portalDocument)·시크릿폴백·CSV·rate-limit 잔여 0(직전 사이클 유지).
+> - 자동 수정 1건(A-021 activityLog.js+insuranceReports.js stored XSS, build PASS), 신규 이슈 0건(SQLi clean·에러노출 드롭), 서브에이전트 에러노출 3건 저가치 드롭, clean 2각도(SQLi·에러노출), done-sync 0건(변동 없음)
+>
 > **Area 4 데이터 정합성 (2026-06-14T10:00):**
 > - **방법**: ground-truth — 308 마이그레이션 로컬 D1(node:sqlite) 전량 적용(**FAIL 0**, 172테이블/516인덱스/트리거 0) + baseline `npm ci`(82 pkg)+build PASS(393 modules, _worker.js 5.15MB). HEAD=remote main=`2d57ac3`(직전 Area 3 backlog), clean tree. Area 4 **12회차** — 직전 사이클 이후 신규 스키마 churn 0(HEAD=backlog 문서커밋만)이라 **존재X컬럼 standing scan을 자동화**(INSERT 컬럼셋 전수 추출→ground-truth diff)로 신선 각도 확보 + 병렬 Explore 1개(상태불일치/고아/entity_id NULL).
 > - **🟢 신규 이슈 #406 (MED bug + LOW 추가) — 마이그레이션↔코드 스키마 드리프트**: INSERT 컬럼셋 자동 diff로 **#394 외 net-new 드리프트 발견**. ① **`migrations/0241_corporate_card_enhancements.sql`이 6개 ALTER를 전부 주석처리**(`-- 이미 존재/수동 적용됨`) → corporate_cards(`payment_day`,`assigned_user_id`)·card_transactions(`supply_amount`,`tax_amount`,`approval_number`,`approval_type`)가 migration-build 스키마에 부재. `cardExpenses.ts`가 이 컬럼들을 **모듈 거의 전 엔드포인트**(목록 `:29/:31`·등록 `:63`·수정 `:88`·동기화 INSERT `:220`·요약 `:419~564`·수동입력 `:598/:651`)에서 사용 → migration-build DB(db:reset/CI E2E/신규환경/DR)에서 **카드비용 모듈 전체 `no such column` throw**(프론트 도달성 cardExpenses.js 다수 호출 확인). ② **quality_issues.severity** 부재(어느 마이그레이션도 미생성, 0222 재생성에도 없음)인데 `cards/lifecycle.ts:165/:492`(불량접수, actions.js:436 도달)가 INSERT → 불량접수 throw. **prod는 0241 주석상 수동 ALTER로 동작 가능성** → 실제 영향은 **마이그레이션이 재현가능 source-of-truth가 아님**(DR/온보딩/신규법인 프로비저닝 + 본 ground-truth 기법·migration-check·entity-audit 스킬의 "마이그레이션=prod" 전제 silent 무효화). owner 즉시 검증 = prod `pragma_table_info`로 6+1 컬럼 존재 확인(전부 존재→마이그레이션 보정만, 하나라도 부재→HIGH 승격). **자동수정 안 함**: DB 스키마 변경(컬럼 추가)=Area 4 금지 범주 + prod 컬럼 존재 여부가 ALTER 안전성 좌우(중복 시 throw)·egress 검증불가.

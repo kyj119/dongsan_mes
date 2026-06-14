@@ -76,10 +76,10 @@ async function loadLogs() {
 
       return '<tr class="hover:bg-gray-50">'
         + '<td class="px-4 py-3 text-sm text-gray-500 whitespace-nowrap">' + formatKST(log.created_at) +'</td>'
-        + '<td class="px-4 py-3 text-sm font-medium text-gray-700">' + (log.user_name || '-') + '</td>'
+        + '<td class="px-4 py-3 text-sm font-medium text-gray-700">' + escapeHtml(log.user_name || '-') + '</td>'
         + '<td class="px-4 py-3">' + actionBadge + '</td>'
-        + '<td class="px-4 py-3"><div>' + entityBadge + '</div><div class="text-sm font-medium">' + (log.entity_label || '-') + '</div></td>'
-        + '<td class="px-4 py-3 text-sm text-gray-500">' + (detailText || '-') + '</td>'
+        + '<td class="px-4 py-3"><div>' + entityBadge + '</div><div class="text-sm font-medium">' + escapeHtml(log.entity_label || '-') + '</div></td>'
+        + '<td class="px-4 py-3 text-sm text-gray-500">' + escapeHtml(detailText || '-') + '</td>'
         + '</tr>';
     }).join('');
 
