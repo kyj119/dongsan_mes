@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 3 -->
-<!-- last_run_at: 2026-06-14T06:00:00+09:00 -->
+<!-- last_run_area: 4 -->
+<!-- last_run_at: 2026-06-14T10:00:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,7 +8,7 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | 9 (**GitHub open auto-improve 실측 9건** — #394 재고실사 승인 INSERT 컬럼부재 HIGH·#395 split billing freeze tax_invoice_id 무시 MED·#396 주문편집 work_records 고아 LOW [Area 4] · #397 year-end rrn 존재X컬럼 HIGH·#398 ledger payment/:id 단건GET entityFilter 누락 MED · #399 quotation.js 견적서 stored XSS MED [Area 5] · #400 배포후 smoke 로그인 cold-start false-fail LOW [Area 1] · #401 근태 일괄저장 N+1 entity_id 재조회 small [Area 2] · **#402 드릴다운 쿼리파라미터 목적지(orders/ledger/cards) init 미read MED [본 Area 3 사이클 신규]**) |
+| 🆕 new | 10 (**GitHub open auto-improve 실측 10건** — #394 재고실사 승인 INSERT 컬럼부재 HIGH·#395 split billing freeze tax_invoice_id 무시 MED·#396 주문편집 work_records 고아 LOW [Area 4] · #397 year-end rrn 존재X컬럼 HIGH·#398 ledger payment/:id 단건GET entityFilter 누락 MED · #399 quotation.js 견적서 stored XSS MED [Area 5] · #400 배포후 smoke 로그인 cold-start false-fail LOW [Area 1] · #401 근태 일괄저장 N+1 entity_id 재조회 small [Area 2] · #402 드릴다운 쿼리파라미터 목적지(orders/ledger/cards) init 미read MED [Area 3] · **#406 마이그레이션↔코드 스키마 드리프트(cardExpenses 6컬럼+quality_issues.severity, 0241 ALTER 주석처리) MED + activity_logs resource_type 오타 LOW [본 Area 4 사이클 신규]**) |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 (#372 CSV도 owner close-completed → done 이관) |
 | ✔️ done | 96 (82 + **직전 open 14건 owner 일괄 close-completed**[#372 reviewed + #374·#379·#381~#391 13 new]. not_planned 라벨검색 = #348 과거 1건뿐 → 14건 전부 completed 확정. 06-12 owner 대량 픽스 커밋(644fbab #389/#390·645ae53 #372/#379·3f8fd0d #382/#383·83ded42 #387·c17e944 #375/#383). **GitHub open auto-improve 실측 0건** 정합) |
@@ -16,6 +16,15 @@
 
 > 📦 **과거 사이클 로그**(아래 6블록 이전분)는 `IMPROVEMENT_BACKLOG_ARCHIVE.md`로 이관됨 (2026-06-10 정리). 신규 로그는 계속 이 파일 상단에 추가.
 
+> **Area 4 데이터 정합성 (2026-06-14T10:00):**
+> - **방법**: ground-truth — 308 마이그레이션 로컬 D1(node:sqlite) 전량 적용(**FAIL 0**, 172테이블/516인덱스/트리거 0) + baseline `npm ci`(82 pkg)+build PASS(393 modules, _worker.js 5.15MB). HEAD=remote main=`2d57ac3`(직전 Area 3 backlog), clean tree. Area 4 **12회차** — 직전 사이클 이후 신규 스키마 churn 0(HEAD=backlog 문서커밋만)이라 **존재X컬럼 standing scan을 자동화**(INSERT 컬럼셋 전수 추출→ground-truth diff)로 신선 각도 확보 + 병렬 Explore 1개(상태불일치/고아/entity_id NULL).
+> - **🟢 신규 이슈 #406 (MED bug + LOW 추가) — 마이그레이션↔코드 스키마 드리프트**: INSERT 컬럼셋 자동 diff로 **#394 외 net-new 드리프트 발견**. ① **`migrations/0241_corporate_card_enhancements.sql`이 6개 ALTER를 전부 주석처리**(`-- 이미 존재/수동 적용됨`) → corporate_cards(`payment_day`,`assigned_user_id`)·card_transactions(`supply_amount`,`tax_amount`,`approval_number`,`approval_type`)가 migration-build 스키마에 부재. `cardExpenses.ts`가 이 컬럼들을 **모듈 거의 전 엔드포인트**(목록 `:29/:31`·등록 `:63`·수정 `:88`·동기화 INSERT `:220`·요약 `:419~564`·수동입력 `:598/:651`)에서 사용 → migration-build DB(db:reset/CI E2E/신규환경/DR)에서 **카드비용 모듈 전체 `no such column` throw**(프론트 도달성 cardExpenses.js 다수 호출 확인). ② **quality_issues.severity** 부재(어느 마이그레이션도 미생성, 0222 재생성에도 없음)인데 `cards/lifecycle.ts:165/:492`(불량접수, actions.js:436 도달)가 INSERT → 불량접수 throw. **prod는 0241 주석상 수동 ALTER로 동작 가능성** → 실제 영향은 **마이그레이션이 재현가능 source-of-truth가 아님**(DR/온보딩/신규법인 프로비저닝 + 본 ground-truth 기법·migration-check·entity-audit 스킬의 "마이그레이션=prod" 전제 silent 무효화). owner 즉시 검증 = prod `pragma_table_info`로 6+1 컬럼 존재 확인(전부 존재→마이그레이션 보정만, 하나라도 부재→HIGH 승격). **자동수정 안 함**: DB 스키마 변경(컬럼 추가)=Area 4 금지 범주 + prod 컬럼 존재 여부가 ALTER 안전성 좌우(중복 시 throw)·egress 검증불가.
+> - **🔵 추가 LOW (#406 본문 포함) — activity_logs 카드생성 감사로그 컬럼 오타**: `cards/lifecycle.ts:1111` INSERT가 `resource_type/resource_id`(실컬럼=`entity_type/entity_id`, 0056)를 써서 throw → try-catch(non-blocking)에 삼켜져 **카드생성 감사로그 도입 이래 항상 무기록**(기능 무영향). 드리프트 아닌 순수 오타(같은 용도 `entity_type` 실재=수동추가 가능성 0 → prod도 동일 throw 확정). LOW.
+> - **🚫 서브에이전트 오탐 3건 정리 (owner 직접 코드 반증)**: ① **shipments.ts:724 orders.updated_at 미갱신 "상태 비동기"** → `WHERE status != 'SHIPPED'`는 **정상 idempotency 가드**, updated_at staleness는 cosmetic → 드롭. ② **orders/update.ts:189 order_billing_groups 고아 "MED"** → `update.ts:357 recalcOrderBillingGroups`가 빌링그룹 관리(그 freeze 버그는 이미 #395) → 드롭. ③ **po-receive.ts:226 purchase_orders.status 미동기 "불일치"** → 의도된 PARTIAL/RECEIVED 재산정 설계(서브에이전트도 vague/자기불확실) → 드롭.
+> - **🟢 backlog↔GitHub sync clean (변동 0 → #406 추가)**: open auto-improve **실측 9건**(#394~#402) = 직전 stats `new=9` 정합 확인 후 #406 편입 → `new=10`. done=96·rejected=3·approved=0·reviewed=0 유지. 직전 Area 3 이후 owner 신규 close/머지 0건(2d57ac3=backlog 문서커밋만).
+> - **이상 없음**: 마이그레이션 308 FAIL 0, 트리거 0개. baseline build PASS. INSERT 컬럼셋 자동 diff 결과 outlier = #394(inventoryCount, 기보고)·#406(0241 드리프트 6컬럼+severity)·activity_logs 오타뿐, 그 외 전 INSERT 정합.
+> - 자동 수정 0건(스키마 변경 금지+prod 컬럼 존재 미확정·activity_logs는 dormant-write 활성화라 issue-only), 신규 이슈 1건(#406 MED+LOW), 서브에이전트 오탐 3건 정리(idempotency가드·recalc커버·partial재산정), done-sync 0건(변동 없음), ground-truth 308마이그레이션 FAIL 0, **존재X컬럼 standing scan 자동화(INSERT 컬럼셋 diff 스크립트)**
+>
 > **Area 3 UX/기능 감사 (2026-06-14T06:00):**
 > - **방법**: baseline `npm ci`(82 pkg)+build PASS(393 modules, _worker.js 5.15MB). HEAD=remote main=`41a6008`(직전 Area 2 backlog), clean tree. Area 3 **11회차** — 시의성(최근 churn: 휴가→근태 자동연동 `173c42f`) + 신선 각도(드릴다운 쿼리파라미터 passthrough·HTML↔JS silent-fail·빈상태·검색필터·변경후갱신·대시보드 KPI) 병렬 Explore 2개(휴가/근태 + 대시보드/주문흐름). 발견 전수 owner 직접 코드 Read 검증.
 > - **🟢 신규 이슈 #402 (MED bug) — 드릴다운 네비 쿼리파라미터를 목적지 페이지가 init에서 미read**: 대시보드/주문 카드가 명시적 쿼리링크를 생성하나 목적지 init이 `window.location.search` 미read → 필터 미적용 침묵 붕괴. **4건 확인**: ① `dashboard.js:42` `/orders?priority=URGENT`→`orders.js:1411-1429` localStorage만 복원(URL 무시, `:1061/:1086`은 모달 `view`뿐) ② `dashboard.js:155` `/ledger?search=`→`ledger.js` URL 미read ③ `dashboard.js:249` `/ledger?client_id=`→ledger selectClient은 row onclick만 ④ `orders.js:989` `/cards?search=`→`cards/core.js:54` localStorage `saved.search`만. **정답 패턴 코드베이스 실존**(`inspections.js:420` #346 드릴다운 URLSearchParams init·`equipment.js:1049` `?tab=`) → 글로벌 핸들러 없는 per-page IIFE 책임인데 orders/ledger/cards만 누락 = 오버사이트. **자동수정 안 함**: Area 3 issue-only + URL↔localStorage 우선순위·새로고침 시맨틱=UX판단 + egress 드릴다운 end-to-end 검증불가. 방향 명확(#346 패턴 복제).
