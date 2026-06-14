@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 1 -->
-<!-- last_run_at: 2026-06-14T22:00:00+09:00 -->
+<!-- last_run_area: 2 -->
+<!-- last_run_at: 2026-06-15T02:00:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,7 +8,7 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | 10 (**GitHub open auto-improve 실측 10건** — #394 재고실사 승인 INSERT 컬럼부재 HIGH·#395 split billing freeze tax_invoice_id 무시 MED·#396 주문편집 work_records 고아 LOW [Area 4] · #397 year-end rrn 존재X컬럼 HIGH·#398 ledger payment/:id 단건GET entityFilter 누락 MED · #399 quotation.js 견적서 stored XSS MED [Area 5] · #400 배포후 smoke 로그인 cold-start false-fail LOW [Area 1] · #401 근태 일괄저장 N+1 entity_id 재조회 small [Area 2] · #402 드릴다운 쿼리파라미터 목적지(orders/ledger/cards) init 미read MED [Area 3] · **#406 마이그레이션↔코드 스키마 드리프트(cardExpenses 6컬럼+quality_issues.severity, 0241 ALTER 주석처리) MED + activity_logs resource_type 오타 LOW [본 Area 4 사이클 신규]**) |
+| 🆕 new | 11 (**GitHub open auto-improve 실측 11건** — #394 재고실사 승인 INSERT 컬럼부재 HIGH·#395 split billing freeze tax_invoice_id 무시 MED·#396 주문편집 work_records 고아 LOW [Area 4] · #397 year-end rrn 존재X컬럼 HIGH·#398 ledger payment/:id 단건GET entityFilter 누락 MED · #399 quotation.js 견적서 stored XSS MED [Area 5] · #400 배포후 smoke 로그인 cold-start false-fail LOW [Area 1] · #401 근태 일괄저장 N+1 entity_id 재조회 small [Area 2] · #402 드릴다운 쿼리파라미터 목적지(orders/ledger/cards) init 미read MED [Area 3] · #406 마이그레이션↔코드 스키마 드리프트(cardExpenses 6컬럼+quality_issues.severity, 0241 ALTER 주석처리) MED + activity_logs resource_type 오타 LOW [Area 4] · **#407 발주 복사(po-special /copy) 품목 INSERT N+1 — core.ts #350 batch 미승계 small [본 Area 2 사이클 신규]**) |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 (#372 CSV도 owner close-completed → done 이관) |
 | ✔️ done | 96 (82 + **직전 open 14건 owner 일괄 close-completed**[#372 reviewed + #374·#379·#381~#391 13 new]. not_planned 라벨검색 = #348 과거 1건뿐 → 14건 전부 completed 확정. 06-12 owner 대량 픽스 커밋(644fbab #389/#390·645ae53 #372/#379·3f8fd0d #382/#383·83ded42 #387·c17e944 #375/#383). **GitHub open auto-improve 실측 0건** 정합) |
@@ -16,6 +16,16 @@
 
 > 📦 **과거 사이클 로그**(아래 6블록 이전분)는 `IMPROVEMENT_BACKLOG_ARCHIVE.md`로 이관됨 (2026-06-10 정리). 신규 로그는 계속 이 파일 상단에 추가.
 
+> **Area 2 코드 품질 (2026-06-15T02:00):**
+> - **방법**: baseline `npm ci`(82 pkg)+build PASS(393 modules, _worker.js 5.15MB). HEAD=remote main=`930f676`(직전 Area 1 backlog), clean tree, 308 마이그레이션. Area 2 **13회차** — 직전 사이클 이후 코드 churn 0(백로그 문서커밋만)이라 신선 각도: ① 존재X컬럼 standing scan(SELECT/INSERT 전수 ground-truth diff) ② N+1 전수(루프 내 await DB) ③ authMiddleware/배럴 자식 라우터 ④ dead code/orphan ⑤ `as any`. 병렬 Explore 2개 + 발견 전수 owner 직접 코드 Read + 도달성 grep 검증.
+> - **🟡 신규 이슈 #407 (improvement, small, #389/#401·#350 클래스) — 발주 복사 품목 INSERT N+1, 분할 special 핸들러가 batch 미승계**: `po-special.ts` 품목 복사 루프가 `newPoId` 기지인데도 항목마다 순차 `await .run()`. **대조**: 정규 경로 `purchaseOrders/core.ts:320-374/:557-579`는 #350으로 `poiStmts[]` 누적 후 `DB.batch(slice(i,i+80))` 청크 처리(주석 실증) → batch 패턴이 코드베이스에 확립됐는데 **분리된 special 핸들러만 미승계 = "분할 후 부분 픽스" 오버사이트**. **도달성 정밀 격리**: `/copy`만 LIVE(`purchaseOrders.js:455` copyPO→axios.post), `/reorder`(:178)는 프론트 비활성 스텁(`purchaseOrders.js:110` "재발주 기능 삭제됨" 토스트만, API 미호출=dead), `/quick`(:287)은 프론트 호출 0건(orphan #334) → **본 이슈는 LIVE `/copy` 하나에 집중**, reorder/quick은 도달성으로 강등. 발주 품목 수만큼 순차 왕복(부차: 중간실패 부분생성, batch화 시 원자성도 확보). **자동수정 안 함**: write-path 구조 변경(순차→batch, 원자성 시맨틱 변화)+egress 대량복사 회귀 검증불가+N+1=SKILL 자동수정 허용목록 밖(#389/#401 동일 판정). printSystem.ts:1010/1029-1059 일괄출력방식 중첩루프는 `createLinkedItem` last_row_id 구조적 강제 분리 섞임(단순 batch화 불가) → LOW 별개.
+> - **🟢 존재X컬럼 standing scan = net-new 0 (#406 형제 sweep clean)**: 서브에이전트 컬럼 diff가 재발견한 항목(cardExpenses.ts:63 corporate_cards 2컬럼·cards/lifecycle.ts:492 quality_issues.severity·:1111 activity_logs resource_type/resource_id)은 **전부 기보고 #406**(0241 ALTER 주석처리 드리프트 + activity_logs 오타) = 정밀 격리, net-new typo 0건. #394(inventoryCount)·#397(year-end rrn)도 기보고. → "존재X컬럼" 최고생산성 클래스 이번 사이클 outlier 0.
+> - **🚫 서브에이전트 저가치 드롭 2건**: ① **`as any` ~10건 Row타입 미정의**(activityLogs.ts:29·budgets.ts:103·cashFlow.ts:530 등) → 코드스타일 개선·비즈니스 영향 0 → SKILL "현실적 가치만" 드롭(c.env as any BAROBILL/R2는 CF 타입한계 NECESSARY). ② **po-special reorder/quick N+1** → 도달성 0(reorder=비활성 스텁·quick=orphan) → #407 본문 참고로만 강등, 별도 이슈 안 만듦.
+> - **🔵 clean 검증 (3각도)**: ① **authMiddleware**: 배럴 라우터(orders/cards/ledger/accounts-receivable/payroll/purchaseOrders/taxInvoices) 자식 전수 `authMiddleware`+`requireAnyPagePermission` 재선언(Hono 스코프 누락 0). cards `/by-number/:cardNumber` agentKeyOrAuth·portal/hrSelf 무인증은 설계 정상. ② **dead code**: 411 API 클라 도달, export helper 전부 import 사용(generatePortalToken→messages.ts 등), webhooks.ts 빈 라우터는 바로빌 콜백(마운트만, dead 아님). ③ **타입**: models.ts↔쿼리 결과 정합.
+> - **🟢 backlog↔GitHub sync clean (변동 0 → #407 추가)**: open auto-improve **실측 10건**(#394~#402+#406) = 직전 stats `new=10` 정합 확인 후 #407 편입 → `new=11`. done=96·rejected=3·approved=0·reviewed=0 유지. 직전 Area 1 이후 owner 신규 close/머지 0건(930f676=backlog 문서커밋만).
+> - **이상 없음**: baseline build PASS. 존재X컬럼 net-new 0(#406 형제 sweep). authMiddleware/dead code clean. as any 저가치 드롭.
+> - 자동 수정 0건(N+1 write-path=owner 검증·SKILL 자동수정목록 밖), 신규 이슈 1건(#407 발주복사 N+1 small), 서브에이전트 저가치 드롭 2건(as any·reorder/quick orphan), clean 3각도(auth/deadcode/타입), 존재X컬럼 standing scan net-new 0, done-sync 0건(변동 없음)
+>
 > **Area 1 프로덕션 헬스 (2026-06-14T22:00):**
 > - **방법**: GitHub Actions 최근 30런(total 612) 분석 + baseline `npm ci`(82 pkg)+build PASS(393 modules, _worker.js 5.15MB). HEAD=remote main=`5fcca87`(직전 Area 6 A-022 XSS 자동수정+backlog), clean tree. egress 차단(curl prod 불가)이라 **Deploy/E2E/smoke 결과를 헬스 신호로 사용**. Area 1 **13회차**.
 > - **🟢 현재 파이프라인 완전 green**: HEAD `5fcca87` E2E(`success` 06-14T08:15)+Deploy(`success` 06-14T08:13). 최근 30런 conclusion 집계 = **success 26·cancelled 2·skipped 1·failure 1**. cancelled 2건(`817bd18`/`74c5b9d`)은 전부 **schedule 트리거 E2E**(각 head_sha의 push workflow_run E2E는 success = 중복 schedule런 자동취소 정상). skipped 1건은 deploy fail 후속 E2E.
