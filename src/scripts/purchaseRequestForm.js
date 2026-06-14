@@ -151,8 +151,8 @@ async function prSearchItems(idx) {
             + (it.item_name || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'") + '\','
             + price + ',\''
             + (it.unit || 'EA').replace(/'/g, "\\'") + '\')">'
-            + (it.item_name || '')
-            + (it.item_code ? ' <span class="text-gray-400 text-xs">[' + it.item_code + ']</span>' : '')
+            + escapeHtml(it.item_name || '')
+            + (it.item_code ? ' <span class="text-gray-400 text-xs">[' + escapeHtml(it.item_code) + ']</span>' : '')
             + (price ? ' <span class="text-blue-500 text-xs ml-1">' + price.toLocaleString() + '원</span>' : '')
             + '</div>';
         }).join('');
@@ -192,7 +192,7 @@ function onPRSupplierInput() {
         dd.innerHTML = clients.map(function(cl) {
           var safeName = (cl.client_name || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
           return '<div class="pr-supplier-dd-entry" onmousedown="event.preventDefault();prSelectSupplier(' + cl.id + ',\'' + safeName + '\')">'
-            + (cl.client_name || '') + '</div>';
+            + escapeHtml(cl.client_name || '') + '</div>';
         }).join('');
       }
       dd.classList.remove('hidden');

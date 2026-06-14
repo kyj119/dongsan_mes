@@ -28,12 +28,12 @@ function renderSubcatCheckboxes(selectedIds = []) {
     });
     container.innerHTML = Object.entries(groups).map(([group, items]) => `
         <div>
-            <p class="text-xs font-semibold text-gray-500 mb-1">${group}</p>
+            <p class="text-xs font-semibold text-gray-500 mb-1">${escapeHtml(group)}</p>
             <div class="flex flex-wrap gap-3">
                 ${items.map(s => `
                     <label class="flex items-center gap-1.5 text-sm cursor-pointer">
                         <input type="checkbox" class="subcat-check h-4 w-4" value="${s.id}" ${selectedIds.includes(s.id) ? 'checked' : ''}>
-                        <span>${s.subcat_name}</span>
+                        <span>${escapeHtml(s.subcat_name)}</span>
                     </label>
                 `).join('')}
             </div>
@@ -60,11 +60,11 @@ async function loadList() {
             const margins = [p.margin_top||0, p.margin_bottom||0, p.margin_left||0, p.margin_right||0];
             const hasMargin = margins.some(m => m > 0);
             const subcatNames = p.subcategory_names
-                ? p.subcategory_names.split(',').map(n => `<span class="inline-block px-1.5 py-0.5 bg-blue-50 text-blue-700 rounded text-xs mr-1 mb-1">${n}</span>`).join('')
+                ? p.subcategory_names.split(',').map(n => `<span class="inline-block px-1.5 py-0.5 bg-blue-50 text-blue-700 rounded text-xs mr-1 mb-1">${escapeHtml(n)}</span>`).join('')
                 : '<span class="text-gray-400 text-xs">미지정</span>';
             return `<tr class="border-b hover:bg-gray-50 ${p.is_active ? '' : 'opacity-50'}">
-                <td class="px-4 py-3 font-mono text-xs text-gray-600">${p.option_code}</td>
-                <td class="px-4 py-3 font-medium">${p.option_name}</td>
+                <td class="px-4 py-3 font-mono text-xs text-gray-600">${escapeHtml(p.option_code)}</td>
+                <td class="px-4 py-3 font-medium">${escapeHtml(p.option_name)}</td>
                 <td class="px-4 py-3 text-sm tabular-nums">${pricingMap[p.pricing_type]||'-'}<br><span class="text-gray-500 text-xs">${priceInfo}</span></td>
                 <td class="px-4 py-3 text-sm text-gray-600">${paramSummary}</td>
                 <td class="px-4 py-3 text-sm">${hasMargin ? margins.join(' / ')+' cm' : '-'}</td>
