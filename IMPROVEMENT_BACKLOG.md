@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 2 -->
-<!-- last_run_at: 2026-06-15T02:00:00+09:00 -->
+<!-- last_run_area: 3 -->
+<!-- last_run_at: 2026-06-15T06:00:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -16,6 +16,16 @@
 
 > 📦 **과거 사이클 로그**(아래 6블록 이전분)는 `IMPROVEMENT_BACKLOG_ARCHIVE.md`로 이관됨 (2026-06-10 정리). 신규 로그는 계속 이 파일 상단에 추가.
 
+> **Area 3 UX/기능 감사 (2026-06-15T06:00):**
+> - **방법**: baseline `npm ci`(82 pkg)+build PASS(393 modules, _worker.js 5.15MB→자동수정 후 5,151.74kB). HEAD=remote main=`1a3a155`(직전 Area 2 backlog), clean tree. Area 3 **12회차** — 직전 사이클 이후 코드 churn 0(백로그 문서커밋만)이라 신선 각도: ① **HTML↔JS silent-fail 전수 자동화**(getElementById 리터럴 2212개 추출 ↔ pages/scripts id= 전수 diff) ② 빈상태/로딩 ③ 검색·필터 적정성 ④ 변경후 갱신. 병렬 Explore 2개(재고/구매/생산 클러스터A + 거래처/견적/세금/출고/회계 클러스터B) + 발견 전수 owner 직접 코드 Read 검증.
+> - **🔧 자동수정 1건 (A-023, 본 사이클) — items/bulk.js dead Enter키 핸들러 제거**: silent-fail 전수 diff가 격리한 `getElementById('itemSearch')`(bulk.js:321)가 **양쪽 부재로 영구 미발동인 dead code**임을 owner ground-truth 확정. ① `id="itemSearch"` 요소가 items.ts에 없음(페이지가 per-tab 검색 outputSearch/transferSearch/…/oninput debounce로 리팩터됨) ② 핸들러가 호출하는 `window.applyFilters`도 제거됨(`bulk.js:515` 주석 `// applyFilters 제거됨 (tabItems 삭제)` 실증). `if(itemSearchEl)` 가드라 크래시는 없으나 **요소·콜백 양쪽 부재 = tabItems 삭제 리팩터의 잔존 dead code**. SKILL 자동수정 허용목록(dead code 제거)·동작 무변(핸들러가 한 번도 발동된 적 없음)·build PASS(_worker.js 미세 감소) → 안전 자동수정. 핸들러 블록 7줄(주석+가드) 제거.
+> - **🟢 HTML↔JS silent-fail 전수 자동화 = net-new 0(A-023 외)**: getElementById 리터럴 2212 unique ↔ 전 pages/scripts `id=`/`.id=` 전수 comm diff. outlier 후보 ~50건 전부 owner 직접 추적 = **shell.js 셸 self-contained 참조**(sidebar/entitySwitcher/notif*/cmd*/msg* 모달/topbar) + 스크립트 자체 innerHTML 동적 렌더(orderForm/sheet.js extractPanel·portalBalance.js token-login-note·approvals.js nav-badge-approvals) + 가드된 dead(itemSearch=A-023). **cross-file 진짜 silent-fail 0건**, typo 0건. 서브에이전트가 "확인 필요"로 올린 zoneFilter(purchaseOrderForm.ts:105)·filterCard(cardExpenses.ts:51)는 둘 다 pages 실재 = **FP**.
+> - **🚫 서브에이전트 오탐/저가치 드롭 6건**: ① **taxInvoices 월합산 탭 "필터변경 후 미갱신" MED** → **FP**: 명시적 `<button onclick="loadMonthlyEligible()">조회` + placeholder "대상 월을 선택하고 조회하세요"(pages:307) = 의도된 explicit-search UX(auto-load 아님) → 드롭. ② shipments.js:441 "client_id 가드 부재 HIGH" → catch+toast 실재(서브에이전트 자인 강등) → 드롭. ③ quotation.js:206 "8건 경계 라벨 스타일 급변 HIGH" → cosmetic → 드롭. ④ bank 계좌0건 "+새 계좌 CTA 버튼" → 미세 UX(F-004 클래스) → 드롭. ⑤ taxInvoices 미발행 빈상태 "활성 필터값 표시" → 미세 UX → 드롭. ⑥ shipments 배송방식 필터·clients resetFilters 불일치 → "있으면좋다"/미세 → 드롭.
+> - **🔵 clean 검증 (4각도, 두 클러스터)**: ① **빈상태**: inventory/inventoryCount/purchaseOrders/receiving/workbench/equipment/postProcessing/cardExpenses + clients/taxInvoices/shipments/bank 전부 0건 안내 메시지 실재(PASS). ② **변경후 갱신**: 전 mutation 핸들러(submitSettings/submitAdjust/changeStatus/copyPO/submitReceive/savePP/bulkClassify + clients/taxInvoices/shipments 저장)가 `loadXxx()+loadStats()` 재호출(stale 0). ③ **검색/필터**: 운영 흐름상 필요 필터 충실(재고=카테고리/상태/검색, 입고=날짜범위/검수상태, 카드비=카드/분류/날짜/검색, 거래처 9필터). ④ **silent-fail**: 위 전수 diff clean.
+> - **🟢 backlog↔GitHub sync clean (변동 0)**: open auto-improve **실측 11건**(#394~#402+#406+#407) = stats `new=11` 정합. 직전 Area 2 이후 owner 신규 close/머지 0건(1a3a155=#407 backlog 문서커밋만). done=96·rejected=3·approved=0·reviewed=0 유지. A-023은 GitHub 이슈 아닌 직접 자동수정(A-020~A-022 동일 처리).
+> - **이상 없음**: baseline build PASS. silent-fail 전수 diff net-new 0(A-023 dead code 외). 빈상태/갱신/필터 4각도 clean. 서브에이전트 FP/저가치 6건 드롭(월합산 explicit-search FP 포함).
+> - 자동 수정 1건(A-023 items/bulk.js dead 핸들러 제거, build PASS), 신규 이슈 0건(silent-fail 전수 clean·서브에이전트 발견 전부 FP/저가치), clean 4각도(빈상태/갱신/필터/silent-fail), 서브에이전트 오탐 6건 드롭, done-sync 0건(변동 없음)
+>
 > **Area 2 코드 품질 (2026-06-15T02:00):**
 > - **방법**: baseline `npm ci`(82 pkg)+build PASS(393 modules, _worker.js 5.15MB). HEAD=remote main=`930f676`(직전 Area 1 backlog), clean tree, 308 마이그레이션. Area 2 **13회차** — 직전 사이클 이후 코드 churn 0(백로그 문서커밋만)이라 신선 각도: ① 존재X컬럼 standing scan(SELECT/INSERT 전수 ground-truth diff) ② N+1 전수(루프 내 await DB) ③ authMiddleware/배럴 자식 라우터 ④ dead code/orphan ⑤ `as any`. 병렬 Explore 2개 + 발견 전수 owner 직접 코드 Read + 도달성 grep 검증.
 > - **🟡 신규 이슈 #407 (improvement, small, #389/#401·#350 클래스) — 발주 복사 품목 INSERT N+1, 분할 special 핸들러가 batch 미승계**: `po-special.ts` 품목 복사 루프가 `newPoId` 기지인데도 항목마다 순차 `await .run()`. **대조**: 정규 경로 `purchaseOrders/core.ts:320-374/:557-579`는 #350으로 `poiStmts[]` 누적 후 `DB.batch(slice(i,i+80))` 청크 처리(주석 실증) → batch 패턴이 코드베이스에 확립됐는데 **분리된 special 핸들러만 미승계 = "분할 후 부분 픽스" 오버사이트**. **도달성 정밀 격리**: `/copy`만 LIVE(`purchaseOrders.js:455` copyPO→axios.post), `/reorder`(:178)는 프론트 비활성 스텁(`purchaseOrders.js:110` "재발주 기능 삭제됨" 토스트만, API 미호출=dead), `/quick`(:287)은 프론트 호출 0건(orphan #334) → **본 이슈는 LIVE `/copy` 하나에 집중**, reorder/quick은 도달성으로 강등. 발주 품목 수만큼 순차 왕복(부차: 중간실패 부분생성, batch화 시 원자성도 확보). **자동수정 안 함**: write-path 구조 변경(순차→batch, 원자성 시맨틱 변화)+egress 대량복사 회귀 검증불가+N+1=SKILL 자동수정 허용목록 밖(#389/#401 동일 판정). printSystem.ts:1010/1029-1059 일괄출력방식 중첩루프는 `createLinkedItem` last_row_id 구조적 강제 분리 섞임(단순 batch화 불가) → LOW 별개.
