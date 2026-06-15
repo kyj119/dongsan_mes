@@ -206,6 +206,17 @@ attendanceRouter.patch('/bulk', requireRole('ADMIN', 'MANAGER'), async (c) => {
     let upserted = 0
     const errors: any[] = []
 
+    // #401: 루프 내 항목당 employees.entity_id 단건조회 N+1 → 고유 직원 IN-prefetch 1쿼리로 제거
+    const empIds = [...new Set((items as any[]).map((it) => Number(it.employee_id)).filter(Boolean))]
+    const empEntityMap = new Map<number, number | null>()
+    if (empIds.length) {
+      const ph = empIds.map(() => '?').join(',')
+      const { results: empRows } = await c.env.DB.prepare(
+        `SELECT id, entity_id FROM employees WHERE id IN (${ph})`
+      ).bind(...empIds).all<{ id: number; entity_id: number | null }>()
+      for (const r of empRows || []) empEntityMap.set(Number(r.id), r.entity_id)
+    }
+
     for (const it of items) {
       try {
         const employee_id = Number(it.employee_id)
@@ -301,10 +312,9 @@ attendanceRouter.patch('/bulk', requireRole('ADMIN', 'MANAGER'), async (c) => {
         baseCols.push('attendance_type', 'status', 'notes')
         baseParams.push(attendance_type, status, notes)
 
-        // entity_id: 직원의 entity_id 조회
-        const empRow = await c.env.DB.prepare('SELECT entity_id FROM employees WHERE id = ?').bind(employee_id).first<{ entity_id: number | null }>()
+        // entity_id: prefetch 맵 룩업 (#401, 폴백 의미 `||` 그대로 보존: 맵미스/0/null → getEntityId)
         baseCols.push('entity_id')
-        baseParams.push(empRow?.entity_id || getEntityId(c) || 1)
+        baseParams.push(empEntityMap.get(employee_id) || getEntityId(c) || 1)
 
         const updateSets = baseCols.filter(c => c !== 'employee_id' && c !== 'work_date')
           .map(c => `${c} = excluded.${c}`).join(', ')

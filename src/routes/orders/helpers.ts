@@ -60,11 +60,12 @@ export async function recalcOrderBillingGroups(db: D1Database, orderId: number):
   if (!order) return
   const mainEntity = Number(order.entity_id) || 1
 
-  // 동결 그룹 식별: BILLED/PAID는 보존, 그 법인은 재계산 대상에서 제외.
+  // 동결 그룹 식별: BILLED/PAID 또는 발행 계산서 링크(tax_invoice_id)는 보존, 그 법인은 재계산 대상에서 제외.
+  // #395: billing_status=NULL이어도 tax_invoice_id가 있으면(0306 backfill 등) 삭제 시 계산서 연결 소실 → 동결에 포함.
   const { results: existing } = await db.prepare(
-    `SELECT entity_id, billing_status, supply_amount, tax_amount, billed_amount FROM order_billing_groups WHERE order_id = ?`
-  ).bind(orderId).all<{ entity_id: number; billing_status: string | null; supply_amount: number; tax_amount: number; billed_amount: number }>()
-  const frozen = (existing || []).filter(g => g.billing_status === 'BILLED' || g.billing_status === 'PAID')
+    `SELECT entity_id, billing_status, tax_invoice_id, supply_amount, tax_amount, billed_amount FROM order_billing_groups WHERE order_id = ?`
+  ).bind(orderId).all<{ entity_id: number; billing_status: string | null; tax_invoice_id: number | null; supply_amount: number; tax_amount: number; billed_amount: number }>()
+  const frozen = (existing || []).filter(g => g.billing_status === 'BILLED' || g.billing_status === 'PAID' || g.tax_invoice_id != null)
   const frozenEntities = new Set(frozen.map(g => Number(g.entity_id)))
   // 동결분이 이미 가져간 세액/할인 = 주문 총액에서 차감 후 잔여를 미청구 그룹이 나눠 가짐.
   const frozenTax = frozen.reduce((s, g) => s + Math.round(Number(g.tax_amount) || 0), 0)
@@ -82,8 +83,9 @@ export async function recalcOrderBillingGroups(db: D1Database, orderId: number):
   `).bind(mainEntity, orderId, mainEntity).all<{ eid: number; supply: number; vat_base: number }>()
 
   // 미청구(NULL) 그룹만 제거(동결 그룹은 보존). 그 후 동결 안 된 법인만 현재 품목으로 재INSERT.
+  // #395: tax_invoice_id 보유 그룹은 NULL-status여도 삭제 금지(계산서 연결 보존).
   await db.prepare(
-    `DELETE FROM order_billing_groups WHERE order_id = ? AND (billing_status IS NULL OR billing_status NOT IN ('BILLED','PAID'))`
+    `DELETE FROM order_billing_groups WHERE order_id = ? AND tax_invoice_id IS NULL AND (billing_status IS NULL OR billing_status NOT IN ('BILLED','PAID'))`
   ).bind(orderId).run()
 
   const unbilledRows = (rows || []).filter(r => !frozenEntities.has(Number(r.eid)))

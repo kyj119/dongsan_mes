@@ -1,17 +1,19 @@
--- 법인카드 기능 확장 (프로덕션에 이미 적용된 컬럼은 no-op 처리)
--- payment_day, assigned_user_id, receipt_image_url 등은 이전 세션에서 수동 적용됨
+-- 법인카드 기능 확장
+-- #404/#406: 기존엔 ALTER가 전부 주석처리되어 fresh DB/CI/db:reset에서 컬럼 부재 → cardExpenses 모듈 전체 throw.
+-- prod·기존 local은 이 마이그레이션이 d1_migrations에 이미 기록되어 재실행 안 됨(2026-06-16 확인) → 주석 해제는
+-- 신규/재구축 환경에만 적용, 중복컬럼 오류 없이 SSOT 복원. (prod엔 8컬럼 이미 존재, 후속 중복 ALTER 없음 확인)
 
--- corporate_cards 컬럼 (이미 존재)
--- ALTER TABLE corporate_cards ADD COLUMN payment_day INTEGER DEFAULT 15;
--- ALTER TABLE corporate_cards ADD COLUMN assigned_user_id INTEGER REFERENCES users(id);
+-- corporate_cards 컬럼
+ALTER TABLE corporate_cards ADD COLUMN payment_day INTEGER DEFAULT 15;
+ALTER TABLE corporate_cards ADD COLUMN assigned_user_id INTEGER REFERENCES users(id);
 
--- card_transactions 컬럼 (이미 존재)
--- ALTER TABLE card_transactions ADD COLUMN receipt_image_url TEXT;
--- ALTER TABLE card_transactions ADD COLUMN approval_number TEXT;
--- ALTER TABLE card_transactions ADD COLUMN supply_amount REAL DEFAULT 0;
--- ALTER TABLE card_transactions ADD COLUMN tax_amount REAL DEFAULT 0;
--- ALTER TABLE card_transactions ADD COLUMN approval_type TEXT DEFAULT 'APPROVED';
--- ALTER TABLE card_transactions ADD COLUMN matched_bank_tx_id INTEGER REFERENCES bank_transactions(id);
+-- card_transactions 컬럼
+ALTER TABLE card_transactions ADD COLUMN receipt_image_url TEXT;
+ALTER TABLE card_transactions ADD COLUMN approval_number TEXT;
+ALTER TABLE card_transactions ADD COLUMN supply_amount REAL DEFAULT 0;
+ALTER TABLE card_transactions ADD COLUMN tax_amount REAL DEFAULT 0;
+ALTER TABLE card_transactions ADD COLUMN approval_type TEXT DEFAULT 'APPROVED';
+ALTER TABLE card_transactions ADD COLUMN matched_bank_tx_id INTEGER REFERENCES bank_transactions(id);
 
 -- 가맹점 → 경비 카테고리 자동 분류 규칙
 CREATE TABLE IF NOT EXISTS expense_auto_rules (

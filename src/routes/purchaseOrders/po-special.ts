@@ -71,9 +71,9 @@ poSpecialRouter.post('/:id/copy', requireRole('ADMIN', 'MANAGER'), async (c) => 
 
     const newPoId = newPoResult.meta.last_row_id
 
-    // 품목 복사 (received_quantity=0으로 초기화)
-    for (const item of originalItems as Record<string, unknown>[]) {
-      await c.env.DB.prepare(`
+    // 품목 복사 (received_quantity=0으로 초기화) — #407: 순차 .run() N+1 → batch (core.ts:320 패턴)
+    const poiStmts = (originalItems as Record<string, unknown>[]).map((item) =>
+      c.env.DB.prepare(`
         INSERT INTO purchase_order_items (
           po_id, item_id, item_name, category_name,
           quantity, received_quantity, unit,
@@ -92,14 +92,18 @@ poSpecialRouter.post('/:id/copy', requireRole('ADMIN', 'MANAGER'), async (c) => 
         item.vat_included,
         item.sort_order || 0,
         item.notes || null
-      ).run()
+      )
+    )
+    // 상태 이력도 같은 statement 배열에 포함 → 복사 전체 원자화
+    poiStmts.push(
+      c.env.DB.prepare(`
+        INSERT INTO po_status_history (po_id, to_status, changed_by, change_reason)
+        VALUES (?, 'DRAFT', ?, ?)
+      `).bind(newPoId, user?.id || 1, `발주 #${po.po_number} 복사`)
+    )
+    for (let i = 0; i < poiStmts.length; i += 80) {
+      await c.env.DB.batch(poiStmts.slice(i, i + 80))
     }
-
-    // 상태 이력 기록
-    await c.env.DB.prepare(`
-      INSERT INTO po_status_history (po_id, to_status, changed_by, change_reason)
-      VALUES (?, 'DRAFT', ?, ?)
-    `).bind(newPoId, user?.id || 1, `발주 #${po.po_number} 복사`).run()
 
     return c.json({
       success: true,
