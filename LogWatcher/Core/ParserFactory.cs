@@ -17,6 +17,7 @@ namespace LogWatcher.Core
                 "printexp" => new PrintExpParserAdapter(config, positionsDir),
                 "epson" => new SqliteDbParser(config, positionsDir),
                 "flexi" => new FlexiHtmlParser(config, positionsDir),
+                "text_log" => new TextLogParser(config, positionsDir),
                 _ => throw new ArgumentException($"Unknown parser type: '{config.ParserType}' for equipment '{config.EquipmentId}'")
             };
         }

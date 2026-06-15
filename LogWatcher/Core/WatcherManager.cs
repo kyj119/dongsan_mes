@@ -19,6 +19,7 @@ namespace LogWatcher.Core
         private readonly string _positionsDir;
         private readonly Dictionary<string, DateTime> _lastHeartbeats = new();
         private readonly Dictionary<string, int> _backoffCounts = new();
+        private readonly Dictionary<string, WatcherConfig> _configs = new();
 
         public EquipmentConfig Config { get; private set; } = new();
         public int ParserCount => _parsers.Count;
@@ -48,6 +49,7 @@ namespace LogWatcher.Core
             _parsers.Clear();
             _lastHeartbeats.Clear();
             _backoffCounts.Clear();
+            _configs.Clear();
 
             foreach (var watcher in Config.Watchers.Where(w => w.Enabled))
             {
@@ -57,6 +59,7 @@ namespace LogWatcher.Core
                     _parsers.Add(parser);
                     _lastHeartbeats[watcher.EquipmentId] = DateTime.MinValue;
                     _backoffCounts[watcher.EquipmentId] = 0;
+                    _configs[watcher.EquipmentId] = watcher;
                     Console.WriteLine($"[INIT] {watcher.EquipmentId}: {watcher.Name} ({watcher.ParserType})");
                 }
                 catch (Exception ex)
@@ -133,7 +136,10 @@ namespace LogWatcher.Core
             if ((DateTime.Now - lastHb).TotalSeconds >= hbInterval)
             {
                 var isPrinting = events.Count > 0;
-                var hbOk = await _apiClient.SendHeartbeatForEquipmentAsync(eqId, isPrinting);
+                var cfg = _configs.GetValueOrDefault(eqId);
+                var logPath = cfg?.GetConfigString("log_path") ?? "";
+                if (string.IsNullOrEmpty(logPath)) logPath = cfg?.GetConfigString("db_path") ?? "";
+                var hbOk = await _apiClient.SendHeartbeatForEquipmentAsync(eqId, parser.Name, logPath, isPrinting);
                 if (hbOk) _lastHeartbeats[eqId] = DateTime.Now;
             }
         }

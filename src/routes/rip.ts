@@ -36,6 +36,8 @@ interface EquipmentRow {
   daily_capacity: number | null
   size_type: string | null
   last_seen_at: string | null
+  print_log_path: string | null
+  agent_id: string | null
   agent_ip: string | null
   agent_status: string
 }
@@ -233,15 +235,17 @@ ripRouter.get('/equipment', authMiddleware, async (c) => {
       SELECT e.id, e.name, e.printer_name, e.ip_address, e.status,
         e.head_count, e.location_zone, e.location_x, e.location_y,
         e.notes, e.equipment_status, e.daily_capacity, e.size_type,
-        ah.last_seen_at,
+        e.last_seen_at,
+        e.print_log_path,
+        e.agent_id,
         ah.ip_address as agent_ip,
         CASE
-          WHEN ah.last_seen_at IS NULL THEN 'OFFLINE'
-          WHEN (julianday('now') - julianday(ah.last_seen_at)) * 86400 > 120 THEN 'OFFLINE'
+          WHEN e.last_seen_at IS NULL THEN 'OFFLINE'
+          WHEN (julianday('now') - julianday(e.last_seen_at)) * 86400 > 120 THEN 'OFFLINE'
           ELSE 'ONLINE'
         END as agent_status
       FROM equipment e
-      LEFT JOIN agent_heartbeats ah ON ah.equipment_id = e.id
+      LEFT JOIN agent_heartbeats ah ON ah.agent_id = e.agent_id
       WHERE e.status = 'ACTIVE'${ef.clause}
       ORDER BY e.id
     `).bind(...ef.params).all<EquipmentRow>()

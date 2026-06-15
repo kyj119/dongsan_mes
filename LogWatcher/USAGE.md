@@ -109,6 +109,46 @@ POST /api/print-events → MES
 | `size_unit` | | 크기 단위 (`pt`/`mm`/`inch`) | `pt` |
 | `read_only` | | 읽기 전용 모드 | `true` |
 
+#### `text_log` — 범용 텍스트 로그 (정규식 기반) ★
+
+일반 텍스트 로그를 쓰는 대부분의 RIP을 **코드 변경 없이** config로 흡수. 완료패턴은 아래 `--learn`/`--analyze`로 자동 도출 가능.
+
+| 파라미터 | 필수 | 설명 | 예시 |
+|---------|------|------|------|
+| `log_path` | ✅ | 로그 파일 경로 (일별 로테이션 시 폴더 경로) | `D:\UV\print.log` |
+| `completion_pattern` | ✅ | 완료 이벤트 정규식 (캡처그룹=파일명) | `완료\\s*:\\s*(\\S+)` |
+| `filename_group` | | 파일명 캡처 그룹 번호 (기본 1) | `1` |
+| `encoding` | | `auto`(기본)/`utf-8`/`utf-16le`/`cp949`/`euc-kr` | `auto` |
+| `error_pattern` | | 에러 정규식 → PrintStatus ERROR | |
+| `cancel_pattern` | | 취소 정규식 → PrintStatus CANCEL | |
+| `timestamp_pattern` / `timestamp_format` | | 완료시각 추출 (.NET 포맷) | `(\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2})` / `yyyy-MM-dd HH:mm:ss` |
+| `size_pattern` | | 폭·높이 2그룹 정규식 | `(\\d+)\\s*x\\s*(\\d+)` |
+| `size_unit` | | `mm`(기본)/`in`/`pt` | `mm` |
+| `daily_suffix_format` | | 일별 파일 로테이션 (없으면 단일 파일) | `print_{yyyy_MM_dd}.txt` |
+
+> `encoding: auto`는 BOM→utf-8→cp949 순으로 자동감지. 개행 없이 끝나는 마지막 완료 줄도 누락하지 않음(stable-EOF: 파일이 더 안 자라면 마지막 줄을 완성으로 처리).
+
+### LogProbe — 로그 자동 탐지·분석 도구 (equipment.json 없이 실행)
+
+config를 작성하기 **전** 단계에서 쓰는 도구. RIP 구조를 몰라도 로그를 찾고 완료패턴을 자동 도출. 결과는 콘솔 + 로컬 JSON으로만 출력하며 **자동 반영하지 않음**(사람이 검토 후 `equipment.json`에 붙임).
+
+```bash
+# 1) 이 PC의 로그 파일을 찾아 형식 자동판별 + 추천 파서 제시
+LogWatcher.exe --discover [경로...] [--days 60] [--depth 4] [--all]
+#    → discover-<PC명>.json 저장. 카드패턴(YYYYMMDD-NNN) 있는 로그를 상단 정렬
+
+# 2) 출력 1건으로 완료패턴 자동추출 → equipment.json 블록 생성 (text_log 전용)
+LogWatcher.exe --learn "<로그경로>" [--id UV-01] [--name "UV 평판"] [--timeout 300]
+#    → 실행 후 그 장비에서 출력 1건을 내면, 새 로그 줄을 분석해 패턴/블록을 출력
+
+# 3) 기존 로그를 정적분석해 완료패턴 후보 N개 제시 (출력을 못 시킬 때)
+LogWatcher.exe --analyze "<로그경로>" [--top 5]
+```
+
+**권장 흐름**: `--discover`로 로그 위치·형식 파악 → 텍스트 로그면 `--learn`(출력 1건) 또는 `--analyze`로 패턴 도출 → 생성된 블록을 검토 후 `equipment.json`에 추가 → `--test <id>`로 파싱 검증 → 가동.
+
+> 형식별 분기: `sqlite`→`epson`(+SELECT 쿼리), `html`→`flexi`, `binary`→`tns`, 일반 텍스트→`text_log`(패턴 학습).
+
 ### CLI 명령어 (Universal 모드)
 
 ```bash

@@ -359,7 +359,7 @@ printEventsRouter.post('/', agentKeyMiddleware, async (c) => {
 // POST /api/print-events/heartbeat — agent heartbeat
 printEventsRouter.post('/heartbeat', agentKeyMiddleware, async (c) => {
   try {
-    const { agent_id, equipment_id, agent_version, ip_address, print_log_path, is_printing } = await c.req.json()
+    const { agent_id, equipment_id, equipment_name, agent_version, ip_address, print_log_path, is_printing } = await c.req.json()
 
     if (!agent_id) {
       return c.json({ success: false, error: 'agent_id required' }, 400)
@@ -381,23 +381,32 @@ printEventsRouter.post('/heartbeat', agentKeyMiddleware, async (c) => {
         updated_at = CURRENT_TIMESTAMP
     `).bind(agent_id, equipment_id || null, agent_version || null, ip_address || null, print_log_path || null, isPrinting).run()
 
-    // equipment_status 자동 전환: RUNNING/IDLE만 자동, MAINTENANCE/BROKEN은 수동 유지
+    // 장비 상태/수집정보 갱신 + 미등록 장비 자동 등록 (LogWatcher 장비 중심 모델, 스펙 0615)
     if (equipment_id) {
       const equip = await c.env.DB.prepare(
         'SELECT equipment_status FROM equipment WHERE id = ?'
       ).bind(equipment_id).first<EquipmentStatusRow>()
 
       if (equip) {
+        // 수동 상태(MAINTENANCE/BROKEN)는 보존, 그 외 RUNNING/IDLE 자동 전환
         const currentStatus = equip.equipment_status || 'IDLE'
-        // 수동 상태(MAINTENANCE/BROKEN)는 자동 전환하지 않음
-        if (currentStatus !== 'MAINTENANCE' && currentStatus !== 'BROKEN') {
-          const newStatus = isPrinting ? 'RUNNING' : 'IDLE'
-          if (currentStatus !== newStatus) {
-            await c.env.DB.prepare(
-              'UPDATE equipment SET equipment_status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
-            ).bind(newStatus, equipment_id).run()
-          }
-        }
+        const statusToSet = (currentStatus === 'MAINTENANCE' || currentStatus === 'BROKEN')
+          ? currentStatus
+          : (isPrinting ? 'RUNNING' : 'IDLE')
+        await c.env.DB.prepare(
+          `UPDATE equipment SET equipment_status = ?, last_seen_at = CURRENT_TIMESTAMP,
+             print_log_path = ?, agent_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`
+        ).bind(statusToSet, print_log_path || null, agent_id || null, equipment_id).run()
+      } else {
+        // 미등록 장비 자동 등록 (entity_id=1 동산 기본 → 관리자가 /equipment에서 공정·법인 보강)
+        await c.env.DB.prepare(
+          `INSERT INTO equipment (id, name, equipment_status, agent_id, last_seen_at, print_log_path, entity_id, status)
+           VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, ?, 1, 'ACTIVE')`
+        ).bind(
+          equipment_id, equipment_name || equipment_id,
+          isPrinting ? 'RUNNING' : 'IDLE', agent_id || null, print_log_path || null
+        ).run()
+        console.log(`[heartbeat] auto-registered equipment: ${equipment_id}`)
       }
     }
 

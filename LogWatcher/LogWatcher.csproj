@@ -6,8 +6,7 @@
     <Nullable>enable</Nullable>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <SelfContained>true</SelfContained>
-    <PublishSingleFile>true</PublishSingleFile>
-    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <!-- PublishSingleFile 제거: 서비스(LocalSystem) 계정에서 단일파일 추출 실패(exit 3) 회피. 다중파일 self-contained로 배포 -->
   </PropertyGroup>
 
   <ItemGroup>

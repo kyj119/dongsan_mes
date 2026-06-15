@@ -124,7 +124,7 @@ namespace LogWatcher
         /// <summary>
         /// Send heartbeat for a specific equipment (used by WatcherManager).
         /// </summary>
-        public async Task<bool> SendHeartbeatForEquipmentAsync(string equipmentId, bool isPrinting = false)
+        public async Task<bool> SendHeartbeatForEquipmentAsync(string equipmentId, string? equipmentName, string? printLogPath, bool isPrinting = false)
         {
             try
             {
@@ -132,6 +132,8 @@ namespace LogWatcher
                 {
                     agent_id = _agentId,
                     equipment_id = equipmentId,
+                    equipment_name = equipmentName,
+                    print_log_path = printLogPath,
                     agent_version = "2.0.0",
                     ip_address = GetLocalIp(),
                     is_printing = isPrinting

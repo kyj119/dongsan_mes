@@ -118,7 +118,6 @@ import { workbenchPage } from './pages/workbench'
 import { iaScanPage } from './pages/iaScan'
 import { iaAutoProcessPage } from './pages/iaAutoProcess'
 import { iaBatchTestPage } from './pages/iaBatchTest'
-import { ripPage } from './pages/rip'
 import { invoicePage } from './pages/invoice'
 import { quotationPage } from './pages/quotation'
 import { quotationsPage } from './pages/quotations'
@@ -412,7 +411,6 @@ app.get('/ia-scan', pageAuthMiddleware, requireAdminPage(), iaScanPage)
 app.get('/ia-auto', pageAuthMiddleware, requireAdminPage(), iaAutoProcessPage)
 app.get('/ia-batch-test', pageAuthMiddleware, requireAdminPage(), iaBatchTestPage)
 app.get('/production-reports', pageAuthMiddleware, requirePagePermission('/production-reports'), productionReportsPage)
-app.get('/rip', pageAuthMiddleware, requirePagePermission('/rip'), ripPage)
 app.get('/invoice/:orderId', pageAuthMiddleware, requirePagePermission('/orders'), invoicePage)
 app.get('/quotation/:orderId', pageAuthMiddleware, requirePagePermission('/quotations'), quotationPage)
 app.get('/quotations', pageAuthMiddleware, requirePagePermission('/quotations'), quotationsPage)

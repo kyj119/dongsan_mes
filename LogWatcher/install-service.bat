@@ -7,6 +7,8 @@
 set SERVICE_NAME=LogWatcher
 set EXE_PATH=%~dp0LogWatcher.exe
 set APP_DIR=%~dp0
+:: %~dp0 ends with a backslash; strip it so "AppDirectory" is not corrupted by the trailing \"
+if "%APP_DIR:~-1%"=="\" set APP_DIR=%APP_DIR:~0,-1%
 set NSSM=%~dp0nssm.exe
 
 :: 관리자 권한 확인

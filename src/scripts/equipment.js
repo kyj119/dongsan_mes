@@ -110,7 +110,7 @@ function renderTable() {
             + '<td class="px-4 py-3 font-medium">' + (eq.name || '') + '</td>'
             + '<td class="px-4 py-3 text-sm text-gray-600">' + (eq.printer_name || '<span class="text-gray-300">-</span>') + '</td>'
             + '<td class="px-4 py-3 text-center">' + statusBadge + '</td>'
-            + '<td class="px-4 py-3 text-center">' + agentBadge + '</td>'
+            + '<td class="px-4 py-3 text-center">' + agentBadge + (eq.agent_id ? '<div class="text-[10px] text-gray-400 mt-0.5 font-mono">' + escapeHtml(eq.agent_id) + '</div>' : '') + '</td>'
             + '<td class="px-4 py-3 text-center text-sm">' + headInfo + '</td>'
             + '<td class="px-4 py-3 text-sm text-gray-600">' + (eq.location_zone || '<span class="text-gray-300">-</span>') + '</td>'
             + '<td class="px-4 py-3 text-center act-col">'
@@ -392,11 +392,16 @@ function renderDetail() {
     }
     document.getElementById('detailStatus').innerHTML = statusHtml;
 
-    // 정보
+    // 정보 (print_log_path/agent_id는 :id 응답에 없으므로 목록 데이터에서 보충)
+    var listEq = equipList.find(function(x){ return x.id === eq.id; }) || {};
+    var logPath = eq.print_log_path || listEq.print_log_path || '';
+    var agentId = eq.agent_id || listEq.agent_id || '';
     var infoHtml = '<div><span class="text-gray-400">프린터:</span> ' + escapeHtml(eq.printer_name || '-') + '</div>'
         + '<div><span class="text-gray-400">IP:</span> ' + escapeHtml(eq.ip_address || '-') + '</div>'
         + '<div><span class="text-gray-400">구역:</span> ' + escapeHtml(eq.location_zone || '-') + '</div>'
-        + '<div><span class="text-gray-400">에이전트:</span> ' + (eq.agent_status === 'ONLINE' ? '<span class="text-green-600">온라인</span>' : '<span class="text-gray-400">오프라인</span>') + '</div>';
+        + '<div><span class="text-gray-400">에이전트:</span> ' + (eq.agent_status === 'ONLINE' ? '<span class="text-green-600">온라인</span>' : '<span class="text-gray-400">오프라인</span>') + '</div>'
+        + '<div><span class="text-gray-400">수집 PC:</span> ' + escapeHtml(agentId || '-') + '</div>'
+        + '<div><span class="text-gray-400">로그 경로:</span> <span class="font-mono text-xs break-all">' + escapeHtml(logPath || '-') + '</span></div>';
     document.getElementById('detailInfo').innerHTML = infoHtml;
 
     // 메모

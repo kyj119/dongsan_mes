@@ -130,6 +130,9 @@ tools/11월/_jsx_results/
 
 # === Strict ignore (large directories) ===
 tools/
+!LogWatcher/Tools/
+LogWatcher/deploy_pkg/
+LogWatcher/deploy_multi/
 IllustratorAutomat/bin/
 IllustratorAutomat/obj/
 IllustratorAutomat/publish/
