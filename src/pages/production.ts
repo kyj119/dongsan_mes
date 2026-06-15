@@ -122,8 +122,8 @@ export function productionPage(c: Context<HonoEnv>) {
                   <th class="text-left" style="width:100px">시간</th>
                   <th class="text-left" style="width:90px">장비</th>
                   <th class="text-left">파일명</th>
-                  <th class="text-left" style="width:90px">규격(cm)</th>
-                  <th class="text-left" style="width:70px">소요</th>
+                  <th class="text-left" style="width:120px">규격(cm)</th>
+                  <th class="text-left" style="width:64px">소요</th>
                   <th class="text-left" style="width:100px">출력정보</th>
                   <th class="text-left" style="width:80px">상태</th>
                 </tr>

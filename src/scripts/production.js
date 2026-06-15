@@ -297,14 +297,14 @@ async function loadRecentEvents() {
         layoutInfo = '<span class="text-[10px] text-gray-400">1매</span>';
       }
 
-      return '<tr class="hover:bg-blue-50/30 border-b border-gray-100 transition-colors">'
-        + '<td class="px-3 py-2 text-xs text-gray-500 whitespace-nowrap">' + timeStr + '</td>'
-        + '<td class="px-3 py-2 text-xs font-medium text-gray-700 whitespace-nowrap">' + printerName + '</td>'
-        + '<td class="px-3 py-2 text-xs text-gray-600 truncate" style="max-width:260px" title="' + fileName + '">' + fileName + '</td>'
-        + '<td class="px-3 py-2 text-xs tabular-nums text-gray-500 whitespace-nowrap">' + sizeStr + '</td>'
-        + '<td class="px-3 py-2 text-xs tabular-nums text-gray-500 whitespace-nowrap">' + durStr + '</td>'
-        + '<td class="px-3 py-2">' + layoutInfo + '</td>'
-        + '<td class="px-3 py-2">' + statusBadge(ev.print_status) + '</td>'
+      return '<tr class="hover:bg-blue-50/30 border-b border-gray-100 transition-colors align-middle">'
+        + '<td class="px-3 py-2.5 text-xs text-gray-500 whitespace-nowrap">' + timeStr + '</td>'
+        + '<td class="px-3 py-2.5 text-xs font-medium text-gray-700 whitespace-nowrap">' + printerName + '</td>'
+        + '<td class="px-3 py-2.5 text-xs text-gray-600 truncate" style="max-width:240px" title="' + fileName + '">' + fileName + '</td>'
+        + '<td class="px-3 py-2.5 text-xs tabular-nums text-gray-600 whitespace-nowrap">' + sizeStr + '</td>'
+        + '<td class="px-3 py-2.5 text-xs tabular-nums text-gray-500 whitespace-nowrap">' + durStr + '</td>'
+        + '<td class="px-3 py-2.5">' + layoutInfo + '</td>'
+        + '<td class="px-3 py-2.5">' + statusBadge(ev.print_status) + '</td>'
         + '</tr>';
     }).join('');
   } catch (e) {
