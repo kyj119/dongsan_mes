@@ -109,12 +109,12 @@ function renderTable() {
 
         html += '<tr class="border-b hover:bg-gray-50 cursor-pointer" onclick="openDetail(\'' + eq.id + '\')">'
             + '<td class="px-4 py-3 font-mono text-xs text-gray-600">' + (eq.id || '') + '</td>'
-            + '<td class="px-4 py-3 font-medium">' + (eq.name || '') + '</td>'
-            + '<td class="px-4 py-3 text-sm text-gray-600">' + (eq.printer_name || '<span class="text-gray-300">-</span>') + '</td>'
+            + '<td class="px-4 py-3 font-medium">' + escapeHtml(eq.name || '') + '</td>'
+            + '<td class="px-4 py-3 text-sm text-gray-600">' + (eq.printer_name ? escapeHtml(eq.printer_name) : '<span class="text-gray-300">-</span>') + '</td>'
             + '<td class="px-4 py-3 text-center">' + statusBadge + '</td>'
             + '<td class="px-4 py-3 text-center">' + agentBadge + (eq.agent_id ? '<div class="text-[10px] text-gray-400 mt-0.5 font-mono">' + escapeHtml(eq.agent_id) + '</div>' : '') + '</td>'
             + '<td class="px-4 py-3 text-center text-sm">' + headInfo + '</td>'
-            + '<td class="px-4 py-3 text-sm text-gray-600">' + (eq.location_zone || '<span class="text-gray-300">-</span>') + '</td>'
+            + '<td class="px-4 py-3 text-sm text-gray-600">' + (eq.location_zone ? escapeHtml(eq.location_zone) : '<span class="text-gray-300">-</span>') + '</td>'
             + '<td class="px-4 py-3 text-center act-col">'
             +   '<button onclick="event.stopPropagation(); openEditModal(\'' + eq.id + '\')" class="px-2 py-1 text-xs bg-blue-50 text-blue-700 rounded hover:bg-blue-200 mr-1" title="수정"><i class="fas fa-edit"></i></button>'
             +   '<button onclick="event.stopPropagation(); deactivateEquip(\'' + eq.id + '\')" class="px-2 py-1 text-xs bg-red-50 text-red-600 rounded hover:bg-red-200" title="비활성화"><i class="fas fa-ban"></i></button>'
@@ -451,7 +451,7 @@ function renderPresets(presets) {
         var defaultBadge = p.is_default ? ' bg-blue-50 text-blue-700 border-blue-200' : ' bg-gray-100 text-gray-600 border-gray-200';
         html += '<span class="inline-flex items-center gap-1 px-2 py-1 border rounded text-xs' + defaultBadge + '">'
             + (p.is_default ? '<i class="fas fa-star text-blue-500 text-xs"></i>' : '')
-            + p.preset_name
+            + escapeHtml(p.preset_name || '')
             + ' <button onclick="deletePreset(' + p.id + ')" class="ml-1 text-gray-400 hover:text-red-500 font-bold leading-none">&times;</button>'
             + '</span>';
     });
@@ -475,7 +475,7 @@ function renderLogs(logs) {
             + '<div class="flex items-center gap-2">'
             + '<span class="text-xs font-medium ' + lt.color + '">' + lt.label + '</span>'
             + '<span class="text-xs text-gray-400">' + dateStr + '</span>'
-            + (log.performed_by_name ? '<span class="text-xs text-gray-400">- ' + log.performed_by_name + '</span>' : '')
+            + (log.performed_by_name ? '<span class="text-xs text-gray-400">- ' + escapeHtml(log.performed_by_name) + '</span>' : '')
             + '</div>'
             + '<div class="text-sm text-gray-700 mt-0.5">' + (log.description || '').replace(/</g, '&lt;') + '</div>'
             + (costStr ? '<div class="text-xs text-gray-500 mt-0.5">비용: ' + costStr + '</div>' : '')

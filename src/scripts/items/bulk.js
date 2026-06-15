@@ -477,8 +477,8 @@ async function loadStorageZonesForItem() {
             if (sel) {
                 sel.innerHTML = '<option value="">미지정</option>'
                     + _storageZonesCache.map(function(z) {
-                        return '<option value="' + z.id + '">' + z.zone_name
-                            + (z.manager_name ? ' (' + z.manager_name + ')' : '') + '</option>';
+                        return '<option value="' + z.id + '">' + escapeHtml(z.zone_name || '')
+                            + (z.manager_name ? ' (' + escapeHtml(z.manager_name) + ')' : '') + '</option>';
                     }).join('');
             }
         }

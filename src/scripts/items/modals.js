@@ -357,7 +357,7 @@ function displayProductMaterials() {
             html += '<div class="flex items-center justify-between px-3 py-2 bg-gray-50 cursor-pointer hover:bg-gray-100">';
             html += '<div class="flex items-center gap-2" onclick="toggleMaterialGroup(\'' + escapedG + '\')">';
             html += '<i class="fas fa-chevron-' + (isExpanded ? 'down' : 'right') + ' text-gray-400 text-xs"></i>';
-            html += '<span class="font-medium text-sm text-gray-800">' + gName + '</span>';
+            html += '<span class="font-medium text-sm text-gray-800">' + escapeHtml(gName) + '</span>';
             html += '<span class="text-xs text-gray-500">(' + items.length + '개' + (widths ? ' · ' + widths : '') + ')</span>';
             html += '</div>';
             if (gName !== '미분류') {
@@ -387,7 +387,7 @@ function buildMaterialTable(materials) {
     materials.forEach(function(mat) {
         var widthCm = mat.width_mm ? Math.round(mat.width_mm / 10) + 'cm' : '-';
         html += '<tr class="hover:bg-gray-50">';
-        html += '<td class="px-3 py-1.5 text-gray-900">' + mat.item_name + '</td>';
+        html += '<td class="px-3 py-1.5 text-gray-900">' + escapeHtml(mat.item_name || '') + '</td>';
         html += '<td class="px-3 py-1.5 text-gray-600">' + widthCm + '</td>';
         html += '<td class="px-3 py-1.5 text-right text-gray-600">' + (mat.current_stock || 0) + '</td>';
         html += '<td class="px-3 py-1.5 font-medium">';
@@ -421,7 +421,7 @@ async function showMaterialSearchDropdown() {
                 var widths = (g.widths || '').split(',').map(function(w) { return (parseInt(w)/10) + 'cm'; }).join(', ');
                 var escapedGroup = (g.item_group || '').replace(/'/g, "\\'");
                 return '<div class="px-3 py-2 hover:bg-blue-50 cursor-pointer border-b border-gray-100" onclick="addMaterialGroupMapping(' + currentProductId + ', \'' + escapedGroup + '\')">' +
-                    '<div class="font-medium text-blue-800"><i class="fas fa-layer-group mr-1"></i>' + g.item_group + ' <span class="text-xs text-blue-500">(' + g.item_count + '개)</span></div>' +
+                    '<div class="font-medium text-blue-800"><i class="fas fa-layer-group mr-1"></i>' + escapeHtml(g.item_group || '') + ' <span class="text-xs text-blue-500">(' + g.item_count + '개)</span></div>' +
                     '<div class="text-xs text-gray-500">폭: ' + widths + '</div>' +
                 '</div>';
             }).join('');
@@ -434,7 +434,7 @@ async function showMaterialSearchDropdown() {
             html += materials.map(function(mat) {
                 var escapedName = (mat.item_name || '').replace(/'/g, '').replace(/"/g, '');
                 return '<div class="px-3 py-2 hover:bg-gray-100 cursor-pointer border-b border-gray-100 last:border-b-0" onclick="addMaterialMapping(' + currentProductId + ', ' + mat.id + ', \'' + escapedName + '\')">' +
-                    '<div class="font-medium text-gray-900">' + mat.item_name + '</div>' +
+                    '<div class="font-medium text-gray-900">' + escapeHtml(mat.item_name || '') + '</div>' +
                     '<div class="text-xs text-gray-500">폭: ' + (mat.width_mm ? Math.round(mat.width_mm / 10) + 'cm' : '-') + '</div>' +
                 '</div>';
             }).join('');

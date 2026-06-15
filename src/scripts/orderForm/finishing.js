@@ -29,7 +29,7 @@
                 var methods = await loadFinishingMethodsForOrder(group);
 
                 var opts = '<option value="">없음</option>' + methods.map(function(m) {
-                    return '<option value="' + m.name + '">' + m.name + (m.margin > 0 ? ' (' + m.margin + 'cm)' : '') + '</option>';
+                    return '<option value="' + escapeHtml(m.name || '') + '">' + escapeHtml(m.name || '') + (m.margin > 0 ? ' (' + m.margin + 'cm)' : '') + '</option>';
                 }).join('');
                 ['fin_top_','fin_bottom_','fin_left_','fin_right_'].forEach(function(prefix) {
                     var sel = document.querySelector('[name="' + prefix + id + '"]');
