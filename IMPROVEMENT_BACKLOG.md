@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 1 -->
-<!-- last_run_at: 2026-06-15T22:00:00+09:00 -->
+<!-- last_run_area: 2 -->
+<!-- last_run_at: 2026-06-16T02:00:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,7 +8,7 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | 13 (**GitHub open auto-improve 실측 13건** — #394 재고실사 승인 INSERT 컬럼부재 HIGH·#395 split billing freeze tax_invoice_id 무시 MED·#396 주문편집 work_records 고아 LOW [Area 4] · #397 year-end rrn 존재X컬럼 HIGH·#398 ledger payment/:id 단건GET entityFilter 누락 MED · #399 quotation.js 견적서 stored XSS MED [Area 5] · #400 배포후 smoke 로그인 cold-start false-fail LOW [Area 1] · #401 근태 일괄저장 N+1 entity_id 재조회 small [Area 2] · #402 드릴다운 쿼리파라미터 목적지(orders/ledger/cards) init 미read MED [Area 3] · #406 마이그레이션↔코드 스키마 드리프트(cardExpenses 6컬럼+quality_issues.severity, 0241 ALTER 주석처리) MED + activity_logs resource_type 오타 LOW [Area 4] · #407 발주 복사(po-special /copy) 품목 INSERT N+1 — core.ts #350 batch 미승계 small [Area 2] · #408 품목 일괄이관(migration.ts items import) 존재X 컬럼 unit_price → 매 행 throw, import 100% 실패 MED [Area 4] · **#409 E2E CI 6커밋 연속 red(10h+) — 장비 리팩터 5d2b16d 이후 /cards 로드 결정적 2x 500, 마이그레이션 0312 prod 미적용 의심 HIGH [본 Area 1 사이클 신규]**) |
+| 🆕 new | 14 (**GitHub open auto-improve 실측 14건** — #394 재고실사 승인 INSERT 컬럼부재 HIGH·#395 split billing freeze tax_invoice_id 무시 MED·#396 주문편집 work_records 고아 LOW [Area 4] · #397 year-end rrn 존재X컬럼 HIGH·#398 ledger payment/:id 단건GET entityFilter 누락 MED · #399 quotation.js 견적서 stored XSS MED [Area 5] · #400 배포후 smoke 로그인 cold-start false-fail LOW [Area 1] · #401 근태 일괄저장 N+1 entity_id 재조회 small [Area 2] · #402 드릴다운 쿼리파라미터 목적지(orders/ledger/cards) init 미read MED [Area 3] · #406 마이그레이션↔코드 스키마 드리프트(cardExpenses 6컬럼+quality_issues.severity, 0241 ALTER 주석처리) MED + activity_logs resource_type 오타 LOW [Area 4] · #407 발주 복사(po-special /copy) 품목 INSERT N+1 — core.ts #350 batch 미승계 small [Area 2] · #408 품목 일괄이관(migration.ts items import) 존재X 컬럼 unit_price → 매 행 throw, import 100% 실패 MED [Area 4] · #409 E2E CI 6커밋 연속 red(10h+) — 장비 리팩터 5d2b16d 이후 /cards 로드 결정적 2x 500, 마이그레이션 0312 prod 미적용 의심 HIGH [Area 1] · **#410 간이세액표 CSV import(payroll/settings.ts:211) 순차 INSERT N+1 — 같은 파일 /generate는 #350 batch인데 /import만 미승계 small [본 Area 2 사이클 신규]**) |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 (#372 CSV도 owner close-completed → done 이관) |
 | ✔️ done | 96 (82 + **직전 open 14건 owner 일괄 close-completed**[#372 reviewed + #374·#379·#381~#391 13 new]. not_planned 라벨검색 = #348 과거 1건뿐 → 14건 전부 completed 확정. 06-12 owner 대량 픽스 커밋(644fbab #389/#390·645ae53 #372/#379·3f8fd0d #382/#383·83ded42 #387·c17e944 #375/#383). **GitHub open auto-improve 실측 0건** 정합) |
@@ -16,6 +16,17 @@
 
 > 📦 **과거 사이클 로그**(아래 6블록 이전분)는 `IMPROVEMENT_BACKLOG_ARCHIVE.md`로 이관됨 (2026-06-10 정리). 신규 로그는 계속 이 파일 상단에 추가.
 
+> **Area 2 코드 품질 (2026-06-16T02:00):**
+> - **방법**: git fetch-before-compare(origin force-update `4993fa7→24de1a7`, fetch 후 HEAD=origin/main `24de1a7` 0/0 동기). baseline `npm ci`(82 pkg)+build PASS(391 modules, _worker.js 5,133.18kB). HEAD=직전 Area 1(#409) backlog 문서커밋. Area 2 **14회차** — 병렬 Explore 2개(① N+1 write-path + authMiddleware/배럴 ② 존재X컬럼 standing scan + dead code/orphan) + 발견 전수 owner 직접 Read + 도달성 grep 검증.
+> - **🟡 신규 이슈 #410 (improvement, small, #407/#401/#389 클래스 — "파일 내 형제 핸들러 부분 픽스") — 간이세액표 CSV import 순차 INSERT N+1, 같은 파일 /generate는 #350 batch인데 /import만 미승계**: N+1 스캔이 **net-new 1건 격리** — `payroll/settings.ts:205-217` `POST /tax-table/import`가 `rows` 루프마다 `await INSERT OR REPLACE .run()` 순차. **결정적 대조**: **바로 아래 같은 파일 `/tax-table/generate`(:243-261)는 이미 #350으로 `taxStmts[]` 누적 후 `DB.batch(slice(i,i+80))`**(주석 `// #350 ~900회 순차 INSERT → batch (last_row_id 의존 없음)` 실증) → batch 패턴이 **같은 파일·같은 테이블(income_tax_table)에 확립됐는데 import만 미승계** = #407(po-special)·#377(파일분할 후 부분픽스) 동형. **도달성 LIVE**: `payrollRates.js:387`(추가)·`:395`(replace:true 전체교체) axios.post. **영향 격상 요소**: 국세청 간이세액표 CSV는 수백~1,000+행 → 행당 순차 D1 왕복이 **Workers subrequest 상한(1,000) 근접/초과**로 대형 임포트 hard-fail 가능(/generate가 굳이 batch화된 이유=`~900회` 주석) + `replace:true`는 DELETE 선실행 후 순차 INSERT라 중간실패 시 부분상태(batch청크화 시 원자성 강화). 두 핸들러 모두 행 단위 독립 INSERT(last_row_id 의존 0) → 변환 안전성 /generate로 입증. **자동수정 안 함**: N+1 write-path 구조변경(순차→batch, 부분실패/원자성 시맨틱 변화)+egress 대량임포트 회귀 검증불가 = SKILL 자동수정 허용목록 밖(#407/#401/#389 동일).
+> - **🟢 authMiddleware 전수 clean**: 배럴 라우터+서브라우터 전수 `.use('/*', authMiddleware, requireAnyPagePermission/requireRole)` 재선언 확인 — orders(barrel+6서브)·cards(+3)·ledger(+4 AR + accounts-payable)·purchaseOrders(barrel+7서브)·taxInvoices(+4)·payroll(barrel+5서브). Hono 스코프 누락 0. payroll/tax-agent는 배럴 authMiddleware만이나 각 라우트 inline `requireRole('ADMIN','MANAGER')` = 의도 정상. 마운트 순서 섀도잉 0.
+> - **🟢 존재X 컬럼 standing scan = net-new 0**: migrations ground-truth ↔ src INSERT/UPDATE 컬럼셋 전수 diff. outlier 7건 전부 기보고 — inventoryCount.ts:249(#394)·cardExpenses.ts:63/220/598/651(#406)·cards/lifecycle.ts:492(quality_issues.severity)·:1111(activity_logs 오타)(#406)·migration.ts:237/256(items.unit_price #408). net-new typo 0.
+> - **🟢 dead code/orphan = net-new 0**: po-special /reorder(비활성 스텁)·/quick(#334) 외 net-new 0. export helper 전부 import 사용.
+> - **🔵 printSystem.ts:1010-1046 PATCH /media/group/:groupName/bulk 중첩 N+1**: 서브에이전트가 MED-HIGH로 제기했으나 **이미 SKILL/#407 본문에 createLinkedItem `last_row_id` 구조적 강제분리 섞임(단순 batch화 불가) LOW 별개로 기록** + 프론트 호출처 미발견(도달성 UNKNOWN) → 신규 이슈 안 만듦(기록된 LOW 유지).
+> - **🟢 backlog↔GitHub sync clean (변동 0 → #410 추가)**: open auto-improve **실측 14건**(list_issues 전수 — #394~#402+#406~#409) = 직전 stats `new=13` 정합 확인 후 #410 편입 → `new=14`. done=96·rejected=3·approved=0·reviewed=0 유지. 직전 Area 1 이후 owner 신규 close/머지 0건(24de1a7=#409 backlog 문서커밋만).
+> - **이상 없음**: git 동기 0/0. baseline build PASS. authMiddleware/존재X컬럼/dead code 3각도 clean. N+1 net-new 1건(#410)만 outlier.
+> - 자동 수정 0건(N+1 write-path=owner 검증·SKILL 자동수정목록 밖), 신규 이슈 1건(#410 간이세액표 import N+1 small), printSystem 중첩N+1 기록된 LOW 재확인(신규 안 만듦), clean 3각도(auth/존재X컬럼/deadcode), done-sync 0건(변동 없음)
+>
 > **Area 1 프로덕션 헬스 (2026-06-15T22:00):**
 > - **방법**: GitHub Actions 최근 30런(total 636) 분석 + git fetch-before-compare(origin force-update `4993fa7→7ae517f`, fetch 후 HEAD=origin/main `7ae517f` 0/0 동기). HEAD `7ae517f`=직전 Area 6 backlog 문서커밋(5f82170 이후 코드 churn 0, build 상태 불변=Area 6 PASS 승계). egress 차단이라 Deploy/E2E 결과를 헬스 신호로 사용. Area 1 **14회차**.
 > - **🔴 신규 이슈 #409 (HIGH bug, net-new) — E2E CI 6커밋 연속 red, 10h+ 무회복**: 직전 Area 1(06-14T22:00 HEAD 5fcca87)은 본 churn **이전**이라 처음 포착(중간 Area 5/6은 보안·컬럼각도라 E2E 미검증). **#400과 명확히 구분**: 단발·자동회복 cold-start가 아니라 **연속 배포 동일 실패 무회복**(SKILL 명시 진짜 보고대상). 마지막 green=`715a949`(00:31). 첫 fail=`5d2b16d`(02:04, fix(equipment) 장비중심 통일+size_type) → `581e1bd`·`d58cc13`·`ec44fcd`×2·`5f82170`·`7ae517f` 전부 E2E ❌(Deploy는 매번 ✅). **하드 실패 3건**(cards-api.spec:14·:45·quotations.spec:12)=전부 `goto('/cards')` 후 `expect(consoleErrors).toEqual([])` 위반, **모든 retry에서 정확히 2x `Failed to load resource: 500`**(가변 cold-start 아님=결정적). 명시적 API 체크(`r.success`)는 전부 통과 → 10개 cards 라우트·/api/quotations 자체 정상, 500은 **/cards 초기 로드 중**. 나머지(crud/order-form/report-routes)=`authedPage` waitForURL 30s 타임아웃=#400 동형 cold-start flaky(retry 회복).
