@@ -190,6 +190,8 @@ ordersUpdateRouter.put('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
         c.env.DB.prepare('DELETE FROM card_status_history WHERE card_id IN (SELECT id FROM cards WHERE order_id = ?)').bind(id),
         c.env.DB.prepare('DELETE FROM quality_issues WHERE card_id IN (SELECT id FROM cards WHERE order_id = ?)').bind(id),
         c.env.DB.prepare('DELETE FROM waste_records WHERE card_id IN (SELECT id FROM cards WHERE order_id = ?)').bind(id),
+        // #396: work_records도 정리 (core.ts:563 정식 삭제와 대칭 — 미정리 시 카드 삭제 후 고아 누적)
+        c.env.DB.prepare('DELETE FROM work_records WHERE card_id IN (SELECT id FROM cards WHERE order_id = ?)').bind(id),
         c.env.DB.prepare('UPDATE print_events SET card_id = NULL WHERE card_id IN (SELECT id FROM cards WHERE order_id = ?)').bind(id),
         c.env.DB.prepare('DELETE FROM card_items WHERE card_id IN (SELECT id FROM cards WHERE order_id = ?)').bind(id),
         c.env.DB.prepare('DELETE FROM cards WHERE order_id = ?').bind(id),

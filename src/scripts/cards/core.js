@@ -51,7 +51,9 @@ function restoreKanbanFilters() {
         categoryFilter = saved.category || '';
         urgencyFilter = saved.urgency || '';
         kanbanSort = saved.sort || 'delivery_asc';
-        searchTerm = saved.search || '';
+        // #402: 드릴다운 ?search= 우선 (주문 상세 "카드 현황" → /cards?search=주문번호)
+        var urlSearch = new URLSearchParams(window.location.search).get('search');
+        searchTerm = (urlSearch != null && urlSearch !== '') ? urlSearch : (saved.search || '');
         // UI 동기화
         var uf = document.getElementById('urgencyFilter');
         if (uf) uf.value = urgencyFilter;

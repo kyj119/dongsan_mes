@@ -111,6 +111,7 @@ async function loadSettlement() {
 
             allClients = res.data.data.clients || [];
             renderClientTable(allClients);
+            applyLedgerDrilldown();  // #402: 드릴다운 진입 파라미터 최초 1회 적용
         }
     } catch (e) {
         console.error('Settlement load error:', e);
@@ -173,6 +174,25 @@ function renderClientTable(clients) {
         '<td class="px-4 py-2 text-right ' + (sumBalance > 0 ? 'text-red-600' : 'text-green-600') + '">' + sumBalance.toLocaleString() + '</td>' +
         '<td colspan="2"></td>' +
         '</tr>';
+}
+
+// #402: 대시보드 드릴다운(미수금 목록 → /ledger?search=거래처명, TOP 거래처 → /ledger?client_id=id)을
+// 거래처 목록 로드 후 최초 1회 적용. client_id 우선(상세 모달), 없으면 search 검색.
+var _ledgerDrilldownDone = false;
+function applyLedgerDrilldown() {
+    if (_ledgerDrilldownDone) return;
+    var up = new URLSearchParams(window.location.search);
+    var cid = up.get('client_id');
+    var q = up.get('search');
+    _ledgerDrilldownDone = true;
+    if (cid) {
+        var match = allClients.filter(function(cl) { return String(cl.id) === String(cid); })[0];
+        if (match) { selectClient(match.id, match.client_name); return; }
+    }
+    if (q) {
+        var si = document.getElementById('clientSearch');
+        if (si) { si.value = q; filterClientTable(); }
+    }
 }
 
 function filterClientTable() {

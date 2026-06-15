@@ -380,6 +380,12 @@ function printResults(results) {
 
 async function main() {
   log(`${COLOR.cyan}▶ 로그인 시도: ${BASE} (user=${USER})${COLOR.reset}`)
+  // #400: 게이트 로그인 전 경량 워밍업 핑 — 갓 배포된 worker의 D1 cold-start 비용을 흡수.
+  //   실패는 무시(게이트 아님). login()의 5xx 관용도(진짜 장애 탐지)는 불변 → 배포 직후 깊은 cold-start false-fail만 완화.
+  for (let i = 0; i < 3; i++) {
+    try { const r = await fetch(`${BASE}/api/auth/me`); if (r.status < 500) break } catch {}
+    await sleep(2000)
+  }
   let token
   try {
     token = await login()

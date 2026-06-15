@@ -1427,6 +1427,14 @@ async function exportOrdersCsv() {
   if (savedDeliveryMethod) document.getElementById('deliveryMethodFilter').value = savedDeliveryMethod;
   if (savedBillingStatus) document.getElementById('billingStatusFilter').value = savedBillingStatus;
   if (savedPriority) document.getElementById('priorityFilter').value = savedPriority;
+  // #402: 드릴다운 쿼리파라미터를 localStorage보다 우선 적용 (대시보드 긴급주문 카드 등 → /orders?priority=URGENT)
+  var _up = new URLSearchParams(window.location.search);
+  var _qPriority = _up.get('priority');
+  if (_qPriority) { var _pf = document.getElementById('priorityFilter'); if (_pf) _pf.value = _qPriority; }
+  var _qStatus = _up.get('status');
+  if (_qStatus) { var _sf = document.getElementById('statusFilter'); if (_sf) _sf.value = _qStatus; }
+  var _qSearch = _up.get('search');
+  if (_qSearch) { var _sq = document.getElementById('searchQuery'); if (_sq) _sq.value = _qSearch; }
   loadOrderStats();
   loadOrders();
 })();
