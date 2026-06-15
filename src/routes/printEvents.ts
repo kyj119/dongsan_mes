@@ -625,7 +625,8 @@ printEventsRouter.get('/', authMiddleware, async (c) => {
     const countRow = await c.env.DB.prepare(countQuery).bind(...params).first<CountRow>()
     const count = countRow?.count ?? 0
 
-    const selectQuery = `SELECT pe.*, COALESCE(pe.printer_name, eq.printer_name) as printer_name FROM print_events pe LEFT JOIN equipment eq ON pe.equipment_id = eq.id ${where} ORDER BY COALESCE(pe.print_completed_at, pe.created_at) DESC LIMIT ? OFFSET ?`
+    // 장비명 표시 통일: 사용자가 /장비관리에서 정한 equipment.name 우선, 없으면 RIPLOG 원본(printer_name)
+    const selectQuery = `SELECT pe.*, COALESCE(eq.name, pe.printer_name) as printer_name FROM print_events pe LEFT JOIN equipment eq ON pe.equipment_id = eq.id ${where} ORDER BY COALESCE(pe.print_completed_at, pe.created_at) DESC LIMIT ? OFFSET ?`
     params.push(limitNum, offset)
     const { results } = await c.env.DB.prepare(selectQuery).bind(...params).all()
 
