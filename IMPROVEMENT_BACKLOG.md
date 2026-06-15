@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 6 -->
-<!-- last_run_at: 2026-06-15T18:00:00+09:00 -->
+<!-- last_run_area: 1 -->
+<!-- last_run_at: 2026-06-15T22:00:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,7 +8,7 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | 12 (**GitHub open auto-improve 실측 12건** — #394 재고실사 승인 INSERT 컬럼부재 HIGH·#395 split billing freeze tax_invoice_id 무시 MED·#396 주문편집 work_records 고아 LOW [Area 4] · #397 year-end rrn 존재X컬럼 HIGH·#398 ledger payment/:id 단건GET entityFilter 누락 MED · #399 quotation.js 견적서 stored XSS MED [Area 5] · #400 배포후 smoke 로그인 cold-start false-fail LOW [Area 1] · #401 근태 일괄저장 N+1 entity_id 재조회 small [Area 2] · #402 드릴다운 쿼리파라미터 목적지(orders/ledger/cards) init 미read MED [Area 3] · #406 마이그레이션↔코드 스키마 드리프트(cardExpenses 6컬럼+quality_issues.severity, 0241 ALTER 주석처리) MED + activity_logs resource_type 오타 LOW [Area 4] · #407 발주 복사(po-special /copy) 품목 INSERT N+1 — core.ts #350 batch 미승계 small [Area 2] · **#408 품목 일괄이관(migration.ts items import) 존재X 컬럼 unit_price → 매 행 throw, import 100% 실패 MED [본 Area 4 사이클 신규]**) |
+| 🆕 new | 13 (**GitHub open auto-improve 실측 13건** — #394 재고실사 승인 INSERT 컬럼부재 HIGH·#395 split billing freeze tax_invoice_id 무시 MED·#396 주문편집 work_records 고아 LOW [Area 4] · #397 year-end rrn 존재X컬럼 HIGH·#398 ledger payment/:id 단건GET entityFilter 누락 MED · #399 quotation.js 견적서 stored XSS MED [Area 5] · #400 배포후 smoke 로그인 cold-start false-fail LOW [Area 1] · #401 근태 일괄저장 N+1 entity_id 재조회 small [Area 2] · #402 드릴다운 쿼리파라미터 목적지(orders/ledger/cards) init 미read MED [Area 3] · #406 마이그레이션↔코드 스키마 드리프트(cardExpenses 6컬럼+quality_issues.severity, 0241 ALTER 주석처리) MED + activity_logs resource_type 오타 LOW [Area 4] · #407 발주 복사(po-special /copy) 품목 INSERT N+1 — core.ts #350 batch 미승계 small [Area 2] · #408 품목 일괄이관(migration.ts items import) 존재X 컬럼 unit_price → 매 행 throw, import 100% 실패 MED [Area 4] · **#409 E2E CI 6커밋 연속 red(10h+) — 장비 리팩터 5d2b16d 이후 /cards 로드 결정적 2x 500, 마이그레이션 0312 prod 미적용 의심 HIGH [본 Area 1 사이클 신규]**) |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 (#372 CSV도 owner close-completed → done 이관) |
 | ✔️ done | 96 (82 + **직전 open 14건 owner 일괄 close-completed**[#372 reviewed + #374·#379·#381~#391 13 new]. not_planned 라벨검색 = #348 과거 1건뿐 → 14건 전부 completed 확정. 06-12 owner 대량 픽스 커밋(644fbab #389/#390·645ae53 #372/#379·3f8fd0d #382/#383·83ded42 #387·c17e944 #375/#383). **GitHub open auto-improve 실측 0건** 정합) |
@@ -16,6 +16,16 @@
 
 > 📦 **과거 사이클 로그**(아래 6블록 이전분)는 `IMPROVEMENT_BACKLOG_ARCHIVE.md`로 이관됨 (2026-06-10 정리). 신규 로그는 계속 이 파일 상단에 추가.
 
+> **Area 1 프로덕션 헬스 (2026-06-15T22:00):**
+> - **방법**: GitHub Actions 최근 30런(total 636) 분석 + git fetch-before-compare(origin force-update `4993fa7→7ae517f`, fetch 후 HEAD=origin/main `7ae517f` 0/0 동기). HEAD `7ae517f`=직전 Area 6 backlog 문서커밋(5f82170 이후 코드 churn 0, build 상태 불변=Area 6 PASS 승계). egress 차단이라 Deploy/E2E 결과를 헬스 신호로 사용. Area 1 **14회차**.
+> - **🔴 신규 이슈 #409 (HIGH bug, net-new) — E2E CI 6커밋 연속 red, 10h+ 무회복**: 직전 Area 1(06-14T22:00 HEAD 5fcca87)은 본 churn **이전**이라 처음 포착(중간 Area 5/6은 보안·컬럼각도라 E2E 미검증). **#400과 명확히 구분**: 단발·자동회복 cold-start가 아니라 **연속 배포 동일 실패 무회복**(SKILL 명시 진짜 보고대상). 마지막 green=`715a949`(00:31). 첫 fail=`5d2b16d`(02:04, fix(equipment) 장비중심 통일+size_type) → `581e1bd`·`d58cc13`·`ec44fcd`×2·`5f82170`·`7ae517f` 전부 E2E ❌(Deploy는 매번 ✅). **하드 실패 3건**(cards-api.spec:14·:45·quotations.spec:12)=전부 `goto('/cards')` 후 `expect(consoleErrors).toEqual([])` 위반, **모든 retry에서 정확히 2x `Failed to load resource: 500`**(가변 cold-start 아님=결정적). 명시적 API 체크(`r.success`)는 전부 통과 → 10개 cards 라우트·/api/quotations 자체 정상, 500은 **/cards 초기 로드 중**. 나머지(crud/order-form/report-routes)=`authedPage` waitForURL 30s 타임아웃=#400 동형 cold-start flaky(retry 회복).
+> - **🔬 원인 분석**: 첫 fail 커밋=장비 상태 모델을 agent_heartbeats(PC)→equipment 직접컬럼(장비) 전환. 마이그레이션 `0312_equipment_logwatcher`가 equipment에 `last_seen_at`/`print_log_path`/`agent_id` 추가 → `rip.ts:238 GET /equipment`·`dashboard.ts:525 equipment-load`·printEvents/facility가 이 컬럼 SELECT/JOIN. **`deploy.yml`은 prod D1 마이그레이션 미실행**(코드만 배포, `--remote` 마이그 단계 부재)→ **0312 prod 수동 미적용 시 equipment 쿼리 100% 500**(#406 "마이그레이션≠prod" 드리프트 선례). 단 /cards 자동로드 경로엔 equipment 직접호출 미발견(card API만+셸 전역+post-processing+renderTodayShip) → 정확한 500 엔드포인트는 artifact 네트워크 로그로 확정 필요(egress 차단으로 에이전트 미확인).
+> - **owner 검증 선행**: ① `wrangler d1 execute webapp-production --remote --command "SELECT name FROM pragma_table_info('equipment') WHERE name IN ('last_seen_at','print_log_path','agent_id')"`(3개 부재 시 prod 장비기능 사망=HIGH 확정) ② run 27545330655 playwright-report 다운로드로 500 URL 특정. 수정=0312 prod 적용 + **deploy.yml 마이그레이션 자동단계 보강**(근본, #406과 묶음).
+> - **🟢 backlog↔GitHub sync (변동 0 → #409 추가)**: open auto-improve 직전 실측 12건(#394~#402+#406+#407+#408) = stats `new=12` 정합 확인 후 #409 편입 → `new=13`. done=96·rejected=3·approved=0·reviewed=0 유지. 직전 Area 6 이후 owner 신규 close/머지 0건.
+> - **🧬 SKILL 시사점**: #400 cold-start FP 가드는 유효하나 "**연속 N커밋 동일 실패+결정적 console 시그니처**"는 #400과 별개 = 진짜 회귀. Area 1은 직전 Area 4/5/6 churn 이후 **E2E 결과를 코드 churn과 교차**(첫 fail 커밋 git bisect)해야 onset 격리 가능 — 보안/컬럼 각도 사이클은 E2E 헬스 미검증이라 Area 1이 유일 포착점.
+> - **이상 없음(그 외)**: git fetch 후 0/0 동기. build 상태 Area 6 PASS 승계(코드 churn 0). Daily D1 Backup schedule 정상.
+> - 자동 수정 0건(prod 마이그/CI워크플로=Area 1 금지범주+prod 0312 상태 egress 미확인), 신규 이슈 1건(#409 E2E 연속red HIGH), done-sync 0건(변동 없음), **#400과 구분된 진짜 회귀 격리(첫 fail 커밋 bisect + 결정적 2x500 시그니처)**
+>
 > **Area 6 자기 진화 (2026-06-15T18:00):**
 > - **방법**: baseline `npm ci`(82 pkg)+build PASS(391 modules, _worker.js 5,133.18kB). HEAD=remote main=`5f82170`(직전 Area 5 A-024 XSS 자동수정+backlog). **git state 정리**: 세션 시작 시 detached HEAD에서 `rev-parse HEAD origin/main` 갈라짐(stale 79/94)으로 보였으나 origin force-update(`4993fa7→5f82170`) → `git fetch origin main` 후 **0/0 동기 확정**. Area 6 신선 각도 = **직전 Area 4(fdcb62d) 컬럼 스캔이 못 잡은 equipment/logwatcher churn의 INSERT를 Area 6가 bridge**(Area 5는 보안각도라 컬럼 미검증) + open 발견 silent-fix 재현 spot-check + GitHub sync.
 > - **🌉 신선 각도 — equipment/logwatcher churn 컬럼 ground-truth diff = clean(존재X 0·NOT NULL 누락 0)**: Area 4(fdcb62d) **이후** 발생한 장비중심 모델 churn(6221acb→ec44fcd: 0312_equipment_logwatcher 마이그레이션 + print_events/equipment/oee INSERT)을 309마이그레이션 로컬 D1(FAIL 0) 위에서 전수 컬럼-diff. **INSERT 9곳 전부 정합**: print_events(:299/:502 각 21컬럼/21바인딩, NOT NULL `agent_id`/`file_path`/`print_status` 충족)·equipment_oee_daily(oee.ts:114 16/16, NOT NULL `equipment_id`/`oee_date` 충족)·equipment 자동등록(printEvents.ts:403 `name`=NOT NULL을 `equipment_name||equipment_id` 폴백으로 충족, rip.ts:295)·agent_heartbeats(:371)·equipment_presets(:392 NOT NULL `preset_name`/`tps_filename` 충족)·equipment_heads(:631)·equipment_consumables(:882). **신규 기능 churn=컬럼버그 최고위험인데 net-new 0** = churn 품질 양호. SKILL codify(Area 6가 post-Area4 churn 컬럼-diff를 bridge).
