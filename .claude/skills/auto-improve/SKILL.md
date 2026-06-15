@@ -191,6 +191,9 @@ description: 자율 점검·개선 에이전트. 6개 영역을 순환하며 실
   - 이전 실행에서 발견된 버그에 대한 회귀 테스트 추가 제안
 - 이 SKILL.md 자체도 필요하면 업데이트
 
+> **🌉 Area 6가 "직전 Area 4 이후 churn"의 컬럼-diff를 bridge (Area 6 codify, 2026-06-15)**: Area 4의 "존재X 컬럼/NOT NULL 누락" 컬럼 스캔은 6영역 순환이라 **그 사이클 이후 발생한 코드/마이그레이션 churn(다음 Area 4까지 ~24h)을 못 잡음** — 그 사이 Area 5는 보안/XSS 각도라 컬럼 검증 안 함. **Area 6 신선 각도 = 직전 Area 4 HEAD 이후 churn된 라우트/마이그레이션의 INSERT만 골라 ground-truth 컬럼-diff**(`git log <area4-head>..HEAD -- src/routes migrations` → 변경 테이블의 INSERT 컬럼리스트 ↔ `pragma_table_info` 대조 + NOT NULL no-default 바인딩 확인). 2026-06-15 실증: equipment/logwatcher 장비중심 모델 churn(6221acb→ec44fcd, 0312 마이그레이션 + print_events/equipment/oee INSERT 9곳)이 Area 4(fdcb62d) 직후 발생 → Area 6가 309마이그레이션 FAIL 0 위에서 전수 diff = **존재X 0·NOT NULL 누락 0**(equipment.name NOT NULL도 `equipment_name||equipment_id` 폴백 충족) clean 확인. 신규 기능 churn은 컬럼 버그 유입 위험이 가장 높으므로 Area 6 standing meta-check로.
+> **⚙️ git fetch-before-compare (Area 1/6)**: detached HEAD에서 `git rev-parse HEAD origin/main`이 갈라져 보이거나 `rev-list --count`가 큰 ahead/behind를 내도 **stale 트래킹 ref일 수 있음** — origin이 force-update됐으면 `git fetch origin main` 후에야 정합 판정 가능(2026-06-15: 세션 시작 시 79/94 갈라짐 → fetch 후 0/0 동기). "stale 푸시 미완" 패닉 전 fetch 먼저.
+
 **학습된 패턴 (탐지 가치 높음)**:
 - N+1 쿼리: for 루프 내 `await DB.prepare(...)` → 모든 케이스 보고 대상 (100% 수정율)
 - entity_id 누락: 새 테이블 생성 시 entity_id 컬럼 필수 체크 → 반복적으로 발견·수정
