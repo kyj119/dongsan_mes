@@ -121,6 +121,8 @@ description: 자율 점검·개선 에이전트. 6개 영역을 순환하며 실
 
 **자동 수정 가능**: 인덱스 추가 (마이그레이션), 데이터 정합성 경고
 
+> **🤖 NOT NULL no-default + 전체 컬럼셋 자동 diff (Area 4 standing scan, 2026-06-15 codify, 13회차)**: ground-truth DB에서 테이블별 ① NOT NULL no-default 컬럼셋(`PRAGMA table_info` `notnull===1 && dflt_value===null && pk!==1`) ② 전체 컬럼셋을 추출 → `src/**/*.{ts,js}`의 `INSERT INTO <t> (cols) VALUES/SELECT` 컬럼리스트를 정규식 파싱해 **`missing`(NOT NULL 누락→constraint throw)·`unknown`(존재X 컬럼→no such column throw)** 자동 격리. 단순 콤마 리스트만(서브쿼리/괄호 포함 컬럼셋·`${동적}` 템플릿은 스킵=FP 회피). #394(missing 3+unknown 4)·#406(unknown 6+severity+오타)·**#408(migration.ts items.unit_price unknown)** 전부 이 스캔이 한 번에 격리. **핵심 사각 — import/migration 핸들러 포함**: `/items/preview`(SELECT만)는 통과하나 `/items/import`(INSERT/UPDATE)만 존재X 컬럼 throw = **미리보기 OK인데 실제 실행만 전량 실패하는 침묵 함정**. preview↔execute 분리 핸들러는 execute 경로의 write 컬럼셋을 별도 검증.
+>
 > **🧭 Ground-truth 기법 (Area 4)**: 프로덕션 D1 직접 접근 불가 시 → `migrations/*.sql` 전체를 로컬 D1에 적용해 **실제 해석 스키마**(테이블/인덱스/UNIQUE) 확보 후 정적분석과 교차검증.
 > 인덱스·UNIQUE 누락 후보는 대부분 오탐(컬럼 존재하나 hot query path 아님 / 이미 복합 인덱스 존재) → ground truth로 반증 필수. (Area 4에서 tax_invoices·shipments 2건 오탐 차단)
 
