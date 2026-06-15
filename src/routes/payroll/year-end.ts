@@ -6,6 +6,7 @@ import { Hono } from 'hono'
 import type { HonoEnv } from '../../types/env'
 import { authMiddleware, requireRole } from '../../middleware/auth'
 import { entityFilter, getEntityId } from '../../utils/entityFilter'
+import { decryptPII } from '../../utils/crypto'
 
 const yearEndRouter = new Hono<HonoEnv>()
 // 연말정산(직원 급여·정산 데이터)은 전 라우트 ADMIN/MANAGER 전용
@@ -57,11 +58,26 @@ yearEndRouter.get('/year-end/:employeeId', async (c) => {
     if (!employeeId) return c.json({ success: false, error: 'employeeId 필요' }, 400)
 
     const emp = await c.env.DB.prepare(
-      `SELECT id, name, employee_code, department, position, hire_date, rrn, phone,
+      `SELECT id, name, employee_code, department, position, hire_date, resident_number, phone,
               dependents_count, children_under_20_count, base_salary
        FROM employees WHERE id = ?`
     ).bind(employeeId).first<any>()
     if (!emp) return c.json({ success: false, error: '직원 없음' }, 404)
+
+    // #397: employees에 rrn 컬럼 없음 → resident_number(암호화) 복호화 후 rrn 필드로 반환(프론트 maskRrn 호환).
+    // ADMIN은 원본, 그 외는 마스킹(hr.ts:667 패턴). 암호화 ciphertext 비노출.
+    if (emp.resident_number) {
+      const piiKey = c.env.JWT_SECRET
+      if (!piiKey) throw new Error('PII encryption key (JWT_SECRET) is not configured')
+      const decrypted = await decryptPII(String(emp.resident_number), piiKey)
+      const user = c.get('user')
+      emp.rrn = user?.role === 'ADMIN'
+        ? decrypted
+        : (decrypted.length >= 7 ? decrypted.slice(0, 6) + '-*******' : '******-*******')
+    } else {
+      emp.rrn = null
+    }
+    delete emp.resident_number
 
     // 해당 연도 급여 집계 (PAID 또는 APPROVED)
     const agg = await c.env.DB.prepare(

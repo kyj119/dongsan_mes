@@ -90,13 +90,15 @@ arPaymentsRouter.post('/payment', requireRole('ADMIN', 'MANAGER'), async (c) => 
 arPaymentsRouter.get('/payment/:id', async (c) => {
   try {
     const id = c.req.param('id')
+    // #398: 타 법인 입금 단건 열람 IDOR 방지 — PUT/DELETE/list(#333)와 동일 entity 스코프
+    const efPay = entityFilter(c, 'p')
     const payment = await c.env.DB.prepare(`
       SELECT p.*, c.client_name, u.name as created_by_name
       FROM payments p
       LEFT JOIN clients c ON p.client_id = c.id
       LEFT JOIN users u ON p.created_by = u.id
-      WHERE p.id = ?
-    `).bind(id).first()
+      WHERE p.id = ?${efPay.clause}
+    `).bind(id, ...efPay.params).first()
 
     if (!payment) {
       return c.json({ success: false, error: '입금 내역을 찾을 수 없습니다' }, 404)

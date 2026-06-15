@@ -234,7 +234,7 @@ migrationRouter.post('/items/import', async (c) => {
 
         if (existing) {
           await db.prepare(`
-            UPDATE items SET item_name = ?, specification = ?, unit = ?, unit_price = ?,
+            UPDATE items SET item_name = ?, specification = ?, unit = ?, base_price = ?,
               updated_at = CURRENT_TIMESTAMP
             WHERE item_code = ?
           `).bind(
@@ -253,7 +253,7 @@ migrationRouter.post('/items/import', async (c) => {
           }
 
           await db.prepare(`
-            INSERT INTO items (item_code, item_name, category_id, specification, unit, unit_price, is_active)
+            INSERT INTO items (item_code, item_name, category_id, specification, unit, base_price, is_active)
             VALUES (?, ?, ?, ?, ?, ?, 1)
           `).bind(
             row.item_code, row.item_name, categoryId,

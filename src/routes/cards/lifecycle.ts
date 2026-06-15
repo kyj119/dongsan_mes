@@ -1107,8 +1107,9 @@ cardsLifecycleRouter.post('/generate/:orderId', async (c) => {
 
     // Log activity
     try {
+      // #405: activity_logs 실제 컬럼은 entity_type/entity_id (resource_* 부재 → INSERT throw로 감사로그 영구 누락)
       await c.env.DB.prepare(`
-        INSERT INTO activity_logs (user_id, action, resource_type, resource_id, details)
+        INSERT INTO activity_logs (user_id, action, entity_type, entity_id, details)
         VALUES (?, ?, ?, ?, ?)
       `).bind(
         user.id,

@@ -245,16 +245,18 @@ inventoryCountRouter.patch('/:id/approve', async (c) => {
         UPDATE inventory SET quantity = ?, last_updated = CURRENT_TIMESTAMP
         WHERE item_id = ? AND entity_id = ?
       `).bind(item.counted_quantity, item.item_id, entityId),
+      // #394: inventory_transactions 실제 스키마로 재작성 (inventory.ts:505 패턴).
+      // 기존 컬럼셋(quantity_before/after/change/created_by)은 inventory_adjustments 것 — 혼동 버그.
       c.env.DB.prepare(`
-        INSERT INTO inventory_transactions (item_id, transaction_type, quantity_before, quantity_after, quantity_change, reason, notes, created_by, created_at, entity_id)
-        VALUES (?, 'ADJUST', ?, ?, ?, 'STOCK_COUNT', ?, ?, CURRENT_TIMESTAMP, ?)
+        INSERT INTO inventory_transactions (item_id, transaction_type, quantity, balance_after, reference_type, reference_id, reason, notes, handled_by, transaction_date, entity_id)
+        VALUES (?, 'ADJUST', ?, ?, 'STOCK_COUNT', ?, 'STOCK_COUNT', ?, ?, datetime('now'), ?)
       `).bind(
         item.item_id,
-        item.system_quantity,
-        item.counted_quantity,
-        item.counted_quantity - item.system_quantity,
-        `Inventory Count ID: ${countId}`,
-        userId,
+        item.counted_quantity - item.system_quantity, // quantity: 조정 변화량(부호 유지)
+        item.counted_quantity,                         // balance_after: 보정 후 잔량
+        countId,                                       // reference_id
+        `Inventory Count ID: ${countId}`,              // notes
+        userId,                                        // handled_by (approved_by와 동일 바인딩)
         entityId
       )
     ])
