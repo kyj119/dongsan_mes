@@ -45,6 +45,7 @@ namespace LogWatcher.Tools
                 case "--discover": Discover(rest); break;
                 case "--learn": Learn(rest); break;
                 case "--analyze": Analyze(rest); break;
+                case "--init": Init(rest); break;
                 default: Console.WriteLine($"[LogProbe] unknown mode: {mode}"); break;
             }
         }
@@ -408,6 +409,150 @@ namespace LogWatcher.Tools
             Console.WriteLine(BuildBlockJson(best.Result, path, null, null));
             Console.WriteLine("--------------------------------------------------------");
             Console.WriteLine("여러 후보 중 SAMPLES 가 실제 파일명과 맞는 패턴을 고르세요. 확신이 없으면 --learn 으로 확정하세요.");
+        }
+
+        // ===== --init: discover + analyze 로 equipment.json 초안 자동 생성 =====
+
+        private static void Init(string[] args)
+        {
+            int recentDays = 60, maxDepth = 4;
+            var paths = new List<string>();
+            for (int i = 0; i < args.Length; i++)
+            {
+                if (args[i] == "--days" && i + 1 < args.Length) int.TryParse(args[++i], out recentDays);
+                else if (args[i] == "--depth" && i + 1 < args.Length) int.TryParse(args[++i], out maxDepth);
+                else if (!args[i].StartsWith("--")) paths.Add(args[i]);
+            }
+            if (paths.Count == 0)
+            {
+                foreach (var r in KnownRipRoots) if (Directory.Exists(r)) paths.Add(r);
+                paths.AddRange(GetFixedDriveRoots());
+            }
+
+            Console.WriteLine("=== LogProbe --init (equipment.json 초안 생성) ===");
+            Console.WriteLine($"PC: {Environment.MachineName}   recent: {recentDays}d   depth: {maxDepth}");
+            Console.WriteLine("(스캔 중...)\n");
+
+            var cutoff = DateTime.Now.AddDays(-recentDays);
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var watchers = new List<Dictionary<string, object>>();
+            var idCounts = new Dictionary<string, int>();
+
+            foreach (var root in paths)
+            {
+                if (!Directory.Exists(root)) continue;
+                bool known = KnownRipRoots.Any(k => string.Equals(k, root, StringComparison.OrdinalIgnoreCase));
+                foreach (var file in SafeEnumerate(root, maxDepth, applyExcludes: !known))
+                {
+                    var ext = Path.GetExtension(file).ToLowerInvariant();
+                    if (!TargetExts.Contains(ext)) continue;
+                    if (!seen.Add(file)) continue;
+                    FileInfo fi; try { fi = new FileInfo(file); } catch { continue; }
+                    if (fi.Length == 0 || fi.LastWriteTime < cutoff) continue;
+
+                    var fmt = LogFormatDetector.Detect(file);
+                    if (fmt.Format is "empty" or "unreadable") continue;
+
+                    // RIP 로그만 채택: 카드패턴 있거나 알려진 RIP 경로/이름 (시스템 노이즈 제외)
+                    bool ripLike = known || fmt.HasCardPattern
+                        || file.IndexOf("RIPLOG", StringComparison.OrdinalIgnoreCase) >= 0
+                        || file.IndexOf("TNSRip", StringComparison.OrdinalIgnoreCase) >= 0
+                        || file.IndexOf("Epson Edge", StringComparison.OrdinalIgnoreCase) >= 0
+                        || file.IndexOf("PrintExp", StringComparison.OrdinalIgnoreCase) >= 0;
+                    if (!ripLike) continue;
+
+                    var parser = MapParser(fmt.RecommendedParser, file);
+                    var cfg = new Dictionary<string, object>();
+                    bool enabled = true;
+                    string note = "";
+
+                    if (parser == "epson")
+                    {
+                        cfg["db_path"] = file;
+                        cfg["query"] = "SELECT j.JobID, j.JobName, l.FinishPrintTime, p.OriginalSizeWidth, p.OriginalSizeHeight FROM Job j JOIN Log l ON j.JobID = l.JobID LEFT JOIN Page p ON j.JobID = p.JobID AND p.PageID = 1 WHERE j.JobStatus = 12 AND j.JobID > @last_id ORDER BY j.JobID";
+                        cfg["id_column"] = "JobID"; cfg["filename_column"] = "JobName";
+                        cfg["timestamp_column"] = "FinishPrintTime";
+                        cfg["size_columns"] = new[] { "OriginalSizeWidth", "OriginalSizeHeight" };
+                        cfg["size_unit"] = "pt"; cfg["read_only"] = true;
+                    }
+                    else if (parser == "printexp")
+                    {
+                        cfg["log_path"] = Path.GetDirectoryName(file) ?? file; // PrintExp 파서는 폴더 경로
+                    }
+                    else if (parser == "text_log")
+                    {
+                        cfg["log_path"] = file; cfg["encoding"] = "auto";
+                        var lines = ReadTail(file, 2 * 1024 * 1024);
+                        var fileLines = lines.Where(l => AnyFileTok.IsMatch(l)).ToList();
+                        var ex = PatternExtractor.Extract(fileLines);
+                        if (ex.Found)
+                        {
+                            cfg["completion_pattern"] = ex.CompletionPattern;
+                            cfg["filename_group"] = ex.FilenameGroup;
+                            if (ex.TimestampPattern != null) { cfg["timestamp_pattern"] = ex.TimestampPattern; cfg["timestamp_format"] = ex.TimestampFormat!; }
+                            if (ex.SizePattern != null) cfg["size_pattern"] = ex.SizePattern;
+                        }
+                        else
+                        {
+                            enabled = false; note = "완료패턴 자동추출 실패 → --learn 필요";
+                            cfg["completion_pattern"] = ""; cfg["filename_group"] = 1;
+                        }
+                    }
+                    else // flexi, tns
+                    {
+                        cfg["log_path"] = file;
+                    }
+
+                    var prefix = parser.ToUpperInvariant().Replace("_", "-");
+                    idCounts.TryGetValue(prefix, out int n); n++; idCounts[prefix] = n;
+                    var eqId = $"{prefix}-{n:D2}";
+
+                    watchers.Add(new Dictionary<string, object>
+                    {
+                        ["equipment_id"] = eqId,
+                        ["name"] = eqId,
+                        ["enabled"] = enabled,
+                        ["parser_type"] = parser,
+                        ["config"] = cfg
+                    });
+                    Console.WriteLine($"  [{(enabled ? "+" : "!")}] {eqId} ({parser})  ← {file}" + (note != "" ? $"   // {note}" : ""));
+                }
+            }
+
+            if (watchers.Count == 0)
+            {
+                Console.WriteLine("[INIT] RIP 로그를 찾지 못했습니다. 'LogWatcher.exe --discover' 로 전체 목록을 확인하세요.");
+                return;
+            }
+
+            var outPath = Path.Combine(AppContext.BaseDirectory, "equipment.json");
+            if (File.Exists(outPath))
+            {
+                try { File.Copy(outPath, outPath + ".bak", true); Console.WriteLine("\n기존 equipment.json → equipment.json.bak 백업"); } catch { }
+            }
+            var rootObj = new Dictionary<string, object>
+            {
+                ["poll_interval_seconds"] = 5,
+                ["heartbeat_interval_seconds"] = 60,
+                ["watchers"] = watchers
+            };
+            var json = JsonSerializer.Serialize(rootObj, new JsonSerializerOptions { WriteIndented = true, Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping });
+            File.WriteAllText(outPath, json);
+
+            Console.WriteLine($"\n[OK] {watchers.Count}개 장비 초안 생성 → {outPath}");
+            Console.WriteLine("검토하세요:");
+            Console.WriteLine("  1) 같은 장비가 로그 2개로 잡혔으면(예: flexi+printexp) 불필요한 watcher 삭제");
+            Console.WriteLine("  2) equipment_id / name 을 원하는 이름으로 수정");
+            Console.WriteLine("  3) enabled:false(완료패턴 미설정)는 --learn 으로 패턴 추출 후 채우기");
+            Console.WriteLine("  → 그 후 LogWatcher.exe --test, install-service.bat");
+        }
+
+        private static string MapParser(string rec, string path)
+        {
+            if (rec == "epson" || rec == "flexi" || rec == "tns") return rec;
+            if (rec.StartsWith("printexp"))
+                return Path.GetFileName(path).StartsWith("Log[", StringComparison.OrdinalIgnoreCase) ? "printexp" : "text_log";
+            return "text_log";
         }
 
         private static List<string> ReadTail(string path, long cap)
