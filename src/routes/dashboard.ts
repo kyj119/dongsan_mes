@@ -522,14 +522,13 @@ dashboardRouter.get('/equipment-load', async (c) => {
     const { results } = await c.env.DB.prepare(`
       SELECT e.id, e.name, e.equipment_status, COALESCE(e.daily_capacity, 0) as daily_capacity,
         (SELECT COUNT(*) FROM cards c WHERE c.equipment_id = e.id AND c.status = 'PRINTING'${efCnt.clause}) as queue_count,
-        ah.last_seen_at,
+        e.last_seen_at, e.agent_id, e.print_log_path,
         CASE
-          WHEN ah.last_seen_at IS NULL THEN 'OFFLINE'
-          WHEN (julianday('now') - julianday(ah.last_seen_at)) * 86400 > 120 THEN 'OFFLINE'
+          WHEN e.last_seen_at IS NULL THEN 'OFFLINE'
+          WHEN (julianday('now') - julianday(e.last_seen_at)) * 86400 > 120 THEN 'OFFLINE'
           ELSE 'ONLINE'
         END as agent_status
       FROM equipment e
-      LEFT JOIN agent_heartbeats ah ON ah.equipment_id = e.id
       WHERE e.status = 'ACTIVE'${efEq.clause}
       ORDER BY e.name
     `).bind(...efCnt.params, ...efEq.params).all()

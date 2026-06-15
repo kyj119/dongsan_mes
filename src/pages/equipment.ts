@@ -387,6 +387,13 @@ export function equipmentPage(c: Context<HonoEnv>) {
                         <label class="block text-sm font-medium text-gray-700 mb-1">위치 구역</label>
                         <input id="fEquipZone" type="text" placeholder="예: 1공장, 2층 우측" class="w-full border rounded px-3 py-2 text-sm">
                     </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">장비 크기 (배치도 표시)</label>
+                        <select id="fEquipSizeType" class="w-full border rounded px-3 py-2 text-sm">
+                            <option value="LARGE">대형 (3.2m)</option>
+                            <option value="SMALL">소형 (1.8m)</option>
+                        </select>
+                    </div>
                 </div>
                 <div class="flex justify-end gap-3 p-4 border-t">
                     <button onclick="closeEquipModal()" class="px-4 py-2 border rounded hover:bg-gray-50">취소</button>

@@ -65,6 +65,8 @@ function switchTab(tab) {
         activeBtn.classList.remove('text-gray-500');
     }
 
+    closeDetail(); // 탭 전환 시 상세 패널 닫기 (다른 탭으로 새어나오는 것 방지)
+
     if (tab === 'layout') {
         loadLayout();
     } else if (tab === 'dashboard') {
@@ -517,6 +519,7 @@ function openAddModal() {
     document.getElementById('fEquipIp').value = '';
     document.getElementById('fEquipHeadCount').value = '0';
     document.getElementById('fEquipZone').value = '';
+    document.getElementById('fEquipSizeType').value = 'LARGE';
     document.getElementById('equipModal').classList.remove('hidden');
 }
 
@@ -532,6 +535,7 @@ function openEditModal(equipId) {
     document.getElementById('fEquipIp').value = eq.ip_address || '';
     document.getElementById('fEquipHeadCount').value = String(eq.head_count || 0);
     document.getElementById('fEquipZone').value = eq.location_zone || '';
+    document.getElementById('fEquipSizeType').value = eq.size_type || 'LARGE';
     document.getElementById('equipModal').classList.remove('hidden');
 }
 
@@ -547,17 +551,18 @@ async function saveEquip() {
     var ip = document.getElementById('fEquipIp').value.trim();
     var headCount = parseInt(document.getElementById('fEquipHeadCount').value) || 0;
     var zone = document.getElementById('fEquipZone').value.trim();
+    var sizeType = document.getElementById('fEquipSizeType').value;
     if (!name) { showFieldError('fEquipName', '이름을 입력하세요.'); return; }
     try {
         if (editId) {
             await axios.put('/api/rip/equipment/' + editId, {
                 name: name, printer_name: printer, ip_address: ip,
-                head_count: headCount, location_zone: zone
+                head_count: headCount, location_zone: zone, size_type: sizeType
             });
         } else {
             if (!id) { showFieldError('fEquipId', 'ID를 입력하세요.'); return; }
             await axios.post('/api/rip/equipment', {
-                id: id, name: name, printer_name: printer, ip_address: ip
+                id: id, name: name, printer_name: printer, ip_address: ip, size_type: sizeType
             });
             // 헤드 초기화
             if (headCount > 0) {

@@ -285,16 +285,16 @@ ripRouter.get('/equipment', authMiddleware, async (c) => {
 
 ripRouter.post('/equipment', authMiddleware, requireRole('ADMIN'), async (c) => {
   try {
-    const { id, name, printer_name, ip_address } = await c.req.json()
+    const { id, name, printer_name, ip_address, size_type } = await c.req.json()
 
     if (!id || !name) {
       return c.json({ success: false, error: 'id and name are required' }, 400)
     }
 
     await c.env.DB.prepare(`
-      INSERT INTO equipment (id, name, printer_name, ip_address, entity_id)
-      VALUES (?, ?, ?, ?, ?)
-    `).bind(id, name, printer_name || null, ip_address || null, getEntityId(c) || 1).run()
+      INSERT INTO equipment (id, name, printer_name, ip_address, size_type, entity_id)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).bind(id, name, printer_name || null, ip_address || null, size_type || 'LARGE', getEntityId(c) || 1).run()
 
     const equipment = await c.env.DB.prepare(
       'SELECT id, name, printer_name, ip_address, status, equipment_status, head_count, location_x, location_y, location_zone, zone_id, daily_capacity, size_type, notes, created_at, updated_at FROM equipment WHERE id = ?'

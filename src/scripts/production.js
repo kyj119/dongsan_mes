@@ -166,11 +166,11 @@ async function loadPrintingCards() {
 // ── 장비 상태: /api/print-events/agents ──
 async function loadAgents() {
   try {
-    var res = await axios.get('/api/print-events/agents');
-    if (!res.data.success) throw new Error('API 오류');
-    var data = res.data.data;
-    var agents = data.agents || [];
-    var summary = data.summary || {};
+    // 장비 중심: equipment 테이블 기반(PC 단위 agent_heartbeats 대신 장비 단위)
+    var res = await axios.get('/api/dashboard/equipment-load');
+    var agents = (res.data && res.data.data) || [];
+    var online = agents.filter(function(e){ return e.agent_status === 'ONLINE'; }).length;
+    var offline = agents.length - online;
 
     // 요약
     var summaryEl = document.getElementById('agentSummary');
@@ -178,13 +178,13 @@ async function loadAgents() {
       summaryEl.innerHTML =
         '<span class="inline-flex items-center gap-1 mr-2">'
         + '<i class="fas fa-circle text-green-500" style="font-size:6px;"></i>'
-        + '<span>온라인 ' + (summary.online || 0) + '</span></span>'
+        + '<span>온라인 ' + online + '</span></span>'
         + '<span class="inline-flex items-center gap-1">'
         + '<i class="fas fa-circle text-red-400" style="font-size:6px;"></i>'
-        + '<span>오프라인 ' + (summary.offline || 0) + '</span></span>';
+        + '<span>오프라인 ' + offline + '</span></span>';
     }
 
-    // #343: 출력이력 장비 필터 옵션 채우기
+    // #343: 출력이력 장비 필터 옵션 채우기 (equipment 기반)
     populateAgentFilter(agents);
 
     var listEl = document.getElementById('agentList');
@@ -197,13 +197,13 @@ async function loadAgents() {
     }
 
     listEl.innerHTML = agents.map(function(agent) {
-      var isOnline = agent.computed_status === 'online';
+      var isOnline = agent.agent_status === 'ONLINE';
       var borderCls = isOnline ? 'border-green-200' : 'border-gray-200';
       var dotCls = isOnline ? 'text-green-500' : 'text-gray-300';
       var statusLabel = isOnline ? '온라인' : '오프라인';
       var statusTextCls = isOnline ? 'text-green-600' : 'text-gray-400';
       var lastSeen = agent.last_seen_at ? fmtTime(agent.last_seen_at) : '미확인';
-      var name = agent.printer_name || agent.agent_id || '장비';
+      var name = agent.name || agent.id || '장비';
 
       return '<div class="rounded-lg border ' + borderCls + ' p-2.5 text-center hover:shadow-sm transition-shadow">'
         + '<div class="text-[10px] font-semibold text-gray-700 truncate mb-1" title="' + escapeHtml(name) + '">' + escapeHtml(name) + '</div>'
@@ -234,7 +234,7 @@ async function loadRecentEvents() {
     var afEl = document.getElementById('evFilterAgent');
     var sfEl = document.getElementById('evFilterStatus');
     var dfEl = document.getElementById('evFilterDate');
-    if (afEl && afEl.value) url += '&agent_id=' + encodeURIComponent(afEl.value);
+    if (afEl && afEl.value) url += '&equipment_id=' + encodeURIComponent(afEl.value);
     if (sfEl && sfEl.value) url += '&status=' + encodeURIComponent(sfEl.value);
     if (dfEl && dfEl.value) url += '&date=' + encodeURIComponent(dfEl.value);
     var res = await axios.get(url);
@@ -330,9 +330,9 @@ function populateAgentFilter(agents) {
   var cur = sel.value;
   var opts = '<option value="">전체 장비</option>';
   (agents || []).forEach(function(a) {
-    var id = a.agent_id || '';
+    var id = a.id || '';
     if (!id) return;
-    var name = a.printer_name || a.agent_id;
+    var name = a.name || a.id;
     opts += '<option value="' + escapeHtml(id) + '">' + escapeHtml(name) + '</option>';
   });
   sel.innerHTML = opts;
