@@ -317,14 +317,6 @@ window.applyGroupPrice = async function() {
 
 // ── 이벤트 리스너 ──────────────────────────────────────────
 
-// Enter 키 검색 지원
-var itemSearchEl = document.getElementById('itemSearch');
-if (itemSearchEl) {
-    itemSearchEl.addEventListener('keypress', function(e) {
-        if (e.key === 'Enter' && typeof window.applyFilters === 'function') window.applyFilters();
-    });
-}
-
 // 새 그룹명 입력 시 hidden input 동기화 + 멤버 미리보기
 var newGroupInput = document.getElementById('itemGroupNew');
 if (newGroupInput) {

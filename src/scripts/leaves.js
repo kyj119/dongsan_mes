@@ -81,10 +81,10 @@ window.leavesLoadBalances = async function() {
       var remaining = parseFloat(r.remaining) || 0;
       var remColor = remaining <= 0 ? 'text-red-600' : (remaining < 3 ? 'text-amber-600' : 'text-gray-900');
       return '<tr>' +
-        '<td class="px-3 py-2">' + (r.employee_code || '-') + '</td>' +
-        '<td class="px-3 py-2 font-medium">' + (r.name || '-') + '</td>' +
-        '<td class="px-3 py-2 text-gray-600">' + (r.department || '-') + '</td>' +
-        '<td class="px-3 py-2 text-gray-600">' + (r.position || '-') + '</td>' +
+        '<td class="px-3 py-2">' + lvEscapeHtml(r.employee_code || '-') + '</td>' +
+        '<td class="px-3 py-2 font-medium">' + lvEscapeHtml(r.name || '-') + '</td>' +
+        '<td class="px-3 py-2 text-gray-600">' + lvEscapeHtml(r.department || '-') + '</td>' +
+        '<td class="px-3 py-2 text-gray-600">' + lvEscapeHtml(r.position || '-') + '</td>' +
         '<td class="px-3 py-2 text-gray-600">' + (r.hire_date || '-') + '</td>' +
         '<td class="px-3 py-2 text-right">' + lvFmtNum(r.accrued) + '</td>' +
         '<td class="px-3 py-2 text-right">' + lvFmtNum(r.granted_extra) + '</td>' +
@@ -122,12 +122,12 @@ window.leavesLoadRequests = async function() {
       }
       return '<tr>' +
         '<td class="px-3 py-2 text-gray-600">' + (r.created_at || '').slice(0, 10) + '</td>' +
-        '<td class="px-3 py-2">' + (r.employee_code || '') + ' / <span class="font-medium">' + (r.employee_name || '-') + '</span></td>' +
-        '<td class="px-3 py-2 text-gray-600">' + (r.department || '-') + '</td>' +
+        '<td class="px-3 py-2">' + lvEscapeHtml(r.employee_code || '') + ' / <span class="font-medium">' + lvEscapeHtml(r.employee_name || '-') + '</span></td>' +
+        '<td class="px-3 py-2 text-gray-600">' + lvEscapeHtml(r.department || '-') + '</td>' +
         '<td class="px-3 py-2">' + lvLeaveTypeLabel(r.leave_type) + '</td>' +
         '<td class="px-3 py-2 text-gray-600">' + r.start_date + ' ~ ' + r.end_date + '</td>' +
         '<td class="px-3 py-2 text-right">' + lvFmtNum(r.days) + '</td>' +
-        '<td class="px-3 py-2 text-gray-600">' + (r.reason || '-') + '</td>' +
+        '<td class="px-3 py-2 text-gray-600">' + lvEscapeHtml(r.reason || '-') + '</td>' +
         '<td class="px-3 py-2 text-center">' + lvStatusBadge(r.status) + '</td>' +
         '<td class="px-3 py-2 text-center">' + actions + '</td>' +
       '</tr>';
@@ -343,9 +343,9 @@ window.leavesLoadAllowance = async function() {
       var remColor = rem <= 0 ? 'text-gray-400' : (rem > 5 ? 'text-red-600 font-bold' : 'text-amber-600');
       var allowColor = r.unused_allowance > 0 ? 'text-red-600 font-bold' : 'text-gray-400';
       return '<tr>' +
-        '<td class="px-3 py-2">' + (r.employee_code || '-') + '</td>' +
-        '<td class="px-3 py-2 font-medium">' + (r.name || '-') + '</td>' +
-        '<td class="px-3 py-2 text-gray-600">' + (r.department || '-') + '</td>' +
+        '<td class="px-3 py-2">' + lvEscapeHtml(r.employee_code || '-') + '</td>' +
+        '<td class="px-3 py-2 font-medium">' + lvEscapeHtml(r.name || '-') + '</td>' +
+        '<td class="px-3 py-2 text-gray-600">' + lvEscapeHtml(r.department || '-') + '</td>' +
         '<td class="px-3 py-2 text-right">' + lvFmtNum(r.total_annual) + '</td>' +
         '<td class="px-3 py-2 text-right">' + lvFmtNum(r.used_annual) + '</td>' +
         '<td class="px-3 py-2 text-right ' + remColor + '">' + lvFmtNum(rem) + '</td>' +
