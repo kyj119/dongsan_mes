@@ -542,6 +542,7 @@ async function quickClassify(txId, catId) {
     await axios.put('/api/card-expenses/transactions/' + txId, {
       category_id: catId ? parseInt(catId) : null
     });
+    loadTransactions();
     loadSummary();
   } catch (e) { showToast('분류 실패', 'error'); }
 }
