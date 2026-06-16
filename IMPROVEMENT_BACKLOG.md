@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 4 -->
-<!-- last_run_at: 2026-06-16T10:00:00+09:00 -->
+<!-- last_run_area: 5 -->
+<!-- last_run_at: 2026-06-16T14:00:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,7 +8,7 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | 3 (**GitHub open auto-improve 실측 3건** — #411 대시보드 "납기 도래 주문" 위젯 클릭 전부 404·/shipments/daily 미존재 small [Area 3] · #412 스캔 입출고 items.current_stock 존재X 컬럼 UPDATE small [Area 4] · #413 입금삭제 bank_transactions.updated_at 존재X 컬럼 UPDATE small [Area 4]. #412/#413은 직전 부분 Area 4 런이 등록·backlog 미반영분 → 본 사이클 동기화 편입) |
+| 🆕 new | 5 (**GitHub open auto-improve 실측 5건** — #411 대시보드 드릴다운 404·/shipments/daily 미존재 small [Area 3] · #412 스캔 입출고 items.current_stock 존재X UPDATE small [Area 4] · #413 입금삭제 bank_transactions.updated_at 존재X UPDATE small [Area 4] · **#414 카드 상세 GET /:id 멀티법인 격리 누락 IDOR — #375가 by-number만 고치고 by-id 누락 HIGH보안 small [Area 5]** · **#415 감액삭제 DELETE /adjustment/:id 법인격리 누락 — 같은 라우터 payments는 efPay 적용 MED small [Area 5]**) |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 (#372 CSV도 owner close-completed → done 이관) |
 | ✔️ done | 110 (96 + **owner 대량 픽스 14건 close-completed**[5 커밋: a988f8d #394/#397/#398/#403/#405/#408 · 336df95 #395/#399/#401/#404/#406/#407 · 471502c #396/#400/#402 · **0ba3670 #409/#410** · 25d1b8e #394후속 handled_by FK]. **GitHub open auto-improve 실측 #411·#412·#413 3건** 정합) |
@@ -16,6 +16,19 @@
 
 > 📦 **과거 사이클 로그**(아래 6블록 이전분)는 `IMPROVEMENT_BACKLOG_ARCHIVE.md`로 이관됨 (2026-06-10 정리). 신규 로그는 계속 이 파일 상단에 추가.
 
+> **Area 5 보안 (2026-06-16T14:00):**
+> - **방법**: git fetch-before-compare(origin force-update `4993fa7→33a5424`, fetch 후 HEAD=origin/main `33a5424` 0/0 동기). baseline `npm ci`+build PASS(391 modules, _worker.js 5,136.16kB). Area 5 신선 각도 = **owner가 직전 Area 5(ec44fcd) 이후 12 이슈 일괄 픽스**(5 fix 커밋: 5f82170/a988f8d/336df95/471502c/0ba3670/25d1b8e)라 **픽스 커밋의 보안 회귀(authMiddleware/entityFilter 누락) + XSS 형제 sweep + IDOR 비대칭 standing scan**. 병렬 Explore 2개(① SQLi/시크릿/에러/IDOR/rate-limit + churn 라우트 회귀 ② XSS innerHTML free-text sweep) + 발견 전수 owner 직접 Read 검증.
+> - **🔧 자동수정 1건 (A-025, 본 사이클) — stored XSS net-new 2파일 (escapeHtml 누락, A-020~A-024 동형 누적 6사이클)**: XSS 형제 sweep가 **net-new 2파일 격리** — ① **`orderForm/finishing.js`**: A-024가 같은 파일 `:32 m.name`(마감방식)만 픽스하고 **후가공 옵션 `option_name`/`option_code`는 누락**(부분 escape 오버사이트) — `:178/:204/:321` 텍스트노드 + `data-pp-name`/`data-pp-code` 속성 9곳(post_processing 마스터 free-text, ADMIN 자유입력). escapeHtml 3회 사용 파일이라 컨벤션 확립됐는데 finishOpts 경로만 누락. ② **`quotationForm.js`**: 거래처 검색 모달(`:68-72`)이 client_name/client_code/business_registration_number/phone를 미escape 텍스트노드 보간(`onclick`엔 `.replace(/'/g,…)` quote escape 있으나 HTML escape 없음 = 전형 패턴). escapeHtml 1회만 사용 파일. **안전 자동수정 판정**: 전부 단순 `<option>`/모달/배지 렌더(복합 문서렌더러 아님)·`window.escapeHtml`(shell.js:62 전역, dataset round-trip 안전) 래핑·동작 무변. build PASS(391 modules, 5,136.42kB). 잔여 sink 재grep = 0.
+> - **🔴 신규 이슈 #414 (HIGH보안 bug, small, #356/#375 IDOR 형제) — 카드 상세 GET /:id 멀티법인 격리 누락**: IDOR 비대칭 scan이 **net-new 격리** — `cards/queries.ts:929` `GET /:id`가 `WHERE c.id=?`만, **list/by-number/debug-counts/defects 전부 cardEntityFilter 적용**. **결정적 증거 = #375(018ec4d)가 단건 `GET /by-number/:cardNumber`(:663)에 cardEntityFilter 추가**(단건 격리가 의도)인데 **`GET /:id`만 #375 픽스에서 누락**(by-number는 고치고 by-id는 놓침). 비관리자(STAFF/MANAGER)가 임의 카드 id로 **타 법인 카드 `c.*` + 주문 거래처 연락처(contact_phone/mobile)·납품정보·내부메모** 열람. 도달성 LIVE(cardDetail.js:13/cards/detail.js:5/productionBoard.js:225 `axios.get('/api/cards/'+cardId)`). 카드 id 순차정수=열거용이. **자동수정 안 함**: IDOR 격리 추가=egress 차단 런타임 검증 불가(SKILL Area 5 issue-only).
+> - **🟡 신규 이슈 #415 (MED bug, small, #398 IDOR 형제) — 감액삭제 DELETE /adjustment/:id 법인격리 누락**: 같은 ar-payments.ts 라우터에서 **payments 단건(GET/PUT/DELETE /payment/:id)은 전부 efPay(entityFilter)** 적용인데 **adjustments 경로(DELETE :373 + list :345)만 누락**. adjustments에 entity_id 존재(0150 ALTER). 비-super ADMIN(법인A)이 임의 adjustment id로 법인B 감액 삭제 가능=cross-tenant 재무 변조. ADMIN-gated라 #414보다 노출면 좁음=MED. 도달성 LIVE(ledger.js axios.delete). **자동수정 안 함**: IDOR+금융 write egress 검증 불가.
+> - **🟢 SQLi·시크릿·에러노출 전수 clean (취약점 0)**: ORDER BY 하드코딩 화이트리스트(sortOptions)·PRAGMA ALLOWED_TABLES·WHERE 전부 `?` 바인딩(사용자입력 보간 0). 시크릿 `c.env.*`(폴백 리터럴 0)·기본비번 0. `e.message` 노출=전부 외부API(바로빌/팩스) fallback 기존 수용패턴(SQL/스택/경로 0).
+> - **🟢 rate-limit·churn 라우트 보안 회귀 clean**: 인증/비번변경/refresh/self-auth/verify 전부 index.tsx:240-246 전역 등록. churn된 ar-payments/po-special/cards-queries/inventoryCount/attendance/year-end/migration의 authMiddleware/requireRole/entityFilter 분할-전 대조 회귀 0(단건 IDOR 누락 #414/#415는 분할 전부터 존재한 형제 누락, 픽스 회귀 아님).
+> - **🚫 서브에이전트 IDOR 후보 1건 드롭 — attendance DELETE /:id**: list는 entityFilter(c,'a') 쓰나 DELETE /:id는 `WHERE id=?`만 = 비대칭처럼 보이나 **프론트 호출 0건**(전수 grep: `/api/attendance`는 `/month` GET·`/bulk` PATCH만, DELETE /:id 호출처 없음) → **dead-code(SKILL: 도달성 0=보안영향 없음, #334)** 드롭. attendance.js:373는 무관 체크박스(라인 우연 일치).
+> - **🟢 backlog↔GitHub sync clean (변동 0 → #414/#415 추가)**: open auto-improve **실측 3건**(#411/#412/#413) = 직전 stats `new=3` 정합 확인 후 #414/#415 편입 → `new=5`. done=110·rejected=3·approved=0·reviewed=0 유지. 직전 Area 4 이후 owner 신규 close/머지 0건(33a5424=Area4 backlog 문서커밋).
+> - **🧬 SKILL 강화 1건 — XSS sweep "부분 escape 형제파일" 재명시**: A-024(finishing.js m.name)→A-025(같은 파일 option_name) = **이미 픽스한 파일이 다음 사이클에 형제 sink 노출** 6사이클 연속. 같은 파일에 escapeHtml이 N회 있어도(컨벤션 존재) **다른 데이터소스 루프(finishOpts vs methods)는 별도 누락 가능** → 파일 단위 "픽스됨" 판정 금지, 데이터소스별 sink 전수. SKILL XSS 레시피에 codify.
+> - **이상 없음**: git 동기 0/0. baseline build PASS. SQLi/시크릿/에러/rate-limit/churn회귀 전수 clean. XSS net-new 2파일=A-025 자동수정. IDOR net-new 2건=#414/#415 이슈, 서브에이전트 attendance 후보 dead-code 드롭.
+> - 자동 수정 1건(A-025 finishing.js+quotationForm.js XSS, build PASS), 신규 이슈 2건(#414 카드 IDOR HIGH·#415 감액 IDOR MED), SKILL 강화 1건(부분 escape 형제파일), clean 5각도(SQLi/시크릿/에러/rate-limit/churn), 서브에이전트 IDOR 후보 1건 dead-code 드롭, done-sync 0건(변동 없음)
+>
 > **Area 4 데이터 정합성 (2026-06-16T10:00):**
 > - **방법**: git fetch-before-compare(origin force-update `4993fa7→25d1b8e`, fetch 후 HEAD=origin/main `25d1b8e` 0/0 동기). baseline `npm ci`+build PASS(exit 0). ground-truth=310 마이그레이션 로컬 D1(node:sqlite) 전량 적용(**FAIL 0**, 172테이블/121 FK테이블). Area 4 **14회차** — **신선 각도**: 직전 사이클 이후 owner가 `25d1b8e`(#394 후속)에서 **prod D1가 batch에서 FK를 강제**함을 입증(`inventory_transactions.handled_by`=users(id) FK에 `'system'` 문자열 바인딩 → FK 위반 100% 500)하여 노출한 **FK 위반 클래스**를 신규 standing scan으로 채택 = users(id) 참조 69 FK 컬럼 전수 + FK 강제 현실 기준 cascade ON DELETE 절 검증. 병렬 Explore 2개(① FK-users 바인딩 sweep ② 고아/상태/entity_id + owner 픽스 회귀) + 발견 전수 owner ground-truth 검증.
 > - **🟢 신선 각도 — FK-users(id) 69컬럼 바인딩 전수 = net-new 0**: `users(id)`를 참조하는 69 FK 컬럼 각각의 INSERT/UPDATE write 사이트 전수 grep + 바인딩 값 직접 Read. **전부 `c.get('user')?.id || null`/`user.id`/`user?.id || 1`/NULL 정규 패턴** — `'system'`/username/header 문자열 바인딩이 FK 컬럼에 닿는 net-new 0. `25d1b8e`(inventoryCount:259 handled_by)가 **유일 케이스이자 이미 픽스됨**. `'system'` 잔여 바인딩(inventoryCount:206/265 submitted_by/approved_by·purchaseInvoices:184·po-receive:343/369·items:448/898)은 **전부 비-FK TEXT 컬럼**(inventory_counts·price_change_history는 `/tmp/fks.json`에 FK 정의 없음) = 안전. printEvents:143 `changed_by=1`은 유효 user id(admin)+agent 엔드포인트.

@@ -174,8 +174,8 @@
                         html += '<option value="">\uc120\ud0dd</option>';
                         finishOpts.forEach(function(opt) {
                             html += '<option value="' + opt.id + '"'
-                                + ' data-pp-name="' + (opt.option_name || '') + '"'
-                                + '>' + opt.option_name + ' (\uc804\uccb4 \ub3d9\uc77c)</option>';
+                                + ' data-pp-name="' + escapeHtml(opt.option_name || '') + '"'
+                                + '>' + escapeHtml(opt.option_name || '') + ' (\uc804\uccb4 \ub3d9\uc77c)</option>';
                         });
                         html += '</select>';
                         html += '</div>';
@@ -195,13 +195,13 @@
                             finishOpts.forEach(function(opt) {
                                 html += '<option value="' + opt.id + '"'
                                     + ' data-pp-id="' + opt.id + '"'
-                                    + ' data-pp-code="' + (opt.option_code || '') + '"'
-                                    + ' data-pp-name="' + (opt.option_name || '') + '"'
+                                    + ' data-pp-code="' + escapeHtml(opt.option_code || '') + '"'
+                                    + ' data-pp-name="' + escapeHtml(opt.option_name || '') + '"'
                                     + ' data-margin-default="' + (opt[dir.marginKey] || 0) + '"'
                                     + ' data-pricing-type="' + (opt.pricing_type || 'fixed') + '"'
                                     + ' data-additional-cost="' + (opt.additional_cost || 0) + '"'
                                     + ' data-unit-price="' + (opt.unit_price || 0) + '"'
-                                    + '>' + opt.option_name + '</option>';
+                                    + '>' + escapeHtml(opt.option_name || '') + '</option>';
                             });
                             html += '</select>';
                             html += '<input type="number" step="0.1" min="0" class="pp-finish-dir-margin w-16 border rounded px-1 py-0.5 text-center text-xs" data-direction="' + dir.key + '" data-row="' + rowId + '" style="display:none">';
@@ -217,8 +217,8 @@
                     if (punchingOpt) {
                         html += '<div class="pp-punching-section mb-3 pt-2 border-t border-gray-100"'
                             + ' data-pp-id="' + punchingOpt.id + '"'
-                            + ' data-pp-code="' + (punchingOpt.option_code || '') + '"'
-                            + ' data-pp-name="' + (punchingOpt.option_name || '') + '"'
+                            + ' data-pp-code="' + escapeHtml(punchingOpt.option_code || '') + '"'
+                            + ' data-pp-name="' + escapeHtml(punchingOpt.option_name || '') + '"'
                             + ' data-margin-top="' + (punchingOpt.margin_top || 0) + '"'
                             + ' data-margin-bottom="' + (punchingOpt.margin_bottom || 0) + '"'
                             + ' data-margin-left="' + (punchingOpt.margin_left || 0) + '"'
@@ -259,8 +259,8 @@
                     if (offsetOpt) {
                         html += '<div class="pp-offset-section mb-2 pt-2 border-t border-gray-100"'
                             + ' data-pp-id="' + offsetOpt.id + '"'
-                            + ' data-pp-code="' + (offsetOpt.option_code || '') + '"'
-                            + ' data-pp-name="' + (offsetOpt.option_name || '') + '"'
+                            + ' data-pp-code="' + escapeHtml(offsetOpt.option_code || '') + '"'
+                            + ' data-pp-name="' + escapeHtml(offsetOpt.option_name || '') + '"'
                             + ' data-pricing-type="' + (offsetOpt.pricing_type || 'fixed') + '"'
                             + ' data-additional-cost="' + (offsetOpt.additional_cost || 0) + '"'
                             + ' data-unit-price="' + (offsetOpt.unit_price || 0) + '"'
@@ -313,24 +313,24 @@
 
                             html += '<div class="pp-transfer-item flex items-center gap-2 mb-2"'
                                 + ' data-pp-id="' + opt.id + '"'
-                                + ' data-pp-code="' + (opt.option_code || '') + '"'
-                                + ' data-pp-name="' + (opt.option_name || '') + '"'
+                                + ' data-pp-code="' + escapeHtml(opt.option_code || '') + '"'
+                                + ' data-pp-name="' + escapeHtml(opt.option_name || '') + '"'
                                 + '>';
                             html += '<label class="flex items-center gap-1.5 cursor-pointer">';
-                            html += '<input type="checkbox" class="pp-transfer-check h-4 w-4" data-row="' + rowId + '" data-pp-code="' + opt.option_code + '">';
-                            html += '<span class="text-sm font-medium text-gray-700">' + opt.option_name + '</span>';
+                            html += '<input type="checkbox" class="pp-transfer-check h-4 w-4" data-row="' + rowId + '" data-pp-code="' + escapeHtml(opt.option_code || '') + '">';
+                            html += '<span class="text-sm font-medium text-gray-700">' + escapeHtml(opt.option_name || '') + '</span>';
                             html += '</label>';
                             html += '<div class="pp-transfer-params flex items-center gap-2 ml-2" style="display:none">';
                             fields.forEach(function(f) {
                                 if (f.type === 'select') {
-                                    html += '<select class="pp-tf-field border border-gray-300 rounded px-2 py-1 text-xs" data-key="' + f.key + '" data-row="' + rowId + '" data-pp-code="' + opt.option_code + '">';
+                                    html += '<select class="pp-tf-field border border-gray-300 rounded px-2 py-1 text-xs" data-key="' + f.key + '" data-row="' + rowId + '" data-pp-code="' + escapeHtml(opt.option_code || '') + '">';
                                     (f.options || []).forEach(function(v) {
                                         html += '<option value="' + v + '"' + (v === f.default ? ' selected' : '') + '>' + v + '</option>';
                                     });
                                     html += '</select>';
                                 } else if (f.type === 'number') {
                                     html += '<label class="text-xs text-gray-500">' + f.label + '</label>';
-                                    html += '<input type="number" class="pp-tf-field w-14 border rounded px-1 py-0.5 text-xs text-center" data-key="' + f.key + '" data-row="' + rowId + '" data-pp-code="' + opt.option_code + '"'
+                                    html += '<input type="number" class="pp-tf-field w-14 border rounded px-1 py-0.5 text-xs text-center" data-key="' + f.key + '" data-row="' + rowId + '" data-pp-code="' + escapeHtml(opt.option_code || '') + '"'
                                         + ' value="' + (f.default || '') + '"'
                                         + (f.min != null ? ' min="' + f.min + '"' : '')
                                         + (f.max != null ? ' max="' + f.max + '"' : '')
@@ -347,8 +347,8 @@
                     if (annotationOpt) {
                         html += '<div class="pp-annotation-section mb-2 pt-2 border-t border-gray-100"'
                             + ' data-pp-id="' + annotationOpt.id + '"'
-                            + ' data-pp-code="' + (annotationOpt.option_code || '') + '"'
-                            + ' data-pp-name="' + (annotationOpt.option_name || '') + '"'
+                            + ' data-pp-code="' + escapeHtml(annotationOpt.option_code || '') + '"'
+                            + ' data-pp-name="' + escapeHtml(annotationOpt.option_name || '') + '"'
                             + ' data-pricing-type="' + (annotationOpt.pricing_type || 'fixed') + '"'
                             + ' data-additional-cost="' + (annotationOpt.additional_cost || 0) + '"'
                             + ' data-unit-price="' + (annotationOpt.unit_price || 0) + '"'
