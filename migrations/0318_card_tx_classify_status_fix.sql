@@ -1,4 +1,4 @@
--- 0315: 카드 거래 분류-상태 정합성 보정
+-- 0318: 카드 거래 분류-상태 정합성 보정
 --
 -- 배경: PUT /transactions/:id 가 category_id는 저장하되 status 승격이 누락되는 경로가 있어
 -- (편집 모달이 status='UNCLASSIFIED'를 명시 전송하면 category가 있어도 미분류로 남음),
