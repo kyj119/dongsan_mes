@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 5 -->
-<!-- last_run_at: 2026-06-16T14:00:00+09:00 -->
+<!-- last_run_area: 6 -->
+<!-- last_run_at: 2026-06-16T18:00:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -16,6 +16,16 @@
 
 > 📦 **과거 사이클 로그**(아래 6블록 이전분)는 `IMPROVEMENT_BACKLOG_ARCHIVE.md`로 이관됨 (2026-06-10 정리). 신규 로그는 계속 이 파일 상단에 추가.
 
+> **Area 6 자기 진화 (2026-06-16T18:00):**
+> - **방법**: git fetch-before-compare(origin force-update `4993fa7→8b134d8`, fetch 후 HEAD=origin/main `8b134d8` 0/0 동기). baseline `npm ci`+build PASS(391 modules, _worker.js 5,136.42kB). **신선 각도 — churn이 에이전트 자신의 직전 픽스(A-025)뿐일 때 Area 6의 "post-churn 컬럼-diff bridge"가 퇴화 → 대체 = "직전 자동수정 픽스의 완전성을 그 픽스가 가르친 교훈으로 자가검증"**(A-025 교훈=같은 파일 형제 데이터소스 → A-025가 손댄 finishing.js 자체를 데이터소스별 sink 전수 재검). + open 발견 5건 silent-fix 재현 spot-check + GitHub sync.
+> - **🔧 자동수정 1건 (A-026, 본 사이클) — A-025가 놓친 같은 파일(finishing.js) 형제 데이터소스 XSS (parameter_schema JSON)**: Area 5 이후 유일 churn=`8b134d8`(A-025 XSS 픽스). A-025 교훈(데이터소스별 sink, 파일단위 "픽스됨" 판정 금지)을 **A-025 자신에 적용** → finishing.js의 transfer 필드 렌더(`:324-338`)가 `JSON.parse(opt.parameter_schema)`(post_processing 마스터 ADMIN free-input JSON)에서 온 ① `v`(`:328` `<option>` value 속성+텍스트 양쪽) ② `f.label`(`:332` 텍스트노드) ③ `f.key`(`:326/:333` data-key 속성)를 미escape 보간 — A-025가 같은 파일 `option_name`/`option_code`는 escape했으나 **parameter_schema 하위필드(별도 데이터소스)는 누락**(정확히 A-025 교훈 시나리오 재현). post_processing 옵션 편집자가 schema JSON에 페이로드 주입 시 견적/주문 후가공 폼 여는 STAFF에게 stored XSS. **안전 자동수정 판정**: 드롭다운 렌더·`window.escapeHtml`(shell.js:62 전역)·dataset round-trip 안전(`f.key` 영숫자=실질 no-op)·동작 무변. build PASS(391 modules, 5,136.50kB). 잔여 free-text sink 재grep=0.
+> - **🔬 open 발견 5건 silent-fix 재현 spot-check = 전부 유효(owner 미수정)**: #411(dashboard.js:607 `/shipments/daily` 미등록 — index.tsx는 `/shipments`:437·`/shipments-dashboard`:438만)·#412(scan.ts:231/252 items.current_stock UPDATE 잔존)·#413(ar-payments.ts:199 bank_transactions.updated_at UPDATE 잔존)·#414(cards/queries.ts:929 GET /:id `WHERE c.id=?`, 나머지 핸들러 전부 cardEntityFilter)·#415(ar-payments.ts:373 DELETE adjustments entityFilter 누락, payments는 :94/:124/:185/:223 efPay). 탐지 규칙 회귀 0.
+> - **🟢 backlog↔GitHub sync clean (변동 0)**: open auto-improve **실측 5건**(#411~#415, list_issues 전수) = 직전 stats `new=5` 정합. done=110·rejected=3·approved=0·reviewed=0 유지. 직전 Area 5 이후 owner 신규 close/머지 0건(8b134d8=A-025 자동수정+backlog/SKILL 문서커밋, open 5건 미터치).
+> - **🟢 post-Area4 churn 컬럼-diff bridge = 자명 clean**: Area 5 이후 유일 churn=A-025(escapeHtml 추가만, INSERT/컬럼/마이그레이션 변경 0) → 존재X컬럼/NOT NULL 누락 위험 유입 없음. 신규 마이그레이션 0.
+> - **🧬 SKILL 강화 1건 — Area 6 "자기-픽스 완전성 검증" 신각도**: churn이 에이전트 자신의 직전 자동수정뿐이면 post-Area4 churn 컬럼-diff bridge가 퇴화 → **대체 standing check = 직전 자동수정 파일을 그 픽스가 codify한 교훈으로 재검**(A-025=데이터소스별 sink → A-026이 같은 파일 parameter_schema 형제 데이터소스 격리). 자동수정도 "한 파일 한 데이터소스"만 고치면 형제 누락 가능 = 이슈 픽스 부분픽스 규칙(#377)이 에이전트 자가수정에도 적용됨. SKILL Area 6에 codify.
+> - **이상 없음**: git 동기 0/0. baseline build PASS. open 발견 5건 재현 유효(탐지 회귀 0). sync 정합 5=5. post-churn 컬럼-diff 자명 clean.
+> - 자동 수정 1건(A-026 finishing.js parameter_schema XSS, A-025 형제 데이터소스, build PASS), 신규 이슈 0건(open 5건은 기보고·재현 유효), SKILL 강화 1건(자기-픽스 완전성 검증), done-sync 0건(변동 없음)
+>
 > **Area 5 보안 (2026-06-16T14:00):**
 > - **방법**: git fetch-before-compare(origin force-update `4993fa7→33a5424`, fetch 후 HEAD=origin/main `33a5424` 0/0 동기). baseline `npm ci`+build PASS(391 modules, _worker.js 5,136.16kB). Area 5 신선 각도 = **owner가 직전 Area 5(ec44fcd) 이후 12 이슈 일괄 픽스**(5 fix 커밋: 5f82170/a988f8d/336df95/471502c/0ba3670/25d1b8e)라 **픽스 커밋의 보안 회귀(authMiddleware/entityFilter 누락) + XSS 형제 sweep + IDOR 비대칭 standing scan**. 병렬 Explore 2개(① SQLi/시크릿/에러/IDOR/rate-limit + churn 라우트 회귀 ② XSS innerHTML free-text sweep) + 발견 전수 owner 직접 Read 검증.
 > - **🔧 자동수정 1건 (A-025, 본 사이클) — stored XSS net-new 2파일 (escapeHtml 누락, A-020~A-024 동형 누적 6사이클)**: XSS 형제 sweep가 **net-new 2파일 격리** — ① **`orderForm/finishing.js`**: A-024가 같은 파일 `:32 m.name`(마감방식)만 픽스하고 **후가공 옵션 `option_name`/`option_code`는 누락**(부분 escape 오버사이트) — `:178/:204/:321` 텍스트노드 + `data-pp-name`/`data-pp-code` 속성 9곳(post_processing 마스터 free-text, ADMIN 자유입력). escapeHtml 3회 사용 파일이라 컨벤션 확립됐는데 finishOpts 경로만 누락. ② **`quotationForm.js`**: 거래처 검색 모달(`:68-72`)이 client_name/client_code/business_registration_number/phone를 미escape 텍스트노드 보간(`onclick`엔 `.replace(/'/g,…)` quote escape 있으나 HTML escape 없음 = 전형 패턴). escapeHtml 1회만 사용 파일. **안전 자동수정 판정**: 전부 단순 `<option>`/모달/배지 렌더(복합 문서렌더러 아님)·`window.escapeHtml`(shell.js:62 전역, dataset round-trip 안전) 래핑·동작 무변. build PASS(391 modules, 5,136.42kB). 잔여 sink 재grep = 0.

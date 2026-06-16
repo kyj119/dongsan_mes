@@ -323,14 +323,14 @@
                             html += '<div class="pp-transfer-params flex items-center gap-2 ml-2" style="display:none">';
                             fields.forEach(function(f) {
                                 if (f.type === 'select') {
-                                    html += '<select class="pp-tf-field border border-gray-300 rounded px-2 py-1 text-xs" data-key="' + f.key + '" data-row="' + rowId + '" data-pp-code="' + escapeHtml(opt.option_code || '') + '">';
+                                    html += '<select class="pp-tf-field border border-gray-300 rounded px-2 py-1 text-xs" data-key="' + escapeHtml(f.key || '') + '" data-row="' + rowId + '" data-pp-code="' + escapeHtml(opt.option_code || '') + '">';
                                     (f.options || []).forEach(function(v) {
-                                        html += '<option value="' + v + '"' + (v === f.default ? ' selected' : '') + '>' + v + '</option>';
+                                        html += '<option value="' + escapeHtml(v) + '"' + (v === f.default ? ' selected' : '') + '>' + escapeHtml(v) + '</option>';
                                     });
                                     html += '</select>';
                                 } else if (f.type === 'number') {
-                                    html += '<label class="text-xs text-gray-500">' + f.label + '</label>';
-                                    html += '<input type="number" class="pp-tf-field w-14 border rounded px-1 py-0.5 text-xs text-center" data-key="' + f.key + '" data-row="' + rowId + '" data-pp-code="' + escapeHtml(opt.option_code || '') + '"'
+                                    html += '<label class="text-xs text-gray-500">' + escapeHtml(f.label || '') + '</label>';
+                                    html += '<input type="number" class="pp-tf-field w-14 border rounded px-1 py-0.5 text-xs text-center" data-key="' + escapeHtml(f.key || '') + '" data-row="' + rowId + '" data-pp-code="' + escapeHtml(opt.option_code || '') + '"'
                                         + ' value="' + (f.default || '') + '"'
                                         + (f.min != null ? ' min="' + f.min + '"' : '')
                                         + (f.max != null ? ' max="' + f.max + '"' : '')
