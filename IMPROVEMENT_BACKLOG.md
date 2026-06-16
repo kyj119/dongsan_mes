@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 2 -->
-<!-- last_run_at: 2026-06-16T02:00:00+09:00 -->
+<!-- last_run_area: 3 -->
+<!-- last_run_at: 2026-06-16T06:00:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,14 +8,24 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | 14 (**GitHub open auto-improve 실측 14건** — #394 재고실사 승인 INSERT 컬럼부재 HIGH·#395 split billing freeze tax_invoice_id 무시 MED·#396 주문편집 work_records 고아 LOW [Area 4] · #397 year-end rrn 존재X컬럼 HIGH·#398 ledger payment/:id 단건GET entityFilter 누락 MED · #399 quotation.js 견적서 stored XSS MED [Area 5] · #400 배포후 smoke 로그인 cold-start false-fail LOW [Area 1] · #401 근태 일괄저장 N+1 entity_id 재조회 small [Area 2] · #402 드릴다운 쿼리파라미터 목적지(orders/ledger/cards) init 미read MED [Area 3] · #406 마이그레이션↔코드 스키마 드리프트(cardExpenses 6컬럼+quality_issues.severity, 0241 ALTER 주석처리) MED + activity_logs resource_type 오타 LOW [Area 4] · #407 발주 복사(po-special /copy) 품목 INSERT N+1 — core.ts #350 batch 미승계 small [Area 2] · #408 품목 일괄이관(migration.ts items import) 존재X 컬럼 unit_price → 매 행 throw, import 100% 실패 MED [Area 4] · #409 E2E CI 6커밋 연속 red(10h+) — 장비 리팩터 5d2b16d 이후 /cards 로드 결정적 2x 500, 마이그레이션 0312 prod 미적용 의심 HIGH [Area 1] · **#410 간이세액표 CSV import(payroll/settings.ts:211) 순차 INSERT N+1 — 같은 파일 /generate는 #350 batch인데 /import만 미승계 small [본 Area 2 사이클 신규]**) |
+| 🆕 new | 3 (**GitHub open auto-improve 실측 3건** — #409 E2E CI 연속 red·장비 0312 prod 미적용 의심 HIGH [Area 1] · #410 간이세액표 CSV import 순차 INSERT N+1 small [Area 2] · **#411 대시보드 "납기 도래 주문" 위젯 클릭 전부 404 — /shipments/daily 라우트 미존재, 드릴다운 #402 형제 small [본 Area 3 사이클 신규]**) |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 (#372 CSV도 owner close-completed → done 이관) |
-| ✔️ done | 96 (82 + **직전 open 14건 owner 일괄 close-completed**[#372 reviewed + #374·#379·#381~#391 13 new]. not_planned 라벨검색 = #348 과거 1건뿐 → 14건 전부 completed 확정. 06-12 owner 대량 픽스 커밋(644fbab #389/#390·645ae53 #372/#379·3f8fd0d #382/#383·83ded42 #387·c17e944 #375/#383). **GitHub open auto-improve 실측 0건** 정합) |
+| ✔️ done | 108 (96 + **owner 대량 픽스 12건 close-completed**[3 커밋: a988f8d #394/#397/#398/#403/#405/#408 · 336df95 #395/#399/#401/#404/#406/#407 · 471502c #396/#400/#402]. 직전 추적 14건 중 12건 픽스완료·#409/#410 잔존. **GitHub open auto-improve 실측 #409·#410·#411 3건** 정합) |
 | ❌ rejected | 3 |
 
 > 📦 **과거 사이클 로그**(아래 6블록 이전분)는 `IMPROVEMENT_BACKLOG_ARCHIVE.md`로 이관됨 (2026-06-10 정리). 신규 로그는 계속 이 파일 상단에 추가.
 
+> **Area 3 UX/기능 감사 (2026-06-16T06:00):**
+> - **방법**: git fetch-before-compare(origin force-update `4993fa7→471502c`, fetch 후 HEAD=origin/main `471502c` 0/0 동기). baseline `npm ci`+build PASS(391 modules, _worker.js 5,135.83kB). HEAD=`471502c`(owner 드릴다운/고아/smoke 3건 픽스 #396/#400/#402). Area 3 **13회차** — **owner가 직전 사이클 이후 12 이슈 일괄 픽스**(3 fix 커밋)라 신선 각도 = ① 방금 픽스된 드릴다운(#402) **목적지 링크 유효성 전수 검증**(파라미터 소비뿐 아니라 라우트 존재까지) ② HTML↔JS silent-fail 전수 자동 diff ③ 모든 `location.href` page 타깃 ↔ 등록 라우트 cross-check.
+> - **🔴 신규 이슈 #411 (bug, small, #402 형제 — "드릴다운 형제 부분 픽스") — 대시보드 "납기 도래 주문" 위젯 클릭 전부 404, /shipments/daily 라우트 미존재**: 전 `location.href` page 타깃(21개) ↔ index.tsx 등록 라우트 cross-check가 **net-new 1건 격리** — `dashboard.js:607` `loadTodayDue()`가 각 행을 `onclick="location.href='/shipments/daily?date='+..."`로 렌더하나 index.tsx엔 `/shipments`(:437)·`/shipments-dashboard`(:438)만 등록·**`/shipments/daily` 부재**(Hono exact 매칭). **비-API 404 fallback 없음**(catch-all은 `/api/*`만, :376) → Hono 기본 notFound = **앱 셸 없는 맨 404 텍스트**. `git log -S "shipments/daily" -- index.tsx`=0 → 도입(`cbcec13`) 이래 영구 깨짐. **메인 대시보드의 강조 위젯**(지연/D-Day 배지)이 인터랙티브해 보이는데 전 행 죽은 클릭 = 비즈니스 영향 UX 버그. **부차(#402 클래스 잔여)**: `portal.js:44` `/portal/orders?highlight=`를 portalOrders.js가 미소비(라우트는 존재·강조만 누락 LOW) + `/shipments`로 고쳐도 shipments.js가 `?date` 미소비(필터 동작 추가 필요). **자동수정 안 함**: 링크 목적지/라우트/필터 동작 변경=Area 3 UI/라우트 변경 금지 범주(owner 목적지 판단 선행).
+> - **🟢 location.href 타깃 ↔ 등록 라우트 cross-check = net-new 1건만**: 전 스크립트 `location.href` page 타깃 21개 전수 추출 후 index.tsx page 라우트와 대조. outlier 후보 3건 검증 — `/clients/`+id→`/clients/:id` 정합·`/hr/`+id→`/hr/:id{[0-9]+}`(:402) 정합(regex 제약 syntax라 1차 추출서 누락됐으나 실재)·`/portal/orders`+highlight→`/portal/orders`(:488) 라우트 정합. 유일 진짜 미존재 = `/shipments/daily`(#411).
+> - **🟢 HTML↔JS silent-fail 전수 자동 diff = net-new 0**: `getElementById` 리터럴 2210 unique ↔ pages/scripts `id=` 코퍼스(2650) `comm -23` 잔차 ~50건 **전부 기존 FP 카테고리** — shell.js 셸 self-contained(cmd*/msg*/notif*/sidebar*/entity*/topBarUserName ~40개)·스크립트 자체 동적렌더(extractPanel/tabSheet/tabExtract/token-login-note/nav-badge-approvals/globalSearchInput/searchResults). cross-file 미존재+미가드 0건, typo 0건.
+> - **🟢 #402 픽스 품질 양호**: ledger.js `applyLedgerDrilldown`(목록 로드 후 1회·client_id→상세모달/search→검색)·orders.js(priority/status/search URL 우선)·cards/core.js(?search) 전부 가드(`if(el)`)·idempotent(`_ledgerDrilldownDone`) — 픽스 자체 회귀 0. 대시보드 소스 링크(`/orders?priority=URGENT`·`/ledger?search=`·`/ledger?client_id=`)와 목적지 소비 정합. **놓친 형제는 "파라미터 무시"가 아니라 "라우트 미존재"라 #402 목적지-소비 스캔이 구조적으로 못 잡음** → #411로 보강.
+> - **🟢 backlog↔GitHub sync 대량 갱신 (owner 12건 close)**: 직전 추적 14건 중 **owner가 3 fix 커밋으로 12건 픽스완료**(a988f8d #394/#397/#398/#403/#405/#408 · 336df95 #395/#399/#401/#404/#406/#407 · 471502c #396/#400/#402, 전부 "fixes #" auto-close). open 잔존 #409·#410 + 신규 #411 = **실측 3건**. done 96→108·rejected=3·approved=0·reviewed=0.
+> - **이상 없음**: git 동기 0/0. build PASS. silent-fail/href-라우트 cross-check 2각도 clean(net-new 1=#411). #402 픽스 회귀 0.
+> - 자동 수정 0건(링크 목적지/라우트 변경=Area 3 금지범주), 신규 이슈 1건(#411 대시보드 드릴다운 404 small), clean 2각도(silent-fail/href-라우트), **done-sync 대량 갱신 12건(owner 일괄 픽스)**, **신선 각도 — 드릴다운 목적지 "라우트 존재성"까지 검증(#402 소비-스캔이 못 잡는 형제 클래스)**
+>
 > **Area 2 코드 품질 (2026-06-16T02:00):**
 > - **방법**: git fetch-before-compare(origin force-update `4993fa7→24de1a7`, fetch 후 HEAD=origin/main `24de1a7` 0/0 동기). baseline `npm ci`(82 pkg)+build PASS(391 modules, _worker.js 5,133.18kB). HEAD=직전 Area 1(#409) backlog 문서커밋. Area 2 **14회차** — 병렬 Explore 2개(① N+1 write-path + authMiddleware/배럴 ② 존재X컬럼 standing scan + dead code/orphan) + 발견 전수 owner 직접 Read + 도달성 grep 검증.
 > - **🟡 신규 이슈 #410 (improvement, small, #407/#401/#389 클래스 — "파일 내 형제 핸들러 부분 픽스") — 간이세액표 CSV import 순차 INSERT N+1, 같은 파일 /generate는 #350 batch인데 /import만 미승계**: N+1 스캔이 **net-new 1건 격리** — `payroll/settings.ts:205-217` `POST /tax-table/import`가 `rows` 루프마다 `await INSERT OR REPLACE .run()` 순차. **결정적 대조**: **바로 아래 같은 파일 `/tax-table/generate`(:243-261)는 이미 #350으로 `taxStmts[]` 누적 후 `DB.batch(slice(i,i+80))`**(주석 `// #350 ~900회 순차 INSERT → batch (last_row_id 의존 없음)` 실증) → batch 패턴이 **같은 파일·같은 테이블(income_tax_table)에 확립됐는데 import만 미승계** = #407(po-special)·#377(파일분할 후 부분픽스) 동형. **도달성 LIVE**: `payrollRates.js:387`(추가)·`:395`(replace:true 전체교체) axios.post. **영향 격상 요소**: 국세청 간이세액표 CSV는 수백~1,000+행 → 행당 순차 D1 왕복이 **Workers subrequest 상한(1,000) 근접/초과**로 대형 임포트 hard-fail 가능(/generate가 굳이 batch화된 이유=`~900회` 주석) + `replace:true`는 DELETE 선실행 후 순차 INSERT라 중간실패 시 부분상태(batch청크화 시 원자성 강화). 두 핸들러 모두 행 단위 독립 INSERT(last_row_id 의존 0) → 변환 안전성 /generate로 입증. **자동수정 안 함**: N+1 write-path 구조변경(순차→batch, 부분실패/원자성 시맨틱 변화)+egress 대량임포트 회귀 검증불가 = SKILL 자동수정 허용목록 밖(#407/#401/#389 동일).
