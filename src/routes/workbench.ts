@@ -232,18 +232,19 @@ workbenchRouter.get('/files', async (c) => {
     const ef = entityFilter(c, 'ai_analysis_requests')
     const placeholders = ids.map(() => '?').join(',')
     const { results } = await c.env.DB.prepare(`
-      SELECT id, file_path, status, groups_json, error_message, created_at, updated_at
+      SELECT id, file_path, status, groups_json, canvas_json, error_message, created_at, updated_at
       FROM ai_analysis_requests
       WHERE id IN (${placeholders})${ef.clause}
       ORDER BY id ASC
     `).bind(...ids, ...ef.params).all<{
       id: number; file_path: string | null; status: string
-      groups_json: string | null; error_message: string | null
+      groups_json: string | null; canvas_json: string | null; error_message: string | null
       created_at: string; updated_at: string
     }>()
 
     const data = results.map((r) => {
-      let groups: Array<{ index: number; name: string; thumbnail_base64: string | null; width_mm: number | null; height_mm: number | null }> = []
+      type G = { index: number; name: string; thumbnail_base64: string | null; width_mm: number | null; height_mm: number | null; canvas_x_pt: number | null; canvas_y_pt: number | null; canvas_w_pt: number | null; canvas_h_pt: number | null }
+      let groups: G[] = []
       try {
         const parsed = r.groups_json ? JSON.parse(r.groups_json) : []
         if (Array.isArray(parsed)) {
@@ -253,14 +254,31 @@ workbenchRouter.get('/files', async (c) => {
             thumbnail_base64: (g && g.thumbnail_base64) ? String(g.thumbnail_base64) : null,
             width_mm: (g && g.width_mm != null) ? Number(g.width_mm) : null,
             height_mm: (g && g.height_mm != null) ? Number(g.height_mm) : null,
+            canvas_x_pt: (g && g.canvas_x_pt != null) ? Number(g.canvas_x_pt) : null,
+            canvas_y_pt: (g && g.canvas_y_pt != null) ? Number(g.canvas_y_pt) : null,
+            canvas_w_pt: (g && g.canvas_w_pt != null) ? Number(g.canvas_w_pt) : null,
+            canvas_h_pt: (g && g.canvas_h_pt != null) ? Number(g.canvas_h_pt) : null,
           }))
         }
       } catch (_e) { groups = [] }
+      let canvas: { w_pt: number | null; h_pt: number | null; w_mm: number | null; h_mm: number | null; render_base64: string | null } | null = null
+      try {
+        if (r.canvas_json) {
+          const cj = JSON.parse(r.canvas_json)
+          canvas = {
+            w_pt: cj.w_pt != null ? Number(cj.w_pt) : null,
+            h_pt: cj.h_pt != null ? Number(cj.h_pt) : null,
+            w_mm: cj.w_mm != null ? Number(cj.w_mm) : null,
+            h_mm: cj.h_mm != null ? Number(cj.h_mm) : null,
+            render_base64: cj.render_base64 ? String(cj.render_base64) : null,
+          }
+        }
+      } catch (_e) { canvas = null }
       const fp = r.file_path || ''
       const filename = fp.replace(/^r2:\/\//, '').split('/').pop() || fp || `#${r.id}`
       return {
         id: r.id, filename, status: r.status,
-        error_message: r.error_message, group_count: groups.length, groups,
+        error_message: r.error_message, group_count: groups.length, groups, canvas,
       }
     })
 

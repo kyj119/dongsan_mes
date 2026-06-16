@@ -37,6 +37,13 @@ function buildJSON(arr) {
         result += '"width_mm":'   + o.width_mm   + ',';
         result += '"height_mm":'  + o.height_mm  + ',';
         result += '"thumbnail_file":"' + o.thumbnail_file + '"';
+        // 캔버스(전체 렌더) 내 절대좌표 — Konva 오버레이용 (있을 때만)
+        if (o.canvas_x_pt != null) {
+            result += ',"canvas_x_pt":' + o.canvas_x_pt
+                    + ',"canvas_y_pt":' + o.canvas_y_pt
+                    + ',"canvas_w_pt":' + o.canvas_w_pt
+                    + ',"canvas_h_pt":' + o.canvas_h_pt;
+        }
         result += '}';
     }
     return result + ']';
@@ -454,19 +461,34 @@ function main(sourceFile, outputFolder, requestId, thumbSize, epsWidthMm, epsHei
         pngOpts.verticalScale = scale * 100;
         doc.exportFile(pngFile, ExportType.PNG24, pngOpts);
 
+        // 캔버스(전체 렌더) 내 절대 위치 — Konva 오버레이용. 이미지 좌표계(좌상단 원점, y↓).
+        //   canvasBoundsLeft/Top = 전체 union 좌상단(pt, y-up). 그룹 박스를 전체 렌더 위에 정확히 얹기 위함.
+        var _cxPt = Math.round((designs[g][0] - canvasBoundsLeft) * 100) / 100;
+        var _cyPt = Math.round((canvasBoundsTop - designs[g][1]) * 100) / 100;
         groupData.push({
             index: g, name: groupName,
             width_mm: Math.round(wPt * mmPerPt),
             height_mm: Math.round(hPt * mmPerPt),
-            thumbnail_file: requestId + "-" + g + ".png"
+            thumbnail_file: requestId + "-" + g + ".png",
+            canvas_x_pt: _cxPt,
+            canvas_y_pt: _cyPt,
+            canvas_w_pt: Math.round(wPt * 100) / 100,
+            canvas_h_pt: Math.round(hPt * 100) / 100
         });
 
         $.writeln("ExtractGroups: " + (g+1) + "/" + designs.length + " " + groupName
             + " (" + Math.round(wPt*mmPerPt) + "x" + Math.round(hPt*mmPerPt) + "mm)");
     }
 
-    // 아트보드 유지한 채 저장 (ProcessOrderItem에서 참조)
-    doc.close(SaveOptions.SAVECHANGES);
+    // 아트보드 유지한 채 .ai로 무인 저장 (ProcessOrderItem가 재사용) — A안: 저장 다이얼로그 차단.
+    // EPS-원본 문서를 close(SAVECHANGES)하면 "다른 이름으로 저장" 모달이 떠 무인 COM이 hang함
+    // (userInteractionLevel=DONTDISPLAYALERTS는 경고만 막고 파일 대화상자는 못 막음 — #24 81MB에서 발생).
+    // 네이티브 .ai + 명시 IllustratorSaveOptions는 대화상자 없이 무인 저장. C#이 이 경로를 ProcessOrderItem source로 사용.
+    var _workAi = new File(outputFolder + "\\" + requestId + "-work.ai");
+    var _aiOpts = new IllustratorSaveOptions();
+    _aiOpts.pdfCompatible = true;
+    doc.saveAs(_workAi, _aiOpts);
+    doc.close(SaveOptions.DONOTSAVECHANGES);
 
     // groups.json (C# 호환)
     var jsonFile = new File(outputFolder + "\\" + requestId + "-groups.json");

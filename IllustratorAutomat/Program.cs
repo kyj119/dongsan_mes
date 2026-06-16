@@ -1105,6 +1105,12 @@ namespace IllustratorAutomation
                     if (group.TryGetProperty("has_group", out var hg)) groupDict["has_group"] = hg.GetBoolean();
                     if (group.TryGetProperty("item_types", out var it)) groupDict["item_types"] = it.GetString() ?? "";
 
+                    // 캔버스(전체 렌더) 내 절대좌표 — Konva 오버레이용 (ExtractGroups가 추가, 없으면 생략)
+                    if (group.TryGetProperty("canvas_x_pt", out var cx)) groupDict["canvas_x_pt"] = cx.GetDouble();
+                    if (group.TryGetProperty("canvas_y_pt", out var cy)) groupDict["canvas_y_pt"] = cy.GetDouble();
+                    if (group.TryGetProperty("canvas_w_pt", out var cwp)) groupDict["canvas_w_pt"] = cwp.GetDouble();
+                    if (group.TryGetProperty("canvas_h_pt", out var chp)) groupDict["canvas_h_pt"] = chp.GetDouble();
+
                     // PNG 파일을 base64로 읽기
                     string thumbFile = group.GetProperty("thumbnail_file").GetString() ?? "";
                     string thumbPath = Path.Combine(reqTempFolder, thumbFile);
@@ -1203,10 +1209,47 @@ namespace IllustratorAutomation
                     Console.WriteLine($"   ⚠️ [EdgeColor] 추출 실패 (도련 기본값 사용): {ecEx.Message}");
                 }
 
+                // A안: ExtractGroups가 저장한 .ai 작업파일(아트보드 포함)을 ProcessOrderItem source로 사용
+                //   (EPS-원본 close(SAVECHANGES)의 "다른 이름으로 저장" 모달 hang 회피)
+                string workAiPath = Path.Combine(reqTempFolder, $"{reqIdStr}-work.ai");
+                if (File.Exists(workAiPath))
+                {
+                    actualFilePath = workAiPath;
+                    Console.WriteLine($"   💾 작업파일(.ai) 사용: {workAiPath}");
+                }
+
+                // 캔버스 검수 편집기(Konva)용: 전체 렌더 PNG + 규격을 canvas_json으로 전송
+                string? canvasJson = null;
+                try
+                {
+                    string cjPath = Path.Combine(reqTempFolder, $"{reqIdStr}-canvas.json");
+                    if (File.Exists(cjPath))
+                    {
+                        var cj = JsonSerializer.Deserialize<JsonElement>(File.ReadAllText(cjPath, System.Text.Encoding.UTF8));
+                        string cFile = cj.GetProperty("canvas_file").GetString() ?? "";
+                        string cPng = Path.Combine(reqTempFolder, cFile);
+                        double cwPt = cj.GetProperty("right_pt").GetDouble() - cj.GetProperty("left_pt").GetDouble();
+                        double chPt = cj.GetProperty("top_pt").GetDouble() - cj.GetProperty("bottom_pt").GetDouble();
+                        const double mmPerPtC = 25.4 / 72.0;
+                        var cjPayload = new Dictionary<string, object?>
+                        {
+                            ["w_pt"] = Math.Round(cwPt, 2),
+                            ["h_pt"] = Math.Round(chPt, 2),
+                            ["w_mm"] = Math.Round(cwPt * mmPerPtC),
+                            ["h_mm"] = Math.Round(chPt * mmPerPtC)
+                        };
+                        if (File.Exists(cPng))
+                            cjPayload["render_base64"] = Convert.ToBase64String(File.ReadAllBytes(cPng));
+                        canvasJson = JsonSerializer.Serialize(cjPayload);
+                        Console.WriteLine($"   🖼️  canvas_json ({cwPt:F0}x{chPt:F0}pt, render={(File.Exists(cPng) ? (new FileInfo(cPng).Length / 1024) + "KB" : "없음")})");
+                    }
+                }
+                catch (Exception cjEx) { Console.WriteLine($"   ⚠️ canvas_json 생성 실패 (무시): {cjEx.Message}"); }
+
                 // 결과 업데이트 + file_path를 actualFilePath(temp 경로)로 업데이트
                 // 임시 파일은 주문 처리 시 ProcessOrderItem.jsx가 사용하므로 삭제하지 않음
                 Console.WriteLine($"   📁 임시 파일 보관: {actualFilePath}");
-                await PatchAnalysisStatus(requestId, "done", groupsJson, null, actualFilePath);
+                await PatchAnalysisStatus(requestId, "done", groupsJson, null, actualFilePath, canvasJson);
             }
             catch (Exception ex)
             {
@@ -1215,7 +1258,7 @@ namespace IllustratorAutomation
             }
         }
 
-        private static async Task PatchAnalysisStatus(int requestId, string status, string? groupsJson, string? errorMessage, string? filePath)
+        private static async Task PatchAnalysisStatus(int requestId, string status, string? groupsJson, string? errorMessage, string? filePath, string? canvasJson = null)
         {
             try
             {
@@ -1226,6 +1269,7 @@ namespace IllustratorAutomation
                     ["error_message"] = errorMessage,
                     ["file_path"] = filePath
                 };
+                if (canvasJson != null) payload["canvas_json"] = canvasJson;
                 await PatchWithAuthAsync(
                     $"{ERP_API_URL}/api/ai-analysis/{requestId}",
                     JsonSerializer.Serialize(payload));

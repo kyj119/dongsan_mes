@@ -229,7 +229,30 @@ function iaeRenderPanel() {
   var gis = f.groups.map(function (g, i) { return (g.index != null) ? g.index : i; });
   if (iaeActiveGroup == null || gis.indexOf(iaeActiveGroup) === -1) iaeActiveGroup = gis[0];
 
-  // 좌: 그룹 리스트
+  // 캔버스 검수: 전체 렌더 + 그룹 박스 (canvas 데이터 있을 때)
+  var hasCanvas = !!(f.canvas && f.canvas.render_base64);
+  if (hasCanvas) {
+    panel.innerHTML = head
+      + '<div class="flex gap-5 items-start">'
+      + '<div class="flex-1 min-w-0">'
+      + '<div class="flex items-center justify-between mb-2">'
+      + '<span class="text-xs font-semibold text-gray-500"><i class="fas fa-vector-square mr-1 text-blue-500"></i>검수 캔버스 — 그룹 박스를 드래그·리사이즈해 검출 영역 보정</span>'
+      + '<button id="iaeResetBox" class="text-xs text-gray-400 hover:text-red-500"><i class="fas fa-rotate-left mr-1"></i>선택 보정 초기화</button>'
+      + '</div>'
+      + '<div id="iaeCanvasHost" class="border border-gray-200 rounded-lg bg-gray-100 overflow-hidden flex items-center justify-center text-gray-300" style="min-height:300px;"><i class="fas fa-spinner fa-spin text-2xl"></i></div>'
+      + '<div class="text-[11px] text-gray-400 mt-1">전체 ' + (f.canvas.w_mm || 0) + '×' + (f.canvas.h_mm || 0) + 'mm · 그룹 ' + f.groups.length + '개 · 박스를 옮기면 즉시 보정 저장(로컬)</div>'
+      + '</div>'
+      + '<div class="w-96 flex-shrink-0" id="iaeInspector"></div>'
+      + '</div>';
+    iaeWireRefresh();
+    var rbx = document.getElementById('iaeResetBox');
+    if (rbx) rbx.addEventListener('click', function () { iaeResetCorrection(f); });
+    iaeInitCanvas(f);
+    iaeRenderInspector(f);
+    return;
+  }
+
+  // 좌: 그룹 리스트 (canvas 없는 구버전/렌더실패 폴백)
   var listHtml = '<div class="text-xs font-semibold text-gray-500 mb-2">그룹 (' + f.groups.length + ')</div><div class="space-y-2">';
   f.groups.forEach(function (g, i) {
     var gi = gis[i];
@@ -262,6 +285,164 @@ function iaeWireRefresh() {
   if (rb) rb.addEventListener('click', iaeRefresh);
 }
 
+// ── Phase 2/3: Konva 검수 캔버스 (전체 렌더 + 그룹 박스 드래그/리사이즈 보정) ──
+//   f.canvas = {render_base64, w_pt, h_pt, w_mm, h_mm} (ExtractGroups 전체 렌더)
+//   f.groups[i].canvas_x/y/w/h_pt = 캔버스 내 그룹 절대좌표. 보정은 localStorage(좌표저장) + 클라 크롭(v1).
+//   서버 영속 + IL 재추출은 출력 단계(다음). "편집=그림수정❌, 검출/바운드 보정⭕".
+var IAE_CORR_KEY = 'iae_corrections_v1';
+var iaeCorrections = {};        // 'fid:gi' → {x_pt,y_pt,w_pt,h_pt} (캔버스 좌표 보정값)
+var iaeStage = null, iaeLayer = null, iaeTr = null;
+var iaeKonvaLoading = false, iaeKonvaCbs = [];
+var iaeRenderCache = {};        // fid → {img, loaded}
+var IAE_PT_MM = 25.4 / 72;
+
+function iaeLoadCorr() {
+  try { var raw = localStorage.getItem(IAE_CORR_KEY); iaeCorrections = raw ? (JSON.parse(raw) || {}) : {}; } catch (_e) { iaeCorrections = {}; }
+}
+function iaeSaveCorr() { try { localStorage.setItem(IAE_CORR_KEY, JSON.stringify(iaeCorrections)); } catch (_e) {} }
+function iaeCorrKey(fid, gi) { return fid + ':' + gi; }
+
+function iaeLoadKonva(cb) {
+  if (window.Konva) { cb(); return; }
+  iaeKonvaCbs.push(cb);
+  if (iaeKonvaLoading) return;
+  iaeKonvaLoading = true;
+  var sc = document.createElement('script');
+  sc.src = 'https://cdn.jsdelivr.net/npm/konva@9.3.6/konva.min.js';
+  sc.onload = function () { iaeKonvaLoading = false; var cbs = iaeKonvaCbs.slice(); iaeKonvaCbs = []; cbs.forEach(function (fn) { try { fn(); } catch (e) { console.error(e); } }); };
+  sc.onerror = function () { iaeKonvaLoading = false; iaeKonvaCbs = []; console.warn('[ia-editor] Konva 로드 실패'); iaeToast('캔버스 라이브러리 로드 실패', 'error'); };
+  document.head.appendChild(sc);
+}
+
+// 그룹 유효 박스(보정 우선) — 캔버스 좌표(pt, 좌상단 원점)
+function iaeGroupBox(fid, group, gi) {
+  var c = iaeCorrections[iaeCorrKey(fid, gi)];
+  if (c) return { x: c.x_pt, y: c.y_pt, w: c.w_pt, h: c.h_pt };
+  if (group && group.canvas_x_pt != null) return { x: group.canvas_x_pt, y: group.canvas_y_pt, w: group.canvas_w_pt, h: group.canvas_h_pt };
+  return null;
+}
+// 그룹 유효 크기(mm) — 보정 반영
+function iaeEffMm(fid, group, gi) {
+  var box = iaeGroupBox(fid, group, gi);
+  if (box) return { w_mm: Math.round(box.w * IAE_PT_MM), h_mm: Math.round(box.h * IAE_PT_MM) };
+  return { w_mm: (group && group.width_mm != null) ? group.width_mm : 0, h_mm: (group && group.height_mm != null) ? group.height_mm : 0 };
+}
+function iaeIsCorrected(fid, gi) { return !!iaeCorrections[iaeCorrKey(fid, gi)]; }
+
+function iaeInitCanvas(f) {
+  var host = document.getElementById('iaeCanvasHost');
+  if (!host || !f.canvas || !f.canvas.render_base64) return;
+  var cw = f.canvas.w_pt || 1, ch = f.canvas.h_pt || 1;
+  iaeLoadKonva(function () {
+    host = document.getElementById('iaeCanvasHost');
+    if (!host) return; // 그 사이 패널이 교체됨
+    var hostW = host.clientWidth || 600;
+    var stageW = hostW, stageH = Math.round(stageW * ch / cw);
+    var maxH = 600;
+    if (stageH > maxH) { stageH = maxH; stageW = Math.round(stageH * cw / ch); }
+    if (stageW < 1) stageW = 1;
+    if (stageH < 1) stageH = 1;
+    host.innerHTML = '';
+    iaeStage = new Konva.Stage({ container: host, width: stageW, height: stageH });
+    iaeLayer = new Konva.Layer();
+    iaeStage.add(iaeLayer);
+    iaeGetRenderImg(f, function (img) {
+      if (!img || !iaeStage) return;
+      iaeLayer.add(new Konva.Image({ image: img, x: 0, y: 0, width: stageW, height: stageH, listening: false }));
+      iaeBuildBoxes(f, stageW, stageH, cw, ch);
+      iaeLayer.draw();
+    });
+  });
+}
+
+function iaeBuildBoxes(f, stageW, stageH, cw, ch) {
+  iaeTr = new Konva.Transformer({ rotateEnabled: false, keepRatio: false, borderStroke: '#2563eb', anchorStroke: '#2563eb', anchorFill: '#fff', anchorSize: 9, ignoreStroke: true });
+  iaeLayer.add(iaeTr);
+  var gis = f.groups.map(function (g, i) { return (g.index != null) ? g.index : i; });
+  var selRect = null;
+  f.groups.forEach(function (g, i) {
+    var gi = gis[i];
+    var box = iaeGroupBox(f.id, g, gi);
+    if (!box) return;
+    var rect = new Konva.Rect({
+      x: box.x / cw * stageW, y: box.y / ch * stageH,
+      width: box.w / cw * stageW, height: box.h / ch * stageH,
+      stroke: (gi === iaeActiveGroup) ? '#2563eb' : '#3b82f6', strokeWidth: 2,
+      fill: 'rgba(37,99,235,0.08)', draggable: true, name: 'iae-box', gi: gi
+    });
+    rect.on('mousedown touchstart', function () { iaeSelectBox(f, gi, rect); });
+    rect.on('dragend transformend', function () { iaeCommitBox(f, gi, rect, stageW, stageH, cw, ch); });
+    var label = new Konva.Text({ x: rect.x() + 4, y: rect.y() + 4, text: '#' + gi, fontSize: 13, fontStyle: 'bold', fill: '#1e3a8a', listening: false, name: 'iae-lbl', gi: gi });
+    iaeLayer.add(rect);
+    iaeLayer.add(label);
+    if (gi === iaeActiveGroup) selRect = rect;
+  });
+  if (selRect && iaeTr) iaeTr.nodes([selRect]);
+}
+
+function iaeSelectBox(f, gi, rect) {
+  iaeActiveGroup = gi;
+  if (iaeTr) iaeTr.nodes([rect]);
+  if (iaeLayer) {
+    iaeLayer.find('.iae-box').forEach(function (n) { n.stroke(n.getAttr('gi') === gi ? '#2563eb' : '#3b82f6'); });
+    iaeLayer.draw();
+  }
+  iaeRenderInspector(f);
+}
+
+function iaeCommitBox(f, gi, rect, stageW, stageH, cw, ch) {
+  var nw = Math.abs(rect.width() * rect.scaleX()), nh = Math.abs(rect.height() * rect.scaleY());
+  rect.width(nw); rect.height(nh); rect.scaleX(1); rect.scaleY(1);
+  var x = Math.max(0, Math.min(rect.x(), stageW));
+  var y = Math.max(0, Math.min(rect.y(), stageH));
+  iaeCorrections[iaeCorrKey(f.id, gi)] = {
+    x_pt: x / stageW * cw, y_pt: y / stageH * ch, w_pt: nw / stageW * cw, h_pt: nh / stageH * ch
+  };
+  iaeSaveCorr();
+  iaeLayer.find('.iae-lbl').forEach(function (n) { if (n.getAttr('gi') === gi) { n.x(rect.x() + 4); n.y(rect.y() + 4); } });
+  iaeLayer.draw();
+  iaeRenderInspector(f);
+}
+
+function iaeResetCorrection(f) {
+  if (iaeActiveGroup == null) return;
+  delete iaeCorrections[iaeCorrKey(f.id, iaeActiveGroup)];
+  iaeSaveCorr();
+  iaeRenderPanel();
+}
+
+function iaeGetRenderImg(f, cb) {
+  var c = iaeRenderCache[f.id];
+  if (c && c.loaded) { cb(c.img); return; }
+  if (!f.canvas || !f.canvas.render_base64) { cb(null); return; }
+  var img = new Image();
+  iaeRenderCache[f.id] = { img: img, loaded: false };
+  img.onload = function () { iaeRenderCache[f.id].loaded = true; cb(img); };
+  img.onerror = function () { cb(null); };
+  img.src = 'data:image/png;base64,' + f.canvas.render_base64;
+}
+
+// 선택 그룹의 (보정) 크롭을 <img> 요소에 그려넣기 — 없으면 무변경(원본 썸네일 유지)
+function iaeCropInto(f, gi, imgEl) {
+  if (!imgEl || !f.canvas) return;
+  var group = f.groups.filter(function (g, i) { return ((g.index != null) ? g.index : i) === gi; })[0];
+  if (!group) return;
+  var box = iaeGroupBox(f.id, group, gi);
+  if (!box) return;
+  iaeGetRenderImg(f, function (img) {
+    if (!img) return;
+    var iw = img.naturalWidth, ih = img.naturalHeight, cw = f.canvas.w_pt || 1, ch = f.canvas.h_pt || 1;
+    var sx = box.x / cw * iw, sy = box.y / ch * ih, sw = box.w / cw * iw, sh = box.h / ch * ih;
+    if (sw <= 1 || sh <= 1) return;
+    try {
+      var cv = document.createElement('canvas');
+      cv.width = Math.round(sw); cv.height = Math.round(sh);
+      cv.getContext('2d').drawImage(img, sx, sy, sw, sh, 0, 0, cv.width, cv.height);
+      imgEl.src = cv.toDataURL('image/png');
+    } catch (_e) { /* CORS-free data URL이므로 보통 안전 */ }
+  });
+}
+
 // ── 인스펙터 (처리 설정 + 근사 미리보기 + 프리플라이트) ───────────
 function iaeMethodOptions(selected) {
   var html = '<option value="">없음</option>';
@@ -277,6 +458,9 @@ function iaeRenderInspector(f) {
   var group = f.groups.filter(function (g, i) { return ((g.index != null) ? g.index : i) === iaeActiveGroup; })[0];
   if (!group) { host.innerHTML = '<div class="text-sm text-gray-400 p-6">그룹을 선택하세요</div>'; return; }
   var s = iaeGetSettings(f.id, group, iaeActiveGroup);
+  var eff = iaeEffMm(f.id, group, iaeActiveGroup);
+  var effW = Math.round((eff.w_mm || 0) / 10), effH = Math.round((eff.h_mm || 0) / 10);
+  var corrected = iaeIsCorrected(f.id, iaeActiveGroup);
 
   var presetOpts = '<option value="">마감 프리셋…</option>';
   iaeFinPresets.forEach(function (p) { presetOpts += '<option value="' + iaeEscape(p.name) + '">' + iaeEscape(p.name) + '</option>'; });
@@ -289,7 +473,7 @@ function iaeRenderInspector(f) {
     // 설정 폼
     + '<div>'
     + '<div class="flex items-center justify-between mb-3">'
-    + '<span class="text-sm font-semibold text-gray-700">처리 설정 — #' + iaeActiveGroup + ' ' + iaeEscape(group.name || '') + '</span>'
+    + '<span class="text-sm font-semibold text-gray-700">#' + iaeActiveGroup + ' ' + iaeEscape(group.name || '') + ' <span class="text-xs font-normal ' + (corrected ? 'text-blue-600' : 'text-gray-400') + '">검출 ' + effW + '×' + effH + 'cm' + (corrected ? ' · 보정됨' : '') + '</span></span>'
     + '<button id="iaeAddNest" class="text-xs px-2 py-1 rounded-md bg-blue-600 text-white hover:bg-blue-700"><i class="fas fa-plus mr-1"></i>네스팅에 추가</button>'
     + '</div>'
     + '<div class="space-y-3">'
@@ -325,6 +509,11 @@ function iaeRenderInspector(f) {
     + '</div>';
 
   host.innerHTML = html;
+  function updatePv() {
+    iaeUpdatePreview(group, s);
+    var pim = document.getElementById('iaePreviewImg');
+    if (pim && f.canvas) iaeCropInto(f, iaeActiveGroup, pim);
+  }
 
   // 입력 변경 → 설정 갱신 + 미리보기/프리플라이트 즉시 반영 (폼 재렌더 없이 포커스 유지)
   function sync() {
@@ -339,7 +528,7 @@ function iaeRenderInspector(f) {
     s.fin_left = document.getElementById('iaeFinLeft').value;
     s.fin_right = document.getElementById('iaeFinRight').value;
     iaeSaveSettings();
-    iaeUpdatePreview(group, s);
+    updatePv();
   }
   var detAspect = (group.width_mm && group.height_mm) ? (group.width_mm / group.height_mm) : 0;
   var twEl = document.getElementById('iaeTW'), thEl = document.getElementById('iaeTH');
@@ -374,7 +563,7 @@ function iaeRenderInspector(f) {
   var addBtn = document.getElementById('iaeAddNest');
   if (addBtn) addBtn.addEventListener('click', function () { iaeAddToNest(f, group, s); });
 
-  iaeUpdatePreview(group, s);
+  updatePv();
 }
 
 function iaeUpdatePreview(group, s) {
@@ -398,7 +587,7 @@ function iaeBuildPreviewHTML(group, s) {
   var ov = 'position:absolute;background:rgba(245,158,11,0.20);';
   var html = '<div><div class="relative mx-auto bg-white border border-gray-300" style="width:' + boxW + 'px;height:' + boxH + 'px;">';
   html += '<div class="absolute" style="top:' + mt + 'px;bottom:' + mb + 'px;left:' + ml + 'px;right:' + mr + 'px;background:#fff;overflow:hidden;">';
-  html += thumb ? '<img src="' + thumb + '" style="width:100%;height:100%;object-fit:contain;">'
+  html += thumb ? '<img id="iaePreviewImg" src="' + thumb + '" style="width:100%;height:100%;object-fit:contain;">'
     : '<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:#cbd5e1;"><i class="fas fa-image text-2xl"></i></div>';
   html += '</div>';
   if (mt > 0) html += '<div style="' + ov + 'top:0;left:0;right:0;height:' + mt + 'px;"></div>';
@@ -689,6 +878,7 @@ function iaeSaveNestToServer() {
 // ── 초기화 (모든 함수 정의 이후, 파일 맨 아래) ────────────────────
 (function initIaEditor() {
   iaeLoadSettings();
+  iaeLoadCorr();
   var drop = document.getElementById('iaeDrop');
   var input = document.getElementById('iaeFileInput');
   if (drop && input) {

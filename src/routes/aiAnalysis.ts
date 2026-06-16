@@ -312,9 +312,10 @@ aiAnalysisRouter.patch('/:id', async (c) => {
       groups_json?: string
       error_message?: string
       file_path?: string
+      canvas_json?: string
     }>()
 
-    const { status, groups_json, error_message, file_path } = body
+    const { status, groups_json, error_message, file_path, canvas_json } = body
 
     if (status === 'error') {
       const row = await c.env.DB.prepare(
@@ -346,9 +347,10 @@ aiAnalysisRouter.patch('/:id', async (c) => {
            groups_json = ?,
            error_message = ?,
            file_path = COALESCE(?, file_path),
+           canvas_json = COALESCE(?, canvas_json),
            updated_at = datetime('now')
        WHERE id = ?`
-    ).bind(status ?? null, groups_json ?? null, error_message ?? null, file_path ?? null, id).run()
+    ).bind(status ?? null, groups_json ?? null, error_message ?? null, file_path ?? null, canvas_json ?? null, id).run()
 
     return c.json({ success: true })
   } catch (error) {
