@@ -319,16 +319,23 @@ cardsQueriesRouter.get('/', async (c) => {
     const typedResults = results as CardResultRow[]
     const cardIds = typedResults.map((r) => r.id)
     if (cardIds.length > 0) {
-      const ph = cardIds.map(() => '?').join(',')
-      const { results: liveItems } = await c.env.DB.prepare(`
-        SELECT ci.card_id, ci.id as card_item_id, ci.print_completed,
-               oi.item_name, oi.width, oi.height,
-               oi.scale_factor, oi.quantity, oi.unit, oi.content, oi.post_processing, oi.finishing
-        FROM card_items ci
-        JOIN order_items oi ON ci.order_item_id = oi.id
-        WHERE ci.card_id IN (${ph})
-        ORDER BY ci.card_id, oi.sort_order ASC
-      `).bind(...cardIds).all<LiveItemRow>()
+      // #409: card_id IN (...)을 카드당 1바인드로 묶으면 D1 바인드 파라미터 한도(100)를 초과해
+      //   limit=500 칸반(컬럼당 카드 100+)에서 결정적 500. 80개 청크로 분할(카드별 items는 같은 청크에 모임 → 정렬·그룹 보존).
+      const liveItems: LiveItemRow[] = []
+      for (let i = 0; i < cardIds.length; i += 80) {
+        const chunk = cardIds.slice(i, i + 80)
+        const ph = chunk.map(() => '?').join(',')
+        const { results: part } = await c.env.DB.prepare(`
+          SELECT ci.card_id, ci.id as card_item_id, ci.print_completed,
+                 oi.item_name, oi.width, oi.height,
+                 oi.scale_factor, oi.quantity, oi.unit, oi.content, oi.post_processing, oi.finishing
+          FROM card_items ci
+          JOIN order_items oi ON ci.order_item_id = oi.id
+          WHERE ci.card_id IN (${ph})
+          ORDER BY ci.card_id, oi.sort_order ASC
+        `).bind(...chunk).all<LiveItemRow>()
+        if (part) liveItems.push(...part)
+      }
 
       const byCard = new Map<number, LiveItemRow[]>()
       for (const item of liveItems || []) {
@@ -373,15 +380,21 @@ cardsQueriesRouter.get('/', async (c) => {
     if (cardIds.length > 0) {
       const orderIds = [...new Set(typedResults.map((r) => r.order_id).filter(Boolean))]
       if (orderIds.length > 0) {
-        const oph = orderIds.map(() => '?').join(',')
-        const { results: orderProgress } = await c.env.DB.prepare(`
-          SELECT order_id,
-                 COUNT(*) as order_card_total,
-                 SUM(CASE WHEN status = 'PRINT_DONE' THEN 1 ELSE 0 END) as order_card_done
-          FROM cards
-          WHERE order_id IN (${oph}) AND status != 'HOLD'
-          GROUP BY order_id
-        `).bind(...orderIds).all<OrderProgressRow>()
+        // #409: order_id IN (...)도 D1 바인드 한도(100) 초과 방지 — 80개 청크 분할 (GROUP BY는 order당 같은 청크라 정확)
+        const orderProgress: OrderProgressRow[] = []
+        for (let i = 0; i < orderIds.length; i += 80) {
+          const chunk = orderIds.slice(i, i + 80)
+          const oph = chunk.map(() => '?').join(',')
+          const { results: part } = await c.env.DB.prepare(`
+            SELECT order_id,
+                   COUNT(*) as order_card_total,
+                   SUM(CASE WHEN status = 'PRINT_DONE' THEN 1 ELSE 0 END) as order_card_done
+            FROM cards
+            WHERE order_id IN (${oph}) AND status != 'HOLD'
+            GROUP BY order_id
+          `).bind(...chunk).all<OrderProgressRow>()
+          if (part) orderProgress.push(...part)
+        }
 
         const progressMap = new Map<number, { total: number, done: number }>()
         for (const p of orderProgress || []) {

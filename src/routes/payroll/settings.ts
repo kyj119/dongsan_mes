@@ -202,19 +202,25 @@ settingsRouter.post('/tax-table/import', requireRole('ADMIN', 'MANAGER'), async 
     }
 
     let inserted = 0
+    // #410: 순차 .run() N+1 → batch (대량 CSV import 시 Workers subrequest 한도 hard-fail 회피, /generate #350 동일 패턴).
+    // INSERT OR REPLACE = last_row_id 의존 없음 → batch 안전.
+    const taxStmts: D1PreparedStatement[] = []
     for (const r of rows) {
       const min = Number(r.monthly_pay_min)
       const max = Number(r.monthly_pay_max)
       if (min == null || max == null) continue
       const deps: any[] = []
       for (let i = 1; i <= 11; i++) deps.push(Number(r[`dependents_${i}`] || 0))
-      await c.env.DB.prepare(
+      taxStmts.push(c.env.DB.prepare(
         `INSERT OR REPLACE INTO income_tax_table (year, monthly_pay_min, monthly_pay_max,
            dependents_1, dependents_2, dependents_3, dependents_4, dependents_5,
            dependents_6, dependents_7, dependents_8, dependents_9, dependents_10, dependents_11)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-      ).bind(year, min, max, ...deps).run()
+      ).bind(year, min, max, ...deps))
       inserted++
+    }
+    for (let i = 0; i < taxStmts.length; i += 80) {
+      await c.env.DB.batch(taxStmts.slice(i, i + 80))
     }
     return c.json({ success: true, data: { inserted } })
   } catch (err: any) {
