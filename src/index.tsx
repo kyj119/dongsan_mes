@@ -115,6 +115,7 @@ import { postProcessingPage } from './pages/postProcessing'
 import { equipmentPage } from './pages/equipment'
 import { maintenancePage } from './pages/maintenance'
 import { workbenchPage } from './pages/workbench'
+import { iaEditorPage } from './pages/iaEditor'
 import { iaScanPage } from './pages/iaScan'
 import { iaAutoProcessPage } from './pages/iaAutoProcess'
 import { iaBatchTestPage } from './pages/iaBatchTest'
@@ -407,6 +408,7 @@ app.get('/post-processing', pageAuthMiddleware, requirePagePermission('/post-pro
 app.get('/equipment', pageAuthMiddleware, requirePagePermission('/equipment'), equipmentPage)
 app.get('/maintenance', pageAuthMiddleware, requirePagePermission('/maintenance'), maintenancePage)
 app.get('/workbench', pageAuthMiddleware, requirePagePermission('/workbench'), workbenchPage)
+app.get('/ia-editor', pageAuthMiddleware, requirePagePermission('/ia-editor'), iaEditorPage)
 app.get('/ia-scan', pageAuthMiddleware, requireAdminPage(), iaScanPage)
 app.get('/ia-auto', pageAuthMiddleware, requireAdminPage(), iaAutoProcessPage)
 app.get('/ia-batch-test', pageAuthMiddleware, requireAdminPage(), iaBatchTestPage)

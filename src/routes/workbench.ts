@@ -3,7 +3,8 @@
 import { Hono } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
-import { entityFilter, orderVisibilityFilter } from '../utils/entityFilter'
+import { entityFilter, orderVisibilityFilter, getEntityId } from '../utils/entityFilter'
+import { validateUpload } from '../utils/uploadValidation'
 
 const workbenchRouter = new Hono<HonoEnv>()
 
@@ -136,6 +137,214 @@ workbenchRouter.put('/match', async (c) => {
   } catch (error) {
     console.error('Workbench match error:', error)
     return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
+  }
+})
+
+// ── GET /api/workbench/archives — 원본 아카이브 목록 (정리 보드 표시) ──
+// spec: docs/superpowers/specs/2026-06-16-ia-editor-nesting-intake.md §6.1·7
+// IA가 가공 시 보존한 고객 원본(Z:\원본\…)의 기록. 작업 EPS는 auto_process_jobs 참조.
+workbenchRouter.get('/archives', async (c) => {
+  try {
+    const q = (c.req.query('q') || '').trim()
+    const orderId = parseInt(c.req.query('order_id') || '', 10) || 0
+    const limit = Math.min(parseInt(c.req.query('limit') || '50', 10) || 50, 200)
+    const ef = entityFilter(c, 'oa')
+
+    let where = '1=1'
+    const params: unknown[] = []
+    if (orderId) { where += ' AND oa.order_id = ?'; params.push(orderId) }
+    if (q) {
+      where += ' AND (oa.original_filename LIKE ? OR o.order_number LIKE ? OR cl.client_name LIKE ?)'
+      params.push(`%${q}%`, `%${q}%`, `%${q}%`)
+    }
+
+    const { results } = await c.env.DB.prepare(`
+      SELECT oa.id, oa.order_id, oa.ai_analysis_id, oa.archive_path, oa.original_filename,
+             oa.file_ext, oa.thumbnail_base64, oa.status, oa.archived_at,
+             o.order_number, cl.client_name as client_name
+      FROM original_archives oa
+      LEFT JOIN orders o ON o.id = oa.order_id
+      LEFT JOIN clients cl ON cl.id = o.client_id
+      WHERE ${where}${ef.clause}
+      ORDER BY oa.archived_at DESC
+      LIMIT ?
+    `).bind(...params, ...ef.params, limit).all()
+
+    return c.json({ success: true, data: results })
+  } catch (error) {
+    console.error('Workbench archives error:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
+  }
+})
+
+// ── POST /api/workbench/files/analyze — 편집기 업로드 파일 분석 큐잉 (ExtractGroups) ──
+// spec: docs/superpowers/specs/2026-06-16-ia-editor-nesting-intake.md §5.1·7
+// /api/ai-analysis/upload(ADMIN 전용)과 동일 흐름이나 워크벤치 역할(DESIGNER 포함) 게이트를 통과.
+// 업로드 → ai_analysis_requests(pending) → IA 에이전트가 GET /api/ai-analysis?status=pending 으로 픽업.
+workbenchRouter.post('/files/analyze', async (c) => {
+  try {
+    const formData = await c.req.formData()
+    const file = formData.get('file') as File | null
+    if (!file) return c.json({ success: false, error: '파일이 없습니다.' }, 400)
+
+    // #357 패턴: 크기·확장자 검증 (AI/EPS/PDF/이미지, 50MB)
+    const v = validateUpload(file, {
+      maxBytes: 50 * 1024 * 1024,
+      allowedMimePrefixes: ['image/', 'application/pdf', 'application/postscript', 'application/octet-stream'],
+      allowedExts: ['ai', 'eps', 'pdf', 'jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'psd', 'tif', 'tiff'],
+    })
+    if (!v.ok) return c.json({ success: false, error: v.error }, 400)
+
+    // 분석 요청 생성 (entity_id 격리)
+    const created = await c.env.DB.prepare(
+      `INSERT INTO ai_analysis_requests (file_path, status, entity_id) VALUES (?, 'pending', ?)
+       RETURNING id`
+    ).bind(file.name, getEntityId(c)).first<{ id: number }>()
+    if (!created) return c.json({ success: false, error: '분석 요청 생성 실패' }, 500)
+    const analysisId = created.id
+
+    // R2 업로드 (키 sanitize: path traversal / 키 인젝션 방어)
+    const safeName = (file.name || 'file').replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 200)
+    const r2Key = `sources/${analysisId}/${safeName}`
+    await c.env.R2_BUCKET.put(r2Key, file.stream(), {
+      httpMetadata: { contentType: file.type || 'application/octet-stream' },
+    })
+    await c.env.DB.prepare(`UPDATE ai_analysis_requests SET file_path = ? WHERE id = ?`)
+      .bind(`r2://${r2Key}`, analysisId).run()
+
+    return c.json({ success: true, data: { id: analysisId, filename: file.name, status: 'pending' } })
+  } catch (error) {
+    console.error('Workbench analyze error:', error)
+    return c.json({ success: false, error: '업로드/분석 요청 실패' }, 500)
+  }
+})
+
+// ── GET /api/workbench/files — 편집기 데이터원: 업로드 분석 파일 + 그룹 썸네일 ──
+// spec: §5.1·7. 브라우저가 세션 업로드 id(?ids=1,2,3)를 넘기면 entity 격리하여 그룹 요약 반환.
+workbenchRouter.get('/files', async (c) => {
+  try {
+    const idsParam = (c.req.query('ids') || '').trim()
+    const ids = idsParam
+      ? idsParam.split(',').map((s) => parseInt(s, 10)).filter((n) => Number.isInteger(n) && n > 0).slice(0, 80)
+      : []
+    if (ids.length === 0) return c.json({ success: true, data: [] })
+
+    const ef = entityFilter(c, 'ai_analysis_requests')
+    const placeholders = ids.map(() => '?').join(',')
+    const { results } = await c.env.DB.prepare(`
+      SELECT id, file_path, status, groups_json, error_message, created_at, updated_at
+      FROM ai_analysis_requests
+      WHERE id IN (${placeholders})${ef.clause}
+      ORDER BY id ASC
+    `).bind(...ids, ...ef.params).all<{
+      id: number; file_path: string | null; status: string
+      groups_json: string | null; error_message: string | null
+      created_at: string; updated_at: string
+    }>()
+
+    const data = results.map((r) => {
+      let groups: Array<{ index: number; name: string; thumbnail_base64: string | null; width_mm: number | null; height_mm: number | null }> = []
+      try {
+        const parsed = r.groups_json ? JSON.parse(r.groups_json) : []
+        if (Array.isArray(parsed)) {
+          groups = parsed.map((g: any, idx: number) => ({
+            index: (g && g.index != null) ? g.index : idx,
+            name: (g && g.name) ? String(g.name) : '',
+            thumbnail_base64: (g && g.thumbnail_base64) ? String(g.thumbnail_base64) : null,
+            width_mm: (g && g.width_mm != null) ? Number(g.width_mm) : null,
+            height_mm: (g && g.height_mm != null) ? Number(g.height_mm) : null,
+          }))
+        }
+      } catch (_e) { groups = [] }
+      const fp = r.file_path || ''
+      const filename = fp.replace(/^r2:\/\//, '').split('/').pop() || fp || `#${r.id}`
+      return {
+        id: r.id, filename, status: r.status,
+        error_message: r.error_message, group_count: groups.length, groups,
+      }
+    })
+
+    return c.json({ success: true, data })
+  } catch (error) {
+    console.error('Workbench files error:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
+  }
+})
+
+// ── POST /api/workbench/archive — IA 원본 아카이브 완료 보고 ──
+// spec: docs/superpowers/specs/2026-06-16-ia-editor-nesting-intake.md §5.1·6·7·8
+// IA(Program.cs)가 가공 시 고객 원본을 Z:\원본\…에 보존한 뒤 호출. order_number로 주문을 resolve해
+// order_id·ai_analysis_id·entity_id를 채운다. 동일 archive_path 재보고는 멱등 처리(중복 행 방지).
+workbenchRouter.post('/archive', async (c) => {
+  try {
+    const body = await c.req.json<{
+      order_number?: string
+      order_id?: number
+      ai_analysis_id?: number
+      order_ai_file_id?: number
+      archive_path: string
+      original_filename?: string
+      file_ext?: string
+      thumbnail_base64?: string
+      status?: string
+    }>()
+
+    if (!body.archive_path || typeof body.archive_path !== 'string') {
+      return c.json({ success: false, error: 'archive_path가 필요합니다.' }, 400)
+    }
+    const status = body.status === 'failed' ? 'failed' : 'archived'
+
+    let orderId: number | null = body.order_id ?? null
+    let aiAnalysisId: number | null = body.ai_analysis_id ?? null
+    let entityId: number | null = null
+
+    // order_number(우선) 또는 order_id로 주문 resolve → order_id·ai_analysis_id·entity_id 보강
+    let ord: { id: number; ai_analysis_id: number | null; entity_id: number | null } | null = null
+    if (body.order_number) {
+      ord = await c.env.DB.prepare(
+        `SELECT id, ai_analysis_id, entity_id FROM orders WHERE order_number = ? ORDER BY id DESC LIMIT 1`
+      ).bind(body.order_number).first()
+    } else if (orderId) {
+      ord = await c.env.DB.prepare(
+        `SELECT id, ai_analysis_id, entity_id FROM orders WHERE id = ?`
+      ).bind(orderId).first()
+    }
+    if (ord) {
+      orderId = ord.id
+      if (aiAnalysisId == null) aiAnalysisId = ord.ai_analysis_id
+      if (ord.entity_id != null) entityId = ord.entity_id
+    }
+
+    // 주문에서 entity를 못 구하면 분석에서 (주문 미연결 인입 파일 대비)
+    if (entityId == null && aiAnalysisId) {
+      const an = await c.env.DB.prepare(
+        `SELECT entity_id FROM ai_analysis_requests WHERE id = ?`
+      ).bind(aiAnalysisId).first<{ entity_id: number | null }>()
+      if (an?.entity_id != null) entityId = an.entity_id
+    }
+    if (entityId == null) entityId = 1
+
+    // 동일 archive_path 멱등 (재처리·다중품목 공유 원본 중복 행 방지)
+    const dup = await c.env.DB.prepare(
+      `SELECT id FROM original_archives WHERE archive_path = ? LIMIT 1`
+    ).bind(body.archive_path).first<{ id: number }>()
+    if (dup) return c.json({ success: true, data: { id: dup.id, deduped: true } })
+
+    const created = await c.env.DB.prepare(`
+      INSERT INTO original_archives
+        (order_id, ai_analysis_id, order_ai_file_id, archive_path, original_filename, file_ext, thumbnail_base64, status, entity_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      RETURNING id
+    `).bind(
+      orderId, aiAnalysisId, body.order_ai_file_id ?? null,
+      body.archive_path, body.original_filename ?? null, body.file_ext ?? null,
+      body.thumbnail_base64 ?? null, status, entityId,
+    ).first<{ id: number }>()
+
+    return c.json({ success: true, data: { id: created?.id ?? null, order_id: orderId, ai_analysis_id: aiAnalysisId, entity_id: entityId, status } })
+  } catch (error) {
+    console.error('Workbench archive error:', error)
+    return c.json({ success: false, error: '아카이브 기록 실패' }, 500)
   }
 })
 

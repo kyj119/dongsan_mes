@@ -75,6 +75,7 @@ export const MENU_ITEMS: MenuGroup[] = [
       { path: '/tasks', icon: 'fa-tasks', label: '작업 큐', roles: ['ADMIN', 'MANAGER'], badgeId: 'nav-badge-tasks' },
       { path: '/scan', icon: 'fa-qrcode', label: 'QR 스캔', roles: ['ADMIN', 'MANAGER', 'OPERATOR'] },
       { path: '/workbench', icon: 'fa-object-group', label: '시안 검수', roles: ['ADMIN', 'MANAGER', 'DESIGNER'] },
+      { path: '/ia-editor', icon: 'fa-layer-group', label: 'IA 편집기', roles: ['ADMIN', 'MANAGER', 'DESIGNER'] },
     ],
   },
   {

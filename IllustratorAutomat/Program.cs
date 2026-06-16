@@ -39,6 +39,8 @@ namespace IllustratorAutomation
         private static Dictionary<int, string> processedOrders = new Dictionary<int, string>();
         private static HashSet<int> processedAnalyses = new HashSet<int>();
         private static HashSet<int> processedLayouts = new HashSet<int>();
+        // P1b: 세션 내 원본 보존 중복 복사 방지 (대상 경로 기준)
+        private static HashSet<string> _archivedOriginals = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         // Map of orderId → current task id (set when we claim a task so the
         // ProcessOrderAsync path can report COMPLETED/FAILED back to /tasks).
@@ -2187,6 +2189,9 @@ namespace IllustratorAutomation
 
                 // file-map API 호출: LogWatcher 카드 매칭용 파일명 ↔ 카드 매핑 등록
                 await RegisterFileMapAsync(orderNumber, fileSeq, fileSeqStr, baseName, item);
+
+                // 원본 보존 (P1b): 고객 원본을 Z:\원본\…에 영구 복사 + MES 기록 (best-effort, 실패해도 무시)
+                await ArchiveOriginalAsync(aiFilePath, category, year, month, day, orderNumber, baseName, item);
             }
             catch (Exception ex)
             {
@@ -2279,6 +2284,57 @@ namespace IllustratorAutomation
         {
             var invalid = Path.GetInvalidFileNameChars();
             return new string(name.Where(c => !invalid.Contains(c)).ToArray()).Trim();
+        }
+
+        // ── 원본 보존 헬퍼 (P1b) ─────────────────────────────────────────
+        // spec: docs/superpowers/specs/2026-06-16-ia-editor-nesting-intake.md §5.1·8
+        // 현행은 가공 후 temp 원본을 폐기(:1760). 폐기 전, 고객 원본을 EPS 출력과 동일한 명명 체계
+        //   Z:\원본\[카테고리]\YYYY\MM\DD\[주문번호]\[baseName].[ext]  (DESIGN→원본)
+        // 로 영구 복사하고 MES(/api/workbench/archive)에 기록한다.
+        // 전체 best-effort — 복사/보고 실패가 가공·temp 정리 흐름을 막지 않는다(원본은 어차피 폐기 예정이라 무손실).
+        private static async Task ArchiveOriginalAsync(string srcPath, string category, string year, string month, string day, string orderNumber, string baseName, JsonElement item)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(srcPath) || !File.Exists(srcPath)) return;
+
+                string ext = Path.GetExtension(srcPath); // ".ai" / ".eps" / ".pdf"
+                string archiveFolder = Path.Combine(ZDRIVE_PATH, "원본", category, year, month, day, orderNumber);
+                string destPath = Path.Combine(archiveFolder, baseName + ext);
+
+                if (_archivedOriginals.Contains(destPath)) return; // 세션 내 중복 복사 방지
+
+                Directory.CreateDirectory(archiveFolder);
+                File.Copy(srcPath, destPath, overwrite: true);
+                _archivedOriginals.Add(destPath);
+                Console.WriteLine($"      🗄  원본 보존: {destPath}");
+
+                // 분석 id / 1:N 파일 id (item에 있으면)
+                int? aiAnalysisId = (item.TryGetProperty("ai_analysis_id", out var anEl) && anEl.ValueKind != JsonValueKind.Null && anEl.TryGetInt32(out int anVal)) ? anVal : (int?)null;
+                int? orderAiFileId = (item.TryGetProperty("ai_file_id", out var afEl) && afEl.ValueKind != JsonValueKind.Null && afEl.TryGetInt32(out int afVal)) ? afVal : (int?)null;
+
+                var payload = new
+                {
+                    order_number = orderNumber,
+                    ai_analysis_id = aiAnalysisId,
+                    order_ai_file_id = orderAiFileId,
+                    archive_path = destPath,
+                    original_filename = Path.GetFileName(srcPath),
+                    file_ext = ext.TrimStart('.'),
+                    status = "archived"
+                };
+                var req = new HttpRequestMessage(HttpMethod.Post, $"{ERP_API_URL}/api/workbench/archive");
+                req.Content = new StringContent(JsonSerializer.Serialize(payload), System.Text.Encoding.UTF8, "application/json");
+                if (!string.IsNullOrEmpty(authToken))
+                    req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", authToken);
+                var resp = await httpClient.SendAsync(req);
+                if (!resp.IsSuccessStatusCode)
+                    Console.WriteLine($"      ⚠️ 원본 아카이브 보고 실패: HTTP {(int)resp.StatusCode}");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"      ⚠️ 원본 보존 실패(무시): {ex.Message}");
+            }
         }
 
         // ── COM 자동화 (P/Invoke) ─────────────────────────────────────────────
