@@ -329,7 +329,7 @@ weeklyPurchaseRouter.post('/notify', async (c) => {
 
     // 2. 외부 알림 (SMS/카카오) — 설정된 경우만
     const sendChannel = channel || 'sms'
-    const kakaoSettings = await getKakaoSettings(c.env.DB)
+    const kakaoSettings = await getKakaoSettings(c.env.DB, c.get('entityId') || 1)
 
     if (kakaoSettings.enabled && kakaoSettings.senderNum) {
       const provider = await getKakaoProvider(c)

@@ -43,7 +43,7 @@ faxRouter.post('/send', async (c) => {
       return c.json({ success: false, error: '바로빌 연동이 설정되지 않았습니다.' }, 400)
     }
 
-    const settings = await getKakaoSettings(db)
+    const settings = await getKakaoSettings(db, c.get('entityId') || 1)
 
     const result = await provider.sendFax({
       senderNum: settings.senderNum || '',
