@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 3 -->
-<!-- last_run_at: 2026-06-16T06:00:00+09:00 -->
+<!-- last_run_area: 4 -->
+<!-- last_run_at: 2026-06-16T10:00:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,13 +8,24 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | 3 (**GitHub open auto-improve 실측 3건** — #409 E2E CI 연속 red·장비 0312 prod 미적용 의심 HIGH [Area 1] · #410 간이세액표 CSV import 순차 INSERT N+1 small [Area 2] · **#411 대시보드 "납기 도래 주문" 위젯 클릭 전부 404 — /shipments/daily 라우트 미존재, 드릴다운 #402 형제 small [본 Area 3 사이클 신규]**) |
+| 🆕 new | 3 (**GitHub open auto-improve 실측 3건** — #411 대시보드 "납기 도래 주문" 위젯 클릭 전부 404·/shipments/daily 미존재 small [Area 3] · #412 스캔 입출고 items.current_stock 존재X 컬럼 UPDATE small [Area 4] · #413 입금삭제 bank_transactions.updated_at 존재X 컬럼 UPDATE small [Area 4]. #412/#413은 직전 부분 Area 4 런이 등록·backlog 미반영분 → 본 사이클 동기화 편입) |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 (#372 CSV도 owner close-completed → done 이관) |
-| ✔️ done | 108 (96 + **owner 대량 픽스 12건 close-completed**[3 커밋: a988f8d #394/#397/#398/#403/#405/#408 · 336df95 #395/#399/#401/#404/#406/#407 · 471502c #396/#400/#402]. 직전 추적 14건 중 12건 픽스완료·#409/#410 잔존. **GitHub open auto-improve 실측 #409·#410·#411 3건** 정합) |
+| ✔️ done | 110 (96 + **owner 대량 픽스 14건 close-completed**[5 커밋: a988f8d #394/#397/#398/#403/#405/#408 · 336df95 #395/#399/#401/#404/#406/#407 · 471502c #396/#400/#402 · **0ba3670 #409/#410** · 25d1b8e #394후속 handled_by FK]. **GitHub open auto-improve 실측 #411·#412·#413 3건** 정합) |
 | ❌ rejected | 3 |
 
 > 📦 **과거 사이클 로그**(아래 6블록 이전분)는 `IMPROVEMENT_BACKLOG_ARCHIVE.md`로 이관됨 (2026-06-10 정리). 신규 로그는 계속 이 파일 상단에 추가.
+
+> **Area 4 데이터 정합성 (2026-06-16T10:00):**
+> - **방법**: git fetch-before-compare(origin force-update `4993fa7→25d1b8e`, fetch 후 HEAD=origin/main `25d1b8e` 0/0 동기). baseline `npm ci`+build PASS(exit 0). ground-truth=310 마이그레이션 로컬 D1(node:sqlite) 전량 적용(**FAIL 0**, 172테이블/121 FK테이블). Area 4 **14회차** — **신선 각도**: 직전 사이클 이후 owner가 `25d1b8e`(#394 후속)에서 **prod D1가 batch에서 FK를 강제**함을 입증(`inventory_transactions.handled_by`=users(id) FK에 `'system'` 문자열 바인딩 → FK 위반 100% 500)하여 노출한 **FK 위반 클래스**를 신규 standing scan으로 채택 = users(id) 참조 69 FK 컬럼 전수 + FK 강제 현실 기준 cascade ON DELETE 절 검증. 병렬 Explore 2개(① FK-users 바인딩 sweep ② 고아/상태/entity_id + owner 픽스 회귀) + 발견 전수 owner ground-truth 검증.
+> - **🟢 신선 각도 — FK-users(id) 69컬럼 바인딩 전수 = net-new 0**: `users(id)`를 참조하는 69 FK 컬럼 각각의 INSERT/UPDATE write 사이트 전수 grep + 바인딩 값 직접 Read. **전부 `c.get('user')?.id || null`/`user.id`/`user?.id || 1`/NULL 정규 패턴** — `'system'`/username/header 문자열 바인딩이 FK 컬럼에 닿는 net-new 0. `25d1b8e`(inventoryCount:259 handled_by)가 **유일 케이스이자 이미 픽스됨**. `'system'` 잔여 바인딩(inventoryCount:206/265 submitted_by/approved_by·purchaseInvoices:184·po-receive:343/369·items:448/898)은 **전부 비-FK TEXT 컬럼**(inventory_counts·price_change_history는 `/tmp/fks.json`에 FK 정의 없음) = 안전. printEvents:143 `changed_by=1`은 유효 user id(admin)+agent 엔드포인트.
+> - **🟢 고아/cascade 비대칭 = net-new 0 (서브에이전트 후보 3건 전부 FP)**: 서브에이전트가 HIGH/MED로 올린 ① purchase_orders DELETE의 `purchase_payments` 미정리 ② purchase_requests DELETE의 `pr_comments` 미정리 ③ `purchase_requests.converted_po_id` 미정리 = **전부 FP**. 결정적 반증 = **FK ON DELETE 절 직접 확인**: `purchase_payments.po_id`→**SET NULL**·`pr_comments.request_id`→**CASCADE**·`converted_po_id`→**SET NULL** → `25d1b8e`가 입증한 **prod FK 강제 환경에서 자동 발동**(고아/에러 0). 서브에이전트 전제("D1 FK 미강제라 수동정리 필요")가 `25d1b8e` 입증과 정면 모순 = FP 근원. **진짜 위험은 반대 방향(ON DELETE NO ACTION 자식이 부모 삭제를 RESTRICT로 차단)인데**, purchase_orders의 NO ACTION 자식 2개(`purchase_adjustments`#312·`purchase_invoices`#324)는 핸들러(`core.ts:751/753`)가 **삭제 batch에서 DELETE 전 `SET NULL`로 선정리** → 차단 없음. 나머지 자식(items/status_history=CASCADE, payments/converted_po_id/source_po_id=SET NULL)은 자동. **핸들러 설계 정확**.
+> - **🟢 상태불일치/멱등성·entity_id NULL = clean**: inventory 차감 `WHERE (quantity+?)>=0` 가드·ar-payments 단순 INSERT(재시도 destructive 반복 트리거 없음)·cards/lifecycle 전이 가드 정상. entity_id 전 INSERT `getEntityId(c)||1`/`data.entity_id??1` 정규.
+> - **🟢 owner 픽스 회귀 = 0**: a988f8d(#394/#398 entityFilter)·336df95(#401 N+1 prefetch/#404 ALTER)·471502c(#396 work_records DELETE orders/update.ts:194 추가 확인)·0ba3670(#409/#410 80청크 D1 바인드한도)·25d1b8e(handled_by FK) 전부 정합. IDOR efClause 추가가 정상 데이터 가림/batch 고아 유발 0.
+> - **🟢 backlog↔GitHub sync 대량 갱신**: 직전 backlog stats `new=3`(#409/#410/#411)이 실제와 어긋남 — **#409/#410은 `0ba3670`으로 closed-completed**(done 108→110), open 실측 = **#411(Area3)·#412·#413(Area4, 직전 부분런이 등록·backlog 미반영)** = `new=3` 재정합. #412(scan.ts items.current_stock 존재X UPDATE)·#413(ar-payments bank_transactions.updated_at 존재X UPDATE)은 본 사이클 FK 각도와 별개(존재X 컬럼 UPDATE-SET 클래스) → 중복 안 만듦. rejected=3·approved=0·reviewed=0 유지.
+> - **🧬 SKILL 강화 2건**: ① **prod D1 FK 강제 = 탐지 전제 (25d1b8e 입증)** — D1가 batch에서 FK를 강제하므로 (a)users(id) 등 FK 컬럼에 비-id 값(`'system'`/username/header) 바인딩 = 100% 500, (b)cascade "고아" 후보는 **ON DELETE 절 확인 후에만** 보고(CASCADE/SET NULL이면 자동 발동=FP), (c)진짜 위험은 ON DELETE NO ACTION 자식이 부모 삭제를 차단 → 핸들러가 선정리하는지 확인. ② **서브에이전트 cascade 후보는 FK on_delete 액션 ground-truth 대조 필수** — `PRAGMA foreign_key_list`의 on_delete를 추출해 CASCADE/SET NULL이면 즉시 FP 드롭.
+> - **이상 없음**: git 동기 0/0. baseline build PASS. FK-users 69컬럼·고아 cascade·상태/entity_id·픽스 회귀 4각도 전부 clean. 서브에이전트 cascade FP 3건 ON DELETE 절로 차단.
+> - 자동 수정 0건(전 각도 clean), 신규 이슈 0건(FK-users net-new 0·cascade 후보 전부 FP), **신선 각도 — 25d1b8e가 노출한 prod FK 강제 기준 FK 위반/cascade 클래스(서브에이전트 FP 3건 ON DELETE 절로 차단)**, SKILL 강화 2건, done-sync 대량 갱신(#409/#410 done 이관, #412/#413 편입, new=3 재정합)
 
 > **Area 3 UX/기능 감사 (2026-06-16T06:00):**
 > - **방법**: git fetch-before-compare(origin force-update `4993fa7→471502c`, fetch 후 HEAD=origin/main `471502c` 0/0 동기). baseline `npm ci`+build PASS(391 modules, _worker.js 5,135.83kB). HEAD=`471502c`(owner 드릴다운/고아/smoke 3건 픽스 #396/#400/#402). Area 3 **13회차** — **owner가 직전 사이클 이후 12 이슈 일괄 픽스**(3 fix 커밋)라 신선 각도 = ① 방금 픽스된 드릴다운(#402) **목적지 링크 유효성 전수 검증**(파라미터 소비뿐 아니라 라우트 존재까지) ② HTML↔JS silent-fail 전수 자동 diff ③ 모든 `location.href` page 타깃 ↔ 등록 라우트 cross-check.
