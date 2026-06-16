@@ -1,4 +1,4 @@
--- 0314: 바로빌 알림톡 멀티계정 — 법인별 설정 시드 (entity_settings)
+-- 0317: 바로빌 알림톡 멀티계정 — 법인별 설정 시드 (entity_settings)
 --
 -- 검증 결과(2026-06-16): 파트너 단일 CERTKEY(전역 env) + 법인별 corpNum(entities) +
 -- 법인별 SenderID(바로빌 연동회원 ID) 필수. 동산 DONGSAN / 선명 sunm2596.
