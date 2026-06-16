@@ -256,7 +256,7 @@ inventoryCountRouter.patch('/:id/approve', async (c) => {
         item.counted_quantity,                         // balance_after: 보정 후 잔량
         countId,                                       // reference_id
         `Inventory Count ID: ${countId}`,              // notes
-        userId,                                        // handled_by (approved_by와 동일 바인딩)
+        c.get('user')?.id || null,                     // #394: handled_by는 users(id) FK — 'system' 문자열은 FK 위반(prod FK 강제). JWT user.id 또는 NULL(inventory.ts:505 패턴)
         entityId
       )
     ])
