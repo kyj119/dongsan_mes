@@ -348,4 +348,133 @@ workbenchRouter.post('/archive', async (c) => {
   }
 })
 
+// ── 시트 네스팅 (sheet_layouts) CRUD — IA 편집기 P3 ──
+// spec: docs/superpowers/specs/2026-06-16-ia-editor-nesting-intake.md §5.4·6·7·12
+// 자동배치(shelfBinPack)는 브라우저에서 수행, 서버는 결과 좌표·메타를 entity 격리 보존.
+// 실제 출력(EPS/DXF/JPG)은 SheetLayout.jsx(P5). canvas_json/placements_json은 JSON 문자열.
+function strOrJson(v: unknown): string | null {
+  if (v == null) return null
+  return typeof v === 'string' ? v : JSON.stringify(v)
+}
+
+// POST /api/workbench/sheets — 네스팅 결과 생성
+workbenchRouter.post('/sheets', async (c) => {
+  try {
+    const body = await c.req.json<{
+      name?: string; mode?: string; canvas_json?: unknown; placements_json?: unknown
+      item_code?: string; source_analysis_ids?: unknown; sheet_count?: number; efficiency?: number
+    }>()
+    const mode = body.mode === 'flatbed' ? 'flatbed' : 'roll'
+    const name = (body.name || '').trim() || `네스팅 ${mode === 'flatbed' ? '평판' : '롤'}`
+    const user = c.get('user')
+    const created = await c.env.DB.prepare(`
+      INSERT INTO sheet_layouts
+        (name, mode, canvas_json, placements_json, item_code, source_analysis_ids, sheet_count, efficiency, status, entity_id, created_by, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, datetime('now'))
+      RETURNING id
+    `).bind(
+      name, mode,
+      strOrJson(body.canvas_json) || '{}',
+      strOrJson(body.placements_json) || '[]',
+      body.item_code ?? null,
+      strOrJson(body.source_analysis_ids),
+      Number.isInteger(body.sheet_count) ? body.sheet_count! : 1,
+      (typeof body.efficiency === 'number') ? body.efficiency : null,
+      getEntityId(c), user?.id ?? null,
+    ).first<{ id: number }>()
+    return c.json({ success: true, data: { id: created?.id ?? null, name, mode } })
+  } catch (error) {
+    console.error('Workbench sheets create error:', error)
+    return c.json({ success: false, error: '네스팅 저장 실패' }, 500)
+  }
+})
+
+// GET /api/workbench/sheets — 목록 (entity 격리)
+workbenchRouter.get('/sheets', async (c) => {
+  try {
+    const limit = Math.min(parseInt(c.req.query('limit') || '50', 10) || 50, 200)
+    const ef = entityFilter(c, 'sheet_layouts')
+    const { results } = await c.env.DB.prepare(`
+      SELECT id, name, mode, item_code, sheet_count, efficiency, status, created_at, updated_at
+      FROM sheet_layouts
+      WHERE 1=1${ef.clause}
+      ORDER BY id DESC
+      LIMIT ?
+    `).bind(...ef.params, limit).all()
+    return c.json({ success: true, data: results })
+  } catch (error) {
+    console.error('Workbench sheets list error:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
+  }
+})
+
+// GET /api/workbench/sheets/:id — 단건 (placements 포함)
+workbenchRouter.get('/sheets/:id', async (c) => {
+  try {
+    const id = parseInt(c.req.param('id'), 10)
+    if (!id) return c.json({ success: false, error: '잘못된 ID' }, 400)
+    const ef = entityFilter(c, 'sheet_layouts')
+    const row = await c.env.DB.prepare(
+      `SELECT * FROM sheet_layouts WHERE id = ?${ef.clause}`
+    ).bind(id, ...ef.params).first()
+    if (!row) return c.json({ success: false, error: '네스팅을 찾을 수 없습니다.' }, 404)
+    return c.json({ success: true, data: row })
+  } catch (error) {
+    console.error('Workbench sheet get error:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
+  }
+})
+
+// PUT /api/workbench/sheets/:id — 수정 (placements·canvas·name·item_code·status)
+workbenchRouter.put('/sheets/:id', async (c) => {
+  try {
+    const id = parseInt(c.req.param('id'), 10)
+    if (!id) return c.json({ success: false, error: '잘못된 ID' }, 400)
+    const ef = entityFilter(c, 'sheet_layouts')
+    // 소유(entity) 검증
+    const own = await c.env.DB.prepare(
+      `SELECT id FROM sheet_layouts WHERE id = ?${ef.clause}`
+    ).bind(id, ...ef.params).first<{ id: number }>()
+    if (!own) return c.json({ success: false, error: '네스팅을 찾을 수 없습니다.' }, 404)
+
+    const body = await c.req.json<{
+      name?: string; canvas_json?: unknown; placements_json?: unknown
+      item_code?: string; sheet_count?: number; efficiency?: number; status?: string
+    }>()
+    const sets: string[] = ['updated_at = datetime(\'now\')']
+    const vals: unknown[] = []
+    if (body.name !== undefined) { sets.push('name = ?'); vals.push(String(body.name)) }
+    if (body.canvas_json !== undefined) { sets.push('canvas_json = ?'); vals.push(strOrJson(body.canvas_json) || '{}') }
+    if (body.placements_json !== undefined) { sets.push('placements_json = ?'); vals.push(strOrJson(body.placements_json) || '[]') }
+    if (body.item_code !== undefined) { sets.push('item_code = ?'); vals.push(body.item_code ?? null) }
+    if (body.sheet_count !== undefined) { sets.push('sheet_count = ?'); vals.push(Number.isInteger(body.sheet_count) ? body.sheet_count : 1) }
+    if (body.efficiency !== undefined) { sets.push('efficiency = ?'); vals.push(typeof body.efficiency === 'number' ? body.efficiency : null) }
+    if (body.status !== undefined && ['draft', 'rendered', 'ordered'].includes(body.status)) { sets.push('status = ?'); vals.push(body.status) }
+
+    await c.env.DB.prepare(`UPDATE sheet_layouts SET ${sets.join(', ')} WHERE id = ?`).bind(...vals, id).run()
+    return c.json({ success: true })
+  } catch (error) {
+    console.error('Workbench sheet update error:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
+  }
+})
+
+// DELETE /api/workbench/sheets/:id
+workbenchRouter.delete('/sheets/:id', async (c) => {
+  try {
+    const id = parseInt(c.req.param('id'), 10)
+    if (!id) return c.json({ success: false, error: '잘못된 ID' }, 400)
+    const ef = entityFilter(c, 'sheet_layouts')
+    const own = await c.env.DB.prepare(
+      `SELECT id FROM sheet_layouts WHERE id = ?${ef.clause}`
+    ).bind(id, ...ef.params).first<{ id: number }>()
+    if (!own) return c.json({ success: false, error: '네스팅을 찾을 수 없습니다.' }, 404)
+    await c.env.DB.prepare(`DELETE FROM sheet_layouts WHERE id = ?`).bind(id).run()
+    return c.json({ success: true })
+  } catch (error) {
+    console.error('Workbench sheet delete error:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
+  }
+})
+
 export default workbenchRouter
