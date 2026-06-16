@@ -147,6 +147,7 @@ namespace IllustratorAutomation
                     await PollAIAnalysisAsync();
                     await Task.Delay(500);
                     await PollAILayoutAsync();
+                    await PollSheetRenderAsync();
                     await PollTestWatchAsync();
                 }
                 catch (Exception ex)
@@ -1278,6 +1279,157 @@ namespace IllustratorAutomation
             {
                 Console.WriteLine($"   ⚠️  PATCH ai-analysis error: {ex.Message}");
             }
+        }
+
+        // ── 시트 네스팅 독립 렌더잡 폴링 (P5 출력) ───────────────────────
+        // GET /api/workbench/render-queue → SheetLayout.jsx 실행(주문 없이) → EPS/DXF/JPG → 콜백.
+        // v1: 단일 분석(source 1개 .ai) + 단일 시트. 다중 분석/시트는 후속.
+        private static string? RjStr(JsonElement el, string name)
+            => el.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() : null;
+
+        private static async Task PollSheetRenderAsync()
+        {
+            if (!Directory.Exists(ZDRIVE_PATH)) return;
+            HttpResponseMessage res;
+            try { res = await GetWithAuthAsync($"{ERP_API_URL}/api/workbench/render-queue"); }
+            catch { return; }
+            if (!res.IsSuccessStatusCode)
+            {
+                if (res.StatusCode == System.Net.HttpStatusCode.Unauthorized) authToken = null;
+                return;
+            }
+            JsonElement json;
+            try { json = await res.Content.ReadFromJsonAsync<JsonElement>(); } catch { return; }
+            if (!json.TryGetProperty("data", out var jobs) || jobs.ValueKind != JsonValueKind.Array || jobs.GetArrayLength() == 0) return;
+
+            Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] Found {jobs.GetArrayLength()} sheet render job(s)");
+            foreach (var job in jobs.EnumerateArray())
+            {
+                int jobId = job.GetProperty("id").GetInt32();
+                try { await ProcessSheetRenderAsync(jobId, job); }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"   ❌ Sheet render {jobId} 실패: {ex.Message}");
+                    await PatchSheetRender(jobId, "error", null, ex.Message);
+                }
+            }
+        }
+
+        private static async Task ProcessSheetRenderAsync(int jobId, JsonElement job)
+        {
+            string? srcPath = RjStr(job, "source_file_path");
+            int analysisId = job.TryGetProperty("source_analysis_id", out var aidEl) && aidEl.ValueKind == JsonValueKind.Number ? aidEl.GetInt32() : 0;
+            if (string.IsNullOrEmpty(srcPath)) { await PatchSheetRender(jobId, "error", null, "소스 경로 없음"); return; }
+
+            string reqTempFolder = Path.Combine(TEMP_FOLDER, $"render_sheet_{jobId}");
+            if (!Directory.Exists(reqTempFolder)) Directory.CreateDirectory(reqTempFolder);
+
+            // 소스 .ai 해석: 로컬 우선 → R2 다운로드 → 실패
+            string actualSrc;
+            if (File.Exists(srcPath)) { actualSrc = srcPath; Console.WriteLine($"   📂 소스 .ai: {srcPath}"); }
+            else if (srcPath.StartsWith("r2://") && analysisId > 0)
+            {
+                Console.WriteLine($"   ☁️  소스 .ai R2 다운로드: analysis {analysisId}");
+                var r2 = await httpClient.GetAsync($"{ERP_API_URL}/api/ai-analysis/{analysisId}/download");
+                if (!r2.IsSuccessStatusCode) { await PatchSheetRender(jobId, "error", null, $"소스 .ai 다운로드 실패 {(int)r2.StatusCode}"); return; }
+                string ext = Path.GetExtension(srcPath.Replace("r2://", "")); if (string.IsNullOrEmpty(ext)) ext = ".ai";
+                actualSrc = Path.Combine(reqTempFolder, $"source{ext}");
+                File.WriteAllBytes(actualSrc, await r2.Content.ReadAsByteArrayAsync());
+            }
+            else { await PatchSheetRender(jobId, "error", null, $"소스 .ai 없음(재분석 필요): {srcPath}"); return; }
+
+            // canvas_json / placements_json 파싱
+            var canvas = JsonSerializer.Deserialize<JsonElement>(RjStr(job, "canvas_json") ?? "{}");
+            var placementsArr = JsonSerializer.Deserialize<JsonElement>(RjStr(job, "placements_json") ?? "[]");
+            string mode = RjStr(job, "mode") ?? "roll";
+            double presetW = canvas.TryGetProperty("preset_w_cm", out var pwEl) && pwEl.ValueKind == JsonValueKind.Number ? pwEl.GetDouble() : 0;
+            double presetH = canvas.TryGetProperty("preset_h_cm", out var phEl) && phEl.ValueKind == JsonValueKind.Number ? phEl.GetDouble() : 0;
+            double marginCm = canvas.TryGetProperty("margin_cm", out var mcEl) && mcEl.ValueKind == JsonValueKind.Number ? mcEl.GetDouble() : 1.0;
+
+            double maxBottom = 0, maxRight = 0;
+            var rawPl = new List<(int gi, double x, double y, double w, double h, bool rot)>();
+            foreach (var p in placementsArr.EnumerateArray())
+            {
+                double x = p.GetProperty("x_cm").GetDouble(), y = p.GetProperty("y_cm").GetDouble();
+                double w = p.GetProperty("width_cm").GetDouble(), h = p.GetProperty("height_cm").GetDouble();
+                bool rot = p.TryGetProperty("rotated", out var rEl) && rEl.GetBoolean();
+                int gi = p.GetProperty("group_index").GetInt32();
+                if (y + h > maxBottom) maxBottom = y + h;
+                if (x + w > maxRight) maxRight = x + w;
+                rawPl.Add((gi, x, y, w, h, rot));
+            }
+            if (rawPl.Count == 0) { await PatchSheetRender(jobId, "error", null, "배치 조각 없음"); return; }
+
+            double sheetW = presetW > 0 ? presetW : (maxRight + marginCm);
+            double sheetH = (mode == "flatbed" && presetH > 0) ? presetH : (maxBottom + marginCm);
+            double maxDim = Math.Max(sheetW, sheetH);
+            double scaleFactor = maxDim > 500 ? (500.0 / maxDim) : 1.0;  // Illustrator 아트보드 ~577cm 한계 대응
+
+            var scaledPlacements = new List<object>();
+            foreach (var p in rawPl)
+                scaledPlacements.Add(new
+                {
+                    group_index = p.gi,
+                    x_cm = p.x / scaleFactor, y_cm = p.y / scaleFactor,
+                    width_cm = p.w / scaleFactor, height_cm = p.h / scaleFactor,
+                    rotated = p.rot
+                });
+
+            var now = DateTime.Now;
+            string outFolder = Path.Combine(ZDRIVE_PATH, "DESIGN", "네스팅", now.ToString("yyyy"), now.ToString("MM"), now.ToString("dd"), $"sheet_{jobId}");
+            if (!Directory.Exists(outFolder)) Directory.CreateDirectory(outFolder);
+            string itemCode = RjStr(job, "item_code") ?? "";
+            string baseName = $"네스팅{jobId}-{(int)Math.Round(sheetW)}x{(int)Math.Round(sheetH)}-{rawPl.Count}건" + (string.IsNullOrEmpty(itemCode) ? "" : $"-{SanitizeFilename(itemCode)}");
+            string epsOut = Path.Combine(outFolder, baseName + ".eps");
+            string dxfOut = Path.Combine(outFolder, baseName + ".dxf");
+            string jpgOut = Path.Combine(outFolder, baseName + ".jpg");
+
+            var iaParamsObj = new
+            {
+                mode = "sheet_layout",
+                source = actualSrc,
+                scale_factor = scaleFactor,
+                canvas = new { width_cm = sheetW / scaleFactor, height_cm = sheetH / scaleFactor, margin_cm = marginCm / scaleFactor },
+                placements = scaledPlacements,
+                bleed_mm = 3.0,
+                gaps = new List<object>(),
+                outputs = new { eps = epsOut, dxf = dxfOut, jpg = jpgOut }
+            };
+
+            string scriptPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "SheetLayout.jsx");
+            if (!File.Exists(scriptPath)) { await PatchSheetRender(jobId, "error", null, "SheetLayout.jsx 없음"); return; }
+            string scriptDir = Path.GetDirectoryName(scriptPath)!;
+            File.WriteAllText(Path.Combine(scriptDir, "ia_params.json"), JsonSerializer.Serialize(iaParamsObj), System.Text.Encoding.UTF8);
+            Console.WriteLine($"   🖥️  Running SheetLayout.jsx (sheet {jobId}, {Math.Round(sheetW)}x{Math.Round(sheetH)}cm, scale {scaleFactor:F2}) → {outFolder}");
+            RunJsxScript(scriptPath, Path.Combine(scriptDir, "ia_params.json"), timeoutMinutes: 5);
+
+            if (!File.Exists(epsOut)) { await PatchSheetRender(jobId, "error", null, "EPS 생성 실패 (SheetLayout 결과 없음)"); return; }
+
+            string? jpgB64 = null;
+            if (File.Exists(jpgOut)) { try { jpgB64 = Convert.ToBase64String(File.ReadAllBytes(jpgOut)); } catch { } }
+
+            var result = new Dictionary<string, object?>
+            {
+                ["eps_path"] = epsOut,
+                ["dxf_path"] = File.Exists(dxfOut) ? dxfOut : null,
+                ["jpg_path"] = File.Exists(jpgOut) ? jpgOut : null,
+                ["jpg_base64"] = jpgB64,
+                ["width_cm"] = Math.Round(sheetW, 1),
+                ["height_cm"] = Math.Round(sheetH, 1),
+                ["scale_factor"] = scaleFactor
+            };
+            Console.WriteLine($"   ✅ 시트 렌더 완료 #{jobId}: {Path.GetFileName(epsOut)} (jpg {(jpgB64 != null ? "있음" : "없음")})");
+            await PatchSheetRender(jobId, "done", JsonSerializer.Serialize(result), null);
+        }
+
+        private static async Task PatchSheetRender(int jobId, string status, string? resultJson, string? error)
+        {
+            try
+            {
+                var payload = new Dictionary<string, object?> { ["render_status"] = status, ["render_result_json"] = resultJson, ["render_error"] = error };
+                await PatchWithAuthAsync($"{ERP_API_URL}/api/workbench/sheets/{jobId}/render", JsonSerializer.Serialize(payload));
+            }
+            catch (Exception ex) { Console.WriteLine($"   ⚠️  PATCH sheet render error: {ex.Message}"); }
         }
 
         // ── 신규: AI 레이아웃 요청 폴링 ─────────────────────────────────

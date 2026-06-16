@@ -20,6 +20,8 @@ var IAE_NEST_KEY = 'iae_nest_v1';
 var iaeNestSet = [];      // [{key, analysis_id, group_index, label, thumbnail_base64, w, h, qty}]
 var iaeView = 'edit';     // 'edit' | 'nest'
 var iaeNestResult = null; // 마지막 자동배치 결과
+var iaeLastSheetId = null; // 마지막 저장된 sheet_layout id (P5 출력용)
+var iaeRenderPollTimer = null;
 // 규격 프리셋 (cm) — 롤폭 914~1520mm, 평판 900×1800·1200×2400 (spec §12)
 var IAE_ROLL_PRESETS = [
   { label: '914mm 롤', w: 91.4 }, { label: '1050mm 롤', w: 105 }, { label: '1270mm 롤', w: 127 },
@@ -830,7 +832,17 @@ function iaeRenderNestResult() {
   html += '</div><div class="flex flex-wrap gap-4">';
   r.sheets.forEach(function (s, si) { html += iaeSheetSvg(s, si, r); });
   html += '</div>';
+  // 출력(렌더) — 저장된 네스팅이 있을 때 (P5)
+  if (iaeLastSheetId) {
+    html += '<div class="mt-4 pt-4 border-t border-gray-100">';
+    html += '<button id="iaeRenderBtn" class="px-4 py-2 rounded-lg text-sm font-medium bg-emerald-600 text-white hover:bg-emerald-700"><i class="fas fa-print mr-1"></i>출력 (EPS/DXF 렌더 · 저장 #' + iaeLastSheetId + ')</button>';
+    html += '<span class="text-xs text-gray-400 ml-2">에이전트가 SheetLayout.jsx로 렌더 (v1: 단일 분석·단일 시트)</span>';
+    html += '<div id="iaeRenderResult" class="mt-3"></div>';
+    html += '</div>';
+  }
   host.innerHTML = html;
+  var iaeRbtn = document.getElementById('iaeRenderBtn');
+  if (iaeRbtn) iaeRbtn.addEventListener('click', iaeTriggerRender);
 }
 function iaeSheetSvg(sheet, idx, r) {
   var maxW = 260, maxH = 360, w = sheet.width_cm, h = sheet.height_cm;
@@ -868,11 +880,53 @@ function iaeSaveNestToServer() {
     item_code: o.item_code || null, source_analysis_ids: analysisIds, sheet_count: r.sheet_count, efficiency: r.efficiency
   }).then(function (res) {
     var id = res.data && res.data.data && res.data.data.id;
+    iaeLastSheetId = id;
     iaeToast('네스팅 저장 완료 (#' + id + ')', 'success');
+    iaeRenderNestResult(); // 출력 버튼 노출 위해 재렌더
   }).catch(function (err) {
     console.error('[ia-editor] nest save fail', err);
     iaeToast((err.response && err.response.data && err.response.data.error) || '저장 실패', 'error');
   });
+}
+
+// ── P5 출력: 렌더잡 트리거 + 폴링 ─────────────────────────────────
+function iaeTriggerRender() {
+  if (!iaeLastSheetId) { iaeToast('먼저 네스팅을 저장하세요', 'error'); return; }
+  var area = document.getElementById('iaeRenderResult');
+  if (area) area.innerHTML = '<div class="text-sm text-blue-600"><i class="fas fa-spinner fa-spin mr-1"></i>출력 요청 중…</div>';
+  axios.post('/api/workbench/sheets/' + iaeLastSheetId + '/render').then(function () {
+    iaeToast('출력 요청됨 — 에이전트 렌더 대기', 'info');
+    iaePollRender();
+  }).catch(function (err) {
+    var msg = (err.response && err.response.data && err.response.data.error) || '출력 요청 실패';
+    if (area) area.innerHTML = '<div class="text-sm text-red-500"><i class="fas fa-triangle-exclamation mr-1"></i>' + iaeEscape(msg) + '</div>';
+  });
+}
+function iaePollRender() {
+  if (iaeRenderPollTimer) { clearTimeout(iaeRenderPollTimer); iaeRenderPollTimer = null; }
+  if (!iaeLastSheetId) return;
+  axios.get('/api/workbench/sheets/' + iaeLastSheetId).then(function (res) {
+    var d = res.data && res.data.data; if (!d) return;
+    var area = document.getElementById('iaeRenderResult'); if (!area) return;
+    var st = d.render_status || 'none';
+    if (st === 'queued' || st === 'rendering') {
+      area.innerHTML = '<div class="text-sm text-blue-600"><i class="fas fa-spinner fa-spin mr-1"></i>' + (st === 'queued' ? '렌더 대기 (에이전트 폴링)…' : 'Illustrator 렌더 중…') + '</div>';
+      iaeRenderPollTimer = setTimeout(iaePollRender, 3000);
+    } else if (st === 'done') {
+      var r = {}; try { r = JSON.parse(d.render_result_json || '{}'); } catch (_e) {}
+      var html = '<div class="text-sm text-green-600 mb-2"><i class="fas fa-circle-check mr-1"></i>렌더 완료 ' + (r.width_cm || '?') + '×' + (r.height_cm || '?') + 'cm</div>';
+      if (r.jpg_base64) html += '<img src="data:image/jpeg;base64,' + r.jpg_base64 + '" class="max-w-full border border-gray-200 rounded mb-2" style="max-height:360px;">';
+      html += '<div class="text-[11px] text-gray-500 space-y-0.5 break-all">';
+      if (r.eps_path) html += '<div><i class="fas fa-file mr-1 text-gray-400"></i>EPS: ' + iaeEscape(r.eps_path) + '</div>';
+      if (r.dxf_path) html += '<div><i class="fas fa-scissors mr-1 text-gray-400"></i>DXF: ' + iaeEscape(r.dxf_path) + '</div>';
+      html += '</div>';
+      area.innerHTML = html;
+    } else if (st === 'error') {
+      area.innerHTML = '<div class="text-sm text-red-500"><i class="fas fa-triangle-exclamation mr-1"></i>렌더 실패: ' + iaeEscape(d.render_error || '') + '</div>';
+    } else {
+      area.innerHTML = '';
+    }
+  }).catch(function () {});
 }
 
 // ── 초기화 (모든 함수 정의 이후, 파일 맨 아래) ────────────────────

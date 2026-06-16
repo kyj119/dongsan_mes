@@ -495,4 +495,109 @@ workbenchRouter.delete('/sheets/:id', async (c) => {
   }
 })
 
+// ── 시트 네스팅 독립 렌더잡 (P5 출력) — spec §5.5 ──
+// 주문 없이 sheet_layout을 SheetLayout.jsx로 직접 렌더(EPS/DXF/JPG). v1: 단일 분석 + 단일 시트.
+// render_status: none → queued(사용자) → rendering(에이전트 claim) → done|error.
+
+// POST /api/workbench/sheets/:id/render — 출력 큐잉
+workbenchRouter.post('/sheets/:id/render', async (c) => {
+  try {
+    const id = parseInt(c.req.param('id'), 10)
+    if (!id) return c.json({ success: false, error: '잘못된 ID' }, 400)
+    const ef = entityFilter(c, 'sheet_layouts')
+    const sheet = await c.env.DB.prepare(
+      `SELECT id, source_analysis_ids, placements_json, render_status FROM sheet_layouts WHERE id = ?${ef.clause}`
+    ).bind(id, ...ef.params).first<{ id: number; source_analysis_ids: string | null; placements_json: string | null; render_status: string }>()
+    if (!sheet) return c.json({ success: false, error: '네스팅을 찾을 수 없습니다.' }, 404)
+
+    // v1 제약: 단일 분석
+    let aids: number[] = []
+    try { aids = sheet.source_analysis_ids ? JSON.parse(sheet.source_analysis_ids) : [] } catch (_e) { aids = [] }
+    aids = (Array.isArray(aids) ? aids : []).filter((n) => Number.isInteger(n))
+    if (aids.length !== 1) return c.json({ success: false, error: `v1 출력은 단일 분석만 지원합니다 (현재 ${aids.length}개).` }, 400)
+
+    // v1 제약: 단일 시트
+    let placements: Array<{ sheet?: number }> = []
+    try { placements = sheet.placements_json ? JSON.parse(sheet.placements_json) : [] } catch (_e) { placements = [] }
+    if (placements.length === 0) return c.json({ success: false, error: '배치된 조각이 없습니다.' }, 400)
+    const sheetIdxs = new Set(placements.map((p) => p.sheet || 0))
+    if (sheetIdxs.size > 1) return c.json({ success: false, error: `v1 출력은 단일 시트만 지원합니다 (현재 ${sheetIdxs.size}판).` }, 400)
+
+    const an = await c.env.DB.prepare(
+      `SELECT id, status FROM ai_analysis_requests WHERE id = ?`
+    ).bind(aids[0]).first<{ id: number; status: string }>()
+    if (!an || an.status !== 'done') return c.json({ success: false, error: '소스 분석이 완료되지 않았습니다.' }, 400)
+
+    await c.env.DB.prepare(
+      `UPDATE sheet_layouts SET render_status='queued', render_error=NULL, updated_at=datetime('now') WHERE id = ?`
+    ).bind(id).run()
+    return c.json({ success: true, data: { id, render_status: 'queued' } })
+  } catch (error) {
+    console.error('Workbench render queue error:', error)
+    return c.json({ success: false, error: '출력 요청 실패' }, 500)
+  }
+})
+
+// GET /api/workbench/render-queue — 에이전트 폴링 (queued → rendering claim)
+workbenchRouter.get('/render-queue', async (c) => {
+  try {
+    const ef = entityFilter(c, 'sheet_layouts')
+    const { results } = await c.env.DB.prepare(
+      `SELECT id, name, mode, canvas_json, placements_json, item_code, source_analysis_ids
+       FROM sheet_layouts WHERE render_status='queued'${ef.clause} ORDER BY id ASC LIMIT 3`
+    ).bind(...ef.params).all<{ id: number; name: string; mode: string; canvas_json: string; placements_json: string; item_code: string | null; source_analysis_ids: string | null }>()
+    if (!results.length) return c.json({ success: true, data: [] })
+
+    const out: Array<Record<string, unknown>> = []
+    for (const r of results) {
+      let aids: number[] = []
+      try { aids = r.source_analysis_ids ? JSON.parse(r.source_analysis_ids) : [] } catch (_e) { aids = [] }
+      const aid = (Array.isArray(aids) && aids.length) ? aids[0] : null
+      let srcPath: string | null = null
+      if (aid) {
+        const an = await c.env.DB.prepare(`SELECT file_path FROM ai_analysis_requests WHERE id = ?`).bind(aid).first<{ file_path: string | null }>()
+        srcPath = an?.file_path ?? null
+      }
+      out.push({
+        id: r.id, name: r.name, mode: r.mode,
+        canvas_json: r.canvas_json, placements_json: r.placements_json,
+        item_code: r.item_code, source_analysis_id: aid, source_file_path: srcPath
+      })
+    }
+    // claim: queued → rendering (재폴링 중복 처리 방지)
+    const ids = results.map((r) => r.id)
+    const ph = ids.map(() => '?').join(',')
+    await c.env.DB.prepare(`UPDATE sheet_layouts SET render_status='rendering', updated_at=datetime('now') WHERE id IN (${ph}) AND render_status='queued'`).bind(...ids).run()
+
+    return c.json({ success: true, data: out })
+  } catch (error) {
+    console.error('Workbench render-queue poll error:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
+  }
+})
+
+// PATCH /api/workbench/sheets/:id/render — 에이전트 결과 콜백
+workbenchRouter.patch('/sheets/:id/render', async (c) => {
+  try {
+    const id = parseInt(c.req.param('id'), 10)
+    if (!id) return c.json({ success: false, error: '잘못된 ID' }, 400)
+    const body = await c.req.json<{ render_status?: string; render_result_json?: unknown; render_error?: string }>()
+    const rs = (body.render_status === 'error') ? 'error' : 'done'
+    const resultStr = body.render_result_json == null ? null : (typeof body.render_result_json === 'string' ? body.render_result_json : JSON.stringify(body.render_result_json))
+    if (rs === 'done') {
+      await c.env.DB.prepare(
+        `UPDATE sheet_layouts SET render_status='done', status='rendered', render_result_json=?, render_error=NULL, updated_at=datetime('now') WHERE id = ?`
+      ).bind(resultStr, id).run()
+    } else {
+      await c.env.DB.prepare(
+        `UPDATE sheet_layouts SET render_status='error', render_error=?, updated_at=datetime('now') WHERE id = ?`
+      ).bind(body.render_error ?? '렌더 실패', id).run()
+    }
+    return c.json({ success: true })
+  } catch (error) {
+    console.error('Workbench render callback error:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
+  }
+})
+
 export default workbenchRouter
