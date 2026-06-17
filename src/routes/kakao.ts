@@ -1338,7 +1338,8 @@ kakaoRouter.put('/template-defaults', requireRole('ADMIN'), async (c) => {
     const matchKey = (body.match_key || '').trim()
     const templateCode = (body.template_code || '').trim()
     if (!context) return c.json({ success: false, error: 'context는 필수입니다.' }, 400)
-    const entityId = c.get('entityId') || 1
+    // entity_id: body 지정(관리자가 법인별 행 편집) 우선, 없으면 현재 컨텍스트
+    const entityId = (body.entity_id != null && String(body.entity_id) !== '') ? Number(body.entity_id) : (c.get('entityId') || 1)
     await c.env.DB.prepare(
       `INSERT INTO kakao_template_defaults (context, match_key, entity_id, template_code, updated_at)
        VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)

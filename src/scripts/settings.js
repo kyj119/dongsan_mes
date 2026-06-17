@@ -403,6 +403,47 @@ async function loadMsgSettings() {
       document.getElementById('msgSettingFaxSenderNum').value = s.fax_sender_num || '';
     }
   } catch(e) { console.error('load msg settings error', e); }
+  loadKakaoTemplateDefaults();
+}
+
+// === 발송 위치별 기본 템플릿 매핑 ===
+var KTD_LABELS = {
+  'shipments|freight': '출고 · 대신화물',
+  'shipments|daesintaekbae': '출고 · 대신택배',
+  'shipments|quick': '출고 · 방문/퀵',
+  'shipments|hanjin': '출고 · 한진택배',
+  'ledger|': '미수금 안내'
+};
+async function loadKakaoTemplateDefaults() {
+  var listEl = document.getElementById('ktdList');
+  if (!listEl) return;
+  try {
+    var results = await Promise.all([
+      axios.get('/api/kakao/template-defaults'),
+      axios.get('/api/kakao/templates')
+    ]);
+    var defs = (results[0].data && results[0].data.data) || [];
+    var tpls = ((results[1].data && results[1].data.data) || []).filter(function(t){ return t.state === 'S' || t.state === '3'; });
+    if (defs.length === 0) { listEl.innerHTML = '<div class="text-xs text-gray-400">등록된 매핑이 없습니다.</div>'; return; }
+    var optsHtml = '<option value="">선택 안 함(수동)</option>' + tpls.map(function(t){
+      return '<option value="' + escapeHtml(t.templateCode) + '">' + escapeHtml(t.templateName) + '</option>';
+    }).join('');
+    listEl.innerHTML = defs.map(function(d){
+      var key = d.context + '|' + (d.match_key || '');
+      var label = KTD_LABELS[key] || (d.context + (d.match_key ? ' · ' + d.match_key : ''));
+      var sel = optsHtml.replace('value="' + escapeHtml(d.template_code || '') + '"', 'value="' + escapeHtml(d.template_code || '') + '" selected');
+      return '<div class="flex items-center justify-between gap-2">'
+        + '<span class="text-sm text-gray-700">' + escapeHtml(label) + ' <span class="text-xs text-gray-400">(법인 ' + d.entity_id + ')</span></span>'
+        + '<select class="border border-gray-300 rounded px-2 py-1 text-sm" onchange="saveKtd(\'' + d.context + '\', \'' + (d.match_key || '') + '\', ' + d.entity_id + ', this.value)">' + sel + '</select>'
+        + '</div>';
+    }).join('');
+  } catch(e) { listEl.innerHTML = '<div class="text-xs text-red-400">불러오기 실패</div>'; }
+}
+async function saveKtd(context, matchKey, entityId, templateCode) {
+  try {
+    await axios.put('/api/kakao/template-defaults', { context: context, match_key: matchKey, entity_id: entityId, template_code: templateCode });
+    showToast('기본 템플릿이 저장되었습니다', 'success');
+  } catch(e) { showToast('저장 실패', 'error'); }
 }
 
 async function saveMsgSettings() {
