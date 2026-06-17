@@ -592,6 +592,19 @@
                     ? '<i class="fas fa-spinner fa-spin mr-2"></i>저장 중...'
                     : '<i class="fas fa-spinner fa-spin mr-2"></i>등록 중...';
 
+                // 직접 연결(라인별 첨부) 파일 수집 → order_ai_files 기록 + AI_PROCESS task 트리거용
+                var _directFiles = [];
+                document.querySelectorAll('#itemsContainer > [id^="item-"]').forEach(function(rowEl) {
+                    var rid = rowEl.id.replace('item-', '');
+                    var dfp = (document.querySelector('[name="direct_file_path_' + rid + '"]') || {}).value || '';
+                    var daid = (document.querySelector('[name="ai_analysis_id_' + rid + '"]') || {}).value || '';
+                    if (dfp && daid) _directFiles.push({ file_path: dfp, analysis_id: parseInt(daid), groups_count: 0 });
+                });
+                var _combinedAiFiles = (window._aiAnalyzedFiles || []).concat(_directFiles);
+                // 그룹분석 경로(resolvedFilePath)가 없고 직접연결만 있으면 첫 직접연결을 대표 경로로 → task 생성 보장
+                var _firstAiPath = resolvedFilePath || (_directFiles[0] ? _directFiles[0].file_path : null);
+                var _firstAiAnalysisId = aiAnalysisId || (_directFiles[0] ? _directFiles[0].analysis_id : null);
+
                 const orderData = {
                     client_id: parseInt(clientId),
                     delivery_date: document.getElementById('deliveryDate').value,
@@ -605,9 +618,9 @@
                     contact_phone: document.getElementById('contactPhone').value.trim() || null,
                     contact_mobile: document.getElementById('contactMobile').value.trim() || null,
                     shipping_payment: document.getElementById('shippingPayment').value || null,
-                    ai_file_path: resolvedFilePath || null,
-                    ai_analysis_id: aiAnalysisId || null,
-                    ai_files: window._aiAnalyzedFiles || [],
+                    ai_file_path: _firstAiPath,
+                    ai_analysis_id: _firstAiAnalysisId,
+                    ai_files: _combinedAiFiles,
                     layout_id: null,
                     items
                 };

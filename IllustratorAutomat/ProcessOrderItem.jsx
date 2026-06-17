@@ -61,8 +61,9 @@ function main() {
     var scaleFactor = _p.scaleFactor || 1;
     var offsetCfg   = _p.offset      || null;
     var finishingCfg = _p.finishing   || null;
+    var passthroughThumb = _p.passthroughThumb || false;  // 완성본 직접연결: 가공 없이 PNG 썸네일만 생성
 
-    if (!sourceFile || !outputEps) {
+    if (!sourceFile || (!outputEps && !passthroughThumb)) {
         $.writeln("ProcessOrderItem ERROR: source, epsOutput 필요");
         return;
     }
@@ -101,6 +102,28 @@ function main() {
         $.writeln("ProcessOrderItem WARNING: artboard " + abIndex + " 없음 (count="
             + doc.artboards.length + ") -> artboard 0 사용");
         abIndex = 0;
+    }
+
+    // ── 완성본 passthrough: 가공 전부 스킵, PNG 썸네일만 export (EPS는 C#이 원본 그대로 복사) ──
+    if (passthroughThumb) {
+        try {
+            doc.artboards.setActiveArtboardIndex(abIndex);
+            app.redraw();
+            if (outputPng) {
+                var _ptR = doc.artboards[abIndex].artboardRect;
+                var _ptLong = Math.max(Math.abs(_ptR[2] - _ptR[0]), Math.abs(_ptR[1] - _ptR[3]));
+                var _ptSc = (_ptLong > 0) ? (thumbSize / _ptLong) : 1;
+                var _ptOpts = new ExportOptionsPNG24();
+                _ptOpts.antiAliasing = true;
+                _ptOpts.artBoardClipping = true;
+                _ptOpts.horizontalScale = _ptSc * 100;
+                _ptOpts.verticalScale = _ptSc * 100;
+                doc.exportFile(new File(outputPng), ExportType.PNG24, _ptOpts);
+                $.writeln("ProcessOrderItem passthroughThumb: PNG -> " + outputPng);
+            }
+        } catch (ePt) { $.writeln("passthroughThumb 오류: " + ePt); }
+        try { doc.close(SaveOptions.DONOTSAVECHANGES); } catch (e) {}
+        return;
     }
 
     var ab = doc.artboards[abIndex];

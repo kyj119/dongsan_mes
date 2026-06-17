@@ -15,19 +15,33 @@
                 return `<div class="border border-gray-200 rounded-lg p-3 mb-2 bg-gray-50" id="item-${id}">
                     <input type="hidden" name="ai_group_index_${id}" value="">
                     <input type="hidden" name="ai_analysis_id_${id}" value="">
+                    <input type="hidden" name="direct_file_path_${id}" value="">
                     <input type="hidden" name="pricing_method_${id}" value="FIXED">
                     <div class="flex justify-between items-center mb-2">
-                        <div class="flex items-center gap-2">
+                        <div class="flex items-center gap-2 flex-wrap">
                             <div id="thumb_${id}" class="hidden cursor-pointer" onclick="openThumbModal('thumb_img_${id}')" title="클릭하여 크게 보기">
                                 <img id="thumb_img_${id}" class="w-20 h-20 object-contain border border-gray-200 rounded shadow-sm" />
                             </div>
                             <span class="font-bold text-gray-700 text-sm" id="item_label_${id}">품목 #${id}</span>
                             <span id="item_check_${id}" class="hidden text-green-500 text-sm"><i class="fas fa-check-circle"></i></span>
                             <span id="item_dist_badge_${id}" class="hidden text-xs px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 font-medium"><i class="fas fa-box mr-0.5"></i>유통</span>
+                            <span id="direct_file_chip_${id}" class="hidden inline-flex items-center gap-1 text-xs px-1.5 py-0.5 rounded bg-purple-50 text-purple-700 border border-purple-200">
+                                <i class="fas fa-paperclip"></i><span id="direct_file_name_${id}" class="max-w-[140px] truncate"></span>
+                                <label class="ml-1 flex items-center gap-0.5 cursor-pointer" title="완성본=가공 없이 그대로 복사 / 해제=마감·크기 가공 적용">
+                                    <input type="checkbox" id="direct_passthrough_${id}" class="rounded border-purple-300" onchange="onDirectModeToggle(${id})"><span>완성본</span>
+                                </label>
+                                <button type="button" onclick="clearDirectFile(${id})" class="text-purple-400 hover:text-purple-700" title="연결 해제"><i class="fas fa-times"></i></button>
+                            </span>
                         </div>
-                        <button type="button" onclick="removeItem(${id})" class="text-red-400 hover:text-red-600 text-xs px-2 py-1 rounded hover:bg-red-50">
-                            <i class="fas fa-trash mr-1"></i>삭제
-                        </button>
+                        <div class="flex items-center gap-1">
+                            <label class="text-xs px-2 py-1 rounded bg-gray-100 text-gray-600 hover:bg-purple-100 cursor-pointer whitespace-nowrap" title="그룹추출 없이 완성 EPS/AI를 이 라인에 직접 연결">
+                                <i class="fas fa-paperclip mr-1"></i>파일 연결
+                                <input type="file" accept=".ai,.eps" class="hidden" onchange="onLineFileSelected(${id}, this)">
+                            </label>
+                            <button type="button" onclick="removeItem(${id})" class="text-red-400 hover:text-red-600 text-xs px-2 py-1 rounded hover:bg-red-50">
+                                <i class="fas fa-trash mr-1"></i>삭제
+                            </button>
+                        </div>
                     </div>
                     <div class="grid grid-cols-4 md:grid-cols-8 gap-2 mb-2">
                         <div class="col-span-2 relative">
@@ -474,5 +488,76 @@
                     if (hHid) hHid.value = hCm;
                 });
                 calcItem(parentId);
+            };
+
+            // ── 직접 연결: 라인별 완성 EPS/AI 첨부 (그룹추출 우회) ──────────────────
+            // 첨부 파일을 skip_analysis로 업로드(분석 안 함) → 라인 히든필드에 연결.
+            // 썸네일은 출력 단계(IllustratorAutomat)에서 생성되어 카드/주문에 반영됨.
+            window.onLineFileSelected = async function(id, input) {
+                var file = (input.files || [])[0];
+                if (!file) return;
+                var nm = (file.name || '').toLowerCase();
+                if (!(nm.endsWith('.ai') || nm.endsWith('.eps'))) {
+                    showToast('AI 또는 EPS 파일만 연결할 수 있습니다.', 'warning');
+                    input.value = '';
+                    return;
+                }
+                var chip = document.getElementById('direct_file_chip_' + id);
+                var nameEl = document.getElementById('direct_file_name_' + id);
+                if (nameEl) nameEl.textContent = file.name + ' 업로드 중...';
+                if (chip) chip.classList.remove('hidden');
+                try {
+                    var fd = new FormData();
+                    fd.append('file', file);
+                    fd.append('skip_analysis', '1');
+                    var res = await axios.post('/api/ai-analysis/upload', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+                    if (!res.data || !res.data.success) throw new Error((res.data && res.data.error) || '업로드 실패');
+                    var d = res.data.data;
+                    var aiIdEl = document.querySelector('[name="ai_analysis_id_' + id + '"]');
+                    if (aiIdEl) aiIdEl.value = d.id;
+                    var fpEl = document.querySelector('[name="direct_file_path_' + id + '"]');
+                    if (fpEl) fpEl.value = d.file_path || '';
+                    // 완성본/가공 기본값: EPS=완성본(복사), AI=가공
+                    var pt = document.getElementById('direct_passthrough_' + id);
+                    var isEps = nm.endsWith('.eps');
+                    if (pt) pt.checked = isEps;
+                    onDirectModeToggle(id);
+                    if (nameEl) nameEl.textContent = file.name;
+                    // 가공 라인은 파일 스케일 입력 표시
+                    var scaleDiv = document.getElementById('scale_div_' + id);
+                    if (scaleDiv) scaleDiv.classList.toggle('hidden', isEps);
+                    showToast('파일 연결됨: ' + file.name + (isEps ? ' (완성본=복사)' : ' (가공)'), 'success');
+                } catch(e) {
+                    if (nameEl) nameEl.textContent = '';
+                    if (chip) chip.classList.add('hidden');
+                    showToast('파일 연결 실패: ' + ((e.response && e.response.data && e.response.data.error) || e.message), 'error');
+                } finally {
+                    input.value = '';
+                }
+            };
+
+            // 완성본(복사, group_index=-3) ↔ 가공(전체문서, -1) 토글. 파일 연결된 라인에만 적용(그룹분석 라인 보호).
+            window.onDirectModeToggle = function(id) {
+                var pt = document.getElementById('direct_passthrough_' + id);
+                var giEl = document.querySelector('[name="ai_group_index_' + id + '"]');
+                var fpEl = document.querySelector('[name="direct_file_path_' + id + '"]');
+                if (!giEl || !fpEl || !fpEl.value) return;
+                giEl.value = (pt && pt.checked) ? -3 : -1;
+                var scaleDiv = document.getElementById('scale_div_' + id);
+                if (scaleDiv) scaleDiv.classList.toggle('hidden', !!(pt && pt.checked));
+            };
+
+            window.clearDirectFile = function(id) {
+                var chip = document.getElementById('direct_file_chip_' + id);
+                if (chip) chip.classList.add('hidden');
+                var nameEl = document.getElementById('direct_file_name_' + id);
+                if (nameEl) nameEl.textContent = '';
+                var pt = document.getElementById('direct_passthrough_' + id);
+                if (pt) pt.checked = false;
+                ['ai_analysis_id_', 'direct_file_path_', 'ai_group_index_'].forEach(function(pfx) {
+                    var el = document.querySelector('[name="' + pfx + id + '"]');
+                    if (el) el.value = '';
+                });
+                showToast('파일 연결이 해제되었습니다.', 'info');
             };
 

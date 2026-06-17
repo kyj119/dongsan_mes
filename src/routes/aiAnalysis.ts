@@ -144,11 +144,17 @@ aiAnalysisRouter.post('/upload', async (c) => {
     const file = formData.get('file') as File | null
     if (!file) return c.json({ success: false, error: 'No file provided' }, 400)
 
+    // 직접연결(그룹추출 우회): skip_analysis면 status='direct'로 저장 → IllustratorAutomat의
+    // 분석 폴링(status='pending')이 건너뜀. 파일관리(ai_analysis_requests) 체계는 동일 유지,
+    // 출력 시 /:id/download로 r2:// 소스를 동일하게 사용. (status에 CHECK 제약 없음 → 마이그 불필요)
+    const skipAnalysis = (formData.get('skip_analysis') as string) === '1' || (formData.get('skip_analysis') as string) === 'true'
+    const initStatus = skipAnalysis ? 'direct' : 'pending'
+
     // 분석 요청 생성
     const result = await c.env.DB.prepare(
-      `INSERT INTO ai_analysis_requests (file_path, status, entity_id) VALUES (?, 'pending', ?)
+      `INSERT INTO ai_analysis_requests (file_path, status, entity_id) VALUES (?, ?, ?)
        RETURNING id, file_path, status, created_at`
-    ).bind(file.name, getEntityId(c)).first<{ id: number; file_path: string; status: string; created_at: string }>()
+    ).bind(file.name, initStatus, getEntityId(c)).first<{ id: number; file_path: string; status: string; created_at: string }>()
 
     const analysisId = result!.id
 
@@ -168,11 +174,55 @@ aiAnalysisRouter.post('/upload', async (c) => {
 
     return c.json({
       success: true,
-      data: { id: analysisId, file_path: `r2://${r2Key}`, status: 'pending', r2_key: r2Key }
+      data: { id: analysisId, file_path: `r2://${r2Key}`, status: initStatus, r2_key: r2Key }
     })
   } catch (error) {
     console.error('AI Analysis upload error:', error)
     return c.json({ success: false, error: '업로드 실패' }, 500)
+  }
+})
+
+// POST /api/ai-analysis/:id/thumbnail — 직접연결(그룹추출 우회) 출력 후 IllustratorAutomat이 썸네일 보고.
+// groups_json이 비어있으면 1그룹으로 채워(그룹분석과 동일 체계) 카드/주문에 썸네일을 반영한다.
+aiAnalysisRouter.post('/:id/thumbnail', async (c) => {
+  try {
+    const id = c.req.param('id')
+    const body = await c.req.json<{ thumbnail_base64?: string; width_mm?: number; height_mm?: number }>()
+    const thumb = body.thumbnail_base64
+    if (!thumb) return c.json({ success: false, error: 'thumbnail_base64 required' }, 400)
+
+    const ef = entityFilter(c)  // 법인 격리
+    const row = await c.env.DB.prepare(
+      `SELECT id, status, groups_json FROM ai_analysis_requests WHERE id = ?${ef.clause}`
+    ).bind(id, ...ef.params).first<{ id: number; status: string; groups_json: string | null }>()
+    if (!row) return c.json({ success: false, error: 'Not found' }, 404)
+
+    // groups_json 비어있으면(직접연결) 1그룹으로 저장 + status done 승격
+    let groups: Array<Record<string, unknown>> = []
+    try { groups = JSON.parse(row.groups_json || '[]') } catch { groups = [] }
+    if (groups.length === 0) {
+      groups = [{ index: 0, name: '직접연결', thumbnail_base64: thumb, width_mm: body.width_mm ?? null, height_mm: body.height_mm ?? null }]
+      await c.env.DB.prepare(
+        `UPDATE ai_analysis_requests SET groups_json = ?, status = CASE WHEN status = 'direct' THEN 'done' ELSE status END WHERE id = ?`
+      ).bind(JSON.stringify(groups), id).run()
+    }
+
+    // 이 분석을 ai_analysis_id로 참조하는 order_items의 카드 썸네일 채우기 (아직 비어있는 카드만)
+    const thumbUrl = thumb.startsWith('data:') ? thumb : `data:image/png;base64,${thumb}`
+    await c.env.DB.prepare(`
+      UPDATE cards SET thumbnail_url = ?, updated_at = CURRENT_TIMESTAMP
+      WHERE thumbnail_url IS NULL AND id IN (
+        SELECT c2.id FROM cards c2
+        JOIN card_items ci ON ci.card_id = c2.id
+        JOIN order_items oi ON oi.id = ci.order_item_id
+        WHERE oi.ai_analysis_id = ?
+      )
+    `).bind(thumbUrl, id).run()
+
+    return c.json({ success: true })
+  } catch (error) {
+    console.error('AI Analysis thumbnail callback error:', error)
+    return c.json({ success: false, error: '썸네일 저장 실패' }, 500)
   }
 })
 

@@ -1941,6 +1941,16 @@ namespace IllustratorAutomation
                             if (!string.IsNullOrEmpty(perItemPath) && File.Exists(perItemPath))
                                 itemFilePath = perItemPath;
                         }
+                        // 라인별 ai_analysis_id가 r2 소스면 라인 단위로 다운로드 (직접연결 다중파일 매핑).
+                        // 그룹분석은 file_path가 로컬 temp라 /download가 400 → 빈값 반환 → order 레벨 유지(기존 동작 보존).
+                        if (item.TryGetProperty("ai_analysis_id", out var lineAidEl)
+                            && lineAidEl.ValueKind != JsonValueKind.Null
+                            && lineAidEl.TryGetInt32(out int lineAid) && lineAid > 0)
+                        {
+                            string lineFile = await DownloadAnalysisFileAsync(lineAid);
+                            if (!string.IsNullOrEmpty(lineFile) && File.Exists(lineFile))
+                                itemFilePath = lineFile;
+                        }
 
                         // 처리 후 삭제할 temp 폴더 수집
                         if (!string.IsNullOrEmpty(itemFilePath))
@@ -2327,6 +2337,41 @@ namespace IllustratorAutomation
                     return;
                 }
 
+                // 직접연결 완성본(-3): 가공 없이 원본 EPS/AI를 그대로 주문폴더에 복사 (passthrough) + 썸네일만 생성
+                if (groupIdx == -3)
+                {
+                    string ptExt = Path.GetExtension(aiFilePath);
+                    if (string.IsNullOrEmpty(ptExt)) ptExt = ".eps";
+                    string ptDest = Path.Combine(orderFolder, baseName + ptExt);
+                    File.Copy(aiFilePath, ptDest, overwrite: true);
+                    Console.WriteLine($"      📋 완성본 passthrough 복사: {Path.GetFileName(ptDest)}");
+                    // 썸네일 PNG만 생성 (가공 없이) — ProcessOrderItem.jsx passthroughThumb 모드
+                    try
+                    {
+                        string ptScript = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "ProcessOrderItem.jsx");
+                        if (File.Exists(ptScript))
+                        {
+                            string ptDir = Path.GetDirectoryName(ptScript)!;
+                            string ptJson = System.Text.Json.JsonSerializer.Serialize(new
+                            {
+                                source = aiFilePath,
+                                artboardIndex = 0,
+                                epsOutput = "",
+                                pngOutput = pngOutputPath,
+                                thumbSize = 300,
+                                passthroughThumb = true
+                            });
+                            File.WriteAllText(Path.Combine(ptDir, "ia_params.json"), ptJson, System.Text.Encoding.UTF8);
+                            RunJsxScript(ptScript, Path.Combine(ptDir, "ia_params.json"), timeoutMinutes: 2);
+                        }
+                    }
+                    catch (Exception ptEx) { Console.WriteLine($"      ⚠️ 완성본 썸네일 생성 실패: {ptEx.Message}"); }
+                    await RegisterFileMapAsync(orderNumber, fileSeq, fileSeqStr, baseName, item);
+                    await ReportDirectThumbnailAsync(item, pngOutputPath);
+                    await ArchiveOriginalAsync(aiFilePath, category, year, month, day, orderNumber, baseName, item);
+                    return;
+                }
+
                 Console.WriteLine($"      Output: {epsOutputPath}");
 
                 var illustratorPath = FindIllustratorPath();
@@ -2385,6 +2430,9 @@ namespace IllustratorAutomation
 
                 // file-map API 호출: LogWatcher 카드 매칭용 파일명 ↔ 카드 매핑 등록
                 await RegisterFileMapAsync(orderNumber, fileSeq, fileSeqStr, baseName, item);
+
+                // 직접연결(가공) 라인: 출력 PNG를 썸네일로 카드/주문에 반영 (그룹추출 우회분만)
+                await ReportDirectThumbnailAsync(item, pngOutputPath);
 
                 // 원본 보존 (P1b): 고객 원본을 Z:\원본\…에 영구 복사 + MES 기록 (best-effort, 실패해도 무시)
                 await ArchiveOriginalAsync(aiFilePath, category, year, month, day, orderNumber, baseName, item);
@@ -2473,6 +2521,64 @@ namespace IllustratorAutomation
             catch (Exception ex)
             {
                 Console.WriteLine($"   ⚠️  PATCH order status 오류: {ex.Message}");
+            }
+        }
+
+        // ── 직접연결: 라인별 분석 소스 파일을 r2에서 다운로드 (다중 파일 라인별 매핑, 캐시) ──────
+        private static readonly Dictionary<int, string> _lineFileCache = new Dictionary<int, string>();
+        private static async Task<string> DownloadAnalysisFileAsync(int analysisId)
+        {
+            if (_lineFileCache.TryGetValue(analysisId, out var cached) && File.Exists(cached))
+                return cached;
+            try
+            {
+                var res = await httpClient.GetAsync($"{ERP_API_URL}/api/ai-analysis/{analysisId}/download");
+                if (!res.IsSuccessStatusCode) return "";  // 로컬 file_path(그룹분석)는 400 → 폴백
+                string folder = Path.Combine(TEMP_FOLDER, $"line_{analysisId}");
+                Directory.CreateDirectory(folder);
+                string ext = ".ai";
+                var cd = res.Content.Headers.ContentDisposition?.FileName;
+                if (!string.IsNullOrEmpty(cd)) { var e = Path.GetExtension(cd.Trim('"')); if (!string.IsNullOrEmpty(e)) ext = e; }
+                string tempPath = Path.Combine(folder, $"source{ext}");
+                var bytes = await res.Content.ReadAsByteArrayAsync();
+                File.WriteAllBytes(tempPath, bytes);
+                _lineFileCache[analysisId] = tempPath;
+                Console.WriteLine($"      ☁️  라인 파일 다운로드(분석#{analysisId}): {Path.GetFileName(tempPath)} ({bytes.Length / 1024}KB)");
+                return tempPath;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"      ⚠️ 라인 파일 다운로드 오류(분석#{analysisId}): {ex.Message}");
+                return "";
+            }
+        }
+
+        // ── 직접연결: 출력 PNG를 썸네일로 MES에 보고 (group_index -1/-3 = 직접연결 약속값만) ──────
+        private static async Task ReportDirectThumbnailAsync(JsonElement item, string pngPath)
+        {
+            try
+            {
+                if (!item.TryGetProperty("ai_analysis_id", out var aidEl) || aidEl.ValueKind == JsonValueKind.Null) return;
+                if (!aidEl.TryGetInt32(out int aid) || aid <= 0) return;
+                int gi = (item.TryGetProperty("ai_group_index", out var gEl) && gEl.ValueKind != JsonValueKind.Null && gEl.TryGetInt32(out int gv)) ? gv : -99;
+                if (gi != -1 && gi != -3) return;  // 직접연결만 대상 (그룹분석은 이미 썸네일 보유)
+                if (string.IsNullOrEmpty(pngPath) || !File.Exists(pngPath)) return;
+                byte[] png = File.ReadAllBytes(pngPath);
+                if (png.Length > 1_500_000) { Console.WriteLine($"      ⚠️ 썸네일 과대({png.Length / 1024}KB) — 보고 생략"); return; }
+                string b64 = Convert.ToBase64String(png);
+                double wmm = (item.TryGetProperty("width", out var wEl2) && wEl2.ValueKind != JsonValueKind.Null) ? wEl2.GetDouble() * 10 : 0;
+                double hmm = (item.TryGetProperty("height", out var hEl2) && hEl2.ValueKind != JsonValueKind.Null) ? hEl2.GetDouble() * 10 : 0;
+                var payload = JsonSerializer.Serialize(new { thumbnail_base64 = b64, width_mm = wmm, height_mm = hmm });
+                var req = new HttpRequestMessage(HttpMethod.Post, $"{ERP_API_URL}/api/ai-analysis/{aid}/thumbnail");
+                if (!string.IsNullOrEmpty(authToken))
+                    req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", authToken);
+                req.Content = new StringContent(payload, System.Text.Encoding.UTF8, "application/json");
+                var resp = await httpClient.SendAsync(req);
+                Console.WriteLine($"      🖼  직접연결 썸네일 보고(분석#{aid}): {resp.StatusCode}");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"      ⚠️ 썸네일 보고 실패: {ex.Message}");
             }
         }
 
