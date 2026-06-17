@@ -206,7 +206,7 @@ messagesRouter.post('/send', async (c) => {
       return c.json({ success: false, error: 'content.body는 필수입니다.' }, 400)
     }
 
-    const kakaoSettings = await getKakaoSettings(db)
+    const kakaoSettings = await getKakaoSettings(db, c.get('entityId') || 1)
     if (!kakaoSettings.senderNum) {
       return c.json({ success: false, error: '발신번호(kakao_sender_num)가 설정되지 않았습니다.' }, 400)
     }
@@ -505,7 +505,7 @@ messagesRouter.post('/send-bulk', async (c) => {
     }
 
     // ── 카카오 / SMS 대량 발송 — 바로빌 Provider ───────────────────────────
-    const kakaoSettings = await getKakaoSettings(db)
+    const kakaoSettings = await getKakaoSettings(db, c.get('entityId') || 1)
     if (!kakaoSettings.senderNum) {
       return c.json({ success: false, error: '발신번호(kakao_sender_num)가 설정되지 않았습니다.' }, 400)
     }

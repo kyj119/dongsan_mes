@@ -4,6 +4,7 @@ import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
 import { entityFilter, getEntityId } from '../utils/entityFilter'
 import { BarobillSmsProvider } from '../services/barobillSms'
+import { getEntityCorpNum } from '../utils/entitySettings'
 import type { SMSMessage, ATSMessage } from '../services/barobillSms'
 export type { SMSMessage, ATSMessage }
 
@@ -44,6 +45,22 @@ const kakaoRouter = new Hono<HonoEnv>()
 kakaoRouter.use('/*', authMiddleware, requireRole('ADMIN', 'MANAGER'))
 
 // ────────────────────────────────────────────────────────────────────────────
+// 공통 헬퍼: 법인별 설정(entity_settings) 조회 — 없으면 null (전역 fallback)
+// 바로빌 멀티계정: 파트너 단일 CERTKEY + 법인별 corpNum/senderId/채널.
+// entity_settings 미존재(프로덕션 마이그 전)여도 안전하게 null 반환.
+// ────────────────────────────────────────────────────────────────────────────
+async function getEntitySetting(db: D1Database, entityId: number, key: string): Promise<string | null> {
+  try {
+    const row = await db.prepare(
+      `SELECT setting_value FROM entity_settings WHERE entity_id = ? AND setting_key = ?`
+    ).bind(entityId, key).first<{ setting_value: string }>()
+    return row ? (row.setting_value ?? null) : null
+  } catch {
+    return null
+  }
+}
+
+// ────────────────────────────────────────────────────────────────────────────
 // 공통 헬퍼: 카카오 Provider 인스턴스 생성
 // ────────────────────────────────────────────────────────────────────────────
 export async function getKakaoProvider(c: Context<HonoEnv>): Promise<BarobillSmsProvider | null> {
@@ -59,25 +76,23 @@ export async function getKakaoProvider(c: Context<HonoEnv>): Promise<BarobillSms
     ).first<SettingRow>()
     const isTest = testModeSetting?.setting_value !== '0'
 
-    let brn = ''
-    const entity = await db.prepare(
-      'SELECT business_reg_no FROM entities WHERE id = ?'
-    ).bind(entityId).first<EntityRow>()
-    if (entity?.business_reg_no) brn = entity.business_reg_no.replace(/-/g, '')
-    else {
-      const companyBrn = await db.prepare(
-        `SELECT setting_value FROM settings WHERE setting_key = 'company_business_registration_number'`
-      ).first<SettingRow>()
-      brn = (companyBrn?.setting_value || '').replace(/-/g, '')
-    }
+    // corpNum: getEntityCorpNum 유틸로 통일 (popbill_corp_num 우선 → business_reg_no → 전역).
+    // 팩스·세금계산서와 동일 소스를 사용해 법인별 corpNum 일관성 보장.
+    const brn = await getEntityCorpNum(db, entityId)
 
     const key = isTest ? certKey : certKeyProd
     if (!key || !brn) return null
 
-    const senderIdRow = await db.prepare(
-      "SELECT setting_value FROM settings WHERE setting_key = 'barobill_sender_id'"
-    ).first<SettingRow>()
-    return new BarobillSmsProvider({ certKey: key, corpNum: brn, isTest, senderId: senderIdRow?.setting_value || 'DONGSAN' })
+    // senderId(바로빌 연동회원 ID): 법인별 필수 (동산 DONGSAN / 선명 sunm2596).
+    // entity_settings 우선 → 전역 settings → 'DONGSAN'(entity1 하위호환).
+    const entitySenderId = await getEntitySetting(db, entityId, 'barobill_sender_id')
+    const senderIdRow = entitySenderId == null
+      ? await db.prepare(
+          "SELECT setting_value FROM settings WHERE setting_key = 'barobill_sender_id'"
+        ).first<SettingRow>()
+      : null
+    const senderId = entitySenderId || senderIdRow?.setting_value || 'DONGSAN'
+    return new BarobillSmsProvider({ certKey: key, corpNum: brn, isTest, senderId })
   } catch (error) {
     console.error('src/routes/kakao.ts getKakaoProvider error:', error)
     return null
@@ -94,7 +109,7 @@ export interface KakaoSettings {
   altSendType: string
 }
 
-export async function getKakaoSettings(db: D1Database): Promise<KakaoSettings> {
+export async function getKakaoSettings(db: D1Database, entityId?: number): Promise<KakaoSettings> {
   const { results } = await db.prepare(
     `SELECT setting_key, setting_value FROM settings
      WHERE setting_key IN ('kakao_enabled', 'kakao_sender_num', 'kakao_channel_id', 'kakao_alt_send_type')`
@@ -102,6 +117,21 @@ export async function getKakaoSettings(db: D1Database): Promise<KakaoSettings> {
 
   const map: Record<string, string> = {}
   for (const r of results) map[r.setting_key] = r.setting_value || ''
+
+  // 법인별 override: entity_settings에 명시된 값만 덮어씀 (빈값/미존재 → 전역 fallback)
+  if (entityId != null) {
+    try {
+      const { results: entRows } = await db.prepare(
+        `SELECT setting_key, setting_value FROM entity_settings
+         WHERE entity_id = ? AND setting_key IN ('kakao_enabled', 'kakao_sender_num', 'kakao_channel_id', 'kakao_alt_send_type')`
+      ).bind(entityId).all<SettingKVRow>()
+      for (const r of entRows) {
+        if (r.setting_value != null && r.setting_value !== '') map[r.setting_key] = r.setting_value
+      }
+    } catch {
+      // entity_settings 미존재 시 전역값 유지
+    }
+  }
 
   return {
     enabled: map['kakao_enabled'] === '1',
@@ -117,33 +147,35 @@ export async function getKakaoSettings(db: D1Database): Promise<KakaoSettings> {
 kakaoRouter.get('/settings', async (c) => {
   try {
     const db = c.env.DB
+    const entityId = c.get('entityId') || 1
 
-    // 카카오 알림톡 + 이메일 + 팩스 설정 조회
+    // 이메일·팩스는 전역 공유 설정
     const { results: settingRows } = await db.prepare(
       `SELECT setting_key, setting_value FROM settings
        WHERE setting_key IN (
-         'kakao_enabled', 'kakao_sender_num', 'kakao_channel_id', 'kakao_alt_send_type',
          'email_enabled', 'email_from_name', 'email_from_address',
          'fax_enabled', 'fax_sender_num'
        )`
     ).all<SettingKVRow>()
 
     const settings: Record<string, string> = {}
-    for (const row of settingRows) {
-      if (row.setting_key === 'kakao_enabled') {
-        settings[row.setting_key] = row.setting_value || '0'
-      } else {
-        settings[row.setting_key] = row.setting_value || ''
-      }
-    }
+    for (const row of settingRows) settings[row.setting_key] = row.setting_value || ''
+
+    // 카카오는 법인별(entity_settings 우선 → 전역 fallback)
+    const kakao = await getKakaoSettings(db, entityId)
+    const entitySenderId = await getEntitySetting(db, entityId, 'barobill_sender_id')
+    const senderId = entitySenderId
+      || (await db.prepare("SELECT setting_value FROM settings WHERE setting_key = 'barobill_sender_id'").first<SettingRow>())?.setting_value
+      || ''
 
     return c.json({
       success: true,
       data: {
-        kakao_enabled: settings.kakao_enabled || '0',
-        kakao_sender_num: settings.kakao_sender_num || '',
-        kakao_channel_id: settings.kakao_channel_id || '',
-        kakao_alt_send_type: settings.kakao_alt_send_type || 'C',
+        kakao_enabled: kakao.enabled ? '1' : '0',
+        kakao_sender_num: kakao.senderNum,
+        kakao_channel_id: kakao.channelId,
+        kakao_alt_send_type: kakao.altSendType,
+        barobill_sender_id: senderId,
         email_enabled: settings.email_enabled || '0',
         email_from_name: settings.email_from_name || '',
         email_from_address: settings.email_from_address || '',
@@ -179,12 +211,25 @@ kakaoRouter.patch('/settings', async (c) => {
     }
 
     // Settings 테이블에 upsert
-    const settingsToUpdate: { key: string, value: string }[] = [
+    const entityId = c.get('entityId') || 1
+    // kakao -> per-entity entity_settings (멀티계정: 동산/선명 분리)
+    const kakaoToUpdate: { key: string, value: string }[] = [
       { key: 'kakao_enabled', value: kakaoEnabled ? '1' : '0' },
       { key: 'kakao_sender_num', value: kakaoSenderNum },
       { key: 'kakao_channel_id', value: kakaoChannelId },
-      { key: 'kakao_alt_send_type', value: kakaoAltSendType }
+      { key: 'kakao_alt_send_type', value: kakaoAltSendType },
     ]
+    if ('barobill_sender_id' in body) {
+      kakaoToUpdate.push({ key: 'barobill_sender_id', value: body.barobill_sender_id?.trim() || '' })
+    }
+    for (const s of kakaoToUpdate) {
+      await db.prepare(
+        `INSERT INTO entity_settings (entity_id, setting_key, setting_value) VALUES (?, ?, ?)
+         ON CONFLICT(entity_id, setting_key) DO UPDATE SET setting_value = excluded.setting_value`
+      ).bind(entityId, s.key, s.value).run()
+    }
+    // email/fax -> global settings (공유)
+    const settingsToUpdate: { key: string, value: string }[] = []
 
     // 이메일 설정
     if ('email_enabled' in body) settingsToUpdate.push({ key: 'email_enabled', value: body.email_enabled === '1' || body.email_enabled === true ? '1' : '0' })
@@ -288,7 +333,7 @@ kakaoRouter.post('/send', async (c) => {
     }
 
     // 카카오 설정 일괄 조회
-    const kakaoSettings = await getKakaoSettings(db)
+    const kakaoSettings = await getKakaoSettings(db, c.get('entityId') || 1)
     if (!kakaoSettings.enabled) {
       return c.json({ success: false, error: '카카오톡이 비활성화되어 있습니다.' }, 400)
     }
@@ -394,7 +439,7 @@ kakaoRouter.post('/send-shipment', async (c) => {
     }
 
     // 카카오 설정 일괄 조회
-    const kakaoSettings = await getKakaoSettings(db)
+    const kakaoSettings = await getKakaoSettings(db, c.get('entityId') || 1)
     if (!kakaoSettings.enabled) {
       return c.json({ success: false, error: '카카오톡이 비활성화되어 있습니다.' }, 400)
     }
@@ -572,7 +617,7 @@ kakaoRouter.post('/send-tax-invoice', async (c) => {
     }
 
     // 카카오 설정 일괄 조회
-    const kakaoSettings = await getKakaoSettings(db)
+    const kakaoSettings = await getKakaoSettings(db, c.get('entityId') || 1)
     if (!kakaoSettings.enabled) {
       return c.json({ success: false, error: '카카오톡이 비활성화되어 있습니다.' }, 400)
     }
@@ -673,7 +718,7 @@ kakaoRouter.post('/send-portal-link', async (c) => {
     }
 
     // 카카오 설정 일괄 조회
-    const kakaoSettings = await getKakaoSettings(db)
+    const kakaoSettings = await getKakaoSettings(db, c.get('entityId') || 1)
     if (!kakaoSettings.enabled) {
       return c.json({ success: false, error: '카카오톡이 비활성화되어 있습니다.' }, 400)
     }
@@ -779,7 +824,7 @@ kakaoRouter.post('/send-sms', async (c) => {
     }
 
     // 발신번호 확인 (kakao_sender_num 공용)
-    const kakaoSettings = await getKakaoSettings(db)
+    const kakaoSettings = await getKakaoSettings(db, c.get('entityId') || 1)
     if (!kakaoSettings.senderNum) {
       return c.json({ success: false, error: '발신번호가 설정되지 않았습니다.' }, 400)
     }
@@ -877,7 +922,7 @@ kakaoRouter.post('/send-sms-bulk', async (c) => {
     }
 
     // 발신번호 확인
-    const kakaoSettings = await getKakaoSettings(db)
+    const kakaoSettings = await getKakaoSettings(db, c.get('entityId') || 1)
     if (!kakaoSettings.senderNum) {
       return c.json({ success: false, error: '발신번호가 설정되지 않았습니다.' }, 400)
     }
@@ -997,7 +1042,7 @@ kakaoRouter.post('/send-shipment-bulk', async (c) => {
       return c.json({ success: false, error: '메시지 내용이 없습니다.' }, 400)
     }
 
-    const kakaoSettings = await getKakaoSettings(db)
+    const kakaoSettings = await getKakaoSettings(db, c.get('entityId') || 1)
     if (!kakaoSettings.senderNum) {
       return c.json({ success: false, error: '발신번호가 설정되지 않았습니다.' }, 400)
     }
