@@ -1308,4 +1308,70 @@ kakaoRouter.get('/logs/:receiptNum/status', async (c) => {
   }
 })
 
+// ────────────────────────────────────────────────────────────────────────────
+// 발송 위치별 기본 템플릿 매핑 (kakao_template_defaults)
+//  context: shipments / ledger / messages / shell:<related_type>
+//  match_key: 배송방법(DELIVERY/FREIGHT/PICKUP/QUICK) 등, 빈값=context 공통
+// ────────────────────────────────────────────────────────────────────────────
+
+// 목록 조회 (관리자 설정 UI)
+kakaoRouter.get('/template-defaults', async (c) => {
+  try {
+    const ef = entityFilter(c)
+    const { results } = await c.env.DB.prepare(
+      `SELECT id, context, match_key, entity_id, template_code, updated_at
+       FROM kakao_template_defaults WHERE 1=1${ef.clause}
+       ORDER BY context, match_key, entity_id`
+    ).bind(...ef.params).all()
+    return c.json({ success: true, data: results })
+  } catch (error) {
+    console.error('src/routes/kakao.ts GET /template-defaults error:', error)
+    return c.json({ success: false, error: '기본 템플릿 조회 실패' }, 500)
+  }
+})
+
+// 기본 템플릿 설정 (upsert)
+kakaoRouter.put('/template-defaults', requireRole('ADMIN'), async (c) => {
+  try {
+    const body = await c.req.json() as any
+    const context = (body.context || '').trim()
+    const matchKey = (body.match_key || '').trim()
+    const templateCode = (body.template_code || '').trim()
+    if (!context) return c.json({ success: false, error: 'context는 필수입니다.' }, 400)
+    const entityId = c.get('entityId') || 1
+    await c.env.DB.prepare(
+      `INSERT INTO kakao_template_defaults (context, match_key, entity_id, template_code, updated_at)
+       VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+       ON CONFLICT(context, match_key, entity_id)
+       DO UPDATE SET template_code = excluded.template_code, updated_at = CURRENT_TIMESTAMP`
+    ).bind(context, matchKey, entityId, templateCode).run()
+    return c.json({ success: true })
+  } catch (error) {
+    console.error('src/routes/kakao.ts PUT /template-defaults error:', error)
+    return c.json({ success: false, error: '기본 템플릿 설정 실패' }, 500)
+  }
+})
+
+// 기본 템플릿 resolve — 발송 위치에서 호출. (context,key,entity) → (context,'',entity) → 빈값
+kakaoRouter.get('/template-defaults/resolve', async (c) => {
+  try {
+    const context = (c.req.query('context') || '').trim()
+    const key = (c.req.query('key') || '').trim()
+    if (!context) return c.json({ success: true, data: { template_code: '' } })
+    const entityId = c.get('entityId') || 1
+    let row = await c.env.DB.prepare(
+      `SELECT template_code FROM kakao_template_defaults WHERE context = ? AND match_key = ? AND entity_id = ?`
+    ).bind(context, key, entityId).first<{ template_code: string }>()
+    if (!row && key) {
+      row = await c.env.DB.prepare(
+        `SELECT template_code FROM kakao_template_defaults WHERE context = ? AND match_key = '' AND entity_id = ?`
+      ).bind(context, entityId).first<{ template_code: string }>()
+    }
+    return c.json({ success: true, data: { template_code: row?.template_code || '' } })
+  } catch (error) {
+    console.error('src/routes/kakao.ts GET /template-defaults/resolve error:', error)
+    return c.json({ success: true, data: { template_code: '' } })
+  }
+})
+
 export default kakaoRouter

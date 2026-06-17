@@ -867,26 +867,22 @@ function getDefaultShipmentMessage(section, groups, selected) {
   return '#{고객명}님, 동산기획입니다.\n\n주문하신 제품이 출고되었습니다.\n\n■ 출고일: #{날짜}\n\n문의: 042-523-1982';
 }
 
-function fillShipTemplateSelect() {
+async function fillShipTemplateSelect() {
   var sel = document.getElementById('shipTemplateSelect');
   sel.innerHTML = '<option value="">직접 작성</option>' + shipTemplatesCache.map(function(t) {
     return '<option value="' + escapeHtml(t.templateCode) + '">' + escapeHtml(t.templateName) + '</option>';
   }).join('');
 
-  // 섹션별 자동 선택 — value는 실제 바로빌 등록 템플릿명과 일치(드롭다운 option value=templateName).
-  // 한진택배는 승인 템플릿 미등록 → 자동선택 없음(등록 후 추가). 미수금 템플릿은 출고용 아님.
-  var autoCodeMap = {
-    freight: '대신화물 출고',
-    daesintaekbae: '대신택배 출고',
-    quick: '방문 수령 준비 완료'
-  };
-  var autoCode = autoCodeMap[shipSendSection] || '';
-
-  if (autoCode) {
-    sel.value = autoCode;
-    // 자동 선택된 템플릿의 내용을 메시지에 반영
-    onShipTemplateChange();
-  }
+  // 발송 위치별 기본 템플릿 — DB(kakao_template_defaults)에서 resolve (출고 섹션=match_key).
+  // 관리자 설정(/settings)에서 변경 가능. 한진 등 미설정 섹션은 자동선택 없음(수동).
+  try {
+    var r = await axios.get('/api/kakao/template-defaults/resolve', { params: { context: 'shipments', key: shipSendSection } });
+    var autoCode = (r.data && r.data.data && r.data.data.template_code) || '';
+    if (autoCode) {
+      sel.value = autoCode;
+      onShipTemplateChange();  // 선택 템플릿 본문을 메시지에 반영
+    }
+  } catch (e) { /* 기본값 없으면 수동 선택 */ }
 }
 
 function onShipTemplateChange() {

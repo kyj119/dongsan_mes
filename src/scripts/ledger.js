@@ -1589,8 +1589,12 @@ async function openLedgerSendModal(clientId, clientName, balance, defaultChannel
                 sel.innerHTML = '<option value="">직접 작성 (템플릿 없이)</option>' + tpls.map(function(t) {
                     return '<option value="' + t.templateCode + '">' + t.templateName + '</option>';
                 }).join('');
-                // 자동 선택: ledger_notice
-                sel.value = 'ledger_notice';
+                // 발송 위치별 기본 템플릿 — DB(kakao_template_defaults)에서 resolve
+                try {
+                    var dr = await axios.get('/api/kakao/template-defaults/resolve', { params: { context: 'ledger', key: '' } });
+                    var autoCode = (dr.data && dr.data.data && dr.data.data.template_code) || '';
+                    if (autoCode) sel.value = autoCode;
+                } catch (e2) {}
             }
         }
     } catch(e) {}
