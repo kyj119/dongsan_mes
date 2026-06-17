@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 6 -->
-<!-- last_run_at: 2026-06-16T18:00:00+09:00 -->
+<!-- last_run_area: 1 -->
+<!-- last_run_at: 2026-06-17T02:00:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -16,6 +16,16 @@
 
 > 📦 **과거 사이클 로그**(아래 6블록 이전분)는 `IMPROVEMENT_BACKLOG_ARCHIVE.md`로 이관됨 (2026-06-10 정리). 신규 로그는 계속 이 파일 상단에 추가.
 
+> **Area 1 프로덕션 헬스 (2026-06-17T02:00):**
+> - **방법**: git fetch-before-compare(origin force-update `4993fa7→c20799d`, fetch 후 HEAD=origin/main `c20799d` 0/0 동기). baseline `npm ci`+build PASS(391 modules, _worker.js 5,136.50kB). egress 차단이라 Deploy/E2E/Backup 결과를 헬스 신호로 사용. GitHub Actions 최근 30런(total 657) 분석. Area 1 **15회차** — 직전 Area 1(#409, 06-15T22:00)이 E2E 6커밋 연속 red(HIGH)를 포착했으므로 **이번 신선 각도 = 그 회귀의 회복 확정 + 내 #409 가설(0312 prod 미적용) 사후검증(owner 픽스 커밋과 대조)**.
+> - **🟢 #409 E2E 회귀 완전 회복 — 5런 연속 green(회복 확정, flaky 아님)**: 실패 streak(ec44fcd~519d978)이 **`471502c`(06-15T23:34)에서 green 전환** 후 `25d1b8e`(×2)·`33a5424`·`8b134d8`·`c20799d` **5+런 연속 success**. 사이의 `0968de0`/`0ba3670` E2E=cancelled(연속 push 슈퍼시드=정상, 실패 아님). Deploy 전건 success·Daily D1 Backup success. **현 프로덕션 헬스 GREEN**.
+> - **🔬 #409 사후검증 — 내 0312-마이그레이션 가설은 오진, 실원인은 D1 바인드 한도**: `0ba3670`(fixes #409) 본문 직접 확인 — **"봇 #409 가설(0312 prod 미적용)은 오진 — 0312는 prod 적용됨, 실원인은 바인드 한도"**. 실제 diff = `cards/queries.ts:319/380` 칸반 enrichment의 `card_id`/`order_id` `IN (...)`가 카드당 1바인드로 D1 파라미터 한도(100) 초과 → limit=500 칸반(컬럼당 카드 100+)에서 결정적 500 → **80개 청크 분할**로 수정. prod 재현 limit=100 OK·200부터 500. **/cards 로드 2x 500 = 칸반 enrichment 쿼리**(셸/장비 쿼리 아님). owner가 #409 issue 단서로 실원인을 정확히 격리·픽스 = issue 보고 가치 입증(가설은 틀렸어도).
+> - **🟡 잔존 latent 리스크 — deploy.yml prod 마이그레이션 자동단계 부재(재filing 안 함, owner-deferred)**: `.github/workflows/deploy.yml` = npm ci→tsc→vite build→wrangler-action deploy→sleep 20→smoke.cjs, **`wrangler d1 ... --remote` 마이그레이션 단계 없음**(코드만 배포). #409 "수정 방향"의 부차 권고(마이그레이션 자동단계 보강, #406 드리프트 클래스 근본방지)였으나 owner가 #409를 **바인드 픽스만으로 close-completed**(0312는 수동 적용 확인) → 의식적 deferral. **재filing=중복 노이즈**(#409/#406에서 이미 노출, owner 결정). 다음 마이그레이션 잊힘으로 또 prod 500 발생 시가 escalate 트리거 = standing watch.
+> - **🟢 backlog↔GitHub sync clean (변동 0)**: open auto-improve **실측 5건**(#411~#415, list_issues 전수) = 직전 stats `new=5` 정합. #409/#410=`0ba3670`으로 closed-completed(done=110 이미 반영). done=110·rejected=3·approved=0·reviewed=0 유지. 직전 Area 6 이후 owner 신규 코드 churn 0(c20799d=A-026 자동수정 커밋).
+> - **🧬 SKILL 강화 1건 — /cards 500 원인 우선순위 정정(0312 마이그레이션 드리프트 < D1 바인드 한도)**: #409에서 /cards 2x 500을 0312 prod 미적용으로 과추정했으나 실원인은 **칸반 enrichment IN절의 D1 바인드 파라미터 한도(100) 초과**. **교훈 = limit이 큰 목록(칸반 500)의 후처리 enrichment에서 `id IN (?,?,...)`를 행당 1바인드로 묶으면 100+ 행에서 결정적 500** → /cards·대형목록 500 진단 시 마이그레이션 드리프트보다 **IN절 바인드 카운트(>100)를 먼저 의심**. 청크 분할(80)이 표준 픽스. Area 1 SKILL에 codify.
+> - **이상 없음**: git 동기 0/0. baseline build PASS. E2E 5런 연속 green·Deploy/Backup 전건 success. sync 정합 5=5. #409 owner-resolved.
+> - 자동 수정 0건(헬스 GREEN·코드결함 churn 없음), 신규 이슈 0건(#409 owner-resolved·deploy.yml 갭은 owner-deferred 재filing 안 함), SKILL 강화 1건(/cards 500 = D1 바인드 한도 우선 의심), done-sync 0건(변동 없음), **#409 회복 확정(5런 green) + 내 0312 가설 오진 사후검증**
+>
 > **Area 6 자기 진화 (2026-06-16T18:00):**
 > - **방법**: git fetch-before-compare(origin force-update `4993fa7→8b134d8`, fetch 후 HEAD=origin/main `8b134d8` 0/0 동기). baseline `npm ci`+build PASS(391 modules, _worker.js 5,136.42kB). **신선 각도 — churn이 에이전트 자신의 직전 픽스(A-025)뿐일 때 Area 6의 "post-churn 컬럼-diff bridge"가 퇴화 → 대체 = "직전 자동수정 픽스의 완전성을 그 픽스가 가르친 교훈으로 자가검증"**(A-025 교훈=같은 파일 형제 데이터소스 → A-025가 손댄 finishing.js 자체를 데이터소스별 sink 전수 재검). + open 발견 5건 silent-fix 재현 spot-check + GitHub sync.
 > - **🔧 자동수정 1건 (A-026, 본 사이클) — A-025가 놓친 같은 파일(finishing.js) 형제 데이터소스 XSS (parameter_schema JSON)**: Area 5 이후 유일 churn=`8b134d8`(A-025 XSS 픽스). A-025 교훈(데이터소스별 sink, 파일단위 "픽스됨" 판정 금지)을 **A-025 자신에 적용** → finishing.js의 transfer 필드 렌더(`:324-338`)가 `JSON.parse(opt.parameter_schema)`(post_processing 마스터 ADMIN free-input JSON)에서 온 ① `v`(`:328` `<option>` value 속성+텍스트 양쪽) ② `f.label`(`:332` 텍스트노드) ③ `f.key`(`:326/:333` data-key 속성)를 미escape 보간 — A-025가 같은 파일 `option_name`/`option_code`는 escape했으나 **parameter_schema 하위필드(별도 데이터소스)는 누락**(정확히 A-025 교훈 시나리오 재현). post_processing 옵션 편집자가 schema JSON에 페이로드 주입 시 견적/주문 후가공 폼 여는 STAFF에게 stored XSS. **안전 자동수정 판정**: 드롭다운 렌더·`window.escapeHtml`(shell.js:62 전역)·dataset round-trip 안전(`f.key` 영숫자=실질 no-op)·동작 무변. build PASS(391 modules, 5,136.50kB). 잔여 free-text sink 재grep=0.
