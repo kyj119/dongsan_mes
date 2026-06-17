@@ -332,11 +332,19 @@ cardExpRouter.put('/transactions/:id', requireRole('ADMIN', 'MANAGER'), async (c
     const params: (string | number | null)[] = []
 
     if (memo !== undefined) { sets.push('memo = ?'); params.push(memo || null) }
+    // 분류-상태 연동: category 설정 시 status를 CLASSIFIED로 보장(미분류/미지정일 때만 승격),
+    // category 해제 시 UNCLASSIFIED로 강등. REQUESTED/APPROVED 등 상위 단계는 유지.
+    // (행 드롭다운=status 미전송, 편집 모달=status 명시 — 두 경로 모두 정합 보장)
+    let finalStatus: string | undefined = status
     if (category_id !== undefined) {
       sets.push('category_id = ?'); params.push(category_id || null)
-      if (category_id && !status) sets.push("status = 'CLASSIFIED'")
+      if (category_id) {
+        if (!finalStatus || finalStatus === 'UNCLASSIFIED') finalStatus = 'CLASSIFIED'
+      } else {
+        finalStatus = 'UNCLASSIFIED'
+      }
     }
-    if (status) { sets.push('status = ?'); params.push(status) }
+    if (finalStatus) { sets.push('status = ?'); params.push(finalStatus) }
     params.push(id)
 
     const ef = entityFilter(c)
