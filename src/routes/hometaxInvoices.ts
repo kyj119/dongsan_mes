@@ -159,7 +159,7 @@ hometaxInvoicesRouter.get('/jobs/:id/status', requireRole('ADMIN', 'MANAGER'), a
     const db = c.env.DB
 
     const job = await db.prepare(`
-      SELECT id, job_id, job_type, start_date, end_date, state, result, message, total_count, requested_by, created_at FROM hometax_jobs WHERE id = ?
+      SELECT id, job_id, job_type, start_date, end_date, state, result, message, total_count, requested_by, requested_at AS created_at FROM hometax_jobs WHERE id = ?
     `).bind(Number(jobDbId)).first<HometaxJobRow>()
 
     if (!job) {
@@ -220,7 +220,7 @@ hometaxInvoicesRouter.post('/jobs/:id/fetch', requireRole('ADMIN', 'MANAGER'), a
     const db = c.env.DB
 
     const job = await db.prepare(`
-      SELECT id, job_id, job_type, start_date, end_date, state, result, message, total_count, requested_by, created_at FROM hometax_jobs WHERE id = ?
+      SELECT id, job_id, job_type, start_date, end_date, state, result, message, total_count, requested_by, requested_at AS created_at FROM hometax_jobs WHERE id = ?
     `).bind(Number(jobDbId)).first<HometaxJobRow>()
 
     if (!job) {
@@ -413,7 +413,7 @@ hometaxInvoicesRouter.get('/compare', requireRole('ADMIN', 'MANAGER'), async (c)
 
     // Get hometax invoices for the month
     const { results: htInvoices } = await db.prepare(`
-      SELECT id, job_id, invoice_type, nts_confirm_number, issue_date, send_date, supply_amount, tax_amount, total_amount, issuer_corp_num, issuer_corp_name, issuer_ceo_name, receiver_corp_num, receiver_corp_name, receiver_ceo_name, invoice_detail_type, tax_type, purpose_type, matched_invoice_id, match_status, match_note, created_at FROM hometax_invoices
+      SELECT id, job_id, invoice_type, nts_confirm_number, issue_date, send_date, supply_amount, tax_amount, total_amount, issuer_corp_num, issuer_corp_name, issuer_ceo_name, receiver_corp_num, receiver_corp_name, receiver_ceo_name, invoice_detail_type, tax_type, purpose_type, matched_invoice_id, match_status, match_note, collected_at AS created_at FROM hometax_invoices
       WHERE invoice_type = ? AND SUBSTR(issue_date, 1, 7) = ?${ef.clause}
       ORDER BY issue_date DESC
     `).bind(type, month, ...ef.params).all<HometaxInvoiceRow>()

@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 1 -->
-<!-- last_run_at: 2026-06-17T02:00:00+09:00 -->
+<!-- last_run_area: 2 -->
+<!-- last_run_at: 2026-06-17T10:00:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,14 +8,25 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | 5 (**GitHub open auto-improve 실측 5건** — #411 대시보드 드릴다운 404·/shipments/daily 미존재 small [Area 3] · #412 스캔 입출고 items.current_stock 존재X UPDATE small [Area 4] · #413 입금삭제 bank_transactions.updated_at 존재X UPDATE small [Area 4] · **#414 카드 상세 GET /:id 멀티법인 격리 누락 IDOR — #375가 by-number만 고치고 by-id 누락 HIGH보안 small [Area 5]** · **#415 감액삭제 DELETE /adjustment/:id 법인격리 누락 — 같은 라우터 payments는 efPay 적용 MED small [Area 5]**) |
+| 🆕 new | 6 (**GitHub open auto-improve 실측 6건** — #411 대시보드 드릴다운 404·/shipments/daily 미존재 small [Area 3] · #412 스캔 입출고 items.current_stock 존재X UPDATE small [Area 4] · #413 입금삭제 bank_transactions.updated_at 존재X UPDATE small [Area 4] · **#414 카드 상세 GET /:id 멀티법인 격리 누락 IDOR — #375가 by-number만 고치고 by-id 누락 HIGH보안 small [Area 5]** · **#415 감액삭제 DELETE /adjustment/:id 법인격리 누락 — 같은 라우터 payments는 efPay 적용 MED small [Area 5]** · **#416 연차 자동적립 N+1 — /grant는 #321 batch인데 accrual/monthly·yearly만 직원수×2 순차 INSERT small [Area 2, 직전 부분런 등록]**) |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 (#372 CSV도 owner close-completed → done 이관) |
-| ✔️ done | 110 (96 + **owner 대량 픽스 14건 close-completed**[5 커밋: a988f8d #394/#397/#398/#403/#405/#408 · 336df95 #395/#399/#401/#404/#406/#407 · 471502c #396/#400/#402 · **0ba3670 #409/#410** · 25d1b8e #394후속 handled_by FK]. **GitHub open auto-improve 실측 #411·#412·#413 3건** 정합) |
+| ✔️ done | 111 (96 + **owner 대량 픽스 14건 close-completed**[5 커밋: a988f8d #394/#397/#398/#403/#405/#408 · 336df95 #395/#399/#401/#404/#406/#407 · 471502c #396/#400/#402 · **0ba3670 #409/#410** · 25d1b8e #394후속 handled_by FK] + **A-027 hometax created_at 존재X SELECT 3엔드포인트 자동수정**) |
 | ❌ rejected | 3 |
 
 > 📦 **과거 사이클 로그**(아래 6블록 이전분)는 `IMPROVEMENT_BACKLOG_ARCHIVE.md`로 이관됨 (2026-06-10 정리). 신규 로그는 계속 이 파일 상단에 추가.
 
+> **Area 2 코드 품질 (2026-06-17T10:00):**
+> - **방법**: git fetch-before-compare(origin force-update `4993fa7→d50968e`, fetch 후 HEAD=origin/main `d50968e` 0/0 동기). baseline `npm ci`+build PASS(391 modules, _worker.js 5,136.50kB). ground-truth=310 마이그레이션 로컬 D1(node:sqlite) 전량 적용(**FAIL 0**, 173테이블). Area 2 **15회차** — **신선 각도**: ① INSERT/UPDATE 컬럼-diff 자동스캔(기존 강점)에 더해 **명시 컬럼 SELECT 존재성 스캔**(`SELECT t.*` 아닌 명시 컬럼리스트가 미존재 컬럼 참조 → prepare throw, INSERT/UPDATE 스캔이 구조적으로 못 잡던 클래스) ② owner 대량 픽스 후 N+1 형제 잔존. 자동스캔 2종(INSERT 컬럼 존재성·UPDATE SET 존재성) 직접 실행 + 병렬 Explore 2개(N+1/deadcode·SELECT존재성/타입) + 발견 전수 owner ground-truth+도달성 검증.
+> - **🔧 자동수정 1건 (A-027, 본 사이클) — hometax 수집 기능 SELECT `created_at` 존재X 3엔드포인트 영구 사망 (명시 컬럼 SELECT 스캔 net-new)**: `hometaxInvoices.ts`의 ① `/jobs/:id/status`(:162) ② `/jobs/:id/fetch`(:223)가 `SELECT ... created_at FROM hometax_jobs`(단일테이블, JOIN 0)인데 **hometax_jobs엔 `created_at` 부재**(실제=`requested_at`/`completed_at`, ground-truth 확정) ③ `/compare`(:416)가 `SELECT ... created_at FROM hometax_invoices`인데 **hometax_invoices엔 `collected_at`만**(created_at 부재). 셋 다 명시 컬럼 SELECT라 `no such column: created_at` prepare throw → **홈택스 수집 작업 상태폴링·결과가져오기·시스템↔홈택스 세금계산서 월별 대조(핵심 기능) 100% 사망**. **도달성 LIVE**: hometaxInvoices.js:160(status)·:178(fetch)·:288(compare) axios. **목록 핸들러는 `hj.*`/`hi.*` 와일드카드라 throw 안 함**(/jobs:130·/:369) → 명시-컬럼 핸들러만 선택적 사망(INSERT/UPDATE 컬럼-diff 자동스캔이 못 잡은 사각). **결정적 증거 = HometaxJobRow 인터페이스가 `requested_at` 선언(created_at 없음)** = SELECT가 인터페이스와 불일치한 copy-paste 오타. **안전 자동수정**: read-only SELECT 컬럼오타(A-017/A-019 클래스), 응답 필드명 보존 위해 `requested_at AS created_at`(jobs)·`collected_at AS created_at`(invoices) 별칭 — 프론트 `job.created_at`(:134) round-trip 보존, 동작 무변(throw→정상). `npm run verify`(typecheck+build) PASS(391 modules, 5,136.54kB).
+> - **🟢 INSERT/UPDATE 컬럼 존재성 자동스캔 = net-new 0**: ground-truth 173테이블 ↔ src 전수. UPDATE SET 존재X 후보 4건 = scan.ts items.current_stock×2(#412 기보고)·ar-payments bank_transactions.updated_at(#413 기보고)·cards/lifecycle.ts:1096 `ai_analysis_id`(FP — SET 대상은 `thumbnail_url`, ai_analysis_id는 서브쿼리 JOIN `oi.ai_analysis_id=aa.id`). INSERT 컬럼 존재성 = 0 unknown(owner #394/#406/#408 픽스 정합).
+> - **🟢 N+1·dead code·authMiddleware = net-new 실질 0**: 서브에이전트 후보 — items.ts:1150 materials/group N+1(**#416에 이미 형제 문서화** 스킵)·po-special.ts:182 reorder N+1(**프론트 `/api/purchase-orders/:id/reorder` 호출 0건 = 비활성 스텁 dead code**, 백로그 기존 기록 정합, portal/reorder는 무관 경로)·orders POST /:id/copy(**`/api/orders/:id/copy` 호출 0건 orphan** — 라우트 삭제=자동수정 금지 + 비즈니스 영향 0 → 노이즈 회피 이슈 안 만듦). authMiddleware 배럴-서브라우터 재선언 전수 clean. export helper 전부 import됨.
+> - **🟢 타입 불일치 = net-new 0**: `as any` 55건 전부 외부 JSON/response 정당·`c.req.query()→Number/parseInt` 정상·models.ts `number`↔`REAL/INTEGER` 표기차 정상 TS(FP 배제).
+> - **🟢 backlog↔GitHub sync 갱신 (#416 편입)**: open auto-improve **실측 6건**(#411~#416, list_issues 전수). **#416(연차 자동적립 N+1, Area 2)은 오늘 08:09 직전 부분런이 등록했으나 backlog `new=5` 미반영** → `new=6` 재정합(직전 Area 4 #412/#413 동형 "부분런 등록·backlog 미반영"). done 110→111(A-027 추가). rejected=3·approved=0·reviewed=0 유지. A-027은 자동수정이라 이슈 안 만듦(done 직행).
+> - **🧬 SKILL 강화 1건 — "명시 컬럼 SELECT 존재성"을 INSERT/UPDATE 컬럼-diff와 별개 standing scan으로 codify**: 기존 자동스캔(INSERT 컬럼 존재성·UPDATE SET 존재성)이 **`SELECT t.*` 아닌 명시 컬럼리스트의 미존재 컬럼**을 구조적으로 못 잡음 → A-027(hometax created_at 3엔드포인트)이 사각. **교훈**: 같은 테이블에 sibling 쿼리가 여럿일 때 한쪽은 `requested_at`/`collected_at` 쓰는데 copy-paste된 다른 SELECT가 `created_at` 유지 = 인터페이스(HometaxJobRow에 created_at 없음)와 불일치한 명시-컬럼 오타. **목록은 `t.*`라 안 깨지고 단건/특수 핸들러만 명시컬럼이라 선택적 사망** = 가장 놓치기 쉬운 패턴. Area 2 SKILL에 codify.
+> - **이상 없음**: git 동기 0/0. baseline build PASS·verify(자동수정 후) PASS. INSERT/UPDATE 컬럼 존재성·N+1·deadcode·auth·타입 5각도 clean(net-new는 명시-SELECT 1클래스=A-027). 서브에이전트 N+1 후보 2건 dead-code/기보고로 드롭.
+> - 자동 수정 1건(A-027 hometax SELECT created_at 3엔드포인트, verify PASS), 신규 이슈 0건(명시-SELECT 발견은 자동수정·po-special/orders orphan은 노이즈 회피), SKILL 강화 1건(명시 컬럼 SELECT 존재성 standing scan), done-sync 갱신(#416 부분런 편입 new=6·A-027 done=111)
+>
 > **Area 1 프로덕션 헬스 (2026-06-17T02:00):**
 > - **방법**: git fetch-before-compare(origin force-update `4993fa7→c20799d`, fetch 후 HEAD=origin/main `c20799d` 0/0 동기). baseline `npm ci`+build PASS(391 modules, _worker.js 5,136.50kB). egress 차단이라 Deploy/E2E/Backup 결과를 헬스 신호로 사용. GitHub Actions 최근 30런(total 657) 분석. Area 1 **15회차** — 직전 Area 1(#409, 06-15T22:00)이 E2E 6커밋 연속 red(HIGH)를 포착했으므로 **이번 신선 각도 = 그 회귀의 회복 확정 + 내 #409 가설(0312 prod 미적용) 사후검증(owner 픽스 커밋과 대조)**.
 > - **🟢 #409 E2E 회귀 완전 회복 — 5런 연속 green(회복 확정, flaky 아님)**: 실패 streak(ec44fcd~519d978)이 **`471502c`(06-15T23:34)에서 green 전환** 후 `25d1b8e`(×2)·`33a5424`·`8b134d8`·`c20799d` **5+런 연속 success**. 사이의 `0968de0`/`0ba3670` E2E=cancelled(연속 push 슈퍼시드=정상, 실패 아님). Deploy 전건 success·Daily D1 Backup success. **현 프로덕션 헬스 GREEN**.
