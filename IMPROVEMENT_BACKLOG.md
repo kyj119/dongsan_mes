@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 2 -->
-<!-- last_run_at: 2026-06-17T10:00:00+09:00 -->
+<!-- last_run_area: 3 -->
+<!-- last_run_at: 2026-06-17T14:00:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -16,6 +16,15 @@
 
 > 📦 **과거 사이클 로그**(아래 6블록 이전분)는 `IMPROVEMENT_BACKLOG_ARCHIVE.md`로 이관됨 (2026-06-10 정리). 신규 로그는 계속 이 파일 상단에 추가.
 
+> **Area 3 UX/기능 감사 (2026-06-17T14:00):**
+> - **방법**: git fetch-before-compare(origin force-update `4993fa7→4704088`, fetch 후 HEAD=origin/main `4704088` 0/0 동기). baseline `npm ci`+build PASS(391 modules, _worker.js 5,136.54kB). Area 3 **14회차** — **신선 각도 = 프론트 axios → 백엔드 라우트 존재성 cross-check**(#411 `location.href` page-route 검증의 **API 거울 클래스**: 버튼이 미등록 `/api/...`를 부르면 404=죽은 기능, 유저 관점 "기능 안 됨"). 병렬 Explore 2개(① 전 axios 경로 ↔ index.tsx 마운트+라우터 정의 전수 대조 ② primary 페이지 빈상태/필터 누락 감사) + 발견 전수 owner 직접 Read+#318 cross-check 검증.
+> - **🟢 프론트 axios → 백엔드 라우트 존재성 = net-new 0 (#318 패턴 무력화 확인)**: 전 `axios.{get,post,put,delete,patch}('/api/...')` 경로 ↔ index.tsx `app.route` 마운트+각 라우터 정의(배럴 서브라우터 follow, Hono exact-match·path param 고려) 전수 대조. **유일 후보 = `/api/forecast/material-consumption`(materialForecast.js:7)** — forecast.ts는 `/order-forecast`·`/capacity-analysis`·`/client-forecast`만(`// 원단 소모 예측 TODO 구현 필요`). **그러나 #318(2026-06-01 closed-completed)로 이미 무력화** — owner가 `menu.ts:73` 네비 링크를 주석처리("백엔드 미구현→구현 전까지 네비 숨김. 구현 시 이 줄 복원") → **메뉴 미노출=도달성 ~0=dead code(의도적 잔존)**. page 라우트(index.tsx:479)·script는 복원 대비 잔존이라 노이즈 회피(이슈 안 만듦). 탐지 회귀 0. FP 배제: cash-flow/schedule·payroll 서브라우터·hr employees/:id/detail·cards/:id history·defects·전 bulk/batch 경로 전부 실재 확인.
+> - **🟢 primary 페이지 빈상태 처리 = 실질 clean**: orders·clients·inventory·shipments·cards칸반·purchaseOrders·purchaseRequests·quotations·items·taxInvoices·approvals·dashboard·receiving 13개 primary 리스트 전부 빈상태 메시지 보유("주문이 없습니다"/"검색 결과가 없습니다" 등). **유일 후보 ledger.js `renderClientTable`(:122)** = 0거래처 시 친절한 빈-row 없음이나 **footer가 "합계 (0개 거래처)" + 상단 summary 카드 0원 표시로 공백 아님**(emptiness 3중 신호) → 최근 Area 3 발견(실제 404 #411) 대비 below-bar = 노이즈 회피 드롭. 명백한 검색/필터 부재 = 0건.
+> - **🟢 backlog↔GitHub sync clean (변동 0)**: open auto-improve **실측 6건**(#411~#416, list_issues 전수) = 직전 stats `new=6` 정합. done=111·rejected=3·approved=0·reviewed=0 유지. 직전 Area 2 이후 owner 신규 close/머지 0건(HEAD=4704088=A-027 자동수정 커밋).
+> - **🧬 SKILL 강화 1건 — "프론트 axios → 백엔드 라우트 존재성" standing scan + #318 무력화 크로스체크**: #411(location.href↔page라우트)의 API 거울 클래스를 Area 3 standing scan으로 codify. **핵심 = neutralization 크로스체크**: 깨진 엔드포인트 발견 시 그 진입 메뉴가 `menu.ts`에서 주석처리됐는지 먼저 확인 — owner가 "미구현→네비 숨김"으로 이미 무력화했으면(#318 material-forecast) page라우트·script 잔존해도 메뉴 미노출=도달성 0=dead code(보고 금지). 보고 조건 = 라우트 부재 + 메뉴 활성 둘 다 yes. SKILL Area 3에 codify.
+> - **이상 없음**: git 동기 0/0. baseline build PASS. axios↔라우트 존재성·빈상태 2각도 clean(net-new 0). #318 무력화 holds.
+> - 자동 수정 0건(Area 3 UI/라우트 변경 금지범주 + 수정거리 없음), 신규 이슈 0건(axios 유일후보=#318 무력화·ledger 빈상태 below-bar), SKILL 강화 1건(axios↔라우트 존재성 + #318 무력화 크로스체크), done-sync 0건(변동 없음), **신선 각도 — 프론트 axios API 거울 클래스 전수(#411 page-route 검증의 API 짝)**
+>
 > **Area 2 코드 품질 (2026-06-17T10:00):**
 > - **방법**: git fetch-before-compare(origin force-update `4993fa7→d50968e`, fetch 후 HEAD=origin/main `d50968e` 0/0 동기). baseline `npm ci`+build PASS(391 modules, _worker.js 5,136.50kB). ground-truth=310 마이그레이션 로컬 D1(node:sqlite) 전량 적용(**FAIL 0**, 173테이블). Area 2 **15회차** — **신선 각도**: ① INSERT/UPDATE 컬럼-diff 자동스캔(기존 강점)에 더해 **명시 컬럼 SELECT 존재성 스캔**(`SELECT t.*` 아닌 명시 컬럼리스트가 미존재 컬럼 참조 → prepare throw, INSERT/UPDATE 스캔이 구조적으로 못 잡던 클래스) ② owner 대량 픽스 후 N+1 형제 잔존. 자동스캔 2종(INSERT 컬럼 존재성·UPDATE SET 존재성) 직접 실행 + 병렬 Explore 2개(N+1/deadcode·SELECT존재성/타입) + 발견 전수 owner ground-truth+도달성 검증.
 > - **🔧 자동수정 1건 (A-027, 본 사이클) — hometax 수집 기능 SELECT `created_at` 존재X 3엔드포인트 영구 사망 (명시 컬럼 SELECT 스캔 net-new)**: `hometaxInvoices.ts`의 ① `/jobs/:id/status`(:162) ② `/jobs/:id/fetch`(:223)가 `SELECT ... created_at FROM hometax_jobs`(단일테이블, JOIN 0)인데 **hometax_jobs엔 `created_at` 부재**(실제=`requested_at`/`completed_at`, ground-truth 확정) ③ `/compare`(:416)가 `SELECT ... created_at FROM hometax_invoices`인데 **hometax_invoices엔 `collected_at`만**(created_at 부재). 셋 다 명시 컬럼 SELECT라 `no such column: created_at` prepare throw → **홈택스 수집 작업 상태폴링·결과가져오기·시스템↔홈택스 세금계산서 월별 대조(핵심 기능) 100% 사망**. **도달성 LIVE**: hometaxInvoices.js:160(status)·:178(fetch)·:288(compare) axios. **목록 핸들러는 `hj.*`/`hi.*` 와일드카드라 throw 안 함**(/jobs:130·/:369) → 명시-컬럼 핸들러만 선택적 사망(INSERT/UPDATE 컬럼-diff 자동스캔이 못 잡은 사각). **결정적 증거 = HometaxJobRow 인터페이스가 `requested_at` 선언(created_at 없음)** = SELECT가 인터페이스와 불일치한 copy-paste 오타. **안전 자동수정**: read-only SELECT 컬럼오타(A-017/A-019 클래스), 응답 필드명 보존 위해 `requested_at AS created_at`(jobs)·`collected_at AS created_at`(invoices) 별칭 — 프론트 `job.created_at`(:134) round-trip 보존, 동작 무변(throw→정상). `npm run verify`(typecheck+build) PASS(391 modules, 5,136.54kB).
