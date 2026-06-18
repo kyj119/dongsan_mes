@@ -766,7 +766,7 @@ async function loadUsers() {
     if (!sel) return;
     sel.innerHTML = '<option value="">미지정</option>';
     users.forEach(function(u) {
-      sel.innerHTML += '<option value="' + u.id + '">' + (u.name || u.username) + '</option>';
+      sel.innerHTML += '<option value="' + u.id + '">' + escapeHtml(u.name || u.username) + '</option>';
     });
   } catch (e) { /* ignore */ }
 }
