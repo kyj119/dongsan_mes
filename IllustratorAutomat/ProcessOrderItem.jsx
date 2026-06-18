@@ -62,6 +62,7 @@ function main() {
     var offsetCfg   = _p.offset      || null;
     var finishingCfg = _p.finishing   || null;
     var passthroughThumb = _p.passthroughThumb || false;  // 완성본 직접연결: 가공 없이 PNG 썸네일만 생성
+    var trim         = _p.trim       || false;  // N5: 단일 그룹 돔보 마크 (출력 둘레)
 
     if (!sourceFile || (!outputEps && !passthroughThumb)) {
         $.writeln("ProcessOrderItem ERROR: source, epsOutput 필요");
@@ -625,6 +626,41 @@ function main() {
         pngOpts.verticalScale = sc * 100;
         doc.exportFile(pngFile, ExportType.PNG24, pngOpts);
         $.writeln("ProcessOrderItem: PNG -> " + outputPng);
+    }
+
+    // ── 9.5 돔보 마크 (단일 그룹 출력 둘레, K100 채움 원) — SheetLayout.jsx 포팅 ──
+    // 출력 바운드(여백·도련 포함 = 현재 artboardRect)의 1cm 바깥 꼭짓점 + 방향마크 + 50cm 중간마크.
+    // PNG(썸네일) 이후·EPS 이전에 그려 썸네일엔 빠지고 EPS엔 포함. 아트보드를 마크 포함해 확장.
+    if (trim) {
+        var DOMBO_DIAM  = 6 * ptPerMm / scaleFactor;    // 6mm
+        var CORNER_DIST = 10 * ptPerMm / scaleFactor;   // 꼭짓점 대각 1cm 바깥
+        var DIR_OFFSET  = 60 * ptPerMm / scaleFactor;   // 방향마크 6cm
+        var MAX_GAP     = 500 * ptPerMm / scaleFactor;  // 50cm 간격 보정
+        var _dCol = new CMYKColor(); _dCol.cyan = 0; _dCol.magenta = 0; _dCol.yellow = 0; _dCol.black = 100;
+        function _mkDombo(cx, cy) {
+            var el = doc.pathItems.ellipse(cy + DOMBO_DIAM / 2, cx - DOMBO_DIAM / 2, DOMBO_DIAM, DOMBO_DIAM);
+            el.filled = true; el.fillColor = _dCol; el.stroked = false; return el;
+        }
+        function _interDombo(from, to, fixed, horiz) {
+            var span = Math.abs(to - from); if (span <= MAX_GAP) return;
+            var divs = Math.ceil(span / MAX_GAP), step = span / divs, mn = Math.min(from, to);
+            for (var d = 1; d < divs; d++) { var pos = mn + step * d; if (horiz) _mkDombo(pos, fixed); else _mkDombo(fixed, pos); }
+        }
+        var _tr = ab.artboardRect;  // 여백·도련 확장 반영된 출력 바운드
+        var tL = _tr[0], tT = _tr[1], tR = _tr[2], tB = _tr[3];
+        _mkDombo(tL - CORNER_DIST, tT + CORNER_DIST); // 좌상
+        _mkDombo(tR + CORNER_DIST, tT + CORNER_DIST); // 우상
+        _mkDombo(tL - CORNER_DIST, tB - CORNER_DIST); // 좌하
+        _mkDombo(tR + CORNER_DIST, tB - CORNER_DIST); // 우하
+        _mkDombo(tL + DIR_OFFSET, tT + CORNER_DIST);  // 방향 마크(상단)
+        _interDombo(tL - CORNER_DIST, tR + CORNER_DIST, tT + CORNER_DIST, true);  // 상
+        _interDombo(tL - CORNER_DIST, tR + CORNER_DIST, tB - CORNER_DIST, true);  // 하
+        _interDombo(tT + CORNER_DIST, tB - CORNER_DIST, tL - CORNER_DIST, false); // 좌
+        _interDombo(tT + CORNER_DIST, tB - CORNER_DIST, tR + CORNER_DIST, false); // 우
+        var _pad = CORNER_DIST + DOMBO_DIAM;
+        ab.artboardRect = [tL - CORNER_DIST - _pad, tT + CORNER_DIST + _pad, tR + CORNER_DIST + _pad, tB - CORNER_DIST - _pad];
+        app.redraw();
+        $.writeln("ProcessOrderItem: 돔보 마크 배치 + 아트보드 확장");
     }
 
     // ── 10. EPS 저장 (아트보드별 개별 저장) ──

@@ -2047,6 +2047,7 @@ namespace IllustratorAutomation
                 object? punchingConfig = null;
                 object? annotationConfig = null;
                 object? offsetConfig = null;
+                bool trimEnabled = false;   // N5: 단일 그룹 돔보 마크
                 List<string>? annotationPositions = null;
                 var ppSource = item;
                 if (parentItem.HasValue && parentItem.Value.ValueKind == JsonValueKind.Object)
@@ -2167,6 +2168,9 @@ namespace IllustratorAutomation
                                             cut_line = cutLine
                                         };
                                     }
+
+                                    // N5: 돔보(TRIM) — 단일 그룹 출력에 돔보 마크 추가 플래그
+                                    if (ppCode2 == "TRIM" || ppCode2 == "DOMBO") trimEnabled = true;
                                 }
                             }
                         }
@@ -2415,7 +2419,8 @@ namespace IllustratorAutomation
                     punching    = punchingConfig,
                     annotation  = annotationConfig,
                     offset      = offsetConfig,
-                    finishing   = finishingConfig
+                    finishing   = finishingConfig,
+                    trim        = trimEnabled
                 });
                 File.WriteAllText(Path.Combine(scriptDir3, "ia_params.json"), itemParamsJson, System.Text.Encoding.UTF8);
 

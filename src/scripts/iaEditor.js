@@ -1625,7 +1625,7 @@ function iaeCanBuildOrderLines() {
     lines.push({
       kind: 'sheet', fid: p0.fid, gi: p0.gi, label: (src ? src.filename : '') + ' #' + p0.gi + ' [시트 ' + pieces.length + '조각]',
       w_cm: Math.round((src ? src.w_mm : p0.w_mm) / 10), h_cm: Math.round((src ? src.h_mm : p0.h_mm) / 10),
-      qty: pieces.length, finishing: iaeFinDominant(p0.fin),
+      qty: pieces.length, finishing: iaeFinDominant(p0.fin), trim: !!sh.trim,
       item_id: null, item_name: '', pricing_method: 'FIXED', unit_price: 0
     });
   });
@@ -1634,7 +1634,7 @@ function iaeCanBuildOrderLines() {
     lines.push({
       kind: 'obj', fid: o.fid, gi: o.gi, label: (src ? src.filename : '') + ' #' + o.gi,
       w_cm: Math.round(o.w_mm / 10), h_cm: Math.round(o.h_mm / 10),
-      qty: 1, finishing: iaeFinDominant(o.fin),
+      qty: 1, finishing: iaeFinDominant(o.fin), trim: !!o.trim,
       item_id: null, item_name: '', pricing_method: 'FIXED', unit_price: 0
     });
   });
@@ -1810,7 +1810,8 @@ function iaeCanSubmitOrder() {
         width_mm: ln.w_cm * 10, height_mm: ln.h_cm * 10,
         quantity: ln.qty, unit: 'EA', unit_price: Number(ln.unit_price) || 0, vat_included: 1,
         ai_group_index: ln.gi, ai_analysis_id: ln.fid,
-        finishing: ln.finishing || null, content: ln.label
+        finishing: ln.finishing || null, content: ln.label,
+        post_processing: ln.trim ? JSON.stringify([{ code: 'TRIM', params: {} }]) : null
       };
     })
   };
