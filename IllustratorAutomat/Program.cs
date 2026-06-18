@@ -1692,9 +1692,7 @@ namespace IllustratorAutomation
                             }
                         }
 
-                        string slYear  = orderNumber.Length >= 8 ? orderNumber.Substring(0, 4) : DateTime.Now.Year.ToString();
-                        string slMonth = orderNumber.Length >= 8 ? orderNumber.Substring(4, 2) : DateTime.Now.Month.ToString("D2");
-                        string slDay   = orderNumber.Length >= 8 ? orderNumber.Substring(6, 2) : DateTime.Now.Day.ToString("D2");
+                        var (slYear, slMonth, slDay) = ParseOrderDate(orderNumber);
 
                         string orderFolder = Path.Combine(ZDRIVE_PATH, "DESIGN", slCategory, slYear, slMonth, slDay, orderNumber);
                         Directory.CreateDirectory(orderFolder);
@@ -1855,6 +1853,18 @@ namespace IllustratorAutomation
                     }
 
                     Console.WriteLine($"   ✅ 시트 배치 처리 완료");
+                }
+
+                // 직접연결: order aiFilePath가 r2://면 로컬 다운로드 (그룹분석은 분석 시 로컬 temp로 이미 저장됨).
+                // 이게 없으면 hasAiFile=false로 아래 item 순회가 통째로 스킵된다("AI 파일 없음").
+                if (!string.IsNullOrEmpty(aiFilePath) && aiFilePath.StartsWith("r2://", StringComparison.OrdinalIgnoreCase))
+                {
+                    int? ordAid = (order.TryGetProperty("ai_analysis_id", out var oaEl) && oaEl.ValueKind != JsonValueKind.Null && oaEl.TryGetInt32(out int oav)) ? oav : (int?)null;
+                    if (ordAid.HasValue)
+                    {
+                        string dl = await DownloadAnalysisFileAsync(ordAid.Value);
+                        if (!string.IsNullOrEmpty(dl) && File.Exists(dl)) { aiFilePath = dl; Console.WriteLine($"   ☁️  직접연결 order 소스 로컬화(분석#{ordAid}): {Path.GetFileName(dl)}"); }
+                    }
                 }
 
                 bool hasLayout = layoutId.HasValue;
@@ -2311,9 +2321,7 @@ namespace IllustratorAutomation
                 if (string.IsNullOrWhiteSpace(category)) category = "기타";
 
                 // 주문번호에서 연도/월/일 파싱 (형식: YYYYMMDD-NNN)
-                string year  = orderNumber.Length >= 8 ? orderNumber.Substring(0, 4) : DateTime.Now.Year.ToString();
-                string month = orderNumber.Length >= 8 ? orderNumber.Substring(4, 2) : DateTime.Now.Month.ToString("D2");
-                string day   = orderNumber.Length >= 8 ? orderNumber.Substring(6, 2) : DateTime.Now.Day.ToString("D2");
+                var (year, month, day) = ParseOrderDate(orderNumber);
 
                 // Z드라이브 출력 경로: Z:\DESIGN\[대분류]\YYYY\MM\DD\ORDER-NO
                 string orderFolder = Path.Combine(ZDRIVE_PATH, "DESIGN", category, year, month, day, orderNumber);
@@ -2580,6 +2588,14 @@ namespace IllustratorAutomation
             {
                 Console.WriteLine($"      ⚠️ 썸네일 보고 실패: {ex.Message}");
             }
+        }
+
+        // 주문번호에서 YYYYMMDD 추출 (멀티법인 E1-20260618-001 등 접두사/하이픈 대응). 기존 Substring(0,4)는 E1- 접두사에 깨짐.
+        private static (string year, string month, string day) ParseOrderDate(string orderNumber)
+        {
+            var mt = System.Text.RegularExpressions.Regex.Match(orderNumber ?? "", @"(\d{8})");
+            string ymd = mt.Success ? mt.Groups[1].Value : DateTime.Now.ToString("yyyyMMdd");
+            return (ymd.Substring(0, 4), ymd.Substring(4, 2), ymd.Substring(6, 2));
         }
 
         private static string SanitizeFilename(string name)

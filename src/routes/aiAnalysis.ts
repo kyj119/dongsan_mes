@@ -191,10 +191,11 @@ aiAnalysisRouter.post('/:id/thumbnail', async (c) => {
     const thumb = body.thumbnail_base64
     if (!thumb) return c.json({ success: false, error: 'thumbnail_base64 required' }, 400)
 
-    const ef = entityFilter(c)  // 법인 격리
+    // 에이전트 전용 콜백 — Bearer 인증으로 충분. entityFilter 미적용
+    // (분석 행 entity ≠ 에이전트 토큰 entity일 때 404 나는 문제 방지; file-map 콜백과 동일 정책)
     const row = await c.env.DB.prepare(
-      `SELECT id, status, groups_json FROM ai_analysis_requests WHERE id = ?${ef.clause}`
-    ).bind(id, ...ef.params).first<{ id: number; status: string; groups_json: string | null }>()
+      `SELECT id, status, groups_json FROM ai_analysis_requests WHERE id = ?`
+    ).bind(id).first<{ id: number; status: string; groups_json: string | null }>()
     if (!row) return c.json({ success: false, error: 'Not found' }, 404)
 
     // groups_json 비어있으면(직접연결) 1그룹으로 저장 + status done 승격
