@@ -939,8 +939,8 @@ function iaePollRender() {
 //   객체 좌표는 mm(대지 원점 좌상단), Konva stage.scale/position으로 줌/팬. localStorage 영속.
 // ════════════════════════════════════════════════════════════════
 var IAE_CANVAS_KEY = 'iae_canvas_v1';
-var iaeCanObjs = [];          // [{uid, fid, gi, key, label, w_mm, h_mm, x_mm, y_mm, rotation}]
-var iaeCanStage = null, iaeCanLayer = null, iaeCanGrid = null, iaeCanTr = null;
+var iaeCanObjs = [];          // [{uid, fid, gi, key, label, w_mm, h_mm, x_mm, y_mm, rotation, fin:{top,bottom,left,right}, trim}]
+var iaeCanStage = null, iaeCanLayer = null, iaeCanGrid = null, iaeCanOverlay = null, iaeCanTr = null;
 var iaeCanSel = null;         // 선택 객체 uid
 var iaeCanPxPerMm = 0.3;      // mm→px 기준 배율 (줌은 stage.scale)
 var iaeCanThumbCache = {};    // 'fid:gi' → Image
@@ -1013,7 +1013,9 @@ function iaeCanPush(key, opts) {
     w_mm: s.w_mm || 100, h_mm: s.h_mm || 100,
     x_mm: (opts.x_mm != null) ? opts.x_mm : (20 + (n % 8) * 40),
     y_mm: (opts.y_mm != null) ? opts.y_mm : (20 + Math.floor(n / 8) * 40),
-    rotation: opts.rotation || 0
+    rotation: opts.rotation || 0,
+    fin: opts.fin ? { top: opts.fin.top || '', bottom: opts.fin.bottom || '', left: opts.fin.left || '', right: opts.fin.right || '' } : { top: '', bottom: '', left: '', right: '' },
+    trim: opts.trim || false
   };
   iaeCanObjs.push(obj);
   return obj;
@@ -1059,7 +1061,8 @@ function iaeCanInitStage() {
     iaeCanStage = new Konva.Stage({ container: host, width: w, height: h, draggable: false });
     iaeCanGrid = new Konva.Layer({ listening: false });
     iaeCanLayer = new Konva.Layer();
-    iaeCanStage.add(iaeCanGrid); iaeCanStage.add(iaeCanLayer);
+    iaeCanOverlay = new Konva.Layer({ listening: false }); // N2: 마감/여백/돔보 벡터 근사
+    iaeCanStage.add(iaeCanGrid); iaeCanStage.add(iaeCanLayer); iaeCanStage.add(iaeCanOverlay);
     iaeCanStage.scale({ x: prevScale, y: prevScale }); iaeCanStage.position(prevPos);
     iaeCanDrawGrid();
     iaeCanTr = new Konva.Transformer({
@@ -1069,6 +1072,7 @@ function iaeCanInitStage() {
     iaeCanLayer.add(iaeCanTr);
     iaeCanObjs.forEach(function (o) { iaeCanBuildNode(o); });
     iaeCanLayer.draw();
+    iaeCanDrawOverlays();
     if (iaeCanSel != null && iaeCanObj(iaeCanSel)) iaeCanSelect(iaeCanSel); else iaeCanSelect(null);
     iaeCanWire(host);
     iaeCanUpdateStatus();
@@ -1132,13 +1136,14 @@ function iaeCanSelect(uid) {
   if (iaeCanTr) iaeCanTr.nodes(node ? [node] : []);
   if (iaeCanLayer) iaeCanLayer.batchDraw();
   iaeCanUpdateStatus();
+  iaeCanRenderInspector();
 }
 
 function iaeCanCommitPos(uid, node) {
   var o = iaeCanObj(uid); if (!o) return;
   o.x_mm = Math.round(node.x() / iaeCanPxPerMm);
   o.y_mm = Math.round(node.y() / iaeCanPxPerMm);
-  iaeCanSave(); iaeCanUpdateStatus();
+  iaeCanSave(); iaeCanDrawOverlays(); iaeCanUpdateStatus();
 }
 function iaeCanCommitTransform(uid, node) {
   var o = iaeCanObj(uid); if (!o) return;
@@ -1152,7 +1157,8 @@ function iaeCanCommitTransform(uid, node) {
   o.rotation = Math.round(node.rotation());
   o.x_mm = Math.round(node.x() / iaeCanPxPerMm);
   o.y_mm = Math.round(node.y() / iaeCanPxPerMm);
-  iaeCanSave(); iaeCanLayer.batchDraw(); iaeCanUpdateStatus();
+  iaeCanSave(); iaeCanLayer.batchDraw(); iaeCanDrawOverlays(); iaeCanUpdateStatus();
+  iaeCanRenderInspectorSoft(o);
 }
 function iaeCanResizeNode(node, wpx, hpx) {
   node.find('.iae-can-rect').forEach(function (r) { r.width(wpx); r.height(hpx); });
@@ -1164,7 +1170,7 @@ function iaeCanRotate(uid, deg) {
   o.rotation = (((o.rotation || 0) + deg) % 360 + 360) % 360;
   var node = iaeCanFindNode(uid);
   if (node) { node.rotation(o.rotation); iaeCanLayer.batchDraw(); }
-  iaeCanSave(); iaeCanUpdateStatus();
+  iaeCanSave(); iaeCanDrawOverlays(); iaeCanUpdateStatus();
 }
 function iaeCanDup(uid) {
   var o = iaeCanObj(uid); if (!o) return;
@@ -1180,7 +1186,7 @@ function iaeCanNudge(uid, dx, dy) {
   o.x_mm = (o.x_mm || 0) + dx; o.y_mm = (o.y_mm || 0) + dy;
   var node = iaeCanFindNode(uid);
   if (node) { node.x(o.x_mm * iaeCanPxPerMm); node.y(o.y_mm * iaeCanPxPerMm); iaeCanLayer.batchDraw(); }
-  iaeCanSave(); iaeCanUpdateStatus();
+  iaeCanSave(); iaeCanDrawOverlays(); iaeCanUpdateStatus();
 }
 
 function iaeCanZoom(factor, center) {
@@ -1234,6 +1240,8 @@ function iaeCanKeydown(e) {
   if (k === 'Delete' || k === 'Backspace') { iaeCanRemove(o.uid); e.preventDefault(); return; }
   if (k === 'r' || k === 'R') { iaeCanRotate(o.uid, 90); e.preventDefault(); return; }
   if ((k === 'd' || k === 'D') && !e.ctrlKey && !e.metaKey) { iaeCanDup(o.uid); e.preventDefault(); return; }
+  if (k === 't' || k === 'T') { o.trim = !o.trim; iaeCanSave(); iaeCanDrawOverlays(); iaeCanRenderInspector(); e.preventDefault(); return; }
+  if (/^[1-9]$/.test(k)) { var pi = parseInt(k, 10) - 1; if (iaeFinPresets[pi]) { iaeCanApplyPreset(o, iaeFinPresets[pi].name); iaeCanRenderInspector(); } e.preventDefault(); return; }
   if (k.indexOf('Arrow') === 0) {
     var d = e.shiftKey ? 10 : 1;
     if (k === 'ArrowLeft') iaeCanNudge(o.uid, -d, 0);
@@ -1264,6 +1272,158 @@ function iaeCanWireToolbar() {
     document.addEventListener('keyup', iaeCanKeyup);
     iaeCanHotkeysBound = true;
   }
+}
+
+// ── N2: 마감·여백·돔보 (벡터 근사 오버레이 + 인스펙터 + 핫키) ──────
+// 마감 = 4면 finishing method → 여백 cm(iaeMarginOf), 출력 = 디자인 + 여백(바깥 확장).
+// 돔보 = 출력 바운드 꼭짓점 트림마크(웹 근사). 실제 마크는 출력(ProcessOrderItem) 시점.
+function iaeCanMargins(o) {
+  var f = (o && o.fin) || {};
+  return { t: iaeMarginOf(f.top), b: iaeMarginOf(f.bottom), l: iaeMarginOf(f.left), r: iaeMarginOf(f.right) };
+}
+function iaeCanDrawOverlays() {
+  if (!iaeCanOverlay) return;
+  iaeCanOverlay.destroyChildren();
+  var ppm = iaeCanPxPerMm;
+  iaeCanObjs.forEach(function (o) {
+    var m = iaeCanMargins(o);
+    var hasM = (m.t || m.b || m.l || m.r);
+    if (!hasM && !o.trim) return;
+    var og = new Konva.Group({ x: (o.x_mm || 0) * ppm, y: (o.y_mm || 0) * ppm, rotation: o.rotation || 0, listening: false });
+    var dl = m.l * 10 * ppm, dt = m.t * 10 * ppm, dr = m.r * 10 * ppm, db = m.b * 10 * ppm; // cm→mm→px
+    var wpx = (o.w_mm || 0) * ppm, hpx = (o.h_mm || 0) * ppm;
+    var ox = -dl, oy = -dt, ow = wpx + dl + dr, oh = hpx + dt + db; // 출력 바운드(로컬좌표)
+    if (hasM) {
+      var fill = 'rgba(245,158,11,0.18)';
+      if (dt > 0) og.add(new Konva.Rect({ x: ox, y: oy, width: ow, height: dt, fill: fill }));
+      if (db > 0) og.add(new Konva.Rect({ x: ox, y: hpx, width: ow, height: db, fill: fill }));
+      if (dl > 0) og.add(new Konva.Rect({ x: ox, y: 0, width: dl, height: hpx, fill: fill }));
+      if (dr > 0) og.add(new Konva.Rect({ x: wpx, y: 0, width: dr, height: hpx, fill: fill }));
+      og.add(new Konva.Rect({ x: ox, y: oy, width: ow, height: oh, stroke: '#f59e0b', strokeWidth: 1, dash: [4, 3] }));
+    }
+    if (o.trim) {
+      var L = 10 * ppm, gap = 3 * ppm, col = '#111827', sw = 1; // 1cm 트림마크 + 3mm 갭
+      var corners = [[ox, oy, 1, 1], [ox + ow, oy, -1, 1], [ox, oy + oh, 1, -1], [ox + ow, oy + oh, -1, -1]];
+      corners.forEach(function (c) {
+        var cx = c[0], cy = c[1], sx = c[2], sy = c[3];
+        og.add(new Konva.Line({ points: [cx, cy + sy * gap, cx, cy + sy * (gap + L)], stroke: col, strokeWidth: sw }));
+        og.add(new Konva.Line({ points: [cx + sx * gap, cy, cx + sx * (gap + L), cy], stroke: col, strokeWidth: sw }));
+      });
+    }
+    iaeCanOverlay.add(og);
+  });
+  iaeCanOverlay.batchDraw();
+}
+function iaeCanApplyPreset(o, name) {
+  var p = iaeFinPresets.filter(function (x) { return x.name === name; })[0]; if (!p) return;
+  var cfg = {}; try { cfg = (typeof p.config === 'string') ? JSON.parse(p.config) : (p.config || {}); } catch (_e) { cfg = {}; }
+  o.fin = { top: cfg.top || '', bottom: cfg.bottom || '', left: cfg.left || '', right: cfg.right || '' };
+  iaeCanSave(); iaeCanDrawOverlays();
+  iaeToast('마감 적용: ' + name, 'info');
+}
+
+function iaeCanRenderInspector() {
+  var host = document.getElementById('iaeCanInspector'); if (!host) return;
+  var o = iaeCanObj(iaeCanSel);
+  if (!o) { host.classList.add('hidden'); host.innerHTML = ''; return; }
+  host.classList.remove('hidden');
+  var src = iaeCanSrc(o.key);
+  var f = o.fin || {};
+  var presetOpts = '<option value="">마감 프리셋…</option>';
+  iaeFinPresets.forEach(function (p) { presetOpts += '<option value="' + iaeEscape(p.name) + '">' + iaeEscape(p.name) + '</option>'; });
+  var inputCls = 'border border-gray-300 rounded-md px-2 py-1 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500';
+  var selCls = 'w-full ' + inputCls;
+  var detTxt = src ? (Math.round((src.w_mm || 0) / 10) + '×' + Math.round((src.h_mm || 0) / 10) + 'cm') : '-';
+  var html = ''
+    + '<div class="flex items-center justify-between mb-1"><span class="text-sm font-semibold text-gray-700 truncate">' + iaeEscape(o.label) + '</span>'
+    + '<button id="iaeCanInsClose" class="text-gray-400 hover:text-gray-600 text-xs ml-2"><i class="fas fa-xmark"></i></button></div>'
+    + '<div class="text-[11px] text-gray-400 mb-3">검출 ' + detTxt + '</div>'
+    + '<div class="space-y-3">'
+    + '<div><label class="block text-xs text-gray-500 mb-1">크기 (cm)</label><div class="flex items-center gap-1">'
+    + '<input id="iaeCanW" type="number" min="0.1" step="0.1" value="' + (o.w_mm / 10) + '" class="w-20 ' + inputCls + '">'
+    + '<span class="text-gray-400">×</span>'
+    + '<input id="iaeCanH" type="number" min="0.1" step="0.1" value="' + (o.h_mm / 10) + '" class="w-20 ' + inputCls + '">'
+    + '<label class="flex items-center gap-1 text-xs text-gray-600 ml-1 cursor-pointer"><input id="iaeCanAspect" type="checkbox" checked>비율</label>'
+    + '</div></div>'
+    + '<div><label class="block text-xs text-gray-500 mb-1">마감 프리셋 <span class="text-gray-300">(숫자 1~9)</span></label><select id="iaeCanPreset" class="' + selCls + '">' + presetOpts + '</select></div>'
+    + '<div class="grid grid-cols-2 gap-2">'
+    + '<div><label class="block text-xs text-gray-500 mb-1">상</label><select id="iaeCanFinTop" class="' + selCls + '">' + iaeMethodOptions(f.top) + '</select></div>'
+    + '<div><label class="block text-xs text-gray-500 mb-1">하</label><select id="iaeCanFinBottom" class="' + selCls + '">' + iaeMethodOptions(f.bottom) + '</select></div>'
+    + '<div><label class="block text-xs text-gray-500 mb-1">좌</label><select id="iaeCanFinLeft" class="' + selCls + '">' + iaeMethodOptions(f.left) + '</select></div>'
+    + '<div><label class="block text-xs text-gray-500 mb-1">우</label><select id="iaeCanFinRight" class="' + selCls + '">' + iaeMethodOptions(f.right) + '</select></div>'
+    + '</div>'
+    + '<div class="flex items-center gap-3">'
+    + '<button id="iaeCanRotBtn" class="text-xs px-2 py-1 rounded-md border border-gray-200 hover:bg-gray-50"><i class="fas fa-rotate-right mr-1"></i>90° (R)</button>'
+    + '<label class="flex items-center gap-1 text-sm text-gray-700 cursor-pointer"><input id="iaeCanTrim" type="checkbox"' + (o.trim ? ' checked' : '') + '>돔보 (T)</label>'
+    + '</div>'
+    + '<div id="iaeCanOut" class="text-xs text-gray-500 border-t border-gray-100 pt-2"></div>'
+    + '<div id="iaeCanPreflight"></div>'
+    + '</div>';
+  host.innerHTML = html;
+  iaeCanWireInspector(o);
+  iaeCanRenderInspectorSoft(o);
+}
+function iaeCanWireInspector(o) {
+  var node = iaeCanFindNode(o.uid);
+  var wEl = document.getElementById('iaeCanW'), hEl = document.getElementById('iaeCanH'), aEl = document.getElementById('iaeCanAspect');
+  var src = iaeCanSrc(o.key);
+  var detAspect = (src && src.w_mm && src.h_mm) ? (src.w_mm / src.h_mm) : ((o.w_mm && o.h_mm) ? o.w_mm / o.h_mm : 0);
+  function applySize() {
+    var w = parseFloat(wEl.value) || 0, h = parseFloat(hEl.value) || 0;
+    if (w > 0) o.w_mm = Math.round(w * 10);
+    if (h > 0) o.h_mm = Math.round(h * 10);
+    node = iaeCanFindNode(o.uid);
+    if (node) { iaeCanResizeNode(node, o.w_mm * iaeCanPxPerMm, o.h_mm * iaeCanPxPerMm); iaeCanLayer.batchDraw(); }
+    iaeCanSave(); iaeCanDrawOverlays(); iaeCanUpdateStatus(); iaeCanRenderInspectorSoft(o);
+  }
+  if (wEl) wEl.addEventListener('input', function () {
+    if (aEl.checked && detAspect > 0) { var w = parseFloat(wEl.value) || 0; if (w > 0) hEl.value = Math.round((w / detAspect) * 10) / 10; }
+    applySize();
+  });
+  if (hEl) hEl.addEventListener('input', function () {
+    if (aEl.checked && detAspect > 0) { var h = parseFloat(hEl.value) || 0; if (h > 0) wEl.value = Math.round((h * detAspect) * 10) / 10; }
+    applySize();
+  });
+  ['Top', 'Bottom', 'Left', 'Right'].forEach(function (side) {
+    var el = document.getElementById('iaeCanFin' + side); if (!el) return;
+    el.addEventListener('change', function () { o.fin = o.fin || {}; o.fin[side.toLowerCase()] = el.value; iaeCanSave(); iaeCanDrawOverlays(); iaeCanRenderInspectorSoft(o); });
+  });
+  var preEl = document.getElementById('iaeCanPreset');
+  if (preEl) preEl.addEventListener('change', function () { if (!preEl.value) return; iaeCanApplyPreset(o, preEl.value); iaeCanRenderInspector(); });
+  var trimEl = document.getElementById('iaeCanTrim');
+  if (trimEl) trimEl.addEventListener('change', function () { o.trim = trimEl.checked; iaeCanSave(); iaeCanDrawOverlays(); });
+  var rotBtn = document.getElementById('iaeCanRotBtn');
+  if (rotBtn) rotBtn.addEventListener('click', function () { iaeCanRotate(o.uid, 90); });
+  var closeBtn = document.getElementById('iaeCanInsClose');
+  if (closeBtn) closeBtn.addEventListener('click', function () { iaeCanSelect(null); });
+}
+// 출력 크기 + 프리플라이트만 갱신 (입력 포커스 유지)
+function iaeCanRenderInspectorSoft(o) {
+  var m = iaeCanMargins(o);
+  var outW = (o.w_mm / 10) + m.l + m.r, outH = (o.h_mm / 10) + m.t + m.b;
+  var outEl = document.getElementById('iaeCanOut');
+  if (outEl) outEl.innerHTML = '출력 <b>' + outW.toFixed(1) + '×' + outH.toFixed(1) + 'cm</b> · 여백 상' + m.t + '/하' + m.b + '/좌' + m.l + '/우' + m.r + 'cm' + (o.trim ? ' · 돔보' : '');
+  iaeCanRenderPreflight(o);
+}
+function iaeCanRenderPreflight(o) {
+  var host = document.getElementById('iaeCanPreflight'); if (!host) return;
+  var warns = [];
+  var src = iaeCanSrc(o.key);
+  var dw = src ? (src.w_mm / 10) : 0, dh = src ? (src.h_mm / 10) : 0;
+  var tw = o.w_mm / 10, th = o.h_mm / 10;
+  if (dw > 0 && dh > 0 && tw > 0 && th > 0) {
+    var ta = tw / th, da = dw / dh, rota = dh / dw;
+    var diff = Math.min(Math.abs(ta - da), Math.abs(ta - rota)) / da;
+    if (diff > 0.05) warns.push(['warn', '원본 비율(' + Math.round(dw) + '×' + Math.round(dh) + 'cm)과 달라 잘림/여백 가능']);
+    var sc = tw / dw;
+    if (sc > 1.5) warns.push(['info', '검출의 ' + sc.toFixed(1) + '배 확대 — 해상도 확인']);
+  }
+  if (warns.length === 0) { host.innerHTML = '<div class="text-xs text-green-600"><i class="fas fa-circle-check mr-1"></i>프리플라이트 이상 없음</div>'; return; }
+  var color = { err: 'text-red-600', warn: 'text-amber-600', info: 'text-blue-600' };
+  var icon = { err: 'fa-circle-exclamation', warn: 'fa-triangle-exclamation', info: 'fa-circle-info' };
+  host.innerHTML = '<div class="space-y-1">' + warns.map(function (w) {
+    return '<div class="text-xs ' + color[w[0]] + '"><i class="fas ' + icon[w[0]] + ' mr-1"></i>' + iaeEscape(w[1]) + '</div>';
+  }).join('') + '</div>';
 }
 
 // ── 초기화 (모든 함수 정의 이후, 파일 맨 아래) ────────────────────

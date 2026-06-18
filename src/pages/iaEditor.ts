@@ -59,6 +59,7 @@ export function iaEditorPage(c: Context<HonoEnv>) {
           <div class="flex flex-1 min-h-0">
             <div id="iaeCanPalette" class="w-44 flex-shrink-0 border-r border-gray-200 overflow-y-auto p-2 bg-white"></div>
             <div id="iaeCanHost" tabindex="0" class="flex-1 bg-gray-100 relative overflow-hidden outline-none"></div>
+            <div id="iaeCanInspector" class="w-72 flex-shrink-0 border-l border-gray-200 overflow-y-auto p-3 bg-white hidden"></div>
           </div>
           <div id="iaeCanStatus" class="px-3 py-1.5 border-t border-gray-200 bg-gray-50/60 text-[11px] text-gray-500">팔레트에서 그룹을 클릭해 대지에 추가하세요</div>
         </div>
