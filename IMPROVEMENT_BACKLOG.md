@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 5 -->
-<!-- last_run_at: 2026-06-18T22:00:00+09:00 -->
+<!-- last_run_area: 6 -->
+<!-- last_run_at: 2026-06-19T02:00:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -16,6 +16,16 @@
 
 > 📦 **과거 사이클 로그**(아래 6블록 이전분)는 `IMPROVEMENT_BACKLOG_ARCHIVE.md`로 이관됨 (2026-06-10 정리). 신규 로그는 계속 이 파일 상단에 추가.
 
+> **Area 6 자기 진화 (2026-06-19T02:00):**
+> - **방법**: git fetch-before-compare(origin force-update `4993fa7→fe09551`, fetch 후 HEAD=origin/main `fe09551` 0/0 동기). node_modules 비어있어 `npm ci` 선실행 → baseline build PASS(393 modules, _worker.js 5,274.41kB). Area 6 **16회차** — **신선 각도 = post-Area5 프론트 feature churn의 XSS 재감사**(컬럼-diff bridge[Area4]의 프론트 거울). 직전 Area 5(bebee1f) 이후 churn = **ia-editor N1~N5 캔버스 기능**(aa75880~fe09551, `git diff --stat`: iaEditor.js **+914줄**·iaEditor.ts +26·ProcessOrderItem.jsx +39·Program.cs +47) — 백엔드 라우트·마이그레이션 churn 0(컬럼-diff bridge 대상 없음) → **프론트 XSS bridge에 집중** + 직전 자동수정(A-028/A-029) 자기-픽스 완전성 재검 + GitHub sync.
+> - **🟢 신선 각도 — iaEditor.js N1~N5 churn(+914줄) XSS net-new 0**: 직전 Area 5가 962줄 시점(bebee1f)만 감사 → N1~N5 추가분 미감사분을 전수 재감사. 추가 sink 전부 **`iaeEscape` 일관 적용**: 팔레트 `s.filename`(:1008)·인스펙터 `o.label`/preset `p.name`(:1362/1367)·네스팅 `s.filename`/`p.label`(:1559/1560)·주문모달 라인 `ln.label`/`ln.finishing`/`ln.item_name`(:1725-1728, value 속성 포함)·거래처검색 `client_name`/`client_code`(:1706)·품목검색 `item_name`/`item_code`(:1753-1754, data-name 속성 포함). **`iaeEscape`(:33) robust** = `& < > " '` 전부 escape(window.escapeHtml 래퍼 폴백) → 텍스트·속성·dataset round-trip 안전. preflight 경고(:1454 하드코딩 문자열)·네스팅 라벨(preset.label 하드코딩)·치수(숫자 toFixed)는 비-sink. 신규 feature가 처음부터 escape 컨벤션 준수 = clean.
+> - **🪞 자기-픽스 완전성 재검 (A-028/A-029) = 완전, 형제 sink 0**: 직전 사이클 자동수정 2건을 그 픽스 교훈(같은 파일 형제 데이터소스 누락 가능)으로 재검. **A-029 cardExpenses.js**(escapeHtml 19회) — 거래행 assignee/merchant_name/memo(:176-180)·카드 card_name/company/holder(:285-290·:689-690)·카테고리 cat.name(:148/:370/:374 dual-escape)·리포트바 category_name/card_name(:737/:749) **전 DB free-text escape** 확인(픽스한 :769 외 형제 누락 0). **A-028 itemRow.js** — 부속품모달 item_name/item_code(:336-338 data-속성+텍스트) escape, 라벨(:365 하드코딩+id숫자) 비-sink. 둘 다 "한 파일 한 데이터소스"만 고친 게 아니라 전 free-text sink 커버됨.
+> - **🟢 backlog↔GitHub sync clean (변동 0)**: open auto-improve **실측 8건**(#412~#419, list_issues 전수) = 직전 stats `new=8` 정합. churn이 iaEditor 프론트뿐(scan.ts/ar-payments.ts/cards/queries.ts/storageZones.ts/kakao.ts 미터치) → 기존 발견 #412~#419 코드경로 그대로 = **재현 spot-check 불필요(detection 회귀 0)**. done=114·rejected=3·approved=0·reviewed=0 유지. owner 신규 close/머지 0건.
+> - **🟢 컬럼-diff bridge = 대상 없음(자명 clean)**: 직전 Area 5 이후 백엔드 INSERT/UPDATE·마이그레이션 churn 0(전부 프론트 JS + extendscript .jsx + C# .cs) → 존재X컬럼/NOT NULL 누락 유입 경로 없음. 마이그레이션 318개 유지.
+> - **🧬 SKILL 강화 1건 — Area 6 bridge를 "post-Area5 프론트 feature churn XSS 재감사"로 확장**: 컬럼-diff bridge(Area4 백엔드 INSERT)의 프론트 거울 = **직전 Area 5 HEAD 이후 churn된 `src/scripts` 추가분만 XSS sink 재감사**(`git diff --stat <area5-head>..HEAD -- src/scripts` → +라인 큰 파일의 diff 영역 innerHTML만, 파일 전체 아님=Area5가 기존분 커버). 대형 프론트 기능이 N1→N5 증분 커밋으로 Area 5 감사 사이에 착륙하면 직전 Area 5는 그 시점 버전만 감사 → 이후 추가분 미감사 잔존. 컬럼 bridge(백엔드)·XSS bridge(프론트) 둘 다 매 Area 6 standing meta-check. Area 6 SKILL에 codify.
+> - **이상 없음**: git 동기 0/0. npm ci 후 build PASS. iaEditor N1~N5 +914줄 XSS net-new 0·A-028/A-029 자기-픽스 완전·컬럼 bridge 대상없음·sync 정합 8=8.
+> - 자동 수정 0건(프론트 feature churn XSS clean·자기-픽스 완전), 신규 이슈 0건(net-new 0), SKILL 강화 1건(post-Area5 프론트 feature churn XSS bridge), done-sync 0건(변동 없음), **신선 각도 — post-Area5 대형 프론트 기능(ia-editor N1~N5 +914줄) XSS churn 재감사**
+>
 > **Area 5 보안 (2026-06-18T22:00):**
 > - **방법**: git fetch-before-compare(origin force-update `4993fa7→4898fa7`, fetch 후 HEAD=origin/main `4898fa7` 0/0 동기). **node_modules 비어있어 `npm ci` 선실행 필수**(baseline build가 echo로 exit 0 오인했으나 실제 vite-not-found — npm ci 후 build PASS 393 modules, _worker.js 5,219.70kB / verify PASS). Area 5 신선 각도 = **직전 Area 5(33a5424) 이후 머지된 대형 신규기능 churn의 보안 회귀** — ia-editor 워크벤치(workbench.ts +463·iaEditor.js +962 신규)·kakao multi-entity(kakao.ts +188·settings.js +41·e600c6b/4803cb7)·aiAnalysis +63·cardExpenses +12·orderForm itemRow +93/finishing +38. 신규 라우트·스크립트가 가장 큰 공격표면 → 병렬 Explore 2개(① 백엔드 authMiddleware/IDOR/SQLi/에러노출 ② 프론트 innerHTML XSS) + 발견 전수 owner 직접 Read 검증.
 > - **🔴 신규 이슈 #418 (MED~HIGH보안 bug, small, #356/#414/#415 IDOR read 클래스) — 알림톡 발송이력 GET /kakao/logs 멀티법인 격리 누락**: kakao multi-entity churn 회귀 점검이 **net-new 격리** — `kakao.ts:1183` `GET /logs`가 동적 WHERE(client_id/status/date/search)를 구성하면서 **entity_id 필터 0**. **격리 의도 증거 = 같은 파일 INSERT 9곳 전부 `entity_id=getEntityId(c)`(:374/390 등) + 다른 read `GET /template-defaults`(:1318)는 `entityFilter(c)`** (kakao_send_logs.entity_id=0261 ALTER). 라우터 게이트 `requireRole('ADMIN','MANAGER')`(:45)인데 **빈 필터=super-ADMIN(entityId=0)만** → MANAGER(항상 구체 entity)가 타법인 발송이력(receiver_name·receiver_num 전화번호·content 메시지본문=고객 PII) cross-tenant 열람. 도달성 LIVE(messages.js:84). #414보다 **노출면 넓음**(MANAGER 도달). **자동수정 안 함**: IDOR read 격리=egress 차단 런타임 검증 불가(SKILL Area 5 issue-only).
