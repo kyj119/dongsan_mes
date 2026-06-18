@@ -634,14 +634,18 @@ function iaeUpdateNestCount() { var el = document.getElementById('iaeNestCount')
 
 function iaeSetView(v) {
   iaeView = v;
-  var ev = document.getElementById('iaeEditView'), nv = document.getElementById('iaeNestView');
-  var be = document.getElementById('iaeViewEdit'), bn = document.getElementById('iaeViewNest');
+  var ev = document.getElementById('iaeEditView'), cv = document.getElementById('iaeCanvasView'), nv = document.getElementById('iaeNestView');
+  var be = document.getElementById('iaeViewEdit'), bc = document.getElementById('iaeViewCanvas'), bn = document.getElementById('iaeViewNest');
   if (ev) ev.classList.toggle('hidden', v !== 'edit');
+  if (cv) cv.classList.toggle('hidden', v !== 'canvas');
   if (nv) nv.classList.toggle('hidden', v !== 'nest');
   var on = 'border-blue-500 bg-blue-50 text-blue-700', off = 'border-gray-200 text-gray-600 hover:bg-gray-50';
-  if (be) be.className = 'px-4 py-2 rounded-lg text-sm font-medium border ' + (v === 'edit' ? on : off);
-  if (bn) bn.className = 'px-4 py-2 rounded-lg text-sm font-medium border ' + (v === 'nest' ? on : off);
+  var cls = function (sel) { return 'px-4 py-2 rounded-lg text-sm font-medium border ' + (v === sel ? on : off); };
+  if (be) be.className = cls('edit');
+  if (bc) bc.className = cls('canvas');
+  if (bn) bn.className = cls('nest');
   if (v === 'nest') iaeRenderNest();
+  if (v === 'canvas') iaeRenderCanvas();
 }
 
 function iaeAddToNest(f, group, s) {
@@ -929,6 +933,339 @@ function iaePollRender() {
   }).catch(function () {});
 }
 
+// ════════════════════════════════════════════════════════════════
+// N1: 자유 대지 캔버스 (그룹=객체, 실제크기 비율, 드래그/리사이즈/회전, 핫키 골격)
+//   spec §14.4 N1. 마감/여백/돔보 벡터근사=N2, 네스팅=N3, 주문연결=N4, 단일그룹돔보=N5.
+//   객체 좌표는 mm(대지 원점 좌상단), Konva stage.scale/position으로 줌/팬. localStorage 영속.
+// ════════════════════════════════════════════════════════════════
+var IAE_CANVAS_KEY = 'iae_canvas_v1';
+var iaeCanObjs = [];          // [{uid, fid, gi, key, label, w_mm, h_mm, x_mm, y_mm, rotation}]
+var iaeCanStage = null, iaeCanLayer = null, iaeCanGrid = null, iaeCanTr = null;
+var iaeCanSel = null;         // 선택 객체 uid
+var iaeCanPxPerMm = 0.3;      // mm→px 기준 배율 (줌은 stage.scale)
+var iaeCanThumbCache = {};    // 'fid:gi' → Image
+var iaeCanRatioLock = true;
+var iaeCanUid = 1;
+var iaeCanHotkeysBound = false;
+
+function iaeCanLoad() {
+  try { var raw = localStorage.getItem(IAE_CANVAS_KEY); var a = raw ? JSON.parse(raw) : []; iaeCanObjs = Array.isArray(a) ? a : []; }
+  catch (_e) { iaeCanObjs = []; }
+  iaeCanObjs.forEach(function (o) { if (o.uid >= iaeCanUid) iaeCanUid = o.uid + 1; });
+}
+function iaeCanSave() { try { localStorage.setItem(IAE_CANVAS_KEY, JSON.stringify(iaeCanObjs)); } catch (_e) {} }
+function iaeCanObj(uid) { return iaeCanObjs.filter(function (x) { return x.uid === uid; })[0]; }
+
+// 모든 done 파일 그룹 수집 → 팔레트/소스 (§14.1 "여러 파일 그룹 통합")
+function iaeCanAllGroups() {
+  var out = [];
+  iaeFiles.forEach(function (f) {
+    if (f.status !== 'done' || !f.groups) return;
+    f.groups.forEach(function (g, i) {
+      var gi = (g.index != null) ? g.index : i;
+      out.push({
+        fid: f.id, gi: gi, key: f.id + ':' + gi, name: (g.name || ''), filename: f.filename,
+        thumb: g.thumbnail_base64 || null,
+        w_mm: (g.width_mm != null) ? g.width_mm : 0, h_mm: (g.height_mm != null) ? g.height_mm : 0
+      });
+    });
+  });
+  return out;
+}
+function iaeCanSrc(key) { return iaeCanAllGroups().filter(function (s) { return s.key === key; })[0]; }
+
+function iaeRenderCanvas() {
+  iaeCanRenderPalette();
+  iaeCanInitStage();
+}
+
+function iaeCanRenderPalette() {
+  var host = document.getElementById('iaeCanPalette'); if (!host) return;
+  var groups = iaeCanAllGroups();
+  if (groups.length === 0) {
+    host.innerHTML = '<div class="text-[11px] text-gray-400 text-center p-3">완료된 분석 그룹이<br>없습니다.<br>먼저 \'파일 처리\'에서<br>업로드하세요.</div>';
+    return;
+  }
+  var html = '<div class="text-[11px] font-semibold text-gray-500 mb-2 px-1">그룹 팔레트 (' + groups.length + ')</div>';
+  groups.forEach(function (s) {
+    var dims = (s.w_mm && s.h_mm) ? (Math.round(s.w_mm / 10) + '×' + Math.round(s.h_mm / 10) + 'cm') : '-';
+    var thumb = s.thumb
+      ? '<img src="data:image/png;base64,' + s.thumb + '" class="w-full h-14 object-contain bg-gray-50">'
+      : '<div class="w-full h-14 flex items-center justify-center bg-gray-50 text-gray-300"><i class="fas fa-image"></i></div>';
+    html += '<div class="iae-can-pal cursor-pointer rounded-md border border-gray-200 hover:border-blue-400 overflow-hidden mb-2" data-key="' + s.key + '" title="클릭해 대지에 추가">'
+      + thumb
+      + '<div class="px-1 py-0.5 border-t border-gray-100"><div class="text-[11px] font-semibold text-gray-700 truncate">' + iaeEscape(s.filename) + ' #' + s.gi + '</div><div class="text-[10px] text-gray-400">' + dims + '</div></div>'
+      + '</div>';
+  });
+  host.innerHTML = html;
+  Array.prototype.forEach.call(host.querySelectorAll('.iae-can-pal'), function (el) {
+    el.addEventListener('click', function () { iaeCanAdd(el.getAttribute('data-key')); });
+  });
+}
+
+// 객체 push (재빌드 없음) — placeAll 배치용
+function iaeCanPush(key, opts) {
+  var s = iaeCanSrc(key); if (!s) return null;
+  opts = opts || {};
+  var n = iaeCanObjs.length;
+  var obj = {
+    uid: iaeCanUid++, fid: s.fid, gi: s.gi, key: key, label: s.filename + ' #' + s.gi,
+    w_mm: s.w_mm || 100, h_mm: s.h_mm || 100,
+    x_mm: (opts.x_mm != null) ? opts.x_mm : (20 + (n % 8) * 40),
+    y_mm: (opts.y_mm != null) ? opts.y_mm : (20 + Math.floor(n / 8) * 40),
+    rotation: opts.rotation || 0
+  };
+  iaeCanObjs.push(obj);
+  return obj;
+}
+function iaeCanAdd(key, opts) {
+  var obj = iaeCanPush(key, opts); if (!obj) return;
+  iaeCanSave();
+  iaeCanInitStage();
+  iaeCanSelect(obj.uid);
+  if (!opts || !opts.silent) iaeToast('대지에 추가: ' + obj.label, 'success');
+}
+function iaeCanPlaceAll() {
+  var groups = iaeCanAllGroups();
+  if (groups.length === 0) { iaeToast('배치할 그룹이 없습니다', 'error'); return; }
+  var existing = {}; iaeCanObjs.forEach(function (o) { existing[o.key] = true; });
+  // 흐름 그리드 배치 (간격 20mm)
+  var cx = 20, cy = 20, rowH = 0, maxW = 1400, gap = 20, added = 0;
+  groups.forEach(function (s) {
+    if (existing[s.key]) return;
+    var w = s.w_mm || 100, h = s.h_mm || 100;
+    if (cx + w > maxW && cx > 20) { cx = 20; cy += rowH + gap; rowH = 0; }
+    iaeCanPush(s.key, { x_mm: cx, y_mm: cy });
+    cx += w + gap; if (h > rowH) rowH = h; added++;
+  });
+  if (added === 0) { iaeToast('이미 모든 그룹이 배치됨', 'info'); return; }
+  iaeCanSave(); iaeCanInitStage();
+  iaeToast(added + '개 그룹 배치', 'success');
+}
+function iaeCanClear() {
+  if (iaeCanObjs.length === 0) return;
+  iaeCanObjs = []; iaeCanSel = null; iaeCanSave(); iaeCanInitStage();
+}
+
+function iaeCanInitStage() {
+  var host = document.getElementById('iaeCanHost'); if (!host) return;
+  iaeLoadKonva(function () {
+    host = document.getElementById('iaeCanHost'); if (!host) return; // 뷰 교체됨
+    var w = host.clientWidth || 600, h = host.clientHeight || 520;
+    if (w < 1) w = 600; if (h < 1) h = 520;
+    var prevScale = iaeCanStage ? iaeCanStage.scaleX() : 1;
+    var prevPos = iaeCanStage ? iaeCanStage.position() : { x: 0, y: 0 };
+    host.innerHTML = '';
+    iaeCanStage = new Konva.Stage({ container: host, width: w, height: h, draggable: false });
+    iaeCanGrid = new Konva.Layer({ listening: false });
+    iaeCanLayer = new Konva.Layer();
+    iaeCanStage.add(iaeCanGrid); iaeCanStage.add(iaeCanLayer);
+    iaeCanStage.scale({ x: prevScale, y: prevScale }); iaeCanStage.position(prevPos);
+    iaeCanDrawGrid();
+    iaeCanTr = new Konva.Transformer({
+      rotateEnabled: true, keepRatio: iaeCanRatioLock, borderStroke: '#2563eb',
+      anchorStroke: '#2563eb', anchorFill: '#fff', anchorSize: 8, rotationSnaps: [0, 90, 180, 270]
+    });
+    iaeCanLayer.add(iaeCanTr);
+    iaeCanObjs.forEach(function (o) { iaeCanBuildNode(o); });
+    iaeCanLayer.draw();
+    if (iaeCanSel != null && iaeCanObj(iaeCanSel)) iaeCanSelect(iaeCanSel); else iaeCanSelect(null);
+    iaeCanWire(host);
+    iaeCanUpdateStatus();
+  });
+}
+
+function iaeCanDrawGrid() {
+  if (!iaeCanGrid) return;
+  iaeCanGrid.destroyChildren();
+  var ppm = iaeCanPxPerMm, step = 100 * ppm; // 100mm 격자
+  var W = 3000 * ppm, H = 2000 * ppm;
+  for (var x = 0; x <= W + 0.5; x += step) iaeCanGrid.add(new Konva.Line({ points: [x, 0, x, H], stroke: '#e5e7eb', strokeWidth: 1 }));
+  for (var y = 0; y <= H + 0.5; y += step) iaeCanGrid.add(new Konva.Line({ points: [0, y, W, y], stroke: '#e5e7eb', strokeWidth: 1 }));
+  iaeCanGrid.add(new Konva.Rect({ x: 0, y: 0, width: W, height: H, stroke: '#cbd5e1', strokeWidth: 1.5 }));
+  iaeCanGrid.draw();
+}
+
+function iaeCanBuildNode(o) {
+  var ppm = iaeCanPxPerMm;
+  var wpx = Math.max(4, (o.w_mm || 10) * ppm), hpx = Math.max(4, (o.h_mm || 10) * ppm);
+  var grp = new Konva.Group({ x: (o.x_mm || 0) * ppm, y: (o.y_mm || 0) * ppm, rotation: o.rotation || 0, draggable: true, name: 'iae-can-obj' });
+  grp.setAttr('uid', o.uid);
+  var rect = new Konva.Rect({ width: wpx, height: hpx, fill: '#ffffff', stroke: '#9ca3af', strokeWidth: 1, name: 'iae-can-rect' });
+  grp.add(rect);
+  var txt = new Konva.Text({ x: 3, y: 3, text: '#' + o.gi, fontSize: 11, fontStyle: 'bold', fill: '#1e40af', listening: false, name: 'iae-can-lbl' });
+  grp.add(txt);
+  // 썸네일 (비동기 로드)
+  var s = iaeCanSrc(o.key);
+  if (s && s.thumb) {
+    var draw = function (img) {
+      if (!iaeCanLayer || !grp.getStage()) return;
+      var ki = new Konva.Image({ image: img, width: rect.width(), height: rect.height(), listening: false, name: 'iae-can-img' });
+      grp.add(ki); ki.moveToTop(); txt.moveToTop();
+      iaeCanLayer.batchDraw();
+    };
+    var cached = iaeCanThumbCache[o.key];
+    if (cached && cached.complete && cached.naturalWidth) draw(cached);
+    else {
+      var img = cached || new Image();
+      iaeCanThumbCache[o.key] = img;
+      img.onload = function () { draw(img); };
+      if (!img.src) img.src = 'data:image/png;base64,' + s.thumb;
+    }
+  }
+  grp.on('mousedown touchstart', function () { iaeCanSelect(o.uid); });
+  grp.on('dragend', function () { iaeCanCommitPos(o.uid, grp); });
+  grp.on('transformend', function () { iaeCanCommitTransform(o.uid, grp); });
+  iaeCanLayer.add(grp);
+  return grp;
+}
+
+function iaeCanFindNode(uid) {
+  if (!iaeCanLayer) return null;
+  var found = null;
+  iaeCanLayer.find('.iae-can-obj').forEach(function (n) { if (n.getAttr('uid') === uid) found = n; });
+  return found;
+}
+function iaeCanSelect(uid) {
+  iaeCanSel = uid;
+  var node = (uid != null) ? iaeCanFindNode(uid) : null;
+  if (iaeCanTr) iaeCanTr.nodes(node ? [node] : []);
+  if (iaeCanLayer) iaeCanLayer.batchDraw();
+  iaeCanUpdateStatus();
+}
+
+function iaeCanCommitPos(uid, node) {
+  var o = iaeCanObj(uid); if (!o) return;
+  o.x_mm = Math.round(node.x() / iaeCanPxPerMm);
+  o.y_mm = Math.round(node.y() / iaeCanPxPerMm);
+  iaeCanSave(); iaeCanUpdateStatus();
+}
+function iaeCanCommitTransform(uid, node) {
+  var o = iaeCanObj(uid); if (!o) return;
+  var rect = node.findOne('.iae-can-rect'); if (!rect) return;
+  var newW = Math.abs(rect.width() * node.scaleX());
+  var newH = Math.abs(rect.height() * node.scaleY());
+  node.scaleX(1); node.scaleY(1);
+  iaeCanResizeNode(node, newW, newH);
+  o.w_mm = Math.max(1, Math.round(newW / iaeCanPxPerMm));
+  o.h_mm = Math.max(1, Math.round(newH / iaeCanPxPerMm));
+  o.rotation = Math.round(node.rotation());
+  o.x_mm = Math.round(node.x() / iaeCanPxPerMm);
+  o.y_mm = Math.round(node.y() / iaeCanPxPerMm);
+  iaeCanSave(); iaeCanLayer.batchDraw(); iaeCanUpdateStatus();
+}
+function iaeCanResizeNode(node, wpx, hpx) {
+  node.find('.iae-can-rect').forEach(function (r) { r.width(wpx); r.height(hpx); });
+  node.find('.iae-can-img').forEach(function (im) { im.width(wpx); im.height(hpx); });
+}
+
+function iaeCanRotate(uid, deg) {
+  var o = iaeCanObj(uid); if (!o) return;
+  o.rotation = (((o.rotation || 0) + deg) % 360 + 360) % 360;
+  var node = iaeCanFindNode(uid);
+  if (node) { node.rotation(o.rotation); iaeCanLayer.batchDraw(); }
+  iaeCanSave(); iaeCanUpdateStatus();
+}
+function iaeCanDup(uid) {
+  var o = iaeCanObj(uid); if (!o) return;
+  iaeCanAdd(o.key, { x_mm: (o.x_mm || 0) + 20, y_mm: (o.y_mm || 0) + 20, rotation: o.rotation, silent: true });
+}
+function iaeCanRemove(uid) {
+  iaeCanObjs = iaeCanObjs.filter(function (x) { return x.uid !== uid; });
+  if (iaeCanSel === uid) iaeCanSel = null;
+  iaeCanSave(); iaeCanInitStage();
+}
+function iaeCanNudge(uid, dx, dy) {
+  var o = iaeCanObj(uid); if (!o) return;
+  o.x_mm = (o.x_mm || 0) + dx; o.y_mm = (o.y_mm || 0) + dy;
+  var node = iaeCanFindNode(uid);
+  if (node) { node.x(o.x_mm * iaeCanPxPerMm); node.y(o.y_mm * iaeCanPxPerMm); iaeCanLayer.batchDraw(); }
+  iaeCanSave(); iaeCanUpdateStatus();
+}
+
+function iaeCanZoom(factor, center) {
+  if (!iaeCanStage) return;
+  var old = iaeCanStage.scaleX();
+  var ns = Math.max(0.1, Math.min(8, old * factor));
+  var c = center || iaeCanStage.getPointerPosition() || { x: iaeCanStage.width() / 2, y: iaeCanStage.height() / 2 };
+  var mp = { x: (c.x - iaeCanStage.x()) / old, y: (c.y - iaeCanStage.y()) / old };
+  iaeCanStage.scale({ x: ns, y: ns });
+  iaeCanStage.position({ x: c.x - mp.x * ns, y: c.y - mp.y * ns });
+  iaeCanStage.batchDraw();
+  iaeCanUpdateStatus();
+}
+function iaeCanFit() {
+  if (!iaeCanStage) return;
+  iaeCanStage.scale({ x: 1, y: 1 }); iaeCanStage.position({ x: 0, y: 0 });
+  iaeCanStage.batchDraw(); iaeCanUpdateStatus();
+}
+
+function iaeCanUpdateStatus() {
+  var z = document.getElementById('iaeCanZoom');
+  if (z && iaeCanStage) z.textContent = Math.round(iaeCanStage.scaleX() * 100) + '%';
+  var el = document.getElementById('iaeCanStatus'); if (!el) return;
+  var zoom = iaeCanStage ? Math.round(iaeCanStage.scaleX() * 100) : 100;
+  var o = iaeCanObj(iaeCanSel);
+  if (o) {
+    el.innerHTML = '선택: <b>' + iaeEscape(o.label) + '</b> · ' + (o.w_mm / 10).toFixed(1) + '×' + (o.h_mm / 10).toFixed(1) + 'cm · 회전 ' + (o.rotation || 0) + '° · 위치 (' + Math.round(o.x_mm / 10) + ',' + Math.round(o.y_mm / 10) + ')cm · 객체 ' + iaeCanObjs.length + '개 · 줌 ' + zoom + '%';
+  } else {
+    el.innerHTML = '객체 ' + iaeCanObjs.length + '개 · 줌 ' + zoom + '% · 팔레트에서 그룹을 클릭해 대지에 추가';
+  }
+}
+
+function iaeCanWire(host) {
+  if (!iaeCanStage) return;
+  iaeCanStage.on('mousedown touchstart', function (e) { if (e.target === iaeCanStage) iaeCanSelect(null); });
+  iaeCanStage.on('wheel', function (e) { e.evt.preventDefault(); iaeCanZoom(e.evt.deltaY < 0 ? 1.1 : 0.9); });
+}
+
+// 핫키 (대지 뷰 활성 시에만) — init에서 1회 바인딩
+function iaeCanKeydown(e) {
+  if (iaeView !== 'canvas') return;
+  var tag = (e.target && e.target.tagName) || '';
+  if (/INPUT|TEXTAREA|SELECT/.test(tag)) return;
+  var k = e.key;
+  if (k === ' ') { if (iaeCanStage && !iaeCanStage.draggable()) iaeCanStage.draggable(true); e.preventDefault(); return; }
+  if (k === 'Escape') { iaeCanSelect(null); return; }
+  if (k === '+' || k === '=') { iaeCanZoom(1.1, { x: iaeCanStage.width() / 2, y: iaeCanStage.height() / 2 }); e.preventDefault(); return; }
+  if (k === '-' || k === '_') { iaeCanZoom(0.9, { x: iaeCanStage.width() / 2, y: iaeCanStage.height() / 2 }); e.preventDefault(); return; }
+  var o = iaeCanObj(iaeCanSel);
+  if (!o) return;
+  if (k === 'Delete' || k === 'Backspace') { iaeCanRemove(o.uid); e.preventDefault(); return; }
+  if (k === 'r' || k === 'R') { iaeCanRotate(o.uid, 90); e.preventDefault(); return; }
+  if ((k === 'd' || k === 'D') && !e.ctrlKey && !e.metaKey) { iaeCanDup(o.uid); e.preventDefault(); return; }
+  if (k.indexOf('Arrow') === 0) {
+    var d = e.shiftKey ? 10 : 1;
+    if (k === 'ArrowLeft') iaeCanNudge(o.uid, -d, 0);
+    else if (k === 'ArrowRight') iaeCanNudge(o.uid, d, 0);
+    else if (k === 'ArrowUp') iaeCanNudge(o.uid, 0, -d);
+    else if (k === 'ArrowDown') iaeCanNudge(o.uid, 0, d);
+    e.preventDefault();
+  }
+}
+function iaeCanKeyup(e) {
+  if (e.key === ' ' && iaeCanStage && iaeCanStage.draggable()) iaeCanStage.draggable(false);
+}
+
+function iaeCanWireToolbar() {
+  var bind = function (id, fn) { var el = document.getElementById(id); if (el) el.addEventListener('click', fn); };
+  bind('iaeCanFit', iaeCanFit);
+  bind('iaeCanZoomIn', function () { iaeCanZoom(1.2, { x: iaeCanStage.width() / 2, y: iaeCanStage.height() / 2 }); });
+  bind('iaeCanZoomOut', function () { iaeCanZoom(0.8, { x: iaeCanStage.width() / 2, y: iaeCanStage.height() / 2 }); });
+  bind('iaeCanPlaceAll', iaeCanPlaceAll);
+  bind('iaeCanClear', iaeCanClear);
+  var ratio = document.getElementById('iaeCanRatio');
+  if (ratio) ratio.addEventListener('change', function () {
+    iaeCanRatioLock = ratio.checked;
+    if (iaeCanTr) { iaeCanTr.keepRatio(iaeCanRatioLock); iaeCanLayer.batchDraw(); }
+  });
+  if (!iaeCanHotkeysBound) {
+    document.addEventListener('keydown', iaeCanKeydown);
+    document.addEventListener('keyup', iaeCanKeyup);
+    iaeCanHotkeysBound = true;
+  }
+}
+
 // ── 초기화 (모든 함수 정의 이후, 파일 맨 아래) ────────────────────
 (function initIaEditor() {
   iaeLoadSettings();
@@ -948,12 +1285,15 @@ function iaePollRender() {
   } else {
     console.warn('[ia-editor] #iaeDrop / #iaeFileInput not found');
   }
-  // 뷰 토글 (파일 처리 / 네스팅)
-  var vEdit = document.getElementById('iaeViewEdit'), vNest = document.getElementById('iaeViewNest');
+  // 뷰 토글 (파일 처리 / 대지 편집 / 네스팅)
+  var vEdit = document.getElementById('iaeViewEdit'), vCanvas = document.getElementById('iaeViewCanvas'), vNest = document.getElementById('iaeViewNest');
   if (vEdit) vEdit.addEventListener('click', function () { iaeSetView('edit'); });
+  if (vCanvas) vCanvas.addEventListener('click', function () { iaeSetView('canvas'); });
   if (vNest) vNest.addEventListener('click', function () { iaeSetView('nest'); });
   iaeLoadNest();
   iaeUpdateNestCount();
+  iaeCanLoad();          // N1: 대지 객체 영속 복원
+  iaeCanWireToolbar();   // N1: 대지 툴바 + 핫키 1회 바인딩
 
   var ids = iaeLoadIds();
   iaeActiveId = ids.length ? ids[0] : null;
