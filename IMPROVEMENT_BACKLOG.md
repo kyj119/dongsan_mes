@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 6 -->
-<!-- last_run_at: 2026-06-19T02:00:00+09:00 -->
+<!-- last_run_area: 1 -->
+<!-- last_run_at: 2026-06-19T06:00:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -16,6 +16,16 @@
 
 > 📦 **과거 사이클 로그**(아래 6블록 이전분)는 `IMPROVEMENT_BACKLOG_ARCHIVE.md`로 이관됨 (2026-06-10 정리). 신규 로그는 계속 이 파일 상단에 추가.
 
+> **Area 1 프로덕션 헬스 (2026-06-19T06:00):**
+> - **방법**: git fetch-before-compare(origin force-update `4993fa7→44b229b`, fetch 후 HEAD=origin/main `44b229b` 0/0 동기). node_modules 비어있어 `npm ci` 선실행 → baseline build PASS(393 modules, _worker.js 5,274.41kB). egress 차단이라 Deploy/E2E/Backup CI 결과를 헬스 신호로 사용. GitHub Actions 최근 30런 분석. Area 1 **16회차** — 직전 Area 6(fe09551) 이후 유일 churn = **44b229b(Area 6 자기진화 backlog/SKILL 커밋, owner 코드 churn 0)** → 신선 각도 = **steady-state 헬스 확정**(직전 #409 회귀 회복 후 새 회귀 유입 여부 + CI 연속성 proxy 유효성 재확인).
+> - **🟢 CI 30/30런 전건 success — 헬스 GREEN(steady-state 확정)**: 최근 30런(2026-06-16T16:16~06-18T19:21, ~2.5일) conclusion 분포 = **success 30, 비-success 0**(failure/cancelled/timed_out 0건). HEAD `44b229b` = Deploy success + E2E(Playwright) success + Daily D1 Backup success 3종 동시 green. #409(E2E 바인드한도 회귀)는 `471502c` 회복 후 **현재까지 모든 후속 커밋 E2E green 지속** = 회귀 완전 종결. cold-start smoke 500·MIME 회귀 등 학습된 transient 패턴 발현 0.
+> - **🟢 owner 코드 churn 0 — 코드결함 유입 경로 없음**: 직전 Area 6 이후 origin이 force-update했으나 신규 커밋은 `44b229b`(에이전트 자신의 Area 6 문서 커밋) 1건뿐, `src/` 변경 0. baseline build PASS. 따라서 신규 코드결함·라우트 회귀 유입 없음(자명).
+> - **🟢 backlog↔GitHub sync clean (변동 0)**: open auto-improve **실측 8건**(#412~#419, list_issues 전수) = 직전 stats `new=8` 정합. done=114·rejected=3·approved=0·reviewed=0 유지. owner 신규 close/머지 0건.
+> - **🟢 #412 owner 지시 = 이미 처리됨(재확인)**: #412 코멘트 2건(updated 06-18T04:10) 점검 — owner "바코드 관리 구체화 후 검증" 지시 → 직전 사이클이 `docs/BARCODE_INVENTORY_SPEC_PENDING.md` 작성(`e6bfcd3`)으로 이미 응답·코드수정 보류. **신규 actionable 지시 0건**(미처리 owner 코멘트 없음). #412는 구체화 트래킹용 open 유지.
+> - **🧬 SKILL 강화 0건 — Area 1 standing scan 무변(E2E 연속성 proxy·바인드한도·cold-start·MIME 패턴 모두 holds)**: 무-churn·전건-green steady-state 사이클이라 신규 codify 대상 없음. 기존 Area 1 패턴(#409 D1 바인드한도 우선의심·cold-start transient·정적에셋 MIME)이 이번 사이클 발현 0으로 재검증됨 = 강화 불필요(억지 codify 회피).
+> - **이상 없음**: git 동기 0/0. npm ci 후 build PASS. CI 30/30 green·owner 코드 churn 0·sync 정합 8=8·#412 지시 기처리. 프로덕션 헬스 **GREEN**.
+> - 자동 수정 0건(헬스 GREEN·코드 churn 없음), 신규 이슈 0건(회귀·결함 유입 0), SKILL 강화 0건(steady-state 무-churn, 억지 codify 회피), done-sync 0건(변동 없음), **신선 각도 — #409 회복 후 steady-state 헬스 확정(30/30런 green·owner 코드 churn 0)**
+>
 > **Area 6 자기 진화 (2026-06-19T02:00):**
 > - **방법**: git fetch-before-compare(origin force-update `4993fa7→fe09551`, fetch 후 HEAD=origin/main `fe09551` 0/0 동기). node_modules 비어있어 `npm ci` 선실행 → baseline build PASS(393 modules, _worker.js 5,274.41kB). Area 6 **16회차** — **신선 각도 = post-Area5 프론트 feature churn의 XSS 재감사**(컬럼-diff bridge[Area4]의 프론트 거울). 직전 Area 5(bebee1f) 이후 churn = **ia-editor N1~N5 캔버스 기능**(aa75880~fe09551, `git diff --stat`: iaEditor.js **+914줄**·iaEditor.ts +26·ProcessOrderItem.jsx +39·Program.cs +47) — 백엔드 라우트·마이그레이션 churn 0(컬럼-diff bridge 대상 없음) → **프론트 XSS bridge에 집중** + 직전 자동수정(A-028/A-029) 자기-픽스 완전성 재검 + GitHub sync.
 > - **🟢 신선 각도 — iaEditor.js N1~N5 churn(+914줄) XSS net-new 0**: 직전 Area 5가 962줄 시점(bebee1f)만 감사 → N1~N5 추가분 미감사분을 전수 재감사. 추가 sink 전부 **`iaeEscape` 일관 적용**: 팔레트 `s.filename`(:1008)·인스펙터 `o.label`/preset `p.name`(:1362/1367)·네스팅 `s.filename`/`p.label`(:1559/1560)·주문모달 라인 `ln.label`/`ln.finishing`/`ln.item_name`(:1725-1728, value 속성 포함)·거래처검색 `client_name`/`client_code`(:1706)·품목검색 `item_name`/`item_code`(:1753-1754, data-name 속성 포함). **`iaeEscape`(:33) robust** = `& < > " '` 전부 escape(window.escapeHtml 래퍼 폴백) → 텍스트·속성·dataset round-trip 안전. preflight 경고(:1454 하드코딩 문자열)·네스팅 라벨(preset.label 하드코딩)·치수(숫자 toFixed)는 비-sink. 신규 feature가 처음부터 escape 컨벤션 준수 = clean.
