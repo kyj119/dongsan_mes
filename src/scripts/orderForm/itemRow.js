@@ -333,9 +333,9 @@
                         + '<div class="space-y-1">'
                         + accessories.map(function(acc) {
                             return '<button type="button" class="w-full text-left px-3 py-2 rounded hover:bg-amber-50 border border-gray-100 text-sm flex items-center justify-between" '
-                                + 'data-acc-id="' + acc.id + '" data-acc-name="' + (acc.item_name || '') + '" data-acc-code="' + (acc.item_code || '') + '">'
-                                + '<span><i class="fas fa-cube text-amber-400 mr-2"></i>' + (acc.item_name || '') + '</span>'
-                                + '<span class="text-xs text-gray-400">' + (acc.item_code || '') + '</span>'
+                                + 'data-acc-id="' + acc.id + '" data-acc-name="' + escapeHtml(acc.item_name || '') + '" data-acc-code="' + escapeHtml(acc.item_code || '') + '">'
+                                + '<span><i class="fas fa-cube text-amber-400 mr-2"></i>' + escapeHtml(acc.item_name || '') + '</span>'
+                                + '<span class="text-xs text-gray-400">' + escapeHtml(acc.item_code || '') + '</span>'
                                 + '</button>';
                         }).join('')
                         + '</div>';
