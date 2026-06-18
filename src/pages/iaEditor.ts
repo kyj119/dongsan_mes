@@ -55,7 +55,8 @@ export function iaEditorPage(c: Context<HonoEnv>) {
             <button id="iaeCanPlaceAll" class="px-2 py-1 rounded-md bg-blue-600 text-white hover:bg-blue-700"><i class="fas fa-table-cells mr-1"></i>모두 배치</button>
             <button id="iaeCanNestBtn" class="px-2 py-1 rounded-md border border-blue-200 text-blue-600 hover:bg-blue-50"><i class="fas fa-layer-group mr-1"></i>시트 네스팅</button>
             <button id="iaeCanClear" class="px-2 py-1 rounded-md border border-gray-200 text-gray-500 hover:bg-gray-100">대지 비우기</button>
-            <span class="ml-auto text-gray-400 hidden md:inline">R 회전 · D 복제 · Del 제거 · ←↑↓→ 이동(Shift=10mm) · 휠 줌 · Space+드래그 팬 · Esc 해제</span>
+            <button id="iaeCanOrderBtn" class="px-2 py-1 rounded-md bg-green-600 text-white hover:bg-green-700"><i class="fas fa-file-invoice mr-1"></i>주문으로 보내기</button>
+            <span class="ml-auto text-gray-400 hidden lg:inline">R 회전 · D 복제 · Del 제거 · ←↑↓→ 이동(Shift=10mm) · 휠 줌 · Space+드래그 팬 · Esc 해제</span>
           </div>
           <div class="flex flex-1 min-h-0">
             <div id="iaeCanPalette" class="w-44 flex-shrink-0 border-r border-gray-200 overflow-y-auto p-2 bg-white"></div>

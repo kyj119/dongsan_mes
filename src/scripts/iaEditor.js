@@ -1273,6 +1273,7 @@ function iaeCanWireToolbar() {
   bind('iaeCanZoomOut', function () { iaeCanZoom(0.8, { x: iaeCanStage.width() / 2, y: iaeCanStage.height() / 2 }); });
   bind('iaeCanPlaceAll', iaeCanPlaceAll);
   bind('iaeCanNestBtn', iaeCanShowNestPanel);
+  bind('iaeCanOrderBtn', iaeCanOpenOrderModal);
   bind('iaeCanClear', iaeCanClear);
   var ratio = document.getElementById('iaeCanRatio');
   if (ratio) ratio.addEventListener('change', function () {
@@ -1595,6 +1596,235 @@ function iaeCanRenderNestPanel() {
   });
   var closeEl = document.getElementById('iaeCanNestClose');
   if (closeEl) closeEl.addEventListener('click', function () { host.classList.add('hidden'); host.innerHTML = ''; });
+}
+
+// ── N4: 주문 연결 (품목 지정 모달 · 개별/네스팅 라인 · 새 주문 · 면적단가) ──
+// 대지 객체/시트 → order_items. 개별 객체=라인1, 시트=라인1(수량=조각수). 새 주문 POST /api/orders.
+// 마감 per-side → 대표 단일 finishing(에이전트 호환). 출력은 기존 에이전트(아트보드+finishing) 동작.
+var iaeOmState = { client_id: null, client_name: '', lines: [] };
+var iaeOmSearchTimer = null;
+
+function iaeCanFileR2(fid) {
+  var f = iaeFiles.filter(function (x) { return x.id === fid; })[0];
+  return f ? ('r2://sources/' + fid + '/' + f.filename) : null;
+}
+function iaeFinDominant(fin) {
+  if (!fin) return '';
+  var c = {}, sides = ['top', 'bottom', 'left', 'right'];
+  sides.forEach(function (s) { var m = fin[s]; if (m) c[m] = (c[m] || 0) + 1; });
+  var best = '', bn = 0;
+  Object.keys(c).forEach(function (k) { if (c[k] > bn) { bn = c[k]; best = k; } });
+  return best;
+}
+function iaeCanBuildOrderLines() {
+  var lines = [];
+  iaeCanSheets.forEach(function (sh) {
+    var pieces = iaeCanObjs.filter(function (o) { return o.sheetUid === sh.uid; });
+    if (!pieces.length) return;
+    var p0 = pieces[0], src = iaeCanSrc(p0.key);
+    lines.push({
+      kind: 'sheet', fid: p0.fid, gi: p0.gi, label: (src ? src.filename : '') + ' #' + p0.gi + ' [시트 ' + pieces.length + '조각]',
+      w_cm: Math.round((src ? src.w_mm : p0.w_mm) / 10), h_cm: Math.round((src ? src.h_mm : p0.h_mm) / 10),
+      qty: pieces.length, finishing: iaeFinDominant(p0.fin),
+      item_id: null, item_name: '', pricing_method: 'FIXED', unit_price: 0
+    });
+  });
+  iaeCanObjs.filter(function (o) { return !o.sheetUid; }).forEach(function (o) {
+    var src = iaeCanSrc(o.key);
+    lines.push({
+      kind: 'obj', fid: o.fid, gi: o.gi, label: (src ? src.filename : '') + ' #' + o.gi,
+      w_cm: Math.round(o.w_mm / 10), h_cm: Math.round(o.h_mm / 10),
+      qty: 1, finishing: iaeFinDominant(o.fin),
+      item_id: null, item_name: '', pricing_method: 'FIXED', unit_price: 0
+    });
+  });
+  return lines;
+}
+function iaeOmLineAmount(ln) {
+  var up = Number(ln.unit_price) || 0, qty = Math.max(1, Number(ln.qty) || 1);
+  var amt;
+  if (ln.pricing_method === 'AREA' && ln.w_cm > 0 && ln.h_cm > 0) {
+    var wR = Math.ceil((ln.w_cm * 10) / 10) * 10, hR = Math.ceil((ln.h_cm * 10) / 10) * 10; // mm 올림(=cm)
+    amt = up * (wR / 100) * (hR / 100) * qty;
+  } else { amt = up * qty; }
+  return Math.round(amt / 100) * 100;
+}
+
+function iaeCanOpenOrderModal() {
+  var lines = iaeCanBuildOrderLines();
+  if (lines.length === 0) { iaeToast('대지에 객체가 없습니다', 'error'); return; }
+  iaeOmState = { client_id: null, client_name: '', lines: lines };
+  var prev = document.getElementById('iaeOrderModal'); if (prev) prev.remove();
+  var d = (new Date()); // 기본 납품일 = 오늘+3 (date input 값은 사용자가 조정)
+  var modal = document.createElement('div');
+  modal.id = 'iaeOrderModal';
+  modal.className = 'fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4';
+  modal.innerHTML = ''
+    + '<div class="bg-white rounded-xl shadow-xl w-full max-w-3xl flex flex-col" style="max-height:88vh;">'
+    + '<div class="flex items-center justify-between px-5 py-3 border-b border-gray-200"><h3 class="font-bold text-gray-900"><i class="fas fa-file-invoice mr-2 text-green-600"></i>주문으로 보내기</h3>'
+    + '<button id="iaeOmClose" class="text-gray-400 hover:text-gray-700 text-xl leading-none">&times;</button></div>'
+    + '<div class="p-5 overflow-y-auto space-y-4">'
+    + '<div class="grid grid-cols-2 gap-3">'
+    + '<div class="relative"><label class="block text-xs text-gray-500 mb-1">거래처 *</label>'
+    + '<input id="iaeOmClient" autocomplete="off" placeholder="거래처명/코드 검색…" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500">'
+    + '<div id="iaeOmClientList" class="absolute z-10 left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto hidden"></div></div>'
+    + '<div><label class="block text-xs text-gray-500 mb-1">납품일 *</label><input id="iaeOmDate" type="date" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500"></div>'
+    + '</div>'
+    + '<div><div class="text-xs font-semibold text-gray-500 mb-2">주문 라인 (' + lines.length + ') <span class="font-normal text-gray-400">— 개별 객체=라인, 시트=1라인(수량=조각수). 품목을 지정하세요.</span></div>'
+    + '<div id="iaeOmLines" class="space-y-2"></div></div>'
+    + '<div id="iaeOmSummary" class="text-right text-sm text-gray-600 border-t border-gray-100 pt-2"></div>'
+    + '</div>'
+    + '<div class="px-5 py-3 border-t border-gray-200 flex justify-end gap-2">'
+    + '<button id="iaeOmCancel" class="px-4 py-2 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 text-sm">취소</button>'
+    + '<button id="iaeOmSubmit" class="px-4 py-2 rounded-lg bg-green-600 text-white hover:bg-green-700 text-sm font-medium"><i class="fas fa-check mr-1"></i>주문 생성</button>'
+    + '</div></div>';
+  document.body.appendChild(modal);
+  // 기본 납품일 = 오늘+3
+  try { var dd = new Date(); dd.setDate(dd.getDate() + 3); document.getElementById('iaeOmDate').value = dd.toISOString().split('T')[0]; } catch (_e) {}
+
+  document.getElementById('iaeOmClose').addEventListener('click', iaeCanCloseOrderModal);
+  document.getElementById('iaeOmCancel').addEventListener('click', iaeCanCloseOrderModal);
+  modal.addEventListener('mousedown', function (e) { if (e.target === modal) iaeCanCloseOrderModal(); });
+  document.getElementById('iaeOmSubmit').addEventListener('click', iaeCanSubmitOrder);
+  iaeOmWireClientSearch();
+  iaeOmRenderLines();
+}
+function iaeCanCloseOrderModal() { var m = document.getElementById('iaeOrderModal'); if (m) m.remove(); }
+
+function iaeOmWireClientSearch() {
+  var inp = document.getElementById('iaeOmClient'), list = document.getElementById('iaeOmClientList');
+  if (!inp || !list) return;
+  inp.addEventListener('input', function () {
+    iaeOmState.client_id = null;
+    var q = inp.value.trim();
+    if (iaeOmSearchTimer) clearTimeout(iaeOmSearchTimer);
+    if (q.length < 1) { list.classList.add('hidden'); return; }
+    iaeOmSearchTimer = setTimeout(function () {
+      axios.get('/api/clients', { params: { search: q, limit: 12, active: '1' } }).then(function (res) {
+        var rows = (res.data && res.data.data && res.data.data.clients) || [];
+        if (!rows.length) { list.innerHTML = '<div class="px-3 py-2 text-xs text-gray-400">검색 결과 없음</div>'; list.classList.remove('hidden'); return; }
+        list.innerHTML = rows.map(function (r) { return '<div class="iae-om-cli px-3 py-2 text-sm hover:bg-blue-50 cursor-pointer" data-id="' + r.id + '" data-name="' + iaeEscape(r.client_name) + '">' + iaeEscape(r.client_name) + (r.client_code ? ' <span class="text-xs text-gray-400">' + iaeEscape(r.client_code) + '</span>' : '') + '</div>'; }).join('');
+        list.classList.remove('hidden');
+        Array.prototype.forEach.call(list.querySelectorAll('.iae-om-cli'), function (el) {
+          el.addEventListener('click', function () {
+            iaeOmState.client_id = parseInt(el.getAttribute('data-id'), 10);
+            iaeOmState.client_name = el.getAttribute('data-name');
+            inp.value = iaeOmState.client_name; list.classList.add('hidden');
+          });
+        });
+      }).catch(function () { list.classList.add('hidden'); });
+    }, 250);
+  });
+}
+
+function iaeOmRenderLines() {
+  var host = document.getElementById('iaeOmLines'); if (!host) return;
+  var inputCls = 'border border-gray-300 rounded-md px-2 py-1 text-sm focus:ring-2 focus:ring-blue-500';
+  host.innerHTML = iaeOmState.lines.map(function (ln, i) {
+    return '<div class="border border-gray-200 rounded-lg p-2" data-idx="' + i + '">'
+      + '<div class="flex items-center gap-2 mb-1"><span class="text-xs font-semibold text-gray-700 truncate flex-1">' + iaeEscape(ln.label) + '</span>'
+      + '<span class="text-[11px] text-gray-400">' + ln.w_cm + '×' + ln.h_cm + 'cm' + (ln.finishing ? ' · ' + iaeEscape(ln.finishing) : '') + '</span></div>'
+      + '<div class="flex items-center gap-2">'
+      + '<div class="relative flex-1"><input class="iae-om-item w-full ' + inputCls + '" data-idx="' + i + '" autocomplete="off" placeholder="품목 검색(PM-…)" value="' + iaeEscape(ln.item_name) + '">'
+      + '<div class="iae-om-itemlist absolute z-10 left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-44 overflow-y-auto hidden" data-idx="' + i + '"></div></div>'
+      + '<input class="iae-om-qty w-16 ' + inputCls + '" data-idx="' + i + '" type="number" min="1" step="1" value="' + ln.qty + '" title="수량">'
+      + '<input class="iae-om-price w-24 ' + inputCls + '" data-idx="' + i + '" type="number" min="0" step="100" value="' + ln.unit_price + '" title="단가' + (ln.pricing_method === 'AREA' ? '(면적/㎡)' : '') + '">'
+      + '<span class="iae-om-amt text-xs text-gray-500 w-24 text-right" data-idx="' + i + '"></span>'
+      + '</div></div>';
+  }).join('');
+  // wire per-line
+  iaeOmState.lines.forEach(function (ln, i) {
+    var qtyEl = host.querySelector('.iae-om-qty[data-idx="' + i + '"]');
+    var priceEl = host.querySelector('.iae-om-price[data-idx="' + i + '"]');
+    var itemEl = host.querySelector('.iae-om-item[data-idx="' + i + '"]');
+    var itemList = host.querySelector('.iae-om-itemlist[data-idx="' + i + '"]');
+    if (qtyEl) qtyEl.addEventListener('input', function () { ln.qty = Math.max(1, parseInt(qtyEl.value, 10) || 1); iaeOmUpdateAmount(i); });
+    if (priceEl) priceEl.addEventListener('input', function () { ln.unit_price = parseFloat(priceEl.value) || 0; iaeOmUpdateAmount(i); });
+    if (itemEl) itemEl.addEventListener('input', function () {
+      ln.item_id = null;
+      var q = itemEl.value.trim();
+      if (iaeOmSearchTimer) clearTimeout(iaeOmSearchTimer);
+      if (q.length < 1) { itemList.classList.add('hidden'); return; }
+      iaeOmSearchTimer = setTimeout(function () {
+        axios.get('/api/items', { params: { search: q, limit: 12 } }).then(function (res) {
+          var rows = (res.data && res.data.data) || [];
+          if (!rows.length) { itemList.innerHTML = '<div class="px-3 py-2 text-xs text-gray-400">결과 없음</div>'; itemList.classList.remove('hidden'); return; }
+          itemList.innerHTML = rows.map(function (r) {
+            return '<div class="iae-om-itemopt px-3 py-2 text-sm hover:bg-blue-50 cursor-pointer" data-id="' + r.id + '" data-name="' + iaeEscape(r.item_name || '') + '" data-pm="' + (r.pricing_method || 'FIXED') + '" data-price="' + (r.base_price || 0) + '">'
+              + iaeEscape(r.item_name || '') + (r.item_code ? ' <span class="text-xs text-gray-400">' + iaeEscape(r.item_code) + '</span>' : '') + (r.pricing_method === 'AREA' ? ' <span class="text-[10px] text-blue-500">면적</span>' : '') + '</div>';
+          }).join('');
+          itemList.classList.remove('hidden');
+          Array.prototype.forEach.call(itemList.querySelectorAll('.iae-om-itemopt'), function (el) {
+            el.addEventListener('click', function () {
+              ln.item_id = parseInt(el.getAttribute('data-id'), 10);
+              ln.item_name = el.getAttribute('data-name');
+              ln.pricing_method = el.getAttribute('data-pm') || 'FIXED';
+              var dp = parseFloat(el.getAttribute('data-price')) || 0;
+              if (dp > 0 && (!ln.unit_price || ln.unit_price === 0)) { ln.unit_price = dp; if (priceEl) priceEl.value = dp; }
+              itemEl.value = ln.item_name; itemList.classList.add('hidden');
+              iaeOmUpdateAmount(i);
+            });
+          });
+        }).catch(function () { itemList.classList.add('hidden'); });
+      }, 250);
+    });
+    iaeOmUpdateAmount(i);
+  });
+  iaeOmUpdateSummary();
+}
+function iaeOmUpdateAmount(i) {
+  var ln = iaeOmState.lines[i]; if (!ln) return;
+  var el = document.querySelector('#iaeOmLines .iae-om-amt[data-idx="' + i + '"]');
+  if (el) el.textContent = iaeOmLineAmount(ln).toLocaleString() + '원';
+  iaeOmUpdateSummary();
+}
+function iaeOmUpdateSummary() {
+  var el = document.getElementById('iaeOmSummary'); if (!el) return;
+  var total = 0; iaeOmState.lines.forEach(function (ln) { total += iaeOmLineAmount(ln); });
+  el.innerHTML = '합계(VAT 별도) <b class="text-gray-900">' + total.toLocaleString() + '원</b>';
+}
+
+function iaeCanSubmitOrder() {
+  if (!iaeOmState.client_id) { iaeToast('거래처를 선택하세요', 'error'); return; }
+  var dateEl = document.getElementById('iaeOmDate');
+  var delivery = dateEl ? dateEl.value : '';
+  if (!delivery) { iaeToast('납품일을 입력하세요', 'error'); return; }
+  var missing = iaeOmState.lines.filter(function (ln) { return !ln.item_id; });
+  if (missing.length) { iaeToast(missing.length + '개 라인의 품목을 지정하세요', 'error'); return; }
+
+  var firstFid = iaeOmState.lines[0].fid;
+  var aiPath = iaeCanFileR2(firstFid);
+  var seenAi = {}, aiFiles = [];
+  iaeOmState.lines.forEach(function (ln) {
+    if (ln.fid && !seenAi[ln.fid]) { seenAi[ln.fid] = 1; var fp = iaeCanFileR2(ln.fid); if (fp) aiFiles.push({ file_path: fp, analysis_id: ln.fid }); }
+  });
+  var body = {
+    client_id: iaeOmState.client_id,
+    delivery_date: delivery,
+    ai_file_path: aiPath,
+    ai_analysis_id: firstFid,
+    ai_files: aiFiles,
+    items: iaeOmState.lines.map(function (ln) {
+      return {
+        item_id: ln.item_id, item_name: ln.item_name,
+        width_mm: ln.w_cm * 10, height_mm: ln.h_cm * 10,
+        quantity: ln.qty, unit: 'EA', unit_price: Number(ln.unit_price) || 0, vat_included: 1,
+        ai_group_index: ln.gi, ai_analysis_id: ln.fid,
+        finishing: ln.finishing || null, content: ln.label
+      };
+    })
+  };
+  var btn = document.getElementById('iaeOmSubmit');
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i>생성 중…'; }
+  axios.post('/api/orders', body).then(function (res) {
+    var d = res.data && res.data.data;
+    iaeToast('주문 생성 완료: ' + (d ? d.order_number : '') + ' (' + iaeOmState.lines.length + '라인)', 'success');
+    iaeCanCloseOrderModal();
+  }).catch(function (err) {
+    var msg = (err.response && err.response.data && err.response.data.error) || err.message || '주문 생성 실패';
+    iaeToast(msg, 'error');
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-check mr-1"></i>주문 생성'; }
+  });
 }
 
 // ── 초기화 (모든 함수 정의 이후, 파일 맨 아래) ────────────────────
