@@ -2423,6 +2423,16 @@ namespace IllustratorAutomation
                 string paramsPath3 = Path.Combine(scriptDir3, "ia_params.json");
                 RunJsxScript(scriptPath, paramsPath3, timeoutMinutes: 2);
 
+                // saveMultipleArtboards 보정: ProcessOrderItem.jsx가 epsOpts.saveMultipleArtboards=true로
+                // 단일 아트보드를 저장하면 Illustrator가 파일명에 아트보드 suffix(_design_N / -01)를 강제로 덧붙여
+                // 디스크 파일이 "{base}.eps"가 아니라 "{base}_design_0.eps" 등이 된다. 그 결과 아래 File.Exists가
+                // 항상 실패 → file-map·썸네일·원본보존이 조용히 스킵됐던 버그(2026-05-09~). 정규 이름이 없으면
+                // suffix 변형을 찾아 정규 이름으로 rename한다. EPS 내용은 불변이라 RIP/출력에는 영향 없음.
+                if (!File.Exists(epsOutputPath))
+                {
+                    NormalizeArtboardEpsName(epsOutputPath);
+                }
+
                 // 생성 검증: 파일이 실제로 존재하는지 확인 (DoJavaScript는 JSX 내부 오류를 숨길 수 있음)
                 if (!File.Exists(epsOutputPath))
                 {
@@ -2480,6 +2490,36 @@ namespace IllustratorAutomation
             }
             catch (Exception ex) { Console.WriteLine($"   ⚠️ finishing methods 로드 실패: {ex.Message}"); }
             return _finishingMethodsCache;
+        }
+
+        // ── saveMultipleArtboards suffix 보정 ────────────────────────────
+        // ProcessOrderItem.jsx의 saveMultipleArtboards=true가 EPS 파일명에 아트보드 suffix
+        // (_design_N 또는 -01)를 붙여 정규 이름과 어긋난다. 정규 이름이 없을 때 같은 stem의
+        // suffix 변형을 찾아 정규 이름으로 rename. 변형이 여럿이면 최신만 채택하고 나머지는 정리.
+        private static void NormalizeArtboardEpsName(string canonicalEpsPath)
+        {
+            try
+            {
+                string? dir = Path.GetDirectoryName(canonicalEpsPath);
+                if (string.IsNullOrEmpty(dir) || !Directory.Exists(dir)) return;
+                string stem = Path.GetFileNameWithoutExtension(canonicalEpsPath);
+                string canonicalName = stem + ".eps";
+                var variants = Directory.GetFiles(dir, stem + "*.eps")
+                    .Where(f => !string.Equals(Path.GetFileName(f), canonicalName, StringComparison.OrdinalIgnoreCase))
+                    .OrderByDescending(f => File.GetLastWriteTimeUtc(f))
+                    .ToList();
+                if (variants.Count == 0) return;
+                File.Move(variants[0], canonicalEpsPath, overwrite: true);
+                Console.WriteLine($"      🔧 EPS suffix 보정: {Path.GetFileName(variants[0])} → {canonicalName}");
+                foreach (var extra in variants.Skip(1))
+                {
+                    try { File.Delete(extra); } catch { /* best-effort 정리 */ }
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"      ⚠️  EPS suffix 보정 실패 (계속 진행): {ex.Message}");
+            }
         }
 
         // ── file-map 등록 헬퍼 ──────────────────────────────────────────

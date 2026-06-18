@@ -635,6 +635,9 @@ function main() {
     epsOpts.compatibility = Compatibility.ILLUSTRATOR10;
     epsOpts.preview = EPSPreview.COLORTIFF;
     epsOpts.embedAllFonts = true;
+    // 단일 아트보드만 클리핑 저장하기 위함(doc은 다중 아트보드). ⚠️ Illustrator가 파일명에 아트보드
+    // suffix(_design_N / 아트보드명 없으면 -01)를 강제로 붙임 → Program.cs NormalizeArtboardEpsName이 정규명으로 보정.
+    // false로 끄지 말 것: 전체 문서가 EPS로 나가 오작동.
     epsOpts.saveMultipleArtboards = true;
     epsOpts.artboardRange = String(abIndex + 1);  // 1-based
     doc.saveAs(epsFile, epsOpts);
