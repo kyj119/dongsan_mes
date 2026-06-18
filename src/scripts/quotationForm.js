@@ -65,11 +65,11 @@ function openClientModal(query, clients) {
         listHtml = clients.map(function(cl) {
             var safeName = (cl.client_name || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
             return '<div class="client-modal-row" onclick="selectClientFromModal(' + cl.id + ',\'' + safeName + '\')">'
-                + '<div class="font-medium text-sm">' + (cl.client_name || '') + '</div>'
+                + '<div class="font-medium text-sm">' + escapeHtml(cl.client_name || '') + '</div>'
                 + '<div class="text-xs text-gray-500">'
-                + (cl.client_code || '')
-                + (cl.business_registration_number ? ' | ' + cl.business_registration_number : '')
-                + (cl.phone ? ' | ' + cl.phone : '')
+                + escapeHtml(cl.client_code || '')
+                + (cl.business_registration_number ? ' | ' + escapeHtml(cl.business_registration_number) : '')
+                + (cl.phone ? ' | ' + escapeHtml(cl.phone) : '')
                 + '</div></div>';
         }).join('');
     }
