@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 3 -->
-<!-- last_run_at: 2026-06-17T14:00:00+09:00 -->
+<!-- last_run_area: 4 -->
+<!-- last_run_at: 2026-06-18T18:00:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,13 +8,24 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | 6 (**GitHub open auto-improve 실측 6건** — #411 대시보드 드릴다운 404·/shipments/daily 미존재 small [Area 3] · #412 스캔 입출고 items.current_stock 존재X UPDATE small [Area 4] · #413 입금삭제 bank_transactions.updated_at 존재X UPDATE small [Area 4] · **#414 카드 상세 GET /:id 멀티법인 격리 누락 IDOR — #375가 by-number만 고치고 by-id 누락 HIGH보안 small [Area 5]** · **#415 감액삭제 DELETE /adjustment/:id 법인격리 누락 — 같은 라우터 payments는 efPay 적용 MED small [Area 5]** · **#416 연차 자동적립 N+1 — /grant는 #321 batch인데 accrual/monthly·yearly만 직원수×2 순차 INSERT small [Area 2, 직전 부분런 등록]**) |
+| 🆕 new | 5 (**GitHub open auto-improve 실측 5건** — #412 스캔 입출고 items.current_stock 존재X UPDATE small [Area 4, **owner 지시: 바코드 관리 구체화 후 검증 → `docs/BARCODE_INVENTORY_SPEC_PENDING.md` 작성, 코드수정 보류**] · #413 입금삭제 bank_transactions.updated_at 존재X UPDATE small [Area 4] · **#414 카드 상세 GET /:id 멀티법인 격리 누락 IDOR — #375가 by-number만 고치고 by-id 누락 HIGH보안 small [Area 5]** · **#415 감액삭제 DELETE /adjustment/:id 법인격리 누락 — 같은 라우터 payments는 efPay 적용 MED small [Area 5]** · **#416 연차 자동적립 N+1 — /grant는 #321 batch인데 accrual/monthly·yearly만 직원수×2 순차 INSERT small [Area 2]**) |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 (#372 CSV도 owner close-completed → done 이관) |
-| ✔️ done | 111 (96 + **owner 대량 픽스 14건 close-completed**[5 커밋: a988f8d #394/#397/#398/#403/#405/#408 · 336df95 #395/#399/#401/#404/#406/#407 · 471502c #396/#400/#402 · **0ba3670 #409/#410** · 25d1b8e #394후속 handled_by FK] + **A-027 hometax created_at 존재X SELECT 3엔드포인트 자동수정**) |
+| ✔️ done | 112 (96 + **owner 대량 픽스 14건 close-completed**[5 커밋: a988f8d #394/#397/#398/#403/#405/#408 · 336df95 #395/#399/#401/#404/#406/#407 · 471502c #396/#400/#402 · **0ba3670 #409/#410** · 25d1b8e #394후속 handled_by FK] + **A-027 hometax created_at 존재X SELECT 3엔드포인트 자동수정** + **#411 대시보드 드릴다운 404 — owner 지시 option3(드릴다운 클릭 핸들러 제거+코드정리)로 본 사이클 처리**) |
 | ❌ rejected | 3 |
 
 > 📦 **과거 사이클 로그**(아래 6블록 이전분)는 `IMPROVEMENT_BACKLOG_ARCHIVE.md`로 이관됨 (2026-06-10 정리). 신규 로그는 계속 이 파일 상단에 추가.
+
+> **Area 4 데이터 정합성 (2026-06-18T18:00):**
+> - **방법**: git fetch-before-compare(origin force-update `4993fa7→550bf0d`, fetch 후 HEAD=origin/main `550bf0d` 0/0 동기). baseline `npm ci`+build PASS(391 modules, _worker.js 5,136.54kB). ground-truth=310 마이그레이션 로컬 D1(node:sqlite) 전량 적용(**FAIL 0**, 172테이블). Area 4 **15회차** — **신선 각도 = CHECK 제약 ↔ 코드가 쓰는 status/enum literal 값 불일치 스캔**(constraint throw로 기능 사망 클래스, 기존 INSERT/UPDATE 컬럼-존재성·명시-SELECT 스캔이 구조적으로 못 잡던 사각). 직전 Area 4(33a5424) 이후 churn = A-026 XSS·A-027 SELECT 픽스·doc만(신규 INSERT/마이그레이션 0)이라 FK-users 69컬럼 sweep·cascade ON DELETE 분석은 직전 결과 holds → 신선 각도에 집중.
+> - **🟢 신선 각도 — CHECK IN 제약 36개 ↔ literal write 전수 = net-new 0**: ground-truth `sqlite_master.sql`에서 `CHECK(col IN (...))` 36제약 추출(users.role·orders.status·cards.status·auto_process_jobs.status[소문자]·card_transactions.status 등) → 코드의 `INSERT/UPDATE` literal 값을 **대상 테이블에 정확히 묶어** 대조(컬럼명만 매칭하면 CHECK 없는 inventory_counts/claims/cash_schedule 등 대량 FP). 충돌 위험 최상위 3개 직접 검증: ① **cards.status**(CANCELLED 없음) — write 전부 PRINTING/PRINT_DONE/PRINT_PENDING/HOLD 정합(`status='DONE'/'ERROR'`는 `pp_status`/`rip_status`=CHECK 없는 별도 컬럼 tail매칭 FP) ② **auto_process_jobs.status**(소문자 [pending|processing|done|approved|failed]) — INSERT `'pending'`·UPDATE `'approved'/'pending'` 전부 소문자 정합 ③ **card_transactions.status** — INSERT `'UNCLASSIFIED'`·UPDATE `'CLASSIFIED'/'REQUESTED'` 전부 허용집합 내. **literal write가 CHECK-제약 테이블에 위반값 = 0건**.
+> - **🟢 INSERT/UPDATE 컬럼 존재성 자동스캔 = net-new 0(기보고만)**: 172테이블 ground-truth ↔ src 전수. UPDATE SET 존재X 4건 = scan.ts items.current_stock×2(#412)·ar-payments bank_transactions.updated_at(#413)·cards/lifecycle.ts:1096 ai_analysis_id(FP — SET 대상은 thumbnail_url, ai_analysis_id는 서브쿼리 JOIN). INSERT 컬럼 존재성·NOT NULL no-default 누락 = 0.
+> - **🟢 FK-users·cascade·entity_id = 직전 holds**: 직전 Area 4 이후 INSERT/마이그레이션 churn 0(유일 churn=hometaxInvoices.ts A-027 SELECT 픽스) → users(id) 69 FK 컬럼 바인딩·cascade ON DELETE·entity_id NULL 분석 재실행 불필요(재유입 경로 없음). entity_id 보유 102테이블 정합 유지.
+> - **🔧 owner 지시 처리 2건 (본 사이클, 미처리 2일 경과분 — 직전 3개 Area 런이 sync만 하고 미실행)**: GitHub 코멘트 점검에서 #411·#412에 owner 명시 지시 발견. ① **#411(done 처리)** — owner "3번으로 진행해서 코드정리 진행해줘" → **option 3 적용**: `dashboard.js:607` "납기 도래 주문" 위젯의 죽은 404 onclick(`location.href='/shipments/daily?date='`, 라우트 미존재) + 오해 유발 `cursor-pointer hover:shadow-sm` 제거. build PASS(5,136.41kB). ② **#412(코드수정 보류, md 작성)** — owner "바코드 관리 추가 구체화 후 검증 진행하도록 md파일 업데이트" → `docs/BARCODE_INVENTORY_SPEC_PENDING.md` 신규(현재 코드 상태=items.current_stock 존재X 100%실패 + 구체화 필요 7항목[entity/zone/upsert/부족가드/balance_after/inventory.ts관계/바코드포맷]) + docs/INDEX.md 등록. 코드는 구체화 완료 후 진행.
+> - **🟢 backlog↔GitHub sync 갱신**: open auto-improve **실측 6건**(#411~#416) → #411 owner-directed option3 처리로 done 이관 → open 5건(#412~#416). done 111→112(#411). #412는 owner-deferred(open 유지, md 작성으로 진행상태 기록). rejected=3·approved=0·reviewed=0 유지.
+> - **🧬 SKILL 강화 1건 — "CHECK IN 제약 ↔ literal write" standing scan + 대상 테이블 정확 매칭 FP 규칙**: 컬럼명만 매칭(`status='X'`)하면 CHECK 없는 동명 컬럼 테이블(inventory_counts/claims/cash_schedule 등)에서 대량 FP + `pp_status`/`rip_status` 같은 prefix 컬럼이 `status=` regex에 tail매칭됨. **반드시 `UPDATE <t> SET`/`INSERT INTO <t>`로 대상 테이블을 확정한 뒤 그 테이블의 CHECK 집합과만 대조**. 소문자 enum(auto_process_jobs) vs 대문자, CANCELLED 없는 cards.status 등 충돌 위험 높은 테이블 우선. SELECT/CASE WHEN(read-only)은 constraint 위험 없음 → write만. Area 4 SKILL에 codify.
+> - **이상 없음**: git 동기 0/0. baseline build PASS·build(픽스 후) PASS. CHECK-literal·INSERT/UPDATE 컬럼존재성·FK/cascade/entity_id 4각도 clean(net-new 0). owner-directed 2건 처리(#411 done·#412 md).
+> - 자동 수정 1건(#411 owner option3 죽은 onclick 제거, build PASS) + owner-directed doc 1건(#412 spec-pending md), 신규 이슈 0건(CHECK-literal net-new 0·컬럼존재성 기보고만), SKILL 강화 1건(CHECK-literal standing scan), done-sync 갱신(#411 done=112, new 6→5), **신선 각도 — CHECK IN 제약 ↔ literal write 대상테이블 정확매칭(status enum 위반 클래스 전수 배제)**
 
 > **Area 3 UX/기능 감사 (2026-06-17T14:00):**
 > - **방법**: git fetch-before-compare(origin force-update `4993fa7→4704088`, fetch 후 HEAD=origin/main `4704088` 0/0 동기). baseline `npm ci`+build PASS(391 modules, _worker.js 5,136.54kB). Area 3 **14회차** — **신선 각도 = 프론트 axios → 백엔드 라우트 존재성 cross-check**(#411 `location.href` page-route 검증의 **API 거울 클래스**: 버튼이 미등록 `/api/...`를 부르면 404=죽은 기능, 유저 관점 "기능 안 됨"). 병렬 Explore 2개(① 전 axios 경로 ↔ index.tsx 마운트+라우터 정의 전수 대조 ② primary 페이지 빈상태/필터 누락 감사) + 발견 전수 owner 직접 Read+#318 cross-check 검증.

@@ -46,6 +46,7 @@
 | `entity-separation-map.md` | 멀티테넌시 격리 맵 |
 | `kakao-alimtalk-templates.md` | 알림톡 템플릿 |
 | `UNIVERSAL_LOGWATCHER_DESIGN.md` | 로그워처 설계 |
+| `BARCODE_INVENTORY_SPEC_PENDING.md` | 바코드 스캔 입출고 재고관리 — 구체화 대기(#412, owner 지시) |
 
 ### 🟢 활성 specs (`docs/superpowers/specs/`)
 | 문서 | 성격 | 상태 |

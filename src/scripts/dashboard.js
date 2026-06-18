@@ -604,7 +604,7 @@ async function loadTodayDue() {
       var label = isOverdue ? '지연' : 'D-Day';
       var labelClass = isOverdue ? 'bg-red-500 text-white' : 'bg-orange-400 text-white';
       var priorityBadge = o.priority === 'URGENT' ? '<span class="px-1 py-0.5 text-[10px] rounded bg-red-50 text-red-700 ml-1">긴급</span>' : '';
-      return '<div class="flex items-center justify-between p-2 rounded-lg border cursor-pointer hover:shadow-sm ' + urgencyClass + '" onclick="location.href=\'/shipments/daily?date=' + encodeURIComponent(o.delivery_date || '') + '\'">'
+      return '<div class="flex items-center justify-between p-2 rounded-lg border ' + urgencyClass + '">'
         + '<div class="flex items-center gap-2">'
         + '<span class="px-1.5 py-0.5 rounded text-[10px] font-bold ' + labelClass + '">' + label + '</span>'
         + '<div>'
