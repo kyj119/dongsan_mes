@@ -72,9 +72,8 @@ export async function getConsumptionForecast(
   if (items.length === 0) return []
 
   // 2. 출고 이력 집계 (최근 N주)
-  const itemIds = items.map((it: any) => it.item_id as number)
-  const ph = itemIds.map(() => '?').join(',')
-
+  //    바인드 한도 회피(B): item 필터를 JOIN으로 푸시다운 → itemIds IN(...) 바인드 제거
+  //    (활성 매입품목 >100이어도 D1 "too many SQL variables" 안 남)
   const txCondition = entityId > 0
     ? `AND t.entity_id = ?`
     : ''
@@ -86,12 +85,13 @@ export async function getConsumptionForecast(
       SUM(ABS(t.quantity)) as total_out,
       COUNT(DISTINCT strftime('%Y-%W', t.transaction_date)) as active_weeks
     FROM inventory_transactions t
+    JOIN items i ON i.id = t.item_id
     WHERE t.transaction_type = 'OUT'
       AND t.transaction_date >= ?
-      AND t.item_id IN (${ph})
+      AND i.is_purchase_item = 1 AND i.is_active = 1 ${itemFilter}
       ${txCondition}
     GROUP BY t.item_id
-  `).bind(sinceDateStr, ...itemIds, ...txParams).all()
+  `).bind(sinceDateStr, ...params, ...txParams).all()
 
   // 소모 데이터 맵
   const consumptionMap: Record<number, { total: number; weeks: number }> = {}

@@ -69,18 +69,18 @@ weeklyPurchaseRouter.get('/analyze', async (c) => {
     const itemIds = forecast.map(f => f.item_id)
     let onOrderMap: Record<number, number> = {}
     if (itemIds.length > 0) {
-      const ph = itemIds.map(() => '?').join(',')
       const ef = entityId > 0 ? 'AND po.entity_id = ?' : ''
       const efParams = entityId > 0 ? [entityId] : []
+      // 바인드 한도 회피(B): forecast 품목(=활성 매입품목)을 서브쿼리로 제한 (itemIds IN 제거)
       const { results: onOrder } = await c.env.DB.prepare(`
         SELECT poi.item_id, SUM(poi.quantity - COALESCE(poi.received_quantity, 0)) as pending_qty
         FROM purchase_order_items poi
         JOIN purchase_orders po ON poi.po_id = po.id
         WHERE po.status IN ('DRAFT', 'CONFIRMED', 'PARTIAL_RECEIVED')
-          AND poi.item_id IN (${ph})
+          AND poi.item_id IN (SELECT id FROM items WHERE is_purchase_item = 1 AND is_active = 1)
           ${ef}
         GROUP BY poi.item_id
-      `).bind(...itemIds, ...efParams).all()
+      `).bind(...efParams).all()
 
       for (const o of onOrder) {
         onOrderMap[o.item_id as number] = Math.max(0, o.pending_qty as number)
@@ -90,17 +90,18 @@ weeklyPurchaseRouter.get('/analyze', async (c) => {
     // 4. 최근 공급처 조회 (품목별)
     let supplierMap: Record<number, { supplier_id: number; supplier_name: string }> = {}
     if (itemIds.length > 0) {
-      const ph = itemIds.map(() => '?').join(',')
+      // 바인드 한도 회피(B): forecast 품목 서브쿼리로 제한 (itemIds IN 제거)
       const { results: suppliers } = await c.env.DB.prepare(`
         SELECT poi.item_id, po.supplier_id, cl.client_name as supplier_name,
           MAX(po.created_at) as latest
         FROM purchase_order_items poi
         JOIN purchase_orders po ON poi.po_id = po.id
         LEFT JOIN clients cl ON po.supplier_id = cl.id
-        WHERE poi.item_id IN (${ph}) AND po.supplier_id IS NOT NULL
+        WHERE poi.item_id IN (SELECT id FROM items WHERE is_purchase_item = 1 AND is_active = 1)
+          AND po.supplier_id IS NOT NULL
         GROUP BY poi.item_id, po.supplier_id
         ORDER BY poi.item_id, latest DESC
-      `).bind(...itemIds).all()
+      `).all()
 
       // 각 item에 대해 가장 최근 PO의 공급처
       for (const s of suppliers as any[]) {
