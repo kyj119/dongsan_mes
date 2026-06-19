@@ -211,7 +211,7 @@ description: 자율 점검·개선 에이전트. 6개 영역을 순환하며 실
 > **🪞 Area 6 자기-픽스 완전성 검증 (A-026, 2026-06-16 codify)**: 직전 사이클 이후 churn이 **에이전트 자신의 자동수정 픽스뿐**이면(예: A-025 XSS escapeHtml 커밋만, INSERT/컬럼 변경 0) post-Area4 churn 컬럼-diff bridge가 퇴화(검증할 신규 컬럼 write 없음) → **대체 standing check = 직전 자동수정이 손댄 파일을 그 픽스가 codify한 교훈으로 재검**. 실증: A-025 교훈="같은 파일에 escapeHtml이 N회 있어도 다른 데이터소스 루프는 별도 누락 가능, 파일단위 픽스됨 판정 금지" → A-025가 finishing.js의 `option_name`/`option_code`는 escape했으나 **같은 파일 transfer 필드의 `parameter_schema` JSON 하위필드(`v`/`f.label`/`f.key` = 별도 데이터소스)는 누락** → A-026이 격리·픽스. **핵심**: #377 "파일분할 후 부분픽스" 규칙이 **에이전트 자기 자동수정에도 적용** — 자동수정이 "한 파일 한 데이터소스"만 고치면 형제 데이터소스 잔존. 자동수정 직후 또는 다음 Area 6에서 그 파일의 **모든 innerHTML 보간 변수를 데이터소스(어느 API/JSON/배열)별로 그룹핑 → 그룹마다 escapeHtml 적용률 재확인**. parameter_schema·options JSON 같은 **중첩 config JSON도 ADMIN free-input이면 free-text sink**(enum 토큰이라 realism 낮아도 같은 클래스).
 
 **학습된 패턴 (탐지 가치 높음)**:
-- N+1 쿼리: for 루프 내 `await DB.prepare(...)` → 모든 케이스 보고 대상 (100% 수정율)
+- N+1 쿼리: for 루프 내 `await DB.prepare(...)` → 보고 대상. **단 FP 예외 = 반복 횟수가 데이터 규모에 비례하지 않고 상수/하드 상한에 묶인 루프**(예: `workbench.ts:552` render-queue 루프가 `LIMIT 3`로 클레임 = 최대 3회, `Promise.all` 병렬 동시실행). 보고 전 루프의 iteration 소스를 확인 — `WHERE status='ACTIVE'`(전 직원)·사용자 업로드 배열처럼 **무한정 커질 수 있어야** N+1(#416 leaves accrual·attendance bulk). `LIMIT N`(상수)·`.slice(0,k)`·고정 enum 순회는 bounded = FP. (Area 2 2026-06-19 codify, 16회차)
 - entity_id 누락: 새 테이블 생성 시 entity_id 컬럼 필수 체크 → 반복적으로 발견·수정
 - as any 타입 캐스팅: 대규모 제거 가능·환영 받음
 - UX 흐름 단절: 페이지 간 이동 링크 부재 → 비즈니스 영향 높음

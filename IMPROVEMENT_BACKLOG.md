@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 1 -->
-<!-- last_run_at: 2026-06-19T06:00:00+09:00 -->
+<!-- last_run_area: 2 -->
+<!-- last_run_at: 2026-06-19T10:00:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -16,6 +16,16 @@
 
 > 📦 **과거 사이클 로그**(아래 6블록 이전분)는 `IMPROVEMENT_BACKLOG_ARCHIVE.md`로 이관됨 (2026-06-10 정리). 신규 로그는 계속 이 파일 상단에 추가.
 
+> **Area 2 코드 품질 (2026-06-19T10:00):**
+> - **방법**: git fetch-before-compare(origin force-update `4993fa7→b44bfb6`, fetch 후 HEAD=origin/main `b44bfb6` 0/0 동기). node_modules 비어있어 `npm ci` 선실행 → baseline build PASS(393 modules, _worker.js 5,274.41kB). ground-truth=318 마이그레이션 로컬 D1(node:sqlite) 전량 적용(**FAIL 0**, 176테이블). Area 2 **16회차** — **신선 각도 = 직전 Area 2(d50968e, 06-17T10:00) 이후 머지된 대형 신규 백엔드 라우트의 Area 2 각도(컬럼·N+1·타입·dead-code) 감사**(Area 5/6가 이미 보안·XSS 각도로만 감사 = ia-editor 워크벤치·kakao multi-entity). churn = **workbench.ts +463(ia-editor P1~N5 신규 라우트)·kakao.ts +188·aiAnalysis.ts +63·cardExpenses.ts +12** + 마이그레이션 0314~0321(8개). 자동스캔 3종(INSERT/UPDATE 컬럼존재성·명시컬럼 SELECT 존재성) 직접 실행 + 신규 4라우트 서브에이전트 심층(N+1/dead-code/타입/auth) + 발견 전수 ground-truth/도달성 교차검증.
+> - **🟢 신규기능 컬럼 존재성(INSERT/UPDATE) = net-new 0**: 176테이블 ground-truth ↔ src 전수 자동스캔. workbench INSERT 2건(`original_archives` 9컬럼·`sheet_layouts` 12컬럼, :352/:389) + UPDATE(order_items/ai_analysis_requests/sheet_layouts render_status, 0317/0318 ALTER 추가분 포함) **전부 존재 정합**. 마이그레이션 0318(`sheet_render_jobs.sql` 파일명이나 실제는 sheet_layouts ALTER 3컬럼 = 별도 테이블 아님). 잔여 UPDATE SET 존재X 3건 = scan.ts items.current_stock×2(#412)·ar-payments bank_transactions.updated_at(#413) **기보고만**.
+> - **🟢 명시 컬럼 SELECT 존재성(A-027 클래스) = net-new 0**: src/routes 전수 명시-컬럼 SELECT(단일테이블 FROM, JOIN/와일드카드 제외) ground-truth 대조 = **0 unknown**. A-027 hometax 픽스(`requested_at AS created_at`) holds, 신규 라우트에 copy-paste 컬럼오타 유입 0.
+> - **🟢 신규 4라우트 N+1·dead-code·타입·auth = net-new 0(서브에이전트)**: ① **N+1** — `workbench.ts:552` render-queue 루프는 `LIMIT 3` 상한(데이터규모 비례 아님 = bounded FP)·`cardExpenses.ts:201` sync 루프는 #178 batch 기적용·kakao send-bulk `targets.map`은 배열 빌드(await DB 없음). ② **dead-code** — kakao export(`getKakaoProvider`/`getKakaoSettings`/`SMSMessage`)는 messages/fax/weeklyPurchase import 확인·workbench 9핸들러 전부 workbench.js/iaEditor.js 도달·aiAnalysis `batch-test`/`thumbnail`/`chunks`는 IllustratorAutomat C# 콜백(문서화 통합 엔드포인트, dead 아님). ③ **권한** — 4라우터 전부 `.use('/*', authMiddleware, requireRole(...))`(workbench=ADMIN/MANAGER/DESIGNER·kakao=ADMIN/MANAGER·aiAnalysis=ADMIN·cardExpenses=핸들러별). ④ **타입** — `/match` orderVisibilityFilter alias/bind 순서 정합, 명시컬럼↔`.first<>()` 타입 일치. (below-bar 드롭: kakao_send_logs INSERT 8곳이 `channel` 미기재 → NULL 표시 = cosmetic·pre-existing·기능 무손상, 노이즈 회피)
+> - **🟢 backlog↔GitHub sync clean (변동 0)**: open auto-improve **실측 8건**(#412~#419, list_issues 전수) = 직전 stats `new=8` 정합. done=114·rejected=3·approved=0·reviewed=0 유지. 직전 Area 1 이후 owner 신규 close/머지 0건(HEAD=b44bfb6=Area 1 문서 커밋). #412 owner 코멘트(updated 06-18T04:10) = 기처리(바코드 spec-pending md).
+> - **🧬 SKILL 강화 1건 — N+1 "하드 상한 루프 = bounded FP" 예외 codify**: 기존 "N+1 = for 루프 내 await DB → 모든 케이스 보고(100% 수정율)"가 **너무 절대적** → workbench.ts:552(`LIMIT 3` render claim)·`Promise.all` 병렬을 N+1로 과대보고할 위험. **교훈**: 루프 iteration 소스가 `LIMIT N`(상수)·`.slice(0,k)`·고정 enum이면 bounded = FP, `WHERE status='ACTIVE'`(전 직원)·사용자 업로드 배열처럼 **무한정 커질 수 있어야** 진짜 N+1(#416 leaves accrual·attendance bulk). 보고 전 iteration 소스 확인 규칙을 Area 2 SKILL "학습된 패턴"에 codify.
+> - **이상 없음**: git 동기 0/0. npm ci 후 build PASS. 신규기능 컬럼존재성·명시SELECT·N+1·dead-code·타입·auth 6각도 clean(net-new 0). 마이그레이션 0314~0321 FAIL 0.
+> - 자동 수정 0건(신규기능 Area 2 각도 clean·컬럼/N+1/타입 net-new 0), 신규 이슈 0건(억지 codify 회피), SKILL 강화 1건(N+1 bounded-loop FP 예외), done-sync 0건(변동 없음), **신선 각도 — 직전 Area 5/6가 보안각도로만 본 대형 신규 백엔드 라우트(workbench +463·kakao +188)를 Area 2 코드품질 각도로 전수 감사**
+>
 > **Area 1 프로덕션 헬스 (2026-06-19T06:00):**
 > - **방법**: git fetch-before-compare(origin force-update `4993fa7→44b229b`, fetch 후 HEAD=origin/main `44b229b` 0/0 동기). node_modules 비어있어 `npm ci` 선실행 → baseline build PASS(393 modules, _worker.js 5,274.41kB). egress 차단이라 Deploy/E2E/Backup CI 결과를 헬스 신호로 사용. GitHub Actions 최근 30런 분석. Area 1 **16회차** — 직전 Area 6(fe09551) 이후 유일 churn = **44b229b(Area 6 자기진화 backlog/SKILL 커밋, owner 코드 churn 0)** → 신선 각도 = **steady-state 헬스 확정**(직전 #409 회귀 회복 후 새 회귀 유입 여부 + CI 연속성 proxy 유효성 재확인).
 > - **🟢 CI 30/30런 전건 success — 헬스 GREEN(steady-state 확정)**: 최근 30런(2026-06-16T16:16~06-18T19:21, ~2.5일) conclusion 분포 = **success 30, 비-success 0**(failure/cancelled/timed_out 0건). HEAD `44b229b` = Deploy success + E2E(Playwright) success + Daily D1 Backup success 3종 동시 green. #409(E2E 바인드한도 회귀)는 `471502c` 회복 후 **현재까지 모든 후속 커밋 E2E green 지속** = 회귀 완전 종결. cold-start smoke 500·MIME 회귀 등 학습된 transient 패턴 발현 0.
