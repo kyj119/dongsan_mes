@@ -1353,7 +1353,10 @@ function iaeCanNestPlace(opts) {
   sheets.forEach(function (s, si) {
     var sheetUid = iaeCanSheetUid++;
     var sx = originX, sy = cursorY;
-    iaeCanSheets.push({ uid: sheetUid, x_mm: sx, y_mm: sy, w_mm: Math.round(s.width_cm * 10), h_mm: Math.round(s.height_cm * 10), mode: opts.mode, label: preset.label + (sheets.length > 1 ? (' #' + (si + 1)) : ''), eff: eff, trim: margin > 0 });
+    iaeCanSheets.push({ uid: sheetUid, x_mm: sx, y_mm: sy, w_mm: Math.round(s.width_cm * 10), h_mm: Math.round(s.height_cm * 10), mode: opts.mode, label: preset.label + (sheets.length > 1 ? (' #' + (si + 1)) : ''), eff: eff, trim: margin > 0,
+      // N4 네스팅 fidelity: 주문 시 SheetLayout 렌더용 자기기술(placements·규격, cm 시트상대)
+      key: opts.key, fid: src.fid, gi: src.gi, roll_width_cm: s.width_cm, total_height_cm: s.height_cm, margin_cm: margin, gap_cm: gap,
+      placements: s.placements.map(function (p) { return { group_index: src.gi, x_cm: p.x_cm, y_cm: p.y_cm, width_cm: p.width_cm, height_cm: p.height_cm, rotated: !!p.rotated }; }) });
     s.placements.forEach(function (p) {
       var cellX = sx + p.x_cm * 10, cellY = sy + p.y_cm * 10;
       // 회전 조각: 디자인 원본 크기 유지 + 90° + bbox가 셀에 맞도록 x 보정
@@ -1476,6 +1479,7 @@ function iaeCanBuildOrderLines() {
       w_cm: Math.round((src ? src.w_mm : p0.w_mm) / 10), h_cm: Math.round((src ? src.h_mm : p0.h_mm) / 10),
       qty: pieces.length, fin: p0.fin || null, trim: !!sh.trim,
       det_w_cm: Math.round((src ? src.w_mm : p0.w_mm) / 10), det_h_cm: Math.round((src ? src.h_mm : p0.h_mm) / 10),
+      sheetRec: (sh.placements && sh.placements.length) ? sh : null,  // N4 네스팅 렌더용(placements 보유 시)
       item_id: null, item_name: '', pricing_method: 'FIXED', unit_price: 0
     });
   });
@@ -1642,29 +1646,57 @@ function iaeCanSubmitOrder() {
   var missing = iaeOmState.lines.filter(function (ln) { return !ln.item_id; });
   if (missing.length) { iaeToast(missing.length + '개 라인의 품목을 지정하세요', 'error'); return; }
 
-  var firstFid = iaeOmState.lines[0].fid;
-  var aiPath = iaeCanFileR2(firstFid);
+  // 네스팅 실제배치(placements 보유 시트) — orders.sheet_layout_params는 주문당 1개라 단일 시트만 SheetLayout 렌더
+  var sheetLines = iaeOmState.lines.filter(function (ln) { return ln.kind === 'sheet' && ln.sheetRec && ln.sheetRec.placements && ln.sheetRec.placements.length; });
+  var renderSheet = (sheetLines.length === 1) ? sheetLines[0] : null;
+  if (sheetLines.length > 1) iaeToast('네스팅 시트 2개↑ — 실제배치 출력은 단일 시트만, 나머지는 단일조각 처리', 'warning');
+
+  // 렌더 시트가 있으면 그 분석을 order-level 소스로(SheetLayout는 order ai_file_path 사용)
+  var primaryFid = renderSheet ? renderSheet.fid : iaeOmState.lines[0].fid;
+  var aiPath = iaeCanFileR2(primaryFid);
   var seenAi = {}, aiFiles = [];
   iaeOmState.lines.forEach(function (ln) {
     if (ln.fid && !seenAi[ln.fid]) { seenAi[ln.fid] = 1; var fp = iaeCanFileR2(ln.fid); if (fp) aiFiles.push({ file_path: fp, analysis_id: ln.fid }); }
   });
-  var body = {
-    client_id: iaeOmState.client_id,
-    delivery_date: delivery,
-    ai_file_path: aiPath,
-    ai_analysis_id: firstFid,
-    ai_files: aiFiles,
-    items: iaeOmState.lines.map(function (ln) {
-      return {
+
+  var sheetLayoutParams = null, items = [];
+  iaeOmState.lines.forEach(function (ln) {
+    if (ln === renderSheet) {
+      var sh = ln.sheetRec;
+      sheetLayoutParams = JSON.stringify({
+        scale_factor: 1, roll_width_cm: sh.roll_width_cm, total_height_cm: sh.total_height_cm,
+        margin_cm: sh.margin_cm || 0, placements: sh.placements
+      });
+      // 부모(시트): 청구+sheet_layout_params, 자식 보유로 개별출력 스킵(묶음 부모)
+      items.push({
+        client_group_id: 'iaesheet', item_id: ln.item_id, item_name: ln.item_name,
+        width_mm: Math.round((sh.roll_width_cm || 0) * 10), height_mm: Math.round((sh.total_height_cm || 0) * 10),
+        quantity: ln.qty, unit: 'EA', unit_price: Number(ln.unit_price) || 0, vat_included: 1,
+        ai_group_index: ln.gi, ai_analysis_id: ln.fid, sheet_layout_params: sheetLayoutParams, content: ln.label
+      });
+      // 자식(조각): SheetLayout이 출력 담당 → 개별 처리 스킵. 가격 0(부모가 청구)
+      items.push({
+        parent_client_id: 'iaesheet', item_id: ln.item_id, item_name: ln.item_name,
+        width_mm: ln.det_w_cm * 10, height_mm: ln.det_h_cm * 10,
+        quantity: ln.qty, unit: 'EA', unit_price: 0, vat_included: 1,
+        ai_group_index: ln.gi, ai_analysis_id: ln.fid, content: ln.label + ' 조각'
+      });
+    } else {
+      items.push({
         item_id: ln.item_id, item_name: ln.item_name,
         width_mm: ln.w_cm * 10, height_mm: ln.h_cm * 10,
         quantity: ln.qty, unit: 'EA', unit_price: Number(ln.unit_price) || 0, vat_included: 1,
         ai_group_index: ln.gi, ai_analysis_id: ln.fid,
-        finishing: iaeFinJson(ln.fin), content: ln.label,
-        post_processing: iaeOmPostProc(ln)
-      };
-    })
+        finishing: iaeFinJson(ln.fin), content: ln.label, post_processing: iaeOmPostProc(ln)
+      });
+    }
+  });
+
+  var body = {
+    client_id: iaeOmState.client_id, delivery_date: delivery,
+    ai_file_path: aiPath, ai_analysis_id: primaryFid, ai_files: aiFiles, items: items
   };
+  if (sheetLayoutParams) body.sheet_layout_params = sheetLayoutParams;
   var btn = document.getElementById('iaeOmSubmit');
   if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i>생성 중…'; }
   axios.post('/api/orders', body).then(function (res) {

@@ -1655,6 +1655,19 @@ namespace IllustratorAutomation
                 int itemCount = itemsElement.GetArrayLength();
                 Console.WriteLine($"   Items: {itemCount}개");
 
+                // ── 소스 로컬화: order aiFilePath가 r2://면 먼저 다운로드 ──
+                // ⚠️ 시트 배치(sheet_layout_params) 블록이 바로 아래라, r2:// 다운로드를 그 전에 해야
+                //    SheetLayout.jsx가 로컬 소스를 연다(캔버스/직접연결 네스팅 주문 fidelity). 아래 후행 블록은 로컬화 후 no-op.
+                if (!string.IsNullOrEmpty(aiFilePath) && aiFilePath.StartsWith("r2://", StringComparison.OrdinalIgnoreCase))
+                {
+                    int? ordAidEarly = (order.TryGetProperty("ai_analysis_id", out var oaeEl) && oaeEl.ValueKind != JsonValueKind.Null && oaeEl.TryGetInt32(out int oaev)) ? oaev : (int?)null;
+                    if (ordAidEarly.HasValue)
+                    {
+                        string dlEarly = await DownloadAnalysisFileAsync(ordAidEarly.Value);
+                        if (!string.IsNullOrEmpty(dlEarly) && File.Exists(dlEarly)) { aiFilePath = dlEarly; Console.WriteLine($"   ☁️  order 소스 로컬화(분석#{ordAidEarly}): {Path.GetFileName(dlEarly)}"); }
+                    }
+                }
+
                 // ── 시트 배치 모드: sheet_layout_params가 있으면 SheetLayout.jsx 실행 ──
                 string? sheetLayoutParams = null;
                 if (order.TryGetProperty("sheet_layout_params", out var slpEl) && slpEl.ValueKind != JsonValueKind.Null)
