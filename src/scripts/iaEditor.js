@@ -1646,57 +1646,43 @@ function iaeCanSubmitOrder() {
   var missing = iaeOmState.lines.filter(function (ln) { return !ln.item_id; });
   if (missing.length) { iaeToast(missing.length + '개 라인의 품목을 지정하세요', 'error'); return; }
 
-  // 네스팅 실제배치(placements 보유 시트) — orders.sheet_layout_params는 주문당 1개라 단일 시트만 SheetLayout 렌더
-  var sheetLines = iaeOmState.lines.filter(function (ln) { return ln.kind === 'sheet' && ln.sheetRec && ln.sheetRec.placements && ln.sheetRec.placements.length; });
-  var renderSheet = (sheetLines.length === 1) ? sheetLines[0] : null;
-  if (sheetLines.length > 1) iaeToast('네스팅 시트 2개↑ — 실제배치 출력은 단일 시트만, 나머지는 단일조각 처리', 'warning');
-
-  // 렌더 시트가 있으면 그 분석을 order-level 소스로(SheetLayout는 order ai_file_path 사용)
-  var primaryFid = renderSheet ? renderSheet.fid : iaeOmState.lines[0].fid;
+  // 네스팅 실제배치(다중 시트): placements 보유 시트는 per-item SHEET pp로 → 에이전트가 시트별 SheetLayout 렌더
+  var primaryFid = iaeOmState.lines[0].fid;
   var aiPath = iaeCanFileR2(primaryFid);
   var seenAi = {}, aiFiles = [];
   iaeOmState.lines.forEach(function (ln) {
     if (ln.fid && !seenAi[ln.fid]) { seenAi[ln.fid] = 1; var fp = iaeCanFileR2(ln.fid); if (fp) aiFiles.push({ file_path: fp, analysis_id: ln.fid }); }
   });
 
-  var sheetLayoutParams = null, items = [];
-  iaeOmState.lines.forEach(function (ln) {
-    if (ln === renderSheet) {
+  var items = iaeOmState.lines.map(function (ln) {
+    var isSheet = ln.kind === 'sheet' && ln.sheetRec && ln.sheetRec.placements && ln.sheetRec.placements.length;
+    if (isSheet) {
       var sh = ln.sheetRec;
-      sheetLayoutParams = JSON.stringify({
+      // 각 시트 = 독립 order_item + SHEET pp → 에이전트 ProcessItemAsync SHEET 분기에서 SheetLayout 렌더(다중 시트 지원)
+      var sheetPP = JSON.stringify([{ code: 'SHEET', params: {
         scale_factor: 1, roll_width_cm: sh.roll_width_cm, total_height_cm: sh.total_height_cm,
         margin_cm: sh.margin_cm || 0, placements: sh.placements
-      });
-      // 부모(시트): 청구+sheet_layout_params, 자식 보유로 개별출력 스킵(묶음 부모)
-      items.push({
-        client_group_id: 'iaesheet', item_id: ln.item_id, item_name: ln.item_name,
+      } }]);
+      return {
+        item_id: ln.item_id, item_name: ln.item_name,
         width_mm: Math.round((sh.roll_width_cm || 0) * 10), height_mm: Math.round((sh.total_height_cm || 0) * 10),
         quantity: ln.qty, unit: 'EA', unit_price: Number(ln.unit_price) || 0, vat_included: 1,
-        ai_group_index: ln.gi, ai_analysis_id: ln.fid, sheet_layout_params: sheetLayoutParams, content: ln.label
-      });
-      // 자식(조각): SheetLayout이 출력 담당 → 개별 처리 스킵. 가격 0(부모가 청구)
-      items.push({
-        parent_client_id: 'iaesheet', item_id: ln.item_id, item_name: ln.item_name,
-        width_mm: ln.det_w_cm * 10, height_mm: ln.det_h_cm * 10,
-        quantity: ln.qty, unit: 'EA', unit_price: 0, vat_included: 1,
-        ai_group_index: ln.gi, ai_analysis_id: ln.fid, content: ln.label + ' 조각'
-      });
-    } else {
-      items.push({
-        item_id: ln.item_id, item_name: ln.item_name,
-        width_mm: ln.w_cm * 10, height_mm: ln.h_cm * 10,
-        quantity: ln.qty, unit: 'EA', unit_price: Number(ln.unit_price) || 0, vat_included: 1,
-        ai_group_index: ln.gi, ai_analysis_id: ln.fid,
-        finishing: iaeFinJson(ln.fin), content: ln.label, post_processing: iaeOmPostProc(ln)
-      });
+        ai_group_index: ln.gi, ai_analysis_id: ln.fid, content: ln.label, post_processing: sheetPP
+      };
     }
+    return {
+      item_id: ln.item_id, item_name: ln.item_name,
+      width_mm: ln.w_cm * 10, height_mm: ln.h_cm * 10,
+      quantity: ln.qty, unit: 'EA', unit_price: Number(ln.unit_price) || 0, vat_included: 1,
+      ai_group_index: ln.gi, ai_analysis_id: ln.fid,
+      finishing: iaeFinJson(ln.fin), content: ln.label, post_processing: iaeOmPostProc(ln)
+    };
   });
 
   var body = {
     client_id: iaeOmState.client_id, delivery_date: delivery,
     ai_file_path: aiPath, ai_analysis_id: primaryFid, ai_files: aiFiles, items: items
   };
-  if (sheetLayoutParams) body.sheet_layout_params = sheetLayoutParams;
   var btn = document.getElementById('iaeOmSubmit');
   if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i>생성 중…'; }
   axios.post('/api/orders', body).then(function (res) {

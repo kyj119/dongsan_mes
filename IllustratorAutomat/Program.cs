@@ -2062,6 +2062,7 @@ namespace IllustratorAutomation
                 object? offsetConfig = null;
                 bool trimEnabled = false;   // N5: 단일 그룹 돔보 마크
                 double targetWcm = 0, targetHcm = 0;  // N4 fidelity: 캔버스 리사이즈 목표 크기(cm)
+                JsonElement? sheetParamsEl = null;    // N4 다중시트: per-item SHEET(네스팅) 파라미터
                 List<string>? annotationPositions = null;
                 var ppSource = item;
                 if (parentItem.HasValue && parentItem.Value.ValueKind == JsonValueKind.Object)
@@ -2185,6 +2186,9 @@ namespace IllustratorAutomation
 
                                     // N5: 돔보(TRIM) — 단일 그룹 출력에 돔보 마크 추가 플래그
                                     if (ppCode2 == "TRIM" || ppCode2 == "DOMBO") trimEnabled = true;
+
+                                    // N4 다중시트: SHEET — per-item 네스팅 시트(placements) → SheetLayout 렌더
+                                    if (ppCode2 == "SHEET" && ppEntry.TryGetProperty("params", out var shParamsEl)) sheetParamsEl = shParamsEl.Clone();
 
                                     // N4 fidelity: RESIZE — 캔버스에서 리사이즈한 목표 크기(cm)로 아트워크 스케일
                                     if (ppCode2 == "RESIZE" && ppEntry.TryGetProperty("params", out var rsParams))
@@ -2353,6 +2357,13 @@ namespace IllustratorAutomation
                 Directory.CreateDirectory(orderFolder);
                 string epsOutputPath = Path.Combine(orderFolder, baseName + ".eps");
                 string pngOutputPath = Path.Combine(orderFolder, baseName + ".png");
+
+                // ── N4 다중시트 네스팅: SHEET 파라미터가 있으면 SheetLayout.jsx로 시트 렌더(per-item) ──
+                if (sheetParamsEl.HasValue)
+                {
+                    await RenderItemSheetAsync(sheetParamsEl.Value, aiFilePath, orderFolder, baseName, item, orderNumber, fileSeq, fileSeqStr);
+                    return;
+                }
 
                 string groupLabel = groupIdx == -2 ? "묶음" : groupIdx >= 0 ? groupIdx.ToString() : "전체 문서";
                 Console.WriteLine($"      Item: {wStr}x{hStr}cm | {content} | {qty}EA");
@@ -2548,6 +2559,68 @@ namespace IllustratorAutomation
             {
                 Console.WriteLine($"      ⚠️  EPS suffix 보정 실패 (계속 진행): {ex.Message}");
             }
+        }
+
+        // ── N4 다중시트: per-item 네스팅 시트 렌더 (SheetLayout.jsx) ─────────
+        // 캔버스 시트(SHEET pp)를 주문 폴더에 baseName으로 렌더. order-level sheet_layout_params(단일)와
+        // 달리 order_item마다 호출되어 다중 시트를 지원. iaParams 구성은 order-level 블록과 동일 패턴.
+        private static async Task RenderItemSheetAsync(JsonElement sp, string sourceFile, string orderFolder, string baseName, JsonElement item, string orderNumber, int fileSeq, string fileSeqStr)
+        {
+            try
+            {
+                string scriptPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "SheetLayout.jsx");
+                if (!File.Exists(scriptPath)) { Console.WriteLine("      ❌ SheetLayout.jsx 없음"); return; }
+                double scaleFactor = sp.TryGetProperty("scale_factor", out var sfEl) ? sfEl.GetDouble() : 1;
+                if (scaleFactor < 1) scaleFactor = 1;
+                double rollW = sp.TryGetProperty("roll_width_cm", out var rwEl) ? rwEl.GetDouble() : 127;
+                double totalH = sp.TryGetProperty("total_height_cm", out var thEl) ? thEl.GetDouble() : 50;
+                double marginVal = sp.TryGetProperty("margin_cm", out var mcEl) ? mcEl.GetDouble() : 1.0;
+                var scaledPlacements = new List<object>();
+                if (sp.TryGetProperty("placements", out var plEl) && plEl.ValueKind == JsonValueKind.Array)
+                {
+                    foreach (var p in plEl.EnumerateArray())
+                    {
+                        scaledPlacements.Add(new
+                        {
+                            group_index = p.TryGetProperty("group_index", out var giEl) ? giEl.GetInt32() : 0,
+                            x_cm = p.GetProperty("x_cm").GetDouble() / scaleFactor,
+                            y_cm = p.GetProperty("y_cm").GetDouble() / scaleFactor,
+                            width_cm = p.GetProperty("width_cm").GetDouble() / scaleFactor,
+                            height_cm = p.GetProperty("height_cm").GetDouble() / scaleFactor,
+                            rotated = p.TryGetProperty("rotated", out var rEl) && rEl.GetBoolean(),
+                        });
+                    }
+                }
+                var iaParamsObj = new
+                {
+                    mode = "sheet_layout",
+                    source = sourceFile,
+                    scale_factor = scaleFactor,
+                    canvas = new { width_cm = rollW / scaleFactor, height_cm = totalH / scaleFactor, margin_cm = marginVal / scaleFactor },
+                    placements = scaledPlacements,
+                    bleed_mm = 3.0,
+                    gaps = new List<object>(),
+                    edge_colors = new List<object>(),
+                    outputs = new
+                    {
+                        eps = Path.Combine(orderFolder, baseName + ".eps"),
+                        dxf = Path.Combine(orderFolder, baseName + ".dxf"),
+                        jpg = Path.Combine(orderFolder, baseName + ".jpg"),
+                    }
+                };
+                string scriptDir = Path.GetDirectoryName(scriptPath)!;
+                File.WriteAllText(Path.Combine(scriptDir, "ia_params.json"), System.Text.Json.JsonSerializer.Serialize(iaParamsObj), System.Text.Encoding.UTF8);
+                Console.WriteLine($"      📐 다중시트 네스팅 → SheetLayout.jsx ({scaledPlacements.Count}조각, {Math.Round(rollW)}x{Math.Round(totalH)}cm)");
+                RunJsxScript(scriptPath, Path.Combine(scriptDir, "ia_params.json"), timeoutMinutes: 5);
+                string epsOut = Path.Combine(orderFolder, baseName + ".eps");
+                if (File.Exists(epsOut))
+                {
+                    Console.WriteLine($"      ✅ 시트 EPS 생성: {Path.GetFileName(epsOut)}");
+                    await RegisterFileMapAsync(orderNumber, fileSeq, fileSeqStr, baseName, item);
+                }
+                else Console.WriteLine("      ⚠️ 시트 EPS 생성 안됨");
+            }
+            catch (Exception ex) { Console.WriteLine($"      ❌ 다중시트 렌더 오류: {ex.Message}"); }
         }
 
         // ── file-map 등록 헬퍼 ──────────────────────────────────────────
