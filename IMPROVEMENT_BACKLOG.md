@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 4 -->
-<!-- last_run_at: 2026-06-19T18:00:00+09:00 -->
+<!-- last_run_area: 5 -->
+<!-- last_run_at: 2026-06-19T22:00:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -16,6 +16,16 @@
 
 > 📦 **과거 사이클 로그**(아래 6블록 이전분)는 `IMPROVEMENT_BACKLOG_ARCHIVE.md`로 이관됨 (2026-06-10 정리). 신규 로그는 계속 이 파일 상단에 추가.
 
+> **Area 5 보안 (2026-06-19T22:00):**
+> - **방법**: git fetch-before-compare(origin force-update `4993fa7→a540da2`, fetch 후 HEAD=origin/main `a540da2` 0/0 동기). node_modules 비어있어 `npm ci` 선실행 → baseline build PASS(393 modules, _worker.js 5,274.24kB). Area 5 **17회차** — **신선 각도 = 직전 Area 5(4898fa7, 06-18T22:00) 이후 머지된 churn의 보안 회귀**. churn = **`orders/create.ts +202`·`helpers.ts +131`(주문 라인 append `POST /:id/items` 신규 라우트)** + iaEditor.js +1516(프론트) + 소규모 frontend 3건. 최대 신규 공격표면 = sub-resource write 엔드포인트. 병렬: 백엔드 sub-resource write-isolation 직접 Read + 프론트 XSS Explore(iaEditor fe09551 이후 churn).
+> - **🟢 신규 백엔드 라우트 `POST /:id/items` 5각도 clean (net-new 0)**: ① **auth** — 라우터 `.use('/*', authMiddleware, requireAnyPagePermission('/orders','/cards'))`. ② **entity 격리(IDOR)** — 부모 주문 조회 `entityFilter(c,'orders')`(MANAGER는 자기 법인 주문에만 append). ③ **mass-assignment 방어(#417 정답 거울)** — 자식 INSERT entity는 entityFilter-검증된 `billingEntityId = Number(order.entity_id) || (getEntityId(c)||1)`로 **부모파생**, `body.entity_id` 미신뢰. body의 `assigned_entity_id`는 격리키 아닌 생산배정 free-field(create와 동형)=FP. ④ **SQLi** — 전 쿼리 `?` 바인딩, IN절 `.map(()=>'?')`. ⑤ **error-exposure** — catch가 generic `'서버 오류가 발생했습니다.'`(스택/메시지 미노출). 동반 신규 read 핸들러 0건 → #418 read-leak 비대칭 대상 없음.
+> - **🟢 프론트 XSS — iaEditor.js fe09551 이후 churn(+1516줄) net-new 0(Explore)**: 9커밋 diff 영역의 전 innerHTML/템플릿 sink가 `iaeEscape` 일관 적용 — 인스펙터(그룹명)·팔레트(filename)·네스팅(filename/preset.label)·주문모달(order_number/client_name/client_code/item_name/item_code/label) 전부 escape, Konva.Text(canvas)·숫자(gi/width)·하드코딩 warn은 비-sink. 소규모 frontend 3건 = `cardExpenses.js:766`/`itemRow.js:333-337` escapeHtml **추가**(이전 A-029/A-028 픽스 holds, clean) + `cards/core.js` IAE_INTERNAL_PP 뱃지 숨김(비-sink, free-text 없음).
+> - **🟢 standing 보안 grep = net-new 0**: 시크릿 폴백(`c.env.X||'리터럴'`) 0건 · 기본 비밀번호 0건 · churn 내 error.message/stack c.json 노출 0건.
+> - **🟢 backlog↔GitHub sync clean (변동 0)**: open auto-improve **실측 10건**(#412~#421, list_issues 전수) = 직전 stats `new=10` 정합. done=114·rejected=3·approved=0·reviewed=0 유지. owner 신규 close/머지 0건(#412 코멘트 2건=기처리 바코드 spec md). 미처리 owner 지시 0건.
+> - **🧬 SKILL 강화 1건 — 하위자원 append 엔드포인트(`POST /:id/items` 류) write-isolation을 신규기능 스캔 목록에 정식 편입**: 기존 #417 mass-assignment·#418 read-leak 스캔은 list/단건/`POST /` 위주였으나 sub-resource POST는 별도 형태. 올바른 패턴(이번 clean 입증) = 부모 lookup entityFilter → 자식 INSERT entity는 부모파생(body.entity_id 미신뢰), `assigned_entity_id`(생산배정 free-field)는 격리키와 구분. Area 5 SKILL에 codify.
+> - **이상 없음**: git 동기 0/0. npm ci 후 build PASS. sub-resource write-isolation 5각도·프론트 XSS·시크릿/에러노출 전 각도 clean(net-new 0). ia-editor append 기능이 격리/escape 컨벤션 준수.
+> - 자동 수정 0건(전 각도 net-new 0·억지 findings 회피), 신규 이슈 0건, SKILL 강화 1건(sub-resource append write-isolation 스캔), done-sync 0건(변동 없음), **신선 각도 — 최대 신규 공격표면(주문 라인 append `POST /:id/items`) sub-resource write-isolation 보안 전수**
+>
 > **Area 4 데이터 정합성 (2026-06-19T18:00):**
 > - **방법**: git fetch-before-compare(origin force-update `4993fa7→2f3c259`, fetch 후 HEAD=origin/main `2f3c259` 0/0 동기). node_modules 비어있어 `npm ci` 선실행 → baseline build PASS(exit 0). ground-truth=318 마이그레이션 로컬 D1(node:sqlite) 전량 적용(**FAIL 0**, 175테이블). Area 4 **16회차** — **신선 각도 = 직전 Area 4(550bf0d, 06-18T18:00) 이후 머지된 최대 데이터-write churn(주문 라인 append `orders/create.ts +202`·`helpers.ts +131`, +신규 테이블 0314/0316/0318)을 데이터 정합성 각도로 전수** + INSERT positional CHECK literal 스캔 보완(직전 15회차가 UPDATE 위주). 자동스캔 5종(INSERT/UPDATE 컬럼존재성·INSERT/UPDATE CHECK literal·NOT NULL no-default) 직접 실행 + append write-path owner 직접 Read 심층.
 > - **🟢 자동 스캔 5종 = net-new 0**: 175테이블 ground-truth ↔ src 전수. ① INSERT 컬럼존재성+NOT NULL = 0. ② UPDATE 컬럼존재성 = 기보고 3건만(scan.ts items.current_stock×2 #412·ar-payments bank_transactions.updated_at #413). ③ **INSERT positional CHECK literal**(직전 UPDATE 보완, 컬럼↔값 positional 매핑) = 위반 0. ④ UPDATE CHECK literal = 위반 0. CHECK 제약 38개 추출(신규 `original_archives.status IN(archived,failed)`·`sheet_layouts.status IN(draft,rendered,ordered)` 포함) ↔ write literal 전수 대조.
