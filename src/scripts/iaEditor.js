@@ -1097,7 +1097,7 @@ function iaeCanSyncSheet(sh) {
   var warns = [];
   if (!mem.length) { sh.placements = []; sh.eff = 0; return { warnings: warns, members: 0 }; }
   var margin = sh.margin_cm || 0;
-  var placements = [], areaCm2 = 0, maxBottomCm = 0, rotOff = 0, overflow = false;
+  var placements = [], areaCm2 = 0, maxBottomCm = 0, overflow = false;
   var rollW = sh.roll_width_cm || (sh.w_mm || 0) / 10;
   mem.forEach(function (o) {
     var bb = iaeCanRotBBox(o);
@@ -1106,7 +1106,6 @@ function iaeCanSyncSheet(sh) {
     placements.push({ group_index: o.gi, x_cm: Math.round(xc * 100) / 100, y_cm: Math.round(yc * 100) / 100, width_cm: Math.round(wc * 100) / 100, height_cm: Math.round(hc * 100) / 100, rotated: bb.rotated, rotation: bb.rot });
     areaCm2 += (o.w_mm || 0) * (o.h_mm || 0) / 100; // 조각 실면적(겹침과 무관)
     if (yc + hc > maxBottomCm) maxBottomCm = yc + hc;
-    if (bb.rot === 180 || bb.rot === 270) rotOff++;
     if (xc < -0.1 || xc + wc > rollW + 0.1) overflow = true;
   });
   if (sh.mode !== 'flatbed') {
@@ -1119,7 +1118,6 @@ function iaeCanSyncSheet(sh) {
   sh.placements = placements;
   sh.eff = (rollW * sheetH > 0) ? areaCm2 / (rollW * sheetH) : 0;
   if (overflow) warns.push('조각이 시트 경계를 벗어남 (출력 시 잘릴 수 있음)');
-  if (rotOff) warns.push(rotOff + '개 조각 180°/270° — 에이전트 최신 빌드 후 정확 출력(현재 0°/90°로 출력)');
   sh._warn = warns;
   return { warnings: warns, members: mem.length };
 }

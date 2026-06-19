@@ -18,7 +18,8 @@
   - **배포**: web `wrangler --branch main`→dep `8953d23e`·smoke 103/103. 에이전트 `dotnet publish`(단일파일81MB)→robocopy Z:(appsettings 보존)→재시작 PID 20832(안정, 180/270 충실 활성). 롤백=`Z:\…\publish-backup-20260619-thumbfix`. **push 완료**: 봇 `da4babb9`(append 정합성 감사=docs-only) merge→`origin/main=6dbeed13`→**CF 자동빌드 `76e24be6` 라이브·smoke 103/103**.
   - **append 실사용 검증(완전성공)**: 대지 객체(분석#1 실 FK)→'기존 주문에 추가' 실 picker→**order_items 1→2·카드 -02 연속·AI_PROCESS task 트리거**(`append_item_ids`). 부수발견=`enqueueAutoProcessJobsForItems`가 `order_items.finishing2/3` 스키마 드리프트로 throw→catch(휴면 큐라 무영향, 기지 문제).
   - **정리(#3)**: 로컬 publish/publish-new(~325MB)·Z: 구 백업3+`_auto_output`+네스팅 테스트출력(~588MB)·**로컬 D1 전체 테스트주문(orders 4~15=10건+cascade)** 삭제. 거래처·품목·설정 보존.
-  - **▶ 남은(선택)**: 180/270 라이브 EPS e2e(시각확인)·git push(origin 동기화)·finishing2/3 드리프트 prod 점검.
+  - **180° 라이브 EPS e2e ✅**: 에이전트 중지→PowerShell COM `DoJavaScript`(에이전트 RunJsxScript 동일)로 **배포된 SheetLayout.jsx** 직접 실행→실 디자인(Aces High) group 0°/180° 렌더→JPG 하단 완전 뒤집힘=`rotate(-pl.rotation)` 정확(270° 동반). ⚠️Illustrator MCP 끊김→PS COM 우회가 신뢰 검증경로. 배포 후 스테일 경고(180/270 "최신빌드 후") 제거. **사용법=`docs/IA_EDITOR_USAGE.md`**.
+  - **▶ 남은(선택)**: `order_items.finishing2/3` 스키마 드리프트 prod 점검(휴면 큐라 무영향이나 잠재).
 
 - **✅ [2026-06-19 PM] 주문 라인 append + ia-editor #3·#4 + 직접연결 썸네일 공백버그 — 전부 prod 배포·E2E 검증 완료**:
   - **append(신규기능) — prod 배포(웹 dep `b90d3635`)**: `POST /api/orders/:id/items`(create.ts) — 기존 주문에 ia-editor 산출 라인만 추가(기존 품목/카드 무변경). `generateCardsForOrder` **itemIdsFilter**(신규 라인만 카드생성·카드번호 기존 최대 뒤 연속) + **enqueueAutoProcessJobsForItems**(helpers.ts, 라인별 ai_analysis_id·에이전트 폴링 큐) + **ia-editor 주문모달 신규/기존 토글 + 주문 검색 picker**(iaEditor.js, orderVisibilityFilter 법인격리·출력완료까지만 선택). **가드: 상태 PRINT_DONE까지**(CONFIRMED·PRINTING·PRINT_DONE·HOLD 허용 / SHIPPED·COMPLETED·CANCELLED·QUOTATION·DRAFT 차단)·entity 소유검증·recalcOrderBillingGroups(동결보존, BILLED면 경고)·**PRINT_DONE→PRINTING 되돌림**. E2E(로컬): 품목+2·합계증가·카드번호연속·중복0·동일그룹 1카드·가드 400/404/409·되돌림. **prod smoke 103/103 + append 라이브(400/404 가드)·ia-editor 정상**. 회귀테스트 `scripts/e2e-append-items.cjs`.
@@ -26,7 +27,7 @@
   - **#4 다중시트 UX**: 주 카드생성 정상. SHEET/RESIZE/TRIM 내부코드 후가공 뱃지 누수 → `isPPHidden`(cards/core.js) IAE_INTERNAL_PP로 숨김. (배포 동반)
   - **🆕 직접연결 완성본(-3) 썸네일 공백버그 — 에이전트 수정·재배포·e2e 완결**: 거래처명 공백 시 EPS(File.Copy=공백 보존)/PNG(Illustrator exportFile=하이픈화) 파일명 미스매치 → `ReportDirectThumbnailAsync` File.Exists 실패→콜백 미발송→썸네일 NULL. **B안**(Program.cs: File.Exists 실패 시 공백→하이픈 후보 + `{주문번호}-{seq}-*.png` glob 폴백) 적용. **에이전트 재빌드·Z:\publish 재배포(백업 보존)·재시작 PID 21000**(webapp 무변경). **e2e**: 공백 거래처 신규주문 `E1-20260619-009` → 미스매치 재현→폴백→로그 `썸네일 보고(분석#42) OK`→카드 SET·디코딩. **007 백필**(콜백 엔드포인트) done/SET. 무공백 회귀0(008). 정본→[[bug-history]].
   - **✅ 커밋 `74272977` → push `origin feat/ia-editor-canvas-n1:main`**(HEAD=origin/main 동기화). 변경=`orders/create.ts`·`orders/helpers.ts`·`scripts/iaEditor.js`·`scripts/cards/core.js`·`IllustratorAutomat/Program.cs`. 핸드오프=session-context.md.
-  - **▶ 다음(선택)**: 이형(true-shape) 네스팅(별도 세션) / append 실사용 검증 / Z 잔재·publish 백업 정리.
+  - **▶ 다음(선택)**: ~~이형 true-shape 네스팅 · append 실사용 검증 · Z/테스트주문 정리~~ → **전부 [2026-06-19 PM3]에서 완료**(위 항목 참조).
 
 - **✅ [2026-06-18~19] EPS suffix 버그 해결 + ia-editor 캔버스 워크벤치 N1~N5 + N4 출력 fidelity — 전부 prod 배포·e2e 검증** (브랜치 `feat/ia-editor-canvas-n1` = main = `0783c75e`, web dep `640dad03`, 에이전트 PID 13652):
   - **EPS suffix 버그**(`Program.cs NormalizeArtboardEpsName`, 커밋 `3e2be20a`): `saveMultipleArtboards`가 EPS명에 `_design_N`/`-01` suffix 강제 → `File.Exists` 오탐 → file-map/썸네일/원본보존 스킵(2026-05-09~). 영향조사=실운영 RIP은 agent file-map 미사용(prod print_events 100건 card=NULL)→기존 회귀0. 정규명 rename으로 수정. agent 배포·e2e 성공.
