@@ -453,8 +453,11 @@ async function loadPPDisplayFlags() {
     ppHiddenLoaded = true;
 }
 
+// ia-editor 내부 가공 지시코드(후가공 아님 — 에이전트 EPS 처리용). 카드 후가공 뱃지에서 항상 숨김.
+var IAE_INTERNAL_PP = { SHEET: 1, RESIZE: 1, TRIM: 1 };
 function isPPHidden(ppNameOrCode) {
     var val = String(ppNameOrCode || '');
+    if (IAE_INTERNAL_PP[val]) return true;
     for (var i = 0; i < ppHiddenCodes.length; i++) {
         if (val === ppHiddenCodes[i].code || val.indexOf(ppHiddenCodes[i].name) !== -1) return true;
     }

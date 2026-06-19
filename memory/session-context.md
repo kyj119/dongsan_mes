@@ -1,54 +1,65 @@
 # session-context.md — 세션 맥락 (다음 세션 핸드오프)
 
-> 최종: 2026-06-10 세션5 — N+1 감사→제거(8파일 25사이트) + 일괄청구 NULL 이중청구 버그 발견·수정
-> 상태: **로컬 완료·라우트별 verify·smoke 103/103·E2E PASS** | ⚠️ **미커밋·미배포** | branch `main`
-> 변경파일(8): orders/core·orders/queries·purchaseInvoices·purchaseOrders/templates·purchaseRequests·quotations·rip·taxInvoices
+> **최종: 2026-06-19 PM** — **주문 라인 append**(API+ia-editor UI, 웹 dep `b90d3635`) + **직접연결 썸네일 공백버그 수정**(에이전트 PID 21000) — **전부 prod 배포·E2E 검증**(▶커밋·push만 남음). + #3 /files 근본원인 정정(canvas_json 드리프트, prod 정상) + #4 뱃지 누수 수정.
+> **상태**: `main` = `origin/feat/ia-editor-canvas-n1` = **`0783c75e`** (prod web dep `640dad03`)
+> **에이전트**: PID **13652** (`Z:\Designs\IllustratorAutomat\publish`, prod 연결). 누적 반영 = EPS suffix 보정·N5 돔보·target-size 스케일·RESIZE·다중시트 RenderItemSheetAsync·r2 순서 수정. (이번 스케일/통합 턴은 **web 전용·에이전트 무변경**)
 
-## 이번 세션 작업 ([감사→수정])
+## ⚠️ 핵심 주의사항 (다음 세션 필독)
+- **webapp = CF Pages Direct Upload**: `git push`는 자동빌드 **없음**. `wrangler pages deploy dist --project-name webapp --branch main`이 **유일한 prod 반영**(마지막 배포=production). 배포 후 `git push origin <branch>:main`으로 main 동기화.
+- **봇 push**: auto-improve가 origin/main에 주기적 push(주로 문서/SKILL). **배포 전 항상** `git fetch origin main` → 분기 시 `git merge origin/main` 후 통합 배포(안 하면 봇 커밋 롤백).
+- **wrangler/tsc/vite는 `node_modules/.bin` 부재** → node 직접 실행(아래 명령). wrangler는 npm install로 복구됨(miniflare).
+- **에이전트 교체**(C#/JSX 변경 시): `dotnet publish` → 에이전트 Stop-Process → `robocopy publish-new Z:\…\publish /MIR /XF appsettings.json *.log ia_params.json`(appsettings prod 보존) → Start-Process 재시작.
+- **ia-editor 주문 페이로드 규약**(에이전트 계약):
+  - `finishing` = **per-side JSON 객체** `{"top","bottom","left","right"}`(단일 문자열 보내면 `JsonDocument.Parse` 실패→무시). 헬퍼 `iaeFinJson`.
+  - `post_processing` = **배열 JSON**(객체 단독 무시). 코드: `TRIM`(돔보)·`RESIZE`{w_cm,h_cm}(target-size)·`SHEET`{roll_width_cm,total_height_cm,margin_cm,scale_factor,placements}(네스팅 시트, per-item 다중시트).
+  - `scale_factor`(파일 배율) = 소스가 실제의 1/N. 에이전트가 마진/돔보/placement를 ÷scale_factor.
+  - `order_items.ai_analysis_id`는 **실제 ai_analysis_requests 행** 필요(가짜 id면 FK 500).
+- **네스팅 SheetLayout은 소스 아트보드(`group_index`) 필요** — 분석파일(ExtractGroups) 권장. 직접업로드는 artboard0=전체문서로 동작.
+- **e2e 한글 인코딩 함정**: PowerShell `Invoke-RestMethod`가 한글(마감명 등) UTF-8 mojibake → 한글 포함 페이로드 e2e는 **브라우저(axios)** 사용. 실 웹 경로는 정상.
 
-### [B] N+1 제거 — 루프내 `await c.env.DB` → `db.batch()` / `IN(...)` 1쿼리화
-대상 13파일 감사 → 진짜 N+1 보유 9파일 중 8파일 수정(weeklyPurchase=seq순차 제외). 분류 기준: **TRUE N+1**(반복마다 DB 라운드트립) vs **IN-MEMORY**(배열/맵 빌드) vs **BATCHED**(이미 batch). settings·cards/scheduling·purchaseOrders/stock-alerts·cards/queries = 이미 BATCHED/IN-MEMORY(이상없음).
+## 이번 세션 한 일 (요약 — 상세는 [[project-ia-editor]]·[[bug-history]])
+1. **EPS suffix 버그**(1순위): `saveMultipleArtboards`가 EPS명에 suffix(`_design_N`/`-01`) 강제 → `File.Exists({base}.eps)` 오탐 → file-map/썸네일/원본보존 스킵(2026-05-09~). 영향조사=실운영 RIP은 agent file-map 미사용(prod print_events 100건 card=NULL)→**기존 회귀0**. 수정=`Program.cs NormalizeArtboardEpsName`(정규명 rename). agent 배포·e2e 성공.
+2. **브랜치 통합 + wrangler 복구**: origin/main 머지(봇 XSS fix 회수), `npm install`로 wrangler(miniflare) 복구.
+3. **ia-editor 캔버스 N1~N5**: N1 자유 대지 캔버스(객체·드래그/리사이즈/회전·핫키·localStorage) → N2 마감/여백/돔보 벡터근사 인스펙터 → N3 시트 네스팅(shelfBinPack) → N4 주문 연결(품목/거래처 picker·면적단가·주문생성→AI_PROCESS) → N5 단일그룹 돔보(ProcessOrderItem.jsx).
+4. **코드 점검·정리**: 독립 리뷰 → 주문모달 검색 디바운스 타이머 레이스 수정 + §14.5 검출보정 캔버스 폐기(−165줄).
+5. **N4 출력 fidelity**(캔버스 편집→실제 EPS 반영): ①per-side 마감(no-op 버그 수정) ②target-size(RESIZE→아트워크 스케일) ③네스팅 실제배치(SheetLayout 렌더) + r2 다운로드 순서 버그 수정.
+6. **다중 시트 + 스케일 + 뷰 통합**: per-item SHEET 렌더(다중시트), 네스팅 조각 목표크기, 파일 배율(scale_factor), 구 '네스팅' 탭 폐기(−228줄)→대지 편집으로 일원화(2탭).
 
-| 파일 | 사이트 | 방식 |
-|---|---|---|
-| purchaseOrders/templates | 2 | INSERT 루프 → batch(청크80) |
-| quotations | 4 | POST/convert parent batch(last_row_id=결과인덱스 매핑)+child batch (기존 PUT 핸들러 패턴 미러) |
-| purchaseRequests | 2 | INSERT/UPDATE item → batch |
-| taxInvoices | 5 | single/modify/monthly items·junction INSERT → batch; **cancel** 2 SELECT→IN()선조회+batch |
-| purchaseInvoices | 2 | confirm: poi·base_price `IN()` 선조회 + 3 UPDATE batch |
-| rip | 3 | heads DELETE+INSERT 원자batch; send-bulk card_item/equipment/preset 3종 `IN()` 선조회+UPDATE batch |
-| orders/queries | 2 | bulk-bill `IN()`+batch; bulk-ship dead COUNT쿼리 제거+orderInfo `IN()` 선조회(나머지 재고차감 순차의존 유지) |
-| orders/core | 5 | thumbnail UPDATE batch·auto_process_jobs(품목명 IN+INSERT batch)·card_ids→IN·PUT items 2pass batch(품목상세 IN선조회)·auto-ship/bill batch |
+## 🟢 ia-editor 현황: N1~N5 + N4 fidelity 전부 prod 라이브
+- 흐름: 파일 업로드/분석 → **대지 편집**(객체 배치·크기·마감·돔보·네스팅[목표크기·파일배율·다중시트]) → 주문으로 보내기(품목·면적단가) → AI_PROCESS → 주문폴더 EPS(마감/돔보/스케일/네스팅 반영).
+- UI 2탭: **파일 처리** · **대지 편집(네스팅 포함)**. (구 '네스팅' 탭 통합 폐기)
 
-### 위험 보존 전략 (재무/재고 정합성 — 동작 불변 보장)
-- **청크80 = 짝수** → 주문당 2문(orders+clients) 쌍이 청크경계서 분할 안됨 → **주문별 원자성 보존**.
-- **prefetch 맵 in-loop 갱신** → 동일품목 다중라인의 순차 SELECT-after-UPDATE 의미 정확 보존: purchaseInvoices `basePriceMap.set(...)`(체인 old→p1→p2), rip `cardItem.rip_status='QUEUED'`(중복 Already), bulk-bill `order.billing_status='BILLED'`(중복 skip).
-- purchaseInvoices confirm: 검증을 **선행 pass**로 분리 → 하나라도 무효면 어떤 쓰기도 안함(기존 부분기록 잠재버그도 동시 해소).
-- 외부 `issueTaxInvoice`·`deductStockLinesOnShip`·`generateInvoiceNumber`(순차 번호) = **순차 유지**.
+## ✅ 2026-06-19 PM 작업 (#2·#3·#4 + 썸네일 공백버그 — 전부 prod 배포·검증, ▶커밋·push만 남음)
+- **#2 주문 라인 append — prod 배포(웹 dep `b90d3635`)**: `POST /api/orders/:id/items`(create.ts) + `generateCardsForOrder`에 `itemIdsFilter`(신규 라인만 카드 생성·카드번호 기존 최대 뒤 연속) + `enqueueAutoProcessJobsForItems`(helpers.ts, 라인별 ai_analysis_id 기준·에이전트 폴링 큐) + **ia-editor 주문모달 신규/기존 토글 + 주문 검색 picker**(iaEditor.js). **가드: 상태 PRINT_DONE(출력완료)까지만**(CONFIRMED·PRINTING·PRINT_DONE·HOLD 허용 / 나머지 차단), entityFilter 소유검증, recalcOrderBillingGroups(동결 보존·BILLED면 경고). **PRINT_DONE→PRINTING 되돌림**. E2E(로컬): 품목+2·합계·카드번호연속·중복0·1카드묶음·가드400/404/409. **prod 검증: smoke 103/103 + append 라이브(400/404)·ia-editor 정상**. 회귀 `scripts/e2e-append-items.cjs`.
+- **#3 `/files` 500 — 근본원인 정정(코드 버그 아님)**: stale id 아님. `canvas_json`(마이그 **0317**) 미적용 환경서 "no such column" 500. **prod=정상(200)**. 로컬 드리프트는 `db:migrate:local`로 해소.
+- **#4 다중시트 UX — 점검+뱃지 누수 수정**: SHEET/RESIZE/TRIM 내부코드 후가공 뱃지 노출 → `isPPHidden`(cards/core.js) `IAE_INTERNAL_PP`로 숨김(배포 동반).
+- **🆕 직접연결(-3) 썸네일 공백버그 — 에이전트 수정·재배포·e2e 완결(PID 21000)**: 거래처명 공백 시 EPS(File.Copy 공백보존)/PNG(Illustrator exportFile 하이픈화) 미스매치 → `ReportDirectThumbnailAsync` File.Exists 실패→콜백 미발송. **B안**(Program.cs: 공백→하이픈 후보 + `{주문번호}-{seq}-*.png` glob 폴백) 적용. `dotnet publish`→Z:\publish 백업(`publish-backup-20260619-thumbfix`)→/MIR(**appsettings·ia_params 보존**)→재시작. **e2e**: 공백거래처 신규주문 `E1-20260619-009`→미스매치 재현→폴백→로그 `썸네일 보고(분석#42) OK`→카드 SET·디코딩. **007 백필** done/SET. 무공백 회귀0(008). 009 취소정리. 정본→[[bug-history]].
+- **▶ 다음(이 세션 마무리)**: 커밋(`orders/create.ts`·`orders/helpers.ts`·`scripts/iaEditor.js`·`scripts/cards/core.js`·`IllustratorAutomat/Program.cs`·`scripts/e2e-*.cjs`·docs) + push `origin feat/ia-editor-canvas-n1:main`. ⚠️ 임시파일 `e2e-thumb-src.eps`·`agent-thumbfix.log`·`publish-new/` 커밋 제외.
+  ⚠️ **에이전트 교체 절차 재확인**(이번 성공): `dotnet publish -c Release -r win-x64 --self-contained true -o publish-new` → Stop-Process → robocopy 백업 → `robocopy publish-new Z:\…\publish /MIR /XF appsettings.json *.log ia_params.json` → `Start-Process …\IllustratorAutomat.exe -WorkingDirectory …\publish`. Illustrator(COM) 가동 필수.
 
-### 제외 (본질적 순차 — batch 불가, 의식적 결정)
-- `weeklyPurchase:241`·`purchaseRequests:804` — `getNextEntitySeqNumber` 순차의존(번호 중복 위험).
-- `taxInvoices` batch-create(628)·monthly-create outer(1996) — 그룹당 순차 invoice 번호 + 외부 발행 지배(내부 item/junction은 batch 완료).
-- `orders/core:1366` — `notifyRoles` 알림 디스패치(bounded 2-3, `await c.env.DB` 아님).
+## ▶ 다음 세션 TODO (ia-editor 후속, 전부 선택)
+1. **이형(비정사각형) true-shape 네스팅** — 현재 바운딩박스(사각형)만. 용준님 검토 중. 옵션: **(c) 수동 인터록**(대지 자유드래그로 이형 끼워넣기→배치 그대로 출력; 최소공수=SHEET pp에 수동 placements 전달, 회전/충돌 수동) ⭐권장 / (b) 래스터 충돌 패킹(중간) / (a) NFP·SVGnest 자동(대형). **(별도 세션 진행 예정)**
+2. ~~기존 주문에 라인 append~~ ✅ 완료(위 참조, 미배포).
+3. ~~`/files` 500~~ ✅ 근본원인=canvas_json 마이그 드리프트(코드 정상, prod 200).
+4. ~~다중시트 출력 UX~~ ✅ 점검+뱃지 누수 수정.
+5. 정리 가능: 빈 Z 출력폴더 잔재(NAS 일시잠금), `IllustratorAutomat/publish-new`, `agent-*.log`(이 PC).
 
-### [D 곁가지] 검증실패 500 → 400/422
-9파일 전수 → **수정 0건**. 모든 500은 catch(시스템에러), 검증가드는 이미 400/404/409/403 정상.
+## 명령 (PowerShell/Bash)
+```
+# 타입체크·빌드·문법
+node node_modules/typescript/bin/tsc --noEmit
+node node_modules/vite/bin/vite.js build
+node --check src/scripts/iaEditor.js          # ?raw JS는 빌드가 문법 안 잡음 → 필수
+# 로컬 검증
+node node_modules/wrangler/bin/wrangler.js pages dev dist --local --ip 127.0.0.1 --port 3000   # admin/password → /ia-editor
+# prod 배포 (Direct Upload)
+node node_modules/wrangler/bin/wrangler.js pages deploy dist --project-name webapp --branch main --commit-dirty=true --commit-message "ascii"
+git push origin feat/ia-editor-canvas-n1:main   # 배포 후 main 동기화
+# 에이전트 재빌드·교체 (C#/JSX 변경 시)
+dotnet publish IllustratorAutomat/IllustratorAutomat.csproj -c Release -r win-x64 --self-contained true -o IllustratorAutomat/publish-new
+#   → Stop-Process IllustratorAutomat → robocopy publish-new Z:\Designs\IllustratorAutomat\publish /MIR /XF appsettings.json *.log ia_params.json → Start-Process(-RedirectStandardOutput)
+# prod DB 조회/정리 (wrangler 복구됨)
+node node_modules/wrangler/bin/wrangler.js d1 execute webapp-production --remote --command "SELECT ..."
+```
 
-## 🔴 발견·수정한 실제 버그 — 일괄청구 NULL 이중청구 (선재, N+1과 무관)
-- **증상**: `PATCH /api/orders/bulk-bill` 같은 주문 2회 호출 → 거래처 balance 매번 증액(0→100000), billing_status 끝까지 NULL.
-- **근본원인**: orders UPDATE 가드 `WHERE billing_status != 'BILLED'` + billing_status 기본값 NULL. SQLite `NULL != 'BILLED'` = NULL(거짓) → UPDATE 0행 매칭. clients balance UPDATE는 가드없어 매 호출 증액. **NULL=청구 전 정상상태**(자동 sync `toBill`은 `IS NULL`로 올바르게 처리)라 수동 청구만 깨짐.
-- **수정**: `!= 'BILLED'` → **`IS NOT 'BILLED'`**(SQLite null-safe). `orders/queries.ts` bulk-bill + `taxInvoices.ts:297`(발행 시 연결주문 BILLED — 미수정 시 발행 후 NULL잔존→자동 sync 재청구 위험). `accounts-receivable.ts:2020`은 `(IS NULL OR != 'BILLED')`로 이미 정상.
-- **재검증 멱등**: 3회 호출 → billed 1/0/0, balance=50000(1회), billing_status=BILLED·billed_amount·receipt_type·billed_by 정상.
-- **교훈**: nullable 컬럼을 `!=`/`<>`로 비교하면 NULL행이 조용히 누락. status 전이 가드는 `IS NOT` 또는 `IS NULL OR ...`. → `bug-history.md` 기록 완료.
-
-## 검증 방법 (verify-changes, 로컬 D1 ground-truth)
-- 로컬 D1에 orders/PO **0건**(시드=마스터만, clients 10·items 57). 검증용 상태를 SQL 직접 시드(order_id=3 SHIPPED·미청구 / PO id=1+poi id=1) → 브라우저 `browser_evaluate`로 **실 API 호출**(리팩토링 코드 경로 실행) → SQL로 before/after 단언.
-- **함정**: `created_by` FK = users **id 4부터**(id 1~3 없음). 시드 시 created_by=4.
-- 매입확정: unit_price 7777(base_price 0과 달라 단가이력 트리거) → poi(7777/77770/CONFIRMED)·PO총액(77770/7777/85547)·invoice(MATCHED)·invoice_item·client_item_prices(7777)·items.base_price(0→7777)·price_change_history(0→7777) 전부 정확.
-- **정리 완료**: 시드/생성 데이터(주문·PO·인보이스·단가·이력·cash_schedule) 전삭제, item base_price·거래처 잔액 원복(orders=0·pos=0·pis=0·base=0·balance=0 확인).
-
-## 주의사항 / 다음 세션
-- **⚠️ 미커밋·미배포**: 위 8파일 변경 = 로컬 검증만. `/deploy-verify`로 커밋·배포 필요. **write 경로**라 read-only smoke로 회귀 못잡음 → 배포 후 prod에서 일괄청구/매입확정/주문생성·수정 실동작 확인 권장.
-- **미추적 파일(내가 안 만듦)**: `docs/INDEX.md`(세션4부터), `docs/design/static-assets-migration.md`(오늘 생성, 출처 미상). 삭제 안 함 — 정체 확인 필요.
-- 로컬 dev:d1 서버는 세션 종료 시 정지함.
-- D1 batch 청크80 컨벤션은 코드베이스 기존 패턴(`for i+=80`) 답습. `D1PreparedStatement[]` 타입은 전역(@cloudflare/workers-types).
+> **정본 spec**: `docs/superpowers/specs/2026-06-16-ia-editor-nesting-intake.md` §14. 상세 진행/결정 = [[project-ia-editor]]. 버그이력 = [[bug-history]].

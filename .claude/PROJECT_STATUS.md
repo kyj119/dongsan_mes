@@ -1,6 +1,6 @@
 # PROJECT_STATUS.md — 프로젝트 현황판
 
-> **최종 업데이트**: 2026-06-13 (GitHub 이슈 18건 전수 픽스·prod 배포·close[보안HIGH 3건 포함] + 정적에셋 파이프라인 완전제거 + 휴가→근태 연동[커밋·미배포] / 이전 PM3: 4대보험 2026 요율·산재 0.9%·법인3·4 급여)
+> **최종 업데이트**: 2026-06-19 PM (**주문 라인 append + 직접연결 썸네일 공백버그 수정 — 전부 prod 배포·E2E 검증** [웹 dep b90d3635 / 에이전트 PID 21000] + #3 /files 근본원인 정정 + #4 뱃지 누수 / 오전: ia-editor 캔버스 N1~N5 + N4 fidelity)
 > 완료 이력 → `PROJECT_STATUS_ARCHIVE.md` (매 세션 읽을 필요 없음, 필요 시 참조)
 
 ---
@@ -12,6 +12,21 @@
 ---
 
 ## 🔴 현재 진행 중
+
+- **✅ [2026-06-19 PM] 주문 라인 append + ia-editor #3·#4 + 직접연결 썸네일 공백버그 — 전부 prod 배포·E2E 검증 완료**:
+  - **append(신규기능) — prod 배포(웹 dep `b90d3635`)**: `POST /api/orders/:id/items`(create.ts) — 기존 주문에 ia-editor 산출 라인만 추가(기존 품목/카드 무변경). `generateCardsForOrder` **itemIdsFilter**(신규 라인만 카드생성·카드번호 기존 최대 뒤 연속) + **enqueueAutoProcessJobsForItems**(helpers.ts, 라인별 ai_analysis_id·에이전트 폴링 큐) + **ia-editor 주문모달 신규/기존 토글 + 주문 검색 picker**(iaEditor.js, orderVisibilityFilter 법인격리·출력완료까지만 선택). **가드: 상태 PRINT_DONE까지**(CONFIRMED·PRINTING·PRINT_DONE·HOLD 허용 / SHIPPED·COMPLETED·CANCELLED·QUOTATION·DRAFT 차단)·entity 소유검증·recalcOrderBillingGroups(동결보존, BILLED면 경고)·**PRINT_DONE→PRINTING 되돌림**. E2E(로컬): 품목+2·합계증가·카드번호연속·중복0·동일그룹 1카드·가드 400/404/409·되돌림. **prod smoke 103/103 + append 라이브(400/404 가드)·ia-editor 정상**. 회귀테스트 `scripts/e2e-append-items.cjs`.
+  - **#3 /files 500 근본원인 정정**: stale id 아님 — `canvas_json`(마이그 0317) 미적용 환경서 "no such column" 500. **prod=정상(200)**, 로컬 드리프트는 db:migrate:local로 해소. 코드 버그 아님.
+  - **#4 다중시트 UX**: 주 카드생성 정상. SHEET/RESIZE/TRIM 내부코드 후가공 뱃지 누수 → `isPPHidden`(cards/core.js) IAE_INTERNAL_PP로 숨김. (배포 동반)
+  - **🆕 직접연결 완성본(-3) 썸네일 공백버그 — 에이전트 수정·재배포·e2e 완결**: 거래처명 공백 시 EPS(File.Copy=공백 보존)/PNG(Illustrator exportFile=하이픈화) 파일명 미스매치 → `ReportDirectThumbnailAsync` File.Exists 실패→콜백 미발송→썸네일 NULL. **B안**(Program.cs: File.Exists 실패 시 공백→하이픈 후보 + `{주문번호}-{seq}-*.png` glob 폴백) 적용. **에이전트 재빌드·Z:\publish 재배포(백업 보존)·재시작 PID 21000**(webapp 무변경). **e2e**: 공백 거래처 신규주문 `E1-20260619-009` → 미스매치 재현→폴백→로그 `썸네일 보고(분석#42) OK`→카드 SET·디코딩. **007 백필**(콜백 엔드포인트) done/SET. 무공백 회귀0(008). 정본→[[bug-history]].
+  - **▶ 다음: 커밋 + push**(origin feat/ia-editor-canvas-n1:main). 변경=`orders/create.ts`·`orders/helpers.ts`·`scripts/iaEditor.js`·`scripts/cards/core.js`·`IllustratorAutomat/Program.cs`(+scripts/e2e-*.cjs). 핸드오프=session-context.md.
+
+- **✅ [2026-06-18~19] EPS suffix 버그 해결 + ia-editor 캔버스 워크벤치 N1~N5 + N4 출력 fidelity — 전부 prod 배포·e2e 검증** (브랜치 `feat/ia-editor-canvas-n1` = main = `0783c75e`, web dep `640dad03`, 에이전트 PID 13652):
+  - **EPS suffix 버그**(`Program.cs NormalizeArtboardEpsName`, 커밋 `3e2be20a`): `saveMultipleArtboards`가 EPS명에 `_design_N`/`-01` suffix 강제 → `File.Exists` 오탐 → file-map/썸네일/원본보존 스킵(2026-05-09~). 영향조사=실운영 RIP은 agent file-map 미사용(prod print_events 100건 card=NULL)→기존 회귀0. 정규명 rename으로 수정. agent 배포·e2e 성공.
+  - **ia-editor 캔버스 N1~N5**(자유 대지 객체 편집기, spec §14): N1 캔버스(객체·드래그/리사이즈/회전·핫키·Konva·localStorage) → N2 마감/여백/돔보 벡터근사 인스펙터 → N3 시트 네스팅(shelfBinPack) → N4 주문 연결(품목/거래처 picker·면적단가→`POST /api/orders`→AI_PROCESS) → N5 단일그룹 돔보(ProcessOrderItem.jsx). 검출보정 캔버스(구) 폐기.
+  - **N4 출력 fidelity**(캔버스 편집이 실제 EPS에 반영): ①**per-side 마감**(no-op 버그 수정: finishing 단일문자열→per-side JSON 객체, 에이전트가 4면 마진) ②**target-size**(RESIZE pp→ProcessOrderItem 아트워크 그룹 스케일, opt-in) ③**네스팅 실제배치**(per-item SHEET pp→`RenderItemSheetAsync` SheetLayout 렌더, **다중 시트** 지원) ④**네스팅 스케일·파일 배율(scale_factor)** ⑤r2 다운로드 순서 버그 수정. 검증: EPS bbox(마감4cm→644×563·target 60×40·시트배치 N조각 EPS·다중시트 2판) 정확.
+  - **코드 점검·정리**: 독립 리뷰(실버그 1건=주문모달 검색 디바운스 레이스 수정) + 검출보정 폐기(−165줄) + **네스팅 뷰 통합**(구 '네스팅' 탭 −228줄 폐기→대지 편집 2탭). 순 −400여 줄.
+  - **▶ 다음(선택)**: 이형(비정사각형) true-shape 네스팅(현재 바운딩박스만; 권장=수동 인터록), 기존주문 라인 append API, `/api/workbench/files?ids=<stale>` 500(저영향). 정본 → [[project-ia-editor]], 핸드오프 = `memory/session-context.md`, spec `docs/superpowers/specs/2026-06-16-ia-editor-nesting-intake.md` §14.
+  - ⚠️ **webapp=Direct Upload**(wrangler 배포=유일 prod, git push≠빌드, 봇 push 머지 선행) · **에이전트 교체=dotnet publish+robocopy+재시작** · **finishing=per-side JSON·post_processing=배열·scale_factor=÷N** 규약(session-context 참조).
 
 - **✅ [2026-06-13] GitHub 이슈 18건 전수 픽스·prod 배포·close + 휴가→근태 연동(▶커밋·미배포)**:
   - **이슈 18건**(승인분 전수, 봇이슈라 코드/스키마 대조 후 수정 → 각 이슈에 처리 코멘트 후 close): **보안HIGH** #384(printEvents `cards.entity_id`→`requesting_entity_id`+order폴백)·#375(cards 4엔드포인트 entity필터, by-number는 agent-key겸용 인증으로 분리)·#381(orders 쓰기 7핸들러 소유법인 IDOR 가드). **MED/개선** #388·#391(UTC업무일자→KST 저장+비교)·#392·#393(4대보험 신고서 산재컬럼·사업장별 entity)·#386·#387(split billing DRAFT링크정리·**동결 그룹단위 정밀화**)·#385(출고알림톡 품목 COALESCE)·#389·#390(급여 N+1 prefetch·skipped_names)·#372·#379(CSV truncation경고·printSystem N+1 batch)·#376(죽은 getElementById)·#374·#382·#383(**정적에셋 파이프라인 완전제거**: build:assets 삭제, hono플러그인 `_routes.json {exclude:[]}` 자체생성=MIME장애 클래스 구조소멸. smoke 로그인재시도+프론트부트스트랩 게이트). 커밋 `018ec4d0`·`70d8d0cc`·`644fbabe`·`645ae537`·`3f8fd0d8`·`83ded42c`·`c17e9448`. **prod smoke 103/103 + 프론트게이트 + by-number 3종 검증**.

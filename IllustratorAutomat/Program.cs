@@ -2711,7 +2711,30 @@ namespace IllustratorAutomation
                 if (!aidEl.TryGetInt32(out int aid) || aid <= 0) return;
                 int gi = (item.TryGetProperty("ai_group_index", out var gEl) && gEl.ValueKind != JsonValueKind.Null && gEl.TryGetInt32(out int gv)) ? gv : -99;
                 if (gi != -1 && gi != -3) return;  // 직접연결만 대상 (그룹분석은 이미 썸네일 보유)
-                if (string.IsNullOrEmpty(pngPath) || !File.Exists(pngPath)) return;
+                if (string.IsNullOrEmpty(pngPath)) return;
+                // Illustrator PNG export(exportFile)는 파일명 공백 등을 정규화(하이픈화)하므로 C#이 기대한 경로(baseName, 공백 보존)와
+                // 실제 PNG 파일명이 다를 수 있다(EPS는 File.Copy라 공백 보존 → EPS/PNG 이름 미스매치). 실제 PNG를 폴백 탐색한다.
+                if (!File.Exists(pngPath))
+                {
+                    try
+                    {
+                        var dir = Path.GetDirectoryName(pngPath);
+                        var stem = Path.GetFileNameWithoutExtension(pngPath);
+                        // 1순위: 공백→하이픈 후보(실증된 케이스)
+                        var cand = (dir != null) ? Path.Combine(dir, stem.Replace(' ', '-') + ".png") : null;
+                        if (cand != null && File.Exists(cand)) pngPath = cand;
+                        else if (dir != null && Directory.Exists(dir))
+                        {
+                            // 2순위: {주문번호}-{seq}- 접두 glob (예: E1-20260619-007-001-*.png) — 어떤 정규화에도 견고
+                            var parts = stem.Split('-');
+                            var prefix = parts.Length >= 4 ? string.Join("-", parts[0], parts[1], parts[2], parts[3]) : stem;
+                            var match = Directory.GetFiles(dir, prefix + "*.png").FirstOrDefault();
+                            if (match != null) pngPath = match;
+                        }
+                    }
+                    catch { }
+                    if (!File.Exists(pngPath)) return;
+                }
                 byte[] png = File.ReadAllBytes(pngPath);
                 if (png.Length > 1_500_000) { Console.WriteLine($"      ⚠️ 썸네일 과대({png.Length / 1024}KB) — 보고 생략"); return; }
                 string b64 = Convert.ToBase64String(png);

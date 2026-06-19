@@ -160,6 +160,9 @@ export interface GenerateCardsParams {
   priority: string
   notes?: string | null
   entityId?: number | null
+  // append(기존 주문 라인 추가): 지정된 order_item id만 카드 생성 + 카드번호 인덱스를 기존 최대값 뒤로 이어붙임.
+  // 미지정(create/update 기존 경로)이면 전 품목 대상 + cardIndex 0부터 — byte-identical 동작 보존.
+  itemIdsFilter?: number[]
 }
 
 export async function generateCardsForOrder(params: GenerateCardsParams): Promise<number> {
@@ -208,6 +211,13 @@ export async function generateCardsForOrder(params: GenerateCardsParams): Promis
     (i) => i.parent_item_id !== null && i.parent_item_id !== undefined
   )
 
+  // append 모드: 지정 id만 카드 생성 대상. parentMap은 전 품목에서 만들어졌으므로(위) 신규 자식의
+  // 기존 부모 참조도 정상 해석된다. 미지정 시 전 품목(기존 동작).
+  const appendFilter = (params.itemIdsFilter && params.itemIdsFilter.length)
+    ? new Set(params.itemIdsFilter.map(Number)) : null
+  const regularItemsToCard = appendFilter ? regularItems.filter((i) => appendFilter.has(i.id as number)) : regularItems
+  const childItemsToCard = appendFilter ? childItems.filter((i) => appendFilter.has(i.id as number)) : childItems
+
   // 카드 그룹핑: 카드그룹 × 담당법인(assigned_entity_id). 타법인 담당 품목은 별도 카드로 그 법인(requesting_entity_id)에 배정.
   // assigned_entity_id NULL = 청구 법인(entityId) 담당 → 단일 법인 주문은 기존과 동일(전부 entityId).
   const effEntityOf = (it: OIRow): number | null => {
@@ -216,7 +226,7 @@ export async function generateCardsForOrder(params: GenerateCardsParams): Promis
   }
   const itemsByCardGroup = new Map<string, Array<{ item: OIRow; ppJson: string | null; qty: number; cardGroup: string; reqEntity: number | null }>>()
 
-  for (const item of regularItems) {
+  for (const item of regularItemsToCard) {
     const cg = getCardGroup(item)
     if (!cg) continue
     const ee = effEntityOf(item)
@@ -225,7 +235,7 @@ export async function generateCardsForOrder(params: GenerateCardsParams): Promis
     itemsByCardGroup.get(key)!.push({ item, ppJson: (item.post_processing as string) || null, qty: (item.quantity as number) || 0, cardGroup: cg, reqEntity: ee })
   }
 
-  for (const child of childItems) {
+  for (const child of childItemsToCard) {
     const parent = parentMap.get(child.parent_item_id as number)
     if (!parent) continue
     const cg = getCardGroup(parent)
@@ -241,7 +251,11 @@ export async function generateCardsForOrder(params: GenerateCardsParams): Promis
   for (const entries of itemsByCardGroup.values()) {
     for (const entry of entries) cardGroupItems.add(entry.item.id as number)
   }
-  const noCardItems = (orderItems as OIRow[]).filter((i) => !cardGroupItems.has(i.id as number))
+  // append 모드는 신규 품목만 대상 (기존 품목 shipment_ready 미변경)
+  const shipmentCandidates = appendFilter
+    ? (orderItems as OIRow[]).filter((i) => appendFilter.has(i.id as number))
+    : (orderItems as OIRow[])
+  const noCardItems = shipmentCandidates.filter((i) => !cardGroupItems.has(i.id as number))
   if (noCardItems.length > 0) {
     const ids = noCardItems.map((i) => i.id as number)
     await db.prepare(
@@ -253,7 +267,17 @@ export async function generateCardsForOrder(params: GenerateCardsParams): Promis
   const cardStatements: D1PreparedStatement[] = []
   const cardGroupEntries: Array<{ cardNumber: string; entries: Array<{ item: OIRow; ppJson: string | null; qty: number }> }> = []
 
+  // append 모드: 카드번호 접미 인덱스를 기존 최대값 뒤로 이어붙여 충돌 방지(${orderNumber}-NN).
   let cardIndex = 0
+  if (appendFilter) {
+    const { results: exCards } = await db.prepare(
+      `SELECT card_number FROM cards WHERE order_id = ?`
+    ).bind(orderId).all<{ card_number: string }>()
+    for (const r of (exCards || [])) {
+      const m = /-(\d+)$/.exec((r.card_number as string) || '')
+      if (m) cardIndex = Math.max(cardIndex, parseInt(m[1], 10))
+    }
+  }
   for (const [, entries] of itemsByCardGroup) {
     const cardGroup = entries[0].cardGroup
     const reqEntity = entries[0].reqEntity
@@ -378,4 +402,105 @@ export async function generateCardsForOrder(params: GenerateCardsParams): Promis
   }
 
   return cardStatements.length
+}
+
+// ── 자동가공 잡 생성 (에이전트 폴링 큐 auto_process_jobs) — append 전용 ──
+// create.ts D섹션(검출기반 ia_params: scale/margin/clipBounds)과 동형이되, **라인별 자기 ai_analysis_id**를
+// 사용해 다중 파일(ia-editor 여러 분석) 라인도 정확히 큐잉한다. create는 단일 primary 분석 가정이라 미수정(분리).
+// ia_auto_enabled OFF여도 INSERT(에이전트 수동 실행 대비 — create와 동일 정책). 반환: 생성 잡 수.
+const AP_SCALE_RULES: Record<string, number> = {
+  '현수막': 5, '게시대': 5, '게릴라': 5, '솔벤현수막': 5,
+  '패트': 1, '솔벤시트': 1, '합성지': 1, '포맥스': 1, 'UV': 1, '클리어필름': 1, '간판': 1,
+}
+const AP_MARGIN_RULES: Record<string, { w: number; h: number }> = {
+  '미싱': { w: 83, h: 0 }, '사방접어미싱': { w: 61, h: 61 }, '접어미싱': { w: 34, h: 0 }, '봉미싱': { w: 0, h: 55 },
+  '밴드미싱': { w: 2, h: 0 }, '사방미싱': { w: 2, h: 0 }, '열재단': { w: 14, h: 0 }, '재단만': { w: 0, h: 0 },
+}
+function apScale(product: string, widthCm: number): number {
+  const base = AP_SCALE_RULES[product] ?? 5
+  if (['현수막', '게시대', '솔벤현수막', '게릴라'].includes(product)) {
+    if (widthCm > 300) return 5
+    if (widthCm > 150) return 2
+  }
+  return base
+}
+function apMargins(finishing: string): { w: number; h: number } {
+  if (!finishing) return { w: 0, h: 0 }
+  if (AP_MARGIN_RULES[finishing]) return AP_MARGIN_RULES[finishing]
+  for (const k of Object.keys(AP_MARGIN_RULES).sort((a, b) => b.length - a.length)) {
+    if (finishing.includes(k)) return AP_MARGIN_RULES[k]
+  }
+  return { w: 0, h: 0 }
+}
+
+export async function enqueueAutoProcessJobsForItems(
+  db: D1Database, orderId: number, itemIds: number[], fallbackAnalysisId: number | null, entityId: number
+): Promise<number> {
+  if (!itemIds.length) return 0
+  const ph = itemIds.map(() => '?').join(',')
+  const { results: items } = await db.prepare(
+    `SELECT id, item_id, width, height, scale_factor, finishing, finishing2, finishing3, ai_group_index, ai_analysis_id
+     FROM order_items WHERE id IN (${ph}) AND COALESCE(ai_analysis_id, ?) IS NOT NULL`
+  ).bind(...itemIds, fallbackAnalysisId).all<{
+    id: number; item_id: number | null; width: number | null; height: number | null; scale_factor: number | null
+    finishing: string | null; finishing2: string | null; finishing3: string | null; ai_group_index: number | null; ai_analysis_id: number | null
+  }>()
+  if (!items || items.length === 0) return 0
+
+  // 분석 일괄 로드 (라인별 ai_analysis_id, 없으면 fallback)
+  const analysisIds = [...new Set(items.map((it) => it.ai_analysis_id ?? fallbackAnalysisId).filter((v): v is number => v != null))]
+  if (analysisIds.length === 0) return 0
+  const aph = analysisIds.map(() => '?').join(',')
+  const { results: analyses } = await db.prepare(
+    `SELECT id, file_path, groups_json FROM ai_analysis_requests WHERE id IN (${aph})`
+  ).bind(...analysisIds).all<{ id: number; file_path: string | null; groups_json: string | null }>()
+  const analysisMap = new Map<number, { file_path: string | null; groups: any[] }>()
+  for (const a of (analyses || [])) {
+    let groups: any[] = []
+    if (a.groups_json) { try { groups = JSON.parse(a.groups_json) } catch (_) { groups = [] } }
+    analysisMap.set(a.id, { file_path: a.file_path, groups })
+  }
+
+  // 품목명 일괄
+  const prodIds = [...new Set(items.map((it) => it.item_id).filter((v): v is number => v != null))]
+  const prodMap = new Map<number, string>()
+  if (prodIds.length > 0) {
+    const pph = prodIds.map(() => '?').join(',')
+    const { results: nr } = await db.prepare(`SELECT id, item_name FROM items WHERE id IN (${pph})`).bind(...prodIds).all<{ id: number; item_name: string }>()
+    for (const r of nr) prodMap.set(r.id, r.item_name)
+  }
+
+  const stmts: D1PreparedStatement[] = []
+  for (const oi of items) {
+    const aid = oi.ai_analysis_id ?? fallbackAnalysisId
+    if (aid == null) continue
+    const an = analysisMap.get(aid)
+    if (!an) continue
+    const gIdx = oi.ai_group_index ?? 0
+    const group = an.groups[gIdx]
+    if (!group) continue
+    const finishing = [oi.finishing, oi.finishing2, oi.finishing3].filter(Boolean).join('+')
+    const productName = oi.item_id ? (prodMap.get(oi.item_id) || '') : ''
+    const scale = oi.scale_factor || apScale(productName, oi.width || 0)
+    const m = apMargins(finishing)
+    const mL = m.w / 10.0 / scale, mR = m.w / 10.0 / scale
+    const mT = m.h > 0 ? m.h / 10.0 / scale : 0, mB = m.h > 0 ? m.h / 10.0 / scale : 0
+    const clipBounds = group.bounds_mm || null
+    const ts = Date.now()
+    const outputDir = 'Z:\\Designs\\IllustratorAutomat\\_auto_output'
+    const srcBase = (an.file_path || 'output').split(/[\\/]/).pop()?.replace(/\.[^.]+$/, '') || 'output'
+    const iaParams = {
+      mode: 'process', source: an.file_path, output: outputDir,
+      epsOutput: `${outputDir}\\${srcBase}_g${gIdx}_${ts}.eps`,
+      pngOutput: `${outputDir}\\${srcBase}_g${gIdx}_${ts}.png`,
+      marginL: mL, marginR: mR, marginT: mT, marginB: mB, thumbSize: 300, scaleFactor: scale, clipBounds,
+    }
+    stmts.push(db.prepare(
+      `INSERT INTO auto_process_jobs
+       (order_id, order_item_id, ai_analysis_id, ai_group_index, source_path, product, width_cm, height_cm, finishing, scale_factor, clip_bounds, margins, status, ia_params, entity_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)`
+    ).bind(orderId, oi.id, aid, gIdx, an.file_path, productName, oi.width || 0, oi.height || 0, finishing, scale, JSON.stringify(clipBounds), JSON.stringify({ L: mL, R: mR, T: mT, B: mB }), JSON.stringify(iaParams), entityId))
+  }
+  for (let i = 0; i < stmts.length; i += 80) await db.batch(stmts.slice(i, i + 80))
+  return stmts.length
 }

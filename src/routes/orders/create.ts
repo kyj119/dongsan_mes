@@ -13,8 +13,9 @@ import { getNextEntitySeqNumber } from '../../utils/sequenceGenerator'
 import { logActivity } from '../../utils/activityLog'
 import { notifyRoles } from '../../utils/notify'
 import { checkMaterialShortage } from '../../utils/materialShortageCheck'
-import { getEntityId } from '../../utils/entityFilter'
-import { recommendAssignedEntity, recalcOrderBillingGroups, generateCardsForOrder } from './helpers'
+import { getEntityId, entityFilter } from '../../utils/entityFilter'
+import { ORDER_STATUS_LABELS } from '../../utils/statusLabels'
+import { recommendAssignedEntity, recalcOrderBillingGroups, generateCardsForOrder, enqueueAutoProcessJobsForItems } from './helpers'
 
 const ordersCreateRouter = new Hono<HonoEnv>()
 ordersCreateRouter.use('/*', authMiddleware, requireAnyPagePermission('/orders', '/cards'))
@@ -733,6 +734,203 @@ ordersCreateRouter.post('/', async (c) => {
       success: false,
       error: '서버 오류가 발생했습니다.'
     }, 500)
+  }
+})
+
+// ── POST /:id/items — 기존 주문에 품목 라인 추가 (ia-editor append) ──
+// 신규 주문 생성 대신 기존 주문에 ia-editor 산출 라인만 끼워넣는다.
+//  · 기존 품목/카드/생산은 건드리지 않음 — 신규 라인만 INSERT → 신규 라인만 카드 생성(itemIdsFilter).
+//  · 가드: 주문 소유 법인(entityFilter) + 상태 '출력완료(PRINT_DONE)'까지만 허용.
+//          차단: SHIPPED/COMPLETED/CANCELLED/QUOTATION/DRAFT.
+//  · 청구: recalcOrderBillingGroups(동결 그룹 보존) — 이미 BILLED면 신규 라인은 미청구/별도 청구(경고 반환).
+//  · 가공: ai_file_path → AI_PROCESS task, ai_analysis_id 보유 라인 → auto_process_jobs(에이전트 폴링 큐).
+ordersCreateRouter.post('/:id/items', async (c) => {
+  try {
+    const user = c.get('user')
+    const orderId = parseInt(c.req.param('id'), 10)
+    if (!Number.isInteger(orderId) || orderId <= 0) {
+      return c.json({ success: false, error: '잘못된 주문 ID입니다.' }, 400)
+    }
+    const body = await c.req.json()
+    const items: any[] = Array.isArray(body.items) ? body.items : []
+    if (items.length === 0) {
+      return c.json({ success: false, error: '추가할 품목이 없습니다.' }, 400)
+    }
+
+    // 주문 조회 + 소유 법인 검증 (ADMIN entity=0이면 무필터)
+    const efOrd = entityFilter(c, 'orders')
+    const order = await c.env.DB.prepare(
+      `SELECT id, order_number, client_id, status, billing_status, delivery_date, priority, notes, order_type, entity_id
+       FROM orders WHERE id = ?${efOrd.clause}`
+    ).bind(orderId, ...efOrd.params).first<{
+      id: number; order_number: string; client_id: number; status: string; billing_status: string | null
+      delivery_date: string | null; priority: string | null; notes: string | null; order_type: string | null; entity_id: number
+    }>()
+    if (!order) return c.json({ success: false, error: '주문을 찾을 수 없습니다.' }, 404)
+
+    // 상태 가드: 출력완료(PRINT_DONE)까지만
+    const APPENDABLE = ['CONFIRMED', 'PRINTING', 'PRINT_DONE', 'HOLD']
+    if (!APPENDABLE.includes(order.status)) {
+      const label = ORDER_STATUS_LABELS[order.status] || order.status
+      return c.json({ success: false, error: `'${label}' 상태 주문에는 품목을 추가할 수 없습니다 (출력완료까지만 허용).` }, 409)
+    }
+
+    const billingEntityId = Number(order.entity_id) || (getEntityId(c) || 1)
+
+    // pricing_method + vat rate
+    const itemIdsForPricing = [...new Set(items.map((it) => it.item_id).filter((v) => v != null))] as number[]
+    const pricingMethodMap = new Map<number, string>()
+    if (itemIdsForPricing.length > 0) {
+      const ph = itemIdsForPricing.map(() => '?').join(',')
+      const { results } = await c.env.DB.prepare(`SELECT id, pricing_method FROM items WHERE id IN (${ph})`).bind(...itemIdsForPricing).all()
+      for (const r of results) pricingMethodMap.set(r.id as number, (r.pricing_method as string) || 'FIXED')
+    }
+    const vatRow = await c.env.DB.prepare(`SELECT setting_value FROM settings WHERE setting_key = 'vat_rate'`).first<{ setting_value: string }>()
+    const vatRate = vatRow ? parseFloat(vatRow.setting_value) : 0.10
+
+    // 품목명/카테고리/단위 누락분 일괄 조회
+    const lookupIds = [...new Set(items.filter((it) => it.item_id && !it.item_name).map((it) => it.item_id))] as number[]
+    const nameMap = new Map<number, { item_name: string; category: string; unit: string }>()
+    if (lookupIds.length > 0) {
+      const ph = lookupIds.map(() => '?').join(',')
+      const { results } = await c.env.DB.prepare(`SELECT id, item_name, category, unit FROM items WHERE id IN (${ph})`).bind(...lookupIds).all<{ id: number; item_name: string; category: string; unit: string }>()
+      for (const r of results) nameMap.set(r.id, { item_name: r.item_name, category: r.category, unit: r.unit })
+    }
+
+    // 신규 라인 sort_order는 기존 최대값 뒤로
+    const maxSort = await c.env.DB.prepare(`SELECT COALESCE(MAX(sort_order), -1) AS m FROM order_items WHERE order_id = ?`).bind(orderId).first<{ m: number }>()
+    let sortOrder = (maxSort?.m ?? -1) + 1
+
+    // 라인 INSERT (ia-editor 라인은 flat — parent/child 없음). 금액 계산은 create와 동일(AREA 10cm올림·100원 반올림·PENDING 0)
+    let totalDelta = 0, vatDelta = 0
+    const insertStmts: ReturnType<typeof c.env.DB.prepare>[] = []
+    for (const item of items) {
+      const lookup = item.item_id ? nameMap.get(item.item_id) : undefined
+      const itemName = item.item_name || lookup?.item_name || 'Unknown'
+      const categoryName = item.category_name || lookup?.category || null
+      const unit = item.unit || lookup?.unit || 'EA'
+      const pm = item.item_id ? (pricingMethodMap.get(item.item_id) || 'FIXED') : 'FIXED'
+      const w = item.width_mm || item.width || 0
+      const h = item.height_mm || item.height || 0
+      const isPending = item.price_status === 'PENDING'
+      let amount: number
+      if (pm === 'AREA' && w > 0 && h > 0) {
+        amount = (item.unit_price || 0) * (Math.ceil(w / 10) * 10 / 100) * (Math.ceil(h / 10) * 10 / 100) * (item.quantity || 1)
+      } else {
+        amount = (item.unit_price || 0) * (item.quantity || 1)
+      }
+      amount = Math.round(amount / 100) * 100
+      const vatIncluded = item.vat_included !== undefined ? (item.vat_included ? 1 : 0) : 1
+      if (!isPending) {
+        totalDelta += amount
+        if (vatIncluded) vatDelta += amount * vatRate
+      }
+      const assignedEntity = (item.assigned_entity_id !== undefined && item.assigned_entity_id !== null)
+        ? item.assigned_entity_id
+        : recommendAssignedEntity({ ...item, category_name: categoryName }, billingEntityId)
+      const assignmentStatus = assignedEntity ? (item.assignment_status || 'PENDING') : null
+      insertStmts.push(c.env.DB.prepare(`
+        INSERT INTO order_items (
+          order_id, item_id, item_name, category_name,
+          width, height, quantity, unit,
+          unit_price, amount, vat_included,
+          post_processing, content, specification, sort_order,
+          ai_group_index, scale_factor, ai_analysis_id, parent_item_id, finishing, price_status,
+          assigned_entity_id, assignment_status
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?)
+      `).bind(
+        orderId, item.item_id || null, itemName, categoryName,
+        item.width_mm || item.width || null, item.height_mm || item.height || null,
+        item.quantity || 1, unit,
+        isPending ? 0 : (item.unit_price || 0), isPending ? 0 : amount, vatIncluded,
+        item.post_processing || null, item.content || null, item.specification || null, sortOrder++,
+        item.ai_group_index !== undefined ? item.ai_group_index : null,
+        item.scale_factor || 1, item.ai_analysis_id || null, item.finishing || null, item.price_status || 'CONFIRMED',
+        assignedEntity, assignmentStatus
+      ))
+    }
+
+    const insertResults = await c.env.DB.batch(insertStmts)
+    const newItemIds = insertResults.map((r) => r.meta.last_row_id as number)
+
+    // 주문 합계 갱신 (delta — discount 불변)
+    const totalDeltaR = Math.round(totalDelta)
+    const vatDeltaR = Math.round(vatDelta)
+    await c.env.DB.prepare(
+      `UPDATE orders SET total_amount = COALESCE(total_amount,0) + ?, vat_amount = COALESCE(vat_amount,0) + ?, final_amount = COALESCE(final_amount,0) + ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`
+    ).bind(totalDeltaR, vatDeltaR, totalDeltaR + vatDeltaR, orderId).run()
+
+    // 청구그룹 재계산 (BILLED/PAID 동결 그룹 보존)
+    await recalcOrderBillingGroups(c.env.DB, orderId)
+
+    // 신규 라인만 카드 생성 (DISTRIBUTION은 카드 미생성·shipment_ready)
+    let cardsGenerated = 0
+    if ((order.order_type || 'PRODUCTION') === 'DISTRIBUTION') {
+      const ph = newItemIds.map(() => '?').join(',')
+      await c.env.DB.prepare(`UPDATE order_items SET shipment_ready = 1 WHERE id IN (${ph})`).bind(...newItemIds).run()
+    } else {
+      cardsGenerated = await generateCardsForOrder({
+        db: c.env.DB, orderId, orderNumber: order.order_number, clientId: order.client_id,
+        deliveryDate: order.delivery_date, priority: order.priority || 'NORMAL', notes: order.notes,
+        entityId: billingEntityId, itemIdsFilter: newItemIds,
+      })
+    }
+
+    // order_ai_files append (file_path 중복 제거)
+    const aiFiles: Array<{ file_path: string; analysis_id?: number }> = Array.isArray(body.ai_files) ? body.ai_files : []
+    if (aiFiles.length > 0) {
+      const { results: existingAf } = await c.env.DB.prepare(`SELECT file_path FROM order_ai_files WHERE order_id = ?`).bind(orderId).all<{ file_path: string }>()
+      const seen = new Set((existingAf || []).map((r) => r.file_path))
+      const maxAfSort = await c.env.DB.prepare(`SELECT COALESCE(MAX(sort_order), -1) AS m FROM order_ai_files WHERE order_id = ?`).bind(orderId).first<{ m: number }>()
+      let afSort = (maxAfSort?.m ?? -1) + 1
+      const afStmts = aiFiles.filter((af) => af.file_path && !seen.has(af.file_path)).map((af) =>
+        c.env.DB.prepare(`INSERT INTO order_ai_files (order_id, file_path, file_name, analysis_id, sort_order, entity_id) VALUES (?, ?, ?, ?, ?, ?)`)
+          .bind(orderId, af.file_path, (af.file_path || '').split(/[/\\]/).pop() || null, af.analysis_id || null, afSort++, billingEntityId)
+      )
+      if (afStmts.length > 0) await c.env.DB.batch(afStmts)
+    }
+
+    // 출력완료 주문에 신규 미출력 카드 추가 → '출력중'으로 되돌려 상태 정합 유지
+    if (cardsGenerated > 0 && order.status === 'PRINT_DONE') {
+      await c.env.DB.batch([
+        c.env.DB.prepare(`UPDATE orders SET status = 'PRINTING', updated_at = CURRENT_TIMESTAMP WHERE id = ?`).bind(orderId),
+        c.env.DB.prepare(`INSERT INTO order_status_history (order_id, from_status, to_status, changed_by, change_reason) VALUES (?, 'PRINT_DONE', 'PRINTING', ?, ?)`).bind(orderId, user?.id || null, '라인 추가로 재출력 필요'),
+      ])
+    }
+
+    // AI_PROCESS task (전체 주문 파일 가공 — create와 동일)
+    const aiFilePath: string | null = body.ai_file_path || null
+    if (aiFilePath) {
+      try {
+        await c.env.DB.prepare(`INSERT INTO tasks (type, status, order_id, input_payload, created_by, entity_id) VALUES ('AI_PROCESS', 'PENDING', ?, ?, ?, ?)`)
+          .bind(orderId, JSON.stringify({ order_number: order.order_number, ai_file_path: aiFilePath, ai_analysis_id: body.ai_analysis_id ?? null, append_item_ids: newItemIds }), user?.id || null, billingEntityId).run()
+      } catch (taskErr) { console.error('append AI_PROCESS enqueue failed:', taskErr) }
+    }
+
+    // auto_process_jobs (신규 라인만 — 에이전트 폴링 큐). 라인별 자기 ai_analysis_id 사용.
+    let autoProcessStarted = false
+    try {
+      const created = await enqueueAutoProcessJobsForItems(c.env.DB, orderId, newItemIds, body.ai_analysis_id || null, billingEntityId)
+      if (created > 0) autoProcessStarted = true
+    } catch (apErr) { console.error('append auto_process_jobs failed:', apErr) }
+
+    await logActivity({
+      db: c.env.DB, userId: user?.id, userName: user?.username,
+      action: 'UPDATE', entityType: 'ORDER', entityId: orderId,
+      entityLabel: order.order_number, details: `라인 ${newItemIds.length}건 추가`,
+    })
+
+    const warning = (order.billing_status === 'BILLED' || order.billing_status === 'PAID')
+      ? '이미 청구된 주문입니다. 추가된 라인은 별도 청구가 필요합니다.' : null
+    return c.json({
+      success: true,
+      data: { order_id: orderId, order_number: order.order_number, added: newItemIds.length, cards_generated: cardsGenerated },
+      message: `${order.order_number}에 ${newItemIds.length}개 라인 추가 (카드 ${cardsGenerated}건${autoProcessStarted ? ', 자동가공 시작' : ''}).`,
+      ...(warning && { warning }),
+    })
+  } catch (error) {
+    console.error('Order append items error:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
   }
 })
 

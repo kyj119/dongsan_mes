@@ -1262,7 +1262,7 @@ function iaeOmLineAmount(ln) {
 function iaeCanOpenOrderModal() {
   var lines = iaeCanBuildOrderLines();
   if (lines.length === 0) { iaeToast('대지에 객체가 없습니다', 'error'); return; }
-  iaeOmState = { client_id: null, client_name: '', lines: lines };
+  iaeOmState = { mode: 'new', client_id: null, client_name: '', target_order_id: null, target_order_label: '', lines: lines };
   var prev = document.getElementById('iaeOrderModal'); if (prev) prev.remove();
   var modal = document.createElement('div');
   modal.id = 'iaeOrderModal';
@@ -1272,11 +1272,24 @@ function iaeCanOpenOrderModal() {
     + '<div class="flex items-center justify-between px-5 py-3 border-b border-gray-200"><h3 class="font-bold text-gray-900"><i class="fas fa-file-invoice mr-2 text-green-600"></i>주문으로 보내기</h3>'
     + '<button id="iaeOmClose" class="text-gray-400 hover:text-gray-700 text-xl leading-none">&times;</button></div>'
     + '<div class="p-5 overflow-y-auto space-y-4">'
-    + '<div class="grid grid-cols-2 gap-3">'
+    // 모드 토글: 신규 주문 생성 / 기존 주문에 추가
+    + '<div class="inline-flex rounded-lg border border-gray-200 p-0.5 text-sm">'
+    + '<button id="iaeOmModeNew" type="button" class="px-3 py-1.5 rounded-md font-medium">신규 주문 생성</button>'
+    + '<button id="iaeOmModeAppend" type="button" class="px-3 py-1.5 rounded-md font-medium">기존 주문에 추가</button>'
+    + '</div>'
+    // 신규 모드: 거래처 + 납품일
+    + '<div id="iaeOmNewFields" class="grid grid-cols-2 gap-3">'
     + '<div class="relative"><label class="block text-xs text-gray-500 mb-1">거래처 *</label>'
     + '<input id="iaeOmClient" autocomplete="off" placeholder="거래처명/코드 검색…" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500">'
     + '<div id="iaeOmClientList" class="absolute z-10 left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto hidden"></div></div>'
     + '<div><label class="block text-xs text-gray-500 mb-1">납품일 *</label><input id="iaeOmDate" type="date" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500"></div>'
+    + '</div>'
+    // 기존 모드: 대상 주문 검색
+    + '<div id="iaeOmAppendFields" class="hidden">'
+    + '<label class="block text-xs text-gray-500 mb-1">대상 주문 * <span class="text-gray-400">— 출력완료까지의 주문에만 추가 가능</span></label>'
+    + '<div class="relative"><input id="iaeOmOrder" autocomplete="off" placeholder="주문번호/거래처 검색…" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500">'
+    + '<div id="iaeOmOrderList" class="absolute z-10 left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-56 overflow-y-auto hidden"></div></div>'
+    + '<div id="iaeOmOrderSel" class="hidden mt-2 text-sm text-gray-700 bg-green-50 border border-green-100 rounded-lg px-3 py-2"></div>'
     + '</div>'
     + '<div><div class="text-xs font-semibold text-gray-500 mb-2">주문 라인 (' + lines.length + ') <span class="font-normal text-gray-400">— 개별 객체=라인, 시트=1라인(수량=조각수). 품목을 지정하세요.</span></div>'
     + '<div id="iaeOmLines" class="space-y-2"></div></div>'
@@ -1294,10 +1307,75 @@ function iaeCanOpenOrderModal() {
   document.getElementById('iaeOmCancel').addEventListener('click', iaeCanCloseOrderModal);
   modal.addEventListener('mousedown', function (e) { if (e.target === modal) iaeCanCloseOrderModal(); });
   document.getElementById('iaeOmSubmit').addEventListener('click', iaeCanSubmitOrder);
+  var bN = document.getElementById('iaeOmModeNew'), bA = document.getElementById('iaeOmModeAppend');
+  if (bN) bN.addEventListener('click', function () { iaeOmSetMode('new'); });
+  if (bA) bA.addEventListener('click', function () { iaeOmSetMode('append'); });
   iaeOmWireClientSearch();
+  iaeOmWireOrderSearch();
+  iaeOmSetMode('new');
   iaeOmRenderLines();
 }
 function iaeCanCloseOrderModal() { var m = document.getElementById('iaeOrderModal'); if (m) m.remove(); }
+
+// 모드 전환: 신규 주문 생성 / 기존 주문에 추가
+function iaeOmSetMode(mode) {
+  iaeOmState.mode = mode;
+  var nf = document.getElementById('iaeOmNewFields'), af = document.getElementById('iaeOmAppendFields');
+  if (nf) nf.classList.toggle('hidden', mode !== 'new');
+  if (af) af.classList.toggle('hidden', mode !== 'append');
+  function setBtn(btn, active) {
+    if (!btn) return;
+    btn.classList.toggle('bg-blue-600', active); btn.classList.toggle('text-white', active);
+    btn.classList.toggle('text-gray-600', !active);
+  }
+  setBtn(document.getElementById('iaeOmModeNew'), mode === 'new');
+  setBtn(document.getElementById('iaeOmModeAppend'), mode === 'append');
+  var sub = document.getElementById('iaeOmSubmit');
+  if (sub) sub.innerHTML = mode === 'append' ? '<i class="fas fa-plus mr-1"></i>라인 추가' : '<i class="fas fa-check mr-1"></i>주문 생성';
+}
+
+// 대상 주문 검색 (append). orderVisibilityFilter로 서버가 법인 격리. 출력완료까지만 선택 가능.
+var iaeOmOrderTimer = null;
+function iaeOmWireOrderSearch() {
+  var inp = document.getElementById('iaeOmOrder'), list = document.getElementById('iaeOmOrderList'), sel = document.getElementById('iaeOmOrderSel');
+  if (!inp || !list) return;
+  var APPENDABLE = { CONFIRMED: 1, PRINTING: 1, PRINT_DONE: 1, HOLD: 1 };
+  inp.addEventListener('input', function () {
+    iaeOmState.target_order_id = null; iaeOmState.target_order_label = '';
+    if (sel) sel.classList.add('hidden');
+    var q = inp.value.trim();
+    if (iaeOmOrderTimer) clearTimeout(iaeOmOrderTimer);
+    if (q.length < 1) { list.classList.add('hidden'); return; }
+    iaeOmOrderTimer = setTimeout(function () {
+      axios.get('/api/orders', { params: { search: q, limit: 12 } }).then(function (res) {
+        var rows = (res.data && (res.data.data || res.data.orders)) || [];
+        if (!Array.isArray(rows)) rows = [];
+        if (!rows.length) { list.innerHTML = '<div class="px-3 py-2 text-xs text-gray-400">검색 결과 없음</div>'; list.classList.remove('hidden'); return; }
+        list.innerHTML = rows.map(function (r) {
+          var st = r.status || '';
+          var label = window.MES_STATUS ? window.MES_STATUS.orderLabel(st) : st;
+          var ok = !!APPENDABLE[st];
+          return '<div class="iae-om-ord px-3 py-2 text-sm border-b border-gray-50 ' + (ok ? 'hover:bg-blue-50 cursor-pointer' : 'opacity-40 cursor-not-allowed') + '"'
+            + ' data-id="' + r.id + '" data-ok="' + (ok ? 1 : 0) + '" data-label="' + iaeEscape((r.order_number || ('#' + r.id)) + ' / ' + (r.client_name || '')) + '">'
+            + '<span class="font-medium text-gray-800">' + iaeEscape(r.order_number || ('#' + r.id)) + '</span> '
+            + '<span class="text-gray-500">' + iaeEscape(r.client_name || '') + '</span> '
+            + '<span class="text-[10px] ' + (ok ? 'text-green-600' : 'text-gray-400') + '">' + iaeEscape(label) + '</span>'
+            + (ok ? '' : ' <span class="text-[10px] text-red-400">추가 불가</span>') + '</div>';
+        }).join('');
+        list.classList.remove('hidden');
+        Array.prototype.forEach.call(list.querySelectorAll('.iae-om-ord'), function (el) {
+          el.addEventListener('click', function () {
+            if (el.getAttribute('data-ok') !== '1') { iaeToast('출력완료까지의 주문에만 추가할 수 있습니다', 'error'); return; }
+            iaeOmState.target_order_id = parseInt(el.getAttribute('data-id'), 10);
+            iaeOmState.target_order_label = el.getAttribute('data-label');
+            inp.value = iaeOmState.target_order_label; list.classList.add('hidden');
+            if (sel) { sel.classList.remove('hidden'); sel.innerHTML = '<i class="fas fa-check-circle text-green-600 mr-1"></i>대상: <b>' + iaeEscape(iaeOmState.target_order_label) + '</b>'; }
+          });
+        });
+      }).catch(function () { list.classList.add('hidden'); });
+    }, 250);
+  });
+}
 
 function iaeOmWireClientSearch() {
   var inp = document.getElementById('iaeOmClient'), list = document.getElementById('iaeOmClientList');
@@ -1393,10 +1471,15 @@ function iaeOmUpdateSummary() {
 }
 
 function iaeCanSubmitOrder() {
-  if (!iaeOmState.client_id) { iaeToast('거래처를 선택하세요', 'error'); return; }
+  var isAppend = iaeOmState.mode === 'append';
   var dateEl = document.getElementById('iaeOmDate');
   var delivery = dateEl ? dateEl.value : '';
-  if (!delivery) { iaeToast('납품일을 입력하세요', 'error'); return; }
+  if (isAppend) {
+    if (!iaeOmState.target_order_id) { iaeToast('추가할 대상 주문을 선택하세요', 'error'); return; }
+  } else {
+    if (!iaeOmState.client_id) { iaeToast('거래처를 선택하세요', 'error'); return; }
+    if (!delivery) { iaeToast('납품일을 입력하세요', 'error'); return; }
+  }
   var missing = iaeOmState.lines.filter(function (ln) { return !ln.item_id; });
   if (missing.length) { iaeToast(missing.length + '개 라인의 품목을 지정하세요', 'error'); return; }
 
@@ -1433,15 +1516,33 @@ function iaeCanSubmitOrder() {
     };
   });
 
+  var btn = document.getElementById('iaeOmSubmit');
+  var nLines = iaeOmState.lines.length;
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i>' + (isAppend ? '추가 중…' : '생성 중…'); }
+
+  if (isAppend) {
+    // 기존 주문에 라인 추가 (거래처/납품일은 대상 주문 상속)
+    var appendBody = { ai_file_path: aiPath, ai_analysis_id: primaryFid, ai_files: aiFiles, items: items };
+    axios.post('/api/orders/' + iaeOmState.target_order_id + '/items', appendBody).then(function (res) {
+      var d = res.data && res.data.data;
+      iaeToast((d ? d.order_number : '주문') + '에 ' + (d ? d.added : nLines) + '개 라인 추가 완료', 'success');
+      if (res.data && res.data.warning) iaeToast(res.data.warning, 'info');
+      iaeCanCloseOrderModal();
+    }).catch(function (err) {
+      var msg = (err.response && err.response.data && err.response.data.error) || err.message || '라인 추가 실패';
+      iaeToast(msg, 'error');
+      if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-plus mr-1"></i>라인 추가'; }
+    });
+    return;
+  }
+
   var body = {
     client_id: iaeOmState.client_id, delivery_date: delivery,
     ai_file_path: aiPath, ai_analysis_id: primaryFid, ai_files: aiFiles, items: items
   };
-  var btn = document.getElementById('iaeOmSubmit');
-  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i>생성 중…'; }
   axios.post('/api/orders', body).then(function (res) {
     var d = res.data && res.data.data;
-    iaeToast('주문 생성 완료: ' + (d ? d.order_number : '') + ' (' + iaeOmState.lines.length + '라인)', 'success');
+    iaeToast('주문 생성 완료: ' + (d ? d.order_number : '') + ' (' + nLines + '라인)', 'success');
     iaeCanCloseOrderModal();
   }).catch(function (err) {
     var msg = (err.response && err.response.data && err.response.data.error) || err.message || '주문 생성 실패';
