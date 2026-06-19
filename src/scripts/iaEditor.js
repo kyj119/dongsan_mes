@@ -727,6 +727,7 @@ function iaeCanCommitPos(uid, node) {
   var o = iaeCanObj(uid); if (!o) return;
   o.x_mm = Math.round(node.x() / iaeCanPxPerMm);
   o.y_mm = Math.round(node.y() / iaeCanPxPerMm);
+  iaeCanUpdateMembership(o); // 이형 인터록: 시트 포함관계 갱신 + 영향 시트 재동기화(길이/효율)
   iaeCanSave(); iaeCanDrawOverlays(); iaeCanUpdateStatus();
 }
 function iaeCanCommitTransform(uid, node) {
@@ -738,9 +739,10 @@ function iaeCanCommitTransform(uid, node) {
   iaeCanResizeNode(node, newW, newH);
   o.w_mm = Math.max(1, Math.round(newW / iaeCanPxPerMm));
   o.h_mm = Math.max(1, Math.round(newH / iaeCanPxPerMm));
-  o.rotation = Math.round(node.rotation());
+  o.rotation = ((Math.round(node.rotation() / 90) * 90) % 360 + 360) % 360; // 90° 스냅 정규화
   o.x_mm = Math.round(node.x() / iaeCanPxPerMm);
   o.y_mm = Math.round(node.y() / iaeCanPxPerMm);
+  iaeCanUpdateMembership(o);
   iaeCanSave(); iaeCanLayer.batchDraw(); iaeCanDrawOverlays(); iaeCanUpdateStatus();
   iaeCanRenderInspectorSoft(o);
 }
@@ -754,6 +756,7 @@ function iaeCanRotate(uid, deg) {
   o.rotation = (((o.rotation || 0) + deg) % 360 + 360) % 360;
   var node = iaeCanFindNode(uid);
   if (node) { node.rotation(o.rotation); iaeCanLayer.batchDraw(); }
+  if (o.sheetUid != null) { var sh = iaeCanSheetByUid(o.sheetUid); if (sh) iaeCanSyncSheet(sh); } // 회전 → placements 재계산
   iaeCanSave(); iaeCanDrawOverlays(); iaeCanUpdateStatus();
 }
 function iaeCanDup(uid) {
@@ -903,7 +906,10 @@ function iaeCanDrawOverlays() {
     var sx = (sh.x_mm || 0) * ppm, sy = (sh.y_mm || 0) * ppm, sw = (sh.w_mm || 0) * ppm, shh = (sh.h_mm || 0) * ppm;
     var g = new Konva.Group({ listening: false });
     g.add(new Konva.Rect({ x: sx, y: sy, width: sw, height: shh, stroke: '#2563eb', strokeWidth: 1.5, dash: [6, 4] }));
-    g.add(new Konva.Text({ x: sx + 3, y: sy - 14, text: (sh.label || '시트') + ' · 효율 ' + Math.round((sh.eff || 0) * 100) + '%', fontSize: 11, fontStyle: 'bold', fill: '#1e3a8a' }));
+    var effPct = Math.round((sh.eff || 0) * 100);
+    var lbl = (sh.label || '시트') + ' · ' + (effPct > 100 ? '인터록 ' : '효율 ') + effPct + '%';
+    g.add(new Konva.Text({ x: sx + 3, y: sy - 14, text: lbl, fontSize: 11, fontStyle: 'bold', fill: '#1e3a8a' }));
+    if (sh._warn && sh._warn.length) g.add(new Konva.Text({ x: sx + 3, y: sy + 2, text: '⚠ ' + sh._warn[0], fontSize: 10, fill: '#dc2626' }));
     if (sh.trim) {
       var L = 10 * ppm, gap = 3 * ppm, col = '#111827';
       var cs = [[sx, sy, 1, 1], [sx + sw, sy, -1, 1], [sx, sy + shh, 1, -1], [sx + sw, sy + shh, -1, -1]];
@@ -1039,6 +1045,84 @@ function iaeCanContentBottomMm() {
   iaeCanSheets.forEach(function (s) { var bb = (s.y_mm || 0) + (s.h_mm || 0); if (bb > b) b = bb; });
   return b;
 }
+
+// ── 이형(true-shape) 수동 인터록 ───────────────────────────────────
+// 자동 bbox 네스팅(iaeCanNestPlace)이 시작점. 사용자가 조각을 드래그·회전(겹침 허용=이형 절감)해
+// 끼워맞추면 주문 시 라이브 조각 위치에서 placements 재계산(시트상대 bbox + 회전), 롤은 길이 자동 단축.
+// 시트 멤버십 = 조각 bbox 중심의 시트 포함관계(드래그 인/아웃·복제 대응). 출력 = SHEET pp → SheetLayout.jsx.
+// 조각 회전 0/90 = 현 에이전트 즉시 동작, 180/270 = placement.rotation + 에이전트 패스스루 필요.
+function iaeCanRotBBox(o) {
+  var W = o.w_mm || 0, H = o.h_mm || 0, px = o.x_mm || 0, py = o.y_mm || 0;
+  var rot = ((Math.round((o.rotation || 0) / 90) * 90) % 360 + 360) % 360; // 90° 스냅·정규화
+  var rad = rot * Math.PI / 180, cs = Math.cos(rad), sn = Math.sin(rad);
+  var minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  [[0, 0], [W, 0], [W, H], [0, H]].forEach(function (c) {
+    var x = px + c[0] * cs - c[1] * sn, y = py + c[0] * sn + c[1] * cs; // Konva CW(y-down) 회전행렬
+    if (x < minX) minX = x; if (y < minY) minY = y; if (x > maxX) maxX = x; if (y > maxY) maxY = y;
+  });
+  return { left: minX, top: minY, w: maxX - minX, h: maxY - minY, cx: (minX + maxX) / 2, cy: (minY + maxY) / 2, rot: rot, rotated: (rot % 180 !== 0) };
+}
+function iaeCanSheetByUid(uid) { return iaeCanSheets.filter(function (s) { return s.uid === uid; })[0]; }
+function iaeCanSheetForPoint(xmm, ymm) {
+  for (var i = iaeCanSheets.length - 1; i >= 0; i--) {
+    var s = iaeCanSheets[i];
+    if (xmm >= (s.x_mm || 0) && xmm <= (s.x_mm || 0) + (s.w_mm || 0) && ymm >= (s.y_mm || 0) && ymm <= (s.y_mm || 0) + (s.h_mm || 0)) return s;
+  }
+  return null;
+}
+// 객체 sheetUid를 bbox 중심 포함관계로 (재)배정 — 드래그/회전/복제 후 호출. 영향 시트 재동기화.
+function iaeCanUpdateMembership(o) {
+  var prev = o.sheetUid;
+  var bb = iaeCanRotBBox(o);
+  var s = iaeCanSheetForPoint(bb.cx, bb.cy);
+  o.sheetUid = s ? s.uid : null;
+  iaeCanSheets.forEach(function (sh) { if (sh.uid === prev || sh.uid === o.sheetUid) iaeCanSyncSheet(sh); });
+}
+// 빌드 시 멤버십 전수 확정 + 시트 앵커 fid 정합(SheetLayout 단일 소스 → 다른 파일 조각은 개별 라인으로).
+function iaeCanReassignSheets() {
+  iaeCanObjs.forEach(function (o) { var bb = iaeCanRotBBox(o); var s = iaeCanSheetForPoint(bb.cx, bb.cy); o.sheetUid = s ? s.uid : null; });
+  iaeCanSheets.forEach(function (sh) {
+    var mem = iaeCanObjs.filter(function (o) { return o.sheetUid === sh.uid; });
+    if (!mem.length) return;
+    var cnt = {}; mem.forEach(function (o) { cnt[o.fid] = (cnt[o.fid] || 0) + 1; });
+    var anchor = mem[0].fid, best = -1;
+    Object.keys(cnt).forEach(function (f) { if (cnt[f] > best) { best = cnt[f]; anchor = mem.filter(function (m) { return String(m.fid) === f; })[0].fid; } });
+    mem.forEach(function (o) { if (o.fid !== anchor) o.sheetUid = null; });
+    sh.fid = anchor;
+  });
+}
+// 시트 placements·규격·효율을 라이브 조각 위치에서 재계산. 롤=길이 자동 단축. 반환 {warnings,members}.
+function iaeCanSyncSheet(sh) {
+  var mem = iaeCanObjs.filter(function (o) { return o.sheetUid === sh.uid; });
+  var warns = [];
+  if (!mem.length) { sh.placements = []; sh.eff = 0; return { warnings: warns, members: 0 }; }
+  var margin = sh.margin_cm || 0;
+  var placements = [], areaCm2 = 0, maxBottomCm = 0, rotOff = 0, overflow = false;
+  var rollW = sh.roll_width_cm || (sh.w_mm || 0) / 10;
+  mem.forEach(function (o) {
+    var bb = iaeCanRotBBox(o);
+    var xc = (bb.left - (sh.x_mm || 0)) / 10, yc = (bb.top - (sh.y_mm || 0)) / 10;
+    var wc = bb.w / 10, hc = bb.h / 10;
+    placements.push({ group_index: o.gi, x_cm: Math.round(xc * 100) / 100, y_cm: Math.round(yc * 100) / 100, width_cm: Math.round(wc * 100) / 100, height_cm: Math.round(hc * 100) / 100, rotated: bb.rotated, rotation: bb.rot });
+    areaCm2 += (o.w_mm || 0) * (o.h_mm || 0) / 100; // 조각 실면적(겹침과 무관)
+    if (yc + hc > maxBottomCm) maxBottomCm = yc + hc;
+    if (bb.rot === 180 || bb.rot === 270) rotOff++;
+    if (xc < -0.1 || xc + wc > rollW + 0.1) overflow = true;
+  });
+  if (sh.mode !== 'flatbed') {
+    sh.total_height_cm = Math.round((maxBottomCm + margin) * 10) / 10;
+    sh.h_mm = Math.round(sh.total_height_cm * 10);
+  } else if (maxBottomCm + margin > (sh.total_height_cm || (sh.h_mm || 0) / 10) + 0.1) {
+    overflow = true;
+  }
+  var sheetH = sh.total_height_cm || (sh.h_mm || 0) / 10;
+  sh.placements = placements;
+  sh.eff = (rollW * sheetH > 0) ? areaCm2 / (rollW * sheetH) : 0;
+  if (overflow) warns.push('조각이 시트 경계를 벗어남 (출력 시 잘릴 수 있음)');
+  if (rotOff) warns.push(rotOff + '개 조각 180°/270° — 에이전트 최신 빌드 후 정확 출력(현재 0°/90°로 출력)');
+  sh._warn = warns;
+  return { warnings: warns, members: mem.length };
+}
 function iaeCanNestPlace(opts) {
   var src = iaeCanSrc(opts.key);
   if (!src) { iaeToast('대상 그룹을 선택하세요', 'error'); return; }
@@ -1166,6 +1250,7 @@ function iaeCanRenderNestPanel() {
     + '<div class="text-[11px] text-gray-400">조각 크기 비우면 검출 크기로 배치(스케일). 파일 1/N = 소스가 실제의 1/N(현수막 축소본 등)</div>'
     + '<button id="iaeCanNestRun" class="w-full px-3 py-2 rounded-md bg-blue-600 text-white hover:bg-blue-700 text-sm"><i class="fas fa-table-cells mr-1"></i>대지에 배치</button>'
     + '<div class="text-[11px] text-gray-400">배치 조각은 대지 객체가 되어 개별 편집·주문 연결(N4)에 사용</div>'
+    + '<div class="text-[11px] text-amber-600 border-t border-amber-100 pt-2 mt-1"><i class="fas fa-arrows-up-down-left-right mr-1"></i><b>이형 인터록</b>: 배치 후 조각을 드래그·회전(R)해 겹쳐 끼워맞추면 주문 시 <b>현재 배치 그대로</b> 출력(롤 길이 자동 단축). 시트 안에 넣은 조각만 그 시트에 포함.</div>'
     + '</div>';
   var bindVal = function (id, prop, parse) { var el = document.getElementById(id); if (el) el.addEventListener('change', function () { o[prop] = parse ? parse(el.value) : el.value; }); };
   var modeEl = document.getElementById('iaeCanNestMode');
@@ -1224,9 +1309,11 @@ function iaeOmPostProc(ln) {
 }
 function iaeCanBuildOrderLines() {
   var lines = [];
+  iaeCanReassignSheets();                    // 이형 인터록: 멤버십 전수 확정(포함관계·앵커 fid)
+  iaeCanSheets.forEach(iaeCanSyncSheet);     // placements·규격·효율을 라이브 조각 위치에서 재계산
   iaeCanSheets.forEach(function (sh) {
     var pieces = iaeCanObjs.filter(function (o) { return o.sheetUid === sh.uid; });
-    if (!pieces.length) return;
+    if (!pieces.length || !sh.placements || !sh.placements.length) return;
     var p0 = pieces[0], src = iaeCanSrc(p0.key);
     lines.push({
       kind: 'sheet', fid: p0.fid, gi: p0.gi, label: (src ? src.filename : '') + ' #' + p0.gi + ' [시트 ' + pieces.length + '조각]',

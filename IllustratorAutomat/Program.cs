@@ -1347,16 +1347,17 @@ namespace IllustratorAutomation
             double marginCm = canvas.TryGetProperty("margin_cm", out var mcEl) && mcEl.ValueKind == JsonValueKind.Number ? mcEl.GetDouble() : 1.0;
 
             double maxBottom = 0, maxRight = 0;
-            var rawPl = new List<(int gi, double x, double y, double w, double h, bool rot)>();
+            var rawPl = new List<(int gi, double x, double y, double w, double h, bool rot, double rotation)>();
             foreach (var p in placementsArr.EnumerateArray())
             {
                 double x = p.GetProperty("x_cm").GetDouble(), y = p.GetProperty("y_cm").GetDouble();
                 double w = p.GetProperty("width_cm").GetDouble(), h = p.GetProperty("height_cm").GetDouble();
                 bool rot = p.TryGetProperty("rotated", out var rEl) && rEl.GetBoolean();
+                double rotation = p.TryGetProperty("rotation", out var rotEl) && rotEl.ValueKind == JsonValueKind.Number ? rotEl.GetDouble() : (rot ? 90.0 : 0.0); // 이형 인터록
                 int gi = p.GetProperty("group_index").GetInt32();
                 if (y + h > maxBottom) maxBottom = y + h;
                 if (x + w > maxRight) maxRight = x + w;
-                rawPl.Add((gi, x, y, w, h, rot));
+                rawPl.Add((gi, x, y, w, h, rot, rotation));
             }
             if (rawPl.Count == 0) { await PatchSheetRender(jobId, "error", null, "배치 조각 없음"); return; }
 
@@ -1372,7 +1373,8 @@ namespace IllustratorAutomation
                     group_index = p.gi,
                     x_cm = p.x / scaleFactor, y_cm = p.y / scaleFactor,
                     width_cm = p.w / scaleFactor, height_cm = p.h / scaleFactor,
-                    rotated = p.rot
+                    rotated = p.rot,
+                    rotation = p.rotation // 이형 인터록: 0/90/180/270
                 });
 
             var now = DateTime.Now;
@@ -1752,6 +1754,7 @@ namespace IllustratorAutomation
                                     width_cm = p.GetProperty("width_cm").GetDouble() / scaleFactor,
                                     height_cm = p.GetProperty("height_cm").GetDouble() / scaleFactor,
                                     rotated = p.TryGetProperty("rotated", out var rEl) && rEl.GetBoolean(),
+                                    rotation = p.TryGetProperty("rotation", out var rotEl) && rotEl.ValueKind == JsonValueKind.Number ? rotEl.GetDouble() : (p.TryGetProperty("rotated", out var r2El) && r2El.GetBoolean() ? 90.0 : 0.0), // 이형 인터록
                                     bleed = bleedObj,
                                 });
                             }
@@ -2588,6 +2591,7 @@ namespace IllustratorAutomation
                             width_cm = p.GetProperty("width_cm").GetDouble() / scaleFactor,
                             height_cm = p.GetProperty("height_cm").GetDouble() / scaleFactor,
                             rotated = p.TryGetProperty("rotated", out var rEl) && rEl.GetBoolean(),
+                            rotation = p.TryGetProperty("rotation", out var rotEl) && rotEl.ValueKind == JsonValueKind.Number ? rotEl.GetDouble() : (p.TryGetProperty("rotated", out var r2El) && r2El.GetBoolean() ? 90.0 : 0.0), // 이형 인터록: 0/90/180/270
                         });
                     }
                 }

@@ -237,9 +237,11 @@ for (var pi = 0; pi < placements.length; pi++) {
     // 그룹 복사 → Layer A에 배치
     var copied = srcGroup.duplicate(layerA, ElementPlacement.PLACEATBEGINNING);
 
-    // 회전 (rotated=true: 90도 시계방향, shelfBinPack 배치 회전)
-    if (pl.rotated) {
-        copied.rotate(-90);
+    // 회전: rotation(각도 0/90/180/270) 우선, 없으면 rotated bool(=90). 이형 수동 인터록 지원.
+    // Konva CW(화면) → Illustrator rotate(-각도). position이 회전 후 bbox 좌상단을 배치하므로 각도 무관 정확.
+    var _rot = (pl.rotation != null) ? Number(pl.rotation) : (pl.rotated ? 90 : 0);
+    if (_rot) {
+        copied.rotate(-_rot);
     }
 
     // Illustrator 좌표 변환
