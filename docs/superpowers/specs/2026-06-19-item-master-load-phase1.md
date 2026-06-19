@@ -50,7 +50,7 @@
 
 - **P1a 스키마 토대 ✅(prod 적용)** = 0322·0323·0324 `execute --file --remote` 적용. prod 검증: 카테고리 13(신규7)·pricing_profile 백필 103·size_grade_prices 생성.
 - **P1b 마스터 로드 ✅(prod 적용, staged)** = `migrations/0325`(231 품목 + 14 겸업 링크). **★is_active=0 스테이징**(picker 무오염). prod 검증: 231 staged·active 0·기존 103 미변경·GRADE 34·링크 77(기존63+14)·category NULL 0·스팟체크 정상. **prod 스모크 103/103**. ⚠️`production_required=1`(PRODUCT 기본) — 기성 PRODUCT(배너대 등) 후속 토글 검토.
-- **P1c 기존 매핑 + 활성화(go-live)** = item_external_code_map 백필 + 인쇄방식/역할 카테고리 비활성 + **신규 품목 `is_active=1` 활성화**(기존 103 dedup·단가 후). 🔴**활성화 전 차단 선결**(아래 §5 bind-limit)
+- **P1c 기존 매핑 + 활성화(go-live)** = item_external_code_map 백필 + 인쇄방식/역할 카테고리 비활성 + **신규 품목 `is_active=1` 활성화**(기존 103 dedup·단가 후). (바인드 한도 차단조건 §5 = ✅ 해소·배포 완료)
 - **P1d 단가 배선** = pricing_profile=GRADE→size_grade_prices 룩업, AREA→㎡단가표(별도 spec). 견적/주문 단가계산 연결
 
 ## 4. 검증·롤백
@@ -59,7 +59,7 @@
 - 단가엔진 GRADE 데이터(호수별 단가)는 희소(출고단가 11%) → 구조 먼저, 값 백필은 운영
 
 ## 5. 미해결·후속
-- 🟡 **[P1c 활성화 차단] D1 바인드 한도 버그 — 수정 구현·커밋 완료, 배포만 P1c 대기**: `weeklyPurchase.analyze`(onOrder·supplier) + `consumptionForecast`(출고집계)가 active 매입품목 itemIds를 통째 IN(?…) 바인드 → 활성 >100 시 D1 "too many SQL variables" 500. **수정(B안=IN 제거): 3사이트 모두 `IN(SELECT id FROM items WHERE is_purchase_item=1 AND is_active=1)` 서브쿼리/JOIN으로 교체 → 바인드 파라미터 0개**(커밋 `5fd0dfcd`, verify+로컬쿼리 검증, 동작 보존). **prod 배포는 P1c 활성화와 함께**(현 staged·active=70이라 미배포 무영향). ※로컬 스모크 1건 실패가 이 잠재버그 노출(로컬 loaded active, prod는 staged라 무관·prod 스모크 103/103).
+- ✅ **[해소] D1 바인드 한도 버그 — 수정·배포 완료**: `weeklyPurchase.analyze`(onOrder·supplier) + `consumptionForecast`(출고집계)가 active 매입품목 itemIds를 통째 IN(?…) 바인드 → 활성 >100 시 D1 "too many SQL variables" 500. **수정(B안=IN 제거): 3사이트 모두 `IN(SELECT id FROM items WHERE is_purchase_item=1 AND is_active=1)` 서브쿼리/JOIN으로 교체 → 바인드 파라미터 0개**(커밋 `5fd0dfcd`, verify+로컬쿼리 검증, 동작 보존). **배포 완료**: push→origin/main→CF 자동빌드 `420280` 라이브·prod 스모크 103/103. **P1c 활성화 전 차단조건 해소.** ※로컬 스모크 1건 실패가 이 잠재버그 노출(로컬 loaded active, prod는 staged).
 - 간판 COMPONENT 엔진 = `signage-component-estimate-structure` spec
 - AREA ㎡단가표(출력방식×소재) = 별도 spec (FINAL §2.1)
 - 재고 이중장부 PoC(원단 53건 직접판매↔BOM) = P1d 전 확인
