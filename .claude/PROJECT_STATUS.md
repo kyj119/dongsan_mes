@@ -1,6 +1,6 @@
 # PROJECT_STATUS.md — 프로젝트 현황판
 
-> **최종 업데이트**: 2026-06-19 PM (**주문 라인 append + 직접연결 썸네일 공백버그 수정 — 전부 prod 배포·E2E 검증** [웹 dep b90d3635 / 에이전트 PID 21000] + #3 /files 근본원인 정정 + #4 뱃지 누수 / 오전: ia-editor 캔버스 N1~N5 + N4 fidelity)
+> **최종 업데이트**: 2026-06-19 PM3 (**이형(true-shape) 수동 인터록 네스팅 — 구현·검증·prod 배포(web dep `8953d23e` + 에이전트 재배포 PID 20832, 180/270 충실)** + append 실사용 검증 + 정리(#3: 로컬/Z: ~913MB·D1 테스트주문 전수삭제). 커밋 `e2eb1598` 로컬·미푸시)
 > 완료 이력 → `PROJECT_STATUS_ARCHIVE.md` (매 세션 읽을 필요 없음, 필요 시 참조)
 
 ---
@@ -12,6 +12,13 @@
 ---
 
 ## 🔴 현재 진행 중
+
+- **✅ [2026-06-19 PM3] 이형(true-shape) 수동 인터록 네스팅 + append 실사용 검증 + 정리 — 구현·검증·prod 배포·정리 완료** (커밋 `e2eb1598` 로컬·미푸시, web dep `8953d23e`, 에이전트 PID **20832**):
+  - **이형 인터록(신규)**: 자동 bbox 네스팅이 시작점 → 조각 드래그·회전(겹침 허용=이형 절감) → **주문 시 라이브 위치에서 placements 재계산**(시트상대 bbox+`rotation`), 롤 길이 자동단축. 멤버십=조각 bbox중심 시트 포함관계(드래그 인/아웃·복제·앵커 fid 정합). web=`iaeCanRotBBox`/`iaeCanReassignSheets`/`iaeCanSyncSheet`/buildOrderLines. 에이전트=`SheetLayout.jsx`(`pl.rotation` 우선)+`Program.cs` 3빌더 rotation 통과(**backward-compatible**, 없으면 rotated bool=90). **검증**: Playwright 실번들 직접호출 bbox 4회전·라이브재계산·롤44→22cm·겹침효율0.199→0.398·중복출력방지·콘솔0. verify+dotnet build 0err.
+  - **배포**: web `wrangler --branch main`→dep `8953d23e`·**smoke 103/103**. 에이전트 `dotnet publish`(단일파일81MB)→robocopy Z:(appsettings 보존)→재시작 PID 20832(안정, 180/270 충실 활성). 롤백=`Z:\…\publish-backup-20260619-thumbfix`. ⚠️git push 안함(origin 뒤처짐).
+  - **append 실사용 검증(완전성공)**: 대지 객체(분석#1 실 FK)→'기존 주문에 추가' 실 picker→**order_items 1→2·카드 -02 연속·AI_PROCESS task 트리거**(`append_item_ids`). 부수발견=`enqueueAutoProcessJobsForItems`가 `order_items.finishing2/3` 스키마 드리프트로 throw→catch(휴면 큐라 무영향, 기지 문제).
+  - **정리(#3)**: 로컬 publish/publish-new(~325MB)·Z: 구 백업3+`_auto_output`+네스팅 테스트출력(~588MB)·**로컬 D1 전체 테스트주문(orders 4~15=10건+cascade)** 삭제. 거래처·품목·설정 보존.
+  - **▶ 남은(선택)**: 180/270 라이브 EPS e2e(시각확인)·git push(origin 동기화)·finishing2/3 드리프트 prod 점검.
 
 - **✅ [2026-06-19 PM] 주문 라인 append + ia-editor #3·#4 + 직접연결 썸네일 공백버그 — 전부 prod 배포·E2E 검증 완료**:
   - **append(신규기능) — prod 배포(웹 dep `b90d3635`)**: `POST /api/orders/:id/items`(create.ts) — 기존 주문에 ia-editor 산출 라인만 추가(기존 품목/카드 무변경). `generateCardsForOrder` **itemIdsFilter**(신규 라인만 카드생성·카드번호 기존 최대 뒤 연속) + **enqueueAutoProcessJobsForItems**(helpers.ts, 라인별 ai_analysis_id·에이전트 폴링 큐) + **ia-editor 주문모달 신규/기존 토글 + 주문 검색 picker**(iaEditor.js, orderVisibilityFilter 법인격리·출력완료까지만 선택). **가드: 상태 PRINT_DONE까지**(CONFIRMED·PRINTING·PRINT_DONE·HOLD 허용 / SHIPPED·COMPLETED·CANCELLED·QUOTATION·DRAFT 차단)·entity 소유검증·recalcOrderBillingGroups(동결보존, BILLED면 경고)·**PRINT_DONE→PRINTING 되돌림**. E2E(로컬): 품목+2·합계증가·카드번호연속·중복0·동일그룹 1카드·가드 400/404/409·되돌림. **prod smoke 103/103 + append 라이브(400/404 가드)·ia-editor 정상**. 회귀테스트 `scripts/e2e-append-items.cjs`.
