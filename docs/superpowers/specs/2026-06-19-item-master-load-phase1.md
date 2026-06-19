@@ -59,7 +59,7 @@
 - 단가엔진 GRADE 데이터(호수별 단가)는 희소(출고단가 11%) → 구조 먼저, 값 백필은 운영
 
 ## 5. 미해결·후속
-- 🔴 **[P1c 활성화 차단] D1 바인드 한도 버그** — `weeklyPurchase.analyze`(steps 3·4 IN(?…)) + `consumptionForecast`(line 91 IN(?…))가 active `is_purchase_item=1` 품목 itemIds를 통째 바인드. 현재 prod active purchase=70(staged 제외)이라 정상이나, **신규 품목 활성화 시 >100 → D1 "too many SQL variables" 500**. 활성화 전 **IN() 80개 청크 분할** 필수(메모리 `d1-bind-param-limit`). ※로컬 스모크 1건 실패도 이 원인(로컬은 loaded active였음, prod는 staged라 무관·prod 스모크 103/103).
+- 🟡 **[P1c 활성화 차단] D1 바인드 한도 버그 — 수정 구현·커밋 완료, 배포만 P1c 대기**: `weeklyPurchase.analyze`(onOrder·supplier) + `consumptionForecast`(출고집계)가 active 매입품목 itemIds를 통째 IN(?…) 바인드 → 활성 >100 시 D1 "too many SQL variables" 500. **수정(B안=IN 제거): 3사이트 모두 `IN(SELECT id FROM items WHERE is_purchase_item=1 AND is_active=1)` 서브쿼리/JOIN으로 교체 → 바인드 파라미터 0개**(커밋 `5fd0dfcd`, verify+로컬쿼리 검증, 동작 보존). **prod 배포는 P1c 활성화와 함께**(현 staged·active=70이라 미배포 무영향). ※로컬 스모크 1건 실패가 이 잠재버그 노출(로컬 loaded active, prod는 staged라 무관·prod 스모크 103/103).
 - 간판 COMPONENT 엔진 = `signage-component-estimate-structure` spec
 - AREA ㎡단가표(출력방식×소재) = 별도 spec (FINAL §2.1)
 - 재고 이중장부 PoC(원단 53건 직접판매↔BOM) = P1d 전 확인
