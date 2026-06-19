@@ -129,6 +129,10 @@ async function loadClients(page) {
         if (f.has_balance) url += '&has_balance=' + f.has_balance;
         if (f.credit_hold) url += '&credit_hold=' + f.credit_hold;
 
+        // #421: 로딩 표시(일관 포맷) — clientsList는 테이블 통째 컨테이너(div)라 loadingBlock 사용
+        var _clList = document.getElementById('clientsList');
+        if (_clList && window.dsSkeleton) _clList.innerHTML = window.dsSkeleton.loadingBlock();
+
         var response = await axios.get(url, { timeout: 10000 });
 
         if (response.data && response.data.data && response.data.data.clients) {

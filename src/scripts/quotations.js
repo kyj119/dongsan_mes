@@ -57,6 +57,9 @@ async function loadQuotations(page) {
   else if (statusUI === 'valid') url += '&status=ACTIVE';
 
   try {
+    // #421: 로딩 표시(일관 포맷)
+    var _quotTb = document.getElementById('quotTableBody');
+    if (_quotTb && window.dsSkeleton) _quotTb.innerHTML = window.dsSkeleton.loadingRow(8);
     var res = await axios.get(url);
     if (res.data.success) {
       var quotations = res.data.data || [];

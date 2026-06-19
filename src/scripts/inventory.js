@@ -76,6 +76,10 @@ async function loadInventory() {
         if (search) url += '&search=' + encodeURIComponent(search);
         if (stockFilter === 'low') url += '&low_stock=true';
 
+        // #421: 로딩 표시(일관 포맷) — 대용량 재고 조회 중 빈 화면 방지
+        var _invTb = document.getElementById('inventoryTableBody');
+        if (_invTb && window.dsSkeleton) _invTb.innerHTML = window.dsSkeleton.loadingRow(8);
+
         var response = await axios.get(url);
         if (response.data.success) {
             var data = response.data.data;

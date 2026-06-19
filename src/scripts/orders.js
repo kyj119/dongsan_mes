@@ -396,6 +396,10 @@ async function loadOrders() {
     if (dateFrom) params.append('date_from', dateFrom);
     if (dateTo) params.append('date_to', dateTo);
 
+    // #421: 로딩 표시(일관 포맷) — 대용량 주문 조회 중 빈 화면 방지
+    const _ordTb = document.getElementById('ordersTable');
+    if (_ordTb && window.dsSkeleton) _ordTb.innerHTML = window.dsSkeleton.loadingRow(10);
+
     const response = await axios.get(`/api/orders?${params.toString()}`);
 
     if (response.data.success) {

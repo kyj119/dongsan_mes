@@ -432,11 +432,18 @@ async function loadKakaoTemplateDefaults() {
       var key = d.context + '|' + (d.match_key || '');
       var label = KTD_LABELS[key] || (d.context + (d.match_key ? ' · ' + d.match_key : ''));
       var sel = optsHtml.replace('value="' + escapeHtml(d.template_code || '') + '"', 'value="' + escapeHtml(d.template_code || '') + '" selected');
+      // #419: inline onchange JS-string 보간 제거 → data-* 속성(escapeHtml escape) + addEventListener. context/match_key가 서버 enum검증 없이 저장돼 stored XSS 가능했음.
       return '<div class="flex items-center justify-between gap-2">'
         + '<span class="text-sm text-gray-700">' + escapeHtml(label) + ' <span class="text-xs text-gray-400">(법인 ' + d.entity_id + ')</span></span>'
-        + '<select class="border border-gray-300 rounded px-2 py-1 text-sm" onchange="saveKtd(\'' + d.context + '\', \'' + (d.match_key || '') + '\', ' + d.entity_id + ', this.value)">' + sel + '</select>'
+        + '<select class="ktd-select border border-gray-300 rounded px-2 py-1 text-sm" data-ctx="' + escapeHtml(d.context || '') + '" data-mk="' + escapeHtml(d.match_key || '') + '" data-eid="' + escapeHtml(String(d.entity_id)) + '">' + sel + '</select>'
         + '</div>';
     }).join('');
+    // #419: 인라인 핸들러 대신 이벤트 바인딩 — data-* 값을 읽어 saveKtd 호출(JS-string 보간 자체 소멸)
+    Array.prototype.forEach.call(listEl.querySelectorAll('.ktd-select'), function(selEl){
+      selEl.addEventListener('change', function(){
+        saveKtd(this.getAttribute('data-ctx') || '', this.getAttribute('data-mk') || '', Number(this.getAttribute('data-eid')) || 0, this.value);
+      });
+    });
   } catch(e) { listEl.innerHTML = '<div class="text-xs text-red-400">불러오기 실패</div>'; }
 }
 async function saveKtd(context, matchKey, entityId, templateCode) {

@@ -1199,6 +1199,14 @@ kakaoRouter.get('/logs', async (c) => {
     let whereConditions: string[] = []
     let bindings: any[] = []
 
+    // #418: 발송이력 멀티법인 격리 — 같은 파일의 INSERT(entity_id 저장)·template-defaults read는 격리되나 /logs read만 누락.
+    // MANAGER는 항상 구체 entityId라 격리 대상(super-admin entityId=0만 전체 열람). count·본쿼리 공유 whereClause로 양쪽 적용.
+    const efLogs = entityFilter(c)
+    if (efLogs.params.length) {
+      whereConditions.push('ksl.entity_id = ?')
+      bindings.push(...efLogs.params)
+    }
+
     if (clientId) {
       whereConditions.push('ksl.client_id = ?')
       bindings.push(parseInt(clientId, 10))

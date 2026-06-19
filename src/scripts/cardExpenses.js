@@ -129,6 +129,10 @@ async function loadTransactions() {
     params.set('page', currentPage);
     params.set('limit', '50');
 
+    // #421: 로딩 표시(일관 포맷)
+    var _txTb = document.getElementById('txTableBody');
+    if (_txTb && window.dsSkeleton) _txTb.innerHTML = window.dsSkeleton.loadingRow(9);
+
     var res = await axios.get('/api/card-expenses/transactions?' + params.toString());
     var data = res.data.data || [];
     var pag = res.data.pagination || {};

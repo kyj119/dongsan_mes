@@ -610,18 +610,22 @@ async function viewDetail(id) {
 }
 
 async function issueInvoice(id) {
+  // #420: 트리거 버튼을 동기 캡처(await 전) 후 safeSubmit으로 발행 중 중복제출 차단. 국세청 중복발행 TOCTOU 완화.
+  var btn = window.eventButton();
   if (!(await showConfirm('이 세금계산서를 발행하시겠습니까?'))) return;
-  try {
-    var res = await axios.post('/api/tax-invoices/' + id + '/issue');
-    if (res.data.success) {
-      showToast('세금계산서가 발행되었습니다.', 'success');
-      loadInvoices(currentPage);
-    } else {
-      showToast('발행 실패: ' + (res.data.error || ''), 'error');
+  await safeSubmit(btn, async function() {
+    try {
+      var res = await axios.post('/api/tax-invoices/' + id + '/issue');
+      if (res.data.success) {
+        showToast('세금계산서가 발행되었습니다.', 'success');
+        loadInvoices(currentPage);
+      } else {
+        showToast('발행 실패: ' + (res.data.error || ''), 'error');
+      }
+    } catch(e) {
+      showToast('발행 오류: ' + (e.response && e.response.data ? e.response.data.error : e.message), 'error');
     }
-  } catch(e) {
-    showToast('발행 오류: ' + (e.response && e.response.data ? e.response.data.error : e.message), 'error');
-  }
+  });
 }
 
 // ==================== 상태 새로고침 (바로빌 조회) ====================
@@ -686,23 +690,27 @@ async function submitModify() {
   var issueDate = document.getElementById('modifyIssueDate').value;
   if (!issueDate) { showFieldError('modifyIssueDate', '작성일을 입력하세요.'); return; }
   var notes = document.getElementById('modifyNotes').value.trim();
-  try {
-    var res = await axios.post('/api/tax-invoices/' + modifyTargetId + '/modify', {
-      modify_code: code,
-      issue_date: issueDate,
-      notes: notes || null
-    });
-    if (res.data.success) {
-      showToast('수정 세금계산서가 생성되었습니다.', 'success');
-      document.getElementById('modifyModal').classList.add('hidden');
-      modifyTargetId = null;
-      loadInvoices(currentPage);
-    } else {
-      showToast('수정발행 실패: ' + (res.data.error || ''), 'error');
+  // #420: 확인 모달 없는 직접 submit → 더블클릭 시 즉시 이중 발행. safeSubmit으로 버튼 즉시 disable.
+  var btn = window.eventButton();
+  await safeSubmit(btn, async function() {
+    try {
+      var res = await axios.post('/api/tax-invoices/' + modifyTargetId + '/modify', {
+        modify_code: code,
+        issue_date: issueDate,
+        notes: notes || null
+      });
+      if (res.data.success) {
+        showToast('수정 세금계산서가 생성되었습니다.', 'success');
+        document.getElementById('modifyModal').classList.add('hidden');
+        modifyTargetId = null;
+        loadInvoices(currentPage);
+      } else {
+        showToast('수정발행 실패: ' + (res.data.error || ''), 'error');
+      }
+    } catch(e) {
+      showToast('수정발행 오류: ' + (e.response && e.response.data ? e.response.data.error : e.message), 'error');
     }
-  } catch(e) {
-    showToast('수정발행 오류: ' + (e.response && e.response.data ? e.response.data.error : e.message), 'error');
-  }
+  });
 }
 
 // ==================== 취소 ====================
@@ -717,19 +725,23 @@ async function submitCancel() {
   if (!cancelTargetId) return;
   var reason = document.getElementById('cancelReason').value.trim();
   if (!reason) { showFieldError('cancelReason', '취소 사유를 입력하세요.'); return; }
-  try {
-    var res = await axios.post('/api/tax-invoices/' + cancelTargetId + '/cancel', { cancel_reason: reason });
-    if (res.data.success) {
-      showToast('세금계산서가 취소되었습니다.', 'success');
-      document.getElementById('cancelModal').classList.add('hidden');
-      cancelTargetId = null;
-      loadInvoices(currentPage);
-    } else {
-      showToast('취소 실패: ' + (res.data.error || ''), 'error');
+  // #420: 확인 모달 없는 직접 submit → 더블클릭 시 이중 취소 요청. safeSubmit으로 버튼 즉시 disable.
+  var btn = window.eventButton();
+  await safeSubmit(btn, async function() {
+    try {
+      var res = await axios.post('/api/tax-invoices/' + cancelTargetId + '/cancel', { cancel_reason: reason });
+      if (res.data.success) {
+        showToast('세금계산서가 취소되었습니다.', 'success');
+        document.getElementById('cancelModal').classList.add('hidden');
+        cancelTargetId = null;
+        loadInvoices(currentPage);
+      } else {
+        showToast('취소 실패: ' + (res.data.error || ''), 'error');
+      }
+    } catch(e) {
+      showToast('취소 오류: ' + (e.response && e.response.data ? e.response.data.error : e.message), 'error');
     }
-  } catch(e) {
-    showToast('취소 오류: ' + (e.response && e.response.data ? e.response.data.error : e.message), 'error');
-  }
+  });
 }
 
 async function deleteInvoice(id) {

@@ -109,7 +109,9 @@ storageZonesRouter.post('/', requireRole('ADMIN'), async (c) => {
       return c.json({ success: false, error: '구역명을 입력해주세요.' }, 400)
     }
 
-    const entityId = body.entity_id ?? (getEntityId(c) || 1)
+    // #417: body.entity_id 무가드 신뢰 차단 — 같은 파일 PUT(#368)과 대칭. entity_id 지정은 전체모드(0)에서만 허용.
+    // 비전체모드 ADMIN은 자기 법인에만 생성(create로 #368 이관차단 우회 방지).
+    const entityId = (getEntityId(c) === 0 && body.entity_id != null) ? body.entity_id : (getEntityId(c) || 1)
 
     // 중복 체크 (같은 법인 내)
     const exists = await c.env.DB.prepare(

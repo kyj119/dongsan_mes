@@ -433,28 +433,33 @@ async function submitReceive() {
 
   if (receiveData.length === 0) { showToast('입고 수량을 1개 이상 입력하세요.', 'warning'); return; }
 
-  try {
-    var res = await axios.post('/api/purchase-orders/' + currentPOId + '/receive', {
-      receipt_date: receiptDate,
-      notes: receiptNotes,
-      items: receiveData
-    });
-    if (res.data.success) {
-      var isPending = res.data.data && res.data.data.inspection_status === 'PENDING_REVIEW';
-      if (isPending) {
-        showToast('입고 완료. 부족 수량이 감지되어 관리자 확인 대기로 전환됩니다.', 'warning');
+  // #420: 확인 모달 없는 입고 확정 → 더블클릭 시 영수증 2건·received_quantity 이중 가산·재고 이중 가산.
+  // safeSubmit으로 버튼 즉시 disable(응답 대기 중 재클릭 차단). btn은 동기 캡처(검증 전까지 await 없음).
+  var btn = (typeof window.safeSubmit === 'function') ? window.eventButton() : null;
+  await safeSubmit(btn, async function() {
+    try {
+      var res = await axios.post('/api/purchase-orders/' + currentPOId + '/receive', {
+        receipt_date: receiptDate,
+        notes: receiptNotes,
+        items: receiveData
+      });
+      if (res.data.success) {
+        var isPending = res.data.data && res.data.data.inspection_status === 'PENDING_REVIEW';
+        if (isPending) {
+          showToast('입고 완료. 부족 수량이 감지되어 관리자 확인 대기로 전환됩니다.', 'warning');
+        } else {
+          showToast('입고 처리가 완료되었습니다.', 'success');
+        }
+        closeReceiveModal();
+        loadPendingStats();
+        loadReceivingQueue();
       } else {
-        showToast('입고 처리가 완료되었습니다.', 'success');
+        showToast('입고 처리 실패: ' + (res.data.error || ''), 'error');
       }
-      closeReceiveModal();
-      loadPendingStats();
-      loadReceivingQueue();
-    } else {
-      showToast('입고 처리 실패: ' + (res.data.error || ''), 'error');
+    } catch(e) {
+      showToast('입고 처리 오류: ' + (e.response && e.response.data ? e.response.data.error : e.message), 'error');
     }
-  } catch(e) {
-    showToast('입고 처리 오류: ' + (e.response && e.response.data ? e.response.data.error : e.message), 'error');
-  }
+  });
 }
 
 // ── 모달 닫기 ──

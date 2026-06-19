@@ -803,18 +803,33 @@ setInterval(checkTokenRefresh, 1800000); // 30분마다
 
 // === 글로벌 더블클릭 방지 헬퍼 ===
 // 사용법: safeSubmit(btn, async () => { await axios.post(...) })
+// btn이 있으면 즉시 disable + 스피너로 더블클릭/중복제출 차단, 없으면 asyncFn만 실행(가드 없이).
+// #420: innerHTML 보존(아이콘 버튼 안전) + btn=null이어도 asyncFn 실행(기존 early-return 버그 수정) + 반환값 전달.
 async function safeSubmit(btn, asyncFn) {
-    if (!btn || btn.disabled) return;
-    btn.disabled = true;
-    var origText = btn.textContent;
-    btn.textContent = '처리중...';
+    if (btn) {
+        if (btn.disabled) return;            // 이미 처리중 → 중복 클릭 무시
+        btn.disabled = true;
+        btn.dataset.origHtml = btn.innerHTML;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+    }
     try {
-        await asyncFn();
+        return await asyncFn();
     } finally {
-        btn.disabled = false;
-        btn.textContent = origText;
+        if (btn) {
+            btn.disabled = false;
+            if (btn.dataset.origHtml !== undefined) {
+                btn.innerHTML = btn.dataset.origHtml;
+                delete btn.dataset.origHtml;
+            }
+        }
     }
 }
+window.safeSubmit = safeSubmit;
+// #420: 인라인 onclick 핸들러에서 트리거 버튼을 동기적으로 캡처(전역 event는 await 후 무효).
+window.eventButton = function() {
+    try { return (typeof event !== 'undefined' && event && event.target) ? event.target.closest('button') : null; }
+    catch (e) { return null; }
+};
 
 // === Toast utility ===
 function showToast(message, type = 'info', duration = 3000) {
@@ -1306,6 +1321,19 @@ window.dsSkeleton = {
     var html = '<div class="grid grid-cols-' + count + ' gap-4">';
     for (var i = 0; i < count; i++) html += '<div class="ds-card" style="text-align:center;"><div class="ds-skeleton ds-skeleton-text" style="width:50%;margin:0 auto 8px;"></div><div class="ds-skeleton ds-skeleton-title" style="width:40%;margin:0 auto;"></div></div>';
     return html + '</div>';
+  },
+  // #421: 조회 페이지 공용 로딩 행 — tbody에 주입(스피너 + 메시지). 전 페이지 일관 포맷.
+  loadingRow: function(colspan, message) {
+    colspan = colspan || 1;
+    message = (message === undefined || message === null) ? '로딩 중...' : message;
+    return '<tr><td colspan="' + colspan + '" style="text-align:center;padding:32px 12px;color:#9ca3af;font-size:13px;">'
+      + '<i class="fas fa-spinner fa-spin" style="margin-right:8px;"></i>' + message + '</td></tr>';
+  },
+  // #421: div 컨테이너용 로딩 블록(테이블을 통째로 담는 컨테이너) — loadingRow와 동일 시각 포맷.
+  loadingBlock: function(message) {
+    message = (message === undefined || message === null) ? '로딩 중...' : message;
+    return '<div style="text-align:center;padding:48px 12px;color:#9ca3af;font-size:13px;">'
+      + '<i class="fas fa-spinner fa-spin" style="margin-right:8px;"></i>' + message + '</div>';
   }
 };
 

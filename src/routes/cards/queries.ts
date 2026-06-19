@@ -908,6 +908,9 @@ cardsQueriesRouter.get('/:id', async (c) => {
   try {
     const id = c.req.param('id')
 
+    // #414: 단건 카드 상세도 법인 격리 — #375가 by-number만 고치고 by-id 누락(형제 부분픽스).
+    // cardEntityFilter는 ' AND c.requesting_entity_id = ?'(비관리자) / ''(super-admin). 거래처 PII·영업정보 cross-tenant 유출 차단.
+    const efCard = cardEntityFilter(c, 'c')
     const card = await c.env.DB.prepare(`
       SELECT
         c.*,
@@ -926,8 +929,8 @@ cardsQueriesRouter.get('/:id', async (c) => {
       FROM cards c
       LEFT JOIN orders o ON c.order_id = o.id
       LEFT JOIN users u ON o.created_by = u.id
-      WHERE c.id = ?
-    `).bind(id).first()
+      WHERE c.id = ?${efCard.clause}
+    `).bind(id, ...efCard.params).first()
 
     if (!card) {
       return c.json({

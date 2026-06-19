@@ -179,6 +179,8 @@ leavesRouter.post('/accrual/monthly', requireRole('ADMIN'), async (c) => {
     // 현재 적립값 일괄 조회 — 직원별 SELECT N+1 제거 (#321)
     const accruedMap = await loadAnnualAccruedMap(c, employees.map(e => e.id), currentYear)
 
+    // #416: 직원별 순차 INSERT 2N회(N+1 write) → stmt 누적 후 DB.batch. /grant(sick #321)와 동일 정책(all-or-nothing).
+    const stmts: any[] = []
     for (const emp of employees) {
       const expected = calcMonthlyAccrualUpTo(emp.hire_date, today)
       const annual = calcAnnualEntitlement(emp.hire_date, today)
@@ -190,23 +192,23 @@ leavesRouter.post('/accrual/monthly', requireRole('ADMIN'), async (c) => {
       const delta = expected - currentAccrued
       if (delta <= 0) continue
 
-      try {
-        await c.env.DB.prepare(`
-          INSERT INTO leave_balances (employee_id, year, leave_type, accrued, entity_id)
-          VALUES (?, ?, 'ANNUAL', ?, ?)
-          ON CONFLICT(employee_id, year, leave_type) DO UPDATE SET
-            accrued = excluded.accrued, updated_at = CURRENT_TIMESTAMP
-        `).bind(emp.id, currentYear, expected, (emp as any).entity_id || 1).run()
+      stmts.push(c.env.DB.prepare(`
+        INSERT INTO leave_balances (employee_id, year, leave_type, accrued, entity_id)
+        VALUES (?, ?, 'ANNUAL', ?, ?)
+        ON CONFLICT(employee_id, year, leave_type) DO UPDATE SET
+          accrued = excluded.accrued, updated_at = CURRENT_TIMESTAMP
+      `).bind(emp.id, currentYear, expected, (emp as any).entity_id || 1))
 
-        await c.env.DB.prepare(`
-          INSERT INTO leave_accrual_logs (employee_id, year, accrual_type, days, reason, run_by, entity_id)
-          VALUES (?, ?, 'MONTHLY', ?, '입사 1년 미만 월차 자동 적립', ?, ?)
-        `).bind(emp.id, currentYear, delta, user?.id || null, emp.entity_id || 1).run()
-        processed++
-      } catch (e: any) {
-        console.error(`Accrual error for emp_id=${emp.id}:`, e)
-        errors.push(`emp_id=${emp.id}: 오류가 발생했습니다`)
-      }
+      stmts.push(c.env.DB.prepare(`
+        INSERT INTO leave_accrual_logs (employee_id, year, accrual_type, days, reason, run_by, entity_id)
+        VALUES (?, ?, 'MONTHLY', ?, '입사 1년 미만 월차 자동 적립', ?, ?)
+      `).bind(emp.id, currentYear, delta, user?.id || null, emp.entity_id || 1))
+      processed++
+    }
+
+    // 80개 청크 분할 batch (직원당 2 stmt → 청크당 ~40명, Workers subrequest 상한·D1 batch 한도 회피)
+    for (let i = 0; i < stmts.length; i += 80) {
+      await c.env.DB.batch(stmts.slice(i, i + 80))
     }
 
     return c.json({ success: true, processed, errors })
@@ -233,6 +235,8 @@ leavesRouter.post('/accrual/yearly', requireRole('ADMIN'), async (c) => {
     // 현재 적립값 일괄 조회 — 직원별 SELECT N+1 제거 (#321)
     const accruedMap = await loadAnnualAccruedMap(c, employees.map(e => e.id), currentYear)
 
+    // #416: 직원별 순차 INSERT 2N회(N+1 write) → stmt 누적 후 DB.batch. /grant(sick #321)와 동일 정책(all-or-nothing).
+    const stmts: any[] = []
     for (const emp of employees) {
       const annual = calcAnnualEntitlement(emp.hire_date, today)
       if (annual <= 0) continue
@@ -240,23 +244,23 @@ leavesRouter.post('/accrual/yearly', requireRole('ADMIN'), async (c) => {
       const currentAccrued = accruedMap.get(emp.id) || 0
       if (currentAccrued >= annual) continue
 
-      try {
-        await c.env.DB.prepare(`
-          INSERT INTO leave_balances (employee_id, year, leave_type, accrued, entity_id)
-          VALUES (?, ?, 'ANNUAL', ?, ?)
-          ON CONFLICT(employee_id, year, leave_type) DO UPDATE SET
-            accrued = excluded.accrued, updated_at = CURRENT_TIMESTAMP
-        `).bind(emp.id, currentYear, annual, (emp as any).entity_id || 1).run()
+      stmts.push(c.env.DB.prepare(`
+        INSERT INTO leave_balances (employee_id, year, leave_type, accrued, entity_id)
+        VALUES (?, ?, 'ANNUAL', ?, ?)
+        ON CONFLICT(employee_id, year, leave_type) DO UPDATE SET
+          accrued = excluded.accrued, updated_at = CURRENT_TIMESTAMP
+      `).bind(emp.id, currentYear, annual, (emp as any).entity_id || 1))
 
-        await c.env.DB.prepare(`
-          INSERT INTO leave_accrual_logs (employee_id, year, accrual_type, days, reason, run_by, entity_id)
-          VALUES (?, ?, 'YEARLY', ?, '연간 연차 자동 부여 (근로기준법)', ?, ?)
-        `).bind(emp.id, currentYear, annual - currentAccrued, user?.id || null, emp.entity_id || 1).run()
-        processed++
-      } catch (e: any) {
-        console.error(`Accrual error for emp_id=${emp.id}:`, e)
-        errors.push(`emp_id=${emp.id}: 오류가 발생했습니다`)
-      }
+      stmts.push(c.env.DB.prepare(`
+        INSERT INTO leave_accrual_logs (employee_id, year, accrual_type, days, reason, run_by, entity_id)
+        VALUES (?, ?, 'YEARLY', ?, '연간 연차 자동 부여 (근로기준법)', ?, ?)
+      `).bind(emp.id, currentYear, annual - currentAccrued, user?.id || null, emp.entity_id || 1))
+      processed++
+    }
+
+    // 80개 청크 분할 batch (직원당 2 stmt → 청크당 ~40명, Workers subrequest 상한·D1 batch 한도 회피)
+    for (let i = 0; i < stmts.length; i += 80) {
+      await c.env.DB.batch(stmts.slice(i, i + 80))
     }
 
     return c.json({ success: true, processed, errors })

@@ -195,8 +195,9 @@ arPaymentsRouter.delete('/payment/:id', requireRole('ADMIN'), async (c) => {
     await c.env.DB.batch([
       c.env.DB.prepare('DELETE FROM payments WHERE id = ?').bind(id),
       // #93: 결제 삭제 시 은행거래 매칭 해제
+      // #413: bank_transactions에 updated_at 컬럼 없음(0043 스키마) — 제거. 이전엔 prepare 단계 throw로 DELETE batch 전체 실패.
       c.env.DB.prepare(
-        `UPDATE bank_transactions SET match_status = 'UNMATCHED', matched_payment_id = NULL, updated_at = CURRENT_TIMESTAMP WHERE matched_payment_id = ?`
+        `UPDATE bank_transactions SET match_status = 'UNMATCHED', matched_payment_id = NULL WHERE matched_payment_id = ?`
       ).bind(id),
     ])
 
@@ -336,15 +337,17 @@ arPaymentsRouter.get('/adjustments/:clientId', async (c) => {
   try {
     const clientId = c.req.param('clientId')
 
+    // #415: 감액 이력도 법인 격리(비-super ADMIN/MANAGER는 자기 법인만). payments 라우트와 대칭.
+    const efAdjList = entityFilter(c, 'a')
     const { results } = await c.env.DB.prepare(`
       SELECT
         a.*,
         u.name as created_by_name
       FROM adjustments a
       LEFT JOIN users u ON a.created_by = u.id
-      WHERE a.client_id = ?
+      WHERE a.client_id = ?${efAdjList.clause}
       ORDER BY a.created_at DESC
-    `).bind(clientId).all()
+    `).bind(clientId, ...efAdjList.params).all()
 
     return c.json({ success: true, data: results })
   } catch (error) {
@@ -362,15 +365,18 @@ arPaymentsRouter.delete('/adjustment/:id', requireRole('ADMIN'), async (c) => {
   try {
     const id = c.req.param('id')
 
+    // #415: 타 법인 감액 삭제 IDOR 방지 — payments DELETE(#333)와 대칭. super-admin(entityId=0)은 clause='' 로 전체 허용.
+    // alias 미사용(SQLite DELETE는 테이블 alias 미지원): entity_id 직접 참조.
+    const efAdj = entityFilter(c)
     const existing = await c.env.DB.prepare(
-      'SELECT id, client_id, order_id, type, amount, reason, created_at FROM adjustments WHERE id = ?'
-    ).bind(id).first<AdjustmentRow>()
+      `SELECT id, client_id, order_id, type, amount, reason, created_at FROM adjustments WHERE id = ?${efAdj.clause}`
+    ).bind(id, ...efAdj.params).first<AdjustmentRow>()
 
     if (!existing) {
       return c.json({ success: false, error: '감액 내역을 찾을 수 없습니다' }, 404)
     }
 
-    await c.env.DB.prepare('DELETE FROM adjustments WHERE id = ?').bind(id).run()
+    await c.env.DB.prepare(`DELETE FROM adjustments WHERE id = ?${efAdj.clause}`).bind(id, ...efAdj.params).run()
 
     // split billing P3: balance 캐시 미사용 — 감액 삭제만 (미수금은 파생).
     return c.json({

@@ -113,6 +113,9 @@ async function loadTemplates() {
 
 async function loadPending() {
   try {
+    // #421: 로딩 표시(일관 포맷) — pending-list는 div 컨테이너
+    const _pl = document.getElementById('pending-list');
+    if (_pl && window.dsSkeleton) _pl.innerHTML = window.dsSkeleton.loadingBlock();
     const res = await axios.get('/api/approvals/pending');
     pendingApprovals = res.data.data || [];
     renderPending();
@@ -121,6 +124,9 @@ async function loadPending() {
 
 async function loadMyRequests() {
   try {
+    // #421: 로딩 표시(일관 포맷)
+    const _mt = document.getElementById('my-requests-tbody');
+    if (_mt && window.dsSkeleton) _mt.innerHTML = window.dsSkeleton.loadingRow(6);
     const res = await axios.get('/api/approvals');
     myRequests = res.data.data || [];
     renderMyRequests();
@@ -129,6 +135,9 @@ async function loadMyRequests() {
 
 async function loadAllRequests() {
   try {
+    // #421: 로딩 표시(일관 포맷)
+    const _at = document.getElementById('all-requests-tbody');
+    if (_at && window.dsSkeleton) _at.innerHTML = window.dsSkeleton.loadingRow(7);
     const res = await axios.get('/api/approvals');
     allRequests = res.data.data || [];
     renderAllRequests();

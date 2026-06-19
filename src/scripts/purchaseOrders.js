@@ -148,6 +148,9 @@ async function loadPOs(page) {
     + '&status=' + status + '&sort=' + sort + (overdue ? '&overdue=1' : '')
     + (supplierId ? '&supplier_id=' + supplierId : '');
   try {
+    // #421: 로딩 표시(일관 포맷)
+    var _poTb = document.getElementById('poTableBody');
+    if (_poTb && window.dsSkeleton) _poTb.innerHTML = window.dsSkeleton.loadingRow(7);
     var res = await axios.get(url);
     if (res.data.success) {
       displayPOs(res.data.data);
