@@ -18,7 +18,8 @@
   - **#3 /files 500 근본원인 정정**: stale id 아님 — `canvas_json`(마이그 0317) 미적용 환경서 "no such column" 500. **prod=정상(200)**, 로컬 드리프트는 db:migrate:local로 해소. 코드 버그 아님.
   - **#4 다중시트 UX**: 주 카드생성 정상. SHEET/RESIZE/TRIM 내부코드 후가공 뱃지 누수 → `isPPHidden`(cards/core.js) IAE_INTERNAL_PP로 숨김. (배포 동반)
   - **🆕 직접연결 완성본(-3) 썸네일 공백버그 — 에이전트 수정·재배포·e2e 완결**: 거래처명 공백 시 EPS(File.Copy=공백 보존)/PNG(Illustrator exportFile=하이픈화) 파일명 미스매치 → `ReportDirectThumbnailAsync` File.Exists 실패→콜백 미발송→썸네일 NULL. **B안**(Program.cs: File.Exists 실패 시 공백→하이픈 후보 + `{주문번호}-{seq}-*.png` glob 폴백) 적용. **에이전트 재빌드·Z:\publish 재배포(백업 보존)·재시작 PID 21000**(webapp 무변경). **e2e**: 공백 거래처 신규주문 `E1-20260619-009` → 미스매치 재현→폴백→로그 `썸네일 보고(분석#42) OK`→카드 SET·디코딩. **007 백필**(콜백 엔드포인트) done/SET. 무공백 회귀0(008). 정본→[[bug-history]].
-  - **▶ 다음: 커밋 + push**(origin feat/ia-editor-canvas-n1:main). 변경=`orders/create.ts`·`orders/helpers.ts`·`scripts/iaEditor.js`·`scripts/cards/core.js`·`IllustratorAutomat/Program.cs`(+scripts/e2e-*.cjs). 핸드오프=session-context.md.
+  - **✅ 커밋 `74272977` → push `origin feat/ia-editor-canvas-n1:main`**(HEAD=origin/main 동기화). 변경=`orders/create.ts`·`orders/helpers.ts`·`scripts/iaEditor.js`·`scripts/cards/core.js`·`IllustratorAutomat/Program.cs`. 핸드오프=session-context.md.
+  - **▶ 다음(선택)**: 이형(true-shape) 네스팅(별도 세션) / append 실사용 검증 / Z 잔재·publish 백업 정리.
 
 - **✅ [2026-06-18~19] EPS suffix 버그 해결 + ia-editor 캔버스 워크벤치 N1~N5 + N4 출력 fidelity — 전부 prod 배포·e2e 검증** (브랜치 `feat/ia-editor-canvas-n1` = main = `0783c75e`, web dep `640dad03`, 에이전트 PID 13652):
   - **EPS suffix 버그**(`Program.cs NormalizeArtboardEpsName`, 커밋 `3e2be20a`): `saveMultipleArtboards`가 EPS명에 `_design_N`/`-01` suffix 강제 → `File.Exists` 오탐 → file-map/썸네일/원본보존 스킵(2026-05-09~). 영향조사=실운영 RIP은 agent file-map 미사용(prod print_events 100건 card=NULL)→기존 회귀0. 정규명 rename으로 수정. agent 배포·e2e 성공.
