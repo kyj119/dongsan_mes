@@ -2,6 +2,7 @@
 
 > **최종 업데이트**: 2026-06-19 PM3 (**이형(true-shape) 수동 인터록 네스팅(web+에이전트) + append 검증 + 정리(#3) + 180° 라이브 EPS e2e + finishing2/3 드리프트 수정 — 전부 구현·검증·prod 배포·push 완료**). origin/main=`ddfd2e98`, 라이브 `5cfe7a61`(코드본 `1fd1d94a`), 에이전트 PID 5448, smoke 103/103. 핸드오프=`memory/session-context.md`
 > 완료 이력 → `PROJECT_STATUS_ARCHIVE.md` (매 세션 읽을 필요 없음, 필요 시 참조)
+> **📄 2026-06-19 문서정리**: 참조문서 4건(entity-separation-map·architecture-flow·decisions-code·kakao-alimtalk-templates) 코드 기준 동기화 + 신규 설계 5건 STATUS 대기 등록 + queue/pending stale 3건(#372/#374/#378/#379 close 확인 → done/ 이동·중복 제거). **미커밋 — 사람 검토 후 커밋.**
 
 ---
 
@@ -102,6 +103,15 @@
 ---
 
 ## 🟡 대기 중 (사용자 선택/승인 필요)
+
+### 🆕 신규 설계 — 구현 미착수 (2026-06-13~16, 문서정리 세션서 STATUS 등록)
+- **[품목·단가·재고 통합 개편] — north-star 수렴 · 게이트 통과(B-1 검증→A 채택, 2026-06-19)**: 표준품목 3역할(PRODUCT/GOODS/MATERIAL) + 단가 자동계산(기본 ㎡단가표×거래처 override) + 소재=자재 재고연결 + 프리셋 입력. 목적="ECOUNT가 못 하던 것"(전품목 통계·재고/원가 정확·단가 자동, 입력속도 아님). **게이트 결과(prod 검증)**: B-1 겹업물건=프로덕션 63/103 다중역할(MATERIAL 53건이 판매겸업) → **dual 플래그 유지=역할 정본, item_type enum collapse 금지**(A 채택), **전면 재설계(다) 불요**. realign Phase 2 '단일출처화' 단계 삭제. B-2(깃발 호수·간판 BOM)·B-6(단가 다형성)은 단가 개편서 plug-in 흡수. → [[design-item-role-multi-flag]]. 옵션(축) 시스템=EAV·규격 듀얼모드(출력물 NUMERIC/자재·상품 LIST)·동적 화면·카테고리 상속·권한 = v3 구조 확정. spec 4: `2026-06-13-item-pricing-inventory-FINAL`·`item-axis-realign-plan`·`item-master-review`·`option-axis-system-design`. **▶ 진행(2026-06-19): 마스터 로드 먼저** — 결정 확정(인쇄방식 분리·1차 단가엔진 AREA+FIXED+GRADE(깃발 호수)·기존103↔신규298 병행+매핑·겸업 2행). 로드원본=`표준품목_등록구조_수정본.xlsx`(298행). **P1a 스키마(`0322`카테고리9·`0323`pricing_profile(B-6)·`0324`size_grade_prices) + P1b 마스터로드(`0325`=231품목 **staged is_active=0**+14겸업링크) = prod 적용·검증 완료**(execute --file --remote, 추적드리프트 회피). prod 검증: 카테고리13·pricing_profile백필103·231 staged(active0·기존103 미변경)·GRADE34·링크77(기존63+14)·category NULL0·**prod 스모크 103/103**. 스테이징=picker(is_active=1 필터) 무오염. 정본 spec=`docs/superpowers/specs/2026-06-19-item-master-load-phase1.md`. **🔴 P1c 활성화(is_active=1) 전 차단 = `weeklyPurchase.analyze`·`consumptionForecast` IN() D1 바인드 한도(active purchase>100시 500) → 80개 청크 분할 선결**(현 prod active=70이라 staged 무영향, 로컬 스모크 1건 실패가 이 잠재버그 노출). **다음=P1c(기존103 dedup·ecount매핑·인쇄방식카테고리 비활성·바인드픽스 → 활성화)·P1d 단가배선(GRADE룩업·㎡단가표)·기성PRODUCT 토글.** 미확인=원단53 재고이중장부 PoC. 이름확인16·간판52·선명19=후속.
+- **[간판 구성요소 견적(조립 견적/BOM)] — 방향 확정, 세부 보류**: 간판=면적 아닌 "구성요소 라인 합"(채널·LED·SMPS·알루미늄바·까치발…). 기존 items+order_items.parent_item_id 위 "조립 견적 품목" 확장, calc_type 4종(FIXED/PER_QTY/BY_SIZE/BY_SPEC_QTY). **▶ 품목 개편과 병행, 구성요소 전수 확정 선행.** spec `2026-06-13-signage-component-estimate-structure`
+- **[원본 파일 아카이브] — 결정 확정(D1~D9), 미착수**: 현행 IA가 고객 원본을 가공 후 폐기(Program.cs:1760) → 작업 EPS와 동일 규칙으로 `Z:\원본\...` 별도 트리 영구보존 + `/workbench` 보드 조회. **▶ ia-editor §14 P1.** spec `2026-06-16-ia-editor-nesting-intake`(`incoming-file-board` 흡수)
+- **[수신 파일 간편 편집기] — 방향 확정, 보류**: 들어오는 AI/EPS를 일러 없이 웹서 수정("그림 수정❌, 처리 설정⭕"로 축소 재정의). 워크벤치 P2 후 착수. spec `2026-06-11-incoming-file-editor`
+
+### 🆕 [LogWatcher 장비중심 모델] — P1~P3 구현·미배포, P4 대기 (2026-06-15)
+- 마이그 0312+heartbeat 자동등록+/equipment 보강(P1)·LogWatcher heartbeat 확장(P2)·/equipment 표시+/rip 페이지 폐기(P3) 빌드 완료. **▶ P4: permission_pages '/rip' 정리+스모크+prod 배포+LogWatcher 재배포.** spec `2026-06-15-logwatcher-equipment-centric`, 메모리 `project-logwatcher-rollout`
 
 ### [기성품/유통 즉시출고] — ✅ 전체 완료 (Phase 1+2+3 + UI 클릭검증 + 태극기 지정)
 - 코드/마이그(0285·0286) prod 반영. 기성/유통 = 카드 미생성·즉시 출고가능·SHIPPED 전이·출고 시 재고차감(음수 허용·멱등)·주문서 재고부족 경고.

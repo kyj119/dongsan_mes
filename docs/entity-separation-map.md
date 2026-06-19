@@ -1,6 +1,7 @@
 # 법인 분리(Entity Separation) 현황 지도
 
-> 최종 업데이트: 2026-05-27 | 전체 174 테이블
+> 최종 갱신: 2026-06-19 (split-billing P1~P5 + 마이그 0305~0321 반영) | 기준일: 2026-06-19
+> 이전 기준: 2026-05-27
 
 ---
 
@@ -13,6 +14,38 @@
  🌐 법인 공유 (설계 결정)               : 42개 테이블
  ⚙️ 시스템/인프라                       : 18개 테이블
 ```
+
+---
+
+## 🆕 청구 법인 분할 — `order_billing_groups` (split-billing, 2026-06-11 prod)
+
+> 정본 spec: `docs/superpowers/specs/2026-06-10-split-billing-by-entity.md` · 마이그 0305(P1)·0306(P4)
+
+**전환 핵심**: 청구법인 = `orders.entity_id`(접수 법인) 단일 → **품목 `assigned_entity_id`별 생산법인 분할 청구**.
+한 주문이 동산(현수막)·선명(간판)을 섞어도 각 생산법인이 자기 몫을 직접 청구.
+
+### 신규 테이블 `order_billing_groups` (주문 × 법인)
+| 컬럼 | 역할 |
+|------|------|
+| `order_id` | FK → orders |
+| **`entity_id`** | **청구(=생산 담당) 법인 — 이 테이블의 entity 격리 기준** |
+| `billing_status` | NULL \| BILLED \| PAID (orders에서 이동) |
+| `billed_amount` / `supply_amount` / `tax_amount` | 법인 몫 청구금액·공급가·세액 |
+| `tax_invoice_id` | 발행 시 연결 (FK → tax_invoices, 1계산서:N그룹) |
+| | `UNIQUE(order_id, entity_id)` + idx_obg_order/entity/status/tax_invoice |
+
+- **entity 격리 전환**: 청구·매출·미수금 집계 쿼리는 `orders.entity_id` → **`order_billing_groups.entity_id` 기준**으로 전환.
+  - 청구확정(BILLED): `orders/queries.ts:164~178` — 그룹 `billing_status` UPDATE (`IS NOT 'BILLED'`/`IS NOT 'PAID'` 가드).
+  - 세금계산서: `tax_invoices`가 청구그룹 참조, 발행 시 (주문×법인) 단위 BILLED.
+- **품목 귀속**: `order_items.assigned_entity_id`로 그룹 결정. NULL(상품·부자재 등 미생산) → 주문 주(主)법인(`orders.entity_id`) 그룹.
+- **백필**: 기존 주문 전수 → 주문당 1그룹 (멱등 `INSERT OR IGNORE`). BILLED/PAID 동결, NULL은 신규 코드에서 재계산.
+
+### `clients.balance` 캐시 폐기 → `deriveClientBalance` 파생
+- 기존: `clients.balance` 단일 캐시(**법인 무구분** 버그) → split-billing이 무력화.
+- 전환: **(거래처 × 법인)별 파생 계산** = `Σ billing_groups[BILLED].billed_amount − payments − adjustments`, group by (client_id, entity_id).
+- `payments.entity_id` / `adjustments.entity_id`는 이미 법인별 보유 → 미수금 파생의 입력으로 그대로 사용.
+- `clients.balance`는 전환기 레거시 컬럼으로 잔존(읽기는 파생, P5 prod 검증 후 별도 마이그로 제거 예정).
+- → ⚙️ **분류 변경**: `clients`는 여전히 entity_id 없는 법인 공유 마스터지만, **잔액(미수금)은 법인별 파생**으로 격리됨.
 
 ---
 
@@ -42,7 +75,8 @@
 ### 핵심 거래/재무
 | 테이블 | 도메인 | entity 컬럼 |
 |--------|--------|-------------|
-| `orders` | 주문 | entity_id |
+| `orders` | 주문 | entity_id (접수=주(主)법인. 청구는 order_billing_groups로 분할) |
+| `order_billing_groups` | 청구그룹 | entity_id (청구=생산 담당 법인, 마이그 0305) |
 | `cards` | 카드 | requesting_entity_id |
 | `quotations` | 견적 | entity_id |
 | `quotation_items` | 견적 품목 | entity_id |
@@ -184,6 +218,26 @@
 > entity 개념이 적용되지 않는 시스템 테이블.
 
 `entities`, `users`, `settings`, `entity_settings`, `permission_pages`, `role_page_permissions`, `d1_migrations`, `migration_logs`, `agent_heartbeats`, `caps_employee_map`, `caps_sites`, `caps_sync_log`, `sqlite_sequence`, `maintenance_logs`
+
+---
+
+## 🆕 마이그 0305~0321 신규 테이블/컬럼 entity 점검 (2026-06-19)
+
+> 0265 이후 추가분 중 법인 데이터 보유 테이블만. (권한/시드/데이터복구 마이그는 제외)
+
+| 마이그 | 테이블/컬럼 | entity 처리 | 분류 |
+|--------|-------------|-------------|------|
+| 0305 | `order_billing_groups` | `entity_id NOT NULL` (청구 법인) | ✅ 분리 완료 (상단 split-billing 참조) |
+| 0306 | `order_billing_groups.tax_invoice_id` | 부모 그룹 entity로 격리 | 🔗 간접 |
+| 0314 | `original_archives` | `entity_id NOT NULL DEFAULT 1` + idx | ✅ 분리 완료 (시안 원본 아카이브) |
+| 0316/0318 | `sheet_layouts` (+ render_status 등) | `entity_id NOT NULL DEFAULT 1` + idx | ✅ 분리 완료 (시트 네스팅 레이아웃) |
+| 0312 | `equipment.last_seen_at/print_log_path/agent_id` | equipment = 법인 공유 마스터 | 🌐 공유 (LogWatcher 수집 상태 컬럼) |
+| 0311 | `holidays` | 날짜 달력, 전 법인 공통 | 🌐 공유 |
+| 0319 | `entity_settings` 시드 (선명 알림톡) | entity_settings = 시스템(법인별 KV) | ⚙️ 시스템 |
+| 0321 | `kakao_template_defaults` | `entity_id NOT NULL DEFAULT 1` (발송위치별 기본 템플릿) | ✅ 분리 완료 |
+| 0309 | `entities` id=4 오다플래그 | entities 마스터 | ⚙️ 시스템 |
+
+> 0307(workbench 권한)·0308(ia_auto_enabled 설정)·0310(직원 복구)·0313(quality_issues.severity)·0315(ia-editor 권한)·0317(canvas_render 컬럼)·0320(card_tx 분류상태 보정)은 entity 격리 영향 없음.
 
 ---
 

@@ -2,16 +2,29 @@
 
 > 코드 수정 시 영향 범위를 빠르게 파악하기 위한 참조 문서.
 
-## 프로젝트 규모 (2026-05-27 기준)
+## 프로젝트 규모 (기준일: 2026-06-19 / 이전: 2026-05-27)
 
 | 항목 | 수량 | 위치 |
 |------|------|------|
-| API 라우터 | 83개 (top-level + 서브파일) | `src/routes/*.ts` + `src/routes/{ledger,orders,cards}/*.ts` |
-| 페이지 | 84개 (일반 78 + 포털 6) | `src/pages/*.ts` + `src/pages/portal/*.ts` |
-| 스크립트 | 87개 | `src/scripts/*.js` |
-| DB 마이그레이션 | 266개 파일 (최신 0266) | `migrations/` |
+| API 라우터 | 83 top-level + 35 서브파일 (7개 도메인 분할) | `src/routes/*.ts` + `src/routes/{ledger,orders,cards,taxInvoices,purchaseOrders,payroll,seed}/*.ts` |
+| 페이지 | 87개 (일반 80 + 포털 7) | `src/pages/*.ts` + `src/pages/portal/*.ts` |
+| 스크립트 | 89 top-level + 17 서브파일 (5개 디렉토리 분할) | `src/scripts/*.js` + `src/scripts/{cards,items,orderForm,layout}/*.js` |
+| DB 마이그레이션 | 318개 파일 (최신 0321) | `migrations/` |
 | Seed 파일 | 9개 | 프로젝트 루트 `seed_*.sql` |
 | 외부 연동 | IllustratorAutomat(C#), LogWatcher(C#), EdgeAgent | 프로젝트 루트 |
+
+### 대형 파일 분할 현황 (배럴 = thin aggregator + 도메인 서브파일)
+
+| 도메인 | 배럴 | 서브파일 | 비고 |
+|--------|------|----------|------|
+| **주문** | `routes/orders.ts` | `orders/` = helpers · lifecycle · create · update · core · queries · operations (7) | core/queries/operations(K) → create/update/lifecycle/helpers 추가 분리 |
+| **세금계산서** | `routes/taxInvoices.ts` | `taxInvoices/` = helpers · issue · manage · queries · batch (5) | 발행/관리/조회/일괄 분리 |
+| **원장(AR/AP)** | `routes/ledger.ts` | `ledger/` = accounts-receivable · accounts-payable + ar-{dunning,helpers,ledger,payments,receivables} (7) | AR을 dunning/payments/receivables로 세분화(J) |
+| **발주** | `routes/purchaseOrders.ts` | `purchaseOrders/` = po-queries · po-receipts · po-receive · po-special · core · stock-alerts · templates (7) | 입고/특수발주/재고경고 분리 |
+| **카드** | `routes/cards.ts` | `cards/` = queries · scheduling · lifecycle (3) | (기존 유지) |
+| **급여** | `routes/payroll.ts` | `payroll/` = core · records · settings · shared · tax-agent · year-end (6) | shared=순수 헬퍼(auth 없음) |
+
+> 클라이언트 JS 분할(`?raw` **다중 import 결합**): `scripts/cards/`(actions·core·detail·misc·rip), `scripts/items/`(bulk·core·media·modals·tabs), `scripts/orderForm/`(calc·client·finishing·itemRow·parent·sheet), `scripts/layout/`(shell). → `cards.js` 단일 파일은 폐기, 5청크로 분할 후 페이지 스크립트에서 concat.
 
 ## 요청 처리 흐름 (API)
 
@@ -81,7 +94,7 @@ fetch(url, { headers: { 'X-SPA-Request': '1', Authorization: Bearer } })
 ## 데이터 흐름 (프론트 → 백 → DB)
 
 ```
-scripts/*.js: axios.get('/api/cards', { params })
+scripts/cards/*.js (core·detail·actions·rip·misc, ?raw concat): axios.get('/api/cards', { params })
   ↓ (Authorization: Bearer 자동 추가 — SHARED_AUTH_JS 설정)
 routes/cards/{queries,scheduling,lifecycle}.ts: 쿼리 파라미터 파싱 → SQL 동적 구성
   ↓
@@ -124,11 +137,12 @@ npm run deploy     → wrangler pages deploy dist (스테이징)
 npm run deploy:prod → 프로덕션 배포
 ```
 
-## API 라우트 도메인 분류 (58개 top-level, 주요 도메인만 표시)
+## API 라우트 도메인 분류 (83개 top-level, 주요 도메인만 표시)
 
 | 도메인 | 라우터 | 용도 |
 |--------|--------|------|
-| **주문/생산** | orders, cards, production, postProcessing, shipments, rip, printEvents | 주문~출고 전체 |
+| **주문/생산** | orders, cards, production, postProcessing, shipments, rip, printEvents, finishing, equipmentQueue, oee | 주문~출고 전체 |
+| **IA/시안 워크벤치** | workbench, aiAnalysis, aiLayout, iaAuto, autoProcess, files | 시안 검수·자유대지 편집기·시트 네스팅·직접연결 (`/workbench` 페이지·`workbench.ts`·`workbench.js`) |
 | **거래처/기준** | clients, items, priceLists, prices | 기준정보 관리 |
 | **재무/경리** | ledger, taxInvoices, cashReceipts, hometaxInvoices, bank, cashFlow, costs | 정산/세금/은행 |
 | **구매** | purchaseOrders, purchaseRequests | 발주/구매요청 |

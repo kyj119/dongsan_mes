@@ -2,7 +2,9 @@
 
 > 연동 페이지: **`/messages` (메시지 관리)** · 발송 엔진: 바로빌 `KakaoTalk.asmx` (`SendATKakaotalk`)
 > 이 문서의 템플릿을 **바로빌 사이트에 등록 → 카카오 검수 통과** 후 MES가 자동으로 조회·발송합니다.
-> 최종 갱신: 2026-06-03 (코드 대조 점검 완료본)
+> 최종 갱신: 2026-06-19 (P2 자동발송·멱등·일괄결과 반영) · 기준일: 2026-06-19 · 이전: 2026-06-03
+
+> ⚠️ **현재 상태 = test_mode 유지 (실발송 0)**: `settings.barobill_test_mode != '0'`이면 테스트 CERTKEY 사용 → 실제 알림톡 미발송. **go-live = `barobill_test_mode='0'` 전환 시점**. 아래 P2 자동발송/일괄/멱등 로직은 전부 구현·배포 완료 상태이나, test_mode 해제 전까지는 실고객 발송 0건. (`src/routes/kakao.ts:74-83`, go-live 패키지=`docs/superpowers/specs/2026-06-11-alimtalk-golive-package.md`)
 
 ---
 
@@ -34,6 +36,42 @@
 
 ### 서버 치환 변수 (출고 전용, `resolveMsg`)
 `#{고객명}` `#{품목}` `#{송장번호}` `#{터미널}` `#{배송방법}` `#{날짜}` — 정규식 치환 동작 확인 완료.
+
+---
+
+## 1-A. P2 자동발송 · 멱등 · 일괄결과 (코드 대조 2026-06-19, `src/routes/kakao.ts`)
+
+> ⚠️ **모두 test_mode 유지 중 = 실발송 0**. go-live(`barobill_test_mode='0'`) 전까지 아래 로직은 동작하되 실고객엔 미발송.
+
+### (1) 단건 자동발송 매핑 — `POST /api/kakao/send-shipment` (`kakao.ts:412~`)
+- `template_code` 미지정 시 출고 **`delivery_method` → 승인 템플릿명** 자동 해석:
+
+  | `delivery_method` | 자동 선택 템플릿 |
+  |-------------------|------------------|
+  | 대신화물 | `대신화물 출고` |
+  | 대신택배 | `대신택배 출고` |
+  | 방문수령 / 직접수령 | `방문 수령 준비 완료` |
+  | **한진택배** | ❌ 미매핑 → **skip**(승인 템플릿 미등록) |
+  | 그 외/미지정 | ❌ 미매핑 → **skip** |
+- **미매핑 skip**: 발송하지 않고 `kakao_send_logs`에 `status='SKIPPED'`, message=`자동발송 skip: 미매핑 배송수단(...)` 로그 남김(자동발송 미동작 추적용). 응답 `{ status:'SKIPPED', reason:'unmapped_delivery_method' }`.
+- 본문 미지정 시 등록 템플릿 본문(`provider.listATSTemplate()`) 조회 후 `#{고객명}/#{품목}/#{터미널}/#{송장번호}/#{배송방법}/#{날짜}` 서버 치환. 품목요약은 카드/주문 두 경로 `COALESCE`(#385).
+
+### (2) 멱등 가드 (재발송 방지)
+- 발송 전 `kakao_send_logs WHERE related_type='shipments' AND related_id=? AND status='SUCCESS'` 존재 시 → **재발송 skip** (`{ status:'SKIPPED', reason:'already_sent' }`). 같은 출고 중복 발송 차단(`kakao.ts:450~456`).
+
+### (3) 일괄발송 결과 집계 — `POST /api/kakao/send-shipment-bulk` (`kakao.ts:1031~`, #378)
+- 바로빌 **건별 결과**(`sendResult.results[]`)로 성공/실패 집계. (이전엔 `sent_count=targets.length`로 부분/전량 실패도 전량 성공 오보고 → 수정.)
+- 건별 식별 불가(SMS 다건 등)는 대표 `receiptNum`으로 전량 판정. 최종 `status` = `SUCCESS`/`PARTIAL`/`FAILED`.
+- 응답: `{ status, total, sent_count, fail_count, failures[], ... }`. `failures[]` = `{client_name, mobile, shipment_ids, reason}`.
+- 로그: bulk 대표 1건(`receiver_num='BULK(n)'`, message=`성공 N / 실패 M`).
+- **한진택배 버튼**: 일괄 경로는 `delivery_type`에 `한진` 포함 + `tracking_number` 있으면 배송조회 **버튼 자동 첨부**(`btns`, `trace.hanjin.co.kr`). (단건 경로엔 버튼 없음 — §0·§6 버튼 미전송 한계는 일괄 ATS엔 적용됨/단건엔 미적용.)
+
+### (4) 프론트 일괄 결과 모달 + 실패건 재발송 (`scripts/shipments.js:985~1052`)
+- 발송 후 `sent_count/fail_count/failures`로 **결과 모달**(성공 N / 실패 M + 실패 목록 테이블) 표시.
+- 실패 > 0 → "실패 N건 재발송" 버튼 → `failures`의 (client_name|mobile) 키로 원 targets 필터 → 동일 라우트 재호출.
+
+### (5) 발송위치별 기본 템플릿 (`kakao_template_defaults`, 마이그 0321)
+- `(context, match_key, entity_id)` → `template_code` 기본값. `GET /api/kakao/template-defaults?...` resolve(위치별 자동선택). 동산(1)·선명(2) 시드, **한진(hanjin)은 시드 제외**(미등록).
 
 ---
 

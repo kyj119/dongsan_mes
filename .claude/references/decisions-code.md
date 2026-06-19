@@ -1,4 +1,6 @@
-# 설계 결정: 코드·도메인 (J~T)
+# 설계 결정: 코드·도메인 (J~BD)
+
+> 최종 갱신: 2026-06-19 (6월 결정 AX~BD 추가)
 
 ## J. ledger.ts 도메인 분리 AR/AP (2026-04-15)
 
@@ -250,3 +252,45 @@ db.batch([...otherUpdates, ...statements])
 - **영수증 취소**: UPDATE는_deleted=1 처리만 수행
 - **향후**: 회계 연동 시 journal 역산 로직 재검토 필요
 - **근거**: 영수증은 현금 흐름 기록이며, A/R settlement와 독립적
+
+## AX. 청구 법인 분할 = 담당 생산법인 기준 (2026-06-11, split-billing)
+
+- 청구법인 = `orders.entity_id`(접수 법인) 단일 → **품목 `assigned_entity_id`별 생산법인 분할 청구**. 한 주문이 동산·선명 섞이면 각 법인이 자기 몫 직접 청구.
+- 물리 모델: `order_billing_groups`(주문×법인, `UNIQUE(order_id,entity_id)`, 마이그 0305). 청구·매출·미수금 집계의 entity 기준이 `orders.entity_id` → `order_billing_groups.entity_id`로 이동.
+- 정본: `docs/superpowers/specs/2026-06-10-split-billing-by-entity.md`.
+
+## AY. clients.balance 캐시 폐기 → 파생 (2026-06-11)
+
+- `clients.balance` 단일 캐시는 **법인 무구분** 버그(split-billing 무력화) → 폐기.
+- 미수금 = **(거래처×법인)별 파생** = `Σ billing_groups[BILLED] − payments − adjustments` group by (client_id, entity_id). `clients.balance` 컬럼은 전환기 레거시 잔존(P5 검증 후 제거 예정).
+
+## AZ. billing_status 비교는 IS NOT 사용 (NULL 함정) (2026-06-11)
+
+- `billing_status`는 NULL(미청구)을 가지므로 `!= 'BILLED'`는 NULL 행을 누락(SQLite 3치 논리). **`IS NOT 'BILLED'` / `IS NOT 'PAID'`** 사용해야 NULL도 매칭.
+- 적용: `orders/queries.ts:165,175` (그룹 일괄 청구확정 UPDATE 가드).
+
+## BA. 출고일 권위 소스 = COALESCE(shipments→cards→폴백) (#380)
+
+- 주문 출고일은 단일 컬럼이 아니라 **`COALESCE(MAX(shipments.shipped_at), MAX(cards.shipped_at), 폴백)`** 우선순위로 도출.
+- 적용: `dashboard.ts:57-58`. 카드 출고(card 경유)·주문단위 출고(shipment 직접) 두 경로를 모두 포괄.
+
+## BB. IA 자동가공 게이트 `ia_auto_enabled` (#377)
+
+- `settings.ia_auto_enabled` 플래그(기본 `0`=OFF, 마이그 0308). OFF면 `/api/auto-process/pending`이 폴링 에이전트(IllustratorAutomat)에 **빈 목록** 반환 → 자동가공 정지.
+- 운영 절차: OFF(기본) → stale pending 정리 → 수동 테스트 1건 → `PATCH /api/settings`로 ON(1).
+
+## BC. bleed = 디자인 미세확대 (createEdgeStrip 폐기) (2026-06)
+
+- IA 편집기/네스팅(N-series) 경로의 도련은 **Design 클립 마스크를 중심에서 미세 확대**(`SheetLayout.jsx expandClipInGroup`, 실패 시 스케일 확대 폴백)로 통일.
+- 레거시 `ProcessOrderItem.jsx createEdgeStrip`(가장자리 1mm 스트립 복제·스트레칭) 방식은 편집기 경로에서 폐기. spec `2026-06-16-ia-editor-nesting-intake.md:157` "bleed=중심 미세확대".
+- finishing(마감 여백)은 bleed와 별개 — 빈 공간 확장 + 경계선(M100 0.6pt), 디자인 확대 아님.
+
+## BD. 정적 에셋 외부화 재시도 금지 (2026-06-11)
+
+- `/static/shell.js` 등 정적 에셋 외부화는 CF Pages **git push 자동빌드**에서 `_routes.json` 제외가 미적용 → 워커가 Content-Type 없이 서빙 → MIME 실행 거부 → 전 페이지 401·무한로딩. prod 2회 다운.
+- **현행 = `?raw` 워커 인라인 복귀**(24bb493c). 재외부화 금지. 해제 조건 = `docs/superpowers/specs/2026-06-11-static-assets-rootcause-redesign.md`의 근본 재설계 선행.
+
+## BE. DB 마스터 존재 선택지는 UI 하드코딩 금지 — API 로드 (2026-06-12)
+
+- 법인(`entities`)·CAPS 사이트(`caps_sites`) 등 **DB 마스터가 있는 선택지는 프론트에 하드코딩하지 말고 API에서 로드**.
+- 구현: 법인 select = `loadEntities()` 공용 캐시(`scripts/layout/shell.js:520~598`, `/api/entities`). CAPS 사이트 = `axios.get('/api/caps/sites')`(`capsSettings.js`). 하드코딩 시 마스터 변경(오다플래그 entity 4 추가 등) 미반영.
