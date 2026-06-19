@@ -1,6 +1,6 @@
 # PROJECT_STATUS.md — 프로젝트 현황판
 
-> **최종 업데이트**: 2026-06-19 PM3 (**이형(true-shape) 수동 인터록 네스팅 — 구현·검증·prod 배포·push 완료(web 자동빌드 `76e24be6` + 에이전트 재배포 PID 20832, 180/270 충실)** + append 실사용 검증 + 정리(#3: 로컬/Z: ~913MB·D1 테스트주문 전수삭제). origin/main=`6dbeed13`, smoke 103/103)
+> **최종 업데이트**: 2026-06-19 PM3 (**이형(true-shape) 수동 인터록 네스팅(web+에이전트) + append 검증 + 정리(#3) + 180° 라이브 EPS e2e + finishing2/3 드리프트 수정 — 전부 구현·검증·prod 배포·push 완료**). origin/main=`ddfd2e98`, 라이브 `5cfe7a61`(코드본 `1fd1d94a`), 에이전트 PID 5448, smoke 103/103. 핸드오프=`memory/session-context.md`
 > 완료 이력 → `PROJECT_STATUS_ARCHIVE.md` (매 세션 읽을 필요 없음, 필요 시 참조)
 
 ---
