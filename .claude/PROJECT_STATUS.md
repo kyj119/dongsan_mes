@@ -1,6 +1,6 @@
 # PROJECT_STATUS.md — 프로젝트 현황판
 
-> **최종 업데이트**: 2026-06-19 PM3 (**이형(true-shape) 수동 인터록 네스팅 — 구현·검증·prod 배포(web dep `8953d23e` + 에이전트 재배포 PID 20832, 180/270 충실)** + append 실사용 검증 + 정리(#3: 로컬/Z: ~913MB·D1 테스트주문 전수삭제). 커밋 `e2eb1598` 로컬·미푸시)
+> **최종 업데이트**: 2026-06-19 PM3 (**이형(true-shape) 수동 인터록 네스팅 — 구현·검증·prod 배포·push 완료(web 자동빌드 `76e24be6` + 에이전트 재배포 PID 20832, 180/270 충실)** + append 실사용 검증 + 정리(#3: 로컬/Z: ~913MB·D1 테스트주문 전수삭제). origin/main=`6dbeed13`, smoke 103/103)
 > 완료 이력 → `PROJECT_STATUS_ARCHIVE.md` (매 세션 읽을 필요 없음, 필요 시 참조)
 
 ---
@@ -15,7 +15,7 @@
 
 - **✅ [2026-06-19 PM3] 이형(true-shape) 수동 인터록 네스팅 + append 실사용 검증 + 정리 — 구현·검증·prod 배포·정리 완료** (커밋 `e2eb1598` 로컬·미푸시, web dep `8953d23e`, 에이전트 PID **20832**):
   - **이형 인터록(신규)**: 자동 bbox 네스팅이 시작점 → 조각 드래그·회전(겹침 허용=이형 절감) → **주문 시 라이브 위치에서 placements 재계산**(시트상대 bbox+`rotation`), 롤 길이 자동단축. 멤버십=조각 bbox중심 시트 포함관계(드래그 인/아웃·복제·앵커 fid 정합). web=`iaeCanRotBBox`/`iaeCanReassignSheets`/`iaeCanSyncSheet`/buildOrderLines. 에이전트=`SheetLayout.jsx`(`pl.rotation` 우선)+`Program.cs` 3빌더 rotation 통과(**backward-compatible**, 없으면 rotated bool=90). **검증**: Playwright 실번들 직접호출 bbox 4회전·라이브재계산·롤44→22cm·겹침효율0.199→0.398·중복출력방지·콘솔0. verify+dotnet build 0err.
-  - **배포**: web `wrangler --branch main`→dep `8953d23e`·**smoke 103/103**. 에이전트 `dotnet publish`(단일파일81MB)→robocopy Z:(appsettings 보존)→재시작 PID 20832(안정, 180/270 충실 활성). 롤백=`Z:\…\publish-backup-20260619-thumbfix`. ⚠️git push 안함(origin 뒤처짐).
+  - **배포**: web `wrangler --branch main`→dep `8953d23e`·smoke 103/103. 에이전트 `dotnet publish`(단일파일81MB)→robocopy Z:(appsettings 보존)→재시작 PID 20832(안정, 180/270 충실 활성). 롤백=`Z:\…\publish-backup-20260619-thumbfix`. **push 완료**: 봇 `da4babb9`(append 정합성 감사=docs-only) merge→`origin/main=6dbeed13`→**CF 자동빌드 `76e24be6` 라이브·smoke 103/103**.
   - **append 실사용 검증(완전성공)**: 대지 객체(분석#1 실 FK)→'기존 주문에 추가' 실 picker→**order_items 1→2·카드 -02 연속·AI_PROCESS task 트리거**(`append_item_ids`). 부수발견=`enqueueAutoProcessJobsForItems`가 `order_items.finishing2/3` 스키마 드리프트로 throw→catch(휴면 큐라 무영향, 기지 문제).
   - **정리(#3)**: 로컬 publish/publish-new(~325MB)·Z: 구 백업3+`_auto_output`+네스팅 테스트출력(~588MB)·**로컬 D1 전체 테스트주문(orders 4~15=10건+cascade)** 삭제. 거래처·품목·설정 보존.
   - **▶ 남은(선택)**: 180/270 라이브 EPS e2e(시각확인)·git push(origin 동기화)·finishing2/3 드리프트 prod 점검.
