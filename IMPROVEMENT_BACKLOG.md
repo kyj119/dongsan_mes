@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 5 -->
-<!-- last_run_at: 2026-06-19T22:00:00+09:00 -->
+<!-- last_run_area: 6 -->
+<!-- last_run_at: 2026-06-20T02:00:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -16,6 +16,16 @@
 
 > 📦 **과거 사이클 로그**(아래 6블록 이전분)는 `IMPROVEMENT_BACKLOG_ARCHIVE.md`로 이관됨 (2026-06-10 정리). 신규 로그는 계속 이 파일 상단에 추가.
 
+> **Area 6 자기 진화 (2026-06-20T02:00):**
+> - **방법**: git fetch-before-compare(origin force-update `4993fa7→fae62c9`, fetch 후 HEAD=origin/main `fae62c9` 0/0 동기). node_modules 비어있어 `npm ci` 선실행 → baseline build PASS(393 modules, _worker.js 5,274.01kB). Area 6 **17회차** — **신선 각도 = 컬럼-diff bridge(직전 Area 4 2f3c259 이후 백엔드 churn)의 "도입 → 드리프트 정리" 역방향 검증** + 프론트 XSS bridge(직전 Area 5 a540da2 이후 src/scripts churn) + 자기-픽스 완전성 재검 + GitHub sync.
+> - **🌉🩹 컬럼-diff bridge = 드리프트 정리 커밋 완전성 검증(net-new 0, 픽스 완전)**: 직전 Area 4 이후 **유일 코드 churn = `ad8c0af`("finishing2/3 스키마 드리프트 정리 — 미실현 컬럼 참조 제거", autoProcess/orders.create/helpers 3파일)** = "존재X 컬럼"(#412/#413/#408) 클래스의 **제거** 커밋. `order_items.finishing2/finishing3`은 **어떤 마이그레이션도 생성 안 함**(0176이 `finishing` 단일 컬럼만 ALTER)인데 3곳이 SELECT → 매 주문생성 try/catch 내 throw(휴면 auto_process_jobs 큐). **#377 "부분픽스" 전수 검증**: ① `grep -rn "finishing2\|finishing3" src` = 코드/SQL 참조 **0**(autoProcess.ts:108 주석 1건만 잔존=FP) → 형제 누락 없이 완전 제거. ② ground-truth(`grep -rn finishing migrations`) `finishing2/3` ALTER 전무 = 제거 정당(진짜 미실현). dev 세션이 이미 픽스했고 완전성 검증 통과 → **신규 이슈·자동수정 불필요**.
+> - **🟢 프론트 XSS bridge = 대상 없음(자명 clean)**: 직전 Area 5(a540da2) 이후 `src/scripts` churn **0줄**(`git diff --stat`) — 코드 churn은 `ad8c0af`(백엔드) + docs뿐 → 신규 sink 유입 경로 없음(직전 Area 5 17회차가 iaEditor +1516 전수 커버 = holds).
+> - **🪞 자기-픽스 완전성 재검 = 대상 없음**: 직전 사이클 자동수정 0건(A-028/A-029는 그 이전, prior cycle에서 holds 재검 완료) → churn에 에이전트 자기-픽스 없음. 위 컬럼 bridge가 대신 dev-세션 픽스(ad8c0af)의 완전성을 #377 규칙으로 검증.
+> - **🟢 backlog↔GitHub sync clean (변동 0)**: open auto-improve **실측 10건**(#412~#421, list_issues 전수) = 직전 stats `new=10` 정합. done=114·rejected=3·approved=0·reviewed=0 유지. owner 신규 close/머지 0건(#412 코멘트 2건=기처리 바코드 spec md). 미처리 owner 지시 0건.
+> - **🧬 SKILL 강화 1건 — 컬럼-diff bridge를 "드리프트 정리(존재X 컬럼 제거) 커밋의 완전성 검증"으로 확장**: line 214 bridge는 "churn이 나쁜 컬럼을 **도입**했나"만 봤으나, **반대 방향(dev 세션이 churn 윈도에서 미존재 컬럼 드리프트를 제거하는 정리 커밋)도 검증 대상**(A-026 자기-픽스 완전성의 dev-세션 거울). 드리프트 정리도 "한 곳만 고치고 형제 SELECT 잔존" 위험이 도입과 동일(#377) → Area 6가 churn에서 removal 커밋을 만나면 (a)코드베이스 전수 재grep로 잔존 0 (b)ground-truth로 제거 대상이 진짜 미존재였는지 2단 확인. Area 6 SKILL에 codify.
+> - **이상 없음**: git 동기 0/0. npm ci 후 build PASS. 컬럼-diff bridge(드리프트 정리 완전성)·프론트 XSS bridge(대상 없음)·자기-픽스 재검·sync 정합 10=10 전 각도 clean.
+> - 자동 수정 0건(churn 드리프트 이미 dev-세션 픽스·완전성 검증 통과), 신규 이슈 0건(net-new 0), SKILL 강화 1건(컬럼 bridge 드리프트-정리 완전성 검증), done-sync 0건(변동 없음), **신선 각도 — 컬럼-diff bridge 역방향(존재X 컬럼 제거 커밋 `ad8c0af`)의 #377 전수 완전성 검증**
+>
 > **Area 5 보안 (2026-06-19T22:00):**
 > - **방법**: git fetch-before-compare(origin force-update `4993fa7→a540da2`, fetch 후 HEAD=origin/main `a540da2` 0/0 동기). node_modules 비어있어 `npm ci` 선실행 → baseline build PASS(393 modules, _worker.js 5,274.24kB). Area 5 **17회차** — **신선 각도 = 직전 Area 5(4898fa7, 06-18T22:00) 이후 머지된 churn의 보안 회귀**. churn = **`orders/create.ts +202`·`helpers.ts +131`(주문 라인 append `POST /:id/items` 신규 라우트)** + iaEditor.js +1516(프론트) + 소규모 frontend 3건. 최대 신규 공격표면 = sub-resource write 엔드포인트. 병렬: 백엔드 sub-resource write-isolation 직접 Read + 프론트 XSS Explore(iaEditor fe09551 이후 churn).
 > - **🟢 신규 백엔드 라우트 `POST /:id/items` 5각도 clean (net-new 0)**: ① **auth** — 라우터 `.use('/*', authMiddleware, requireAnyPagePermission('/orders','/cards'))`. ② **entity 격리(IDOR)** — 부모 주문 조회 `entityFilter(c,'orders')`(MANAGER는 자기 법인 주문에만 append). ③ **mass-assignment 방어(#417 정답 거울)** — 자식 INSERT entity는 entityFilter-검증된 `billingEntityId = Number(order.entity_id) || (getEntityId(c)||1)`로 **부모파생**, `body.entity_id` 미신뢰. body의 `assigned_entity_id`는 격리키 아닌 생산배정 free-field(create와 동형)=FP. ④ **SQLi** — 전 쿼리 `?` 바인딩, IN절 `.map(()=>'?')`. ⑤ **error-exposure** — catch가 generic `'서버 오류가 발생했습니다.'`(스택/메시지 미노출). 동반 신규 read 핸들러 0건 → #418 read-leak 비대칭 대상 없음.
