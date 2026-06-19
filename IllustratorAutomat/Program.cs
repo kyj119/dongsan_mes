@@ -2048,6 +2048,7 @@ namespace IllustratorAutomation
                 object? annotationConfig = null;
                 object? offsetConfig = null;
                 bool trimEnabled = false;   // N5: 단일 그룹 돔보 마크
+                double targetWcm = 0, targetHcm = 0;  // N4 fidelity: 캔버스 리사이즈 목표 크기(cm)
                 List<string>? annotationPositions = null;
                 var ppSource = item;
                 if (parentItem.HasValue && parentItem.Value.ValueKind == JsonValueKind.Object)
@@ -2171,6 +2172,13 @@ namespace IllustratorAutomation
 
                                     // N5: 돔보(TRIM) — 단일 그룹 출력에 돔보 마크 추가 플래그
                                     if (ppCode2 == "TRIM" || ppCode2 == "DOMBO") trimEnabled = true;
+
+                                    // N4 fidelity: RESIZE — 캔버스에서 리사이즈한 목표 크기(cm)로 아트워크 스케일
+                                    if (ppCode2 == "RESIZE" && ppEntry.TryGetProperty("params", out var rsParams))
+                                    {
+                                        if (rsParams.TryGetProperty("w_cm", out var rwEl) && rwEl.ValueKind == JsonValueKind.Number) targetWcm = rwEl.GetDouble();
+                                        if (rsParams.TryGetProperty("h_cm", out var rhEl) && rhEl.ValueKind == JsonValueKind.Number) targetHcm = rhEl.GetDouble();
+                                    }
                                 }
                             }
                         }
@@ -2420,7 +2428,9 @@ namespace IllustratorAutomation
                     annotation  = annotationConfig,
                     offset      = offsetConfig,
                     finishing   = finishingConfig,
-                    trim        = trimEnabled
+                    trim        = trimEnabled,
+                    targetW     = targetWcm,
+                    targetH     = targetHcm
                 });
                 File.WriteAllText(Path.Combine(scriptDir3, "ia_params.json"), itemParamsJson, System.Text.Encoding.UTF8);
 

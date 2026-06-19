@@ -63,6 +63,8 @@ function main() {
     var finishingCfg = _p.finishing   || null;
     var passthroughThumb = _p.passthroughThumb || false;  // 완성본 직접연결: 가공 없이 PNG 썸네일만 생성
     var trim         = _p.trim       || false;  // N5: 단일 그룹 돔보 마크 (출력 둘레)
+    var targetW      = _p.targetW    || 0;       // N4 fidelity: 목표 너비(cm, 캔버스 리사이즈). 0=스케일 안 함
+    var targetH      = _p.targetH    || 0;       // N4 fidelity: 목표 높이(cm)
 
     if (!sourceFile || (!outputEps && !passthroughThumb)) {
         $.writeln("ProcessOrderItem ERROR: source, epsOutput 필요");
@@ -181,6 +183,37 @@ function main() {
 
     $.writeln("ProcessOrderItem: " + allMappedItems.length + " total items, "
         + artboardTopItems[abIndex].length + " items for artboard " + abIndex);
+
+    // ── 2c. 목표 크기 스케일 (N4 fidelity: 캔버스 리사이즈 반영) ──
+    // 검출 크기와 다른 목표가 오면 아트보드 아트워크를 그룹으로 묶어 목표 W×H로 비균등 스케일(좌상단 앵커).
+    // 목표가 0이거나 검출과 같으면 스킵(기존 동작 보존 = 비-캔버스 주문 무영향).
+    if (targetW > 0 && targetH > 0) {
+        var tW_pt = targetW * 10.0 * ptPerMm / scaleFactor;
+        var tH_pt = targetH * 10.0 * ptPerMm / scaleFactor;
+        if (Math.abs(tW_pt - designW) > 1 || Math.abs(tH_pt - designH) > 1) {
+            try {
+                doc.selection = null;
+                doc.artboards.setActiveArtboardIndex(abIndex);
+                doc.selectObjectsOnActiveArtboard();
+                if (doc.selection && doc.selection.length > 0) {
+                    var _grp = false;
+                    if (doc.selection.length > 1) { app.executeMenuCommand('group'); _grp = true; }
+                    var tg = doc.selection[0];
+                    var aL = tg.left, aT = tg.top;
+                    tg.width = tW_pt;
+                    tg.height = tH_pt;
+                    tg.left = aL; tg.top = aT;   // 좌상단 앵커 유지
+                    if (_grp) app.executeMenuCommand('ungroup');
+                    doc.selection = null;
+                    // 아트보드/디자인 바운드 갱신 (좌상단 고정)
+                    ab.artboardRect = [oL, oT, oL + tW_pt, oT - tH_pt];
+                    oR = oL + tW_pt; oB = oT - tH_pt;
+                    designW = tW_pt; designH = tH_pt;
+                    $.writeln("ProcessOrderItem: 목표 크기 스케일 -> " + targetW + "x" + targetH + "cm");
+                }
+            } catch (eScale) { $.writeln("ProcessOrderItem: 목표 스케일 실패 - " + eScale); }
+        }
+    }
 
     // ── 2b. 오프셋 값 사전 계산 (step 5b에서 실제 적용) ──
     var offT = 0, offB = 0, offL = 0, offR = 0;

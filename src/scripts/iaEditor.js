@@ -1445,13 +1445,25 @@ function iaeCanFileR2(fid) {
   var f = iaeFiles.filter(function (x) { return x.id === fid; })[0];
   return f ? ('r2://sources/' + fid + '/' + f.filename) : null;
 }
-function iaeFinDominant(fin) {
+// 마감 per-side 요약(표시용): 중복 제거 method 나열
+function iaeFinSummary(fin) {
   if (!fin) return '';
-  var c = {}, sides = ['top', 'bottom', 'left', 'right'];
-  sides.forEach(function (s) { var m = fin[s]; if (m) c[m] = (c[m] || 0) + 1; });
-  var best = '', bn = 0;
-  Object.keys(c).forEach(function (k) { if (c[k] > bn) { bn = c[k]; best = k; } });
-  return best;
+  var arr = [fin.top, fin.bottom, fin.left, fin.right].filter(Boolean), uniq = [];
+  arr.forEach(function (m) { if (uniq.indexOf(m) === -1) uniq.push(m); });
+  return uniq.join('+');
+}
+// 마감 per-side → 에이전트 finishing JSON (orderForm과 동일 포맷; 에이전트가 4면 개별 적용). 전부 비면 null
+function iaeFinJson(fin) {
+  if (!fin || (!fin.top && !fin.bottom && !fin.left && !fin.right)) return null;
+  return JSON.stringify({ top: fin.top || '', bottom: fin.bottom || '', left: fin.left || '', right: fin.right || '' });
+}
+// order_item.post_processing 배열: 돔보(TRIM) + 캔버스 리사이즈(RESIZE 목표크기). 둘 다 없으면 null
+function iaeOmPostProc(ln) {
+  var pp = [];
+  if (ln.trim) pp.push({ code: 'TRIM', params: {} });
+  var resized = (ln.det_w_cm != null && ln.det_h_cm != null) && (ln.w_cm !== ln.det_w_cm || ln.h_cm !== ln.det_h_cm) && ln.w_cm > 0 && ln.h_cm > 0;
+  if (resized) pp.push({ code: 'RESIZE', params: { w_cm: ln.w_cm, h_cm: ln.h_cm } });
+  return pp.length ? JSON.stringify(pp) : null;
 }
 function iaeCanBuildOrderLines() {
   var lines = [];
@@ -1462,7 +1474,8 @@ function iaeCanBuildOrderLines() {
     lines.push({
       kind: 'sheet', fid: p0.fid, gi: p0.gi, label: (src ? src.filename : '') + ' #' + p0.gi + ' [시트 ' + pieces.length + '조각]',
       w_cm: Math.round((src ? src.w_mm : p0.w_mm) / 10), h_cm: Math.round((src ? src.h_mm : p0.h_mm) / 10),
-      qty: pieces.length, finishing: iaeFinDominant(p0.fin), trim: !!sh.trim,
+      qty: pieces.length, fin: p0.fin || null, trim: !!sh.trim,
+      det_w_cm: Math.round((src ? src.w_mm : p0.w_mm) / 10), det_h_cm: Math.round((src ? src.h_mm : p0.h_mm) / 10),
       item_id: null, item_name: '', pricing_method: 'FIXED', unit_price: 0
     });
   });
@@ -1471,7 +1484,8 @@ function iaeCanBuildOrderLines() {
     lines.push({
       kind: 'obj', fid: o.fid, gi: o.gi, label: (src ? src.filename : '') + ' #' + o.gi,
       w_cm: Math.round(o.w_mm / 10), h_cm: Math.round(o.h_mm / 10),
-      qty: 1, finishing: iaeFinDominant(o.fin), trim: !!o.trim,
+      qty: 1, fin: o.fin || null, trim: !!o.trim,
+      det_w_cm: Math.round(((src ? src.w_mm : o.w_mm) || 0) / 10), det_h_cm: Math.round(((src ? src.h_mm : o.h_mm) || 0) / 10),
       item_id: null, item_name: '', pricing_method: 'FIXED', unit_price: 0
     });
   });
@@ -1559,7 +1573,7 @@ function iaeOmRenderLines() {
   host.innerHTML = iaeOmState.lines.map(function (ln, i) {
     return '<div class="border border-gray-200 rounded-lg p-2" data-idx="' + i + '">'
       + '<div class="flex items-center gap-2 mb-1"><span class="text-xs font-semibold text-gray-700 truncate flex-1">' + iaeEscape(ln.label) + '</span>'
-      + '<span class="text-[11px] text-gray-400">' + ln.w_cm + '×' + ln.h_cm + 'cm' + (ln.finishing ? ' · ' + iaeEscape(ln.finishing) : '') + '</span></div>'
+      + '<span class="text-[11px] text-gray-400">' + ln.w_cm + '×' + ln.h_cm + 'cm' + (iaeFinSummary(ln.fin) ? ' · ' + iaeEscape(iaeFinSummary(ln.fin)) : '') + (ln.trim ? ' · 돔보' : '') + ((ln.w_cm !== ln.det_w_cm || ln.h_cm !== ln.det_h_cm) ? ' · 리사이즈' : '') + '</span></div>'
       + '<div class="flex items-center gap-2">'
       + '<div class="relative flex-1"><input class="iae-om-item w-full ' + inputCls + '" data-idx="' + i + '" autocomplete="off" placeholder="품목 검색(PM-…)" value="' + iaeEscape(ln.item_name) + '">'
       + '<div class="iae-om-itemlist absolute z-10 left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-44 overflow-y-auto hidden" data-idx="' + i + '"></div></div>'
@@ -1646,8 +1660,8 @@ function iaeCanSubmitOrder() {
         width_mm: ln.w_cm * 10, height_mm: ln.h_cm * 10,
         quantity: ln.qty, unit: 'EA', unit_price: Number(ln.unit_price) || 0, vat_included: 1,
         ai_group_index: ln.gi, ai_analysis_id: ln.fid,
-        finishing: ln.finishing || null, content: ln.label,
-        post_processing: ln.trim ? JSON.stringify([{ code: 'TRIM', params: {} }]) : null
+        finishing: iaeFinJson(ln.fin), content: ln.label,
+        post_processing: iaeOmPostProc(ln)
       };
     })
   };
