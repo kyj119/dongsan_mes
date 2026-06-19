@@ -439,11 +439,11 @@ export async function enqueueAutoProcessJobsForItems(
   if (!itemIds.length) return 0
   const ph = itemIds.map(() => '?').join(',')
   const { results: items } = await db.prepare(
-    `SELECT id, item_id, width, height, scale_factor, finishing, finishing2, finishing3, ai_group_index, ai_analysis_id
+    `SELECT id, item_id, width, height, scale_factor, finishing, ai_group_index, ai_analysis_id
      FROM order_items WHERE id IN (${ph}) AND COALESCE(ai_analysis_id, ?) IS NOT NULL`
   ).bind(...itemIds, fallbackAnalysisId).all<{
     id: number; item_id: number | null; width: number | null; height: number | null; scale_factor: number | null
-    finishing: string | null; finishing2: string | null; finishing3: string | null; ai_group_index: number | null; ai_analysis_id: number | null
+    finishing: string | null; ai_group_index: number | null; ai_analysis_id: number | null
   }>()
   if (!items || items.length === 0) return 0
 
@@ -479,7 +479,7 @@ export async function enqueueAutoProcessJobsForItems(
     const gIdx = oi.ai_group_index ?? 0
     const group = an.groups[gIdx]
     if (!group) continue
-    const finishing = [oi.finishing, oi.finishing2, oi.finishing3].filter(Boolean).join('+')
+    const finishing = oi.finishing || ''
     const productName = oi.item_id ? (prodMap.get(oi.item_id) || '') : ''
     const scale = oi.scale_factor || apScale(productName, oi.width || 0)
     const m = apMargins(finishing)

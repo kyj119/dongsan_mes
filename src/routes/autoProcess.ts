@@ -73,8 +73,7 @@ autoProcessRouter.post('/start', async (c) => {
 
     // 주문 품목 조회 (ai_group_index가 있는 것만)
     const items = await c.env.DB.prepare(
-      `SELECT id, item_id, width, height, ai_group_index, scale_factor,
-              finishing, finishing2, finishing3
+      `SELECT id, item_id, width, height, ai_group_index, scale_factor, finishing
        FROM order_items WHERE order_id = ? AND ai_analysis_id IS NOT NULL`
     ).bind(order_id).all()
 
@@ -85,7 +84,7 @@ autoProcessRouter.post('/start', async (c) => {
     const jobs: Record<string, unknown>[] = []
 
     // Bulk-fetch item names for all order_items in one query
-    interface OrderItemRow { id: number; item_id: number | null; width: number; height: number; ai_group_index: number; scale_factor: number | null; finishing: string | null; finishing2: string | null; finishing3: string | null }
+    interface OrderItemRow { id: number; item_id: number | null; width: number; height: number; ai_group_index: number; scale_factor: number | null; finishing: string | null }
     const itemIds = [...new Set(
       (items.results as unknown as OrderItemRow[]).map((i) => i.item_id).filter(Boolean)
     )] as number[]
@@ -106,9 +105,8 @@ autoProcessRouter.post('/start', async (c) => {
       // 품목명 Map에서 조회 (N+1 제거)
       const productName = item.item_id ? (itemNameMap.get(item.item_id) ?? '') : ''
 
-      // 후가공 합치기
-      const finishing = [item.finishing, item.finishing2, item.finishing3]
-        .filter(Boolean).join('+')
+      // 후가공 (order_items.finishing 단일 컬럼; finishing2/3은 미실현 컬럼이라 제거)
+      const finishing = item.finishing || ''
 
       // 축소비율 결정
       const widthCm = item.width || 0

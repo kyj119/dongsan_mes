@@ -597,7 +597,7 @@ ordersCreateRouter.post('/', async (c) => {
             `SELECT id, order_id, item_id, item_name, category_name,
                     width, height, quantity, unit, unit_price, amount, vat_included,
                     post_processing, content, sort_order, parent_item_id,
-                    scale_factor, finishing, finishing2, finishing3,
+                    scale_factor, finishing,
                     ai_group_index, ai_analysis_id
              FROM order_items WHERE order_id = ? AND ai_analysis_id IS NOT NULL ORDER BY sort_order ASC`
           ).bind(orderId).all()
@@ -652,7 +652,7 @@ ordersCreateRouter.post('/', async (c) => {
             const group = groups[gIdx]
             if (!group) continue
 
-            const finishing = [oi.finishing, oi.finishing2, oi.finishing3].filter(Boolean).join('+')
+            const finishing = (oi.finishing as string) || ''
             const productName = itemNameMap.get(oi.item_id as number) || ''
             const scale = (oi.scale_factor as number) || _getScale(productName, (oi.width as number) || 0)
             const margins = _getMargins(finishing)
