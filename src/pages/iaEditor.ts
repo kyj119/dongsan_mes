@@ -18,8 +18,7 @@ export function iaEditorPage(c: Context<HonoEnv>) {
       <!-- 뷰 토글 -->
       <div class="flex gap-2 mb-4">
         <button id="iaeViewEdit" class="px-4 py-2 rounded-lg text-sm font-medium border border-blue-500 bg-blue-50 text-blue-700"><i class="fas fa-object-group mr-1"></i>파일 처리</button>
-        <button id="iaeViewCanvas" class="px-4 py-2 rounded-lg text-sm font-medium border border-gray-200 text-gray-600 hover:bg-gray-50"><i class="fas fa-vector-square mr-1"></i>대지 편집</button>
-        <button id="iaeViewNest" class="px-4 py-2 rounded-lg text-sm font-medium border border-gray-200 text-gray-600 hover:bg-gray-50"><i class="fas fa-layer-group mr-1"></i>네스팅 <span id="iaeNestCount" class="ml-1 rounded-full bg-gray-200 text-gray-700 px-2 text-xs">0</span></button>
+        <button id="iaeViewCanvas" class="px-4 py-2 rounded-lg text-sm font-medium border border-gray-200 text-gray-600 hover:bg-gray-50"><i class="fas fa-vector-square mr-1"></i>대지 편집 <span class="text-[11px] text-gray-400">(네스팅 포함)</span></button>
       </div>
 
       <!-- 파일 처리 뷰 -->
@@ -64,13 +63,6 @@ export function iaEditorPage(c: Context<HonoEnv>) {
             <div id="iaeCanInspector" class="w-72 flex-shrink-0 border-l border-gray-200 overflow-y-auto p-3 bg-white hidden"></div>
           </div>
           <div id="iaeCanStatus" class="px-3 py-1.5 border-t border-gray-200 bg-gray-50/60 text-[11px] text-gray-500">팔레트에서 그룹을 클릭해 대지에 추가하세요</div>
-        </div>
-      </div>
-
-      <!-- 네스팅 뷰 -->
-      <div id="iaeNestView" class="hidden">
-        <div class="ds-card p-4" style="min-height: 520px;">
-          <div id="iaeNestBody"></div>
         </div>
       </div>
     `,
