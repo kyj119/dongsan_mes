@@ -41,6 +41,36 @@ INSERT INTO spec_group_values (group_id, value_code, label, sort_order, is_activ
 SELECT (SELECT id FROM spec_groups WHERE name='호수'), '9HO', '9호', 90, 1
 WHERE NOT EXISTS (SELECT 1 FROM spec_group_values sgv JOIN spec_groups sg ON sgv.group_id=sg.id WHERE sg.name='호수' AND sgv.value_code='9HO');
 
+-- 깃발 (P-0035): 3호, 4호, 4-1호, 5호, 6호, 7호, 7-1호, 8호
+INSERT INTO items (item_code,item_name,item_type,category_id,pricing_method,pricing_profile,is_sales_item,is_purchase_item,production_required,unit,is_active,spec_group_id,item_group)
+SELECT 'P-0035','깃발','PRODUCT',(SELECT id FROM item_categories WHERE category_name='깃발·기'),'FIXED','GRADE',1,0,1,'EA',0,(SELECT id FROM spec_groups WHERE name='호수'),'깃발'
+WHERE NOT EXISTS (SELECT 1 FROM items WHERE item_code='P-0035');
+UPDATE items SET spec_group_id=(SELECT id FROM spec_groups WHERE name='호수'), item_group='깃발' WHERE item_code='P-0035' AND spec_group_id IS NULL;
+INSERT INTO items (item_code,item_name,item_type,category_id,pricing_method,pricing_profile,is_sales_item,is_purchase_item,production_required,unit,is_active,spec_group_id,spec_value,item_group)
+SELECT 'P-0035-3HO','깃발 3호','PRODUCT',(SELECT id FROM item_categories WHERE category_name='깃발·기'),'FIXED','GRADE',1,0,1,'EA',0,(SELECT id FROM spec_groups WHERE name='호수'),'3HO','깃발'
+WHERE NOT EXISTS (SELECT 1 FROM items WHERE item_code='P-0035-3HO');
+INSERT INTO items (item_code,item_name,item_type,category_id,pricing_method,pricing_profile,is_sales_item,is_purchase_item,production_required,unit,is_active,spec_group_id,spec_value,item_group)
+SELECT 'P-0035-4HO','깃발 4호','PRODUCT',(SELECT id FROM item_categories WHERE category_name='깃발·기'),'FIXED','GRADE',1,0,1,'EA',0,(SELECT id FROM spec_groups WHERE name='호수'),'4HO','깃발'
+WHERE NOT EXISTS (SELECT 1 FROM items WHERE item_code='P-0035-4HO');
+INSERT INTO items (item_code,item_name,item_type,category_id,pricing_method,pricing_profile,is_sales_item,is_purchase_item,production_required,unit,is_active,spec_group_id,spec_value,item_group)
+SELECT 'P-0035-4HO1','깃발 4-1호','PRODUCT',(SELECT id FROM item_categories WHERE category_name='깃발·기'),'FIXED','GRADE',1,0,1,'EA',0,(SELECT id FROM spec_groups WHERE name='호수'),'4HO1','깃발'
+WHERE NOT EXISTS (SELECT 1 FROM items WHERE item_code='P-0035-4HO1');
+INSERT INTO items (item_code,item_name,item_type,category_id,pricing_method,pricing_profile,is_sales_item,is_purchase_item,production_required,unit,is_active,spec_group_id,spec_value,item_group)
+SELECT 'P-0035-5HO','깃발 5호','PRODUCT',(SELECT id FROM item_categories WHERE category_name='깃발·기'),'FIXED','GRADE',1,0,1,'EA',0,(SELECT id FROM spec_groups WHERE name='호수'),'5HO','깃발'
+WHERE NOT EXISTS (SELECT 1 FROM items WHERE item_code='P-0035-5HO');
+INSERT INTO items (item_code,item_name,item_type,category_id,pricing_method,pricing_profile,is_sales_item,is_purchase_item,production_required,unit,is_active,spec_group_id,spec_value,item_group)
+SELECT 'P-0035-6HO','깃발 6호','PRODUCT',(SELECT id FROM item_categories WHERE category_name='깃발·기'),'FIXED','GRADE',1,0,1,'EA',0,(SELECT id FROM spec_groups WHERE name='호수'),'6HO','깃발'
+WHERE NOT EXISTS (SELECT 1 FROM items WHERE item_code='P-0035-6HO');
+INSERT INTO items (item_code,item_name,item_type,category_id,pricing_method,pricing_profile,is_sales_item,is_purchase_item,production_required,unit,is_active,spec_group_id,spec_value,item_group)
+SELECT 'P-0035-7HO','깃발 7호','PRODUCT',(SELECT id FROM item_categories WHERE category_name='깃발·기'),'FIXED','GRADE',1,0,1,'EA',0,(SELECT id FROM spec_groups WHERE name='호수'),'7HO','깃발'
+WHERE NOT EXISTS (SELECT 1 FROM items WHERE item_code='P-0035-7HO');
+INSERT INTO items (item_code,item_name,item_type,category_id,pricing_method,pricing_profile,is_sales_item,is_purchase_item,production_required,unit,is_active,spec_group_id,spec_value,item_group)
+SELECT 'P-0035-7HO1','깃발 7-1호','PRODUCT',(SELECT id FROM item_categories WHERE category_name='깃발·기'),'FIXED','GRADE',1,0,1,'EA',0,(SELECT id FROM spec_groups WHERE name='호수'),'7HO1','깃발'
+WHERE NOT EXISTS (SELECT 1 FROM items WHERE item_code='P-0035-7HO1');
+INSERT INTO items (item_code,item_name,item_type,category_id,pricing_method,pricing_profile,is_sales_item,is_purchase_item,production_required,unit,is_active,spec_group_id,spec_value,item_group)
+SELECT 'P-0035-8HO','깃발 8호','PRODUCT',(SELECT id FROM item_categories WHERE category_name='깃발·기'),'FIXED','GRADE',1,0,1,'EA',0,(SELECT id FROM spec_groups WHERE name='호수'),'8HO','깃발'
+WHERE NOT EXISTS (SELECT 1 FROM items WHERE item_code='P-0035-8HO');
+
 -- 태극기 (P-0033): 1호, 2호, 3호, 4호, 4-1호, 5호, 6호, 7호, 7-1호, 8호, 8-1호, 9호
 INSERT INTO items (item_code,item_name,item_type,category_id,pricing_method,pricing_profile,is_sales_item,is_purchase_item,production_required,unit,is_active,spec_group_id,item_group)
 SELECT 'P-0033','태극기','PRODUCT',(SELECT id FROM item_categories WHERE category_name='깃발·기'),'FIXED','GRADE',1,0,1,'EA',0,(SELECT id FROM spec_groups WHERE name='호수'),'태극기'
