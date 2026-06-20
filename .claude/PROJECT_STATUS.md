@@ -1,8 +1,8 @@
 # PROJECT_STATUS.md — 프로젝트 현황판
 
-> **최종 업데이트**: 2026-06-19 PM3 (**이형(true-shape) 수동 인터록 네스팅(web+에이전트) + append 검증 + 정리(#3) + 180° 라이브 EPS e2e + finishing2/3 드리프트 수정 — 전부 구현·검증·prod 배포·push 완료**). origin/main=`ddfd2e98`, 라이브 `5cfe7a61`(코드본 `1fd1d94a`), 에이전트 PID 5448, smoke 103/103. 핸드오프=`memory/session-context.md`
+> **최종 업데이트**: 2026-06-20 (**품목 시스템 대개편 진행 — 게이트 결정→마스터로드→공장초기화→축모델 확정→업로드본 빌드·검증**). prod=출시 전 **공장초기화 완료**(테스트 트랜잭션·품목 전멸, 거래처 3649·마스터·HR·회계 보존). 바인드픽스 prod 배포(`420280`), smoke 103/103. 핸드오프=`memory/session-context.md`
 > 완료 이력 → `PROJECT_STATUS_ARCHIVE.md` (매 세션 읽을 필요 없음, 필요 시 참조)
-> **📄 2026-06-19 문서정리**: 참조문서 4건(entity-separation-map·architecture-flow·decisions-code·kakao-alimtalk-templates) 코드 기준 동기화 + 신규 설계 5건 STATUS 대기 등록 + queue/pending stale 3건(#372/#374/#378/#379 close 확인 → done/ 이동·중복 제거). **미커밋 — 사람 검토 후 커밋.**
+> **📄 2026-06-20 세션 요약**: ①품목 게이트 B-1 검증(prod 63/103 다중역할)→dual 플래그 유지·collapse 금지(A) ②마스터 로드 0322~0325 prod 적용(231 staged) ③바인드 한도 버그 수정·배포(`5fd0dfcd`→`420280`) ④P1c 매핑 초안(미매칭27=대부분 비활성) ⑤**prod 공장초기화**(76테이블 삭제, 백업 2종) ⑥축 모델 = **규격그룹→변종품목**(EAV 폐기), 코드체계 A확정 ⑦**업로드본 빌드·검증 loop PASS**(`품목마스터/업로드양식/품목업로드_최종.xlsx`, 298품목 구조 에러0). **미커밋 다수 — 아래 진행중 참조.**
 
 ---
 
@@ -13,6 +13,23 @@
 ---
 
 ## 🔴 현재 진행 중
+
+- **🟢 [2026-06-20] 품목 시스템 대개편 — 규격그룹→변종품목 모델 확정, 업로드본 빌드·검증 완료 (구현 대기)**:
+  - **모델 확정**: 규격그룹(spec_groups) → 변종품목 자동생성. **EAV 옵션-축·order_items 컬럼안 = 폐기**(재고 정확성=두께/호수/폭별 품목이 맞음). 변종품목=독립 일반품목(재고·단가·통계 per-variant), 그룹=생성·묶음·통계 메타데이터(인스턴스 비구속). 안전3규칙=①생성은 빠진조합만 멱등 ②변종은 생성후 자유수정 ③그룹값 변경=기존품목 무영향(스냅샷). 정본 spec=`docs/superpowers/specs/2026-06-20-spec-group-variant-item-plan.md`.
+  - **코드체계 A 확정**: `{타입P/G/M}-{base순번4}[-{변종코드}]` (P-0001 / M-0019-5T / P-0033-7HO). 카테고리·인쇄방식 인코딩 금지(재분류 거짓말 방지), 변종값(불변)만 suffix 허용. `ecount_code`=별도 참조컬럼.
+  - **규격그룹**: 판재두께(1·2·3·5·8·10T)·호수(1~10호+특수 4-1/7-1/8-1)·원단폭(코팅=base×폭, parent_media_id 소재연결). 변종대상=원자재판재·깃발호수·원단 / 단일=면적출력·부속품·간판.
+  - **★업로드본 빌드·검증 loop PASS**: `scripts/master/{build_master,validate_master}.py` → `품목마스터/업로드양식/품목업로드_최종.xlsx`(4시트=품목마스터298·규격그룹·변종전개예시·검토필요52). 검증=코드유니크·타입/분류/단가 enum·spec_group↔category 정합·겸업페어링 전건매칭 **에러0**. **구조 완벽**.
+  - **검토필요 52(용준님 도메인 정보 대기)**: ①이름확인 16(패트·배너·LED·잉크 등 약어→정식명 or ad-hoc) ②호수 적합성 11(태극기 세트/수기대 등 호수변종 아님→FIXED 판정) ③원단폭 값 7(폭mm 목록) ④간판자재 18(견적 단계 후속). 지어내기 불가=사람 입력 필요.
+  - **마이그 0322~0325(prod 적용됨)**: 0322 카테고리13·0323 items.pricing_profile·0324 size_grade_prices(호수=변종품목이면 불요화)·0325 표준품목 로드(공장초기화로 삭제됨). 스키마는 유지.
+  - **▶ 다음**: ①검토 52 용준님 입력(정식명·호수판정·원단폭) → build loop 재실행 ②**Phase 1 마이그 `0326`**(spec_groups·spec_group_values + items.spec_group_id·spec_value·ecount_code) ③규격그룹 관리 페이지+권한 ④변종생성 API+품목UI ⑤**업로드** ⑥주문 2단 picker ⑦단가/통계.
+
+- **✅ [2026-06-20] 프로덕션 공장초기화 — 출시 전 클린 슬레이트 (용준님 결정·실행 완료)**:
+  - **목적**: 테스트 트랜잭션+품목 전멸 후 품목 처음부터 재등록(축 마이그 선행 예정). prod=출시 전(주문 804 대부분 E99 테스트·CANCELLED, 세금계산서 0, 거래처 3649만 실데이터).
+  - **백업 이중**: D1 export 17.6MB `backups/prod-pre-reset-20260620.sql`(gitignore) + Time Travel 북마크 `0000010c-0000052a-0000508f-761c3ad86550df7d0f02ea14c1dfaaa0`(30일 복원).
+  - **실행**: **76테이블 삭제**(확정72+FK무결성4: cash_receipts·credit_overrides·item_post_processing_defaults·portal_access_tokens). FK ON이라 **괄호균형 파서로 FK 위상정렬 + 보존측 참조 3 NULL 선처리**(clients.billing_group_id→billing_groups·hometax_invoices.matched_invoice_id→tax_invoices·price_policy_rules.item_id→items) + 시퀀스 리셋. 생성기=`scripts/_gen_wipe.py`(삭제), SQL=`backups/_wipe.sql`.
+  - **검증**: orders/items/quotations/cards/order_items/inventory/payments/cash_receipts=**0**, 보존=clients **3649**·users 4·employees 111·item_categories 13·print_media 9·settings 61·finishing 7·holidays 21. DB 14.9→7.4MB. **prod 스모크 103/103**.
+  - **방향 전환**: 병행등록+매핑/P1c dedup(`2026-06-20-p1c-mapping-draft`)·staged 231 로드 = **전부 폐기**(구 품목 없음). 스키마는 유지(0322 카테고리13·0323 items.pricing_profile·0324 size_grade_prices).
+  - **▶ 다음**: ①**축(option-axis) 시스템 마이그**(`option-axis-system-design` 구현 — 소재/인쇄방식/호수/두께 등 축 테이블) → ②**표준품목+축 클린 업로드**(`표준품목_등록구조_수정본.xlsx` 298행, `/api/items/bulk` 또는 로드 SQL). 파일정리=`품목마스터/{설계·업로드양식·원천주문데이터}` 완료.
 
 - **✅ [2026-06-19 PM3] 이형(true-shape) 수동 인터록 네스팅 + append 실사용 검증 + 정리 — 구현·검증·prod 배포·정리 완료** (커밋 `e2eb1598` 로컬·미푸시, web dep `8953d23e`, 에이전트 PID **20832**):
   - **이형 인터록(신규)**: 자동 bbox 네스팅이 시작점 → 조각 드래그·회전(겹침 허용=이형 절감) → **주문 시 라이브 위치에서 placements 재계산**(시트상대 bbox+`rotation`), 롤 길이 자동단축. 멤버십=조각 bbox중심 시트 포함관계(드래그 인/아웃·복제·앵커 fid 정합). web=`iaeCanRotBBox`/`iaeCanReassignSheets`/`iaeCanSyncSheet`/buildOrderLines. 에이전트=`SheetLayout.jsx`(`pl.rotation` 우선)+`Program.cs` 3빌더 rotation 통과(**backward-compatible**, 없으면 rotated bool=90). **검증**: Playwright 실번들 직접호출 bbox 4회전·라이브재계산·롤44→22cm·겹침효율0.199→0.398·중복출력방지·콘솔0. verify+dotnet build 0err.

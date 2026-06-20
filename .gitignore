@@ -163,3 +163,11 @@ EdgeAgent/obj/
 queue/logs/
 queue/running/
 .claude/.queue-runner.lock
+
+# 품목 마스터 작업 데이터 (대용량 xlsx, 코드 아님)
+품목마스터/
+insurance-report-2026-06-detail.png
+payroll-ledger-employer-burden.png
+
+# DB 백업 (PII 포함 — 절대 커밋 금지)
+backups/
