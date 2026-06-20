@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 1 -->
-<!-- last_run_at: 2026-06-20T06:00:00+09:00 -->
+<!-- last_run_area: 2 -->
+<!-- last_run_at: 2026-06-20T10:00:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,14 +8,27 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | 2 (**GitHub open auto-improve 실측 2건** — #412 스캔 입출고 items.current_stock 존재X UPDATE small [Area 4, **owner 지시: 바코드 관리 구체화 후 검증 → `docs/BARCODE_INVENTORY_SPEC_PENDING.md` 작성, 코드수정 보류**] · **#422 prod↔main 디버전스 — owner가 #413~#421 9건을 커밋 `5169bbb9`로 prod 수동배포(`81d2ddc0`) 후 close했으나 origin에 미push → main 트리(420280d)에 9건 전부 부재(grep 실증: cards/queries:929 bare WHERE·storageZones:112 body.entity_id·ar-payments:199 updated_at·:373 bare DELETE·safeSubmit 호출 0) → 다음 main push가 IDOR 3·100%-fail 1 등 회귀시키는 시한폭탄 bug small [Area 1, 직전 06-19T20:06 런 생성]**) |
+| 🆕 new | 5 (**GitHub open auto-improve 실측 5건** — #412 스캔 입출고 items.current_stock 존재X UPDATE small [Area 4, owner deferred 바코드 spec] · **#422 prod↔main 디버전스 🚨 DETONATED — a10c8c2 main push가 픽스 없는 코드를 prod 자동배포(deploy.yml 04:07:58Z success 검증) → #413~#421 9건(IDOR 3·100%-fail 1 포함) 회귀 LIVE** bug small [Area 1] · #423 자동가공 /start N+1 improvement small [Area 2, a10c8c2 런 생성] · **#424 weeklyPurchase /notify users.mobile 존재X SELECT → 알림 발송 100% 실패** bug small [Area 2, 본 사이클] · **#425 scan EQ equipment.equipment_type/location/manufacturer 존재X SELECT → 100% 실패** bug small [Area 2, 본 사이클]) |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 (#372 CSV도 owner close-completed → done 이관) |
-| ✔️ done | 123 (114 + **owner 대량 픽스 #413~#421 9건 close-completed**[커밋 `5169bbb9` prod 수동배포 `81d2ddc0`, 06-19T19:31 — **단 origin/main 미push, #422로 디버전스 추적**: #413 bank_transactions.updated_at·#414 카드상세 IDOR·#415 감액삭제 격리·#416 연차 N+1·#417 storageZones mass-assign·#418 kakao/logs IDOR·#419 stored XSS·#420 더블클릭 TOCTOU·#421 로딩표시]) |
+| ✔️ done | 124 (123 + **A-030 portal.ts:378 order_items.pricing_method 존재X SELECT 제거**[customer-facing 주문상세 100%-fail 복구, read-only 안전 자동수정, verify PASS]) |
 | ❌ rejected | 3 |
 
 > 📦 **과거 사이클 로그**(아래 6블록 이전분)는 `IMPROVEMENT_BACKLOG_ARCHIVE.md`로 이관됨 (2026-06-10 정리). 신규 로그는 계속 이 파일 상단에 추가.
 
+> **Area 2 코드 품질 (2026-06-20T10:00):**
+> - **방법**: git fetch-before-compare(origin force-update `4993fa7→a10c8c2`, fetch 후 HEAD=origin/main `a10c8c2` 0/0 동기). node_modules 비어 `npm ci` 선실행 → baseline build PASS(393 modules). ground-truth=322 마이그레이션 로컬 D1(node:sqlite) 전량 적용(**FAIL 0**, 177테이블). Area 2 **17회차** — **신선 각도 = 직전 Area 2(b44bfb6, 06-19T10:00) 이후 머지 churn(items 표준화 Phase 1 마이그 0322~0325·weeklyPurchase IN 바인드픽스 5fd0dfc·finishing2/3 드리프트 정리 ad8c0af)의 컬럼-존재성 + 명시 SELECT 존재성(A-027) 자동스캔**. INSERT/UPDATE 컬럼존재성·명시 SELECT 존재성 2종 자동스캔 직접 실행 + 발견 전수 ground-truth/reachability/sibling 교차검증.
+> - **🔴 명시 SELECT 존재성(A-027) 자동스캔 = net-new 3건 발견(존재X 컬럼 = 100%-fail 클래스)**: 명시 컬럼 SELECT ↔ 322-마이그 ground-truth 전수 대조 →
+>   - **A-030 자동수정(read-only, 안전)**: `portal.ts:378` 고객 포털 주문상세 `GET /portal/orders/:id`가 `SELECT ... scale_factor, finishing, pricing_method FROM order_items` — **order_items엔 pricing_method 없음**(items 테이블 전용, portal만 잘못 복사). 다른 곳(printSystem·orders/core `i.pricing_method`)은 전부 items에서 정상 = portal 단일 outlier(sibling 0). portalOrders.js 렌더는 pricing_method 미사용(0 refs) → **컬럼 제거로 주문상세 복구**(prepare throw→Promise.all 실패→catch 에러). verify(typecheck+build) PASS.
+>   - **#424 (bug, issue-only)**: `weeklyPurchase.ts:340` `POST /notify`가 `SELECT id, name, mobile FROM users` — **users엔 mobile 없음**(phone임, 0001). hr.ts는 employees(mobile 보유)서 정상 = weeklyPurchase 단일. 카카오/SMS 활성 시 알림 발송 100% 500. fix=mobile→phone(자명)이나 **휴면 외부발송 활성화**라 egress 검증 불가 → issue-only.
+>   - **#425 (bug, issue-only)**: `scan.ts:119` EQ 바코드 스캔이 `SELECT ... equipment_type, status, location, manufacturer FROM equipment` — **equipment_type/location/manufacturer 부재**(status만 존재, location≈location_zone). #412(scan items.current_stock)의 형제 sub-path. fix가 **컬럼 매핑 모호**(equipment_type/manufacturer 등가물 없음)라 owner 판단 필요 → issue-only.
+> - **🟢 INSERT/UPDATE 컬럼 존재성 자동스캔 = net-new 0(기보고만)**: 177테이블 ground-truth ↔ src 전수. UPDATE SET 존재X 3건 = cards/lifecycle:1096 ai_analysis_id(FP — SET 대상 thumbnail_url, ai_analysis_id는 서브쿼리 JOIN)·ar-payments:199 bank_transactions.updated_at(#413, **#422 디버전스로 main 잔존**)·scan.ts items.current_stock×2(#412). items Phase 1 마이그(0322~0325)는 additive — `items.pricing_profile`·`size_grade_prices` 신규 컬럼/테이블 코드 참조 **0**(staged, picker 미노출) → 신규 컬럼-drift 유입 0.
+> - **🟢 weeklyPurchase IN 바인드픽스(5fd0dfc)·consumptionForecast 재작성 = 정합**: `consumptionForecast.ts:94` 바인드 순서(sinceDate→...params[itemFilter]→...txParams) ↔ SQL 절 순서 정합, alias `i` 일관. weeklyPurchase 서브쿼리(`IN(SELECT id FROM items WHERE is_purchase_item=1 AND is_active=1)`) 정합 = 바인드 한도 회귀 0.
+> - **💣 #422 DETONATED 확정(Area 2 각도 부수 확인)**: 본 Area 2 colscan이 main 트리에서 `ar-payments:199 bank_transactions.updated_at`(#413) **잔존 재확인** + deploy.yml `a10c8c2` 04:07:58Z **success 검증** → 직전 Area 1이 경고한 시한폭탄이 **그 Area 1 커밋(a10c8c2)의 main push로 실제 폭발**(prod에 픽스 없는 코드 자동배포, 81d2ddc0 픽스 덮어씀). #422 이미 DETONATED로 갱신됨(08:14Z, a10c8c2 런 후속). cross-tenant PII 유출 #414/#415/#418 + 입금삭제 100%-fail #413 등 9건 **prod LIVE 회귀**.
+> - **🧬 SKILL 강화 1건 — A-027 명시 SELECT 존재성 스캔을 "FROM 단일테이블 + 명시 컬럼리스트" 자동화로 정식 편입(reachability+sibling 2단 검증)**: 16회차까지 A-027은 "발견 시" 수동이었으나 본 사이클 3건(#424/#425/A-030)을 한 스캔이 격리 = INSERT/UPDATE 컬럼존재성과 동급 standing 자동스캔으로 승격. FP 배제 규칙 codify: ① `<alias>.*`/`*`/함수/괄호/`${동적}` 포함 collist는 SKIP ② `AS`·table-prefix 제거 후 대조 ③ 발견마다 (a)reachability(프론트 axios 호출처) (b)sibling 전수(`grep -rn "<col>" src/routes`로 같은 컬럼 다른 테이블서 정상인지) 2단. read-only SELECT 오타는 자동수정(프론트 미사용 시 컬럼 제거, 사용 시 `AS` 별칭), **외부발송/모호매핑은 issue-only**.
+> - **이상 없음**: git 동기 0/0. npm ci 후 build/verify PASS. INSERT/UPDATE 컬럼존재성·바인드 순서·items Phase1 additive 정합. **단 명시 SELECT 존재성에서 net-new 3건(존재X 컬럼 100%-fail)** + #422 DETONATED.
+> - 자동 수정 1건(A-030 portal pricing_method 제거, verify PASS), 신규 이슈 2건(#424 weeklyPurchase mobile·#425 scan equipment), SKILL 강화 1건(A-027 자동스캔 승격+2단 검증), done-sync(new 2→5[#423 prior런+#424/#425]·done 123→124[A-030]), **신선 각도 — 직전 Area 2 이후 churn의 명시 SELECT 존재성 자동스캔 = 존재X 컬럼 3건 격리**
+>
 > **Area 1 프로덕션 헬스 (2026-06-20T06:00):**
 > - **방법**: git fetch-before-compare(origin force-update `4993fa7→420280d`, fetch 후 HEAD=origin/main `420280d` 0/0 동기). `npm ci` 후 baseline build PASS(393 modules, _worker.js 5,274.08kB). egress 차단이라 Deploy/E2E/Backup CI를 헬스 신호로 사용. GitHub Actions 최근 30런 분석 + `list_issues(OPEN, auto-improve)` 실측. Area 1 **17회차** — 직전 Area 6(adefd3b) 이후 owner churn = items 표준화 Phase 1(5b9b410, 마이그 0322~0325)·weeklyPurchase IN() 바인드 제거(5fd0dfc)·finishing2/3 드리프트 정리(ad8c0af)·주문 append(7427297). **신선 각도 = backlog↔GitHub 디버전스 실측 동기화 + prod↔main 코드 디버전스 검증**.
 > - **🟢 CI 30런 success 27 + cancelled 3 — 헬스 GREEN**: cancelled 3건(dd06d83·cf0784c·6dbeed1)은 **전부 E2E이며 같은 SHA의 Deploy는 success** → 후속 커밋 빠른 push에 의한 **concurrency 취소**(헬스 실패 아님). failure/timed_out 0건. HEAD `420280d` = Deploy + E2E(Playwright, 06-20T03:43) + Daily D1 Backup 3종 동시 green. items Phase 1·weeklyPurchase 바인드픽스·finishing2/3 정리 머지 후에도 baseline build PASS·CI green = 신규 회귀 유입 0.
