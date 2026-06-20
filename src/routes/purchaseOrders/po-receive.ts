@@ -18,6 +18,8 @@ poReceiveRouter.use('/*', authMiddleware, requireAnyPagePermission('/purchase-or
 // POST /:id/receive - 입고 처리
 // ============================================================================
 poReceiveRouter.post('/:id/receive', async (c) => {
+  // #420: 선점 락을 획득한 PO id (오류 시 function catch에서 락 해제용 — try 밖 스코프).
+  let lockReleaseId: string | null = null
   try {
     const user = c.get('user')
     const id = c.req.param('id')
@@ -191,6 +193,23 @@ poReceiveRouter.post('/:id/receive', async (c) => {
     const newStatus = willAllReceived ? 'RECEIVED' : 'PARTIAL_RECEIVED'
 
     // ============================================================================
+    // #420: 동시 입고 처리 선점 락 (옵션2 backend 원자성)
+    // 더블클릭/멀티탭/재시도로 인한 영수증·재고 이중 가산 방지. 모든 검증 통과 후·receipt INSERT 직전에 원자적 claim.
+    // 직전 status 검사(line 40)와 이 claim 사이엔 status/lock 변경 await 없음 → 정상 단건은 changes=1 보장.
+    // 30초 stale timeout으로 크래시 자동복구. 성공 batch + function catch에서 NULL 복원.
+    // ============================================================================
+    const lockClaim = await c.env.DB.prepare(`
+      UPDATE purchase_orders SET receiving_locked_at = CURRENT_TIMESTAMP
+      WHERE id = ?${ef.clause}
+        AND status IN ('CONFIRMED', 'PARTIAL_RECEIVED')
+        AND (receiving_locked_at IS NULL OR receiving_locked_at <= datetime('now', '-30 seconds'))
+    `).bind(id, ...ef.params).run()
+    if (!lockClaim.meta.changes) {
+      return c.json({ success: false, error: '이미 입고 처리 중입니다. 잠시 후 다시 시도해주세요.' }, 409)
+    }
+    lockReleaseId = id  // 이 시점부터 오류 시 function catch가 락 해제
+
+    // ============================================================================
     // Phase 2: 부모 INSERT (receipt_id 획득 필요)
     // ============================================================================
     const receiptResult = await c.env.DB.prepare(`
@@ -282,9 +301,9 @@ poReceiveRouter.post('/:id/receive', async (c) => {
         UPDATE inventory_receipts SET inspection_status = ? WHERE id = ?
       `).bind(inspectionStatusForReceipt, receiptId))
 
-      // purchase_orders status 업데이트 (사전계산값 사용)
+      // purchase_orders status 업데이트 (사전계산값 사용) + #420: 선점 락 해제(원자적, 입고 커밋과 동시)
       stmts.push(c.env.DB.prepare(`
-        UPDATE purchase_orders SET status = ?, updated_by = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?
+        UPDATE purchase_orders SET status = ?, receiving_locked_at = NULL, updated_by = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?
       `).bind(newStatus, user?.id || 1, id))
 
       // 상태 변경 시만 이력
@@ -414,6 +433,10 @@ poReceiveRouter.post('/:id/receive', async (c) => {
     })
   } catch (error: any) {
     console.error('purchaseOrders receive error:', error)
+    // #420: 락 획득 후 오류 발생 시 선점 락 해제(성공 batch의 해제가 커밋되지 않았으므로). 미획득(null)이면 건드리지 않음.
+    if (lockReleaseId) {
+      try { await c.env.DB.prepare('UPDATE purchase_orders SET receiving_locked_at = NULL WHERE id = ?').bind(lockReleaseId).run() } catch (_) { /* best effort */ }
+    }
     return c.json({
       success: false,
       error: '서버 오류가 발생했습니다.'

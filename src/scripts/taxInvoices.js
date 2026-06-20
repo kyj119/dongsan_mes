@@ -5,6 +5,7 @@ var unbilledData = [];
 
 var statusLabels = {
   'DRAFT': '작성중',
+  'ISSUING': '발행중',   // #420: 발행 선점(claim) transient 상태
   'ISSUED': '발행완료',
   'SENT': '전송완료',
   'FAILED': '전송실패',
@@ -14,6 +15,7 @@ var statusLabels = {
 };
 var statusColors = {
   'DRAFT': 'bg-gray-100 text-gray-600',
+  'ISSUING': 'bg-amber-50 text-amber-700',
   'ISSUED': 'bg-blue-50 text-blue-700',
   'SENT': 'bg-green-50 text-green-700',
   'FAILED': 'bg-red-50 text-red-700',
@@ -23,6 +25,7 @@ var statusColors = {
 };
 var statusIcons = {
   'DRAFT': 'far fa-clock',
+  'ISSUING': 'fas fa-spinner fa-spin',
   'ISSUED': 'fas fa-check',
   'SENT': 'fas fa-check-circle',
   'FAILED': 'fas fa-exclamation-triangle',

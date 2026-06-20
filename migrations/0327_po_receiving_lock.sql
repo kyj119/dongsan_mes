@@ -1,0 +1,11 @@
+-- ============================================================================
+-- Migration 0327: 입고 동시처리 선점 락 (#420 옵션2 backend 원자성)
+-- (0326은 spec_groups_variants와 충돌 → 0327로 리넘버. 컬럼은 execute --file로 prod/local 적용 완료.)
+-- ============================================================================
+-- 더블클릭/멀티탭/네트워크 재시도로 인한 입고 영수증·재고 이중 가산(TOCTOU) 방지.
+-- po-receive.ts가 receipt INSERT 직전에 원자적 claim(UPDATE ... WHERE ... AND lock IS NULL/stale),
+-- 입고 완료(성공 batch) 및 오류(function catch) 시 NULL 복원, 30초 stale timeout으로 크래시 자동복구.
+--
+-- ⚠️ purchase_orders.status는 CHECK 제약(DRAFT/CONFIRMED/PARTIAL_RECEIVED/RECEIVED/CANCELLED)이 있어
+--    transient 'RECEIVING' 상태 도입은 테이블 재빌드가 필요 → 별도 nullable 락 컬럼으로 우회(ALTER ADD COLUMN, 안전).
+ALTER TABLE purchase_orders ADD COLUMN receiving_locked_at DATETIME;

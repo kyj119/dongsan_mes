@@ -507,7 +507,7 @@ export interface PurchasePayment {
 // Tax Invoice (세금계산서)
 // ============================================================================
 
-export type TaxInvoiceStatus = 'DRAFT' | 'ISSUED' | 'SENT' | 'FAILED' | 'CANCELLED'
+export type TaxInvoiceStatus = 'DRAFT' | 'ISSUING' | 'ISSUED' | 'SENT' | 'FAILED' | 'CANCELLED'
 export type TaxInvoiceType = 'NORMAL' | 'MODIFY'
 
 export interface TaxInvoice {

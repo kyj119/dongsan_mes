@@ -126,8 +126,24 @@ export async function issueTaxInvoice(
   if (!existing) {
     return { success: false, error: '세금계산서를 찾을 수 없습니다.' }
   }
-  if (existing.status !== 'DRAFT') {
+  // #420: DRAFT 또는 stale ISSUING(2분 경과, 크래시 잔재)만 발행 진입 허용.
+  if (existing.status !== 'DRAFT' && existing.status !== 'ISSUING') {
     return { success: false, error: '임시저장 상태의 세금계산서만 발행할 수 있습니다.' }
+  }
+
+  // #420: 원자적 발행 선점(claim) — DRAFT→ISSUING. 동시 더블클릭/멀티탭/재시도 시 단 1건만 provider.issue()에 도달
+  //       (국세청 중복발행 방지). 직전 status 검사와 이 claim 사이에 await 없음 → 정상 단건은 changes=1 보장.
+  //       크래시로 ISSUING 고착 시: 2분 경과한 stale ISSUING은 재선점 허용(barobill 발행은 초 단위라 2분이면 안전,
+  //       이미 발행됐다면 mgtKey unique로 재호출이 거부됨). 0행이면 다른 요청이 이미 처리 중.
+  // UPDATE는 테이블 alias 없음 → entity 스코프도 alias 없이(entity_id). entityScope는 SELECT용(ti.entity_id)이라 재사용 불가.
+  const claimScope = entityId != null && entityId !== 0 ? ' AND entity_id = ?' : ''
+  const claimRes = await db.prepare(
+    `UPDATE tax_invoices SET status = 'ISSUING', updated_at = CURRENT_TIMESTAMP
+     WHERE id = ?${claimScope}
+       AND (status = 'DRAFT' OR (status = 'ISSUING' AND updated_at <= datetime('now', '-2 minutes')))`
+  ).bind(...(claimScope ? [taxInvoiceId, entityId] : [taxInvoiceId])).run()
+  if (!claimRes.meta.changes) {
+    return { success: false, error: '이미 발행 처리 중인 세금계산서입니다. 잠시 후 상태를 새로고침하세요.' }
   }
 
   const { results: items } = await db.prepare(
