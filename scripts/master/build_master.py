@@ -1,12 +1,12 @@
 # -*- coding: utf-8 -*-
 # 업로드용 품목 마스터 빌드: 298 base 정규화 + 규격그룹 + 변종전개(예시) + 검토
-import sys, re, openpyxl
+import sys, os, re, openpyxl
 from openpyxl import Workbook
 from collections import Counter
 sys.stdout.reconfigure(encoding='utf-8')
 
 SRC = "품목마스터/설계/표준품목_등록구조_수정본.xlsx"
-OUT = "품목마스터/업로드양식/품목업로드_최종.xlsx"
+OUT = os.environ.get('MASTER_OUT', "품목마스터/업로드양식/품목업로드_최종.xlsx")
 
 CATEGORIES = {'현수막','배너','깃발·기','시트·스티커','판재출력','출력물','간판','원자재','부속품'}
 PRICING = {'AREA','FIXED','GRADE','COMPONENT'}
@@ -36,8 +36,13 @@ data = [r for r in rows[1:] if any(c is not None and str(c).strip() for c in r)]
 wb.close()
 
 FLAG_BASE = re.compile(r'(원판)$')
-ORIGIN_SET = re.compile(r'(세트|SET|함|지관|수기대|구게양|가정용|배너|원형|보급형|중급형)')
 FABRIC = re.compile(r'(원단|폰지|사틴|메쉬|친환경|코팅|켄버스|부직포|텐트천)')
+# 그룹 과포괄 보정 (2026-06-20 용준님 점검):
+#   판재두께 = 포맥스/폼보드/아크릴 계열만 확정. 합판·원목·PC는 표준두께 상이 → 검토.
+POMAX_OK = re.compile(r'(포맥스|폼보드|아크릴)')
+#   호수 = 깃발·기 GRADE 전부가 아니라, 명백한 비호수(세트·수기대·수기·배너·장식·특호·외건) 제외.
+#         나머지는 게양용 표준기 후보 → 용준님 호수 변종 여부 직접 지정.
+HO_EXCLUDE = re.compile(r'(수기대|수기$|함세트|지관|특호|배너|만국기|만장기|청사초롱|어구실명제|외\s*건|SET|세트)')
 
 def profile(pm): return pm.replace('*','').strip()
 def base_name(name):
@@ -49,16 +54,25 @@ for r in data:
     code, name, it, cat = g(r,'item_code'), g(r,'item_name'), g(r,'item_type'), g(r,'대분류')
     pm = profile(g(r,'pricing_method')); unit = g(r,'unit') or 'EA'; gubun = g(r,'구분'); bigo = g(r,'비고/조치')
     igroup = base_name(name)
-    # spec_group 마킹
+    # spec_group 마킹 (과포괄 보정 — 명백한 변종만, 의심분은 sg='' + review로 분리)
     sg = ''
     if gubun == '겸업-자재' or FLAG_BASE.search(name):
-        sg = '판재두께'
+        if POMAX_OK.search(name):
+            sg = '판재두께'
+        else:
+            review.append(('판재두께 적합성?', code, name, '합판/원목/PC — 표준두께(1·2·3·5·8·10T) 상이 가능, 두께값 확인 후 변종'))
     elif cat == '깃발·기' and g(r,'pricing_method') == 'GRADE*':
-        sg = '호수'
-        if ORIGIN_SET.search(name): review.append(('호수 적합성?', code, name, '세트/액세서리 — 호수 변종 아닐 수 있음'))
+        if HO_EXCLUDE.search(name):
+            pass  # 호수 아님 → 단일 FIXED (sg='')
+        else:
+            sg = '호수'
+            review.append(('호수 대상 지정', code, name, '게양용 표준기 후보 — 용준님 호수 변종 여부 확정'))
     elif cat == '원자재' and FABRIC.search(name):
-        sg = '원단폭'
-        review.append(('원단폭 값 미정', code, name, '폭 목록 확정 후 변종 생성'))
+        if unit == '롤':
+            sg = '원단폭'
+            review.append(('원단폭 값 미정', code, name, '폭 mm 목록 확정 후 변종 생성'))
+        else:
+            review.append(('원단폭 적합성?', code, name, f'unit={unit} — 낱장/개수 판매, 폭 변종 아닐 수 있음'))
     items.append({
         'item_code': code, 'item_name': name, 'item_type': it, 'category': cat,
         'item_group': igroup, 'spec_group': sg, 'pricing_method': pm, 'pricing_profile': pm,

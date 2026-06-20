@@ -1,10 +1,10 @@
 # -*- coding: utf-8 -*-
 # 품목 마스터 검증 — 구조 무결성. 에러 0 = 통과
-import sys, re, openpyxl
+import sys, os, re, openpyxl
 from collections import Counter
 sys.stdout.reconfigure(encoding='utf-8')
 
-OUT = "품목마스터/업로드양식/품목업로드_최종.xlsx"
+OUT = os.environ.get('MASTER_OUT', "품목마스터/업로드양식/품목업로드_최종.xlsx")
 CATEGORIES = {'현수막','배너','깃발·기','시트·스티커','판재출력','출력물','간판','원자재','부속품'}
 PRICING = {'AREA','FIXED','GRADE','COMPONENT'}
 TYPES = {'PRODUCT','GOODS','MATERIAL'}
