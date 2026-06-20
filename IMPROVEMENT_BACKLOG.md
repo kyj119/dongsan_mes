@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 2 -->
-<!-- last_run_at: 2026-06-20T10:00:00+09:00 -->
+<!-- last_run_area: 3 -->
+<!-- last_run_at: 2026-06-20T14:00:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,7 +8,7 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | 5 (**GitHub open auto-improve 실측 5건** — #412 스캔 입출고 items.current_stock 존재X UPDATE small [Area 4, owner deferred 바코드 spec] · **#422 prod↔main 디버전스 🚨 DETONATED — a10c8c2 main push가 픽스 없는 코드를 prod 자동배포(deploy.yml 04:07:58Z success 검증) → #413~#421 9건(IDOR 3·100%-fail 1 포함) 회귀 LIVE** bug small [Area 1] · #423 자동가공 /start N+1 improvement small [Area 2, a10c8c2 런 생성] · **#424 weeklyPurchase /notify users.mobile 존재X SELECT → 알림 발송 100% 실패** bug small [Area 2, 본 사이클] · **#425 scan EQ equipment.equipment_type/location/manufacturer 존재X SELECT → 100% 실패** bug small [Area 2, 본 사이클]) |
+| 🆕 new | 6 (**GitHub open auto-improve 실측 6건** — #412 스캔 입출고 items.current_stock 존재X UPDATE small [Area 4, owner deferred 바코드 spec] · **#422 prod↔main 디버전스 🚨 DETONATED — a10c8c2 main push가 픽스 없는 코드를 prod 자동배포(deploy.yml 04:07:58Z success 검증) → #413~#421 9건(IDOR 3·100%-fail 1 포함) 회귀 LIVE** bug small [Area 1] · #423 자동가공 /start N+1 improvement small [Area 2, a10c8c2 런 생성] · **#424 weeklyPurchase /notify users.mobile 존재X SELECT → 알림 발송 100% 실패** bug small [Area 2] · **#425 scan EQ equipment.equipment_type/location/manufacturer 존재X SELECT → 100% 실패** bug small [Area 2] · **#426 주문폼 거래처 특약 단가 저장 제안 3중 dead — 핸들러 미배선+basePrice 미설정+showConfirm 콜백 오용** bug small [Area 3, 본 사이클]) |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 (#372 CSV도 owner close-completed → done 이관) |
 | ✔️ done | 124 (123 + **A-030 portal.ts:378 order_items.pricing_method 존재X SELECT 제거**[customer-facing 주문상세 100%-fail 복구, read-only 안전 자동수정, verify PASS]) |
@@ -16,6 +16,15 @@
 
 > 📦 **과거 사이클 로그**(아래 6블록 이전분)는 `IMPROVEMENT_BACKLOG_ARCHIVE.md`로 이관됨 (2026-06-10 정리). 신규 로그는 계속 이 파일 상단에 추가.
 
+> **Area 3 UX/기능 감사 (2026-06-20T14:00):**
+> - **방법**: git fetch-before-compare(origin force-update `4993fa7→8b55e4f`, fetch 후 HEAD=origin/main `8b55e4f` 0/0 동기). node_modules 비어 `npm ci` 선실행 → baseline build PASS(393 modules, _worker.js 5,274.07kB). Area 3 **16회차** — **신선 각도 = (a)파괴적 삭제 confirm 가드 커버리지 + (b)`showConfirm` 콜백 오용(2번째 인자=options인데 콜백 전달=절대 미실행) 교차 스캔**(직전 15회차 더블클릭#420·로딩표시#421과 다른 UX 신축). axios.delete 50+ 사이트 confirm 가드 전수 + showConfirm 전 호출처 await/then/콜백 패턴 분류 + 발견 도달성(핸들러 배선) owner 직접 Read 검증.
+> - **🟢 파괴적 삭제 confirm 가드 = net-new 0(2 FP)**: axios.delete 50+ 사이트 중 confirm 미보유 후보 2건 전부 FP — `hrDetail.js:92`(직원 영구삭제)는 **확인 문구 타이핑 일치 모달**(hrdConfirmDelete, phrase match)=confirm보다 강함, `cashReceipts.js:389 deleteReceipt`는 래퍼 `confirmDeleteReceipt`(:22)가 `showConfirm(...danger)` 선행 후 호출(버튼 onclick=confirmDeleteReceipt, :100/:305). 삭제 confirm 커버리지 우수.
+> - **🔴 신규 이슈 #426 (bug, small, "showConfirm 콜백 오용" 신클래스) — 주문폼 거래처 특약 단가 저장 제안 3중 dead**: `parent.js:1552 onUnitPriceManualChange`(단가 수동변경 시 "거래처 기본단가로 저장?" 제안 후 `/api/prices/client-item-prices` write)가 **3중으로 죽음** — ① 핸들러 호출처 0건(단가 input은 `itemRow.js:78 oninput="calcItem"`만, onUnitPriceManualChange 미배선) ② `priceInp.dataset.basePrice` 세팅 코드 전무 → `if(basePrice && ...)` 항상 false ③ `showConfirm(msg, function(){...})`(:1568) 2번째 인자에 콜백 전달 — `shell.js:864 showConfirm(message, options)`는 콜백 미호출·Promise만 resolve라 **저장 콜백 영구 미실행**(코드베이스 유일 콜백오용, 표준=`await`/`.then(confirmed=>)`). #318 부분픽스(URL만 리포인트, invocation 미수정)=#377 클래스. 거래처별 단가 자동학습 기능 도입이래 100% 미작동(회귀 아님, 데이터손상 없음=write 자체 안 일어남). **자동수정 안 함**: ③만은 안전 패턴교체이나 ①②까지 고치면 휴면 단가 write 활성화=UI/UX·기능 추가(SKILL Area 3 금지, egress 검증 불가) → owner 완성(옵션A) vs 제거(옵션B) 결정.
+> - **🟢 backlog↔GitHub sync clean (변동 0→#426 편입)**: open auto-improve **실측 5건**(#412·#422·#423·#424·#425, list_issues 전수) = 직전 stats `new=5` 정합 확인 후 본 사이클 #426 추가 → **new=6**. done=124·rejected=3·approved=0·reviewed=0 유지. 직전 Area 2 이후 owner 신규 close/머지 0건(HEAD=8b55e4f=Area 2 문서 커밋).
+> - **🧬 SKILL 강화 1건 — "`showConfirm` 콜백 오용 + 핸들러 도달성" Area 3 standing scan codify**: `showConfirm(message, options)`는 Promise 반환·**콜백 미호출** API인데 2번째 인자에 콜백을 넘기면 절대 실행 안 됨(유령 기능). **레시피**: ① `grep -rn "showConfirm(" src/scripts`로 전 호출처 추출 → ② `await showConfirm`/`showConfirm(...).then(`(정상) vs `showConfirm(<msg>, function`/`showConfirm(<msg>, () =>`(2번째 인자=함수=오용) 분류 → ③ 오용 발견 시 그 콜백 내부가 destructive/save write이면 100% 미작동 기능. **+ 도달성 2단**: 핸들러가 (a)이벤트 배선됐는지(`grep -rn "<handlerName>" src` 호출처>0) (b)가드 변수(dataset 등)가 실제 세팅되는지 — 셋 다 죽으면 dead feature(#334 reachability). FP 배제: `.then()` 체이닝·`await`는 정상. Area 3 SKILL에 codify.
+> - **이상 없음**: git 동기 0/0. npm ci 후 build PASS. 삭제 confirm 가드 50+사이트 clean(2 FP). showConfirm 콜백오용 1건(#426)·도달성 3중 dead 격리.
+> - 자동 수정 0건(Area 3 UI/UX·기능활성화 금지범주), 신규 이슈 1건(#426 거래처단가 제안 3중 dead bug), SKILL 강화 1건(showConfirm 콜백오용+도달성 standing scan), done-sync 갱신(new 5→6), **신선 각도 — 파괴적 삭제 confirm 커버리지 + showConfirm 콜백 오용/핸들러 도달성 교차 스캔**
+>
 > **Area 2 코드 품질 (2026-06-20T10:00):**
 > - **방법**: git fetch-before-compare(origin force-update `4993fa7→a10c8c2`, fetch 후 HEAD=origin/main `a10c8c2` 0/0 동기). node_modules 비어 `npm ci` 선실행 → baseline build PASS(393 modules). ground-truth=322 마이그레이션 로컬 D1(node:sqlite) 전량 적용(**FAIL 0**, 177테이블). Area 2 **17회차** — **신선 각도 = 직전 Area 2(b44bfb6, 06-19T10:00) 이후 머지 churn(items 표준화 Phase 1 마이그 0322~0325·weeklyPurchase IN 바인드픽스 5fd0dfc·finishing2/3 드리프트 정리 ad8c0af)의 컬럼-존재성 + 명시 SELECT 존재성(A-027) 자동스캔**. INSERT/UPDATE 컬럼존재성·명시 SELECT 존재성 2종 자동스캔 직접 실행 + 발견 전수 ground-truth/reachability/sibling 교차검증.
 > - **🔴 명시 SELECT 존재성(A-027) 자동스캔 = net-new 3건 발견(존재X 컬럼 = 100%-fail 클래스)**: 명시 컬럼 SELECT ↔ 322-마이그 ground-truth 전수 대조 →
