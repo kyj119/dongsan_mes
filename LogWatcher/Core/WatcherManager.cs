@@ -177,6 +177,13 @@ namespace LogWatcher.Core
                         Console.WriteLine($"    Completed: {evt.PrintCompletedAt}");
                     if (evt.OrderNumber != null)
                         Console.WriteLine($"    Order: {evt.OrderNumber}  FileSeq: {evt.FileSeq}");
+                    if (evt.IsNest)
+                    {
+                        var ok = evt.NestDeclaredCount == evt.NestMembers.Count ? "OK" : "MISMATCH";
+                        Console.WriteLine($"    [NEST] 선언 {evt.NestDeclaredCount} / 복원 {evt.NestMembers.Count}  → {ok}");
+                        foreach (var m in evt.NestMembers)
+                            Console.WriteLine($"       - {System.IO.Path.GetFileName(m)}");
+                    }
                 }
             }
         }

@@ -49,7 +49,10 @@ namespace LogWatcher
                     copy_total = evt.CopyTotal,
                     tile_count = evt.TileCount,
                     tile_index = evt.TileIndex,
-                    file_seq = evt.FileSeq
+                    file_seq = evt.FileSeq,
+                    // 네스팅 분해 (Flexi 자체 RIP 네스팅) — 멤버 파일명 목록
+                    nest_members = evt.IsNest ? evt.NestMembers : null,
+                    nest_declared_count = evt.IsNest ? evt.NestDeclaredCount : (int?)null
                 };
 
                 var response = await _http.PostAsJsonAsync($"{_baseUrl}/api/print-events", payload);

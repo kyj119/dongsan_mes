@@ -70,6 +70,11 @@ namespace LogWatcher
         // 분할출력 (Tile Layout)
         public int TileCount { get; set; } = 0;
         public int TileIndex { get; set; } = 0;
+
+        // 네스팅 분해 (Flexi 자체 RIP 네스팅 — 인쇄 블록 파일명이 "네스팅(N개 작업)")
+        public bool IsNest { get; set; } = false;
+        public int NestDeclaredCount { get; set; } = 0;        // 로그가 선언한 작업 수 N
+        public List<string> NestMembers { get; set; } = new(); // 립핑 블록에서 복원한 멤버 파일명(중복제거)
     }
 
     public class PrintLogParser : ILogParser

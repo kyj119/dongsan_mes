@@ -221,7 +221,11 @@ printEventsRouter.post('/', agentKeyMiddleware, async (c) => {
     const { agent_id, equipment_id, file_path, print_status, print_completed_at,
             file_name, printer_name, print_started_at,
             output_width, output_height, dpi,
-            copy_columns, copy_rows, copy_total, tile_count, tile_index } = body
+            copy_columns, copy_rows, copy_total, tile_count, tile_index,
+            nest_members } = body
+    // Flexi 자체 RIP 네스팅: 멤버 파일명 배열 → JSON 저장 (네스트가 아니면 null)
+    const nestMembersJson = Array.isArray(nest_members) && nest_members.length > 0
+      ? JSON.stringify(nest_members) : null
 
     if (!agent_id || !file_path || !print_status) {
       return c.json({ success: false, error: 'agent_id, file_path, print_status required' }, 400)
@@ -300,8 +304,8 @@ printEventsRouter.post('/', agentKeyMiddleware, async (c) => {
         agent_id, equipment_id, card_number, card_id, order_number, file_path, file_name,
         printer_name, print_status, print_started_at, print_completed_at, print_duration_sec,
         output_width, output_height, dpi,
-        copy_columns, copy_rows, copy_total, tile_count, tile_index, entity_id
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        copy_columns, copy_rows, copy_total, tile_count, tile_index, entity_id, nest_members
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).bind(
       agent_id, equipment_id || null, cardNumber, cardId, orderNumber, file_path, extractedName,
       printer_name || null, print_status, print_started_at || null,
@@ -309,7 +313,7 @@ printEventsRouter.post('/', agentKeyMiddleware, async (c) => {
       output_width || null, output_height || null,
       dpi || null,
       copy_columns || 1, copy_rows || 1, copy_total || 1,
-      tile_count || 0, tile_index || 0, eventEntityId
+      tile_count || 0, tile_index || 0, eventEntityId, nestMembersJson
     ).run()
 
     const printEventId = result.meta.last_row_id as number
@@ -498,13 +502,16 @@ printEventsRouter.post('/batch', agentKeyMiddleware, async (c) => {
         // entity_id: 카드에서 유도 (#384: requesting_entity_id, NULL이면 order entity)
         const batchEntityId = await deriveCardEntityId(c.env.DB, { cardId })
 
+        const evtNestMembersJson = Array.isArray(evt.nest_members) && evt.nest_members.length > 0
+          ? JSON.stringify(evt.nest_members) : null
+
         const batchResult = await c.env.DB.prepare(`
           INSERT INTO print_events (
             agent_id, equipment_id, card_number, card_id, order_number, file_path, file_name,
             printer_name, print_status, print_started_at, print_completed_at, print_duration_sec,
             output_width, output_height, dpi,
-            copy_columns, copy_rows, copy_total, tile_count, tile_index, entity_id
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            copy_columns, copy_rows, copy_total, tile_count, tile_index, entity_id, nest_members
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `).bind(
           agent_id, equipment_id || null, cardNumber, cardId, orderNumber,
           evt.file_path, extractedName, evt.printer_name || null,
@@ -512,7 +519,7 @@ printEventsRouter.post('/batch', agentKeyMiddleware, async (c) => {
           evt.print_completed_at || null, evtDuration, evt.output_width || null,
           evt.output_height || null, evt.dpi || null,
           evt.copy_columns || 1, evt.copy_rows || 1, evt.copy_total || 1,
-          evt.tile_count || 0, evt.tile_index || 0, batchEntityId
+          evt.tile_count || 0, evt.tile_index || 0, batchEntityId, evtNestMembersJson
         ).run()
 
         const batchPrintEventId = batchResult.meta.last_row_id as number

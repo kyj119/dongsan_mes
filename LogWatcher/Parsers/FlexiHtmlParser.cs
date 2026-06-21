@@ -26,6 +26,16 @@ namespace LogWatcher.Parsers
         // Block delimiters
         private const string PRINT_START = "인쇄 시작";
         private const string PRINT_END = "출력 끝";
+        private const string RIP_START = "립핑 작업 개시";   // 립핑(RIP) 블록 — 실제 멤버 파일명 보유
+
+        // 네스팅 역추적 상태 (폴링 호출 간 유지)
+        //  - _ripBuffer: 직전 인쇄 이후 누적된 립핑 파일명 (다음 인쇄가 flush)
+        //  - _lastNestBySize: 파일크기→멤버 (보류 재출력 시 멤버 상속용)
+        private readonly List<string> _ripBuffer = new();
+        private readonly Dictionary<string, List<string>> _lastNestBySize = new();
+
+        // "네스팅(20개 작업)" 에서 N 추출
+        private static readonly Regex NestCountRegex = new(@"네스팅\((\d+)", RegexOptions.Compiled);
 
         // Field extraction: <TH...>label</TH>\n<TD...>value</TD>
         // Handles multi-line and &nbsp; padding
@@ -97,6 +107,8 @@ namespace LogWatcher.Parsers
                 {
                     Console.WriteLine($"[{EquipmentId}] RIPLOG.HTML truncated, resetting to 0");
                     _lastPosition = 0;
+                    _ripBuffer.Clear();
+                    _lastNestBySize.Clear();
                 }
 
                 if (_lastPosition >= fileLength)
@@ -110,43 +122,32 @@ namespace LogWatcher.Parsers
 
                 var newContent = Encoding.UTF8.GetString(newBytes, 0, bytesRead);
 
-                // Find complete print blocks: "인쇄 시작" ... "출력 끝"
+                // 모든 <TABLE>...</TABLE> 블록을 순서대로 스캔.
+                //  - 립핑(RIP) 블록 → 멤버 파일명을 _ripBuffer 에 누적
+                //  - 인쇄(PRINT) 블록 → PrintEvent 생성 (네스트면 멤버로 분해) + 버퍼 flush
                 int searchFrom = 0;
                 int lastCompleteEnd = -1;
 
                 while (true)
                 {
-                    int startIdx = newContent.IndexOf(PRINT_START, searchFrom, StringComparison.Ordinal);
+                    int startIdx = newContent.IndexOf("<TABLE", searchFrom, StringComparison.OrdinalIgnoreCase);
                     if (startIdx < 0) break;
 
-                    int endIdx = newContent.IndexOf(PRINT_END, startIdx, StringComparison.Ordinal);
-                    if (endIdx < 0) break; // incomplete block — wait for more data
-
-                    // Include the closing </TABLE> after "출력 끝"
-                    int tableEnd = newContent.IndexOf("</TABLE>", endIdx, StringComparison.OrdinalIgnoreCase);
-                    if (tableEnd < 0) break;
+                    int tableEnd = newContent.IndexOf("</TABLE>", startIdx, StringComparison.OrdinalIgnoreCase);
+                    if (tableEnd < 0) break; // incomplete table — wait for more data
                     tableEnd += "</TABLE>".Length;
 
                     var block = newContent.Substring(startIdx, tableEnd - startIdx);
-                    var evt = ParsePrintBlock(block);
-                    if (evt != null) events.Add(evt);
+                    ProcessBlock(block, events);
 
                     lastCompleteEnd = tableEnd;
                     searchFrom = tableEnd;
                 }
 
-                // Update position to end of last complete block (or keep current if no complete blocks)
+                // 마지막 완료 블록 끝까지 위치 전진 (char index → UTF-8 byte offset 변환)
                 if (lastCompleteEnd >= 0)
                 {
-                    _lastPosition += lastCompleteEnd;
-                }
-                else
-                {
-                    // No complete print blocks found, but advance past any complete non-print blocks
-                    // to avoid re-scanning RIP-only content
-                    int lastTable = newContent.LastIndexOf("</TABLE>", StringComparison.OrdinalIgnoreCase);
-                    if (lastTable >= 0)
-                        _lastPosition += lastTable + "</TABLE>".Length;
+                    _lastPosition += Encoding.UTF8.GetByteCount(newContent.Substring(0, lastCompleteEnd));
                 }
 
                 SavePosition();
@@ -160,6 +161,68 @@ namespace LogWatcher.Parsers
             }
 
             return events;
+        }
+
+        /// <summary>
+        /// 단일 TABLE 블록을 분류 처리.
+        ///  - 립핑(RIP) 블록: 멤버 파일명을 _ripBuffer 에 누적
+        ///  - 인쇄(PRINT) 블록: PrintEvent 생성. 네스트면 _ripBuffer 를 중복제거해 멤버로 분해.
+        /// </summary>
+        private void ProcessBlock(string block, List<PrintEvent> events)
+        {
+            bool isPrint = block.Contains(PRINT_START);
+            bool isRip = !isPrint && block.Contains(RIP_START);
+
+            if (isRip)
+            {
+                // 립핑 블록: "파일:" 정확히 일치하는 값만 (프로파일: 등 오탐 방지 — ExtractFields 가 라벨 정규화)
+                var rf = ExtractFields(block).GetValueOrDefault("파일:", "");
+                if (!string.IsNullOrWhiteSpace(rf))
+                    _ripBuffer.Add(rf.Trim());
+                return;
+            }
+
+            if (!isPrint) return; // 그 외 테이블(헤더 등) 무시
+
+            var evt = ParsePrintBlock(block);
+            if (evt == null) return; // 파일 정보 없는 비정상 블록 — 버퍼 보존
+
+            var fields = ExtractFields(block);
+            var fileVal = fields.GetValueOrDefault("파일:", "");
+            var jobType = fields.GetValueOrDefault("작업 유형:", "");
+            bool nest = jobType.Contains("네스팅") || fileVal.Contains("네스팅");
+
+            if (nest)
+            {
+                evt.IsNest = true;
+                var m = NestCountRegex.Match(fileVal);
+                evt.NestDeclaredCount = m.Success ? int.Parse(m.Groups[1].Value) : 0;
+
+                // 핵심 규칙: 직전 인쇄 이후 누적된 립핑 파일명을 중복제거 → 멤버
+                var seen = new HashSet<string>();
+                var members = new List<string>();
+                foreach (var f in _ripBuffer)
+                    if (seen.Add(f)) members.Add(f);
+
+                var sizeKey = fields.GetValueOrDefault("파일 크기:", "");
+                if (members.Count == 0 && !string.IsNullOrEmpty(sizeKey)
+                    && _lastNestBySize.TryGetValue(sizeKey, out var prev))
+                {
+                    members = new List<string>(prev); // 보류 재출력 — 직전 동일 파일크기 네스트 멤버 상속
+                }
+                else if (members.Count > 0 && !string.IsNullOrEmpty(sizeKey))
+                {
+                    _lastNestBySize[sizeKey] = members;
+                }
+
+                evt.NestMembers = members;
+
+                if (evt.NestDeclaredCount > 0 && members.Count != evt.NestDeclaredCount)
+                    Console.WriteLine($"[{EquipmentId}] ⚠ 네스트 멤버 불일치: 선언 {evt.NestDeclaredCount} / 복원 {members.Count} (검토 필요)");
+            }
+
+            events.Add(evt);
+            _ripBuffer.Clear(); // 모든 인쇄는 자신의 립핑 버퍼를 소비(flush)
         }
 
         /// <summary>
@@ -394,6 +457,8 @@ namespace LogWatcher.Parsers
         public void ResetPosition()
         {
             _lastPosition = 0;
+            _ripBuffer.Clear();
+            _lastNestBySize.Clear();
             SavePosition();
         }
 

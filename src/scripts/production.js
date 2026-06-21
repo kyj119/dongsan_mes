@@ -275,6 +275,11 @@ async function loadRecentEvents() {
       var sizeStr = (cmW !== '-' && cmH !== '-') ? cmW + '×' + cmH : '-';
       var durStr = fmtDur(ev.print_duration_sec);
 
+      // 네스팅 멤버 (Flexi 자체 RIP 네스팅) — nest_members JSON 배열
+      var nestMembers = [];
+      try { if (ev.nest_members) nestMembers = JSON.parse(ev.nest_members) || []; } catch (e) { nestMembers = []; }
+      var isNest = nestMembers.length > 0;
+
       // 출력정보 (타일/복수매/취소 실제매수)
       var layoutInfo = '';
       if (ev.tile_count > 0) {
@@ -293,14 +298,34 @@ async function loadRecentEvents() {
               + '<i class="fas fa-edit mr-1"></i>매수 입력</button>';
           }
         }
+      } else if (isNest) {
+        layoutInfo = '<span class="text-[10px] bg-purple-50 text-purple-700 px-1.5 py-0.5 rounded">'
+          + '<i class="fas fa-layer-group mr-0.5"></i>네스팅 ' + nestMembers.length + '개</span>';
       } else {
         layoutInfo = '<span class="text-[10px] text-gray-400">1매</span>';
+      }
+
+      // 파일 셀: 네스트면 멤버 목록 펼치기(<details>), 아니면 파일명
+      var fileTd;
+      if (isNest) {
+        var memberLis = nestMembers.map(function (m) {
+          var base = String(m).split(/[\\\/]/).pop();
+          return '<li class="truncate" title="' + escapeHtml(String(m)) + '">' + escapeHtml(base) + '</li>';
+        }).join('');
+        fileTd = '<td class="px-3 py-2.5 text-xs text-gray-600" style="max-width:320px">'
+          + '<details class="cursor-pointer">'
+          + '<summary class="text-purple-700 font-medium select-none">'
+          + '<i class="fas fa-layer-group mr-1"></i>' + fileName + '</summary>'
+          + '<ol class="mt-1 ml-4 list-decimal text-[11px] text-gray-600 space-y-0.5 max-h-56 overflow-auto">'
+          + memberLis + '</ol></details></td>';
+      } else {
+        fileTd = '<td class="px-3 py-2.5 text-xs text-gray-600 truncate" style="max-width:240px" title="' + fileName + '">' + fileName + '</td>';
       }
 
       return '<tr class="hover:bg-blue-50/30 border-b border-gray-100 transition-colors align-middle">'
         + '<td class="px-3 py-2.5 text-xs text-gray-500 whitespace-nowrap">' + timeStr + '</td>'
         + '<td class="px-3 py-2.5 text-xs font-medium text-gray-700 whitespace-nowrap">' + printerName + '</td>'
-        + '<td class="px-3 py-2.5 text-xs text-gray-600 truncate" style="max-width:240px" title="' + fileName + '">' + fileName + '</td>'
+        + fileTd
         + '<td class="px-3 py-2.5 text-xs tabular-nums text-gray-600 whitespace-nowrap">' + sizeStr + '</td>'
         + '<td class="px-3 py-2.5 text-xs tabular-nums text-gray-500 whitespace-nowrap">' + durStr + '</td>'
         + '<td class="px-3 py-2.5">' + layoutInfo + '</td>'
