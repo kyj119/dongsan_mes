@@ -111,13 +111,15 @@ function sgpRenderBases() {
   var bases = (g && g.bases) || [];
   var baseRows = bases.map(function(b) {
     var inactive = !b.is_active;
+    var axes = sgpEsc(b.group1_name || '') + (b.group2_name ? ' <span class="text-gray-300">×</span> ' + sgpEsc(b.group2_name) : '');
     return '<tr>'
       + '<td class="px-3 py-1.5 font-mono text-xs text-gray-500">' + sgpEsc(b.item_code) + '</td>'
-      + '<td class="px-3 py-1.5">' + sgpEsc(b.item_name) + (inactive ? ' <span class="text-[10px] text-amber-500">(비활성)</span>' : '') + '</td>'
+      + '<td class="px-3 py-1.5">' + sgpEsc(b.item_name) + (inactive ? ' <span class="text-[10px] text-amber-500">(비활성)</span>' : '')
+        + '<div class="text-[10px] text-indigo-400">' + axes + (b.group2_name ? ' <span class="text-purple-400">(2축)</span>' : '') + '</div></td>'
       + '<td class="px-3 py-1.5 text-center text-xs text-gray-500">' + (b.variant_count || 0) + '개</td>'
       + '<td class="px-3 py-1.5 text-center whitespace-nowrap">'
       + '<button onclick="sgpOpenVariantModal(' + b.id + ')" class="ds-btn ds-btn-primary px-2 py-1 text-xs mr-1"><i class="fas fa-wand-magic-sparkles mr-1"></i>변종 생성</button>'
-      + '<button onclick="sgpDisconnectBase(' + b.id + ')" class="text-red-400 hover:text-red-600 text-xs" title="그룹 연결 해제"><i class="fas fa-unlink"></i></button>'
+      + '<button onclick="sgpDisconnectBase(' + b.id + ',' + (b.spec_group_id2 && b.spec_group_id2 === sgpSelectedId ? 2 : 1) + ')" class="text-red-400 hover:text-red-600 text-xs" title="이 그룹 연결 해제"><i class="fas fa-unlink"></i></button>'
       + '</td></tr>';
   }).join('');
   return '<div class="ds-card overflow-hidden mt-4">'
@@ -136,30 +138,58 @@ function sgpRenderBases() {
     + '</tbody></table></div></div>';
 }
 
-// ===== 변종 생성 =====
-window.sgpOpenVariantModal = function(baseId) {
+// ===== 변종 생성 (1D / 2D 다축) =====
+var sgpAxis1 = null; // {id, name, values:[]}
+var sgpAxis2 = null;
+
+async function sgpFetchAxis(groupId) {
+  if (!groupId) return null;
+  try {
+    var r = await axios.get('/api/spec-groups/' + groupId);
+    var d = r.data.data;
+    return { id: d.id, name: d.name, values: (d.values || []).filter(function(v) { return v.is_active; }) };
+  } catch (e) { return null; }
+}
+
+window.sgpOpenVariantModal = async function(baseId) {
   var b = ((sgpDetail && sgpDetail.bases) || []).find(function(x) { return x.id === baseId; });
   if (!b) return;
   var modal = document.getElementById('sgpVariantModal');
   if (!modal) return;
   document.getElementById('sgpVariantBaseId').value = baseId;
   document.getElementById('sgpVariantTitle').textContent = '변종 생성 — ' + b.item_name;
-  // 활성 값만, 이미 존재하는 변종은 disabled 표시
-  var activeVals = ((sgpDetail && sgpDetail.values) || []).filter(function(v) { return v.is_active; });
+  var box = document.getElementById('sgpVariantValues');
+  if (box) box.innerHTML = '<div class="col-span-2 text-center text-gray-400 text-sm py-4">로드 중...</div>';
+  modal.classList.remove('hidden');
+  sgpAxis1 = await sgpFetchAxis(b.spec_group_id);
+  sgpAxis2 = b.spec_group_id2 ? await sgpFetchAxis(b.spec_group_id2) : null;
+  sgpRenderVariantModal();
+};
+
+function sgpRenderVariantModal() {
   var box = document.getElementById('sgpVariantValues');
   if (!box) return;
-  if (!activeVals.length) {
-    box.innerHTML = '<div class="col-span-2 text-center text-gray-400 text-sm py-4">활성 규격값이 없습니다. 먼저 값을 추가하세요.</div>';
-  } else {
-    box.innerHTML = activeVals.map(function(v) {
+  var hint = document.getElementById('sgpVariantHint');
+  function col(axis, cls) {
+    if (!axis || !axis.values.length) return '<div class="text-xs text-gray-400 py-2">활성 값 없음</div>';
+    return axis.values.map(function(v) {
       return '<label class="flex items-center gap-2 px-2 py-1.5 border rounded text-sm cursor-pointer hover:bg-indigo-50">'
-        + '<input type="checkbox" class="sgp-variant-val rounded" value="' + sgpEsc(v.value_code) + '" checked>'
+        + '<input type="checkbox" class="' + cls + ' rounded" value="' + sgpEsc(v.value_code) + '" checked>'
         + '<span>' + sgpEsc(v.label) + ' <span class="text-[10px] text-gray-400 font-mono">' + sgpEsc(v.value_code) + '</span></span>'
         + '</label>';
     }).join('');
   }
-  modal.classList.remove('hidden');
-};
+  if (sgpAxis2) {
+    if (hint) hint.textContent = '2축(' + sgpAxis1.name + ' × ' + sgpAxis2.name + ') 조합으로 생성됩니다. 이미 존재하는 변종은 건너뜁니다.';
+    box.className = 'grid grid-cols-2 gap-3 max-h-72 overflow-y-auto';
+    box.innerHTML = '<div><div class="text-xs font-semibold text-gray-600 mb-1">' + sgpEsc(sgpAxis1.name) + '</div><div class="space-y-1">' + col(sgpAxis1, 'sgp-variant-val') + '</div></div>'
+      + '<div><div class="text-xs font-semibold text-gray-600 mb-1">' + sgpEsc(sgpAxis2.name) + '</div><div class="space-y-1">' + col(sgpAxis2, 'sgp-variant-val2') + '</div></div>';
+  } else {
+    if (hint) hint.textContent = '생성할 규격값을 선택하세요. 이미 존재하는 변종은 건너뜁니다(멱등).';
+    box.className = 'grid grid-cols-2 gap-1.5 max-h-72 overflow-y-auto';
+    box.innerHTML = col(sgpAxis1, 'sgp-variant-val');
+  }
+}
 
 window.sgpCloseVariantModal = function() {
   var modal = document.getElementById('sgpVariantModal');
@@ -167,17 +197,21 @@ window.sgpCloseVariantModal = function() {
 };
 
 window.sgpVariantCheckAll = function(checked) {
-  document.querySelectorAll('.sgp-variant-val').forEach(function(el) { el.checked = checked; });
+  document.querySelectorAll('.sgp-variant-val, .sgp-variant-val2').forEach(function(el) { el.checked = checked; });
 };
 
 window.sgpGenerateVariants = async function() {
   var baseId = parseInt(document.getElementById('sgpVariantBaseId').value) || 0;
   if (!baseId) return;
-  var codes = [];
+  var codes = [], codes2 = [];
   document.querySelectorAll('.sgp-variant-val:checked').forEach(function(el) { codes.push(el.value); });
-  if (!codes.length) { alert('생성할 규격값을 선택하세요.'); return; }
+  document.querySelectorAll('.sgp-variant-val2:checked').forEach(function(el) { codes2.push(el.value); });
+  if (!codes.length) { alert((sgpAxis2 ? sgpAxis1.name : '') + ' 규격값을 선택하세요.'); return; }
+  if (sgpAxis2 && !codes2.length) { alert(sgpAxis2.name + ' 규격값을 선택하세요.'); return; }
+  var payload = { value_codes: codes };
+  if (sgpAxis2) payload.value_codes2 = codes2;
   try {
-    var res = await axios.post('/api/items/' + baseId + '/generate-variants', { value_codes: codes });
+    var res = await axios.post('/api/items/' + baseId + '/generate-variants', payload);
     var d = (res.data && res.data.data) || {};
     alert('변종 ' + (d.created_count || 0) + '개 생성, ' + (d.skipped_count || 0) + '개 기존 유지');
     sgpCloseVariantModal();
@@ -218,11 +252,11 @@ async function sgpConnectSearch() {
   var q = (s.value || '').trim();
   if (!q) { r.innerHTML = '<div class="p-3 text-center text-gray-400 text-xs">품목명을 입력하세요.</div>'; return; }
   try {
-    var res = await axios.get('/api/items?search=' + encodeURIComponent(q) + '&limit=20');
+    var res = await axios.get('/api/items?search=' + encodeURIComponent(q) + '&limit=20&include_inactive=1');
     var items = (res.data && res.data.data) || [];
     if (!items.length) { r.innerHTML = '<div class="p-3 text-center text-gray-400 text-xs">검색 결과 없음</div>'; return; }
     r.innerHTML = items.map(function(it) {
-      var already = it.spec_group_id === sgpSelectedId;
+      var already = it.spec_group_id === sgpSelectedId || it.spec_group_id2 === sgpSelectedId;
       var variant = it.spec_value != null && it.spec_value !== '';
       return '<div class="px-3 py-2 flex items-center justify-between text-sm hover:bg-gray-50">'
         + '<div><span class="font-mono text-xs text-gray-400 mr-2">' + sgpEsc(it.item_code) + '</span>' + sgpEsc(it.item_name) + '</div>'
@@ -239,7 +273,13 @@ async function sgpConnectSearch() {
 window.sgpConnectItem = async function(itemId) {
   if (!sgpSelectedId) return;
   try {
-    await axios.patch('/api/items/' + itemId, { spec_group_id: sgpSelectedId });
+    var r = await axios.get('/api/items/' + itemId);
+    var it = r.data.data;
+    var patch = {};
+    if (!it.spec_group_id || it.spec_group_id === sgpSelectedId) patch.spec_group_id = sgpSelectedId;
+    else if (!it.spec_group_id2 || it.spec_group_id2 === sgpSelectedId) patch.spec_group_id2 = sgpSelectedId; // 2번째 축
+    else { alert('이 품목은 이미 규격그룹 2개에 연결돼 있습니다.'); return; }
+    await axios.patch('/api/items/' + itemId, patch);
     sgpCloseConnectModal();
     sgpSelect(sgpSelectedId);
     sgpLoad();
@@ -248,10 +288,11 @@ window.sgpConnectItem = async function(itemId) {
   }
 };
 
-window.sgpDisconnectBase = async function(baseId) {
+window.sgpDisconnectBase = async function(baseId, axis) {
   if (!confirm('이 품목의 규격그룹 연결을 해제하시겠습니까? (기존 변종품목은 그대로 유지됩니다)')) return;
+  var patch = (axis === 2) ? { spec_group_id2: null } : { spec_group_id: null };
   try {
-    await axios.patch('/api/items/' + baseId, { spec_group_id: null });
+    await axios.patch('/api/items/' + baseId, patch);
     sgpSelect(sgpSelectedId);
     sgpLoad();
   } catch (e) {

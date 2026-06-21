@@ -16,7 +16,7 @@ specGroupsRouter.get('/', async (c) => {
     const { results } = await c.env.DB.prepare(`
       SELECT sg.id, sg.name, sg.unit, sg.sort_order, sg.is_active,
         (SELECT COUNT(*) FROM spec_group_values v WHERE v.group_id = sg.id AND v.is_active = 1) AS value_count,
-        (SELECT COUNT(*) FROM items i WHERE i.spec_group_id = sg.id) AS item_count
+        (SELECT COUNT(*) FROM items i WHERE i.spec_group_id = sg.id OR i.spec_group_id2 = sg.id) AS item_count
       FROM spec_groups sg
       ORDER BY sg.sort_order ASC, sg.name ASC
     `).all()
@@ -39,14 +39,18 @@ specGroupsRouter.get('/:id', async (c) => {
       SELECT id, group_id, value_code, label, sort_order, is_active
       FROM spec_group_values WHERE group_id = ? ORDER BY sort_order ASC, id ASC
     `).bind(id).all()
-    // 이 그룹을 사용하는 base 품목 (spec_value NULL = 템플릿) + 현재 변종 수
+    // 이 그룹을 사용하는 base 품목 (축1 또는 축2, spec_value NULL = 템플릿) + 현재 변종 수
     const { results: bases } = await c.env.DB.prepare(`
       SELECT b.id, b.item_code, b.item_name, b.item_type, b.is_active, b.item_group,
+        b.spec_group_id, b.spec_group_id2,
+        g1.name AS group1_name, g2.name AS group2_name,
         (SELECT COUNT(*) FROM items v WHERE v.item_group = b.item_group AND v.spec_value IS NOT NULL) AS variant_count
       FROM items b
-      WHERE b.spec_group_id = ? AND b.spec_value IS NULL
+      LEFT JOIN spec_groups g1 ON g1.id = b.spec_group_id
+      LEFT JOIN spec_groups g2 ON g2.id = b.spec_group_id2
+      WHERE (b.spec_group_id = ? OR b.spec_group_id2 = ?) AND b.spec_value IS NULL AND b.spec_value2 IS NULL
       ORDER BY b.item_name ASC
-    `).bind(id).all()
+    `).bind(id, id).all()
     return c.json({ success: true, data: { ...group, values, bases } })
   } catch (error) {
     console.error('src/routes/specGroups.ts error:', error)

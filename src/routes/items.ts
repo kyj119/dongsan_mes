@@ -69,6 +69,8 @@ itemsRouter.get('/', async (c) => {
     const { page = '1', limit = '50', category = '', type = '', search = '', item_type = '' } = c.req.query()
     const safeLimit = Math.min(parseInt(limit) || 50, 200)
     const offset = (parseInt(page) - 1) * safeLimit
+    // include_inactive: 변종 base 연결 등 staged(is_active=0) 품목까지 검색해야 할 때
+    const activeClause = c.req.query('include_inactive') === '1' ? '1=1' : 'i.is_active = 1'
 
     let query = `
       SELECT
@@ -85,7 +87,7 @@ itemsRouter.get('/', async (c) => {
       LEFT JOIN item_subcategories isc ON i.subcategory_id = isc.id
       LEFT JOIN print_media pm ON i.print_media_id = pm.id
       LEFT JOIN pp_applicable_subcategories pm_sub ON pm.subcategory_id = pm_sub.id
-      WHERE i.is_active = 1
+      WHERE ${activeClause}
     `
     const params: any[] = []
 
@@ -124,7 +126,7 @@ itemsRouter.get('/', async (c) => {
     const { results } = await c.env.DB.prepare(query).bind(...params).all()
 
     // Get total count
-    let countQuery = 'SELECT COUNT(*) as count FROM items i LEFT JOIN item_categories ic ON i.category_id = ic.id WHERE i.is_active = 1'
+    let countQuery = `SELECT COUNT(*) as count FROM items i LEFT JOIN item_categories ic ON i.category_id = ic.id WHERE ${activeClause}`
     const countParams: any[] = []
 
     if (item_type && ['PRODUCT', 'GOODS', 'MATERIAL'].includes(item_type)) {
@@ -377,28 +379,42 @@ itemsRouter.post('/:id/generate-variants', requireRole('ADMIN', 'MANAGER'), asyn
     if (valueCodes) vals = vals.filter(v => valueCodes.includes(v.value_code))
     if (!vals.length) return c.json({ success: false, error: '생성할 규격값이 없습니다' }, 400)
 
+    // 축2 (다축 — 게양방식 등): base.spec_group_id2 + body.value_codes2 가 있으면 카테시안 2D
+    const valueCodes2: string[] | null = Array.isArray(body.value_codes2) ? body.value_codes2 : null
+    let vals2: ({ value_code: string; label: string; sort_order: number } | null)[] = [null]
+    if (base.spec_group_id2 && valueCodes2) {
+      const { results: all2 } = await c.env.DB.prepare(
+        'SELECT value_code, label, sort_order FROM spec_group_values WHERE group_id = ? AND is_active = 1 ORDER BY sort_order ASC'
+      ).bind(base.spec_group_id2).all<{ value_code: string; label: string; sort_order: number }>()
+      const f2 = (all2 || []).filter(v => valueCodes2.includes(v.value_code))
+      if (f2.length) vals2 = f2
+    }
+
     const groupName = base.item_group || base.item_name
     const created: any[] = []
     const skipped: string[] = []
 
     for (const v of vals) {
-      const variantCode = `${base.item_code}-${v.value_code}`
-      const exists = await c.env.DB.prepare('SELECT id FROM items WHERE item_code = ?').bind(variantCode).first()
-      if (exists) { skipped.push(variantCode); continue }
-      const res = await c.env.DB.prepare(`
-        INSERT INTO items (
-          item_code, item_name, item_type, category, sub_category, category_id, unit,
-          base_price, sales_price, description, pricing_method, pricing_profile, is_active,
-          is_sales_item, is_purchase_item, production_required,
-          item_group, group_sort, spec_group_id, spec_value, parent_media_id, width_mm
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `).bind(
-        variantCode, `${base.item_name} ${v.label}`, base.item_type, base.category, base.sub_category, base.category_id, base.unit || 'EA',
-        base.base_price || 0, base.sales_price || 0, base.description || null, base.pricing_method || 'FIXED', base.pricing_profile || null, base.is_active ?? 0,
-        base.is_sales_item || 0, base.is_purchase_item || 0, base.production_required ?? 1,
-        groupName, v.sort_order || 0, base.spec_group_id, v.value_code, base.parent_media_id || null, base.width_mm || null
-      ).run()
-      created.push({ id: res.meta.last_row_id, item_code: variantCode, item_name: `${base.item_name} ${v.label}` })
+      for (const v2 of vals2) {
+        const variantCode = v2 ? `${base.item_code}-${v.value_code}-${v2.value_code}` : `${base.item_code}-${v.value_code}`
+        const variantName = v2 ? `${base.item_name} ${v.label} ${v2.label}` : `${base.item_name} ${v.label}`
+        const exists = await c.env.DB.prepare('SELECT id FROM items WHERE item_code = ?').bind(variantCode).first()
+        if (exists) { skipped.push(variantCode); continue }
+        const res = await c.env.DB.prepare(`
+          INSERT INTO items (
+            item_code, item_name, item_type, category, sub_category, category_id, unit,
+            base_price, sales_price, description, pricing_method, pricing_profile, is_active,
+            is_sales_item, is_purchase_item, production_required,
+            item_group, group_sort, spec_group_id, spec_value, spec_group_id2, spec_value2, parent_media_id, width_mm
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).bind(
+          variantCode, variantName, base.item_type, base.category, base.sub_category, base.category_id, base.unit || 'EA',
+          base.base_price || 0, base.sales_price || 0, base.description || null, base.pricing_method || 'FIXED', base.pricing_profile || null, base.is_active ?? 0,
+          base.is_sales_item || 0, base.is_purchase_item || 0, base.production_required ?? 1,
+          groupName, v.sort_order || 0, base.spec_group_id, v.value_code, v2 ? base.spec_group_id2 : null, v2 ? v2.value_code : null, base.parent_media_id || null, base.width_mm || null
+        ).run()
+        created.push({ id: res.meta.last_row_id, item_code: variantCode, item_name: variantName })
+      }
     }
 
     // base에 item_group 보강 (묶음 가시화)
@@ -426,13 +442,15 @@ itemsRouter.get('/:id/variants', async (c) => {
     ).bind(id).first<{ item_group: string }>()
     if (!base) return c.json({ success: false, error: '품목을 찾을 수 없습니다' }, 404)
     const { results } = await c.env.DB.prepare(`
-      SELECT i.id, i.item_code, i.item_name, i.spec_value, i.base_price, i.sales_price, i.unit,
+      SELECT i.id, i.item_code, i.item_name, i.spec_value, i.spec_value2, i.base_price, i.sales_price, i.unit,
         i.is_active, i.is_sales_item, i.is_purchase_item,
-        sgv.label AS spec_label, sgv.sort_order AS spec_sort
+        sgv.label AS spec_label, sgv.sort_order AS spec_sort,
+        sgv2.label AS spec_label2, sgv2.sort_order AS spec_sort2
       FROM items i
       LEFT JOIN spec_group_values sgv ON sgv.group_id = i.spec_group_id AND sgv.value_code = i.spec_value
+      LEFT JOIN spec_group_values sgv2 ON sgv2.group_id = i.spec_group_id2 AND sgv2.value_code = i.spec_value2
       WHERE i.item_group = ? AND i.spec_value IS NOT NULL
-      ORDER BY COALESCE(sgv.sort_order, i.group_sort) ASC, i.item_name ASC
+      ORDER BY COALESCE(sgv.sort_order, i.group_sort) ASC, COALESCE(sgv2.sort_order, 0) ASC, i.item_name ASC
     `).bind(base.item_group).all()
     return c.json({ success: true, data: { base, variants: results } })
   } catch (error) {
@@ -568,7 +586,7 @@ itemsRouter.patch('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
   try {
     const id = c.req.param('id')
     const updates = await c.req.json()
-    const allowedFields = ['item_name', 'specification', 'width_mm', 'parent_media_id', 'sub_category', 'base_price', 'unit', 'sales_price', 'is_sales_item', 'item_group', 'is_purchase_item', 'production_required', 'spec_group_id', 'spec_value']
+    const allowedFields = ['item_name', 'specification', 'width_mm', 'parent_media_id', 'sub_category', 'base_price', 'unit', 'sales_price', 'is_sales_item', 'item_group', 'is_purchase_item', 'production_required', 'spec_group_id', 'spec_value', 'spec_group_id2', 'spec_value2']
     const setClauses: string[] = []
     const params: any[] = []
 
@@ -637,7 +655,7 @@ itemsRouter.get('/:id', async (c) => {
   try {
     const id = c.req.param('id')
     const item = await c.env.DB.prepare(`
-      SELECT id, category_id, subcategory_id, item_code, item_name, description, unit, base_price, sales_price, is_active, item_type, category, sub_category, is_sales_item, is_purchase_item, pricing_method, item_group, group_sort, width_mm, storage_zone_id, is_favorite, print_method_id, print_media_id, parent_media_id, code_prefix, specification, production_required, spec_group_id, spec_value, ecount_code, created_at, updated_at FROM items WHERE id = ?
+      SELECT id, category_id, subcategory_id, item_code, item_name, description, unit, base_price, sales_price, is_active, item_type, category, sub_category, is_sales_item, is_purchase_item, pricing_method, item_group, group_sort, width_mm, storage_zone_id, is_favorite, print_method_id, print_media_id, parent_media_id, code_prefix, specification, production_required, spec_group_id, spec_value, spec_group_id2, spec_value2, ecount_code, created_at, updated_at FROM items WHERE id = ?
     `).bind(id).first()
 
     if (!item) {
