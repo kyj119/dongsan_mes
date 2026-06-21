@@ -237,7 +237,7 @@
                     }
 
                     calcItem(id);
-                    var subcat = item.sub_category || item.media_subcategory_name || '';
+                    var subcat = item.sub_category || '';  // 후가공=품목 직접(소분류). 소재(print_media) 경유 폐기
                     loadItemPP(id, subcat);
                     loadFinishingForOrder(id);
                     const clientIdEl = document.getElementById('clientId');

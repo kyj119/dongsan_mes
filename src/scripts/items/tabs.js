@@ -16,7 +16,7 @@ window.initItemTabs = async function() {
     var html = tabs.map(function(c){
         return '<button class="itm-tab px-4 py-2 font-medium text-sm text-gray-500 hover:text-gray-700 border-b-2 border-transparent whitespace-nowrap" data-code="' + c.category_code + '" onclick="switchCatTab(\'' + c.category_code + '\')">' + escapeHtml(c.category_name) + '</button>';
     }).join('');
-    html += '<button class="itm-tab px-4 py-2 font-medium text-sm text-gray-500 hover:text-gray-700 border-b-2 border-transparent whitespace-nowrap" data-code="__settings__" onclick="switchCatTab(\'__settings__\')"><i class="fas fa-cog mr-1"></i>설정</button>';
+    // 설정 탭(소재·출력방식 관리) 제거 — 신모델 미사용. (잔여 코드·엔드포인트·테이블은 2단계 purge)
     bar.innerHTML = html;
     switchCatTab(tabs.length ? tabs[0].category_code : '__settings__');
 };
