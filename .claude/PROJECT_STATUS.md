@@ -14,6 +14,14 @@
 
 ## 🔴 현재 진행 중
 
+- **🟢 [2026-06-21 PM] 품목 대개편 인프라(Phase 2~3) 구축·로컬검증 완료 — 규격그룹 관리 + 변종 생성 엔진**:
+  - **신규 API**: `src/routes/specGroups.ts`(`/api/spec-groups` 그룹·값 CRUD) + items.ts `POST /:id/generate-variants`(멱등·안전3규칙)·`GET /:id/variants`·`GET /variant-bases`·`GET /group-stats`. PATCH 허용필드에 `spec_group_id`·`spec_value` 추가, GET /:id에 spec 컬럼 추가.
+  - **신규 페이지**: `/spec-groups`(pages/specGroups.ts + scripts/specGroups.js) — 그룹·값 CRUD + **변종 생성 모달**(값 선택→생성) + **base 품목 연결/해제**(기존 품목에 spec_group_id 지정). 메뉴(기준정보) + 권한 마이그 **0330**.
+  - **검증(Playwright E2E·로컬)**: 그룹3 렌더(판재두께 25품목·호수 41품목)·호수 base7+변종 모달13체크박스·**멱등(태극기 skip3)·신규생성(만국기1호 created1) 검증 후 정리**·연결/해제 PATCH 양방향 정상. **smoke 103/103 회귀0**. 빌드·타입체크 클린.
+  - **보류**: #4 주문 2단 picker(핵심경로·전품목 staged라 효과0·활성화 정책 의존, 백엔드는 준비완료) / #5f BOM 자재차감(자재 분리방침 선행).
+  - **⚠️ 미커밋·미배포**(로컬 검증만). prod 적용 전 = 마이그0330 remote + wrangler 배포 필요.
+  - **▶ 용준님 도메인 결정 대기**: ①자재/상품 분리(겸업 dual flag) ②변종 단가(주문이력 산정 vs 직접) ③게양방식(별도 규격그룹 vs 옵션) ④원단폭 mm목록+코팅종류 ⑤품목 활성화(is_active=1) 시점.
+
 - **🟢 [2026-06-21] 품목 등록 진행 — 규격그룹 스키마(0326)+변종 전개(0328 판재두께·0329 호수)+단순제품64(0327) prod staged. items 0→123(변종53, is_active=0). 모델·코드체계는 아래 유지**:
   - **★진행 현황**: 마이그 0326(spec_groups·values+items 컬럼)·0327(수정본298 중 PRODUCT&주문1회+ = 64)·0328(판재두께 base6+변종19)·0329(호수 base7+변종34) **prod 직접 적용**(execute --remote --file). **변종=base별 실제 주문값만**(죽은변종 방지): 포맥스 1~10T·자작나무 6·9·12T·스카시 10·20·30T(두께체계 상이)·태극기 1~9호+4-1/7-1/8-1·깃발 3~8호. 단순제품·변종 전부 staged=라이브 미노출.
   - **★검증 결과(에이전트3, 코드기반)**: 6분류=item_type 3개+역할플래그(반제품없음 확정·무형 택배비6%=order_items.item_id nullable 자유입력). **단가·재고 구조 정확**(변종별 독립재고·base_price 독립·겸업 단일출처·단가 스냅샷). **자동화 4개 미구현**=생산시 두께/호수 자재차감(현재 width_mm만, BOM 필요)·주문 picker 2단·통계 GROUP BY item_group·avg_unit_cost 이동평균(0089 stale=기존결함).

@@ -298,6 +298,149 @@ itemsRouter.patch('/groups/:groupName', requireRole('ADMIN', 'MANAGER'), async (
   }
 })
 
+// ── 규격그룹 → 변종품목 (spec: 2026-06-20-spec-group-variant-item-plan.md) ──
+// 정적/2-세그먼트 경로 — /:id 보다 먼저 등록 필수.
+
+// 변종 base 템플릿 목록 (주문 2단 picker용: spec_group 지정 + spec_value NULL + 활성 변종 보유)
+itemsRouter.get('/variant-bases', async (c) => {
+  try {
+    const { type = '' } = c.req.query()
+    const search = c.req.query('search') || ''
+    let q = `
+      SELECT b.id, b.item_code, b.item_name, b.item_group, b.spec_group_id, b.pricing_method,
+        sg.name AS spec_group_name, sg.unit AS spec_unit,
+        (SELECT COUNT(*) FROM items v WHERE v.item_group = b.item_group AND v.spec_value IS NOT NULL AND v.is_active = 1) AS variant_count
+      FROM items b
+      LEFT JOIN spec_groups sg ON sg.id = b.spec_group_id
+      WHERE b.spec_group_id IS NOT NULL AND b.spec_value IS NULL
+    `
+    const params: any[] = []
+    if (type === 'sales') q += ' AND b.is_sales_item = 1'
+    else if (type === 'purchase') q += ' AND b.is_purchase_item = 1'
+    if (search) { q += ' AND b.item_name LIKE ?'; params.push(`%${search}%`) }
+    q += ' ORDER BY b.item_name ASC'
+    const { results } = await c.env.DB.prepare(q).bind(...params).all<{ variant_count: number }>()
+    return c.json({ success: true, data: (results || []).filter(r => r.variant_count > 0) })
+  } catch (error) {
+    console.error('src/routes/items.ts error:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다' }, 500)
+  }
+})
+
+// 변종품목 통계 (item_group 별 매출/주문 — 통계 탭용, opt-in)
+itemsRouter.get('/group-stats', async (c) => {
+  try {
+    const { type = '' } = c.req.query()
+    let q = `
+      SELECT i.item_group,
+        COUNT(DISTINCT i.id) AS variant_count,
+        MAX(i.category) AS category,
+        MAX(i.item_type) AS item_type,
+        MIN(i.base_price) AS min_price,
+        MAX(i.base_price) AS max_price,
+        COUNT(oi.id) AS order_count,
+        COALESCE(SUM(oi.quantity), 0) AS total_qty,
+        COALESCE(SUM(oi.quantity * oi.unit_price), 0) AS total_revenue
+      FROM items i
+      LEFT JOIN order_items oi ON oi.item_id = i.id
+      WHERE i.is_active = 1 AND i.item_group IS NOT NULL AND i.item_group != ''
+    `
+    const params: any[] = []
+    if (type === 'sales') q += ' AND i.is_sales_item = 1'
+    else if (type === 'purchase') q += ' AND i.is_purchase_item = 1'
+    q += ' GROUP BY i.item_group ORDER BY total_revenue DESC'
+    const { results } = await c.env.DB.prepare(q).bind(...params).all()
+    return c.json({ success: true, data: results })
+  } catch (error) {
+    console.error('src/routes/items.ts error:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다' }, 500)
+  }
+})
+
+// 변종 생성 (멱등·비파괴 — 안전 3규칙 §4). base 품목 + 그룹 활성값 조합 → 빠진 변종만 생성.
+itemsRouter.post('/:id/generate-variants', requireRole('ADMIN', 'MANAGER'), async (c) => {
+  try {
+    const id = c.req.param('id')
+    const body = await c.req.json().catch(() => ({}))
+    const valueCodes: string[] | null = Array.isArray(body.value_codes) ? body.value_codes : null
+
+    const base = await c.env.DB.prepare('SELECT * FROM items WHERE id = ?').bind(id).first<any>()
+    if (!base) return c.json({ success: false, error: '품목을 찾을 수 없습니다' }, 404)
+    if (!base.spec_group_id) {
+      return c.json({ success: false, error: '규격그룹이 지정되지 않은 품목입니다. 먼저 규격그룹을 지정하세요.' }, 400)
+    }
+
+    const { results: allVals } = await c.env.DB.prepare(
+      'SELECT value_code, label, sort_order FROM spec_group_values WHERE group_id = ? AND is_active = 1 ORDER BY sort_order ASC'
+    ).bind(base.spec_group_id).all<{ value_code: string; label: string; sort_order: number }>()
+    let vals = allVals || []
+    if (valueCodes) vals = vals.filter(v => valueCodes.includes(v.value_code))
+    if (!vals.length) return c.json({ success: false, error: '생성할 규격값이 없습니다' }, 400)
+
+    const groupName = base.item_group || base.item_name
+    const created: any[] = []
+    const skipped: string[] = []
+
+    for (const v of vals) {
+      const variantCode = `${base.item_code}-${v.value_code}`
+      const exists = await c.env.DB.prepare('SELECT id FROM items WHERE item_code = ?').bind(variantCode).first()
+      if (exists) { skipped.push(variantCode); continue }
+      const res = await c.env.DB.prepare(`
+        INSERT INTO items (
+          item_code, item_name, item_type, category, sub_category, category_id, unit,
+          base_price, sales_price, description, pricing_method, pricing_profile, is_active,
+          is_sales_item, is_purchase_item, production_required,
+          item_group, group_sort, spec_group_id, spec_value, parent_media_id, width_mm
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).bind(
+        variantCode, `${base.item_name} ${v.label}`, base.item_type, base.category, base.sub_category, base.category_id, base.unit || 'EA',
+        base.base_price || 0, base.sales_price || 0, base.description || null, base.pricing_method || 'FIXED', base.pricing_profile || null, base.is_active ?? 0,
+        base.is_sales_item || 0, base.is_purchase_item || 0, base.production_required ?? 1,
+        groupName, v.sort_order || 0, base.spec_group_id, v.value_code, base.parent_media_id || null, base.width_mm || null
+      ).run()
+      created.push({ id: res.meta.last_row_id, item_code: variantCode, item_name: `${base.item_name} ${v.label}` })
+    }
+
+    // base에 item_group 보강 (묶음 가시화)
+    if (!base.item_group) {
+      await c.env.DB.prepare('UPDATE items SET item_group = ? WHERE id = ?').bind(groupName, base.id).run()
+    }
+
+    return c.json({
+      success: true,
+      data: { created, skipped, created_count: created.length, skipped_count: skipped.length },
+      message: `변종 ${created.length}개 생성 (${skipped.length}개 기존 유지)`
+    })
+  } catch (error) {
+    console.error('src/routes/items.ts error:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다' }, 500)
+  }
+})
+
+// base 품목의 변종 목록 (규격값 라벨 JOIN — 품목 페이지 묶음표시 + 주문 picker 2단)
+itemsRouter.get('/:id/variants', async (c) => {
+  try {
+    const id = c.req.param('id')
+    const base = await c.env.DB.prepare(
+      'SELECT id, item_code, item_name, item_group, spec_group_id, pricing_method FROM items WHERE id = ?'
+    ).bind(id).first<{ item_group: string }>()
+    if (!base) return c.json({ success: false, error: '품목을 찾을 수 없습니다' }, 404)
+    const { results } = await c.env.DB.prepare(`
+      SELECT i.id, i.item_code, i.item_name, i.spec_value, i.base_price, i.sales_price, i.unit,
+        i.is_active, i.is_sales_item, i.is_purchase_item,
+        sgv.label AS spec_label, sgv.sort_order AS spec_sort
+      FROM items i
+      LEFT JOIN spec_group_values sgv ON sgv.group_id = i.spec_group_id AND sgv.value_code = i.spec_value
+      WHERE i.item_group = ? AND i.spec_value IS NOT NULL
+      ORDER BY COALESCE(sgv.sort_order, i.group_sort) ASC, i.item_name ASC
+    `).bind(base.item_group).all()
+    return c.json({ success: true, data: { base, variants: results } })
+  } catch (error) {
+    console.error('src/routes/items.ts error:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다' }, 500)
+  }
+})
+
 // GET /group-settings/:groupName — 그룹 단가 연동 설정 조회
 itemsRouter.get('/group-settings/:groupName', async (c) => {
   try {
@@ -425,7 +568,7 @@ itemsRouter.patch('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
   try {
     const id = c.req.param('id')
     const updates = await c.req.json()
-    const allowedFields = ['item_name', 'specification', 'width_mm', 'parent_media_id', 'sub_category', 'base_price', 'unit', 'sales_price', 'is_sales_item', 'item_group', 'is_purchase_item', 'production_required']
+    const allowedFields = ['item_name', 'specification', 'width_mm', 'parent_media_id', 'sub_category', 'base_price', 'unit', 'sales_price', 'is_sales_item', 'item_group', 'is_purchase_item', 'production_required', 'spec_group_id', 'spec_value']
     const setClauses: string[] = []
     const params: any[] = []
 
@@ -494,7 +637,7 @@ itemsRouter.get('/:id', async (c) => {
   try {
     const id = c.req.param('id')
     const item = await c.env.DB.prepare(`
-      SELECT id, category_id, subcategory_id, item_code, item_name, description, unit, base_price, sales_price, is_active, item_type, category, sub_category, is_sales_item, is_purchase_item, pricing_method, item_group, group_sort, width_mm, storage_zone_id, is_favorite, print_method_id, print_media_id, parent_media_id, code_prefix, specification, production_required, created_at, updated_at FROM items WHERE id = ?
+      SELECT id, category_id, subcategory_id, item_code, item_name, description, unit, base_price, sales_price, is_active, item_type, category, sub_category, is_sales_item, is_purchase_item, pricing_method, item_group, group_sort, width_mm, storage_zone_id, is_favorite, print_method_id, print_media_id, parent_media_id, code_prefix, specification, production_required, spec_group_id, spec_value, ecount_code, created_at, updated_at FROM items WHERE id = ?
     `).bind(id).first()
 
     if (!item) {

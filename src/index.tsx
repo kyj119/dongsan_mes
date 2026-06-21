@@ -8,6 +8,7 @@ import { rateLimitMiddleware } from './middleware/rateLimit'
 // API Routers
 import clientsRouter from './routes/clients'
 import itemsRouter from './routes/items'
+import specGroupsRouter from './routes/specGroups'
 import ordersRouter from './routes/orders'
 import cardsRouter from './routes/cards'
 import ripRouter from './routes/rip'
@@ -94,6 +95,7 @@ import scanRouter from './routes/scan'
 // Page handlers
 import { clientsPage } from './pages/clients'
 import { itemsPage } from './pages/items'
+import { specGroupsPage } from './pages/specGroups'
 import { priceListsPage } from './pages/priceLists'
 import { priceListPage } from './pages/priceList'
 import { priceManagementPage } from './pages/priceManagement'
@@ -257,6 +259,7 @@ app.route('/api/hr', hrRouter)
 app.route('/api/production', productionRouter)
 app.route('/api/clients', clientsRouter)
 app.route('/api/items', itemsRouter)
+app.route('/api/spec-groups', specGroupsRouter)
 app.route('/api/orders', ordersRouter)
 app.route('/api/quotations', quotationsRouter)
 app.route('/api/cards', cardsRouter)
@@ -385,6 +388,7 @@ app.get('/dashboard', pageAuthMiddleware, requirePagePermission('/dashboard'), d
 app.get('/clients', pageAuthMiddleware, requirePagePermission('/clients'), clientsPage)
 app.get('/clients/:id', pageAuthMiddleware, requirePagePermission('/clients'), (c) => clientDetailPage(c))
 app.get('/items', pageAuthMiddleware, requirePagePermission('/items'), itemsPage)
+app.get('/spec-groups', pageAuthMiddleware, requirePagePermission('/spec-groups'), specGroupsPage)
 app.get('/price-lists', (c) => c.redirect('/price-list'))
 app.get('/price-list', pageAuthMiddleware, requirePagePermission('/price-list'), priceManagementPage)
 app.get('/price-list-old', pageAuthMiddleware, requirePagePermission('/price-list'), priceListPage)

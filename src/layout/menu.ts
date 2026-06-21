@@ -43,6 +43,7 @@ export const MENU_ITEMS: MenuGroup[] = [
     items: [
       { path: '/clients', icon: 'fa-building', label: '거래처', roles: ['ADMIN', 'MANAGER'] },
       { path: '/items', icon: 'fa-tags', label: '품목', roles: ['ADMIN', 'MANAGER'] },
+      { path: '/spec-groups', icon: 'fa-layer-group', label: '규격그룹 관리', roles: ['ADMIN', 'MANAGER'] },
       { path: '/price-list', icon: 'fa-won-sign', label: '단가 관리', roles: ['ADMIN', 'MANAGER'] },
       { path: '/post-processing', icon: 'fa-cut', label: '후가공·마감', roles: ['ADMIN', 'MANAGER'] },
     ],
