@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 6 -->
-<!-- last_run_at: 2026-06-21T14:00:00+09:00 -->
+<!-- last_run_area: 2 -->
+<!-- last_run_at: 2026-06-21T22:00:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,7 +8,7 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | 7 (**GitHub open auto-improve 실측 7건** — #412 스캔 입출고 items.current_stock 존재X UPDATE small [Area 4, owner deferred 바코드 spec] · #423 자동가공 /start N+1 improvement small [Area 2] · **#424 weeklyPurchase /notify users.mobile 존재X SELECT → 알림 발송 100% 실패** bug small [Area 2] · **#425 scan EQ equipment.equipment_type/location/manufacturer 존재X SELECT → 100% 실패** bug small [Area 2] · **#426 주문폼 거래처 특약 단가 저장 제안 3중 dead** bug small [Area 3] · **#428 근태 CAPS 동기화 배너 caps_sync_log.success_count/fail_count 존재X SELECT → 항상 "기록 없음"** bug small [Area 4] · **#429 print-system 제거 2단계 미완 — 프론트 잔존 dead code 18 axios 호출** cleanup/improvement small [Area 6, 본 사이클, neutralized=사용자 영향 0]) |
+| 🆕 new | 9 (**GitHub open auto-improve 실측 9건** — #412 스캔 입출고 items.current_stock 존재X UPDATE small [Area 4, owner deferred 바코드 spec] · #423 자동가공 /start N+1 improvement small [Area 2] · **#424 weeklyPurchase /notify users.mobile 존재X SELECT → 알림 발송 100% 실패** bug small [Area 2] · **#425 scan EQ equipment.equipment_type/location/manufacturer 존재X SELECT → 100% 실패** bug small [Area 2] · **#426 주문폼 거래처 특약 단가 저장 제안 3중 dead** bug small [Area 3] · **#428 근태 CAPS 동기화 배너 caps_sync_log.success_count/fail_count 존재X SELECT → 항상 "기록 없음"** bug small [Area 4] · **#429 print-system 제거 2단계 미완 — 프론트 잔존 dead code 18 axios 호출** cleanup/improvement small [Area 6] · **#430 post-deploy smoke가 write 경로 무검증(GET 101+로그인 POST 1) → 품목 생성 불능 회귀가 green 통과(은폐)** improvement small [Area 1] · **#431 카드 상세 "원단(소재명)" 표시가 print-system JOIN 제거로 영구 공백("-") — 양쪽 카드상세 뷰 회귀** bug small [Area 2, 본 사이클]) |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 (#372 CSV도 owner close-completed → done 이관) |
 | ✔️ done | 126 (124 + **#422 prod↔main 디버전스 해소 확인 close**[5169bbb·4d0ba89 둘 다 origin/main 조상 검증, #413 ar-payments updated_at 제거·#414 cards efCard 필터 트리 실재, 시한폭탄 해제] + **A-031 costs.ts:114 order_items 존재X 컬럼 7개 제거**[`POST /api/costs/recalculate/:orderId` 100%-fail 잠복 복구, quotation_items SELECT 오복붙, 호출처 0건, read-only 안전 자동수정, verify PASS]) |
@@ -16,6 +16,27 @@
 
 > 📦 **과거 사이클 로그**(아래 6블록 이전분)는 `IMPROVEMENT_BACKLOG_ARCHIVE.md`로 이관됨 (2026-06-10 정리). 신규 로그는 계속 이 파일 상단에 추가.
 
+> **Area 2 코드 품질 (2026-06-21T22:00):**
+> - **방법**: git fetch-before-compare(origin force-update `4993fa7→c4fc37d`, fetch 후 HEAD=origin/main `c4fc37d` 0/0 동기). ground-truth=**335 마이그레이션** node:sqlite 전량 적용(**FAIL 0**, 176테이블). 자동 standing scan 4종(INSERT/UPDATE 컬럼존재성·명시 SELECT 존재성[A-027]·entity_id INSERT 누락·authMiddleware 커버리지) + 최대 churn(print-system 완전제거 0335~0337 + items/quotations 컬럼정리) 회귀 각도.
+> - **🟢 자동 standing scan 4종 = net-new 0(기보고만)**: ① INSERT/UPDATE 컬럼존재성 = cards/lifecycle:1096 ai_analysis_id(FP, SET대상 thumbnail_url·서브쿼리)·scan.ts items.current_stock×2(#412) 외 0. ② 명시 SELECT 존재성 = caps_sync_log.success_count(#428)·equipment.equipment_type(#425)·users.mobile(#424) 외 0. ③ entity_id INSERT 누락 = **0건**(entity_id 보유 테이블 전 INSERT 정합). ④ authMiddleware 커버리지 = no-auth 8파일 전부 정상(barrel 6=서브라우터 위임·hrSelf=의도적 self-service public[rate-limited]·webhooks=의도적 webhook).
+> - **🟢 print-system 백엔드 제거 완전성 = clean**: 0335 print_media/print_methods DROP→0337 FK 스텁(id PK) 재생성으로 items write 복구. dropped-table SQL refs(FROM/JOIN/INTO/UPDATE) `grep` **0건**. 0336 quotation_items 물리 DROP 5컬럼(media_subcategory_name·print_method_id/name·print_media_id/name)도 백엔드 잔존 참조 0(`grep -rn` src/routes).
+> - **🔴 신규 이슈 #431 (bug, small) — 카드 상세 "원단" 영구 공백 회귀**: print-system churn(`92b015a`)가 cards/queries.ts에서 `pm.name as print_media_name` + `LEFT JOIN print_media` 제거 → 백엔드가 `print_media_name`(+fallback `media_name`) 공급 중단. 프론트 카드상세 **양쪽 뷰**(`cardDetail.js:54→:150` `cd-fabric`·`cards/detail.js:548→:617` `fabric-name`)가 stale read → 원단 표시 **영구 "-"**. order_items엔 print_media_name 컬럼이 원래 없었고(0191은 quotation_items만), 과거엔 print_media JOIN으로만 공급됐으므로 **JOIN 제거 = 공급원 소멸 = silent UX 회귀**. throw 없음(가드·esc). #429(axios 404)와 다른 메커니즘(stale field read→UI 공백)·다른 파일이라 net-new. **issue-only**(신모델 원단=product_materials 연결, 재배선[옵션A 신규JOIN] vs 제거[옵션B] = owner 결정, 자동수정 금지).
+> - **🟢 N+1 standing scan = net-new 0**: 크루드 루프스캔 후보 다수는 FP(루프 경계 오탐) 또는 기보고(#423 autoProcess /start INSERT 순차 await·#416 attendance/leaves bulk). net-new N+1 0.
+> - **🟢 backlog↔GitHub sync clean (변동 0→#431 편입)**: open auto-improve **실측 8건**(#412·#423·#424·#425·#426·#428·#429·#430, list_issues 전수) = 직전 stats `new=8` 정합 → 본 사이클 #431 추가 → **new=9**. done=126·rejected=3·approved=0·reviewed=0 유지. owner 신규 close/머지 0건(churn은 print-system purge 완성 + FK 스텁 회귀수정).
+> - **🧬 SKILL 강화 1건 — "백엔드 컬럼/JOIN 제거 시 프론트 stale field read = 컬럼-제거 완전성의 프론트 거울" Area 2 codify(#431, line 64 인근)**: 드리프트 정리(존재X 컬럼 제거)·시스템 purge가 백엔드 SELECT/JOIN을 제거하면, 그 필드를 **읽던 프론트(`obj.field`)는 throw 없이 undefined→공백/"-"** 렌더 = 조용한 UX 회귀. 백엔드 컬럼/JOIN 제거 churn마다 `grep -rn "\.<제거필드>" src/scripts`로 stale read 전수 → 가드(`||'-'`)로 렌더되면 그 UI 필드가 영구 공백. #429(axios 404)·#377(부분픽스)와 같은 "purge 완전성" 축의 **데이터-필드 거울**.
+> - **이상 없음**: git 동기 0/0. 335 마이그 FAIL 0. 자동 4종 + N+1 + 백엔드 purge 완전성 전 각도 net-new 0(기보고/FP). 유일 net-new = #431 카드상세 원단 공백(print-system JOIN 제거 부수).
+> - 자동 수정 0건(net-new가 issue-only 1건뿐·억지 findings 회피), 신규 이슈 1건(#431), SKILL 강화 1건(백엔드 컬럼/JOIN 제거→프론트 stale read 거울), done-sync(new 8→9), **신선 각도 — print-system 완전제거 churn(0335~0337)의 백엔드↔프론트 완전성 양방향 검증, 프론트 stale field read 회귀 격리**
+>
+> **Area 1 프로덕션 헬스 (2026-06-21T18:00):**
+> - **방법**: git fetch-before-compare(origin force-update `4993fa7→7cdca2b`, fetch 후 **HEAD=origin/main `7cdca2b` 0/0 동기** = prod↔main 디버전스 0, 회귀 시한폭탄 부재). prod 직접 프로브 시도 → **egress 허용목록 차단**("Host not in allowlist: webapp-9i0.pages.dev", github.com만 200·cloudflare/example 403) = **장애 아닌 환경 제약** → CI post-deploy smoke가 권위 헬스 신호. deploy.yml 최근 12런 + open 이슈 + 긴급수정 커밋 분석.
+> - **🟢 CI/배포 = 전 green**: `deploy.yml` main 최근 **12런 전부 completed/success**. 최신 = `7cdca2b`("0335 회귀 긴급수정", run 27907285090) success, smoke 101/101. 배포 자체·typecheck/build 정상.
+> - **🔴→🟢 실제 prod-breaking 회귀 발생·이미 복구**: print-system purge `0335`가 `print_media/print_methods` DROP → `items`가 inline FK 참조 → SQLite "부모 DROP 시 자식 write 차단"으로 **품목 생성/수정 100% 불능이 prod 도달**. **SELECT만 동작 → 모든 GET smoke 프로브 200 → deploy green으로 은폐**(`92b015a`→`d4467d4`→`ceda008` 전부 success로 통과). owner가 수동 발견·`0337` FK 스텁 재생성으로 복구(`7cdca2b`, prod items INSERT 복구 확인). **현재 prod 정상**. fix 완전성 검증 = dropped 테이블 live refs(FROM/JOIN/INTO/UPDATE) `grep` **0건**(#377 sibling 누락 없음).
+> - **🆕 신규 이슈 #430 (improvement, small) — smoke write-path 맹점**: `scripts/smoke.cjs` 실측 = **102 프로브 전부 GET + POST는 로그인 1곳(`:210`)뿐** = read-only라 write 회귀(품목 생성 등) 구조적 미탐 → 이번 회귀가 green 통과한 직접 원인. **line 40 MIME/shell 맹점에 이은 smoke 맹점 2종째**(1종 프론트 실행·2종 백엔드 write). 수정 방향 = write 카나리(옵션 B dry-run POST 권장). **issue-only**(prod 데이터 INSERT/CI·라우트 변경 = SKILL Area 1 자동수정 금지).
+> - **🟢 backlog↔GitHub sync clean (변동 0→#430 편입)**: open auto-improve **실측 7건**(#412·#423·#424·#425·#426·#428·#429, list_issues 전수) = 직전 stats `new=7` 정합 확인 → 본 사이클 #430 추가 → **new=8**. done=126·rejected=3·approved=0·reviewed=0 유지. owner 신규 close/머지 0건(품목 대개편 churn은 코드 리팩터·회귀수정).
+> - **🧬 SKILL 강화 1건 — "smoke 맹점 2종(write-path) + DROP/RENAME 마이그레이션 사이클의 Area 1 정적 write-핸들러 검증" codify(#430, line 41)**: deploy success+smoke green ≠ write 정상. DROP TABLE/COLUMN 머지 사이클은 그 식별자를 FK 참조하는 핸들러 write가 깨졌는지 `grep`으로 직접 확인(smoke 신뢰 금지). D1 특수성(부모 DROP→자식 write 전량 차단·SELECT만 동작·스텁 영구유지 `0337` 패턴) 기록.
+> - **이상 없음**: git 동기 0/0. CI 12런 green. prod 회귀는 이미 복구(현재 정상). prod 직접 프로브는 egress 차단(환경 제약, 장애 아님). 유일 net-new = #430 smoke 맹점(improvement).
+> - 자동 수정 0건(smoke/핸들러 변경 = prod데이터/CI 영역 issue-only), 신규 이슈 1건(#430 smoke write-path 맹점), SKILL 강화 1건(smoke 맹점 2종+DROP 마이그 write 검증), done-sync(new 7→8), **신선 각도 — 품목 대개편 print-system purge가 유발한 prod 품목생성 회귀의 사후 분석 + smoke가 그것을 green 통과시킨 모니터링 사각 격리**
+>
 > **Area 6 자기 진화 (2026-06-21T14:00):**
 > - **방법**: Area 6 **18회차** — 신선 각도 = **직전 Area4(`dd9611a`)·Area5(`902b917`) HEAD 이후 머지된 품목 대개편 churn의 회귀 재감사**(컬럼-diff bridge + XSS bridge + 드리프트/시스템-purge 완전성). 최대 churn = **소재/출력방식(print-system) 시스템 통째 제거**(`b2b6a6b`1단계→`92b015a`2단계: printSystem.ts -1514·마이그 0334 DROP 4테이블) + Flexi 네스팅 추적(`e1be4a0`, print_events.nest_members) + 품목 분류 8개 재구성. ground-truth=마이그 0334(중복번호 2개) 적용 스키마 대조.
 > - **🟢 post-Area4 컬럼-diff bridge = clean**: 마이그 `0334_drop_print_system.sql`이 `items`/`quotation_items`의 print_* 컬럼을 **dead로 유지(NULL화, 테이블 재빌드 회피)** → 잔존 SELECT(items.ts:674·quotations.ts:169) **컬럼 실재(안전)**. dropped-table(print_media/print_methods/print_method_media/media_material_groups) SQL refs = `grep` **0건**(FROM/JOIN/INTO 전수). `nest_members` 컬럼 `0334_print_events_nest_members.sql`로 정상 ALTER. **존재X 컬럼 net-new 0**.
