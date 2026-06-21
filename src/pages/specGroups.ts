@@ -33,8 +33,8 @@ export function specGroupsPage(c: Context<HonoEnv>) {
 
           <!-- 우: 선택 그룹 상세 (값 목록) -->
           <div class="lg:col-span-2 space-y-4">
-            <div id="sgpDetail" class="ds-card p-6 text-center text-gray-400 text-sm">
-              왼쪽에서 규격그룹을 선택하세요.
+            <div id="sgpDetail" class="space-y-4">
+              <div class="ds-card p-6 text-center text-gray-400 text-sm">왼쪽에서 규격그룹을 선택하세요.</div>
             </div>
           </div>
         </div>
