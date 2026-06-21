@@ -709,7 +709,7 @@ itemsRouter.post('/', requireRole('ADMIN', 'MANAGER'), async (c) => {
 
     // 중복 등록 검사 (같은 이름 + 타입 + 규격)
     const itemType = itemData.item_type || 'PRODUCT'
-    const specVal = itemData.specification || (itemData.width_mm ? itemData.width_mm + 'mm' : '')
+    const specVal = itemData.specification || (itemData.width_mm ? (Math.round(itemData.width_mm / 10)) + 'cm' : '')
     const dupCheck = await c.env.DB.prepare(
       `SELECT id, item_name FROM items WHERE item_name = ? AND item_type = ? AND is_active = 1
        AND COALESCE(specification, '') = ? LIMIT 1`

@@ -1962,7 +1962,7 @@ function _doItemSearch(q) {
         + 'data-width-mm="' + (it.width_mm || '') + '" '
         + 'data-item-type="' + (it.item_type || '') + '">'
         + '<td class="px-4 py-2 font-mono text-xs text-blue-600">' + window.escapeHtml(it.item_code || '') + '</td>'
-        + '<td class="px-4 py-2 font-medium">' + window.escapeHtml(it.item_name || '') + pmBadge + '</td>'
+        + '<td class="px-4 py-2 font-medium">' + window.escapeHtml(it.item_name || '') + pmBadge + (it.width_mm ? ' <span class="text-xs font-semibold text-emerald-600">' + (parseInt(it.width_mm, 10) / 10) + 'cm</span>' : '') + '</td>'
         + '<td class="px-4 py-2 text-xs text-gray-500">' + window.escapeHtml(catStr) + '</td>'
         + '<td class="px-4 py-2 text-gray-500">' + (it.unit || 'EA') + '</td>'
         + '<td class="px-4 py-2 text-right tabular-nums">' + priceStr + '</td>'

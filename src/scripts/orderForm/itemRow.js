@@ -220,7 +220,8 @@
                     // 유통품목이면 품목 마스터 규격을 규격칸에 자동채움(수정 가능)
                     if (isDistItem) {
                         var specSel = document.querySelector('[name="spec_' + id + '"]');
-                        if (specSel && !specSel.value) specSel.value = item.specification || '';
+                        // 규격 자동채움: 마스터 규격 우선, 없으면 폭(width_mm→cm) — 원단 동일명 식별 (이름은 불변)
+                        if (specSel && !specSel.value) specSel.value = item.specification || (item.width_mm ? (parseInt(item.width_mm, 10) / 10) + 'cm' : '');
                     }
 
                     // 기성품/유통 재고 부족 경고 (Phase 3) — 차단 X, 안내만. 출고 시 마이너스 허용
@@ -264,6 +265,7 @@
                                 sub_category: it.sub_category || it.sub_category_direct || '',
                                 pricing_method: it.pricing_method || 'FIXED',
                                 specification: it.specification || '',
+                                width_mm: it.width_mm || '',
                                 item_type: it.item_type || ''
                             });
                         } else if (items.length > 1 && openModal) {
