@@ -164,9 +164,7 @@ const ENDPOINTS = [
   { path: '/api/activity-logs?limit=10', name: 'activityLogs.list' },
   { path: '/api/approvals?limit=10', name: 'approvals.list' },
 
-  // 출력방식/소재/RIP
-  { path: '/api/print-system/methods', name: 'printSystem.methods' },
-  { path: '/api/print-system/media', name: 'printSystem.media' },
+  // RIP (출력방식/소재 print-system 제거됨 — 단순 구조 모델)
   { path: '/api/rip/equipment', name: 'rip.equipment' },
   { path: '/api/search?q=test', name: 'search.global' },
 

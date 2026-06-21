@@ -266,9 +266,6 @@ export function orderFormPage(c: Context<HonoEnv>) {
                         <div class="flex justify-between items-center mb-4 border-b pb-2">
                             <h2 class="text-xl font-bold text-gray-800"><i class="fas fa-box mr-2"></i>주문 품목</h2>
                             <div class="flex gap-2">
-                                <button type="button" onclick="togglePrintMethodFilter()" class="w-8 h-8 bg-gray-100 border border-gray-300 rounded text-gray-500 hover:bg-blue-50 hover:border-blue-400 hover:text-blue-600 text-xs" title="출력방식 필터">
-                                    <i class="fas fa-filter"></i>
-                                </button>
                                 <button type="button" id="addItemBtn" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">
                                     <i class="fas fa-plus mr-2"></i>품목 추가
                                 </button>
@@ -283,7 +280,6 @@ export function orderFormPage(c: Context<HonoEnv>) {
                                 </button>
                             </div>
                         </div>
-                        <div id="printMethodFilter" class="hidden mb-3 p-3 bg-blue-50 border border-blue-200 rounded-lg"></div>
                         <div id="itemsContainer"></div>
 
                         <!-- 합계 -->

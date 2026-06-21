@@ -84,7 +84,6 @@ import capsRouter from './routes/caps'
 import { insuranceReportsRouter } from './routes/insuranceReports'
 import messageTemplatesRouter from './routes/messageTemplates'
 import faxRouter from './routes/fax'
-import printSystemRouter from './routes/printSystem'
 import finishingRouter from './routes/finishing'
 import deliveryAnalyticsRouter from './routes/deliveryAnalytics'
 import filesRouter from './routes/files'
@@ -334,7 +333,6 @@ app.route('/api/caps', capsRouter)
 app.route('/api/insurance-reports', insuranceReportsRouter)
 app.route('/api/message-templates', messageTemplatesRouter)
 app.route('/api/fax', faxRouter)
-app.route('/api/print-system', printSystemRouter)
 app.route('/api/finishing', finishingRouter)
 
 // Utility API endpoints

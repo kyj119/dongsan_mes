@@ -2,12 +2,31 @@ import { Hono } from 'hono'
 import type { HonoEnv } from '../types/env'
 import type { Item, ItemCategory, ApiResponse, PaginatedResponse } from '../types/models'
 import { authMiddleware, requireRole } from '../middleware/auth'
-import { getEntityId } from '../utils/entityFilter'
+import { getEntityId, entityFilter } from '../utils/entityFilter'
 
 const itemsRouter = new Hono<HonoEnv>()
 
 // Apply authentication middleware to all routes
 itemsRouter.use('/*', authMiddleware)
+
+// 단가 변경 이력 (구 print-system /price-history에서 이전) — /:id 보다 먼저 등록
+itemsRouter.get('/price-history', async (c) => {
+  try {
+    const { target_type, target_id, limit: limitStr } = c.req.query()
+    const limit = parseInt(limitStr || '20') || 20
+    const ef = entityFilter(c, 'pch')
+    let query = `SELECT pch.*, u.name as changed_by_name FROM price_change_history pch LEFT JOIN users u ON pch.changed_by = u.id WHERE 1=1${ef.clause}`
+    const params: any[] = [...ef.params]
+    if (target_type) { query += ' AND pch.target_type = ?'; params.push(target_type) }
+    if (target_id) { query += ' AND pch.target_id = ?'; params.push(parseInt(target_id)) }
+    query += ' ORDER BY pch.changed_at DESC LIMIT ?'; params.push(limit)
+    const { results } = await c.env.DB.prepare(query).bind(...params).all()
+    return c.json({ success: true, data: results })
+  } catch (error) {
+    console.error('items GET /price-history error:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다' }, 500)
+  }
+})
 
 // Get all item categories
 itemsRouter.get('/categories', async (c) => {
@@ -80,13 +99,10 @@ itemsRouter.get('/', async (c) => {
         i.category as category_direct,
         i.sub_category as sub_category_direct,
         i.width_mm,
-        i.is_favorite,
-        pm_sub.subcat_name as media_subcategory_name
+        i.is_favorite
       FROM items i
       LEFT JOIN item_categories ic ON i.category_id = ic.id
       LEFT JOIN item_subcategories isc ON i.subcategory_id = isc.id
-      LEFT JOIN print_media pm ON i.print_media_id = pm.id
-      LEFT JOIN pp_applicable_subcategories pm_sub ON pm.subcategory_id = pm_sub.id
       WHERE ${activeClause}
     `
     const params: any[] = []

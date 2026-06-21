@@ -20,11 +20,7 @@ priceListRouter.get('/', async (c) => {
       ORDER BY item_type, category, item_name, specification
     `).all()
 
-    const { results: media } = await c.env.DB.prepare(`
-      SELECT id, name, code, media_type, price_per_unit, unit, media_group, sort_order
-      FROM print_media WHERE is_active = 1
-      ORDER BY media_group, sort_order, name
-    `).all()
+    const media: any[] = []  // 소재(print_media) 폐기 — 단가표 소재 export 제거
 
     let policyRules: Record<string, unknown>[] = []
     let policyName = ''

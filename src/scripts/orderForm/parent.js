@@ -1425,27 +1425,7 @@
             // ============================================
             // 출력방식 필터 (주문서 품목 선택 보조)
             // ============================================
-            window.togglePrintMethodFilter = function() {
-                var panel = document.getElementById('printMethodFilter');
-                if (!panel) return;
-                if (panel.classList.contains('hidden')) {
-                    // 출력방식 목록 로드
-                    axios.get('/api/print-system/methods').then(function(res) {
-                        var methods = res.data.data || [];
-                        var html = '<div class="flex gap-1 mb-2">';
-                        methods.forEach(function(m) {
-                            html += '<button type="button" onclick="selectPrintMethodFilter(' + m.id + ',\'' + m.name + '\')" '
-                                + 'class="px-3 py-1.5 text-xs rounded border border-gray-300 hover:bg-blue-50 hover:border-blue-400">'
-                                + m.name + '</button>';
-                        });
-                        html += '</div><div id="printMediaFilterList"></div>';
-                        panel.innerHTML = html;
-                        panel.classList.remove('hidden');
-                    });
-                } else {
-                    panel.classList.add('hidden');
-                }
-            };
+            window.togglePrintMethodFilter = function() { /* 출력방식 필터 폐기 — no-op (소재/출력방식 시스템 제거) */ };
 
             window.selectPrintMethodFilter = function(methodId, methodName) {
                 // 해당 출력방식의 소재 목록 로드

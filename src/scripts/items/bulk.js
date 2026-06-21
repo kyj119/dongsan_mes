@@ -525,7 +525,7 @@ window.showPriceHistory = function(targetType, targetId) {
     body.innerHTML = '<p class="text-gray-400 text-sm text-center py-4">로딩 중...</p>';
     modal.classList.remove('hidden');
 
-    axios.get('/api/print-system/price-history?target_type=' + targetType + '&target_id=' + targetId + '&limit=20')
+    axios.get('/api/items/price-history?target_type=' + targetType + '&target_id=' + targetId + '&limit=20')
         .then(function(res) {
             var history = res.data.data || [];
             if (!history.length) {

@@ -174,11 +174,10 @@ export async function generateCardsForOrder(params: GenerateCardsParams): Promis
   `).bind(clientId).first<{ client_name: string }>()
 
   const { results: orderItems } = await db.prepare(`
-    SELECT oi.*, i.category, i.sub_category, i.print_method_id, i.print_media_id,
-           i.item_type, i.production_required, pm.card_group as print_method_card_group
+    SELECT oi.*, i.category, i.sub_category,
+           i.item_type, i.production_required
     FROM order_items oi
     LEFT JOIN items i ON oi.item_id = i.id
-    LEFT JOIN print_methods pm ON i.print_method_id = pm.id
     WHERE oi.order_id = ?
     ORDER BY oi.sort_order ASC
   `).bind(orderId).all()

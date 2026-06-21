@@ -958,14 +958,10 @@ cardsQueriesRouter.get('/:id', async (c) => {
         oi.parent_item_id,
         ci.id as card_item_id,
         ci.print_completed,
-        ci.quantity as card_quantity,
-        pm.name as print_media_name,
-        pmeth.name as print_method_name
+        ci.quantity as card_quantity
       FROM card_items ci
       LEFT JOIN order_items oi ON ci.order_item_id = oi.id
       LEFT JOIN items it ON oi.item_id = it.id
-      LEFT JOIN print_media pm ON it.print_media_id = pm.id
-      LEFT JOIN print_methods pmeth ON it.print_method_id = pmeth.id
       WHERE ci.card_id = ?
       ORDER BY oi.sort_order ASC
     `).bind(id).all<CardItemRow>()

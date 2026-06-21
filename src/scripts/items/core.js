@@ -117,55 +117,12 @@ window.onCategoryChange = function() {
     updateAutoCodePreview();
 };
 
-// ── 소재 목록 로드 (parentMediaId 드롭다운용) ──
-// 원자재 모달: 연결된 소재 표시 (읽기 전용)
+// ── 소재(print_media) 폐기 — no-op (단순 구조 모델은 원단=품목, product_materials 연결) ──
 function loadLinkedMediaDisplay(itemId) {
     var container = document.getElementById('linkedMediaDisplay');
-    if (!container) return;
-    container.innerHTML = '<span class="text-xs text-gray-400"><i class="fas fa-spinner fa-spin mr-1"></i>로딩 중...</span>';
-
-    axios.get('/api/print-system/item-linked-media/' + itemId).then(function(res) {
-        var groups = res.data.data || {};
-        var groupNames = Object.keys(groups);
-        if (groupNames.length === 0) {
-            container.innerHTML = '<span class="text-xs text-gray-400">연결된 소재 없음</span>';
-            return;
-        }
-        var html = '';
-        groupNames.forEach(function(g) {
-            html += '<span class="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-blue-50 text-blue-700 border border-blue-200">'
-                + '<i class="fas fa-link text-blue-400"></i>' + escapeHtml(g)
-                + '</span>';
-        });
-        container.innerHTML = html;
-    }).catch(function() {
-        container.innerHTML = '<span class="text-xs text-gray-400">조회 실패</span>';
-    });
+    if (container) container.innerHTML = '<span class="text-xs text-gray-400">—</span>';
 }
-
-function loadParentMediaOptions() {
-    axios.get('/api/print-system/media').then(function(res) {
-        var data = res.data.data || {};
-        var select = document.getElementById('parentMediaId');
-        if (!select) return;
-        var html = '<option value="">연결 없음</option>';
-        var allMedia = [];
-        if (data.groups) {
-            Object.keys(data.groups).forEach(function(g) {
-                data.groups[g].forEach(function(m) { allMedia.push(m); });
-            });
-        }
-        if (data.ungrouped) {
-            data.ungrouped.forEach(function(m) { allMedia.push(m); });
-        }
-        allMedia.forEach(function(m) {
-            html += '<option value="' + m.id + '">' + escapeHtml(m.name) + ' (' + (m.price_per_unit || 0).toLocaleString() + '원/㎡)</option>';
-        });
-        select.innerHTML = html;
-    }).catch(function(err) {
-        console.error('소재 목록 로드 실패:', err);
-    });
-}
+function loadParentMediaOptions() { /* 소재 폐기 — no-op */ }
 
 function selectItemType(type) {
     selectedItemType = type;
