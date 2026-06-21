@@ -421,13 +421,13 @@ itemsRouter.post('/:id/generate-variants', requireRole('ADMIN', 'MANAGER'), asyn
             item_code, item_name, item_type, category, sub_category, category_id, unit,
             base_price, sales_price, description, pricing_method, pricing_profile, is_active,
             is_sales_item, is_purchase_item, production_required,
-            item_group, group_sort, spec_group_id, spec_value, spec_group_id2, spec_value2, parent_media_id, width_mm
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            item_group, group_sort, spec_group_id, spec_value, spec_group_id2, spec_value2, width_mm
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `).bind(
           variantCode, variantName, base.item_type, base.category, base.sub_category, base.category_id, base.unit || 'EA',
           base.base_price || 0, base.sales_price || 0, base.description || null, base.pricing_method || 'FIXED', base.pricing_profile || null, base.is_active ?? 0,
           base.is_sales_item || 0, base.is_purchase_item || 0, base.production_required ?? 1,
-          groupName, v.sort_order || 0, base.spec_group_id, v.value_code, v2 ? base.spec_group_id2 : null, v2 ? v2.value_code : null, base.parent_media_id || null, base.width_mm || null
+          groupName, v.sort_order || 0, base.spec_group_id, v.value_code, v2 ? base.spec_group_id2 : null, v2 ? v2.value_code : null, base.width_mm || null
         ).run()
         created.push({ id: res.meta.last_row_id, item_code: variantCode, item_name: variantName })
       }
@@ -602,7 +602,7 @@ itemsRouter.patch('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
   try {
     const id = c.req.param('id')
     const updates = await c.req.json()
-    const allowedFields = ['item_name', 'specification', 'width_mm', 'parent_media_id', 'sub_category', 'base_price', 'unit', 'sales_price', 'is_sales_item', 'item_group', 'is_purchase_item', 'production_required', 'spec_group_id', 'spec_value', 'spec_group_id2', 'spec_value2']
+    const allowedFields = ['item_name', 'specification', 'width_mm', 'sub_category', 'base_price', 'unit', 'sales_price', 'is_sales_item', 'item_group', 'is_purchase_item', 'production_required', 'spec_group_id', 'spec_value', 'spec_group_id2', 'spec_value2']
     const setClauses: string[] = []
     const params: any[] = []
 
@@ -671,7 +671,7 @@ itemsRouter.get('/:id', async (c) => {
   try {
     const id = c.req.param('id')
     const item = await c.env.DB.prepare(`
-      SELECT id, category_id, subcategory_id, item_code, item_name, description, unit, base_price, sales_price, is_active, item_type, category, sub_category, is_sales_item, is_purchase_item, pricing_method, item_group, group_sort, width_mm, storage_zone_id, is_favorite, print_method_id, print_media_id, parent_media_id, code_prefix, specification, production_required, spec_group_id, spec_value, spec_group_id2, spec_value2, ecount_code, created_at, updated_at FROM items WHERE id = ?
+      SELECT id, category_id, subcategory_id, item_code, item_name, description, unit, base_price, sales_price, is_active, item_type, category, sub_category, is_sales_item, is_purchase_item, pricing_method, item_group, group_sort, width_mm, storage_zone_id, is_favorite, code_prefix, specification, production_required, spec_group_id, spec_value, spec_group_id2, spec_value2, ecount_code, created_at, updated_at FROM items WHERE id = ?
     `).bind(id).first()
 
     if (!item) {
@@ -827,8 +827,8 @@ itemsRouter.post('/', requireRole('ADMIN', 'MANAGER'), async (c) => {
         base_price, description, is_active,
         is_sales_item, is_purchase_item, pricing_method, width_mm,
         item_group, group_sort, item_type, category_id, item_code, storage_zone_id,
-        code_prefix, parent_media_id, specification, production_required
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        code_prefix, specification, production_required
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).bind(
       itemData.item_name,
       itemData.category,
@@ -848,7 +848,6 @@ itemsRouter.post('/', requireRole('ADMIN', 'MANAGER'), async (c) => {
       itemCode,
       itemData.storage_zone_id ?? null,
       codePrefix || null,
-      itemData.parent_media_id || null,
       itemData.specification || null,
       // 기성품/유통: 제작 불필요 기본값 — GOODS/MATERIAL=0, 그 외=1 (UI에서 수동 조정)
       itemData.production_required !== undefined ? (itemData.production_required ? 1 : 0) : (['GOODS', 'MATERIAL'].includes(itemType) ? 0 : 1)
@@ -1037,7 +1036,6 @@ itemsRouter.put('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
         item_type = ?,
         category_id = ?,
         storage_zone_id = ?,
-        parent_media_id = ?,
         specification = ?,
         ${prodReqClause}
         updated_at = CURRENT_TIMESTAMP
@@ -1059,7 +1057,6 @@ itemsRouter.put('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
       itemType,
       categoryId,
       itemData.storage_zone_id ?? null,
-      itemData.parent_media_id ?? null,
       itemData.specification || null,
       ...prodReqParams,
       id

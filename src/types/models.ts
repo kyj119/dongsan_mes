@@ -236,11 +236,6 @@ export interface QuotationItem {
   parent_id?: number;
   sort_order: number;
   ai_group_index?: number;
-  media_subcategory_name?: string;
-  print_method_id?: number;
-  print_method_name?: string;
-  print_media_id?: number;
-  print_media_name?: string;
   created_at: string;
 }
 

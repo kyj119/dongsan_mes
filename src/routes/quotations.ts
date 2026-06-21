@@ -166,7 +166,7 @@ quotationsRouter.get('/:id', async (c) => {
     await markExpiredIfNeeded(c.env.DB, quotation)
 
     const { results: items } = await c.env.DB.prepare(`
-      SELECT id, quotation_id, item_id, item_name, width, height, scale_factor, quantity, unit, unit_price, amount, content, post_processing, finishing, pricing_method, parent_id, sort_order, ai_group_index, media_subcategory_name, print_method_id, print_method_name, print_media_id, print_media_name, assigned_entity_id, created_at FROM quotation_items WHERE quotation_id = ? ORDER BY sort_order ASC, id ASC
+      SELECT id, quotation_id, item_id, item_name, width, height, scale_factor, quantity, unit, unit_price, amount, content, post_processing, finishing, pricing_method, parent_id, sort_order, ai_group_index, assigned_entity_id, created_at FROM quotation_items WHERE quotation_id = ? ORDER BY sort_order ASC, id ASC
     `).bind(id).all()
 
     const { results: convertedOrders } = await c.env.DB.prepare(`
@@ -290,9 +290,8 @@ quotationsRouter.post('/', async (c) => {
           quotation_id, item_id, item_name, width, height, scale_factor,
           quantity, unit, unit_price, amount, content, post_processing,
           finishing, pricing_method, sort_order, ai_group_index,
-          media_subcategory_name, print_method_id, print_method_name,
-          print_media_id, print_media_name, entity_id, assigned_entity_id
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          entity_id, assigned_entity_id
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).bind(
         quotationId, item.item_id || null, item.item_name || 'Unknown',
         w, h, item.scale_factor || 1,
@@ -301,9 +300,6 @@ quotationsRouter.post('/', async (c) => {
         item.content || null, item.post_processing || null,
         item.finishing || null, pricingMethod, i,
         item.ai_group_index != null ? item.ai_group_index : null,
-        item.media_subcategory_name || null,
-        item.print_method_id || null, item.print_method_name || null,
-        item.print_media_id || null, item.print_media_name || null,
         getEntityId(c) || 1,
         item.assigned_entity_id || null
       ))
@@ -569,7 +565,7 @@ quotationsRouter.post('/:id/convert-to-order', requireRole('ADMIN', 'MANAGER'), 
     }
 
     const { results: qItems } = await c.env.DB.prepare(
-      `SELECT id, quotation_id, item_id, item_name, width, height, scale_factor, quantity, unit, unit_price, amount, content, post_processing, finishing, pricing_method, parent_id, sort_order, ai_group_index, media_subcategory_name, print_method_id, print_method_name, print_media_id, print_media_name, assigned_entity_id, created_at FROM quotation_items WHERE quotation_id = ? ORDER BY sort_order, id`
+      `SELECT id, quotation_id, item_id, item_name, width, height, scale_factor, quantity, unit, unit_price, amount, content, post_processing, finishing, pricing_method, parent_id, sort_order, ai_group_index, assigned_entity_id, created_at FROM quotation_items WHERE quotation_id = ? ORDER BY sort_order, id`
     ).bind(id).all<Record<string, unknown>>()
     if (!qItems || qItems.length === 0) {
       return c.json({ success: false, error: '견적서에 품목이 없습니다.' }, 400)

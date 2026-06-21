@@ -106,10 +106,7 @@ async function editItem(id) {
                         }
                     }
                 }
-                // parent_media_id 유지 (hidden)
-                var pmHidden = document.getElementById('parentMediaId');
-                if (pmHidden) pmHidden.value = item.parent_media_id || '';
-                // 연결된 소재 표시 (읽기 전용)
+                // 연결된 소재 표시 (읽기 전용) — no-op (소재 시스템 폐기)
                 loadLinkedMediaDisplay(item.id);
                 // 판매 가능 토글
                 var salesToggle = document.getElementById('rmSalesToggle');
@@ -188,8 +185,6 @@ async function saveItem(event) {
     if (selectedItemType === 'MATERIAL') {
         var rmSubEl = document.getElementById('rmSubCategory');
         data.rm_sub_category = rmSubEl ? rmSubEl.value : '';
-        var pmIdEl = document.getElementById('parentMediaId');
-        data.parent_media_id = pmIdEl && pmIdEl.value ? parseInt(pmIdEl.value) : null;
         // 판매 가능 토글
         var salesToggle = document.getElementById('rmSalesToggle');
         if (salesToggle && salesToggle.checked) {
