@@ -566,5 +566,5 @@ window.closePriceHistoryModal = function() {
 // 초기 로딩
 loadCategories();
 loadStorageZonesForItem();
-// 출력 탭이 기본
-switchMainTab('output');
+// 분류 기반 탭 초기화 (item_categories 동적)
+initItemTabs();

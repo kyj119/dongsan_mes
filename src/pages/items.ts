@@ -15,19 +15,15 @@ export function itemsPage(c: Context<HonoEnv>) {
     activePage: '/items',
     pageContent: `
         <div class="container mx-auto px-4 py-8">
-            <!-- 메인 탭 (7탭) -->
-            <div class="flex gap-1 mb-4 border-b overflow-x-auto" style="border-color:var(--c-border)">
-                <button class="px-4 py-2 font-medium text-sm border-b-2 border-blue-600 text-blue-600 whitespace-nowrap" onclick="switchMainTab('output')" id="tabBtnOutput">출력</button>
-                <button class="px-4 py-2 font-medium text-sm text-gray-500 hover:text-gray-700 border-b-2 border-transparent whitespace-nowrap" onclick="switchMainTab('transfer')" id="tabBtnTransfer">전사</button>
-                <button class="px-4 py-2 font-medium text-sm text-gray-500 hover:text-gray-700 border-b-2 border-transparent whitespace-nowrap" onclick="switchMainTab('flag')" id="tabBtnFlag">태극기</button>
-                <button class="px-4 py-2 font-medium text-sm text-gray-500 hover:text-gray-700 border-b-2 border-transparent whitespace-nowrap" onclick="switchMainTab('sign')" id="tabBtnSign">간판</button>
-                <button class="px-4 py-2 font-medium text-sm text-gray-500 hover:text-gray-700 border-b-2 border-transparent whitespace-nowrap" onclick="switchMainTab('goods')" id="tabBtnGoods">상품</button>
-                <button class="px-4 py-2 font-medium text-sm text-gray-500 hover:text-gray-700 border-b-2 border-transparent whitespace-nowrap" onclick="switchMainTab('rawMaterial')" id="tabBtnRawMaterial">원자재</button>
-                <button class="px-4 py-2 font-medium text-sm text-gray-500 hover:text-gray-700 border-b-2 border-transparent whitespace-nowrap" onclick="switchMainTab('settings')" id="tabBtnSettings">설정</button>
+            <!-- 메인 탭 (분류 기반 — item_categories 동적) -->
+            <div id="itemMainTabs" class="flex gap-1 mb-4 border-b overflow-x-auto" style="border-color:var(--c-border)">
+                <span class="px-3 py-2 text-sm text-gray-400">로딩 중...</span>
             </div>
+            <!-- 분류별 품목 (동적 렌더) -->
+            <div id="itemCatContent"></div>
 
-            <!-- 출력 탭 -->
-            <div id="tabOutput">
+            <!-- (구) 출력 탭 — 미사용(분류탭으로 대체), 숨김 -->
+            <div id="tabOutput" class="hidden">
                 <div class="ds-card">
                     <div class="flex items-center justify-between mb-3">
                         <div class="flex items-center gap-3">

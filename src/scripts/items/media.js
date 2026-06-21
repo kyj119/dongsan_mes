@@ -1012,7 +1012,7 @@ window.addMediaSheetSizeRow = function(w, h) {
 // 원자재 탭으로 이동
 window.navigateToRMAdd = function() {
     closeMediaAddModal();
-    switchMainTab('rawMaterial');
+    switchCatTab('MATERIAL');
 };
 
 // 소재 모달 — 소분류 목록 로드

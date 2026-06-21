@@ -1,43 +1,134 @@
 // items/tabs.js — 메인 탭 전환, 출력/원자재 그룹 뷰, 인쇄방식 (Phase 3.1.B 분할)
 
-// 메인 탭 전환 (7탭)
-var mainTabNames = ['output', 'transfer', 'flag', 'sign', 'goods', 'rawMaterial', 'settings'];
-var currentMainTab = 'output';
+// ── 분류 기반 탭 (item_categories 동적) — 신모델 ──
+var ITEM_CATS = [];
+var currentCatCode = '';
+var currentMainTab = ''; // (구) 하위호환
 
-window.switchMainTab = function(tab) {
-    currentMainTab = tab;
-    // 모든 탭 콘텐츠 숨김
-    mainTabNames.forEach(function(t) {
-        var elId = 'tab' + t.charAt(0).toUpperCase() + t.slice(1);
-        var el = document.getElementById(elId);
-        if (el) el.classList.add('hidden');
-        var btnId = 'tabBtn' + t.charAt(0).toUpperCase() + t.slice(1);
-        var btn = document.getElementById(btnId);
-        if (btn) {
-            btn.classList.remove('border-blue-600', 'text-blue-600');
-            btn.classList.add('text-gray-500', 'border-transparent');
-        }
-    });
-    // 기존 tabItems도 숨김
-    var oldTab = document.getElementById('tabItems');
-    if (oldTab) oldTab.classList.add('hidden');
-
-    // 선택 탭 표시
-    var activeElId = 'tab' + tab.charAt(0).toUpperCase() + tab.slice(1);
-    var activeEl = document.getElementById(activeElId);
-    if (activeEl) activeEl.classList.remove('hidden');
-    var activeBtnId = 'tabBtn' + tab.charAt(0).toUpperCase() + tab.slice(1);
-    var activeBtn = document.getElementById(activeBtnId);
-    if (activeBtn) {
-        activeBtn.classList.add('border-blue-600', 'text-blue-600');
-        activeBtn.classList.remove('text-gray-500', 'border-transparent');
-    }
-
-    // 탭별 데이터 로드
-    if (tab === 'output') loadOutputItems('');
-    else if (tab === 'settings') { loadPrintMethods(); loadPrintMedia(); }
-    else loadTabItems(tab);
+window.initItemTabs = async function() {
+    var bar = document.getElementById('itemMainTabs');
+    if (!bar) { console.warn('[items] #itemMainTabs not found'); return; }
+    try {
+        var res = await axios.get('/api/items/categories');
+        ITEM_CATS = (res.data && res.data.data) ? res.data.data.filter(function(c){ return c.is_active !== 0; }) : [];
+    } catch (e) { ITEM_CATS = []; }
+    var tabs = ITEM_CATS.filter(function(c){ return c.category_code !== 'ETC'; }); // 기타=fallback, 탭 숨김
+    var html = tabs.map(function(c){
+        return '<button class="itm-tab px-4 py-2 font-medium text-sm text-gray-500 hover:text-gray-700 border-b-2 border-transparent whitespace-nowrap" data-code="' + c.category_code + '" onclick="switchCatTab(\'' + c.category_code + '\')">' + escapeHtml(c.category_name) + '</button>';
+    }).join('');
+    html += '<button class="itm-tab px-4 py-2 font-medium text-sm text-gray-500 hover:text-gray-700 border-b-2 border-transparent whitespace-nowrap" data-code="__settings__" onclick="switchCatTab(\'__settings__\')"><i class="fas fa-cog mr-1"></i>설정</button>';
+    bar.innerHTML = html;
+    switchCatTab(tabs.length ? tabs[0].category_code : '__settings__');
 };
+
+window.switchCatTab = function(code) {
+    currentCatCode = code; currentMainTab = code;
+    tabSortState = { column: '', asc: true };
+    document.querySelectorAll('#itemMainTabs .itm-tab').forEach(function(b) {
+        var on = b.getAttribute('data-code') === code;
+        b.classList.toggle('border-blue-600', on);
+        b.classList.toggle('text-blue-600', on);
+        b.classList.toggle('text-gray-500', !on);
+        b.classList.toggle('border-transparent', !on);
+    });
+    var content = document.getElementById('itemCatContent');
+    var settings = document.getElementById('tabSettings');
+    if (code === '__settings__') {
+        if (content) content.classList.add('hidden');
+        if (settings) settings.classList.remove('hidden');
+        if (typeof loadPrintMethods === 'function') loadPrintMethods();
+        if (typeof loadPrintMedia === 'function') loadPrintMedia();
+        return;
+    }
+    if (settings) settings.classList.add('hidden');
+    if (!content) return;
+    content.classList.remove('hidden');
+    var cat = ITEM_CATS.find(function(c){ return c.category_code === code; }) || { category_name: code };
+    content.innerHTML = '<div class="ds-card">'
+        + '<div class="flex items-center justify-between mb-3">'
+        + '<div class="flex items-center gap-3"><h3 class="text-lg font-bold">' + escapeHtml(cat.category_name) + '</h3>'
+        + '<span id="catCount" class="text-sm text-gray-500"></span></div>'
+        + '<div class="flex gap-2">'
+        + '<input type="text" id="catSearch" placeholder="품목명/코드 검색..." class="w-48 px-3 py-1.5 border rounded text-sm" oninput="catSearchDebounced()">'
+        + '<button onclick="showCreateModalForCategory(\'' + code + '\')" class="ds-btn ds-btn-primary ds-btn-sm"><i class="fas fa-plus mr-1"></i>추가</button>'
+        + '</div></div><div id="catItemsList"><p class="text-gray-400 text-sm py-6 text-center">로딩 중...</p></div></div>';
+    loadCatTable(code);
+};
+
+var _catSearchTimer = null;
+window.catSearchDebounced = function() {
+    if (_catSearchTimer) clearTimeout(_catSearchTimer);
+    _catSearchTimer = setTimeout(function() { loadCatTable(currentCatCode); }, 300);
+};
+window.sortCat = function(col) {
+    if (tabSortState.column === col) tabSortState.asc = !tabSortState.asc;
+    else { tabSortState.column = col; tabSortState.asc = true; }
+    loadCatTable(currentCatCode);
+};
+window.refreshItemTab = function() {
+    if (currentCatCode === '__settings__') {
+        if (typeof loadPrintMethods === 'function') loadPrintMethods();
+        if (typeof loadPrintMedia === 'function') loadPrintMedia();
+    } else if (currentCatCode) { loadCatTable(currentCatCode); }
+    if (typeof loadItems === 'function') loadItems(); // 캐시 갱신
+};
+
+function loadCatTable(code) {
+    var listEl = document.getElementById('catItemsList');
+    if (!listEl) return;
+    var isMat = (code === 'MATERIAL');
+    var searchEl = document.getElementById('catSearch');
+    var search = searchEl ? searchEl.value.trim() : '';
+    var url = '/api/items?category=' + encodeURIComponent(code) + '&limit=500' + (search ? '&search=' + encodeURIComponent(search) : '');
+    axios.get(url).then(function(res) {
+        var items = res.data.data || [];
+        if (tabSortState.column) {
+            items.sort(function(a, b) {
+                var va = a[tabSortState.column]; if (va == null) va = '';
+                var vb = b[tabSortState.column]; if (vb == null) vb = '';
+                if (typeof va === 'number' && typeof vb === 'number') return tabSortState.asc ? va - vb : vb - va;
+                return tabSortState.asc ? String(va).localeCompare(String(vb)) : String(vb).localeCompare(String(va));
+            });
+        }
+        var cntEl = document.getElementById('catCount'); if (cntEl) cntEl.textContent = items.length + '건';
+        if (!items.length) { listEl.innerHTML = '<p class="text-gray-400 text-sm py-8 text-center">등록된 품목이 없습니다.</p>'; return; }
+        var html = '<div class="overflow-x-auto"><table class="w-full text-sm ds-table-striped"><thead><tr class="text-left text-gray-500 text-xs">'
+            + '<th class="p-2 cursor-pointer select-none" onclick="sortCat(\'item_code\')">코드' + sortIcon('item_code') + '</th>'
+            + '<th class="p-2 cursor-pointer select-none" onclick="sortCat(\'item_name\')">품목명' + sortIcon('item_name') + '</th>'
+            + (isMat ? '<th class="p-2 text-right cursor-pointer select-none" onclick="sortCat(\'width_mm\')">폭(mm)' + sortIcon('width_mm') + '</th>' : '')
+            + '<th class="p-2 cursor-pointer select-none" onclick="sortCat(\'item_type\')">타입' + sortIcon('item_type') + '</th>'
+            + '<th class="p-2 text-right cursor-pointer select-none" onclick="sortCat(\'base_price\')">단가' + sortIcon('base_price') + '</th>'
+            + '<th class="p-2">상태</th><th class="p-2">작업</th></tr></thead><tbody>';
+        items.forEach(function(it) {
+            var en = (it.item_name || '').replace(/['"]/g, '');
+            html += '<tr class="border-t hover:bg-gray-50">'
+                + '<td class="p-2 font-mono text-blue-600 text-xs">' + escapeHtml(it.item_code || '') + '</td>'
+                + '<td class="p-2 font-medium">' + escapeHtml(it.item_name || '') + '</td>'
+                + (isMat ? '<td class="p-2 text-right tabular-nums text-gray-500 text-xs">' + (it.width_mm || '') + '</td>' : '')
+                + '<td class="p-2">' + getTypeBadge(it) + '</td>'
+                + '<td class="p-2 text-right tabular-nums">' + (it.base_price || 0).toLocaleString() + '</td>'
+                + '<td class="p-2">' + (it.is_active !== 0 ? '<span class="text-green-600 text-xs">활성</span>' : '<span class="text-gray-400 text-xs">비활성</span>') + '</td>'
+                + '<td class="p-2 whitespace-nowrap"><button onclick="editItem(' + it.id + ')" class="text-blue-600 hover:underline text-xs mr-2">수정</button>'
+                + '<button onclick="deleteItem(' + it.id + ', \'' + en + '\')" class="text-red-500 hover:underline text-xs">삭제</button></td></tr>';
+        });
+        html += '</tbody></table></div>';
+        listEl.innerHTML = html;
+    }).catch(function() { listEl.innerHTML = '<p class="text-red-500 text-sm py-4 text-center">데이터 로드 실패</p>'; });
+}
+
+window.showCreateModalForCategory = async function(code) {
+    await showCreateModal(); // 내부 selectItemType('PRODUCT') 완료까지 대기 → 이후 프리셋이 안 덮임
+    if (code === 'MATERIAL') { selectItemType('MATERIAL'); if (typeof loadParentMediaOptions === 'function') loadParentMediaOptions(); }
+    else if (code === 'GOODS') { selectItemType('GOODS'); }
+    else {
+        selectItemType('PRODUCT');
+        var cat = ITEM_CATS.find(function(c){ return c.category_code === code; });
+        if (cat && typeof setCategoryForTab === 'function') setCategoryForTab(cat.category_name);
+    }
+};
+
+// (구) 7탭 진입점 — 하위호환 no-op (호출부 없음)
+window.switchMainTab = function() {};
 
 // ── 출력 탭 ──────────────────────────────────────────────
 

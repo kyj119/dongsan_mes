@@ -206,11 +206,8 @@ async function saveItem(event) {
             showToast('품목이 추가되었습니다.', 'success');
         }
         closeModal();
-        // 현재 활성 탭에 맞게 목록 갱신
-        if (currentMainTab === 'output') loadOutputItems('');
-        else if (currentMainTab === 'settings') { loadPrintMethods(); loadPrintMedia(); }
-        else if (['transfer','flag','sign','goods','rawMaterial'].includes(currentMainTab)) loadTabItems(currentMainTab);
-        else loadItems();
+        // 현재 활성 분류 탭 갱신
+        if (typeof refreshItemTab === 'function') refreshItemTab(); else loadItems();
     } catch (error) {
         showToast('저장 실패: ' + (error.response?.data?.error || error.message), 'error');
     }
@@ -224,11 +221,8 @@ async function deleteItem(id, name) {
     try {
         await axios.delete('/api/items/' + id);
         showToast('품목이 삭제되었습니다.', 'success');
-        // 현재 활성 탭에 맞게 목록 갱신
-        if (currentMainTab === 'output') loadOutputItems('');
-        else if (currentMainTab === 'settings') { loadPrintMethods(); loadPrintMedia(); }
-        else if (['transfer','flag','sign','goods','rawMaterial'].includes(currentMainTab)) loadTabItems(currentMainTab);
-        else loadItems();
+        // 현재 활성 분류 탭 갱신
+        if (typeof refreshItemTab === 'function') refreshItemTab(); else loadItems();
     } catch (error) {
         showToast('삭제 실패: ' + (error.response?.data?.error || error.message), 'error');
     }

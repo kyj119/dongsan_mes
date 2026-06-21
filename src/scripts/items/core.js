@@ -241,21 +241,12 @@ function updateFieldVisibility(type) {
             if (categoryArea) categoryArea.style.display = '';
             catEl.disabled = false;
             catEl.setAttribute('required', '');
+            // 분류는 item_categories(활성) 동적 — 원자재/상품/기타 제외(타입별 자동설정)
+            var _prodCats = (typeof ITEM_CATS !== 'undefined' && ITEM_CATS.length)
+                ? ITEM_CATS.filter(function(c){ return ['MATERIAL','GOODS','ETC'].indexOf(c.category_code) < 0; })
+                : ['수성','UV','솔벤','전사','태극기','간판'].map(function(n){ return { category_name: n }; });
             catEl.innerHTML = '<option value="">선택...</option>'
-                + '<optgroup label="전사 (PM-5xxx)">'
-                + '<option value="전사">전사</option>'
-                + '<option value="깃발">깃발</option>'
-                + '<option value="윈드배너">윈드배너</option>'
-                + '<option value="가로등배너">가로등배너</option>'
-                + '</optgroup>'
-                + '<optgroup label="태극기 (PM-6xxx)">'
-                + '<option value="태극기">태극기</option>'
-                + '<option value="새마을기">새마을기</option>'
-                + '<option value="민방위기">민방위기</option>'
-                + '</optgroup>'
-                + '<optgroup label="간판 (PM-7xxx)">'
-                + '<option value="간판">간판</option>'
-                + '</optgroup>';
+                + _prodCats.map(function(c){ return '<option value="' + c.category_name + '">' + c.category_name + '</option>'; }).join('');
             var categoryHint = document.getElementById('categoryHint');
             if (categoryHint) { categoryHint.textContent = '출력 품목은 설정 탭에서 소재 등록 시 자동 생성됩니다'; categoryHint.classList.remove('hidden'); }
         }
