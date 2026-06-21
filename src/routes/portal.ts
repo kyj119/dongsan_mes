@@ -375,7 +375,7 @@ portal.get('/orders/:id', async (c) => {
         `SELECT id, order_id, item_id, item_name, category_name,
                 width, height, quantity, unit, unit_price, amount, vat_included,
                 post_processing, content, sort_order, parent_item_id,
-                scale_factor, finishing, pricing_method
+                scale_factor, finishing
          FROM order_items WHERE order_id = ? ORDER BY sort_order`
       ).bind(orderId).all(),
       c.env.DB.prepare(`
