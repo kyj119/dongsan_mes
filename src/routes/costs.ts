@@ -115,9 +115,7 @@ costsRouter.post('/recalculate/:orderId', requireRole('ADMIN', 'MANAGER'), async
       `SELECT id, order_id, item_id, item_name, category_name,
               width, height, quantity, unit, unit_price, amount, vat_included,
               post_processing, content, sort_order, parent_item_id,
-              scale_factor, finishing, pricing_method, ai_group_index,
-              media_subcategory_name, print_method_id, print_method_name,
-              print_media_id, print_media_name, selected_material_id
+              scale_factor, finishing, ai_group_index
        FROM order_items WHERE order_id = ? ORDER BY id ASC`
     ).bind(orderId).all()
 
