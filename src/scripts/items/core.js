@@ -13,31 +13,7 @@ function sortIcon(column) {
         : '<i class="fas fa-sort-down text-blue-600 ml-1"></i>';
 }
 
-window.sortTabItems = function(tabName, column) {
-    if (tabSortState.column === column) {
-        tabSortState.asc = !tabSortState.asc;
-    } else {
-        tabSortState.column = column;
-        tabSortState.asc = true;
-    }
-    if (tabName === 'output') loadOutputItems(currentOutputFilter);
-    else loadTabItems(tabName);
-};
-
-// ── 검색 debounce ──
-var _tabSearchTimers = {};
-function debouncedLoadTab(tabName) {
-    if (_tabSearchTimers[tabName]) clearTimeout(_tabSearchTimers[tabName]);
-    _tabSearchTimers[tabName] = setTimeout(function() { loadTabItems(tabName); }, 300);
-}
-window.debouncedLoadTab = debouncedLoadTab;
-
-var _outputSearchTimer = null;
-function debouncedLoadOutput() {
-    if (_outputSearchTimer) clearTimeout(_outputSearchTimer);
-    _outputSearchTimer = setTimeout(function() { loadOutputItems(currentOutputFilter); }, 300);
-}
-window.debouncedLoadOutput = debouncedLoadOutput;
+// (구) sortTabItems·debouncedLoadTab/Output = 출력/원자재 탭 제거로 함께 삭제 (2026-06-21)
 
 // 타입 라벨/색상 매핑
 var TYPE_CONFIG = {
