@@ -18,9 +18,11 @@
   - **신규 API**: `src/routes/specGroups.ts`(`/api/spec-groups` 그룹·값 CRUD) + items.ts `POST /:id/generate-variants`(멱등·안전3규칙)·`GET /:id/variants`·`GET /variant-bases`·`GET /group-stats`. PATCH 허용필드에 `spec_group_id`·`spec_value` 추가, GET /:id에 spec 컬럼 추가.
   - **신규 페이지**: `/spec-groups`(pages/specGroups.ts + scripts/specGroups.js) — 그룹·값 CRUD + **변종 생성 모달**(값 선택→생성) + **base 품목 연결/해제**(기존 품목에 spec_group_id 지정). 메뉴(기준정보) + 권한 마이그 **0330**.
   - **검증(Playwright E2E·로컬)**: 그룹3 렌더(판재두께 25품목·호수 41품목)·호수 base7+변종 모달13체크박스·**멱등(태극기 skip3)·신규생성(만국기1호 created1) 검증 후 정리**·연결/해제 PATCH 양방향 정상. **smoke 103/103 회귀0**. 빌드·타입체크 클린.
-  - **보류**: #4 주문 2단 picker(핵심경로·전품목 staged라 효과0·활성화 정책 의존, 백엔드는 준비완료) / #5f BOM 자재차감(자재 분리방침 선행).
-  - **⚠️ 미커밋·미배포**(로컬 검증만). prod 적용 전 = 마이그0330 remote + wrangler 배포 필요.
-  - **▶ 용준님 도메인 결정 대기**: ①자재/상품 분리(겸업 dual flag) ②변종 단가(주문이력 산정 vs 직접) ③게양방식(별도 규격그룹 vs 옵션) ④원단폭 mm목록+코팅종류 ⑤품목 활성화(is_active=1) 시점.
+  - **★다축(multi-axis) — 게양방식 (마이그0331)**: 용준님 결정=게양방식 별도 규격그룹·호수×게양 2축. `items.spec_group_id2`·`spec_value2` 추가, generate-variants **2D 카테시안**(변종코드 `{base}-{값1}-{값2}` 예 P-0033-7HO-GY), spec-groups bases 축2 인식, 변종모달 2D 그리드(호수13×게양4), 품목연결 축2 자동, `include_inactive`(staged base 검색). **로컬 E2E**(태극기 7호×게양용/구게양용 생성·멱등·모달13×4 검증 후 정리).
+  - **✅ prod 배포·푸시·검증 완료**: 커밋 `a877f727`(인프라)+`c8e027cf`(다축), 봇11 merge `2cd570cd`. 마이그 **0330·0331 prod 적용**(execute --remote). web dep `b03b3942`(`--branch main`). origin/main 정합(0/0). prod 검증=`/spec-groups` 200·API 401·규격그룹 4(판재두께·호수·원단폭·게양방식). smoke 103/103.
+  - **보류**: #4 주문 2단 picker(핵심경로·전품목 staged라 효과0·활성화 정책 의존, 백엔드 variant-bases·/:id/variants 준비완료) / #5f BOM 자재차감(자재 분리방침 선행).
+  - **▶ 용준님 결정 완료(2026-06-21)**: ①자재=**매입/판매 별도 품목 분리**(⚠️[[design-item-role-multi-flag]] dual-flag 정본을 go-forward로 뒤집음) ②변종단가=**0원 보류** ③게양방식=**별도 규격그룹(다축)** ✅구현·배포 ④원단폭=**보류(후순위)**.
+  - **▶ 다음(데이터 작업)**: ①누락 자재 ~167 등록(매입/판매 별도·`품목마스터/` 원천+build 스크립트, 단가0) ②게양방식 실제 호수×게양 combo 생성(용준님 조합 데이터) ③품목 활성화(is_active=1) 시점 결정 ④단가·원단폭(후순위) ⑤활성화 후 #4 picker·#5f BOM.
 
 - **🟢 [2026-06-21] 품목 등록 진행 — 규격그룹 스키마(0326)+변종 전개(0328 판재두께·0329 호수)+단순제품64(0327) prod staged. items 0→123(변종53, is_active=0). 모델·코드체계는 아래 유지**:
   - **★진행 현황**: 마이그 0326(spec_groups·values+items 컬럼)·0327(수정본298 중 PRODUCT&주문1회+ = 64)·0328(판재두께 base6+변종19)·0329(호수 base7+변종34) **prod 직접 적용**(execute --remote --file). **변종=base별 실제 주문값만**(죽은변종 방지): 포맥스 1~10T·자작나무 6·9·12T·스카시 10·20·30T(두께체계 상이)·태극기 1~9호+4-1/7-1/8-1·깃발 3~8호. 단순제품·변종 전부 staged=라이브 미노출.
