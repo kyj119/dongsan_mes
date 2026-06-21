@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 5 -->
-<!-- last_run_at: 2026-06-21T10:00:00+09:00 -->
+<!-- last_run_area: 6 -->
+<!-- last_run_at: 2026-06-21T14:00:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,7 +8,7 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | 6 (**GitHub open auto-improve 실측 6건** — #412 스캔 입출고 items.current_stock 존재X UPDATE small [Area 4, owner deferred 바코드 spec] · #423 자동가공 /start N+1 improvement small [Area 2] · **#424 weeklyPurchase /notify users.mobile 존재X SELECT → 알림 발송 100% 실패** bug small [Area 2] · **#425 scan EQ equipment.equipment_type/location/manufacturer 존재X SELECT → 100% 실패** bug small [Area 2] · **#426 주문폼 거래처 특약 단가 저장 제안 3중 dead** bug small [Area 3] · **#428 근태 CAPS 동기화 배너 caps_sync_log.success_count/fail_count 존재X SELECT → 항상 "기록 없음"** bug small [Area 4, 본 사이클]) |
+| 🆕 new | 7 (**GitHub open auto-improve 실측 7건** — #412 스캔 입출고 items.current_stock 존재X UPDATE small [Area 4, owner deferred 바코드 spec] · #423 자동가공 /start N+1 improvement small [Area 2] · **#424 weeklyPurchase /notify users.mobile 존재X SELECT → 알림 발송 100% 실패** bug small [Area 2] · **#425 scan EQ equipment.equipment_type/location/manufacturer 존재X SELECT → 100% 실패** bug small [Area 2] · **#426 주문폼 거래처 특약 단가 저장 제안 3중 dead** bug small [Area 3] · **#428 근태 CAPS 동기화 배너 caps_sync_log.success_count/fail_count 존재X SELECT → 항상 "기록 없음"** bug small [Area 4] · **#429 print-system 제거 2단계 미완 — 프론트 잔존 dead code 18 axios 호출** cleanup/improvement small [Area 6, 본 사이클, neutralized=사용자 영향 0]) |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 (#372 CSV도 owner close-completed → done 이관) |
 | ✔️ done | 126 (124 + **#422 prod↔main 디버전스 해소 확인 close**[5169bbb·4d0ba89 둘 다 origin/main 조상 검증, #413 ar-payments updated_at 제거·#414 cards efCard 필터 트리 실재, 시한폭탄 해제] + **A-031 costs.ts:114 order_items 존재X 컬럼 7개 제거**[`POST /api/costs/recalculate/:orderId` 100%-fail 잠복 복구, quotation_items SELECT 오복붙, 호출처 0건, read-only 안전 자동수정, verify PASS]) |
@@ -16,6 +16,16 @@
 
 > 📦 **과거 사이클 로그**(아래 6블록 이전분)는 `IMPROVEMENT_BACKLOG_ARCHIVE.md`로 이관됨 (2026-06-10 정리). 신규 로그는 계속 이 파일 상단에 추가.
 
+> **Area 6 자기 진화 (2026-06-21T14:00):**
+> - **방법**: Area 6 **18회차** — 신선 각도 = **직전 Area4(`dd9611a`)·Area5(`902b917`) HEAD 이후 머지된 품목 대개편 churn의 회귀 재감사**(컬럼-diff bridge + XSS bridge + 드리프트/시스템-purge 완전성). 최대 churn = **소재/출력방식(print-system) 시스템 통째 제거**(`b2b6a6b`1단계→`92b015a`2단계: printSystem.ts -1514·마이그 0334 DROP 4테이블) + Flexi 네스팅 추적(`e1be4a0`, print_events.nest_members) + 품목 분류 8개 재구성. ground-truth=마이그 0334(중복번호 2개) 적용 스키마 대조.
+> - **🟢 post-Area4 컬럼-diff bridge = clean**: 마이그 `0334_drop_print_system.sql`이 `items`/`quotation_items`의 print_* 컬럼을 **dead로 유지(NULL화, 테이블 재빌드 회피)** → 잔존 SELECT(items.ts:674·quotations.ts:169) **컬럼 실재(안전)**. dropped-table(print_media/print_methods/print_method_media/media_material_groups) SQL refs = `grep` **0건**(FROM/JOIN/INTO 전수). `nest_members` 컬럼 `0334_print_events_nest_members.sql`로 정상 ALTER. **존재X 컬럼 net-new 0**.
+> - **🟢 post-Area5 XSS bridge = clean**: 직전 Area5 이후 churn된 스크립트(items/tabs.js +159·production.js +27·items/core.js·modals.js) 추가 innerHTML sink 전수 — tabs.js 신규 sink(item_code/item_name/category_name) 전부 `escapeHtml`(18회 적용), **production.js `nest_members` 렌더(:311-313)도 `escapeHtml(String(m))`/`escapeHtml(base)` 적용**(LogWatcher agent 공급 파일경로=A-024 agent-JSON sink인데 정확히 escape, title 속성+li 텍스트 양쪽). **net-new XSS 0**.
+> - **🗑️ 신규 이슈 #429 (cleanup/improvement, small, neutralized) — print-system 제거 2단계 미완 프론트 dead code**: 시스템-purge 완전성 3단 검증에서 격리 — ① dropped-table refs 0(백엔드 완전 제거) ② 프론트 `/api/print-system/*` **18 호출처 잔존**(media.js 11·tabs.js 4·bulk.js 2·parent.js 1, 전부 404 대상) ③ **전부 중립화**(설정 탭 버튼 미렌더 `tabs.js:19`·`__settings__` 폴백 활성분류 8개라 미발동·`togglePrintMethodFilter` no-op·소재 모달 트리거 숨김 tabSettings div 내부) → **dead code(live 404 아님, 사용자 영향 0)**. 커밋 자신이 "2단계 purge" 명시했으나 백엔드만 purge·프론트 잔여 미완. issue-only(대규모+품목 refactor 진행 중 분리판단). **부수**: 마이그 번호 중복 0334×2(wrangler 파일명 키 정렬이라 기능 안전, 컨벤션 위반 minor).
+> - **🟢 backlog↔GitHub sync = 변동 0→#429 편입**: open auto-improve **실측 6건**(#412·#423·#424·#425·#426·#428, list_issues 전수) = 직전 stats `new=6` 정합 → 본 사이클 #429 추가 → **new=7**. done=126·rejected=3·approved=0·reviewed=0 유지. owner 신규 close/머지 0건.
+> - **🧬 SKILL 강화 1건 — "대형 시스템 purge 커밋의 프론트↔백 완전성" Area 6 codify(#429)**: line 225 드리프트-제거 완전성을 **시스템 단위 purge**로 확대. 3단 레시피 = ①dropped-table SQL refs ②frontend axios→removed routes ③UI 진입점 중립화(#318)로 bug vs dead-code 분류. 백엔드 제거 완전성(테이블/라우터)과 프론트 호출처 정리는 **별개 축** — 백엔드 깨끗해도 프론트 잔존+진입점 살아있으면 live 404. `git log <last-area5>..HEAD`에서 "제거/purge/decouple" 커밋의 라우터 prefix·테이블명 3단 grep.
+> - **이상 없음**: 컬럼-diff bridge·XSS bridge·시스템-purge 완전성 전 각도 net-new 버그 0(품목 대개편 churn은 escape 컨벤션·컬럼 dead 유지·dropped-table refs 0 모두 clean). 유일 격리=#429 neutralized dead code(사용자 영향 0).
+> - 자동 수정 0건(대규모 dead-code 제거는 active refactor 중 issue-only), 신규 이슈 1건(#429 print-system 프론트 잔여 dead code), SKILL 강화 1건(시스템 purge 프론트↔백 완전성 3단), done-sync(new 6→7), **신선 각도 — 품목 대개편 churn 회귀 재감사(컬럼/XSS/시스템-purge bridge) 전수, 프로덕션 영향 0 확인**
+>
 > **Area 5 보안 (2026-06-21T10:00):**
 > - **방법**: git fetch-before-compare(origin force-update `4993fa7→9b06e2f`, fetch 후 HEAD=origin/main `9b06e2f` 0/0 동기). node_modules 비어 `npm ci` 선실행 → baseline build PASS(396 modules, _worker.js 5,316.99kB). Area 5 **18회차** — **신선 각도 = 직전 Area 5(a540da2, 06-19T22:00) 이후 머지된 churn의 보안 회귀**. 최대 신규 공격표면 = **규격그룹 관리(`specGroups.js` +391 신규 프론트 + `specGroups.ts` +171 신규 라우터)** + `items.ts` 변종 엔진(+169). Area 4(06-21)는 데이터 정합성 각도만 봤으므로 **보안 각도(XSS·auth·SQLi·IDOR·mass-assign) 미감사**. 신규 프론트 XSS sink 전수 + 신규 백엔드 라우트 보안 5각도 + #413~#417 보안픽스 착륙 검증 + standing 보안 grep.
 > - **🟢 신규 프론트 `specGroups.js`(+391) XSS = net-new 0(A-024/A-025 전수)**: 모든 `innerHTML` sink가 `sgpEsc`(전역 escapeHtml 래퍼) 일관 적용 — 그룹명/단위(:26/:78), value_code/label(:61/:62/:177/:178), base item_code/item_name(:116/:117/:262), group1/2_name 축라벨(:114), axis names(:185/:186), 검색결과 item_code/name(:262). **checkbox `value=` 속성도 sgpEsc**(:177, 속성탈출 차단 — value_code 백엔드 정규화가 `<>"'` 미제거라 escape 필수, 정확히 적용됨). `.textContent`(:160 variantTitle·:183 hint)·`.value`(input) sink는 자동 escape. 신규 기능이 escape 컨벤션(iaeEscape류 prefix-scoped 래퍼)을 처음부터 준수.
