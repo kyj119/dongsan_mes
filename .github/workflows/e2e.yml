@@ -20,11 +20,12 @@
 name: E2E (Playwright)
 
 on:
-  # workflow_run(배포 후 자동 실행) 제거 — Playwright 쓰기 스위트가 매 main 푸시마다
-  # 프로덕션(단일 D1)에 entity-99 테스트 데이터를 생성/누적시키는 문제 차단.
-  # 이제 하루 1회(스케줄) + 수동(workflow_dispatch)만 실행.
-  schedule:
-    - cron: '0 0 * * *'  # 매일 UTC 0시 = KST 9시
+  # ── 비활성화 (2026-06-22) ──
+  # 자동 트리거 전면 제거: 단일 D1(프로덕션) 구조상 Playwright 쓰기 스위트가
+  # 실행될 때마다 prod에 entity-99 테스트 데이터를 생성/누적시킴(카드 보드 오염).
+  # workflow_run(배포 후)·schedule(일일) 모두 제거. 수동(workflow_dispatch)만 남김 —
+  # 수동 실행도 prod를 오염시키므로, teardown 추가 또는 별도 테스트 D1 마련 전까지 실행 금지.
+  # GitHub Actions 레벨에서도 비활성화됨(gh workflow disable).
   workflow_dispatch:
 
 concurrency:
