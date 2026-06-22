@@ -299,8 +299,12 @@ async function loadRecentEvents() {
           }
         }
       } else if (isNest) {
+        var nestQtyTotal = nestMembers.reduce(function (s, m) {
+          return s + ((m && typeof m === 'object' && m.qty) ? m.qty : 1);
+        }, 0);
         layoutInfo = '<span class="text-[10px] bg-purple-50 text-purple-700 px-1.5 py-0.5 rounded">'
-          + '<i class="fas fa-layer-group mr-0.5"></i>네스팅 ' + nestMembers.length + '개</span>';
+          + '<i class="fas fa-layer-group mr-0.5"></i>네스팅 ' + nestMembers.length + '종'
+          + (nestQtyTotal !== nestMembers.length ? ' (총 ' + nestQtyTotal + '장)' : '') + '</span>';
       } else {
         layoutInfo = '<span class="text-[10px] text-gray-400">1매</span>';
       }
@@ -309,8 +313,16 @@ async function loadRecentEvents() {
       var fileTd;
       if (isNest) {
         var memberLis = nestMembers.map(function (m) {
-          var base = String(m).split(/[\\\/]/).pop();
-          return '<li class="truncate" title="' + escapeHtml(String(m)) + '">' + escapeHtml(base) + '</li>';
+          var isObj = m && typeof m === 'object';
+          var full = isObj ? String(m.file || '') : String(m);
+          var base = full.split(/[\\\/]/).pop();
+          var meta = '';
+          if (isObj) {
+            var dim = (m.w && m.h) ? ' <span class="text-gray-400">' + (m.w / 10).toFixed(1) + '×' + (m.h / 10).toFixed(1) + 'cm</span>' : '';
+            var q = (m.qty && m.qty > 1) ? ' <span class="text-purple-600 font-medium">×' + m.qty + '</span>' : '';
+            meta = dim + q;
+          }
+          return '<li class="truncate" title="' + escapeHtml(full) + '">' + escapeHtml(base) + meta + '</li>';
         }).join('');
         fileTd = '<td class="px-3 py-2.5 text-xs text-gray-600" style="max-width:320px">'
           + '<details class="cursor-pointer">'

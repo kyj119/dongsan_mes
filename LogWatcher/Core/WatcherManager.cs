@@ -126,6 +126,7 @@ namespace LogWatcher.Core
             // Send events
             foreach (var evt in events)
             {
+                evt.EquipmentId = eqId; // universal 모드: 이벤트에 장비 귀속 (페이로드 equipment_id)
                 var sent = await _apiClient.SendEventAsync(evt);
                 if (!sent) _queue.Enqueue(evt);
             }
@@ -182,7 +183,7 @@ namespace LogWatcher.Core
                         var ok = evt.NestDeclaredCount == evt.NestMembers.Count ? "OK" : "MISMATCH";
                         Console.WriteLine($"    [NEST] 선언 {evt.NestDeclaredCount} / 복원 {evt.NestMembers.Count}  → {ok}");
                         foreach (var m in evt.NestMembers)
-                            Console.WriteLine($"       - {System.IO.Path.GetFileName(m)}");
+                            Console.WriteLine($"       - {System.IO.Path.GetFileName(m.file)}  [{m.w:F0}x{m.h:F0}mm ×{m.qty}]");
                     }
                 }
             }

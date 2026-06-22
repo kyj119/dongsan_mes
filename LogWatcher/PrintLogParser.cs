@@ -74,7 +74,17 @@ namespace LogWatcher
         // 네스팅 분해 (Flexi 자체 RIP 네스팅 — 인쇄 블록 파일명이 "네스팅(N개 작업)")
         public bool IsNest { get; set; } = false;
         public int NestDeclaredCount { get; set; } = 0;        // 로그가 선언한 작업 수 N
-        public List<string> NestMembers { get; set; } = new(); // 립핑 블록에서 복원한 멤버 파일명(중복제거)
+        public List<NestMember> NestMembers { get; set; } = new(); // 네스트 멤버: 파일·규격(mm)·수량
+        public string? EquipmentId { get; set; }                // 이벤트 귀속 장비(universal 모드 전송용)
+    }
+
+    /// <summary>네스트 멤버 1개: 파일 + 규격(mm, in→mm 정규화) + 수량(인쇄매수). JSON 키=속성명 소문자.</summary>
+    public class NestMember
+    {
+        public string file { get; set; } = "";
+        public double w { get; set; }     // width mm
+        public double h { get; set; }     // height mm
+        public int qty { get; set; } = 1; // 인쇄매수
     }
 
     public class PrintLogParser : ILogParser

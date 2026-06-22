@@ -236,6 +236,16 @@ printEventsRouter.post('/', agentKeyMiddleware, async (c) => {
       return c.json({ success: false, error: 'print_status must be OK, CANCEL, or ERROR' }, 400)
     }
 
+    // equipment_id 폴백: 누락 시 agent_id→heartbeat 매핑으로 복구
+    // (universal 모드 에이전트가 출력이벤트에 equipment_id를 빈값으로 보내 NULL 적재되던 회귀 방어)
+    let resolvedEquipmentId: string | null = equipment_id || null
+    if (!resolvedEquipmentId && agent_id) {
+      const hb = await c.env.DB.prepare(
+        'SELECT equipment_id FROM agent_heartbeats WHERE agent_id = ?'
+      ).bind(agent_id).first<{ equipment_id: string | null }>()
+      if (hb?.equipment_id) resolvedEquipmentId = hb.equipment_id
+    }
+
     // Idempotency check
     const existing = await c.env.DB.prepare(
       'SELECT id FROM print_events WHERE file_path = ? AND print_completed_at = ?'
@@ -307,7 +317,7 @@ printEventsRouter.post('/', agentKeyMiddleware, async (c) => {
         copy_columns, copy_rows, copy_total, tile_count, tile_index, entity_id, nest_members
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).bind(
-      agent_id, equipment_id || null, cardNumber, cardId, orderNumber, file_path, extractedName,
+      agent_id, resolvedEquipmentId, cardNumber, cardId, orderNumber, file_path, extractedName,
       printer_name || null, print_status, print_started_at || null,
       print_completed_at || null, durationSec,
       output_width || null, output_height || null,
@@ -433,6 +443,15 @@ printEventsRouter.post('/batch', agentKeyMiddleware, async (c) => {
       return c.json({ success: false, error: 'agent_id and events array required' }, 400)
     }
 
+    // equipment_id 폴백 (단일 핸들러와 동일): 누락 시 agent_id→heartbeat 매핑으로 복구
+    let resolvedEquipmentId: string | null = equipment_id || null
+    if (!resolvedEquipmentId && agent_id) {
+      const hb = await c.env.DB.prepare(
+        'SELECT equipment_id FROM agent_heartbeats WHERE agent_id = ?'
+      ).bind(agent_id).first<{ equipment_id: string | null }>()
+      if (hb?.equipment_id) resolvedEquipmentId = hb.equipment_id
+    }
+
     let inserted = 0
     let duplicates = 0
     let errors = 0
@@ -513,7 +532,7 @@ printEventsRouter.post('/batch', agentKeyMiddleware, async (c) => {
             copy_columns, copy_rows, copy_total, tile_count, tile_index, entity_id, nest_members
           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `).bind(
-          agent_id, equipment_id || null, cardNumber, cardId, orderNumber,
+          agent_id, resolvedEquipmentId, cardNumber, cardId, orderNumber,
           evt.file_path, extractedName, evt.printer_name || null,
           evt.print_status, evt.print_started_at || null,
           evt.print_completed_at || null, evtDuration, evt.output_width || null,

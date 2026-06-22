@@ -34,7 +34,9 @@ namespace LogWatcher
                 var payload = new
                 {
                     agent_id = _agentId,
-                    equipment_id = string.IsNullOrEmpty(_equipmentId) ? null : _equipmentId,
+                    // universal 모드: 공유 클라이언트의 _equipmentId가 비어 NULL로 가던 회귀 수정 → 이벤트 귀속 장비 우선
+                    equipment_id = !string.IsNullOrEmpty(evt.EquipmentId) ? evt.EquipmentId
+                                   : (string.IsNullOrEmpty(_equipmentId) ? null : _equipmentId),
                     file_path = evt.FilePath,
                     file_name = evt.FileName,
                     printer_name = evt.PrinterName,
