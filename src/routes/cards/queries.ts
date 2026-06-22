@@ -514,7 +514,7 @@ cardsQueriesRouter.get('/kanban-summary', async (c) => {
         SUM(CASE WHEN c.status = 'HOLD' THEN 1 ELSE 0 END) as hold
       FROM cards c
       JOIN orders o ON c.order_id = o.id
-      WHERE 1=1${categoryFilter}${efKanban.clause}
+      WHERE o.status != 'CANCELLED'${categoryFilter}${efKanban.clause}
     `
     const colRow = await c.env.DB.prepare(colCountSql).bind(...categoryParams, ...efKanban.params).first<KanbanColRow>()
 
@@ -764,7 +764,7 @@ cardsQueriesRouter.get('/board', async (c) => {
         SUM(CASE WHEN c.status = 'HOLD' THEN 1 ELSE 0 END) as hold
       FROM cards c
       LEFT JOIN orders o ON c.order_id = o.id
-      WHERE c.status != 'CANCELLED'${efSummary.clause}
+      WHERE c.status != 'CANCELLED' AND IFNULL(o.status,'') != 'CANCELLED'${efSummary.clause}
     `).bind(...efSummary.params).all()
     const summary = statusCounts[0] || { total: 0, pending: 0, printing: 0, done: 0, shipped: 0, hold: 0 }
 
@@ -774,7 +774,8 @@ cardsQueriesRouter.get('/board', async (c) => {
     }
 
     // ── Status filter ──
-    let where = `WHERE c.status != 'CANCELLED'`
+    // 취소 주문의 카드(취소 시 HOLD로 주차됨)는 보드에서 제외 — restore 시 복원되므로 데이터는 보존
+    let where = `WHERE c.status != 'CANCELLED' AND IFNULL(o.status,'') != 'CANCELLED'`
     const params: any[] = []
 
     if (status === 'SHIPPED') {
