@@ -81,7 +81,7 @@ autoProcessRouter.post('/start', async (c) => {
       return c.json({ success: false, error: '자동가공 대상 품목이 없습니다' }, 400)
     }
 
-    const jobs: Record<string, unknown>[] = []
+    const jobStmts: D1PreparedStatement[] = []
 
     // Bulk-fetch item names for all order_items in one query
     interface OrderItemRow { id: number; item_id: number | null; width: number; height: number; ai_group_index: number; scale_factor: number | null; finishing: string | null }
@@ -145,14 +145,13 @@ autoProcessRouter.post('/start', async (c) => {
         clipBounds,
       }
 
-      // job INSERT
-      const job = await c.env.DB.prepare(
+      // job INSERT (#423: 품목당 순차 await → 청크 batch로 통일, helpers.enqueueAutoProcessJobsForItems 패턴)
+      jobStmts.push(c.env.DB.prepare(
         `INSERT INTO auto_process_jobs
          (order_id, order_item_id, ai_analysis_id, ai_group_index,
           source_path, product, width_cm, height_cm, finishing,
           scale_factor, clip_bounds, margins, status, ia_params, entity_id)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)
-         RETURNING id, status`
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)`
       ).bind(
         order_id,
         item.id,
@@ -168,9 +167,14 @@ autoProcessRouter.post('/start', async (c) => {
         JSON.stringify({ L: marginLcm, R: marginRcm, T: marginTcm, B: marginBcm }),
         JSON.stringify(iaParams),
         getEntityId(c) || 1,
-      ).first()
+      ))
+    }
 
-      if (job) jobs.push(job)
+    // 청크 batch 실행 → 응답 {id, status} 형태 보존 (RETURNING 대신 meta.last_row_id)
+    const jobs: { id: number | null; status: string }[] = []
+    for (let i = 0; i < jobStmts.length; i += 80) {
+      const res = await c.env.DB.batch(jobStmts.slice(i, i + 80))
+      for (const r of res) jobs.push({ id: (r.meta?.last_row_id as number) ?? null, status: 'pending' })
     }
 
     return c.json({ success: true, jobs_created: jobs.length, jobs })

@@ -10,6 +10,7 @@
  * 내부 헬퍼: syncOrderStatusFromCards (cards.ts의 카드 상태 → 주문 상태 동기화)
  */
 import { Hono } from 'hono'
+import type { Context } from 'hono'
 import type { HonoEnv } from '../../types/env'
 import { authMiddleware, requireRole } from '../../middleware/auth'
 import { requireAnyPagePermission } from '../../middleware/permissions'
@@ -19,6 +20,16 @@ import { getNextSeqNumber } from '../../utils/sequenceGenerator'
 
 const cardsLifecycleRouter = new Hono<HonoEnv>()
 cardsLifecycleRouter.use('/*', authMiddleware, requireAnyPagePermission('/cards', '/orders'))
+
+// #432: cards 테이블엔 entity_id 컬럼이 없음 → 소유 법인은 order_id→orders.entity_id로 격리.
+// (cards/scheduling.ts cardEntityScope 패턴과 동일. JOIN 없이 WHERE id=? 뒤에 append.)
+// entityId=0(ADMIN 전체모드)·X-Agent-Key(전체모드)는 빈 절 → 자동화/관리자 기존 동작 유지,
+// 비전체모드(법인 사용자)만 자기 법인 주문의 카드로 제한. 실 생산 상태는 에이전트(전체모드)가 갱신.
+function cardEntityScope(c: Context<HonoEnv>): { clause: string; params: number[] } {
+  const entityId = getEntityId(c)
+  if (entityId === 0) return { clause: '', params: [] }
+  return { clause: ' AND order_id IN (SELECT id FROM orders WHERE entity_id = ?)', params: [entityId] }
+}
 
 async function syncOrderStatusFromCards(db: D1Database, orderId: number) {
   // Option B: 단일 SELECT로 카드+주문 상태를 원자적 스냅샷으로 조회
@@ -300,9 +311,10 @@ cardsLifecycleRouter.post('/bulk-ship', async (c) => {
     // N+1 → 일괄 SELECT로 카드 정보 조회
     interface ShipCard { id: number; status: string; order_id: number; card_number: string; shipped_at: string | null }
     const placeholders = card_ids.map(() => '?').join(',')
+    const ef = cardEntityScope(c)  // #432: 타 법인 카드 출고 차단
     const { results: existingCards } = await c.env.DB.prepare(`
-      SELECT id, status, order_id, card_number, shipped_at FROM cards WHERE id IN (${placeholders})
-    `).bind(...card_ids).all<ShipCard>()
+      SELECT id, status, order_id, card_number, shipped_at FROM cards WHERE id IN (${placeholders})${ef.clause}
+    `).bind(...card_ids, ...ef.params).all<ShipCard>()
     const cardMap = new Map(existingCards.map(c => [c.id, c]))
 
     // 적격 카드 필터링 + batch UPDATE 구성
@@ -373,13 +385,14 @@ cardsLifecycleRouter.post('/:id/ship', async (c) => {
     const isCardNumber = /^CARD-\d{8}-\d{3,}$/i.test(idParam)
 
     interface CardShipRow { id: number; status: string; order_id: number; card_number: string; shipped_at: string | null }
+    const ef = cardEntityScope(c)  // #432: 타 법인 카드 출고 차단
     const card = isCardNumber
       ? await c.env.DB.prepare(`
-          SELECT id, status, order_id, card_number, shipped_at FROM cards WHERE card_number = ?
-        `).bind(idParam).first<CardShipRow>()
+          SELECT id, status, order_id, card_number, shipped_at FROM cards WHERE card_number = ?${ef.clause}
+        `).bind(idParam, ...ef.params).first<CardShipRow>()
       : await c.env.DB.prepare(`
-          SELECT id, status, order_id, card_number, shipped_at FROM cards WHERE id = ?
-        `).bind(idParam).first<CardShipRow>()
+          SELECT id, status, order_id, card_number, shipped_at FROM cards WHERE id = ?${ef.clause}
+        `).bind(idParam, ...ef.params).first<CardShipRow>()
 
     if (!card) {
       return c.json({ success: false, error: 'Card not found' }, 404)
@@ -484,7 +497,8 @@ cardsLifecycleRouter.post('/:id/defects', async (c) => {
       return c.json({ success: false, error: '직원 정보가 없습니다.' }, 400)
     }
 
-    const card = await c.env.DB.prepare('SELECT id, status, order_id FROM cards WHERE id = ?').bind(cardId).first<{ id: number; status: string; order_id: number }>()
+    const ef = cardEntityScope(c)  // #432: 타 법인 카드 불량접수 차단
+    const card = await c.env.DB.prepare(`SELECT id, status, order_id FROM cards WHERE id = ?${ef.clause}`).bind(cardId, ...ef.params).first<{ id: number; status: string; order_id: number }>()
     if (!card) return c.json({ success: false, error: '카드를 찾을 수 없습니다.' }, 404)
 
     // 불량 기록 생성
@@ -547,7 +561,8 @@ cardsLifecycleRouter.patch('/:id/status', async (c) => {
     }
 
     // Get current status and order_id
-    const card = await c.env.DB.prepare('SELECT status, order_id, card_number FROM cards WHERE id = ?').bind(id).first<{ status: string; order_id: number; card_number: string }>()
+    const ef = cardEntityScope(c)  // #432: 타 법인 카드 상태변경 차단
+    const card = await c.env.DB.prepare(`SELECT status, order_id, card_number FROM cards WHERE id = ?${ef.clause}`).bind(id, ...ef.params).first<{ status: string; order_id: number; card_number: string }>()
 
     if (!card) {
       return c.json({
@@ -664,9 +679,10 @@ cardsLifecycleRouter.patch('/:id/pp-complete', async (c) => {
     const id = c.req.param('id')
     const user = c.get('user')
 
+    const ef = cardEntityScope(c)  // #432: 타 법인 카드 후가공완료 차단
     const card = await c.env.DB.prepare(
-      'SELECT id, card_number, order_id, status, pp_status, post_processing FROM cards WHERE id = ?'
-    ).bind(id).first<{ id: number; card_number: string; order_id: number; status: string; pp_status: string | null; post_processing: string | null }>()
+      `SELECT id, card_number, order_id, status, pp_status, post_processing FROM cards WHERE id = ?${ef.clause}`
+    ).bind(id, ...ef.params).first<{ id: number; card_number: string; order_id: number; status: string; pp_status: string | null; post_processing: string | null }>()
 
     if (!card) return c.json({ success: false, error: 'Card not found' }, 404)
     if (card.status !== 'PRINT_DONE') return c.json({ success: false, error: '인쇄 완료 상태에서만 후가공 완료 처리 가능합니다' }, 400)
@@ -701,10 +717,11 @@ cardsLifecycleRouter.patch('/bulk/pp-complete', async (c) => {
 
     // N+1 → 단일 조건부 UPDATE (SELECT 루프 제거)
     const placeholders = card_ids.map(() => '?').join(',')
+    const ef = cardEntityScope(c)  // #432: 타 법인 카드 일괄 후가공완료 차단
     const result = await c.env.DB.prepare(`
       UPDATE cards SET pp_status = 'DONE', pp_completed_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
-      WHERE id IN (${placeholders}) AND status = 'PRINT_DONE' AND pp_status = 'PENDING'
-    `).bind(...card_ids).run()
+      WHERE id IN (${placeholders}) AND status = 'PRINT_DONE' AND pp_status = 'PENDING'${ef.clause}
+    `).bind(...card_ids, ...ef.params).run()
     const completed = result.meta?.changes ?? 0
 
     return c.json({ success: true, message: `${completed}건 후가공 완료 처리`, data: { completed } })
@@ -723,9 +740,10 @@ cardsLifecycleRouter.patch('/:id/ship', requireRole('ADMIN', 'MANAGER'), async (
 
     // 1. 카드 조회
     interface CardFullRow { id: number; status: string; order_id: number; order_item_id: number | null; shipped_at: string | null; pp_status: string | null; card_number: string }
+    const ef = cardEntityScope(c)  // #432: 타 법인 카드 출고 차단
     const card = await c.env.DB.prepare(
-      'SELECT id, status, order_id, order_item_id, shipped_at, pp_status, card_number FROM cards WHERE id = ?'
-    ).bind(id).first<CardFullRow>()
+      `SELECT id, status, order_id, order_item_id, shipped_at, pp_status, card_number FROM cards WHERE id = ?${ef.clause}`
+    ).bind(id, ...ef.params).first<CardFullRow>()
 
     if (!card) {
       return c.json({ success: false, error: 'Card not found' }, 404)
@@ -921,9 +939,10 @@ cardsLifecycleRouter.patch('/:id/unship', requireRole('ADMIN', 'MANAGER'), async
     const user = c.get('user')
 
     // 1. 카드 조회
+    const ef = cardEntityScope(c)  // #432: 타 법인 카드 출고취소 차단
     const card = await c.env.DB.prepare(
-      'SELECT id, order_id, shipped_at FROM cards WHERE id = ?'
-    ).bind(id).first<{ id: number; order_id: number; shipped_at: string | null }>()
+      `SELECT id, order_id, shipped_at FROM cards WHERE id = ?${ef.clause}`
+    ).bind(id, ...ef.params).first<{ id: number; order_id: number; shipped_at: string | null }>()
 
     if (!card) {
       return c.json({ success: false, error: 'Card not found' }, 404)
@@ -1215,9 +1234,10 @@ cardsLifecycleRouter.patch('/:id/complete', async (c) => {
     const id = c.req.param('id')
     const user = c.get('user')
 
+    const ef = cardEntityScope(c)  // #432: 타 법인 카드 출력완료 차단
     const card = await c.env.DB.prepare(
-      'SELECT id, status, order_id, post_processing FROM cards WHERE id = ?'
-    ).bind(id).first<{ id: number; status: string; order_id: number; post_processing: string | null }>()
+      `SELECT id, status, order_id, post_processing FROM cards WHERE id = ?${ef.clause}`
+    ).bind(id, ...ef.params).first<{ id: number; status: string; order_id: number; post_processing: string | null }>()
 
     if (!card) {
       return c.json({ success: false, error: 'Card not found' }, 404)
@@ -1271,9 +1291,10 @@ cardsLifecycleRouter.patch('/:id/revert', async (c) => {
     const id = c.req.param('id')
     const user = c.get('user')
 
+    const ef = cardEntityScope(c)  // #432: 타 법인 카드 되돌리기 차단
     const card = await c.env.DB.prepare(
-      'SELECT id, status, order_id, card_number FROM cards WHERE id = ?'
-    ).bind(id).first<{ id: number; status: string; order_id: number; card_number: string }>()
+      `SELECT id, status, order_id, card_number FROM cards WHERE id = ?${ef.clause}`
+    ).bind(id, ...ef.params).first<{ id: number; status: string; order_id: number; card_number: string }>()
 
     if (!card) {
       return c.json({ success: false, error: 'Card not found' }, 404)

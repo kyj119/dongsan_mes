@@ -115,8 +115,10 @@ scanRouter.get('/:code', async (c) => {
     // 3) EQ prefix 또는 EQ- 패턴
     if (!result && (prefix === 'EQ' || value.startsWith('EQ-'))) {
       const eqCode = prefix === 'EQ' ? value : value
+      // #425: equipment 테이블엔 equipment_type/location/manufacturer 컬럼 없음.
+      // 실제 컬럼(printer_name·location_zone)으로 매핑, 부재 필드는 프론트가 null 스킵.
       const eq = await c.env.DB.prepare(`
-        SELECT id, name, equipment_type, status, location, manufacturer
+        SELECT id, name, printer_name, status, location_zone
         FROM equipment
         WHERE name = ? OR id = ?
       `).bind(eqCode, parseInt(eqCode.replace('EQ-', '')) || 0).first<any>()
@@ -128,10 +130,9 @@ scanRouter.get('/:code', async (c) => {
           label: `장비: ${eq.name}`,
           detail: {
             name: eq.name,
-            equipment_type: eq.equipment_type,
+            equipment_type: eq.printer_name,   // DB에 equipment_type 없음 → 프린터명
             status: eq.status,
-            location: eq.location,
-            manufacturer: eq.manufacturer,
+            location: eq.location_zone,         // location → location_zone
           },
           actions: [
             { key: 'maintenance', label: '정비 기록', icon: 'fa-wrench' },
@@ -224,18 +225,20 @@ scanRouter.post('/action', async (c) => {
         if (!body.quantity || body.quantity <= 0) {
           return c.json({ success: false, error: '수량을 입력하세요.' }, 400)
         }
-        const entityId = getEntityId(c)
-        // #169 + #289: 재고 변경 + 감사 기록을 단일 batch로 원자적 처리 (balance_after는 서브쿼리)
+        const entityId = getEntityId(c) || 1
+        // #412 + #169 + #289: 재고는 inventory.quantity (items에 current_stock 컬럼 없음).
+        // upsert(행 부재 대비) + 감사 기록을 단일 batch로 원자 처리. balance_after는 upsert 후 잔량 서브쿼리.
         await c.env.DB.batch([
           c.env.DB.prepare(`
-            UPDATE items SET current_stock = current_stock + ?, updated_at = CURRENT_TIMESTAMP
-            WHERE id = ?
-          `).bind(body.quantity, body.id),
+            INSERT INTO inventory (item_id, quantity, entity_id, last_updated)
+            VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(item_id, entity_id) DO UPDATE SET quantity = quantity + excluded.quantity, last_updated = CURRENT_TIMESTAMP
+          `).bind(body.id, body.quantity, entityId),
           c.env.DB.prepare(`
             INSERT INTO inventory_transactions
             (item_id, transaction_type, transaction_date, quantity, reference_type, balance_after, reason, handled_by, entity_id)
-            VALUES (?, 'IN', DATE('now'), ?, 'SCAN', (SELECT current_stock FROM items WHERE id = ?), ?, ?, ?)
-          `).bind(body.id, body.quantity, body.id,
+            VALUES (?, 'IN', DATE('now'), ?, 'SCAN', (SELECT quantity FROM inventory WHERE item_id = ? AND entity_id = ?), ?, ?, ?)
+          `).bind(body.id, body.quantity, body.id, entityId,
             body.notes || '스캔 입고', user?.id || 1, entityId)
         ])
 
@@ -246,12 +249,12 @@ scanRouter.post('/action', async (c) => {
         if (!body.quantity || body.quantity <= 0) {
           return c.json({ success: false, error: '수량을 입력하세요.' }, 400)
         }
-        const entityId2 = getEntityId(c)
-        // #164: atomic UPDATE WHERE — race condition 방지
+        const entityId2 = getEntityId(c) || 1
+        // #412 + #164: inventory.quantity 차감 (atomic UPDATE WHERE, 부족/행부재 시 changes=0 → 재고부족)
         const result = await c.env.DB.prepare(`
-          UPDATE items SET current_stock = current_stock - ?, updated_at = CURRENT_TIMESTAMP
-          WHERE id = ? AND current_stock >= ?
-        `).bind(body.quantity, body.id, body.quantity).run()
+          UPDATE inventory SET quantity = quantity - ?, last_updated = CURRENT_TIMESTAMP
+          WHERE item_id = ? AND entity_id = ? AND quantity >= ?
+        `).bind(body.quantity, body.id, entityId2, body.quantity).run()
 
         if (!result.meta.changes || result.meta.changes === 0) {
           return c.json({ success: false, error: '재고가 부족합니다.' }, 400)
@@ -261,8 +264,8 @@ scanRouter.post('/action', async (c) => {
         await c.env.DB.prepare(`
           INSERT INTO inventory_transactions
           (item_id, transaction_type, transaction_date, quantity, reference_type, balance_after, reason, handled_by, entity_id)
-          VALUES (?, 'OUT', DATE('now'), ?, 'SCAN', (SELECT current_stock FROM items WHERE id = ?), ?, ?, ?)
-        `).bind(body.id, body.quantity, body.id,
+          VALUES (?, 'OUT', DATE('now'), ?, 'SCAN', (SELECT quantity FROM inventory WHERE item_id = ? AND entity_id = ?), ?, ?, ?)
+        `).bind(body.id, body.quantity, body.id, entityId2,
           body.notes || '스캔 출고', user?.id || 1, entityId2).run()
 
         return c.json({ success: true, message: `${body.quantity}개 출고 처리되었습니다.` })

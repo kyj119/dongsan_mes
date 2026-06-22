@@ -336,15 +336,16 @@ weeklyPurchaseRouter.post('/notify', async (c) => {
       const provider = await getKakaoProvider(c)
       if (provider) {
         // 알림 수신 대상: ADMIN/MANAGER 중 mobile 있는 사용자
+        // #424: users 테이블의 연락처 컬럼은 phone (mobile 컬럼 없음 — mobile은 clients/employees)
         const { results: managers } = await c.env.DB.prepare(
-          `SELECT id, name, mobile FROM users
-           WHERE role IN ('ADMIN', 'MANAGER') AND is_active = 1 AND mobile IS NOT NULL AND mobile != ''`
+          `SELECT id, name, phone FROM users
+           WHERE role IN ('ADMIN', 'MANAGER') AND is_active = 1 AND phone IS NOT NULL AND phone != ''`
         ).all()
 
         if (managers && managers.length > 0) {
           const smsContent = buildWeeklyPurchaseSMS(summary)
           const messages = managers.map((m: any) => ({
-            rcv: String(m.mobile).replace(/-/g, ''),
+            rcv: String(m.phone).replace(/-/g, ''),
             rcvnm: m.name || '담당자',
             msg: smsContent,
           }))

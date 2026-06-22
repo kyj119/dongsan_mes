@@ -1545,7 +1545,9 @@
                 if (basePrice && newPrice !== basePrice) {
                     // 저장 제안 팝업 (기존 showConfirm 활용)
                     var msg = '단가가 변경되었습니다 (' + basePrice.toLocaleString() + '원 → ' + newPrice.toLocaleString() + '원).\n이 거래처의 기본 단가로 저장할까요?';
-                    showConfirm(msg, function() {
+                    // #426: showConfirm 2번째 인자는 options(객체)라 콜백 미실행 → Promise.then 표준 패턴으로 교체.
+                    showConfirm(msg).then(function(confirmed) {
+                        if (!confirmed) return;
                         // #318: POST /api/prices 없음 → /client-item-prices (upsert)로 리포인트.
                         // 백엔드 body: { client_id, item_id, price, notes? }. 'context'는 미사용이라 제거.
                         axios.post('/api/prices/client-item-prices', {

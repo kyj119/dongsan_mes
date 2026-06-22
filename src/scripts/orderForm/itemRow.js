@@ -75,7 +75,7 @@
                         </div>
                         <div>
                             <label id="unit_price_label_${id}" class="block text-xs font-medium text-gray-600 mb-0.5">단가</label>
-                            <input type="text" inputmode="numeric" data-money name="unit_price_${id}" value="0" class="w-full px-2 py-1.5 border border-gray-300 rounded text-sm" oninput="calcItem(${id})">
+                            <input type="text" inputmode="numeric" data-money name="unit_price_${id}" value="0" class="w-full px-2 py-1.5 border border-gray-300 rounded text-sm" oninput="calcItem(${id})" onblur="onUnitPriceManualChange(${id})">
                         </div>
                         <div>
                             <label class="block text-xs font-medium text-gray-600 mb-0.5">금액</label>
@@ -184,6 +184,7 @@
                     if (hidSubcat) hidSubcat.value = item.sub_category || '';
                     unitDisp.value = item.unit;
                     priceInp.value = fmtMoneyInput(item.price);
+                    priceInp.dataset.basePrice = item.price || 0;  // #426: 거래처 특약 단가 제안 비교 기준
                     var pm = item.pricing_method || 'FIXED';
                     var pmInp = document.querySelector('[name="pricing_method_' + id + '"]');
                     if (pmInp) pmInp.value = pm;

@@ -328,9 +328,12 @@ cardsQueriesRouter.get('/', async (c) => {
         const { results: part } = await c.env.DB.prepare(`
           SELECT ci.card_id, ci.id as card_item_id, ci.print_completed,
                  oi.item_name, oi.width, oi.height,
-                 oi.scale_factor, oi.quantity, oi.unit, oi.content, oi.post_processing, oi.finishing
+                 oi.scale_factor, oi.quantity, oi.unit, oi.content, oi.post_processing, oi.finishing,
+                 mat.item_name AS print_media_name
           FROM card_items ci
           JOIN order_items oi ON ci.order_item_id = oi.id
+          LEFT JOIN product_materials pmat ON pmat.product_item_id = oi.item_id AND pmat.is_default = 1
+          LEFT JOIN items mat ON mat.id = pmat.material_item_id
           WHERE ci.card_id IN (${ph})
           ORDER BY ci.card_id, oi.sort_order ASC
         `).bind(...chunk).all<LiveItemRow>()
@@ -959,10 +962,13 @@ cardsQueriesRouter.get('/:id', async (c) => {
         oi.parent_item_id,
         ci.id as card_item_id,
         ci.print_completed,
-        ci.quantity as card_quantity
+        ci.quantity as card_quantity,
+        mat.item_name AS print_media_name
       FROM card_items ci
       LEFT JOIN order_items oi ON ci.order_item_id = oi.id
       LEFT JOIN items it ON oi.item_id = it.id
+      LEFT JOIN product_materials pmat ON pmat.product_item_id = oi.item_id AND pmat.is_default = 1
+      LEFT JOIN items mat ON mat.id = pmat.material_item_id
       WHERE ci.card_id = ?
       ORDER BY oi.sort_order ASC
     `).bind(id).all<CardItemRow>()

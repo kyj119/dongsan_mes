@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { authMiddleware } from '../middleware/auth'
-import { getEntityId } from '../utils/entityFilter'
+import { entityFilter, getEntityId } from '../utils/entityFilter'
 
 /**
  * Task Manager API (WORKFLOW_PROPOSAL §C, Step 4 roadmap)
@@ -42,6 +42,10 @@ tasksRouter.get('/', async (c) => {
       WHERE 1=1
     `
     const params: any[] = []
+    // #427: 멀티법인 격리 — 비전체모드 사용자는 자기 법인 작업만 (entityId=0 전체모드는 생략)
+    const ef = entityFilter(c, 't')
+    query += ef.clause
+    params.push(...ef.params)
     if (type) { query += ' AND t.type = ?'; params.push(type) }
     if (status) { query += ' AND t.status = ?'; params.push(status) }
     if (order_id) { query += ' AND t.order_id = ?'; params.push(parseInt(order_id)) }
@@ -64,13 +68,14 @@ tasksRouter.get('/', async (c) => {
 tasksRouter.get('/:id', async (c) => {
   try {
     const id = c.req.param('id')
+    const ef = entityFilter(c, 't')  // #427: 타 법인 작업 상세 열람 차단
     const row = await c.env.DB.prepare(`
       SELECT t.*, o.order_number, c.card_number
       FROM tasks t
       LEFT JOIN orders o ON t.order_id = o.id
       LEFT JOIN cards c ON t.card_id = c.id
-      WHERE t.id = ?
-    `).bind(id).first()
+      WHERE t.id = ?${ef.clause}
+    `).bind(id, ...ef.params).first()
     if (!row) return c.json({ success: false, error: 'Task not found' }, 404)
     return c.json({ success: true, data: row })
   } catch (error) {
@@ -132,6 +137,8 @@ tasksRouter.post('/', async (c) => {
 
 // POST /api/tasks/claim — agents pull a batch of PENDING tasks and atomically
 // flip them to PROCESSING. Returns the claimed rows.
+// #427: 전사 공용 에이전트(IllustratorAutomat/EdgeAgent, X-Agent-Key=전체모드)가 폴링하는 경로라
+//       법인 무관 claim이 의도 → entity 필터 미적용 (read/stats/update만 격리).
 tasksRouter.post('/claim', async (c) => {
   try {
     const body = await c.req.json<{ type?: string; limit?: number }>().catch(() => ({} as { type?: string; limit?: number }))
@@ -197,9 +204,10 @@ tasksRouter.patch('/:id', async (c) => {
       return c.json({ success: false, error: 'Invalid status' }, 400)
     }
 
+    const ef = entityFilter(c)  // #427: 타 법인 작업 변경 차단
     const existing = await c.env.DB.prepare(
-      'SELECT retry_count, max_retries FROM tasks WHERE id = ?'
-    ).bind(id).first<{ retry_count: number; max_retries: number }>()
+      `SELECT retry_count, max_retries FROM tasks WHERE id = ?${ef.clause}`
+    ).bind(id, ...ef.params).first<{ retry_count: number; max_retries: number }>()
     if (!existing) return c.json({ success: false, error: 'Task not found' }, 404)
 
     const output = body.output_payload !== undefined
@@ -230,14 +238,15 @@ tasksRouter.patch('/:id', async (c) => {
           last_attempt_at = datetime('now'),
           completed_at = COALESCE(?, completed_at),
           updated_at = datetime('now')
-      WHERE id = ?
+      WHERE id = ?${ef.clause}
     `).bind(
       finalStatus,
       output,
       body.error_message ?? null,
       incrementRetry ? 1 : 0,
       completedAt,
-      id
+      id,
+      ...ef.params
     ).run()
 
     return c.json({ success: true })
@@ -253,7 +262,8 @@ tasksRouter.patch('/:id', async (c) => {
 tasksRouter.post('/:id/retry', async (c) => {
   try {
     const id = c.req.param('id')
-    const row = await c.env.DB.prepare('SELECT status FROM tasks WHERE id = ?').bind(id).first<{ status: string }>()
+    const ef = entityFilter(c)  // #427: 타 법인 작업 재시도 차단
+    const row = await c.env.DB.prepare(`SELECT status FROM tasks WHERE id = ?${ef.clause}`).bind(id, ...ef.params).first<{ status: string }>()
     if (!row) return c.json({ success: false, error: 'Task not found' }, 404)
 
     await c.env.DB.prepare(`
@@ -261,8 +271,8 @@ tasksRouter.post('/:id/retry', async (c) => {
       SET status = 'PENDING',
           error_message = NULL,
           updated_at = datetime('now')
-      WHERE id = ?
-    `).bind(id).run()
+      WHERE id = ?${ef.clause}
+    `).bind(id, ...ef.params).run()
 
     return c.json({ success: true, message: 'Task requeued' })
   } catch (error) {
@@ -276,27 +286,29 @@ tasksRouter.post('/:id/retry', async (c) => {
 // GET /api/tasks/stats — summary for the admin dashboard header
 tasksRouter.get('/_/stats', async (c) => {
   try {
+    const ef = entityFilter(c)  // #427: 통계도 자기 법인 작업만 집계
     const stats = await c.env.DB.prepare(`
       SELECT
         COUNT(*) FILTER (WHERE status = 'PENDING')    AS pending,
         COUNT(*) FILTER (WHERE status = 'PROCESSING') AS processing,
         COUNT(*) FILTER (WHERE status = 'FAILED')     AS failed,
         COUNT(*) FILTER (WHERE status = 'COMPLETED' AND completed_at > datetime('now', '-24 hours')) AS completed_24h
-      FROM tasks
-    `).first()
+      FROM tasks WHERE 1=1${ef.clause}
+    `).bind(...ef.params).first()
     return c.json({ success: true, data: stats })
   } catch (error) {
     // D1/SQLite FILTER clauses might not be supported everywhere; fall back to
     // a CASE-based query if the above throws.
     try {
+      const ef = entityFilter(c)
       const stats = await c.env.DB.prepare(`
         SELECT
           SUM(CASE WHEN status = 'PENDING' THEN 1 ELSE 0 END) AS pending,
           SUM(CASE WHEN status = 'PROCESSING' THEN 1 ELSE 0 END) AS processing,
           SUM(CASE WHEN status = 'FAILED' THEN 1 ELSE 0 END) AS failed,
           SUM(CASE WHEN status = 'COMPLETED' AND completed_at > datetime('now', '-24 hours') THEN 1 ELSE 0 END) AS completed_24h
-        FROM tasks
-      `).first()
+        FROM tasks WHERE 1=1${ef.clause}
+      `).bind(...ef.params).first()
       return c.json({ success: true, data: stats })
     } catch (fallbackError) {
       return c.json({

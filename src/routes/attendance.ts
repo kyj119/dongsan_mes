@@ -102,8 +102,13 @@ attendanceRouter.get('/month', async (c) => {
     let lastSync: any = null
     if (hasCapsCols) {
       try {
+        // #428: caps_sync_log엔 success_count/fail_count 컬럼 없음 → 실제 컬럼으로 집계
+        // 성공 = 신규삽입 + 갱신, 실패 = 오류건수
         const { results: syncLogs } = await c.env.DB.prepare(`
-          SELECT started_at, finished_at, success_count, fail_count, status
+          SELECT started_at, finished_at,
+                 (COALESCE(inserted_count, 0) + COALESCE(updated_count, 0)) AS success_count,
+                 COALESCE(error_count, 0) AS fail_count,
+                 status
           FROM caps_sync_log
           ORDER BY id DESC LIMIT 1
         `).all()
