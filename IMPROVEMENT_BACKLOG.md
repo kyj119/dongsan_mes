@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 2 -->
-<!-- last_run_at: 2026-06-21T22:00:00+09:00 -->
+<!-- last_run_area: 3 -->
+<!-- last_run_at: 2026-06-22T10:00:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -16,6 +16,16 @@
 
 > 📦 **과거 사이클 로그**(아래 6블록 이전분)는 `IMPROVEMENT_BACKLOG_ARCHIVE.md`로 이관됨 (2026-06-10 정리). 신규 로그는 계속 이 파일 상단에 추가.
 
+> **Area 3 UX/기능 감사 (2026-06-22T10:00):**
+> - **방법**: git fetch-before-compare(origin force-update `4993fa7→2fe69bf`, fetch 후 **HEAD=origin/main `2fe69bf` 0/0 동기**, 디버전스 0). egress 차단(webapp-9i0.pages.dev allowlist 외)으로 Playwright 직접 프로브 불가 → 정적 UX 분석. **신선 각도 = 품목 대개편(print-system 제거 후 변종/규격그룹/원단 모델) 신규 churn의 사용자 관점 UX 갭** — 최신 `ea3206d`(원단 폭 cm 식별) 포함. standing scan 3종(location.href 페이지타깃 존재성[#411]·axios→API 라우트 존재성·showConfirm 콜백오용[#426]) + 신규 UI 빈상태/로딩/에러 커버리지.
+> - **🟢 location.href 페이지타깃 존재성 = net-new 0**: `src/scripts` 전 `location.href='/...'` 페이지 타깃(11종: /hr·/order-form·/orders·/portal·/purchase-order-form·/purchase-orders·/purchase-requests·/quotations·/tax-invoices·/no-permission·/login) **전부 index.tsx에 실재**(/portal·/no-permission은 grep 정규식 누락분 직접 확인). 죽은 네비 0.
+> - **🟢 axios→API 라우트 존재성 = net-new 0(서브에이전트 전수)**: `src/scripts/**/*.js` axios 호출 ~430건, top-level prefix 68종 중 **print-system(#429) 외 67종 전부 index.tsx 마운트**. static-before-`:id` 순서민감 라우트(orders/in-transit·cards/board·items/categories 등) 읽어 shadowing 확인 = 404 아님. 유일 미마운트 = `/api/print-system/*` 2곳(bulk.js:54·parent.js:1432) = **#429 기보고**(media.js는 그 사이 삭제되어 #429 부분 해소).
+> - **🟢 showConfirm 콜백오용 = net-new 0**: 2번째 인자=function 패턴 전수 → `parent.js:1548` 1건뿐 = **#426 기보고**(거래처 특약 단가 3중 dead). 신규 churn 파일에 동일 오용 0.
+> - **🟢 신규 품목 대개편 UI = UX 클린(빈상태/로딩/에러 완비)**: ① **변종/품목 탭**(`items/tabs.js:44` "로딩 중…"·`:81` "등록된 품목이 없습니다."·`bulk.js:275` 로딩). ② **원단 매핑 탭**(`modals.js:259` loadProductMaterials try/catch→`:308` "매핑된 원단이 없습니다." 빈상태). ③ **규격그룹 신규 페이지**(`specGroups.js:18` "규격그룹이 없습니다"·`:33/:49` "로드 실패" 에러·`:43` "로드 중…"·`:91/:137` colspan 빈행) — 신규 페이지가 빈/로딩/에러 3상태 모두 처리. ④ **원단 폭 식별 churn**(`ea3206d`): 검색모달 cm 뱃지(`shell.js:1962`)·order form 규격 자동채움 fallback(`itemRow.js:223` width_mm→cm)·중복검사 cm 통일(`items.ts:712`)·width_mm 전달(itemRow.js:268) **전 경로 정합·배선 완료**. MATERIAL 품목은 order form에서 유통행(isDistItem) 정상 처리(`itemRow.js:218`).
+> - **🟢 backlog↔GitHub sync clean (변동 0)**: open auto-improve **실측 9건**(#412·#423·#424·#425·#426·#428·#429·#430·#431, list_issues 전수) = 직전 stats `new=9` **정합**. done=126·rejected=3·approved=0·reviewed=0 유지. owner 신규 close/머지 0건(churn은 원단 폭 식별 feature + print-system 잔여 dead 정리).
+> - **이상 없음**: git 동기 0/0. standing scan 3종 + 신규 품목 대개편 UI 빈상태/로딩/에러 + 원단 폭 churn 전 각도 **net-new 0**(전부 clean 또는 #426/#429 기보고). 억지 findings 회피 — 신규 기능이 처음부터 UX 3상태·escape·배선 컨벤션 준수.
+> - 자동 수정 0건(net-new 발견 0), 신규 이슈 0건, SKILL 강화 0건(기존 standing 레시피로 전 각도 커버, 신규 패턴 미발생), done-sync(변동 0), **신선 각도 — 품목 대개편 신규 UI(변종/규격그룹/원단매핑/폭식별)의 사용자 관점 빈상태/로딩/에러/배선 완전성 정적 검증, 프로덕션 UX 영향 0 확인**
+>
 > **Area 2 코드 품질 (2026-06-21T22:00):**
 > - **방법**: git fetch-before-compare(origin force-update `4993fa7→c4fc37d`, fetch 후 HEAD=origin/main `c4fc37d` 0/0 동기). ground-truth=**335 마이그레이션** node:sqlite 전량 적용(**FAIL 0**, 176테이블). 자동 standing scan 4종(INSERT/UPDATE 컬럼존재성·명시 SELECT 존재성[A-027]·entity_id INSERT 누락·authMiddleware 커버리지) + 최대 churn(print-system 완전제거 0335~0337 + items/quotations 컬럼정리) 회귀 각도.
 > - **🟢 자동 standing scan 4종 = net-new 0(기보고만)**: ① INSERT/UPDATE 컬럼존재성 = cards/lifecycle:1096 ai_analysis_id(FP, SET대상 thumbnail_url·서브쿼리)·scan.ts items.current_stock×2(#412) 외 0. ② 명시 SELECT 존재성 = caps_sync_log.success_count(#428)·equipment.equipment_type(#425)·users.mobile(#424) 외 0. ③ entity_id INSERT 누락 = **0건**(entity_id 보유 테이블 전 INSERT 정합). ④ authMiddleware 커버리지 = no-auth 8파일 전부 정상(barrel 6=서브라우터 위임·hrSelf=의도적 self-service public[rate-limited]·webhooks=의도적 webhook).
