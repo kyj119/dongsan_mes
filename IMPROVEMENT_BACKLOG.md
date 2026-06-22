@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 6 -->
-<!-- last_run_at: 2026-06-22T22:00:00+09:00 -->
+<!-- last_run_area: 1 -->
+<!-- last_run_at: 2026-06-23T02:00:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -16,6 +16,17 @@
 
 > 📦 **과거 사이클 로그**(아래 6블록 이전분)는 `IMPROVEMENT_BACKLOG_ARCHIVE.md`로 이관됨 (2026-06-10 정리). 신규 로그는 계속 이 파일 상단에 추가.
 
+> **Area 1 프로덕션 헬스 (2026-06-23T02:00):**
+> - **방법**: git fetch-before-compare(origin force-update `4af5296→e76b0eb`, fetch 후 **HEAD=origin/main `e76b0eb` 0/0 동기**, 디버전스 0). egress 차단(webapp-9i0.pages.dev allowlist 외)으로 prod 직접 프로브 불가 → CI/배포 결과 분석 + 신규 churn write-path 정적 점검. **신선 각도 = 직전 Area6(`4af5296`) 이후 churn(품목 데이터 적재 6건 + 차감방식 구조화 `e76b0eb`)의 헬스/write-path 회귀**.
+> - **🟢 CI/deploy 전량 green**: deploy.yml 최근 15런 **전부 success**(최신 `e76b0eb`=HEAD). post-deploy smoke 실패 0. e2e.yml은 트리거 비활성(Area5 `b092093`)이라 deploy.yml만 가동 = 정상.
+> - **🟢 신규 마이그 0353~0359 = write-path 안전(DROP/RENAME 0)**: 0353~0358 = 품목 데이터 적재(태극기 호수/내염·전사·솔벤UV매쉬·UV평판자작 — INSERT/UPDATE만). **0359 차감방식 구조화 = 순수 additive ALTER ADD COLUMN**(items.deduction_method[DEFAULT 'ROLL']·sheet_spec·waste_factor[DEFAULT 1.0] + inventory_auto_deductions.deduction_method[DEFAULT 'ROLL']) + 자작나무 BOARD 분류 UPDATE + product_materials 자동연결 INSERT. **DROP/DROP COLUMN/RENAME 0** → SKILL line 40 smoke write-path 맹점(부모테이블 DROP→자식 inline-FK write 차단) 클래스 **미해당**.
+> - **🟢 fire-and-forget autoDeduct 훅 정적 parity 검증**: 신규 컬럼은 `autoDeductInventory.ts:121-122`(items.deduction_method/sheet_spec/waste_factor SELECT, ROLL/BOARD 분기 :137/:139)에서 사용 — smoke가 못 보는 출고시 fire-and-forget write라 정적 확인: ① nullable 컬럼 `COALESCE(i.deduction_method,'ROLL')`·`COALESCE(i.waste_factor,1.0)` 방어 ② `inventory_auto_deductions` INSERT(:215) **14컬럼/14 placeholder/14 bind 정합**(신규 deduction_method=dedMethod positional 끝). 0359 ADD COLUMN이 prod 공급 보장(deploy green) + ADD COLUMN은 기존 write 무영향(additive).
+> - **🟢 printEvents.ts churn(`5179a21` flexi-nest equipment_id 회귀수정) = 안전**: `agent_heartbeats`에서 `equipment_id` SELECT로 폴백(`5f73fe5` 인근 회귀 수정), 신규 컬럼/DROP 무관.
+> - **🟢 prod↔main 디버전스 = 없음**: 이번 사이클 owner의 auto-improve 이슈 close 0건(open 동일 9건 잔류) → "배포 완료 주장" 검증 대상 없음. HEAD=origin/main 동기(`e76b0eb`)라 다음 main push 회귀 시한폭탄 0(#422 standing scan clean).
+> - **🟢 backlog↔GitHub sync clean (변동 0)**: open auto-improve **실측 9건**(#412·#423·#424·#425·#426·#428·#429·#430·#431, list_issues 전수) = 직전 stats `new=9` **정합**. done=126·rejected=3·approved=0·reviewed=0 유지. owner 신규 close/머지 0건(churn = 품목 데이터 적재 + 차감방식 구조화 feature).
+> - **이상 없음**: git 동기 0/0. deploy 15런 green. 신규 마이그(0353~0359) 전부 additive/데이터(DROP 0) → write-path 회귀 0. autoDeduct INSERT parity 14/14·COALESCE 방어 정합. 디버전스 0, sync 9=9. egress 차단은 환경제약(장애 아님). 억지 findings 회피.
+> - 자동 수정 0건(net-new 발견 0), 신규 이슈 0건, SKILL 강화 0건(신규 패턴 미발견 — 기존 line 40 smoke-blind/line 44 디버전스 standing scan으로 충분 커버), done-sync(변동 0), **신선 각도 — 직전 Area6 이후 churn(품목 데이터 적재 + 차감방식 구조화 additive ALTER)의 CI/배포 헬스 + autoDeduct write-path 정적 parity, 프로덕션 영향 0 확인**
+>
 > **Area 6 자기 진화 (2026-06-22T22:00):**
 > - **방법**: git fetch-before-compare(origin force-update `4993fa7→4af5296`, fetch 후 **HEAD=origin/main `4af5296` 0/0 동기**, 디버전스 0). Area 6 **20회차** — 신선 각도 = 직전 Area4(`f81359c`)/Area5(`861f218`) 이후 churn의 컬럼-diff bridge + XSS bridge 재감사. 핵심 churn = **신규 feature `71f885e`(후가공 코팅 소비자재 출고시 폭매칭 자동차감)** = `autoDeductPostProcessingMaterials.ts` util + 마이그 0352(`pp_material_deductions` 테이블 + `post_processing_options.material_item_group` 컬럼 + 코팅 PP옵션 2종) + shipments POST fire-and-forget 훅. (0345~0351은 품목 데이터 적재 마이그.)
 > - **🟢 backlog↔GitHub sync clean (변동 0)**: open auto-improve **실측 9건**(#412·#423·#424·#425·#426·#428·#429·#430·#431, list_issues 전수) = 직전 stats `new=9` **정합**. done=126·rejected=3·approved=0·reviewed=0 유지. owner 신규 close/머지 0건(churn = 후가공 코팅 자동차감 feature + 품목 데이터 마이그).
