@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 3 -->
-<!-- last_run_at: 2026-06-22T10:00:00+09:00 -->
+<!-- last_run_area: 4 -->
+<!-- last_run_at: 2026-06-22T14:00:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -16,6 +16,17 @@
 
 > 📦 **과거 사이클 로그**(아래 6블록 이전분)는 `IMPROVEMENT_BACKLOG_ARCHIVE.md`로 이관됨 (2026-06-10 정리). 신규 로그는 계속 이 파일 상단에 추가.
 
+> **Area 4 데이터 정합성 (2026-06-22T14:00):**
+> - **방법**: git fetch-before-compare(origin force-update `4993fa7→f81359c`, fetch 후 **HEAD=origin/main `f81359c` 0/0 동기**, 디버전스 0). ground-truth=**342 마이그레이션** node:sqlite 전량 적용(DDL FAIL 0, 176테이블 — 0342~0344 3건은 빈 in-mem DB의 DELETE/INSERT FK-check라 스키마 무관). egress 차단(webapp-9i0.pages.dev allowlist 외)으로 prod D1 직접 고아/NULL 쿼리 불가 → 정적 스키마 기반 standing scan. **신선 각도 = 신규 churn(`dd9611a`[직전 Area4 HEAD]→`f81359c`)의 (a)데이터 정리 마이그 0338~0344 정합성 + (b)취소 주문 카드 status-consistency 픽스 `f81359c` 완전성**.
+> - **🟢 자동 standing scan 4종 = net-new 0(기보고/FP만)**: ① INSERT/UPDATE 컬럼존재성 = scan.ts items.current_stock×2(#412) 외 0. ② 명시 SELECT 컬럼존재성(A-027) = caps_sync_log.success_count/fail_count(#428)·equipment.equipment_type/location/manufacturer(#425)·users.mobile(#424) + insurance_rates.null(**FP** — settings.ts:106 `INSERT...SELECT`의 리터럴 NULL projection을 컬럼으로 오파싱) 외 0. ③ CHECK-IN literal write(39제약/28테이블) = net-new 0. ④ NOT NULL no-default INSERT 누락 = net-new 0.
+> - **🟢 데이터 정리 마이그 0338~0344 = clean(owner-authored, 문서화된 FK 점검)**: 0338 원단 폭(cm) specification 백필(멱등, 빈값만)·0339 미사용 특수폭 product_materials unlink·0340 HANGING 분류 비활성(FK RESTRICT라 삭제 아닌 비활성)·0341/0342 legacy 비활성 품목 완전삭제(inbound FK 20테이블 참조 0 전수확인 명시 + `is_active=0` 가드)·0343 고아·테스트(E99) 데이터 일괄정리(**자식→부모 토폴로지 순서** DELETE 단일트랜잭션, `PRAGMA foreign_key_check` 고아 0 명시)·0344 수성 패트 제품+원단 4폭 등록. **전부 의도적 pre-prod 데이터 리셋 + FK 점검 문서화** → 정합성 버그 아님.
+> - **🟢 취소 주문 카드 status-consistency 픽스 `f81359c` = 완전성 검증 통과**: 주문 CANCELLED 시 카드가 HOLD로 주차(restore용)되어 보드 영구 잔존하던 문제를 owner가 `cards/queries.ts`(보드 summary/list/칸반 `WHERE c.status!='CANCELLED' AND IFNULL(o.status,'')!='CANCELLED'`)·`dashboard.ts`(카드 카운트 6종 `NOT EXISTS(SELECT 1 FROM orders WHERE id=cards.order_id AND status='CANCELLED')`)에서 제외. **#377 부분픽스 완전성 sweep**: 나머지 card 쿼리 전수(aiInsights/production/oee/shipments/orders/*) 중 글로벌 집계 보드는 이 둘뿐, 그 외는 **(a)`WHERE order_id=?` 단일주문 컨텍스트**(제외 불필요·정상)거나 **(b)production/oee 작업이력**(work_records/quality_items — 실수행 작업이라 사후취소여도 집계 포함이 정합). aiInsights:178 PRINTING join은 취소카드=HOLD라 자연 제외. **픽스 자체 자기정합**: list `where`가 `o.status` 참조하나 해당 쿼리(`queries.ts:234-235`)가 `LEFT JOIN orders o` 보유 → no-such-column throw 없음. 회귀 미유입.
+> - **🟢 신규 delta-aggregate 증분/UTC 업무일자 = 윈도 net-new 0**: `git diff dd9611a..HEAD -- src/routes`에 신규 `SET <aggcol>=...+?` 증분문 0·신규 `date('now')`/`datetime('now')` 0(0338 specification 백필도 `width_mm/10||'cm'` 산술이라 날짜 무관).
+> - **🟢 backlog↔GitHub sync clean (변동 0)**: open auto-improve **실측 9건**(#412·#423·#424·#425·#426·#428·#429·#430·#431, list_issues 전수) = 직전 stats `new=9` **정합**. done=126·rejected=3·approved=0·reviewed=0 유지. owner 신규 close/머지 0(churn은 품목 대개편 데이터정리 + 취소카드 status fix + e2e prod오염 차단).
+> - **🧬 SKILL 강화 1건 — "status-consistency 제외 픽스의 완전성 sweep" Area 4 codify**: owner/에이전트가 status 제외(예: CANCELLED-parent를 보드/대시보드에서 숨김)를 추가하면 **#377 부분픽스 규칙 적용** — 같은 status를 집계하는 **모든 글로벌 보드/대시보드 표면 전수**(`grep -rn "FROM cards" src/routes`)하되, **단일주문 컨텍스트(`WHERE order_id=?`)·작업이력(production/oee work_records) 집계는 제외 불필요**(전자=문맥상 단일주문, 후자=실수행 작업이라 사후취소여도 포함이 정합)로 구분. + status를 부모 JOIN 컬럼(`o.status`)으로 거를 땐 그 쿼리에 해당 JOIN이 실재하는지 확인(없으면 픽스가 no-such-column 회귀 유입).
+> - **이상 없음**: git 동기 0/0. 342 마이그 DDL FAIL 0. 자동 4종 + 데이터정리 마이그 + status-consistency 픽스 완전성 + delta/UTC 전 각도 net-new 0(기보고/FP/owner-fixed). egress 차단은 환경제약(장애 아님). 억지 findings 회피.
+> - 자동 수정 0건(net-new 발견 0), 신규 이슈 0건, SKILL 강화 1건(status-consistency 제외 픽스 완전성 sweep), done-sync(변동 0), **신선 각도 — 품목 대개편 데이터정리 마이그(0338~0344) 정합성 + 취소주문 카드 status-consistency 픽스(f81359c)의 글로벌 보드/대시보드 완전성 sweep, 프로덕션 데이터 영향 0 확인**
+>
 > **Area 3 UX/기능 감사 (2026-06-22T10:00):**
 > - **방법**: git fetch-before-compare(origin force-update `4993fa7→2fe69bf`, fetch 후 **HEAD=origin/main `2fe69bf` 0/0 동기**, 디버전스 0). egress 차단(webapp-9i0.pages.dev allowlist 외)으로 Playwright 직접 프로브 불가 → 정적 UX 분석. **신선 각도 = 품목 대개편(print-system 제거 후 변종/규격그룹/원단 모델) 신규 churn의 사용자 관점 UX 갭** — 최신 `ea3206d`(원단 폭 cm 식별) 포함. standing scan 3종(location.href 페이지타깃 존재성[#411]·axios→API 라우트 존재성·showConfirm 콜백오용[#426]) + 신규 UI 빈상태/로딩/에러 커버리지.
 > - **🟢 location.href 페이지타깃 존재성 = net-new 0**: `src/scripts` 전 `location.href='/...'` 페이지 타깃(11종: /hr·/order-form·/orders·/portal·/purchase-order-form·/purchase-orders·/purchase-requests·/quotations·/tax-invoices·/no-permission·/login) **전부 index.tsx에 실재**(/portal·/no-permission은 grep 정규식 누락분 직접 확인). 죽은 네비 0.
