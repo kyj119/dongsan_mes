@@ -6,6 +6,7 @@ import { sendEmail } from '../services/emailProvider'
 import { renderTemplate } from '../services/emailTemplates'
 import { entityFilter, getEntityId } from '../utils/entityFilter'
 import { getNextSeqNumber, withSeqRetry } from '../utils/sequenceGenerator'
+import { autoDeductPostProcessingMaterials } from '../utils/autoDeductPostProcessingMaterials'
 import { deductStockLinesOnShip } from '../utils/stockShip'
 import { getEntityCompanyInfo } from '../utils/entitySettings'
 import { escapeCsvField } from '../utils/csv'
@@ -455,6 +456,13 @@ shipmentsRouter.post('/', requireRole('ADMIN', 'MANAGER', 'DESIGNER'), async (c)
 
     if (batchStmts.length > 0) {
       await c.env.DB.batch(batchStmts)
+    }
+
+    // 출고 완료 → 후가공(코팅 등) 소비자재 폭매칭 자동차감 (fire-and-forget — 실패해도 출고는 성공)
+    try {
+      await autoDeductPostProcessingMaterials(c.env.DB, targetCardIds)
+    } catch (ppDeductErr) {
+      console.error('PP material deduction error:', ppDeductErr)
     }
 
     // 이메일 자동 발송 (fire-and-forget — 실패해도 출고는 성공)
