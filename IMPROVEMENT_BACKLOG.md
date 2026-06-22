@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 5 -->
-<!-- last_run_at: 2026-06-22T18:00:00+09:00 -->
+<!-- last_run_area: 6 -->
+<!-- last_run_at: 2026-06-22T22:00:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -16,6 +16,17 @@
 
 > 📦 **과거 사이클 로그**(아래 6블록 이전분)는 `IMPROVEMENT_BACKLOG_ARCHIVE.md`로 이관됨 (2026-06-10 정리). 신규 로그는 계속 이 파일 상단에 추가.
 
+> **Area 6 자기 진화 (2026-06-22T22:00):**
+> - **방법**: git fetch-before-compare(origin force-update `4993fa7→4af5296`, fetch 후 **HEAD=origin/main `4af5296` 0/0 동기**, 디버전스 0). Area 6 **20회차** — 신선 각도 = 직전 Area4(`f81359c`)/Area5(`861f218`) 이후 churn의 컬럼-diff bridge + XSS bridge 재감사. 핵심 churn = **신규 feature `71f885e`(후가공 코팅 소비자재 출고시 폭매칭 자동차감)** = `autoDeductPostProcessingMaterials.ts` util + 마이그 0352(`pp_material_deductions` 테이블 + `post_processing_options.material_item_group` 컬럼 + 코팅 PP옵션 2종) + shipments POST fire-and-forget 훅. (0345~0351은 품목 데이터 적재 마이그.)
+> - **🟢 backlog↔GitHub sync clean (변동 0)**: open auto-improve **실측 9건**(#412·#423·#424·#425·#426·#428·#429·#430·#431, list_issues 전수) = 직전 stats `new=9` **정합**. done=126·rejected=3·approved=0·reviewed=0 유지. owner 신규 close/머지 0건(churn = 후가공 코팅 자동차감 feature + 품목 데이터 마이그).
+> - **🟢 컬럼-diff bridge (신규 feature `71f885e`) = net-new 0**: `autoDeductPostProcessingMaterials.ts`가 SELECT/INSERT하는 **8테이블 전 컬럼 ground-truth 실재 확인** — post_processing_options(option_code·is_active·material_item_group[0352])·cards(id·order_id·order_item_id·requesting_entity_id[0150])·order_items(id·post_processing[0001:196])·print_events(id·output_width[0020]·output_height·copy_total·card_id·print_status)·items(id·width_mm·item_name·item_group)·inventory(item_id·entity_id·quantity·last_updated)·orders(entity_id)·pp_material_deductions(0352 신규, INSERT 13컬럼=13값 positional 정합 + NOT NULL no-default[print_event_id·material_item_id·deducted_length_yd] 전부 바인드). **sibling-parity 대조** — 공유 컬럼(output_width·requesting_entity_id 등)이 proven sibling `autoDeductInventory.ts`와 글자그대로 동일(`output_width_mm` 혼동 없음).
+> - **🟢 entity 격리·멱등성 sound**: 차감 법인 `entityId`를 `card.requesting_entity_id`(없으면 `orders.entity_id`)에서 파생 — **body 불신**(sibling과 동형, #417 mass-assignment 정답 거울). `UNIQUE(print_event_id, material_item_id)` 가드 + INSERT UNIQUE 위반 catch에서 inventory `+= dedYd` race-rollback = fire-and-forget 재실행/동시출고 이중차감 0 = **#420 TOCTOU 멱등성 클래스의 올바른 reference 구현**.
+> - **🟢 XSS bridge (post-Area5 `src/scripts`) = 윈도 net-new 0**: `git diff --stat 861f218..HEAD -- src/scripts` **빈 diff**(프론트 스크립트 churn 0) → 재감사 대상 없음. 신규 feature는 backend-only(`pp_material_deductions`·`material_item_group`·util의 프론트 참조 0건) → stale-field-read 표면도 없음(#431 거울 N/A).
+> - **🟢 마이그레이션 번호 = 신규 범위 clean**: 0345~0352 **중복 없음**. 잔존 dup(0080·0193·0327)은 pre-existing + wrangler 전체 파일명 키 정렬로 결정적 적용 = 기능 안전(#429 dup-number 클래스 기보고, net-new 아님). #429가 지적한 0334 dup은 현재 미존재(해소됨).
+> - **🧬 SKILL 강화 1건 — "컬럼-diff bridge가 신규 feature util(새 테이블+새 컬럼 동시 도입)을 sibling-parity로 clean 판정" Area 6 codify(line 233 인근)**: 직전 Area4/5 이후 churn이 신규 기능 util 1개면 새 테이블 INSERT + 기존 N테이블 SELECT 동시 도입이라 컬럼위험 高 → 가장 빠른 검증 = proven sibling util과 공유 컬럼명 parity 대조(output_width vs output_width_mm 혼동 함정) + 새 테이블 INSERT의 CREATE TABLE positional 대조. 부수 = 이 feature를 #420 멱등성(UNIQUE 가드+race-rollback) reference로 codify.
+> - **이상 없음**: git 동기 0/0. backlog↔GitHub 9=9 정합. 신규 feature 컬럼-diff(8테이블)·entity 격리·멱등성·sibling-parity·XSS bridge(빈 diff)·마이그 번호 전 각도 **net-new 0**. 신규 feature가 처음부터 sibling 컨벤션·멱등 가드·entity 파생(body 불신)을 준수 = clean. 억지 findings 회피.
+> - 자동 수정 0건(net-new 발견 0), 신규 이슈 0건, SKILL 강화 1건(신규 feature util sibling-parity 컬럼-diff + #420 멱등 reference codify), done-sync(변동 0), **신선 각도 — 직전 Area4/5 이후 churn(후가공 코팅 자동차감 feature)의 컬럼-diff bridge + entity 격리 + 멱등성 + XSS bridge 전수, 프로덕션 영향 0 확인**
+>
 > **Area 5 보안 (2026-06-22T18:00):**
 > - **방법**: git fetch-before-compare(origin force-update `4993fa7→861f218`, fetch 후 **HEAD=origin/main `861f218` 0/0 동기**, 디버전스 0). egress 차단(webapp-9i0.pages.dev allowlist 외)으로 prod 직접 프로브 불가 → 정적 보안 분석. Area 5 **19회차** — **신선 각도 = 직전 Area 5(9b06e2f, 06-21T10:00) 이후 머지 churn의 보안 회귀**(Area 1~4가 그 사이 같은 churn을 헬스/품질/UX/정합성 각도로 봤으나 **보안 각도[XSS·auth·SQLi·IDOR·agent-payload sink] 미감사**). 최대 churn = print-system 완전제거(이미 Area 2/6 완전성 검증) + 품목 탭 재구성(`tabs.js`) + logwatcher Flexi 네스팅(`printEvents.ts`/`production.js` nest_members) + 품목 등록 데이터 마이그(0332~0351). standing 보안 grep 3종 + 신규 sink 전수.
 > - **🟢 신규 `tabs.js`(품목 탭 재구성) XSS = net-new 0**: 모든 `innerHTML` sink가 escapeHtml 일관 — category_name(:17/:39 탭/헤더)·item_code(:93/:128)·item_name(:94)·item_group 그룹헤더(:138). 삭제 onclick attr `en=(it.item_name||'').replace(/['"]/g,'')`는 따옴표 제거로 attr-context 탈출 차단(기존 컨벤션). data-code/onclick은 시스템 category_code, width_mm/base_price/id 숫자.

@@ -31,8 +31,18 @@ namespace LogWatcher.Parsers
         // 네스팅 역추적 상태 (폴링 호출 간 유지)
         //  - _ripBuffer: 직전 인쇄 이후 누적된 립핑 파일명 (다음 인쇄가 flush)
         //  - _lastNestBySize: 파일크기→멤버 (보류 재출력 시 멤버 상속용)
-        private readonly List<string> _ripBuffer = new();
-        private readonly Dictionary<string, List<string>> _lastNestBySize = new();
+        private readonly List<RipEntry> _ripBuffer = new();
+        private readonly Dictionary<string, List<NestMember>> _lastNestBySize = new();
+
+        // 립핑 블록 1개에서 뽑은 멤버 후보 (파일·규격·수량·프로파일)
+        private class RipEntry
+        {
+            public string File = "";
+            public double W;            // mm
+            public double H;            // mm
+            public int Qty = 1;         // 인쇄매수
+            public string Profile = ""; // 출력 ICC 프로파일 (네스트와 매칭용)
+        }
 
         // "네스팅(20개 작업)" 에서 N 추출
         private static readonly Regex NestCountRegex = new(@"네스팅\((\d+)", RegexOptions.Compiled);
@@ -175,10 +185,20 @@ namespace LogWatcher.Parsers
 
             if (isRip)
             {
-                // 립핑 블록: "파일:" 정확히 일치하는 값만 (프로파일: 등 오탐 방지 — ExtractFields 가 라벨 정규화)
-                var rf = ExtractFields(block).GetValueOrDefault("파일:", "");
+                // 립핑 블록: 멤버 후보를 구조화 캡처 (파일·치수(mm)·인쇄매수·프로파일)
+                var rfields = ExtractFields(block);
+                var rf = rfields.GetValueOrDefault("파일:", "");
                 if (!string.IsNullOrWhiteSpace(rf))
-                    _ripBuffer.Add(rf.Trim());
+                {
+                    var (rw, rh) = ParseDimMm(rfields.GetValueOrDefault("치수:", ""));
+                    int.TryParse(rfields.GetValueOrDefault("인쇄 매수:", "").Trim(), out int rqty);
+                    if (rqty <= 0) rqty = 1;
+                    _ripBuffer.Add(new RipEntry
+                    {
+                        File = rf.Trim(), W = rw, H = rh, Qty = rqty,
+                        Profile = rfields.GetValueOrDefault("출력 ICC 프로파일:", "").Trim()
+                    });
+                }
                 return;
             }
 
@@ -196,29 +216,48 @@ namespace LogWatcher.Parsers
             {
                 evt.IsNest = true;
                 var m = NestCountRegex.Match(fileVal);
-                evt.NestDeclaredCount = m.Success ? int.Parse(m.Groups[1].Value) : 0;
+                int N = m.Success ? int.Parse(m.Groups[1].Value) : 0;
+                evt.NestDeclaredCount = N;
 
-                // 핵심 규칙: 직전 인쇄 이후 누적된 립핑 파일명을 중복제거 → 멤버
-                var seen = new HashSet<string>();
-                var members = new List<string>();
-                foreach (var f in _ripBuffer)
-                    if (seen.Add(f)) members.Add(f);
+                // 멤버 선택:
+                //  1) 네스트와 같은 출력 ICC 프로파일인 립핑만 후보 (다른 설정 작업 배제)
+                //  2) 최근(끝)순으로 distinct 파일을 N개까지 채택 (토글/무관 립핑 과다포집 방지)
+                var nestProfile = fields.GetValueOrDefault("출력 ICC 프로파일:", "").Trim();
+                var candidates = _ripBuffer;
+                if (!string.IsNullOrEmpty(nestProfile))
+                {
+                    var filtered = _ripBuffer.FindAll(r => r.Profile == nestProfile);
+                    if (filtered.Count > 0) candidates = filtered; // 일치 후보 없으면 전체로 폴백
+                }
+
+                var picked = new List<NestMember>();
+                var seenFiles = new HashSet<string>();
+                for (int i = candidates.Count - 1; i >= 0; i--) // 최근(끝)부터
+                {
+                    var r = candidates[i];
+                    if (seenFiles.Add(r.File))
+                    {
+                        picked.Add(new NestMember { file = r.File, w = r.W, h = r.H, qty = r.Qty });
+                        if (N > 0 && picked.Count >= N) break;
+                    }
+                }
+                picked.Reverse(); // 립핑 순서로 복원
 
                 var sizeKey = fields.GetValueOrDefault("파일 크기:", "");
-                if (members.Count == 0 && !string.IsNullOrEmpty(sizeKey)
+                if (picked.Count == 0 && !string.IsNullOrEmpty(sizeKey)
                     && _lastNestBySize.TryGetValue(sizeKey, out var prev))
                 {
-                    members = new List<string>(prev); // 보류 재출력 — 직전 동일 파일크기 네스트 멤버 상속
+                    picked = new List<NestMember>(prev); // 보류 재출력 — 직전 동일 파일크기 네스트 멤버 상속
                 }
-                else if (members.Count > 0 && !string.IsNullOrEmpty(sizeKey))
+                else if (picked.Count > 0 && !string.IsNullOrEmpty(sizeKey))
                 {
-                    _lastNestBySize[sizeKey] = members;
+                    _lastNestBySize[sizeKey] = picked;
                 }
 
-                evt.NestMembers = members;
+                evt.NestMembers = picked;
 
-                if (evt.NestDeclaredCount > 0 && members.Count != evt.NestDeclaredCount)
-                    Console.WriteLine($"[{EquipmentId}] ⚠ 네스트 멤버 불일치: 선언 {evt.NestDeclaredCount} / 복원 {members.Count} (검토 필요)");
+                if (N > 0 && picked.Count != N)
+                    Console.WriteLine($"[{EquipmentId}] ⚠ 네스트 멤버 불일치: 선언 {N} / 복원 {picked.Count} (멤버 부족 가능)");
             }
 
             events.Add(evt);
@@ -425,6 +464,18 @@ namespace LogWatcher.Parsers
             {
                 return null;
             }
+        }
+
+        /// <summary>"1400.0 x 1900.5mm" / "55.1 x 74.8 in" → (mm, mm). 단위 접미사로 정규화. 없으면 (0,0).</summary>
+        private static (double w, double h) ParseDimMm(string? dimStr)
+        {
+            if (string.IsNullOrEmpty(dimStr)) return (0, 0);
+            var mm = DimensionRegex.Match(dimStr);
+            if (!mm.Success) return (0, 0);
+            double w = double.Parse(mm.Groups[1].Value, CultureInfo.InvariantCulture);
+            double h = double.Parse(mm.Groups[2].Value, CultureInfo.InvariantCulture);
+            if (mm.Groups[3].Value.ToLower() == "in") { w *= 25.4; h *= 25.4; }
+            return (w, h);
         }
 
         private long LoadPosition()
