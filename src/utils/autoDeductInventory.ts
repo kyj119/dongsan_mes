@@ -114,14 +114,15 @@ export async function autoDeductInventory(
       return { success: false, deducted: false, reason: 'product_item_id not found' }
     }
 
-    // 4. product_materials에서 원단 목록 조회 (width_mm 순 정렬)
+    // 4. product_materials에서 연결 자재 + 차감설정 조회
     const { results: materialRows } = await db
       .prepare(
-        `SELECT pm.material_item_id, i.width_mm, i.item_name
+        `SELECT pm.material_item_id, i.width_mm, i.item_name,
+                COALESCE(i.deduction_method, 'ROLL') AS deduction_method, i.sheet_spec,
+                COALESCE(i.waste_factor, 1.0) AS waste_factor
          FROM product_materials pm
          JOIN items i ON pm.material_item_id = i.id
-         WHERE pm.product_item_id = ? AND i.width_mm IS NOT NULL
-         ORDER BY i.width_mm ASC`
+         WHERE pm.product_item_id = ?`
       )
       .bind(productItemId)
       .all() as any
@@ -130,27 +131,38 @@ export async function autoDeductInventory(
       return { success: false, deducted: false, reason: 'no materials mapped to product' }
     }
 
-    // 5. output_width 이상의 가장 가까운 width_mm 선택
-    let selectedMaterial: (typeof materialRows)[0] | null = null
+    // 5. 차감방식별 자재 선택 + 차감량 (ROLL=폭매칭+yd / BOARD=두께별 보드+면적→장 / NONE=제외)
+    const BOARD_AREA_SQM: Record<string, number> = { '4x8': (1220 * 2440) / 1e6, '3x6': (915 * 1830) / 1e6 }
+    const rollMats = materialRows
+      .filter((m: any) => m.deduction_method === 'ROLL' && m.width_mm != null)
+      .sort((a: any, b: any) => a.width_mm - b.width_mm)
+    const boardMats = materialRows.filter((m: any) => m.deduction_method === 'BOARD')
 
-    for (const material of materialRows) {
-      if (material.width_mm >= outputWidthMm) {
-        selectedMaterial = material
+    let selectedMaterial: any = null
+    let deductedLengthYd = 0       // ROLL=yd, BOARD=장
+    let dedMethod = 'ROLL'
+    let matchedWidthMm: number | null = null
+
+    // ROLL: output_width 이상 최소폭 → 길이(yd)
+    for (const m of rollMats) {
+      if (m.width_mm >= outputWidthMm) {
+        selectedMaterial = m; dedMethod = 'ROLL'; matchedWidthMm = m.width_mm
+        deductedLengthYd = (outputHeightMm / 914.4) * copyTotal
         break
       }
     }
-
-    // 모든 원단의 폭이 output_width보다 작으면 스킵
-    if (!selectedMaterial) {
-      return {
-        success: false,
-        deducted: false,
-        reason: `no material width >= ${outputWidthMm}mm`
-      }
+    // BOARD: 면적(㎡)→장 = W×H×copy×로스율 ÷ 보드면적
+    if (!selectedMaterial && boardMats.length > 0) {
+      const bm = boardMats[0] // 제품→해당 두께 보드 1종
+      const boardArea = BOARD_AREA_SQM[bm.sheet_spec as string] || BOARD_AREA_SQM['4x8']
+      selectedMaterial = bm; dedMethod = 'BOARD'; matchedWidthMm = null
+      deductedLengthYd = ((outputWidthMm * outputHeightMm) / 1e6) * copyTotal * (bm.waste_factor || 1) / boardArea
     }
 
-    // 6. 차감량 계산 (mm → yd 변환: 914.4mm = 1yd)
-    const deductedLengthYd = (outputHeightMm / 914.4) * copyTotal
+    if (!selectedMaterial) {
+      return { success: false, deducted: false, reason: `no matching material (roll width >= ${outputWidthMm} or board)` }
+    }
+    const dedUnit = dedMethod === 'BOARD' ? '장' : 'yd'
 
     // 7. 차감 법인 = COALESCE(cards.requesting_entity_id, orders.entity_id)
     //    requesting_entity_id = 담당 법인(Phase 2 주입). 타법인 담당 공정의 원단은 그 담당 법인 재고에서 차감(물리 정합).
@@ -193,7 +205,7 @@ export async function autoDeductInventory(
 
     // 음수 재고 경고 로그
     if (inventoryAfter < 0) {
-      console.warn(`[autoDeduct] ⚠️ 재고 음수 경고: ${selectedMaterial.item_name} (entity=${entityId}), 잔량=${inventoryAfter.toFixed(2)}yd, 차감=${deductedLengthYd.toFixed(2)}yd, card=${cardId}`)
+      console.warn(`[autoDeduct] ⚠️ 재고 음수 경고: ${selectedMaterial.item_name} (entity=${entityId}), 잔량=${inventoryAfter.toFixed(2)}${dedUnit}, 차감=${deductedLengthYd.toFixed(2)}${dedUnit}, card=${cardId}`)
     }
 
     // 8. inventory_auto_deductions 기록 (UNIQUE print_event_id로 중복 INSERT 방지)
@@ -203,8 +215,8 @@ export async function autoDeductInventory(
           `INSERT INTO inventory_auto_deductions (
             print_event_id, material_item_id, deducted_length_mm, deducted_length_yd,
             output_width_mm, output_height_mm, copy_total, inventory_before, inventory_after,
-            matched_width_mm, card_id, order_number, entity_id
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+            matched_width_mm, card_id, order_number, entity_id, deduction_method
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
         )
         .bind(
           printEventId,
@@ -216,10 +228,11 @@ export async function autoDeductInventory(
           copyTotal,
           inventoryBefore,
           inventoryAfter,
-          selectedMaterial.width_mm,
+          matchedWidthMm,
           cardId,
           printEvent.order_number || null,
-          entityId
+          entityId,
+          dedMethod
         )
         .run()
     } catch (insertError: any) {
