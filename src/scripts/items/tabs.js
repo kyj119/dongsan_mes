@@ -115,7 +115,13 @@ function buildGroupedHtml(items, expand) {
         groups[g].push(it);
     });
     order.sort(function(a, b) { return a.localeCompare(b); });
-    function sortKey(it) { if (it.width_mm) return it.width_mm; var m = String(it.specification || '').match(/(\d+)\s*호/); return m ? parseInt(m[1], 10) : 9999; }
+    function sortKey(it) {
+        if (it.width_mm) return it.width_mm; // 원자재=폭 오름차순
+        var s = String(it.specification || '');
+        var m = s.match(/(\d+)\s*호(?:-(\d))?/); // 호수: 7호<7호-1, 같은 호수는 기본<게양용
+        if (m) return parseInt(m[1], 10) * 100 + (m[2] ? parseInt(m[2], 10) * 10 : 0) + (/게양용/.test(s) ? 1 : 0);
+        return 99999;
+    }
     var html = '<div class="space-y-2">';
     order.forEach(function(g) {
         var gi = groups[g];
