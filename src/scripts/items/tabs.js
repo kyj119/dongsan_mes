@@ -79,7 +79,9 @@ function loadCatTable(code) {
         }
         var cntEl = document.getElementById('catCount'); if (cntEl) cntEl.textContent = items.length + '건';
         if (!items.length) { listEl.innerHTML = '<p class="text-gray-400 text-sm py-8 text-center">등록된 품목이 없습니다.</p>'; return; }
-        if (isMat) { listEl.innerHTML = buildMatGroupedHtml(items, !!search); return; } // 원자재 = item_group 묶음 표시
+        // item_group 보유 품목이 과반이면 묶음 표시 (원자재·태극기 등). 그 외(개별 제품)는 평면.
+        var grouped = items.filter(function(i){ return i.item_group && String(i.item_group).trim(); });
+        if (grouped.length >= items.length / 2) { listEl.innerHTML = buildGroupedHtml(items, !!search); return; }
         var html = '<div class="overflow-x-auto"><table class="w-full text-sm ds-table-striped"><thead><tr class="text-left text-gray-500 text-xs">'
             + '<th class="p-2 cursor-pointer select-none" onclick="sortCat(\'item_code\')">코드' + sortIcon('item_code') + '</th>'
             + '<th class="p-2 cursor-pointer select-none" onclick="sortCat(\'item_name\')">품목명' + sortIcon('item_name') + '</th>'
@@ -104,29 +106,31 @@ function loadCatTable(code) {
     }).catch(function() { listEl.innerHTML = '<p class="text-red-500 text-sm py-4 text-center">데이터 로드 실패</p>'; });
 }
 
-// 원자재 = item_group(예: 패트배너 30M 호홍) 묶음 표시. 그룹 헤더(폭수·폭범위) 접기/펼치기.
-function buildMatGroupedHtml(items, expand) {
+// item_group 묶음 표시 (원자재=폭별, 태극기=호수별 등). 규격 컬럼=specification(폭/호수 공용). 접기/펼치기.
+function buildGroupedHtml(items, expand) {
     var groups = {}, order = [];
     items.forEach(function(it) {
-        var g = it.item_group || '(미분류)';
+        var g = (it.item_group && String(it.item_group).trim()) || '(기타)';
         if (!groups[g]) { groups[g] = []; order.push(g); }
         groups[g].push(it);
     });
     order.sort(function(a, b) { return a.localeCompare(b); });
+    function sortKey(it) { if (it.width_mm) return it.width_mm; var m = String(it.specification || '').match(/(\d+)\s*호/); return m ? parseInt(m[1], 10) : 9999; }
     var html = '<div class="space-y-2">';
     order.forEach(function(g) {
         var gi = groups[g];
-        gi.sort(function(a, b) { return (a.width_mm || 0) - (b.width_mm || 0); });
+        gi.sort(function(a, b) { return sortKey(a) - sortKey(b); });
         var ws = gi.map(function(x) { return x.width_mm; }).filter(Boolean);
-        var wrange = ws.length ? (Math.min.apply(null, ws) / 10) + '~' + (Math.max.apply(null, ws) / 10) + 'cm' : '';
+        var sub = ws.length ? (gi.length + '개 · ' + (Math.min.apply(null, ws) / 10) + '~' + (Math.max.apply(null, ws) / 10) + 'cm') : (gi.length + '개');
         var chevron = expand ? 'fa-chevron-down' : 'fa-chevron-right';
         var bodyHidden = expand ? '' : ' hidden';
         var rows = '';
         gi.forEach(function(it) {
             var en = (it.item_name || '').replace(/['"]/g, '');
+            var spec = it.specification || (it.width_mm ? (it.width_mm / 10) + 'cm' : '-');
             rows += '<tr class="border-t hover:bg-gray-50">'
                 + '<td class="p-2 font-mono text-blue-600 text-xs">' + escapeHtml(it.item_code || '') + '</td>'
-                + '<td class="p-2 text-right tabular-nums">' + (it.width_mm ? (it.width_mm / 10) + 'cm' : '-') + '</td>'
+                + '<td class="p-2">' + escapeHtml(spec) + '</td>'
                 + '<td class="p-2">' + getTypeBadge(it) + '</td>'
                 + '<td class="p-2 text-right tabular-nums">' + (it.base_price || 0).toLocaleString() + '</td>'
                 + '<td class="p-2">' + (it.is_active !== 0 ? '<span class="text-green-600 text-xs">활성</span>' : '<span class="text-gray-400 text-xs">비활성</span>') + '</td>'
@@ -136,9 +140,9 @@ function buildMatGroupedHtml(items, expand) {
         html += '<div class="border rounded-lg overflow-hidden">'
             + '<div class="px-3 py-2 bg-gray-50 flex items-center justify-between cursor-pointer hover:bg-gray-100 select-none" onclick="toggleMatGroup(this)">'
             + '<div class="font-medium text-sm"><i class="fas ' + chevron + ' text-gray-400 mr-2 text-xs"></i>' + escapeHtml(g) + '</div>'
-            + '<span class="text-xs text-gray-400">' + gi.length + '폭 · ' + wrange + '</span></div>'
+            + '<span class="text-xs text-gray-400">' + sub + '</span></div>'
             + '<div class="mat-grp-body' + bodyHidden + '"><table class="w-full text-sm ds-table-striped"><thead><tr class="text-left text-gray-500 text-xs">'
-            + '<th class="p-2">코드</th><th class="p-2 text-right">폭</th><th class="p-2">타입</th><th class="p-2 text-right">단가</th><th class="p-2">상태</th><th class="p-2">작업</th>'
+            + '<th class="p-2">코드</th><th class="p-2">규격</th><th class="p-2">타입</th><th class="p-2 text-right">단가</th><th class="p-2">상태</th><th class="p-2">작업</th>'
             + '</tr></thead><tbody>' + rows + '</tbody></table></div></div>';
     });
     html += '</div>';
