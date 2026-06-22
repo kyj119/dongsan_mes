@@ -79,6 +79,7 @@ function loadCatTable(code) {
         }
         var cntEl = document.getElementById('catCount'); if (cntEl) cntEl.textContent = items.length + '건';
         if (!items.length) { listEl.innerHTML = '<p class="text-gray-400 text-sm py-8 text-center">등록된 품목이 없습니다.</p>'; return; }
+        if (isMat) { listEl.innerHTML = buildMatGroupedHtml(items, !!search); return; } // 원자재 = item_group 묶음 표시
         var html = '<div class="overflow-x-auto"><table class="w-full text-sm ds-table-striped"><thead><tr class="text-left text-gray-500 text-xs">'
             + '<th class="p-2 cursor-pointer select-none" onclick="sortCat(\'item_code\')">코드' + sortIcon('item_code') + '</th>'
             + '<th class="p-2 cursor-pointer select-none" onclick="sortCat(\'item_name\')">품목명' + sortIcon('item_name') + '</th>'
@@ -102,6 +103,54 @@ function loadCatTable(code) {
         listEl.innerHTML = html;
     }).catch(function() { listEl.innerHTML = '<p class="text-red-500 text-sm py-4 text-center">데이터 로드 실패</p>'; });
 }
+
+// 원자재 = item_group(예: 패트배너 30M 호홍) 묶음 표시. 그룹 헤더(폭수·폭범위) 접기/펼치기.
+function buildMatGroupedHtml(items, expand) {
+    var groups = {}, order = [];
+    items.forEach(function(it) {
+        var g = it.item_group || '(미분류)';
+        if (!groups[g]) { groups[g] = []; order.push(g); }
+        groups[g].push(it);
+    });
+    order.sort(function(a, b) { return a.localeCompare(b); });
+    var html = '<div class="space-y-2">';
+    order.forEach(function(g) {
+        var gi = groups[g];
+        gi.sort(function(a, b) { return (a.width_mm || 0) - (b.width_mm || 0); });
+        var ws = gi.map(function(x) { return x.width_mm; }).filter(Boolean);
+        var wrange = ws.length ? (Math.min.apply(null, ws) / 10) + '~' + (Math.max.apply(null, ws) / 10) + 'cm' : '';
+        var chevron = expand ? 'fa-chevron-down' : 'fa-chevron-right';
+        var bodyHidden = expand ? '' : ' hidden';
+        var rows = '';
+        gi.forEach(function(it) {
+            var en = (it.item_name || '').replace(/['"]/g, '');
+            rows += '<tr class="border-t hover:bg-gray-50">'
+                + '<td class="p-2 font-mono text-blue-600 text-xs">' + escapeHtml(it.item_code || '') + '</td>'
+                + '<td class="p-2 text-right tabular-nums">' + (it.width_mm ? (it.width_mm / 10) + 'cm' : '-') + '</td>'
+                + '<td class="p-2">' + getTypeBadge(it) + '</td>'
+                + '<td class="p-2 text-right tabular-nums">' + (it.base_price || 0).toLocaleString() + '</td>'
+                + '<td class="p-2">' + (it.is_active !== 0 ? '<span class="text-green-600 text-xs">활성</span>' : '<span class="text-gray-400 text-xs">비활성</span>') + '</td>'
+                + '<td class="p-2 whitespace-nowrap"><button onclick="editItem(' + it.id + ')" class="text-blue-600 hover:underline text-xs mr-2">수정</button>'
+                + '<button onclick="deleteItem(' + it.id + ', \'' + en + '\')" class="text-red-500 hover:underline text-xs">삭제</button></td></tr>';
+        });
+        html += '<div class="border rounded-lg overflow-hidden">'
+            + '<div class="px-3 py-2 bg-gray-50 flex items-center justify-between cursor-pointer hover:bg-gray-100 select-none" onclick="toggleMatGroup(this)">'
+            + '<div class="font-medium text-sm"><i class="fas ' + chevron + ' text-gray-400 mr-2 text-xs"></i>' + escapeHtml(g) + '</div>'
+            + '<span class="text-xs text-gray-400">' + gi.length + '폭 · ' + wrange + '</span></div>'
+            + '<div class="mat-grp-body' + bodyHidden + '"><table class="w-full text-sm ds-table-striped"><thead><tr class="text-left text-gray-500 text-xs">'
+            + '<th class="p-2">코드</th><th class="p-2 text-right">폭</th><th class="p-2">타입</th><th class="p-2 text-right">단가</th><th class="p-2">상태</th><th class="p-2">작업</th>'
+            + '</tr></thead><tbody>' + rows + '</tbody></table></div></div>';
+    });
+    html += '</div>';
+    return html;
+}
+window.toggleMatGroup = function(el) {
+    var body = el.nextElementSibling;
+    if (!body) return;
+    body.classList.toggle('hidden');
+    var ic = el.querySelector('i');
+    if (ic) { ic.classList.toggle('fa-chevron-right'); ic.classList.toggle('fa-chevron-down'); }
+};
 
 window.showCreateModalForCategory = async function(code) {
     await showCreateModal(); // 내부 selectItemType('PRODUCT') 완료까지 대기 → 이후 프리셋이 안 덮임
