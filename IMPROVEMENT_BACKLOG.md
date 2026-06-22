@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 1 -->
-<!-- last_run_at: 2026-06-23T02:00:00+09:00 -->
+<!-- last_run_area: 2 -->
+<!-- last_run_at: 2026-06-23T06:00:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -16,6 +16,18 @@
 
 > 📦 **과거 사이클 로그**(아래 6블록 이전분)는 `IMPROVEMENT_BACKLOG_ARCHIVE.md`로 이관됨 (2026-06-10 정리). 신규 로그는 계속 이 파일 상단에 추가.
 
+> **Area 2 코드 품질 (2026-06-23T06:00):**
+> - **방법**: git fetch-before-compare(origin force-update `4993fa7→5f233e2`, fetch 후 **HEAD=origin/main `5f233e2` 0/0 동기**, 디버전스 0). ground-truth=**357 마이그레이션** node:sqlite 전량 적용(178테이블, migFail 5=빈 in-mem FK/DELETE 의존). 신선 각도 = 직전 Area1(`5f233e2`) 이후 churn 0(Area1 커밋만 추가) → **컬럼-존재성 standing scan 4종 자동화 재실행 + JOIN-aware 확장 시도** + authMiddleware 커버리지 전수.
+> - **🟢 명시 SELECT 컬럼존재성 스캔(단일테이블, A-027) = net-new 0**: 5 findings 전부 기존 open 이슈 — weeklyPurchase users.mobile(#424)·scan equipment.equipment_type/location/manufacturer(#425)·scan items.current_stock(#412). FP 0.
+> - **🟢 INSERT/UPDATE 컬럼존재성 스캔 = net-new 0**: 2 findings 전부 #412(scan items.current_stock UPDATE ×2).
+> - **🟢 JOIN-aware alias 컬럼 스캔(고커버리지 확장 시도) = 실 findings 0(29건 전부 FP)**: alias→table 매핑 후 `alias.col` 존재성 대조 시도했으나 29건 전부 FP — (a)JS 멤버접근(`c.env`/`c.json`/`c.req`[Hono context alias `c`=clients 충돌]·`.length`/`.slice`/`.map`·`.ts` 파일참조) (b)주석 내 컬럼언급(`shipments.ts:63` `orders.receiver_address`는 **주석에 "스펙 오기"라 명시**, 실쿼리는 `s.*` / `autoProcess.ts:155` `settings.ia_auto_enabled`는 주석, 실쿼리는 `setting_value WHERE setting_key='ia_auto_enabled'` 정상) (c)서브쿼리 alias 충돌(`ar-helpers o.v`=derived table). → JOIN-aware 스캔은 **주석 strip + 서브쿼리 alias 제외 없이는 전량 FP**라 단일테이블 명시-SELECT 스캔(line 67)이 신뢰 가능한 자동형, JOIN형은 수동 컬럼-diff로 보완.
+> - **🟢 authMiddleware 커버리지 = clean**: 파일에 authMiddleware 미참조 7개(hrSelf·ledger·orders·payroll·purchaseOrders·taxInvoices·webhooks) 전부 FP — **배럴 라우터**(서브라우터가 `.use authMiddleware`, ledger는 2단 중첩배럴 ar-ledger/payments/receivables/dunning 전부 auth 확인) 또는 **의도적 public**(hrSelf self-auth+rate-limit, webhooks 팝빌). 미보호 라우트 0.
+> - **🟢 신규 feature `e76b0eb`(차감방식 구조화) 코드품질 = clean**: autoDeductInventory ROLL/BOARD/NONE 분기 — `COALESCE(deduction_method,'ROLL')`·`COALESCE(waste_factor,1.0)` 방어, INSERT 14컬럼/14값 parity(Area1 기검증), N+1 없음(fire-and-forget 단건). 코드품질 갭 0.
+> - **🟢 backlog↔GitHub sync clean (변동 0)**: open auto-improve **실측 9건**(#412·#423·#424·#425·#426·#428·#429·#430·#431, list_issues 전수) = 직전 stats `new=9` **정합**. done=126·rejected=3·approved=0·reviewed=0 유지. owner 신규 close/머지 0건.
+> - **🧬 SKILL 강화 1건 — JOIN-aware 컬럼 스캔 FP 클래스 codify(line 67 인근)**: 단일테이블 명시-SELECT 스캔을 JOIN까지 확장하면 (a)JS 멤버접근(alias `c`=Hono context 충돌) (b)주석 내 컬럼언급 (c)서브쿼리 alias로 전량 FP → JOIN형은 주석 strip+서브쿼리 alias 제외 선행 없이는 자동화 부적합, 단일테이블 명시-SELECT가 신뢰 자동형.
+> - **이상 없음**: git 동기 0/0. 컬럼-존재성 4종(단일 SELECT·INSERT·UPDATE·JOIN) net-new 0(기존 이슈/FP만). authMiddleware 전수 clean(배럴/public FP). 신규 feature 코드품질 clean. sync 9=9. 억지 findings 회피.
+> - 자동 수정 0건(net-new 0), 신규 이슈 0건, SKILL 강화 1건(JOIN-aware 스캔 FP 클래스 codify), done-sync(변동 0), **신선 각도 — 컬럼-존재성 standing scan 4종 자동 재실행 + JOIN-aware 확장 검증 + authMiddleware 커버리지 전수, 프로덕션 영향 0 확인**
+>
 > **Area 1 프로덕션 헬스 (2026-06-23T02:00):**
 > - **방법**: git fetch-before-compare(origin force-update `4af5296→e76b0eb`, fetch 후 **HEAD=origin/main `e76b0eb` 0/0 동기**, 디버전스 0). egress 차단(webapp-9i0.pages.dev allowlist 외)으로 prod 직접 프로브 불가 → CI/배포 결과 분석 + 신규 churn write-path 정적 점검. **신선 각도 = 직전 Area6(`4af5296`) 이후 churn(품목 데이터 적재 6건 + 차감방식 구조화 `e76b0eb`)의 헬스/write-path 회귀**.
 > - **🟢 CI/deploy 전량 green**: deploy.yml 최근 15런 **전부 success**(최신 `e76b0eb`=HEAD). post-deploy smoke 실패 0. e2e.yml은 트리거 비활성(Area5 `b092093`)이라 deploy.yml만 가동 = 정상.
