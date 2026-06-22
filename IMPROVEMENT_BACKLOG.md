@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 4 -->
-<!-- last_run_at: 2026-06-22T14:00:00+09:00 -->
+<!-- last_run_area: 5 -->
+<!-- last_run_at: 2026-06-22T18:00:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -16,6 +16,19 @@
 
 > 📦 **과거 사이클 로그**(아래 6블록 이전분)는 `IMPROVEMENT_BACKLOG_ARCHIVE.md`로 이관됨 (2026-06-10 정리). 신규 로그는 계속 이 파일 상단에 추가.
 
+> **Area 5 보안 (2026-06-22T18:00):**
+> - **방법**: git fetch-before-compare(origin force-update `4993fa7→861f218`, fetch 후 **HEAD=origin/main `861f218` 0/0 동기**, 디버전스 0). egress 차단(webapp-9i0.pages.dev allowlist 외)으로 prod 직접 프로브 불가 → 정적 보안 분석. Area 5 **19회차** — **신선 각도 = 직전 Area 5(9b06e2f, 06-21T10:00) 이후 머지 churn의 보안 회귀**(Area 1~4가 그 사이 같은 churn을 헬스/품질/UX/정합성 각도로 봤으나 **보안 각도[XSS·auth·SQLi·IDOR·agent-payload sink] 미감사**). 최대 churn = print-system 완전제거(이미 Area 2/6 완전성 검증) + 품목 탭 재구성(`tabs.js`) + logwatcher Flexi 네스팅(`printEvents.ts`/`production.js` nest_members) + 품목 등록 데이터 마이그(0332~0351). standing 보안 grep 3종 + 신규 sink 전수.
+> - **🟢 신규 `tabs.js`(품목 탭 재구성) XSS = net-new 0**: 모든 `innerHTML` sink가 escapeHtml 일관 — category_name(:17/:39 탭/헤더)·item_code(:93/:128)·item_name(:94)·item_group 그룹헤더(:138). 삭제 onclick attr `en=(it.item_name||'').replace(/['"]/g,'')`는 따옴표 제거로 attr-context 탈출 차단(기존 컨벤션). data-code/onclick은 시스템 category_code, width_mm/base_price/id 숫자.
+> - **🟢 logwatcher Flexi 네스팅 nest_members(agent-payload JSON 배열) = XSS clean**: `printEvents.ts` INSERT가 `JSON.stringify(nest_members)`(파일명 배열)를 `?` 바인드 저장(SQLi 0). 프론트 `production.js:311` `JSON.parse→.map()`으로 `<li>` 렌더 시 **텍스트·title 속성 양쪽 escapeHtml**(`:33` `title="'+escapeHtml(String(m))+'">'+escapeHtml(base)`). 동반 `file_name`은 정의 지점(`:268 var fileName=escapeHtml(...)`) 1회 escape 후 :318/:322 재사용 = 정의-지점 전파 패턴.
+> - **🟢 신규 `/price-history` 엔드포인트(items.ts, print-system서 이전) 보안 clean**: ① auth — itemsRouter `.use('/*', authMiddleware)` 상속. ② **IDOR — `entityFilter(c,'pch')` 적용**(price_change_history.entity_id=마이그 0274 ADD COLUMN로 실존 → no-such-column 회귀 없음, 멀티테넌트 격리 정합). ③ SQLi — target_type/target_id/limit 전부 `?` 바인드(parseInt 정수화). ④ error-exposure — catch generic `'서버 오류가 발생했습니다'`.
+> - **🟢 e2e .cjs 프로덕션 가드(05cf312)·e2e.yml 트리거 비활성(b092093) = 긍정적 안전강화**: 수동 e2e가 prod(pages.dev/dongsanplan.com) 대상이면 `ALLOW_PROD=1` 없이 `process.exit(1)` — entity-99 테스트 데이터 prod 오염 차단. `SMOKE_PASS||'password'`는 **localhost 테스트 기본값**(가드가 prod 차단)이라 앱 시크릿 아님(standing grep FP 배제 대상).
+> - **🟢 standing 보안 grep 3종 = net-new 0**: 시크릿 폴백(`c.env.X||'리터럴'`) 0 · 기본 비밀번호(`password||'리터럴'`, 앱코드) 0 · CI yml 시크릿 폴백(`secrets.X||'리터럴'`) 0. priceList.ts는 print_media SELECT **제거**(공격표면 축소)·index.tsx는 printSystemRouter 언마운트만.
+> - **🟢 품목 등록 데이터 마이그(0332~0351) = 보안 무관**: 8분류 simplify·원자재/원단 INSERT·legacy 삭제·고아정리·print-system DROP/FK스텁 — 권한/인증 테이블 변경 0, 데이터 적재·정리뿐.
+> - **🟢 backlog↔GitHub sync clean (변동 0)**: open auto-improve **실측 9건**(#412·#423·#424·#425·#426·#428·#429·#430·#431, list_issues 전수) = 직전 stats `new=9` **정합**. done=126·rejected=3·approved=0·reviewed=0 유지. owner 신규 close/머지 0건(churn은 품목 등록 feature + e2e 가드).
+> - **🧬 SKILL 강화 1건 — "agent-payload JSON 배열 → innerHTML = stored-XSS sink 형태 확장" Area 5 codify(line 205 인근)**: line 203 "agent JSON 유입 주의"의 구체 확인 — 외부 agent(logwatcher) 파일명 배열이 `JSON.stringify`로 저장 후 프론트 `JSON.parse→.map()`으로 `<li>` 렌더되는 **JSON-배열 sink**는 단일 free-text와 다른 형태이나 같은 클래스. 올바른 패턴 = ①배열 원소 텍스트·title 속성 양쪽 escape ②동반 file_name은 정의 지점 1회 escape 후 재사용(중복 escape "필요" 오보 금지, `&` 이중인코딩 회피). 탐지 = agent/외부소스 컬럼이 `JSON.parse(...).map(`로 innerHTML 보간되면 (a)원소 텍스트 (b)title/data-* 속성 (c)정의-지점 단일 escape 전파 완전성 3축 확인.
+> - **이상 없음**: git 동기 0/0. tabs.js XSS·nest_members agent-payload sink·/price-history 보안 4각도·e2e 가드·standing grep 3종·데이터 마이그 전 각도 **net-new 0**(전부 clean). 신규 기능이 escape 컨벤션·entityFilter·`?` 바인드 처음부터 준수. 억지 findings 회피.
+> - 자동 수정 0건(전 각도 net-new 0), 신규 이슈 0건, SKILL 강화 1건(agent-payload JSON 배열 sink 형태 codify), done-sync(변동 0), **신선 각도 — 직전 Area 5 이후 churn(품목 탭 재구성·logwatcher Flexi 네스팅 nest_members·/price-history 이전)의 보안 5각도(XSS·auth·IDOR·SQLi·agent-payload sink) 전수, 프로덕션 보안 영향 0 확인**
+>
 > **Area 4 데이터 정합성 (2026-06-22T14:00):**
 > - **방법**: git fetch-before-compare(origin force-update `4993fa7→f81359c`, fetch 후 **HEAD=origin/main `f81359c` 0/0 동기**, 디버전스 0). ground-truth=**342 마이그레이션** node:sqlite 전량 적용(DDL FAIL 0, 176테이블 — 0342~0344 3건은 빈 in-mem DB의 DELETE/INSERT FK-check라 스키마 무관). egress 차단(webapp-9i0.pages.dev allowlist 외)으로 prod D1 직접 고아/NULL 쿼리 불가 → 정적 스키마 기반 standing scan. **신선 각도 = 신규 churn(`dd9611a`[직전 Area4 HEAD]→`f81359c`)의 (a)데이터 정리 마이그 0338~0344 정합성 + (b)취소 주문 카드 status-consistency 픽스 `f81359c` 완전성**.
 > - **🟢 자동 standing scan 4종 = net-new 0(기보고/FP만)**: ① INSERT/UPDATE 컬럼존재성 = scan.ts items.current_stock×2(#412) 외 0. ② 명시 SELECT 컬럼존재성(A-027) = caps_sync_log.success_count/fail_count(#428)·equipment.equipment_type/location/manufacturer(#425)·users.mobile(#424) + insurance_rates.null(**FP** — settings.ts:106 `INSERT...SELECT`의 리터럴 NULL projection을 컬럼으로 오파싱) 외 0. ③ CHECK-IN literal write(39제약/28테이블) = net-new 0. ④ NOT NULL no-default INSERT 누락 = net-new 0.
