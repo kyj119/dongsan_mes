@@ -118,9 +118,10 @@ function buildGroupedHtml(items, expand) {
     function sortKey(it) {
         if (it.width_mm) return it.width_mm; // 원자재=폭 오름차순
         var s = String(it.specification || '');
-        var m = s.match(/(\d+)\s*호(?:-(\d))?/); // 호수: 7호<7호-1, 같은 호수는 기본<게양용
-        if (m) return parseInt(m[1], 10) * 100 + (m[2] ? parseInt(m[2], 10) * 10 : 0) + (/게양용/.test(s) ? 1 : 0);
-        return 99999;
+        var main = s.match(/(\d+)/);          // 선두 숫자=호수 (4호-1·4-1호 형식 무관)
+        if (!main) return 99999;
+        var sub = s.match(/-\s*(\d+)/);        // -N 세부(7호-1)
+        return parseInt(main[1], 10) * 100 + (sub ? parseInt(sub[1], 10) * 10 : 0) + (/게양용/.test(s) ? 1 : 0);
     }
     var html = '<div class="space-y-2">';
     order.forEach(function(g) {
