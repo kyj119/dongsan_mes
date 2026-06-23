@@ -1831,8 +1831,13 @@ bankRouter.get('/receivables', requireRole('ADMIN', 'MANAGER'), async (c) => {
   try {
     // clients 테이블에는 entity_id가 없으므로 entityFilter 미사용
     const { results: receivables } = await c.env.DB.prepare(`
+      -- 미수금 = clients.balance 캐시(폐기·split billing P3) 대신 라이브 파생.
+      -- deriveClientBalance와 동일 정의: order_billing_groups[BILLED] − payments − adjustments.
+      -- /accounting·ar-* 와 일치. clients엔 entity_id 없어 엔티티 무관(거래처 전체 합산, 기존 동작 유지).
       SELECT
-        c.id, c.client_name, c.representative, c.balance, c.credit_risk_grade,
+        c.id, c.client_name, c.representative,
+        (COALESCE(b.amt, 0) - COALESCE(pp.amt, 0) - COALESCE(aa.amt, 0)) AS balance,
+        c.credit_risk_grade,
         c.payment_cycle_type, c.payment_terms_days, c.closing_day, c.payment_month_offset, c.payment_day,
         (SELECT MAX(p.payment_date) FROM payments p WHERE p.client_id = c.id) as last_payment_date,
         (SELECT COUNT(*) FROM payments p WHERE p.client_id = c.id) as total_payments,
@@ -1841,8 +1846,21 @@ bankRouter.get('/receivables', requireRole('ADMIN', 'MANAGER'), async (c) => {
         (SELECT MIN(o.billed_at) FROM orders o
          WHERE o.client_id = c.id AND o.billing_status = 'BILLED' AND o.billed_at IS NOT NULL) as earliest_billed_at
       FROM clients c
-      WHERE c.is_active = 1 AND c.balance > 0
-      ORDER BY c.balance DESC
+      LEFT JOIN (
+        SELECT o.client_id AS cid, SUM(g.billed_amount) AS amt
+        FROM order_billing_groups g JOIN orders o ON o.id = g.order_id
+        WHERE g.billing_status = 'BILLED' AND o.status != 'CANCELLED'
+        GROUP BY o.client_id
+      ) b ON b.cid = c.id
+      LEFT JOIN (
+        SELECT client_id AS cid, SUM(amount) AS amt FROM payments GROUP BY client_id
+      ) pp ON pp.cid = c.id
+      LEFT JOIN (
+        SELECT client_id AS cid, SUM(amount) AS amt FROM adjustments GROUP BY client_id
+      ) aa ON aa.cid = c.id
+      WHERE c.is_active = 1
+        AND (COALESCE(b.amt, 0) - COALESCE(pp.amt, 0) - COALESCE(aa.amt, 0)) > 0
+      ORDER BY balance DESC
     `).all<{
       id: number
       client_name: string
