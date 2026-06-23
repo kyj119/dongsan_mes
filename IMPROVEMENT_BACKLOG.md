@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 6 -->
-<!-- last_run_at: 2026-06-23T22:00:00+09:00 -->
+<!-- last_run_area: 1 -->
+<!-- last_run_at: 2026-06-24T02:00:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,14 +8,24 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | 5 (**GitHub open auto-improve 실측 5건** — **#430 post-deploy smoke가 write 경로 무검증(GET 101+로그인 POST 1) → 품목 생성 불능 회귀가 green 통과(은폐)** improvement small [Area 1] · **#435 차감방식(deduction_method/sheet_spec/waste_factor) 설정 UI·API 부재 — 신규 판재 마이그레이션 없이 BOARD/NONE 분류 불가, autoDeduct 침묵 오차감** improvement small [Area 3] · **#436 재고실사 submitted_by/approved_by audit가 항상 'system' — 미전송 X-User-Id 헤더 의존(#394 절반 마이그레이션 잔재)** bug small [Area 4] · **#437 PUT /api/bank/accounts/:id entityFilter 누락 — 타법인 계좌 master cross-tenant 덮어쓰기 IDOR, 형제 DELETE/refresh·corporate_cards PUT(#360)은 적용·PUT만 누락(부분픽스)** bug small [Area 5] · **#438 마이그 번호 0373 중복 — barobill 두 번 리넘버(0362→0372→0373) 직후 UV 마이그가 0374 미사용으로 충돌 재유입, 기능 안전(결정적 적용·상호의존 0)·컨벤션 위반** improvement small [Area 6, 본 사이클]) |
+| 🆕 new | 5 (**GitHub open auto-improve 실측 5건** — **#430 post-deploy smoke가 write 경로 무검증(GET 101+로그인 POST 1) → 품목 생성 불능 회귀가 green 통과(은폐)** improvement small [Area 1] · **#435 차감방식(deduction_method/sheet_spec/waste_factor) 설정 UI·API 부재 — 신규 판재 마이그레이션 없이 BOARD/NONE 분류 불가, autoDeduct 침묵 오차감** improvement small [Area 3] · **#436 재고실사 submitted_by/approved_by audit가 항상 'system' — 미전송 X-User-Id 헤더 의존(#394 절반 마이그레이션 잔재)** bug small [Area 4] · **#437 PUT /api/bank/accounts/:id entityFilter 누락 — 타법인 계좌 master cross-tenant 덮어쓰기 IDOR, 형제 DELETE/refresh·corporate_cards PUT(#360)은 적용·PUT만 누락(부분픽스)** bug small [Area 5] · **#439 스케줄 auto-improve 루틴이 git push 불가(프록시 403) + backlog 318KB라 push_files API 우회도 막힘 → last_run_area origin 고정으로 무한 Area-1 루프** improvement small [Area 1, 본 사이클 재확인]) |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 (#372 CSV도 owner close-completed → done 이관) |
-| ✔️ done | 134 (133 + **owner close-completed #429**[`bd8b191`+`c51f484` print-system 프론트 dead code 2곳 제거 = 2단계 purge 완료] — 직전 7건 일괄 close[#412·#423·#424·#425·#426·#428·#431] 포함, **전 8건 main 트리 실재 검증, #422 디버전스 클래스 clean**) |
+| ✔️ done | 135 (134 + **owner close-completed #438**[`19610de` 마이그 0373/0374 번호충돌 해소 — 품목 마이그를 0375/0376으로 리넘버] — 직전 #429 + 7건 일괄 close 포함, **전 main 트리 실재 검증, #422 디버전스 클래스 clean**) |
 | ❌ rejected | 3 |
 
 > 📦 **과거 사이클 로그**(아래 6블록 이전분)는 `IMPROVEMENT_BACKLOG_ARCHIVE.md`로 이관됨 (2026-06-10 정리). 신규 로그는 계속 이 파일 상단에 추가.
 
+> **Area 1 프로덕션 헬스 (2026-06-24T02:00):**
+> - **방법**: git fetch-before-compare(origin force-update `4993fa7→0e7b886`, fetch 후 **HEAD=origin/main `0e7b886` 0/0 동기**, 디버전스 0). egress 차단(prod/Playwright/verify[node_modules 부재] 도달 불가)이라 CI 결과 + 정적 배선 감사. Area 1 **22회차** — **신선 각도 = 직전 사이클(d614564) 이후 최대 churn = 회계 통합 허브 `/accounting` Phase1~4(`02dfe2d`+`13fb4e2`, 6탭) + 품목 신모델 마이그 0374~0378.**
+> - **🟢 CI/배포 = 전량 green**: 최근 워크플로 run 전수 `completed/success` — 회계 허브 Phase1~4(`02dfe2d`·`13fb4e2`) 포함 모든 Deploy success, 커밋 메시지 `smoke 101/101` 명시. Daily D1 Backup도 success. **신규 prod-breaking 회귀 0.**
+> - **🟢 회계 허브 신규 feature 배선 검증**: `/api/accounting` 라우터 마운트(index.tsx:326) + 페이지 `pageAuthMiddleware`+`requirePagePermission('/accounting')`(:472) + 권한 마이그 `0374_accounting_hub_permission` + accounting.ts(15.8KB) 실재. **인증/권한 게이트 정상**(무인증·무권한 도달 차단).
+> - **🟢 DROP/RENAME 마이그 churn = 0**: 0374~0378 전부 additive(권한 INSERT + 품목/자재 데이터 마이그) — `DROP TABLE/COLUMN/RENAME` 0건 → smoke 맹점 2종(line 40 write-path)이 노출될 스키마 churn 없음. #438 마이그 0373 중복은 owner `19610de`로 0375/0376 리넘버 해소(close-completed).
+> - **🔴 루틴 plumbing 장애 = #439 재확인(본 사이클이 2연속 Area-1 = 무한루프 입증)**: 직전 Area 1 런이 backlog 갱신(last_run_area 6→1)을 **git push 못 해**(프록시 401→403, fetch는 OK) origin `last_run_area`가 6 고정 → 본 스케줄 런이 **다시 Area 1 실행**(예측된 무한 Area-1 루프 실현). push_files API 우회도 backlog 318KB(>256KB Read 한도)라 막힘. **프로덕션 무영향**(헬스 정상), 단 6영역 순환·영속화 불능. owner 조치 필요(git write 권한 복구 또는 backlog 아카이브 트림). 신규 이슈 안 만들고 #439 재사용(중복 회피).
+> - **🟢 backlog↔GitHub sync**: open auto-improve **실측 5건**(#430·#435·#436·#437·#439, list_issues 전수). 직전 stats `new=5`(#430·#435·#436·#437·#438)에서 **#438 owner close-completed**(`19610de`) → done 134→135, #439(직전 Area1 생성) new 편입 → net 5 유지. rejected=3. #422 디버전스: HEAD=origin/main 동기(`0e7b886`)라 미push 픽스 0.
+> - **이상 없음(프로덕션)**: CI 전량 green, 회계 허브 완전 배선, DROP 마이그 0, sync 5=5. **루틴 자체 blocker(#439)만 미해소** — 이는 owner 영역(git 권한/backlog 트림).
+> - 자동 수정 0건, 신규 이슈 0건(#439 재사용), done-sync(#438 close-completed 이관 134→135), **신선 각도 — 회계 허브 신규 feature 배선 + 신모델 마이그 churn 헬스, 프로덕션 영향 0 확인. 단 본 사이클도 push 실패 시 backlog 영속화 불가(아래 commit/push 시도 결과 참조).**
+>
 > **Area 6 자기 진화 (2026-06-23T22:00):**
 > - **방법**: git fetch-before-compare(origin force-update `4993fa7→d614564`, fetch 후 **HEAD=origin/main `d614564` 0/0 동기**, 디버전스 0). egress 차단(prod/Playwright/verify[node_modules 부재] 도달 불가)이라 정적 bridge 재감사. Area 6 **21회차** — **신선 각도 = 직전 Area4(`c51f484`, 14:00)/Area5(`5424c2f`, 18:00) HEAD 이후 churn의 컬럼-diff bridge + XSS bridge + backlog↔GitHub sync.**
 > - **🆕 신규 이슈 #438 (improvement, small) — 마이그 번호 0373 중복(컨벤션 위반, 기능 안전)**: `0373_barobill_registration`(0092046 18:07, 바로빌 0362→0372→0373 **두 번 리넘버**) + `0373_uv_clear_sheet_output`(d614564 18:09, UV 마이그가 0374 대신 0373). **재발 메커니즘 = 리넘버 dance가 한 칸 모자라 수렴** — 바로빌이 충돌 회피로 두 번 올린 2분 뒤 UV가 같은 목표번호로 착륙. **기능 안전 3단 판정**: ① wrangler 전체 파일명 키 정렬 적용=둘 다 결정적 ② 두 0373 상호의존 0(barobill=bank_accounts/corporate_cards ALTER · UV=items/product_materials INSERT) ③ UV 선행의존 `SPC031G-137`은 0372(<0373)에서 생성=적용순 무관 → 순수 컨벤션 위반=minor. issue-only(마이그 리네임=스키마 영역+prod `d1_migrations` 적용여부 egress 확인 불가). 부수 0327×2는 기존(prod적용 추정, 리네임 더 위험)이라 정리 대상 아님.
