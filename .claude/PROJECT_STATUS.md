@@ -14,6 +14,14 @@
 
 ## 🔴 현재 진행 중
 
+- **🟢 [2026-06-23] 회계 통합 관리 허브 `/accounting` — Phase 1 구현·로컬 검증 완료 (미커밋·미배포)**:
+  - spec=`docs/superpowers/specs/2026-06-23-accounting-hub.md`, 메모리=[[design-accounting-hub]]. 7개 페이지 분산 회계기록을 한 화면에서 **통합 조회·정정**.
+  - **신규 파일 4**: `pages/accounting.ts`·`scripts/accounting.js`(전부 `acc*` prefix)·`routes/accounting.ts` + 마이그 **0374**(권한, INSERT OR IGNORE). index.tsx(import+mount `/api/accounting`+page route)·menu.ts(재무 섹션 '회계 허브' 최상단, fa-coins).
+  - **API 2**: `GET /summary`(KPI=수입[기간 매출 obg BILLED/PAID, billed_at KST]·지출[기간 카드≠CANCEL + 매입 total]·미수금[전체 파생 billed−paid−adj, deriveClientBalance 정의]) + `GET /payments`(전체목록, 필터 기간·거래처·금액·검색·entity + 페이지네이션 + 합계). **수정/삭제는 기존 `/api/ledger/payment/:id`(ar-payments) 재사용**.
+  - **결정(용준님)**: KPI=매출/지출합산/미수금 / 입금 API=신규 accounting 라우트(/ledger 무영향). 향후 탭(세금계산서·현금영수증·카드·매입)은 비활성 placeholder로 허브 구조만 제시.
+  - **검증(Playwright 로컬, 0 콘솔에러)**: KPI(수입0·지출0·미수금−10,000=선수금 파생 정확)·입금목록 1건·검색 필터(미스 빈상태/히트 1건)·**수정 round-trip**(모달 채움→계좌이체·메모 저장→행/합계 갱신→원복). 빌드·tsc green. 마이그 0374 로컬 적용.
+  - **▶ 다음**: ①커밋·prod 배포(마이그 0374 remote, ⚠️배포 후 push) ②Phase 2(세금계산서+현금영수증 탭, 기존 GET 재사용) ③Phase 3(카드+매입 탭) ④Phase 4(통합 타임라인). ⚠️ **마이그 번호**: 0374 사용 — prod 배포 전 `Glob migrations/03*.sql` 재확인(브랜치 공유로 충돌 빈번).
+
 - **✅ [2026-06-23] GitHub 이슈 13건 검토·처리 — 11건 수정·prod 배포·close + 2건 보류**:
   - **수정 9 (커밋 `9e0c13c4` → prod dep `0b685d2f` `--branch main` → smoke 101/101 → origin/main `8604af0e`)**: IDOR 2(**#432** cards/lifecycle `cardEntityScope` 개별 카드 10경로·**#427** tasks 조회/통계/변경, `/claim` 공용 에이전트 유지) + 존재X컬럼 4(**#412** scan→`inventory`·**#425** equipment 실컬럼·**#424** users→`phone`·**#428** caps→`inserted+updated`/`error_count`) + dead기능 2(**#426** 단가제안 3중dead 완성·**#431** 카드원단 `product_materials`(is_default)→`print_media_name` 복원) + N+1 1(**#423** 청크 batch). 검증=typecheck+build+JS문법+재작성SQL 로컬D1+entity감사 42/42.
   - **보류 2 (이슈 코멘트만)**: **#429**(제거범위가 #426으로 살린 `onUnitPriceManualChange`+진행중 `product_materials`와 충돌→개편 안정화 후) · **#430**(prod write카나리=e2e-prod오염 차단과 충돌+D1 dry-run 불가→로컬 카나리 권장).
@@ -34,7 +42,8 @@
   - **✅ [2026-06-23] 출력물 누락 감사 + UV뽀닥·UV고휘도반사 등록(0371)**: 원천 4파일 936 distinct 대조. **UV뽀닥**=직물형/호일형(137·30m) 원단별 제품2 / **UV고휘도반사**=프리즘반사시트 백색·노랑×94·122폭(50yd), **색상=차감엔진이 폭으로 못 고르므로 색별 제품+원단그룹 분리**(백색제품→백색원단). 순수데이터(배포불요), 고아0, UV15→19·제품79/활성235.
   - **▶ 남은 미등록 출력물**: ①조명시트(백릿비닐 LT4071/LT4080·LC2000·SPE030A 브랜드, 부착/시공) ②백릿/와이드컬러 ③솔벤캔버스 ④어깨띠/머리띠 ⑤배너류(윈드/워킹/솔벤매쉬/실내/자이언트/미니/외국기/태극기배너). 출력물아님: PVC=켈원단·열승화폰지=폰지원단(등록됨), 코팅지 추가종류(자재), 판재(별도TODO). 뽀닥/고휘도 후가공 미연결(다이컷 등 필요시).
   - **✅ [2026-06-23] 유통 시트 등록(0372)**: 사서 파는 시트=dual(매입+판매), 판매=주문 라인 직접선택. **LC2000(보조시트100)·SPE030A(옥외랩핑137)=상품(GOODS, 출력X 순수판매 — 상품 카탈로그 첫 등록 0→2)** / **SPC031G(투명시트 105/127/137/152)=원자재 dual**(전폭 판매+출력 137). **SPC031G 출력=UV 투명시트(0375, 137폭만 연결)**. **조명시트=generic 1종(0376, JMS-GEN, 매입기록용)** — 간판제작 소비자재, 색상별 재고는 간판BOM 구축 시 확장(결정 '가').
-  - **다음**: SPC031G 출력방식 · 조명시트 결정 · 백릿/캔버스/어깨띠 · 배너류 · 단가.
+  - **✅ 수성 어깨띠 등록(0377)**: 부직포 수성출력. 원단 부직포 5폭(60/90/127/152/180·50m) + 제품 수성 어깨띠(소분류 '어깨띠' 신설). 머리띠 보류(미확정). 수성 8→9.
+  - **다음**: 백릿/와이드컬러 · 솔벤캔버스 · 배너류 · 단가 · (머리띠·간판 BOM).
   - **공용매체**(솔벤·UV 둘 다 출력)=제품 분리+원단 공유(폭매칭 정합). **나염깃발**=PRODUCT(매입+판매+생산,호수별). **전사 직접출력**=깃발/만장기/어구실명제.
   - **★`deduction_method`(0359)**: ROLL(폭매칭+yd)/BOARD(판재 면적→장,sheet_spec ㎡환산)/NONE. autoDeduct 일반화. 신규 판재=등록+연결만(코드0). 자작나무 BOARD 적용·e2e검증.
   - 분류탭 묶음표시(item_group)·검색 폭뱃지·원단 규격(spec) 식별. 후가공(코팅) 차감엔진(0352, 선택UI 보류).
