@@ -31,35 +31,7 @@ export function itemsPage(c: Context<HonoEnv>) {
         <!-- (제거) 소재 추가/일괄 모달 — 소재(print_media) 시스템 폐기 -->
 
 
-        <!-- 그룹 단가 조정 모달 -->
-        <div id="groupPriceModal" class="ds-modal-overlay hidden" style="z-index:60">
-            <div class="ds-modal" style="max-width:460px">
-                <div class="ds-modal-header">
-                    <h2 class="text-lg font-bold" id="groupPriceTitle">그룹 단가 조정</h2>
-                    <button onclick="closeGroupPriceModal()" class="text-gray-400 hover:text-gray-600 text-2xl">&times;</button>
-                </div>
-                <div class="ds-modal-body space-y-4">
-                    <input type="hidden" id="groupPriceName">
-                    <div>
-                        <label class="block text-sm font-semibold text-gray-700 mb-1">조정 방식</label>
-                        <select id="groupPriceAdjustType" onchange="previewGroupPrice()" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
-                            <option value="PERCENT">비율 (%)</option>
-                            <option value="AMOUNT">금액 (원)</option>
-                        </select>
-                    </div>
-                    <div>
-                        <label class="block text-sm font-semibold text-gray-700 mb-1">조정 값</label>
-                        <input type="number" id="groupPriceValue" value="0" onchange="previewGroupPrice()" oninput="previewGroupPrice()" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" placeholder="예: 10 (10% 인상) 또는 -500 (500원 인하)">
-                        <p class="text-xs text-gray-400 mt-1">양수: 인상, 음수: 인하</p>
-                    </div>
-                    <div id="groupPricePreview" class="hidden bg-gray-50 rounded-lg p-3 text-xs"></div>
-                    <div class="flex gap-2 pt-2">
-                        <button onclick="applyGroupPrice()" class="flex-1 px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 text-sm">적용</button>
-                        <button onclick="closeGroupPriceModal()" class="px-4 py-2 border border-gray-300 text-gray-700 bg-white rounded-lg hover:bg-gray-50 text-sm">취소</button>
-                    </div>
-                </div>
-            </div>
-        </div>
+        <!-- (제거) 그룹 단가 조정 모달 — print-system 폐기로 dead (showGroupPriceModal 트리거 없음, loadPrintMedia 부재). #429 -->
 
         <!-- Price History Modal -->
         <div id="priceHistoryModal" class="ds-modal-overlay hidden">

@@ -1,69 +1,7 @@
-// items/bulk.js — 그룹 가격 일괄, 품목 대량 추가, 가격 이력, window exports, 초기 로딩 (소재 일괄=신모델 전환으로 제거 2026-06-21)
+// items/bulk.js — 품목 대량 추가, 가격 이력, window exports, 초기 로딩 (소재 일괄·그룹가격 모달=print-system 폐기로 제거)
 
-// 그룹 단가 조정 모달
-window.showGroupPriceModal = function(groupName) {
-    document.getElementById('groupPriceName').value = groupName;
-    document.getElementById('groupPriceTitle').textContent = '"' + groupName + '" 단가 조정';
-    document.getElementById('groupPriceAdjustType').value = 'PERCENT';
-    document.getElementById('groupPriceValue').value = '0';
-    document.getElementById('groupPricePreview').classList.add('hidden');
-    document.getElementById('groupPriceModal').classList.remove('hidden');
-    previewGroupPrice();
-};
-
-window.closeGroupPriceModal = function() {
-    document.getElementById('groupPriceModal').classList.add('hidden');
-};
-
-window.previewGroupPrice = function() {
-    var groupName = document.getElementById('groupPriceName').value;
-    var adjustType = document.getElementById('groupPriceAdjustType').value;
-    var value = parseFloat(document.getElementById('groupPriceValue').value) || 0;
-    var previewEl = document.getElementById('groupPricePreview');
-
-    if (value === 0) { previewEl.classList.add('hidden'); return; }
-
-    // 캐시에서 그룹 소재 찾기
-    var items = (cachedPrintMediaData && cachedPrintMediaData.groups && cachedPrintMediaData.groups[groupName]) || [];
-    if (items.length === 0) { previewEl.classList.add('hidden'); return; }
-
-    var html = '<table class="w-full text-xs"><thead><tr class="text-gray-500"><th class="text-left pb-1">소재</th><th class="text-right pb-1">현재</th><th class="text-right pb-1">변경후</th></tr></thead><tbody>';
-    items.forEach(function(m) {
-        var oldP = m.price_per_unit || 0;
-        var newP = adjustType === 'PERCENT' ? Math.round(oldP * (1 + value / 100)) : oldP + value;
-        if (newP < 0) newP = 0;
-        html += '<tr class="border-t"><td class="py-1">' + escapeHtml(m.name) + '</td>'
-            + '<td class="py-1 text-right">' + oldP.toLocaleString() + '</td>'
-            + '<td class="py-1 text-right font-medium ' + (newP > oldP ? 'text-red-600' : newP < oldP ? 'text-blue-600' : '') + '">' + newP.toLocaleString() + '</td></tr>';
-    });
-    html += '</tbody></table>';
-    previewEl.innerHTML = html;
-    previewEl.classList.remove('hidden');
-};
-
-window.applyGroupPrice = async function() {
-    var groupName = document.getElementById('groupPriceName').value;
-    var adjustType = document.getElementById('groupPriceAdjustType').value;
-    var value = parseFloat(document.getElementById('groupPriceValue').value) || 0;
-
-    if (value === 0) { showToast('조정 값을 입력해주세요.', 'warning'); return; }
-
-    if (!(await showConfirm('"' + groupName + '" 그룹의 단가를 ' + (adjustType === 'PERCENT' ? value + '%' : value.toLocaleString() + '원') + ' 조정하시겠습니까?'))) return;
-
-    try {
-        var res = await axios.patch('/api/print-system/media/group/' + encodeURIComponent(groupName) + '/price', {
-            adjust_type: adjustType,
-            value: value
-        });
-        if (res.data.success) {
-            showToast(res.data.data.updated_count + '개 소재 단가 조정 완료', 'success');
-            closeGroupPriceModal();
-            loadPrintMedia();
-        }
-    } catch (err) {
-        showToast('단가 조정 실패: ' + (err.response?.data?.error || err.message), 'error');
-    }
-};
+// (#429: 그룹 단가 조정 모달 showGroupPriceModal/closeGroupPriceModal/previewGroupPrice/applyGroupPrice 제거
+//  — print-system 폐기로 트리거·loadPrintMedia 의존성 해체된 dead 블록. /api/print-system/media/group/:g/price 404 호출 제거.)
 
 // ── 이벤트 리스너 ──────────────────────────────────────────
 
