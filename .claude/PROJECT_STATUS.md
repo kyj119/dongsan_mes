@@ -1,6 +1,6 @@
 # PROJECT_STATUS.md — 프로젝트 현황판
 
-> **최종 업데이트**: 2026-06-23 (**품목 마스터 신모델 등록 — 인쇄방식별 제품 + 폭/규격별 원단 + 차감방식 구조화(deduction_method). 제품 66(수성8·솔벤6·UV12·전사7·태극기33)+원자재145/22그룹. 마이그 0336~0359 prod적용·고아0. ⚠️규격그룹/변종/다축 접근=폐기·정리완료(아래 06-21 항목 무효)**). 핸드오프 정본=`memory/session-context.md`
+> **최종 업데이트**: 2026-06-23 (**품목 신모델 등록 계속 — 출력물 대거 추가 마이그 0360~0378(가로등배너·랩핑·솔벤텐트·UV엠보/클리어/뽀닥/고휘도·유통시트·UV투명·조명시트generic·수성어깨띠·백릿) + 소분류/후가공 선택UI Phase1~3(코팅·WAY·수성미디어) prod. 제품~83. ▶남은=솔벤캔버스(원단 미파악 보류)·배너류·단가·간판BOM. ⚠️규격그룹/변종/다축 접근=폐기. ✅별건: 회계허브 `/accounting` Phase1~2 prod 배포완료(dep `f4504b5c`·smoke 101/101, 다음=Phase3 카드+매입 탭)**). 핸드오프 정본=`memory/session-context.md`
 > 완료 이력 → `PROJECT_STATUS_ARCHIVE.md` (매 세션 읽을 필요 없음, 필요 시 참조)
 > **📄 2026-06-21 세션 요약**: 마이그 **0326**(규격그룹 스키마)·**0327**(단순제품64)·**0328**(판재두께변종 base6+19)·**0329**(호수변종 base7+34) prod staged → **items 0→123**(변종53). 구조검증(에이전트3): **6분류=3타입+플래그**(반제품없음·무형 택배비6%=order_items.item_id nullable 자유입력)·**단가재고 구조정확**·**자동화4 미구현**(생산 두께/호수 자재차감=BOM·picker 2단·통계 GROUP BY·avg_unit_cost 이동평균). 통합본609 vs 298(506누락)·수요분석(파레토 **상위50=94%**·죽은품목=UV조합)·**0회=변종 발견**(포맥스두께·태극기호수, 주문이 변종값 달고 출현). 커밋 `1bff1756`·`9be6af90`·`443d9f9c`·`16775fae`. 다음=자재/상품분리·단가·죽은품목·게양옵션. *(06-20: 공장초기화·축모델 확정·업로드본 빌드)*
 
@@ -14,13 +14,13 @@
 
 ## 🔴 현재 진행 중
 
-- **🟢 [2026-06-23] 회계 통합 관리 허브 `/accounting` — Phase 1 구현·로컬 검증 완료 (미커밋·미배포)**:
+- **✅ [2026-06-23] 회계 통합 관리 허브 `/accounting` — Phase 1~2 구현·prod 배포·검증 완료** (커밋 `02dfe2d4`, 마이그 0374 remote, web dep `f4504b5c` `--branch main`, smoke 101/101):
   - spec=`docs/superpowers/specs/2026-06-23-accounting-hub.md`, 메모리=[[design-accounting-hub]]. 7개 페이지 분산 회계기록을 한 화면에서 **통합 조회·정정**.
   - **신규 파일 4**: `pages/accounting.ts`·`scripts/accounting.js`(전부 `acc*` prefix)·`routes/accounting.ts` + 마이그 **0374**(권한, INSERT OR IGNORE). index.tsx(import+mount `/api/accounting`+page route)·menu.ts(재무 섹션 '회계 허브' 최상단, fa-coins).
-  - **API 2**: `GET /summary`(KPI=수입[기간 매출 obg BILLED/PAID, billed_at KST]·지출[기간 카드≠CANCEL + 매입 total]·미수금[전체 파생 billed−paid−adj, deriveClientBalance 정의]) + `GET /payments`(전체목록, 필터 기간·거래처·금액·검색·entity + 페이지네이션 + 합계). **수정/삭제는 기존 `/api/ledger/payment/:id`(ar-payments) 재사용**.
-  - **결정(용준님)**: KPI=매출/지출합산/미수금 / 입금 API=신규 accounting 라우트(/ledger 무영향). 향후 탭(세금계산서·현금영수증·카드·매입)은 비활성 placeholder로 허브 구조만 제시.
-  - **검증(Playwright 로컬, 0 콘솔에러)**: KPI(수입0·지출0·미수금−10,000=선수금 파생 정확)·입금목록 1건·검색 필터(미스 빈상태/히트 1건)·**수정 round-trip**(모달 채움→계좌이체·메모 저장→행/합계 갱신→원복). 빌드·tsc green. 마이그 0374 로컬 적용.
-  - **▶ 다음**: ①커밋·prod 배포(마이그 0374 remote, ⚠️배포 후 push) ②Phase 2(세금계산서+현금영수증 탭, 기존 GET 재사용) ③Phase 3(카드+매입 탭) ④Phase 4(통합 타임라인). ⚠️ **마이그 번호**: 0374 사용 — prod 배포 전 `Glob migrations/03*.sql` 재확인(브랜치 공유로 충돌 빈번).
+  - **Phase 1 (입금)**: `GET /api/accounting/summary`(KPI=수입[기간 매출 obg BILLED/PAID, billed_at KST]·지출[기간 카드≠CANCEL + 매입 total]·미수금[전체 파생 billed−paid−adj, deriveClientBalance 정의]) + `GET /api/accounting/payments`(전체목록, 필터 기간·거래처·금액·검색·entity + 페이지네이션 + 합계). **수정/삭제는 기존 `/api/ledger/payment/:id`(ar-payments) 재사용**. 결정(용준님): KPI=매출/지출합산/미수금 · 입금 API=신규 accounting 라우트(/ledger 무영향).
+  - **Phase 2 (세금계산서·현금영수증 탭)**: 탭 기능화(입금·세금계산서·현금영수증 활성, 카드·매입 비활성 placeholder). 각 탭=**조회 통합**(상태·검색·기간[상단 KPI 기간 공유] 필터) — `GET /api/tax-invoices`·`GET /api/cash-receipts` **기존 GET 재사용**+페이지네이션. **발행/취소 등 정정은 기존 페이지(`/tax-invoices`, `?tab=cash`) 링크아웃**(바로빌 라이프사이클 안전). 상태배지=taxInvoices.js 미러(acc-prefix 격리). 탭 lazy-load + 기간변경 시 활성탭만 재로드.
+  - **검증**: [로컬 Playwright] KPI·입금 목록·검색·수정 round-trip·탭 전환(lazy). [**prod 라이브**] 마이그 0374 remote 적용·권한 ADMIN,MANAGER 확인 → `GET /summary` 200(지출 2,471,090=카드 실데이터)·`GET /payments` 200·`/accounting` 페이지 200(KPI·탭 렌더) → **smoke 101/101**. tsc/build green. origin/main push 완료.
+  - **▶ 다음(Phase 3~4)**: ①Phase 3(카드+매입 탭, `GET /api/card-expenses/transactions`·매입 목록 재사용) ②Phase 4(통합 수입/지출 타임라인). ⚠️ **마이그 번호**: 다음도 `Glob migrations/03*.sql` 재확인(브랜치 공유로 충돌 빈번).
 
 - **✅ [2026-06-23] GitHub 이슈 13건 검토·처리 — 11건 수정·prod 배포·close + 2건 보류**:
   - **수정 9 (커밋 `9e0c13c4` → prod dep `0b685d2f` `--branch main` → smoke 101/101 → origin/main `8604af0e`)**: IDOR 2(**#432** cards/lifecycle `cardEntityScope` 개별 카드 10경로·**#427** tasks 조회/통계/변경, `/claim` 공용 에이전트 유지) + 존재X컬럼 4(**#412** scan→`inventory`·**#425** equipment 실컬럼·**#424** users→`phone`·**#428** caps→`inserted+updated`/`error_count`) + dead기능 2(**#426** 단가제안 3중dead 완성·**#431** 카드원단 `product_materials`(is_default)→`print_media_name` 복원) + N+1 1(**#423** 청크 batch). 검증=typecheck+build+JS문법+재작성SQL 로컬D1+entity감사 42/42.
@@ -29,7 +29,7 @@
 
 - **🟢 [2026-06-23] 품목 마스터 신모델 등록 (정본 = `memory/session-context.md`)**:
   - 신모델 = **분류8 + 인쇄방식별 개별제품 + 폭/규격별 원단 + product_materials + autoDeduct(차감방식 구조화)**. 단가 전부 0.
-  - 등록: 수성8·솔벤**8**·UV**15**·전사**11**·태극기33(나염) 제품 + 원자재150/25그룹. **마이그 0336~0366 prod 적용·고아0**. (제품 75/활성 225, 소분류 100% 매핑)
+  - 등록: 수성**10**·솔벤8·UV**21**·전사11·태극기33(나염) 제품 + 원자재 다수그룹. **마이그 0336~0378 prod 적용·고아0** (출력물 0360~0378 = 가로등배너·랩핑·솔벤텐트·UV엠보/클리어/뽀닥/고휘도·유통시트·UV투명·조명시트generic·수성어깨띠·백릿). 제품~83·소분류 100% 매핑(정확수치=아래 항목별).
   - **[2026-06-23] 가로등배너(0360)+랩핑시트(0361) 등록**: 원천주문 동산3파일 15,943라인 분석→prod 대조→미등록 출력물 추천. ①**가로등배너**=전사 직접출력, 폰지/매쉬 × 60×180/60×150 = **4규격변종(FIXED, 호수변종 방식)**, 출력물 단독(배너대=주문 추가라인), 원단 깃발 공유. ②**랩핑시트**=솔벤·UV **공용매체**, 원단 LD59HTG 137단일폭, AREA. ③**솔벤텐트천**(0362)=공용매체(수성텐트천과 텐트천 원단 공유), AREA. ④**UV엠보시트**(0363)=원단 EP115(100/122폭), WAY=출력옵션(변종X). **★EP115 dual→출력 없이 재단만 판매 시 원단 직접 주문라인**(별도 품목 불요). ⑤**UV클리어필름**(0364)=원단 클리어필름(127/152폭, 중국산 코드없음), UV전용. **Tier1 전부 완료**(그레이후렉스=비조명후렉스→등록불요).
 
 - **🟢 [2026-06-23] 후가공/소분류 선택 UI 서브프로젝트 (brainstorm→Phase별)**:
