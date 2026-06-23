@@ -30,6 +30,11 @@ function buildSoapEnvelope(method: string, service: BarobillService, params: Rec
   for (const [key, value] of Object.entries(params)) {
     if (value === null || value === undefined) {
       paramXml += `<${key} xsi:nil="true" />`
+    } else if (Array.isArray(value)) {
+      // ArrayOfString 타입 (예: ForeignCurrencyCodes). 빈 배열은 빈 엘리먼트.
+      paramXml += value.length === 0
+        ? `<${key} />`
+        : `<${key}>${value.map((v) => `<string>${escapeXml(String(v))}</string>`).join('')}</${key}>`
     } else {
       paramXml += `<${key}>${escapeXml(String(value))}</${key}>`
     }

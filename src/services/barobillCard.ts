@@ -80,3 +80,49 @@ export async function getMonthlyCardLog(
     maxPage: maxPageMatch ? parseInt(maxPageMatch[1]) : 1,
   }
 }
+
+// ---------------------------------------------------------------------------
+// 카드 수집 등록 / 해지 / 즉시조회 (write)
+// ⚠️ 인증정보(WebPwd)는 호출 시 1회만 바로빌로 전송. DB·로그 미저장.
+// ---------------------------------------------------------------------------
+
+export interface RegistCardParams {
+  collectCycle: string    // 수집주기 (바로빌 CollectCycle 코드)
+  cardCompany: string     // 카드사 코드 (바로빌 CardCompany 코드)
+  cardType: string        // 카드 구분 (개인/법인)
+  cardNum: string         // 카드번호 (하이픈 제거)
+  webId: string           // 카드사 홈페이지 ID ⚠️
+  webPwd: string          // 카드사 홈페이지 PW ⚠️
+  alias?: string
+  usage?: string
+}
+
+/**
+ * 카드 수집 등록 (RegistCardEx)
+ * @returns 바로빌 결과코드 — 1 이상이면 성공, 음수면 오류코드
+ */
+export async function registCard(config: BarobillConfig, p: RegistCardParams): Promise<number> {
+  const result = await barobillCall(config, 'CARD', 'RegistCardEx', {
+    CollectCylce: p.collectCycle, // ⚠️ 바로빌 철자(오타) 그대로 — 카드 API 한정
+    CardCompany: p.cardCompany,
+    CardType: p.cardType,
+    CardNum: p.cardNum,
+    WebId: p.webId,
+    WebPwd: p.webPwd,
+    Alias: p.alias || '',
+    Usage: p.usage || '',
+  })
+  return parseInt(result.trim()) || 0
+}
+
+/** 카드 수집 해지 (StopCard) — 1 이상 성공 */
+export async function stopCard(config: BarobillConfig, cardNum: string): Promise<number> {
+  const result = await barobillCall(config, 'CARD', 'StopCard', { CardNum: cardNum })
+  return parseInt(result.trim()) || 0
+}
+
+/** 카드 즉시조회 요청 (RefreshCard) — 1 이상 성공 */
+export async function refreshCard(config: BarobillConfig, cardNum: string): Promise<number> {
+  const result = await barobillCall(config, 'CARD', 'RefreshCard', { CardNum: cardNum })
+  return parseInt(result.trim()) || 0
+}

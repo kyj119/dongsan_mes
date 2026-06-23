@@ -13,6 +13,22 @@ import { validateUpload } from '../utils/uploadValidation'
 const cardExpRouter = new Hono<HonoEnv>()
 cardExpRouter.use('/*', authMiddleware)
 
+/** 바로빌 SOAP config 생성 (법인별 corpNum, 단일 파트너 CERTKEY). 미설정 시 throw. */
+async function getBarobillConfig(c: any) {
+  const testModeRow = await c.env.DB.prepare(
+    "SELECT setting_value FROM settings WHERE setting_key = 'barobill_test_mode'"
+  ).first() as { setting_value: string } | null
+  const isTest = testModeRow?.setting_value !== '0'
+  const certKey = isTest ? c.env.BAROBILL_CERT_KEY : c.env.BAROBILL_CERT_KEY_PROD
+  if (!certKey) throw new Error('BAROBILL_CERT_KEY 미설정')
+  const corpNum = await getEntityCorpNum(c.env.DB, getEntityId(c))
+  if (!corpNum) throw new Error('사업자등록번호 미설정 (법인별 corpNum 확인)')
+  const senderIdRow = await c.env.DB.prepare(
+    "SELECT setting_value FROM settings WHERE setting_key = 'barobill_sender_id'"
+  ).first() as { setting_value: string } | null
+  return { certKey, corpNum, isTest, senderId: senderIdRow?.setting_value || 'DONGSAN' }
+}
+
 // ===========================================================================
 // Phase 1: 법인카드 CRUD
 // ===========================================================================
@@ -43,30 +59,70 @@ cardExpRouter.get('/cards', requireRole('ADMIN', 'MANAGER'), async (c) => {
 cardExpRouter.post('/cards', requireRole('ADMIN'), async (c) => {
   try {
     const body = await c.req.json()
-    const { card_name, card_company, card_number_last4, holder_name, monthly_limit, cutoff_day, payment_day, assigned_user_id } = body
+    const {
+      card_name, card_company, card_number_last4, holder_name, monthly_limit, cutoff_day, payment_day, assigned_user_id,
+      barobill_sync, card_number, web_id, web_pwd, card_type, collect_cycle,
+    } = body
     if (!card_name || !card_company) {
       return c.json({ success: false, error: 'card_name, card_company 필수' }, 400)
     }
     const entityId = getEntityId(c)
 
+    // 바로빌 연동 시 전체 카드번호에서 last4 도출
+    let last4 = card_number_last4
+    if (barobill_sync && card_number) last4 = String(card_number).replace(/[^0-9]/g, '').slice(-4)
+
     // 카드번호 중복 체크 (#190)
-    if (card_number_last4) {
+    if (last4) {
       const existing = await c.env.DB.prepare(
         'SELECT id FROM corporate_cards WHERE card_number_last4 = ? AND entity_id = ?'
-      ).bind(card_number_last4, entityId).first()
+      ).bind(last4, entityId).first()
       if (existing) {
         return c.json({ success: false, error: '동일한 카드번호(끝 4자리)가 이미 등록되어 있습니다' }, 409)
       }
     }
 
+    let barobillRegistered = 0
+    let cycle: string | null = null
+
+    // 바로빌 자동 수집등록 (RegistCardEx). 인증정보(WebPwd)·전체 카드번호는 1회 전송, DB 미저장.
+    if (barobill_sync) {
+      if (!card_number || !web_id || !web_pwd) {
+        return c.json({ success: false, error: '바로빌 연동에는 전체 카드번호·카드사 홈페이지 ID/PW가 필요합니다' }, 400)
+      }
+      const { registCard } = await import('../services/barobillCard')
+      const { BAROBILL_COLLECT_CYCLE, BAROBILL_CARD_TYPE, toBarobillCardCompany } = await import('../constants/barobillCodes')
+      const bbCardCompany = toBarobillCardCompany(card_company)
+      if (!bbCardCompany) {
+        return c.json({ success: false, error: '선택한 카드사는 바로빌 카드조회를 지원하지 않습니다.' }, 400)
+      }
+      const config = await getBarobillConfig(c)
+      const cyc: string = collect_cycle || BAROBILL_COLLECT_CYCLE.DEFAULT
+      cycle = cyc
+      const code = await registCard(config, {
+        collectCycle: cyc,
+        cardCompany: bbCardCompany,
+        cardType: card_type || BAROBILL_CARD_TYPE.CORPORATE,
+        cardNum: String(card_number).replace(/[^0-9]/g, ''),
+        webId: web_id,
+        webPwd: web_pwd,
+        alias: card_name,
+      })
+      if (code <= 0) {
+        return c.json({ success: false, error: `바로빌 카드 수집등록 실패 (결과코드 ${code}). 인증정보/카드사 조회서비스 신청 여부를 확인하세요.` }, 400)
+      }
+      barobillRegistered = 1
+    }
+
     const result = await c.env.DB.prepare(`
-      INSERT INTO corporate_cards (card_name, card_company, card_number_last4, holder_name, monthly_limit, cutoff_day, payment_day, assigned_user_id, entity_id)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).bind(card_name, card_company, card_number_last4 || null, holder_name || null, monthly_limit || 0, cutoff_day || 15, payment_day || 15, assigned_user_id || null, entityId).run()
-    return c.json({ success: true, data: { id: result.meta.last_row_id }, message: '카드 등록 완료' })
-  } catch (error) {
-    console.error('Create card error:', error)
-    return c.json({ success: false, error: '서버 오류' }, 500)
+      INSERT INTO corporate_cards (card_name, card_company, card_number_last4, holder_name, monthly_limit, cutoff_day, payment_day, assigned_user_id, entity_id, barobill_registered, collect_cycle, barobill_registered_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ${barobillRegistered ? 'CURRENT_TIMESTAMP' : 'NULL'})
+    `).bind(card_name, card_company, last4 || null, holder_name || null, monthly_limit || 0, cutoff_day || 15, payment_day || 15, assigned_user_id || null, entityId, barobillRegistered, cycle).run()
+    return c.json({ success: true, data: { id: result.meta.last_row_id }, message: barobillRegistered ? '카드 등록 + 바로빌 수집연동 완료' : '카드 등록 완료' })
+  } catch (error: any) {
+    console.error('Create card error:', error?.message || 'unknown')
+    const msg = String(error?.message || '')
+    return c.json({ success: false, error: msg.includes('미설정') ? msg : '서버 오류' }, 500)
   }
 })
 
@@ -102,10 +158,61 @@ cardExpRouter.delete('/cards/:id', requireRole('ADMIN'), async (c) => {
   try {
     const id = c.req.param('id')
     const ef = entityFilter(c)  // #360: 타법인 법인카드 비활성화 차단
+    const card = await c.env.DB.prepare(
+      `SELECT card_number_last4, barobill_registered FROM corporate_cards WHERE id = ?${ef.clause}`
+    ).bind(id, ...ef.params).first() as { card_number_last4: string | null; barobill_registered: number } | null
+    if (!card) return c.json({ success: false, error: '카드를 찾을 수 없습니다' }, 404)
+
+    // 바로빌 수집 해지 (연동된 카드만): 카드목록에서 last4로 전체번호 역참조 후 StopCard
+    if (card.barobill_registered && card.card_number_last4) {
+      try {
+        const { getCardList, stopCard } = await import('../services/barobillCard')
+        const config = await getBarobillConfig(c)
+        const bbCards = await getCardList(config)
+        const match = bbCards.find((bc: any) => (bc.CardNum || '').slice(-4) === card.card_number_last4)
+        if (match && match.CardNum) {
+          const code = await stopCard(config, match.CardNum)
+          if (code <= 0) {
+            return c.json({ success: false, error: `바로빌 카드 수집 해지 실패 (결과코드 ${code}).` }, 400)
+          }
+        }
+      } catch (e: any) {
+        console.error('Card stop error:', e?.message || 'unknown')
+        return c.json({ success: false, error: '바로빌 해지 중 오류가 발생했습니다.' }, 500)
+      }
+    }
+
     await c.env.DB.prepare(`UPDATE corporate_cards SET is_active = 0 WHERE id = ?${ef.clause}`).bind(id, ...ef.params).run()
     return c.json({ success: true, message: '카드 삭제 완료' })
   } catch (error) {
+    console.error('Delete card error:', error)
     return c.json({ success: false, error: '서버 오류' }, 500)
+  }
+})
+
+// POST /api/card-expenses/cards/:id/refresh — 바로빌 즉시조회 요청 (RefreshCard)
+cardExpRouter.post('/cards/:id/refresh', requireRole('ADMIN'), async (c) => {
+  try {
+    const id = c.req.param('id')
+    const ef = entityFilter(c)
+    const card = await c.env.DB.prepare(
+      `SELECT card_number_last4, barobill_registered FROM corporate_cards WHERE id = ? AND is_active = 1${ef.clause}`
+    ).bind(id, ...ef.params).first() as { card_number_last4: string | null; barobill_registered: number } | null
+    if (!card) return c.json({ success: false, error: '카드를 찾을 수 없습니다' }, 404)
+    if (!card.barobill_registered) return c.json({ success: false, error: '바로빌에 연동되지 않은 카드입니다' }, 400)
+
+    const { getCardList, refreshCard } = await import('../services/barobillCard')
+    const config = await getBarobillConfig(c)
+    const bbCards = await getCardList(config)
+    const match = bbCards.find((bc: any) => (bc.CardNum || '').slice(-4) === card.card_number_last4)
+    if (!match || !match.CardNum) return c.json({ success: false, error: '바로빌에서 카드를 찾을 수 없습니다' }, 404)
+    const code = await refreshCard(config, match.CardNum)
+    if (code <= 0) return c.json({ success: false, error: `즉시조회 요청 실패 (결과코드 ${code})` }, 400)
+    return c.json({ success: true, message: '바로빌 즉시조회를 요청했습니다. 잠시 후 동기화하세요.' })
+  } catch (error: any) {
+    console.error('Card refresh error:', error?.message || 'unknown')
+    const msg = String(error?.message || '')
+    return c.json({ success: false, error: msg.includes('미설정') ? msg : '서버 오류' }, 500)
   }
 })
 

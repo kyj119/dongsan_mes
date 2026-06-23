@@ -353,6 +353,37 @@ export function cardExpensesPage(c: Context<HonoEnv>) {
                 <option value="">미지정</option>
               </select>
             </div>
+            <!-- 바로빌 자동 수집 연동 (신규 등록 시) -->
+            <div id="cardBarobillSection" class="border-t pt-3">
+              <label class="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" id="cardBarobillSync" onchange="toggleCardBarobill()" class="rounded">
+                <span class="text-sm font-semibold text-gray-700"><i class="fas fa-link text-emerald-500 mr-1"></i>바로빌 자동 수집 연동</span>
+              </label>
+              <div id="cardBarobillFields" class="hidden mt-3 space-y-3 bg-gray-50 rounded-lg p-3">
+                <p class="text-xs text-gray-500"><i class="fas fa-shield-alt mr-1"></i>인증정보는 바로빌 등록에만 1회 사용되며 MES에 저장되지 않습니다. 카드사 이용내역 조회 서비스가 먼저 신청되어 있어야 합니다.</p>
+                <div>
+                  <label class="text-sm font-semibold text-gray-700 mb-1 block">전체 카드번호 <span class="text-red-500">*</span></label>
+                  <input type="text" id="cardFullNum" inputmode="numeric" autocomplete="off" placeholder="카드번호 전체 (- 없이)" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                  <div>
+                    <label class="text-sm font-semibold text-gray-700 mb-1 block">카드사 홈페이지 ID <span class="text-red-500">*</span></label>
+                    <input type="text" id="cardWebId" autocomplete="off" placeholder="카드사 로그인 ID" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+                  </div>
+                  <div>
+                    <label class="text-sm font-semibold text-gray-700 mb-1 block">카드사 홈페이지 PW <span class="text-red-500">*</span></label>
+                    <input type="password" id="cardWebPwd" autocomplete="new-password" placeholder="카드사 로그인 PW" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+                  </div>
+                  <div>
+                    <label class="text-sm font-semibold text-gray-700 mb-1 block">카드 구분</label>
+                    <select id="cardTypeSel" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+                      <option value="C">법인</option>
+                      <option value="P">개인</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
           <div class="flex justify-end gap-2 mt-6">
             <button onclick="closeCardModal()" class="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm hover:bg-gray-50">취소</button>

@@ -326,6 +326,41 @@ export function bankPage(c: Context<HonoEnv>) {
               <label class="form-label">예금주</label>
               <input type="text" id="accHolder" class="form-input" placeholder="예금주명">
             </div>
+            <!-- 바로빌 자동 수집 연동 (신규 등록 시) -->
+            <div id="accBarobillSection" class="border-t pt-3 mt-1">
+              <label class="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" id="accBarobillSync" onchange="toggleAccBarobill()" class="rounded">
+                <span class="text-sm font-semibold text-gray-700"><i class="fas fa-link text-emerald-500 mr-1"></i>바로빌 자동 수집 연동</span>
+              </label>
+              <div id="accBarobillFields" class="hidden mt-3 space-y-3 bg-gray-50 rounded-lg p-3">
+                <p class="text-xs text-gray-500"><i class="fas fa-shield-alt mr-1"></i>인증정보는 바로빌 등록에만 1회 사용되며 MES에 저장되지 않습니다. 은행 빠른조회(조회전용) 서비스가 먼저 신청되어 있어야 합니다.</p>
+                <div class="grid grid-cols-2 gap-3">
+                  <div>
+                    <label class="form-label">예금주 식별번호 <span class="text-red-500">*</span></label>
+                    <input type="text" id="accIdentityNum" class="form-input" autocomplete="off" placeholder="사업자번호 또는 생년월일">
+                  </div>
+                  <div>
+                    <label class="form-label">계좌 비밀번호 <span class="text-red-500">*</span></label>
+                    <input type="password" id="accPassword" class="form-input" autocomplete="new-password" placeholder="계좌 비밀번호">
+                  </div>
+                  <div>
+                    <label class="form-label">인터넷뱅킹 ID <span class="text-red-500">*</span></label>
+                    <input type="text" id="accWebId" class="form-input" autocomplete="off" placeholder="조회전용/뱅킹 ID">
+                  </div>
+                  <div>
+                    <label class="form-label">인터넷뱅킹 PW <span class="text-red-500">*</span></label>
+                    <input type="password" id="accWebPwd" class="form-input" autocomplete="new-password" placeholder="조회전용/뱅킹 PW">
+                  </div>
+                  <div>
+                    <label class="form-label">계좌 구분</label>
+                    <select id="accType" class="form-select">
+                      <option value="C">법인</option>
+                      <option value="P">개인</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
           <div class="flex gap-2 justify-end mt-6">
             <button onclick="closeAccountModal()" class="btn-secondary">취소</button>

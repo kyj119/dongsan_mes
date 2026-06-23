@@ -17,6 +17,22 @@ const bankRouter = new Hono<HonoEnv>()
 
 bankRouter.use('/*', authMiddleware)
 
+/** 바로빌 SOAP config 생성 (법인별 corpNum, 단일 파트너 CERTKEY). 미설정 시 throw. */
+async function getBarobillConfig(c: any) {
+  const testModeRow = await c.env.DB.prepare(
+    "SELECT setting_value FROM settings WHERE setting_key = 'barobill_test_mode'"
+  ).first() as { setting_value: string } | null
+  const isTest = testModeRow?.setting_value !== '0'
+  const certKey = isTest ? c.env.BAROBILL_CERT_KEY : c.env.BAROBILL_CERT_KEY_PROD
+  if (!certKey) throw new Error('BAROBILL_CERT_KEY 미설정')
+  const corpNum = await getEntityCorpNum(c.env.DB, getEntityId(c))
+  if (!corpNum) throw new Error('사업자등록번호 미설정 (법인별 corpNum 확인)')
+  const senderIdRow = await c.env.DB.prepare(
+    "SELECT setting_value FROM settings WHERE setting_key = 'barobill_sender_id'"
+  ).first() as { setting_value: string } | null
+  return { certKey, corpNum, isTest, senderId: senderIdRow?.setting_value || 'DONGSAN' }
+}
+
 // ---------------------------------------------------------------------------
 // 계좌 관리
 // ---------------------------------------------------------------------------
@@ -26,7 +42,7 @@ bankRouter.get('/accounts', requireRole('ADMIN'), async (c) => {
   try {
     const ef = entityFilter(c, 'bank_accounts')
     const { results } = await c.env.DB.prepare(
-      `SELECT id, bank_code, bank_name, account_number, account_holder, connected_id, is_active, last_synced_at, last_synced_date, entity_id, created_at FROM bank_accounts WHERE is_active = 1${ef.clause} ORDER BY created_at DESC`
+      `SELECT id, bank_code, bank_name, account_number, account_holder, connected_id, is_active, last_synced_at, last_synced_date, entity_id, created_at, barobill_registered, collect_cycle, barobill_registered_at FROM bank_accounts WHERE is_active = 1${ef.clause} ORDER BY created_at DESC`
     ).bind(...ef.params).all()
     return c.json({ success: true, data: results })
   } catch (error) {
@@ -39,7 +55,11 @@ bankRouter.get('/accounts', requireRole('ADMIN'), async (c) => {
 bankRouter.post('/accounts', requireRole('ADMIN'), async (c) => {
   try {
     const body = await c.req.json()
-    const { bank_code, bank_name, account_number, account_holder } = body
+    const {
+      bank_code, bank_name, account_number, account_holder,
+      barobill_sync, account_password, web_id, web_pwd, identity_num,
+      collect_cycle, account_type,
+    } = body
 
     if (!bank_code || !bank_name || !account_number) {
       return c.json({
@@ -48,27 +68,67 @@ bankRouter.post('/accounts', requireRole('ADMIN'), async (c) => {
       }, 400)
     }
 
+    const entityId = getEntityId(c)
+    let barobillRegistered = 0
+    let cycle: string | null = null
+
+    // 바로빌 자동 수집등록 (RegistBankAccountEx). 인증정보는 1회 전송, DB/로그 미저장.
+    if (barobill_sync) {
+      const { registBankAccount } = await import('../services/barobillBank')
+      const { BAROBILL_COLLECT_CYCLE, BAROBILL_BANK_ACCOUNT_TYPE, toBarobillBank } = await import('../constants/barobillCodes')
+      const bbBank = toBarobillBank(bank_code)
+      if (!bbBank) {
+        return c.json({ success: false, error: '선택한 은행은 바로빌 계좌조회를 지원하지 않습니다 (카카오·토스뱅크 제외).' }, 400)
+      }
+      // 은행별 필수항목이 달라 최소 검증만: 예금주 식별번호 + (계좌비번 또는 빠른조회 ID/PW)
+      if (!identity_num || (!account_password && !(web_id && web_pwd))) {
+        return c.json({ success: false, error: '바로빌 연동에는 예금주 식별번호와, 계좌비밀번호 또는 빠른조회 ID/PW가 필요합니다 (은행별 상이).' }, 400)
+      }
+      const config = await getBarobillConfig(c)
+      const cyc: string = collect_cycle || BAROBILL_COLLECT_CYCLE.DEFAULT
+      cycle = cyc
+      const code = await registBankAccount(config, {
+        collectCycle: cyc,
+        bank: bbBank,
+        bankAccountType: account_type || BAROBILL_BANK_ACCOUNT_TYPE.CORPORATE,
+        bankAccountNum: String(account_number).replace(/-/g, ''),
+        bankAccountPwd: account_password || '',
+        webId: web_id || '',
+        webPwd: web_pwd || '',
+        identityNum: String(identity_num).replace(/-/g, ''),
+        alias: account_holder || bank_name,
+      })
+      if (code <= 0) {
+        return c.json({ success: false, error: `바로빌 계좌 수집등록 실패 (결과코드 ${code}). 인증정보/은행 빠른조회 신청 여부를 확인하세요.` }, 400)
+      }
+      barobillRegistered = 1
+    }
+
     const result = await c.env.DB.prepare(`
-      INSERT INTO bank_accounts (bank_code, bank_name, account_number, account_holder, entity_id)
-      VALUES (?, ?, ?, ?, ?)
+      INSERT INTO bank_accounts (bank_code, bank_name, account_number, account_holder, entity_id, barobill_registered, collect_cycle, barobill_registered_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ${barobillRegistered ? 'CURRENT_TIMESTAMP' : 'NULL'})
     `).bind(
       bank_code,
       bank_name,
       account_number,
       account_holder ?? null,
-      getEntityId(c)
+      entityId,
+      barobillRegistered,
+      cycle,
     ).run()
 
     return c.json({
       success: true,
       data: { id: result.meta.last_row_id },
-      message: '계좌가 등록되었습니다'
+      message: barobillRegistered ? '계좌 등록 + 바로빌 수집연동 완료' : '계좌가 등록되었습니다'
     })
-  } catch (error) {
-    console.error('Create bank account error:', error)
+  } catch (error: any) {
+    // 인증정보가 포함된 요청 본문은 로그에 남기지 않음 (메시지만)
+    console.error('Create bank account error:', error?.message || 'unknown')
+    const msg = String(error?.message || '')
     return c.json({
       success: false,
-      error: '서버 오류가 발생했습니다.'
+      error: msg.includes('미설정') ? msg : '서버 오류가 발생했습니다.'
     }, 500)
   }
 })
@@ -113,17 +173,32 @@ bankRouter.put('/accounts/:id', requireRole('ADMIN'), async (c) => {
   }
 })
 
-// DELETE /api/bank/accounts/:id — 비활성화 (soft delete)
+// DELETE /api/bank/accounts/:id — 비활성화 (soft delete) + 바로빌 수집 해지
 bankRouter.delete('/accounts/:id', requireRole('ADMIN'), async (c) => {
   try {
     const id = c.req.param('id')
-
+    const ef = entityFilter(c, 'bank_accounts')
     const account = await c.env.DB.prepare(
-      'SELECT id FROM bank_accounts WHERE id = ? AND is_active = 1'
-    ).bind(id).first()
+      `SELECT id, account_number, barobill_registered FROM bank_accounts WHERE id = ? AND is_active = 1${ef.clause}`
+    ).bind(id, ...ef.params).first() as { id: number; account_number: string; barobill_registered: number } | null
 
     if (!account) {
       return c.json({ success: false, error: '계좌를 찾을 수 없습니다' }, 404)
+    }
+
+    // 바로빌 수집 해지 (연동된 계좌만). 실패 시 MES 비활성화 보류 — 상태 불일치 방지.
+    if (account.barobill_registered) {
+      try {
+        const { stopBankAccount } = await import('../services/barobillBank')
+        const config = await getBarobillConfig(c)
+        const code = await stopBankAccount(config, String(account.account_number).replace(/-/g, ''))
+        if (code <= 0) {
+          return c.json({ success: false, error: `바로빌 계좌 수집 해지 실패 (결과코드 ${code}). 바로빌 상태를 확인하세요.` }, 400)
+        }
+      } catch (e: any) {
+        console.error('Bank stop error:', e?.message || 'unknown')
+        return c.json({ success: false, error: '바로빌 해지 중 오류가 발생했습니다.' }, 500)
+      }
     }
 
     await c.env.DB.prepare(
@@ -137,6 +212,29 @@ bankRouter.delete('/accounts/:id', requireRole('ADMIN'), async (c) => {
       success: false,
       error: '서버 오류가 발생했습니다.'
     }, 500)
+  }
+})
+
+// POST /api/bank/accounts/:id/refresh — 바로빌 즉시조회 요청 (RefreshBankAccount)
+bankRouter.post('/accounts/:id/refresh', requireRole('ADMIN'), async (c) => {
+  try {
+    const id = c.req.param('id')
+    const ef = entityFilter(c, 'bank_accounts')
+    const account = await c.env.DB.prepare(
+      `SELECT account_number, barobill_registered FROM bank_accounts WHERE id = ? AND is_active = 1${ef.clause}`
+    ).bind(id, ...ef.params).first() as { account_number: string; barobill_registered: number } | null
+    if (!account) return c.json({ success: false, error: '계좌를 찾을 수 없습니다' }, 404)
+    if (!account.barobill_registered) return c.json({ success: false, error: '바로빌에 연동되지 않은 계좌입니다' }, 400)
+
+    const { refreshBankAccount } = await import('../services/barobillBank')
+    const config = await getBarobillConfig(c)
+    const code = await refreshBankAccount(config, String(account.account_number).replace(/-/g, ''))
+    if (code <= 0) return c.json({ success: false, error: `즉시조회 요청 실패 (결과코드 ${code})` }, 400)
+    return c.json({ success: true, message: '바로빌 즉시조회를 요청했습니다. 잠시 후 동기화하세요.' })
+  } catch (error: any) {
+    console.error('Bank refresh error:', error?.message || 'unknown')
+    const msg = String(error?.message || '')
+    return c.json({ success: false, error: msg.includes('미설정') ? msg : '서버 오류가 발생했습니다.' }, 500)
   }
 })
 

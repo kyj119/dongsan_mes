@@ -286,9 +286,11 @@ async function loadCards() {
       var barColor = usageRate > 90 ? '#ef4444' : usageRate > 70 ? '#f59e0b' : '#22c55e';
       return '<div class="ds-card">' +
         '<div class="flex items-center justify-between mb-3">' +
-        '<div><div class="font-bold text-gray-800">' + escapeHtml(c.card_name) + '</div>' +
+        '<div><div class="font-bold text-gray-800">' + escapeHtml(c.card_name) +
+        (c.barobill_registered ? ' <span class="ml-1 inline-block px-1.5 py-0.5 rounded text-xs font-medium" style="background:#d1fae5;color:#065f46;"><i class="fas fa-link mr-0.5"></i>바로빌</span>' : '') + '</div>' +
         '<div class="text-xs text-gray-500">' + escapeHtml(c.card_company) + (c.card_number_last4 ? ' •••• ' + c.card_number_last4 : '') + '</div></div>' +
         '<div class="flex gap-1">' +
+        (c.barobill_registered ? '<button onclick="refreshCard(' + c.id + ')" title="바로빌 즉시조회" class="text-gray-400 hover:text-emerald-600 p-1"><i class="fas fa-sync-alt text-xs"></i></button>' : '') +
         '<button onclick="editCard(' + c.id + ')" class="text-gray-400 hover:text-blue-600 p-1"><i class="fas fa-pen text-xs"></i></button>' +
         '<button onclick="deleteCard(' + c.id + ')" class="text-gray-400 hover:text-red-600 p-1"><i class="fas fa-trash text-xs"></i></button></div></div>' +
         (c.holder_name ? '<div class="text-xs text-gray-500 mb-2"><i class="fas fa-user mr-1"></i>' + escapeHtml(c.holder_name) + '</div>' : '') +
@@ -300,6 +302,23 @@ async function loadCards() {
   } catch (e) { console.error('Cards load error:', e); }
 }
 
+// 바로빌 연동 인증정보 입력란 토글
+function toggleCardBarobill() {
+  var sync = document.getElementById('cardBarobillSync');
+  var fields = document.getElementById('cardBarobillFields');
+  if (fields) fields.classList.toggle('hidden', !(sync && sync.checked));
+}
+function resetCardBarobill() {
+  var sync = document.getElementById('cardBarobillSync');
+  if (sync) sync.checked = false;
+  var fields = document.getElementById('cardBarobillFields');
+  if (fields) fields.classList.add('hidden');
+  ['cardFullNum','cardWebId','cardWebPwd'].forEach(function(id) {
+    var el = document.getElementById(id);
+    if (el) el.value = '';
+  });
+}
+
 function openAddCardModal() {
   document.getElementById('editCardId').value = '';
   document.getElementById('cardName').value = '';
@@ -307,6 +326,9 @@ function openAddCardModal() {
   document.getElementById('cardLast4').value = '';
   document.getElementById('cardLimit').value = '';
   document.getElementById('cardHolder').value = '';
+  resetCardBarobill();
+  var sec = document.getElementById('cardBarobillSection');
+  if (sec) sec.classList.remove('hidden'); // 신규 등록 시에만 바로빌 연동 노출
   document.getElementById('cardModalTitle').innerHTML = '<i class="fas fa-credit-card text-blue-500 mr-2"></i>카드 등록';
   document.getElementById('cardModal').classList.remove('hidden');
 }
@@ -325,6 +347,9 @@ async function editCard(id) {
   document.getElementById('cardPayDay').value = card.payment_day || 15;
   var assignSel = document.getElementById('cardAssignedUser');
   if (assignSel) assignSel.value = card.assigned_user_id || '';
+  resetCardBarobill();
+  var sec = document.getElementById('cardBarobillSection');
+  if (sec) sec.classList.add('hidden'); // 수정 시 바로빌 재등록 미지원
   document.getElementById('cardModalTitle').innerHTML = '<i class="fas fa-credit-card text-blue-500 mr-2"></i>카드 수정';
   document.getElementById('cardModal').classList.remove('hidden');
 }
@@ -342,14 +367,43 @@ async function saveCard() {
     assigned_user_id: parseInt(document.getElementById('cardAssignedUser').value) || null
   };
   if (!data.card_name || !data.card_company) { showToast('카드명과 카드사는 필수입니다', 'warning'); return; }
+  // 바로빌 자동 연동 (신규 등록 시에만)
+  var syncEl = document.getElementById('cardBarobillSync');
+  if (!id && syncEl && syncEl.checked) {
+    var fullNum = document.getElementById('cardFullNum').value.replace(/[^0-9]/g, '');
+    var webId = document.getElementById('cardWebId').value.trim();
+    var webPwd = document.getElementById('cardWebPwd').value;
+    if (!fullNum || !webId || !webPwd) { showToast('바로빌 연동에 필요한 카드번호·ID/PW를 입력하세요.', 'warning'); return; }
+    data.barobill_sync = true;
+    data.card_number = fullNum;
+    data.web_id = webId;
+    data.web_pwd = webPwd;
+    var typeEl = document.getElementById('cardTypeSel');
+    data.card_type = typeEl ? typeEl.value : 'C';
+  }
   try {
-    if (id) await axios.put('/api/card-expenses/cards/' + id, data);
-    else await axios.post('/api/card-expenses/cards', data);
-    showToast(id ? '카드 수정 완료' : '카드 등록 완료', 'success');
+    var resp = id
+      ? await axios.put('/api/card-expenses/cards/' + id, data)
+      : await axios.post('/api/card-expenses/cards', data);
+    showToast((resp && resp.data && resp.data.message) || (id ? '카드 수정 완료' : '카드 등록 완료'), 'success');
     closeCardModal();
     loadCards();
     loadCardOptions();
-  } catch (e) { showToast('저장 실패', 'error'); }
+  } catch (e) {
+    var msg = (e.response && e.response.data && e.response.data.error) ? e.response.data.error : '저장 실패';
+    showToast(msg, 'error');
+  }
+}
+
+// 바로빌 즉시조회 요청
+async function refreshCard(id) {
+  try {
+    var resp = await axios.post('/api/card-expenses/cards/' + id + '/refresh');
+    showToast((resp && resp.data && resp.data.message) || '즉시조회 요청 완료', 'success');
+  } catch (e) {
+    var msg = (e.response && e.response.data && e.response.data.error) ? e.response.data.error : '즉시조회 실패';
+    showToast(msg, 'error');
+  }
 }
 
 async function deleteCard(id) {

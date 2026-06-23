@@ -724,7 +724,9 @@
     var html = '';
     accounts.forEach(function(a) {
       var syncTime = a.last_synced_at ? formatKST(a.last_synced_at) : '동기화 안됨';
-      var connBadge = '';
+      var connBadge = a.barobill_registered
+        ? ' <span class="ml-1 inline-block px-2 py-0.5 rounded text-xs font-medium" style="background:#d1fae5;color:#065f46;"><i class="fas fa-link mr-1"></i>바로빌 연동</span>'
+        : '';
       html += '<div class="account-card">';
       html += '<div class="flex items-center gap-4">';
       html += '<div class="w-10 h-10 rounded-full bg-blue-50 flex items-center justify-center"><i class="fas fa-university text-blue-600"></i></div>';
@@ -735,6 +737,9 @@
       html += '</div>';
       html += '</div>';
       html += '<div class="flex gap-2">';
+      if (a.barobill_registered) {
+        html += '<button class="btn-sm" style="background:#d1fae5;color:#065f46;" onclick="refreshAccount(' + a.id + ')"><i class="fas fa-sync-alt mr-1"></i>즉시조회</button>';
+      }
       html += '<button class="btn-sm" style="background:#e0e7ff;color:#3730a3;" onclick="editAccount(' + a.id + ')"><i class="fas fa-edit mr-1"></i>수정</button>';
       html += '<button class="btn-sm btn-delete" onclick="deleteAccount(' + a.id + ')"><i class="fas fa-trash mr-1"></i>삭제</button>';
       html += '</div>';
@@ -744,18 +749,50 @@
   }
 
   window.deleteAccount = async function(id) {
-    if (!(await showConfirm('계좌를 비활성화하시겠습니까?', { danger: true }))) return;
+    var acc = accounts.find(function(a) { return a.id === id; });
+    var msg = (acc && acc.barobill_registered)
+      ? '계좌를 비활성화하시겠습니까? 바로빌 수집도 함께 해지됩니다.'
+      : '계좌를 비활성화하시겠습니까?';
+    if (!(await showConfirm(msg, { danger: true }))) return;
     axios.delete('/api/bank/accounts/' + id).then(function() {
       showToast('계좌 삭제됨', 'success');
       loadAccounts();
       loadAccountFilter();
     }).catch(function(e) {
-      var msg = (e.response && e.response.data && e.response.data.error) ? e.response.data.error : '삭제 실패';
-      showToast(msg, 'error');
+      var m = (e.response && e.response.data && e.response.data.error) ? e.response.data.error : '삭제 실패';
+      showToast(m, 'error');
+    });
+  };
+
+  // 바로빌 즉시조회 요청
+  window.refreshAccount = function(id) {
+    axios.post('/api/bank/accounts/' + id + '/refresh').then(function(r) {
+      showToast((r && r.data && r.data.message) || '즉시조회 요청 완료', 'success');
+    }).catch(function(e) {
+      var m = (e.response && e.response.data && e.response.data.error) ? e.response.data.error : '즉시조회 실패';
+      showToast(m, 'error');
     });
   };
 
   // Account modal (add/edit)
+  // 바로빌 연동 인증정보 입력란 토글
+  window.toggleAccBarobill = function() {
+    var sync = document.getElementById('accBarobillSync');
+    var fields = document.getElementById('accBarobillFields');
+    if (fields) fields.classList.toggle('hidden', !(sync && sync.checked));
+  };
+
+  function resetAccBarobill() {
+    var sync = document.getElementById('accBarobillSync');
+    if (sync) sync.checked = false;
+    var fields = document.getElementById('accBarobillFields');
+    if (fields) fields.classList.add('hidden');
+    ['accIdentityNum','accPassword','accWebId','accWebPwd'].forEach(function(id) {
+      var el = document.getElementById(id);
+      if (el) el.value = '';
+    });
+  }
+
   window.openAddAccountModal = function() {
     document.getElementById('accEditId').value = '';
     document.getElementById('accountModalTitle').innerHTML = '<i class="fas fa-university text-blue-500 mr-2"></i>새 계좌 등록';
@@ -764,6 +801,9 @@
       var el = document.getElementById(id);
       if (el) el.value = '';
     });
+    resetAccBarobill();
+    var sec = document.getElementById('accBarobillSection');
+    if (sec) sec.classList.remove('hidden'); // 신규 등록 시에만 바로빌 연동 노출
     document.getElementById('accountModal').classList.add('show');
   };
 
@@ -776,6 +816,9 @@
     document.getElementById('accBank').value = acc.bank_code || '';
     document.getElementById('accNumber').value = acc.account_number || '';
     document.getElementById('accHolder').value = acc.account_holder || '';
+    resetAccBarobill();
+    var sec = document.getElementById('accBarobillSection');
+    if (sec) sec.classList.add('hidden'); // 수정 시 바로빌 재등록 미지원
     document.getElementById('accountModal').classList.add('show');
   };
 
@@ -798,11 +841,29 @@
       account_number: number,
       account_holder: holder || null
     };
+    // 바로빌 자동 연동 (신규 등록 시에만)
+    var syncEl = document.getElementById('accBarobillSync');
+    if (!editId && syncEl && syncEl.checked) {
+      var identity = document.getElementById('accIdentityNum').value.trim();
+      var pwd = document.getElementById('accPassword').value;
+      var webId = document.getElementById('accWebId').value.trim();
+      var webPwd = document.getElementById('accWebPwd').value;
+      if (!identity || !pwd || !webId || !webPwd) {
+        showToast('바로빌 연동에 필요한 인증정보를 모두 입력하세요.', 'warning'); return;
+      }
+      body.barobill_sync = true;
+      body.identity_num = identity;
+      body.account_password = pwd;
+      body.web_id = webId;
+      body.web_pwd = webPwd;
+      var typeEl = document.getElementById('accType');
+      body.account_type = typeEl ? typeEl.value : 'C';
+    }
     var promise = editId
       ? axios.put('/api/bank/accounts/' + editId, body)
       : axios.post('/api/bank/accounts', body);
-    promise.then(function() {
-      showToast(editId ? '계좌 수정 완료' : '계좌 등록 완료', 'success');
+    promise.then(function(r) {
+      showToast((r && r.data && r.data.message) || (editId ? '계좌 수정 완료' : '계좌 등록 완료'), 'success');
       closeAccountModal();
       loadAccounts();
       loadAccountFilter();
