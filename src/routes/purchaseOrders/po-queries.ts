@@ -188,11 +188,14 @@ poQueriesRouter.get('/:id/invoice', async (c) => {
       : null
 
     const { results: items } = await c.env.DB.prepare(`
-      SELECT id, po_id, item_id, item_name, category_name, quantity, received_quantity,
-             unit, unit_price, price_status, amount, vat_included, sort_order, notes,
-             accepted_quantity, rejected_quantity, storage_zone_id, line_status,
-             received_by, received_at, created_at, updated_at
-      FROM purchase_order_items WHERE po_id = ? ORDER BY sort_order ASC
+      SELECT poi.id, poi.po_id, poi.item_id, poi.item_name, poi.category_name, poi.quantity, poi.received_quantity,
+             poi.unit, poi.unit_price, poi.price_status, poi.amount, poi.vat_included, poi.sort_order, poi.notes,
+             poi.accepted_quantity, poi.rejected_quantity, poi.storage_zone_id, poi.line_status,
+             poi.received_by, poi.received_at, poi.created_at, poi.updated_at,
+             i.width_mm AS item_width_mm, i.specification AS item_specification
+      FROM purchase_order_items poi
+      LEFT JOIN items i ON i.id = poi.item_id
+      WHERE poi.po_id = ? ORDER BY poi.sort_order ASC
     `).bind(id).all()
 
     // Get company settings (entity 우선, 폴백 settings)

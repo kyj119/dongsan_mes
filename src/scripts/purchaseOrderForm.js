@@ -643,6 +643,8 @@ async function loadPOData(id) {
         addItemRow({
           item_id: it.item_id || '',
           item_name: it.item_name || '',
+          // 규격(원단 폭 등)은 품목마스터에서 파생 — PO 라인엔 저장 안 됨(item_id가 폭을 고정). 저장본 우선 없으면 폭→cm.
+          specification: it.item_specification || (it.item_width_mm ? (it.item_width_mm / 10).toFixed(0) + 'cm' : ''),
           quantity: it.quantity || 1,
           unit: it.unit || 'EA',
           unit_price: it.unit_price || 0,

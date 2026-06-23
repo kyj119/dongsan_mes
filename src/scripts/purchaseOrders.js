@@ -250,8 +250,11 @@ async function viewDetail(id) {
         ? '<span class="text-xs text-gray-600">' + it.received_by_name + '</span>'
         + (it.received_at ? ' <span class="text-xs text-gray-400">· ' + (it.received_at || '').slice(5, 16).replace('T', ' ') + '</span>' : '')
         : (it.zone_manager_name ? '<span class="text-xs text-gray-500">담당 ' + it.zone_manager_name + '</span>' : '<span class="text-xs text-gray-400">-</span>');
+      var specBadge = (it.item_specification || it.item_width_mm)
+        ? ' <span class="text-xs font-semibold text-emerald-600">' + (it.item_specification || ((it.item_width_mm / 10).toFixed(0) + 'cm')) + '</span>'
+        : '';
       return '<tr class="border-t">'
-        + '<td class="px-3 py-2"><div class="font-medium">' + (it.item_name || '-') + '</div><div class="mt-0.5">' + zoneLabel + '</div></td>'
+        + '<td class="px-3 py-2"><div class="font-medium">' + (it.item_name || '-') + specBadge + '</div><div class="mt-0.5">' + zoneLabel + '</div></td>'
         + '<td class="px-3 py-2 text-center">' + ordered + '</td>'
         + '<td class="px-3 py-2 text-center">' + (it.unit || '-') + '</td>'
         + '<td class="px-3 py-2 text-right">' + ((it.unit_price || 0).toLocaleString()) + '</td>'
@@ -367,8 +370,11 @@ async function openReceiveModal(id) {
     var itemRows = items.map(function(it) {
       var remaining = (it.quantity || 0) - (it.received_quantity || 0);
       var defaultRecv = Math.max(0, remaining);
+      var recvSpec = (it.item_specification || it.item_width_mm)
+        ? ' <span class="text-xs font-semibold text-emerald-600">' + (it.item_specification || ((it.item_width_mm / 10).toFixed(0) + 'cm')) + '</span>'
+        : '';
       return '<tr class="border-t">'
-        + '<td class="px-3 py-2 text-sm">' + (it.item_name || '-') + '</td>'
+        + '<td class="px-3 py-2 text-sm">' + (it.item_name || '-') + recvSpec + '</td>'
         + '<td class="px-3 py-2 text-center text-sm">' + (it.quantity || 0) + '</td>'
         + '<td class="px-3 py-2 text-center text-sm">' + (it.received_quantity || 0) + '</td>'
         + '<td class="px-3 py-2 text-center text-sm text-orange-600 font-medium">' + Math.max(0, remaining) + '</td>'

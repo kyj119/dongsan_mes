@@ -194,6 +194,7 @@ poCoreRouter.get('/:id', async (c) => {
       SELECT
         poi.*,
         i.width_mm AS item_width_mm,
+        i.specification AS item_specification,
         i.unit AS item_unit,
         COALESCE(poi.storage_zone_id, i.storage_zone_id) AS effective_zone_id,
         sz.zone_name AS zone_name,

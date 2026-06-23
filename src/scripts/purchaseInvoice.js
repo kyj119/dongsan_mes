@@ -43,6 +43,18 @@ function formatRegNumber(num) {
 
 function fmt(n) { return (n || 0).toLocaleString(); }
 
+// 이 페이지는 독립 HTML(shell/layout 전역 미로드) → formatKST·escapeHtml 폴백 정의 (없으면 렌더 전체 실패)
+function escapeHtml(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function(c) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+}
+function formatKSTDate(s) {
+    if (!s) return '';
+    if (typeof formatKST === 'function') return formatKST(s, 'date');
+    return String(s).replace('T', ' ').slice(0, 10); // 날짜(YYYY-MM-DD)는 슬라이스로 충분
+}
+
 function buildPOSheet(data) {
     var po = data.po || {};
     var supplier = data.supplier || {};
@@ -61,8 +73,9 @@ function buildPOSheet(data) {
         var vat = it.vat_included ? Math.round(supply * 0.1) : 0;
         totalSupply += supply;
         totalVat += vat;
-        var spec = '';
-        if (it.width && it.height) spec = it.width + 'x' + it.height + 'cm';
+        // 규격(원단 폭 등)=품목마스터 파생: 저장 specification 우선, 없으면 폭(width_mm→cm), 그래도 없으면 구 width/height
+        var spec = it.item_specification || (it.item_width_mm ? (it.item_width_mm / 10).toFixed(0) + 'cm' : '');
+        if (!spec && it.width && it.height) spec = it.width + 'x' + it.height + 'cm';
         var itemName = (it.item_name || it.name || '') + (spec ? ' [' + spec + ']' : '');
         itemRows += '<tr>'
             + '<td>' + (i+1) + '</td>'
@@ -84,10 +97,10 @@ function buildPOSheet(data) {
     var koreanAmount = '일금 ' + numberToKorean(finalAmount) + '원정';
 
     var poDate = po.order_date || po.created_at || '';
-    if (poDate) { poDate = formatKST(poDate, 'date'); }
+    if (poDate) { poDate = formatKSTDate(poDate); }
 
     var deliveryDate = po.delivery_date || po.expected_date || '';
-    if (deliveryDate) { deliveryDate = formatKST(deliveryDate, 'date'); }
+    if (deliveryDate) { deliveryDate = formatKSTDate(deliveryDate); }
 
     var logoHtml = co.company_logo_base64
         ? '<img class="po-logo" src="' + co.company_logo_base64 + '" alt="로고">'
