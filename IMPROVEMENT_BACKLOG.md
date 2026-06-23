@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 2 -->
-<!-- last_run_at: 2026-06-23T06:00:00+09:00 -->
+<!-- last_run_area: 3 -->
+<!-- last_run_at: 2026-06-23T10:00:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,14 +8,26 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | 9 (**GitHub open auto-improve 실측 9건** — #412 스캔 입출고 items.current_stock 존재X UPDATE small [Area 4, owner deferred 바코드 spec] · #423 자동가공 /start N+1 improvement small [Area 2] · **#424 weeklyPurchase /notify users.mobile 존재X SELECT → 알림 발송 100% 실패** bug small [Area 2] · **#425 scan EQ equipment.equipment_type/location/manufacturer 존재X SELECT → 100% 실패** bug small [Area 2] · **#426 주문폼 거래처 특약 단가 저장 제안 3중 dead** bug small [Area 3] · **#428 근태 CAPS 동기화 배너 caps_sync_log.success_count/fail_count 존재X SELECT → 항상 "기록 없음"** bug small [Area 4] · **#429 print-system 제거 2단계 미완 — 프론트 잔존 dead code 18 axios 호출** cleanup/improvement small [Area 6] · **#430 post-deploy smoke가 write 경로 무검증(GET 101+로그인 POST 1) → 품목 생성 불능 회귀가 green 통과(은폐)** improvement small [Area 1] · **#431 카드 상세 "원단(소재명)" 표시가 print-system JOIN 제거로 영구 공백("-") — 양쪽 카드상세 뷰 회귀** bug small [Area 2, 본 사이클]) |
+| 🆕 new | 3 (**GitHub open auto-improve 실측 3건** — **#429 print-system 제거 2단계 미완 — 프론트 잔존 dead code 18 axios 호출** cleanup/improvement small [Area 6] · **#430 post-deploy smoke가 write 경로 무검증(GET 101+로그인 POST 1) → 품목 생성 불능 회귀가 green 통과(은폐)** improvement small [Area 1] · **#435 차감방식(deduction_method/sheet_spec/waste_factor) 설정 UI·API 부재 — 신규 판재 마이그레이션 없이 BOARD/NONE 분류 불가, autoDeduct 침묵 오차감** improvement small [Area 3, 본 사이클]) |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 (#372 CSV도 owner close-completed → done 이관) |
-| ✔️ done | 126 (124 + **#422 prod↔main 디버전스 해소 확인 close**[5169bbb·4d0ba89 둘 다 origin/main 조상 검증, #413 ar-payments updated_at 제거·#414 cards efCard 필터 트리 실재, 시한폭탄 해제] + **A-031 costs.ts:114 order_items 존재X 컬럼 7개 제거**[`POST /api/costs/recalculate/:orderId` 100%-fail 잠복 복구, quotation_items SELECT 오복붙, 호출처 0건, read-only 안전 자동수정, verify PASS]) |
+| ✔️ done | 133 (126 + **owner 일괄 close-completed 7건**[`9e0c13c` 9건 일괄수정 중 auto-improve 7: #412 scan items.current_stock→inventory · #423 자동가공 /start N+1 batch · #424 weeklyPurchase mobile→phone · #425 scan EQ equipment_type→printer_name 매핑 · #426 주문폼 단가제안 3중 dead 복구 · #428 attendance caps_sync_log 집계 매핑 · #431 cards 원단 mat.item_name AS print_media_name 재배선 — **전 7건 main 트리 실재 검증, #422 디버전스 클래스 clean**]) |
 | ❌ rejected | 3 |
 
 > 📦 **과거 사이클 로그**(아래 6블록 이전분)는 `IMPROVEMENT_BACKLOG_ARCHIVE.md`로 이관됨 (2026-06-10 정리). 신규 로그는 계속 이 파일 상단에 추가.
 
+> **Area 3 UX/기능 감사 (2026-06-23T10:00):**
+> - **방법**: git fetch-before-compare(origin force-update `4993fa7→c3ccd2e`, fetch 후 **HEAD=origin/main `c3ccd2e` 0/0 동기**, 디버전스 0). egress 차단(prod/Playwright 도달 불가)이라 정적 분석. **신선 각도 = 직전 Area3(#420 더블클릭/#421 로딩표시/#426 showConfirm — 전부 owner 적용 완료) 이후 최대 churn(품목 신모델 0336~0359 + 차감방식 구조화 `e76b0eb`/0359)의 기능 완전성.**
+> - **🆕 신규 이슈 #435 (improvement, small) — 차감방식 설정 UI·API 부재(반쪽 기능)**: `0359`가 추가한 `items.deduction_method`(ROLL/BOARD/NONE)·`sheet_spec`·`waste_factor`를 **품목 등록/수정 어디서도 설정·편집 불가** — ① write 경로 0(`grep deduction_method src/routes`=SET/INSERT/body/allowedFields 0, items.ts:605 allowedFields 미포함) ② 프론트 UI 참조 0(bom.js waste_factor는 별개 BOM 컬럼=FP 배제) ③ autoDeduct(`autoDeductInventory.ts:137/160`)는 ROLL+width_mm 없으면 자재 미선택→**차감 침묵 스킵**, ROLL+width_mm 있으면 면적 대신 **길이 오차감**. 마이그 0359가 자작나무만 일회성 BOARD 분류 → 향후 신규 판재/NONE 자재는 DB 마이그레이션만이 분류 수단(셀프서비스 불가). 현재 영향 0(자작나무만 존재), 미래 신규 판재 등록 시 발현. issue-only(휴면 write 활성화+UI 추가=자동수정 금지).
+> - **🟢 직전 Area3 발견 전부 owner 적용 확인 → 재보고 회피**: #420 safeSubmit 호출처 실재(receiving.js:439·taxInvoices.js:619/698 = 발행/입고 더블클릭 가드 적용) · #421 로딩표시 실재(orders.js:401 dsSkeleton.loadingRow·clients.js:134 loadingBlock·inventory.js:81) · #426 showConfirm 콜백 오용 스캔 **0건**(onUnitPriceManualChange 배선 복구 itemRow.js:78 onblur). 
+> - **🟢 axios→백엔드 라우트 존재성 스캔 = net-new 0**: 프론트 axios base path 전수 추출 → index.tsx 마운트 라우터 전 prefix 매핑됨. 후보 `/api/forecast/material-consumption`=#318(menu.ts 주석 무력화, 기보고), `/api/print-system/*`=#429(print-system dead code, 기보고). 신규 404 죽은 버튼 0.
+> - **🟢 빈상태 커버리지 = clean (저가치 FP 배제)**: 후보 5건 중 materialForecast=#318 무력화, costAnalysis/productionDaily=메뉴 미노출(도달성~0 dead code, #318 클래스 노이즈), productionReports/storageZones=빈상태 메시지 완비(차트/테이블형). 신규 빈상태 갭 0.
+> - **🟢 그룹단가 모달 미배선(서브에이전트 Gap2/3)=#429 포함**: `showGroupPriceModal` 미호출 + `applyGroupPrice`가 `/api/print-system/media/group/:g/price`(제거된 라우트) 호출 = #429 print-system 프론트 잔존 dead code의 일부(bulk.js 2곳 기록됨). net-new 아님.
+> - **🟢 backlog↔GitHub sync 대폭 갱신**: open auto-improve **실측 2건**(#429·#430) ≠ 직전 stats `new=9` → owner가 7건(#412·#423·#424·#425·#426·#428·#431) **일괄 close-completed**(`9e0c13c`). **전 7건 픽스 main 트리 실재 검증**(weeklyPurchase phone·scan inventory/printer_name·attendance 집계·cards mat.item_name AS print_media_name·onUnitPriceManualChange onblur 배선) → **#422 디버전스 클래스 clean**(prod=main 일치). done 126→133, new 9→3(#429·#430·신규#435).
+> - **🧬 SKILL 강화 0건**: 신규 탐지 패턴 미발견 — 기존 standing scan(axios-route line 117·showConfirm line 122·빈상태 line 96)으로 충분 커버. #435는 "백엔드 컬럼 도입+설정경로 부재(반쪽 기능)" 클래스로 line 70(컬럼 제거→프론트 stale read)의 역방향이나, 단발 발견이라 codify 보류(재발 시 패턴화).
+> - **이상 없음**: git 동기 0/0. 직전 Area3 3건 owner 적용 확인. axios-route·빈상태·showConfirm net-new 0. done-sync 대폭 갱신(7 close + 디버전스 clean 검증). 억지 findings 회피.
+> - 자동 수정 0건(Area 3 issue-only), 신규 이슈 1건(#435 차감방식 설정 UI 부재), SKILL 강화 0건, done-sync(7건 close-completed 이관 + main 트리 실재 검증), **신선 각도 — 차감방식 구조화 churn 기능 완전성 + 직전 Area3 적용 확인 + axios-route/빈상태 standing scan, 프로덕션 영향 0 확인**
+>
 > **Area 2 코드 품질 (2026-06-23T06:00):**
 > - **방법**: git fetch-before-compare(origin force-update `4993fa7→5f233e2`, fetch 후 **HEAD=origin/main `5f233e2` 0/0 동기**, 디버전스 0). ground-truth=**357 마이그레이션** node:sqlite 전량 적용(178테이블, migFail 5=빈 in-mem FK/DELETE 의존). 신선 각도 = 직전 Area1(`5f233e2`) 이후 churn 0(Area1 커밋만 추가) → **컬럼-존재성 standing scan 4종 자동화 재실행 + JOIN-aware 확장 시도** + authMiddleware 커버리지 전수.
 > - **🟢 명시 SELECT 컬럼존재성 스캔(단일테이블, A-027) = net-new 0**: 5 findings 전부 기존 open 이슈 — weeklyPurchase users.mobile(#424)·scan equipment.equipment_type/location/manufacturer(#425)·scan items.current_stock(#412). FP 0.
