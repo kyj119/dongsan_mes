@@ -91,7 +91,7 @@ cardExpRouter.post('/cards', requireRole('ADMIN'), async (c) => {
         return c.json({ success: false, error: '바로빌 연동에는 전체 카드번호·카드사 홈페이지 ID/PW가 필요합니다' }, 400)
       }
       const { registCard } = await import('../services/barobillCard')
-      const { BAROBILL_COLLECT_CYCLE, BAROBILL_CARD_TYPE, toBarobillCardCompany } = await import('../constants/barobillCodes')
+      const { BAROBILL_COLLECT_CYCLE, BAROBILL_CARD_TYPE, toBarobillCardCompany, barobillErrorMessage } = await import('../constants/barobillCodes')
       const bbCardCompany = toBarobillCardCompany(card_company)
       if (!bbCardCompany) {
         return c.json({ success: false, error: '선택한 카드사는 바로빌 카드조회를 지원하지 않습니다.' }, 400)
@@ -109,7 +109,7 @@ cardExpRouter.post('/cards', requireRole('ADMIN'), async (c) => {
         alias: card_name,
       })
       if (code <= 0) {
-        return c.json({ success: false, error: `바로빌 카드 수집등록 실패 (결과코드 ${code}). 인증정보/카드사 조회서비스 신청 여부를 확인하세요.` }, 400)
+        return c.json({ success: false, error: '바로빌 카드 수집등록 실패: ' + barobillErrorMessage(code) }, 400)
       }
       barobillRegistered = 1
     }
@@ -167,13 +167,14 @@ cardExpRouter.delete('/cards/:id', requireRole('ADMIN'), async (c) => {
     if (card.barobill_registered && card.card_number_last4) {
       try {
         const { getCardList, stopCard } = await import('../services/barobillCard')
+        const { barobillErrorMessage } = await import('../constants/barobillCodes')
         const config = await getBarobillConfig(c)
         const bbCards = await getCardList(config)
         const match = bbCards.find((bc: any) => (bc.CardNum || '').slice(-4) === card.card_number_last4)
         if (match && match.CardNum) {
           const code = await stopCard(config, match.CardNum)
           if (code <= 0) {
-            return c.json({ success: false, error: `바로빌 카드 수집 해지 실패 (결과코드 ${code}).` }, 400)
+            return c.json({ success: false, error: '바로빌 카드 수집 해지 실패: ' + barobillErrorMessage(code) }, 400)
           }
         }
       } catch (e: any) {
@@ -202,12 +203,13 @@ cardExpRouter.post('/cards/:id/refresh', requireRole('ADMIN'), async (c) => {
     if (!card.barobill_registered) return c.json({ success: false, error: '바로빌에 연동되지 않은 카드입니다' }, 400)
 
     const { getCardList, refreshCard } = await import('../services/barobillCard')
+    const { barobillErrorMessage } = await import('../constants/barobillCodes')
     const config = await getBarobillConfig(c)
     const bbCards = await getCardList(config)
     const match = bbCards.find((bc: any) => (bc.CardNum || '').slice(-4) === card.card_number_last4)
     if (!match || !match.CardNum) return c.json({ success: false, error: '바로빌에서 카드를 찾을 수 없습니다' }, 404)
     const code = await refreshCard(config, match.CardNum)
-    if (code <= 0) return c.json({ success: false, error: `즉시조회 요청 실패 (결과코드 ${code})` }, 400)
+    if (code <= 0) return c.json({ success: false, error: '즉시조회 요청 실패: ' + barobillErrorMessage(code) }, 400)
     return c.json({ success: true, message: '바로빌 즉시조회를 요청했습니다. 잠시 후 동기화하세요.' })
   } catch (error: any) {
     console.error('Card refresh error:', error?.message || 'unknown')

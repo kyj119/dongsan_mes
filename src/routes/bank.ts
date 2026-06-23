@@ -75,7 +75,7 @@ bankRouter.post('/accounts', requireRole('ADMIN'), async (c) => {
     // 바로빌 자동 수집등록 (RegistBankAccountEx). 인증정보는 1회 전송, DB/로그 미저장.
     if (barobill_sync) {
       const { registBankAccount } = await import('../services/barobillBank')
-      const { BAROBILL_COLLECT_CYCLE, BAROBILL_BANK_ACCOUNT_TYPE, toBarobillBank } = await import('../constants/barobillCodes')
+      const { BAROBILL_COLLECT_CYCLE, BAROBILL_BANK_ACCOUNT_TYPE, toBarobillBank, barobillErrorMessage } = await import('../constants/barobillCodes')
       const bbBank = toBarobillBank(bank_code)
       if (!bbBank) {
         return c.json({ success: false, error: '선택한 은행은 바로빌 계좌조회를 지원하지 않습니다 (카카오·토스뱅크 제외).' }, 400)
@@ -99,7 +99,7 @@ bankRouter.post('/accounts', requireRole('ADMIN'), async (c) => {
         alias: account_holder || bank_name,
       })
       if (code <= 0) {
-        return c.json({ success: false, error: `바로빌 계좌 수집등록 실패 (결과코드 ${code}). 인증정보/은행 빠른조회 신청 여부를 확인하세요.` }, 400)
+        return c.json({ success: false, error: '바로빌 계좌 수집등록 실패: ' + barobillErrorMessage(code) }, 400)
       }
       barobillRegistered = 1
     }
@@ -190,10 +190,11 @@ bankRouter.delete('/accounts/:id', requireRole('ADMIN'), async (c) => {
     if (account.barobill_registered) {
       try {
         const { stopBankAccount } = await import('../services/barobillBank')
+        const { barobillErrorMessage } = await import('../constants/barobillCodes')
         const config = await getBarobillConfig(c)
         const code = await stopBankAccount(config, String(account.account_number).replace(/-/g, ''))
         if (code <= 0) {
-          return c.json({ success: false, error: `바로빌 계좌 수집 해지 실패 (결과코드 ${code}). 바로빌 상태를 확인하세요.` }, 400)
+          return c.json({ success: false, error: '바로빌 계좌 수집 해지 실패: ' + barobillErrorMessage(code) }, 400)
         }
       } catch (e: any) {
         console.error('Bank stop error:', e?.message || 'unknown')
@@ -227,9 +228,10 @@ bankRouter.post('/accounts/:id/refresh', requireRole('ADMIN'), async (c) => {
     if (!account.barobill_registered) return c.json({ success: false, error: '바로빌에 연동되지 않은 계좌입니다' }, 400)
 
     const { refreshBankAccount } = await import('../services/barobillBank')
+    const { barobillErrorMessage } = await import('../constants/barobillCodes')
     const config = await getBarobillConfig(c)
     const code = await refreshBankAccount(config, String(account.account_number).replace(/-/g, ''))
-    if (code <= 0) return c.json({ success: false, error: `즉시조회 요청 실패 (결과코드 ${code})` }, 400)
+    if (code <= 0) return c.json({ success: false, error: '즉시조회 요청 실패: ' + barobillErrorMessage(code) }, 400)
     return c.json({ success: true, message: '바로빌 즉시조회를 요청했습니다. 잠시 후 동기화하세요.' })
   } catch (error: any) {
     console.error('Bank refresh error:', error?.message || 'unknown')
