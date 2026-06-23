@@ -14,6 +14,12 @@
 
 ## 🔴 현재 진행 중
 
+- **✅ [2026-06-24] /bank 미수금현황 stale 미수금 수정 — 데이터 정리 + 파생 전환** (커밋 `36bec2cd`, dep `aeccc624`, smoke 101/101):
+  - 증상: `/accounting` 미수금=0인데 `/bank` 미수금현황에 **90,580원 잔존**. 원인=`/bank/receivables`(`bank.ts:1830`)가 폐기된 **`clients.balance` 캐시 직접 읽음**(`WHERE c.balance>0`), /accounting은 라이브 파생. **공장초기화(0620)가 orders/payments는 지웠지만 clients.balance 캐시 미클리어**→stale(양수 3건 90,580 + 음수 4건 −9,255,290 선수금잔재. orders·payments 전역 0 = 전부 orphan).
+  - 조치: ①양수 3건(id 3·2590·2159) prod `balance=0`(용준님 승인분, changes 3). ②`/receivables`를 **deriveClientBalance 정의 파생**으로 전환(LEFT JOIN billed[obg BILLED]/paid/adj − downstream `r.balance` 무변경, 폐기 캐시 더는 안 읽음).
+  - 검증: tsc/build green · 신규SQL prod 0행 · API total_receivable=0 · smoke 101/101 · **Playwright /bank 미수금 0원·빈상태·콘솔0**. 정본=[[project-clients-balance-deprecated]].
+  - **▶ 남은(미승인·후속)**: 음수 4건(선수금 잔재) 정리 여부 + `clients.balance` 잔존 reader(거래처 상세·portal) 파생 통일.
+
 - **✅ [2026-06-23~24] 회계 통합 관리 허브 `/accounting` — Phase 1~4 전부 구현·prod 배포·검증 완료** (커밋 `02dfe2d4`+`13fb4e2d`, 마이그 0374 remote, web dep `018bae20` `--branch main`, smoke 101/101, **6탭 전부 활성**):
   - spec=`docs/superpowers/specs/2026-06-23-accounting-hub.md`, 메모리=[[design-accounting-hub]]. 7개 페이지 분산 회계기록을 한 화면에서 **통합 조회·정정**.
   - **신규 파일 4**: `pages/accounting.ts`·`scripts/accounting.js`(전부 `acc*` prefix)·`routes/accounting.ts` + 마이그 **0374**(권한, INSERT OR IGNORE). index.tsx(import+mount `/api/accounting`+page route)·menu.ts(재무 섹션 '회계 허브' 최상단, fa-coins).
