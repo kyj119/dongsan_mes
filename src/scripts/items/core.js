@@ -127,6 +127,14 @@ function selectItemType(type) {
     }
 }
 
+// #435: 차감방식=BOARD일 때만 보드규격/로스율 입력 노출
+function onDeductionMethodChange() {
+    var methodEl = document.getElementById('itemDeductionMethod');
+    var boardArea = document.getElementById('boardSpecArea');
+    if (!methodEl || !boardArea) return;
+    boardArea.classList.toggle('hidden', methodEl.value !== 'BOARD');
+}
+
 function updateFieldVisibility(type) {
     // 소분류 (후가공 연결): 제품만
     var fieldSubCat = document.getElementById('fieldSubCategory');
@@ -154,6 +162,10 @@ function updateFieldVisibility(type) {
     if (parentMediaArea) parentMediaArea.classList.toggle('hidden', type !== 'MATERIAL');
     var rmSalesArea = document.getElementById('rmSalesToggleArea');
     if (rmSalesArea) rmSalesArea.classList.toggle('hidden', type !== 'MATERIAL');
+    // #435: 자동차감 방식 — 원자재만
+    var rmDeductionArea = document.getElementById('rmDeductionArea');
+    if (rmDeductionArea) rmDeductionArea.classList.toggle('hidden', type !== 'MATERIAL');
+    if (type === 'MATERIAL') onDeductionMethodChange();
 
     // 대분류: PRODUCT만 표시, 상품/원자재는 숨김 (자동 설정)
     var categoryArea = document.getElementById('categoryArea');

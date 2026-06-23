@@ -140,9 +140,11 @@ bankRouter.put('/accounts/:id', requireRole('ADMIN'), async (c) => {
     const body = await c.req.json()
     const { bank_code, bank_name, account_number, account_holder } = body
 
+    // #437: entity 격리 — 형제 DELETE/refresh와 동일. 미적용 시 타 법인 계좌 master(계좌번호 등) cross-tenant 덮어쓰기(IDOR)
+    const ef = entityFilter(c, 'bank_accounts')
     const account = await c.env.DB.prepare(
-      'SELECT id FROM bank_accounts WHERE id = ? AND is_active = 1'
-    ).bind(id).first()
+      `SELECT id FROM bank_accounts WHERE id = ? AND is_active = 1${ef.clause}`
+    ).bind(id, ...ef.params).first()
 
     if (!account) {
       return c.json({ success: false, error: '계좌를 찾을 수 없습니다' }, 404)
@@ -154,13 +156,14 @@ bankRouter.put('/accounts/:id', requireRole('ADMIN'), async (c) => {
           bank_name = COALESCE(?, bank_name),
           account_number = COALESCE(?, account_number),
           account_holder = COALESCE(?, account_holder)
-      WHERE id = ?
+      WHERE id = ?${ef.clause}
     `).bind(
       bank_code ?? null,
       bank_name ?? null,
       account_number ?? null,
       account_holder ?? null,
-      id
+      id,
+      ...ef.params
     ).run()
 
     return c.json({ success: true, message: '계좌가 수정되었습니다' })
@@ -331,10 +334,11 @@ bankRouter.post('/transactions/import', requireRole('ADMIN'), async (c) => {
     if (!account_id) return c.json({ success: false, error: 'account_id 필수' }, 400)
     if (!Array.isArray(rows) || rows.length === 0) return c.json({ success: false, error: '가져올 데이터가 없습니다' }, 400)
 
-    // 계좌 존재 확인
+    // 계좌 존재 확인 — #437: entity 격리(타 법인 계좌로 거래 import 차단 + 존재 enumeration 방지)
+    const efImp = entityFilter(c, 'bank_accounts')
     const account = await c.env.DB.prepare(
-      'SELECT id FROM bank_accounts WHERE id = ? AND is_active = 1'
-    ).bind(account_id).first()
+      `SELECT id FROM bank_accounts WHERE id = ? AND is_active = 1${efImp.clause}`
+    ).bind(account_id, ...efImp.params).first()
     if (!account) return c.json({ success: false, error: '계좌를 찾을 수 없습니다' }, 404)
 
     const entityId = getEntityId(c)

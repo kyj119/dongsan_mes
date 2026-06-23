@@ -602,7 +602,24 @@ itemsRouter.patch('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
   try {
     const id = c.req.param('id')
     const updates = await c.req.json()
-    const allowedFields = ['item_name', 'specification', 'width_mm', 'sub_category', 'base_price', 'unit', 'sales_price', 'is_sales_item', 'item_group', 'is_purchase_item', 'production_required', 'spec_group_id', 'spec_value', 'spec_group_id2', 'spec_value2']
+    const allowedFields = ['item_name', 'specification', 'width_mm', 'sub_category', 'base_price', 'unit', 'sales_price', 'is_sales_item', 'item_group', 'is_purchase_item', 'production_required', 'spec_group_id', 'spec_value', 'spec_group_id2', 'spec_value2', 'deduction_method', 'sheet_spec', 'waste_factor']
+
+    // #435: 차감방식 값 검증 — 화이트리스트 외 값은 autoDeduct에서 조용한 오차감 유발
+    //  (sheet_spec 미정 BOARD → 4x8 폴백, method 오타 → ROLL 폭매칭/스킵). DB 도달 전 차단.
+    if (updates.deduction_method !== undefined && !['ROLL', 'BOARD', 'NONE'].includes(updates.deduction_method)) {
+      return c.json({ success: false, error: 'deduction_method는 ROLL/BOARD/NONE만 허용됩니다' }, 400)
+    }
+    if (updates.sheet_spec !== undefined && updates.sheet_spec !== null && updates.sheet_spec !== '' && !['4x8', '3x6'].includes(updates.sheet_spec)) {
+      return c.json({ success: false, error: 'sheet_spec은 4x8/3x6만 허용됩니다' }, 400)
+    }
+    if (updates.waste_factor !== undefined && updates.waste_factor !== null && updates.waste_factor !== '') {
+      const wf = Number(updates.waste_factor)
+      if (!Number.isFinite(wf) || wf <= 0 || wf > 5) {
+        return c.json({ success: false, error: 'waste_factor는 0 초과 5 이하의 숫자여야 합니다' }, 400)
+      }
+      updates.waste_factor = wf
+    }
+
     const setClauses: string[] = []
     const params: any[] = []
 
@@ -671,7 +688,7 @@ itemsRouter.get('/:id', async (c) => {
   try {
     const id = c.req.param('id')
     const item = await c.env.DB.prepare(`
-      SELECT id, category_id, subcategory_id, item_code, item_name, description, unit, base_price, sales_price, is_active, item_type, category, sub_category, is_sales_item, is_purchase_item, pricing_method, item_group, group_sort, width_mm, storage_zone_id, is_favorite, code_prefix, specification, production_required, spec_group_id, spec_value, spec_group_id2, spec_value2, ecount_code, created_at, updated_at FROM items WHERE id = ?
+      SELECT id, category_id, subcategory_id, item_code, item_name, description, unit, base_price, sales_price, is_active, item_type, category, sub_category, is_sales_item, is_purchase_item, pricing_method, item_group, group_sort, width_mm, storage_zone_id, is_favorite, code_prefix, specification, production_required, spec_group_id, spec_value, spec_group_id2, spec_value2, deduction_method, sheet_spec, waste_factor, ecount_code, created_at, updated_at FROM items WHERE id = ?
     `).bind(id).first()
 
     if (!item) {
@@ -964,6 +981,20 @@ itemsRouter.put('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
     const id = c.req.param('id')
     const itemData = await c.req.json()
 
+    // #435: 차감방식 값 검증 — 화이트리스트 외 값은 autoDeduct 조용한 오차감 유발(sheet_spec 미정 BOARD→4x8 폴백 등)
+    if (itemData.deduction_method !== undefined && itemData.deduction_method !== null && !['ROLL', 'BOARD', 'NONE'].includes(itemData.deduction_method)) {
+      return c.json({ success: false, error: 'deduction_method는 ROLL/BOARD/NONE만 허용됩니다' }, 400)
+    }
+    if (itemData.sheet_spec !== undefined && itemData.sheet_spec !== null && itemData.sheet_spec !== '' && !['4x8', '3x6'].includes(itemData.sheet_spec)) {
+      return c.json({ success: false, error: 'sheet_spec은 4x8/3x6만 허용됩니다' }, 400)
+    }
+    if (itemData.waste_factor !== undefined && itemData.waste_factor !== null && itemData.waste_factor !== '') {
+      const wf = Number(itemData.waste_factor)
+      if (!Number.isFinite(wf) || wf <= 0 || wf > 5) {
+        return c.json({ success: false, error: 'waste_factor는 0 초과 5 이하의 숫자여야 합니다' }, 400)
+      }
+    }
+
     // Check if item exists (기존 category_id + 단가 preserve 용으로 조회)
     const existing = await c.env.DB.prepare(
       'SELECT id, category_id, base_price, sales_price FROM items WHERE id = ?'
@@ -1017,6 +1048,15 @@ itemsRouter.put('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
     const prodReqParams = itemData.production_required !== undefined
       ? [itemData.production_required ? 1 : 0] : []
 
+    // #435: 차감방식(MATERIAL 자동차감 분류) — 전송 시에만 갱신, 미전송 시 기존값 보존
+    const dedMethodClause = itemData.deduction_method !== undefined ? 'deduction_method = ?,' : ''
+    const dedMethodParams = itemData.deduction_method !== undefined ? [itemData.deduction_method || 'ROLL'] : []
+    const sheetSpecClause = itemData.sheet_spec !== undefined ? 'sheet_spec = ?,' : ''
+    const sheetSpecParams = itemData.sheet_spec !== undefined ? [itemData.sheet_spec || null] : []
+    const wasteFactorClause = itemData.waste_factor !== undefined ? 'waste_factor = ?,' : ''
+    const wasteFactorParams = itemData.waste_factor !== undefined
+      ? [(itemData.waste_factor != null && itemData.waste_factor !== '') ? Number(itemData.waste_factor) : 1.0] : []
+
     // Update item
     await c.env.DB.prepare(`
       UPDATE items SET
@@ -1038,6 +1078,9 @@ itemsRouter.put('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
         storage_zone_id = ?,
         specification = ?,
         ${prodReqClause}
+        ${dedMethodClause}
+        ${sheetSpecClause}
+        ${wasteFactorClause}
         updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
     `).bind(
@@ -1059,6 +1102,9 @@ itemsRouter.put('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
       itemData.storage_zone_id ?? null,
       itemData.specification || null,
       ...prodReqParams,
+      ...dedMethodParams,
+      ...sheetSpecParams,
+      ...wasteFactorParams,
       id
     ).run()
 

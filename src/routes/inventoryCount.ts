@@ -196,7 +196,8 @@ inventoryCountRouter.put('/:id/items', async (c) => {
 inventoryCountRouter.patch('/:id/submit', async (c) => {
   try {
     const countId = parseInt(c.req.param('id'))
-    const userId = c.req.header('X-User-Id') || 'system'
+    // #436: 미전송 X-User-Id 헤더(항상 undefined)→'system' 고정 버그. JWT 검증 유저로 실제 제출자 기록
+    const userId = c.get('user')?.username || 'system'
     const ef = entityFilter(c)
 
     const result = await c.env.DB.prepare(`
@@ -220,7 +221,8 @@ inventoryCountRouter.patch('/:id/submit', async (c) => {
 inventoryCountRouter.patch('/:id/approve', async (c) => {
   try {
     const countId = parseInt(c.req.param('id'))
-    const userId = c.req.header('X-User-Id') || 'system'
+    // #436: 미전송 X-User-Id 헤더(항상 undefined)→'system' 고정 버그. JWT 검증 유저로 실제 승인자 기록
+    const userId = c.get('user')?.username || 'system'
 
     // 먼저 count 조회 (타법인 실사 승인 차단)
     const ef = entityFilter(c)

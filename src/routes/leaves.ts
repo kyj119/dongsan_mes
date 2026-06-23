@@ -125,18 +125,21 @@ leavesRouter.get('/balances', requireRole('ADMIN', 'MANAGER'), async (c) => {
 leavesRouter.get('/balance/:employeeId', async (c) => {
   try {
     const employeeId = Number(c.req.param('employeeId'))
+    // #440: entity 격리 — 형제 /balances와 동일. 미적용 시 타 법인 직원 PII·연차이력 cross-tenant 열람(IDOR)
+    const efE = entityFilter(c)
     const emp = await c.env.DB.prepare(
-      `SELECT id, employee_code, name, department, position, hire_date, status FROM employees WHERE id = ?`
-    ).bind(employeeId).first<EmployeeBasicRow>()
+      `SELECT id, employee_code, name, department, position, hire_date, status FROM employees WHERE id = ?${efE.clause}`
+    ).bind(employeeId, ...efE.params).first<EmployeeBasicRow>()
     if (!emp) return c.json({ success: false, error: '직원을 찾을 수 없습니다.' }, 404)
 
+    const efB = entityFilter(c)
     const { results: history } = await c.env.DB.prepare(`
       SELECT year, leave_type, accrued, granted_extra, used, carried_over,
         (accrued + granted_extra + carried_over - used) as remaining
       FROM leave_balances
-      WHERE employee_id = ?
+      WHERE employee_id = ?${efB.clause}
       ORDER BY year DESC, leave_type
-    `).bind(employeeId).all()
+    `).bind(employeeId, ...efB.params).all()
 
     const currentYear = new Date().getFullYear()
     const expectedAnnual = calcAnnualEntitlement(emp.hire_date)

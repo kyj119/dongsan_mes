@@ -36,3 +36,10 @@ jobs:
 
       - name: Build
         run: npx vite build
+
+      # #430: write-path 회귀(0335류 FK-drop 등) 빌드 단계 탐지. prod 무오염(로컬 D1).
+      # read-only smoke가 못 잡는 품목 create 회귀를 로컬 D1 마이그 적용 후 INSERT→DELETE로 포착.
+      - name: Local write canary
+        run: |
+          npx wrangler d1 migrations apply webapp-production --local
+          npm run canary:write

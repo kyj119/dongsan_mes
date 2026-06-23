@@ -17,6 +17,7 @@
     "clean:tmp": "powershell -NoProfile -Command \"if(Test-Path .wrangler/tmp){Remove-Item .wrangler/tmp -Recurse -Force; Write-Host 'Cleaned .wrangler/tmp'}else{Write-Host 'Already clean'}\"",
     "test": "curl http://localhost:3000",
     "smoke": "node scripts/smoke.cjs",
+    "canary:write": "node scripts/write-canary.cjs",
     "verify:items": "node scripts/verify-items.mjs",
     "check:dom": "node scripts/check-dom-refs.cjs",
     "audit:entity": "node scripts/entity-audit.mjs",

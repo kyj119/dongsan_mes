@@ -111,6 +111,14 @@ async function editItem(id) {
                 // 판매 가능 토글
                 var salesToggle = document.getElementById('rmSalesToggle');
                 if (salesToggle) salesToggle.checked = !!item.is_sales_item;
+                // #435: 차감방식 복원
+                var dmEl = document.getElementById('itemDeductionMethod');
+                if (dmEl) dmEl.value = item.deduction_method || 'ROLL';
+                var ssEl = document.getElementById('itemSheetSpec');
+                if (ssEl && item.sheet_spec) ssEl.value = item.sheet_spec;
+                var wfEl = document.getElementById('itemWasteFactor');
+                if (wfEl) wfEl.value = (item.waste_factor != null) ? item.waste_factor : 1.0;
+                if (typeof onDeductionMethodChange === 'function') onDeductionMethodChange();
                 updateAutoCodePreview();
             }
 
@@ -189,6 +197,19 @@ async function saveItem(event) {
         var salesToggle = document.getElementById('rmSalesToggle');
         if (salesToggle && salesToggle.checked) {
             data.is_sales_item = 1;
+        }
+        // #435: 차감방식 (ROLL/BOARD/NONE) — BOARD만 보드규격·로스율 전송
+        var dmEl2 = document.getElementById('itemDeductionMethod');
+        if (dmEl2) {
+            data.deduction_method = dmEl2.value || 'ROLL';
+            if (data.deduction_method === 'BOARD') {
+                data.sheet_spec = (document.getElementById('itemSheetSpec') || {}).value || '4x8';
+                var wfv = parseFloat((document.getElementById('itemWasteFactor') || {}).value);
+                data.waste_factor = (isFinite(wfv) && wfv > 0) ? wfv : 1.0;
+            } else {
+                data.sheet_spec = null;
+                data.waste_factor = 1.0;
+            }
         }
     }
 

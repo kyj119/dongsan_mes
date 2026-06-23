@@ -187,6 +187,30 @@ export function itemsPage(c: Context<HonoEnv>) {
                                     </label>
                                 </div>
 
+                                <!-- 11-2. 자동차감 방식 (MATERIAL만) — #435 -->
+                                <div id="rmDeductionArea" class="hidden border-t pt-3 mt-3">
+                                    <label class="block text-sm font-semibold text-gray-700 mb-1">자동차감 방식 <span class="text-xs text-gray-400 font-normal">(인쇄완료 시 재고 차감 계산식)</span></label>
+                                    <select id="itemDeductionMethod" onchange="onDeductionMethodChange()" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                                        <option value="ROLL">롤(원단) — 폭 매칭 + 길이(yd)</option>
+                                        <option value="BOARD">판재(보드) — 면적 → 장수</option>
+                                        <option value="NONE">차감 안 함 (수동관리)</option>
+                                    </select>
+                                    <p class="text-xs text-gray-400 mt-1">롤=규격(폭)으로 폭매칭 후 길이 차감 · 판재=보드규격으로 면적→장수 환산 · 차감안함=자동차감 제외</p>
+                                    <div id="boardSpecArea" class="hidden grid grid-cols-2 gap-2 mt-2">
+                                        <div>
+                                            <label class="block text-xs font-semibold text-gray-600 mb-1">보드 규격</label>
+                                            <select id="itemSheetSpec" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                                                <option value="4x8">4 x 8 (1220 x 2440mm)</option>
+                                                <option value="3x6">3 x 6 (915 x 1830mm)</option>
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label class="block text-xs font-semibold text-gray-600 mb-1">로스율(배수)</label>
+                                            <input type="number" id="itemWasteFactor" value="1.0" min="0.1" max="5" step="0.05" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500" title="1.0=면적정확, 1.1=10% 로스 가산">
+                                        </div>
+                                    </div>
+                                </div>
+
                                 <!-- 12. 품목 그룹 -->
                                 <div class="border-t pt-4 mt-4">
                                     <label class="block text-sm font-semibold text-gray-700 mb-1">품목 그룹</label>

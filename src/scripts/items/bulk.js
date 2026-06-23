@@ -182,6 +182,7 @@ window.showCreateModal = showCreateModal;
 window.closeModal = closeModal;
 window.saveItem = saveItem;
 window.selectItemType = selectItemType;
+window.onDeductionMethodChange = onDeductionMethodChange;
 window.switchModalTab = switchModalTab;
 window.showBulkModal = showBulkModal;
 window.closeBulkModal = closeBulkModal;
