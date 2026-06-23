@@ -491,6 +491,20 @@
                             });
                         }
 
+                        // 6. Print layer (WAY — 1/2/3WAY, 차감 없음)
+                        const plSel = ppContainer.querySelector('.pp-printlayer-select');
+                        if (plSel && plSel.value) {
+                            var plopt = plSel.options[plSel.selectedIndex];
+                            pp.push({
+                                id: parseInt(plopt.dataset.ppId),
+                                code: plopt.dataset.ppCode,
+                                name: plopt.dataset.ppName,
+                                margin_left: 0, margin_right: 0, margin_top: 0, margin_bottom: 0,
+                                params: {},
+                                price: parseFloat(plopt.dataset.additionalCost) || 0
+                            });
+                        }
+
                         // Transfer PP (하도매, 부직포, 수술)
                         ppContainer.querySelectorAll('.pp-transfer-item').forEach(function(item) {
                             var cb = item.querySelector('.pp-transfer-check');

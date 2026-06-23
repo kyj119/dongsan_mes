@@ -159,6 +159,7 @@
                     const annotationOpt = options.find(function(o) { return o.pp_category === 'annotation'; });
                     const offsetOpt = options.find(function(o) { return o.pp_category === 'offset'; });
                     const coatingOpts = options.filter(function(o) { return o.pp_category === 'coating'; });
+                    const printLayerOpts = options.filter(function(o) { return o.pp_category === 'print_layer'; });
 
 
                     let html = '';
@@ -320,6 +321,24 @@
                         });
                         html += '</select>';
                         html += '<span class="pp-coating-cost text-xs text-orange-600 font-medium mt-1 block"></span>';
+                        html += '</div>';
+                    }
+
+                    // --- Section 2.65: Print layer (WAY) — 1/2/3WAY 시야 옵션 (윈도우필름, 상호배타 select, 차감 없음) ---
+                    if (printLayerOpts.length > 0) {
+                        html += '<div class="pp-printlayer-section mb-3 pt-2 border-t border-gray-100">';
+                        html += '<label class="block text-xs font-medium text-gray-600 mb-1">WAY (시야 방향)</label>';
+                        html += '<select class="pp-printlayer-select w-full border border-gray-300 rounded px-2 py-1 text-sm" data-row="' + rowId + '">';
+                        html += '<option value="">없음</option>';
+                        printLayerOpts.forEach(function(opt) {
+                            html += '<option value="' + opt.id + '"'
+                                + ' data-pp-id="' + opt.id + '"'
+                                + ' data-pp-code="' + escapeHtml(opt.option_code || '') + '"'
+                                + ' data-pp-name="' + escapeHtml(opt.option_name || '') + '"'
+                                + ' data-additional-cost="' + (opt.additional_cost || 0) + '"'
+                                + '>' + escapeHtml(opt.option_name || '') + '</option>';
+                        });
+                        html += '</select>';
                         html += '</div>';
                     }
 
