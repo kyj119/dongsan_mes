@@ -387,7 +387,8 @@ cardExpRouter.get('/transactions', requireRole('ADMIN', 'MANAGER'), async (c) =>
     const de = q.end_date || q.date_end
     const ef = entityFilter(c, 'ct')
 
-    let where = `WHERE 1=1${ef.clause}`
+    // 삭제(비활성)된 카드의 잔여 내역은 숨김
+    let where = `WHERE 1=1${ef.clause} AND EXISTS (SELECT 1 FROM corporate_cards cca WHERE cca.id = ct.card_id AND cca.is_active = 1)`
     const params: (string | number)[] = [...ef.params]
     if (q.id) { where += ' AND ct.id = ?'; params.push(q.id) }
     if (q.card_id) { where += ' AND ct.card_id = ?'; params.push(q.card_id) }

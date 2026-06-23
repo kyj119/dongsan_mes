@@ -387,8 +387,22 @@ async function saveCard() {
       : await axios.post('/api/card-expenses/cards', data);
     showToast((resp && resp.data && resp.data.message) || (id ? '카드 수정 완료' : '카드 등록 완료'), 'success');
     closeCardModal();
+    // 바로빌 신규 연동 시 과거 3개월 카드내역 자동 수집
+    if (!id && data.barobill_sync) {
+      showToast('바로빌 카드내역을 수집하는 중...', 'info');
+      try {
+        var ced = new Date(), csd = new Date(); csd.setMonth(csd.getMonth() - 3);
+        var cfmt = function(d){ return d.toISOString().slice(0,10); };
+        var sres = await axios.post('/api/card-expenses/sync', { date_start: cfmt(csd), date_end: cfmt(ced) });
+        showToast((sres.data && sres.data.message) || '내역 수집 완료', 'success');
+      } catch (se) {
+        var smsg = (se.response && se.response.data && se.response.data.error) ? se.response.data.error : '수집 실패';
+        showToast('내역 수집 실패: ' + smsg, 'warning');
+      }
+    }
     loadCards();
     loadCardOptions();
+    loadTransactions();
   } catch (e) {
     var msg = (e.response && e.response.data && e.response.data.error) ? e.response.data.error : '저장 실패';
     showToast(msg, 'error');

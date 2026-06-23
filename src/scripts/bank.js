@@ -867,8 +867,24 @@
     promise.then(function(r) {
       showToast((r && r.data && r.data.message) || (editId ? '계좌 수정 완료' : '계좌 등록 완료'), 'success');
       closeAccountModal();
-      loadAccounts();
       loadAccountFilter();
+      // 바로빌 신규 연동 시 이번 달 계좌내역 자동 수집 (일별 조회 부하 제한)
+      if (!editId && body.barobill_sync) {
+        showToast('바로빌 계좌내역을 수집하는 중...', 'info');
+        var aed = new Date();
+        var first = new Date(aed.getFullYear(), aed.getMonth(), 1);
+        var afmt = function(d){ return d.toISOString().slice(0, 10); };
+        axios.post('/api/bank/sync-barobill', { date_start: afmt(first), date_end: afmt(aed) }).then(function(sr) {
+          showToast((sr.data && sr.data.message) || '계좌내역 수집 완료', 'success');
+          loadAccounts();
+        }).catch(function(se) {
+          var smsg = (se.response && se.response.data && se.response.data.error) ? se.response.data.error : '수집 실패';
+          showToast('계좌내역 수집 실패: ' + smsg, 'warning');
+          loadAccounts();
+        });
+      } else {
+        loadAccounts();
+      }
     }).catch(function(e) {
       var msg = (e.response && e.response.data && e.response.data.error) ? e.response.data.error : '저장 실패';
       showToast(msg, 'error');
