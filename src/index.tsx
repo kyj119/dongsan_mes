@@ -90,6 +90,7 @@ import filesRouter from './routes/files'
 import priceListRouter from './routes/priceList'
 import quotationsRouter from './routes/quotations'
 import scanRouter from './routes/scan'
+import accountingRouter from './routes/accounting'
 
 // Page handlers
 import { clientsPage } from './pages/clients'
@@ -189,6 +190,7 @@ import { portalBalancePage } from './pages/portal/portalBalance'
 import { portalInvoicesPage } from './pages/portal/portalInvoices'
 import { portalDocumentPage } from './pages/portal/portalDocument'
 import { scanPage } from './pages/scan'
+import { accountingPage } from './pages/accounting'
 
 const app = new Hono<HonoEnv>()
 
@@ -321,6 +323,7 @@ app.route('/api/vat', vatReportsRouter)
 app.route('/api/payment-requests', paymentRequestsRouter)
 app.route('/api/card-expenses', cardExpensesRouter)
 app.route('/api/scan', scanRouter)
+app.route('/api/accounting', accountingRouter)
 app.route('/api/financial', financialReportsRouter)
 app.route('/api/leaves', leavesRouter)
 app.route('/api/payroll', payrollRouter)
@@ -466,6 +469,7 @@ app.get('/cash-schedule', pageAuthMiddleware, requirePagePermission('/cash-sched
 app.get('/payment-requests', pageAuthMiddleware, requirePagePermission('/payment-requests'), paymentRequestsPage)
 app.get('/card-expenses', pageAuthMiddleware, requirePagePermission('/card-expenses'), cardExpensesPage)
 app.get('/financial-reports', pageAuthMiddleware, requirePagePermission('/financial-reports'), financialReportsPage)
+app.get('/accounting', pageAuthMiddleware, requirePagePermission('/accounting'), accountingPage)
 app.get('/leaves', pageAuthMiddleware, requirePagePermission('/leaves'), leavesPage)
 app.get('/payroll', pageAuthMiddleware, requirePagePermission('/payroll'), payrollPage)
 app.get('/settings/payroll-rates', pageAuthMiddleware, requirePagePermission('/settings/payroll-rates'), payrollRatesPage)

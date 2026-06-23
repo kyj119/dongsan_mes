@@ -51,6 +51,7 @@ export const MENU_ITEMS: MenuGroup[] = [
   {
     group: '재무',
     items: [
+      { path: '/accounting', icon: 'fa-coins', label: '회계 허브', roles: ['ADMIN', 'MANAGER'] },
       { path: '/ledger', icon: 'fa-file-invoice-dollar', label: '거래처 원장', roles: ['ADMIN', 'MANAGER'], badgeId: 'nav-badge-receivables' },
       { path: '/tax-invoices', icon: 'fa-file-invoice', label: '세금 증빙', roles: ['ADMIN', 'MANAGER'] },
       { path: '/bank', icon: 'fa-university', label: '자금 관리', roles: ['ADMIN'] },
