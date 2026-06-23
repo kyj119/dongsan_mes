@@ -2,10 +2,11 @@
 
 작성: 2026-06-23 (brainstorming 합의). **착수: 다음 세션 Phase 1부터.**
 
-> **상태(2026-06-23)**: ✅ **Phase 1~2 구현·prod 배포·검증 완료**(커밋 `02dfe2d4`·마이그 0374 remote·dep `f4504b5c` `--branch main`·smoke 101/101·`/summary`·`/payments`·`/accounting` 라이브 200). 신규 `pages/accounting.ts`·`scripts/accounting.js`·`routes/accounting.ts` + 마이그 **0374**(권한).
+> **상태(2026-06-24)**: ✅ **Phase 1~4 전부 구현·prod 배포·검증 완료**(커밋 `02dfe2d4`+`13fb4e2d`·마이그 0374 remote·dep `018bae20` `--branch main`·smoke 101/101·전 엔드포인트 라이브 200). 신규 `pages/accounting.ts`·`scripts/accounting.js`·`routes/accounting.ts` + 마이그 **0374**(권한). **6탭(입금·세금계산서·현금영수증·카드·매입·타임라인) 전부 활성.**
 > - **Phase 1(입금)**: `GET /api/accounting/summary`(KPI 수입[기간 매출]/지출[기간 카드+매입]/미수금[전체 파생]) + `GET /api/accounting/payments`(필터·페이지네이션). 수정/삭제 = 기존 `/api/ledger/payment/:id` 재사용.
 > - **Phase 2(세금계산서·현금영수증 탭)**: 조회 통합(상태·검색·기간 필터) — `GET /api/tax-invoices`·`/api/cash-receipts` 기존 GET 재사용. 발행/취소 정정은 기존 페이지 링크아웃(바로빌 라이프사이클 안전).
-> - 다음 = **Phase 3(카드+매입 탭)** → Phase 4(통합 타임라인).
+> - **Phase 3(카드·매입 탭)**: 카드=기존 `GET /api/card-expenses/transactions` 재사용 / 매입=신규 `GET /api/accounting/purchases`(기간 필터 없는 기존 목록 보완: 기간·검색·결제상태). 정정은 `/card-expenses`·`/purchase-invoices` 링크아웃.
+> - **Phase 4(통합 타임라인)**: 신규 `GET /api/accounting/timeline` — 입금(+)·카드/매입(−) UNION 일자역순 + 기간 집계(수입/지출/순현금), kind=income|expense 필터. 카드 compact일자 정규화·취소 환불처리·전 소스 entity 필터. 마이그 없음(추가 GET + 프론트만).
 
 ## 목적
 경리/회계담당(ADMIN/MANAGER)이 7개 페이지에 분산된 회계 기록을 **한 화면에서 통합 조회하고 정정(수정/삭제)**. 발단: /bank 매칭 입금을 정리하려다 payments 전용 관리 UI 부재 인지.
