@@ -167,4 +167,162 @@ accountingRouter.get('/payments', async (c) => {
   }
 })
 
+// ===========================================================================
+// GET /api/accounting/purchases — 매입 목록 (회계 허브 매입 탭, Phase 3)
+//   기존 /api/purchase-invoices 목록 API에 기간 필터가 없어, 상단 KPI 기간 공유를 위해
+//   accounting 라우트에 기간·검색·결제상태 필터 버전을 둔다. 매입확정/정정은 /purchase-invoices 링크아웃.
+//   필터: start/end(invoice_date) · paymentStatus · search(공급처/계산서번호) · entity
+// ===========================================================================
+accountingRouter.get('/purchases', async (c) => {
+  try {
+    const q = c.req.query()
+    const ef = entityFilter(c, 'pi')
+
+    let where = `WHERE 1=1${ef.clause}`
+    const params: (string | number)[] = [...ef.params]
+    if (q.start) { where += ' AND date(pi.invoice_date) >= ?'; params.push(q.start) }
+    if (q.end) { where += ' AND date(pi.invoice_date) <= ?'; params.push(q.end) }
+    if (q.paymentStatus) { where += ' AND pi.payment_status = ?'; params.push(q.paymentStatus) }
+    if (q.search) {
+      where += ' AND (cl.client_name LIKE ? OR pi.invoice_number LIKE ?)'
+      const kw = '%' + q.search + '%'
+      params.push(kw, kw)
+    }
+
+    const aggRow = await c.env.DB.prepare(`
+      SELECT COUNT(*) AS cnt, COALESCE(SUM(pi.total_amount), 0) AS total
+      FROM purchase_invoices pi LEFT JOIN clients cl ON cl.id = pi.supplier_id
+      ${where}
+    `).bind(...params).first<{ cnt: number; total: number }>()
+    const total = aggRow?.cnt || 0
+
+    const page = Math.max(1, Number(q.page) || 1)
+    const limit = Math.min(Math.max(1, Number(q.limit) || 50), 200)
+    const offset = (page - 1) * limit
+
+    const { results } = await c.env.DB.prepare(`
+      SELECT pi.*, cl.client_name AS supplier_name, po.po_number
+      FROM purchase_invoices pi
+      LEFT JOIN clients cl ON cl.id = pi.supplier_id
+      LEFT JOIN purchase_orders po ON po.id = pi.po_id
+      ${where}
+      ORDER BY date(pi.invoice_date) DESC, pi.id DESC
+      LIMIT ? OFFSET ?
+    `).bind(...params, limit, offset).all()
+
+    return c.json({
+      success: true,
+      data: results,
+      summary: { total_amount: Number(aggRow?.total) || 0, total_count: total },
+      pagination: { total, page, limit },
+    })
+  } catch (error) {
+    console.error('Accounting purchases error:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
+  }
+})
+
+// ===========================================================================
+// GET /api/accounting/timeline — 수입/지출 통합 타임라인 (회계 허브 Phase 4)
+//   수입(+) = 입금(payments) · 지출(−) = 카드(card_transactions, 취소 차감) + 매입(purchase_invoices)
+//   기간 내 이벤트를 일자 역순 단일 목록으로 + 기간 집계(총수입/총지출/순현금).
+//   kind=income|expense 로 한쪽만. signed_amount: 수입 +, 지출 −, 카드취소 +(환불).
+//   카드 일자는 compact(YYYYMMDD) → 정규화. 모든 소스 entity_id 필터.
+// ===========================================================================
+accountingRouter.get('/timeline', async (c) => {
+  try {
+    const { start, end } = defaultRange(c.req.query('start'), c.req.query('end'))
+    const startCompact = start.replace(/-/g, '')
+    const endCompact = end.replace(/-/g, '')
+    const kind = c.req.query('kind') // 'income' | 'expense' | undefined(전체)
+
+    const efP = entityFilter(c, 'p')
+    const efCt = entityFilter(c, 'ct')
+    const efPi = entityFilter(c, 'pi')
+
+    // 기간 집계 (총수입/총지출/순현금 + 건수)
+    const incomeAgg = await c.env.DB.prepare(`
+      SELECT COUNT(*) AS cnt, COALESCE(SUM(p.amount), 0) AS v FROM payments p
+      WHERE date(p.payment_date) >= ? AND date(p.payment_date) <= ?${efP.clause}
+    `).bind(start, end, ...efP.params).first<{ cnt: number; v: number }>()
+    const cardAgg = await c.env.DB.prepare(`
+      SELECT COUNT(*) AS cnt,
+             COALESCE(SUM(CASE WHEN ct.approval_type != 'CANCEL' THEN ct.amount ELSE -ct.amount END), 0) AS v
+      FROM card_transactions ct
+      WHERE ct.transaction_date >= ? AND ct.transaction_date <= ?${efCt.clause}
+        AND EXISTS (SELECT 1 FROM corporate_cards cca WHERE cca.id = ct.card_id AND cca.is_active = 1)
+    `).bind(startCompact, endCompact, ...efCt.params).first<{ cnt: number; v: number }>()
+    const purAgg = await c.env.DB.prepare(`
+      SELECT COUNT(*) AS cnt, COALESCE(SUM(pi.total_amount), 0) AS v FROM purchase_invoices pi
+      WHERE date(pi.invoice_date) >= ? AND date(pi.invoice_date) <= ?${efPi.clause}
+    `).bind(start, end, ...efPi.params).first<{ cnt: number; v: number }>()
+
+    const incomeTotal = Number(incomeAgg?.v) || 0
+    const expenseCard = Number(cardAgg?.v) || 0
+    const expensePurchase = Number(purAgg?.v) || 0
+    const incomeCount = Number(incomeAgg?.cnt) || 0
+    const expenseCount = (Number(cardAgg?.cnt) || 0) + (Number(purAgg?.cnt) || 0)
+
+    let totalCount = incomeCount + expenseCount
+    if (kind === 'income') totalCount = incomeCount
+    else if (kind === 'expense') totalCount = expenseCount
+
+    const page = Math.max(1, Number(c.req.query('page')) || 1)
+    const limit = Math.min(Math.max(1, Number(c.req.query('limit')) || 50), 200)
+    const offset = (page - 1) * limit
+
+    const flowFilter = kind === 'income' ? "WHERE t.flow = 'income'"
+      : kind === 'expense' ? "WHERE t.flow = 'expense'" : ''
+
+    const { results } = await c.env.DB.prepare(`
+      SELECT * FROM (
+        SELECT 'income' AS flow, '입금' AS label, date(p.payment_date) AS evt_date,
+               COALESCE(c.client_name, '-') AS party, p.payment_method AS detail,
+               p.amount AS signed_amount, p.id AS ref_id
+        FROM payments p LEFT JOIN clients c ON c.id = p.client_id
+        WHERE date(p.payment_date) >= ? AND date(p.payment_date) <= ?${efP.clause}
+        UNION ALL
+        SELECT 'expense' AS flow, '카드' AS label,
+               substr(ct.transaction_date,1,4) || '-' || substr(ct.transaction_date,5,2) || '-' || substr(ct.transaction_date,7,2) AS evt_date,
+               COALESCE(ct.merchant_name, '-') AS party, cc.card_name AS detail,
+               CASE WHEN ct.approval_type = 'CANCEL' THEN ct.amount ELSE -ct.amount END AS signed_amount, ct.id AS ref_id
+        FROM card_transactions ct LEFT JOIN corporate_cards cc ON cc.id = ct.card_id
+        WHERE ct.transaction_date >= ? AND ct.transaction_date <= ?${efCt.clause}
+          AND EXISTS (SELECT 1 FROM corporate_cards cca WHERE cca.id = ct.card_id AND cca.is_active = 1)
+        UNION ALL
+        SELECT 'expense' AS flow, '매입' AS label, date(pi.invoice_date) AS evt_date,
+               COALESCE(cl.client_name, '-') AS party, pi.invoice_number AS detail,
+               -pi.total_amount AS signed_amount, pi.id AS ref_id
+        FROM purchase_invoices pi LEFT JOIN clients cl ON cl.id = pi.supplier_id
+        WHERE date(pi.invoice_date) >= ? AND date(pi.invoice_date) <= ?${efPi.clause}
+      ) t
+      ${flowFilter}
+      ORDER BY t.evt_date DESC, t.label
+      LIMIT ? OFFSET ?
+    `).bind(
+      start, end, ...efP.params,
+      startCompact, endCompact, ...efCt.params,
+      start, end, ...efPi.params,
+      limit, offset
+    ).all()
+
+    return c.json({
+      success: true,
+      data: results,
+      summary: {
+        income_total: incomeTotal,
+        expense_total: expenseCard + expensePurchase,
+        expense_card: expenseCard,
+        expense_purchase: expensePurchase,
+        net: incomeTotal - (expenseCard + expensePurchase),
+        total_count: totalCount,
+      },
+      pagination: { total: totalCount, page, limit },
+    })
+  } catch (error) {
+    console.error('Accounting timeline error:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
+  }
+})
+
 export default accountingRouter

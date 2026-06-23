@@ -48,13 +48,14 @@ export function accountingPage(c: Context<HonoEnv>) {
         </div>
       </div>
 
-      <!-- ===== 탭 (Phase 1~2 = 입금·세금계산서·현금영수증 활성, 카드·매입은 후속) ===== -->
+      <!-- ===== 탭 (Phase 1~4 = 입금·세금계산서·현금영수증·카드·매입·타임라인 전부 활성) ===== -->
       <div class="flex items-center border-b mb-3 overflow-x-auto">
         <button id="accTabPayments" onclick="accSwitchTab('payments')" class="acc-tab active"><i class="fas fa-money-bill-wave mr-1"></i>입금</button>
         <button id="accTabTax" onclick="accSwitchTab('tax')" class="acc-tab"><i class="fas fa-file-invoice mr-1"></i>세금계산서</button>
         <button id="accTabCash" onclick="accSwitchTab('cash')" class="acc-tab"><i class="fas fa-receipt mr-1"></i>현금영수증</button>
-        <button class="acc-tab disabled" title="다음 단계에서 제공"><i class="fas fa-credit-card mr-1"></i>카드</button>
-        <button class="acc-tab disabled" title="다음 단계에서 제공"><i class="fas fa-file-invoice-dollar mr-1"></i>매입</button>
+        <button id="accTabCard" onclick="accSwitchTab('card')" class="acc-tab"><i class="fas fa-credit-card mr-1"></i>카드</button>
+        <button id="accTabPurchase" onclick="accSwitchTab('purchase')" class="acc-tab"><i class="fas fa-file-invoice-dollar mr-1"></i>매입</button>
+        <button id="accTabTimeline" onclick="accSwitchTab('timeline')" class="acc-tab"><i class="fas fa-stream mr-1"></i>타임라인</button>
       </div>
 
       <!-- ===== 입금 탭 ===== -->
@@ -173,6 +174,111 @@ export function accountingPage(c: Context<HonoEnv>) {
             </table>
           </div>
           <div id="accCashPagination" class="p-3 border-t flex justify-between items-center text-sm text-gray-500"></div>
+        </div>
+      </div>
+
+      <!-- ===== 카드 탭 (조회 — 분류/정정은 /card-expenses) ===== -->
+      <div id="accCardTab" style="display:none">
+        <div class="ds-card ds-card-compact mb-3">
+          <div class="flex flex-wrap items-center gap-3">
+            <input type="text" id="accCardSearch" placeholder="가맹점..." class="ds-input" style="width:240px;font-size:12px" onkeydown="if(event.key==='Enter')accLoadCard()">
+            <button onclick="accLoadCard()" class="ds-btn ds-btn-primary ds-btn-sm"><i class="fas fa-search mr-1"></i>조회</button>
+            <span class="text-xs text-gray-400">상단 기간=거래일 기준</span>
+            <span class="text-xs text-gray-500 ml-1">페이지 합계 <b id="accCardSum" class="text-red-600">-</b></span>
+            <a href="/card-expenses" class="ml-auto text-xs text-blue-600 hover:underline"><i class="fas fa-external-link-alt mr-1"></i>분류·정정 등 전체 관리</a>
+          </div>
+        </div>
+        <div class="ds-card" style="padding:0">
+          <div class="overflow-x-auto" style="max-height:calc(100vh - 360px);overflow-y:auto">
+            <table class="ds-table ds-table-compact">
+              <thead class="sticky top-0 bg-white z-10">
+                <tr class="text-[10px] text-gray-500 uppercase border-b">
+                  <th class="px-3 py-2 text-left" style="width:90px">거래일</th>
+                  <th class="px-3 py-2 text-left" style="width:160px">카드</th>
+                  <th class="px-3 py-2 text-left">가맹점</th>
+                  <th class="px-3 py-2 text-right" style="width:120px">금액</th>
+                  <th class="px-3 py-2 text-left" style="width:120px">분류</th>
+                  <th class="px-2 py-2 text-center" style="width:90px">상태</th>
+                </tr>
+              </thead>
+              <tbody id="accCardBody"></tbody>
+            </table>
+          </div>
+          <div id="accCardPagination" class="p-3 border-t flex justify-between items-center text-sm text-gray-500"></div>
+        </div>
+      </div>
+
+      <!-- ===== 매입 탭 (조회 — 매입확정/정정은 /purchase-invoices) ===== -->
+      <div id="accPurchaseTab" style="display:none">
+        <div class="ds-card ds-card-compact mb-3">
+          <div class="flex flex-wrap items-center gap-3">
+            <select id="accPurStatus" onchange="accLoadPurchase()" class="ds-input" style="width:auto;font-size:12px">
+              <option value="">전체 결제상태</option>
+              <option value="UNPAID">미지급</option>
+              <option value="PARTIAL">부분지급</option>
+              <option value="PAID">지급완료</option>
+            </select>
+            <input type="text" id="accPurSearch" placeholder="공급처 / 계산서번호..." class="ds-input" style="width:240px;font-size:12px" onkeydown="if(event.key==='Enter')accLoadPurchase()">
+            <button onclick="accLoadPurchase()" class="ds-btn ds-btn-primary ds-btn-sm"><i class="fas fa-search mr-1"></i>조회</button>
+            <span class="text-xs text-gray-400">상단 기간=매입일 기준</span>
+            <span class="text-xs text-gray-500 ml-1">합계 <b id="accPurSum" class="text-red-600">-</b></span>
+            <a href="/purchase-invoices" class="ml-auto text-xs text-blue-600 hover:underline"><i class="fas fa-external-link-alt mr-1"></i>매입확정·정정 전체 관리</a>
+          </div>
+        </div>
+        <div class="ds-card" style="padding:0">
+          <div class="overflow-x-auto" style="max-height:calc(100vh - 360px);overflow-y:auto">
+            <table class="ds-table ds-table-compact">
+              <thead class="sticky top-0 bg-white z-10">
+                <tr class="text-[10px] text-gray-500 uppercase border-b">
+                  <th class="px-3 py-2 text-left" style="width:90px">매입일</th>
+                  <th class="px-3 py-2 text-left" style="width:150px">계산서번호</th>
+                  <th class="px-3 py-2 text-left">공급처</th>
+                  <th class="px-3 py-2 text-right" style="width:110px">공급가</th>
+                  <th class="px-3 py-2 text-right" style="width:90px">부가세</th>
+                  <th class="px-3 py-2 text-right" style="width:120px">합계</th>
+                  <th class="px-2 py-2 text-center" style="width:90px">결제</th>
+                </tr>
+              </thead>
+              <tbody id="accPurchaseBody"></tbody>
+            </table>
+          </div>
+          <div id="accPurchasePagination" class="p-3 border-t flex justify-between items-center text-sm text-gray-500"></div>
+        </div>
+      </div>
+
+      <!-- ===== 통합 타임라인 탭 (수입/지출 단일 목록 — 입금 +, 카드·매입 −) ===== -->
+      <div id="accTimelineTab" style="display:none">
+        <div class="ds-card ds-card-compact mb-3">
+          <div class="flex flex-wrap items-center gap-3">
+            <select id="accTlKind" onchange="accLoadTimeline()" class="ds-input" style="width:auto;font-size:12px">
+              <option value="">수입+지출 전체</option>
+              <option value="income">수입(입금)만</option>
+              <option value="expense">지출(카드·매입)만</option>
+            </select>
+            <span class="text-xs text-gray-400">상단 기간 기준</span>
+            <div class="ml-auto flex items-center gap-4 text-xs">
+              <span class="text-gray-500">수입 <b id="accTlIncome" class="text-blue-700">-</b></span>
+              <span class="text-gray-500">지출 <b id="accTlExpense" class="text-red-600">-</b></span>
+              <span class="text-gray-500">순현금 <b id="accTlNet" class="text-gray-800">-</b></span>
+            </div>
+          </div>
+        </div>
+        <div class="ds-card" style="padding:0">
+          <div class="overflow-x-auto" style="max-height:calc(100vh - 360px);overflow-y:auto">
+            <table class="ds-table ds-table-compact">
+              <thead class="sticky top-0 bg-white z-10">
+                <tr class="text-[10px] text-gray-500 uppercase border-b">
+                  <th class="px-3 py-2 text-left" style="width:90px">일자</th>
+                  <th class="px-2 py-2 text-center" style="width:70px">구분</th>
+                  <th class="px-3 py-2 text-left">거래처 / 가맹점</th>
+                  <th class="px-3 py-2 text-left">상세</th>
+                  <th class="px-3 py-2 text-right" style="width:140px">금액</th>
+                </tr>
+              </thead>
+              <tbody id="accTimelineBody"></tbody>
+            </table>
+          </div>
+          <div id="accTimelinePagination" class="p-3 border-t flex justify-between items-center text-sm text-gray-500"></div>
         </div>
       </div>
 

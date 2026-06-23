@@ -2,7 +2,7 @@
 // ?raw 전역스코프 공유 → 모든 식별자 acc* prefix (feedback-raw-concat-global-scope)
 // 공용 헬퍼: axios · showToast · escapeHtml · parseMoney · bindMoneyInputs · dsSkeleton
 
-var accState = { tab: 'payments', pPage: 1, tPage: 1, cPage: 1, limit: 50, loaded: { payments: false, tax: false, cash: false } };
+var accState = { tab: 'payments', pPage: 1, tPage: 1, cPage: 1, cardPage: 1, purPage: 1, tlPage: 1, limit: 50, loaded: { payments: false, tax: false, cash: false, card: false, purchase: false, timeline: false } };
 
 function accWon(n) { return (Number(n) || 0).toLocaleString() + '원'; }
 
@@ -19,6 +19,9 @@ var ACC_TABS = {
   payments: { btn: 'accTabPayments', content: 'accPaymentsTab', load: function () { accLoadPayments(); } },
   tax: { btn: 'accTabTax', content: 'accTaxTab', load: function () { accLoadTax(); } },
   cash: { btn: 'accTabCash', content: 'accCashTab', load: function () { accLoadCash(); } },
+  card: { btn: 'accTabCard', content: 'accCardTab', load: function () { accLoadCard(); } },
+  purchase: { btn: 'accTabPurchase', content: 'accPurchaseTab', load: function () { accLoadPurchase(); } },
+  timeline: { btn: 'accTabTimeline', content: 'accTimelineTab', load: function () { accLoadTimeline(); } },
 };
 function accSwitchTab(tab) {
   if (!ACC_TABS[tab]) return;
@@ -78,8 +81,8 @@ function accFmtDate(d) {
 
 // 기간 변경 → KPI + 활성 탭 갱신 (페이지 리셋, 비활성 탭은 stale 처리 → 전환 시 재로드)
 function accReload() {
-  accState.pPage = 1; accState.tPage = 1; accState.cPage = 1;
-  accState.loaded = { payments: false, tax: false, cash: false };
+  accState.pPage = 1; accState.tPage = 1; accState.cPage = 1; accState.cardPage = 1; accState.purPage = 1; accState.tlPage = 1;
+  accState.loaded = { payments: false, tax: false, cash: false, card: false, purchase: false, timeline: false };
   accLoadSummary();
   ACC_TABS[accState.tab].load();
 }
@@ -270,6 +273,180 @@ function accRenderCashRow(r) {
     '<td class="px-3 py-2 text-left text-gray-500 text-xs">' + escapeHtml(r.identity_number || '') + '</td>' +
     '<td class="px-3 py-2 text-right tabular-nums font-semibold text-gray-800">' + (Number(r.total_amount) || 0).toLocaleString() + '</td>' +
     '<td class="px-2 py-2 text-center">' + accBadge(r.status) + '</td>' +
+  '</tr>';
+}
+
+// ===== 카드 (조회 — 분류/정정은 /card-expenses) =====
+function accFmtCompact(d) {
+  var s = String(d || '');
+  return s.length === 8 ? s.slice(0, 4) + '-' + s.slice(4, 6) + '-' + s.slice(6, 8) : s;
+}
+async function accLoadCard() {
+  var body = document.getElementById('accCardBody');
+  if (!body) { console.warn('[accounting] #accCardBody not found'); return; }
+  if (window.dsSkeleton) body.innerHTML = window.dsSkeleton.loadingRow(6);
+  var params = new URLSearchParams();
+  var start = document.getElementById('accStart').value;
+  var end = document.getElementById('accEnd').value;
+  var search = document.getElementById('accCardSearch').value.trim();
+  if (start) params.set('start_date', start);
+  if (end) params.set('end_date', end);
+  if (search) params.set('search', search);
+  params.set('page', accState.cardPage);
+  params.set('limit', accState.limit);
+  try {
+    var res = await axios.get('/api/card-expenses/transactions?' + params.toString());
+    var data = res.data.data || [];
+    var pag = res.data.pagination || {};
+    accState.loaded.card = true;
+    var pageSum = data.reduce(function (a, t) { return a + (t.approval_type === 'CANCEL' ? -(Number(t.amount) || 0) : (Number(t.amount) || 0)); }, 0);
+    document.getElementById('accCardSum').textContent = accWon(pageSum);
+    if (!data.length) {
+      body.innerHTML = '<tr><td colspan="6" class="text-center py-10 text-gray-400"><i class="fas fa-credit-card text-3xl mb-2 block text-gray-300"></i>카드 사용내역이 없습니다</td></tr>';
+      document.getElementById('accCardPagination').innerHTML = '';
+      return;
+    }
+    body.innerHTML = data.map(accRenderCardRow).join('');
+    accPaginate('accCardPagination', pag, 'accCardGoto');
+  } catch (e) {
+    console.error('[accounting] card error', e);
+    body.innerHTML = '<tr><td colspan="6" class="text-center py-8 text-red-400">카드 내역 로드 실패</td></tr>';
+    showToast('카드 내역 로드 실패', 'error');
+  }
+}
+function accCardGoto(p) { accState.cardPage = p; accLoadCard(); }
+function accCardStatusBadge(s) {
+  var map = { UNCLASSIFIED: ['미분류', 'bg-gray-100 text-gray-500'], CLASSIFIED: ['분류완료', 'bg-blue-50 text-blue-700'], REQUESTED: ['상신', 'bg-amber-50 text-amber-700'], APPROVED: ['승인', 'bg-green-50 text-green-700'] };
+  var m = map[s] || [s || '-', 'bg-gray-100 text-gray-600'];
+  return '<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ' + m[1] + '">' + m[0] + '</span>';
+}
+function accRenderCardRow(t) {
+  var d = accFmtCompact(t.transaction_date);
+  var isCancel = t.approval_type === 'CANCEL';
+  var cardLabel = (t.card_company || t.card_name || '카드') + (t.card_number_last4 ? ' ' + t.card_number_last4 : '');
+  var amt = Number(t.amount) || 0;
+  var cat = t.category_name
+    ? '<span class="pm-badge bg-indigo-50 text-indigo-700">' + escapeHtml(t.category_name) + '</span>'
+    : '<span class="text-gray-300 text-xs">미분류</span>';
+  return '<tr class="acc-row border-b">' +
+    '<td class="px-3 py-2 text-left text-gray-700">' + escapeHtml(d) + '</td>' +
+    '<td class="px-3 py-2 text-left text-gray-600 text-xs">' + escapeHtml(cardLabel) + '</td>' +
+    '<td class="px-3 py-2 text-left font-medium text-gray-800">' + escapeHtml(t.merchant_name || '-') + (isCancel ? ' <span class="text-rose-500 text-xs">(취소)</span>' : '') + '</td>' +
+    '<td class="px-3 py-2 text-right tabular-nums font-semibold ' + (isCancel ? 'text-rose-500' : 'text-red-600') + '">' + (isCancel ? '-' : '') + amt.toLocaleString() + '</td>' +
+    '<td class="px-3 py-2 text-left">' + cat + '</td>' +
+    '<td class="px-2 py-2 text-center">' + accCardStatusBadge(t.status) + '</td>' +
+  '</tr>';
+}
+
+// ===== 매입 (조회 — 매입확정/정정은 /purchase-invoices) =====
+async function accLoadPurchase() {
+  var body = document.getElementById('accPurchaseBody');
+  if (!body) { console.warn('[accounting] #accPurchaseBody not found'); return; }
+  if (window.dsSkeleton) body.innerHTML = window.dsSkeleton.loadingRow(7);
+  var params = new URLSearchParams();
+  var start = document.getElementById('accStart').value;
+  var end = document.getElementById('accEnd').value;
+  var status = document.getElementById('accPurStatus').value;
+  var search = document.getElementById('accPurSearch').value.trim();
+  if (start) params.set('start', start);
+  if (end) params.set('end', end);
+  if (status) params.set('paymentStatus', status);
+  if (search) params.set('search', search);
+  params.set('page', accState.purPage);
+  params.set('limit', accState.limit);
+  try {
+    var res = await axios.get('/api/accounting/purchases?' + params.toString());
+    var data = res.data.data || [];
+    var sum = res.data.summary || {};
+    var pag = res.data.pagination || {};
+    accState.loaded.purchase = true;
+    document.getElementById('accPurSum').textContent = accWon(sum.total_amount);
+    if (!data.length) {
+      body.innerHTML = '<tr><td colspan="7" class="text-center py-10 text-gray-400"><i class="fas fa-file-invoice-dollar text-3xl mb-2 block text-gray-300"></i>매입 내역이 없습니다</td></tr>';
+      document.getElementById('accPurchasePagination').innerHTML = '';
+      return;
+    }
+    body.innerHTML = data.map(accRenderPurchaseRow).join('');
+    accPaginate('accPurchasePagination', pag, 'accPurchaseGoto');
+  } catch (e) {
+    console.error('[accounting] purchase error', e);
+    body.innerHTML = '<tr><td colspan="7" class="text-center py-8 text-red-400">매입 내역 로드 실패</td></tr>';
+    showToast('매입 내역 로드 실패', 'error');
+  }
+}
+function accPurchaseGoto(p) { accState.purPage = p; accLoadPurchase(); }
+function accPayStatusBadge(s) {
+  var map = { UNPAID: ['미지급', 'bg-red-50 text-red-600'], PARTIAL: ['부분지급', 'bg-amber-50 text-amber-700'], PAID: ['지급완료', 'bg-green-50 text-green-700'] };
+  var m = map[s] || [s || '-', 'bg-gray-100 text-gray-600'];
+  return '<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ' + m[1] + '">' + m[0] + '</span>';
+}
+function accRenderPurchaseRow(pi) {
+  var d = (pi.invoice_date || '').slice(0, 10);
+  return '<tr class="acc-row border-b">' +
+    '<td class="px-3 py-2 text-left text-gray-700">' + escapeHtml(d) + '</td>' +
+    '<td class="px-3 py-2 text-left text-gray-700 text-xs">' + escapeHtml(pi.invoice_number || '-') + '</td>' +
+    '<td class="px-3 py-2 text-left font-medium text-gray-800">' + escapeHtml(pi.supplier_name || '-') + '</td>' +
+    '<td class="px-3 py-2 text-right tabular-nums text-gray-600">' + (Number(pi.subtotal) || 0).toLocaleString() + '</td>' +
+    '<td class="px-3 py-2 text-right tabular-nums text-gray-500">' + (Number(pi.vat_amount) || 0).toLocaleString() + '</td>' +
+    '<td class="px-3 py-2 text-right tabular-nums font-semibold text-red-600">' + (Number(pi.total_amount) || 0).toLocaleString() + '</td>' +
+    '<td class="px-2 py-2 text-center">' + accPayStatusBadge(pi.payment_status) + '</td>' +
+  '</tr>';
+}
+
+// ===== 통합 타임라인 (수입/지출 단일 목록) =====
+async function accLoadTimeline() {
+  var body = document.getElementById('accTimelineBody');
+  if (!body) { console.warn('[accounting] #accTimelineBody not found'); return; }
+  if (window.dsSkeleton) body.innerHTML = window.dsSkeleton.loadingRow(5);
+  var params = new URLSearchParams();
+  var start = document.getElementById('accStart').value;
+  var end = document.getElementById('accEnd').value;
+  var kind = document.getElementById('accTlKind').value;
+  if (start) params.set('start', start);
+  if (end) params.set('end', end);
+  if (kind) params.set('kind', kind);
+  params.set('page', accState.tlPage);
+  params.set('limit', accState.limit);
+  try {
+    var res = await axios.get('/api/accounting/timeline?' + params.toString());
+    var data = res.data.data || [];
+    var sum = res.data.summary || {};
+    var pag = res.data.pagination || {};
+    accState.loaded.timeline = true;
+    document.getElementById('accTlIncome').textContent = accWon(sum.income_total);
+    document.getElementById('accTlExpense').textContent = accWon(sum.expense_total);
+    var net = Number(sum.net) || 0;
+    var netEl = document.getElementById('accTlNet');
+    netEl.textContent = (net >= 0 ? '+' : '-') + accWon(Math.abs(net));
+    netEl.className = 'font-bold ' + (net >= 0 ? 'text-blue-700' : 'text-red-600');
+    if (!data.length) {
+      body.innerHTML = '<tr><td colspan="5" class="text-center py-10 text-gray-400"><i class="fas fa-stream text-3xl mb-2 block text-gray-300"></i>해당 기간 내역이 없습니다</td></tr>';
+      document.getElementById('accTimelinePagination').innerHTML = '';
+      return;
+    }
+    body.innerHTML = data.map(accRenderTimelineRow).join('');
+    accPaginate('accTimelinePagination', pag, 'accTimelineGoto');
+  } catch (e) {
+    console.error('[accounting] timeline error', e);
+    body.innerHTML = '<tr><td colspan="5" class="text-center py-8 text-red-400">타임라인 로드 실패</td></tr>';
+    showToast('타임라인 로드 실패', 'error');
+  }
+}
+function accTimelineGoto(p) { accState.tlPage = p; accLoadTimeline(); }
+function accTlFlowBadge(label) {
+  var cls = label === '입금' ? 'bg-blue-100 text-blue-800' : label === '카드' ? 'bg-purple-100 text-purple-800' : 'bg-orange-100 text-orange-800';
+  return '<span class="pm-badge ' + cls + '">' + escapeHtml(label || '-') + '</span>';
+}
+function accRenderTimelineRow(r) {
+  var d = (r.evt_date || '').slice(0, 10);
+  var amt = Number(r.signed_amount) || 0;
+  var pos = amt >= 0;
+  return '<tr class="acc-row border-b">' +
+    '<td class="px-3 py-2 text-left text-gray-700">' + escapeHtml(d) + '</td>' +
+    '<td class="px-2 py-2 text-center">' + accTlFlowBadge(r.label) + '</td>' +
+    '<td class="px-3 py-2 text-left font-medium text-gray-800">' + escapeHtml(r.party || '-') + '</td>' +
+    '<td class="px-3 py-2 text-left text-gray-500 text-xs">' + escapeHtml(r.detail || '') + '</td>' +
+    '<td class="px-3 py-2 text-right tabular-nums font-semibold ' + (pos ? 'text-blue-700' : 'text-red-600') + '">' + (pos ? '+' : '-') + Math.abs(amt).toLocaleString() + '</td>' +
   '</tr>';
 }
 
