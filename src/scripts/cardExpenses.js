@@ -178,7 +178,7 @@ async function loadTransactions() {
         '<td class="px-1 py-1.5 text-center"><input type="checkbox" class="tx-check" data-id="' + tx.id + '" ' + (selectedTxIds.has(tx.id) ? 'checked' : '') + ' onchange="toggleTxSelect(' + tx.id + ', this.checked)"></td>' +
         '<td class="px-2 py-1.5 text-xs text-gray-500 whitespace-nowrap">' + dateStr + '</td>' +
         '<td class="px-2 py-1.5 text-xs text-gray-600">' + escapeHtml(assignee) + '</td>' +
-        '<td class="px-2 py-1.5 text-xs font-medium text-gray-800">' + escapeHtml(tx.merchant_name || '-') + receiptIcon + '</td>' +
+        '<td class="px-2 py-1.5 text-xs font-medium text-gray-800 truncate" style="max-width:200px" title="' + escapeHtml(tx.merchant_name || '') + '">' + escapeHtml(tx.merchant_name || '-') + receiptIcon + '</td>' +
         '<td class="px-2 py-1.5 text-right text-xs tabular-nums font-semibold">' + (tx.amount || 0).toLocaleString() + '</td>' +
         '<td class="px-1 py-1"><select class="w-full border border-gray-200 rounded px-1 py-0.5 text-xs bg-white" onchange="quickClassify(' + tx.id + ', this.value)" data-cat-select="' + tx.id + '">' + catOptionsHtml.replace('value="' + (tx.category_id || '') + '"', 'value="' + (tx.category_id || '') + '" selected') + '</select></td>' +
         '<td class="px-1 py-1"><input type="text" class="w-full border border-gray-200 rounded px-1.5 py-0.5 text-xs" value="' + escapeHtml(tx.memo || '') + '" placeholder="적요..." onblur="quickMemo(' + tx.id + ', this.value)" data-memo-input="' + tx.id + '"></td>' +
@@ -614,7 +614,13 @@ async function quickClassify(txId, catId) {
     await axios.put('/api/card-expenses/transactions/' + txId, {
       category_id: catId ? parseInt(catId) : null
     });
-    loadTransactions();
+    // 전체 새로고침 대신 해당 행 상태 뱃지만 인라인 갱신 (스크롤·포커스 유지)
+    var sel = document.querySelector('[data-cat-select="' + txId + '"]');
+    var pill = sel ? sel.closest('tr').querySelector('.status-pill') : null;
+    if (pill) {
+      if (catId) { pill.textContent = '분류'; pill.setAttribute('style', 'background:#dbeafe;color:#1e40af;font-size:10px'); }
+      else { pill.textContent = '미분류'; pill.setAttribute('style', 'background:#fef3c7;color:#92400e;font-size:10px'); }
+    }
     loadSummary();
   } catch (e) { showToast('분류 실패', 'error'); }
 }

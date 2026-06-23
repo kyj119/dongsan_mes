@@ -106,10 +106,10 @@ export function cardExpensesPage(c: Context<HonoEnv>) {
                   <th class="px-1 py-2" style="width:28px"><input type="checkbox" id="selectAll" onchange="toggleSelectAll()"></th>
                   <th class="px-2 py-2 text-left" style="width:55px">일자</th>
                   <th class="px-2 py-2 text-left" style="width:55px">담당자</th>
-                  <th class="px-2 py-2 text-left">가맹점</th>
-                  <th class="px-2 py-2 text-right" style="width:80px">금액</th>
-                  <th class="px-1 py-2 text-center" style="width:110px">분류</th>
-                  <th class="px-1 py-2 text-left" style="width:120px">적요</th>
+                  <th class="px-2 py-2 text-left" style="width:200px">가맹점</th>
+                  <th class="px-2 py-2 text-right" style="width:90px">금액</th>
+                  <th class="px-1 py-2 text-center" style="width:120px">분류</th>
+                  <th class="px-1 py-2 text-left">적요</th>
                   <th class="px-1 py-2 text-center" style="width:45px">상태</th>
                   <th class="px-1 py-2" style="width:28px"></th>
                 </tr>
