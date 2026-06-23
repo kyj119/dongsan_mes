@@ -861,8 +861,8 @@
                                     if (plSel.options[pi].dataset.ppCode === code) { plSel.selectedIndex = pi; break; }
                                 }
                             }
-                        } else if (code === 'PP-COAT-M' || code === 'PP-COAT-G') {
-                            // Restore coating (무광/유광 select)
+                        } else if (code.indexOf('PP-COAT') === 0) {
+                            // Restore coating (무광/유광 select) — 시트 SPP031 + 합성지 120g/180g/유광 전체 코드 일반화
                             var coatingSel = container.querySelector('.pp-coating-select');
                             if (coatingSel) {
                                 for (var ci = 0; ci < coatingSel.options.length; ci++) {
