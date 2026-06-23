@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 5 -->
-<!-- last_run_at: 2026-06-23T18:00:00+09:00 -->
+<!-- last_run_area: 6 -->
+<!-- last_run_at: 2026-06-23T22:00:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,7 +8,7 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | 4 (**GitHub open auto-improve 실측 4건** — **#430 post-deploy smoke가 write 경로 무검증(GET 101+로그인 POST 1) → 품목 생성 불능 회귀가 green 통과(은폐)** improvement small [Area 1] · **#435 차감방식(deduction_method/sheet_spec/waste_factor) 설정 UI·API 부재 — 신규 판재 마이그레이션 없이 BOARD/NONE 분류 불가, autoDeduct 침묵 오차감** improvement small [Area 3] · **#436 재고실사 submitted_by/approved_by audit가 항상 'system' — 미전송 X-User-Id 헤더 의존(#394 절반 마이그레이션 잔재)** bug small [Area 4] · **#437 PUT /api/bank/accounts/:id entityFilter 누락 — 타법인 계좌 master cross-tenant 덮어쓰기 IDOR, 형제 DELETE/refresh·corporate_cards PUT(#360)은 적용·PUT만 누락(부분픽스)** bug small [Area 5, 본 사이클]) |
+| 🆕 new | 5 (**GitHub open auto-improve 실측 5건** — **#430 post-deploy smoke가 write 경로 무검증(GET 101+로그인 POST 1) → 품목 생성 불능 회귀가 green 통과(은폐)** improvement small [Area 1] · **#435 차감방식(deduction_method/sheet_spec/waste_factor) 설정 UI·API 부재 — 신규 판재 마이그레이션 없이 BOARD/NONE 분류 불가, autoDeduct 침묵 오차감** improvement small [Area 3] · **#436 재고실사 submitted_by/approved_by audit가 항상 'system' — 미전송 X-User-Id 헤더 의존(#394 절반 마이그레이션 잔재)** bug small [Area 4] · **#437 PUT /api/bank/accounts/:id entityFilter 누락 — 타법인 계좌 master cross-tenant 덮어쓰기 IDOR, 형제 DELETE/refresh·corporate_cards PUT(#360)은 적용·PUT만 누락(부분픽스)** bug small [Area 5] · **#438 마이그 번호 0373 중복 — barobill 두 번 리넘버(0362→0372→0373) 직후 UV 마이그가 0374 미사용으로 충돌 재유입, 기능 안전(결정적 적용·상호의존 0)·컨벤션 위반** improvement small [Area 6, 본 사이클]) |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 (#372 CSV도 owner close-completed → done 이관) |
 | ✔️ done | 134 (133 + **owner close-completed #429**[`bd8b191`+`c51f484` print-system 프론트 dead code 2곳 제거 = 2단계 purge 완료] — 직전 7건 일괄 close[#412·#423·#424·#425·#426·#428·#431] 포함, **전 8건 main 트리 실재 검증, #422 디버전스 클래스 clean**) |
@@ -16,6 +16,16 @@
 
 > 📦 **과거 사이클 로그**(아래 6블록 이전분)는 `IMPROVEMENT_BACKLOG_ARCHIVE.md`로 이관됨 (2026-06-10 정리). 신규 로그는 계속 이 파일 상단에 추가.
 
+> **Area 6 자기 진화 (2026-06-23T22:00):**
+> - **방법**: git fetch-before-compare(origin force-update `4993fa7→d614564`, fetch 후 **HEAD=origin/main `d614564` 0/0 동기**, 디버전스 0). egress 차단(prod/Playwright/verify[node_modules 부재] 도달 불가)이라 정적 bridge 재감사. Area 6 **21회차** — **신선 각도 = 직전 Area4(`c51f484`, 14:00)/Area5(`5424c2f`, 18:00) HEAD 이후 churn의 컬럼-diff bridge + XSS bridge + backlog↔GitHub sync.**
+> - **🆕 신규 이슈 #438 (improvement, small) — 마이그 번호 0373 중복(컨벤션 위반, 기능 안전)**: `0373_barobill_registration`(0092046 18:07, 바로빌 0362→0372→0373 **두 번 리넘버**) + `0373_uv_clear_sheet_output`(d614564 18:09, UV 마이그가 0374 대신 0373). **재발 메커니즘 = 리넘버 dance가 한 칸 모자라 수렴** — 바로빌이 충돌 회피로 두 번 올린 2분 뒤 UV가 같은 목표번호로 착륙. **기능 안전 3단 판정**: ① wrangler 전체 파일명 키 정렬 적용=둘 다 결정적 ② 두 0373 상호의존 0(barobill=bank_accounts/corporate_cards ALTER · UV=items/product_materials INSERT) ③ UV 선행의존 `SPC031G-137`은 0372(<0373)에서 생성=적용순 무관 → 순수 컨벤션 위반=minor. issue-only(마이그 리네임=스키마 영역+prod `d1_migrations` 적용여부 egress 확인 불가). 부수 0327×2는 기존(prod적용 추정, 리네임 더 위험)이라 정리 대상 아님.
+> - **🟢 XSS bridge (post-Area5 `cardExpenses.js` `930fb3e`) = net-new 0**: 카드내역 분류 인라인 갱신 churn — 신규 `title` 속성 `escapeHtml(tx.merchant_name||'')` 적용, quickClassify 인라인 pill 갱신은 **하드코딩 textContent('분류'/'미분류')+static style** = free-text sink 0. Area5 이후 프론트 churn은 cardExpenses.js(+10)뿐이라 전수 cover.
+> - **🟢 컬럼-diff bridge (post-Area4 마이그 0370~0373) = net-new 0**: 0370~0373 전부 **데이터 마이그레이션**(INSERT OR IGNORE into items/product_materials/pp_applicable_subcategories, 신규 컬럼/스키마 변경 0). 참조 컬럼(pricing_profile·deduction_method·sub_category·item_group·width_mm·sheet_spec·waste_factor) 전수 ground-truth(ALTER 정의) 존재 확인 → no-such-column 위험 0. 신규 ROLL 자재는 width_mm 세팅+deduction_method='ROLL'로 autoDeduct 폭매칭 정합.
+> - **🟢 backlog↔GitHub sync clean**: open auto-improve **실측 5건**(#430·#435·#436·#437·#438, list_issues 전수) = 직전 stats `new=4` + 본 사이클 #438. owner 신규 close/머지 0(직전 done=134 유지). rejected=3 유지. #422 디버전스: HEAD=origin/main 동기(`d614564`)라 미push 픽스 0.
+> - **🧬 SKILL 강화 1건 (Area 6 line 237 인근 codify)**: **마이그 번호 중복 standing scan** — line 236 부수노트(0334×2)를 매 사이클 자동 스캔으로 승격(`ls migrations | sed→sort→uniq -d`). 재발 메커니즘(리넘버 dance 수렴)·기능안전 3단 판정·FP배제(기존 prod적용 중복은 제외, 이번 churn 신규 유입만)를 codify.
+> - **이상 없음**: git 동기 0/0. XSS bridge·컬럼-diff bridge net-new 0. sync 5=5(#438 본 사이클 추가). verify 불가=환경제약(node_modules 부재, 코드결함 아님).
+> - 자동 수정 0건(#438=issue-only, 마이그 리네임 정책), 신규 이슈 1건(#438 마이그 0373 중복), SKILL 강화 1건(마이그 번호 중복 standing scan), done-sync(변동 0, 4→5 본 사이클 추가), **신선 각도 — 직전 Area4/5 이후 churn의 컬럼-diff+XSS bridge 재감사 + 마이그 번호 중복 탐지, 프로덕션 영향 0(0373 충돌은 결정적 적용으로 무해) 확인**
+>
 > **Area 5 보안 (2026-06-23T18:00):**
 > - **방법**: git fetch-before-compare(origin force-update `4993fa7→5424c2f`, fetch 후 **HEAD=origin/main `5424c2f` 0/0 동기**, 디버전스 0). egress 차단(prod/Playwright 도달 불가)이라 정적 보안 분석. Area 5 **20회차** — **신선 각도 = 직전 Area5(`861f218`, 06-22T18:00) 이후 최대 churn = 바로빌(Barobill) 금융 연동**(bank.ts +144·cardExpenses.ts +132·barobill.ts 신규·마이그 0362 + 프론트 bank.js/cardExpenses.js)의 보안 5각도(IDOR·시크릿·외부API·XSS·SQLi) 전수. 외부 금융 API+민감 인증정보(계좌비번/WebPwd) 처리라 최고 위험 타깃.
 > - **🆕 신규 이슈 #437 (bug, small) — PUT /api/bank/accounts/:id entityFilter 누락 = cross-tenant write IDOR**: `bank.ts:144/151` 계좌수정 핸들러의 SELECT+UPDATE 둘 다 bare `WHERE id = ?`(entity 조건 없음) → entity-scoped ADMIN이 타법인 계좌 master(`account_number`/`bank_name` 등) 덮어쓰기 가능. **결정적 증거 = 형제 전수 격리·PUT만 누락**: 같은 파일 GET목록(:45)·DELETE(:182)·refresh(:225) 전부 `${ef.clause}` 적용(DELETE/refresh는 이번 바로빌 churn에서 추가됨), **형제 도메인 corporate_cards(cardExpenses.ts)는 PUT/DELETE/refresh 전부 `entityFilter(c) // #360: 타법인 법인카드 수정 차단`** = #360에서 카드 PUT IDOR 막고 이번에 bank DELETE/refresh도 막았으나 **bank PUT만 형제 누락**(#377 부분픽스 + #349/#356/#360 IDOR 비대칭). entityFilter는 `getEntityId===0`(super-ADMIN)만 빈절이라 entity-scoped는 실제 격리절 생성=IDOR 확정. 도달성 LIVE(`bank.js:865` axios.put). 동급 minor = `POST /transactions/import`(:336) 계좌확인도 bare(단 import tx는 호출자 entity 스탬프라 영향 낮음). issue-only(SKILL Area5 IDOR 자동수정 금지 #349/#356 + 프로젝트 IDOR=owner 픽스 워크플로 #360/#427/#434).
