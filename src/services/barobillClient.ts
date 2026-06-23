@@ -178,9 +178,27 @@ export async function barobillPing(config: BarobillConfig, service: BarobillServ
 }
 
 /**
- * 포인트 잔액 조회
+ * 회원사 보유금액(포인트) 조회 — 모든 서비스 공통 단일 지갑
  */
 export async function getBarobillBalance(config: BarobillConfig): Promise<number> {
   const result = await barobillCall(config, 'TI', 'GetBalanceCostAmount', {})
+  return parseFloat(result) || 0
+}
+
+/**
+ * 파트너 보유금액 조회 (GetBalanceCostAmountOfInterOP) — 회원사 0이어도 파트너 정산 가능 여부 판단용.
+ * CERTKEY만 필요하나 barobillCall이 CorpNum도 전송(서버측 무시 기대). 실패 시 throw.
+ */
+export async function getPartnerBalance(config: BarobillConfig): Promise<number> {
+  const result = await barobillCall(config, 'TI', 'GetBalanceCostAmountOfInterOP', {})
+  return parseFloat(result) || 0
+}
+
+/**
+ * 서비스별 단가 조회 (GetChargeUnitCostEx).
+ * ChargeCode 예: 31=카드조회(1일), 45=계좌조회(1일), 41~44=계좌조회(10분/30분/1시간/4시간)
+ */
+export async function getChargeUnitCost(config: BarobillConfig, chargeCode: number): Promise<number> {
+  const result = await barobillCall(config, 'TI', 'GetChargeUnitCostEx', { ChargeCode: chargeCode })
   return parseFloat(result) || 0
 }

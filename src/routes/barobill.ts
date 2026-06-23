@@ -57,6 +57,24 @@ barobillRouter.get('/status', async (c) => {
   }
 })
 
+// GET /api/barobill/charge-info — 잔액(회원사·파트너) + 카드/계좌조회 단가 진단
+barobillRouter.get('/charge-info', async (c) => {
+  try {
+    const config = await getConfig(c)
+    const { getPartnerBalance, getChargeUnitCost } = await import('../services/barobillClient')
+    const corpBalance = await getBarobillBalance(config)
+    const safe = async (fn: () => Promise<number>) => { try { return await fn() } catch (e: any) { return `ERR: ${e?.message || 'unknown'}` } }
+    const partnerBalance = await safe(() => getPartnerBalance(config))
+    const cardDailyCost = await safe(() => getChargeUnitCost(config, 31))   // 카드조회(1일)
+    const bankDailyCost = await safe(() => getChargeUnitCost(config, 45))   // 계좌조회(1일)
+    const bankHourCost = await safe(() => getChargeUnitCost(config, 43))    // 계좌조회(1시간)
+    return c.json({ success: true, data: { corpNum: config.corpNum, isTest: config.isTest, corpBalance, partnerBalance, cardDailyCost, bankDailyCost, bankHourCost } })
+  } catch (error: any) {
+    console.error('Barobill charge-info error:', error?.message || 'unknown')
+    return c.json({ success: false, error: '바로빌 요청 처리 중 오류가 발생했습니다' }, 500)
+  }
+})
+
 // -------------------------------------------------------
 // 카드
 // -------------------------------------------------------
