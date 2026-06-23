@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 3 -->
-<!-- last_run_at: 2026-06-23T10:00:00+09:00 -->
+<!-- last_run_area: 4 -->
+<!-- last_run_at: 2026-06-23T14:00:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,14 +8,25 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | 3 (**GitHub open auto-improve 실측 3건** — **#429 print-system 제거 2단계 미완 — 프론트 잔존 dead code 18 axios 호출** cleanup/improvement small [Area 6] · **#430 post-deploy smoke가 write 경로 무검증(GET 101+로그인 POST 1) → 품목 생성 불능 회귀가 green 통과(은폐)** improvement small [Area 1] · **#435 차감방식(deduction_method/sheet_spec/waste_factor) 설정 UI·API 부재 — 신규 판재 마이그레이션 없이 BOARD/NONE 분류 불가, autoDeduct 침묵 오차감** improvement small [Area 3, 본 사이클]) |
+| 🆕 new | 3 (**GitHub open auto-improve 실측 3건** — **#430 post-deploy smoke가 write 경로 무검증(GET 101+로그인 POST 1) → 품목 생성 불능 회귀가 green 통과(은폐)** improvement small [Area 1] · **#435 차감방식(deduction_method/sheet_spec/waste_factor) 설정 UI·API 부재 — 신규 판재 마이그레이션 없이 BOARD/NONE 분류 불가, autoDeduct 침묵 오차감** improvement small [Area 3] · **#436 재고실사 submitted_by/approved_by audit가 항상 'system' — 미전송 X-User-Id 헤더 의존(#394 절반 마이그레이션 잔재)** bug small [Area 4, 본 사이클]) |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 (#372 CSV도 owner close-completed → done 이관) |
-| ✔️ done | 133 (126 + **owner 일괄 close-completed 7건**[`9e0c13c` 9건 일괄수정 중 auto-improve 7: #412 scan items.current_stock→inventory · #423 자동가공 /start N+1 batch · #424 weeklyPurchase mobile→phone · #425 scan EQ equipment_type→printer_name 매핑 · #426 주문폼 단가제안 3중 dead 복구 · #428 attendance caps_sync_log 집계 매핑 · #431 cards 원단 mat.item_name AS print_media_name 재배선 — **전 7건 main 트리 실재 검증, #422 디버전스 클래스 clean**]) |
+| ✔️ done | 134 (133 + **owner close-completed #429**[`bd8b191`+`c51f484` print-system 프론트 dead code 2곳 제거 = 2단계 purge 완료] — 직전 7건 일괄 close[#412·#423·#424·#425·#426·#428·#431] 포함, **전 8건 main 트리 실재 검증, #422 디버전스 클래스 clean**) |
 | ❌ rejected | 3 |
 
 > 📦 **과거 사이클 로그**(아래 6블록 이전분)는 `IMPROVEMENT_BACKLOG_ARCHIVE.md`로 이관됨 (2026-06-10 정리). 신규 로그는 계속 이 파일 상단에 추가.
 
+> **Area 4 데이터 정합성 (2026-06-23T14:00):**
+> - **방법**: git fetch-before-compare(origin force-update `4993fa7→c51f484`, fetch 후 **HEAD=origin/main `c51f484` 0/0 동기**, 디버전스 0). ground-truth=**357 마이그레이션** node:sqlite 전량 적용(177테이블, migFail 5=빈 in-mem FK 데이터마이그). egress 차단이라 prod D1 직접 쿼리(고아/상태불일치) 불가 → 정적 컬럼/제약/FK/audit 스캔 자동화. **신선 각도 = 직전 Area4(`f81359c`) 이후 churn(품목 신모델 0336~0359 + #433/#434 owner fix `c3ccd2e`)의 write-path 정합성 + audit 컬럼 무결성.**
+> - **🆕 신규 이슈 #436 (bug, small) — 재고실사 제출/승인자 audit이 항상 'system'**: `inventoryCount.ts:199/223` `const userId = c.req.header('X-User-Id') || 'system'` → `inventory_counts.submitted_by`/`approved_by`(비-FK TEXT)에 저장. **3단 실증**: (a)`grep X-User-Id src/scripts`=0(프론트 미전송) (b)백엔드 전체 X-User-Id 읽는 곳 이 2줄뿐(나머지 `c.get('user')` 마이그됨) (c)**같은 /approve 핸들러의 형제 FK 컬럼 `handled_by`는 #394(`25d1b8e`)로 이미 `c.get('user')?.id`로 고쳐짐** = 절반 마이그레이션 잔재(FK만 고치고 audit TEXT 누락). → 헤더 항상 undefined → 모든 실사 제출/승인 audit이 `'system'` 고정, 프론트 `inventoryCount.js:34` raw 표시. 재고보정(재무·감사 민감) 책임추적 불가. 권한 에스컬레이션 아님(접근제어는 entityFilter+page-permission 별도 강제). 저장형식(id vs username) 선택=API/UI 변경이라 issue-only.
+> - **🟢 컬럼-존재성 4종 자동 스캔 = net-new 0**: ① INSERT unknown/NOT NULL-missing 컬럼(357 ground-truth 콤마리스트 파싱) **0건** ② 단일테이블 명시 SELECT 컬럼존재성(A-027) — 기존 open 이슈 외 net-new 0 ③ users(id) FK 비-id 리터럴 바인딩 sweep(69 FK 컬럼) **0건**(`price_change_history.changed_by`=비-FK TEXT라 `user?.username||'system'` 안전 FP 배제) ④ #433 fix(balance-snapshot 존재X컬럼3) main 트리 반영 확인.
+> - **🟢 CHECK-literal write 스캔 = net-new 0(자기-FP 27건 regex 수정 후 격리)**: CHECK IN 제약 28테이블 추출 후 UPDATE/INSERT literal 대조 시 **첫 패스 27건 전부 FP** — `status` 검색이 prefix 컬럼 tail 매칭(`credit_status='REJECTED'`·`billing_status='BILLED'`·`rip_status='ERROR'`·`pp_status=`·`render_status='queued'`). **regex에 leading word-boundary `(?<![a-z0-9_])` 추가 후 재실행 = 0건**(진짜 CHECK 위반 없음). SKILL line 148 "prefix tail 매칭" 경고를 regex 레벨로 codify.
+> - **🟢 UTC/KST 업무일자 = net-new 0**: 업무일자 컬럼에 raw `date('now')` 직접 저장 후보 0(기존 #366 클래스 잔존 없음).
+> - **🟢 backlog↔GitHub sync 갱신**: open auto-improve **실측 3건**(#430·#435·#436) — 직전 stats `new=3`(#429·#430·#435) 중 **#429 owner close-completed**(`bd8b191`+`c51f484` 프론트 dead code 2곳 제거=2단계 purge 완료) → done 133→134, new에 #436 추가(net 3 유지). #433/#434는 owner 비-auto-improve 라벨(c3ccd2e fix). done 8건(#429+직전7) 전부 main 트리 실재 검증=#422 디버전스 clean.
+> - **🧬 SKILL 강화 2건 (Area 4 line 145 인근 codify)**: ① **비-FK audit TEXT 컬럼 sweep**(#436 클래스 — FK throw의 silent 거울: 비-FK `*_by`가 미전송 헤더/리터럴에 바인딩되면 throw 없이 영구 오기록, ① FK sweep에서 FP-배제한 컬럼을 버리지 말고 바인딩 소스 검증) ② **스캔 regex word-boundary 의무화**(`(?<![a-z0-9_])`+col — prefix 컬럼 tail FP 전량 차단, CHECK·FK·컬럼존재성 모든 컬럼명 grep에 적용).
+> - **이상 없음**: git 동기 0/0. 컬럼존재성 4종·CHECK·FK·UTC 스캔 net-new 1(#436 audit). 자기-FP(CHECK 27건) regex 수정으로 격리. done-sync 갱신(#429 close + 8건 main 검증). egress 차단은 환경제약(장애 아님).
+> - 자동 수정 0건(#436=issue-only, audit 저장형식 owner 결정), 신규 이슈 1건(#436), SKILL 강화 2건(audit TEXT sweep + regex word-boundary), done-sync(#429 close-completed 이관 + 8건 main 실재 검증), **신선 각도 — 품목 신모델 churn write-path 정합성 + audit 컬럼 무결성 standing scan, 프로덕션 영향 0 확인**
+>
 > **Area 3 UX/기능 감사 (2026-06-23T10:00):**
 > - **방법**: git fetch-before-compare(origin force-update `4993fa7→c3ccd2e`, fetch 후 **HEAD=origin/main `c3ccd2e` 0/0 동기**, 디버전스 0). egress 차단(prod/Playwright 도달 불가)이라 정적 분석. **신선 각도 = 직전 Area3(#420 더블클릭/#421 로딩표시/#426 showConfirm — 전부 owner 적용 완료) 이후 최대 churn(품목 신모델 0336~0359 + 차감방식 구조화 `e76b0eb`/0359)의 기능 완전성.**
 > - **🆕 신규 이슈 #435 (improvement, small) — 차감방식 설정 UI·API 부재(반쪽 기능)**: `0359`가 추가한 `items.deduction_method`(ROLL/BOARD/NONE)·`sheet_spec`·`waste_factor`를 **품목 등록/수정 어디서도 설정·편집 불가** — ① write 경로 0(`grep deduction_method src/routes`=SET/INSERT/body/allowedFields 0, items.ts:605 allowedFields 미포함) ② 프론트 UI 참조 0(bom.js waste_factor는 별개 BOM 컬럼=FP 배제) ③ autoDeduct(`autoDeductInventory.ts:137/160`)는 ROLL+width_mm 없으면 자재 미선택→**차감 침묵 스킵**, ROLL+width_mm 있으면 면적 대신 **길이 오차감**. 마이그 0359가 자작나무만 일회성 BOARD 분류 → 향후 신규 판재/NONE 자재는 DB 마이그레이션만이 분류 수단(셀프서비스 불가). 현재 영향 0(자작나무만 존재), 미래 신규 판재 등록 시 발현. issue-only(휴면 write 활성화+UI 추가=자동수정 금지).
