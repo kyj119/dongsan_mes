@@ -14,6 +14,11 @@
 
 ## 🔴 현재 진행 중
 
+- **✅ [2026-06-23] GitHub 이슈 13건 검토·처리 — 11건 수정·prod 배포·close + 2건 보류**:
+  - **수정 9 (커밋 `9e0c13c4` → prod dep `0b685d2f` `--branch main` → smoke 101/101 → origin/main `8604af0e`)**: IDOR 2(**#432** cards/lifecycle `cardEntityScope` 개별 카드 10경로·**#427** tasks 조회/통계/변경, `/claim` 공용 에이전트 유지) + 존재X컬럼 4(**#412** scan→`inventory`·**#425** equipment 실컬럼·**#424** users→`phone`·**#428** caps→`inserted+updated`/`error_count`) + dead기능 2(**#426** 단가제안 3중dead 완성·**#431** 카드원단 `product_materials`(is_default)→`print_media_name` 복원) + N+1 1(**#423** 청크 batch). 검증=typecheck+build+JS문법+재작성SQL 로컬D1+entity감사 42/42.
+  - **보류 2 (이슈 코멘트만)**: **#429**(제거범위가 #426으로 살린 `onUnitPriceManualChange`+진행중 `product_materials`와 충돌→개편 안정화 후) · **#430**(prod write카나리=e2e-prod오염 차단과 충돌+D1 dry-run 불가→로컬 카나리 권장).
+  - **후속 수정 2 (세션 중 봇 신규 등록, 동일클래스 → 즉시 처리·배포·close)**: **#433** balance-snapshot 존재X컬럼 3(재고 `items.current_stock`→`inventory.quantity × items.avg_unit_cost` · 은행 `bank_accounts.current_balance`(부재)→계좌별 최신 `bank_transactions.balance_after` 합산 · 대출 `remaining_principal`/`status`→`current_balance`/`is_active`, `.catch`로 은폐된 "항상 0" 수정) · **#434** 은행 `match-rules` PUT/DELETE `entity_id` 격리(list/INSERT 대칭, ADMIN-gated IDOR).
+
 - **🟢 [2026-06-23] 품목 마스터 신모델 등록 (정본 = `memory/session-context.md`)**:
   - 신모델 = **분류8 + 인쇄방식별 개별제품 + 폭/규격별 원단 + product_materials + autoDeduct(차감방식 구조화)**. 단가 전부 0.
   - 등록: 수성8·솔벤6·UV12·전사7·태극기33(나염) 제품 + 원자재145/22그룹. **마이그 0336~0359(24개) prod 적용·고아0**.

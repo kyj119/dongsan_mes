@@ -258,23 +258,31 @@ financialReportsRouter.get('/balance-snapshot', async (c) => {
       FROM clients WHERE is_active = 1
     `).first<ApRow>()
 
-    // 재고 평가액 (현재 재고 × 단가)
+    // 재고 평가액 (#433: 재고는 items가 아니라 inventory.quantity, 평가단가=items.avg_unit_cost 이동평균)
     const inventoryRow = await c.env.DB.prepare(`
-      SELECT COALESCE(SUM(current_stock * COALESCE(unit_price, 0)), 0) as total_inventory
-      FROM items WHERE is_active = 1
+      SELECT COALESCE(SUM(inv.quantity * COALESCE(it.avg_unit_cost, 0)), 0) as total_inventory
+      FROM inventory inv JOIN items it ON it.id = inv.item_id
+      WHERE it.is_active = 1
     `).first<InventoryRow>().catch((): InventoryRow => ({ total_inventory: 0 }))
 
-    // 은행 잔액 합계 (있으면)
-    const efBank = entityFilter(c, 'bank_accounts')
+    // 은행 잔액 합계 (#433: bank_accounts엔 잔액 컬럼 없음 → 계좌별 최신 거래의 balance_after 합산)
+    const efBank = entityFilter(c, 'ba')
     const bankRow = await c.env.DB.prepare(`
-      SELECT COALESCE(SUM(current_balance), 0) as total_bank
-      FROM bank_accounts WHERE is_active = 1${efBank.clause}
+      SELECT COALESCE(SUM(bt.balance_after), 0) as total_bank
+      FROM bank_accounts ba
+      JOIN bank_transactions bt ON bt.id = (
+        SELECT bt2.id FROM bank_transactions bt2
+        WHERE bt2.bank_account_id = ba.id
+        ORDER BY bt2.transaction_date DESC, bt2.transaction_time DESC, bt2.id DESC
+        LIMIT 1
+      )
+      WHERE ba.is_active = 1${efBank.clause}
     `).bind(...efBank.params).first<BankRow>().catch((): BankRow => ({ total_bank: 0 }))
 
-    // 대출 잔액
+    // 대출 잔액 (#433: loans 실제 컬럼 = current_balance / is_active. remaining_principal·status는 부재)
     const loanRow = await c.env.DB.prepare(`
-      SELECT COALESCE(SUM(remaining_principal), 0) as total_loan
-      FROM loans WHERE status = 'ACTIVE'
+      SELECT COALESCE(SUM(current_balance), 0) as total_loan
+      FROM loans WHERE is_active = 1
     `).first<LoanRow>().catch((): LoanRow => ({ total_loan: 0 }))
 
     const cash = Number(bankRow?.total_bank) || 0

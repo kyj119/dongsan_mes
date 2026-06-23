@@ -603,17 +603,18 @@ bankRouter.put('/match-rules/:id', requireRole('ADMIN'), async (c) => {
       return c.json({ success: false, error: 'matched_client_id 또는 matched_category_id 필수' }, 400)
     }
 
+    const ef = entityFilter(c)  // #434: 타 법인 규칙 수정 차단 (list/INSERT와 대칭)
     const rule = await c.env.DB.prepare(
-      'SELECT id FROM bank_match_rules WHERE id = ?'
-    ).bind(id).first()
+      `SELECT id FROM bank_match_rules WHERE id = ?${ef.clause}`
+    ).bind(id, ...ef.params).first()
 
     if (!rule) {
       return c.json({ success: false, error: '규칙을 찾을 수 없습니다' }, 404)
     }
 
     await c.env.DB.prepare(
-      'UPDATE bank_match_rules SET matched_client_id = ?, matched_category_id = ?, last_used_at = CURRENT_TIMESTAMP WHERE id = ?'
-    ).bind(matched_client_id || null, matched_category_id || null, id).run()
+      `UPDATE bank_match_rules SET matched_client_id = ?, matched_category_id = ?, last_used_at = CURRENT_TIMESTAMP WHERE id = ?${ef.clause}`
+    ).bind(matched_client_id || null, matched_category_id || null, id, ...ef.params).run()
 
     return c.json({ success: true, message: '규칙이 수정되었습니다' })
   } catch (error) {
@@ -627,17 +628,18 @@ bankRouter.delete('/match-rules/:id', requireRole('ADMIN'), async (c) => {
   try {
     const id = c.req.param('id')
 
+    const ef = entityFilter(c)  // #434: 타 법인 규칙 삭제 차단 (list/INSERT와 대칭)
     const rule = await c.env.DB.prepare(
-      'SELECT id FROM bank_match_rules WHERE id = ?'
-    ).bind(id).first()
+      `SELECT id FROM bank_match_rules WHERE id = ?${ef.clause}`
+    ).bind(id, ...ef.params).first()
 
     if (!rule) {
       return c.json({ success: false, error: '규칙을 찾을 수 없습니다' }, 404)
     }
 
     await c.env.DB.prepare(
-      'DELETE FROM bank_match_rules WHERE id = ?'
-    ).bind(id).run()
+      `DELETE FROM bank_match_rules WHERE id = ?${ef.clause}`
+    ).bind(id, ...ef.params).run()
 
     return c.json({ success: true, message: '매칭 규칙이 삭제되었습니다' })
   } catch (error) {
