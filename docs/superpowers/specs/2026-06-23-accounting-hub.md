@@ -37,6 +37,7 @@
 4. 통합 필터·타임라인(수입/지출 단일 타임라인, 선택) + build/smoke 검증.
 
 ## 주의/함정
+- ⚠️ **마이그 번호 충돌**: `feat/ia-editor-canvas-n1` 브랜치를 품목 마스터 작업과 공유 중 → 번호 충돌 빈번(바로빌이 0361→0362→0372→0373으로 3회 밀림). 회계 허브 마이그 추가 시 **착수 직전 `Glob migrations/03*.sql`로 최신번호 확인 후 그 다음 번호** 사용, 또는 **별도 브랜치** 권장. (2026-06-23 기준 최신 0373_barobill, 품목 0372_distribution_sheets)
 - ?raw 전역스코프 충돌([[feedback-raw-concat-global-scope]]) — accounting.js 변수/함수 prefix.
 - 거래내역 표 비율·인라인 갱신 패턴은 card-expenses(930fb3e1) 참고.
 - 삭제 시 연결 역처리 필수(입금 삭제=ar-payments DELETE가 balance 파생 정합 처리; bank 매칭입금은 unapply 경유).
