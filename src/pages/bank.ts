@@ -358,7 +358,18 @@ export function bankPage(c: Context<HonoEnv>) {
                       <option value="P">개인</option>
                     </select>
                   </div>
+                  <div>
+                    <label class="form-label">수집주기</label>
+                    <select id="accCollectCycle" class="form-select">
+                      <option value="MINUTE10">10분</option>
+                      <option value="MINUTE30">30분</option>
+                      <option value="HOUR1" selected>1시간 (4,400원)</option>
+                      <option value="HOUR4">4시간</option>
+                      <option value="DAY1">1일 (3,300원)</option>
+                    </select>
+                  </div>
                 </div>
+                <p class="text-xs text-gray-400">수집주기가 짧을수록 입금 확인이 빠르지만 단가가 높을 수 있습니다.</p>
               </div>
             </div>
           </div>

@@ -858,6 +858,8 @@
       body.web_pwd = webPwd;
       var typeEl = document.getElementById('accType');
       body.account_type = typeEl ? typeEl.value : 'C';
+      var cycleEl = document.getElementById('accCollectCycle');
+      body.collect_cycle = cycleEl ? cycleEl.value : 'HOUR1';
     }
     var promise = editId
       ? axios.put('/api/bank/accounts/' + editId, body)
