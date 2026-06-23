@@ -158,6 +158,7 @@
                     const punchingOpt = options.find(function(o) { return o.pp_category === 'punching'; });
                     const annotationOpt = options.find(function(o) { return o.pp_category === 'annotation'; });
                     const offsetOpt = options.find(function(o) { return o.pp_category === 'offset'; });
+                    const coatingOpts = options.filter(function(o) { return o.pp_category === 'coating'; });
 
 
                     let html = '';
@@ -298,6 +299,27 @@
                         html += '</label>';
                         html += '</div>';
                         html += '</div>';
+                        html += '</div>';
+                    }
+
+                    // --- Section 2.6: Coating (코팅) — 무광/유광, 면 전체 처리 (상호배타 select) ---
+                    if (coatingOpts.length > 0) {
+                        html += '<div class="pp-coating-section mb-3 pt-2 border-t border-gray-100">';
+                        html += '<label class="block text-xs font-medium text-gray-600 mb-1">코팅 (면 전체)</label>';
+                        html += '<select class="pp-coating-select w-full border border-gray-300 rounded px-2 py-1 text-sm" data-row="' + rowId + '">';
+                        html += '<option value="">없음</option>';
+                        coatingOpts.forEach(function(opt) {
+                            html += '<option value="' + opt.id + '"'
+                                + ' data-pp-id="' + opt.id + '"'
+                                + ' data-pp-code="' + escapeHtml(opt.option_code || '') + '"'
+                                + ' data-pp-name="' + escapeHtml(opt.option_name || '') + '"'
+                                + ' data-pricing-type="' + (opt.pricing_type || 'fixed') + '"'
+                                + ' data-additional-cost="' + (opt.additional_cost || 0) + '"'
+                                + ' data-unit-price="' + (opt.unit_price || 0) + '"'
+                                + '>' + escapeHtml(opt.option_name || '') + '</option>';
+                        });
+                        html += '</select>';
+                        html += '<span class="pp-coating-cost text-xs text-orange-600 font-medium mt-1 block"></span>';
                         html += '</div>';
                     }
 

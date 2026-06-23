@@ -469,6 +469,28 @@
                             });
                         }
 
+                        // 5. Coating (코팅 — 무광/유광, 면 전체). 출고 시 코팅지 폭매칭 자동차감(엔진 0352).
+                        const coatingSel = ppContainer.querySelector('.pp-coating-select');
+                        if (coatingSel && coatingSel.value) {
+                            var copt = coatingSel.options[coatingSel.selectedIndex];
+                            var cType = copt.dataset.pricingType || 'fixed';
+                            var cUnit = parseFloat(copt.dataset.unitPrice) || 0;
+                            var cAdd = parseFloat(copt.dataset.additionalCost) || 0;
+                            var cPrice = 0;
+                            if (cType === 'fixed') cPrice = cAdd;
+                            else if (cType === 'per_sqm') cPrice = (w / 100) * (h / 100) * cUnit;
+                            else if (cType === 'per_meter') cPrice = ((w + h) * 2 / 100) * cUnit;
+                            else if (cType === 'per_unit') cPrice = qty * cUnit;
+                            pp.push({
+                                id: parseInt(copt.dataset.ppId),
+                                code: copt.dataset.ppCode,
+                                name: copt.dataset.ppName,
+                                margin_left: 0, margin_right: 0, margin_top: 0, margin_bottom: 0,
+                                params: {},
+                                price: Math.round(cPrice)
+                            });
+                        }
+
                         // Transfer PP (하도매, 부직포, 수술)
                         ppContainer.querySelectorAll('.pp-transfer-item').forEach(function(item) {
                             var cb = item.querySelector('.pp-transfer-check');

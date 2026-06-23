@@ -853,6 +853,14 @@
                                     if (annoTextInput) annoTextInput.value = pp.params.customText;
                                 }
                             }
+                        } else if (code === 'PP-COAT-M' || code === 'PP-COAT-G') {
+                            // Restore coating (무광/유광 select)
+                            var coatingSel = container.querySelector('.pp-coating-select');
+                            if (coatingSel) {
+                                for (var ci = 0; ci < coatingSel.options.length; ci++) {
+                                    if (coatingSel.options[ci].dataset.ppCode === code) { coatingSel.selectedIndex = ci; break; }
+                                }
+                            }
                         } else if (code === 'OFFSET') {
                             const offsetCheck = container.querySelector('.pp-offset-check');
                             if (offsetCheck) {
