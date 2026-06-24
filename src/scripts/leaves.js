@@ -26,6 +26,7 @@ function lvStatusBadge(status) {
     PENDING: '<span class="px-2 py-0.5 text-xs rounded-full bg-amber-50 text-amber-700">결재대기</span>',
     APPROVED: '<span class="px-2 py-0.5 text-xs rounded-full bg-green-50 text-green-700">승인</span>',
     REJECTED: '<span class="px-2 py-0.5 text-xs rounded-full bg-red-50 text-red-700">반려</span>',
+    CANCELLED: '<span class="px-2 py-0.5 text-xs rounded-full bg-gray-100 text-gray-500">승인취소</span>',
   };
   return map[status] || '<span class="px-2 py-0.5 text-xs rounded-full bg-gray-100 text-gray-700">' + status + '</span>';
 }
@@ -119,6 +120,8 @@ window.leavesLoadRequests = async function() {
       if (r.status === 'PENDING') {
         actions = '<button onclick="leavesApprove(' + r.id + ')" class="px-2 py-0.5 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 mr-1">승인</button>' +
                   '<button onclick="leavesReject(' + r.id + ')" class="px-2 py-0.5 text-xs bg-red-600 text-white rounded hover:bg-red-700">반려</button>';
+      } else if (r.status === 'APPROVED') {
+        actions = '<button onclick="leavesCancelApproved(' + r.id + ')" class="px-2 py-0.5 text-xs border border-gray-300 text-gray-600 rounded hover:bg-gray-100" title="승인 취소 — 잔여 복원·근태 마킹 해제">승인취소</button>';
       }
       return '<tr>' +
         '<td class="px-3 py-2 text-gray-600">' + (r.created_at || '').slice(0, 10) + '</td>' +
@@ -271,14 +274,26 @@ window.leavesApprove = async function(id) {
 };
 
 window.leavesReject = async function(id) {
-  var reason = prompt('반려 사유를 입력하세요:');
-  if (reason === null) return;
+  var reason = await showPrompt('반려 사유를 입력하세요:', { title: '휴가 반려', placeholder: '반려 사유 (선택)', confirmText: '반려', danger: true });
+  if (reason === null) return; // 취소
   try {
     await axios.patch('/api/leaves/requests/' + id + '/reject', { reason: reason });
     window.showToast('반려 처리 완료', 'success');
     window.leavesLoadRequests();
   } catch (e) {
     window.showToast('반려 실패: ' + (e.response && e.response.data && e.response.data.error || e.message), 'error');
+  }
+};
+
+window.leavesCancelApproved = async function(id) {
+  if (!(await showConfirm('승인된 휴가를 취소합니다. 차감된 잔여가 복원되고 근태 마킹이 해제됩니다. 진행할까요?', { title: '승인 취소', confirmText: '승인취소', danger: true }))) return;
+  try {
+    await axios.patch('/api/leaves/requests/' + id + '/cancel-approved');
+    window.showToast('승인 취소 완료 (잔여 복원됨)', 'success');
+    window.leavesLoadRequests();
+    if (typeof window.leavesLoadBalances === 'function') window.leavesLoadBalances();
+  } catch (e) {
+    window.showToast('승인 취소 실패: ' + (e.response && e.response.data && e.response.data.error || e.message), 'error');
   }
 };
 

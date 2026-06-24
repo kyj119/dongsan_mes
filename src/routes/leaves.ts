@@ -337,7 +337,7 @@ leavesRouter.get('/requests', async (c) => {
   }
 })
 
-leavesRouter.post('/requests', async (c) => {
+leavesRouter.post('/requests', requireRole('ADMIN', 'MANAGER'), async (c) => {
   try {
     const user = c.get('user')
     const body = await c.req.json<{
@@ -402,37 +402,45 @@ leavesRouter.patch('/requests/:id/approve', requireRole('ADMIN', 'MANAGER'), asy
     if (req.status !== 'PENDING') return c.json({ success: false, error: '이미 처리된 신청입니다.' }, 400)
     const reqEntityId = req.entity_id || getEntityId(c)
 
-    // 잔여 차감: leave_types에서 카테고리 확인
+    // 차감 대상 판별: leave_types 카테고리 + 반차/반반차 코드
     const lt = await c.env.DB.prepare(
       `SELECT category, deduction_days FROM leave_types WHERE code = ?`
     ).bind(req.leave_type).first<LeaveTypeWithCategoryRow>()
 
     const year = new Date(req.start_date).getFullYear()
-    if (lt?.category === 'ANNUAL' || req.leave_type === 'ANNUAL' ||
-        ['HALF_AM', 'HALF_PM', 'QUARTER_1', 'QUARTER_2', 'QUARTER_3', 'QUARTER_4'].includes(req.leave_type)) {
-      // 연차계열: ANNUAL 잔여에서 차감
-      await c.env.DB.prepare(`
-        INSERT INTO leave_balances (employee_id, year, leave_type, used, entity_id)
-        VALUES (?, ?, 'ANNUAL', ?, ?)
-        ON CONFLICT(employee_id, year, leave_type) DO UPDATE SET
-          used = leave_balances.used + excluded.used,
-          updated_at = CURRENT_TIMESTAMP
-      `).bind(req.employee_id, year, req.days, reqEntityId).run()
-    } else if (lt?.category === 'SICK' || req.leave_type === 'SICK') {
-      // 병가: SICK 잔여에서 차감
-      await c.env.DB.prepare(`
-        INSERT INTO leave_balances (employee_id, year, leave_type, used, entity_id)
-        VALUES (?, ?, 'SICK', ?, ?)
-        ON CONFLICT(employee_id, year, leave_type) DO UPDATE SET
-          used = leave_balances.used + excluded.used,
-          updated_at = CURRENT_TIMESTAMP
-      `).bind(req.employee_id, year, req.days, reqEntityId).run()
-    }
-    // 경조휴가(FAMILY)는 별도 잔여 차감 없음 (규정 일수만큼 유급)
+    const isAnnual = lt?.category === 'ANNUAL' || req.leave_type === 'ANNUAL' ||
+      ['HALF_AM', 'HALF_PM', 'QUARTER_1', 'QUARTER_2', 'QUARTER_3', 'QUARTER_4'].includes(req.leave_type)
+    const isSick = !isAnnual && (lt?.category === 'SICK' || req.leave_type === 'SICK')
+    // 차감 대상: 연차계열=ANNUAL, 병가=SICK. 경조(FAMILY)는 차감 없음(규정 일수만큼 유급).
+    const deductType = isAnnual ? 'ANNUAL' : (isSick ? 'SICK' : null)
 
-    await c.env.DB.prepare(`
+    // B2: 잔여 검증 — 차감 대상만. 잔여 부족 시 승인 거부(음수 잔여 방지).
+    if (deductType) {
+      const bal = await c.env.DB.prepare(
+        `SELECT COALESCE(accrued,0)+COALESCE(granted_extra,0)+COALESCE(carried_over,0)-COALESCE(used,0) AS remaining
+         FROM leave_balances WHERE employee_id = ? AND year = ? AND leave_type = ?`
+      ).bind(req.employee_id, year, deductType).first<{ remaining: number }>()
+      const remaining = Number(bal?.remaining ?? 0)
+      if (remaining < req.days) {
+        return c.json({ success: false, error: `잔여 ${deductType === 'SICK' ? '병가' : '연차'} 부족: 잔여 ${remaining}일 < 신청 ${req.days}일. 먼저 부여(특별 부여/적립)하세요.` }, 400)
+      }
+    }
+
+    // B7: 잔여 차감 + 상태 변경을 원자적으로(batch) — 중간 실패 시 차감만 남는 이중차감 방지.
+    const stmts: D1PreparedStatement[] = []
+    if (deductType) {
+      stmts.push(c.env.DB.prepare(`
+        INSERT INTO leave_balances (employee_id, year, leave_type, used, entity_id)
+        VALUES (?, ?, ?, ?, ?)
+        ON CONFLICT(employee_id, year, leave_type) DO UPDATE SET
+          used = leave_balances.used + excluded.used,
+          updated_at = CURRENT_TIMESTAMP
+      `).bind(req.employee_id, year, deductType, req.days, reqEntityId))
+    }
+    stmts.push(c.env.DB.prepare(`
       UPDATE leave_requests SET status = 'APPROVED', approved_by = ?, approved_at = CURRENT_TIMESTAMP WHERE id = ?${ef.clause}
-    `).bind(user?.id || null, id, ...ef.params).run()
+    `).bind(user?.id || null, id, ...ef.params))
+    await c.env.DB.batch(stmts)
 
     // 큐06: 승인된 휴가를 근태에 마킹(날짜별) — 반차 지각 오판정 방지. 베스트에포트(실패해도 승인은 유지).
     try {
@@ -481,7 +489,7 @@ leavesRouter.patch('/requests/:id/reject', requireRole('ADMIN', 'MANAGER'), asyn
 })
 
 // 신청 취소 (PENDING만)
-leavesRouter.delete('/requests/:id', async (c) => {
+leavesRouter.delete('/requests/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
   try {
     const id = Number(c.req.param('id'))
     const ef = entityFilter(c, '')
@@ -499,6 +507,55 @@ leavesRouter.delete('/requests/:id', async (c) => {
     return c.json({ success: true })
   } catch (error: any) {
     console.error('leaves cancel error:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다.', detail: '서버 오류가 발생했습니다' }, 500)
+  }
+})
+
+// B5: 승인된 휴가 취소 — 잔여 복원 + 근태 마킹 해제(오승인/사용철회 정정).
+leavesRouter.patch('/requests/:id/cancel-approved', requireRole('ADMIN', 'MANAGER'), async (c) => {
+  try {
+    const user = c.get('user')
+    const id = Number(c.req.param('id'))
+    const ef = entityFilter(c, '')
+    const req = await c.env.DB.prepare(
+      `SELECT id, employee_id, leave_type, start_date, end_date, days, status, entity_id FROM leave_requests WHERE id = ?${ef.clause}`
+    ).bind(id, ...ef.params).first<LeaveRequestRow & { entity_id: number }>()
+    if (!req) return c.json({ success: false, error: '신청을 찾을 수 없습니다.' }, 404)
+    if (req.status !== 'APPROVED') return c.json({ success: false, error: '승인된 신청만 취소할 수 있습니다.' }, 400)
+
+    // 차감 대상 판별(approve와 동일 규칙)
+    const lt = await c.env.DB.prepare(
+      `SELECT category, deduction_days FROM leave_types WHERE code = ?`
+    ).bind(req.leave_type).first<LeaveTypeWithCategoryRow>()
+    const isAnnual = lt?.category === 'ANNUAL' || req.leave_type === 'ANNUAL' ||
+      ['HALF_AM', 'HALF_PM', 'QUARTER_1', 'QUARTER_2', 'QUARTER_3', 'QUARTER_4'].includes(req.leave_type)
+    const isSick = !isAnnual && (lt?.category === 'SICK' || req.leave_type === 'SICK')
+    const deductType = isAnnual ? 'ANNUAL' : (isSick ? 'SICK' : null)
+    const year = new Date(req.start_date).getFullYear()
+
+    // 잔여 복원(used -= days, 0 미만 방지) + 상태 변경을 원자적으로.
+    const stmts: D1PreparedStatement[] = []
+    if (deductType) {
+      stmts.push(c.env.DB.prepare(`
+        UPDATE leave_balances SET used = MAX(0, used - ?), updated_at = CURRENT_TIMESTAMP
+        WHERE employee_id = ? AND year = ? AND leave_type = ?
+      `).bind(req.days, req.employee_id, year, deductType))
+    }
+    stmts.push(c.env.DB.prepare(`
+      UPDATE leave_requests SET status = 'CANCELLED', approved_by = ?, approved_at = CURRENT_TIMESTAMP WHERE id = ?${ef.clause}
+    `).bind(user?.id || null, id, ...ef.params))
+    await c.env.DB.batch(stmts)
+
+    // 근태 마킹 해제(실출근 기록 있던 날은 NORMAL 복원). 베스트에포트.
+    try {
+      await clearLeaveAttendance(c.env.DB, { employeeId: req.employee_id, startDate: req.start_date, endDate: req.end_date })
+    } catch (e) {
+      console.warn('[leaves] clearLeaveAttendance (cancel-approved) failed:', e)
+    }
+
+    return c.json({ success: true })
+  } catch (error: any) {
+    console.error('leaves cancel-approved error:', error)
     return c.json({ success: false, error: '서버 오류가 발생했습니다.', detail: '서버 오류가 발생했습니다' }, 500)
   }
 })
@@ -656,6 +713,7 @@ leavesRouter.get('/unused-allowance', requireRole('ADMIN', 'MANAGER'), async (c)
     const department = c.req.query('department') || '' // #346: 부서 필터
     const deptClause = department ? ' AND e.department = ?' : ''
     const deptParams = department ? [department] : []
+    const ef = entityFilter(c, 'e') // #IDOR: 타 법인 직원 급여/연차 PII 노출 차단(/balances와 동일 격리)
 
     // 직원별 연차 잔여 + 기본급(일급 계산용)
     const { results } = await c.env.DB.prepare(`
@@ -678,9 +736,9 @@ leavesRouter.get('/unused-allowance', requireRole('ADMIN', 'MANAGER'), async (c)
         ON lb.employee_id = e.id AND lb.year = ? AND lb.leave_type = 'ANNUAL'
       LEFT JOIN leave_balances sick
         ON sick.employee_id = e.id AND sick.year = ? AND sick.leave_type = 'SICK'
-      WHERE e.status = 'ACTIVE' AND e.is_deleted = 0${deptClause}
+      WHERE e.status = 'ACTIVE' AND e.is_deleted = 0${deptClause}${ef.clause}
       ORDER BY e.department, e.name
-    `).bind(year, year, ...deptParams).all<BalanceRow>()
+    `).bind(year, year, ...deptParams, ...ef.params).all<BalanceRow>()
 
     // 미사용 연차수당 계산: 기본급 / 209시간 * 8 * 잔여일수
     // (통상임금 시급 = 월급 / 209, 일급 = 시급 * 8)

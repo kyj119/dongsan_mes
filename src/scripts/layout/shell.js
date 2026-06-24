@@ -923,6 +923,46 @@ window.showConfirm = function(message, options) {
   });
 };
 
+// 텍스트 입력 모달(prompt 대체). resolve(입력문자열) / 취소 시 resolve(null).
+window.showPrompt = function(message, options) {
+  options = options || {};
+  var danger = options.danger || false;
+  return new Promise(function(resolve) {
+    var overlay = document.createElement('div');
+    overlay.className = 'ds-modal-overlay';
+    overlay.style.zIndex = '9999';
+    overlay.innerHTML =
+      '<div class="ds-modal" style="max-width:420px">' +
+        '<div class="ds-modal-header"><h3 style="font-size:15px"></h3></div>' +
+        '<div class="ds-modal-body" style="padding:20px 24px">' +
+          '<p style="font-size:14px;color:#374151;white-space:pre-line;margin:0 0 10px"></p>' +
+          '<textarea id="__promptInput" class="ds-input" style="width:100%;min-height:72px;font-size:14px;padding:8px 10px"></textarea>' +
+        '</div>' +
+        '<div class="ds-modal-footer">' +
+          '<button class="ds-btn ds-btn-ghost" id="__promptCancel"></button>' +
+          '<button class="ds-btn ' + (danger ? 'ds-btn-danger' : 'ds-btn-primary') + '" id="__promptOk"></button>' +
+        '</div>' +
+      '</div>';
+    document.body.appendChild(overlay);
+    // 텍스트는 textContent로 주입(XSS 방지)
+    overlay.querySelector('h3').textContent = options.title || '입력';
+    overlay.querySelector('p').textContent = message || '';
+    var input = overlay.querySelector('#__promptInput');
+    input.placeholder = options.placeholder || '';
+    input.value = options.defaultValue || '';
+    overlay.querySelector('#__promptCancel').textContent = options.cancelText || '취소';
+    overlay.querySelector('#__promptOk').textContent = options.confirmText || '확인';
+
+    function cleanup(result) { overlay.remove(); document.removeEventListener('keydown', escHandler); resolve(result); }
+    overlay.querySelector('#__promptOk').addEventListener('click', function() { cleanup(input.value); });
+    overlay.querySelector('#__promptCancel').addEventListener('click', function() { cleanup(null); });
+    overlay.addEventListener('click', function(e) { if (e.target === overlay) cleanup(null); });
+    function escHandler(e) { if (e.key === 'Escape') cleanup(null); }
+    document.addEventListener('keydown', escHandler);
+    setTimeout(function() { input.focus(); }, 50);
+  });
+};
+
 // === Table Density Toggle ===
 function toggleTableDensity(btn) {
   var wrap = btn.closest('.ds-card, .bg-white, [class*="rounded"]');
