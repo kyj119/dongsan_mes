@@ -19,7 +19,7 @@ function switchCardTab(tab) {
   if (tab === 'cards') loadCards();
   if (tab === 'categories') loadCategories();
   if (tab === 'schedule') loadSchedule();
-  if (tab === 'report') initReport();
+  if (tab === 'report') { initReport(); ensureTaxRange(); }
   if (tab === 'cardfee' && window.initCardFeeTab) window.initCardFeeTab();
 }
 
@@ -98,15 +98,26 @@ function switchCardStatus(status) {
 }
 
 // ===== KPI Summary =====
+function setKpiText(id, val) {
+  var el = document.getElementById(id);
+  if (!el) { console.warn('[cardExpenses] #' + id + ' not found'); return; }
+  el.textContent = val;
+}
+
 async function loadSummary() {
   try {
     var res = await axios.get('/api/card-expenses/transactions/summary');
     var s = res.data.data.summary || {};
-    document.getElementById('kpiTotalAmount').textContent = (s.total_amount || 0).toLocaleString();
-    document.getElementById('kpiUnclassified').textContent = (s.unclassified_count || 0);
-    document.getElementById('kpiClassified').textContent = (s.classified_count || 0);
-    document.getElementById('kpiApproved').textContent = (s.approved_count || 0);
+    setKpiText('kpiUnclassified', (s.unclassified_count || 0));
+    setKpiText('kpiClassified', (s.classified_count || 0));
+    setKpiText('kpiApproved', (s.approved_count || 0));
   } catch (e) { console.error('Summary error:', e); }
+  // 결제 예정 총액(결제일/마감 사이클 기준으로 일원화) — 사용내역 상단 KPI에도 노출
+  try {
+    var pr = await axios.get('/api/card-expenses/payment-schedule');
+    var due = (pr.data.data && pr.data.data.total_payment) || 0;
+    setKpiText('kpiPaymentDue', due.toLocaleString());
+  } catch (e) { /* ignore */ }
 }
 
 // ===== Transactions =====
@@ -208,6 +219,7 @@ async function loadTransactions() {
         '<td class="px-1 py-1"><input type="text" class="w-full border border-gray-200 rounded px-1.5 py-0.5 text-xs" value="' + escapeHtml(tx.memo || '') + '" placeholder="적요..." onblur="quickMemo(' + tx.id + ', this.value)" data-memo-input="' + tx.id + '"' + lockAttr + '></td>' +
         '<td class="px-1 py-1.5 text-center">' + statusHtml + '</td>' +
         '<td class="px-1 py-1.5 text-center whitespace-nowrap">' +
+          (hasReceipt ? '<button onclick="viewReceipt(\'' + (tx.receipt_image_url || '') + '\')" class="text-blue-500 hover:text-blue-700 mr-1" title="영수증 보기"><i class="fas fa-magnifying-glass text-xs"></i></button>' : '') +
           '<label class="' + (hasReceipt ? 'text-green-500' : 'text-gray-400') + ' hover:text-green-600 cursor-pointer mr-1" title="' + (hasReceipt ? '영수증 교체' : '영수증 첨부') + '">' +
             '<i class="fas ' + (hasReceipt ? 'fa-check-circle' : 'fa-camera') + ' text-xs"></i>' +
             '<input type="file" accept="image/*,.pdf" class="hidden" onchange="quickReceipt(' + tx.id + ', this)">' +
@@ -583,10 +595,16 @@ async function openEditTx(id) {
   document.getElementById('editTxStatus').value = editTxData.status || 'UNCLASSIFIED';
   document.getElementById('editTxReceiptFile').value = '';
 
-  // 기존 영수증 미리보기
+  // 기존 영수증 미리보기 — img src 직접 사용 불가(인증 헤더), axios blob 경유
   var preview = document.getElementById('editTxReceiptPreview');
   if (editTxData.receipt_image_url) {
-    preview.innerHTML = '<img src="' + editTxData.receipt_image_url + '" class="receipt-preview mb-2" alt="영수증"><br><span class="text-xs text-green-600"><i class="fas fa-check-circle mr-1"></i>영수증 첨부됨</span>';
+    var rUrl = editTxData.receipt_image_url;
+    preview.innerHTML = '<span class="text-xs text-gray-400"><i class="fas fa-spinner fa-spin mr-1"></i>영수증 불러오는 중...</span>';
+    loadReceiptBlob(rUrl).then(function(blobUrl) {
+      preview.innerHTML = '<img src="' + blobUrl + '" class="receipt-preview mb-2 cursor-pointer" alt="영수증" onclick="viewReceipt(\'' + rUrl + '\')"><br><span class="text-xs text-green-600"><i class="fas fa-check-circle mr-1"></i>영수증 첨부됨 (클릭 시 확대)</span>';
+    }).catch(function() {
+      preview.innerHTML = '<span class="text-xs text-red-400">영수증을 불러오지 못했습니다</span>';
+    });
   } else {
     preview.innerHTML = '<span class="text-xs text-gray-400">첨부된 영수증 없음</span>';
   }
@@ -670,6 +688,108 @@ async function quickReceipt(txId, input) {
     showToast('영수증 업로드 실패', 'error');
   }
   input.value = '';
+}
+
+// ===== Receipt Viewer (라이트박스) — img src 직접 불가(인증 헤더), axios blob 경유 =====
+var _receiptObjUrl = null;
+async function loadReceiptBlob(url) {
+  var res = await axios.get(url, { responseType: 'blob' });
+  return URL.createObjectURL(res.data);
+}
+async function viewReceipt(url) {
+  if (!url) return;
+  var lb = document.getElementById('receiptLightbox');
+  var body = document.getElementById('receiptLightboxBody');
+  if (!lb || !body) return;
+  body.innerHTML = '<div class="p-10 text-center text-gray-400"><i class="fas fa-spinner fa-spin"></i></div>';
+  lb.classList.remove('hidden');
+  try {
+    if (_receiptObjUrl) { URL.revokeObjectURL(_receiptObjUrl); _receiptObjUrl = null; }
+    var blobUrl = await loadReceiptBlob(url);
+    _receiptObjUrl = blobUrl;
+    var isPdf = /\.pdf(\?|$)/i.test(url);
+    body.innerHTML = isPdf
+      ? '<iframe src="' + blobUrl + '" style="width:80vw;height:80vh;border:0"></iframe>'
+      : '<img src="' + blobUrl + '" style="max-width:80vw;max-height:85vh;object-fit:contain" alt="영수증">';
+  } catch (e) {
+    body.innerHTML = '<div class="p-10 text-center text-red-400">영수증을 불러오지 못했습니다</div>';
+  }
+}
+function closeReceiptLightbox() {
+  var lb = document.getElementById('receiptLightbox');
+  if (lb) lb.classList.add('hidden');
+  if (_receiptObjUrl) { URL.revokeObjectURL(_receiptObjUrl); _receiptObjUrl = null; }
+}
+
+// ===== 세무사 전달: 내역 CSV + 영수증 인쇄 =====
+function ensureTaxRange() {
+  var s = document.getElementById('taxExportStart');
+  var e = document.getElementById('taxExportEnd');
+  if (s && !s.value) { var now = new Date(); s.value = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0]; }
+  if (e && !e.value) { var n2 = new Date(); e.value = new Date(n2.getFullYear(), n2.getMonth() + 1, 0).toISOString().split('T')[0]; }
+}
+
+async function downloadTaxCsv() {
+  var s = document.getElementById('taxExportStart').value;
+  var e = document.getElementById('taxExportEnd').value;
+  if (!s || !e) { showToast('기간을 선택하세요', 'warning'); return; }
+  try {
+    var res = await axios.get('/api/card-expenses/export-csv?start=' + s + '&end=' + e, { responseType: 'blob' });
+    var blob = new Blob([res.data], { type: 'text/csv;charset=utf-8' });
+    var href = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = href; a.download = '카드내역_' + s + '_' + e + '.csv';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(function() { URL.revokeObjectURL(href); }, 1000);
+    showToast('CSV 다운로드 완료', 'success');
+  } catch (err) {
+    showToast('CSV 다운로드 실패', 'error');
+  }
+}
+
+async function printReceipts() {
+  var s = document.getElementById('taxExportStart').value;
+  var e = document.getElementById('taxExportEnd').value;
+  if (!s || !e) { showToast('기간을 선택하세요', 'warning'); return; }
+  var statusEl = document.getElementById('taxExportStatus');
+  var area = document.getElementById('receiptPrintArea');
+  if (!area) return;
+  if (statusEl) statusEl.textContent = '영수증 불러오는 중...';
+  try {
+    // 기간 내 영수증 첨부 거래 조회 (최대 200건)
+    var res = await axios.get('/api/card-expenses/transactions?start_date=' + s + '&end_date=' + e + '&limit=200');
+    var list = (res.data.data || []).filter(function(t) { return t.receipt_image_url; });
+    if (!list.length) { if (statusEl) statusEl.textContent = ''; showToast('해당 기간에 첨부된 영수증이 없습니다', 'warning'); return; }
+
+    var items = '';
+    var loaded = 0;
+    for (var i = 0; i < list.length; i++) {
+      var tx = list[i];
+      if (statusEl) statusEl.textContent = '영수증 ' + (i + 1) + '/' + list.length + ' 불러오는 중...';
+      try {
+        var blobUrl = await loadReceiptBlob(tx.receipt_image_url);
+        var d = tx.transaction_date || '';
+        var dateStr = d.length === 8 ? d.slice(0, 4) + '-' + d.slice(4, 6) + '-' + d.slice(6, 8) : d;
+        var isPdf = /\.pdf(\?|$)/i.test(tx.receipt_image_url);
+        var media = isPdf
+          ? '<div class="text-xs text-gray-500">[PDF 영수증 — 인쇄 미지원, CSV 링크 참조]</div>'
+          : '<img src="' + blobUrl + '" alt="영수증">';
+        items += '<div class="rp-item">' + media +
+          '<div class="rp-cap">' + dateStr + ' · ' + escapeHtml(tx.merchant_name || '-') +
+          ' · ' + (tx.amount || 0).toLocaleString() + '원' +
+          (tx.category_name ? ' · ' + escapeHtml(tx.category_name) : '') + '</div></div>';
+        loaded++;
+      } catch (e2) { /* skip one */ }
+    }
+    var capNote = list.length >= 200 ? '<div style="color:#b91c1c;font-size:11px">※ 200건까지만 표시됩니다. 기간을 좁혀 다시 인쇄하세요.</div>' : '';
+    area.innerHTML = '<h2 style="font-size:14px;font-weight:700;margin-bottom:8px">카드 영수증 (' + s + ' ~ ' + e + ') · ' + loaded + '건</h2>' + capNote + '<div class="rp-grid">' + items + '</div>';
+    if (statusEl) statusEl.textContent = loaded + '건 준비됨 · 인쇄창 표시';
+    window.print();
+    setTimeout(function() { if (statusEl) statusEl.textContent = ''; }, 3000);
+  } catch (err) {
+    if (statusEl) statusEl.textContent = '';
+    showToast('영수증 인쇄 준비 실패', 'error');
+  }
 }
 
 // ===== CSV Import =====
@@ -762,22 +882,27 @@ async function syncBarobillCards() {
 }
 
 // ===== Payment Schedule (Phase 4) =====
+// YYYYMMDD → MM/DD
+function fmtMmDd(s) {
+  s = String(s || '');
+  return s.length === 8 ? s.slice(4, 6) + '/' + s.slice(6, 8) : s;
+}
+
 async function loadSchedule() {
   var tbody = document.getElementById('scheduleTableBody');
   if (!tbody) return;
-  tbody.innerHTML = '<tr><td colspan="8" class="text-center py-8 text-gray-400"><i class="fas fa-spinner fa-spin mr-1"></i>로딩 중...</td></tr>';
+  tbody.innerHTML = '<tr><td colspan="7" class="text-center py-8 text-gray-400"><i class="fas fa-spinner fa-spin mr-1"></i>로딩 중...</td></tr>';
   try {
     var res = await axios.get('/api/card-expenses/payment-schedule');
     var data = res.data.data || {};
     var cards = data.cards || [];
 
-    document.getElementById('scheduleTotal').textContent = (data.total_payment || 0).toLocaleString() + '원';
-    document.getElementById('scheduleCardCount').textContent = cards.length + '개';
-    var nextDate = cards.length > 0 ? cards[0].next_payment_date : '-';
-    document.getElementById('scheduleNextDate').textContent = nextDate;
+    setKpiText('scheduleTotal', (data.total_payment || 0).toLocaleString() + '원');
+    setKpiText('scheduleCardCount', cards.length + '개');
+    setKpiText('scheduleNextDate', data.next_payment_date || '-');
 
     if (!cards.length) {
-      tbody.innerHTML = '<tr><td colspan="8" class="text-center py-8 text-gray-400">등록된 카드가 없습니다</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="7" class="text-center py-8 text-gray-400">등록된 카드가 없습니다</td></tr>';
       return;
     }
 
@@ -790,15 +915,14 @@ async function loadSchedule() {
       return '<tr>' +
         '<td class="px-3 py-2 font-medium">' + escapeHtml(c.card_name) + (c.card_number_last4 ? ' <span class="text-gray-400">' + c.card_number_last4 + '</span>' : '') + '</td>' +
         '<td class="px-3 py-2 text-sm text-gray-600">' + escapeHtml(c.card_company || '') + '</td>' +
-        '<td class="px-3 py-2 text-center text-sm">매월 ' + (c.payment_day || 15) + '일</td>' +
-        '<td class="px-3 py-2 text-right tabular-nums">' + (c.total_amount || 0).toLocaleString() + '</td>' +
-        '<td class="px-3 py-2 text-right tabular-nums text-red-500">' + (c.cancel_amount ? '-' + c.cancel_amount.toLocaleString() : '-') + '</td>' +
+        '<td class="px-3 py-2 text-center text-sm text-gray-500 whitespace-nowrap">' + fmtMmDd(c.cycle_start) + ' ~ ' + fmtMmDd(c.cycle_end) + '</td>' +
+        '<td class="px-3 py-2 text-center text-sm font-medium whitespace-nowrap">' + (c.payment_date || '-') + '</td>' +
         '<td class="px-3 py-2 text-right tabular-nums font-bold">' + (c.net_amount || 0).toLocaleString() + '원</td>' +
         '<td class="px-3 py-2 text-center"><span class="text-xs font-medium ' + pctColor + '">' + (pct != null ? pct + '%' : '-') + '</span>' + pctBar + '</td>' +
         '<td class="px-3 py-2 text-center text-sm text-gray-500">' + (c.tx_count || 0) + '</td></tr>';
     }).join('');
   } catch (e) {
-    tbody.innerHTML = '<tr><td colspan="8" class="text-center py-8 text-red-400">로딩 실패</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="7" class="text-center py-8 text-red-400">로딩 실패</td></tr>';
   }
 }
 

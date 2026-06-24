@@ -19,6 +19,17 @@ export function cardExpensesPage(c: Context<HonoEnv>) {
       .tx-row.offset-row td{color:#9ca3af}
       .tx-row td{vertical-align:middle}
       .receipt-preview{max-width:200px;max-height:200px;border-radius:8px;border:1px solid #e5e7eb}
+      /* 영수증 인쇄 영역: 화면에선 숨기고 인쇄 시에만 표시 */
+      #receiptPrintArea{display:none}
+      .rp-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
+      .rp-item{border:1px solid #e5e7eb;border-radius:6px;padding:8px;break-inside:avoid;page-break-inside:avoid}
+      .rp-item img{width:100%;height:auto;object-fit:contain;max-height:340px}
+      .rp-cap{font-size:11px;color:#374151;margin-top:4px;line-height:1.4}
+      @media print{
+        body * { visibility:hidden; }
+        #receiptPrintArea, #receiptPrintArea * { visibility:visible; }
+        #receiptPrintArea{display:block;position:absolute;left:0;top:0;width:100%;padding:8px}
+      }
     `,
     pageContent: `
       <!-- 탭 -->
@@ -64,10 +75,10 @@ export function cardExpensesPage(c: Context<HonoEnv>) {
             <input type="text" id="filterSearch" placeholder="가맹점..." class="ds-input" style="width:110px;font-size:12px">
             <div class="border-l border-gray-200 h-5 mx-1"></div>
             <div class="flex items-center gap-2 text-xs">
-              <span class="px-2 py-1 rounded-full bg-blue-50 text-blue-700 font-medium">이번달 <b id="kpiTotalAmount">-</b></span>
               <span class="px-2 py-1 rounded-full bg-amber-50 text-amber-700 font-medium">미분류 <b id="kpiUnclassified">-</b></span>
               <span class="px-2 py-1 rounded-full bg-gray-100 text-gray-600 font-medium">대기 <b id="kpiClassified">-</b></span>
               <span class="px-2 py-1 rounded-full bg-green-50 text-green-700 font-medium">승인 <b id="kpiApproved">-</b></span>
+              <span class="px-2 py-1 rounded-full bg-red-50 text-red-700 font-medium cursor-pointer hover:bg-red-100" onclick="switchCardTab('schedule')" title="결제 예정 탭으로 이동">결제예정 <b id="kpiPaymentDue">-</b></span>
             </div>
           </div>
           <!-- Row 2: 상태 필터 탭 + 액션 -->
@@ -153,11 +164,11 @@ export function cardExpensesPage(c: Context<HonoEnv>) {
         <div id="cardsList" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"></div>
       </div>
 
-      <!-- ===== 결제 예정 탭 ===== -->
+      <!-- ===== 결제 예정 탭 (결제일/마감 사이클 기준 일원화) ===== -->
       <div id="scheduleContent" style="display:none">
         <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
           <div class="ds-card ds-card-compact card-stat" style="border-color:#ef4444">
-            <div class="ds-label mb-1">이번달 총 결제 예정</div>
+            <div class="ds-label mb-1">다음 결제 예정 총액</div>
             <div class="text-xl font-bold text-red-600 tabular-nums text-right" id="scheduleTotal">-</div>
           </div>
           <div class="ds-card ds-card-compact card-stat" style="border-color:#3b82f6">
@@ -165,19 +176,19 @@ export function cardExpensesPage(c: Context<HonoEnv>) {
             <div class="text-xl font-bold text-blue-600 text-right" id="scheduleCardCount">-</div>
           </div>
           <div class="ds-card ds-card-compact card-stat" style="border-color:#8b5cf6">
-            <div class="ds-label mb-1">다음 결제일</div>
+            <div class="ds-label mb-1">가장 가까운 결제일</div>
             <div class="text-xl font-bold text-right" id="scheduleNextDate">-</div>
           </div>
         </div>
+        <p class="text-xs text-gray-400 mb-2"><i class="fas fa-info-circle mr-1"></i>현재 진행 중인 청구 사이클(직전 마감일+1 ~ 다음 마감일)의 누적 사용액과 결제 예정일입니다. 마감일·결제일은 [카드 관리]에서 설정합니다.</p>
         <div class="ds-card" style="padding:0">
           <table class="ds-table ds-table-compact ds-table-striped">
             <thead><tr>
               <th class="text-left">카드</th>
               <th class="text-left">카드사</th>
-              <th class="text-center">결제일</th>
-              <th class="text-right">사용 금액</th>
-              <th class="text-right">취소 금액</th>
-              <th class="text-right font-bold">결제 예정</th>
+              <th class="text-center">청구 기간</th>
+              <th class="text-center">결제 예정일</th>
+              <th class="text-right font-bold">결제 예정액</th>
               <th class="text-center">한도 사용률</th>
               <th class="text-center">건수</th>
             </tr></thead>
@@ -203,6 +214,21 @@ export function cardExpensesPage(c: Context<HonoEnv>) {
             <h3 class="text-sm font-bold text-gray-700 mb-3"><i class="fas fa-credit-card text-blue-500 mr-2"></i>카드별</h3>
             <div id="reportCardBars" class="space-y-2"></div>
           </div>
+        </div>
+
+        <!-- 세무사 전달 -->
+        <div class="ds-card mt-4">
+          <h3 class="text-sm font-bold text-gray-700 mb-3"><i class="fas fa-file-export text-emerald-600 mr-2"></i>세무사 전달</h3>
+          <div class="flex flex-wrap items-center gap-2">
+            <span class="text-xs text-gray-500">기간</span>
+            <input type="date" id="taxExportStart" class="ds-input" style="width:140px;font-size:12px">
+            <span class="text-gray-300">~</span>
+            <input type="date" id="taxExportEnd" class="ds-input" style="width:140px;font-size:12px">
+            <button onclick="downloadTaxCsv()" class="ds-btn ds-btn-primary ds-btn-sm flex items-center gap-1"><i class="fas fa-file-csv"></i> 내역 CSV</button>
+            <button onclick="printReceipts()" class="px-3 py-1.5 text-xs font-medium rounded-lg bg-gray-700 text-white hover:bg-gray-800 flex items-center gap-1"><i class="fas fa-print"></i> 영수증 인쇄</button>
+            <span id="taxExportStatus" class="text-xs text-gray-400"></span>
+          </div>
+          <p class="text-xs text-gray-400 mt-2">CSV: 사용일·카드·가맹점·공급가/세액·구분(승인/취소/상계)·분류·영수증여부. 영수증 인쇄: 기간 내 첨부 영수증을 한 화면에 모아 인쇄/PDF 저장.</p>
         </div>
       </div>
 
@@ -561,6 +587,17 @@ export function cardExpensesPage(c: Context<HonoEnv>) {
           </div>
         </div>
       </div>
+
+      <!-- ===== 영수증 라이트박스 ===== -->
+      <div id="receiptLightbox" class="hidden fixed inset-0 z-[60] bg-black/70 flex items-center justify-center p-4" onclick="closeReceiptLightbox()">
+        <div class="relative max-w-3xl max-h-[90vh]" onclick="event.stopPropagation()">
+          <button onclick="closeReceiptLightbox()" class="absolute -top-3 -right-3 bg-white rounded-full w-8 h-8 shadow text-gray-700 hover:text-red-600"><i class="fas fa-times"></i></button>
+          <div id="receiptLightboxBody" class="bg-white rounded-lg p-2 overflow-auto" style="max-height:90vh"><div class="p-10 text-center text-gray-400"><i class="fas fa-spinner fa-spin"></i></div></div>
+        </div>
+      </div>
+
+      <!-- ===== 영수증 인쇄 영역 (평소 숨김, 인쇄 시에만 표시) ===== -->
+      <div id="receiptPrintArea"></div>
     `,
     pageScript: cardExpensesScript + '\n' + cardFeeScript
   })

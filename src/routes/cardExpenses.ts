@@ -9,6 +9,7 @@ import { authMiddleware, requireRole } from '../middleware/auth'
 import { entityFilter, getEntityId } from '../utils/entityFilter'
 import { getEntityCorpNum } from '../utils/entitySettings'
 import { validateUpload } from '../utils/uploadValidation'
+import { generateCsv, csvResponse, CSV_EXPORT_CAP, CSV_TRUNCATION_NOTE } from '../utils/csv'
 
 const cardExpRouter = new Hono<HonoEnv>()
 cardExpRouter.use('/*', authMiddleware)
@@ -550,7 +551,8 @@ cardExpRouter.post('/transactions/:id/receipt', requireRole('ADMIN', 'MANAGER'),
     const v = validateUpload(file)
     if (!v.ok) return c.json({ success: false, error: v.error }, 400)
     const ext = v.ext
-    const key = `receipts/${new Date().toISOString().slice(0, 10)}/${id}_${Date.now()}.${ext}`
+    // 월별 폴더 정리(receipts/YYYY-MM/) — 세무 보관·조회 편의
+    const key = `receipts/${new Date().toISOString().slice(0, 7)}/${id}_${Date.now()}.${ext}`
     await (c.env as any).R2_BUCKET.put(key, await file.arrayBuffer(), { httpMetadata: { contentType: file.type } })
 
     const imageUrl = `/api/card-expenses/receipt-image/${key}`
@@ -584,40 +586,79 @@ cardExpRouter.get('/receipt-image/*', requireRole('ADMIN', 'MANAGER'), async (c)
 // Phase 4: 결제 예정 + 카드↔통장 대사
 // ===========================================================================
 
+// 결제 예정 = 카드별 "현재 진행 중 청구 사이클"(직전 마감+1 ~ 다음 마감) 누적 사용액(net) + 그 사이클의 결제 예정일.
+// 사이클 규칙은 자금예측(cashflowEngine)과 동일: payment_day > cutoff_day면 동월결제, else 익월결제.
+// "이번달 사용요금"(거래월 단순합)을 폐기하고 결제일 기준으로 일원화.
 cardExpRouter.get('/payment-schedule', requireRole('ADMIN', 'MANAGER'), async (c) => {
   try {
     const ef = entityFilter(c, 'cc')
-    const now = new Date()
-    const thisMonth = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}`
+    const { results: cards } = await c.env.DB.prepare(`
+      SELECT cc.id as card_id, cc.card_name, cc.card_company, cc.card_number_last4, cc.holder_name,
+             cc.monthly_limit, COALESCE(cc.cutoff_day, 15) as cutoff_day, COALESCE(cc.payment_day, 15) as payment_day
+      FROM corporate_cards cc WHERE cc.is_active = 1${ef.clause}
+      ORDER BY cc.card_name
+    `).bind(...ef.params).all<{ card_id: number; card_name: string; card_company: string; card_number_last4: string | null; holder_name: string | null; monthly_limit: number; cutoff_day: number; payment_day: number }>()
 
-    const { results } = await c.env.DB.prepare(`
-      SELECT
-        cc.id as card_id, cc.card_name, cc.card_company, cc.card_number_last4,
-        cc.payment_day, cc.monthly_limit, cc.holder_name,
-        COUNT(ct.id) as tx_count,
-        COALESCE(SUM(CASE WHEN ct.approval_type != 'CANCEL' THEN ct.amount ELSE 0 END), 0) as total_amount,
-        COALESCE(SUM(CASE WHEN ct.approval_type = 'CANCEL' THEN ct.amount ELSE 0 END), 0) as cancel_amount
-      FROM corporate_cards cc
-      LEFT JOIN card_transactions ct ON cc.id = ct.card_id
-        AND ct.transaction_date >= ? AND ct.transaction_date <= ?
-      WHERE cc.is_active = 1${ef.clause}
-      GROUP BY cc.id
-      ORDER BY total_amount DESC
-    `).bind(thisMonth + '01', thisMonth + '31', ...ef.params).all()
+    // 오늘(KST) Y/M/D
+    const todayRow = await c.env.DB.prepare(
+      `SELECT CAST(strftime('%Y','now','+9 hours') AS INTEGER) y, CAST(strftime('%m','now','+9 hours') AS INTEGER) m, CAST(strftime('%d','now','+9 hours') AS INTEGER) d`
+    ).first<{ y: number; m: number; d: number }>()
+    const ty = todayRow?.y || new Date().getFullYear()
+    const tm = todayRow?.m || new Date().getMonth() + 1
+    const td = todayRow?.d || new Date().getDate()
 
-    const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1)
-    const schedule = (results as any[]).map((r: any) => {
-      const payDay = r.payment_day || 15
-      const nextPayDate = new Date(nextMonth.getFullYear(), nextMonth.getMonth(), payDay)
-      return {
-        ...r,
-        net_amount: r.total_amount - r.cancel_amount,
-        next_payment_date: nextPayDate.toISOString().slice(0, 10),
-        limit_usage_pct: r.monthly_limit > 0 ? Math.round(((r.total_amount - r.cancel_amount) / r.monthly_limit) * 100) : null
-      }
-    })
-    const totalNet = schedule.reduce((s: number, r: any) => s + r.net_amount, 0)
-    return c.json({ success: true, data: { month: thisMonth, total_payment: totalNet, cards: schedule } })
+    const pad2 = (n: number) => String(n).padStart(2, '0')
+    const lastDayOf = (y: number, m1: number) => new Date(y, m1, 0).getDate()        // m1 = 1-indexed
+    const clampDay = (y: number, m1: number, day: number) => Math.min(day, lastDayOf(y, m1))
+    const ymd = (y: number, m1: number, d: number) => `${y}${pad2(m1)}${pad2(d)}`
+    const prevMonth = (y: number, m1: number) => (m1 === 1 ? { y: y - 1, m: 12 } : { y, m: m1 - 1 })
+    const nextMonth = (y: number, m1: number) => (m1 === 12 ? { y: y + 1, m: 1 } : { y, m: m1 + 1 })
+
+    const schedule: any[] = []
+    for (const card of cards as any[]) {
+      const cutoff = card.cutoff_day, payment = card.payment_day
+
+      // 현재 진행 사이클의 마감(close) 월 = 오늘이 이번달 마감일 이후면 다음달, 아니면 이번달
+      const cutoffThisMonth = clampDay(ty, tm, cutoff)
+      const close = td <= cutoffThisMonth ? { y: ty, m: tm } : nextMonth(ty, tm)
+      const cycleEndDay = clampDay(close.y, close.m, cutoff)
+      const cycleEnd = ymd(close.y, close.m, cycleEndDay)
+
+      // 사이클 시작 = 직전월 마감 + 1일
+      const pm = prevMonth(close.y, close.m)
+      const prevCutoffDay = clampDay(pm.y, pm.m, cutoff)
+      const csDate = new Date(pm.y, pm.m - 1, prevCutoffDay)
+      csDate.setDate(csDate.getDate() + 1)
+      const cycleStart = ymd(csDate.getFullYear(), csDate.getMonth() + 1, csDate.getDate())
+
+      // 결제 예정일: 동월결제(payment > cutoff)면 마감월, else 익월
+      const pay = payment > cutoff ? close : nextMonth(close.y, close.m)
+      const payDay = clampDay(pay.y, pay.m, payment)
+      const paymentDate = `${pay.y}-${pad2(pay.m)}-${pad2(payDay)}`
+
+      // 해당 사이클 누적 사용액(net = 승인 - 취소, 상계건 제외)
+      const efTx = entityFilter(c, 'ct')
+      const agg = await c.env.DB.prepare(`
+        SELECT COUNT(*) as tx_count,
+               COALESCE(SUM(CASE WHEN approval_type != 'CANCEL' THEN amount ELSE -amount END), 0) as net_amount
+        FROM card_transactions ct
+        WHERE ct.card_id = ? AND ct.is_offset = 0 AND ct.transaction_date >= ? AND ct.transaction_date <= ?${efTx.clause}
+      `).bind(card.card_id, cycleStart, cycleEnd, ...efTx.params).first<{ tx_count: number; net_amount: number }>()
+
+      const net = agg?.net_amount || 0
+      schedule.push({
+        card_id: card.card_id, card_name: card.card_name, card_company: card.card_company,
+        card_number_last4: card.card_number_last4, holder_name: card.holder_name,
+        monthly_limit: card.monthly_limit, payment_day: card.payment_day, cutoff_day: card.cutoff_day,
+        cycle_start: cycleStart, cycle_end: cycleEnd, payment_date: paymentDate,
+        net_amount: net, tx_count: agg?.tx_count || 0,
+        limit_usage_pct: card.monthly_limit > 0 ? Math.round((net / card.monthly_limit) * 100) : null,
+      })
+    }
+
+    const totalNet = schedule.reduce((s, r) => s + r.net_amount, 0)
+    const nextPay = schedule.map(r => r.payment_date).sort()[0] || '-'
+    return c.json({ success: true, data: { total_payment: totalNet, next_payment_date: nextPay, cards: schedule } })
   } catch (error) {
     console.error('Payment schedule error:', error)
     return c.json({ success: false, error: '서버 오류' }, 500)
@@ -661,6 +702,66 @@ cardExpRouter.get('/stats', requireRole('ADMIN', 'MANAGER'), async (c) => {
     return c.json({ success: true, data: stats })
   } catch (error) {
     console.error('Card stats error:', error)
+    return c.json({ success: false, error: '서버 오류' }, 500)
+  }
+})
+
+// GET /api/card-expenses/export-csv?start=&end= — 세무사 전달용 카드 사용내역 CSV
+// 전체 건 포함(구분=승인/취소/상계), 금액은 취소 시 음수. 영수증 첨부여부·URL 컬럼 포함.
+cardExpRouter.get('/export-csv', requireRole('ADMIN', 'MANAGER'), async (c) => {
+  try {
+    const q = c.req.query()
+    const ds = (q.start || q.date_start || '').replace(/-/g, '')
+    const de = (q.end || q.date_end || '').replace(/-/g, '')
+    if (!ds || !de) return c.json({ success: false, error: 'start, end 필수 (YYYY-MM-DD)' }, 400)
+    const ef = entityFilter(c, 'ct')
+
+    const { results } = await c.env.DB.prepare(`
+      SELECT ct.transaction_date, ct.transaction_time, ct.merchant_name, ct.amount,
+             ct.supply_amount, ct.tax_amount, ct.approval_number, ct.approval_type, ct.is_offset,
+             ct.memo, ct.status, ct.receipt_image_url,
+             cc.card_name, cc.card_number_last4, ec.name as category_name
+      FROM card_transactions ct
+      LEFT JOIN corporate_cards cc ON ct.card_id = cc.id
+      LEFT JOIN expense_categories ec ON ct.category_id = ec.id
+      WHERE ct.transaction_date >= ? AND ct.transaction_date <= ?${ef.clause}
+      ORDER BY ct.transaction_date ASC, ct.transaction_time ASC
+      LIMIT ?
+    `).bind(ds, de, ...ef.params, CSV_EXPORT_CAP + 1).all<any>()
+
+    const rows = results as any[]
+    const truncated = rows.length > CSV_EXPORT_CAP
+    const data = truncated ? rows.slice(0, CSV_EXPORT_CAP) : rows
+
+    const fmtDate = (s: string) => (s && s.length === 8 ? `${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)}` : (s || ''))
+    const origin = new URL(c.req.url).origin
+    const statusLabel: Record<string, string> = { UNCLASSIFIED: '미분류', CLASSIFIED: '분류완료', REQUESTED: '결의요청', APPROVED: '승인완료' }
+
+    const headers = ['사용일', '카드', '카드번호', '가맹점', '공급가액', '부가세', '금액', '구분', '경비분류', '적요', '승인번호', '영수증', '영수증링크']
+    const csvRows = data.map((r) => {
+      const sign = r.approval_type === 'CANCEL' ? -1 : 1
+      const kind = r.is_offset ? '상계' : (r.approval_type === 'CANCEL' ? '취소' : '승인')
+      return [
+        fmtDate(String(r.transaction_date)),
+        r.card_name || '',
+        r.card_number_last4 || '',
+        r.merchant_name || '',
+        Math.round((r.supply_amount || 0) * sign),
+        Math.round((r.tax_amount || 0) * sign),
+        Math.round((r.amount || 0) * sign),
+        kind,
+        r.category_name || '',
+        r.memo || '',
+        r.approval_number || '',
+        r.receipt_image_url ? 'O' : 'X',
+        r.receipt_image_url ? origin + r.receipt_image_url : '',
+      ]
+    })
+
+    const csv = generateCsv(headers, csvRows, truncated ? { footerNote: CSV_TRUNCATION_NOTE } : undefined)
+    return csvResponse(c, `card-expenses_${ds}_${de}.csv`, csv)
+  } catch (error) {
+    console.error('Card export-csv error:', error)
     return c.json({ success: false, error: '서버 오류' }, 500)
   }
 })
