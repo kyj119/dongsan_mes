@@ -101,7 +101,6 @@ import { priceListPage } from './pages/priceList'
 import { priceManagementPage } from './pages/priceManagement'
 import { cardsPage } from './pages/cards'
 import { cardDetailPage } from './pages/cardDetail'
-import { productionBoardPage } from './pages/productionBoard'
 import { ordersPage } from './pages/orders'
 import { orderFormPage } from './pages/orderForm'
 import { loginPage } from './pages/login'
@@ -396,7 +395,6 @@ app.get('/price-list-old', pageAuthMiddleware, requirePagePermission('/price-lis
 app.get('/client-prices', (c) => c.redirect('/price-list'))
 app.get('/cards', pageAuthMiddleware, requirePagePermission('/cards'), cardsPage)
 app.get('/cards/:id', pageAuthMiddleware, requirePagePermission('/cards'), cardDetailPage)
-app.get('/production-board', pageAuthMiddleware, requirePagePermission('/production-board'), productionBoardPage)
 app.get('/orders', pageAuthMiddleware, requirePagePermission('/orders'), ordersPage)
 app.get('/order-form', pageAuthMiddleware, requirePagePermission('/orders'), orderFormPage)
 app.get('/ledger', pageAuthMiddleware, requirePagePermission('/ledger'), ledgerPage)
