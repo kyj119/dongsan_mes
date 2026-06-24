@@ -90,22 +90,96 @@ async function countWorkingDays(db: D1Database, start: string, end: string): Pro
   return n
 }
 
+/** 'YYYY-MM-DD' + N년 (2/29 → 익년 2/28 보정). 만료일 계산용. */
+function addYears(dateStr: string, years: number): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(dateStr || '')
+  if (!m) return ''
+  const y = parseInt(m[1], 10) + years
+  let d = m[3]
+  if (m[2] === '02' && d === '29') d = '28'
+  return `${y}-${m[2]}-${d}`
+}
+
+// 병존: 연차 잔여는 ANNUAL(1년차+) + MONTHLY(1년미만 월차) 합산. 소멸분(expired) 차감.
+/** 연차 잔여 = SUM(accrued+granted_extra+carried_over-used-expired) over ANNUAL+MONTHLY (직원·연도). */
+async function annualRemaining(db: D1Database, employeeId: number, year: number): Promise<number> {
+  const r = await db.prepare(
+    `SELECT COALESCE(SUM(accrued+granted_extra+carried_over-used-expired),0) AS rem
+     FROM leave_balances WHERE employee_id=? AND year=? AND leave_type IN ('ANNUAL','MONTHLY')`
+  ).bind(employeeId, year).first<{ rem: number }>()
+  return Number(r?.rem ?? 0)
+}
+
+/** 차감 stmts: 연차=FIFO(MONTHLY 만료임박 먼저→ANNUAL), 병가=SICK 단일행. */
+async function buildDeductStmts(db: D1Database, employeeId: number, year: number, deductType: 'ANNUAL' | 'SICK', days: number, entityId: number): Promise<D1PreparedStatement[]> {
+  if (deductType === 'SICK') {
+    return [db.prepare(`
+      INSERT INTO leave_balances (employee_id, year, leave_type, used, entity_id) VALUES (?, ?, 'SICK', ?, ?)
+      ON CONFLICT(employee_id, year, leave_type) DO UPDATE SET used = leave_balances.used + excluded.used, updated_at = CURRENT_TIMESTAMP
+    `).bind(employeeId, year, days, entityId)]
+  }
+  const { results } = await db.prepare(
+    `SELECT leave_type, (accrued+granted_extra+carried_over-used-expired) AS avail
+     FROM leave_balances WHERE employee_id=? AND year=? AND leave_type IN ('ANNUAL','MONTHLY')`
+  ).bind(employeeId, year).all<{ leave_type: string; avail: number }>()
+  const availMap = new Map(results.map(r => [r.leave_type, Number(r.avail) || 0]))
+  const stmts: D1PreparedStatement[] = []
+  let need = days
+  for (const lt of ['MONTHLY', 'ANNUAL']) { // FIFO: 만료 임박(월차) 먼저
+    if (need <= 0) break
+    const avail = availMap.get(lt) ?? 0
+    if (avail <= 0) continue
+    const take = Math.min(avail, need)
+    stmts.push(db.prepare(`UPDATE leave_balances SET used=used+?, updated_at=CURRENT_TIMESTAMP WHERE employee_id=? AND year=? AND leave_type=?`).bind(take, employeeId, year, lt))
+    need -= take
+  }
+  if (need > 0) { // 가용 부족분(잔여검증 통과면 0) — ANNUAL 행에 UPSERT
+    stmts.push(db.prepare(`
+      INSERT INTO leave_balances (employee_id, year, leave_type, used, entity_id) VALUES (?, ?, 'ANNUAL', ?, ?)
+      ON CONFLICT(employee_id, year, leave_type) DO UPDATE SET used = leave_balances.used + excluded.used, updated_at = CURRENT_TIMESTAMP
+    `).bind(employeeId, year, need, entityId))
+  }
+  return stmts
+}
+
+/** 복원 stmts(역FIFO): 연차=ANNUAL 먼저→MONTHLY, 병가=SICK. used -= days(0 미만 방지). */
+async function buildRestoreStmts(db: D1Database, employeeId: number, year: number, deductType: 'ANNUAL' | 'SICK', days: number): Promise<D1PreparedStatement[]> {
+  if (deductType === 'SICK') {
+    return [db.prepare(`UPDATE leave_balances SET used=MAX(0,used-?), updated_at=CURRENT_TIMESTAMP WHERE employee_id=? AND year=? AND leave_type='SICK'`).bind(days, employeeId, year)]
+  }
+  const { results } = await db.prepare(
+    `SELECT leave_type, used FROM leave_balances WHERE employee_id=? AND year=? AND leave_type IN ('ANNUAL','MONTHLY')`
+  ).bind(employeeId, year).all<{ leave_type: string; used: number }>()
+  const usedMap = new Map(results.map(r => [r.leave_type, Number(r.used) || 0]))
+  const stmts: D1PreparedStatement[] = []
+  let give = days
+  for (const lt of ['ANNUAL', 'MONTHLY']) { // 역FIFO: ANNUAL 먼저 복원
+    if (give <= 0) break
+    const u = usedMap.get(lt) ?? 0
+    if (u <= 0) continue
+    const back = Math.min(u, give)
+    stmts.push(db.prepare(`UPDATE leave_balances SET used=used-?, updated_at=CURRENT_TIMESTAMP WHERE employee_id=? AND year=? AND leave_type=?`).bind(back, employeeId, year, lt))
+    give -= back
+  }
+  return stmts
+}
+
 /**
- * 연차(ANNUAL) 현재 적립값을 직원ID→accrued 맵으로 일괄 조회한다 (#321 N+1 제거).
- * 직원별 SELECT를 단일 WHERE id IN (...) 한 방으로 대체.
+ * 적립값을 직원ID→accrued 맵으로 일괄 조회 (#321 N+1 제거). 병존: leaveType별.
  */
 async function loadAnnualAccruedMap(
   c: { env: HonoEnv['Bindings'] },
   employeeIds: number[],
-  year: number
+  year: number,
+  leaveType: 'ANNUAL' | 'MONTHLY' = 'ANNUAL'
 ): Promise<Map<number, number>> {
   const map = new Map<number, number>()
   if (employeeIds.length === 0) return map
   const placeholders = employeeIds.map(() => '?').join(',')
   const { results } = await c.env.DB.prepare(
     `SELECT employee_id, accrued FROM leave_balances
-     WHERE year = ? AND leave_type = 'ANNUAL' AND employee_id IN (${placeholders})`
-  ).bind(year, ...employeeIds).all<{ employee_id: number; accrued: number }>()
+     WHERE year = ? AND leave_type = ? AND employee_id IN (${placeholders})`
+  ).bind(year, leaveType, ...employeeIds).all<{ employee_id: number; accrued: number }>()
   for (const row of results) map.set(row.employee_id, row.accrued || 0)
   return map
 }
@@ -119,7 +193,7 @@ leavesRouter.get('/balances', requireRole('ADMIN', 'MANAGER'), async (c) => {
   try {
     const year = Number(c.req.query('year') || new Date().getFullYear())
     const department = c.req.query('department') || '' // #346: 부서 필터
-    const ef = entityFilter(c, 'lb')
+    const ef = entityFilter(c, 'e') // employees 기준 격리(병존 집계 서브쿼리라 lb 직접필터 대신 e)
     const deptClause = department ? ' AND e.department = ?' : ''
     const deptParams = department ? [department] : []
     const { results } = await c.env.DB.prepare(`
@@ -135,10 +209,15 @@ leavesRouter.get('/balances', requireRole('ADMIN', 'MANAGER'), async (c) => {
         COALESCE(lb.granted_extra, 0) as granted_extra,
         COALESCE(lb.used, 0) as used,
         COALESCE(lb.carried_over, 0) as carried_over,
-        (COALESCE(lb.accrued, 0) + COALESCE(lb.granted_extra, 0) + COALESCE(lb.carried_over, 0) - COALESCE(lb.used, 0)) as remaining
+        COALESCE(lb.expired, 0) as expired,
+        (COALESCE(lb.accrued, 0) + COALESCE(lb.granted_extra, 0) + COALESCE(lb.carried_over, 0) - COALESCE(lb.used, 0) - COALESCE(lb.expired, 0)) as remaining
       FROM employees e
-      LEFT JOIN leave_balances lb
-        ON lb.employee_id = e.id AND lb.year = ? AND lb.leave_type = 'ANNUAL'
+      LEFT JOIN (
+        SELECT employee_id, SUM(accrued) accrued, SUM(granted_extra) granted_extra,
+               SUM(used) used, SUM(carried_over) carried_over, SUM(expired) expired
+        FROM leave_balances WHERE year = ? AND leave_type IN ('ANNUAL','MONTHLY')
+        GROUP BY employee_id
+      ) lb ON lb.employee_id = e.id
       WHERE e.status = 'ACTIVE' AND e.is_deleted = 0${ef.clause}${deptClause}
       ORDER BY e.department, e.name
     `).bind(year, ...ef.params, ...deptParams).all()
@@ -162,8 +241,8 @@ leavesRouter.get('/balance/:employeeId', async (c) => {
 
     const efB = entityFilter(c)
     const { results: history } = await c.env.DB.prepare(`
-      SELECT year, leave_type, accrued, granted_extra, used, carried_over,
-        (accrued + granted_extra + carried_over - used) as remaining
+      SELECT year, leave_type, accrued, granted_extra, used, carried_over, expired,
+        (accrued + granted_extra + carried_over - used - expired) as remaining
       FROM leave_balances
       WHERE employee_id = ?${efB.clause}
       ORDER BY year DESC, leave_type
@@ -207,8 +286,8 @@ leavesRouter.post('/accrual/monthly', requireRole('ADMIN'), async (c) => {
     let processed = 0
     const errors: string[] = []
 
-    // 현재 적립값 일괄 조회 — 직원별 SELECT N+1 제거 (#321)
-    const accruedMap = await loadAnnualAccruedMap(c, employees.map(e => e.id), currentYear)
+    // 현재 월차 적립값 일괄 조회(병존: MONTHLY 버킷) — N+1 제거 (#321)
+    const accruedMap = await loadAnnualAccruedMap(c, employees.map(e => e.id), currentYear, 'MONTHLY')
 
     // #416: 직원별 순차 INSERT 2N회(N+1 write) → stmt 누적 후 DB.batch. /grant(sick #321)와 동일 정책(all-or-nothing).
     const stmts: any[] = []
@@ -218,17 +297,18 @@ leavesRouter.post('/accrual/monthly', requireRole('ADMIN'), async (c) => {
       if (annual >= 15) continue // 1년 이상 → 월차 대상 아님
       if (expected <= 0) continue
 
-      // 현재 적립값 확인 (사전 로드된 맵에서 룩업)
       const currentAccrued = accruedMap.get(emp.id) || 0
       const delta = expected - currentAccrued
       if (delta <= 0) continue
 
+      // 병존: 월차는 leave_type='MONTHLY'로 분리 적립. 만료 = 입사일+1년 일괄(D 결정).
+      const expire = addYears(emp.hire_date, 1)
       stmts.push(c.env.DB.prepare(`
-        INSERT INTO leave_balances (employee_id, year, leave_type, accrued, entity_id)
-        VALUES (?, ?, 'ANNUAL', ?, ?)
+        INSERT INTO leave_balances (employee_id, year, leave_type, accrued, expire_date, entity_id)
+        VALUES (?, ?, 'MONTHLY', ?, ?, ?)
         ON CONFLICT(employee_id, year, leave_type) DO UPDATE SET
-          accrued = excluded.accrued, updated_at = CURRENT_TIMESTAMP
-      `).bind(emp.id, currentYear, expected, (emp as any).entity_id || 1))
+          accrued = excluded.accrued, expire_date = excluded.expire_date, updated_at = CURRENT_TIMESTAMP
+      `).bind(emp.id, currentYear, expected, expire || null, (emp as any).entity_id || 1))
 
       stmts.push(c.env.DB.prepare(`
         INSERT INTO leave_accrual_logs (employee_id, year, accrual_type, days, reason, run_by, entity_id)
@@ -263,8 +343,9 @@ leavesRouter.post('/accrual/yearly', requireRole('ADMIN'), async (c) => {
     let processed = 0
     const errors: string[] = []
 
-    // 현재 적립값 일괄 조회 — 직원별 SELECT N+1 제거 (#321)
+    // 현재 적립값 일괄 조회(ANNUAL 버킷) — 직원별 SELECT N+1 제거 (#321)
     const accruedMap = await loadAnnualAccruedMap(c, employees.map(e => e.id), currentYear)
+    const todayStr = today.toISOString().slice(0, 10) // KST(+9h) 'YYYY-MM-DD'
 
     // #416: 직원별 순차 INSERT 2N회(N+1 write) → stmt 누적 후 DB.batch. /grant(sick #321)와 동일 정책(all-or-nothing).
     const stmts: any[] = []
@@ -275,12 +356,18 @@ leavesRouter.post('/accrual/yearly', requireRole('ADMIN'), async (c) => {
       const currentAccrued = accruedMap.get(emp.id) || 0
       if (currentAccrued >= annual) continue
 
+      // 연차 만료 = 직전 입사기념일 + 1년(발생일+1년)
+      const hireMD = (emp.hire_date || '').slice(5)
+      let annivYear = today.getUTCFullYear()
+      if (hireMD && `${annivYear}-${hireMD}` > todayStr) annivYear -= 1
+      const expire = hireMD ? addYears(`${annivYear}-${hireMD}`, 1) : ''
+
       stmts.push(c.env.DB.prepare(`
-        INSERT INTO leave_balances (employee_id, year, leave_type, accrued, entity_id)
-        VALUES (?, ?, 'ANNUAL', ?, ?)
+        INSERT INTO leave_balances (employee_id, year, leave_type, accrued, expire_date, entity_id)
+        VALUES (?, ?, 'ANNUAL', ?, ?, ?)
         ON CONFLICT(employee_id, year, leave_type) DO UPDATE SET
-          accrued = excluded.accrued, updated_at = CURRENT_TIMESTAMP
-      `).bind(emp.id, currentYear, annual, (emp as any).entity_id || 1))
+          accrued = excluded.accrued, expire_date = excluded.expire_date, updated_at = CURRENT_TIMESTAMP
+      `).bind(emp.id, currentYear, annual, expire || null, (emp as any).entity_id || 1))
 
       stmts.push(c.env.DB.prepare(`
         INSERT INTO leave_accrual_logs (employee_id, year, accrual_type, days, reason, run_by, entity_id)
@@ -436,28 +523,28 @@ leavesRouter.patch('/requests/:id/approve', requireRole('ADMIN', 'MANAGER'), asy
     // 차감 대상: 연차계열=ANNUAL, 병가=SICK. 경조(FAMILY)는 차감 없음(규정 일수만큼 유급).
     const deductType = isAnnual ? 'ANNUAL' : (isSick ? 'SICK' : null)
 
-    // B2: 잔여 검증 — 차감 대상만. 잔여 부족 시 승인 거부(음수 잔여 방지).
+    // B2+병존: 잔여 검증 — 연차=ANNUAL+MONTHLY 합산-소멸, 병가=SICK. 부족 시 승인 거부(음수 방지).
     if (deductType) {
-      const bal = await c.env.DB.prepare(
-        `SELECT COALESCE(accrued,0)+COALESCE(granted_extra,0)+COALESCE(carried_over,0)-COALESCE(used,0) AS remaining
-         FROM leave_balances WHERE employee_id = ? AND year = ? AND leave_type = ?`
-      ).bind(req.employee_id, year, deductType).first<{ remaining: number }>()
-      const remaining = Number(bal?.remaining ?? 0)
+      let remaining: number
+      if (deductType === 'ANNUAL') {
+        remaining = await annualRemaining(c.env.DB, req.employee_id, year)
+      } else {
+        const bal = await c.env.DB.prepare(
+          `SELECT COALESCE(accrued,0)+COALESCE(granted_extra,0)+COALESCE(carried_over,0)-COALESCE(used,0)-COALESCE(expired,0) AS remaining
+           FROM leave_balances WHERE employee_id = ? AND year = ? AND leave_type = 'SICK'`
+        ).bind(req.employee_id, year).first<{ remaining: number }>()
+        remaining = Number(bal?.remaining ?? 0)
+      }
       if (remaining < req.days) {
         return c.json({ success: false, error: `잔여 ${deductType === 'SICK' ? '병가' : '연차'} 부족: 잔여 ${remaining}일 < 신청 ${req.days}일. 먼저 부여(특별 부여/적립)하세요.` }, 400)
       }
     }
 
-    // B7: 잔여 차감 + 상태 변경을 원자적으로(batch) — 중간 실패 시 차감만 남는 이중차감 방지.
+    // B7+병존: 잔여 차감(연차 FIFO MONTHLY→ANNUAL) + 상태 변경 원자적 batch.
     const stmts: D1PreparedStatement[] = []
     if (deductType) {
-      stmts.push(c.env.DB.prepare(`
-        INSERT INTO leave_balances (employee_id, year, leave_type, used, entity_id)
-        VALUES (?, ?, ?, ?, ?)
-        ON CONFLICT(employee_id, year, leave_type) DO UPDATE SET
-          used = leave_balances.used + excluded.used,
-          updated_at = CURRENT_TIMESTAMP
-      `).bind(req.employee_id, year, deductType, req.days, reqEntityId))
+      const deductStmts = await buildDeductStmts(c.env.DB, req.employee_id, year, deductType, req.days, reqEntityId)
+      stmts.push(...deductStmts)
     }
     stmts.push(c.env.DB.prepare(`
       UPDATE leave_requests SET status = 'APPROVED', approved_by = ?, approved_at = CURRENT_TIMESTAMP WHERE id = ?${ef.clause}
@@ -555,13 +642,11 @@ leavesRouter.patch('/requests/:id/cancel-approved', requireRole('ADMIN', 'MANAGE
     const deductType = isAnnual ? 'ANNUAL' : (isSick ? 'SICK' : null)
     const year = new Date(req.start_date).getFullYear()
 
-    // 잔여 복원(used -= days, 0 미만 방지) + 상태 변경을 원자적으로.
+    // 잔여 복원(병존 역FIFO: ANNUAL→MONTHLY, 병가=SICK) + 상태 변경을 원자적으로.
     const stmts: D1PreparedStatement[] = []
     if (deductType) {
-      stmts.push(c.env.DB.prepare(`
-        UPDATE leave_balances SET used = MAX(0, used - ?), updated_at = CURRENT_TIMESTAMP
-        WHERE employee_id = ? AND year = ? AND leave_type = ?
-      `).bind(req.days, req.employee_id, year, deductType))
+      const restoreStmts = await buildRestoreStmts(c.env.DB, req.employee_id, year, deductType, req.days)
+      stmts.push(...restoreStmts)
     }
     stmts.push(c.env.DB.prepare(`
       UPDATE leave_requests SET status = 'CANCELLED', approved_by = ?, approved_at = CURRENT_TIMESTAMP WHERE id = ?${ef.clause}
@@ -750,15 +835,19 @@ leavesRouter.get('/unused-allowance', requireRole('ADMIN', 'MANAGER'), async (c)
         e.position_allowance,
         e.overtime_daily_hours,
         e.overtime_work_days,
-        COALESCE(lb.accrued, 0) + COALESCE(lb.granted_extra, 0) + COALESCE(lb.carried_over, 0) as total_annual,
+        (COALESCE(lb.accrued, 0) + COALESCE(lb.granted_extra, 0) + COALESCE(lb.carried_over, 0)) as total_annual,
         COALESCE(lb.used, 0) as used_annual,
-        (COALESCE(lb.accrued, 0) + COALESCE(lb.granted_extra, 0) + COALESCE(lb.carried_over, 0) - COALESCE(lb.used, 0)) as remaining_annual,
+        (COALESCE(lb.accrued, 0) + COALESCE(lb.granted_extra, 0) + COALESCE(lb.carried_over, 0) - COALESCE(lb.used, 0) - COALESCE(lb.expired, 0)) as remaining_annual,
         COALESCE(sick.accrued, 0) as sick_total,
         COALESCE(sick.used, 0) as sick_used,
         (COALESCE(sick.accrued, 0) - COALESCE(sick.used, 0)) as sick_remaining
       FROM employees e
-      LEFT JOIN leave_balances lb
-        ON lb.employee_id = e.id AND lb.year = ? AND lb.leave_type = 'ANNUAL'
+      LEFT JOIN (
+        SELECT employee_id, SUM(accrued) accrued, SUM(granted_extra) granted_extra,
+               SUM(used) used, SUM(carried_over) carried_over, SUM(expired) expired
+        FROM leave_balances WHERE year = ? AND leave_type IN ('ANNUAL','MONTHLY')
+        GROUP BY employee_id
+      ) lb ON lb.employee_id = e.id
       LEFT JOIN leave_balances sick
         ON sick.employee_id = e.id AND sick.year = ? AND sick.leave_type = 'SICK'
       WHERE e.status = 'ACTIVE' AND e.is_deleted = 0${deptClause}${ef.clause}
