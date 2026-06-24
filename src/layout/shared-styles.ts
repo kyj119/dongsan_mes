@@ -605,7 +605,7 @@ export const SHARED_CSS = `
      specificity (0,2,0)으로 Tailwind w-* (0,1,0)을 덮어씀. width 전용(정렬은 기존 text-* 유틸 유지). */
   .ds-table .col-check, .ds-table-striped .col-check, .ds-table-fixed .col-check { width: 36px; }
   .ds-table .col-no, .ds-table-striped .col-no, .ds-table-fixed .col-no { width: 50px; }
-  .ds-table .col-date, .ds-table-striped .col-date, .ds-table-fixed .col-date { width: 104px; }
+  .ds-table .col-date, .ds-table-striped .col-date, .ds-table-fixed .col-date { width: 112px; }
   .ds-table .col-datetime, .ds-table-striped .col-datetime, .ds-table-fixed .col-datetime { width: 148px; }
   .ds-table .col-amount, .ds-table-striped .col-amount, .ds-table-fixed .col-amount { width: 120px; }
   .ds-table .col-qty, .ds-table-striped .col-qty, .ds-table-fixed .col-qty { width: 76px; }
