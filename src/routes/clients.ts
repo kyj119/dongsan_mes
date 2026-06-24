@@ -5,6 +5,7 @@ import { authMiddleware, requireRole } from '../middleware/auth'
 import { hashPassword } from '../utils/crypto'
 import { entityFilter, getEntityId } from '../utils/entityFilter'
 import { getNextSeqNumber } from '../utils/sequenceGenerator'
+import { deriveClientBalance } from './ledger/ar-helpers'
 
 const clientsRouter = new Hono<HonoEnv>()
 
@@ -271,6 +272,10 @@ clientsRouter.get('/:id/detail', async (c) => {
       return c.json({ success: false, error: 'Client not found' }, 404)
     }
 
+    // 미수금 = 파생(deriveClientBalance) — clients.balance 캐시 폐기, /bank·/accounting 와 동일 정의
+    const arBalance = await deriveClientBalance(c, id)
+    ;(client as Record<string, unknown>).balance = arBalance  // 응답 client.balance도 파생값(여신 배너 등 프론트 일관)
+
     const ef = entityFilter(c)
 
     // Recent orders (last 20)
@@ -362,7 +367,7 @@ clientsRouter.get('/:id/detail', async (c) => {
         receivables: {
           total_billed: receivables?.total_billed || 0,
           total_payments: payments?.total_payments || 0,
-          balance: (client as Record<string, unknown>).balance as number || 0,
+          balance: arBalance,
           billed_count: receivables?.billed_count || 0,
           last_payment_date: payments?.last_payment_date || null
         },
@@ -430,7 +435,7 @@ clientsRouter.get('/:id/intelligence', async (c) => {
 
     const billedAmt = Number(totalBilled?.total || 0)
     const paidAmt = Number(paymentStats?.total_payments || 0)
-    const balance = Number(client.balance || 0)
+    const balance = await deriveClientBalance(c, id)  // clients.balance 캐시 폐기 → 파생(/bank·/accounting 일치)
     const arRatio = billedAmt > 0 ? Math.round(balance / billedAmt * 1000) / 10 : 0
 
     // 3. 성장성: 최근 3개월 vs 이전 3개월
