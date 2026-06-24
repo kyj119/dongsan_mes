@@ -11,7 +11,7 @@
     "verify": "npm run typecheck && npm run build",
     "preview": "wrangler pages dev dist",
     "deploy": "npm run build && wrangler pages deploy dist",
-    "deploy:prod": "npm run build && wrangler pages deploy dist --project-name webapp",
+    "deploy:prod": "npm run build && wrangler pages deploy dist --project-name webapp --branch main",
     "cf-typegen": "wrangler types --env-interface CloudflareBindings",
     "clean-port": "taskkill /IM workerd.exe /F 2>NUL || ver>NUL",
     "clean:tmp": "powershell -NoProfile -Command \"if(Test-Path .wrangler/tmp){Remove-Item .wrangler/tmp -Recurse -Force; Write-Host 'Cleaned .wrangler/tmp'}else{Write-Host 'Already clean'}\"",
