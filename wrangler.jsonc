@@ -29,5 +29,11 @@
 			"binding": "R2_BUCKET",
 			"bucket_name": "dongsan-files"
 		}
-	]
+	],
+	// Workers Logs (Observability) — prod 로그/에러를 cloudflare-observability MCP로 조회.
+	// 다음 prod 배포(deploy:prod / /ship) 시 활성화됨. head_sampling_rate=1 = 전체 로깅.
+	"observability": {
+		"enabled": true,
+		"head_sampling_rate": 1
+	}
 }
