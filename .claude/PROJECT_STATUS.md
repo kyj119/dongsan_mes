@@ -14,6 +14,13 @@
 
 ## 🔴 현재 진행 중
 
+- **✅ [2026-06-24] GitHub 이슈 6건 처리 — IDOR·감사·차감UI·write카나리** (커밋 `f9587c5c`, prod dep `541183ab` `--branch main`, smoke 101/101, 5건 close + #439 코멘트):
+  - **#440** leaves `/balance/:employeeId` entityFilter 2건(타법인 직원 연차이력 cross-tenant 열람 IDOR 차단) · **#437** bank `PUT /accounts/:id`+`transactions/import` entityFilter(타법인 계좌 master 덮어쓰기 IDOR) · **#436** inventoryCount 제출/승인 감사기록 `X-User-Id`(미전송 헤더, 항상 'system')→`c.get('user').username`.
+  - **#435** 차감방식 UI/API — items PUT/PATCH allowedFields+값검증(ROLL/BOARD/NONE·sheet_spec 4x8/3x6·waste≤5)·GET /:id 필드추가·MATERIAL 모달 select+보드규격/로스율(`onDeductionMethodChange`, BOARD만 노출). **검증게이트(용준님)**: BOARD 면적→장 차감·3x6(915×1830)/4x8(1220×2440) 규격관리 건전 확인 후 옵션A 적용. 라이브 라운드트립(BOARD/3x6/1.1 저장·잘못된값 400) 통과.
+  - **#430** 로컬 write 카나리(`scripts/write-canary.cjs`+`canary/items-write-canary.sql`+verify.yml job) — read-only smoke가 못잡는 0335류 FK-drop write회귀를 로컬 D1 INSERT→assert→DELETE로 빌드/CI 탐지(prod 무오염, owner 권장해법). 음성테스트(없는 테이블 write→non-zero) 통과.
+  - **#439**(infra) git push 403 코어 이미 해소(코멘트 기록) → 코멘트만. backlog 트림=스케줄 auto-improve 루틴 소유 `IMPROVEMENT_BACKLOG.md`라 **멀티세션 충돌 회피 위해 미수정**.
+  - **★멀티세션 무충돌 처리**: 다른 세션(회계허브 Playwright검증·clients.balance 동시작업·브라우저 점유) 위에 격리브랜치 작업→**main ff push FIRST**(origin/main=superset)→`--branch main` 배포→apex 신규필드 마커 검증(공유 브라우저 미점유). 내 픽스 전부 origin/main·prod 잔존 확인(다른 세션이 위에 빌드+재배포 aeccc624 후에도). 메모리 [[feedback-multi-session-deploy]].
+
 - **✅ [2026-06-24] /bank 미수금현황 stale 미수금 수정 — 데이터 정리 + 파생 전환** (커밋 `36bec2cd`, dep `aeccc624`, smoke 101/101):
   - 증상: `/accounting` 미수금=0인데 `/bank` 미수금현황에 **90,580원 잔존**. 원인=`/bank/receivables`(`bank.ts:1830`)가 폐기된 **`clients.balance` 캐시 직접 읽음**(`WHERE c.balance>0`), /accounting은 라이브 파생. **공장초기화(0620)가 orders/payments는 지웠지만 clients.balance 캐시 미클리어**→stale(양수 3건 90,580 + 음수 4건 −9,255,290 선수금잔재. orders·payments 전역 0 = 전부 orphan).
   - 조치: ①**stale balance 7건 전부 prod `balance=0`**(양수 3건 id 3·2590·2159 + 음수 4건 id 850·1587·400·1000, 용준님 2회 승인). **clients.balance 전체 0 검증**(nonzero_remaining=0). ②`/receivables`를 **deriveClientBalance 정의 파생**으로 전환(LEFT JOIN billed[obg BILLED]/paid/adj − downstream `r.balance` 무변경, 폐기 캐시 더는 안 읽음).
