@@ -334,22 +334,23 @@ export function bankPage(c: Context<HonoEnv>) {
               </label>
               <div id="accBarobillFields" class="hidden mt-3 space-y-3 bg-gray-50 rounded-lg p-3">
                 <p class="text-xs text-gray-500"><i class="fas fa-shield-alt mr-1"></i>인증정보는 바로빌 등록에만 1회 사용되며 MES에 저장되지 않습니다. 은행 빠른조회(조회전용) 서비스가 먼저 신청되어 있어야 합니다.</p>
+                <p class="text-xs text-amber-600"><i class="fas fa-circle-info mr-1"></i>은행마다 인증방식이 다릅니다. <b>빠른조회 ID가 없는 은행은 ID/PW를 비우고 계좌비밀번호만</b> 입력하세요. (ID를 넣으면 "-50218: 빠른조회 아이디를 입력하지 않아야 합니다" 오류)</p>
                 <div class="grid grid-cols-2 gap-3">
                   <div>
                     <label class="form-label">예금주 식별번호 <span class="text-red-500">*</span></label>
                     <input type="text" id="accIdentityNum" class="form-input" autocomplete="off" placeholder="사업자번호 또는 생년월일">
                   </div>
                   <div>
-                    <label class="form-label">계좌 비밀번호 <span class="text-red-500">*</span></label>
-                    <input type="password" id="accPassword" class="form-input" autocomplete="new-password" placeholder="계좌 비밀번호">
+                    <label class="form-label">계좌 비밀번호</label>
+                    <input type="password" id="accPassword" class="form-input" autocomplete="new-password" placeholder="빠른조회 은행: 계좌 비밀번호">
                   </div>
                   <div>
-                    <label class="form-label">인터넷뱅킹 ID <span class="text-red-500">*</span></label>
-                    <input type="text" id="accWebId" class="form-input" autocomplete="off" placeholder="조회전용/뱅킹 ID">
+                    <label class="form-label">빠른조회/뱅킹 ID <span class="text-gray-400">(선택)</span></label>
+                    <input type="text" id="accWebId" class="form-input" autocomplete="off" placeholder="ID 없는 은행은 비움">
                   </div>
                   <div>
-                    <label class="form-label">인터넷뱅킹 PW <span class="text-red-500">*</span></label>
-                    <input type="password" id="accWebPwd" class="form-input" autocomplete="new-password" placeholder="조회전용/뱅킹 PW">
+                    <label class="form-label">빠른조회/뱅킹 PW <span class="text-gray-400">(선택)</span></label>
+                    <input type="password" id="accWebPwd" class="form-input" autocomplete="new-password" placeholder="ID 없는 은행은 비움">
                   </div>
                   <div>
                     <label class="form-label">계좌 구분</label>

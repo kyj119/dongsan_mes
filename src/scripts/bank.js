@@ -848,8 +848,10 @@
       var pwd = document.getElementById('accPassword').value;
       var webId = document.getElementById('accWebId').value.trim();
       var webPwd = document.getElementById('accWebPwd').value;
-      if (!identity || !pwd || !webId || !webPwd) {
-        showToast('바로빌 연동에 필요한 인증정보를 모두 입력하세요.', 'warning'); return;
+      // 은행별 인증방식 상이: 식별번호 + (계좌비밀번호 또는 빠른조회 ID/PW). 백엔드 검증과 일치.
+      // 빠른조회 ID가 없는 은행(-50218)은 ID/PW를 비우고 계좌비밀번호만 입력.
+      if (!identity || (!pwd && !(webId && webPwd))) {
+        showToast('예금주 식별번호와, 계좌비밀번호 또는 빠른조회 ID/PW를 입력하세요 (은행별 상이).', 'warning'); return;
       }
       body.barobill_sync = true;
       body.identity_num = identity;
