@@ -208,21 +208,21 @@ function renderPriceTable() {
       + '<span class="text-xs px-2 py-0.5 rounded-full font-medium ' + (grp.type === 'PRODUCT' ? 'bg-blue-100 text-blue-700' : grp.type === 'MATERIAL' ? 'bg-yellow-100 text-yellow-700' : 'bg-purple-100 text-purple-700') + '">' + typeName + '</span>'
       + '<h3 class="font-bold text-gray-800">' + escapeHtml(grp.category) + '</h3>'
       + '<span class="text-xs text-gray-400 ml-auto">' + grp.items.length + '건</span></div>'
-      + '<table class="w-full"><thead><tr class="text-xs text-gray-500 border-b bg-gray-50/50">'
-      + '<th class="text-left py-2 px-4 font-medium">품목코드</th>'
-      + '<th class="text-left py-2 px-4 font-medium">품목명</th>'
-      + '<th class="text-left py-2 px-4 font-medium">규격</th>'
-      + '<th class="text-center py-2 px-4 font-medium">단위</th>'
-      + '<th class="text-right py-2 px-4 font-medium">단가</th>'
-      + (hasClient ? '<th class="text-right py-2 px-4 font-medium">적용 단가</th>' : '')
+      + '<table class="w-full ds-table"><thead><tr class="text-xs text-gray-500 border-b bg-gray-50/50">'
+      + '<th class="col-code text-left py-2 px-4 font-medium">품목코드</th>'
+      + '<th class="col-name text-left py-2 px-4 font-medium">품목명</th>'
+      + '<th class="col-flex text-left py-2 px-4 font-medium">규격</th>'
+      + '<th class="col-qty text-center py-2 px-4 font-medium">단위</th>'
+      + '<th class="col-amount text-right py-2 px-4 font-medium">단가</th>'
+      + (hasClient ? '<th class="col-amount text-right py-2 px-4 font-medium">적용 단가</th>' : '')
       + '</tr></thead><tbody>';
 
     grp.items.forEach(function(item, idx) {
       var p = calcPrice(item);
       html += '<tr class="border-b border-gray-50 hover:bg-blue-50/30' + (idx % 2 ? ' bg-gray-50/30' : '') + '">'
         + '<td class="py-2.5 px-4 text-sm text-gray-500 font-mono">' + escapeHtml(item.item_code || '') + '</td>'
-        + '<td class="py-2.5 px-4 text-sm font-medium text-gray-800">' + escapeHtml(item.item_name) + '</td>'
-        + '<td class="py-2.5 px-4 text-sm text-gray-600">' + escapeHtml(item.specification || '-') + '</td>'
+        + '<td class="py-2.5 px-4 text-sm font-medium text-gray-800" title="' + escapeHtml(item.item_name || '') + '">' + escapeHtml(item.item_name) + '</td>'
+        + '<td class="py-2.5 px-4 text-sm text-gray-600" title="' + escapeHtml(item.specification || '') + '">' + escapeHtml(item.specification || '-') + '</td>'
         + '<td class="py-2.5 px-4 text-sm text-gray-500 text-center">' + escapeHtml(item.unit || 'EA') + '</td>'
         + '<td class="py-2.5 px-4 text-sm text-right font-medium">' + (p.base ? p.base.toLocaleString() + '원' : '-') + '</td>';
       if (hasClient) {
@@ -239,14 +239,14 @@ function renderPriceTable() {
       + '<div class="px-4 py-3 bg-gray-50 border-b flex items-center gap-2">'
       + '<span class="text-xs px-2 py-0.5 rounded-full font-medium bg-indigo-100 text-indigo-700">출력 미디어</span>'
       + '<h3 class="font-bold text-gray-800">' + escapeHtml(mg) + '</h3></div>'
-      + '<table class="w-full"><thead><tr class="text-xs text-gray-500 border-b bg-gray-50/50">'
-      + '<th class="text-left py-2 px-4 font-medium">코드</th><th class="text-left py-2 px-4 font-medium">미디어명</th>'
-      + '<th class="text-center py-2 px-4 font-medium">단위</th><th class="text-right py-2 px-4 font-medium">단가</th>'
+      + '<table class="w-full ds-table"><thead><tr class="text-xs text-gray-500 border-b bg-gray-50/50">'
+      + '<th class="col-code text-left py-2 px-4 font-medium">코드</th><th class="col-name text-left py-2 px-4 font-medium">미디어명</th>'
+      + '<th class="col-qty text-center py-2 px-4 font-medium">단위</th><th class="col-amount text-right py-2 px-4 font-medium">단가</th>'
       + '</tr></thead><tbody>';
     data.mediaGroups[mg].forEach(function(m, idx) {
       html += '<tr class="border-b border-gray-50' + (idx % 2 ? ' bg-gray-50/30' : '') + '">'
         + '<td class="py-2.5 px-4 text-sm text-gray-500 font-mono">' + escapeHtml(m.code || '') + '</td>'
-        + '<td class="py-2.5 px-4 text-sm font-medium text-gray-800">' + escapeHtml(m.name) + '</td>'
+        + '<td class="py-2.5 px-4 text-sm font-medium text-gray-800" title="' + escapeHtml(m.name || '') + '">' + escapeHtml(m.name) + '</td>'
         + '<td class="py-2.5 px-4 text-sm text-gray-500 text-center">' + escapeHtml(m.unit || '㎡') + '</td>'
         + '<td class="py-2.5 px-4 text-sm text-right font-medium">' + (m.price_per_unit ? m.price_per_unit.toLocaleString() + '원' : '-') + '</td></tr>';
     });

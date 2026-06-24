@@ -689,18 +689,18 @@ export function taxInvoicesPage(c: Context<HonoEnv>) {
         </div>
         <div class="ds-card overflow-hidden">
           <div class="overflow-x-auto" style="max-height: calc(100vh - 280px); overflow-y: auto;">
-            <table class="w-full ds-table-striped">
+            <table class="w-full ds-table ds-table-striped">
               <thead class="table-header">
                 <tr>
-                  <th class="text-left text-xs font-semibold text-gray-600 uppercase">작업ID</th>
-                  <th class="text-left text-xs font-semibold text-gray-600 uppercase">유형</th>
-                  <th class="text-left text-xs font-semibold text-gray-600 uppercase">기간</th>
-                  <th class="text-center text-xs font-semibold text-gray-600 uppercase">상태</th>
-                  <th class="text-right text-xs font-semibold text-gray-600 uppercase">결과</th>
-                  <th class="text-right text-xs font-semibold text-gray-600 uppercase">건수</th>
-                  <th class="text-left text-xs font-semibold text-gray-600 uppercase">요청자</th>
-                  <th class="text-left text-xs font-semibold text-gray-600 uppercase">요청일</th>
-                  <th class="text-center text-xs font-semibold text-gray-600 uppercase">액션</th>
+                  <th class="col-no text-left text-xs font-semibold text-gray-600 uppercase">작업ID</th>
+                  <th class="col-tag text-left text-xs font-semibold text-gray-600 uppercase">유형</th>
+                  <th class="col-name text-left text-xs font-semibold text-gray-600 uppercase">기간</th>
+                  <th class="col-status text-center text-xs font-semibold text-gray-600 uppercase">상태</th>
+                  <th class="col-flex text-right text-xs font-semibold text-gray-600 uppercase">결과</th>
+                  <th class="col-qty text-right text-xs font-semibold text-gray-600 uppercase">건수</th>
+                  <th class="col-tag text-left text-xs font-semibold text-gray-600 uppercase">요청자</th>
+                  <th class="col-date text-left text-xs font-semibold text-gray-600 uppercase">요청일</th>
+                  <th class="col-action text-center text-xs font-semibold text-gray-600 uppercase">액션</th>
                 </tr>
               </thead>
               <tbody id="jobsTableBody">
@@ -768,19 +768,19 @@ export function taxInvoicesPage(c: Context<HonoEnv>) {
         <!-- Invoices Table -->
         <div class="ds-card overflow-hidden">
           <div class="overflow-x-auto" style="max-height: calc(100vh - 280px); overflow-y: auto;">
-            <table class="w-full ds-table-striped">
+            <table class="w-full ds-table ds-table-striped">
               <thead class="table-header">
                 <tr>
-                  <th class="text-left text-xs font-semibold text-gray-600 uppercase">승인번호</th>
-                  <th class="text-left text-xs font-semibold text-gray-600 uppercase">유형</th>
-                  <th class="text-left text-xs font-semibold text-gray-600 uppercase">작성일</th>
-                  <th class="text-left text-xs font-semibold text-gray-600 uppercase">공급자</th>
-                  <th class="text-left text-xs font-semibold text-gray-600 uppercase">공급받는자</th>
-                  <th class="text-right text-xs font-semibold text-gray-600 uppercase">공급가액</th>
-                  <th class="text-right text-xs font-semibold text-gray-600 uppercase">세액</th>
-                  <th class="text-right text-xs font-semibold text-gray-600 uppercase">합계</th>
-                  <th class="text-center text-xs font-semibold text-gray-600 uppercase">매칭</th>
-                  <th class="text-center text-xs font-semibold text-gray-600 uppercase">액션</th>
+                  <th class="col-code text-left text-xs font-semibold text-gray-600 uppercase">승인번호</th>
+                  <th class="col-tag text-left text-xs font-semibold text-gray-600 uppercase">유형</th>
+                  <th class="col-date text-left text-xs font-semibold text-gray-600 uppercase">작성일</th>
+                  <th class="col-name text-left text-xs font-semibold text-gray-600 uppercase">공급자</th>
+                  <th class="col-flex text-left text-xs font-semibold text-gray-600 uppercase">공급받는자</th>
+                  <th class="col-amount text-right text-xs font-semibold text-gray-600 uppercase">공급가액</th>
+                  <th class="col-amount text-right text-xs font-semibold text-gray-600 uppercase">세액</th>
+                  <th class="col-amount text-right text-xs font-semibold text-gray-600 uppercase">합계</th>
+                  <th class="col-status text-center text-xs font-semibold text-gray-600 uppercase">매칭</th>
+                  <th class="col-action text-center text-xs font-semibold text-gray-600 uppercase">액션</th>
                 </tr>
               </thead>
               <tbody id="invoicesTableBody">
@@ -857,13 +857,13 @@ export function taxInvoicesPage(c: Context<HonoEnv>) {
             </h4>
             <div class="ds-card overflow-hidden">
               <div class="overflow-x-auto" style="max-height: calc(100vh - 280px); overflow-y: auto;">
-                <table class="w-full ds-table-striped">
+                <table class="w-full ds-table ds-table-striped">
                   <thead class="table-header">
                     <tr>
-                      <th class="text-left text-xs font-semibold text-gray-600 uppercase">홈택스 승인번호</th>
-                      <th class="text-left text-xs font-semibold text-gray-600 uppercase">시스템 관리번호</th>
-                      <th class="text-right text-xs font-semibold text-gray-600 uppercase">금액</th>
-                      <th class="text-left text-xs font-semibold text-gray-600 uppercase">공급자</th>
+                      <th class="col-code text-left text-xs font-semibold text-gray-600 uppercase">홈택스 승인번호</th>
+                      <th class="col-code text-left text-xs font-semibold text-gray-600 uppercase">시스템 관리번호</th>
+                      <th class="col-amount text-right text-xs font-semibold text-gray-600 uppercase">금액</th>
+                      <th class="col-name text-left text-xs font-semibold text-gray-600 uppercase">공급자</th>
                     </tr>
                   </thead>
                   <tbody id="matchedTableBody">
@@ -881,13 +881,13 @@ export function taxInvoicesPage(c: Context<HonoEnv>) {
             </h4>
             <div class="ds-card overflow-hidden">
               <div class="overflow-x-auto" style="max-height: calc(100vh - 280px); overflow-y: auto;">
-                <table class="w-full ds-table-striped">
+                <table class="w-full ds-table ds-table-striped">
                   <thead class="table-header">
                     <tr>
-                      <th class="text-left text-xs font-semibold text-gray-600 uppercase">승인번호</th>
-                      <th class="text-left text-xs font-semibold text-gray-600 uppercase">공급자</th>
-                      <th class="text-right text-xs font-semibold text-gray-600 uppercase">금액</th>
-                      <th class="text-left text-xs font-semibold text-gray-600 uppercase">작성일</th>
+                      <th class="col-code text-left text-xs font-semibold text-gray-600 uppercase">승인번호</th>
+                      <th class="col-name text-left text-xs font-semibold text-gray-600 uppercase">공급자</th>
+                      <th class="col-amount text-right text-xs font-semibold text-gray-600 uppercase">금액</th>
+                      <th class="col-date text-left text-xs font-semibold text-gray-600 uppercase">작성일</th>
                     </tr>
                   </thead>
                   <tbody id="hometaxOnlyTableBody">
@@ -905,13 +905,13 @@ export function taxInvoicesPage(c: Context<HonoEnv>) {
             </h4>
             <div class="ds-card overflow-hidden">
               <div class="overflow-x-auto" style="max-height: calc(100vh - 280px); overflow-y: auto;">
-                <table class="w-full ds-table-striped">
+                <table class="w-full ds-table ds-table-striped">
                   <thead class="table-header">
                     <tr>
-                      <th class="text-left text-xs font-semibold text-gray-600 uppercase">관리번호</th>
-                      <th class="text-left text-xs font-semibold text-gray-600 uppercase">공급자</th>
-                      <th class="text-right text-xs font-semibold text-gray-600 uppercase">금액</th>
-                      <th class="text-left text-xs font-semibold text-gray-600 uppercase">작성일</th>
+                      <th class="col-code text-left text-xs font-semibold text-gray-600 uppercase">관리번호</th>
+                      <th class="col-name text-left text-xs font-semibold text-gray-600 uppercase">공급자</th>
+                      <th class="col-amount text-right text-xs font-semibold text-gray-600 uppercase">금액</th>
+                      <th class="col-date text-left text-xs font-semibold text-gray-600 uppercase">작성일</th>
                     </tr>
                   </thead>
                   <tbody id="systemOnlyTableBody">

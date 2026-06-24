@@ -81,10 +81,10 @@ function renderStorageZones() {
 
     return '<tr class="border-b border-gray-100 hover:bg-gray-50">'
       + '<td class="px-3 py-3 text-sm text-gray-600">' + escapeAttr(entityName) + '</td>'
-      + '<td class="px-3 py-3 text-sm font-medium text-gray-900">' + escapeAttr(z.zone_name) + defaultBadge + '</td>'
+      + '<td class="px-3 py-3 text-sm font-medium text-gray-900" title="' + escapeAttr(z.zone_name || '') + '">' + escapeAttr(z.zone_name) + defaultBadge + '</td>'
       + '<td class="px-3 py-3 text-sm text-gray-500">' + escapeAttr(z.zone_code || '-') + '</td>'
-      + '<td class="px-3 py-3 text-sm text-gray-500">' + escapeAttr(z.description || '-') + '</td>'
-      + '<td class="px-3 py-3 text-sm text-gray-900">' + escapeAttr(z.manager_name || '미지정') + '</td>'
+      + '<td class="px-3 py-3 text-sm text-gray-500" title="' + escapeAttr(z.description || '') + '">' + escapeAttr(z.description || '-') + '</td>'
+      + '<td class="px-3 py-3 text-sm text-gray-900" title="' + escapeAttr(z.manager_name || '') + '">' + escapeAttr(z.manager_name || '미지정') + '</td>'
       + '<td class="px-3 py-3 text-sm text-center tabular-nums text-gray-900">' + (z.item_count || 0) + '</td>'
       + '<td class="px-3 py-3 text-center">' + statusBadge + '</td>'
       + '<td class="px-3 py-3 text-center">'

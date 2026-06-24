@@ -173,13 +173,13 @@ export function cardExpensesPage(c: Context<HonoEnv>) {
         <div class="ds-card" style="padding:0">
           <table class="ds-table ds-table-compact ds-table-striped">
             <thead><tr>
-              <th class="text-left">카드</th>
-              <th class="text-left">카드사</th>
-              <th class="text-center">청구 기간</th>
-              <th class="text-center">결제 예정일</th>
-              <th class="text-right font-bold">결제 예정액</th>
-              <th class="text-center">한도 사용률</th>
-              <th class="text-center">건수</th>
+              <th class="col-name text-left">카드</th>
+              <th class="col-tag text-left">카드사</th>
+              <th class="col-date text-center">청구 기간</th>
+              <th class="col-date text-center">결제 예정일</th>
+              <th class="col-amount text-right font-bold">결제 예정액</th>
+              <th class="col-qty text-center">한도 사용률</th>
+              <th class="col-qty text-center">건수</th>
             </tr></thead>
             <tbody id="scheduleTableBody"></tbody>
           </table>
@@ -233,10 +233,10 @@ export function cardExpensesPage(c: Context<HonoEnv>) {
           <table class="ds-table ds-table-compact ds-table-striped">
             <thead><tr>
               <th class="text-center" style="width:50px">아이콘</th>
-              <th class="text-left">분류명</th>
+              <th class="col-name text-left">분류명</th>
               <th class="text-center" style="width:60px">색상</th>
-              <th class="text-center" style="width:60px">순서</th>
-              <th class="text-center" style="width:80px">관리</th>
+              <th class="col-qty text-center" style="width:60px">순서</th>
+              <th class="col-action text-center" style="width:80px">관리</th>
             </tr></thead>
             <tbody id="categoryTableBody"></tbody>
           </table>
@@ -287,10 +287,10 @@ export function cardExpensesPage(c: Context<HonoEnv>) {
           </div>
           <table class="ds-table ds-table-compact ds-table-striped">
             <thead><tr>
-              <th class="text-left">카드사</th>
-              <th class="text-center">수수료율 (%)</th>
-              <th class="text-left">매칭 키워드</th>
-              <th class="text-center w-24">액션</th>
+              <th class="col-tag text-left">카드사</th>
+              <th class="col-qty text-center">수수료율 (%)</th>
+              <th class="col-name text-left">매칭 키워드</th>
+              <th class="col-action text-center w-24">액션</th>
             </tr></thead>
             <tbody id="feeRateTableBody"><tr><td colspan="4" class="text-center py-6 text-gray-400">로딩 중...</td></tr></tbody>
           </table>

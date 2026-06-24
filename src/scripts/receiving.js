@@ -136,10 +136,10 @@ async function loadReceiptHistory(page) {
         + '<td class="px-4 py-3 font-medium">#' + (r.id || '-') + '</td>'
         + '<td class="px-4 py-3 text-center">' + (r.receipt_date ? r.receipt_date.substring(0, 10) : '-') + '</td>'
         + '<td class="px-4 py-3 text-blue-700">' + escapeHtml(r.po_number || '-') + '</td>'
-        + '<td class="px-4 py-3">' + escapeHtml(r.supplier_name || '-') + '</td>'
+        + '<td class="px-4 py-3" title="' + escapeHtml(r.supplier_name || '') + '">' + escapeHtml(r.supplier_name || '-') + '</td>'
         + '<td class="px-4 py-3 text-center">' + badge + '</td>'
-        + '<td class="px-4 py-3 text-center text-green-700 font-medium">' + (r.total_accepted || 0) + '</td>'
-        + '<td class="px-4 py-3 text-center text-red-700 font-medium">' + (r.total_rejected || 0) + '</td>'
+        + '<td class="px-4 py-3 text-right text-green-700 font-medium">' + (r.total_accepted || 0) + '</td>'
+        + '<td class="px-4 py-3 text-right text-red-700 font-medium">' + (r.total_rejected || 0) + '</td>'
         + '<td class="px-4 py-3 text-center">' + escapeHtml(r.inspector_name || '-') + '</td>'
         + '<td class="px-4 py-3 text-center">' + (r.statement_file_key
           ? '<a href="/api/purchase-orders/receipts/' + r.id + '/statement" target="_blank" class="text-blue-600 hover:underline text-xs"><i class="fas fa-file-invoice"></i> 보기</a>'

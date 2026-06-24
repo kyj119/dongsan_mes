@@ -27,16 +27,16 @@ export const bomPage = (c: Context<HonoEnv>) => {
             </button>
           </div>
           <div class="overflow-x-auto" style="max-height: calc(100vh - 280px); overflow-y: auto;">
-            <table class="w-full ds-table-striped">
+            <table class="w-full ds-table ds-table-striped">
               <thead>
                 <tr class="bg-gray-50 border-b text-sm text-gray-600">
-                  <th class="px-4 py-3 text-left" style="width:100px">카테고리</th>
-                  <th class="px-4 py-3 text-left">품목</th>
-                  <th class="px-4 py-3 text-left" style="width:140px">원재료</th>
-                  <th class="px-4 py-3 text-right" style="width:110px">m2당 사용량</th>
-                  <th class="px-4 py-3 text-center" style="width:60px">단위</th>
-                  <th class="px-4 py-3 text-right" style="width:80px">로스율</th>
-                  <th class="px-4 py-3 text-center w-24" style="width:96px">관리</th>
+                  <th class="col-tag px-4 py-3 text-left">카테고리</th>
+                  <th class="col-name px-4 py-3 text-left">품목</th>
+                  <th class="col-flex px-4 py-3 text-left">원재료</th>
+                  <th class="col-amount px-4 py-3 text-right">m2당 사용량</th>
+                  <th class="col-qty px-4 py-3 text-center">단위</th>
+                  <th class="col-qty px-4 py-3 text-right">로스율</th>
+                  <th class="col-action px-4 py-3 text-center">관리</th>
                 </tr>
               </thead>
               <tbody id="bom-tbody"></tbody>
@@ -71,16 +71,16 @@ export const bomPage = (c: Context<HonoEnv>) => {
             <h2 class="text-lg font-bold"><i class="fas fa-history mr-2 text-gray-500"></i>MRP 실행 이력</h2>
           </div>
           <div class="overflow-x-auto" style="max-height: calc(100vh - 280px); overflow-y: auto;">
-            <table class="w-full ds-table-striped">
+            <table class="w-full ds-table ds-table-striped">
               <thead>
                 <tr class="bg-gray-50 border-b text-sm text-gray-600">
-                  <th class="px-3 py-3 text-left" style="width:130px">실행 번호</th>
-                  <th class="px-3 py-3 text-left" style="width:80px">유형</th>
-                  <th class="px-3 py-3 text-right" style="width:70px">자재 수</th>
-                  <th class="px-3 py-3 text-right" style="width:70px">부족</th>
-                  <th class="px-3 py-3 text-left" style="width:80px">실행자</th>
-                  <th class="px-3 py-3 text-left">실행일시</th>
-                  <th class="px-3 py-3 text-center w-16">상세</th>
+                  <th class="col-code px-3 py-3 text-left">실행 번호</th>
+                  <th class="col-tag px-3 py-3 text-left">유형</th>
+                  <th class="col-qty px-3 py-3 text-right">자재 수</th>
+                  <th class="col-qty px-3 py-3 text-right">부족</th>
+                  <th class="col-tag px-3 py-3 text-left">실행자</th>
+                  <th class="col-datetime px-3 py-3 text-left">실행일시</th>
+                  <th class="col-action px-3 py-3 text-center">상세</th>
                 </tr>
               </thead>
               <tbody id="mrp-history-tbody"></tbody>

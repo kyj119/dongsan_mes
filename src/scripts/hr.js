@@ -73,11 +73,11 @@ window.hrLoadEmployees = async function() {
       var qStr = q ? encodeURIComponent(q) : '';
       html += '<tr class="border-b border-gray-100 hover:bg-blue-50 cursor-pointer" onclick="hrOpenDetail(' + e.id + ')">' +
         '<td class="px-4 py-3 font-medium">' + hrEscape(e.employee_code) + '</td>' +
-        '<td class="px-4 py-3 font-semibold text-gray-900">' + hrEscape(e.name) + payBadge + '</td>' +
-        '<td class="px-4 py-3 text-gray-600">' + (e.entity_name || (window.entityName ? window.entityName(e.entity_id) : '-')) + '</td>' +
-        '<td class="px-4 py-3 text-gray-700">' + (DEPT_NAMES[e.department] || e.department || '-') + '</td>' +
-        '<td class="px-4 py-3 text-gray-700">' + (POSITION_NAMES[e.position] || e.position || '-') + '</td>' +
-        '<td class="px-4 py-3 text-gray-600">' + hrEscape(e.phone || '-') + '</td>' +
+        '<td class="px-4 py-3 font-semibold text-gray-900" title="' + hrEscape(e.name) + '">' + hrEscape(e.name) + payBadge + '</td>' +
+        '<td class="px-4 py-3 text-gray-600" title="' + hrEscape(e.entity_name || (window.entityName ? window.entityName(e.entity_id) : '-')) + '">' + (e.entity_name || (window.entityName ? window.entityName(e.entity_id) : '-')) + '</td>' +
+        '<td class="px-4 py-3 text-gray-700" title="' + hrEscape(DEPT_NAMES[e.department] || e.department || '-') + '">' + (DEPT_NAMES[e.department] || e.department || '-') + '</td>' +
+        '<td class="px-4 py-3 text-gray-700" title="' + hrEscape(POSITION_NAMES[e.position] || e.position || '-') + '">' + (POSITION_NAMES[e.position] || e.position || '-') + '</td>' +
+        '<td class="px-4 py-3 text-gray-600" title="' + hrEscape(e.phone || '-') + '">' + hrEscape(e.phone || '-') + '</td>' +
         '<td class="px-4 py-3 text-gray-600">' + hrEscape(e.hire_date || '-') + '</td>' +
         '<td class="px-4 py-3 text-right text-gray-700 tabular-nums">' + hrFmtMoney(e.base_salary) + '</td>' +
         '<td class="px-4 py-3 text-center">' + statusBadge + '</td>' +

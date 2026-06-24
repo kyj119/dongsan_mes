@@ -131,8 +131,8 @@ function renderPRTable(requests) {
 
     return '<tr class="border-t hover:bg-gray-50">'
       + '<td class="px-4 py-3 font-medium">' + (pr.request_number || '-') + '</td>'
-      + '<td class="px-4 py-3">' + (pr.requester_name || '-') + '</td>'
-      + '<td class="px-4 py-3 text-gray-600">' + (pr.supplier_name || '-') + '</td>'
+      + '<td class="px-4 py-3" title="' + escapeHtml(pr.requester_name || '') + '">' + (pr.requester_name || '-') + '</td>'
+      + '<td class="px-4 py-3 text-gray-600" title="' + escapeHtml(pr.supplier_name || '') + '">' + (pr.supplier_name || '-') + '</td>'
       + '<td class="px-4 py-3 text-center">' + urgBadge + '</td>'
       + '<td class="px-4 py-3 text-center">' + (pr.created_at ? pr.created_at.substring(0, 10) : '-') + '</td>'
       + '<td class="px-4 py-3 text-right tabular-nums">' + (pr.item_count || 0) + '</td>'

@@ -242,9 +242,9 @@ function renderMyRequests() {
   }
 
   tbody.innerHTML = paged.map(r => `<tr class="hover:bg-blue-50 border-b cursor-pointer" onclick="viewApprovalDetail(${r.id})">
-    <td class="px-3 py-2 text-sm font-mono">${escapeHtml(r.request_number)}</td>
+    <td class="px-3 py-2 text-sm font-mono" title="${escapeHtml(r.request_number)}">${escapeHtml(r.request_number)}</td>
     <td class="px-3 py-2 text-sm">${typeBadge(r.type)}</td>
-    <td class="px-3 py-2 text-sm">${escapeHtml(r.title)}</td>
+    <td class="px-3 py-2 text-sm" title="${escapeHtml(r.title)}">${escapeHtml(r.title)}</td>
     <td class="px-3 py-2 text-sm text-right">${r.amount ? Number(r.amount).toLocaleString() + '원' : '-'}</td>
     <td class="px-3 py-2 text-sm">${statusBadge(r.status)}</td>
     <td class="px-3 py-2 text-sm">${formatKST(r.created_at, 'date')}</td>
@@ -267,10 +267,10 @@ function renderAllRequests() {
   }
 
   tbody.innerHTML = paged.map(r => `<tr class="hover:bg-blue-50 border-b cursor-pointer" onclick="viewApprovalDetail(${r.id})">
-    <td class="px-3 py-2 text-sm font-mono">${escapeHtml(r.request_number)}</td>
+    <td class="px-3 py-2 text-sm font-mono" title="${escapeHtml(r.request_number)}">${escapeHtml(r.request_number)}</td>
     <td class="px-3 py-2 text-sm">${typeBadge(r.type)}</td>
-    <td class="px-3 py-2 text-sm">${escapeHtml(r.title)}</td>
-    <td class="px-3 py-2 text-sm">${escapeHtml(r.requester_name || '-')}</td>
+    <td class="px-3 py-2 text-sm" title="${escapeHtml(r.title)}">${escapeHtml(r.title)}</td>
+    <td class="px-3 py-2 text-sm" title="${escapeHtml(r.requester_name || '')}">${escapeHtml(r.requester_name || '-')}</td>
     <td class="px-3 py-2 text-sm text-right">${r.amount ? Number(r.amount).toLocaleString() + '원' : '-'}</td>
     <td class="px-3 py-2 text-sm">${statusBadge(r.status)}</td>
     <td class="px-3 py-2 text-sm">${formatKST(r.created_at, 'date')}</td>
@@ -544,9 +544,9 @@ function renderTemplates() {
   tbody.innerHTML = templates.map(t => {
     const steps = JSON.parse(t.steps || '[]');
     return `<tr class="hover:bg-blue-50 border-b">
-      <td class="px-3 py-2 text-sm font-medium">${escapeHtml(t.name)}</td>
+      <td class="px-3 py-2 text-sm font-medium" title="${escapeHtml(t.name)}">${escapeHtml(t.name)}</td>
       <td class="px-3 py-2 text-sm">${typeBadge(t.type)}</td>
-      <td class="px-3 py-2 text-sm">${steps.map(s => escapeHtml(s.label)).join(' → ')}</td>
+      <td class="px-3 py-2 text-sm" title="${steps.map(s => escapeHtml(s.label)).join(' → ')}">${steps.map(s => escapeHtml(s.label)).join(' → ')}</td>
       <td class="px-3 py-2 text-sm text-center">
         <button onclick="deleteTemplate(${t.id})" class="text-red-600 hover:text-red-700"><i class="fas fa-trash"></i></button>
       </td>

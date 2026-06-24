@@ -234,7 +234,7 @@
       html += '<td><input type="checkbox" class="tx-check" data-id="' + tx.id + '"></td>';
       html += '<td class="text-gray-600 text-xs whitespace-nowrap">' + dateStr + '</td>';
       html += '<td><span class="text-xs px-1.5 py-0.5 rounded bg-gray-100 text-gray-600">' + escHtml(accountLabel) + '</span></td>';
-      html += '<td class="font-medium text-gray-800">' + escHtml(tx.counterpart_name || tx.description || '') + '</td>';
+      html += '<td class="font-medium text-gray-800" title="' + escHtml(tx.counterpart_name || tx.description || '') + '">' + escHtml(tx.counterpart_name || tx.description || '') + '</td>';
       html += '<td class="text-right font-semibold tabular-nums ' + (isDeposit ? 'text-blue-600' : '') + '">' + (isDeposit ? '+' + amt.toLocaleString() : '') + '</td>';
       html += '<td class="text-right tabular-nums ' + (!isDeposit ? 'text-red-600' : '') + '">' + (!isDeposit ? '-' + amt.toLocaleString() : '') + '</td>';
       var bal = tx.balance_after != null ? Number(tx.balance_after).toLocaleString() : '';
@@ -1011,8 +1011,8 @@
         }
 
         html += '<tr class="tx-row">';
-        html += '<td class="px-3 py-2 font-medium text-gray-800">' + escHtml(cl.client_name) + '</td>';
-        html += '<td class="px-3 py-2 text-sm text-gray-500">' + escHtml(cl.representative || '') + '</td>';
+        html += '<td class="px-3 py-2 font-medium text-gray-800" title="' + escHtml(cl.client_name) + '">' + escHtml(cl.client_name) + '</td>';
+        html += '<td class="px-3 py-2 text-sm text-gray-500" title="' + escHtml(cl.representative || '') + '">' + escHtml(cl.representative || '') + '</td>';
         html += '<td class="px-3 py-2 text-right font-semibold text-red-600 tabular-nums">' + Number(cl.balance).toLocaleString() + '원</td>';
         html += '<td class="px-3 py-2 text-center text-sm text-gray-600 tabular-nums">' + (cl.expected_payment_date || '-') + '</td>';
         html += '<td class="px-3 py-2 text-center text-sm tabular-nums text-gray-700">' + Math.round((cl.collection_rate != null ? cl.collection_rate : 1) * 100) + '%</td>';
@@ -1055,16 +1055,19 @@
     allRules.forEach(function(rule) {
       var lastUsed = formatKST(rule.last_used_at, 'date');
       html += '<tr class="tx-row">';
-      html += '<td class="px-3 py-2 font-medium text-gray-800"><i class="fas fa-tag text-blue-400 mr-1 text-xs"></i>' + escHtml(rule.counterpart_name) + '</td>';
+      html += '<td class="px-3 py-2 font-medium text-gray-800" title="' + escHtml(rule.counterpart_name) + '"><i class="fas fa-tag text-blue-400 mr-1 text-xs"></i>' + escHtml(rule.counterpart_name) + '</td>';
       var matchTarget = '';
+      var matchTargetTitle = '';
       if (rule.matched_client_id && rule.client_name) {
         matchTarget = '<i class="fas fa-user text-blue-400 mr-1 text-xs"></i>' + escHtml(rule.client_name);
+        matchTargetTitle = rule.client_name;
       } else if (rule.matched_category_id && rule.category_name) {
         matchTarget = '<i class="fas fa-tag text-gray-400 mr-1 text-xs"></i>' + escHtml(rule.category_name);
+        matchTargetTitle = rule.category_name;
       } else {
         matchTarget = '<span class="text-gray-400">(삭제됨)</span>';
       }
-      html += '<td class="px-3 py-2 text-sm text-gray-700">' + matchTarget + '</td>';
+      html += '<td class="px-3 py-2 text-sm text-gray-700" title="' + escHtml(matchTargetTitle) + '">' + matchTarget + '</td>';
       html += '<td class="px-3 py-2 text-center"><span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-50 text-blue-700">' + (rule.match_count || 0) + '회</span></td>';
       html += '<td class="px-3 py-2 text-center text-xs text-gray-500">' + lastUsed + '</td>';
       html += '<td class="px-3 py-2 text-center">';

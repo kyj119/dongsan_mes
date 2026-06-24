@@ -45,9 +45,9 @@
           ? '<span class="inline-flex items-center px-2 py-0.5 text-xs rounded bg-green-50 text-green-700"><i class="fas fa-check-circle text-[7px] mr-1"></i>사용중</span>'
           : '<span class="inline-flex items-center px-2 py-0.5 text-xs rounded bg-gray-100 text-gray-600"><i class="fas fa-power-off text-[7px] mr-1"></i>비활성</span>'
         return '<tr>' +
-          '<td class="px-4 py-2 font-medium">' + escapeHtml(t.template_name) + '</td>' +
+          '<td class="px-4 py-2 font-medium" title="' + escapeHtml(t.template_name) + '">' + escapeHtml(t.template_name) + '</td>' +
           '<td class="px-4 py-2 text-gray-600">' + escapeHtml(t.category_name || '범용') + '</td>' +
-          '<td class="px-4 py-2 text-center text-gray-700">' + (t.item_count || 0) + '</td>' +
+          '<td class="px-4 py-2 text-right text-gray-700">' + (t.item_count || 0) + '</td>' +
           '<td class="px-4 py-2 text-center">' + status + '</td>' +
           '<td class="px-4 py-2 text-center">' +
             '<button onclick="inspectionsOpenTemplateModal(' + t.id + ')" class="text-blue-600 hover:underline mr-2">편집</button>' +
@@ -226,7 +226,7 @@
         return '<tr>' +
           '<td class="px-4 py-2 text-gray-600">' + escapeHtml((r.inspected_at || '').slice(0, 16).replace('T', ' ')) + '</td>' +
           '<td class="px-4 py-2 font-medium">' + escapeHtml(r.receipt_number || ('#' + r.receipt_id)) + '</td>' +
-          '<td class="px-4 py-2 text-gray-700">' + escapeHtml(r.supplier_name || '-') + '</td>' +
+          '<td class="px-4 py-2 text-gray-700" title="' + escapeHtml(r.supplier_name || '') + '">' + escapeHtml(r.supplier_name || '-') + '</td>' +
           '<td class="px-4 py-2 text-gray-700">' + escapeHtml(r.inspector_name || '-') + '</td>' +
           '<td class="px-4 py-2 text-center">' + badge + '</td>' +
           '<td class="px-4 py-2 text-center">' +

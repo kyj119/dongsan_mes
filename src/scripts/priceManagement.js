@@ -110,12 +110,12 @@ function renderPurchaseView() {
 }
 
 function buildItemTable(items, linked) {
-  var html = '<table class="w-full text-sm"><thead class="bg-gray-50"><tr>';
-  html += '<th class="px-4 py-2 text-left text-xs font-medium text-gray-500">코드</th>';
-  html += '<th class="px-4 py-2 text-left text-xs font-medium text-gray-500">품목명</th>';
-  html += '<th class="px-4 py-2 text-right text-xs font-medium text-gray-500">매입단가</th>';
-  html += '<th class="px-4 py-2 text-right text-xs font-medium text-gray-500">판매단가</th>';
-  html += '<th class="px-4 py-2 text-right text-xs font-medium text-gray-500">마진</th>';
+  var html = '<table class="w-full text-sm ds-table"><thead class="bg-gray-50"><tr>';
+  html += '<th class="col-code px-4 py-2 text-left text-xs font-medium text-gray-500">코드</th>';
+  html += '<th class="col-name px-4 py-2 text-left text-xs font-medium text-gray-500">품목명</th>';
+  html += '<th class="col-amount px-4 py-2 text-right text-xs font-medium text-gray-500">매입단가</th>';
+  html += '<th class="col-amount px-4 py-2 text-right text-xs font-medium text-gray-500">판매단가</th>';
+  html += '<th class="col-qty px-4 py-2 text-right text-xs font-medium text-gray-500">마진</th>';
   html += '</tr></thead><tbody>';
   items.forEach(function(item) {
     var base = item.base_price || 0;
@@ -125,7 +125,7 @@ function buildItemTable(items, linked) {
     var exp = pmExpandedId === item.id;
     html += '<tr class="border-t hover:bg-gray-50 cursor-pointer' + (exp ? ' bg-blue-50' : '') + '" onclick="expandPurchaseItem(' + item.id + ')">';
     html += '<td class="px-4 py-2 font-mono text-xs text-gray-500">' + esc(item.item_code) + '</td>';
-    html += '<td class="px-4 py-2 font-medium">' + esc(item.item_name) + '</td>';
+    html += '<td class="px-4 py-2 font-medium" title="' + esc(item.item_name || '') + '">' + esc(item.item_name) + '</td>';
     html += '<td class="px-4 py-2 text-right font-mono">' + fmt(base) + '</td>';
     html += '<td class="px-4 py-2 text-right font-mono">' + (sales ? fmt(sales) : '<span class="text-gray-300">-</span>') + '</td>';
     html += '<td class="px-4 py-2 text-right font-semibold ' + mc + '">' + (margin !== null ? margin + '%' : '-') + '</td>';
@@ -337,18 +337,18 @@ function renderSalesTable() {
     html += '<span class="text-xs px-2 py-0.5 rounded-full font-medium ' + badge + '">' + tn + '</span>';
     html += '<h3 class="font-bold text-gray-800">' + esc(grp.category) + '</h3>';
     html += '<span class="text-xs text-gray-400 ml-auto">' + grp.items.length + '건</span></div>';
-    html += '<table class="w-full"><thead><tr class="text-xs text-gray-500 border-b bg-gray-50/50">';
-    html += '<th class="text-left py-2 px-4 font-medium">품목코드</th><th class="text-left py-2 px-4 font-medium">품목명</th>';
-    html += '<th class="text-left py-2 px-4 font-medium">규격</th><th class="text-center py-2 px-4 font-medium">단위</th>';
-    html += '<th class="text-right py-2 px-4 font-medium">단가</th>';
-    if (hasClient) html += '<th class="text-right py-2 px-4 font-medium text-blue-600">적용 단가</th>';
+    html += '<table class="w-full ds-table"><thead><tr class="text-xs text-gray-500 border-b bg-gray-50/50">';
+    html += '<th class="col-code text-left py-2 px-4 font-medium">품목코드</th><th class="col-name text-left py-2 px-4 font-medium">품목명</th>';
+    html += '<th class="col-flex text-left py-2 px-4 font-medium">규격</th><th class="col-qty text-center py-2 px-4 font-medium">단위</th>';
+    html += '<th class="col-amount text-right py-2 px-4 font-medium">단가</th>';
+    if (hasClient) html += '<th class="col-amount text-right py-2 px-4 font-medium text-blue-600">적용 단가</th>';
     html += '</tr></thead><tbody>';
     grp.items.forEach(function(item, idx) {
       var p = calcSalesPrice(item);
       html += '<tr class="border-b border-gray-50 hover:bg-blue-50/30' + (idx % 2 ? ' bg-gray-50/30' : '') + '">';
       html += '<td class="py-2.5 px-4 text-sm text-gray-500 font-mono">' + esc(item.item_code || '') + '</td>';
-      html += '<td class="py-2.5 px-4 text-sm font-medium text-gray-800">' + esc(item.item_name) + '</td>';
-      html += '<td class="py-2.5 px-4 text-sm text-gray-600">' + esc(item.specification || '-') + '</td>';
+      html += '<td class="py-2.5 px-4 text-sm font-medium text-gray-800" title="' + esc(item.item_name || '') + '">' + esc(item.item_name) + '</td>';
+      html += '<td class="py-2.5 px-4 text-sm text-gray-600" title="' + esc(item.specification || '') + '">' + esc(item.specification || '-') + '</td>';
       html += '<td class="py-2.5 px-4 text-sm text-gray-500 text-center">' + esc(item.unit || 'EA') + '</td>';
       html += '<td class="py-2.5 px-4 text-sm text-right font-medium">' + (p.base ? p.base.toLocaleString() + '원' : '-') + '</td>';
       if (hasClient) {
@@ -364,9 +364,9 @@ function renderSalesTable() {
     html += '<div class="bg-white rounded-lg shadow overflow-hidden"><div class="px-4 py-3 bg-gray-50 border-b flex items-center gap-2">';
     html += '<span class="text-xs px-2 py-0.5 rounded-full font-medium bg-indigo-100 text-indigo-700">출력 미디어</span>';
     html += '<h3 class="font-bold text-gray-800">' + esc(mg) + '</h3></div>';
-    html += '<table class="w-full"><thead><tr class="text-xs text-gray-500 border-b bg-gray-50/50"><th class="text-left py-2 px-4 font-medium">코드</th><th class="text-left py-2 px-4 font-medium">미디어명</th><th class="text-center py-2 px-4 font-medium">단위</th><th class="text-right py-2 px-4 font-medium">단가</th></tr></thead><tbody>';
+    html += '<table class="w-full ds-table"><thead><tr class="text-xs text-gray-500 border-b bg-gray-50/50"><th class="col-code text-left py-2 px-4 font-medium">코드</th><th class="col-name text-left py-2 px-4 font-medium">미디어명</th><th class="col-qty text-center py-2 px-4 font-medium">단위</th><th class="col-amount text-right py-2 px-4 font-medium">단가</th></tr></thead><tbody>';
     data.mediaGroups[mg].forEach(function(m, idx) {
-      html += '<tr class="border-b border-gray-50' + (idx % 2 ? ' bg-gray-50/30' : '') + '"><td class="py-2.5 px-4 text-sm text-gray-500 font-mono">' + esc(m.code || '') + '</td><td class="py-2.5 px-4 text-sm font-medium text-gray-800">' + esc(m.name) + '</td><td class="py-2.5 px-4 text-sm text-gray-500 text-center">' + esc(m.unit || '㎡') + '</td><td class="py-2.5 px-4 text-sm text-right font-medium">' + (m.price_per_unit ? m.price_per_unit.toLocaleString() + '원' : '-') + '</td></tr>';
+      html += '<tr class="border-b border-gray-50' + (idx % 2 ? ' bg-gray-50/30' : '') + '"><td class="py-2.5 px-4 text-sm text-gray-500 font-mono">' + esc(m.code || '') + '</td><td class="py-2.5 px-4 text-sm font-medium text-gray-800" title="' + esc(m.name || '') + '">' + esc(m.name) + '</td><td class="py-2.5 px-4 text-sm text-gray-500 text-center">' + esc(m.unit || '㎡') + '</td><td class="py-2.5 px-4 text-sm text-right font-medium">' + (m.price_per_unit ? m.price_per_unit.toLocaleString() + '원' : '-') + '</td></tr>';
     });
     html += '</tbody></table></div>';
   });
@@ -482,12 +482,12 @@ function loadHistory() {
     var items = res.data.history || [];
     var area = document.getElementById('pmHistoryArea');
     if (!items.length) { area.innerHTML = '<div class="text-center py-8 text-gray-400"><i class="fas fa-history text-3xl mb-2"></i><p>변경 이력이 없습니다.</p></div>'; return; }
-    var html = '<table class="w-full text-sm"><thead class="bg-gray-50"><tr><th class="px-4 py-2 text-left text-xs text-gray-500">품목</th><th class="px-4 py-2 text-right text-xs text-gray-500">이전</th><th class="px-4 py-2 text-center text-xs text-gray-500"></th><th class="px-4 py-2 text-right text-xs text-gray-500">변경</th><th class="px-4 py-2 text-left text-xs text-gray-500">변경자</th><th class="px-4 py-2 text-center text-xs text-gray-500">일시</th></tr></thead><tbody>';
+    var html = '<table class="w-full text-sm ds-table"><thead class="bg-gray-50"><tr><th class="col-name px-4 py-2 text-left text-xs text-gray-500">품목</th><th class="col-amount px-4 py-2 text-right text-xs text-gray-500">이전</th><th class="col-no px-4 py-2 text-center text-xs text-gray-500"></th><th class="col-amount px-4 py-2 text-right text-xs text-gray-500">변경</th><th class="col-tag px-4 py-2 text-left text-xs text-gray-500">변경자</th><th class="col-datetime px-4 py-2 text-center text-xs text-gray-500">일시</th></tr></thead><tbody>';
     items.forEach(function(h) {
       var ov = h.old_value != null ? h.old_value : h.old_price;
       var nv = h.new_value != null ? h.new_value : h.new_price;
       var diff = nv - ov; var dc = diff > 0 ? 'text-red-500' : 'text-blue-500'; var ds = diff > 0 ? '+' : '';
-      html += '<tr class="border-t hover:bg-gray-50"><td class="px-4 py-2.5"><div class="font-medium">' + esc(h.item_name || '') + '</div><div class="text-xs text-gray-400">' + esc(h.item_code || '') + '</div></td><td class="px-4 py-2.5 text-right font-mono text-gray-400 line-through">' + fmt(ov) + '</td><td class="px-4 py-2.5 text-center text-gray-300"><i class="fas fa-arrow-right text-xs"></i></td><td class="px-4 py-2.5 text-right"><span class="font-mono font-semibold">' + fmt(nv) + '</span> <span class="text-xs ' + dc + '">(' + ds + fmt(diff) + ')</span></td><td class="px-4 py-2.5 text-gray-500 text-xs">' + esc(String(h.changed_by || '')) + '</td><td class="px-4 py-2.5 text-center text-xs text-gray-400">' + (h.changed_at || '').substring(0,16).replace('T',' ') + '</td></tr>';
+      html += '<tr class="border-t hover:bg-gray-50"><td class="px-4 py-2.5" title="' + esc(h.item_name || '') + '"><div class="font-medium">' + esc(h.item_name || '') + '</div><div class="text-xs text-gray-400">' + esc(h.item_code || '') + '</div></td><td class="px-4 py-2.5 text-right font-mono text-gray-400 line-through">' + fmt(ov) + '</td><td class="px-4 py-2.5 text-center text-gray-300"><i class="fas fa-arrow-right text-xs"></i></td><td class="px-4 py-2.5 text-right"><span class="font-mono font-semibold">' + fmt(nv) + '</span> <span class="text-xs ' + dc + '">(' + ds + fmt(diff) + ')</span></td><td class="px-4 py-2.5 text-gray-500 text-xs">' + esc(String(h.changed_by || '')) + '</td><td class="px-4 py-2.5 text-center text-xs text-gray-400">' + (h.changed_at || '').substring(0,16).replace('T',' ') + '</td></tr>';
     });
     html += '</tbody></table>';
     area.innerHTML = html;

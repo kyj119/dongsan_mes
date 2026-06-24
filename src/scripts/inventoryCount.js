@@ -33,12 +33,12 @@ function renderTable(list) {
     var badge = getStatusBadge(c.status);
     var submittedBy = c.submitted_by || '-';
     return '<tr style="cursor:pointer;transition:background 0.15s;" onmouseover="this.style.background=\'#f8fafc\'" onmouseout="this.style.background=\'\'" onclick="openDetail(' + c.id + ')">'
-      + '<td style="padding:10px 12px;font-family:monospace;font-weight:600;">' + escapeHtml(c.count_number) + '</td>'
+      + '<td style="padding:10px 12px;font-family:monospace;font-weight:600;" title="' + escapeHtml(c.count_number || '') + '">' + escapeHtml(c.count_number) + '</td>'
       + '<td style="padding:10px 12px;text-align:center;font-size:13px;">' + (c.count_date || '') + '</td>'
       + '<td style="padding:10px 12px;text-align:center;font-size:13px;">' + (c.count_type === 'FULL' ? '전수' : '정기') + '</td>'
       + '<td style="padding:10px 12px;text-align:center;">' + badge + '</td>'
       + '<td style="padding:10px 12px;text-align:center;color:#666;font-size:13px;">-</td>'
-      + '<td style="padding:10px 12px;text-align:center;font-size:12px;color:#666;">' + escapeHtml(submittedBy) + '</td>'
+      + '<td style="padding:10px 12px;text-align:center;font-size:12px;color:#666;" title="' + escapeHtml(submittedBy) + '">' + escapeHtml(submittedBy) + '</td>'
       + '<td style="padding:10px 12px;text-align:center;"><a href="javascript:" onclick="event.stopPropagation(); openDetail(' + c.id + ')" style="color:#3b82f6;font-size:13px;text-decoration:none;">열기</a></td>'
       + '</tr>';
   }).join('');

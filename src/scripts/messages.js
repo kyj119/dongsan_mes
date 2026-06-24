@@ -114,7 +114,7 @@ async function loadLogs(page) {
       return '<tr class="border-b border-gray-100 hover:bg-gray-50">'
         + '<td class="px-4 py-3 text-sm text-gray-600">' + fmtDt(log.created_at) + '</td>'
         + '<td class="px-4 py-3 text-sm">' + channelIcon(log.channel || 'kakao') + '</td>'
-        + '<td class="px-4 py-3 text-sm font-medium text-gray-900">' + escapeHtml(log.receiver_name || '-') + '</td>'
+        + '<td class="px-4 py-3 text-sm font-medium text-gray-900" title="' + escapeHtml(log.receiver_name || '') + '">' + escapeHtml(log.receiver_name || '-') + '</td>'
         + '<td class="px-4 py-3 text-sm text-gray-600">' + (log.receiver_num || '-') + '</td>'
         + '<td class="px-4 py-3 text-sm text-gray-500">' + typeLabel(log.related_type) + '</td>'
         + '<td class="px-4 py-3 text-center">' + statusBadge(log.status) + '</td>'

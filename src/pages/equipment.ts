@@ -85,17 +85,17 @@ export function equipmentPage(c: Context<HonoEnv>) {
             <!-- 목록 탭 -->
             <div id="panelList">
                 <div class="ds-card overflow-x-auto">
-                    <table class="w-full text-sm hover-actions ds-table-striped">
+                    <table class="w-full text-sm hover-actions ds-table ds-table-striped">
                         <thead class="bg-gray-50 border-b">
                             <tr>
-                                <th class="px-4 py-3 text-left">ID</th>
-                                <th class="px-4 py-3 text-left">이름</th>
-                                <th class="px-4 py-3 text-left">프린터명</th>
-                                <th class="px-4 py-3 text-center">상태</th>
-                                <th class="px-4 py-3 text-center">에이전트</th>
-                                <th class="px-4 py-3 text-center">헤드</th>
-                                <th class="px-4 py-3 text-left">위치</th>
-                                <th class="px-4 py-3 text-center">관리</th>
+                                <th class="col-code px-4 py-3 text-left">ID</th>
+                                <th class="col-name px-4 py-3 text-left">이름</th>
+                                <th class="col-flex px-4 py-3 text-left">프린터명</th>
+                                <th class="col-status px-4 py-3 text-center">상태</th>
+                                <th class="col-tag px-4 py-3 text-center">에이전트</th>
+                                <th class="col-qty px-4 py-3 text-center">헤드</th>
+                                <th class="col-tag px-4 py-3 text-left">위치</th>
+                                <th class="col-action px-4 py-3 text-center">관리</th>
                             </tr>
                         </thead>
                         <tbody id="equipTableBody">
@@ -173,13 +173,13 @@ export function equipmentPage(c: Context<HonoEnv>) {
                             <table id="equipmentTable" class="ds-table ds-table-compact ds-table-striped">
                                 <thead>
                                     <tr>
-                                        <th style="min-width:140px;">장비</th>
-                                        <th style="text-align:center;">상태</th>
-                                        <th style="text-align:right;">출력건수</th>
-                                        <th style="text-align:center;">성공률</th>
-                                        <th style="text-align:right;">평균시간(초)</th>
-                                        <th style="text-align:center;">가동률</th>
-                                        <th style="text-align:center;width:60px;"></th>
+                                        <th class="col-name" style="min-width:140px;">장비</th>
+                                        <th class="col-status" style="text-align:center;">상태</th>
+                                        <th class="col-amount" style="text-align:right;">출력건수</th>
+                                        <th class="col-qty" style="text-align:center;">성공률</th>
+                                        <th class="col-amount" style="text-align:right;">평균시간(초)</th>
+                                        <th class="col-status" style="text-align:center;">가동률</th>
+                                        <th class="col-action" style="text-align:center;width:60px;"></th>
                                     </tr>
                                 </thead>
                                 <tbody id="equipmentBody">

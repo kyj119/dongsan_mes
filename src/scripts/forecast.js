@@ -116,7 +116,7 @@ async function loadCapacity() {
         var utilColor = eq.utilization >= 80 ? 'bg-red-500' : eq.utilization >= 50 ? 'bg-amber-500' : 'bg-green-500';
         var rateColor = eq.success_rate >= 95 ? 'text-green-600' : eq.success_rate >= 80 ? 'text-amber-600' : 'text-red-600';
         return '<tr class="border-t hover:bg-gray-50">'
-          + '<td class="px-4 py-3 font-medium">' + eq.printer_name + '</td>'
+          + '<td class="px-4 py-3 font-medium" title="' + window.escapeHtml(eq.printer_name || '') + '">' + eq.printer_name + '</td>'
           + '<td class="px-4 py-3 text-right">' + fmt(eq.total_prints) + '</td>'
           + '<td class="px-4 py-3 text-right ' + rateColor + '">' + eq.success_rate + '%</td>'
           + '<td class="px-4 py-3 text-right">' + eq.active_days + '일</td>'
@@ -195,7 +195,7 @@ async function loadClientForecast() {
 
         return '<tr class="border-t hover:bg-gray-50 cursor-pointer" onclick="location.href=\'/clients/' + cl.client_id + '\'">'
           + '<td class="px-4 py-3 text-center text-gray-400 font-bold">' + (i+1) + '</td>'
-          + '<td class="px-4 py-3 font-medium">' + cl.client_name + '</td>'
+          + '<td class="px-4 py-3 font-medium" title="' + window.escapeHtml(cl.client_name || '') + '">' + cl.client_name + '</td>'
           + '<td class="px-4 py-3 text-right">' + fmt(cl.total_revenue) + '원</td>'
           + '<td class="px-4 py-3 text-right text-gray-500">' + fmt(cl.avg_monthly) + '원</td>'
           + '<td class="px-4 py-3 text-right font-bold text-blue-600">' + fmt(cl.forecast_revenue) + '원</td>'

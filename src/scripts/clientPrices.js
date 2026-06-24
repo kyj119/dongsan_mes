@@ -72,12 +72,12 @@ function loadSupplierPrices(itemId) {
             }
             var lowestBadge = isLowest ? ' <span class="text-xs bg-green-200 text-green-700 px-1 rounded">최저가</span>' : '';
             html += '<tr class="border-b hover:bg-gray-50 ' + rowClass + '">'
-                + '<td class="px-4 py-2 font-medium">' + escapeHtml(sp.client_name) + lowestBadge + '</td>'
+                + '<td class="px-4 py-2 font-medium" title="' + escapeHtml(sp.client_name || '') + '">' + escapeHtml(sp.client_name) + lowestBadge + '</td>'
                 + '<td class="px-4 py-2 text-right font-bold">' + (sp.price || 0).toLocaleString() + '</td>'
                 + '<td class="px-4 py-2 text-right">' + (sp.recent_price ? sp.recent_price.toLocaleString() : '<span class="text-gray-300">-</span>') + '</td>'
                 + '<td class="px-4 py-2 text-gray-500">' + (sp.recent_date || '-') + '</td>'
                 + '<td class="px-4 py-2 text-right">' + diffPct + '</td>'
-                + '<td class="px-4 py-2 text-gray-500">' + escapeHtml(sp.notes || '') + '</td>'
+                + '<td class="px-4 py-2 text-gray-500" title="' + escapeHtml(sp.notes || '') + '">' + escapeHtml(sp.notes || '') + '</td>'
                 + '<td class="px-4 py-2 text-center">'
                 + '<button onclick="editSupplierPrice(' + sp.id + ', ' + sp.client_id + ', \'' + sp.client_name.replace(/'/g, "\\'") + '\', ' + sp.price + ', \'' + (sp.notes || '').replace(/'/g, "\\'") + '\')" class="text-blue-500 hover:text-blue-700 mr-2"><i class="fas fa-edit"></i></button>'
                 + '<button onclick="deleteSupplierPrice(' + sp.id + ', \'' + sp.client_name.replace(/'/g, "\\'") + '\')" class="text-red-500 hover:text-red-700"><i class="fas fa-trash"></i></button>'

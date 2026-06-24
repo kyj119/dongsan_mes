@@ -81,14 +81,14 @@ export function deliveryAnalyticsPage(c: Context<HonoEnv>) {
             <table id="delayedOrdersTable" class="ds-table ds-table-compact ds-table-striped">
               <thead>
                 <tr>
-                  <th style="min-width:100px;">주문번호</th>
-                  <th style="min-width:120px;">거래처</th>
-                  <th style="min-width:100px;">품목</th>
-                  <th style="text-align:center;">규격</th>
-                  <th style="text-align:center;">수량</th>
-                  <th style="text-align:center;">납기일</th>
-                  <th style="text-align:center;">지연일수</th>
-                  <th style="text-align:center;">상태</th>
+                  <th class="col-code" style="min-width:100px;">주문번호</th>
+                  <th class="col-name" style="min-width:120px;">거래처</th>
+                  <th class="col-flex" style="min-width:100px;">품목</th>
+                  <th class="col-tag" style="text-align:center;">규격</th>
+                  <th class="col-qty" style="text-align:center;">수량</th>
+                  <th class="col-date" style="text-align:center;">납기일</th>
+                  <th class="col-qty" style="text-align:center;">지연일수</th>
+                  <th class="col-status" style="text-align:center;">상태</th>
                 </tr>
               </thead>
               <tbody id="delayedOrdersBody">

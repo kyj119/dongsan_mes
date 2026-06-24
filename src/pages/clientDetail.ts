@@ -62,15 +62,15 @@ export function clientDetailPage(c: Context<HonoEnv>) {
             <!-- 주문 이력 패널 -->
             <div id="cdOrdersPanel">
               <div class="ds-card overflow-hidden">
-                <table class="w-full text-sm ds-table-striped">
+                <table class="w-full text-sm ds-table ds-table-striped">
                   <thead class="bg-gray-50">
                     <tr>
-                      <th class="px-4 py-3 text-left">주문번호</th>
-                      <th class="px-4 py-3 text-center">주문일</th>
-                      <th class="px-4 py-3 text-center">납기</th>
-                      <th class="px-4 py-3 text-right">금액</th>
-                      <th class="px-4 py-3 text-center">상태</th>
-                      <th class="px-4 py-3 text-center">경리</th>
+                      <th class="col-name px-4 py-3 text-left">주문번호</th>
+                      <th class="col-date px-4 py-3 text-center">주문일</th>
+                      <th class="col-date px-4 py-3 text-center">납기</th>
+                      <th class="col-amount px-4 py-3 text-right">금액</th>
+                      <th class="col-status px-4 py-3 text-center">상태</th>
+                      <th class="col-tag px-4 py-3 text-center">경리</th>
                     </tr>
                   </thead>
                   <tbody id="cdOrdersBody"></tbody>
@@ -89,15 +89,15 @@ export function clientDetailPage(c: Context<HonoEnv>) {
                 <div class="flex items-center justify-between px-4 py-3 bg-gray-50 border-b">
                   <h3 class="text-sm font-semibold text-gray-700">독촉 이력</h3>
                 </div>
-                <table class="w-full text-sm ds-table-striped">
+                <table class="w-full text-sm ds-table ds-table-striped">
                   <thead class="bg-gray-50">
                     <tr>
-                      <th class="px-4 py-3 text-left">연락일</th>
-                      <th class="px-4 py-3 text-center">방법</th>
-                      <th class="px-4 py-3 text-left">담당자</th>
-                      <th class="px-4 py-3 text-center">약속일</th>
-                      <th class="px-4 py-3 text-right">약속금액</th>
-                      <th class="px-4 py-3 text-left">비고</th>
+                      <th class="col-date px-4 py-3 text-left">연락일</th>
+                      <th class="col-tag px-4 py-3 text-center">방법</th>
+                      <th class="col-name px-4 py-3 text-left">담당자</th>
+                      <th class="col-date px-4 py-3 text-center">약속일</th>
+                      <th class="col-amount px-4 py-3 text-right">약속금액</th>
+                      <th class="col-flex px-4 py-3 text-left">비고</th>
                     </tr>
                   </thead>
                   <tbody id="cdCollectionBody"></tbody>

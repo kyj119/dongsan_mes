@@ -475,7 +475,7 @@ async function loadCategories() {
     tbody.innerHTML = cats.map(function(c) {
       return '<tr>' +
         '<td class="px-3 py-2 text-center"><i class="fas ' + (c.icon || 'fa-tag') + '" style="color:' + (c.color || '#6b7280') + '"></i></td>' +
-        '<td class="px-3 py-2 font-medium">' + escapeHtml(c.name) + '</td>' +
+        '<td class="px-3 py-2 font-medium" title="' + escapeHtml(c.name || '') + '">' + escapeHtml(c.name) + '</td>' +
         '<td class="px-3 py-2 text-center"><div style="width:20px;height:20px;border-radius:4px;background:' + (c.color || '#6b7280') + ';margin:0 auto"></div></td>' +
         '<td class="px-3 py-2 text-center text-gray-500">' + (c.sort_order || 0) + '</td>' +
         '<td class="px-3 py-2 text-center">' +
@@ -963,7 +963,7 @@ async function loadSchedule() {
         ? '<div class="w-16 bg-gray-100 rounded-full h-1.5 inline-block ml-1"><div class="rounded-full h-1.5" style="width:' + Math.min(pct, 100) + '%;background:' + (pct > 90 ? '#ef4444' : pct > 70 ? '#f59e0b' : '#22c55e') + '"></div></div>'
         : '';
       return '<tr>' +
-        '<td class="px-3 py-2 font-medium">' + escapeHtml(c.card_name) + (c.card_number_last4 ? ' <span class="text-gray-400">' + c.card_number_last4 + '</span>' : '') + '</td>' +
+        '<td class="px-3 py-2 font-medium" title="' + escapeHtml(c.card_name || '') + '">' + escapeHtml(c.card_name) + (c.card_number_last4 ? ' <span class="text-gray-400">' + c.card_number_last4 + '</span>' : '') + '</td>' +
         '<td class="px-3 py-2 text-sm text-gray-600">' + escapeHtml(c.card_company || '') + '</td>' +
         '<td class="px-3 py-2 text-center text-sm text-gray-500 whitespace-nowrap">' + fmtMmDd(c.cycle_start) + ' ~ ' + fmtMmDd(c.cycle_end) + '</td>' +
         '<td class="px-3 py-2 text-center text-sm font-medium whitespace-nowrap">' + (c.payment_date || '-') + '</td>' +

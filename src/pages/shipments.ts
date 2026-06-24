@@ -126,13 +126,13 @@ export function shipmentsPage(c: Context<HonoEnv>) {
         <table class="ds-table w-full text-sm ds-table-striped ds-table-fixed">
           <thead>
             <tr>
-              <th style="width:40px"><input type="checkbox" onchange="toggleSectionCheck('freight', this.checked)" class="rounded" title="전체 선택"></th>
-              <th class="text-left">거래처</th>
-              <th class="text-left" style="width:100px">터미널</th>
-              <th class="text-left hidden md:table-cell">품목</th>
-              <th class="text-center" style="width:70px">라벨</th>
-              <th class="text-center" style="width:70px">박스</th>
-              <th class="text-center" style="width:70px">출력</th>
+              <th class="col-check text-center" style="width:40px"><input type="checkbox" onchange="toggleSectionCheck('freight', this.checked)" class="rounded" title="전체 선택"></th>
+              <th class="col-name text-left">거래처</th>
+              <th class="text-left" style="width:140px">터미널</th>
+              <th class="col-flex text-left hidden md:table-cell">품목</th>
+              <th class="col-qty text-center" style="width:70px">라벨</th>
+              <th class="col-qty text-center" style="width:70px">박스</th>
+              <th class="col-action text-center" style="width:70px">출력</th>
             </tr>
           </thead>
           <tbody id="tbody-freight">
@@ -160,13 +160,13 @@ export function shipmentsPage(c: Context<HonoEnv>) {
         <table class="ds-table w-full text-sm ds-table-striped ds-table-fixed">
           <thead>
             <tr>
-              <th style="width:40px"><input type="checkbox" onchange="toggleSectionCheck('daesintaekbae', this.checked)" class="rounded" title="전체 선택"></th>
-              <th class="text-left">거래처</th>
-              <th class="text-left">배송주소</th>
-              <th class="text-left hidden md:table-cell">품목</th>
-              <th class="text-center" style="width:70px">라벨</th>
-              <th class="text-center" style="width:70px">박스</th>
-              <th class="text-center" style="width:70px">출력</th>
+              <th class="col-check text-center" style="width:40px"><input type="checkbox" onchange="toggleSectionCheck('daesintaekbae', this.checked)" class="rounded" title="전체 선택"></th>
+              <th class="col-name text-left">거래처</th>
+              <th class="col-flex text-left">배송주소</th>
+              <th class="col-flex text-left hidden md:table-cell">품목</th>
+              <th class="col-qty text-center" style="width:70px">라벨</th>
+              <th class="col-qty text-center" style="width:70px">박스</th>
+              <th class="col-action text-center" style="width:70px">출력</th>
             </tr>
           </thead>
           <tbody id="tbody-daesintaekbae">
@@ -194,11 +194,11 @@ export function shipmentsPage(c: Context<HonoEnv>) {
         <table class="ds-table w-full text-sm ds-table-striped ds-table-fixed">
           <thead>
             <tr>
-              <th style="width:40px"><input type="checkbox" onchange="toggleSectionCheck('hanjin', this.checked)" class="rounded" title="전체 선택"></th>
-              <th class="text-left">거래처</th>
-              <th class="text-left">배송주소</th>
-              <th class="text-left" style="width:140px">송장번호</th>
-              <th class="text-center" style="width:70px">저장</th>
+              <th class="col-check text-center" style="width:40px"><input type="checkbox" onchange="toggleSectionCheck('hanjin', this.checked)" class="rounded" title="전체 선택"></th>
+              <th class="col-name text-left">거래처</th>
+              <th class="col-flex text-left">배송주소</th>
+              <th class="text-left" style="width:220px">송장번호</th>
+              <th class="col-action text-center" style="width:70px">저장</th>
             </tr>
           </thead>
           <tbody id="tbody-hanjin">
@@ -218,11 +218,11 @@ export function shipmentsPage(c: Context<HonoEnv>) {
         <table class="ds-table w-full text-sm ds-table-striped ds-table-fixed">
           <thead>
             <tr>
-              <th style="width:40px"><input type="checkbox" onchange="toggleSectionCheck('quick', this.checked)" class="rounded" title="전체 선택"></th>
-              <th class="text-left">거래처</th>
-              <th class="text-left">배송지</th>
-              <th class="text-left" style="width:120px">연락처</th>
-              <th class="text-center" style="width:90px">안내용지</th>
+              <th class="col-check text-center" style="width:40px"><input type="checkbox" onchange="toggleSectionCheck('quick', this.checked)" class="rounded" title="전체 선택"></th>
+              <th class="col-name text-left">거래처</th>
+              <th class="col-flex text-left">배송지</th>
+              <th class="col-phone text-left" style="width:120px">연락처</th>
+              <th class="col-action text-center" style="width:90px">안내용지</th>
             </tr>
           </thead>
           <tbody id="tbody-quick">
@@ -239,10 +239,10 @@ export function shipmentsPage(c: Context<HonoEnv>) {
         <table class="ds-table w-full text-sm ds-table-striped ds-table-fixed">
           <thead>
             <tr>
-              <th class="text-left">거래처</th>
-              <th class="text-left" style="width:100px">배송방법</th>
-              <th class="text-left" style="width:100px">택배사</th>
-              <th class="text-left">배송주소</th>
+              <th class="col-name text-left">거래처</th>
+              <th class="col-tag text-left" style="width:100px">배송방법</th>
+              <th class="col-tag text-left" style="width:100px">택배사</th>
+              <th class="col-flex text-left">배송주소</th>
             </tr>
           </thead>
           <tbody id="tbody-etc">
@@ -265,12 +265,12 @@ export function shipmentsPage(c: Context<HonoEnv>) {
         <table class="ds-table w-full text-sm ds-table-striped ds-table-fixed">
           <thead>
             <tr>
-              <th class="text-left" style="width:100px">주문번호</th>
-              <th class="text-left">거래처</th>
-              <th class="text-center" style="width:90px">배송방식</th>
-              <th class="text-center" style="width:100px">출고일</th>
-              <th class="text-center" style="width:100px">예상 완료일</th>
-              <th class="text-center" style="width:80px">상태</th>
+              <th class="col-code text-left" style="width:100px">주문번호</th>
+              <th class="col-name text-left">거래처</th>
+              <th class="col-tag text-center" style="width:90px">배송방식</th>
+              <th class="col-date text-center" style="width:100px">출고일</th>
+              <th class="col-date text-center" style="width:100px">예상 완료일</th>
+              <th class="col-status text-center" style="width:80px">상태</th>
             </tr>
           </thead>
           <tbody id="tbody-intransit">

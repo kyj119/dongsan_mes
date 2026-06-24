@@ -88,19 +88,19 @@
     }
 
     var html = '<div class="bg-white border border-gray-200 rounded-lg overflow-x-auto">' +
-      '<table class="min-w-full text-sm">' +
+      '<table class="min-w-full text-sm ds-table">' +
       '<thead class="bg-gray-50 text-gray-600 text-xs uppercase"><tr>' +
-      '<th class="px-3 py-2 text-left"><input type="checkbox" id="selectAllTop" onchange="toggleSelectAll()"></th>' +
-      '<th class="px-3 py-2 text-left">긴급</th>' +
-      '<th class="px-3 py-2 text-left">품목</th>' +
-      '<th class="px-3 py-2 text-left">분류</th>' +
-      '<th class="px-3 py-2 text-right">현재고</th>' +
-      '<th class="px-3 py-2 text-right">안전재고</th>' +
-      '<th class="px-3 py-2 text-right">주간소모</th>' +
-      '<th class="px-3 py-2 text-right">MRP 소요</th>' +
-      '<th class="px-3 py-2 text-right">발주중</th>' +
-      '<th class="px-3 py-2 text-right">권장 수량</th>' +
-      '<th class="px-3 py-2 text-left">공급처</th>' +
+      '<th class="col-check px-3 py-2 text-center"><input type="checkbox" id="selectAllTop" onchange="toggleSelectAll()"></th>' +
+      '<th class="col-tag px-3 py-2 text-left">긴급</th>' +
+      '<th class="col-name px-3 py-2 text-left">품목</th>' +
+      '<th class="col-tag px-3 py-2 text-left">분류</th>' +
+      '<th class="col-qty px-3 py-2 text-right">현재고</th>' +
+      '<th class="col-qty px-3 py-2 text-right">안전재고</th>' +
+      '<th class="col-qty px-3 py-2 text-right">주간소모</th>' +
+      '<th class="col-qty px-3 py-2 text-right">MRP 소요</th>' +
+      '<th class="col-qty px-3 py-2 text-right">발주중</th>' +
+      '<th class="col-qty px-3 py-2 text-right">권장 수량</th>' +
+      '<th class="col-flex px-3 py-2 text-left">공급처</th>' +
       '</tr></thead><tbody>';
 
     items.forEach(function(s, idx) {
@@ -109,9 +109,9 @@
                        s.current_stock <= s.safe_stock ? 'text-amber-600 font-semibold' : 'text-gray-900';
 
       html += '<tr class="border-t border-gray-100 hover:bg-gray-50" data-idx="' + idx + '">' +
-        '<td class="px-3 py-2"><input type="checkbox" class="item-check" data-item-id="' + s.item_id + '" ' + (s.needs_order ? 'checked' : '') + ' onchange="updateActionBar()"></td>' +
+        '<td class="px-3 py-2 text-center"><input type="checkbox" class="item-check" data-item-id="' + s.item_id + '" ' + (s.needs_order ? 'checked' : '') + ' onchange="updateActionBar()"></td>' +
         '<td class="px-3 py-2">' + urgBadge + '</td>' +
-        '<td class="px-3 py-2 font-medium text-gray-900">' + escHtml(s.item_name) + '</td>' +
+        '<td class="px-3 py-2 font-medium text-gray-900" title="' + escHtml(s.item_name) + '">' + escHtml(s.item_name) + '</td>' +
         '<td class="px-3 py-2 text-gray-500">' + escHtml(s.category || '-') + '</td>' +
         '<td class="px-3 py-2 text-right ' + stockClass + '">' + fmt(s.current_stock) + '</td>' +
         '<td class="px-3 py-2 text-right text-gray-600">' + fmt(s.safe_stock) + '</td>' +
@@ -122,7 +122,7 @@
           '<input type="number" class="qty-input w-20 border border-gray-300 rounded px-2 py-1 text-right text-sm" ' +
           'data-item-id="' + s.item_id + '" value="' + s.recommended_qty + '" min="0">' +
         '</td>' +
-        '<td class="px-3 py-2 text-gray-600 text-xs">' + escHtml(s.supplier_name || '미지정') + '</td>' +
+        '<td class="px-3 py-2 text-gray-600 text-xs" title="' + escHtml(s.supplier_name || '') + '">' + escHtml(s.supplier_name || '미지정') + '</td>' +
         '</tr>';
     });
 

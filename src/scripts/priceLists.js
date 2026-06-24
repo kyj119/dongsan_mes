@@ -95,7 +95,7 @@ function loadPreview(plId) {
       var diffText = diff > 0 ? '+' + diff.toLocaleString() : diff.toLocaleString();
       html += '<tr class="border-b">'
         + '<td class="px-4 py-2">' + (item.item_code || '') + '</td>'
-        + '<td class="px-4 py-2">' + item.item_name + '</td>'
+        + '<td class="px-4 py-2" title="' + escapeHtml(item.item_name || '') + '">' + item.item_name + '</td>'
         + '<td class="px-4 py-2">' + (item.unit || 'EA') + '</td>'
         + '<td class="px-4 py-2 text-right">' + (item.base_price || 0).toLocaleString() + '</td>'
         + '<td class="px-4 py-2 text-right font-bold">' + (item.adjusted_price || 0).toLocaleString() + '</td>'

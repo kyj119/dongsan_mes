@@ -48,8 +48,8 @@
 
     // PM 스케줄
     html += '<div class="card mb-4"><div class="card-header"><h3 class="card-title"><i class="fas fa-calendar-check mr-2"></i>예방정비 스케줄</h3></div>';
-    html += '<div class="card-body"><div class="table-responsive"><table class="data-table"><thead><tr>';
-    html += '<th>장비</th><th>정비 항목</th><th>주기</th><th>마지막 수행</th><th>다음 예정</th><th>상태</th>';
+    html += '<div class="card-body"><div class="table-responsive"><table class="ds-table data-table"><thead><tr>';
+    html += '<th class="col-name">장비</th><th class="col-flex">정비 항목</th><th class="col-qty text-right">주기</th><th class="col-date">마지막 수행</th><th class="col-date">다음 예정</th><th class="col-status text-center">상태</th>';
     html += '</tr></thead><tbody>';
     if (d.schedules.length === 0) {
       html += '<tr><td colspan="6" class="text-center text-secondary">등록된 스케줄 없음</td></tr>';
@@ -59,20 +59,20 @@
         : s.due_status === 'DUE_SOON' ? '<span class="badge badge-warning">임박</span>'
         : '<span class="badge badge-success">정상</span>';
       html += '<tr>';
-      html += '<td>' + esc(s.equipment_name) + '</td>';
-      html += '<td>' + esc(s.title) + '</td>';
-      html += '<td>' + s.interval_days + '일</td>';
+      html += '<td title="' + esc(s.equipment_name) + '">' + esc(s.equipment_name) + '</td>';
+      html += '<td title="' + esc(s.title) + '">' + esc(s.title) + '</td>';
+      html += '<td class="text-right">' + s.interval_days + '일</td>';
       html += '<td>' + (s.last_performed_at ? s.last_performed_at.split('T')[0] : '-') + '</td>';
       html += '<td>' + (s.next_due_at || '-') + '</td>';
-      html += '<td>' + badge + '</td>';
+      html += '<td class="text-center">' + badge + '</td>';
       html += '</tr>';
     });
     html += '</tbody></table></div></div></div>';
 
     // 소모품 현황
     html += '<div class="card mb-4"><div class="card-header"><h3 class="card-title"><i class="fas fa-tint mr-2"></i>소모품 교체 현황</h3></div>';
-    html += '<div class="card-body"><div class="table-responsive"><table class="data-table"><thead><tr>';
-    html += '<th>장비</th><th>소모품명</th><th>교체주기</th><th>다음 교체일</th><th>재고</th><th>상태</th>';
+    html += '<div class="card-body"><div class="table-responsive"><table class="ds-table data-table"><thead><tr>';
+    html += '<th class="col-name">장비</th><th class="col-flex">소모품명</th><th class="col-qty text-right">교체주기</th><th class="col-date">다음 교체일</th><th class="col-qty text-right">재고</th><th class="col-status text-center">상태</th>';
     html += '</tr></thead><tbody>';
     if (d.consumables.length === 0) {
       html += '<tr><td colspan="6" class="text-center text-secondary">등록된 소모품 없음</td></tr>';
@@ -82,20 +82,20 @@
         : item.due_status === 'DUE_SOON' ? '<span class="badge badge-warning">임박</span>'
         : '<span class="badge badge-success">정상</span>';
       html += '<tr>';
-      html += '<td>' + esc(item.equipment_name) + '</td>';
-      html += '<td>' + esc(item.name) + '</td>';
-      html += '<td>' + (item.replacement_cycle_days || '-') + '일</td>';
+      html += '<td title="' + esc(item.equipment_name) + '">' + esc(item.equipment_name) + '</td>';
+      html += '<td title="' + esc(item.name) + '">' + esc(item.name) + '</td>';
+      html += '<td class="text-right">' + (item.replacement_cycle_days || '-') + '일</td>';
       html += '<td>' + (item.next_due_at || '-') + '</td>';
-      html += '<td>' + (item.quantity_on_hand != null ? item.quantity_on_hand : '-') + '</td>';
-      html += '<td>' + badge + '</td>';
+      html += '<td class="text-right">' + (item.quantity_on_hand != null ? item.quantity_on_hand : '-') + '</td>';
+      html += '<td class="text-center">' + badge + '</td>';
       html += '</tr>';
     });
     html += '</tbody></table></div></div></div>';
 
     // 최근 정비 이력
     html += '<div class="card mb-4"><div class="card-header"><h3 class="card-title"><i class="fas fa-history mr-2"></i>최근 30일 정비 이력</h3></div>';
-    html += '<div class="card-body"><div class="table-responsive"><table class="data-table"><thead><tr>';
-    html += '<th>일시</th><th>장비</th><th>유형</th><th>내용</th><th>다운타임</th><th>비용</th>';
+    html += '<div class="card-body"><div class="table-responsive"><table class="ds-table data-table"><thead><tr>';
+    html += '<th class="col-date">일시</th><th class="col-flex">장비</th><th class="col-tag text-center">유형</th><th class="col-name">내용</th><th class="col-qty text-right">다운타임</th><th class="col-amount text-right">비용</th>';
     html += '</tr></thead><tbody>';
     if (d.recent_logs.length === 0) {
       html += '<tr><td colspan="6" class="text-center text-secondary">최근 정비 이력 없음</td></tr>';
@@ -104,26 +104,26 @@
       var typeLabel = { MAINTENANCE: '예방정비', REPAIR: '수리', CLEANING: '청소', CALIBRATION: '교정', SERVICE: '서비스' };
       html += '<tr>';
       html += '<td>' + (log.performed_at ? log.performed_at.split('T')[0] : '-') + '</td>';
-      html += '<td>' + esc(log.equipment_name) + '</td>';
-      html += '<td><span class="badge badge-info">' + (typeLabel[log.log_type] || log.log_type) + '</span></td>';
-      html += '<td>' + esc(log.description || '-') + '</td>';
-      html += '<td>' + (log.downtime_minutes || 0) + '분</td>';
-      html += '<td>' + formatWon(log.cost || 0) + '</td>';
+      html += '<td title="' + esc(log.equipment_name) + '">' + esc(log.equipment_name) + '</td>';
+      html += '<td class="text-center"><span class="badge badge-info">' + (typeLabel[log.log_type] || log.log_type) + '</span></td>';
+      html += '<td title="' + esc(log.description || '') + '">' + esc(log.description || '-') + '</td>';
+      html += '<td class="text-right">' + (log.downtime_minutes || 0) + '분</td>';
+      html += '<td class="text-right">' + formatWon(log.cost || 0) + '</td>';
       html += '</tr>';
     });
     html += '</tbody></table></div></div></div>';
 
     // 장비별 정비 비용 (90일)
     html += '<div class="card"><div class="card-header"><h3 class="card-title"><i class="fas fa-chart-pie mr-2"></i>장비별 정비 비용 (90일)</h3></div>';
-    html += '<div class="card-body"><div class="table-responsive"><table class="data-table"><thead><tr>';
-    html += '<th>장비</th><th>정비 횟수</th><th>총 비용</th><th>총 다운타임</th>';
+    html += '<div class="card-body"><div class="table-responsive"><table class="ds-table data-table"><thead><tr>';
+    html += '<th class="col-name">장비</th><th class="col-qty text-right">정비 횟수</th><th class="col-amount text-right">총 비용</th><th class="col-qty text-right">총 다운타임</th>';
     html += '</tr></thead><tbody>';
     d.cost_summary.forEach(function(item) {
       html += '<tr>';
-      html += '<td>' + esc(item.equipment_name) + '</td>';
-      html += '<td>' + item.log_count + '회</td>';
-      html += '<td>' + formatWon(item.total_cost) + '</td>';
-      html += '<td>' + Math.round(item.total_downtime_min / 60 * 10) / 10 + '시간</td>';
+      html += '<td title="' + esc(item.equipment_name) + '">' + esc(item.equipment_name) + '</td>';
+      html += '<td class="text-right">' + item.log_count + '회</td>';
+      html += '<td class="text-right">' + formatWon(item.total_cost) + '</td>';
+      html += '<td class="text-right">' + Math.round(item.total_downtime_min / 60 * 10) / 10 + '시간</td>';
       html += '</tr>';
     });
     html += '</tbody></table></div></div></div>';

@@ -240,8 +240,8 @@ function renderDelayedOrders() {
     html += `
       <tr>
         <td style="font-weight:600;color:#3b82f6;"><a href="javascript:void(0)" onclick="openOrder('${order.id}')" style="text-decoration:none;color:inherit;">${esc(order.number)}</a></td>
-        <td>${esc(order.client_name || '-')}</td>
-        <td>${esc(order.item_name || '-')}</td>
+        <td title="${esc(order.client_name || '-')}">${esc(order.client_name || '-')}</td>
+        <td title="${esc(order.item_name || '-')}">${esc(order.item_name || '-')}</td>
         <td style="text-align:center;font-size:12px;">${esc(order.size || '-')}</td>
         <td style="text-align:center;">${order.quantity || '-'}</td>
         <td style="text-align:center;font-size:12px;">${formatDate(dueDate)}</td>

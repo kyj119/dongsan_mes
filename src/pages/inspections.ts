@@ -53,14 +53,14 @@ export async function inspectionsPage(c: Context) {
             </div>
           </div>
           <div class="ds-card" style="padding:0">
-            <table class="w-full text-sm ds-table-striped">
+            <table class="w-full text-sm ds-table ds-table-striped">
               <thead class="bg-gray-50">
                 <tr>
-                  <th class="px-4 py-3 text-left">템플릿명</th>
-                  <th class="px-4 py-3 text-left" style="width:100px">카테고리</th>
-                  <th class="px-4 py-3 text-center" style="width:100px">검수 항목 수</th>
-                  <th class="px-4 py-3 text-center" style="width:80px">상태</th>
-                  <th class="px-4 py-3 text-center" style="width:80px">액션</th>
+                  <th class="col-name px-4 py-3 text-left">템플릿명</th>
+                  <th class="col-tag px-4 py-3 text-left">카테고리</th>
+                  <th class="col-qty px-4 py-3 text-right">검수 항목 수</th>
+                  <th class="col-status px-4 py-3 text-center">상태</th>
+                  <th class="col-action px-4 py-3 text-center">액션</th>
                 </tr>
               </thead>
               <tbody id="templatesTableBody">
@@ -106,15 +106,15 @@ export async function inspectionsPage(c: Context) {
             </div>
           </div>
           <div class="ds-card" style="padding:0">
-            <table class="w-full text-sm ds-table-striped">
+            <table class="w-full text-sm ds-table ds-table-striped">
               <thead class="bg-gray-50">
                 <tr>
-                  <th class="px-4 py-3 text-left" style="width:140px">검수일시</th>
-                  <th class="px-4 py-3 text-left" style="width:120px">입고번호</th>
-                  <th class="px-4 py-3 text-left">공급업체</th>
-                  <th class="px-4 py-3 text-left" style="width:90px">검수자</th>
-                  <th class="px-4 py-3 text-center" style="width:80px">결과</th>
-                  <th class="px-4 py-3 text-center" style="width:80px">액션</th>
+                  <th class="col-datetime px-4 py-3 text-left">검수일시</th>
+                  <th class="col-code px-4 py-3 text-left">입고번호</th>
+                  <th class="col-name px-4 py-3 text-left">공급업체</th>
+                  <th class="col-tag px-4 py-3 text-left">검수자</th>
+                  <th class="col-status px-4 py-3 text-center">결과</th>
+                  <th class="col-action px-4 py-3 text-center">액션</th>
                 </tr>
               </thead>
               <tbody id="resultsTableBody">

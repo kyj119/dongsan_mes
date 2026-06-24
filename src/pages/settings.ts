@@ -465,18 +465,18 @@ ${capsSettingsScript}
               </button>
             </div>
             <div class="overflow-x-auto" style="max-height: 500px; overflow-y: auto;">
-              <table class="w-full text-sm ds-table-striped ds-table-fixed">
+              <table class="w-full text-sm ds-table ds-table-striped ds-table-fixed">
                 <thead>
                   <tr>
-                    <th class="text-left" style="width:130px">시작</th>
-                    <th class="text-left" style="width:80px">상태</th>
-                    <th class="text-right" style="width:60px">수집</th>
-                    <th class="text-right" style="width:60px">신규</th>
-                    <th class="text-right" style="width:60px">갱신</th>
-                    <th class="text-right" style="width:60px">건너뜀</th>
-                    <th class="text-right" style="width:60px">오류</th>
-                    <th class="text-left" style="width:80px">트리거</th>
-                    <th class="text-left">범위</th>
+                    <th class="col-datetime text-left" style="width:130px">시작</th>
+                    <th class="col-status text-left" style="width:80px">상태</th>
+                    <th class="col-qty text-right" style="width:60px">수집</th>
+                    <th class="col-qty text-right" style="width:60px">신규</th>
+                    <th class="col-qty text-right" style="width:60px">갱신</th>
+                    <th class="col-qty text-right" style="width:60px">건너뜀</th>
+                    <th class="col-qty text-right" style="width:60px">오류</th>
+                    <th class="col-tag text-left" style="width:80px">트리거</th>
+                    <th class="col-flex text-left">범위</th>
                   </tr>
                 </thead>
                 <tbody id="capsSyncLogBody"></tbody>

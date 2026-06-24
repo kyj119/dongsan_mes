@@ -66,16 +66,16 @@ export function messagesPage(c: Context<HonoEnv>) {
       <button onclick="loadLogs()" class="ds-btn ds-btn-primary text-sm"><i class="fas fa-search mr-1"></i>검색</button>
     </div>
     <div class="ds-card overflow-hidden">
-      <table class="w-full ds-table-striped">
+      <table class="w-full ds-table ds-table-striped">
         <thead class="bg-gray-50">
           <tr>
-            <th class="px-4 py-3 text-left text-xs font-semibold text-gray-600">발송일시</th>
-            <th class="px-4 py-3 text-left text-xs font-semibold text-gray-600">채널</th>
-            <th class="px-4 py-3 text-left text-xs font-semibold text-gray-600">수신자</th>
-            <th class="px-4 py-3 text-left text-xs font-semibold text-gray-600">수신번호</th>
-            <th class="px-4 py-3 text-left text-xs font-semibold text-gray-600">관련 업무</th>
-            <th class="px-4 py-3 text-center text-xs font-semibold text-gray-600">상태</th>
-            <th class="px-4 py-3 text-center text-xs font-semibold text-gray-600">상세</th>
+            <th class="col-datetime px-4 py-3 text-left text-xs font-semibold text-gray-600">발송일시</th>
+            <th class="col-tag px-4 py-3 text-left text-xs font-semibold text-gray-600">채널</th>
+            <th class="col-name px-4 py-3 text-left text-xs font-semibold text-gray-600">수신자</th>
+            <th class="col-phone px-4 py-3 text-left text-xs font-semibold text-gray-600">수신번호</th>
+            <th class="col-tag px-4 py-3 text-left text-xs font-semibold text-gray-600">관련 업무</th>
+            <th class="col-status px-4 py-3 text-center text-xs font-semibold text-gray-600">상태</th>
+            <th class="col-action px-4 py-3 text-center text-xs font-semibold text-gray-600">상세</th>
           </tr>
         </thead>
         <tbody id="logsBody"></tbody>

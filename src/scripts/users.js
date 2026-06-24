@@ -30,13 +30,13 @@
       var toggleLabel = u.is_active ? '비활성화' : '활성화';
       var toggleClass = u.is_active ? 'text-amber-600 hover:text-amber-700' : 'text-green-600 hover:text-green-700';
       return '<tr class="border-b hover:bg-gray-50">' +
-        '<td class="px-4 py-3 font-medium text-gray-900">' + esc(u.name || '-') + '</td>' +
-        '<td class="px-4 py-3 text-gray-600 font-mono text-sm">' + esc(u.username || '-') + '</td>' +
+        '<td class="px-4 py-3 font-medium text-gray-900" title="' + esc(u.name || '-') + '">' + esc(u.name || '-') + '</td>' +
+        '<td class="px-4 py-3 text-gray-600 font-mono text-sm" title="' + esc(u.username || '-') + '">' + esc(u.username || '-') + '</td>' +
         '<td class="px-4 py-3">' + getRoleBadge(u.role) + '</td>' +
-        '<td class="px-4 py-3">' + statusBadge + '</td>' +
+        '<td class="px-4 py-3 text-center">' + statusBadge + '</td>' +
         '<td class="px-4 py-3 text-gray-500 text-sm">' + formatDate(u.last_login_at) + '</td>' +
-        '<td class="px-4 py-3">' +
-          '<div class="flex gap-3 items-center">' +
+        '<td class="px-4 py-3 text-center">' +
+          '<div class="flex gap-3 items-center justify-center">' +
             '<button data-user-json="' + JSON.stringify(u).replace(/"/g, '&quot;') + '" onclick="showEditModal(JSON.parse(this.getAttribute(\'data-user-json\')))" class="text-blue-600 hover:text-blue-700 text-sm font-medium">수정</button>' +
             '<button onclick="showResetModal(' + u.id + ', \'' + jsStr(u.name || u.username) + '\')" class="text-orange-500 hover:text-orange-700 text-sm font-medium">비번 초기화</button>' +
             '<button onclick="toggleActive(' + u.id + ', ' + (u.is_active ? 'false' : 'true') + ')" class="' + toggleClass + ' text-sm font-medium">' + toggleLabel + '</button>' +
@@ -46,15 +46,15 @@
     }).join('');
 
     document.getElementById('usersTableWrap').innerHTML =
-      '<table class="w-full text-left">' +
+      '<table class="w-full text-left ds-table">' +
         '<thead class="bg-gray-50 border-b">' +
           '<tr>' +
-            '<th class="px-4 py-3 text-sm font-medium text-gray-500">이름</th>' +
-            '<th class="px-4 py-3 text-sm font-medium text-gray-500">아이디</th>' +
-            '<th class="px-4 py-3 text-sm font-medium text-gray-500">역할</th>' +
-            '<th class="px-4 py-3 text-sm font-medium text-gray-500">상태</th>' +
-            '<th class="px-4 py-3 text-sm font-medium text-gray-500">마지막 로그인</th>' +
-            '<th class="px-4 py-3 text-sm font-medium text-gray-500">액션</th>' +
+            '<th class="col-name px-4 py-3 text-sm font-medium text-gray-500">이름</th>' +
+            '<th class="col-code px-4 py-3 text-sm font-medium text-gray-500">아이디</th>' +
+            '<th class="col-tag px-4 py-3 text-sm font-medium text-gray-500">역할</th>' +
+            '<th class="col-status px-4 py-3 text-sm font-medium text-gray-500 text-center">상태</th>' +
+            '<th class="col-datetime px-4 py-3 text-sm font-medium text-gray-500">마지막 로그인</th>' +
+            '<th class="col-action px-4 py-3 text-sm font-medium text-gray-500 text-center">액션</th>' +
           '</tr>' +
         '</thead>' +
         '<tbody>' + rows + '</tbody>' +

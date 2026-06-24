@@ -202,7 +202,7 @@ function displayPOs(items) {
     }
     return '<tr class="' + rowClass + '" ondblclick="viewDetail(' + po.id + ')">'
       + '<td class="px-4 py-3 font-medium">' + (po.po_number || '-') + '</td>'
-      + '<td class="px-4 py-3">' + escapeHtml(po.supplier_name || '-') + '</td>'
+      + '<td class="px-4 py-3" title="' + escapeHtml(po.supplier_name || '') + '">' + escapeHtml(po.supplier_name || '-') + '</td>'
       + '<td class="px-4 py-3 text-center">' + (po.order_date || '-') + '</td>'
       + '<td class="px-4 py-3 text-center">' + (po.expected_date || '-') + getDueBadge(po.expected_date, po.status) + '</td>'
       + '<td class="px-4 py-3 text-right tabular-nums">' + ((po.final_amount || 0).toLocaleString()) + '원</td>'

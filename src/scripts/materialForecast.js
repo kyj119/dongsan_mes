@@ -42,15 +42,15 @@ function renderMaterialTable() {
         return a.days_remaining - b.days_remaining;
     });
 
-    var html = '<div class="overflow-x-auto"><table class="w-full text-sm">';
+    var html = '<div class="overflow-x-auto"><table class="w-full text-sm ds-table">';
     html += '<thead class="bg-gray-50"><tr>';
-    html += '<th class="px-3 py-2 text-left text-xs font-semibold text-gray-600">상태</th>';
-    html += '<th class="px-3 py-2 text-left text-xs font-semibold text-gray-600">원단명</th>';
-    html += '<th class="px-3 py-2 text-right text-xs font-semibold text-gray-600">폭</th>';
-    html += '<th class="px-3 py-2 text-right text-xs font-semibold text-gray-600">현재고(yd)</th>';
-    html += '<th class="px-3 py-2 text-right text-xs font-semibold text-gray-600">일평균 소모</th>';
-    html += '<th class="px-3 py-2 text-right text-xs font-semibold text-gray-600">예상 잔여일</th>';
-    html += '<th class="px-3 py-2 text-right text-xs font-semibold text-gray-600">확정주문 수요</th>';
+    html += '<th class="col-status px-3 py-2 text-left text-xs font-semibold text-gray-600">상태</th>';
+    html += '<th class="col-name px-3 py-2 text-left text-xs font-semibold text-gray-600">원단명</th>';
+    html += '<th class="col-qty px-3 py-2 text-right text-xs font-semibold text-gray-600">폭</th>';
+    html += '<th class="col-qty px-3 py-2 text-right text-xs font-semibold text-gray-600">현재고(yd)</th>';
+    html += '<th class="col-amount px-3 py-2 text-right text-xs font-semibold text-gray-600">일평균 소모</th>';
+    html += '<th class="col-qty px-3 py-2 text-right text-xs font-semibold text-gray-600">예상 잔여일</th>';
+    html += '<th class="col-amount px-3 py-2 text-right text-xs font-semibold text-gray-600">확정주문 수요</th>';
     html += '</tr></thead><tbody class="divide-y">';
 
     sorted.forEach(function(m) {
@@ -71,7 +71,7 @@ function renderMaterialTable() {
 
         html += '<tr class="' + rowBg + ' hover:bg-gray-100">';
         html += '<td class="px-3 py-2">' + statusBadge + '</td>';
-        html += '<td class="px-3 py-2 font-medium">' + escapeHtml(m.item_name) + '</td>';
+        html += '<td class="px-3 py-2 font-medium" title="' + escapeHtml(m.item_name || '') + '">' + escapeHtml(m.item_name) + '</td>';
         html += '<td class="px-3 py-2 text-right text-gray-600">' + widthCm + '</td>';
         html += '<td class="px-3 py-2 text-right font-medium">' + m.current_stock_yd.toLocaleString() + '</td>';
         html += '<td class="px-3 py-2 text-right">' + m.avg_daily_consumption_yd + ' yd/일</td>';

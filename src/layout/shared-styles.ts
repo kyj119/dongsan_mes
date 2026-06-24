@@ -599,6 +599,23 @@ export const SHARED_CSS = `
   .ds-table thead th.text-left, .ds-table-striped thead th.text-left { text-align: left; }
   /* 고정 열너비 모드 — th에 width/style 지정 시 사용 */
   .ds-table-fixed { table-layout: fixed; }
+  /* === 표 열 폭 표준 (table-layout:fixed 전제 = .ds-table 또는 .ds-table-fixed 동반) ===
+     콘텐츠 유형별 적정 규격. 가변 주열(.col-name/.col-flex)만 남는 폭 흡수, 나머지는 고정폭
+     → 한 열이 일방적으로 커지지 않음. 긴 값은 td의 ellipsis(…) + title(마우스오버 풀텍스트).
+     specificity (0,2,0)으로 Tailwind w-* (0,1,0)을 덮어씀. width 전용(정렬은 기존 text-* 유틸 유지). */
+  .ds-table .col-check, .ds-table-striped .col-check, .ds-table-fixed .col-check { width: 36px; }
+  .ds-table .col-no, .ds-table-striped .col-no, .ds-table-fixed .col-no { width: 50px; }
+  .ds-table .col-date, .ds-table-striped .col-date, .ds-table-fixed .col-date { width: 104px; }
+  .ds-table .col-datetime, .ds-table-striped .col-datetime, .ds-table-fixed .col-datetime { width: 148px; }
+  .ds-table .col-amount, .ds-table-striped .col-amount, .ds-table-fixed .col-amount { width: 120px; }
+  .ds-table .col-qty, .ds-table-striped .col-qty, .ds-table-fixed .col-qty { width: 76px; }
+  .ds-table .col-status, .ds-table-striped .col-status, .ds-table-fixed .col-status { width: 96px; }
+  .ds-table .col-code, .ds-table-striped .col-code, .ds-table-fixed .col-code { width: 132px; }
+  .ds-table .col-tag, .ds-table-striped .col-tag, .ds-table-fixed .col-tag { width: 92px; }
+  .ds-table .col-phone, .ds-table-striped .col-phone, .ds-table-fixed .col-phone { width: 124px; }
+  .ds-table .col-action, .ds-table-striped .col-action, .ds-table-fixed .col-action { width: 100px; }
+  .ds-table .col-name, .ds-table-striped .col-name, .ds-table-fixed .col-name { width: auto; min-width: 140px; }
+  .ds-table .col-flex, .ds-table-striped .col-flex, .ds-table-fixed .col-flex { width: auto; min-width: 120px; }
   /* 컴팩트 변형 (재무보고, IA 등 밀집 테이블) */
   .ds-table-striped.ds-compact thead th { padding: 6px 8px; }
   .ds-table-striped.ds-compact tbody td { padding: 4px 8px; font-size: var(--fs-xs); }

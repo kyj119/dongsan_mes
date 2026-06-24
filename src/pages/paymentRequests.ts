@@ -62,18 +62,18 @@ export function paymentRequestsPage(c: Context<HonoEnv>) {
         <!-- 목록 -->
         <div class="ds-card" style="padding:0;overflow:hidden">
           <div class="overflow-x-auto">
-            <table class="w-full text-xs ds-table-striped ds-table-fixed">
+            <table class="w-full text-xs ds-table ds-table-striped ds-table-fixed">
               <thead>
                 <tr class="sticky top-0">
-                  <th class="text-left" style="width:110px">결의서번호</th>
-                  <th class="text-left" style="width:100px">신청일</th>
-                  <th class="text-left" style="width:80px">유형</th>
-                  <th class="text-left">지급처</th>
-                  <th class="text-right" style="width:110px">금액</th>
-                  <th class="text-left">사유</th>
-                  <th class="text-center" style="width:80px">상태</th>
-                  <th class="text-center" style="width:70px">작성자</th>
-                  <th class="text-center" style="width:70px">조치</th>
+                  <th class="col-code text-left">결의서번호</th>
+                  <th class="col-date text-left">신청일</th>
+                  <th class="col-tag text-left">유형</th>
+                  <th class="col-name text-left">지급처</th>
+                  <th class="col-amount text-right">금액</th>
+                  <th class="col-flex text-left">사유</th>
+                  <th class="col-status text-center">상태</th>
+                  <th class="col-tag text-center">작성자</th>
+                  <th class="col-action text-center">조치</th>
                 </tr>
               </thead>
               <tbody id="prTableBody">

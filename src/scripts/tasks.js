@@ -85,12 +85,12 @@ async function loadTasks() {
       return '<tr class="hover:bg-gray-50">'
         + '<td class="px-4 py-2 font-mono text-xs text-gray-900">' + t.id + '</td>'
         + '<td class="px-4 py-2 text-sm text-gray-900">' + escTask(TYPE_LABEL[t.type] || t.type) + '</td>'
-        + '<td class="px-4 py-2"><span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ' + colorClass + '">' + escTask(statusLabel) + '</span></td>'
-        + '<td class="px-4 py-2 font-mono text-xs text-gray-700">' + escTask(ref || '-') + '</td>'
-        + '<td class="px-4 py-2 text-xs text-gray-700">' + retry + '</td>'
-        + '<td class="px-4 py-2 text-xs text-red-600 max-w-xs truncate" title="' + escTask(t.error_message || '') + '">' + escTask(t.error_message || '') + '</td>'
+        + '<td class="px-4 py-2 text-center"><span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ' + colorClass + '">' + escTask(statusLabel) + '</span></td>'
+        + '<td class="px-4 py-2 font-mono text-xs text-gray-700" title="' + escTask(ref || '') + '">' + escTask(ref || '-') + '</td>'
+        + '<td class="px-4 py-2 text-xs text-gray-700 text-right">' + retry + '</td>'
+        + '<td class="px-4 py-2 text-xs text-red-600 truncate" title="' + escTask(t.error_message || '') + '">' + escTask(t.error_message || '') + '</td>'
         + '<td class="px-4 py-2 text-xs text-gray-500">' + escTask(t.created_at) + '</td>'
-        + '<td class="px-4 py-2">' + btn + '</td>'
+        + '<td class="px-4 py-2 text-center">' + btn + '</td>'
         + '</tr>';
     }).join('');
   } catch (e) {

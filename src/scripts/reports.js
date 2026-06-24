@@ -127,7 +127,7 @@ async function loadClientRevenue() {
       var balColor = (c.balance || 0) > 0 ? 'text-red-600 font-medium' : 'text-green-600';
       return '<tr class="border-t hover:bg-gray-50">'
         + '<td class="px-4 py-3 text-center text-gray-400 font-bold">' + (i+1) + '</td>'
-        + '<td class="px-4 py-3 font-medium">' + esc(c.client_name) + '</td>'
+        + '<td class="px-4 py-3 font-medium" title="' + esc(c.client_name) + '">' + esc(c.client_name) + '</td>'
         + '<td class="px-4 py-3 text-right">' + fmt(c.total_orders) + '</td>'
         + '<td class="px-4 py-3 text-right font-medium text-blue-600">' + fmt(c.total_revenue) + '원</td>'
         + '<td class="px-4 py-3 text-right">' + fmt(Math.round(c.avg_order_amount)) + '원</td>'
@@ -172,7 +172,7 @@ async function loadItemAnalysis() {
     if (!tbody) { console.warn('[reports] #itemsTableBody not found'); return; }
     tbody.innerHTML = items.map(function(item) {
       return '<tr class="border-t hover:bg-gray-50">'
-        + '<td class="px-4 py-2"><span class="font-medium">' + (item.item_name || '-') + '</span>'
+        + '<td class="px-4 py-2" title="' + esc(item.item_name || '-') + '"><span class="font-medium">' + (item.item_name || '-') + '</span>'
         + (item.category ? ' <span class="text-[10px] text-gray-400">[' + item.category + ']</span>' : '') + '</td>'
         + '<td class="px-4 py-2 text-right">' + fmt(item.order_count) + '</td>'
         + '<td class="px-4 py-2 text-right">' + fmt(item.total_quantity) + '</td>'
@@ -202,7 +202,7 @@ async function loadDesignerStats() {
       var completionRate = total > 0 ? Math.round(((d.completed_count || 0) / total) * 100) : 0;
       var barColor = completionRate >= 80 ? 'bg-green-500' : completionRate >= 50 ? 'bg-amber-500' : 'bg-red-500';
       return '<tr class="border-t hover:bg-gray-50">'
-        + '<td class="px-4 py-3 font-medium">' + (d.designer_name || '-') + '</td>'
+        + '<td class="px-4 py-3 font-medium" title="' + esc(d.designer_name || '-') + '">' + (d.designer_name || '-') + '</td>'
         + '<td class="px-4 py-3 text-right">' + fmt(d.order_count) + '건</td>'
         + '<td class="px-4 py-3 text-right font-medium text-blue-600">' + fmt(d.total_revenue) + '원</td>'
         + '<td class="px-4 py-3 text-right">' + fmt(Math.round(d.avg_amount)) + '원</td>'
@@ -300,8 +300,8 @@ async function loadMarginAnalysis() {
         var marginRate = o.margin_rate || 0;
         var marginColor = marginRate < 0 ? 'text-red-600 font-bold' : marginRate < 15 ? 'text-orange-600' : 'text-gray-700';
         return '<tr class="border-t hover:bg-gray-50 cursor-pointer" onclick="location.href=\'/orders?highlight=' + o.order_id + '\'">'
-          + '<td class="px-4 py-3 font-medium text-blue-600">' + (o.order_number || '') + '</td>'
-          + '<td class="px-4 py-3">' + (o.client_name || '') + '</td>'
+          + '<td class="px-4 py-3 font-medium text-blue-600" title="' + esc(o.order_number || '') + '">' + (o.order_number || '') + '</td>'
+          + '<td class="px-4 py-3" title="' + esc(o.client_name || '') + '">' + (o.client_name || '') + '</td>'
           + '<td class="px-4 py-3 text-right">' + fmtWon(o.total_revenue) + '</td>'
           + '<td class="px-4 py-3 text-right">' + fmtWon(o.total_cost) + '</td>'
           + '<td class="px-4 py-3 text-right' + (profit < 0 ? ' text-red-600' : '') + '">' + fmtWon(profit) + '</td>'
@@ -344,7 +344,7 @@ function renderClientMarginTable(tbodyId, clients) {
     else if (marginRate >= 35) grade = 'B';
     else if (marginRate >= 20) grade = 'C';
     return '<tr class="border-t hover:bg-gray-50">'
-      + '<td class="px-3 py-2 font-medium">' + (cl.client_name || '') + ' <span class="text-xs text-gray-400">(' + (cl.order_count || 0) + '건)</span></td>'
+      + '<td class="px-3 py-2 font-medium" title="' + esc(cl.client_name || '') + '">' + (cl.client_name || '') + ' <span class="text-xs text-gray-400">(' + (cl.order_count || 0) + '건)</span></td>'
       + '<td class="px-3 py-2 text-right">' + fmtWon(cl.total_revenue) + '</td>'
       + '<td class="px-3 py-2 text-right font-bold ' + marginColor + '">' + marginRate.toFixed(1) + '%</td>'
       + '<td class="px-3 py-2 text-center">' + gradeBadge(grade) + '</td>'
@@ -452,7 +452,7 @@ async function loadReceivablesAnalysis() {
       var daysClass = (cl.days_overdue || 0) > 90 ? 'text-red-600 font-bold' : (cl.days_overdue || 0) > 60 ? 'text-orange-600' : '';
       return '<tr class="border-t hover:bg-gray-50 cursor-pointer" onclick="location.href=\'/clients/' + cl.id + '\'">'
         + '<td class="px-4 py-3 text-center text-gray-400 font-bold">' + (i+1) + '</td>'
-        + '<td class="px-4 py-3 font-medium">' + (cl.client_name || '') + '</td>'
+        + '<td class="px-4 py-3 font-medium" title="' + esc(cl.client_name || '') + '">' + (cl.client_name || '') + '</td>'
         + '<td class="px-4 py-3 text-right font-bold text-red-600">' + fmt(balance) + '원</td>'
         + '<td class="px-4 py-3 text-right text-sm">' + (cl.last_payment_date || '-') + '</td>'
         + '<td class="px-4 py-3 text-right ' + daysClass + '">' + (cl.days_overdue || '-') + '일</td>'
@@ -495,7 +495,7 @@ async function loadProductionAnalysis() {
         var rate = eq.total > 0 ? Math.round(eq.ok_count / eq.total * 100) : 0;
         var rateColor = rate >= 95 ? 'text-green-600' : rate >= 80 ? 'text-amber-600' : 'text-red-600';
         return '<tr class="border-t hover:bg-gray-50">'
-          + '<td class="px-4 py-2 font-medium">' + (eq.printer_name || '-') + '</td>'
+          + '<td class="px-4 py-2 font-medium" title="' + esc(eq.printer_name || '-') + '">' + (eq.printer_name || '-') + '</td>'
           + '<td class="px-4 py-2 text-right">' + fmt(eq.total) + '</td>'
           + '<td class="px-4 py-2 text-right ' + rateColor + '">' + rate + '%</td>'
           + '<td class="px-4 py-2 text-right">' + (eq.active_days || 0) + '일</td>'
@@ -615,7 +615,7 @@ async function loadComparison() {
         var changeColor = cat.change > 0 ? 'text-green-600' : cat.change < 0 ? 'text-red-600' : '';
         var arrow = cat.change > 0 ? '▲' : cat.change < 0 ? '▼' : '-';
         return '<tr class="border-t hover:bg-gray-50">'
-          + '<td class="px-4 py-2 font-medium">' + (cat.category || '기타') + '</td>'
+          + '<td class="px-4 py-2 font-medium" title="' + esc(cat.category || '기타') + '">' + (cat.category || '기타') + '</td>'
           + '<td class="px-4 py-2 text-right">' + fmt(cat.base_revenue) + '원</td>'
           + '<td class="px-4 py-2 text-right text-gray-500">' + fmt(cat.comp_revenue) + '원</td>'
           + '<td class="px-4 py-2 text-right ' + changeColor + '">' + arrow + ' ' + fmt(Math.abs(cat.change)) + '원 (' + cat.change_rate + '%)</td>'

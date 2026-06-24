@@ -139,21 +139,21 @@ export function bankPage(c: Context<HonoEnv>) {
           <!-- Transactions Table -->
           <div class="ds-card overflow-hidden">
             <div class="overflow-x-auto" style="max-height: calc(100vh - 220px); overflow-y: auto;">
-              <table class="w-full border-collapse ds-table-striped">
+              <table class="w-full border-collapse ds-table ds-table-striped">
                 <thead>
                   <tr class="bg-gray-50 border-b">
-                    <th class="px-2 py-2 text-left text-[10px] font-medium text-gray-500 uppercase" style="width:32px;">
+                    <th class="col-check px-2 py-2 text-center text-[10px] font-medium text-gray-500 uppercase">
                       <input type="checkbox" id="checkAll" onchange="toggleCheckAll(this)">
                     </th>
-                    <th class="px-2 py-2 text-left text-[10px] font-medium text-gray-500 uppercase">날짜</th>
-                    <th class="px-2 py-2 text-left text-[10px] font-medium text-gray-500 uppercase">계좌</th>
-                    <th class="px-2 py-2 text-left text-[10px] font-medium text-gray-500 uppercase">적요</th>
-                    <th class="px-2 py-2 text-right text-[10px] font-medium text-gray-500 uppercase">입금</th>
-                    <th class="px-2 py-2 text-right text-[10px] font-medium text-gray-500 uppercase">출금</th>
-                    <th class="px-2 py-2 text-right text-[10px] font-medium text-gray-500 uppercase">잔액</th>
-                    <th class="px-2 py-2 text-center text-[10px] font-medium text-gray-500 uppercase">상태</th>
-                    <th class="px-2 py-2 text-left text-[10px] font-medium text-gray-500 uppercase">거래처</th>
-                    <th class="px-2 py-2 text-center text-[10px] font-medium text-gray-500 uppercase w-20"></th>
+                    <th class="col-date px-2 py-2 text-left text-[10px] font-medium text-gray-500 uppercase">날짜</th>
+                    <th class="col-tag px-2 py-2 text-left text-[10px] font-medium text-gray-500 uppercase">계좌</th>
+                    <th class="col-name px-2 py-2 text-left text-[10px] font-medium text-gray-500 uppercase">적요</th>
+                    <th class="col-amount px-2 py-2 text-right text-[10px] font-medium text-gray-500 uppercase">입금</th>
+                    <th class="col-amount px-2 py-2 text-right text-[10px] font-medium text-gray-500 uppercase">출금</th>
+                    <th class="col-amount px-2 py-2 text-right text-[10px] font-medium text-gray-500 uppercase">잔액</th>
+                    <th class="col-status px-2 py-2 text-center text-[10px] font-medium text-gray-500 uppercase">상태</th>
+                    <th class="col-flex px-2 py-2 text-left text-[10px] font-medium text-gray-500 uppercase">거래처</th>
+                    <th class="col-action px-2 py-2 text-center text-[10px] font-medium text-gray-500 uppercase"></th>
                   </tr>
                 </thead>
                 <tbody id="txTableBody">
@@ -211,19 +211,19 @@ export function bankPage(c: Context<HonoEnv>) {
           <!-- 미수금 테이블 -->
           <div class="ds-card overflow-hidden">
             <div class="overflow-x-auto" style="max-height: calc(100vh - 320px); overflow-y: auto;">
-              <table class="w-full border-collapse ds-table-striped">
+              <table class="w-full border-collapse ds-table ds-table-striped">
                 <thead>
                   <tr class="bg-gray-50 border-b">
-                    <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">거래처</th>
-                    <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">대표자</th>
-                    <th class="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase">미수금</th>
-                    <th class="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase">예상 입금일</th>
-                    <th class="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase">예상회수율</th>
-                    <th class="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase">예상회수액</th>
-                    <th class="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase">최근 입금일</th>
-                    <th class="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase">총 입금 횟수</th>
-                    <th class="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase">최근 90일 입금</th>
-                    <th class="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase">상태</th>
+                    <th class="col-name px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">거래처</th>
+                    <th class="col-tag px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">대표자</th>
+                    <th class="col-amount px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase">미수금</th>
+                    <th class="col-date px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase">예상 입금일</th>
+                    <th class="col-qty px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase">예상회수율</th>
+                    <th class="col-amount px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase">예상회수액</th>
+                    <th class="col-date px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase">최근 입금일</th>
+                    <th class="col-qty px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase">총 입금 횟수</th>
+                    <th class="col-amount px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase">최근 90일 입금</th>
+                    <th class="col-status px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase">상태</th>
                   </tr>
                 </thead>
                 <tbody id="receivablesTableBody">
@@ -249,14 +249,14 @@ export function bankPage(c: Context<HonoEnv>) {
           </div>
           <div class="ds-card overflow-hidden">
             <div class="overflow-x-auto" style="max-height: calc(100vh - 280px); overflow-y: auto;">
-              <table class="w-full border-collapse ds-table-striped">
+              <table class="w-full border-collapse ds-table ds-table-striped">
                 <thead>
                   <tr class="bg-gray-50 border-b">
-                    <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">입금자명 (키워드)</th>
-                    <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">매칭 거래처</th>
-                    <th class="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase">사용 횟수</th>
-                    <th class="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase">최근 사용</th>
-                    <th class="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase w-32">액션</th>
+                    <th class="col-name px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">입금자명 (키워드)</th>
+                    <th class="col-flex px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">매칭 거래처</th>
+                    <th class="col-qty px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase">사용 횟수</th>
+                    <th class="col-date px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase">최근 사용</th>
+                    <th class="col-action px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase">액션</th>
                   </tr>
                 </thead>
                 <tbody id="rulesTableBody">

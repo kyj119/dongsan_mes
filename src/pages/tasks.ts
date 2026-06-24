@@ -56,17 +56,17 @@ export function tasksPage(c: Context<HonoEnv>) {
 
       <div class="ds-card overflow-hidden">
         <div class="overflow-x-auto" style="max-height: calc(100vh - 360px); overflow-y: auto;">
-          <table class="w-full text-sm ds-table-striped">
+          <table class="w-full text-sm ds-table ds-table-striped">
             <thead class="bg-gray-50">
               <tr>
-                <th class="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">ID</th>
-                <th class="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">타입</th>
-                <th class="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">상태</th>
-                <th class="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">주문/카드</th>
-                <th class="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">재시도</th>
-                <th class="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">에러</th>
-                <th class="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">생성일</th>
-                <th class="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">작업</th>
+                <th class="col-no px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">ID</th>
+                <th class="col-tag px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">타입</th>
+                <th class="col-status px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider">상태</th>
+                <th class="col-code px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">주문/카드</th>
+                <th class="col-qty px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">재시도</th>
+                <th class="col-name px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">에러</th>
+                <th class="col-datetime px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">생성일</th>
+                <th class="col-action px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider">작업</th>
               </tr>
             </thead>
             <tbody id="tasksBody" class="divide-y divide-gray-100">

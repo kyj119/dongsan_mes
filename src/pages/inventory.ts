@@ -138,17 +138,17 @@ export function inventoryPage(c: Context<HonoEnv>) {
                     <i class="fas fa-list text-blue-600 mr-2"></i>재고 현황
                 </h2>
                 <div class="overflow-x-auto" style="max-height: calc(100vh - 280px); overflow-y: auto;">
-                    <table class="w-full text-sm ds-table-striped">
+                    <table class="w-full text-sm ds-table ds-table-striped">
                         <thead class="bg-gray-50">
                             <tr>
-                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">품목명</th>
-                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase" style="width:100px">카테고리</th>
-                                <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase" style="width:80px">현재고</th>
-                                <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase" style="width:80px">안전재고</th>
-                                <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase" style="width:80px">재주문점</th>
-                                <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase" style="width:95px">단가</th>
-                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase" style="width:90px">보관위치</th>
-                                <th class="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase" style="width:70px">액션</th>
+                                <th class="col-name px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">품목명</th>
+                                <th class="col-tag px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">카테고리</th>
+                                <th class="col-qty px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">현재고</th>
+                                <th class="col-qty px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">안전재고</th>
+                                <th class="col-qty px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">재주문점</th>
+                                <th class="col-amount px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">단가</th>
+                                <th class="col-tag px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">보관위치</th>
+                                <th class="col-action px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">액션</th>
                             </tr>
                         </thead>
                         <tbody id="inventoryTableBody" class="bg-white divide-y divide-gray-100">
@@ -221,13 +221,13 @@ export function inventoryPage(c: Context<HonoEnv>) {
                   <table id="countTable" class="ds-table ds-table-compact ds-table-striped">
                     <thead>
                       <tr>
-                        <th style="min-width:120px;">번호</th>
-                        <th style="text-align:center;">날짜</th>
-                        <th style="text-align:center;">유형</th>
-                        <th style="text-align:center;">상태</th>
-                        <th style="text-align:center;">항목수</th>
-                        <th style="text-align:center;">제출자</th>
-                        <th style="text-align:center;width:80px;">작업</th>
+                        <th class="col-name">번호</th>
+                        <th class="col-date" style="text-align:center;">날짜</th>
+                        <th class="col-tag" style="text-align:center;">유형</th>
+                        <th class="col-status" style="text-align:center;">상태</th>
+                        <th class="col-qty" style="text-align:center;">항목수</th>
+                        <th class="col-tag" style="text-align:center;">제출자</th>
+                        <th class="col-action" style="text-align:center;">작업</th>
                       </tr>
                     </thead>
                     <tbody id="countBody">
@@ -290,15 +290,15 @@ export function inventoryPage(c: Context<HonoEnv>) {
                         </button>
                     </div>
                     <div class="overflow-x-auto" style="max-height: calc(100vh - 280px); overflow-y: auto;">
-                        <table class="w-full text-sm ds-table-striped">
+                        <table class="w-full text-sm ds-table ds-table-striped">
                             <thead class="bg-gray-50">
                                 <tr>
-                                    <th class="px-4 py-2 text-left text-xs font-medium text-gray-500">일시</th>
-                                    <th class="px-4 py-2 text-left text-xs font-medium text-gray-500">유형</th>
-                                    <th class="px-4 py-2 text-right text-xs font-medium text-gray-500">수량</th>
-                                    <th class="px-4 py-2 text-right text-xs font-medium text-gray-500">잔액</th>
-                                    <th class="px-4 py-2 text-left text-xs font-medium text-gray-500">사유</th>
-                                    <th class="px-4 py-2 text-left text-xs font-medium text-gray-500">처리자</th>
+                                    <th class="col-datetime px-4 py-2 text-left text-xs font-medium text-gray-500">일시</th>
+                                    <th class="col-tag px-4 py-2 text-left text-xs font-medium text-gray-500">유형</th>
+                                    <th class="col-qty px-4 py-2 text-right text-xs font-medium text-gray-500">수량</th>
+                                    <th class="col-qty px-4 py-2 text-right text-xs font-medium text-gray-500">잔액</th>
+                                    <th class="col-name px-4 py-2 text-left text-xs font-medium text-gray-500">사유</th>
+                                    <th class="col-tag px-4 py-2 text-left text-xs font-medium text-gray-500">처리자</th>
                                 </tr>
                             </thead>
                             <tbody id="transactionTableBody" class="bg-white divide-y divide-gray-100"></tbody>

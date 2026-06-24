@@ -41,20 +41,20 @@ function renderVatSummary(d) {
   // 매출 목록
   var salesHtml = '';
   if (d.sales.list && d.sales.list.length > 0) {
-    salesHtml = '<table class="w-full text-xs"><thead><tr class="bg-gray-50">'
-      + '<th class="px-2 py-1.5 text-left text-gray-600">발행일</th>'
-      + '<th class="px-2 py-1.5 text-left text-gray-600">계산서번호</th>'
-      + '<th class="px-2 py-1.5 text-left text-gray-600">거래처</th>'
-      + '<th class="px-2 py-1.5 text-left text-gray-600">사업자번호</th>'
-      + '<th class="px-2 py-1.5 text-right text-gray-600">공급가액</th>'
-      + '<th class="px-2 py-1.5 text-right text-gray-600">세액</th>'
-      + '<th class="px-2 py-1.5 text-right text-gray-600">합계</th>'
+    salesHtml = '<table class="w-full text-xs ds-table"><thead><tr class="bg-gray-50">'
+      + '<th class="col-date px-2 py-1.5 text-left text-gray-600">발행일</th>'
+      + '<th class="col-code px-2 py-1.5 text-left text-gray-600">계산서번호</th>'
+      + '<th class="col-name px-2 py-1.5 text-left text-gray-600">거래처</th>'
+      + '<th class="col-code px-2 py-1.5 text-left text-gray-600">사업자번호</th>'
+      + '<th class="col-amount px-2 py-1.5 text-right text-gray-600">공급가액</th>'
+      + '<th class="col-amount px-2 py-1.5 text-right text-gray-600">세액</th>'
+      + '<th class="col-amount px-2 py-1.5 text-right text-gray-600">합계</th>'
       + '</tr></thead><tbody>';
     d.sales.list.forEach(function(it) {
       salesHtml += '<tr class="border-b border-gray-100 hover:bg-blue-50/30">'
         + '<td class="px-2 py-1">' + (it.issue_date || '') + '</td>'
         + '<td class="px-2 py-1">' + (it.invoice_number || '') + '</td>'
-        + '<td class="px-2 py-1">' + (it.buyer_name || '') + '</td>'
+        + '<td class="px-2 py-1" title="' + escapeHtml(it.buyer_name || '') + '">' + (it.buyer_name || '') + '</td>'
         + '<td class="px-2 py-1 text-gray-500">' + (it.buyer_brn || '') + '</td>'
         + '<td class="px-2 py-1 text-right" style="font-variant-numeric:tabular-nums;">' + fmt(it.supply_amount) + '</td>'
         + '<td class="px-2 py-1 text-right" style="font-variant-numeric:tabular-nums;">' + fmt(it.tax_amount) + '</td>'
@@ -71,20 +71,20 @@ function renderVatSummary(d) {
   // 매입 목록
   var purHtml = '';
   if (d.purchase.list && d.purchase.list.length > 0) {
-    purHtml = '<table class="w-full text-xs"><thead><tr class="bg-gray-50">'
-      + '<th class="px-2 py-1.5 text-left text-gray-600">발행일</th>'
-      + '<th class="px-2 py-1.5 text-left text-gray-600">승인번호</th>'
-      + '<th class="px-2 py-1.5 text-left text-gray-600">공급자</th>'
-      + '<th class="px-2 py-1.5 text-left text-gray-600">사업자번호</th>'
-      + '<th class="px-2 py-1.5 text-right text-gray-600">공급가액</th>'
-      + '<th class="px-2 py-1.5 text-right text-gray-600">세액</th>'
-      + '<th class="px-2 py-1.5 text-right text-gray-600">합계</th>'
+    purHtml = '<table class="w-full text-xs ds-table"><thead><tr class="bg-gray-50">'
+      + '<th class="col-date px-2 py-1.5 text-left text-gray-600">발행일</th>'
+      + '<th class="col-code px-2 py-1.5 text-left text-gray-600">승인번호</th>'
+      + '<th class="col-name px-2 py-1.5 text-left text-gray-600">공급자</th>'
+      + '<th class="col-code px-2 py-1.5 text-left text-gray-600">사업자번호</th>'
+      + '<th class="col-amount px-2 py-1.5 text-right text-gray-600">공급가액</th>'
+      + '<th class="col-amount px-2 py-1.5 text-right text-gray-600">세액</th>'
+      + '<th class="col-amount px-2 py-1.5 text-right text-gray-600">합계</th>'
       + '</tr></thead><tbody>';
     d.purchase.list.forEach(function(it) {
       purHtml += '<tr class="border-b border-gray-100 hover:bg-blue-50/30">'
         + '<td class="px-2 py-1">' + (it.issue_date || '') + '</td>'
         + '<td class="px-2 py-1 text-gray-500">' + (it.nts_confirm_number || '') + '</td>'
-        + '<td class="px-2 py-1">' + (it.supplier_name || '') + '</td>'
+        + '<td class="px-2 py-1" title="' + escapeHtml(it.supplier_name || '') + '">' + (it.supplier_name || '') + '</td>'
         + '<td class="px-2 py-1 text-gray-500">' + (it.supplier_brn || '') + '</td>'
         + '<td class="px-2 py-1 text-right" style="font-variant-numeric:tabular-nums;">' + fmt(it.supply_amount) + '</td>'
         + '<td class="px-2 py-1 text-right" style="font-variant-numeric:tabular-nums;">' + fmt(it.tax_amount) + '</td>'
@@ -125,16 +125,16 @@ async function loadVatHistory() {
       elHistEmpty.innerHTML = '<p class="text-sm text-gray-400 text-center py-6">신고 이력이 없습니다.</p>';
       return;
     }
-    var html = '<table class="w-full text-xs"><thead><tr class="bg-gray-50">'
-      + '<th class="px-2 py-1.5 text-left text-gray-600">기수</th>'
-      + '<th class="px-2 py-1.5 text-left text-gray-600">기간</th>'
-      + '<th class="px-2 py-1.5 text-right text-gray-600">매출 공급가</th>'
-      + '<th class="px-2 py-1.5 text-right text-gray-600">매출 세액</th>'
-      + '<th class="px-2 py-1.5 text-right text-gray-600">매입 공급가</th>'
-      + '<th class="px-2 py-1.5 text-right text-gray-600">매입 세액</th>'
-      + '<th class="px-2 py-1.5 text-right text-gray-600">납부세액</th>'
-      + '<th class="px-2 py-1.5 text-center text-gray-600">상태</th>'
-      + '<th class="px-2 py-1.5 text-center text-gray-600">조치</th>'
+    var html = '<table class="w-full text-xs ds-table"><thead><tr class="bg-gray-50">'
+      + '<th class="col-tag px-2 py-1.5 text-left text-gray-600">기수</th>'
+      + '<th class="col-name px-2 py-1.5 text-left text-gray-600">기간</th>'
+      + '<th class="col-amount px-2 py-1.5 text-right text-gray-600">매출 공급가</th>'
+      + '<th class="col-amount px-2 py-1.5 text-right text-gray-600">매출 세액</th>'
+      + '<th class="col-amount px-2 py-1.5 text-right text-gray-600">매입 공급가</th>'
+      + '<th class="col-amount px-2 py-1.5 text-right text-gray-600">매입 세액</th>'
+      + '<th class="col-amount px-2 py-1.5 text-right text-gray-600">납부세액</th>'
+      + '<th class="col-status px-2 py-1.5 text-center text-gray-600">상태</th>'
+      + '<th class="col-action px-2 py-1.5 text-center text-gray-600">조치</th>'
       + '</tr></thead><tbody>';
     list.forEach(function(r) {
       var statusBadge = r.status === 'SUBMITTED'

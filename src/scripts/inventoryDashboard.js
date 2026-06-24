@@ -82,15 +82,15 @@ function renderDashboard() {
       html += '</div>';
 
       // 테이블
-      html += '<div class="overflow-x-auto"><table class="w-full text-sm">';
+      html += '<div class="overflow-x-auto"><table class="w-full text-sm ds-table">';
       html += '<thead><tr class="text-xs text-gray-500 border-b">'
-        + '<th class="px-3 py-2 text-left">코드</th>'
-        + '<th class="px-3 py-2 text-left">품목명</th>'
-        + '<th class="px-3 py-2 text-left">분류</th>'
-        + '<th class="px-3 py-2 text-right">현재고</th>'
-        + '<th class="px-3 py-2 text-right">안전재고</th>'
-        + '<th class="px-3 py-2 text-right">부족량</th>'
-        + '<th class="px-3 py-2 text-center">상태</th>'
+        + '<th class="col-code px-3 py-2 text-left">코드</th>'
+        + '<th class="col-name px-3 py-2 text-left">품목명</th>'
+        + '<th class="col-flex px-3 py-2 text-left">분류</th>'
+        + '<th class="col-qty px-3 py-2 text-right">현재고</th>'
+        + '<th class="col-qty px-3 py-2 text-right">안전재고</th>'
+        + '<th class="col-qty px-3 py-2 text-right">부족량</th>'
+        + '<th class="col-status px-3 py-2 text-center">상태</th>'
         + '</tr></thead><tbody>';
 
       g.items.forEach(function(item) {
@@ -107,9 +107,9 @@ function renderDashboard() {
         var rowClass = item.stock_status === 'CRITICAL' ? 'bg-red-50/50' : (item.stock_status === 'LOW' ? 'bg-amber-50/30' : '');
 
         html += '<tr class="border-b border-gray-50 hover:bg-gray-50 ' + rowClass + '">'
-          + '<td class="px-3 py-2 font-mono text-xs text-blue-600">' + escHtml(item.item_code) + '</td>'
-          + '<td class="px-3 py-2 font-medium text-gray-900">' + escHtml(item.item_name) + '</td>'
-          + '<td class="px-3 py-2 text-xs text-gray-500">' + escHtml(item.category || '') + (item.sub_category ? ' > ' + escHtml(item.sub_category) : '') + '</td>'
+          + '<td class="px-3 py-2 font-mono text-xs text-blue-600" title="' + escHtml(item.item_code) + '">' + escHtml(item.item_code) + '</td>'
+          + '<td class="px-3 py-2 font-medium text-gray-900" title="' + escHtml(item.item_name) + '">' + escHtml(item.item_name) + '</td>'
+          + '<td class="px-3 py-2 text-xs text-gray-500" title="' + escHtml(item.category || '') + (item.sub_category ? ' > ' + escHtml(item.sub_category) : '') + '">' + escHtml(item.category || '') + (item.sub_category ? ' > ' + escHtml(item.sub_category) : '') + '</td>'
           + '<td class="px-3 py-2 text-right tabular-nums font-medium ' + (item.current_stock <= 0 ? 'text-red-600' : 'text-gray-900') + '">'
           + (item.current_stock || 0).toLocaleString() + ' ' + escHtml(item.unit || '') + '</td>'
           + '<td class="px-3 py-2 text-right tabular-nums text-gray-500">' + (item.safe_stock || '-') + '</td>'

@@ -95,7 +95,7 @@
       if (noMsg) noMsg.classList.add('hidden');
       tbody.innerHTML = items.map(function (fe) {
         return '<tr class="border-b hover:bg-gray-50">'
-          + '<td class="px-3 py-2 font-medium">' + esc(fe.name) + '</td>'
+          + '<td class="px-3 py-2 font-medium" title="' + esc(fe.name) + '">' + esc(fe.name) + '</td>'
           + '<td class="px-3 py-2"><span class="px-2 py-0.5 rounded-full text-xs bg-blue-50 text-blue-700">' + (CATEGORY_MAP[fe.category] || fe.category) + '</span></td>'
           + '<td class="px-3 py-2 text-right font-medium">' + fmt(fe.amount) + '원</td>'
           + '<td class="px-3 py-2 text-center">' + (FREQUENCY_MAP[fe.frequency] || fe.frequency) + '</td>'
@@ -194,8 +194,8 @@
       tbody.innerHTML = items.map(function (l) {
         var progress = l.original_amount > 0 ? Math.round((1 - l.current_balance / l.original_amount) * 100) : 0;
         return '<tr class="border-b hover:bg-gray-50 cursor-pointer" onclick="selectLoan(' + l.id + ')">'
-          + '<td class="px-3 py-2 font-medium">' + esc(l.creditor) + '</td>'
-          + '<td class="px-3 py-2 text-gray-500">' + esc(l.loan_number || '-') + '</td>'
+          + '<td class="px-3 py-2 font-medium" title="' + esc(l.creditor) + '">' + esc(l.creditor) + '</td>'
+          + '<td class="px-3 py-2 text-gray-500" title="' + esc(l.loan_number || '') + '">' + esc(l.loan_number || '-') + '</td>'
           + '<td class="px-3 py-2 text-right">' + fmt(l.original_amount) + '</td>'
           + '<td class="px-3 py-2 text-right font-medium">' + fmt(l.current_balance)
           + '<div class="w-full h-1.5 bg-gray-200 rounded-full mt-1"><div class="h-full bg-purple-500 rounded-full" style="width:' + progress + '%"></div></div></td>'

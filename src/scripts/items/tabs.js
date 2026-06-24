@@ -82,18 +82,18 @@ function loadCatTable(code) {
         // item_group 보유 품목이 과반이면 묶음 표시 (원자재·태극기 등). 그 외(개별 제품)는 평면.
         var grouped = items.filter(function(i){ return i.item_group && String(i.item_group).trim(); });
         if (grouped.length >= items.length / 2) { listEl.innerHTML = buildGroupedHtml(items, !!search); return; }
-        var html = '<div class="overflow-x-auto"><table class="w-full text-sm ds-table-striped"><thead><tr class="text-left text-gray-500 text-xs">'
-            + '<th class="p-2 cursor-pointer select-none" onclick="sortCat(\'item_code\')">코드' + sortIcon('item_code') + '</th>'
-            + '<th class="p-2 cursor-pointer select-none" onclick="sortCat(\'item_name\')">품목명' + sortIcon('item_name') + '</th>'
-            + (isMat ? '<th class="p-2 text-right cursor-pointer select-none" onclick="sortCat(\'width_mm\')">폭(mm)' + sortIcon('width_mm') + '</th>' : '')
-            + '<th class="p-2 cursor-pointer select-none" onclick="sortCat(\'item_type\')">타입' + sortIcon('item_type') + '</th>'
-            + '<th class="p-2 text-right cursor-pointer select-none" onclick="sortCat(\'base_price\')">단가' + sortIcon('base_price') + '</th>'
-            + '<th class="p-2">상태</th><th class="p-2">작업</th></tr></thead><tbody>';
+        var html = '<div class="overflow-x-auto"><table class="w-full text-sm ds-table ds-table-striped"><thead><tr class="text-left text-gray-500 text-xs">'
+            + '<th class="col-code p-2 cursor-pointer select-none" onclick="sortCat(\'item_code\')">코드' + sortIcon('item_code') + '</th>'
+            + '<th class="col-name p-2 cursor-pointer select-none" onclick="sortCat(\'item_name\')">품목명' + sortIcon('item_name') + '</th>'
+            + (isMat ? '<th class="col-qty p-2 text-right cursor-pointer select-none" onclick="sortCat(\'width_mm\')">폭(mm)' + sortIcon('width_mm') + '</th>' : '')
+            + '<th class="col-tag p-2 cursor-pointer select-none" onclick="sortCat(\'item_type\')">타입' + sortIcon('item_type') + '</th>'
+            + '<th class="col-amount p-2 text-right cursor-pointer select-none" onclick="sortCat(\'base_price\')">단가' + sortIcon('base_price') + '</th>'
+            + '<th class="col-status p-2">상태</th><th class="col-action p-2">작업</th></tr></thead><tbody>';
         items.forEach(function(it) {
             var en = (it.item_name || '').replace(/['"]/g, '');
             html += '<tr class="border-t hover:bg-gray-50">'
                 + '<td class="p-2 font-mono text-blue-600 text-xs">' + escapeHtml(it.item_code || '') + '</td>'
-                + '<td class="p-2 font-medium">' + escapeHtml(it.item_name || '') + '</td>'
+                + '<td class="p-2 font-medium" title="' + escapeHtml(it.item_name || '') + '">' + escapeHtml(it.item_name || '') + '</td>'
                 + (isMat ? '<td class="p-2 text-right tabular-nums text-gray-500 text-xs">' + (it.width_mm || '') + '</td>' : '')
                 + '<td class="p-2">' + getTypeBadge(it) + '</td>'
                 + '<td class="p-2 text-right tabular-nums">' + (it.base_price || 0).toLocaleString() + '</td>'
@@ -137,7 +137,7 @@ function buildGroupedHtml(items, expand) {
             var spec = it.specification || (it.width_mm ? (it.width_mm / 10) + 'cm' : '-');
             rows += '<tr class="border-t hover:bg-gray-50">'
                 + '<td class="p-2 font-mono text-blue-600 text-xs">' + escapeHtml(it.item_code || '') + '</td>'
-                + '<td class="p-2">' + escapeHtml(spec) + '</td>'
+                + '<td class="p-2" title="' + escapeHtml(spec) + '">' + escapeHtml(spec) + '</td>'
                 + '<td class="p-2">' + getTypeBadge(it) + '</td>'
                 + '<td class="p-2 text-right tabular-nums">' + (it.base_price || 0).toLocaleString() + '</td>'
                 + '<td class="p-2">' + (it.is_active !== 0 ? '<span class="text-green-600 text-xs">활성</span>' : '<span class="text-gray-400 text-xs">비활성</span>') + '</td>'
@@ -148,8 +148,8 @@ function buildGroupedHtml(items, expand) {
             + '<div class="px-3 py-2 bg-gray-50 flex items-center justify-between cursor-pointer hover:bg-gray-100 select-none" onclick="toggleMatGroup(this)">'
             + '<div class="font-medium text-sm"><i class="fas ' + chevron + ' text-gray-400 mr-2 text-xs"></i>' + escapeHtml(g) + '</div>'
             + '<span class="text-xs text-gray-400">' + sub + '</span></div>'
-            + '<div class="mat-grp-body' + bodyHidden + '"><table class="w-full text-sm ds-table-striped"><thead><tr class="text-left text-gray-500 text-xs">'
-            + '<th class="p-2">코드</th><th class="p-2">규격</th><th class="p-2">타입</th><th class="p-2 text-right">단가</th><th class="p-2">상태</th><th class="p-2">작업</th>'
+            + '<div class="mat-grp-body' + bodyHidden + '"><table class="w-full text-sm ds-table ds-table-striped"><thead><tr class="text-left text-gray-500 text-xs">'
+            + '<th class="col-code p-2">코드</th><th class="col-name p-2">규격</th><th class="col-tag p-2">타입</th><th class="col-amount p-2 text-right">단가</th><th class="col-status p-2">상태</th><th class="col-action p-2">작업</th>'
             + '</tr></thead><tbody>' + rows + '</tbody></table></div></div>';
     });
     html += '</div>';

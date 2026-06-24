@@ -266,16 +266,16 @@ export function hrDetailPage(c: Context<HonoEnv>) {
             </div>
           </div>
           <div class="overflow-x-auto">
-            <table class="w-full text-sm ds-table-striped">
+            <table class="w-full text-sm ds-table ds-table-striped">
               <thead class="bg-gray-50 text-xs text-gray-600 uppercase tracking-wider">
                 <tr>
-                  <th class="px-4 py-2 text-left">계약유형</th>
-                  <th class="px-4 py-2 text-left">계약기간</th>
-                  <th class="px-4 py-2 text-right">시급</th>
-                  <th class="px-4 py-2 text-right">월급여</th>
-                  <th class="px-4 py-2 text-center">상태</th>
-                  <th class="px-4 py-2 text-center">작성일</th>
-                  <th class="px-4 py-2 text-center">상세</th>
+                  <th class="col-tag px-4 py-2 text-left">계약유형</th>
+                  <th class="col-name px-4 py-2 text-left">계약기간</th>
+                  <th class="col-amount px-4 py-2 text-right">시급</th>
+                  <th class="col-amount px-4 py-2 text-right">월급여</th>
+                  <th class="col-status px-4 py-2 text-center">상태</th>
+                  <th class="col-date px-4 py-2 text-center">작성일</th>
+                  <th class="col-action px-4 py-2 text-center">상세</th>
                 </tr>
               </thead>
               <tbody id="hrdContractsBody">
@@ -363,17 +363,17 @@ export function hrDetailPage(c: Context<HonoEnv>) {
             </div>
           </div>
           <div class="overflow-x-auto">
-            <table class="w-full text-sm ds-table-striped">
+            <table class="w-full text-sm ds-table ds-table-striped">
               <thead class="bg-gray-50 text-xs text-gray-600 uppercase tracking-wider">
                 <tr>
-                  <th class="px-4 py-2 text-left">귀속월</th>
-                  <th class="px-4 py-2 text-right">기본급</th>
-                  <th class="px-4 py-2 text-right">연장(h)</th>
-                  <th class="px-4 py-2 text-right">연장급여</th>
-                  <th class="px-4 py-2 text-right">총급여</th>
-                  <th class="px-4 py-2 text-right">공제</th>
-                  <th class="px-4 py-2 text-right">실지급</th>
-                  <th class="px-4 py-2 text-center">상태</th>
+                  <th class="col-name px-4 py-2 text-left">귀속월</th>
+                  <th class="col-amount px-4 py-2 text-right">기본급</th>
+                  <th class="col-qty px-4 py-2 text-right">연장(h)</th>
+                  <th class="col-amount px-4 py-2 text-right">연장급여</th>
+                  <th class="col-amount px-4 py-2 text-right">총급여</th>
+                  <th class="col-amount px-4 py-2 text-right">공제</th>
+                  <th class="col-amount px-4 py-2 text-right">실지급</th>
+                  <th class="col-status px-4 py-2 text-center">상태</th>
                 </tr>
               </thead>
               <tbody id="hrdPayBody">

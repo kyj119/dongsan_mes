@@ -134,19 +134,19 @@ function renderEquipmentTable(data) {
   var totalSqm = 0;
   data.forEach(function(e) { totalSqm += (e.sqm || 0); });
 
-  var html = '<table class="w-full text-sm">';
+  var html = '<table class="w-full text-sm ds-table">';
   html += '<thead class="bg-gray-50"><tr>';
-  html += '<th class="px-3 py-2 text-left text-xs font-semibold text-gray-600">장비</th>';
-  html += '<th class="px-3 py-2 text-right text-xs font-semibold text-gray-600">건수</th>';
-  html += '<th class="px-3 py-2 text-right text-xs font-semibold text-gray-600">면적(㎡)</th>';
-  html += '<th class="px-3 py-2 text-right text-xs font-semibold text-gray-600">비율</th>';
-  html += '<th class="px-3 py-2 text-left text-xs font-semibold text-gray-600">OK/에러</th>';
+  html += '<th class="col-name px-3 py-2 text-left text-xs font-semibold text-gray-600">장비</th>';
+  html += '<th class="col-qty px-3 py-2 text-right text-xs font-semibold text-gray-600">건수</th>';
+  html += '<th class="col-amount px-3 py-2 text-right text-xs font-semibold text-gray-600">면적(㎡)</th>';
+  html += '<th class="col-flex px-3 py-2 text-right text-xs font-semibold text-gray-600">비율</th>';
+  html += '<th class="col-tag px-3 py-2 text-left text-xs font-semibold text-gray-600">OK/에러</th>';
   html += '</tr></thead><tbody class="divide-y">';
 
   data.forEach(function(e) {
     var pct = totalSqm > 0 ? Math.round((e.sqm || 0) / totalSqm * 100) : 0;
     html += '<tr class="hover:bg-gray-50">';
-    html += '<td class="px-3 py-2 font-medium">' + e.equipment_name + '</td>';
+    html += '<td class="px-3 py-2 font-medium" title="' + escapeHtml(e.equipment_name) + '">' + e.equipment_name + '</td>';
     html += '<td class="px-3 py-2 text-right">' + e.total + '</td>';
     html += '<td class="px-3 py-2 text-right font-medium">' + (e.sqm || 0).toLocaleString(undefined, {maximumFractionDigits:1}) + '</td>';
     html += '<td class="px-3 py-2 text-right">';
@@ -209,13 +209,13 @@ function renderOverdueTable(data) {
     return;
   }
 
-  var html = '<table class="w-full text-sm">';
+  var html = '<table class="w-full text-sm ds-table">';
   html += '<thead class="bg-gray-50"><tr>';
-  html += '<th class="px-3 py-2 text-left text-xs font-semibold text-gray-600">주문번호</th>';
-  html += '<th class="px-3 py-2 text-left text-xs font-semibold text-gray-600">거래처</th>';
-  html += '<th class="px-3 py-2 text-left text-xs font-semibold text-gray-600">마감일</th>';
-  html += '<th class="px-3 py-2 text-left text-xs font-semibold text-gray-600">상태</th>';
-  html += '<th class="px-3 py-2 text-right text-xs font-semibold text-gray-600">품목 수</th>';
+  html += '<th class="col-code px-3 py-2 text-left text-xs font-semibold text-gray-600">주문번호</th>';
+  html += '<th class="col-name px-3 py-2 text-left text-xs font-semibold text-gray-600">거래처</th>';
+  html += '<th class="col-date px-3 py-2 text-left text-xs font-semibold text-gray-600">마감일</th>';
+  html += '<th class="col-status px-3 py-2 text-left text-xs font-semibold text-gray-600">상태</th>';
+  html += '<th class="col-qty px-3 py-2 text-right text-xs font-semibold text-gray-600">품목 수</th>';
   html += '</tr></thead><tbody class="divide-y">';
 
   data.forEach(function(o) {
@@ -225,7 +225,7 @@ function renderOverdueTable(data) {
 
     html += '<tr class="hover:bg-gray-50">';
     html += '<td class="px-3 py-2"><a href="/orders?search=' + o.order_number + '" class="text-blue-600 hover:underline">' + o.order_number + '</a></td>';
-    html += '<td class="px-3 py-2">' + (o.client_name || '-') + '</td>';
+    html += '<td class="px-3 py-2" title="' + escapeHtml(o.client_name || '-') + '">' + (o.client_name || '-') + '</td>';
     html += '<td class="px-3 py-2 ' + statusColor + '">' + o.due_date + (isOverdue ? ' (지연)' : '') + '</td>';
     html += '<td class="px-3 py-2">' + o.status + '</td>';
     html += '<td class="px-3 py-2 text-right">' + o.item_count + '</td>';
@@ -638,14 +638,14 @@ async function loadPrintDuration() {
       Object.keys(printers).forEach(function(pn) {
         var rows = printers[pn];
         psHtml += '<div class="mb-4"><div class="text-xs font-bold text-gray-600 mb-1"><i class="fas fa-print text-blue-400 mr-1"></i>' + escapeHtml(pn) + '</div>'
-          + '<table class="w-full text-[11px]"><thead><tr class="bg-gray-50 text-gray-500">'
-          + '<th class="px-2 py-1 text-left">면적 구간</th>'
-          + '<th class="px-2 py-1 text-right">건수</th>'
-          + '<th class="px-2 py-1 text-right">평균면적</th>'
-          + '<th class="px-2 py-1 text-right">평균시간</th>'
-          + '<th class="px-2 py-1 text-right">최소</th>'
-          + '<th class="px-2 py-1 text-right">최대</th>'
-          + '<th class="px-2 py-1 text-right">속도(㎡/h)</th>'
+          + '<table class="w-full text-[11px] ds-table"><thead><tr class="bg-gray-50 text-gray-500">'
+          + '<th class="col-name px-2 py-1 text-left">면적 구간</th>'
+          + '<th class="col-qty px-2 py-1 text-right">건수</th>'
+          + '<th class="col-amount px-2 py-1 text-right">평균면적</th>'
+          + '<th class="col-qty px-2 py-1 text-right">평균시간</th>'
+          + '<th class="col-qty px-2 py-1 text-right">최소</th>'
+          + '<th class="col-qty px-2 py-1 text-right">최대</th>'
+          + '<th class="col-amount px-2 py-1 text-right">속도(㎡/h)</th>'
           + '</tr></thead><tbody>';
         rows.forEach(function(r) {
           var speedColor = (r.avg_sqm_per_hour || 0) >= 5 ? 'text-green-600' : (r.avg_sqm_per_hour || 0) >= 2 ? 'text-blue-600' : 'text-orange-600';
@@ -682,12 +682,12 @@ async function loadCardDwellTime() {
     if (statusData.length === 0) {
       sHtml = '<div class="text-center text-gray-400 text-sm py-4">데이터 없음</div>';
     } else {
-      sHtml = '<table class="w-full text-sm"><thead class="bg-gray-50"><tr>'
-        + '<th class="px-3 py-2 text-left">상태</th>'
-        + '<th class="px-3 py-2 text-right">건수</th>'
-        + '<th class="px-3 py-2 text-right">평균</th>'
-        + '<th class="px-3 py-2 text-right">최소</th>'
-        + '<th class="px-3 py-2 text-right">최대</th>'
+      sHtml = '<table class="w-full text-sm ds-table"><thead class="bg-gray-50"><tr>'
+        + '<th class="col-name px-3 py-2 text-left">상태</th>'
+        + '<th class="col-qty px-3 py-2 text-right">건수</th>'
+        + '<th class="col-amount px-3 py-2 text-right">평균</th>'
+        + '<th class="col-qty px-3 py-2 text-right">최소</th>'
+        + '<th class="col-qty px-3 py-2 text-right">최대</th>'
         + '</tr></thead><tbody>';
       statusData.forEach(function(s) {
         var label = statusLabels[s.status] || s.status;

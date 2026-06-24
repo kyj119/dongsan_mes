@@ -224,9 +224,9 @@ window.showPriceHistory = function(targetType, targetId) {
             var title = history[0].target_name || (targetType + ' #' + targetId);
             document.getElementById('priceHistoryTitle').textContent = title + ' 단가 이력';
 
-            var html = '<table class="w-full text-sm"><thead><tr class="text-left text-gray-500 text-xs">'
-                + '<th class="pb-2">변경일</th><th class="pb-2 text-right">이전 단가</th>'
-                + '<th class="pb-2 text-right">변경 단가</th><th class="pb-2">변경자</th></tr></thead><tbody>';
+            var html = '<table class="w-full text-sm ds-table"><thead><tr class="text-left text-gray-500 text-xs">'
+                + '<th class="col-date pb-2">변경일</th><th class="col-amount pb-2 text-right">이전 단가</th>'
+                + '<th class="col-amount pb-2 text-right">변경 단가</th><th class="col-name pb-2">변경자</th></tr></thead><tbody>';
             history.forEach(function(h) {
                 var date = h.changed_at ? h.changed_at.substring(0, 10) : '';
                 var diff = (h.new_price || 0) - (h.old_price || 0);
@@ -237,7 +237,7 @@ window.showPriceHistory = function(targetType, targetId) {
                     + '<td class="py-1.5 text-right tabular-nums">' + (h.old_price || 0).toLocaleString() + '</td>'
                     + '<td class="py-1.5 text-right tabular-nums font-medium">' + (h.new_price || 0).toLocaleString()
                     + ' <span class="text-xs ' + diffClass + '">(' + diffSign + diff.toLocaleString() + ')</span></td>'
-                    + '<td class="py-1.5 text-gray-500 text-xs">' + (h.changed_by_name || '') + '</td>'
+                    + '<td class="py-1.5 text-gray-500 text-xs" title="' + escapeHtml(h.changed_by_name || '') + '">' + (h.changed_by_name || '') + '</td>'
                     + '</tr>';
             });
             html += '</tbody></table>';

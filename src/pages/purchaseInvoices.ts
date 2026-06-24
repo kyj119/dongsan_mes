@@ -23,8 +23,8 @@ export function purchaseInvoicesPage(c: Context<HonoEnv>) {
         <div class="ds-card overflow-hidden">
           <table class="ds-table w-full">
             <thead><tr>
-              <th>발주번호</th><th>거래처</th><th class="text-center">발주일</th>
-              <th class="text-center">미정 품목</th><th class="text-center">입고수량</th><th class="text-center">처리</th>
+              <th class="col-code">발주번호</th><th class="col-name">거래처</th><th class="col-date text-center">발주일</th>
+              <th class="col-qty text-center">미정 품목</th><th class="col-qty text-center">입고수량</th><th class="col-action text-center">처리</th>
             </tr></thead>
             <tbody id="pendingBody"></tbody>
           </table>
@@ -46,8 +46,8 @@ export function purchaseInvoicesPage(c: Context<HonoEnv>) {
         <div class="ds-card overflow-hidden">
           <table class="ds-table w-full">
             <thead><tr>
-              <th>인보이스번호</th><th>거래처</th><th>발주</th><th class="text-center">일자</th>
-              <th class="text-right">금액</th><th class="text-center">매칭</th><th class="text-center">지급</th>
+              <th class="col-code">인보이스번호</th><th class="col-name">거래처</th><th class="col-code">발주</th><th class="col-date text-center">일자</th>
+              <th class="col-amount text-right">금액</th><th class="col-status text-center">매칭</th><th class="col-status text-center">지급</th>
             </tr></thead>
             <tbody id="invoicesBody"></tbody>
           </table>

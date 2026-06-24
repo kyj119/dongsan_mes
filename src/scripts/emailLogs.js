@@ -53,8 +53,8 @@
             return '<tr class="border-b hover:bg-gray-50">' +
                 '<td class="px-4 py-3 text-gray-500 text-xs">' + dt + '</td>' +
                 '<td class="px-4 py-3"><span class="px-2 py-1 bg-blue-50 text-blue-700 rounded text-xs">' + templateLabel + '</span></td>' +
-                '<td class="px-4 py-3">' + (item.recipient_name ? esc(item.recipient_name) + '<br>' : '') + '<span class="text-gray-500 text-xs">' + esc(item.recipient_email) + '</span></td>' +
-                '<td class="px-4 py-3 max-w-xs truncate">' + esc(item.subject) + '</td>' +
+                '<td class="px-4 py-3" title="' + esc((item.recipient_name ? item.recipient_name + ' ' : '') + (item.recipient_email || '')) + '">' + (item.recipient_name ? esc(item.recipient_name) + '<br>' : '') + '<span class="text-gray-500 text-xs">' + esc(item.recipient_email) + '</span></td>' +
+                '<td class="px-4 py-3 truncate" title="' + esc(item.subject || '') + '">' + esc(item.subject) + '</td>' +
                 '<td class="px-4 py-3 text-center">' + statusBadge + '</td>' +
                 '<td class="px-4 py-3 text-gray-500 text-xs">' + esc(item.sent_by_name || '-') + '</td>' +
             '</tr>';

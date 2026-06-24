@@ -33,7 +33,7 @@
       tb.innerHTML = rows.map(function(r) {
         return '<tr class="border-t hover:bg-gray-50">'
           + '<td class="px-4 py-3 text-blue-700 font-medium">' + escapeHtml(r.po_number || '-') + '</td>'
-          + '<td class="px-4 py-3">' + escapeHtml(r.supplier_name || '-') + '</td>'
+          + '<td class="px-4 py-3" title="' + escapeHtml(r.supplier_name || '') + '">' + escapeHtml(r.supplier_name || '-') + '</td>'
           + '<td class="px-4 py-3 text-center">' + (r.order_date ? r.order_date.substring(0, 10) : '-') + '</td>'
           + '<td class="px-4 py-3 text-center">' + (r.pending_count || 0) + '</td>'
           + '<td class="px-4 py-3 text-center">' + fmt(r.pending_qty) + '</td>'
@@ -133,7 +133,7 @@
       tb.innerHTML = rows.map(function(r) {
         return '<tr class="border-t hover:bg-gray-50">'
           + '<td class="px-4 py-3 font-medium">' + escapeHtml(r.invoice_number || '-') + '</td>'
-          + '<td class="px-4 py-3">' + escapeHtml(r.supplier_name || '-') + '</td>'
+          + '<td class="px-4 py-3" title="' + escapeHtml(r.supplier_name || '') + '">' + escapeHtml(r.supplier_name || '-') + '</td>'
           + '<td class="px-4 py-3 text-blue-700">' + escapeHtml(r.po_number || '-') + '</td>'
           + '<td class="px-4 py-3 text-center">' + (r.invoice_date ? r.invoice_date.substring(0, 10) : '-') + '</td>'
           + '<td class="px-4 py-3 text-right font-medium">' + fmt(r.total_amount) + '</td>'

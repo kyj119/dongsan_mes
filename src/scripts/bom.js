@@ -96,8 +96,8 @@ function renderBomTable() {
     items.forEach(b => {
       html += `<tr class="hover:bg-blue-50 border-b">
         <td class="px-4 py-2 text-sm">${esc(b.category_name || '-')}</td>
-        <td class="px-4 py-2 text-sm">${esc(b.item_display_name || '-')}</td>
-        <td class="px-4 py-2 text-sm font-medium">${esc(b.material_name)}</td>
+        <td class="px-4 py-2 text-sm" title="${esc(b.item_display_name || '')}">${esc(b.item_display_name || '-')}</td>
+        <td class="px-4 py-2 text-sm font-medium" title="${esc(b.material_name || '')}">${esc(b.material_name)}</td>
         <td class="px-4 py-2 text-sm text-right">${b.usage_per_sqm?.toFixed(3) || '0'}</td>
         <td class="px-4 py-2 text-sm text-center">${esc(b.usage_unit)}</td>
         <td class="px-4 py-2 text-sm text-right">${((b.waste_factor - 1) * 100).toFixed(1)}%</td>
@@ -336,19 +336,19 @@ function renderMrpResult(result) {
   </div>`;
 
   if (result.results.length > 0) {
-    html += `<div class="overflow-x-auto"><table class="w-full ds-table-striped">
+    html += `<div class="overflow-x-auto"><table class="w-full ds-table ds-table-striped">
       <thead><tr>
-        <th class="px-3 py-2 text-left">원재료</th>
-        <th class="px-3 py-2 text-right">소요량</th>
-        <th class="px-3 py-2 text-right">현재 재고</th>
-        <th class="px-3 py-2 text-right">발주중</th>
-        <th class="px-3 py-2 text-right">부족량</th>
+        <th class="col-name px-3 py-2 text-left">원재료</th>
+        <th class="col-qty px-3 py-2 text-right">소요량</th>
+        <th class="col-qty px-3 py-2 text-right">현재 재고</th>
+        <th class="col-qty px-3 py-2 text-right">발주중</th>
+        <th class="col-qty px-3 py-2 text-right">부족량</th>
       </tr></thead><tbody>`;
 
     result.results.forEach(r => {
       const isShort = r.shortfall > 0;
       html += `<tr class="${isShort ? 'bg-red-50' : ''} border-b">
-        <td class="px-3 py-2 ${isShort ? 'font-semibold text-red-700' : ''}">${esc(r.material_name)}</td>
+        <td class="px-3 py-2 ${isShort ? 'font-semibold text-red-700' : ''}" title="${esc(r.material_name || '')}">${esc(r.material_name)}</td>
         <td class="px-3 py-2 text-right">${r.required_quantity.toFixed(2)}</td>
         <td class="px-3 py-2 text-right">${r.current_stock.toFixed(2)}</td>
         <td class="px-3 py-2 text-right">${r.on_order_quantity.toFixed(2)}</td>
@@ -400,7 +400,7 @@ function renderMrpHistory() {
     <td class="px-3 py-2 text-sm"><span class="px-2 py-0.5 rounded text-xs ${r.run_type === 'AUTO' ? 'bg-green-50 text-green-700' : r.run_type === 'ORDER' ? 'bg-blue-50 text-blue-700' : 'bg-gray-100 text-gray-800'}">${r.run_type}</span></td>
     <td class="px-3 py-2 text-sm text-right">${r.total_materials || 0}</td>
     <td class="px-3 py-2 text-sm text-right ${r.shortfall_count > 0 ? 'text-red-600 font-bold' : 'text-green-600'}">${r.shortfall_count || 0}</td>
-    <td class="px-3 py-2 text-sm">${esc(r.run_by_name || '-')}</td>
+    <td class="px-3 py-2 text-sm" title="${esc(r.run_by_name || '')}">${esc(r.run_by_name || '-')}</td>
     <td class="px-3 py-2 text-sm">${formatKST(r.created_at)}</td>
     <td class="px-3 py-2 text-sm text-center">
       <button onclick="viewMrpDetail(${r.id})" class="text-blue-600 hover:text-blue-700" title="상세"><i class="fas fa-search"></i></button>

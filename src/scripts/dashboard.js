@@ -304,13 +304,13 @@ async function loadActiveCards() {
         const today = new Date().toISOString().slice(0, 10);
         let html = '<table class="ds-table ds-table-compact">'
             + '<thead><tr>'
-            + '<th>거래처</th>'
-            + '<th>품목명</th>'
-            + '<th>내용</th>'
-            + '<th>규격</th>'
-            + '<th style="text-align:center">수량</th>'
-            + '<th>후가공</th>'
-            + '<th>납기</th>'
+            + '<th class="col-name">거래처</th>'
+            + '<th class="col-flex">품목명</th>'
+            + '<th class="col-flex">내용</th>'
+            + '<th class="col-tag">규격</th>'
+            + '<th class="col-qty" style="text-align:center">수량</th>'
+            + '<th class="col-tag">후가공</th>'
+            + '<th class="col-date">납기</th>'
             + '</tr></thead><tbody>';
         cards.forEach(function(card) {
             const spec = (card.width && card.height)
@@ -330,9 +330,9 @@ async function loadActiveCards() {
             const isUrgent = card.delivery_date && card.delivery_date <= today;
             const rowClass = isUrgent ? 'bg-red-50' : '';
             html += '<tr class="border-t hover:bg-gray-50 ' + rowClass + '">'
-                + '<td class="px-3 py-2 text-gray-700 whitespace-nowrap">' + escapeHtml(card.client_name || '-') + '</td>'
-                + '<td class="px-3 py-2 font-medium text-gray-800">' + escapeHtml(card.item_name || '-') + '</td>'
-                + '<td class="px-3 py-2 text-gray-500">' + escapeHtml(card.content || '-') + '</td>'
+                + '<td class="px-3 py-2 text-gray-700 whitespace-nowrap" title="' + escapeHtml(card.client_name || '-') + '">' + escapeHtml(card.client_name || '-') + '</td>'
+                + '<td class="px-3 py-2 font-medium text-gray-800" title="' + escapeHtml(card.item_name || '-') + '">' + escapeHtml(card.item_name || '-') + '</td>'
+                + '<td class="px-3 py-2 text-gray-500" title="' + escapeHtml(card.content || '-') + '">' + escapeHtml(card.content || '-') + '</td>'
                 + '<td class="px-3 py-2 text-gray-500 whitespace-nowrap">' + spec + '</td>'
                 + '<td class="px-3 py-2 text-center text-gray-700">' + (card.quantity || 0) + '</td>'
                 + '<td class="px-3 py-2">' + (ppBadges || '<span class="text-gray-300">-</span>') + '</td>'

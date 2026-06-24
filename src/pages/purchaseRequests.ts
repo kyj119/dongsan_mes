@@ -68,17 +68,17 @@ export function purchaseRequestsPage(c: Context<HonoEnv>) {
       <!-- 목록 테이블 -->
       <div class="ds-card overflow-hidden">
         <div style="max-height: calc(100vh - 280px); overflow-y: auto;">
-          <table class="w-full text-sm ds-table-striped ds-table-fixed">
+          <table class="w-full text-sm ds-table ds-table-striped ds-table-fixed">
           <thead>
             <tr>
-              <th style="width:110px">요청번호</th>
-              <th style="width:80px">요청자</th>
-              <th>공급업체(추천)</th>
-              <th style="width:70px" class="text-center">긴급도</th>
-              <th style="width:100px" class="text-center">요청일</th>
-              <th style="width:70px" class="text-center">품목수</th>
-              <th style="width:80px" class="text-center">상태</th>
-              <th style="width:80px" class="text-center">작업</th>
+              <th class="col-code">요청번호</th>
+              <th class="col-tag">요청자</th>
+              <th class="col-name">공급업체(추천)</th>
+              <th class="col-tag text-center">긴급도</th>
+              <th class="col-date text-center">요청일</th>
+              <th class="col-qty text-right">품목수</th>
+              <th class="col-status text-center">상태</th>
+              <th class="col-action text-center">작업</th>
             </tr>
           </thead>
           <tbody id="prTableBody">

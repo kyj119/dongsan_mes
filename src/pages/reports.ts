@@ -108,15 +108,15 @@ export function reportsPage(c: Context<HonoEnv>) {
           <div id="monthlyChartArea" class="space-y-2"></div>
         </div>
         <div class="ds-card overflow-hidden">
-          <table class="w-full text-sm ds-table-striped">
+          <table class="w-full text-sm ds-table ds-table-striped">
             <thead class="bg-gray-50">
               <tr>
-                <th class="px-4 py-3 text-left" style="width:80px">월</th>
-                <th class="px-4 py-3 text-right" style="width:80px">주문수</th>
-                <th class="px-4 py-3 text-right" style="width:120px">매출</th>
-                <th class="px-4 py-3 text-right" style="width:120px">입금</th>
-                <th class="px-4 py-3 text-right" style="width:80px">수금률</th>
-                <th class="px-4 py-3 text-right">거래처수</th>
+                <th class="col-tag px-4 py-3 text-left" style="width:80px">월</th>
+                <th class="col-qty px-4 py-3 text-right" style="width:80px">주문수</th>
+                <th class="col-amount px-4 py-3 text-right" style="width:120px">매출</th>
+                <th class="col-amount px-4 py-3 text-right" style="width:120px">입금</th>
+                <th class="col-qty px-4 py-3 text-right" style="width:80px">수금률</th>
+                <th class="col-qty px-4 py-3 text-right">거래처수</th>
               </tr>
             </thead>
             <tbody id="monthlyTableBody"></tbody>
@@ -128,16 +128,16 @@ export function reportsPage(c: Context<HonoEnv>) {
       <div id="clientsPanel" class="hidden">
         <div class="ds-card overflow-hidden mb-6">
           <div class="p-4"><h3 class="text-lg font-bold"><i class="fas fa-building text-orange-500 mr-2"></i>거래처별 매출 TOP 20</h3></div>
-          <table class="w-full text-sm ds-table-striped">
+          <table class="w-full text-sm ds-table ds-table-striped">
             <thead class="bg-gray-50">
               <tr>
-                <th class="px-4 py-3 text-center w-10" style="width:40px">#</th>
-                <th class="px-4 py-3 text-left">거래처</th>
-                <th class="px-4 py-3 text-right" style="width:80px">주문수</th>
-                <th class="px-4 py-3 text-right" style="width:120px">매출합계</th>
-                <th class="px-4 py-3 text-right" style="width:100px">평균단가</th>
-                <th class="px-4 py-3 text-right" style="width:110px">미수금</th>
-                <th class="px-4 py-3" style="width:80px">비중</th>
+                <th class="col-no px-4 py-3 text-center w-10" style="width:40px">#</th>
+                <th class="col-name px-4 py-3 text-left">거래처</th>
+                <th class="col-qty px-4 py-3 text-right" style="width:80px">주문수</th>
+                <th class="col-amount px-4 py-3 text-right" style="width:120px">매출합계</th>
+                <th class="col-amount px-4 py-3 text-right" style="width:100px">평균단가</th>
+                <th class="col-amount px-4 py-3 text-right" style="width:110px">미수금</th>
+                <th class="col-qty px-4 py-3" style="width:80px">비중</th>
               </tr>
             </thead>
             <tbody id="clientsTableBody2"></tbody>
@@ -155,13 +155,13 @@ export function reportsPage(c: Context<HonoEnv>) {
           <div class="ds-card overflow-hidden">
             <div class="p-4"><h3 class="text-lg font-bold"><i class="fas fa-box text-purple-500 mr-2"></i>품목 TOP 30</h3></div>
             <div class="max-h-[400px] overflow-y-auto">
-              <table class="w-full text-sm ds-table-striped">
+              <table class="w-full text-sm ds-table ds-table-striped">
                 <thead class="bg-gray-50 sticky top-0">
                   <tr>
-                    <th class="px-4 py-2 text-left">품목명</th>
-                    <th class="px-4 py-2 text-right">주문수</th>
-                    <th class="px-4 py-2 text-right">수량</th>
-                    <th class="px-4 py-2 text-right">매출</th>
+                    <th class="col-name px-4 py-2 text-left">품목명</th>
+                    <th class="col-qty px-4 py-2 text-right">주문수</th>
+                    <th class="col-qty px-4 py-2 text-right">수량</th>
+                    <th class="col-amount px-4 py-2 text-right">매출</th>
                   </tr>
                 </thead>
                 <tbody id="itemsTableBody"></tbody>
@@ -175,16 +175,16 @@ export function reportsPage(c: Context<HonoEnv>) {
       <div id="designersPanel" class="hidden">
         <div class="ds-card overflow-hidden">
           <div class="p-4"><h3 class="text-lg font-bold"><i class="fas fa-user-edit text-blue-500 mr-2"></i>디자이너별 주문 처리</h3></div>
-          <table class="w-full text-sm ds-table-striped">
+          <table class="w-full text-sm ds-table ds-table-striped">
             <thead class="bg-gray-50">
               <tr>
-                <th class="px-4 py-3 text-left">디자이너</th>
-                <th class="px-4 py-3 text-right">주문수</th>
-                <th class="px-4 py-3 text-right">매출합계</th>
-                <th class="px-4 py-3 text-right">평균 금액</th>
-                <th class="px-4 py-3 text-right">완료</th>
-                <th class="px-4 py-3 text-right">진행중</th>
-                <th class="px-4 py-3">처리율</th>
+                <th class="col-name px-4 py-3 text-left">디자이너</th>
+                <th class="col-qty px-4 py-3 text-right">주문수</th>
+                <th class="col-amount px-4 py-3 text-right">매출합계</th>
+                <th class="col-amount px-4 py-3 text-right">평균 금액</th>
+                <th class="col-qty px-4 py-3 text-right">완료</th>
+                <th class="col-qty px-4 py-3 text-right">진행중</th>
+                <th class="col-qty px-4 py-3">처리율</th>
               </tr>
             </thead>
             <tbody id="designersTableBody"></tbody>
@@ -234,13 +234,13 @@ export function reportsPage(c: Context<HonoEnv>) {
         <div class="grid grid-cols-2 gap-6 mb-6">
           <div class="ds-card p-6">
             <h3 class="text-lg font-bold mb-4"><i class="fas fa-arrow-up text-green-500 mr-2"></i>고마진 거래처 TOP 10</h3>
-            <table class="w-full text-sm ds-table-striped">
+            <table class="w-full text-sm ds-table ds-table-striped">
               <thead class="bg-gray-50">
                 <tr>
-                  <th class="px-3 py-2 text-left">거래처</th>
-                  <th class="px-3 py-2 text-right">매출</th>
-                  <th class="px-3 py-2 text-right">마진율</th>
-                  <th class="px-3 py-2 text-center">등급</th>
+                  <th class="col-name px-3 py-2 text-left">거래처</th>
+                  <th class="col-amount px-3 py-2 text-right">매출</th>
+                  <th class="col-qty px-3 py-2 text-right">마진율</th>
+                  <th class="col-tag px-3 py-2 text-center">등급</th>
                 </tr>
               </thead>
               <tbody id="mgTopClientsBody"></tbody>
@@ -248,13 +248,13 @@ export function reportsPage(c: Context<HonoEnv>) {
           </div>
           <div class="ds-card p-6">
             <h3 class="text-lg font-bold mb-4"><i class="fas fa-arrow-down text-red-500 mr-2"></i>저마진 거래처 BOTTOM 10</h3>
-            <table class="w-full text-sm ds-table-striped">
+            <table class="w-full text-sm ds-table ds-table-striped">
               <thead class="bg-gray-50">
                 <tr>
-                  <th class="px-3 py-2 text-left">거래처</th>
-                  <th class="px-3 py-2 text-right">매출</th>
-                  <th class="px-3 py-2 text-right">마진율</th>
-                  <th class="px-3 py-2 text-center">등급</th>
+                  <th class="col-name px-3 py-2 text-left">거래처</th>
+                  <th class="col-amount px-3 py-2 text-right">매출</th>
+                  <th class="col-qty px-3 py-2 text-right">마진율</th>
+                  <th class="col-tag px-3 py-2 text-center">등급</th>
                 </tr>
               </thead>
               <tbody id="mgBottomClientsBody"></tbody>
@@ -273,15 +273,15 @@ export function reportsPage(c: Context<HonoEnv>) {
         <!-- 저마진 주문 -->
         <div class="ds-card p-6">
           <h3 class="text-lg font-bold mb-4"><i class="fas fa-exclamation-triangle text-orange-500 mr-2"></i>저마진 주문 TOP 10</h3>
-          <table class="w-full text-sm ds-table-striped">
+          <table class="w-full text-sm ds-table ds-table-striped">
             <thead class="bg-gray-50">
               <tr>
-                <th class="px-4 py-3 text-left">주문번호</th>
-                <th class="px-4 py-3 text-left">거래처</th>
-                <th class="px-4 py-3 text-right">매출</th>
-                <th class="px-4 py-3 text-right">원가</th>
-                <th class="px-4 py-3 text-right">이익</th>
-                <th class="px-4 py-3 text-right">마진율</th>
+                <th class="col-code px-4 py-3 text-left">주문번호</th>
+                <th class="col-name px-4 py-3 text-left">거래처</th>
+                <th class="col-amount px-4 py-3 text-right">매출</th>
+                <th class="col-amount px-4 py-3 text-right">원가</th>
+                <th class="col-amount px-4 py-3 text-right">이익</th>
+                <th class="col-qty px-4 py-3 text-right">마진율</th>
               </tr>
             </thead>
             <tbody id="mgLowMarginBody"></tbody>
@@ -323,15 +323,15 @@ export function reportsPage(c: Context<HonoEnv>) {
 
         <div class="ds-card overflow-hidden">
           <div class="p-4"><h3 class="text-lg font-bold"><i class="fas fa-exclamation-circle text-red-500 mr-2"></i>미수금 TOP 15 거래처</h3></div>
-          <table class="w-full text-sm ds-table-striped">
+          <table class="w-full text-sm ds-table ds-table-striped">
             <thead class="bg-gray-50">
               <tr>
-                <th class="px-4 py-3 text-center w-10">#</th>
-                <th class="px-4 py-3 text-left">거래처</th>
-                <th class="px-4 py-3 text-right">미수금</th>
-                <th class="px-4 py-3 text-right">최근 입금일</th>
-                <th class="px-4 py-3 text-right">경과일</th>
-                <th class="px-4 py-3 text-right">독촉횟수</th>
+                <th class="col-no px-4 py-3 text-center w-10">#</th>
+                <th class="col-name px-4 py-3 text-left">거래처</th>
+                <th class="col-amount px-4 py-3 text-right">미수금</th>
+                <th class="col-date px-4 py-3 text-right">최근 입금일</th>
+                <th class="col-qty px-4 py-3 text-right">경과일</th>
+                <th class="col-qty px-4 py-3 text-right">독촉횟수</th>
               </tr>
             </thead>
             <tbody id="rcTopClientsBody"></tbody>
@@ -363,13 +363,13 @@ export function reportsPage(c: Context<HonoEnv>) {
         <div class="grid grid-cols-2 gap-6 mb-6">
           <div class="ds-card overflow-hidden">
             <div class="p-4"><h3 class="text-lg font-bold"><i class="fas fa-print text-blue-500 mr-2"></i>장비별 출력 실적</h3></div>
-            <table class="w-full text-sm ds-table-striped">
+            <table class="w-full text-sm ds-table ds-table-striped">
               <thead class="bg-gray-50">
                 <tr>
-                  <th class="px-4 py-2 text-left">장비</th>
-                  <th class="px-4 py-2 text-right">출력수</th>
-                  <th class="px-4 py-2 text-right">성공률</th>
-                  <th class="px-4 py-2 text-right">가동일</th>
+                  <th class="col-name px-4 py-2 text-left">장비</th>
+                  <th class="col-qty px-4 py-2 text-right">출력수</th>
+                  <th class="col-qty px-4 py-2 text-right">성공률</th>
+                  <th class="col-qty px-4 py-2 text-right">가동일</th>
                 </tr>
               </thead>
               <tbody id="prEquipmentBody"></tbody>
@@ -411,13 +411,13 @@ export function reportsPage(c: Context<HonoEnv>) {
         <div class="grid grid-cols-2 gap-6 mb-6">
           <div class="ds-card overflow-hidden">
             <div class="p-4"><h3 class="text-lg font-bold"><i class="fas fa-layer-group text-blue-500 mr-2"></i>카테고리별 매출 비교</h3></div>
-            <table class="w-full text-sm ds-table-striped">
+            <table class="w-full text-sm ds-table ds-table-striped">
               <thead class="bg-gray-50">
                 <tr>
-                  <th class="px-4 py-2 text-left">카테고리</th>
-                  <th class="px-4 py-2 text-right">기준월</th>
-                  <th class="px-4 py-2 text-right">비교월</th>
-                  <th class="px-4 py-2 text-right">증감</th>
+                  <th class="col-name px-4 py-2 text-left">카테고리</th>
+                  <th class="col-amount px-4 py-2 text-right">기준월</th>
+                  <th class="col-amount px-4 py-2 text-right">비교월</th>
+                  <th class="col-amount px-4 py-2 text-right">증감</th>
                 </tr>
               </thead>
               <tbody id="cpCategoryBody"></tbody>
@@ -505,16 +505,16 @@ export function reportsPage(c: Context<HonoEnv>) {
         <!-- 장비별 가동률 -->
         <div class="ds-card overflow-hidden mb-6">
           <div class="p-4"><h3 class="text-lg font-bold"><i class="fas fa-server text-blue-500 mr-2"></i>장비별 가동 현황</h3></div>
-          <table class="w-full text-sm ds-table-striped">
+          <table class="w-full text-sm ds-table ds-table-striped">
             <thead class="bg-gray-50">
               <tr>
-                <th class="px-4 py-3 text-left">장비</th>
-                <th class="px-4 py-3 text-right">총 출력</th>
-                <th class="px-4 py-3 text-right">성공률</th>
-                <th class="px-4 py-3 text-right">가동일</th>
-                <th class="px-4 py-3 text-right">일평균</th>
-                <th class="px-4 py-3 text-right">피크</th>
-                <th class="px-4 py-3">가동률</th>
+                <th class="col-name px-4 py-3 text-left">장비</th>
+                <th class="col-qty px-4 py-3 text-right">총 출력</th>
+                <th class="col-qty px-4 py-3 text-right">성공률</th>
+                <th class="col-qty px-4 py-3 text-right">가동일</th>
+                <th class="col-qty px-4 py-3 text-right">일평균</th>
+                <th class="col-qty px-4 py-3 text-right">피크</th>
+                <th class="col-qty px-4 py-3">가동률</th>
               </tr>
             </thead>
             <tbody id="capEquipmentBody"></tbody>
@@ -540,17 +540,17 @@ export function reportsPage(c: Context<HonoEnv>) {
       <div id="clientFcPanel" class="hidden">
         <div class="ds-card overflow-hidden">
           <div class="p-4"><h3 class="text-lg font-bold"><i class="fas fa-building text-blue-500 mr-2"></i>거래처별 수주 예측 TOP 15</h3></div>
-          <table class="w-full text-sm ds-table-striped">
+          <table class="w-full text-sm ds-table ds-table-striped">
             <thead class="bg-gray-50">
               <tr>
-                <th class="px-4 py-3 text-center w-10">#</th>
-                <th class="px-4 py-3 text-left">거래처</th>
-                <th class="px-4 py-3 text-right">6개월 합계</th>
-                <th class="px-4 py-3 text-right">월 평균</th>
-                <th class="px-4 py-3 text-right">예측 매출</th>
-                <th class="px-4 py-3 text-right">추세</th>
-                <th class="px-4 py-3 text-right">주문빈도</th>
-                <th class="px-4 py-3 text-center">위험</th>
+                <th class="col-no px-4 py-3 text-center w-10">#</th>
+                <th class="col-name px-4 py-3 text-left">거래처</th>
+                <th class="col-amount px-4 py-3 text-right">6개월 합계</th>
+                <th class="col-amount px-4 py-3 text-right">월 평균</th>
+                <th class="col-amount px-4 py-3 text-right">예측 매출</th>
+                <th class="col-tag px-4 py-3 text-right">추세</th>
+                <th class="col-qty px-4 py-3 text-right">주문빈도</th>
+                <th class="col-status px-4 py-3 text-center">위험</th>
               </tr>
             </thead>
             <tbody id="cfClientsBody"></tbody>
@@ -635,12 +635,12 @@ export function reportsPage(c: Context<HonoEnv>) {
             <table class="ds-table ds-table-compact ds-table-striped">
               <thead>
                 <tr>
-                  <th style="text-align:center;width:50px;">#</th>
-                  <th style="min-width:140px;">거래처</th>
-                  <th style="text-align:right;">월 매출</th>
-                  <th style="text-align:center;">추세</th>
-                  <th style="text-align:center;">위험도</th>
-                  <th style="text-align:center;">주문빈도</th>
+                  <th class="col-no" style="text-align:center;width:50px;">#</th>
+                  <th class="col-name" style="min-width:140px;">거래처</th>
+                  <th class="col-amount" style="text-align:right;">월 매출</th>
+                  <th class="col-tag" style="text-align:center;">추세</th>
+                  <th class="col-status" style="text-align:center;">위험도</th>
+                  <th class="col-qty" style="text-align:center;">주문빈도</th>
                 </tr>
               </thead>
               <tbody id="clientTable">
@@ -661,12 +661,12 @@ export function reportsPage(c: Context<HonoEnv>) {
             <table class="ds-table ds-table-compact ds-table-striped">
               <thead>
                 <tr>
-                  <th style="text-align:center;width:50px;">#</th>
-                  <th style="min-width:120px;">품목</th>
-                  <th style="min-width:100px;">카테고리</th>
-                  <th style="text-align:right;">매출</th>
-                  <th style="text-align:center;">주문건수</th>
-                  <th style="text-align:right;">수량</th>
+                  <th class="col-no" style="text-align:center;width:50px;">#</th>
+                  <th class="col-name" style="min-width:120px;">품목</th>
+                  <th class="col-flex" style="min-width:100px;">카테고리</th>
+                  <th class="col-amount" style="text-align:right;">매출</th>
+                  <th class="col-qty" style="text-align:center;">주문건수</th>
+                  <th class="col-qty" style="text-align:right;">수량</th>
                 </tr>
               </thead>
               <tbody id="itemTable">

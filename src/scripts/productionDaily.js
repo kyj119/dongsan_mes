@@ -61,19 +61,19 @@ function renderEquipmentTable(data) {
     var totalSqm = 0;
     data.forEach(function(e) { totalSqm += (e.sqm || 0); });
 
-    var html = '<table class="w-full text-sm">';
+    var html = '<table class="w-full text-sm ds-table">';
     html += '<thead class="bg-gray-50"><tr>';
-    html += '<th class="px-3 py-2 text-left text-xs font-semibold text-gray-600">장비</th>';
-    html += '<th class="px-3 py-2 text-right text-xs font-semibold text-gray-600">건수</th>';
-    html += '<th class="px-3 py-2 text-right text-xs font-semibold text-gray-600">면적(㎡)</th>';
-    html += '<th class="px-3 py-2 text-right text-xs font-semibold text-gray-600">비율</th>';
-    html += '<th class="px-3 py-2 text-left text-xs font-semibold text-gray-600">OK/에러</th>';
+    html += '<th class="col-name px-3 py-2 text-left text-xs font-semibold text-gray-600">장비</th>';
+    html += '<th class="col-qty px-3 py-2 text-right text-xs font-semibold text-gray-600">건수</th>';
+    html += '<th class="col-amount px-3 py-2 text-right text-xs font-semibold text-gray-600">면적(㎡)</th>';
+    html += '<th class="col-flex px-3 py-2 text-right text-xs font-semibold text-gray-600">비율</th>';
+    html += '<th class="col-tag px-3 py-2 text-left text-xs font-semibold text-gray-600">OK/에러</th>';
     html += '</tr></thead><tbody class="divide-y">';
 
     data.forEach(function(e) {
         var pct = totalSqm > 0 ? Math.round((e.sqm || 0) / totalSqm * 100) : 0;
         html += '<tr class="hover:bg-gray-50">';
-        html += '<td class="px-3 py-2 font-medium">' + escapeHtml(e.equipment_name) + '</td>';
+        html += '<td class="px-3 py-2 font-medium" title="' + escapeHtml(e.equipment_name) + '">' + escapeHtml(e.equipment_name) + '</td>';
         html += '<td class="px-3 py-2 text-right">' + e.total + '</td>';
         html += '<td class="px-3 py-2 text-right font-medium">' + (e.sqm || 0).toLocaleString(undefined, {maximumFractionDigits:1}) + '</td>';
         html += '<td class="px-3 py-2 text-right">';
@@ -134,13 +134,13 @@ function renderOverdueTable(data) {
         return;
     }
 
-    var html = '<table class="w-full text-sm">';
+    var html = '<table class="w-full text-sm ds-table">';
     html += '<thead class="bg-gray-50"><tr>';
-    html += '<th class="px-3 py-2 text-left text-xs font-semibold text-gray-600">주문번호</th>';
-    html += '<th class="px-3 py-2 text-left text-xs font-semibold text-gray-600">거래처</th>';
-    html += '<th class="px-3 py-2 text-left text-xs font-semibold text-gray-600">마감일</th>';
-    html += '<th class="px-3 py-2 text-left text-xs font-semibold text-gray-600">상태</th>';
-    html += '<th class="px-3 py-2 text-right text-xs font-semibold text-gray-600">품목 수</th>';
+    html += '<th class="col-code px-3 py-2 text-left text-xs font-semibold text-gray-600">주문번호</th>';
+    html += '<th class="col-name px-3 py-2 text-left text-xs font-semibold text-gray-600">거래처</th>';
+    html += '<th class="col-date px-3 py-2 text-left text-xs font-semibold text-gray-600">마감일</th>';
+    html += '<th class="col-status px-3 py-2 text-left text-xs font-semibold text-gray-600">상태</th>';
+    html += '<th class="col-qty px-3 py-2 text-right text-xs font-semibold text-gray-600">품목 수</th>';
     html += '</tr></thead><tbody class="divide-y">';
 
     data.forEach(function(o) {
@@ -150,7 +150,7 @@ function renderOverdueTable(data) {
 
         html += '<tr class="hover:bg-gray-50">';
         html += '<td class="px-3 py-2"><a href="/orders?search=' + encodeURIComponent(o.order_number) + '" class="text-blue-600 hover:underline">' + escapeHtml(o.order_number) + '</a></td>';
-        html += '<td class="px-3 py-2">' + escapeHtml(o.client_name || '-') + '</td>';
+        html += '<td class="px-3 py-2" title="' + escapeHtml(o.client_name || '-') + '">' + escapeHtml(o.client_name || '-') + '</td>';
         html += '<td class="px-3 py-2 ' + statusColor + '">' + o.due_date + (isOverdue ? ' (지연)' : '') + '</td>';
         html += '<td class="px-3 py-2">' + o.status + '</td>';
         html += '<td class="px-3 py-2 text-right">' + o.item_count + '</td>';

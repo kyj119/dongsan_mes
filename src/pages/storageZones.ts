@@ -23,17 +23,17 @@ export function storageZonesPage(c: Context<HonoEnv>) {
   </div>
 
   <div class="ds-card hover:shadow-md transition-shadow overflow-hidden">
-    <table class="w-full text-sm ds-table-striped ds-table-fixed">
+    <table class="w-full text-sm ds-table ds-table-striped ds-table-fixed">
       <thead>
         <tr>
-          <th class="text-left" style="width:80px">법인</th>
-          <th class="text-left">구역명</th>
-          <th class="text-left" style="width:90px">코드</th>
-          <th class="text-left">설명</th>
-          <th class="text-left" style="width:90px">담당자</th>
-          <th class="text-center" style="width:70px">품목 수</th>
-          <th class="text-center" style="width:70px">상태</th>
-          <th class="text-center" style="width:80px">동작</th>
+          <th class="col-tag text-left">법인</th>
+          <th class="col-name text-left">구역명</th>
+          <th class="col-code text-left">코드</th>
+          <th class="col-flex text-left">설명</th>
+          <th class="col-tag text-left">담당자</th>
+          <th class="col-qty text-center">품목 수</th>
+          <th class="col-status text-center">상태</th>
+          <th class="col-action text-center">동작</th>
         </tr>
       </thead>
       <tbody id="storageZonesBody"></tbody>

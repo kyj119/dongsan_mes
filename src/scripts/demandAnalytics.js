@@ -209,7 +209,7 @@ function renderClientTable() {
 
     return '<tr>'
       + '<td style="text-align:center;font-size:var(--fs-sm);color:var(--c-text-secondary);">' + (idx + 1) + '</td>'
-      + '<td style="font-weight:500;color:#1e293b;">' + (c.client_name || '-') + '</td>'
+      + '<td style="font-weight:500;color:#1e293b;" title="' + window.escapeHtml(c.client_name || '-') + '">' + (c.client_name || '-') + '</td>'
       + '<td style="text-align:right;font-weight:600;">' + fmt(c.forecast_revenue) + '원</td>'
       + '<td style="text-align:center;color:' + trendColor + ';font-weight:600;">' + trendIcon + ' ' + trend + '%</td>'
       + '<td style="text-align:center;">' + riskBadge + '</td>'
@@ -233,8 +233,8 @@ function renderItemTable() {
   var html = items.map(function(item, idx) {
     return '<tr>'
       + '<td style="text-align:center;font-size:var(--fs-sm);color:var(--c-text-secondary);">' + (idx + 1) + '</td>'
-      + '<td style="font-weight:500;color:#1e293b;">' + (item.item_name || '-') + '</td>'
-      + '<td style="font-size:var(--fs-sm);color:var(--c-text-secondary);">' + (item.category || '-') + '</td>'
+      + '<td style="font-weight:500;color:#1e293b;" title="' + window.escapeHtml(item.item_name || '-') + '">' + (item.item_name || '-') + '</td>'
+      + '<td style="font-size:var(--fs-sm);color:var(--c-text-secondary);" title="' + window.escapeHtml(item.category || '-') + '">' + (item.category || '-') + '</td>'
       + '<td style="text-align:right;font-weight:600;">' + fmt(item.total_revenue) + '원</td>'
       + '<td style="text-align:center;font-size:var(--fs-sm);color:var(--c-text-secondary);">' + (item.order_count || 0) + '건</td>'
       + '<td style="text-align:right;font-size:var(--fs-sm);color:var(--c-text-secondary);">' + fmt(item.total_quantity) + '</td>'

@@ -312,7 +312,7 @@ function hrdRenderPayroll(pay) {
     sumNet += parseInt(r.net_pay || 0);
     var otHrs = parseFloat(r.overtime_hours || 0);
     html += '<tr class="border-b border-gray-100 hover:bg-gray-50">' +
-      '<td class="px-4 py-2 font-medium">' + (r.pay_period || '-') + '</td>' +
+      '<td class="px-4 py-2 font-medium" title="' + hrdEsc(r.pay_period || '-') + '">' + (r.pay_period || '-') + '</td>' +
       '<td class="px-4 py-2 text-right">' + hrdFmtMoney(r.base_salary) + '</td>' +
       '<td class="px-4 py-2 text-right ' + (otHrs > 0 ? 'text-amber-700 font-medium' : 'text-gray-400') + '">' + otHrs.toFixed(1) + '</td>' +
       '<td class="px-4 py-2 text-right">' + hrdFmtMoney(r.overtime_pay) + '</td>' +
@@ -659,7 +659,7 @@ async function hrdLoadContracts() {
       var monthly = r.monthly_salary ? hrdFmtMoney(r.monthly_salary) : '-';
       html += '<tr class="border-b border-gray-100 hover:bg-gray-50">'
         + '<td class="px-4 py-2 text-sm">' + (HRD_CONTRACT_TYPE[r.contract_type] || r.contract_type || '-') + '</td>'
-        + '<td class="px-4 py-2 text-sm">' + period + '</td>'
+        + '<td class="px-4 py-2 text-sm" title="' + hrdEsc(period) + '">' + period + '</td>'
         + '<td class="px-4 py-2 text-right text-sm">' + hrdFmtMoney(r.hourly_rate) + '</td>'
         + '<td class="px-4 py-2 text-right text-sm">' + monthly + '</td>'
         + '<td class="px-4 py-2 text-center">' + hrdContractStatusBadge(r.status) + '</td>'

@@ -573,17 +573,17 @@ function showMaterialShortageWarning(warnings) {
   var html = '<div class="mb-3 text-sm text-amber-700">'
     + '<i class="fas fa-exclamation-triangle mr-1"></i>'
     + '주문 확정 시 BOM 기준 자재 부족이 감지되었습니다.</div>'
-    + '<div class="overflow-x-auto"><table class="min-w-full text-sm">'
+    + '<div class="overflow-x-auto"><table class="min-w-full text-sm ds-table">'
     + '<thead class="bg-gray-50"><tr>'
-    + '<th class="px-3 py-1.5 text-left text-xs text-gray-500">자재명</th>'
-    + '<th class="px-3 py-1.5 text-right text-xs text-gray-500">필요량</th>'
-    + '<th class="px-3 py-1.5 text-right text-xs text-gray-500">현재고</th>'
-    + '<th class="px-3 py-1.5 text-right text-xs text-gray-500">발주중</th>'
-    + '<th class="px-3 py-1.5 text-right text-xs text-gray-500">부족</th>'
+    + '<th class="col-name px-3 py-1.5 text-left text-xs text-gray-500">자재명</th>'
+    + '<th class="col-qty px-3 py-1.5 text-right text-xs text-gray-500">필요량</th>'
+    + '<th class="col-qty px-3 py-1.5 text-right text-xs text-gray-500">현재고</th>'
+    + '<th class="col-qty px-3 py-1.5 text-right text-xs text-gray-500">발주중</th>'
+    + '<th class="col-qty px-3 py-1.5 text-right text-xs text-gray-500">부족</th>'
     + '</tr></thead><tbody>';
   warnings.forEach(function(w) {
     html += '<tr class="border-t border-gray-100">'
-      + '<td class="px-3 py-1.5 font-medium">' + escapeHtml(w.material_name) + '</td>'
+      + '<td class="px-3 py-1.5 font-medium" title="' + escapeHtml(w.material_name) + '">' + escapeHtml(w.material_name) + '</td>'
       + '<td class="px-3 py-1.5 text-right">' + w.required + ' ' + (w.unit || '') + '</td>'
       + '<td class="px-3 py-1.5 text-right">' + w.current_stock + '</td>'
       + '<td class="px-3 py-1.5 text-right">' + w.on_order + '</td>'
@@ -758,7 +758,7 @@ function buildOrderCardsSection(order, cards) {
     var statusBadge = '<span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-semibold ' + badgeColor + '">' + pendingIcon + window.MES_STATUS.cardLabel(cStatus) + '</span>';
     cardRows += '<tr class="border-b border-gray-100">'
       + '<td class="px-3 py-1.5 text-xs font-mono text-gray-500">' + (c.card_number || '-') + '</td>'
-      + '<td class="px-3 py-1.5 text-xs">' + (c.category_name || '-') + '</td>'
+      + '<td class="px-3 py-1.5 text-xs" title="' + escapeHtml(c.category_name || '') + '">' + (c.category_name || '-') + '</td>'
       + '<td class="px-3 py-1.5 text-xs text-center">' + statusBadge + '</td>'
       + '<td class="px-3 py-1.5 text-xs text-gray-400">' + (c.shipped_at ? formatKST(c.shipped_at) : '-') + '</td>'
       + '</tr>';
@@ -777,12 +777,12 @@ function buildOrderCardsSection(order, cards) {
     + shipBtnHtml
     + '</div>'
     + '<div class="overflow-x-auto border border-gray-200 rounded">'
-    + '<table class="w-full text-sm ds-table-striped">'
+    + '<table class="w-full text-sm ds-table ds-table-striped">'
     + '<thead class="bg-gray-50"><tr>'
-    + '<th class="px-3 py-1.5 text-left text-xs font-medium text-gray-500">카드번호</th>'
-    + '<th class="px-3 py-1.5 text-left text-xs font-medium text-gray-500">카테고리</th>'
-    + '<th class="px-3 py-1.5 text-center text-xs font-medium text-gray-500">상태</th>'
-    + '<th class="px-3 py-1.5 text-left text-xs font-medium text-gray-500">출고일시</th>'
+    + '<th class="col-code px-3 py-1.5 text-left text-xs font-medium text-gray-500">카드번호</th>'
+    + '<th class="col-name px-3 py-1.5 text-left text-xs font-medium text-gray-500">카테고리</th>'
+    + '<th class="col-status px-3 py-1.5 text-center text-xs font-medium text-gray-500">상태</th>'
+    + '<th class="col-datetime px-3 py-1.5 text-left text-xs font-medium text-gray-500">출고일시</th>'
     + '</tr></thead>'
     + '<tbody>' + cardRows + '</tbody>'
     + '</table>'
@@ -847,7 +847,7 @@ function buildBillingGroupsSection(order) {
         ? '<span class="px-2 py-0.5 rounded text-xs bg-blue-50 text-blue-700">회계반영</span>'
         : '<span class="px-2 py-0.5 rounded text-xs bg-gray-100 text-gray-500">미청구</span>';
     return '<tr class="border-b border-gray-100">'
-      + '<td class="px-3 py-1.5 text-sm font-medium">' + escapeHtml(nm) + '</td>'
+      + '<td class="px-3 py-1.5 text-sm font-medium" title="' + escapeHtml(nm) + '">' + escapeHtml(nm) + '</td>'
       + '<td class="px-3 py-1.5 text-sm text-right tabular-nums">' + (g.supply_amount || 0).toLocaleString() + '원</td>'
       + '<td class="px-3 py-1.5 text-sm text-right tabular-nums">' + (g.tax_amount || 0).toLocaleString() + '원</td>'
       + '<td class="px-3 py-1.5 text-sm text-right tabular-nums font-semibold">' + (g.billed_amount || 0).toLocaleString() + '원</td>'
@@ -857,12 +857,12 @@ function buildBillingGroupsSection(order) {
   return '<div class="mt-6 mb-2">'
     + '<h3 class="text-sm font-bold text-gray-600 mb-2"><i class="fas fa-building mr-1 text-blue-500"></i>청구 법인 분할 <span class="font-normal text-gray-400">(' + groups.length + '개 법인 — 품목 담당 기준)</span></h3>'
     + '<div class="overflow-x-auto border border-gray-200 rounded">'
-    + '<table class="w-full text-sm ds-table-striped"><thead class="bg-gray-50"><tr>'
-    + '<th class="px-3 py-1.5 text-left text-xs font-medium text-gray-500">청구 법인</th>'
-    + '<th class="px-3 py-1.5 text-right text-xs font-medium text-gray-500">공급가</th>'
-    + '<th class="px-3 py-1.5 text-right text-xs font-medium text-gray-500">세액</th>'
-    + '<th class="px-3 py-1.5 text-right text-xs font-medium text-gray-500">청구금액</th>'
-    + '<th class="px-3 py-1.5 text-center text-xs font-medium text-gray-500">상태</th>'
+    + '<table class="w-full text-sm ds-table ds-table-striped"><thead class="bg-gray-50"><tr>'
+    + '<th class="col-name px-3 py-1.5 text-left text-xs font-medium text-gray-500">청구 법인</th>'
+    + '<th class="col-amount px-3 py-1.5 text-right text-xs font-medium text-gray-500">공급가</th>'
+    + '<th class="col-amount px-3 py-1.5 text-right text-xs font-medium text-gray-500">세액</th>'
+    + '<th class="col-amount px-3 py-1.5 text-right text-xs font-medium text-gray-500">청구금액</th>'
+    + '<th class="col-status px-3 py-1.5 text-center text-xs font-medium text-gray-500">상태</th>'
     + '</tr></thead><tbody>' + rows + '</tbody></table></div></div>';
 }
 
@@ -888,13 +888,13 @@ function showOrderModal(order, cards, autoJobs) {
     return `
       <tr class="border-b ${rowClass}">
         <td class="px-4 py-2 text-center">${rowNum}</td>
-        <td class="px-4 py-2">${namePrefix}${escapeHtml(item.item_name || '-')}</td>
+        <td class="px-4 py-2" title="${escapeHtml(item.item_name || '')}">${namePrefix}${escapeHtml(item.item_name || '-')}</td>
         <td class="px-4 py-2 text-center">${sizeStr}</td>
         <td class="px-4 py-2 text-center tabular-nums">${item.quantity || 1} ${item.unit || 'EA'}</td>
         <td class="px-4 py-2 text-right tabular-nums">${isChild ? '-' : (item.unit_price?.toLocaleString() || 0) + '원'}</td>
         <td class="px-4 py-2 text-right tabular-nums">${isChild ? '-' : (item.amount?.toLocaleString() || 0) + '원'}</td>
-        <td class="px-4 py-2">${escapeHtml(item.content || '-')}</td>
-        <td class="px-4 py-2">${ppText}</td>
+        <td class="px-4 py-2" title="${escapeHtml(item.content || '')}">${escapeHtml(item.content || '-')}</td>
+        <td class="px-4 py-2" title="${escapeHtml(ppText)}">${ppText}</td>
       </tr>
     `;
   }).join('');
@@ -926,17 +926,17 @@ function showOrderModal(order, cards, autoJobs) {
           <div class="mb-6">
             <h3 class="text-lg font-bold mb-3">주문 품목</h3>
             <div class="overflow-x-auto">
-              <table class="w-full border text-sm ds-table-striped">
+              <table class="w-full border text-sm ds-table ds-table-striped">
                 <thead class="bg-gray-50">
                   <tr>
-                    <th class="px-4 py-2 text-center w-10">번호</th>
-                    <th class="px-4 py-2 text-left">품목명</th>
-                    <th class="px-4 py-2 text-center">규격</th>
-                    <th class="px-4 py-2 text-center">수량</th>
-                    <th class="px-4 py-2 text-right tabular-nums">단가</th>
-                    <th class="px-4 py-2 text-right tabular-nums">금액</th>
-                    <th class="px-4 py-2 text-left">내용</th>
-                    <th class="px-4 py-2 text-left">후가공</th>
+                    <th class="col-no px-4 py-2 text-center w-10">번호</th>
+                    <th class="col-name px-4 py-2 text-left">품목명</th>
+                    <th class="col-tag px-4 py-2 text-center">규격</th>
+                    <th class="col-qty px-4 py-2 text-center">수량</th>
+                    <th class="col-amount px-4 py-2 text-right tabular-nums">단가</th>
+                    <th class="col-amount px-4 py-2 text-right tabular-nums">금액</th>
+                    <th class="col-flex px-4 py-2 text-left">내용</th>
+                    <th class="col-tag px-4 py-2 text-left">후가공</th>
                   </tr>
                 </thead>
                 <tbody>${itemsHtml}</tbody>

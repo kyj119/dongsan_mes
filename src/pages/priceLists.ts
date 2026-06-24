@@ -93,15 +93,15 @@ document.addEventListener('DOMContentLoaded', function() {
       </div>
       <div id="tabContentPreview" class="hidden">
         <div class="overflow-x-auto" style="max-height: calc(100vh - 280px); overflow-y: auto;">
-          <table class="w-full text-sm ds-table-striped ds-table-fixed">
+          <table class="w-full text-sm ds-table ds-table-striped ds-table-fixed">
             <thead>
               <tr>
-                <th class="text-left" style="width:100px">품목코드</th>
-                <th class="text-left">품목명</th>
-                <th class="text-left" style="width:60px">단위</th>
-                <th class="text-right" style="width:110px">기본단가</th>
-                <th class="text-right" style="width:110px">적용단가</th>
-                <th class="text-right" style="width:90px">차이</th>
+                <th class="col-code text-left">품목코드</th>
+                <th class="col-name text-left">품목명</th>
+                <th class="col-qty text-left">단위</th>
+                <th class="col-amount text-right">기본단가</th>
+                <th class="col-amount text-right">적용단가</th>
+                <th class="col-amount text-right">차이</th>
               </tr>
             </thead>
             <tbody id="previewTableBody"></tbody>
@@ -144,16 +144,16 @@ document.addEventListener('DOMContentLoaded', function() {
           </button>
         </div>
         <div class="overflow-x-auto" style="max-height: calc(100vh - 280px); overflow-y: auto;">
-          <table class="w-full text-sm ds-table-striped ds-table-fixed">
+          <table class="w-full text-sm ds-table ds-table-striped ds-table-fixed">
             <thead>
               <tr>
-                <th class="text-left">공급업체</th>
-                <th class="text-right" style="width:110px">협의단가</th>
-                <th class="text-right" style="width:110px">최근매입가</th>
-                <th class="text-left" style="width:100px">최근매입일</th>
-                <th class="text-right" style="width:80px">차이(%)</th>
-                <th class="text-left">비고</th>
-                <th class="text-center" style="width:70px">관리</th>
+                <th class="col-name text-left">공급업체</th>
+                <th class="col-amount text-right">협의단가</th>
+                <th class="col-amount text-right">최근매입가</th>
+                <th class="col-date text-left">최근매입일</th>
+                <th class="col-qty text-right">차이(%)</th>
+                <th class="col-flex text-left">비고</th>
+                <th class="col-action text-center">관리</th>
               </tr>
             </thead>
             <tbody id="supplierPriceBody"></tbody>

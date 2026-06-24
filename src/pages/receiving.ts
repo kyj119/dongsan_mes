@@ -87,18 +87,18 @@ export function receivingPage(c: Context<HonoEnv>) {
 
         <!-- 입고이력 테이블 -->
         <div class="ds-card overflow-hidden">
-          <table class="w-full text-sm ds-table-striped ds-table-fixed">
+          <table class="w-full text-sm ds-table ds-table-striped ds-table-fixed">
             <thead>
               <tr>
-                <th style="width:100px">입고번호</th>
-                <th style="width:100px" class="text-center">입고일</th>
-                <th style="width:100px">발주번호</th>
-                <th>공급업체</th>
-                <th style="width:90px" class="text-center">검수상태</th>
-                <th style="width:80px" class="text-center">합격수량</th>
-                <th style="width:90px" class="text-center">불합격수량</th>
-                <th style="width:80px" class="text-center">검수자</th>
-                <th style="width:90px" class="text-center">거래명세서</th>
+                <th class="col-code">입고번호</th>
+                <th class="col-date text-center">입고일</th>
+                <th class="col-code">발주번호</th>
+                <th class="col-name">공급업체</th>
+                <th class="col-status text-center">검수상태</th>
+                <th class="col-qty text-right">합격수량</th>
+                <th class="col-qty text-right">불합격수량</th>
+                <th class="col-tag text-center">검수자</th>
+                <th class="col-tag text-center">거래명세서</th>
               </tr>
             </thead>
             <tbody id="historyTableBody">

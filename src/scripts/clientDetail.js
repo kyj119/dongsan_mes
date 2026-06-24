@@ -148,7 +148,7 @@ function renderOrders(orders) {
       ? '<span class="text-green-600"><i class="fas fa-check-circle"></i></span>'
       : '<span class="text-gray-300"><i class="fas fa-clock"></i></span>';
     return '<tr class="border-t hover:bg-gray-50 cursor-pointer" onclick="location.href=\'/orders?search=' + encodeURIComponent(o.order_number || '') + '\'">'
-      + '<td class="px-4 py-3 font-medium text-blue-700">' + (o.order_number || '') + '</td>'
+      + '<td class="px-4 py-3 font-medium text-blue-700" title="' + escapeHtml(o.order_number || '') + '">' + (o.order_number || '') + '</td>'
       + '<td class="px-4 py-3 text-center text-sm">' + fmtDate(o.order_date || o.created_at) + '</td>'
       + '<td class="px-4 py-3 text-center text-sm">' + fmtDate(o.delivery_date) + '</td>'
       + '<td class="px-4 py-3 text-right font-medium">' + fmt(o.final_amount) + '원</td>'
@@ -187,10 +187,10 @@ function renderCollection(logs) {
     return '<tr class="border-t hover:bg-gray-50">'
       + '<td class="px-4 py-3 text-sm">' + fmtDate(cl.contact_date) + '</td>'
       + '<td class="px-4 py-3"><span class="px-2 py-0.5 rounded text-xs bg-gray-100 text-gray-700">' + (collMethodLabels[cl.contact_method] || cl.contact_method) + '</span></td>'
-      + '<td class="px-4 py-3 text-sm">' + escapeHtml(cl.contact_person || cl.created_by_name || '-') + '</td>'
+      + '<td class="px-4 py-3 text-sm" title="' + escapeHtml(cl.contact_person || cl.created_by_name || '') + '">' + escapeHtml(cl.contact_person || cl.created_by_name || '-') + '</td>'
       + '<td class="px-4 py-3 text-sm">' + fmtDate(cl.promised_date) + '</td>'
       + '<td class="px-4 py-3 text-right text-sm">' + (cl.promised_amount ? fmt(cl.promised_amount) + '원' : '-') + '</td>'
-      + '<td class="px-4 py-3 text-sm text-gray-500">' + escapeHtml(cl.notes || '-') + '</td>'
+      + '<td class="px-4 py-3 text-sm text-gray-500" title="' + escapeHtml(cl.notes || '') + '">' + escapeHtml(cl.notes || '-') + '</td>'
       + '</tr>';
   }).join('');
 }

@@ -57,14 +57,14 @@ export const approvalsPage = (c: Context<HonoEnv>) => {
             </select>
           </div>
           <div class="overflow-x-auto" style="max-height: calc(100vh - 320px); overflow-y: auto;">
-            <table class="w-full ds-table-striped">
+            <table class="w-full ds-table ds-table-striped">
               <thead><tr class="bg-gray-50 border-b text-sm text-gray-500">
-                <th class="px-3 py-3 text-left" style="width:110px">번호</th>
-                <th class="px-3 py-3 text-left" style="width:80px">유형</th>
-                <th class="px-3 py-3 text-left">제목</th>
-                <th class="px-3 py-3 text-right" style="width:100px">금액</th>
-                <th class="px-3 py-3 text-left" style="width:80px">상태</th>
-                <th class="px-3 py-3 text-left" style="width:95px">요청일</th>
+                <th class="col-code px-3 py-3 text-left" style="width:110px">번호</th>
+                <th class="col-tag px-3 py-3 text-left" style="width:80px">유형</th>
+                <th class="col-name px-3 py-3 text-left">제목</th>
+                <th class="col-amount px-3 py-3 text-right" style="width:100px">금액</th>
+                <th class="col-status px-3 py-3 text-left" style="width:80px">상태</th>
+                <th class="col-date px-3 py-3 text-left" style="width:95px">요청일</th>
               </tr></thead>
               <tbody id="my-requests-tbody"></tbody>
             </table>
@@ -99,15 +99,15 @@ export const approvalsPage = (c: Context<HonoEnv>) => {
             </select>
           </div>
           <div class="overflow-x-auto" style="max-height: calc(100vh - 320px); overflow-y: auto;">
-            <table class="w-full ds-table-striped">
+            <table class="w-full ds-table ds-table-striped">
               <thead><tr class="bg-gray-50 border-b text-sm text-gray-500">
-                <th class="px-3 py-3 text-left" style="width:110px">번호</th>
-                <th class="px-3 py-3 text-left" style="width:80px">유형</th>
-                <th class="px-3 py-3 text-left">제목</th>
-                <th class="px-3 py-3 text-left" style="width:80px">요청자</th>
-                <th class="px-3 py-3 text-right" style="width:100px">금액</th>
-                <th class="px-3 py-3 text-left" style="width:80px">상태</th>
-                <th class="px-3 py-3 text-left" style="width:95px">요청일</th>
+                <th class="col-code px-3 py-3 text-left" style="width:110px">번호</th>
+                <th class="col-tag px-3 py-3 text-left" style="width:80px">유형</th>
+                <th class="col-name px-3 py-3 text-left">제목</th>
+                <th class="col-tag px-3 py-3 text-left" style="width:80px">요청자</th>
+                <th class="col-amount px-3 py-3 text-right" style="width:100px">금액</th>
+                <th class="col-status px-3 py-3 text-left" style="width:80px">상태</th>
+                <th class="col-date px-3 py-3 text-left" style="width:95px">요청일</th>
               </tr></thead>
               <tbody id="all-requests-tbody"></tbody>
             </table>
@@ -123,12 +123,12 @@ export const approvalsPage = (c: Context<HonoEnv>) => {
             <h2 class="text-lg font-bold"><i class="fas fa-file-alt mr-2 text-green-600"></i>결재 양식</h2>
           </div>
           <div class="overflow-x-auto" style="max-height: calc(100vh - 280px); overflow-y: auto;">
-            <table class="w-full ds-table-striped">
+            <table class="w-full ds-table ds-table-striped">
               <thead><tr class="bg-gray-50 border-b text-sm text-gray-500">
-                <th class="px-3 py-3 text-left">양식명</th>
-                <th class="px-3 py-3 text-left">유형</th>
-                <th class="px-3 py-3 text-left">결재 단계</th>
-                <th class="px-3 py-3 text-center w-16">관리</th>
+                <th class="col-name px-3 py-3 text-left">양식명</th>
+                <th class="col-tag px-3 py-3 text-left">유형</th>
+                <th class="col-flex px-3 py-3 text-left">결재 단계</th>
+                <th class="col-action px-3 py-3 text-center w-16">관리</th>
               </tr></thead>
               <tbody id="templates-tbody"></tbody>
             </table>

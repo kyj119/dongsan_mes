@@ -173,14 +173,14 @@ export function cashSchedulePage(c: Context<HonoEnv>) {
           <div class="ds-card p-6">
             <h3 class="text-lg font-bold mb-4">월별 상세</h3>
             <div class="overflow-x-auto" style="max-height: calc(100vh - 280px); overflow-y: auto;">
-              <table class="w-full text-sm ds-table-striped">
+              <table class="w-full text-sm ds-table ds-table-striped">
                 <thead>
                   <tr class="bg-gray-50 text-gray-600">
-                    <th class="px-3 py-2 text-left">월</th>
-                    <th class="px-3 py-2 text-right">수입</th>
-                    <th class="px-3 py-2 text-right">지출</th>
-                    <th class="px-3 py-2 text-right">순 현금흐름</th>
-                    <th class="px-3 py-2 text-right">누적</th>
+                    <th class="col-name px-3 py-2 text-left">월</th>
+                    <th class="col-amount px-3 py-2 text-right">수입</th>
+                    <th class="col-amount px-3 py-2 text-right">지출</th>
+                    <th class="col-amount px-3 py-2 text-right">순 현금흐름</th>
+                    <th class="col-amount px-3 py-2 text-right">누적</th>
                   </tr>
                 </thead>
                 <tbody id="monthlyTable"></tbody>
@@ -199,17 +199,17 @@ export function cashSchedulePage(c: Context<HonoEnv>) {
               </button>
             </div>
             <div class="overflow-x-auto" style="max-height: calc(100vh - 280px); overflow-y: auto;">
-              <table class="w-full text-sm ds-table-striped">
+              <table class="w-full text-sm ds-table ds-table-striped">
                 <thead>
                   <tr class="bg-gray-50 text-gray-600">
-                    <th class="px-3 py-2 text-left">이름</th>
-                    <th class="px-3 py-2 text-left">분류</th>
-                    <th class="px-3 py-2 text-right">금액</th>
-                    <th class="px-3 py-2 text-center">주기</th>
-                    <th class="px-3 py-2 text-center">납부일</th>
-                    <th class="px-3 py-2 text-left">기간</th>
-                    <th class="px-3 py-2 text-center">상태</th>
-                    <th class="px-3 py-2 w-20"></th>
+                    <th class="col-name px-3 py-2 text-left">이름</th>
+                    <th class="col-tag px-3 py-2 text-left">분류</th>
+                    <th class="col-amount px-3 py-2 text-right">금액</th>
+                    <th class="col-tag px-3 py-2 text-center">주기</th>
+                    <th class="col-qty px-3 py-2 text-center">납부일</th>
+                    <th class="col-flex px-3 py-2 text-left">기간</th>
+                    <th class="col-status px-3 py-2 text-center">상태</th>
+                    <th class="col-action px-3 py-2"></th>
                   </tr>
                 </thead>
                 <tbody id="fixedExpenseTable"></tbody>
@@ -229,17 +229,17 @@ export function cashSchedulePage(c: Context<HonoEnv>) {
               </button>
             </div>
             <div class="overflow-x-auto" style="max-height: calc(100vh - 280px); overflow-y: auto;">
-              <table class="w-full text-sm ds-table-striped">
+              <table class="w-full text-sm ds-table ds-table-striped">
                 <thead>
                   <tr class="bg-gray-50 text-gray-600">
-                    <th class="px-3 py-2 text-left">대출기관</th>
-                    <th class="px-3 py-2 text-left">대출번호</th>
-                    <th class="px-3 py-2 text-right">원금</th>
-                    <th class="px-3 py-2 text-right">잔액</th>
-                    <th class="px-3 py-2 text-center">금리(%)</th>
-                    <th class="px-3 py-2 text-center">상환방식</th>
-                    <th class="px-3 py-2 text-left">만기일</th>
-                    <th class="px-3 py-2 w-28"></th>
+                    <th class="col-name px-3 py-2 text-left">대출기관</th>
+                    <th class="col-code px-3 py-2 text-left">대출번호</th>
+                    <th class="col-amount px-3 py-2 text-right">원금</th>
+                    <th class="col-amount px-3 py-2 text-right">잔액</th>
+                    <th class="col-qty px-3 py-2 text-center">금리(%)</th>
+                    <th class="col-tag px-3 py-2 text-center">상환방식</th>
+                    <th class="col-date px-3 py-2 text-left">만기일</th>
+                    <th class="col-action px-3 py-2"></th>
                   </tr>
                 </thead>
                 <tbody id="loanTable"></tbody>

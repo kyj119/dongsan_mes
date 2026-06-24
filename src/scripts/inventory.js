@@ -137,7 +137,7 @@ function renderInventoryTable(items, total) {
         var row = document.createElement('tr');
         row.className = rowClass;
         row.innerHTML = ''
-            + '<td class="px-4 py-3 text-sm text-gray-900">' + escapeHtml(item.item_name) + '</td>'
+            + '<td class="px-4 py-3 text-sm text-gray-900" title="' + escapeHtml(item.item_name) + '">' + escapeHtml(item.item_name) + '</td>'
             + '<td class="px-4 py-3 text-sm">'
             + '<span class="inline-flex items-center px-2 py-0.5 text-xs rounded bg-blue-50 text-blue-700">' + escapeHtml(item.category) + '</span>'
             + '</td>'
@@ -147,7 +147,7 @@ function renderInventoryTable(items, total) {
             + '<td class="px-4 py-3 text-sm text-gray-900 text-right tabular-nums">' + safety + '</td>'
             + '<td class="px-4 py-3 text-sm text-gray-900 text-right tabular-nums">' + (rop || '-') + '</td>'
             + '<td class="px-4 py-3 text-sm text-gray-900 text-right tabular-nums">' + (item.unit_price || 0).toLocaleString() + '원</td>'
-            + '<td class="px-4 py-3 text-sm text-gray-500">' + escapeHtml(item.location || '-') + '</td>'
+            + '<td class="px-4 py-3 text-sm text-gray-500" title="' + escapeHtml(item.location || '') + '">' + escapeHtml(item.location || '-') + '</td>'
             + '<td class="px-4 py-3 text-center">'
             + '<div class="flex gap-1 justify-center">'
             + '<button onclick="viewTransactions(' + item.id + ',\'' + itemNameSafe + '\')" '
@@ -198,8 +198,8 @@ window.viewTransactions = async function(itemId, itemName) {
                     + '<td class="px-4 py-2 text-sm"><span class="inline-flex items-center px-2 py-0.5 text-xs rounded ' + typeClass + '"><i class="' + typeIcon + ' text-[7px] mr-1"></i>' + typeText + '</span></td>'
                     + '<td class="px-4 py-2 text-sm ' + qtyClass + ' text-right font-medium tabular-nums">' + (tx.quantity > 0 ? '+' : '') + tx.quantity + '</td>'
                     + '<td class="px-4 py-2 text-sm text-gray-900 text-right font-medium tabular-nums">' + tx.balance_after + '</td>'
-                    + '<td class="px-4 py-2 text-sm text-gray-900">' + escapeHtml(tx.reason || '-') + '</td>'
-                    + '<td class="px-4 py-2 text-sm text-gray-900">' + escapeHtml(tx.handled_by_name || '-') + '</td>';
+                    + '<td class="px-4 py-2 text-sm text-gray-900" title="' + escapeHtml(tx.reason || '') + '">' + escapeHtml(tx.reason || '-') + '</td>'
+                    + '<td class="px-4 py-2 text-sm text-gray-900" title="' + escapeHtml(tx.handled_by_name || '') + '">' + escapeHtml(tx.handled_by_name || '-') + '</td>';
                 tbody.appendChild(row);
             });
             document.getElementById('transactionModal').classList.remove('hidden');

@@ -244,10 +244,10 @@ function renderFreightSection() {
       + '</div>';
 
     return '<tr class="border-t hover:bg-blue-50">'
-      + '<td class="px-3 py-2 w-8"><input type="checkbox" id="cb-freight-' + escapeHtml(key) + '" ' + (isChecked ? 'checked' : '') + ' onchange="toggleShipmentCheck(\'freight\',\'' + escapeHtml(key) + '\',this.checked)" class="rounded"></td>'
-      + '<td class="px-3 py-2 font-medium">' + escapeHtml(grp.client_name)      + '</td>'
+      + '<td class="px-3 py-2 w-8 text-center"><input type="checkbox" id="cb-freight-' + escapeHtml(key) + '" ' + (isChecked ? 'checked' : '') + ' onchange="toggleShipmentCheck(\'freight\',\'' + escapeHtml(key) + '\',this.checked)" class="rounded"></td>'
+      + '<td class="px-3 py-2 font-medium" title="' + escapeHtml(grp.client_name) + '">' + escapeHtml(grp.client_name)      + '</td>'
       + '<td class="px-3 py-2">' + terminalHtml + '</td>'
-      + '<td class="px-3 py-2 text-xs text-gray-500 hidden md:table-cell max-w-[160px] truncate">' + escapeHtml(itemSummary) + '</td>'
+      + '<td class="px-3 py-2 text-xs text-gray-500 hidden md:table-cell truncate" title="' + escapeHtml(itemSummary) + '">' + escapeHtml(itemSummary) + '</td>'
       + '<td class="px-3 py-2 text-center">'
       + '<input type="number" id="f-lc-' + escapeHtml(key) + '" value="' + labelCount + '" min="1" max="99"'
       + ' class="ds-input w-14 px-1 py-1 text-center text-sm border rounded"> 장'
@@ -282,13 +282,13 @@ function renderDaesintaekbaeSection() {
 
     // ID 접두어 'd-' 사용: 대신택배 전용 (대신화물과 ID 충돌 방지)
     return '<tr class="border-t hover:bg-green-50">'
-      + '<td class="px-3 py-2 w-8"><input type="checkbox" id="cb-daesintaekbae-' + escapeHtml(key) + '" ' + (isChecked ? 'checked' : '') + ' onchange="toggleShipmentCheck(\'daesintaekbae\',\'' + escapeHtml(key) + '\',this.checked)" class="rounded"></td>'
-      + '<td class="px-3 py-2 font-medium">' + escapeHtml(grp.client_name)      + '</td>'
+      + '<td class="px-3 py-2 w-8 text-center"><input type="checkbox" id="cb-daesintaekbae-' + escapeHtml(key) + '" ' + (isChecked ? 'checked' : '') + ' onchange="toggleShipmentCheck(\'daesintaekbae\',\'' + escapeHtml(key) + '\',this.checked)" class="rounded"></td>'
+      + '<td class="px-3 py-2 font-medium" title="' + escapeHtml(grp.client_name) + '">' + escapeHtml(grp.client_name)      + '</td>'
       + '<td class="px-3 py-2 text-sm">'
       + '<input type="text" id="d-addr-' + escapeHtml(key) + '" value="' + escapeHtml(addr) + '"'
       + ' class="ds-input px-2 py-1 text-xs w-full border rounded" placeholder="배송주소">'
       + '</td>'
-      + '<td class="px-3 py-2 text-xs text-gray-500 hidden md:table-cell max-w-[160px] truncate">' + escapeHtml(itemSummary) + '</td>'
+      + '<td class="px-3 py-2 text-xs text-gray-500 hidden md:table-cell truncate" title="' + escapeHtml(itemSummary) + '">' + escapeHtml(itemSummary) + '</td>'
       + '<td class="px-3 py-2 text-center">'
       + '<input type="number" id="d-lc-' + escapeHtml(key) + '" value="' + labelCount + '" min="1" max="99"'
       + ' class="ds-input w-14 px-1 py-1 text-center text-sm border rounded"> 장'
@@ -351,9 +351,9 @@ function renderHanjinSection() {
     var addr = grp.receiver_address;
     var isChecked = selectedShipments['hanjin'] && selectedShipments['hanjin'].has(key);
     return '<tr class="border-t hover:bg-orange-50">'
-      + '<td class="px-3 py-2 w-8"><input type="checkbox" id="cb-hanjin-' + escapeHtml(key) + '" ' + (isChecked ? 'checked' : '') + ' onchange="toggleShipmentCheck(\'hanjin\',\'' + escapeHtml(key) + '\',this.checked)" class="rounded"></td>'
-      + '<td class="px-3 py-2 font-medium">' + escapeHtml(grp.client_name)      + '</td>'
-      + '<td class="px-3 py-2 text-sm text-gray-600 max-w-[180px] truncate">' + escapeHtml(addr || '-') + '</td>'
+      + '<td class="px-3 py-2 w-8 text-center"><input type="checkbox" id="cb-hanjin-' + escapeHtml(key) + '" ' + (isChecked ? 'checked' : '') + ' onchange="toggleShipmentCheck(\'hanjin\',\'' + escapeHtml(key) + '\',this.checked)" class="rounded"></td>'
+      + '<td class="px-3 py-2 font-medium" title="' + escapeHtml(grp.client_name) + '">' + escapeHtml(grp.client_name)      + '</td>'
+      + '<td class="px-3 py-2 text-sm text-gray-600 truncate" title="' + escapeHtml(addr || '') + '">' + escapeHtml(addr || '-') + '</td>'
       + '<td class="px-3 py-2">'
       + '<input type="text" id="track-' + escapeHtml(key) + '" value="' + escapeHtml(tracking) + '"'
       + ' class="ds-input px-2 py-1 text-sm w-48 border rounded" placeholder="송장번호 입력">'
@@ -378,9 +378,9 @@ function renderQuickSection() {
     var grp = quickGroups[key];
     var isChecked = selectedShipments['quick'] && selectedShipments['quick'].has(key);
     return '<tr class="border-t hover:bg-gray-50">'
-      + '<td class="px-3 py-2 w-8"><input type="checkbox" id="cb-quick-' + escapeHtml(key) + '" ' + (isChecked ? 'checked' : '') + ' onchange="toggleShipmentCheck(\'quick\',\'' + escapeHtml(key) + '\',this.checked)" class="rounded"></td>'
-      + '<td class="px-3 py-2 font-medium">' + escapeHtml(grp.client_name)      + '</td>'
-      + '<td class="px-3 py-2 text-sm text-gray-600">' + escapeHtml(grp.receiver_address || '-') + '</td>'
+      + '<td class="px-3 py-2 w-8 text-center"><input type="checkbox" id="cb-quick-' + escapeHtml(key) + '" ' + (isChecked ? 'checked' : '') + ' onchange="toggleShipmentCheck(\'quick\',\'' + escapeHtml(key) + '\',this.checked)" class="rounded"></td>'
+      + '<td class="px-3 py-2 font-medium" title="' + escapeHtml(grp.client_name) + '">' + escapeHtml(grp.client_name)      + '</td>'
+      + '<td class="px-3 py-2 text-sm text-gray-600 truncate" title="' + escapeHtml(grp.receiver_address || '') + '">' + escapeHtml(grp.receiver_address || '-') + '</td>'
       + '<td class="px-3 py-2 text-sm">' + escapeHtml(grp.contact_phone || '-') + '</td>'
       + '<td class="px-3 py-2 text-center">'
       + '<button onclick="printQuickGuide(\'' + escapeHtml(key) + '\')" class="px-3 py-1.5 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 whitespace-nowrap">'
@@ -403,10 +403,10 @@ function renderEtcSection() {
   tbody.innerHTML = keys.map(function(key) {
     var grp = etcGroups[key];
     return '<tr class="border-t">'
-      + '<td class="px-3 py-2 font-medium">' + escapeHtml(grp.client_name)      + '</td>'
+      + '<td class="px-3 py-2 font-medium" title="' + escapeHtml(grp.client_name) + '">' + escapeHtml(grp.client_name)      + '</td>'
       + '<td class="px-3 py-2 text-xs text-gray-500">' + escapeHtml(grp.delivery_type) + '</td>'
       + '<td class="px-3 py-2 text-xs text-gray-500">' + escapeHtml(grp.courier_name || '-') + '</td>'
-      + '<td class="px-3 py-2 text-sm">' + escapeHtml(grp.receiver_address || '-') + '</td>'
+      + '<td class="px-3 py-2 text-sm truncate" title="' + escapeHtml(grp.receiver_address || '') + '">' + escapeHtml(grp.receiver_address || '-') + '</td>'
       + '</tr>';
   }).join('');
 }
@@ -1099,7 +1099,7 @@ async function loadInTransitOrders() {
         : '<span class="ds-badge ds-badge-blue text-xs">배송 중</span>';
       return '<tr class="hover:bg-gray-50">'
         + '<td class="px-3 py-2 text-sm font-medium">' + escapeHtml(o.order_number) + '</td>'
-        + '<td class="px-3 py-2 text-sm">' + escapeHtml(o.client_name) + '</td>'
+        + '<td class="px-3 py-2 text-sm" title="' + escapeHtml(o.client_name || '') + '">' + escapeHtml(o.client_name) + '</td>'
         + '<td class="px-3 py-2 text-center text-xs">' + escapeHtml(o.delivery_method || '-') + '</td>'
         + '<td class="px-3 py-2 text-center text-xs">' + escapeHtml((o.updated_at || '').substring(0, 10)) + '</td>'
         + '<td class="px-3 py-2 text-center text-xs font-medium ' + (isOverdue ? 'text-green-600' : 'text-gray-500') + '">' + escapeHtml(o.auto_complete_date) + '</td>'

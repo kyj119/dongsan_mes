@@ -100,14 +100,14 @@ window.switchLogTab = function(tab) {
 
         <div class="ds-card overflow-hidden">
           <div class="overflow-x-auto" style="max-height: calc(100vh - 280px); overflow-y: auto;">
-            <table class="w-full text-sm ds-table-striped">
+            <table class="w-full text-sm ds-table ds-table-striped">
               <thead class="bg-gray-50">
                 <tr>
-                  <th class="px-4 py-3 text-left text-xs font-medium text-gray-500" style="width:150px">일시</th>
-                  <th class="px-4 py-3 text-left text-xs font-medium text-gray-500" style="width:100px">사용자</th>
-                  <th class="px-4 py-3 text-left text-xs font-medium text-gray-500" style="width:90px">작업</th>
-                  <th class="px-4 py-3 text-left text-xs font-medium text-gray-500" style="width:120px">대상</th>
-                  <th class="px-4 py-3 text-left text-xs font-medium text-gray-500">상세</th>
+                  <th class="col-datetime px-4 py-3 text-left text-xs font-medium text-gray-500" style="width:150px">일시</th>
+                  <th class="col-tag px-4 py-3 text-left text-xs font-medium text-gray-500" style="width:100px">사용자</th>
+                  <th class="col-tag px-4 py-3 text-left text-xs font-medium text-gray-500" style="width:90px">작업</th>
+                  <th class="col-code px-4 py-3 text-left text-xs font-medium text-gray-500" style="width:120px">대상</th>
+                  <th class="col-name px-4 py-3 text-left text-xs font-medium text-gray-500">상세</th>
                 </tr>
               </thead>
               <tbody id="logTableBody" class="divide-y divide-gray-100">
@@ -163,15 +163,15 @@ window.switchLogTab = function(tab) {
 
         <!-- 테이블 -->
         <div class="ds-card overflow-x-auto" style="max-height: calc(100vh - 280px); overflow-y: auto;">
-          <table class="w-full text-sm ds-table-striped">
+          <table class="w-full text-sm ds-table ds-table-striped">
             <thead class="bg-gray-50 border-b">
               <tr>
-                <th class="px-4 py-3 text-left" style="width:150px">일시</th>
-                <th class="px-4 py-3 text-left" style="width:100px">템플릿</th>
-                <th class="px-4 py-3 text-left" style="width:140px">수신자</th>
-                <th class="px-4 py-3 text-left">제목</th>
-                <th class="px-4 py-3 text-center" style="width:80px">상태</th>
-                <th class="px-4 py-3 text-left" style="width:90px">발송자</th>
+                <th class="col-datetime px-4 py-3 text-left" style="width:150px">일시</th>
+                <th class="col-tag px-4 py-3 text-left" style="width:100px">템플릿</th>
+                <th class="col-flex px-4 py-3 text-left" style="width:140px">수신자</th>
+                <th class="col-name px-4 py-3 text-left">제목</th>
+                <th class="col-status px-4 py-3 text-center" style="width:80px">상태</th>
+                <th class="col-tag px-4 py-3 text-left" style="width:90px">발송자</th>
               </tr>
             </thead>
             <tbody id="dataBody"></tbody>

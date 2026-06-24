@@ -124,7 +124,7 @@ function renderMaterialTable() {
   var tbody = document.getElementById('materialBody');
   var rows = Object.values(grouped).map(function(s) {
     return '<tr>'
-      + '<td style="padding:10px 12px;">' + escapeHtml(s.category_name || '원단') + '</td>'
+      + '<td style="padding:10px 12px;" title="' + escapeHtml(s.category_name || '원단') + '">' + escapeHtml(s.category_name || '원단') + '</td>'
       + '<td style="padding:10px 12px;text-align:center;color:#666;font-size:13px;">-</td>'
       + '<td style="padding:10px 12px;text-align:right;font-family:monospace;">' + formatNumber(s.total_consumed_sqm, 1) + ' ㎡</td>'
       + '<td style="padding:10px 12px;text-align:right;font-family:monospace;font-size:13px;">' + formatNumber(s.avg_purchase_price_yd, 1) + '원</td>'
@@ -163,8 +163,8 @@ async function loadDeductions() {
         : (d.material_item_id != null ? ('#' + d.material_item_id) : '-');
 
       return '<tr>'
-        + '<td style="padding:10px 12px;font-family:monospace;font-size:12px;">' + escapeHtml(d.order_number || '-') + '</td>'
-        + '<td style="padding:10px 12px;font-size:12px;color:#666;">' + escapeHtml(matName) + '</td>'
+        + '<td style="padding:10px 12px;font-family:monospace;font-size:12px;" title="' + escapeHtml(d.order_number || '-') + '">' + escapeHtml(d.order_number || '-') + '</td>'
+        + '<td style="padding:10px 12px;font-size:12px;color:#666;" title="' + escapeHtml(matName) + '">' + escapeHtml(matName) + '</td>'
         + '<td style="padding:10px 12px;text-align:right;font-family:monospace;font-size:12px;">' + formatNumber(dedLength, 1) + 'mm</td>'
         + '<td style="padding:10px 12px;text-align:center;font-size:12px;">' + formatNumber(d.matched_width_mm, 0) + '</td>'
         + '<td style="padding:10px 12px;text-align:center;font-size:12px;">' + outputSize + '</td>'

@@ -386,18 +386,18 @@ function displayProductMaterials() {
 }
 
 function buildMaterialTable(materials) {
-    var html = '<table class="w-full text-sm">';
+    var html = '<table class="w-full text-sm ds-table">';
     html += '<thead class="bg-gray-50"><tr>';
-    html += '<th class="px-3 py-1.5 text-left text-xs font-semibold text-gray-600">원단명</th>';
-    html += '<th class="px-3 py-1.5 text-left text-xs font-semibold text-gray-600">폭</th>';
-    html += '<th class="px-3 py-1.5 text-right text-xs font-semibold text-gray-600">현재고</th>';
-    html += '<th class="px-3 py-1.5 text-left text-xs font-semibold text-gray-600">액션</th>';
+    html += '<th class="col-name px-3 py-1.5 text-left text-xs font-semibold text-gray-600">원단명</th>';
+    html += '<th class="col-qty px-3 py-1.5 text-left text-xs font-semibold text-gray-600">폭</th>';
+    html += '<th class="col-qty px-3 py-1.5 text-right text-xs font-semibold text-gray-600">현재고</th>';
+    html += '<th class="col-action px-3 py-1.5 text-left text-xs font-semibold text-gray-600">액션</th>';
     html += '</tr></thead>';
     html += '<tbody class="divide-y divide-gray-100">';
     materials.forEach(function(mat) {
         var widthCm = mat.width_mm ? Math.round(mat.width_mm / 10) + 'cm' : '-';
         html += '<tr class="hover:bg-gray-50">';
-        html += '<td class="px-3 py-1.5 text-gray-900">' + escapeHtml(mat.item_name || '') + '</td>';
+        html += '<td class="px-3 py-1.5 text-gray-900" title="' + escapeHtml(mat.item_name || '') + '">' + escapeHtml(mat.item_name || '') + '</td>';
         html += '<td class="px-3 py-1.5 text-gray-600">' + widthCm + '</td>';
         html += '<td class="px-3 py-1.5 text-right text-gray-600">' + (mat.current_stock || 0) + '</td>';
         html += '<td class="px-3 py-1.5 font-medium">';
