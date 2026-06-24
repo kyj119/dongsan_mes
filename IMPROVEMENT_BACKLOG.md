@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 1 -->
-<!-- last_run_at: 2026-06-24T02:00:00+09:00 -->
+<!-- last_run_area: 2 -->
+<!-- last_run_at: 2026-06-24T06:00:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,10 +8,10 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | 5 (**GitHub open auto-improve 실측 5건** — **#430 post-deploy smoke가 write 경로 무검증(GET 101+로그인 POST 1) → 품목 생성 불능 회귀가 green 통과(은폐)** improvement small [Area 1] · **#435 차감방식(deduction_method/sheet_spec/waste_factor) 설정 UI·API 부재 — 신규 판재 마이그레이션 없이 BOARD/NONE 분류 불가, autoDeduct 침묵 오차감** improvement small [Area 3] · **#436 재고실사 submitted_by/approved_by audit가 항상 'system' — 미전송 X-User-Id 헤더 의존(#394 절반 마이그레이션 잔재)** bug small [Area 4] · **#437 PUT /api/bank/accounts/:id entityFilter 누락 — 타법인 계좌 master cross-tenant 덮어쓰기 IDOR, 형제 DELETE/refresh·corporate_cards PUT(#360)은 적용·PUT만 누락(부분픽스)** bug small [Area 5] · **#439 스케줄 auto-improve 루틴이 git push 불가(프록시 403) + backlog 318KB라 push_files API 우회도 막힘 → last_run_area origin 고정으로 무한 Area-1 루프** improvement small [Area 1, 본 사이클 재확인]) |
+| 🆕 new | 1 (**GitHub open auto-improve 실측 1건** — **#439 스케줄 루틴 git push/backlog 트림 회복탄력성** improvement small [Area 1, owner B옵션 미정·git push는 동작]. 본 Area 2 사이클은 신규 이슈 0건[유일 발견 lifecycle.ts:176 entity_id 누락은 안전 자동수정 `c6c6f00`으로 직접 처리]) |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 (#372 CSV도 owner close-completed → done 이관) |
-| ✔️ done | 135 (134 + **owner close-completed #438**[`19610de` 마이그 0373/0374 번호충돌 해소 — 품목 마이그를 0375/0376으로 리넘버] — 직전 #429 + 7건 일괄 close 포함, **전 main 트리 실재 검증, #422 디버전스 클래스 clean**) |
+| ✔️ done | 139 (135 + **owner close-completed 4건**[#430 smoke write-카나리·#435 차감방식 UI·#436 재고실사 audit·#437 bank PUT IDOR — 커밋 `f9587c5` "fix(security/audit): IDOR·감사기록·차감방식UI·write카나리 일괄 수정"으로 전부 수정 close, main 트리 실재 검증·#422 디버전스 clean]) |
 | ❌ rejected | 3 |
 
 > 📦 **과거 사이클 로그**(아래 6블록 이전분)는 `IMPROVEMENT_BACKLOG_ARCHIVE.md`로 이관됨 (2026-06-10 정리). 신규 로그는 계속 이 파일 상단에 추가.
@@ -25,6 +25,16 @@
 > - **🟢 backlog↔GitHub sync**: open auto-improve **실측 5건**(#430·#435·#436·#437·#439, list_issues 전수). 직전 stats `new=5`(#430·#435·#436·#437·#438)에서 **#438 owner close-completed**(`19610de`) → done 134→135, #439(직전 Area1 생성) new 편입 → net 5 유지. rejected=3. #422 디버전스: HEAD=origin/main 동기(`0e7b886`)라 미push 픽스 0.
 > - **이상 없음(프로덕션)**: CI 전량 green, 회계 허브 완전 배선, DROP 마이그 0, sync 5=5. **루틴 자체 blocker(#439)만 미해소** — 이는 owner 영역(git 권한/backlog 트림).
 > - 자동 수정 0건, 신규 이슈 0건(#439 재사용), done-sync(#438 close-completed 이관 134→135), **신선 각도 — 회계 허브 신규 feature 배선 + 신모델 마이그 churn 헬스, 프로덕션 영향 0 확인. 단 본 사이클도 push 실패 시 backlog 영속화 불가(아래 commit/push 시도 결과 참조).**
+>
+> **Area 2 코드 품질 심층 분석 (2026-06-24T06:00):**
+> - **방법**: git fetch-before-compare(origin force-update `4993fa7→405c72f`, fetch 후 **HEAD=origin/main `405c72f` 0/0 동기**, 디버전스 0). **git push 동작 확인됨**(#439 owner 코멘트: 02:00 Area1 런 push 성공, transient였음 → 본 사이클 정상 push 가능). egress 차단(prod/Playwright/verify[node_modules·tsc 부재] 도달 불가)이라 정적 스캔. Area 2 **21회차** — **신선 각도 = 직전 사이클 이후 최대 churn = 회계 통합 허브 신규파일 `accounting.ts`(02dfe2d+13fb4e2, 328L 4엔드포인트) + 바로빌 `barobill.ts`(159L) — 둘 다 Area2 미감사 신규 feature 파일.**
+> - **🟢 신규 feature 파일 2종 = clean**: `accounting.ts`(summary/payments/purchases/timeline) — read-only, `authMiddleware+requireRole('ADMIN','MANAGER')`(:23), **전 쿼리 entityFilter 적용**(efG/efCt/efPi/efP/efA 등), 참조 컬럼 전수 ground-truth 대조 통과(card_transactions.approval_type/merchant_name·order_billing_groups.billed_amount·purchase_invoices.total_amount/supplier_id·payments.*·adjustments.amount·corporate_cards.is_active/card_name 모두 실재). `barobill.ts` — 외부 금융 API read-only 프록시, auth+role, 법인별 corpNum 스코프(getEntityCorpNum), DB write·컬럼위험 0.
+> - **🔧 자동수정 1건 (entity_id INSERT 누락) — `c6c6f00`**: `cards/lifecycle.ts:176` `PATCH /bulk/status`의 HOLD+불량 자동 `quality_issues` 생성 INSERT가 **entity_id 미지정** → `NOT NULL DEFAULT 1`(0222)로 고정 → 타 법인(청주 등) 카드 불량이 **entity_id=1로 오귀속**, 해당 법인 품질통계(`cards/queries.ts:695` entityFilter)에서 누락/오집계. **같은 파일 sibling INSERT(:506 `/defects`·:601)는 이미 `getEntityId(c) || 1` 적용** = 본 건만 빠진 부분픽스 잔재(#384 entity_id 클래스). `getEntityId` 기존 import·사용 중이라 컴파일 안전(sibling과 동일 패턴), bulk SELECT가 entity-scope(efBulk)라 모든 카드=호출자 법인. 자동수정 직접 적용.
+> - **🟢 entity_id INSERT 전수 스캔 = net-new 0(위 1건 외)**: 322+ 마이그 ground-truth(entity_id 보유 테이블) ↔ 전 routes `INSERT INTO <ent_table>(collist)` 멀티라인 파싱 → entity_id 미포함은 lifecycle.ts:176 단 1건(=자동수정). 나머지 전부 명시 또는 트리거/디폴트 처리.
+> - **🟢 단일테이블 명시-SELECT 컬럼존재성 = net-new 0(2 FP)**: `bank_match_rules.matched_category_id`×3 = **FP**(0270 table-rebuild `bank_match_rules_new`→RENAME로 실재, 파서가 rebuild RENAME 미추적한 한계) · `insurance_rates` `NULL` 리터럴 = FP(파서가 NULL을 컬럼으로 오파싱). 실제 미존재 컬럼 0.
+> - **🟢 authMiddleware 커버리지 = clean**: NO-AUTH 그렙 8건 전부 **배럴 aggregator**(orders/ledger/payroll/taxInvoices/purchaseOrders/accounts-receivable = 서브라우터 mount, 서브가 auth 보유) 또는 **의도적 public**(hrSelf self-auth 토큰·webhooks 외부콜). 실제 인증 누락 0.
+> - **이상 없음**: git 동기 0/0·push 동작. 신규 feature(accounting/barobill) clean. column/auth 스캔 net-new 0. **유일 발견 entity_id 누락 1건은 안전 자동수정(`c6c6f00`).**
+> - 자동 수정 1건(lifecycle.ts:176 entity_id, `c6c6f00`), 신규 이슈 0건, done-sync(owner #430·#435·#436·#437 close-completed `f9587c5` → done 135→139, new 5→1), **신선 각도 — 회계 허브+바로빌 신규 feature 파일 첫 Area2 감사 + entity_id/컬럼/auth 표준 스캔, 프로덕션 영향 0(자동수정은 데이터 귀속 정합 개선) 확인**
 >
 > **Area 6 자기 진화 (2026-06-23T22:00):**
 > - **방법**: git fetch-before-compare(origin force-update `4993fa7→d614564`, fetch 후 **HEAD=origin/main `d614564` 0/0 동기**, 디버전스 0). egress 차단(prod/Playwright/verify[node_modules 부재] 도달 불가)이라 정적 bridge 재감사. Area 6 **21회차** — **신선 각도 = 직전 Area4(`c51f484`, 14:00)/Area5(`5424c2f`, 18:00) HEAD 이후 churn의 컬럼-diff bridge + XSS bridge + backlog↔GitHub sync.**
