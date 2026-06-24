@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 3 -->
-<!-- last_run_at: 2026-06-24T10:00:00+09:00 -->
+<!-- last_run_area: 4 -->
+<!-- last_run_at: 2026-06-24T14:00:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,7 +8,7 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | 1 (**GitHub open auto-improve 실측 1건** — **#439 스케줄 루틴 git push/backlog 트림 회복탄력성** improvement small [Area 1, owner B옵션 미정·git push는 동작 확인]. 본 Area 3 사이클 신규 이슈 0건[회계 허브 신규 feature UX/기능 감사 clean]) |
+| 🆕 new | 2 (**GitHub open auto-improve 실측 2건** — **#439** 스케줄 루틴 git push/backlog 트림 회복탄력성 improvement small [Area 1, git push는 동작 확인] + **#441** 미수금 연령분석/거래처필터/은행검색이 폐기된 clients.balance 캐시 읽음 bug medium [Area 4, 본 사이클 신규]) |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 (#372 CSV도 owner close-completed → done 이관) |
 | ✔️ done | 139 (135 + **owner close-completed 4건**[#430 smoke write-카나리·#435 차감방식 UI·#436 재고실사 audit·#437 bank PUT IDOR — 커밋 `f9587c5` "fix(security/audit): IDOR·감사기록·차감방식UI·write카나리 일괄 수정"으로 전부 수정 close, main 트리 실재 검증·#422 디버전스 clean]) |
@@ -16,6 +16,18 @@
 
 > 📦 **과거 사이클 로그**(아래 6블록 이전분)는 `IMPROVEMENT_BACKLOG_ARCHIVE.md`로 이관됨 (2026-06-10 정리). 신규 로그는 계속 이 파일 상단에 추가.
 
+> **Area 4 데이터 정합성 (2026-06-24T14:00):**
+> - **방법**: git fetch-before-compare(origin force-update `4993fa7→4c91a6d`, fetch 후 **HEAD=origin/main `4c91a6d` 0/0 동기**, 디버전스 0). git push 동작(직전 Area2 `9b7be22`·Area3 `431ca68` origin 반영). egress 차단(prod D1/wrangler/node_modules 부재)이라 migrations ground-truth 정적 대조. Area 4 **22회차** — **신선 각도 = 직전 Area4(c51f484, 06-23T14:00, origin force-update로 SHA 소멸) 이후 최대 churn = 법인카드 승인↔취소 자동상계(0379 `card_tx_offset`+`reconcileCardOffsets`)·바로빌 은행 auto-match(5f8793c 파생잔액 복원)·`clients.balance` 캐시 폐기(P3) 전환 churn.**
+> - **🔴 신규 이슈 #441 (bug, medium) — 폐기된 `clients.balance` 캐시 stale read 부분픽스 잔재**: `clients.balance`는 split billing P3에서 폐기(정상 입금/청구/감액 흐름 incremental 유지 0 — `lib/payments.ts:77`·`ar-payments` 전부 "캐시 미사용·미수금 파생" 주석/파생반환, 쓰는 곳은 수동 recalc `ar-receivables.ts:87/142`+임포트 `migration.ts`뿐)인데 4개 읽기가 잔존: **(HIGH)** `reports.ts:465-509 /receivables-analysis` 미수금 연령분석 Aging Buckets+TOP15가 `c.balance`로 버킷/`WHERE c.balance>0`(프론트 reports.js:393 LIVE) · **(MED)** `clients.ts:101-103 ?has_balance=1` 거래처필터 `c.balance>0` · **(LOW)** `bank.ts:1994 /client-search` `ORDER BY c.balance` · **(LOW)** `reports.ts:91` clientSummary. 거래처 상세(파생)와 AR aging(캐시) 미수금 불일치 → 연체관리 stale. owner가 "stale 7건 정리"(`3c1eddc`)·"상세 파생통일"(`a846ed0`)로 고가시성만 전환, 형제 읽기 누락(#431/#377 부분픽스). **issue-only**(캐시→파생 쿼리 전환은 보고서출력·entityFilter·성능 영향 #431 클래스, egress 차단으로 출력검증 불가).
+> - **🟢 자동상계 `reconcileCardOffsets`(cardExpenses.ts:46) = clean**: ① **멱등**(`is_offset=0`만 대상, 마킹 후 다음 런 제외) ② **1:1 매칭 정합**(`used` Set으로 승인 재사용 차단·카드/반올림금액/가맹점 동일+±30일 최근일 best) ③ **NaN-safe**(`parseTxDate` <8자 NaN + `!(diffDays<=WINDOW)` 가드) ④ **entity 격리**(SELECT `entityFilter(c,'card_transactions')`) ⑤ 80개 청크 batch. status CHECK(`UNCLASSIFIED/CLASSIFIED/REQUESTED/APPROVED`) — 전 literal write 준수(`'CANCEL'/'APPROVED'` 리터럴은 전부 비-CHECK `approval_type` 대상).
+> - **🟢 바로빌 auto-match 파생잔액 복원(bank.ts:780~ 5f8793c) = clean**: rule3 금액매칭이 폐기 `clients.balance`(=0) 의존 dead였던 걸 `deriveClientBalance` 동일정의 파생(`order_billing_groups[BILLED]−payments−adjustments`)으로 복원 + **안전가드 3종**(DEPOSIT 입금만·해당잔액 거래처 유일시(`balanceCount===1`)만·여전히 SUGGEST/CONFIRM, 자동적용 X). 모호 매칭 방지 sound.
+> - **🟢 card_transactions INSERT 컬럼존재성 = net-new 0**: 3 INSERT(:386 codef sync·:877 수동·:931 CSV) 전 컬럼 ground-truth(0054 CREATE+ALTERs receipt_image_url/approval_number/supply_amount/tax_amount/approval_type/matched_bank_tx_id/is_offset/offset_pair_id) 실재. 0379 신규 컬럼(is_offset NOT NULL DEFAULT 0·offset_pair_id) additive 정합.
+> - **🟢 마이그 0379(card_tx_offset)·0380(expense_category_cleanup) = additive/멱등**: 0379 ADD COLUMN×2+INDEX(DROP 0) · 0380 `UPDATE is_active=0`(드롭다운만 차단·기존 category_id 유지)+`원재료비` INSERT(`entity_id NOT IN (SELECT … name='원재료비')` 멱등가드). 마이그 번호 중복 standing scan = `0327`만(기존 prod-적용 추정, #438 규칙상 정리대상 아님), 본 churn 신규 중복 유입 0.
+> - **🟢 backlog↔GitHub sync**: open auto-improve **실측 1건**(#439, list_issues 전수) = 직전 Area3 stats `new=1` **정합**. 본 사이클 #441 추가 → new 1→2. owner 신규 close/머지 0(done=139·rejected=3 유지). #422 디버전스: HEAD=origin/main 동기(`4c91a6d`)라 미push 픽스 0.
+> - **🧬 SKILL 강화 0건**: 기존 standing scan(denormalized 캐시 일관성 #431 line 70·부분픽스 #377 line 62·CHECK literal line 150·컬럼존재성 line 154)이 본 churn 전수 커버. #441은 #431 "백엔드 컬럼/JOIN 제거→stale read"의 **캐시-컬럼 폐기 변종**으로 기존 패턴 적용.
+> - **이상 없음(자동상계·auto-match·INSERT·마이그)**, **유일 발견 #441**(폐기 캐시 stale read, issue-only). git 동기 0/0, sync 1=1(+#441).
+> - 자동 수정 0건(Area 4 #441=issue-only, 캐시→파생 전환=보고서 출력 영향), 신규 이슈 1건(#441), SKILL 강화 0건, done-sync(변동 0, new 1→2), **신선 각도 — 카드 자동상계/바로빌 auto-match 신규 feature 데이터정합성 + 폐기 clients.balance 캐시 stale-read 부분픽스 추적, 프로덕션 영향 0(#441은 보고서 stale, prod 무중단)**
+>
 > **Area 3 UX/기능 감사 (2026-06-24T10:00):**
 > - **방법**: git fetch-before-compare(origin force-update `4993fa7→c02deb1`, fetch 후 **HEAD=origin/main `c02deb1` 0/0 동기**, 디버전스 0). git push 동작(직전 Area2 `9b7be22` 정상 push·origin 반영 확인). egress 차단(prod/Playwright/verify[node_modules 부재] 도달 불가)이라 정적 분석. Area 3 **17회차** — **신선 각도 = 직전 Area3(c3ccd2e, 06-23T10:00) 이후 최대 churn = 회계 통합 허브 신규 프론트 `accounting.js`(527L, 02dfe2d+13fb4e2) — 6탭(요약/입금/세금계산서/현금영수증/카드/매입+타임라인) 미감사 최대 신규 feature의 UX/기능 완전성.**
 > - **🟢 회계 허브 프론트(`accounting.js` 527L) = UX/기능 clean**: ① **로딩 표시 전수**(전 탭 `window.dsSkeleton.loadingRow(N)` 적용, #421 패턴 일관) ② **빈상태 전수**(탭별 아이콘+"입금/세금계산서/현금영수증/카드/매입/타임라인 내역이 없습니다" colspan 정합) ③ **삭제 confirm 가드**(입금삭제 `:505` native confirm "연결 은행거래 매칭 해제" 경고문 포함) ④ **showConfirm 콜백 오용 0**(#426 패턴 미발견) ⑤ **getElementById 전부 가드**(`if(!body){console.warn('[accounting]...');return}`, HTML↔JS silent-fail 방지 CLAUDE.md 함정 준수).
