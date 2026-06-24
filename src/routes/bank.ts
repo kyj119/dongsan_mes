@@ -780,18 +780,41 @@ bankRouter.post('/transactions/auto-match', requireRole('ADMIN'), async (c) => {
       return c.json({ success: true, data: { matched: 0 }, message: '매칭할 거래가 없습니다' })
     }
 
-    // 2. 모든 활성 거래처 가져오기 (잔액 > 0 우선)
+    // 2. 모든 활성 거래처 가져오기
     const { results: clients } = await c.env.DB.prepare(`
-      SELECT id, client_name, search_keywords, balance
+      SELECT id, client_name, search_keywords
       FROM clients
       WHERE is_active = 1
-      ORDER BY balance DESC
+      ORDER BY client_name
     `).all<{
       id: number
       client_name: string
       search_keywords: string | null
-      balance: number | null
     }>()
+
+    // 2-b. 거래처별 미수금 파생잔액(1쿼리) — clients.balance 캐시 폐기 → /receivables·deriveClientBalance 동일 정의.
+    //      rule 3(금액일치) 매칭에 사용. 같은 잔액 거래처가 여럿이면 모호 → 매칭 제외(유일성 가드).
+    const { results: balRows } = await c.env.DB.prepare(`
+      SELECT c.id AS client_id,
+        (COALESCE(b.amt, 0) - COALESCE(pp.amt, 0) - COALESCE(aa.amt, 0)) AS balance
+      FROM clients c
+      LEFT JOIN (
+        SELECT o.client_id AS cid, SUM(g.billed_amount) AS amt
+        FROM order_billing_groups g JOIN orders o ON o.id = g.order_id
+        WHERE g.billing_status = 'BILLED' AND o.status != 'CANCELLED'
+        GROUP BY o.client_id
+      ) b ON b.cid = c.id
+      LEFT JOIN (SELECT client_id AS cid, SUM(amount) AS amt FROM payments GROUP BY client_id) pp ON pp.cid = c.id
+      LEFT JOIN (SELECT client_id AS cid, SUM(amount) AS amt FROM adjustments GROUP BY client_id) aa ON aa.cid = c.id
+      WHERE c.is_active = 1
+        AND (COALESCE(b.amt, 0) - COALESCE(pp.amt, 0) - COALESCE(aa.amt, 0)) > 0
+    `).all<{ client_id: number; balance: number }>()
+    const clientBalance = new Map<number, number>()
+    const balanceCount = new Map<number, number>()
+    for (const r of balRows) {
+      clientBalance.set(r.client_id, r.balance)
+      balanceCount.set(r.balance, (balanceCount.get(r.balance) ?? 0) + 1)
+    }
 
     // 3. bank_match_rules 캐시 로드 (거래처 + 비용카테고리 규칙)
     const efRules = entityFilter(c, 'bank_match_rules')
@@ -868,8 +891,9 @@ bankRouter.post('/transactions/auto-match', requireRole('ADMIN'), async (c) => {
             confidence = 0.7
             reason     = '검색키워드 일치'
           }
-          // 규칙 3: 금액 == 미수금 (잔액 일치)
-          if ((client.balance ?? 0) > 0 && tx.amount === client.balance) {
+          // 규칙 3: (입금) 금액 == 미수금 파생잔액 + 해당 잔액 거래처 유일 — 모호/무의미 매칭 방지
+          const derivedBal = clientBalance.get(client.id) ?? 0
+          if (tx.transaction_type === 'DEPOSIT' && derivedBal > 0 && tx.amount === derivedBal && balanceCount.get(derivedBal) === 1) {
             if (confidence >= 0.5) {
               // 이름도 부분 일치하면 0.8로 상향
               const namePartial = clientName.includes(txName) || txName.includes(clientName)
@@ -2078,78 +2102,7 @@ bankRouter.delete('/card-fee-rates/:id', requireRole('ADMIN'), async (c) => {
   }
 })
 
-// POST /api/bank/card-fee-calculate — 카드 입금액으로 수수료 역산
-// body: { deposit_amount, card_company? } 또는 배열
-bankRouter.post('/card-fee-calculate', requireRole('ADMIN', 'MANAGER'), async (c) => {
-  try {
-    const body = await c.req.json()
-    const ef = entityFilter(c, 'card_fee_rates')
-
-    // 카드사 수수료율 전체 로드
-    const { results: rates } = await c.env.DB.prepare(
-      `SELECT card_company, fee_rate, keywords FROM card_fee_rates WHERE is_active = 1${ef.clause}`
-    ).bind(...ef.params).all<{ card_company: string; fee_rate: number; keywords: string | null }>()
-
-    // 단건 또는 배열
-    const items: Array<{ deposit_amount: number; card_company?: string; counterpart_name?: string }> =
-      Array.isArray(body) ? body : [body]
-
-    const results = items.map(item => {
-      const depositAmount = parseFloat(String(item.deposit_amount))
-      if (isNaN(depositAmount) || depositAmount <= 0) {
-        return { ...item, error: '유효하지 않은 금액' }
-      }
-
-      // 카드사 매칭: card_company 직접 지정 또는 counterpart_name에서 키워드 매칭
-      let matchedRate: { card_company: string; fee_rate: number } | null = null
-
-      if (item.card_company) {
-        matchedRate = rates.find(r => r.card_company === item.card_company) || null
-      }
-
-      if (!matchedRate && item.counterpart_name) {
-        const name = item.counterpart_name
-        for (const r of rates) {
-          // 카드사명 직접 포함
-          if (name.includes(r.card_company)) { matchedRate = r; break }
-          // keywords 매칭
-          if (r.keywords) {
-            const kws = r.keywords.split(',').map(k => k.trim()).filter(Boolean)
-            if (kws.some(kw => name.includes(kw))) { matchedRate = r; break }
-          }
-        }
-      }
-
-      if (!matchedRate) {
-        return { ...item, deposit_amount: depositAmount, is_card: false }
-      }
-
-      const feeRate = matchedRate.fee_rate / 100
-      // 입금액 = 결제금액 × (1 - 수수료율)
-      // 결제금액 = 입금액 / (1 - 수수료율)
-      const originalAmount = Math.round(depositAmount / (1 - feeRate))
-      const feeAmount = originalAmount - depositAmount
-
-      return {
-        deposit_amount: depositAmount,
-        card_company: matchedRate.card_company,
-        fee_rate_percent: matchedRate.fee_rate,
-        original_amount: originalAmount,
-        fee_amount: feeAmount,
-        is_card: true,
-      }
-    })
-
-    // 배열이 아닌 단건 요청이었으면 첫 번째 결과만 반환
-    return c.json({
-      success: true,
-      data: Array.isArray(body) ? results : results[0]
-    })
-  } catch (error) {
-    console.error('Card fee calculate error:', error)
-    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
-  }
-})
+// (POST /api/bank/card-fee-calculate 제거됨 — 소비처 0건 dead 엔드포인트, 2026-06-24. card-fee-rates/-summary만 사용. 복원 필요 시 git 이력)
 
 // GET /api/bank/card-fee-summary — 기간별 카드 수수료 요약
 bankRouter.get('/card-fee-summary', requireRole('ADMIN', 'MANAGER'), async (c) => {
