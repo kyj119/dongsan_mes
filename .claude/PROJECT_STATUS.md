@@ -17,6 +17,8 @@
 
 ## 🔴 현재 진행 중
 
+- **🟢 [2026-06-24] LogWatcher TPM-01 현장 배포(TopazRip)**: prod·`E:\TNSRip-X1\Print.log`·Legacy(TNS)·`TPM-01`. 추출 정상(사용자 확인). ⚠️검증=**`/equipment`·`/production`** (/rip 페이지 폐기·404). 함정=repo `install-service.bat`·`install.bat` **LF 줄바꿈**→cmd 명령 토막 → `publish\install-service.bat`만 CRLF+ASCII 수정, **소스 LF 정리 보류**(나중에). RIP-03 `/equipment` 비활성화(soft delete=status INACTIVE)→동일 PC RIP-02 전환 깨끗(부활X). 정본=`memory/project-logwatcher-rollout.md`.
+
 - **🟢 [2026-06-23] 품목 마스터 신모델 등록 (정본 = `memory/session-context.md`)**:
   - 신모델 = **분류8 + 인쇄방식별 개별제품 + 폭/규격별 원단 + product_materials + autoDeduct(차감방식 구조화)**. 단가 전부 0.
   - 등록: 수성**10**·솔벤8·UV**21**·전사11·태극기33(나염) 제품 + 원자재 다수그룹. **마이그 0336~0378 prod 적용·고아0** (출력물 0360~0378 = 가로등배너·랩핑·솔벤텐트·UV엠보/클리어/뽀닥/고휘도·유통시트·UV투명·조명시트generic·수성어깨띠·백릿). 제품~83·소분류 100% 매핑(정확수치=아래 항목별).
