@@ -2023,14 +2023,21 @@ bankRouter.put('/card-fee-rates/:id', requireRole('ADMIN'), async (c) => {
     if (fee_rate != null && (fee_rate < 0 || fee_rate > 100)) {
       return c.json({ success: false, error: '수수료율은 0~100 사이 값이어야 합니다' }, 400)
     }
+    const ef = entityFilter(c, 'card_fee_rates')  // IDOR: 타 법인 수수료율 수정 차단 (GET/calc/summary와 대칭)
+    const row = await c.env.DB.prepare(
+      `SELECT id FROM card_fee_rates WHERE id = ?${ef.clause}`
+    ).bind(id, ...ef.params).first()
+    if (!row) {
+      return c.json({ success: false, error: '수수료율을 찾을 수 없습니다' }, 404)
+    }
     await c.env.DB.prepare(`
       UPDATE card_fee_rates
       SET card_company = COALESCE(?, card_company),
           fee_rate = COALESCE(?, fee_rate),
           keywords = COALESCE(?, keywords),
           updated_at = CURRENT_TIMESTAMP
-      WHERE id = ?
-    `).bind(card_company || null, fee_rate ?? null, keywords ?? null, id).run()
+      WHERE id = ?${ef.clause}
+    `).bind(card_company || null, fee_rate ?? null, keywords ?? null, id, ...ef.params).run()
     return c.json({ success: true, message: '수정 완료' })
   } catch (error) {
     console.error('Card fee rate update error:', error)
@@ -2042,9 +2049,16 @@ bankRouter.put('/card-fee-rates/:id', requireRole('ADMIN'), async (c) => {
 bankRouter.delete('/card-fee-rates/:id', requireRole('ADMIN'), async (c) => {
   try {
     const id = c.req.param('id')
+    const ef = entityFilter(c, 'card_fee_rates')  // IDOR: 타 법인 수수료율 삭제 차단 (GET/calc/summary와 대칭)
+    const row = await c.env.DB.prepare(
+      `SELECT id FROM card_fee_rates WHERE id = ?${ef.clause}`
+    ).bind(id, ...ef.params).first()
+    if (!row) {
+      return c.json({ success: false, error: '수수료율을 찾을 수 없습니다' }, 404)
+    }
     await c.env.DB.prepare(
-      'UPDATE card_fee_rates SET is_active = 0 WHERE id = ?'
-    ).bind(id).run()
+      `UPDATE card_fee_rates SET is_active = 0 WHERE id = ?${ef.clause}`
+    ).bind(id, ...ef.params).run()
     return c.json({ success: true, message: '삭제 완료' })
   } catch (error) {
     console.error('Card fee rate delete error:', error)
