@@ -1170,12 +1170,9 @@ bankRouter.post('/transactions/batch-apply', requireRole('ADMIN'), async (c) => 
 
     const results: { id: number; success: boolean; error?: string; payment_id?: number }[] = []
 
-    // Bulk-fetch all transactions in one query instead of N individual SELECTs
-    const placeholders = transaction_ids.map(() => '?').join(', ')
+    // Bulk-fetch all transactions (D1 바인드 한도 회피: 80개 청크 분할)
     const ef = entityFilter(c, 'bank_transactions')
-    const { results: txRows } = await c.env.DB.prepare(
-      `SELECT id, transaction_date, amount, match_status, matched_client_id, counterpart_name, description, entity_id FROM bank_transactions WHERE id IN (${placeholders})${ef.clause}`
-    ).bind(...transaction_ids, ...ef.params).all<{
+    type TxApplyRow = {
       id: number
       transaction_date: string
       amount: number
@@ -1183,8 +1180,16 @@ bankRouter.post('/transactions/batch-apply', requireRole('ADMIN'), async (c) => 
       matched_client_id: number | null
       counterpart_name: string | null
       description: string | null
-    }>()
-    const txMap = new Map(txRows.map(row => [row.id, row]))
+    }
+    const txMap = new Map<number, TxApplyRow>()
+    for (let i = 0; i < transaction_ids.length; i += 80) {
+      const chunk = transaction_ids.slice(i, i + 80)
+      const placeholders = chunk.map(() => '?').join(', ')
+      const { results: txRows } = await c.env.DB.prepare(
+        `SELECT id, transaction_date, amount, match_status, matched_client_id, counterpart_name, description, entity_id FROM bank_transactions WHERE id IN (${placeholders})${ef.clause}`
+      ).bind(...chunk, ...ef.params).all<TxApplyRow>()
+      for (const row of txRows) txMap.set(row.id, row)
+    }
 
     for (const txId of transaction_ids) {
       const tx = txMap.get(txId) ?? null
@@ -1300,24 +1305,31 @@ bankRouter.post('/transactions/batch-match', requireRole('ADMIN'), async (c) => 
 
     const results: { id: number; success: boolean; error?: string }[] = []
 
-    // Bulk-fetch transactions
+    // Bulk-fetch transactions (D1 바인드 한도 회피: 80개 청크 분할)
     const txIds = matches.map(m => m.transaction_id)
-    const placeholders = txIds.map(() => '?').join(', ')
     const ef = entityFilter(c, 'bank_transactions')
-    const { results: txRows } = await c.env.DB.prepare(
-      `SELECT id, match_status, counterpart_name FROM bank_transactions WHERE id IN (${placeholders})${ef.clause}`
-    ).bind(...txIds, ...ef.params).all<{
-      id: number; match_status: string; counterpart_name: string | null
-    }>()
-    const txMap = new Map(txRows.map(row => [row.id, row]))
+    type TxMatchRow = { id: number; match_status: string; counterpart_name: string | null }
+    const txMap = new Map<number, TxMatchRow>()
+    for (let i = 0; i < txIds.length; i += 80) {
+      const chunk = txIds.slice(i, i + 80)
+      const placeholders = chunk.map(() => '?').join(', ')
+      const { results: txRows } = await c.env.DB.prepare(
+        `SELECT id, match_status, counterpart_name FROM bank_transactions WHERE id IN (${placeholders})${ef.clause}`
+      ).bind(...chunk, ...ef.params).all<TxMatchRow>()
+      for (const row of txRows) txMap.set(row.id, row)
+    }
 
-    // Validate all client_ids exist
+    // Validate all client_ids exist (80개 청크 분할)
     const clientIds = [...new Set(matches.map(m => m.client_id))]
-    const clientPlaceholders = clientIds.map(() => '?').join(', ')
-    const { results: clientRows } = await c.env.DB.prepare(
-      `SELECT id FROM clients WHERE id IN (${clientPlaceholders}) AND is_active = 1`
-    ).bind(...clientIds).all<{ id: number }>()
-    const validClientIds = new Set(clientRows.map(r => r.id))
+    const validClientIds = new Set<number>()
+    for (let i = 0; i < clientIds.length; i += 80) {
+      const chunk = clientIds.slice(i, i + 80)
+      const clientPlaceholders = chunk.map(() => '?').join(', ')
+      const { results: clientRows } = await c.env.DB.prepare(
+        `SELECT id FROM clients WHERE id IN (${clientPlaceholders}) AND is_active = 1`
+      ).bind(...chunk).all<{ id: number }>()
+      for (const r of clientRows) validClientIds.add(r.id)
+    }
 
     const entityId = getEntityId(c) || 1
 

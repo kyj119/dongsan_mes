@@ -873,7 +873,8 @@
         showToast('바로빌 계좌내역을 수집하는 중...', 'info');
         var aed = new Date();
         var first = new Date(aed.getFullYear(), aed.getMonth(), 1);
-        var afmt = function(d){ return d.toISOString().slice(0, 10); };
+        // KST(로컬) 컴포넌트로 포맷 — toISOString은 UTC 변환이라 월초(00:00 KST)가 전월 말일로 9h 밀림
+        var afmt = function(d){ var mm = ('0' + (d.getMonth() + 1)).slice(-2); var dd = ('0' + d.getDate()).slice(-2); return d.getFullYear() + '-' + mm + '-' + dd; };
         axios.post('/api/bank/sync-barobill', { date_start: afmt(first), date_end: afmt(aed) }).then(function(sr) {
           showToast((sr.data && sr.data.message) || '계좌내역 수집 완료', 'success');
           loadAccounts();
