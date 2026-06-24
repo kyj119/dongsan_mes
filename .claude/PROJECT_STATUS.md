@@ -17,6 +17,11 @@
 
 ## 🔴 현재 진행 중
 
+- **🟡 [2026-06-24] 전 페이지 표 열폭 규격 일괄 정비 (에이전트 팀, 정본 `memory/project-table-spec-sweep.md`)**:
+  - 전역 `col-*` 폭 유틸 신설(shared-styles.ts) + 12클러스터 fan-out으로 **~101개 표 정비**(ds-table 보장+콘텐츠 유형별 고정폭+가변 주열만 흡수+긴 td `title` 호버). 인쇄양식·편집그리드·동적matrix·밀집표 의도적 제외.
+  - 검증: tsc/build green · **node --check 55/55**(?raw JS 문법) · 스폿리뷰 양호 · prod 전 페이지 200+col-* 반영. **prod 배포**(커밋 `3a64af56`, dep `47fbec9e`, 롤백 `5c1fa54c`).
+  - ⚠️**시각검증 미완**(공유 Playwright 타세션 점유) → 브라우저 가용 시 열균형·…잘림 스폿 필요. smoke.cjs=API전용이라 프론트 표 미검증.
+
 - **✅ [2026-06-24] Claude Code 셋업 정비 + bank 보안/버그 수정 (별도 세션 — 정본 `memory/project-ship-pipeline.md`)**:
   - **CC 셋업**: 죽은 jq훅→node 전환(`.claude/hooks/*.cjs` + SessionStart 자가진단) · `/ship` full-auto-prod 파이프라인(skill+ship:gate) · MCP(context7 + cloudflare-observability, 옛 cloudflare 제거) · 권한정리(통짜Bash 제거) · STATUS 다이어트 · **claude update 2.1.158→2.1.187**(agent teams 활성, **재시작 필요**) · env `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1`. 훅 경로버그(.js 오탐) 수정.
   - **bank 버그(3에이전트 병렬리뷰)**: ✅**#1 IDOR**(card_fee_rates PUT/DELETE entity격리, #437/#434 클래스) · ✅#2 dead `/card-fee-calculate` 삭제 · ✅**#3 auto-match 파생잔액 복원**(폐기 clients.balance→deriveClientBalance; 가드=입금만·유일잔액만·suggest전용) · ✅#5 D1 IN 80청크 · ✅#8 KST 월경계. **전부 prod 배포·검증**(커밋 f29a266b·06c4b653·5f8793c2 → dep e9c1155d). ✅**#4 client-search 파생잔액 복원**(폐기 c.balance=0→order_billing_groups[BILLED]−payments−adjustments, /receivables 동일정의; FE 미수금 힌트 부활·FE 무변경) · ✅**#7 /transactions bt.\* → FE 소비 컬럼 명시SELECT**(리네임 시 silent null→SQL에러 노출). **prod 배포·검증**(커밋 4d2f3fdb → dep `5c1fa54c`; apex /transactions·/client-search 200, 파생잔액 /receivables와 일치=현재 미수금 0건). #6 변경불요. **bank 리뷰 백로그 완결.** + `/ship` 가드 정식 추가(배포 전 git status, SKILL.md).
