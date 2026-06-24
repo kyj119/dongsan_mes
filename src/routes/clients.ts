@@ -216,6 +216,23 @@ clientsRouter.get('/:id/credit-check', async (c) => {
   }
 })
 
+// GET /billing-groups — 전체 그룹 목록 (⚠️ /:id 보다 먼저 등록해야 셰도잉 회피: /:id가 'billing-groups'를 id로 가로채 404)
+clientsRouter.get('/billing-groups', async (c) => {
+  try {
+    const { results } = await c.env.DB.prepare(
+      `SELECT bg.*, COUNT(cl.id) as member_count
+       FROM billing_groups bg
+       LEFT JOIN clients cl ON cl.billing_group_id = bg.id
+       GROUP BY bg.id
+       ORDER BY bg.group_name`
+    ).all()
+    return c.json({ success: true, data: results })
+  } catch (error) {
+    console.error('src/routes/clients.ts billing-groups GET error:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
+  }
+})
+
 // Get client by ID
 clientsRouter.get('/:id', async (c) => {
   try {
@@ -1176,23 +1193,7 @@ clientsRouter.delete('/:id/portal-account', requireRole('ADMIN'), async (c) => {
 })
 
 // ─── 청구 그룹 (Billing Groups) ────────────────────────────────────────────
-
-// GET /billing-groups — 전체 그룹 목록
-clientsRouter.get('/billing-groups', async (c) => {
-  try {
-    const { results } = await c.env.DB.prepare(
-      `SELECT bg.*, COUNT(cl.id) as member_count
-       FROM billing_groups bg
-       LEFT JOIN clients cl ON cl.billing_group_id = bg.id
-       GROUP BY bg.id
-       ORDER BY bg.group_name`
-    ).all()
-    return c.json({ success: true, data: results })
-  } catch (error) {
-    console.error('src/routes/clients.ts billing-groups GET error:', error)
-    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
-  }
-})
+// (GET /billing-groups 목록은 /:id 셰도잉 회피 위해 위쪽 /:id 라우트 앞으로 이동함)
 
 // POST /billing-groups — 새 그룹 생성
 clientsRouter.post('/billing-groups', requireRole('ADMIN', 'MANAGER'), async (c) => {
