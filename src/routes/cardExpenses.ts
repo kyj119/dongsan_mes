@@ -29,6 +29,62 @@ async function getBarobillConfig(c: any) {
   return { certKey, corpNum, isTest, senderId: senderIdRow?.setting_value || 'DONGSAN' }
 }
 
+/** YYYYMMDD → epoch ms (로컬). 형식 불량 시 NaN. */
+function parseTxDate(s: string | null): number {
+  if (!s || s.length < 8) return NaN
+  return new Date(+s.slice(0, 4), +s.slice(4, 6) - 1, +s.slice(6, 8)).getTime()
+}
+
+/**
+ * 승인↔취소 자동 상계: 같은 카드+금액+가맹점이고 날짜가 ±30일 이내인
+ * 미상계 승인/취소 쌍을 1:1로 매칭해 양쪽 is_offset=1 + 상호 offset_pair_id 설정.
+ * (바로빌에 원승인번호 참조가 없어 카드·금액·가맹점·근접일자로 추정 매칭)
+ * 전체 미상계 건을 대상으로 하므로 기존 데이터도 동기화 시 백필됨. 멱등.
+ * @returns 새로 상계 처리된 쌍 수
+ */
+async function reconcileCardOffsets(c: any): Promise<number> {
+  const OFFSET_WINDOW_DAYS = 30
+  const ef = entityFilter(c, 'card_transactions')
+  const { results } = await c.env.DB.prepare(
+    `SELECT id, card_id, transaction_date, merchant_name, amount, approval_type
+     FROM card_transactions
+     WHERE is_offset = 0 AND merchant_name IS NOT NULL AND merchant_name != ''${ef.clause}`
+  ).bind(...ef.params).all()
+
+  const rows = results as any[]
+  const cancels = rows.filter(r => r.approval_type === 'CANCEL')
+  const approvals = rows.filter(r => r.approval_type !== 'CANCEL')
+  if (!cancels.length || !approvals.length) return 0
+
+  const used = new Set<number>()
+  const pairs: Array<[number, number]> = []  // [cancelId, approvalId]
+
+  for (const cancel of cancels) {
+    const cDate = parseTxDate(cancel.transaction_date)
+    let best: any = null
+    let bestDiff = Infinity
+    for (const ap of approvals) {
+      if (used.has(ap.id)) continue
+      if (ap.card_id !== cancel.card_id) continue
+      if (Math.round(ap.amount) !== Math.round(cancel.amount)) continue
+      if ((ap.merchant_name || '') !== (cancel.merchant_name || '')) continue
+      const diffDays = Math.abs(cDate - parseTxDate(ap.transaction_date)) / 86400000
+      if (!(diffDays <= OFFSET_WINDOW_DAYS)) continue  // NaN-safe
+      if (diffDays < bestDiff) { bestDiff = diffDays; best = ap }
+    }
+    if (best) { used.add(best.id); pairs.push([cancel.id, best.id]) }
+  }
+
+  if (!pairs.length) return 0
+  const stmts: any[] = []
+  for (const [cid, aid] of pairs) {
+    stmts.push(c.env.DB.prepare('UPDATE card_transactions SET is_offset = 1, offset_pair_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').bind(aid, cid))
+    stmts.push(c.env.DB.prepare('UPDATE card_transactions SET is_offset = 1, offset_pair_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').bind(cid, aid))
+  }
+  for (let i = 0; i < stmts.length; i += 80) await c.env.DB.batch(stmts.slice(i, i + 80))
+  return pairs.length
+}
+
 // ===========================================================================
 // Phase 1: 법인카드 CRUD
 // ===========================================================================
@@ -342,7 +398,10 @@ cardExpRouter.post('/sync', requireRole('ADMIN'), async (c) => {
       }
     }
 
-    // 자동 분류 규칙 적용
+    // 승인↔취소 자동 상계 (신규 건 유무와 무관하게 전체 미상계 대상 → 기존 데이터 백필)
+    const offsetPairs = await reconcileCardOffsets(c)
+
+    // 자동 분류 규칙 적용 (상계건 제외)
     if (inserted > 0) {
       const efR = entityFilter(c, 'expense_auto_rules')
       const { results: rules } = await c.env.DB.prepare(
@@ -352,7 +411,7 @@ cardExpRouter.post('/sync', requireRole('ADMIN'), async (c) => {
       if (rules.length > 0) {
         const efTx = entityFilter(c, 'card_transactions')
         const { results: unclassified } = await c.env.DB.prepare(
-          `SELECT id, merchant_name FROM card_transactions WHERE status = 'UNCLASSIFIED' AND merchant_name IS NOT NULL${efTx.clause}`
+          `SELECT id, merchant_name FROM card_transactions WHERE status = 'UNCLASSIFIED' AND is_offset = 0 AND merchant_name IS NOT NULL${efTx.clause}`
         ).bind(...efTx.params).all<{ id: number; merchant_name: string }>()
 
         // #178: N+1 → batch 일괄 UPDATE
@@ -371,7 +430,7 @@ cardExpRouter.post('/sync', requireRole('ADMIN'), async (c) => {
       }
     }
 
-    return c.json({ success: true, data: { inserted, skipped }, message: `카드 동기화: ${inserted}건 신규, ${skipped}건 중복` })
+    return c.json({ success: true, data: { inserted, skipped, offset_pairs: offsetPairs }, message: `카드 동기화: ${inserted}건 신규, ${skipped}건 중복${offsetPairs ? `, ${offsetPairs}쌍 자동 상계` : ''}` })
   } catch (error) {
     console.error('Card sync error:', error)
     return c.json({ success: false, error: '서버 오류' }, 500)
@@ -591,11 +650,11 @@ cardExpRouter.get('/stats', requireRole('ADMIN', 'MANAGER'), async (c) => {
     const stats = await c.env.DB.prepare(`
       SELECT
         COUNT(*) as total_count,
-        SUM(CASE WHEN status = 'UNCLASSIFIED' THEN 1 ELSE 0 END) as unclassified_count,
-        SUM(CASE WHEN status = 'CLASSIFIED' THEN 1 ELSE 0 END) as classified_count,
-        SUM(CASE WHEN status = 'APPROVED' THEN 1 ELSE 0 END) as approved_count,
-        COALESCE(SUM(CASE WHEN approval_type != 'CANCEL' THEN amount ELSE 0 END), 0) as total_amount,
-        COALESCE(SUM(CASE WHEN transaction_date >= ? AND approval_type != 'CANCEL' THEN amount ELSE 0 END), 0) as month_amount
+        SUM(CASE WHEN status = 'UNCLASSIFIED' AND is_offset = 0 THEN 1 ELSE 0 END) as unclassified_count,
+        SUM(CASE WHEN status = 'CLASSIFIED' AND is_offset = 0 THEN 1 ELSE 0 END) as classified_count,
+        SUM(CASE WHEN status = 'APPROVED' AND is_offset = 0 THEN 1 ELSE 0 END) as approved_count,
+        COALESCE(SUM(CASE WHEN approval_type != 'CANCEL' AND is_offset = 0 THEN amount ELSE 0 END), 0) as total_amount,
+        COALESCE(SUM(CASE WHEN transaction_date >= ? AND approval_type != 'CANCEL' AND is_offset = 0 THEN amount ELSE 0 END), 0) as month_amount
       FROM card_transactions WHERE 1=1${ef.clause}
     `).bind(thisMonth + '01', ...ef.params).first()
 
@@ -673,13 +732,14 @@ cardExpRouter.get('/transactions/summary', requireRole('ADMIN', 'MANAGER'), asyn
     const now = new Date()
     const thisMonth = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}`
 
+    // is_offset=1(상계됨)은 미분류/대기/승인 카운트·이번달 합계에서 제외
     const summary = await c.env.DB.prepare(`
       SELECT
         COUNT(*) as total_count,
-        SUM(CASE WHEN status = 'UNCLASSIFIED' THEN 1 ELSE 0 END) as unclassified_count,
-        SUM(CASE WHEN status = 'CLASSIFIED' THEN 1 ELSE 0 END) as classified_count,
-        SUM(CASE WHEN status IN ('REQUESTED','APPROVED') THEN 1 ELSE 0 END) as approved_count,
-        COALESCE(SUM(CASE WHEN transaction_date >= ? AND approval_type != 'CANCEL' THEN amount ELSE 0 END), 0) as total_amount
+        SUM(CASE WHEN status = 'UNCLASSIFIED' AND is_offset = 0 THEN 1 ELSE 0 END) as unclassified_count,
+        SUM(CASE WHEN status = 'CLASSIFIED' AND is_offset = 0 THEN 1 ELSE 0 END) as classified_count,
+        SUM(CASE WHEN status IN ('REQUESTED','APPROVED') AND is_offset = 0 THEN 1 ELSE 0 END) as approved_count,
+        COALESCE(SUM(CASE WHEN transaction_date >= ? AND approval_type != 'CANCEL' AND is_offset = 0 THEN amount ELSE 0 END), 0) as total_amount
       FROM card_transactions WHERE 1=1${ef.clause}
     `).bind(thisMonth + '01', ...ef.params).first()
 
@@ -733,8 +793,9 @@ cardExpRouter.post('/transactions/bulk-classify', requireRole('ADMIN', 'MANAGER'
     }
     const ph = ids.map(() => '?').join(', ')
     const ef = entityFilter(c)
+    // 상계건(is_offset=1)은 분류 대상 제외
     await c.env.DB.prepare(
-      `UPDATE card_transactions SET category_id = ?, status = 'CLASSIFIED', updated_at = CURRENT_TIMESTAMP WHERE id IN (${ph})${ef.clause}`
+      `UPDATE card_transactions SET category_id = ?, status = 'CLASSIFIED', updated_at = CURRENT_TIMESTAMP WHERE id IN (${ph}) AND is_offset = 0${ef.clause}`
     ).bind(category_id, ...ids, ...ef.params).run()
     return c.json({ success: true, data: { classified: ids.length }, message: `${ids.length}건 분류 완료` })
   } catch (error) {
@@ -792,8 +853,9 @@ cardExpRouter.post('/transactions/create-requests', requireRole('ADMIN'), async 
     }
     const ph = ids.map(() => '?').join(', ')
     const ef = entityFilter(c)
+    // 상계건(is_offset=1)은 결의 대상 제외
     await c.env.DB.prepare(
-      `UPDATE card_transactions SET status = 'REQUESTED', updated_at = CURRENT_TIMESTAMP WHERE id IN (${ph}) AND status = 'CLASSIFIED'${ef.clause}`
+      `UPDATE card_transactions SET status = 'REQUESTED', updated_at = CURRENT_TIMESTAMP WHERE id IN (${ph}) AND status = 'CLASSIFIED' AND is_offset = 0${ef.clause}`
     ).bind(...ids, ...ef.params).run()
     return c.json({ success: true, data: { created: ids.length }, message: `${ids.length}건 결의 요청 완료` })
   } catch (error) {

@@ -131,7 +131,7 @@ async function loadTransactions() {
 
     // #421: 로딩 표시(일관 포맷)
     var _txTb = document.getElementById('txTableBody');
-    if (_txTb && window.dsSkeleton) _txTb.innerHTML = window.dsSkeleton.loadingRow(9);
+    if (_txTb && window.dsSkeleton) _txTb.innerHTML = window.dsSkeleton.loadingRow(10);
 
     var res = await axios.get('/api/card-expenses/transactions?' + params.toString());
     var data = res.data.data || [];
@@ -141,7 +141,7 @@ async function loadTransactions() {
     tbody.innerHTML = '';
 
     if (!data.length) {
-      tbody.innerHTML = '<tr><td colspan="9" class="text-center py-10 text-gray-400"><i class="fas fa-credit-card text-3xl mb-2 block text-gray-300"></i>카드 사용 내역이 없습니다</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="10" class="text-center py-10 text-gray-400"><i class="fas fa-credit-card text-3xl mb-2 block text-gray-300"></i>카드 사용 내역이 없습니다</td></tr>';
       document.getElementById('txPagination').innerHTML = '';
       return;
     }
@@ -153,8 +153,10 @@ async function loadTransactions() {
     });
 
     data.forEach(function(tx) {
+      var isOffset = tx.is_offset == 1;        // 승인↔취소 자동 상계됨
+      var isCancel = tx.approval_type === 'CANCEL';
       var row = document.createElement('tr');
-      row.className = 'tx-row' + (selectedTxIds.has(tx.id) ? ' selected' : '');
+      row.className = 'tx-row' + (selectedTxIds.has(tx.id) ? ' selected' : '') + (isOffset ? ' offset-row' : '');
       var statusColors = {
         UNCLASSIFIED: 'background:#fef3c7;color:#92400e',
         CLASSIFIED: 'background:#dbeafe;color:#1e40af',
@@ -167,6 +169,10 @@ async function loadTransactions() {
       var d = tx.transaction_date || '';
       var dateStr = d.length === 8 ? d.slice(4,6) + '-' + d.slice(6,8) : d;
 
+      // 카드 뒤 4자리
+      var cardLast4 = tx.card_number_last4 || '-';
+      var cardTitle = escapeHtml((tx.card_name || '') + (tx.card_company ? ' (' + tx.card_company + ')' : ''));
+
       // 담당자
       var assignee = tx.assigned_user_name || tx.holder_name || '';
 
@@ -174,15 +180,33 @@ async function loadTransactions() {
       var hasReceipt = !!(tx.receipt_image_url || tx.receipt_data);
       var receiptIcon = hasReceipt ? ' <i class="fas fa-check-circle text-green-500" style="font-size:9px" title="영수증 첨부됨"></i>' : '';
 
+      // 금액: 취소건은 음수·빨강
+      var amtStr = (isCancel ? '-' : '') + (tx.amount || 0).toLocaleString();
+      var amtCls = isCancel ? 'text-red-500' : (isOffset ? 'text-gray-400' : '');
+
+      // 상태 뱃지: 상계>취소>일반 상태
+      var statusHtml;
+      if (isOffset) {
+        statusHtml = '<span class="status-pill" style="background:#e5e7eb;color:#6b7280;font-size:10px" title="승인↔취소 자동 상계됨">상계</span>';
+      } else if (isCancel) {
+        statusHtml = '<span class="status-pill" style="background:#fee2e2;color:#b91c1c;font-size:10px">취소</span>';
+      } else {
+        statusHtml = '<span class="status-pill" style="' + (statusColors[tx.status] || '') + ';font-size:10px">' + (statusLabels[tx.status] || tx.status) + '</span>';
+      }
+
+      // 상계건은 분류/적요/선택 비활성 (결의·분류 대상 아님)
+      var lockAttr = isOffset ? ' disabled' : '';
+
       row.innerHTML =
-        '<td class="px-1 py-1.5 text-center"><input type="checkbox" class="tx-check" data-id="' + tx.id + '" ' + (selectedTxIds.has(tx.id) ? 'checked' : '') + ' onchange="toggleTxSelect(' + tx.id + ', this.checked)"></td>' +
+        '<td class="px-1 py-1.5 text-center"><input type="checkbox" class="tx-check" data-id="' + tx.id + '" ' + (selectedTxIds.has(tx.id) ? 'checked' : '') + lockAttr + ' onchange="toggleTxSelect(' + tx.id + ', this.checked)"></td>' +
         '<td class="px-2 py-1.5 text-xs text-gray-500 whitespace-nowrap">' + dateStr + '</td>' +
+        '<td class="px-2 py-1.5 text-xs text-gray-500 whitespace-nowrap" title="' + cardTitle + '">' + escapeHtml(cardLast4) + '</td>' +
         '<td class="px-2 py-1.5 text-xs text-gray-600">' + escapeHtml(assignee) + '</td>' +
-        '<td class="px-2 py-1.5 text-xs font-medium text-gray-800 truncate" style="max-width:200px" title="' + escapeHtml(tx.merchant_name || '') + '">' + escapeHtml(tx.merchant_name || '-') + receiptIcon + '</td>' +
-        '<td class="px-2 py-1.5 text-right text-xs tabular-nums font-semibold">' + (tx.amount || 0).toLocaleString() + '</td>' +
-        '<td class="px-1 py-1"><select class="w-full border border-gray-200 rounded px-1 py-0.5 text-xs bg-white" onchange="quickClassify(' + tx.id + ', this.value)" data-cat-select="' + tx.id + '">' + catOptionsHtml.replace('value="' + (tx.category_id || '') + '"', 'value="' + (tx.category_id || '') + '" selected') + '</select></td>' +
-        '<td class="px-1 py-1"><input type="text" class="w-full border border-gray-200 rounded px-1.5 py-0.5 text-xs" value="' + escapeHtml(tx.memo || '') + '" placeholder="적요..." onblur="quickMemo(' + tx.id + ', this.value)" data-memo-input="' + tx.id + '"></td>' +
-        '<td class="px-1 py-1.5 text-center"><span class="status-pill" style="' + (statusColors[tx.status] || '') + ';font-size:10px">' + (statusLabels[tx.status] || tx.status) + '</span></td>' +
+        '<td class="px-2 py-1.5 text-xs font-medium text-gray-800 truncate" style="max-width:220px" title="' + escapeHtml(tx.merchant_name || '') + '">' + escapeHtml(tx.merchant_name || '-') + receiptIcon + '</td>' +
+        '<td class="px-2 py-1.5 text-right text-xs tabular-nums font-semibold ' + amtCls + '">' + amtStr + '</td>' +
+        '<td class="px-1 py-1"><select class="w-full border border-gray-200 rounded px-1 py-0.5 text-xs bg-white" onchange="quickClassify(' + tx.id + ', this.value)" data-cat-select="' + tx.id + '"' + lockAttr + '>' + catOptionsHtml.replace('value="' + (tx.category_id || '') + '"', 'value="' + (tx.category_id || '') + '" selected') + '</select></td>' +
+        '<td class="px-1 py-1"><input type="text" class="w-full border border-gray-200 rounded px-1.5 py-0.5 text-xs" value="' + escapeHtml(tx.memo || '') + '" placeholder="적요..." onblur="quickMemo(' + tx.id + ', this.value)" data-memo-input="' + tx.id + '"' + lockAttr + '></td>' +
+        '<td class="px-1 py-1.5 text-center">' + statusHtml + '</td>' +
         '<td class="px-1 py-1.5 text-center whitespace-nowrap">' +
           '<label class="' + (hasReceipt ? 'text-green-500' : 'text-gray-400') + ' hover:text-green-600 cursor-pointer mr-1" title="' + (hasReceipt ? '영수증 교체' : '영수증 첨부') + '">' +
             '<i class="fas ' + (hasReceipt ? 'fa-check-circle' : 'fa-camera') + ' text-xs"></i>' +
