@@ -17,10 +17,10 @@
 
 ## 🔴 현재 진행 중
 
-- **🟡 [2026-06-24] 전 페이지 표 열폭 규격 일괄 정비 (에이전트 팀, 정본 `memory/project-table-spec-sweep.md`)**:
+- **✅ [2026-06-24] 전 페이지 표 열폭 규격 일괄 정비 (에이전트 팀, 정본 `memory/project-table-spec-sweep.md`)**:
   - 전역 `col-*` 폭 유틸 신설(shared-styles.ts) + 12클러스터 fan-out으로 **~101개 표 정비**(ds-table 보장+콘텐츠 유형별 고정폭+가변 주열만 흡수+긴 td `title` 호버). 인쇄양식·편집그리드·동적matrix·밀집표 의도적 제외.
-  - 검증: tsc/build green · **node --check 55/55**(?raw JS 문법) · 스폿리뷰 양호 · prod 전 페이지 200+col-* 반영. **prod 배포**(커밋 `3a64af56`, dep `47fbec9e`, 롤백 `5c1fa54c`).
-  - ⚠️**시각검증 미완**(공유 Playwright 타세션 점유) → 브라우저 가용 시 열균형·…잘림 스폿 필요. smoke.cjs=API전용이라 프론트 표 미검증.
+  - 검증: tsc/build green · **node --check 55/55**(?raw JS 문법) · **Playwright 시각검증 6페이지**(clients/reports/shipments/hr/inventory/purchase-orders: fixed·오버플로0·콘솔에러0·title동작, 측정스크립트 정밀). 
+  - **유일 결함=col-date 104px 14px폰트 날짜 3px클립 → 112px 전역수정**. **prod 배포**(`3a64af56`+`8d3fc9da`, dep `01ce3db0`, 롤백 `47fbec9e`). bank 리뷰처럼 백로그 완결.
 
 - **✅ [2026-06-24] Claude Code 셋업 정비 + bank 보안/버그 수정 (별도 세션 — 정본 `memory/project-ship-pipeline.md`)**:
   - **CC 셋업**: 죽은 jq훅→node 전환(`.claude/hooks/*.cjs` + SessionStart 자가진단) · `/ship` full-auto-prod 파이프라인(skill+ship:gate) · MCP(context7 + cloudflare-observability, 옛 cloudflare 제거) · 권한정리(통짜Bash 제거) · STATUS 다이어트 · **claude update 2.1.158→2.1.187**(agent teams 활성, **재시작 필요**) · env `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1`. 훅 경로버그(.js 오탐) 수정.
