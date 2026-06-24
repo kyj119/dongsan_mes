@@ -257,7 +257,11 @@ bankRouter.get('/transactions', requireRole('ADMIN'), async (c) => {
 
     let query = `
       SELECT
-        bt.*,
+        -- #7 회귀방어: bt.* 와일드카드 제거, FE(scripts/bank.js renderTransactions) 소비 필드 명시.
+        -- 컬럼 리네임 시 silent null 대신 SQL 에러로 노출됨.
+        bt.id, bt.transaction_date, bt.transaction_type, bt.amount, bt.balance_after,
+        bt.counterpart_name, bt.description,
+        bt.match_status, bt.matched_client_id, bt.matched_category_id,
         ba.bank_name, ba.account_number, ba.account_holder,
         c.client_name as matched_client_name, c.representative as matched_client_representative,
         ec.name as matched_category_name, ec.icon as matched_category_icon, ec.color as matched_category_color
@@ -1989,13 +1993,28 @@ bankRouter.get('/client-search', requireRole('ADMIN', 'MANAGER'), async (c) => {
     const q = (c.req.query('q') || '').trim()
     if (!q || q.length < 1) return c.json({ success: true, data: [] })
 
-    // clients 테이블에 entity_id 없음 — entityFilter 미적용
+    // #4 폐기 캐시 c.balance(prod 전체 0) → 라이브 파생잔액으로 교체.
+    //    /receivables·deriveClientBalance 동일 정의: order_billing_groups[BILLED] − payments − adjustments.
+    //    FE(bank.js) 추천 드롭다운 미수금 힌트(빨강)가 다시 유효해짐. clients엔 entity_id 없어 엔티티 무관(거래처 전체 합산).
     const { results } = await c.env.DB.prepare(`
-      SELECT c.id, c.client_name, c.representative, c.business_registration_number, c.balance
+      SELECT c.id, c.client_name, c.representative, c.business_registration_number,
+        (COALESCE(b.amt, 0) - COALESCE(pp.amt, 0) - COALESCE(aa.amt, 0)) AS balance
       FROM clients c
+      LEFT JOIN (
+        SELECT o.client_id AS cid, SUM(g.billed_amount) AS amt
+        FROM order_billing_groups g JOIN orders o ON o.id = g.order_id
+        WHERE g.billing_status = 'BILLED' AND o.status != 'CANCELLED'
+        GROUP BY o.client_id
+      ) b ON b.cid = c.id
+      LEFT JOIN (
+        SELECT client_id AS cid, SUM(amount) AS amt FROM payments GROUP BY client_id
+      ) pp ON pp.cid = c.id
+      LEFT JOIN (
+        SELECT client_id AS cid, SUM(amount) AS amt FROM adjustments GROUP BY client_id
+      ) aa ON aa.cid = c.id
       WHERE c.is_active = 1
         AND (c.client_name LIKE ? OR c.representative LIKE ? OR c.search_keywords LIKE ?)
-      ORDER BY c.balance DESC
+      ORDER BY balance DESC, c.client_name
       LIMIT 15
     `).bind(`%${q}%`, `%${q}%`, `%${q}%`).all()
 
