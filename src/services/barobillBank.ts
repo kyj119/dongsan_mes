@@ -128,8 +128,9 @@ export async function stopBankAccount(config: BarobillConfig, bankAccountNum: st
   return parseInt(result.trim()) || 0
 }
 
-/** 계좌 즉시조회 요청 (RefreshBankAccount) — 1 이상 성공 */
+/** 계좌 즉시조회 요청 (RefreshBankAccount) — 1 이상 성공.
+ *  WSDL 순서: CERTKEY, CorpNum, ID, BankAccountNum. ID(담당자) 누락 시 -24005. */
 export async function refreshBankAccount(config: BarobillConfig, bankAccountNum: string): Promise<number> {
-  const result = await barobillCall(config, 'BANKACCOUNT', 'RefreshBankAccount', { BankAccountNum: bankAccountNum })
+  const result = await barobillCall(config, 'BANKACCOUNT', 'RefreshBankAccount', { ID: config.senderId || '', BankAccountNum: bankAccountNum })
   return parseInt(result.trim()) || 0
 }

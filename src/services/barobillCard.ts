@@ -121,8 +121,9 @@ export async function stopCard(config: BarobillConfig, cardNum: string): Promise
   return parseInt(result.trim()) || 0
 }
 
-/** 카드 즉시조회 요청 (RefreshCard) — 1 이상 성공 */
+/** 카드 즉시조회 요청 (RefreshCard) — 1 이상 성공.
+ *  WSDL 순서: CERTKEY, CorpNum, ID, CardNum. ID(담당자) 누락 시 -24005. */
 export async function refreshCard(config: BarobillConfig, cardNum: string): Promise<number> {
-  const result = await barobillCall(config, 'CARD', 'RefreshCard', { CardNum: cardNum })
+  const result = await barobillCall(config, 'CARD', 'RefreshCard', { ID: config.senderId || '', CardNum: cardNum })
   return parseInt(result.trim()) || 0
 }
