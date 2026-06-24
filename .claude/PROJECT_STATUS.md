@@ -21,7 +21,8 @@
   - 에이전트 팀 5축 병렬 감사 → 제안서. **P1(보안·통제) 6건 구현·prod 배포**(커밋 `291cb392`, dep `5af043ab`, 롤백 `7da7ff4d`): B1 `/unused-allowance` IDOR(entityFilter·bank#1 동일클래스) · B3 POST·DELETE /requests requireRole(위조차단) · B2 approve 잔여검증(음수방지) · B5 cancel-approved 신설(잔여복원+근태해제, status=CANCELLED) · B7 approve batch원자화 · B9 전역 showPrompt 모달.
   - **Playwright 검증**: B1 200·B3 400(403아님)·B5 404핸들러·B9 모달 입력반환 ✓ (prod 휴가신청 0건이라 B2/B5 실데이터 미발생 — 로직은 build+검증). 
   - **D1~D6 확정**(입사일·소멸+촉진·직책수당·신청승인·전법인적용). **P2-1~3 구현·prod 배포**(커밋 `d69cd7a5`, dep `65e81674`, 롤백 `11e38ea2`): ①소정근로일 차감(주말+공휴일, Playwright 7→5일 ✓) ②통상임금 수당(포괄임금 calcInclusivePay 분해+직책수당, 검증 ✓) ③KST 적립.
-  - **P2 남음(후속)**: ③사용촉진 모듈+④소멸 batch+⑥만1년 병존(연관, 1세션) · ⑤80% 출근율 게이트(근태집계 설계 후). P3 셀프·알림 / P4.
+  - **P2 후속 W1(26일 병존+만료인프라) 배포·검증 완료**(2026-06-25, 커밋 `08a3bbcc`, dep `b2a2f3c1`, 마이그 0383~0385): 월차 leave_type='MONTHLY' 분리·합산·차감 FIFO·만료일. **안전게이트=prod 잔여 628 완전보존**(ANNUAL488+MONTHLY140), API/UI 검증. 설계=`docs/superpowers/specs/2026-06-24-leave-promotion-expiry-design.md`.
+  - **P2 남음**: **W2 촉진 통지(kakao+email)+소멸 sweep**(소멸=법적으로 촉진과 분리불가, leave_promotion_notices 0383 준비됨, 발송=바로빌 템플릿 승인 후) · ⑤80% 출근율 게이트 · P3 셀프·알림 / P4.
 
 - **✅ [2026-06-24] 전 페이지 표 열폭 규격 일괄 정비 (에이전트 팀, 정본 `memory/project-table-spec-sweep.md`)**:
   - 전역 `col-*` 폭 유틸 신설(shared-styles.ts) + 12클러스터 fan-out으로 **~101개 표 정비**(ds-table 보장+콘텐츠 유형별 고정폭+가변 주열만 흡수+긴 td `title` 호버). 인쇄양식·편집그리드·동적matrix·밀집표 의도적 제외.
