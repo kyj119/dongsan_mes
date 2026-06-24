@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 5 -->
-<!-- last_run_at: 2026-06-24T18:00:00+09:00 -->
+<!-- last_run_area: 6 -->
+<!-- last_run_at: 2026-06-24T22:00:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -16,6 +16,19 @@
 
 > 📦 **과거 사이클 로그**(아래 6블록 이전분)는 `IMPROVEMENT_BACKLOG_ARCHIVE.md`로 이관됨 (2026-06-10 정리). 신규 로그는 계속 이 파일 상단에 추가.
 
+> **Area 6 자기 진화 (2026-06-24T22:00):**
+> - **방법**: git fetch-before-compare(origin force-update `4993fa7→1a9b0c6`, fetch 후 **HEAD=origin/main `1a9b0c6` 0/0 동기**, 워킹트리 clean, 디버전스 0). egress 차단(prod/Playwright/verify[node_modules 부재] 도달 불가)이라 정적 bridge 검증. Area 6 **신선 각도 = 직전 Area4(4c91a6d)/Area5(00190f9) 이후 최대 churn = 연차(leaves) P1/P2 신규 feature**(`291cb39` P1 보안·통제 6건 + `d69cd7a` P2-1~3 법정정확도 + `1a9b0c6` P2 촉진/소멸/병존 설계+마이그) = leaves.ts +202L·leaves.js +37·shell.js +40·마이그 0383/0384. **컬럼-diff bridge + XSS bridge + 마이그중복 + showConfirm오용 + axios도달성 5종 standing meta-check 전수.**
+> - **🟢 컬럼-diff bridge(post-Area4) = net-new 0**: leaves.ts 10 INSERT + 명시 SELECT 전 컬럼 ground-truth 대조 통과 — `leave_balances`(employee_id/year/leave_type/accrued/used/granted_extra/notes/carried_over[0110]+entity_id[0264]), `leave_accrual_logs`(accrual_type/days/reason/run_by[0110]), `leave_requests`(0004 base + **created_by[0123 ALTER]·entity_id[0264 ALTER]** = INSERT 사용 2컬럼 실재 확인), `leave_types`(category/deduction_days/time_from/time_to/is_paid[0123]), `family_event_rules`(event_name/paid_days/sort_order[0123]), 통상임금 SELECT employees 컬럼(base_salary[0004]·position_allowance[0112]·overtime_daily_hours/overtime_work_days[0198]) 전수 실재. **신규 0383/0384 컬럼(expire_date·expired·leave_promotion_notices)은 코드 미참조**(P2=설계+마이그만, leaves.ts grep 0건 = 휴면 스키마, 컬럼존재성 위험 0).
+> - **🟢 XSS bridge(post-Area5) = net-new 0**: ① **shell.js 신규 `window.showPrompt`(전역 모달, A-024 ③ 노출최대)** = innerHTML 스캐폴드는 정적 마크업뿐(빈 `<h3>`/`<p>`/버튼), **모든 텍스트는 `.textContent` 주입**("XSS 방지" 주석 명시), 동적값은 `danger` boolean→class뿐 = sink 0. ② **leaves.js churn 렌더** = status 배지 정적 문자열·`leavesCancelApproved(r.id)` onclick은 숫자 id·날짜루프 숫자·showToast는 서버반환 숫자(actualDays) = free-text sink 0.
+> - **🟢 showConfirm/showPrompt 콜백오용(#426) = 0**: 신규 `showConfirm(msg,{title,confirmText,danger})`·`showPrompt(msg,{...})` 전부 **options 객체 2번째 인자 + await/Promise 형태**(콜백-2번째-인자 오용 0). showPrompt는 `resolve(input.value)` Promise 정상.
+> - **🟢 axios→백엔드 라우트 존재성(#411) = net-new 0(죽은버튼 0)**: leaves.js 신규 `axios.patch('/api/leaves/requests/'+id+'/cancel-approved')` ↔ leaves.ts:537 `patch('/requests/:id/cancel-approved')` 실재 + reject(:484)·delete(:514) 형제 전수 실재, `leavesRouter` `/api/leaves` 마운트(index.tsx:327). 승인취소 신규 feature 완전 배선(route+entityFilter+근태마킹 해제).
+> - **🟢 마이그 번호 중복 standing scan(#438) = net-new 0**: `uniq -d` = `0327`만(기존 prod-적용 추정, #438 규칙상 정리 대상 아님). 신규 0383/0384 중복 유입 0. **minor 관찰(이슈 미생성)**: `0383_leave_promotion_notices.sql` 내부 주석 헤더가 "Migration 0384" 오기(파일명은 0383 정상 → wrangler 파일명키 정렬 무영향, 순수 cosmetic doc 불일치, 비즈니스 영향 0이라 #438 minor 기준 미달).
+> - **🟢 backlog↔GitHub sync**: open auto-improve **실측 3건**(#439·#441·#442, list_issues 전수) = 직전 Area5 stats `new=3` **정합**. 최근 closure(#430·#435·#436·#437 updated 06-23T23:43 + #438 06-23T16:05)는 전부 Area5(06-24T18:00) 이전 = 이미 done=139 반영분, **신규 closure 0**. done=139·rejected=3 유지. #422 디버전스: HEAD=origin/main 동기(`1a9b0c6`)라 미push 픽스 0.
+> - **🟢 A-026 자기-픽스 완전성 = N/A**: 직전 auto-fix는 2사이클 전 Area2 `c6c6f00`(lifecycle.ts entity_id), Area3/4/5 전부 issue-only(auto-fix 0). 본 churn은 owner 코드(leaves feature)라 자기-픽스 재검 대상 없음.
+> - **🧬 SKILL 강화 0건**: 기존 standing scan(컬럼 bridge line 232·XSS bridge line 234·마이그중복 line 237·showConfirm #426·axios-route #411)이 leaves 신규 feature를 전수 커버. 신규 feature가 처음부터 컨벤션(entity_id INSERT·textContent escape·options-객체 confirm·sibling 컬럼 parity·route 배선) 준수 = Area 6 line 234/238 "신규 feature가 컨벤션 따르면 clean" 클래스. 신규 탐지 패턴 불필요.
+> - **이상 없음(컬럼/XSS/마이그/showConfirm/axios)**: leaves P1/P2 신규 feature(leaves.ts +202L·shell.js showPrompt·승인취소 워크플로) 5종 bridge 전수 clean, net-new 0. git 동기 0/0·워킹트리 clean. sync 3=3.
+> - 자동 수정 0건(clean cycle — 발견 없음), 신규 이슈 0건, SKILL 강화 0건, done-sync(변동 0, new 3 유지), **신선 각도 — 연차 P1/P2 신규 feature 첫 Area6 bridge 감사(컬럼존재성·XSS·마이그중복·showConfirm·도달성), 프로덕션 영향 0 확인. 단 0383/0384 마이그 prod 미적용(commit "마이그(미적용)") = leaves P2 휴면 스키마, owner 적용 시 expire/promotion 코드 배선 예정.**
+>
 > **Area 5 보안 + 인프라 (2026-06-24T18:00):**
 > - **방법**: git fetch-before-compare(origin force-update `4993fa7→00190f9`, fetch 후 **HEAD=origin/main `00190f9` 0/0 동기**, 디버전스 0). egress 차단(prod/Playwright/verify[node_modules 부재] 도달 불가)이라 정적 보안 분석. Area 5 **21회차** — **신선 각도 = 직전 Area5(#437 bank PUT IDOR, 06-23) 이후 최대 churn = 카드영수증 신규 기능(`d15b1a9`/`4ba0833` JPG압축+R2 서빙+ZIP 세무전달) — 파일 업로드/다운로드/R2 서빙 = 최대 신규 공격표면.**
 > - **🔴 신규 이슈 #442 (bug/security, small) — 영수증 R2 서빙 일반프록시 IDOR(#365 완화 회귀)**: `cardExpenses.ts:569 GET /receipt-image/*`가 **클라이언트가 준 R2 키를 entity/DB 검증 없이 공유 버킷에서 직접 서빙**(role 게이트만). ① **MANAGER 허용**(entity-scoped) → entity A MANAGER가 entity B 영수증(금융 PII) 교차법인 read(키 `receipts/YYYY-MM/{txId}_{Date.now()}.jpg`, txId=전역시퀀스 열거가능·timestamp만 인가장벽) ② **R2_BUCKET 전기능 공유**(files/po-receipts 거래명세서/aiAnalysis/workbench) → 영수증 외 임의 객체 read primitive ③ `Cache-Control: public`. **결정적 = #365 회귀**: `files.ts:13`이 같은 클래스를 *"#365: ADMIN 전용 — 범용 프록시가 entity/역할 격리 우회 IDOR 완화"*로 이미 ADMIN+private 하드닝했는데 신규 엔드포인트가 MANAGER+public+클라이언트키로 후퇴. **안전 형제 = `po-receipts.ts:119`**(*"key는 DB에서 조회, URL 미노출"* — `SELECT statement_file_key WHERE id=?${ef.clause}`로 entityFilter 통과 행에서 키 파생). 도달성 LIVE(`cardExpenses.js:222 viewReceipt`→`:726 axios blob`). **issue-only**(IDOR=owner 픽스 워크플로 #349/#356/#360/#437, egress 차단 런타임 검증 불가). 수정=po-receipts DB-lookup 패턴 복제 or ADMIN강등+private+`receipts/` prefix.
