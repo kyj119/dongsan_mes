@@ -233,9 +233,16 @@ window.leavesCalcDays = function() {
   var s = document.getElementById('lvReqStart').value;
   var e = document.getElementById('lvReqEnd').value;
   if (!s || !e) return;
-  var d1 = new Date(s), d2 = new Date(e);
-  var days = Math.floor((d2 - d1) / (24 * 3600 * 1000)) + 1;
-  if (days > 0) document.getElementById('lvReqDays').value = days;
+  var d1 = new Date(s + 'T00:00:00'), d2 = new Date(e + 'T00:00:00');
+  if (isNaN(d1.getTime()) || isNaN(d2.getTime()) || d2 < d1) return;
+  // 주말(토·일) 제외 추정치. 공휴일은 신청 시 서버가 추가 제외하여 확정(소정근로일 기준).
+  var n = 0;
+  for (var t = d1.getTime(); t <= d2.getTime(); t += 86400000) {
+    var dow = new Date(t).getDay();
+    if (dow === 0 || dow === 6) continue;
+    n++;
+  }
+  if (n > 0) document.getElementById('lvReqDays').value = n;
 };
 
 window.leavesSubmitRequest = async function() {
@@ -253,8 +260,9 @@ window.leavesSubmitRequest = async function() {
     window.showToast('필수 항목을 입력하세요', 'warning'); return;
   }
   try {
-    await axios.post('/api/leaves/requests', payload);
-    window.showToast('신청 완료', 'success');
+    var res = await axios.post('/api/leaves/requests', payload);
+    var actualDays = res.data && res.data.data && res.data.data.days;
+    window.showToast('신청 완료' + (actualDays != null ? ' (소정근로일 ' + actualDays + '일)' : ''), 'success');
     window.leavesCloseRequestModal();
     window.leavesLoadRequests();
   } catch (e) {

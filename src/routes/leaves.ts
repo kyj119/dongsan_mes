@@ -8,7 +8,8 @@ import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
 import { requirePagePermission } from '../middleware/permissions'
 import { entityFilter, getEntityId } from '../utils/entityFilter'
-import { markLeaveAttendance, clearLeaveAttendance } from '../utils/leaveAttendance'
+import { markLeaveAttendance, clearLeaveAttendance, enumerateDates } from '../utils/leaveAttendance'
+import { calcInclusivePay, loadOvertimeSettings } from './payroll/shared'
 
 // ---------- D1 row shapes ----------
 interface EmployeeBasicRow {
@@ -29,6 +30,7 @@ interface EmployeeIdRow { id: number }
 interface BalanceRow {
   employee_id: number; employee_code: string; name: string; department: string
   position: string; hire_date: string; base_salary: number
+  position_allowance?: number; overtime_daily_hours?: number; overtime_work_days?: number
   total_annual: number; used_annual: number; remaining_annual: number
   sick_total: number; sick_used: number; sick_remaining: number
 }
@@ -60,6 +62,32 @@ function calcMonthlyAccrualUpTo(hireDate: string, asOf: Date = new Date()): numb
   const months = (asOf.getFullYear() - hire.getFullYear()) * 12 + (asOf.getMonth() - hire.getMonth())
   if (months <= 0) return 0
   return Math.min(11, months)
+}
+
+/** B8: 적립/근속 계산용 KST 기준 현재시각(워커 런타임=UTC라 +9h가 KST 벽시계). */
+function kstNow(): Date {
+  return new Date(Date.now() + 9 * 3600 * 1000)
+}
+
+/**
+ * C2/B4: start~end(YYYY-MM-DD, 포함) 사이 소정근로일 수 — 토·일 및 공휴일(holidays) 제외.
+ * 연차는 달력일이 아닌 소정근로일 기준으로 차감해야 함(근로기준법).
+ */
+async function countWorkingDays(db: D1Database, start: string, end: string): Promise<number> {
+  const dates = enumerateDates(start, end)
+  if (dates.length === 0) return 0
+  const { results } = await db.prepare(
+    `SELECT holiday_date FROM holidays WHERE holiday_date BETWEEN ? AND ?`
+  ).bind(dates[0], dates[dates.length - 1]).all<{ holiday_date: string }>()
+  const holidaySet = new Set((results || []).map(h => String(h.holiday_date)))
+  let n = 0
+  for (const d of dates) {
+    const dow = new Date(d + 'T00:00:00Z').getUTCDay() // 0=일, 6=토
+    if (dow === 0 || dow === 6) continue
+    if (holidaySet.has(d)) continue
+    n++
+  }
+  return n
 }
 
 /**
@@ -169,8 +197,8 @@ leavesRouter.get('/balance/:employeeId', async (c) => {
 leavesRouter.post('/accrual/monthly', requireRole('ADMIN'), async (c) => {
   try {
     const user = c.get('user')
-    const today = new Date()
-    const currentYear = today.getFullYear()
+    const today = kstNow() // B8: KST 기준(워커 UTC → +9h 벽시계)
+    const currentYear = today.getUTCFullYear()
 
     const { results: employees } = await c.env.DB.prepare(`
       SELECT id, hire_date, entity_id FROM employees WHERE status = 'ACTIVE' AND is_deleted = 0 AND hire_date IS NOT NULL
@@ -225,8 +253,8 @@ leavesRouter.post('/accrual/monthly', requireRole('ADMIN'), async (c) => {
 leavesRouter.post('/accrual/yearly', requireRole('ADMIN'), async (c) => {
   try {
     const user = c.get('user')
-    const today = new Date()
-    const currentYear = today.getFullYear()
+    const today = kstNow() // B8: KST 기준(워커 UTC → +9h 벽시계)
+    const currentYear = today.getUTCFullYear()
 
     const { results: employees } = await c.env.DB.prepare(`
       SELECT id, hire_date, entity_id FROM employees WHERE status = 'ACTIVE' AND is_deleted = 0 AND hire_date IS NOT NULL
@@ -348,24 +376,18 @@ leavesRouter.post('/requests', requireRole('ADMIN', 'MANAGER'), async (c) => {
       return c.json({ success: false, error: 'employee_id, leave_type, start_date, end_date 필수' }, 400)
     }
 
-    // leave_types에서 deduction_days 조회 — days 미입력 시 자동 계산
-    let days = body.days
-    if (days == null) {
-      const lt = await c.env.DB.prepare(
-        `SELECT deduction_days FROM leave_types WHERE code = ?`
-      ).bind(body.leave_type).first<LeaveTypeRow>()
-      if (lt) {
-        // 반차/반반차는 1일 내 사용, 연차는 날짜 차이
-        if (lt.deduction_days < 1) {
-          days = lt.deduction_days
-        } else {
-          const start = new Date(body.start_date)
-          const end = new Date(body.end_date)
-          const diffDays = Math.max(1, Math.round((end.getTime() - start.getTime()) / (86400000)) + 1)
-          days = diffDays * lt.deduction_days
-        }
-      } else {
-        days = 1 // fallback
+    // C2/B4: 일수는 백엔드가 소정근로일(주말·공휴일 제외) 기준으로 권위적 산정(프론트 값 신뢰 안 함).
+    const lt = await c.env.DB.prepare(
+      `SELECT deduction_days FROM leave_types WHERE code = ?`
+    ).bind(body.leave_type).first<LeaveTypeRow>()
+    let days: number
+    if (lt && lt.deduction_days < 1) {
+      days = lt.deduction_days // 반차/반반차: 1일 내 사용(날짜 무관)
+    } else {
+      const workingDays = await countWorkingDays(c.env.DB, body.start_date, body.end_date)
+      days = workingDays * (lt?.deduction_days ?? 1)
+      if (days <= 0) {
+        return c.json({ success: false, error: '선택한 기간에 소정근로일이 없습니다(주말·공휴일만 포함).' }, 400)
       }
     }
 
@@ -725,6 +747,9 @@ leavesRouter.get('/unused-allowance', requireRole('ADMIN', 'MANAGER'), async (c)
         e.position,
         e.hire_date,
         e.base_salary,
+        e.position_allowance,
+        e.overtime_daily_hours,
+        e.overtime_work_days,
         COALESCE(lb.accrued, 0) + COALESCE(lb.granted_extra, 0) + COALESCE(lb.carried_over, 0) as total_annual,
         COALESCE(lb.used, 0) as used_annual,
         (COALESCE(lb.accrued, 0) + COALESCE(lb.granted_extra, 0) + COALESCE(lb.carried_over, 0) - COALESCE(lb.used, 0)) as remaining_annual,
@@ -740,12 +765,27 @@ leavesRouter.get('/unused-allowance', requireRole('ADMIN', 'MANAGER'), async (c)
       ORDER BY e.department, e.name
     `).bind(year, year, ...deptParams, ...ef.params).all<BalanceRow>()
 
-    // 미사용 연차수당 계산: 기본급 / 209시간 * 8 * 잔여일수
-    // (통상임금 시급 = 월급 / 209, 일급 = 시급 * 8)
+    // C1: 미사용 연차수당 = 1일 통상임금 × 잔여. 통상임금 = 기본급(통상분) + 직책수당(D3 결정).
+    //  - 포괄임금(고정연장>0) 직원: base_salary=포괄총액 → calcInclusivePay로 통상분(regular_base) 분해(payroll와 동일).
+    //  - 일반 직원: base_salary가 곧 기본급(통상분).
+    //  통상시급 = (통상분 + 직책수당) / 월소정근로시간, 1일 통상임금 = ×8.
+    const ot = await loadOvertimeSettings(c.env.DB)
+    const baseHours = ot.monthlyWorkHours || 209
     const data = results.map(r => {
       const remaining = Math.max(0, r.remaining_annual || 0)
-      const baseSalary = r.base_salary || 0
-      const hourlyRate = baseSalary > 0 ? Math.round(baseSalary / 209) : 0
+      const positionAllow = Number(r.position_allowance || 0)
+      const fixedOTHours = (Number(r.overtime_daily_hours) || 0) * (Number(r.overtime_work_days) || 22)
+      let regularBase = Number(r.base_salary || 0)
+      if (fixedOTHours > 0 && regularBase > 0) {
+        const inc = calcInclusivePay({
+          inclusiveBase: regularBase, baseMonthlyHours: baseHours,
+          fixedOTHours, extraOTHours: 0, nightHours: 0, holidayHours: 0,
+          overtimeMul: ot.overtimeMul, nightMul: ot.nightMul, holidayMul: ot.holidayMul, holidayOverMul: ot.holidayOverMul,
+        })
+        regularBase = inc.regular_base
+      }
+      const ordinaryMonthly = regularBase + positionAllow
+      const hourlyRate = ordinaryMonthly > 0 ? Math.round(ordinaryMonthly / baseHours) : 0
       const dailyRate = hourlyRate * 8
       const unusedAllowance = dailyRate * remaining
       return {
