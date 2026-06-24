@@ -631,14 +631,10 @@ async function saveEditTx() {
       status: status
     });
 
-    // 2. 영수증 파일이 있으면 업로드
+    // 2. 영수증 파일이 있으면 업로드 (이미지면 JPG 압축)
     var fileInput = document.getElementById('editTxReceiptFile');
     if (fileInput.files && fileInput.files[0]) {
-      var formData = new FormData();
-      formData.append('file', fileInput.files[0]);
-      await axios.post('/api/card-expenses/transactions/' + id + '/receipt', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' }
-      });
+      await uploadReceiptFile(id, fileInput.files[0]);
     }
 
     showToast('저장 완료', 'success');
@@ -673,15 +669,49 @@ async function quickMemo(txId, memo) {
   } catch (e) { showToast('메모 저장 실패', 'error'); }
 }
 
+// ===== 영수증 이미지 압축 (업로드 전 클라이언트 리사이즈 + JPG) =====
+// 이미지가 아니면(PDF 등) 원본 그대로. 압축본이 원본보다 크면 원본 사용.
+function compressImage(file, maxDim, quality) {
+  maxDim = maxDim || 1600; quality = quality || 0.82;
+  return new Promise(function(resolve) {
+    if (!file.type || file.type.indexOf('image/') !== 0) { resolve(file); return; }
+    var url = URL.createObjectURL(file);
+    var img = new Image();
+    img.onload = function() {
+      var w = img.naturalWidth, h = img.naturalHeight;
+      var scale = Math.min(1, maxDim / Math.max(w, h));
+      var resized = scale < 1;  // 리사이즈가 필요한(큰) 이미지
+      var cw = Math.max(1, Math.round(w * scale)), ch = Math.max(1, Math.round(h * scale));
+      var canvas = document.createElement('canvas');
+      canvas.width = cw; canvas.height = ch;
+      canvas.getContext('2d').drawImage(img, 0, 0, cw, ch);
+      URL.revokeObjectURL(url);
+      canvas.toBlob(function(blob) {
+        // 리사이즈했으면 항상 JPG 사용(원본이 더 큰 치수). 아니면 더 작은 쪽 선택.
+        resolve(blob && (resized || blob.size < file.size) ? blob : file);
+      }, 'image/jpeg', quality);
+    };
+    img.onerror = function() { URL.revokeObjectURL(url); resolve(file); };
+    img.src = url;
+  });
+}
+
+// 압축본/원본을 FormData로 업로드 (파일명: 압축 시 receipt.jpg, 원본 시 원래명)
+async function uploadReceiptFile(txId, file) {
+  var out = await compressImage(file);
+  var fname = (out !== file) ? 'receipt.jpg' : (file.name || 'receipt');
+  var formData = new FormData();
+  formData.append('file', out, fname);
+  return axios.post('/api/card-expenses/transactions/' + txId + '/receipt', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' }
+  });
+}
+
 // ===== Quick Receipt Upload =====
 async function quickReceipt(txId, input) {
   if (!input.files || !input.files[0]) return;
-  var formData = new FormData();
-  formData.append('file', input.files[0]);
   try {
-    await axios.post('/api/card-expenses/transactions/' + txId + '/receipt', formData, {
-      headers: { 'Content-Type': 'multipart/form-data' }
-    });
+    await uploadReceiptFile(txId, input.files[0]);
     showToast('영수증 첨부 완료', 'success');
     loadTransactions();
   } catch (e) {
@@ -747,48 +777,68 @@ async function downloadTaxCsv() {
   }
 }
 
-async function printReceipts() {
+// 파일명 안전화 (ZIP 경로용 금지문자 제거)
+function sanitizeFileName(s) {
+  return String(s == null ? '' : s).replace(/[\/\\:*?"<>|\x00-\x1f]/g, '_').replace(/\s+/g, ' ').trim().slice(0, 60) || '_';
+}
+// fflate(경량 zip) 동적 로드
+function loadFflate() {
+  return new Promise(function(resolve, reject) {
+    if (window.fflate) return resolve(window.fflate);
+    var sc = document.createElement('script');
+    sc.src = 'https://cdn.jsdelivr.net/npm/fflate@0.8.2/umd/index.js';
+    sc.onload = function() { resolve(window.fflate); };
+    sc.onerror = function() { reject(new Error('zip 라이브러리 로드 실패')); };
+    document.head.appendChild(sc);
+  });
+}
+
+// 세무사 제공: 기간 내 영수증을 ZIP으로 (날짜폴더/카드_가맹점_금액.jpg)
+async function downloadReceiptsZip() {
   var s = document.getElementById('taxExportStart').value;
   var e = document.getElementById('taxExportEnd').value;
   if (!s || !e) { showToast('기간을 선택하세요', 'warning'); return; }
   var statusEl = document.getElementById('taxExportStatus');
-  var area = document.getElementById('receiptPrintArea');
-  if (!area) return;
-  if (statusEl) statusEl.textContent = '영수증 불러오는 중...';
+  if (statusEl) statusEl.textContent = '영수증 수집 중...';
   try {
-    // 기간 내 영수증 첨부 거래 조회 (최대 200건)
+    var fflate = await loadFflate();
     var res = await axios.get('/api/card-expenses/transactions?start_date=' + s + '&end_date=' + e + '&limit=200');
     var list = (res.data.data || []).filter(function(t) { return t.receipt_image_url; });
     if (!list.length) { if (statusEl) statusEl.textContent = ''; showToast('해당 기간에 첨부된 영수증이 없습니다', 'warning'); return; }
 
-    var items = '';
-    var loaded = 0;
+    var files = {};
+    var used = {};
+    var added = 0;
     for (var i = 0; i < list.length; i++) {
       var tx = list[i];
-      if (statusEl) statusEl.textContent = '영수증 ' + (i + 1) + '/' + list.length + ' 불러오는 중...';
+      if (statusEl) statusEl.textContent = '영수증 ' + (i + 1) + '/' + list.length + '...';
       try {
-        var blobUrl = await loadReceiptBlob(tx.receipt_image_url);
-        var d = tx.transaction_date || '';
-        var dateStr = d.length === 8 ? d.slice(0, 4) + '-' + d.slice(4, 6) + '-' + d.slice(6, 8) : d;
-        var isPdf = /\.pdf(\?|$)/i.test(tx.receipt_image_url);
-        var media = isPdf
-          ? '<div class="text-xs text-gray-500">[PDF 영수증 — 인쇄 미지원, CSV 링크 참조]</div>'
-          : '<img src="' + blobUrl + '" alt="영수증">';
-        items += '<div class="rp-item">' + media +
-          '<div class="rp-cap">' + dateStr + ' · ' + escapeHtml(tx.merchant_name || '-') +
-          ' · ' + (tx.amount || 0).toLocaleString() + '원' +
-          (tx.category_name ? ' · ' + escapeHtml(tx.category_name) : '') + '</div></div>';
-        loaded++;
-      } catch (e2) { /* skip one */ }
+        var ab = await axios.get(tx.receipt_image_url, { responseType: 'arraybuffer' });
+        var d = String(tx.transaction_date || '');
+        var folder = d.length === 8 ? d.slice(0, 4) + '-' + d.slice(4, 6) + '-' + d.slice(6, 8) : (d || 'unknown');
+        var ext = /\.pdf(\?|$)/i.test(tx.receipt_image_url) ? 'pdf' : 'jpg';
+        var base = folder + '/' + sanitizeFileName((tx.card_number_last4 || '카드') + '_' + (tx.merchant_name || '가맹점') + '_' + (tx.amount || 0));
+        var path = base + '.' + ext, n = 1;
+        while (used[path]) { path = base + '_' + (++n) + '.' + ext; }
+        used[path] = true;
+        files[path] = new Uint8Array(ab.data);
+        added++;
+      } catch (e2) { /* skip */ }
     }
-    var capNote = list.length >= 200 ? '<div style="color:#b91c1c;font-size:11px">※ 200건까지만 표시됩니다. 기간을 좁혀 다시 인쇄하세요.</div>' : '';
-    area.innerHTML = '<h2 style="font-size:14px;font-weight:700;margin-bottom:8px">카드 영수증 (' + s + ' ~ ' + e + ') · ' + loaded + '건</h2>' + capNote + '<div class="rp-grid">' + items + '</div>';
-    if (statusEl) statusEl.textContent = loaded + '건 준비됨 · 인쇄창 표시';
-    window.print();
-    setTimeout(function() { if (statusEl) statusEl.textContent = ''; }, 3000);
+    if (!added) { if (statusEl) statusEl.textContent = ''; showToast('영수증을 불러오지 못했습니다', 'error'); return; }
+
+    var zipped = fflate.zipSync(files, { level: 6 });
+    var blob = new Blob([zipped], { type: 'application/zip' });
+    var href = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = href; a.download = '카드영수증_' + s + '_' + e + '.zip';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(function() { URL.revokeObjectURL(href); }, 1000);
+    if (statusEl) statusEl.textContent = added + '건 ZIP 다운로드 완료' + (list.length >= 200 ? ' (200건 제한 — 기간을 좁히세요)' : '');
+    setTimeout(function() { if (statusEl) statusEl.textContent = ''; }, 4000);
   } catch (err) {
     if (statusEl) statusEl.textContent = '';
-    showToast('영수증 인쇄 준비 실패', 'error');
+    showToast('영수증 ZIP 생성 실패: ' + (err.message || ''), 'error');
   }
 }
 

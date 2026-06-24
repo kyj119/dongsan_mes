@@ -19,17 +19,6 @@ export function cardExpensesPage(c: Context<HonoEnv>) {
       .tx-row.offset-row td{color:#9ca3af}
       .tx-row td{vertical-align:middle}
       .receipt-preview{max-width:200px;max-height:200px;border-radius:8px;border:1px solid #e5e7eb}
-      /* 영수증 인쇄 영역: 화면에선 숨기고 인쇄 시에만 표시 */
-      #receiptPrintArea{display:none}
-      .rp-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
-      .rp-item{border:1px solid #e5e7eb;border-radius:6px;padding:8px;break-inside:avoid;page-break-inside:avoid}
-      .rp-item img{width:100%;height:auto;object-fit:contain;max-height:340px}
-      .rp-cap{font-size:11px;color:#374151;margin-top:4px;line-height:1.4}
-      @media print{
-        body * { visibility:hidden; }
-        #receiptPrintArea, #receiptPrintArea * { visibility:visible; }
-        #receiptPrintArea{display:block;position:absolute;left:0;top:0;width:100%;padding:8px}
-      }
     `,
     pageContent: `
       <!-- 탭 -->
@@ -225,10 +214,10 @@ export function cardExpensesPage(c: Context<HonoEnv>) {
             <span class="text-gray-300">~</span>
             <input type="date" id="taxExportEnd" class="ds-input" style="width:140px;font-size:12px">
             <button onclick="downloadTaxCsv()" class="ds-btn ds-btn-primary ds-btn-sm flex items-center gap-1"><i class="fas fa-file-csv"></i> 내역 CSV</button>
-            <button onclick="printReceipts()" class="px-3 py-1.5 text-xs font-medium rounded-lg bg-gray-700 text-white hover:bg-gray-800 flex items-center gap-1"><i class="fas fa-print"></i> 영수증 인쇄</button>
+            <button onclick="downloadReceiptsZip()" class="px-3 py-1.5 text-xs font-medium rounded-lg bg-gray-700 text-white hover:bg-gray-800 flex items-center gap-1"><i class="fas fa-file-zipper"></i> 영수증 ZIP</button>
             <span id="taxExportStatus" class="text-xs text-gray-400"></span>
           </div>
-          <p class="text-xs text-gray-400 mt-2">CSV: 사용일·카드·가맹점·공급가/세액·구분(승인/취소/상계)·분류·영수증여부. 영수증 인쇄: 기간 내 첨부 영수증을 한 화면에 모아 인쇄/PDF 저장.</p>
+          <p class="text-xs text-gray-400 mt-2">CSV: 사용일·카드·가맹점·공급가/세액·구분(승인/취소/상계)·분류·영수증여부. 영수증 ZIP: 기간 내 첨부 영수증을 날짜별 폴더(파일명=카드번호_가맹점_금액)로 묶어 다운로드.</p>
         </div>
       </div>
 
@@ -596,8 +585,6 @@ export function cardExpensesPage(c: Context<HonoEnv>) {
         </div>
       </div>
 
-      <!-- ===== 영수증 인쇄 영역 (평소 숨김, 인쇄 시에만 표시) ===== -->
-      <div id="receiptPrintArea"></div>
     `,
     pageScript: cardExpensesScript + '\n' + cardFeeScript
   })
