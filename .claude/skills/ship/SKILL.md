@@ -38,6 +38,13 @@ npm run ship:gate
 > dom 참조 회귀·JS문법은 이미 per-edit 훅이 차단. 타입체크는 커밋 훅도 이중 차단.
 
 ### Phase 3 — 배포 (게이트 green일 때만)
+
+**배포 전 워킹트리 가드 (필수)**: `deploy:prod`는 **워킹트리 전체를 빌드**한다 → 타세션 미커밋 변경이 의도치 않게 동반배포됨([[project-ship-pipeline]] — cardExpenses 동반배포 교훈).
+```bash
+git status --short   # 미커밋·untracked 전수 확인
+```
+- 나열된 변경이 **이번 /ship 작업분과 100% 일치하는지** 대조. 이번 작업이 건드리지 않은 파일(다른 세션 WIP·잔여 빌드물)이 보이면 **배포 중단 → 사용자에게 1줄 보고·확인** 후에만 진행. 임의 동반배포 금지.
+
 ```bash
 # 배포 직전 현재 라이브 배포 ID 기록 (롤백 대비)
 npx wrangler pages deployment list --project-name webapp | Select-Object -First 5   # 최신 = 현재 live
@@ -77,3 +84,4 @@ prod 검증: 페이지 P/Q · API 정상 · 콘솔에러 C
 3. **되돌리기 어려운 작업**(데이터 삭제·마이그 비가역)은 자율 범위 밖 — 사용자 확인.
 4. 작업 파싱 결과를 먼저 1줄 확인(엉뚱한 작업 자동배포 방지).
 5. 위험명령 훅이 차단(rc 2)하면 우회하지 말고 사용자에게 보고.
+6. **배포 전 `git status` 가드.** 워킹트리에 이번 작업분 외 미커밋 변경이 있으면 동반배포 위험 → 정지·확인([[project-ship-pipeline]]). `deploy:prod`=워킹트리 전체빌드라 stage 무관, 전체 대조 필수.
