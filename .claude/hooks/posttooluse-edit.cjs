@@ -28,7 +28,8 @@ if (/IllustratorAutomat\/.*\.jsx$/i.test(file)) {
 // JS 문법 게이트 (src/scripts/*.js) — silent-fail 방지, 실패 시 차단
 if (/src\/scripts\/.*\.js$/.test(file)) {
   try {
-    execSync(`node --check "${path.join(ROOT, file)}"`, { stdio: 'pipe' });
+    const abs = path.isAbsolute(file) ? file : path.join(ROOT, file) // file_path는 절대경로 — ROOT와 join 시 중복됨
+    execSync(`node --check "${abs}"`, { stdio: 'pipe' });
   } catch (e) {
     console.error('[HOOK-FAIL] JS 문법 오류 (silent-fail 방지):\n' + ((e.stderr || e.stdout || e.message).toString().slice(0, 1500)));
     process.exit(2);
