@@ -61,7 +61,8 @@ for (const f of targets) {
     const id = m[1];
     if (!defined.has(id)) {
       const line = txt.slice(0, m.index).split('\n').length;
-      missing.push({ file: path.relative(ROOT, f), id, line });
+      // 정슬래시로 정규화 (OS 안정·훅 grep 호환)
+      missing.push({ file: path.relative(ROOT, f).split(path.sep).join('/'), id, line });
     }
   }
 }

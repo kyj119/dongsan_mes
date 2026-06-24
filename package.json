@@ -18,6 +18,8 @@
     "test": "curl http://localhost:3000",
     "smoke": "node scripts/smoke.cjs",
     "canary:write": "node scripts/write-canary.cjs",
+    "ship:gate": "npm run verify && node scripts/entity-audit.mjs && npm run canary:write",
+    "ship": "npm run ship:gate && npm run deploy:prod",
     "verify:items": "node scripts/verify-items.mjs",
     "check:dom": "node scripts/check-dom-refs.cjs",
     "audit:entity": "node scripts/entity-audit.mjs",
