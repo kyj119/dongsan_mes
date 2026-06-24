@@ -173,9 +173,9 @@ cardsLifecycleRouter.patch('/bulk/status', requireRole('ADMIN', 'MANAGER', 'OPER
         if (defect_category && employeeId) {
           batchStmts.push(
             c.env.DB.prepare(`
-              INSERT OR IGNORE INTO quality_issues (card_id, issue_type, defect_category, description, severity, status, reported_by)
-              VALUES (?, 'DEFECT', ?, ?, 'MEDIUM', 'OPEN', ?)
-            `).bind(cardId, defect_category, reason || defect_category, employeeId)
+              INSERT OR IGNORE INTO quality_issues (card_id, issue_type, defect_category, description, severity, status, reported_by, entity_id)
+              VALUES (?, 'DEFECT', ?, ?, 'MEDIUM', 'OPEN', ?, ?)
+            `).bind(cardId, defect_category, reason || defect_category, employeeId, getEntityId(c) || 1)
           )
         }
       } else if (status === 'PRINT_DONE') {
