@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 4 -->
-<!-- last_run_at: 2026-06-24T14:00:00+09:00 -->
+<!-- last_run_area: 5 -->
+<!-- last_run_at: 2026-06-24T18:00:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,7 +8,7 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | 2 (**GitHub open auto-improve 실측 2건** — **#439** 스케줄 루틴 git push/backlog 트림 회복탄력성 improvement small [Area 1, git push는 동작 확인] + **#441** 미수금 연령분석/거래처필터/은행검색이 폐기된 clients.balance 캐시 읽음 bug medium [Area 4, 본 사이클 신규]) |
+| 🆕 new | 3 (**GitHub open auto-improve 실측 3건** — **#439** 스케줄 루틴 git push/backlog 트림 회복탄력성 improvement small [Area 1] + **#441** 폐기 clients.balance 캐시 stale read bug medium [Area 4] + **#442** 영수증 GET /receipt-image/* 클라이언트키 직접서빙 IDOR(#365 일반프록시 완화 회귀, MANAGER 교차법인+공유버킷 임의read) bug small [Area 5, 본 사이클 신규]) |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 (#372 CSV도 owner close-completed → done 이관) |
 | ✔️ done | 139 (135 + **owner close-completed 4건**[#430 smoke write-카나리·#435 차감방식 UI·#436 재고실사 audit·#437 bank PUT IDOR — 커밋 `f9587c5` "fix(security/audit): IDOR·감사기록·차감방식UI·write카나리 일괄 수정"으로 전부 수정 close, main 트리 실재 검증·#422 디버전스 clean]) |
@@ -16,6 +16,18 @@
 
 > 📦 **과거 사이클 로그**(아래 6블록 이전분)는 `IMPROVEMENT_BACKLOG_ARCHIVE.md`로 이관됨 (2026-06-10 정리). 신규 로그는 계속 이 파일 상단에 추가.
 
+> **Area 5 보안 + 인프라 (2026-06-24T18:00):**
+> - **방법**: git fetch-before-compare(origin force-update `4993fa7→00190f9`, fetch 후 **HEAD=origin/main `00190f9` 0/0 동기**, 디버전스 0). egress 차단(prod/Playwright/verify[node_modules 부재] 도달 불가)이라 정적 보안 분석. Area 5 **21회차** — **신선 각도 = 직전 Area5(#437 bank PUT IDOR, 06-23) 이후 최대 churn = 카드영수증 신규 기능(`d15b1a9`/`4ba0833` JPG압축+R2 서빙+ZIP 세무전달) — 파일 업로드/다운로드/R2 서빙 = 최대 신규 공격표면.**
+> - **🔴 신규 이슈 #442 (bug/security, small) — 영수증 R2 서빙 일반프록시 IDOR(#365 완화 회귀)**: `cardExpenses.ts:569 GET /receipt-image/*`가 **클라이언트가 준 R2 키를 entity/DB 검증 없이 공유 버킷에서 직접 서빙**(role 게이트만). ① **MANAGER 허용**(entity-scoped) → entity A MANAGER가 entity B 영수증(금융 PII) 교차법인 read(키 `receipts/YYYY-MM/{txId}_{Date.now()}.jpg`, txId=전역시퀀스 열거가능·timestamp만 인가장벽) ② **R2_BUCKET 전기능 공유**(files/po-receipts 거래명세서/aiAnalysis/workbench) → 영수증 외 임의 객체 read primitive ③ `Cache-Control: public`. **결정적 = #365 회귀**: `files.ts:13`이 같은 클래스를 *"#365: ADMIN 전용 — 범용 프록시가 entity/역할 격리 우회 IDOR 완화"*로 이미 ADMIN+private 하드닝했는데 신규 엔드포인트가 MANAGER+public+클라이언트키로 후퇴. **안전 형제 = `po-receipts.ts:119`**(*"key는 DB에서 조회, URL 미노출"* — `SELECT statement_file_key WHERE id=?${ef.clause}`로 entityFilter 통과 행에서 키 파생). 도달성 LIVE(`cardExpenses.js:222 viewReceipt`→`:726 axios blob`). **issue-only**(IDOR=owner 픽스 워크플로 #349/#356/#360/#437, egress 차단 런타임 검증 불가). 수정=po-receipts DB-lookup 패턴 복제 or ADMIN강등+private+`receipts/` prefix.
+> - **🟢 영수증 업로드(`:543 POST /:id/receipt`) = 안전 측면 다수**: `validateUpload`(#357 크기/MIME/확장자 10MB) + path traversal 가드(`..`/`\\` 차단 `:573`) + UPDATE는 `entityFilter`(`:560`) 적용. 업로드 키는 서버생성(txId+Date.now), `?` 바인드 SQLi 0. **단 서빙 경로(read)만 entity 격리 누락**(#442).
+> - **🟢 시크릿 폴백/기본 비번 grep(#338 필수) = net-new 0**: `c.env.X || '리터럴'` 0건. `bank.ts:95 account_password || ''` = 빈문자열 폴백(바로빌 API "비번 없음" 의미, 하드코딩 시크릿 아님=FP). CI yml 기본 admin 0.
+> - **🟢 XSS bridge(직전 Area5 이후 cardExpenses.js +churn) = net-new 0**: 신규 영수증/blob 렌더 sink 전수 — merchant_name/category name 등 free-text는 `escapeHtml`(`:216/:591/:1045`), `:604 preview.innerHTML`의 `rUrl`은 **시스템생성 URL**(receipt-image 키=txId/ts 숫자, free-text 아님)·`blobUrl`은 object URL = sink 아님(FP). 부분-escape 누락 0.
+> - **🟢 IDOR 비대칭(#437/#360 클래스) 잔여 = bank/card_fee_rates 픽스 확인**: `f29a266`(card_fee_rates PUT/DELETE entity 격리)·#437(bank PUT) owner 픽스 머지 확인. cardExpenses cards PUT/DELETE/refresh 전부 `entityFilter`(`:192/:217/:255` #360). 단건-write IDOR 신규 유입 0(단 #442는 IDOR이나 "단건write"가 아닌 "범용서빙프록시" 변종 = SKILL line 73 클래스).
+> - **🟢 backlog↔GitHub sync**: open auto-improve **실측 2건**(#439·#441, list_issues 전수) = 직전 Area4 stats `new=2` **정합**. 본 사이클 #442 추가 → new 2→3. owner 신규 close/머지 0(done=139·rejected=3 유지). #422 디버전스: HEAD=origin/main 동기(`00190f9`)라 미push 픽스 0.
+> - **🧬 SKILL 강화 0건**: #442는 기존 standing scan(SKILL line 73 "범용 서빙 프록시 = 도달성 무관 공격표면" #365 + IDOR 비대칭 #437)이 정확히 커버 — R2 서빙 신규 엔드포인트를 그 규칙으로 즉시 격리. 신규 탐지 패턴 불필요.
+> - **이상 없음(시크릿/XSS/업로드검증/SQLi)**, **유일 발견 #442**(영수증 서빙 IDOR, issue-only). git 동기 0/0, sync 2=2(+#442).
+> - 자동 수정 0건(Area 5 #442=issue-only, IDOR owner 워크플로), 신규 이슈 1건(#442), SKILL 강화 0건, done-sync(변동 0, new 2→3), **신선 각도 — 카드영수증 신규 기능(R2 업로드/서빙/ZIP) 첫 보안 감사 + 시크릿/XSS/IDOR 표준 스캔, #365 일반프록시 완화 회귀 1건 발견, 프로덕션 영향: 인증 ADMIN/MANAGER 필요·키 추측 의존이라 즉시위험 낮으나 교차법인 PII 인가장벽 부재**
+>
 > **Area 4 데이터 정합성 (2026-06-24T14:00):**
 > - **방법**: git fetch-before-compare(origin force-update `4993fa7→4c91a6d`, fetch 후 **HEAD=origin/main `4c91a6d` 0/0 동기**, 디버전스 0). git push 동작(직전 Area2 `9b7be22`·Area3 `431ca68` origin 반영). egress 차단(prod D1/wrangler/node_modules 부재)이라 migrations ground-truth 정적 대조. Area 4 **22회차** — **신선 각도 = 직전 Area4(c51f484, 06-23T14:00, origin force-update로 SHA 소멸) 이후 최대 churn = 법인카드 승인↔취소 자동상계(0379 `card_tx_offset`+`reconcileCardOffsets`)·바로빌 은행 auto-match(5f8793c 파생잔액 복원)·`clients.balance` 캐시 폐기(P3) 전환 churn.**
 > - **🔴 신규 이슈 #441 (bug, medium) — 폐기된 `clients.balance` 캐시 stale read 부분픽스 잔재**: `clients.balance`는 split billing P3에서 폐기(정상 입금/청구/감액 흐름 incremental 유지 0 — `lib/payments.ts:77`·`ar-payments` 전부 "캐시 미사용·미수금 파생" 주석/파생반환, 쓰는 곳은 수동 recalc `ar-receivables.ts:87/142`+임포트 `migration.ts`뿐)인데 4개 읽기가 잔존: **(HIGH)** `reports.ts:465-509 /receivables-analysis` 미수금 연령분석 Aging Buckets+TOP15가 `c.balance`로 버킷/`WHERE c.balance>0`(프론트 reports.js:393 LIVE) · **(MED)** `clients.ts:101-103 ?has_balance=1` 거래처필터 `c.balance>0` · **(LOW)** `bank.ts:1994 /client-search` `ORDER BY c.balance` · **(LOW)** `reports.ts:91` clientSummary. 거래처 상세(파생)와 AR aging(캐시) 미수금 불일치 → 연체관리 stale. owner가 "stale 7건 정리"(`3c1eddc`)·"상세 파생통일"(`a846ed0`)로 고가시성만 전환, 형제 읽기 누락(#431/#377 부분픽스). **issue-only**(캐시→파생 쿼리 전환은 보고서출력·entityFilter·성능 영향 #431 클래스, egress 차단으로 출력검증 불가).
