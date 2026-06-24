@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 2 -->
-<!-- last_run_at: 2026-06-24T06:00:00+09:00 -->
+<!-- last_run_area: 3 -->
+<!-- last_run_at: 2026-06-24T10:00:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,7 +8,7 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | 1 (**GitHub open auto-improve 실측 1건** — **#439 스케줄 루틴 git push/backlog 트림 회복탄력성** improvement small [Area 1, owner B옵션 미정·git push는 동작]. 본 Area 2 사이클은 신규 이슈 0건[유일 발견 lifecycle.ts:176 entity_id 누락은 안전 자동수정 `c6c6f00`으로 직접 처리]) |
+| 🆕 new | 1 (**GitHub open auto-improve 실측 1건** — **#439 스케줄 루틴 git push/backlog 트림 회복탄력성** improvement small [Area 1, owner B옵션 미정·git push는 동작 확인]. 본 Area 3 사이클 신규 이슈 0건[회계 허브 신규 feature UX/기능 감사 clean]) |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 (#372 CSV도 owner close-completed → done 이관) |
 | ✔️ done | 139 (135 + **owner close-completed 4건**[#430 smoke write-카나리·#435 차감방식 UI·#436 재고실사 audit·#437 bank PUT IDOR — 커밋 `f9587c5` "fix(security/audit): IDOR·감사기록·차감방식UI·write카나리 일괄 수정"으로 전부 수정 close, main 트리 실재 검증·#422 디버전스 clean]) |
@@ -16,6 +16,19 @@
 
 > 📦 **과거 사이클 로그**(아래 6블록 이전분)는 `IMPROVEMENT_BACKLOG_ARCHIVE.md`로 이관됨 (2026-06-10 정리). 신규 로그는 계속 이 파일 상단에 추가.
 
+> **Area 3 UX/기능 감사 (2026-06-24T10:00):**
+> - **방법**: git fetch-before-compare(origin force-update `4993fa7→c02deb1`, fetch 후 **HEAD=origin/main `c02deb1` 0/0 동기**, 디버전스 0). git push 동작(직전 Area2 `9b7be22` 정상 push·origin 반영 확인). egress 차단(prod/Playwright/verify[node_modules 부재] 도달 불가)이라 정적 분석. Area 3 **17회차** — **신선 각도 = 직전 Area3(c3ccd2e, 06-23T10:00) 이후 최대 churn = 회계 통합 허브 신규 프론트 `accounting.js`(527L, 02dfe2d+13fb4e2) — 6탭(요약/입금/세금계산서/현금영수증/카드/매입+타임라인) 미감사 최대 신규 feature의 UX/기능 완전성.**
+> - **🟢 회계 허브 프론트(`accounting.js` 527L) = UX/기능 clean**: ① **로딩 표시 전수**(전 탭 `window.dsSkeleton.loadingRow(N)` 적용, #421 패턴 일관) ② **빈상태 전수**(탭별 아이콘+"입금/세금계산서/현금영수증/카드/매입/타임라인 내역이 없습니다" colspan 정합) ③ **삭제 confirm 가드**(입금삭제 `:505` native confirm "연결 은행거래 매칭 해제" 경고문 포함) ④ **showConfirm 콜백 오용 0**(#426 패턴 미발견) ⑤ **getElementById 전부 가드**(`if(!body){console.warn('[accounting]...');return}`, HTML↔JS silent-fail 방지 CLAUDE.md 함정 준수).
+> - **🟢 axios→백엔드 라우트 존재성 = net-new 0(10 경로 전수 실재)**: `/api/accounting/{summary,payments,purchases,timeline}`(accounting.ts:43/117/176/232 실재) · `/api/tax-invoices`(taxInvoices/queries.ts:59 GET /) · `/api/cash-receipts`(cashReceipts.ts:62) · `/api/card-expenses/transactions`(cardExpenses.ts:382) · `/api/ledger/payment/:id` GET/PUT/DELETE(ar-payments.ts:90/118/180, ar배럴→ledger배럴 `/` 마운트 체인 검증). 죽은 버튼 0.
+> - **🟢 필터 UI 라운드트립 = clean(죽은 필터 0)**: accounting.js 탭별 전송 파라미터 ↔ 백엔드 수신 전수 대조 — tax/cash 탭 `date_from/date_to/status/search/page/limit` ↔ queries.ts:61/cashReceipts.ts:64 동일 destructure 수신·issue_date/receipt_date 범위필터 적용 / card 탭 `start_date/end_date/search` ↔ cardExpenses.ts:384 `start_date||date_start` 별칭 호환 수신. 모든 필터가 실제 WHERE절에 반영, pagination round-trip 정합.
+> - **🟢 권한 게이트 정상**: `/accounting` 페이지 `pageAuthMiddleware+requirePagePermission('/accounting')`(index.tsx:472) + 권한 마이그 `0374`(ADMIN/MANAGER INSERT) 실재 → 무권한 도달 차단.
+> - **🟢 churn 신규 axios 경로(바로빌/카드)= 전수 실재**: bank.js/cardExpenses.js 추가 POST/PUT(`/api/bank/{accounts,sync-barobill}`·`/api/card-expenses/{cards,cards/:id,sync}`) 전부 백엔드 라우트 실재(bank.ts:55/137/223/413·cardExpenses.ts:59/130/195/256, requireRole('ADMIN')). 죽은 버튼 0.
+> - **🟢 showConfirm 콜백 오용 전역 스캔 = 0건**: 143 호출 중 142 await/then 정상형, 콜백-2번째-인자 오용 0(#426 회귀 0).
+> - **🟢 backlog↔GitHub sync**: open auto-improve **실측 1건**(#439, list_issues 전수) = 직전 Area2 stats `new=1` **정합**. owner 신규 close/머지 0(done=139·rejected=3 유지). #439는 owner 영역(git 권한/backlog 트림 B옵션) — 본 사이클 push는 정상 동작(영속화 가능). **단 backlog 316KB 여전히 Read 한도 초과 = #439 옵션B(아카이브 트림) 유효성 재확인**.
+> - **🧬 SKILL 강화 0건**: 신규 탐지 패턴 미발견 — 기존 standing scan(axios-route line 117·showConfirm line 122·로딩표시 line 120·빈상태 line 96)이 신규 feature를 전수 커버. 회계 허브가 처음부터 컨벤션(dsSkeleton·빈상태·getElementById 가드·필터 라운드트립)을 일관 준수 = Area 6 line 234 "신규 feature가 컨벤션 따르면 clean" 클래스.
+> - **이상 없음**: git 동기 0/0·push 동작. 회계 허브 신규 feature(527L 프론트) UX/기능 전수 clean(로딩/빈상태/confirm/필터/권한). axios-route·showConfirm·필터 라운드트립 net-new 0. sync 1=1. 억지 findings 회피.
+> - 자동 수정 0건(Area 3 issue-only), 신규 이슈 0건(회계 허브 clean), SKILL 강화 0건, done-sync(변동 0, 1=1 정합), **신선 각도 — 회계 통합 허브 6탭 신규 프론트(accounting.js 527L) 첫 UX/기능 감사 + axios-route/필터-라운드트립/showConfirm 표준 스캔, 프로덕션 영향 0 확인**
+>
 > **Area 1 프로덕션 헬스 (2026-06-24T02:00):**
 > - **방법**: git fetch-before-compare(origin force-update `4993fa7→0e7b886`, fetch 후 **HEAD=origin/main `0e7b886` 0/0 동기**, 디버전스 0). egress 차단(prod/Playwright/verify[node_modules 부재] 도달 불가)이라 CI 결과 + 정적 배선 감사. Area 1 **22회차** — **신선 각도 = 직전 사이클(d614564) 이후 최대 churn = 회계 통합 허브 `/accounting` Phase1~4(`02dfe2d`+`13fb4e2`, 6탭) + 품목 신모델 마이그 0374~0378.**
 > - **🟢 CI/배포 = 전량 green**: 최근 워크플로 run 전수 `completed/success` — 회계 허브 Phase1~4(`02dfe2d`·`13fb4e2`) 포함 모든 Deploy success, 커밋 메시지 `smoke 101/101` 명시. Daily D1 Backup도 success. **신규 prod-breaking 회귀 0.**
