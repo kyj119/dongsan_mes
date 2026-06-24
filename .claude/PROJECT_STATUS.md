@@ -26,7 +26,8 @@
   - 조치: ①**stale balance 7건 전부 prod `balance=0`**(양수 3건 id 3·2590·2159 + 음수 4건 id 850·1587·400·1000, 용준님 2회 승인). **clients.balance 전체 0 검증**(nonzero_remaining=0). ②`/receivables`를 **deriveClientBalance 정의 파생**으로 전환(LEFT JOIN billed[obg BILLED]/paid/adj − downstream `r.balance` 무변경, 폐기 캐시 더는 안 읽음).
   - 검증: tsc/build green · 신규SQL prod 0행 · API total_receivable=0 · smoke 101/101 · **Playwright /bank 미수금 0원·빈상태·콘솔0**. 정본=[[project-clients-balance-deprecated]].
   - **✅ 거래처 상세도 파생 통일**(커밋 `a846ed0a`·dep `95d75ae7`·smoke 101/101): `/:id/detail`·`/:id/intelligence`가 `clients.balance` 캐시→`deriveClientBalance` 파생. detail은 응답 `client.balance`(여신배너)·`receivables.balance` 둘 다 파생 덮어씀. Playwright 검증(디자인이룰 미수금 0원·여신배너 정상). credit-check는 exposure 기반=다른 개념이라 유지.
-  - **▶ 남은(보류·후속)**: ①`clients.balance` 잔존 reader(목록 `c.balance>0` 필터·`/:id` getter·portal)도 파생 통일 = 캐시 컬럼 전면 폐기(큰 작업, 캐시 전체 0이라 즉시 문제 없음). ②**별건 발견**: `GET /api/clients/billing-groups`가 `/:id`에 셰도잉돼 404(거래처 상세 청구그룹 드롭다운 로드 실패, 콘솔에러·페이지는 동작) → 라우트 순서 수정 후보.
+  - **✅ 별건 수정**: `GET /api/clients/billing-groups`가 `/:id`에 셰도잉돼 404였음(id='billing-groups'로 가로채임) → **GET 핸들러를 `/:id` 앞으로 이동**(커밋 `d3dda374`·dep `53889211`). 검증: billing-groups 200·/:id 200·거래처 상세 **콘솔에러 0**·smoke 101/101. (Hono=정적 라우트를 `/:id`보다 먼저 등록 필요.)
+  - **▶ 남은(보류·후속)**: `clients.balance` 잔존 reader(목록 `c.balance>0` 필터·`/:id` getter·portal)도 파생 통일 = 캐시 컬럼 전면 폐기(큰 작업, 캐시 전체 0이라 즉시 문제 없음).
 
 - **✅ [2026-06-23~24] 회계 통합 관리 허브 `/accounting` — Phase 1~4 전부 구현·prod 배포·검증 완료** (커밋 `02dfe2d4`+`13fb4e2d`, 마이그 0374 remote, web dep `018bae20` `--branch main`, smoke 101/101, **6탭 전부 활성**):
   - spec=`docs/superpowers/specs/2026-06-23-accounting-hub.md`, 메모리=[[design-accounting-hub]]. 7개 페이지 분산 회계기록을 한 화면에서 **통합 조회·정정**.
