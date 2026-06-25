@@ -22,7 +22,8 @@
   - **Playwright 검증**: B1 200·B3 400(403아님)·B5 404핸들러·B9 모달 입력반환 ✓ (prod 휴가신청 0건이라 B2/B5 실데이터 미발생 — 로직은 build+검증). 
   - **D1~D6 확정**(입사일·소멸+촉진·직책수당·신청승인·전법인적용). **P2-1~3 구현·prod 배포**(커밋 `d69cd7a5`, dep `65e81674`, 롤백 `11e38ea2`): ①소정근로일 차감(주말+공휴일, Playwright 7→5일 ✓) ②통상임금 수당(포괄임금 calcInclusivePay 분해+직책수당, 검증 ✓) ③KST 적립.
   - **P2 후속 W1(26일 병존+만료인프라) 배포·검증 완료**(2026-06-25, 커밋 `08a3bbcc`, dep `b2a2f3c1`, 마이그 0383~0385): 월차 leave_type='MONTHLY' 분리·합산·차감 FIFO·만료일. **안전게이트=prod 잔여 628 완전보존**(ANNUAL488+MONTHLY140), API/UI 검증. 설계=`docs/superpowers/specs/2026-06-24-leave-promotion-expiry-design.md`.
-  - **P2 남음**: **W2 촉진 통지(kakao+email)+소멸 sweep**(소멸=법적으로 촉진과 분리불가, leave_promotion_notices 0383 준비됨, 발송=바로빌 템플릿 승인 후) · ⑤80% 출근율 게이트 · P3 셀프·알림 / P4.
+  - **P2-W2 촉진 통지+소멸 sweep 배포·검증 완료**(2026-06-25, 커밋 `9da0a5b1`+`f74fbc8f`, dep `a504f6a4`): `/promotion/run`(입사일 기준 1·2차 윈도우→이메일 통지+이력) · `/expire`(촉진 적법분만 소멸, 미이행 제외) · 사용촉진 모달+소멸 버튼. 검증=dryRun MONTHLY_B 2차 실제 3명·이메일없음 플래그·alias 500버그 수정.
+  - **연차관리 = P1+P2(1~3·W1·W2) 전부 prod.** 남음: ⑤80% 출근율 게이트 · 미사용수당→payroll 자동주입 · 알림톡 템플릿 활성화(바로빌 승인)·발송 운영. P3 셀프·알림 / P4.
 
 - **✅ [2026-06-24] 전 페이지 표 열폭 규격 일괄 정비 (에이전트 팀, 정본 `memory/project-table-spec-sweep.md`)**:
   - 전역 `col-*` 폭 유틸 신설(shared-styles.ts) + 12클러스터 fan-out으로 **~101개 표 정비**(ds-table 보장+콘텐츠 유형별 고정폭+가변 주열만 흡수+긴 td `title` 호버). 인쇄양식·편집그리드·동적matrix·밀집표 의도적 제외.
