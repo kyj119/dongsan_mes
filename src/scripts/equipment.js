@@ -6,6 +6,9 @@ var currentTab = 'list';
 // 배치도 탭 전용
 var zones = [];
 var editMode = false;
+var hasFloorPlan = false;
+var floorPlanObjUrl = null;
+var activeProcessFilter = null; // P2: 공정 필터(선택된 process_code, null=전체)
 
 // ─── 상태 맵핑 ─────────────────────────────────────────────────────────────
 
@@ -130,15 +133,105 @@ async function loadLayout() {
     try {
         var facilityRes = await axios.get('/api/facility/layout-data');
         zones = (facilityRes.data.data && facilityRes.data.data.zones ? facilityRes.data.data.zones : []).filter(function(z) { return z.is_active !== 0; });
-        // equipList는 이미 loadEquipment()에서 로드됨. facility 응답에 equipment도 있지만 rip API가 더 상세함
-        renderLayoutEquipment(equipList);
-        renderZoneSummary(equipList);
     } catch(e) {
         console.error('loadLayout error', e);
-        // facility API 실패 시 zones 없이 장비만 렌더링
-        zones = [];
-        renderLayoutEquipment(equipList);
-        renderZoneSummary(equipList);
+        zones = []; // facility API 실패 시 zones 없이 장비만 렌더링
+    }
+    // equipList는 이미 loadEquipment()에서 로드됨 (rip API가 facility 응답보다 상세 — 공정/프리셋 포함)
+    renderZones();
+    renderProcessFilter();
+    renderLayoutEquipment(equipList);
+    renderZoneSummary(equipList);
+    loadFloorPlan();
+}
+
+// ─── 구역 박스 (facility_zones.bounds %) ─────────────────────────────────────
+
+function parseBounds(b) {
+    if (!b) return { x: 10, y: 10, width: 20, height: 15 };
+    if (typeof b === 'string') { try { return JSON.parse(b); } catch(e) { return { x: 10, y: 10, width: 20, height: 15 }; } }
+    return b;
+}
+
+function hexToRgba(hex, alpha) {
+    var h = (hex || '#000000').replace('#', '');
+    if (h.length === 3) h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
+    var r = parseInt(h.substring(0, 2), 16) || 0;
+    var g = parseInt(h.substring(2, 4), 16) || 0;
+    var bl = parseInt(h.substring(4, 6), 16) || 0;
+    return 'rgba(' + r + ',' + g + ',' + bl + ',' + alpha + ')';
+}
+
+function renderZones() {
+    var container = document.getElementById('layoutZones');
+    if (!container) { console.warn('[equipment] #layoutZones not found'); return; }
+    if (!zones || zones.length === 0) { container.innerHTML = ''; return; }
+    // 도면 배경이 있으면 채움을 더 투명하게(도면이 비치도록)
+    var fillAlpha = hasFloorPlan ? 0.02 : 0.06;
+    container.innerHTML = zones.map(function(z) {
+        var b = parseBounds(z.bounds);
+        var color = z.color || '#94a3b8';
+        return '<div style="position:absolute;'
+            + 'left:' + b.x + '%;top:' + b.y + '%;width:' + b.width + '%;height:' + b.height + '%;'
+            + 'border:2px solid ' + color + ';background:' + hexToRgba(color, fillAlpha) + ';border-radius:6px;">'
+            + '<span style="position:absolute;left:4px;top:3px;font-size:11px;font-weight:700;color:' + color + ';background:rgba(255,255,255,0.82);padding:1px 5px;border-radius:3px;">' + escapeHtml(z.name) + '</span>'
+            + '</div>';
+    }).join('');
+}
+
+// ─── 도면 배경 (R2 blob) ─────────────────────────────────────────────────────
+
+async function loadFloorPlan() {
+    var bg = document.getElementById('layoutBg');
+    if (!bg) return;
+    try {
+        var res = await axios.get('/api/facility/background');
+        var key = res.data && res.data.data;
+        hasFloorPlan = !!key;
+        if (!key) {
+            bg.style.backgroundImage = '';
+            if (floorPlanObjUrl) { URL.revokeObjectURL(floorPlanObjUrl); floorPlanObjUrl = null; }
+        } else {
+            // 인증 헤더 경유 blob 로드 (<img src>·새창 직접 인증 불가)
+            var imgRes = await axios.get('/api/facility/background-image', { responseType: 'blob' });
+            if (floorPlanObjUrl) URL.revokeObjectURL(floorPlanObjUrl);
+            floorPlanObjUrl = URL.createObjectURL(imgRes.data);
+            bg.style.backgroundImage = 'url(' + floorPlanObjUrl + ')';
+        }
+    } catch(e) {
+        hasFloorPlan = false;
+    }
+    renderZones(); // fillAlpha 갱신
+    var delBtn = document.getElementById('btnDeleteFloorPlan');
+    if (delBtn) delBtn.classList.toggle('hidden', !(editMode && hasFloorPlan));
+}
+
+function onFloorPlanSelected(input) {
+    var file = input.files && input.files[0];
+    if (file) uploadFloorPlan(file);
+    input.value = '';
+}
+
+async function uploadFloorPlan(file) {
+    var fd = new FormData();
+    fd.append('file', file);
+    try {
+        await axios.post('/api/facility/background', fd);
+        showToast('도면을 업로드했습니다.', 'success');
+        await loadFloorPlan();
+    } catch(e) {
+        showToast('도면 업로드 실패: ' + (e.response && e.response.data && e.response.data.error ? e.response.data.error : e.message), 'error');
+    }
+}
+
+async function deleteFloorPlan() {
+    if (!(await showConfirm('도면 배경을 삭제하시겠습니까?', { danger: true }))) return;
+    try {
+        await axios.delete('/api/facility/background');
+        showToast('도면을 삭제했습니다.', 'success');
+        await loadFloorPlan();
+    } catch(e) {
+        showToast('삭제 실패', 'error');
     }
 }
 
@@ -156,6 +249,8 @@ function renderLayoutEquipment(equipData) {
     activeEquip.forEach(function(eq) {
         var size = SIZE_MAP[eq.size_type] || SIZE_MAP.LARGE;
         var color = STATUS_COLORS[eq.equipment_status] || '#94a3b8';
+        var proc = eqPrimaryProcess(eq);
+        var dimmed = activeProcessFilter && !eqHasProcess(eq, activeProcessFilter);
         var div = document.createElement('div');
         div.className = 'eq-card';
         div.dataset.id = eq.id;
@@ -181,14 +276,21 @@ function renderLayoutEquipment(equipData) {
             'cursor:pointer',
             'box-shadow:' + shadow,
             'user-select:none',
-            'overflow:hidden',
-            'text-overflow:ellipsis',
-            'white-space:nowrap',
+            'overflow:visible',
+            'opacity:' + (dimmed ? '0.25' : '1'),
+            'transition:opacity 0.15s',
             'padding:0 4px',
         ].join(';');
 
-        div.textContent = eq.name;
-        div.title = eq.name + (eq.printer_name ? ' (' + eq.printer_name + ')' : '');
+        div.innerHTML = '<span style="display:block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + escapeHtml(eq.name) + '</span>';
+        // 대표 공정 색상 점 (좌상단)
+        if (proc) {
+            var dot = document.createElement('div');
+            dot.style.cssText = 'position:absolute;top:-6px;left:-6px;width:13px;height:13px;border-radius:50%;border:2px solid #fff;background:' + proc.color + ';box-shadow:0 0 2px rgba(0,0,0,0.35);';
+            dot.title = '공정: ' + proc.label;
+            div.appendChild(dot);
+        }
+        div.title = eq.name + (eq.printer_name ? ' (' + eq.printer_name + ')' : '') + (proc ? ' · ' + proc.label : '');
 
         (function(capturedEq, capturedDiv) {
             capturedDiv.addEventListener('click', function(e) {
@@ -210,6 +312,10 @@ function showEquipPopover(eq, el) {
     var statusLabel = stMap.label || eq.equipment_status;
     var statusColor = STATUS_COLORS[eq.equipment_status] || '#94a3b8';
     var sizeLabel = eq.size_type === 'SMALL' ? '1.8m (소형)' : '3.2m (대형)';
+    var procBadges = eqProcesses(eq).map(function(p) {
+        var d = procDef(p.process_code);
+        return '<span class="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-medium" style="background:' + hexToRgba(d.color, 0.13) + ';color:' + d.color + '">' + (p.is_primary ? '★' : '') + escapeHtml(d.label) + '</span>';
+    }).join('');
 
     pop.innerHTML = '<div class="p-3">'
         + '<div class="flex items-center justify-between mb-2">'
@@ -222,12 +328,17 @@ function showEquipPopover(eq, el) {
         + '<span class="text-xs font-medium" style="color:' + statusColor + '">' + statusLabel + '</span>'
         + (eq.is_printing ? '<span class="text-xs text-blue-600 font-medium">인쇄중</span>' : '')
         + '</div>'
+        + (procBadges ? '<div class="flex flex-wrap gap-1 mb-2">' + procBadges + '</div>' : '<div class="text-[11px] text-gray-300 mb-2">공정 미지정</div>')
         + '<div class="text-xs text-gray-500 space-y-1">'
         + '<div>진행중: <span class="font-medium text-gray-700">' + (eq.active_cards || 0) + '건</span></div>'
         + '<div>크기: <span class="font-medium text-gray-700">' + sizeLabel + '</span></div>'
         + '</div>'
-        + '<button onclick="document.getElementById(\'equipPopover\').classList.add(\'hidden\');openDetail(\'' + escapeHtml(String(eq.id)) + '\')" class="mt-3 flex items-center gap-1 text-xs text-blue-600 hover:text-blue-700 font-medium">'
-        + '상세 보기 <i class="fas fa-arrow-right text-[10px]"></i></button>'
+        + '<div class="mt-3 flex items-center justify-between">'
+        + '<button onclick="document.getElementById(\'equipPopover\').classList.add(\'hidden\');openDetail(\'' + escapeHtml(String(eq.id)) + '\')" class="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-700 font-medium">'
+        + '상세 <i class="fas fa-arrow-right text-[10px]"></i></button>'
+        + '<button onclick="goToProductionHistory(\'' + escapeHtml(String(eq.id)) + '\')" class="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700">'
+        + '<i class="fas fa-clock-rotate-left text-[10px]"></i> 출력이력</button>'
+        + '</div>'
         + '</div>';
 
     var rect = el.getBoundingClientRect();
@@ -259,6 +370,10 @@ function toggleEditMode() {
             btn.className = 'px-3 py-1 text-xs rounded border border-gray-300 bg-white text-gray-600 hover:bg-gray-50 flex items-center gap-1';
         }
     }
+    var upBtn = document.getElementById('btnUploadFloorPlan');
+    var delBtn = document.getElementById('btnDeleteFloorPlan');
+    if (upBtn) upBtn.classList.toggle('hidden', !editMode);
+    if (delBtn) delBtn.classList.toggle('hidden', !(editMode && hasFloorPlan));
     document.querySelectorAll('.eq-card').forEach(function(el) {
         el.style.cursor = editMode ? 'grab' : 'default';
     });
@@ -309,6 +424,53 @@ function setupEquipDrag(el, eq) {
     });
 }
 
+// ─── 공정 레이어 (P2) ────────────────────────────────────────────────────────
+
+function eqProcesses(eq) { return (eq && eq.processes) || []; }
+function eqHasProcess(eq, code) { return eqProcesses(eq).some(function(p) { return p.process_code === code; }); }
+function procDef(code) {
+    return (window.PROCESS_LIST || []).filter(function(d) { return d.code === code; })[0]
+        || { code: code, label: (window.PROCESS_NAMES && window.PROCESS_NAMES[code]) || code, color: '#94a3b8' };
+}
+function eqPrimaryProcess(eq) {
+    var procs = eqProcesses(eq);
+    if (!procs.length) return null;
+    var prim = procs.filter(function(p) { return p.is_primary; })[0] || procs[0];
+    return procDef(prim.process_code);
+}
+
+function renderProcessFilter() {
+    var container = document.getElementById('processFilter');
+    if (!container) return;
+    var counts = {};
+    (equipList || []).forEach(function(eq) {
+        eqProcesses(eq).forEach(function(p) { counts[p.process_code] = (counts[p.process_code] || 0) + 1; });
+    });
+    var list = (window.PROCESS_LIST || []).filter(function(d) { return counts[d.code]; });
+    if (list.length === 0) { container.innerHTML = ''; return; }
+    function chip(label, code, color, active) {
+        var style = active
+            ? 'background:' + color + ';color:#fff;border-color:' + color
+            : 'background:#fff;color:' + color + ';border-color:' + hexToRgba(color, 0.5);
+        var arg = code ? "'" + code + "'" : 'null';
+        return '<button onclick="setProcessFilter(' + arg + ')" class="px-2 py-0.5 text-[11px] rounded-full border" style="' + style + '">' + escapeHtml(label) + '</button>';
+    }
+    var html = '<span class="text-[11px] text-gray-400 mr-1">공정:</span>';
+    html += chip('전체', null, '#6b7280', activeProcessFilter === null);
+    list.forEach(function(d) { html += chip(d.label + ' ' + counts[d.code], d.code, d.color, activeProcessFilter === d.code); });
+    container.innerHTML = html;
+}
+
+function setProcessFilter(code) {
+    activeProcessFilter = code;
+    renderProcessFilter();
+    renderLayoutEquipment(equipList);
+}
+
+function goToProductionHistory(id) {
+    window.location.href = '/production?equipment_ids=' + encodeURIComponent(id);
+}
+
 // ─── 구역 관리 ──────────────────────────────────────────────────────────────
 
 function renderZoneSummary(equipData) {
@@ -321,9 +483,17 @@ function renderZoneSummary(equipData) {
     container.innerHTML = zones.map(function(z) {
         var zoneEquip = equipData.filter(function(e) { return e.zone_id === z.id || e.location_zone === z.name; });
         var running = zoneEquip.filter(function(e) { return e.equipment_status === 'RUNNING'; }).length;
+        // 구역 내 대표 공정 distinct
+        var zoneProcs = {};
+        zoneEquip.forEach(function(e) { var pp = eqPrimaryProcess(e); if (pp) zoneProcs[pp.code] = pp; });
+        var procDots = Object.keys(zoneProcs).map(function(code) {
+            var d = zoneProcs[code];
+            return '<span class="inline-flex items-center gap-0.5 text-[10px]" style="color:' + d.color + '"><span class="inline-block w-2 h-2 rounded-full" style="background:' + d.color + '"></span>' + escapeHtml(d.label) + '</span>';
+        }).join(' ');
         return '<div class="bg-white border rounded-lg p-3 cursor-pointer hover:shadow-md transition-shadow" style="border-left:3px solid ' + z.color + '">'
             + '<div class="font-semibold text-sm" style="color:' + z.color + '">' + escapeHtml(z.name) + '</div>'
             + '<div class="text-xs text-gray-500 mt-1">장비 ' + zoneEquip.length + '대 &middot; 가동 ' + running + '대</div>'
+            + (procDots ? '<div class="flex flex-wrap gap-1.5 mt-1.5">' + procDots + '</div>' : '')
             + '</div>';
     }).join('');
 }
@@ -509,7 +679,7 @@ async function changeStatus(newStatus) {
 
 // ─── 장비 추가/수정 모달 ────────────────────────────────────────────────────
 
-function openAddModal() {
+async function openAddModal() {
     document.getElementById('equipModalTitle').textContent = '장비 추가';
     document.getElementById('equipEditId').value = '';
     document.getElementById('fEquipId').value = '';
@@ -520,10 +690,13 @@ function openAddModal() {
     document.getElementById('fEquipHeadCount').value = '0';
     document.getElementById('fEquipZone').value = '';
     document.getElementById('fEquipSizeType').value = 'LARGE';
+    renderProcessCheckboxes([]);
+    await ensureZonesLoaded();
+    populateZoneSelect(null);
     document.getElementById('equipModal').classList.remove('hidden');
 }
 
-function openEditModal(equipId) {
+async function openEditModal(equipId) {
     var eq = equipList.find(function(e) { return e.id === equipId; });
     if (!eq) return;
     document.getElementById('equipModalTitle').textContent = '장비 수정';
@@ -536,11 +709,91 @@ function openEditModal(equipId) {
     document.getElementById('fEquipHeadCount').value = String(eq.head_count || 0);
     document.getElementById('fEquipZone').value = eq.location_zone || '';
     document.getElementById('fEquipSizeType').value = eq.size_type || 'LARGE';
+    renderProcessCheckboxes(eq.processes || []);
+    await ensureZonesLoaded();
+    populateZoneSelect(eq.zone_id);
     document.getElementById('equipModal').classList.remove('hidden');
 }
 
 function closeEquipModal() {
     document.getElementById('equipModal').classList.add('hidden');
+}
+
+// ─── 공정·구역 선택 (P0) ────────────────────────────────────────────────────
+
+async function ensureZonesLoaded() {
+    if (zones && zones.length > 0) return;
+    try {
+        var res = await axios.get('/api/facility/zones');
+        zones = (res.data.data || []).filter(function(z) { return z.is_active !== 0; });
+    } catch(e) { zones = []; }
+}
+
+function populateZoneSelect(selectedZoneId) {
+    var sel = document.getElementById('fEquipZoneId');
+    if (!sel) { console.warn('[equipment] #fEquipZoneId not found'); return; }
+    var html = '<option value="">미지정</option>';
+    (zones || []).forEach(function(z) {
+        var s = (selectedZoneId != null && String(selectedZoneId) === String(z.id)) ? ' selected' : '';
+        html += '<option value="' + z.id + '"' + s + '>' + escapeHtml(z.name) + '</option>';
+    });
+    sel.innerHTML = html;
+}
+
+function renderProcessCheckboxes(selected) {
+    var container = document.getElementById('fEquipProcesses');
+    if (!container) { console.warn('[equipment] #fEquipProcesses not found'); return; }
+    var list = window.PROCESS_LIST || [];
+    if (list.length === 0) { container.innerHTML = '<div class="text-xs text-gray-400">공정 목록을 불러오지 못했습니다.</div>'; return; }
+    var selMap = {};
+    (selected || []).forEach(function(p) { selMap[p.process_code] = p; });
+    var primaryCode = (selected || []).filter(function(p) { return p.is_primary; }).map(function(p) { return p.process_code; })[0] || null;
+    container.innerHTML = list.map(function(p) {
+        var checked = selMap[p.code] ? ' checked' : '';
+        var isPrimary = primaryCode === p.code ? ' checked' : '';
+        return '<div class="flex items-center gap-2 text-sm">'
+            + '<input type="checkbox" class="proc-chk h-4 w-4" value="' + p.code + '"' + checked + ' onchange="onProcChkChange(this)">'
+            + '<span class="inline-block w-2.5 h-2.5 rounded-full" style="background:' + p.color + '"></span>'
+            + '<span class="flex-1">' + escapeHtml(p.label) + '</span>'
+            + '<label class="inline-flex items-center gap-1 text-[11px] text-gray-500"><input type="radio" name="fEquipPrimaryProc" class="proc-primary" value="' + p.code + '"' + isPrimary + '> 대표</label>'
+            + '</div>';
+    }).join('');
+}
+
+function onProcChkChange(chk) {
+    var row = chk.closest('div');
+    var radio = row ? row.querySelector('.proc-primary') : null;
+    if (!chk.checked) {
+        if (radio && radio.checked) radio.checked = false;
+        return;
+    }
+    // 체크 시 대표가 하나도 없으면 이 항목을 대표로
+    var hasPrimary = false;
+    document.querySelectorAll('#fEquipProcesses .proc-primary').forEach(function(r) {
+        var box = r.closest('div').querySelector('.proc-chk');
+        if (r.checked && box && box.checked) hasPrimary = true;
+    });
+    if (!hasPrimary && radio) radio.checked = true;
+}
+
+function collectProcesses() {
+    var primaryEl = document.querySelector('#fEquipProcesses .proc-primary:checked');
+    var primary = primaryEl ? primaryEl.value : null;
+    var out = [];
+    document.querySelectorAll('#fEquipProcesses .proc-chk:checked').forEach(function(chk) {
+        out.push({ code: chk.value, is_primary: chk.value === primary });
+    });
+    return out;
+}
+
+function applyProcessRecommendation() {
+    var id = document.getElementById('fEquipId').value.trim();
+    var hints = window.PROCESS_PREFIX_HINTS || {};
+    var head = id.toUpperCase().split(/[-_\s]/)[0];
+    var code = head ? hints[head] : null;
+    if (!code) { showToast('이 ID 접두사에 추천 공정이 없습니다. 직접 선택하세요.', 'info'); return; }
+    var chk = document.querySelector('#fEquipProcesses .proc-chk[value="' + code + '"]');
+    if (chk) { chk.checked = true; onProcChkChange(chk); showToast((window.PROCESS_NAMES[code] || code) + ' 공정을 추천 적용했습니다.', 'success'); }
 }
 
 async function saveEquip() {
@@ -551,14 +804,18 @@ async function saveEquip() {
     var ip = document.getElementById('fEquipIp').value.trim();
     var headCount = parseInt(document.getElementById('fEquipHeadCount').value) || 0;
     var zone = document.getElementById('fEquipZone').value.trim();
+    var zoneIdRaw = document.getElementById('fEquipZoneId').value;
+    var zoneId = zoneIdRaw === '' ? null : parseInt(zoneIdRaw);
     var sizeType = document.getElementById('fEquipSizeType').value;
+    var processes = collectProcesses();
     if (!name) { showFieldError('fEquipName', '이름을 입력하세요.'); return; }
     try {
         if (editId) {
             await axios.put('/api/rip/equipment/' + editId, {
                 name: name, printer_name: printer, ip_address: ip,
-                head_count: headCount, location_zone: zone, size_type: sizeType
+                head_count: headCount, location_zone: zone, zone_id: zoneId, size_type: sizeType
             });
+            await axios.put('/api/rip/equipment/' + editId + '/processes', { processes: processes });
         } else {
             if (!id) { showFieldError('fEquipId', 'ID를 입력하세요.'); return; }
             await axios.post('/api/rip/equipment', {
@@ -567,6 +824,13 @@ async function saveEquip() {
             // 헤드 초기화
             if (headCount > 0) {
                 await axios.post('/api/rip/equipment/' + id + '/heads', { head_count: headCount });
+            }
+            // POST는 zone/공정을 받지 않으므로 PUT으로 설정
+            if (zoneId != null || zone) {
+                await axios.put('/api/rip/equipment/' + id, { zone_id: zoneId, location_zone: zone });
+            }
+            if (processes.length > 0) {
+                await axios.put('/api/rip/equipment/' + id + '/processes', { processes: processes });
             }
         }
         closeEquipModal();

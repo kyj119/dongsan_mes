@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
 import { entityFilter, cardEntityFilter } from '../utils/entityFilter'
+import { validateUpload } from '../utils/uploadValidation'
 
 // 멀티테넌시 모델 (감사 2026-06-09):
 // - equipment(entity_id, 0302 #342 "법인별 설비 분리")·cards(requesting_entity_id, 0150) = 법인 격리
@@ -163,6 +164,7 @@ facilityRouter.get('/layout-data', async (c) => {
 // 배경 이미지
 // ============================================================================
 
+// 배경(도면) 존재 여부/키 반환. 실제 바이트는 /background-image 가 R2에서 서빙.
 facilityRouter.get('/background', async (c) => {
   try {
     const row = await c.env.DB.prepare(
@@ -175,13 +177,81 @@ facilityRouter.get('/background', async (c) => {
   }
 })
 
+// 도면 이미지 바이트 서빙 (R2). 인증 헤더 경유 → 프론트는 axios blob 으로 로드.
+// (<img src> 직접 불가 — authMiddleware 가 Bearer 헤더만 허용)
+facilityRouter.get('/background-image', async (c) => {
+  try {
+    const row = await c.env.DB.prepare(
+      "SELECT setting_value FROM facility_settings WHERE setting_key = 'background_image'"
+    ).first<{ setting_value: string }>()
+    const key = row?.setting_value
+    if (!key) return c.json({ success: false, error: '등록된 도면이 없습니다.' }, 404)
+    if (key.includes('..') || key.includes('\\')) return c.json({ success: false, error: 'Invalid path' }, 400)
+
+    const object = await c.env.R2_BUCKET.get(key)
+    if (!object) return c.json({ success: false, error: '도면 파일을 찾을 수 없습니다.' }, 404)
+
+    const headers = new Headers()
+    headers.set('Content-Type', object.httpMetadata?.contentType || 'image/png')
+    headers.set('Cache-Control', 'private, max-age=300')
+    return new Response(object.body, { headers })
+  } catch (error) {
+    console.error('src/routes/facility.ts error:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
+  }
+})
+
+// 도면 업로드 (multipart → R2). base64 직접저장(D1 비대) 대신 R2 키만 보관.
 facilityRouter.post('/background', requireRole('ADMIN'), async (c) => {
   try {
-    const { image } = await c.req.json<{ image: string }>()
+    const formData = await c.req.formData()
+    const file = formData.get('file') as File | null
+    if (!file) return c.json({ success: false, error: '파일이 없습니다.' }, 400)
+
+    const v = validateUpload(file, {
+      maxBytes: 10 * 1024 * 1024,
+      allowedMimePrefixes: ['image/'],
+      allowedExts: ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'],
+    })
+    if (!v.ok) return c.json({ success: false, error: v.error }, 400)
+
+    const key = `facility/floor-plan/${Date.now()}.${v.ext}`
+    await c.env.R2_BUCKET.put(key, file.stream(), {
+      httpMetadata: { contentType: file.type || 'image/png' },
+    })
+
+    // 이전 도면 키 조회(스토리지 정리용)
+    const prev = await c.env.DB.prepare(
+      "SELECT setting_value FROM facility_settings WHERE setting_key = 'background_image'"
+    ).first<{ setting_value: string }>()
+
     await c.env.DB.prepare(`
       INSERT INTO facility_settings (setting_key, setting_value) VALUES ('background_image', ?)
       ON CONFLICT(setting_key) DO UPDATE SET setting_value = excluded.setting_value, updated_at = CURRENT_TIMESTAMP
-    `).bind(image).run()
+    `).bind(key).run()
+
+    // 이전 도면 R2 정리 (실패 무시)
+    if (prev?.setting_value && prev.setting_value !== key && prev.setting_value.startsWith('facility/')) {
+      try { await c.env.R2_BUCKET.delete(prev.setting_value) } catch { /* ignore */ }
+    }
+
+    return c.json({ success: true, data: { key } })
+  } catch (error) {
+    console.error('src/routes/facility.ts error:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
+  }
+})
+
+// 도면 삭제
+facilityRouter.delete('/background', requireRole('ADMIN'), async (c) => {
+  try {
+    const row = await c.env.DB.prepare(
+      "SELECT setting_value FROM facility_settings WHERE setting_key = 'background_image'"
+    ).first<{ setting_value: string }>()
+    if (row?.setting_value && row.setting_value.startsWith('facility/')) {
+      try { await c.env.R2_BUCKET.delete(row.setting_value) } catch { /* ignore */ }
+    }
+    await c.env.DB.prepare("DELETE FROM facility_settings WHERE setting_key = 'background_image'").run()
     return c.json({ success: true })
   } catch (error) {
     console.error('src/routes/facility.ts error:', error)

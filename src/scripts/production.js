@@ -892,6 +892,14 @@ window.editCapacity = async function(equipmentId, currentCapacity) {
 // ════════════════
 // 초기 로드
 // ════════════════
+// 배치도 팝오버 등에서 ?equipment_ids=ID 로 진입 시 해당 장비로 출력이력 사전 필터.
+// (loadAgents 가 populateAgentFilter 에서 productionAgentSelected 로 checked 판단 → 미리 세팅)
+(function productionInitEquipmentDeepLink() {
+  try {
+    var ids = new URLSearchParams(window.location.search).get('equipment_ids');
+    if (ids) ids.split(',').forEach(function(id) { id = id.trim(); if (id) productionAgentSelected[id] = true; });
+  } catch (e) { /* ignore */ }
+})();
 productionBindKeyword();
 loadStats();
 loadPrintingCards();

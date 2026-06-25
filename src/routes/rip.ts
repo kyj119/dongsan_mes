@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole, agentKeyMiddleware } from '../middleware/auth'
 import { getEntityId, entityFilter } from '../utils/entityFilter'
+import { PROCESS_CODES } from '../constants/process'
 
 // ─── D1 row types ───────────────────────────────────────────────────────────
 
@@ -233,7 +234,7 @@ ripRouter.get('/equipment', authMiddleware, async (c) => {
     const ef = entityFilter(c, 'e')  // #342 설비 법인 격리
     const { results: equipmentList } = await c.env.DB.prepare(`
       SELECT e.id, e.name, e.printer_name, e.ip_address, e.status,
-        e.head_count, e.location_zone, e.location_x, e.location_y,
+        e.head_count, e.location_zone, e.zone_id, e.location_x, e.location_y,
         e.notes, e.equipment_status, e.daily_capacity, e.size_type,
         e.last_seen_at,
         e.print_log_path,
@@ -266,9 +267,27 @@ ripRouter.get('/equipment', authMiddleware, async (c) => {
         presetsMap[p.equipment_id].push(p)
       }
     }
+
+    // 공정 일괄 조회 (N+1 → 단일 쿼리). equipment_processes(0389)
+    const processesMap: Record<string, Array<{ process_code: string; is_primary: number }>> = {}
+    if (eqIds.length > 0) {
+      const placeholders = eqIds.map(() => '?').join(',')
+      const { results: allProcs } = await c.env.DB.prepare(`
+        SELECT equipment_id, process_code, is_primary
+        FROM equipment_processes
+        WHERE equipment_id IN (${placeholders})
+        ORDER BY is_primary DESC, process_code ASC
+      `).bind(...eqIds).all<{ equipment_id: string; process_code: string; is_primary: number }>()
+      for (const p of allProcs) {
+        if (!processesMap[p.equipment_id]) processesMap[p.equipment_id] = []
+        processesMap[p.equipment_id].push({ process_code: p.process_code, is_primary: p.is_primary })
+      }
+    }
+
     const result = equipmentList.map((eq) => ({
       ...eq,
-      presets: presetsMap[eq.id] || []
+      presets: presetsMap[eq.id] || [],
+      processes: processesMap[eq.id] || []
     }))
 
     return c.json({ success: true, data: result })
@@ -335,6 +354,7 @@ ripRouter.put('/equipment/:id', authMiddleware, requireRole('ADMIN'), async (c) 
     if (body.status !== undefined) { fields.push('status = ?'); values.push(body.status) }
     if (body.head_count !== undefined) { fields.push('head_count = ?'); values.push(body.head_count) }
     if (body.location_zone !== undefined) { fields.push('location_zone = ?'); values.push(body.location_zone) }
+    if (body.zone_id !== undefined) { fields.push('zone_id = ?'); values.push(body.zone_id) }
     if (body.notes !== undefined) { fields.push('notes = ?'); values.push(body.notes) }
     if (body.size_type !== undefined) { fields.push('size_type = ?'); values.push(body.size_type) }
     fields.push('updated_at = CURRENT_TIMESTAMP')
@@ -359,6 +379,51 @@ ripRouter.put('/equipment/:id', authMiddleware, requireRole('ADMIN'), async (c) 
       success: false,
       error: '서버 오류가 발생했습니다.'
     }, 500)
+  }
+})
+
+// ─── PUT /api/rip/equipment/:id/processes — 장비 공정 다중 지정 (admin) ──────
+// body: { processes: [{ code, is_primary }] }  (replace-all). code는 PROCESS_CODES 검증.
+ripRouter.put('/equipment/:id/processes', authMiddleware, requireRole('ADMIN'), async (c) => {
+  try {
+    const equipId = c.req.param('id')
+    const body = await c.req.json<{ processes?: Array<{ code: string; is_primary?: number | boolean }> }>()
+
+    const ef = entityFilter(c)  // 타법인 설비 공정 변경 차단 (ADMIN 전체모드는 생략)
+    const existing = await c.env.DB.prepare(
+      `SELECT id FROM equipment WHERE id = ?${ef.clause}`
+    ).bind(equipId, ...ef.params).first()
+    if (!existing) return c.json({ success: false, error: 'Equipment not found' }, 404)
+
+    // 유효 코드만, 중복 제거
+    const raw = Array.isArray(body.processes) ? body.processes : []
+    const seen = new Set<string>()
+    const valid: Array<{ code: string; is_primary: boolean }> = []
+    for (const p of raw) {
+      const code = String(p?.code || '').toUpperCase()
+      if (!PROCESS_CODES.includes(code) || seen.has(code)) continue
+      seen.add(code)
+      valid.push({ code, is_primary: !!p.is_primary })
+    }
+    // 대표 공정: is_primary 표시된 첫 항목, 없으면 첫 항목
+    let primaryCode = valid.find((v) => v.is_primary)?.code || (valid[0]?.code ?? null)
+
+    const stmts = [
+      c.env.DB.prepare('DELETE FROM equipment_processes WHERE equipment_id = ?').bind(equipId),
+    ]
+    for (const v of valid) {
+      stmts.push(
+        c.env.DB.prepare(
+          'INSERT INTO equipment_processes (equipment_id, process_code, is_primary) VALUES (?, ?, ?)'
+        ).bind(equipId, v.code, v.code === primaryCode ? 1 : 0)
+      )
+    }
+    await c.env.DB.batch(stmts)
+
+    return c.json({ success: true, data: { processes: valid.map((v) => ({ process_code: v.code, is_primary: v.code === primaryCode ? 1 : 0 })) } })
+  } catch (error) {
+    console.error('src/routes/rip.ts error:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
   }
 })
 
@@ -485,9 +550,14 @@ ripRouter.get('/equipment/:id', authMiddleware, async (c) => {
       LIMIT 20
     `).bind(equipId).all()
 
+    // 공정 (equipment_processes 0389)
+    const { results: processes } = await c.env.DB.prepare(
+      'SELECT process_code, is_primary FROM equipment_processes WHERE equipment_id = ? ORDER BY is_primary DESC, process_code ASC'
+    ).bind(equipId).all()
+
     return c.json({
       success: true,
-      data: { ...equipment, presets, heads, maintenance_logs: logs }
+      data: { ...equipment, presets, heads, maintenance_logs: logs, processes }
     })
   } catch (error) {
     console.error('src/routes/rip.ts error:', error)

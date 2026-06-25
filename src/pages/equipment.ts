@@ -208,39 +208,36 @@ export function equipmentPage(c: Context<HonoEnv>) {
             <div id="panelLayout" class="hidden">
                 <div class="ds-card p-4">
 
-                    <!-- 범례 + 편집 버튼 -->
-                    <div class="flex items-center justify-between mb-3">
+                    <!-- 범례 + 공정필터 + 편집 버튼 -->
+                    <div class="flex items-center justify-between mb-3 gap-2 flex-wrap">
                         <div class="flex items-center gap-3 text-xs">
                             <span class="inline-flex items-center gap-1"><span class="w-3 h-3 rounded bg-green-500 inline-block"></span>가동중</span>
                             <span class="inline-flex items-center gap-1"><span class="w-3 h-3 rounded bg-amber-400 inline-block"></span>대기</span>
                             <span class="inline-flex items-center gap-1"><span class="w-3 h-3 rounded bg-orange-500 inline-block"></span>점검중</span>
                             <span class="inline-flex items-center gap-1"><span class="w-3 h-3 rounded bg-red-500 inline-block"></span>고장</span>
                         </div>
-                        <button id="btnEditLayout" onclick="toggleEditMode()" class="px-3 py-1 text-xs rounded border border-gray-300 bg-white text-gray-600 hover:bg-gray-50 flex items-center gap-1">
-                            <i class="fas fa-lock"></i><span>배치 편집</span>
-                        </button>
+                        <!-- 공정 필터 (P2, renderProcessFilter가 채움) -->
+                        <div id="processFilter" class="flex items-center gap-1 flex-wrap"></div>
+                        <div class="flex items-center gap-2">
+                            <input type="file" id="floorPlanInput" accept="image/*" class="hidden" onchange="onFloorPlanSelected(this)">
+                            <button id="btnUploadFloorPlan" onclick="document.getElementById('floorPlanInput').click()" class="hidden px-3 py-1 text-xs rounded border border-gray-300 bg-white text-gray-600 hover:bg-gray-50 flex items-center gap-1">
+                                <i class="fas fa-image"></i><span>도면 업로드</span>
+                            </button>
+                            <button id="btnDeleteFloorPlan" onclick="deleteFloorPlan()" class="hidden px-3 py-1 text-xs rounded border border-red-200 bg-white text-red-500 hover:bg-red-50 flex items-center gap-1">
+                                <i class="fas fa-trash"></i><span>도면 삭제</span>
+                            </button>
+                            <button id="btnEditLayout" onclick="toggleEditMode()" class="px-3 py-1 text-xs rounded border border-gray-300 bg-white text-gray-600 hover:bg-gray-50 flex items-center gap-1">
+                                <i class="fas fa-lock"></i><span>배치 편집</span>
+                            </button>
+                        </div>
                     </div>
 
                     <!-- 배치도 캔버스 -->
                     <div id="layoutCanvas" style="height:580px; position:relative; overflow:hidden; border-radius:8px; background:#f0f4f8; border:1px solid #e5e7eb; cursor:default;">
-                        <!-- 정적 평면도 SVG (900×580 viewBox) -->
-                        <svg style="position:absolute;inset:0;pointer-events:none;z-index:0;width:100%;height:100%;" viewBox="0 0 900 580" preserveAspectRatio="none">
-                            <!-- 전사출력실 (좌측, 20% 확대) -->
-                            <rect x="10" y="10" width="180" height="324" fill="#EFF6FF" stroke="#3B82F6" stroke-width="2"/>
-                            <!-- 출력실 (중앙 직사각형) -->
-                            <rect x="205" y="10" width="485" height="324" fill="#ECFDF5" stroke="#10B981" stroke-width="2"/>
-                            <!-- UV실 (우측, 상단 y=10까지 확장) -->
-                            <rect x="705" y="10" width="185" height="334" fill="#FFF7ED" stroke="#F97316" stroke-width="2"/>
-                            <!-- 현수막실 (하단 전체 너비) -->
-                            <rect x="10" y="360" width="880" height="210" fill="#FAF5FF" stroke="#8B5CF6" stroke-width="2"/>
-                        </svg>
-                        <!-- 구역 이름 레이블 -->
-                        <div style="position:absolute;inset:0;pointer-events:none;z-index:1;">
-                            <span style="position:absolute;left:1.7%;top:2.6%;font-size:11px;font-weight:700;color:#1D4ED8;background:rgba(239,246,255,0.85);padding:2px 5px;border-radius:3px;">전사출력실</span>
-                            <span style="position:absolute;left:55.6%;top:2.6%;font-size:11px;font-weight:700;color:#065F46;background:rgba(236,253,245,0.85);padding:2px 5px;border-radius:3px;">출력실</span>
-                            <span style="position:absolute;left:79%;top:2.6%;font-size:11px;font-weight:700;color:#C2410C;background:rgba(255,247,237,0.85);padding:2px 5px;border-radius:3px;">UV실</span>
-                            <span style="position:absolute;left:1.7%;top:62.9%;font-size:11px;font-weight:700;color:#6D28D9;background:rgba(250,245,255,0.85);padding:2px 5px;border-radius:3px;">현수막실</span>
-                        </div>
+                        <!-- 도면 배경 이미지 (R2 blob, z0) -->
+                        <div id="layoutBg" style="position:absolute;inset:0;z-index:0;background-size:100% 100%;background-position:center;background-repeat:no-repeat;"></div>
+                        <!-- 구역 박스 (facility_zones.bounds %, renderZones가 채움, z1) -->
+                        <div id="layoutZones" style="position:absolute;inset:0;z-index:1;pointer-events:none;"></div>
                         <!-- 장비 레이어 (eq-card div들이 layoutCanvas에 직접 append됨, z-index:2) -->
                         <!-- 빈 상태 안내 -->
                         <div id="layoutEmpty" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;z-index:5;pointer-events:none;">
@@ -384,8 +381,22 @@ export function equipmentPage(c: Context<HonoEnv>) {
                         </select>
                     </div>
                     <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-1">위치 구역</label>
-                        <input id="fEquipZone" type="text" placeholder="예: 1공장, 2층 우측" class="w-full border rounded px-3 py-2 text-sm">
+                        <label class="block text-sm font-medium text-gray-700 mb-1">구역 (배치도)</label>
+                        <select id="fEquipZoneId" class="w-full border rounded px-3 py-2 text-sm">
+                            <option value="">미지정</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">세부 위치 (메모)</label>
+                        <input id="fEquipZone" type="text" placeholder="예: 2층 우측, 창가" class="w-full border rounded px-3 py-2 text-sm">
+                    </div>
+                    <div>
+                        <div class="flex items-center justify-between mb-1">
+                            <label class="block text-sm font-medium text-gray-700">공정 (겸용 다중)</label>
+                            <button type="button" onclick="applyProcessRecommendation()" class="text-xs text-blue-600 hover:text-blue-700"><i class="fas fa-wand-magic-sparkles mr-1"></i>ID로 추천</button>
+                        </div>
+                        <div id="fEquipProcesses" class="space-y-1.5 border rounded p-2 max-h-44 overflow-y-auto"></div>
+                        <p class="text-[11px] text-gray-400 mt-1">체크=수행 공정, 대표=배지·필터 기본 1개</p>
                     </div>
                     <div>
                         <label class="block text-sm font-medium text-gray-700 mb-1">장비 크기 (배치도 표시)</label>
