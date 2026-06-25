@@ -17,6 +17,14 @@
 
 ## 🔴 현재 진행 중
 
+- **✅ [2026-06-26] 공장 배치도 P0~P2 — 장비 공정·구역·도면배경 (정본 `memory/design-factory-layout.md`, spec `docs/superpowers/specs/2026-06-25-factory-layout-integration.md`)**:
+  - 공정 SSOT **확정=items.category 1:1 6종**(AQUEOUS/SOLVENT/UV/TRANSFER/SUBLIMATION/SIGN, 평판=UV흡수·나염=태극기, 사용자 결정) `src/constants/process.ts`+layout 주입.
+  - **P0**: 마이그 `0389_equipment_processes`(M:N·FK없음)·`PUT /api/rip/equipment/:id/processes`·GET/PUT equipment에 processes+zone_id·편집모달 공정 다중지정+구역 select+ID접두사 추천(EPSON→솔벤·FLEXI→전사).
+  - **P1**: 배치도 동적 구역bounds(prod=%좌표=장비와 동일계)·**도면배경 R2**(POST multipart/GET-image blob/DELETE, base64 폐기)·편집모드 업로드.
+  - **P2**: 핀 대표공정 색상점·공정필터 dim·팝오버 공정배지+출력이력(`/production?equipment_ids=` 딥링크)·구역요약 공정.
+  - 검증: tsc0·build·**smoke 101/101**·Playwright(로컬 모달prefill/추천/저장/배치도/필터/R2왕복 + prod 모달6공정·배치도22핀·콘솔0). **prod 배포·push 완료**(커밋 `68c7a41c`·dep `d4cd6d38`·마이그0389 remote).
+  - **운영TODO**: prod 23대 공정·구역 미배정(배치도 편집모드 지정)·도면 미업로드. **다음=P3~P5 재고게이지**(재고 데이터 정책 합의 후, 별도 세션).
+
 - **✅ [2026-06-25] IA 편집기 Export-first — 주문 없이 가공 EPS 추출·다운로드 (정본 `memory/project-ia-editor.md` 맨 끝, spec `docs/superpowers/specs/2026-06-25-ia-editor-eps-export.md`)**:
   - 목적: IA 편집기를 무거운 주문통합(주문·카드·청구 생성) 없이 **"가공 EPS 뽑는 가벼운 도구"로 먼저 활용**. **두 경로**: 파일처리 탭=그룹 1개씩 후가공 가공 / 대지편집 탭=네스팅 → **EPS+JPG+DXF 브라우저 blob 다운로드**. 주문/카드/재고 미생성.
   - **에이전트 3팀 병렬 구현**(파일분리 무충돌): `workbench.ts`+마이그 0386(신규 `ia_process_jobs` 큐 + 엔드포인트 7) / `Program.cs`+`ProcessOrderItem.jsx`(R2업로드·PollProcessJobs·DXF/JPG export) / `iaEditor.js`(blob다운로드·EPS출력·가공버튼). **핵심제약**: CF 워커가 NAS 못읽음 → R2 왕복(에이전트 업로드→워커 blob 서빙).
@@ -24,6 +32,7 @@
   - **✅ 에이전트 라이브 + prod 실파일 E2E 완전통과**(에이전트 커밋 `f527a3d4`, PID 28180): ★운영=**서버PC=일러PC(이 작업PC)**, IA exe는 로컬 `bin/Release/net8.0/win-x64/publish/`(appsettings ErpApiUrl=prod). E2E(업로드→분석→가공→R2→download): EPS(c5d0d3c6)/DXF(SECTION)/JPG(ffd8) 200·시그니처 정상. **E2E가 3버그 발견·수정**: ①process 경로 `NormalizeArtboardEpsName` 누락(suffix→EPS 못찾음) ②multipart 한글 filename→CF formData 실패 ③**.NET MultipartFormDataContent를 CF Workers formData()가 500 거부→curl.exe -F 우회**. ⚠️CF Pages observability/tail 제약→직접 INSERT·curl 재현 진단. 정본 = `memory/project-ia-editor.md` 맨끝.
   - **✅ P1 실사용 개선 6항목** (실효성 점검 후속, 커밋 `9db24ef9`·dep `67f2cba6`·에이전트 PID 11564·smoke 101/101): 용준님 실효성 의문 → **에이전트 팀 5축 점검**(Workflow) → P1 전체. ①파일처리 돔보 토글 ②네스팅 W·H 비율잠금 ③**가공 이력 보드**(GET /process 목록+영속 재다운로드, critical 해소) ④복제수 오해 차단 ⑤파일배율 전스택 ⑥**90°회전 silent drop 제거**(jsx 아트워크 회전). prod E2E: baseline 196×560 vs 회전90+돔보 995×343=**종횡비 swap 회전 정확**·돔보 마크·이력·다운로드 200. 점검이 찾은 진짜 갭=이력재다운로드·일괄처리·회전. **남은=P2**(다중그룹 일괄+ZIP·heartbeat·실렌더 미리보기·배치 예상치·돔보 형상일치·RESIZE 0.1cm)·**P3**(Export→Order·MaxRects·회전토글·스냅·커스텀규격·평판 다중판). spec `2026-06-25-ia-editor-p1-improvements.md`. ⚠️이력 width_cm=0(P2 보강).
   - **✅ P2+P3 전체 13항목** (점검 후속, ULTRATHINK 3라운드, R1 `7c1e02a5`·R2 `093ff13f`·R3a `e41555dd`·R3b `adb4ab44`·dep `ee82f279`·smoke101·에이전트 PID 9092): **R1(P2)** 다중그룹 일괄+ZIP·진행가시성(heartbeat·agent-status·retry)·실렌더 미리보기(jsx preview)·배치 예상치·돔보 형상일치·0.1cm 정밀도·좌표 일원화·width_cm 보강. **R2(P3안전)** Export→Order 브리지·커스텀 규격/프리셋·파일명 규칙·회전허용 토글. **R3a(저위험)** 드래그 스냅·고급 후가공(도련/펀칭/주석). **R3b(고위험·격리 회귀0)** MaxRects 토글(shelf 미변경)·평판 다중판 잡분할(SheetLayout 무변경). E2E: agent online·preview·width_cm·단일가공 회귀0. spec `2026-06-25-ia-editor-p2-p3.md`. **점검 15항목 전부 완료**.
+  - **▶ [2026-06-26] 실사용 피드백 7건 → 후속 spec `2026-06-26-ia-editor-followup.md`(다음 세션, 미착수)**: **W1**(긴급) Z 배포동기화+단일에이전트(★용준님 운영=`Z:\…\publish` 구버전6/19라 가공 안보임=진짜원인, 기능은 새버전이 처리해 정상. 에이전트 2개 동시실행 위험) · **W2**(높음) DB정리(ia_process_jobs 누적·jpg_base64 비대→R2분리+미리보기TTL) · **W6** 규격채우기 제거 · **W4** 전체가공 자동ZIP · **W3** 파일배율 의미재정의(÷→× brainstorming) · **W5** 대지편집→orderForm 네스팅 활용. 우선순위 W1>W2>W6>W4>W3>W5.
 
 - **✅ [2026-06-24] 연차관리(/leaves) 제안서 + P1 정상화 배포 (정본 `docs/superpowers/specs/2026-06-24-leave-management-proposal.md` + `memory/project-leave-management.md`)**:
   - 에이전트 팀 5축 병렬 감사 → 제안서. **P1(보안·통제) 6건 구현·prod 배포**(커밋 `291cb392`, dep `5af043ab`, 롤백 `7da7ff4d`): B1 `/unused-allowance` IDOR(entityFilter·bank#1 동일클래스) · B3 POST·DELETE /requests requireRole(위조차단) · B2 approve 잔여검증(음수방지) · B5 cancel-approved 신설(잔여복원+근태해제, status=CANCELLED) · B7 approve batch원자화 · B9 전역 showPrompt 모달.
