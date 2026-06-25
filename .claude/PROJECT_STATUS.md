@@ -1,7 +1,7 @@
 # PROJECT_STATUS.md — 프로젝트 현황판
 
 > **현재 초점**: 품목 마스터 신모델 등록(출력물·후가공/소분류 UI) — 제품 ~83, 남은=솔벤캔버스·배너류·단가·간판BOM.
-> **마지막 prod 배포**: IA 편집기 Export-first (주문 없이 가공 EPS 다운로드, web dep `87b34e47`·마이그 0386, ⚠️에이전트 publish 현장 대기, 정본 `memory/project-ia-editor.md` 맨 끝). 이전: 연차 P2-W2, bank 보안.
+> **마지막 prod 배포**: IA 편집기 Export-first (주문 없이 가공 EPS 다운로드, web dep `87b34e47`·마이그 0386·**에이전트 라이브 `f527a3d4`·prod 실파일 E2E 통과**, 정본 `memory/project-ia-editor.md` 맨 끝). 이전: 연차 P2-W2, bank 보안.
 > **블로커**: 솔벤캔버스 원단 미파악(보류) · 품목 단가 전부 0(미입력) · 활성화(is_active=1) 시점 미결정.
 > **다음 액션**: 솔벤캔버스/배너류 등록 → 단가 입력 → 간판 BOM → split-billing P5-continued.
 > **핸드오프 정본** = `memory/session-context.md`.
@@ -21,7 +21,7 @@
   - 목적: IA 편집기를 무거운 주문통합(주문·카드·청구 생성) 없이 **"가공 EPS 뽑는 가벼운 도구"로 먼저 활용**. **두 경로**: 파일처리 탭=그룹 1개씩 후가공 가공 / 대지편집 탭=네스팅 → **EPS+JPG+DXF 브라우저 blob 다운로드**. 주문/카드/재고 미생성.
   - **에이전트 3팀 병렬 구현**(파일분리 무충돌): `workbench.ts`+마이그 0386(신규 `ia_process_jobs` 큐 + 엔드포인트 7) / `Program.cs`+`ProcessOrderItem.jsx`(R2업로드·PollProcessJobs·DXF/JPG export) / `iaEditor.js`(blob다운로드·EPS출력·가공버튼). **핵심제약**: CF 워커가 NAS 못읽음 → R2 왕복(에이전트 업로드→워커 blob 서빙).
   - 검증: npm build·dotnet build0·**smoke 101/101**·apex 7엔드포인트 401(도달성). **prod 배포·push 완료**(커밋 `c133d8a8`, dep `87b34e47`, 마이그 0386 prod).
-  - **⚠️ 에이전트 publish만 현장 대기**(`dotnet publish -c Release -o "Z:\Designs\IllustratorAutomat\publish"` + 실행중 exe 재시작 — 그 전엔 큐만 쌓이고 EPS 미생성). **다음 = publish 후 prod 실파일 1건 E2E(업로드→가공→다운로드)**.
+  - **✅ 에이전트 라이브 + prod 실파일 E2E 완전통과**(에이전트 커밋 `f527a3d4`, PID 28180): ★운영=**서버PC=일러PC(이 작업PC)**, IA exe는 로컬 `bin/Release/net8.0/win-x64/publish/`(appsettings ErpApiUrl=prod). E2E(업로드→분석→가공→R2→download): EPS(c5d0d3c6)/DXF(SECTION)/JPG(ffd8) 200·시그니처 정상. **E2E가 3버그 발견·수정**: ①process 경로 `NormalizeArtboardEpsName` 누락(suffix→EPS 못찾음) ②multipart 한글 filename→CF formData 실패 ③**.NET MultipartFormDataContent를 CF Workers formData()가 500 거부→curl.exe -F 우회**. ⚠️CF Pages observability/tail 제약→직접 INSERT·curl 재현 진단. 정본 = `memory/project-ia-editor.md` 맨끝.
 
 - **✅ [2026-06-24] 연차관리(/leaves) 제안서 + P1 정상화 배포 (정본 `docs/superpowers/specs/2026-06-24-leave-management-proposal.md` + `memory/project-leave-management.md`)**:
   - 에이전트 팀 5축 병렬 감사 → 제안서. **P1(보안·통제) 6건 구현·prod 배포**(커밋 `291cb392`, dep `5af043ab`, 롤백 `7da7ff4d`): B1 `/unused-allowance` IDOR(entityFilter·bank#1 동일클래스) · B3 POST·DELETE /requests requireRole(위조차단) · B2 approve 잔여검증(음수방지) · B5 cancel-approved 신설(잔여복원+근태해제, status=CANCELLED) · B7 approve batch원자화 · B9 전역 showPrompt 모달.
