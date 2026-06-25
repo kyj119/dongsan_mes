@@ -776,6 +776,7 @@ workbenchRouter.post('/process', async (c) => {
       finishing?: unknown; trim?: unknown; rotate90?: unknown
       scale_factor?: number; rotation?: number
       preview_only?: boolean
+      offset?: unknown; punching?: unknown; annotation?: unknown
     }>()
     const analysisId = parseInt(String(body.analysis_id ?? ''), 10)
     if (!analysisId) return c.json({ success: false, error: 'analysis_id가 필요합니다.' }, 400)
@@ -807,6 +808,10 @@ workbenchRouter.post('/process', async (c) => {
       rotation,
       // ③ 미리보기 잡: 실렌더 JPG만 콜백(EPS/DXF 스킵), 이력 목록에서 제외 — spec R1 ③
       preview_only: !!body.preview_only,
+      // R3a-2 고급 후가공 패스스루(도련 offset·펀칭·주석): 값 검증은 jsx가 처리 — null 허용
+      offset: body.offset ?? null,
+      punching: body.punching ?? null,
+      annotation: body.annotation ?? null,
     }
     const user = c.get('user')
     const created = await c.env.DB.prepare(`

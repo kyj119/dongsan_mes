@@ -1560,6 +1560,10 @@ namespace IllustratorAutomation
             double targetH = prm.TryGetProperty("target_h_cm", out var thEl) && thEl.ValueKind == JsonValueKind.Number ? thEl.GetDouble() : 0;
             bool trim = prm.TryGetProperty("trim", out var trEl) && (trEl.ValueKind == JsonValueKind.True || (trEl.ValueKind == JsonValueKind.Number && trEl.GetDouble() != 0));
             JsonElement? finishing = prm.TryGetProperty("finishing", out var finEl) && finEl.ValueKind == JsonValueKind.Object ? finEl : (JsonElement?)null;
+            // R3a-2 후가공 패스스루: offset(도련)·punching(펀칭)·annotation(주석). jsx가 _p.offset/_p.punching/_p.annotation으로 읽음(미지정=null → 무동작).
+            JsonElement? offset = prm.TryGetProperty("offset", out var offEl) && offEl.ValueKind == JsonValueKind.Object ? offEl : (JsonElement?)null;
+            JsonElement? punching = prm.TryGetProperty("punching", out var punEl) && punEl.ValueKind == JsonValueKind.Object ? punEl : (JsonElement?)null;
+            JsonElement? annotation = prm.TryGetProperty("annotation", out var annEl) && annEl.ValueKind == JsonValueKind.Object ? annEl : (JsonElement?)null;
             // ⑤ 파일배율: jsx가 _p.scaleFactor(키명 정확)로 읽음. 기본 1.
             double scaleFactor = prm.TryGetProperty("scale_factor", out var sfEl) && sfEl.ValueKind == JsonValueKind.Number ? sfEl.GetDouble() : 1;
             if (scaleFactor < 1) scaleFactor = 1;
@@ -1587,6 +1591,9 @@ namespace IllustratorAutomation
                 source = actualSrc,
                 artboardIndex = groupIndex,
                 finishing = finishing,
+                offset = offset,            // R3a-2 후가공 패스스루: jsx _p.offset (도련, null=무동작)
+                punching = punching,        // R3a-2 후가공 패스스루: jsx _p.punching (펀칭, null=무동작)
+                annotation = annotation,    // R3a-2 후가공 패스스루: jsx _p.annotation (주석, null=무동작)
                 targetW = targetW,
                 targetH = targetH,
                 trim = trim,

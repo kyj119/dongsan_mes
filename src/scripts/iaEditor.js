@@ -202,7 +202,9 @@ function iaeGetSettings(fid, group, gidx) {
     iaeSettings[key] = {
       target_w: dw, target_h: dh, aspect_lock: true, rotate90: false,
       trim: false, scale_factor: 1,
-      fin_top: '', fin_bottom: '', fin_left: '', fin_right: ''
+      fin_top: '', fin_bottom: '', fin_left: '', fin_right: '',
+      // R3a-2: 고급 후가공(접이식, 기본 빈값). 미입력 시 body 미전송 → 기존 동작 무영향.
+      adv: { offset_method: '', offset_top: '', offset_bottom: '', offset_left: '', offset_right: '', punching: '', annotation: '' }
     };
   }
   return iaeSettings[key];
@@ -500,6 +502,8 @@ function iaeRenderInspector(f) {
     + '<label class="flex items-center gap-2 text-sm text-gray-700 cursor-pointer"><input id="iaeTrim" type="checkbox"' + (s.trim ? ' checked' : '') + '> 돔보</label>'
     + '<div class="flex items-center gap-2"><label class="text-xs text-gray-500">파일배율 1/</label><input id="iaeScale" type="number" min="1" step="1" value="' + (s.scale_factor || 1) + '" class="w-16 ' + inputCls + '"><span class="text-[11px] text-gray-400">소스가 실제의 1/N(축소본)</span></div>'
     + '</div>'
+    // R3a-2: 고급 후가공 (접이식, 기본 접힘) — 도련 offset(method+4면)·펀칭·주석. 미입력 시 가공 body 미전송.
+    + iaeAdvancedSectionHTML(iaeAdv(s), inputCls, selCls)
     + '<div class="text-[11px] text-gray-400"><i class="fas fa-circle-info mr-1"></i>단일 가공은 1매 출력입니다. 여러 매 면付(자동 배치)은 <span class="text-blue-500">대지 편집</span>의 시트 네스팅을 사용하세요.</div>'
     + '</div></div>'
     // 미리보기 + 프리플라이트
@@ -537,6 +541,7 @@ function iaeRenderInspector(f) {
     s.fin_bottom = document.getElementById('iaeFinBottom').value;
     s.fin_left = document.getElementById('iaeFinLeft').value;
     s.fin_right = document.getElementById('iaeFinRight').value;
+    iaeSyncAdvanced(s); // R3a-2: 고급 후가공(접이식) 입력 → s.adv
     iaeSaveSettings();
     updatePv();
   }
@@ -557,6 +562,11 @@ function iaeRenderInspector(f) {
   ['iaeAspect', 'iaeRot', 'iaeTrim', 'iaeScale', 'iaeFinTop', 'iaeFinBottom', 'iaeFinLeft', 'iaeFinRight'].forEach(function (id) {
     var el = document.getElementById(id);
     if (el) el.addEventListener('change', sync);
+  });
+  // R3a-2: 고급 후가공 입력(도련 4면 mm·method·펀칭·주석) change/input → sync
+  ['iaeAdvOffMethod', 'iaeAdvOffTop', 'iaeAdvOffBottom', 'iaeAdvOffLeft', 'iaeAdvOffRight', 'iaeAdvPunching', 'iaeAdvAnnotation'].forEach(function (id) {
+    var el = document.getElementById(id);
+    if (el) { el.addEventListener('change', sync); el.addEventListener('input', sync); }
   });
   // R2-2: 규격 프리셋 선택 → 목표크기 자동 채움. 롤=폭(W)만(H는 비율잠금 시 자동), 평판=W/H 둘 다(비율잠금 일시 무시).
   var sizePreEl = document.getElementById('iaeSizePreset');
@@ -599,6 +609,72 @@ function iaeRenderInspector(f) {
   updatePv();
 }
 
+// ── R3a-2: 고급 후가공 (도련 offset·펀칭·주석) ────────────────────
+// 접이식 섹션(기본 접힘). settings.adv에 보관. body엔 입력 있을 때만 offset/punching/annotation 추가(미입력=무영향).
+// 레거시 settings(adv 없음)도 안전하게 기본값 보강.
+function iaeAdv(s) {
+  if (!s.adv || typeof s.adv !== 'object') {
+    s.adv = { offset_method: '', offset_top: '', offset_bottom: '', offset_left: '', offset_right: '', punching: '', annotation: '' };
+  }
+  return s.adv;
+}
+function iaeAdvancedSectionHTML(adv, inputCls, selCls) {
+  var hasVals = !!(adv.offset_method || adv.offset_top || adv.offset_bottom || adv.offset_left || adv.offset_right || adv.punching || adv.annotation);
+  var offCls = 'w-16 ' + inputCls;
+  return ''
+    + '<details class="border border-gray-200 rounded-lg" ' + (hasVals ? 'open' : '') + '>'
+    + '<summary class="cursor-pointer select-none px-3 py-2 text-xs font-semibold text-gray-600 hover:bg-gray-50"><i class="fas fa-sliders mr-1.5 text-gray-400"></i>고급 후가공 <span class="font-normal text-gray-400">(도련·펀칭·주석 · 선택)</span></summary>'
+    + '<div class="px-3 pb-3 pt-1 space-y-3 border-t border-gray-100">'
+    // 도련(offset)
+    + '<div><label class="block text-xs text-gray-500 mb-1">도련 방식</label>'
+    + '<select id="iaeAdvOffMethod" class="' + selCls + ' text-xs">'
+    + '<option value="">없음</option>'
+    + '<option value="scale"' + (adv.offset_method === 'scale' ? ' selected' : '') + '>scale (확대 도련)</option>'
+    + '<option value="edge_strip"' + (adv.offset_method === 'edge_strip' ? ' selected' : '') + '>edge_strip (가장자리 복제)</option>'
+    + '</select></div>'
+    + '<div class="grid grid-cols-4 gap-2">'
+    + '<div><label class="block text-[11px] text-gray-400 mb-0.5">상(mm)</label><input id="iaeAdvOffTop" type="number" min="0" step="1" value="' + iaeEscape(adv.offset_top) + '" class="' + offCls + '"></div>'
+    + '<div><label class="block text-[11px] text-gray-400 mb-0.5">하(mm)</label><input id="iaeAdvOffBottom" type="number" min="0" step="1" value="' + iaeEscape(adv.offset_bottom) + '" class="' + offCls + '"></div>'
+    + '<div><label class="block text-[11px] text-gray-400 mb-0.5">좌(mm)</label><input id="iaeAdvOffLeft" type="number" min="0" step="1" value="' + iaeEscape(adv.offset_left) + '" class="' + offCls + '"></div>'
+    + '<div><label class="block text-[11px] text-gray-400 mb-0.5">우(mm)</label><input id="iaeAdvOffRight" type="number" min="0" step="1" value="' + iaeEscape(adv.offset_right) + '" class="' + offCls + '"></div>'
+    + '</div>'
+    // 펀칭 / 주석
+    + '<div class="grid grid-cols-2 gap-2">'
+    + '<div><label class="block text-xs text-gray-500 mb-1">펀칭</label><input id="iaeAdvPunching" type="text" value="' + iaeEscape(adv.punching) + '" placeholder="예: 상단 2개·중앙" class="w-full ' + inputCls + ' text-xs"></div>'
+    + '<div><label class="block text-xs text-gray-500 mb-1">주석</label><input id="iaeAdvAnnotation" type="text" value="' + iaeEscape(adv.annotation) + '" placeholder="가공 메모(시안에 미인쇄)" class="w-full ' + inputCls + ' text-xs"></div>'
+    + '</div>'
+    + '<div class="text-[11px] text-gray-400"><i class="fas fa-circle-info mr-1"></i>입력한 항목만 가공 요청에 반영됩니다. 비우면 기존 동작과 동일.</div>'
+    + '</div></details>';
+}
+// 고급 입력 → s.adv (null 가드). 빈값은 빈 문자열로.
+function iaeSyncAdvanced(s) {
+  var adv = iaeAdv(s);
+  var v = function (id) { var el = document.getElementById(id); return el ? String(el.value || '').trim() : ''; };
+  var m = document.getElementById('iaeAdvOffMethod');
+  adv.offset_method = m ? m.value : adv.offset_method;
+  adv.offset_top = v('iaeAdvOffTop'); adv.offset_bottom = v('iaeAdvOffBottom');
+  adv.offset_left = v('iaeAdvOffLeft'); adv.offset_right = v('iaeAdvOffRight');
+  adv.punching = v('iaeAdvPunching'); adv.annotation = v('iaeAdvAnnotation');
+}
+// s.adv → body 부분객체 {offset?,punching?,annotation?}. 빈값 키는 미포함(미전송=무영향).
+function iaeAdvBody(s) {
+  var adv = (s && s.adv) || {};
+  var out = {};
+  var num = function (x) { var n = Number(x); return (x !== '' && x != null && !isNaN(n)) ? n : null; };
+  // 도련 offset: method 또는 4면 중 하나라도 있으면 전송
+  var ot = num(adv.offset_top), ob = num(adv.offset_bottom), ol = num(adv.offset_left), or = num(adv.offset_right);
+  if (adv.offset_method || ot != null || ob != null || ol != null || or != null) {
+    var off = {};
+    if (adv.offset_method) off.method = adv.offset_method;
+    if (ot != null) off.top = ot; if (ob != null) off.bottom = ob;
+    if (ol != null) off.left = ol; if (or != null) off.right = or;
+    out.offset = off;
+  }
+  if (adv.punching) out.punching = adv.punching;
+  if (adv.annotation) out.annotation = adv.annotation;
+  return out;
+}
+
 // 단일 그룹 가공 EPS 출력 (파일처리 탭). settings → finishing(4면 method+margin_cm)·target·trim·rotate90.
 function iaeProcessGroup(fid, group, gidx, s) {
   var tw = Number(s.target_w) || 0, th = Number(s.target_h) || 0;
@@ -625,6 +701,7 @@ function iaeProcessGroupProceed(fid, group, gidx, s) {
     rotation: (s.rotate90 ? 90 : 0),                       // ⑥ 워커가 rotation으로 정규화 (rotate90도 호환)
     scale_factor: Math.max(1, Number(s.scale_factor) || 1) // ⑤ 파일배율 1/N
   };
+  Object.assign(body, iaeAdvBody(s)); // R3a-2: 고급 후가공(offset/punching/annotation) — 입력 있을 때만
   var resHost = document.getElementById('iaeProcResult');
   var btn = document.getElementById('iaeProcBtn');
   var namePrefix = '가공 ' + (group && group.name ? group.name : ('#' + gidx));
@@ -665,6 +742,7 @@ function iaePreviewGroup(fid, group, gidx, s) {
     finishing: fin, trim: !!s.trim, rotate90: !!s.rotate90,
     rotation: (s.rotate90 ? 90 : 0), scale_factor: Math.max(1, Number(s.scale_factor) || 1)
   };
+  Object.assign(body, iaeAdvBody(s)); // R3a-2: 미리보기에도 고급 후가공 반영(실렌더 확인)
   var pv = document.getElementById('iaePreview');
   var btn = document.getElementById('iaePreviewBtn');
   if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i>렌더 중…'; }
@@ -790,12 +868,14 @@ function iaeProcessBody(fid, gidx, s) {
   [['top', s.fin_top], ['bottom', s.fin_bottom], ['left', s.fin_left], ['right', s.fin_right]].forEach(function (p) {
     if (p[1]) fin[p[0]] = { method: p[1], margin_cm: iaeMarginOf(p[1]) };
   });
-  return {
+  var body = {
     analysis_id: fid, group_index: gidx,
     target_w_cm: Number(s.target_w) || 0, target_h_cm: Number(s.target_h) || 0,
     finishing: fin, trim: !!s.trim, rotate90: !!s.rotate90,
     rotation: (s.rotate90 ? 90 : 0), scale_factor: Math.max(1, Number(s.scale_factor) || 1)
   };
+  Object.assign(body, iaeAdvBody(s)); // R3a-2: 일괄 가공에도 고급 후가공 반영
+  return body;
 }
 function iaeBatchProcess(f) {
   if (!f || !f.groups || !f.groups.length) { iaeToast('가공할 그룹이 없습니다', 'error'); return; }
@@ -1223,6 +1303,9 @@ function iaeShiftP(p, m) { return { id: p.id, x_cm: p.x_cm + m, y_cm: p.y_cm + m
 var IAE_CANVAS_KEY = 'iae_canvas_v1';
 var iaeCanObjs = [];          // [{uid, fid, gi, key, label, w_mm, h_mm, x_mm, y_mm, rotation, fin:{top,bottom,left,right}, trim}]
 var iaeCanStage = null, iaeCanLayer = null, iaeCanGrid = null, iaeCanOverlay = null, iaeCanTr = null;
+var iaeCanGuide = null;        // R3a-1: 드래그 정렬 가이드 레이어(non-listening, dragend서 비움)
+var iaeCanSnapThreshMm = 3;    // R3a-1: 스냅 임계(mm) — 이내면 보정, 밖이면 자유 드래그(nudge·자유배치 보존)
+var iaeCanSnapTargets = null;  // R3a-1: 드래그 시작 시 캐시한 스냅 대상 {vert:[{mm,kind}], horz:[{mm,kind}], gap_mm}
 var iaeCanSel = null;         // 선택 객체 uid
 var iaeCanPxPerMm = 0.3;      // mm→px 기준 배율 (줌은 stage.scale)
 var iaeCanThumbCache = {};    // 'fid:gi' → Image
@@ -1355,7 +1438,8 @@ function iaeCanInitStage() {
     iaeCanGrid = new Konva.Layer({ listening: false });
     iaeCanLayer = new Konva.Layer();
     iaeCanOverlay = new Konva.Layer({ listening: false }); // N2: 마감/여백/돔보 벡터 근사
-    iaeCanStage.add(iaeCanGrid); iaeCanStage.add(iaeCanLayer); iaeCanStage.add(iaeCanOverlay);
+    iaeCanGuide = new Konva.Layer({ listening: false });   // R3a-1: 드래그 정렬 스마트가이드(드래그 중에만 표시)
+    iaeCanStage.add(iaeCanGrid); iaeCanStage.add(iaeCanLayer); iaeCanStage.add(iaeCanOverlay); iaeCanStage.add(iaeCanGuide);
     iaeCanStage.scale({ x: prevScale, y: prevScale }); iaeCanStage.position(prevPos);
     iaeCanDrawGrid();
     iaeCanTr = new Konva.Transformer({
@@ -1411,7 +1495,10 @@ function iaeCanBuildNode(o) {
     }
   }
   grp.on('mousedown touchstart', function () { iaeCanSelect(o.uid); });
-  grp.on('dragend', function () { iaeCanCommitPos(o.uid, grp); });
+  // R3a-1: 드래그 중 인접 조각 변·시트 경계·gap 간격에 스냅 + 정렬 스마트가이드(임계 내에서만 보정 → 자유 드래그 보존)
+  grp.on('dragstart', function () { iaeCanSnapBuildTargets(o.uid); });
+  grp.on('dragmove', function () { iaeCanDragSnap(o, grp); });
+  grp.on('dragend', function () { iaeCanClearGuides(); iaeCanSnapTargets = null; iaeCanCommitPos(o.uid, grp); });
   grp.on('transformend', function () { iaeCanCommitTransform(o.uid, grp); });
   iaeCanLayer.add(grp);
   return grp;
@@ -1484,6 +1571,73 @@ function iaeCanNudge(uid, dx, dy) {
   if (node) { node.x(o.x_mm * iaeCanPxPerMm); node.y(o.y_mm * iaeCanPxPerMm); iaeCanLayer.batchDraw(); }
   iaeCanSave(); iaeCanDrawOverlays(); iaeCanUpdateStatus();
 }
+
+// ── R3a-1: 드래그 스냅 + 정렬 스마트가이드 ────────────────────────
+// 드래그 시작 시 대상(인접 조각 변·시트 경계·gap 간격)을 mm 좌표로 1회 캐시 → dragmove서 임계 내 보정.
+// vert=세로 가이드선(x 위치), horz=가로 가이드선(y 위치). 자기 자신(드래그 객체)은 제외.
+function iaeCanSnapBuildTargets(dragUid) {
+  var vert = {}, horz = {};   // mm(반올림 키) → kind, 중복 제거
+  var add = function (bag, mm, kind) { var k = Math.round(mm); if (bag[k] == null) bag[k] = kind; };
+  iaeCanObjs.forEach(function (o) {
+    if (o.uid === dragUid) return;
+    var bb = iaeCanRotBBox(o);
+    add(vert, bb.left, 'edge'); add(vert, bb.left + bb.w, 'edge'); add(vert, bb.cx, 'center');
+    add(horz, bb.top, 'edge'); add(horz, bb.top + bb.h, 'edge'); add(horz, bb.cy, 'center');
+  });
+  iaeCanSheets.forEach(function (sh) {
+    add(vert, sh.x_mm || 0, 'sheet'); add(vert, (sh.x_mm || 0) + (sh.w_mm || 0), 'sheet');
+    add(horz, sh.y_mm || 0, 'sheet'); add(horz, (sh.y_mm || 0) + (sh.h_mm || 0), 'sheet');
+  });
+  var toList = function (bag) { return Object.keys(bag).map(function (k) { return { mm: Number(k), kind: bag[k] }; }); };
+  // gap 유지 스냅: 네스팅 설정 간격(mm) — 드래그 객체 변이 인접 변에서 정확히 gap 떨어진 위치
+  var gapMm = Math.round((Number(iaeCanNestOpts && iaeCanNestOpts.gap) || 0) * 10);
+  iaeCanSnapTargets = { vert: toList(vert), horz: toList(horz), gap_mm: gapMm };
+}
+// 1축 스냅: 드래그 객체의 후보 변(mm 배열)을 대상 라인에 맞춰 최소 오차 보정. 반환 {delta_mm, line_mm, kind} 또는 null.
+function iaeCanSnap1D(edges, targets, gapMm) {
+  if (!targets || !targets.length) return null;
+  var thr = iaeCanSnapThreshMm, best = null;
+  edges.forEach(function (e) {
+    targets.forEach(function (t) {
+      // 직접 정렬
+      var d = t.mm - e;
+      if (Math.abs(d) <= thr && (!best || Math.abs(d) < Math.abs(best.delta_mm))) best = { delta_mm: d, line_mm: t.mm, kind: t.kind };
+      // gap 유지: 대상 라인에서 gap 만큼 띄운 위치(양쪽)
+      if (gapMm > 0) {
+        [gapMm, -gapMm].forEach(function (g) {
+          var dg = (t.mm + g) - e;
+          if (Math.abs(dg) <= thr && (!best || Math.abs(dg) < Math.abs(best.delta_mm))) best = { delta_mm: dg, line_mm: t.mm, kind: 'gap' };
+        });
+      }
+    });
+  });
+  return best;
+}
+// dragmove 핸들러: 현재 node 위치(px)→bbox(mm)에서 스냅 → node 위치 보정 + 가이드선 그림.
+function iaeCanDragSnap(o, node) {
+  if (!iaeCanSnapTargets || !iaeCanStage) return;
+  var ppm = iaeCanPxPerMm;
+  var xMm = node.x() / ppm, yMm = node.y() / ppm;
+  // 회전 반영 bbox(드래그 중 위치는 node 기준이므로 o 좌표를 임시 치환해 계산)
+  var bb = iaeCanRotBBox({ w_mm: o.w_mm, h_mm: o.h_mm, x_mm: xMm, y_mm: yMm, rotation: o.rotation });
+  var vEdges = [bb.left, bb.left + bb.w, bb.cx];     // 좌·우·중심(세로 가이드 후보)
+  var hEdges = [bb.top, bb.top + bb.h, bb.cy];       // 상·하·중심(가로 가이드 후보)
+  var sx = iaeCanSnap1D(vEdges, iaeCanSnapTargets.vert, iaeCanSnapTargets.gap_mm);
+  var sy = iaeCanSnap1D(hEdges, iaeCanSnapTargets.horz, iaeCanSnapTargets.gap_mm);
+  if (sx) node.x(node.x() + sx.delta_mm * ppm);
+  if (sy) node.y(node.y() + sy.delta_mm * ppm);
+  iaeCanDrawGuides(sx ? sx.line_mm : null, sy ? sy.line_mm : null);
+}
+// 정렬 가이드선 그림(세로 line_x_mm·가로 line_y_mm). 대지 전폭/전고 점선. null이면 해당 축 미표시.
+function iaeCanDrawGuides(lineXmm, lineYmm) {
+  if (!iaeCanGuide) return;
+  iaeCanGuide.destroyChildren();
+  var ppm = iaeCanPxPerMm, W = 3000 * ppm, H = 2000 * ppm, col = '#ec4899';
+  if (lineXmm != null) iaeCanGuide.add(new Konva.Line({ points: [lineXmm * ppm, 0, lineXmm * ppm, H], stroke: col, strokeWidth: 1, dash: [4, 4], listening: false }));
+  if (lineYmm != null) iaeCanGuide.add(new Konva.Line({ points: [0, lineYmm * ppm, W, lineYmm * ppm], stroke: col, strokeWidth: 1, dash: [4, 4], listening: false }));
+  iaeCanGuide.batchDraw();
+}
+function iaeCanClearGuides() { if (iaeCanGuide) { iaeCanGuide.destroyChildren(); iaeCanGuide.batchDraw(); } }
 
 function iaeCanZoom(factor, center) {
   if (!iaeCanStage) return;
