@@ -727,8 +727,8 @@ leavesRouter.post('/promotion/run', requireRole('ADMIN'), async (c) => {
 
     const ef = entityFilter(c, 'e')
     const { results: emps } = await c.env.DB.prepare(
-      `SELECT id, name, email, mobile, phone, hire_date, department, entity_id FROM employees
-       WHERE status='ACTIVE' AND is_deleted=0 AND hire_date IS NOT NULL${ef.clause}`
+      `SELECT e.id, e.name, e.email, e.mobile, e.phone, e.hire_date, e.department, e.entity_id FROM employees e
+       WHERE e.status='ACTIVE' AND e.is_deleted=0 AND e.hire_date IS NOT NULL${ef.clause}`
     ).bind(...ef.params).all<{ id: number; name: string; email: string | null; mobile: string | null; phone: string | null; hire_date: string; department: string | null; entity_id: number }>()
 
     const eligible: Array<{ employee_id: number; name: string; email: string | null; department: string | null; entity_id: number; remaining: number; expire_base: string }> = []
