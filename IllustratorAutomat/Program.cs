@@ -1565,9 +1565,14 @@ namespace IllustratorAutomation
             if (scaleFactor < 1) scaleFactor = 1;
             // ⑥ 회전(0/90/180/270): 미전달=0(주문 가공 경로 무영향).
             double rotation = prm.TryGetProperty("rotation", out var rotEl) && rotEl.ValueKind == JsonValueKind.Number ? rotEl.GetDouble() : 0;
+            // ③ 미리보기 모드: 가공(목표·마감·돔보·회전·스케일)은 그대로, EPS/DXF saveAs·R2 업로드 없이 JPG만 콜백.
+            bool preview = prm.TryGetProperty("preview_only", out var pvEl) && (pvEl.ValueKind == JsonValueKind.True || (pvEl.ValueKind == JsonValueKind.Number && pvEl.GetDouble() != 0));
 
             var now = DateTime.Now;
-            string outFolder = Path.Combine(ZDRIVE_PATH, "DESIGN", "가공", now.ToString("yyyy"), now.ToString("MM"), now.ToString("dd"), $"process_{jobId}");
+            // preview는 임시 폴더(TEMP_FOLDER/process_preview_{id}), 일반 가공은 DESIGN/가공/yyyy/MM/dd/process_{id}.
+            string outFolder = preview
+                ? Path.Combine(TEMP_FOLDER, $"process_preview_{jobId}")
+                : Path.Combine(ZDRIVE_PATH, "DESIGN", "가공", now.ToString("yyyy"), now.ToString("MM"), now.ToString("dd"), $"process_{jobId}");
             if (!Directory.Exists(outFolder)) Directory.CreateDirectory(outFolder);
             string baseName = $"group{groupIndex}-가공";
             string epsOut = Path.Combine(outFolder, baseName + ".eps");
@@ -1584,9 +1589,10 @@ namespace IllustratorAutomation
                 trim = trim,
                 scaleFactor = scaleFactor,  // ⑤ jsx _p.scaleFactor (키명 정확)
                 rotation = rotation,         // ⑥ jsx _p.rotation (0/90/180/270)
-                epsOutput = epsOut,
-                dxfOutput = dxfOut,
-                jpgOutput = jpgOut
+                preview = preview,           // ③ jsx _p.preview (EPS/DXF saveAs 스킵)
+                epsOutput = preview ? "" : epsOut,   // preview면 EPS 미저장
+                dxfOutput = preview ? "" : dxfOut,   // preview면 DXF 미저장
+                jpgOutput = jpgOut                    // preview/일반 모두 JPG export
             };
 
             string scriptPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "ProcessOrderItem.jsx");
@@ -1596,18 +1602,44 @@ namespace IllustratorAutomation
             Console.WriteLine($"   🖥️  Running ProcessOrderItem.jsx (process {jobId}, group {groupIndex}, target {targetW}x{targetH}cm) → {outFolder}");
             RunJsxScript(scriptPath, Path.Combine(scriptDir, "ia_params.json"), timeoutMinutes: 5);
 
+            string? jpgB64 = null;
+            if (File.Exists(jpgOut)) { try { jpgB64 = Convert.ToBase64String(File.ReadAllBytes(jpgOut)); } catch { } }
+
+            // ③ 미리보기: EPS/DXF 미생성, R2 업로드 없이 JPG만 콜백.
+            if (preview)
+            {
+                if (jpgB64 == null) { await PatchProcessJob(jobId, "error", null, "미리보기 JPG 생성 실패 (ProcessOrderItem 결과 없음)"); return; }
+                var pvResult = new Dictionary<string, object?>
+                {
+                    ["jpg_base64"] = jpgB64,
+                    ["width_cm"] = Math.Round(targetW, 1),
+                    ["height_cm"] = Math.Round(targetH, 1),
+                    ["preview"] = true
+                };
+                Console.WriteLine($"   ✅ 미리보기 완료 #{jobId} (jpg 있음, R2 업로드 없음)");
+                await PatchProcessJob(jobId, "done", JsonSerializer.Serialize(pvResult), null);
+                try { Directory.Delete(outFolder, true); } catch { }  // 임시 폴더 정리
+                return;
+            }
+
             // ProcessOrderItem.jsx saveMultipleArtboards가 EPS명에 _design_N suffix를 붙임 → 정규명으로 보정(주문 경로 2659와 동일).
             NormalizeArtboardEpsName(epsOut);
 
             if (!File.Exists(epsOut)) { await PatchProcessJob(jobId, "error", null, "EPS 생성 실패 (ProcessOrderItem 결과 없음)"); return; }
 
-            string? jpgB64 = null;
-            if (File.Exists(jpgOut)) { try { jpgB64 = Convert.ToBase64String(File.ReadAllBytes(jpgOut)); } catch { } }
-
             // R2 업로드 (브라우저 다운로드용)
             string? epsR2 = await UploadRenderAssetAsync("process", jobId, "eps", epsOut);
             string? dxfR2 = await UploadRenderAssetAsync("process", jobId, "dxf", dxfOut);
             string? jpgR2 = await UploadRenderAssetAsync("process", jobId, "jpg", jpgOut);
+
+            // width_cm 보강: 목표 크기(targetW/H) 우선, 없으면 생성된 EPS BoundingBox(cm)로 보충 → 이력 카드 크기 0 표시 해소.
+            double widthCm = targetW, heightCm = targetH;
+            if (widthCm <= 0 || heightCm <= 0)
+            {
+                var (bbW, bbH) = ReadEpsBoundsCm(epsOut);
+                if (widthCm <= 0 && bbW > 0) widthCm = bbW;
+                if (heightCm <= 0 && bbH > 0) heightCm = bbH;
+            }
 
             var result = new Dictionary<string, object?>
             {
@@ -1618,11 +1650,40 @@ namespace IllustratorAutomation
                 ["eps_r2"] = epsR2,
                 ["dxf_r2"] = dxfR2,
                 ["jpg_r2"] = jpgR2,
-                ["width_cm"] = Math.Round(targetW, 1),
-                ["height_cm"] = Math.Round(targetH, 1)
+                ["width_cm"] = Math.Round(widthCm, 1),
+                ["height_cm"] = Math.Round(heightCm, 1)
             };
-            Console.WriteLine($"   ✅ 가공 완료 #{jobId}: {Path.GetFileName(epsOut)} (jpg {(jpgB64 != null ? "있음" : "없음")})");
+            Console.WriteLine($"   ✅ 가공 완료 #{jobId}: {Path.GetFileName(epsOut)} (jpg {(jpgB64 != null ? "있음" : "없음")}, {Math.Round(widthCm,1)}x{Math.Round(heightCm,1)}cm)");
             await PatchProcessJob(jobId, "done", JsonSerializer.Serialize(result), null);
+        }
+
+        // EPS %%(HiRes)BoundingBox를 읽어 (width_cm, height_cm) 반환. 실패 시 (0,0). (994~1031 파싱 패턴 재사용)
+        private static (double widthCm, double heightCm) ReadEpsBoundsCm(string epsPath)
+        {
+            try
+            {
+                if (!File.Exists(epsPath)) return (0, 0);
+                using var stream = File.OpenRead(epsPath);
+                using var reader = new StreamReader(stream, System.Text.Encoding.ASCII);
+                string? bbLine = null;
+                for (int lineNum = 0; lineNum < 100; lineNum++)
+                {
+                    var line = reader.ReadLine();
+                    if (line == null) break;
+                    if (line.StartsWith("%%HiResBoundingBox:")) { bbLine = line; break; }  // 고해상도 우선
+                    if (line.StartsWith("%%BoundingBox:") && !line.Contains("atend")) bbLine = line;
+                }
+                if (bbLine == null) return (0, 0);
+                var parts = bbLine.Split(new[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries);
+                if (parts.Length < 5) return (0, 0);
+                double llx = double.Parse(parts[parts.Length - 4], System.Globalization.CultureInfo.InvariantCulture);
+                double lly = double.Parse(parts[parts.Length - 3], System.Globalization.CultureInfo.InvariantCulture);
+                double urx = double.Parse(parts[parts.Length - 2], System.Globalization.CultureInfo.InvariantCulture);
+                double ury = double.Parse(parts[parts.Length - 1], System.Globalization.CultureInfo.InvariantCulture);
+                const double cmPerPt = 2.54 / 72.0;  // 1pt = 0.03528cm
+                return ((urx - llx) * cmPerPt, (ury - lly) * cmPerPt);
+            }
+            catch { return (0, 0); }
         }
 
         private static async Task PatchProcessJob(int jobId, string status, string? resultJson, string? error)

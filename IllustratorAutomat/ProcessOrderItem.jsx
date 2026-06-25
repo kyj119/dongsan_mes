@@ -68,8 +68,9 @@ function main() {
     var targetH      = _p.targetH    || 0;       // N4 fidelity: 목표 높이(cm)
     var outputDxf    = _p.dxfOutput  || "";      // Export: 재단선 DXF (선택, 주문 가공은 미지정 → 스킵)
     var outputJpg    = _p.jpgOutput  || "";      // Export: 미리보기 JPG (선택, 주문 가공은 미지정 → 스킵)
+    var preview      = _p.preview    || false;   // ③ 미리보기 모드: 가공 전부 수행하되 EPS/DXF saveAs만 스킵, JPG만 export
 
-    if (!sourceFile || (!outputEps && !passthroughThumb)) {
+    if (!sourceFile || (!outputEps && !passthroughThumb && !preview)) {
         $.writeln("ProcessOrderItem ERROR: source, epsOutput 필요");
         return;
     }
@@ -762,19 +763,22 @@ function main() {
 
     // ── 10. EPS 저장 (아트보드별 개별 저장) ──
     // (용준님 스크립트 2 패턴: saveMultipleArtboards + artboardRange)
-    var epsFile = new File(outputEps);
-    var epsOpts = new EPSSaveOptions();
-    epsOpts.cmykPostScript = true;
-    epsOpts.compatibility = Compatibility.ILLUSTRATOR10;
-    epsOpts.preview = EPSPreview.COLORTIFF;
-    epsOpts.embedAllFonts = true;
-    // 단일 아트보드만 클리핑 저장하기 위함(doc은 다중 아트보드). ⚠️ Illustrator가 파일명에 아트보드
-    // suffix(_design_N / 아트보드명 없으면 -01)를 강제로 붙임 → Program.cs NormalizeArtboardEpsName이 정규명으로 보정.
-    // false로 끄지 말 것: 전체 문서가 EPS로 나가 오작동.
-    epsOpts.saveMultipleArtboards = true;
-    epsOpts.artboardRange = String(abIndex + 1);  // 1-based
-    doc.saveAs(epsFile, epsOpts);
-    $.writeln("ProcessOrderItem: EPS -> " + outputEps);
+    // ③ preview 모드면 EPS saveAs 스킵(가공·돔보·회전·스케일은 전부 수행, JPG만 export).
+    if (!preview && outputEps) {
+        var epsFile = new File(outputEps);
+        var epsOpts = new EPSSaveOptions();
+        epsOpts.cmykPostScript = true;
+        epsOpts.compatibility = Compatibility.ILLUSTRATOR10;
+        epsOpts.preview = EPSPreview.COLORTIFF;
+        epsOpts.embedAllFonts = true;
+        // 단일 아트보드만 클리핑 저장하기 위함(doc은 다중 아트보드). ⚠️ Illustrator가 파일명에 아트보드
+        // suffix(_design_N / 아트보드명 없으면 -01)를 강제로 붙임 → Program.cs NormalizeArtboardEpsName이 정규명으로 보정.
+        // false로 끄지 말 것: 전체 문서가 EPS로 나가 오작동.
+        epsOpts.saveMultipleArtboards = true;
+        epsOpts.artboardRange = String(abIndex + 1);  // 1-based
+        doc.saveAs(epsFile, epsOpts);
+        $.writeln("ProcessOrderItem: EPS -> " + outputEps);
+    }
 
     // ── 10-1. JPG 미리보기 (Export 경로 전용, SheetLayout.jsx 패턴 이식) ──
     // outputJpg 미지정(주문 가공) → 스킵. saveAs(EPS) 직후 doc는 닫히지 않음 → 그대로 export 가능.
@@ -796,8 +800,8 @@ function main() {
     }
 
     // ── 10-2. DXF 재단선 (Export 경로 전용, SheetLayout.jsx 패턴 이식) ──
-    // outputDxf 미지정(주문 가공) → 스킵. 임시 재단선/돔보 레이어가 아직 살아있는 시점(정리 전)에 export.
-    if (outputDxf) {
+    // outputDxf 미지정(주문 가공)·preview 모드 → 스킵. 임시 재단선/돔보 레이어가 아직 살아있는 시점(정리 전)에 export.
+    if (outputDxf && !preview) {
         try {
             doc.artboards.setActiveArtboardIndex(abIndex);
             var dxfFile = new File(outputDxf);

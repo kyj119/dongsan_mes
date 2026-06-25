@@ -31,6 +31,16 @@ function iaeEscape(s) {
   });
 }
 function iaeToast(msg, type) { if (window.showToast) window.showToast(msg, type || 'info'); }
+// ⑥ mm→cm 0.1cm 정밀도(인스펙터 step=0.1 정합). 기존 Math.round(/10)은 1cm 반올림 → 0.x cm 유실.
+function iaeMmToCm1(mm) { return Math.round((Number(mm) || 0)) / 10; }
+// ⑥ 비율 왜곡률: 목표(tw×th) vs 검출(dw×dh) 종횡비 차이(회전 종횡비 중 최소). 0~. >0.05면 잘림/늘어남 경고.
+//    반환 0(왜곡 없음/입력 부족) ~ 양수. 프리플라이트 diff>0.05와 동일 식.
+function iaeDistortRatio(tw, th, dw, dh) {
+  tw = Number(tw) || 0; th = Number(th) || 0; dw = Number(dw) || 0; dh = Number(dh) || 0;
+  if (tw <= 0 || th <= 0 || dw <= 0 || dh <= 0) return 0;
+  var ta = tw / th, da = dw / dh, rota = dh / dw;
+  return Math.min(Math.abs(ta - da), Math.abs(ta - rota)) / da;
+}
 
 // ── Export-first (가공 EPS 추출) — spec 2026-06-25 §3.3·§4.1·§5.5 ─────────────
 // 인증=헤더 전용([[feedback-auth-header-only-download]]): <a href>/새창 금지. axios blob 경유.
@@ -45,7 +55,7 @@ function iaeDownloadBlob(url, filename) {
 }
 // 렌더 잡 폴링: getStatus(폴마다 호출, {done,error,msg,result} 반환). cleanup 위해 토큰 1개만 유지.
 var iaeRenderPollTimer = null;
-function iaeStopRenderPoll() { if (iaeRenderPollTimer) { clearTimeout(iaeRenderPollTimer); iaeRenderPollTimer = null; } }
+function iaeStopRenderPoll() { if (iaeRenderPollTimer) { clearTimeout(iaeRenderPollTimer); iaeRenderPollTimer = null; } if (typeof iaeProcStopElapsed === 'function') iaeProcStopElapsed(); } // ② 경과시간 타이머 동반 정리
 function iaePollRender(getStatus, onDone, onError, opts) {
   iaeStopRenderPoll();
   opts = opts || {};
@@ -287,7 +297,13 @@ function iaeRenderPanel() {
   if (iaeActiveGroup == null || gis.indexOf(iaeActiveGroup) === -1) iaeActiveGroup = gis[0];
 
   // 좌: 그룹 리스트 + 인스펙터 (검출보정 캔버스는 §14.5 폐기 — '대지 편집' 뷰가 시안 편집 담당)
-  var listHtml = '<div class="text-xs font-semibold text-gray-500 mb-2">그룹 (' + f.groups.length + ')</div><div class="space-y-2">';
+  // ① 일괄 가공 — 모든 그룹을 각 settings로 큐잉 → 진행(N/M) → ZIP
+  var listHtml = '<div class="flex items-center justify-between mb-2">'
+    + '<span class="text-xs font-semibold text-gray-500">그룹 (' + f.groups.length + ')</span>'
+    + '<button id="iaeBatchBtn" class="text-[11px] px-2 py-0.5 rounded-md bg-gray-800 text-white hover:bg-black" title="모든 그룹을 현재 설정으로 가공"><i class="fas fa-layer-group mr-1"></i>전체 가공</button>'
+    + '</div>'
+    + '<div id="iaeBatchResult" class="mb-2"></div>'
+    + '<div class="space-y-2">';
   f.groups.forEach(function (g, i) {
     var gi = gis[i];
     var sel = (gi === iaeActiveGroup);
@@ -312,6 +328,8 @@ function iaeRenderPanel() {
   Array.prototype.forEach.call(panel.querySelectorAll('.iae-group'), function (el) {
     el.addEventListener('click', function () { iaeActiveGroup = parseInt(el.getAttribute('data-gi'), 10); iaeRenderPanel(); });
   });
+  var batchBtn = document.getElementById('iaeBatchBtn'); // ① 전체 가공
+  if (batchBtn) batchBtn.addEventListener('click', function () { iaeBatchProcess(f); });
   iaeRenderInspector(f);
 }
 function iaeWireRefresh() {
@@ -402,10 +420,13 @@ function iaeRenderInspector(f) {
     + '<div class="text-sm font-semibold text-gray-700 mb-3">미리보기 <span class="text-xs font-normal text-gray-400">(웹 근사 · IA 실제 렌더는 연동 후)</span></div>'
     + '<div id="iaePreview" class="bg-gray-50 border border-gray-200 rounded-lg p-3 min-h-[200px] flex items-center justify-center"></div>'
     + '<div id="iaePreflight" class="mt-3"></div>'
-    // (§5.5) 주문 없이 이 그룹을 가공 EPS/JPG/DXF로 출력·다운로드
+    // (§5.5) 주문 없이 이 그룹을 가공 EPS/JPG/DXF로 출력·다운로드 + ③ 실제 렌더 미리보기
     + '<div class="border-t border-gray-100 pt-3 mt-3">'
-    + '<button id="iaeProcBtn" class="w-full px-3 py-2 rounded-md bg-gray-800 text-white hover:bg-black text-sm"><i class="fas fa-file-export mr-1"></i>가공해서 받기</button>'
-    + '<div class="text-[11px] text-gray-400 mt-1">현재 설정(목표크기·마감·회전·돔보)으로 가공한 EPS·JPG·DXF를 다운로드합니다.</div>'
+    + '<div class="flex items-center gap-2">'
+    + '<button id="iaePreviewBtn" class="px-3 py-2 rounded-md border border-gray-300 text-gray-700 hover:bg-gray-50 text-sm whitespace-nowrap"><i class="fas fa-eye mr-1"></i>미리보기</button>'
+    + '<button id="iaeProcBtn" class="flex-1 px-3 py-2 rounded-md bg-gray-800 text-white hover:bg-black text-sm"><i class="fas fa-file-export mr-1"></i>가공해서 받기</button>'
+    + '</div>'
+    + '<div class="text-[11px] text-gray-400 mt-1">미리보기 = 실제 IA 렌더 JPG 1장(마감·돔보·회전 확인, 다운로드/이력 없음). 가공 = EPS·JPG·DXF 출력.</div>'
     + '<div id="iaeProcResult" class="mt-2"></div>'
     + '</div>'
     + '</div>'
@@ -450,6 +471,9 @@ function iaeRenderInspector(f) {
     var el = document.getElementById(id);
     if (el) el.addEventListener('change', sync);
   });
+  // ⑥ 비율잠금 해제 토스트 — 자유 변형 시 왜곡 위험 환기
+  var aspEl = document.getElementById('iaeAspect');
+  if (aspEl) aspEl.addEventListener('change', function () { if (!aspEl.checked) iaeToast('비율잠금 해제 — 원본 비율과 달라지면 잘림/늘어남이 발생할 수 있습니다', 'warning'); });
   // 프리셋 적용 → 4면 채우고 폼 재렌더
   var preEl = document.getElementById('iaePreset');
   if (preEl) preEl.addEventListener('change', function () {
@@ -465,6 +489,9 @@ function iaeRenderInspector(f) {
   // (§5.5) 가공해서 받기 — 현재 그룹 settings로 단일 가공 잡 제출·폴링·다운로드
   var procBtn = document.getElementById('iaeProcBtn');
   if (procBtn) procBtn.addEventListener('click', function () { iaeProcessGroup(f.id, group, iaeActiveGroup, s); });
+  // ③ 미리보기 — preview_only 잡(실제 렌더 JPG 1장, 이력/다운로드 없음)
+  var pvBtn = document.getElementById('iaePreviewBtn');
+  if (pvBtn) pvBtn.addEventListener('click', function () { iaePreviewGroup(f.id, group, iaeActiveGroup, s); });
 
   updatePv();
 }
@@ -473,6 +500,17 @@ function iaeRenderInspector(f) {
 function iaeProcessGroup(fid, group, gidx, s) {
   var tw = Number(s.target_w) || 0, th = Number(s.target_h) || 0;
   if (tw <= 0 || th <= 0) { iaeToast('목표 크기(W×H)를 입력하세요', 'error'); return; }
+  // ⑥ 비율 왜곡 강한 경고: 목표가 검출 종횡비와 >5% 다르면 진행 전 확인
+  var dr = iaeDistortRatio(tw, th, (group && group.width_mm) ? group.width_mm / 10 : 0, (group && group.height_mm) ? group.height_mm / 10 : 0);
+  if (dr > 0.05 && window.showConfirm) {
+    window.showConfirm('목표 크기가 원본 비율과 약 ' + Math.round(dr * 100) + '% 달라 잘림/늘어남이 발생할 수 있습니다.\n그대로 가공할까요?',
+      { title: '비율 왜곡 경고', confirmText: '가공', danger: true }).then(function (ok) { if (ok) iaeProcessGroupProceed(fid, group, gidx, s); });
+    return;
+  }
+  iaeProcessGroupProceed(fid, group, gidx, s);
+}
+function iaeProcessGroupProceed(fid, group, gidx, s) {
+  var tw = Number(s.target_w) || 0, th = Number(s.target_h) || 0;
   var fin = {};
   [['top', s.fin_top], ['bottom', s.fin_bottom], ['left', s.fin_left], ['right', s.fin_right]].forEach(function (p) {
     if (p[1]) fin[p[0]] = { method: p[1], margin_cm: iaeMarginOf(p[1]) };
@@ -506,8 +544,92 @@ function iaeProcResetBtn(btn) {
   btn = btn || document.getElementById('iaeProcBtn');
   if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-file-export mr-1"></i>가공해서 받기'; }
 }
+function iaePreviewResetBtn(btn) {
+  btn = btn || document.getElementById('iaePreviewBtn');
+  if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-eye mr-1"></i>미리보기'; }
+}
+// ③ 실제 렌더 미리보기 — preview_only 잡(EPS/DXF 스킵, JPG만). 결과 JPG를 #iaePreview 패널 + 라이트박스로.
+function iaePreviewGroup(fid, group, gidx, s) {
+  var tw = Number(s.target_w) || 0, th = Number(s.target_h) || 0;
+  if (tw <= 0 || th <= 0) { iaeToast('목표 크기(W×H)를 입력하세요', 'error'); return; }
+  var fin = {};
+  [['top', s.fin_top], ['bottom', s.fin_bottom], ['left', s.fin_left], ['right', s.fin_right]].forEach(function (p) {
+    if (p[1]) fin[p[0]] = { method: p[1], margin_cm: iaeMarginOf(p[1]) };
+  });
+  var body = {
+    analysis_id: fid, group_index: gidx, preview_only: true,
+    target_w_cm: tw, target_h_cm: th,
+    finishing: fin, trim: !!s.trim, rotate90: !!s.rotate90,
+    rotation: (s.rotate90 ? 90 : 0), scale_factor: Math.max(1, Number(s.scale_factor) || 1)
+  };
+  var pv = document.getElementById('iaePreview');
+  var btn = document.getElementById('iaePreviewBtn');
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i>렌더 중…'; }
+  if (pv) pv.innerHTML = '<div class="text-xs text-blue-600 text-center"><i class="fas fa-spinner fa-spin mr-1"></i>실제 렌더 미리보기 생성 중… (최대 2분)</div>';
+
+  iaeStopRenderPoll();
+  axios.post('/api/workbench/process', body).then(function (res) {
+    var d = res.data && res.data.data;
+    if (!d || d.id == null) throw new Error('미리보기 요청 응답 오류');
+    iaePollRender(function () {
+      return axios.get('/api/workbench/process/' + d.id).then(function (r2) {
+        var dd = (r2.data && r2.data.data) || {};
+        var rj = {};
+        try { rj = dd.result_json ? (typeof dd.result_json === 'string' ? JSON.parse(dd.result_json) : dd.result_json) : {}; } catch (_e) { rj = {}; }
+        if (dd.status === 'done') return { done: true, result: rj };
+        if (dd.status === 'error') return { error: true, msg: dd.error_message || '미리보기 실패' };
+        return null;
+      });
+    }, function (result) {
+      iaePreviewResetBtn(btn);
+      var jpg = result && result.jpg_base64;
+      if (pv) {
+        if (jpg) {
+          pv.innerHTML = '<div class="w-full"><img id="iaePreviewRendered" src="data:image/jpeg;base64,' + jpg + '" class="w-full max-h-72 object-contain bg-white border border-gray-200 rounded cursor-zoom-in" title="클릭해 확대">'
+            + '<div class="text-center text-[11px] text-green-600 mt-1"><i class="fas fa-circle-check mr-1"></i>실제 렌더(마감·돔보·회전 반영)</div></div>';
+          var img = document.getElementById('iaePreviewRendered');
+          if (img) img.addEventListener('click', function () { iaeLightbox('data:image/jpeg;base64,' + jpg); });
+        } else { pv.innerHTML = '<div class="text-xs text-gray-400 text-center">미리보기 이미지를 받지 못했습니다</div>'; }
+      }
+      iaeToast('미리보기 완료', 'success');
+    }, function (msg) {
+      iaePreviewResetBtn(btn);
+      if (pv) pv.innerHTML = '<div class="text-xs text-red-500 text-center"><i class="fas fa-triangle-exclamation mr-1"></i>' + iaeEscape(msg) + '</div>';
+      iaeToast(msg, 'error');
+    });
+  }).catch(function (err) {
+    var msg = (err.response && err.response.data && err.response.data.error) || err.message || '미리보기 요청 실패';
+    iaeToast(msg, 'error');
+    iaePreviewResetBtn(btn);
+    if (pv) pv.innerHTML = '';
+  });
+}
+// 간이 라이트박스 (미리보기 확대) — 인증 불필요 data URL
+function iaeLightbox(src) {
+  var prev = document.getElementById('iaeLightbox'); if (prev) prev.remove();
+  var ov = document.createElement('div');
+  ov.id = 'iaeLightbox';
+  ov.className = 'fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-6 cursor-zoom-out';
+  ov.innerHTML = '<img src="' + src + '" class="max-w-full max-h-full object-contain rounded shadow-2xl">';
+  ov.addEventListener('click', function () { ov.remove(); });
+  document.body.appendChild(ov);
+}
+// ② 경과시간 표시 — 진행 메시지에 1초 간격 카운터. iaeStopRenderPoll 시 함께 정리되도록 토큰 공유.
+var iaeProcElapsedTimer = null, iaeProcElapsedStart = 0;
+function iaeProcStopElapsed() { if (iaeProcElapsedTimer) { clearInterval(iaeProcElapsedTimer); iaeProcElapsedTimer = null; } }
+function iaeProcStartElapsed(resHost, label) {
+  iaeProcStopElapsed();
+  iaeProcElapsedStart = Date.now();
+  var paint = function () {
+    var el = resHost && resHost.querySelector('.iae-proc-elapsed');
+    if (el) el.textContent = ' · ' + Math.round((Date.now() - iaeProcElapsedStart) / 1000) + '초 경과';
+  };
+  if (resHost) resHost.innerHTML = '<div class="text-xs text-blue-600"><i class="fas fa-spinner fa-spin mr-1"></i>' + label + ' (최대 2분)<span class="iae-proc-elapsed"></span></div>';
+  paint();
+  iaeProcElapsedTimer = setInterval(paint, 1000);
+}
 function iaeProcPoll(jobId, resHost, btn, namePrefix) {
-  if (resHost) resHost.innerHTML = '<div class="text-xs text-blue-600"><i class="fas fa-spinner fa-spin mr-1"></i>가공 중… (최대 2분)</div>';
+  iaeProcStartElapsed(resHost, '가공 중…');
   iaePollRender(function () {
     return axios.get('/api/workbench/process/' + jobId).then(function (res) {
       var d = (res.data && res.data.data) || {};
@@ -518,6 +640,7 @@ function iaeProcPoll(jobId, resHost, btn, namePrefix) {
       return null; // queued | rendering
     });
   }, function (result) {
+    iaeProcStopElapsed();
     if (resHost) {
       resHost.innerHTML = iaeRenderResultHTML(result, '/api/workbench/process/' + jobId + '/download', namePrefix);
       iaeWireResultButtons(resHost, '/api/workbench/process/' + jobId + '/download', namePrefix);
@@ -526,10 +649,188 @@ function iaeProcPoll(jobId, resHost, btn, namePrefix) {
     iaeToast('가공 EPS 출력 완료', 'success');
     iaeLoadHistory(); // ③ 완료 잡을 출력 이력 보드에 합류
   }, function (msg) {
-    if (resHost) resHost.innerHTML = '';
+    iaeProcStopElapsed();
+    // ② 재시도 버튼 — error|timeout 시 /process/:id/retry → 재폴링
+    if (resHost) {
+      resHost.innerHTML = '<div class="border border-red-200 bg-red-50 rounded-md p-2">'
+        + '<div class="text-xs text-red-600 mb-1.5"><i class="fas fa-triangle-exclamation mr-1"></i>' + iaeEscape(msg) + '</div>'
+        + '<button class="iae-proc-retry px-2 py-1 rounded bg-gray-800 text-white text-xs hover:bg-black"><i class="fas fa-rotate-right mr-1"></i>재시도</button></div>';
+      var rb = resHost.querySelector('.iae-proc-retry');
+      if (rb) rb.addEventListener('click', function () { iaeProcRetry(jobId, resHost, btn, namePrefix); });
+    }
     iaeToast(msg, 'error');
     iaeProcResetBtn(btn);
     iaeLoadHistory(); // 실패 잡도 이력에 (재시도 추적)
+  });
+}
+// ② 가공 잡 재시도 — POST /process/:id/retry(error|rendering→queued) → 재폴링
+function iaeProcRetry(jobId, resHost, btn, namePrefix) {
+  if (resHost) resHost.innerHTML = '<div class="text-xs text-blue-600"><i class="fas fa-spinner fa-spin mr-1"></i>재시도 요청 중…</div>';
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i>재시도…'; }
+  iaeStopRenderPoll();
+  axios.post('/api/workbench/process/' + jobId + '/retry').then(function () {
+    iaeProcPoll(jobId, resHost, btn, namePrefix);
+  }).catch(function (err) {
+    var msg = (err.response && err.response.data && err.response.data.error) || err.message || '재시도 실패';
+    iaeToast(msg, 'error');
+    iaeProcResetBtn(btn);
+    if (resHost) resHost.innerHTML = '<div class="text-xs text-red-500">' + iaeEscape(msg) + '</div>';
+  });
+}
+
+// ── ① 다중 그룹 일괄 가공 + ZIP ────────────────────────────────────
+// 모든 그룹을 각 settings(iaeGetSettings)로 POST /process 다중 큐잉 → 잡 id 폴링(진행 N/M) → 완료 후 ZIP.
+// 각 그룹 settings에 목표크기 없으면 검출 크기로 기본 설정(가공 전제). fflate zipSync(cardExpenses.js 패턴).
+var iaeBatchState = null; // {jobs:[{gi,name,id,status,result}], host}
+function iaeProcessBody(fid, gidx, s) {
+  var fin = {};
+  [['top', s.fin_top], ['bottom', s.fin_bottom], ['left', s.fin_left], ['right', s.fin_right]].forEach(function (p) {
+    if (p[1]) fin[p[0]] = { method: p[1], margin_cm: iaeMarginOf(p[1]) };
+  });
+  return {
+    analysis_id: fid, group_index: gidx,
+    target_w_cm: Number(s.target_w) || 0, target_h_cm: Number(s.target_h) || 0,
+    finishing: fin, trim: !!s.trim, rotate90: !!s.rotate90,
+    rotation: (s.rotate90 ? 90 : 0), scale_factor: Math.max(1, Number(s.scale_factor) || 1)
+  };
+}
+function iaeBatchProcess(f) {
+  if (!f || !f.groups || !f.groups.length) { iaeToast('가공할 그룹이 없습니다', 'error'); return; }
+  var host = document.getElementById('iaeBatchResult');
+  var gis = f.groups.map(function (g, i) { return (g.index != null) ? g.index : i; });
+  var jobs = [];
+  // 각 그룹 settings 확보(목표크기 없으면 검출 크기로 기본). 크기 0이면 스킵(가공 불가).
+  var skipped = 0;
+  f.groups.forEach(function (g, i) {
+    var gi = gis[i];
+    var s = iaeGetSettings(f.id, g, gi);
+    if (!(Number(s.target_w) > 0) && g.width_mm) s.target_w = Math.round(g.width_mm) / 10;
+    if (!(Number(s.target_h) > 0) && g.height_mm) s.target_h = Math.round(g.height_mm) / 10;
+    if (!(Number(s.target_w) > 0) || !(Number(s.target_h) > 0)) { skipped++; return; }
+    jobs.push({ gi: gi, name: (g.name || ('#' + gi)), s: s, id: null, status: 'queued', result: null });
+  });
+  if (!jobs.length) { iaeToast('가공 가능한 그룹이 없습니다 (크기 미상)', 'error'); return; }
+  iaeSaveSettings();
+  iaeBatchState = { jobs: jobs, fid: f.id };
+  var btn = document.getElementById('iaeBatchBtn');
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i>가공 중'; }
+  iaeBatchRender('submit');
+  // 순차 제출(D1 부담·레이트리밋 회피) → 폴링은 병렬
+  var chain = Promise.resolve();
+  jobs.forEach(function (job) {
+    chain = chain.then(function () {
+      return axios.post('/api/workbench/process', iaeProcessBody(f.id, job.gi, job.s)).then(function (res) {
+        var d = res.data && res.data.data;
+        if (d && d.id != null) { job.id = d.id; job.status = 'rendering'; }
+        else { job.status = 'error'; job.error = '요청 실패'; }
+      }).catch(function (err) {
+        job.status = 'error'; job.error = (err.response && err.response.data && err.response.data.error) || '요청 실패';
+      });
+    });
+  });
+  chain.then(function () { iaeBatchRender('poll'); iaeBatchPoll(); });
+}
+function iaeBatchPoll() {
+  var st = iaeBatchState; if (!st) return;
+  var pending = st.jobs.filter(function (j) { return j.id != null && (j.status === 'queued' || j.status === 'rendering'); });
+  if (!pending.length) { iaeBatchFinish(); return; }
+  Promise.all(pending.map(function (job) {
+    return axios.get('/api/workbench/process/' + job.id).then(function (res) {
+      var d = (res.data && res.data.data) || {};
+      if (d.status === 'done') { job.status = 'done'; try { job.result = d.result_json ? (typeof d.result_json === 'string' ? JSON.parse(d.result_json) : d.result_json) : {}; } catch (_e) { job.result = {}; } }
+      else if (d.status === 'error') { job.status = 'error'; job.error = d.error_message || '가공 실패'; }
+    }).catch(function () { /* 일시 실패는 다음 폴에서 재시도 */ });
+  })).then(function () {
+    iaeBatchRender('poll');
+    var stillPending = st.jobs.some(function (j) { return j.id != null && (j.status === 'queued' || j.status === 'rendering'); });
+    if (stillPending) { st.timer = setTimeout(iaeBatchPoll, 2000); }
+    else iaeBatchFinish();
+  });
+}
+function iaeBatchFinish() {
+  var st = iaeBatchState; if (!st) return;
+  if (st.timer) { clearTimeout(st.timer); st.timer = null; }
+  var btn = document.getElementById('iaeBatchBtn');
+  if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-layer-group mr-1"></i>전체 가공'; }
+  iaeBatchRender('done');
+  var done = st.jobs.filter(function (j) { return j.status === 'done'; }).length;
+  iaeToast('일괄 가공 완료: ' + done + '/' + st.jobs.length, done === st.jobs.length ? 'success' : 'warning');
+  iaeLoadHistory();
+}
+function iaeBatchRender(phase) {
+  var host = document.getElementById('iaeBatchResult'); var st = iaeBatchState;
+  if (!host || !st) return;
+  var done = st.jobs.filter(function (j) { return j.status === 'done'; }).length;
+  var errs = st.jobs.filter(function (j) { return j.status === 'error'; }).length;
+  var total = st.jobs.length;
+  var html = '<div class="border border-gray-200 rounded-md p-2 bg-gray-50">';
+  if (phase !== 'done') {
+    html += '<div class="text-[11px] text-blue-600"><i class="fas fa-spinner fa-spin mr-1"></i>일괄 가공 ' + done + '/' + total + ' 완료'
+      + (errs ? ' · <span class="text-red-500">실패 ' + errs + '</span>' : '') + '</div>';
+  } else {
+    html += '<div class="text-[11px] font-semibold ' + (errs ? 'text-amber-600' : 'text-green-700') + ' mb-1.5">'
+      + '<i class="fas fa-circle-check mr-1"></i>일괄 가공 ' + done + '/' + total + ' 완료'
+      + (errs ? ' · 실패 ' + errs : '') + '</div>';
+    if (done > 0) html += '<button id="iaeBatchZip" class="w-full px-2 py-1 rounded bg-gray-800 text-white text-[11px] hover:bg-black"><i class="fas fa-file-zipper mr-1"></i>ZIP 받기 (' + done + '건)</button>';
+  }
+  html += '</div>';
+  host.innerHTML = html;
+  var zb = document.getElementById('iaeBatchZip');
+  if (zb) zb.addEventListener('click', iaeBatchZip);
+}
+// fflate 동적 로드(cardExpenses.js 동일 CDN). iae 스코프로 중복정의 회피.
+function iaeLoadFflate() {
+  return new Promise(function (resolve, reject) {
+    if (window.fflate) return resolve(window.fflate);
+    var sc = document.createElement('script');
+    sc.src = 'https://cdn.jsdelivr.net/npm/fflate@0.8.2/umd/index.js';
+    sc.onload = function () { resolve(window.fflate); };
+    sc.onerror = function () { reject(new Error('zip 라이브러리 로드 실패')); };
+    document.head.appendChild(sc);
+  });
+}
+function iaeZipSafeName(s) {
+  return String(s == null ? '' : s).replace(/[\/\\:*?"<>|\x00-\x1f]/g, '_').replace(/\s+/g, ' ').trim().slice(0, 60) || '_';
+}
+// 완료 잡들의 EPS/JPG/DXF blob을 받아 zipSync로 묶어 다운로드. 파일명 {그룹명}_{사이즈cm}.{kind}.
+function iaeBatchZip() {
+  var st = iaeBatchState; if (!st) return;
+  var doneJobs = st.jobs.filter(function (j) { return j.status === 'done' && j.id != null; });
+  if (!doneJobs.length) { iaeToast('받을 결과가 없습니다', 'error'); return; }
+  var zb = document.getElementById('iaeBatchZip');
+  if (zb) { zb.disabled = true; zb.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i>ZIP 생성 중…'; }
+  var kinds = ['eps', 'jpg', 'dxf'];
+  iaeLoadFflate().then(function (fflate) {
+    var files = {};
+    var tasks = [];
+    doneJobs.forEach(function (job) {
+      var r = job.result || {};
+      var dims = (r.width_cm != null && r.height_cm != null) ? (Math.round(r.width_cm) + 'x' + Math.round(r.height_cm) + 'cm') : '';
+      var base = iaeZipSafeName(job.name) + (dims ? '_' + dims : '');
+      kinds.forEach(function (kind) {
+        // result_json 의 {eps_r2,jpg_r2,dxf_r2} 존재 여부로 거름 (워커 다운로드 키와 동일 소스)
+        if (!r[kind + '_r2']) return;
+        tasks.push(axios.get('/api/workbench/process/' + job.id + '/download?kind=' + kind, { responseType: 'arraybuffer' })
+          .then(function (res) { files[base + '.' + kind] = new Uint8Array(res.data); })
+          .catch(function () { /* 해당 kind 없음 — 스킵 */ }));
+      });
+    });
+    return Promise.all(tasks).then(function () {
+      var names = Object.keys(files);
+      if (!names.length) { iaeToast('다운로드할 파일을 받지 못했습니다', 'error'); if (zb) { zb.disabled = false; zb.innerHTML = '<i class="fas fa-file-zipper mr-1"></i>ZIP 받기'; } return; }
+      var zipped = fflate.zipSync(files, { level: 6 });
+      var blob = new Blob([zipped], { type: 'application/zip' });
+      var a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'IA가공_' + (new Date().toISOString().slice(0, 10)) + '.zip';
+      document.body.appendChild(a); a.click();
+      setTimeout(function () { try { URL.revokeObjectURL(a.href); } catch (_e) {} a.remove(); }, 1000);
+      iaeToast(names.length + '개 파일 ZIP 다운로드', 'success');
+      if (zb) { zb.disabled = false; zb.innerHTML = '<i class="fas fa-file-zipper mr-1"></i>ZIP 받기 (' + doneJobs.length + '건)'; }
+    });
+  }).catch(function (err) {
+    iaeToast(err.message || 'ZIP 생성 실패', 'error');
+    if (zb) { zb.disabled = false; zb.innerHTML = '<i class="fas fa-file-zipper mr-1"></i>ZIP 받기'; }
   });
 }
 
@@ -567,7 +868,10 @@ function iaeRenderHistory(rows) {
   if (!host) { console.warn('[ia-editor] #iaeHistory not found'); return; }
   var headHtml = '<div class="flex items-center justify-between mb-3">'
     + '<span class="text-sm font-semibold text-gray-700"><i class="fas fa-clock-rotate-left mr-1.5 text-blue-500"></i>내 출력 이력 <span class="text-xs font-normal text-gray-400">(최근 12건 · 새로고침·탭전환에도 보존)</span></span>'
+    + '<div class="flex items-center gap-2">'
+    + '<span id="iaeAgentBadge" class="text-[11px] rounded-full px-2 py-0.5 bg-gray-100 text-gray-500"><i class="fas fa-circle-notch fa-spin mr-1"></i>에이전트 확인 중</span>' // ② 에이전트 온라인/오프라인
     + '<button id="iaeHistRefresh" class="text-xs text-gray-500 hover:text-blue-600"><i class="fas fa-rotate-right mr-1"></i>새로고침</button>'
+    + '</div>'
     + '</div>';
   var body;
   if (rows == null) {
@@ -581,6 +885,7 @@ function iaeRenderHistory(rows) {
   host.innerHTML = headHtml + body;
   var rb = document.getElementById('iaeHistRefresh');
   if (rb) rb.addEventListener('click', iaeLoadHistory);
+  iaeRefreshAgentStatus(); // ② 배지 즉시 1회 갱신(이후 주기 폴러가 유지)
   // [EPS][JPG][DXF] 위임 바인딩
   Array.prototype.forEach.call(host.querySelectorAll('.iae-hist-dl'), function (b) {
     b.addEventListener('click', function () {
@@ -589,6 +894,37 @@ function iaeRenderHistory(rows) {
     });
   });
 }
+// ② 에이전트 상태 배지 — GET /agent-status {online, last_seen}. 폴링(폴=heartbeat)이라 last_seen<60s면 online.
+var iaeAgentStatusTimer = null;
+function iaeRefreshAgentStatus() {
+  axios.get('/api/workbench/agent-status').then(function (res) {
+    var d = (res.data && res.data.data) || {};
+    iaeRenderAgentBadge(!!d.online, d.last_seen);
+  }).catch(function () { iaeRenderAgentBadge(null, null); });
+}
+function iaeRenderAgentBadge(online, lastSeen) {
+  var el = document.getElementById('iaeAgentBadge'); if (!el) return;
+  if (online == null) { el.className = 'text-[11px] rounded-full px-2 py-0.5 bg-gray-100 text-gray-400'; el.innerHTML = '<i class="fas fa-question-circle mr-1"></i>에이전트 상태 불명'; return; }
+  if (online) {
+    el.className = 'text-[11px] rounded-full px-2 py-0.5 bg-green-50 text-green-700';
+    el.innerHTML = '<i class="fas fa-circle text-green-500 mr-1" style="font-size:7px;vertical-align:middle"></i>에이전트 온라인';
+  } else {
+    var ago = '';
+    if (lastSeen) { var sec = Math.max(0, Math.round((Date.now() - new Date((typeof lastSeen === 'string' && lastSeen.indexOf('Z') === -1) ? lastSeen.replace(' ', 'T') + 'Z' : lastSeen).getTime()) / 1000)); ago = sec < 3600 ? (Math.round(sec / 60) + '분 전') : (Math.round(sec / 3600) + '시간 전'); }
+    el.className = 'text-[11px] rounded-full px-2 py-0.5 bg-red-50 text-red-600';
+    el.innerHTML = '<i class="fas fa-circle text-red-400 mr-1" style="font-size:7px;vertical-align:middle"></i>에이전트 오프라인' + (ago ? ' (' + iaeEscape(ago) + ')' : '');
+  }
+}
+// 에이전트 배지 주기 폴러 — 편집 뷰 활성 시에만(탭 전환 시 정지). init/탭복귀에서 시작.
+function iaeStartAgentPoll() {
+  if (iaeAgentStatusTimer) return;
+  iaeRefreshAgentStatus();
+  iaeAgentStatusTimer = setInterval(function () {
+    if (iaeView !== 'edit') { iaeStopAgentPoll(); return; } // 편집 뷰 아니면 정지
+    iaeRefreshAgentStatus();
+  }, 20000);
+}
+function iaeStopAgentPoll() { if (iaeAgentStatusTimer) { clearInterval(iaeAgentStatusTimer); iaeAgentStatusTimer = null; } }
 function iaeHistCardHTML(r) {
   var meta = r.result_meta || {};
   var done = r.status === 'done', err = r.status === 'error';
@@ -684,8 +1020,8 @@ function iaeSetView(v) {
   var cls = function (sel) { return 'px-4 py-2 rounded-lg text-sm font-medium border ' + (v === sel ? on : off); };
   if (be) be.className = cls('edit');
   if (bc) bc.className = cls('canvas');
-  if (v === 'canvas') iaeRenderCanvas();
-  if (v === 'edit') iaeLoadHistory(); // ③ 파일처리 탭 복귀 시 출력 이력 새로고침
+  if (v === 'canvas') { iaeRenderCanvas(); iaeStopAgentPoll(); } // ② 캔버스 뷰선 에이전트 폴 정지
+  if (v === 'edit') { iaeLoadHistory(); iaeStartAgentPoll(); } // ③ 파일처리 탭 복귀 시 출력 이력 새로고침 + ② 에이전트 폴 시작
 }
 
 // shelfBinPack 포팅 (원본: src/scripts/orderForm/sheet.js:402) — 폭 고정·면적 내림차순 shelf 적재 + 회전
@@ -1092,6 +1428,27 @@ function iaeCanMargins(o) {
   var f = (o && o.fin) || {};
   return { t: iaeMarginOf(f.top), b: iaeMarginOf(f.bottom), l: iaeMarginOf(f.left), r: iaeMarginOf(f.right) };
 }
+// ⑤ 돔보 마크 출력 형상 일치 (ProcessOrderItem.jsx §9.5 포팅) —
+//    L자 트림선이 아니라 K100 채움 원: 꼭짓점 1cm 바깥 ×4, 상단 방향마크 6cm ×1, 50cm 초과 시 중간마크.
+//    g=대상 Konva.Group(객체=로컬좌표 ox/oy, 시트=절대좌표 sx/sy). l/t/r/b=출력 바운드(px). ppm=mm→px.
+function iaeAddDomboMarks(g, l, t, r, b, ppm) {
+  var D = 6 * ppm;          // 6mm 지름
+  var CORNER = 10 * ppm;    // 꼭짓점 1cm 바깥
+  var DIR = 60 * ppm;       // 방향마크 6cm
+  var MAXGAP = 500 * ppm;   // 50cm 간격 보정
+  var col = '#111827';
+  var mk = function (cx, cy) { g.add(new Konva.Circle({ x: cx, y: cy, radius: D / 2, fill: col, listening: false })); };
+  var inter = function (from, to, fixed, horiz) {
+    var span = Math.abs(to - from); if (span <= MAXGAP) return;
+    var divs = Math.ceil(span / MAXGAP), step = span / divs, mn = Math.min(from, to);
+    for (var d = 1; d < divs; d++) { var pos = mn + step * d; if (horiz) mk(pos, fixed); else mk(fixed, pos); }
+  };
+  var tL = l - CORNER, tR = r + CORNER, tT = t - CORNER, tB = b + CORNER;
+  mk(tL, tT); mk(tR, tT); mk(tL, tB); mk(tR, tB);  // 4 꼭짓점
+  mk(tL + DIR, tT);                                 // 상단 방향마크 1개
+  inter(tL, tR, tT, true); inter(tL, tR, tB, true); // 상·하 중간마크
+  inter(tT, tB, tL, false); inter(tT, tB, tR, false); // 좌·우 중간마크
+}
 function iaeCanDrawOverlays() {
   if (!iaeCanOverlay) return;
   iaeCanOverlay.destroyChildren();
@@ -1112,15 +1469,7 @@ function iaeCanDrawOverlays() {
       if (dr > 0) og.add(new Konva.Rect({ x: wpx, y: 0, width: dr, height: hpx, fill: fill }));
       og.add(new Konva.Rect({ x: ox, y: oy, width: ow, height: oh, stroke: '#f59e0b', strokeWidth: 1, dash: [4, 3] }));
     }
-    if (o.trim) {
-      var L = 10 * ppm, gap = 3 * ppm, col = '#111827', sw = 1; // 1cm 트림마크 + 3mm 갭
-      var corners = [[ox, oy, 1, 1], [ox + ow, oy, -1, 1], [ox, oy + oh, 1, -1], [ox + ow, oy + oh, -1, -1]];
-      corners.forEach(function (c) {
-        var cx = c[0], cy = c[1], sx = c[2], sy = c[3];
-        og.add(new Konva.Line({ points: [cx, cy + sy * gap, cx, cy + sy * (gap + L)], stroke: col, strokeWidth: sw }));
-        og.add(new Konva.Line({ points: [cx + sx * gap, cy, cx + sx * (gap + L), cy], stroke: col, strokeWidth: sw }));
-      });
-    }
+    if (o.trim) iaeAddDomboMarks(og, ox, oy, ox + ow, oy + oh, ppm); // ⑤ 출력 형상 일치(꼭짓점 원·방향마크·중간마크)
     iaeCanOverlay.add(og);
   });
   // N3: 시트 경계 + 라벨 + 효율 + 돔보(둘레)
@@ -1132,14 +1481,7 @@ function iaeCanDrawOverlays() {
     var lbl = (sh.label || '시트') + ' · ' + (effPct > 100 ? '인터록 ' : '효율 ') + effPct + '%';
     g.add(new Konva.Text({ x: sx + 3, y: sy - 14, text: lbl, fontSize: 11, fontStyle: 'bold', fill: '#1e3a8a' }));
     if (sh._warn && sh._warn.length) g.add(new Konva.Text({ x: sx + 3, y: sy + 2, text: '⚠ ' + sh._warn[0], fontSize: 10, fill: '#dc2626' }));
-    if (sh.trim) {
-      var L = 10 * ppm, gap = 3 * ppm, col = '#111827';
-      var cs = [[sx, sy, 1, 1], [sx + sw, sy, -1, 1], [sx, sy + shh, 1, -1], [sx + sw, sy + shh, -1, -1]];
-      cs.forEach(function (c) {
-        g.add(new Konva.Line({ points: [c[0], c[1] + c[3] * gap, c[0], c[1] + c[3] * (gap + L)], stroke: col, strokeWidth: 1 }));
-        g.add(new Konva.Line({ points: [c[0] + c[2] * gap, c[1], c[0] + c[2] * (gap + L), c[1]], stroke: col, strokeWidth: 1 }));
-      });
-    }
+    if (sh.trim) iaeAddDomboMarks(g, sx, sy, sx + sw, sy + shh, ppm); // ⑤ 시트 둘레 돔보(객체와 동일 형상)
     iaeCanOverlay.add(g);
   });
   iaeCanOverlay.batchDraw();
@@ -1215,6 +1557,7 @@ function iaeCanWireInspector(o) {
     if (aEl.checked && detAspect > 0) { var h = parseFloat(hEl.value) || 0; if (h > 0) wEl.value = Math.round((h * detAspect) * 10) / 10; }
     applySize();
   });
+  if (aEl) aEl.addEventListener('change', function () { if (!aEl.checked) iaeToast('비율잠금 해제 — 원본 비율과 달라지면 잘림/늘어남이 발생할 수 있습니다', 'warning'); }); // ⑥
   ['Top', 'Bottom', 'Left', 'Right'].forEach(function (side) {
     var el = document.getElementById('iaeCanFin' + side); if (!el) return;
     el.addEventListener('change', function () { o.fin = o.fin || {}; o.fin[side.toLowerCase()] = el.value; iaeCanSave(); iaeCanDrawOverlays(); iaeCanRenderInspectorSoft(o); });
@@ -1400,10 +1743,12 @@ function iaeCanNestPlace(opts) {
   sheets.forEach(function (s, si) {
     var sheetUid = iaeCanSheetUid++;
     var sx = originX, sy = cursorY;
-    iaeCanSheets.push({ uid: sheetUid, x_mm: sx, y_mm: sy, w_mm: Math.round(s.width_cm * 10), h_mm: Math.round(s.height_cm * 10), mode: opts.mode, label: preset.label + (sheets.length > 1 ? (' #' + (si + 1)) : ''), eff: eff, trim: margin > 0,
-      // N4 네스팅 fidelity: 주문 시 SheetLayout 렌더용 자기기술(placements·규격, cm 시트상대). scale_factor=파일 배율
+    // ⑦ 좌표 일원화: 시트 placements는 인라인 계산하지 않고 조각(객체) 배치 후 iaeCanSyncSheet로 라이브 재계산.
+    //    시트는 규격·메타만 보유 → 화면↔출력 단일 소스(객체 위치). 이형 인터록(드래그/회전) 후에도 동일 경로.
+    var sh = { uid: sheetUid, x_mm: sx, y_mm: sy, w_mm: Math.round(s.width_cm * 10), h_mm: Math.round(s.height_cm * 10), mode: opts.mode, label: preset.label + (sheets.length > 1 ? (' #' + (si + 1)) : ''), eff: eff, trim: margin > 0,
       key: opts.key, fid: src.fid, gi: src.gi, roll_width_cm: s.width_cm, total_height_cm: s.height_cm, margin_cm: margin, gap_cm: gap, scale_factor: fileScale,
-      placements: s.placements.map(function (p) { return { group_index: src.gi, x_cm: p.x_cm, y_cm: p.y_cm, width_cm: p.width_cm, height_cm: p.height_cm, rotated: !!p.rotated }; }) });
+      placements: [] };
+    iaeCanSheets.push(sh);
     s.placements.forEach(function (p) {
       var cellX = sx + p.x_cm * 10, cellY = sy + p.y_cm * 10;
       // 회전 조각: 조각 크기 유지 + 90° + bbox가 셀에 맞도록 x 보정 (phMm = 조각 높이)
@@ -1414,6 +1759,7 @@ function iaeCanNestPlace(opts) {
         fin: { top: '', bottom: '', left: '', right: '' }, trim: false, scale_factor: fileScale, sheetUid: sheetUid
       });
     });
+    iaeCanSyncSheet(sh); // ⑦ 객체 배치로부터 placements·효율·롤 길이 재계산(단일 소스)
     cursorY += Math.round(s.height_cm * 10) + 30;
   });
   iaeCanSave(); iaeCanInitStage();
@@ -1500,6 +1846,60 @@ function iaeCanPollSheet(sheetId, resHost, btn, namePrefix) {
   });
 }
 
+// ④ 배치 전 실시간 예상치 — iaeCanNestPlace 패킹 수학의 부작용 없는 드라이런(대지 미변경).
+//    반환 {error?, msg?, eff, sheets, total_height_cm, waste_pct}. 롤=가변높이 단일·평판=다중판.
+function iaeNestEstimate(o) {
+  var src = iaeCanSrc(o.key); if (!src) return { error: true, msg: '그룹을 선택하세요' };
+  var origW = src.w_mm || 0, origH = src.h_mm || 0;
+  var dwCm = (Number(o.target_w) > 0) ? Number(o.target_w) : origW / 10;
+  var dhCm = (Number(o.target_h) > 0) ? Number(o.target_h) : origH / 10;
+  if (dwCm <= 0 || dhCm <= 0) return { error: true, msg: '그룹 크기를 알 수 없습니다' };
+  var qty = Math.max(1, parseInt(o.qty, 10) || 1);
+  var presets = o.mode === 'flatbed' ? IAE_FLAT_PRESETS : IAE_ROLL_PRESETS;
+  var preset = presets[o.presetIdx] || presets[0];
+  var margin = Number(o.margin) || 0, gap = Number(o.gap) || 0;
+  var availW = preset.w - margin * 2;
+  if (availW <= 0) return { error: true, msg: '여백이 시트 폭보다 큽니다' };
+  var items = [];
+  for (var q = 0; q < qty; q++) items.push({ id: 'p' + q, w: dwCm, h: dhCm });
+  var packed = iaeShelfBinPack(items, availW, gap);
+  if (packed.error) return { error: true, msg: packed.msg };
+  var sheetCount, totalH = 0, sheetArea = 0;
+  if (o.mode === 'flatbed') {
+    var availH = preset.h - margin * 2;
+    if (availH <= 0) return { error: true, msg: '여백이 시트 높이보다 큽니다' };
+    var byY = {};
+    packed.placements.forEach(function (p) { (byY[p.y_cm] = byY[p.y_cm] || []).push(p); });
+    var ys = Object.keys(byY).map(Number).sort(function (a, b) { return a - b; });
+    var shelfH = function (arr) { var hh = 0; arr.forEach(function (p) { if (p.height_cm > hh) hh = p.height_cm; }); return hh; };
+    for (var yi = 0; yi < ys.length; yi++) { if (shelfH(byY[ys[yi]]) > availH + 1e-6) return { error: true, msg: '조각이 시트 높이를 초과(' + Math.round(shelfH(byY[ys[yi]])) + 'cm)' }; }
+    var nSheets = 1, curBottom = 0, first = true;
+    ys.forEach(function (y) { var sh = shelfH(byY[y]); if (!first && (curBottom + gap + sh > availH + 1e-6)) { nSheets++; curBottom = 0; } var yLocal = first ? 0 : (curBottom === 0 ? 0 : curBottom + gap); curBottom = yLocal + sh; first = false; });
+    sheetCount = nSheets;
+    sheetArea = nSheets * preset.w * preset.h;
+  } else {
+    totalH = packed.total_height_cm + margin * 2;
+    sheetCount = 1;
+    sheetArea = preset.w * totalH;
+  }
+  var totalArea = dwCm * dhCm * qty;
+  var eff = sheetArea > 0 ? totalArea / sheetArea : 0;
+  return { error: false, eff: eff, sheets: sheetCount, total_height_cm: totalH, waste_pct: Math.max(0, 1 - eff), mode: o.mode };
+}
+// 패널 하단 예상치 호스트 갱신 (입력 change 시 라이브)
+function iaeNestRenderEstimate() {
+  var host = document.getElementById('iaeCanNestEst'); if (!host) return;
+  var o = iaeCanNestOpts;
+  var gEl = document.getElementById('iaeCanNestGroup'); if (gEl) o.key = gEl.value;
+  var est = iaeNestEstimate(o);
+  if (est.error) { host.innerHTML = '<div class="text-[11px] text-amber-600"><i class="fas fa-triangle-exclamation mr-1"></i>' + iaeEscape(est.msg) + '</div>'; return; }
+  var effPct = Math.round(est.eff * 100), wastePct = Math.round(est.waste_pct * 100);
+  var sizeTxt = est.mode === 'flatbed' ? ('예상 <b>' + est.sheets + '판</b>') : ('예상 롤 길이 <b>' + est.total_height_cm.toFixed(1) + 'cm</b> (1롤)');
+  var effCls = effPct >= 75 ? 'text-green-600' : (effPct >= 50 ? 'text-amber-600' : 'text-red-500');
+  host.innerHTML = '<div class="text-[11px] text-gray-600"><i class="fas fa-chart-area mr-1 text-blue-500"></i>'
+    + sizeTxt + ' · 효율 <b class="' + effCls + '">' + effPct + '%</b> · 자투리 ' + wastePct + '%</div>';
+}
+
 function iaeCanShowNestPanel() {
   iaeCanSel = null;
   if (iaeCanTr) { iaeCanTr.nodes([]); if (iaeCanLayer) iaeCanLayer.batchDraw(); }
@@ -1548,6 +1948,7 @@ function iaeCanRenderNestPanel() {
     + '</div>'
     + '<label class="flex items-center gap-1 text-xs text-gray-600 cursor-pointer"><input id="iaeCanNestRatio" type="checkbox"' + (o.ratio_lock !== false ? ' checked' : '') + '>비율 잠금 (조각 W↔H 검출 종횡비 유지)</label>'
     + '<div class="text-[11px] text-gray-400">조각 크기 비우면 검출 크기로 배치(스케일). 파일 1/N = 소스가 실제의 1/N(현수막 축소본 등)</div>'
+    + '<div id="iaeCanNestEst" class="bg-blue-50 border border-blue-100 rounded-md px-2 py-1.5"></div>' // ④ 배치 전 실시간 예상치
     + '<button id="iaeCanNestRun" class="w-full px-3 py-2 rounded-md bg-blue-600 text-white hover:bg-blue-700 text-sm"><i class="fas fa-table-cells mr-1"></i>대지에 배치</button>'
     + '<div class="text-[11px] text-gray-400">배치 조각은 대지 객체가 되어 개별 편집·주문 연결(N4)에 사용</div>'
     + '<div class="text-[11px] text-amber-600 border-t border-amber-100 pt-2 mt-1"><i class="fas fa-arrows-up-down-left-right mr-1"></i><b>이형 인터록</b>: 배치 후 조각을 드래그·회전(R)해 겹쳐 끼워맞추면 주문 시 <b>현재 배치 그대로</b> 출력(롤 길이 자동 단축). 시트 안에 넣은 조각만 그 시트에 포함.</div>'
@@ -1558,29 +1959,31 @@ function iaeCanRenderNestPanel() {
     + '<div id="iaeCanNestResult" class="mt-2"></div>'
     + '</div>'
     + '</div>';
-  var bindVal = function (id, prop, parse) { var el = document.getElementById(id); if (el) el.addEventListener('change', function () { o[prop] = parse ? parse(el.value) : el.value; }); };
+  var bindVal = function (id, prop, parse, estimate) { var el = document.getElementById(id); if (el) el.addEventListener('change', function () { o[prop] = parse ? parse(el.value) : el.value; if (estimate) iaeNestRenderEstimate(); }); };
   var modeEl = document.getElementById('iaeCanNestMode');
   if (modeEl) modeEl.addEventListener('change', function () { o.mode = modeEl.value; o.presetIdx = 0; iaeCanRenderNestPanel(); });
-  bindVal('iaeCanNestGroup', 'key');
-  bindVal('iaeCanNestQty', 'qty', function (v) { return parseInt(v, 10) || 1; });
-  bindVal('iaeCanNestPreset', 'presetIdx', function (v) { return parseInt(v, 10) || 0; });
-  bindVal('iaeCanNestGap', 'gap', function (v) { return parseFloat(v) || 0; });
-  bindVal('iaeCanNestMargin', 'margin', function (v) { return parseFloat(v) || 0; });
+  bindVal('iaeCanNestGroup', 'key', null, true);
+  bindVal('iaeCanNestQty', 'qty', function (v) { return parseInt(v, 10) || 1; }, true);
+  bindVal('iaeCanNestPreset', 'presetIdx', function (v) { return parseInt(v, 10) || 0; }, true);
+  bindVal('iaeCanNestGap', 'gap', function (v) { return parseFloat(v) || 0; }, true);
+  bindVal('iaeCanNestMargin', 'margin', function (v) { return parseFloat(v) || 0; }, true);
   // ② 비율 잠금: 조각 W↔H 검출 종횡비 유지 (인스펙터 applySize 패턴 포팅). 단순 parseFloat 독립저장이 왜곡 원인.
   var nestTW = document.getElementById('iaeCanNestTW'), nestTH = document.getElementById('iaeCanNestTH');
   var nestRatioEl = document.getElementById('iaeCanNestRatio');
-  if (nestRatioEl) nestRatioEl.addEventListener('change', function () { o.ratio_lock = nestRatioEl.checked; });
+  if (nestRatioEl) nestRatioEl.addEventListener('change', function () { o.ratio_lock = nestRatioEl.checked; if (!nestRatioEl.checked) iaeToast('비율잠금 해제 — 조각 W/H를 따로 지정하면 늘어남이 발생할 수 있습니다', 'warning'); }); // ⑥
   // 현재 선택 그룹의 검출 종횡비 (그룹 변경 시 패널 미재렌더 → 입력 시점 재조회)
   function nestDetAspect() { var src = iaeCanSrc(document.getElementById('iaeCanNestGroup').value) || curSrc; return (src && src.w_mm && src.h_mm) ? (src.w_mm / src.h_mm) : 0; }
   if (nestTW) nestTW.addEventListener('input', function () {
     o.target_w = parseFloat(nestTW.value) || 0;
     var a = nestDetAspect();
     if (nestRatioEl && nestRatioEl.checked && a > 0 && o.target_w > 0) { o.target_h = Math.round((o.target_w / a) * 10) / 10; if (nestTH) nestTH.value = o.target_h; }
+    iaeNestRenderEstimate(); // ④
   });
   if (nestTH) nestTH.addEventListener('input', function () {
     o.target_h = parseFloat(nestTH.value) || 0;
     var a = nestDetAspect();
     if (nestRatioEl && nestRatioEl.checked && a > 0 && o.target_h > 0) { o.target_w = Math.round((o.target_h * a) * 10) / 10; if (nestTW) nestTW.value = o.target_w; }
+    iaeNestRenderEstimate(); // ④
   });
   var runEl = document.getElementById('iaeCanNestRun');
   if (runEl) runEl.addEventListener('click', function () {
@@ -1600,6 +2003,7 @@ function iaeCanRenderNestPanel() {
   if (exportEl) exportEl.addEventListener('click', iaeCanExportSheets);
   var closeEl = document.getElementById('iaeCanNestClose');
   if (closeEl) closeEl.addEventListener('click', function () { iaeStopRenderPoll(); host.classList.add('hidden'); host.innerHTML = ''; });
+  iaeNestRenderEstimate(); // ④ 패널 열릴 때 초기 예상치
 }
 
 // ── N4: 주문 연결 (품목 지정 모달 · 개별/네스팅 라인 · 새 주문 · 면적단가) ──
@@ -1642,9 +2046,9 @@ function iaeCanBuildOrderLines() {
     var p0 = pieces[0], src = iaeCanSrc(p0.key);
     lines.push({
       kind: 'sheet', fid: p0.fid, gi: p0.gi, label: (src ? src.filename : '') + ' #' + p0.gi + ' [시트 ' + pieces.length + '조각]',
-      w_cm: Math.round((src ? src.w_mm : p0.w_mm) / 10), h_cm: Math.round((src ? src.h_mm : p0.h_mm) / 10),
+      w_cm: iaeMmToCm1(src ? src.w_mm : p0.w_mm), h_cm: iaeMmToCm1(src ? src.h_mm : p0.h_mm),
       qty: pieces.length, fin: p0.fin || null, trim: !!sh.trim,
-      det_w_cm: Math.round((src ? src.w_mm : p0.w_mm) / 10), det_h_cm: Math.round((src ? src.h_mm : p0.h_mm) / 10),
+      det_w_cm: iaeMmToCm1(src ? src.w_mm : p0.w_mm), det_h_cm: iaeMmToCm1(src ? src.h_mm : p0.h_mm),
       sheetRec: (sh.placements && sh.placements.length) ? sh : null,  // N4 네스팅 렌더용(placements 보유 시)
       item_id: null, item_name: '', pricing_method: 'FIXED', unit_price: 0
     });
@@ -1653,9 +2057,9 @@ function iaeCanBuildOrderLines() {
     var src = iaeCanSrc(o.key);
     lines.push({
       kind: 'obj', fid: o.fid, gi: o.gi, label: (src ? src.filename : '') + ' #' + o.gi,
-      w_cm: Math.round(o.w_mm / 10), h_cm: Math.round(o.h_mm / 10),
+      w_cm: iaeMmToCm1(o.w_mm), h_cm: iaeMmToCm1(o.h_mm),
       qty: 1, fin: o.fin || null, trim: !!o.trim, scale_factor: o.scale_factor || 1,
-      det_w_cm: Math.round(((src ? src.w_mm : o.w_mm) || 0) / 10), det_h_cm: Math.round(((src ? src.h_mm : o.h_mm) || 0) / 10),
+      det_w_cm: iaeMmToCm1((src ? src.w_mm : o.w_mm) || 0), det_h_cm: iaeMmToCm1((src ? src.h_mm : o.h_mm) || 0),
       item_id: null, item_name: '', pricing_method: 'FIXED', unit_price: 0
     });
   });
@@ -1895,6 +2299,20 @@ function iaeCanSubmitOrder() {
   var missing = iaeOmState.lines.filter(function (ln) { return !ln.item_id; });
   if (missing.length) { iaeToast(missing.length + '개 라인의 품목을 지정하세요', 'error'); return; }
 
+  // ⑥ 비율 왜곡 강한 경고: 목표크기가 검출 종횡비와 >5% 다른 라인 → 진행 전 확인 모달
+  var distorted = iaeOmState.lines.filter(function (ln) { return iaeDistortRatio(ln.w_cm, ln.h_cm, ln.det_w_cm, ln.det_h_cm) > 0.05; });
+  if (distorted.length && window.showConfirm) {
+    var worst = Math.max.apply(null, distorted.map(function (ln) { return iaeDistortRatio(ln.w_cm, ln.h_cm, ln.det_w_cm, ln.det_h_cm); }));
+    window.showConfirm(distorted.length + '개 라인이 원본 비율과 약 ' + Math.round(worst * 100) + '% 달라 잘림/늘어남이 발생할 수 있습니다.\n그대로 진행할까요?',
+      { title: '비율 왜곡 경고', confirmText: '진행', danger: true }).then(function (ok) { if (ok) iaeCanSubmitOrderProceed(); });
+    return;
+  }
+  iaeCanSubmitOrderProceed();
+}
+function iaeCanSubmitOrderProceed() {
+  var isAppend = iaeOmState.mode === 'append';
+  var dateEl = document.getElementById('iaeOmDate');
+  var delivery = dateEl ? dateEl.value : '';
   // 네스팅 실제배치(다중 시트): placements 보유 시트는 per-item SHEET pp로 → 에이전트가 시트별 SheetLayout 렌더
   var primaryFid = iaeOmState.lines[0].fid;
   var aiPath = iaeCanFileR2(primaryFid);
@@ -1993,4 +2411,5 @@ function iaeCanSubmitOrder() {
   iaeLoadFinishing(); // 마감 데이터 로드 후 패널 렌더
   iaeRefresh();
   iaeLoadHistory(); // ③ 가공 이력 보드 초기 로드(서버 조회 — 새로고침에도 보존)
+  iaeStartAgentPoll(); // ② 에이전트 상태 배지 주기 폴 시작(편집 뷰 기본)
 })();

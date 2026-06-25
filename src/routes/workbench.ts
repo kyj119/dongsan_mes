@@ -538,9 +538,43 @@ workbenchRouter.post('/sheets/:id/render', async (c) => {
   }
 })
 
+// ── 에이전트 heartbeat: 폴링 자체를 last_seen 으로 기록 (settings 키-값) — spec R1 ② ──
+// settings.setting_key UNIQUE → ON CONFLICT UPSERT (caps.ts 패턴). 실패해도 폴링은 진행.
+async function touchAgentHeartbeat(c: any) {
+  try {
+    await c.env.DB.prepare(
+      `INSERT INTO settings (setting_key, setting_value) VALUES ('ia_agent_last_seen', datetime('now'))
+       ON CONFLICT(setting_key) DO UPDATE SET setting_value = datetime('now')`
+    ).run()
+  } catch (e) { console.error('Workbench heartbeat error:', e) }
+}
+
+// ── GET /api/workbench/agent-status — IA 에이전트 온라인 여부 (last_seen<60s) — spec R1 ② ──
+workbenchRouter.get('/agent-status', async (c) => {
+  try {
+    const row = await c.env.DB.prepare(
+      `SELECT setting_value FROM settings WHERE setting_key = 'ia_agent_last_seen'`
+    ).first<{ setting_value: string | null }>()
+    const lastSeen = row?.setting_value ?? null
+    // last_seen·now 모두 UTC datetime('now') 문자열 → julianday 차이를 초로 환산
+    let online = false
+    if (lastSeen) {
+      const sec = await c.env.DB.prepare(
+        `SELECT (julianday('now') - julianday(?)) * 86400 AS sec`
+      ).bind(lastSeen).first<{ sec: number | null }>()
+      online = !!(sec && sec.sec != null && sec.sec < 60)
+    }
+    return c.json({ success: true, data: { online, last_seen: lastSeen } })
+  } catch (error) {
+    console.error('Workbench agent-status error:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
+  }
+})
+
 // GET /api/workbench/render-queue — 에이전트 폴링 (queued → rendering claim)
 workbenchRouter.get('/render-queue', async (c) => {
   try {
+    await touchAgentHeartbeat(c)
     const ef = entityFilter(c, 'sheet_layouts')
     const { results } = await c.env.DB.prepare(
       `SELECT id, name, mode, canvas_json, placements_json, item_code, source_analysis_ids
@@ -741,6 +775,7 @@ workbenchRouter.post('/process', async (c) => {
       target_w_cm?: number; target_h_cm?: number
       finishing?: unknown; trim?: unknown; rotate90?: unknown
       scale_factor?: number; rotation?: number
+      preview_only?: boolean
     }>()
     const analysisId = parseInt(String(body.analysis_id ?? ''), 10)
     if (!analysisId) return c.json({ success: false, error: 'analysis_id가 필요합니다.' }, 400)
@@ -770,6 +805,8 @@ workbenchRouter.post('/process', async (c) => {
       // ⑤ 파일배율(1/N): 1 이상 숫자만 허용, 아니면 1 — jsx/에이전트가 scaleFactor 키로 읽음
       scale_factor: (typeof body.scale_factor === 'number' && body.scale_factor >= 1) ? body.scale_factor : 1,
       rotation,
+      // ③ 미리보기 잡: 실렌더 JPG만 콜백(EPS/DXF 스킵), 이력 목록에서 제외 — spec R1 ③
+      preview_only: !!body.preview_only,
     }
     const user = c.get('user')
     const created = await c.env.DB.prepare(`
@@ -790,6 +827,7 @@ workbenchRouter.post('/process', async (c) => {
 // GET /api/workbench/process-queue — 에이전트 폴링 (queued → rendering claim)
 workbenchRouter.get('/process-queue', async (c) => {
   try {
+    await touchAgentHeartbeat(c)
     const ef = entityFilter(c, 'j')
     const { results } = await c.env.DB.prepare(`
       SELECT j.id, j.analysis_id, j.group_index, j.params_json, ar.file_path AS source_file_path
@@ -828,6 +866,7 @@ workbenchRouter.get('/process', async (c) => {
       SELECT id, status, group_index, analysis_id, error_message, created_at, result_json
       FROM ia_process_jobs
       WHERE 1=1${ef.clause}
+        AND (params_json IS NULL OR params_json NOT LIKE '%"preview_only":true%')
       ORDER BY created_at DESC, id DESC
       LIMIT ?
     `).bind(...ef.params, limit).all<{
@@ -903,6 +942,31 @@ workbenchRouter.patch('/process/:id', async (c) => {
     return c.json({ success: true })
   } catch (error) {
     console.error('Workbench process callback error:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
+  }
+})
+
+// ── POST /api/workbench/process/:id/retry — 실패/멈춘 가공 재큐잉 — spec R1 ② ──
+// entity 격리 소유 검증 후 status가 error|rendering 이면 queued 로 되돌리고 결과/오류 초기화.
+// (rendering=에이전트 claim 후 타임아웃/유실 회복, error=가공 실패 재시도). done/queued 는 400.
+workbenchRouter.post('/process/:id/retry', async (c) => {
+  try {
+    const id = parseInt(c.req.param('id'), 10)
+    if (!id) return c.json({ success: false, error: '잘못된 ID' }, 400)
+    const ef = entityFilter(c, 'ia_process_jobs')
+    const row = await c.env.DB.prepare(
+      `SELECT id, status FROM ia_process_jobs WHERE id = ?${ef.clause}`
+    ).bind(id, ...ef.params).first<{ id: number; status: string }>()
+    if (!row) return c.json({ success: false, error: '가공 작업을 찾을 수 없습니다.' }, 404)
+    if (row.status !== 'error' && row.status !== 'rendering') {
+      return c.json({ success: false, error: `재시도 불가 상태입니다 (${row.status}).` }, 400)
+    }
+    await c.env.DB.prepare(
+      `UPDATE ia_process_jobs SET status='queued', result_json=NULL, error_message=NULL, updated_at=datetime('now') WHERE id = ?`
+    ).bind(id).run()
+    return c.json({ success: true, data: { id, status: 'queued' } })
+  } catch (error) {
+    console.error('Workbench process retry error:', error)
     return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
   }
 })
