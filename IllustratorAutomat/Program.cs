@@ -1449,47 +1449,54 @@ namespace IllustratorAutomation
         private static async Task<string?> UploadRenderAssetAsync(string jobType, int jobId, string kind, string localPath)
         {
             if (string.IsNullOrEmpty(localPath) || !File.Exists(localPath)) return null;
+            // .NET HttpClient MultipartFormDataContent를 CF Workers formData()가 파싱 실패(500) → curl.exe -F로 업로드(검증됨).
+            // 한글 경로 회피 위해 ASCII 임시 파일로 복사 후 전송.
+            string asciiTmp = "";
             try
             {
-                async Task<HttpResponseMessage> SendOnce()
+                asciiTmp = Path.Combine(Path.GetTempPath(), $"render_{jobId}_{kind}_{Guid.NewGuid():N}.{kind}");
+                File.Copy(localPath, asciiTmp, true);
+                var psi = new System.Diagnostics.ProcessStartInfo
                 {
-                    var form = new MultipartFormDataContent();
-                    var fileContent = new ByteArrayContent(File.ReadAllBytes(localPath));
-                    fileContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/octet-stream");
-                    form.Add(fileContent, "file", Path.GetFileName(localPath));
-                    form.Add(new StringContent(jobType), "job_type");
-                    form.Add(new StringContent(jobId.ToString()), "job_id");
-                    form.Add(new StringContent(kind), "kind");
-                    var req = new HttpRequestMessage(HttpMethod.Post, $"{ERP_API_URL}/api/workbench/render-asset") { Content = form };
-                    if (!string.IsNullOrEmpty(authToken))
-                        req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", authToken);
-                    return await httpClient.SendAsync(req);
-                }
-
-                var resp = await SendOnce();
-                if (resp.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+                    FileName = "curl.exe",
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                };
+                psi.ArgumentList.Add("-s");
+                psi.ArgumentList.Add("-H"); psi.ArgumentList.Add($"Authorization: Bearer {authToken}");
+                psi.ArgumentList.Add("-F"); psi.ArgumentList.Add($"file=@{asciiTmp};filename=render.{kind}");
+                psi.ArgumentList.Add("-F"); psi.ArgumentList.Add($"job_type={jobType}");
+                psi.ArgumentList.Add("-F"); psi.ArgumentList.Add($"job_id={jobId}");
+                psi.ArgumentList.Add("-F"); psi.ArgumentList.Add($"kind={kind}");
+                psi.ArgumentList.Add($"{ERP_API_URL}/api/workbench/render-asset");
+                using var proc = System.Diagnostics.Process.Start(psi)!;
+                string outp = await proc.StandardOutput.ReadToEndAsync();
+                await proc.WaitForExitAsync();
+                try
                 {
-                    Console.WriteLine($"   🔐 Token expired (render-asset), re-logging in...");
-                    if (await LoginAsync()) resp = await SendOnce();
+                    using var doc = JsonDocument.Parse(outp);
+                    if (doc.RootElement.TryGetProperty("data", out var d) && d.ValueKind == JsonValueKind.Object
+                        && d.TryGetProperty("r2_key", out var k) && k.ValueKind == JsonValueKind.String)
+                    {
+                        string r2 = k.GetString()!;
+                        Console.WriteLine($"      ☁️  R2 업로드 OK({kind}): {r2}");
+                        return r2;
+                    }
                 }
-                if (!resp.IsSuccessStatusCode)
-                {
-                    Console.WriteLine($"      ⚠️  R2 업로드 실패({kind}): {(int)resp.StatusCode}");
-                    return null;
-                }
-                var json = await resp.Content.ReadFromJsonAsync<JsonElement>();
-                if (json.TryGetProperty("data", out var d) && d.TryGetProperty("r2_key", out var k) && k.ValueKind == JsonValueKind.String)
-                {
-                    string r2 = k.GetString()!;
-                    Console.WriteLine($"      ☁️  R2 업로드 OK({kind}): {r2}");
-                    return r2;
-                }
+                catch { /* 비-JSON 응답 → 아래 실패 로그 */ }
+                Console.WriteLine($"      ⚠️  R2 업로드 실패({kind}): {outp}");
                 return null;
             }
             catch (Exception ex)
             {
                 Console.WriteLine($"      ⚠️  R2 업로드 오류({kind}): {ex.Message}");
                 return null;
+            }
+            finally
+            {
+                try { if (!string.IsNullOrEmpty(asciiTmp) && File.Exists(asciiTmp)) File.Delete(asciiTmp); } catch { }
             }
         }
 
@@ -1581,6 +1588,9 @@ namespace IllustratorAutomation
             File.WriteAllText(Path.Combine(scriptDir, "ia_params.json"), JsonSerializer.Serialize(iaParamsObj), System.Text.Encoding.UTF8);
             Console.WriteLine($"   🖥️  Running ProcessOrderItem.jsx (process {jobId}, group {groupIndex}, target {targetW}x{targetH}cm) → {outFolder}");
             RunJsxScript(scriptPath, Path.Combine(scriptDir, "ia_params.json"), timeoutMinutes: 5);
+
+            // ProcessOrderItem.jsx saveMultipleArtboards가 EPS명에 _design_N suffix를 붙임 → 정규명으로 보정(주문 경로 2659와 동일).
+            NormalizeArtboardEpsName(epsOut);
 
             if (!File.Exists(epsOut)) { await PatchProcessJob(jobId, "error", null, "EPS 생성 실패 (ProcessOrderItem 결과 없음)"); return; }
 
