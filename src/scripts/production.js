@@ -42,12 +42,10 @@ function fmtDur(sec) {
 
 function fmtTime(iso) {
   if (!iso) return '-';
-  var d = new Date(iso);
-  var mm = String(d.getMonth() + 1).padStart(2, '0');
-  var dd = String(d.getDate()).padStart(2, '0');
-  var hh = String(d.getHours()).padStart(2, '0');
-  var mi = String(d.getMinutes()).padStart(2, '0');
-  return mm + '/' + dd + ' ' + hh + ':' + mi;
+  var d = (window.toKstDate ? window.toKstDate(iso) : new Date(iso));
+  if (!d || isNaN(d.getTime())) return '-';
+  var p = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Seoul', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false }).formatToParts(d).reduce(function (a, x) { a[x.type] = x.value; return a; }, {});
+  return p.month + '/' + p.day + ' ' + p.hour + ':' + p.minute;
 }
 
 function statusBadge(status) {

@@ -259,8 +259,9 @@ taxInvoicesManageRouter.post('/:id/retry', async (c) => {
       return c.json({ success: false, error: '세금계산서를 찾을 수 없습니다.' }, 404)
     }
 
-    if (invoice.status !== 'FAILED') {
-      return c.json({ success: false, error: '전송실패(FAILED) 상태의 세금계산서만 재시도할 수 있습니다.' })
+    // Phase 2: 전송실패(FAILED) + 국세청 전송실패(NTS_FAILED) 모두 DRAFT 재발행 허용.
+    if (!['FAILED', 'NTS_FAILED'].includes(invoice.status)) {
+      return c.json({ success: false, error: '전송실패(FAILED/국세청 전송실패) 상태의 세금계산서만 재시도할 수 있습니다.' })
     }
 
     // FAILED → DRAFT로 리셋, provider 관련 필드 초기화

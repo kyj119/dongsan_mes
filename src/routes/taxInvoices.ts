@@ -15,6 +15,7 @@ import taxInvoicesQueriesRouter from './taxInvoices/queries'
 import taxInvoicesIssueRouter from './taxInvoices/issue'
 import taxInvoicesBatchRouter from './taxInvoices/batch'
 import taxInvoicesManageRouter from './taxInvoices/manage'
+import taxInvoicesPaymentMatchRouter from './taxInvoices/paymentMatch'
 
 // #344: 포털 세금계산서 다운로드에서 getTaxProvider 재사용 (외부 import 경로 호환)
 export { getTaxProvider } from './taxInvoices/helpers'
@@ -26,5 +27,6 @@ taxInvoicesRouter.route('/', taxInvoicesQueriesRouter)
 taxInvoicesRouter.route('/', taxInvoicesIssueRouter)
 taxInvoicesRouter.route('/', taxInvoicesBatchRouter)
 taxInvoicesRouter.route('/', taxInvoicesManageRouter)
+taxInvoicesRouter.route('/', taxInvoicesPaymentMatchRouter)
 
 export default taxInvoicesRouter

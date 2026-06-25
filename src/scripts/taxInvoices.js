@@ -162,14 +162,17 @@ function displayInvoices(items) {
       actions += '<button onclick="issueInvoice(' + inv.id + ')" class="px-2 py-1 text-xs bg-blue-50 text-blue-700 rounded hover:bg-blue-200" title="발행"><i class="fas fa-paper-plane"></i></button>';
       actions += '<button onclick="deleteInvoice(' + inv.id + ')" class="px-2 py-1 text-xs bg-red-50 text-red-700 rounded hover:bg-red-200" title="삭제"><i class="fas fa-trash"></i></button>';
     }
-    if (inv.status === 'FAILED') {
-      actions += '<button onclick="retryInvoice(' + inv.id + ')" class="px-2 py-1 text-xs bg-amber-50 text-amber-700 rounded hover:bg-amber-200" title="재시도"><i class="fas fa-redo"></i></button>';
+    // Phase 2: 실패(FAILED) + 국세청 전송실패(NTS_FAILED) → 재발행 버튼(작성중 복귀 후 재발행). 누락/실패 한눈에 조치.
+    if (inv.status === 'FAILED' || inv.status === 'NTS_FAILED') {
+      actions += '<button onclick="retryInvoice(' + inv.id + ')" class="px-2 py-1 text-xs bg-amber-50 text-amber-700 rounded hover:bg-amber-200" title="재발행(작성중 복귀)"><i class="fas fa-redo"></i></button>';
     }
     if (inv.status === 'SENT' || inv.status === 'NTS_FAILED') {
       actions += '<button onclick="refreshStatus(' + inv.id + ')" class="px-2 py-1 text-xs bg-blue-50 text-blue-700 rounded hover:bg-blue-200" title="상태 새로고침"><i class="fas fa-sync-alt"></i></button>';
     }
     if (inv.status === 'SENT' || inv.status === 'NTS_SUCCESS' || inv.status === 'ISSUED') {
       actions += '<button onclick="openPrintURL(' + inv.id + ')" class="px-2 py-1 text-xs bg-gray-100 text-gray-600 rounded hover:bg-gray-200" title="인쇄/PDF"><i class="fas fa-print"></i></button>';
+      // Phase 3: 입금 매칭 관리 (발행완료 건만)
+      actions += '<button onclick="event.stopPropagation();openPayMatchModal(' + inv.id + ')" class="px-2 py-1 text-xs bg-green-50 text-green-700 rounded hover:bg-green-200" title="입금 매칭"><i class="fas fa-link"></i></button>';
     }
     if (inv.status === 'ISSUED' || inv.status === 'SENT' || inv.status === 'NTS_SUCCESS' || inv.status === 'FAILED') {
       actions += '<button onclick="event.stopPropagation();sendTaxInvoiceNotice(' + inv.id + ',\'' + escapeHtml(inv.buyer_name || '') + '\',\'' + escapeHtml(inv.buyer_email || '') + '\',\'' + escapeHtml(inv.invoice_number || '') + '\')" class="px-2 py-1 text-xs bg-blue-50 text-blue-700 rounded hover:bg-blue-200" title="발행 알림 발송"><i class="fas fa-paper-plane text-xs"></i></button>';
@@ -527,10 +530,10 @@ async function viewDetail(id) {
         + ' class="px-4 py-2 bg-red-50 text-red-700 rounded hover:bg-red-200 text-sm">'
         + '<i class="fas fa-trash mr-1"></i>삭제</button>';
     }
-    if (inv.status === 'FAILED') {
+    if (inv.status === 'FAILED' || inv.status === 'NTS_FAILED') {
       actionBtns += '<button onclick="retryInvoice(' + inv.id + ');document.getElementById(\'detailModal\').classList.add(\'hidden\')"'
         + ' class="px-4 py-2 bg-amber-500 text-white rounded hover:bg-amber-600 text-sm font-medium">'
-        + '<i class="fas fa-redo mr-1"></i>재시도</button>';
+        + '<i class="fas fa-redo mr-1"></i>재발행</button>';
     }
     if (inv.status === 'SENT' || inv.status === 'NTS_FAILED') {
       actionBtns += '<button onclick="refreshStatus(' + inv.id + ')"'
@@ -544,6 +547,10 @@ async function viewDetail(id) {
       actionBtns += '<button onclick="openPrintURL(' + inv.id + ')"'
         + ' class="px-4 py-2 border border-gray-300 text-gray-700 bg-white rounded hover:bg-gray-50 text-sm">'
         + '<i class="fas fa-print mr-1"></i>인쇄/PDF</button>';
+      // Phase 3: 입금 매칭 관리 버튼
+      actionBtns += '<button onclick="document.getElementById(\'detailModal\').classList.add(\'hidden\');openPayMatchModal(' + inv.id + ')"'
+        + ' class="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 text-sm font-medium">'
+        + '<i class="fas fa-link mr-1"></i>입금 매칭</button>';
     }
     if (inv.status === 'ISSUED' || inv.status === 'SENT' || inv.status === 'NTS_SUCCESS') {
       actionBtns += '<button onclick="document.getElementById(\'detailModal\').classList.add(\'hidden\');openModifyModal(' + inv.id + ',\'' + (inv.invoice_number || '') + '\')"'
@@ -1105,27 +1112,56 @@ async function loadMonthlyEligible() {
     document.getElementById('btnMonthlyCreate').classList.remove('hidden');
     document.getElementById('btnMonthlyIssue').classList.remove('hidden');
 
+    // Phase 2: 법정 발행기한(공급월 익월10일) 집계 + 거래처 그룹을 가장 임박한 기한순 정렬
+    // (회계반영 탭과 동일 패턴: taxDueBadge/taxSupplyDate 재사용)
+    function _monthlyGrpDue(g) {
+      var ms = Infinity;
+      (g.orders || []).forEach(function(o) { var d = taxLegalDueDate(taxSupplyDate(o)); if (d) ms = Math.min(ms, d.getTime()); });
+      return ms;
+    }
+    var monthlyOverdue = 0, monthlyImminent = 0;
+    monthlyEligibleData.forEach(function(g) {
+      (g.orders || []).forEach(function(o) {
+        var dd = taxDueDday(taxLegalDueDate(taxSupplyDate(o)));
+        if (dd == null) return;
+        if (dd < 0) monthlyOverdue++; else if (dd <= 7) monthlyImminent++;
+      });
+    });
+    monthlyEligibleData.sort(function(a, b) { return _monthlyGrpDue(a) - _monthlyGrpDue(b); });
+
     var html = '<div class="space-y-3">';
     monthlyEligibleData.forEach(function(group) {
+      // 주문별 정확 기한은 아래 주문 목록에서 표시. 그룹 정렬만 가장 임박 기한 기준(_monthlyGrpDue).
       html += '<div class="bg-white rounded-lg shadow p-4">'
         + '<div class="flex justify-between items-center mb-2">'
-          + '<div><span class="font-bold text-gray-800">' + escapeHtml(group.client_name) + '</span>'
-          + '<span class="text-xs text-gray-400 ml-2">' + (group.business_registration_number || '') + '</span></div>'
+          + '<div class="flex items-center flex-wrap gap-1"><span class="font-bold text-gray-800">' + escapeHtml(group.client_name) + '</span>'
+          + '<span class="text-xs text-gray-400 ml-1">' + (group.business_registration_number || '') + '</span></div>'
           + '<div class="text-right">'
             + '<div class="font-bold text-blue-700" style="font-family:monospace;">' + Math.round(group.total_amount).toLocaleString() + '원</div>'
             + '<div class="text-xs text-gray-400">공급가 ' + Math.round(group.total_supply).toLocaleString() + ' + 세액 ' + Math.round(group.total_tax).toLocaleString() + '</div>'
           + '</div>'
         + '</div>'
-        + '<div class="text-xs text-gray-500">'
-          + group.orders.map(function(o) { return o.order_number + ' (' + (parseFloat(o.final_amount) || 0).toLocaleString() + '원)'; }).join(' / ')
+        + '<div class="text-xs text-gray-500 space-y-0.5">'
+          + group.orders.map(function(o) {
+              return '<div class="flex items-center gap-2">'
+                + '<span class="font-mono text-gray-600">' + (o.order_number || '') + '</span>'
+                + '<span class="text-gray-400">' + (o.order_date || '') + '</span>'
+                + taxDueBadge(taxSupplyDate(o))
+                + '<span class="ml-auto text-gray-700">' + (parseFloat(o.final_amount) || 0).toLocaleString() + '원</span>'
+                + '</div>';
+            }).join('')
         + '</div>'
         + '</div>';
     });
     html += '</div>';
 
     var totalAmount = monthlyEligibleData.reduce(function(s, g) { return s + g.total_amount; }, 0);
-    var summary = '<div class="bg-blue-50 rounded-lg p-4 mb-3 flex justify-between items-center">'
+    var warnParts = [];
+    if (monthlyOverdue > 0) warnParts.push('<span class="px-1.5 py-0.5 rounded text-[11px] font-bold bg-red-100 text-red-700">법정기한 초과 ' + monthlyOverdue + '건</span>');
+    if (monthlyImminent > 0) warnParts.push('<span class="px-1.5 py-0.5 rounded text-[11px] font-medium bg-amber-100 text-amber-700">임박(D-7) ' + monthlyImminent + '건</span>');
+    var summary = '<div class="bg-blue-50 rounded-lg p-4 mb-3 flex justify-between items-center flex-wrap gap-2">'
       + '<span class="text-sm text-blue-700 font-medium">' + monthlyEligibleData.length + '개 거래처 / ' + monthlyEligibleData.reduce(function(s, g) { return s + g.orders.length; }, 0) + '건 주문</span>'
+      + (warnParts.length ? '<span class="flex items-center gap-1">' + warnParts.join(' ') + '</span>' : '')
       + '<span class="text-lg font-bold text-blue-700" style="font-family:monospace;">' + Math.round(totalAmount).toLocaleString() + '원</span>'
       + '</div>';
 
@@ -1451,4 +1487,129 @@ async function submitDirectIssue() {
 (function() {
   var dim = document.getElementById('directIssueModal');
   if (dim) dim.addEventListener('click', function(e) { if (e.target === this) this.classList.add('hidden'); });
+})();
+
+// ==================== 입금 매칭 (Phase 3: 발행↔입금, 자동제안 + 수동확정) ====================
+// taxInvoices.js 전역(?raw concat) — page-prefix 없이 전역 함수로 노출(onclick 참조). 동명 충돌 주의.
+
+var payMatchInvoiceId = null;
+
+async function openPayMatchModal(invoiceId) {
+  payMatchInvoiceId = invoiceId;
+  var modal = document.getElementById('payMatchModal');
+  var content = document.getElementById('payMatchContent');
+  if (!modal || !content) { console.warn('[taxInvoices] #payMatchModal not found'); return; }
+  content.innerHTML = '<div class="text-center py-8 text-gray-400"><i class="fas fa-spinner fa-spin mr-1"></i>로딩 중...</div>';
+  modal.classList.remove('hidden');
+  await renderPayMatch(invoiceId);
+}
+
+async function renderPayMatch(invoiceId) {
+  var content = document.getElementById('payMatchContent');
+  if (!content) return;
+  try {
+    var res = await axios.get('/api/tax-invoices/' + invoiceId + '/payment-match');
+    if (!res.data.success) { content.innerHTML = '<div class="text-center py-6 text-red-400 text-sm">조회 실패: ' + (res.data.error || '') + '</div>'; return; }
+    var d = res.data.data || {};
+    var inv = d.invoice || {};
+    var matched = d.matched || [];
+    var suggestions = d.suggestions || [];
+    var crit = d.criteria || {};
+
+    var html = '';
+    // 계산서 요약
+    html += '<div class="bg-gray-50 rounded-lg p-3 text-sm">'
+      + '<div class="flex justify-between items-center">'
+      + '<div><span class="font-bold">' + (inv.invoice_number || '-') + '</span>'
+      + '<span class="text-gray-500 ml-2">' + escapeHtml(inv.buyer_name || '') + '</span></div>'
+      + '<div class="text-right font-bold text-blue-700 tabular-nums">' + fmt(inv.total_amount) + '원</div>'
+      + '</div>'
+      + '<div class="text-xs text-gray-400 mt-1">작성일 ' + (inv.issue_date || '-') + '</div>'
+      + '</div>';
+
+    // 매칭 상태 뱃지
+    if (matched.length > 0) {
+      html += '<div class="flex items-center gap-2 text-sm">'
+        + '<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-50 text-green-700"><i class="fas fa-check-circle mr-1"></i>매칭됨</span>'
+        + '<span class="text-gray-500">연결 입금 ' + matched.length + '건 / ' + fmt(d.matched_total) + '원</span>'
+        + '</div>';
+    } else {
+      html += '<div><span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-500"><i class="far fa-circle mr-1"></i>미매칭</span></div>';
+    }
+
+    // 연결된 입금 목록 (해제 가능)
+    if (matched.length > 0) {
+      html += '<div><div class="text-xs font-medium text-gray-500 mb-1">연결된 입금</div>'
+        + '<div class="border rounded-lg divide-y">';
+      matched.forEach(function(p) {
+        html += '<div class="flex items-center gap-2 px-3 py-2 text-sm">'
+          + '<span class="text-gray-500 w-24">' + (p.payment_date || '-') + '</span>'
+          + '<span class="font-medium tabular-nums">' + fmt(p.amount) + '원</span>'
+          + '<span class="text-xs text-gray-400">' + escapeHtml(p.payment_method || '') + (p.reference_number ? ' · ' + escapeHtml(p.reference_number) : '') + '</span>'
+          + '<button onclick="unlinkPayment(' + p.id + ')" class="ml-auto px-2 py-1 text-xs bg-red-50 text-red-600 rounded hover:bg-red-200" title="해제"><i class="fas fa-unlink mr-1"></i>해제</button>'
+          + '</div>';
+      });
+      html += '</div></div>';
+    }
+
+    // 자동제안 후보 (연결 가능)
+    html += '<div><div class="text-xs font-medium text-gray-500 mb-1">자동 제안 입금 <span class="text-gray-400">(거래처 일치 · 금액 ' + (crit.amount_tolerance > 0 ? '±' + fmt(crit.amount_tolerance) + '원' : '정확일치') + ' · 작성일 ±' + (crit.date_window_days || 60) + '일)</span></div>';
+    if (suggestions.length === 0) {
+      html += '<div class="text-center py-4 text-gray-400 text-sm border rounded-lg">제안할 미매칭 입금이 없습니다.</div>';
+    } else {
+      html += '<div class="border rounded-lg divide-y">';
+      suggestions.forEach(function(p) {
+        html += '<div class="flex items-center gap-2 px-3 py-2 text-sm">'
+          + '<span class="text-gray-500 w-24">' + (p.payment_date || '-') + '</span>'
+          + '<span class="font-medium tabular-nums">' + fmt(p.amount) + '원</span>'
+          + '<span class="text-xs text-gray-400">' + escapeHtml(p.payment_method || '') + (p.reference_number ? ' · ' + escapeHtml(p.reference_number) : '') + '</span>'
+          + '<button onclick="linkPayment(' + p.id + ')" class="ml-auto px-2 py-1 text-xs bg-green-600 text-white rounded hover:bg-green-700" title="연결"><i class="fas fa-link mr-1"></i>연결</button>'
+          + '</div>';
+      });
+      html += '</div>';
+    }
+    html += '</div>';
+
+    content.innerHTML = html;
+  } catch(e) {
+    content.innerHTML = '<div class="text-center py-6 text-red-400 text-sm">오류: ' + escapeHtml(e.message || '') + '</div>';
+  }
+}
+
+async function linkPayment(paymentId) {
+  if (!payMatchInvoiceId) return;
+  if (!(await showConfirm('이 입금을 세금계산서에 연결하시겠습니까?'))) return;
+  try {
+    var res = await axios.put('/api/tax-invoices/payments/' + paymentId + '/tax-invoice', { tax_invoice_id: payMatchInvoiceId });
+    if (res.data.success) {
+      showToast('입금이 연결되었습니다.', 'success');
+      renderPayMatch(payMatchInvoiceId);
+    } else {
+      showToast('연결 실패: ' + (res.data.error || ''), 'error');
+    }
+  } catch(e) {
+    showToast('연결 오류: ' + (e.response && e.response.data ? e.response.data.error : e.message), 'error');
+  }
+}
+
+async function unlinkPayment(paymentId) {
+  if (!payMatchInvoiceId) return;
+  if (!(await showConfirm('이 입금 연결을 해제하시겠습니까?'))) return;
+  try {
+    var res = await axios.put('/api/tax-invoices/payments/' + paymentId + '/tax-invoice', { tax_invoice_id: null });
+    if (res.data.success) {
+      showToast('연결이 해제되었습니다.', 'success');
+      renderPayMatch(payMatchInvoiceId);
+    } else {
+      showToast('해제 실패: ' + (res.data.error || ''), 'error');
+    }
+  } catch(e) {
+    showToast('해제 오류: ' + (e.response && e.response.data ? e.response.data.error : e.message), 'error');
+  }
+}
+
+// payMatchModal 외부 클릭 닫기
+(function() {
+  var pm = document.getElementById('payMatchModal');
+  if (pm) pm.addEventListener('click', function(e) { if (e.target === this) this.classList.add('hidden'); });
 })();

@@ -412,6 +412,19 @@ export function taxInvoicesPage(c: Context<HonoEnv>) {
         </div>
       </div>
     </div>
+
+    <!-- ===== 입금 매칭 관리 모달 (Phase 3: 발행↔입금 매칭, 자동제안 + 수동확정) ===== -->
+    <div id="payMatchModal" class="ds-modal-overlay hidden">
+      <div class="ds-modal w-full max-h-[90vh] overflow-y-auto" style="max-width:44rem">
+        <div class="sticky top-0 bg-white border-b px-6 py-4 flex items-center justify-between z-10">
+          <h3 class="text-lg font-bold"><i class="fas fa-link text-green-600 mr-2"></i>입금 매칭 관리</h3>
+          <button onclick="document.getElementById('payMatchModal').classList.add('hidden')" class="text-gray-400 hover:text-gray-600 text-2xl leading-none">&times;</button>
+        </div>
+        <div class="px-6 py-4 space-y-4" id="payMatchContent">
+          <div class="text-center py-8 text-gray-400"><i class="fas fa-spinner fa-spin mr-1"></i>로딩 중...</div>
+        </div>
+      </div>
+    </div>
     </div>
 
     <!-- 현금영수증 탭 -->
