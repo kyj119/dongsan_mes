@@ -196,7 +196,7 @@ function displayInvoices(items) {
     return '<tr class="border-t hover:bg-gray-50 cursor-pointer" ondblclick="viewDetail(' + inv.id + ')">'
       + '<td class="px-4 py-3 font-medium text-sm">' + (inv.invoice_number || '-') + '</td>'
       + '<td class="px-4 py-3 text-sm text-gray-600">' + orderCell + '</td>'
-      + '<td class="px-4 py-3 text-sm">' + (inv.buyer_name || '-') + '</td>'
+      + '<td class="px-4 py-3 text-sm">' + escapeHtml(inv.buyer_name || '-') + '</td>'
       + '<td class="px-4 py-3 text-center text-sm">' + (inv.issue_date || '-') + '</td>'
       + '<td class="px-4 py-3 text-right text-sm tabular-nums">' + fmt(inv.supply_amount) + '</td>'
       + '<td class="px-4 py-3 text-right text-sm tabular-nums">' + fmt(inv.tax_amount) + '</td>'
@@ -293,7 +293,7 @@ function renderUnbilledAccordion() {
     var doneHtml = '<span id="clientDone_' + ci + '" class="hidden px-2 py-0.5 bg-green-50 text-green-700 rounded text-xs font-medium ml-2"><i class="fas fa-check mr-1"></i>발행완료</span>';
     var headerContent = '<div' + toggleAttr + ' class="' + headerClass + ' w-full">'
       + '<div class="flex items-center flex-wrap gap-2">'
-      + '<span class="font-medium text-sm">' + (cl.client_name || '-') + '</span>'
+      + '<span class="font-medium text-sm">' + escapeHtml(cl.client_name || '-') + '</span>'
       + methodBadge
       + countBadge
       + warningHtml
@@ -577,7 +577,7 @@ async function viewDetail(id) {
       + '<div class="grid grid-cols-2 gap-3 text-sm mb-4">'
       + '<div><span class="text-gray-500">주문번호:</span> <span class="font-medium">' + (inv.order_number || '-') + '</span></div>'
       + '<div><span class="text-gray-500">상태:</span> ' + badge + '</div>'
-      + '<div><span class="text-gray-500">거래처:</span> <span class="font-medium">' + (inv.buyer_name || '-') + '</span></div>'
+      + '<div><span class="text-gray-500">거래처:</span> <span class="font-medium">' + escapeHtml(inv.buyer_name || '-') + '</span></div>'
       + '<div><span class="text-gray-500">작성일:</span> ' + (inv.issue_date || '-') + '</div>'
       + '<div><span class="text-gray-500">공급가액:</span> ' + fmt(inv.supply_amount) + '원</div>'
       + '<div><span class="text-gray-500">세액:</span> ' + fmt(inv.tax_amount) + '원</div>'
@@ -948,7 +948,7 @@ function renderBillingPending(clients, waiting) {
     waiting.forEach(function(o) {
       html += '<div class="flex items-center gap-3 text-xs text-gray-400 py-1">';
       html += '<span class="font-mono w-36">' + (o.order_number || 'ORD-' + o.id) + '</span>';
-      html += '<span>' + (o.client_name || '-') + '</span>';
+      html += '<span>' + escapeHtml(o.client_name || '-') + '</span>';
       html += '<span class="ml-auto">' + (o.billable_after || '-') + ' 이후 반영 가능</span>';
       html += '</div>';
     });
