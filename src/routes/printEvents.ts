@@ -6,6 +6,24 @@ import { entityFilter } from '../utils/entityFilter'
 
 const printEventsRouter = new Hono<HonoEnv>()
 
+// 수신 시각 정규화: tz 표식 없는 값은 KST naive로 간주 → UTC naive('YYYY-MM-DD HH:MM:SS')로 변환(-9h).
+// tz 표식(Z, +HH:MM, -HH:MM)이 있으면 신뢰하여 UTC로 변환 후 표식 제거.
+// (LogWatcher는 현재 tz 없는 KST 로컬시간을 보내며, 향후 ISO+offset 전환 대비)
+function kstNaiveToUtc(ts: string | null | undefined): string | null {
+  if (!ts) return null
+  const s = String(ts).trim()
+  if (!s) return null
+  // 이미 tz 표식 있으면 Date로 UTC 정규화 (끝의 Z 또는 ±HH:MM / ±HHMM, 날짜부 이후 구간에서만 판별)
+  if (/[zZ]$/.test(s) || /[+\-]\d{2}:?\d{2}$/.test(s.slice(11))) {
+    const d = new Date(s.includes('T') ? s : s.replace(' ', 'T'))
+    return isNaN(d.getTime()) ? null : d.toISOString().replace('T', ' ').slice(0, 19)
+  }
+  // tz 없는 KST naive → +09:00 부여 후 UTC naive로 환산(-9h)
+  const iso = s.includes('T') ? s : s.replace(' ', 'T')
+  const d = new Date(iso + '+09:00')
+  return isNaN(d.getTime()) ? null : d.toISOString().replace('T', ' ').slice(0, 19)
+}
+
 // 인쇄 소요시간(초) 계산 헬퍼
 function calcPrintDuration(startedAt: string | null, completedAt: string | null): number | null {
   if (!startedAt || !completedAt) return null
@@ -227,6 +245,10 @@ printEventsRouter.post('/', agentKeyMiddleware, async (c) => {
     const nestMembersJson = Array.isArray(nest_members) && nest_members.length > 0
       ? JSON.stringify(nest_members) : null
 
+    // 수신 시각 UTC 정규화 (KST naive → UTC naive). 멱등성/소요시간/INSERT 모두 동일 정규화값 사용.
+    const normStartedAt = kstNaiveToUtc(print_started_at)
+    const normCompletedAt = kstNaiveToUtc(print_completed_at)
+
     if (!agent_id || !file_path || !print_status) {
       return c.json({ success: false, error: 'agent_id, file_path, print_status required' }, 400)
     }
@@ -246,10 +268,10 @@ printEventsRouter.post('/', agentKeyMiddleware, async (c) => {
       if (hb?.equipment_id) resolvedEquipmentId = hb.equipment_id
     }
 
-    // Idempotency check
+    // Idempotency check (정규화된 completed_at 기준 — 저장값과 동일 기준)
     const existing = await c.env.DB.prepare(
       'SELECT id FROM print_events WHERE file_path = ? AND print_completed_at = ?'
-    ).bind(file_path, print_completed_at || '').first<{ id: number }>()
+    ).bind(file_path, normCompletedAt || '').first<{ id: number }>()
 
     if (existing) {
       return c.json({ success: true, message: 'Event already recorded', data: { id: existing.id, duplicate: true } })
@@ -301,8 +323,8 @@ printEventsRouter.post('/', agentKeyMiddleware, async (c) => {
       }
     }
 
-    // 인쇄 소요시간 계산
-    const durationSec = calcPrintDuration(print_started_at, print_completed_at)
+    // 인쇄 소요시간 계산 (정규화된 UTC 값 기준 — 차이는 동일하므로 안전)
+    const durationSec = calcPrintDuration(normStartedAt, normCompletedAt)
 
     // entity_id: 카드에서 유도 (agent endpoint이므로 user context 없음)
     // #384: cards.requesting_entity_id (NULL이면 order entity)
@@ -318,8 +340,8 @@ printEventsRouter.post('/', agentKeyMiddleware, async (c) => {
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).bind(
       agent_id, resolvedEquipmentId, cardNumber, cardId, orderNumber, file_path, extractedName,
-      printer_name || null, print_status, print_started_at || null,
-      print_completed_at || null, durationSec,
+      printer_name || null, print_status, normStartedAt,
+      normCompletedAt, durationSec,
       output_width || null, output_height || null,
       dpi || null,
       copy_columns || 1, copy_rows || 1, copy_total || 1,
@@ -458,10 +480,14 @@ printEventsRouter.post('/batch', agentKeyMiddleware, async (c) => {
 
     for (const evt of events) {
       try {
-        // Idempotency
+        // 수신 시각 UTC 정규화 (단일 핸들러와 동일)
+        const evtNormStartedAt = kstNaiveToUtc(evt.print_started_at)
+        const evtNormCompletedAt = kstNaiveToUtc(evt.print_completed_at)
+
+        // Idempotency (정규화된 completed_at 기준)
         const existing = await c.env.DB.prepare(
           'SELECT id FROM print_events WHERE file_path = ? AND print_completed_at = ?'
-        ).bind(evt.file_path, evt.print_completed_at || '').first()
+        ).bind(evt.file_path, evtNormCompletedAt || '').first()
 
         if (existing) { duplicates++; continue }
 
@@ -516,7 +542,7 @@ printEventsRouter.post('/batch', agentKeyMiddleware, async (c) => {
           }
         }
 
-        const evtDuration = calcPrintDuration(evt.print_started_at, evt.print_completed_at)
+        const evtDuration = calcPrintDuration(evtNormStartedAt, evtNormCompletedAt)
 
         // entity_id: 카드에서 유도 (#384: requesting_entity_id, NULL이면 order entity)
         const batchEntityId = await deriveCardEntityId(c.env.DB, { cardId })
@@ -534,8 +560,8 @@ printEventsRouter.post('/batch', agentKeyMiddleware, async (c) => {
         `).bind(
           agent_id, resolvedEquipmentId, cardNumber, cardId, orderNumber,
           evt.file_path, extractedName, evt.printer_name || null,
-          evt.print_status, evt.print_started_at || null,
-          evt.print_completed_at || null, evtDuration, evt.output_width || null,
+          evt.print_status, evtNormStartedAt,
+          evtNormCompletedAt, evtDuration, evt.output_width || null,
           evt.output_height || null, evt.dpi || null,
           evt.copy_columns || 1, evt.copy_rows || 1, evt.copy_total || 1,
           evt.tile_count || 0, evt.tile_index || 0, batchEntityId, evtNestMembersJson
@@ -620,7 +646,10 @@ printEventsRouter.patch('/:id/actual-printed', authMiddleware, async (c) => {
 // GET /api/print-events — list events with filters
 printEventsRouter.get('/', authMiddleware, async (c) => {
   try {
-    const { page = '1', limit = '50', agent_id = '', equipment_id = '', status = '', date = '' } = c.req.query()
+    const {
+      page = '1', limit = '50', agent_id = '', equipment_id = '', status = '', date = '',
+      q = '', from = '', to = '', equipment_ids = ''
+    } = c.req.query()
     const pageNum = Number(page)
     const limitNum = Number(limit)
     const offset = (pageNum - 1) * limitNum
@@ -633,7 +662,14 @@ printEventsRouter.get('/', authMiddleware, async (c) => {
       where += ' AND pe.agent_id = ?'
       params.push(agent_id)
     }
-    if (equipment_id) {
+    // equipment_ids(콤마구분 다중) 우선 — 값이 있으면 단일 equipment_id 무시
+    const equipmentIdList = equipment_ids
+      ? equipment_ids.split(',').map((s) => s.trim()).filter((s) => s.length > 0)
+      : []
+    if (equipmentIdList.length > 0) {
+      where += ` AND pe.equipment_id IN (${equipmentIdList.map(() => '?').join(',')})`
+      params.push(...equipmentIdList)
+    } else if (equipment_id) {
       where += ' AND pe.equipment_id = ?'
       params.push(equipment_id)
     }
@@ -641,8 +677,31 @@ printEventsRouter.get('/', authMiddleware, async (c) => {
       where += ' AND pe.print_status = ?'
       params.push(status)
     }
-    if (date) {
-      where += ' AND date(pe.print_completed_at) = ?'
+    // 통합 검색어 q: 파일명/경로/카드/주문/장비명 LIKE OR (COLLATE NOCASE)
+    if (q) {
+      where += ` AND (
+        pe.file_name LIKE '%' || ? || '%' COLLATE NOCASE
+        OR pe.file_path LIKE '%' || ? || '%' COLLATE NOCASE
+        OR pe.card_number LIKE '%' || ? || '%' COLLATE NOCASE
+        OR pe.order_number LIKE '%' || ? || '%' COLLATE NOCASE
+        OR pe.printer_name LIKE '%' || ? || '%' COLLATE NOCASE
+      )`
+      params.push(q, q, q, q, q)
+    }
+    // from/to(KST 날짜) 우선 — 동시 입력 시 date 단일 필터 무시.
+    // 저장값=UTC이므로 KST(+9h) 환산 후 date 비교. completed 없으면 created_at 폴백.
+    if (from || to) {
+      if (from) {
+        where += " AND date(datetime(COALESCE(pe.print_completed_at, pe.created_at), '+9 hours')) >= ?"
+        params.push(from)
+      }
+      if (to) {
+        where += " AND date(datetime(COALESCE(pe.print_completed_at, pe.created_at), '+9 hours')) <= ?"
+        params.push(to)
+      }
+    } else if (date) {
+      // 단일 date 필터도 KST 기준 (저장값 UTC → +9h 환산)
+      where += " AND date(datetime(pe.print_completed_at, '+9 hours')) = ?"
       params.push(date)
     }
 

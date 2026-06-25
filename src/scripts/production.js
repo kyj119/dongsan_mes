@@ -161,12 +161,48 @@ async function loadPrintingCards() {
   }
 }
 
-// ── 장비 상태: /api/print-events/agents ──
+// ── 장비 그룹화 헬퍼 (장비목록·필터 드롭다운 공유) ──
+// 그룹 키 = location_zone 있으면 그것, 없으면 id의 '-' 앞 접두사
+var productionEqList = [];        // 마지막 로드 장비 원본
+var productionEqCollapsed = {};   // { groupKey: true } = 접힘 상태 유지
+var productionAgentSelected = {}; // { equipmentId: true } = 다중장비 필터 선택
+
+function productionEqGroupKey(eq) {
+  var zone = (eq && eq.location_zone ? String(eq.location_zone).trim() : '');
+  if (zone) return zone;
+  var id = (eq && eq.id ? String(eq.id) : '');
+  var dash = id.indexOf('-');
+  return dash > 0 ? id.substring(0, dash) : (id || '기타');
+}
+
+// 장비 배열 → [{ key, items: [eq,...] }] (그룹명 오름차순, 그룹 내 name 오름차순)
+function productionGroupEquipment(list) {
+  var map = {};
+  (list || []).forEach(function(eq) {
+    if (!eq || !eq.id) return;
+    var k = productionEqGroupKey(eq);
+    if (!map[k]) map[k] = [];
+    map[k].push(eq);
+  });
+  return Object.keys(map).sort(function(a, b) {
+    return a < b ? -1 : a > b ? 1 : 0;
+  }).map(function(k) {
+    var items = map[k].slice().sort(function(a, b) {
+      var na = (a.name || a.id || '').toLowerCase();
+      var nb = (b.name || b.id || '').toLowerCase();
+      return na < nb ? -1 : na > nb ? 1 : 0;
+    });
+    return { key: k, items: items };
+  });
+}
+
+// ── 장비 상태: /api/dashboard/equipment-load ──
 async function loadAgents() {
   try {
     // 장비 중심: equipment 테이블 기반(PC 단위 agent_heartbeats 대신 장비 단위)
     var res = await axios.get('/api/dashboard/equipment-load');
     var agents = (res.data && res.data.data) || [];
+    productionEqList = agents;
     var online = agents.filter(function(e){ return e.agent_status === 'ONLINE'; }).length;
     var offline = agents.length - online;
 
@@ -182,41 +218,104 @@ async function loadAgents() {
         + '<span>오프라인 ' + offline + '</span></span>';
     }
 
-    // #343: 출력이력 장비 필터 옵션 채우기 (equipment 기반)
+    // #343: 출력이력 장비 필터 옵션 채우기 (그룹화 체크박스)
     populateAgentFilter(agents);
 
-    var listEl = document.getElementById('agentList');
-    if (!agents || agents.length === 0) {
-      listEl.innerHTML =
-        '<div class="col-span-5 text-center py-6 text-gray-400 text-sm">'
-        + '<i class="fas fa-server text-2xl block mb-2 text-gray-200"></i>'
-        + '등록된 장비가 없습니다.</div>';
-      return;
-    }
-
-    listEl.innerHTML = agents.map(function(agent) {
-      var isOnline = agent.agent_status === 'ONLINE';
-      var borderCls = isOnline ? 'border-green-200' : 'border-gray-200';
-      var dotCls = isOnline ? 'text-green-500' : 'text-gray-300';
-      var statusLabel = isOnline ? '온라인' : '오프라인';
-      var statusTextCls = isOnline ? 'text-green-600' : 'text-gray-400';
-      var lastSeen = agent.last_seen_at ? fmtTime(agent.last_seen_at) : '미확인';
-      var name = agent.name || agent.id || '장비';
-
-      return '<div class="rounded-lg border ' + borderCls + ' p-2.5 text-center hover:shadow-sm transition-shadow">'
-        + '<div class="text-[10px] font-semibold text-gray-700 truncate mb-1" title="' + escapeHtml(name) + '">' + escapeHtml(name) + '</div>'
-        + '<div class="text-[10px] ' + statusTextCls + ' font-medium mb-0.5">'
-        + '<i class="fas fa-circle ' + dotCls + ' mr-0.5" style="font-size:5px;"></i>' + statusLabel + '</div>'
-        + '<div class="text-[9px] text-gray-300">' + lastSeen + '</div>'
-        + '</div>';
-    }).join('');
+    // 장비 목록: 공정·구역 그룹 아코디언 렌더
+    productionRenderEquipment();
   } catch (e) {
     console.error('loadAgents error:', e);
-    document.getElementById('agentList').innerHTML =
-      '<div class="col-span-5 text-center py-4 text-gray-400 text-sm">'
-      + '<i class="fas fa-exclamation-circle mr-1"></i>장비 미등록 또는 데이터 없음</div>';
+    var el = document.getElementById('agentList');
+    if (el) {
+      el.innerHTML =
+        '<div class="text-center py-4 text-gray-400 text-sm">'
+        + '<i class="fas fa-exclamation-circle mr-1"></i>장비 미등록 또는 데이터 없음</div>';
+    }
   }
 }
+
+function productionAgentCard(agent) {
+  var isOnline = agent.agent_status === 'ONLINE';
+  var borderCls = isOnline ? 'border-green-200' : 'border-gray-200';
+  var dotCls = isOnline ? 'text-green-500' : 'text-gray-300';
+  var statusLabel = isOnline ? '온라인' : '오프라인';
+  var statusTextCls = isOnline ? 'text-green-600' : 'text-gray-400';
+  var lastSeen = agent.last_seen_at ? fmtTime(agent.last_seen_at) : '미확인';
+  var name = agent.name || agent.id || '장비';
+
+  return '<div class="rounded-lg border ' + borderCls + ' p-2.5 text-center hover:shadow-sm transition-shadow">'
+    + '<div class="text-[10px] font-semibold text-gray-700 truncate mb-1" title="' + escapeHtml(name) + '">' + escapeHtml(name) + '</div>'
+    + '<div class="text-[10px] ' + statusTextCls + ' font-medium mb-0.5">'
+    + '<i class="fas fa-circle ' + dotCls + ' mr-0.5" style="font-size:5px;"></i>' + statusLabel + '</div>'
+    + '<div class="text-[9px] text-gray-300">' + lastSeen + '</div>'
+    + '</div>';
+}
+
+// 장비 목록 아코디언 렌더 (즉시검색 필터 q 반영)
+function productionRenderEquipment() {
+  var listEl = document.getElementById('agentList');
+  if (!listEl) { console.warn('[production] #agentList not found'); return; }
+
+  if (!productionEqList || productionEqList.length === 0) {
+    listEl.innerHTML =
+      '<div class="text-center py-6 text-gray-400 text-sm">'
+      + '<i class="fas fa-server text-2xl block mb-2 text-gray-200"></i>'
+      + '등록된 장비가 없습니다.</div>';
+    return;
+  }
+
+  var qEl = document.getElementById('eqQuickSearch');
+  var q = qEl && qEl.value ? qEl.value.trim().toLowerCase() : '';
+
+  var groups = productionGroupEquipment(productionEqList);
+  var anyShown = false;
+
+  var html = groups.map(function(g) {
+    var matched = q
+      ? g.items.filter(function(eq) {
+          var name = (eq.name || '').toLowerCase();
+          var id = (eq.id || '').toLowerCase();
+          return name.indexOf(q) >= 0 || id.indexOf(q) >= 0;
+        })
+      : g.items;
+    if (matched.length === 0) return ''; // 일치 없는 그룹 숨김
+    anyShown = true;
+    // 검색 중에는 강제 펼침, 아니면 저장된 접힘 상태
+    var collapsed = !q && productionEqCollapsed[g.key];
+    var cardsHtml = matched.map(function(eq) { return productionAgentCard(eq); }).join('');
+
+    return '<div class="border border-gray-100 rounded-lg overflow-hidden">'
+      + '<button type="button" onclick="productionToggleEqGroup(\'' + encodeURIComponent(g.key) + '\')" '
+      + 'class="w-full flex items-center justify-between px-3 py-2 bg-gray-50 hover:bg-gray-100 transition-colors text-left">'
+      + '<span class="text-xs font-semibold text-gray-700">'
+      + '<i class="fas fa-chevron-' + (collapsed ? 'right' : 'down') + ' text-gray-400 text-[9px] mr-1.5"></i>'
+      + escapeHtml(g.key)
+      + '<span class="ml-1.5 inline-flex items-center px-1.5 py-0.5 rounded-full bg-gray-200 text-gray-600 text-[9px] font-medium">' + matched.length + '</span>'
+      + '</span></button>'
+      + '<div class="' + (collapsed ? 'hidden' : '') + ' grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 p-2">'
+      + cardsHtml + '</div></div>';
+  }).join('');
+
+  if (!anyShown) {
+    html = '<div class="text-center py-6 text-gray-400 text-sm">'
+      + '<i class="fas fa-search text-2xl block mb-2 text-gray-200"></i>'
+      + '검색 결과가 없습니다.</div>';
+  }
+  listEl.innerHTML = html;
+}
+
+function productionToggleEqGroup(encKey) {
+  var key = decodeURIComponent(encKey);
+  productionEqCollapsed[key] = !productionEqCollapsed[key];
+  productionRenderEquipment();
+}
+
+function productionFilterEquipment() {
+  productionRenderEquipment();
+}
+
+window.productionToggleEqGroup = productionToggleEqGroup;
+window.productionFilterEquipment = productionFilterEquipment;
 
 // ── 최근 출력 이벤트 (페이지네이션) ──
 var eventsPage = 1;
@@ -228,13 +327,18 @@ async function loadRecentEvents() {
 
   try {
     var url = '/api/print-events?page=' + eventsPage + '&limit=50';
-    // #343: 출력이력 필터 (장비/상태/날짜) — 라우트 기구현
-    var afEl = document.getElementById('evFilterAgent');
+    // #343: 출력이력 필터 (키워드/다중장비/상태/기간) — 라우트 기구현
+    var kwEl = document.getElementById('evFilterKeyword');
     var sfEl = document.getElementById('evFilterStatus');
-    var dfEl = document.getElementById('evFilterDate');
-    if (afEl && afEl.value) url += '&equipment_id=' + encodeURIComponent(afEl.value);
+    var fromEl = document.getElementById('evFilterFrom');
+    var toEl = document.getElementById('evFilterTo');
+    // 다중 장비: 선택된 id들 콤마조인
+    var eqIds = Object.keys(productionAgentSelected).filter(function(id) { return productionAgentSelected[id]; });
+    if (kwEl && kwEl.value.trim()) url += '&q=' + encodeURIComponent(kwEl.value.trim());
+    if (eqIds.length > 0) url += '&equipment_ids=' + encodeURIComponent(eqIds.join(','));
     if (sfEl && sfEl.value) url += '&status=' + encodeURIComponent(sfEl.value);
-    if (dfEl && dfEl.value) url += '&date=' + encodeURIComponent(dfEl.value);
+    if (fromEl && fromEl.value) url += '&from=' + encodeURIComponent(fromEl.value);
+    if (toEl && toEl.value) url += '&to=' + encodeURIComponent(toEl.value);
     var res = await axios.get(url);
     if (!res.data.success) throw new Error('API 오류');
 
@@ -358,37 +462,124 @@ function changeEventsPage(delta) {
 
 window.changeEventsPage = changeEventsPage;
 
-// ── #343: 출력이력 필터 ──
+// ── #343: 출력이력 필터 (키워드/다중장비/상태/기간) ──
+// 다중 장비 체크박스 패널 채우기 (그룹화 — 장비목록과 동일 헬퍼 공유)
 function populateAgentFilter(agents) {
-  var sel = document.getElementById('evFilterAgent');
-  if (!sel) { console.warn('[production] #evFilterAgent not found'); return; }
-  var cur = sel.value;
-  var opts = '<option value="">전체 장비</option>';
-  (agents || []).forEach(function(a) {
-    var id = a.id || '';
-    if (!id) return;
-    var name = a.name || a.id;
-    opts += '<option value="' + escapeHtml(id) + '">' + escapeHtml(name) + '</option>';
+  var box = document.getElementById('evAgentCheckboxes');
+  if (!box) { console.warn('[production] #evAgentCheckboxes not found'); return; }
+
+  // 더 이상 존재하지 않는 장비의 선택상태 정리
+  var validIds = {};
+  (agents || []).forEach(function(a) { if (a && a.id) validIds[a.id] = true; });
+  Object.keys(productionAgentSelected).forEach(function(id) {
+    if (!validIds[id]) delete productionAgentSelected[id];
   });
-  sel.innerHTML = opts;
-  sel.value = cur; // 새로고침 후 선택 유지
+
+  var groups = productionGroupEquipment(agents);
+  box.innerHTML = groups.map(function(g) {
+    var items = g.items.map(function(eq) {
+      var checked = productionAgentSelected[eq.id] ? ' checked' : '';
+      var name = eq.name || eq.id;
+      return '<label class="flex items-center gap-1.5 py-0.5 pl-3 cursor-pointer hover:bg-gray-50 rounded" title="' + escapeHtml(name) + ' (' + escapeHtml(eq.id) + ')">'
+        + '<input type="checkbox" class="ev-agent-cb" value="' + escapeHtml(eq.id) + '"' + checked
+        + ' onchange="productionOnAgentCheck(this.value, this.checked)">'
+        + '<span class="truncate">' + escapeHtml(name) + '</span></label>';
+    }).join('');
+    return '<div class="mb-1">'
+      + '<div class="text-[10px] font-semibold text-gray-400 uppercase tracking-wide px-1 mt-1">' + escapeHtml(g.key) + '</div>'
+      + items + '</div>';
+  }).join('');
+
+  productionSyncAgentLabel();
 }
+
+// 개별 체크박스 토글
+function productionOnAgentCheck(id, checked) {
+  if (checked) productionAgentSelected[id] = true;
+  else delete productionAgentSelected[id];
+  productionSyncAgentLabel();
+  applyEventFilters();
+}
+
+// '전체' 토글
+function productionToggleAllAgents(checked) {
+  if (checked) {
+    (productionEqList || []).forEach(function(eq) { if (eq && eq.id) productionAgentSelected[eq.id] = true; });
+  } else {
+    productionAgentSelected = {};
+  }
+  // 체크박스 UI 동기화
+  document.querySelectorAll('.ev-agent-cb').forEach(function(cb) { cb.checked = checked; });
+  productionSyncAgentLabel();
+  applyEventFilters();
+}
+
+// 버튼 라벨 + '전체' 체크박스 상태 동기화
+function productionSyncAgentLabel() {
+  var n = Object.keys(productionAgentSelected).filter(function(id) { return productionAgentSelected[id]; }).length;
+  var labelEl = document.getElementById('evAgentDropdownLabel');
+  if (labelEl) labelEl.textContent = n === 0 ? '전체 장비' : '장비 ' + n;
+  var allEl = document.getElementById('evAgentSelectAll');
+  var total = (productionEqList || []).length;
+  if (allEl) allEl.checked = total > 0 && n === total;
+}
+
+function productionToggleAgentDropdown() {
+  var panel = document.getElementById('evAgentDropdownPanel');
+  if (!panel) { console.warn('[production] #evAgentDropdownPanel not found'); return; }
+  panel.classList.toggle('hidden');
+}
+
+// 패널 바깥 클릭 시 닫기
+document.addEventListener('click', function(e) {
+  var wrap = document.getElementById('evAgentDropdownWrap');
+  var panel = document.getElementById('evAgentDropdownPanel');
+  if (!wrap || !panel || panel.classList.contains('hidden')) return;
+  if (!wrap.contains(e.target)) panel.classList.add('hidden');
+});
 
 function applyEventFilters() {
   eventsPage = 1;
   loadRecentEvents();
 }
 
+// 키워드 입력 디바운스 (300ms) + Enter 즉시
+var productionKeywordTimer = null;
+function productionBindKeyword() {
+  var kwEl = document.getElementById('evFilterKeyword');
+  if (!kwEl) { console.warn('[production] #evFilterKeyword not found'); return; }
+  if (kwEl.dataset.bound) return; // 중복 바인딩 방지
+  kwEl.dataset.bound = '1';
+  kwEl.addEventListener('input', function() {
+    if (productionKeywordTimer) clearTimeout(productionKeywordTimer);
+    productionKeywordTimer = setTimeout(applyEventFilters, 300);
+  });
+  kwEl.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') {
+      if (productionKeywordTimer) clearTimeout(productionKeywordTimer);
+      applyEventFilters();
+    }
+  });
+}
+
 function resetEventFilters() {
-  ['evFilterAgent', 'evFilterStatus', 'evFilterDate'].forEach(function(id) {
+  ['evFilterKeyword', 'evFilterStatus', 'evFilterFrom', 'evFilterTo'].forEach(function(id) {
     var el = document.getElementById(id);
     if (el) el.value = '';
   });
+  productionAgentSelected = {};
+  document.querySelectorAll('.ev-agent-cb').forEach(function(cb) { cb.checked = false; });
+  var allEl = document.getElementById('evAgentSelectAll');
+  if (allEl) allEl.checked = false;
+  productionSyncAgentLabel();
   applyEventFilters();
 }
 
 window.applyEventFilters = applyEventFilters;
 window.resetEventFilters = resetEventFilters;
+window.productionOnAgentCheck = productionOnAgentCheck;
+window.productionToggleAllAgents = productionToggleAllAgents;
+window.productionToggleAgentDropdown = productionToggleAgentDropdown;
 
 // ── 실제 출력매수 입력 ──
 async function showActualPrintedInput(eventId, copyTotal) {
@@ -701,6 +892,7 @@ window.editCapacity = async function(equipmentId, currentCapacity) {
 // ════════════════
 // 초기 로드
 // ════════════════
+productionBindKeyword();
 loadStats();
 loadPrintingCards();
 loadAgents();

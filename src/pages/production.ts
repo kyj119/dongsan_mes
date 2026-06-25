@@ -72,13 +72,20 @@ export function productionPage(c: Context<HonoEnv>) {
 
         <!-- ── 장비(에이전트) 상태 ── -->
         <div class="ds-card p-4 mb-4">
-          <div class="flex items-center justify-between mb-3">
+          <div class="flex items-center justify-between mb-3 gap-2 flex-wrap">
             <h2 class="text-sm font-bold text-gray-700">
               <i class="fas fa-server text-blue-500 mr-1.5"></i>장비 상태
             </h2>
-            <div id="agentSummary" class="text-xs text-gray-400"></div>
+            <div class="flex items-center gap-2">
+              <div class="relative">
+                <i class="fas fa-search text-gray-300 text-[10px] absolute left-2 top-1/2 -translate-y-1/2"></i>
+                <input id="eqQuickSearch" type="text" oninput="productionFilterEquipment()" placeholder="장비명·ID 검색"
+                  class="border rounded pl-6 pr-2 py-1 text-xs w-40" title="장비 즉시검색">
+              </div>
+              <div id="agentSummary" class="text-xs text-gray-400"></div>
+            </div>
           </div>
-          <div id="agentList" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
+          <div id="agentList" class="space-y-3">
             <!-- 스켈레톤 -->
             <div class="ds-skeleton" style="height:64px;border-radius:8px;"></div>
             <div class="ds-skeleton" style="height:64px;border-radius:8px;"></div>
@@ -99,18 +106,44 @@ export function productionPage(c: Context<HonoEnv>) {
               </button>
             </div>
           </div>
-          <!-- #343: 출력이력 필터 (장비/상태/날짜) — 라우트 기구현 -->
+          <!-- #343: 출력이력 필터 (키워드/기간/다중장비/상태) — 라우트 기구현 -->
           <div class="flex flex-wrap items-center gap-2 px-4 py-2 border-b border-gray-100 bg-gray-50/40">
-            <select id="evFilterAgent" onchange="applyEventFilters()" class="border rounded px-2 py-1 text-xs" title="장비">
-              <option value="">전체 장비</option>
-            </select>
+            <!-- 키워드 검색 -->
+            <div class="relative">
+              <i class="fas fa-search text-gray-300 text-[10px] absolute left-2 top-1/2 -translate-y-1/2"></i>
+              <input id="evFilterKeyword" type="text" placeholder="파일명·카드번호·주문번호 검색"
+                class="border rounded pl-6 pr-2 py-1 text-xs w-52" title="키워드 검색">
+            </div>
+            <!-- 다중 장비 선택 드롭다운 -->
+            <div class="relative" id="evAgentDropdownWrap">
+              <button type="button" id="evAgentDropdownBtn" onclick="productionToggleAgentDropdown()"
+                class="border rounded px-2 py-1 text-xs flex items-center gap-1 bg-white hover:bg-gray-50" title="장비 선택">
+                <i class="fas fa-server text-gray-400 text-[10px]"></i>
+                <span id="evAgentDropdownLabel">전체 장비</span>
+                <i class="fas fa-chevron-down text-gray-300 text-[9px]"></i>
+              </button>
+              <div id="evAgentDropdownPanel"
+                class="hidden absolute z-30 mt-1 left-0 bg-white border rounded shadow-lg p-2 text-xs"
+                style="min-width:200px;max-height:300px;overflow-y:auto;">
+                <label class="flex items-center gap-1.5 py-1 border-b border-gray-100 mb-1 font-medium text-gray-700">
+                  <input type="checkbox" id="evAgentSelectAll" onchange="productionToggleAllAgents(this.checked)">전체
+                </label>
+                <div id="evAgentCheckboxes"></div>
+              </div>
+            </div>
+            <!-- 상태 -->
             <select id="evFilterStatus" onchange="applyEventFilters()" class="border rounded px-2 py-1 text-xs" title="상태">
               <option value="">전체 상태</option>
               <option value="OK">정상</option>
               <option value="ERROR">오류</option>
               <option value="CANCEL">취소</option>
             </select>
-            <input id="evFilterDate" type="date" onchange="applyEventFilters()" class="border rounded px-2 py-1 text-xs" title="출력일">
+            <!-- 기간 범위 -->
+            <div class="flex items-center gap-1">
+              <input id="evFilterFrom" type="date" onchange="applyEventFilters()" class="border rounded px-2 py-1 text-xs" title="시작일">
+              <span class="text-gray-300 text-[10px]">~</span>
+              <input id="evFilterTo" type="date" onchange="applyEventFilters()" class="border rounded px-2 py-1 text-xs" title="종료일">
+            </div>
             <button onclick="resetEventFilters()" class="px-2 py-1 text-[10px] text-gray-400 hover:text-gray-600" title="필터 초기화">
               <i class="fas fa-times mr-0.5"></i>초기화
             </button>
