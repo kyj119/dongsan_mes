@@ -18,11 +18,56 @@ var iaeSettings = {};     // key 'fid:gidx' → {target_w,target_h,aspect_lock,r
 // ── 뷰 상태 ───────────────────────────────────────────
 var iaeView = 'edit';     // 'edit' | 'canvas' (구 'nest' 탭은 통합 폐기 — 대지 편집 시트 네스팅이 대체)
 // 규격 프리셋 (cm) — 롤폭 914~1520mm, 평판 900×1800·1200×2400 (spec §12). 대지 시트 네스팅 공용
+// R2-2: 기본 프리셋. 사용자 추가 프리셋(localStorage iae_custom_presets)을 iaeAllRollPresets/iaeAllFlatPresets로 병합.
 var IAE_ROLL_PRESETS = [
   { label: '914mm 롤', w: 91.4 }, { label: '1050mm 롤', w: 105 }, { label: '1270mm 롤', w: 127 },
   { label: '1370mm 롤', w: 137 }, { label: '1520mm 롤', w: 152 }
 ];
 var IAE_FLAT_PRESETS = [{ label: '평판 900×1800', w: 90, h: 180 }, { label: '평판 1200×2400', w: 120, h: 240 }];
+// R2-2: 사용자 커스텀 프리셋 (localStorage) — {roll:[{label,w}], flat:[{label,w,h}]}. 기본 프리셋 뒤에 append.
+var IAE_CUSTOM_PRESETS_KEY = 'iae_custom_presets';
+function iaeLoadCustomPresets() {
+  try {
+    var raw = localStorage.getItem(IAE_CUSTOM_PRESETS_KEY);
+    var o = raw ? JSON.parse(raw) : {};
+    return { roll: Array.isArray(o.roll) ? o.roll : [], flat: Array.isArray(o.flat) ? o.flat : [] };
+  } catch (_e) { return { roll: [], flat: [] }; }
+}
+function iaeSaveCustomPresets(o) { try { localStorage.setItem(IAE_CUSTOM_PRESETS_KEY, JSON.stringify(o)); } catch (_e) {} }
+// 기본 + 커스텀 병합(커스텀에 _custom:true 마커 → 삭제 UI 식별). mode='roll'|'flatbed'.
+function iaeAllRollPresets() {
+  var c = iaeLoadCustomPresets().roll.filter(function (p) { return p && Number(p.w) > 0; })
+    .map(function (p) { return { label: p.label || (p.w + 'cm 롤'), w: Number(p.w), _custom: true }; });
+  return IAE_ROLL_PRESETS.concat(c);
+}
+function iaeAllFlatPresets() {
+  var c = iaeLoadCustomPresets().flat.filter(function (p) { return p && Number(p.w) > 0 && Number(p.h) > 0; })
+    .map(function (p) { return { label: p.label || (p.w + '×' + p.h), w: Number(p.w), h: Number(p.h), _custom: true }; });
+  return IAE_FLAT_PRESETS.concat(c);
+}
+function iaePresetsFor(mode) { return mode === 'flatbed' ? iaeAllFlatPresets() : iaeAllRollPresets(); }
+// 커스텀 프리셋 추가. mode='roll'|'flatbed'. 중복 라벨 회피. 반환=추가된 프리셋 배열 길이 기준 인덱스(전체 프리셋 기준).
+function iaeAddCustomPreset(mode, w, h) {
+  w = Number(w) || 0; h = Number(h) || 0;
+  if (w <= 0 || (mode === 'flatbed' && h <= 0)) return -1;
+  var store = iaeLoadCustomPresets();
+  if (mode === 'flatbed') {
+    var label = w + '×' + h + ' 평판';
+    if (store.flat.some(function (p) { return Number(p.w) === w && Number(p.h) === h; })) {
+      return IAE_FLAT_PRESETS.length + store.flat.findIndex(function (p) { return Number(p.w) === w && Number(p.h) === h; });
+    }
+    store.flat.push({ label: label, w: w, h: h });
+    iaeSaveCustomPresets(store);
+    return IAE_FLAT_PRESETS.length + store.flat.length - 1;
+  }
+  var rl = Math.round(w * 10) + 'mm 롤';
+  if (store.roll.some(function (p) { return Number(p.w) === w; })) {
+    return IAE_ROLL_PRESETS.length + store.roll.findIndex(function (p) { return Number(p.w) === w; });
+  }
+  store.roll.push({ label: rl, w: w });
+  iaeSaveCustomPresets(store);
+  return IAE_ROLL_PRESETS.length + store.roll.length - 1;
+}
 
 function iaeEscape(s) {
   if (window.escapeHtml) return window.escapeHtml(s == null ? '' : String(s));
@@ -43,6 +88,32 @@ function iaeDistortRatio(tw, th, dw, dh) {
 }
 
 // ── Export-first (가공 EPS 추출) — spec 2026-06-25 §3.3·§4.1·§5.5 ─────────────
+// R2-3: 다운로드 파일명 = {yyyymmdd}_{사이즈cm}_{그룹명}.{kind} (거래처 미연결 → 사이즈+그룹+날짜).
+//   KST 날짜(toKstDate/kstToday), iaeZipSafeName sanitize. when=생성시각(없으면 오늘).
+function iaeKstYmd(when) {
+  try {
+    var d = (when && window.toKstDate) ? window.toKstDate(when) : null;
+    if (d && !isNaN(d.getTime())) {
+      // KST 기준 YYYYMMDD (ko-KR ISO 회피 — Asia/Seoul 로케일 파츠)
+      var p = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Seoul', year: 'numeric', month: '2-digit', day: '2-digit' }).format(d);
+      return p.replace(/-/g, '');
+    }
+  } catch (_e) {}
+  return (window.kstToday ? window.kstToday() : new Date().toISOString().slice(0, 10)).replace(/-/g, '');
+}
+// 사이즈 토큰: w/h(cm) 있으면 'WxHcm', 없으면 ''
+function iaeSizeTok(wCm, hCm) {
+  return (wCm != null && hCm != null && Number(wCm) > 0 && Number(hCm) > 0)
+    ? (Math.round(Number(wCm)) + 'x' + Math.round(Number(hCm)) + 'cm') : '';
+}
+// 다운로드 베이스명(확장자 제외) = {yyyymmdd}_{사이즈}_{그룹명}. 빈 토큰은 생략.
+function iaeDownloadBase(opts) {
+  opts = opts || {};
+  var ymd = iaeKstYmd(opts.when);
+  var size = iaeSizeTok(opts.w_cm, opts.h_cm);
+  var name = iaeZipSafeName(opts.name || '출력');
+  return [ymd, size, name].filter(Boolean).join('_');
+}
 // 인증=헤더 전용([[feedback-auth-header-only-download]]): <a href>/새창 금지. axios blob 경유.
 function iaeDownloadBlob(url, filename) {
   axios.get(url, { responseType: 'blob' }).then(function (res) {
@@ -92,12 +163,14 @@ function iaeRenderResultHTML(result, base, namePrefix) {
   return html;
 }
 // 결과 패널의 [EPS][JPG][DXF] 버튼 위임 바인딩. base=다운로드 URL(예 '/api/workbench/sheets/12/download'), name=파일명 prefix.
-function iaeWireResultButtons(host, base, namePrefix) {
+// R2-3: result(width_cm/height_cm) 있으면 파일명 {yyyymmdd}_{사이즈}_{prefix}.{kind}.
+function iaeWireResultButtons(host, base, namePrefix, result) {
   if (!host) return;
+  var dlBase = iaeDownloadBase({ w_cm: result && result.width_cm, h_cm: result && result.height_cm, name: namePrefix || '출력' });
   Array.prototype.forEach.call(host.querySelectorAll('.iae-dl-btn'), function (b) {
     b.addEventListener('click', function () {
       var kind = b.getAttribute('data-kind');
-      iaeDownloadBlob(base + '?kind=' + kind, (namePrefix || '출력') + '.' + kind);
+      iaeDownloadBlob(base + '?kind=' + kind, dlBase + '.' + kind);
     });
   });
 }
@@ -367,6 +440,17 @@ function iaeMethodOptions(selected) {
   });
   return html;
 }
+// R2-2: 파일처리 인스펙터 목표크기 옆 규격 프리셋 옵션 — 롤(폭만)·평판(W×H). 커스텀 포함.
+//   value='r:W' (롤 폭) | 'f:W:H' (평판). 선택 시 iaeTW/iaeTH 자동 채움.
+function iaeSizePresetOptions() {
+  var html = '<option value="">규격으로 채우기…</option>';
+  html += '<optgroup label="롤 폭(cm)">';
+  iaeAllRollPresets().forEach(function (p) { html += '<option value="r:' + p.w + '">' + iaeEscape(p.label) + (p._custom ? ' ★' : '') + ' (폭 ' + p.w + ')</option>'; });
+  html += '</optgroup><optgroup label="평판(cm)">';
+  iaeAllFlatPresets().forEach(function (p) { html += '<option value="f:' + p.w + ':' + p.h + '">' + iaeEscape(p.label) + (p._custom ? ' ★' : '') + ' (' + p.w + '×' + p.h + ')</option>'; });
+  html += '</optgroup>';
+  return html;
+}
 function iaeRenderInspector(f) {
   var host = document.getElementById('iaeInspector');
   if (!host) return;
@@ -397,7 +481,10 @@ function iaeRenderInspector(f) {
     + '<span class="text-gray-400">×</span>'
     + '<input id="iaeTH" type="number" min="0" step="0.1" value="' + s.target_h + '" class="w-24 ' + inputCls + '" placeholder="H">'
     + '<label class="flex items-center gap-1 text-xs text-gray-600 ml-1 cursor-pointer"><input id="iaeAspect" type="checkbox"' + (s.aspect_lock ? ' checked' : '') + '> 비율잠금</label>'
-    + '</div></div>'
+    + '</div>'
+    // R2-2: 규격 프리셋(롤 폭 / 평판 W×H) → 목표 W/H 자동 채움(단위 혼동 방지)
+    + '<div class="mt-1.5"><select id="iaeSizePreset" class="' + selCls + ' text-xs">' + iaeSizePresetOptions() + '</select></div>'
+    + '</div>'
     // 마감 프리셋
     + '<div><label class="block text-xs text-gray-500 mb-1">마감 프리셋</label><select id="iaePreset" class="' + selCls + '">' + presetOpts + '</select></div>'
     // 마감 상/하/좌/우
@@ -470,6 +557,22 @@ function iaeRenderInspector(f) {
   ['iaeAspect', 'iaeRot', 'iaeTrim', 'iaeScale', 'iaeFinTop', 'iaeFinBottom', 'iaeFinLeft', 'iaeFinRight'].forEach(function (id) {
     var el = document.getElementById(id);
     if (el) el.addEventListener('change', sync);
+  });
+  // R2-2: 규격 프리셋 선택 → 목표크기 자동 채움. 롤=폭(W)만(H는 비율잠금 시 자동), 평판=W/H 둘 다(비율잠금 일시 무시).
+  var sizePreEl = document.getElementById('iaeSizePreset');
+  if (sizePreEl) sizePreEl.addEventListener('change', function () {
+    var v = sizePreEl.value; if (!v) return;
+    var parts = v.split(':');
+    if (parts[0] === 'r') {
+      var rw = parseFloat(parts[1]) || 0;
+      if (rw > 0) { twEl.value = Math.round(rw * 10) / 10; if (document.getElementById('iaeAspect').checked && detAspect > 0) thEl.value = Math.round((rw / detAspect) * 10) / 10; }
+    } else if (parts[0] === 'f') {
+      var fw = parseFloat(parts[1]) || 0, fh = parseFloat(parts[2]) || 0;
+      if (fw > 0) twEl.value = Math.round(fw * 10) / 10;
+      if (fh > 0) thEl.value = Math.round(fh * 10) / 10;
+    }
+    sizePreEl.value = ''; // 적용 후 라벨 복귀
+    sync();
   });
   // ⑥ 비율잠금 해제 토스트 — 자유 변형 시 왜곡 위험 환기
   var aspEl = document.getElementById('iaeAspect');
@@ -643,7 +746,7 @@ function iaeProcPoll(jobId, resHost, btn, namePrefix) {
     iaeProcStopElapsed();
     if (resHost) {
       resHost.innerHTML = iaeRenderResultHTML(result, '/api/workbench/process/' + jobId + '/download', namePrefix);
-      iaeWireResultButtons(resHost, '/api/workbench/process/' + jobId + '/download', namePrefix);
+      iaeWireResultButtons(resHost, '/api/workbench/process/' + jobId + '/download', namePrefix, result);
     }
     iaeProcResetBtn(btn);
     iaeToast('가공 EPS 출력 완료', 'success');
@@ -805,8 +908,8 @@ function iaeBatchZip() {
     var tasks = [];
     doneJobs.forEach(function (job) {
       var r = job.result || {};
-      var dims = (r.width_cm != null && r.height_cm != null) ? (Math.round(r.width_cm) + 'x' + Math.round(r.height_cm) + 'cm') : '';
-      var base = iaeZipSafeName(job.name) + (dims ? '_' + dims : '');
+      // R2-3: {yyyymmdd}_{사이즈cm}_{그룹명} (zip 내 파일명 통일)
+      var base = iaeDownloadBase({ w_cm: r.width_cm, h_cm: r.height_cm, name: job.name });
       kinds.forEach(function (kind) {
         // result_json 의 {eps_r2,jpg_r2,dxf_r2} 존재 여부로 거름 (워커 다운로드 키와 동일 소스)
         if (!r[kind + '_r2']) return;
@@ -822,7 +925,7 @@ function iaeBatchZip() {
       var blob = new Blob([zipped], { type: 'application/zip' });
       var a = document.createElement('a');
       a.href = URL.createObjectURL(blob);
-      a.download = 'IA가공_' + (new Date().toISOString().slice(0, 10)) + '.zip';
+      a.download = 'IA가공_' + iaeKstYmd() + '.zip';
       document.body.appendChild(a); a.click();
       setTimeout(function () { try { URL.revokeObjectURL(a.href); } catch (_e) {} a.remove(); }, 1000);
       iaeToast(names.length + '개 파일 ZIP 다운로드', 'success');
@@ -886,13 +989,49 @@ function iaeRenderHistory(rows) {
   var rb = document.getElementById('iaeHistRefresh');
   if (rb) rb.addEventListener('click', iaeLoadHistory);
   iaeRefreshAgentStatus(); // ② 배지 즉시 1회 갱신(이후 주기 폴러가 유지)
-  // [EPS][JPG][DXF] 위임 바인딩
+  // [EPS][JPG][DXF] 위임 바인딩 — R2-3 파일명 {yyyymmdd}_{사이즈}_{그룹명}.{kind}
+  var byId = {}; (rows || []).forEach(function (r) { byId[r.id] = r; });
   Array.prototype.forEach.call(host.querySelectorAll('.iae-hist-dl'), function (b) {
     b.addEventListener('click', function () {
       var id = b.getAttribute('data-id'), kind = b.getAttribute('data-kind');
-      iaeDownloadBlob('/api/workbench/process/' + id + '/download?kind=' + kind, '가공_' + id + '.' + kind);
+      var r = byId[id] || {}; var meta = r.result_meta || {};
+      var base = iaeDownloadBase({
+        when: r.created_at, w_cm: meta.width_cm, h_cm: meta.height_cm,
+        name: '그룹' + (r.group_index != null ? r.group_index : '') + (r.analysis_id != null ? ('_분석' + r.analysis_id) : '')
+      });
+      iaeDownloadBlob('/api/workbench/process/' + id + '/download?kind=' + kind, base + '.' + kind);
     });
   });
+  // R2-1: '주문 만들기' 위임 바인딩
+  Array.prototype.forEach.call(host.querySelectorAll('.iae-hist-order'), function (b) {
+    b.addEventListener('click', function () { iaeHistOrder(byId[b.getAttribute('data-id')]); });
+  });
+}
+// R2-1: 가공 이력 잡 1건 → 주문 라인 1개 프리필 후 주문 모달 오픈(거래처/품목/수량/단가만 입력).
+//   이력 응답(analysis_id·group_index·result_meta.width/height_cm)으로 목표크기,
+//   finishing/trim/scale_factor는 localStorage 가공설정(iaeSettings[fid:gidx])에서 보강(없으면 빈값).
+function iaeHistOrder(r) {
+  if (!r) { iaeToast('이력 정보를 찾을 수 없습니다', 'error'); return; }
+  var fid = r.analysis_id, gi = r.group_index;
+  if (fid == null || gi == null) { iaeToast('이 이력은 주문 생성에 필요한 분석 정보가 없습니다', 'error'); return; }
+  var meta = r.result_meta || {};
+  var wCm = (meta.width_cm != null && Number(meta.width_cm) > 0) ? Number(meta.width_cm) : 0;
+  var hCm = (meta.height_cm != null && Number(meta.height_cm) > 0) ? Number(meta.height_cm) : 0;
+  // 보강: 같은 그룹의 마지막 가공설정(localStorage). 키 = fid:gidx.
+  var saved = (iaeSettings && iaeSettings[iaeSettingsKey(fid, gi)]) || {};
+  var fin = (saved.fin_top || saved.fin_bottom || saved.fin_left || saved.fin_right)
+    ? { top: saved.fin_top || '', bottom: saved.fin_bottom || '', left: saved.fin_left || '', right: saved.fin_right || '' } : null;
+  // 목표크기: 이력 result_meta 우선, 없으면 저장설정 target, 없으면 0(사용자 보정 유도)
+  var w = wCm || Number(saved.target_w) || 0, h = hCm || Number(saved.target_h) || 0;
+  var label = '가공 #' + gi + ' · 분석 ' + fid + (r.id != null ? (' (이력 ' + r.id + ')') : '');
+  var ln = {
+    kind: 'obj', fid: fid, gi: gi, label: label,
+    w_cm: w, h_cm: h, qty: 1,
+    fin: fin, trim: !!saved.trim, scale_factor: Math.max(1, Number(saved.scale_factor) || 1),
+    det_w_cm: w, det_h_cm: h,  // 검출=목표(이력엔 검출원본 미보유 → 리사이즈 pp 미생성, 왜곡경고 회피)
+    item_id: null, item_name: '', pricing_method: 'FIXED', unit_price: 0
+  };
+  iaeOpenOrderModalWithLines([ln]);
 }
 // ② 에이전트 상태 배지 — GET /agent-status {online, last_seen}. 폴링(폴=heartbeat)이라 last_seen<60s면 online.
 var iaeAgentStatusTimer = null;
@@ -941,8 +1080,12 @@ function iaeHistCardHTML(r) {
     var cls = primary ? 'bg-gray-800 text-white hover:bg-black' : 'border border-gray-300 text-gray-700 hover:bg-gray-50';
     return '<button class="iae-hist-dl px-2 py-0.5 rounded ' + cls + ' text-[11px]" data-id="' + iaeEscape(r.id) + '" data-kind="' + kind + '">' + kind.toUpperCase() + '</button>';
   };
+  // R2-1: done 잡 → '주문 만들기'(이력 데이터로 주문 라인 프리필)
+  var orderBtn = done
+    ? '<button class="iae-hist-order w-full mt-1.5 px-2 py-0.5 rounded bg-green-600 text-white hover:bg-green-700 text-[11px]" data-id="' + iaeEscape(r.id) + '"><i class="fas fa-file-invoice mr-1"></i>주문 만들기</button>'
+    : '';
   var btns = done
-    ? '<div class="flex items-center gap-1 mt-1.5">' + dlBtn('eps', meta.has_eps, true) + dlBtn('jpg', meta.has_jpg, false) + dlBtn('dxf', meta.has_dxf, false) + '</div>'
+    ? '<div class="flex items-center gap-1 mt-1.5">' + dlBtn('eps', meta.has_eps, true) + dlBtn('jpg', meta.has_jpg, false) + dlBtn('dxf', meta.has_dxf, false) + '</div>' + orderBtn
     : (err ? '<div class="text-[11px] text-red-500 mt-1 truncate" title="' + iaeEscape(r.error_message || '') + '">' + iaeEscape(r.error_message || '실패') + '</div>' : '');
   return '<div class="border border-gray-200 rounded-lg p-2">'
     + thumb
@@ -1026,9 +1169,17 @@ function iaeSetView(v) {
 
 // shelfBinPack 포팅 (원본: src/scripts/orderForm/sheet.js:402) — 폭 고정·면적 내림차순 shelf 적재 + 회전
 // (대지 편집 시트 네스팅 iaeCanNestPlace이 사용)
-function iaeShelfBinPack(items, availableWidth, gap) {
+// R2-4: allowRotate(기본 true·기존 호출 호환) — false면 회전 후보 제외(방향성 소재 보호).
+function iaeShelfBinPack(items, availableWidth, gap, allowRotate) {
   if (!items || !items.length) return { error: true, msg: '배치할 항목이 없습니다' };
   gap = gap || 0;
+  if (allowRotate === undefined) allowRotate = true; // 기본 회전 허용(기존 동작 보존)
+  // R2-4: 회전 후보 — 허용 시 [원본, 90°], 비허용 시 [원본]만
+  var orient = function (it) {
+    return allowRotate
+      ? [{ w: it.w, h: it.h, rotated: false }, { w: it.h, h: it.w, rotated: true }]
+      : [{ w: it.w, h: it.h, rotated: false }];
+  };
   var sorted = items.slice().sort(function (a, b) { return (b.w * b.h) - (a.w * a.h); });
   var shelves = [], placements = [];
   for (var i = 0; i < sorted.length; i++) {
@@ -1036,7 +1187,7 @@ function iaeShelfBinPack(items, availableWidth, gap) {
     for (var si = 0; si < shelves.length; si++) {
       var sh = shelves[si];
       var xGap = sh.itemCount > 0 ? gap : 0;
-      var ors = [{ w: it.w, h: it.h, rotated: false }, { w: it.h, h: it.w, rotated: true }];
+      var ors = orient(it);
       for (var oi = 0; oi < ors.length; oi++) {
         var o = ors[oi];
         if (sh.usedWidth + xGap + o.w <= availableWidth + 1e-6) {
@@ -1047,7 +1198,7 @@ function iaeShelfBinPack(items, availableWidth, gap) {
       if (placed) break;
     }
     if (!placed) {
-      var ors2 = [{ w: it.w, h: it.h, rotated: false }, { w: it.h, h: it.w, rotated: true }], chosen = null;
+      var ors2 = orient(it), chosen = null;
       for (var oi2 = 0; oi2 < ors2.length; oi2++) { if (ors2[oi2].w <= availableWidth + 1e-6) { chosen = ors2[oi2]; break; } }
       if (!chosen) return { error: true, msg: '항목이 폭보다 큽니다: ' + it.w.toFixed(1) + '×' + it.h.toFixed(1) + 'cm' };
       var prev = shelves[shelves.length - 1];
@@ -1082,7 +1233,7 @@ var iaeCanHotkeysBound = false;
 var IAE_SHEETS_KEY = 'iae_can_sheets_v1';
 var iaeCanSheets = [];        // [{uid, x_mm, y_mm, w_mm, h_mm, mode, label, eff, trim}]
 var iaeCanSheetUid = 1;
-var iaeCanNestOpts = { mode: 'roll', presetIdx: 0, qty: 10, gap: 0.3, margin: 1.0, key: '', ratio_lock: true };
+var iaeCanNestOpts = { mode: 'roll', presetIdx: 0, qty: 10, gap: 0.3, margin: 1.0, key: '', ratio_lock: true, allow_rotate: true }; // R2-4 allow_rotate
 
 function iaeCanLoad() {
   try { var raw = localStorage.getItem(IAE_CANVAS_KEY); var a = raw ? JSON.parse(raw) : []; iaeCanObjs = Array.isArray(a) ? a : []; }
@@ -1697,7 +1848,7 @@ function iaeCanNestPlace(opts) {
   var pwMm = Math.round(dwCm * 10), phMm = Math.round(dhCm * 10);  // 조각 출력 크기(mm)
   var fileScale = Math.max(1, Number(opts.file_scale) || 1);        // 파일 배율(소스가 실제의 1/N)
   var qty = Math.max(1, parseInt(opts.qty, 10) || 1);
-  var presets = opts.mode === 'flatbed' ? IAE_FLAT_PRESETS : IAE_ROLL_PRESETS;
+  var presets = iaePresetsFor(opts.mode);
   var preset = presets[opts.presetIdx] || presets[0];
   var margin = Number(opts.margin) || 0, gap = Number(opts.gap) || 0;
   var availW = preset.w - margin * 2;
@@ -1705,8 +1856,12 @@ function iaeCanNestPlace(opts) {
 
   var items = [];
   for (var q = 0; q < qty; q++) items.push({ id: 'p' + q, w: dwCm, h: dhCm });
-  var packed = iaeShelfBinPack(items, availW, gap);
-  if (packed.error) { iaeToast(packed.msg, 'error'); return; }
+  // R2-4: 회전 허용 시 두 방향 시뮬 후 최적 방향으로 실제 배치. 비허용이면 방향 고정.
+  var allowRotate = (opts.allow_rotate !== false);
+  var best = iaeNestPackBest(opts.mode, preset, items, availW, gap, margin, allowRotate);
+  if (best.error) { iaeToast(best.msg, 'error'); return; }
+  var packed = best.packed;
+  if (allowRotate && !best.chosenAllowRotate) iaeToast('방향 고정 배치가 더 효율적 — 회전 없이 배치합니다', 'info');
 
   // 시트 분할 (롤=단일·가변높이 / 평판=고정 W×H·다중판, shelfBinPack 결과 기반)
   var sheets = [];
@@ -1835,7 +1990,7 @@ function iaeCanPollSheet(sheetId, resHost, btn, namePrefix) {
   }, function (result) {
     if (resHost) {
       resHost.innerHTML = iaeRenderResultHTML(result, '/api/workbench/sheets/' + sheetId + '/download', namePrefix);
-      iaeWireResultButtons(resHost, '/api/workbench/sheets/' + sheetId + '/download', namePrefix);
+      iaeWireResultButtons(resHost, '/api/workbench/sheets/' + sheetId + '/download', namePrefix, result);
     }
     iaeCanResetExportBtn(btn);
     iaeToast('네스팅 EPS 출력 완료', 'success');
@@ -1846,26 +2001,13 @@ function iaeCanPollSheet(sheetId, resHost, btn, namePrefix) {
   });
 }
 
-// ④ 배치 전 실시간 예상치 — iaeCanNestPlace 패킹 수학의 부작용 없는 드라이런(대지 미변경).
-//    반환 {error?, msg?, eff, sheets, total_height_cm, waste_pct}. 롤=가변높이 단일·평판=다중판.
-function iaeNestEstimate(o) {
-  var src = iaeCanSrc(o.key); if (!src) return { error: true, msg: '그룹을 선택하세요' };
-  var origW = src.w_mm || 0, origH = src.h_mm || 0;
-  var dwCm = (Number(o.target_w) > 0) ? Number(o.target_w) : origW / 10;
-  var dhCm = (Number(o.target_h) > 0) ? Number(o.target_h) : origH / 10;
-  if (dwCm <= 0 || dhCm <= 0) return { error: true, msg: '그룹 크기를 알 수 없습니다' };
-  var qty = Math.max(1, parseInt(o.qty, 10) || 1);
-  var presets = o.mode === 'flatbed' ? IAE_FLAT_PRESETS : IAE_ROLL_PRESETS;
-  var preset = presets[o.presetIdx] || presets[0];
-  var margin = Number(o.margin) || 0, gap = Number(o.gap) || 0;
-  var availW = preset.w - margin * 2;
-  if (availW <= 0) return { error: true, msg: '여백이 시트 폭보다 큽니다' };
-  var items = [];
-  for (var q = 0; q < qty; q++) items.push({ id: 'p' + q, w: dwCm, h: dhCm });
-  var packed = iaeShelfBinPack(items, availW, gap);
+// 패킹 결과 → 시트 메트릭(시트수·롤길이·시트면적) 계산. 부작용 없음. iaeNestEstimate/iaeNestPackBest 공용.
+//   반환 {error?, msg?, packed, sheetCount, totalH, sheetArea}. 평판=다중판·롤=단일가변.
+function iaeNestPackMetrics(mode, preset, items, availW, gap, margin, allowRotate) {
+  var packed = iaeShelfBinPack(items, availW, gap, allowRotate);
   if (packed.error) return { error: true, msg: packed.msg };
   var sheetCount, totalH = 0, sheetArea = 0;
-  if (o.mode === 'flatbed') {
+  if (mode === 'flatbed') {
     var availH = preset.h - margin * 2;
     if (availH <= 0) return { error: true, msg: '여백이 시트 높이보다 큽니다' };
     var byY = {};
@@ -1882,9 +2024,56 @@ function iaeNestEstimate(o) {
     sheetCount = 1;
     sheetArea = preset.w * totalH;
   }
+  return { error: false, packed: packed, sheetCount: sheetCount, totalH: totalH, sheetArea: sheetArea };
+}
+// R2-4: 회전 허용 시 두 방향(허용/방향고정) 시뮬 → 평판=판수 적은 쪽, 롤=총높이 짧은 쪽 자동 선택.
+//   회전 비허용(allowRotate=false)이면 고정만. 반환=선택된 metrics + chosenAllowRotate.
+function iaeNestPackBest(mode, preset, items, availW, gap, margin, allowRotate) {
+  var fixed = iaeNestPackMetrics(mode, preset, items, availW, gap, margin, false);
+  if (allowRotate === false) {
+    if (fixed.error) return fixed;
+    fixed.chosenAllowRotate = false; return fixed;
+  }
+  var rot = iaeNestPackMetrics(mode, preset, items, availW, gap, margin, true);
+  // 한쪽만 성공하면 그쪽. 둘 다 실패면 회전 결과(메시지) 반환.
+  if (fixed.error && rot.error) return rot;
+  if (fixed.error) { rot.chosenAllowRotate = true; return rot; }
+  if (rot.error) { fixed.chosenAllowRotate = false; return fixed; }
+  // 둘 다 성공: 평판=판수, 롤=총높이 비교(동률이면 회전 미사용 우선=단순).
+  var rotBetter = (mode === 'flatbed')
+    ? (rot.sheetCount < fixed.sheetCount)
+    : (rot.totalH < fixed.totalH - 1e-6);
+  var chosen = rotBetter ? rot : fixed;
+  chosen.chosenAllowRotate = rotBetter;
+  return chosen;
+}
+// ④ 배치 전 실시간 예상치 — iaeCanNestPlace 패킹 수학의 부작용 없는 드라이런(대지 미변경).
+//    반환 {error?, msg?, eff, sheets, total_height_cm, waste_pct, allow_rotate}. 롤=가변높이 단일·평판=다중판.
+//    R2-4: o.allow_rotate(기본 true)면 두 방향 시뮬 후 최적 방향 자동 선택.
+function iaeNestEstimate(o) {
+  var src = iaeCanSrc(o.key); if (!src) return { error: true, msg: '그룹을 선택하세요' };
+  var origW = src.w_mm || 0, origH = src.h_mm || 0;
+  var dwCm = (Number(o.target_w) > 0) ? Number(o.target_w) : origW / 10;
+  var dhCm = (Number(o.target_h) > 0) ? Number(o.target_h) : origH / 10;
+  if (dwCm <= 0 || dhCm <= 0) return { error: true, msg: '그룹 크기를 알 수 없습니다' };
+  var qty = Math.max(1, parseInt(o.qty, 10) || 1);
+  var presets = iaePresetsFor(o.mode);
+  var preset = presets[o.presetIdx] || presets[0];
+  var margin = Number(o.margin) || 0, gap = Number(o.gap) || 0;
+  var availW = preset.w - margin * 2;
+  if (availW <= 0) return { error: true, msg: '여백이 시트 폭보다 큽니다' };
+  var items = [];
+  for (var q = 0; q < qty; q++) items.push({ id: 'p' + q, w: dwCm, h: dhCm });
+  var allowRotate = (o.allow_rotate !== false);
+  var m = iaeNestPackBest(o.mode, preset, items, availW, gap, margin, allowRotate);
+  if (m.error) return { error: true, msg: m.msg };
   var totalArea = dwCm * dhCm * qty;
-  var eff = sheetArea > 0 ? totalArea / sheetArea : 0;
-  return { error: false, eff: eff, sheets: sheetCount, total_height_cm: totalH, waste_pct: Math.max(0, 1 - eff), mode: o.mode };
+  var eff = m.sheetArea > 0 ? totalArea / m.sheetArea : 0;
+  return {
+    error: false, eff: eff, sheets: m.sheetCount, total_height_cm: m.totalH,
+    waste_pct: Math.max(0, 1 - eff), mode: o.mode,
+    allow_rotate: allowRotate, chosen_rotate: !!m.chosenAllowRotate
+  };
 }
 // 패널 하단 예상치 호스트 갱신 (입력 change 시 라이브)
 function iaeNestRenderEstimate() {
@@ -1896,8 +2085,10 @@ function iaeNestRenderEstimate() {
   var effPct = Math.round(est.eff * 100), wastePct = Math.round(est.waste_pct * 100);
   var sizeTxt = est.mode === 'flatbed' ? ('예상 <b>' + est.sheets + '판</b>') : ('예상 롤 길이 <b>' + est.total_height_cm.toFixed(1) + 'cm</b> (1롤)');
   var effCls = effPct >= 75 ? 'text-green-600' : (effPct >= 50 ? 'text-amber-600' : 'text-red-500');
+  // R2-4: 회전 자동 선택 결과(허용 시 회전/방향고정 중 더 나은 쪽)
+  var rotTxt = est.allow_rotate ? (est.chosen_rotate ? ' · <span class="text-blue-500">회전 배치</span>' : ' · <span class="text-gray-500">방향 고정</span>') : ' · <span class="text-gray-500">회전 잠금</span>';
   host.innerHTML = '<div class="text-[11px] text-gray-600"><i class="fas fa-chart-area mr-1 text-blue-500"></i>'
-    + sizeTxt + ' · 효율 <b class="' + effCls + '">' + effPct + '%</b> · 자투리 ' + wastePct + '%</div>';
+    + sizeTxt + ' · 효율 <b class="' + effCls + '">' + effPct + '%</b> · 자투리 ' + wastePct + '%' + rotTxt + '</div>';
 }
 
 function iaeCanShowNestPanel() {
@@ -1923,9 +2114,12 @@ function iaeCanRenderNestPanel() {
   if (!o.key || !iaeCanSrc(o.key)) o.key = groups[0].key;
   var curSrc = iaeCanSrc(o.key) || {};
   var curW = Math.round((curSrc.w_mm || 0) / 10), curH = Math.round((curSrc.h_mm || 0) / 10);
-  var presets = o.mode === 'flatbed' ? IAE_FLAT_PRESETS : IAE_ROLL_PRESETS;
+  var presets = iaePresetsFor(o.mode); // R2-2 기본+커스텀
+  if (o.presetIdx >= presets.length) o.presetIdx = 0;
   var groupOpts = groups.map(function (s) { return '<option value="' + s.key + '"' + (s.key === o.key ? ' selected' : '') + '>' + iaeEscape(s.filename) + ' #' + s.gi + ' (' + Math.round((s.w_mm || 0) / 10) + '×' + Math.round((s.h_mm || 0) / 10) + 'cm)</option>'; }).join('');
-  var presetOpts = presets.map(function (p, i) { return '<option value="' + i + '"' + (i === o.presetIdx ? ' selected' : '') + '>' + iaeEscape(p.label) + '</option>'; }).join('');
+  // R2-2: 규격 옵션 = 기본+커스텀 프리셋 + '직접 입력'(value=__custom)
+  var presetOpts = presets.map(function (p, i) { return '<option value="' + i + '"' + (i === o.presetIdx ? ' selected' : '') + '>' + iaeEscape(p.label) + (p._custom ? ' ★' : '') + '</option>'; }).join('')
+    + '<option value="__custom"' + (o.presetIdx === '__custom' ? ' selected' : '') + '>직접 입력…</option>';
   host.innerHTML = ''
     + '<div class="flex items-center justify-between mb-2"><span class="text-sm font-semibold text-gray-700"><i class="fas fa-layer-group mr-1 text-blue-500"></i>시트 네스팅</span>'
     + '<button id="iaeCanNestClose" class="text-gray-400 hover:text-gray-600 text-xs"><i class="fas fa-xmark"></i></button></div>'
@@ -1937,10 +2131,20 @@ function iaeCanRenderNestPanel() {
     + '<div><label class="block text-xs text-gray-500 mb-1">모드</label><select id="iaeCanNestMode" class="' + selCls + '"><option value="roll"' + (o.mode === 'roll' ? ' selected' : '') + '>롤(폭고정)</option><option value="flatbed"' + (o.mode === 'flatbed' ? ' selected' : '') + '>평판(W×H)</option></select></div>'
     + '</div>'
     + '<div><label class="block text-xs text-gray-500 mb-1">규격</label><select id="iaeCanNestPreset" class="' + selCls + '">' + presetOpts + '</select></div>'
+    // R2-2: 직접 입력(규격 select=직접 입력 선택 시 노출). 롤=폭만, 평판=W×H. 저장 시 커스텀 프리셋에 추가.
+    + '<div id="iaeCanNestCustom" class="' + (o.presetIdx === '__custom' ? '' : 'hidden') + ' bg-gray-50 border border-gray-200 rounded-md p-2">'
+    + '<div class="text-[11px] text-gray-500 mb-1">' + (o.mode === 'flatbed' ? '평판 규격 직접 입력 (W×H cm)' : '롤 폭 직접 입력 (cm)') + '</div>'
+    + '<div class="flex items-center gap-2">'
+    + '<input id="iaeCanNestCustW" type="number" min="1" step="0.1" placeholder="폭" value="' + (o.custom_w || '') + '" class="w-20 ' + inputCls + '">'
+    + (o.mode === 'flatbed' ? '<span class="text-gray-400">×</span><input id="iaeCanNestCustH" type="number" min="1" step="0.1" placeholder="높이" value="' + (o.custom_h || '') + '" class="w-20 ' + inputCls + '">' : '<span class="text-[11px] text-gray-400">cm 폭</span>')
+    + '<button id="iaeCanNestCustSave" type="button" class="ml-auto text-[11px] px-2 py-1 rounded bg-gray-800 text-white hover:bg-black"><i class="fas fa-plus mr-1"></i>규격 저장</button>'
+    + '</div></div>'
     + '<div class="grid grid-cols-2 gap-2">'
     + '<div><label class="block text-xs text-gray-500 mb-1">간격(cm)</label><input id="iaeCanNestGap" type="number" min="0" step="0.1" value="' + o.gap + '" class="w-full ' + inputCls + '"></div>'
     + '<div><label class="block text-xs text-gray-500 mb-1">돔보 여백(cm)</label><input id="iaeCanNestMargin" type="number" min="0" step="0.1" value="' + o.margin + '" class="w-full ' + inputCls + '"></div>'
     + '</div>'
+    // R2-4: 회전 허용(방향성 소재 보호). on=두 방향 시뮬 후 자동 선택, off=원본 방향 고정.
+    + '<label class="flex items-center gap-1 text-xs text-gray-600 cursor-pointer"><input id="iaeCanNestAllowRot" type="checkbox"' + (o.allow_rotate !== false ? ' checked' : '') + '>회전 허용 <span class="text-gray-400">(끄면 방향성 소재 보호 — 원본 방향 고정)</span></label>'
     + '<div class="grid grid-cols-3 gap-2">'
     + '<div><label class="block text-xs text-gray-500 mb-1">조각 W(cm)</label><input id="iaeCanNestTW" type="number" min="0" step="0.1" value="' + (o.target_w || '') + '" placeholder="' + curW + '" class="w-full ' + inputCls + '"></div>'
     + '<div><label class="block text-xs text-gray-500 mb-1">조각 H(cm)</label><input id="iaeCanNestTH" type="number" min="0" step="0.1" value="' + (o.target_h || '') + '" placeholder="' + curH + '" class="w-full ' + inputCls + '"></div>'
@@ -1964,9 +2168,40 @@ function iaeCanRenderNestPanel() {
   if (modeEl) modeEl.addEventListener('change', function () { o.mode = modeEl.value; o.presetIdx = 0; iaeCanRenderNestPanel(); });
   bindVal('iaeCanNestGroup', 'key', null, true);
   bindVal('iaeCanNestQty', 'qty', function (v) { return parseInt(v, 10) || 1; }, true);
-  bindVal('iaeCanNestPreset', 'presetIdx', function (v) { return parseInt(v, 10) || 0; }, true);
+  // R2-2: 규격 select — '직접 입력' 선택 시 입력 row 노출(재렌더 없이 토글), 아니면 인덱스 적용.
+  var presetEl = document.getElementById('iaeCanNestPreset');
+  var customRow = document.getElementById('iaeCanNestCustom');
+  if (presetEl) presetEl.addEventListener('change', function () {
+    if (presetEl.value === '__custom') {
+      o.presetIdx = '__custom';
+      if (customRow) customRow.classList.remove('hidden');
+    } else {
+      o.presetIdx = parseInt(presetEl.value, 10) || 0;
+      if (customRow) customRow.classList.add('hidden');
+      iaeNestRenderEstimate();
+    }
+  });
+  // R2-2: 커스텀 규격 저장 → 프리셋 목록에 append + 자동 선택 후 재렌더.
+  var custSaveEl = document.getElementById('iaeCanNestCustSave');
+  if (custSaveEl) custSaveEl.addEventListener('click', function () {
+    var w = parseFloat((document.getElementById('iaeCanNestCustW') || {}).value) || 0;
+    var h = (o.mode === 'flatbed') ? (parseFloat((document.getElementById('iaeCanNestCustH') || {}).value) || 0) : 0;
+    if (w <= 0 || (o.mode === 'flatbed' && h <= 0)) { iaeToast('규격(' + (o.mode === 'flatbed' ? 'W×H' : '폭') + ')을 입력하세요', 'error'); return; }
+    var idx = iaeAddCustomPreset(o.mode, w, h);
+    if (idx < 0) { iaeToast('규격 추가 실패', 'error'); return; }
+    o.presetIdx = idx; o.custom_w = ''; o.custom_h = '';
+    iaeToast('규격 저장: ' + (o.mode === 'flatbed' ? (w + '×' + h) : (w + 'cm 롤')), 'success');
+    iaeCanRenderNestPanel();
+  });
   bindVal('iaeCanNestGap', 'gap', function (v) { return parseFloat(v) || 0; }, true);
   bindVal('iaeCanNestMargin', 'margin', function (v) { return parseFloat(v) || 0; }, true);
+  // R2-4: 회전 허용 토글
+  var allowRotEl = document.getElementById('iaeCanNestAllowRot');
+  if (allowRotEl) allowRotEl.addEventListener('change', function () {
+    o.allow_rotate = allowRotEl.checked;
+    if (!allowRotEl.checked) iaeToast('회전 비허용 — 방향성 소재 보호(원본 방향 고정)', 'info');
+    iaeNestRenderEstimate();
+  });
   // ② 비율 잠금: 조각 W↔H 검출 종횡비 유지 (인스펙터 applySize 패턴 포팅). 단순 parseFloat 독립저장이 왜곡 원인.
   var nestTW = document.getElementById('iaeCanNestTW'), nestTH = document.getElementById('iaeCanNestTH');
   var nestRatioEl = document.getElementById('iaeCanNestRatio');
@@ -1990,13 +2225,17 @@ function iaeCanRenderNestPanel() {
     o.key = document.getElementById('iaeCanNestGroup').value;
     o.qty = parseInt(document.getElementById('iaeCanNestQty').value, 10) || 1;
     o.mode = document.getElementById('iaeCanNestMode').value;
-    o.presetIdx = parseInt(document.getElementById('iaeCanNestPreset').value, 10) || 0;
+    // R2-2: '직접 입력' 상태로 배치 시도 시 규격 미확정 → 안내(저장 버튼 유도)
+    var pv = document.getElementById('iaeCanNestPreset').value;
+    if (pv === '__custom') { iaeToast('직접 입력 규격은 [규격 저장] 후 사용하세요', 'error'); return; }
+    o.presetIdx = parseInt(pv, 10) || 0;
     o.gap = parseFloat(document.getElementById('iaeCanNestGap').value) || 0;
     o.margin = parseFloat(document.getElementById('iaeCanNestMargin').value) || 0;
     o.target_w = parseFloat(document.getElementById('iaeCanNestTW').value) || 0;
     o.target_h = parseFloat(document.getElementById('iaeCanNestTH').value) || 0;
     o.file_scale = parseFloat(document.getElementById('iaeCanNestFS').value) || 1;
     if (nestRatioEl) o.ratio_lock = nestRatioEl.checked;
+    if (allowRotEl) o.allow_rotate = allowRotEl.checked; // R2-4
     iaeCanNestPlace(o);
   });
   var exportEl = document.getElementById('iaeCanExportBtn');
@@ -2014,7 +2253,9 @@ var iaeOmClientTimer = null, iaeOmItemTimer = null;  // 거래처/품목 검색 
 
 function iaeCanFileR2(fid) {
   var f = iaeFiles.filter(function (x) { return x.id === fid; })[0];
-  return f ? ('r2://sources/' + fid + '/' + f.filename) : null;
+  if (f) return 'r2://sources/' + fid + '/' + f.filename;
+  // R2-1: 이력 잡(파일 미오픈) fallback — filename 미상이어도 analysis_id 경로 제공. 실제 추적은 ai_analysis_id.
+  return (fid != null) ? ('r2://sources/' + fid + '/') : null;
 }
 // 마감 per-side 요약(표시용): 중복 제거 method 나열
 function iaeFinSummary(fin) {
@@ -2078,6 +2319,10 @@ function iaeOmLineAmount(ln) {
 function iaeCanOpenOrderModal() {
   var lines = iaeCanBuildOrderLines();
   if (lines.length === 0) { iaeToast('대지에 객체가 없습니다', 'error'); return; }
+  iaeOpenOrderModalWithLines(lines);
+}
+// R2-1: 주문 모달을 임의 lines로 오픈(대지 객체용·이력용 공용). 거래처/품목 picker·submit 재사용.
+function iaeOpenOrderModalWithLines(lines) {
   iaeOmState = { mode: 'new', client_id: null, client_name: '', target_order_id: null, target_order_label: '', lines: lines };
   var prev = document.getElementById('iaeOrderModal'); if (prev) prev.remove();
   var modal = document.createElement('div');

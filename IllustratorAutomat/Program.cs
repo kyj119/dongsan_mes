@@ -1574,7 +1574,10 @@ namespace IllustratorAutomation
                 ? Path.Combine(TEMP_FOLDER, $"process_preview_{jobId}")
                 : Path.Combine(ZDRIVE_PATH, "DESIGN", "가공", now.ToString("yyyy"), now.ToString("MM"), now.ToString("dd"), $"process_{jobId}");
             if (!Directory.Exists(outFolder)) Directory.CreateDirectory(outFolder);
-            string baseName = $"group{groupIndex}-가공";
+            // R2-3: 식별성 있는 파일명. 사이즈 있으면 {W}x{H}cm_group{gi}, 없으면 group{gi}-가공 폴백.
+            string baseName = (targetW > 0 && targetH > 0)
+                ? SanitizeFilename($"{(int)Math.Round(targetW)}x{(int)Math.Round(targetH)}cm_group{groupIndex}")
+                : $"group{groupIndex}-가공";
             string epsOut = Path.Combine(outFolder, baseName + ".eps");
             string dxfOut = Path.Combine(outFolder, baseName + ".dxf");
             string jpgOut = Path.Combine(outFolder, baseName + ".jpg");
