@@ -783,6 +783,39 @@ document.getElementById('batchResultModal').addEventListener('click', function(e
 
 var _billingPendingOrders = [];
 
+// ===== 세금계산서 법정 발행기한 (공급월=출고월의 익월 10일) =====
+// 전자세금계산서는 공급일이 속한 달의 다음 달 10일까지 발행 의무 → 초과 시 가산세.
+function taxLegalDueDate(supplyDateStr) {
+  if (!supplyDateStr) return null;
+  var s = String(supplyDateStr).split('T')[0];
+  var p = s.split('-');
+  if (p.length < 2) return null;
+  var y = parseInt(p[0], 10), m = parseInt(p[1], 10);
+  if (!y || !m) return null;
+  var ny = m === 12 ? y + 1 : y;
+  var nm = m === 12 ? 1 : m + 1;
+  return new Date(ny, nm - 1, 10);
+}
+function taxDueDday(dueDate) {
+  if (!dueDate) return null;
+  var t = new Date(); t.setHours(0, 0, 0, 0);
+  return Math.round((dueDate.getTime() - t.getTime()) / 86400000);
+}
+// 공급일 문자열 → 법정기한 뱃지 HTML (초과=빨강, ≤7일=주황, else 회색)
+function taxDueBadge(supplyDateStr) {
+  var due = taxLegalDueDate(supplyDateStr);
+  if (!due) return '';
+  var dday = taxDueDday(due);
+  var mmdd = ('0' + (due.getMonth() + 1)).slice(-2) + '/' + ('0' + due.getDate()).slice(-2);
+  var cls, txt;
+  if (dday < 0) { cls = 'bg-red-100 text-red-700'; txt = '기한초과 ' + (-dday) + '일'; }
+  else if (dday <= 7) { cls = 'bg-amber-100 text-amber-700'; txt = 'D-' + dday; }
+  else { cls = 'bg-gray-100 text-gray-500'; txt = 'D-' + dday; }
+  return '<span class="px-1.5 py-0.5 rounded text-[10px] font-medium ' + cls + '" title="법정 발행기한 ' + mmdd + ' (출고월 익월 10일)">발행기한 ' + mmdd + '·' + txt + '</span>';
+}
+// 공급일(출고일 우선, 없으면 주문일)
+function taxSupplyDate(o) { return (o.shipped_at ? String(o.shipped_at).split('T')[0] : null) || o.shipment_date || o.order_date || null; }
+
 async function loadBillingPendingOrders() {
   var container = document.getElementById('billingOrdersList');
   container.innerHTML = '<div class="text-center py-12 text-gray-400"><i class="fas fa-spinner fa-spin text-2xl"></i></div>';
@@ -800,6 +833,18 @@ async function loadBillingPendingOrders() {
     var syncBar = document.getElementById('billingSyncBar');
     if (syncBar) syncBar.classList.remove('hidden');
 
+    // 법정기한(출고월 익월10일) 초과/임박 집계 + 임박순 정렬
+    var overdueCnt = 0, imminentCnt = 0;
+    ready.forEach(function(o) {
+      var dd = taxDueDday(taxLegalDueDate(taxSupplyDate(o)));
+      if (dd == null) return;
+      if (dd < 0) overdueCnt++; else if (dd <= 7) imminentCnt++;
+    });
+    ready.sort(function(a, b) {
+      var da = taxLegalDueDate(taxSupplyDate(a)), db = taxLegalDueDate(taxSupplyDate(b));
+      return (da ? da.getTime() : Infinity) - (db ? db.getTime() : Infinity);
+    });
+
     // 알림 배너
     var totalAmt = ready.reduce(function(s, o) { return s + (parseFloat(o.final_amount) || 0); }, 0);
     var banner = document.getElementById('billingAlertBanner');
@@ -807,7 +852,11 @@ async function loadBillingPendingOrders() {
       banner.classList.remove('hidden');
       document.getElementById('billingAlertCount').textContent = ready.length;
       document.getElementById('billingAlertAmount').textContent = totalAmt.toLocaleString();
-      document.getElementById('billingWaitingInfo').textContent = waiting.length > 0 ? '정산대기 ' + waiting.length + '건 (billable_after 미도래)' : '';
+      var warnParts = [];
+      if (overdueCnt > 0) warnParts.push('<span class="text-red-600 font-bold">법정기한 초과 ' + overdueCnt + '건</span>');
+      if (imminentCnt > 0) warnParts.push('<span class="text-amber-600 font-medium">임박(D-7) ' + imminentCnt + '건</span>');
+      if (waiting.length > 0) warnParts.push('정산대기 ' + waiting.length + '건');
+      document.getElementById('billingWaitingInfo').innerHTML = warnParts.join(' · ');
     } else {
       banner.classList.add('hidden');
     }
@@ -827,7 +876,13 @@ async function loadBillingPendingOrders() {
       clientMap[cid].orders.push(o);
     });
     var clients = Object.keys(clientMap).map(function(k) { return clientMap[k]; });
-    clients.sort(function(a, b) { return (a.client_name || '').localeCompare(b.client_name || ''); });
+    // 거래처 그룹: 가장 임박한 법정기한 순
+    function grpDue(g) {
+      var ms = Infinity;
+      g.orders.forEach(function(o) { var d = taxLegalDueDate(taxSupplyDate(o)); if (d) ms = Math.min(ms, d.getTime()); });
+      return ms;
+    }
+    clients.sort(function(a, b) { return grpDue(a) - grpDue(b); });
 
     renderBillingPending(clients, waiting);
     updateBillingBar();
@@ -867,6 +922,7 @@ function renderBillingPending(clients, waiting) {
       html += '<span class="text-gray-500 w-24">' + (o.order_date || '-') + '</span>';
       html += '<span class="text-gray-600 flex-1 truncate">' + escapeHtml(o.title || o.notes || '-') + '</span>';
       html += '<span class="text-gray-400 text-xs w-20">출고 ' + shipDate + '</span>';
+      html += '<span class="w-32 text-right">' + taxDueBadge(taxSupplyDate(o)) + '</span>';
       html += '<span class="text-gray-800 font-medium w-24 text-right">' + amt.toLocaleString() + '원</span>';
       html += '</label>';
     });
