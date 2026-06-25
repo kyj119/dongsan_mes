@@ -1,7 +1,7 @@
 # PROJECT_STATUS.md — 프로젝트 현황판
 
 > **현재 초점**: 품목 마스터 신모델 등록(출력물·후가공/소분류 UI) — 제품 ~83, 남은=솔벤캔버스·배너류·단가·간판BOM.
-> **마지막 prod 배포**: IA 편집기 **P1 실사용 개선 6항목** (돔보·비율잠금·이력보드·파일배율·90°회전·복제수, web dep `67f2cba6`·에이전트 PID 11564·E2E 통과, 정본 `memory/project-ia-editor.md` 맨 끝). 이전: Export-first(`87b34e47`), 연차 P2-W2.
+> **마지막 prod 배포**: IA 편집기 **P2+P3 전체 13항목** (일괄+ZIP·실렌더 미리보기·진행가시성·Export→Order·MaxRects/평판다중판 격리 등, dep `ee82f279`·smoke101·**회귀0**, 정본 `memory/project-ia-editor.md` 맨끝). 이전: P1 6항목(`67f2cba6`), Export-first.
 > **블로커**: 솔벤캔버스 원단 미파악(보류) · 품목 단가 전부 0(미입력) · 활성화(is_active=1) 시점 미결정.
 > **다음 액션**: 솔벤캔버스/배너류 등록 → 단가 입력 → 간판 BOM → split-billing P5-continued.
 > **핸드오프 정본** = `memory/session-context.md`.
@@ -23,6 +23,7 @@
   - 검증: npm build·dotnet build0·**smoke 101/101**·apex 7엔드포인트 401(도달성). **prod 배포·push 완료**(커밋 `c133d8a8`, dep `87b34e47`, 마이그 0386 prod).
   - **✅ 에이전트 라이브 + prod 실파일 E2E 완전통과**(에이전트 커밋 `f527a3d4`, PID 28180): ★운영=**서버PC=일러PC(이 작업PC)**, IA exe는 로컬 `bin/Release/net8.0/win-x64/publish/`(appsettings ErpApiUrl=prod). E2E(업로드→분석→가공→R2→download): EPS(c5d0d3c6)/DXF(SECTION)/JPG(ffd8) 200·시그니처 정상. **E2E가 3버그 발견·수정**: ①process 경로 `NormalizeArtboardEpsName` 누락(suffix→EPS 못찾음) ②multipart 한글 filename→CF formData 실패 ③**.NET MultipartFormDataContent를 CF Workers formData()가 500 거부→curl.exe -F 우회**. ⚠️CF Pages observability/tail 제약→직접 INSERT·curl 재현 진단. 정본 = `memory/project-ia-editor.md` 맨끝.
   - **✅ P1 실사용 개선 6항목** (실효성 점검 후속, 커밋 `9db24ef9`·dep `67f2cba6`·에이전트 PID 11564·smoke 101/101): 용준님 실효성 의문 → **에이전트 팀 5축 점검**(Workflow) → P1 전체. ①파일처리 돔보 토글 ②네스팅 W·H 비율잠금 ③**가공 이력 보드**(GET /process 목록+영속 재다운로드, critical 해소) ④복제수 오해 차단 ⑤파일배율 전스택 ⑥**90°회전 silent drop 제거**(jsx 아트워크 회전). prod E2E: baseline 196×560 vs 회전90+돔보 995×343=**종횡비 swap 회전 정확**·돔보 마크·이력·다운로드 200. 점검이 찾은 진짜 갭=이력재다운로드·일괄처리·회전. **남은=P2**(다중그룹 일괄+ZIP·heartbeat·실렌더 미리보기·배치 예상치·돔보 형상일치·RESIZE 0.1cm)·**P3**(Export→Order·MaxRects·회전토글·스냅·커스텀규격·평판 다중판). spec `2026-06-25-ia-editor-p1-improvements.md`. ⚠️이력 width_cm=0(P2 보강).
+  - **✅ P2+P3 전체 13항목** (점검 후속, ULTRATHINK 3라운드, R1 `7c1e02a5`·R2 `093ff13f`·R3a `e41555dd`·R3b `adb4ab44`·dep `ee82f279`·smoke101·에이전트 PID 9092): **R1(P2)** 다중그룹 일괄+ZIP·진행가시성(heartbeat·agent-status·retry)·실렌더 미리보기(jsx preview)·배치 예상치·돔보 형상일치·0.1cm 정밀도·좌표 일원화·width_cm 보강. **R2(P3안전)** Export→Order 브리지·커스텀 규격/프리셋·파일명 규칙·회전허용 토글. **R3a(저위험)** 드래그 스냅·고급 후가공(도련/펀칭/주석). **R3b(고위험·격리 회귀0)** MaxRects 토글(shelf 미변경)·평판 다중판 잡분할(SheetLayout 무변경). E2E: agent online·preview·width_cm·단일가공 회귀0. spec `2026-06-25-ia-editor-p2-p3.md`. **점검 15항목 전부 완료**.
 
 - **✅ [2026-06-24] 연차관리(/leaves) 제안서 + P1 정상화 배포 (정본 `docs/superpowers/specs/2026-06-24-leave-management-proposal.md` + `memory/project-leave-management.md`)**:
   - 에이전트 팀 5축 병렬 감사 → 제안서. **P1(보안·통제) 6건 구현·prod 배포**(커밋 `291cb392`, dep `5af043ab`, 롤백 `7da7ff4d`): B1 `/unused-allowance` IDOR(entityFilter·bank#1 동일클래스) · B3 POST·DELETE /requests requireRole(위조차단) · B2 approve 잔여검증(음수방지) · B5 cancel-approved 신설(잔여복원+근태해제, status=CANCELLED) · B7 approve batch원자화 · B9 전역 showPrompt 모달.
