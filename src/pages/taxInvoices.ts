@@ -748,7 +748,7 @@ export function taxInvoicesPage(c: Context<HonoEnv>) {
           <div class="grid grid-cols-1 md:grid-cols-5 gap-3">
             <div>
               <label class="form-label">유형</label>
-              <select id="invoiceFilterType" class="form-select" onchange="loadInvoices(1)">
+              <select id="invoiceFilterType" class="form-select" onchange="hometaxLoadInvoices(1)">
                 <option value="">전체</option>
                 <option value="SALES">매출</option>
                 <option value="PURCHASE">매입</option>
@@ -756,15 +756,15 @@ export function taxInvoicesPage(c: Context<HonoEnv>) {
             </div>
             <div>
               <label class="form-label">시작일</label>
-              <input type="date" id="invoiceFilterStartDate" class="form-input" onchange="loadInvoices(1)">
+              <input type="date" id="invoiceFilterStartDate" class="form-input" onchange="hometaxLoadInvoices(1)">
             </div>
             <div>
               <label class="form-label">종료일</label>
-              <input type="date" id="invoiceFilterEndDate" class="form-input" onchange="loadInvoices(1)">
+              <input type="date" id="invoiceFilterEndDate" class="form-input" onchange="hometaxLoadInvoices(1)">
             </div>
             <div>
               <label class="form-label">매칭 상태</label>
-              <select id="invoiceFilterMatchStatus" class="form-select" onchange="loadInvoices(1)">
+              <select id="invoiceFilterMatchStatus" class="form-select" onchange="hometaxLoadInvoices(1)">
                 <option value="">전체</option>
                 <option value="UNMATCHED">미매칭</option>
                 <option value="MATCHED">매칭</option>
@@ -773,7 +773,7 @@ export function taxInvoicesPage(c: Context<HonoEnv>) {
             </div>
             <div>
               <label class="form-label">검색</label>
-              <input type="text" id="invoiceFilterSearch" class="form-input" placeholder="승인번호/회사명" onchange="loadInvoices(1)">
+              <input type="text" id="invoiceFilterSearch" class="form-input" placeholder="승인번호/회사명" onchange="hometaxLoadInvoices(1)">
             </div>
           </div>
         </div>
@@ -809,9 +809,9 @@ export function taxInvoicesPage(c: Context<HonoEnv>) {
         <div class="flex items-center justify-between mt-4">
           <div id="paginationInfo" class="text-sm text-gray-600"></div>
           <div class="flex gap-2">
-            <button onclick="loadInvoices(currentPage - 1)" class="btn-secondary btn-sm">이전</button>
+            <button onclick="hometaxLoadInvoices((window.htCurrentPage||1) - 1)" class="btn-secondary btn-sm">이전</button>
             <span id="pageDisplay" class="px-2 py-1 text-sm text-gray-600"></span>
-            <button onclick="loadInvoices(currentPage + 1)" class="btn-secondary btn-sm">다음</button>
+            <button onclick="hometaxLoadInvoices((window.htCurrentPage||1) + 1)" class="btn-secondary btn-sm">다음</button>
           </div>
         </div>
       </div>

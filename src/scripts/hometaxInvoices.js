@@ -196,9 +196,12 @@
 
   // ============= 수집 내역 Functions =============
 
-  window.loadInvoices = function(page) {
+  // #tax-cash-scope: 전역 loadInvoices를 점유하면 taxInvoices.js(발행목록 탭)의 loadInvoices를 덮어써
+  // 세금계산서 발행목록 탭이 깨짐. IIFE 로컬 함수로 두고 hometaxLoadInvoices로만 노출(전역 미점유).
+  var loadInvoices = window.hometaxLoadInvoices = function(page) {
     currentPage = page || 1;
     if (currentPage < 1) currentPage = 1;
+    window.htCurrentPage = currentPage; // 페이지 onclick(이전/다음)이 참조할 hometax 전용 페이지 상태(tax의 전역 currentPage와 분리)
 
     var type = document.getElementById('invoiceFilterType').value;
     var startDate = document.getElementById('invoiceFilterStartDate').value;
