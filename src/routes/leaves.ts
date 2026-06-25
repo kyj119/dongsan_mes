@@ -10,6 +10,7 @@ import { requirePagePermission } from '../middleware/permissions'
 import { entityFilter, getEntityId } from '../utils/entityFilter'
 import { markLeaveAttendance, clearLeaveAttendance, enumerateDates } from '../utils/leaveAttendance'
 import { calcInclusivePay, loadOvertimeSettings } from './payroll/shared'
+import { sendEmail } from '../services/emailProvider'
 
 // ---------- D1 row shapes ----------
 interface EmployeeBasicRow {
@@ -100,7 +101,43 @@ function addYears(dateStr: string, years: number): string {
   return `${y}-${m[2]}-${d}`
 }
 
+/** 'YYYY-MM-DD' + N일 */
+function addDays(dateStr: string, n: number): string {
+  const d = new Date(dateStr + 'T00:00:00Z'); if (isNaN(d.getTime())) return ''
+  d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10)
+}
+/** 'YYYY-MM-DD' + N개월 */
+function addMonths(dateStr: string, n: number): string {
+  const d = new Date(dateStr + 'T00:00:00Z'); if (isNaN(d.getTime())) return ''
+  d.setUTCMonth(d.getUTCMonth() + n); return d.toISOString().slice(0, 10)
+}
+
+// 사용촉진 트랙(제61조): ANNUAL=1년이상 연차, MONTHLY_A=월차 1~9개월분, MONTHLY_B=월차 10·11개월분
+type PromoSource = 'ANNUAL' | 'MONTHLY_A' | 'MONTHLY_B'
+/** 입사일 기준 사용촉진 윈도우 계산(KST). 만료기준일·1차창·2차마감. null=계산불가. */
+function promotionWindow(hireDate: string, source: PromoSource, todayStr: string): { base: string; firstStart: string; firstEnd: string; secondEnd: string } | null {
+  if (!hireDate || hireDate.length < 10) return null
+  const hireMD = hireDate.slice(5) // MM-DD
+  if (source === 'ANNUAL') {
+    let y = parseInt(todayStr.slice(0, 4), 10) // EXP = today 이후 첫 입사기념일
+    if (`${y}-${hireMD}` <= todayStr) y += 1
+    const exp = `${y}-${hireMD}`
+    return { base: exp, firstStart: addMonths(exp, -6), firstEnd: addDays(addMonths(exp, -6), 10), secondEnd: addMonths(exp, -2) }
+  }
+  const anniv = addYears(hireDate, 1) // 입사일+1년
+  if (source === 'MONTHLY_A') return { base: anniv, firstStart: addMonths(anniv, -3), firstEnd: addDays(addMonths(anniv, -3), 10), secondEnd: addMonths(anniv, -1) }
+  return { base: anniv, firstStart: addMonths(anniv, -1), firstEnd: addDays(addMonths(anniv, -1), 5), secondEnd: addDays(anniv, -10) } // MONTHLY_B
+}
+
 // 병존: 연차 잔여는 ANNUAL(1년차+) + MONTHLY(1년미만 월차) 합산. 소멸분(expired) 차감.
+/** 버킷(ANNUAL|MONTHLY)별 미만료 잔여 합(전 연도). 촉진 대상 일수 산정용. */
+async function bucketRemaining(db: D1Database, employeeId: number, bucket: 'ANNUAL' | 'MONTHLY'): Promise<number> {
+  const r = await db.prepare(
+    `SELECT COALESCE(SUM(accrued+granted_extra+carried_over-used-expired),0) AS rem
+     FROM leave_balances WHERE employee_id=? AND leave_type=?`
+  ).bind(employeeId, bucket).first<{ rem: number }>()
+  return Number(r?.rem ?? 0)
+}
 /** 연차 잔여 = SUM(accrued+granted_extra+carried_over-used-expired) over ANNUAL+MONTHLY (직원·연도). */
 async function annualRemaining(db: D1Database, employeeId: number, year: number): Promise<number> {
   const r = await db.prepare(
@@ -663,6 +700,161 @@ leavesRouter.patch('/requests/:id/cancel-approved', requireRole('ADMIN', 'MANAGE
     return c.json({ success: true })
   } catch (error: any) {
     console.error('leaves cancel-approved error:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다.', detail: '서버 오류가 발생했습니다' }, 500)
+  }
+})
+
+// ============================================================================
+// 사용촉진 (근로기준법 제61조) — 입사일 기준 1·2차 통지 + 소멸
+// ============================================================================
+
+// 통지 대상 산정/발송. dryRun=true(기본)=미리보기, false=실발송.
+//   채널=이메일(법적 '서면' 유효, email_logs 도달 기록). 알림톡(sendATS)은 바로빌 템플릿 승인 후 추가.
+leavesRouter.post('/promotion/run', requireRole('ADMIN'), async (c) => {
+  try {
+    const user = c.get('user')
+    const body = await c.req.json<{ source?: string; stage?: string; dryRun?: boolean }>().catch(() => ({} as { source?: string; stage?: string; dryRun?: boolean }))
+    const source = body.source as PromoSource
+    const stage = body.stage as 'FIRST' | 'SECOND'
+    if (!['ANNUAL', 'MONTHLY_A', 'MONTHLY_B'].includes(source) || !['FIRST', 'SECOND'].includes(stage)) {
+      return c.json({ success: false, error: 'source(ANNUAL|MONTHLY_A|MONTHLY_B)·stage(FIRST|SECOND) 필수' }, 400)
+    }
+    const dryRun = body.dryRun !== false
+    const today = kstNow()
+    const todayStr = today.toISOString().slice(0, 10)
+    const fy = today.getUTCFullYear()
+    const bucket: 'ANNUAL' | 'MONTHLY' = source === 'ANNUAL' ? 'ANNUAL' : 'MONTHLY'
+
+    const ef = entityFilter(c, 'e')
+    const { results: emps } = await c.env.DB.prepare(
+      `SELECT id, name, email, mobile, phone, hire_date, department, entity_id FROM employees
+       WHERE status='ACTIVE' AND is_deleted=0 AND hire_date IS NOT NULL${ef.clause}`
+    ).bind(...ef.params).all<{ id: number; name: string; email: string | null; mobile: string | null; phone: string | null; hire_date: string; department: string | null; entity_id: number }>()
+
+    const eligible: Array<{ employee_id: number; name: string; email: string | null; department: string | null; entity_id: number; remaining: number; expire_base: string }> = []
+    for (const e of emps) {
+      const w = promotionWindow(e.hire_date, source, todayStr)
+      if (!w) continue
+      const inWindow = stage === 'FIRST'
+        ? (todayStr >= w.firstStart && todayStr <= w.firstEnd)
+        : (todayStr > w.firstEnd && todayStr <= w.secondEnd)
+      if (!inWindow) continue
+      const rem = await bucketRemaining(c.env.DB, e.id, bucket)
+      if (rem <= 0) continue
+      const dup = await c.env.DB.prepare(
+        `SELECT id FROM leave_promotion_notices WHERE employee_id=? AND fiscal_year=? AND source=? AND stage=? AND status='SENT'`
+      ).bind(e.id, fy, source, stage).first()
+      if (dup) continue
+      eligible.push({ employee_id: e.id, name: e.name, email: e.email, department: e.department, entity_id: e.entity_id || 1, remaining: rem, expire_base: w.base })
+    }
+
+    if (dryRun) {
+      return c.json({ success: true, dryRun: true, source, stage, count: eligible.length, eligible })
+    }
+
+    // 실발송: 이메일(서면) + leave_promotion_notices 기록(grant_id=NULL — 옵션B)
+    let sent = 0, failed = 0, noContact = 0
+    const stageLabel = stage === 'FIRST' ? '1차(사용시기 지정 요청)' : '2차(사용시기 지정 통보)'
+    for (const t of eligible) {
+      const subject = `[법정 연차사용촉진 ${stageLabel}] 미사용 연차 안내`
+      const html = `<div style="font-family:sans-serif;font-size:14px;color:#222">`
+        + `<p>${t.name}님,</p>`
+        + `<p>근로기준법 제61조에 따라 미사용 연차 사용을 촉진합니다.</p>`
+        + `<ul><li>미사용 연차: <b>${t.remaining}일</b></li><li>소멸 예정일: <b>${t.expire_base}</b></li></ul>`
+        + (stage === 'FIRST'
+          ? `<p>위 미사용 연차의 <b>사용 시기를 지정</b>하여 회신해 주시기 바랍니다(통지 도달일로부터 10일 이내).</p>`
+          : `<p>회신이 없어 회사가 사용 시기를 지정해 통보합니다. 지정일에 휴가를 사용하시기 바랍니다.</p>`)
+        + `<p style="color:#888;font-size:12px">본 통지는 법정 사용촉진 서면 통지입니다. (자동 발송)</p></div>`
+      let channel = 'NONE', status = 'FAILED', ref: string | null = null
+      if (t.email) {
+        const r = await sendEmail(c.env, c.env.DB, { to: t.email, subject, html },
+          { template: `LEAVE_PROMOTION_${stage}`, relatedType: 'leave_promotion', relatedId: t.employee_id, sentBy: user?.id, entityId: t.entity_id })
+        channel = 'EMAIL'; status = r.success ? 'SENT' : 'FAILED'; ref = (r.id || r.error || '').slice(0, 200) || null
+        if (r.success) sent++; else failed++
+      } else {
+        noContact++ // 이메일 없음 — 수동 통지 필요
+      }
+      // 재시도 허용: 기존 비-SENT 동일키 제거 후 기록
+      await c.env.DB.prepare(
+        `DELETE FROM leave_promotion_notices WHERE employee_id=? AND fiscal_year=? AND source=? AND stage=? AND status<>'SENT'`
+      ).bind(t.employee_id, fy, source, stage).run()
+      await c.env.DB.prepare(`
+        INSERT INTO leave_promotion_notices (employee_id, entity_id, fiscal_year, source, stage, remaining_days, notice_date, delivered_at, channel, message_ref, status, created_by)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).bind(t.employee_id, t.entity_id, fy, source, stage, t.remaining, todayStr, status === 'SENT' ? todayStr : null, channel, ref, status, user?.id || null).run()
+    }
+    return c.json({ success: true, source, stage, total: eligible.length, sent, failed, noContact })
+  } catch (error: any) {
+    console.error('leaves promotion run error:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다.', detail: '서버 오류가 발생했습니다' }, 500)
+  }
+})
+
+// 통지 이력 조회
+leavesRouter.get('/promotion', requireRole('ADMIN', 'MANAGER'), async (c) => {
+  try {
+    const year = Number(c.req.query('year') || kstNow().getUTCFullYear())
+    const ef = entityFilter(c, 'pn')
+    const { results } = await c.env.DB.prepare(`
+      SELECT pn.id, pn.employee_id, e.name AS employee_name, e.department, pn.fiscal_year, pn.source, pn.stage,
+             pn.remaining_days, pn.notice_date, pn.delivered_at, pn.channel, pn.status
+      FROM leave_promotion_notices pn LEFT JOIN employees e ON e.id = pn.employee_id
+      WHERE pn.fiscal_year = ?${ef.clause}
+      ORDER BY pn.notice_date DESC, pn.id DESC
+    `).bind(year, ...ef.params).all()
+    return c.json({ success: true, data: results })
+  } catch (error: any) {
+    console.error('leaves promotion list error:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
+  }
+})
+
+// 소멸 sweep — 만료 경과 + 촉진 적법(2차 통지 존재) 잔여를 소멸. dryRun 기본(미리보기).
+//   미이행분은 소멸 제외(수당 산정 유지). commit은 관리자 검토(노무수령거부 이행 포함) 후 실행.
+leavesRouter.post('/expire', requireRole('ADMIN'), async (c) => {
+  try {
+    const user = c.get('user')
+    const body = await c.req.json<{ dryRun?: boolean }>().catch(() => ({} as { dryRun?: boolean }))
+    const dryRun = body.dryRun !== false
+    const todayStr = kstNow().toISOString().slice(0, 10)
+    const ef = entityFilter(c, 'lb')
+    const { results: rows } = await c.env.DB.prepare(`
+      SELECT lb.id, lb.employee_id, lb.year, lb.leave_type, lb.expire_date, lb.entity_id, e.name AS employee_name,
+             (lb.accrued+lb.granted_extra+lb.carried_over-lb.used-lb.expired) AS remaining
+      FROM leave_balances lb JOIN employees e ON e.id = lb.employee_id
+      WHERE lb.leave_type IN ('ANNUAL','MONTHLY') AND lb.expire_date IS NOT NULL AND lb.expire_date < ?
+        AND (lb.accrued+lb.granted_extra+lb.carried_over-lb.used-lb.expired) > 0${ef.clause}
+    `).bind(todayStr, ...ef.params).all<{ id: number; employee_id: number; year: number; leave_type: string; expire_date: string; entity_id: number; employee_name: string; remaining: number }>()
+
+    const candidates: Array<{ id: number; employee_id: number; employee_name: string; year: number; leave_type: string; expire_date: string; entity_id: number; remaining: number; lawful: boolean }> = []
+    for (const r of rows) {
+      const sources = r.leave_type === 'ANNUAL' ? ['ANNUAL'] : ['MONTHLY_A', 'MONTHLY_B']
+      const ph = sources.map(() => '?').join(',')
+      const promo = await c.env.DB.prepare(
+        `SELECT COUNT(*) AS cnt FROM leave_promotion_notices WHERE employee_id=? AND stage='SECOND' AND status='SENT' AND source IN (${ph})`
+      ).bind(r.employee_id, ...sources).first<{ cnt: number }>()
+      candidates.push({ ...r, lawful: Number(promo?.cnt || 0) > 0 })
+    }
+
+    if (dryRun) {
+      return c.json({ success: true, dryRun: true, total: candidates.length, lawful: candidates.filter(x => x.lawful).length, candidates })
+    }
+
+    let expired = 0
+    const stmts: D1PreparedStatement[] = []
+    for (const r of candidates) {
+      if (!r.lawful) continue // 촉진 미이행 → 소멸 제외(수당 산정 유지)
+      stmts.push(c.env.DB.prepare(`UPDATE leave_balances SET expired = expired + ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`).bind(r.remaining, r.id))
+      stmts.push(c.env.DB.prepare(`
+        INSERT INTO leave_accrual_logs (employee_id, year, accrual_type, days, reason, run_by, entity_id)
+        VALUES (?, ?, 'EXPIRE', ?, ?, ?, ?)
+      `).bind(r.employee_id, r.year, -r.remaining, `사용촉진 적법 소멸 (${r.leave_type}, 만료 ${r.expire_date})`, user?.id || null, r.entity_id || 1))
+      expired++
+    }
+    for (let i = 0; i < stmts.length; i += 80) await c.env.DB.batch(stmts.slice(i, i + 80))
+    return c.json({ success: true, total: candidates.length, expired, skipped_unlawful: candidates.length - expired })
+  } catch (error: any) {
+    console.error('leaves expire error:', error)
     return c.json({ success: false, error: '서버 오류가 발생했습니다.', detail: '서버 오류가 발생했습니다' }, 500)
   }
 })

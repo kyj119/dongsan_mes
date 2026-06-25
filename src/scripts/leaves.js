@@ -162,6 +162,66 @@ window.leavesRunYearly = async function() {
   }
 };
 
+// 사용촉진 (제61조)
+window.leavesOpenPromotionModal = function() {
+  var res = document.getElementById('lvPromoResult');
+  if (res) res.innerHTML = '미리보기를 눌러 대상을 확인하세요.';
+  var btn = document.getElementById('lvPromoSendBtn');
+  if (btn) btn.disabled = true;
+  var m = document.getElementById('lvPromotionModal');
+  if (m) { m.style.display = ''; m.classList.remove('hidden'); }
+};
+window.leavesClosePromotionModal = function() {
+  var m = document.getElementById('lvPromotionModal');
+  if (m) m.classList.add('hidden');
+};
+window.leavesPromotionPreview = async function() {
+  var source = document.getElementById('lvPromoSource').value;
+  var stage = document.getElementById('lvPromoStage').value;
+  var res = document.getElementById('lvPromoResult');
+  res.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 조회 중...';
+  try {
+    var r = await axios.post('/api/leaves/promotion/run', { source: source, stage: stage, dryRun: true });
+    var list = r.data.eligible || [];
+    document.getElementById('lvPromoSendBtn').disabled = list.length === 0;
+    if (!list.length) { res.innerHTML = '<span class="text-gray-400">현재 통지 윈도우 대상 없음(법정 기간 외이거나 잔여 0).</span>'; return; }
+    res.innerHTML = '<div class="font-medium mb-1">' + list.length + '명 대상 (이메일 발송)</div>' + list.map(function(t) {
+      return '<div class="flex justify-between border-b border-gray-100 py-0.5"><span>' + lvEscapeHtml(t.name) + ' (' + lvEscapeHtml(t.department || '-') + ')' + (t.email ? '' : ' <span class="text-red-500">[이메일없음]</span>') + '</span><span>잔여 ' + t.remaining + '일 · 소멸 ' + lvEscapeHtml(t.expire_base || '') + '</span></div>';
+    }).join('');
+  } catch (e) {
+    res.innerHTML = '<span class="text-red-500">조회 실패: ' + (e.response && e.response.data && e.response.data.error || e.message) + '</span>';
+  }
+};
+window.leavesPromotionSend = async function() {
+  var source = document.getElementById('lvPromoSource').value;
+  var stage = document.getElementById('lvPromoStage').value;
+  if (!(await showConfirm('선택한 대상에게 사용촉진 통지를 이메일로 발송합니다. 진행할까요?', { title: '사용촉진 발송', confirmText: '발송' }))) return;
+  try {
+    var r = await axios.post('/api/leaves/promotion/run', { source: source, stage: stage, dryRun: false });
+    var d = r.data;
+    window.showToast('발송 완료: 성공 ' + (d.sent || 0) + ' / 실패 ' + (d.failed || 0) + ' / 연락처없음 ' + (d.noContact || 0), (d.failed ? 'warning' : 'success'));
+    window.leavesPromotionPreview();
+  } catch (e) {
+    window.showToast('발송 실패: ' + (e.response && e.response.data && e.response.data.error || e.message), 'error');
+  }
+};
+window.leavesRunExpire = async function() {
+  try {
+    var r = await axios.post('/api/leaves/expire', { dryRun: true });
+    var cands = r.data.candidates || [];
+    var lawful = r.data.lawful || 0;
+    if (!cands.length) { window.showToast('소멸 대상 없음(만료 경과 + 잔여>0 없음)', 'info'); return; }
+    if (lawful === 0) { window.showToast('소멸 가능(촉진 적법) 건 없음. 사용촉진 1·2차 통지를 먼저 완료하세요.', 'warning'); return; }
+    var msg = '만료 경과 잔여 ' + cands.length + '건 중 촉진 적법 ' + lawful + '건을 소멸 처리합니다.\n(촉진 미이행분은 제외 — 수당 산정 대상 유지)\n노무수령거부 등 촉진 절차 완료를 확인했으면 진행하세요.';
+    if (!(await showConfirm(msg, { title: '연차 소멸', confirmText: '소멸 실행', danger: true }))) return;
+    var rr = await axios.post('/api/leaves/expire', { dryRun: false });
+    window.showToast('소멸 완료: ' + (rr.data.expired || 0) + '건 (제외 ' + (rr.data.skipped_unlawful || 0) + ')', 'success');
+    window.leavesLoadBalances();
+  } catch (e) {
+    window.showToast('소멸 실패: ' + (e.response && e.response.data && e.response.data.error || e.message), 'error');
+  }
+};
+
 // 직원 검색 자동완성 공통 로직
 var _lvSearchSetupDone = {};
 function lvSetupEmployeeSearch(searchId, hiddenId, dropdownId) {

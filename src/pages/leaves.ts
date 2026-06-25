@@ -32,6 +32,41 @@ export function leavesPage(c: Context<HonoEnv>) {
             <button onclick="leavesRunYearly()" class="px-3 py-1.5 text-xs border border-gray-300 text-gray-700 bg-white rounded hover:bg-gray-50" title="1년차 이상 직원에게 연간 연차 자동 부여 (연 1회 실행)">
               <i class="fas fa-calendar-plus mr-1"></i>연간 부여 실행
             </button>
+            <button onclick="leavesOpenPromotionModal()" class="px-3 py-1.5 text-xs border border-gray-300 text-gray-700 bg-white rounded hover:bg-gray-50" title="근로기준법 제61조 연차 사용촉진 통지(1·2차)">
+              <i class="fas fa-bullhorn mr-1"></i>사용촉진
+            </button>
+            <button onclick="leavesRunExpire()" class="px-3 py-1.5 text-xs border border-amber-300 text-amber-700 bg-white rounded hover:bg-amber-50" title="만료 경과 + 촉진 적법 연차 소멸 처리(미리보기 후 확정)">
+              <i class="fas fa-hourglass-end mr-1"></i>연차 소멸
+            </button>
+          </div>
+        </div>
+
+        <!-- 사용촉진 모달 -->
+        <div id="lvPromotionModal" class="ds-modal-overlay hidden" style="z-index:9998">
+          <div class="ds-modal" style="max-width:560px">
+            <div class="ds-modal-header"><h3 style="font-size:15px"><i class="fas fa-bullhorn mr-1 text-blue-600"></i>연차 사용촉진 통지 (제61조)</h3></div>
+            <div class="ds-modal-body" style="padding:18px 22px">
+              <div class="flex items-center gap-2 mb-3">
+                <label class="text-xs text-gray-600">대상</label>
+                <select id="lvPromoSource" class="border rounded px-2 py-1 text-xs">
+                  <option value="ANNUAL">1년이상 연차</option>
+                  <option value="MONTHLY_A">월차(1~9개월분)</option>
+                  <option value="MONTHLY_B">월차(10·11개월분)</option>
+                </select>
+                <label class="text-xs text-gray-600 ml-2">단계</label>
+                <select id="lvPromoStage" class="border rounded px-2 py-1 text-xs">
+                  <option value="FIRST">1차 (사용시기 지정 요청)</option>
+                  <option value="SECOND">2차 (사용시기 지정 통보)</option>
+                </select>
+                <button onclick="leavesPromotionPreview()" class="ds-btn ds-btn-primary text-xs ml-auto"><i class="fas fa-eye mr-1"></i>미리보기</button>
+              </div>
+              <div class="text-xs text-gray-500 mb-2">법정 통지 윈도우에 해당하는 대상만 표시됩니다. 채널=이메일(서면). 알림톡은 바로빌 템플릿 승인 후 추가.</div>
+              <div id="lvPromoResult" class="border rounded p-2 text-xs max-h-60 overflow-y-auto bg-gray-50">미리보기를 눌러 대상을 확인하세요.</div>
+            </div>
+            <div class="ds-modal-footer">
+              <button onclick="leavesClosePromotionModal()" class="ds-btn ds-btn-ghost text-xs">닫기</button>
+              <button id="lvPromoSendBtn" onclick="leavesPromotionSend()" class="ds-btn ds-btn-primary text-xs" disabled><i class="fas fa-paper-plane mr-1"></i>발송</button>
+            </div>
           </div>
         </div>
 
