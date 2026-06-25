@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 3 -->
-<!-- last_run_at: 2026-06-25T10:00:00+09:00 -->
+<!-- last_run_area: 4 -->
+<!-- last_run_at: 2026-06-25T14:00:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,7 +8,7 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | 3 (**GitHub open auto-improve 실측 3건** — **#439** 스케줄 루틴 git push/backlog 트림 회복탄력성 improvement small [Area 1] + **#441** 폐기 clients.balance 캐시 stale read bug medium [Area 4] + **#442** 영수증 GET /receipt-image/* 클라이언트키 직접서빙 IDOR(#365 일반프록시 완화 회귀, MANAGER 교차법인+공유버킷 임의read) bug small [Area 5, 본 사이클 신규]) |
+| 🆕 new | 4 (**GitHub open auto-improve 실측 4건** — **#439** 스케줄 루틴 git push/backlog 트림 회복탄력성 improvement small [Area 1] + **#441** 폐기 clients.balance 캐시 stale read bug medium [Area 4] + **#442** 영수증 GET /receipt-image/* 클라이언트키 직접서빙 IDOR(#365 일반프록시 완화 회귀) bug small [Area 5] + **#443** 세금계산서 발행취소/삭제 시 payments.tax_invoice_id 미정리 → dangling 링크+입금 자동제안 영구제외(신규 Phase3 0387 매칭이 cancel 정리경로에 누락, order_billing_groups 형제만 정리됨) bug small [Area 4, 본 사이클 신규]) |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 (#372 CSV도 owner close-completed → done 이관) |
 | ✔️ done | 139 (135 + **owner close-completed 4건**[#430 smoke write-카나리·#435 차감방식 UI·#436 재고실사 audit·#437 bank PUT IDOR — 커밋 `f9587c5` "fix(security/audit): IDOR·감사기록·차감방식UI·write카나리 일괄 수정"으로 전부 수정 close, main 트리 실재 검증·#422 디버전스 clean]) |
@@ -16,6 +16,18 @@
 
 > 📦 **과거 사이클 로그**는 `IMPROVEMENT_BACKLOG_ARCHIVE.md`/git 히스토리로 이관됨 (2026-06-10 1차 분리, 2026-06-25 2차 트림 343KB→192KB, **2026-06-25T10:00 3차 트림 — 06-17~06-23 사이클 로그를 git 히스토리로 이관: node_modules 부재 세션에서 commit-gate(typecheck) 차단으로 API 푸시 필요 → 파일 축소로 비용 절감 + 256KB 한도 회복**). 신규 로그는 계속 이 파일 상단에 추가. 본 파일은 직전 2일치(06-24~) 사이클 로그 + 영구 참조 섹션(Approved/New/Auto-fixed/Done/Rejected/FP 카탈로그)만 유지. 이관분은 `git log -p -- IMPROVEMENT_BACKLOG.md`로 복원 가능.
 
+> **Area 4 데이터 정합성 (2026-06-25T14:00):**
+> - **방법**: git fetch-before-compare(origin force-update `4993fa7→784607b`, fetch 후 **HEAD=origin/main `784607b` 0/0 동기**, 워킹트리 clean, 디버전스 0). egress 차단(prod D1/wrangler/node_modules 부재)이라 migrations ground-truth 정적 대조. Area 4 **23회차** — **신선 각도 = 직전 Area4(`4c91a6d`, 06-24T14:00) 이후 최대 신규 write-path = 세금계산서↔입금 매칭(Phase3 `paymentMatch.ts` +256·0387) + IA editor Export-first(`workbench.ts` +251·0386 ia_process_jobs) + leaves P2-W2(촉진/소멸).** 신규 링크/잡 테이블의 status 전이·dangling 참조·멱등성을 첫 Area4 감사.
+> - **🔴 신규 이슈 #443 (bug, small) — 세금계산서 발행취소/삭제 시 신규 `payments.tax_invoice_id` 미정리(dangling+자동제안 영구제외)**: Phase3(`0387`) 입금매칭이 도입한 `payments.tax_invoice_id`를 **cancel 핸들러(`issue.ts:662~728`)가 정리 안 함** — 취소 가능 상태(ISSUED/SENT/NTS_SUCCESS=입금 링크 가능 상태와 동일집합)를 CANCELLED로 전환하면서 **형제 `order_billing_groups.tax_invoice_id=NULL`(`:707`)은 정리하나 payments 링크만 누락**. ① 무효 계산서에 입금 잔존(회계 귀속 오류) ② 전체 제안 쿼리 `WHERE p.tax_invoice_id IS NULL`(`paymentMatch.ts:136`)이라 dangling 입금은 **재발행 계산서에 자동제안 영구 제외**(수동해제 전까지). **결정적 = 0387이 cancel/삭제 핸들러보다 나중 추가**라 정리경로 미반영 = #441/#431/#395 "참조 정리 완전성" 동축. 형제 정리는 의식적 하드닝됨(`manage.ts:143` `// #386 cancel 경로와 대칭 dangling 방지`). **issue-only**(cancel=금융 워크플로 batch 변경·link-null vs 감사보존 비즈니스 판단·egress 차단 런타임 검증 불가, #441/#395 동일).
+> - **🟢 IA process jobs(`workbench.ts` +251, 0386) = 데이터정합성 clean**: ① INSERT(`:768`) `entity_id=getEntityId(c)`·`created_by=user?.id`·`status='queued'`(leave_type류 CHECK 무제약 TEXT) 정합 ② **atomic claim guard** — 폴링 claim이 `UPDATE ... SET status='rendering' WHERE id IN (...) AND status='queued'`(`:803`)로 재폴링/동시 에이전트 이중처리 방지(#420 TOCTOU 정답 패턴) ③ 전 read entityFilter(`ef`) ④ status 전이 queued→rendering→done|error 단방향, `status='queued'` 필터가 claimed 잡 자연 제외. sheet_layouts render_status도 동형 claim guard(`:570`).
+> - **🟢 payment-match PUT 멱등/정합 = clean**: 연결 시 ① 입금 entity 스코프(`efP` IDOR 방지 `:221`) ② 대상 계산서 entity+발행완료+동일거래처 3중 검증(`:228~239`) ③ `UPDATE payments SET tax_invoice_id=?`는 멱등(재클릭 무해). 단일/전체 제안의 issue_date NULL 처리 분기(단건 `||'1970-01-01'` vs 전체 `null→무필터`)는 issue_date NOT NULL(0387 전 컬럼 실재)이라 실무상 동일 = FP 미보고. 다중입금→1계산서(부분입금 합산 `linkedTotal`)는 의도된 설계.
+> - **🟢 leaves P2-W2(촉진/소멸 `0530112`) status/날짜 정합 = clean**: 소멸 sweep는 `expire_date`/`expired`(0384 ADD COLUMN) additive, 촉진통지(0383)는 INSERT-only. `a4081ba`가 연차소멸 적법게이트+근태재계산 follow-up 픽스. CHECK-literal write 위반 0(leave_type 무CHECK).
+> - **🟢 마이그 0381-0387 = additive/멱등**: 전부 ADD COLUMN/CREATE TABLE IF NOT EXISTS/INSERT, `DROP TABLE/COLUMN` 0건. 0382(production_board 권한 DELETE만)·0386(ia_process_jobs CREATE IF NOT EXISTS)·0387(payments ADD COLUMN+INDEX). 마이그 번호 중복 standing scan(#438) = `0327`만(기존 prod-적용 추정, 신규 0381-0387 중복 유입 0).
+> - **🟢 backlog↔GitHub sync**: open auto-improve **실측 3건**(#439·#441·#442, list_issues 전수) = 직전 Area3 stats `new=3` **정합**. 본 사이클 #443 추가 → new 3→4. owner 신규 close/머지 0(done=139·rejected=3 유지). #422 디버전스: HEAD=origin/main 동기(`784607b`)라 미push 픽스 0.
+> - **🧬 SKILL 강화 0건**: #443은 기존 standing scan(참조 정리 완전성 #395/#431·status-consistency 제외 sweep line 159·신규 write-path denormalized link)이 정확히 커버 — Phase3 신규 링크 테이블을 그 규칙으로 즉시 격리. 신규 탐지 패턴 불필요.
+> - **이상 없음(ia_process_jobs·payment-match 멱등·leaves·마이그·중복)**, **유일 발견 #443**(payments dangling 링크, issue-only). git 동기 0/0, sync 3=3(+#443).
+> - 자동 수정 0건(Area 4 #443=issue-only, cancel 금융 워크플로 batch 변경), 신규 이슈 1건(#443), SKILL 강화 0건, done-sync(변동 0, new 3→4), **신선 각도 — 세금계산서↔입금 매칭/IA Export-first 신규 write-path 첫 데이터정합성 감사(status 전이·dangling 참조·atomic claim·멱등), 프로덕션 영향 0(#443은 stale 포인터, 데이터 손상 아님·수동해제 복구 가능)**
+>
 > **Area 3 UX/기능 감사 (2026-06-25T10:00):**
 > - **방법**: git fetch-before-compare(origin force-update `4993fa7→4445e0d`, fetch 후 **HEAD=origin/main `4445e0d` 0/0 동기**, 워킹트리 clean, 디버전스 0). egress 차단(prod/Playwright/verify[node_modules 부재] 도달 불가)이라 정적 분석. Area 3 **18회차** — **신선 각도 = 직전 Area3(`c02deb1`, 06-24T10:00) 이후 최대 신규 프론트 feature = 세금계산서 Phase1/2/3(`taxInvoices.js +239`, `020fa24`+`7615ab9`)** — 법정 발행기한 경고(Phase1) + 월합산 기한·재발행(Phase2) + 입금 매칭 모달(Phase3) = Area3 미감사 최대 user-facing churn.
 > - **🟢 세금계산서 Phase3 입금매칭 신규 모달(`openPayMatchModal`) = UX/기능 전수 clean**: ① **DOM 존재성**(CLAUDE.md silent-fail 함정) — `payMatchModal`/`payMatchContent`가 `pages/taxInvoices.ts:417/423`에 실재 + `if(!modal||!content){console.warn('[taxInvoices] #payMatchModal not found');return}` 가드 ② **axios→라우트 존재성**(죽은 버튼 0) — `GET /api/tax-invoices/:id/payment-match`↔`paymentMatch.ts:50` + `PUT /api/tax-invoices/payments/:pid/tax-invoice`↔`:198` 실재, 배럴 `taxInvoicesRouter.route('/', PaymentMatchRouter)`(`taxInvoices.ts:30`) 마운트 ③ **로딩 표시**(`<i class="fa-spinner fa-spin">로딩 중...`) ④ **빈상태**("제안할 미매칭 입금이 없습니다." colspan 정합) ⑤ **confirm 가드**(`await showConfirm('...연결...')`/`'...해제...'` — #426 콜백오용 0, Promise 정상형) ⑥ **escape**(buyer_name/payment_method/reference_number 전부 `escapeHtml`, free-text sink 0).
