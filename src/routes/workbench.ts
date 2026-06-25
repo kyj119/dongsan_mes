@@ -740,6 +740,7 @@ workbenchRouter.post('/process', async (c) => {
       analysis_id?: number; group_index?: number
       target_w_cm?: number; target_h_cm?: number
       finishing?: unknown; trim?: unknown; rotate90?: unknown
+      scale_factor?: number; rotation?: number
     }>()
     const analysisId = parseInt(String(body.analysis_id ?? ''), 10)
     if (!analysisId) return c.json({ success: false, error: 'analysis_id가 필요합니다.' }, 400)
@@ -756,12 +757,19 @@ workbenchRouter.post('/process', async (c) => {
     if (!an) return c.json({ success: false, error: '분석을 찾을 수 없습니다.' }, 404)
     if (an.status !== 'done') return c.json({ success: false, error: '소스 분석이 완료되지 않았습니다.' }, 400)
 
+    // ⑥ 회전 정규화: rotation(0/90/180/270) 우선, 없으면 rotate90 boolean → 90/0 매핑
+    const rotation = [0, 90, 180, 270].includes(body.rotation as number)
+      ? (body.rotation as number)
+      : (body.rotate90 ? 90 : 0)
     const params = {
       target_w_cm: (typeof body.target_w_cm === 'number') ? body.target_w_cm : null,
       target_h_cm: (typeof body.target_h_cm === 'number') ? body.target_h_cm : null,
       finishing: body.finishing ?? null,
       trim: body.trim ?? null,
       rotate90: body.rotate90 ?? false,
+      // ⑤ 파일배율(1/N): 1 이상 숫자만 허용, 아니면 1 — jsx/에이전트가 scaleFactor 키로 읽음
+      scale_factor: (typeof body.scale_factor === 'number' && body.scale_factor >= 1) ? body.scale_factor : 1,
+      rotation,
     }
     const user = c.get('user')
     const created = await c.env.DB.prepare(`
@@ -806,6 +814,54 @@ workbenchRouter.get('/process-queue', async (c) => {
     return c.json({ success: true, data: results })
   } catch (error) {
     console.error('Workbench process-queue poll error:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
+  }
+})
+
+// GET /api/workbench/process?limit=N — 가공 이력 목록 (entity 격리, created_at desc) — spec P1 ③
+// 영속 재다운로드 보드용. result_meta(width/height/has_*·jpg_base64 썸네일)는 result_json에서 추출.
+workbenchRouter.get('/process', async (c) => {
+  try {
+    const limit = Math.min(parseInt(c.req.query('limit') || '12', 10) || 12, 50)
+    const ef = entityFilter(c, 'ia_process_jobs')
+    const { results } = await c.env.DB.prepare(`
+      SELECT id, status, group_index, analysis_id, error_message, created_at, result_json
+      FROM ia_process_jobs
+      WHERE 1=1${ef.clause}
+      ORDER BY created_at DESC, id DESC
+      LIMIT ?
+    `).bind(...ef.params, limit).all<{
+      id: number; status: string; group_index: number; analysis_id: number
+      error_message: string | null; created_at: string; result_json: string | null
+    }>()
+
+    const data = results.map((r) => {
+      let result_meta: {
+        width_cm: number | null; height_cm: number | null
+        has_eps: boolean; has_dxf: boolean; has_jpg: boolean; jpg_base64: string | null
+      } | null = null
+      if (r.result_json) {
+        try {
+          const obj = JSON.parse(r.result_json)
+          result_meta = {
+            width_cm: (obj && obj.width_cm != null) ? Number(obj.width_cm) : null,
+            height_cm: (obj && obj.height_cm != null) ? Number(obj.height_cm) : null,
+            has_eps: !!(obj && obj.eps_r2),
+            has_dxf: !!(obj && obj.dxf_r2),
+            has_jpg: !!(obj && obj.jpg_r2),
+            jpg_base64: (obj && obj.jpg_base64) ? String(obj.jpg_base64) : null,
+          }
+        } catch (_e) { result_meta = null }
+      }
+      return {
+        id: r.id, status: r.status, group_index: r.group_index, analysis_id: r.analysis_id,
+        error_message: r.error_message, created_at: r.created_at, result_meta,
+      }
+    })
+
+    return c.json({ success: true, data })
+  } catch (error) {
+    console.error('Workbench process list error:', error)
     return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
   }
 })

@@ -63,6 +63,7 @@ function main() {
     var finishingCfg = _p.finishing   || null;
     var passthroughThumb = _p.passthroughThumb || false;  // 완성본 직접연결: 가공 없이 PNG 썸네일만 생성
     var trim         = _p.trim       || false;  // N5: 단일 그룹 돔보 마크 (출력 둘레)
+    var rotation     = _p.rotation   || 0;       // ⑥ 디자인 아트워크 회전 (0/90/180/270, 0=무동작)
     var targetW      = _p.targetW    || 0;       // N4 fidelity: 목표 너비(cm, 캔버스 리사이즈). 0=스케일 안 함
     var targetH      = _p.targetH    || 0;       // N4 fidelity: 목표 높이(cm)
     var outputDxf    = _p.dxfOutput  || "";      // Export: 재단선 DXF (선택, 주문 가공은 미지정 → 스킵)
@@ -185,6 +186,67 @@ function main() {
 
     $.writeln("ProcessOrderItem: " + allMappedItems.length + " total items, "
         + artboardTopItems[abIndex].length + " items for artboard " + abIndex);
+
+    // ── 2b-rot. 디자인 아트워크 회전 (⑥, 목표 스케일·마감 이전) ──
+    // SheetLayout.jsx rotate(-pl.rotation) 패턴 포팅: 프론트/Konva는 화면 CW, Illustrator rotate는 CCW → -rotation.
+    // 현재 아트보드 top items를 그룹화 → 그룹 중심 기준 회전 → ungroup 후 회전 결과로 bbox(oL/oT/oR/oB·designW/H) 재계산.
+    // 90/270이면 회전된 geometricBounds가 곧 가로↔세로 swap된 결과 → 아트보드 rect 재설정으로 자연 반영.
+    // rotation 0이면 완전 무동작(기존 경로·주문 가공 회귀 0).
+    var _rotNorm = ((Math.round(rotation / 90) * 90) % 360 + 360) % 360;  // 0/90/180/270로 정규화
+    if (_rotNorm !== 0) {
+        try {
+            doc.selection = null;
+            doc.artboards.setActiveArtboardIndex(abIndex);
+            doc.selectObjectsOnActiveArtboard();
+            if (doc.selection && doc.selection.length > 0) {
+                var _rgrp = false;
+                if (doc.selection.length > 1) { app.executeMenuCommand('group'); _rgrp = true; }
+                var rg = doc.selection[0];
+                rg.rotate(-_rotNorm);   // 아이템 중심 기준 (AI 기본 앵커=중심) — CW 의도 → -각도
+                if (_rgrp) app.executeMenuCommand('ungroup');
+                doc.selection = null;
+                // 회전 결과로 아트보드 바운드 재계산 (좌상단 앵커 유지)
+                doc.artboards.setActiveArtboardIndex(abIndex);
+                doc.selectObjectsOnActiveArtboard();
+                var rbL = null, rbT = null, rbR = null, rbB = null;
+                for (var rbi = 0; rbi < doc.selection.length; rbi++) {
+                    var gb = doc.selection[rbi].geometricBounds; // [left, top, right, bottom]
+                    if (rbL === null) { rbL = gb[0]; rbT = gb[1]; rbR = gb[2]; rbB = gb[3]; }
+                    else {
+                        if (gb[0] < rbL) rbL = gb[0];
+                        if (gb[1] > rbT) rbT = gb[1];
+                        if (gb[2] > rbR) rbR = gb[2];
+                        if (gb[3] < rbB) rbB = gb[3];
+                    }
+                }
+                doc.selection = null;
+                if (rbL !== null) {
+                    // 좌상단(oL,oT) 고정 → 회전 후 폭/높이를 그 자리에서 재배치
+                    var newW = Math.abs(rbR - rbL);
+                    var newH = Math.abs(rbT - rbB);
+                    oR = oL + newW; oB = oT - newH;
+                    designW = newW; designH = newH;
+                    ab.artboardRect = [oL, oT, oR, oB];
+                    // 회전된 아트워크를 좌상단 앵커로 이동 (그룹 중심 회전으로 위치가 틀어졌을 수 있음)
+                    var _dx = oL - rbL, _dy = oT - rbT;
+                    if (Math.abs(_dx) > 0.01 || Math.abs(_dy) > 0.01) {
+                        doc.artboards.setActiveArtboardIndex(abIndex);
+                        doc.selectObjectsOnActiveArtboard();
+                        for (var rmi = 0; rmi < doc.selection.length; rmi++) {
+                            try { doc.selection[rmi].translate(_dx, _dy); } catch (eT) {}
+                        }
+                        doc.selection = null;
+                    }
+                    // 90/270이면 targetW/H swap(목표가 검출 종횡비 기준이므로 가로↔세로 매핑)
+                    if (_rotNorm === 90 || _rotNorm === 270) {
+                        var _sw = targetW; targetW = targetH; targetH = _sw;
+                    }
+                    $.writeln("ProcessOrderItem: 회전 " + _rotNorm + "° -> design "
+                        + Math.round(designW * mmPerPt) + "x" + Math.round(designH * mmPerPt) + "mm");
+                }
+            }
+        } catch (eRot) { $.writeln("ProcessOrderItem: 회전 실패 - " + eRot); }
+    }
 
     // ── 2c. 목표 크기 스케일 (N4 fidelity: 캔버스 리사이즈 반영) ──
     // 검출 크기와 다른 목표가 오면 아트보드 아트워크를 그룹으로 묶어 목표 W×H로 비균등 스케일(좌상단 앵커).

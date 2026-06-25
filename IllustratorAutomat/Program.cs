@@ -1554,12 +1554,17 @@ namespace IllustratorAutomation
             }
             else { await PatchProcessJob(jobId, "error", null, $"소스 .ai 없음(재분석 필요): {srcPath}"); return; }
 
-            // params_json 파싱: { target_w_cm, target_h_cm, finishing:{top/bottom/left/right:{method,margin_cm}}, trim, rotate90 }
+            // params_json 파싱: { target_w_cm, target_h_cm, finishing:{top/bottom/left/right:{method,margin_cm}}, trim, scale_factor, rotation }
             var prm = JsonSerializer.Deserialize<JsonElement>(RjStr(job, "params_json") ?? "{}");
             double targetW = prm.TryGetProperty("target_w_cm", out var twEl) && twEl.ValueKind == JsonValueKind.Number ? twEl.GetDouble() : 0;
             double targetH = prm.TryGetProperty("target_h_cm", out var thEl) && thEl.ValueKind == JsonValueKind.Number ? thEl.GetDouble() : 0;
             bool trim = prm.TryGetProperty("trim", out var trEl) && (trEl.ValueKind == JsonValueKind.True || (trEl.ValueKind == JsonValueKind.Number && trEl.GetDouble() != 0));
             JsonElement? finishing = prm.TryGetProperty("finishing", out var finEl) && finEl.ValueKind == JsonValueKind.Object ? finEl : (JsonElement?)null;
+            // ⑤ 파일배율: jsx가 _p.scaleFactor(키명 정확)로 읽음. 기본 1.
+            double scaleFactor = prm.TryGetProperty("scale_factor", out var sfEl) && sfEl.ValueKind == JsonValueKind.Number ? sfEl.GetDouble() : 1;
+            if (scaleFactor < 1) scaleFactor = 1;
+            // ⑥ 회전(0/90/180/270): 미전달=0(주문 가공 경로 무영향).
+            double rotation = prm.TryGetProperty("rotation", out var rotEl) && rotEl.ValueKind == JsonValueKind.Number ? rotEl.GetDouble() : 0;
 
             var now = DateTime.Now;
             string outFolder = Path.Combine(ZDRIVE_PATH, "DESIGN", "가공", now.ToString("yyyy"), now.ToString("MM"), now.ToString("dd"), $"process_{jobId}");
@@ -1577,6 +1582,8 @@ namespace IllustratorAutomation
                 targetW = targetW,
                 targetH = targetH,
                 trim = trim,
+                scaleFactor = scaleFactor,  // ⑤ jsx _p.scaleFactor (키명 정확)
+                rotation = rotation,         // ⑥ jsx _p.rotation (0/90/180/270)
                 epsOutput = epsOut,
                 dxfOutput = dxfOut,
                 jpgOutput = jpgOut
