@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 6 -->
-<!-- last_run_at: 2026-06-25T22:00:00+09:00 -->
+<!-- last_run_area: 1 -->
+<!-- last_run_at: 2026-06-26T02:00:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -16,6 +16,17 @@
 
 > 📦 **과거 사이클 로그**는 `IMPROVEMENT_BACKLOG_ARCHIVE.md`/git 히스토리로 이관됨 (2026-06-10 1차 분리, 2026-06-25 2차 트림 343KB→192KB, **2026-06-25T10:00 3차 트림 — 06-17~06-23 사이클 로그를 git 히스토리로 이관: node_modules 부재 세션에서 commit-gate(typecheck) 차단으로 API 푸시 필요 → 파일 축소로 비용 절감 + 256KB 한도 회복**). 신규 로그는 계속 이 파일 상단에 추가. 본 파일은 직전 2일치(06-24~) 사이클 로그 + 영구 참조 섹션(Approved/New/Auto-fixed/Done/Rejected/FP 카탈로그)만 유지. 이관분은 `git log -p -- IMPROVEMENT_BACKLOG.md`로 복원 가능.
 
+> **Area 1 프로덕션 헬스 (2026-06-26T02:00):**
+> - **방법**: git fetch-before-compare(origin force-update `4993fa7→beaa47b`, fetch 후 **HEAD=origin/main `beaa47b` 0/0 동기**, 워킹트리 clean, 디버전스 0). egress 차단(prod 직접 fetch·Playwright·verify[node_modules 부재] 도달 불가)이라 CI/E2E는 GitHub Actions API로, 회귀 위험은 정적 standing scan으로 검증. **사이클 churn = 1 커밋(`beaa47b` = 직전 Area6 자기진화 커밋 본인)** — 직전 사이클(`2743ad1`) 이후 owner 신규 코드 churn 0.
+> - **🟢 CI/E2E = 전부 GREEN**: 최근 15런(`actions_list` main) 전부 `completed/success` — HEAD `beaa47b`(Area6 자기진화) Deploy + Daily D1 Backup 모두 success, 직전 IA editor P1/P2/P3(`79207b7`~`adb4ab4`)·KST 정규화(`818cbd7`)·Area5(`0500731`) Deploy 전부 success. Deploy 워크플로(post-deploy smoke 포함) fail 0. **신규 prod-breaking 회귀 0**.
+> - **🟢 DROP/RENAME 마이그 write-path standing scan(SKILL line 40) = 위험 0**: `2743ad1..beaa47b` 마이그 변경 **0건**(최신 마이그 `0388_normalize_print_event_kst_to_utc` = 직전 Area6 사이클 검증분, 신규 유입 0). `DROP TABLE`/`DROP COLUMN` 신규 0(grep 매치 전부 기존 0048/0070/0208 등 ≤0337). items inline-FK 깨짐류(#430 smoke 맹점) 트리거 없음.
+> - **🟢 마이그 번호 중복 standing scan(#438) = net-new 0**: `uniq -d`(4자리 prefix) = `0080`·`0193`·`0327` — **0080b/0193b는 의도적 suffix 컨벤션**(순서보장용 = FP), `0327`만 진짜 동일번호(기존 prod-적용 추정, #438 규칙상 정리대상 아님). 신규 중복 유입 0.
+> - **🟢 prod↔main 디버전스(#422) = clean**: HEAD=origin/main `beaa47b` 0/0 동기 → 미push 픽스 0. owner close 코멘트 "배포 완료" 주장 신규 0(done=139 유지, 최근 closure 전무).
+> - **🟢 backlog↔GitHub sync**: open auto-improve **실측 5건**(#439·#441·#442·#443·#444, list_issues 전수) = 직전 Area6 stats `new=5` **정합**. owner 신규 close/머지 0(done=139·rejected=3 유지). 본 사이클 신규 이슈 0(헬스 GREEN·회귀 0).
+> - **🧬 SKILL 강화 0건**: 기존 standing scan(DROP write-path line 40·마이그중복 #438·디버전스 #422·smoke 맹점 #430)이 본 사이클 전수 커버. churn 0(owner 신규 코드 없음)이라 신규 탐지 패턴 불필요.
+> - **이상 없음(CI·DROP마이그·중복·디버전스·sync)**, 신규 발견 0. git 동기 0/0·워킹트리 clean, sync 5=5.
+> - 자동 수정 0건(헬스 GREEN·owner churn 0), 신규 이슈 0건, SKILL 강화 0건, done-sync(변동 0, new 5 유지), **신선 각도 — Area 1 프로덕션 헬스: CI 15런 전수 GREEN·직전 IA editor/KST정규화 배포 정상·신규 마이그 0(DROP 0)·디버전스 0, 프로덕션 무중단. 사이클 churn=1(자기 커밋뿐)이라 owner 신규 코드 검증 대상 자체가 없는 clean cycle.**
+>
 > **Area 6 자기 진화 (2026-06-25T22:00):**
 > - **방법**: git fetch-before-compare(origin force-update `4993fa7→2743ad1`, fetch 후 **HEAD=origin/main `2743ad1` 0/0 동기**, 워킹트리 clean, 디버전스 0). egress 차단(prod/Playwright/verify[node_modules 부재] 도달 불가)이라 정적 bridge 검증. Area 6 **신선 각도 = 직전 Area5(`84be66e`, 06-25T18:00)/Area4(`0500731`, 06-25T14:00) 이후 최대 churn = IA editor P1/P2/P3 실사용 개선**(`79207b7`P1+`7c1e02a`R1+`093ff13`R2+`e41555d`R3a+`adb4ab4`R3b = `iaEditor.js +1321`·`workbench.ts +125`) + 출력이력 KST 정규화(`818cbd7` `production.js +288`·`printEvents.ts +89`·마이그 0388). **컬럼-diff bridge(post-Area4) + XSS bridge(post-Area5) + 마이그중복 + showConfirm오용 + axios도달성 + 0388 멱등성 6종 standing meta-check 전수.**
 > - **🟢 XSS bridge(post-Area5, `iaEditor.js +1321`·`production.js +288`) = net-new 0**: 신규 innerHTML/insertAdjacentHTML/`html+=` sink 전수 `iaeEscape`(iaEditor)·`escapeHtml`(production) 일관 — error_message/filename/preset label/adv 옵션(localStorage)·equipment name/`g.key`(location_zone) 전부 text+attr(title/value/data-*) 양쪽 이스케이프. base64 이미지 src(jpg_base64)·iaeStatusBadge(enum+escaped fallback)는 free-text 아님(FP 제외). production.js의 file_name/nest_members JSON.parse().map() 이벤트행 렌더는 **이번 churn 미포함**(diff=loadAgents/장비그룹화/필터만, 이벤트 카드 렌더 무변경 = Area5 기존 커버) → A-024/A-025 부분-escape 클래스 net-new 0.
