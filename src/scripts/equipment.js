@@ -263,7 +263,7 @@ function renderLayoutEquipment(equipData) {
             'top:' + (eq.location_y != null ? eq.location_y : 50) + '%',
             'width:' + size.w + 'px',
             'height:' + size.h + 'px',
-            'transform:translate(-50%,-50%)',
+            'transform:translate(-50%,-50%) rotate(' + (eq.layout_rotation || 0) + 'deg)',
             'border:2px solid ' + color,
             'background:white',
             'border-radius:5px',
@@ -333,6 +333,7 @@ function showEquipPopover(eq, el) {
         + '<div>진행중: <span class="font-medium text-gray-700">' + (eq.active_cards || 0) + '건</span></div>'
         + '<div>크기: <span class="font-medium text-gray-700">' + sizeLabel + '</span></div>'
         + '</div>'
+        + (editMode ? '<button onclick="rotateEquip(\'' + escapeHtml(String(eq.id)) + '\')" class="mt-2 w-full flex items-center justify-center gap-1 text-xs text-gray-600 hover:text-blue-600 border border-gray-200 rounded py-1"><i class="fas fa-rotate-right text-[10px]"></i> 90° 회전</button>' : '')
         + '<div class="mt-3 flex items-center justify-between">'
         + '<button onclick="document.getElementById(\'equipPopover\').classList.add(\'hidden\');openDetail(\'' + escapeHtml(String(eq.id)) + '\')" class="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-700 font-medium">'
         + '상세 <i class="fas fa-arrow-right text-[10px]"></i></button>'
@@ -469,6 +470,22 @@ function setProcessFilter(code) {
 
 function goToProductionHistory(id) {
     window.location.href = '/production?equipment_ids=' + encodeURIComponent(id);
+}
+
+// 장비 핀 90° 회전 (배치도 편집) — 0→90→180→270→0
+async function rotateEquip(id) {
+    var eq = equipList.find(function(e) { return e.id === id; });
+    if (!eq) return;
+    var rot = (((eq.layout_rotation || 0) + 90) % 360);
+    try {
+        await axios.patch('/api/rip/equipment/' + id + '/position', { layout_rotation: rot });
+        eq.layout_rotation = rot;
+        renderLayoutEquipment(equipList);
+        var pop = document.getElementById('equipPopover');
+        if (pop) pop.classList.add('hidden');
+    } catch(e) {
+        showToast('회전 저장 실패: ' + (e.response && e.response.data && e.response.data.error ? e.response.data.error : e.message), 'error');
+    }
 }
 
 // ─── 구역 관리 ──────────────────────────────────────────────────────────────

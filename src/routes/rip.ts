@@ -234,7 +234,7 @@ ripRouter.get('/equipment', authMiddleware, async (c) => {
     const ef = entityFilter(c, 'e')  // #342 설비 법인 격리
     const { results: equipmentList } = await c.env.DB.prepare(`
       SELECT e.id, e.name, e.printer_name, e.ip_address, e.status,
-        e.head_count, e.location_zone, e.zone_id, e.location_x, e.location_y,
+        e.head_count, e.location_zone, e.zone_id, e.location_x, e.location_y, e.layout_rotation,
         e.notes, e.equipment_status, e.daily_capacity, e.size_type,
         e.last_seen_at,
         e.print_log_path,
@@ -655,18 +655,29 @@ ripRouter.put('/equipment/:id/capacity', authMiddleware, requireRole('ADMIN', 'M
 ripRouter.patch('/equipment/:id/position', authMiddleware, requireRole('ADMIN', 'MANAGER'), async (c) => {
   try {
     const equipId = c.req.param('id')
-    const { location_x, location_y, location_zone } = await c.req.json()
+    // 부분 업데이트: 드래그=location_x/y, 회전=layout_rotation (서로 클로버링 방지)
+    const body = await c.req.json<{ location_x?: number; location_y?: number; location_zone?: string; layout_rotation?: number }>()
+
+    const fields: string[] = []
+    const values: any[] = []
+    if (body.location_x !== undefined) { fields.push('location_x = ?'); values.push(body.location_x) }
+    if (body.location_y !== undefined) { fields.push('location_y = ?'); values.push(body.location_y) }
+    if (body.location_zone !== undefined) { fields.push('location_zone = COALESCE(?, location_zone)'); values.push(body.location_zone || null) }
+    if (body.layout_rotation !== undefined) { fields.push('layout_rotation = ?'); values.push((((Number(body.layout_rotation) || 0) % 360) + 360) % 360) }
+    if (fields.length === 0) return c.json({ success: false, error: 'No fields to update' }, 400)
+    fields.push('updated_at = CURRENT_TIMESTAMP')
 
     const ef = entityFilter(c)  // #342
+    values.push(equipId, ...ef.params)
     await c.env.DB.prepare(
-      `UPDATE equipment SET location_x = ?, location_y = ?, location_zone = COALESCE(?, location_zone), updated_at = CURRENT_TIMESTAMP WHERE id = ?${ef.clause}`
-    ).bind(location_x, location_y, location_zone || null, equipId, ...ef.params).run()
+      `UPDATE equipment SET ${fields.join(', ')} WHERE id = ?${ef.clause}`
+    ).bind(...values).run()
 
     return c.json({ success: true })
   } catch (error) {
+    console.error('src/routes/rip.ts error:', error)
     return c.json({
       success: false,
-
       error: '서버 오류가 발생했습니다.'
     }, 500)
   }
