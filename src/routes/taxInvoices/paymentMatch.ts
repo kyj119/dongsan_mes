@@ -127,8 +127,8 @@ paymentMatchRouter.get('/payment-match/suggestions', async (c) => {
     const efP = entityFilter(c, 'p')
     const efT = entityFilter(c, 'ti')
 
-    // 미매칭 입금 (entity 격리)
-    const { results: pays } = await c.env.DB.prepare(
+    // 1) 미매칭 입금 (entity 격리)
+    const { results: paysRaw } = await c.env.DB.prepare(
       `SELECT p.id, p.client_id, p.payment_date, p.amount, p.payment_method, p.reference_number, p.notes, p.tax_invoice_id,
               cl.client_name
        FROM payments p
@@ -137,37 +137,53 @@ paymentMatchRouter.get('/payment-match/suggestions', async (c) => {
        ORDER BY p.payment_date DESC
        LIMIT 500`
     ).bind(...efP.params).all<PaymentRow & { client_name: string | null }>()
+    const pays = paysRaw as Array<PaymentRow & { client_name: string | null }>
 
-    const amountClause = MATCH_AMOUNT_TOLERANCE > 0
-      ? 'ABS(ti.total_amount - ?) <= ?'
-      : 'ti.total_amount = ?'
-
-    const suggestions: Array<Record<string, unknown>> = []
-    for (const p of pays as Array<PaymentRow & { client_name: string | null }>) {
-      const amountParams: number[] = MATCH_AMOUNT_TOLERANCE > 0
-        ? [p.amount, MATCH_AMOUNT_TOLERANCE]
-        : [p.amount]
-      const { results: cands } = await c.env.DB.prepare(
+    // 2) 입금 거래처들의 발행완료·미연결 계산서를 일괄 조회(N+1 제거). client_id IN은 D1 바인드 한도로 80개 청크.
+    const clientIds = Array.from(new Set(pays.map((p) => p.client_id).filter((v) => v != null)))
+    const tiByClient = new Map<number, TaxInvoiceRow[]>()
+    for (let i = 0; i < clientIds.length; i += 80) {
+      const chunk = clientIds.slice(i, i + 80)
+      const ph = chunk.map(() => '?').join(',')
+      const { results: tis } = await c.env.DB.prepare(
         `SELECT ti.id, ti.invoice_number, ti.buyer_client_id, ti.buyer_name, ti.total_amount, ti.status, ti.issue_date
          FROM tax_invoices ti
          WHERE ti.status IN ('ISSUED','SENT','NTS_SUCCESS')
-           AND ti.buyer_client_id = ?
-           AND ${amountClause}
-           AND (ti.issue_date IS NULL OR ABS(julianday(?) - julianday(ti.issue_date)) <= ?)
-           AND ti.id NOT IN (SELECT tax_invoice_id FROM payments WHERE tax_invoice_id IS NOT NULL)${efT.clause}
-         ORDER BY ABS(julianday(?) - julianday(COALESCE(ti.issue_date, ?))) ASC
-         LIMIT 5`
-      ).bind(
-        p.client_id,
-        ...amountParams,
-        p.payment_date,
-        MATCH_DATE_WINDOW_DAYS,
-        ...efT.params,
-        p.payment_date,
-        p.payment_date
-      ).all<TaxInvoiceRow>()
+           AND ti.buyer_client_id IN (${ph})
+           AND ti.id NOT IN (SELECT tax_invoice_id FROM payments WHERE tax_invoice_id IS NOT NULL)${efT.clause}`
+      ).bind(...chunk, ...efT.params).all<TaxInvoiceRow>()
+      for (const ti of tis as TaxInvoiceRow[]) {
+        const arr = tiByClient.get(ti.buyer_client_id) || []
+        arr.push(ti)
+        tiByClient.set(ti.buyer_client_id, arr)
+      }
+    }
 
-      if ((cands as TaxInvoiceRow[]).length > 0) {
+    // 3) 입금별 매칭 (기존 SQL 기준 동일: 금액 정확/오차 + issue_date NULL이거나 ±60일, 날짜근접 ASC, 최대 5)
+    const dayGap = (a: string | null, b: string | null): number => {
+      if (!a || !b) return 0
+      const ta = new Date(a).getTime(), tb = new Date(b).getTime()
+      if (isNaN(ta) || isNaN(tb)) return Number.POSITIVE_INFINITY
+      return Math.abs(ta - tb) / 86400000
+    }
+    const suggestions: Array<Record<string, unknown>> = []
+    for (const p of pays) {
+      const pool = tiByClient.get(p.client_id) || []
+      const cands = pool
+        .filter((ti) => {
+          const amtOk = MATCH_AMOUNT_TOLERANCE > 0
+            ? Math.abs(ti.total_amount - p.amount) <= MATCH_AMOUNT_TOLERANCE
+            : ti.total_amount === p.amount
+          if (!amtOk) return false
+          return ti.issue_date == null || dayGap(p.payment_date, ti.issue_date) <= MATCH_DATE_WINDOW_DAYS
+        })
+        .sort((a, b) => {
+          const pa = a.issue_date == null ? 0 : dayGap(p.payment_date, a.issue_date)
+          const pb = b.issue_date == null ? 0 : dayGap(p.payment_date, b.issue_date)
+          return pa - pb
+        })
+        .slice(0, 5)
+      if (cands.length > 0) {
         suggestions.push({
           payment: {
             id: p.id, client_id: p.client_id, client_name: p.client_name,

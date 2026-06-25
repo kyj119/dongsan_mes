@@ -510,7 +510,7 @@ export function taxInvoicesPage(c: Context<HonoEnv>) {
 
       <!-- Pagination -->
       <div class="mt-6 flex justify-center">
-        <div id="pagination" class="flex gap-2">
+        <div id="crPagination" class="flex gap-2">
           <!-- Pagination links will be inserted here -->
         </div>
       </div>
@@ -617,16 +617,16 @@ export function taxInvoicesPage(c: Context<HonoEnv>) {
       </div>
 
       <!-- Detail Modal -->
-      <div id="detailModal" class="ds-modal-overlay hidden p-4">
+      <div id="crDetailModal" class="ds-modal-overlay hidden p-4">
         <div class="ds-modal w-full max-h-[90vh] overflow-y-auto" style="max-width:42rem">
           <div class="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
             <h2 class="text-lg font-bold text-gray-900">현금영수증 상세</h2>
-            <button onclick="document.getElementById('detailModal').classList.add('hidden')" class="text-gray-500 hover:text-gray-700">
+            <button onclick="document.getElementById('crDetailModal').classList.add('hidden')" class="text-gray-500 hover:text-gray-700">
               <i class="fas fa-times text-xl"></i>
             </button>
           </div>
 
-          <div id="detailContent" class="px-6 py-4 space-y-4">
+          <div id="crDetailContent" class="px-6 py-4 space-y-4">
             <!-- Detail content will be inserted here -->
           </div>
 

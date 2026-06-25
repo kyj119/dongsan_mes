@@ -63,7 +63,15 @@ export async function markLeaveAttendance(
   for (let i = 0; i < stmts.length; i += 80) await db.batch(stmts.slice(i, i + 80))
 }
 
-/** 휴가 취소/반려 시 마킹 정리: 휴가로만 예약된(출근기록 없는) 레코드는 삭제, 실 출근기록이 있던 날은 NORMAL 복원. */
+/**
+ * 휴가 취소/반려 시 마킹 정리:
+ *  - 휴가로만 예약된(출근기록 없는) 레코드 → 삭제.
+ *  - 실 출근기록이 있던 날 → NORMAL 복원 + 종일(NORMAL 08:30/18:00) 기준으로 지각·조퇴 재계산.
+ *
+ * ⚠️ 과거 버그: NORMAL 복원 시 late_minutes를 그대로 두어, 반차(HALF_AM=13:00 기준 지각0)였던 날의
+ *   13시 출근이 종일근무로 전환돼도 지각 0으로 남아 급여(지각공제)에서 누락됨. attendance.ts의
+ *   유형별 기준시간 재계산 공식을 동일하게 재현해 NORMAL 기준으로 다시 계산한다.
+ */
 export async function clearLeaveAttendance(
   db: D1Database,
   opts: { employeeId: number; startDate: string; endDate: string }
@@ -72,14 +80,33 @@ export async function clearLeaveAttendance(
   if (!startDate) return
   const endDate = opts.endDate || startDate
   const inList = LEAVE_ATTENDANCE_TYPES.map((t) => `'${t}'`).join(',')
-  await db.batch([
-    db.prepare(
-      `DELETE FROM attendance WHERE employee_id = ? AND work_date BETWEEN ? AND ?
-        AND source = 'LEAVE' AND check_in_time IS NULL AND attendance_type IN (${inList})`
-    ).bind(employeeId, startDate, endDate),
-    db.prepare(
-      `UPDATE attendance SET attendance_type = 'NORMAL', status = 'PRESENT', updated_at = datetime('now')
-        WHERE employee_id = ? AND work_date BETWEEN ? AND ? AND attendance_type IN (${inList})`
-    ).bind(employeeId, startDate, endDate),
-  ])
+  // 1) 휴가로만 예약된(실출근 없는) 레코드 삭제
+  await db.prepare(
+    `DELETE FROM attendance WHERE employee_id = ? AND work_date BETWEEN ? AND ?
+      AND source = 'LEAVE' AND check_in_time IS NULL AND attendance_type IN (${inList})`
+  ).bind(employeeId, startDate, endDate).run()
+  // 2) 실 출근기록이 남은 날: NORMAL 복원 + 종일 기준 지각·조퇴 재계산 (attendance.ts와 동일 공식)
+  const { results: rows } = await db.prepare(
+    `SELECT id, work_date, check_in_time, check_out_time FROM attendance
+      WHERE employee_id = ? AND work_date BETWEEN ? AND ? AND attendance_type IN (${inList})`
+  ).bind(employeeId, startDate, endDate).all<{ id: number; work_date: string; check_in_time: string | null; check_out_time: string | null }>()
+  if (!rows.length) return
+  const NORMAL_IN = '08:30', NORMAL_OUT = '18:00'
+  const stmts = rows.map((r) => {
+    let late = 0, early = 0
+    if (r.check_in_time) {
+      const expIn = new Date(`${r.work_date}T${NORMAL_IN}:00`).getTime()
+      const actIn = new Date(r.check_in_time).getTime()
+      if (!isNaN(expIn) && !isNaN(actIn)) late = Math.max(0, Math.round((actIn - expIn) / 60000))
+    }
+    if (r.check_out_time) {
+      const expOut = new Date(`${r.work_date}T${NORMAL_OUT}:00`).getTime()
+      const actOut = new Date(r.check_out_time).getTime()
+      if (!isNaN(expOut) && !isNaN(actOut)) early = Math.max(0, Math.round(((expOut - actOut) / 3600000) * 2) / 2)
+    }
+    return db.prepare(
+      `UPDATE attendance SET attendance_type = 'NORMAL', status = 'PRESENT', late_minutes = ?, early_leave_hours = ?, updated_at = datetime('now') WHERE id = ?`
+    ).bind(late, early, r.id)
+  })
+  for (let i = 0; i < stmts.length; i += 80) await db.batch(stmts.slice(i, i + 80))
 }

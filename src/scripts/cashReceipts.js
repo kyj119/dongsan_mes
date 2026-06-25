@@ -128,7 +128,7 @@ function renderPagination(pagination) {
   var currentPage_ = pagination.page || 1;
 
   if (pageCount <= 1) {
-    document.getElementById('pagination').innerHTML = '';
+    document.getElementById('crPagination').innerHTML = '';
     return;
   }
 
@@ -154,7 +154,7 @@ function renderPagination(pagination) {
     html += '<button onclick="loadReceipts(' + pageCount + ')" class="px-3 py-1 border border-gray-300 rounded text-sm text-gray-700 hover:bg-gray-50"><i class="fas fa-chevron-right"></i></button>';
   }
 
-  document.getElementById('pagination').innerHTML = html;
+  document.getElementById('crPagination').innerHTML = html;
 }
 
 function openCreateModal() {
@@ -295,7 +295,7 @@ function viewReceiptDetail(id) {
 
       contentHtml += '</div></div>';
 
-      document.getElementById('detailContent').innerHTML = contentHtml;
+      document.getElementById('crDetailContent').innerHTML = contentHtml;
 
       // Action buttons
       var actionHtml = '';
@@ -314,11 +314,11 @@ function viewReceiptDetail(id) {
                      '<i class="fas fa-sync-alt mr-2"></i>상태새로고침</button>';
       }
 
-      actionHtml += '<button onclick="document.getElementById(\'detailModal\').classList.add(\'hidden\')" class="border border-gray-300 text-gray-700 bg-white rounded px-4 py-2 text-sm font-medium hover:bg-gray-50">' +
+      actionHtml += '<button onclick="document.getElementById(\'crDetailModal\').classList.add(\'hidden\')" class="border border-gray-300 text-gray-700 bg-white rounded px-4 py-2 text-sm font-medium hover:bg-gray-50">' +
                     '닫기</button>';
 
       document.getElementById('detailActions').innerHTML = actionHtml;
-      document.getElementById('detailModal').classList.remove('hidden');
+      document.getElementById('crDetailModal').classList.remove('hidden');
     })
     .catch(function(error) {
       console.error('Error loading receipt detail:', error);
@@ -332,7 +332,7 @@ async function issueReceipt(id) {
   axios.post('/api/cash-receipts/' + encodeURIComponent(id) + '/issue')
     .then(function(response) {
       showToast('현금영수증이 발행되었습니다.', 'success');
-      document.getElementById('detailModal').classList.add('hidden');
+      document.getElementById('crDetailModal').classList.add('hidden');
       loadReceipts(currentPage);
     })
     .catch(function(error) {
@@ -347,7 +347,7 @@ async function cancelReceipt(id) {
   axios.post('/api/cash-receipts/' + encodeURIComponent(id) + '/cancel')
     .then(function(response) {
       showToast('현금영수증이 취소되었습니다.', 'success');
-      document.getElementById('detailModal').classList.add('hidden');
+      document.getElementById('crDetailModal').classList.add('hidden');
       loadReceipts(currentPage);
     })
     .catch(function(error) {
@@ -360,7 +360,7 @@ function refreshStatus(id) {
   axios.post('/api/cash-receipts/' + encodeURIComponent(id) + '/refresh-status')
     .then(function(response) {
       showToast('상태가 업데이트되었습니다.', 'success');
-      document.getElementById('detailModal').classList.add('hidden');
+      document.getElementById('crDetailModal').classList.add('hidden');
       loadReceipts(currentPage);
     })
     .catch(function(error) {

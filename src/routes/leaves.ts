@@ -835,9 +835,14 @@ leavesRouter.post('/expire', requireRole('ADMIN'), async (c) => {
     for (const r of rows) {
       const sources = r.leave_type === 'ANNUAL' ? ['ANNUAL'] : ['MONTHLY_A', 'MONTHLY_B']
       const ph = sources.map(() => '?').join(',')
+      // 적법 소멸 게이트: 이 만료분의 회계연도에 발송된 2차(SECOND) 촉진 통지가 있어야 적법.
+      // fiscal_year 스코프가 없으면 과거 임의 연도의 통지 1건이 이후 모든 연도 잔여를 부당 소멸시킴.
+      // 통지 발송연도(fiscal_year=발송 시점 연도)는 만료연도와 같거나, 만료가 연초여서 전년 하반기에
+      // 발송된 경우 만료연도-1일 수 있으므로 두 연도를 허용. (notice에 expire_date 미저장이라 연도 근사 매칭)
+      const expireYear = parseInt(String(r.expire_date).slice(0, 4), 10)
       const promo = await c.env.DB.prepare(
-        `SELECT COUNT(*) AS cnt FROM leave_promotion_notices WHERE employee_id=? AND stage='SECOND' AND status='SENT' AND source IN (${ph})`
-      ).bind(r.employee_id, ...sources).first<{ cnt: number }>()
+        `SELECT COUNT(*) AS cnt FROM leave_promotion_notices WHERE employee_id=? AND stage='SECOND' AND status='SENT' AND source IN (${ph}) AND fiscal_year IN (?, ?)`
+      ).bind(r.employee_id, ...sources, expireYear, expireYear - 1).first<{ cnt: number }>()
       candidates.push({ ...r, lawful: Number(promo?.cnt || 0) > 0 })
     }
 

@@ -1158,14 +1158,17 @@ function updateNotifBadge(count) {
 
 function timeAgo(dateStr) {
   if (!dateStr) return '';
+  // SQLite 타임스탬프(tz표식 없음)를 new Date()로 바로 파싱하면 로컬로 해석돼 9시간 어긋남 → toKstDate로 UTC 정규화
+  var d = (window.toKstDate ? window.toKstDate(dateStr) : new Date(dateStr));
+  if (!d || isNaN(d.getTime())) return '';
   var now = new Date();
-  var d = new Date(dateStr);
   var diff = Math.floor((now - d) / 1000);
+  if (diff < 0) return '방금 전';
   if (diff < 60) return '방금 전';
   if (diff < 3600) return Math.floor(diff / 60) + '분 전';
   if (diff < 86400) return Math.floor(diff / 3600) + '시간 전';
   if (diff < 604800) return Math.floor(diff / 86400) + '일 전';
-  return d.toLocaleDateString('ko-KR');
+  return window.formatKST ? window.formatKST(dateStr, 'date') : d.toLocaleDateString('ko-KR');
 }
 
 async function pollNotifCount() {
