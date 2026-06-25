@@ -890,20 +890,26 @@ window.showConfirm = function(message, options) {
     overlay.innerHTML =
       '<div class="ds-modal" style="max-width:420px">' +
         '<div class="ds-modal-header">' +
-          '<h3 style="font-size:15px">' + title + '</h3>' +
+          '<h3 style="font-size:15px"></h3>' +
         '</div>' +
         '<div class="ds-modal-body" style="padding:20px 24px">' +
-          '<p style="font-size:14px;color:#374151;white-space:pre-line;margin:0">' + message + '</p>' +
+          '<p style="font-size:14px;color:#374151;white-space:pre-line;margin:0"></p>' +
         '</div>' +
         '<div class="ds-modal-footer">' +
-          '<button class="ds-btn ds-btn-ghost" id="__confirmCancel">' + cancelText + '</button>' +
-          '<button class="ds-btn ' + (danger ? 'ds-btn-danger' : 'ds-btn-primary') + '" id="__confirmOk">' + confirmText + '</button>' +
+          '<button class="ds-btn ds-btn-ghost" id="__confirmCancel"></button>' +
+          '<button class="ds-btn ' + (danger ? 'ds-btn-danger' : 'ds-btn-primary') + '" id="__confirmOk"></button>' +
         '</div>' +
       '</div>';
 
     document.body.appendChild(overlay);
+    // 텍스트는 textContent로 주입(XSS 방지) — title/message에 거래처명 등 사용자 입력이 들어옴
+    overlay.querySelector('h3').textContent = title;
+    overlay.querySelector('p').textContent = message == null ? '' : String(message);
+    overlay.querySelector('#__confirmCancel').textContent = cancelText;
+    overlay.querySelector('#__confirmOk').textContent = confirmText;
 
     function cleanup(result) {
+      document.removeEventListener('keydown', escHandler);
       overlay.remove();
       resolve(result);
     }
@@ -914,7 +920,7 @@ window.showConfirm = function(message, options) {
 
     // ESC 키로 취소
     function escHandler(e) {
-      if (e.key === 'Escape') { document.removeEventListener('keydown', escHandler); cleanup(false); }
+      if (e.key === 'Escape') cleanup(false);
     }
     document.addEventListener('keydown', escHandler);
 

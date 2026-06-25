@@ -577,7 +577,8 @@ async function loadSchedule() {
     var totalQueue = queues.reduce(function(s, eq) { return s + (eq.queue_count || 0); }, 0);
     var overloaded = queues.filter(function(eq) { return eq.daily_capacity > 0 && eq.queue_count > eq.daily_capacity; }).length;
     var allCards = unassigned.concat(queues.reduce(function(acc, eq) { return acc.concat(eq.cards || []); }, []));
-    var todayStr = new Date().toISOString().substring(0, 10);
+    // KST 기준 오늘 — toISOString()은 UTC라 KST 00~09시 사이 전날로 어긋남(#366 정책). kstToday 헬퍼 사용.
+    var todayStr = (window.kstToday ? window.kstToday() : new Date().toISOString().substring(0, 10));
     var todayDue = allCards.filter(function(c) {
       return c.delivery_date && c.delivery_date.substring(0, 10) <= todayStr;
     }).length;

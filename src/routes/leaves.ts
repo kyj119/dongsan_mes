@@ -106,10 +106,15 @@ function addDays(dateStr: string, n: number): string {
   const d = new Date(dateStr + 'T00:00:00Z'); if (isNaN(d.getTime())) return ''
   d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10)
 }
-/** 'YYYY-MM-DD' + N개월 */
+/** 'YYYY-MM-DD' + N개월 (월말 클램프: setUTCMonth 오버플로 방지. 예: 3/31 −1개월 → 3/3 아닌 2/28) */
 function addMonths(dateStr: string, n: number): string {
   const d = new Date(dateStr + 'T00:00:00Z'); if (isNaN(d.getTime())) return ''
-  d.setUTCMonth(d.getUTCMonth() + n); return d.toISOString().slice(0, 10)
+  const day = d.getUTCDate()
+  d.setUTCDate(1)                       // 클램프 전 1일로 고정해 월 오버플로 차단
+  d.setUTCMonth(d.getUTCMonth() + n)
+  const lastDay = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0)).getUTCDate()
+  d.setUTCDate(Math.min(day, lastDay))  // 원래 일수 복원(목표 월 말일로 클램프)
+  return d.toISOString().slice(0, 10)
 }
 
 // 사용촉진 트랙(제61조): ANNUAL=1년이상 연차, MONTHLY_A=월차 1~9개월분, MONTHLY_B=월차 10·11개월분

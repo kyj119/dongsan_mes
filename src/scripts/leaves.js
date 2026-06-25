@@ -290,6 +290,9 @@ window.leavesCloseRequestModal = function() {
 };
 
 window.leavesCalcDays = function() {
+  // 반차/반반차는 일수 고정(0.5/0.25). readOnly일 때 날짜 변경으로 덮어쓰지 않음.
+  var daysEl = document.getElementById('lvReqDays');
+  if (daysEl && daysEl.readOnly) return;
   var s = document.getElementById('lvReqStart').value;
   var e = document.getElementById('lvReqEnd').value;
   if (!s || !e) return;

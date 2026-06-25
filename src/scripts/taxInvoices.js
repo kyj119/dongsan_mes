@@ -1,9 +1,14 @@
-﻿var currentPage = 1;
+﻿// #tax-cash-scope: taxInvoices.js·cashReceipts.js가 같은 ?raw 전역 스코프에 concat됨.
+// cashReceipts.js(나중 로드)가 동명 top-level(statusLabels/statusColors/renderPagination)을 silent 덮어씀
+// → 세금계산서 탭 뱃지(SENT/ISSUING 누락)·페이지네이션(loadReceipts 호출·pageCount shape) 깨짐.
+// 세금계산서 전용 식별자에 ti 프리픽스로 격리(이 파일 내부 참조만, onclick 전역 노출 아님).
+// (currentPage는 hometaxInvoices.js 페이지 onclick이 전역으로 참조하므로 의도적으로 미개명 — 별도 flagged.)
+var currentPage = 1;
 var cancelTargetId = null;
 var modifyTargetId = null;
 var unbilledData = [];
 
-var statusLabels = {
+var tiStatusLabels = {
   'DRAFT': '작성중',
   'ISSUING': '발행중',   // #420: 발행 선점(claim) transient 상태
   'ISSUED': '발행완료',
@@ -13,7 +18,7 @@ var statusLabels = {
   'NTS_SUCCESS': '국세청 전송성공',
   'NTS_FAILED': '국세청 전송실패'
 };
-var statusColors = {
+var tiStatusColors = {
   'DRAFT': 'bg-gray-100 text-gray-600',
   'ISSUING': 'bg-amber-50 text-amber-700',
   'ISSUED': 'bg-blue-50 text-blue-700',
@@ -86,7 +91,7 @@ async function loadInvoices(page) {
     var res = await axios.get(url);
     if (res.data.success) {
       displayInvoices(res.data.data);
-      renderPagination(res.data.pagination);
+      tiRenderPagination(res.data.pagination);
     } else {
       tbody.innerHTML = '<tr><td colspan="9" class="px-4 py-8 text-center text-red-400">불러오기 실패: ' + (res.data.error || '') + '</td></tr>';
     }
@@ -126,7 +131,7 @@ async function exportInvoicesCsv() {
         inv.supply_amount || 0,
         inv.tax_amount || 0,
         inv.total_amount || 0,
-        statusLabels[inv.status] || inv.status || ''
+        tiStatusLabels[inv.status] || inv.status || ''
       ].map(tiCsvCell).join(',');
     });
     var csv = '﻿' + headers.join(',') + '\n' + rows.join('\n');
@@ -154,9 +159,9 @@ function displayInvoices(items) {
   }
   tbody.innerHTML = items.map(function(inv) {
     var badge = '<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium '
-      + (statusColors[inv.status] || 'bg-gray-100 text-gray-600') + '">'
+      + (tiStatusColors[inv.status] || 'bg-gray-100 text-gray-600') + '">'
       + '<i class="' + (statusIcons[inv.status] || 'far fa-clock') + ' text-[7px] mr-1"></i>'
-      + (statusLabels[inv.status] || inv.status) + '</span>';
+      + (tiStatusLabels[inv.status] || inv.status) + '</span>';
     var actions = '<div class="flex gap-1 justify-center">';
     if (inv.status === 'DRAFT') {
       actions += '<button onclick="issueInvoice(' + inv.id + ')" class="px-2 py-1 text-xs bg-blue-50 text-blue-700 rounded hover:bg-blue-200" title="발행"><i class="fas fa-paper-plane"></i></button>';
@@ -202,7 +207,7 @@ function displayInvoices(items) {
   }).join('');
 }
 
-function renderPagination(p) {
+function tiRenderPagination(p) {
   var el = document.getElementById('pagination');
   if (!p || p.total_pages <= 1) { el.innerHTML = ''; return; }
   var html = '';
@@ -511,9 +516,9 @@ async function viewDetail(id) {
     var inv = res.data.data;
     var items = inv.items || [];
     var badge = '<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium '
-      + (statusColors[inv.status] || 'bg-gray-100 text-gray-600') + '">'
+      + (tiStatusColors[inv.status] || 'bg-gray-100 text-gray-600') + '">'
       + '<i class="' + (statusIcons[inv.status] || 'far fa-clock') + ' text-[7px] mr-1"></i>'
-      + (statusLabels[inv.status] || inv.status) + '</span>';
+      + (tiStatusLabels[inv.status] || inv.status) + '</span>';
     var itemRows = items.map(function(it) {
       return '<tr class="border-t">'
         + '<td class="px-3 py-2">' + (it.item_name || it.description || '-') + '</td>'
@@ -648,7 +653,7 @@ async function refreshStatus(id) {
     if (res.data.success) {
       var providerInfo = res.data.provider || {};
       var status = res.data.data.status;
-      var label = statusLabels[status] || status;
+      var label = tiStatusLabels[status] || status;
       showToast('상태 업데이트: ' + label + ' (코드: ' + (providerInfo.stateCode || '-') + ')', 'success');
       loadInvoices(currentPage);
       // 상세 모달이 열려있으면 새로고침
