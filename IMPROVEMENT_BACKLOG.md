@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 1 -->
-<!-- last_run_at: 2026-06-25T02:00:00+09:00 -->
+<!-- last_run_area: 2 -->
+<!-- last_run_at: 2026-06-25T06:00:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -16,6 +16,18 @@
 
 > 📦 **과거 사이클 로그**는 `IMPROVEMENT_BACKLOG_ARCHIVE.md`로 이관됨 (2026-06-10 1차 분리, **2026-06-25 2차 트림 — 06-09T18:00~06-16T18:00 이관, #439 옵션B로 256KB 한도 회복: 343KB→192KB**). 신규 로그는 계속 이 파일 상단에 추가. 본 파일은 직전 8일치(06-17~) 사이클 로그만 유지.
 
+> **Area 2 코드 품질 심층 분석 (2026-06-25T06:00):**
+> - **방법**: git fetch-before-compare(origin force-update `4993fa7→b9b4430`, fetch 후 **HEAD=origin/main `b9b4430` 0/0 동기**, 워킹트리 clean, 디버전스 0). egress 차단(prod/Playwright/verify[node_modules 부재] 도달 불가)이라 정적 스캔. Area 2 **22회차** — **신선 각도 = 직전 Area2(`405c72f`, 06-24T06:00) 이후 최대 churn = 연차(leaves) P1/P2 신규 feature**(`291cb39`+`d69cd7a`+`1a9b0c6`+**`800c212` P2-W1 26일 병존/만료 — Area6 bridge(`b8cc56b`) 이후 신규**) = leaves.ts 351L churn(897L). Area6는 컬럼/XSS/showConfirm/axios bridge를 봤으나 **Area2 고유 스캔(entity_id INSERT·컬럼존재성·authMiddleware·N+1·dead code·CHECK literal)을 leaves 신규코드에 첫 적용.**
+> - **🟢 entity_id INSERT 전수 자동스캔(113 entity-bearing 테이블 ground-truth) = net-new 0**: 전 routes INSERT 멀티라인 풀-collist 파싱 → 미포함 후보 3건 전부 **FP**(동적 컬럼배열: `hr.ts:474 ${cols.join}` ← `:469 cols.push('entity_id')` #322 서버강제 · `attendance.ts:336/344 ${baseCols.join}` ← `:320 baseCols.push('entity_id')` #401 prefetch맵). leaves.ts 11 INSERT 중 entity-scoped(leave_balances/leave_accrual_logs/leave_requests) 전부 entity_id 명시(buildDeductStmts UPSERT 포함), **글로벌 config 테이블(family_event_rules·leave_types = entity_id 컬럼 부재, 0123 CREATE 확인)은 정당하게 미포함**(FP 아님 = 스키마상 entity_id 없음).
+> - **🟢 leaves P2-W1(800c212) 신규코드 컬럼존재성 = net-new 0**: 신규 참조 컬럼 전수 ground-truth — leave_balances `accrued/granted_extra/used/carried_over`(0110 CREATE)·`entity_id`(0264)·`expired/expire_date`(0384 ADD COLUMN) 실재. 신규 함수(addYears·annualRemaining·buildDeductStmts FIFO·buildRestoreStmts 역FIFO·loadAnnualAccruedMap[leaveType 파라미터화]) 참조 컬럼 0 미존재.
+> - **🟢 CHECK-literal write(leave_type='MONTHLY') = 위반 0**: 신규 병존 코드가 `leave_type='MONTHLY'` 신규 리터럴 write(buildDeductStmts·monthly accrual). leave_type에 **CHECK IN 제약 0**(0110 CREATE = `TEXT NOT NULL DEFAULT 'ANNUAL'` 무CHECK, grep `leave_type.*check` 0건) → 'MONTHLY' 허용 = prepare throw 위험 0. 0385 relabel(ANNUAL→MONTHLY)도 UNIQUE(employee_id,year,leave_type) 충돌 무(배포前 MONTHLY 행 부재) + prod 미적용 휴면.
+> - **🟢 atomicity/N+1/dead-code = clean**: ① approve(buildDeductStmts FIFO)·cancel-approved(buildRestoreStmts 역FIFO) 전부 **`stmts[]` 누적→DB.batch 원자화**(B7 주석, 차감+상태변경 동시) ② N+1 = loadAnnualAccruedMap이 `WHERE employee_id IN (placeholders)` 단일쿼리(#321), 신규 leaveType 파라미터로 ANNUAL/MONTHLY 버킷 재사용(bind 2+N, 엔티티당 직원<<98이라 D1 100바인드 한도 무위험) ③ 신규 5함수 전부 호출처 실재(dead code 0).
+> - **🟢 authMiddleware 커버리지 = clean**: leaves 라우터 `leavesRouter.use('/*', authMiddleware, requirePagePermission('/leaves'))`(:39) 라우터-와이드 + mutate 핸들러 전부 `requireRole('ADMIN'[,'MANAGER'])`. 신규 라우터 유입 0(churn = 기존 bank/cardExpenses/clients/lifecycle/leaves, 전부 auth 보유 라우터).
+> - **🟢 backlog↔GitHub sync**: open auto-improve **실측 3건**(#439·#441·#442, list_issues 전수) = 직전 Area1 stats `new=3` **정합**. 신규 closure 0(done=139·rejected=3 유지). #422 디버전스: HEAD=origin/main 동기(`b9b4430`)라 미push 픽스 0.
+> - **🧬 SKILL 강화 0건**: 기존 standing scan(entity_id INSERT line 53·컬럼존재성 #394/A-027·CHECK literal·authMiddleware·N+1)이 leaves 신규 feature를 전수 커버. leaves가 처음부터 컨벤션(entity_id INSERT·atomic batch·N+1맵·router-wide auth·글로벌config 분리) 준수 = Area 6 "신규 feature가 컨벤션 따르면 clean" 클래스. 신규 탐지 패턴 불필요.
+> - **이상 없음(entity_id·컬럼·CHECK·atomicity·N+1·auth·dead-code)**: leaves P1/P2 신규 feature(351L, 병존 FIFO 차감/복원) Area2 6종 스캔 전수 clean, net-new 0. git 동기 0/0·워킹트리 clean. sync 3=3.
+> - 자동 수정 0건(clean cycle — 발견 없음), 신규 이슈 0건, SKILL 강화 0건, done-sync(변동 0, new 3 유지), **신선 각도 — 연차 P1/P2 신규 feature(병존/만료 P2-W1 포함) 첫 Area2 코드품질 감사(entity_id INSERT·컬럼존재성·CHECK·atomicity·N+1·auth·dead-code), 프로덕션 영향 0 확인.**
+>
 > **Area 1 프로덕션 헬스 (2026-06-25T02:00):**
 > - **방법**: git fetch-before-compare(origin force-update `4993fa7→b8cc56b`, fetch 후 **HEAD=origin/main `b8cc56b` 0/0 동기**, 워킹트리 clean, 디버전스 0). egress 차단(prod 직접 fetch=`CONNECT 403`·Playwright·verify[node_modules 부재] 도달 불가)이라 CI/E2E는 GitHub Actions API로, 회귀 위험은 정적 standing scan으로 검증.
 > - **🟢 CI/E2E = 전부 GREEN**: 최근 15런(`actions_list` main 브랜치) 전부 `completed/success` — HEAD `b8cc56b`(Area 6 자기진화) Deploy + Daily D1 Backup 모두 success, 직전 연차 P1/P2(`291cb39`·`d69cd7a`·`1a9b0c6`) Deploy 전부 success. Deploy 워크플로(post-deploy smoke 101 포함) fail 0. **신규 prod-breaking 회귀 0**.
