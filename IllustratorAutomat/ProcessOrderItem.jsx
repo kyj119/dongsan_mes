@@ -65,6 +65,8 @@ function main() {
     var trim         = _p.trim       || false;  // N5: 단일 그룹 돔보 마크 (출력 둘레)
     var targetW      = _p.targetW    || 0;       // N4 fidelity: 목표 너비(cm, 캔버스 리사이즈). 0=스케일 안 함
     var targetH      = _p.targetH    || 0;       // N4 fidelity: 목표 높이(cm)
+    var outputDxf    = _p.dxfOutput  || "";      // Export: 재단선 DXF (선택, 주문 가공은 미지정 → 스킵)
+    var outputJpg    = _p.jpgOutput  || "";      // Export: 미리보기 JPG (선택, 주문 가공은 미지정 → 스킵)
 
     if (!sourceFile || (!outputEps && !passthroughThumb)) {
         $.writeln("ProcessOrderItem ERROR: source, epsOutput 필요");
@@ -711,6 +713,42 @@ function main() {
     epsOpts.artboardRange = String(abIndex + 1);  // 1-based
     doc.saveAs(epsFile, epsOpts);
     $.writeln("ProcessOrderItem: EPS -> " + outputEps);
+
+    // ── 10-1. JPG 미리보기 (Export 경로 전용, SheetLayout.jsx 패턴 이식) ──
+    // outputJpg 미지정(주문 가공) → 스킵. saveAs(EPS) 직후 doc는 닫히지 않음 → 그대로 export 가능.
+    if (outputJpg) {
+        try {
+            doc.artboards.setActiveArtboardIndex(abIndex);
+            app.redraw();
+            var jpgFile = new File(outputJpg);
+            var jpgOpts = new ExportOptionsJPEG();
+            jpgOpts.qualitySetting = 80;
+            jpgOpts.resolution = 150;
+            jpgOpts.antiAliasing = true;
+            jpgOpts.artBoardClipping = true;
+            jpgOpts.horizontalScale = 100;
+            jpgOpts.verticalScale = 100;
+            doc.exportFile(jpgFile, ExportType.JPEG, jpgOpts);
+            $.writeln("ProcessOrderItem: JPG -> " + outputJpg);
+        } catch (eJpg) { $.writeln("ProcessOrderItem JPG WARNING: " + eJpg); }
+    }
+
+    // ── 10-2. DXF 재단선 (Export 경로 전용, SheetLayout.jsx 패턴 이식) ──
+    // outputDxf 미지정(주문 가공) → 스킵. 임시 재단선/돔보 레이어가 아직 살아있는 시점(정리 전)에 export.
+    if (outputDxf) {
+        try {
+            doc.artboards.setActiveArtboardIndex(abIndex);
+            var dxfFile = new File(outputDxf);
+            var dxfOpts = new ExportOptionsAutoCAD();
+            dxfOpts.exportFileFormat = AutoCADExportFileFormat.DXF;
+            dxfOpts.version = AutoCADCompatibility.AutoCADRelease21;
+            dxfOpts.unit = AutoCADUnit.Millimeters;
+            dxfOpts.scaleLineweights = false; // 선 두께 스케일링 비활성화 (0으로 축소 방지)
+            try { dxfOpts.exportOption = AutoCADExportOption.MaximumEditability; } catch (eDxfOpt) {}
+            doc.exportFile(dxfFile, ExportType.AUTOCAD, dxfOpts);
+            $.writeln("ProcessOrderItem: DXF -> " + outputDxf);
+        } catch (eDxf) { $.writeln("ProcessOrderItem DXF WARNING: " + eDxf); }
+    }
 
     // ── 11. 정리: 임시 레이어 삭제 + 아트보드 원복 + 아이템 가시성 복원 ──
     tmpTopLayer.remove();

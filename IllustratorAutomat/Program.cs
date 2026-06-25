@@ -148,6 +148,7 @@ namespace IllustratorAutomation
                     await Task.Delay(500);
                     await PollAILayoutAsync();
                     await PollSheetRenderAsync();
+                    await PollProcessJobsAsync();
                     await PollTestWatchAsync();
                 }
                 catch (Exception ex)
@@ -1410,12 +1411,20 @@ namespace IllustratorAutomation
             string? jpgB64 = null;
             if (File.Exists(jpgOut)) { try { jpgB64 = Convert.ToBase64String(File.ReadAllBytes(jpgOut)); } catch { } }
 
+            // R2 업로드 (브라우저 다운로드용) — 실패해도 NAS 경로는 유지
+            string? epsR2 = await UploadRenderAssetAsync("sheet", jobId, "eps", epsOut);
+            string? dxfR2 = await UploadRenderAssetAsync("sheet", jobId, "dxf", dxfOut);
+            string? jpgR2 = await UploadRenderAssetAsync("sheet", jobId, "jpg", jpgOut);
+
             var result = new Dictionary<string, object?>
             {
                 ["eps_path"] = epsOut,
                 ["dxf_path"] = File.Exists(dxfOut) ? dxfOut : null,
                 ["jpg_path"] = File.Exists(jpgOut) ? jpgOut : null,
                 ["jpg_base64"] = jpgB64,
+                ["eps_r2"] = epsR2,
+                ["dxf_r2"] = dxfR2,
+                ["jpg_r2"] = jpgR2,
                 ["width_cm"] = Math.Round(sheetW, 1),
                 ["height_cm"] = Math.Round(sheetH, 1),
                 ["scale_factor"] = scaleFactor
@@ -1432,6 +1441,181 @@ namespace IllustratorAutomation
                 await PatchWithAuthAsync($"{ERP_API_URL}/api/workbench/sheets/{jobId}/render", JsonSerializer.Serialize(payload));
             }
             catch (Exception ex) { Console.WriteLine($"   ⚠️  PATCH sheet render error: {ex.Message}"); }
+        }
+
+        // ── Export 경로: 산출물(EPS/DXF/JPG) 1개를 R2에 업로드 → r2_key 반환 ──
+        // CF 워커(prod)는 NAS(Z:)를 못 읽으므로, 다운로드 가능하도록 에이전트가 R2에 올린다.
+        // 실패/파일없음 → null (콜백은 NAS 경로만이라도 보고). 인증=DefaultRequestHeaders Bearer + per-request 폴백.
+        private static async Task<string?> UploadRenderAssetAsync(string jobType, int jobId, string kind, string localPath)
+        {
+            if (string.IsNullOrEmpty(localPath) || !File.Exists(localPath)) return null;
+            try
+            {
+                async Task<HttpResponseMessage> SendOnce()
+                {
+                    var form = new MultipartFormDataContent();
+                    var fileContent = new ByteArrayContent(File.ReadAllBytes(localPath));
+                    fileContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/octet-stream");
+                    form.Add(fileContent, "file", Path.GetFileName(localPath));
+                    form.Add(new StringContent(jobType), "job_type");
+                    form.Add(new StringContent(jobId.ToString()), "job_id");
+                    form.Add(new StringContent(kind), "kind");
+                    var req = new HttpRequestMessage(HttpMethod.Post, $"{ERP_API_URL}/api/workbench/render-asset") { Content = form };
+                    if (!string.IsNullOrEmpty(authToken))
+                        req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", authToken);
+                    return await httpClient.SendAsync(req);
+                }
+
+                var resp = await SendOnce();
+                if (resp.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+                {
+                    Console.WriteLine($"   🔐 Token expired (render-asset), re-logging in...");
+                    if (await LoginAsync()) resp = await SendOnce();
+                }
+                if (!resp.IsSuccessStatusCode)
+                {
+                    Console.WriteLine($"      ⚠️  R2 업로드 실패({kind}): {(int)resp.StatusCode}");
+                    return null;
+                }
+                var json = await resp.Content.ReadFromJsonAsync<JsonElement>();
+                if (json.TryGetProperty("data", out var d) && d.TryGetProperty("r2_key", out var k) && k.ValueKind == JsonValueKind.String)
+                {
+                    string r2 = k.GetString()!;
+                    Console.WriteLine($"      ☁️  R2 업로드 OK({kind}): {r2}");
+                    return r2;
+                }
+                return null;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"      ⚠️  R2 업로드 오류({kind}): {ex.Message}");
+                return null;
+            }
+        }
+
+        // ── Export 경로: 단일 가공 잡 폴링 (주문 없이 그룹 1개 EPS/DXF/JPG) ───
+        // GET /process-queue → ProcessOrderItem.jsx → EPS/DXF/JPG → R2 업로드 → PATCH /process/:id.
+        private static async Task PollProcessJobsAsync()
+        {
+            if (!Directory.Exists(ZDRIVE_PATH)) return;
+            HttpResponseMessage res;
+            try { res = await GetWithAuthAsync($"{ERP_API_URL}/api/workbench/process-queue"); }
+            catch { return; }
+            if (!res.IsSuccessStatusCode)
+            {
+                if (res.StatusCode == System.Net.HttpStatusCode.Unauthorized) authToken = null;
+                return;
+            }
+            JsonElement json;
+            try { json = await res.Content.ReadFromJsonAsync<JsonElement>(); } catch { return; }
+            if (!json.TryGetProperty("data", out var jobs) || jobs.ValueKind != JsonValueKind.Array || jobs.GetArrayLength() == 0) return;
+
+            Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] Found {jobs.GetArrayLength()} process job(s)");
+            foreach (var job in jobs.EnumerateArray())
+            {
+                int jobId = job.GetProperty("id").GetInt32();
+                try { await ProcessSingleProcessJobAsync(jobId, job); }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"   ❌ Process job {jobId} 실패: {ex.Message}");
+                    await PatchProcessJob(jobId, "error", null, ex.Message);
+                }
+            }
+        }
+
+        private static async Task ProcessSingleProcessJobAsync(int jobId, JsonElement job)
+        {
+            string? srcPath = RjStr(job, "source_file_path");
+            int analysisId = job.TryGetProperty("analysis_id", out var aidEl) && aidEl.ValueKind == JsonValueKind.Number ? aidEl.GetInt32() : 0;
+            int groupIndex = job.TryGetProperty("group_index", out var giEl) && giEl.ValueKind == JsonValueKind.Number ? giEl.GetInt32() : 0;
+            if (string.IsNullOrEmpty(srcPath)) { await PatchProcessJob(jobId, "error", null, "소스 경로 없음"); return; }
+
+            string reqTempFolder = Path.Combine(TEMP_FOLDER, $"process_{jobId}");
+            if (!Directory.Exists(reqTempFolder)) Directory.CreateDirectory(reqTempFolder);
+
+            // 소스 .ai 해석: 로컬 우선 → R2 다운로드 → 실패 (ProcessSheetRenderAsync와 동일 패턴)
+            string actualSrc;
+            if (File.Exists(srcPath)) { actualSrc = srcPath; Console.WriteLine($"   📂 소스 .ai: {srcPath}"); }
+            else if (srcPath.StartsWith("r2://") && analysisId > 0)
+            {
+                Console.WriteLine($"   ☁️  소스 .ai R2 다운로드: analysis {analysisId}");
+                var r2 = await httpClient.GetAsync($"{ERP_API_URL}/api/ai-analysis/{analysisId}/download");
+                if (!r2.IsSuccessStatusCode) { await PatchProcessJob(jobId, "error", null, $"소스 .ai 다운로드 실패 {(int)r2.StatusCode}"); return; }
+                string ext = Path.GetExtension(srcPath.Replace("r2://", "")); if (string.IsNullOrEmpty(ext)) ext = ".ai";
+                actualSrc = Path.Combine(reqTempFolder, $"source{ext}");
+                File.WriteAllBytes(actualSrc, await r2.Content.ReadAsByteArrayAsync());
+            }
+            else { await PatchProcessJob(jobId, "error", null, $"소스 .ai 없음(재분석 필요): {srcPath}"); return; }
+
+            // params_json 파싱: { target_w_cm, target_h_cm, finishing:{top/bottom/left/right:{method,margin_cm}}, trim, rotate90 }
+            var prm = JsonSerializer.Deserialize<JsonElement>(RjStr(job, "params_json") ?? "{}");
+            double targetW = prm.TryGetProperty("target_w_cm", out var twEl) && twEl.ValueKind == JsonValueKind.Number ? twEl.GetDouble() : 0;
+            double targetH = prm.TryGetProperty("target_h_cm", out var thEl) && thEl.ValueKind == JsonValueKind.Number ? thEl.GetDouble() : 0;
+            bool trim = prm.TryGetProperty("trim", out var trEl) && (trEl.ValueKind == JsonValueKind.True || (trEl.ValueKind == JsonValueKind.Number && trEl.GetDouble() != 0));
+            JsonElement? finishing = prm.TryGetProperty("finishing", out var finEl) && finEl.ValueKind == JsonValueKind.Object ? finEl : (JsonElement?)null;
+
+            var now = DateTime.Now;
+            string outFolder = Path.Combine(ZDRIVE_PATH, "DESIGN", "가공", now.ToString("yyyy"), now.ToString("MM"), now.ToString("dd"), $"process_{jobId}");
+            if (!Directory.Exists(outFolder)) Directory.CreateDirectory(outFolder);
+            string baseName = $"group{groupIndex}-가공";
+            string epsOut = Path.Combine(outFolder, baseName + ".eps");
+            string dxfOut = Path.Combine(outFolder, baseName + ".dxf");
+            string jpgOut = Path.Combine(outFolder, baseName + ".jpg");
+
+            var iaParamsObj = new
+            {
+                source = actualSrc,
+                artboardIndex = groupIndex,
+                finishing = finishing,
+                targetW = targetW,
+                targetH = targetH,
+                trim = trim,
+                epsOutput = epsOut,
+                dxfOutput = dxfOut,
+                jpgOutput = jpgOut
+            };
+
+            string scriptPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "ProcessOrderItem.jsx");
+            if (!File.Exists(scriptPath)) { await PatchProcessJob(jobId, "error", null, "ProcessOrderItem.jsx 없음"); return; }
+            string scriptDir = Path.GetDirectoryName(scriptPath)!;
+            File.WriteAllText(Path.Combine(scriptDir, "ia_params.json"), JsonSerializer.Serialize(iaParamsObj), System.Text.Encoding.UTF8);
+            Console.WriteLine($"   🖥️  Running ProcessOrderItem.jsx (process {jobId}, group {groupIndex}, target {targetW}x{targetH}cm) → {outFolder}");
+            RunJsxScript(scriptPath, Path.Combine(scriptDir, "ia_params.json"), timeoutMinutes: 5);
+
+            if (!File.Exists(epsOut)) { await PatchProcessJob(jobId, "error", null, "EPS 생성 실패 (ProcessOrderItem 결과 없음)"); return; }
+
+            string? jpgB64 = null;
+            if (File.Exists(jpgOut)) { try { jpgB64 = Convert.ToBase64String(File.ReadAllBytes(jpgOut)); } catch { } }
+
+            // R2 업로드 (브라우저 다운로드용)
+            string? epsR2 = await UploadRenderAssetAsync("process", jobId, "eps", epsOut);
+            string? dxfR2 = await UploadRenderAssetAsync("process", jobId, "dxf", dxfOut);
+            string? jpgR2 = await UploadRenderAssetAsync("process", jobId, "jpg", jpgOut);
+
+            var result = new Dictionary<string, object?>
+            {
+                ["eps_path"] = epsOut,
+                ["dxf_path"] = File.Exists(dxfOut) ? dxfOut : null,
+                ["jpg_path"] = File.Exists(jpgOut) ? jpgOut : null,
+                ["jpg_base64"] = jpgB64,
+                ["eps_r2"] = epsR2,
+                ["dxf_r2"] = dxfR2,
+                ["jpg_r2"] = jpgR2,
+                ["width_cm"] = Math.Round(targetW, 1),
+                ["height_cm"] = Math.Round(targetH, 1)
+            };
+            Console.WriteLine($"   ✅ 가공 완료 #{jobId}: {Path.GetFileName(epsOut)} (jpg {(jpgB64 != null ? "있음" : "없음")})");
+            await PatchProcessJob(jobId, "done", JsonSerializer.Serialize(result), null);
+        }
+
+        private static async Task PatchProcessJob(int jobId, string status, string? resultJson, string? error)
+        {
+            try
+            {
+                var payload = new Dictionary<string, object?> { ["status"] = status, ["result_json"] = resultJson, ["error_message"] = error };
+                await PatchWithAuthAsync($"{ERP_API_URL}/api/workbench/process/{jobId}", JsonSerializer.Serialize(payload));
+            }
+            catch (Exception ex) { Console.WriteLine($"   ⚠️  PATCH process job error: {ex.Message}"); }
         }
 
         // ── 신규: AI 레이아웃 요청 폴링 ─────────────────────────────────

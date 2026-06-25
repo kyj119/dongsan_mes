@@ -600,4 +600,255 @@ workbenchRouter.patch('/sheets/:id/render', async (c) => {
   }
 })
 
+// ── Export-first (주문 없이 가공 EPS 추출) — spec 2026-06-25-ia-editor-eps-export.md §3·§5 ──
+// 에이전트가 NAS 산출물을 R2로 업로드 → 워커가 R2 blob을 attachment로 서빙(인증=헤더 전용).
+// R2 키 규칙: render-outputs/{jobType}/{jobId}/{safeName}  (jobType = sheet | process)
+
+// kind → Content-Type 매핑 (다운로드 attachment 헤더)
+const RENDER_CONTENT_TYPES: Record<string, string> = {
+  eps: 'application/postscript',
+  dxf: 'application/dxf',
+  jpg: 'image/jpeg',
+}
+
+// result_json 에서 kind 별 R2 키를 꺼낸다 ({eps_r2, dxf_r2, jpg_r2}).
+function pickR2Key(resultJson: string | null, kind: string): string | null {
+  if (!resultJson) return null
+  try {
+    const obj = JSON.parse(resultJson)
+    const v = obj && obj[`${kind}_r2`]
+    return (typeof v === 'string' && v) ? v : null
+  } catch (_e) { return null }
+}
+
+// 공통 R2 blob 다운로드 응답 (entity 격리·완료 검증은 호출부에서 수행)
+async function serveRenderAsset(c: any, r2Key: string, kind: string) {
+  const obj = await c.env.R2_BUCKET.get(r2Key)
+  if (!obj) return c.json({ success: false, error: '산출물을 찾을 수 없습니다.' }, 404)
+  const filename = r2Key.split('/').pop() || `render.${kind}`
+  return new Response(obj.body, {
+    headers: {
+      'Content-Type': RENDER_CONTENT_TYPES[kind] || 'application/octet-stream',
+      'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(filename)}`,
+    },
+  })
+}
+
+// ── POST /api/workbench/render-asset — 에이전트 산출물 업로드 수신 (multipart) ──
+// spec §3.2(A). 에이전트가 EPS/DXF/JPG 를 1개씩 업로드 → R2.put → r2_key 반환.
+workbenchRouter.post('/render-asset', async (c) => {
+  try {
+    const formData = await c.req.formData()
+    const file = formData.get('file') as File | null
+    if (!file) return c.json({ success: false, error: '파일이 없습니다.' }, 400)
+
+    const jobType = String(formData.get('job_type') || '')
+    if (jobType !== 'sheet' && jobType !== 'process') {
+      return c.json({ success: false, error: 'job_type은 sheet|process여야 합니다.' }, 400)
+    }
+    const jobId = parseInt(String(formData.get('job_id') || ''), 10)
+    if (!jobId || jobId < 1) return c.json({ success: false, error: '잘못된 job_id' }, 400)
+    const kind = String(formData.get('kind') || '')
+    if (!['eps', 'dxf', 'jpg'].includes(kind)) {
+      return c.json({ success: false, error: 'kind는 eps|dxf|jpg여야 합니다.' }, 400)
+    }
+
+    // 확장자·크기 검증 (eps/dxf/jpg, 50MB)
+    const v = validateUpload(file, {
+      maxBytes: 50 * 1024 * 1024,
+      allowedMimePrefixes: ['image/', 'application/postscript', 'application/dxf', 'application/octet-stream'],
+      allowedExts: ['eps', 'dxf', 'jpg', 'jpeg'],
+    })
+    if (!v.ok) return c.json({ success: false, error: v.error }, 400)
+
+    // 키 sanitize (path traversal / 키 인젝션 방어) — files/analyze 패턴 재사용
+    const safeName = (file.name || `render.${kind}`).replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 200)
+    const r2Key = `render-outputs/${jobType}/${jobId}/${safeName}`
+    await c.env.R2_BUCKET.put(r2Key, file.stream(), {
+      httpMetadata: { contentType: file.type || RENDER_CONTENT_TYPES[kind] || 'application/octet-stream' },
+    })
+
+    return c.json({ success: true, data: { r2_key: r2Key } })
+  } catch (error) {
+    console.error('Workbench render-asset upload error:', error)
+    return c.json({ success: false, error: '산출물 업로드 실패' }, 500)
+  }
+})
+
+// ── GET /api/workbench/sheets/:id/download?kind=eps|dxf|jpg — 네스팅 산출물 다운로드 ──
+// spec §3.2(B)·§4. entity 격리 SELECT → render_result_json[kind+'_r2'] → R2.get → attachment.
+workbenchRouter.get('/sheets/:id/download', async (c) => {
+  try {
+    const id = parseInt(c.req.param('id'), 10)
+    if (!id) return c.json({ success: false, error: '잘못된 ID' }, 400)
+    const kind = String(c.req.query('kind') || '')
+    if (!['eps', 'dxf', 'jpg'].includes(kind)) {
+      return c.json({ success: false, error: 'kind는 eps|dxf|jpg여야 합니다.' }, 400)
+    }
+
+    const ef = entityFilter(c, 'sheet_layouts')
+    const row = await c.env.DB.prepare(
+      `SELECT render_status, render_result_json FROM sheet_layouts WHERE id = ?${ef.clause}`
+    ).bind(id, ...ef.params).first<{ render_status: string; render_result_json: string | null }>()
+    if (!row || row.render_status !== 'done') {
+      return c.json({ success: false, error: '완료된 출력이 없습니다.' }, 404)
+    }
+    const r2Key = pickR2Key(row.render_result_json, kind)
+    if (!r2Key) return c.json({ success: false, error: '해당 포맷 산출물이 없습니다.' }, 404)
+    return serveRenderAsset(c, r2Key, kind)
+  } catch (error) {
+    console.error('Workbench sheet download error:', error)
+    return c.json({ success: false, error: '다운로드 실패' }, 500)
+  }
+})
+
+// ── GET /api/workbench/process/:id/download?kind=eps|dxf|jpg — 단일 가공 산출물 다운로드 ──
+// spec §3.2(B)·§5. ia_process_jobs.result_json[kind+'_r2'] → R2.get → attachment.
+workbenchRouter.get('/process/:id/download', async (c) => {
+  try {
+    const id = parseInt(c.req.param('id'), 10)
+    if (!id) return c.json({ success: false, error: '잘못된 ID' }, 400)
+    const kind = String(c.req.query('kind') || '')
+    if (!['eps', 'dxf', 'jpg'].includes(kind)) {
+      return c.json({ success: false, error: 'kind는 eps|dxf|jpg여야 합니다.' }, 400)
+    }
+
+    const ef = entityFilter(c, 'ia_process_jobs')
+    const row = await c.env.DB.prepare(
+      `SELECT status, result_json FROM ia_process_jobs WHERE id = ?${ef.clause}`
+    ).bind(id, ...ef.params).first<{ status: string; result_json: string | null }>()
+    if (!row || row.status !== 'done') {
+      return c.json({ success: false, error: '완료된 가공이 없습니다.' }, 404)
+    }
+    const r2Key = pickR2Key(row.result_json, kind)
+    if (!r2Key) return c.json({ success: false, error: '해당 포맷 산출물이 없습니다.' }, 404)
+    return serveRenderAsset(c, r2Key, kind)
+  } catch (error) {
+    console.error('Workbench process download error:', error)
+    return c.json({ success: false, error: '다운로드 실패' }, 500)
+  }
+})
+
+// ── 단일 가공 렌더잡 (ia_process_jobs) — spec §5.2 ──
+// 주문 없이 단일 그룹을 ProcessOrderItem.jsx로 가공. /sheets/:id/render 계열을 복제.
+// status: queued(사용자) → rendering(에이전트 claim) → done | error.
+
+// POST /api/workbench/process — 가공 큐잉
+workbenchRouter.post('/process', async (c) => {
+  try {
+    const body = await c.req.json<{
+      analysis_id?: number; group_index?: number
+      target_w_cm?: number; target_h_cm?: number
+      finishing?: unknown; trim?: unknown; rotate90?: unknown
+    }>()
+    const analysisId = parseInt(String(body.analysis_id ?? ''), 10)
+    if (!analysisId) return c.json({ success: false, error: 'analysis_id가 필요합니다.' }, 400)
+    const gi = body.group_index
+    if (typeof gi !== 'number' || gi < 0 || !Number.isInteger(gi)) {
+      return c.json({ success: false, error: 'group_index는 0 이상의 정수여야 합니다.' }, 400)
+    }
+
+    // analysis 소유(entity) + status='done' 검증
+    const ef = entityFilter(c, 'ai_analysis_requests')
+    const an = await c.env.DB.prepare(
+      `SELECT id, status FROM ai_analysis_requests WHERE id = ?${ef.clause}`
+    ).bind(analysisId, ...ef.params).first<{ id: number; status: string }>()
+    if (!an) return c.json({ success: false, error: '분석을 찾을 수 없습니다.' }, 404)
+    if (an.status !== 'done') return c.json({ success: false, error: '소스 분석이 완료되지 않았습니다.' }, 400)
+
+    const params = {
+      target_w_cm: (typeof body.target_w_cm === 'number') ? body.target_w_cm : null,
+      target_h_cm: (typeof body.target_h_cm === 'number') ? body.target_h_cm : null,
+      finishing: body.finishing ?? null,
+      trim: body.trim ?? null,
+      rotate90: body.rotate90 ?? false,
+    }
+    const user = c.get('user')
+    const created = await c.env.DB.prepare(`
+      INSERT INTO ia_process_jobs
+        (analysis_id, group_index, params_json, status, entity_id, created_by, updated_at)
+      VALUES (?, ?, ?, 'queued', ?, ?, datetime('now'))
+      RETURNING id
+    `).bind(
+      analysisId, gi, JSON.stringify(params), getEntityId(c), user?.id ?? null,
+    ).first<{ id: number }>()
+    return c.json({ success: true, data: { id: created?.id ?? null } })
+  } catch (error) {
+    console.error('Workbench process queue error:', error)
+    return c.json({ success: false, error: '가공 요청 실패' }, 500)
+  }
+})
+
+// GET /api/workbench/process-queue — 에이전트 폴링 (queued → rendering claim)
+workbenchRouter.get('/process-queue', async (c) => {
+  try {
+    const ef = entityFilter(c, 'j')
+    const { results } = await c.env.DB.prepare(`
+      SELECT j.id, j.analysis_id, j.group_index, j.params_json, ar.file_path AS source_file_path
+      FROM ia_process_jobs j
+      LEFT JOIN ai_analysis_requests ar ON ar.id = j.analysis_id
+      WHERE j.status='queued'${ef.clause}
+      ORDER BY j.id ASC
+      LIMIT 3
+    `).bind(...ef.params).all<{
+      id: number; analysis_id: number; group_index: number
+      params_json: string; source_file_path: string | null
+    }>()
+    if (!results.length) return c.json({ success: true, data: [] })
+
+    // claim: queued → rendering (재폴링 중복 처리 방지)
+    const ids = results.map((r) => r.id)
+    const ph = ids.map(() => '?').join(',')
+    await c.env.DB.prepare(
+      `UPDATE ia_process_jobs SET status='rendering', updated_at=datetime('now') WHERE id IN (${ph}) AND status='queued'`
+    ).bind(...ids).run()
+
+    return c.json({ success: true, data: results })
+  } catch (error) {
+    console.error('Workbench process-queue poll error:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
+  }
+})
+
+// GET /api/workbench/process/:id — 프론트 폴링 (entity 격리)
+workbenchRouter.get('/process/:id', async (c) => {
+  try {
+    const id = parseInt(c.req.param('id'), 10)
+    if (!id) return c.json({ success: false, error: '잘못된 ID' }, 400)
+    const ef = entityFilter(c, 'ia_process_jobs')
+    const row = await c.env.DB.prepare(
+      `SELECT id, status, error_message, result_json FROM ia_process_jobs WHERE id = ?${ef.clause}`
+    ).bind(id, ...ef.params).first<{ id: number; status: string; error_message: string | null; result_json: string | null }>()
+    if (!row) return c.json({ success: false, error: '가공 작업을 찾을 수 없습니다.' }, 404)
+    return c.json({ success: true, data: row })
+  } catch (error) {
+    console.error('Workbench process get error:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
+  }
+})
+
+// PATCH /api/workbench/process/:id — 에이전트 결과 콜백
+workbenchRouter.patch('/process/:id', async (c) => {
+  try {
+    const id = parseInt(c.req.param('id'), 10)
+    if (!id) return c.json({ success: false, error: '잘못된 ID' }, 400)
+    const body = await c.req.json<{ status?: string; result_json?: unknown; error_message?: string }>()
+    const status = (body.status === 'error') ? 'error' : 'done'
+    const resultStr = body.result_json == null ? null : (typeof body.result_json === 'string' ? body.result_json : JSON.stringify(body.result_json))
+    if (status === 'done') {
+      await c.env.DB.prepare(
+        `UPDATE ia_process_jobs SET status='done', result_json=?, error_message=NULL, updated_at=datetime('now') WHERE id = ?`
+      ).bind(resultStr, id).run()
+    } else {
+      await c.env.DB.prepare(
+        `UPDATE ia_process_jobs SET status='error', error_message=?, updated_at=datetime('now') WHERE id = ?`
+      ).bind(body.error_message ?? '가공 실패', id).run()
+    }
+    return c.json({ success: true })
+  } catch (error) {
+    console.error('Workbench process callback error:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
+  }
+})
+
 export default workbenchRouter

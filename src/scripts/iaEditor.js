@@ -32,6 +32,66 @@ function iaeEscape(s) {
 }
 function iaeToast(msg, type) { if (window.showToast) window.showToast(msg, type || 'info'); }
 
+// ── Export-first (가공 EPS 추출) — spec 2026-06-25 §3.3·§4.1·§5.5 ─────────────
+// 인증=헤더 전용([[feedback-auth-header-only-download]]): <a href>/새창 금지. axios blob 경유.
+function iaeDownloadBlob(url, filename) {
+  axios.get(url, { responseType: 'blob' }).then(function (res) {
+    var blob = new Blob([res.data]);
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob); a.download = filename || 'download';
+    document.body.appendChild(a); a.click();
+    setTimeout(function () { try { URL.revokeObjectURL(a.href); } catch (_e) {} a.remove(); }, 1000);
+  }).catch(function () { iaeToast('다운로드 실패', 'error'); });
+}
+// 렌더 잡 폴링: getStatus(폴마다 호출, {done,error,msg,result} 반환). cleanup 위해 토큰 1개만 유지.
+var iaeRenderPollTimer = null;
+function iaeStopRenderPoll() { if (iaeRenderPollTimer) { clearTimeout(iaeRenderPollTimer); iaeRenderPollTimer = null; } }
+function iaePollRender(getStatus, onDone, onError, opts) {
+  iaeStopRenderPoll();
+  opts = opts || {};
+  var interval = opts.interval || 1800;
+  var deadline = Date.now() + (opts.timeout || 120000);
+  var tick = function () {
+    iaeRenderPollTimer = null;
+    if (Date.now() > deadline) { onError('렌더 시간이 초과되었습니다 (약 2분)'); return; }
+    getStatus().then(function (st) {
+      if (!st) { iaeRenderPollTimer = setTimeout(tick, interval); return; }
+      if (st.done) { onDone(st.result || {}); return; }
+      if (st.error) { onError(st.msg || '렌더 실패'); return; }
+      iaeRenderPollTimer = setTimeout(tick, interval);
+    }).catch(function () { iaeRenderPollTimer = setTimeout(tick, interval); });
+  };
+  tick();
+}
+// done 결과 패널 HTML: JPG 미리보기 + [EPS][JPG][DXF] 다운로드 버튼. base는 다운로드 URL prefix.
+function iaeRenderResultHTML(result, base, namePrefix) {
+  var jpg = result && result.jpg_base64;
+  var dims = (result && result.width_cm != null && result.height_cm != null)
+    ? (Math.round(result.width_cm) + '×' + Math.round(result.height_cm) + 'cm') : '';
+  var html = '<div class="border border-green-200 bg-green-50 rounded-lg p-2">';
+  html += '<div class="text-xs font-semibold text-green-700 mb-2"><i class="fas fa-circle-check mr-1"></i>출력 완료'
+    + (dims ? ' · <span class="font-normal text-green-600">' + iaeEscape(dims) + '</span>' : '') + '</div>';
+  html += jpg
+    ? '<img src="data:image/jpeg;base64,' + jpg + '" class="w-full max-h-48 object-contain bg-white border border-gray-200 rounded mb-2">'
+    : '<div class="text-[11px] text-gray-400 mb-2">미리보기 없음</div>';
+  html += '<div class="flex items-center gap-2">'
+    + '<button class="iae-dl-btn px-2 py-1 rounded-md bg-gray-800 text-white text-xs hover:bg-black" data-kind="eps">EPS</button>'
+    + '<button class="iae-dl-btn px-2 py-1 rounded-md border border-gray-300 text-gray-700 text-xs hover:bg-gray-50" data-kind="jpg">JPG</button>'
+    + '<button class="iae-dl-btn px-2 py-1 rounded-md border border-gray-300 text-gray-700 text-xs hover:bg-gray-50" data-kind="dxf">DXF</button>'
+    + '</div></div>';
+  return html;
+}
+// 결과 패널의 [EPS][JPG][DXF] 버튼 위임 바인딩. base=다운로드 URL(예 '/api/workbench/sheets/12/download'), name=파일명 prefix.
+function iaeWireResultButtons(host, base, namePrefix) {
+  if (!host) return;
+  Array.prototype.forEach.call(host.querySelectorAll('.iae-dl-btn'), function (b) {
+    b.addEventListener('click', function () {
+      var kind = b.getAttribute('data-kind');
+      iaeDownloadBlob(base + '?kind=' + kind, (namePrefix || '출력') + '.' + kind);
+    });
+  });
+}
+
 // ── 세션 id 영속 (localStorage) ───────────────────────────────────
 function iaeLoadIds() {
   try {
@@ -339,6 +399,12 @@ function iaeRenderInspector(f) {
     + '<div class="text-sm font-semibold text-gray-700 mb-3">미리보기 <span class="text-xs font-normal text-gray-400">(웹 근사 · IA 실제 렌더는 연동 후)</span></div>'
     + '<div id="iaePreview" class="bg-gray-50 border border-gray-200 rounded-lg p-3 min-h-[200px] flex items-center justify-center"></div>'
     + '<div id="iaePreflight" class="mt-3"></div>'
+    // (§5.5) 주문 없이 이 그룹을 가공 EPS/JPG/DXF로 출력·다운로드
+    + '<div class="border-t border-gray-100 pt-3 mt-3">'
+    + '<button id="iaeProcBtn" class="w-full px-3 py-2 rounded-md bg-gray-800 text-white hover:bg-black text-sm"><i class="fas fa-file-export mr-1"></i>가공해서 받기</button>'
+    + '<div class="text-[11px] text-gray-400 mt-1">현재 설정(목표크기·마감·회전·돔보)으로 가공한 EPS·JPG·DXF를 다운로드합니다.</div>'
+    + '<div id="iaeProcResult" class="mt-2"></div>'
+    + '</div>'
     + '</div>'
     + '</div>';
 
@@ -392,7 +458,71 @@ function iaeRenderInspector(f) {
     iaeRenderInspector(f); // 셀렉트 반영 위해 재렌더
   });
 
+  // (§5.5) 가공해서 받기 — 현재 그룹 settings로 단일 가공 잡 제출·폴링·다운로드
+  var procBtn = document.getElementById('iaeProcBtn');
+  if (procBtn) procBtn.addEventListener('click', function () { iaeProcessGroup(f.id, group, iaeActiveGroup, s); });
+
   updatePv();
+}
+
+// 단일 그룹 가공 EPS 출력 (파일처리 탭). settings → finishing(4면 method+margin_cm)·target·trim·rotate90.
+function iaeProcessGroup(fid, group, gidx, s) {
+  var tw = Number(s.target_w) || 0, th = Number(s.target_h) || 0;
+  if (tw <= 0 || th <= 0) { iaeToast('목표 크기(W×H)를 입력하세요', 'error'); return; }
+  var fin = {};
+  [['top', s.fin_top], ['bottom', s.fin_bottom], ['left', s.fin_left], ['right', s.fin_right]].forEach(function (p) {
+    if (p[1]) fin[p[0]] = { method: p[1], margin_cm: iaeMarginOf(p[1]) };
+  });
+  var body = {
+    analysis_id: fid, group_index: gidx,
+    target_w_cm: tw, target_h_cm: th,
+    finishing: fin, trim: !!s.trim, rotate90: !!s.rotate90
+  };
+  var resHost = document.getElementById('iaeProcResult');
+  var btn = document.getElementById('iaeProcBtn');
+  var namePrefix = '가공 ' + (group && group.name ? group.name : ('#' + gidx));
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i>요청 중…'; }
+  if (resHost) resHost.innerHTML = '<div class="text-xs text-blue-600"><i class="fas fa-spinner fa-spin mr-1"></i>가공 요청 중…</div>';
+
+  iaeStopRenderPoll();
+  axios.post('/api/workbench/process', body).then(function (res) {
+    var d = res.data && res.data.data;
+    if (!d || d.id == null) throw new Error('가공 요청 응답 오류');
+    iaeProcPoll(d.id, resHost, btn, namePrefix);
+  }).catch(function (err) {
+    var msg = (err.response && err.response.data && err.response.data.error) || err.message || '가공 요청 실패';
+    iaeToast(msg, 'error');
+    if (resHost) resHost.innerHTML = '';
+    iaeProcResetBtn(btn);
+  });
+}
+function iaeProcResetBtn(btn) {
+  btn = btn || document.getElementById('iaeProcBtn');
+  if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-file-export mr-1"></i>가공해서 받기'; }
+}
+function iaeProcPoll(jobId, resHost, btn, namePrefix) {
+  if (resHost) resHost.innerHTML = '<div class="text-xs text-blue-600"><i class="fas fa-spinner fa-spin mr-1"></i>가공 중… (최대 2분)</div>';
+  iaePollRender(function () {
+    return axios.get('/api/workbench/process/' + jobId).then(function (res) {
+      var d = (res.data && res.data.data) || {};
+      var rj = {};
+      try { rj = d.result_json ? (typeof d.result_json === 'string' ? JSON.parse(d.result_json) : d.result_json) : {}; } catch (_e) { rj = {}; }
+      if (d.status === 'done') return { done: true, result: rj };
+      if (d.status === 'error') return { error: true, msg: d.error_message || '가공 실패' };
+      return null; // queued | rendering
+    });
+  }, function (result) {
+    if (resHost) {
+      resHost.innerHTML = iaeRenderResultHTML(result, '/api/workbench/process/' + jobId + '/download', namePrefix);
+      iaeWireResultButtons(resHost, '/api/workbench/process/' + jobId + '/download', namePrefix);
+    }
+    iaeProcResetBtn(btn);
+    iaeToast('가공 EPS 출력 완료', 'success');
+  }, function (msg) {
+    if (resHost) resHost.innerHTML = '';
+    iaeToast(msg, 'error');
+    iaeProcResetBtn(btn);
+  });
 }
 
 function iaeUpdatePreview(group, s) {
@@ -454,6 +584,7 @@ function iaeBuildPreflightHTML(group, s) {
 // ── P3 시트 네스팅 ────────────────────────────────────────────────
 // 뷰 토글 (파일 처리 / 대지 편집) — 구 '네스팅' 탭은 §통합으로 폐기(대지 편집 시트 네스팅이 대체)
 function iaeSetView(v) {
+  iaeStopRenderPoll(); // 탭 전환 시 진행 중 렌더 폴링 정리(결과 패널이 교체됨)
   iaeView = v;
   var ev = document.getElementById('iaeEditView'), cv = document.getElementById('iaeCanvasView');
   var be = document.getElementById('iaeViewEdit'), bc = document.getElementById('iaeViewCanvas');
@@ -1199,6 +1330,85 @@ function iaeCanNestPlace(opts) {
   iaeCanRenderNestPanel(); // 패널 유지
 }
 
+// ── (§4.1) 네스팅 EPS 출력 — 주문 없이 현재 시트를 렌더·다운로드 ──────────────
+// v1 제약: 단일 분석·단일 시트(SheetLayout.jsx). 위반 시 안내 토스트.
+function iaeCanExportSheets() {
+  iaeCanReassignSheets();                 // 멤버십 전수 확정(포함관계·앵커 fid)
+  iaeCanSheets.forEach(iaeCanSyncSheet);  // placements·규격·효율 라이브 재계산
+  var ready = iaeCanSheets.filter(function (sh) { return sh.placements && sh.placements.length; });
+  if (ready.length === 0) { iaeToast('먼저 \'대지에 배치\'로 시트 네스팅을 만드세요', 'error'); return; }
+  if (ready.length > 1) { iaeToast('현재 단일 시트만 출력할 수 있습니다 — 시트가 ' + ready.length + '개입니다. 한 시트만 남겨주세요.', 'error'); return; }
+  var sh = ready[0];
+  var src = iaeCanSrc(sh.key) || {};
+  var pieces = iaeCanObjs.filter(function (o) { return o.sheetUid === sh.uid; });
+  // 주문보내기와 동일한 SHEET 캡처(placements·규격·scale) → 네스팅 렌더 페이로드
+  var canvas = {
+    mode: sh.mode || 'roll', scale_factor: sh.scale_factor || 1,
+    roll_width_cm: sh.roll_width_cm || (sh.w_mm || 0) / 10,
+    total_height_cm: sh.total_height_cm || (sh.h_mm || 0) / 10,
+    margin_cm: sh.margin_cm || 0, gap_cm: sh.gap_cm || 0,
+    source_file_path: iaeCanFileR2(src.fid != null ? src.fid : sh.fid),
+    group_index: sh.gi
+  };
+  var body = {
+    name: '네스팅 ' + (src.filename || '') + ' #' + sh.gi,
+    mode: sh.mode || 'roll',
+    canvas_json: JSON.stringify(canvas),
+    placements_json: JSON.stringify(sh.placements),
+    item_code: '', source_analysis_ids: String(src.fid != null ? src.fid : (sh.fid || '')),
+    sheet_count: 1, efficiency: Math.round((sh.eff || 0) * 1000) / 1000
+  };
+
+  var resHost = document.getElementById('iaeCanNestResult');
+  var btn = document.getElementById('iaeCanExportBtn');
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i>저장 중…'; }
+  if (resHost) resHost.innerHTML = '<div class="text-xs text-blue-600"><i class="fas fa-spinner fa-spin mr-1"></i>시트 저장 중…</div>';
+
+  iaeStopRenderPoll();
+  axios.post('/api/workbench/sheets', body).then(function (res) {
+    var d = res.data && res.data.data;
+    if (!d || d.id == null) throw new Error('시트 저장 응답 오류');
+    var sheetId = d.id;
+    if (resHost) resHost.innerHTML = '<div class="text-xs text-blue-600"><i class="fas fa-spinner fa-spin mr-1"></i>렌더 요청 중…</div>';
+    return axios.post('/api/workbench/sheets/' + sheetId + '/render').then(function () {
+      iaeCanPollSheet(sheetId, resHost, btn, body.name);
+    });
+  }).catch(function (err) {
+    var msg = (err.response && err.response.data && err.response.data.error) || err.message || '저장 실패';
+    iaeToast(msg, 'error');
+    if (resHost) resHost.innerHTML = '';
+    iaeCanResetExportBtn(btn);
+  });
+}
+function iaeCanResetExportBtn(btn) {
+  btn = btn || document.getElementById('iaeCanExportBtn');
+  if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-file-export mr-1"></i>EPS 출력'; }
+}
+function iaeCanPollSheet(sheetId, resHost, btn, namePrefix) {
+  if (resHost) resHost.innerHTML = '<div class="text-xs text-blue-600"><i class="fas fa-spinner fa-spin mr-1"></i>렌더 중… (최대 2분)</div>';
+  iaePollRender(function () {
+    return axios.get('/api/workbench/sheets/' + sheetId).then(function (res) {
+      var d = (res.data && res.data.data) || {};
+      var rj = {};
+      try { rj = d.render_result_json ? (typeof d.render_result_json === 'string' ? JSON.parse(d.render_result_json) : d.render_result_json) : {}; } catch (_e) { rj = {}; }
+      if (d.render_status === 'done') return { done: true, result: rj };
+      if (d.render_status === 'error') return { error: true, msg: d.render_error || '렌더 실패' };
+      return null; // queued | rendering
+    });
+  }, function (result) {
+    if (resHost) {
+      resHost.innerHTML = iaeRenderResultHTML(result, '/api/workbench/sheets/' + sheetId + '/download', namePrefix);
+      iaeWireResultButtons(resHost, '/api/workbench/sheets/' + sheetId + '/download', namePrefix);
+    }
+    iaeCanResetExportBtn(btn);
+    iaeToast('네스팅 EPS 출력 완료', 'success');
+  }, function (msg) {
+    if (resHost) resHost.innerHTML = '';
+    iaeToast(msg, 'error');
+    iaeCanResetExportBtn(btn);
+  });
+}
+
 function iaeCanShowNestPanel() {
   iaeCanSel = null;
   if (iaeCanTr) { iaeCanTr.nodes([]); if (iaeCanLayer) iaeCanLayer.batchDraw(); }
@@ -1249,6 +1459,12 @@ function iaeCanRenderNestPanel() {
     + '<button id="iaeCanNestRun" class="w-full px-3 py-2 rounded-md bg-blue-600 text-white hover:bg-blue-700 text-sm"><i class="fas fa-table-cells mr-1"></i>대지에 배치</button>'
     + '<div class="text-[11px] text-gray-400">배치 조각은 대지 객체가 되어 개별 편집·주문 연결(N4)에 사용</div>'
     + '<div class="text-[11px] text-amber-600 border-t border-amber-100 pt-2 mt-1"><i class="fas fa-arrows-up-down-left-right mr-1"></i><b>이형 인터록</b>: 배치 후 조각을 드래그·회전(R)해 겹쳐 끼워맞추면 주문 시 <b>현재 배치 그대로</b> 출력(롤 길이 자동 단축). 시트 안에 넣은 조각만 그 시트에 포함.</div>'
+    // (§4.1) 주문 없이 현재 시트를 EPS/JPG/DXF로 출력·다운로드
+    + '<div class="border-t border-gray-100 pt-2 mt-1">'
+    + '<button id="iaeCanExportBtn" class="w-full px-3 py-2 rounded-md bg-gray-800 text-white hover:bg-black text-sm"><i class="fas fa-file-export mr-1"></i>EPS 출력</button>'
+    + '<div class="text-[11px] text-gray-400 mt-1">주문 없이 현재 시트를 EPS·JPG·DXF로 받기 (단일 시트). 출력 후 다운로드 버튼 표시.</div>'
+    + '<div id="iaeCanNestResult" class="mt-2"></div>'
+    + '</div>'
     + '</div>';
   var bindVal = function (id, prop, parse) { var el = document.getElementById(id); if (el) el.addEventListener('change', function () { o[prop] = parse ? parse(el.value) : el.value; }); };
   var modeEl = document.getElementById('iaeCanNestMode');
@@ -1271,8 +1487,10 @@ function iaeCanRenderNestPanel() {
     o.file_scale = parseFloat(document.getElementById('iaeCanNestFS').value) || 1;
     iaeCanNestPlace(o);
   });
+  var exportEl = document.getElementById('iaeCanExportBtn');
+  if (exportEl) exportEl.addEventListener('click', iaeCanExportSheets);
   var closeEl = document.getElementById('iaeCanNestClose');
-  if (closeEl) closeEl.addEventListener('click', function () { host.classList.add('hidden'); host.innerHTML = ''; });
+  if (closeEl) closeEl.addEventListener('click', function () { iaeStopRenderPoll(); host.classList.add('hidden'); host.innerHTML = ''; });
 }
 
 // ── N4: 주문 연결 (품목 지정 모달 · 개별/네스팅 라인 · 새 주문 · 면적단가) ──
