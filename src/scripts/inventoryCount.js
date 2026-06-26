@@ -32,10 +32,15 @@ function renderTable(list) {
   tbody.innerHTML = list.map(function(c) {
     var badge = getStatusBadge(c.status);
     var submittedBy = c.submitted_by || '-';
+    var typeLabel = c.count_type === 'FULL' ? '전수' : (c.count_type === 'ZONE' ? '구역' : '정기');
+    // P3: 구역 실사면 구역명 뱃지 병기 (storage_zone_name은 null 가능)
+    var zoneBadge = c.storage_zone_name
+      ? '<div style="margin-top:3px;"><span style="display:inline-block;padding:1px 6px;border-radius:4px;font-size:10px;background:#ecfdf5;color:#047857;" title="' + escapeHtml(c.storage_zone_name) + '"><i class="fas fa-map-marker-alt" style="margin-right:2px;"></i>' + escapeHtml(c.storage_zone_name) + '</span></div>'
+      : '';
     return '<tr style="cursor:pointer;transition:background 0.15s;" onmouseover="this.style.background=\'#f8fafc\'" onmouseout="this.style.background=\'\'" onclick="openDetail(' + c.id + ')">'
       + '<td style="padding:10px 12px;font-family:monospace;font-weight:600;" title="' + escapeHtml(c.count_number || '') + '">' + escapeHtml(c.count_number) + '</td>'
       + '<td style="padding:10px 12px;text-align:center;font-size:13px;">' + (c.count_date || '') + '</td>'
-      + '<td style="padding:10px 12px;text-align:center;font-size:13px;">' + (c.count_type === 'FULL' ? '전수' : '정기') + '</td>'
+      + '<td style="padding:10px 12px;text-align:center;font-size:13px;">' + typeLabel + zoneBadge + '</td>'
       + '<td style="padding:10px 12px;text-align:center;">' + badge + '</td>'
       + '<td style="padding:10px 12px;text-align:center;color:#666;font-size:13px;">-</td>'
       + '<td style="padding:10px 12px;text-align:center;font-size:12px;color:#666;" title="' + escapeHtml(submittedBy) + '">' + escapeHtml(submittedBy) + '</td>'
@@ -139,6 +144,15 @@ async function loadDetailCount(countId) {
     var res = await axios.get('/api/inventory-counts/' + countId);
     var data = res.data.data || {};
 
+    // P3: 구역 실사 — 구역명 표시 + 미배정 품목 섹션 (storage_zone_name/unassigned_items는 ZONE 실사일 때만)
+    var zoneInfoEl = document.getElementById('panelZoneInfo');
+    if (zoneInfoEl) {
+      zoneInfoEl.innerHTML = data.storage_zone_name
+        ? '<span style="display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:6px;background:#ecfdf5;color:#047857;font-size:12px;font-weight:600;"><i class="fas fa-map-marker-alt"></i>구역: ' + escapeHtml(data.storage_zone_name) + '</span>'
+        : '';
+    } else { console.warn('[inventoryCount] #panelZoneInfo not found'); }
+    icRenderUnassigned(data);
+
     // 입력 완료율 표시
     var totalCount = (data.items || []).length;
     var filledCount = (data.items || []).filter(function(it) { return it.counted_quantity !== null && it.counted_quantity !== undefined; }).length;
@@ -186,6 +200,59 @@ async function loadDetailCount(countId) {
   } catch (e) {
     var errMsg = (e.response && e.response.data && e.response.data.error) ? e.response.data.error : e.message;
     document.getElementById('panelItems').innerHTML = '<div style="color:#ef4444;font-size:13px;">로드 실패: ' + escapeHtml(errMsg) + '</div>';
+  }
+}
+
+// ===== P3: 구역 실사 — 미배정 품목 배정 =====
+function icRenderUnassigned(data) {
+  var el = document.getElementById('panelUnassigned');
+  if (!el) { console.warn('[inventoryCount] #panelUnassigned not found'); return; }
+  var items = (data && data.unassigned_items) || [];
+  // ZONE+DRAFT 실사에서만 채워짐. 없으면 섹션 비움(다른 실사로 전환 시 잔존 방지).
+  if (!data || !data.storage_zone_id || items.length === 0) { el.innerHTML = ''; return; }
+
+  var rows = items.map(function(it) {
+    return '<label style="display:flex;align-items:center;gap:8px;padding:6px 8px;border:1px solid #fde68a;border-radius:4px;margin-bottom:4px;cursor:pointer;background:#fff;">'
+      + '<input type="checkbox" class="ic-unassigned-chk" value="' + it.item_id + '" style="width:15px;height:15px;flex-shrink:0;">'
+      + '<span style="flex:1;min-width:0;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="' + escapeHtml((it.item_code || '') + ' ' + (it.item_name || '')) + '">'
+        + '<span style="font-family:monospace;color:#6b7280;">' + escapeHtml(it.item_code || '') + '</span> ' + escapeHtml(it.item_name || '')
+      + '</span>'
+      + '<span style="font-size:11px;color:#9ca3af;white-space:nowrap;flex-shrink:0;">' + (it.quantity != null ? it.quantity : 0) + ' ' + escapeHtml(it.unit || '') + '</span>'
+      + '</label>';
+  }).join('');
+
+  el.innerHTML = ''
+    + '<div style="border:1px dashed #fcd34d;background:#fffbeb;border-radius:8px;padding:12px;">'
+      + '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">'
+        + '<span style="font-size:13px;font-weight:600;color:#92400e;"><i class="fas fa-inbox" style="margin-right:6px;"></i>미배정 품목 ' + items.length + '건</span>'
+        + '<label style="font-size:11px;color:#92400e;cursor:pointer;display:inline-flex;align-items:center;gap:4px;"><input type="checkbox" onchange="icToggleAllUnassigned(this)" style="width:13px;height:13px;">전체 선택</label>'
+      + '</div>'
+      + '<div style="max-height:200px;overflow-y:auto;margin-bottom:10px;">' + rows + '</div>'
+      + '<button onclick="icAssignUnassigned(' + _detailCountId + ')" class="ds-btn ds-btn-primary ds-btn-sm" style="width:100%;background:#d97706;">'
+        + '<i class="fas fa-arrow-right" style="margin-right:4px;"></i>선택 품목을 이 구역에 배정 후 실사 추가'
+      + '</button>'
+    + '</div>';
+}
+
+function icToggleAllUnassigned(master) {
+  document.querySelectorAll('.ic-unassigned-chk').forEach(function(chk) { chk.checked = master.checked; });
+}
+
+async function icAssignUnassigned(countId) {
+  var ids = [];
+  document.querySelectorAll('.ic-unassigned-chk:checked').forEach(function(chk) { ids.push(parseInt(chk.value, 10)); });
+  if (ids.length === 0) { showToast('배정할 품목을 선택하세요.', 'info'); return; }
+  try {
+    var res = await axios.post('/api/inventory-counts/' + countId + '/add-items', { item_ids: ids, assign_zone: true });
+    if (res.data && res.data.success) {
+      showToast((res.data.added != null ? res.data.added : ids.length) + '건을 이 구역에 배정했습니다.', 'success');
+      loadDetailCount(countId); // 실사 항목 + 미배정 목록 갱신
+    } else {
+      showToast('배정 실패', 'error');
+    }
+  } catch (e) {
+    var msg = (e.response && e.response.data && e.response.data.error) ? e.response.data.error : e.message;
+    showToast('배정 실패: ' + msg, 'error');
   }
 }
 
@@ -278,5 +345,11 @@ document.addEventListener('click', function(e) {
 // ===== 필터 이벤트 바인딩 =====
 document.getElementById('fStatus').addEventListener('change', loadCounts);
 
-// ===== 초기 로드 =====
-loadCounts();
+// ===== 초기 로드 (+ 배치도 '이 구역 실사' 진입 시 해당 실사 자동 오픈) =====
+var _icOpenCountId = (new URLSearchParams(window.location.search)).get('openCount');
+loadCounts().then(function() {
+  if (_icOpenCountId) {
+    if (typeof switchInvTab === 'function') switchInvTab('count'); // 재고실사 탭으로 전환
+    openDetail(parseInt(_icOpenCountId, 10));
+  }
+});

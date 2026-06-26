@@ -260,6 +260,12 @@ export function inventoryPage(c: Context<HonoEnv>) {
                   <span id="panelProgress"></span>
                 </div>
 
+                <!-- P3: 구역 실사 — 구역명 -->
+                <div id="panelZoneInfo" style="margin-bottom:12px;"></div>
+
+                <!-- P3: 구역 실사 — 미배정 품목 배정 -->
+                <div id="panelUnassigned" style="margin-bottom:16px;"></div>
+
                 <!-- 항목 목록 -->
                 <div style="margin-bottom:20px;">
                   <h4 style="font-size:13px;font-weight:600;color:#374151;margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid #f1f5f9;">

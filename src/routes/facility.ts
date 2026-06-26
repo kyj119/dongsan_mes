@@ -137,14 +137,15 @@ facilityRouter.get('/layout-data', async (c) => {
         WHERE c.status IN ('PRINT_PENDING','PRINTING') AND e.zone_id IS NOT NULL${cardEf.clause}
         GROUP BY e.zone_id
       `).bind(...cardEf.params).all(),
-      // P2: facility_zone별 재고 집계 (storage_zone 경유). 부족 = 안전재고 설정된 품목 중 현재고 ≤ 안전재고.
+      // P2: facility_zone별 재고 집계. 정본 경로 = inventory.storage_zone_id (spec #3, P3 구역배정과 일치).
+      // 부족 = 안전재고 설정된 품목 중 현재고 ≤ 안전재고. entity 기준 = 각 zone의 entity(sz.entity_id).
       c.env.DB.prepare(`
         SELECT sz.facility_zone_id as zone_id,
-          COUNT(DISTINCT i.id) as inv_item_count,
+          COUNT(DISTINCT inv.item_id) as inv_item_count,
           SUM(CASE WHEN COALESCE(inv.safe_stock,0) > 0 AND COALESCE(inv.quantity,0) <= inv.safe_stock THEN 1 ELSE 0 END) as inv_shortage_count
         FROM storage_zones sz
-        JOIN items i ON i.storage_zone_id = sz.id AND i.is_active = 1
-        LEFT JOIN inventory inv ON inv.item_id = i.id AND inv.entity_id = sz.entity_id
+        JOIN inventory inv ON inv.storage_zone_id = sz.id AND inv.entity_id = sz.entity_id
+        JOIN items i ON i.id = inv.item_id AND i.is_active = 1
         WHERE sz.facility_zone_id IS NOT NULL AND sz.is_active = 1
         GROUP BY sz.facility_zone_id
       `).all(),
@@ -188,8 +189,8 @@ facilityRouter.get('/zones/:id/inventory', async (c) => {
         i.id as item_id, i.item_code, i.item_name, i.category, i.unit,
         COALESCE(inv.quantity, 0) as quantity, COALESCE(inv.safe_stock, 0) as safe_stock
       FROM storage_zones sz
-      JOIN items i ON i.storage_zone_id = sz.id AND i.is_active = 1
-      LEFT JOIN inventory inv ON inv.item_id = i.id AND inv.entity_id = sz.entity_id
+      JOIN inventory inv ON inv.storage_zone_id = sz.id AND inv.entity_id = sz.entity_id
+      JOIN items i ON i.id = inv.item_id AND i.is_active = 1
       LEFT JOIN users u ON sz.manager_id = u.id
       WHERE sz.facility_zone_id = ? AND sz.is_active = 1
       ORDER BY sz.zone_name, i.item_name

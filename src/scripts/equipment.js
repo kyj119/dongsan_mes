@@ -213,7 +213,9 @@ async function showZoneInventory(zoneId) {
                 + '<span class="font-bold text-sm text-gray-800">' + escapeHtml(g.name) + '</span>'
                 + (g.manager ? '<span class="text-xs text-gray-400"><i class="fas fa-user mr-0.5"></i>' + escapeHtml(g.manager) + '</span>' : '')
                 + (short > 0 ? '<span class="text-xs text-red-600 font-medium"><i class="fas fa-exclamation-triangle mr-0.5"></i>부족 ' + short + '</span>' : '')
-                + '<span class="text-xs text-gray-400 ml-auto">' + g.items.length + '개 품목</span></div>';
+                + '<span class="text-xs text-gray-400 ml-auto">' + g.items.length + '개 품목</span>'
+                + '<button onclick="event.stopPropagation();eqStartZoneCount(' + k + ')" class="text-xs px-2 py-0.5 rounded bg-blue-50 text-blue-700 hover:bg-blue-100 font-medium whitespace-nowrap" title="이 창고 구역을 대상으로 재고 실사를 시작합니다"><i class="fas fa-clipboard-check mr-1"></i>이 구역 실사</button>'
+                + '</div>';
             html += '<table class="w-full text-xs"><thead><tr class="text-gray-400 border-b"><th class="text-left py-1 font-medium">품목</th><th class="text-right py-1 font-medium">현재고</th><th class="text-right py-1 font-medium">안전</th></tr></thead><tbody>';
             g.items.forEach(function(it) {
                 var low = it.safe_stock > 0 && it.quantity <= it.safe_stock;
@@ -232,6 +234,28 @@ async function showZoneInventory(zoneId) {
 function closeZoneInvModal() {
     var m = document.getElementById('zoneInvModal');
     if (m) m.classList.add('hidden');
+}
+
+// ─── P3: 구역 기반 재고 실사 진입 ───────────────────────────────────────────
+// 배치도 영역 모달의 창고(storage_zone)별 "이 구역 실사" 버튼 → ZONE 실사 생성 후 재고실사 상세로 이동.
+async function eqStartZoneCount(storageZoneId) {
+    try {
+        var res = await axios.post('/api/inventory-counts', { storage_zone_id: storageZoneId });
+        if (res.data && res.data.success && res.data.data) {
+            var d = res.data.data;
+            var zname = d.storage_zone_name || '';
+            var cnt = (d.item_count != null) ? ' (' + d.item_count + '건)' : '';
+            showToast('구역 실사 생성: ' + (zname || d.count_number || '') + cnt, 'success');
+            // 재고실사 UI = /inventory 의 재고실사 탭(#tab=count). openCount 파라미터로 해당 실사 자동 오픈.
+            window.location.href = '/inventory?openCount=' + d.id + '#tab=count';
+        } else {
+            showToast('구역 실사 생성 실패', 'error');
+        }
+    } catch (e) {
+        var msg = (e.response && e.response.data && e.response.data.error) ? e.response.data.error : e.message;
+        if (e.response && e.response.status === 403) msg = '권한이 없습니다 (관리자/매니저 전용).';
+        showToast('구역 실사 생성 실패: ' + msg, 'error');
+    }
 }
 
 // ─── 도면 배경 (R2 blob) ─────────────────────────────────────────────────────
