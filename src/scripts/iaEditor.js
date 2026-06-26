@@ -1469,9 +1469,42 @@ function iaeCanAllGroups() {
 }
 function iaeCanSrc(key) { return iaeCanAllGroups().filter(function (s) { return s.key === key; })[0]; }
 
+// W5: 네스팅 뷰 = 좌 폼(iaeCanRenderNestPanel) + 우 정적 SVG 미리보기(iaeNestRenderPreview). 자유드래그 캔버스 폐기.
 function iaeRenderCanvas() {
-  iaeCanRenderPalette();
-  iaeCanInitStage();
+  iaeCanRenderNestPanel();
+  iaeNestRenderPreview();
+}
+// W5: 자동 배치 정적 미리보기 — 엔진 결과(iaeCanSheets/iaeCanObjs)를 SVG로 렌더(읽기전용). 드래그 없음.
+function iaeNestRenderPreview() {
+  var host = document.getElementById('iaeNestPreview'); if (!host) return;
+  var sheets = iaeCanSheets || [];
+  if (!sheets.length) {
+    host.className = 'min-h-[480px] flex items-center justify-center text-gray-300 text-sm text-center';
+    host.innerHTML = '왼쪽에서 그룹·수량·시트 규격을 설정하고 <b class="mx-1">자동 배치</b>를 누르면<br>시트 배치 미리보기가 표시됩니다.';
+    return;
+  }
+  host.className = 'min-h-[480px]';
+  var maxW = 560; // px 목표 폭
+  var cards = sheets.map(function (sh) {
+    var wCm = (sh.w_mm || 0) / 10, hCm = (sh.h_mm || 0) / 10;
+    if (wCm <= 0 || hCm <= 0) return '';
+    var scale = maxW / wCm; if (scale * hCm > 720) scale = 720 / hCm; // 너무 길면 높이 기준 축소
+    var vbW = +(wCm * scale).toFixed(1), vbH = +(hCm * scale).toFixed(1);
+    var pls = sh.placements || [];
+    var rects = pls.map(function (p) {
+      var rot = (p.rotation === 90 || p.rotation === 270 || p.rotated);
+      var x = (p.x_cm || 0) * scale, y = (p.y_cm || 0) * scale;
+      var w = (p.width_cm || 0) * scale, h = (p.height_cm || 0) * scale;
+      return '<rect x="' + x.toFixed(1) + '" y="' + y.toFixed(1) + '" width="' + w.toFixed(1) + '" height="' + h.toFixed(1) + '" fill="#bfdbfe" stroke="#2563eb" stroke-width="1"/>'
+        + (rot ? '<text x="' + (x + w / 2).toFixed(1) + '" y="' + (y + h / 2).toFixed(1) + '" font-size="11" fill="#1e40af" text-anchor="middle" dominant-baseline="middle">&#8635;</text>' : '');
+    }).join('');
+    var effPct = Math.round((sh.eff || 0) * 100);
+    return '<div class="bg-white border border-gray-200 rounded-lg p-3 inline-block align-top mr-4 mb-4">'
+      + '<div class="text-xs font-semibold text-gray-700 mb-1.5">' + iaeEscape(sh.label || '시트') + ' <span class="font-normal text-gray-400">' + Math.round(wCm) + '×' + Math.round(hCm) + 'cm · 조각 ' + pls.length + ' · 효율 ' + effPct + '%' + (sh.trim ? ' · 돔보' : '') + '</span></div>'
+      + '<svg width="' + Math.max(40, Math.round(vbW)) + '" height="' + Math.max(40, Math.round(vbH)) + '" viewBox="0 0 ' + vbW + ' ' + vbH + '" class="bg-gray-50 border border-gray-300">'
+      + '<rect x="0" y="0" width="' + vbW + '" height="' + vbH + '" fill="none" stroke="#9ca3af" stroke-width="1"/>' + rects + '</svg></div>';
+  }).join('');
+  host.innerHTML = '<div class="flex flex-wrap">' + cards + '</div>';
 }
 
 function iaeCanRenderPalette() {
@@ -2113,6 +2146,8 @@ function iaeCanSyncSheet(sh) {
 function iaeCanNestPlace(opts) {
   var src = iaeCanSrc(opts.key);
   if (!src) { iaeToast('대상 그룹을 선택하세요', 'error'); return; }
+  // W5: 자동 배치는 매번 fresh — 단일 그룹 네스팅(누적/자유객체 없음). 기존 시트·조각 비움.
+  iaeCanObjs = []; iaeCanSheets = [];
   var origW = src.w_mm || 0, origH = src.h_mm || 0;
   // 네스팅 스케일: 목표 크기(opts.target_w/h, cm) 지정 시 그 크기로 조각 배치, 없으면 검출 크기
   var dwCm = (Number(opts.target_w) > 0) ? Number(opts.target_w) : origW / 10;
@@ -2190,7 +2225,7 @@ function iaeCanNestPlace(opts) {
     iaeCanSyncSheet(sh); // ⑦ 객체 배치로부터 placements·효율·롤 길이 재계산(단일 소스)
     cursorY += Math.round(s.height_cm * 10) + 30;
   });
-  iaeCanSave(); iaeCanInitStage();
+  iaeCanSave(); iaeNestRenderPreview(); // W5: Konva 대신 정적 SVG 미리보기
   iaeToast(sheets.length + '판 배치 · 효율 ' + Math.round(eff * 100) + '%', 'success');
   iaeCanRenderNestPanel(); // 패널 유지
 }
@@ -2530,8 +2565,7 @@ function iaeCanRenderNestPanel() {
   var presetOpts = presets.map(function (p, i) { return '<option value="' + i + '"' + (i === o.presetIdx ? ' selected' : '') + '>' + iaeEscape(p.label) + (p._custom ? ' ★' : '') + '</option>'; }).join('')
     + '<option value="__custom"' + (o.presetIdx === '__custom' ? ' selected' : '') + '>직접 입력…</option>';
   host.innerHTML = ''
-    + '<div class="flex items-center justify-between mb-2"><span class="text-sm font-semibold text-gray-700"><i class="fas fa-layer-group mr-1 text-blue-500"></i>시트 네스팅</span>'
-    + '<button id="iaeCanNestClose" class="text-gray-400 hover:text-gray-600 text-xs"><i class="fas fa-xmark"></i></button></div>'
+    + '<div class="mb-2"><span class="text-sm font-semibold text-gray-700"><i class="fas fa-layer-group mr-1 text-blue-500"></i>시트 네스팅</span></div>'
     + '<div class="text-[11px] text-gray-400 mb-3">동일 품목(그룹) 다수를 시트에 자동 배치</div>'
     + '<div class="space-y-3">'
     + '<div><label class="block text-xs text-gray-500 mb-1">대상 그룹 (동일 품목)</label><select id="iaeCanNestGroup" class="' + selCls + '">' + groupOpts + '</select></div>'
@@ -2567,14 +2601,14 @@ function iaeCanRenderNestPanel() {
     + '<label class="flex items-center gap-1 text-xs text-gray-600 cursor-pointer"><input id="iaeCanNestRatio" type="checkbox"' + (o.ratio_lock !== false ? ' checked' : '') + '>비율 잠금 (조각 W↔H 검출 종횡비 유지)</label>'
     + '<div class="text-[11px] text-gray-400">조각 크기 비우면 검출 크기로 배치(스케일). 파일 1/N = 소스가 실제의 1/N(현수막 축소본 등)</div>'
     + '<div id="iaeCanNestEst" class="bg-blue-50 border border-blue-100 rounded-md px-2 py-1.5"></div>' // ④ 배치 전 실시간 예상치
-    + '<button id="iaeCanNestRun" class="w-full px-3 py-2 rounded-md bg-blue-600 text-white hover:bg-blue-700 text-sm"><i class="fas fa-table-cells mr-1"></i>대지에 배치</button>'
-    + '<div class="text-[11px] text-gray-400">배치 조각은 대지 객체가 되어 개별 편집·주문 연결(N4)에 사용</div>'
-    + '<div class="text-[11px] text-amber-600 border-t border-amber-100 pt-2 mt-1"><i class="fas fa-arrows-up-down-left-right mr-1"></i><b>이형 인터록</b>: 배치 후 조각을 드래그·회전(R)해 겹쳐 끼워맞추면 주문 시 <b>현재 배치 그대로</b> 출력(롤 길이 자동 단축). 시트 안에 넣은 조각만 그 시트에 포함.</div>'
-    // (§4.1) 주문 없이 현재 시트를 EPS/JPG/DXF로 출력·다운로드
-    + '<div class="border-t border-gray-100 pt-2 mt-1">'
+    + '<button id="iaeCanNestRun" class="w-full px-3 py-2 rounded-md bg-blue-600 text-white hover:bg-blue-700 text-sm"><i class="fas fa-table-cells mr-1"></i>자동 배치</button>'
+    + '<div class="text-[11px] text-gray-400">설정(수량·규격·회전 등)을 바꾸고 다시 누르면 재배치됩니다. 조각 개별 드래그는 없습니다.</div>'
+    // (§4.1) 출력(EPS, 주문 없이) / 주문 보내기 — 둘 다 자동 배치 결과 사용
+    + '<div class="border-t border-gray-100 pt-2 mt-1 space-y-2">'
     + '<button id="iaeCanExportBtn" class="w-full px-3 py-2 rounded-md bg-gray-800 text-white hover:bg-black text-sm"><i class="fas fa-file-export mr-1"></i>EPS 출력</button>'
-    + '<div class="text-[11px] text-gray-400 mt-1">주문 없이 현재 시트를 EPS·JPG·DXF로 받기 (단일 시트). 출력 후 다운로드 버튼 표시.</div>'
-    + '<div id="iaeCanNestResult" class="mt-2"></div>'
+    + '<button id="iaeNestOrderBtn" class="w-full px-3 py-2 rounded-md bg-green-600 text-white hover:bg-green-700 text-sm"><i class="fas fa-file-invoice mr-1"></i>주문 보내기</button>'
+    + '<div class="text-[11px] text-gray-400">EPS = 주문 없이 시트를 받기(단일 시트, 평판은 다중판 분할). 주문 보내기 = 거래처·품목 지정.</div>'
+    + '<div id="iaeCanNestResult"></div>'
     + '</div>'
     + '</div>';
   var bindVal = function (id, prop, parse, estimate) { var el = document.getElementById(id); if (el) el.addEventListener('change', function () { o[prop] = parse ? parse(el.value) : el.value; if (estimate) iaeNestRenderEstimate(); }); };
@@ -2662,8 +2696,8 @@ function iaeCanRenderNestPanel() {
   });
   var exportEl = document.getElementById('iaeCanExportBtn');
   if (exportEl) exportEl.addEventListener('click', iaeCanExportSheets);
-  var closeEl = document.getElementById('iaeCanNestClose');
-  if (closeEl) closeEl.addEventListener('click', function () { iaeStopRenderPoll(); host.classList.add('hidden'); host.innerHTML = ''; });
+  var orderEl = document.getElementById('iaeNestOrderBtn'); // W5: 주문 보내기(자동배치 결과)
+  if (orderEl) orderEl.addEventListener('click', iaeCanOpenOrderModal);
   iaeNestRenderEstimate(); // ④ 패널 열릴 때 초기 예상치
 }
 

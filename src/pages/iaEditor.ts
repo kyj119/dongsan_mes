@@ -18,7 +18,7 @@ export function iaEditorPage(c: Context<HonoEnv>) {
       <!-- 뷰 토글 -->
       <div class="flex gap-2 mb-4">
         <button id="iaeViewEdit" class="px-4 py-2 rounded-lg text-sm font-medium border border-blue-500 bg-blue-50 text-blue-700"><i class="fas fa-object-group mr-1"></i>파일 처리</button>
-        <button id="iaeViewCanvas" class="px-4 py-2 rounded-lg text-sm font-medium border border-gray-200 text-gray-600 hover:bg-gray-50"><i class="fas fa-vector-square mr-1"></i>대지 편집 <span class="text-[11px] text-gray-400">(네스팅 포함)</span></button>
+        <button id="iaeViewCanvas" class="px-4 py-2 rounded-lg text-sm font-medium border border-gray-200 text-gray-600 hover:bg-gray-50"><i class="fas fa-layer-group mr-1"></i>네스팅</button>
       </div>
 
       <!-- 파일 처리 뷰 -->
@@ -41,28 +41,25 @@ export function iaEditorPage(c: Context<HonoEnv>) {
         </div>
       </div>
 
-      <!-- 대지 편집 뷰 (N1: 자유 대지 캔버스 — 그룹=객체, 실제크기, 드래그/리사이즈/회전) -->
+      <!-- 네스팅 뷰 (동일 품목 시트 자동 배치 → 정적 미리보기 → EPS/주문). 자유드래그 없음. -->
       <div id="iaeCanvasView" class="hidden">
-        <div class="ds-card flex flex-col" style="height: 620px;">
-          <div class="flex items-center gap-2 px-3 py-2 border-b border-gray-200 bg-gray-50/60 text-xs flex-wrap">
-            <button id="iaeCanFit" class="px-2 py-1 rounded-md border border-gray-200 hover:bg-gray-100"><i class="fas fa-expand mr-1"></i>전체보기</button>
-            <button id="iaeCanZoomOut" class="px-2 py-1 rounded-md border border-gray-200 hover:bg-gray-100 w-7">−</button>
-            <span id="iaeCanZoom" class="w-12 text-center text-gray-500">100%</span>
-            <button id="iaeCanZoomIn" class="px-2 py-1 rounded-md border border-gray-200 hover:bg-gray-100 w-7">+</button>
-            <span class="mx-1 text-gray-300">|</span>
-            <label class="inline-flex items-center gap-1 text-gray-600 cursor-pointer"><input type="checkbox" id="iaeCanRatio" checked class="accent-blue-600">비율잠금</label>
-            <button id="iaeCanPlaceAll" class="px-2 py-1 rounded-md bg-blue-600 text-white hover:bg-blue-700"><i class="fas fa-table-cells mr-1"></i>모두 배치</button>
-            <button id="iaeCanNestBtn" class="px-2 py-1 rounded-md border border-blue-200 text-blue-600 hover:bg-blue-50"><i class="fas fa-layer-group mr-1"></i>시트 네스팅</button>
-            <button id="iaeCanClear" class="px-2 py-1 rounded-md border border-gray-200 text-gray-500 hover:bg-gray-100">대지 비우기</button>
-            <button id="iaeCanOrderBtn" class="px-2 py-1 rounded-md bg-green-600 text-white hover:bg-green-700"><i class="fas fa-file-invoice mr-1"></i>주문으로 보내기</button>
-            <span class="ml-auto text-gray-400 hidden lg:inline">R 회전 · D 복제 · Del 제거 · ←↑↓→ 이동(Shift=10mm) · 휠 줌 · Space+드래그 팬 · Esc 해제</span>
+        <div class="ds-card flex" style="min-height: 620px;">
+          <!-- 좌: 네스팅 설정 폼 (iaeCanRenderNestPanel이 렌더) -->
+          <div id="iaeCanInspector" class="w-80 flex-shrink-0 border-r border-gray-200 overflow-y-auto p-3 bg-white"></div>
+          <!-- 우: 자동 배치 정적 미리보기 (SVG) -->
+          <div class="flex-1 min-w-0 p-4 bg-gray-50 overflow-auto">
+            <div id="iaeNestPreview" class="min-h-[480px] flex items-center justify-center text-gray-300 text-sm text-center">
+              왼쪽에서 그룹·수량·시트 규격을 설정하고 <b class="mx-1">자동 배치</b>를 누르면<br>시트 배치 미리보기가 표시됩니다.
+            </div>
           </div>
-          <div class="flex flex-1 min-h-0">
-            <div id="iaeCanPalette" class="w-44 flex-shrink-0 border-r border-gray-200 overflow-y-auto p-2 bg-white"></div>
-            <div id="iaeCanHost" tabindex="0" class="flex-1 bg-gray-100 relative overflow-hidden outline-none"></div>
-            <div id="iaeCanInspector" class="w-72 flex-shrink-0 border-l border-gray-200 overflow-y-auto p-3 bg-white hidden"></div>
-          </div>
-          <div id="iaeCanStatus" class="px-3 py-1.5 border-t border-gray-200 bg-gray-50/60 text-[11px] text-gray-500">팔레트에서 그룹을 클릭해 대지에 추가하세요</div>
+        </div>
+        <!-- 구 대지편집(자유드래그) 잔여 DOM 참조 스텁 — W5-P3에서 죽은 캔버스 코드와 함께 제거 예정 -->
+        <div class="hidden">
+          <div id="iaeCanPalette"></div>
+          <div id="iaeCanHost"></div>
+          <span id="iaeCanZoom"></span>
+          <div id="iaeCanStatus"></div>
+          <input id="iaeCanRatio" type="checkbox" checked>
         </div>
       </div>
     `,
