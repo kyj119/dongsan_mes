@@ -145,8 +145,22 @@ function iaePollRender(getStatus, onDone, onError, opts) {
   tick();
 }
 // done 결과 패널 HTML: JPG 미리보기 + [EPS][JPG][DXF] 다운로드 버튼. base는 다운로드 URL prefix.
+// W2: jpg_base64(인라인) 또는 jpg_r2(R2 blob) 썸네일 로드. base64는 미리보기 잡만 보유, 일반 잡은 R2 blob 폴백.
+function iaeWireBlobThumbs(host) {
+  if (!host) return;
+  Array.prototype.forEach.call(host.querySelectorAll('img[data-jpg-blob]'), function (img) {
+    var url = img.getAttribute('data-jpg-blob'); if (!url) return;
+    img.removeAttribute('data-jpg-blob');
+    axios.get(url, { responseType: 'blob' }).then(function (res) {
+      var u = URL.createObjectURL(res.data);
+      img.onload = function () { setTimeout(function () { try { URL.revokeObjectURL(u); } catch (_e) {} }, 200); };
+      img.src = u;
+    }).catch(function () { /* 플레이스홀더 유지 */ });
+  });
+}
 function iaeRenderResultHTML(result, base, namePrefix) {
   var jpg = result && result.jpg_base64;
+  var hasJpgR2 = result && (result.jpg_r2 || result.jpg_path);
   var dims = (result && result.width_cm != null && result.height_cm != null)
     ? (Math.round(result.width_cm) + '×' + Math.round(result.height_cm) + 'cm') : '';
   var html = '<div class="border border-green-200 bg-green-50 rounded-lg p-2">';
@@ -154,11 +168,15 @@ function iaeRenderResultHTML(result, base, namePrefix) {
     + (dims ? ' · <span class="font-normal text-green-600">' + iaeEscape(dims) + '</span>' : '') + '</div>';
   html += jpg
     ? '<img src="data:image/jpeg;base64,' + jpg + '" class="w-full max-h-48 object-contain bg-white border border-gray-200 rounded mb-2">'
-    : '<div class="text-[11px] text-gray-400 mb-2">미리보기 없음</div>';
+    : (hasJpgR2
+      ? '<img data-jpg-blob="' + iaeEscape(base) + '?kind=jpg" class="w-full max-h-48 object-contain bg-white border border-gray-200 rounded mb-2">'
+      : '<div class="text-[11px] text-gray-400 mb-2">미리보기 없음</div>');
+  // W7: DXF(재단기용)는 돔보(trim) 켤 때만 생성 → 결과에 dxf 있을 때만 버튼 노출. 시트 네스팅은 항상 dxf 보유.
+  var hasDxf = !!(result && (result.dxf_r2 || result.dxf_path));
   html += '<div class="flex items-center gap-2">'
     + '<button class="iae-dl-btn px-2 py-1 rounded-md bg-gray-800 text-white text-xs hover:bg-black" data-kind="eps">EPS</button>'
     + '<button class="iae-dl-btn px-2 py-1 rounded-md border border-gray-300 text-gray-700 text-xs hover:bg-gray-50" data-kind="jpg">JPG</button>'
-    + '<button class="iae-dl-btn px-2 py-1 rounded-md border border-gray-300 text-gray-700 text-xs hover:bg-gray-50" data-kind="dxf">DXF</button>'
+    + (hasDxf ? '<button class="iae-dl-btn px-2 py-1 rounded-md border border-gray-300 text-gray-700 text-xs hover:bg-gray-50" data-kind="dxf">DXF</button>' : '')
     + '</div></div>';
   return html;
 }
@@ -166,6 +184,7 @@ function iaeRenderResultHTML(result, base, namePrefix) {
 // R2-3: result(width_cm/height_cm) 있으면 파일명 {yyyymmdd}_{사이즈}_{prefix}.{kind}.
 function iaeWireResultButtons(host, base, namePrefix, result) {
   if (!host) return;
+  iaeWireBlobThumbs(host); // W2: jpg_r2 blob 썸네일 로드(base64 미보유 시)
   var dlBase = iaeDownloadBase({ w_cm: result && result.width_cm, h_cm: result && result.height_cm, name: namePrefix || '출력' });
   Array.prototype.forEach.call(host.querySelectorAll('.iae-dl-btn'), function (b) {
     b.addEventListener('click', function () {
@@ -373,9 +392,12 @@ function iaeRenderPanel() {
 
   // 좌: 그룹 리스트 + 인스펙터 (검출보정 캔버스는 §14.5 폐기 — '대지 편집' 뷰가 시안 편집 담당)
   // ① 일괄 가공 — 모든 그룹을 각 settings로 큐잉 → 진행(N/M) → ZIP
-  var listHtml = '<div class="flex items-center justify-between mb-2">'
-    + '<span class="text-xs font-semibold text-gray-500">그룹 (' + f.groups.length + ')</span>'
-    + '<button id="iaeBatchBtn" class="text-[11px] px-2 py-0.5 rounded-md bg-gray-800 text-white hover:bg-black" title="모든 그룹을 현재 설정으로 가공"><i class="fas fa-layer-group mr-1"></i>전체 가공</button>'
+  var listHtml = '<div class="flex items-center justify-between mb-2 gap-1">'
+    + '<span class="text-xs font-semibold text-gray-500 flex-shrink-0">그룹 (' + f.groups.length + ')</span>'
+    + '<div class="flex items-center gap-1">'
+    + '<button id="iaeApplyAllBtn" class="text-[11px] px-2 py-0.5 rounded-md border border-gray-300 text-gray-600 hover:bg-gray-50" title="현재 그룹의 마감·돔보·회전·파일배율을 모든 그룹에 적용(목표크기는 그룹별 유지)"><i class="fas fa-clone mr-1"></i>설정 전체적용</button>'
+    + '<button id="iaeBatchBtn" class="text-[11px] px-2 py-0.5 rounded-md bg-gray-800 text-white hover:bg-black" title="모든 그룹을 각 설정으로 가공 → 완료 후 ZIP 자동 다운로드"><i class="fas fa-layer-group mr-1"></i>전체 가공</button>'
+    + '</div>'
     + '</div>'
     + '<div id="iaeBatchResult" class="mb-2"></div>'
     + '<div class="space-y-2">';
@@ -405,7 +427,33 @@ function iaeRenderPanel() {
   });
   var batchBtn = document.getElementById('iaeBatchBtn'); // ① 전체 가공
   if (batchBtn) batchBtn.addEventListener('click', function () { iaeBatchProcess(f); });
+  var applyAllBtn = document.getElementById('iaeApplyAllBtn'); // W4: 설정 전체적용
+  if (applyAllBtn) applyAllBtn.addEventListener('click', function () { iaeApplyActiveToAll(f); });
   iaeRenderInspector(f);
+}
+// W4: 현재 활성 그룹의 공통 설정(마감 4면·돔보·회전·파일배율·고급후가공)을 모든 그룹에 복사.
+//     목표크기(target_w/h)는 그룹별 검출크기 기준이라 유지 → 그룹마다 따로 설정하는 수고 제거.
+function iaeApplyActiveToAll(f) {
+  if (!f || !f.groups || !f.groups.length) return;
+  var gis = f.groups.map(function (g, i) { return (g.index != null) ? g.index : i; });
+  var actGroup = f.groups.filter(function (g, i) { return gis[i] === iaeActiveGroup; })[0];
+  if (!actGroup) { iaeToast('기준 그룹을 먼저 선택하세요', 'error'); return; }
+  var src = iaeGetSettings(f.id, actGroup, iaeActiveGroup);
+  var keys = ['fin_top', 'fin_bottom', 'fin_left', 'fin_right', 'trim', 'rotate90', 'scale_factor', 'adv'];
+  var n = 0;
+  f.groups.forEach(function (g, i) {
+    var gi = gis[i];
+    if (gi === iaeActiveGroup) return;
+    var d = iaeGetSettings(f.id, g, gi);
+    keys.forEach(function (k) {
+      if (src[k] === undefined) return;
+      d[k] = (k === 'adv' && src.adv) ? JSON.parse(JSON.stringify(src.adv)) : src[k];
+    });
+    n++;
+  });
+  iaeSaveSettings();
+  iaeRenderInspector(f);
+  iaeToast('현재 설정을 ' + n + '개 그룹에 적용 (목표크기는 그룹별 유지)', 'success');
 }
 function iaeWireRefresh() {
   var rb = document.getElementById('iaeRefreshBtn');
@@ -442,16 +490,12 @@ function iaeMethodOptions(selected) {
   });
   return html;
 }
-// R2-2: 파일처리 인스펙터 목표크기 옆 규격 프리셋 옵션 — 롤(폭만)·평판(W×H). 커스텀 포함.
-//   value='r:W' (롤 폭) | 'f:W:H' (평판). 선택 시 iaeTW/iaeTH 자동 채움.
-function iaeSizePresetOptions() {
-  var html = '<option value="">규격으로 채우기…</option>';
-  html += '<optgroup label="롤 폭(cm)">';
-  iaeAllRollPresets().forEach(function (p) { html += '<option value="r:' + p.w + '">' + iaeEscape(p.label) + (p._custom ? ' ★' : '') + ' (폭 ' + p.w + ')</option>'; });
-  html += '</optgroup><optgroup label="평판(cm)">';
-  iaeAllFlatPresets().forEach(function (p) { html += '<option value="f:' + p.w + ':' + p.h + '">' + iaeEscape(p.label) + (p._custom ? ' ★' : '') + ' (' + p.w + '×' + p.h + ')</option>'; });
-  html += '</optgroup>';
-  return html;
+// W3: 파일배율 안내 — 소스가 용량 때문에 1/N 축소본으로 들어온 경우. 마감·돔보는 ÷N로 실물 비율 보정,
+//     EPS는 소스(원본) 크기 그대로 저장(출력 RIP에서 ×N 확대). 실물 추정크기를 라이브로 병기.
+function iaeScaleHint(w, h, n) {
+  n = Math.max(1, parseInt(n, 10) || 1);
+  if (n <= 1) return '원본 크기 (1/1 · 보정 없음)';
+  return '1/' + n + ' 축소본 · 실물 ≈ ' + Math.round((w || 0) * n) + '×' + Math.round((h || 0) * n) + 'cm (마감·돔보 자동 보정 · EPS는 원본 크기 저장)';
 }
 function iaeRenderInspector(f) {
   var host = document.getElementById('iaeInspector');
@@ -484,8 +528,6 @@ function iaeRenderInspector(f) {
     + '<input id="iaeTH" type="number" min="0" step="0.1" value="' + s.target_h + '" class="w-24 ' + inputCls + '" placeholder="H">'
     + '<label class="flex items-center gap-1 text-xs text-gray-600 ml-1 cursor-pointer"><input id="iaeAspect" type="checkbox"' + (s.aspect_lock ? ' checked' : '') + '> 비율잠금</label>'
     + '</div>'
-    // R2-2: 규격 프리셋(롤 폭 / 평판 W×H) → 목표 W/H 자동 채움(단위 혼동 방지)
-    + '<div class="mt-1.5"><select id="iaeSizePreset" class="' + selCls + ' text-xs">' + iaeSizePresetOptions() + '</select></div>'
     + '</div>'
     // 마감 프리셋
     + '<div><label class="block text-xs text-gray-500 mb-1">마감 프리셋</label><select id="iaePreset" class="' + selCls + '">' + presetOpts + '</select></div>'
@@ -500,7 +542,7 @@ function iaeRenderInspector(f) {
     + '<div class="flex items-center gap-4 flex-wrap">'
     + '<label class="flex items-center gap-2 text-sm text-gray-700 cursor-pointer"><input id="iaeRot" type="checkbox"' + (s.rotate90 ? ' checked' : '') + '> 90° 회전</label>'
     + '<label class="flex items-center gap-2 text-sm text-gray-700 cursor-pointer"><input id="iaeTrim" type="checkbox"' + (s.trim ? ' checked' : '') + '> 돔보</label>'
-    + '<div class="flex items-center gap-2"><label class="text-xs text-gray-500">파일배율 1/</label><input id="iaeScale" type="number" min="1" step="1" value="' + (s.scale_factor || 1) + '" class="w-16 ' + inputCls + '"><span class="text-[11px] text-gray-400">소스가 실제의 1/N(축소본)</span></div>'
+    + '<div class="flex items-center gap-2 flex-wrap"><label class="text-xs text-gray-500">파일배율 1/</label><input id="iaeScale" type="number" min="1" step="1" value="' + (s.scale_factor || 1) + '" class="w-16 ' + inputCls + '"><span id="iaeScaleReal" class="text-[11px] text-gray-400">' + iaeScaleHint(effW, effH, s.scale_factor || 1) + '</span></div>'
     + '</div>'
     // R3a-2: 고급 후가공 (접이식, 기본 접힘) — 도련 offset(method+4면)·펀칭·주석. 미입력 시 가공 body 미전송.
     + iaeAdvancedSectionHTML(iaeAdv(s), inputCls, selCls)
@@ -537,6 +579,8 @@ function iaeRenderInspector(f) {
     s.rotate90 = document.getElementById('iaeRot').checked;
     s.trim = document.getElementById('iaeTrim').checked;
     s.scale_factor = Math.max(1, parseInt(document.getElementById('iaeScale').value, 10) || 1);
+    var srEl = document.getElementById('iaeScaleReal');
+    if (srEl) srEl.textContent = iaeScaleHint(effW, effH, s.scale_factor);
     s.fin_top = document.getElementById('iaeFinTop').value;
     s.fin_bottom = document.getElementById('iaeFinBottom').value;
     s.fin_left = document.getElementById('iaeFinLeft').value;
@@ -567,22 +611,6 @@ function iaeRenderInspector(f) {
   ['iaeAdvOffMethod', 'iaeAdvOffTop', 'iaeAdvOffBottom', 'iaeAdvOffLeft', 'iaeAdvOffRight', 'iaeAdvPunching', 'iaeAdvAnnotation'].forEach(function (id) {
     var el = document.getElementById(id);
     if (el) { el.addEventListener('change', sync); el.addEventListener('input', sync); }
-  });
-  // R2-2: 규격 프리셋 선택 → 목표크기 자동 채움. 롤=폭(W)만(H는 비율잠금 시 자동), 평판=W/H 둘 다(비율잠금 일시 무시).
-  var sizePreEl = document.getElementById('iaeSizePreset');
-  if (sizePreEl) sizePreEl.addEventListener('change', function () {
-    var v = sizePreEl.value; if (!v) return;
-    var parts = v.split(':');
-    if (parts[0] === 'r') {
-      var rw = parseFloat(parts[1]) || 0;
-      if (rw > 0) { twEl.value = Math.round(rw * 10) / 10; if (document.getElementById('iaeAspect').checked && detAspect > 0) thEl.value = Math.round((rw / detAspect) * 10) / 10; }
-    } else if (parts[0] === 'f') {
-      var fw = parseFloat(parts[1]) || 0, fh = parseFloat(parts[2]) || 0;
-      if (fw > 0) twEl.value = Math.round(fw * 10) / 10;
-      if (fh > 0) thEl.value = Math.round(fh * 10) / 10;
-    }
-    sizePreEl.value = ''; // 적용 후 라벨 복귀
-    sync();
   });
   // ⑥ 비율잠금 해제 토스트 — 자유 변형 시 왜곡 위험 환기
   var aspEl = document.getElementById('iaeAspect');
@@ -939,6 +967,8 @@ function iaeBatchFinish() {
   var done = st.jobs.filter(function (j) { return j.status === 'done'; }).length;
   iaeToast('일괄 가공 완료: ' + done + '/' + st.jobs.length, done === st.jobs.length ? 'success' : 'warning');
   iaeLoadHistory();
+  // W4: 완료 후 ZIP 자동 다운로드(한번에 받기). 결과 있으면 1회 자동 실행, ZIP 버튼은 폴백으로 유지.
+  if (done > 0 && !st.zipped) { st.zipped = true; iaeBatchZip(); }
 }
 function iaeBatchRender(phase) {
   var host = document.getElementById('iaeBatchResult'); var st = iaeBatchState;
@@ -1046,6 +1076,21 @@ function iaeLoadHistory() {
     iaeRenderHistory(null);
   }).finally(function () { iaeHistLoading = false; });
 }
+// W2: 완료·실패 가공 이력 일괄 삭제(R2 산출물 포함, 대기·진행 잡은 유지). 누적 방지·D1 비대 해소.
+function iaeClearHistory() {
+  if (!window.confirm('완료·실패한 가공 이력을 모두 삭제할까요? (R2 산출물 포함, 되돌릴 수 없음)')) return;
+  var cb = document.getElementById('iaeHistClear');
+  if (cb) { cb.disabled = true; cb.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i>삭제 중…'; }
+  axios.post('/api/workbench/process/clear').then(function (res) {
+    var n = (res.data && res.data.data && res.data.data.deleted) || 0;
+    iaeToast(n + '건 이력 삭제 완료', 'success');
+    iaeLoadHistory();
+  }).catch(function (err) {
+    var msg = (err.response && err.response.data && err.response.data.error) || err.message || '이력 삭제 실패';
+    iaeToast(msg, 'error');
+    if (cb) { cb.disabled = false; cb.innerHTML = '<i class="fas fa-trash-can mr-1"></i>이력 비우기'; }
+  });
+}
 function iaeRenderHistory(rows) {
   var host = document.getElementById('iaeHistory');
   if (!host) { console.warn('[ia-editor] #iaeHistory not found'); return; }
@@ -1054,6 +1099,7 @@ function iaeRenderHistory(rows) {
     + '<div class="flex items-center gap-2">'
     + '<span id="iaeAgentBadge" class="text-[11px] rounded-full px-2 py-0.5 bg-gray-100 text-gray-500"><i class="fas fa-circle-notch fa-spin mr-1"></i>에이전트 확인 중</span>' // ② 에이전트 온라인/오프라인
     + '<button id="iaeHistRefresh" class="text-xs text-gray-500 hover:text-blue-600"><i class="fas fa-rotate-right mr-1"></i>새로고침</button>'
+    + '<button id="iaeHistClear" class="text-xs text-gray-400 hover:text-red-600" title="완료·실패 이력 삭제(R2 산출물 포함). 대기·진행 중 잡은 유지"><i class="fas fa-trash-can mr-1"></i>이력 비우기</button>'
     + '</div>'
     + '</div>';
   var body;
@@ -1066,8 +1112,11 @@ function iaeRenderHistory(rows) {
       + rows.map(iaeHistCardHTML).join('') + '</div>';
   }
   host.innerHTML = headHtml + body;
+  iaeWireBlobThumbs(host); // W2: jpg_r2 blob 썸네일 로드(base64 미보유 신규 잡)
   var rb = document.getElementById('iaeHistRefresh');
   if (rb) rb.addEventListener('click', iaeLoadHistory);
+  var cb = document.getElementById('iaeHistClear'); // W2: 이력 비우기
+  if (cb) cb.addEventListener('click', iaeClearHistory);
   iaeRefreshAgentStatus(); // ② 배지 즉시 1회 갱신(이후 주기 폴러가 유지)
   // [EPS][JPG][DXF] 위임 바인딩 — R2-3 파일명 {yyyymmdd}_{사이즈}_{그룹명}.{kind}
   var byId = {}; (rows || []).forEach(function (r) { byId[r.id] = r; });
@@ -1152,8 +1201,10 @@ function iaeHistCardHTML(r) {
   var when = (typeof formatKST === 'function' && r.created_at) ? formatKST(r.created_at) : iaeEscape(r.created_at || '');
   var thumb = (done && meta.jpg_base64)
     ? '<img src="data:image/jpeg;base64,' + meta.jpg_base64 + '" class="w-full h-20 object-contain bg-white border border-gray-100 rounded">'
-    : '<div class="w-full h-20 flex items-center justify-center bg-gray-50 text-gray-300 rounded border border-gray-100">'
-      + (err ? '<i class="fas fa-triangle-exclamation text-red-300"></i>' : '<i class="fas ' + (done ? 'fa-image' : 'fa-spinner fa-spin') + '"></i>') + '</div>';
+    : ((done && meta.has_jpg)
+      ? '<img data-jpg-blob="/api/workbench/process/' + iaeEscape(r.id) + '/download?kind=jpg" class="w-full h-20 object-contain bg-white border border-gray-100 rounded">'
+      : '<div class="w-full h-20 flex items-center justify-center bg-gray-50 text-gray-300 rounded border border-gray-100">'
+        + (err ? '<i class="fas fa-triangle-exclamation text-red-300"></i>' : '<i class="fas ' + (done ? 'fa-image' : 'fa-spinner fa-spin') + '"></i>') + '</div>');
   var title = '#' + iaeEscape(r.group_index != null ? r.group_index : '-') + ' · 분석 ' + iaeEscape(r.analysis_id != null ? r.analysis_id : '-');
   var dlBtn = function (kind, has, primary) {
     if (!has) return '';

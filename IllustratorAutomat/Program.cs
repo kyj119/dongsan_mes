@@ -24,6 +24,10 @@ namespace IllustratorAutomation
         private static string TEMP_FOLDER = Path.Combine(Path.GetTempPath(), "IllustratorAutomat");
         private static int POLL_INTERVAL_MS = 10000; // 10 seconds (workerd 과부하 방지)
         private static int _backoffMs = 0; // 503 발생 시 추가 대기
+        // W1: 단일 인스턴스 가드 + 상태 로그(agent.log) — 중복 실행 차단·운영 가시성.
+        private static Mutex? _singletonMutex = null;
+        private static string _agentLogPath = "";
+        private static int _heartbeatTick = 0;
 
         // When true, orders come from POST /api/tasks/claim?type=AI_PROCESS
         // (atomic claim + retry tracking). When false, fall back to the legacy
@@ -82,13 +86,43 @@ namespace IllustratorAutomation
         }
         // ──────────────────────────────────────────────────────────────────────
 
+        // W1: 운영 가시성용 상태 로그 — exe 옆 agent.log 에 append (best-effort, 콘솔 안 보일 때 확인용).
+        private static void WriteAgentLog(string msg)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(_agentLogPath))
+                    _agentLogPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "agent.log");
+                File.AppendAllText(_agentLogPath, $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] {msg}{Environment.NewLine}");
+            }
+            catch { /* 로그 실패는 무시 */ }
+        }
+
         static async Task Main(string[] args)
         {
+            // W1: 단일 인스턴스 가드 — 같은 PC 중복 실행 차단(prod 큐 경쟁 방지).
+            _singletonMutex = new Mutex(true, @"Global\IllustratorAutomat_SingleInstance", out bool createdNew);
+            if (!createdNew)
+            {
+                Console.WriteLine("================================================");
+                Console.WriteLine("   ⚠️  IllustratorAutomat 에이전트가 이미 실행 중입니다.");
+                Console.WriteLine("   중복 실행은 prod 큐를 경쟁 폴링하므로 차단됩니다.");
+                Console.WriteLine("   기존 창을 닫은 뒤 다시 실행하세요.");
+                Console.WriteLine("================================================");
+                try { Console.ReadKey(); } catch { }
+                return;
+            }
+
             DisableQuickEdit(); // 콘솔 클릭으로 인한 일시정지 방지
+            int pid = 0; try { pid = Process.GetCurrentProcess().Id; } catch { }
+            string baseDir = AppDomain.CurrentDomain.BaseDirectory;
             Console.WriteLine("================================================");
             Console.WriteLine("   Illustrator Automation Service v2.1");
             Console.WriteLine("   ERP+MES Integration (Task Queue)");
+            Console.WriteLine($"   PID {pid} · 단일 인스턴스 ✅");
+            Console.WriteLine($"   실행 경로: {baseDir}");
             Console.WriteLine("================================================\n");
+            WriteAgentLog($"에이전트 시작 (PID {pid}, 경로 {baseDir})");
 
             LoadConfig();
 
@@ -150,6 +184,8 @@ namespace IllustratorAutomation
                     await PollSheetRenderAsync();
                     await PollProcessJobsAsync();
                     await PollTestWatchAsync();
+                    // W1: 주기 상태 로그(약 1분마다) — 콘솔 미표시 환경에서 '도는지' 확인.
+                    if ((++_heartbeatTick % 6) == 0) WriteAgentLog("폴링 정상 (alive)");
                 }
                 catch (Exception ex)
                 {
@@ -1416,12 +1452,12 @@ namespace IllustratorAutomation
             string? dxfR2 = await UploadRenderAssetAsync("sheet", jobId, "dxf", dxfOut);
             string? jpgR2 = await UploadRenderAssetAsync("sheet", jobId, "jpg", jpgOut);
 
+            // W2: jpg_base64를 result_json에 저장하지 않음(D1 비대 해소). 썸네일은 jpg_r2(R2 blob)로 서빙.
             var result = new Dictionary<string, object?>
             {
                 ["eps_path"] = epsOut,
                 ["dxf_path"] = File.Exists(dxfOut) ? dxfOut : null,
                 ["jpg_path"] = File.Exists(jpgOut) ? jpgOut : null,
-                ["jpg_base64"] = jpgB64,
                 ["eps_r2"] = epsR2,
                 ["dxf_r2"] = dxfR2,
                 ["jpg_r2"] = jpgR2,
@@ -1651,12 +1687,12 @@ namespace IllustratorAutomation
                 if (heightCm <= 0 && bbH > 0) heightCm = bbH;
             }
 
+            // W2: jpg_base64를 result_json에 저장하지 않음(D1 비대 해소). 썸네일은 jpg_r2(R2 blob)로 서빙.
             var result = new Dictionary<string, object?>
             {
                 ["eps_path"] = epsOut,
                 ["dxf_path"] = File.Exists(dxfOut) ? dxfOut : null,
                 ["jpg_path"] = File.Exists(jpgOut) ? jpgOut : null,
-                ["jpg_base64"] = jpgB64,
                 ["eps_r2"] = epsR2,
                 ["dxf_r2"] = dxfR2,
                 ["jpg_r2"] = jpgR2,

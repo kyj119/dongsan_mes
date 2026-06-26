@@ -305,20 +305,22 @@ function main() {
     var bR = (hasOffset && offsetMethod === 'edge_strip') ? offR : 0;
 
     // ── 3. 여백 계산 (cm → pt) ──
-    var mL = marginL * 10.0 * ptPerMm;
-    var mR = marginR * 10.0 * ptPerMm;
-    var mT = marginT * 10.0 * ptPerMm;
-    var mB = marginB * 10.0 * ptPerMm;
+    // 소스가 실물의 1/N 축소본이면 여백(블리드)도 ÷scaleFactor로 보정(target·offset·돔보와 일관). scale=1=무변화.
+    var mL = marginL * 10.0 * ptPerMm / scaleFactor;
+    var mR = marginR * 10.0 * ptPerMm / scaleFactor;
+    var mT = marginT * 10.0 * ptPerMm / scaleFactor;
+    var mB = marginB * 10.0 * ptPerMm / scaleFactor;
 
     // ── 3b. 마감방식(finishing) 여백 계산 (cm → pt) ──
     // 마감 여백 = 빈 공간 확장 (bleed와 다름: 디자인 확장 아님)
+    // 소스가 실물의 1/N 축소본이면 마감 여백도 ÷scaleFactor로 보정(실물 마감 cm을 축소본 좌표로 환산). scale=1=무변화.
     var fT = 0, fB = 0, fL = 0, fR = 0;
     var hasFinishing = false;
     if (finishingCfg) {
-        fT = (finishingCfg.top && finishingCfg.top.margin_cm) ? finishingCfg.top.margin_cm * 10.0 * ptPerMm : 0;
-        fB = (finishingCfg.bottom && finishingCfg.bottom.margin_cm) ? finishingCfg.bottom.margin_cm * 10.0 * ptPerMm : 0;
-        fL = (finishingCfg.left && finishingCfg.left.margin_cm) ? finishingCfg.left.margin_cm * 10.0 * ptPerMm : 0;
-        fR = (finishingCfg.right && finishingCfg.right.margin_cm) ? finishingCfg.right.margin_cm * 10.0 * ptPerMm : 0;
+        fT = (finishingCfg.top && finishingCfg.top.margin_cm) ? finishingCfg.top.margin_cm * 10.0 * ptPerMm / scaleFactor : 0;
+        fB = (finishingCfg.bottom && finishingCfg.bottom.margin_cm) ? finishingCfg.bottom.margin_cm * 10.0 * ptPerMm / scaleFactor : 0;
+        fL = (finishingCfg.left && finishingCfg.left.margin_cm) ? finishingCfg.left.margin_cm * 10.0 * ptPerMm / scaleFactor : 0;
+        fR = (finishingCfg.right && finishingCfg.right.margin_cm) ? finishingCfg.right.margin_cm * 10.0 * ptPerMm / scaleFactor : 0;
         var hasTop = finishingCfg.top && finishingCfg.top.method && finishingCfg.top.method !== '';
         var hasBot = finishingCfg.bottom && finishingCfg.bottom.method && finishingCfg.bottom.method !== '';
         var hasLeft = finishingCfg.left && finishingCfg.left.method && finishingCfg.left.method !== '';
@@ -358,7 +360,9 @@ function main() {
     bg.fillColor = whiteColor;
     bg.stroked = false;
 
-    // 재단선 (여백 0인 변 생략, 세그먼트 연결)
+    // 재단선 (여백 0인 변 생략, 세그먼트 연결) — W7: 둘레 재단선은 돔보(trim) 켤 때만 생성.
+    // 마감 접는선(§5a-2 foldlines)은 마감 설정 따라 별개 유지(돔보 무관).
+    if (trim) {
     var markColor = new CMYKColor();
     markColor.cyan = 0; markColor.magenta = 100;
     markColor.yellow = 0; markColor.black = 0;
@@ -411,6 +415,7 @@ function main() {
         bp.strokeJoin = StrokeJoin.MITERENDJOIN;
         bp.strokeCap = StrokeCap.BUTTENDCAP;
     }
+    } // end if(trim) — 둘레 재단선(cutlines)
 
     // ── 5a-2. 마감 접는/재단선 (M100 0.6pt) ──
     // 마감방식이 설정된 변에 디자인+bleed+margin 경계에 선 추가
@@ -801,7 +806,8 @@ function main() {
 
     // ── 10-2. DXF 재단선 (Export 경로 전용, SheetLayout.jsx 패턴 이식) ──
     // outputDxf 미지정(주문 가공)·preview 모드 → 스킵. 임시 재단선/돔보 레이어가 아직 살아있는 시점(정리 전)에 export.
-    if (outputDxf && !preview) {
+    // W7: DXF(재단기용)는 돔보(trim) 켤 때만 생성 — 돔보 없으면 둘레 재단선·DXF 불필요.
+    if (outputDxf && !preview && trim) {
         try {
             doc.artboards.setActiveArtboardIndex(abIndex);
             var dxfFile = new File(outputDxf);

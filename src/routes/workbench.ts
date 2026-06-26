@@ -655,6 +655,17 @@ function pickR2Key(resultJson: string | null, kind: string): string | null {
   } catch (_e) { return null }
 }
 
+// W2: result_json 의 R2 산출물(eps/dxf/jpg)을 best-effort 삭제(이력 삭제 시 orphan 방지). 실패는 무시.
+async function deleteRenderAssets(c: any, resultJson: string | null): Promise<void> {
+  if (!resultJson) return
+  let obj: any
+  try { obj = JSON.parse(resultJson) } catch (_e) { return }
+  for (const kind of ['eps', 'dxf', 'jpg']) {
+    const key = obj && obj[`${kind}_r2`]
+    if (typeof key === 'string' && key) { try { await c.env.R2_BUCKET.delete(key) } catch (_e) { /* best-effort */ } }
+  }
+}
+
 // 공통 R2 blob 다운로드 응답 (entity 격리·완료 검증은 호출부에서 수행)
 async function serveRenderAsset(c: any, r2Key: string, kind: string) {
   const obj = await c.env.R2_BUCKET.get(r2Key)
@@ -833,6 +844,12 @@ workbenchRouter.post('/process', async (c) => {
 workbenchRouter.get('/process-queue', async (c) => {
   try {
     await touchAgentHeartbeat(c)
+    // W2: 미리보기(preview_only) 잡은 일회성 → 1시간 경과분 자동 정리(D1 비대 방지). 에이전트 폴 주기에 편승.
+    try {
+      await c.env.DB.prepare(
+        `DELETE FROM ia_process_jobs WHERE params_json LIKE '%"preview_only":true%' AND updated_at < datetime('now','-1 hour')`
+      ).run()
+    } catch (_e) { /* 정리는 best-effort */ }
     const ef = entityFilter(c, 'j')
     const { results } = await c.env.DB.prepare(`
       SELECT j.id, j.analysis_id, j.group_index, j.params_json, ar.file_path AS source_file_path
@@ -973,6 +990,26 @@ workbenchRouter.post('/process/:id/retry', async (c) => {
   } catch (error) {
     console.error('Workbench process retry error:', error)
     return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
+  }
+})
+
+// ── POST /api/workbench/process/clear — 완료·실패 가공 이력 일괄 삭제 (W2: 누적 정리) ──
+// entity 격리. status IN (done,error)만 삭제(queued/rendering=진행 중 보존). R2 산출물도 best-effort 삭제.
+workbenchRouter.post('/process/clear', async (c) => {
+  try {
+    const ef = entityFilter(c, 'ia_process_jobs')
+    const { results } = await c.env.DB.prepare(
+      `SELECT id, result_json FROM ia_process_jobs WHERE status IN ('done','error')${ef.clause}`
+    ).bind(...ef.params).all<{ id: number; result_json: string | null }>()
+    for (const r of results) { await deleteRenderAssets(c, r.result_json) }
+    // status 조건 DELETE(IN(ids) 미사용 → D1 바인드 한도 무관). SELECT~DELETE 사이 신규 done은 다음 정리로.
+    await c.env.DB.prepare(
+      `DELETE FROM ia_process_jobs WHERE status IN ('done','error')${ef.clause}`
+    ).bind(...ef.params).run()
+    return c.json({ success: true, data: { deleted: results.length } })
+  } catch (error) {
+    console.error('Workbench process clear error:', error)
+    return c.json({ success: false, error: '이력 삭제 실패' }, 500)
   }
 })
 
