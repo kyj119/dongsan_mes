@@ -28,8 +28,14 @@
   - 신규 `GET /api/facility/zones/:id/inventory`: 영역의 storage_zone별 품목 재고 상세.
   - `equipment.js renderZones`: 영역 박스에 재고 뱃지(품목수·부족수, 적/녹색). `pointer-events:auto`로 클릭 가능(layoutZones가 none). `showZoneInventory()` 모달로 창고별 품목 재고 표시.
   - `equipment.ts`: `zoneInvModal` 추가. 빌드·타입체크 통과.
-- **P3. 구역 기반 재고 실사** (대기)
-  - 배치도 영역 → "이 구역 실사" 진입. `inventory_counts`에 storage_zone 필터 추가. 첫 실사가 미배정 품목↔구역 배정 겸함.
+- **P3. 구역 기반 재고 실사** ✅ (2026-06-26, prod 배포완료)
+  - 마이그 `0392`: `inventory_counts.storage_zone_id` FK(nullable, ON DELETE SET NULL) + 인덱스.
+  - `inventoryCount.ts`: POST에 `storage_zone_id`(→count_type='ZONE', 품목을 `inventory.storage_zone_id` 경유로 그 구역 스코프), GET `?storage_zone_id=` 필터+`storage_zone_name` JOIN, GET/:id에 `unassigned_items`(ZONE+DRAFT일 때 `inventory.storage_zone_id IS NULL`), 신규 `POST /:id/add-items`(미배정 품목 실사 추가+`assign_zone`로 `inventory.storage_zone_id` 배정). `count_number` 초단위(IC-…SS)로 같은 분 다중생성 UNIQUE 충돌 방지.
+  - `equipment.js`: `showZoneInventory` 모달 창고 그룹에 "이 구역 실사" 버튼(`eqStartZoneCount`)→`/inventory?openCount=<id>#tab=count` 이동. `inventoryCount.js`: 목록 구역 뱃지, 상세 구역명+미배정 섹션(체크→배정 후 추가), `openCount` 자동 오픈.
+  - **P2 정합 수정**: `facility.ts` 재고집계(layout-data + zones/:id/inventory)를 `items.storage_zone_id`→**`inventory.storage_zone_id`** 정본 경로로 교체(spec #3, P3 배정과 일치). 이전엔 P2가 items 컬럼을 읽어 P3 구역배정이 뱃지에 반영 안 되던 불일치 버그.
+  - 검증: 빌드·타입체크·smoke 101/101·로컬 E2E(배치도→실사→배정 full flow)·apex 마커 통과. 마이그 0391+0392 prod `execute --file` 적용. 커밋 `2e075dfc`(머지 `9f446ffb`), worktree 격리 배포(동시 세션 dirty 회피).
+  - **prod 매핑 적용완료**(2026-06-26): 출력실(sz1)→출력실(fz8), 전사 자재(sz3)→전사출력실(fz7). 선명·선명2(법인2)=별도 사업장이라 미매핑.
+  - **⚠️ 진짜 블로커**: prod `inventory` 0건(06-20 공장초기화 미복원). 매핑·코드 정상이나 재고 행이 없어 뱃지·실사 공란. 재고는 입고/실사로 생성돼야 표시 시작(ops 영역, 코드 외).
 - **P4. (선택) 정리** (대기)
   - 창고구역 진입점 일원화(설정 탭 vs 독립 페이지), `inventory_locations` 처리.
 
