@@ -1,7 +1,7 @@
 # PROJECT_STATUS.md — 프로젝트 현황판
 
 > **현재 초점**: 품목 마스터 신모델 등록(출력물·후가공/소분류 UI) — 제품 ~83, 남은=솔벤캔버스·배너류·단가·간판BOM.
-> **마지막 prod 배포**: IA 편집기 **P2+P3 전체 13항목** (일괄+ZIP·실렌더 미리보기·진행가시성·Export→Order·MaxRects/평판다중판 격리 등, dep `ee82f279`·smoke101·**회귀0**, 정본 `memory/project-ia-editor.md` 맨끝). 이전: P1 6항목(`67f2cba6`), Export-first.
+> **마지막 prod 배포**: 공장 배치도 P0~P2 + 90°회전 (dep `8adc578d`·마이그0389/0390·smoke101, 정본 `memory/design-factory-layout.md`). 이전: IA 편집기 P2+P3 13항목(dep `ee82f279`). LogWatcher EPSON 파서=`89097982`(보류).
 > **블로커**: 솔벤캔버스 원단 미파악(보류) · 품목 단가 전부 0(미입력) · 활성화(is_active=1) 시점 미결정.
 > **다음 액션**: 솔벤캔버스/배너류 등록 → 단가 입력 → 간판 BOM → split-billing P5-continued.
 > **핸드오프 정본** = `memory/session-context.md`.
@@ -22,8 +22,15 @@
   - **P0**: 마이그 `0389_equipment_processes`(M:N·FK없음)·`PUT /api/rip/equipment/:id/processes`·GET/PUT equipment에 processes+zone_id·편집모달 공정 다중지정+구역 select+ID접두사 추천(EPSON→솔벤·FLEXI→전사).
   - **P1**: 배치도 동적 구역bounds(prod=%좌표=장비와 동일계)·**도면배경 R2**(POST multipart/GET-image blob/DELETE, base64 폐기)·편집모드 업로드.
   - **P2**: 핀 대표공정 색상점·공정필터 dim·팝오버 공정배지+출력이력(`/production?equipment_ids=` 딥링크)·구역요약 공정.
-  - 검증: tsc0·build·**smoke 101/101**·Playwright(로컬 모달prefill/추천/저장/배치도/필터/R2왕복 + prod 모달6공정·배치도22핀·콘솔0). **prod 배포·push 완료**(커밋 `68c7a41c`·dep `d4cd6d38`·마이그0389 remote).
-  - **운영TODO**: prod 23대 공정·구역 미배정(배치도 편집모드 지정)·도면 미업로드. **다음=P3~P5 재고게이지**(재고 데이터 정책 합의 후, 별도 세션).
+  - **+90°회전**: 마이그 `0390` `equipment.layout_rotation`·편집모드 팝오버 "90°회전"(0/90/180/270 순환·영속)·position PATCH 부분업데이트 리팩터. 커밋 `e7eefa35`·dep `8adc578d`.
+  - 검증: tsc0·build·**smoke 101/101**·Playwright(로컬+prod). **prod 배포·push 완료**(커밋 `68c7a41c`+`e7eefa35`·dep `8adc578d`·마이그0389·0390 remote).
+  - **✅ 운영 적용완료**(DB UPDATE, 코드무관): 23대 공정·구역·위치 배정 / HSM 13대=현수막실·수성·1.8m / IP 일괄반영(0.x 20대·127.x 3대 비움) / **배치도 사용자 레이아웃 기준 정렬**(★격자 강제 금지 교훈, align/restore SQL) / TPM ID 재배정(TPM-01→TOPM-01·PC A→TPM-01·PC B 유지+이벤트 재귀속). 도면 이미지만 미업로드.
+  - **다음=P3~P5 재고게이지**(재고 데이터 정책 합의 후, 별도 세션).
+
+- **▶ [2026-06-26] LogWatcher 후속 (정본 `memory/project-logwatcher-rollout.md`)**:
+  - **EPSON 취소/실패 파서 — 보류**(커밋 `89097982` push): SqliteDbParser `PrintStatus="OK"` 하드코딩 → status-aware 개조(`status_column`+`status_cancel`/`status_error` 매핑, query `LEFT JOIN Log`+`JobStatus IN(종료)`). ⚠️EPSON Edge JobStatus enum 비공개 → **13/14 임시추정·실코드 EPSON PC `Data.db` 확인 대기**(`SELECT JobStatus,COUNT(*) FROM Job GROUP BY JobStatus`) → 확정 후 equipment.json + EPSON 2대 재배포.
+  - **교훈**: 장비ID=현장 appsettings EquipmentId(변경=현장 재시작이 본질)·하트비트 자가치유는 agent/ip/log만(이름·설정·과거이력 잔존→수동 재귀속)·GetLocalIp 첫IPv4=dual-NIC 127.x 오보고.
+  - **선명 CAPS 6/1~8 복구완료** 29/30(사용자 SM PC 런북 실행, 검증=prod 조회). 잔여=이희섭 6/8 출근펀치 누락 1건. 6월 선명 급여 생성 시 재계산 필요. ([[caps-backfill-recovery]])
 
 - **✅ [2026-06-25] IA 편집기 Export-first — 주문 없이 가공 EPS 추출·다운로드 (정본 `memory/project-ia-editor.md` 맨 끝, spec `docs/superpowers/specs/2026-06-25-ia-editor-eps-export.md`)**:
   - 목적: IA 편집기를 무거운 주문통합(주문·카드·청구 생성) 없이 **"가공 EPS 뽑는 가벼운 도구"로 먼저 활용**. **두 경로**: 파일처리 탭=그룹 1개씩 후가공 가공 / 대지편집 탭=네스팅 → **EPS+JPG+DXF 브라우저 blob 다운로드**. 주문/카드/재고 미생성.
