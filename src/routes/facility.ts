@@ -107,7 +107,7 @@ facilityRouter.get('/layout-data', async (c) => {
   try {
     const equipEf = entityFilter(c, 'e')       // equipment 격리 (entity_id)
     const cardEf = cardEntityFilter(c, 'c')    // cards 격리 (requesting_entity_id)
-    const [zonesRes, equipRes, locsRes, cardsRes] = await Promise.all([
+    const [zonesRes, equipRes, locsRes, cardsRes, invRes] = await Promise.all([
       // facility_zones: entity_id 없음 = 전사 공용(물리 구역)
       c.env.DB.prepare(`
         SELECT id, name, description, color, sort_order, bounds, is_active, created_at, updated_at FROM facility_zones WHERE is_active = 1 ORDER BY sort_order
@@ -137,6 +137,17 @@ facilityRouter.get('/layout-data', async (c) => {
         WHERE c.status IN ('PRINT_PENDING','PRINTING') AND e.zone_id IS NOT NULL${cardEf.clause}
         GROUP BY e.zone_id
       `).bind(...cardEf.params).all(),
+      // P2: facility_zone별 재고 집계 (storage_zone 경유). 부족 = 안전재고 설정된 품목 중 현재고 ≤ 안전재고.
+      c.env.DB.prepare(`
+        SELECT sz.facility_zone_id as zone_id,
+          COUNT(DISTINCT i.id) as inv_item_count,
+          SUM(CASE WHEN COALESCE(inv.safe_stock,0) > 0 AND COALESCE(inv.quantity,0) <= inv.safe_stock THEN 1 ELSE 0 END) as inv_shortage_count
+        FROM storage_zones sz
+        JOIN items i ON i.storage_zone_id = sz.id AND i.is_active = 1
+        LEFT JOIN inventory inv ON inv.item_id = i.id AND inv.entity_id = sz.entity_id
+        WHERE sz.facility_zone_id IS NOT NULL AND sz.is_active = 1
+        GROUP BY sz.facility_zone_id
+      `).all(),
     ])
 
     const zoneCards: Record<number, number> = {}
@@ -144,10 +155,18 @@ facilityRouter.get('/layout-data', async (c) => {
       zoneCards[r.zone_id] = r.card_count
     }
 
+    // P2: facility_zone별 재고 집계 병합
+    const zoneInv: Record<number, { item_count: number; shortage_count: number }> = {}
+    for (const r of invRes.results as Array<{ zone_id: number | null; inv_item_count: number; inv_shortage_count: number }>) {
+      if (r.zone_id != null) zoneInv[r.zone_id] = { item_count: r.inv_item_count || 0, shortage_count: r.inv_shortage_count || 0 }
+    }
+
     const zones = (zonesRes.results as Array<{ id: number; bounds?: string; [key: string]: unknown }>).map(z => ({
       ...z,
       bounds: z.bounds ? JSON.parse(z.bounds) : { x: 10, y: 10, width: 200, height: 150 },
       active_cards: zoneCards[z.id] || 0,
+      inv_item_count: zoneInv[z.id]?.item_count || 0,
+      inv_shortage_count: zoneInv[z.id]?.shortage_count || 0,
     }))
 
     return c.json({
@@ -156,6 +175,28 @@ facilityRouter.get('/layout-data', async (c) => {
     })
   } catch (error) {
     console.error('src/routes/facility.ts error:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
+  }
+})
+
+// GET /zones/:id/inventory - 배치도 영역의 재고 상세 (매핑된 storage_zone별 품목, P2 클릭 패널)
+facilityRouter.get('/zones/:id/inventory', async (c) => {
+  try {
+    const zoneId = c.req.param('id')
+    const { results } = await c.env.DB.prepare(`
+      SELECT sz.id as storage_zone_id, sz.zone_name, u.name as manager_name,
+        i.id as item_id, i.item_code, i.item_name, i.category, i.unit,
+        COALESCE(inv.quantity, 0) as quantity, COALESCE(inv.safe_stock, 0) as safe_stock
+      FROM storage_zones sz
+      JOIN items i ON i.storage_zone_id = sz.id AND i.is_active = 1
+      LEFT JOIN inventory inv ON inv.item_id = i.id AND inv.entity_id = sz.entity_id
+      LEFT JOIN users u ON sz.manager_id = u.id
+      WHERE sz.facility_zone_id = ? AND sz.is_active = 1
+      ORDER BY sz.zone_name, i.item_name
+    `).bind(zoneId).all()
+    return c.json({ success: true, data: results })
+  } catch (error) {
+    console.error('facility zones/:id/inventory error:', error)
     return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
   }
 })

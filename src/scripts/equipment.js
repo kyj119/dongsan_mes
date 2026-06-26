@@ -171,12 +171,67 @@ function renderZones() {
     container.innerHTML = zones.map(function(z) {
         var b = parseBounds(z.bounds);
         var color = z.color || '#94a3b8';
+        // P2: 영역별 재고 오버레이 뱃지 (storage_zone 경유 집계). 부족 있으면 적색, 없으면 녹색.
+        var invItems = z.inv_item_count || 0;
+        var invShort = z.inv_shortage_count || 0;
+        var invBadge = invItems > 0
+            ? '<span onclick="event.stopPropagation();showZoneInventory(' + z.id + ')" style="position:absolute;right:4px;top:3px;pointer-events:auto;cursor:pointer;font-size:10px;font-weight:600;background:rgba(255,255,255,0.92);padding:1px 6px;border-radius:3px;border:1px solid ' + (invShort > 0 ? '#fecaca' : '#bbf7d0') + ';color:' + (invShort > 0 ? '#dc2626' : '#16a34a') + ';" title="재고 상세 보기"><i class="fas fa-boxes" style="margin-right:2px;"></i>' + invItems + (invShort > 0 ? ' · ⚠' + invShort : '') + '</span>'
+            : '';
         return '<div style="position:absolute;'
             + 'left:' + b.x + '%;top:' + b.y + '%;width:' + b.width + '%;height:' + b.height + '%;'
             + 'border:2px solid ' + color + ';background:' + hexToRgba(color, fillAlpha) + ';border-radius:6px;">'
             + '<span style="position:absolute;left:4px;top:3px;font-size:11px;font-weight:700;color:' + color + ';background:rgba(255,255,255,0.82);padding:1px 5px;border-radius:3px;">' + escapeHtml(z.name) + '</span>'
+            + invBadge
             + '</div>';
     }).join('');
+}
+
+// ─── 영역 재고 상세 (P2: facility_zone → storage_zone 경유 품목 재고) ──────────
+async function showZoneInventory(zoneId) {
+    var modal = document.getElementById('zoneInvModal');
+    var body = document.getElementById('zoneInvBody');
+    var titleEl = document.getElementById('zoneInvTitle');
+    if (!modal || !body) { console.warn('[equipment] #zoneInvModal not found'); return; }
+    var zone = (zones || []).find(function(z) { return z.id === zoneId; });
+    if (titleEl) titleEl.textContent = (zone ? zone.name : '구역') + ' — 재고';
+    body.innerHTML = '<div class="text-center py-6 text-gray-400"><i class="fas fa-spinner fa-spin"></i></div>';
+    modal.classList.remove('hidden');
+    try {
+        var res = await axios.get('/api/facility/zones/' + zoneId + '/inventory');
+        var rows = res.data.success ? res.data.data : [];
+        if (!rows.length) {
+            body.innerHTML = '<div class="text-center py-8 text-gray-400 text-sm">이 영역에 매핑된 창고·품목이 없습니다.<br><span class="text-xs">설정 &gt; 창고 구역에서 창고에 이 배치도 영역을 지정하세요.</span></div>';
+            return;
+        }
+        var groups = {};
+        rows.forEach(function(r) { var k = r.storage_zone_id; if (!groups[k]) groups[k] = { name: r.zone_name, manager: r.manager_name, items: [] }; groups[k].items.push(r); });
+        var html = '';
+        Object.keys(groups).forEach(function(k) {
+            var g = groups[k];
+            var short = g.items.filter(function(it) { return it.safe_stock > 0 && it.quantity <= it.safe_stock; }).length;
+            html += '<div class="mb-4"><div class="flex items-center gap-2 mb-1.5">'
+                + '<span class="font-bold text-sm text-gray-800">' + escapeHtml(g.name) + '</span>'
+                + (g.manager ? '<span class="text-xs text-gray-400"><i class="fas fa-user mr-0.5"></i>' + escapeHtml(g.manager) + '</span>' : '')
+                + (short > 0 ? '<span class="text-xs text-red-600 font-medium"><i class="fas fa-exclamation-triangle mr-0.5"></i>부족 ' + short + '</span>' : '')
+                + '<span class="text-xs text-gray-400 ml-auto">' + g.items.length + '개 품목</span></div>';
+            html += '<table class="w-full text-xs"><thead><tr class="text-gray-400 border-b"><th class="text-left py-1 font-medium">품목</th><th class="text-right py-1 font-medium">현재고</th><th class="text-right py-1 font-medium">안전</th></tr></thead><tbody>';
+            g.items.forEach(function(it) {
+                var low = it.safe_stock > 0 && it.quantity <= it.safe_stock;
+                html += '<tr class="border-b border-gray-50"><td class="py-1" title="' + escapeHtml(it.item_name || '') + '">' + escapeHtml(it.item_name || '') + '</td>'
+                    + '<td class="py-1 text-right font-semibold ' + (low ? 'text-red-600' : 'text-gray-700') + '">' + (it.quantity || 0) + ' ' + escapeHtml(it.unit || '') + '</td>'
+                    + '<td class="py-1 text-right text-gray-400">' + (it.safe_stock || 0) + '</td></tr>';
+            });
+            html += '</tbody></table></div>';
+        });
+        body.innerHTML = html;
+    } catch (e) {
+        body.innerHTML = '<div class="text-center py-6 text-red-500 text-sm">재고 로딩 실패</div>';
+    }
+}
+
+function closeZoneInvModal() {
+    var m = document.getElementById('zoneInvModal');
+    if (m) m.classList.add('hidden');
 }
 
 // ─── 도면 배경 (R2 blob) ─────────────────────────────────────────────────────
