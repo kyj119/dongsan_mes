@@ -32,6 +32,7 @@ function switchPmTab(tab) {
   });
   if (tab === 'purchase') loadPurchaseView();
   if (tab === 'sales') loadSalesData();
+  if (tab === 'policies') { if (!salesData.categories || !salesData.categories.length) loadSalesData(); loadPolicies(); }
 }
 
 // ╔═══════════════════════════════════════════════════════════════╗
@@ -492,6 +493,169 @@ function loadHistory() {
     html += '</tbody></table>';
     area.innerHTML = html;
   });
+}
+
+// ╔═══════════════════════════════════════════════════════════════╗
+// ║  가격 정책 탭 (priceList.js에서 이관, 2026-06-26)                ║
+// ╚═══════════════════════════════════════════════════════════════╝
+var currentEditPolicyId = null;
+var currentEditRules = [];
+
+async function loadPolicies() {
+  try {
+    var res = await axios.get('/api/price-list/policies');
+    if (!res.data.success) return;
+    var policies = res.data.data || [];
+    var el = document.getElementById('policiesList');
+    if (!el) { console.warn('[priceManagement] #policiesList not found'); return; }
+    if (!policies.length) { el.innerHTML = '<div class="text-center py-8 text-gray-400">등록된 정책이 없습니다.</div>'; return; }
+    el.innerHTML = '<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">' + policies.map(function(p) {
+      return '<div class="border rounded-lg p-4 hover:border-blue-300 cursor-pointer transition-colors" onclick="editPolicyRules(' + p.id + ')">'
+        + '<div class="flex items-center justify-between mb-2">'
+        + '<span class="font-bold text-gray-800">' + esc(p.name) + '</span>'
+        + (p.is_default ? '<span class="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">기본</span>' : '')
+        + '</div>'
+        + (p.description ? '<p class="text-xs text-gray-500 mb-2">' + esc(p.description) + '</p>' : '')
+        + '<div class="flex items-center gap-3 text-xs text-gray-400">'
+        + '<span><i class="fas fa-list mr-1"></i>' + (p.rule_count || 0) + '개 규칙</span>'
+        + '<span><i class="fas fa-building mr-1"></i>' + (p.client_count || 0) + '개 거래처</span>'
+        + '</div>'
+        + '<div class="flex gap-2 mt-3 pt-2 border-t">'
+        + '<button onclick="event.stopPropagation();openPolicyModal(' + p.id + ',\'' + esc(p.name).replace(/'/g, "\\'") + '\',\'' + esc(p.description || '').replace(/'/g, "\\'") + '\')" class="text-xs text-blue-600 hover:text-blue-800"><i class="fas fa-edit mr-1"></i>수정</button>'
+        + (p.is_default ? '' : '<button onclick="event.stopPropagation();deletePolicy(' + p.id + ')" class="text-xs text-red-500 hover:text-red-700"><i class="fas fa-trash mr-1"></i>삭제</button>')
+        + '</div></div>';
+    }).join('') + '</div>';
+  } catch (e) { showToast('정책 목록 실패', 'error'); }
+}
+
+function openPolicyModal(id, name, desc) {
+  document.getElementById('policyEditId').value = id || '';
+  document.getElementById('policyName').value = name || '';
+  document.getElementById('policyDesc').value = desc || '';
+  document.getElementById('policyModalTitle').textContent = id ? '정책 수정' : '새 가격 정책';
+  document.getElementById('policyModal').classList.remove('hidden');
+}
+
+function closePolicyModal() { document.getElementById('policyModal').classList.add('hidden'); }
+
+async function savePolicyModal() {
+  var id = document.getElementById('policyEditId').value;
+  var name = document.getElementById('policyName').value.trim();
+  if (!name) { showToast('정책명을 입력하세요.', 'warning'); return; }
+  var desc = document.getElementById('policyDesc').value.trim();
+  try {
+    if (id) {
+      await axios.put('/api/price-list/policies/' + id, { name: name, description: desc });
+    } else {
+      await axios.post('/api/price-list/policies', { name: name, description: desc });
+    }
+    showToast('저장 완료', 'success');
+    closePolicyModal();
+    loadPolicies();
+  } catch (e) { showToast('저장 실패', 'error'); }
+}
+
+async function deletePolicy(id) {
+  if (!confirm('이 정책을 삭제하시겠습니까? 해당 정책을 사용 중인 거래처는 정책 미지정으로 변경됩니다.')) return;
+  try {
+    await axios.delete('/api/price-list/policies/' + id);
+    showToast('삭제 완료', 'success');
+    loadPolicies();
+    document.getElementById('policyRulesArea').classList.add('hidden');
+  } catch (e) { showToast('삭제 실패', 'error'); }
+}
+
+async function editPolicyRules(policyId) {
+  currentEditPolicyId = policyId;
+  try {
+    var res = await axios.get('/api/price-list/policies/' + policyId);
+    if (!res.data.success) return;
+    var pol = res.data.data;
+    currentEditRules = (pol.rules || []).map(function(r) {
+      return { category: r.category, item_id: r.item_id, rate_percent: r.rate_percent || 0, fixed_price: r.fixed_price, item_name: r.item_name || '', item_code: r.item_code || '', specification: r.specification || '' };
+    });
+    document.getElementById('rulesTitle').textContent = pol.name;
+    document.getElementById('policyRulesArea').classList.remove('hidden');
+    renderRules();
+  } catch (e) { showToast('규칙 로드 실패', 'error'); }
+}
+
+function renderRules() {
+  var el = document.getElementById('rulesBody');
+  if (!el) { console.warn('[priceManagement] #rulesBody not found'); return; }
+  if (!currentEditRules.length) {
+    el.innerHTML = '<div class="text-center py-6 text-gray-400 text-sm">규칙이 없습니다. 위 버튼으로 추가하세요.</div>';
+    return;
+  }
+  var html = '<table class="w-full text-sm"><thead><tr class="border-b bg-gray-50">'
+    + '<th class="text-left py-2 px-3">대상</th>'
+    + '<th class="text-right py-2 px-3" style="width:120px">할인율 (%)</th>'
+    + '<th class="text-right py-2 px-3" style="width:120px">고정가 (원)</th>'
+    + '<th class="text-center py-2 px-3" style="width:60px"></th>'
+    + '</tr></thead><tbody>';
+  currentEditRules.forEach(function(r, idx) {
+    var label = '';
+    if (r.item_id) {
+      label = '<span class="text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded mr-1">품목</span>' + esc(r.item_name || '') + (r.specification ? ' <span class="text-gray-400">' + esc(r.specification) + '</span>' : '');
+    } else if (r.category) {
+      label = '<span class="text-xs bg-yellow-100 text-yellow-700 px-1.5 py-0.5 rounded mr-1">카테고리</span>' + esc(r.category);
+    } else {
+      label = '<span class="text-xs bg-green-100 text-green-700 px-1.5 py-0.5 rounded mr-1">전체 기본</span>';
+    }
+    html += '<tr class="border-b border-gray-100">'
+      + '<td class="py-2 px-3">' + label + '</td>'
+      + '<td class="py-2 px-3"><input type="number" step="1" value="' + (r.rate_percent || 0) + '" onchange="currentEditRules[' + idx + '].rate_percent=parseFloat(this.value)||0" class="w-full px-2 py-1 border rounded text-right text-sm"></td>'
+      + '<td class="py-2 px-3"><input type="text" inputmode="numeric" data-money value="' + (r.fixed_price != null ? r.fixed_price : '') + '" placeholder="-" onchange="var v=parseMoney(this.value);currentEditRules[' + idx + '].fixed_price=v||null;if(v)this.value=fmtMoneyInput(v)" class="w-full px-2 py-1 border rounded text-right text-sm"></td>'
+      + '<td class="py-2 px-3 text-center"><button onclick="currentEditRules.splice(' + idx + ',1);renderRules()" class="text-red-400 hover:text-red-600"><i class="fas fa-trash"></i></button></td>'
+      + '</tr>';
+  });
+  html += '</tbody></table>';
+  el.innerHTML = html;
+}
+
+function addCategoryRule() {
+  var cats = salesData.categories || [];
+  if (!cats.length) { showToast('카테고리가 없습니다. 매출단가표 탭을 먼저 열어주세요.', 'warning'); return; }
+  if (!currentEditRules.find(function(r) { return !r.item_id && !r.category; })) {
+    currentEditRules.unshift({ category: null, item_id: null, rate_percent: 0, fixed_price: null });
+  }
+  cats.forEach(function(cat) {
+    if (!currentEditRules.find(function(r) { return !r.item_id && r.category === cat; })) {
+      currentEditRules.push({ category: cat, item_id: null, rate_percent: 0, fixed_price: null });
+    }
+  });
+  renderRules();
+}
+
+function openItemRuleModal() {
+  var q = prompt('품목명을 입력하세요:');
+  if (!q) return;
+  axios.get('/api/items?search=' + encodeURIComponent(q) + '&limit=20').then(function(res) {
+    var items = res.data.data || [];
+    if (!items.length) { showToast('검색 결과 없음', 'warning'); return; }
+    if (items.length === 1) {
+      addItemRule(items[0]);
+    } else {
+      var pick = prompt(items.map(function(it, i) { return (i + 1) + '. ' + it.item_name + (it.specification ? ' (' + it.specification + ')' : ''); }).join('\n') + '\n\n번호를 입력하세요:');
+      var idx = parseInt(pick) - 1;
+      if (idx >= 0 && idx < items.length) addItemRule(items[idx]);
+    }
+  });
+}
+
+function addItemRule(item) {
+  if (currentEditRules.find(function(r) { return r.item_id == item.id; })) { showToast('이미 추가된 품목입니다.', 'warning'); return; }
+  currentEditRules.push({ category: null, item_id: item.id, rate_percent: 0, fixed_price: null, item_name: item.item_name, item_code: item.item_code, specification: item.specification || '' });
+  renderRules();
+}
+
+async function saveCurrentRules() {
+  if (!currentEditPolicyId) return;
+  try {
+    await axios.put('/api/price-list/policies/' + currentEditPolicyId + '/rules', { rules: currentEditRules });
+    showToast('규칙 저장 완료', 'success');
+    loadPolicies();
+  } catch (e) { showToast('저장 실패', 'error'); }
 }
 
 // ===================== Utilities =====================

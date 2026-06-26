@@ -32,6 +32,9 @@ export function priceManagementPage(c: Context<HonoEnv>) {
           <button onclick="switchPmTab('sales')" id="pmTab_sales" class="pm-tab">
             <i class="fas fa-file-invoice-dollar mr-1"></i>매출단가표
           </button>
+          <button onclick="switchPmTab('policies')" id="pmTab_policies" class="pm-tab">
+            <i class="fas fa-sliders-h mr-1"></i>가격 정책
+          </button>
         </div>
 
         <!-- ======== 탭 1: 매입단가 ======== -->
@@ -96,6 +99,40 @@ export function priceManagementPage(c: Context<HonoEnv>) {
           <div id="salesTableArea" class="space-y-4"></div>
         </div>
 
+        <!-- ======== 탭 3: 가격 정책 (priceList.ts에서 이관, 2026-06-26) ======== -->
+        <div id="pmPanel_policies" class="hidden">
+          <div class="ds-card rounded-t-none p-4 mb-4">
+            <div class="flex items-center justify-between mb-4">
+              <h2 class="text-lg font-bold text-gray-800"><i class="fas fa-sliders-h mr-2 text-blue-600"></i>가격 정책 관리</h2>
+              <button onclick="openPolicyModal()" class="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700">
+                <i class="fas fa-plus mr-1"></i>새 정책
+              </button>
+            </div>
+            <div id="policiesList"></div>
+          </div>
+
+          <!-- 정책 규칙 편집 영역 -->
+          <div id="policyRulesArea" class="hidden">
+            <div class="ds-card p-4">
+              <div class="flex items-center justify-between mb-4">
+                <h3 class="text-lg font-bold text-gray-800"><i class="fas fa-list-ul mr-2 text-orange-500"></i><span id="rulesTitle"></span> 규칙</h3>
+                <div class="flex gap-2">
+                  <button onclick="addCategoryRule()" class="px-3 py-1.5 bg-gray-100 border border-gray-300 rounded text-sm hover:bg-gray-200">
+                    <i class="fas fa-folder-plus mr-1"></i>카테고리 규칙
+                  </button>
+                  <button onclick="openItemRuleModal()" class="px-3 py-1.5 bg-gray-100 border border-gray-300 rounded text-sm hover:bg-gray-200">
+                    <i class="fas fa-cube mr-1"></i>품목별 규칙
+                  </button>
+                  <button onclick="saveCurrentRules()" class="px-4 py-1.5 bg-blue-600 text-white rounded text-sm hover:bg-blue-700">
+                    <i class="fas fa-save mr-1"></i>저장
+                  </button>
+                </div>
+              </div>
+              <div id="rulesBody"></div>
+            </div>
+          </div>
+        </div>
+
       </div>
       <div id="printArea"></div>
 
@@ -138,6 +175,26 @@ export function priceManagementPage(c: Context<HonoEnv>) {
           <div class="flex justify-end gap-2 mt-4">
             <button onclick="closeFaxModal()" class="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm hover:bg-gray-50">취소</button>
             <button onclick="sendFax()" id="faxSendBtn" class="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700"><i class="fas fa-paper-plane mr-1"></i>발송</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 정책 생성/수정 모달 (priceList.ts에서 이관, 2026-06-26) -->
+      <div id="policyModal" class="ds-modal-overlay hidden flex items-center justify-center">
+        <div class="ds-modal p-6" style="max-width:440px">
+          <h3 class="text-lg font-bold mb-4" id="policyModalTitle">새 가격 정책</h3>
+          <input type="hidden" id="policyEditId">
+          <div class="mb-4">
+            <label class="block text-sm font-medium text-gray-700 mb-1">정책명 <span class="text-red-500">*</span></label>
+            <input type="text" id="policyName" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" placeholder="예: 대량 광고기획사">
+          </div>
+          <div class="mb-4">
+            <label class="block text-sm font-medium text-gray-700 mb-1">설명</label>
+            <input type="text" id="policyDesc" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" placeholder="예: 월 100만원 이상 거래처">
+          </div>
+          <div class="flex justify-end gap-3">
+            <button onclick="closePolicyModal()" class="px-4 py-2 border border-gray-300 rounded-lg text-sm">취소</button>
+            <button onclick="savePolicyModal()" class="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm">저장</button>
           </div>
         </div>
       </div>
