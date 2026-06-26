@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 6 -->
-<!-- last_run_at: 2026-06-26T22:00:00+09:00 -->
+<!-- last_run_area: 1 -->
+<!-- last_run_at: 2026-06-27T02:00:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -16,6 +16,17 @@
 
 > 📦 **과거 사이클 로그**는 `IMPROVEMENT_BACKLOG_ARCHIVE.md`/git 히스토리로 이관됨 (2026-06-10 1차 분리, 2026-06-25 2차 트림 343KB→192KB, **2026-06-25T10:00 3차 트림 — 06-17~06-23 사이클 로그를 git 히스토리로 이관: node_modules 부재 세션에서 commit-gate(typecheck) 차단으로 API 푸시 필요 → 파일 축소로 비용 절감 + 256KB 한도 회복**). 신규 로그는 계속 이 파일 상단에 추가. 본 파일은 직전 2일치(06-24~) 사이클 로그 + 영구 참조 섹션(Approved/New/Auto-fixed/Done/Rejected/FP 카탈로그)만 유지. 이관분은 `git log -p -- IMPROVEMENT_BACKLOG.md`로 복원 가능.
 
+> **Area 1 프로덕션 헬스 (2026-06-27T02:00):**
+> - **방법**: 사이클 초반 `npm ci`(node_modules 0→81패키지, #439 commit-gate 자가복구) 후 git fetch-before-compare(origin force-update `4993fa7→29d5636`, fetch 후 **HEAD=origin/main `29d5636` 0/0 동기**, 워킹트리 clean, 디버전스 0). egress 차단(prod 직접 fetch·Playwright·verify 도달 불가)이라 CI/E2E는 GitHub Actions API로, 회귀 위험은 정적 standing scan으로 검증. **사이클 churn = 직전 Area1(`beaa47b`, 06-26T02:00) 이후 = factory-layout P1/P2/P3·nav refactor·ia-editor W5·가격이관 + auto-improve 문서 3종**(Area4~6 = cb3a2f9·719c2c2·29d5636) — 코드 churn은 직전 Area2~6 사이클이 컬럼·entity·N+1·XSS·purge 전수 감사 완료분(본 Area1은 CI/배포/마이그/디버전스 헬스 재확인).
+> - **🟢 CI/E2E = 전부 GREEN**: 최근 30런(`actions_list` main) **전수 `completed/success`**(실패/취소 0) — HEAD `29d5636`(Area6) Deploy + Daily D1 Backup 모두 success, factory-layout P1/P2/P3(`eaf76c5`~`2e075df`)·nav refactor(`ffed458`)·가격이관(`da1a34c`)·ia-editor W5(`275fcbc`/`16c1dbb`) Deploy 전부 success. Deploy 워크플로(post-deploy smoke 포함) fail 0. **신규 prod-breaking 회귀 0**.
+> - **🟢 DROP/RENAME 마이그 write-path standing scan(SKILL line 40) = 위험 0**: `beaa47b..HEAD` 신규 마이그 4건(0389 equipment_processes·0390 layout_rotation·0391 storage_facility_zone_mapping·0392 inventory_count_zone) **전부 ADD COLUMN/CREATE INDEX, `DROP TABLE`/`DROP COLUMN` 0**. items inline-FK 깨짐류(#430 smoke 맹점) 트리거 없음.
+> - **🟢 마이그 번호 중복 standing scan(#438) = net-new 0**: `uniq -d`(4자리 prefix) = `0080`·`0193`·`0327` — **0080b/0193b는 의도적 suffix 컨벤션**(별개 파일 = FP), `0327`만 진짜 동일번호(기존 prod-적용 추정, #438 규칙상 정리대상 아님). 신규 0388-0392 전부 고유번호, 중복 유입 0.
+> - **🟢 prod↔main 디버전스(#422) = clean**: HEAD=origin/main `29d5636` 0/0 동기 → 미push 픽스 0. owner close 코멘트 "배포 완료" 주장 신규 0(done=139 유지, 최근 closure 전무).
+> - **🟢 backlog↔GitHub sync**: open auto-improve **실측 6건**(#439·#441·#442·#443·#444·#447, list_issues 전수) = 직전 Area6 stats `new=6` **정합**. owner 신규 close/머지 0(done=139·rejected=3 유지). 본 사이클 신규 이슈 0(헬스 GREEN·회귀 0).
+> - **🧬 SKILL 강화 0건**: 기존 standing scan(DROP write-path line 40·마이그중복 #438·디버전스 #422·smoke 맹점 #430)이 본 사이클 전수 커버. 코드 churn은 직전 Area2~6이 이미 전수 감사(net-new 0)라 신규 탐지 패턴 불필요.
+> - **이상 없음(CI·DROP마이그·중복·디버전스·sync)**, 신규 발견 0. git 동기 0/0·워킹트리 clean, sync 6=6.
+> - 자동 수정 0건(헬스 GREEN·코드 churn은 직전 사이클 감사완료), 신규 이슈 0건, SKILL 강화 0건, done-sync(변동 0, new 6 유지), **신선 각도 — Area 1 프로덕션 헬스: CI 30런 전수 GREEN·factory-layout/nav refactor/ia-editor W5/가격이관 배포 정상·신규 마이그 0389-0392 전부 additive(DROP 0)·디버전스 0, 프로덕션 무중단. 부수: 사이클 초반 `npm ci`로 #439 commit-gate 자가복구(node_modules 0→정상).**
+>
 > **Area 6 자기 진화 (2026-06-26T22:00):**
 > - **방법**: 사이클 초반 `npm ci`(node_modules 0→81패키지, #439 commit-gate 자가복구) 후 git fetch-before-compare(origin force-update `4993fa7→cb3a2f9`, fetch 후 **HEAD=origin/main `cb3a2f9` 0/0 동기**, 워킹트리 clean, 디버전스 0). egress 차단(prod/Playwright/wrangler 도달 불가)이라 정적 bridge·purge-완전성 검증. **신선 각도 = 직전 Area6(`2743ad1`, 06-25T22:00) 이후 최대·미감사 churn = ① nav refactor 대형 removal 3종**(`ffed458` 사이드바 정리: deliveryAnalytics 페이지+라우트+스크립트 삭제·spec-groups 메뉴 은퇴·`da1a34c` 가격정책→priceManagement 이관으로 priceList/priceLists 페이지+스크립트 삭제·productionDaily/demandAnalytics 삭제) **② ia-editor W5-P3 dead code 제거**(`16c1dbb` 구 대지편집 자유드래그) **③ W5-P1 네스팅 탭 신규 feature**(`275fcbc`). **removal/purge 완전성(#429/#377)이 본 Area6 핵심 = 백엔드 제거·프론트 호출처 정리·dead-code 잔존을 3축 전수.** 컬럼 bridge(post-Area4)·XSS bridge(post-Area5)·마이그중복(#438)·디버전스(#422)·sync 6종 standing meta-check 병행.
 > - **🟢 nav refactor 대형 removal purge = 완전(net-new 0)**: 삭제 페이지 4종(deliveryAnalytics/productionDaily/priceList/priceLists `.ts`)·스크립트 5종(+demandAnalytics.js) **디스크 실삭제 확인**. 3축 전수 = ① **dropped page-fn/router refs**(`deliveryAnalyticsPage`/`productionDailyPage`/`priceListPage`/`priceListsPage`/`deliveryAnalyticsRouter`) 잔존 0(index.tsx 주석만, 라이브 참조 0) ② **frontend axios→removed prefix**(`/api/delivery-analytics`) 호출처 0 ③ **location.href/menu→removed route**(`/delivery-analytics`·`/production-daily`·`/price-list-old`) 0(index.tsx/menu.ts 주석 외). 라우트 언마운트(index.tsx `app.route('/api/delivery-analytics')` 제거)·메뉴 제거·redirect 설치(`/demand-analytics`→`/reports`·`/price-lists`→`/price-list`) 정합. **removed ?raw script import**(deliveryAnalytics.js 등) 0(priceManagement.js 주석만). spec-groups는 #318 중립화(메뉴 은퇴·페이지/API 보존=직접URL 접근, 의도적) clean.
