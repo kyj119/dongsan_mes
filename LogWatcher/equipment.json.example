@@ -28,12 +28,16 @@
       "parser_type": "epson",
       "config": {
         "db_path": "C:\\ProgramData\\Epson\\Epson Edge Print\\DB\\Data.db",
-        "query": "SELECT j.JobID, j.JobName, l.FinishPrintTime, p.OriginalSizeWidth, p.OriginalSizeHeight FROM Job j JOIN Log l ON j.JobID = l.JobID LEFT JOIN Page p ON j.JobID = p.JobID AND p.PageID = 1 WHERE j.JobStatus = 12 AND j.JobID > @last_id ORDER BY j.JobID",
+        "query": "SELECT j.JobID, j.JobName, j.JobStatus, l.FinishPrintTime, p.OriginalSizeWidth, p.OriginalSizeHeight FROM Job j LEFT JOIN Log l ON j.JobID = l.JobID LEFT JOIN Page p ON j.JobID = p.JobID AND p.PageID = 1 WHERE j.JobStatus IN (12, 13, 14) AND j.JobID > @last_id ORDER BY j.JobID",
         "id_column": "JobID",
         "filename_column": "JobName",
         "timestamp_column": "FinishPrintTime",
         "size_columns": ["OriginalSizeWidth", "OriginalSizeHeight"],
         "size_unit": "pt",
+        "status_column": "JobStatus",
+        "status_ok": ["12"],
+        "status_cancel": ["13"],
+        "status_error": ["14"],
         "read_only": true
       }
     }

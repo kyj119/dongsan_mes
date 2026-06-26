@@ -22,6 +22,10 @@ namespace LogWatcher.Parsers
         private readonly string _timestampColumn;
         private readonly string[] _sizeColumns;
         private readonly string _sizeUnit;
+        private readonly string _statusColumn;
+        private readonly string[] _statusCancel;
+        private readonly string[] _statusError;
+        private readonly string[] _statusOk;
         private readonly string _positionFile;
         private long _lastId;
 
@@ -47,6 +51,13 @@ namespace LogWatcher.Parsers
             _timestampColumn = config.GetConfigString("timestamp_column", "FinishPrintTime");
             _sizeColumns = config.GetConfigStringArray("size_columns");
             _sizeUnit = config.GetConfigString("size_unit", "mm");
+
+            // 상태 매핑(취소/실패 기록): status_column 값 → CANCEL/ERROR, 그 외 OK.
+            // EPSON Edge는 JobStatus enum이 비공개라 실제 값을 status_cancel/status_error(문자열 배열)로 설정.
+            _statusColumn = config.GetConfigString("status_column", "");
+            _statusCancel = config.GetConfigStringArray("status_cancel");
+            _statusError = config.GetConfigStringArray("status_error");
+            _statusOk = config.GetConfigStringArray("status_ok");
 
             if (string.IsNullOrEmpty(_dbPath))
                 throw new ArgumentException($"[{EquipmentId}] config.db_path is required for epson parser");
@@ -159,12 +170,28 @@ namespace LogWatcher.Parsers
                         orderNumber = orderMatch.Groups[1].Value;
                 }
 
+                // 상태 판정: status_column 설정 시 값 매핑(미설정이면 기존대로 OK)
+                string printStatus = "OK";
+                if (!string.IsNullOrEmpty(_statusColumn))
+                {
+                    int stOrdinal = -1;
+                    try { stOrdinal = reader.GetOrdinal(_statusColumn); } catch { stOrdinal = -1; }
+                    if (stOrdinal >= 0 && !reader.IsDBNull(stOrdinal))
+                    {
+                        var stVal = reader.GetValue(stOrdinal)?.ToString() ?? "";
+                        if (System.Array.IndexOf(_statusError, stVal) >= 0) printStatus = "ERROR";
+                        else if (System.Array.IndexOf(_statusCancel, stVal) >= 0) printStatus = "CANCEL";
+                        else if (_statusOk.Length > 0 && System.Array.IndexOf(_statusOk, stVal) < 0)
+                            Console.WriteLine($"[{EquipmentId}] unknown {_statusColumn}={stVal} for '{filename}' → defaulting OK");
+                    }
+                }
+
                 var evt = new PrintEvent
                 {
                     PrinterName = EquipmentId,
                     FileName = filename,
                     FilePath = filename,
-                    PrintStatus = "OK",
+                    PrintStatus = printStatus,
                     OutputSize = widthMm > 0 && heightMm > 0
                         ? $"{widthMm:F0} X {heightMm:F0}"
                         : "",

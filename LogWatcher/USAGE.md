@@ -107,7 +107,20 @@ POST /api/print-events → MES
 | `timestamp_column` | | 완료 시간 컬럼명 | `FinishPrintTime` |
 | `size_columns` | | 크기 컬럼 [width, height] | `["OriginalSizeWidth", "OriginalSizeHeight"]` |
 | `size_unit` | | 크기 단위 (`pt`/`mm`/`inch`) | `pt` |
+| `status_column` | | 상태 컬럼명. 설정 시 값→OK/CANCEL/ERROR 매핑 | `JobStatus` |
+| `status_ok` | | OK로 볼 상태값(문자열 배열). 목록 밖 값은 경고 로그 후 OK | `["12"]` |
+| `status_cancel` | | CANCEL로 매핑할 상태값(문자열 배열) | `["13"]` |
+| `status_error` | | ERROR로 매핑할 상태값(문자열 배열) | `["14"]` |
 | `read_only` | | 읽기 전용 모드 | `true` |
+
+> **취소/실패 기록**: `status_column` 미설정이면 모든 건 OK(기존 동작). 취소·실패도 잡으려면
+> ① `query`의 `WHERE`를 완료만(`JobStatus=12`)이 아니라 **종료 상태 전부**(`JobStatus IN (12,13,14)`)로 넓히고
+> (취소 건은 `Log` 행이 없을 수 있어 `JOIN Log`→**`LEFT JOIN Log`**), ② `status_column`+`status_cancel`/`status_error` 설정.
+> ⚠️ EPSON Edge의 JobStatus enum은 **비공개**라 실제 코드값을 DB에서 확인해야 함:
+> ```
+> sqlite3 "C:\ProgramData\Epson\Epson Edge Print\DB\Data.db" "SELECT JobStatus, COUNT(*) FROM Job GROUP BY JobStatus;"
+> ```
+> 완료=12 확인됨. 취소/실패 값을 위로 확인 후 `status_cancel`/`status_error`·`query IN(...)`에 반영.
 
 #### `text_log` — 범용 텍스트 로그 (정규식 기반) ★
 
