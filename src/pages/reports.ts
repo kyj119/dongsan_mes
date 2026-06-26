@@ -3,12 +3,12 @@ import type { HonoEnv } from '../types/env'
 import { renderPage } from '../layout'
 import reportsScript from '../scripts/reports.js?raw'
 import forecastScript from '../scripts/forecast.js?raw'
-import demandScript from '../scripts/demandAnalytics.js?raw'
+// demandScript 제거됨 (수요분석 탭 = 수주예측+품목분석 탭 재탕, ?raw concat 동명함수가 원본을 덮어써 해당 탭들을 깨뜨림) 2026-06-26
 
 export function reportsPage(c: Context<HonoEnv>) {
   const tabSwitchScript = `
     window.switchAnalyticsTab = function(tab) {
-      var tabs = ['reports', 'forecast', 'demand'];
+      var tabs = ['reports', 'forecast'];
       tabs.forEach(function(t) {
         var content = document.getElementById('ana' + t.charAt(0).toUpperCase() + t.slice(1) + 'Content');
         var tabBtn = document.getElementById('anaTab' + t.charAt(0).toUpperCase() + t.slice(1));
@@ -28,13 +28,11 @@ export function reportsPage(c: Context<HonoEnv>) {
       var tab = p.get('tab');
       if (tab === 'forecast' || window.location.hash === '#forecast') {
         window.switchAnalyticsTab('forecast');
-      } else if (tab === 'demand' || window.location.hash === '#demand') {
-        window.switchAnalyticsTab('demand');
       }
     })();
   `;
 
-  const combinedScript = tabSwitchScript + '\n' + reportsScript + '\n' + forecastScript + '\n' + demandScript;
+  const combinedScript = tabSwitchScript + '\n' + reportsScript + '\n' + forecastScript;
 
   return renderPage(c, {
     title: '경영 분석',
@@ -47,9 +45,6 @@ export function reportsPage(c: Context<HonoEnv>) {
         </button>
         <button onclick="switchAnalyticsTab('forecast')" id="anaTabForecast" class="px-5 py-3 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">
           <i class="fas fa-chart-area mr-1"></i>수주 예측
-        </button>
-        <button onclick="switchAnalyticsTab('demand')" id="anaTabDemand" class="px-5 py-3 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">
-          <i class="fas fa-chart-bar mr-1"></i>수요 분석
         </button>
       </div>
 
@@ -562,120 +557,6 @@ export function reportsPage(c: Context<HonoEnv>) {
           <h3 class="text-lg font-bold mb-4"><i class="fas fa-chart-bar text-green-500 mr-2"></i>주요 거래처 월별 매출 추이</h3>
           <div id="cfTrendChart" class="space-y-4"></div>
         </div>
-      </div>
-      </div>
-
-      <!-- 수요 분석 탭 -->
-      <div id="anaDemandContent" class="hidden">
-      <div class="space-y-6">
-
-        <!-- 상단 요약 카드 -->
-        <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <div class="ds-card ds-card-compact" style="border-left:4px solid #3b82f6;">
-            <div style="font-size:var(--fs-xs);color:var(--c-text-secondary);margin-bottom:6px;">
-              <i class="fas fa-file-alt" style="margin-right:4px;"></i>이번달 주문수
-            </div>
-            <div style="font-size:24px;font-weight:700;color:#1e293b;" id="thisMonthOrders">-</div>
-          </div>
-
-          <div class="ds-card ds-card-compact" style="border-left:4px solid #10b981;">
-            <div style="font-size:var(--fs-xs);color:var(--c-text-secondary);margin-bottom:6px;">
-              <i class="fas fa-won-sign" style="margin-right:4px;"></i>이번달 매출
-            </div>
-            <div style="font-size:24px;font-weight:700;color:#10b981;" id="thisMonthRevenue">-</div>
-          </div>
-
-          <div class="ds-card ds-card-compact">
-            <div style="font-size:var(--fs-xs);color:var(--c-text-secondary);margin-bottom:6px;">
-              <i class="fas fa-percent" style="margin-right:4px;"></i>전월 대비 (%)
-            </div>
-            <div style="font-size:24px;font-weight:700;" id="momGrowth">-</div>
-          </div>
-
-          <div class="ds-card ds-card-compact" style="border-left:4px solid #f59e0b;">
-            <div style="font-size:var(--fs-xs);color:var(--c-text-secondary);margin-bottom:6px;">
-              <i class="fas fa-chart-area" style="margin-right:4px;"></i>예측 주문수 (다음달)
-            </div>
-            <div style="font-size:24px;font-weight:700;color:#f59e0b;" id="nextMonthForecast">-</div>
-          </div>
-        </div>
-
-        <!-- 섹션 1: 월별 매출 추이 (최근 6개월) -->
-        <div class="ds-card" style="padding:0;overflow:hidden;">
-          <div style="padding:var(--space-md);border-bottom:1px solid var(--c-border);display:flex;align-items:center;justify-content:space-between;">
-            <h2 class="ds-card-title">
-              <i class="fas fa-chart-bar" style="color:#3b82f6;margin-right:8px;"></i>월별 매출 추이 (최근 6개월)
-            </h2>
-          </div>
-          <div style="padding:var(--space-md);">
-            <div id="monthlyChart" style="min-height:200px;display:flex;flex-direction:column;gap:12px;"></div>
-          </div>
-        </div>
-
-        <!-- 섹션 2: 카테고리별 매출 비중 -->
-        <div class="ds-card" style="padding:0;overflow:hidden;">
-          <div style="padding:var(--space-md);border-bottom:1px solid var(--c-border);display:flex;align-items:center;justify-content:space-between;">
-            <h2 class="ds-card-title">
-              <i class="fas fa-layer-group" style="color:#8b5cf6;margin-right:8px;"></i>카테고리별 매출 비중
-            </h2>
-          </div>
-          <div style="padding:var(--space-md);">
-            <div id="categoryChart" style="min-height:220px;"></div>
-          </div>
-        </div>
-
-        <!-- 섹션 3: 주요 거래처 동향 테이블 -->
-        <div class="ds-card" style="padding:0;overflow:hidden;">
-          <div style="padding:var(--space-md);border-bottom:1px solid var(--c-border);display:flex;align-items:center;justify-content:space-between;">
-            <h2 class="ds-card-title">
-              <i class="fas fa-building" style="color:#ec4899;margin-right:8px;"></i>주요 거래처 동향 (TOP 15)
-            </h2>
-          </div>
-          <div class="ds-table-wrap">
-            <table class="ds-table ds-table-compact ds-table-striped">
-              <thead>
-                <tr>
-                  <th class="col-no" style="text-align:center;width:50px;">#</th>
-                  <th class="col-name" style="min-width:140px;">거래처</th>
-                  <th class="col-amount" style="text-align:right;">월 매출</th>
-                  <th class="col-tag" style="text-align:center;">추세</th>
-                  <th class="col-status" style="text-align:center;">위험도</th>
-                  <th class="col-qty" style="text-align:center;">주문빈도</th>
-                </tr>
-              </thead>
-              <tbody id="clientTable">
-                <tr><td colspan="6" style="text-align:center;padding:32px;color:#9ca3af;"><i class="fas fa-spinner fa-spin"></i> 로딩 중...</td></tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        <!-- 섹션 4: 인기 품목 TOP 10 -->
-        <div class="ds-card" style="padding:0;overflow:hidden;">
-          <div style="padding:var(--space-md);border-bottom:1px solid var(--c-border);display:flex;align-items:center;justify-content:space-between;">
-            <h2 class="ds-card-title">
-              <i class="fas fa-star" style="color:#f59e0b;margin-right:8px;"></i>인기 품목 TOP 10
-            </h2>
-          </div>
-          <div class="ds-table-wrap">
-            <table class="ds-table ds-table-compact ds-table-striped">
-              <thead>
-                <tr>
-                  <th class="col-no" style="text-align:center;width:50px;">#</th>
-                  <th class="col-name" style="min-width:120px;">품목</th>
-                  <th class="col-flex" style="min-width:100px;">카테고리</th>
-                  <th class="col-amount" style="text-align:right;">매출</th>
-                  <th class="col-qty" style="text-align:center;">주문건수</th>
-                  <th class="col-qty" style="text-align:right;">수량</th>
-                </tr>
-              </thead>
-              <tbody id="itemTable">
-                <tr><td colspan="6" style="text-align:center;padding:32px;color:#9ca3af;"><i class="fas fa-spinner fa-spin"></i> 로딩 중...</td></tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
-
       </div>
       </div>
     `,

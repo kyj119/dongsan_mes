@@ -85,7 +85,6 @@ import { insuranceReportsRouter } from './routes/insuranceReports'
 import messageTemplatesRouter from './routes/messageTemplates'
 import faxRouter from './routes/fax'
 import finishingRouter from './routes/finishing'
-import deliveryAnalyticsRouter from './routes/deliveryAnalytics'
 import filesRouter from './routes/files'
 import priceListRouter from './routes/priceList'
 import quotationsRouter from './routes/quotations'
@@ -96,8 +95,8 @@ import accountingRouter from './routes/accounting'
 import { clientsPage } from './pages/clients'
 import { itemsPage } from './pages/items'
 import { specGroupsPage } from './pages/specGroups'
-import { priceListsPage } from './pages/priceLists'
-import { priceListPage } from './pages/priceList'
+// priceListsPage 제거됨 (orphan dead code — 라우트 미연결, API priceListsRouter만 생존, 2026-06-26)
+// priceListPage 제거됨 (가격정책 편집을 priceManagement '가격 정책' 탭으로 이관, /price-list-old 폐지) 2026-06-26
 import { priceManagementPage } from './pages/priceManagement'
 import { cardsPage } from './pages/cards'
 import { cardDetailPage } from './pages/cardDetail'
@@ -145,7 +144,7 @@ import { activityLogPage } from './pages/activityLog'
 import { tasksPage } from './pages/tasks'
 import { schedulePage } from './pages/schedule'
 import { productionReportsPage } from './pages/productionReports'
-import { productionDailyPage } from './pages/productionDaily'
+// productionDailyPage 제거됨 (production-reports 일일탭과 중복, 사이드바 미연결, 2026-06-26)
 import { materialForecastPage } from './pages/materialForecast'
 // receivablesPage → ledger 통합됨
 // forecastPage → reports 통합됨
@@ -157,7 +156,7 @@ import { bomPage } from './pages/bom'
 import { approvalsPage } from './pages/approvals'
 // cashReceiptsPage → taxInvoices 통합됨
 // hometaxInvoicesPage → taxInvoices 통합됨
-import { deliveryAnalyticsPage } from './pages/deliveryAnalytics'
+// deliveryAnalyticsPage 제거됨 (납기준수율·평균처리시간=死(orders.shipped_at 부재), 나머지 위젯=dashboard/orders/production-reports 중복, 2026-06-26)
 import { shipmentsDashboardPage } from './pages/shipmentsDashboard'
 // demandAnalyticsPage → reports 통합됨
 import { uiGuidePage } from './pages/uiGuide'
@@ -298,7 +297,6 @@ app.route('/api/activity-logs', activityLogsRouter)
 app.route('/api/notifications', notificationsRouter)
 app.route('/api/search', searchRouter)
 app.route('/api/production-reports', productionReportsRouter)
-app.route('/api/delivery-analytics', deliveryAnalyticsRouter)
 app.route('/api/costs', costsRouter)
 app.route('/api/forecast', forecastRouter)
 app.route('/api/emails', emailsRouter)
@@ -391,7 +389,7 @@ app.get('/items', pageAuthMiddleware, requirePagePermission('/items'), itemsPage
 app.get('/spec-groups', pageAuthMiddleware, requirePagePermission('/spec-groups'), specGroupsPage)
 app.get('/price-lists', (c) => c.redirect('/price-list'))
 app.get('/price-list', pageAuthMiddleware, requirePagePermission('/price-list'), priceManagementPage)
-app.get('/price-list-old', pageAuthMiddleware, requirePagePermission('/price-list'), priceListPage)
+// /price-list-old 제거됨 (가격정책 편집을 priceManagement '가격 정책' 탭으로 이관) 2026-06-26
 app.get('/client-prices', (c) => c.redirect('/price-list'))
 app.get('/cards', pageAuthMiddleware, requirePagePermission('/cards'), cardsPage)
 app.get('/cards/:id', pageAuthMiddleware, requirePagePermission('/cards'), cardDetailPage)
@@ -449,8 +447,8 @@ app.get('/email-logs', (c) => c.redirect('/activity-log#tab=email'))
 // 이전 /equipment-dashboard 페이지는 /equipment#tab=dashboard로 이동
 app.get('/equipment-dashboard', (c) => c.html('<script>window.location.href="/equipment?tab=dashboard"</script>'))
 app.get('/receivables', (c) => c.redirect('/ledger?tab=receivables'))
-app.get('/delivery-analytics', pageAuthMiddleware, requirePagePermission('/delivery-analytics'), deliveryAnalyticsPage)
-app.get('/demand-analytics', (c) => c.redirect('/reports?tab=demand'))
+// /delivery-analytics 제거됨 (중복 + 핵심 KPI 死, 2026-06-26)
+app.get('/demand-analytics', (c) => c.redirect('/reports'))
 app.get('/inventory-count', (c) => c.redirect('/inventory#tab=count'))
 app.get('/cost-analysis', (c) => c.redirect('/production-reports?tab=cost'))
 app.get('/cash-flow', (c) => c.redirect('/cash-schedule'))
@@ -481,7 +479,7 @@ app.get('/year-end/:employeeId', pageAuthMiddleware, yearEndPage)
 app.get('/messages', pageAuthMiddleware, requirePagePermission('/messages'), messagesPage)
 app.get('/kakao', (c) => c.redirect('/messages'))
 
-app.get('/production-daily', pageAuthMiddleware, requirePagePermission('/production-daily'), productionDailyPage)
+// /production-daily 제거됨 (production-reports 일일탭과 중복, 2026-06-26)
 app.get('/material-forecast', pageAuthMiddleware, requirePagePermission('/material-forecast'), materialForecastPage)
 
 // 직원 셀프서비스 (인증 불필요)

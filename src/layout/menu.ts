@@ -22,7 +22,8 @@ export const MENU_ITEMS: MenuGroup[] = [
       { path: '/cards', icon: 'fa-th-large', label: '현장 카드', roles: ['ADMIN', 'MANAGER', 'DESIGNER', 'OPERATOR'] },
       { path: '/shipments', icon: 'fa-truck', label: '출고/배송', roles: ['ADMIN', 'MANAGER', 'DESIGNER'] },
       { path: '/shipments-dashboard', icon: 'fa-clipboard-check', label: '출고 대시보드', roles: ['ADMIN', 'MANAGER', 'OPERATOR'] },
-      { path: '/delivery-analytics', icon: 'fa-chart-line', label: '납기 분석', roles: ['ADMIN', 'MANAGER'] },
+      // /delivery-analytics 제거 (2026-06-26): 납기준수율·평균처리시간은 orders.shipped_at 부재로 작동 불가,
+      // 오늘출고예정=/dashboard·지연=/orders·체류시간=/production-reports와 전부 중복. 페이지·라우트 삭제됨.
       { path: '/approvals', icon: 'fa-stamp', label: '전자결재', roles: ['ADMIN', 'MANAGER', 'DESIGNER', 'OPERATOR'], badgeId: 'nav-badge-approvals' },
     ],
   },
@@ -42,7 +43,9 @@ export const MENU_ITEMS: MenuGroup[] = [
     items: [
       { path: '/clients', icon: 'fa-building', label: '거래처', roles: ['ADMIN', 'MANAGER'] },
       { path: '/items', icon: 'fa-tags', label: '품목', roles: ['ADMIN', 'MANAGER'] },
-      { path: '/spec-groups', icon: 'fa-layer-group', label: '규격그룹 관리', roles: ['ADMIN', 'MANAGER'] },
+      // /spec-groups 사이드바 은퇴 (2026-06-26): 규격그룹/변종 폐기 설계(신 품목모델 product_materials 대체)·prod 데이터 0.
+      // 페이지·API는 보존(직접 URL만 접근). 되살릴 경우 이 줄 복원.
+      // { path: '/spec-groups', icon: 'fa-layer-group', label: '규격그룹 관리', roles: ['ADMIN', 'MANAGER'] },
       { path: '/price-list', icon: 'fa-won-sign', label: '단가 관리', roles: ['ADMIN', 'MANAGER'] },
       { path: '/post-processing', icon: 'fa-cut', label: '후가공·마감', roles: ['ADMIN', 'MANAGER'] },
     ],

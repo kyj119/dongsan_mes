@@ -7,7 +7,7 @@ import { getEntityId, entityFilter } from '../utils/entityFilter'
 const productionRouter = new Hono<HonoEnv>()
 
 // Apply authentication middleware
-productionRouter.use('/*', authMiddleware, requireAnyPagePermission('/production', '/schedule', '/production-daily'))
+productionRouter.use('/*', authMiddleware, requireAnyPagePermission('/production', '/schedule'))
 
 // Get production logs list
 productionRouter.get('/logs', async (c) => {
