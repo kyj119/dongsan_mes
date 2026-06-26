@@ -28,10 +28,12 @@ storageZonesRouter.get('/', async (c) => {
 
     const sql = `
       SELECT sz.*, u.name as manager_name, e.short_name as entity_name,
+        fz.name as facility_zone_name,
         (SELECT COUNT(*) FROM items WHERE storage_zone_id = sz.id AND is_active = 1) as item_count
       FROM storage_zones sz
       LEFT JOIN users u ON sz.manager_id = u.id
       LEFT JOIN entities e ON sz.entity_id = e.id
+      LEFT JOIN facility_zones fz ON sz.facility_zone_id = fz.id
       ${where}
       ORDER BY sz.entity_id, sz.sort_order, sz.zone_name
     `
@@ -103,6 +105,7 @@ storageZonesRouter.post('/', requireRole('ADMIN'), async (c) => {
       sort_order?: number
       entity_id?: number
       is_default?: number
+      facility_zone_id?: number | null
     }>()
 
     if (!body.zone_name?.trim()) {
@@ -129,8 +132,8 @@ storageZonesRouter.post('/', requireRole('ADMIN'), async (c) => {
     }
 
     const result = await c.env.DB.prepare(`
-      INSERT INTO storage_zones (zone_name, zone_code, description, manager_id, sort_order, entity_id, is_default)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO storage_zones (zone_name, zone_code, description, manager_id, sort_order, entity_id, is_default, facility_zone_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `).bind(
       body.zone_name.trim(),
       body.zone_code?.trim() || null,
@@ -138,7 +141,8 @@ storageZonesRouter.post('/', requireRole('ADMIN'), async (c) => {
       body.manager_id || null,
       body.sort_order ?? 0,
       entityId,
-      body.is_default ?? 0
+      body.is_default ?? 0,
+      body.facility_zone_id || null
     ).run()
 
     return c.json({ success: true, data: { id: result.meta.last_row_id }, message: '구역이 생성되었습니다.' })
@@ -161,6 +165,7 @@ storageZonesRouter.put('/:id', requireRole('ADMIN'), async (c) => {
       is_active?: number
       entity_id?: number
       is_default?: number
+      facility_zone_id?: number | null
     }>()
 
     const ef = entityFilter(c)  // #368: 타법인 구역 수정 차단
@@ -195,6 +200,7 @@ storageZonesRouter.put('/:id', requireRole('ADMIN'), async (c) => {
         is_active = COALESCE(?, is_active),
         entity_id = ?,
         is_default = COALESCE(?, is_default),
+        facility_zone_id = ?,
         updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
     `).bind(
@@ -206,6 +212,7 @@ storageZonesRouter.put('/:id', requireRole('ADMIN'), async (c) => {
       body.is_active ?? null,
       entityId,
       body.is_default ?? null,
+      body.facility_zone_id ?? null,
       id
     ).run()
 

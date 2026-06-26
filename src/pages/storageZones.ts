@@ -83,6 +83,12 @@ export function storageZonesPage(c: Context<HonoEnv>) {
         </div>
       </div>
       <div>
+        <label class="block text-xs font-semibold text-gray-700 mb-1">배치도 영역 <span class="text-gray-400 font-normal">(공장 배치도 연결 · 선택)</span></label>
+        <select id="zoneModalFacilityZone" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+          <option value="">미지정</option>
+        </select>
+      </div>
+      <div>
         <label class="block text-xs font-semibold text-gray-700 mb-1">설명</label>
         <textarea id="zoneModalDesc" rows="2" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="선택"></textarea>
       </div>

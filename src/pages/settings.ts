@@ -673,6 +673,12 @@ ${capsSettingsScript}
                   <option value="">미지정</option>
                 </select>
               </div>
+              <div>
+                <label class="block text-sm font-semibold text-gray-700 mb-1">배치도 영역 <span class="text-gray-400 font-normal">(공장 배치도 연결 · 선택)</span></label>
+                <select id="zoneModalFacilityZone" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                  <option value="">미지정</option>
+                </select>
+              </div>
               <div class="grid grid-cols-2 gap-4">
                 <div>
                   <label class="block text-sm font-semibold text-gray-700 mb-1">정렬 순서</label>

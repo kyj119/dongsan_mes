@@ -2,6 +2,7 @@
 var storageZones = [];
 var allUsers = [];
 var allEntities = [];
+var facilityZones = []; // 공장 배치도 영역 (매핑용)
 var currentEntityFilter = 0; // 0 = 전체
 
 function escapeAttr(s) {
@@ -23,14 +24,16 @@ async function loadStorageZones() {
     ).join('');
   }
   try {
-    var [zonesRes, usersRes, entRes] = await Promise.all([
+    var [zonesRes, usersRes, entRes, facilityRes] = await Promise.all([
       axios.get('/api/storage-zones', { params: { include_inactive: '1', all_entities: '1' } }),
       axios.get('/api/users'),
-      axios.get('/api/auth/entities')
+      axios.get('/api/auth/entities'),
+      axios.get('/api/facility/zones').catch(function() { return { data: { success: false } }; })
     ]);
     storageZones = zonesRes.data.success ? zonesRes.data.data : [];
     allUsers = usersRes.data.success ? usersRes.data.data : [];
     allEntities = entRes.data.success ? entRes.data.data : [];
+    facilityZones = facilityRes.data.success ? facilityRes.data.data : [];
 
     // 법인 필터 드롭다운 초기화
     var filterEl = document.getElementById('entityFilter');
@@ -81,7 +84,9 @@ function renderStorageZones() {
 
     return '<tr class="border-b border-gray-100 hover:bg-gray-50">'
       + '<td class="px-3 py-3 text-sm text-gray-600">' + escapeAttr(entityName) + '</td>'
-      + '<td class="px-3 py-3 text-sm font-medium text-gray-900" title="' + escapeAttr(z.zone_name || '') + '">' + escapeAttr(z.zone_name) + defaultBadge + '</td>'
+      + '<td class="px-3 py-3 text-sm font-medium text-gray-900" title="' + escapeAttr(z.zone_name || '') + '">' + escapeAttr(z.zone_name) + defaultBadge
+      + (z.facility_zone_name ? '<div class="text-[10px] text-blue-500 font-normal mt-0.5"><i class="fas fa-map-marker-alt mr-0.5"></i>' + escapeAttr(z.facility_zone_name) + '</div>' : '')
+      + '</td>'
       + '<td class="px-3 py-3 text-sm text-gray-500">' + escapeAttr(z.zone_code || '-') + '</td>'
       + '<td class="px-3 py-3 text-sm text-gray-500" title="' + escapeAttr(z.description || '') + '">' + escapeAttr(z.description || '-') + '</td>'
       + '<td class="px-3 py-3 text-sm text-gray-900" title="' + escapeAttr(z.manager_name || '') + '">' + escapeAttr(z.manager_name || '미지정') + '</td>'
@@ -116,6 +121,17 @@ function populateManagerSelect(selectedId) {
     }).join('');
 }
 
+// 공장 배치도 영역 매핑 드롭다운 (P1: storage_zone ↔ facility_zone)
+function populateFacilityZoneSelect(selectedId) {
+  var sel = document.getElementById('zoneModalFacilityZone');
+  if (!sel) return;
+  sel.innerHTML = '<option value="">미지정</option>'
+    + facilityZones.map(function(fz) {
+      return '<option value="' + fz.id + '"' + (fz.id === selectedId ? ' selected' : '') + '>'
+        + escapeAttr(fz.name) + '</option>';
+    }).join('');
+}
+
 function openAddZoneModal() {
   document.getElementById('zoneModalTitle').textContent = '창고 구역 추가';
   document.getElementById('zoneModalId').value = '';
@@ -130,6 +146,7 @@ function openAddZoneModal() {
   var defaultEntity = currentEntityFilter > 0 ? currentEntityFilter : (allEntities[0]?.id || 1);
   populateEntitySelect(defaultEntity);
   populateManagerSelect(null);
+  populateFacilityZoneSelect(null);
 
   document.getElementById('zoneModal').classList.remove('hidden');
   document.getElementById('zoneModalName').focus();
@@ -150,6 +167,7 @@ function openEditZoneModal(id) {
 
   populateEntitySelect(zone.entity_id || 1);
   populateManagerSelect(zone.manager_id);
+  populateFacilityZoneSelect(zone.facility_zone_id);
 
   document.getElementById('zoneModal').classList.remove('hidden');
   document.getElementById('zoneModalName').focus();
@@ -169,7 +187,8 @@ async function saveZone() {
     sort_order: parseInt(document.getElementById('zoneModalSort').value) || 0,
     is_active: document.getElementById('zoneModalActive').checked ? 1 : 0,
     entity_id: parseInt(document.getElementById('zoneModalEntity').value) || 1,
-    is_default: document.getElementById('zoneModalDefault').checked ? 1 : 0
+    is_default: document.getElementById('zoneModalDefault').checked ? 1 : 0,
+    facility_zone_id: parseInt((document.getElementById('zoneModalFacilityZone') || {}).value) || null
   };
 
   if (!payload.zone_name) {
