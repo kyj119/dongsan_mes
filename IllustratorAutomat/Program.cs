@@ -109,7 +109,8 @@ namespace IllustratorAutomation
                 Console.WriteLine("   중복 실행은 prod 큐를 경쟁 폴링하므로 차단됩니다.");
                 Console.WriteLine("   기존 창을 닫은 뒤 다시 실행하세요.");
                 Console.WriteLine("================================================");
-                try { Console.ReadKey(); } catch { }
+                Console.WriteLine("   (5초 후 자동 종료)");
+                Thread.Sleep(5000); // 자동 실행 시 ReadKey 행(hang) 방지 — 메시지만 보여주고 종료
                 return;
             }
 
