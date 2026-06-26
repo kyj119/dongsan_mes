@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 1 -->
-<!-- last_run_at: 2026-06-26T02:00:00+09:00 -->
+<!-- last_run_area: 2 -->
+<!-- last_run_at: 2026-06-26T06:00:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -16,6 +16,19 @@
 
 > 📦 **과거 사이클 로그**는 `IMPROVEMENT_BACKLOG_ARCHIVE.md`/git 히스토리로 이관됨 (2026-06-10 1차 분리, 2026-06-25 2차 트림 343KB→192KB, **2026-06-25T10:00 3차 트림 — 06-17~06-23 사이클 로그를 git 히스토리로 이관: node_modules 부재 세션에서 commit-gate(typecheck) 차단으로 API 푸시 필요 → 파일 축소로 비용 절감 + 256KB 한도 회복**). 신규 로그는 계속 이 파일 상단에 추가. 본 파일은 직전 2일치(06-24~) 사이클 로그 + 영구 참조 섹션(Approved/New/Auto-fixed/Done/Rejected/FP 카탈로그)만 유지. 이관분은 `git log -p -- IMPROVEMENT_BACKLOG.md`로 복원 가능.
 
+> **Area 2 코드 품질 심층 분석 (2026-06-26T06:00):**
+> - **방법**: git fetch-before-compare(origin force-update `4993fa7→c9905a1`, fetch 후 **HEAD=origin/main `c9905a1` 0/0 동기**, 워킹트리 clean, 디버전스 0). egress 차단(prod/Playwright/verify[node_modules 부재] 도달 불가)이라 정적 스캔. Area 2 **23회차** — **신선 각도 = 직전 Area2(`b9b4430`, 06-25T06:00) 이후 최대·최신·Area2-미감사 churn = 공장 배치도(factory-layout) P0~P2 + 90° 회전**(`68c7a41` `facility.ts +74`·`rip.ts +74`·`equipment.js +298`·`constants/process.ts +70`·마이그 0389 + `e7eefa3` `rip.ts +21`·마이그 0390). leaves/workbench/printEvents/paymentMatch churn은 직전 Area2/4/5/6이 컬럼·entity·N+1 스캔 전수 커버 → factory-layout이 유일 신규 대상. Area2 7종 스캔(entity_id INSERT·컬럼존재성·authMiddleware·N+1·dead-code/axios-route·CHECK literal·타입) 첫 적용.
+> - **🟢 entity_id INSERT 전수 = net-new 0**: 신규 INSERT 2건 전부 **전사 공용 테이블(entity_id 컬럼 부재 = 정당 제외, FP 아님)** — ① `equipment_processes`(0389, PK=`(equipment_id,process_code)`, **entity 격리는 부모 `equipment.entity_id`로 귀속** = 마이그 주석 명시) ② `facility_settings`(background_image UPSERT = 단일 시설 전사 공용, facility.ts 헤더 "entity_id 없음=전사 공용" 명시). leaves/workbench/paymentMatch INSERT는 직전 사이클 entity_id 명시 확인분.
+> - **🟢 컬럼 존재성(명시 SELECT/UPDATE) = net-new 0**: rip.ts GET `/equipment` 신규 참조 `e.zone_id`(0072 `ALTER equipment ADD zone_id`)·`e.layout_rotation`(0390 `ALTER ADD ... DEFAULT 0`) 전부 ground-truth 실재. PUT `/equipment/:id` 신규 `zone_id=?`·PATCH `/position` 신규 `layout_rotation=?` 동일 컬럼. **CI 배포 green(0389/0390 적용 + post-deploy smoke 101) = 런타임 prepare-throw 0 교차확인**(존재X 컬럼이면 GET /equipment 전량 500인데 deploy success).
+> - **🟢 N+1 = clean(명시 회피)**: rip.ts GET `/equipment`의 공정 조회가 **단일 `WHERE equipment_id IN (${placeholders})` 배치 + processesMap**(`:270` 주석 "N+1 → 단일 쿼리")로 행당 쿼리 회피 = #321 정답 패턴. eqIds<<100이라 D1 바인드 한도 무위험(#409 클래스 아님).
+> - **🟢 authMiddleware 커버리지 = clean**: facility 라우터 `facilityRouter.use('/*', authMiddleware)`(:12) router-wide + mutate 핸들러 `requireRole('ADMIN')`. 신규 `/background-image` R2 서빙도 authMiddleware 경유(Bearer만, `<img src>` 직접 불가 주석) + 키는 **DB(`facility_settings`)에서 파생**(클라키 직접서빙 아님 = #365/#442 클래스 아님) + `..`/`\` traversal 가드. rip 신규 핸들러(PUT `/processes`·PATCH `/position`) 전부 핸들러별 `authMiddleware, requireRole(...)`.
+> - **🟢 dead-code/axios-route 존재성(#411) = net-new 0(죽은버튼 0)**: equipment.js 신규 8 axios 전부 백엔드 실재 — GET `/facility/background`(:168)·`/background-image`(:182)·`/facility/zones`(:19)·POST `/facility/background`(:205)·DELETE `/facility/background`(:246)·PUT `/rip/equipment/:id/processes`(:387)·PUT `/rip/equipment/:id`(:334)·PATCH `/rip/equipment/:id/position`(:655). PUT `/processes`는 PROCESS_CODES 검증 + entityFilter 선행 SELECT 404 게이트 + replace-all batch(DELETE+INSERT) 원자화.
+> - **🟢 CHECK literal write = 위반 0**: `equipment_processes.process_code`(0389)·`equipment.layout_rotation`(0390) **CHECK IN 제약 0**(0389=TEXT NOT NULL 무CHECK, 0390=INTEGER DEFAULT 0). process_code는 PROCESS_CODES 상수로 앱레벨 검증(`rip.ts:407`), layout_rotation은 `(((n%360)+360)%360)` 정규화 = prepare-throw 위험 0.
+> - **🟢 backlog↔GitHub sync**: open auto-improve **실측 5건**(#439·#441·#442·#443·#444, list_issues 전수) = 직전 Area1 stats `new=5` **정합**. owner 신규 close/머지 0(done=139·rejected=3 유지). #422 디버전스: HEAD=origin/main 동기(`c9905a1`)라 미push 픽스 0. CI: factory-layout 배포(`39db8e4` merge·`e7eefa3`·`c9905a1`) 전부 success.
+> - **🧬 SKILL 강화 0건**: 기존 standing scan(entity_id INSERT line 53·컬럼존재성 #394/A-027·N+1 #321·authMiddleware·axios-route #411·DB-lookup vs 클라키서빙 #365)이 factory-layout 신규 feature를 전수 커버. 신규 feature가 처음부터 컨벤션(전사공용 테이블 entity_id 분리·N+1 배치맵·router-wide auth·DB-파생 R2 키·앱레벨 enum 검증·route 배선) 준수 = Area 6 "신규 feature가 컨벤션 따르면 clean" 클래스. 신규 탐지 패턴 불필요.
+> - **이상 없음(entity_id·컬럼·N+1·auth·dead-code·CHECK·타입)**: 공장 배치도 P0~P2+회전 신규 feature(`facility.ts/rip.ts/equipment.js +400L`, 마이그 0389/0390) Area2 7종 스캔 전수 clean, net-new 0. git 동기 0/0·워킹트리 clean. sync 5=5.
+> - 자동 수정 0건(clean cycle — 발견 없음), 신규 이슈 0건, SKILL 강화 0건, done-sync(변동 0, new 5 유지), **신선 각도 — 공장 배치도(factory-layout) P0~P2 신규 feature(장비↔공정 M:N·구역 bounds·도면 R2 서빙·90° 회전) 첫 Area2 코드품질 감사(entity_id INSERT·컬럼존재성·N+1·authMiddleware·dead-code/axios-route·CHECK·타입), 프로덕션 영향 0 확인. R2 도면 서빙(`/background-image`)은 DB-파생 키 + authMiddleware로 #365/#442 IDOR 클래스 회피(클라키 직접서빙 아님).**
+>
 > **Area 1 프로덕션 헬스 (2026-06-26T02:00):**
 > - **방법**: git fetch-before-compare(origin force-update `4993fa7→beaa47b`, fetch 후 **HEAD=origin/main `beaa47b` 0/0 동기**, 워킹트리 clean, 디버전스 0). egress 차단(prod 직접 fetch·Playwright·verify[node_modules 부재] 도달 불가)이라 CI/E2E는 GitHub Actions API로, 회귀 위험은 정적 standing scan으로 검증. **사이클 churn = 1 커밋(`beaa47b` = 직전 Area6 자기진화 커밋 본인)** — 직전 사이클(`2743ad1`) 이후 owner 신규 코드 churn 0.
 > - **🟢 CI/E2E = 전부 GREEN**: 최근 15런(`actions_list` main) 전부 `completed/success` — HEAD `beaa47b`(Area6 자기진화) Deploy + Daily D1 Backup 모두 success, 직전 IA editor P1/P2/P3(`79207b7`~`adb4ab4`)·KST 정규화(`818cbd7`)·Area5(`0500731`) Deploy 전부 success. Deploy 워크플로(post-deploy smoke 포함) fail 0. **신규 prod-breaking 회귀 0**.
