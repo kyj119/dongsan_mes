@@ -4,6 +4,7 @@ import type { HonoEnv } from '../types/env'
 import { getEntityId, entityFilter } from '../utils/entityFilter'
 import { getNextEntitySeqNumber } from '../utils/sequenceGenerator'
 import { triggerLowStockAlert } from '../utils/inventoryAlert'
+import { getItemDefaultZone, getItemDefaultZones } from '../utils/inventoryZone'
 
 const inventoryRouter = new Hono<HonoEnv>()
 
@@ -16,11 +17,7 @@ function invJoin(entityId: number): { join: string; params: number[] } {
   return { join: 'LEFT JOIN inventory inv ON i.id = inv.item_id AND inv.entity_id = ?', params: [entityId] }
 }
 
-/** items.storage_zone_id 조회 (INSERT 시 사용) */
-async function getItemZoneId(db: any, itemId: number): Promise<number | null> {
-  const row = await db.prepare('SELECT storage_zone_id FROM items WHERE id = ?').bind(itemId).first() as { storage_zone_id: number | null } | null
-  return row?.storage_zone_id ?? null
-}
+// 품목 기본창고(items.storage_zone_id) 해석은 utils/inventoryZone(getItemDefaultZone/getItemDefaultZones) 사용.
 
 // Get inventory items list with filters
 inventoryRouter.get('/', async (c) => {
@@ -30,14 +27,15 @@ inventoryRouter.get('/', async (c) => {
     const entityId = getEntityId(c)
     const inv = invJoin(entityId)
 
+    // 다중행(창고별) 재고 → 품목당 1행으로 집계: current_stock=SUM(전 창고), 설정값=MAX(기본창고에 저장됨)
     let query = `
       SELECT
         i.id, i.item_name, i.category, i.sub_category, i.unit,
         i.base_price as unit_price,
-        COALESCE(inv.quantity, 0) as current_stock,
-        COALESCE(inv.safe_stock, 0) as safety_stock,
-        COALESCE(inv.reorder_point, 0) as reorder_point,
-        COALESCE(inv.auto_pr_enabled, 0) as auto_pr_enabled,
+        COALESCE(SUM(inv.quantity), 0) as current_stock,
+        COALESCE(MAX(inv.safe_stock), 0) as safety_stock,
+        COALESCE(MAX(inv.reorder_point), 0) as reorder_point,
+        COALESCE(MAX(inv.auto_pr_enabled), 0) as auto_pr_enabled,
         i.description, i.is_active, i.created_at, i.updated_at
       FROM items i
       ${inv.join}
@@ -56,8 +54,9 @@ inventoryRouter.get('/', async (c) => {
       params.push(category)
     }
 
+    query += ` GROUP BY i.id`
     if (low_stock === 'true') {
-      query += ` AND COALESCE(inv.quantity, 0) <= COALESCE(inv.safe_stock, 0) AND COALESCE(inv.safe_stock, 0) > 0`
+      query += ` HAVING COALESCE(SUM(inv.quantity), 0) <= COALESCE(MAX(inv.safe_stock), 0) AND COALESCE(MAX(inv.safe_stock), 0) > 0`
     }
 
     query += ` ORDER BY i.category, i.item_name LIMIT ? OFFSET ?`
@@ -65,25 +64,27 @@ inventoryRouter.get('/', async (c) => {
 
     const { results } = await c.env.DB.prepare(query).bind(...params).all()
 
-    // Count total
-    let countQuery = `
-      SELECT COUNT(*) as total FROM items i
+    // Count total (집계/HAVING 후 품목 수 → 서브쿼리로 그룹 개수 카운트)
+    let countInner = `
+      SELECT i.id FROM items i
       ${inv.join}
       WHERE i.is_purchase_item = 1 AND i.is_active = 1
     `
     const countParams: any[] = [...inv.params]
 
     if (search) {
-      countQuery += ` AND (i.item_name LIKE ? OR i.category LIKE ?)`
+      countInner += ` AND (i.item_name LIKE ? OR i.category LIKE ?)`
       countParams.push(`%${search}%`, `%${search}%`)
     }
     if (category) {
-      countQuery += ` AND i.category = ?`
+      countInner += ` AND i.category = ?`
       countParams.push(category)
     }
+    countInner += ` GROUP BY i.id`
     if (low_stock === 'true') {
-      countQuery += ` AND COALESCE(inv.quantity, 0) <= COALESCE(inv.safe_stock, 0) AND COALESCE(inv.safe_stock, 0) > 0`
+      countInner += ` HAVING COALESCE(SUM(inv.quantity), 0) <= COALESCE(MAX(inv.safe_stock), 0) AND COALESCE(MAX(inv.safe_stock), 0) > 0`
     }
+    const countQuery = `SELECT COUNT(*) as total FROM (${countInner})`
 
     const countRow = await c.env.DB.prepare(countQuery).bind(...countParams).first<{ total: number }>()
     const total = countRow?.total || 0
@@ -108,25 +109,45 @@ inventoryRouter.get('/:id', async (c) => {
     const entityId = getEntityId(c)
     const inv = invJoin(entityId)
 
+    // 품목 총재고(전 창고 SUM) + 설정값(MAX=기본창고)
     const result = await c.env.DB.prepare(`
       SELECT
         i.id, i.item_name, i.category, i.sub_category, i.unit,
         i.base_price as unit_price,
-        COALESCE(inv.quantity, 0) as current_stock,
-        COALESCE(inv.safe_stock, 0) as safety_stock,
-        COALESCE(inv.reorder_point, 0) as reorder_point,
-        COALESCE(inv.auto_pr_enabled, 0) as auto_pr_enabled,
+        COALESCE(SUM(inv.quantity), 0) as current_stock,
+        COALESCE(MAX(inv.safe_stock), 0) as safety_stock,
+        COALESCE(MAX(inv.reorder_point), 0) as reorder_point,
+        COALESCE(MAX(inv.auto_pr_enabled), 0) as auto_pr_enabled,
         i.description, i.is_active
       FROM items i
       ${inv.join}
       WHERE i.id = ? AND i.is_purchase_item = 1
+      GROUP BY i.id
     `).bind(...inv.params, id).first()
 
     if (!result) {
       return c.json({ success: false, error: 'Item not found' }, 404)
     }
 
-    return c.json({ success: true, data: result })
+    // 창고별 분해 (NULL zone = 미배정). entity 격리 유지.
+    const zonesParams: any[] = [id]
+    let zonesSql = `
+      SELECT inv.storage_zone_id,
+             COALESCE(sz.zone_name, '미배정') as zone_name,
+             inv.quantity,
+             COALESCE(inv.safe_stock, 0) as safe_stock
+      FROM inventory inv
+      LEFT JOIN storage_zones sz ON inv.storage_zone_id = sz.id
+      WHERE inv.item_id = ?
+    `
+    if (entityId > 0) {
+      zonesSql += ` AND inv.entity_id = ?`
+      zonesParams.push(entityId)
+    }
+    zonesSql += ` ORDER BY inv.storage_zone_id IS NULL, sz.sort_order, sz.zone_name`
+    const { results: zones } = await c.env.DB.prepare(zonesSql).bind(...zonesParams).all()
+
+    return c.json({ success: true, data: { ...result, zones } })
   } catch (error: any) {
     console.error('Failed to get inventory item:', error)
     return c.json({ success: false, error: '서버 오류가 발생했습니다' }, 500)
@@ -178,18 +199,20 @@ inventoryRouter.get('/alerts/low-stock', async (c) => {
     const entityId = getEntityId(c)
     const inv = invJoin(entityId)
 
+    // 다중행 → 품목 총재고(SUM) vs 안전재고(MAX=기본창고) 집계 (창고 중복 카운트 방지)
     const { results } = await c.env.DB.prepare(`
       SELECT
         i.id, i.item_name, i.category, i.unit,
-        COALESCE(inv.quantity, 0) as current_stock,
-        COALESCE(inv.safe_stock, 0) as safety_stock,
-        COALESCE(inv.reorder_point, 0) as reorder_point,
-        (COALESCE(inv.safe_stock, 0) - COALESCE(inv.quantity, 0)) as shortage
+        COALESCE(SUM(inv.quantity), 0) as current_stock,
+        COALESCE(MAX(inv.safe_stock), 0) as safety_stock,
+        COALESCE(MAX(inv.reorder_point), 0) as reorder_point,
+        (COALESCE(MAX(inv.safe_stock), 0) - COALESCE(SUM(inv.quantity), 0)) as shortage
       FROM items i
       ${inv.join}
       WHERE i.is_purchase_item = 1 AND i.is_active = 1
-        AND COALESCE(inv.quantity, 0) <= COALESCE(inv.safe_stock, 0)
-        AND COALESCE(inv.safe_stock, 0) > 0
+      GROUP BY i.id
+      HAVING COALESCE(SUM(inv.quantity), 0) <= COALESCE(MAX(inv.safe_stock), 0)
+        AND COALESCE(MAX(inv.safe_stock), 0) > 0
       ORDER BY shortage DESC
     `).bind(...inv.params).all()
 
@@ -224,21 +247,24 @@ inventoryRouter.put('/:id/settings', async (c) => {
     const rop = Number(reorder_point) || 0
     const autoPr = auto_pr_enabled ? 1 : 0
 
+    // 설정은 품목 기본창고 행에 저장 (NULL=미배정). zone 키 미포함 시 다중 창고 행 동시 변경 = 버그.
+    const zoneId = item.storage_zone_id
+
     const existing = await c.env.DB.prepare(
-      `SELECT id FROM inventory WHERE item_id = ? AND entity_id = ?`
-    ).bind(id, entityId).first()
+      `SELECT id FROM inventory WHERE item_id = ? AND entity_id = ? AND IFNULL(storage_zone_id, 0) = IFNULL(?, 0)`
+    ).bind(id, entityId, zoneId).first()
 
     if (existing) {
       await c.env.DB.prepare(`
         UPDATE inventory
         SET safe_stock = ?, reorder_point = ?, auto_pr_enabled = ?, last_updated = CURRENT_TIMESTAMP
-        WHERE item_id = ? AND entity_id = ?
-      `).bind(safeStock, rop, autoPr, id, entityId).run()
+        WHERE item_id = ? AND entity_id = ? AND IFNULL(storage_zone_id, 0) = IFNULL(?, 0)
+      `).bind(safeStock, rop, autoPr, id, entityId, zoneId).run()
     } else {
       await c.env.DB.prepare(`
         INSERT INTO inventory (item_id, quantity, safe_stock, reorder_point, auto_pr_enabled, entity_id, storage_zone_id, last_updated)
         VALUES (?, 0, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-      `).bind(id, safeStock, rop, autoPr, entityId, item.storage_zone_id).run()
+      `).bind(id, safeStock, rop, autoPr, entityId, zoneId).run()
     }
 
     return c.json({
@@ -288,12 +314,17 @@ inventoryRouter.post('/receipts', async (c) => {
     `).bind(receiptNumber, receipt_date, supplier, totalAmount, user?.id || 1, notes || null, entityId).run()
     const receiptId = receiptResult.meta.last_row_id
 
-    // Insert receipt items + upsert inventory (batch)
+    // Insert receipt items + upsert inventory (batch) — 품목 기본창고 행에 누적
+    // 표현식 UNIQUE(item, entity, IFNULL(zone,0))라 ON CONFLICT(item, entity)는 무효 →
+    //   INSERT OR IGNORE(기본창고 0행 보장) + zone 키 UPDATE 누적. (배치 내 동일품목 중복라인도 안전)
+    const itemIds = items.map((item: any) => item.item_id)
+    const zoneMap = await getItemDefaultZones(c.env.DB, itemIds)
+
     const receiptStmts: any[] = []
     for (const item of items) {
       const { item_id, quantity, unit_price, location } = item
       const amount = quantity * unit_price
-      const zoneId = await getItemZoneId(c.env.DB, item_id)
+      const zoneId = zoneMap.get(item_id) ?? null
 
       receiptStmts.push(
         c.env.DB.prepare(`
@@ -301,34 +332,37 @@ inventoryRouter.post('/receipts', async (c) => {
           VALUES (?, ?, ?, ?, ?, ?)
         `).bind(receiptId, item_id, quantity, unit_price, amount, location || null),
         c.env.DB.prepare(`
-          INSERT INTO inventory (item_id, quantity, entity_id, storage_zone_id, last_updated)
-          VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
-          ON CONFLICT(item_id, entity_id) DO UPDATE SET quantity = quantity + excluded.quantity, last_updated = CURRENT_TIMESTAMP
-        `).bind(item_id, quantity, entityId, zoneId)
+          INSERT OR IGNORE INTO inventory (item_id, quantity, entity_id, storage_zone_id, last_updated)
+          VALUES (?, 0, ?, ?, CURRENT_TIMESTAMP)
+        `).bind(item_id, entityId, zoneId),
+        c.env.DB.prepare(`
+          UPDATE inventory SET quantity = quantity + ?, last_updated = CURRENT_TIMESTAMP
+          WHERE item_id = ? AND entity_id = ? AND IFNULL(storage_zone_id, 0) = IFNULL(?, 0)
+        `).bind(quantity, item_id, entityId, zoneId)
       )
     }
     await c.env.DB.batch(receiptStmts)
 
-    // Get updated balances + insert transactions
-    const itemIds = items.map((item: any) => item.item_id)
+    // Get updated balances (창고별) + insert transactions (storage_zone_id 기록)
     const ph = itemIds.map(() => '?').join(',')
     const { results: balances } = await c.env.DB.prepare(
-      `SELECT item_id, quantity FROM inventory WHERE item_id IN (${ph}) AND entity_id = ?`
+      `SELECT item_id, storage_zone_id, quantity FROM inventory WHERE item_id IN (${ph}) AND entity_id = ?`
     ).bind(...itemIds, entityId).all()
-    const balanceMap: Record<number, number> = {}
-    for (const b of balances) balanceMap[b.item_id as number] = b.quantity as number
+    const balanceMap: Record<string, number> = {}
+    for (const b of balances) balanceMap[`${b.item_id}:${(b.storage_zone_id as number | null) ?? 0}`] = b.quantity as number
 
     await c.env.DB.batch(
       items.map((item: any) => {
         const amount = item.quantity * item.unit_price
+        const zoneId = zoneMap.get(item.item_id) ?? null
         return c.env.DB.prepare(`
           INSERT INTO inventory_transactions
           (item_id, transaction_type, transaction_date, quantity, unit_price, total_amount,
-           reference_type, reference_id, balance_after, reason, handled_by, entity_id)
-          VALUES (?, 'IN', ?, ?, ?, ?, 'PURCHASE', ?, ?, '입고', ?, ?)
+           reference_type, reference_id, balance_after, reason, handled_by, entity_id, storage_zone_id)
+          VALUES (?, 'IN', ?, ?, ?, ?, 'PURCHASE', ?, ?, '입고', ?, ?, ?)
         `).bind(
           item.item_id, receipt_date, item.quantity, item.unit_price, amount,
-          receiptId, balanceMap[item.item_id] || 0, user?.id || 1, entityId
+          receiptId, balanceMap[`${item.item_id}:${zoneId ?? 0}`] || 0, user?.id || 1, entityId, zoneId
         )
       })
     )
@@ -435,15 +469,17 @@ inventoryRouter.patch('/receipts/:id/inspection-decision',
       //   received_quantity로 빼면 거부분까지 과차감되어 정상재고가 훼손됨(#373 동반수정).
       const invItems = (receiptItems || []).filter((ri) => ri.item_id && (ri.accepted_quantity as number) > 0)
 
+      // 역분개 대상 창고 = 품목 기본창고(정방향 입고가 거기 누적했으므로). NULL=미배정.
+      const cancelZoneMap = await getItemDefaultZones(c.env.DB, invItems.map((ri) => ri.item_id as number))
       // 차감 전 현재 잔량 1회 조회 → balance_after를 메모리에서 산출(= max(0, 현재−합격분)) → 차감 후 read 제거
-      const cancelBalMap: Record<number, number> = {}
+      const cancelBalMap: Record<string, number> = {}
       if (invItems.length > 0) {
         const cancelItemIds = invItems.map((ri) => ri.item_id)
         const cancelPh = cancelItemIds.map(() => '?').join(',')
         const { results: cancelBalances } = await c.env.DB.prepare(
-          `SELECT item_id, quantity FROM inventory WHERE item_id IN (${cancelPh}) AND entity_id = ?`
+          `SELECT item_id, storage_zone_id, quantity FROM inventory WHERE item_id IN (${cancelPh}) AND entity_id = ?`
         ).bind(...cancelItemIds, cancelEntityId).all()
-        for (const b of cancelBalances) cancelBalMap[b.item_id as number] = b.quantity as number
+        for (const b of cancelBalances) cancelBalMap[`${b.item_id}:${(b.storage_zone_id as number | null) ?? 0}`] = b.quantity as number
       }
 
       // ── #373: PO 측 상태 롤백 사전계산 (po_id 있는 입고만; standalone 입고는 PO 없음) ──
@@ -494,19 +530,20 @@ inventoryRouter.patch('/receipts/:id/inspection-decision',
       const ops: D1PreparedStatement[] = []
       for (const ri of invItems) {
         const acc = ri.accepted_quantity as number
-        const before = cancelBalMap[ri.item_id as number] || 0
+        const zoneId = cancelZoneMap.get(ri.item_id as number) ?? null
+        const before = cancelBalMap[`${ri.item_id}:${zoneId ?? 0}`] || 0
         const after = Math.max(0, before - acc)
         ops.push(
-          c.env.DB.prepare(`UPDATE inventory SET quantity = MAX(0, quantity - ?), last_updated = CURRENT_TIMESTAMP WHERE item_id = ? AND entity_id = ?`)
-            .bind(acc, ri.item_id, cancelEntityId)
+          c.env.DB.prepare(`UPDATE inventory SET quantity = MAX(0, quantity - ?), last_updated = CURRENT_TIMESTAMP WHERE item_id = ? AND entity_id = ? AND IFNULL(storage_zone_id, 0) = IFNULL(?, 0)`)
+            .bind(acc, ri.item_id, cancelEntityId, zoneId)
         )
         ops.push(
           c.env.DB.prepare(
-            `INSERT INTO inventory_transactions (item_id, transaction_type, quantity, balance_after, reference_type, reference_id, notes, handled_by, transaction_date, entity_id)
-             VALUES (?, 'OUT', ?, ?, 'RECEIPT_CANCEL', ?, ?, ?, datetime('now'), ?)`
+            `INSERT INTO inventory_transactions (item_id, transaction_type, quantity, balance_after, reference_type, reference_id, notes, handled_by, transaction_date, entity_id, storage_zone_id)
+             VALUES (?, 'OUT', ?, ?, 'RECEIPT_CANCEL', ?, ?, ?, datetime('now'), ?, ?)`
           ).bind(
             ri.item_id, acc, after,
-            Number(id), '입고 취소 역분개(합격분)', c.get('user')?.id || null, cancelEntityId
+            Number(id), '입고 취소 역분개(합격분)', c.get('user')?.id || null, cancelEntityId, zoneId
           )
         )
       }
@@ -629,18 +666,21 @@ inventoryRouter.post('/releases', async (c) => {
     `).bind(releaseNumber, release_date, reference_type, reference_id || null, user?.id || 1, notes || null, entityId).run()
     const releaseId = releaseResult.meta.last_row_id
 
-    // 재고 일괄 확인 (entity_id 조건)
+    // 출고 차감 대상 창고 = 품목 기본창고 (UP1). NULL=미배정 행에서 차감.
     const releaseItemIds = items.map((item: any) => item.item_id)
+    const relZoneMap = await getItemDefaultZones(c.env.DB, releaseItemIds)
     const relPh = releaseItemIds.map(() => '?').join(',')
     const { results: stockRows } = await c.env.DB.prepare(
-      `SELECT item_id, quantity FROM inventory WHERE item_id IN (${relPh}) AND entity_id = ?`
+      `SELECT item_id, storage_zone_id, quantity FROM inventory WHERE item_id IN (${relPh}) AND entity_id = ?`
     ).bind(...releaseItemIds, entityId).all()
-    const stockMap: Record<number, number> = {}
-    for (const s of stockRows) stockMap[s.item_id as number] = s.quantity as number
+    const stockMap: Record<string, number> = {}
+    for (const s of stockRows) stockMap[`${s.item_id}:${(s.storage_zone_id as number | null) ?? 0}`] = s.quantity as number
+    // 품목 기본창고 행 재고
+    const zoneStock = (itemId: number) => stockMap[`${itemId}:${relZoneMap.get(itemId) ?? 0}`] || 0
 
-    // 재고 부족 사전 검증
+    // 재고 부족 사전 검증 (기본창고 기준)
     for (const item of items) {
-      const currentStock = stockMap[item.item_id] || 0
+      const currentStock = zoneStock(item.item_id)
       if (currentStock < item.quantity) {
         return c.json({
           success: false,
@@ -649,22 +689,23 @@ inventoryRouter.post('/releases', async (c) => {
       }
     }
 
-    // Insert release items + update inventory (entity_id 조건)
+    // Insert release items + update inventory (zone 조건)
     const releaseStmts = items.flatMap((item: any) => {
-      const newStock = (stockMap[item.item_id] || 0) - item.quantity
+      const zoneId = relZoneMap.get(item.item_id) ?? null
+      const newStock = zoneStock(item.item_id) - item.quantity
       return [
         c.env.DB.prepare(
           `INSERT INTO inventory_release_items (release_id, item_id, quantity) VALUES (?, ?, ?)`
         ).bind(releaseId, item.item_id, item.quantity),
         c.env.DB.prepare(
-          `UPDATE inventory SET quantity = ?, last_updated = CURRENT_TIMESTAMP WHERE item_id = ? AND entity_id = ?`
-        ).bind(newStock, item.item_id, entityId),
+          `UPDATE inventory SET quantity = ?, last_updated = CURRENT_TIMESTAMP WHERE item_id = ? AND entity_id = ? AND IFNULL(storage_zone_id, 0) = IFNULL(?, 0)`
+        ).bind(newStock, item.item_id, entityId, zoneId),
         c.env.DB.prepare(`
           INSERT INTO inventory_transactions
           (item_id, transaction_type, transaction_date, quantity, reference_type,
-           reference_id, balance_after, reason, handled_by, entity_id)
-          VALUES (?, 'OUT', ?, ?, ?, ?, ?, '출고', ?, ?)
-        `).bind(item.item_id, release_date, -item.quantity, reference_type, reference_id || null, newStock, user?.id || 1, entityId)
+           reference_id, balance_after, reason, handled_by, entity_id, storage_zone_id)
+          VALUES (?, 'OUT', ?, ?, ?, ?, ?, '출고', ?, ?, ?)
+        `).bind(item.item_id, release_date, -item.quantity, reference_type, reference_id || null, newStock, user?.id || 1, entityId, zoneId)
       ]
     })
     await c.env.DB.batch(releaseStmts)
@@ -672,18 +713,21 @@ inventoryRouter.post('/releases', async (c) => {
     // Phase 6: 출고 후 안전재고 이하 품목 알림
     try {
       const lowItems = items.filter((item: any) => {
-        const newQty = (stockMap[item.item_id] || 0) - item.quantity
+        const newQty = zoneStock(item.item_id) - item.quantity
         const safeStock = Number(item.safe_stock) || 0
         return safeStock > 0 && newQty <= safeStock
       })
       if (lowItems.length > 0) {
-        // 안전재고 정보 조회
+        // 안전재고 정보 조회 — 품목 총재고(SUM) vs 안전재고(MAX=기본창고) 집계
         const lowItemIds = lowItems.map((i: any) => i.item_id)
         const lowPh = lowItemIds.map(() => '?').join(',')
         const { results: lowDetails } = await c.env.DB.prepare(`
-          SELECT i.id as item_id, i.item_name, i.unit, COALESCE(inv.quantity, 0) as current_stock, COALESCE(inv.safe_stock, 0) as safe_stock
+          SELECT i.id as item_id, i.item_name, i.unit,
+                 COALESCE(SUM(inv.quantity), 0) as current_stock,
+                 COALESCE(MAX(inv.safe_stock), 0) as safe_stock
           FROM items i LEFT JOIN inventory inv ON i.id = inv.item_id AND inv.entity_id = ?
           WHERE i.id IN (${lowPh})
+          GROUP BY i.id
         `).bind(entityId, ...lowItemIds).all()
         await triggerLowStockAlert(c.env.DB, (lowDetails || []).map((d: any) => ({
           item_id: d.item_id, item_name: d.item_name, current_stock: d.current_stock,
@@ -716,18 +760,20 @@ inventoryRouter.post('/adjustments', async (c) => {
 
     const entityId = getEntityId(c) || 1
     const adjQty = Number(adjustment_quantity)
+    // 조정 대상 창고 = 품목 기본창고 (NULL=미배정)
+    const zoneId = await getItemDefaultZone(c.env.DB, item_id)
 
     const invRow = await c.env.DB.prepare(
-      `SELECT quantity FROM inventory WHERE item_id = ? AND entity_id = ?`
-    ).bind(item_id, entityId).first<{ quantity: number }>()
+      `SELECT quantity FROM inventory WHERE item_id = ? AND entity_id = ? AND IFNULL(storage_zone_id, 0) = IFNULL(?, 0)`
+    ).bind(item_id, entityId, zoneId).first<{ quantity: number }>()
 
     const quantityBefore = invRow?.quantity || 0
 
     if (invRow) {
       const updateResult = await c.env.DB.prepare(`
         UPDATE inventory SET quantity = quantity + ?, last_updated = CURRENT_TIMESTAMP
-        WHERE item_id = ? AND entity_id = ? AND (quantity + ?) >= 0
-      `).bind(adjQty, item_id, entityId, adjQty).run()
+        WHERE item_id = ? AND entity_id = ? AND IFNULL(storage_zone_id, 0) = IFNULL(?, 0) AND (quantity + ?) >= 0
+      `).bind(adjQty, item_id, entityId, zoneId, adjQty).run()
 
       if (adjQty < 0 && updateResult.meta.changes === 0) {
         return c.json({ success: false, message: '재고 부족으로 조정할 수 없습니다' }, 400)
@@ -736,7 +782,6 @@ inventoryRouter.post('/adjustments', async (c) => {
       if (adjQty < 0) {
         return c.json({ success: false, message: '재고 부족으로 조정할 수 없습니다' }, 400)
       }
-      const zoneId = await getItemZoneId(c.env.DB, item_id)
       await c.env.DB.prepare(`
         INSERT INTO inventory (item_id, quantity, entity_id, storage_zone_id, last_updated)
         VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
@@ -744,8 +789,8 @@ inventoryRouter.post('/adjustments', async (c) => {
     }
 
     const newStock = await c.env.DB.prepare(
-      `SELECT quantity FROM inventory WHERE item_id = ? AND entity_id = ?`
-    ).bind(item_id, entityId).first<{ quantity: number }>()
+      `SELECT quantity FROM inventory WHERE item_id = ? AND entity_id = ? AND IFNULL(storage_zone_id, 0) = IFNULL(?, 0)`
+    ).bind(item_id, entityId, zoneId).first<{ quantity: number }>()
     const quantityAfter = newStock?.quantity ?? 0
     // #167: quantityBefore를 실제 변경량 기반으로 계산 (race condition 방지)
     const actualBefore = quantityAfter - adjQty
@@ -762,10 +807,10 @@ inventoryRouter.post('/adjustments', async (c) => {
       c.env.DB.prepare(`
         INSERT INTO inventory_transactions
         (item_id, transaction_type, transaction_date, quantity,
-         reference_type, balance_after, reason, handled_by, notes, entity_id)
-        VALUES (?, ?, ?, ?, 'ADJUSTMENT', ?, ?, ?, ?, ?)
+         reference_type, balance_after, reason, handled_by, notes, entity_id, storage_zone_id)
+        VALUES (?, ?, ?, ?, 'ADJUSTMENT', ?, ?, ?, ?, ?, ?)
       `).bind(item_id, transactionType, adjustment_date, adjustment_quantity,
-        quantityAfter, reason, user?.id || 1, notes || null, entityId),
+        quantityAfter, reason, user?.id || 1, notes || null, entityId, zoneId),
     ])
 
     return c.json({
@@ -789,11 +834,15 @@ inventoryRouter.get('/stats/summary', async (c) => {
       `SELECT COUNT(*) as total FROM items WHERE is_purchase_item = 1 AND is_active = 1`
     ).first<{ total: number }>()
 
+    // 다중행 → 품목 총재고(SUM) vs 안전재고(MAX) 기준 품목 수 (창고 중복 카운트 방지)
     const lowStockRow = await c.env.DB.prepare(`
-      SELECT COUNT(*) as count FROM items i
-      JOIN inventory inv ON i.id = inv.item_id ${entityId > 0 ? 'AND inv.entity_id = ?' : ''}
-      WHERE i.is_purchase_item = 1 AND i.is_active = 1
-        AND inv.quantity <= inv.safe_stock AND inv.safe_stock > 0
+      SELECT COUNT(*) as count FROM (
+        SELECT i.id FROM items i
+        JOIN inventory inv ON i.id = inv.item_id ${entityId > 0 ? 'AND inv.entity_id = ?' : ''}
+        WHERE i.is_purchase_item = 1 AND i.is_active = 1
+        GROUP BY i.id
+        HAVING SUM(inv.quantity) <= MAX(inv.safe_stock) AND MAX(inv.safe_stock) > 0
+      )
     `).bind(...(entityId > 0 ? [entityId] : [])).first<{ count: number }>()
 
     const valueRow = await c.env.DB.prepare(`
@@ -848,11 +897,12 @@ inventoryRouter.get('/dashboard/zones', async (c) => {
     zoneSql += ' ORDER BY sz.entity_id, sz.sort_order, sz.zone_name'
     const { results: zones } = await c.env.DB.prepare(zoneSql).bind(...zoneParams).all()
 
-    // 2. 창고별 품목 재고 현황
+    // 2. 창고별 품목 재고 현황 (0396 다중행: 실제 재고 창고 inv.storage_zone_id 기준 — 품목 기본창고 아님)
     let itemSql = `
       SELECT
         i.id as item_id, i.item_code, i.item_name, i.category, i.sub_category,
-        i.unit, i.base_price, i.storage_zone_id,
+        i.unit, i.base_price,
+        inv.storage_zone_id as storage_zone_id,
         sz.zone_name, sz.entity_id as zone_entity_id,
         COALESCE(inv.quantity, 0) as current_stock,
         COALESCE(inv.safe_stock, 0) as safe_stock,
@@ -863,25 +913,25 @@ inventoryRouter.get('/dashboard/zones', async (c) => {
           ELSE 'OK'
         END as stock_status
       FROM items i
-      LEFT JOIN storage_zones sz ON i.storage_zone_id = sz.id
     `
 
-    // entity_id 조건부 JOIN
+    // entity_id 조건부 JOIN (다중행: 품목의 모든 창고 재고 행 → 각 행이 실제 창고에 그룹핑)
     if (entityId > 0) {
       itemSql += ` LEFT JOIN inventory inv ON i.id = inv.item_id AND inv.entity_id = ?`
       params.push(entityId)
     } else {
       itemSql += ` LEFT JOIN inventory inv ON i.id = inv.item_id`
     }
+    itemSql += ` LEFT JOIN storage_zones sz ON inv.storage_zone_id = sz.id`
 
     itemSql += ` WHERE i.is_active = 1 AND i.is_purchase_item = 1`
 
     if (entityId > 0) {
-      itemSql += ' AND (sz.entity_id = ? OR i.storage_zone_id IS NULL)'
+      itemSql += ' AND (sz.entity_id = ? OR inv.storage_zone_id IS NULL)'
       params.push(entityId)
     }
     if (zoneFilter) {
-      itemSql += ' AND i.storage_zone_id = ?'
+      itemSql += ' AND inv.storage_zone_id = ?'
       params.push(Number(zoneFilter))
     }
     itemSql += ' ORDER BY sz.sort_order, sz.zone_name, i.category, i.item_name'
@@ -923,6 +973,60 @@ inventoryRouter.get('/dashboard/zones', async (c) => {
     })
   } catch (error: any) {
     console.error('dashboard/zones error:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다' }, 500)
+  }
+})
+
+// POST /transfer — 창고 간 재고 이동 (0396 다중행: from 창고 차감 + to 창고 가산, 원자 batch)
+// 입고=품목 기본창고 고정이므로 창고별 분배의 주 수단.
+inventoryRouter.post('/transfer', async (c) => {
+  try {
+    const body = await c.req.json<{ item_id?: number; from_zone_id?: number | null; to_zone_id?: number | null; quantity?: number; notes?: string }>()
+    const itemId = Number(body.item_id)
+    const fromZone = body.from_zone_id != null && body.from_zone_id !== ('' as any) ? Number(body.from_zone_id) : null
+    const toZone = body.to_zone_id != null && body.to_zone_id !== ('' as any) ? Number(body.to_zone_id) : null
+    const qty = Number(body.quantity)
+    const entityId = getEntityId(c) || 1
+    const userId = c.get('user')?.id || null
+
+    if (!itemId || !qty || qty <= 0) {
+      return c.json({ success: false, error: '품목과 양수 수량이 필요합니다' }, 400)
+    }
+    if ((fromZone ?? 0) === (toZone ?? 0)) {
+      return c.json({ success: false, error: '출발 창고와 도착 창고가 같습니다' }, 400)
+    }
+
+    // 출발 창고 재고 확인 (entity·zone 키)
+    const src = await c.env.DB.prepare(
+      `SELECT quantity FROM inventory WHERE item_id = ? AND entity_id = ? AND IFNULL(storage_zone_id,0) = IFNULL(?,0)`
+    ).bind(itemId, entityId, fromZone).first<{ quantity: number }>()
+    const srcQty = src?.quantity ?? 0
+    if (srcQty < qty) {
+      return c.json({ success: false, error: `출발 창고 재고 부족 (현재 ${srcQty})` }, 400)
+    }
+
+    const dst = await c.env.DB.prepare(
+      `SELECT quantity FROM inventory WHERE item_id = ? AND entity_id = ? AND IFNULL(storage_zone_id,0) = IFNULL(?,0)`
+    ).bind(itemId, entityId, toZone).first<{ quantity: number }>()
+    const srcAfter = srcQty - qty
+    const dstAfter = (dst?.quantity ?? 0) + qty
+
+    await c.env.DB.batch([
+      c.env.DB.prepare(`UPDATE inventory SET quantity = quantity - ?, last_updated = CURRENT_TIMESTAMP WHERE item_id = ? AND entity_id = ? AND IFNULL(storage_zone_id,0) = IFNULL(?,0)`)
+        .bind(qty, itemId, entityId, fromZone),
+      c.env.DB.prepare(`INSERT OR IGNORE INTO inventory (item_id, entity_id, storage_zone_id, quantity) VALUES (?, ?, ?, 0)`)
+        .bind(itemId, entityId, toZone),
+      c.env.DB.prepare(`UPDATE inventory SET quantity = quantity + ?, last_updated = CURRENT_TIMESTAMP WHERE item_id = ? AND entity_id = ? AND IFNULL(storage_zone_id,0) = IFNULL(?,0)`)
+        .bind(qty, itemId, entityId, toZone),
+      c.env.DB.prepare(`INSERT INTO inventory_transactions (item_id, transaction_type, transaction_date, quantity, balance_after, reference_type, reason, notes, handled_by, entity_id, storage_zone_id) VALUES (?, 'TRANSFER_OUT', datetime('now'), ?, ?, 'TRANSFER', '창고이동', ?, ?, ?, ?)`)
+        .bind(itemId, -qty, srcAfter, body.notes || null, userId, entityId, fromZone),
+      c.env.DB.prepare(`INSERT INTO inventory_transactions (item_id, transaction_type, transaction_date, quantity, balance_after, reference_type, reason, notes, handled_by, entity_id, storage_zone_id) VALUES (?, 'TRANSFER_IN', datetime('now'), ?, ?, 'TRANSFER', '창고이동', ?, ?, ?, ?)`)
+        .bind(itemId, qty, dstAfter, body.notes || null, userId, entityId, toZone),
+    ])
+
+    return c.json({ success: true, data: { item_id: itemId, from_zone_id: fromZone, to_zone_id: toZone, quantity: qty, from_balance: srcAfter, to_balance: dstAfter } })
+  } catch (error) {
+    console.error('inventory transfer error:', error)
     return c.json({ success: false, error: '서버 오류가 발생했습니다' }, 500)
   }
 })

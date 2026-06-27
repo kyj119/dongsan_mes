@@ -1,0 +1,44 @@
+# 재고 통합 재설계 — 창고별 분리 × 다단위(multi-UOM)
+
+작성: 2026-06-27 / 상태: 설계(합의·핸드오프 대기) / **두 spec 통합·대체**: [창고별 분리](2026-06-27-warehouse-stock-separation.md) + [다단위](2026-06-27-multi-uom-inventory.md)
+
+## 왜 통합인가
+두 작업이 같은 inventory 테이블·쓰기경로(autoDeductInventory·po-receive·inventory.ts·receipt_items)·표시·발주를 동시에 건드림 → 분리 진행 시 충돌. **개념은 직교**: 다단위=*어떻게 측정*(통/롤→L/cm), 창고=*어디에 있나*(zone). 한 모델로 합치면 일관.
+
+## 통합 모델
+**재고 행 = (item_id, entity_id, storage_zone_id) UNIQUE 다중행.** 각 행:
+- `quantity`: 품목 `base_unit` 단위. CONTINUOUS=cm/yd, PACK=미개봉 포장 개수.
+- `safe_stock`/`reorder_point`/`auto_pr_enabled`: **행(창고)별** → 창고별 독립 발주.
+- 품목 속성(행 아님): `items.unit`(관리단위 통/롤), `items.base_unit`(L/cm/yd), `items.pack_size`(1통=20L), `items.stock_mode`(PACK|CONTINUOUS).
+- NULL zone 방지: **법인별 "미지정 창고" 센티넬**(storage_zones.is_default 활용) — 모든 행이 실 zone 보유.
+
+직교 2축: **zone(위치) × uom(측정)**. 한 행 = "품목 I, 법인 E, 창고 Z에 base_unit X."
+
+## 확정 결정 (양 spec + 사용자)
+- 창고 단위 = storage_zone(배치도 facility_zone 매핑, 영역 편집 UI 신설).
+- 입고 창고 = **품목 기본창고(items.storage_zone_id) 고정**. 창고 간 분배 = **이동(transfer)** 기능.
+- 소모 출처 = card.equipment→zone→창고 자동(폴백 기본창고→미지정).
+- 원가 = 전역 이동평균단가 × 창고별 소모량 집계.
+- 다단위: 미개봉만 재고·개봉=전부소모(PACK), 시트류 cm 정밀(CONTINUOUS). **현수막원단(yd)·판재(장·BOARD) 현행 동작 불변(회귀 0).**
+
+## 스키마 (통합 마이그)
+- (기존 진행분 보존) `items` += base_unit·pack_size·stock_mode (다단위 0395), 잉크 통 품목 (0394).
+- (신규 0396) `inventory` UNIQUE `idx_inventory_item_entity` DROP → `(item_id, entity_id, storage_zone_id)`. 법인별 미지정창고 INSERT + 기존 inventory NULL zone → 미지정 백필.
+- (신규 0396) `inventory_transactions` += storage_zone_id, `inventory_count_items` += storage_zone_id.
+- (다단위) `inventory_auto_deductions` += deducted_base, `inventory_receipt_items` += unit.
+
+## Phase (통합, 의존순)
+- **UP1. 모델 foundation** — 단위컬럼(items) + inventory 다중행(zone)+미지정창고+transactions/count_items zone + receipt_items.unit + auto_deductions.deducted_base. 입고 zone키잉(기본창고)+단위환산. **모든 쓰기경로 zone 타깃팅**(다중행=`WHERE item+entity` 모호 → 전부 zone 조건). 재고현황 SUM/GROUP+페이지네이션+표시환산. 실사 재작업(count_items zone). 창고 간 이동(transfer).
+- **UP2. 통합 소모** — autoDeduct를 **base_unit 정밀(cm/yd) + 공간인식(zone 결정) 동시**. ⚠️회귀(현수막·판재 불변) 필수. postProcessing·stockShip·scan 동반. 창고별 소모집계.
+- **UP3. 배치도 영역 편집 UI**(facility_zones CRUD·그리기/크기) + 재고 표시환산(PACK 통/L·CONTINUOUS 롤).
+- **UP4. 창고별 발주**(MRP 창고별 임계치) + 다단위 발주(포장↔base).
+- **UP5. 원가분석**(창고/공정/주문별 소모원가) + FIFO entity 버그 수정.
+
+## 영향
+- ~16파일(창고분리) + items/표시/발주(다단위) 교집합. 핵심 위험: autoDeductInventory.ts(양쪽), po-receive.ts, inventory.ts GET/, inventoryCount.ts.
+- facility.ts(P2 정합 수정)는 다중행 그대로 동작.
+
+## ⚠️ 핸드오프 전제 (구현 전 필수)
+1. **다단위 세션 중단** + 그 WIP(마이그 0394/0395, items.ts) **커밋**으로 보존 → 이 세션이 그 위에서 통합 구현(0396~). 미커밋 상태로 동시진행 시 충돌·유실.
+2. 양 source spec(warehouse/multi-uom)은 본 통합 spec으로 대체(상태 표기).
+3. 매 Phase: build+typecheck+smoke + 로컬 E2E + worktree 격리 배포.

@@ -3,6 +3,7 @@ import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
 import { getEntityId, entityFilter } from '../utils/entityFilter'
 import { getNextEntitySeqNumber, withSeqRetry } from '../utils/sequenceGenerator'
+import { getItemDefaultZones } from '../utils/inventoryZone'
 
 const returns = new Hono<HonoEnv>()
 returns.use('*', authMiddleware)
@@ -120,20 +121,30 @@ returns.patch('/:id/status', requireRole('ADMIN', 'MANAGER'), async (c) => {
 
     if (returnItems.length > 0) {
       const eid = getEntityId(c) || 1
+      // 0396: 창고별 다중행 — 품목 기본창고로 환원 (NULL=미배정). 키 = (item, entity, zone)
+      const zoneMap = await getItemDefaultZones(c.env.DB, returnItems.map(ri => ri.item_id))
       // #164: balance_after를 서브쿼리로 읽어 race condition 방지
       await c.env.DB.batch(
-        returnItems.flatMap(ri => [
-          c.env.DB.prepare(
-            `UPDATE inventory SET quantity = quantity + ?, last_updated = CURRENT_TIMESTAMP WHERE item_id = ? AND entity_id = ?`
-          ).bind(ri.quantity, ri.item_id, eid),
-          c.env.DB.prepare(`
-            INSERT INTO inventory_transactions
-              (item_id, transaction_type, quantity, unit_price, total_amount,
-               reference_type, reference_id, reason, transaction_date, balance_after, entity_id)
-            VALUES (?, 'IN', ?, 0, 0, 'RETURN', ?, '반품 입고', CURRENT_TIMESTAMP,
-              (SELECT quantity FROM inventory WHERE item_id = ? AND entity_id = ?), ?)
-          `).bind(ri.item_id, ri.quantity, id, ri.item_id, eid, eid),
-        ])
+        returnItems.flatMap(ri => {
+          const zoneId = zoneMap.get(ri.item_id) ?? null
+          return [
+            // 대상 창고 행이 없으면 생성 (UNIQUE=IFNULL(zone,0) → 미배정 NULL 행과 구분)
+            c.env.DB.prepare(
+              `INSERT OR IGNORE INTO inventory (item_id, entity_id, storage_zone_id, quantity) VALUES (?, ?, ?, 0)`
+            ).bind(ri.item_id, eid, zoneId),
+            c.env.DB.prepare(
+              `UPDATE inventory SET quantity = quantity + ?, last_updated = CURRENT_TIMESTAMP
+               WHERE item_id = ? AND entity_id = ? AND IFNULL(storage_zone_id,0) = IFNULL(?,0)`
+            ).bind(ri.quantity, ri.item_id, eid, zoneId),
+            c.env.DB.prepare(`
+              INSERT INTO inventory_transactions
+                (item_id, transaction_type, quantity, unit_price, total_amount,
+                 reference_type, reference_id, reason, transaction_date, balance_after, entity_id, storage_zone_id)
+              VALUES (?, 'IN', ?, 0, 0, 'RETURN', ?, '반품 입고', CURRENT_TIMESTAMP,
+                (SELECT quantity FROM inventory WHERE item_id = ? AND entity_id = ? AND IFNULL(storage_zone_id,0) = IFNULL(?,0)), ?, ?)
+            `).bind(ri.item_id, ri.quantity, id, ri.item_id, eid, zoneId, eid, zoneId),
+          ]
+        })
       )
     }
   }

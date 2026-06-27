@@ -7,6 +7,7 @@ import { Hono } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { authMiddleware } from '../middleware/auth'
 import { entityFilter, getEntityId } from '../utils/entityFilter'
+import { getItemDefaultZone } from '../utils/inventoryZone'
 
 const scanRouter = new Hono<HonoEnv>()
 scanRouter.use('/*', authMiddleware)
@@ -226,20 +227,22 @@ scanRouter.post('/action', async (c) => {
           return c.json({ success: false, error: '수량을 입력하세요.' }, 400)
         }
         const entityId = getEntityId(c) || 1
+        // UP1: 창고별 다중행. 입고 대상 창고 = 품목 기본창고 (NULL=미배정). 0396 UNIQUE=(item,entity,IFNULL(zone,0)).
+        const zoneId = await getItemDefaultZone(c.env.DB, body.id)
         // #412 + #169 + #289: 재고는 inventory.quantity (items에 current_stock 컬럼 없음).
         // upsert(행 부재 대비) + 감사 기록을 단일 batch로 원자 처리. balance_after는 upsert 후 잔량 서브쿼리.
         await c.env.DB.batch([
           c.env.DB.prepare(`
-            INSERT INTO inventory (item_id, quantity, entity_id, last_updated)
-            VALUES (?, ?, ?, CURRENT_TIMESTAMP)
-            ON CONFLICT(item_id, entity_id) DO UPDATE SET quantity = quantity + excluded.quantity, last_updated = CURRENT_TIMESTAMP
-          `).bind(body.id, body.quantity, entityId),
+            INSERT INTO inventory (item_id, quantity, entity_id, storage_zone_id, last_updated)
+            VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(item_id, entity_id, IFNULL(storage_zone_id, 0)) DO UPDATE SET quantity = quantity + excluded.quantity, last_updated = CURRENT_TIMESTAMP
+          `).bind(body.id, body.quantity, entityId, zoneId),
           c.env.DB.prepare(`
             INSERT INTO inventory_transactions
-            (item_id, transaction_type, transaction_date, quantity, reference_type, balance_after, reason, handled_by, entity_id)
-            VALUES (?, 'IN', DATE('now'), ?, 'SCAN', (SELECT quantity FROM inventory WHERE item_id = ? AND entity_id = ?), ?, ?, ?)
-          `).bind(body.id, body.quantity, body.id, entityId,
-            body.notes || '스캔 입고', user?.id || 1, entityId)
+            (item_id, transaction_type, transaction_date, quantity, reference_type, balance_after, reason, handled_by, entity_id, storage_zone_id)
+            VALUES (?, 'IN', DATE('now'), ?, 'SCAN', (SELECT quantity FROM inventory WHERE item_id = ? AND entity_id = ? AND IFNULL(storage_zone_id, 0) = IFNULL(?, 0)), ?, ?, ?, ?)
+          `).bind(body.id, body.quantity, body.id, entityId, zoneId,
+            body.notes || '스캔 입고', user?.id || 1, entityId, zoneId)
         ])
 
         return c.json({ success: true, message: `${body.quantity}개 입고 처리되었습니다.` })
@@ -250,11 +253,14 @@ scanRouter.post('/action', async (c) => {
           return c.json({ success: false, error: '수량을 입력하세요.' }, 400)
         }
         const entityId2 = getEntityId(c) || 1
+        // UP1: 창고별 다중행. 차감 대상 창고 = 품목 기본창고 (NULL=미배정).
+        // TODO(UP2): 소모 출처 창고를 스캔 위치/장비→구역 파생으로 확장 (현재는 품목 기본창고 interim).
+        const zoneId2 = await getItemDefaultZone(c.env.DB, body.id)
         // #412 + #164: inventory.quantity 차감 (atomic UPDATE WHERE, 부족/행부재 시 changes=0 → 재고부족)
         const result = await c.env.DB.prepare(`
           UPDATE inventory SET quantity = quantity - ?, last_updated = CURRENT_TIMESTAMP
-          WHERE item_id = ? AND entity_id = ? AND quantity >= ?
-        `).bind(body.quantity, body.id, entityId2, body.quantity).run()
+          WHERE item_id = ? AND entity_id = ? AND IFNULL(storage_zone_id, 0) = IFNULL(?, 0) AND quantity >= ?
+        `).bind(body.quantity, body.id, entityId2, zoneId2, body.quantity).run()
 
         if (!result.meta.changes || result.meta.changes === 0) {
           return c.json({ success: false, error: '재고가 부족합니다.' }, 400)
@@ -263,10 +269,10 @@ scanRouter.post('/action', async (c) => {
         // #169 + #289: 감사 기록 — balance_after를 서브쿼리로 (중간 SELECT 제거, race 차단)
         await c.env.DB.prepare(`
           INSERT INTO inventory_transactions
-          (item_id, transaction_type, transaction_date, quantity, reference_type, balance_after, reason, handled_by, entity_id)
-          VALUES (?, 'OUT', DATE('now'), ?, 'SCAN', (SELECT quantity FROM inventory WHERE item_id = ? AND entity_id = ?), ?, ?, ?)
-        `).bind(body.id, body.quantity, body.id, entityId2,
-          body.notes || '스캔 출고', user?.id || 1, entityId2).run()
+          (item_id, transaction_type, transaction_date, quantity, reference_type, balance_after, reason, handled_by, entity_id, storage_zone_id)
+          VALUES (?, 'OUT', DATE('now'), ?, 'SCAN', (SELECT quantity FROM inventory WHERE item_id = ? AND entity_id = ? AND IFNULL(storage_zone_id, 0) = IFNULL(?, 0)), ?, ?, ?, ?)
+        `).bind(body.id, body.quantity, body.id, entityId2, zoneId2,
+          body.notes || '스캔 출고', user?.id || 1, entityId2, zoneId2).run()
 
         return c.json({ success: true, message: `${body.quantity}개 출고 처리되었습니다.` })
       }

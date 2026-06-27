@@ -1,4 +1,5 @@
 import type { D1Database } from '@cloudflare/workers-types'
+import { getItemDefaultZone } from './inventoryZone'
 
 /**
  * Print event OK 상태 → 원단 재고 자동 차감
@@ -178,15 +179,19 @@ export async function autoDeductInventory(
       if (orderRow?.entity_id) entityId = orderRow.entity_id
     }
 
+    // UP1: 소모 대상 창고 = 자재 품목 기본창고 (NULL=미배정). 재고 행 키 = (item, entity, zone).
+    // TODO(UP2): 소모 출처 창고를 card.equipment→구역 파생으로 확장 (현재는 품목 기본창고 interim).
+    const zoneId = await getItemDefaultZone(db, selectedMaterial.material_item_id)
+
     // 담당 법인 재고 row 부재 시 0으로 생성 → UPDATE silent miss 방지(음수 차감 허용)
     await db
-      .prepare(`INSERT OR IGNORE INTO inventory (item_id, entity_id, quantity) VALUES (?, ?, 0)`)
-      .bind(selectedMaterial.material_item_id, entityId)
+      .prepare(`INSERT OR IGNORE INTO inventory (item_id, entity_id, storage_zone_id, quantity) VALUES (?, ?, ?, 0)`)
+      .bind(selectedMaterial.material_item_id, entityId, zoneId)
       .run()
 
     const inventoryRow = await db
-      .prepare(`SELECT quantity FROM inventory WHERE item_id = ? AND entity_id = ?`)
-      .bind(selectedMaterial.material_item_id, entityId)
+      .prepare(`SELECT quantity FROM inventory WHERE item_id = ? AND entity_id = ? AND IFNULL(storage_zone_id, 0) = IFNULL(?, 0)`)
+      .bind(selectedMaterial.material_item_id, entityId, zoneId)
       .first() as any
 
     const inventoryBefore = inventoryRow?.quantity ?? 0
@@ -196,9 +201,9 @@ export async function autoDeductInventory(
       .prepare(
         `UPDATE inventory
          SET quantity = quantity - ?, last_updated = CURRENT_TIMESTAMP
-         WHERE item_id = ? AND entity_id = ?`
+         WHERE item_id = ? AND entity_id = ? AND IFNULL(storage_zone_id, 0) = IFNULL(?, 0)`
       )
-      .bind(deductedLengthYd, selectedMaterial.material_item_id, entityId)
+      .bind(deductedLengthYd, selectedMaterial.material_item_id, entityId, zoneId)
       .run()
 
     const inventoryAfter = inventoryBefore - deductedLengthYd
@@ -240,9 +245,9 @@ export async function autoDeductInventory(
       if (insertError?.message?.includes('UNIQUE')) {
         await db
           .prepare(
-            `UPDATE inventory SET quantity = quantity + ?, last_updated = CURRENT_TIMESTAMP WHERE item_id = ? AND entity_id = ?`
+            `UPDATE inventory SET quantity = quantity + ?, last_updated = CURRENT_TIMESTAMP WHERE item_id = ? AND entity_id = ? AND IFNULL(storage_zone_id, 0) = IFNULL(?, 0)`
           )
-          .bind(deductedLengthYd, selectedMaterial.material_item_id, entityId)
+          .bind(deductedLengthYd, selectedMaterial.material_item_id, entityId, zoneId)
           .run()
         return { success: true, deducted: false, reason: 'already deducted (UNIQUE constraint)' }
       }

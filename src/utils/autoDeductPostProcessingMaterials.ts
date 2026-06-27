@@ -1,4 +1,5 @@
 import type { D1Database } from '@cloudflare/workers-types'
+import { getItemDefaultZone } from './inventoryZone'
 
 /**
  * 출고 완료 시 후가공(코팅 등) 소비 자재 자동차감
@@ -98,19 +99,23 @@ export async function autoDeductPostProcessingMaterials(
 
           const dedYd = (oh / 914.4) * copy
 
+          // UP1: 소모 대상 창고 = 코팅지 품목 기본창고 (NULL=미배정). 재고 행 키 = (item, entity, zone).
+          // TODO(UP2): 소모 출처 창고를 card.equipment→구역 파생으로 확장 (현재는 품목 기본창고 interim).
+          const zoneId = await getItemDefaultZone(db, mat.id)
+
           await db
-            .prepare(`INSERT OR IGNORE INTO inventory (item_id, entity_id, quantity) VALUES (?, ?, 0)`)
-            .bind(mat.id, entityId)
+            .prepare(`INSERT OR IGNORE INTO inventory (item_id, entity_id, storage_zone_id, quantity) VALUES (?, ?, ?, 0)`)
+            .bind(mat.id, entityId, zoneId)
             .run()
           const invRow = await db
-            .prepare(`SELECT quantity FROM inventory WHERE item_id = ? AND entity_id = ?`)
-            .bind(mat.id, entityId)
+            .prepare(`SELECT quantity FROM inventory WHERE item_id = ? AND entity_id = ? AND IFNULL(storage_zone_id, 0) = IFNULL(?, 0)`)
+            .bind(mat.id, entityId, zoneId)
             .first() as any
           const before = invRow?.quantity ?? 0
 
           await db
-            .prepare(`UPDATE inventory SET quantity = quantity - ?, last_updated = CURRENT_TIMESTAMP WHERE item_id = ? AND entity_id = ?`)
-            .bind(dedYd, mat.id, entityId)
+            .prepare(`UPDATE inventory SET quantity = quantity - ?, last_updated = CURRENT_TIMESTAMP WHERE item_id = ? AND entity_id = ? AND IFNULL(storage_zone_id, 0) = IFNULL(?, 0)`)
+            .bind(dedYd, mat.id, entityId, zoneId)
             .run()
 
           const after = before - dedYd
@@ -138,8 +143,8 @@ export async function autoDeductPostProcessingMaterials(
             // UNIQUE 위반 = 동시 중복 → 차감 롤백
             if (insertError?.message?.includes('UNIQUE')) {
               await db
-                .prepare(`UPDATE inventory SET quantity = quantity + ? WHERE item_id = ? AND entity_id = ?`)
-                .bind(dedYd, mat.id, entityId)
+                .prepare(`UPDATE inventory SET quantity = quantity + ? WHERE item_id = ? AND entity_id = ? AND IFNULL(storage_zone_id, 0) = IFNULL(?, 0)`)
+                .bind(dedYd, mat.id, entityId, zoneId)
                 .run()
             } else {
               throw insertError

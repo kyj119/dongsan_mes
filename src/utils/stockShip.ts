@@ -1,4 +1,5 @@
 import type { D1Database } from '@cloudflare/workers-types'
+import { getItemDefaultZone } from './inventoryZone'
 
 /**
  * 출고 시 기성품/유통(production_required=0) 라인의 재고를 차감한다.
@@ -41,25 +42,29 @@ export async function deductStockLinesOnShip(
     ).bind(orderId, ln.item_id, lineEntity).first()
     if (dup) continue
 
+    // UP1: 소모 대상 창고 = 품목 기본창고 (NULL=미배정). 재고 행 키 = (item, entity, zone).
+    // TODO(UP2): 소모 출처 창고를 card.equipment→구역 파생으로 확장 (현재는 품목 기본창고 interim).
+    const zoneId = await getItemDefaultZone(db, ln.item_id)
+
     // 담당 법인 재고 row 부재 시 0으로 생성(음수 차감 허용) → UPDATE silent miss 방지
     await db.prepare(
-      `INSERT OR IGNORE INTO inventory (item_id, entity_id, quantity) VALUES (?, ?, 0)`
-    ).bind(ln.item_id, lineEntity).run()
+      `INSERT OR IGNORE INTO inventory (item_id, entity_id, storage_zone_id, quantity) VALUES (?, ?, ?, 0)`
+    ).bind(ln.item_id, lineEntity, zoneId).run()
 
     // #164 패턴: atomic UPDATE, 음수 허용
     await db.prepare(
-      `UPDATE inventory SET quantity = quantity - ?, last_updated = CURRENT_TIMESTAMP WHERE item_id = ? AND entity_id = ?`
-    ).bind(ln.qty, ln.item_id, lineEntity).run()
+      `UPDATE inventory SET quantity = quantity - ?, last_updated = CURRENT_TIMESTAMP WHERE item_id = ? AND entity_id = ? AND IFNULL(storage_zone_id, 0) = IFNULL(?, 0)`
+    ).bind(ln.qty, ln.item_id, lineEntity, zoneId).run()
     const afterRow = await db.prepare(
-      `SELECT quantity FROM inventory WHERE item_id = ? AND entity_id = ?`
-    ).bind(ln.item_id, lineEntity).first<{ quantity: number }>()
+      `SELECT quantity FROM inventory WHERE item_id = ? AND entity_id = ? AND IFNULL(storage_zone_id, 0) = IFNULL(?, 0)`
+    ).bind(ln.item_id, lineEntity, zoneId).first<{ quantity: number }>()
     const after = afterRow?.quantity ?? 0
     if (after < 0) {
       console.warn(`[stockShip] ⚠️ 재고 음수: item=${ln.item_id}, entity=${lineEntity}, 잔량=${after}, order=${orderId}`)
     }
     await db.prepare(
-      `INSERT INTO inventory_transactions (item_id, transaction_type, quantity, reference_type, reference_id, balance_after, notes, transaction_date, entity_id)
-       VALUES (?, 'OUT', ?, 'ORDER', ?, ?, '기성/유통 출고 차감', date('now'), ?)`
-    ).bind(ln.item_id, ln.qty, orderId, after, lineEntity).run()
+      `INSERT INTO inventory_transactions (item_id, transaction_type, quantity, reference_type, reference_id, balance_after, notes, transaction_date, entity_id, storage_zone_id)
+       VALUES (?, 'OUT', ?, 'ORDER', ?, ?, '기성/유통 출고 차감', date('now'), ?, ?)`
+    ).bind(ln.item_id, ln.qty, orderId, after, lineEntity, zoneId).run()
   }
 }

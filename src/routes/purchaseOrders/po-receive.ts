@@ -128,18 +128,23 @@ poReceiveRouter.post('/:id/receive', async (c) => {
     const recvItemIds = [...new Set(
       receiveItems.map((ri: any) => poItemMap.get(ri.po_item_id)?.item_id).filter((x: any) => x != null)
     )] as number[]
+    // 0396 다중행: invQtyMap = 각 품목 기본창고(items.storage_zone_id) 행의 현재고만.
+    //   itemZoneMap을 먼저 채운 뒤 (item,entity,기본창고) 행만 채택(IFNULL(...,0) 동등). 다른 창고 행은 입고 정책상 무시.
     const invQtyMap = new Map<number, number>()
     const itemZoneMap = new Map<number, number | null>()
     if (recvItemIds.length > 0) {
       const iph = recvItemIds.map(() => '?').join(',')
-      const { results: invRows } = await c.env.DB.prepare(
-        `SELECT item_id, quantity FROM inventory WHERE entity_id = ? AND item_id IN (${iph})`
-      ).bind(poEntityIdPrefetch, ...recvItemIds).all<{ item_id: number; quantity: number }>()
-      for (const r of (invRows || [])) invQtyMap.set(Number(r.item_id), Number(r.quantity))
       const { results: zoneRows } = await c.env.DB.prepare(
         `SELECT id, storage_zone_id FROM items WHERE id IN (${iph})`
       ).bind(...recvItemIds).all<{ id: number; storage_zone_id: number | null }>()
       for (const r of (zoneRows || [])) itemZoneMap.set(Number(r.id), r.storage_zone_id ?? null)
+      const { results: invRows } = await c.env.DB.prepare(
+        `SELECT item_id, storage_zone_id, quantity FROM inventory WHERE entity_id = ? AND item_id IN (${iph})`
+      ).bind(poEntityIdPrefetch, ...recvItemIds).all<{ item_id: number; storage_zone_id: number | null; quantity: number }>()
+      for (const r of (invRows || [])) {
+        const itemId = Number(r.item_id)
+        if ((r.storage_zone_id ?? 0) === (itemZoneMap.get(itemId) ?? 0)) invQtyMap.set(itemId, Number(r.quantity))
+      }
     }
 
     for (const ri of receiveItems) {
@@ -155,15 +160,15 @@ poReceiveRouter.post('/:id/receive', async (c) => {
       let hasInventoryRow = false
       const poEntityId = poEntityIdPrefetch
       if (poItem.item_id && acceptedQty > 0) {
-        // #389: prefetch된 inventory 맵 사용 (루프 내 재고 미변경 → 건별 조회와 동일)
+        // 0396 다중행: 기본창고 행 기준 현재고 (invQtyMap = 기본창고 행만 보유)
         hasInventoryRow = invQtyMap.has(poItem.item_id as number)
         const currentStock = invQtyMap.get(poItem.item_id as number) || 0
         balanceAfter = currentStock + acceptedQty
       }
 
-      // 품목의 storage_zone_id (#389: prefetch된 items 맵 사용)
+      // 품목 기본창고 (0396): UPDATE WHERE zone·INSERT·tx 모두 사용 → hasInventoryRow 무관 항상 설정
       let itemZoneId: number | null = null
-      if (poItem.item_id && !hasInventoryRow) {
+      if (poItem.item_id) {
         itemZoneId = itemZoneMap.get(poItem.item_id as number) ?? null
       }
 
@@ -274,8 +279,9 @@ poReceiveRouter.post('/:id/receive', async (c) => {
         if (p.itemId && p.acceptedQty > 0) {
           if (p.hasInventoryRow) {
             stmts.push(c.env.DB.prepare(`
-              UPDATE inventory SET quantity = ?, last_updated = CURRENT_TIMESTAMP WHERE item_id = ? AND entity_id = ?
-            `).bind(p.balanceAfter, p.itemId, p.entityId))
+              UPDATE inventory SET quantity = ?, last_updated = CURRENT_TIMESTAMP
+              WHERE item_id = ? AND entity_id = ? AND IFNULL(storage_zone_id,0)=IFNULL(?,0)
+            `).bind(p.balanceAfter, p.itemId, p.entityId, p.zoneId))
           } else {
             stmts.push(c.env.DB.prepare(`
               INSERT INTO inventory (item_id, quantity, entity_id, storage_zone_id, last_updated) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
@@ -286,12 +292,12 @@ poReceiveRouter.post('/:id/receive', async (c) => {
             INSERT INTO inventory_transactions (
               item_id, transaction_type, transaction_date, quantity,
               unit_price, total_amount, reference_type, reference_id,
-              balance_after, reason, handled_by, entity_id
-            ) VALUES (?, 'IN', ?, ?, ?, ?, 'PURCHASE', ?, ?, '발주입고(합격분)', ?, ?)
+              balance_after, reason, handled_by, entity_id, storage_zone_id
+            ) VALUES (?, 'IN', ?, ?, ?, ?, 'PURCHASE', ?, ?, '발주입고(합격분)', ?, ?, ?)
           `).bind(
             p.itemId, receiptDate, p.acceptedQty, p.unitPrice,
             p.acceptedQty * p.unitPrice, receiptId, p.balanceAfter, user?.id || 1,
-            getEntityId(c) || 1
+            getEntityId(c) || 1, p.zoneId
           ))
         }
       }

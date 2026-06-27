@@ -98,9 +98,9 @@ inventoryCountRouter.post('/', async (c) => {
     let itemQuery: string
     const params: any[] = []
     if (zoneId) {
-      // 구역 실사: 해당 구역·법인 재고가 있는 품목만 (INNER JOIN)
+      // 구역 실사: 해당 구역·법인 재고가 있는 품목만 (INNER JOIN). 라인 창고 = 그 구역(inv.storage_zone_id=zoneId)
       itemQuery = `
-        SELECT i.id, i.item_code, i.item_name, i.unit, i.category, inv.quantity
+        SELECT i.id, i.item_code, i.item_name, i.unit, i.category, inv.storage_zone_id, inv.quantity
         FROM items i
         JOIN inventory inv ON i.id = inv.item_id AND inv.entity_id = ? AND inv.storage_zone_id = ?
         WHERE i.is_active = 1 AND i.is_purchase_item = 1
@@ -108,10 +108,12 @@ inventoryCountRouter.post('/', async (c) => {
       `
       params.push(countEntityId, zoneId)
     } else {
+      // 0396: 창고별 다중행 — 품목 기본창고(items.storage_zone_id) 행 1개만 매칭 (LEFT JOIN 중복 라인 방지)
       itemQuery = `
-        SELECT i.id, i.item_code, i.item_name, i.unit, i.category, inv.quantity
+        SELECT i.id, i.item_code, i.item_name, i.unit, i.category, i.storage_zone_id, inv.quantity
         FROM items i
-        LEFT JOIN inventory inv ON i.id = inv.item_id AND inv.entity_id = ?
+        LEFT JOIN inventory inv ON inv.item_id = i.id AND inv.entity_id = ?
+          AND IFNULL(inv.storage_zone_id,0) = IFNULL(i.storage_zone_id,0)
         WHERE i.is_active = 1 AND i.is_purchase_item = 1
       `
       params.push(countEntityId)
@@ -122,15 +124,15 @@ inventoryCountRouter.post('/', async (c) => {
       itemQuery += ' ORDER BY i.category, i.item_name'
     }
 
-    const { results: items } = await c.env.DB.prepare(itemQuery).bind(...params).all<{ id: number; item_code: string; item_name: string; unit: string; category: string; quantity: number | null }>()
+    const { results: items } = await c.env.DB.prepare(itemQuery).bind(...params).all<{ id: number; item_code: string; item_name: string; unit: string; category: string; storage_zone_id: number | null; quantity: number | null }>()
 
     if (items && items.length > 0) {
       await c.env.DB.batch(
         items.map((item) =>
           c.env.DB.prepare(`
-            INSERT INTO inventory_count_items (count_id, item_id, system_quantity, unit)
-            VALUES (?, ?, ?, ?)
-          `).bind(countId, item.id, item.quantity || 0, item.unit || 'YD')
+            INSERT INTO inventory_count_items (count_id, item_id, system_quantity, unit, storage_zone_id)
+            VALUES (?, ?, ?, ?, ?)
+          `).bind(countId, item.id, item.quantity || 0, item.unit || 'YD', item.storage_zone_id ?? null)
         )
       )
     }
@@ -174,9 +176,11 @@ inventoryCountRouter.get('/:id', async (c) => {
 
     const { results: items } = await c.env.DB.prepare(`
       SELECT ci.id, ci.count_id, ci.item_id, ci.system_quantity, ci.counted_quantity, ci.difference, ci.difference_pct, ci.unit, ci.notes,
+             ci.storage_zone_id, sz.zone_name AS storage_zone_name,
              i.item_code, i.item_name
       FROM inventory_count_items ci
       JOIN items i ON ci.item_id = i.id
+      LEFT JOIN storage_zones sz ON ci.storage_zone_id = sz.id
       WHERE ci.count_id = ?
       ORDER BY i.item_code
     `).bind(id).all()
@@ -292,7 +296,7 @@ inventoryCountRouter.post('/:id/add-items', async (c) => {
       return c.json({ success: true, added: 0 })
     }
 
-    // 각 품목의 현재 재고·단위 조회 (system_quantity 산정) — IN 청크 80개
+    // 각 품목의 미배정(NULL zone) 재고·단위 조회 (system_quantity 산정) — 미배정 품목 편입이므로 NULL행 기준. IN 청크 80개
     const invMap = new Map<number, { quantity: number; unit: string }>()
     for (let i = 0; i < toAdd.length; i += 80) {
       const chunk = toAdd.slice(i, i + 80)
@@ -300,27 +304,40 @@ inventoryCountRouter.post('/:id/add-items', async (c) => {
       const { results } = await c.env.DB.prepare(`
         SELECT i.id AS item_id, COALESCE(inv.quantity, 0) AS quantity, i.unit
         FROM items i
-        LEFT JOIN inventory inv ON inv.item_id = i.id AND inv.entity_id = ?
+        LEFT JOIN inventory inv ON inv.item_id = i.id AND inv.entity_id = ? AND inv.storage_zone_id IS NULL
         WHERE i.id IN (${placeholders})
       `).bind(entityId, ...chunk).all<{ item_id: number; quantity: number; unit: string | null }>()
       for (const r of (results || [])) invMap.set(r.item_id, { quantity: r.quantity || 0, unit: r.unit || 'YD' })
     }
 
-    // batch: INSERT count_item (+ assign_zone면 inventory.storage_zone_id UPDATE)
+    // batch: INSERT count_item(storage_zone_id=구역) (+ assign_zone면 미배정 NULL행을 구역으로 이동)
     const stmts = []
     for (const itemId of toAdd) {
       const inv = invMap.get(itemId) || { quantity: 0, unit: 'YD' }
       stmts.push(
         c.env.DB.prepare(`
-          INSERT INTO inventory_count_items (count_id, item_id, system_quantity, unit)
-          VALUES (?, ?, ?, ?)
-        `).bind(countId, itemId, inv.quantity, inv.unit)
+          INSERT INTO inventory_count_items (count_id, item_id, system_quantity, unit, storage_zone_id)
+          VALUES (?, ?, ?, ?, ?)
+        `).bind(countId, itemId, inv.quantity, inv.unit, zoneId)
       )
       if (assignZone && zoneId) {
+        // 0396: 미배정(NULL zone) 행을 대상 창고로 이동. 대상 행이 이미 있으면 수량 합산 후 NULL행 삭제.
         stmts.push(
+          // 대상 창고 행 보장 (없으면 0으로 생성)
           c.env.DB.prepare(
-            `UPDATE inventory SET storage_zone_id = ? WHERE item_id = ? AND entity_id = ?`
-          ).bind(zoneId, itemId, entityId)
+            `INSERT OR IGNORE INTO inventory (item_id, entity_id, storage_zone_id, quantity) VALUES (?, ?, ?, 0)`
+          ).bind(itemId, entityId, zoneId),
+          // NULL행 수량을 대상 창고 행에 합산
+          c.env.DB.prepare(
+            `UPDATE inventory SET quantity = quantity + COALESCE(
+               (SELECT quantity FROM inventory n WHERE n.item_id = ? AND n.entity_id = ? AND n.storage_zone_id IS NULL), 0),
+               last_updated = CURRENT_TIMESTAMP
+             WHERE item_id = ? AND entity_id = ? AND IFNULL(storage_zone_id,0) = IFNULL(?,0)`
+          ).bind(itemId, entityId, itemId, entityId, zoneId),
+          // NULL행 삭제 (이동 완료)
+          c.env.DB.prepare(
+            `DELETE FROM inventory WHERE item_id = ? AND entity_id = ? AND storage_zone_id IS NULL`
+          ).bind(itemId, entityId)
         )
       }
     }
@@ -375,34 +392,42 @@ inventoryCountRouter.patch('/:id/approve', async (c) => {
       return c.json({ success: false, error: 'Count not found or not submitted' }, 400)
     }
 
-    // count_items 조회
+    // count_items 조회 (0396: storage_zone_id 포함 — 그 창고 행을 보정)
     const { results: countItems } = await c.env.DB.prepare(`
-      SELECT id, count_id, item_id, system_quantity, counted_quantity, difference, difference_pct, unit, notes FROM inventory_count_items WHERE count_id = ?
-    `).bind(countId).all<{ item_id: number; system_quantity: number; counted_quantity: number }>()
+      SELECT id, count_id, item_id, system_quantity, counted_quantity, difference, difference_pct, unit, notes, storage_zone_id FROM inventory_count_items WHERE count_id = ?
+    `).bind(countId).all<{ item_id: number; system_quantity: number; counted_quantity: number; storage_zone_id: number | null }>()
 
     // #152: 재고 보정 + 상태 변경을 단일 batch로 원자화 (이중 조정 방지)
     // #356: 호출자 entity가 아닌 실사 행의 entity로 보정 (타법인 재고 오조정 방지)
     const entityId = count.entity_id || getEntityId(c) || 1
-    const batchStmts = (countItems || []).flatMap((item) => [
-      c.env.DB.prepare(`
-        UPDATE inventory SET quantity = ?, last_updated = CURRENT_TIMESTAMP
-        WHERE item_id = ? AND entity_id = ?
-      `).bind(item.counted_quantity, item.item_id, entityId),
-      // #394: inventory_transactions 실제 스키마로 재작성 (inventory.ts:505 패턴).
-      // 기존 컬럼셋(quantity_before/after/change/created_by)은 inventory_adjustments 것 — 혼동 버그.
-      c.env.DB.prepare(`
-        INSERT INTO inventory_transactions (item_id, transaction_type, quantity, balance_after, reference_type, reference_id, reason, notes, handled_by, transaction_date, entity_id)
-        VALUES (?, 'ADJUST', ?, ?, 'STOCK_COUNT', ?, 'STOCK_COUNT', ?, ?, datetime('now'), ?)
-      `).bind(
-        item.item_id,
-        item.counted_quantity - item.system_quantity, // quantity: 조정 변화량(부호 유지)
-        item.counted_quantity,                         // balance_after: 보정 후 잔량
-        countId,                                       // reference_id
-        `Inventory Count ID: ${countId}`,              // notes
-        c.get('user')?.id || null,                     // #394: handled_by는 users(id) FK — 'system' 문자열은 FK 위반(prod FK 강제). JWT user.id 또는 NULL(inventory.ts:505 패턴)
-        entityId
-      )
-    ])
+    const batchStmts = (countItems || []).flatMap((item) => {
+      const zoneId = item.storage_zone_id ?? null
+      return [
+        // 0396: 대상 창고 행이 없으면 생성 (이후 UPDATE가 counted로 보정). 키 = (item, entity, zone)
+        c.env.DB.prepare(
+          `INSERT OR IGNORE INTO inventory (item_id, entity_id, storage_zone_id, quantity) VALUES (?, ?, ?, 0)`
+        ).bind(item.item_id, entityId, zoneId),
+        c.env.DB.prepare(`
+          UPDATE inventory SET quantity = ?, last_updated = CURRENT_TIMESTAMP
+          WHERE item_id = ? AND entity_id = ? AND IFNULL(storage_zone_id,0) = IFNULL(?,0)
+        `).bind(item.counted_quantity, item.item_id, entityId, zoneId),
+        // #394: inventory_transactions 실제 스키마로 재작성 (inventory.ts:505 패턴).
+        // 기존 컬럼셋(quantity_before/after/change/created_by)은 inventory_adjustments 것 — 혼동 버그.
+        c.env.DB.prepare(`
+          INSERT INTO inventory_transactions (item_id, transaction_type, quantity, balance_after, reference_type, reference_id, reason, notes, handled_by, transaction_date, entity_id, storage_zone_id)
+          VALUES (?, 'ADJUST', ?, ?, 'STOCK_COUNT', ?, 'STOCK_COUNT', ?, ?, datetime('now'), ?, ?)
+        `).bind(
+          item.item_id,
+          item.counted_quantity - item.system_quantity, // quantity: 조정 변화량(부호 유지)
+          item.counted_quantity,                         // balance_after: 보정 후 잔량
+          countId,                                       // reference_id
+          `Inventory Count ID: ${countId}`,              // notes
+          c.get('user')?.id || null,                     // #394: handled_by는 users(id) FK — 'system' 문자열은 FK 위반(prod FK 강제). JWT user.id 또는 NULL(inventory.ts:505 패턴)
+          entityId,
+          zoneId                                         // 0396: 창고별 거래 추적
+        )
+      ]
+    })
     // 상태 변경을 batch 마지막에 포함 — 보정+상태가 동시에 반영
     batchStmts.push(
       c.env.DB.prepare(`UPDATE inventory_counts SET status = 'APPROVED', approved_by = ?, approved_at = CURRENT_TIMESTAMP WHERE id = ? AND status = 'SUBMITTED'`).bind(userId, countId)
