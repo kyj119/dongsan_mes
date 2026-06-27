@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 6 -->
-<!-- last_run_at: 2026-06-27T22:00:00+09:00 -->
+<!-- last_run_area: 1 -->
+<!-- last_run_at: 2026-06-28T02:00:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -16,6 +16,17 @@
 
 > 📦 **과거 사이클 로그**는 `IMPROVEMENT_BACKLOG_ARCHIVE.md`/git 히스토리로 이관됨 (2026-06-10 1차 분리, 2026-06-25 2차 트림 343KB→192KB, **2026-06-25T10:00 3차 트림 — 06-17~06-23 사이클 로그를 git 히스토리로 이관: node_modules 부재 세션에서 commit-gate(typecheck) 차단으로 API 푸시 필요 → 파일 축소로 비용 절감 + 256KB 한도 회복**). 신규 로그는 계속 이 파일 상단에 추가. 본 파일은 직전 2일치(06-24~) 사이클 로그 + 영구 참조 섹션(Approved/New/Auto-fixed/Done/Rejected/FP 카탈로그)만 유지. 이관분은 `git log -p -- IMPROVEMENT_BACKLOG.md`로 복원 가능.
 
+> **Area 1 프로덕션 헬스 (2026-06-28T02:00):**
+> - **방법**: 사이클 초반 `npm ci`(node_modules 0→81패키지, #439 commit-gate 자가복구) 후 git fetch-before-compare(origin force-update `4993fa7→2243332`, fetch 후 **HEAD=origin/main `2243332` 0/0 동기**, 워킹트리 clean, 디버전스 0). egress 차단(prod 직접 fetch·Playwright·verify 도달 불가)이라 CI/E2E는 GitHub Actions API로, 회귀 위험은 정적 standing scan으로 검증. **사이클 churn = 직전 Area1(`29d5636`, 06-27T02:00) 이후 = 본 하루치 사이클 Area2~6 + #450 자동수정**(`b512292`~`2243332`) — 코드 churn 실측은 `priceManagement.js` **1줄(#450 패널토글, 직전 Area2/3 감사완료)뿐**, 나머지 전부 auto-improve 문서. 신규 마이그 **0건**(0389-0392 직전 사이클 감사완료, 본 churn에 마이그 유입 0).
+> - **🟢 CI/E2E = 전부 GREEN**: 최근 30런(`actions_list` main) **전수 `completed/success`**(실패/취소 0) — HEAD `2243332`(Area6) Deploy + Daily D1 Backup 모두 success, 본 하루치 Area2~6 Deploy(`b512292`~`dd77047`) 전부 success. Deploy 워크플로(post-deploy smoke 포함) fail 0. **신규 prod-breaking 회귀 0**.
+> - **🟢 DROP/RENAME 마이그 write-path standing scan(SKILL line 40) = N/A**: `29d5636..HEAD` 신규 마이그 **0건**(`git diff --name-only -- migrations/` 빈 결과) → DROP TABLE/DROP COLUMN 트리거 자체 없음. items inline-FK 깨짐류(#430 smoke 맹점) 위험 0.
+> - **🟢 마이그 번호 중복 standing scan(#438) = net-new 0**: `uniq -d`(4자리 prefix) = `0080`·`0193`·`0327` — **0080b/0193b는 의도적 suffix 컨벤션**(별개 파일 = FP), `0327`만 진짜 동일번호(기존 prod-적용 추정, #438 규칙상 정리대상 아님). 최신 0387-0392 전부 고유번호, 신규 중복 유입 0.
+> - **🟢 prod↔main 디버전스(#422) = clean**: HEAD=origin/main `2243332` 0/0 동기 → 미push 픽스 0. owner close 코멘트 "배포 완료" 주장 신규 0(done=139 유지, 최근 closure 전무).
+> - **🟢 backlog↔GitHub sync**: open auto-improve **실측 9건**(#452·#451·#450·#447·#444·#443·#442·#441·#439, list_issues 전수) = 직전 Area6 stats `new=9` **정합**. owner 신규 close/머지 0(done=139·rejected=3 유지). 본 사이클 신규 이슈 0(헬스 GREEN·회귀 0).
+> - **🧬 SKILL 강화 0건**: 기존 standing scan(DROP write-path line 40·마이그중복 #438·디버전스 #422·smoke 맹점 #430)이 본 사이클 전수 커버. 코드 churn은 직전 Area2~6이 이미 전수 감사(net-new 0)라 신규 탐지 패턴 불필요.
+> - **이상 없음(CI·DROP마이그·중복·디버전스·sync)**, 신규 발견 0. git 동기 0/0·워킹트리 clean, sync 9=9.
+> - 자동 수정 0건(헬스 GREEN·코드 churn은 직전 사이클 감사완료), 신규 이슈 0건, SKILL 강화 0건, done-sync(변동 0, new 9 유지), **신선 각도 — Area 1 프로덕션 헬스: CI 30런 전수 GREEN·본 하루치 Area2~6 배포 전부 success·직전 Area1 이후 신규 마이그 0건(DROP 스캔 N/A)·디버전스 0, 프로덕션 무중단. 코드 churn 실측 priceManagement.js 1줄(#450, 직전 Area2/3 감사완료)뿐이라 신규 prod-breaking 회귀 표면 0. 부수: 사이클 초반 `npm ci`로 #439 commit-gate 자가복구(node_modules 0→정상).**
+>
 > **Area 6 자기 진화 (2026-06-27T22:00):**
 > - **방법**: 사이클 초반 `npm ci`(node_modules 0→81패키지, #439 commit-gate 자가복구) 후 git fetch-before-compare(origin force-update `4993fa7→dd77047`, fetch 후 **HEAD=origin/main `dd77047` 0/0 동기**, 워킹트리 clean, 디버전스 0). egress 차단(prod/Playwright/wrangler 도달 불가)이라 정적 자동스캔. **churn 퇴화 사이클**: 직전 Area5(`dd2116a`, 06-27T18:00, #451 가격정책 rules IDOR) 이후 owner 코드 churn = **0**(유일 변경 `dd77047`=본 에이전트 Area5 문서 커밋). 신선 각도 = **#451(latest)이 "#437 형제-비대칭 IDOR" 클래스 4번째 인스턴스**(#437 PUT·#444 콜백·#447 read·#451 rules) → 누적 4회+기계적 탐지라 **수동 레시피(SKILL line 191)를 A-027(명시-SELECT 존재성) 동급 자동 standing scan으로 승격** 시도 + 그 검증 과정에서 코드베이스 전수 IDOR 잔존분 격리.
 > - **🔴 신규 이슈 #452 (bug, small) — 형제-비대칭 IDOR 클러스터 5모듈(net-new, 자동스캔 발견)**: 새 자동스캔이 **churn 무관 코드베이스 전수**로 23회 Area5 수동감사(항상 churn-한정)가 놓친 net-new IDOR 5모듈 격리 — ① `clients.ts:1129/:1173` PATCH/DELETE `/:id/portal-account`(client_accounts, **타법인 거래처 포털 비번 재설정=credential**, `clientDetail.js:552/:570` LIVE) ② `accounts-payable.ts:429/:500/:648` PUT/DELETE purchase-payment·DELETE purchase-adjustment(금융+`clients.purchase_balance` 조작, `ledger.js:1132/:1145` LIVE) ③ `messageTemplates.ts:59/:91` PATCH/DELETE(GET `:16` entityFilter·POST `:50` getEntityId 격리인데 변경만 bare, `messages.js:634/:653` LIVE) ④ `year-end.ts:376` confirm ⑤ `ar-dunning.ts:75` collection-log. 전부 형제(GET 목록/POST 생성)는 entity 격리인데 단건 mutate만 bare `WHERE id=?`=#437/#349 byte-동형. **issue-only**(IDOR=owner 워크플로 #349/#356/#360/#437/#444/#447 + egress 차단).
