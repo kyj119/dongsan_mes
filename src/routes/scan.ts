@@ -253,8 +253,8 @@ scanRouter.post('/action', async (c) => {
           return c.json({ success: false, error: '수량을 입력하세요.' }, 400)
         }
         const entityId2 = getEntityId(c) || 1
-        // UP1: 창고별 다중행. 차감 대상 창고 = 품목 기본창고 (NULL=미배정).
-        // TODO(UP2): 소모 출처 창고를 스캔 위치/장비→구역 파생으로 확장 (현재는 품목 기본창고 interim).
+        // 차감 대상 창고 = 품목 기본창고 (NULL=미배정). 창고별 다중행.
+        // UP2 제외: 수동 스캔 출고는 스캔 위치/장비를 캡처하지 않음 → 품목 기본창고가 정확.
         const zoneId2 = await getItemDefaultZone(c.env.DB, body.id)
         // #412 + #164: inventory.quantity 차감 (atomic UPDATE WHERE, 부족/행부재 시 changes=0 → 재고부족)
         const result = await c.env.DB.prepare(`

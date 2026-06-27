@@ -40,3 +40,49 @@ export async function getItemDefaultZones(db: D1Database, itemIds: number[]): Pr
   }
   return map
 }
+
+// ── UP2: 공간인식 소모 (장비 위치 → 소모 창고) ──────────────────────────────
+// 데이터 체인: equipment.zone_id(→facility_zones, 0072) → storage_zones.facility_zone_id(0391)
+// 한 배치도 구역에 창고가 여럿(N:1)일 수 있어 결정 규칙 필요: 차감법인 정합 + is_default 우선.
+// 폴백(spec): 장비zone → 품목 기본창고 → 미배정(NULL). 장비 미배선이면 현행(품목 기본창고)과 동일 → 회귀 안전.
+
+/**
+ * 장비가 배치된 구역(facility_zone)에 매핑된 창고(storage_zone)를 해석.
+ * @returns storage_zone.id | null (장비 미지정·zone 미배선·entity 정합 창고 부재 시)
+ */
+export async function resolveEquipmentZone(
+  db: D1Database,
+  equipmentId: string | null | undefined,
+  entityId: number
+): Promise<number | null> {
+  if (!equipmentId) return null
+  // 차감 법인(entityId)의 창고만 — 같은 물리 구역에 타법인 창고가 있어도 침범 금지.
+  // 여럿이면 is_default 우선, 그다음 가장 낮은 id (결정적).
+  const row = await db
+    .prepare(
+      `SELECT sz.id
+         FROM equipment e
+         JOIN storage_zones sz ON sz.facility_zone_id = e.zone_id
+        WHERE e.id = ? AND e.zone_id IS NOT NULL
+          AND sz.is_active = 1 AND sz.entity_id = ?
+        ORDER BY sz.is_default DESC, sz.id ASC
+        LIMIT 1`
+    )
+    .bind(equipmentId, entityId)
+    .first<{ id: number }>()
+  return row?.id ?? null
+}
+
+/**
+ * 소모(차감) 대상 창고 해석 — 장비 위치 우선, 없으면 품목 기본창고, 없으면 미배정(NULL).
+ * 인쇄 자동차감 등 "소모 장비가 명확한" 경로에서 사용. 장비 신호가 없는 경로(출고 피킹·수동 스캔)는
+ * getItemDefaultZone을 직접 쓸 것(잘못된 장비 zone을 끌어오면 더 부정확).
+ */
+export async function resolveDeductionZone(
+  db: D1Database,
+  opts: { equipmentId: string | null | undefined; itemId: number; entityId: number }
+): Promise<number | null> {
+  const eqZone = await resolveEquipmentZone(db, opts.equipmentId, opts.entityId)
+  if (eqZone != null) return eqZone
+  return getItemDefaultZone(db, opts.itemId)
+}

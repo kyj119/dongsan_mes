@@ -42,8 +42,8 @@ export async function deductStockLinesOnShip(
     ).bind(orderId, ln.item_id, lineEntity).first()
     if (dup) continue
 
-    // UP1: 소모 대상 창고 = 품목 기본창고 (NULL=미배정). 재고 행 키 = (item, entity, zone).
-    // TODO(UP2): 소모 출처 창고를 card.equipment→구역 파생으로 확장 (현재는 품목 기본창고 interim).
+    // 소모 대상 창고 = 품목 기본창고 (NULL=미배정). 재고 행 키 = (item, entity, zone).
+    // UP2 제외: 기성/유통 출고는 창고 피킹(소모 장비 없음) → 품목 기본창고가 정확.
     const zoneId = await getItemDefaultZone(db, ln.item_id)
 
     // 담당 법인 재고 row 부재 시 0으로 생성(음수 차감 허용) → UPDATE silent miss 방지

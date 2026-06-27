@@ -99,8 +99,9 @@ export async function autoDeductPostProcessingMaterials(
 
           const dedYd = (oh / 914.4) * copy
 
-          // UP1: 소모 대상 창고 = 코팅지 품목 기본창고 (NULL=미배정). 재고 행 키 = (item, entity, zone).
-          // TODO(UP2): 소모 출처 창고를 card.equipment→구역 파생으로 확장 (현재는 품목 기본창고 interim).
+          // 소모 대상 창고 = 코팅지 품목 기본창고 (NULL=미배정). 재고 행 키 = (item, entity, zone).
+          // UP2 제외: 코팅은 라미네이터에서 소비되나 card.equipment_id는 출력 프린터뿐 → 라미 장비 신호 없음.
+          //   잘못된 장비(프린터) zone을 끌어오면 더 부정확 → 코팅지 품목 기본창고가 정확.
           const zoneId = await getItemDefaultZone(db, mat.id)
 
           await db

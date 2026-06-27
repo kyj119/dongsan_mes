@@ -1,5 +1,5 @@
 import type { D1Database } from '@cloudflare/workers-types'
-import { getItemDefaultZone } from './inventoryZone'
+import { resolveDeductionZone } from './inventoryZone'
 
 /**
  * Print event OK 상태 → 원단 재고 자동 차감
@@ -36,7 +36,7 @@ export async function autoDeductInventory(
     // 1. print_event 조회
     const printEvent = await db
       .prepare(
-        `SELECT id, card_id, order_number, output_width, output_height, copy_total
+        `SELECT id, card_id, order_number, output_width, output_height, copy_total, equipment_id
          FROM print_events
          WHERE id = ?`
       )
@@ -65,7 +65,7 @@ export async function autoDeductInventory(
     // 3. card에서 order_item_id 또는 order_id 조회
     const card = await db
       .prepare(
-        `SELECT id, order_id, order_item_id, requesting_entity_id
+        `SELECT id, order_id, order_item_id, requesting_entity_id, equipment_id
          FROM cards
          WHERE id = ?`
       )
@@ -179,9 +179,14 @@ export async function autoDeductInventory(
       if (orderRow?.entity_id) entityId = orderRow.entity_id
     }
 
-    // UP1: 소모 대상 창고 = 자재 품목 기본창고 (NULL=미배정). 재고 행 키 = (item, entity, zone).
-    // TODO(UP2): 소모 출처 창고를 card.equipment→구역 파생으로 확장 (현재는 품목 기본창고 interim).
-    const zoneId = await getItemDefaultZone(db, selectedMaterial.material_item_id)
+    // UP2: 공간인식 소모 — 출력 장비(print_event.equipment_id, 폴백 card.equipment_id)가 배치된
+    //   구역의 창고에서 차감. 장비 미배선/창고 부재 시 자재 품목 기본창고로 폴백(현행 동작).
+    //   ⚠️ 수량(deductedLengthYd)·자재선택은 불변 — zone(출처 창고)만 결정.
+    const zoneId = await resolveDeductionZone(db, {
+      equipmentId: printEvent.equipment_id || card.equipment_id,
+      itemId: selectedMaterial.material_item_id,
+      entityId,
+    })
 
     // 담당 법인 재고 row 부재 시 0으로 생성 → UPDATE silent miss 방지(음수 차감 허용)
     await db
