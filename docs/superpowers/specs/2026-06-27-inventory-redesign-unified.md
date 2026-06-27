@@ -28,7 +28,8 @@
 - (다단위) `inventory_auto_deductions` += deducted_base, `inventory_receipt_items` += unit.
 
 ## Phase (통합, 의존순)
-- **UP1. 모델 foundation** — 단위컬럼(items) + inventory 다중행(zone)+미지정창고+transactions/count_items zone + receipt_items.unit + auto_deductions.deducted_base. 입고 zone키잉(기본창고)+단위환산. **모든 쓰기경로 zone 타깃팅**(다중행=`WHERE item+entity` 모호 → 전부 zone 조건). 재고현황 SUM/GROUP+페이지네이션+표시환산. 실사 재작업(count_items zone). 창고 간 이동(transfer).
+- **UP1. 모델 foundation** ✅ (커밋 `8f156f00`, 2026-06-27, 검증완료·미배포) — 마이그 **0396**(inventory UNIQUE→`(item,entity,IFNULL(zone,0))` + transactions/count_items.storage_zone_id, NULL=미배정). `utils/inventoryZone`(getItemDefaultZone). 전 쓰기경로 zone 키잉(입고 po-receive·receipts·settings·adjust·cancel / 소모 autoDeduct×2·stockShip·scan = **UP2 TODO 주석** / 환원 returns / 실사 inventoryCount per-zone). 읽기 GET/ SUM+GROUP(중복0)·GET/:id `zones[]`·dashboard/zones 실제창고. 신규 **POST /transfer**(창고 간 이동). **multi-UOM(0395) 독립**(base_unit 미참조→0396만 독립배포 가능). 검증: typecheck+build·smoke101/101·로컬 E2E(입고/이동/집계/부족/실사 zone 승인) 전부 PASS. ⚠️입고 zone키잉/표시환산(단위)·실사 표시환산은 multi-UOM 합류 시(UP3) 보완.
+  - **남은 UP1 보완(소)**: 입고/조정 폼·재고현황 프론트의 창고별 표시(현 backend는 zones[] 제공, 프론트 미반영). multi-UOM 표시환산과 함께 UP3에서.
 - **UP2. 통합 소모** — autoDeduct를 **base_unit 정밀(cm/yd) + 공간인식(zone 결정) 동시**. ⚠️회귀(현수막·판재 불변) 필수. postProcessing·stockShip·scan 동반. 창고별 소모집계.
 - **UP3. 배치도 영역 편집 UI**(facility_zones CRUD·그리기/크기) + 재고 표시환산(PACK 통/L·CONTINUOUS 롤).
 - **UP4. 창고별 발주**(MRP 창고별 임계치) + 다단위 발주(포장↔base).
