@@ -1544,7 +1544,7 @@ function formatOrderItemSummary(order) {
   return s;
 }
 
-function sendOrderNotice(orderId, clientName, mobile, contactPhone, orderNumber, clientEmail, clientFax, clientId, itemSummary) {
+async function sendOrderNotice(orderId, clientName, mobile, contactPhone, orderNumber, clientEmail, clientFax, clientId, itemSummary) {
   if (typeof window.openSendMessage !== 'function') {
     showToast('메시지 발송 기능을 사용할 수 없습니다', 'error');
     return;
@@ -1552,12 +1552,19 @@ function sendOrderNotice(orderId, clientName, mobile, contactPhone, orderNumber,
   var phone = mobile || contactPhone || '';
   var today = new Date().toISOString().slice(0, 10);
   var items = itemSummary || '';
+  // 출고·미수금과 동일하게 등록된 기본 템플릿을 해석 (없으면 '' → 수동 작성).
+  // 과거 하드코딩 'order_received'는 실재하지 않는 코드라 항상 매칭 실패 → 가짜 템플릿처럼 보였음.
+  var autoTpl = '';
+  try {
+    var r = await axios.get('/api/kakao/template-defaults/resolve?context=orders');
+    autoTpl = (r.data && r.data.data && r.data.data.template_code) || '';
+  } catch (e) { /* 미설정 시 수동 작성 */ }
   window.openSendMessage({
     receiver: { name: clientName, phone: phone, email: clientEmail || '', fax: clientFax || '' },
     context: { type: 'orders', id: orderId, client_id: clientId },
     defaultChannel: 'kakao',
     defaultContent: clientName + '님, 동산기획입니다.\n\n주문이 정상 접수되었습니다.\n\n■ 주문번호: ' + orderNumber + '\n■ 품목: ' + items + '\n■ 접수일: ' + today + '\n\n진행 상황은 추후 안내드리겠습니다.\n감사합니다.\n\n문의: 042-523-1982',
-    autoTemplate: 'order_received',
+    autoTemplate: autoTpl,
     templateVars: { '고객명': clientName, '주문번호': orderNumber, '품목': items, '날짜': today },
   });
 }

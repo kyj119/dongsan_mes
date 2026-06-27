@@ -43,9 +43,10 @@ export class BarobillFaxProvider {
       // 먼저 파일 업로드가 필요한지 확인
       // 대안: SMS.asmx의 SendFaxEx처럼 base64 직접 전송이 가능한 메서드가 있는지 확인
 
-      // SendFaxFromFTP 사용 (파일명은 미리 FTP에 업로드 필요)
+      // SendFaxFromFTP: 파일은 온프렘 에이전트가 미리 바로빌 FTP에 업로드(FileName=업로드한 파일명).
+      // SenderID = 바로빌 연동회원 ID(config.senderId, 예: DONGSAN). 없으면 빈값.
       const result = await barobillCall(this.config, 'FAX', 'SendFaxFromFTP', {
-        SenderID: '',
+        SenderID: this.config.senderId || '',
         FileName: params.fileName || 'document.pdf',
         FromNumber: params.senderNum,
         ToNumber: params.receiverNum,

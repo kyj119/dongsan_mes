@@ -412,7 +412,8 @@ var KTD_LABELS = {
   'shipments|daesintaekbae': '출고 · 대신택배',
   'shipments|quick': '출고 · 방문/퀵',
   'shipments|hanjin': '출고 · 한진택배',
-  'ledger|': '미수금 안내'
+  'ledger|': '미수금 안내',
+  'orders|': '주문 접수 안내'
 };
 async function loadKakaoTemplateDefaults() {
   var listEl = document.getElementById('ktdList');

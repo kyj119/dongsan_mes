@@ -298,27 +298,36 @@ async function sendFax() {
     if (!faxNum) { showToastError('유효한 팩스 번호를 입력하세요.'); return; }
 
     try {
-        showToastSuccess('팩스 이미지 생성 중...');
+        showToastSuccess('PDF 생성 중...');
         var target = document.querySelector('.page-wrapper');
-        var canvas = await html2canvas(target, { scale: 2, useCORS: true, backgroundColor: '#ffffff' });
-        var dataUrl = canvas.toDataURL('image/png');
-        var base64 = dataUrl.replace(/^data:image\/png;base64,/, '');
+        // 팩스는 PDF로 전송. 바로빌 FTP 중계라 큐 접수 후 발송 결과를 폴링한다.
+        var pdfBlob = await html2pdf().set({
+            margin: [8, 8, 8, 8],
+            image: { type: 'jpeg', quality: 0.95 },
+            html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff' },
+            jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+        }).from(target).outputPdf('blob');
+        var base64 = await new Promise(function(resolve, reject) {
+            var reader = new FileReader();
+            reader.onloadend = function() { resolve(String(reader.result).split(',')[1]); };
+            reader.onerror = reject;
+            reader.readAsDataURL(pdfBlob);
+        });
 
         showToastSuccess('팩스 전송 중...');
         var res = await axios.post('/api/fax/send', {
             receiver_num: faxNum,
             receiver_name: _clientName,
             file_data: base64,
-            file_name: '거래명세서_' + _orderNumber + '.png',
+            file_name: '거래명세서_' + _orderNumber + '.pdf',
             related_type: 'ORDER',
             related_id: ORDER_ID,
             client_id: _clientId
         });
-
-        if (res.data.success) {
-            showToastSuccess('팩스가 전송되었습니다.');
+        if (res.data.success && res.data.data.status === 'SUCCESS') {
+            showToastSuccess('팩스가 전송되었습니다. (접수번호: ' + (res.data.data.receipt_num || '-') + ')');
         } else {
-            showToastError('팩스 전송 실패: ' + (res.data.error || '알 수 없는 오류'));
+            showToastError('팩스 전송 실패: ' + ((res.data.data && res.data.data.message) || res.data.error || '오류'));
         }
     } catch (err) {
         var msg = (err.response && err.response.data && err.response.data.error) || err.message || '알 수 없는 오류';

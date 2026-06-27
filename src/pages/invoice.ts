@@ -15,6 +15,7 @@ export function invoicePage(c: Context<HonoEnv>) {
         <link href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css" rel="stylesheet">
         <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
         <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.2/dist/html2pdf.bundle.min.js"></script>
         <style>
             * { margin: 0; padding: 0; box-sizing: border-box; }
             body { font-family: 'Malgun Gothic', '맑은 고딕', sans-serif; background: #e5e7eb; }

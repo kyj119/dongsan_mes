@@ -1518,6 +1518,52 @@ window.dsSkeleton = {
 })();
 
 // ===================================================
+// === 팩스 발송 공통 헬퍼 (전역) — PDF 생성 → 큐 접수 → 상태 폴링 ===
+// ===================================================
+// 바로빌 팩스는 온프렘 에이전트가 FTP 업로드를 대행하므로 즉시 발송이 아님.
+// /api/fax/send 로 큐에 접수 → job_id 를 폴링해 sent/error 를 확인한다.
+window.loadHtml2Pdf = function() {
+  return new Promise(function(resolve, reject) {
+    if (window.html2pdf) return resolve(window.html2pdf);
+    var s = document.createElement('script');
+    s.src = 'https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.2/dist/html2pdf.bundle.min.js';
+    s.onload = function() { resolve(window.html2pdf); };
+    s.onerror = reject;
+    document.head.appendChild(s);
+  });
+};
+window.blobToBase64 = function(blob) {
+  return new Promise(function(resolve, reject) {
+    var reader = new FileReader();
+    reader.onloadend = function() { resolve(String(reader.result).split(',')[1]); };
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+};
+// element → PDF → /api/fax/send (서버가 FTP 업로드+발송, 동기). statusCb(메시지)로 진행상황 보고.
+// 반환: { ok:true, receipt } | { ok:false, error }
+window.faxSend = async function(element, meta, statusCb) {
+  function say(m) { if (typeof statusCb === 'function') statusCb(m); }
+  say('PDF 생성 중...');
+  await window.loadHtml2Pdf();
+  var pdfBlob = await window.html2pdf().set({
+    margin: [8, 8, 8, 8],
+    image: { type: 'jpeg', quality: 0.95 },
+    html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff' },
+    jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+  }).from(element).outputPdf('blob');
+  var base64 = await window.blobToBase64(pdfBlob);
+
+  say('팩스 전송 중...');
+  var payload = Object.assign({ file_data: base64 }, meta || {});
+  var res = await axios.post('/api/fax/send', payload);
+  if (!res.data || !res.data.success) return { ok: false, error: (res.data && res.data.error) || '발송 실패' };
+  var d = res.data.data;
+  if (d.status === 'SUCCESS') return { ok: true, receipt: d.receipt_num };
+  return { ok: false, error: d.message || '발송 실패' };
+};
+
+// ===================================================
 // === 통합 메시지 발송 모달 (전역) ===
 // ===================================================
 var _msgChannel = 'kakao';
@@ -1735,6 +1781,9 @@ function onMsgTemplateChange() {
     body = body.replace(new RegExp('#\{' + key + '\}', 'g'), vars[key] || '');
   });
   document.getElementById('msgBody').value = body;
+  // 템플릿 본문을 바꾼 뒤 미리보기 패널·바이트 카운터도 동기화 (없으면 미리보기가 이전 내용 유지)
+  if (_msgChannel === 'sms' && typeof updateMsgByteCounter === 'function') updateMsgByteCounter();
+  if (typeof updateMsgPreview === 'function') updateMsgPreview();
 }
 
 function updateMsgByteCounter() {

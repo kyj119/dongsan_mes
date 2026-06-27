@@ -9,6 +9,7 @@ export type Bindings = {
   AGENT_API_KEY: string;
   BAROBILL_CERT_KEY?: string;
   BAROBILL_CERT_KEY_PROD?: string;
+  BAROBILL_FTP_PASSWORD?: string;
   RESEND_API_KEY?: string;
   ANTHROPIC_API_KEY?: string;
 };

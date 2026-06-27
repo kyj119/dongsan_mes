@@ -452,25 +452,24 @@ async function sendFax() {
   var statusEl = document.getElementById('faxStatus');
   var sendBtn = document.getElementById('faxSendBtn');
   sendBtn.disabled = true;
-  statusEl.textContent = '단가표 이미지 생성 중...'; statusEl.style.color = '#6b7280';
+  statusEl.textContent = '단가표 PDF 생성 중...'; statusEl.style.color = '#6b7280';
+  var printArea = document.getElementById('printArea');
   try {
-    var printArea = document.getElementById('printArea');
     printArea.style.display = 'block'; printArea.style.position = 'absolute'; printArea.style.left = '-9999px';
     await renderPrintHTML(printArea);
-    await loadHtml2Canvas();
-    var canvas = await html2canvas(printArea, { scale: 2, useCORS: true, backgroundColor: '#ffffff' });
-    var base64 = canvas.toDataURL('image/png').replace(/^data:image\/png;base64,/, '');
-    printArea.innerHTML = ''; printArea.style.display = ''; printArea.style.position = ''; printArea.style.left = '';
-    statusEl.textContent = '팩스 전송 중...';
     var title = salesClientName ? salesClientName + '_단가표' : '단가표';
-    var res = await axios.post('/api/fax/send', { receiver_num: faxNum, receiver_name: faxName, file_data: base64, file_name: title + '.png' });
-    if (res.data.success) { statusEl.textContent = '팩스 발송 완료! (접수번호: ' + (res.data.data.receipt_num || '-') + ')'; statusEl.style.color = '#16a34a'; }
-    else { statusEl.textContent = '전송 실패: ' + (res.data.error || '오류'); statusEl.style.color = '#ef4444'; }
+    // PDF 생성 → 서버가 FTP 업로드+발송 (동기)
+    var r = await window.faxSend(printArea, {
+      receiver_num: faxNum, receiver_name: faxName, file_name: title + '.pdf', related_type: 'PRICE_LIST'
+    }, function(msg) { statusEl.textContent = msg; statusEl.style.color = '#6b7280'; });
+    if (r.ok) { statusEl.textContent = '팩스 발송 완료! (접수번호: ' + (r.receipt || '-') + ')'; statusEl.style.color = '#16a34a'; }
+    else { statusEl.textContent = '전송 실패: ' + r.error; statusEl.style.color = '#ef4444'; }
   } catch (err) {
     statusEl.textContent = '전송 실패: ' + (err.message || '오류'); statusEl.style.color = '#ef4444';
-    var pa = document.getElementById('printArea'); pa.innerHTML = ''; pa.style.display = '';
+  } finally {
+    printArea.innerHTML = ''; printArea.style.display = ''; printArea.style.position = ''; printArea.style.left = '';
+    sendBtn.disabled = false;
   }
-  sendBtn.disabled = false;
 }
 
 // ===================== 이력 모달 =====================

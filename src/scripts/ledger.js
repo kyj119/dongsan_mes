@@ -2088,43 +2088,39 @@ async function sendLedgerFax() {
     var statusEl = document.getElementById('ledgerFaxStatus');
     var sendBtn = document.getElementById('ledgerFaxSendBtn');
     sendBtn.disabled = true;
-    statusEl.textContent = '원장 명세서 이미지 생성 중...';
+    statusEl.textContent = '원장 명세서 PDF 생성 중...';
     statusEl.style.color = '#6b7280';
 
+    var area = document.getElementById('ledgerPrintArea');
     try {
-        var area = document.getElementById('ledgerPrintArea');
         area.innerHTML = buildLedgerStatementHtml(modalContext.clientName, _ledgerStatementData.transactions, _ledgerStatementData.summary);
         area.style.display = 'block';
         area.style.position = 'absolute';
         area.style.left = '-9999px';
 
-        await loadHtml2Canvas();
-        var canvas = await html2canvas(area, { scale: 2, useCORS: true, backgroundColor: '#ffffff' });
-        var base64 = canvas.toDataURL('image/png').replace(/^data:image\/png;base64,/, '');
-        area.innerHTML = ''; area.style.display = 'none'; area.style.position = ''; area.style.left = '';
-
-        statusEl.textContent = '팩스 전송 중...';
-        var res = await axios.post('/api/fax/send', {
+        // PDF 생성 → 서버가 FTP 업로드+발송 (동기)
+        var r = await window.faxSend(area, {
             receiver_num: faxNum,
             receiver_name: faxName,
-            file_data: base64,
-            file_name: '원장_' + escapeHtml(modalContext.clientName) + '.png',
+            file_name: '원장_' + modalContext.clientName + '.pdf',
+            related_type: 'LEDGER',
             client_id: modalContext.clientId
-        });
-        if (res.data.success) {
-            statusEl.textContent = '팩스 발송 완료! (접수번호: ' + (res.data.data.receipt_num || '-') + ')';
+        }, function(msg) { statusEl.textContent = msg; statusEl.style.color = '#6b7280'; });
+
+        if (r.ok) {
+            statusEl.textContent = '팩스 발송 완료! (접수번호: ' + (r.receipt || '-') + ')';
             statusEl.style.color = '#16a34a';
         } else {
-            statusEl.textContent = '팩스 전송 실패: ' + (res.data.error || '알 수 없는 오류');
+            statusEl.textContent = '팩스 전송 실패: ' + r.error;
             statusEl.style.color = '#ef4444';
         }
     } catch (err) {
         statusEl.textContent = '팩스 전송 실패: ' + (err.message || '알 수 없는 오류');
         statusEl.style.color = '#ef4444';
-        var a2 = document.getElementById('ledgerPrintArea');
-        a2.innerHTML = ''; a2.style.display = 'none';
+    } finally {
+        area.innerHTML = ''; area.style.display = 'none'; area.style.position = ''; area.style.left = '';
+        sendBtn.disabled = false;
     }
-    sendBtn.disabled = false;
 }
 
 // Initial load
