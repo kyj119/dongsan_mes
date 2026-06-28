@@ -2,7 +2,7 @@ import { Hono } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
 import { BarobillFaxProvider } from '../services/barobillFax'
-import { ftpStor } from '../services/ftpUpload'
+import { ftpStor, ftpLoginCheck } from '../services/ftpUpload'
 import { getKakaoSettings } from './kakao'
 import { getEntityCorpNum } from '../utils/entitySettings'
 import { getEntityId } from '../utils/entityFilter'
@@ -136,6 +136,27 @@ faxRouter.post('/send', async (c) => {
   } catch (error) {
     console.error('fax /send error:', error)
     return c.json({ success: false, error: '팩스 발송 실패: ' + (error as any).message }, 500)
+  }
+})
+
+// GET /ftp-check — FTP 로그인만 진단(발송 없음). ?user=로 아이디 대/소문자 시험. 진단 후 제거 가능.
+faxRouter.get('/ftp-check', async (c) => {
+  try {
+    const db = c.env.DB
+    const entityId = getEntityId(c) || 1
+    const testModeRow = await db.prepare(
+      "SELECT setting_value FROM settings WHERE setting_key = 'barobill_test_mode'"
+    ).first<{ setting_value: string }>()
+    const isTest = testModeRow?.setting_value !== '0'
+    const host = isTest ? 'testftp.barobill.co.kr' : 'ftp.barobill.co.kr'
+    const port = isTest ? 9031 : 9030
+    const user = (c.req.query('user') || await getBarobillSenderId(db, entityId)).trim()
+    const pass = await getFtpPassword(c, entityId)
+    if (!pass) return c.json({ success: false, error: 'BAROBILL_FTP_PASSWORD 미설정' }, 400)
+    const r = await ftpLoginCheck({ host, port, user, pass })
+    return c.json({ success: true, data: { host, port, user, isTest, ...r } })
+  } catch (error) {
+    return c.json({ success: false, error: (error as any).message }, 500)
   }
 })
 

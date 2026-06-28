@@ -111,3 +111,52 @@ export async function ftpStor(cfg: FtpConfig, remoteName: string, data: Uint8Arr
     try { await control.close() } catch { /* ignore */ }
   }
 }
+
+/**
+ * FTP 로그인만 점검(진단용) — connect → USER → PASS → QUIT. 파일 업로드/발송 없음.
+ * 자격증명·대소문자·접속 가능 여부 확인에 사용. throw 없이 결과 객체 반환.
+ */
+export async function ftpLoginCheck(cfg: FtpConfig): Promise<{ ok: boolean; stage: string; code: number; message: string }> {
+  const enc = new TextEncoder()
+  const dec = new TextDecoder()
+  let control: any
+  try {
+    control = connect({ hostname: cfg.host, port: cfg.port }, { allowHalfOpen: false })
+  } catch (e: any) {
+    return { ok: false, stage: 'connect', code: 0, message: e?.message || 'connect 실패' }
+  }
+  const writer = control.writable.getWriter()
+  const reader = control.readable.getReader()
+  let buf = ''
+  async function readResponse(): Promise<{ code: number; text: string }> {
+    while (true) {
+      const p = parseResponse(buf)
+      if (p) { buf = p.rest; return { code: p.code, text: p.text } }
+      const rd = reader.read()
+      const timer = new Promise<never>((_, rej) => setTimeout(() => rej(new Error('FTP 응답 타임아웃')), RESP_TIMEOUT_MS))
+      const { value, done } = await Promise.race([rd, timer]) as ReadableStreamReadResult<Uint8Array>
+      if (done) throw new Error('FTP 제어 연결 종료')
+      buf += dec.decode(value, { stream: true })
+    }
+  }
+  async function send(command: string): Promise<{ code: number; text: string }> {
+    await writer.write(enc.encode(command + '\r\n'))
+    return readResponse()
+  }
+  try {
+    const g = await readResponse()
+    if (g.code !== 220) return { ok: false, stage: 'greeting', code: g.code, message: g.text.trim() }
+    const u = await send(`USER ${cfg.user}`)
+    if (![331, 230].includes(u.code)) return { ok: false, stage: 'USER', code: u.code, message: u.text.trim() }
+    const p = await send(`PASS ${cfg.pass}`)
+    if (![230, 202].includes(p.code)) return { ok: false, stage: 'PASS', code: p.code, message: p.text.trim() }
+    try { await send('QUIT') } catch { /* ignore */ }
+    return { ok: true, stage: 'login', code: p.code, message: '로그인 성공' }
+  } catch (e: any) {
+    return { ok: false, stage: 'error', code: 0, message: e?.message || 'FTP 점검 실패' }
+  } finally {
+    try { reader.releaseLock() } catch { /* ignore */ }
+    try { await writer.close() } catch { /* ignore */ }
+    try { await control.close() } catch { /* ignore */ }
+  }
+}
