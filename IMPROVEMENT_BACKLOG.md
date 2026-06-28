@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 1 -->
-<!-- last_run_at: 2026-06-28T02:00:00+09:00 -->
+<!-- last_run_area: 2 -->
+<!-- last_run_at: 2026-06-28T06:00:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -16,6 +16,15 @@
 
 > 📦 **과거 사이클 로그**는 `IMPROVEMENT_BACKLOG_ARCHIVE.md`/git 히스토리로 이관됨 (2026-06-10 1차 분리, 2026-06-25 2차 트림 343KB→192KB, **2026-06-25T10:00 3차 트림 — 06-17~06-23 사이클 로그를 git 히스토리로 이관: node_modules 부재 세션에서 commit-gate(typecheck) 차단으로 API 푸시 필요 → 파일 축소로 비용 절감 + 256KB 한도 회복**). 신규 로그는 계속 이 파일 상단에 추가. 본 파일은 직전 2일치(06-24~) 사이클 로그 + 영구 참조 섹션(Approved/New/Auto-fixed/Done/Rejected/FP 카탈로그)만 유지. 이관분은 `git log -p -- IMPROVEMENT_BACKLOG.md`로 복원 가능.
 
+> **Area 2 코드 품질 심층 분석 (2026-06-28T06:00):**
+> - **방법**: 사이클 초반 `npm ci`(node_modules 0→81패키지, #439 commit-gate 자가복구) 후 git fetch-before-compare(origin force-update `4993fa7→8fb7e23`, fetch 후 **HEAD=origin/main `8fb7e23` 0/0 동기**, 워킹트리 clean, 디버전스 0). egress 차단(prod/Playwright 도달 불가)이나 **node_modules 복구로 `npx tsc --noEmit` + `npm run build` 실행** = 타입 검증. Area 2 **25회차** — **churn 퇴화 사이클**: 직전 Area2(`b512292`, 06-27T06:00) 이후 owner 코드 churn = **`priceManagement.js` 1줄(#450 패널토글, 본 에이전트 Area3 자동수정)뿐**, 나머지 전부 auto-improve 문서. **신선 각도 = 전체 코드베이스 recursive authMiddleware 커버리지 감사**(churn-한정 아닌 83 라우터 전수) — 직전 사이클들의 churn-한정 auth 점검이 못 본 subdir 라우터까지 포함해 무-auth 라우트가 잔존하는지 net-new 검증.
+> - **🟢 타입 검증 = clean**: `npx tsc --noEmit` **exit 0**(타입 불일치 0) + `npm run build` 성공(**391 modules**, dist 5.35MB). 신규 write-path 0(churn=프론트 1줄)이라 컬럼 존재성·N+1·entity_id INSERT는 net-new 0 by construction.
+> - **🔐 recursive authMiddleware 커버리지 감사 = clean(net-new 0, 신선 각도)**: `find src/routes -name '*.ts'` 전수(83 라우터) → authMiddleware 미참조 + HTTP 엔드포인트 보유 파일 격리 = 정당 클래스만 매치. ① **barrel 5종**(`ledger`·`orders`·`payroll`·`purchaseOrders`·`taxInvoices` = `.route('/', sub)`만, 자체 엔드포인트 0 → sub-router가 auth 적용, 예: `ledger/accounts-payable.ts:57` `apRouter.use('/*', authMiddleware, requireRole)`) ② **hrSelf.ts** = 의도적 scoped self-service token(`verifySelfToken` + `scope:'employee-self'` 30분 JWT를 각 보호 GET이 검증, authMiddleware 대신 — by design) ③ **webhooks.ts** = 빈 라우터(엔드포인트 0, 바로빌 자체 콜백) ④ **helpers/shared FP** = `orders/helpers.ts`·`payroll/shared.ts`·`taxInvoices/helpers.ts`의 `.get(` 매치는 전부 `Map.get(`/`rowById.get(`(라우트 아님). **진짜 무-auth mutate 엔드포인트 0건**.
+> - **🧬 SKILL 강화 1건 — authMiddleware 스캔 recursive 의무화(Area 2 line 64 상단)**: 본 사이클이 **`src/routes/*.ts` 평면 grep은 subdir 라우터(`ledger/`·`orders/`·`payroll/`·`taxInvoices/`)를 구조적으로 누락**함을 실증(초기 평면 스캔 7건 → recursive로 subdir 4건 추가 발견, 전부 정당 FP였으나 평면이었다면 false-clean 위험). recursive `find` 레시피 + FP 배제 2단(`.get(` Map-오탐 라인검증·barrel 식별) + 정당 무-auth 2클래스(scoped-token·public webhook) codify.
+> - **🟢 backlog↔GitHub sync**: open auto-improve **실측 9건**(#452·#451·#450·#447·#444·#443·#442·#441·#439, list_issues 전수) = 직전 Area1 stats `new=9` **정합**. owner 신규 close/머지 0(done=139·rejected=3 유지). 본 사이클 신규 이슈 0(clean). #422 디버전스: HEAD=origin/main 동기(`8fb7e23`)라 미push 픽스 0.
+> - **이상 없음(타입·recursive auth·sync)**: churn 퇴화 사이클 — owner 코드 churn 0(유일 변경=본 에이전트 Area3 프론트 1줄). recursive authMiddleware 감사 전수 clean(83 라우터, 무-auth mutate 0). tsc exit 0·build 성공. git 동기 0/0·워킹트리 clean. sync 9=9.
+> - 자동 수정 0건(clean cycle), 신규 이슈 0건, SKILL 강화 1건(authMiddleware 스캔 recursive 의무화), done-sync(변동 0, new 9 유지), **신선 각도 — churn 퇴화 사이클(owner 코드 churn 0)의 Area 2를 전체 코드베이스 recursive authMiddleware 커버리지 감사로 net-new 재검증. 83 라우터 전수에서 무-auth + mutate 엔드포인트 잔존 0 확인(매치 11건 전부 정당: barrel 5·hrSelf scoped-token·webhooks empty·helpers/shared Map.get FP). 검증 과정에서 평면 `src/routes/*.ts` 스캔이 subdir 라우터를 못 봄을 실증 → recursive find 의무화를 SKILL에 codify(false-clean 방지). tsc exit 0·build 391 modules 성공. 부수: `npm ci`로 #439 commit-gate 자가복구.**
+>
 > **Area 1 프로덕션 헬스 (2026-06-28T02:00):**
 > - **방법**: 사이클 초반 `npm ci`(node_modules 0→81패키지, #439 commit-gate 자가복구) 후 git fetch-before-compare(origin force-update `4993fa7→2243332`, fetch 후 **HEAD=origin/main `2243332` 0/0 동기**, 워킹트리 clean, 디버전스 0). egress 차단(prod 직접 fetch·Playwright·verify 도달 불가)이라 CI/E2E는 GitHub Actions API로, 회귀 위험은 정적 standing scan으로 검증. **사이클 churn = 직전 Area1(`29d5636`, 06-27T02:00) 이후 = 본 하루치 사이클 Area2~6 + #450 자동수정**(`b512292`~`2243332`) — 코드 churn 실측은 `priceManagement.js` **1줄(#450 패널토글, 직전 Area2/3 감사완료)뿐**, 나머지 전부 auto-improve 문서. 신규 마이그 **0건**(0389-0392 직전 사이클 감사완료, 본 churn에 마이그 유입 0).
 > - **🟢 CI/E2E = 전부 GREEN**: 최근 30런(`actions_list` main) **전수 `completed/success`**(실패/취소 0) — HEAD `2243332`(Area6) Deploy + Daily D1 Backup 모두 success, 본 하루치 Area2~6 Deploy(`b512292`~`dd77047`) 전부 success. Deploy 워크플로(post-deploy smoke 포함) fail 0. **신규 prod-breaking 회귀 0**.
