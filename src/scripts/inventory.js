@@ -150,6 +150,9 @@ function renderInventoryTable(items, total) {
             + '<td class="px-4 py-3 text-sm text-gray-500" title="' + escapeHtml(item.location || '') + '">' + escapeHtml(item.location || '-') + '</td>'
             + '<td class="px-4 py-3 text-center">'
             + '<div class="flex gap-1 justify-center">'
+            + '<button onclick="openZoneStock(' + item.id + ',\'' + itemNameSafe + '\')" '
+            + 'class="px-2 py-1 bg-blue-50 text-blue-700 rounded text-xs hover:bg-blue-100" title="창고별/이동">'
+            + '<i class="fas fa-warehouse"></i></button>'
             + '<button onclick="viewTransactions(' + item.id + ',\'' + itemNameSafe + '\')" '
             + 'class="px-2 py-1 bg-green-50 text-green-700 rounded text-xs hover:bg-green-100" title="이력">'
             + '<i class="fas fa-history"></i></button>'
@@ -183,9 +186,9 @@ window.viewTransactions = async function(itemId, itemName) {
             var tbody = document.getElementById('transactionTableBody');
             tbody.innerHTML = '';
             transactions.forEach(function(tx) {
-                var typeLabels = { 'IN': '입고', 'OUT': '출고', 'ADJUST': '조정' };
-                var typeColors = { 'IN': 'bg-blue-50 text-blue-700', 'OUT': 'bg-amber-50 text-amber-700', 'ADJUST': 'bg-gray-100 text-gray-700' };
-                var typeIcons = { 'IN': 'fas fa-arrow-down', 'OUT': 'fas fa-arrow-up', 'ADJUST': 'fas fa-sliders-h' };
+                var typeLabels = { 'IN': '입고', 'OUT': '출고', 'ADJUST': '조정', 'TRANSFER_IN': '이동입고', 'TRANSFER_OUT': '이동출고' };
+                var typeColors = { 'IN': 'bg-blue-50 text-blue-700', 'OUT': 'bg-amber-50 text-amber-700', 'ADJUST': 'bg-gray-100 text-gray-700', 'TRANSFER_IN': 'bg-indigo-50 text-indigo-700', 'TRANSFER_OUT': 'bg-purple-50 text-purple-700' };
+                var typeIcons = { 'IN': 'fas fa-arrow-down', 'OUT': 'fas fa-arrow-up', 'ADJUST': 'fas fa-sliders-h', 'TRANSFER_IN': 'fas fa-right-to-bracket', 'TRANSFER_OUT': 'fas fa-right-from-bracket' };
                 var typeClass = typeColors[tx.transaction_type] || 'bg-gray-100 text-gray-800';
                 var typeIcon = typeIcons[tx.transaction_type] || 'fas fa-circle';
                 var typeText = typeLabels[tx.transaction_type] || tx.transaction_type;
@@ -260,6 +263,103 @@ document.getElementById('submitSettings').addEventListener('click', async functi
         showToast('설정 저장 실패: ' + (error.response?.data?.error || error.message), 'error');
     }
 });
+
+// ===== 창고별 재고 + 창고 간 이동 (UP3-B1) =====
+var invZoneStorageZones = [];   // 현재 법인 storage_zones 캐시 (도착 창고 드롭다운)
+var invZoneCurrentItem = null;  // 모달 대상 { id, name }
+
+async function loadInvStorageZones() {
+    try {
+        var res = await axios.get('/api/storage-zones');
+        if (res.data.success) invZoneStorageZones = res.data.data || [];
+    } catch (e) { console.warn('[inventory] storage-zones 로드 실패', e); }
+}
+
+window.openZoneStock = async function(itemId, itemName) {
+    var nameEl = document.getElementById('zoneStockItemName');
+    var idEl = document.getElementById('zoneStockItemId');
+    if (!nameEl || !idEl) { console.warn('[inventory] #zoneStockModal not found'); return; }
+    invZoneCurrentItem = { id: itemId, name: itemName };
+    nameEl.textContent = itemName;
+    idEl.value = itemId;
+    try {
+        if (invZoneStorageZones.length === 0) await loadInvStorageZones();
+        var res = await axios.get('/api/inventory/' + itemId);
+        if (!res.data.success) return;
+        renderZoneStock(res.data.data.zones || []);
+        document.getElementById('zoneStockModal').classList.remove('hidden');
+    } catch (e) {
+        console.error('Failed to load zone stock:', e);
+        showToast('창고별 재고를 불러오지 못했습니다.', 'error');
+    }
+};
+
+function renderZoneStock(zones) {
+    var tbody = document.getElementById('zoneStockBody');
+    var fromSel = document.getElementById('transferFrom');
+    var toSel = document.getElementById('transferTo');
+    if (!tbody || !fromSel || !toSel) { console.warn('[inventory] zoneStock elements missing'); return; }
+
+    // 창고별 분해 표 (NULL zone = 미배정)
+    if (zones.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="3" class="px-4 py-6 text-center text-gray-400 text-sm">재고 없음</td></tr>';
+    } else {
+        tbody.innerHTML = zones.map(function(z) {
+            return '<tr>'
+                + '<td class="px-4 py-2 text-sm text-gray-900">' + escapeHtml(z.zone_name || '미배정') + '</td>'
+                + '<td class="px-4 py-2 text-sm text-right tabular-nums">' + (z.quantity || 0) + '</td>'
+                + '<td class="px-4 py-2 text-sm text-right tabular-nums text-gray-500">' + (z.safe_stock || 0) + '</td>'
+                + '</tr>';
+        }).join('');
+    }
+
+    // 출발 창고 = 재고 보유 창고(수량 ≠ 0). NULL zone은 value=''(서버가 미배정으로 처리)
+    var fromZones = zones.filter(function(z) { return (z.quantity || 0) !== 0; });
+    if (fromZones.length === 0) {
+        fromSel.innerHTML = '<option value="">(재고 보유 창고 없음)</option>';
+    } else {
+        fromSel.innerHTML = fromZones.map(function(z) {
+            var v = (z.storage_zone_id == null) ? '' : z.storage_zone_id;
+            return '<option value="' + v + '">' + escapeHtml(z.zone_name || '미배정') + ' (' + (z.quantity || 0) + ')</option>';
+        }).join('');
+    }
+
+    // 도착 창고 = 미배정 + 전 창고 목록
+    var opts = '<option value="">미배정</option>';
+    invZoneStorageZones.forEach(function(sz) {
+        opts += '<option value="' + sz.id + '">' + escapeHtml(sz.zone_name) + '</option>';
+    });
+    toSel.innerHTML = opts;
+}
+
+window.submitInvTransfer = async function() {
+    if (!invZoneCurrentItem) return;
+    var fromV = document.getElementById('transferFrom').value;
+    var toV = document.getElementById('transferTo').value;
+    var qty = parseFloat(document.getElementById('transferQty').value);
+    var notes = document.getElementById('transferNotes').value;
+    if (!qty || qty <= 0) { showToast('이동 수량을 입력해주세요.', 'warning'); return; }
+    if ((fromV || '') === (toV || '')) { showToast('출발 창고와 도착 창고가 같습니다.', 'warning'); return; }
+    try {
+        var res = await axios.post('/api/inventory/transfer', {
+            item_id: invZoneCurrentItem.id,
+            from_zone_id: fromV === '' ? null : parseInt(fromV),
+            to_zone_id: toV === '' ? null : parseInt(toV),
+            quantity: qty,
+            notes: notes
+        });
+        if (res.data.success) {
+            showToast('창고 이동 완료', 'success');
+            document.getElementById('transferQty').value = '';
+            document.getElementById('transferNotes').value = '';
+            openZoneStock(invZoneCurrentItem.id, invZoneCurrentItem.name); // 분해 새로고침
+            loadInventory();
+        }
+    } catch (e) {
+        console.error('Transfer failed:', e);
+        showToast('이동 실패: ' + (e.response?.data?.error || e.message), 'error');
+    }
+};
 
 // ===== Modal handlers =====
 document.getElementById('closeModal').addEventListener('click', function() {
@@ -343,7 +443,7 @@ document.getElementById('nextPage').addEventListener('click', function() {
 });
 
 // Close modals on backdrop click
-['transactionModal', 'adjustmentModal', 'settingsModal'].forEach(function(id) {
+['transactionModal', 'adjustmentModal', 'settingsModal', 'zoneStockModal'].forEach(function(id) {
     var el = document.getElementById(id);
     if (el) el.addEventListener('click', function(e) {
         if (e.target === this) this.classList.add('hidden');

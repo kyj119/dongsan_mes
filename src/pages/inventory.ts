@@ -392,6 +392,63 @@ export function inventoryPage(c: Context<HonoEnv>) {
                     </div>
                 </div>
             </div>
+
+            <!-- 창고별 재고 + 창고 간 이동 (UP3-B1) -->
+            <div id="zoneStockModal" class="ds-modal-overlay hidden">
+                <div class="ds-modal p-6" style="max-width:40rem">
+                    <div class="flex justify-between items-center mb-4">
+                        <h3 class="text-xl font-bold">
+                            <i class="fas fa-warehouse text-blue-600 mr-2"></i>창고별 재고 - <span id="zoneStockItemName"></span>
+                        </h3>
+                        <button onclick="document.getElementById('zoneStockModal').classList.add('hidden')" class="text-gray-500 hover:text-gray-700">
+                            <i class="fas fa-times text-2xl"></i>
+                        </button>
+                    </div>
+                    <input type="hidden" id="zoneStockItemId">
+
+                    <!-- 창고별 분해 (read) -->
+                    <div class="overflow-x-auto mb-5">
+                        <table class="w-full text-sm ds-table ds-table-striped">
+                            <thead class="bg-gray-50">
+                                <tr>
+                                    <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">창고</th>
+                                    <th class="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">수량</th>
+                                    <th class="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">안전재고</th>
+                                </tr>
+                            </thead>
+                            <tbody id="zoneStockBody" class="bg-white divide-y divide-gray-100"></tbody>
+                        </table>
+                    </div>
+
+                    <!-- 창고 간 이동 (transfer) -->
+                    <div class="border-t pt-4">
+                        <h4 class="text-sm font-semibold text-gray-700 mb-3"><i class="fas fa-right-left text-gray-500 mr-2"></i>창고 간 이동</h4>
+                        <div class="grid grid-cols-2 gap-3 mb-3">
+                            <div>
+                                <label class="block text-xs font-medium text-gray-600 mb-1">출발 창고</label>
+                                <select id="transferFrom" class="w-full px-3 py-2 border rounded text-sm"></select>
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-gray-600 mb-1">도착 창고</label>
+                                <select id="transferTo" class="w-full px-3 py-2 border rounded text-sm"></select>
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-2 gap-3 mb-4">
+                            <div>
+                                <label class="block text-xs font-medium text-gray-600 mb-1">수량</label>
+                                <input type="number" id="transferQty" class="w-full px-3 py-2 border rounded text-sm" min="0" step="0.01" placeholder="이동 수량">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-gray-600 mb-1">비고 (선택)</label>
+                                <input type="text" id="transferNotes" class="w-full px-3 py-2 border rounded text-sm">
+                            </div>
+                        </div>
+                        <div class="flex justify-end">
+                            <button onclick="submitInvTransfer()" class="ds-btn ds-btn-primary"><i class="fas fa-right-left mr-2"></i>이동 실행</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
     `,
     pageScript: combinedScript
   })
