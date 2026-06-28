@@ -165,25 +165,165 @@ function hexToRgba(hex, alpha) {
 function renderZones() {
     var container = document.getElementById('layoutZones');
     if (!container) { console.warn('[equipment] #layoutZones not found'); return; }
+    // UP3-A: 편집모드에서만 구역 상호작용(드래그/리사이즈/버튼) 허용. 평소 pointer-events:none(장비 클릭 통과).
+    container.style.pointerEvents = editMode ? 'auto' : 'none';
     if (!zones || zones.length === 0) { container.innerHTML = ''; return; }
     // 도면 배경이 있으면 채움을 더 투명하게(도면이 비치도록)
     var fillAlpha = hasFloorPlan ? 0.02 : 0.06;
     container.innerHTML = zones.map(function(z) {
         var b = parseBounds(z.bounds);
         var color = z.color || '#94a3b8';
-        // P2: 영역별 재고 오버레이 뱃지 (storage_zone 경유 집계). 부족 있으면 적색, 없으면 녹색.
-        var invItems = z.inv_item_count || 0;
-        var invShort = z.inv_shortage_count || 0;
-        var invBadge = invItems > 0
-            ? '<span onclick="event.stopPropagation();showZoneInventory(' + z.id + ')" style="position:absolute;right:4px;top:3px;pointer-events:auto;cursor:pointer;font-size:10px;font-weight:600;background:rgba(255,255,255,0.92);padding:1px 6px;border-radius:3px;border:1px solid ' + (invShort > 0 ? '#fecaca' : '#bbf7d0') + ';color:' + (invShort > 0 ? '#dc2626' : '#16a34a') + ';" title="재고 상세 보기"><i class="fas fa-boxes" style="margin-right:2px;"></i>' + invItems + (invShort > 0 ? ' · ⚠' + invShort : '') + '</span>'
+        // 우상단: 편집모드=이름/삭제 버튼, 평소=재고 배지(P2, storage_zone 경유 집계)
+        var topRight;
+        if (editMode) {
+            topRight = '<span style="position:absolute;right:3px;top:3px;display:flex;gap:2px;pointer-events:auto;">'
+                + '<button data-zone-btn onclick="event.stopPropagation();editZone(' + z.id + ')" title="이름·색상 편집" style="font-size:9px;background:rgba(255,255,255,0.95);border:1px solid #e5e7eb;border-radius:3px;width:18px;height:18px;line-height:1;cursor:pointer;color:#475569;"><i class="fas fa-pen"></i></button>'
+                + '<button data-zone-btn onclick="event.stopPropagation();deleteZone(' + z.id + ')" title="구역 삭제" style="font-size:9px;background:rgba(255,255,255,0.95);border:1px solid #fecaca;border-radius:3px;width:18px;height:18px;line-height:1;cursor:pointer;color:#dc2626;"><i class="fas fa-trash"></i></button>'
+                + '</span>';
+        } else {
+            var invItems = z.inv_item_count || 0;
+            var invShort = z.inv_shortage_count || 0;
+            topRight = invItems > 0
+                ? '<span onclick="event.stopPropagation();showZoneInventory(' + z.id + ')" style="position:absolute;right:4px;top:3px;pointer-events:auto;cursor:pointer;font-size:10px;font-weight:600;background:rgba(255,255,255,0.92);padding:1px 6px;border-radius:3px;border:1px solid ' + (invShort > 0 ? '#fecaca' : '#bbf7d0') + ';color:' + (invShort > 0 ? '#dc2626' : '#16a34a') + ';" title="재고 상세 보기"><i class="fas fa-boxes" style="margin-right:2px;"></i>' + invItems + (invShort > 0 ? ' · ⚠' + invShort : '') + '</span>'
+                : '';
+        }
+        var resizeHandle = editMode
+            ? '<div data-zone-resize style="position:absolute;right:-1px;bottom:-1px;width:14px;height:14px;background:' + color + ';border:2px solid #fff;border-radius:3px;cursor:se-resize;pointer-events:auto;"></div>'
             : '';
-        return '<div style="position:absolute;'
+        return '<div data-zone-box style="position:absolute;'
             + 'left:' + b.x + '%;top:' + b.y + '%;width:' + b.width + '%;height:' + b.height + '%;'
-            + 'border:2px solid ' + color + ';background:' + hexToRgba(color, fillAlpha) + ';border-radius:6px;">'
+            + 'border:2px solid ' + color + ';background:' + hexToRgba(color, fillAlpha) + ';border-radius:6px;'
+            + (editMode ? 'pointer-events:auto;cursor:move;' : '') + '">'
             + '<span style="position:absolute;left:4px;top:3px;font-size:11px;font-weight:700;color:' + color + ';background:rgba(255,255,255,0.82);padding:1px 5px;border-radius:3px;">' + escapeHtml(z.name) + '</span>'
-            + invBadge
+            + topRight
+            + resizeHandle
             + '</div>';
     }).join('');
+    // 편집모드: 각 구역 박스에 드래그(이동)·리사이즈 바인딩
+    if (editMode) {
+        Array.prototype.forEach.call(container.children, function(div, i) {
+            if (zones[i]) bindZoneEditing(div, zones[i]);
+        });
+    }
+}
+
+// ─── UP3-A: 구역(facility_zone) 편집 — 이동/리사이즈/추가/수정/삭제 (편집모드 전용) ──
+// 좌표계는 장비 핀과 동일(canvas 상대 %). bounds={x,y,width,height} %.
+var zoneDrag = null; // { div, zoneId, b, mode:'move'|'resize', startX, startY, oX, oY, oW, oH, moved }
+
+function bindZoneEditing(div, zone) {
+    div.addEventListener('mousedown', function(e) {
+        if (!editMode) return;
+        if (e.target.closest('[data-zone-btn]')) return; // 이름/삭제 버튼은 onclick 처리
+        var isResize = !!e.target.closest('[data-zone-resize]');
+        e.preventDefault();
+        e.stopPropagation();
+        var b = parseBounds(zone.bounds);
+        zoneDrag = {
+            div: div, zoneId: zone.id, b: b, mode: isResize ? 'resize' : 'move',
+            startX: e.clientX, startY: e.clientY,
+            oX: b.x, oY: b.y, oW: b.width, oH: b.height, moved: false
+        };
+        div.style.zIndex = '6';
+    });
+}
+
+function onZoneDragMove(e) {
+    if (!zoneDrag) return;
+    var canvas = document.getElementById('layoutCanvas');
+    if (!canvas) return;
+    var cr = canvas.getBoundingClientRect();
+    var dx = ((e.clientX - zoneDrag.startX) / cr.width) * 100;
+    var dy = ((e.clientY - zoneDrag.startY) / cr.height) * 100;
+    var b = zoneDrag.b;
+    if (zoneDrag.mode === 'move') {
+        b.x = Math.max(0, Math.min(100 - b.width, zoneDrag.oX + dx));
+        b.y = Math.max(0, Math.min(100 - b.height, zoneDrag.oY + dy));
+        zoneDrag.div.style.left = b.x + '%';
+        zoneDrag.div.style.top = b.y + '%';
+    } else {
+        b.width = Math.max(5, Math.min(100 - b.x, zoneDrag.oW + dx));
+        b.height = Math.max(5, Math.min(100 - b.y, zoneDrag.oH + dy));
+        zoneDrag.div.style.width = b.width + '%';
+        zoneDrag.div.style.height = b.height + '%';
+    }
+    if (Math.abs(dx) > 0.3 || Math.abs(dy) > 0.3) zoneDrag.moved = true;
+}
+
+async function onZoneDragUp() {
+    if (!zoneDrag) return;
+    var zd = zoneDrag; zoneDrag = null;
+    zd.div.style.zIndex = '';
+    if (!zd.moved) return;
+    var r1 = function(v) { return Math.round(v * 10) / 10; };
+    var boundsStr = JSON.stringify({ x: r1(zd.b.x), y: r1(zd.b.y), width: r1(zd.b.width), height: r1(zd.b.height) });
+    var z = (zones || []).find(function(zz) { return zz.id === zd.zoneId; });
+    if (z) z.bounds = boundsStr; // 후속 렌더가 새 좌표 유지
+    try {
+        await axios.put('/api/facility/zones/' + zd.zoneId + '/bounds', { bounds: boundsStr });
+    } catch (err) {
+        showToast('구역 위치 저장 실패: ' + ((err.response && err.response.status === 403) ? '관리자 전용' : (err.message || '')), 'error');
+        console.error('zone bounds save error', err);
+    }
+}
+document.addEventListener('mousemove', onZoneDragMove);
+document.addEventListener('mouseup', onZoneDragUp);
+
+function addZone() {
+    var idEl = document.getElementById('zoneEditId');
+    if (!idEl) { console.warn('[equipment] #zoneEditModal not found'); return; }
+    idEl.value = '';
+    document.getElementById('zoneEditName').value = '';
+    document.getElementById('zoneEditColor').value = '#3B82F6';
+    var t = document.getElementById('zoneEditTitle'); if (t) t.textContent = '구역 추가';
+    document.getElementById('zoneEditModal').classList.remove('hidden');
+}
+
+function editZone(id) {
+    var z = (zones || []).find(function(zz) { return zz.id === id; });
+    if (!z) return;
+    document.getElementById('zoneEditId').value = id;
+    document.getElementById('zoneEditName').value = z.name || '';
+    document.getElementById('zoneEditColor').value = (z.color && /^#[0-9a-fA-F]{3,6}$/.test(z.color)) ? z.color : '#3B82F6';
+    var t = document.getElementById('zoneEditTitle'); if (t) t.textContent = '구역 편집';
+    document.getElementById('zoneEditModal').classList.remove('hidden');
+}
+
+async function saveZone() {
+    var id = document.getElementById('zoneEditId').value;
+    var name = document.getElementById('zoneEditName').value.trim();
+    var color = document.getElementById('zoneEditColor').value || '#3B82F6';
+    if (!name) { showToast('구역 이름을 입력하세요.', 'warning'); return; }
+    try {
+        if (id) {
+            await axios.put('/api/facility/zones/' + id, { name: name, color: color });
+            showToast('구역을 수정했습니다.', 'success');
+        } else {
+            // 신규 구역 = 캔버스 중앙 기본 영역(%). 백엔드 기본 bounds는 px 단위라 항상 프론트에서 % 지정.
+            await axios.post('/api/facility/zones', { name: name, color: color, bounds: JSON.stringify({ x: 38, y: 40, width: 24, height: 18 }) });
+            showToast('구역을 추가했습니다.', 'success');
+        }
+        document.getElementById('zoneEditModal').classList.add('hidden');
+        await loadLayout();
+    } catch (e) {
+        var msg = (e.response && e.response.data && e.response.data.error) ? e.response.data.error : e.message;
+        if (e.response && e.response.status === 403) msg = '권한이 없습니다 (관리자 전용).';
+        showToast('저장 실패: ' + msg, 'error');
+    }
+}
+
+async function deleteZone(id) {
+    var z = (zones || []).find(function(zz) { return zz.id === id; });
+    if (!(await showConfirm('"' + (z ? z.name : '구역') + '" 구역을 삭제하시겠습니까?', { danger: true }))) return;
+    try {
+        await axios.delete('/api/facility/zones/' + id);
+        showToast('구역을 삭제했습니다.', 'success');
+        await loadLayout();
+    } catch (e) {
+        var msg = (e.response && e.response.data && e.response.data.error) ? e.response.data.error : e.message;
+        if (e.response && e.response.status === 403) msg = '권한이 없습니다 (관리자 전용).';
+        showToast('삭제 실패: ' + msg, 'error');
+    }
 }
 
 // ─── 영역 재고 상세 (P2: facility_zone → storage_zone 경유 품목 재고) ──────────
@@ -452,11 +592,14 @@ function toggleEditMode() {
     }
     var upBtn = document.getElementById('btnUploadFloorPlan');
     var delBtn = document.getElementById('btnDeleteFloorPlan');
+    var addZoneBtn = document.getElementById('btnAddZone');
     if (upBtn) upBtn.classList.toggle('hidden', !editMode);
     if (delBtn) delBtn.classList.toggle('hidden', !(editMode && hasFloorPlan));
+    if (addZoneBtn) addZoneBtn.classList.toggle('hidden', !editMode);
     document.querySelectorAll('.eq-card').forEach(function(el) {
         el.style.cursor = editMode ? 'grab' : 'default';
     });
+    renderZones(); // UP3-A: 구역 편집 affordance(드래그/리사이즈/버튼) 토글
 }
 
 function setupEquipDrag(el, eq) {

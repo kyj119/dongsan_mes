@@ -226,6 +226,9 @@ export function equipmentPage(c: Context<HonoEnv>) {
                             <button id="btnDeleteFloorPlan" onclick="deleteFloorPlan()" class="hidden px-3 py-1 text-xs rounded border border-red-200 bg-white text-red-500 hover:bg-red-50 flex items-center gap-1">
                                 <i class="fas fa-trash"></i><span>도면 삭제</span>
                             </button>
+                            <button id="btnAddZone" onclick="addZone()" class="hidden px-3 py-1 text-xs rounded border border-blue-300 bg-white text-blue-600 hover:bg-blue-50 flex items-center gap-1">
+                                <i class="fas fa-plus"></i><span>구역 추가</span>
+                            </button>
                             <button id="btnEditLayout" onclick="toggleEditMode()" class="px-3 py-1 text-xs rounded border border-gray-300 bg-white text-gray-600 hover:bg-gray-50 flex items-center gap-1">
                                 <i class="fas fa-lock"></i><span>배치 편집</span>
                             </button>
@@ -254,6 +257,29 @@ export function equipmentPage(c: Context<HonoEnv>) {
 
             <!-- 팝오버 (단일 요소, 페이지 전역) -->
             <div id="equipPopover" class="hidden fixed z-50 bg-white rounded-xl shadow-xl border border-gray-200" style="min-width:200px;max-width:280px;"></div>
+
+            <!-- 구역(배치도 영역) 추가·편집 모달 (UP3-A) -->
+            <div id="zoneEditModal" class="hidden fixed inset-0 z-50 flex items-center justify-center" style="background:rgba(0,0,0,0.4)">
+                <div class="bg-white rounded-xl shadow-xl border border-gray-200 p-5" style="width:340px">
+                    <div class="flex items-center justify-between mb-4">
+                        <h3 class="text-base font-bold text-gray-900" id="zoneEditTitle">구역 추가</h3>
+                        <button onclick="document.getElementById('zoneEditModal').classList.add('hidden')" class="text-gray-400 hover:text-gray-600 text-lg leading-none">&times;</button>
+                    </div>
+                    <input type="hidden" id="zoneEditId">
+                    <div class="mb-3">
+                        <label class="block text-xs font-medium text-gray-600 mb-1">구역 이름</label>
+                        <input type="text" id="zoneEditName" class="w-full px-3 py-2 border rounded text-sm" placeholder="예: 출력실" maxlength="40">
+                    </div>
+                    <div class="mb-4">
+                        <label class="block text-xs font-medium text-gray-600 mb-1">색상</label>
+                        <input type="color" id="zoneEditColor" value="#3B82F6" class="w-16 h-9 border rounded cursor-pointer p-0.5">
+                    </div>
+                    <div class="flex justify-end gap-2">
+                        <button onclick="document.getElementById('zoneEditModal').classList.add('hidden')" class="px-3 py-1.5 text-sm bg-gray-200 rounded hover:bg-gray-300">취소</button>
+                        <button onclick="saveZone()" class="px-3 py-1.5 text-sm bg-blue-600 text-white rounded hover:bg-blue-700">저장</button>
+                    </div>
+                </div>
+            </div>
 
             <!-- 장비 상세 패널 (클릭 시 표시) -->
             <div id="detailPanel" class="hidden mt-4">
