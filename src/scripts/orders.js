@@ -958,7 +958,7 @@ function showOrderModal(order, cards, autoJobs) {
             <h3 class="text-sm font-bold text-gray-600 mb-2"><i class="fas fa-history mr-1"></i>상태 이력</h3>
             <div class="ds-skeleton ds-skeleton-text" style="width:60%"></div>
           </div>
-          ${order.notes ? `<div class="mt-4 p-4 bg-gray-50 rounded"><label class="text-sm font-medium text-gray-600">비고</label><p class="mt-1">${order.notes}</p></div>` : ''}
+          ${order.notes ? `<div class="mt-4 p-4 bg-gray-50 rounded"><label class="text-sm font-medium text-gray-600">비고</label><p class="mt-1">${escapeHtml(order.notes)}</p></div>` : ''}
           <!-- 경리 상태 -->
           <div class="mt-4 p-4 bg-gray-50 rounded-lg border flex items-center justify-between">
             <div>
