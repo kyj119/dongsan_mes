@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 2 -->
-<!-- last_run_at: 2026-06-28T06:00:00+09:00 -->
+<!-- last_run_area: 3 -->
+<!-- last_run_at: 2026-06-28T10:00:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -16,6 +16,15 @@
 
 > 📦 **과거 사이클 로그**는 `IMPROVEMENT_BACKLOG_ARCHIVE.md`/git 히스토리로 이관됨 (2026-06-10 1차 분리, 2026-06-25 2차 트림 343KB→192KB, **2026-06-25T10:00 3차 트림 — 06-17~06-23 사이클 로그를 git 히스토리로 이관: node_modules 부재 세션에서 commit-gate(typecheck) 차단으로 API 푸시 필요 → 파일 축소로 비용 절감 + 256KB 한도 회복**). 신규 로그는 계속 이 파일 상단에 추가. 본 파일은 직전 2일치(06-24~) 사이클 로그 + 영구 참조 섹션(Approved/New/Auto-fixed/Done/Rejected/FP 카탈로그)만 유지. 이관분은 `git log -p -- IMPROVEMENT_BACKLOG.md`로 복원 가능.
 
+> **Area 3 UX/기능 감사 (2026-06-28T10:00):**
+> - **방법**: 사이클 초반 `npm ci`(node_modules 0→81패키지, #439 commit-gate 자가복구) 후 git fetch-before-compare(origin force-update `4993fa7→eeeca67`, fetch 후 **HEAD=origin/main `eeeca67` 0/0 동기**, 워킹트리 clean, 디버전스 0). egress 차단(prod/Playwright 도달 불가)이라 정적 분석. Area 3 **21회차** — **churn 퇴화 사이클**: 직전 Area3(`5cdf5fe`, 06-27T10:00) 이후 owner 코드 churn = **`priceManagement.js` 1줄(#450 패널토글, 본 에이전트 직전 Area3 자동수정 = 9575aa1)뿐**, 나머지 전부 auto-improve 문서. **신선 각도 = 전체 코드베이스 axios→백엔드 라우트 존재성 자동 standing scan**(churn-한정 아닌 828 axios 호출 전수 매칭) — 직전 사이클들의 churn-한정 점검이 못 본 dead-button(404 = "기능 안 됨")이 코드베이스 전체에 잔존하는지 net-new 검증.
+> - **🟢 axios→백엔드 라우트 존재성 전수 스캔(line 121) = net-new 0(2 FP)**: node 매처로 `src/scripts` 828 axios 호출 ↔ index.tsx 83 마운트 + 배럴 서브라우터 follow한 라우트 정의 828개 param-aware 매칭(`:id`/`${}` 와일드카드·trailing-slash concat=param 처리). 매칭 후 **unmatched 2건 전부 FP**: ① `GET /api/forecast/material-consumption`(materialForecast.js:7) = **#318 closed-completed**(forecast.ts에 실제 라우트 부재이나 menu.ts:77 진입메뉴 주석처리=무력화, 도달성 ~0 의도적 잔존) ② `POST /api/migration/${currentImportType}/preview`(migration.js:382) = **동적 타입 경로**, currentImportType ∈ {clients,items,orders,payments} 전부 `/clients/preview`~`/payments/preview` 실재(opening_balances는 별도 엔드포인트 분기). 진짜 dead-button **0건**.
+> - **🟢 탭 패널토글 #450 클래스 전수 = clean(net-new 0)**: 19개 `switch*Tab` 함수 중 하드코딩 토글배열 패턴(`['a','b'].forEach` ↔ `if(tab==='X')` 핸들러 브랜치 대조)을 쓰는 건 **2개뿐**(`messages.js switchMsgTab`·`priceManagement.js switchPmTab`) — 둘 다 토글배열 ⊇ 핸들러브랜치 **정합**(priceManagement는 #450 픽스로 `['purchase','sales','policies']` 정정 확인). 나머지 17개는 클래스-기반 querySelectorAll/직접 토글이라 #450 array-mismatch 클래스 비해당.
+> - **🧬 SKILL 강화 1건 — axios 라우트 스캔 매처 `'/*'` 함정 codify(line 121 하위)**: 라우트 수집 자동화 시 노이즈 제거용 블록주석 strip `/\*…\*/`이 **`router.use('/*', authMiddleware)`의 `'/*'` 문자열 리터럴을 가짜 주석시작으로 오발** → 파일 첫 `*/`까지 삭제 → 라우터 통째로 0개 수집 → mass false-alarm(실증: settings/cashFlow/kakao/workbench/facility/items 6라우터 누락 → 68 가짜 unmatched). 수정 = 따옴표/백틱 뒤 `/*` 배제(`(^|[^'\`"\/])\/\*…`) + **sanity check(수집 라우트 수 ≈ axios 호출 수, 828≈828)**를 보고 전 의무화. 이 함정은 false-clean이 아닌 **false-alarm 방향**(가짜 unmatched 폭증)이라 sanity check 없이 raw 출력 보고하면 노이즈.
+> - **🟢 backlog↔GitHub sync**: open auto-improve **실측 9건**(#452·#451·#450·#447·#444·#443·#442·#441·#439, list_issues 전수) = 직전 Area2 stats `new=9` **정합**. owner 신규 close/머지 0(done=139·rejected=3 유지). 본 사이클 신규 이슈 0(clean). #422 디버전스: HEAD=origin/main 동기(`eeeca67`)라 미push 픽스 0.
+> - **이상 없음(dead-button·탭 패널토글·sync)**: churn 퇴화 사이클 — owner 코드 churn 0(유일 변경=본 에이전트 직전 Area3 프론트 1줄). 전수 axios 스캔 net-new 0(2 FP)·#450 클래스 전수 clean·git 동기 0/0·워킹트리 clean·sync 9=9.
+> - 자동 수정 0건(clean cycle — 발견 없음), 신규 이슈 0건, SKILL 강화 1건(axios 라우트 매처 `'/*'` 함정), done-sync(변동 0, new 9 유지), **신선 각도 — churn 퇴화 사이클(owner 코드 churn 0)의 Area 3을 전체 코드베이스 axios→백엔드 라우트 존재성 자동 standing scan으로 net-new 재검증. 828 axios 호출 전수 매칭에서 dead-button(404 죽은버튼) 잔존 0 확인(unmatched 2건 전부 FP: #318 메뉴주석 material-consumption·migration 동적타입 전부실재). 탭 패널토글 #450 클래스도 전수 clean(array-pattern 2개 정합). 검증 과정에서 자동 매처의 `'/*'` 라우트 리터럴이 블록주석 strip을 오발해 6라우터 통째 누락→68 가짜 unmatched를 유발함을 실증 → 따옴표 뒤 `/*` 배제 + 수집수≈호출수 sanity check를 SKILL에 codify(false-alarm 방지). 부수: `npm ci`로 #439 commit-gate 자가복구.**
+>
 > **Area 2 코드 품질 심층 분석 (2026-06-28T06:00):**
 > - **방법**: 사이클 초반 `npm ci`(node_modules 0→81패키지, #439 commit-gate 자가복구) 후 git fetch-before-compare(origin force-update `4993fa7→8fb7e23`, fetch 후 **HEAD=origin/main `8fb7e23` 0/0 동기**, 워킹트리 clean, 디버전스 0). egress 차단(prod/Playwright 도달 불가)이나 **node_modules 복구로 `npx tsc --noEmit` + `npm run build` 실행** = 타입 검증. Area 2 **25회차** — **churn 퇴화 사이클**: 직전 Area2(`b512292`, 06-27T06:00) 이후 owner 코드 churn = **`priceManagement.js` 1줄(#450 패널토글, 본 에이전트 Area3 자동수정)뿐**, 나머지 전부 auto-improve 문서. **신선 각도 = 전체 코드베이스 recursive authMiddleware 커버리지 감사**(churn-한정 아닌 83 라우터 전수) — 직전 사이클들의 churn-한정 auth 점검이 못 본 subdir 라우터까지 포함해 무-auth 라우트가 잔존하는지 net-new 검증.
 > - **🟢 타입 검증 = clean**: `npx tsc --noEmit` **exit 0**(타입 불일치 0) + `npm run build` 성공(**391 modules**, dist 5.35MB). 신규 write-path 0(churn=프론트 1줄)이라 컬럼 존재성·N+1·entity_id INSERT는 net-new 0 by construction.
