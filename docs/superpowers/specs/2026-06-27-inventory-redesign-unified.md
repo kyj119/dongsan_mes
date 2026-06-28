@@ -32,7 +32,9 @@
   - **남은 UP1 보완(소)**: 입고/조정 폼·재고현황 프론트의 창고별 표시(현 backend는 zones[] 제공, 프론트 미반영). multi-UOM 표시환산과 함께 UP3에서.
 - **UP2. 공간인식 소모** ✅ (커밋 `3ccd44ff`, 2026-06-27, 검증완료·미배포) — **인쇄 1경로만**(사용자 결정). autoDeductInventory에서 print_event/card.equipment_id→equipment.zone_id(facility)→storage_zone(entity정합·is_default우선) 차감. `resolveEquipmentZone`/`resolveDeductionZone`(inventoryZone.ts). 폴백: 장비zone→품목 기본창고→NULL. **수량·자재선택 불변**(현수막 yd·판재 장 차감결과 동일, 출처 창고만 변경). PP(라미≠프린터)·stockShip(창고피킹)·scan(위치 미캡처)은 장비신호 부재로 품목 기본창고 유지. 검증: typecheck+build·smoke101/101·로컬 E2E 4케이스 PASS.
   - **분리·이연**: multi-UOM cm 정밀(base_unit cm 차감)은 UP2에서 제외(0395 잉크전환과 함께 별도). 공간인식(zone)만 우선 완료.
-- **UP3. 배치도 영역 편집 UI**(facility_zones CRUD·그리기/크기) + 재고 표시환산(PACK 통/L·CONTINUOUS 롤).
+- **UP3-B1. 재고 창고별 표시+이동 UI** ✅ (커밋 `8a8b7c09`, 2026-06-27, 검증완료·미배포) — `pages/inventory.ts`+`scripts/inventory.js`(프론트만). 재고현황 행 "창고별/이동" → zoneStockModal: 분해 read(`GET /:id` zones[]) + 창고 간 이동(`POST /transfer`, 미배정↔창고). 도착=`GET /storage-zones`. 입고/조정은 기본창고 고정 유지. 로컬 Playwright E2E PASS.
+- **UP3-A. 배치도 영역 편집 UI**(facility_zones CRUD·그리기/크기) — 백엔드 CRUD 완비, 프론트 편집 UI만 미구현(읽기전용 렌더). 대기.
+- **UP3-B2. 재고 표시환산**(PACK 통/L·CONTINUOUS 롤) — 타 세션 0394/0395 미커밋 WIP 의존(items 라우트/폼 미사용·환산헬퍼 없음). 이연.
 - **UP4. 창고별 발주**(MRP 창고별 임계치) + 다단위 발주(포장↔base).
 - **UP5. 원가분석**(창고/공정/주문별 소모원가) + FIFO entity 버그 수정.
 
