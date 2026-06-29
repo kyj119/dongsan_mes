@@ -229,6 +229,10 @@ scanRouter.post('/action', async (c) => {
         const entityId = getEntityId(c) || 1
         // UP1: 창고별 다중행. 입고 대상 창고 = 품목 기본창고 (NULL=미배정). 0396 UNIQUE=(item,entity,IFNULL(zone,0)).
         const zoneId = await getItemDefaultZone(c.env.DB, body.id)
+        // MU3: 다단위 — 입력 수량(관리단위)을 base_unit으로 환산(×pack_size). 단일단위(pack_size NULL→1)=불변.
+        const muIn = await c.env.DB.prepare('SELECT pack_size FROM items WHERE id = ?').bind(body.id).first<{ pack_size: number | null }>()
+        const psIn = (muIn?.pack_size && muIn.pack_size > 0) ? muIn.pack_size : 1
+        const qtyBaseIn = body.quantity * psIn
         // #412 + #169 + #289: 재고는 inventory.quantity (items에 current_stock 컬럼 없음).
         // upsert(행 부재 대비) + 감사 기록을 단일 batch로 원자 처리. balance_after는 upsert 후 잔량 서브쿼리.
         await c.env.DB.batch([
@@ -236,16 +240,16 @@ scanRouter.post('/action', async (c) => {
             INSERT INTO inventory (item_id, quantity, entity_id, storage_zone_id, last_updated)
             VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
             ON CONFLICT(item_id, entity_id, IFNULL(storage_zone_id, 0)) DO UPDATE SET quantity = quantity + excluded.quantity, last_updated = CURRENT_TIMESTAMP
-          `).bind(body.id, body.quantity, entityId, zoneId),
+          `).bind(body.id, qtyBaseIn, entityId, zoneId),
           c.env.DB.prepare(`
             INSERT INTO inventory_transactions
             (item_id, transaction_type, transaction_date, quantity, reference_type, balance_after, reason, handled_by, entity_id, storage_zone_id)
             VALUES (?, 'IN', DATE('now'), ?, 'SCAN', (SELECT quantity FROM inventory WHERE item_id = ? AND entity_id = ? AND IFNULL(storage_zone_id, 0) = IFNULL(?, 0)), ?, ?, ?, ?)
-          `).bind(body.id, body.quantity, body.id, entityId, zoneId,
+          `).bind(body.id, qtyBaseIn, body.id, entityId, zoneId,
             body.notes || '스캔 입고', user?.id || 1, entityId, zoneId)
         ])
 
-        return c.json({ success: true, message: `${body.quantity}개 입고 처리되었습니다.` })
+        return c.json({ success: true, message: `${body.quantity} 입고 처리되었습니다.` })
       }
 
       case 'ITEM:stock-out': {
@@ -256,11 +260,15 @@ scanRouter.post('/action', async (c) => {
         // 차감 대상 창고 = 품목 기본창고 (NULL=미배정). 창고별 다중행.
         // UP2 제외: 수동 스캔 출고는 스캔 위치/장비를 캡처하지 않음 → 품목 기본창고가 정확.
         const zoneId2 = await getItemDefaultZone(c.env.DB, body.id)
+        // MU3: 다단위 — 출고 수량(관리단위·PACK=개봉통수)을 base로 환산(×pack_size). 단일단위=불변.
+        const muOut = await c.env.DB.prepare('SELECT pack_size FROM items WHERE id = ?').bind(body.id).first<{ pack_size: number | null }>()
+        const psOut = (muOut?.pack_size && muOut.pack_size > 0) ? muOut.pack_size : 1
+        const qtyBaseOut = body.quantity * psOut
         // #412 + #164: inventory.quantity 차감 (atomic UPDATE WHERE, 부족/행부재 시 changes=0 → 재고부족)
         const result = await c.env.DB.prepare(`
           UPDATE inventory SET quantity = quantity - ?, last_updated = CURRENT_TIMESTAMP
           WHERE item_id = ? AND entity_id = ? AND IFNULL(storage_zone_id, 0) = IFNULL(?, 0) AND quantity >= ?
-        `).bind(body.quantity, body.id, entityId2, zoneId2, body.quantity).run()
+        `).bind(qtyBaseOut, body.id, entityId2, zoneId2, qtyBaseOut).run()
 
         if (!result.meta.changes || result.meta.changes === 0) {
           return c.json({ success: false, error: '재고가 부족합니다.' }, 400)
@@ -271,10 +279,10 @@ scanRouter.post('/action', async (c) => {
           INSERT INTO inventory_transactions
           (item_id, transaction_type, transaction_date, quantity, reference_type, balance_after, reason, handled_by, entity_id, storage_zone_id)
           VALUES (?, 'OUT', DATE('now'), ?, 'SCAN', (SELECT quantity FROM inventory WHERE item_id = ? AND entity_id = ? AND IFNULL(storage_zone_id, 0) = IFNULL(?, 0)), ?, ?, ?, ?)
-        `).bind(body.id, body.quantity, body.id, entityId2, zoneId2,
+        `).bind(body.id, qtyBaseOut, body.id, entityId2, zoneId2,
           body.notes || '스캔 출고', user?.id || 1, entityId2, zoneId2).run()
 
-        return c.json({ success: true, message: `${body.quantity}개 출고 처리되었습니다.` })
+        return c.json({ success: true, message: `${body.quantity} 출고 처리되었습니다.` })
       }
 
       default:

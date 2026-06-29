@@ -321,6 +321,15 @@ inventoryRouter.post('/receipts', async (c) => {
     //   INSERT OR IGNORE(기본창고 0행 보장) + zone 키 UPDATE 누적. (배치 내 동일품목 중복라인도 안전)
     const itemIds = items.map((item: any) => item.item_id)
     const zoneMap = await getItemDefaultZones(c.env.DB, itemIds)
+    // MU3: 다단위 — 입고 수량(관리단위) → base_unit 환산용 pack_size. 단일단위(NULL→1)=불변.
+    const packMap = new Map<number, number>()
+    {
+      const { results: psRows } = await c.env.DB.prepare(
+        `SELECT id, pack_size FROM items WHERE id IN (${itemIds.map(() => '?').join(',')})`
+      ).bind(...itemIds).all<{ id: number; pack_size: number | null }>()
+      for (const r of psRows || []) packMap.set(Number(r.id), (r.pack_size && r.pack_size > 0) ? r.pack_size : 1)
+    }
+    const ps = (id: number) => packMap.get(id) || 1
 
     const receiptStmts: any[] = []
     for (const item of items) {
@@ -340,7 +349,7 @@ inventoryRouter.post('/receipts', async (c) => {
         c.env.DB.prepare(`
           UPDATE inventory SET quantity = quantity + ?, last_updated = CURRENT_TIMESTAMP
           WHERE item_id = ? AND entity_id = ? AND IFNULL(storage_zone_id, 0) = IFNULL(?, 0)
-        `).bind(quantity, item_id, entityId, zoneId)
+        `).bind(quantity * ps(item_id), item_id, entityId, zoneId)  // MU3: base 환산 누적
       )
     }
     await c.env.DB.batch(receiptStmts)
@@ -363,7 +372,8 @@ inventoryRouter.post('/receipts', async (c) => {
            reference_type, reference_id, balance_after, reason, handled_by, entity_id, storage_zone_id)
           VALUES (?, 'IN', ?, ?, ?, ?, 'PURCHASE', ?, ?, '입고', ?, ?, ?)
         `).bind(
-          item.item_id, receipt_date, item.quantity, item.unit_price, amount,
+          // MU3: 거래는 base 단위 — quantity=base(×pack), unit_price=base당(÷pack), total_amount=amount(불변·일관)
+          item.item_id, receipt_date, item.quantity * ps(item.item_id), item.unit_price / ps(item.item_id), amount,
           receiptId, balanceMap[`${item.item_id}:${zoneId ?? 0}`] || 0, user?.id || 1, entityId, zoneId
         )
       })
