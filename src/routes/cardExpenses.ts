@@ -332,7 +332,7 @@ cardExpRouter.post('/sync', requireRole('ADMIN'), async (c) => {
     const config = { certKey, corpNum, isTest, senderId: senderIdRow?.setting_value || 'DONGSAN' }
     const entityId = getEntityId(c)
 
-    const { getCardList, getMonthlyCardLog } = await import('../services/barobillCard')
+    const { getCardList, getMonthlyCardLog, getDailyCardLog } = await import('../services/barobillCard')
     const cardList = await getCardList(config)
 
     // 등록된 법인카드와 바로빌 카드 매핑 (뒤 4자리)
@@ -346,20 +346,58 @@ cardExpRouter.post('/sync', requireRole('ADMIN'), async (c) => {
       if (dc.card_number_last4) cardMap.set(dc.card_number_last4, dc.id)
     }
 
-    // 월 목록 생성
-    //   바로빌 월별 카드내역(GetMonthlyCardApprovalLog BaseMonth)은 카드 마감일(cutoff) 청구주기로 그룹화됨
-    //   → 마감일(예 23일) 이후 사용분은 '다음 청구월'에 속함. 후행 1개월을 더 조회해야 최근 사용분이 누락 안 됨.
-    //   (line 381 사용일 필터가 dateStart~dateEnd로 clamp + codef_transaction_id dedup → 초과월 조회 안전)
+    // 월 목록(과거 bulk — 효율) 생성
     const months = new Set<string>()
     const cur = new Date(dateStart.slice(0, 4) + '-' + dateStart.slice(4, 6) + '-01')
     const endD = new Date(dateEnd.slice(0, 4) + '-' + dateEnd.slice(4, 6) + '-28')
-    endD.setMonth(endD.getMonth() + 1)
     while (cur <= endD) {
       months.add(`${cur.getFullYear()}${String(cur.getMonth() + 1).padStart(2, '0')}`)
       cur.setMonth(cur.getMonth() + 1)
     }
+    // 최근 41일 일자 목록(마감 후 tail — 정확 수집)
+    //   ⚠️ 월별 API(GetMonthlyCardApprovalLog BaseMonth)는 카드 마감일(예 23일) 청구주기 statement로 묶여,
+    //   마감 이후 사용분이 미마감 차기 statement에 속해 월별 조회로는 누락됨(실측: prod 6/24~ 0건).
+    //   일별 API(GetDailyCardApprovalLog BaseDate)는 특정일 직접 조회라 청구주기 무관 → 최근 구간을 보완 수집.
+    //   bulk는 월별로 받고, 최근 41일만 일별로 덧칠(dedup으로 중복 무시) → 호출량 bound(타임아웃 회피).
+    const tailDays: string[] = []
+    {
+      const edMs = Date.UTC(+dateEnd.slice(0, 4), +dateEnd.slice(4, 6) - 1, +(dateEnd.slice(6, 8) || '1'))
+      const sdMs = Date.UTC(+dateStart.slice(0, 4), +dateStart.slice(4, 6) - 1, +(dateStart.slice(6, 8) || '1'))
+      const startMs = Math.max(edMs - 40 * 86400000, sdMs)
+      for (let t = startMs; t <= edMs; t += 86400000) {
+        const d = new Date(t)
+        tailDays.push(`${d.getUTCFullYear()}${String(d.getUTCMonth() + 1).padStart(2, '0')}${String(d.getUTCDate()).padStart(2, '0')}`)
+      }
+    }
 
     let inserted = 0, skipped = 0
+
+    // 단건 처리(dedup + 범위필터 + INSERT) — 월별/일별 양 경로 공용
+    const processItems = async (items: any[], dbCardId: number) => {
+      for (const item of items) {
+        const refKey = item.ApprovalNum || `${item.UseDT}_${item.ApprovalAmount}_${item.UseStoreName}`
+        const dup = await c.env.DB.prepare(
+          'SELECT id FROM card_transactions WHERE card_id = ? AND codef_transaction_id = ?'
+        ).bind(dbCardId, refKey).first()
+        if (dup) { skipped++; continue }
+
+        const txDate = (item.UseDT || '').slice(0, 8)
+        if (txDate < dateStart || txDate > dateEnd) continue
+        const txTime = (item.UseDT || '').length >= 12 ? `${(item.UseDT || '').slice(8, 10)}:${(item.UseDT || '').slice(10, 12)}:00` : null
+        const amount = Math.abs(parseFloat(item.ApprovalAmount || item.TotalAmount || '0'))
+
+        await c.env.DB.prepare(`
+          INSERT INTO card_transactions (card_id, transaction_date, transaction_time, merchant_name, amount, supply_amount, tax_amount, approval_number, approval_type, codef_transaction_id, installments, status, entity_id)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'UNCLASSIFIED', ?)
+        `).bind(
+          dbCardId, txDate, txTime, item.UseStoreName || null, amount,
+          parseFloat(item.Amount || '0'), parseFloat(item.Tax || '0'),
+          item.ApprovalNum || null, item.ApprovalType === '취소' ? 'CANCEL' : 'APPROVED',
+          refKey, parseInt(item.InstallmentMonths || '0') || 1, entityId
+        ).run()
+        inserted++
+      }
+    }
 
     for (const bbCard of cardList) {
       const cardNum = bbCard.CardNum || ''
@@ -368,38 +406,29 @@ cardExpRouter.post('/sync', requireRole('ADMIN'), async (c) => {
       const dbCardId = cardMap.get(last4)
       if (!dbCardId) continue
 
+      // 1) 월별(bulk)
       for (const month of months) {
         try {
           let page = 1, maxPage = 1
           do {
             const result = await getMonthlyCardLog(config, cardNum, month, page, 100)
             maxPage = result.maxPage
-            for (const item of result.items) {
-              const refKey = item.ApprovalNum || `${item.UseDT}_${item.ApprovalAmount}_${item.UseStoreName}`
-              const dup = await c.env.DB.prepare(
-                'SELECT id FROM card_transactions WHERE card_id = ? AND codef_transaction_id = ?'
-              ).bind(dbCardId, refKey).first()
-              if (dup) { skipped++; continue }
-
-              const txDate = (item.UseDT || '').slice(0, 8)
-              if (txDate < dateStart || txDate > dateEnd) continue
-              const txTime = (item.UseDT || '').length >= 12 ? `${(item.UseDT || '').slice(8, 10)}:${(item.UseDT || '').slice(10, 12)}:00` : null
-              const amount = Math.abs(parseFloat(item.ApprovalAmount || item.TotalAmount || '0'))
-
-              await c.env.DB.prepare(`
-                INSERT INTO card_transactions (card_id, transaction_date, transaction_time, merchant_name, amount, supply_amount, tax_amount, approval_number, approval_type, codef_transaction_id, installments, status, entity_id)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'UNCLASSIFIED', ?)
-              `).bind(
-                dbCardId, txDate, txTime, item.UseStoreName || null, amount,
-                parseFloat(item.Amount || '0'), parseFloat(item.Tax || '0'),
-                item.ApprovalNum || null, item.ApprovalType === '취소' ? 'CANCEL' : 'APPROVED',
-                refKey, parseInt(item.InstallmentMonths || '0') || 1, entityId
-              ).run()
-              inserted++
-            }
+            await processItems(result.items, dbCardId)
             page++
           } while (page <= maxPage)
         } catch (_) { /* skip month */ }
+      }
+      // 2) 최근 41일 일별(마감 후 누락분 보완)
+      for (const day of tailDays) {
+        try {
+          let page = 1, maxPage = 1
+          do {
+            const result = await getDailyCardLog(config, cardNum, day, page, 100)
+            maxPage = result.maxPage
+            await processItems(result.items, dbCardId)
+            page++
+          } while (page <= maxPage)
+        } catch (_) { /* skip day */ }
       }
     }
 
