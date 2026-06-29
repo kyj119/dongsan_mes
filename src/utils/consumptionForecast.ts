@@ -55,17 +55,20 @@ export async function getConsumptionForecast(
     : 'LEFT JOIN inventory inv ON i.id = inv.item_id'
   const invParams = entityId > 0 ? [entityId] : []
 
+  // UP4: 창고별 다중행 → 품목당 1행으로 집계. current_stock=SUM(전 창고), 임계치=MAX(기본창고 행에 저장됨).
+  //   GROUP BY 없으면 다중 창고 보유 품목이 행 중복 → 이중 발주·재고 분할 오집계(회귀).
   const { results: items } = await db.prepare(`
     SELECT
       i.id as item_id, i.item_name, i.category, i.unit,
-      COALESCE(inv.quantity, 0) as current_stock,
-      COALESCE(inv.safe_stock, 0) as safe_stock,
-      COALESCE(inv.reorder_point, 0) as reorder_point,
-      COALESCE(inv.auto_pr_enabled, 0) as auto_pr_enabled,
-      COALESCE(inv.entity_id, ${entityId || 1}) as entity_id
+      COALESCE(SUM(inv.quantity), 0) as current_stock,
+      COALESCE(MAX(inv.safe_stock), 0) as safe_stock,
+      COALESCE(MAX(inv.reorder_point), 0) as reorder_point,
+      COALESCE(MAX(inv.auto_pr_enabled), 0) as auto_pr_enabled,
+      COALESCE(MAX(inv.entity_id), ${entityId || 1}) as entity_id
     FROM items i
     ${invCondition}
     WHERE i.is_purchase_item = 1 AND i.is_active = 1 ${itemFilter}
+    GROUP BY i.id
     ORDER BY i.category, i.item_name
   `).bind(...invParams, ...params).all()
 

@@ -15,13 +15,18 @@ stockAlertsRouter.get('/stock-alerts', requireRole('ADMIN', 'MANAGER'), async (c
   try {
     const status = c.req.query('status') || 'ACTIVE'
 
+    // UP4: 창고별 다중행 → 품목×법인 단위로 집계(SUM/MAX)해 알림 행 중복·타법인 합산 방지.
     const { results } = await c.env.DB.prepare(`
       SELECT sa.*, i.item_name, i.item_code, i.category, i.unit,
         inv.quantity as current_stock, inv.safe_stock, inv.reorder_point,
         sz.zone_name, u.name as acknowledged_by_name
       FROM stock_alerts sa
       JOIN items i ON sa.item_id = i.id
-      LEFT JOIN inventory inv ON inv.item_id = i.id
+      LEFT JOIN (
+        SELECT item_id, entity_id, SUM(quantity) AS quantity,
+               MAX(safe_stock) AS safe_stock, MAX(reorder_point) AS reorder_point
+        FROM inventory GROUP BY item_id, entity_id
+      ) inv ON inv.item_id = i.id AND inv.entity_id = sa.entity_id
       LEFT JOIN storage_zones sz ON i.storage_zone_id = sz.id
       LEFT JOIN users u ON sa.acknowledged_by = u.id
       WHERE sa.status = ?
@@ -41,16 +46,24 @@ stockAlertsRouter.get('/stock-alerts', requireRole('ADMIN', 'MANAGER'), async (c
 stockAlertsRouter.post('/stock-alerts/check', requireRole('ADMIN', 'MANAGER'), async (c) => {
   try {
     // reorder_point 이하인 품목 중 아직 ACTIVE 알림이 없는 것만 생성
+    // UP4: 품목×법인 총재고(SUM) 기준으로 판정(창고별 행단위 오탐 방지). 알림은 그 법인으로 생성.
     const { results: lowItems } = await c.env.DB.prepare(`
-      SELECT inv.item_id, inv.quantity, inv.reorder_point, inv.safe_stock, inv.auto_pr_enabled
-      FROM inventory inv
-      JOIN items i ON inv.item_id = i.id
-      WHERE i.is_active = 1
-        AND inv.reorder_point > 0
-        AND inv.quantity <= inv.reorder_point
+      SELECT agg.item_id, agg.entity_id, agg.quantity, agg.reorder_point, agg.safe_stock, agg.auto_pr_enabled
+      FROM (
+        SELECT inv.item_id, inv.entity_id,
+          SUM(inv.quantity) AS quantity, MAX(inv.reorder_point) AS reorder_point,
+          MAX(inv.safe_stock) AS safe_stock, MAX(inv.auto_pr_enabled) AS auto_pr_enabled
+        FROM inventory inv
+        JOIN items i ON inv.item_id = i.id
+        WHERE i.is_active = 1
+        GROUP BY inv.item_id, inv.entity_id
+      ) agg
+      WHERE agg.reorder_point > 0
+        AND agg.quantity <= agg.reorder_point
         AND NOT EXISTS (
           SELECT 1 FROM stock_alerts sa
-          WHERE sa.item_id = inv.item_id AND sa.status IN ('ACTIVE', 'ACKNOWLEDGED')
+          WHERE sa.item_id = agg.item_id AND sa.entity_id = agg.entity_id
+            AND sa.status IN ('ACTIVE', 'ACKNOWLEDGED')
         )
     `).all() as any
 
@@ -65,7 +78,7 @@ stockAlertsRouter.post('/stock-alerts/check', requireRole('ADMIN', 'MANAGER'), a
         item.quantity <= item.safe_stock ? 'LOW_STOCK' : 'REORDER_POINT',
         item.quantity,
         item.reorder_point,
-        getEntityId(c) || 1
+        item.entity_id || getEntityId(c) || 1
       ))
       created++
     }

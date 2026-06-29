@@ -107,11 +107,17 @@
       var urgBadge = urgencyBadge(s.urgency);
       var stockClass = s.current_stock <= 0 ? 'text-red-600 font-bold' :
                        s.current_stock <= s.safe_stock ? 'text-amber-600 font-semibold' : 'text-gray-900';
+      // UP4: 재고가 2개 이상 창고로 분할된 경우만 분포 표시(입고=기본창고 후 이동 분배 가이드)
+      var zoneInfo = '';
+      if (Array.isArray(s.zones) && s.zones.length > 1) {
+        zoneInfo = '<div class="text-[11px] text-gray-400 mt-0.5"><i class="fas fa-warehouse mr-0.5"></i>' +
+          s.zones.map(function(z) { return escHtml(z.zone_name) + ' ' + fmt(z.quantity); }).join(' · ') + '</div>';
+      }
 
       html += '<tr class="border-t border-gray-100 hover:bg-gray-50" data-idx="' + idx + '">' +
         '<td class="px-3 py-2 text-center"><input type="checkbox" class="item-check" data-item-id="' + s.item_id + '" ' + (s.needs_order ? 'checked' : '') + ' onchange="updateActionBar()"></td>' +
         '<td class="px-3 py-2">' + urgBadge + '</td>' +
-        '<td class="px-3 py-2 font-medium text-gray-900" title="' + escHtml(s.item_name) + '">' + escHtml(s.item_name) + '</td>' +
+        '<td class="px-3 py-2 font-medium text-gray-900" title="' + escHtml(s.item_name) + '">' + escHtml(s.item_name) + zoneInfo + '</td>' +
         '<td class="px-3 py-2 text-gray-500">' + escHtml(s.category || '-') + '</td>' +
         '<td class="px-3 py-2 text-right ' + stockClass + '">' + fmt(s.current_stock) + '</td>' +
         '<td class="px-3 py-2 text-right text-gray-600">' + fmt(s.safe_stock) + '</td>' +
