@@ -102,7 +102,7 @@ export async function autoDeductPostProcessingMaterials(
           // 소모 대상 창고 = 코팅지 품목 기본창고 (NULL=미배정). 재고 행 키 = (item, entity, zone).
           // UP2 제외: 코팅은 라미네이터에서 소비되나 card.equipment_id는 출력 프린터뿐 → 라미 장비 신호 없음.
           //   잘못된 장비(프린터) zone을 끌어오면 더 부정확 → 코팅지 품목 기본창고가 정확.
-          const zoneId = await getItemDefaultZone(db, mat.id)
+          const zoneId = await getItemDefaultZone(db, mat.id, entityId)
 
           await db
             .prepare(`INSERT OR IGNORE INTO inventory (item_id, entity_id, storage_zone_id, quantity) VALUES (?, ?, ?, 0)`)

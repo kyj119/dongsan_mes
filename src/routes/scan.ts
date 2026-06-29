@@ -228,7 +228,7 @@ scanRouter.post('/action', async (c) => {
         }
         const entityId = getEntityId(c) || 1
         // UP1: 창고별 다중행. 입고 대상 창고 = 품목 기본창고 (NULL=미배정). 0396 UNIQUE=(item,entity,IFNULL(zone,0)).
-        const zoneId = await getItemDefaultZone(c.env.DB, body.id)
+        const zoneId = await getItemDefaultZone(c.env.DB, body.id, entityId)
         // MU3: 다단위 — 입력 수량(관리단위)을 base_unit으로 환산(×pack_size). 단일단위(pack_size NULL→1)=불변.
         const muIn = await c.env.DB.prepare('SELECT pack_size FROM items WHERE id = ?').bind(body.id).first<{ pack_size: number | null }>()
         const psIn = (muIn?.pack_size && muIn.pack_size > 0) ? muIn.pack_size : 1
@@ -259,7 +259,7 @@ scanRouter.post('/action', async (c) => {
         const entityId2 = getEntityId(c) || 1
         // 차감 대상 창고 = 품목 기본창고 (NULL=미배정). 창고별 다중행.
         // UP2 제외: 수동 스캔 출고는 스캔 위치/장비를 캡처하지 않음 → 품목 기본창고가 정확.
-        const zoneId2 = await getItemDefaultZone(c.env.DB, body.id)
+        const zoneId2 = await getItemDefaultZone(c.env.DB, body.id, entityId2)
         // MU3: 다단위 — 출고 수량(관리단위·PACK=개봉통수)을 base로 환산(×pack_size). 단일단위=불변.
         const muOut = await c.env.DB.prepare('SELECT pack_size FROM items WHERE id = ?').bind(body.id).first<{ pack_size: number | null }>()
         const psOut = (muOut?.pack_size && muOut.pack_size > 0) ? muOut.pack_size : 1

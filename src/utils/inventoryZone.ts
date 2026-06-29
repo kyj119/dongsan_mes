@@ -15,28 +15,60 @@
 
 import type { D1Database } from '@cloudflare/workers-types'
 
-/** 품목의 기본 재고 창고 id. NULL = 미배정(아직 창고 미지정). */
-export async function getItemDefaultZone(db: D1Database, itemId: number): Promise<number | null> {
-  const row = await db
-    .prepare('SELECT storage_zone_id FROM items WHERE id = ?')
-    .bind(itemId)
-    .first<{ storage_zone_id: number | null }>()
-  return row?.storage_zone_id ?? null
+/** 법인의 기본 창고(is_default). 없으면 NULL. */
+export async function getEntityDefaultZone(db: D1Database, entityId: number): Promise<number | null> {
+  const d = await db
+    .prepare('SELECT id FROM storage_zones WHERE entity_id = ? AND is_default = 1 AND is_active = 1 ORDER BY id LIMIT 1')
+    .bind(entityId)
+    .first<{ id: number }>()
+  return d?.id ?? null
 }
 
-/** 여러 품목의 기본 창고를 한 번에 (Map<item_id, zone_id|null>). 입고 등 배치 경로용. */
-export async function getItemDefaultZones(db: D1Database, itemIds: number[]): Promise<Map<number, number | null>> {
+/**
+ * 품목의 기본 재고 창고 id (법인 인식).
+ *  - 미배정(items.storage_zone_id NULL) → NULL (미배정 유지)
+ *  - 배정 zone이 요청 법인 소유(활성) → 그 zone
+ *  - 타법인 zone 배정(법인 누수 위험) → 요청 법인 기본창고(없으면 NULL)
+ *  ※ 품목은 법인 공유(items에 entity 없음)이나 창고는 법인 소유 → 입고/차감이 항상 자기 법인 창고에 안착.
+ */
+export async function getItemDefaultZone(db: D1Database, itemId: number, entityId: number): Promise<number | null> {
+  const row = await db
+    .prepare(
+      `SELECT i.storage_zone_id AS zid, sz.entity_id AS zent, sz.is_active AS zact
+         FROM items i LEFT JOIN storage_zones sz ON sz.id = i.storage_zone_id
+        WHERE i.id = ?`
+    )
+    .bind(itemId)
+    .first<{ zid: number | null; zent: number | null; zact: number | null }>()
+  if (row?.zid == null) return null
+  if (row.zent === entityId && row.zact === 1) return row.zid
+  return getEntityDefaultZone(db, entityId)
+}
+
+/** 여러 품목의 기본 창고를 한 번에 (Map<item_id, zone_id|null>), 법인 인식. 입고 등 배치 경로용. */
+export async function getItemDefaultZones(db: D1Database, itemIds: number[], entityId: number): Promise<Map<number, number | null>> {
   const map = new Map<number, number | null>()
   if (itemIds.length === 0) return map
+  const entDefault = await getEntityDefaultZone(db, entityId)
   // D1 바인드 한도(~100) → 80개 청크
   for (let i = 0; i < itemIds.length; i += 80) {
     const chunk = itemIds.slice(i, i + 80)
     const ph = chunk.map(() => '?').join(',')
     const { results } = await db
-      .prepare(`SELECT id, storage_zone_id FROM items WHERE id IN (${ph})`)
+      .prepare(
+        `SELECT i.id AS iid, i.storage_zone_id AS zid, sz.entity_id AS zent, sz.is_active AS zact
+           FROM items i LEFT JOIN storage_zones sz ON sz.id = i.storage_zone_id
+          WHERE i.id IN (${ph})`
+      )
       .bind(...chunk)
-      .all<{ id: number; storage_zone_id: number | null }>()
-    for (const r of results || []) map.set(Number(r.id), r.storage_zone_id ?? null)
+      .all<{ iid: number; zid: number | null; zent: number | null; zact: number | null }>()
+    for (const r of results || []) {
+      let resolved: number | null
+      if (r.zid == null) resolved = null
+      else if (r.zent === entityId && r.zact === 1) resolved = r.zid
+      else resolved = entDefault
+      map.set(Number(r.iid), resolved)
+    }
   }
   return map
 }
@@ -84,5 +116,5 @@ export async function resolveDeductionZone(
 ): Promise<number | null> {
   const eqZone = await resolveEquipmentZone(db, opts.equipmentId, opts.entityId)
   if (eqZone != null) return eqZone
-  return getItemDefaultZone(db, opts.itemId)
+  return getItemDefaultZone(db, opts.itemId, opts.entityId)
 }

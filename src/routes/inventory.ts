@@ -320,7 +320,7 @@ inventoryRouter.post('/receipts', async (c) => {
     // 표현식 UNIQUE(item, entity, IFNULL(zone,0))라 ON CONFLICT(item, entity)는 무효 →
     //   INSERT OR IGNORE(기본창고 0행 보장) + zone 키 UPDATE 누적. (배치 내 동일품목 중복라인도 안전)
     const itemIds = items.map((item: any) => item.item_id)
-    const zoneMap = await getItemDefaultZones(c.env.DB, itemIds)
+    const zoneMap = await getItemDefaultZones(c.env.DB, itemIds, entityId)
     // MU3: 다단위 — 입고 수량(관리단위) → base_unit 환산용 pack_size. 단일단위(NULL→1)=불변.
     // MU5: 입고 단위 스냅샷용 unit도 함께 조회.
     const packMap = new Map<number, number>()
@@ -487,7 +487,7 @@ inventoryRouter.patch('/receipts/:id/inspection-decision',
       const invItems = (receiptItems || []).filter((ri) => ri.item_id && (ri.accepted_quantity as number) > 0)
 
       // 역분개 대상 창고 = 품목 기본창고(정방향 입고가 거기 누적했으므로). NULL=미배정.
-      const cancelZoneMap = await getItemDefaultZones(c.env.DB, invItems.map((ri) => ri.item_id as number))
+      const cancelZoneMap = await getItemDefaultZones(c.env.DB, invItems.map((ri) => ri.item_id as number), cancelEntityId)
       // 차감 전 현재 잔량 1회 조회 → balance_after를 메모리에서 산출(= max(0, 현재−합격분)) → 차감 후 read 제거
       const cancelBalMap: Record<string, number> = {}
       if (invItems.length > 0) {
@@ -685,7 +685,7 @@ inventoryRouter.post('/releases', async (c) => {
 
     // 출고 차감 대상 창고 = 품목 기본창고 (UP1). NULL=미배정 행에서 차감.
     const releaseItemIds = items.map((item: any) => item.item_id)
-    const relZoneMap = await getItemDefaultZones(c.env.DB, releaseItemIds)
+    const relZoneMap = await getItemDefaultZones(c.env.DB, releaseItemIds, entityId)
     const relPh = releaseItemIds.map(() => '?').join(',')
     const { results: stockRows } = await c.env.DB.prepare(
       `SELECT item_id, storage_zone_id, quantity FROM inventory WHERE item_id IN (${relPh}) AND entity_id = ?`
@@ -778,7 +778,7 @@ inventoryRouter.post('/adjustments', async (c) => {
     const entityId = getEntityId(c) || 1
     const adjQty = Number(adjustment_quantity)
     // 조정 대상 창고 = 품목 기본창고 (NULL=미배정)
-    const zoneId = await getItemDefaultZone(c.env.DB, item_id)
+    const zoneId = await getItemDefaultZone(c.env.DB, item_id, entityId)
 
     const invRow = await c.env.DB.prepare(
       `SELECT quantity FROM inventory WHERE item_id = ? AND entity_id = ? AND IFNULL(storage_zone_id, 0) = IFNULL(?, 0)`

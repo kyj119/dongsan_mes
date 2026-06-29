@@ -122,7 +122,7 @@ returns.patch('/:id/status', requireRole('ADMIN', 'MANAGER'), async (c) => {
     if (returnItems.length > 0) {
       const eid = getEntityId(c) || 1
       // 0396: 창고별 다중행 — 품목 기본창고로 환원 (NULL=미배정). 키 = (item, entity, zone)
-      const zoneMap = await getItemDefaultZones(c.env.DB, returnItems.map(ri => ri.item_id))
+      const zoneMap = await getItemDefaultZones(c.env.DB, returnItems.map(ri => ri.item_id), eid)
       // #164: balance_after를 서브쿼리로 읽어 race condition 방지
       await c.env.DB.batch(
         returnItems.flatMap(ri => {

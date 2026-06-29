@@ -44,7 +44,7 @@ export async function deductStockLinesOnShip(
 
     // 소모 대상 창고 = 품목 기본창고 (NULL=미배정). 재고 행 키 = (item, entity, zone).
     // UP2 제외: 기성/유통 출고는 창고 피킹(소모 장비 없음) → 품목 기본창고가 정확.
-    const zoneId = await getItemDefaultZone(db, ln.item_id)
+    const zoneId = await getItemDefaultZone(db, ln.item_id, lineEntity)
 
     // 담당 법인 재고 row 부재 시 0으로 생성(음수 차감 허용) → UPDATE silent miss 방지
     await db.prepare(
