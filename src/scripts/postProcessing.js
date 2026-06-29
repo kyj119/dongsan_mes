@@ -105,11 +105,11 @@ function addParamField(data = {}) {
         <div class="grid grid-cols-2 gap-2 mb-2">
             <div>
                 <label class="text-xs text-gray-600">내부 키 <span class="text-gray-400">(영문, 예: count)</span></label>
-                <input type="text" placeholder="예: count" value="${data.key||''}" class="param-key w-full border rounded px-2 py-1 text-sm" oninput="this.value=this.value.replace(/[^a-z_]/g,'')">
+                <input type="text" placeholder="예: count" value="${escapeHtml(data.key||'')}" class="param-key w-full border rounded px-2 py-1 text-sm" oninput="this.value=this.value.replace(/[^a-z_]/g,'')">
             </div>
             <div>
                 <label class="text-xs text-gray-600">화면 표시 이름 <span class="text-gray-400">(예: 개수)</span></label>
-                <input type="text" placeholder="예: 개수" value="${data.label||''}" class="param-label w-full border rounded px-2 py-1 text-sm">
+                <input type="text" placeholder="예: 개수" value="${escapeHtml(data.label||'')}" class="param-label w-full border rounded px-2 py-1 text-sm">
             </div>
             <div>
                 <label class="text-xs text-gray-600">입력 방식</label>
