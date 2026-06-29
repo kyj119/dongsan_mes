@@ -576,4 +576,22 @@ cashScheduleRouter.get('/schedule/bank-balance', requireRole('ADMIN', 'MANAGER')
   }
 })
 
+// 거래처 검색 (수동 자금예정 등록 autocomplete용) — /api/bank/client-search는 /bank 권한 게이트라 별도 제공
+cashScheduleRouter.get('/clients/search', requireRole('ADMIN', 'MANAGER'), async (c) => {
+  try {
+    const q = (c.req.query('q') || '').trim()
+    if (!q) return c.json({ success: true, data: [] })
+    const { results } = await c.env.DB.prepare(`
+      SELECT id, client_name, representative
+      FROM clients
+      WHERE is_active = 1 AND client_name LIKE ?
+      ORDER BY client_name LIMIT 20
+    `).bind('%' + q + '%').all()
+    return c.json({ success: true, data: results })
+  } catch (error) {
+    console.error('cashSchedule client-search error:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
+  }
+})
+
 export default cashScheduleRouter

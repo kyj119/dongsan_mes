@@ -311,13 +311,65 @@ window.schOpenAddModal = function() {
   document.getElementById('schAddSource').value = 'ORDER';
   document.getElementById('schAddAmount').value = '';
   document.getElementById('schAddDesc').value = '';
+  var cs = document.getElementById('schAddClientSearch'); if (cs) cs.value = '';
+  var ci = document.getElementById('schAddClientId'); if (ci) ci.value = '';
+  var cd = document.getElementById('schAddClientDropdown'); if (cd) cd.classList.add('hidden');
   clearErrors();
   document.getElementById('schAddModal').classList.remove('hidden');
 };
 
 window.schCloseAddModal = function() {
   document.getElementById('schAddModal').classList.add('hidden');
+  var cd = document.getElementById('schAddClientDropdown'); if (cd) cd.classList.add('hidden');
 };
+
+// 거래처 검색 autocomplete (디바운스) — bank.js 패턴, sch* prefix(?raw 전역스코프 충돌 방지)
+var schClientTimer = null;
+window.schSearchClient = function(query) {
+  var dropdown = document.getElementById('schAddClientDropdown');
+  if (!dropdown) return;
+  // 입력이 비면 선택 해제 + 드롭다운 닫기
+  if (!query || !query.trim()) {
+    var ci0 = document.getElementById('schAddClientId'); if (ci0) ci0.value = '';
+    dropdown.classList.add('hidden');
+    return;
+  }
+  if (schClientTimer) clearTimeout(schClientTimer);
+  schClientTimer = setTimeout(function() {
+    axios.get('/api/cash-flow/clients/search?q=' + encodeURIComponent(query)).then(function(r) {
+      var items = (r.data && r.data.data) || [];
+      if (!items.length) {
+        dropdown.innerHTML = '<div class="px-3 py-2 text-xs text-gray-400">검색 결과 없음</div>';
+        dropdown.classList.remove('hidden');
+        return;
+      }
+      var html = '';
+      items.forEach(function(cl) {
+        var safe = String(cl.client_name || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+        var rep = cl.representative ? ' <span class="text-gray-400 text-xs">(' + String(cl.representative).replace(/</g,'&lt;') + ')</span>' : '';
+        html += '<div class="px-3 py-2 hover:bg-blue-50 cursor-pointer text-sm border-b border-gray-50" onclick="schSelectClient(' + cl.id + ',\'' + safe.replace(/'/g, "\\'") + '\')">';
+        html += '<span class="font-medium">' + safe + '</span>' + rep + '</div>';
+      });
+      dropdown.innerHTML = html;
+      dropdown.classList.remove('hidden');
+    }).catch(function() { dropdown.classList.add('hidden'); });
+  }, 200);
+};
+
+window.schSelectClient = function(clientId, clientName) {
+  var cs = document.getElementById('schAddClientSearch'); if (cs) cs.value = clientName;
+  var ci = document.getElementById('schAddClientId'); if (ci) ci.value = clientId;
+  var cd = document.getElementById('schAddClientDropdown'); if (cd) cd.classList.add('hidden');
+};
+
+// 드롭다운 외부 클릭 시 닫기
+document.addEventListener('click', function(e) {
+  var t = e.target;
+  if (t && t.closest && !t.closest('#schAddClientSearch') && !t.closest('#schAddClientDropdown')) {
+    var cd = document.getElementById('schAddClientDropdown');
+    if (cd && !cd.classList.contains('hidden')) cd.classList.add('hidden');
+  }
+});
 
 function clearErrors() {
   document.getElementById('schAddDateErr').textContent = '';
@@ -342,7 +394,7 @@ window.schSave = async function() {
       source_type: source,
       amount: amount,
       description: desc || null,
-      client_id: null
+      client_id: (document.getElementById('schAddClientId') && document.getElementById('schAddClientId').value) || null
     });
     if (res.data.success) {
       showToast('예정이 등록되었습니다.', 'success');

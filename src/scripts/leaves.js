@@ -15,6 +15,11 @@ function lvEscapeHtml(str) {
   return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;');
 }
 
+// 부서/직책 코드 → 한글 라벨 (HR SSOT 전역주입 window.DEPT_NAMES/POSITION_NAMES, design-hr-enum-ssot)
+// ⚠️ var DEPT_NAMES 재선언 금지(?raw concat 전역스코프 충돌) → window 직접 read
+function lvDeptLabel(d){ return (window.DEPT_NAMES && window.DEPT_NAMES[d]) || d || '-'; }
+function lvPosLabel(p){ return (window.POSITION_NAMES && window.POSITION_NAMES[p]) || p || '-'; }
+
 function lvFmtNum(n) {
   if (n == null) return '0';
   var v = parseFloat(n) || 0;
@@ -84,8 +89,8 @@ window.leavesLoadBalances = async function() {
       return '<tr>' +
         '<td class="px-3 py-2">' + lvEscapeHtml(r.employee_code || '-') + '</td>' +
         '<td class="px-3 py-2 font-medium" title="' + lvEscapeHtml(r.name || '-') + '">' + lvEscapeHtml(r.name || '-') + '</td>' +
-        '<td class="px-3 py-2 text-gray-600" title="' + lvEscapeHtml(r.department || '-') + '">' + lvEscapeHtml(r.department || '-') + '</td>' +
-        '<td class="px-3 py-2 text-gray-600" title="' + lvEscapeHtml(r.position || '-') + '">' + lvEscapeHtml(r.position || '-') + '</td>' +
+        '<td class="px-3 py-2 text-gray-600" title="' + lvEscapeHtml(lvDeptLabel(r.department)) + '">' + lvEscapeHtml(lvDeptLabel(r.department)) + '</td>' +
+        '<td class="px-3 py-2 text-gray-600" title="' + lvEscapeHtml(lvPosLabel(r.position)) + '">' + lvEscapeHtml(lvPosLabel(r.position)) + '</td>' +
         '<td class="px-3 py-2 text-gray-600">' + (r.hire_date || '-') + '</td>' +
         '<td class="px-3 py-2 text-right">' + lvFmtNum(r.accrued) + '</td>' +
         '<td class="px-3 py-2 text-right">' + lvFmtNum(r.granted_extra) + '</td>' +
@@ -126,7 +131,7 @@ window.leavesLoadRequests = async function() {
       return '<tr>' +
         '<td class="px-3 py-2 text-gray-600">' + (r.created_at || '').slice(0, 10) + '</td>' +
         '<td class="px-3 py-2" title="' + lvEscapeHtml((r.employee_code || '') + ' / ' + (r.employee_name || '-')) + '">' + lvEscapeHtml(r.employee_code || '') + ' / <span class="font-medium">' + lvEscapeHtml(r.employee_name || '-') + '</span></td>' +
-        '<td class="px-3 py-2 text-gray-600" title="' + lvEscapeHtml(r.department || '-') + '">' + lvEscapeHtml(r.department || '-') + '</td>' +
+        '<td class="px-3 py-2 text-gray-600" title="' + lvEscapeHtml(lvDeptLabel(r.department)) + '">' + lvEscapeHtml(lvDeptLabel(r.department)) + '</td>' +
         '<td class="px-3 py-2">' + lvLeaveTypeLabel(r.leave_type) + '</td>' +
         '<td class="px-3 py-2 text-gray-600" title="' + lvEscapeHtml((r.start_date || '') + ' ~ ' + (r.end_date || '')) + '">' + r.start_date + ' ~ ' + r.end_date + '</td>' +
         '<td class="px-3 py-2 text-right">' + lvFmtNum(r.days) + '</td>' +
@@ -186,7 +191,7 @@ window.leavesPromotionPreview = async function() {
     document.getElementById('lvPromoSendBtn').disabled = list.length === 0;
     if (!list.length) { res.innerHTML = '<span class="text-gray-400">현재 통지 윈도우 대상 없음(법정 기간 외이거나 잔여 0).</span>'; return; }
     res.innerHTML = '<div class="font-medium mb-1">' + list.length + '명 대상 (이메일 발송)</div>' + list.map(function(t) {
-      return '<div class="flex justify-between border-b border-gray-100 py-0.5"><span>' + lvEscapeHtml(t.name) + ' (' + lvEscapeHtml(t.department || '-') + ')' + (t.email ? '' : ' <span class="text-red-500">[이메일없음]</span>') + '</span><span>잔여 ' + t.remaining + '일 · 소멸 ' + lvEscapeHtml(t.expire_base || '') + '</span></div>';
+      return '<div class="flex justify-between border-b border-gray-100 py-0.5"><span>' + lvEscapeHtml(t.name) + ' (' + lvEscapeHtml(lvDeptLabel(t.department)) + ')' + (t.email ? '' : ' <span class="text-red-500">[이메일없음]</span>') + '</span><span>잔여 ' + t.remaining + '일 · 소멸 ' + lvEscapeHtml(t.expire_base || '') + '</span></div>';
     }).join('');
   } catch (e) {
     res.innerHTML = '<span class="text-red-500">조회 실패: ' + (e.response && e.response.data && e.response.data.error || e.message) + '</span>';
@@ -247,7 +252,7 @@ function lvSetupEmployeeSearch(searchId, hiddenId, dropdownId) {
       ddEl.innerHTML = filtered.map(function(e) {
         return '<div class="px-3 py-2 text-sm hover:bg-blue-50 cursor-pointer" data-id="' + e.id + '" data-label="' + lvEscapeHtml(e.employee_code) + ' / ' + lvEscapeHtml(e.name) + '">'
           + lvEscapeHtml(e.employee_code) + ' / <b>' + lvEscapeHtml(e.name) + '</b>'
-          + '<span class="ml-2 text-xs text-gray-400">' + lvEscapeHtml(e.department || '') + '</span>'
+          + '<span class="ml-2 text-xs text-gray-400">' + lvEscapeHtml(lvDeptLabel(e.department)) + '</span>'
           + '</div>';
       }).join('');
     }
@@ -431,7 +436,7 @@ window.leavesLoadAllowance = async function() {
       return '<tr>' +
         '<td class="px-3 py-2">' + lvEscapeHtml(r.employee_code || '-') + '</td>' +
         '<td class="px-3 py-2 font-medium" title="' + lvEscapeHtml(r.name || '-') + '">' + lvEscapeHtml(r.name || '-') + '</td>' +
-        '<td class="px-3 py-2 text-gray-600" title="' + lvEscapeHtml(r.department || '-') + '">' + lvEscapeHtml(r.department || '-') + '</td>' +
+        '<td class="px-3 py-2 text-gray-600" title="' + lvEscapeHtml(lvDeptLabel(r.department)) + '">' + lvEscapeHtml(lvDeptLabel(r.department)) + '</td>' +
         '<td class="px-3 py-2 text-right">' + lvFmtNum(r.total_annual) + '</td>' +
         '<td class="px-3 py-2 text-right">' + lvFmtNum(r.used_annual) + '</td>' +
         '<td class="px-3 py-2 text-right ' + remColor + '">' + lvFmtNum(rem) + '</td>' +

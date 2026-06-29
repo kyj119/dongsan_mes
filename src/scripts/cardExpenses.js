@@ -25,11 +25,12 @@ function switchCardTab(tab) {
 
 // ===== Init =====
 async function init() {
-  // 이번달 기본값
+  // 이번달 기본값 (KST 로컬 컴포넌트로 포맷 — toISOString은 UTC −9h라 월초/월말 하루 밀림)
   var now = new Date();
   var y = now.getFullYear(), m = now.getMonth();
-  document.getElementById('filterStartDate').value = new Date(y, m, 1).toISOString().split('T')[0];
-  document.getElementById('filterEndDate').value = new Date(y, m + 1, 0).toISOString().split('T')[0];
+  var ymd = function(d){ return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); };
+  document.getElementById('filterStartDate').value = ymd(new Date(y, m, 1));
+  document.getElementById('filterEndDate').value = ymd(new Date(y, m + 1, 0));
 
   await Promise.all([loadCardOptions(), loadCategoryOptions()]);
   switchCardStatus('UNCLASSIFIED');

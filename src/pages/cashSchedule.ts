@@ -295,6 +295,14 @@ export function cashSchedulePage(c: Context<HonoEnv>) {
           </div>
           <div class="p-4 space-y-3">
             <div>
+              <label class="text-xs font-medium mb-1 block" style="color:#374151;">거래처 (선택)</label>
+              <div class="relative">
+                <input id="schAddClientSearch" type="text" autocomplete="off" placeholder="거래처명 입력" class="w-full border rounded px-3 py-2 text-sm text-gray-900" oninput="schSearchClient(this.value)" onfocus="schSearchClient(this.value)">
+                <input type="hidden" id="schAddClientId">
+                <div id="schAddClientDropdown" class="hidden absolute z-50 left-0 right-0 top-full bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto"></div>
+              </div>
+            </div>
+            <div>
               <label class="text-xs font-medium mb-1 block" style="color:#374151;">예정일</label>
               <input id="schAddDate" type="date" class="w-full border rounded px-3 py-2 text-sm text-gray-900">
               <div id="schAddDateErr" class="text-[10px] text-red-600 mt-0.5"></div>

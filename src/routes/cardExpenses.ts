@@ -347,9 +347,13 @@ cardExpRouter.post('/sync', requireRole('ADMIN'), async (c) => {
     }
 
     // 월 목록 생성
+    //   바로빌 월별 카드내역(GetMonthlyCardApprovalLog BaseMonth)은 카드 마감일(cutoff) 청구주기로 그룹화됨
+    //   → 마감일(예 23일) 이후 사용분은 '다음 청구월'에 속함. 후행 1개월을 더 조회해야 최근 사용분이 누락 안 됨.
+    //   (line 381 사용일 필터가 dateStart~dateEnd로 clamp + codef_transaction_id dedup → 초과월 조회 안전)
     const months = new Set<string>()
     const cur = new Date(dateStart.slice(0, 4) + '-' + dateStart.slice(4, 6) + '-01')
     const endD = new Date(dateEnd.slice(0, 4) + '-' + dateEnd.slice(4, 6) + '-28')
+    endD.setMonth(endD.getMonth() + 1)
     while (cur <= endD) {
       months.add(`${cur.getFullYear()}${String(cur.getMonth() + 1).padStart(2, '0')}`)
       cur.setMonth(cur.getMonth() + 1)
