@@ -18,11 +18,11 @@
 
 ## 🔴 현재 진행 중
 
-- **▶ [2026-06-26] 현장 잉크 재고관리 — 마이그만 prod (코드 보류) (정본 `memory/design-ink-inventory.md`)**:
+- **✅ [2026-06-26→06-29] 현장 잉크 재고관리 + 단위 SSOT/multi-UOM — prod 라이브 (정본 `memory/design-ink-inventory.md`)**:
   - 잉크 **74품목** 등록(마이그 `0394` **prod 적용**·동산72/선명6·수성잉크테크 LcLm=선명 매출 2). `item_type=MATERIAL`·`unit=L`·`deduction_method=NONE`(수동, 차감X)·코드 `RM-I0001~0074`(자동채번 규칙, 의미코드 금지=채번 깨짐). **장비별 분리**(같은 KM테크라도 솔벤1800/3200 별도·UV평판≠3200).
-  - **단위 SSOT 신설**(`constants/units.ts` 7단위 EA·롤·yd·장·M·L·BOX, hr.ts 패턴)+폼 input→select(`items.ts:120,342`)+layout 주입. ⚠️yd(ROLL)·장(BOARD)=autoDeduct 리터럴, 변경금지. 검증 tsc0·build·**smoke101**·로컬/prod DB 74.
-  - **⚠️코드 미배포 보류**: HEAD에 factory P3(마이그 `0391/0392`) 코드가 커밋됐는데 **prod 미적용**(m0392 zone 컬럼 없음)→코드배포 시 검증 안 된 P3 동반 활성화. 사용자 결정으로 **0394만 prod**. **단위 드롭다운+P3 코드 배포는 factory 세션과 조율 후**. 잉크 재고관리 자체는 마이그만으로 prod 동작.
-    - **[2026-06-29] layout.ts 단위 주입 = dirty WIP 제거 위해 `wip/multi-uom-unit-ui` 브랜치로 격리**(소비자 items.ts select 미커밋·multi-UOM 스레드 소속). 메인 작업트리 clean. 재개 시 `git checkout wip/multi-uom-unit-ui -- src/layout.ts` 또는 cherry-pick.
+  - **단위 SSOT 신설**(`constants/units.ts`, hr.ts 패턴)+폼 input→select. ⚠️yd(ROLL)·장(BOARD)=autoDeduct 리터럴, 변경금지.
+  - **✅ [2026-06-29] multi-UOM 단위 드롭다운 = prod 라이브 (이전 "미배포 보류" 해소)**: 타 세션이 MU1~MU5(items.base_unit/pack_size/stock_mode SELECT)를 main 커밋 → cashflow 세션 superset 배포로 prod 반영(한때 0395 미적용 500 장애 → `0395 --remote` 복구). factory P3(0391/0392/0396)도 그간 prod 적용(smoke facility/zones 200) → **얽힘 무관**. prod `#itemUnit` 9단위 라이브 확인·**smoke101**.
+    - **orphan `UNITS_JS`(window.UNIT_DEFS) 주입 = 폐기**: SSR `unitOptions` 방식 채택으로 클라 주입 소비처 0건(死코드). `wip/multi-uom-unit-ui` 브랜치 삭제(2026-06-29). 복구 필요 시 commit `19868226`(`git branch <name> 19868226`).
 
 - **✅ [2026-06-26] 공장 배치도 P0~P2 — 장비 공정·구역·도면배경 (정본 `memory/design-factory-layout.md`, spec `docs/superpowers/specs/2026-06-25-factory-layout-integration.md`)**:
   - 공정 SSOT **확정=items.category 1:1 6종**(AQUEOUS/SOLVENT/UV/TRANSFER/SUBLIMATION/SIGN, 평판=UV흡수·나염=태극기, 사용자 결정) `src/constants/process.ts`+layout 주입.
