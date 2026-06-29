@@ -86,16 +86,18 @@ export async function checkMaterialShortage(
     : ''
   const invParams = entityId && entityId > 0 ? [entityId] : []
 
+  // UP4 백로그: inventory.id(행PK)≠item_id. item_id 기준 + 다중행 SUM 집계로 교정.
   const { results: stocks } = await db.prepare(`
-    SELECT inv.id, inv.item_id, inv.quantity, i.unit
+    SELECT inv.item_id, SUM(inv.quantity) AS quantity, MAX(i.unit) AS unit
     FROM inventory inv
     LEFT JOIN items i ON inv.item_id = i.id
-    WHERE inv.id IN (${ph}) ${invCondition}
+    WHERE inv.item_id IN (${ph}) ${invCondition}
+    GROUP BY inv.item_id
   `).bind(...materialIds, ...invParams).all()
 
   const stockMap: Record<number, { qty: number; itemId: number | null; unit: string }> = {}
   for (const s of stocks as any[]) {
-    stockMap[s.id] = { qty: s.quantity || 0, itemId: s.item_id, unit: s.unit || 'EA' }
+    stockMap[s.item_id] = { qty: s.quantity || 0, itemId: s.item_id, unit: s.unit || 'EA' }
   }
 
   // 발주중 수량 (inventory.item_id 기준)

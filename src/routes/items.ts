@@ -675,7 +675,7 @@ itemsRouter.get('/:id/stock', async (c) => {
     const entityId = getEntityId(c) || 1
     const item = await c.env.DB.prepare('SELECT production_required FROM items WHERE id = ?').bind(id).first<{ production_required: number }>()
     if (!item) return c.json({ success: false, error: 'not found' }, 404)
-    const inv = await c.env.DB.prepare('SELECT COALESCE(quantity, 0) as quantity FROM inventory WHERE item_id = ? AND entity_id = ?').bind(id, entityId).first<{ quantity: number }>()
+    const inv = await c.env.DB.prepare('SELECT COALESCE(SUM(quantity), 0) as quantity FROM inventory WHERE item_id = ? AND entity_id = ?').bind(id, entityId).first<{ quantity: number }>()
     return c.json({ success: true, data: { production_required: item.production_required, stock: inv?.quantity ?? 0 } })
   } catch (error) {
     console.error('src/routes/items.ts stock error:', error)
@@ -1203,11 +1203,12 @@ itemsRouter.get('/:id/materials', async (c) => {
         m.item_name,
         m.width_mm,
         m.item_group,
-        COALESCE(inv.quantity, 0) as current_stock
+        COALESCE(SUM(inv.quantity), 0) as current_stock
       FROM product_materials pm
       INNER JOIN items m ON pm.material_item_id = m.id
       LEFT JOIN inventory inv ON m.id = inv.item_id${invEntityClause}
       WHERE pm.product_item_id = ?
+      GROUP BY pm.id
       ORDER BY pm.is_default DESC, m.item_group ASC, m.width_mm ASC
     `).bind(...invEntityParams, productId).all()
 

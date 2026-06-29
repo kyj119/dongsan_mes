@@ -78,12 +78,15 @@ storageZonesRouter.get('/:id', async (c) => {
     if (!zone) return c.json({ success: false, error: '구역을 찾을 수 없습니다.' }, 404)
 
     const zoneEntityId = (zone as any).entity_id || 1
+    // UP4 백로그: 창고별 다중행 → 품목당 SUM/MAX 집계(행 중복 제거).
     const { results: items } = await c.env.DB.prepare(`
       SELECT i.id, i.item_code, i.item_name, i.category, i.sub_category, i.unit, i.item_type,
-        inv.quantity as current_stock, inv.safe_stock, inv.reorder_point, inv.auto_pr_enabled
+        COALESCE(SUM(inv.quantity), 0) as current_stock, MAX(inv.safe_stock) as safe_stock,
+        MAX(inv.reorder_point) as reorder_point, MAX(inv.auto_pr_enabled) as auto_pr_enabled
       FROM items i
       LEFT JOIN inventory inv ON inv.item_id = i.id AND inv.entity_id = ?
       WHERE i.storage_zone_id = ? AND i.is_active = 1
+      GROUP BY i.id
       ORDER BY i.item_name
     `).bind(zoneEntityId, id).all()
 

@@ -164,13 +164,15 @@ bom.get('/categories', async (c) => {
 // GET /materials — 원재료 (재고 품목) 목록
 bom.get('/materials', async (c) => {
   try {
+    // UP4 백로그: 창고별 다중행 → 품목당 SUM/MAX 집계(행 중복 제거). id는 대표 행 PK.
     const { results } = await c.env.DB.prepare(`
-      SELECT inv.id, inv.item_id, inv.quantity, inv.safe_stock,
+      SELECT MIN(inv.id) as id, inv.item_id, SUM(inv.quantity) as quantity, MAX(inv.safe_stock) as safe_stock,
              i.item_name, i.unit, ic.category_name
       FROM inventory inv
       JOIN items i ON inv.item_id = i.id
       LEFT JOIN item_categories ic ON i.category_id = ic.id
       WHERE 1=1
+      GROUP BY inv.item_id
       ORDER BY i.item_name
     `).all()
     return c.json({ success: true, data: results })
@@ -277,14 +279,7 @@ bom.post('/mrp/runs/:id/create-pr', async (c) => {
 
     const prId = prResult.meta?.last_row_id as number
 
-    // inventory에서 item_id 일괄 조회
-    const materialIds = shortfalls.map((s: any) => s.material_item_id)
-    const invRows = materialIds.length > 0
-      ? (await c.env.DB.prepare(
-          `SELECT id, item_id FROM inventory WHERE id IN (${materialIds.map(() => '?').join(',')})`
-        ).bind(...materialIds).all()).results as { id: number; item_id: number }[]
-      : []
-    const invMap = new Map(invRows.map(r => [r.id, r.item_id]))
+    // UP4 백로그: material_item_id가 곧 자재 item_id — inventory.id 조회(행PK≠item_id 버그) 제거.
 
     // PR 품목 INSERT + MRP 결과 UPDATE를 batch로 일괄 처리
     const batchStmts: D1PreparedStatement[] = shortfalls.flatMap((s: any, i: number) => [
@@ -293,7 +288,7 @@ bom.post('/mrp/runs/:id/create-pr', async (c) => {
         VALUES (?, ?, ?, ?, 'EA', ?, ?, ?)
       `).bind(
         prId,
-        invMap.get(s.material_item_id) || null,
+        s.material_item_id || null,
         s.material_name,
         Math.ceil(s.shortfall),
         i,
