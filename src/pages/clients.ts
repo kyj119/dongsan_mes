@@ -261,13 +261,13 @@ export function clientsPage(c: Context<HonoEnv>) {
                     <span class="text-sm" style="color:#6b7280">일</span>
                   </div>
                   <div id="cycleMonthlyWrap" class="hidden items-center gap-1" style="flex-wrap:wrap">
-                    <input type="number" id="clientModalClosingDay" class="ds-input" style="width:140px" placeholder="마감일(빈칸=말일)" min="1" max="31">
+                    <input type="number" id="clientModalClosingDay" class="ds-input" style="width:140px" placeholder="마감일(빈칸=말일)" min="1" max="28" title="1~28일만 지정, 말일은 빈칸. 29~31은 코드상 말일 처리됨">
                     <select id="clientModalMonthOffset" class="ds-input" style="width:auto">
                       <option value="0">당월</option>
                       <option value="1">익월</option>
                       <option value="2">익익월</option>
                     </select>
-                    <input type="number" id="clientModalPayDay" class="ds-input" style="width:140px" placeholder="결제일(빈칸=말일)" min="1" max="31">
+                    <input type="number" id="clientModalPayDay" class="ds-input" style="width:140px" placeholder="결제일(빈칸=말일)" min="1" max="28" title="1~28일만 지정, 말일은 빈칸. 29~31은 코드상 말일 처리됨">
                   </div>
                 </div>
               </div>

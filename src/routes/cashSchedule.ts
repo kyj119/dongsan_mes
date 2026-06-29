@@ -356,7 +356,7 @@ cashScheduleRouter.post('/schedule/auto-generate', requireRole('ADMIN'), async (
       WHERE g.billing_status = 'BILLED' AND g.billed_at IS NOT NULL AND o.status != 'CANCELLED'${ef.clause}
         AND NOT EXISTS (
           SELECT 1 FROM cash_schedule cs
-          WHERE cs.source_type = 'ORDER' AND cs.source_id = g.order_id AND cs.entity_id = g.entity_id
+          WHERE cs.source_type = 'ORDER' AND cs.source_id = g.order_id AND cs.entity_id = g.entity_id AND cs.status != 'CANCELLED'
         )
       LIMIT 500
     `).bind(...ef.params).all<BilledOrderRow & { billing_entity_id: number }>()
@@ -396,7 +396,7 @@ cashScheduleRouter.post('/schedule/auto-generate', requireRole('ADMIN'), async (
       WHERE po.status IN ('CONFIRMED', 'RECEIVED', 'PARTIAL_RECEIVED')${entityFilter(c, 'po').clause}
         AND NOT EXISTS (
           SELECT 1 FROM cash_schedule cs
-          WHERE cs.source_type = 'PURCHASE' AND cs.source_id = po.id
+          WHERE cs.source_type = 'PURCHASE' AND cs.source_id = po.id AND cs.status != 'CANCELLED'
         )
       LIMIT 500
     `).bind(...entityFilter(c, 'po').params).all<ConfirmedPORow>()
@@ -446,13 +446,17 @@ cashScheduleRouter.post('/schedule/auto-generate', requireRole('ADMIN'), async (
 // 연체 처리
 cashScheduleRouter.post('/schedule/check-overdue', requireRole('ADMIN', 'MANAGER'), async (c) => {
   try {
-    const today = new Date().toISOString().substring(0, 10)
+    const today = new Date(Date.now() + 9 * 3600 * 1000).toISOString().substring(0, 10)  // KST 기준일
     const result = await c.env.DB.prepare(`
       UPDATE cash_schedule SET status = 'OVERDUE', updated_at = CURRENT_TIMESTAMP
       WHERE status = 'PENDING' AND schedule_date < ?
     `).bind(today).run()
-
-    return c.json({ success: true, data: { updated: result.meta.changes }, message: `${result.meta.changes}건이 연체로 변경되었습니다.` })
+    const onTime = await c.env.DB.prepare(
+      `SELECT COUNT(*) AS c FROM cash_schedule WHERE status = 'PENDING' AND schedule_date >= ?`
+    ).bind(today).first<{ c: number }>()
+    const overdueCount = result.meta.changes || 0
+    // 프론트(schCheckOverdue)가 overdue_count/on_time_count를 읽음 → 응답계약 정렬(기존 {updated}만이라 'undefined건' 토스트)
+    return c.json({ success: true, data: { updated: overdueCount, overdue_count: overdueCount, on_time_count: onTime?.c || 0 }, message: `${overdueCount}건이 연체로 변경되었습니다.` })
   } catch (error) {
     console.error('cashSchedule overdue error:', error)
     return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
@@ -465,8 +469,8 @@ cashScheduleRouter.get('/schedule/forecast', requireRole('ADMIN', 'MANAGER'), as
     const days = Number(c.req.query('days') || '90')
     const startBalance = Number(c.req.query('start_balance') || '0')
 
-    const today = new Date().toISOString().substring(0, 10)
-    const endDate = new Date(Date.now() + days * 86400000).toISOString().substring(0, 10)
+    const today = new Date(Date.now() + 9 * 3600 * 1000).toISOString().substring(0, 10)  // KST 기준일
+    const endDate = new Date(Date.now() + 9 * 3600 * 1000 + days * 86400000).toISOString().substring(0, 10)
 
     const dayMap = await buildCashflowDays(c, today, endDate)
 

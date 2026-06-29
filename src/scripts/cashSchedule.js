@@ -250,7 +250,7 @@ window.schOpenDayDetail = async function(dateStr) {
         html += '<div class="flex gap-1 pt-1">';
         if (it.status !== 'DONE') {
           html += '<button onclick="schCompleteItem(' + it.id + ')" class="px-2 py-0.5 text-[10px] bg-green-600 text-white rounded hover:bg-green-700">완료</button>';
-          html += '<button onclick="schEditItem(' + it.id + ')" class="px-2 py-0.5 text-[10px] border border-gray-300 text-gray-700 rounded hover:bg-gray-50">수정</button>';
+          // '수정' 버튼 제거: schEditItem 미구현(ReferenceError 유발)이라 제거. 수정 필요 시 삭제 후 재등록.
         }
         html += '<button onclick="schDeleteItem(' + it.id + ')" class="px-2 py-0.5 text-[10px] border border-red-300 text-red-700 rounded hover:bg-red-50">삭제</button>';
         html += '</div>';

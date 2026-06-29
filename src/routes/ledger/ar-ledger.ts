@@ -509,7 +509,7 @@ arLedgerRouter.get('/monthly-summary', async (c) => {
         COUNT(*) as order_count,
         COALESCE(SUM(final_amount), 0) as total_sales
       FROM orders
-      WHERE strftime('%Y', created_at) >= ?${monthlyOrderEf}
+      WHERE strftime('%Y', created_at) >= ? AND status NOT IN ('CANCELLED', 'DRAFT')${monthlyOrderEf}
       GROUP BY strftime('%Y-%m', created_at)
       ORDER BY month DESC
       LIMIT ?

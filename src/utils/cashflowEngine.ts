@@ -171,20 +171,24 @@ export async function buildCashflowDays(
   }
 
   // ── 3) 온더플라이: 대출 상환 (loan_payments) ───────────────────────────
+  //   A1: PARTIAL은 total_amount 전액이 아닌 잔여(total − 기납부)만 계상. A2: 최근 과거미납(from-31d~)을 from으로 끌어옴(매출 §4b 대칭).
   const efLoan = entityFilter(c)
   const { results: loanRows } = await c.env.DB.prepare(`
-    SELECT lp.scheduled_date, lp.total_amount, lp.status, l.creditor
+    SELECT lp.scheduled_date, lp.total_amount, lp.actual_paid_amount, lp.status, l.creditor
     FROM loan_payments lp
     JOIN loans l ON lp.loan_id = l.id
-    WHERE lp.scheduled_date BETWEEN ? AND ?
+    WHERE lp.scheduled_date >= date(?, '-31 days') AND lp.scheduled_date <= ?
       AND lp.status IN ('SCHEDULED', 'OVERDUE', 'PARTIAL')${efLoan.clause.replace('entity_id', 'l.entity_id')}
   `).bind(from, to, ...efLoan.params).all<{
-    scheduled_date: string; total_amount: number; status: string; creditor: string
+    scheduled_date: string; total_amount: number; actual_paid_amount: number | null; status: string; creditor: string
   }>()
   for (const lp of loanRows) {
-    add(lp.scheduled_date, {
+    const remaining = (Number(lp.total_amount) || 0) - (Number(lp.actual_paid_amount) || 0)
+    if (remaining <= 0) continue
+    const due = lp.scheduled_date < from ? from : lp.scheduled_date  // 과거 미납분은 예측 시작일에 표시
+    add(due, {
       flow: 'OUT', type: 'LOAN', name: `${lp.creditor} 상환`,
-      amount: Number(lp.total_amount) || 0, status: lp.status, materialized: false,
+      amount: remaining, status: lp.status, materialized: false,
     })
   }
 
@@ -199,7 +203,7 @@ export async function buildCashflowDays(
            g.billed_at, g.accounting_date, o.order_number, o.delivery_date, o.created_at, o.client_id, cl.client_name,
            COALESCE(cl.payment_terms_days, 30) AS terms,
            cl.payment_cycle_type, cl.closing_day, cl.payment_month_offset, cl.payment_day,
-           (SELECT COUNT(*) FROM cash_schedule cs WHERE cs.source_type = 'ORDER' AND cs.source_id = g.order_id AND cs.entity_id = g.entity_id) AS materialized
+           (SELECT COUNT(*) FROM cash_schedule cs WHERE cs.source_type = 'ORDER' AND cs.source_id = g.order_id AND cs.entity_id = g.entity_id AND cs.status != 'CANCELLED') AS materialized
     FROM order_billing_groups g
     JOIN orders o ON o.id = g.order_id
     LEFT JOIN clients cl ON cl.id = o.client_id

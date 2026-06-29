@@ -47,7 +47,14 @@ export function computeExpectedPaymentDate(billedDateStr: string, t: ClientPayme
     while (pm > 12) { pm -= 12; py++ }
     const endPay = !t.payment_day || t.payment_day >= 29
     const payDay = endPay ? lastDayOfMonth(py, pm) : Math.min(t.payment_day as number, lastDayOfMonth(py, pm))
-    return ymd(py, pm, payDay)
+    let result = ymd(py, pm, payDay)
+    // 결제일이 청구일보다 이르면(offset=0 + payment_day<청구일 같은 모순 설정) 한 주기 밀어 최소 청구일 이후 보장
+    if (result < datePart) {
+      pm += 1; if (pm > 12) { pm = 1; py++ }
+      const pd2 = endPay ? lastDayOfMonth(py, pm) : Math.min(t.payment_day as number, lastDayOfMonth(py, pm))
+      result = ymd(py, pm, pd2)
+    }
+    return result
   }
 
   // NET_DAYS(기본) / THRESHOLD(폴백): 청구일 + N일
