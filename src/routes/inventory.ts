@@ -31,6 +31,7 @@ inventoryRouter.get('/', async (c) => {
     let query = `
       SELECT
         i.id, i.item_name, i.category, i.sub_category, i.unit,
+        i.base_unit, i.pack_size, i.stock_mode,
         i.base_price as unit_price,
         COALESCE(SUM(inv.quantity), 0) as current_stock,
         COALESCE(MAX(inv.safe_stock), 0) as safety_stock,
@@ -113,6 +114,7 @@ inventoryRouter.get('/:id', async (c) => {
     const result = await c.env.DB.prepare(`
       SELECT
         i.id, i.item_name, i.category, i.sub_category, i.unit,
+        i.base_unit, i.pack_size, i.stock_mode,
         i.base_price as unit_price,
         COALESCE(SUM(inv.quantity), 0) as current_stock,
         COALESCE(MAX(inv.safe_stock), 0) as safety_stock,

@@ -2,6 +2,12 @@
 var totalPages = 1;
 var allItems = [];
 
+// MU2: 다단위 표시 — 단일단위면 "X unit", 다단위면 "N통 (X L)" 등 환산 병기.
+function uomFmt(qty, item) {
+  if (window.uomFormatStock) return window.uomFormatStock(qty, item);
+  return (Math.round((Number(qty) || 0) * 100) / 100) + ' ' + (item && item.unit ? item.unit : '');
+}
+
 // Load statistics
 async function loadStats() {
     try {
@@ -141,8 +147,8 @@ function renderInventoryTable(items, total) {
             + '<td class="px-4 py-3 text-sm">'
             + '<span class="inline-flex items-center px-2 py-0.5 text-xs rounded bg-blue-50 text-blue-700">' + escapeHtml(item.category) + '</span>'
             + '</td>'
-            + '<td class="px-4 py-3 text-sm ' + stockClass + ' text-right tabular-nums">'
-            + stockIcon + stock + ' ' + escapeHtml(item.unit || '')
+            + '<td class="px-4 py-3 text-sm ' + stockClass + ' text-right tabular-nums" title="' + escapeHtml(uomFmt(stock, item)) + '">'
+            + stockIcon + escapeHtml(uomFmt(stock, item))
             + '</td>'
             + '<td class="px-4 py-3 text-sm text-gray-900 text-right tabular-nums">' + safety + '</td>'
             + '<td class="px-4 py-3 text-sm text-gray-900 text-right tabular-nums">' + (rop || '-') + '</td>'
@@ -286,6 +292,7 @@ window.openZoneStock = async function(itemId, itemName) {
         if (invZoneStorageZones.length === 0) await loadInvStorageZones();
         var res = await axios.get('/api/inventory/' + itemId);
         if (!res.data.success) return;
+        invZoneCurrentItem.mu = res.data.data; // MU2: 다단위 환산용(base_unit/pack_size/stock_mode)
         renderZoneStock(res.data.data.zones || []);
         document.getElementById('zoneStockModal').classList.remove('hidden');
     } catch (e) {
@@ -300,14 +307,15 @@ function renderZoneStock(zones) {
     var toSel = document.getElementById('transferTo');
     if (!tbody || !fromSel || !toSel) { console.warn('[inventory] zoneStock elements missing'); return; }
 
-    // 창고별 분해 표 (NULL zone = 미배정)
+    // 창고별 분해 표 (NULL zone = 미배정). MU2: 수량 다단위 환산 표시.
+    var mu = (invZoneCurrentItem && invZoneCurrentItem.mu) || {};
     if (zones.length === 0) {
         tbody.innerHTML = '<tr><td colspan="3" class="px-4 py-6 text-center text-gray-400 text-sm">재고 없음</td></tr>';
     } else {
         tbody.innerHTML = zones.map(function(z) {
             return '<tr>'
                 + '<td class="px-4 py-2 text-sm text-gray-900">' + escapeHtml(z.zone_name || '미배정') + '</td>'
-                + '<td class="px-4 py-2 text-sm text-right tabular-nums">' + (z.quantity || 0) + '</td>'
+                + '<td class="px-4 py-2 text-sm text-right tabular-nums">' + escapeHtml(uomFmt(z.quantity, mu)) + '</td>'
                 + '<td class="px-4 py-2 text-sm text-right tabular-nums text-gray-500">' + (z.safe_stock || 0) + '</td>'
                 + '</tr>';
         }).join('');
@@ -320,7 +328,7 @@ function renderZoneStock(zones) {
     } else {
         fromSel.innerHTML = fromZones.map(function(z) {
             var v = (z.storage_zone_id == null) ? '' : z.storage_zone_id;
-            return '<option value="' + v + '">' + escapeHtml(z.zone_name || '미배정') + ' (' + (z.quantity || 0) + ')</option>';
+            return '<option value="' + v + '">' + escapeHtml(z.zone_name || '미배정') + ' (' + escapeHtml(uomFmt(z.quantity, mu)) + ')</option>';
         }).join('');
     }
 

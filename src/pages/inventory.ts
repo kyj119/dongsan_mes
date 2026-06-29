@@ -1,6 +1,7 @@
 import type { Context } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { renderPage } from '../layout'
+import { UOM_JS } from '../utils/unitConvert'
 import inventoryScript from '../scripts/inventory.js?raw'
 import inventoryCountScript from '../scripts/inventoryCount.js?raw'
 
@@ -47,7 +48,7 @@ export function inventoryPage(c: Context<HonoEnv>) {
     });
   `;
 
-  const combinedScript = tabScript + '\n' + inventoryScript + '\n' + inventoryCountScript;
+  const combinedScript = UOM_JS + '\n' + tabScript + '\n' + inventoryScript + '\n' + inventoryCountScript;
 
   return renderPage(c, {
     title: '재고 관리',
