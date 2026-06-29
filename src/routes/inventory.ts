@@ -322,12 +322,17 @@ inventoryRouter.post('/receipts', async (c) => {
     const itemIds = items.map((item: any) => item.item_id)
     const zoneMap = await getItemDefaultZones(c.env.DB, itemIds)
     // MU3: 다단위 — 입고 수량(관리단위) → base_unit 환산용 pack_size. 단일단위(NULL→1)=불변.
+    // MU5: 입고 단위 스냅샷용 unit도 함께 조회.
     const packMap = new Map<number, number>()
+    const unitMap = new Map<number, string>()
     {
       const { results: psRows } = await c.env.DB.prepare(
-        `SELECT id, pack_size FROM items WHERE id IN (${itemIds.map(() => '?').join(',')})`
-      ).bind(...itemIds).all<{ id: number; pack_size: number | null }>()
-      for (const r of psRows || []) packMap.set(Number(r.id), (r.pack_size && r.pack_size > 0) ? r.pack_size : 1)
+        `SELECT id, pack_size, unit FROM items WHERE id IN (${itemIds.map(() => '?').join(',')})`
+      ).bind(...itemIds).all<{ id: number; pack_size: number | null; unit: string | null }>()
+      for (const r of psRows || []) {
+        packMap.set(Number(r.id), (r.pack_size && r.pack_size > 0) ? r.pack_size : 1)
+        unitMap.set(Number(r.id), r.unit || 'EA')
+      }
     }
     const ps = (id: number) => packMap.get(id) || 1
 
@@ -339,9 +344,9 @@ inventoryRouter.post('/receipts', async (c) => {
 
       receiptStmts.push(
         c.env.DB.prepare(`
-          INSERT INTO inventory_receipt_items (receipt_id, item_id, quantity, unit_price, amount, location)
-          VALUES (?, ?, ?, ?, ?, ?)
-        `).bind(receiptId, item_id, quantity, unit_price, amount, location || null),
+          INSERT INTO inventory_receipt_items (receipt_id, item_id, quantity, unit_price, amount, location, unit)
+          VALUES (?, ?, ?, ?, ?, ?, ?)
+        `).bind(receiptId, item_id, quantity, unit_price, amount, location || null, unitMap.get(item_id) || 'EA'),  // MU5: 입고 단위 스냅샷(관리단위)
         c.env.DB.prepare(`
           INSERT OR IGNORE INTO inventory (item_id, quantity, entity_id, storage_zone_id, last_updated)
           VALUES (?, 0, ?, ?, CURRENT_TIMESTAMP)
