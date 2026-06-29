@@ -699,7 +699,7 @@ itemsRouter.get('/:id', async (c) => {
   try {
     const id = c.req.param('id')
     const item = await c.env.DB.prepare(`
-      SELECT id, category_id, subcategory_id, item_code, item_name, description, unit, base_price, sales_price, is_active, item_type, category, sub_category, is_sales_item, is_purchase_item, pricing_method, item_group, group_sort, width_mm, storage_zone_id, is_favorite, code_prefix, specification, production_required, spec_group_id, spec_value, spec_group_id2, spec_value2, deduction_method, sheet_spec, waste_factor, ecount_code, created_at, updated_at FROM items WHERE id = ?
+      SELECT id, category_id, subcategory_id, item_code, item_name, description, unit, base_price, sales_price, is_active, item_type, category, sub_category, is_sales_item, is_purchase_item, pricing_method, item_group, group_sort, width_mm, storage_zone_id, is_favorite, code_prefix, specification, production_required, spec_group_id, spec_value, spec_group_id2, spec_value2, deduction_method, sheet_spec, waste_factor, base_unit, pack_size, stock_mode, ecount_code, created_at, updated_at FROM items WHERE id = ?
     `).bind(id).first()
 
     if (!item) {
@@ -855,8 +855,9 @@ itemsRouter.post('/', requireRole('ADMIN', 'MANAGER'), async (c) => {
         base_price, description, is_active,
         is_sales_item, is_purchase_item, pricing_method, width_mm,
         item_group, group_sort, item_type, category_id, item_code, storage_zone_id,
-        code_prefix, specification, production_required
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        code_prefix, specification, production_required,
+        base_unit, pack_size, stock_mode
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).bind(
       itemData.item_name,
       itemData.category,
@@ -878,7 +879,11 @@ itemsRouter.post('/', requireRole('ADMIN', 'MANAGER'), async (c) => {
       codePrefix || null,
       itemData.specification || null,
       // 기성품/유통: 제작 불필요 기본값 — GOODS/MATERIAL=0, 그 외=1 (UI에서 수동 조정)
-      itemData.production_required !== undefined ? (itemData.production_required ? 1 : 0) : (['GOODS', 'MATERIAL'].includes(itemType) ? 0 : 1)
+      itemData.production_required !== undefined ? (itemData.production_required ? 1 : 0) : (['GOODS', 'MATERIAL'].includes(itemType) ? 0 : 1),
+      // MU1: 다단위 (NULL=단일단위·현행)
+      itemData.base_unit || null,
+      (itemData.pack_size != null && itemData.pack_size !== '') ? Number(itemData.pack_size) : null,
+      itemData.stock_mode || 'CONTINUOUS'
     ).run()
 
     return c.json({
@@ -1068,6 +1073,15 @@ itemsRouter.put('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
     const wasteFactorParams = itemData.waste_factor !== undefined
       ? [(itemData.waste_factor != null && itemData.waste_factor !== '') ? Number(itemData.waste_factor) : 1.0] : []
 
+    // MU1: 다단위 — 전송 시에만 갱신, 미전송 시 기존값 보존
+    const baseUnitClause = itemData.base_unit !== undefined ? 'base_unit = ?,' : ''
+    const baseUnitParams = itemData.base_unit !== undefined ? [itemData.base_unit || null] : []
+    const packSizeClause = itemData.pack_size !== undefined ? 'pack_size = ?,' : ''
+    const packSizeParams = itemData.pack_size !== undefined
+      ? [(itemData.pack_size != null && itemData.pack_size !== '') ? Number(itemData.pack_size) : null] : []
+    const stockModeClause = itemData.stock_mode !== undefined ? 'stock_mode = ?,' : ''
+    const stockModeParams = itemData.stock_mode !== undefined ? [itemData.stock_mode || 'CONTINUOUS'] : []
+
     // Update item
     await c.env.DB.prepare(`
       UPDATE items SET
@@ -1092,6 +1106,9 @@ itemsRouter.put('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
         ${dedMethodClause}
         ${sheetSpecClause}
         ${wasteFactorClause}
+        ${baseUnitClause}
+        ${packSizeClause}
+        ${stockModeClause}
         updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
     `).bind(
@@ -1116,6 +1133,9 @@ itemsRouter.put('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
       ...dedMethodParams,
       ...sheetSpecParams,
       ...wasteFactorParams,
+      ...baseUnitParams,
+      ...packSizeParams,
+      ...stockModeParams,
       id
     ).run()
 

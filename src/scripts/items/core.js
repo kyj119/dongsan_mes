@@ -165,6 +165,8 @@ function updateFieldVisibility(type) {
     // #435: 자동차감 방식 — 원자재만
     var rmDeductionArea = document.getElementById('rmDeductionArea');
     if (rmDeductionArea) rmDeductionArea.classList.toggle('hidden', type !== 'MATERIAL');
+    var rmUomArea = document.getElementById('rmUomArea');  // MU1: 다단위 — 원자재만
+    if (rmUomArea) rmUomArea.classList.toggle('hidden', type !== 'MATERIAL');
     if (type === 'MATERIAL') onDeductionMethodChange();
 
     // 대분류: PRODUCT만 표시, 상품/원자재는 숨김 (자동 설정)

@@ -212,6 +212,32 @@ export function itemsPage(c: Context<HonoEnv>) {
                                     </div>
                                 </div>
 
+                                <!-- 11-3. 다단위(multi-UOM) (MATERIAL만) — MU1 -->
+                                <div id="rmUomArea" class="hidden border-t pt-3 mt-3">
+                                    <label class="block text-sm font-semibold text-gray-700 mb-1">다단위 <span class="text-xs text-gray-400 font-normal">(포장↔차감/저장 단위 분리, 비우면 단일단위)</span></label>
+                                    <div class="grid grid-cols-3 gap-2">
+                                        <div>
+                                            <label class="block text-xs font-semibold text-gray-600 mb-1">차감/저장 단위(base)</label>
+                                            <select id="itemBaseUnit" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                                                <option value="">— (관리단위와 동일)</option>
+                                                ${unitOptions({})}
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label class="block text-xs font-semibold text-gray-600 mb-1">환산 (1관리 = N base)</label>
+                                            <input type="number" id="itemPackSize" min="0" step="0.0001" placeholder="예 20 (1통=20L)" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                                        </div>
+                                        <div>
+                                            <label class="block text-xs font-semibold text-gray-600 mb-1">재고 유형</label>
+                                            <select id="itemStockMode" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                                                <option value="CONTINUOUS">연속(롤/시트 — cm/yd)</option>
+                                                <option value="PACK">포장(미개봉 — 개봉=소모)</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <p class="text-xs text-gray-400 mt-1">예: 잉크 통=L·PACK·환산=통용량 / 시트 롤=cm·CONTINUOUS·환산=롤길이. 비우면 현행(단일단위).</p>
+                                </div>
+
                                 <!-- 12. 품목 그룹 -->
                                 <div class="border-t pt-4 mt-4">
                                     <label class="block text-sm font-semibold text-gray-700 mb-1">품목 그룹</label>

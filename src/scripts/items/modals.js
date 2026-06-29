@@ -118,6 +118,13 @@ async function editItem(id) {
                 if (ssEl && item.sheet_spec) ssEl.value = item.sheet_spec;
                 var wfEl = document.getElementById('itemWasteFactor');
                 if (wfEl) wfEl.value = (item.waste_factor != null) ? item.waste_factor : 1.0;
+                // MU1: 다단위 복원
+                var buEl = document.getElementById('itemBaseUnit');
+                if (buEl) buEl.value = item.base_unit || '';
+                var psEl = document.getElementById('itemPackSize');
+                if (psEl) psEl.value = (item.pack_size != null) ? item.pack_size : '';
+                var smEl = document.getElementById('itemStockMode');
+                if (smEl) smEl.value = item.stock_mode || 'CONTINUOUS';
                 if (typeof onDeductionMethodChange === 'function') onDeductionMethodChange();
                 updateAutoCodePreview();
             }
@@ -211,6 +218,13 @@ async function saveItem(event) {
                 data.waste_factor = 1.0;
             }
         }
+        // MU1: 다단위 (비우면 단일단위·현행)
+        var buEl2 = document.getElementById('itemBaseUnit');
+        data.base_unit = (buEl2 && buEl2.value) ? buEl2.value : null;
+        var psEl2 = document.getElementById('itemPackSize');
+        data.pack_size = (psEl2 && psEl2.value !== '') ? Number(psEl2.value) : null;
+        var smEl2 = document.getElementById('itemStockMode');
+        data.stock_mode = (smEl2 && smEl2.value) ? smEl2.value : 'CONTINUOUS';
     }
 
     try {
