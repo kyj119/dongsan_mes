@@ -1,6 +1,7 @@
 import type { Context } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { renderPage } from '../layout'
+import { unitOptions } from '../constants/units'
 // Phase 3.1.B 분할: items.js (3235줄) → 5개 모듈
 import sCore from '../scripts/items/core.js?raw'
 import sModals from '../scripts/items/modals.js?raw'
@@ -117,7 +118,7 @@ export function itemsPage(c: Context<HonoEnv>) {
                                 <!-- 3. 단위 -->
                                 <div>
                                     <label class="block text-sm font-semibold text-gray-700 mb-1">단위</label>
-                                    <input type="text" id="itemUnit" value="EA" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                                    <select id="itemUnit" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500">${unitOptions({ selected: 'EA' })}</select>
                                 </div>
 
                                 <!-- 4. 원자재 분류 (MATERIAL만) -->
@@ -339,7 +340,7 @@ export function itemsPage(c: Context<HonoEnv>) {
                     </div>
                     <div>
                         <label class="block text-sm font-semibold text-gray-700 mb-1">단위</label>
-                        <input type="text" id="bulkUnit" value="YD" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                        <select id="bulkUnit" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500">${unitOptions({ selected: 'yd' })}</select>
                     </div>
                     <div>
                         <label class="block text-sm font-semibold text-gray-700 mb-1">기본 단가 (원)</label>
