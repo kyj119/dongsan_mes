@@ -273,9 +273,9 @@ function renderResultCard(r) {
                                     : '<div class="w-full h-32 bg-gray-100 rounded mb-2 flex items-center justify-center text-gray-400 text-xs">PNG 없음</div>'}
                                 <div class="text-xs font-medium text-gray-700">그룹 ${g.index}</div>
                                 <div class="text-xs text-gray-500">${g.width_mm} × ${g.height_mm} mm</div>
-                                ${g.name ? `<div class="text-xs text-gray-400 truncate">${g.name}</div>` : ''}
+                                ${g.name ? `<div class="text-xs text-gray-400 truncate">${escapeHtml(g.name)}</div>` : ''}
                                 <div class="mt-1 flex flex-wrap justify-center gap-1">${metaBadges}</div>
-                                ${g.item_types ? `<div class="text-[10px] text-gray-400 mt-0.5">${g.item_types}</div>` : ''}
+                                ${g.item_types ? `<div class="text-[10px] text-gray-400 mt-0.5">${escapeHtml(g.item_types)}</div>` : ''}
                             </div>
                         `}).join('')}
                     </div>

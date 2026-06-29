@@ -53,14 +53,6 @@ export function iaEditorPage(c: Context<HonoEnv>) {
             </div>
           </div>
         </div>
-        <!-- 구 대지편집(자유드래그) 잔여 DOM 참조 스텁 — W5-P3에서 죽은 캔버스 코드와 함께 제거 예정 -->
-        <div class="hidden">
-          <div id="iaeCanPalette"></div>
-          <div id="iaeCanHost"></div>
-          <span id="iaeCanZoom"></span>
-          <div id="iaeCanStatus"></div>
-          <input id="iaeCanRatio" type="checkbox" checked>
-        </div>
       </div>
     `,
     pageScript

@@ -23,7 +23,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
 // ===================== Tab =====================
 function switchPmTab(tab) {
-  ['purchase','sales'].forEach(function(t) {
+  ['purchase','sales','policies'].forEach(function(t) {
     var btn = document.getElementById('pmTab_' + t);
     var panel = document.getElementById('pmPanel_' + t);
     if (!btn || !panel) return;
