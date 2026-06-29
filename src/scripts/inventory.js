@@ -270,6 +270,51 @@ document.getElementById('submitSettings').addEventListener('click', async functi
     }
 });
 
+// ===== 기본창고 일괄배정 (운영설계 B) =====
+var bulkAssignBtnEl = document.getElementById('bulkAssignBtn');
+if (bulkAssignBtnEl) bulkAssignBtnEl.addEventListener('click', openBulkAssign);
+var cancelBulkAssignEl = document.getElementById('cancelBulkAssign');
+if (cancelBulkAssignEl) cancelBulkAssignEl.addEventListener('click', function() { document.getElementById('bulkAssignModal').classList.add('hidden'); });
+var submitBulkAssignEl = document.getElementById('submitBulkAssign');
+if (submitBulkAssignEl) submitBulkAssignEl.addEventListener('click', submitBulkAssign);
+
+async function openBulkAssign() {
+    var sel = document.getElementById('bulkAssignZone');
+    if (!sel) { console.warn('[inventory] #bulkAssignZone not found'); return; }
+    if (!invZoneStorageZones.length) await loadInvStorageZones();
+    var opts = '<option value="">미배정으로 환원</option>';
+    invZoneStorageZones.forEach(function(z) {
+        var label = (z.entity_name ? z.entity_name + ' · ' : '') + (z.zone_name || z.zone_code || ('zone ' + z.id));
+        opts += '<option value="' + z.id + '">' + escapeHtml(label) + '</option>';
+    });
+    sel.innerHTML = opts;
+    document.getElementById('bulkAssignCategory').value = '';
+    document.getElementById('bulkAssignName').value = '';
+    document.getElementById('bulkAssignUnassignedOnly').checked = false;
+    document.getElementById('bulkAssignModal').classList.remove('hidden');
+}
+
+async function submitBulkAssign() {
+    var zoneVal = document.getElementById('bulkAssignZone').value;
+    var category = document.getElementById('bulkAssignCategory').value;
+    var nameLike = document.getElementById('bulkAssignName').value.trim();
+    var unassignedOnly = document.getElementById('bulkAssignUnassignedOnly').checked;
+    if (!category && !nameLike) { showToast('카테고리 또는 이름을 1개 이상 지정하세요.', 'warning'); return; }
+    var body = { zone_id: zoneVal === '' ? null : parseInt(zoneVal), only_unassigned: unassignedOnly };
+    if (category) body.category = category;
+    if (nameLike) body.name_like = nameLike.indexOf('%') >= 0 ? nameLike : ('%' + nameLike + '%');
+    try {
+        var res = await axios.post('/api/inventory/bulk-assign-zones', body);
+        if (res.data.success) {
+            showToast(res.data.data.assigned + '개 품목 배정 완료', 'success');
+            document.getElementById('bulkAssignModal').classList.add('hidden');
+            loadInventory();
+        }
+    } catch (e) {
+        showToast('배정 실패: ' + (e.response?.data?.error || e.message), 'error');
+    }
+}
+
 // ===== 창고별 재고 + 창고 간 이동 (UP3-B1) =====
 var invZoneStorageZones = [];   // 현재 법인 storage_zones 캐시 (도착 창고 드롭다운)
 var invZoneCurrentItem = null;  // 모달 대상 { id, name }

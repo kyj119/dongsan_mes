@@ -100,6 +100,9 @@ export function inventoryPage(c: Context<HonoEnv>) {
                     <button id="adjustmentBtn" class="ds-btn ds-btn-primary">
                         <i class="fas fa-adjust mr-2"></i>재고 조정
                     </button>
+                    <button id="bulkAssignBtn" class="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700" data-admin-only>
+                        <i class="fas fa-warehouse mr-2"></i>기본창고 일괄배정
+                    </button>
                     <button id="refreshBtn" class="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700">
                         <i class="fas fa-sync-alt mr-2"></i>새로고침
                     </button>
@@ -390,6 +393,40 @@ export function inventoryPage(c: Context<HonoEnv>) {
                     <div class="mt-6 flex justify-end gap-2">
                         <button id="cancelSettings" class="px-4 py-2 bg-gray-300 rounded hover:bg-gray-400">취소</button>
                         <button id="submitSettings" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">저장</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 기본창고 일괄배정 (운영설계 B) -->
+            <div id="bulkAssignModal" class="ds-modal-overlay hidden">
+                <div class="ds-modal p-6" style="max-width:30rem">
+                    <h3 class="text-xl font-bold mb-4"><i class="fas fa-warehouse text-gray-600 mr-2"></i>기본창고 일괄배정</h3>
+                    <div class="space-y-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">대상 창고</label>
+                            <select id="bulkAssignZone" class="w-full px-3 py-2 border rounded">
+                                <option value="">미배정으로 환원</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">카테고리 (선택)</label>
+                            <select id="bulkAssignCategory" class="w-full px-3 py-2 border rounded">
+                                <option value="">전체</option>
+                                <option value="원자재">원자재</option>
+                                <option value="태극기">태극기</option>
+                                <option value="상품">상품</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">이름 포함 (선택)</label>
+                            <input type="text" id="bulkAssignName" class="w-full px-3 py-2 border rounded" placeholder="예: 전사잉크 (전사% 일괄배정 시)">
+                        </div>
+                        <label class="flex items-center gap-2 text-sm"><input type="checkbox" id="bulkAssignUnassignedOnly"> 미배정 품목만 대상</label>
+                        <div class="text-xs text-gray-500">카테고리·이름 중 1개 이상 지정. 매입/재고 품목만 적용. (예: 전사잉크→전사 창고)</div>
+                    </div>
+                    <div class="mt-6 flex justify-end gap-2">
+                        <button id="cancelBulkAssign" class="px-4 py-2 bg-gray-300 rounded hover:bg-gray-400">취소</button>
+                        <button id="submitBulkAssign" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">적용</button>
                     </div>
                 </div>
             </div>

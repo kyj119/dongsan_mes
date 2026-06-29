@@ -1051,4 +1051,45 @@ inventoryRouter.post('/transfer', async (c) => {
   }
 })
 
+// 기본창고 일괄 배정 (운영설계 B) — 필터(카테고리/이름/품목)로 items.storage_zone_id 설정.
+//   품목은 법인 공유라 storage_zone_id는 전역 1값. 법인별 안착은 getItemDefaultZone(법인 인식)이 처리.
+inventoryRouter.post('/bulk-assign-zones', async (c) => {
+  try {
+    const user = c.get('user')
+    if (!user || !['ADMIN', 'MANAGER'].includes(user.role)) {
+      return c.json({ success: false, error: '권한이 없습니다 (관리자 전용)' }, 403)
+    }
+    const body = await c.req.json<{ zone_id?: number | null; category?: string; name_like?: string; item_ids?: number[]; only_unassigned?: boolean }>()
+    const zoneId = body.zone_id != null && body.zone_id !== ('' as any) ? Number(body.zone_id) : null
+
+    // 대상 창고 유효성 (null=미배정 환원 허용)
+    if (zoneId != null) {
+      const z = await c.env.DB.prepare('SELECT id FROM storage_zones WHERE id = ? AND is_active = 1').bind(zoneId).first()
+      if (!z) return c.json({ success: false, error: '유효하지 않은 창고입니다' }, 400)
+    }
+
+    // 대상 필터 — 매입/재고 품목만(제품 제외). 필터 최소 1개 필수(전체 일괄 방지).
+    const conds: string[] = ['COALESCE(is_purchase_item, 0) = 1']
+    const binds: any[] = []
+    let hasFilter = false
+    if (body.item_ids && body.item_ids.length > 0) {
+      if (body.item_ids.length > 90) return c.json({ success: false, error: '한 번에 90개 이하 (필터를 사용하세요)' }, 400)
+      conds.push(`id IN (${body.item_ids.map(() => '?').join(',')})`)
+      binds.push(...body.item_ids.map(Number)); hasFilter = true
+    }
+    if (body.category) { conds.push('category = ?'); binds.push(body.category); hasFilter = true }
+    if (body.name_like) { conds.push('item_name LIKE ?'); binds.push(body.name_like); hasFilter = true }
+    if (body.only_unassigned) { conds.push('storage_zone_id IS NULL') }
+    if (!hasFilter) return c.json({ success: false, error: '필터(카테고리/이름/품목)를 1개 이상 지정하세요' }, 400)
+
+    const upd = await c.env.DB.prepare(
+      `UPDATE items SET storage_zone_id = ? WHERE ${conds.join(' AND ')}`
+    ).bind(zoneId, ...binds).run()
+    return c.json({ success: true, data: { assigned: upd.meta.changes || 0, zone_id: zoneId } })
+  } catch (e) {
+    console.error('bulk-assign-zones error:', e)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다' }, 500)
+  }
+})
+
 export default inventoryRouter
