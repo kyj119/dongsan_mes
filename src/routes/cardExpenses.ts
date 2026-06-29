@@ -371,10 +371,15 @@ cardExpRouter.post('/sync', requireRole('ADMIN'), async (c) => {
     }
 
     let inserted = 0, skipped = 0
+    // 진단/관측: 바로빌 SOAP 호출 결과를 집계(과거 catch(_){}가 에러를 통째로 삼켜 원인 불명이던 문제 해소)
+    const syncErrors: string[] = []
+    let monthlyFetched = 0, dailyFetched = 0, monthlyCalls = 0, dailyCalls = 0
+    const dateSeen = new Set<string>()
 
     // 단건 처리(dedup + 범위필터 + INSERT) — 월별/일별 양 경로 공용
     const processItems = async (items: any[], dbCardId: number) => {
       for (const item of items) {
+        if (item.UseDT) dateSeen.add(String(item.UseDT).slice(0, 8))  // 진단: 바로빌이 실제 반환한 사용일
         const refKey = item.ApprovalNum || `${item.UseDT}_${item.ApprovalAmount}_${item.UseStoreName}`
         const dup = await c.env.DB.prepare(
           'SELECT id FROM card_transactions WHERE card_id = ? AND codef_transaction_id = ?'
@@ -411,24 +416,28 @@ cardExpRouter.post('/sync', requireRole('ADMIN'), async (c) => {
         try {
           let page = 1, maxPage = 1
           do {
+            monthlyCalls++
             const result = await getMonthlyCardLog(config, cardNum, month, page, 100)
             maxPage = result.maxPage
+            monthlyFetched += (result.items || []).length
             await processItems(result.items, dbCardId)
             page++
           } while (page <= maxPage)
-        } catch (_) { /* skip month */ }
+        } catch (e: any) { const m = `monthly ${month}/${last4}: ${String(e?.message || e).slice(0, 160)}`; console.error('[card-sync]', m); if (syncErrors.length < 30) syncErrors.push(m) }
       }
       // 2) 최근 41일 일별(마감 후 누락분 보완)
       for (const day of tailDays) {
         try {
           let page = 1, maxPage = 1
           do {
+            dailyCalls++
             const result = await getDailyCardLog(config, cardNum, day, page, 100)
             maxPage = result.maxPage
+            dailyFetched += (result.items || []).length
             await processItems(result.items, dbCardId)
             page++
           } while (page <= maxPage)
-        } catch (_) { /* skip day */ }
+        } catch (e: any) { const m = `daily ${day}/${last4}: ${String(e?.message || e).slice(0, 160)}`; console.error('[card-sync]', m); if (syncErrors.length < 30) syncErrors.push(m) }
       }
     }
 
@@ -464,7 +473,14 @@ cardExpRouter.post('/sync', requireRole('ADMIN'), async (c) => {
       }
     }
 
-    return c.json({ success: true, data: { inserted, skipped, offset_pairs: offsetPairs }, message: `카드 동기화: ${inserted}건 신규, ${skipped}건 중복${offsetPairs ? `, ${offsetPairs}쌍 자동 상계` : ''}` })
+    const diag = {
+      cardListCount: cardList.length,
+      mappedCards: (cardList as any[]).map((cd) => (cd.CardNum || '').slice(-4)).filter((l4) => cardMap.has(l4)),
+      monthlyCalls, monthlyFetched, dailyCalls, dailyFetched,
+      datesReturned: [...dateSeen].sort(),
+      errors: syncErrors,
+    }
+    return c.json({ success: true, data: { inserted, skipped, offset_pairs: offsetPairs, diag }, message: `카드 동기화: ${inserted}건 신규, ${skipped}건 중복${offsetPairs ? `, ${offsetPairs}쌍 자동 상계` : ''}` })
   } catch (error) {
     console.error('Card sync error:', error)
     return c.json({ success: false, error: '서버 오류' }, 500)
