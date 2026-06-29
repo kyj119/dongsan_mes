@@ -1013,28 +1013,31 @@ inventoryRouter.post('/transfer', async (c) => {
       return c.json({ success: false, error: '출발 창고와 도착 창고가 같습니다' }, 400)
     }
 
-    // 출발 창고 재고 확인 (entity·zone 키)
-    const src = await c.env.DB.prepare(
-      `SELECT quantity FROM inventory WHERE item_id = ? AND entity_id = ? AND IFNULL(storage_zone_id,0) = IFNULL(?,0)`
-    ).bind(itemId, entityId, fromZone).first<{ quantity: number }>()
-    const srcQty = src?.quantity ?? 0
-    if (srcQty < qty) {
-      return c.json({ success: false, error: `출발 창고 재고 부족 (현재 ${srcQty})` }, 400)
+    // #459: 출발 창고 원자 차감(TOCTOU 방지) — 부족/동시이동이면 changes=0.
+    //   기존 SELECT후 batch UPDATE 분리 = 더블클릭 시 둘 다 통과 → 2×차감·음수재고. atomic WHERE quantity>=? 로 차단.
+    const srcUpd = await c.env.DB.prepare(
+      `UPDATE inventory SET quantity = quantity - ?, last_updated = CURRENT_TIMESTAMP
+       WHERE item_id = ? AND entity_id = ? AND IFNULL(storage_zone_id,0) = IFNULL(?,0) AND quantity >= ?`
+    ).bind(qty, itemId, entityId, fromZone, qty).run()
+    if (!srcUpd.meta.changes) {
+      return c.json({ success: false, error: '출발 창고 재고 부족 (또는 동시 이동 중)' }, 400)
     }
 
-    const dst = await c.env.DB.prepare(
-      `SELECT quantity FROM inventory WHERE item_id = ? AND entity_id = ? AND IFNULL(storage_zone_id,0) = IFNULL(?,0)`
-    ).bind(itemId, entityId, toZone).first<{ quantity: number }>()
-    const srcAfter = srcQty - qty
-    const dstAfter = (dst?.quantity ?? 0) + qty
-
+    // 도착 창고 증가 (행 부재 시 0 생성 후 누적)
     await c.env.DB.batch([
-      c.env.DB.prepare(`UPDATE inventory SET quantity = quantity - ?, last_updated = CURRENT_TIMESTAMP WHERE item_id = ? AND entity_id = ? AND IFNULL(storage_zone_id,0) = IFNULL(?,0)`)
-        .bind(qty, itemId, entityId, fromZone),
       c.env.DB.prepare(`INSERT OR IGNORE INTO inventory (item_id, entity_id, storage_zone_id, quantity) VALUES (?, ?, ?, 0)`)
         .bind(itemId, entityId, toZone),
       c.env.DB.prepare(`UPDATE inventory SET quantity = quantity + ?, last_updated = CURRENT_TIMESTAMP WHERE item_id = ? AND entity_id = ? AND IFNULL(storage_zone_id,0) = IFNULL(?,0)`)
         .bind(qty, itemId, entityId, toZone),
+    ])
+
+    // 실제 잔량(원자 차감/증가 반영 후) — balance_after 정확값
+    const srcRow = await c.env.DB.prepare(`SELECT quantity FROM inventory WHERE item_id = ? AND entity_id = ? AND IFNULL(storage_zone_id,0) = IFNULL(?,0)`).bind(itemId, entityId, fromZone).first<{ quantity: number }>()
+    const dstRow = await c.env.DB.prepare(`SELECT quantity FROM inventory WHERE item_id = ? AND entity_id = ? AND IFNULL(storage_zone_id,0) = IFNULL(?,0)`).bind(itemId, entityId, toZone).first<{ quantity: number }>()
+    const srcAfter = srcRow?.quantity ?? 0
+    const dstAfter = dstRow?.quantity ?? 0
+
+    await c.env.DB.batch([
       c.env.DB.prepare(`INSERT INTO inventory_transactions (item_id, transaction_type, transaction_date, quantity, balance_after, reference_type, reason, notes, handled_by, entity_id, storage_zone_id) VALUES (?, 'TRANSFER_OUT', datetime('now'), ?, ?, 'TRANSFER', '창고이동', ?, ?, ?, ?)`)
         .bind(itemId, -qty, srcAfter, body.notes || null, userId, entityId, fromZone),
       c.env.DB.prepare(`INSERT INTO inventory_transactions (item_id, transaction_type, transaction_date, quantity, balance_after, reference_type, reason, notes, handled_by, entity_id, storage_zone_id) VALUES (?, 'TRANSFER_IN', datetime('now'), ?, ?, 'TRANSFER', '창고이동', ?, ?, ?, ?)`)

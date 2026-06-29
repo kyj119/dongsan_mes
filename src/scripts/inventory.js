@@ -340,6 +340,7 @@ function renderZoneStock(zones) {
     toSel.innerHTML = opts;
 }
 
+var invTransferBusy = false;  // #459: 더블클릭/중복제출 가드
 window.submitInvTransfer = async function() {
     if (!invZoneCurrentItem) return;
     var fromV = document.getElementById('transferFrom').value;
@@ -348,6 +349,10 @@ window.submitInvTransfer = async function() {
     var notes = document.getElementById('transferNotes').value;
     if (!qty || qty <= 0) { showToast('이동 수량을 입력해주세요.', 'warning'); return; }
     if ((fromV || '') === (toV || '')) { showToast('출발 창고와 도착 창고가 같습니다.', 'warning'); return; }
+    if (invTransferBusy) return;  // #459: 진행 중 중복 제출 차단 (백엔드 원자 가드와 이중 방어)
+    invTransferBusy = true;
+    var btn = document.querySelector('#zoneStockModal button.ds-btn-primary');
+    if (btn) btn.disabled = true;
     try {
         var res = await axios.post('/api/inventory/transfer', {
             item_id: invZoneCurrentItem.id,
@@ -366,6 +371,9 @@ window.submitInvTransfer = async function() {
     } catch (e) {
         console.error('Transfer failed:', e);
         showToast('이동 실패: ' + (e.response?.data?.error || e.message), 'error');
+    } finally {
+        invTransferBusy = false;
+        if (btn) btn.disabled = false;
     }
 };
 
