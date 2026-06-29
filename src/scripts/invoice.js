@@ -12,6 +12,38 @@ if (!token) {
 }
 axios.defaults.headers.common['Authorization'] = 'Bearer ' + token;
 
+// standalone 명세서 페이지엔 shell.js(공용 헬퍼)가 로드되지 않음 → 로컬 정의.
+// formatKST 미정의 시 buildInvoiceHalf가 throw하여 명세서 렌더 전체 실패(인쇄·팩스·이메일 동반). shell.js와 동일 구현.
+if (typeof window.escapeHtml !== 'function') {
+  window.escapeHtml = function(str) {
+    if (str === null || str === undefined) return '';
+    return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+  };
+}
+if (typeof window.toKstDate !== 'function') {
+  window.toKstDate = function(ts) {
+    if (ts === null || ts === undefined || ts === '') return null;
+    var s = String(ts).trim();
+    if (s.length === 10 && s.charAt(4) === '-' && s.charAt(7) === '-') return new Date(s + 'T00:00:00');
+    var iso = s.indexOf('T') === -1 ? s.replace(' ', 'T') : s;
+    var timePart = iso.length > 11 ? iso.slice(11) : '';
+    var hasTz = timePart.indexOf('Z') !== -1 || timePart.indexOf('+') !== -1 || timePart.indexOf('-') !== -1;
+    if (!hasTz) iso += 'Z';
+    var d = new Date(iso);
+    return isNaN(d.getTime()) ? null : d;
+  };
+}
+if (typeof window.formatKST !== 'function') {
+  window.formatKST = function(ts, mode, opts) {
+    var d = window.toKstDate(ts);
+    if (!d) return (ts === null || ts === undefined || ts === '') ? '-' : String(ts);
+    var o = Object.assign({ timeZone: 'Asia/Seoul' }, opts || {});
+    if (mode === 'date') return d.toLocaleDateString('ko-KR', o);
+    if (mode === 'time') return d.toLocaleTimeString('ko-KR', o);
+    return d.toLocaleString('ko-KR', o);
+  };
+}
+
 function numberToKorean(num) {
     if (!num || num === 0) return '영';
     num = Math.floor(Math.abs(num));
