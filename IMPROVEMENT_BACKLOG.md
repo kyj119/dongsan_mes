@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 6 -->
-<!-- last_run_at: 2026-06-29T22:00:00+09:00 -->
+<!-- last_run_area: 1 -->
+<!-- last_run_at: 2026-06-30T02:00:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -16,6 +16,17 @@
 
 > 📦 **과거 사이클 로그**는 `IMPROVEMENT_BACKLOG_ARCHIVE.md`/git 히스토리로 이관됨 (2026-06-10 1차 분리, 2026-06-25 2차 트림 343KB→192KB, **2026-06-25T10:00 3차 트림 — 06-17~06-23 사이클 로그를 git 히스토리로 이관: node_modules 부재 세션에서 commit-gate(typecheck) 차단으로 API 푸시 필요 → 파일 축소로 비용 절감 + 256KB 한도 회복**). 신규 로그는 계속 이 파일 상단에 추가. 본 파일은 직전 2일치(06-24~) 사이클 로그 + 영구 참조 섹션(Approved/New/Auto-fixed/Done/Rejected/FP 카탈로그)만 유지. 이관분은 `git log -p -- IMPROVEMENT_BACKLOG.md`로 복원 가능.
 
+> **Area 1 프로덕션 헬스 (2026-06-30T02:00):**
+> - **방법**: 사이클 초반 `npm ci`(node_modules 0→81패키지, #439 commit-gate 자가복구) 후 git fetch-before-compare(origin `c66bfc1→0a2a362`, fetch 후 **HEAD=origin/main `0a2a362` 0/0 동기**, 워킹트리 clean, 디버전스 0). egress 차단(prod 직접 fetch·Playwright 도달 불가)이라 CI/E2E는 GitHub Actions API로, 회귀 위험은 정적 standing scan으로 검증. **직전 Area6(`c66bfc1`) 이후 코드 churn = 0**(`c66bfc1..HEAD` diff = SKILL.md+backlog 문서 2파일뿐), 직전 Area1(`1c5a7e1`) 이후 = 본 하루치 사이클 Area2~6 + 오너 feature(multi-UOM·inventory 다중행·cashflow 재작성·배너 0398-0407·FTP팩스, 83파일 2610+/498-, 전부 Area2~6 감사완료). 신규 마이그 **0393-0407**(전부 직전 사이클 감사완료, 본 직전사이클 이후 마이그 유입 0).
+> - **🟢 CI/E2E = HEAD GREEN, 단일 transient 1건**: 최근 30런(`actions_list` main) = **29 success + 1 failure**. 유일 실패 = merge 커밋 `ca131ee`의 **Smoke test 단계만**(잡 스텝 검증: Typecheck✓·Build✓·Deploy✓·Wait✓·**Smoke(production) fail**·이후 8eafc13 배포 success로 회복) = **#400/#374 D1 cold-start transient 패턴**(Deploy 자체 success + 다음 배포 green = prod 무중단). `ca131ee`는 HEAD 조상(superseded). HEAD `0a2a362` Deploy + Daily D1 Backup 모두 success. **신규 prod-breaking 회귀 0**. `npx tsc --noEmit` **exit 0**.
+> - **🟢 DROP/RENAME 마이그 write-path standing scan(SKILL line 40) = net-new 0**: 신규 0393-0407 전수 `grep DROP (TABLE|COLUMN)`·`RENAME` = **0건**(배너 0398-0407=idempotent 데이터 INSERT, multi-UOM/다중행 0394-0397=ADD COLUMN/신규테이블) → items inline-FK 깨짐류(#430 smoke 맹점) 위험 0.
+> - **🟢 마이그 번호 중복 standing scan(#438) = net-new 0**: `uniq -d`(4자리 prefix) = `0080`·`0193`·`0327` — 0080b/0193b는 의도적 suffix 컨벤션(FP), `0327`만 기존 prod-적용 2파일(item_register_active+po_receiving_lock, 정리대상 아님 FP). 최신 0393-0407 전부 고유, 신규 중복 유입 0.
+> - **🟡 prod↔main 디버전스(#422) 거울 1건 — #459 오너픽스 main 반영·이슈 OPEN(회귀위험 0)**: HEAD=origin/main `0a2a362` 0/0 동기 → **prod-only 미push 픽스 0**(#422 정방향 clean). **단 #422의 거울 케이스**: 오너가 #459(재고 창고이동 TOCTOU·더블클릭)를 `8eafc13`("fix(inventory): 창고이동 TOCTOU 원자 차감 + 더블클릭 가드 (#459)", inventory.ts +33/inventory.js +8 = 이슈 설명의 백엔드 `WHERE quantity>=?` 원자차감 + 프론트 가드 양쪽 정확히 커버, `22e8f21` 중복커밋 동반)로 **main에 픽스 머지(이미 배포 success)**했으나 **GitHub 이슈 #459는 여전히 OPEN** → main에 픽스 존재라 **회귀위험 0**(#422 정방향=prod에만 픽스/main 누락과 반대), 순수 이슈 추적 drift. **검증 결과 #458/#460/#461은 오너 픽스 아님**(매치된 커밋은 auto-improve 생성 chore뿐, 이슈번호 언급만). 권고: 오너 #459 close(픽스 완료 확인). **자동 close 금지**(이슈 상태=오너 리뷰 영역).
+> - **🟢 backlog↔GitHub sync**: open auto-improve **실측 16건**(`list_issues` totalCount=16: #461·#460·#459·#458·#456·#455·#454·#452·#451·#450·#447·#444·#443·#442·#441·#439) = 직전 Area6 stats `new=16` **정합**. owner 신규 close/머지 0(done=139·rejected=3 유지, #459는 픽스됐으나 미close=open 유지). 본 사이클 신규 이슈 0(헬스 GREEN·회귀 0).
+> - **🧬 SKILL 강화 0건**: 기존 standing scan(DROP write-path line 40·마이그중복 #438·디버전스 #422·cold-start transient #400)이 본 사이클 전수 커버. #459 거울은 #422의 기존 명문화된 변종(close↔main 트리 불일치의 역방향)이라 신규 패턴 불요.
+> - **이상 없음(CI HEAD GREEN·DROP마이그·중복·디버전스·sync·타입)**, 신규 발견 0. git 동기 0/0·워킹트리 clean, sync 16=16.
+> - 자동 수정 0건(헬스 GREEN·코드 churn은 직전 사이클 감사완료), 신규 이슈 0건, SKILL 강화 0건, done-sync(변동 0, new 16 유지), **신선 각도 — Area 1 프로덕션 헬스: CI 30런 = 29 success + 1 transient(ca131ee Smoke-only 실패=Deploy성공+다음배포 green=#400 cold-start, prod 무중단)·신규 마이그 0393-0407 DROP 0건(맹점 N/A)·디버전스 정방향 0. 유일 관찰 = #459 오너픽스(8eafc13 TOCTOU+더블클릭)가 main 반영됐으나 이슈 OPEN = #422의 거울(회귀위험 0, 추적 drift) → 오너 close 권고. #458/#460/#461은 오너 픽스 미확인(생성 chore만 매치). tsc exit 0. 부수: `npm ci`로 #439 commit-gate 자가복구.**
+>
 > **Area 6 자기 진화 (2026-06-29T22:00):**
 > - **방법**: 사이클 초반 `npm ci`(node_modules 0→81패키지, #439 commit-gate 자가복구) 후 git fetch(**HEAD=origin/main `c66bfc1` 0/0 동기**, 워킹트리 clean, 디버전스 0). Area 6 **27회차** — **신규 기능 churn 사이클**: 직전 Area6(`ad35377`, 06-28T22:00) 이후 owner가 하루치 대형 feature 다수 푸시(cashflow 재작성·multi-UOM·inventory 다중행·FTP팩스·배너 등록 0398-0407 + **범용 PP 선택옵션** `b357c40`). **신선 각도 = Area 6 bridge 2종(post-Area4 컬럼-diff + post-Area5 XSS) + 직전 Area audit 이후 최신 미감사 churn(배너 0404-0407·범용 PP select)에 집중**.
 > - **🟢 XSS bridge(post-Area5 `7d00aa5`) = net-new 0**: 최신 미감사 프론트 churn = `orderForm/finishing.js` 범용 PP select(`b357c40`)뿐 — **신규 data-driven 렌더러가 4지점 전수 `escapeHtml` 적용**(category label 텍스트+data-* 속성·option_name 텍스트노드+data-pp-name 속성, option_code도 escape, `opt.id`만 숫자 value/data-pp-id). dataflow(calc.js/parent.js)도 clean: dataset round-trip이 escapeHtml한 속성을 자동 디코딩=원본 복원(이중인코딩 0)·구조화 객체 백엔드 push·복원은 `querySelector`(innerHTML 아님). net-new XSS 0.
