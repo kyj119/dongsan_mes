@@ -602,12 +602,23 @@ itemsRouter.patch('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
   try {
     const id = c.req.param('id')
     const updates = await c.req.json()
-    const allowedFields = ['item_name', 'specification', 'width_mm', 'sub_category', 'base_price', 'unit', 'sales_price', 'is_sales_item', 'item_group', 'is_purchase_item', 'production_required', 'spec_group_id', 'spec_value', 'spec_group_id2', 'spec_value2', 'deduction_method', 'sheet_spec', 'waste_factor']
+    const allowedFields = ['item_name', 'specification', 'width_mm', 'sub_category', 'base_price', 'unit', 'sales_price', 'is_sales_item', 'item_group', 'is_purchase_item', 'production_required', 'spec_group_id', 'spec_value', 'spec_group_id2', 'spec_value2', 'deduction_method', 'sheet_spec', 'waste_factor', 'base_unit', 'pack_size', 'stock_mode']
 
     // #435: 차감방식 값 검증 — 화이트리스트 외 값은 autoDeduct에서 조용한 오차감 유발
     //  (sheet_spec 미정 BOARD → 4x8 폴백, method 오타 → ROLL 폭매칭/스킵). DB 도달 전 차단.
     if (updates.deduction_method !== undefined && !['ROLL', 'BOARD', 'NONE'].includes(updates.deduction_method)) {
       return c.json({ success: false, error: 'deduction_method는 ROLL/BOARD/NONE만 허용됩니다' }, 400)
+    }
+    // MU1: 다단위 검증 — stock_mode 화이트리스트, pack_size 양수
+    if (updates.stock_mode !== undefined && updates.stock_mode !== null && updates.stock_mode !== '' && !['PACK', 'CONTINUOUS'].includes(updates.stock_mode)) {
+      return c.json({ success: false, error: 'stock_mode는 PACK/CONTINUOUS만 허용됩니다' }, 400)
+    }
+    if (updates.pack_size !== undefined && updates.pack_size !== null && updates.pack_size !== '') {
+      const ps = Number(updates.pack_size)
+      if (!Number.isFinite(ps) || ps <= 0) {
+        return c.json({ success: false, error: 'pack_size는 0 초과 숫자여야 합니다' }, 400)
+      }
+      updates.pack_size = ps
     }
     if (updates.sheet_spec !== undefined && updates.sheet_spec !== null && updates.sheet_spec !== '' && !['4x8', '3x6'].includes(updates.sheet_spec)) {
       return c.json({ success: false, error: 'sheet_spec은 4x8/3x6만 허용됩니다' }, 400)
