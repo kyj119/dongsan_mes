@@ -137,12 +137,16 @@ export async function runMrpCalculation(
   const materialIds = Array.from(materialMap.keys())
   if (materialIds.length > 0) {
     const placeholders = materialIds.map(() => '?').join(',')
+    // UP4 백로그: inventory.id(행PK)≠item_id. item_id 기준 + 다중행 SUM 집계로 교정 + entity 격리.
+    const eId2 = options.entityId
+    const entClause = eId2 && eId2 > 0 ? ' AND entity_id = ?' : ''
+    const entParams = eId2 && eId2 > 0 ? [eId2] : []
     const { results: stocks } = await db.prepare(
-      `SELECT id, quantity FROM inventory WHERE id IN (${placeholders})`
-    ).bind(...materialIds).all() as { results: { id: number; quantity: number }[] }
+      `SELECT item_id, SUM(quantity) as quantity FROM inventory WHERE item_id IN (${placeholders})${entClause} GROUP BY item_id`
+    ).bind(...materialIds, ...entParams).all() as { results: { item_id: number; quantity: number }[] }
 
     for (const s of stocks) {
-      const m = materialMap.get(s.id)
+      const m = materialMap.get(s.item_id)
       if (m) m.current_stock = s.quantity || 0
     }
 

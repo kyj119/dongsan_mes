@@ -356,24 +356,32 @@ productionReportsRouter.get('/consumption', async (c) => {
     const dateTo = to || new Date().toISOString().substring(0, 10)
 
     // 품목별 출고(소비) 집계
+    // UP4 백로그: 다중행 inventory를 거래와 직접 JOIN하면 거래×재고행 곱집계. 거래/재고를 각각 집계 후 JOIN.
     const { results: consumption } = await c.env.DB.prepare(`
       SELECT
-        ii.item_id as item_id,
+        t.item_id as item_id,
         i.item_name,
         i.category,
         i.unit,
-        COALESCE(SUM(CASE WHEN it.transaction_type = 'OUT' THEN ABS(it.quantity) ELSE 0 END), 0) as total_consumed,
-        COALESCE(SUM(CASE WHEN it.transaction_type = 'IN' THEN it.quantity ELSE 0 END), 0) as total_received,
-        ii.quantity as current_stock,
-        COALESCE(ii.safe_stock, 0) as safety_stock
-      FROM inventory ii
-      JOIN items i ON ii.item_id = i.id
-      LEFT JOIN inventory_transactions it ON it.item_id = ii.item_id
-        AND date(it.transaction_date) >= ? AND date(it.transaction_date) <= ?
-      WHERE i.is_active = 1
-      GROUP BY ii.item_id
-      HAVING total_consumed > 0 OR total_received > 0
-      ORDER BY total_consumed DESC
+        t.total_consumed,
+        t.total_received,
+        COALESCE(inv.current_stock, 0) as current_stock,
+        COALESCE(inv.safety_stock, 0) as safety_stock
+      FROM (
+        SELECT it.item_id,
+          COALESCE(SUM(CASE WHEN it.transaction_type = 'OUT' THEN ABS(it.quantity) ELSE 0 END), 0) as total_consumed,
+          COALESCE(SUM(CASE WHEN it.transaction_type = 'IN' THEN it.quantity ELSE 0 END), 0) as total_received
+        FROM inventory_transactions it
+        WHERE date(it.transaction_date) >= ? AND date(it.transaction_date) <= ?
+        GROUP BY it.item_id
+        HAVING total_consumed > 0 OR total_received > 0
+      ) t
+      JOIN items i ON i.id = t.item_id AND i.is_active = 1
+      LEFT JOIN (
+        SELECT item_id, SUM(quantity) as current_stock, MAX(safe_stock) as safety_stock
+        FROM inventory GROUP BY item_id
+      ) inv ON inv.item_id = t.item_id
+      ORDER BY t.total_consumed DESC
       LIMIT 30
     `).bind(dateFrom, dateTo).all()
 

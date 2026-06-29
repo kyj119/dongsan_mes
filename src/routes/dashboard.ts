@@ -429,20 +429,27 @@ dashboardRouter.get('/overdue-pos', async (c) => {
 // 재고 부족 품목 목록 (안전재고 이하)
 dashboardRouter.get('/low-stock', async (c) => {
   try {
+    // UP4 백로그: 창고별 다중행 → 품목당 SUM/MAX 집계 + entity 격리(행 중복·타법인 합산 방지).
+    const entityId = getEntityId(c)
+    const invJoin = entityId > 0
+      ? 'JOIN inventory inv ON i.id = inv.item_id AND inv.entity_id = ?'
+      : 'JOIN inventory inv ON i.id = inv.item_id'
+    const lowParams = entityId > 0 ? [entityId] : []
     const { results } = await c.env.DB.prepare(`
       SELECT
         i.id, i.item_name, i.category, i.unit,
-        COALESCE(inv.quantity, 0) as current_stock,
-        COALESCE(inv.safe_stock, 0) as safety_stock,
-        COALESCE(inv.reorder_point, 0) as reorder_point,
-        ROUND(COALESCE(inv.safe_stock, 0) - COALESCE(inv.quantity, 0), 1) as shortage
+        COALESCE(SUM(inv.quantity), 0) as current_stock,
+        COALESCE(MAX(inv.safe_stock), 0) as safety_stock,
+        COALESCE(MAX(inv.reorder_point), 0) as reorder_point,
+        ROUND(COALESCE(MAX(inv.safe_stock), 0) - COALESCE(SUM(inv.quantity), 0), 1) as shortage
       FROM items i
-      JOIN inventory inv ON i.id = inv.item_id
+      ${invJoin}
       WHERE i.is_purchase_item = 1 AND i.is_active = 1
-        AND inv.quantity <= inv.safe_stock AND inv.safe_stock > 0
-      ORDER BY (inv.safe_stock - inv.quantity) DESC
+      GROUP BY i.id
+      HAVING COALESCE(SUM(inv.quantity), 0) <= COALESCE(MAX(inv.safe_stock), 0) AND COALESCE(MAX(inv.safe_stock), 0) > 0
+      ORDER BY shortage DESC
       LIMIT 10
-    `).all()
+    `).bind(...lowParams).all()
 
     return c.json({ success: true, data: results })
   } catch (error) {
