@@ -32,10 +32,10 @@ weeklyPurchaseRouter.get('/analyze', async (c) => {
     })
 
     // 2. MRP 소요량 (확정/생산중 주문)
+    //    UP4: bom_items.material_item_id가 곧 자재 item_id — inventory.id 조인은 버그(행PK≠item_id, 다중행에서 오매칭).
     const { results: mrpDemand } = await c.env.DB.prepare(`
       SELECT
         b.material_item_id,
-        inv_mat.item_id as material_real_item_id,
         b.material_name,
         SUM(
           (COALESCE(oi.width, 0) / 100.0) * (COALESCE(oi.height, 0) / 100.0)
@@ -47,7 +47,6 @@ weeklyPurchaseRouter.get('/analyze', async (c) => {
         (b.item_id IS NOT NULL AND b.item_id = oi.item_id)
         OR (b.item_id IS NULL AND b.category_name IS NOT NULL AND b.category_name = oi.category_name)
       )
-      LEFT JOIN inventory inv_mat ON b.material_item_id = inv_mat.id
       WHERE o.status IN ('CONFIRMED', 'IN_PRODUCTION')
         AND b.is_active = 1
         AND COALESCE(oi.width, 0) > 0 AND COALESCE(oi.height, 0) > 0
@@ -56,9 +55,9 @@ weeklyPurchaseRouter.get('/analyze', async (c) => {
 
     const mrpMap: Record<number, { demand: number; materialName: string }> = {}
     for (const m of mrpDemand as any[]) {
-      const realItemId = m.material_real_item_id as number
-      if (realItemId) {
-        mrpMap[realItemId] = {
+      const matItemId = m.material_item_id as number
+      if (matItemId) {
+        mrpMap[matItemId] = {
           demand: m.mrp_required as number,
           materialName: m.material_name as string,
         }
@@ -114,6 +113,26 @@ weeklyPurchaseRouter.get('/analyze', async (c) => {
       }
     }
 
+    // 4b. UP4: 품목별 창고 분해 (어느 창고에 재고가 있나 → 입고=기본창고 후 이동 분배 가이드). 0 제외.
+    const zoneMap: Record<number, Array<{ zone_name: string; quantity: number }>> = {}
+    {
+      const zef = entityId > 0 ? 'AND inv.entity_id = ?' : ''
+      const zefParams = entityId > 0 ? [entityId] : []
+      const { results: zoneRows } = await c.env.DB.prepare(`
+        SELECT inv.item_id, COALESCE(sz.zone_name, '미배정') AS zone_name, SUM(inv.quantity) AS quantity
+        FROM inventory inv
+        JOIN items i ON inv.item_id = i.id AND i.is_purchase_item = 1 AND i.is_active = 1
+        LEFT JOIN storage_zones sz ON inv.storage_zone_id = sz.id
+        WHERE 1=1 ${zef}
+        GROUP BY inv.item_id, inv.storage_zone_id
+        HAVING SUM(inv.quantity) != 0
+        ORDER BY inv.item_id, inv.storage_zone_id IS NULL, sz.zone_name
+      `).bind(...zefParams).all()
+      for (const r of zoneRows as any[]) {
+        (zoneMap[r.item_id] ||= []).push({ zone_name: r.zone_name, quantity: r.quantity })
+      }
+    }
+
     // 5. 제안 목록 생성
     const suggestions = forecast.map(f => {
       const mrp = mrpMap[f.item_id] || { demand: 0 }
@@ -158,6 +177,8 @@ weeklyPurchaseRouter.get('/analyze', async (c) => {
         // 공급처
         supplier_id: supplier?.supplier_id || null,
         supplier_name: supplier?.supplier_name || null,
+        // UP4: 창고별 분해 (분할 시 어느 창고에 얼마)
+        zones: zoneMap[f.item_id] || [],
         // 메타
         needs_order,
         urgency,
