@@ -120,7 +120,7 @@ export async function autoDeductInventory(
       .prepare(
         `SELECT pm.material_item_id, i.width_mm, i.item_name,
                 COALESCE(i.deduction_method, 'ROLL') AS deduction_method, i.sheet_spec,
-                COALESCE(i.waste_factor, 1.0) AS waste_factor
+                COALESCE(i.waste_factor, 1.0) AS waste_factor, i.base_unit
          FROM product_materials pm
          JOIN items i ON pm.material_item_id = i.id
          WHERE pm.product_item_id = ?`
@@ -140,15 +140,17 @@ export async function autoDeductInventory(
     const boardMats = materialRows.filter((m: any) => m.deduction_method === 'BOARD')
 
     let selectedMaterial: any = null
-    let deductedLengthYd = 0       // ROLL=yd, BOARD=장
+    let deductedLengthYd = 0       // 차감량(base_unit 단위): ROLL=yd 또는 cm, BOARD=장
     let dedMethod = 'ROLL'
     let matchedWidthMm: number | null = null
 
-    // ROLL: output_width 이상 최소폭 → 길이(yd)
+    // ROLL: output_width 이상 최소폭 → 길이
+    // MU4: base_unit 분기 — 'cm' 품목만 신규 mm/10(cm), 그 외(yd·NULL)는 mm/914.4(yd) 현행 무변경(회귀0).
     for (const m of rollMats) {
       if (m.width_mm >= outputWidthMm) {
         selectedMaterial = m; dedMethod = 'ROLL'; matchedWidthMm = m.width_mm
-        deductedLengthYd = (outputHeightMm / 914.4) * copyTotal
+        const rollDivisor = (m.base_unit === 'cm') ? 10 : 914.4
+        deductedLengthYd = (outputHeightMm / rollDivisor) * copyTotal
         break
       }
     }
@@ -163,7 +165,7 @@ export async function autoDeductInventory(
     if (!selectedMaterial) {
       return { success: false, deducted: false, reason: `no matching material (roll width >= ${outputWidthMm} or board)` }
     }
-    const dedUnit = dedMethod === 'BOARD' ? '장' : 'yd'
+    const dedUnit = dedMethod === 'BOARD' ? '장' : (selectedMaterial.base_unit === 'cm' ? 'cm' : 'yd')
 
     // 7. 차감 법인 = COALESCE(cards.requesting_entity_id, orders.entity_id)
     //    requesting_entity_id = 담당 법인(Phase 2 주입). 타법인 담당 공정의 원단은 그 담당 법인 재고에서 차감(물리 정합).
@@ -225,8 +227,8 @@ export async function autoDeductInventory(
           `INSERT INTO inventory_auto_deductions (
             print_event_id, material_item_id, deducted_length_mm, deducted_length_yd,
             output_width_mm, output_height_mm, copy_total, inventory_before, inventory_after,
-            matched_width_mm, card_id, order_number, entity_id, deduction_method
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+            matched_width_mm, card_id, order_number, entity_id, deduction_method, deducted_base
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
         )
         .bind(
           printEventId,
@@ -242,7 +244,8 @@ export async function autoDeductInventory(
           cardId,
           printEvent.order_number || null,
           entityId,
-          dedMethod
+          dedMethod,
+          deductedLengthYd  // MU4: deducted_base — base_unit 단위 차감량(cm/yd)
         )
         .run()
     } catch (insertError: any) {
