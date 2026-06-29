@@ -5,6 +5,7 @@
 > **블로커**: 솔벤캔버스 원단 미파악(보류) · 품목 단가 전부 0(미입력) · 활성화(is_active=1) 시점 미결정.
 > **다음 액션**: 솔벤캔버스/배너류 등록 → 단가 입력 → 간판 BOM → split-billing P5-continued.
 > **핸드오프 정본** = `memory/session-context.md`.
+> **🔧 멀티세션**: 동시 작업은 `scripts/new-session.ps1 <이름>`(worktree 격리, 메인 직접작업 지양) → `docs/WORKTREE_WORKFLOW.md`.
 > 완료 이력 → `PROJECT_STATUS_ARCHIVE.md` (매 세션 읽을 필요 없음, 필요 시 참조).
 
 ---
@@ -16,6 +17,12 @@
 ---
 
 ## 🔴 현재 진행 중
+
+- **▶ [2026-06-26] 현장 잉크 재고관리 — 마이그만 prod (코드 보류) (정본 `memory/design-ink-inventory.md`)**:
+  - 잉크 **74품목** 등록(마이그 `0394` **prod 적용**·동산72/선명6·수성잉크테크 LcLm=선명 매출 2). `item_type=MATERIAL`·`unit=L`·`deduction_method=NONE`(수동, 차감X)·코드 `RM-I0001~0074`(자동채번 규칙, 의미코드 금지=채번 깨짐). **장비별 분리**(같은 KM테크라도 솔벤1800/3200 별도·UV평판≠3200).
+  - **단위 SSOT 신설**(`constants/units.ts` 7단위 EA·롤·yd·장·M·L·BOX, hr.ts 패턴)+폼 input→select(`items.ts:120,342`)+layout 주입. ⚠️yd(ROLL)·장(BOARD)=autoDeduct 리터럴, 변경금지. 검증 tsc0·build·**smoke101**·로컬/prod DB 74.
+  - **⚠️코드 미배포 보류**: HEAD에 factory P3(마이그 `0391/0392`) 코드가 커밋됐는데 **prod 미적용**(m0392 zone 컬럼 없음)→코드배포 시 검증 안 된 P3 동반 활성화. 사용자 결정으로 **0394만 prod**. **단위 드롭다운+P3 코드 배포는 factory 세션과 조율 후**. 잉크 재고관리 자체는 마이그만으로 prod 동작.
+    - **[2026-06-29] layout.ts 단위 주입 = dirty WIP 제거 위해 `wip/multi-uom-unit-ui` 브랜치로 격리**(소비자 items.ts select 미커밋·multi-UOM 스레드 소속). 메인 작업트리 clean. 재개 시 `git checkout wip/multi-uom-unit-ui -- src/layout.ts` 또는 cherry-pick.
 
 - **✅ [2026-06-26] 공장 배치도 P0~P2 — 장비 공정·구역·도면배경 (정본 `memory/design-factory-layout.md`, spec `docs/superpowers/specs/2026-06-25-factory-layout-integration.md`)**:
   - 공정 SSOT **확정=items.category 1:1 6종**(AQUEOUS/SOLVENT/UV/TRANSFER/SUBLIMATION/SIGN, 평판=UV흡수·나염=태극기, 사용자 결정) `src/constants/process.ts`+layout 주입.
