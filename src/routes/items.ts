@@ -2,7 +2,7 @@ import { Hono } from 'hono'
 import type { HonoEnv } from '../types/env'
 import type { Item, ItemCategory, ApiResponse, PaginatedResponse } from '../types/models'
 import { authMiddleware, requireRole } from '../middleware/auth'
-import { getEntityId, entityFilter } from '../utils/entityFilter'
+import { getEntityId, entityFilter, isZoneOwnedByEntity } from '../utils/entityFilter'
 
 const itemsRouter = new Hono<HonoEnv>()
 
@@ -848,6 +848,11 @@ itemsRouter.post('/', requireRole('ADMIN', 'MANAGER'), async (c) => {
       var itemCode = `PM-${String(nextNum).padStart(4, '0')}`
     }
 
+    // #461: storage_zone 법인 소유 검증 (타법인 zone 차단, #368 도메인 일관)
+    if (itemData.storage_zone_id != null && !(await isZoneOwnedByEntity(c, itemData.storage_zone_id))) {
+      return c.json({ success: false, error: '유효하지 않은 창고입니다' }, 400)
+    }
+
     // Insert new item
     const result = await c.env.DB.prepare(`
       INSERT INTO items (
@@ -1081,6 +1086,11 @@ itemsRouter.put('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
       ? [(itemData.pack_size != null && itemData.pack_size !== '') ? Number(itemData.pack_size) : null] : []
     const stockModeClause = itemData.stock_mode !== undefined ? 'stock_mode = ?,' : ''
     const stockModeParams = itemData.stock_mode !== undefined ? [itemData.stock_mode || 'CONTINUOUS'] : []
+
+    // #461: storage_zone 법인 소유 검증 (타법인 zone 차단, #368 도메인 일관)
+    if (itemData.storage_zone_id != null && !(await isZoneOwnedByEntity(c, itemData.storage_zone_id))) {
+      return c.json({ success: false, error: '유효하지 않은 창고입니다' }, 400)
+    }
 
     // Update item
     await c.env.DB.prepare(`

@@ -27,6 +27,23 @@ export function entityFilter(
 }
 
 /**
+ * storage_zone_id가 현재 요청 법인 소유(또는 ADMIN 전체모드)인지 검증. #461 IDOR 가드.
+ * null/undefined = 미배정이므로 통과. 미존재·비활성·타법인 소유면 false.
+ * storage_zones는 법인 소유(0232) — 도메인 전체가 #368/#417로 격리됨(목록 드롭다운도 자법인만 노출).
+ */
+export async function isZoneOwnedByEntity(
+  c: Context<HonoEnv>,
+  zoneId: number | null | undefined
+): Promise<boolean> {
+  if (zoneId == null) return true
+  const entityId = getEntityId(c)
+  const z = entityId === 0
+    ? await c.env.DB.prepare('SELECT id FROM storage_zones WHERE id = ? AND is_active = 1').bind(zoneId).first()
+    : await c.env.DB.prepare('SELECT id FROM storage_zones WHERE id = ? AND is_active = 1 AND entity_id = ?').bind(zoneId, entityId).first()
+  return !!z
+}
+
+/**
  * cards 테이블용 엔티티 필터 (requesting_entity_id 컬럼 사용).
  * 카드는 entity_id가 아닌 requesting_entity_id(생산/공정 담당 법인)로 귀속한다.
  * → 타법인 담당(order_items.assigned_entity_id) 품목의 카드가 그 법인 작업 큐에 표시됨.

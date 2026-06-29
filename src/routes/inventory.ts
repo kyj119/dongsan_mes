@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import { authMiddleware, requireRole } from '../middleware/auth'
 import type { HonoEnv } from '../types/env'
-import { getEntityId, entityFilter } from '../utils/entityFilter'
+import { getEntityId, entityFilter, isZoneOwnedByEntity } from '../utils/entityFilter'
 import { getNextEntitySeqNumber } from '../utils/sequenceGenerator'
 import { triggerLowStockAlert } from '../utils/inventoryAlert'
 import { getItemDefaultZone, getItemDefaultZones } from '../utils/inventoryZone'
@@ -1062,10 +1062,9 @@ inventoryRouter.post('/bulk-assign-zones', async (c) => {
     const body = await c.req.json<{ zone_id?: number | null; category?: string; name_like?: string; item_ids?: number[]; only_unassigned?: boolean }>()
     const zoneId = body.zone_id != null && body.zone_id !== ('' as any) ? Number(body.zone_id) : null
 
-    // 대상 창고 유효성 (null=미배정 환원 허용)
-    if (zoneId != null) {
-      const z = await c.env.DB.prepare('SELECT id FROM storage_zones WHERE id = ? AND is_active = 1').bind(zoneId).first()
-      if (!z) return c.json({ success: false, error: '유효하지 않은 창고입니다' }, 400)
+    // 대상 창고 유효성 (null=미배정 환원 허용) — #461: 법인 소유 검증(타법인 zone 차단, #368 도메인 일관)
+    if (zoneId != null && !(await isZoneOwnedByEntity(c, zoneId))) {
+      return c.json({ success: false, error: '유효하지 않은 창고입니다' }, 400)
     }
 
     // 대상 필터 — 매입/재고 품목만(제품 제외). 필터 최소 1개 필수(전체 일괄 방지).
