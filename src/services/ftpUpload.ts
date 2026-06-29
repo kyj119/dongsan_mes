@@ -38,7 +38,27 @@ function parseResponse(buf: string): { code: number; text: string; rest: string 
  * 단일 파일을 FTP root 경로에 STOR(바이너리).
  * 실패 시 throw — 호출부에서 발송 실패로 처리.
  */
+// 바로빌 FTP는 동시 1세션 → 직전 발송 세션이 잠깐 남아있으면 다음 로그인이 530날 수 있음.
+// 530/데이터채널 일시오류는 5초 백오프로 1회만 재시도(과한 재시도는 보안잠금을 키우므로 금지).
 export async function ftpStor(cfg: FtpConfig, remoteName: string, data: Uint8Array): Promise<void> {
+  const MAX_ATTEMPTS = 2
+  let lastErr: any
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    try {
+      await ftpStorOnce(cfg, remoteName, data)
+      return
+    } catch (e: any) {
+      lastErr = e
+      const msg = String((e && e.message) || e)
+      const retryable = /(^|[^0-9])(530|421|425|426)([^0-9]|$)/.test(msg) || /타임아웃|timeout/i.test(msg)
+      if (!retryable || attempt === MAX_ATTEMPTS) throw e
+      await new Promise((r) => setTimeout(r, 5000))
+    }
+  }
+  throw lastErr
+}
+
+async function ftpStorOnce(cfg: FtpConfig, remoteName: string, data: Uint8Array): Promise<void> {
   const enc = new TextEncoder()
   const dec = new TextDecoder()
 
@@ -104,8 +124,9 @@ export async function ftpStor(cfg: FtpConfig, remoteName: string, data: Uint8Arr
       throw new Error(`STOR 완료 응답 이상(${done.code}): ${done.text.trim()}`)
     }
 
-    try { await cmd('QUIT', [221]) } catch { /* QUIT 실패는 무시 */ }
   } finally {
+    // 세션 깔끔히 해제(QUIT) — 성공·실패 모든 경로. 미QUIT 시 바로빌이 세션을 잠깐 물고 있어 다음 발송이 530.
+    try { await writer.write(enc.encode('QUIT\r\n')) } catch { /* ignore */ }
     try { reader.releaseLock() } catch { /* ignore */ }
     try { await writer.close() } catch { /* ignore */ }
     try { await control.close() } catch { /* ignore */ }
