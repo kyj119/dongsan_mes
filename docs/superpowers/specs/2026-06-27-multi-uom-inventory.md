@@ -74,3 +74,17 @@ ALTER TABLE inventory_receipt_items ADD COLUMN unit TEXT;
 - 잉크: 통 단위 재고·입고(개수). SPM: 롤 입고 → cm 차감 → 롤 환산 표시.
 - **회귀**: 현수막원단 yd 자동차감·판재 BOARD 결과 **변화 없음** 확인(P2 핵심).
 - build·smoke·prod 자동차감 회귀 테스트.
+
+---
+
+## 실데이터 위험 재평가 (2026-06-29, 범위=전체 확정)
+- **prod 잉크 74품목 재고 전부 0**(unit='L'·quantity=0). → 0395 잉크전환(통/L/PACK)은 **변환할 기존 수량 없음 = 데이터 마이그 위험 NIL**(메타데이터만). 게이트 재정의: "위험한 데이터 변환"이 아니라 **"전환 후 잉크를 통/PACK으로 관리할 코드(입고·출고·표시)가 준비됐는가"**.
+- 즉 0395는 **PACK 관리코드(P-PACK)와 함께** 배포하면 안전.
+
+## 구현 순서 (전체 scope, 의존순·각 검증·worktree 격리 배포)
+- **MU1. 공통 변환 헬퍼 + 마스터 입력** (저위험): `utils/unitConvert`(toBase/fromBase/formatStock — unit↔base_unit×pack_size). 품목 폼/라우트에 `base_unit·pack_size·stock_mode` 입력·저장. `inventory.quantity`=base_unit 의미 명문화. 배포 안전(NULL base_unit=현행).
+- **MU2. 표시환산(=UP3-B2)** (저위험): `/inventory`·상세·창고모달이 formatStock으로 PACK "N통(=X L)"·CONTINUOUS "X cm(=Y롤)" 병기. 데이터 없으면 현행과 동일.
+- **MU3. PACK 입고/출고** (저~중): 입고 +통→+pack_size×N base, 출고 개봉=−pack_size(통 단위). scan/inventory stock-in·out PACK 분기. **→ 0395 잉크전환 + MU1~MU3 묶어 배포**(게이트 해제).
+- **MU4. CONTINUOUS cm 자동차감** (**고위험·prod 생산차감**): `autoDeductInventory`가 base_unit 분기(yd→/914.4·cm→/10·상수 함수화), `deducted_base` 기록. ⚠️**현수막(yd)·판재(장·BOARD) 바이트동일 회귀0** — 배포 전 prod 과거 print_event 표본으로 차감결과 before/after 동일 검증. 시트류만 cm 신규.
+- **MU5. 입고 포장환산 + 발주 multi-UOM** (중): `inventory_receipt_items.unit` 스냅샷·포장↔base 입력·발주 포장단위.
+- 배포 게이트: MU4는 회귀검증 통과 후 단독 배포. 0395는 MU3와 동반. 0394는 prod 기적용(잉크 74품목).
