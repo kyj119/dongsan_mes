@@ -172,13 +172,13 @@ arReceivablesRouter.get('/overdue', async (c) => {
         c.overdue_alert_days,
         COUNT(DISTINCT o.id) as overdue_count,
         COALESCE(SUM(g.billed_amount), 0) as overdue_amount,
-        MIN(g.billed_at) as oldest_billed_at
+        MIN(COALESCE(g.accounting_date, g.billed_at)) as oldest_billed_at
       FROM order_billing_groups g
       JOIN orders o ON o.id = g.order_id
       JOIN clients c ON o.client_id = c.id
       WHERE g.billing_status = 'BILLED'
         AND o.status != 'CANCELLED'
-        AND date(g.billed_at, '+' || COALESCE(c.overdue_alert_days, 30) || ' days') < date('now', '+9 hours')
+        AND date(COALESCE(g.accounting_date, g.billed_at), '+' || COALESCE(c.overdue_alert_days, 30) || ' days') < date('now', '+9 hours')
         ${overdueEf}
       GROUP BY c.id, c.client_name, c.overdue_alert_days
       ORDER BY overdue_amount DESC
@@ -226,13 +226,13 @@ arReceivablesRouter.get('/receivables', async (c) => {
           ) as balance,
           (SELECT MAX(p.payment_date) FROM payments p WHERE p.client_id = c.id${recvPayEf}) as last_payment_date,
           (SELECT COUNT(*) FROM order_billing_groups g JOIN orders o ON o.id = g.order_id WHERE o.client_id = c.id AND g.billing_status = 'BILLED' AND o.status != 'CANCELLED'${cntGEf}) as billed_order_count,
-          (SELECT MIN(g.billed_at) FROM order_billing_groups g JOIN orders o ON o.id = g.order_id
+          (SELECT MIN(COALESCE(g.accounting_date, g.billed_at)) FROM order_billing_groups g JOIN orders o ON o.id = g.order_id
            WHERE o.client_id = c.id AND g.billing_status = 'BILLED' AND o.status != 'CANCELLED'${oldGEf}
              AND NOT EXISTS (
                SELECT 1 FROM payments p
                WHERE p.client_id = c.id${recvPayEf2}
                  AND p.amount >= g.billed_amount
-                 AND p.payment_date >= g.billed_at
+                 AND p.payment_date >= COALESCE(g.accounting_date, g.billed_at)
              )
           ) as oldest_unpaid_date
         FROM clients c
@@ -315,10 +315,10 @@ arReceivablesRouter.get('/receivables/:clientId/orders', async (c) => {
         o.billed_amount,
         o.billing_status,
         o.billed_at,
-        CAST(julianday('now') - julianday(o.billed_at) AS INTEGER) as days_since_billed
+        CAST(julianday('now') - julianday(COALESCE(o.accounting_date, o.billed_at)) AS INTEGER) as days_since_billed
       FROM orders o
       WHERE o.client_id = ? AND o.billing_status = 'BILLED'${recvOrdDetailEf}
-      ORDER BY o.billed_at ASC
+      ORDER BY COALESCE(o.accounting_date, o.billed_at) ASC
     `).bind(clientId, ...recvOrdDetailEfParams).all<ReceivableOrderRow>()
 
     // 입금 내역
@@ -392,8 +392,8 @@ arReceivablesRouter.post('/receivables/check-overdue', requireRole('ADMIN', 'MAN
           - (SELECT COALESCE(SUM(amount), 0) FROM payments p WHERE p.client_id = c.id${coPayEf})
           - (SELECT COALESCE(SUM(amount), 0) FROM adjustments a WHERE a.client_id = c.id${coAdjEf})
         ) as balance,
-        MIN(g.billed_at) as oldest_billed_at,
-        CAST(julianday('now') - julianday(MIN(g.billed_at)) AS INTEGER) as overdue_days
+        MIN(COALESCE(g.accounting_date, g.billed_at)) as oldest_billed_at,
+        CAST(julianday('now') - julianday(MIN(COALESCE(g.accounting_date, g.billed_at))) AS INTEGER) as overdue_days
       FROM clients c
       JOIN orders o ON o.client_id = c.id
       JOIN order_billing_groups g ON g.order_id = o.id

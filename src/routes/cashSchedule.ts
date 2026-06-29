@@ -51,6 +51,10 @@ interface ConfirmedPORow {
   delivery_date: string | null
   supplier_name: string | null
   payment_days: number
+  payment_cycle_type: string | null
+  closing_day: number | null
+  payment_month_offset: number | null
+  payment_day: number | null
 }
 
 interface ForecastDay {
@@ -342,7 +346,7 @@ cashScheduleRouter.post('/schedule/auto-generate', requireRole('ADMIN'), async (
     // 1. 청구 완료된 청구그룹 → 입금 예정 (LIMIT 500 안전장치)
     const { results: billedOrders } = await c.env.DB.prepare(`
       SELECT g.order_id as id, g.entity_id as billing_entity_id, o.client_id,
-        g.billed_amount, g.billed_at, o.order_number,
+        g.billed_amount, COALESCE(g.accounting_date, g.billed_at) as billed_at, o.order_number,
         COALESCE(c.payment_terms_days, 30) as payment_days,
         c.client_name,
         c.payment_cycle_type, c.closing_day, c.payment_month_offset, c.payment_day
@@ -381,10 +385,12 @@ cashScheduleRouter.post('/schedule/auto-generate', requireRole('ADMIN'), async (
     }
 
     // 2. 발주 → 지급 예정 (LIMIT 500 안전장치)
+    //   공급사 결제조건(MONTHLY 월말/이월결제 포함)을 computeExpectedPaymentDate로 반영 — 매출측과 대칭 (H1a)
     const { results: confirmedPOs } = await c.env.DB.prepare(`
       SELECT po.id, po.supplier_id, po.final_amount, po.po_number, po.created_at, po.delivery_date,
         s.client_name as supplier_name,
-        COALESCE(s.payment_terms_days, 30) as payment_days
+        COALESCE(s.payment_terms_days, 30) as payment_days,
+        s.payment_cycle_type, s.closing_day, s.payment_month_offset, s.payment_day
       FROM purchase_orders po
       LEFT JOIN clients s ON s.id = po.supplier_id
       WHERE po.status IN ('CONFIRMED', 'RECEIVED', 'PARTIAL_RECEIVED')${entityFilter(c, 'po').clause}
@@ -396,9 +402,14 @@ cashScheduleRouter.post('/schedule/auto-generate', requireRole('ADMIN'), async (
     `).bind(...entityFilter(c, 'po').params).all<ConfirmedPORow>()
 
     for (const po of confirmedPOs) {
-      const baseDate = po.delivery_date || po.created_at
-      const dueDate = new Date(new Date(baseDate).getTime() + (po.payment_days || 30) * 86400000)
-      const dueDateStr = dueDate.toISOString().substring(0, 10)
+      const baseDate = (po.delivery_date || po.created_at || '').substring(0, 10)
+      const dueDateStr = computeExpectedPaymentDate(baseDate, {
+        payment_cycle_type: po.payment_cycle_type,
+        payment_terms_days: po.payment_days,
+        closing_day: po.closing_day,
+        payment_month_offset: po.payment_month_offset,
+        payment_day: po.payment_day,
+      })
 
       batchStmts.push(
         c.env.DB.prepare(`

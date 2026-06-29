@@ -1883,7 +1883,7 @@ bankRouter.get('/receivables', requireRole('ADMIN', 'MANAGER'), async (c) => {
         (SELECT COUNT(*) FROM payments p WHERE p.client_id = c.id) as total_payments,
         (SELECT SUM(p.amount) FROM payments p WHERE p.client_id = c.id
          AND p.payment_date >= date('now', '-90 days')) as recent_90d_payments,
-        (SELECT MIN(o.billed_at) FROM orders o
+        (SELECT MIN(COALESCE(o.accounting_date, o.billed_at)) FROM orders o
          WHERE o.client_id = c.id AND o.billing_status = 'BILLED' AND o.billed_at IS NOT NULL) as earliest_billed_at
       FROM clients c
       LEFT JOIN (

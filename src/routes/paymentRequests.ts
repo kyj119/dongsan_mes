@@ -314,13 +314,17 @@ paymentRequestsRouter.patch('/:id/pay', requireRole('ADMIN', 'MANAGER'), async (
 
     const ef = entityFilter(c, '')
     const pr2 = await c.env.DB.prepare(
-      `SELECT id, request_date, amount, status FROM payment_requests WHERE id = ?${ef.clause}`
+      `SELECT id, request_date, amount, status, request_type FROM payment_requests WHERE id = ?${ef.clause}`
     ).bind(id, ...ef.params).first<Record<string, unknown>>()
     if (!pr2 || pr2.status !== 'APPROVED') {
       return c.json({ success: false, error: '이체 가능한 상태가 아닙니다.' }, 400)
     }
 
     // batch: 이체완료 + 자금 예정 완료를 단일 왕복으로 처리
+    // ⚠️ approve(:278)가 source_type = request_type(EXPENSE/PURCHASE/OTHER)로 INSERT하므로
+    //    pay도 동일 source_type으로 매칭해야 함. 과거 'OTHER' 하드코딩 → EXPENSE/PURCHASE 결의가
+    //    지급 후에도 PENDING 영구 잔존(캐시플로 지출 과대·거짓 연체). source_id+source_type로 정정.
+    const csSourceType = (pr2.request_type as string) || 'OTHER'
     await c.env.DB.batch([
       c.env.DB.prepare(`
         UPDATE payment_requests SET status = 'PAID',
@@ -330,8 +334,8 @@ paymentRequestsRouter.patch('/:id/pay', requireRole('ADMIN', 'MANAGER'), async (
       `).bind(paid_at || null, user?.id || null, bank_transaction_id || null, id),
       c.env.DB.prepare(`
         UPDATE cash_schedule SET status = 'DONE', actual_date = ?, actual_amount = ?
-        WHERE source_type = 'OTHER' AND source_id = ?
-      `).bind(paid_at || pr2.request_date as string, pr2.amount, id)
+        WHERE source_type = ? AND source_id = ?
+      `).bind(paid_at || pr2.request_date as string, pr2.amount, csSourceType, id)
     ])
 
     return c.json({ success: true, message: '이체 완료 처리되었습니다.' })

@@ -138,14 +138,14 @@ taxInvoicesIssueRouter.post('/direct', requireRole('ADMIN', 'MANAGER'), async (c
         order_number, client_id, status, order_type,
         order_year, order_month, order_date,
         total_amount, vat_amount, final_amount,
-        billing_status, billed_at, billed_by, billed_amount,
+        billing_status, billed_at, billed_by, billed_amount, accounting_date,
         notes, created_by, entity_id,
         created_at, updated_at
       ) VALUES (
         ?, ?, 'SHIPPED', 'DIRECT_INVOICE',
         ?, ?, ?,
         ?, ?, ?,
-        'BILLED', CURRENT_TIMESTAMP, ?, ?,
+        'BILLED', CURRENT_TIMESTAMP, ?, ?, ?,
         ?, ?, ?,
         CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
       )
@@ -153,7 +153,7 @@ taxInvoicesIssueRouter.post('/direct', requireRole('ADMIN', 'MANAGER'), async (c
       orderNumber, buyerClientId,
       today.getFullYear(), today.getMonth() + 1, issueDate,
       supplyAmount, taxAmount, totalAmount,
-      user?.id || null, totalAmount,
+      user?.id || null, totalAmount, issueDate,
       body.notes || '직접발행 세금계산서', user?.id || 1, entityId
     ).run()
 
@@ -170,9 +170,9 @@ taxInvoicesIssueRouter.post('/direct', requireRole('ADMIN', 'MANAGER'), async (c
       const batchRes = await c.env.DB.batch([
         // (b) split billing P3: 백업 주문의 청구그룹 생성(BILLED) — balance 캐시 대체, (거래처×법인) 미수금 파생 소스
         c.env.DB.prepare(`
-          INSERT INTO order_billing_groups (order_id, entity_id, billing_status, supply_amount, tax_amount, billed_amount, billed_at, billed_by)
-          VALUES (?, ?, 'BILLED', ?, ?, ?, CURRENT_TIMESTAMP, ?)
-        `).bind(orderId, entityId, supplyAmount, taxAmount, totalAmount, user?.id || null),
+          INSERT INTO order_billing_groups (order_id, entity_id, billing_status, supply_amount, tax_amount, billed_amount, billed_at, billed_by, accounting_date)
+          VALUES (?, ?, 'BILLED', ?, ?, ?, CURRENT_TIMESTAMP, ?, ?)
+        `).bind(orderId, entityId, supplyAmount, taxAmount, totalAmount, user?.id || null, issueDate),
         // (c) 세금계산서 INSERT (백업 주문에 연결)
         c.env.DB.prepare(`
           INSERT INTO tax_invoices (
@@ -704,13 +704,16 @@ taxInvoicesIssueRouter.post('/:id/cancel', requireRole('ADMIN'), async (c) => {
         const cancelStmts: any[] = [
           // 그룹 청구 초기화 + 계산서 연결 해제
           c.env.DB.prepare(
-            `UPDATE order_billing_groups SET billing_status = NULL, billed_at = NULL, billed_by = NULL, tax_invoice_id = NULL WHERE id IN (${gph})`
+            `UPDATE order_billing_groups SET billing_status = NULL, billed_at = NULL, billed_by = NULL, tax_invoice_id = NULL, accounting_date = NULL WHERE id IN (${gph})`
           ).bind(...groupIds),
-          // orders 미러: 그 주문 전 그룹이 청구완료된 경우만 BILLED 유지, 아니면 NULL (부분 취소 반영)
+          // orders 미러: 그 주문 전 그룹이 청구완료된 경우만 BILLED 유지, 아니면 NULL (부분 취소 반영). accounting_date도 동일 동기화.
           c.env.DB.prepare(
             `UPDATE orders SET billing_status = CASE WHEN NOT EXISTS (
                  SELECT 1 FROM order_billing_groups g WHERE g.order_id = orders.id AND COALESCE(g.billing_status,'') NOT IN ('BILLED','PAID')
                ) THEN 'BILLED' ELSE NULL END,
+               accounting_date = CASE WHEN NOT EXISTS (
+                 SELECT 1 FROM order_billing_groups g WHERE g.order_id = orders.id AND COALESCE(g.billing_status,'') NOT IN ('BILLED','PAID')
+               ) THEN accounting_date ELSE NULL END,
                updated_at = CURRENT_TIMESTAMP WHERE id IN (${oph})`
           ).bind(...affectedOrders),
         ]

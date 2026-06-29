@@ -125,14 +125,18 @@ export async function recalcOrderBillingGroups(db: D1Database, orderId: number):
 // status: 'BILLED'(청구) | 'PAID'(수금) | null(취소). 반환: orders 행이 실제 변경됐는지(이중 실행 방지).
 // ⚠️ NULL!='BILLED'는 SQLite에서 NULL → `IS NOT 'BILLED'` 사용(미청구 NULL 매칭).
 export async function setOrderBillingStatus(
-  db: D1Database, orderId: number, status: 'BILLED' | 'PAID' | null, billedBy: number | null
+  db: D1Database, orderId: number, status: 'BILLED' | 'PAID' | null, billedBy: number | null,
+  accountingDate?: string | null   // 회계반영일 override(없으면 billable_after→delivery_date→KST오늘 폴백)
 ): Promise<boolean> {
   if (status === 'BILLED') {
+    const ad = accountingDate || null
     const r = await db.batch([
-      db.prepare(`UPDATE order_billing_groups SET billing_status = 'BILLED', billed_at = CURRENT_TIMESTAMP, billed_by = ?
-                  WHERE order_id = ? AND billing_status IS NOT 'BILLED' AND billing_status IS NOT 'PAID'`).bind(billedBy, orderId),
-      db.prepare(`UPDATE orders SET billing_status = 'BILLED', billed_at = CURRENT_TIMESTAMP, billed_by = ?, billed_amount = final_amount, updated_at = CURRENT_TIMESTAMP
-                  WHERE id = ? AND billing_status IS NOT 'BILLED' AND billing_status IS NOT 'PAID'`).bind(billedBy, orderId)
+      db.prepare(`UPDATE order_billing_groups SET billing_status = 'BILLED', billed_at = CURRENT_TIMESTAMP, billed_by = ?,
+                    accounting_date = COALESCE(?, (SELECT COALESCE(o.billable_after, o.delivery_date) FROM orders o WHERE o.id = order_billing_groups.order_id), date('now','+9 hours'))
+                  WHERE order_id = ? AND billing_status IS NOT 'BILLED' AND billing_status IS NOT 'PAID'`).bind(billedBy, ad, orderId),
+      db.prepare(`UPDATE orders SET billing_status = 'BILLED', billed_at = CURRENT_TIMESTAMP, billed_by = ?, billed_amount = final_amount,
+                    accounting_date = COALESCE(?, billable_after, delivery_date, date('now','+9 hours')), updated_at = CURRENT_TIMESTAMP
+                  WHERE id = ? AND billing_status IS NOT 'BILLED' AND billing_status IS NOT 'PAID'`).bind(billedBy, ad, orderId)
     ])
     return ((r[1].meta.changes as number) || 0) > 0
   } else if (status === 'PAID') {
@@ -143,8 +147,8 @@ export async function setOrderBillingStatus(
     return ((r[1].meta.changes as number) || 0) > 0
   } else {
     const r = await db.batch([
-      db.prepare(`UPDATE order_billing_groups SET billing_status = NULL, billed_at = NULL, billed_by = NULL WHERE order_id = ?`).bind(orderId),
-      db.prepare(`UPDATE orders SET billing_status = NULL, billed_at = NULL, billed_by = NULL, billed_amount = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?`).bind(orderId)
+      db.prepare(`UPDATE order_billing_groups SET billing_status = NULL, billed_at = NULL, billed_by = NULL, accounting_date = NULL WHERE order_id = ?`).bind(orderId),
+      db.prepare(`UPDATE orders SET billing_status = NULL, billed_at = NULL, billed_by = NULL, billed_amount = NULL, accounting_date = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?`).bind(orderId)
     ])
     return ((r[1].meta.changes as number) || 0) > 0
   }

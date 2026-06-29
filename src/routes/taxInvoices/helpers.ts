@@ -314,15 +314,19 @@ export async function issueTaxInvoice(
       await db.batch([
         // 이 법인 그룹만 청구확정 + 발행 계산서 연결
         db.prepare(
-          `UPDATE order_billing_groups SET billing_status = 'BILLED', billed_at = CURRENT_TIMESTAMP, billed_by = ?, tax_invoice_id = ?
+          // 회계반영일 = 이 계산서 작성일자(issue_date) — 출고월과 다른 달로 발행 시 매출인식/입금예정이 작성일자 기준으로 따라감
+          `UPDATE order_billing_groups SET billing_status = 'BILLED', billed_at = CURRENT_TIMESTAMP, billed_by = ?, tax_invoice_id = ?,
+             accounting_date = COALESCE((SELECT issue_date FROM tax_invoices WHERE id = ?), date('now','+9 hours'))
            WHERE order_id IN (${ph}) AND entity_id = ? AND billing_status IS NOT 'BILLED' AND billing_status IS NOT 'PAID'`
-        ).bind(userId, taxInvoiceId, ...orderIds, invEntity),
-        // orders 미러: 그 주문의 모든 그룹이 청구완료된 경우에만 BILLED
+        ).bind(userId, taxInvoiceId, taxInvoiceId, ...orderIds, invEntity),
+        // orders 미러: 그 주문의 모든 그룹이 청구완료된 경우에만 BILLED (회계반영일도 계산서 작성일자로 동기화)
         db.prepare(
-          `UPDATE orders SET billing_status = 'BILLED', updated_at = CURRENT_TIMESTAMP
+          `UPDATE orders SET billing_status = 'BILLED',
+             accounting_date = COALESCE((SELECT issue_date FROM tax_invoices WHERE id = ?), accounting_date, date('now','+9 hours')),
+             updated_at = CURRENT_TIMESTAMP
            WHERE id IN (${ph}) AND billing_status IS NOT 'BILLED'
              AND NOT EXISTS (SELECT 1 FROM order_billing_groups g WHERE g.order_id = orders.id AND COALESCE(g.billing_status,'') NOT IN ('BILLED','PAID'))`
-        ).bind(...orderIds)
+        ).bind(taxInvoiceId, ...orderIds)
       ])
     }
   } catch (_billingErr) {

@@ -91,6 +91,36 @@ export async function buildCashflowDays(
     })
   }
 
+  // ── 1b) 연체(과거일) 물질화 항목을 from으로 끌어옴 (H7) ────────────────────
+  //   §1은 schedule_date BETWEEN from..to라 예측창 이전의 PENDING/OVERDUE가 통째로 빠진다.
+  //   연체 미수/지급은 즉시 회수·지급 대상이므로 from(예측 시작일)에 표시(§4b 미수 from-clamp와 대칭).
+  //   FIXED 제외(온더플라이 통일)·CANCELLED 제외. DONE은 이미 정산분이라 과거에 남김.
+  //   ※ ORDER 연체분은 §4b residual의 mAgg(전 기간 PENDING/OVERDUE)에서 차감되고 §4b 합성 대상(materialized=0)도 아니므로
+  //     여기서 from에 표시해도 이중계산 없음.
+  const efOv = entityFilter(c, 'cs')
+  const { results: ovRows } = await c.env.DB.prepare(`
+    SELECT cs.id, cs.flow_type, cs.source_type, cs.amount, cs.description, cs.status, cl.client_name
+    FROM cash_schedule cs
+    LEFT JOIN clients cl ON cl.id = cs.client_id
+    WHERE cs.schedule_date < ?
+      AND cs.status IN ('PENDING', 'OVERDUE')
+      AND cs.source_type != 'FIXED'${efOv.clause}
+  `).bind(from, ...efOv.params).all<{
+    id: number; flow_type: string; source_type: string; amount: number
+    description: string | null; status: string; client_name: string | null
+  }>()
+  for (const r of ovRows) {
+    add(from, {
+      flow: r.flow_type === 'IN' ? 'IN' : 'OUT',
+      type: r.source_type,
+      name: `${r.description || r.client_name || r.source_type} (연체)`,
+      amount: Number(r.amount) || 0,
+      status: r.status,
+      materialized: true,
+      schedule_id: r.id,
+    })
+  }
+
   const months = monthsBetween(from, to)
 
   // ── 2) 온더플라이: 고정비 (ESTIMATED는 연결 카테고리 과거 실적으로 월별 추정) ──
@@ -166,7 +196,7 @@ export async function buildCashflowDays(
   const { results: grpRows } = await c.env.DB.prepare(`
     SELECT g.order_id, g.entity_id, g.billing_status,
            CAST(COALESCE(g.billed_amount, g.supply_amount + COALESCE(g.tax_amount, 0), 0) AS INTEGER) AS amount,
-           g.billed_at, o.order_number, o.delivery_date, o.created_at, o.client_id, cl.client_name,
+           g.billed_at, g.accounting_date, o.order_number, o.delivery_date, o.created_at, o.client_id, cl.client_name,
            COALESCE(cl.payment_terms_days, 30) AS terms,
            cl.payment_cycle_type, cl.closing_day, cl.payment_month_offset, cl.payment_day,
            (SELECT COUNT(*) FROM cash_schedule cs WHERE cs.source_type = 'ORDER' AND cs.source_id = g.order_id AND cs.entity_id = g.entity_id) AS materialized
@@ -177,7 +207,7 @@ export async function buildCashflowDays(
     LIMIT 2000
   `).bind(...efG.params).all<{
     order_id: number; entity_id: number; billing_status: string | null; amount: number
-    billed_at: string | null; order_number: string; delivery_date: string | null; created_at: string
+    billed_at: string | null; accounting_date: string | null; order_number: string; delivery_date: string | null; created_at: string
     client_id: number; client_name: string | null; terms: number
     payment_cycle_type: string | null; closing_day: number | null
     payment_month_offset: number | null; payment_day: number | null; materialized: number
@@ -185,7 +215,8 @@ export async function buildCashflowDays(
 
   // 4a) 미청구 그룹: 청구 전 → 그룹 금액으로 예상입금 합성(납기 기준). 청구되면 §4b로 이동.
   for (const g of grpRows) {
-    if (g.billing_status === 'BILLED') continue
+    // BILLED는 §4b(미수 잔여 cap)에서, PAID(수금완료)는 이미 회수돼 AR 파생서 제외 → §4a도 제외(유령 수입 방지).
+    if (g.billing_status === 'BILLED' || g.billing_status === 'PAID') continue
     if (!(Number(g.amount) > 0)) continue
     const base = g.delivery_date || (g.created_at || '').substring(0, 10)
     if (!base) continue
@@ -228,7 +259,7 @@ export async function buildCashflowDays(
     // (거래처×법인)별 그룹 → 예상입금일 오름차순(빠른 건부터) 분배, 그룹 금액 상한, 잔여 소진 시 중단.
     const byCE = new Map<string, { order_number: string; client_name: string | null; amount: number; due: string }[]>()
     for (const g of billedGroups) {
-      let due = computeExpectedPaymentDate(g.billed_at || (g.created_at || '').substring(0, 10), {
+      let due = computeExpectedPaymentDate(g.accounting_date || g.billed_at || (g.created_at || '').substring(0, 10), {
         payment_cycle_type: g.payment_cycle_type, payment_terms_days: g.terms,
         closing_day: g.closing_day, payment_month_offset: g.payment_month_offset, payment_day: g.payment_day,
       })
@@ -254,6 +285,47 @@ export async function buildCashflowDays(
         })
       }
     }
+  }
+
+  // ── 4.5) 온더플라이: 매입 지급예정 (PURCHASE_EXPECTED) — 매출 §4 대칭 (H1b) ──
+  //   확정발주(CONFIRMED/RECEIVED/PARTIAL_RECEIVED) 중 cash_schedule 미물질화분을 공급사 결제조건으로 OUT 합성.
+  //   이전: 매입은 물질화(auto-generate·매입확정)된 행만 §1에 등장 → 미물질화 확정발주는 예측에서 누락(매출은 자동 합성인데 비대칭).
+  //   dedup: (a) cash_schedule PURCHASE source_id=po.id 존재 시 §1과 중복 → skip,
+  //          (b) 지출결의(payment_requests.related_po_id) APPROVED/PAID 존재 시 그 결의 행과 중복 → skip.
+  const efPo = entityFilter(c, 'po')
+  const { results: poRows } = await c.env.DB.prepare(`
+    SELECT po.id, po.po_number, po.final_amount, po.delivery_date, po.created_at, po.supplier_id,
+           s.client_name AS supplier_name,
+           s.payment_cycle_type, s.closing_day, s.payment_month_offset, s.payment_day,
+           COALESCE(s.payment_terms_days, 30) AS terms,
+           (SELECT COUNT(*) FROM cash_schedule cs WHERE cs.source_type = 'PURCHASE' AND cs.source_id = po.id) AS materialized,
+           (SELECT COUNT(*) FROM payment_requests pr WHERE pr.related_po_id = po.id AND pr.status IN ('APPROVED', 'PAID')) AS pr_materialized
+    FROM purchase_orders po
+    LEFT JOIN clients s ON s.id = po.supplier_id
+    WHERE po.status IN ('CONFIRMED', 'RECEIVED', 'PARTIAL_RECEIVED')${efPo.clause}
+    LIMIT 2000
+  `).bind(...efPo.params).all<{
+    id: number; po_number: string; final_amount: number; delivery_date: string | null; created_at: string
+    supplier_id: number | null; supplier_name: string | null
+    payment_cycle_type: string | null; closing_day: number | null
+    payment_month_offset: number | null; payment_day: number | null; terms: number
+    materialized: number; pr_materialized: number
+  }>()
+  for (const po of poRows) {
+    if (Number(po.materialized) > 0 || Number(po.pr_materialized) > 0) continue
+    if (!(Number(po.final_amount) > 0)) continue
+    const base = po.delivery_date || (po.created_at || '').substring(0, 10)
+    if (!base) continue
+    let due = computeExpectedPaymentDate(base, {
+      payment_cycle_type: po.payment_cycle_type, payment_terms_days: po.terms,
+      closing_day: po.closing_day, payment_month_offset: po.payment_month_offset, payment_day: po.payment_day,
+    })
+    if (due < from) due = from   // 연체 지급(예정일 경과)은 예측 시작일에 표시 (매출 §4b와 대칭)
+    add(due, {
+      flow: 'OUT', type: 'PURCHASE_EXPECTED',
+      name: `${po.supplier_name || '공급사'} 지급예정 (발주 ${po.po_number})`,
+      amount: Number(po.final_amount) || 0, materialized: false,
+    })
   }
 
   // ── 5) 온더플라이: 법인카드 청구 예정 (CARD_EXPECTED) ──────────────────
@@ -339,6 +411,59 @@ export async function buildCashflowDays(
           name: `${card.card_name} 카드대금${estimated ? '·추정' : ''}`,
           amount, materialized: false, estimated,
         })
+      }
+    }
+  }
+
+  // ── 6) 온더플라이: 급여 (PAYROLL) — 회사 최대 월간 현금유출 (H2) ───────────
+  //   이전: 급여는 어떤 자동 경로로도 cash_schedule에 안 들어와(수동등록만) 예측에서 통째 누락.
+  //   payroll 레코드(PENDING/APPROVED/PAID)에서 합성:
+  //     · 실지급액(net_pay) → pay_date에 OUT
+  //     · 공제총액(total_deduction=4대보험 직원부담+원천세) → 귀속월(pay_period) 익월 10일 납부 OUT
+  //   ⚠️ 4대보험 '회사부담분'은 payroll 테이블에 미저장 → 본 합성에 미포함(실제 유출은 이보다 큼, 추후 보완).
+  //   dedup: 수동 PAYROLL cash_schedule(§1)이 있는 달은 합성 skip(이중계산 방지).
+  const efPay = entityFilter(c)
+  const { results: payRows } = await c.env.DB.prepare(`
+    SELECT pay_period, pay_date, net_pay, total_deduction
+    FROM payroll
+    WHERE status IN ('PENDING', 'APPROVED', 'PAID') AND pay_date IS NOT NULL${efPay.clause}
+  `).bind(...efPay.params).all<{
+    pay_period: string; pay_date: string; net_pay: number; total_deduction: number
+  }>()
+  if (payRows.length > 0) {
+    const efPayCs = entityFilter(c, 'cs')
+    const { results: manualPay } = await c.env.DB.prepare(`
+      SELECT DISTINCT strftime('%Y-%m', cs.schedule_date) AS ym FROM cash_schedule cs
+      WHERE cs.source_type = 'PAYROLL' AND cs.flow_type = 'OUT' AND cs.status != 'CANCELLED'${efPayCs.clause}
+    `).bind(...efPayCs.params).all<{ ym: string }>()
+    const manualPayMonths = new Set(manualPay.map((r) => r.ym))
+    // 'YYYY-MM' 귀속월 → 익월 10일 'YYYY-MM-10'
+    const nextMonth10 = (period: string): string => {
+      const [py, pm] = (period || '').split('-').map(Number)
+      if (!py || !pm) return ''
+      let ny = py, nm = pm + 1
+      if (nm > 12) { nm = 1; ny++ }
+      return `${ny}-${String(nm).padStart(2, '0')}-10`
+    }
+    for (const p of payRows) {
+      const payDate = (p.pay_date || '').substring(0, 10)
+      const payMonth = payDate.substring(0, 7)
+      if (Number(p.net_pay) > 0 && payDate && !manualPayMonths.has(payMonth)) {
+        add(payDate, {
+          flow: 'OUT', type: 'PAYROLL',
+          name: `급여 ${p.pay_period}`,
+          amount: Number(p.net_pay) || 0, materialized: false,
+        })
+      }
+      if (Number(p.total_deduction) > 0) {
+        const remit = nextMonth10(p.pay_period)
+        if (remit && !manualPayMonths.has(remit.substring(0, 7))) {
+          add(remit, {
+            flow: 'OUT', type: 'PAYROLL_TAX',
+            name: `4대보험·원천세 ${p.pay_period}`,
+            amount: Number(p.total_deduction) || 0, materialized: false,
+          })
+        }
       }
     }
   }

@@ -93,6 +93,7 @@ export function taxInvoicesPage(c: Context<HonoEnv>) {
             <option value="CARD">카드</option>
             <option value="SIMPLE">간이영수증</option>
           </select>
+          <input type="date" id="billingAccountingDate" class="ds-input" style="width:auto;min-height:32px;padding:4px 10px;font-size:var(--fs-xs)" title="회계반영일(비우면 정산가능일 자동). 예: 출고 6/30 → 7월 이월 시 7월 날짜 지정">
           <button onclick="submitBulkBilling()" class="ds-btn ds-btn-sm" style="background:var(--c-success);color:#fff">
             <i class="fas fa-check-double" style="margin-right:4px"></i>선택 회계반영
           </button>

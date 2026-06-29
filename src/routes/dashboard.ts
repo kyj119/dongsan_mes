@@ -49,7 +49,7 @@ dashboardRouter.get('/stats', async (c) => {
         (SELECT COUNT(*) FROM orders WHERE delivery_date = ${kstDate()} AND status NOT IN ('SHIPPED','CANCELLED')${ef.clause}) as today_shipment_due,
         (SELECT COUNT(*) FROM orders WHERE priority='URGENT' AND status NOT IN ('SHIPPED','CANCELLED')${ef.clause}) as urgent_count,
         (SELECT COUNT(*) FROM orders WHERE id IN (SELECT DISTINCT order_id FROM order_items WHERE price_status = 'PENDING') AND status NOT IN ('CANCELLED','SHIPPED')${ef.clause}) as pending_price_orders,
-        (SELECT COALESCE(SUM(final_amount),0) FROM orders WHERE billing_status='BILLED' AND strftime('%Y-%m',billed_at)=strftime('%Y-%m','now')${ef.clause}) as month_billed,
+        (SELECT COALESCE(SUM(final_amount),0) FROM orders WHERE billing_status='BILLED' AND strftime('%Y-%m',COALESCE(accounting_date,billed_at))=strftime('%Y-%m','now')${ef.clause}) as month_billed,
         (SELECT COALESCE(SUM(amount),0) FROM payments WHERE strftime('%Y-%m',payment_date)=strftime('%Y-%m','now')${ef.clause}) as month_paid,
         (SELECT ROUND(
           COUNT(CASE WHEN date(
@@ -349,18 +349,18 @@ dashboardRouter.get('/stats/receivables', async (c) => {
     // Aging buckets (연체 구간)
     const aging = await c.env.DB.prepare(`
       SELECT
-        SUM(CASE WHEN julianday('now') - julianday(o.billed_at) <= 30 THEN o.billed_amount ELSE 0 END) as current_amount,
-        SUM(CASE WHEN julianday('now') - julianday(o.billed_at) > 30 AND julianday('now') - julianday(o.billed_at) <= 60 THEN o.billed_amount ELSE 0 END) as over_30,
-        SUM(CASE WHEN julianday('now') - julianday(o.billed_at) > 60 AND julianday('now') - julianday(o.billed_at) <= 90 THEN o.billed_amount ELSE 0 END) as over_60,
-        SUM(CASE WHEN julianday('now') - julianday(o.billed_at) > 90 THEN o.billed_amount ELSE 0 END) as over_90,
-        COUNT(CASE WHEN julianday('now') - julianday(o.billed_at) > 30 THEN 1 END) as overdue_count
+        SUM(CASE WHEN julianday('now') - julianday(COALESCE(o.accounting_date, o.billed_at)) <= 30 THEN o.billed_amount ELSE 0 END) as current_amount,
+        SUM(CASE WHEN julianday('now') - julianday(COALESCE(o.accounting_date, o.billed_at)) > 30 AND julianday('now') - julianday(COALESCE(o.accounting_date, o.billed_at)) <= 60 THEN o.billed_amount ELSE 0 END) as over_30,
+        SUM(CASE WHEN julianday('now') - julianday(COALESCE(o.accounting_date, o.billed_at)) > 60 AND julianday('now') - julianday(COALESCE(o.accounting_date, o.billed_at)) <= 90 THEN o.billed_amount ELSE 0 END) as over_60,
+        SUM(CASE WHEN julianday('now') - julianday(COALESCE(o.accounting_date, o.billed_at)) > 90 THEN o.billed_amount ELSE 0 END) as over_90,
+        COUNT(CASE WHEN julianday('now') - julianday(COALESCE(o.accounting_date, o.billed_at)) > 30 THEN 1 END) as overdue_count
       FROM orders o
       WHERE o.billing_status = 'BILLED'${ef.clause}
         AND NOT EXISTS (
           SELECT 1 FROM payments p
           WHERE p.client_id = o.client_id
           AND p.amount >= o.billed_amount
-          AND p.payment_date >= o.billed_at
+          AND p.payment_date >= COALESCE(o.accounting_date, o.billed_at)
         )
     `).bind(...ef.params).first()
 

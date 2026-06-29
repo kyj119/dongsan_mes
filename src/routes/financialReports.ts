@@ -44,7 +44,7 @@ financialReportsRouter.get('/pnl', async (c) => {
         COALESCE(SUM(g.billed_amount), 0) as total_final
       FROM order_billing_groups g JOIN orders o ON o.id = g.order_id
       WHERE g.billing_status = 'BILLED' AND o.status != 'CANCELLED'
-        AND date(g.billed_at) BETWEEN ? AND ?${ef.clause}
+        AND date(COALESCE(g.accounting_date, g.billed_at)) BETWEEN ? AND ?${ef.clause}
     `).bind(from, to, ...ef.params).first<SalesRow>()
 
     // 2. 매출원가 — 청구된 주문에 연결된 cost (주문 단위 — 혼합주문 비분할, 한계)
@@ -53,7 +53,7 @@ financialReportsRouter.get('/pnl', async (c) => {
       FROM order_costs
       WHERE order_id IN (
         SELECT DISTINCT g.order_id FROM order_billing_groups g JOIN orders o ON o.id = g.order_id
-        WHERE g.billing_status = 'BILLED' AND o.status != 'CANCELLED' AND date(g.billed_at) BETWEEN ? AND ?${ef.clause}
+        WHERE g.billing_status = 'BILLED' AND o.status != 'CANCELLED' AND date(COALESCE(g.accounting_date, g.billed_at)) BETWEEN ? AND ?${ef.clause}
       )
     `).bind(from, to, ...ef.params).first<CostRow>().catch((): CostRow => ({ total_cost: 0 }))
 
@@ -167,11 +167,11 @@ financialReportsRouter.get('/pnl/monthly', async (c) => {
 
     const { results: salesRows } = await c.env.DB.prepare(`
       SELECT
-        strftime('%m', g.billed_at) as month,
+        strftime('%m', COALESCE(g.accounting_date, g.billed_at)) as month,
         COALESCE(SUM(g.billed_amount), 0) as revenue
       FROM order_billing_groups g JOIN orders o ON o.id = g.order_id
       WHERE g.billing_status = 'BILLED' AND o.status != 'CANCELLED'
-        AND strftime('%Y', g.billed_at) = ?${ef.clause}
+        AND strftime('%Y', COALESCE(g.accounting_date, g.billed_at)) = ?${ef.clause}
       GROUP BY month
       ORDER BY month
     `).bind(String(year), ...ef.params).all<MonthlyRevenueRow>()
@@ -339,12 +339,12 @@ financialReportsRouter.get('/export/csv', async (c) => {
       const salesRow = await c.env.DB.prepare(`
         SELECT COUNT(DISTINCT g.order_id) as order_count, COALESCE(SUM(g.billed_amount), 0) as total_billed, COALESCE(SUM(g.billed_amount), 0) as total_final
         FROM order_billing_groups g JOIN orders o ON o.id = g.order_id
-        WHERE g.billing_status = 'BILLED' AND o.status != 'CANCELLED' AND date(g.billed_at) BETWEEN ? AND ?${ef.clause}
+        WHERE g.billing_status = 'BILLED' AND o.status != 'CANCELLED' AND date(COALESCE(g.accounting_date, g.billed_at)) BETWEEN ? AND ?${ef.clause}
       `).bind(from, to, ...ef.params).first<SalesRow>()
 
       const costRow = await c.env.DB.prepare(`
         SELECT COALESCE(SUM(material_cost + labor_cost + overhead_cost), 0) as total_cost
-        FROM order_costs WHERE order_id IN (SELECT DISTINCT g.order_id FROM order_billing_groups g JOIN orders o ON o.id = g.order_id WHERE g.billing_status = 'BILLED' AND o.status != 'CANCELLED' AND date(g.billed_at) BETWEEN ? AND ?${ef.clause})
+        FROM order_costs WHERE order_id IN (SELECT DISTINCT g.order_id FROM order_billing_groups g JOIN orders o ON o.id = g.order_id WHERE g.billing_status = 'BILLED' AND o.status != 'CANCELLED' AND date(COALESCE(g.accounting_date, g.billed_at)) BETWEEN ? AND ?${ef.clause})
       `).bind(from, to, ...ef.params).first<CostRow>().catch((): CostRow => ({ total_cost: 0 }))
 
       const expenseRow = await c.env.DB.prepare(`
@@ -387,9 +387,9 @@ financialReportsRouter.get('/export/csv', async (c) => {
     const ef = entityFilter(c, 'g')
 
     const { results: salesRows } = await c.env.DB.prepare(`
-      SELECT strftime('%m', g.billed_at) as month, COALESCE(SUM(g.billed_amount), 0) as revenue
+      SELECT strftime('%m', COALESCE(g.accounting_date, g.billed_at)) as month, COALESCE(SUM(g.billed_amount), 0) as revenue
       FROM order_billing_groups g JOIN orders o ON o.id = g.order_id
-      WHERE g.billing_status = 'BILLED' AND o.status != 'CANCELLED' AND strftime('%Y', g.billed_at) = ?${ef.clause}
+      WHERE g.billing_status = 'BILLED' AND o.status != 'CANCELLED' AND strftime('%Y', COALESCE(g.accounting_date, g.billed_at)) = ?${ef.clause}
       GROUP BY month ORDER BY month
     `).bind(String(year), ...ef.params).all<MonthlyRevenueRow>()
 

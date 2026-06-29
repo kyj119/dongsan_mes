@@ -66,7 +66,7 @@ aiInsights.get('/credit-risk/:clientId', async (c) => {
     FROM orders
     WHERE client_id = ?${ef.clause} AND status NOT IN ('CANCELLED','DELETED','QUOTATION')
       AND billing_status = 'BILLED'
-      AND julianday('now') - julianday(billed_at) > 30
+      AND julianday('now') - julianday(COALESCE(accounting_date, billed_at)) > 30
   `).bind(clientId, ...ef.params).first<{ cnt: number }>()
 
   // 거래 기간 (월)
@@ -132,7 +132,7 @@ aiInsights.post('/credit-risk/calculate-all', requireRole('ADMIN', 'MANAGER'), a
       COALESCE(SUM(o.final_amount), 0) as total_revenue,
       COALESCE(SUM(o.final_amount), 0) - COALESCE((SELECT SUM(amount) FROM payments WHERE client_id = o.client_id), 0) as outstanding,
       SUM(CASE WHEN o.billing_status = 'BILLED'
-           AND julianday('now') - julianday(o.billed_at) > 30
+           AND julianday('now') - julianday(COALESCE(o.accounting_date, o.billed_at)) > 30
            THEN 1 ELSE 0 END) as overdue_count
     FROM orders o
     JOIN clients c ON o.client_id = c.id AND c.is_active = 1

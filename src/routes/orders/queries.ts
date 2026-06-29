@@ -128,6 +128,8 @@ ordersQueriesRouter.patch('/bulk-bill', requireRole('ADMIN', 'MANAGER'), async (
     const body = await c.req.json<Record<string, unknown>>()
     const order_ids: number[] = (body.order_ids || body.orderIds || []) as number[]
     const receipt_type: string | undefined = (body.receipt_type || body.receiptType) as string | undefined
+    // 회계반영일 override(선택): 미지정 시 billable_after→delivery_date→KST오늘 폴백 (예: 출고 6/30→7월 이월)
+    const accounting_date: string | null = ((body.accounting_date || body.accountingDate) as string | undefined)?.substring(0, 10) || null
 
     if (!order_ids || order_ids.length === 0) {
       return c.json({ success: false, error: 'order_ids is required' }, 400)
@@ -161,19 +163,21 @@ ordersQueriesRouter.patch('/bulk-bill', requireRole('ADMIN', 'MANAGER'), async (
       // split billing P3: 그룹 BILLED + orders 미러 (balance 캐시 미사용 — 미수금 파생). 각 주문당 2문.
       // 가드: NULL(청구 전 정상)도 매칭하도록 IS NOT 사용 (`!= 'BILLED'`는 NULL 미매칭 버그). 청크 80=짝수라 주문쌍 분할 없음.
       billStmts.push(c.env.DB.prepare(`
-          UPDATE order_billing_groups SET billing_status = 'BILLED', billed_at = CURRENT_TIMESTAMP, billed_by = ?
+          UPDATE order_billing_groups SET billing_status = 'BILLED', billed_at = CURRENT_TIMESTAMP, billed_by = ?,
+              accounting_date = COALESCE(?, (SELECT COALESCE(o.billable_after, o.delivery_date) FROM orders o WHERE o.id = order_billing_groups.order_id), date('now','+9 hours'))
           WHERE order_id = ? AND billing_status IS NOT 'BILLED' AND billing_status IS NOT 'PAID'
-        `).bind(user?.id || null, orderId))
+        `).bind(user?.id || null, accounting_date, orderId))
       billStmts.push(c.env.DB.prepare(`
           UPDATE orders
           SET billing_status = 'BILLED',
               billed_at = CURRENT_TIMESTAMP,
               billed_by = ?,
               billed_amount = ?,
+              accounting_date = COALESCE(?, billable_after, delivery_date, date('now','+9 hours')),
               receipt_type = COALESCE(?, receipt_type),
               updated_at = CURRENT_TIMESTAMP
           WHERE id = ? AND billing_status IS NOT 'BILLED'
-        `).bind(user?.id || null, billedAmount, normalizedReceiptType, orderId))
+        `).bind(user?.id || null, billedAmount, accounting_date, normalizedReceiptType, orderId))
 
       order.billing_status = 'BILLED'  // 동일 요청 내 중복 orderId 재처리 방지 (순차 동작 보존)
       billedCount++

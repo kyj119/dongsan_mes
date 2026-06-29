@@ -997,10 +997,16 @@ async function submitBulkBilling() {
   var receiptType = receiptTypeEl ? receiptTypeEl.value : '';
   var rtLabel = { TAX_INVOICE: '세금계산서', CASH_RECEIPT: '현금영수증', CARD: '카드', SIMPLE: '간이영수증' }[receiptType] || '미분류';
 
-  if (!confirm(orderIds.length + '건의 주문을 [' + rtLabel + '] 증빙으로 회계반영 처리하시겠습니까?')) return;
+  // 회계반영일 override (선택) — 비우면 정산가능일(billable_after) 자동. 출고월≠회계월 이월 대응.
+  var accDateEl = document.getElementById('billingAccountingDate');
+  var accountingDate = accDateEl && accDateEl.value ? accDateEl.value : '';
+  var dateNote = accountingDate ? ' (회계반영일 ' + accountingDate + ')' : '';
+
+  if (!confirm(orderIds.length + '건의 주문을 [' + rtLabel + '] 증빙으로 회계반영 처리하시겠습니까?' + dateNote)) return;
   try {
     var payload = { orderIds: orderIds };
     if (receiptType) payload.receiptType = receiptType;
+    if (accountingDate) payload.accountingDate = accountingDate;
     var res = await axios.patch('/api/orders/bulk-bill', payload);
     if (res.data.success) {
       showToast(orderIds.length + '건 회계반영 완료 (' + rtLabel + ')', 'success');

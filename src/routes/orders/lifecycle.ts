@@ -312,7 +312,7 @@ ordersLifecycleRouter.patch('/:id/status', requireRole('ADMIN', 'MANAGER'), asyn
       try {
         const clientCheck = await c.env.DB.prepare(`
           SELECT c.client_name, c.balance,
-            (SELECT MIN(o2.billed_at) FROM orders o2 WHERE o2.client_id = c.id AND o2.billing_status = 'BILLED') as oldest_billed
+            (SELECT MIN(COALESCE(o2.accounting_date, o2.billed_at)) FROM orders o2 WHERE o2.client_id = c.id AND o2.billing_status = 'BILLED') as oldest_billed
           FROM clients c WHERE c.id = ? AND c.balance > 0
         `).bind(order.client_id).first<{ client_name: string; balance: number; oldest_billed: string | null }>()
         if (clientCheck && clientCheck.oldest_billed) {
@@ -558,8 +558,8 @@ ordersLifecycleRouter.post('/sync-statuses', requireRole('ADMIN', 'MANAGER'), as
     for (const order of toBill) {
       // #146/#121: billing_status + balance 원자적 업데이트
       // split billing P3: 그룹 BILLED + orders 미러 (balance 캐시 미사용). 청크 80=짝수라 주문쌍 분할 없음(원자성).
-      toBillStmts.push(db.prepare(`UPDATE order_billing_groups SET billing_status = 'BILLED', billed_at = CURRENT_TIMESTAMP, billed_by = ? WHERE order_id = ? AND billing_status IS NOT 'BILLED' AND billing_status IS NOT 'PAID'`).bind(user?.id || null, order.id))
-      toBillStmts.push(db.prepare(`UPDATE orders SET billing_status = 'BILLED', billed_at = CURRENT_TIMESTAMP, billed_by = ?, billed_amount = final_amount, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND billing_status IS NULL`).bind(user?.id || null, order.id))
+      toBillStmts.push(db.prepare(`UPDATE order_billing_groups SET billing_status = 'BILLED', billed_at = CURRENT_TIMESTAMP, billed_by = ?, accounting_date = COALESCE((SELECT COALESCE(o.billable_after, o.delivery_date) FROM orders o WHERE o.id = order_billing_groups.order_id), date('now','+9 hours')) WHERE order_id = ? AND billing_status IS NOT 'BILLED' AND billing_status IS NOT 'PAID'`).bind(user?.id || null, order.id))
+      toBillStmts.push(db.prepare(`UPDATE orders SET billing_status = 'BILLED', billed_at = CURRENT_TIMESTAMP, billed_by = ?, billed_amount = final_amount, accounting_date = COALESCE(billable_after, delivery_date, date('now','+9 hours')), updated_at = CURRENT_TIMESTAMP WHERE id = ? AND billing_status IS NULL`).bind(user?.id || null, order.id))
     }
     for (let i = 0; i < toBillStmts.length; i += 80) {
       await db.batch(toBillStmts.slice(i, i + 80))
@@ -583,8 +583,8 @@ ordersLifecycleRouter.post('/sync-statuses', requireRole('ADMIN', 'MANAGER'), as
     for (const order of noInvoice) {
       // #146/#121: billing_status + balance 원자적 업데이트
       // split billing P3: 그룹 BILLED + orders 미러 (balance 캐시 미사용). 청크 80=짝수라 주문쌍 분할 없음(원자성).
-      noInvStmts.push(db.prepare(`UPDATE order_billing_groups SET billing_status = 'BILLED', billed_at = CURRENT_TIMESTAMP, billed_by = ? WHERE order_id = ? AND billing_status IS NOT 'BILLED' AND billing_status IS NOT 'PAID'`).bind(user?.id || null, order.id))
-      noInvStmts.push(db.prepare(`UPDATE orders SET billing_status = 'BILLED', billed_at = CURRENT_TIMESTAMP, billed_by = ?, billed_amount = final_amount, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND billing_status IS NULL`).bind(user?.id || null, order.id))
+      noInvStmts.push(db.prepare(`UPDATE order_billing_groups SET billing_status = 'BILLED', billed_at = CURRENT_TIMESTAMP, billed_by = ?, accounting_date = COALESCE((SELECT COALESCE(o.billable_after, o.delivery_date) FROM orders o WHERE o.id = order_billing_groups.order_id), date('now','+9 hours')) WHERE order_id = ? AND billing_status IS NOT 'BILLED' AND billing_status IS NOT 'PAID'`).bind(user?.id || null, order.id))
+      noInvStmts.push(db.prepare(`UPDATE orders SET billing_status = 'BILLED', billed_at = CURRENT_TIMESTAMP, billed_by = ?, billed_amount = final_amount, accounting_date = COALESCE(billable_after, delivery_date, date('now','+9 hours')), updated_at = CURRENT_TIMESTAMP WHERE id = ? AND billing_status IS NULL`).bind(user?.id || null, order.id))
     }
     for (let i = 0; i < noInvStmts.length; i += 80) {
       await db.batch(noInvStmts.slice(i, i + 80))

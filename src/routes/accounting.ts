@@ -52,7 +52,7 @@ accountingRouter.get('/summary', async (c) => {
       SELECT COALESCE(SUM(g.billed_amount), 0) AS v
       FROM order_billing_groups g JOIN orders o ON o.id = g.order_id
       WHERE g.billing_status IN ('BILLED','PAID') AND o.status != 'CANCELLED'
-        AND ${kstDateOf('g.billed_at')} >= ? AND ${kstDateOf('g.billed_at')} <= ?${efG.clause}
+        AND ${kstDateOf('COALESCE(g.accounting_date, g.billed_at)')} >= ? AND ${kstDateOf('COALESCE(g.accounting_date, g.billed_at)')} <= ?${efG.clause}
     `).bind(start, end, ...efG.params).first<{ v: number }>()
 
     // ── 지출(카드): 기간 카드사용 (취소는 차감) ──

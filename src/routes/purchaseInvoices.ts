@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
 import { getEntityId, entityFilter } from '../utils/entityFilter'
+import { computeExpectedPaymentDate } from '../utils/paymentSchedule'
 
 const purchaseInvoices = new Hono<HonoEnv>()
 purchaseInvoices.use('*', authMiddleware)
@@ -210,10 +211,22 @@ purchaseInvoices.post('/confirm', requireRole('ADMIN', 'MANAGER'), async (c) => 
     const payable = subtotal + vat
     let dueStr: string | null = due_date || null
     if (!dueStr) {
-      const sup = await c.env.DB.prepare('SELECT COALESCE(payment_terms_days, 30) as d FROM clients WHERE id = ?')
-        .bind(po.supplier_id).first<{ d: number }>()
-      const base = invoice_date ? new Date(invoice_date) : new Date()
-      dueStr = new Date(base.getTime() + (sup?.d || 30) * 86400000).toISOString().slice(0, 10)
+      // 공급사 결제조건(MONTHLY 월말/이월결제 포함)을 반영 — 매출측과 대칭 (H1a)
+      const sup = await c.env.DB.prepare(
+        `SELECT COALESCE(payment_terms_days, 30) as d, payment_cycle_type, closing_day, payment_month_offset, payment_day
+         FROM clients WHERE id = ?`
+      ).bind(po.supplier_id).first<{
+        d: number; payment_cycle_type: string | null; closing_day: number | null
+        payment_month_offset: number | null; payment_day: number | null
+      }>()
+      const base = (invoice_date || new Date().toISOString()).substring(0, 10)
+      dueStr = computeExpectedPaymentDate(base, {
+        payment_cycle_type: sup?.payment_cycle_type ?? null,
+        payment_terms_days: sup?.d ?? 30,
+        closing_day: sup?.closing_day ?? null,
+        payment_month_offset: sup?.payment_month_offset ?? null,
+        payment_day: sup?.payment_day ?? null,
+      })
     }
     const desc = `매입확정 지급예정 (발주 ${po.po_number})`
     const existing = await c.env.DB.prepare(
