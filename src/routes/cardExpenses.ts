@@ -380,7 +380,14 @@ cardExpRouter.post('/sync', requireRole('ADMIN'), async (c) => {
     const processItems = async (items: any[], dbCardId: number) => {
       for (const item of items) {
         if (item.UseDT) dateSeen.add(String(item.UseDT).slice(0, 8))  // 진단: 바로빌이 실제 반환한 사용일
-        const refKey = item.ApprovalNum || `${item.UseDT}_${item.ApprovalAmount}_${item.UseStoreName}`
+        // 취소 판정: ApprovalType '취소' 또는 음수 승인금액(변형 문자열·부분취소 대비).
+        const isCancel = item.ApprovalType === '취소' || parseFloat(item.ApprovalAmount || '0') < 0
+        // dedup 키: 승인은 승인번호 그대로(기존 행 호환), 취소는 'C:' 네임스페이스로 분리.
+        //   ⚠️ 가승인(pre-auth)·취소가 원거래와 같은 승인번호를 재사용하면 같은 키로 충돌 → 취소가 중복으로 스킵되던 버그.
+        //   (예: 카카오T 가승인 39071162 — 가승인 INSERT 후 동일번호 취소 유실). 취소를 별도 네임스페이스로 두어 승인/취소 공존.
+        //   기존 취소 행은 마이그 0412에서 'C:' 백필 → 재동기화 중복 방지.
+        const baseKey = item.ApprovalNum || `${item.UseDT}_${item.ApprovalAmount}_${item.UseStoreName}`
+        const refKey = isCancel ? `C:${baseKey}` : baseKey
         const dup = await c.env.DB.prepare(
           'SELECT id FROM card_transactions WHERE card_id = ? AND codef_transaction_id = ?'
         ).bind(dbCardId, refKey).first()
@@ -397,7 +404,7 @@ cardExpRouter.post('/sync', requireRole('ADMIN'), async (c) => {
         `).bind(
           dbCardId, txDate, txTime, item.UseStoreName || null, amount,
           parseFloat(item.Amount || '0'), parseFloat(item.Tax || '0'),
-          item.ApprovalNum || null, item.ApprovalType === '취소' ? 'CANCEL' : 'APPROVED',
+          item.ApprovalNum || null, isCancel ? 'CANCEL' : 'APPROVED',
           refKey, parseInt(item.InstallmentMonths || '0') || 1, entityId
         ).run()
         inserted++
