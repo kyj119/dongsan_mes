@@ -669,6 +669,12 @@ taxInvoicesIssueRouter.post('/:id/cancel', requireRole('ADMIN'), async (c) => {
       WHERE id = ?
     `).bind(user.id, cancel_reason || null, id).run()
 
+    // #443: 발행취소 시 연결된 입금(payments.tax_invoice_id)을 정리 — dangling 링크 제거 +
+    //   입금 자동제안(Phase3 매칭)에서 영구 제외되던 문제 해소. 청구그룹 유무와 무관하게 무조건 실행.
+    await c.env.DB.prepare(
+      `UPDATE payments SET tax_invoice_id = NULL WHERE tax_invoice_id = ?`
+    ).bind(id).run()
+
     // P4 split billing: 이 계산서가 청구한 청구그룹만 초기화 (group.tax_invoice_id = id).
     // 타 법인 그룹·계산서는 불변 → "다른 유효 계산서" 체크는 그룹 스코프로 자연 처리.
     try {

@@ -157,14 +157,20 @@ shipmentsRouter.get('/daily', async (c) => {
     const ordersWithItems = results as (DailyOrderRow & { items?: DailyItemRow[]; item_summary?: string })[]
 
     if (orderIds.length > 0) {
-      const placeholders = orderIds.map(() => '?').join(',')
-      const { results: itemRows } = await c.env.DB.prepare(`
-        SELECT oi.order_id, oi.item_name, oi.category_name, oi.width, oi.height,
-               oi.quantity, oi.content
-        FROM order_items oi
-        WHERE oi.order_id IN (${placeholders}) AND oi.parent_item_id IS NULL
-        ORDER BY oi.order_id, oi.id
-      `).bind(...orderIds).all<DailyItemRow>()
+      // #458: D1 바인드 한도(100) — IN절 80청크 분할 후 병합 (cards #409 패턴)
+      const itemRows: DailyItemRow[] = []
+      for (let i = 0; i < orderIds.length; i += 80) {
+        const chunk = orderIds.slice(i, i + 80)
+        const placeholders = chunk.map(() => '?').join(',')
+        const { results: chunkRows } = await c.env.DB.prepare(`
+          SELECT oi.order_id, oi.item_name, oi.category_name, oi.width, oi.height,
+                 oi.quantity, oi.content
+          FROM order_items oi
+          WHERE oi.order_id IN (${placeholders}) AND oi.parent_item_id IS NULL
+          ORDER BY oi.order_id, oi.id
+        `).bind(...chunk).all<DailyItemRow>()
+        if (chunkRows) itemRows.push(...chunkRows)
+      }
 
       const itemsByOrder: Record<number, DailyItemRow[]> = {}
       for (const item of itemRows) {

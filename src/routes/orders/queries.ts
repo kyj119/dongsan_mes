@@ -145,12 +145,16 @@ ordersQueriesRouter.patch('/bulk-bill', requireRole('ADMIN', 'MANAGER'), async (
     let billedCount = 0
 
     // N+1 제거: 주문 일괄 조회 후 BILLED + balance UPDATE를 batch로 묶음 (청크 80, 짝수라 주문쌍 분할 없음 → 주문별 원자성 보존)
-    const billPh = order_ids.map(() => '?').join(',')
-    const { results: billOrderRows } = await c.env.DB.prepare(
-      `SELECT id, status, client_id, final_amount, billing_status FROM orders WHERE id IN (${billPh})`
-    ).bind(...order_ids).all<{ id: number; status: string; client_id: number; final_amount: number; billing_status: string }>()
+    // #458: D1 바인드 한도(100) — 선행 SELECT IN절도 80청크 분할 (write batch는 이미 80청크)
     const billOrderMap = new Map<number, { id: number; status: string; client_id: number; final_amount: number; billing_status: string }>()
-    for (const o of billOrderRows) billOrderMap.set(o.id, o)
+    for (let i = 0; i < order_ids.length; i += 80) {
+      const chunk = order_ids.slice(i, i + 80)
+      const billPh = chunk.map(() => '?').join(',')
+      const { results: billOrderRows } = await c.env.DB.prepare(
+        `SELECT id, status, client_id, final_amount, billing_status FROM orders WHERE id IN (${billPh})`
+      ).bind(...chunk).all<{ id: number; status: string; client_id: number; final_amount: number; billing_status: string }>()
+      for (const o of billOrderRows) billOrderMap.set(o.id, o)
+    }
 
     const billStmts: D1PreparedStatement[] = []
     for (const orderId of order_ids) {
@@ -211,12 +215,16 @@ ordersQueriesRouter.patch('/bulk-ship', async (c) => {
     // N+1 제거: 읽기전용 주문 메타(delivery_method/order_type/entity_id) 일괄 선조회.
     //   (미사용 dead COUNT 쿼리도 제거 — 값 미참조·COUNT는 항상 row 반환이라 !check 미발동)
     //   카드 출고 UPDATE→remaining 확인→deductStockLinesOnShip→상태전이는 read-after-write 순차의존이라 batch 불가, 유지.
-    const shipPh = order_ids.map(() => '?').join(',')
-    const { results: orderInfoRows } = await c.env.DB.prepare(
-      `SELECT id, delivery_method, order_type, entity_id FROM orders WHERE id IN (${shipPh})`
-    ).bind(...order_ids).all<{ id: number; delivery_method: string | null; order_type: string | null; entity_id: number | null }>()
+    // #458: D1 바인드 한도(100) — 선행 SELECT IN절 80청크 분할 (cards #409 패턴)
     const orderInfoMap = new Map<number, { delivery_method: string | null; order_type: string | null; entity_id: number | null }>()
-    for (const o of orderInfoRows) orderInfoMap.set(o.id, o)
+    for (let i = 0; i < order_ids.length; i += 80) {
+      const chunk = order_ids.slice(i, i + 80)
+      const shipPh = chunk.map(() => '?').join(',')
+      const { results: orderInfoRows } = await c.env.DB.prepare(
+        `SELECT id, delivery_method, order_type, entity_id FROM orders WHERE id IN (${shipPh})`
+      ).bind(...chunk).all<{ id: number; delivery_method: string | null; order_type: string | null; entity_id: number | null }>()
+      for (const o of orderInfoRows) orderInfoMap.set(o.id, o)
+    }
 
     for (const orderId of order_ids) {
       // 카드 출고 + 주문 상태 전환 (per-order 순차 처리)

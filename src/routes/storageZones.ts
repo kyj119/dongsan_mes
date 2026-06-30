@@ -247,7 +247,22 @@ storageZonesRouter.delete('/:id', requireRole('ADMIN'), async (c) => {
       }, 400)
     }
 
-    await c.env.DB.prepare('DELETE FROM storage_zones WHERE id = ?').bind(id).run()
+    // #460: 다중행 재설계(0396) — items.storage_zone_id뿐 아니라 inventory 실재고 zone도 검사.
+    //   실재고(quantity≠0)가 있으면 차단(zone귀속 소실 방지). 빈 재고행(quantity=0)은 삭제와 함께 정리(dangling/UNIQUE 충돌 방지).
+    const stockCount = await c.env.DB.prepare(
+      'SELECT COUNT(*) as cnt FROM inventory WHERE storage_zone_id = ? AND quantity != 0'
+    ).bind(id).first<{ cnt: number }>()
+    if ((stockCount?.cnt ?? 0) > 0) {
+      return c.json({
+        success: false,
+        error: `${zone.zone_name} 구역에 실재고가 있는 품목이 있습니다. 재고를 다른 구역으로 이동한 후 삭제해주세요.`
+      }, 400)
+    }
+
+    await c.env.DB.batch([
+      c.env.DB.prepare('DELETE FROM inventory WHERE storage_zone_id = ? AND quantity = 0').bind(id),
+      c.env.DB.prepare('DELETE FROM storage_zones WHERE id = ?').bind(id),
+    ])
     return c.json({ success: true, message: '구역이 삭제되었습니다.' })
   } catch (error) {
     console.error('storageZones DELETE error:', error)

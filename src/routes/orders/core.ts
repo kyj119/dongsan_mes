@@ -562,6 +562,8 @@ ordersCoreRouter.delete('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
       c.env.DB.prepare('UPDATE tasks SET card_id = NULL WHERE card_id IN (SELECT id FROM cards WHERE order_id = ?)').bind(id),
       c.env.DB.prepare('DELETE FROM work_records WHERE card_id IN (SELECT id FROM cards WHERE order_id = ?)').bind(id),
       c.env.DB.prepare('UPDATE print_file_map SET card_id = NULL WHERE card_id IN (SELECT id FROM cards WHERE order_id = ?)').bind(id),
+      // #454: cards 참조 비-FK 정리 (cards 삭제 전) — 자동 재고차감 이력
+      c.env.DB.prepare('DELETE FROM inventory_auto_deductions WHERE card_id IN (SELECT id FROM cards WHERE order_id = ?)').bind(id),
       // #116: order_id 기반 정리
       c.env.DB.prepare('DELETE FROM customer_claims WHERE order_id = ?').bind(id),
       c.env.DB.prepare('DELETE FROM returns WHERE order_id = ?').bind(id),
@@ -569,6 +571,10 @@ ordersCoreRouter.delete('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
       c.env.DB.prepare(`DELETE FROM shipment_items WHERE shipment_id IN (SELECT id FROM shipments WHERE order_id = ?)`).bind(id),
       c.env.DB.prepare('DELETE FROM shipments WHERE order_id = ?').bind(id),
       c.env.DB.prepare('DELETE FROM cards WHERE order_id = ?').bind(id),
+      // #454: order_id/order_item_id 기반 비-FK 정리 (order_items 삭제 전 order_item_id SET NULL)
+      c.env.DB.prepare('UPDATE print_file_map SET order_item_id = NULL WHERE order_item_id IN (SELECT id FROM order_items WHERE order_id = ?)').bind(id),
+      c.env.DB.prepare('DELETE FROM pp_material_deductions WHERE order_id = ?').bind(id),
+      c.env.DB.prepare('DELETE FROM original_archives WHERE order_id = ?').bind(id),  // ⚠️ R2 객체(archive_url)는 별도 정리 필요
       c.env.DB.prepare('DELETE FROM order_items WHERE order_id = ?').bind(id),
       c.env.DB.prepare('DELETE FROM order_billing_groups WHERE order_id = ?').bind(id),  // split billing P3
       c.env.DB.prepare('DELETE FROM order_status_history WHERE order_id = ?').bind(id),
