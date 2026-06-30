@@ -134,6 +134,8 @@ async function loadTransactions() {
 
     if (cardId) params.set('card_id', cardId);
     if (status) params.set('status', status);
+    // 미분류 탭=분류 필요한 실제 비용만(승인·미상계). 취소·상계건은 '전체' 탭에서 회색으로 확인.
+    if (status === 'UNCLASSIFIED') { params.set('exclude_offset', '1'); params.set('exclude_cancel', '1'); }
     if (catId) params.set('category_id', catId);
     if (sd) params.set('start_date', sd);
     if (ed) params.set('end_date', ed);

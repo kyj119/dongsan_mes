@@ -513,6 +513,9 @@ cardExpRouter.get('/transactions', requireRole('ADMIN', 'MANAGER'), async (c) =>
     if (q.status) { where += ' AND ct.status = ?'; params.push(q.status) }
     if (q.category_id) { where += ' AND ct.category_id = ?'; params.push(q.category_id) }
     if (q.search) { where += ' AND ct.merchant_name LIKE ?'; params.push('%' + q.search + '%') }
+    // 미분류 탭 정리: 상계됨(순액0)·취소(비용분류 대상 아님)는 제외 가능 (프론트 미분류 탭이 전달). 전체 탭은 미전달=모두 표시.
+    if (q.exclude_offset === '1') where += ' AND ct.is_offset = 0'
+    if (q.exclude_cancel === '1') where += " AND ct.approval_type != 'CANCEL'"
 
     // 총 건수 (동일 WHERE)
     const countRow = await c.env.DB.prepare(
@@ -754,7 +757,7 @@ cardExpRouter.get('/stats', requireRole('ADMIN', 'MANAGER'), async (c) => {
     const stats = await c.env.DB.prepare(`
       SELECT
         COUNT(*) as total_count,
-        SUM(CASE WHEN status = 'UNCLASSIFIED' AND is_offset = 0 THEN 1 ELSE 0 END) as unclassified_count,
+        SUM(CASE WHEN status = 'UNCLASSIFIED' AND is_offset = 0 AND approval_type != 'CANCEL' THEN 1 ELSE 0 END) as unclassified_count,
         SUM(CASE WHEN status = 'CLASSIFIED' AND is_offset = 0 THEN 1 ELSE 0 END) as classified_count,
         SUM(CASE WHEN status = 'APPROVED' AND is_offset = 0 THEN 1 ELSE 0 END) as approved_count,
         COALESCE(SUM(CASE WHEN approval_type != 'CANCEL' AND is_offset = 0 THEN amount ELSE 0 END), 0) as total_amount,
@@ -900,7 +903,7 @@ cardExpRouter.get('/transactions/summary', requireRole('ADMIN', 'MANAGER'), asyn
     const summary = await c.env.DB.prepare(`
       SELECT
         COUNT(*) as total_count,
-        SUM(CASE WHEN status = 'UNCLASSIFIED' AND is_offset = 0 THEN 1 ELSE 0 END) as unclassified_count,
+        SUM(CASE WHEN status = 'UNCLASSIFIED' AND is_offset = 0 AND approval_type != 'CANCEL' THEN 1 ELSE 0 END) as unclassified_count,
         SUM(CASE WHEN status = 'CLASSIFIED' AND is_offset = 0 THEN 1 ELSE 0 END) as classified_count,
         SUM(CASE WHEN status IN ('REQUESTED','APPROVED') AND is_offset = 0 THEN 1 ELSE 0 END) as approved_count,
         COALESCE(SUM(CASE WHEN transaction_date >= ? AND approval_type != 'CANCEL' AND is_offset = 0 THEN amount ELSE 0 END), 0) as total_amount
