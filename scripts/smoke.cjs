@@ -80,7 +80,7 @@ const ENDPOINTS = [
   { path: '/api/items?limit=10', name: 'items.list' },
   { path: '/api/price-lists', name: 'priceLists.list' },
   { path: '/api/prices?item_id=1&client_id=1&context=sales', name: 'prices.lookup', allow404: true },
-  { path: '/api/bom?limit=10', name: 'bom.list' },
+  { path: '/api/bom/overview', name: 'bom.overview' },
   { path: '/api/facility/zones', name: 'facility.zones' },
   { path: '/api/storage-zones', name: 'storageZones.list' },
 
