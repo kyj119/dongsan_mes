@@ -2,8 +2,8 @@
 
 > **현재 초점**: 품목 마스터 — **즉시등록 영역 소진**(배너·판재·게양/부속·깃발·자재/상품, 마이그 0398~0419·prod 활성485). **남은=간판 BOM(설계선행)·단가(전역)만.**
 > **마지막 prod 배포**: 품목 잔여 일괄등록 0398~0419 + **형옵션 범용 선택옵션 코드**(dep `fb45ea0f`, worktree `session/master-banner`). 이전: 공장배치도 P0~P2(`8adc578d`).
-> **블로커**: 품목 단가 전부 0(전역 과제) · 간판 BOM 설계 미착수(brainstorming 필요).
-> **다음 액션**: 간판 BOM 설계(brainstorming) → 단가 체계.
+> **블로커**: 품목 단가 전부 0(전역 과제) · 간판 BOM=**brainstorming 후 사용자 보류**(견적구조 설계라 결이 다름·디자이너 카탈로그 확정 의존).
+> **다음 액션**: 단가 체계 / (간판 BOM=재개 시 spec `2026-06-13-signage-component-estimate-structure.md` + session-context 간판 항목 참조).
 > **핸드오프 정본** = `memory/session-context.md`.
 > **🔧 멀티세션**: 동시 작업은 `scripts/new-session.ps1 <이름>`(worktree 격리, 메인 직접작업 지양) → `docs/WORKTREE_WORKFLOW.md`.
 > 완료 이력 → `PROJECT_STATUS_ARCHIVE.md` (매 세션 읽을 필요 없음, 필요 시 참조).
