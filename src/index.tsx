@@ -46,6 +46,7 @@ import webhooksRouter from './routes/webhooks'
 import bankRouter from './routes/bank'
 // cardExpenses router - imported below as cardExpensesRouter
 import barobillRouter from './routes/barobill'
+import cronRouter from './routes/cron'
 import shipmentsRouter from './routes/shipments'
 import reportsRouter from './routes/reports'
 import activityLogsRouter from './routes/activityLogs'
@@ -291,6 +292,7 @@ app.route('/api/tax-invoices', taxInvoicesRouter)
 app.route('/api/webhooks', webhooksRouter)  // 팝빌 Webhook (인증 불필요)
 app.route('/api/bank', bankRouter)
 app.route('/api/barobill', barobillRouter)
+app.route('/api/cron', cronRouter)  // 무인 자동화(X-Agent-Key) — barobill-cron 워커가 호출
 app.route('/api/shipments', shipmentsRouter)
 app.route('/api/reports', reportsRouter)
 app.route('/api/activity-logs', activityLogsRouter)

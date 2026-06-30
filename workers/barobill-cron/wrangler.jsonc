@@ -1,0 +1,21 @@
+{
+  // 바로빌 카드/계좌 무인 자동 동기화 트리거 워커.
+  // Cloudflare Pages는 네이티브 cron이 없어, 별도 Worker가 매일 MES의 /api/cron/barobill-sync를 호출한다.
+  // 실제 수집·dedup·자동상계 로직은 MES(Pages) 쪽에 그대로 — 이 워커는 트리거 전용(바로빌 CERTKEY 미보유).
+  "name": "barobill-cron",
+  "main": "src/index.ts",
+  "compatibility_date": "2024-11-01",
+
+  // 매일 21:00 UTC = 06:00 KST (바로빌 야간 DAY1 수집 직후). 분 시 일 월 요일.
+  "triggers": { "crons": ["0 21 * * *"] },
+
+  "vars": {
+    // 프로덕션 MES (apex, --branch main). self-fetch origin이 됨.
+    "MES_URL": "https://webapp-9i0.pages.dev"
+  },
+
+  "observability": { "enabled": true }
+
+  // secret(별도 설정 필요): AGENT_API_KEY  ← MES와 동일 값
+  //   wrangler secret put AGENT_API_KEY  (workers/barobill-cron 디렉토리에서)
+}
