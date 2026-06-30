@@ -107,6 +107,7 @@ facilityRouter.get('/layout-data', async (c) => {
   try {
     const equipEf = entityFilter(c, 'e')       // equipment 격리 (entity_id)
     const cardEf = cardEntityFilter(c, 'c')    // cards 격리 (requesting_entity_id)
+    const invEf = entityFilter(c, 'sz')        // #447: 재고 집계 storage_zones 격리 (형제 equipment/cards는 격리인데 inventory만 누락)
     const [zonesRes, equipRes, locsRes, cardsRes, invRes] = await Promise.all([
       // facility_zones: entity_id 없음 = 전사 공용(물리 구역)
       c.env.DB.prepare(`
@@ -146,9 +147,9 @@ facilityRouter.get('/layout-data', async (c) => {
         FROM storage_zones sz
         JOIN inventory inv ON inv.storage_zone_id = sz.id AND inv.entity_id = sz.entity_id
         JOIN items i ON i.id = inv.item_id AND i.is_active = 1
-        WHERE sz.facility_zone_id IS NOT NULL AND sz.is_active = 1
+        WHERE sz.facility_zone_id IS NOT NULL AND sz.is_active = 1${invEf.clause}
         GROUP BY sz.facility_zone_id
-      `).all(),
+      `).bind(...invEf.params).all(),
     ])
 
     const zoneCards: Record<number, number> = {}
@@ -184,6 +185,7 @@ facilityRouter.get('/layout-data', async (c) => {
 facilityRouter.get('/zones/:id/inventory', async (c) => {
   try {
     const zoneId = c.req.param('id')
+    const efSz = entityFilter(c, 'sz')  // #447: 타법인 구역 재고 cross-tenant read 차단
     const { results } = await c.env.DB.prepare(`
       SELECT sz.id as storage_zone_id, sz.zone_name, u.name as manager_name,
         i.id as item_id, i.item_code, i.item_name, i.category, i.unit,
@@ -192,9 +194,9 @@ facilityRouter.get('/zones/:id/inventory', async (c) => {
       JOIN inventory inv ON inv.storage_zone_id = sz.id AND inv.entity_id = sz.entity_id
       JOIN items i ON i.id = inv.item_id AND i.is_active = 1
       LEFT JOIN users u ON sz.manager_id = u.id
-      WHERE sz.facility_zone_id = ? AND sz.is_active = 1
+      WHERE sz.facility_zone_id = ? AND sz.is_active = 1${efSz.clause}
       ORDER BY sz.zone_name, i.item_name
-    `).bind(zoneId).all()
+    `).bind(zoneId, ...efSz.params).all()
     return c.json({ success: true, data: results })
   } catch (error) {
     console.error('facility zones/:id/inventory error:', error)

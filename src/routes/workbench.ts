@@ -618,14 +618,15 @@ workbenchRouter.patch('/sheets/:id/render', async (c) => {
     const body = await c.req.json<{ render_status?: string; render_result_json?: unknown; render_error?: string }>()
     const rs = (body.render_status === 'error') ? 'error' : 'done'
     const resultStr = body.render_result_json == null ? null : (typeof body.render_result_json === 'string' ? body.render_result_json : JSON.stringify(body.render_result_json))
+    const ef = entityFilter(c)  // #444: 타법인 sheet_layouts 콜백 변조 차단(형제 격리, 콜백만 누락)
     if (rs === 'done') {
       await c.env.DB.prepare(
-        `UPDATE sheet_layouts SET render_status='done', status='rendered', render_result_json=?, render_error=NULL, updated_at=datetime('now') WHERE id = ?`
-      ).bind(resultStr, id).run()
+        `UPDATE sheet_layouts SET render_status='done', status='rendered', render_result_json=?, render_error=NULL, updated_at=datetime('now') WHERE id = ?${ef.clause}`
+      ).bind(resultStr, id, ...ef.params).run()
     } else {
       await c.env.DB.prepare(
-        `UPDATE sheet_layouts SET render_status='error', render_error=?, updated_at=datetime('now') WHERE id = ?`
-      ).bind(body.render_error ?? '렌더 실패', id).run()
+        `UPDATE sheet_layouts SET render_status='error', render_error=?, updated_at=datetime('now') WHERE id = ?${ef.clause}`
+      ).bind(body.render_error ?? '렌더 실패', id, ...ef.params).run()
     }
     return c.json({ success: true })
   } catch (error) {
@@ -697,6 +698,12 @@ workbenchRouter.post('/render-asset', async (c) => {
     if (!['eps', 'dxf', 'jpg'].includes(kind)) {
       return c.json({ success: false, error: 'kind는 eps|dxf|jpg여야 합니다.' }, 400)
     }
+
+    // #444: job 소유 검증 — 타법인 job 산출물 경로(r2Key)에 인젝션/덮어쓰기 차단
+    const efJob = entityFilter(c)
+    const jobTbl = jobType === 'sheet' ? 'sheet_layouts' : 'ia_process_jobs'
+    const ownsJob = await c.env.DB.prepare(`SELECT 1 FROM ${jobTbl} WHERE id = ?${efJob.clause} LIMIT 1`).bind(jobId, ...efJob.params).first()
+    if (!ownsJob) return c.json({ success: false, error: '잘못된 job_id' }, 404)
 
     // 확장자·크기 검증 (eps/dxf/jpg, 50MB)
     const v = validateUpload(file, {
@@ -952,14 +959,15 @@ workbenchRouter.patch('/process/:id', async (c) => {
     const body = await c.req.json<{ status?: string; result_json?: unknown; error_message?: string }>()
     const status = (body.status === 'error') ? 'error' : 'done'
     const resultStr = body.result_json == null ? null : (typeof body.result_json === 'string' ? body.result_json : JSON.stringify(body.result_json))
+    const ef = entityFilter(c)  // #444: 타법인 ia_process_jobs 콜백 변조 차단(형제 격리, 콜백만 누락)
     if (status === 'done') {
       await c.env.DB.prepare(
-        `UPDATE ia_process_jobs SET status='done', result_json=?, error_message=NULL, updated_at=datetime('now') WHERE id = ?`
-      ).bind(resultStr, id).run()
+        `UPDATE ia_process_jobs SET status='done', result_json=?, error_message=NULL, updated_at=datetime('now') WHERE id = ?${ef.clause}`
+      ).bind(resultStr, id, ...ef.params).run()
     } else {
       await c.env.DB.prepare(
-        `UPDATE ia_process_jobs SET status='error', error_message=?, updated_at=datetime('now') WHERE id = ?`
-      ).bind(body.error_message ?? '가공 실패', id).run()
+        `UPDATE ia_process_jobs SET status='error', error_message=?, updated_at=datetime('now') WHERE id = ?${ef.clause}`
+      ).bind(body.error_message ?? '가공 실패', id, ...ef.params).run()
     }
     return c.json({ success: true })
   } catch (error) {

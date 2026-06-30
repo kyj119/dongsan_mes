@@ -118,11 +118,12 @@ scanRouter.get('/:code', async (c) => {
       const eqCode = prefix === 'EQ' ? value : value
       // #425: equipment 테이블엔 equipment_type/location/manufacturer 컬럼 없음.
       // 실제 컬럼(printer_name·location_zone)으로 매핑, 부재 필드는 프론트가 null 스킵.
+      const ef = entityFilter(c)  // #449: 타법인 설비 cross-tenant read 차단 (OR절 괄호 묶음=precedence)
       const eq = await c.env.DB.prepare(`
         SELECT id, name, printer_name, status, location_zone
         FROM equipment
-        WHERE name = ? OR id = ?
-      `).bind(eqCode, parseInt(eqCode.replace('EQ-', '')) || 0).first<any>()
+        WHERE (name = ? OR id = ?)${ef.clause}
+      `).bind(eqCode, parseInt(eqCode.replace('EQ-', '')) || 0, ...ef.params).first<any>()
 
       if (eq) {
         result = {

@@ -56,10 +56,11 @@ autoProcessRouter.post('/start', async (c) => {
     const { order_id } = await c.req.json<{ order_id: number }>()
     if (!order_id) return c.json({ success: false, error: 'order_id 필요' }, 400)
 
-    // 주문 정보 조회
+    // 주문 정보 조회 — #449: 타법인 주문 자동처리 차단(order 게이트 → 하위 분석/품목 read 보호)
+    const efOrd = entityFilter(c)
     const order = await c.env.DB.prepare(
-      `SELECT id, ai_file_path, ai_analysis_id FROM orders WHERE id = ?`
-    ).bind(order_id).first<{ id: number; ai_file_path: string | null; ai_analysis_id: number | null }>()
+      `SELECT id, ai_file_path, ai_analysis_id FROM orders WHERE id = ?${efOrd.clause}`
+    ).bind(order_id, ...efOrd.params).first<{ id: number; ai_file_path: string | null; ai_analysis_id: number | null }>()
     if (!order) return c.json({ success: false, error: '주문을 찾을 수 없습니다' }, 404)
     if (!order.ai_analysis_id) return c.json({ success: false, error: 'AI 분석 정보가 없는 주문입니다' }, 400)
 
@@ -427,10 +428,11 @@ autoProcessRouter.post('/auto-match', async (c) => {
       return c.json({ success: false, error: 'ai_analysis_id와 items 필요' }, 400)
     }
 
-    // 분석 결과 조회
+    // 분석 결과 조회 — #449: 타법인 AI 분석결과 cross-tenant read 차단
+    const efAi = entityFilter(c)
     const analysis = await c.env.DB.prepare(
-      `SELECT groups_json FROM ai_analysis_requests WHERE id = ?`
-    ).bind(ai_analysis_id).first<{ groups_json: string | null }>()
+      `SELECT groups_json FROM ai_analysis_requests WHERE id = ?${efAi.clause}`
+    ).bind(ai_analysis_id, ...efAi.params).first<{ groups_json: string | null }>()
     if (!analysis?.groups_json) {
       return c.json({ success: false, error: '분석 결과를 찾을 수 없습니다' }, 404)
     }

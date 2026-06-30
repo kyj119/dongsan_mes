@@ -177,6 +177,11 @@ priceListRouter.put('/policies/:id/rules', requireRole('ADMIN', 'MANAGER'), asyn
 
     if (!Array.isArray(rules)) return c.json({ success: false, error: 'rules 배열이 필요합니다.' }, 400)
 
+    // #451: 부모 정책 소유 검증 — 형제 GET/PUT/DELETE는 ef 격리인데 규칙 일괄저장만 누락이었음(타법인 단가규칙 변조 차단)
+    const ef = entityFilter(c)
+    const owner = await c.env.DB.prepare(`SELECT id FROM price_policies WHERE id = ?${ef.clause}`).bind(policyId, ...ef.params).first()
+    if (!owner) return c.json({ success: false, error: '가격 정책을 찾을 수 없습니다.' }, 404)
+
     const stmts: any[] = [
       c.env.DB.prepare('DELETE FROM price_policy_rules WHERE policy_id = ?').bind(policyId)
     ]

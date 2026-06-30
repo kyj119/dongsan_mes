@@ -322,16 +322,17 @@ pricesRouter.get('/item-supplier-prices', async (c) => {
     `).bind(item_id).all<SupplierPriceRow>()
 
     // Enrich with recent purchase prices
+    const efPo = entityFilter(c, 'po')  // #449: 타법인 매입단가 cross-tenant read 차단
     const enriched = await Promise.all(
       results.map(async (row) => {
         const recentPurchase = await c.env.DB.prepare(`
           SELECT poi.unit_price, po.order_date
           FROM purchase_order_items poi
           JOIN purchase_orders po ON poi.po_id = po.id
-          WHERE poi.item_id = ? AND po.supplier_id = ? AND po.status != 'CANCELLED'
+          WHERE poi.item_id = ? AND po.supplier_id = ? AND po.status != 'CANCELLED'${efPo.clause}
           ORDER BY po.order_date DESC, po.id DESC
           LIMIT 1
-        `).bind(item_id, row.client_id).first<RecentPriceRow>()
+        `).bind(item_id, row.client_id, ...efPo.params).first<RecentPriceRow>()
 
         return {
           ...row,
@@ -488,15 +489,16 @@ pricesRouter.get('/item-detail/:id', async (c) => {
     `).bind(itemId, ...efHistory.params).all()
 
     // 최근 매입 거래
+    const efPo2 = entityFilter(c, 'po')  // #449: 타법인 매입 거래 cross-tenant read 차단
     const { results: recentPurchases } = await c.env.DB.prepare(`
       SELECT poi.unit_price, po.order_date, po.po_number,
              cl.client_name as supplier_name
       FROM purchase_order_items poi
       JOIN purchase_orders po ON poi.po_id = po.id
       LEFT JOIN clients cl ON po.supplier_id = cl.id
-      WHERE poi.item_id = ? AND po.status IN ('CONFIRMED','PARTIAL_RECEIVED','RECEIVED')
+      WHERE poi.item_id = ? AND po.status IN ('CONFIRMED','PARTIAL_RECEIVED','RECEIVED')${efPo2.clause}
       ORDER BY po.order_date DESC, po.id DESC LIMIT 10
-    `).bind(itemId).all()
+    `).bind(itemId, ...efPo2.params).all()
 
     return c.json({ success: true, supplierPrices, history, recentPurchases })
   } catch (error) {

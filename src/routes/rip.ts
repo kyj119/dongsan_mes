@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole, agentKeyMiddleware } from '../middleware/auth'
-import { getEntityId, entityFilter } from '../utils/entityFilter'
+import { getEntityId, entityFilter, cardEntityFilter } from '../utils/entityFilter'
 import { PROCESS_CODES } from '../constants/process'
 
 // ─── D1 row types ───────────────────────────────────────────────────────────
@@ -1380,12 +1380,13 @@ ripRouter.post('/send/:cardId', authMiddleware, async (c) => {
     }
 
     // 1. 카드 존재 확인
+    const cardEf = cardEntityFilter(c)  // #449: 카드 단건 cross-tenant read 차단 (requesting_entity_id, /cards 칸반과 동일 격리)
     const card = await c.env.DB.prepare(
       `SELECT id, card_number, status, rip_filename, rip_status, rip_sent_at, rip_job_path,
               equipment_id, rip_preset, source_file_path, width, height, quantity,
               priority, delivery_date, client_name, item_name
-       FROM cards WHERE id = ?`
-    ).bind(cardId).first<CardFullRow>()
+       FROM cards WHERE id = ?${cardEf.clause}`
+    ).bind(cardId, ...cardEf.params).first<CardFullRow>()
 
     if (!card) {
       return c.json({ success: false, error: 'Card not found' }, 404)
@@ -1453,12 +1454,13 @@ ripRouter.post('/complete/:cardId', authMiddleware, async (c) => {
   try {
     const cardId = c.req.param('cardId')
 
+    const cardEf = cardEntityFilter(c)  // #449: 카드 단건 cross-tenant read 차단 (requesting_entity_id, /cards 칸반과 동일 격리)
     const card = await c.env.DB.prepare(
       `SELECT id, card_number, status, rip_filename, rip_status, rip_sent_at, rip_job_path,
               equipment_id, rip_preset, source_file_path, width, height, quantity,
               priority, delivery_date, client_name, item_name
-       FROM cards WHERE id = ?`
-    ).bind(cardId).first<CardFullRow>()
+       FROM cards WHERE id = ?${cardEf.clause}`
+    ).bind(cardId, ...cardEf.params).first<CardFullRow>()
 
     if (!card) {
       return c.json({ success: false, error: 'Card not found' }, 404)
@@ -1526,12 +1528,13 @@ ripRouter.get('/test-filename/:cardId', authMiddleware, async (c) => {
   try {
     const cardId = c.req.param('cardId')
 
+    const cardEf = cardEntityFilter(c)  // #449: 카드 단건 cross-tenant read 차단 (requesting_entity_id, /cards 칸반과 동일 격리)
     const card = await c.env.DB.prepare(
       `SELECT id, card_number, status, rip_filename, rip_status, rip_sent_at, rip_job_path,
               equipment_id, rip_preset, source_file_path, width, height, quantity,
               priority, delivery_date, client_name, item_name
-       FROM cards WHERE id = ?`
-    ).bind(cardId).first<CardFullRow>()
+       FROM cards WHERE id = ?${cardEf.clause}`
+    ).bind(cardId, ...cardEf.params).first<CardFullRow>()
 
     if (!card) {
       return c.json({ success: false, error: 'Card not found' }, 404)
