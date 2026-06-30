@@ -117,6 +117,8 @@ poReceiveRouter.post('/:id/receive', async (c) => {
       rejectMemo: string | null
       balanceAfter: number
       hasInventoryRow: boolean
+      acceptedBase: number
+      packSize: number
       entityId: number
       zoneId: number | null
     }> = []
@@ -132,12 +134,18 @@ poReceiveRouter.post('/:id/receive', async (c) => {
     //   itemZoneMap을 먼저 채운 뒤 (item,entity,기본창고) 행만 채택(IFNULL(...,0) 동등). 다른 창고 행은 입고 정책상 무시.
     const invQtyMap = new Map<number, number>()
     const itemZoneMap = new Map<number, number | null>()
+    // #462 MU3: 다단위 — 입고 수량(관리단위) → base_unit 환산용 pack_size. NULL/0→1(단일단위·불변).
+    //   inventory.quantity·inventory_transactions.quantity는 base 단위. scan/수기입고(inventory.ts:324-357,381)와 동일.
+    const packMap = new Map<number, number>()
     if (recvItemIds.length > 0) {
       const iph = recvItemIds.map(() => '?').join(',')
       const { results: zoneRows } = await c.env.DB.prepare(
-        `SELECT id, storage_zone_id FROM items WHERE id IN (${iph})`
-      ).bind(...recvItemIds).all<{ id: number; storage_zone_id: number | null }>()
-      for (const r of (zoneRows || [])) itemZoneMap.set(Number(r.id), r.storage_zone_id ?? null)
+        `SELECT id, storage_zone_id, pack_size FROM items WHERE id IN (${iph})`
+      ).bind(...recvItemIds).all<{ id: number; storage_zone_id: number | null; pack_size: number | null }>()
+      for (const r of (zoneRows || [])) {
+        itemZoneMap.set(Number(r.id), r.storage_zone_id ?? null)
+        packMap.set(Number(r.id), (r.pack_size && r.pack_size > 0) ? r.pack_size : 1)
+      }
       const { results: invRows } = await c.env.DB.prepare(
         `SELECT item_id, storage_zone_id, quantity FROM inventory WHERE entity_id = ? AND item_id IN (${iph})`
       ).bind(poEntityIdPrefetch, ...recvItemIds).all<{ item_id: number; storage_zone_id: number | null; quantity: number }>()
@@ -156,14 +164,17 @@ poReceiveRouter.post('/:id/receive', async (c) => {
       const amount = receiveQty * unitPrice
       const qualityStatus = rejectedQty === 0 ? 'PASSED' : acceptedQty === 0 ? 'FAILED' : 'PARTIAL'
 
+      // #462 MU3: 관리단위 → base 환산. inventory/tx는 base 단위(invQtyMap 현재고도 base).
+      const packSize = poItem.item_id ? (packMap.get(poItem.item_id as number) || 1) : 1
+      const acceptedBase = acceptedQty * packSize
       let balanceAfter = 0
       let hasInventoryRow = false
       const poEntityId = poEntityIdPrefetch
       if (poItem.item_id && acceptedQty > 0) {
-        // 0396 다중행: 기본창고 행 기준 현재고 (invQtyMap = 기본창고 행만 보유)
+        // 0396 다중행: 기본창고 행 기준 현재고 (invQtyMap = 기본창고 행만 보유, base 단위)
         hasInventoryRow = invQtyMap.has(poItem.item_id as number)
         const currentStock = invQtyMap.get(poItem.item_id as number) || 0
-        balanceAfter = currentStock + acceptedQty
+        balanceAfter = currentStock + acceptedBase
       }
 
       // 품목 기본창고 (0396): UPDATE WHERE zone·INSERT·tx 모두 사용 → hasInventoryRow 무관 항상 설정
@@ -177,7 +188,7 @@ poReceiveRouter.post('/:id/receive', async (c) => {
         itemId: (poItem.item_id as number) || null,
         receiveQty, acceptedQty, rejectedQty, unitPrice, amount, qualityStatus,
         rejectMemo: ri.reject_memo || null,
-        balanceAfter, hasInventoryRow,
+        balanceAfter, hasInventoryRow, acceptedBase, packSize,
         entityId: poEntityId, zoneId: itemZoneId,
       })
       summaryAccepted += acceptedQty
@@ -295,7 +306,8 @@ poReceiveRouter.post('/:id/receive', async (c) => {
               balance_after, reason, handled_by, entity_id, storage_zone_id
             ) VALUES (?, 'IN', ?, ?, ?, ?, 'PURCHASE', ?, ?, '발주입고(합격분)', ?, ?, ?)
           `).bind(
-            p.itemId, receiptDate, p.acceptedQty, p.unitPrice,
+            // #462 MU3: 거래는 base 단위 — quantity=base(×pack), unit_price=base당(÷pack), total_amount=관리단위×관리단가(불변)
+            p.itemId, receiptDate, p.acceptedBase, p.unitPrice / p.packSize,
             p.acceptedQty * p.unitPrice, receiptId, p.balanceAfter, user?.id || 1,
             getEntityId(c) || 1, p.zoneId
           ))

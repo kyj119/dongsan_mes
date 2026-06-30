@@ -432,13 +432,39 @@ reportsRouter.get('/receivables-analysis', async (c) => {
     const monthCount = Number(months)
     const ef = entityFilter(c)
 
-    // 1) 미수금 요약
+    // #441: 폐기 clients.balance 캐시(prod 전체 0) 대신 라이브 파생으로 교체.
+    //   정의 = order_billing_groups[BILLED] − payments − adjustments (deriveClientBalance/bank.ts·/receivables 동일).
+    //   엔티티 스코프(ADMIN entityId=0 → ef.clause='' → 전체). 같은 리포트의 billed/collected가 이미 엔티티 스코프라 일관.
+    const efG = entityFilter(c, 'g')
+    const efP = entityFilter(c, 'p')
+    const efA = entityFilter(c, 'a')
+    const arJoins = `
+      LEFT JOIN (
+        SELECT o.client_id AS cid, SUM(g.billed_amount) AS amt
+        FROM order_billing_groups g JOIN orders o ON o.id = g.order_id
+        WHERE g.billing_status = 'BILLED' AND o.status != 'CANCELLED'${efG.clause}
+        GROUP BY o.client_id
+      ) b ON b.cid = c.id
+      LEFT JOIN (
+        SELECT client_id AS cid, SUM(amount) AS amt FROM payments p WHERE 1=1${efP.clause} GROUP BY client_id
+      ) pp ON pp.cid = c.id
+      LEFT JOIN (
+        SELECT client_id AS cid, SUM(amount) AS amt FROM adjustments a WHERE 1=1${efA.clause} GROUP BY client_id
+      ) aa ON aa.cid = c.id`
+    const arBalExpr = `(COALESCE(b.amt,0) - COALESCE(pp.amt,0) - COALESCE(aa.amt,0))`
+    const arParams = [...efG.params, ...efP.params, ...efA.params]
+
+    // 1) 미수금 요약 (파생)
     const { results: summaryRows } = await c.env.DB.prepare(`
       SELECT
-        COALESCE(SUM(CASE WHEN balance > 0 THEN balance ELSE 0 END), 0) as total_ar,
-        COUNT(CASE WHEN balance > 0 THEN 1 END) as ar_client_count
-      FROM clients WHERE is_active = 1
-    `).all<ARSummaryRow>()
+        COALESCE(SUM(CASE WHEN bal > 0 THEN bal ELSE 0 END), 0) as total_ar,
+        COUNT(CASE WHEN bal > 0 THEN 1 END) as ar_client_count
+      FROM (
+        SELECT ${arBalExpr} AS bal
+        FROM clients c${arJoins}
+        WHERE c.is_active = 1
+      )
+    `).bind(...arParams).all<ARSummaryRow>()
 
     // 당월 매출 발생 (billing)
     const { results: billedRows } = await c.env.DB.prepare(`
@@ -462,18 +488,16 @@ reportsRouter.get('/receivables-analysis', async (c) => {
       month_collected: Number(collectedRows[0]?.collected ?? 0),
     }
 
-    // 2) Aging Buckets (미수금 연령 분석) - clients.balance 기준
-    // 최근 입금일 기준으로 연령 판단
+    // 2) Aging Buckets (미수금 연령 분석) - 파생 잔액 기준
+    // 최근 입금일 기준으로 연령 판단 (arJoins=1:1 사전집계라 fan-out 없음 → 상관 서브쿼리로 최근입금)
     const { results: agingData } = await c.env.DB.prepare(`
       SELECT
-        c.id, c.client_name, c.balance,
-        MAX(p.payment_date) as last_payment_date,
-        julianday('now') - julianday(COALESCE(MAX(p.payment_date), c.created_at)) as days_since_payment
-      FROM clients c
-      LEFT JOIN payments p ON c.id = p.client_id
-      WHERE c.is_active = 1 AND c.balance > 0
-      GROUP BY c.id
-    `).all<AgingRow>()
+        c.id, c.client_name, ${arBalExpr} AS balance,
+        (SELECT MAX(p.payment_date) FROM payments p WHERE p.client_id = c.id) as last_payment_date,
+        julianday('now') - julianday(COALESCE((SELECT MAX(p.payment_date) FROM payments p WHERE p.client_id = c.id), c.created_at)) as days_since_payment
+      FROM clients c${arJoins}
+      WHERE c.is_active = 1 AND ${arBalExpr} > 0
+    `).bind(...arParams).all<AgingRow>()
 
     const buckets = { current: 0, days30: 0, days60: 0, days90: 0 }
     const bucketCounts = { current: 0, days30: 0, days60: 0, days90: 0 }
@@ -492,21 +516,19 @@ reportsRouter.get('/receivables-analysis', async (c) => {
       { label: '90일+', amount: buckets.days90, count: bucketCounts.days90 },
     ]
 
-    // 3) 미수금 TOP 15 거래처
+    // 3) 미수금 TOP 15 거래처 (파생 잔액 기준)
     const { results: topAR } = await c.env.DB.prepare(`
       SELECT
-        c.id, c.client_name, c.balance,
-        MAX(p.payment_date) as last_payment_date,
-        CAST(julianday('now') - julianday(COALESCE(MAX(p.payment_date), c.created_at)) AS INTEGER) as days_overdue,
+        c.id, c.client_name, ${arBalExpr} AS balance,
+        (SELECT MAX(p.payment_date) FROM payments p WHERE p.client_id = c.id) as last_payment_date,
+        CAST(julianday('now') - julianday(COALESCE((SELECT MAX(p.payment_date) FROM payments p WHERE p.client_id = c.id), c.created_at)) AS INTEGER) as days_overdue,
         (SELECT COUNT(*) FROM collection_logs cl WHERE cl.client_id = c.id) as collection_count,
-        COALESCE(SUM(p.amount), 0) as total_paid
-      FROM clients c
-      LEFT JOIN payments p ON c.id = p.client_id
-      WHERE c.is_active = 1 AND c.balance > 0
-      GROUP BY c.id
-      ORDER BY c.balance DESC
+        (SELECT COALESCE(SUM(p.amount), 0) FROM payments p WHERE p.client_id = c.id) as total_paid
+      FROM clients c${arJoins}
+      WHERE c.is_active = 1 AND ${arBalExpr} > 0
+      ORDER BY balance DESC
       LIMIT 15
-    `).all()
+    `).bind(...arParams).all()
 
     // 4) 월별 수금 추이
     const efOrders = entityFilter(c)

@@ -627,11 +627,18 @@ cardExpRouter.get('/receipt-image/*', requireRole('ADMIN', 'MANAGER'), async (c)
     const key = c.req.path.replace('/api/card-expenses/receipt-image/', '')
     // #357: path traversal 가드
     if (!key || key.includes('..') || key.includes('\\')) return c.json({ success: false, error: '잘못된 경로' }, 400)
+    // #442: R2 키 직접 서빙 IDOR 차단 — 호출자 법인이 소유한 card_transactions 행에
+    //   실제 연결된 키만 서빙(키 추측으로 타법인 영수증 금융PII read 차단). ADMIN 전체모드는 ef.clause=''.
+    const ef = entityFilter(c)
+    const owns = await c.env.DB.prepare(
+      `SELECT 1 FROM card_transactions WHERE receipt_image_url = ?${ef.clause} LIMIT 1`
+    ).bind(`/api/card-expenses/receipt-image/${key}`, ...ef.params).first()
+    if (!owns) return c.json({ success: false, error: '이미지 없음' }, 404)
     const obj = await (c.env as any).R2_BUCKET.get(key)
     if (!obj) return c.json({ success: false, error: '이미지 없음' }, 404)
     const headers = new Headers()
     headers.set('Content-Type', obj.httpMetadata?.contentType || 'image/jpeg')
-    headers.set('Cache-Control', 'public, max-age=86400')
+    headers.set('Cache-Control', 'private, max-age=86400')
     return new Response(obj.body, { headers })
   } catch (error) {
     return c.json({ success: false, error: '서버 오류' }, 500)

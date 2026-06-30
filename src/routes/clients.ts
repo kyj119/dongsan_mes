@@ -98,9 +98,15 @@ clientsRouter.get('/', async (c) => {
         fp.push(q.delivery_method)
       }
 
-      // balance 필터
+      // balance 필터 — #441: 폐기 clients.balance 캐시 대신 라이브 파생(order_billing_groups[BILLED]−payments−adjustments).
+      //   clients는 법인 공유(entity_id 없음) → 거래처 전체 합산(bank.ts /receivables·client-search 동일 정의).
       if (q.has_balance === '1') {
-        where += ' AND c.balance > 0'
+        where += ` AND (
+          (SELECT COALESCE(SUM(g.billed_amount),0) FROM order_billing_groups g JOIN orders o ON o.id=g.order_id
+           WHERE o.client_id=c.id AND g.billing_status='BILLED' AND o.status!='CANCELLED')
+          - (SELECT COALESCE(SUM(amount),0) FROM payments p WHERE p.client_id=c.id)
+          - (SELECT COALESCE(SUM(amount),0) FROM adjustments a WHERE a.client_id=c.id)
+        ) > 0`
       }
 
       // credit_hold 필터
