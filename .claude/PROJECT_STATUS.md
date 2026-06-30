@@ -1,9 +1,9 @@
 # PROJECT_STATUS.md — 프로젝트 현황판
 
-> **현재 초점**: 품목 마스터 신모델 등록(출력물·후가공/소분류 UI) — 제품 ~83, 남은=솔벤캔버스·배너류·단가·간판BOM.
-> **마지막 prod 배포**: 공장 배치도 P0~P2 + 90°회전 (dep `8adc578d`·마이그0389/0390·smoke101, 정본 `memory/design-factory-layout.md`). 이전: IA 편집기 P2+P3 13항목(dep `ee82f279`). LogWatcher EPSON 파서=`89097982`(보류).
-> **블로커**: 솔벤캔버스 원단 미파악(보류) · 품목 단가 전부 0(미입력) · 활성화(is_active=1) 시점 미결정.
-> **다음 액션**: 솔벤캔버스/배너류 등록 → 단가 입력 → 간판 BOM → split-billing P5-continued.
+> **현재 초점**: 품목 마스터 — **즉시등록 영역 소진**(배너·판재·게양/부속·깃발·자재/상품, 마이그 0398~0419·prod 활성485). **남은=간판 BOM(설계선행)·단가(전역)만.**
+> **마지막 prod 배포**: 품목 잔여 일괄등록 0398~0419 + **형옵션 범용 선택옵션 코드**(dep `fb45ea0f`, worktree `session/master-banner`). 이전: 공장배치도 P0~P2(`8adc578d`).
+> **블로커**: 품목 단가 전부 0(전역 과제) · 간판 BOM 설계 미착수(brainstorming 필요).
+> **다음 액션**: 간판 BOM 설계(brainstorming) → 단가 체계.
 > **핸드오프 정본** = `memory/session-context.md`.
 > **🔧 멀티세션**: 동시 작업은 `scripts/new-session.ps1 <이름>`(worktree 격리, 메인 직접작업 지양) → `docs/WORKTREE_WORKFLOW.md`.
 > 완료 이력 → `PROJECT_STATUS_ARCHIVE.md` (매 세션 읽을 필요 없음, 필요 시 참조).
