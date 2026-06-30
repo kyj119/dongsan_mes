@@ -397,15 +397,19 @@ cardExpRouter.post('/sync', requireRole('ADMIN'), async (c) => {
         if (txDate < dateStart || txDate > dateEnd) continue
         const txTime = (item.UseDT || '').length >= 12 ? `${(item.UseDT || '').slice(8, 10)}:${(item.UseDT || '').slice(10, 12)}:00` : null
         const amount = Math.abs(parseFloat(item.ApprovalAmount || item.TotalAmount || '0'))
+        // 가승인(pre-auth)은 임시 홀드일 뿐 실지출 아님(실청구는 별도 거래로 옴). 비용·미분류에서 제외.
+        //   is_offset 의미를 "순비용에서 제외"로 확장(상계 OR 가승인). 단독 가승인=offset_pair_id NULL로 진짜 상계와 구분.
+        //   기존 모든 합계/미분류 쿼리가 is_offset=0만 집계하므로 쿼리 수정 없이 자동 제외됨. (마이그 0413 백필)
+        const isPreauth = (item.UseStoreName || '').includes('가승인')
 
         await c.env.DB.prepare(`
-          INSERT INTO card_transactions (card_id, transaction_date, transaction_time, merchant_name, amount, supply_amount, tax_amount, approval_number, approval_type, codef_transaction_id, installments, status, entity_id)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'UNCLASSIFIED', ?)
+          INSERT INTO card_transactions (card_id, transaction_date, transaction_time, merchant_name, amount, supply_amount, tax_amount, approval_number, approval_type, codef_transaction_id, installments, status, entity_id, is_offset)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'UNCLASSIFIED', ?, ?)
         `).bind(
           dbCardId, txDate, txTime, item.UseStoreName || null, amount,
           parseFloat(item.Amount || '0'), parseFloat(item.Tax || '0'),
           item.ApprovalNum || null, isCancel ? 'CANCEL' : 'APPROVED',
-          refKey, parseInt(item.InstallmentMonths || '0') || 1, entityId
+          refKey, parseInt(item.InstallmentMonths || '0') || 1, entityId, isPreauth ? 1 : 0
         ).run()
         inserted++
       }
@@ -806,7 +810,7 @@ cardExpRouter.get('/export-csv', requireRole('ADMIN', 'MANAGER'), async (c) => {
     const headers = ['사용일', '카드', '카드번호', '가맹점', '공급가액', '부가세', '금액', '구분', '경비분류', '적요', '승인번호', '영수증', '영수증링크']
     const csvRows = data.map((r) => {
       const sign = r.approval_type === 'CANCEL' ? -1 : 1
-      const kind = r.is_offset ? '상계' : (r.approval_type === 'CANCEL' ? '취소' : '승인')
+      const kind = r.is_offset ? (String(r.merchant_name || '').includes('가승인') ? '가승인' : '상계') : (r.approval_type === 'CANCEL' ? '취소' : '승인')
       return [
         fmtDate(String(r.transaction_date)),
         r.card_name || '',

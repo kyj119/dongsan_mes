@@ -6,7 +6,7 @@ var currentPage = 1;
 
 // ===== Tab Switch =====
 function switchCardTab(tab) {
-  var tabs = ['transactions', 'cards', 'schedule', 'report', 'categories', 'cardfee'];
+  var tabs = ['transactions', 'cards', 'schedule', 'report', 'categories'];
   var activeClass = 'px-6 py-3 text-sm font-medium border-b-2 border-blue-600 text-blue-600';
   var inactiveClass = 'px-6 py-3 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700';
   tabs.forEach(function(t) {
@@ -20,7 +20,6 @@ function switchCardTab(tab) {
   if (tab === 'categories') loadCategories();
   if (tab === 'schedule') loadSchedule();
   if (tab === 'report') { initReport(); ensureTaxRange(); }
-  if (tab === 'cardfee' && window.initCardFeeTab) window.initCardFeeTab();
 }
 
 // ===== Init =====
