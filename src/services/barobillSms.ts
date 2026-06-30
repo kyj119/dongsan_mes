@@ -315,18 +315,28 @@ export class BarobillSmsProvider {
     return { remainPoint, partnerPoint }
   }
 
-  /** 알림톡 발송 단가 조회 (GetChargeUnitCost, ChargeCode=알림톡). */
-  async getUnitCost(): Promise<{ unitCost: number }> {
-    try {
-      const result = await barobillCall(this.config, 'KakaoTalk' as any, 'GetChargeUnitCost', {
-        ChargeCode: BAROBILL_CHARGE_CODE.ALIMTALK,
-      })
-      const v = parseFloat(result)
-      // 음수=바로빌 오류코드 → 0 처리
-      return { unitCost: Number.isFinite(v) && v > 0 ? v : 0 }
-    } catch (err) {
-      return { unitCost: 0 }
+  /**
+   * 채널별 발송 단가 조회 (GetChargeUnitCost, ChargeCode별).
+   * 전 서비스 공통 단가테이블이라 한 엔드포인트에서 알림톡·SMS·팩스 모두 조회 가능.
+   * 음수(바로빌 오류코드)·비정상은 0 처리.
+   */
+  async getUnitCost(): Promise<{ alimtalk: number; sms: number; fax: number }> {
+    const q = async (chargeCode: number): Promise<number> => {
+      try {
+        const v = parseFloat(
+          await barobillCall(this.config, 'KakaoTalk' as any, 'GetChargeUnitCost', { ChargeCode: chargeCode })
+        )
+        return Number.isFinite(v) && v > 0 ? v : 0
+      } catch (err) {
+        return 0
+      }
     }
+    const [alimtalk, sms, fax] = await Promise.all([
+      q(BAROBILL_CHARGE_CODE.ALIMTALK),
+      q(BAROBILL_CHARGE_CODE.SMS),
+      q(BAROBILL_CHARGE_CODE.FAX),
+    ])
+    return { alimtalk, sms, fax }
   }
 
   // ========================================================================

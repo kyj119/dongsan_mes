@@ -7,6 +7,7 @@
  * 또는 SendFaxFromFTPEx (다건 발송)
  */
 import { barobillCall, type BarobillConfig } from './barobillClient'
+import { BAROBILL_CHARGE_CODE } from '../constants/barobillCodes'
 
 interface FaxSendParams {
   senderNum: string
@@ -72,11 +73,13 @@ export class BarobillFaxProvider {
     }
   }
 
-  /** 팩스 단가 조회 */
+  /** 팩스 단가 조회 (GetChargeUnitCost, ChargeCode=팩스). 음수/비정상은 0 처리. */
   async getUnitCost(): Promise<{ unitCost: number }> {
     try {
-      const result = await barobillCall(this.config, 'FAX', 'GetChargeUnitCost', { ID: '', ServiceType: 0 })
-      return { unitCost: parseFloat(result) || 0 }
+      const v = parseFloat(
+        await barobillCall(this.config, 'FAX', 'GetChargeUnitCost', { ChargeCode: BAROBILL_CHARGE_CODE.FAX })
+      )
+      return { unitCost: Number.isFinite(v) && v > 0 ? v : 0 }
     } catch (err) {
       return { unitCost: 0 }
     }

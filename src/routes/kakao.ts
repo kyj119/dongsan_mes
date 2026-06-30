@@ -301,7 +301,9 @@ kakaoRouter.get('/balance', async (c) => {
       data: {
         remain_point: balance.remainPoint,
         partner_point: balance.partnerPoint,
-        unit_cost: unitCost.unitCost
+        unit_cost_alimtalk: unitCost.alimtalk,
+        unit_cost_sms: unitCost.sms,
+        unit_cost_fax: unitCost.fax
       }
     })
   } catch (error) {

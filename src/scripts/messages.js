@@ -43,19 +43,29 @@ async function loadSummary() {
     }
   } catch(e) { console.error('msg summary error', e); }
 
+  // 안전 setter (ID 없으면 경고만 — silent fail 방지)
+  var setMsg = function(id, val) {
+    var el = document.getElementById(id);
+    if (!el) { console.warn('[messages] #' + id + ' not found'); return; }
+    el.textContent = val;
+  };
   try {
     var balanceRes = await axios.get('/api/kakao/balance');
     if (balanceRes.data.success) {
       var b = balanceRes.data.data;
       // 통합 포인트 = 파트너(연동) 지갑. 법인 공통 단일 지갑이며 메시지+통장/계좌 조회 요금이 모두 여기서 차감됨.
       // 회원사 지갑(remain_point)은 동산기획 설정상 항상 0이라 표시하지 않음.
-      document.getElementById('msgBalance').textContent = (b.partner_point || 0).toLocaleString() + '원';
-      document.getElementById('msgPartnerPoint').textContent = '법인 공통 · 통장/계좌 조회 요금 공통 차감';
-      document.getElementById('msgUnitCost').textContent = (b.unit_cost || 0) + '원/건';
+      setMsg('msgBalance', (b.partner_point || 0).toLocaleString() + '원');
+      setMsg('msgPartnerPoint', '법인 공통 · 통장/계좌 조회 요금 공통 차감');
+      setMsg('msgUnitCostAlim', (b.unit_cost_alimtalk || 0).toLocaleString() + '원/건');
+      setMsg('msgUnitCostSms', (b.unit_cost_sms || 0).toLocaleString() + '원/건');
+      setMsg('msgUnitCostFax', (b.unit_cost_fax || 0).toLocaleString() + '원/장');
     }
   } catch(e) {
-    document.getElementById('msgBalance').textContent = '-';
-    document.getElementById('msgUnitCost').textContent = '-';
+    setMsg('msgBalance', '-');
+    setMsg('msgUnitCostAlim', '-');
+    setMsg('msgUnitCostSms', '-');
+    setMsg('msgUnitCostFax', '-');
   }
 
   try {

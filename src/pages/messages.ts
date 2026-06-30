@@ -21,7 +21,11 @@ export function messagesPage(c: Context<HonoEnv>) {
     </div>
     <div class="ds-card p-5">
       <div class="text-xs text-gray-500">발송 단가</div>
-      <div class="text-3xl font-bold text-gray-900 mt-1" id="msgUnitCost">-</div>
+      <div class="mt-2 space-y-1 text-sm">
+        <div class="flex justify-between"><span class="text-gray-600">알림톡</span><span class="font-bold text-gray-900" id="msgUnitCostAlim">-</span></div>
+        <div class="flex justify-between"><span class="text-gray-600">SMS</span><span class="font-bold text-gray-900" id="msgUnitCostSms">-</span></div>
+        <div class="flex justify-between"><span class="text-gray-600">팩스</span><span class="font-bold text-gray-900" id="msgUnitCostFax">-</span></div>
+      </div>
     </div>
     <div class="ds-card p-5">
       <div class="text-xs text-gray-500">통합 포인트</div>
