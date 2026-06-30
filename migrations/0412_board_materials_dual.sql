@@ -1,0 +1,68 @@
+-- 0412: 판재 dual 등록 — 보드 MATERIAL(원자재·BOARD·장·dual·색상별) + UV 평판 출력 PRODUCT(자작나무 0359 패턴). 단가 보류.
+-- 포맥스/아크릴/폼보드/스카시/광확산PC/알마이트 × 실주문 두께 × 색상별 SKU. UV제품→해당 보드 1:1 링크(코드 = UV코드-'UV-'). sheet_spec 4x8.
+INSERT INTO items (item_code,item_name,item_type,category,category_id,unit,base_price,sales_price,pricing_method,is_active,is_sales_item,is_purchase_item,production_required,item_group,specification,deduction_method,sheet_spec) VALUES
+ ('FMX-2T-W','포맥스','MATERIAL','원자재',5,'장',0,0,'FIXED',1,1,1,0,'포맥스','2T 백색','BOARD','4x8'),
+ ('FMX-2T-B','포맥스','MATERIAL','원자재',5,'장',0,0,'FIXED',1,1,1,0,'포맥스','2T 검정','BOARD','4x8'),
+ ('FMX-3T-W','포맥스','MATERIAL','원자재',5,'장',0,0,'FIXED',1,1,1,0,'포맥스','3T 백색','BOARD','4x8'),
+ ('FMX-3T-B','포맥스','MATERIAL','원자재',5,'장',0,0,'FIXED',1,1,1,0,'포맥스','3T 검정','BOARD','4x8'),
+ ('FMX-5T-W','포맥스','MATERIAL','원자재',5,'장',0,0,'FIXED',1,1,1,0,'포맥스','5T 백색','BOARD','4x8'),
+ ('FMX-5T-B','포맥스','MATERIAL','원자재',5,'장',0,0,'FIXED',1,1,1,0,'포맥스','5T 검정','BOARD','4x8'),
+ ('FMX-8T-W','포맥스','MATERIAL','원자재',5,'장',0,0,'FIXED',1,1,1,0,'포맥스','8T 백색','BOARD','4x8'),
+ ('FMX-8T-B','포맥스','MATERIAL','원자재',5,'장',0,0,'FIXED',1,1,1,0,'포맥스','8T 검정','BOARD','4x8'),
+ ('FMX-10T-W','포맥스','MATERIAL','원자재',5,'장',0,0,'FIXED',1,1,1,0,'포맥스','10T 백색','BOARD','4x8'),
+ ('FMX-10T-B','포맥스','MATERIAL','원자재',5,'장',0,0,'FIXED',1,1,1,0,'포맥스','10T 검정','BOARD','4x8'),
+ ('ACR-2T-W','아크릴','MATERIAL','원자재',5,'장',0,0,'FIXED',1,1,1,0,'아크릴','2T 백색','BOARD','4x8'),
+ ('ACR-2T-B','아크릴','MATERIAL','원자재',5,'장',0,0,'FIXED',1,1,1,0,'아크릴','2T 검정','BOARD','4x8'),
+ ('ACR-2T-C','아크릴','MATERIAL','원자재',5,'장',0,0,'FIXED',1,1,1,0,'아크릴','2T 투명','BOARD','4x8'),
+ ('ACR-3T-W','아크릴','MATERIAL','원자재',5,'장',0,0,'FIXED',1,1,1,0,'아크릴','3T 백색','BOARD','4x8'),
+ ('ACR-3T-B','아크릴','MATERIAL','원자재',5,'장',0,0,'FIXED',1,1,1,0,'아크릴','3T 검정','BOARD','4x8'),
+ ('ACR-3T-C','아크릴','MATERIAL','원자재',5,'장',0,0,'FIXED',1,1,1,0,'아크릴','3T 투명','BOARD','4x8'),
+ ('ACR-5T-W','아크릴','MATERIAL','원자재',5,'장',0,0,'FIXED',1,1,1,0,'아크릴','5T 백색','BOARD','4x8'),
+ ('ACR-5T-B','아크릴','MATERIAL','원자재',5,'장',0,0,'FIXED',1,1,1,0,'아크릴','5T 검정','BOARD','4x8'),
+ ('ACR-5T-C','아크릴','MATERIAL','원자재',5,'장',0,0,'FIXED',1,1,1,0,'아크릴','5T 투명','BOARD','4x8'),
+ ('FOM-5T-W','폼보드','MATERIAL','원자재',5,'장',0,0,'FIXED',1,1,1,0,'폼보드','5T 백색','BOARD','4x8'),
+ ('SKS-10T-W','스카시','MATERIAL','원자재',5,'장',0,0,'FIXED',1,1,1,0,'스카시','10T 백색','BOARD','4x8'),
+ ('SKS-10T-B','스카시','MATERIAL','원자재',5,'장',0,0,'FIXED',1,1,1,0,'스카시','10T 검정','BOARD','4x8'),
+ ('SKS-20T-W','스카시','MATERIAL','원자재',5,'장',0,0,'FIXED',1,1,1,0,'스카시','20T 백색','BOARD','4x8'),
+ ('SKS-20T-B','스카시','MATERIAL','원자재',5,'장',0,0,'FIXED',1,1,1,0,'스카시','20T 검정','BOARD','4x8'),
+ ('SKS-30T-W','스카시','MATERIAL','원자재',5,'장',0,0,'FIXED',1,1,1,0,'스카시','30T 백색','BOARD','4x8'),
+ ('SKS-30T-B','스카시','MATERIAL','원자재',5,'장',0,0,'FIXED',1,1,1,0,'스카시','30T 검정','BOARD','4x8'),
+ ('PC-2T-M','광확산PC','MATERIAL','원자재',5,'장',0,0,'FIXED',1,1,1,0,'광확산PC','2T 유백','BOARD','4x8'),
+ ('PC-3T-M','광확산PC','MATERIAL','원자재',5,'장',0,0,'FIXED',1,1,1,0,'광확산PC','3T 유백','BOARD','4x8'),
+ ('ALM-2T-S','알마이트','MATERIAL','원자재',5,'장',0,0,'FIXED',1,1,1,0,'알마이트','2T 은색','BOARD','4x8');
+
+INSERT INTO items (item_code,item_name,item_type,category,category_id,unit,base_price,sales_price,pricing_method,pricing_profile,is_active,is_sales_item,is_purchase_item,production_required,item_group,specification,deduction_method) VALUES
+ ('UV-FMX-2T-W','UV 포맥스 2T 백색','PRODUCT','UV',2,'EA',0,0,'AREA','AREA',1,1,0,1,'포맥스','2T 백색','ROLL'),
+ ('UV-FMX-2T-B','UV 포맥스 2T 검정','PRODUCT','UV',2,'EA',0,0,'AREA','AREA',1,1,0,1,'포맥스','2T 검정','ROLL'),
+ ('UV-FMX-3T-W','UV 포맥스 3T 백색','PRODUCT','UV',2,'EA',0,0,'AREA','AREA',1,1,0,1,'포맥스','3T 백색','ROLL'),
+ ('UV-FMX-3T-B','UV 포맥스 3T 검정','PRODUCT','UV',2,'EA',0,0,'AREA','AREA',1,1,0,1,'포맥스','3T 검정','ROLL'),
+ ('UV-FMX-5T-W','UV 포맥스 5T 백색','PRODUCT','UV',2,'EA',0,0,'AREA','AREA',1,1,0,1,'포맥스','5T 백색','ROLL'),
+ ('UV-FMX-5T-B','UV 포맥스 5T 검정','PRODUCT','UV',2,'EA',0,0,'AREA','AREA',1,1,0,1,'포맥스','5T 검정','ROLL'),
+ ('UV-FMX-8T-W','UV 포맥스 8T 백색','PRODUCT','UV',2,'EA',0,0,'AREA','AREA',1,1,0,1,'포맥스','8T 백색','ROLL'),
+ ('UV-FMX-8T-B','UV 포맥스 8T 검정','PRODUCT','UV',2,'EA',0,0,'AREA','AREA',1,1,0,1,'포맥스','8T 검정','ROLL'),
+ ('UV-FMX-10T-W','UV 포맥스 10T 백색','PRODUCT','UV',2,'EA',0,0,'AREA','AREA',1,1,0,1,'포맥스','10T 백색','ROLL'),
+ ('UV-FMX-10T-B','UV 포맥스 10T 검정','PRODUCT','UV',2,'EA',0,0,'AREA','AREA',1,1,0,1,'포맥스','10T 검정','ROLL'),
+ ('UV-ACR-2T-W','UV 아크릴 2T 백색','PRODUCT','UV',2,'EA',0,0,'AREA','AREA',1,1,0,1,'아크릴','2T 백색','ROLL'),
+ ('UV-ACR-2T-B','UV 아크릴 2T 검정','PRODUCT','UV',2,'EA',0,0,'AREA','AREA',1,1,0,1,'아크릴','2T 검정','ROLL'),
+ ('UV-ACR-2T-C','UV 아크릴 2T 투명','PRODUCT','UV',2,'EA',0,0,'AREA','AREA',1,1,0,1,'아크릴','2T 투명','ROLL'),
+ ('UV-ACR-3T-W','UV 아크릴 3T 백색','PRODUCT','UV',2,'EA',0,0,'AREA','AREA',1,1,0,1,'아크릴','3T 백색','ROLL'),
+ ('UV-ACR-3T-B','UV 아크릴 3T 검정','PRODUCT','UV',2,'EA',0,0,'AREA','AREA',1,1,0,1,'아크릴','3T 검정','ROLL'),
+ ('UV-ACR-3T-C','UV 아크릴 3T 투명','PRODUCT','UV',2,'EA',0,0,'AREA','AREA',1,1,0,1,'아크릴','3T 투명','ROLL'),
+ ('UV-ACR-5T-W','UV 아크릴 5T 백색','PRODUCT','UV',2,'EA',0,0,'AREA','AREA',1,1,0,1,'아크릴','5T 백색','ROLL'),
+ ('UV-ACR-5T-B','UV 아크릴 5T 검정','PRODUCT','UV',2,'EA',0,0,'AREA','AREA',1,1,0,1,'아크릴','5T 검정','ROLL'),
+ ('UV-ACR-5T-C','UV 아크릴 5T 투명','PRODUCT','UV',2,'EA',0,0,'AREA','AREA',1,1,0,1,'아크릴','5T 투명','ROLL'),
+ ('UV-FOM-5T-W','UV 폼보드 5T 백색','PRODUCT','UV',2,'EA',0,0,'AREA','AREA',1,1,0,1,'폼보드','5T 백색','ROLL'),
+ ('UV-SKS-10T-W','UV 스카시 10T 백색','PRODUCT','UV',2,'EA',0,0,'AREA','AREA',1,1,0,1,'스카시','10T 백색','ROLL'),
+ ('UV-SKS-10T-B','UV 스카시 10T 검정','PRODUCT','UV',2,'EA',0,0,'AREA','AREA',1,1,0,1,'스카시','10T 검정','ROLL'),
+ ('UV-SKS-20T-W','UV 스카시 20T 백색','PRODUCT','UV',2,'EA',0,0,'AREA','AREA',1,1,0,1,'스카시','20T 백색','ROLL'),
+ ('UV-SKS-20T-B','UV 스카시 20T 검정','PRODUCT','UV',2,'EA',0,0,'AREA','AREA',1,1,0,1,'스카시','20T 검정','ROLL'),
+ ('UV-SKS-30T-W','UV 스카시 30T 백색','PRODUCT','UV',2,'EA',0,0,'AREA','AREA',1,1,0,1,'스카시','30T 백색','ROLL'),
+ ('UV-SKS-30T-B','UV 스카시 30T 검정','PRODUCT','UV',2,'EA',0,0,'AREA','AREA',1,1,0,1,'스카시','30T 검정','ROLL'),
+ ('UV-PC-2T-M','UV 광확산PC 2T 유백','PRODUCT','UV',2,'EA',0,0,'AREA','AREA',1,1,0,1,'광확산PC','2T 유백','ROLL'),
+ ('UV-PC-3T-M','UV 광확산PC 3T 유백','PRODUCT','UV',2,'EA',0,0,'AREA','AREA',1,1,0,1,'광확산PC','3T 유백','ROLL'),
+ ('UV-ALM-2T-S','UV 알마이트 2T 은색','PRODUCT','UV',2,'EA',0,0,'AREA','AREA',1,1,0,1,'알마이트','2T 은색','ROLL');
+
+-- 링크: UV 평판 출력 → 해당 보드 MATERIAL (item_code = SUBSTR(UV코드,4))
+INSERT INTO product_materials (product_item_id, material_item_id, is_default)
+SELECT p.id, m.id, 0 FROM items p JOIN items m ON m.item_code = SUBSTR(p.item_code, 4)
+WHERE (p.item_code LIKE 'UV-FMX-%' OR p.item_code LIKE 'UV-ACR-%' OR p.item_code LIKE 'UV-FOM-%' OR p.item_code LIKE 'UV-SKS-%' OR p.item_code LIKE 'UV-PC-%' OR p.item_code LIKE 'UV-ALM-%') AND m.item_type='MATERIAL';
