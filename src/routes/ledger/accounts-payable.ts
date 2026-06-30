@@ -431,10 +431,11 @@ apRouter.put('/purchase-payment/:id', requireRole('ADMIN', 'MANAGER'), async (c)
     const id = c.req.param('id')
     const body = await c.req.json()
 
-    // Get existing payment
+    // Get existing payment — #446/#452: 타법인 매입지급 변조 차단(read-back 404 게이트 → 하위 UPDATE/잔액조정 미실행)
+    const ef = entityFilter(c)
     const existing = await c.env.DB.prepare(
-      'SELECT id, supplier_id, po_id, payment_date, amount, payment_method, reference_number, notes, created_at FROM purchase_payments WHERE id = ?'
-    ).bind(id).first<PurchasePaymentRow>()
+      'SELECT id, supplier_id, po_id, payment_date, amount, payment_method, reference_number, notes, created_at FROM purchase_payments WHERE id = ?' + ef.clause
+    ).bind(id, ...ef.params).first<PurchasePaymentRow>()
 
     if (!existing) {
       return c.json({ success: false, error: '지급 내역을 찾을 수 없습니다' }, 404)
@@ -501,10 +502,11 @@ apRouter.delete('/purchase-payment/:id', requireRole('ADMIN'), async (c) => {
   try {
     const id = c.req.param('id')
 
-    // Get existing payment
+    // Get existing payment — #446/#452: 타법인 매입지급 삭제 차단(read-back 404 게이트 → 하위 DELETE/잔액복원 미실행)
+    const ef = entityFilter(c)
     const existing = await c.env.DB.prepare(
-      'SELECT id, supplier_id, po_id, payment_date, amount, payment_method, reference_number, notes, created_at FROM purchase_payments WHERE id = ?'
-    ).bind(id).first<PurchasePaymentRow>()
+      'SELECT id, supplier_id, po_id, payment_date, amount, payment_method, reference_number, notes, created_at FROM purchase_payments WHERE id = ?' + ef.clause
+    ).bind(id, ...ef.params).first<PurchasePaymentRow>()
 
     if (!existing) {
       return c.json({ success: false, error: '지급 내역을 찾을 수 없습니다' }, 404)
@@ -649,9 +651,11 @@ apRouter.delete('/purchase-adjustment/:id', requireRole('ADMIN'), async (c) => {
   try {
     const id = c.req.param('id')
 
+    // #446/#452: 타법인 매입감액 삭제 차단(read-back 404 게이트 → 하위 DELETE/잔액복원 미실행)
+    const ef = entityFilter(c)
     const existing = await c.env.DB.prepare(
-      'SELECT id, supplier_id, po_id, type, amount, reason, adjustment_date, created_at FROM purchase_adjustments WHERE id = ?'
-    ).bind(id).first<PurchaseAdjustmentRow>()
+      'SELECT id, supplier_id, po_id, type, amount, reason, adjustment_date, created_at FROM purchase_adjustments WHERE id = ?' + ef.clause
+    ).bind(id, ...ef.params).first<PurchaseAdjustmentRow>()
 
     if (!existing) {
       return c.json({ success: false, error: '매입 감액 내역을 찾을 수 없습니다' }, 404)

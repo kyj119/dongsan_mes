@@ -98,12 +98,13 @@ claims.patch('/:id/resolve', requireRole('ADMIN', 'MANAGER'), async (c) => {
   const userId = c.get('user')?.id
   const { resolution_type, resolved_amount, rework_order_id } = await c.req.json()
 
+  const ef = entityFilter(c)  // #446: 타법인 클레임 변조 차단(형제 분석은 cc 격리)
   await c.env.DB.prepare(`
     UPDATE customer_claims
     SET status = 'RESOLVED', resolution_type = ?, resolved_amount = ?,
         rework_order_id = ?, resolved_by = ?, resolved_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
-    WHERE id = ?
-  `).bind(resolution_type, resolved_amount || 0, rework_order_id || null, userId, id).run()
+    WHERE id = ?${ef.clause}
+  `).bind(resolution_type, resolved_amount || 0, rework_order_id || null, userId, id, ...ef.params).run()
 
   return c.json({ success: true })
 })

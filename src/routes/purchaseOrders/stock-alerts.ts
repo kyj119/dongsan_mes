@@ -6,7 +6,7 @@ import { Hono } from 'hono'
 import type { HonoEnv } from '../../types/env'
 import type { PurchaseOrder, PurchaseOrderItem, ApiResponse, PaginatedResponse } from '../../types/models'
 import { authMiddleware, requireRole } from '../../middleware/auth'
-import { getEntityId } from '../../utils/entityFilter'
+import { getEntityId, entityFilter } from '../../utils/entityFilter'
 
 const stockAlertsRouter = new Hono<HonoEnv>()
 stockAlertsRouter.use('/*', authMiddleware, requireRole('ADMIN', 'MANAGER'))
@@ -14,6 +14,7 @@ stockAlertsRouter.use('/*', authMiddleware, requireRole('ADMIN', 'MANAGER'))
 stockAlertsRouter.get('/stock-alerts', requireRole('ADMIN', 'MANAGER'), async (c) => {
   try {
     const status = c.req.query('status') || 'ACTIVE'
+    const ef = entityFilter(c, 'sa')  // #446: 전 법인 재고알림 혼재(cross-tenant read) 차단
 
     // UP4: 창고별 다중행 → 품목×법인 단위로 집계(SUM/MAX)해 알림 행 중복·타법인 합산 방지.
     const { results } = await c.env.DB.prepare(`
@@ -29,9 +30,9 @@ stockAlertsRouter.get('/stock-alerts', requireRole('ADMIN', 'MANAGER'), async (c
       ) inv ON inv.item_id = i.id AND inv.entity_id = sa.entity_id
       LEFT JOIN storage_zones sz ON i.storage_zone_id = sz.id
       LEFT JOIN users u ON sa.acknowledged_by = u.id
-      WHERE sa.status = ?
+      WHERE sa.status = ?${ef.clause}
       ORDER BY sa.created_at DESC
-    `).bind(status).all()
+    `).bind(status, ...ef.params).all()
 
     return c.json({ success: true, data: results })
   } catch (error) {

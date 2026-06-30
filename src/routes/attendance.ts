@@ -375,7 +375,8 @@ attendanceRouter.patch('/bulk', requireRole('ADMIN', 'MANAGER'), async (c) => {
 attendanceRouter.delete('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
   try {
     const id = Number(c.req.param('id'))
-    await c.env.DB.prepare(`DELETE FROM attendance WHERE id = ?`).bind(id).run()
+    const ef = entityFilter(c)  // #446: 타법인 근태 삭제 차단
+    await c.env.DB.prepare(`DELETE FROM attendance WHERE id = ?${ef.clause}`).bind(id, ...ef.params).run()
     return c.json({ success: true })
   } catch (err: any) {
     console.error('Failed to delete attendance:', err)

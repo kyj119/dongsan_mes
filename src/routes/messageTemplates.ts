@@ -62,7 +62,9 @@ messageTemplatesRouter.patch('/:id', async (c) => {
     const id = parseInt(c.req.param('id'), 10)
     const body = await c.req.json() as any
 
-    const existing = await db.prepare('SELECT id FROM message_templates WHERE id = ?').bind(id).first()
+    // #452: 타법인 템플릿 변조 차단(read-back 404 게이트)
+    const ef = entityFilter(c)
+    const existing = await db.prepare('SELECT id FROM message_templates WHERE id = ?' + ef.clause).bind(id, ...ef.params).first()
     if (!existing) {
       return c.json({ success: false, error: '템플릿을 찾을 수 없습니다.' }, 404)
     }
@@ -93,7 +95,9 @@ messageTemplatesRouter.delete('/:id', async (c) => {
     const db = c.env.DB
     const id = parseInt(c.req.param('id'), 10)
 
-    const existing = await db.prepare('SELECT id FROM message_templates WHERE id = ?').bind(id).first()
+    // #452: 타법인 템플릿 삭제 차단(read-back 404 게이트)
+    const ef = entityFilter(c)
+    const existing = await db.prepare('SELECT id FROM message_templates WHERE id = ?' + ef.clause).bind(id, ...ef.params).first()
     if (!existing) {
       return c.json({ success: false, error: '템플릿을 찾을 수 없습니다.' }, 404)
     }

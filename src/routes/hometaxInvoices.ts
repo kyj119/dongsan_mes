@@ -500,7 +500,8 @@ hometaxInvoicesRouter.post('/:id/match', requireRole('ADMIN', 'MANAGER'), async 
     const body = await c.req.json<{ tax_invoice_id?: number; action?: string }>()
 
     const db = c.env.DB
-    const invoice = await db.prepare(`SELECT id, invoice_type, nts_confirm_number, issue_date, supply_amount, tax_amount, total_amount, issuer_corp_name, receiver_corp_name, matched_invoice_id, match_status, match_note FROM hometax_invoices WHERE id = ?`).bind(Number(invoiceId)).first()
+    const ef = entityFilter(c)  // #455: 타법인 홈택스 인보이스 매칭/해제 차단(read-back 404 게이트)
+    const invoice = await db.prepare(`SELECT id, invoice_type, nts_confirm_number, issue_date, supply_amount, tax_amount, total_amount, issuer_corp_name, receiver_corp_name, matched_invoice_id, match_status, match_note FROM hometax_invoices WHERE id = ?${ef.clause}`).bind(Number(invoiceId), ...ef.params).first()
 
     if (!invoice) {
       return c.json({ success: false, error: '세금계산서 없음' }, 404)
@@ -523,8 +524,8 @@ hometaxInvoicesRouter.post('/:id/match', requireRole('ADMIN', 'MANAGER'), async 
       return c.json({ success: false, error: 'tax_invoice_id 또는 action 필수' }, 400)
     }
 
-    // Verify tax_invoice_id exists
-    const taxInvoice = await db.prepare(`SELECT id FROM tax_invoices WHERE id = ?`).bind(body.tax_invoice_id).first()
+    // Verify tax_invoice_id exists — #455: 타법인 시스템 세금계산서와 매칭 차단
+    const taxInvoice = await db.prepare(`SELECT id FROM tax_invoices WHERE id = ?${ef.clause}`).bind(body.tax_invoice_id, ...ef.params).first()
     if (!taxInvoice) {
       return c.json({ success: false, error: '시스템 세금계산서 없음' }, 404)
     }

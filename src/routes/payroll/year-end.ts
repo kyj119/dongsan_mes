@@ -378,9 +378,10 @@ yearEndRouter.put('/year-end-settlement/:settlementId/confirm', requireRole('ADM
     const settlementId = Number(c.req.param('settlementId'))
     const user = c.get('user')
     const now = new Date().toISOString()
+    const ef = entityFilter(c)  // #452: 타법인 연말정산 확정 차단
     await c.env.DB.prepare(
-      `UPDATE year_end_settlements SET status = 'CONFIRMED', confirmed_by = ?, confirmed_at = ?, updated_at = ? WHERE id = ?`
-    ).bind(user?.id || null, now, now, settlementId).run()
+      `UPDATE year_end_settlements SET status = 'CONFIRMED', confirmed_by = ?, confirmed_at = ?, updated_at = ? WHERE id = ?${ef.clause}`
+    ).bind(user?.id || null, now, now, settlementId, ...ef.params).run()
     return c.json({ success: true })
   } catch (err: any) {
     console.error('Payroll settlement confirm error:', err)

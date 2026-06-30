@@ -75,11 +75,12 @@ arDunningRouter.post('/collection-log', requireRole('ADMIN', 'MANAGER'), async (
 arDunningRouter.delete('/collection-log/:id', requireRole('ADMIN'), async (c) => {
   try {
     const id = c.req.param('id')
-    const existing = await c.env.DB.prepare('SELECT id FROM collection_logs WHERE id = ?').bind(id).first()
+    const ef = entityFilter(c)  // #446/#452: 타법인 독촉이력 삭제 차단(형제 목록은 격리)
+    const existing = await c.env.DB.prepare(`SELECT id FROM collection_logs WHERE id = ?${ef.clause}`).bind(id, ...ef.params).first()
     if (!existing) {
       return c.json({ success: false, error: '독촉 이력을 찾을 수 없습니다' }, 404)
     }
-    await c.env.DB.prepare('DELETE FROM collection_logs WHERE id = ?').bind(id).run()
+    await c.env.DB.prepare(`DELETE FROM collection_logs WHERE id = ?${ef.clause}`).bind(id, ...ef.params).run()
     return c.json({ success: true, message: '삭제되었습니다' })
   } catch (error) {
     console.error('src/routes/ledger.ts error:', error)

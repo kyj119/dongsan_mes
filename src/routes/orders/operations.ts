@@ -8,7 +8,7 @@ import { logActivity } from '../../utils/activityLog'
 import { notifyRoles } from '../../utils/notify'
 import { recalculateOrderCosts } from '../../utils/costCalculator'
 import { sendEmail } from '../../services/emailProvider'
-import { getEntityId } from '../../utils/entityFilter'
+import { getEntityId, orderVisibilityFilter } from '../../utils/entityFilter'
 import { checkMaterialShortage } from '../../utils/materialShortageCheck'
 
 // ---------- D1 row shapes ----------
@@ -58,7 +58,8 @@ ordersOpsRouter.post('/:id/copy', requireRole('ADMIN', 'MANAGER', 'DESIGNER'), a
     const id = c.req.param('id')
     const user = c.get('user')
 
-    // Get original order
+    // Get original order — #446: 소스 주문 cross-tenant read-exfil(타법인 단가/거래처) 차단. 가시성 모델 준수(코디네이터/담당 품목 포함).
+    const ovf = orderVisibilityFilter(c, 'orders')
     const original = await c.env.DB.prepare(`
       SELECT id, client_id, order_number, status,
              order_year, order_month, reception_location, delivery_info, delivery_date,
@@ -66,8 +67,8 @@ ordersOpsRouter.post('/:id/copy', requireRole('ADMIN', 'MANAGER', 'DESIGNER'), a
              notes, internal_notes,
              priority, delivery_method, delivery_time,
              contact_phone, contact_mobile, shipping_payment
-      FROM orders WHERE id = ?
-    `).bind(id).first<OrderCopyRow>()
+      FROM orders WHERE id = ?${ovf.clause}
+    `).bind(id, ...ovf.params).first<OrderCopyRow>()
 
     if (!original) {
       return c.json({ success: false, error: 'Order not found' }, 404)
