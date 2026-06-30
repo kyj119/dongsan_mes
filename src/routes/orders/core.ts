@@ -498,6 +498,18 @@ ordersCoreRouter.delete('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
       }, 400)
     }
 
+    // #464: 현금영수증(재무문서) 발행분 차단 — tax_invoices 가드 동형(RESTRICT FK 500 사전차단+발행 보호).
+    //   live(ISSUED/NTS_SUCCESS)만 차단, 잔여(DRAFT/취소/실패)는 하드삭제 batch에서 SET NULL.
+    const cashReceiptCheck = await c.env.DB.prepare(`
+      SELECT COUNT(*) as cnt FROM cash_receipts WHERE order_id = ? AND status IN ('ISSUED', 'NTS_SUCCESS')
+    `).bind(id).first<{ cnt: number }>()
+    if (cashReceiptCheck && cashReceiptCheck.cnt > 0) {
+      return c.json({
+        success: false,
+        error: '현금영수증이 발행된 주문은 삭제할 수 없습니다. 먼저 현금영수증을 취소해주세요.'
+      }, 400)
+    }
+
     const CONFIRMED_AND_AFTER = ['CONFIRMED', 'PRINTING', 'PRINT_DONE', 'SHIPPED']
 
     // CONFIRMED 이후 상태 → 소프트 삭제(CANCELLED)
@@ -564,6 +576,8 @@ ordersCoreRouter.delete('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
       c.env.DB.prepare('UPDATE print_file_map SET card_id = NULL WHERE card_id IN (SELECT id FROM cards WHERE order_id = ?)').bind(id),
       // #454: cards 참조 비-FK 정리 (cards 삭제 전) — 자동 재고차감 이력
       c.env.DB.prepare('DELETE FROM inventory_auto_deductions WHERE card_id IN (SELECT id FROM cards WHERE order_id = ?)').bind(id),
+      // #464: 타 주문 품질이슈의 재작업카드 링크(0222 재빌드로 FK 제거됨=비-FK orphan) 정리 — cards 삭제 전
+      c.env.DB.prepare('UPDATE quality_issues SET rework_card_id = NULL WHERE rework_card_id IN (SELECT id FROM cards WHERE order_id = ?)').bind(id),
       // #116: order_id 기반 정리
       c.env.DB.prepare('DELETE FROM customer_claims WHERE order_id = ?').bind(id),
       c.env.DB.prepare('DELETE FROM returns WHERE order_id = ?').bind(id),
@@ -573,6 +587,8 @@ ordersCoreRouter.delete('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
       c.env.DB.prepare('DELETE FROM cards WHERE order_id = ?').bind(id),
       // #454: order_id/order_item_id 기반 비-FK 정리 (order_items 삭제 전 order_item_id SET NULL)
       c.env.DB.prepare('UPDATE print_file_map SET order_item_id = NULL WHERE order_item_id IN (SELECT id FROM order_items WHERE order_id = ?)').bind(id),
+      // #464: return_items.order_item_id RESTRICT — returns CASCADE로 통상 선삭제되나 교차주문 이상 대비 명시 정리 (order_items 삭제 전)
+      c.env.DB.prepare('DELETE FROM return_items WHERE order_item_id IN (SELECT id FROM order_items WHERE order_id = ?)').bind(id),
       c.env.DB.prepare('DELETE FROM pp_material_deductions WHERE order_id = ?').bind(id),
       c.env.DB.prepare('DELETE FROM original_archives WHERE order_id = ?').bind(id),  // ⚠️ R2 객체(archive_url)는 별도 정리 필요
       c.env.DB.prepare('DELETE FROM order_items WHERE order_id = ?').bind(id),
@@ -583,6 +599,11 @@ ordersCoreRouter.delete('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
       c.env.DB.prepare('DELETE FROM auto_process_jobs WHERE order_id = ?').bind(id),
       // #332: tasks.order_id 이력 보존 (SET NULL)
       c.env.DB.prepare('UPDATE tasks SET order_id = NULL WHERE order_id = ?').bind(id),
+      // #464: 미처리 RESTRICT FK 참조 정리 (orders 삭제 전 — prod FK 강제 시 opaque 500 차단). 운영링크는 보존(SET NULL).
+      c.env.DB.prepare('UPDATE customer_claims SET rework_order_id = NULL WHERE rework_order_id = ?').bind(id),                  // 타주문 클레임의 재작업주문 링크(클레임 기록 보존)
+      c.env.DB.prepare('UPDATE portal_reorder_requests SET reference_order_id = NULL WHERE reference_order_id = ?').bind(id),     // 포털 재주문 원주문 참조
+      c.env.DB.prepare('UPDATE cash_receipts SET order_id = NULL WHERE order_id = ?').bind(id),                                  // 발행분은 pre-guard 차단, 잔여(DRAFT/취소/실패) unlink
+      c.env.DB.prepare("UPDATE tax_invoices SET order_id = NULL WHERE order_id = ? AND status = 'CANCELLED'").bind(id),          // pre-guard는 비취소만 차단 → 취소분 잔여 unlink
       c.env.DB.prepare('DELETE FROM orders WHERE id = ?').bind(id),
     ])
 
