@@ -184,8 +184,8 @@ async function loadDetailCount(countId) {
             + (varClass ? '<span style="font-size:10px;padding:2px 6px;border-radius:3px;background:#fee2e2;color:#dc2626;" class="' + varClass + '">' + diffPct.toFixed(1) + '%</span>' : '')
           + '</div>'
           + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:12px;color:#666;">'
-            + '<div>시스템: <strong>' + systemQty.toLocaleString() + '</strong> ' + (item.unit || 'YD') + '</div>'
-            + '<div>실사: <input type="number" value="' + countedQty + '" style="width:60px;padding:4px;border:1px solid #ddd;border-radius:3px;font-size:12px;" onchange="updateItemCount(' + item.id + ', this.value, ' + item.count_id + ')" /></div>'
+            + '<div>시스템: <strong>' + window.uomFormatStock(systemQty, item) + '</strong></div>'
+            + '<div>실사: <input type="number" value="' + window.uomFromBase(countedQty, item) + '" style="width:60px;padding:4px;border:1px solid #ddd;border-radius:3px;font-size:12px;" onchange="updateItemCount(' + item.id + ', this.value, ' + item.count_id + ', ' + ((item.pack_size && item.pack_size > 0) ? item.pack_size : 1) + ')" /> ' + escapeHtml(item.unit || '') + '</div>'
           + '</div>'
           + (item.notes ? '<div style="font-size:11px;color:#9ca3af;margin-top:6px;padding-top:6px;border-top:1px solid #f1f5f9;"><strong>메모:</strong> ' + escapeHtml(item.notes) + '</div>' : '')
         + '</div>';
@@ -217,7 +217,7 @@ function icRenderUnassigned(data) {
       + '<span style="flex:1;min-width:0;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="' + escapeHtml((it.item_code || '') + ' ' + (it.item_name || '')) + '">'
         + '<span style="font-family:monospace;color:#6b7280;">' + escapeHtml(it.item_code || '') + '</span> ' + escapeHtml(it.item_name || '')
       + '</span>'
-      + '<span style="font-size:11px;color:#9ca3af;white-space:nowrap;flex-shrink:0;">' + (it.quantity != null ? it.quantity : 0) + ' ' + escapeHtml(it.unit || '') + '</span>'
+      + '<span style="font-size:11px;color:#9ca3af;white-space:nowrap;flex-shrink:0;">' + window.uomFormatStock((it.quantity != null ? it.quantity : 0), it) + '</span>'
       + '</label>';
   }).join('');
 
@@ -282,9 +282,12 @@ function renderDetailActions(status) {
   }
 }
 
-async function updateItemCount(itemId, countedQty, countId) {
+async function updateItemCount(itemId, countedQty, countId, packSize) {
   try {
-    var items = [{ id: itemId, counted_quantity: parseFloat(countedQty), system_quantity: 0 }];
+    // #463: 입력은 관리단위(통/롤) → base_unit 저장(× pack_size). system_quantity·confirm 과 단위 일치(붕괴 방지).
+    var ps = (packSize && packSize > 0) ? packSize : 1;
+    var countedBase = (parseFloat(countedQty) || 0) * ps;
+    var items = [{ id: itemId, counted_quantity: countedBase, system_quantity: 0 }];
     var res = await axios.get('/api/inventory-counts/' + countId);
     var existingItem = (res.data.data.items || []).find(function(i) { return i.id === itemId; });
     if (existingItem) items[0].system_quantity = existingItem.system_quantity;

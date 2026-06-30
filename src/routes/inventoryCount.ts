@@ -177,7 +177,7 @@ inventoryCountRouter.get('/:id', async (c) => {
     const { results: items } = await c.env.DB.prepare(`
       SELECT ci.id, ci.count_id, ci.item_id, ci.system_quantity, ci.counted_quantity, ci.difference, ci.difference_pct, ci.unit, ci.notes,
              ci.storage_zone_id, sz.zone_name AS storage_zone_name,
-             i.item_code, i.item_name
+             i.item_code, i.item_name, i.base_unit, i.pack_size, i.stock_mode
       FROM inventory_count_items ci
       JOIN items i ON ci.item_id = i.id
       LEFT JOIN storage_zones sz ON ci.storage_zone_id = sz.id
@@ -190,7 +190,7 @@ inventoryCountRouter.get('/:id', async (c) => {
     if (count.count_type === 'ZONE' && count.status === 'DRAFT') {
       const entityId = count.entity_id || getEntityId(c) || 1
       const { results: unassigned } = await c.env.DB.prepare(`
-        SELECT i.id AS item_id, i.item_code, i.item_name, i.unit, inv.quantity
+        SELECT i.id AS item_id, i.item_code, i.item_name, i.unit, i.base_unit, i.pack_size, i.stock_mode, inv.quantity
         FROM inventory inv
         JOIN items i ON i.id = inv.item_id
         WHERE inv.storage_zone_id IS NULL AND inv.entity_id = ?
