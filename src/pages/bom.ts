@@ -1,5 +1,6 @@
 // ============================================================================
-// BOM/MRP 페이지
+// 자재명세(BOM) 페이지 — 신모델 product_materials 기반 읽기전용 개요
+// 편집은 items 페이지(원자재 연결). MRP/bom_items 구버전은 은퇴(2026-07-01).
 // ============================================================================
 
 import type { Context } from 'hono'
@@ -10,88 +11,61 @@ import bomScript from '../scripts/bom.js?raw'
 export const bomPage = (c: Context<HonoEnv>) => {
   const content = `
     <div class="space-y-4">
-      <!-- 탭 네비게이션 -->
-      <div class="flex space-x-2">
-        <button data-tab="bom" class="px-4 py-2 rounded text-sm font-medium bg-blue-600 text-white">자재명세(BOM)</button>
-        <button data-tab="mrp" class="px-4 py-2 rounded text-sm font-medium bg-gray-200 text-gray-700">MRP 실행</button>
-        <button data-tab="history" class="px-4 py-2 rounded text-sm font-medium bg-gray-200 text-gray-700">실행 이력</button>
-      </div>
-
-      <!-- 탭 1: BOM 관리 -->
-      <div id="tab-bom" class="tab-content">
-        <div class="ds-card">
-          <div class="flex justify-between items-center p-4 border-b">
-            <h2 class="text-lg font-bold"><i class="fas fa-sitemap mr-2 text-blue-600"></i>자재명세서 (BOM)</h2>
-            <button onclick="openBomAddModal()" class="px-3 py-2 bg-blue-600 text-white rounded text-sm hover:bg-blue-700">
-              <i class="fas fa-plus mr-1"></i>BOM 추가
-            </button>
-          </div>
-          <div class="overflow-x-auto" style="max-height: calc(100vh - 280px); overflow-y: auto;">
-            <table class="w-full ds-table ds-table-striped">
-              <thead>
-                <tr class="bg-gray-50 border-b text-sm text-gray-600">
-                  <th class="col-tag px-4 py-3 text-left">카테고리</th>
-                  <th class="col-name px-4 py-3 text-left">품목</th>
-                  <th class="col-flex px-4 py-3 text-left">원재료</th>
-                  <th class="col-amount px-4 py-3 text-right">m2당 사용량</th>
-                  <th class="col-qty px-4 py-3 text-center">단위</th>
-                  <th class="col-qty px-4 py-3 text-right">로스율</th>
-                  <th class="col-action px-4 py-3 text-center">관리</th>
-                </tr>
-              </thead>
-              <tbody id="bom-tbody"></tbody>
-            </table>
-          </div>
+      <!-- 안내 -->
+      <div class="ds-card p-4 flex items-start justify-between gap-4">
+        <div class="text-sm text-gray-600 flex items-start gap-2">
+          <i class="fas fa-info-circle text-blue-500 mt-0.5"></i>
+          <span>제품별로 연결된 <b>원단/자재</b>와 자동 차감 설정을 보여줍니다. 인쇄 완료 시 이 설정대로 재고가 차감됩니다.
+          자재 연결 수정은 <a href="/items" class="text-blue-600 underline">품목 관리</a>에서 합니다.</span>
         </div>
+        <a href="/items" class="shrink-0 px-3 py-2 bg-blue-600 text-white rounded text-sm hover:bg-blue-700 whitespace-nowrap">
+          <i class="fas fa-link mr-1"></i>품목에서 자재 연결
+        </a>
       </div>
 
-      <!-- 탭 2: MRP 실행 -->
-      <div id="tab-mrp" class="tab-content hidden">
-        <div class="ds-card">
-          <div class="flex justify-between items-center p-4 border-b">
-            <h2 class="text-lg font-bold"><i class="fas fa-calculator mr-2 text-green-600"></i>자재소요계획 (MRP)</h2>
-            <button onclick="openMrpRunModal()" class="px-3 py-2 bg-blue-600 text-white rounded text-sm hover:bg-blue-700">
-              <i class="fas fa-play mr-1"></i>MRP 실행
-            </button>
-          </div>
-          <div id="mrp-result" class="p-4">
-            <div class="text-center py-12 text-gray-400">
-              <i class="fas fa-cogs text-4xl mb-3"></i>
-              <p>MRP 실행 버튼을 클릭하여 자재 소요량을 계산하세요.</p>
-              <p class="text-sm mt-1">확정/생산중 주문의 품목을 BOM 기준으로 원재료 소요량을 산출합니다.</p>
-            </div>
-          </div>
+      <!-- 요약 -->
+      <div id="bom-summary" class="grid grid-cols-3 gap-3"></div>
+
+      <!-- 미연결 경고 -->
+      <div id="bom-unmapped" class="hidden ds-card border border-amber-300 bg-amber-50">
+        <div class="flex items-center justify-between p-3 border-b border-amber-200 cursor-pointer" onclick="toggleUnmapped()">
+          <h3 class="text-sm font-bold text-amber-800">
+            <i class="fas fa-triangle-exclamation mr-1"></i>자재 미연결 제품 <span id="bom-unmapped-count"></span>
+            <span class="font-normal text-amber-700">— 인쇄해도 재고가 차감되지 않습니다</span>
+          </h3>
+          <i id="bom-unmapped-chevron" class="fas fa-chevron-down text-amber-700"></i>
         </div>
+        <div id="bom-unmapped-body" class="hidden p-3 max-h-64 overflow-y-auto"></div>
       </div>
 
-      <!-- 탭 3: 실행 이력 -->
-      <div id="tab-history" class="tab-content hidden">
-        <div class="ds-card">
-          <div class="p-4 border-b">
-            <h2 class="text-lg font-bold"><i class="fas fa-history mr-2 text-gray-500"></i>MRP 실행 이력</h2>
-          </div>
-          <div class="overflow-x-auto" style="max-height: calc(100vh - 280px); overflow-y: auto;">
-            <table class="w-full ds-table ds-table-striped">
-              <thead>
-                <tr class="bg-gray-50 border-b text-sm text-gray-600">
-                  <th class="col-code px-3 py-3 text-left">실행 번호</th>
-                  <th class="col-tag px-3 py-3 text-left">유형</th>
-                  <th class="col-qty px-3 py-3 text-right">자재 수</th>
-                  <th class="col-qty px-3 py-3 text-right">부족</th>
-                  <th class="col-tag px-3 py-3 text-left">실행자</th>
-                  <th class="col-datetime px-3 py-3 text-left">실행일시</th>
-                  <th class="col-action px-3 py-3 text-center">상세</th>
-                </tr>
-              </thead>
-              <tbody id="mrp-history-tbody"></tbody>
-            </table>
-          </div>
+      <!-- 자재명세 개요 -->
+      <div class="ds-card">
+        <div class="flex justify-between items-center p-4 border-b">
+          <h2 class="text-lg font-bold"><i class="fas fa-sitemap mr-2 text-blue-600"></i>자재명세 (제품 → 자재)</h2>
+          <input id="bom-search" type="text" placeholder="제품/자재 검색" oninput="renderBomOverview()"
+                 class="border rounded px-3 py-1.5 text-sm w-56">
+        </div>
+        <div class="overflow-x-auto" style="max-height: calc(100vh - 360px); overflow-y: auto;">
+          <table class="w-full ds-table ds-table-striped">
+            <thead>
+              <tr class="bg-gray-50 border-b text-sm text-gray-600">
+                <th class="col-name px-4 py-3 text-left">제품</th>
+                <th class="col-flex px-4 py-3 text-left">연결 자재</th>
+                <th class="col-tag px-4 py-3 text-center">차감방식</th>
+                <th class="col-qty px-4 py-3 text-right">폭(mm)</th>
+                <th class="col-tag px-4 py-3 text-center">규격</th>
+                <th class="col-qty px-4 py-3 text-right">로스율</th>
+                <th class="col-qty px-4 py-3 text-center">단위</th>
+              </tr>
+            </thead>
+            <tbody id="bom-tbody"></tbody>
+          </table>
         </div>
       </div>
     </div>
   `
   return renderPage(c, {
-    title: '자재명세(BOM) / MRP',
+    title: '자재명세(BOM)',
     activePage: '/bom',
     pageContent: content,
     pageScript: bomScript,

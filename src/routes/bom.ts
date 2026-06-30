@@ -1,315 +1,111 @@
 // ============================================================================
-// BOM/MRP 라우트 — 자재명세서 + 자재소요계획
+// 자재명세(BOM) 라우트 — 신모델 product_materials 기반 읽기전용 개요
+// ----------------------------------------------------------------------------
+// 구버전(bom_items + MRP)은 품목 신모델(2026-06-19, product_materials) 도입으로
+// 은퇴. 자재차감 실로직 = utils/autoDeductInventory.ts(print 시점). 이 페이지는
+// 제품→자재 매핑(product_materials) + 자재 차감설정을 한눈에 보여주는 개요.
+// 편집 SSOT = items 페이지(원자재 연결). bom_items 테이블은 weeklyPurchase /
+// materialShortageCheck가 아직 참조하므로 보존(여기선 미사용).
 // ============================================================================
 
 import { Hono } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
-import { getNextEntitySeqNumber, withSeqRetry } from '../utils/sequenceGenerator'
-import { entityFilter, getEntityId } from '../utils/entityFilter'
-import { runMrpCalculation } from '../utils/mrpCalculator'
 
 const bom = new Hono<HonoEnv>()
 bom.use('*', authMiddleware)
 bom.use('*', requireRole('ADMIN', 'MANAGER'))
 
-// ─── BOM CRUD ─────────────────────────────────────────────────────────────────
-
-// GET / — BOM 목록
-bom.get('/', async (c) => {
+// GET /overview — 제품별 자재명세 개요 (product_materials 기반)
+//   - products: 자재가 연결된 제품 + 각 자재의 차감설정
+//   - unmapped: 제품(item_type=PRODUCT)인데 자재 미연결 → 자동차감 누락 경고
+//   - 자재(items·product_materials)는 법인 공유 → entity 필터 없음 (BOM 공유정책)
+bom.get('/overview', async (c) => {
   try {
-    const { category, item_id } = c.req.query()
-    let query = `
-      SELECT b.*, i.item_name as item_display_name, ic.category_name as item_category_name
-      FROM bom_items b
-      LEFT JOIN items i ON b.item_id = i.id
-      LEFT JOIN item_categories ic ON i.category_id = ic.id
-      WHERE b.is_active = 1
-    `
-    const params: any[] = []
+    // 1. 제품→자재 매핑 (자재 차감설정 동봉)
+    const { results: rows } = await c.env.DB.prepare(`
+      SELECT
+        p.id            AS product_id,
+        p.item_code     AS product_code,
+        p.item_name     AS product_name,
+        COALESCE(NULLIF(p.category, ''), '미분류') AS category,
+        p.item_group    AS item_group,
+        pm.material_item_id,
+        pm.is_default,
+        m.item_code     AS material_code,
+        m.item_name     AS material_name,
+        COALESCE(m.deduction_method, 'ROLL') AS deduction_method,
+        m.width_mm      AS width_mm,
+        m.sheet_spec    AS sheet_spec,
+        COALESCE(m.waste_factor, 1.0) AS waste_factor,
+        m.base_unit     AS base_unit,
+        m.unit          AS unit
+      FROM product_materials pm
+      JOIN items p ON pm.product_item_id = p.id
+      JOIN items m ON pm.material_item_id = m.id
+      WHERE p.is_active = 1
+      ORDER BY category, p.item_name, pm.is_default DESC, m.width_mm, m.item_name
+    `).all() as { results: any[] }
 
-    if (category) {
-      query += ` AND b.category_name = ?`
-      params.push(category)
+    // 제품 단위로 그룹핑 (제품 → materials[])
+    const productMap = new Map<number, any>()
+    for (const r of rows) {
+      let prod = productMap.get(r.product_id)
+      if (!prod) {
+        prod = {
+          id: r.product_id,
+          item_code: r.product_code,
+          item_name: r.product_name,
+          category: r.category,
+          item_group: r.item_group,
+          materials: [],
+        }
+        productMap.set(r.product_id, prod)
+      }
+      prod.materials.push({
+        material_item_id: r.material_item_id,
+        material_code: r.material_code,
+        material_name: r.material_name,
+        deduction_method: r.deduction_method,
+        width_mm: r.width_mm,
+        sheet_spec: r.sheet_spec,
+        waste_factor: r.waste_factor,
+        base_unit: r.base_unit,
+        unit: r.unit,
+        is_default: r.is_default,
+      })
     }
-    if (item_id) {
-      query += ` AND b.item_id = ?`
-      params.push(Number(item_id))
-    }
-    query += ` ORDER BY COALESCE(b.category_name, ''), b.material_name`
+    const products = Array.from(productMap.values())
 
-    const stmt = params.length > 0 ? c.env.DB.prepare(query).bind(...params) : c.env.DB.prepare(query)
-    const { results } = await stmt.all()
-    return c.json({ success: true, data: results })
-  } catch (error) {
-    console.error('src/routes/bom.ts error:', error)
-    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
-  }
-})
+    // 2. 자재 미연결 제품 (item_type=PRODUCT인데 product_materials 없음 → 차감 누락)
+    const { results: unmapped } = await c.env.DB.prepare(`
+      SELECT id, item_code, item_name, COALESCE(NULLIF(category, ''), '미분류') AS category
+      FROM items
+      WHERE is_active = 1 AND item_type = 'PRODUCT'
+        AND id NOT IN (SELECT DISTINCT product_item_id FROM product_materials)
+      ORDER BY category, item_name
+    `).all() as { results: any[] }
 
-// POST / — BOM 항목 추가
-bom.post('/', async (c) => {
-  try {
-    const body = await c.req.json()
-    const { item_id, category_name, material_item_id, material_name, usage_per_sqm, usage_unit, waste_factor, notes } = body
-    const user = c.get('user')
+    // 3. 전체 제품 수
+    const totalRow = await c.env.DB.prepare(
+      `SELECT COUNT(*) AS cnt FROM items WHERE is_active = 1 AND item_type = 'PRODUCT'`
+    ).first() as any
+    const totalProducts = totalRow?.cnt || 0
 
-    if (!material_item_id || !material_name) {
-      return c.json({ success: false, error: '원재료 정보가 필요합니다.' }, 400)
-    }
-    if (!item_id && !category_name) {
-      return c.json({ success: false, error: '품목 또는 카테고리를 지정해주세요.' }, 400)
-    }
-
-    const result = await c.env.DB.prepare(`
-      INSERT INTO bom_items (item_id, category_name, material_item_id, material_name, usage_per_sqm, usage_unit, waste_factor, notes, created_by)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).bind(
-      item_id || null,
-      category_name || null,
-      material_item_id,
-      material_name,
-      usage_per_sqm || 0,
-      usage_unit || 'M',
-      waste_factor || 1.0,
-      notes || null,
-      user?.id
-    ).run()
-
-    return c.json({ success: true, data: { id: result.meta?.last_row_id } })
-  } catch (error) {
-    console.error('src/routes/bom.ts error:', error)
-    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
-  }
-})
-
-// PUT /:id — BOM 수정
-bom.put('/:id', async (c) => {
-  try {
-    const id = Number(c.req.param('id'))
-    const body = await c.req.json()
-    const { item_id, category_name, material_item_id, material_name, usage_per_sqm, usage_unit, waste_factor, notes } = body
-
-    await c.env.DB.prepare(`
-      UPDATE bom_items SET item_id = ?, category_name = ?, material_item_id = ?, material_name = ?,
-        usage_per_sqm = ?, usage_unit = ?, waste_factor = ?, notes = ?, updated_at = CURRENT_TIMESTAMP
-      WHERE id = ?
-    `).bind(
-      item_id || null, category_name || null, material_item_id, material_name,
-      usage_per_sqm || 0, usage_unit || 'M', waste_factor || 1.0, notes || null, id
-    ).run()
-
-    return c.json({ success: true })
-  } catch (error) {
-    console.error('src/routes/bom.ts error:', error)
-    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
-  }
-})
-
-// DELETE /:id — BOM 비활성화
-bom.delete('/:id', async (c) => {
-  try {
-    const id = Number(c.req.param('id'))
-    await c.env.DB.prepare(
-      `UPDATE bom_items SET is_active = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ?`
-    ).bind(id).run()
-    return c.json({ success: true })
-  } catch (error) {
-    console.error('src/routes/bom.ts error:', error)
-    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
-  }
-})
-
-// GET /by-item/:itemId — 품목별 BOM
-bom.get('/by-item/:itemId', async (c) => {
-  try {
-    const itemId = Number(c.req.param('itemId'))
-    const { results } = await c.env.DB.prepare(
-      `SELECT id, item_id, category_name, material_item_id, material_name, usage_per_sqm, usage_unit, waste_factor, notes, created_by, created_at, updated_at FROM bom_items WHERE item_id = ? AND is_active = 1 ORDER BY material_name`
-    ).bind(itemId).all()
-    return c.json({ success: true, data: results })
-  } catch (error) {
-    console.error('src/routes/bom.ts error:', error)
-    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
-  }
-})
-
-// GET /by-category/:cat — 카테고리별 BOM
-bom.get('/by-category/:cat', async (c) => {
-  try {
-    const cat = c.req.param('cat')
-    const { results } = await c.env.DB.prepare(
-      `SELECT id, item_id, category_name, material_item_id, material_name, usage_per_sqm, usage_unit, waste_factor, notes, created_by, created_at, updated_at FROM bom_items WHERE category_name = ? AND is_active = 1 ORDER BY material_name`
-    ).bind(cat).all()
-    return c.json({ success: true, data: results })
-  } catch (error) {
-    console.error('src/routes/bom.ts error:', error)
-    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
-  }
-})
-
-// GET /categories — BOM에 사용 가능한 카테고리 목록
-bom.get('/categories', async (c) => {
-  try {
-    const { results } = await c.env.DB.prepare(
-      `SELECT id, category_name, category_code FROM item_categories WHERE is_active = 1 ORDER BY sort_order, category_name`
-    ).all()
-    return c.json({ success: true, data: results })
-  } catch (error) {
-    console.error('src/routes/bom.ts error:', error)
-    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
-  }
-})
-
-// GET /materials — 원재료 (재고 품목) 목록
-bom.get('/materials', async (c) => {
-  try {
-    // UP4 백로그: 창고별 다중행 → 품목당 SUM/MAX 집계(행 중복 제거). id는 대표 행 PK.
-    const { results } = await c.env.DB.prepare(`
-      SELECT MIN(inv.id) as id, inv.item_id, SUM(inv.quantity) as quantity, MAX(inv.safe_stock) as safe_stock,
-             i.item_name, i.unit, ic.category_name
-      FROM inventory inv
-      JOIN items i ON inv.item_id = i.id
-      LEFT JOIN item_categories ic ON i.category_id = ic.id
-      WHERE 1=1
-      GROUP BY inv.item_id
-      ORDER BY i.item_name
-    `).all()
-    return c.json({ success: true, data: results })
-  } catch (error) {
-    console.error('src/routes/bom.ts error:', error)
-    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
-  }
-})
-
-// ─── MRP ──────────────────────────────────────────────────────────────────────
-
-// POST /mrp/run — MRP 실행
-bom.post('/mrp/run', async (c) => {
-  try {
-    const body = await c.req.json()
-    const user = c.get('user')
-
-    const result = await runMrpCalculation(c.env.DB, {
-      dateFrom: body.date_from,
-      dateTo: body.date_to,
-      orderId: body.order_id ? Number(body.order_id) : undefined,
-      runBy: user?.id,
-      runType: body.run_type || 'MANUAL',
-      entityId: getEntityId(c) || 1,
+    return c.json({
+      success: true,
+      data: {
+        products,
+        unmapped,
+        summary: {
+          totalProducts,
+          mappedProducts: products.length,
+          unmappedProducts: unmapped.length,
+        },
+      },
     })
-
-    return c.json({ success: true, data: result })
   } catch (error) {
-    console.error('src/routes/bom.ts error:', error)
-    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
-  }
-})
-
-// GET /mrp/runs — MRP 실행 이력
-bom.get('/mrp/runs', async (c) => {
-  try {
-    // #174: entity 필터 적용
-    const ef = entityFilter(c, 'mr')
-    const { results } = await c.env.DB.prepare(`
-      SELECT mr.*, u.name as run_by_name
-      FROM mrp_runs mr
-      LEFT JOIN users u ON mr.run_by = u.id
-      WHERE 1=1${ef.clause}
-      ORDER BY mr.created_at DESC
-      LIMIT 50
-    `).bind(...ef.params).all()
-    return c.json({ success: true, data: results })
-  } catch (error) {
-    console.error('src/routes/bom.ts error:', error)
-    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
-  }
-})
-
-// GET /mrp/runs/:id — MRP 결과 상세
-bom.get('/mrp/runs/:id', async (c) => {
-  try {
-    const id = Number(c.req.param('id'))
-    const run = await c.env.DB.prepare(
-      `SELECT mr.*, u.name as run_by_name FROM mrp_runs mr LEFT JOIN users u ON mr.run_by = u.id WHERE mr.id = ?`
-    ).bind(id).first()
-    if (!run) return c.json({ success: false, error: '실행 이력을 찾을 수 없습니다.' }, 404)
-
-    const { results } = await c.env.DB.prepare(
-      `SELECT id, run_id, material_item_id, material_name, required_quantity, current_stock, on_order_quantity, shortfall, auto_pr_id, created_at FROM mrp_results WHERE run_id = ? ORDER BY shortfall DESC, material_name`
-    ).bind(id).all()
-
-    return c.json({ success: true, data: { run, results } })
-  } catch (error) {
-    console.error('src/routes/bom.ts error:', error)
-    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
-  }
-})
-
-// POST /mrp/runs/:id/create-pr — 부족 자재 → PR 자동 생성
-bom.post('/mrp/runs/:id/create-pr', async (c) => {
-  try {
-    const runId = Number(c.req.param('id'))
-    const user = c.get('user')
-
-    // 부족 자재 조회
-    const { results: shortfalls } = await c.env.DB.prepare(
-      `SELECT id, run_id, material_item_id, material_name, required_quantity, current_stock, on_order_quantity, shortfall FROM mrp_results WHERE run_id = ? AND shortfall > 0`
-    ).bind(runId).all() as { results: any[] }
-
-    if (shortfalls.length === 0) {
-      return c.json({ success: false, error: '부족 자재가 없습니다.' }, 400)
-    }
-
-    // PR 번호 생성 — 법인코드 E{eid} 내장 (행 entity_id와 동일 eid). 채번 경로 통일.
-    const today = new Date().toISOString().slice(0, 10).replace(/-/g, '')
-    const requestNumber = await getNextEntitySeqNumber(c.env.DB, 'purchase_requests', 'request_number', getEntityId(c) || 1, today, { base: 'PR-' })
-
-    // PR 생성
-    const prResult = await c.env.DB.prepare(`
-      INSERT INTO purchase_requests (request_number, requester_id, urgency, status, reason, notes, entity_id)
-      VALUES (?, ?, 'NORMAL', 'PENDING', ?, ?, ?)
-    `).bind(
-      requestNumber,
-      user?.id,
-      `MRP 자동 생성 (실행 #${runId})`,
-      `MRP 실행 결과 부족 자재 ${shortfalls.length}건`,
-      getEntityId(c) || 1
-    ).run()
-
-    const prId = prResult.meta?.last_row_id as number
-
-    // UP4 백로그: material_item_id가 곧 자재 item_id — inventory.id 조회(행PK≠item_id 버그) 제거.
-
-    // PR 품목 INSERT + MRP 결과 UPDATE를 batch로 일괄 처리
-    const batchStmts: D1PreparedStatement[] = shortfalls.flatMap((s: any, i: number) => [
-      c.env.DB.prepare(`
-        INSERT INTO purchase_request_items (request_id, item_id, item_name, quantity, unit, sort_order, notes, entity_id)
-        VALUES (?, ?, ?, ?, 'EA', ?, ?, ?)
-      `).bind(
-        prId,
-        s.material_item_id || null,
-        s.material_name,
-        Math.ceil(s.shortfall),
-        i,
-        `MRP 부족량: ${s.shortfall.toFixed(2)}`,
-        getEntityId(c) || 1
-      ),
-      c.env.DB.prepare(
-        `UPDATE mrp_results SET auto_pr_id = ? WHERE id = ?`
-      ).bind(prId, s.id),
-    ])
-    // MRP 실행 기록 업데이트도 batch에 포함
-    batchStmts.push(
-      c.env.DB.prepare(
-        `UPDATE mrp_runs SET auto_pr_created = auto_pr_created + 1 WHERE id = ?`
-      ).bind(runId)
-    )
-    await c.env.DB.batch(batchStmts)
-
-    return c.json({ success: true, data: { prId, requestNumber, itemCount: shortfalls.length } })
-  } catch (error) {
-    console.error('src/routes/bom.ts error:', error)
+    console.error('src/routes/bom.ts overview error:', error)
     return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
   }
 })
