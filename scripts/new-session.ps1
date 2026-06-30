@@ -39,8 +39,17 @@ if ($LASTEXITCODE -ne 0) { Write-Warning "base '$Base' not found -> using 'main'
 
 New-Item -ItemType Directory -Force -Path $wtRoot | Out-Null
 Write-Host "[new-session] worktree add  $wtPath  (branch $branch  base $Base)" -ForegroundColor Cyan
+# git writes normal progress ("Preparing worktree ...") to STDERR. In PS 5.1 with
+# $ErrorActionPreference='Stop' that native stderr is promoted to a terminating
+# NativeCommandError, aborting BEFORE the junction loop below -> the worktree folder
+# exists but node_modules/.wrangler junctions are missing -> build/tsc broken.
+# Drop to 'Continue' for the native call and gate on $LASTEXITCODE instead.
+$prevEAP = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
 git -C $root worktree add -b $branch "$wtPath" "$Base"
-if ($LASTEXITCODE -ne 0) { throw "worktree add failed" }
+$addExit = $LASTEXITCODE
+$ErrorActionPreference = $prevEAP
+if ($addExit -ne 0) { throw "worktree add failed (exit $addExit)" }
 
 # junction shared state (all gitignored: build / runtime / secrets)
 foreach ($l in @("node_modules", ".wrangler")) {
