@@ -5,7 +5,8 @@
  *   SMS: SMS.asmx (SendSMSMessage, SendLMSMessage, SendMessages)
  *   알림톡: KakaoTalk.asmx (SendATKakaotalk, SendATKakaotalks, GetKakaotalkTemplates)
  */
-import { barobillCall, parseXmlArray, parseXmlValues, type BarobillConfig } from './barobillClient'
+import { barobillCall, getPartnerBalance, parseXmlArray, parseXmlValues, type BarobillConfig } from './barobillClient'
+import { BAROBILL_CHARGE_CODE } from '../constants/barobillCodes'
 
 // ── 메시지 타입 (기존 kakaoProvider.ts에서 이관) ──
 
@@ -296,21 +297,33 @@ export class BarobillSmsProvider {
     }
   }
 
-  /** 잔액 조회 */
+  /**
+   * 잔액 조회 — 회원사(remainPoint) + 파트너(partnerPoint) 지갑.
+   * 동산기획은 파트너 정산 모델이라 회원사 0·파트너에 실잔액이 있음 → 파트너 잔액을 반드시 조회.
+   * (이전: partnerPoint 0 하드코딩 → 항상 0원 표시 버그)
+   */
   async getBalance(): Promise<{ remainPoint: number; partnerPoint: number }> {
+    let remainPoint = 0
+    let partnerPoint = 0
     try {
-      const result = await barobillCall(this.config, 'SMS', 'GetBalanceCostAmount', {})
-      return { remainPoint: parseFloat(result) || 0, partnerPoint: 0 }
-    } catch (err) {
-      return { remainPoint: 0, partnerPoint: 0 }
-    }
+      remainPoint = parseFloat(await barobillCall(this.config, 'SMS', 'GetBalanceCostAmount', {})) || 0
+    } catch (err) { /* 회원사 잔액 실패는 0 유지 */ }
+    try {
+      // 공통 단일 지갑 — 검증된 헬퍼 재사용(GetBalanceCostAmountOfInterOP)
+      partnerPoint = await getPartnerBalance(this.config)
+    } catch (err) { /* 파트너 잔액 실패는 0 유지 */ }
+    return { remainPoint, partnerPoint }
   }
 
-  /** 단가 조회 */
+  /** 알림톡 발송 단가 조회 (GetChargeUnitCost, ChargeCode=알림톡). */
   async getUnitCost(): Promise<{ unitCost: number }> {
     try {
-      const result = await barobillCall(this.config, 'KakaoTalk' as any, 'GetChargeUnitCost', { ID: '', ServiceType: 3 })
-      return { unitCost: parseFloat(result) || 0 }
+      const result = await barobillCall(this.config, 'KakaoTalk' as any, 'GetChargeUnitCost', {
+        ChargeCode: BAROBILL_CHARGE_CODE.ALIMTALK,
+      })
+      const v = parseFloat(result)
+      // 음수=바로빌 오류코드 → 0 처리
+      return { unitCost: Number.isFinite(v) && v > 0 ? v : 0 }
     } catch (err) {
       return { unitCost: 0 }
     }

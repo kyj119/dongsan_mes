@@ -84,6 +84,20 @@ export const BAROBILL_CARD_TYPE = {
   PERSONAL: 'P',  // 개인카드
 } as const
 
+/**
+ * 바로빌 통합 과금 단가코드 (GetChargeUnitCost ChargeCode).
+ * 전 서비스 공통 단일 테이블 — KakaoTalk.asmx·SMS.asmx 어느 엔드포인트로 조회해도 동일값.
+ * ⚠️ GetChargeUnitCost 시그니처는 (CERTKEY, CorpNum, ChargeCode:int) 단 하나.
+ *    (구코드의 ID/ServiceType 파라미터는 현행 WSDL에 존재하지 않음 → 단가 0/오류 원인)
+ * 출처: 라이브 prod API 실측 (동산기획 corpNum, 2026-07-01). 가격은 회원사 계약단가.
+ *   15=알림톡 7원(최저=알림톡) · 9=SMS 11원 · 17=LMS 23원 · 3~8,12=MMS 55원.
+ */
+export const BAROBILL_CHARGE_CODE = {
+  ALIMTALK: 15, // 알림톡
+  SMS: 9,       // 문자 단문
+  LMS: 17,      // 문자 장문
+} as const
+
 /** 바로빌 결과코드(음수) → 한글 사유. 등록/해지/즉시조회·과금 관련. 출처: 개발자센터 오류코드. */
 export const BAROBILL_ERROR_MESSAGES: Record<number, string> = {
   // 과금/포인트
