@@ -24,7 +24,7 @@ export function messagesPage(c: Context<HonoEnv>) {
       <div class="text-3xl font-bold text-gray-900 mt-1" id="msgUnitCost">-</div>
     </div>
     <div class="ds-card p-5">
-      <div class="text-xs text-gray-500">잔여 포인트</div>
+      <div class="text-xs text-gray-500">통합 포인트</div>
       <div class="text-3xl font-bold text-gray-900 mt-1" id="msgBalance">-</div>
       <div class="text-xs text-gray-400 mt-1" id="msgPartnerPoint"></div>
     </div>
