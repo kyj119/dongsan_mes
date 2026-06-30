@@ -399,7 +399,7 @@ cardExpRouter.post('/sync', requireRole('ADMIN'), async (c) => {
         const amount = Math.abs(parseFloat(item.ApprovalAmount || item.TotalAmount || '0'))
         // 가승인(pre-auth)은 임시 홀드일 뿐 실지출 아님(실청구는 별도 거래로 옴). 비용·미분류에서 제외.
         //   is_offset 의미를 "순비용에서 제외"로 확장(상계 OR 가승인). 단독 가승인=offset_pair_id NULL로 진짜 상계와 구분.
-        //   기존 모든 합계/미분류 쿼리가 is_offset=0만 집계하므로 쿼리 수정 없이 자동 제외됨. (마이그 0413 백필)
+        //   기존 모든 합계/미분류 쿼리가 is_offset=0만 집계하므로 쿼리 수정 없이 자동 제외됨. (마이그 0416 백필)
         const isPreauth = (item.UseStoreName || '').includes('가승인')
 
         await c.env.DB.prepare(`
