@@ -406,12 +406,13 @@ inspectionsRouter.get('/results/export/csv', async (c) => {
 inspectionsRouter.get('/results/:id', async (c) => {
   try {
     const id = c.req.param('id')
+    const ef = entityFilter(c, 'ir')  // #445: 단건 cross-tenant read 차단(형제 목록은 ir 격리)
     const result = await c.env.DB.prepare(`
       SELECT ir.*, u.name as inspector_name
       FROM inspection_results ir
       LEFT JOIN users u ON ir.inspector_id = u.id
-      WHERE ir.id = ?
-    `).bind(id).first()
+      WHERE ir.id = ?${ef.clause}
+    `).bind(id, ...ef.params).first()
 
     if (!result) return c.json({ success: false, error: '검수 결과를 찾을 수 없습니다.' }, 404)
 

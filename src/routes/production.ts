@@ -59,16 +59,17 @@ productionRouter.get('/logs', async (c) => {
 productionRouter.get('/logs/:id', async (c) => {
   try {
     const id = c.req.param('id')
+    const ef = entityFilter(c, 'pl')  // #445: 단건 cross-tenant read 차단(형제 /logs는 격리)
 
     // Get log details
     const { results: logResults } = await c.env.DB.prepare(`
-      SELECT 
+      SELECT
         pl.*,
         e.name as supervisor_name
       FROM production_logs pl
       LEFT JOIN employees e ON pl.supervisor_id = e.id
-      WHERE pl.id = ?
-    `).bind(id).all()
+      WHERE pl.id = ?${ef.clause}
+    `).bind(id, ...ef.params).all()
 
     if (logResults.length === 0) {
       return c.json({ success: false, error: 'Production log not found' }, 404)
@@ -245,11 +246,12 @@ productionRouter.patch('/work-records/:id', async (c) => {
     const id = c.req.param('id')
     const body = await c.req.json()
     const { end_time, quantity_completed, status, notes } = body
+    const ef = entityFilter(c)  // #445: work_records 단건 cross-tenant read/write 차단
 
     // Get current record
     const { results } = await c.env.DB.prepare(`
-      SELECT id, production_log_id, card_id, employee_id, work_type, start_time, end_time, work_hours, quantity_completed, quantity_target, status, notes FROM work_records WHERE id = ?
-    `).bind(id).all()
+      SELECT id, production_log_id, card_id, employee_id, work_type, start_time, end_time, work_hours, quantity_completed, quantity_target, status, notes FROM work_records WHERE id = ?${ef.clause}
+    `).bind(id, ...ef.params).all()
 
     if (results.length === 0) {
       return c.json({ success: false, error: 'Work record not found' }, 404)
@@ -268,8 +270,8 @@ productionRouter.patch('/work-records/:id', async (c) => {
     await c.env.DB.prepare(`
       UPDATE work_records
       SET end_time = ?, work_hours = ?, quantity_completed = ?, status = ?, notes = ?, updated_at = CURRENT_TIMESTAMP
-      WHERE id = ?
-    `).bind(end_time, work_hours, quantity_completed, status, notes, id).run()
+      WHERE id = ?${ef.clause}
+    `).bind(end_time, work_hours, quantity_completed, status, notes, id, ...ef.params).run()
 
     return c.json({ success: true })
   } catch (error) {
@@ -390,11 +392,12 @@ productionRouter.patch('/quality-issues/:id', async (c) => {
 
     const resolved_by = empResults.length > 0 ? (empResults[0] as Record<string, unknown>).id : null
 
+    const ef = entityFilter(c)  // #445: quality_issues 단건 cross-tenant write 차단
     await c.env.DB.prepare(`
       UPDATE quality_issues
       SET status = ?, corrective_action = ?, resolved_by = ?, resolved_at = ?, updated_at = CURRENT_TIMESTAMP
-      WHERE id = ?
-    `).bind(status, corrective_action, resolved_by, resolved_at || new Date().toISOString(), id).run()
+      WHERE id = ?${ef.clause}
+    `).bind(status, corrective_action, resolved_by, resolved_at || new Date().toISOString(), id, ...ef.params).run()
 
     return c.json({ success: true })
   } catch (error) {

@@ -358,6 +358,13 @@ messagesRouter.get('/logs', async (c) => {
     const whereConditions: string[] = []
     const bindings: any[] = []
 
+    // #448: cross-tenant read 차단 — entity 조건을 공용 whereClause에 병합(count·main 동시 적용). ADMIN(0)=무필터.
+    const efMsg = entityFilter(c, 'ksl')
+    if (efMsg.clause) {
+      whereConditions.push(efMsg.clause.replace(/^ AND /, ''))
+      bindings.push(...efMsg.params)
+    }
+
     if (channel) {
       whereConditions.push('ksl.channel = ?')
       bindings.push(channel)

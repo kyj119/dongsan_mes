@@ -80,12 +80,13 @@ emailsRouter.get('/logs', requireRole('ADMIN', 'MANAGER'), async (c) => {
 emailsRouter.get('/logs/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
   try {
     const id = c.req.param('id')
+    const ef = entityFilter(c, 'el')  // #448: 단건 cross-tenant read 차단(형제 /logs는 el 격리)
     const log = await c.env.DB.prepare(`
       SELECT el.*, u.name as sent_by_name
       FROM email_logs el
       LEFT JOIN users u ON el.sent_by = u.id
-      WHERE el.id = ?
-    `).bind(id).first()
+      WHERE el.id = ?${ef.clause}
+    `).bind(id, ...ef.params).first()
 
     if (!log) return c.json({ success: false, error: '이메일 로그를 찾을 수 없습니다.' }, 404)
     return c.json({ success: true, data: log })
