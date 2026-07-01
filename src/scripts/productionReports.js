@@ -750,3 +750,101 @@ var elInitDate = document.getElementById('reportDate');
 if (elInitDate) elInitDate.value = getToday();
 else console.warn('[productionReports] #reportDate not found');
 loadDailySummary();
+
+// ════════════════════════════════════════════════════════════
+// OEE(설비종합효율) — routes/oee.ts 활성화 UI
+// ?raw 전역 스코프 충돌 방지: IIFE 로컬 + window.oee* 만 노출
+// ════════════════════════════════════════════════════════════
+(function () {
+  var esc = window.escapeHtml || function (s) { return s == null ? '' : String(s).replace(/[&<>"]/g, function (c) { return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]; }); };
+  var toast = function (m, t) { if (window.showToast) window.showToast(m, t); else console.log('[oee]', m); };
+  var apiErr = function (e, m) { if (window.handleApiError) window.handleApiError(e, m); else { console.error('[oee]', m, e); toast(m, 'error'); } };
+  var oeeInited = false;
+
+  function num(v) { return Number(v || 0).toLocaleString(); }
+  function fixed(v, d) { var f = Math.pow(10, d); return (Math.round(Number(v || 0) * f) / f).toLocaleString(); }
+
+  // 값 구간 색상: 양호(≥85) 녹색 / 주의(≥60) 황색 / 불량 적색
+  function gaugeBadge(v) {
+    if (v == null || isNaN(v)) return '<span class="text-gray-400">-</span>';
+    var n = Number(v);
+    var cls = n >= 85 ? 'bg-green-50 text-green-700' : (n >= 60 ? 'bg-amber-50 text-amber-700' : 'bg-red-50 text-red-600');
+    return '<span class="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold tabular-nums ' + cls + '">' + (Math.round(n * 10) / 10) + '%</span>';
+  }
+
+  function ensureDate() {
+    var el = document.getElementById('oeeDate');
+    if (el && !el.value) el.value = new Date().toISOString().substring(0, 10);
+    return el ? el.value : new Date().toISOString().substring(0, 10);
+  }
+
+  function renderSummary(rows) {
+    var ids = { availability_pct: 'oeeAvgAvail', performance_pct: 'oeeAvgPerf', quality_pct: 'oeeAvgQual', oee_pct: 'oeeAvgOee' };
+    Object.keys(ids).forEach(function (key) {
+      var el = document.getElementById(ids[key]);
+      if (!el) return;
+      if (!rows.length) { el.textContent = '-'; el.className = 'text-2xl font-bold'; return; }
+      var avg = Math.round((rows.reduce(function (s, r) { return s + Number(r[key] || 0); }, 0) / rows.length) * 10) / 10;
+      el.textContent = avg + '%';
+      el.className = 'text-2xl font-bold ' + (avg >= 85 ? 'text-green-600' : (avg >= 60 ? 'text-amber-600' : 'text-red-600'));
+    });
+  }
+
+  // 탭 최초 진입 시 1회 자동 조회
+  window.oeeInit = function () {
+    if (oeeInited) return;
+    oeeInited = true;
+    ensureDate();
+    window.oeeLoad();
+  };
+
+  // 기준일 OEE 조회 (GET /api/oee/daily)
+  window.oeeLoad = function () {
+    var body = document.getElementById('oeeBody');
+    if (!body) { console.warn('[oee] #oeeBody not found'); return; }
+    var date = ensureDate();
+    body.innerHTML = '<tr><td colspan="9" class="text-center py-8 text-gray-400"><i class="fas fa-spinner fa-spin mr-1"></i>로딩…</td></tr>';
+    axios.get('/api/oee/daily?date=' + encodeURIComponent(date)).then(function (res) {
+      var rows = (res.data && res.data.data) || [];
+      renderSummary(rows);
+      var hint = document.getElementById('oeeHint');
+      if (!rows.length) {
+        body.innerHTML = '<tr><td colspan="9" class="text-center py-8 text-gray-400">' + esc(date) + ' 데이터가 없습니다. "OEE 계산"을 실행하세요.</td></tr>';
+        if (hint) hint.textContent = '';
+        return;
+      }
+      body.innerHTML = rows.map(function (r) {
+        return '<tr>' +
+          '<td class="font-medium">' + esc(r.equipment_name || r.equipment_id || '-') + '</td>' +
+          '<td class="text-center">' + gaugeBadge(r.availability_pct) + '</td>' +
+          '<td class="text-center">' + gaugeBadge(r.performance_pct) + '</td>' +
+          '<td class="text-center">' + gaugeBadge(r.quality_pct) + '</td>' +
+          '<td class="text-center">' + gaugeBadge(r.oee_pct) + '</td>' +
+          '<td class="text-right tabular-nums">' + fixed(r.actual_run_hours, 1) + 'h</td>' +
+          '<td class="text-right tabular-nums">' + num(r.total_produced) + ' / ' + num(r.good_produced) + '</td>' +
+          '<td class="text-right tabular-nums">' + num(r.defect_count) + '</td>' +
+          '<td class="text-right tabular-nums">' + fixed(r.actual_output_sqm, 1) + '</td>' +
+          '</tr>';
+      }).join('');
+      if (hint) hint.textContent = rows.length + '대 · ' + esc(date);
+    }).catch(function (e) {
+      apiErr(e, 'OEE 조회 실패');
+      body.innerHTML = '<tr><td colspan="9" class="text-center py-8 text-red-400">로드 실패</td></tr>';
+    });
+  };
+
+  // 기준일 재계산 (POST /api/oee/calculate, 관리자/매니저)
+  window.oeeCalculate = function () {
+    var date = ensureDate();
+    var hint = document.getElementById('oeeHint');
+    if (hint) hint.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i>계산 중…';
+    axios.post('/api/oee/calculate', { date: date }).then(function (res) {
+      var d = (res.data && res.data.data) || {};
+      toast('OEE 계산 완료' + (d.equipmentCount != null ? ' (' + d.equipmentCount + '대)' : ''), 'success');
+      window.oeeLoad();
+    }).catch(function (e) {
+      apiErr(e, 'OEE 계산 실패 (권한: 관리자/매니저)');
+      if (hint) hint.textContent = '';
+    });
+  };
+})();

@@ -3,9 +3,10 @@ import type { HonoEnv } from '../types/env'
 import { renderPage } from '../layout'
 import pageScript from '../scripts/equipment.js?raw'
 import dashboardScript from '../scripts/equipmentDashboard.js?raw'
+import queueScript from '../scripts/equipment/queue.js?raw'
 
 export function equipmentPage(c: Context<HonoEnv>) {
-  const combinedScript = pageScript + '\n\n' + dashboardScript
+  const combinedScript = pageScript + '\n\n' + dashboardScript + '\n\n' + queueScript
 
   return renderPage(c, {
     title: '장비 관리',
@@ -75,6 +76,9 @@ export function equipmentPage(c: Context<HonoEnv>) {
                     </button>
                     <button onclick="switchTab('dashboard')" id="tabDashboard" class="tab-btn px-4 py-2 rounded-md text-sm font-medium text-gray-500 hover:text-gray-700">
                         <i class="fas fa-chart-bar mr-1"></i>현황
+                    </button>
+                    <button onclick="switchTab('queue')" id="tabQueue" class="tab-btn px-4 py-2 rounded-md text-sm font-medium text-gray-500 hover:text-gray-700">
+                        <i class="fas fa-layer-group mr-1"></i>큐/부하
                     </button>
                 </div>
                 <button onclick="openAddModal()" class="ds-btn ds-btn-primary ds-btn-sm">
@@ -201,6 +205,63 @@ export function equipmentPage(c: Context<HonoEnv>) {
                         </div>
                     </div>
 
+                </div>
+            </div>
+
+            <!-- 큐/부하 탭 -->
+            <div id="panelQueue" class="hidden">
+                <div class="space-y-4">
+                    <!-- 툴바 -->
+                    <div class="ds-card ds-card-compact flex flex-wrap gap-2 items-center">
+                        <div class="text-sm text-gray-600">
+                            <i class="fas fa-layer-group mr-1" style="color:#3b82f6"></i>장비별 인쇄 큐 · 부하 (진행중 카드 기준)
+                            <span class="text-[11px] text-gray-400 ml-1">— 예상시간·부하는 큐에서 "예상시간 재계산" 실행 후 반영</span>
+                        </div>
+                        <div class="ml-auto flex gap-2">
+                            <button onclick="window.eqqUpdateAvgSpeed()" class="ds-btn ds-btn-ghost ds-btn-sm" title="최근 30일 출력이력으로 장비별 평균 인쇄속도(분/㎡)를 재계산합니다">
+                                <i class="fas fa-gauge-high" style="margin-right:4px"></i>평균속도 갱신
+                            </button>
+                            <button onclick="window.eqqLoad()" class="ds-btn ds-btn-ghost ds-btn-sm">
+                                <i class="fas fa-sync-alt" style="margin-right:4px"></i>새로고침
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- 장비 부하 카드 그리드 -->
+                    <div id="eqqWorkloadGrid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                        <div class="col-span-full text-center py-8 text-gray-400"><i class="fas fa-spinner fa-spin"></i> 로딩 중...</div>
+                    </div>
+
+                    <!-- 선택 장비 큐 상세 -->
+                    <div class="ds-card" style="padding:0;overflow:hidden;">
+                        <div style="padding:var(--space-md);border-bottom:1px solid var(--c-border);display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;">
+                            <h2 class="ds-card-title">
+                                <i class="fas fa-list-ol" style="color:#10b981;margin-right:8px"></i><span id="eqqQueueTitle">장비를 선택하세요</span>
+                            </h2>
+                            <button id="eqqRecalcBtn" onclick="window.eqqRecalc()" class="ds-btn ds-btn-ghost ds-btn-sm hidden" title="큐 순서 기준으로 예상 시작·종료 시각을 재계산합니다">
+                                <i class="fas fa-clock-rotate-left" style="margin-right:4px"></i>예상시간 재계산
+                            </button>
+                        </div>
+                        <div class="ds-table-wrap">
+                            <table class="ds-table ds-table-compact">
+                                <thead>
+                                    <tr>
+                                        <th style="width:48px;text-align:center;">순서</th>
+                                        <th class="col-code">카드</th>
+                                        <th class="col-name">거래처 · 품목</th>
+                                        <th class="col-qty" style="text-align:center;">규격</th>
+                                        <th class="col-amount" style="text-align:right;">예상(분)</th>
+                                        <th style="text-align:center;">예상 시작~종료</th>
+                                        <th class="col-date" style="text-align:center;">납기</th>
+                                        <th style="width:84px;text-align:center;">순서변경</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="eqqQueueBody">
+                                    <tr><td colspan="8" class="text-center py-8 text-gray-400">상단에서 장비를 선택하면 인쇄 대기 큐가 표시됩니다.</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
                 </div>
             </div>
 

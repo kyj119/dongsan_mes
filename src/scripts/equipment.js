@@ -56,12 +56,16 @@ function switchTab(tab) {
     if (panelDashboard) {
         panelDashboard.classList.toggle('hidden', tab !== 'dashboard');
     }
+    var panelQueue = document.getElementById('panelQueue');
+    if (panelQueue) {
+        panelQueue.classList.toggle('hidden', tab !== 'queue');
+    }
 
     document.querySelectorAll('.tab-btn').forEach(function(btn) {
         btn.classList.remove('bg-white', 'shadow', 'text-gray-800');
         btn.classList.add('text-gray-500');
     });
-    var tabIdMap = { 'list': 'tabList', 'layout': 'tabLayout', 'dashboard': 'tabDashboard' };
+    var tabIdMap = { 'list': 'tabList', 'layout': 'tabLayout', 'dashboard': 'tabDashboard', 'queue': 'tabQueue' };
     var activeBtn = document.getElementById(tabIdMap[tab]);
     if (activeBtn) {
         activeBtn.classList.add('bg-white', 'shadow', 'text-gray-800');
@@ -74,6 +78,8 @@ function switchTab(tab) {
         loadLayout();
     } else if (tab === 'dashboard') {
         loadEquipmentData();
+    } else if (tab === 'queue') {
+        if (window.eqqLoad) window.eqqLoad();
     }
 }
 
@@ -1561,8 +1567,10 @@ document.addEventListener('click', function(e) {
 (function() {
     var params = new URLSearchParams(window.location.search);
     var tab = params.get('tab');
-    if (tab === 'dashboard' || tab === 'layout') {
+    if (tab === 'dashboard' || tab === 'layout' || tab === 'queue') {
         currentTab = tab;
+        // 큐 탭도 목록 데이터(equipList)는 필요 없지만, 목록 렌더를 위해 백그라운드 로드
+        if (tab === 'queue') loadEquipment();
         switchTab(tab);
     } else {
         loadEquipment();

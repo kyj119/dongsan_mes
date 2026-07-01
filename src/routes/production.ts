@@ -144,9 +144,10 @@ productionRouter.post('/logs', async (c) => {
 productionRouter.get('/work-records', async (c) => {
   try {
     const { log_id, card_id, employee_id, status, limit = '50' } = c.req.query()
+    const ef = entityFilter(c, 'wr')  // phase0: 작업실적 UI 활성화 — 최근 실적 목록 tenant 격리(형제 /logs 동일)
 
     let query = `
-      SELECT 
+      SELECT
         wr.*,
         e.name as employee_name,
         e.employee_code,
@@ -157,9 +158,9 @@ productionRouter.get('/work-records', async (c) => {
       LEFT JOIN employees e ON wr.employee_id = e.id
       LEFT JOIN cards c ON wr.card_id = c.id
       LEFT JOIN production_logs pl ON wr.production_log_id = pl.id
-      WHERE 1=1
+      WHERE 1=1${ef.clause}
     `
-    const params: any[] = []
+    const params: any[] = [...ef.params]
 
     if (log_id) {
       query += ` AND wr.production_log_id = ?`

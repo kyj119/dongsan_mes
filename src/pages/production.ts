@@ -18,6 +18,10 @@ export function productionPage(c: Context<HonoEnv>) {
           class="px-4 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700 -mb-px transition-colors">
           <i class="fas fa-tasks mr-1.5"></i>스케줄
         </button>
+        <button id="tabBtnWork" onclick="switchProdTab('work')"
+          class="px-4 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700 -mb-px transition-colors">
+          <i class="fas fa-user-clock mr-1.5"></i>작업실적
+        </button>
       </div>
 
       <!-- ══════════ 탭 1: 현황 ══════════ -->
@@ -260,6 +264,135 @@ export function productionPage(c: Context<HonoEnv>) {
         </div>
 
       </div><!-- /tabSchedule -->
+
+      <!-- ══════════ 탭 3: 작업 실적 (비프린터 공정 작업자 실적) ══════════ -->
+      <div id="tabWork" class="hidden">
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+
+          <!-- ── 입력 폼 ── -->
+          <div class="ds-card p-4 lg:col-span-1 space-y-3 self-start">
+            <h2 class="text-sm font-bold text-gray-700">
+              <i class="fas fa-pen-to-square text-blue-500 mr-1.5"></i>작업 실적 입력
+            </h2>
+            <p class="text-[11px] text-gray-400 -mt-1">후가공·봉제·포장·검사 등 비프린터 공정의 작업자별 실적을 기록합니다.</p>
+
+            <div class="grid grid-cols-2 gap-2">
+              <div>
+                <label class="block text-[11px] text-gray-500 mb-1">날짜</label>
+                <input id="wrDate" type="date" class="w-full border rounded px-2 py-1 text-xs" style="color:#212529;" />
+              </div>
+              <div>
+                <label class="block text-[11px] text-gray-500 mb-1">근무조</label>
+                <select id="wrShift" class="w-full border rounded px-2 py-1 text-xs" style="color:#212529;">
+                  <option value="DAY">주간(DAY)</option>
+                  <option value="NIGHT">야간(NIGHT)</option>
+                </select>
+              </div>
+            </div>
+
+            <div>
+              <label class="block text-[11px] text-gray-500 mb-1">작업자</label>
+              <select id="wrEmployee" class="w-full border rounded px-2 py-1 text-xs" style="color:#212529;">
+                <option value="">로딩…</option>
+              </select>
+            </div>
+
+            <div>
+              <label class="block text-[11px] text-gray-500 mb-1">공정유형</label>
+              <select id="wrType" class="w-full border rounded px-2 py-1 text-xs" style="color:#212529;">
+                <option value="POST_PROCESS">후가공</option>
+                <option value="SEWING">봉제</option>
+                <option value="PACKING">포장</option>
+                <option value="QC">검사</option>
+                <option value="OTHER">기타</option>
+              </select>
+            </div>
+
+            <div>
+              <label class="block text-[11px] text-gray-500 mb-1">카드 (번호·거래처 검색)</label>
+              <div class="flex gap-2">
+                <input id="wrCardSearch" class="flex-1 border rounded px-2 py-1 text-xs" placeholder="카드번호 또는 거래처명" style="color:#212529;" />
+                <button onclick="window.wrSearchCard()" class="px-2 py-1 bg-gray-100 text-xs rounded hover:bg-gray-200">조회</button>
+              </div>
+              <div id="wrCardResults" class="mt-1 max-h-32 overflow-y-auto"></div>
+              <div id="wrCardPicked" class="mt-1 text-[11px] text-blue-600"></div>
+            </div>
+
+            <div class="grid grid-cols-2 gap-2">
+              <div>
+                <label class="block text-[11px] text-gray-500 mb-1">목표수량</label>
+                <input id="wrTarget" type="number" min="0" class="w-full border rounded px-2 py-1 text-xs" placeholder="선택" style="color:#212529;" />
+              </div>
+              <div>
+                <label class="block text-[11px] text-gray-500 mb-1">완료수량</label>
+                <input id="wrCompleted" type="number" min="0" class="w-full border rounded px-2 py-1 text-xs" value="0" style="color:#212529;" />
+              </div>
+            </div>
+
+            <div class="grid grid-cols-3 gap-2">
+              <div>
+                <label class="block text-[11px] text-gray-500 mb-1">상태</label>
+                <select id="wrStatus" class="w-full border rounded px-2 py-1 text-xs" style="color:#212529;">
+                  <option value="COMPLETED">완료</option>
+                  <option value="IN_PROGRESS">진행중</option>
+                  <option value="PAUSED">일시중지</option>
+                </select>
+              </div>
+              <div>
+                <label class="block text-[11px] text-gray-500 mb-1">시작(선택)</label>
+                <input id="wrStart" type="time" class="w-full border rounded px-2 py-1 text-xs" style="color:#212529;" />
+              </div>
+              <div>
+                <label class="block text-[11px] text-gray-500 mb-1">종료(선택)</label>
+                <input id="wrEnd" type="time" class="w-full border rounded px-2 py-1 text-xs" style="color:#212529;" />
+              </div>
+            </div>
+
+            <div>
+              <label class="block text-[11px] text-gray-500 mb-1">메모</label>
+              <textarea id="wrNotes" rows="2" class="w-full border rounded px-2 py-1 text-xs" style="color:#212529;"></textarea>
+            </div>
+
+            <div class="flex justify-end pt-1">
+              <button id="wrSubmitBtn" onclick="window.wrSubmit()" class="px-3 py-1.5 bg-blue-600 text-white text-xs rounded hover:bg-blue-700 disabled:opacity-50">
+                <i class="fas fa-plus mr-1"></i>실적 등록
+              </button>
+            </div>
+          </div>
+
+          <!-- ── 최근 실적 목록 ── -->
+          <div class="ds-card p-0 lg:col-span-2 self-start">
+            <div class="flex items-center justify-between px-4 py-3 border-b border-gray-100">
+              <h2 class="text-sm font-bold text-gray-700">
+                <i class="fas fa-list-check text-blue-500 mr-1.5"></i>최근 작업 실적
+              </h2>
+              <div class="flex items-center gap-2">
+                <select id="wrFilterStatus" onchange="window.wrLoadRecords()" class="border rounded px-2 py-1 text-xs" style="color:#212529;" title="상태 필터">
+                  <option value="">전체 상태</option>
+                  <option value="COMPLETED">완료</option>
+                  <option value="IN_PROGRESS">진행중</option>
+                  <option value="PAUSED">일시중지</option>
+                </select>
+                <button onclick="window.wrLoadRecords()" class="text-gray-400 hover:text-gray-600 transition-colors" title="새로고침">
+                  <i class="fas fa-sync-alt text-xs"></i>
+                </button>
+              </div>
+            </div>
+            <div class="ds-table-wrap overflow-x-auto" style="max-height:480px;overflow-y:auto;">
+              <table class="ds-table w-full text-xs">
+                <thead><tr>
+                  <th class="col-date">날짜</th><th>작업자</th><th>공정</th><th class="col-code">카드</th>
+                  <th class="text-right">목표</th><th class="text-right">완료</th><th>상태</th><th>메모</th>
+                </tr></thead>
+                <tbody id="wrRecordsBody">
+                  <tr><td colspan="8" class="text-center py-8 text-gray-400">로딩…</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+        </div>
+      </div><!-- /tabWork -->
     `,
     pageScript
   })

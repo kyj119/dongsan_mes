@@ -7,32 +7,32 @@ import costAnalysisScript from '../scripts/costAnalysis.js?raw'
 export function productionReportsPage(c: Context<HonoEnv>) {
   const tabSwitchScript = `
 window.switchProdAnalysisTab = function(tab) {
-  var prodContent = document.getElementById('prodAnaProductionContent');
-  var costContent = document.getElementById('prodAnaCostContent');
-  var prodTab = document.getElementById('prodAnaTabProduction');
-  var costTab = document.getElementById('prodAnaTabCost');
-
-  if (tab === 'production') {
-    prodTab.classList.remove('border-transparent', 'text-gray-500');
-    prodTab.classList.add('border-blue-600', 'text-blue-600');
-    costTab.classList.remove('border-blue-600', 'text-blue-600');
-    costTab.classList.add('border-transparent', 'text-gray-500');
-    prodContent.classList.remove('hidden');
-    costContent.classList.add('hidden');
-  } else {
-    costTab.classList.remove('border-transparent', 'text-gray-500');
-    costTab.classList.add('border-blue-600', 'text-blue-600');
-    prodTab.classList.remove('border-blue-600', 'text-blue-600');
-    prodTab.classList.add('border-transparent', 'text-gray-500');
-    costContent.classList.remove('hidden');
-    prodContent.classList.add('hidden');
-  }
+  var map = {
+    production: { content: 'prodAnaProductionContent', tab: 'prodAnaTabProduction' },
+    cost:       { content: 'prodAnaCostContent',       tab: 'prodAnaTabCost' },
+    oee:        { content: 'prodAnaOeeContent',        tab: 'prodAnaTabOee' }
+  };
+  Object.keys(map).forEach(function(k) {
+    var m = map[k];
+    var content = document.getElementById(m.content);
+    var btn = document.getElementById(m.tab);
+    var on = (k === tab);
+    if (content) content.classList.toggle('hidden', !on);
+    if (btn) {
+      if (on) { btn.classList.remove('border-transparent', 'text-gray-500'); btn.classList.add('border-blue-600', 'text-blue-600'); }
+      else { btn.classList.remove('border-blue-600', 'text-blue-600'); btn.classList.add('border-transparent', 'text-gray-500'); }
+    }
+  });
+  if (tab === 'oee' && typeof window.oeeInit === 'function') window.oeeInit();
 };
 (function() {
   var p = new URLSearchParams(window.location.search);
-  if (p.get('tab') === 'cost' || window.location.hash === '#cost') {
-    window.switchProdAnalysisTab('cost');
-  }
+  var t = p.get('tab');
+  var target = null;
+  if (t === 'cost' || window.location.hash === '#cost') target = 'cost';
+  else if (t === 'oee' || window.location.hash === '#oee') target = 'oee';
+  // oeeInit 등은 하위 스크립트에서 정의되므로 스크립트 실행 완료 후 전환
+  if (target) setTimeout(function() { window.switchProdAnalysisTab(target); }, 0);
 })();
 `;
 
@@ -49,6 +49,9 @@ window.switchProdAnalysisTab = function(tab) {
               </button>
               <button onclick="switchProdAnalysisTab('cost')" id="prodAnaTabCost" class="px-5 py-3 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">
                 <i class="fas fa-calculator mr-1"></i>원가 분석
+              </button>
+              <button onclick="switchProdAnalysisTab('oee')" id="prodAnaTabOee" class="px-5 py-3 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">
+                <i class="fas fa-gauge-high mr-1"></i>설비효율(OEE)
               </button>
             </div>
 
@@ -472,7 +475,50 @@ window.switchProdAnalysisTab = function(tab) {
               </div>
 
             </div>
+            </div><!-- end prodAnaCostContent -->
+
+            <!-- OEE(설비종합효율) 콘텐츠 -->
+            <div id="prodAnaOeeContent" class="hidden">
+            <div class="space-y-4">
+
+              <!-- 컨트롤 바 -->
+              <div class="ds-card p-3 flex flex-wrap items-center gap-2">
+                <label class="text-xs text-gray-500">기준일</label>
+                <input type="date" id="oeeDate" class="border rounded px-2 py-1 text-sm" onchange="window.oeeLoad()">
+                <button onclick="window.oeeCalculate()" class="ds-btn ds-btn-primary text-sm"><i class="fas fa-calculator mr-1"></i>OEE 계산</button>
+                <button onclick="window.oeeLoad()" class="px-3 py-1.5 text-sm border rounded hover:bg-gray-50"><i class="fas fa-sync-alt mr-1"></i>새로고침</button>
+                <span class="text-[11px] text-gray-400 ml-2 hidden md:inline">가용성 × 성능 × 품질 = 종합효율(OEE) · 기준일 데이터로 재계산</span>
+                <span class="ml-auto text-[11px] text-gray-400" id="oeeHint"></span>
+              </div>
+
+              <!-- 당일 평균 요약 카드 -->
+              <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div class="ds-card p-4"><div class="text-xs text-gray-500 mb-1"><i class="fas fa-plug mr-1"></i>평균 가용성</div><div class="text-2xl font-bold" id="oeeAvgAvail">-</div></div>
+                <div class="ds-card p-4"><div class="text-xs text-gray-500 mb-1"><i class="fas fa-bolt mr-1"></i>평균 성능</div><div class="text-2xl font-bold" id="oeeAvgPerf">-</div></div>
+                <div class="ds-card p-4"><div class="text-xs text-gray-500 mb-1"><i class="fas fa-award mr-1"></i>평균 품질</div><div class="text-2xl font-bold" id="oeeAvgQual">-</div></div>
+                <div class="ds-card p-4"><div class="text-xs text-gray-500 mb-1"><i class="fas fa-gauge-high mr-1"></i>평균 종합(OEE)</div><div class="text-2xl font-bold" id="oeeAvgOee">-</div></div>
+              </div>
+
+              <!-- 장비별 OEE 표 -->
+              <div class="ds-card p-0 overflow-x-auto">
+                <table class="ds-table w-full text-xs">
+                  <thead><tr>
+                    <th>장비</th>
+                    <th class="text-center">가용성</th>
+                    <th class="text-center">성능</th>
+                    <th class="text-center">품질</th>
+                    <th class="text-center">종합(OEE)</th>
+                    <th class="text-right">가동시간</th>
+                    <th class="text-right">생산/양품</th>
+                    <th class="text-right">불량</th>
+                    <th class="text-right">면적(㎡)</th>
+                  </tr></thead>
+                  <tbody id="oeeBody"><tr><td colspan="9" class="text-center py-8 text-gray-400">기준일 선택 후 "OEE 계산"을 실행하세요.</td></tr></tbody>
+                </table>
+              </div>
+
             </div>
+            </div><!-- end prodAnaOeeContent -->
     `,
     pageScript: combinedScript
   })

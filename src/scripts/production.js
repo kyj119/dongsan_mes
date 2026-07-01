@@ -70,33 +70,38 @@ function statusBadge(status) {
 // ════════════════
 
 function switchProdTab(tab) {
-  var isStatus = tab === 'status';
+  // N-탭 일반화 (현황/스케줄/작업실적). 패널·버튼 매핑 한 곳에서 관리.
+  var TABS = {
+    status:   { panel: 'tabStatus',   btn: 'tabBtnStatus' },
+    schedule: { panel: 'tabSchedule', btn: 'tabBtnSchedule' },
+    work:     { panel: 'tabWork',     btn: 'tabBtnWork' }
+  };
 
-  // 패널 표시/숨김
-  document.getElementById('tabStatus').classList.toggle('hidden', !isStatus);
-  document.getElementById('tabSchedule').classList.toggle('hidden', isStatus);
+  Object.keys(TABS).forEach(function(key) {
+    var t = TABS[key];
+    var on = key === tab;
+    var panel = document.getElementById(t.panel);
+    if (panel) panel.classList.toggle('hidden', !on);
+    var btn = document.getElementById(t.btn);
+    if (!btn) return;
+    btn.classList.toggle('border-blue-500', on);
+    btn.classList.toggle('text-blue-600', on);
+    btn.classList.toggle('border-transparent', !on);
+    btn.classList.toggle('text-gray-500', !on);
+  });
 
-  // 버튼 스타일
-  var btnStatus = document.getElementById('tabBtnStatus');
-  var btnSchedule = document.getElementById('tabBtnSchedule');
-
-  if (isStatus) {
-    btnStatus.classList.add('border-blue-500', 'text-blue-600');
-    btnStatus.classList.remove('border-transparent', 'text-gray-500');
-    btnSchedule.classList.add('border-transparent', 'text-gray-500');
-    btnSchedule.classList.remove('border-blue-500', 'text-blue-600');
+  if (tab === 'status') {
     // 현황 탭 데이터 로드
     loadStats();
     loadPrintingCards();
     loadAgents();
     loadRecentEvents();
-  } else {
-    btnSchedule.classList.add('border-blue-500', 'text-blue-600');
-    btnSchedule.classList.remove('border-transparent', 'text-gray-500');
-    btnStatus.classList.add('border-transparent', 'text-gray-500');
-    btnStatus.classList.remove('border-blue-500', 'text-blue-600');
+  } else if (tab === 'schedule') {
     // 스케줄 탭 데이터 로드
     loadSchedule();
+  } else if (tab === 'work') {
+    // 작업실적 탭 (지연 초기화 — window.wrInit 는 하단 IIFE 에서 노출)
+    if (window.wrInit) window.wrInit();
   }
 }
 
@@ -905,3 +910,178 @@ loadStats();
 loadPrintingCards();
 loadAgents();
 loadRecentEvents();
+
+// ════════════════════════════════════════
+// 탭 3: 작업 실적 입력 (work_records — 비프린터 공정 작업자 실적)
+// 백엔드 routes/production.ts (production_logs·work_records) 활성화 UI
+// ?raw 전역 스코프 충돌 방지: 전부 IIFE 로컬 + window.wr* 만 노출
+// ════════════════════════════════════════
+(function () {
+  var wrEsc = window.escapeHtml || function (s) { return s == null ? '' : String(s).replace(/[&<>"]/g, function (c) { return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]; }); };
+  var wrToast = function (m, t) { if (window.showToast) window.showToast(m, t); else console.log('[production/work]', m); };
+  var wrApiErr = function (e, m) { if (window.handleApiError) window.handleApiError(e, m); else { console.error(m, e); wrToast(m, 'error'); } };
+  var wrFmtDate = function (s) { return s ? String(s).slice(0, 10) : ''; };
+
+  var WORK_TYPE = { PRINT: '인쇄', POST_PROCESS: '후가공', SEWING: '봉제', PACKING: '포장', QC: '검사', OTHER: '기타' };
+  var STATUS_LABEL = { IN_PROGRESS: '진행중', COMPLETED: '완료', PAUSED: '일시중지' };
+
+  var wrInited = false;
+  var wrPicked = { id: null, label: '' };   // 선택된 카드
+  var wrSearchResults = [];                 // 카드 검색결과(인덱스 참조로 onclick 이스케이프 회피)
+
+  function wrVal(id) { var el = document.getElementById(id); return el ? String(el.value || '').trim() : ''; }
+  function wrNum(id, dflt) { var el = document.getElementById(id); if (!el || el.value === '') return dflt; var n = Number(el.value); return isNaN(n) ? dflt : n; }
+  function wrSet(id, v) { var el = document.getElementById(id); if (el) el.value = v; }
+
+  function wrBadge(text, cls) { return '<span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium ' + cls + '">' + wrEsc(text) + '</span>'; }
+  function wrStatusBadge(s) {
+    var cls = s === 'COMPLETED' ? 'bg-green-50 text-green-700' : s === 'PAUSED' ? 'bg-gray-100 text-gray-600' : 'bg-amber-50 text-amber-700';
+    return wrBadge(STATUS_LABEL[s] || s || '-', cls);
+  }
+
+  // ── 직원 드롭다운 (ACTIVE만) ──
+  function wrLoadEmployees() {
+    var sel = document.getElementById('wrEmployee');
+    if (!sel) { console.warn('[production/work] #wrEmployee not found'); return Promise.resolve(); }
+    return axios.get('/api/hr/employees', { params: { limit: 200, status: 'ACTIVE' } }).then(function (res) {
+      var d = (res.data && res.data.data) || {};
+      var emps = d.employees || (Array.isArray(d) ? d : []);
+      sel.innerHTML = '<option value="">작업자 선택</option>' + emps.map(function (e) {
+        var label = (e.name || '') + (e.employee_code ? ' (' + e.employee_code + ')' : '');
+        return '<option value="' + e.id + '">' + wrEsc(label) + '</option>';
+      }).join('');
+    }).catch(function (e) {
+      wrApiErr(e, '작업자 목록 로드 실패');
+      sel.innerHTML = '<option value="">로드 실패</option>';
+    });
+  }
+
+  // ── 카드 검색/선택 (/api/search 재사용) ──
+  window.wrSearchCard = function () {
+    var q = document.getElementById('wrCardSearch');
+    var box = document.getElementById('wrCardResults');
+    if (!q || !box || !q.value.trim()) return;
+    axios.get('/api/search?q=' + encodeURIComponent(q.value.trim())).then(function (res) {
+      wrSearchResults = (res.data && res.data.data && res.data.data.cards) || [];
+      if (!wrSearchResults.length) { box.innerHTML = '<div class="text-gray-400 py-1 text-xs">검색 결과 없음</div>'; return; }
+      box.innerHTML = wrSearchResults.map(function (ca, i) {
+        return '<div class="py-1 px-1 hover:bg-blue-50 cursor-pointer rounded text-xs" onclick="window.wrPickCard(' + i + ')">' +
+          '<span class="font-mono">' + wrEsc(ca.card_number) + '</span> · ' + wrEsc(ca.client_name || '') + '</div>';
+      }).join('');
+    }).catch(function (e) { wrApiErr(e, '카드 검색 실패'); });
+  };
+
+  window.wrPickCard = function (i) {
+    var ca = wrSearchResults[i];
+    if (!ca) return;
+    wrPicked = { id: ca.id, label: ca.card_number };
+    var pk = document.getElementById('wrCardPicked');
+    if (pk) pk.innerHTML = '<i class="fas fa-check mr-1"></i>선택: ' + wrEsc(ca.card_number) + (ca.client_name ? ' (' + wrEsc(ca.client_name) + ')' : '');
+    var box = document.getElementById('wrCardResults'); if (box) box.innerHTML = '';
+  };
+
+  // ── 생산일지 find-or-create (날짜+근무조, 기존 엔드포인트만 사용) ──
+  function wrEnsureLog(date, shift) {
+    return axios.get('/api/production/logs', { params: { start_date: date, end_date: date, shift: shift, limit: 10 } }).then(function (res) {
+      var logs = (res.data && res.data.data && res.data.data.logs) || [];
+      for (var i = 0; i < logs.length; i++) {
+        if (String(logs[i].log_date).slice(0, 10) === date && logs[i].shift === shift) return logs[i].id;
+      }
+      return axios.post('/api/production/logs', { log_date: date, shift: shift }).then(function (cr) {
+        return cr.data && cr.data.data && cr.data.data.id;
+      });
+    });
+  }
+
+  // ── 실적 등록 ──
+  window.wrSubmit = function () {
+    var date = wrVal('wrDate');
+    var shift = wrVal('wrShift') || 'DAY';
+    var empId = wrVal('wrEmployee');
+    var workType = wrVal('wrType') || 'POST_PROCESS';
+    if (!date) { wrToast('날짜를 선택하세요', 'error'); return; }
+    if (!empId) { wrToast('작업자를 선택하세요', 'error'); return; }
+    if (!wrPicked.id) { wrToast('카드를 선택하세요', 'error'); return; }
+
+    var startT = wrVal('wrStart');
+    var endT = wrVal('wrEnd');
+    var start_time = date + 'T' + (startT || '09:00') + ':00';
+    var end_time = endT ? (date + 'T' + endT + ':00') : null;
+
+    var payload = {
+      card_id: wrPicked.id,
+      employee_id: Number(empId),
+      work_type: workType,
+      start_time: start_time,
+      end_time: end_time,
+      quantity_target: wrNum('wrTarget', null),
+      quantity_completed: wrNum('wrCompleted', 0),
+      status: wrVal('wrStatus') || 'COMPLETED',
+      notes: wrVal('wrNotes') || null
+    };
+
+    var btn = document.getElementById('wrSubmitBtn');
+    if (btn) btn.disabled = true;
+
+    wrEnsureLog(date, shift).then(function (logId) {
+      if (!logId) throw new Error('생산일지 생성 실패');
+      payload.production_log_id = logId;
+      return axios.post('/api/production/work-records', payload);
+    }).then(function () {
+      wrToast('작업 실적이 등록되었습니다', 'success');
+      wrResetForm();
+      window.wrLoadRecords();
+    }).catch(function (e) {
+      wrApiErr(e, '작업 실적 등록 실패');
+    }).then(function () {
+      if (btn) btn.disabled = false;
+    });
+  };
+
+  function wrResetForm() {
+    wrPicked = { id: null, label: '' };
+    wrSearchResults = [];
+    ['wrCardSearch', 'wrNotes', 'wrTarget', 'wrStart', 'wrEnd'].forEach(function (id) { wrSet(id, ''); });
+    wrSet('wrCompleted', '0');
+    var box = document.getElementById('wrCardResults'); if (box) box.innerHTML = '';
+    var pk = document.getElementById('wrCardPicked'); if (pk) pk.innerHTML = '';
+  }
+
+  // ── 최근 실적 목록 ──
+  window.wrLoadRecords = function () {
+    var body = document.getElementById('wrRecordsBody');
+    if (!body) { console.warn('[production/work] #wrRecordsBody not found'); return; }
+    var stEl = document.getElementById('wrFilterStatus');
+    var params = { limit: 50 };
+    if (stEl && stEl.value) params.status = stEl.value;
+    axios.get('/api/production/work-records', { params: params }).then(function (res) {
+      var rows = (res.data && res.data.data && res.data.data.work_records) || [];
+      if (!rows.length) { body.innerHTML = '<tr><td colspan="8" class="text-center py-8 text-gray-400">작업 실적이 없습니다.</td></tr>'; return; }
+      body.innerHTML = rows.map(function (r) {
+        var emp = (r.employee_name || '-') + (r.employee_code ? ' (' + r.employee_code + ')' : '');
+        return '<tr>' +
+          '<td class="col-date text-[11px]">' + wrFmtDate(r.log_date) + '</td>' +
+          '<td>' + wrEsc(emp) + '</td>' +
+          '<td>' + wrEsc(WORK_TYPE[r.work_type] || r.work_type || '-') + '</td>' +
+          '<td class="col-code font-mono text-[11px]">' + wrEsc(r.card_number || '-') + '</td>' +
+          '<td class="text-right tabular-nums">' + (r.quantity_target != null ? r.quantity_target : '-') + '</td>' +
+          '<td class="text-right tabular-nums">' + (r.quantity_completed != null ? r.quantity_completed : 0) + '</td>' +
+          '<td>' + wrStatusBadge(r.status) + '</td>' +
+          '<td class="max-w-[220px] truncate" title="' + wrEsc(r.notes || '') + '">' + wrEsc(r.notes || '') + '</td></tr>';
+      }).join('');
+    }).catch(function (e) {
+      wrApiErr(e, '작업 실적 로드 실패');
+      body.innerHTML = '<tr><td colspan="8" class="text-center py-8 text-red-400">로드 실패</td></tr>';
+    });
+  };
+
+  // ── 탭 최초 진입 시 초기화 (switchProdTab('work') 에서 호출) ──
+  window.wrInit = function () {
+    if (wrInited) { window.wrLoadRecords(); return; }
+    wrInited = true;
+    var dateEl = document.getElementById('wrDate');
+    if (dateEl && !dateEl.value) dateEl.value = (window.kstToday ? window.kstToday() : new Date().toISOString().slice(0, 10));
+    wrLoadEmployees();
+    window.wrLoadRecords();
+  };
+})();
