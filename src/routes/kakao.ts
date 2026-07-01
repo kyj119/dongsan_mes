@@ -5,6 +5,7 @@ import { authMiddleware, requireRole } from '../middleware/auth'
 import { entityFilter, getEntityId } from '../utils/entityFilter'
 import { BarobillSmsProvider } from '../services/barobillSms'
 import { getEntityCorpNum } from '../utils/entitySettings'
+import { BAROBILL_UNIT_COST_VAT_EXCL } from '../constants/barobillCodes'
 import type { SMSMessage, ATSMessage } from '../services/barobillSms'
 export type { SMSMessage, ATSMessage }
 
@@ -282,7 +283,9 @@ kakaoRouter.get('/templates', async (c) => {
 })
 
 // ────────────────────────────────────────────────────────────────────────────
-// GET /balance — 포인트 잔액 + 발송 단가 조회
+// GET /balance — 포인트 잔액(실시간) + 발송 단가(정적 상수)
+//   #466: 단가는 계약 기준 정적값이라 매 로드 SOAP fan-out(5콜) 제거 → 상수 반환.
+//         잔액만 라이브(getBalance 2콜). 라이브 단가 갱신은 GET /unit-cost('단가 새로고침' 전용).
 // ────────────────────────────────────────────────────────────────────────────
 kakaoRouter.get('/balance', async (c) => {
   try {
@@ -291,27 +294,54 @@ kakaoRouter.get('/balance', async (c) => {
       return c.json({ success: false, error: '바로빌 연동이 설정되지 않았습니다.' }, 400)
     }
 
-    const [balance, unitCost] = await Promise.all([
-      provider.getBalance(),
-      provider.getUnitCost()
-    ])
+    const balance = await provider.getBalance()
+    const uc = BAROBILL_UNIT_COST_VAT_EXCL
 
     return c.json({
       success: true,
       data: {
         remain_point: balance.remainPoint,
         partner_point: balance.partnerPoint,
-        // 발송 단가 — 부가세 별도
-        unit_cost_alimtalk: unitCost.alimtalk,
-        unit_cost_kko_image: unitCost.kkoImage,
-        unit_cost_sms: unitCost.sms,
-        unit_cost_lms: unitCost.lms,
-        unit_cost_fax: unitCost.fax
+        // 발송 단가 — 부가세 별도(정적 상수)
+        unit_cost_alimtalk: uc.alimtalk,
+        unit_cost_kko_image: uc.kkoImage,
+        unit_cost_sms: uc.sms,
+        unit_cost_lms: uc.lms,
+        unit_cost_fax: uc.fax,
+        unit_cost_source: 'static'
       }
     })
   } catch (error) {
     console.error('src/routes/kakao.ts GET /balance error:', error)
     return c.json({ success: false, error: '잔액 조회 실패' }, 500)
+  }
+})
+
+// ────────────────────────────────────────────────────────────────────────────
+// GET /unit-cost — 라이브 발송 단가 조회(바로빌 SOAP 5콜). '단가 새로고침' 전용.
+//   #466: 상시 조회는 상수(/balance)로, 실측 대조가 필요할 때만 명시적으로 이 엔드포인트 호출.
+// ────────────────────────────────────────────────────────────────────────────
+kakaoRouter.get('/unit-cost', async (c) => {
+  try {
+    const provider = await getKakaoProvider(c)
+    if (!provider) {
+      return c.json({ success: false, error: '바로빌 연동이 설정되지 않았습니다.' }, 400)
+    }
+    const uc = await provider.getUnitCost()
+    return c.json({
+      success: true,
+      data: {
+        unit_cost_alimtalk: uc.alimtalk,
+        unit_cost_kko_image: uc.kkoImage,
+        unit_cost_sms: uc.sms,
+        unit_cost_lms: uc.lms,
+        unit_cost_fax: uc.fax,
+        unit_cost_source: 'live'
+      }
+    })
+  } catch (error) {
+    console.error('src/routes/kakao.ts GET /unit-cost error:', error)
+    return c.json({ success: false, error: '단가 조회 실패' }, 500)
   }
 })
 

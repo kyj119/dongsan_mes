@@ -82,6 +82,30 @@ async function loadSummary() {
   } catch(e) {}
 }
 
+// #466: 발송 단가는 기본 정적 상수(/balance) 표시 — 라이브 SOAP 재조회는 이 버튼에만 배선.
+async function refreshUnitCost() {
+  var setMsg = function(id, val) { var el = document.getElementById(id); if (el) el.textContent = val; };
+  var btn = document.getElementById('msgUcRefreshBtn');
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>'; }
+  try {
+    var res = await axios.get('/api/kakao/unit-cost');
+    if (res.data.success) {
+      var b = res.data.data;
+      setMsg('msgUcAlim', (b.unit_cost_alimtalk || 0).toLocaleString() + '원/건');
+      setMsg('msgUcKkoImg', (b.unit_cost_kko_image || 0).toLocaleString() + '원/건');
+      setMsg('msgUcSms', (b.unit_cost_sms || 0).toLocaleString() + '원/건');
+      setMsg('msgUcLms', (b.unit_cost_lms || 0).toLocaleString() + '원/건');
+      setMsg('msgUcFax', (b.unit_cost_fax || 0).toLocaleString() + '원/장');
+      if (typeof showToast === 'function') showToast('발송 단가를 바로빌에서 갱신했습니다.', 'success');
+    }
+  } catch(e) {
+    if (typeof showToast === 'function') showToast('단가 조회 실패', 'error');
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-sync"></i>'; }
+  }
+}
+window.refreshUnitCost = refreshUnitCost;
+
 async function loadLogs(page) {
   logsPage = page || 1;
   var params = { page: logsPage, limit: 30 };

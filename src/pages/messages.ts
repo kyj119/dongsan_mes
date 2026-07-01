@@ -20,7 +20,10 @@ export function messagesPage(c: Context<HonoEnv>) {
       <div class="text-3xl font-bold text-gray-900 mt-1" id="msgTodayCount">-</div>
     </div>
     <div class="ds-card p-5">
-      <div class="text-xs text-gray-500">발송 단가 <span class="text-gray-400">(부가세 별도)</span></div>
+      <div class="flex items-center justify-between">
+        <div class="text-xs text-gray-500">발송 단가 <span class="text-gray-400">(부가세 별도)</span></div>
+        <button id="msgUcRefreshBtn" onclick="refreshUnitCost()" title="바로빌에서 실시간 단가 재조회" class="text-gray-400 hover:text-blue-600 text-xs"><i class="fas fa-sync"></i></button>
+      </div>
       <div class="mt-2 space-y-1 text-xs">
         <div class="flex justify-between"><span class="text-gray-600">알림톡</span><span class="font-bold text-gray-900" id="msgUcAlim">-</span></div>
         <div class="flex justify-between"><span class="text-gray-600">카톡 이미지</span><span class="font-bold text-gray-900" id="msgUcKkoImg">-</span></div>

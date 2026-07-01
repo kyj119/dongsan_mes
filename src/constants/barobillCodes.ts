@@ -104,6 +104,20 @@ export const BAROBILL_CHARGE_CODE = {
   FAX: 12,        // 팩스 1장 50원  ({3~8,12} 중 채택)
 } as const
 
+/**
+ * 채널별 발송 단가(부가세 별도, 원) — 계약 기준 정적값.
+ * 위 BAROBILL_CHARGE_CODE 주석의 라이브 prod 실측 대조값과 동일(동산기획, 2026-07-01).
+ * #466: 메시지 페이지 기본 표시용. 라이브 SOAP 재조회(GetChargeUnitCostEx)는
+ * '단가 새로고침' 버튼(GET /api/kakao/unit-cost)에만 배선 — 매 로드 fan-out 제거.
+ */
+export const BAROBILL_UNIT_COST_VAT_EXCL = {
+  alimtalk: 7,
+  kkoImage: 21,
+  sms: 15,
+  lms: 35,
+  fax: 50,
+} as const
+
 /** 바로빌 결과코드(음수) → 한글 사유. 등록/해지/즉시조회·과금 관련. 출처: 개발자센터 오류코드. */
 export const BAROBILL_ERROR_MESSAGES: Record<number, string> = {
   // 과금/포인트
