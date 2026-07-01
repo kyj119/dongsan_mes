@@ -1,10 +1,11 @@
 # PROJECT_STATUS.md — 프로젝트 현황판
 
-> **현재 초점**: 워크플로우 마스터 기획(`docs/superpowers/specs/2026-07-01-workflow-improvement-master-plan.md`) X1~X5·Phase0~5. **Phase0+X2+X4+X5+G-1+G-7 배포완료 + 인사/급여/근태 강화 진행중**(무마이그·매입세션 무충돌). HR 남은 배치=B3 직원셀프·B4 연차무인·B5 4대보험요율·미사용연차수당. 그외 남은=Phase1~5.
-> **마지막 prod 배포**: **인사 B1 급여확정 잠금**(payroll 전이가드·sync PAID제외) + **B2 CAPS 근태경보**(/api/caps/health·/attendance 배너, prod 미매핑19·미동기화40 검출)(push `feb3b461`, dep `12eeb58f`, 무마이그). 이전: **G-1 AI인사이트 보안**(credit-risk requireRole·GET write 제거·summary 파생) + **G-7 검색 견적서**(`f17ae5c9`/`87763cad`). 이전: **X5 clients.balance 파생스윕**(orders/core 인보이스·lifecycle 연체경고·search·ar-receivables writer 제거) + **X4 무인 cron**(/api/cron/daily-maintenance=OEE일배치+알림생성, barobill-cron 워커 06:00 KST)(push `de4df2ed`, dep `84483450`, 워커 `a2b06cc6`). prod 검증: invoice 파생balance 200·search balance제거·cron 401도달·로컬 5법인 200. 이전: **Phase0 버그5+X2 UI 4건**(/quality·장비큐·OEE·작업실적, dep `3fd127f4`, 마이그0420).
-> **블로커**: 품목 단가 전부 0(전역 과제) · 간판 BOM=**brainstorming 후 사용자 보류**(견적구조 설계라 결이 다름·디자이너 카탈로그 확정 의존).
-> **다음 액션**: 단가 체계 / (간판 BOM=재개 시 spec `2026-06-13-signage-component-estimate-structure.md` + session-context 간판 항목 참조).
-> **핸드오프 정본** = `memory/session-context.md`.
+> **현재 초점**: 워크플로우 마스터 기획(`docs/superpowers/specs/2026-07-01-workflow-improvement-master-plan.md`) 실행 + 인사/급여/근태 강화. **배포완료**: Phase0·X2·X4·X5·G-1·G-7 + HR(B1 급여확정잠금·B2 CAPS경보·B4 연차무인+촉진소멸배너·미사용연차수당 주입) + **급여관리 기본뷰=급여대장 전환**. 전부 무마이그·매입세션 무충돌. **HR 남은**=B3 직원셀프(급여명세서·전자서명 hrSelf)·B5 4대보험 7월요율. 그외=Phase1~5(단가·실원가·간판BOM 등).
+> **마지막 prod 배포**: **급여관리 기본뷰 급여대장 전환**(compact 폐기·init 자동조회, push `151f4cb7`, dep `e2fbe7e1`, prod 급여대장 27명·25컬럼 렌더 검증) + HR B4 연차무인·미사용연차수당(`8d3b34cf`·`aba9234d`). 이전 세션분: B1·B2(`feb3b461`/`12eeb58f`)·G1·G7(`f17ae5c9`/`87763cad`)·X4·X5(`de4df2ed`/`84483450`·워커 `a2b06cc6`)·Phase0·X2(`3fd127f4`·마이그0420).
+> **⚠️ 급여계산 진단(신현서 케이스, 코드정상·입력차이)**: MES 공제가 ECOUNT보다 높음 = **①부양가족 0명(→본인1, 소득세 +66k 최대) ②차량유지비 20만 비과세 미처리(taxable=400만) ③국민연금 base=당월급여(400만) vs ECOUNT 기준소득월액(~371만)**. MES 간이세액표 룩업·100/120옵션·요율(9.5/7.19/13.14%)·상한(637만) 전부 정상. 조치=부양가족·차량유지비 비과세 입력 / 개선여지=국민연금 기준소득월액 필드. → [[payroll-calc-ecount-diff]]
+> **블로커**: 품목 단가 전부 0(전역 과제·매입세션 진행중) · 간판 BOM=brainstorming 후 보류.
+> **다음 액션**: ①B5 4대보험 7월요율 적용(**상한 637만→659만·하한 40만→41만** 리서치완료·prod insurance_rates 반영 확인대기) ②B3 직원셀프서비스 ③국민연금 기준소득월액 필드 ④단가.
+> **핸드오프 정본** = `memory/session-context.md`(품목) + `memory/project-workflow-master-plan.md`(워크플로우·HR).
 > **🔧 멀티세션**: 동시 작업은 `scripts/new-session.ps1 <이름>`(worktree 격리, 메인 직접작업 지양) → `docs/WORKTREE_WORKFLOW.md`.
 > 완료 이력 → `PROJECT_STATUS_ARCHIVE.md` (매 세션 읽을 필요 없음, 필요 시 참조).
 
