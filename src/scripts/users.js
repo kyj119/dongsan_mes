@@ -40,6 +40,7 @@
             '<button data-user-json="' + JSON.stringify(u).replace(/"/g, '&quot;') + '" onclick="showEditModal(JSON.parse(this.getAttribute(\'data-user-json\')))" class="text-blue-600 hover:text-blue-700 text-sm font-medium">수정</button>' +
             '<button onclick="showResetModal(' + u.id + ', \'' + jsStr(u.name || u.username) + '\')" class="text-orange-500 hover:text-orange-700 text-sm font-medium">비번 초기화</button>' +
             '<button onclick="toggleActive(' + u.id + ', ' + (u.is_active ? 'false' : 'true') + ')" class="' + toggleClass + ' text-sm font-medium">' + toggleLabel + '</button>' +
+            '<button onclick="openItemAccessModal(' + u.id + ', \'' + jsStr(u.name || u.username) + '\')" class="text-purple-600 hover:text-purple-700 text-sm font-medium" title="주문서에서 이 사용자가 쓸 품목 그룹 제한">품목배정</button>' +
           '</div>' +
         '</td>' +
       '</tr>';
@@ -70,6 +71,96 @@
         document.getElementById('usersTableWrap').innerHTML =
           '<div class="text-center py-12 text-red-400"><i class="fas fa-exclamation-circle text-3xl mb-3"></i><p>불러오기 실패: ' + esc(err.response && err.response.data && err.response.data.error || err.message) + '</p></div>';
       });
+  };
+
+  // ── C2: 사용자별 사용품목(item_group) 배정 모달 ──────────────
+  window.openItemAccessModal = function(userId, userName) {
+    var existing = document.getElementById('itemAccessModal');
+    if (existing) existing.remove();
+    var modal = document.createElement('div');
+    modal.id = 'itemAccessModal';
+    modal.className = 'fixed inset-0 bg-black/40 flex items-center justify-center z-[70]';
+    modal.innerHTML = '<div class="bg-white rounded-xl shadow-2xl w-full max-w-3xl max-h-[85vh] flex flex-col mx-4">' +
+      '<div class="p-4 border-b flex items-center justify-between">' +
+        '<h2 class="text-lg font-bold"><i class="fas fa-user-tag text-purple-600 mr-2"></i>사용 품목 배정 — ' + esc(userName || '') + '</h2>' +
+        '<button onclick="document.getElementById(\'itemAccessModal\').remove()" class="p-2 text-gray-400 hover:text-gray-600"><i class="fas fa-times text-lg"></i></button>' +
+      '</div>' +
+      '<div class="px-4 py-2 text-xs text-gray-500 bg-gray-50 border-b">체크한 품목 그룹만 <b>주문서 검색</b>에 노출됩니다. <b>아무것도 체크 안 하면 전체 노출</b>(제한 없음). 그룹 없는 제품은 항상 노출.</div>' +
+      '<div class="flex-1 overflow-auto p-4" id="itemAccessBody"><div class="text-center py-12 text-gray-400"><i class="fas fa-spinner fa-spin mr-1"></i>불러오는 중...</div></div>' +
+      '<div class="border-t p-3 bg-gray-50 rounded-b-xl flex items-center justify-between">' +
+        '<span class="text-xs text-gray-400" id="itemAccessCount"></span>' +
+        '<div class="flex gap-2">' +
+          '<button onclick="document.getElementById(\'itemAccessModal\').remove()" class="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50">취소</button>' +
+          '<button id="itemAccessSaveBtn" onclick="saveItemAccess(' + userId + ')" class="px-4 py-2 text-sm bg-purple-600 text-white rounded-lg hover:bg-purple-700">저장</button>' +
+        '</div>' +
+      '</div></div>';
+    document.body.appendChild(modal);
+    modal.addEventListener('click', function(e) { if (e.target === modal) modal.remove(); });
+
+    Promise.all([
+      axios.get('/api/items/groups'),
+      axios.get('/api/users/' + userId + '/item-access')
+    ]).then(function(rs) {
+      var groups = (rs[0].data.data || rs[0].data.groups || []);
+      var allowed = {};
+      ((rs[1].data.data && rs[1].data.data.groups) || []).forEach(function(g) { allowed[g] = true; });
+      // 분류별 묶기
+      var byCat = {};
+      groups.forEach(function(g) {
+        var name = g.item_group; if (!name) return;
+        var cat = g.category || '(기타)';
+        if (!byCat[cat]) byCat[cat] = [];
+        byCat[cat].push({ name: name, count: g.variant_count || g.item_count || 0 });
+      });
+      var html = '';
+      Object.keys(byCat).sort().forEach(function(cat) {
+        var items = byCat[cat].sort(function(a, b){ return a.name.localeCompare(b.name); });
+        html += '<div class="mb-3 border rounded-lg overflow-hidden">' +
+          '<div class="px-3 py-2 bg-gray-50 flex items-center justify-between">' +
+            '<span class="font-medium text-sm">' + esc(cat) + ' <span class="text-xs text-gray-400">(' + items.length + ')</span></span>' +
+            '<label class="text-xs text-blue-600 cursor-pointer"><input type="checkbox" class="cat-all mr-1" data-cat="' + esc(cat) + '"> 전체</label>' +
+          '</div>' +
+          '<div class="p-2 grid grid-cols-2 sm:grid-cols-3 gap-1">';
+        items.forEach(function(it) {
+          html += '<label class="flex items-center gap-1.5 text-xs px-1.5 py-1 rounded hover:bg-purple-50 cursor-pointer">' +
+            '<input type="checkbox" class="ia-grp" data-cat="' + esc(cat) + '" value="' + esc(it.name) + '"' + (allowed[it.name] ? ' checked' : '') + '>' +
+            '<span class="truncate" title="' + esc(it.name) + '">' + esc(it.name) + '</span></label>';
+        });
+        html += '</div></div>';
+      });
+      document.getElementById('itemAccessBody').innerHTML = html || '<div class="text-center py-8 text-gray-400 text-sm">그룹이 없습니다.</div>';
+      // 분류 전체 토글
+      Array.prototype.forEach.call(document.querySelectorAll('.cat-all'), function(catCb) {
+        catCb.addEventListener('change', function() {
+          var cat = this.getAttribute('data-cat'); var on = this.checked;
+          Array.prototype.forEach.call(document.querySelectorAll('.ia-grp[data-cat="' + cat + '"]'), function(cb) { cb.checked = on; });
+          updateItemAccessCount();
+        });
+      });
+      Array.prototype.forEach.call(document.querySelectorAll('.ia-grp'), function(cb) { cb.addEventListener('change', updateItemAccessCount); });
+      updateItemAccessCount();
+    }).catch(function(err) {
+      document.getElementById('itemAccessBody').innerHTML = '<div class="text-center py-8 text-red-400 text-sm">불러오기 실패</div>';
+    });
+  };
+
+  function updateItemAccessCount() {
+    var n = document.querySelectorAll('.ia-grp:checked').length;
+    var el = document.getElementById('itemAccessCount');
+    if (el) el.textContent = n === 0 ? '선택 0 (전체 노출)' : ('선택 ' + n + '개 그룹만 노출');
+  }
+
+  window.saveItemAccess = function(userId) {
+    var groups = Array.prototype.map.call(document.querySelectorAll('.ia-grp:checked'), function(cb) { return cb.value; });
+    var btn = document.getElementById('itemAccessSaveBtn');
+    if (btn) { btn.disabled = true; btn.textContent = '저장 중...'; }
+    axios.put('/api/users/' + userId + '/item-access', { groups: groups }).then(function() {
+      if (window.showToast) showToast('품목 배정 저장 완료 (' + (groups.length || '전체') + ')', 'success');
+      var m = document.getElementById('itemAccessModal'); if (m) m.remove();
+    }).catch(function(err) {
+      if (window.showToast) showToast('저장 실패: ' + (err.response && err.response.data && err.response.data.error || err.message), 'error');
+      if (btn) { btn.disabled = false; btn.textContent = '저장'; }
+    });
   };
 
   window.showCreateModal = function() {

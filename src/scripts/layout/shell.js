@@ -1962,11 +1962,13 @@ async function execMsgSend() {
 var _itemSearchCb = null;
 var _itemSearchType = 'sales';
 var _itemSearchTimer = null;
+var _itemSearchForUser = 0;
 
 window.openItemSearchModal = function(opts) {
   opts = opts || {};
   _itemSearchCb = opts.onSelect || null;
   _itemSearchType = opts.type || 'sales';
+  _itemSearchForUser = opts.forUser ? 1 : 0;
   var initialSearch = opts.search || '';
 
   var existing = document.getElementById('itemSearchModal');
@@ -2014,7 +2016,7 @@ window.openItemSearchModal = function(opts) {
 };
 
 function _doItemSearch(q) {
-  var url = '/api/items?search=' + encodeURIComponent(q) + '&type=' + _itemSearchType + '&limit=50';
+  var url = '/api/items?search=' + encodeURIComponent(q) + '&type=' + _itemSearchType + (_itemSearchForUser ? '&for_user=1' : '') + '&limit=50';
   var body = document.getElementById('itemSearchModalBody');
   if (!body) return;
   body.innerHTML = '<div class="text-center py-8 text-gray-400"><i class="fas fa-spinner fa-spin mr-1"></i>검색 중...</div>';

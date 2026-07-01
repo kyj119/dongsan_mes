@@ -119,6 +119,23 @@ itemsRouter.get('/', async (c) => {
       query += ' AND i.is_purchase_item = 1'
     }
 
+    // C2: 사용자별 사용품목 분리 — for_user=1 이면 현재 사용자 허용 그룹(+그룹없는 품목)만.
+    // 규칙 없는 사용자=제한 없음(전체). 그룹 90개 초과 배정=사실상 전체라 제한 생략(바인드 한도).
+    if (c.req.query('for_user') === '1') {
+      const authUser = c.get('user') as { id?: number } | undefined
+      if (authUser?.id) {
+        const acc = await c.env.DB.prepare(
+          'SELECT item_group FROM user_item_access WHERE user_id = ?'
+        ).bind(authUser.id).all<{ item_group: string }>()
+        const allowed = (acc.results || []).map((r) => r.item_group)
+        if (allowed.length > 0 && allowed.length <= 90) {
+          const ph = allowed.map(() => '?').join(',')
+          query += ` AND (i.item_group IN (${ph}) OR i.item_group IS NULL)`
+          params.push(...allowed)
+        }
+      }
+    }
+
     if (category) {
       query += ' AND ic.category_code = ?'
       params.push(category)

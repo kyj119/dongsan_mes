@@ -259,7 +259,8 @@
                         // 기본: 판매품(제품·상품)만. '원자재 포함' 체크 시 순수 원자재까지 검색.
                         var incMat = document.getElementById('includeMaterials');
                         var typeQ = (incMat && incMat.checked) ? '' : '&type=sales';
-                        var res = await axios.get('/api/items?search=' + encodeURIComponent(q) + typeQ + '&limit=50');
+                        // C2: 사용자별 사용품목 분리 (허용 그룹만; 규칙 없으면 전체)
+                        var res = await axios.get('/api/items?search=' + encodeURIComponent(q) + typeQ + '&for_user=1&limit=50');
                         var items = res.data.data || [];
                         if (items.length === 1) {
                             var it = items[0];
@@ -273,7 +274,7 @@
                                 item_type: it.item_type || ''
                             });
                         } else if (items.length > 1 && openModal) {
-                            window.openItemSearchModal({ type: (incMat && incMat.checked) ? '' : 'sales', search: q, onSelect: applyItemSelection });
+                            window.openItemSearchModal({ type: (incMat && incMat.checked) ? '' : 'sales', search: q, forUser: true, onSelect: applyItemSelection });
                         }
                     } catch(e) { console.error('Search error', e); }
                 }

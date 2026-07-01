@@ -251,4 +251,45 @@ usersRouter.patch('/:id', requireAdmin, async (c) => {
   }
 })
 
+// ── C2: 사용자별 사용품목(item_group) 배정 ──────────────────────────
+// GET /:id/item-access — 사용자 허용 그룹 목록
+usersRouter.get('/:id/item-access', requireAdmin, async (c) => {
+  try {
+    const id = c.req.param('id')
+    const { results } = await c.env.DB.prepare(
+      'SELECT item_group FROM user_item_access WHERE user_id = ? ORDER BY item_group'
+    ).bind(id).all<{ item_group: string }>()
+    return c.json({ success: true, data: { groups: results.map((r) => r.item_group) } })
+  } catch (error) {
+    console.error('GET /api/users/:id/item-access error:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
+  }
+})
+
+// PUT /:id/item-access — 허용 그룹 일괄 교체 (body: { groups: string[] })
+usersRouter.put('/:id/item-access', requireAdmin, async (c) => {
+  try {
+    const id = c.req.param('id')
+    const body = await c.req.json().catch(() => ({})) as { groups?: string[] }
+    const groups = Array.isArray(body.groups) ? body.groups.filter((g) => g && String(g).trim()) : []
+    await c.env.DB.prepare('DELETE FROM user_item_access WHERE user_id = ?').bind(id).run()
+    if (groups.length > 0) {
+      // 청크 (바인드 한도) — user_id + group 2바인드/행, 80행 청크
+      for (let i = 0; i < groups.length; i += 80) {
+        const chunk = groups.slice(i, i + 80)
+        const ph = chunk.map(() => '(?, ?)').join(', ')
+        const binds: any[] = []
+        chunk.forEach((g) => { binds.push(id, g) })
+        await c.env.DB.prepare(
+          `INSERT OR IGNORE INTO user_item_access (user_id, item_group) VALUES ${ph}`
+        ).bind(...binds).run()
+      }
+    }
+    return c.json({ success: true, data: { count: groups.length } })
+  } catch (error) {
+    console.error('PUT /api/users/:id/item-access error:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
+  }
+})
+
 export default usersRouter
