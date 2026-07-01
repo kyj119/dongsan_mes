@@ -10,6 +10,8 @@ export function leavesPage(c: Context<HonoEnv>) {
     activePage: '/leaves',
     pageContent: `
       <div class="space-y-4">
+        <!-- 촉진/소멸 대상 경보 (선제 가시화) -->
+        <div id="lvAlertBanner" class="hidden"></div>
         <!-- 탭 -->
         <div class="ds-card flex">
           <button onclick="leavesSwitchTab('balances')" id="lvTabBalances"

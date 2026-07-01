@@ -126,9 +126,27 @@ cronRouter.post('/daily-maintenance', agentKeyMiddleware, async (c) => {
     out.push(rec)
   }
 
+  // 3) 연차 무인 적립 — 월차/연차(전 직원 대상·멱등: expected/entitlement 대비 delta만·ON CONFLICT upsert).
+  //    루프 밖 1회(엔드포인트가 전 직원 처리). 매일 호출해도 초과적립 없음 → 적립 lag 제거.
+  let leaves: any = {}
+  try {
+    const svcToken = await sign(
+      { id: 0, username: 'cron', role: 'ADMIN', entityId: 1, exp: Math.floor(Date.now() / 1000) + 900 },
+      jwtSecret, 'HS256'
+    )
+    const h = { Authorization: `Bearer ${svcToken}`, 'Content-Type': 'application/json' }
+    const m = await fetch(`${origin}/api/leaves/accrual/monthly`, { method: 'POST', headers: h, body: '{}' })
+    const mj: any = await m.json().catch(() => ({}))
+    const y = await fetch(`${origin}/api/leaves/accrual/yearly`, { method: 'POST', headers: h, body: '{}' })
+    const yj: any = await y.json().catch(() => ({}))
+    leaves = { monthly: { status: m.status, ...(mj?.data ?? mj) }, yearly: { status: y.status, ...(yj?.data ?? yj) } }
+  } catch (err: any) {
+    leaves = { error: String(err?.message || err).slice(0, 200) }
+  }
+
   const summary = { entities: entities.length, date: yesterday }
-  console.log('[cron/daily-maintenance]', JSON.stringify(summary))
-  return c.json({ success: true, summary, results: out })
+  console.log('[cron/daily-maintenance]', JSON.stringify({ ...summary, leaves }))
+  return c.json({ success: true, summary, results: out, leaves })
 })
 
 export default cronRouter

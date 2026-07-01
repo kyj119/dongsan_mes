@@ -499,4 +499,23 @@ async function lvLoadEmployeeOptions() {
   lvSetupEmployeeSearch('lvReqEmployeeSearch', 'lvReqEmployee', 'lvReqEmployeeDropdown');
   lvSetupEmployeeSearch('lvGrantEmployeeSearch', 'lvGrantEmployee', 'lvGrantEmployeeDropdown');
   window.leavesLoadBalances();
+
+  // 촉진/소멸 대상 경보 (선제 가시화) — 기존 dryRun 엔드포인트 재사용(부수효과 없음)
+  window.leavesLoadAlerts = async function() {
+    var el = document.getElementById('lvAlertBanner');
+    if (!el) return;
+    try {
+      var pr = await axios.post('/api/leaves/promotion/run', { dryRun: true });
+      var ex = await axios.post('/api/leaves/expire', { dryRun: true });
+      var promo = (pr.data && pr.data.count) || 0;
+      var exp = (ex.data && (ex.data.lawful != null ? ex.data.lawful : ex.data.total)) || 0;
+      if (promo === 0 && exp === 0) { el.className = 'hidden'; el.innerHTML = ''; return; }
+      var parts = [];
+      if (promo > 0) parts.push('사용촉진 대상 ' + promo + '명');
+      if (exp > 0) parts.push('소멸 예정(적법) ' + exp + '명');
+      el.className = 'bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm text-amber-800 flex items-center gap-2';
+      el.innerHTML = '<i class="fas fa-bullhorn"></i><span><b>연차 관리 알림</b> — ' + parts.join(' · ') + '. 상단 <b>사용촉진</b>·<b>연차 소멸</b> 버튼으로 처리하세요.</span>';
+    } catch (e) { el.className = 'hidden'; }
+  };
+  window.leavesLoadAlerts();
 })();
