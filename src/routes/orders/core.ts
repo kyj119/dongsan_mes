@@ -11,6 +11,7 @@ import { checkMaterialShortage } from '../../utils/materialShortageCheck'
 import { sendEmail } from '../../services/emailProvider'
 import { getEntityId, entityFilter, orderVisibilityFilter } from '../../utils/entityFilter'
 import { getEntityCompanyInfo } from '../../utils/entitySettings'
+import { deriveClientBalance } from '../ledger/ar-helpers'
 import {
   recommendAssignedEntity,
   recalcOrderBillingGroups,
@@ -321,17 +322,21 @@ ordersCoreRouter.get('/:id/invoice', async (c) => {
     const entityId = (o.entity_id as number) || getEntityId(c)
     const company = await getEntityCompanyInfo(c.env.DB, entityId)
 
+    // X5: 폐기 clients.balance 캐시(prod 전체 0) 대신 파생 미수금 — 세금계산서/주문서 전미수·현미수 표시 정합
+    const derivedBalance = o.client_id ? await deriveClientBalance(c, o.client_id as number) : 0
+    if (client) (client as Record<string, unknown>).balance = derivedBalance
+
     return c.json({
       success: true,
       data: {
         order, client, items, company,
         // 전미수금/현미수금: BILLED면 balance에 이미 포함, 아니면 미포함
         previous_balance: o.billing_status === 'BILLED'
-          ? ((client?.balance as number) || 0) - ((o.billed_amount as number) || (o.final_amount as number) || 0)
-          : ((client?.balance as number) || 0),
+          ? derivedBalance - ((o.billed_amount as number) || (o.final_amount as number) || 0)
+          : derivedBalance,
         current_balance: o.billing_status === 'BILLED'
-          ? ((client?.balance as number) || 0)
-          : ((client?.balance as number) || 0) + ((o.final_amount as number) || 0)
+          ? derivedBalance
+          : derivedBalance + ((o.final_amount as number) || 0)
       }
     })
   } catch (error) {

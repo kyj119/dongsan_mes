@@ -83,9 +83,7 @@ arReceivablesRouter.post('/integrity-fix', requireRole('ADMIN', 'MANAGER'), asyn
       const cached = Number(row.balance) || 0
 
       if (Math.abs(calculated - cached) > 0.01) {
-        await c.env.DB.prepare(
-          'UPDATE clients SET balance = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
-        ).bind(+(calculated.toFixed(2)), row.id).run()
+        // X5: clients.balance 캐시 폐기 — 미수금 정본=파생(deriveClientBalance). 죽은 캐시에 write하지 않고 차이만 리포트.
         fixResults.push({ client_id: row.id, client_name: row.client_name, old: cached, new: +(calculated.toFixed(2)) })
         fixed++
       }
@@ -138,9 +136,7 @@ arReceivablesRouter.post('/recalculate/:clientId', requireRole('ADMIN', 'MANAGER
     const newBalance = Number(billedRow!.total_billed) - Number(paymentRow!.total_payments) - Number(adjRow!.total_adjustments)
     const oldBalance = Number(client.balance) || 0
 
-    await c.env.DB.prepare(
-      'UPDATE clients SET balance = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
-    ).bind(newBalance, clientId).run()
+    // X5: clients.balance 캐시 폐기 — 미수금 정본=파생. 캐시 write 제거(파생값을 리포트만).
 
     return c.json({
       success: true,

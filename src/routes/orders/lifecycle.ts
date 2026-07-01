@@ -16,6 +16,7 @@ import { recalculateOrderCosts } from '../../utils/costCalculator'
 import { checkMaterialShortage } from '../../utils/materialShortageCheck'
 import { getEntityId, entityFilter } from '../../utils/entityFilter'
 import { setOrderBillingStatus } from './helpers'
+import { deriveClientBalance } from '../ledger/ar-helpers'
 
 const ordersLifecycleRouter = new Hono<HonoEnv>()
 ordersLifecycleRouter.use('/*', authMiddleware, requireAnyPagePermission('/orders', '/cards'))
@@ -308,19 +309,23 @@ ordersLifecycleRouter.patch('/:id/status', requireRole('ADMIN', 'MANAGER'), asyn
       }
     } else if (status === 'SHIPPED') {
       await notifyRoles(c.env.DB, ['ADMIN', 'MANAGER'], '출고 완료', `${order.order_number} 출고 처리되었습니다.`, '/orders')
-      // 연체 거래처 경고: balance > 0이고 30일 이상 미입금 주문이 있으면 경리에게 알림
+      // 연체 거래처 경고: 파생 미수금(deriveClientBalance) > 0이고 30일 이상 미입금이면 경리에게 알림
+      // X5: 폐기 clients.balance 캐시(prod 전체 0) 대신 파생 — 캐시 의존 시 이 경고가 영구 미발동이던 것 정상화
       try {
-        const clientCheck = await c.env.DB.prepare(`
-          SELECT c.client_name, c.balance,
-            (SELECT MIN(COALESCE(o2.accounting_date, o2.billed_at)) FROM orders o2 WHERE o2.client_id = c.id AND o2.billing_status = 'BILLED') as oldest_billed
-          FROM clients c WHERE c.id = ? AND c.balance > 0
-        `).bind(order.client_id).first<{ client_name: string; balance: number; oldest_billed: string | null }>()
-        if (clientCheck && clientCheck.oldest_billed) {
-          const daysSince = Math.floor((Date.now() - new Date(clientCheck.oldest_billed).getTime()) / 86400000)
-          if (daysSince > 30) {
-            await notifyRoles(c.env.DB, ['ADMIN', 'MANAGER'], '연체 거래처 출고',
-              `${clientCheck.client_name} 미수금 ${(clientCheck.balance || 0).toLocaleString()}원 (${daysSince}일 연체)`,
-              '/receivables')
+        const derivedBal = await deriveClientBalance(c, order.client_id as number)
+        if (derivedBal > 0) {
+          const clientCheck = await c.env.DB.prepare(`
+            SELECT c.client_name,
+              (SELECT MIN(COALESCE(o2.accounting_date, o2.billed_at)) FROM orders o2 WHERE o2.client_id = c.id AND o2.billing_status = 'BILLED') as oldest_billed
+            FROM clients c WHERE c.id = ?
+          `).bind(order.client_id).first<{ client_name: string; oldest_billed: string | null }>()
+          if (clientCheck && clientCheck.oldest_billed) {
+            const daysSince = Math.floor((Date.now() - new Date(clientCheck.oldest_billed).getTime()) / 86400000)
+            if (daysSince > 30) {
+              await notifyRoles(c.env.DB, ['ADMIN', 'MANAGER'], '연체 거래처 출고',
+                `${clientCheck.client_name} 미수금 ${derivedBal.toLocaleString()}원 (${daysSince}일 연체)`,
+                '/receivables')
+            }
           }
         }
       } catch (_) { /* 알림 실패해도 출고는 진행 */ }

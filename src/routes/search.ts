@@ -36,7 +36,8 @@ searchRouter.get('/', async (c) => {
       `).bind(pattern, pattern, ...ef.params).all(),
 
       c.env.DB.prepare(`
-        SELECT id, client_code, client_name, balance
+        -- X5: 폐기 clients.balance 캐시 제거(검색 힌트가 stale 0). 미수금 정본=거래처 상세/미수금(파생)
+        SELECT id, client_code, client_name
         FROM clients
         WHERE (client_name LIKE ? OR client_code LIKE ?)
           AND is_active = 1
