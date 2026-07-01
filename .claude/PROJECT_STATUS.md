@@ -1,7 +1,7 @@
 # PROJECT_STATUS.md — 프로젝트 현황판
 
-> **현재 초점**: 워크플로우 전수분석 마스터 기획(`docs/superpowers/specs/2026-07-01-workflow-improvement-master-plan.md`) — 횡단근본원인 X1~X5·Phase0~5. **Phase0+X2 배포완료**, 남은=X4 cron·X5 balance·Phase1~5(단가·실원가·간판BOM 등).
-> **마지막 prod 배포**: **Phase0 死상태값버그5(OEE/MRP/주간발주) + X2 고아백엔드 UI 4건**(/quality 클레임·반품·불량 신규[마이그0420]·/equipment 큐부하·/production-reports OEE탭·/production 작업실적)(dep `3fd127f4`, push `32012288`, worktree `session/phase0-activate`). prod 실검증 완료(불량코드 실데이터·장비TPM·실직원, API200·에러0). 이전: 품목 0398~0419(`fb45ea0f`).
+> **현재 초점**: 워크플로우 전수분석 마스터 기획(`docs/superpowers/specs/2026-07-01-workflow-improvement-master-plan.md`) — 횡단근본원인 X1~X5·Phase0~5. **Phase0+X2+X4+X5 배포완료**, 남은=Phase1~5(단가엔진·실원가·BOM단일화·간판BOM·셀프주문포털·online proofing·세금계산서 적시발행 등).
+> **마지막 prod 배포**: **X5 clients.balance 파생스윕**(orders/core 인보이스·lifecycle 연체경고·search·ar-receivables writer 제거) + **X4 무인 cron**(/api/cron/daily-maintenance=OEE일배치+알림생성, barobill-cron 워커 06:00 KST)(push `de4df2ed`, dep `84483450`, 워커 `a2b06cc6`). prod 검증: invoice 파생balance 200·search balance제거·cron 401도달·로컬 5법인 200. 이전: **Phase0 버그5+X2 UI 4건**(/quality·장비큐·OEE·작업실적, dep `3fd127f4`, 마이그0420).
 > **블로커**: 품목 단가 전부 0(전역 과제) · 간판 BOM=**brainstorming 후 사용자 보류**(견적구조 설계라 결이 다름·디자이너 카탈로그 확정 의존).
 > **다음 액션**: 단가 체계 / (간판 BOM=재개 시 spec `2026-06-13-signage-component-estimate-structure.md` + session-context 간판 항목 참조).
 > **핸드오프 정본** = `memory/session-context.md`.
