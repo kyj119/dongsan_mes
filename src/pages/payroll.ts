@@ -32,7 +32,7 @@ export function payrollPage(c: Context<HonoEnv>) {
           <button onclick="payrollSyncAttendance()" class="px-3 py-1.5 text-xs border border-blue-300 text-blue-700 bg-blue-50 rounded hover:bg-blue-100" title="해당 월 attendance 테이블의 연장근무/근무일수/지각/결근을 급여에 반영">
             <i class="fas fa-sync-alt mr-1"></i>근태 불러오기
           </button>
-          <button onclick="payrollToggleLedger()" id="prLedgerBtn" class="px-3 py-1.5 text-xs border border-gray-300 text-gray-700 bg-white rounded hover:bg-gray-50" title="급여대장(수당·공제 항목 전개) 보기 전환">
+          <button onclick="payrollToggleLedger()" id="prLedgerBtn" class="px-3 py-1.5 text-xs border border-gray-300 text-white bg-blue-600 rounded hover:bg-blue-700" title="급여대장(기본)↔간단표 전환">
             <i class="fas fa-table-cells mr-1"></i>급여대장
           </button>
           <button onclick="payrollOpenBatchSlip()" class="px-3 py-1.5 text-xs border border-gray-300 text-gray-700 bg-white rounded hover:bg-gray-50" title="해당 월 전 직원 급여명세서를 새 창에서 일괄 인쇄">
@@ -103,8 +103,8 @@ export function payrollPage(c: Context<HonoEnv>) {
           </button>
         </div>
 
-        <!-- 급여 목록 테이블 -->
-        <div class="ds-card overflow-hidden" id="prCompactCard">
+        <!-- 급여 목록 테이블 (compact) — 급여대장을 기본으로 전환, 기본 숨김(급여대장 버튼으로 토글) -->
+        <div class="ds-card overflow-hidden hidden" id="prCompactCard">
           <div class="overflow-x-auto">
             <table class="w-full text-sm ds-table-striped">
               <thead class="bg-gray-50 text-xs text-gray-600 uppercase tracking-wider">
@@ -131,8 +131,8 @@ export function payrollPage(c: Context<HonoEnv>) {
           </div>
         </div>
 
-        <!-- 급여대장 (확장 뷰 — 고정형 표 + 탭) -->
-        <div id="prLedgerCard" class="ds-card overflow-hidden hidden">
+        <!-- 급여대장 (확장 뷰 — 고정형 표 + 탭) — 기본 뷰 -->
+        <div id="prLedgerCard" class="ds-card overflow-hidden">
           <div class="flex items-center justify-between px-4 py-2 border-b border-gray-200 bg-gray-50 flex-wrap gap-2">
             <div class="flex items-end gap-1">
               <button id="prLedgerTabMain" onclick="payrollSwitchLedgerTab('main')" class="px-3 py-1.5 text-xs font-semibold border-b-2 border-blue-600 text-blue-700">급여대장</button>

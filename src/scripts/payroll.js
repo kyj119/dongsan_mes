@@ -793,7 +793,7 @@ window.sendPayslipBulk = async function() {
 //   기존 /payroll 목록(currentPayrollData) 재사용. API 변경 없음.
 //   컬럼은 descriptor 배열로 정의 → 고정 너비 colgroup·헤더·본문·합계·CSV 공통 생성.
 // ============================================================================
-window.payrollLedgerMode = false;
+window.payrollLedgerMode = true;    // 급여대장을 기본 뷰로 (compact 표 폐기, 용준님 요청 2026-07)
 window.payrollLedgerTab = 'main';   // 'main'=급여대장(지급/공제) | 'emp'=회사부담금
 
 // descriptor: {key,label,w,group,kind,sticky?,bold?,calc?}
@@ -1021,4 +1021,6 @@ window.payrollLedgerPrint = function(){
   var p = document.getElementById('prPeriod');
   if (p && !p.value) p.value = ym;
   prLoadEmployeeOptions();
+  // 급여대장이 기본 뷰 → 로드 시 이번 달 자동 조회(데이터 즉시 표시, 빈 화면 방지)
+  if (typeof window.payrollLoad === 'function') window.payrollLoad();
 })();
