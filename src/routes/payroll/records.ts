@@ -69,8 +69,12 @@ recordsRouter.patch('/:id/approve', requireRole('ADMIN', 'MANAGER'), async (c) =
   const id = Number(c.req.param('id'))
   const user = c.get('user')
   const ef = entityFilter(c)
+  // 급여확정 잠금: PENDING → APPROVED 만 허용 (PAID/APPROVED 재승인·역전이 차단)
+  const cur = await c.env.DB.prepare(`SELECT status FROM payroll WHERE id=?${ef.clause}`).bind(id, ...ef.params).first<{ status: string }>()
+  if (!cur) return c.json({ success: false, error: '없음' }, 404)
+  if (cur.status !== 'PENDING') return c.json({ success: false, error: `승인 불가: 현재 상태 ${cur.status} (대기 상태만 승인 가능)` }, 400)
   await c.env.DB.prepare(
-    `UPDATE payroll SET status='APPROVED', approved_by=?, approved_at=datetime('now'), updated_at=datetime('now') WHERE id=?${ef.clause}`
+    `UPDATE payroll SET status='APPROVED', approved_by=?, approved_at=datetime('now'), updated_at=datetime('now') WHERE id=?${ef.clause} AND status='PENDING'`
   ).bind(user?.id || null, id, ...ef.params).run()
   return c.json({ success: true })
 })
@@ -82,8 +86,12 @@ recordsRouter.patch('/:id/approve', requireRole('ADMIN', 'MANAGER'), async (c) =
 recordsRouter.patch('/:id/pay', requireRole('ADMIN', 'MANAGER'), async (c) => {
   const id = Number(c.req.param('id'))
   const ef = entityFilter(c)
+  // 급여확정 잠금: APPROVED → PAID 만 허용 (미승인 건너뜀·재지급 차단)
+  const cur = await c.env.DB.prepare(`SELECT status FROM payroll WHERE id=?${ef.clause}`).bind(id, ...ef.params).first<{ status: string }>()
+  if (!cur) return c.json({ success: false, error: '없음' }, 404)
+  if (cur.status !== 'APPROVED') return c.json({ success: false, error: `지급 불가: 현재 상태 ${cur.status} (승인 상태만 지급 가능)` }, 400)
   await c.env.DB.prepare(
-    `UPDATE payroll SET status='PAID', paid_at=datetime('now'), updated_at=datetime('now') WHERE id=?${ef.clause}`
+    `UPDATE payroll SET status='PAID', paid_at=datetime('now'), updated_at=datetime('now') WHERE id=?${ef.clause} AND status='APPROVED'`
   ).bind(id, ...ef.params).run()
   return c.json({ success: true })
 })

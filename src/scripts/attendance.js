@@ -652,6 +652,23 @@
     var bd = document.getElementById('attBulkDate');
     if (bd) bd.value = new Date().toISOString().slice(0, 10);
   });
+  // CAPS 근태 경보 (미매핑·동기화 지연) — B2
+  function loadCapsHealth() {
+    var el = document.getElementById('attCapsHealth');
+    if (!el) return;
+    axios.get('/api/caps/health').then(function (res) {
+      var d = res.data && res.data.data;
+      if (!d || !d.has_issue) { el.className = 'hidden'; el.innerHTML = ''; return; }
+      var parts = [];
+      if (d.unmapped_total > 0) parts.push('미매핑 펀치 ' + d.unmapped_total + '건(신규입사자 근태 누락 위험)');
+      var staleSites = (d.sites || []).filter(function (s) { return s.stale; });
+      if (staleSites.length > 0) parts.push('동기화 지연: ' + staleSites.map(function (s) { return s.name; }).join(', '));
+      if (d.stale_employee_count > 0) parts.push('미동기화 직원 ' + d.stale_employee_count + '명');
+      el.className = 'bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-700 flex items-start gap-2';
+      el.innerHTML = '<i class="fas fa-triangle-exclamation mt-0.5"></i><span><b>CAPS 근태 경보</b> — ' + parts.join(' · ') + '. <span class="text-red-500">직원 관리에서 CAPS ID 매핑·동기화를 확인하세요.</span></span>';
+    }).catch(function () { el.className = 'hidden'; });
+  }
+
   // SPA 네비게이션 대비
   (function () {
     var m = document.getElementById('attMonth');
@@ -662,6 +679,7 @@
     var bd = document.getElementById('attBulkDate');
     if (bd && !bd.value) bd.value = new Date().toISOString().slice(0, 10);
     if (m && m.value) loadMonth();
+    loadCapsHealth();
   })();
 
   // 전역 핸들러 등록

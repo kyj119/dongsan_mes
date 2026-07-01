@@ -8,6 +8,7 @@ import { Hono } from 'hono'
 import { authMiddleware, requireRole } from '../middleware/auth'
 import type { HonoEnv } from '../types/env'
 import { LEAVE_ATTENDANCE_TYPES } from '../utils/leaveAttendance'
+import { entityFilter } from '../utils/entityFilter'
 
 const capsRouter = new Hono<HonoEnv>()
 
@@ -744,6 +745,46 @@ capsRouter.get('/settings', async (c) => {
     return c.json({ success: true, data: results || [] })
   } catch (err) {
     console.error('CAPS settings error:', err)
+    return c.json({ success: false, error: '서버 오류' }, 500)
+  }
+})
+
+// ============================================================================
+// GET /api/caps/health — 근태 CAPS 미매핑·동기화 지연 경보 요약 (B2 위젯용)
+//   - 미매핑: caps_sites.last_unmapped(JSON) = 직원에 매칭 안 된 CAPS 펀치(신규입사자 근태 누락 위험)
+//   - 지연: last_sync_ok_at 2일↑ / caps_id 있으나 caps_last_synced_at 2일↑ 직원
+// ============================================================================
+capsRouter.get('/health', authMiddleware, requireRole('ADMIN', 'MANAGER'), async (c) => {
+  try {
+    const { results: sites } = await c.env.DB.prepare(
+      `SELECT id, name, last_sync_ok_at, last_unmapped FROM caps_sites WHERE is_active = 1`
+    ).all<{ id: number; name: string; last_sync_ok_at: string | null; last_unmapped: string | null }>()
+
+    const now = Date.now()
+    const STALE_MS = 2 * 86400000
+    let unmappedTotal = 0
+    const siteHealth = (sites || []).map(s => {
+      let unmapped: any[] = []
+      try { unmapped = s.last_unmapped ? JSON.parse(s.last_unmapped) : [] } catch { unmapped = [] }
+      unmappedTotal += unmapped.length
+      const lastSync = s.last_sync_ok_at ? new Date(String(s.last_sync_ok_at).replace(' ', 'T') + 'Z').getTime() : 0
+      const stale = !s.last_sync_ok_at || (now - lastSync) > STALE_MS
+      return { id: s.id, name: s.name, last_sync_ok_at: s.last_sync_ok_at, stale, unmapped_count: unmapped.length, unmapped_samples: unmapped.slice(0, 10) }
+    })
+
+    // caps_id 매핑됐으나 오래 미동기화된 직원 (entity 필터)
+    const ef = entityFilter(c, 'e')
+    const staleEmp = await c.env.DB.prepare(
+      `SELECT COUNT(*) as cnt FROM employees e
+       WHERE e.is_deleted = 0 AND e.caps_id IS NOT NULL AND e.caps_id != ''
+         AND (e.caps_last_synced_at IS NULL OR julianday('now') - julianday(e.caps_last_synced_at) > 2)${ef.clause}`
+    ).bind(...ef.params).first<{ cnt: number }>()
+
+    const staleEmpCount = staleEmp?.cnt || 0
+    const hasIssue = unmappedTotal > 0 || siteHealth.some(s => s.stale) || staleEmpCount > 0
+    return c.json({ success: true, data: { has_issue: hasIssue, unmapped_total: unmappedTotal, stale_employee_count: staleEmpCount, sites: siteHealth } })
+  } catch (err) {
+    console.error('CAPS health error:', err)
     return c.json({ success: false, error: '서버 오류' }, 500)
   }
 })

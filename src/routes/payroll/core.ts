@@ -605,7 +605,7 @@ coreRouter.post('/sync-attendance', requireRole('ADMIN', 'MANAGER'), async (c) =
              e.dependents_count, e.income_tax_table_option
       FROM payroll p
       JOIN employees e ON e.id = p.employee_id
-      WHERE p.pay_period = ?
+      WHERE p.pay_period = ? AND p.status != 'PAID'
     `
     const targetParams: any[] = [payPeriod]
     if (employeeIds.length > 0) {

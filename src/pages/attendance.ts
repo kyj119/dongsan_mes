@@ -38,6 +38,9 @@ export function attendancePage(c: Context<HonoEnv>) {
           </div>
         </div>
 
+        <!-- CAPS 근태 경보 (미매핑·동기화 지연) -->
+        <div id="attCapsHealth" class="hidden"></div>
+
         <!-- 일괄 액션 바 -->
         <div class="bg-amber-50 border border-amber-200 rounded-lg p-3 flex flex-wrap items-center gap-2">
           <span class="text-sm font-semibold text-amber-800">
