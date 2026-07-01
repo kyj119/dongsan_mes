@@ -139,6 +139,7 @@ import { taxInvoicesPage } from './pages/taxInvoices'
 import { bankPage } from './pages/bank'
 // billingPage → ledger 통합됨
 import { shipmentsPage } from './pages/shipments'
+import { qualityPage } from './pages/quality'
 import { reportsPage } from './pages/reports'
 import { clientDetailPage } from './pages/clientDetail'
 import { activityLogPage } from './pages/activityLog'
@@ -441,6 +442,7 @@ app.get('/bank', pageAuthMiddleware, requireAdminPage(), bankPage)
 app.get('/billing', (c) => c.redirect('/ledger?tab=billing'))
 app.get('/shipments', pageAuthMiddleware, requirePagePermission('/shipments'), shipmentsPage)
 app.get('/shipments-dashboard', pageAuthMiddleware, requirePagePermission('/shipments-dashboard'), shipmentsDashboardPage)
+app.get('/quality', pageAuthMiddleware, requirePagePermission('/quality'), qualityPage)
 app.get('/reports', pageAuthMiddleware, requirePagePermission('/reports'), reportsPage)
 app.get('/forecast', (c) => c.redirect('/reports?tab=forecast'))
 app.get('/activity-log', pageAuthMiddleware, requirePagePermission('/activity-log'), activityLogPage)
