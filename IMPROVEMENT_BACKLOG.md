@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 6 -->
-<!-- last_run_at: 2026-07-02T02:00:00+09:00 -->
+<!-- last_run_area: 1 -->
+<!-- last_run_at: 2026-07-02T06:00:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -16,6 +16,16 @@
 
 > 📦 **과거 사이클 로그**는 `IMPROVEMENT_BACKLOG_ARCHIVE.md`/git 히스토리로 이관됨 (2026-06-10 1차 분리, 2026-06-25 2차 트림 343KB→192KB, **2026-06-25T10:00 3차 트림 — 06-17~06-23 사이클 로그를 git 히스토리로 이관: node_modules 부재 세션에서 commit-gate(typecheck) 차단으로 API 푸시 필요 → 파일 축소로 비용 절감 + 256KB 한도 회복**). 신규 로그는 계속 이 파일 상단에 추가. 본 파일은 직전 2일치(06-24~) 사이클 로그 + 영구 참조 섹션(Approved/New/Auto-fixed/Done/Rejected/FP 카탈로그)만 유지. 이관분은 `git log -p -- IMPROVEMENT_BACKLOG.md`로 복원 가능.
 
+> **Area 1 프로덕션 헬스 (2026-07-02T06:00):**
+> - **방법**: 사이클 초반 `npm ci`(node_modules 0→65, #439 commit-gate 자가복구) 후 git fetch(origin `c66bfc1→90c4e47` force-update, `git checkout -B main origin/main`으로 **HEAD=origin/main `90c4e47` 0/0 동기**, 워킹트리 clean, #422 디버전스 0). Area 1 **25회차** — egress 차단(prod 직접 fetch·Playwright 도달 불가)이라 CI/E2E는 GitHub Actions API로 검증. 직전 Area1(`424cb5b`, 02:00) 이후 owner churn = **품목 마스터 대량 마이그(0420-0434 간판자재/솔벤/시트/부속품split/볼로프전환/stub삭제)** + #470/#471 IDOR 픽스(`4d78be6`) + Area4/5/6 사이클 문서.
+> - **🟢 CI 헬스 = green 회복 확인**: `actions_list`(deploy.yml main) 최근 **10런 전부 success**(`90c4e47`·`28c14c2`·`4d78be6`·`908dd578`·`b1ec9e76`·`d2ebed6`·`35c18492`·`c7935566`·`e9fe499`·`a3139a6a`). **직전 Area1(24회차)이 격리·자동수정한 smoke 프로브 stale(`/api/bom?limit=10`→404)가 `/api/bom/overview`(`smoke.cjs:83` 실재)로 교체돼 회복** — BOM 재배선(`9bd6c2f`)부터 4연속 Smoke FAIL이던 게 종식. #429 purge-완전성 d축(removed-route→smoke probe 404) 자동수정의 검증 완료.
+> - **🟢 DROP/RENAME 마이그 write-path standing scan(SKILL line 40) = net-new 0**: 직전 Area1 이후 신규 0420-0434 전수 `grep DROP (TABLE|COLUMN)|RENAME` = **0건**(전부 품목/권한 데이터 INSERT·split은 order_items/product_materials 재배선 UPDATE, DROP TABLE 무 — 0434 stub 삭제도 `DELETE FROM items` 데이터행이지 테이블 DROP 아님). items inline-FK 깨짐(#430 smoke 맹점) 위험 0.
+> - **🟢 라우트 제거 → smoke 프로브 stale(#429 d축) = N/A**: `git diff 424cb5b..HEAD -- src/routes`에서 제거된 `.get/post('path')` **0건**(품목 churn은 마이그·프론트 활성화, 라우트 purge 없음). smoke 프로브 배열 재검 불요.
+> - **🟢 마이그 번호 중복 standing scan(#438) = net-new 무해**: `uniq -d` = `0080`·`0193`·`0327`·`0412`·`0416`·**`0420`**(신규: `0420_quality_claims_page_permission`[292be2d permission_pages INSERT] + `0420_solvent_canvas`[7405dc5 items INSERT] — **두 파일 전체 파일명이 달라 wrangler가 둘 다 독립 적용**, 순서 의존 0[권한 vs 품목], 기존 5개 dup과 동일 무해 FP 클래스). 신규 breaking 중복 유입 0.
+> - **🟢 backlog↔GitHub sync**: open auto-improve **실측 1건**(`list_issues(OPEN,auto-improve)` totalCount=1: #473) = 직전 Area6 stats `new=1` **정합**. owner 신규 close/머지 0(done=163·rejected=3 유지). #422 디버전스: HEAD=origin/main 동기(`90c4e47`)라 미push 픽스 0(#470/#471 IDOR 픽스 `4d78be6` in-tree 확인).
+> - **🧬 SKILL 강화 0건**: 본 사이클은 신규 발견 없이 **직전 자동수정(smoke 프로브 교체) 회복 검증 + 품목 대량 마이그 헬스 확인** 사이클 — 기존 standing scan(DROP/RENAME·마이그중복·smoke-probe·#422 디버전스)이 전수 커버. 신규 탐지 패턴 불요.
+> - 자동 수정 0건(CI green), 신규 이슈 0건, SKILL 강화 0건, done-sync(변동 0, new 1 유지), **신선 각도 — 직전 Area1 자동수정(smoke 프로브 `/api/bom/overview` 교체)의 회복 검증: BOM 재배선부터 4연속 Smoke FAIL이던 CI가 최근 10런 전부 green 회복. 품목 마스터 대량 마이그(0420-0434 간판/솔벤/split/전환/삭제) DROP/RENAME 0·라우트 제거 0·smoke 맹점(#430) 위험 0. 마이그 번호중복 0420(신규)은 파일명 독립이라 무해. open sync 1=1(#473 credential IDOR 여전히 open, 미조치). tsc/CI 정상. 부수: `npm ci` #439 자가복구.**
+>
 > **Area 6 자기 진화 (2026-07-02T02:00):**
 > - **방법**: 사이클 초반 `npm ci`(node_modules 0→65, #439 commit-gate 자가복구) 후 git fetch(origin `c66bfc1→28c14c2` force-update, `git checkout -B main origin/main`으로 **HEAD=origin/main `28c14c2` 0/0 동기**, 워킹트리 clean, #422 디버전스 0). Area 6 **29회차** — 직전 Area5(22:00) 이후 owner가 **직전 사이클 발견 6건을 전부 픽스·배포·close**(#465 BOM 재배선 `d2ebed6`·#466 단가캐시 `760c3de`·#467 배너 `665d191`·#469 재계산 `a1d8eb8`·#470/#471 IDOR `4d78be6`). **신선 각도 = 대량 close 직후 "이전 발견 재평가" 집중 — 특히 다중모듈 IDOR 클러스터(#452)가 우산 close됐으나 서브모듈이 전부 픽스됐는지 재grep.**
 > - **🔴 신규 이슈 #473 (bug, small, security, issue-only) — #452 부분픽스: 거래처 포털계정 GET/PATCH/DELETE IDOR 잔존**: #452(5모듈 IDOR 클러스터, closed=done) 중 messageTemplates·accounts-payable purchase-payment는 `entityFilter` 픽스 반영됐으나 **clients 포털계정 GET/PATCH/DELETE(`clients.ts:1070/1138/1182`)만 bare `WHERE client_id=?` 잔존**. 같은 파일 POST(생성)는 `entity_id` 스탬프·client_notes DELETE(#471)는 방금 픽스 = 격리 의도 명백한데 이 형제만 누락. entity-scoped ADMIN이 타법인 고객포털 **비밀번호 재설정=계정 탈취**(PATCH), 삭제(DELETE), login_id/연락처 열람(GET, MANAGER 도달). 도달성 LIVE(clientDetail.js). **결정적 교훈 = Area5 22:00 스캔이 재격리했으나 "#452 이미보고"로 FP 드롭** — closed=done을 "픽스됨"으로 신뢰한 #377 부분픽스 트랩의 다중모듈 버전. issue-only(IDOR=owner+egress).
