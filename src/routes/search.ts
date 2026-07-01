@@ -11,11 +11,12 @@ searchRouter.get('/', async (c) => {
   try {
     const { q = '' } = c.req.query()
     if (!q || q.length < 2) {
-      return c.json({ success: true, data: { orders: [], clients: [], cards: [] } })
+      return c.json({ success: true, data: { orders: [], clients: [], cards: [], quotations: [] } })
     }
 
     const pattern = `%${q}%`
     const ef = entityFilter(c, 'o')
+    const qEf = entityFilter(c, 'q') // G-7: 견적서 검색
 
     // Cards use requesting_entity_id
     const entityId = getEntityId(c)
@@ -23,7 +24,7 @@ searchRouter.get('/', async (c) => {
     let cardParams: number[] = []
     if (entityId > 0) { cardClause = ' AND ca.requesting_entity_id = ?'; cardParams = [entityId] }
 
-    const [orders, clients, cards] = await Promise.all([
+    const [orders, clients, cards, quotations] = await Promise.all([
       c.env.DB.prepare(`
         SELECT o.id, o.order_number, o.status, o.final_amount, c.client_name, o.delivery_date
         FROM orders o
@@ -56,6 +57,17 @@ searchRouter.get('/', async (c) => {
         ORDER BY ca.created_at DESC
         LIMIT 20
       `).bind(pattern, pattern, ...cardParams).all(),
+
+      // G-7: 견적서 검색 (매입/품목 무관)
+      c.env.DB.prepare(`
+        SELECT q.id, q.quotation_number, q.status, c.client_name, q.valid_until
+        FROM quotations q
+        LEFT JOIN clients c ON q.client_id = c.id
+        WHERE (q.quotation_number LIKE ? OR c.client_name LIKE ?)
+          ${qEf.clause}
+        ORDER BY q.created_at DESC
+        LIMIT 20
+      `).bind(pattern, pattern, ...qEf.params).all(),
     ])
 
     return c.json({
@@ -64,6 +76,7 @@ searchRouter.get('/', async (c) => {
         orders: orders.results || [],
         clients: clients.results || [],
         cards: cards.results || [],
+        quotations: quotations.results || [],
       }
     })
   } catch (error) {

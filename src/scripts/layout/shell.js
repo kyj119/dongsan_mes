@@ -1043,7 +1043,6 @@ async function doGlobalSearch() {
       html += d.clients.map(function(c) {
         return '<a href="/clients/' + c.id + '" style="display:flex;justify-content:space-between;padding:8px 12px;text-decoration:none;color:#1e293b;font-size:13px;border-bottom:1px solid #f8fafc;cursor:pointer;" onmouseover="this.style.background=\'#f8fafc\'" onmouseout="this.style.background=\'\'">'
           + '<span style="font-weight:500;">' + c.client_name + '</span>'
-          + (c.balance > 0 ? '<span style="font-size:12px;color:#ef4444;">' + Number(c.balance).toLocaleString() + '원</span>' : '')
           + '</a>';
       }).join('');
     }
@@ -1053,6 +1052,14 @@ async function doGlobalSearch() {
         return '<a href="/cards" style="display:flex;justify-content:space-between;padding:8px 12px;text-decoration:none;color:#1e293b;font-size:13px;border-bottom:1px solid #f8fafc;cursor:pointer;" onmouseover="this.style.background=\'#f8fafc\'" onmouseout="this.style.background=\'\'">'
           + '<span style="font-weight:500;">' + (ca.card_number || 'Card #' + ca.id) + '</span>'
           + '<span style="font-size:11px;color:#94a3b8;">' + (statusLabels[ca.status] || ca.status) + '</span></a>';
+      }).join('');
+    }
+    if (d.quotations && d.quotations.length > 0) {
+      html += '<div style="padding:8px 12px;font-size:11px;color:#64748b;font-weight:600;border-bottom:1px solid #f1f5f9;">견적서</div>';
+      html += d.quotations.map(function(qt) {
+        return '<a href="/quotations" style="display:flex;justify-content:space-between;padding:8px 12px;text-decoration:none;color:#1e293b;font-size:13px;border-bottom:1px solid #f8fafc;cursor:pointer;" onmouseover="this.style.background=\'#f8fafc\'" onmouseout="this.style.background=\'\'">'
+          + '<div><span style="font-weight:500;">' + qt.quotation_number + '</span> <span style="color:#64748b;font-size:12px;">' + (qt.client_name || '') + '</span></div>'
+          + '<span style="font-size:11px;color:#94a3b8;">' + (qt.status || '') + '</span></a>';
       }).join('');
     }
     if (!html) html = '<div style="text-align:center;color:#9ca3af;padding:16px;font-size:13px;">검색 결과 없음</div>';

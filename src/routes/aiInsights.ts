@@ -7,23 +7,32 @@ const aiInsights = new Hono<HonoEnv>()
 aiInsights.use('*', authMiddleware)
 
 // ─── 리스크 등급별 거래처 현황 (static route — must be before :clientId) ─────
-aiInsights.get('/credit-risk/summary', async (c) => {
+aiInsights.get('/credit-risk/summary', requireRole('ADMIN', 'MANAGER'), async (c) => {
   try {
+    // G-1: 폐기 clients.balance 대신 파생 미수(order_billing_groups[BILLED]−payments−adjustments)
     const { results } = await c.env.DB.prepare(`
-      SELECT credit_risk_grade as grade, COUNT(*) as count,
-        ROUND(SUM(balance), 0) as total_outstanding,
-        ROUND(AVG(credit_risk_score), 1) as avg_score
-      FROM clients
-      WHERE is_active = 1 AND credit_risk_grade != 'N/A'
-      GROUP BY credit_risk_grade
+      SELECT cl.credit_risk_grade as grade, COUNT(*) as count,
+        ROUND(SUM(
+          COALESCE((SELECT SUM(g.billed_amount) FROM order_billing_groups g JOIN orders o ON o.id = g.order_id WHERE o.client_id = cl.id AND g.billing_status = 'BILLED' AND o.status != 'CANCELLED'), 0)
+          - COALESCE((SELECT SUM(amount) FROM payments WHERE client_id = cl.id), 0)
+          - COALESCE((SELECT SUM(amount) FROM adjustments WHERE client_id = cl.id), 0)
+        ), 0) as total_outstanding,
+        ROUND(AVG(cl.credit_risk_score), 1) as avg_score
+      FROM clients cl
+      WHERE cl.is_active = 1 AND cl.credit_risk_grade != 'N/A'
+      GROUP BY cl.credit_risk_grade
       ORDER BY avg_score DESC
     `).all()
 
     const { results: highRisk } = await c.env.DB.prepare(`
-      SELECT id, client_name, credit_risk_score, credit_risk_grade, balance, credit_limit
-      FROM clients
-      WHERE is_active = 1 AND credit_risk_grade IN ('D', 'F')
-      ORDER BY credit_risk_score DESC LIMIT 10
+      SELECT cl.id, cl.client_name, cl.credit_risk_score, cl.credit_risk_grade,
+        (COALESCE((SELECT SUM(g.billed_amount) FROM order_billing_groups g JOIN orders o ON o.id = g.order_id WHERE o.client_id = cl.id AND g.billing_status = 'BILLED' AND o.status != 'CANCELLED'), 0)
+         - COALESCE((SELECT SUM(amount) FROM payments WHERE client_id = cl.id), 0)
+         - COALESCE((SELECT SUM(amount) FROM adjustments WHERE client_id = cl.id), 0)) as balance,
+        cl.credit_limit
+      FROM clients cl
+      WHERE cl.is_active = 1 AND cl.credit_risk_grade IN ('D', 'F')
+      ORDER BY cl.credit_risk_score DESC LIMIT 10
     `).all()
 
     return c.json({ success: true, data: { by_grade: results, high_risk: highRisk } })
@@ -34,7 +43,7 @@ aiInsights.get('/credit-risk/summary', async (c) => {
 })
 
 // ─── 거래처 미수금 리스크 스코어링 ───────────────────────────────────────────
-aiInsights.get('/credit-risk/:clientId', async (c) => {
+aiInsights.get('/credit-risk/:clientId', requireRole('ADMIN', 'MANAGER'), async (c) => {
   const clientId = Number(c.req.param('clientId'))
   // clients는 법인 공유 테이블 → client_id만으로 격리 불가. orders/payments에 entity 필터 적용 (#333)
   const ef = entityFilter(c)       // orders/payments (alias 없음)
@@ -100,11 +109,7 @@ aiInsights.get('/credit-risk/:clientId', async (c) => {
   else if (score <= 80) grade = 'D'  // 위험
   else grade = 'F'                   // 고위험
 
-  // 캐시 업데이트
-  await c.env.DB.prepare(`
-    UPDATE clients SET credit_risk_score = ?, credit_risk_grade = ?, credit_risk_updated_at = CURRENT_TIMESTAMP WHERE id = ?
-  `).bind(score, grade, clientId).run()
-
+  // G-1: GET은 부수효과 없이 조회만 — 캐시(clients.credit_risk_*) 영속은 POST /credit-risk/calculate-all 담당(멱등·감사 명확)
   return c.json({
     success: true,
     data: {
