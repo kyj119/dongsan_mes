@@ -729,9 +729,8 @@ async function loadCardDwellTime() {
 // ── CSV 내보내기 ──
 async function exportProductionCsv() {
   try {
-    var p = getDateParams();
     var type = currentReportTab === 'production' ? 'production' : 'daily';
-    var res = await authFetch('/api/production-reports/export/csv?from=' + p.from + '&to=' + p.to + '&type=' + type);
+    var res = await authFetch('/api/production-reports/export/csv?' + getDateParams() + '&type=' + type);
     if (!res.ok) throw new Error('서버 오류');
     var blob = await res.blob();
     var url = URL.createObjectURL(blob);
