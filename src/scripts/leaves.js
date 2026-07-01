@@ -514,15 +514,14 @@ async function lvLoadEmployeeOptions() {
   lvSetupEmployeeSearch('lvGrantEmployeeSearch', 'lvGrantEmployee', 'lvGrantEmployeeDropdown');
   window.leavesLoadBalances();
 
-  // 촉진/소멸 대상 경보 (선제 가시화) — 기존 dryRun 엔드포인트 재사용(부수효과 없음)
+  // 촉진/소멸 대상 경보 (선제 가시화) — read-only 요약 엔드포인트 1콜(부수효과 없음, ADMIN·MANAGER)
   window.leavesLoadAlerts = async function() {
     var el = document.getElementById('lvAlertBanner');
     if (!el) return;
     try {
-      var pr = await axios.post('/api/leaves/promotion/run', { dryRun: true });
-      var ex = await axios.post('/api/leaves/expire', { dryRun: true });
-      var promo = (pr.data && pr.data.count) || 0;
-      var exp = (ex.data && (ex.data.lawful != null ? ex.data.lawful : ex.data.total)) || 0;
+      var r = await axios.get('/api/leaves/alerts-summary');
+      var promo = (r.data && r.data.promo) || 0;
+      var exp = (r.data && r.data.expire) || 0;
       if (promo === 0 && exp === 0) { el.className = 'hidden'; el.innerHTML = ''; return; }
       var parts = [];
       if (promo > 0) parts.push('사용촉진 대상 ' + promo + '명');

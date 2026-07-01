@@ -713,6 +713,64 @@ leavesRouter.patch('/requests/:id/cancel-approved', requireRole('ADMIN', 'MANAGE
 // 사용촉진 (근로기준법 제61조) — 입사일 기준 1·2차 통지 + 소멸
 // ============================================================================
 
+type PromoEligible = { employee_id: number; name: string; email: string | null; department: string | null; entity_id: number; remaining: number; expire_base: string }
+/** 특정 source·stage 조합의 사용촉진 대상 산정. promotion/run(발송)·alerts-summary(배너) 공용. */
+async function computePromotionEligible(c: any, source: PromoSource, stage: 'FIRST' | 'SECOND', todayStr: string, fy: number): Promise<PromoEligible[]> {
+  const db: D1Database = c.env.DB
+  const bucket: 'ANNUAL' | 'MONTHLY' = source === 'ANNUAL' ? 'ANNUAL' : 'MONTHLY'
+  const ef = entityFilter(c, 'e')
+  const { results: emps } = await db.prepare(
+    `SELECT e.id, e.name, e.email, e.mobile, e.phone, e.hire_date, e.department, e.entity_id FROM employees e
+     WHERE e.status='ACTIVE' AND e.is_deleted=0 AND e.hire_date IS NOT NULL${ef.clause}`
+  ).bind(...ef.params).all<{ id: number; name: string; email: string | null; mobile: string | null; phone: string | null; hire_date: string; department: string | null; entity_id: number }>()
+
+  const eligible: PromoEligible[] = []
+  for (const e of emps) {
+    const w = promotionWindow(e.hire_date, source, todayStr)
+    if (!w) continue
+    const inWindow = stage === 'FIRST'
+      ? (todayStr >= w.firstStart && todayStr <= w.firstEnd)
+      : (todayStr > w.firstEnd && todayStr <= w.secondEnd)
+    if (!inWindow) continue
+    const rem = await bucketRemaining(c.env.DB, e.id, bucket)
+    if (rem <= 0) continue
+    const dup = await c.env.DB.prepare(
+      `SELECT id FROM leave_promotion_notices WHERE employee_id=? AND fiscal_year=? AND source=? AND stage=? AND status='SENT'`
+    ).bind(e.id, fy, source, stage).first()
+    if (dup) continue
+    eligible.push({ employee_id: e.id, name: e.name, email: e.email, department: e.department, entity_id: (e.entity_id as number) || 1, remaining: rem, expire_base: w.base })
+  }
+  return eligible
+}
+
+type ExpireCandidate = { id: number; employee_id: number; employee_name: string; year: number; leave_type: string; expire_date: string; entity_id: number; remaining: number; lawful: boolean }
+/** 만료 경과 잔여 후보 + 적법(2차 통지 존재) 판정. expire(소멸)·alerts-summary(배너) 공용. */
+async function computeExpireCandidates(c: any, todayStr: string): Promise<ExpireCandidate[]> {
+  const db: D1Database = c.env.DB
+  const ef = entityFilter(c, 'lb')
+  const { results: rows } = await db.prepare(`
+    SELECT lb.id, lb.employee_id, lb.year, lb.leave_type, lb.expire_date, lb.entity_id, e.name AS employee_name,
+           (lb.accrued+lb.granted_extra+lb.carried_over-lb.used-lb.expired) AS remaining
+    FROM leave_balances lb JOIN employees e ON e.id = lb.employee_id
+    WHERE lb.leave_type IN ('ANNUAL','MONTHLY') AND lb.expire_date IS NOT NULL AND lb.expire_date < ?
+      AND (lb.accrued+lb.granted_extra+lb.carried_over-lb.used-lb.expired) > 0${ef.clause}
+  `).bind(todayStr, ...ef.params).all<{ id: number; employee_id: number; year: number; leave_type: string; expire_date: string; entity_id: number; employee_name: string; remaining: number }>()
+
+  const candidates: ExpireCandidate[] = []
+  for (const r of rows) {
+    const sources = r.leave_type === 'ANNUAL' ? ['ANNUAL'] : ['MONTHLY_A', 'MONTHLY_B']
+    const ph = sources.map(() => '?').join(',')
+    // 적법 소멸 게이트: 이 만료분의 회계연도에 발송된 2차(SECOND) 촉진 통지가 있어야 적법.
+    // fiscal_year 스코프가 없으면 과거 임의 연도의 통지 1건이 이후 모든 연도 잔여를 부당 소멸시킴.
+    const expireYear = parseInt(String(r.expire_date).slice(0, 4), 10)
+    const promo = await db.prepare(
+      `SELECT COUNT(*) AS cnt FROM leave_promotion_notices WHERE employee_id=? AND stage='SECOND' AND status='SENT' AND source IN (${ph}) AND fiscal_year IN (?, ?)`
+    ).bind(r.employee_id, ...sources, expireYear, expireYear - 1).first<{ cnt: number }>()
+    candidates.push({ ...r, lawful: Number(promo?.cnt || 0) > 0 })
+  }
+  return candidates
+}
+
 // 통지 대상 산정/발송. dryRun=true(기본)=미리보기, false=실발송.
 //   채널=이메일(법적 '서면' 유효, email_logs 도달 기록). 알림톡(sendATS)은 바로빌 템플릿 승인 후 추가.
 leavesRouter.post('/promotion/run', requireRole('ADMIN'), async (c) => {
@@ -728,30 +786,8 @@ leavesRouter.post('/promotion/run', requireRole('ADMIN'), async (c) => {
     const today = kstNow()
     const todayStr = today.toISOString().slice(0, 10)
     const fy = today.getUTCFullYear()
-    const bucket: 'ANNUAL' | 'MONTHLY' = source === 'ANNUAL' ? 'ANNUAL' : 'MONTHLY'
 
-    const ef = entityFilter(c, 'e')
-    const { results: emps } = await c.env.DB.prepare(
-      `SELECT e.id, e.name, e.email, e.mobile, e.phone, e.hire_date, e.department, e.entity_id FROM employees e
-       WHERE e.status='ACTIVE' AND e.is_deleted=0 AND e.hire_date IS NOT NULL${ef.clause}`
-    ).bind(...ef.params).all<{ id: number; name: string; email: string | null; mobile: string | null; phone: string | null; hire_date: string; department: string | null; entity_id: number }>()
-
-    const eligible: Array<{ employee_id: number; name: string; email: string | null; department: string | null; entity_id: number; remaining: number; expire_base: string }> = []
-    for (const e of emps) {
-      const w = promotionWindow(e.hire_date, source, todayStr)
-      if (!w) continue
-      const inWindow = stage === 'FIRST'
-        ? (todayStr >= w.firstStart && todayStr <= w.firstEnd)
-        : (todayStr > w.firstEnd && todayStr <= w.secondEnd)
-      if (!inWindow) continue
-      const rem = await bucketRemaining(c.env.DB, e.id, bucket)
-      if (rem <= 0) continue
-      const dup = await c.env.DB.prepare(
-        `SELECT id FROM leave_promotion_notices WHERE employee_id=? AND fiscal_year=? AND source=? AND stage=? AND status='SENT'`
-      ).bind(e.id, fy, source, stage).first()
-      if (dup) continue
-      eligible.push({ employee_id: e.id, name: e.name, email: e.email, department: e.department, entity_id: e.entity_id || 1, remaining: rem, expire_base: w.base })
-    }
+    const eligible = await computePromotionEligible(c, source, stage, todayStr, fy)
 
     if (dryRun) {
       return c.json({ success: true, dryRun: true, source, stage, count: eligible.length, eligible })
@@ -795,6 +831,28 @@ leavesRouter.post('/promotion/run', requireRole('ADMIN'), async (c) => {
   }
 })
 
+// 배너용 read-only 요약 — 촉진 대상(6조합 유니크 인원) + 소멸 예정(적법) 인원. 부수효과 없음.
+//   /leaves 는 MANAGER 진입 가능하므로 ADMIN·MANAGER 허용(promotion/run·expire 는 발송용 ADMIN 전용 유지).
+leavesRouter.get('/alerts-summary', requireRole('ADMIN', 'MANAGER'), async (c) => {
+  try {
+    const today = kstNow()
+    const todayStr = today.toISOString().slice(0, 10)
+    const fy = today.getUTCFullYear()
+    const promoIds = new Set<number>()
+    for (const source of ['ANNUAL', 'MONTHLY_A', 'MONTHLY_B'] as PromoSource[]) {
+      for (const stage of ['FIRST', 'SECOND'] as ('FIRST' | 'SECOND')[]) {
+        const el = await computePromotionEligible(c, source, stage, todayStr, fy)
+        for (const x of el) promoIds.add(x.employee_id)
+      }
+    }
+    const candidates = await computeExpireCandidates(c, todayStr)
+    return c.json({ success: true, promo: promoIds.size, expire: candidates.filter(x => x.lawful).length })
+  } catch (error: any) {
+    console.error('leaves alerts-summary error:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
+  }
+})
+
 // 통지 이력 조회
 leavesRouter.get('/promotion', requireRole('ADMIN', 'MANAGER'), async (c) => {
   try {
@@ -822,29 +880,7 @@ leavesRouter.post('/expire', requireRole('ADMIN'), async (c) => {
     const body = await c.req.json<{ dryRun?: boolean }>().catch(() => ({} as { dryRun?: boolean }))
     const dryRun = body.dryRun !== false
     const todayStr = kstNow().toISOString().slice(0, 10)
-    const ef = entityFilter(c, 'lb')
-    const { results: rows } = await c.env.DB.prepare(`
-      SELECT lb.id, lb.employee_id, lb.year, lb.leave_type, lb.expire_date, lb.entity_id, e.name AS employee_name,
-             (lb.accrued+lb.granted_extra+lb.carried_over-lb.used-lb.expired) AS remaining
-      FROM leave_balances lb JOIN employees e ON e.id = lb.employee_id
-      WHERE lb.leave_type IN ('ANNUAL','MONTHLY') AND lb.expire_date IS NOT NULL AND lb.expire_date < ?
-        AND (lb.accrued+lb.granted_extra+lb.carried_over-lb.used-lb.expired) > 0${ef.clause}
-    `).bind(todayStr, ...ef.params).all<{ id: number; employee_id: number; year: number; leave_type: string; expire_date: string; entity_id: number; employee_name: string; remaining: number }>()
-
-    const candidates: Array<{ id: number; employee_id: number; employee_name: string; year: number; leave_type: string; expire_date: string; entity_id: number; remaining: number; lawful: boolean }> = []
-    for (const r of rows) {
-      const sources = r.leave_type === 'ANNUAL' ? ['ANNUAL'] : ['MONTHLY_A', 'MONTHLY_B']
-      const ph = sources.map(() => '?').join(',')
-      // 적법 소멸 게이트: 이 만료분의 회계연도에 발송된 2차(SECOND) 촉진 통지가 있어야 적법.
-      // fiscal_year 스코프가 없으면 과거 임의 연도의 통지 1건이 이후 모든 연도 잔여를 부당 소멸시킴.
-      // 통지 발송연도(fiscal_year=발송 시점 연도)는 만료연도와 같거나, 만료가 연초여서 전년 하반기에
-      // 발송된 경우 만료연도-1일 수 있으므로 두 연도를 허용. (notice에 expire_date 미저장이라 연도 근사 매칭)
-      const expireYear = parseInt(String(r.expire_date).slice(0, 4), 10)
-      const promo = await c.env.DB.prepare(
-        `SELECT COUNT(*) AS cnt FROM leave_promotion_notices WHERE employee_id=? AND stage='SECOND' AND status='SENT' AND source IN (${ph}) AND fiscal_year IN (?, ?)`
-      ).bind(r.employee_id, ...sources, expireYear, expireYear - 1).first<{ cnt: number }>()
-      candidates.push({ ...r, lawful: Number(promo?.cnt || 0) > 0 })
-    }
+    const candidates = await computeExpireCandidates(c, todayStr)
 
     if (dryRun) {
       return c.json({ success: true, dryRun: true, total: candidates.length, lawful: candidates.filter(x => x.lawful).length, candidates })
