@@ -135,9 +135,10 @@ function buildGroupedHtml(items, expand) {
         gi.forEach(function(it) {
             var en = (it.item_name || '').replace(/['"]/g, '');
             var spec = it.specification || (it.width_mm ? (it.width_mm / 10) + 'cm' : '-');
+            var specHint = (spec && spec !== '-') ? ' <span class="text-gray-400 text-xs">(' + escapeHtml(spec) + ')</span>' : '';
             rows += '<tr class="border-t hover:bg-gray-50">'
                 + '<td class="p-2 font-mono text-blue-600 text-xs">' + escapeHtml(it.item_code || '') + '</td>'
-                + '<td class="p-2" title="' + escapeHtml(spec) + '">' + escapeHtml(spec) + '</td>'
+                + '<td class="p-2" title="' + escapeHtml((it.item_name || '') + ' · ' + spec) + '">' + escapeHtml(it.item_name || '') + specHint + '</td>'
                 + '<td class="p-2">' + getTypeBadge(it) + '</td>'
                 + '<td class="p-2 text-right tabular-nums">' + (it.base_price || 0).toLocaleString() + '</td>'
                 + '<td class="p-2">' + (it.is_active !== 0 ? '<span class="text-green-600 text-xs">활성</span>' : '<span class="text-gray-400 text-xs">비활성</span>') + '</td>'
@@ -149,7 +150,7 @@ function buildGroupedHtml(items, expand) {
             + '<div class="font-medium text-sm"><i class="fas ' + chevron + ' text-gray-400 mr-2 text-xs"></i>' + escapeHtml(g) + '</div>'
             + '<span class="text-xs text-gray-400">' + sub + '</span></div>'
             + '<div class="mat-grp-body' + bodyHidden + '"><table class="w-full text-sm ds-table ds-table-striped"><thead><tr class="text-left text-gray-500 text-xs">'
-            + '<th class="col-code p-2">코드</th><th class="col-name p-2">규격</th><th class="col-tag p-2">타입</th><th class="col-amount p-2 text-right">단가</th><th class="col-status p-2">상태</th><th class="col-action p-2">작업</th>'
+            + '<th class="col-code p-2">코드</th><th class="col-name p-2">품목명</th><th class="col-tag p-2">타입</th><th class="col-amount p-2 text-right">단가</th><th class="col-status p-2">상태</th><th class="col-action p-2">작업</th>'
             + '</tr></thead><tbody>' + rows + '</tbody></table></div></div>';
     });
     html += '</div>';
