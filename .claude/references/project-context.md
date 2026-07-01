@@ -17,12 +17,12 @@
 
 ## 코드 아키텍처
 - **엔트리**: `src/index.tsx` — API 라우터 + 페이지 라우트 등록
-- **API**: `src/routes/*.ts` (118개, 하위폴더 포함, 2026-06-12 기준)
+- **API**: `src/routes/*.ts` (120개, 하위폴더 포함, 2026-07-01 기준)
 - **미들웨어**: `src/middleware/auth.ts` — authMiddleware, requireRole, pageAuthMiddleware, agentKeyMiddleware
-- **페이지**: `src/pages/*.ts` (87개) → `renderPage(c, { pageScript })`
-- **스크립트**: `src/scripts/*.js` (106개, `?raw` import)
+- **페이지**: `src/pages/*.ts` (78개 최상위) → `renderPage(c, { pageScript })`
+- **스크립트**: `src/scripts` (102개, 하위폴더 포함, `?raw` import)
 - **레이아웃**: `src/layout.ts` — 사이드바, SHARED_AUTH_JS, SPA 네비게이션
-- **포털**: `src/pages/portal/` (6개) — 별도 인증, 자체 레이아웃
+- **포털**: `src/pages/portal/` (7개) — 별도 인증, 자체 레이아웃
 - **독립 페이지**: invoice.ts, quotation.ts, purchaseInvoice.ts — 자체 HTML
 > 상세 흐름도: `architecture-flow.md`
 
