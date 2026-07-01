@@ -19,14 +19,30 @@ async function trigger(env: Env, cardDays = 14): Promise<{ status: number; body:
   return { status: res.status, body: (await res.text()).slice(0, 1000) }
 }
 
+// 무인 일일 정비(OEE 일배치 + 알림 생성). 멱등이라 반복 호출 안전.
+async function triggerDaily(env: Env): Promise<{ status: number; body: string }> {
+  const res = await fetch(`${env.MES_URL}/api/cron/daily-maintenance`, {
+    method: 'POST',
+    headers: { 'X-Agent-Key': env.AGENT_API_KEY, 'Content-Type': 'application/json' },
+    body: '{}',
+  })
+  return { status: res.status, body: (await res.text()).slice(0, 1000) }
+}
+
 export default {
   // 정기 스케줄 — wrangler.jsonc triggers.crons
   async scheduled(_event: ScheduledController, env: Env, _ctx: ExecutionContext): Promise<void> {
     try {
       const r = await trigger(env)
-      console.log(`[barobill-cron] scheduled ${r.status} ${r.body}`)
+      console.log(`[barobill-cron] barobill-sync ${r.status} ${r.body}`)
     } catch (err) {
-      console.error('[barobill-cron] scheduled failed', err instanceof Error ? err.message : String(err))
+      console.error('[barobill-cron] barobill-sync failed', err instanceof Error ? err.message : String(err))
+    }
+    try {
+      const d = await triggerDaily(env)
+      console.log(`[barobill-cron] daily-maintenance ${d.status} ${d.body}`)
+    } catch (err) {
+      console.error('[barobill-cron] daily-maintenance failed', err instanceof Error ? err.message : String(err))
     }
   },
 
