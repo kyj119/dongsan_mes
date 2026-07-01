@@ -5,7 +5,7 @@
  *
  * ⚠️ 함정:
  *  - 은행/카드사 코드는 숫자가 아니라 영문 코드 (KB, SHINHAN, HYUNDAI …)
- *  - 카드 등록 파라미터명은 `CollectCylce` (바로빌 철자 오타) — barobillCard.ts 참조
+ *  - 수집주기 파라미터명은 계좌·카드 모두 `CollectCycle` (WSDL 확인, 2026-07-01)
  *  - 카카오뱅크·토스뱅크는 바로빌 계좌조회 미지원
  */
 
@@ -60,7 +60,7 @@ export function toBarobillCardCompany(name: string): string | null {
 }
 
 /**
- * 수집주기. 계좌=CollectCycle(필수), 카드=CollectCylce(바로빌 철자, 선택·미입력 시 DAY1).
+ * 수집주기 파라미터명은 계좌·카드 모두 CollectCycle. 미입력 시 DAY1.
  * 계좌만 분(MINUTE)·시간(HOUR) 단위 지원, 카드는 DAY1만.
  */
 export const BAROBILL_COLLECT_CYCLE = {

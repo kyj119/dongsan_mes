@@ -103,7 +103,7 @@ export interface RegistCardParams {
  */
 export async function registCard(config: BarobillConfig, p: RegistCardParams): Promise<number> {
   const result = await barobillCall(config, 'CARD', 'RegistCardEx', {
-    CollectCylce: p.collectCycle, // ⚠️ 바로빌 철자(오타) 그대로 — 카드 API 한정
+    CollectCycle: p.collectCycle, // WSDL 요소명 = CollectCycle (계좌 API와 동일 스펠). 카드 유효값=DAY1
     CardCompany: p.cardCompany,
     CardType: p.cardType,
     CardNum: p.cardNum,
