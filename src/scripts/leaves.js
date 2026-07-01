@@ -412,6 +412,20 @@ window.leavesSubmitGrant = async function() {
 };
 
 // 미사용 연차수당 조회
+window.leavesApplyUnusedAllowance = async function() {
+  var pEl = document.getElementById('lvAllowPeriod');
+  var period = pEl ? pEl.value : '';
+  if (!period) { (window.showToast ? window.showToast('반영할 급여월을 선택하세요', 'error') : alert('반영할 급여월을 선택하세요')); return; }
+  if (!confirm(period + ' 대기(PENDING) 급여에 미사용연차수당을 반영할까요?\n(승인/지급된 급여는 제외됩니다)')) return;
+  try {
+    var res = await axios.post('/api/leaves/apply-unused-allowance', { pay_period: period });
+    var d = (res.data && res.data.data) || {};
+    var msg = period + ' 급여 ' + (d.applied || 0) + '건에 미사용연차수당 ' + (d.total_amount || 0).toLocaleString() + '원 반영. ' + (d.note || '');
+    (window.showToast ? window.showToast(msg, 'success') : alert(msg));
+    window.leavesLoadAllowance();
+  } catch (e) { if (window.handleApiError) window.handleApiError(e, '급여 반영 실패'); else alert('급여 반영 실패'); }
+};
+
 window.leavesLoadAllowance = async function() {
   var year = document.getElementById('lvAllowYear') ? document.getElementById('lvAllowYear').value : new Date().getFullYear();
   var deptEl = document.getElementById('lvAllowanceDept'); // #346: 부서 필터

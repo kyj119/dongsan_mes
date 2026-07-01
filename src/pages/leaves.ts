@@ -164,6 +164,11 @@ export function leavesPage(c: Context<HonoEnv>) {
             <button onclick="leavesLoadAllowance()" class="ds-btn ds-btn-primary text-xs">
               <i class="fas fa-search mr-1"></i>조회
             </button>
+            <span class="mx-1 text-gray-300">|</span>
+            <input id="lvAllowPeriod" type="month" class="border rounded px-2 py-1 text-xs" title="반영할 급여월" />
+            <button onclick="leavesApplyUnusedAllowance()" class="px-3 py-1.5 text-xs bg-green-600 text-white rounded hover:bg-green-700" title="산정된 미사용연차수당을 해당 급여월의 대기(PENDING) 급여에 반영">
+              <i class="fas fa-file-invoice-dollar mr-1"></i>급여 반영
+            </button>
             <div class="flex-1"></div>
             <span id="lvAllowanceTotal" class="text-sm font-bold text-red-600"></span>
           </div>

@@ -1096,4 +1096,69 @@ leavesRouter.get('/unused-allowance', requireRole('ADMIN', 'MANAGER'), async (c)
   }
 })
 
+// ============================================================================
+// POST /api/leaves/apply-unused-allowance — 미사용연차수당 자동 산정 → 급여 주입
+//   서버 재산정(위변조 방지, /unused-allowance 동일 산식) → 해당 pay_period의 PENDING 급여에 annual_leave_pay UPSERT.
+//   B1 급여확정 잠금 정합: PENDING만(APPROVED/PAID 불변). 총액 반영은 급여 근태동기화/저장 시 계산.
+// ============================================================================
+leavesRouter.post('/apply-unused-allowance', requireRole('ADMIN', 'MANAGER'), async (c) => {
+  try {
+    const body = await c.req.json<{ pay_period?: string; year?: number }>().catch(() => ({} as { pay_period?: string; year?: number }))
+    const payPeriod = String(body.pay_period || '')
+    if (!/^\d{4}-\d{2}$/.test(payPeriod)) return c.json({ success: false, error: 'pay_period(YYYY-MM) 형식 필요' }, 400)
+    const year = Number(body.year) || Number(payPeriod.slice(0, 4))
+    const ef = entityFilter(c, 'e')
+
+    // /unused-allowance 동일 산식: 직원별 잔여 + 통상시급(calcInclusivePay 분해) → unused_allowance
+    const { results } = await c.env.DB.prepare(`
+      SELECT e.id as employee_id, e.base_salary, e.position_allowance, e.overtime_daily_hours, e.overtime_work_days,
+        (COALESCE(lb.accrued,0)+COALESCE(lb.granted_extra,0)+COALESCE(lb.carried_over,0)-COALESCE(lb.used,0)-COALESCE(lb.expired,0)) as remaining_annual
+      FROM employees e
+      LEFT JOIN (
+        SELECT employee_id, SUM(accrued) accrued, SUM(granted_extra) granted_extra, SUM(used) used, SUM(carried_over) carried_over, SUM(expired) expired
+        FROM leave_balances WHERE year = ? AND leave_type IN ('ANNUAL','MONTHLY') GROUP BY employee_id
+      ) lb ON lb.employee_id = e.id
+      WHERE e.status = 'ACTIVE' AND e.is_deleted = 0${ef.clause}
+    `).bind(year, ...ef.params).all<{ employee_id: number; base_salary: number; position_allowance: number; overtime_daily_hours: number; overtime_work_days: number; remaining_annual: number }>()
+
+    const ot = await loadOvertimeSettings(c.env.DB)
+    const baseHours = ot.monthlyWorkHours || 209
+
+    const stmts: any[] = []
+    let applied = 0
+    let totalAmount = 0
+    for (const r of results) {
+      const remaining = Math.max(0, r.remaining_annual || 0)
+      if (remaining <= 0) continue
+      const positionAllow = Number(r.position_allowance || 0)
+      const fixedOTHours = (Number(r.overtime_daily_hours) || 0) * (Number(r.overtime_work_days) || 22)
+      let regularBase = Number(r.base_salary || 0)
+      if (fixedOTHours > 0 && regularBase > 0) {
+        const inc = calcInclusivePay({
+          inclusiveBase: regularBase, baseMonthlyHours: baseHours,
+          fixedOTHours, extraOTHours: 0, nightHours: 0, holidayHours: 0,
+          overtimeMul: ot.overtimeMul, nightMul: ot.nightMul, holidayMul: ot.holidayMul, holidayOverMul: ot.holidayOverMul,
+        })
+        regularBase = inc.regular_base
+      }
+      const ordinaryMonthly = regularBase + positionAllow
+      const hourlyRate = ordinaryMonthly > 0 ? Math.round(ordinaryMonthly / baseHours) : 0
+      const unusedAllowance = hourlyRate * 8 * remaining
+      if (unusedAllowance <= 0) continue
+      stmts.push(c.env.DB.prepare(
+        `UPDATE payroll SET annual_leave_pay = ?, updated_at = datetime('now') WHERE employee_id = ? AND pay_period = ? AND status = 'PENDING'`
+      ).bind(unusedAllowance, r.employee_id, payPeriod))
+      applied++
+      totalAmount += unusedAllowance
+    }
+    if (stmts.length > 0) {
+      for (let i = 0; i < stmts.length; i += 80) await c.env.DB.batch(stmts.slice(i, i + 80))
+    }
+    return c.json({ success: true, data: { pay_period: payPeriod, applied, total_amount: totalAmount, note: '대기(PENDING) 급여에만 반영 — 총액/실지급은 급여관리에서 근태동기화/저장 시 계산됩니다.' } })
+  } catch (error) {
+    console.error('src/routes/leaves.ts apply-unused-allowance error:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
+  }
+})
+
 export default leavesRouter
