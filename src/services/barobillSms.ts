@@ -316,27 +316,31 @@ export class BarobillSmsProvider {
   }
 
   /**
-   * 채널별 발송 단가 조회 (GetChargeUnitCost, ChargeCode별).
-   * 전 서비스 공통 단가테이블이라 한 엔드포인트에서 알림톡·SMS·팩스 모두 조회 가능.
-   * 음수(바로빌 오류코드)·비정상은 0 처리.
+   * 채널별 발송 단가 조회 — 부가세 별도(콘솔/계약 표기 기준).
+   * 전 서비스 공통 단가테이블이라 한 엔드포인트에서 모든 채널 조회 가능.
+   * GetChargeUnitCostEx = 부가세 포함가 → ÷1.1로 부가세별도 산출. 음수/비정상은 0.
    */
-  async getUnitCost(): Promise<{ alimtalk: number; sms: number; fax: number }> {
+  async getUnitCost(): Promise<{
+    alimtalk: number; kkoImage: number; sms: number; lms: number; fax: number
+  }> {
     const q = async (chargeCode: number): Promise<number> => {
       try {
-        const v = parseFloat(
-          await barobillCall(this.config, 'KakaoTalk' as any, 'GetChargeUnitCost', { ChargeCode: chargeCode })
+        const ex = parseFloat(
+          await barobillCall(this.config, 'KakaoTalk' as any, 'GetChargeUnitCostEx', { ChargeCode: chargeCode })
         )
-        return Number.isFinite(v) && v > 0 ? v : 0
+        return Number.isFinite(ex) && ex > 0 ? Math.round(ex / 1.1) : 0  // 부가세 별도
       } catch (err) {
         return 0
       }
     }
-    const [alimtalk, sms, fax] = await Promise.all([
+    const [alimtalk, kkoImage, sms, lms, fax] = await Promise.all([
       q(BAROBILL_CHARGE_CODE.ALIMTALK),
+      q(BAROBILL_CHARGE_CODE.KKO_IMAGE),
       q(BAROBILL_CHARGE_CODE.SMS),
+      q(BAROBILL_CHARGE_CODE.LMS),
       q(BAROBILL_CHARGE_CODE.FAX),
     ])
-    return { alimtalk, sms, fax }
+    return { alimtalk, kkoImage, sms, lms, fax }
   }
 
   // ========================================================================

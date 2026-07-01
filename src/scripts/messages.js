@@ -57,15 +57,20 @@ async function loadSummary() {
       // 회원사 지갑(remain_point)은 동산기획 설정상 항상 0이라 표시하지 않음.
       setMsg('msgBalance', (b.partner_point || 0).toLocaleString() + '원');
       setMsg('msgPartnerPoint', '법인 공통 · 통장/계좌 조회 요금 공통 차감');
-      setMsg('msgUnitCostAlim', (b.unit_cost_alimtalk || 0).toLocaleString() + '원/건');
-      setMsg('msgUnitCostSms', (b.unit_cost_sms || 0).toLocaleString() + '원/건');
-      setMsg('msgUnitCostFax', (b.unit_cost_fax || 0).toLocaleString() + '원/장');
+      // 발송 단가 — 부가세 별도
+      setMsg('msgUcAlim', (b.unit_cost_alimtalk || 0).toLocaleString() + '원/건');
+      setMsg('msgUcKkoImg', (b.unit_cost_kko_image || 0).toLocaleString() + '원/건');
+      setMsg('msgUcSms', (b.unit_cost_sms || 0).toLocaleString() + '원/건');
+      setMsg('msgUcLms', (b.unit_cost_lms || 0).toLocaleString() + '원/건');
+      setMsg('msgUcFax', (b.unit_cost_fax || 0).toLocaleString() + '원/장');
     }
   } catch(e) {
     setMsg('msgBalance', '-');
-    setMsg('msgUnitCostAlim', '-');
-    setMsg('msgUnitCostSms', '-');
-    setMsg('msgUnitCostFax', '-');
+    setMsg('msgUcAlim', '-');
+    setMsg('msgUcKkoImg', '-');
+    setMsg('msgUcSms', '-');
+    setMsg('msgUcLms', '-');
+    setMsg('msgUcFax', '-');
   }
 
   try {

@@ -301,8 +301,11 @@ kakaoRouter.get('/balance', async (c) => {
       data: {
         remain_point: balance.remainPoint,
         partner_point: balance.partnerPoint,
+        // 발송 단가 — 부가세 별도
         unit_cost_alimtalk: unitCost.alimtalk,
+        unit_cost_kko_image: unitCost.kkoImage,
         unit_cost_sms: unitCost.sms,
+        unit_cost_lms: unitCost.lms,
         unit_cost_fax: unitCost.fax
       }
     })
