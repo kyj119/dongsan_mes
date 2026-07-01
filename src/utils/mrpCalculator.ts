@@ -150,12 +150,13 @@ export async function runMrpCalculation(
       if (m) m.current_stock = s.quantity || 0
     }
 
-    // 5. 발주중 수량 조회 (PENDING/APPROVED 상태의 PO)
+    // 5. 발주중 수량 조회 (미입고 잔량 = quantity - received_quantity)
+    //    PO 실제 상태값: DRAFT/CONFIRMED/PARTIAL_RECEIVED (materialShortageCheck와 동일). 구 'PENDING/APPROVED/ORDERED'는 死값이라 항상 0 반환하던 버그
     const { results: onOrder } = await db.prepare(`
-      SELECT poi.item_id, SUM(poi.quantity) as total_qty
+      SELECT poi.item_id, SUM(poi.quantity - COALESCE(poi.received_quantity, 0)) as total_qty
       FROM purchase_order_items poi
       JOIN purchase_orders po ON poi.po_id = po.id
-      WHERE po.status IN ('PENDING', 'APPROVED', 'ORDERED')
+      WHERE po.status IN ('DRAFT', 'CONFIRMED', 'PARTIAL_RECEIVED')
         AND poi.item_id IN (${placeholders})
       GROUP BY poi.item_id
     `).bind(...materialIds).all() as { results: { item_id: number; total_qty: number }[] }

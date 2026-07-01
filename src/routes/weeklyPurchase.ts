@@ -394,7 +394,7 @@ weeklyPurchaseRouter.post('/notify', async (c) => {
               VALUES (?, ?, ?, 'weekly_purchase', ?, 'SUCCESS', ?, ?, ?)
             `).bind(
               sendChannel === 'sms' ? 'SMS' : 'LMS',
-              managers.map((m: any) => m.mobile).join(','),
+              managers.map((m: any) => m.phone).join(','),
               `BULK(${managers.length})`,
               smsContent,
               sendChannel,

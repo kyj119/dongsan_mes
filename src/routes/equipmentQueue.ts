@@ -141,7 +141,7 @@ equipmentQueue.post('/update-avg-speed', requireRole('ADMIN', 'MANAGER'), async 
       SUM(CAST(COALESCE(output_width,'0') AS REAL) * CAST(COALESCE(output_height,'0') AS REAL) / 1000000.0) as total_sqm,
       SUM((julianday(print_completed_at) - julianday(print_started_at)) * 24 * 60) as total_minutes
     FROM print_events
-    WHERE print_status = 'COMPLETED'
+    WHERE print_status = 'OK'
       AND print_started_at >= date('now', '-30 days')
       AND equipment_id IS NOT NULL
     GROUP BY equipment_id
