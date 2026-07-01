@@ -1,0 +1,10 @@
+-- 0431_split_bolof_thickness.sql
+-- 볼로프(ACC-037) 4mm/5mm 통합 → 두께별 분리 (사용자: 4·5mm 다 제작 사용, 통합관리 어려움)
+-- 플랫 방식(item_group 묶음), 기존 base=is_active=0 숨김, base 필드 상속.
+INSERT INTO items (item_code,item_name,is_active,specification,item_group,item_type,category_id,subcategory_id,category,sub_category,unit,base_price,sales_price,is_sales_item,is_purchase_item,pricing_method,pricing_profile,width_mm,group_sort,is_favorite,production_required,deduction_method,sheet_spec,waste_factor,stock_mode,description,spec_group_id,spec_value,created_at,updated_at)
+SELECT 'ACC-037-4MM', item_name||' 4mm', 1, '4mm', item_name, item_type,category_id,subcategory_id,category,sub_category,unit,base_price,sales_price,is_sales_item,is_purchase_item,pricing_method,pricing_profile,width_mm,group_sort,is_favorite,production_required,deduction_method,sheet_spec,waste_factor,stock_mode,description,spec_group_id,spec_value, datetime('now'), datetime('now')
+FROM items WHERE item_code='ACC-037' AND NOT EXISTS (SELECT 1 FROM items WHERE item_code='ACC-037-4MM');
+INSERT INTO items (item_code,item_name,is_active,specification,item_group,item_type,category_id,subcategory_id,category,sub_category,unit,base_price,sales_price,is_sales_item,is_purchase_item,pricing_method,pricing_profile,width_mm,group_sort,is_favorite,production_required,deduction_method,sheet_spec,waste_factor,stock_mode,description,spec_group_id,spec_value,created_at,updated_at)
+SELECT 'ACC-037-5MM', item_name||' 5mm', 1, '5mm', item_name, item_type,category_id,subcategory_id,category,sub_category,unit,base_price,sales_price,is_sales_item,is_purchase_item,pricing_method,pricing_profile,width_mm,group_sort,is_favorite,production_required,deduction_method,sheet_spec,waste_factor,stock_mode,description,spec_group_id,spec_value, datetime('now'), datetime('now')
+FROM items WHERE item_code='ACC-037' AND NOT EXISTS (SELECT 1 FROM items WHERE item_code='ACC-037-5MM');
+UPDATE items SET is_active=0, item_group=item_name, updated_at=datetime('now') WHERE item_code='ACC-037';
