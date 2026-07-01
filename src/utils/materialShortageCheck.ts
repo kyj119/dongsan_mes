@@ -1,6 +1,8 @@
 // ============================================================================
-// 주문 확정 시 BOM 기반 자재 부족 경고 (Phase 5)
+// 주문 확정 시 자재 부족 경고 (Phase 5)
+//   #465: 구 bom_items(동결) → 신모델(product_materials + 차감설정, autoDeduct 산식)로 재배선.
 // ============================================================================
+import { computeMaterialRequirements } from './materialRequirement'
 
 export interface ShortageWarning {
   material_item_id: number
@@ -14,8 +16,8 @@ export interface ShortageWarning {
 }
 
 /**
- * 단일 주문에 대해 BOM 기반 자재 부족 체크
- * - 주문 품목의 면적 → BOM 매칭 → 소요량 계산
+ * 단일 주문에 대해 신모델 기반 자재 부족 체크
+ * - 주문 품목 규격 → product_materials 차감산식(ROLL/BOARD, 분할근사) → 소요량
  * - 현재고 + 발주중 대비 부족량 반환
  */
 export async function checkMaterialShortage(
@@ -25,7 +27,7 @@ export async function checkMaterialShortage(
 ): Promise<ShortageWarning[]> {
   // 1. 주문 품목 조회
   const { results: orderItems } = await db.prepare(`
-    SELECT oi.id, oi.item_id, oi.item_name, oi.category_name,
+    SELECT oi.id, oi.item_id, oi.item_name,
            oi.width, oi.height, oi.quantity
     FROM order_items oi
     WHERE oi.order_id = ?
@@ -33,47 +35,8 @@ export async function checkMaterialShortage(
 
   if (!orderItems || orderItems.length === 0) return []
 
-  // 2. BOM 조회
-  const { results: bomItems } = await db.prepare(
-    `SELECT id, item_id, category_name, material_item_id, material_name,
-            usage_per_sqm, usage_unit, waste_factor
-     FROM bom_items WHERE is_active = 1`
-  ).all()
-
-  if (!bomItems || bomItems.length === 0) return []
-
-  // 3. 자재 소요량 집계
-  const materialMap = new Map<number, { materialItemId: number; name: string; required: number }>()
-
-  for (const oi of orderItems as any[]) {
-    const w = Number(oi.width) || 0
-    const h = Number(oi.height) || 0
-    if (w <= 0 || h <= 0) continue
-    const areaSqm = (w / 100) * (h / 100) * (Number(oi.quantity) || 1)
-
-    // BOM 매칭: item_id 우선, category fallback
-    const matched = (bomItems as any[]).filter(b =>
-      (b.item_id && b.item_id === oi.item_id) ||
-      (!b.item_id && b.category_name && b.category_name === oi.category_name)
-    )
-    const itemBoms = matched.filter(b => b.item_id === oi.item_id)
-    const effective = itemBoms.length > 0 ? itemBoms : matched.filter(b => !b.item_id)
-
-    for (const bom of effective) {
-      const required = areaSqm * bom.usage_per_sqm * (bom.waste_factor || 1)
-      const existing = materialMap.get(bom.material_item_id)
-      if (existing) {
-        existing.required += required
-      } else {
-        materialMap.set(bom.material_item_id, {
-          materialItemId: bom.material_item_id,
-          name: bom.material_name,
-          required,
-        })
-      }
-    }
-  }
-
+  // 2. 신모델 소요량 산정 (product_materials + 품목 차감설정)
+  const materialMap = await computeMaterialRequirements(db, orderItems as any[])
   if (materialMap.size === 0) return []
 
   // 4. 현재고 + 발주중 조회
@@ -130,12 +93,12 @@ export async function checkMaterialShortage(
       warnings.push({
         material_item_id: matId,
         item_id: stock.itemId,
-        material_name: mat.name,
+        material_name: mat.material_name,
         required: Math.round(mat.required * 100) / 100,
         current_stock: stock.qty,
         on_order: onOrder,
         shortfall: Math.round(shortfall * 100) / 100,
-        unit: stock.unit,
+        unit: stock.itemId ? stock.unit : mat.base_unit,
       })
     }
   }

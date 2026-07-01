@@ -8,6 +8,7 @@ import { authMiddleware, requireRole } from '../middleware/auth'
 import { getEntityId, entityFilter } from '../utils/entityFilter'
 import { getNextEntitySeqNumber, withSeqRetry } from '../utils/sequenceGenerator'
 import { getConsumptionForecast } from '../utils/consumptionForecast'
+import { computeMaterialRequirements } from '../utils/materialRequirement'
 import { buildWeeklyPurchaseSMS } from '../utils/inventoryAlert'
 import { getKakaoProvider, getKakaoSettings } from './kakao'
 import { notifyRoles } from '../utils/notify'
@@ -31,37 +32,20 @@ weeklyPurchaseRouter.get('/analyze', async (c) => {
       weeksBack,
     })
 
-    // 2. MRP 소요량 (확정/생산중 주문)
-    //    UP4: bom_items.material_item_id가 곧 자재 item_id — inventory.id 조인은 버그(행PK≠item_id, 다중행에서 오매칭).
-    const { results: mrpDemand } = await c.env.DB.prepare(`
-      SELECT
-        b.material_item_id,
-        b.material_name,
-        SUM(
-          (COALESCE(oi.width, 0) / 100.0) * (COALESCE(oi.height, 0) / 100.0)
-          * COALESCE(oi.quantity, 1) * b.usage_per_sqm * b.waste_factor
-        ) as mrp_required
+    // 2. MRP 소요량 (확정/생산중 주문) — #465: 신모델(product_materials + 차감설정, autoDeduct 산식)로 재배선.
+    //    구 bom_items(동결) 대체. 제품당 자재 1종 선택·폭 초과는 최대폭 분할 근사.
+    const { results: activeOrderItems } = await c.env.DB.prepare(`
+      SELECT oi.item_id, oi.width, oi.height, oi.quantity
       FROM order_items oi
       JOIN orders o ON oi.order_id = o.id
-      JOIN bom_items b ON (
-        (b.item_id IS NOT NULL AND b.item_id = oi.item_id)
-        OR (b.item_id IS NULL AND b.category_name IS NOT NULL AND b.category_name = oi.category_name)
-      )
       WHERE o.status IN ('CONFIRMED', 'IN_PRODUCTION')
-        AND b.is_active = 1
         AND COALESCE(oi.width, 0) > 0 AND COALESCE(oi.height, 0) > 0
-      GROUP BY b.material_item_id
     `).all()
 
+    const mrpReq = await computeMaterialRequirements(c.env.DB, activeOrderItems as any[])
     const mrpMap: Record<number, { demand: number; materialName: string }> = {}
-    for (const m of mrpDemand as any[]) {
-      const matItemId = m.material_item_id as number
-      if (matItemId) {
-        mrpMap[matItemId] = {
-          demand: m.mrp_required as number,
-          materialName: m.material_name as string,
-        }
-      }
+    for (const [matItemId, r] of mrpReq) {
+      mrpMap[matItemId] = { demand: r.required, materialName: r.material_name }
     }
 
     // 3. 발주 중 수량 (DRAFT/CONFIRMED PO)
