@@ -597,12 +597,15 @@ clientsRouter.post('/:id/notes', requireRole('ADMIN', 'MANAGER', 'DESIGNER'), as
 // DELETE /:id/notes/:noteId - 메모 삭제
 clientsRouter.delete('/:id/notes/:noteId', requireRole('ADMIN', 'MANAGER'), async (c) => {
   try {
+    // #471: noteId 단독 삭제 = IDOR. client_id(URL) + entity_id 2축으로 소유 검증.
+    const clientId = c.req.param('id')
     const noteId = c.req.param('noteId')
-    const existing = await c.env.DB.prepare('SELECT id FROM client_notes WHERE id = ?').bind(noteId).first()
+    const ef = entityFilter(c)
+    const existing = await c.env.DB.prepare(`SELECT id FROM client_notes WHERE id = ? AND client_id = ?${ef.clause}`).bind(noteId, clientId, ...ef.params).first()
     if (!existing) {
       return c.json({ success: false, error: '메모를 찾을 수 없습니다' }, 404)
     }
-    await c.env.DB.prepare('DELETE FROM client_notes WHERE id = ?').bind(noteId).run()
+    await c.env.DB.prepare(`DELETE FROM client_notes WHERE id = ? AND client_id = ?${ef.clause}`).bind(noteId, clientId, ...ef.params).run()
     return c.json({ success: true, message: '삭제되었습니다' })
   } catch (error) {
     console.error('src/routes/clients.ts error:', error)

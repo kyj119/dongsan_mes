@@ -594,6 +594,9 @@ coreRouter.post('/sync-attendance', requireRole('ADMIN', 'MANAGER'), async (c) =
 
     // 대상 급여 레코드 조회 — 직원 포괄총액(emp_base)·고정연장 설정 + 저장된 수당/비과세 함께 로드
     // (sync에서 total_salary/공제/실지급까지 일관 재계산하기 위함)
+    // #470: entity 필터 필수 — 타법인 payroll 재계산/UPDATE(cross-tenant write IDOR) 차단.
+    //   UPDATE는 여기서 로드한 target id로만 실행되므로 SELECT 게이트가 곧 쓰기 게이트. entityId=0(ADMIN)=전체.
+    const efP = entityFilter(c, 'p')
     let targetQuery = `
       SELECT p.id, p.employee_id,
              p.meal_allowance, p.transportation_allowance, p.other_allowance,
@@ -605,9 +608,9 @@ coreRouter.post('/sync-attendance', requireRole('ADMIN', 'MANAGER'), async (c) =
              e.dependents_count, e.income_tax_table_option
       FROM payroll p
       JOIN employees e ON e.id = p.employee_id
-      WHERE p.pay_period = ? AND p.status != 'PAID'
+      WHERE p.pay_period = ? AND p.status != 'PAID'${efP.clause}
     `
-    const targetParams: any[] = [payPeriod]
+    const targetParams: any[] = [payPeriod, ...efP.params]
     if (employeeIds.length > 0) {
       targetQuery += ` AND p.employee_id IN (${employeeIds.map(() => '?').join(',')})`
       targetParams.push(...employeeIds)
