@@ -280,6 +280,9 @@ export function orderFormPage(c: Context<HonoEnv>) {
                                 </button>
                             </div>
                         </div>
+                        <label class="flex items-center gap-1.5 text-xs text-gray-500 mb-2 cursor-pointer w-fit">
+                            <input type="checkbox" id="includeMaterials" class="rounded border-gray-300"> 품목 검색에 <b class="text-gray-700">원자재</b> 포함 (기본: 제품·상품만)
+                        </label>
                         <div id="itemsContainer"></div>
 
                         <!-- 합계 -->
