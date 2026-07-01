@@ -30,10 +30,14 @@
   - **정리**: 비활성 stub 10건 하드삭제(0434, 참조0). 변종 모품목(spec_group 템플릿)은 보존(is_active=0). 로컬 발산 시 prod 직접적용.
   - **★남은**: 단가(전 품목 0, 매입 통해 차차) · 간판 BOM(설계선행 보류) · 볼로프 등 dual은 is_sales=1이라 주문검색 노출(C2로 사용자 제한 가능).
 
+- **✅ [2026-07-01] git issues 5건 처리 + 일괄배포** (`d2ebed69`, prod, apex 검증):
+  - #457 고아 `clientPrices.js` 삭제 · #468 CSV 자동수정 확인(닫음) · #467 연차 촉진/소멸 배너 항상 400 실패 → `GET /api/leaves/alerts-summary` 신설(ADMIN·MANAGER, 6조합 유니크+소멸 집계) · #466 메시지 단가 매 로드 SOAP 7콜 → 상수 정본화+`/unit-cost` 수동 새로고침(7→2콜) · #469 연차수당 주입 시 total/공제/net 인라인 재계산(과소지급 차단) · #465 Step1 bom_items split-brain 해소.
+  - **#465 Step1**: 부족체크·주간발주를 신모델(`computeMaterialRequirements` 헬퍼, autoDeduct 산식·폭 초과 최대폭 분할 근사)로 재배선. `mrpCalculator.ts` 삭제 → bom_items reader 0. **Step2=#472**(print_events 실측으로 출력완료분 제외, brainstorming 선행).
+
 - **✅ [2026-07-01] 자재명세(BOM) 페이지 신모델 재배선 — prod 라이브** (`9bd6c2ff`):
   - **문제**: 품목 신모델(product_materials) 도입으로 레거시 `bom_items` 기반 자재명세/MRP가 고립(0행·`material_item_id` 생산자(inventory 행PK)↔소비자(item_id) 의미 불일치).
   - **재배선**(용준님 결정 B+MRP 은퇴): 자재명세 탭 = `product_materials` 미러 **읽기전용 개요**(제품→자재+차감설정 ROLL/BOARD·폭/규격/로스율/단위, 카테고리 그룹·rowspan·검색). 편집 SSOT=items(원자재 연결) 링크. **자재 미연결 제품 경고**(prod 39건 — 인쇄해도 차감 안 됨 가시화). MRP/이력 탭·bom_items CRUD·`/mrp/*` 은퇴, `GET /api/bom/overview` 신설.
-  - **보존**: `bom_items` 테이블·`mrpCalculator.ts`(weeklyPurchase·materialShortageCheck가 아직 직접 참조 — **동일 고립 잠복, 별도 후속**).
+  - **✅ 후속 해소 (2026-07-01, #465 Step1 `d2ebed69`)**: weeklyPurchase·materialShortageCheck를 신모델(product_materials, autoDeduct 산식)로 재배선 + `mrpCalculator.ts` 삭제 → **bom_items reader 0(완전 orphan)**. Step2(print_events 실측 정확도)=후속 #472.
   - prod 검증(Playwright): 131 제품/연결92/미연결39·302행·콘솔0에러. 정본 → [[design-bom-overview-rewire]].
 
 - **▶ [2026-06-30] 품목 미등록 갭 감사 + 판재 등록 (worktree `session/master-banner`)**:
