@@ -1,7 +1,7 @@
 # PROJECT_STATUS.md — 프로젝트 현황판
 
-> **현재 초점**: 품목 마스터 — **즉시등록 영역 소진**(배너·판재·게양/부속·깃발·자재/상품, 마이그 0398~0419·prod 활성485). **남은=간판 BOM(설계선행)·단가(전역)만.**
-> **마지막 prod 배포**: 품목 잔여 일괄등록 0398~0419 + **형옵션 범용 선택옵션 코드**(dep `fb45ea0f`, worktree `session/master-banner`). 이전: 공장배치도 P0~P2(`8adc578d`).
+> **현재 초점**: 워크플로우 전수분석 마스터 기획(`docs/superpowers/specs/2026-07-01-workflow-improvement-master-plan.md`) — 횡단근본원인 X1~X5·Phase0~5. **Phase0+X2 배포완료**, 남은=X4 cron·X5 balance·Phase1~5(단가·실원가·간판BOM 등).
+> **마지막 prod 배포**: **Phase0 死상태값버그5(OEE/MRP/주간발주) + X2 고아백엔드 UI 4건**(/quality 클레임·반품·불량 신규[마이그0420]·/equipment 큐부하·/production-reports OEE탭·/production 작업실적)(dep `3fd127f4`, push `32012288`, worktree `session/phase0-activate`). prod 실검증 완료(불량코드 실데이터·장비TPM·실직원, API200·에러0). 이전: 품목 0398~0419(`fb45ea0f`).
 > **블로커**: 품목 단가 전부 0(전역 과제) · 간판 BOM=**brainstorming 후 사용자 보류**(견적구조 설계라 결이 다름·디자이너 카탈로그 확정 의존).
 > **다음 액션**: 단가 체계 / (간판 BOM=재개 시 spec `2026-06-13-signage-component-estimate-structure.md` + session-context 간판 항목 참조).
 > **핸드오프 정본** = `memory/session-context.md`.

@@ -51,6 +51,7 @@
 ### 🟢 활성 specs (`docs/superpowers/specs/`)
 | 문서 | 성격 | 상태 |
 |---|---|---|
+| `2026-07-01-workflow-improvement-master-plan.md` | **워크플로우 전수분석·수정 마스터 기획**(7도메인+산업표준, 횡단근본원인 X1~X5·Phase0~5·의사결정11) | 기획 완료 · Phase0+X2 배포완료 |
 | `2026-06-10-split-billing-by-entity.md` (+IMPLEMENTATION-PLAN) | 생산법인별 분할 청구 — 내부정산 모델 대체 | 설계 확정·구현 전 |
 | `2026-06-11-alimtalk-golive-package.md` | #378 오보고 수정 + 출고 자동발송 + go-live | 결정 대기 (D1~D3) |
 | `2026-06-11-ontime-kpi-redesign.md` | #380 납기 준수율 KPI 재정의 | 결정 대기 (D1~D4) |
