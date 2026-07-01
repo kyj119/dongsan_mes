@@ -526,7 +526,7 @@ ${capsSettingsScript}
               </div>
               <div class="grid grid-cols-3 gap-3 text-center">
                 <div class="p-3 bg-gray-50 rounded-lg">
-                  <div class="text-xs text-gray-500">잔여 포인트</div>
+                  <div class="text-xs text-gray-500">통합 포인트</div>
                   <div class="text-lg font-bold text-gray-900 mt-1" id="msgConnBalance">-</div>
                 </div>
                 <div class="p-3 bg-gray-50 rounded-lg">

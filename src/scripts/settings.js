@@ -492,8 +492,10 @@ async function testMsgBarobillConnection() {
       if (iconEl) iconEl.innerHTML = '<i class="fas fa-circle-check text-green-600"></i>';
       if (textEl) { textEl.textContent = '바로빌 연결 정상'; textEl.className = 'text-sm font-medium text-green-700'; }
       if (detailEl) detailEl.textContent = '포인트 조회 성공';
-      document.getElementById('msgConnBalance').textContent = (b.remain_point || 0).toLocaleString() + '원';
-      document.getElementById('msgConnUnitCost').textContent = (b.unit_cost || 0) + '원';
+      // 통합(파트너) 지갑이 실잔액. 회원사 지갑(remain_point)은 동산기획 설정상 항상 0 → partner_point 우선.
+      document.getElementById('msgConnBalance').textContent = (b.partner_point || b.remain_point || 0).toLocaleString() + '원';
+      // 응답 키는 채널별(unit_cost_alimtalk 등). 카카오톡 단가 = 알림톡 단가. (구 b.unit_cost는 미존재 → 항상 0이던 버그)
+      document.getElementById('msgConnUnitCost').textContent = (b.unit_cost_alimtalk || 0).toLocaleString() + '원';
     } else {
       if (iconEl) iconEl.innerHTML = '<i class="fas fa-circle-xmark text-red-600"></i>';
       if (textEl) { textEl.textContent = '바로빌 연결 실패'; textEl.className = 'text-sm font-medium text-red-700'; }
