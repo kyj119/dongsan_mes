@@ -9,7 +9,7 @@ import { authMiddleware, requireRole } from '../middleware/auth'
 import { requirePagePermission } from '../middleware/permissions'
 import { entityFilter, getEntityId } from '../utils/entityFilter'
 import { markLeaveAttendance, clearLeaveAttendance, enumerateDates } from '../utils/leaveAttendance'
-import { calcInclusivePay, loadOvertimeSettings } from './payroll/shared'
+import { calcInclusivePay, loadOvertimeSettings, calcDeductions, loadInsuranceRates, loadAllEmployeeDefaults } from './payroll/shared'
 import { sendEmail } from '../services/emailProvider'
 
 // ---------- D1 row shapes ----------
@@ -1146,19 +1146,28 @@ leavesRouter.post('/apply-unused-allowance', requireRole('ADMIN', 'MANAGER'), as
     const ef = entityFilter(c, 'e')
 
     // /unused-allowance 동일 산식: 직원별 잔여 + 통상시급(calcInclusivePay 분해) → unused_allowance
+    // #469: 해당 pay_period PENDING 급여행을 INNER JOIN 로드 → 주입과 동시에 저장 집계(총액/과세/공제/실지급) 재계산.
     const { results } = await c.env.DB.prepare(`
       SELECT e.id as employee_id, e.base_salary, e.position_allowance, e.overtime_daily_hours, e.overtime_work_days,
-        (COALESCE(lb.accrued,0)+COALESCE(lb.granted_extra,0)+COALESCE(lb.carried_over,0)-COALESCE(lb.used,0)-COALESCE(lb.expired,0)) as remaining_annual
+        e.dependents_count, e.income_tax_table_option,
+        (COALESCE(lb.accrued,0)+COALESCE(lb.granted_extra,0)+COALESCE(lb.carried_over,0)-COALESCE(lb.used,0)-COALESCE(lb.expired,0)) as remaining_annual,
+        p.id as payroll_id, p.base_salary as p_base, p.overtime_pay, p.night_pay, p.holiday_pay,
+        p.meal_allowance, p.transportation_allowance, p.other_allowance, p.bonus,
+        p.nontax_meal, p.nontax_transport, p.nontax_childcare, p.other_deduction
       FROM employees e
       LEFT JOIN (
         SELECT employee_id, SUM(accrued) accrued, SUM(granted_extra) granted_extra, SUM(used) used, SUM(carried_over) carried_over, SUM(expired) expired
         FROM leave_balances WHERE year = ? AND leave_type IN ('ANNUAL','MONTHLY') GROUP BY employee_id
       ) lb ON lb.employee_id = e.id
+      JOIN payroll p ON p.employee_id = e.id AND p.pay_period = ? AND p.status = 'PENDING'
       WHERE e.status = 'ACTIVE' AND e.is_deleted = 0${ef.clause}
-    `).bind(year, ...ef.params).all<{ employee_id: number; base_salary: number; position_allowance: number; overtime_daily_hours: number; overtime_work_days: number; remaining_annual: number }>()
+    `).bind(year, payPeriod, ...ef.params).all<{ employee_id: number; base_salary: number; position_allowance: number; overtime_daily_hours: number; overtime_work_days: number; dependents_count: number; income_tax_table_option: string; remaining_annual: number; payroll_id: number; p_base: number; overtime_pay: number; night_pay: number; holiday_pay: number; meal_allowance: number; transportation_allowance: number; other_allowance: number; bonus: number; nontax_meal: number; nontax_transport: number; nontax_childcare: number; other_deduction: number }>()
 
     const ot = await loadOvertimeSettings(c.env.DB)
     const baseHours = ot.monthlyWorkHours || 209
+    // #469: 공제 재계산용 요율/직원 보험토글 prefetch (루프 밖 1회)
+    const ratesCache = await loadInsuranceRates(c.env.DB, year)
+    const empDefaultsMap = await loadAllEmployeeDefaults(c.env.DB, results.map((r) => Number(r.employee_id)))
 
     const stmts: any[] = []
     let applied = 0
@@ -1181,16 +1190,53 @@ leavesRouter.post('/apply-unused-allowance', requireRole('ADMIN', 'MANAGER'), as
       const hourlyRate = ordinaryMonthly > 0 ? Math.round(ordinaryMonthly / baseHours) : 0
       const unusedAllowance = hourlyRate * 8 * remaining
       if (unusedAllowance <= 0) continue
+
+      // #469: 새 annual_leave_pay 반영해 저장 집계 재계산 (근태분 base/OT/야간/휴일은 유지 — sync 동일 산식).
+      const total_salary = Number(r.p_base || 0) + Number(r.overtime_pay || 0) + Number(r.night_pay || 0) + Number(r.holiday_pay || 0)
+        + Number(r.meal_allowance || 0) + Number(r.transportation_allowance || 0) + Number(r.other_allowance || 0)
+        + unusedAllowance + Number(r.bonus || 0)
+      const nontax = Number(r.nontax_meal || 0) + Number(r.nontax_transport || 0) + Number(r.nontax_childcare || 0)
+      const taxable_pay = total_salary - nontax
+      const empDef = empDefaultsMap.get(Number(r.employee_id))
+      const d = await calcDeductions(c.env.DB, {
+        taxablePay: taxable_pay,
+        dependents: Math.max(1, Number(r.dependents_count || 1)),
+        taxOption: String(r.income_tax_table_option || '100'),
+        year,
+        applyNationalPension: empDef?.insurance_apply_national_pension,
+        applyHealth: empDef?.insurance_apply_health,
+        applyLongTermCare: empDef?.insurance_apply_long_term_care,
+        applyEmployment: empDef?.insurance_apply_employment,
+        applyIndustrialAccident: empDef?.insurance_apply_industrial_accident,
+        ratesCache,
+      })
+      const total_deduction = d.total_deduction + Number(r.other_deduction || 0)
+      const net_pay = total_salary - total_deduction
+
       stmts.push(c.env.DB.prepare(
-        `UPDATE payroll SET annual_leave_pay = ?, updated_at = datetime('now') WHERE employee_id = ? AND pay_period = ? AND status = 'PENDING'`
-      ).bind(unusedAllowance, r.employee_id, payPeriod))
+        `UPDATE payroll SET annual_leave_pay = ?, total_salary = ?, taxable_pay = ?,
+           national_pension = ?, health_insurance = ?, long_term_care_insurance = ?,
+           employment_insurance = ?, income_tax = ?, local_tax = ?,
+           employer_national_pension = ?, employer_health_insurance = ?, employer_long_term_care = ?,
+           employer_employment_insurance = ?, employer_industrial_accident = ?,
+           total_deduction = ?, net_pay = ?, updated_at = datetime('now')
+         WHERE id = ? AND status = 'PENDING'`
+      ).bind(
+        unusedAllowance, total_salary, taxable_pay,
+        d.national_pension, d.health_insurance, d.long_term_care_insurance,
+        d.employment_insurance, d.income_tax, d.local_tax,
+        d.employer_national_pension, d.employer_health_insurance, d.employer_long_term_care,
+        d.employer_employment_insurance, d.employer_industrial_accident,
+        total_deduction, net_pay,
+        r.payroll_id
+      ))
       applied++
       totalAmount += unusedAllowance
     }
     if (stmts.length > 0) {
       for (let i = 0; i < stmts.length; i += 80) await c.env.DB.batch(stmts.slice(i, i + 80))
     }
-    return c.json({ success: true, data: { pay_period: payPeriod, applied, total_amount: totalAmount, note: '대기(PENDING) 급여에만 반영 — 총액/실지급은 급여관리에서 근태동기화/저장 시 계산됩니다.' } })
+    return c.json({ success: true, data: { pay_period: payPeriod, applied, total_amount: totalAmount, note: '대기(PENDING) 급여에 연차수당 반영 + 총액·과세·공제·실지급 재계산 완료(근태분은 미변경).' } })
   } catch (error) {
     console.error('src/routes/leaves.ts apply-unused-allowance error:', error)
     return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
