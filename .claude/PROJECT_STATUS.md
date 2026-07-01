@@ -5,7 +5,7 @@
 > **⚠️ 급여계산 진단(신현서 케이스, 코드정상·입력차이)**: MES 공제가 ECOUNT보다 높음 = **①부양가족 0명(→본인1, 소득세 +66k 최대) ②차량유지비 20만 비과세 미처리(taxable=400만) ③국민연금 base=당월급여(400만) vs ECOUNT 기준소득월액(~371만)**. MES 간이세액표 룩업·100/120옵션·요율(9.5/7.19/13.14%)·상한(637만) 전부 정상. 조치=부양가족·차량유지비 비과세 입력 / 개선여지=국민연금 기준소득월액 필드. → [[payroll-calc-ecount-diff]]
 > **블로커**: 품목 단가 전부 0(전역 과제·매입세션 진행중) · 간판 BOM=brainstorming 후 보류.
 > **다음 액션**: ①B5 4대보험 7월요율 적용(**상한 637만→659만·하한 40만→41만** 리서치완료·prod insurance_rates 반영 확인대기) ②B3 직원셀프서비스 ③국민연금 기준소득월액 필드 ④단가.
-> **▶ git issues 후속 (2026-07-01 세션)**: ✅**#470/#471 배포완료**(`4d78be6b`, apex 401 검증) — #470 `sync-attendance` targetQuery에 `entityFilter(c,'p')` 추가(cross-tenant write IDOR 차단, SELECT 게이트=UPDATE 게이트), #471 메모삭제 `WHERE id=? AND client_id=?${ef.clause}` 2축 SELECT/DELETE 검증. ⑦**#472**(잔여) BOM 계획 Step2(`materialRequirement.ts`) — print_events 실측으로 출력완료 order_item 제외(autoDeduct 이중계상 방지), 미출력분만 계획. **brainstorming 선행**(부분출력 처리).
+> **▶ git issues 후속 (2026-07-01 세션)**: ✅**#470/#471 배포완료·이슈 Close**(`4d78be6b`, apex 401 검증) — #470 `sync-attendance` targetQuery에 `entityFilter(c,'p')` 추가(cross-tenant write IDOR 차단, SELECT 게이트=UPDATE 게이트), #471 메모삭제 `WHERE id=? AND client_id=?${ef.clause}` 2축 SELECT/DELETE 검증. ⏸**#472 보류**(OPEN 유지·GitHub 보류 코멘트) BOM 계획 Step2(`materialRequirement.ts`) — print_events 실측으로 출력완료 order_item 제외(autoDeduct 이중계상 방지), 미출력분만 계획. **brainstorming 선행**(부분출력 처리 정책).
 > **핸드오프 정본** = `memory/session-context.md`(품목) + `memory/project-workflow-master-plan.md`(워크플로우·HR).
 > **🔧 멀티세션**: 동시 작업은 `scripts/new-session.ps1 <이름>`(worktree 격리, 메인 직접작업 지양) → `docs/WORKTREE_WORKFLOW.md`.
 > 완료 이력 → `PROJECT_STATUS_ARCHIVE.md` (매 세션 읽을 필요 없음, 필요 시 참조).
