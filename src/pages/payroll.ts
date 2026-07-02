@@ -126,6 +126,8 @@ export function payrollPage(c: Context<HonoEnv>) {
           .ds-ledger td.num, .ds-ledger th.num { text-align: right; }
           .ds-ledger td.lft, .ds-ledger th.lft { text-align: left; }
           .ds-ledger td.ctr, .ds-ledger th.ctr { text-align: center; }
+          .ds-ledger td.z { color: #c8d0da; }                          /* 0원 값 흐리게 (구조상 표시는 유지) */
+          .ds-ledger tr.band-b td { border-bottom: 2px solid #cbd5e1; } /* 직원(지급/공제 2행) 블록 구분선 */
           .ds-ledger .stick { position: sticky; background: #fff; z-index: 1; }
           .ds-ledger thead .stick { z-index: 3; background: #f1f5f9; }
           .ds-ledger .grp-pay { background: #eff6ff; }

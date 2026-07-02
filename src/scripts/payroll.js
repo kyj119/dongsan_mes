@@ -756,19 +756,16 @@ window.sendPayslipBulk = async function() {
 //   기존 /payroll 목록(currentPayrollData) 재사용. API 변경 없음.
 //   컬럼은 descriptor 배열로 정의 → 고정 너비 colgroup·헤더·본문·합계·CSV 공통 생성.
 // ============================================================================
-window.payrollLedgerTab = 'main';   // 'main'=급여대장(지급/공제) | 'emp'=회사부담금
+window.payrollLedgerTab = 'main';   // 'main'=급여대장(지급/공제 2단) | 'emp'=회사부담금
 
-// descriptor: {key,label,w,group,kind,sticky?,bold?,calc?,ui?,always?}
-//   group: id|pay|ded|net|emp|sum     kind: text|dept|pos|num|calc|check|status|act
-//   ui:true = 화면 전용(체크/상태/액션 — CSV·인쇄 제외)
-//   always:true = 전원 0이어도 항상 표시 (미사용 컬럼 자동 숨김 대상에서 제외; bold 컬럼도 항상 표시)
+// CSV 내보내기용 평면 컬럼 (전체 항목 — 화면은 2단 밴드 구조로 별도 렌더)
+// descriptor: {key,label,w,group,kind,sticky?,bold?,calc?}   group: id|pay|ded|net|emp|sum
 var LEDGER_MAIN_COLS = [
-  {key:'__check', label:'', w:32, group:'id', kind:'check', ui:true, sticky:0},
-  {key:'employee_code', label:'사번', w:60, group:'id', kind:'text', sticky:32},
-  {key:'employee_name', label:'성명', w:78, group:'id', kind:'text', sticky:92},
+  {key:'employee_code', label:'사번', w:60, group:'id', kind:'text', sticky:0},
+  {key:'employee_name', label:'성명', w:78, group:'id', kind:'text', sticky:60},
   {key:'department', label:'부서', w:64, group:'id', kind:'dept'},
   {key:'position', label:'직급', w:56, group:'id', kind:'pos'},
-  {key:'base_salary', label:'기본급', w:94, group:'pay', kind:'num', always:true},
+  {key:'base_salary', label:'기본급', w:94, group:'pay', kind:'num'},
   {key:'overtime_pay', label:'연장', w:84, group:'pay', kind:'num'},
   {key:'night_pay', label:'야간', w:72, group:'pay', kind:'num'},
   {key:'holiday_pay', label:'휴일', w:72, group:'pay', kind:'num'},
@@ -778,18 +775,38 @@ var LEDGER_MAIN_COLS = [
   {key:'bonus', label:'상여', w:80, group:'pay', kind:'num'},
   {key:'annual_leave_pay', label:'연차', w:72, group:'pay', kind:'num'},
   {key:'total_salary', label:'지급계', w:102, group:'pay', kind:'num', bold:true},
-  {key:'national_pension', label:'국민연금', w:84, group:'ded', kind:'num', always:true},
-  {key:'health_insurance', label:'건강', w:78, group:'ded', kind:'num', always:true},
-  {key:'long_term_care_insurance', label:'장기요양', w:82, group:'ded', kind:'num', always:true},
-  {key:'employment_insurance', label:'고용', w:72, group:'ded', kind:'num', always:true},
-  {key:'income_tax', label:'소득세', w:86, group:'ded', kind:'num', always:true},
-  {key:'local_tax', label:'지방세', w:74, group:'ded', kind:'num', always:true},
+  {key:'national_pension', label:'국민연금', w:84, group:'ded', kind:'num'},
+  {key:'health_insurance', label:'건강', w:78, group:'ded', kind:'num'},
+  {key:'long_term_care_insurance', label:'장기요양', w:82, group:'ded', kind:'num'},
+  {key:'employment_insurance', label:'고용', w:72, group:'ded', kind:'num'},
+  {key:'income_tax', label:'소득세', w:86, group:'ded', kind:'num'},
+  {key:'local_tax', label:'지방세', w:74, group:'ded', kind:'num'},
   {key:'other_deduction', label:'기타', w:74, group:'ded', kind:'num'},
   {key:'total_deduction', label:'공제계', w:102, group:'ded', kind:'num', bold:true},
-  {key:'net_pay', label:'실지급', w:110, group:'net', kind:'num', bold:true},
-  {key:'__status', label:'상태', w:74, group:'net', kind:'status', ui:true},
-  {key:'__act', label:'액션', w:158, group:'net', kind:'act', ui:true}
+  {key:'net_pay', label:'실지급', w:110, group:'net', kind:'num', bold:true}
 ];
+
+// 급여대장 화면(2단 밴드) 슬롯 정의: 슬롯당 위=지급 항목, 아래=공제 항목.
+// 전 항목 표시 + 가로 폭 절반 → 좌우 스크롤 없이 상하 스크롤만으로 열람 (용준님 요청 2026-07-02)
+var LEDGER_BAND_SLOTS = [
+  {pay:{key:'base_salary', label:'기본급'}, ded:{key:'national_pension', label:'국민연금'}},
+  {pay:{key:'overtime_pay', label:'연장'}, ded:{key:'health_insurance', label:'건강'}},
+  {pay:{key:'night_pay', label:'야간'}, ded:{key:'long_term_care_insurance', label:'장기요양'}},
+  {pay:{key:'holiday_pay', label:'휴일'}, ded:{key:'employment_insurance', label:'고용'}},
+  {pay:{key:'meal_allowance', label:'식대'}, ded:{key:'income_tax', label:'소득세'}},
+  {pay:{key:'transportation_allowance', label:'교통'}, ded:{key:'local_tax', label:'지방세'}},
+  {pay:{key:'other_allowance', label:'기타수당'}, ded:{key:'other_deduction', label:'기타공제'}},
+  {pay:{key:'bonus', label:'상여'}, ded:null},
+  {pay:{key:'annual_leave_pay', label:'연차'}, ded:null},
+  {pay:{key:'total_salary', label:'지급계', bold:true}, ded:{key:'total_deduction', label:'공제계', bold:true}}
+];
+var BAND_ID_COLS = [
+  {key:'employee_code', label:'사번', w:60},
+  {key:'employee_name', label:'성명', w:78},
+  {key:'department', label:'부서', w:64},
+  {key:'position', label:'직급', w:56}
+];
+var BAND_W = {check:32, band:44, slot:86, net:108, status:74, act:158};
 var LEDGER_EMP_COLS = [
   {key:'employee_code', label:'사번', w:60, group:'id', kind:'text', sticky:0},
   {key:'employee_name', label:'성명', w:78, group:'id', kind:'text', sticky:60},
@@ -815,27 +832,12 @@ function prDeptLabel(d){ return (window.DEPT_NAMES && window.DEPT_NAMES[d]) || d
 function prPosLabel(p){ return (window.POSITION_NAMES && window.POSITION_NAMES[p]) || p || ''; }
 function prEmpTotal(r){ return prNum(r,'employer_national_pension')+prNum(r,'employer_health_insurance')+prNum(r,'employer_long_term_care')+prNum(r,'employer_employment_insurance')+prNum(r,'employer_industrial_accident'); }
 function prLedgerCols(){ return window.payrollLedgerTab === 'emp' ? LEDGER_EMP_COLS : LEDGER_MAIN_COLS; }
-// 화면 표시용 컬럼: 전 직원 0인 num 컬럼은 자동 숨김(공제 그룹이 화면 밖으로 밀리는 것 방지).
-// bold(계열 합계)·always(핵심 공제/기본급)는 항상 표시. CSV는 전체 컬럼 유지.
-function prLedgerActiveCols(){
-  var cols = prLedgerCols();
-  var rows = currentPayrollData || [];
-  if (!rows.length) return cols;
-  return cols.filter(function(c){
-    if (c.kind !== 'num' || c.bold || c.always) return true;
-    for (var i = 0; i < rows.length; i++) { if (prNum(rows[i], c.key) !== 0) return true; }
-    return false;
-  });
-}
 function prColVal(c, r){
   if (c.kind === 'num') return prNum(r, c.key);
   if (c.kind === 'calc') return c.calc === 'emp' ? prEmpTotal(r) : (prNum(r,'total_salary') + prEmpTotal(r));
   return 0;
 }
-function prColCls(c){
-  var align = (c.kind==='num'||c.kind==='calc') ? 'num' : (c.kind==='check'||c.kind==='status'||c.kind==='act') ? 'ctr' : 'lft';
-  return align + (LEDGER_GROUP[c.group].cls?(' '+LEDGER_GROUP[c.group].cls):'') + (c.bold?' b':'') + (c.sticky!=null?' stick':'');
-}
+function prColCls(c){ return (c.kind==='num'||c.kind==='calc'?'num':'lft') + (LEDGER_GROUP[c.group].cls?(' '+LEDGER_GROUP[c.group].cls):'') + (c.bold?' b':'') + (c.sticky!=null?' stick':''); }
 function prColStyle(c){ return c.sticky!=null ? ' style="left:'+c.sticky+'px"' : ''; }
 
 window.payrollSwitchLedgerTab = function(tab){
@@ -856,8 +858,7 @@ function prLedgerHead(cols){
   while (i < cols.length){
     var c = cols[i];
     if (c.group==='id' || c.group==='net'){
-      var label = c.kind==='check' ? '<input type="checkbox" id="prSelectAll" onchange="payrollToggleAll(this.checked)">' : c.label;
-      r1 += '<th rowspan="2" class="'+prColCls(c)+'"'+prColStyle(c)+'>'+label+'</th>';
+      r1 += '<th rowspan="2" class="'+prColCls(c)+'"'+prColStyle(c)+'>'+c.label+'</th>';
       i++;
     } else {
       var g=c.group, j=i, span=0;
@@ -873,11 +874,7 @@ function prLedgerDataRow(cols, r){
   var html = '<tr>';
   cols.forEach(function(c){
     var v;
-    if (c.kind==='check') v = '<input type="checkbox" class="pr-row-check" onchange="payrollToggleRow(' + r.id + ', this.checked)"' + (prSelected[r.id] ? ' checked' : '') + '>';
-    else if (c.kind==='status') v = prStatusBadge(r.status);
-    else if (c.kind==='act') v = prActionsHtml(r);
-    else if (c.key==='employee_name') v = escapeHtml(r.employee_name||'') + (r.attendance_synced_at ? '<i class="fas fa-check-circle text-green-500 ml-1" title="근태 동기화: ' + escapeHtml(r.attendance_synced_at) + '"></i>' : '');
-    else if (c.kind==='text') v = escapeHtml(r[c.key]||'');
+    if (c.kind==='text') v = escapeHtml(r[c.key]||'');
     else if (c.kind==='dept') v = escapeHtml(prDeptLabel(r.department));
     else if (c.kind==='pos') v = escapeHtml(prPosLabel(r.position));
     else v = prLC(prColVal(c, r));
@@ -895,6 +892,106 @@ function prLedgerTotalRow(cols, label, t, cls){
     html += '<td class="'+prColCls(c)+'"'+prColStyle(c)+'>'+v+'</td>';
   });
   return html + '</tr>';
+}
+
+// ── 급여대장 2단 밴드 렌더 (main 탭) ─────────────────────────────────────────
+// 직원당 2행: 위=지급, 아래=공제. 신원/실지급/상태/액션은 rowspan=2.
+function prBandWidth(withUi){
+  var w = BAND_ID_COLS.reduce(function(s,c){ return s+c.w; }, 0) + BAND_W.band + LEDGER_BAND_SLOTS.length*BAND_W.slot + BAND_W.net;
+  if (withUi) w += BAND_W.check + BAND_W.status + BAND_W.act;
+  return w;
+}
+function prBandCell(val, cls){
+  var v = Math.round(val) || 0;
+  return '<td class="num '+cls+(v===0?' z':'')+'">'+prLC(v)+'</td>';
+}
+function prBandHeadHtml(withUi){
+  var colw = [];
+  if (withUi) colw.push(BAND_W.check);
+  BAND_ID_COLS.forEach(function(c){ colw.push(c.w); });
+  colw.push(BAND_W.band);
+  LEDGER_BAND_SLOTS.forEach(function(){ colw.push(BAND_W.slot); });
+  colw.push(BAND_W.net);
+  if (withUi){ colw.push(BAND_W.status); colw.push(BAND_W.act); }
+  var html = '<colgroup>' + colw.map(function(w){ return '<col style="width:'+w+'px">'; }).join('') + '</colgroup>';
+
+  var r1 = '', r2 = '';
+  var left = 0;
+  if (withUi){ r1 += '<th rowspan="2" class="ctr stick" style="left:0px"><input type="checkbox" id="prSelectAll" onchange="payrollToggleAll(this.checked)"></th>'; left = BAND_W.check; }
+  BAND_ID_COLS.forEach(function(c, i){
+    var sticky = i < 2;   // 사번·성명 고정
+    r1 += '<th rowspan="2" class="lft'+(sticky?' stick':'')+'"'+(sticky?' style="left:'+left+'px"':'')+'>'+c.label+'</th>';
+    if (sticky) left += c.w;
+  });
+  r1 += '<th rowspan="2" class="ctr">구분</th>';
+  LEDGER_BAND_SLOTS.forEach(function(s){ r1 += '<th class="num grp-pay'+(s.pay.bold?' b':'')+'">'+s.pay.label+'</th>'; });
+  r1 += '<th rowspan="2" class="num b">실지급</th>';
+  if (withUi){ r1 += '<th rowspan="2" class="ctr">상태</th><th rowspan="2" class="ctr">액션</th>'; }
+  LEDGER_BAND_SLOTS.forEach(function(s){
+    r2 += s.ded ? '<th class="num grp-ded'+(s.ded.bold?' b':'')+'">'+s.ded.label+'</th>' : '<th class="grp-ded"></th>';
+  });
+  return html + '<thead><tr>'+r1+'</tr><tr>'+r2+'</tr></thead>';
+}
+function prBandRowPair(r, withUi){
+  var syncedMark = r.attendance_synced_at
+    ? '<i class="fas fa-check-circle text-green-500 ml-1" title="근태 동기화: ' + escapeHtml(r.attendance_synced_at) + '"></i>' : '';
+  var left = 0;
+  var a = '<tr>';
+  if (withUi){
+    a += '<td rowspan="2" class="ctr stick" style="left:0px"><input type="checkbox" class="pr-row-check" onchange="payrollToggleRow(' + r.id + ', this.checked)"' + (prSelected[r.id] ? ' checked' : '') + '></td>';
+    left = BAND_W.check;
+  }
+  a += '<td rowspan="2" class="lft stick" style="left:'+left+'px">'+escapeHtml(r.employee_code||'')+'</td>';
+  a += '<td rowspan="2" class="lft stick" style="left:'+(left+BAND_ID_COLS[0].w)+'px">'+escapeHtml(r.employee_name||'')+syncedMark+'</td>';
+  a += '<td rowspan="2" class="lft">'+escapeHtml(prDeptLabel(r.department))+'</td>';
+  a += '<td rowspan="2" class="lft">'+escapeHtml(prPosLabel(r.position))+'</td>';
+  a += '<td class="ctr grp-pay b">지급</td>';
+  LEDGER_BAND_SLOTS.forEach(function(s){ a += prBandCell(prNum(r, s.pay.key), 'grp-pay'+(s.pay.bold?' b':'')); });
+  a += '<td rowspan="2" class="num b">'+prLC(prNum(r,'net_pay'))+'</td>';
+  if (withUi){
+    a += '<td rowspan="2" class="ctr">'+prStatusBadge(r.status)+'</td>';
+    a += '<td rowspan="2" class="ctr">'+prActionsHtml(r)+'</td>';
+  }
+  a += '</tr>';
+  var b = '<tr class="band-b"><td class="ctr grp-ded b">공제</td>';
+  LEDGER_BAND_SLOTS.forEach(function(s){ b += s.ded ? prBandCell(prNum(r, s.ded.key), 'grp-ded'+(s.ded.bold?' b':'')) : '<td class="grp-ded z"></td>'; });
+  b += '</tr>';
+  return a + b;
+}
+function prBandTotals(list){
+  var t = {_count:0, net_pay:0};
+  LEDGER_BAND_SLOTS.forEach(function(s){ t[s.pay.key]=0; if (s.ded) t[s.ded.key]=0; });
+  list.forEach(function(r){
+    t._count++; t.net_pay += prNum(r,'net_pay');
+    LEDGER_BAND_SLOTS.forEach(function(s){ t[s.pay.key]+=prNum(r,s.pay.key); if (s.ded) t[s.ded.key]+=prNum(r,s.ded.key); });
+  });
+  return t;
+}
+function prBandTotalPair(label, t, cls, withUi){
+  var idSpan = (withUi ? 1 : 0) + BAND_ID_COLS.length;
+  var a = '<tr class="'+cls+'"><td rowspan="2" colspan="'+idSpan+'" class="lft b">'+escapeHtml(label)+' · '+t._count+'명</td>';
+  a += '<td class="ctr b">지급</td>';
+  LEDGER_BAND_SLOTS.forEach(function(s){ a += '<td class="num'+(s.pay.bold?' b':'')+'">'+prLC(t[s.pay.key])+'</td>'; });
+  a += '<td rowspan="2" class="num b">'+prLC(t.net_pay)+'</td>';
+  if (withUi) a += '<td rowspan="2" colspan="2"></td>';
+  a += '</tr>';
+  var b = '<tr class="'+cls+' band-b"><td class="ctr b">공제</td>';
+  LEDGER_BAND_SLOTS.forEach(function(s){ b += s.ded ? '<td class="num'+(s.ded.bold?' b':'')+'">'+prLC(t[s.ded.key])+'</td>' : '<td></td>'; });
+  b += '</tr>';
+  return a + b;
+}
+function prBandHtml(rows, withUi){
+  var byDept = {}, order = [];
+  rows.forEach(function(r){ var d=r.department||''; if(!byDept[d]){byDept[d]=[];order.push(d);} byDept[d].push(r); });
+  var multiDept = order.length > 1;
+  var body = '<tbody>';
+  order.forEach(function(dept){
+    byDept[dept].forEach(function(r){ body += prBandRowPair(r, withUi); });
+    if (multiDept) body += prBandTotalPair(prDeptLabel(dept)+' 소계', prBandTotals(byDept[dept]), 'subtotal', withUi);
+  });
+  body += prBandTotalPair('전체 합계', prBandTotals(rows), 'grandtotal', withUi);
+  body += '</tbody>';
+  return prBandHeadHtml(withUi) + body;
 }
 
 function prLedgerBodyHtml(cols, rows){
@@ -916,7 +1013,6 @@ window.payrollRenderLedger = function(){
   var table = document.getElementById('prLedgerTable');
   if (!table) return;
   var rows = currentPayrollData || [];
-  var cols = prLedgerActiveCols();
   var periodEl = document.getElementById('prLedgerPeriod');
   if (periodEl) periodEl.textContent = rows.length ? ('· ' + (rows[0].pay_period || '') + ' · ' + rows.length + '명') : '';
   if (!rows.length){
@@ -924,16 +1020,21 @@ window.payrollRenderLedger = function(){
     table.innerHTML = '<tbody><tr><td style="padding:32px;text-align:center;color:#9ca3af;border:none"><i class="fas fa-file-invoice-dollar" style="font-size:24px;display:block;margin-bottom:8px;color:#d1d5db"></i>해당 월 급여 내역이 없습니다<div style="margin-top:8px"><button onclick="payrollBatch()" class="px-3 py-1.5 text-xs bg-blue-600 text-white rounded">+ 일괄 생성</button></div></td></tr></tbody>';
     return;
   }
-  var totalW = cols.reduce(function(s,c){ return s+c.w; }, 0);
-  table.style.width = totalW + 'px';
-  table.innerHTML = prLedgerHead(cols) + prLedgerBodyHtml(cols, rows);
+  if (window.payrollLedgerTab === 'emp'){
+    var cols = LEDGER_EMP_COLS;
+    table.style.width = cols.reduce(function(s,c){ return s+c.w; }, 0) + 'px';
+    table.innerHTML = prLedgerHead(cols) + prLedgerBodyHtml(cols, rows);
+  } else {
+    table.style.width = prBandWidth(true) + 'px';
+    table.innerHTML = prBandHtml(rows, true);
+  }
 };
 
 function prCsvCell(s){ s=String(s); return /[",\n]/.test(s) ? '"'+s.replace(/"/g,'""')+'"' : s; }
 window.payrollLedgerExportCsv = function(){
   var rows = currentPayrollData || [];
   if (!rows.length){ if (typeof showToast==='function') showToast('내보낼 급여 내역이 없습니다','warning'); return; }
-  var cols = prLedgerCols().filter(function(c){ return !c.ui; });   // CSV=전체 데이터 컬럼 (화면 전용 체크/상태/액션 제외)
+  var cols = prLedgerCols();   // CSV=평면 전체 컬럼 (엑셀 가공 용이 — 화면 2단 구조와 별개)
   var lines = [cols.map(function(c){ return c.label; }).join(',')];
   var grand = prLedgerEmptyTotals(cols);
   rows.forEach(function(r){
@@ -969,8 +1070,13 @@ window.payrollLedgerPrint = function(){
   var period = (rows[0] && rows[0].pay_period) || '';
   var title = (window.payrollLedgerTab==='emp' ? '회사부담금 명세' : '급여대장') + ' — ' + period;
   // 화면 전용 컬럼(체크/상태/액션) 제외하고 재생성 + colgroup 제거(인쇄는 페이지폭 auto)
-  var cols = prLedgerActiveCols().filter(function(c){ return !c.ui; });
-  var inner = (prLedgerHead(cols) + prLedgerBodyHtml(cols, rows)).replace(/<colgroup[\s\S]*?<\/colgroup>/, '');
+  var inner;
+  if (window.payrollLedgerTab === 'emp'){
+    inner = prLedgerHead(LEDGER_EMP_COLS) + prLedgerBodyHtml(LEDGER_EMP_COLS, rows);
+  } else {
+    inner = prBandHtml(rows, false);
+  }
+  inner = inner.replace(/<colgroup[\s\S]*?<\/colgroup>/, '');
   var w = window.open('', '_blank');
   if (!w){ if (typeof showToast==='function') showToast('팝업이 차단되었습니다','error'); return; }
   var style = '<style>'
@@ -980,6 +1086,7 @@ window.payrollLedgerPrint = function(){
     + 'table { border-collapse: collapse; table-layout: auto; width: 100%; font-size: 8px; font-variant-numeric: tabular-nums; }'
     + 'th, td { border: 1px solid #999; padding: 2px 3px; white-space: nowrap; text-align: right; }'
     + 'th.lft, td.lft { text-align: left; }'
+    + 'th.ctr, td.ctr { text-align: center; }'
     + 'th { background: #eee; }'
     + '.subtotal td, .grandtotal td { background: #eee; font-weight: bold; } .b { font-weight: bold; }'
     + '</style>';
