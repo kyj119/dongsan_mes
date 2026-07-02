@@ -460,26 +460,33 @@ export async function buildCashflowDays(
       if (nm > 12) { nm = 1; ny++ }
       return `${ny}-${String(nm).padStart(2, '0')}-10`
     }
+    // 직원별 payroll 행을 (날짜×귀속월) 단위로 합산 — 달력/일자상세에 인원수만큼 나열되는 노이즈 제거
+    const payAgg = new Map<string, { date: string; period: string; sum: number; cnt: number; type: 'PAYROLL' | 'PAYROLL_TAX' }>()
+    const accumulate = (type: 'PAYROLL' | 'PAYROLL_TAX', date: string, period: string, amount: number) => {
+      const k = `${type}|${date}|${period}`
+      const e = payAgg.get(k) ?? { date, period, sum: 0, cnt: 0, type }
+      e.sum += amount; e.cnt++
+      payAgg.set(k, e)
+    }
     for (const p of payRows) {
       const payDate = (p.pay_date || '').substring(0, 10)
       const payMonth = payDate.substring(0, 7)
       if (Number(p.net_pay) > 0 && payDate && !manualPayMonths.has(payMonth)) {
-        add(payDate, {
-          flow: 'OUT', type: 'PAYROLL',
-          name: `급여 ${p.pay_period}`,
-          amount: Number(p.net_pay) || 0, materialized: false,
-        })
+        accumulate('PAYROLL', payDate, p.pay_period, Number(p.net_pay) || 0)
       }
       if (Number(p.total_deduction) > 0) {
         const remit = nextMonth10(p.pay_period)
         if (remit && !manualPayMonths.has(remit.substring(0, 7))) {
-          add(remit, {
-            flow: 'OUT', type: 'PAYROLL_TAX',
-            name: `4대보험·원천세 ${p.pay_period}`,
-            amount: Number(p.total_deduction) || 0, materialized: false,
-          })
+          accumulate('PAYROLL_TAX', remit, p.pay_period, Number(p.total_deduction) || 0)
         }
       }
+    }
+    for (const e of payAgg.values()) {
+      add(e.date, {
+        flow: 'OUT', type: e.type,
+        name: `${e.type === 'PAYROLL' ? '급여' : '4대보험·원천세'} ${e.period} (${e.cnt}명)`,
+        amount: e.sum, materialized: false,
+      })
     }
   }
 
