@@ -669,6 +669,7 @@
                     contact_phone: document.getElementById('contactPhone').value.trim() || null,
                     contact_mobile: document.getElementById('contactMobile').value.trim() || null,
                     shipping_payment: document.getElementById('shippingPayment').value || null,
+                    consolidate_with_order_id: (typeof _ofConsolidateWith !== 'undefined' && _ofConsolidateWith) ? _ofConsolidateWith : null,
                     ai_file_path: _firstAiPath,
                     ai_analysis_id: _firstAiAnalysisId,
                     ai_files: _combinedAiFiles,

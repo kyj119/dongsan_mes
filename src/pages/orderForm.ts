@@ -125,6 +125,14 @@ export function orderFormPage(c: Context<HonoEnv>) {
                                 </div>
                             </div>
                         </div>
+                        <!-- 합배송 예약 배너 (배송 후속 P1): 같은 거래처 미출고 주문 존재 시 표시 -->
+                        <div id="ofConsolidationBanner" class="hidden mt-4 border border-amber-200 bg-amber-50 rounded-lg overflow-hidden">
+                            <div class="px-4 py-2 border-b border-amber-200 flex items-center justify-between">
+                                <span class="text-sm font-semibold text-amber-800"><i class="fas fa-box mr-1"></i>이 거래처의 미출고 주문 <span id="ofConsolidationCount"></span>건</span>
+                                <span class="text-xs text-amber-700">합배송(한 박스) 예약 시 출고확정 때 자동으로 묶입니다</span>
+                            </div>
+                            <div id="ofConsolidationList" class="px-4 py-2 text-sm divide-y divide-amber-100"></div>
+                        </div>
                     </div>
 
                     <!-- AI 파일 자동 추출 패널 (드래그 앤 드롭 지원) -->

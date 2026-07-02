@@ -42,6 +42,39 @@ ordersQueriesRouter.get('/quotations/expired', async (c) => {
   }
 })
 
+// 접수 시점 합배송 후보: 같은 거래처의 미출고 활성 주문 (납품일 무관) — 배송 후속 P1
+// ⚠️ entityFilter 의도적 미적용(최소 필드 cross-entity): 같은 거래처 타법인 주문과의
+//    합배송 판단이 목적 (shipments consolidation-candidates와 동일 취지의 명시적 예외).
+//    게이트 = 주문 접수 권한(라우터 공통 requireAnyPagePermission('/orders','/cards')).
+ordersQueriesRouter.get('/unshipped-by-client', async (c) => {
+  try {
+    const clientId = parseInt(c.req.query('client_id') || '')
+    const excludeOrderId = parseInt(c.req.query('exclude_order_id') || '') || 0
+    if (!clientId) {
+      return c.json({ success: false, error: 'client_id가 필요합니다.' }, 400)
+    }
+    const { results } = await c.env.DB.prepare(`
+      SELECT o.id, o.order_number, o.delivery_date, o.delivery_method, o.status,
+             o.consolidate_with_order_id,
+             COALESCE(en.short_name, en.name) as entity_name,
+             (SELECT item_name FROM order_items WHERE order_id = o.id AND (parent_item_id IS NULL OR parent_item_id = 0) ORDER BY id LIMIT 1) as main_item_name,
+             (SELECT COUNT(*) FROM order_items WHERE order_id = o.id AND (parent_item_id IS NULL OR parent_item_id = 0)) as item_count
+      FROM orders o
+      LEFT JOIN entities en ON en.id = o.entity_id
+      WHERE o.client_id = ?
+        AND o.status NOT IN ('CANCELLED', 'DELETED', 'DRAFT', 'QUOTATION', 'COMPLETED')
+        AND o.shipped_at IS NULL
+        AND o.id != ?
+      ORDER BY o.delivery_date ASC, o.id DESC
+      LIMIT 20
+    `).bind(clientId, excludeOrderId).all()
+    return c.json({ success: true, data: results })
+  } catch (error) {
+    console.error('orders unshipped-by-client error:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
+  }
+})
+
 // Get order statistics (must be before /:id to avoid route conflict)
 ordersQueriesRouter.get('/stats', async (c) => {
   try {

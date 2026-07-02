@@ -42,6 +42,20 @@ ordersCreateRouter.post('/', async (c) => {
     const aiAnalysisId: number | null = orderData.ai_analysis_id || null
     const layoutId: number | null = orderData.layout_id || null
 
+    // 합배송 예약 (배송 후속 P1): 같은 거래처 검증 + root 해소(체인 방지 — 대상이 이미
+    // 예약 보유 시 그 root를 저장). 검증 실패는 주문 등록을 막지 않고 예약만 드롭(best-effort).
+    let consolidateWithOrderId: number | null = null
+    if (orderData.consolidate_with_order_id) {
+      const target = await c.env.DB.prepare(
+        `SELECT id, client_id, consolidate_with_order_id FROM orders WHERE id = ? AND status NOT IN ('CANCELLED', 'DELETED')`
+      ).bind(Number(orderData.consolidate_with_order_id)).first<{ id: number; client_id: number; consolidate_with_order_id: number | null }>()
+      if (target && Number(target.client_id) === Number(orderData.client_id)) {
+        consolidateWithOrderId = target.consolidate_with_order_id || target.id
+      } else {
+        console.warn('consolidate_with_order_id 드롭 (대상 없음/거래처 불일치):', orderData.consolidate_with_order_id)
+      }
+    }
+
     // 청구(매출) 법인: 명시값 우선, 없으면 로그인 법인 (코디네이터가 타법인 주문 접수 시 명시 선택)
     // ⚠️ 불변식 "번호 E{eid} = 행 entity_id" → 채번도 billingEntityId 기준이어야 함(세션 법인 X).
     //    billing_entity_id ≠ 세션 법인일 때(코디 타법인 접수) 번호 접두와 entity_id 불일치 버그 방지.
@@ -134,8 +148,8 @@ ordersCreateRouter.post('/', async (c) => {
         notes, internal_notes, created_by,
         ai_file_path, ai_analysis_id, layout_id, priority, delivery_method, delivery_time,
         contact_phone, contact_mobile, shipping_payment, valid_until, entity_id,
-        sheet_layout_params, order_type, quotation_id
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        sheet_layout_params, order_type, quotation_id, consolidate_with_order_id
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).bind(
       orderNumber,
       orderData.client_id,
@@ -169,7 +183,8 @@ ordersCreateRouter.post('/', async (c) => {
         return slItem?.sheet_layout_params || null
       })(),
       orderType,
-      sourceQuotationId
+      sourceQuotationId,
+      consolidateWithOrderId
     ).run()
 
     // Phase 3.2: 견적서로부터 생성된 주문이면 quotations 카운트 갱신

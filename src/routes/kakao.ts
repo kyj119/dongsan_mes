@@ -469,6 +469,11 @@ kakaoRouter.post('/send-shipment', async (c) => {
       return c.json({ success: false, error: '출고 정보를 찾을 수 없습니다.' }, 400)
     }
 
+    // 합포장 dedup (배송 후속 P4): 부속 shipment는 발송 스킵 — 알림 정본 = 대표 1건
+    if (shipment.merged_into_id) {
+      return c.json({ success: true, data: { status: 'SKIPPED', reason: 'merged_child', message: '합포장 부속 출고 — 대표 출고 건으로만 발송됩니다.' } })
+    }
+
     if (!shipment.mobile) {
       return c.json({ success: false, error: '거래처 휴대폰 번호가 없습니다.' }, 400)
     }

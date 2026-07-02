@@ -1042,6 +1042,10 @@
                     const contactMobileEl = document.getElementById('contactMobile');
                     if (contactMobileEl) contactMobileEl.value = order.contact_mobile || '';
 
+                    // 합배송 예약 복원 (배송 후속 P1) — 수정모드: 기존 예약 라디오 유지
+                    _ofConsolidateWith = order.consolidate_with_order_id || null;
+                    if (order.client_id) ofLoadUnshippedCandidates(order.client_id, _ofConsolidateWith);
+
                     // 4. 할인 금액 복원
                     const discountEl = document.getElementById('discountAmount');
                     if (discountEl && order.discount_amount) discountEl.value = fmtMoneyInput(order.discount_amount);

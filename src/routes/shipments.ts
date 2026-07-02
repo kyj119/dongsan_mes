@@ -369,9 +369,24 @@ shipmentsRouter.post('/unmerge', requireRole('ADMIN', 'MANAGER'), async (c) => {
     if (!shipment) return c.json({ success: false, error: '출고 정보를 찾을 수 없습니다.' }, 404)
 
     const primaryId = shipment.merged_into_id || shipment.id
+
+    // 그룹 멤버 주문의 접수 시점 합배송 예약(0438)도 함께 해제 —
+    // 예약이 남으면 다음 출고확정 이벤트에서 자동으로 다시 묶여 해제가 무력화됨
+    const { results: groupOrders } = await c.env.DB.prepare(
+      `SELECT order_id FROM shipments WHERE id = ? OR merged_into_id = ?`
+    ).bind(primaryId, primaryId).all<{ order_id: number }>()
+    const groupOrderIds = groupOrders.map(r => r.order_id).filter(Boolean)
+
     const res = await c.env.DB.prepare(
       `UPDATE shipments SET merged_into_id = NULL, updated_at = CURRENT_TIMESTAMP WHERE merged_into_id = ?`
     ).bind(primaryId).run()
+
+    if (groupOrderIds.length > 0) {
+      const gph = groupOrderIds.map(() => '?').join(',')
+      await c.env.DB.prepare(
+        `UPDATE orders SET consolidate_with_order_id = NULL WHERE id IN (${gph}) AND consolidate_with_order_id IS NOT NULL`
+      ).bind(...groupOrderIds).run()
+    }
 
     return c.json({ success: true, data: { released: res.meta.changes ?? 0 }, message: '합포장이 해제되었습니다.' })
   } catch (error) {

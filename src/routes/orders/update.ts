@@ -27,8 +27,8 @@ ordersUpdateRouter.put('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
     // #381: 멀티법인 IDOR 차단 — 소유 법인 주문만 수정 (전체 품목/금액 재작성·청구그룹 재계산)
     const efPut = entityFilter(c, 'orders')
     const existingOrder = await c.env.DB.prepare(`
-      SELECT id, status, client_id, final_amount, order_number, billing_status FROM orders WHERE id = ?${efPut.clause}
-    `).bind(id, ...efPut.params).first<{ id: number; status: string; client_id: number; final_amount: number; order_number: string; billing_status: string | null }>()
+      SELECT id, status, client_id, final_amount, order_number, billing_status, consolidate_with_order_id FROM orders WHERE id = ?${efPut.clause}
+    `).bind(id, ...efPut.params).first<{ id: number; status: string; client_id: number; final_amount: number; order_number: string; billing_status: string | null; consolidate_with_order_id: number | null }>()
 
     if (!existingOrder) {
       return c.json({
@@ -51,6 +51,21 @@ ordersUpdateRouter.put('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
     const confirmedStatuses = ['CONFIRMED', 'PRINTING', 'PRINT_DONE', 'SHIPPED']
     if (confirmedStatuses.includes(existingOrder.status) && !orderData.delivery_date) {
       return c.json({ success: false, error: '확정된 주문의 납품일은 필수입니다.' }, 400)
+    }
+
+    // 합배송 예약 (배송 후속 P1): 같은 거래처 검증 + root 해소 + 자기참조 차단.
+    // key 자체가 없는 호출자(유통 폼 등)는 기존 예약 보존, key가 있고 null/무효면 해제.
+    let consolidateWithOrderId: number | null = ('consolidate_with_order_id' in orderData)
+      ? null
+      : (existingOrder.consolidate_with_order_id ?? null)
+    if (orderData.consolidate_with_order_id && Number(orderData.consolidate_with_order_id) !== Number(id)) {
+      const conTarget = await c.env.DB.prepare(
+        `SELECT id, client_id, consolidate_with_order_id FROM orders WHERE id = ? AND status NOT IN ('CANCELLED', 'DELETED')`
+      ).bind(Number(orderData.consolidate_with_order_id)).first<{ id: number; client_id: number; consolidate_with_order_id: number | null }>()
+      if (conTarget && Number(conTarget.client_id) === Number(orderData.client_id)) {
+        const resolved = conTarget.consolidate_with_order_id || conTarget.id
+        if (resolved !== Number(id)) consolidateWithOrderId = resolved
+      }
     }
 
     // pricing_method batch 조회 (AREA 계산 분기용)
@@ -118,6 +133,7 @@ ordersUpdateRouter.put('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
         contact_phone = ?,
         contact_mobile = ?,
         shipping_payment = ?,
+        consolidate_with_order_id = ?,
         updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
     `).bind(
@@ -137,6 +153,7 @@ ordersUpdateRouter.put('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
       orderData.contact_phone || null,
       orderData.contact_mobile || null,
       orderData.shipping_payment || null,
+      consolidateWithOrderId,
       id
     ).run()
 

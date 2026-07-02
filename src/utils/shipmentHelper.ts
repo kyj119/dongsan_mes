@@ -116,5 +116,58 @@ export async function ensureShipmentForOrder(
     `).bind(shipment.id, orderId).run()
   }
 
+  // 접수 시점 합배송 예약 자동 이행 (배송 후속 P1) — 출고확정 경로에서만.
+  // 실패해도 출고는 성공 처리 (예약 이행은 best-effort, /shipments 후보 카드로 수동 폴백 가능).
+  if (targetStatus === 'SHIPPED') {
+    try {
+      await applyConsolidationIntents(db, orderId, shipment.id)
+    } catch (intentErr) {
+      console.error('applyConsolidationIntents error:', intentErr)
+    }
+  }
+
   return shipment.id
+}
+
+/**
+ * 접수 시점 합배송 예약(orders.consolidate_with_order_id, 0438) 자동 이행.
+ * 그룹 키 = root 주문 id (저장 시 root 해소되어 있어 포인터는 1-hop).
+ * 양방향: 내가 가리키는 root + 같은 root를 가리키는 형제들 중 활성 shipment 보유 건을
+ * 한 묶음으로 — 대표 = 최소 shipment id (POST /shipments/merge와 동일 모델).
+ * 상대가 아직 미출고면 아무것도 안 함(상대 출고 시점에 역방향으로 성립).
+ */
+async function applyConsolidationIntents(db: D1Database, orderId: number, shipmentId: number): Promise<void> {
+  const me = await db.prepare(
+    `SELECT client_id, consolidate_with_order_id FROM orders WHERE id = ?`
+  ).bind(orderId).first<{ client_id: number; consolidate_with_order_id: number | null }>()
+  if (!me) return
+  const rootId = me.consolidate_with_order_id || orderId
+
+  // 파트너 = root 자신 + 같은 root를 가리키는 주문들 (자신 제외, 같은 거래처·활성만)
+  const { results: partners } = await db.prepare(`
+    SELECT o.id,
+           (SELECT id FROM shipments WHERE order_id = o.id AND status != 'CANCELLED' ORDER BY id DESC LIMIT 1) as shipment_id
+    FROM orders o
+    WHERE (o.id = ? OR o.consolidate_with_order_id = ?)
+      AND o.id != ?
+      AND o.client_id = ?
+      AND o.status NOT IN ('CANCELLED', 'DELETED')
+  `).bind(rootId, rootId, orderId, me.client_id).all<{ id: number; shipment_id: number | null }>()
+
+  const partnerShipmentIds = partners.map(p => p.shipment_id).filter((v): v is number => v != null)
+  if (partnerShipmentIds.length === 0) return
+
+  const all = [...new Set([...partnerShipmentIds, shipmentId])]
+  if (all.length < 2) return
+  const primaryId = Math.min(...all)
+  const childIds = all.filter(sid => sid !== primaryId)
+
+  await db.batch([
+    db.prepare(`UPDATE shipments SET merged_into_id = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?`).bind(primaryId),
+    ...childIds.map(sid =>
+      db.prepare(`UPDATE shipments SET merged_into_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`).bind(primaryId, sid)
+    ),
+    // 부속이 기존 묶음의 대표였다면 그 자식들도 새 대표로 재지정 (체인 방지 — merge 라우트와 동일)
+    db.prepare(`UPDATE shipments SET merged_into_id = ? WHERE merged_into_id IN (${childIds.map(() => '?').join(',')})`).bind(primaryId, ...childIds),
+  ])
 }

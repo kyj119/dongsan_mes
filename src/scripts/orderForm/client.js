@@ -123,6 +123,67 @@
                 }).catch(function(err) { console.error('[orderForm] 거래처 정보 자동입력 실패', err); });
                 // 여신 체크
                 checkClientCredit(id);
+                // 합배송 예약 후보 (거래처 변경 → 기존 선택 초기화)
+                _ofConsolidateWith = null;
+                ofLoadUnshippedCandidates(id);
+            }
+
+            // ========== 합배송 예약 (배송 후속 P1) ==========
+            var _ofConsolidateWith = null;      // 합배송 예약 대상 주문 id (저장 payload)
+            var _ofUnshippedCandidates = [];    // 후보 캐시 (라디오 인덱스 참조)
+
+            // 같은 거래처 미출고 주문 조회 → 배너 렌더. preselectId = 수정모드 복원용
+            function ofLoadUnshippedCandidates(clientId, preselectId) {
+                var banner = document.getElementById('ofConsolidationBanner');
+                if (!banner) { console.warn('[orderForm] #ofConsolidationBanner not found'); return; }
+                // 견적서 폼은 예약 무의미 (출고 없음)
+                if (window.location.pathname.indexOf('quotation-form') >= 0) { banner.classList.add('hidden'); return; }
+                var listEl = document.getElementById('ofConsolidationList');
+                var cntEl = document.getElementById('ofConsolidationCount');
+                var url = '/api/orders/unshipped-by-client?client_id=' + clientId + (editMode ? '&exclude_order_id=' + editMode : '');
+                axios.get(url).then(function(res) {
+                    var rows = (res.data && res.data.success) ? (res.data.data || []) : [];
+                    _ofUnshippedCandidates = rows;
+                    if (!rows.length) { banner.classList.add('hidden'); return; }
+                    if (cntEl) cntEl.textContent = rows.length;
+                    var html = '<label class="flex items-center gap-2 py-1.5 cursor-pointer">'
+                        + '<input type="radio" name="ofConsolidateRadio" value="" ' + (_ofConsolidateWith ? '' : 'checked') + ' onchange="ofSetConsolidateTarget(null)">'
+                        + '<span class="text-gray-600">합배송 안 함</span></label>';
+                    rows.forEach(function(o, idx) {
+                        var dd = o.delivery_date || '-';
+                        var checked = (_ofConsolidateWith && Number(_ofConsolidateWith) === Number(o.id)) ? 'checked' : '';
+                        var itemTxt = (o.main_item_name || '') + (o.item_count > 1 ? ' 외 ' + (o.item_count - 1) + '건' : '');
+                        html += '<label class="flex items-center gap-2 py-1.5 cursor-pointer">'
+                            + '<input type="radio" name="ofConsolidateRadio" value="' + o.id + '" ' + checked + ' onchange="ofSetConsolidateTarget(' + idx + ')">'
+                            + '<span class="font-medium whitespace-nowrap">' + escapeHtml(o.order_number || ('#' + o.id)) + '</span>'
+                            + (o.entity_name ? '<span style="background:#eef2ff;color:#4338ca;font-size:10px;padding:1px 5px;border-radius:8px;white-space:nowrap">' + escapeHtml(o.entity_name) + '</span>' : '')
+                            + '<span class="text-gray-500 whitespace-nowrap">납품 ' + escapeHtml(dd) + '</span>'
+                            + '<span class="text-gray-500 whitespace-nowrap">' + escapeHtml(o.delivery_method || '-') + '</span>'
+                            + '<span class="text-gray-400 truncate" title="' + escapeHtml(itemTxt) + '">' + escapeHtml(itemTxt) + '</span>'
+                            + '</label>';
+                    });
+                    if (listEl) listEl.innerHTML = html;
+                    banner.classList.remove('hidden');
+                }).catch(function(err) {
+                    console.warn('[orderForm] 합배송 후보 조회 실패', err);
+                    banner.classList.add('hidden');
+                });
+                // 수정모드 복원: 기존 예약 선택 유지
+                if (preselectId) _ofConsolidateWith = preselectId;
+            }
+
+            // 라디오 선택 → 예약 대상 설정 (+ 납품일 불일치 시 맞추기 제안)
+            async function ofSetConsolidateTarget(idx) {
+                if (idx === null || idx === undefined || idx === '') { _ofConsolidateWith = null; return; }
+                var o = _ofUnshippedCandidates[idx];
+                if (!o) { _ofConsolidateWith = null; return; }
+                _ofConsolidateWith = o.id;
+                var ddEl = document.getElementById('deliveryDate');
+                if (o.delivery_date && ddEl && ddEl.value && ddEl.value !== o.delivery_date) {
+                    if (await showConfirm('선택한 주문의 납품일(' + o.delivery_date + ')과 이 주문의 납품일(' + ddEl.value + ')이 다릅니다.\n납품일을 ' + o.delivery_date + '(으)로 맞출까요?\n(합배송은 실제로 같은 날 출고될 때 자동으로 묶입니다)')) {
+                        ddEl.value = o.delivery_date;
+                    }
+                }
             }
 
             function checkClientCredit(clientId) {

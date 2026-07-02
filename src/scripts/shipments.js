@@ -10,6 +10,7 @@ var freightGroups = {};
 var daesintaekbaeGroups = {};
 var hanjinGroups = {};
 var quickGroups = {};
+var jikbaeGroups = {}; // 직배 전용 섹션 (배송 후속 P2)
 var etcGroups = {};
 var shipmentsMultiEntity = false; // P2: 로드된 데이터에 복수 법인 존재 시 법인 배지 표시 (전체모드)
 
@@ -46,9 +47,11 @@ function sectionOf(s) {
   if (type === 'FREIGHT' && courier === '대신화물') return 'freight';
   if (type === 'DELIVERY' && courier === '대신택배') return 'daesintaekbae';
   if (type === 'DELIVERY' && courier === '한진택배') return 'hanjin';
+  if (type === 'DELIVERY' && (courier === '직배' || courier === '직접배송')) return 'jikbae';
   if (type === 'QUICK') return 'quick';
   // orders/daily 기반 (delivery_method)
   var method = (s.delivery_method || '').trim();
+  if (method === '직배' || method === '직접배송') return 'jikbae';
   if (method === '화물' || method.includes('화물')) return 'freight';
   if (method === '택배' || method.includes('한진')) return 'hanjin';
   if (method === '대신택배') return 'daesintaekbae';
@@ -94,8 +97,8 @@ async function loadShipmentsByDate() {
   currentDate = date; // 항상 동기화
 
   // 로딩 표시
-  var secCols = { freight: 7, daesintaekbae: 7, hanjin: 5, quick: 5, etc: 4 };
-  ['freight', 'daesintaekbae', 'hanjin', 'quick', 'etc'].forEach(function(sec) {
+  var secCols = { freight: 7, daesintaekbae: 7, hanjin: 5, quick: 5, jikbae: 6, etc: 4 };
+  ['freight', 'daesintaekbae', 'hanjin', 'quick', 'jikbae', 'etc'].forEach(function(sec) {
     var tbody = document.getElementById('tbody-' + sec);
     var cs = secCols[sec] || 7;
     if (tbody) tbody.innerHTML = '<tr><td colspan="' + cs + '" class="px-4 py-2"><div class="ds-skeleton ds-skeleton-row"></div></td></tr><tr><td colspan="' + cs + '" class="px-4 py-2"><div class="ds-skeleton ds-skeleton-row"></div></td></tr><tr><td colspan="' + cs + '" class="px-4 py-2"><div class="ds-skeleton ds-skeleton-row"></div></td></tr>';
@@ -114,6 +117,7 @@ async function loadShipmentsByDate() {
     daesintaekbaeGroups = {};
     hanjinGroups = {};
     quickGroups = {};
+    jikbaeGroups = {};
     etcGroups = {};
 
     var sectionMaps = {
@@ -121,6 +125,7 @@ async function loadShipmentsByDate() {
       daesintaekbae: daesintaekbaeGroups,
       hanjin: hanjinGroups,
       quick: quickGroups,
+      jikbae: jikbaeGroups,
       etc: etcGroups
     };
 
@@ -173,7 +178,7 @@ async function loadShipmentsByDate() {
 
     // 섹션 로드 시 선택 상태 초기화
     selectedShipments = {};
-    ['freight', 'daesintaekbae', 'hanjin', 'quick'].forEach(function(sec) {
+    ['freight', 'daesintaekbae', 'hanjin', 'quick', 'jikbae'].forEach(function(sec) {
       updateSendButton(sec);
     });
 
@@ -192,6 +197,7 @@ function renderAllSections() {
   renderDaesintaekbaeSection();
   renderHanjinSection();
   renderQuickSection();
+  renderJikbaeSection();
   renderEtcSection();
 }
 
@@ -238,6 +244,24 @@ function shipmentsEntityChips(grp) {
   return names.map(function(n) {
     return ' <span style="background:#eef2ff;color:#4338ca;font-size:10px;padding:1px 5px;border-radius:8px;white-space:nowrap">' + escapeHtml(n) + '</span>';
   }).join('');
+}
+
+// P3(배송 후속): 합포장 묶음 배지 — 그룹 내 shipment들의 실효 대표(merged_into || 자신) 수렴 판정
+function shipmentsMergeBadge(grp) {
+  var withSp = (grp.shipments || []).filter(function(s) { return s.shipment_id; });
+  if (withSp.length < 2) return '';
+  var primaries = {};
+  var mergedCnt = 0;
+  withSp.forEach(function(s) {
+    primaries[s.merged_into_id || s.shipment_id] = true;
+    if (s.merged_into_id) mergedCnt++;
+  });
+  if (!mergedCnt) return '';
+  var full = Object.keys(primaries).length === 1;
+  var label = full ? '합포장 ' + withSp.length + '건' : '부분묶음';
+  var bg = full ? '#dcfce7' : '#fef9c3';
+  var fg = full ? '#15803d' : '#a16207';
+  return ' <span style="background:' + bg + ';color:' + fg + ';font-size:10px;padding:1px 5px;border-radius:8px;white-space:nowrap" title="송장·라벨은 대표 출고 1건으로 관리됩니다"><i class="fas fa-link" style="font-size:9px"></i> ' + label + '</span>';
 }
 
 // ========== P2/P3: 합배송 후보 (법인 통합) + 합포장 묶음 ==========
@@ -353,7 +377,7 @@ function renderFreightSection() {
 
     return '<tr class="border-t hover:bg-blue-50">'
       + '<td class="px-3 py-2 w-8 text-center"><input type="checkbox" id="cb-freight-' + escapeHtml(key) + '" ' + (isChecked ? 'checked' : '') + ' onchange="toggleShipmentCheck(\'freight\',\'' + escapeHtml(key) + '\',this.checked)" class="rounded"></td>'
-      + '<td class="px-3 py-2 font-medium" title="' + escapeHtml(grp.client_name) + '">' + escapeHtml(grp.client_name) + shipmentsEntityChips(grp) + '</td>'
+      + '<td class="px-3 py-2 font-medium" title="' + escapeHtml(grp.client_name) + '">' + escapeHtml(grp.client_name) + shipmentsEntityChips(grp) + shipmentsMergeBadge(grp) + '</td>'
       + '<td class="px-3 py-2">' + terminalHtml + '</td>'
       + '<td class="px-3 py-2 text-xs text-gray-500 hidden md:table-cell truncate" title="' + escapeHtml(itemSummary) + '">' + escapeHtml(itemSummary) + '</td>'
       + '<td class="px-3 py-2 text-center">'
@@ -391,7 +415,7 @@ function renderDaesintaekbaeSection() {
     // ID 접두어 'd-' 사용: 대신택배 전용 (대신화물과 ID 충돌 방지)
     return '<tr class="border-t hover:bg-green-50">'
       + '<td class="px-3 py-2 w-8 text-center"><input type="checkbox" id="cb-daesintaekbae-' + escapeHtml(key) + '" ' + (isChecked ? 'checked' : '') + ' onchange="toggleShipmentCheck(\'daesintaekbae\',\'' + escapeHtml(key) + '\',this.checked)" class="rounded"></td>'
-      + '<td class="px-3 py-2 font-medium" title="' + escapeHtml(grp.client_name) + '">' + escapeHtml(grp.client_name) + shipmentsEntityChips(grp) + '</td>'
+      + '<td class="px-3 py-2 font-medium" title="' + escapeHtml(grp.client_name) + '">' + escapeHtml(grp.client_name) + shipmentsEntityChips(grp) + shipmentsMergeBadge(grp) + '</td>'
       + '<td class="px-3 py-2 text-sm">'
       + '<input type="text" id="d-addr-' + escapeHtml(key) + '" value="' + escapeHtml(addr) + '"'
       + ' class="ds-input px-2 py-1 text-xs w-full border rounded" placeholder="배송주소">'
@@ -460,7 +484,7 @@ function renderHanjinSection() {
     var isChecked = selectedShipments['hanjin'] && selectedShipments['hanjin'].has(key);
     return '<tr class="border-t hover:bg-orange-50">'
       + '<td class="px-3 py-2 w-8 text-center"><input type="checkbox" id="cb-hanjin-' + escapeHtml(key) + '" ' + (isChecked ? 'checked' : '') + ' onchange="toggleShipmentCheck(\'hanjin\',\'' + escapeHtml(key) + '\',this.checked)" class="rounded"></td>'
-      + '<td class="px-3 py-2 font-medium" title="' + escapeHtml(grp.client_name) + '">' + escapeHtml(grp.client_name) + shipmentsEntityChips(grp) + '</td>'
+      + '<td class="px-3 py-2 font-medium" title="' + escapeHtml(grp.client_name) + '">' + escapeHtml(grp.client_name) + shipmentsEntityChips(grp) + shipmentsMergeBadge(grp) + '</td>'
       + '<td class="px-3 py-2 text-sm text-gray-600 truncate" title="' + escapeHtml(addr || '') + '">' + escapeHtml(addr || '-') + '</td>'
       + '<td class="px-3 py-2">'
       + '<input type="text" id="track-' + escapeHtml(key) + '" value="' + escapeHtml(tracking) + '"'
@@ -487,7 +511,7 @@ function renderQuickSection() {
     var isChecked = selectedShipments['quick'] && selectedShipments['quick'].has(key);
     return '<tr class="border-t hover:bg-gray-50">'
       + '<td class="px-3 py-2 w-8 text-center"><input type="checkbox" id="cb-quick-' + escapeHtml(key) + '" ' + (isChecked ? 'checked' : '') + ' onchange="toggleShipmentCheck(\'quick\',\'' + escapeHtml(key) + '\',this.checked)" class="rounded"></td>'
-      + '<td class="px-3 py-2 font-medium" title="' + escapeHtml(grp.client_name) + '">' + escapeHtml(grp.client_name) + shipmentsEntityChips(grp) + '</td>'
+      + '<td class="px-3 py-2 font-medium" title="' + escapeHtml(grp.client_name) + '">' + escapeHtml(grp.client_name) + shipmentsEntityChips(grp) + shipmentsMergeBadge(grp) + '</td>'
       + '<td class="px-3 py-2 text-sm text-gray-600 truncate" title="' + escapeHtml(grp.receiver_address || '') + '">' + escapeHtml(grp.receiver_address || '-') + '</td>'
       + '<td class="px-3 py-2 text-sm">' + escapeHtml(grp.contact_phone || '-') + '</td>'
       + '<td class="px-3 py-2 text-center">'
@@ -496,6 +520,38 @@ function renderQuickSection() {
       + '</td>'
       + '</tr>';
   }).join('');
+}
+
+// --- 직배 (자사 기사 배송, 배송 후속 P2) ---
+function renderJikbaeSection() {
+  var tbody = document.getElementById('tbody-jikbae');
+  if (!tbody) { console.warn('[shipments] #tbody-jikbae not found'); return; }
+  var keys = Object.keys(jikbaeGroups);
+  if (!keys.length) {
+    tbody.innerHTML = '<tr><td colspan="6" class="text-center py-8"><i class="fas fa-truck text-2xl mb-2 block text-gray-300"></i><div class="text-sm text-gray-400">출고 건 없음</div></td></tr>';
+    return;
+  }
+  tbody.innerHTML = keys.map(function(key) {
+    var grp = jikbaeGroups[key];
+    var isChecked = selectedShipments['jikbae'] && selectedShipments['jikbae'].has(key);
+    return '<tr class="border-t hover:bg-purple-50">'
+      + '<td class="px-3 py-2 w-8 text-center"><input type="checkbox" id="cb-jikbae-' + escapeHtml(key) + '" ' + (isChecked ? 'checked' : '') + ' onchange="toggleShipmentCheck(\'jikbae\',\'' + escapeHtml(key) + '\',this.checked)" class="rounded"></td>'
+      + '<td class="px-3 py-2 font-medium" title="' + escapeHtml(grp.client_name) + '">' + escapeHtml(grp.client_name) + shipmentsEntityChips(grp) + shipmentsMergeBadge(grp) + '</td>'
+      + '<td class="px-3 py-2 text-sm text-gray-600 truncate" title="' + escapeHtml(grp.receiver_address || '') + '">' + escapeHtml(grp.receiver_address || '-') + '</td>'
+      + '<td class="px-3 py-2 text-sm">' + escapeHtml(grp.contact_phone || grp.client_mobile || '-') + '</td>'
+      + '<td class="px-3 py-2 text-sm text-center">' + escapeHtml(grp.delivery_time || '-') + '</td>'
+      + '<td class="px-3 py-2 text-center">'
+      + '<button onclick="printJikbaeGuide(\'' + escapeHtml(key) + '\')" class="px-3 py-1.5 text-xs bg-purple-600 text-white rounded hover:bg-purple-700 whitespace-nowrap">'
+      + '<i class="fas fa-print mr-1"></i>안내용지</button>'
+      + '</td>'
+      + '</tr>';
+  }).join('');
+}
+
+async function printJikbaeGuide(key) {
+  var grp = jikbaeGroups[key];
+  if (!grp) return;
+  doPrint(buildQuickGuideHtml(grp.client_name, grp.receiver_address, grp.contact_phone || grp.client_mobile));
 }
 
 // --- 기타 ---
@@ -511,7 +567,7 @@ function renderEtcSection() {
   tbody.innerHTML = keys.map(function(key) {
     var grp = etcGroups[key];
     return '<tr class="border-t">'
-      + '<td class="px-3 py-2 font-medium" title="' + escapeHtml(grp.client_name) + '">' + escapeHtml(grp.client_name) + shipmentsEntityChips(grp) + '</td>'
+      + '<td class="px-3 py-2 font-medium" title="' + escapeHtml(grp.client_name) + '">' + escapeHtml(grp.client_name) + shipmentsEntityChips(grp) + shipmentsMergeBadge(grp) + '</td>'
       + '<td class="px-3 py-2 text-xs text-gray-500">' + escapeHtml(grp.delivery_type) + '</td>'
       + '<td class="px-3 py-2 text-xs text-gray-500">' + escapeHtml(grp.courier_name || '-') + '</td>'
       + '<td class="px-3 py-2 text-sm truncate" title="' + escapeHtml(grp.receiver_address || '') + '">' + escapeHtml(grp.receiver_address || '-') + '</td>'
@@ -525,10 +581,13 @@ function updateBadges() {
   var dc = Object.keys(daesintaekbaeGroups).length;
   var hc = Object.keys(hanjinGroups).length;
   var qc = Object.keys(quickGroups).length;
+  var jc = Object.keys(jikbaeGroups).length;
   document.getElementById('badgeFreight').textContent = '대신화물 ' + fc + '건';
   document.getElementById('badgeDaesintaekbae').textContent = '대신택배 ' + dc + '건';
   document.getElementById('badgeHanjin').textContent = '한진택배 ' + hc + '건';
   document.getElementById('badgeQuick').textContent = '퀵·용차 ' + qc + '건';
+  var jb = document.getElementById('badgeJikbae');
+  if (jb) jb.textContent = '직배 ' + jc + '건';
 }
 
 // ========== 저장 함수 ==========
@@ -876,7 +935,7 @@ function printShipmentList(carrier) {
 
 // ========== 체크박스 ==========
 function getSectionGroups(section) {
-  var map = { freight: freightGroups, daesintaekbae: daesintaekbaeGroups, hanjin: hanjinGroups, quick: quickGroups, etc: etcGroups };
+  var map = { freight: freightGroups, daesintaekbae: daesintaekbaeGroups, hanjin: hanjinGroups, quick: quickGroups, jikbae: jikbaeGroups, etc: etcGroups };
   return map[section] || {};
 }
 

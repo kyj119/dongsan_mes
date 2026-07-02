@@ -96,6 +96,7 @@ export function shipmentsPage(c: Context<HonoEnv>) {
           <span id="badgeDaesintaekbae" class="ds-chip" onclick="scrollToSection('sectionDaesintaekbae')"><i class="fas fa-box" style="margin-right:4px"></i>대신택배 0건</span>
           <span id="badgeHanjin" class="ds-chip" onclick="scrollToSection('sectionHanjin')"><i class="fas fa-box" style="margin-right:4px"></i>한진택배 0건</span>
           <span id="badgeQuick" class="ds-chip" onclick="scrollToSection('sectionQuick')"><i class="fas fa-bolt" style="margin-right:4px"></i>퀵·용차 0건</span>
+          <span id="badgeJikbae" class="ds-chip" onclick="scrollToSection('sectionJikbae')"><i class="fas fa-truck-pickup" style="margin-right:4px"></i>직배 0건</span>
         </div>
         <div class="ds-filter-actions">
           <button onclick="printShipmentList('daeshin')" class="ds-btn ds-btn-secondary ds-btn-sm" title="대신(화물+택배) 출고 리스트 A4 인쇄">
@@ -238,6 +239,36 @@ export function shipmentsPage(c: Context<HonoEnv>) {
           </thead>
           <tbody id="tbody-quick">
             <tr><td colspan="5" class="px-4 py-6 text-center text-gray-400 text-sm">로딩 중...</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- 직배 섹션 (자사 기사 배송, 배송 후속 P2) -->
+      <div id="sectionJikbae" class="mb-6 ds-card overflow-hidden">
+        <div class="flex items-center justify-between px-4 py-3 bg-white border-b border-gray-200">
+          <h3 class="text-sm font-semibold text-gray-700"><i class="fas fa-truck-pickup mr-1"></i>직배</h3>
+          <div class="flex items-center gap-2">
+            <button id="btnSendJikbae" onclick="openShipmentSendModal('jikbae')" class="px-2 py-1 text-xs border border-gray-300 text-gray-600 rounded hover:bg-gray-50 hidden">
+              <i class="fas fa-paper-plane mr-1"></i>선택 발송
+            </button>
+            <button onclick="confirmShipSection('jikbae')" class="px-3 py-1 text-xs bg-green-600 text-white rounded hover:bg-green-700">
+              <i class="fas fa-truck mr-1"></i>출고 확정
+            </button>
+          </div>
+        </div>
+        <table class="ds-table w-full text-sm ds-table-striped ds-table-fixed">
+          <thead>
+            <tr>
+              <th class="col-check text-center" style="width:40px"><input type="checkbox" onchange="toggleSectionCheck('jikbae', this.checked)" class="rounded" title="전체 선택"></th>
+              <th class="col-name text-left">거래처</th>
+              <th class="col-flex text-left">배송지</th>
+              <th class="col-phone text-left" style="width:120px">연락처</th>
+              <th class="text-center" style="width:80px">시간</th>
+              <th class="col-action text-center" style="width:90px">안내용지</th>
+            </tr>
+          </thead>
+          <tbody id="tbody-jikbae">
+            <tr><td colspan="6" class="px-4 py-6 text-center text-gray-400 text-sm">로딩 중...</td></tr>
           </tbody>
         </table>
       </div>
