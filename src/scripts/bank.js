@@ -242,7 +242,8 @@
       var bal = tx.balance_after != null ? Number(tx.balance_after).toLocaleString() : '';
       html += '<td class="text-right text-xs text-gray-500 tabular-nums">' + bal + '</td>';
       html += '<td class="text-center">' + badge + '</td>';
-      html += '<td>' + matchedClient + '</td>';
+      // ds-wrap: td 기본 overflow:hidden이 셀 내 절대배치 드롭다운(거래처/비용분류)을 잘라버림 → 해제
+      html += '<td class="ds-wrap">' + matchedClient + '</td>';
       html += '<td class="text-center">' + actionCell + '</td>';
       html += '</tr>';
     });
@@ -312,6 +313,29 @@
     return html;
   }
 
+  // 드롭다운 위치 보정: 스크롤 영역 하단이라 아래 공간이 부족하면 입력 위로 플립
+  // (인라인 스타일 사용 — Tailwind CDN 동적 클래스 생성 타이밍에 비의존)
+  function positionTxDropdown(dd) {
+    if (!dd) return;
+    dd.style.top = '100%';
+    dd.style.bottom = 'auto';
+    dd.style.marginBottom = '0';
+    var anchor = dd.parentElement; // .relative 래퍼
+    if (!anchor) return;
+    var scroller = anchor.closest('.overflow-x-auto');
+    var ar = anchor.getBoundingClientRect();
+    var limitBottom = scroller ? Math.min(scroller.getBoundingClientRect().bottom, window.innerHeight) : window.innerHeight;
+    var limitTop = scroller ? Math.max(scroller.getBoundingClientRect().top, 0) : 0;
+    var ddH = Math.min(dd.scrollHeight, 192) + 8; // max-h-48 = 192px
+    var spaceBelow = limitBottom - ar.bottom;
+    var spaceAbove = ar.top - limitTop;
+    if (spaceBelow < ddH && spaceAbove > spaceBelow) {
+      dd.style.top = 'auto';
+      dd.style.bottom = '100%';
+      dd.style.marginBottom = '4px';
+    }
+  }
+
   // 비용분류 검색 (로컬 필터링, API 불필요)
   window.searchCategory = function(txId, query) {
     var dropdown = document.getElementById('categoryDropdown_' + txId);
@@ -324,6 +348,7 @@
     if (!filtered.length) {
       dropdown.innerHTML = '<div class="px-3 py-2 text-xs text-gray-400">검색 결과 없음</div>';
       dropdown.classList.remove('hidden');
+      positionTxDropdown(dropdown);
       return;
     }
     var html = '';
@@ -337,6 +362,7 @@
     });
     dropdown.innerHTML = html;
     dropdown.classList.remove('hidden');
+    positionTxDropdown(dropdown);
   };
 
   window.selectCategory = function(txId, catId, catName) {
@@ -397,6 +423,7 @@
         if (!items.length) {
           dropdown.innerHTML = '<div class="px-3 py-2 text-xs text-gray-400">검색 결과 없음</div>';
           dropdown.classList.remove('hidden');
+          positionTxDropdown(dropdown);
           return;
         }
         var html = '';
@@ -409,6 +436,7 @@
         });
         dropdown.innerHTML = html;
         dropdown.classList.remove('hidden');
+        positionTxDropdown(dropdown);
       }).catch(function() { dropdown.classList.add('hidden'); });
     }, 200);
   };
