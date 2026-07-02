@@ -11,7 +11,7 @@
  * - RegistTaxInvoiceScrap (홈택스수집)
  */
 import type { TaxProvider, TaxInvoicePayload, IssueResult, StatusResult } from './taxProvider'
-import { type BarobillConfig, getBarobillBalance, parseXmlValues } from './barobillClient'
+import { type BarobillConfig, getBarobillBalance, getPartnerBalance, parseXmlValues } from './barobillClient'
 
 function esc(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
@@ -190,8 +190,13 @@ export class BarobillTaxProvider implements TaxProvider {
   }
 
   async getBalance(): Promise<{ remainPoint: number; partnerPoint: number }> {
-    const balance = await getBarobillBalance(this.config)
-    return { remainPoint: balance, partnerPoint: 0 }
+    // 회원사 지갑(remainPoint)은 미충전 0·미등록 법인은 -10001. 실잔액은 통합(파트너) 지갑.
+    // (이전: partnerPoint 0 하드코딩 → 항상 0원 표시 버그. barobillSms.ts와 동일 패턴으로 통일)
+    let remainPoint = 0
+    let partnerPoint = 0
+    try { remainPoint = await getBarobillBalance(this.config) } catch (_) { /* 회원사 실패는 0 */ }
+    try { partnerPoint = await getPartnerBalance(this.config) } catch (_) { /* 파트너 실패는 0 */ }
+    return { remainPoint, partnerPoint }
   }
 
   async sendEmail(mgtKey: string, receiverEmail: string): Promise<IssueResult> {

@@ -12,7 +12,7 @@ import { getBarobillBalance } from '../services/barobillClient'
 import { getCardList, getDailyCardLog, getMonthlyCardLog } from '../services/barobillCard'
 import { getBankAccountList, getDailyBankLog, getMonthlyBankLog } from '../services/barobillBank'
 import { getEntityId } from '../utils/entityFilter'
-import { getEntityCorpNum } from '../utils/entitySettings'
+import { getEntityCorpNum, getEntityBarobillSenderId } from '../utils/entitySettings'
 
 const barobillRouter = new Hono<HonoEnv>()
 barobillRouter.use('/*', authMiddleware, requireRole('ADMIN', 'MANAGER'))
@@ -33,10 +33,8 @@ async function getConfig(c: any): Promise<BarobillConfig> {
   const corpNum = await getEntityCorpNum(c.env.DB, getEntityId(c))
   if (!corpNum || corpNum.length !== 10) throw new Error('사업자등록번호 미설정 (법인별 corpNum 확인)')
 
-  const senderIdRow = await c.env.DB.prepare(
-    "SELECT setting_value FROM settings WHERE setting_key = 'barobill_sender_id'"
-  ).first() as { setting_value: string } | null
-  const senderId = senderIdRow?.setting_value || 'DONGSAN'
+  // senderId는 법인별(entity_settings) — corpNum과 짝 맞춤 필수. 선명=sunm2596.
+  const senderId = await getEntityBarobillSenderId(c.env.DB, getEntityId(c))
 
   return { certKey, corpNum, isTest, senderId }
 }
@@ -49,7 +47,11 @@ async function getConfig(c: any): Promise<BarobillConfig> {
 barobillRouter.get('/status', async (c) => {
   try {
     const config = await getConfig(c)
-    const balance = await getBarobillBalance(config)
+    const { getPartnerBalance } = await import('../services/barobillClient')
+    // 표시 잔액 = 통합(파트너) 지갑. CERTKEY 단위 공통 실잔액이라 모든 법인 동일값.
+    // 회원사 지갑(getBarobillBalance)은 미충전(동산 0)·미등록 법인은 -10001 에러코드가 그대로 노출됨 → 통합 지갑 사용.
+    let balance = 0
+    try { const p = await getPartnerBalance(config); if (p > 0) balance = p } catch (_) { /* 실패 시 0 유지 */ }
     return c.json({ success: true, data: { balance, isTest: config.isTest, corpNum: config.corpNum } })
   } catch (error: any) {
     console.error('Barobill API error:', error)
