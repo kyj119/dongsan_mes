@@ -1,6 +1,7 @@
 // 자금 예측 공통 엔진 (하이브리드)
 // 물질화(cash_schedule 행) + 온더플라이(고정비·대출·미청구주문) 합성을 단일 소스로 제공.
-// forecast / monthly / (Phase 3에서 calendar)가 모두 이 헬퍼를 호출 → 화면 간 숫자 일치.
+// forecast / monthly / calendar가 모두 이 헬퍼를 호출 → 화면 간 숫자 일치.
+// calendar는 carryOverdueToStart:false(월뷰 — 연체를 원래 예정일에 표시).
 //
 // 하이브리드 경계 (project-cashflow-unification 설계):
 //   - 물질화: cash_schedule (ORDER 청구입금 / PURCHASE 발주지급 / 수동 TAX·PAYROLL·OTHER·LOAN)
@@ -31,6 +32,12 @@ export interface CashflowDay {
   items: CashflowItem[]
 }
 
+export interface CashflowOptions {
+  /** true(기본)=연체·기한경과 항목을 from으로 끌어옴(예측용 — 즉시 회수·지급 대상).
+   *  false=원래 예정일 유지(달력 월뷰용 — 범위 밖 연체는 해당 월에서만 표시). */
+  carryOverdueToStart?: boolean
+}
+
 /** from~to(YYYY-MM-DD, inclusive)에 걸치는 'YYYY-MM' 월 목록 */
 function monthsBetween(from: string, to: string): { y: number; m: number; lastDay: number }[] {
   const [fy, fm] = from.split('-').map(Number)
@@ -51,8 +58,10 @@ function monthsBetween(from: string, to: string): { y: number; m: number; lastDa
 export async function buildCashflowDays(
   c: Context<HonoEnv>,
   from: string,
-  to: string
+  to: string,
+  opts: CashflowOptions = {}
 ): Promise<Record<string, CashflowDay>> {
+  const carryOverdue = opts.carryOverdueToStart !== false
   const days: Record<string, CashflowDay> = {}
   const ensure = (d: string): CashflowDay => (days[d] ??= { date: d, in: 0, out: 0, items: [] })
   const add = (date: string, item: CashflowItem) => {
@@ -97,28 +106,30 @@ export async function buildCashflowDays(
   //   FIXED 제외(온더플라이 통일)·CANCELLED 제외. DONE은 이미 정산분이라 과거에 남김.
   //   ※ ORDER 연체분은 §4b residual의 mAgg(전 기간 PENDING/OVERDUE)에서 차감되고 §4b 합성 대상(materialized=0)도 아니므로
   //     여기서 from에 표시해도 이중계산 없음.
-  const efOv = entityFilter(c, 'cs')
-  const { results: ovRows } = await c.env.DB.prepare(`
-    SELECT cs.id, cs.flow_type, cs.source_type, cs.amount, cs.description, cs.status, cl.client_name
-    FROM cash_schedule cs
-    LEFT JOIN clients cl ON cl.id = cs.client_id
-    WHERE cs.schedule_date < ?
-      AND cs.status IN ('PENDING', 'OVERDUE')
-      AND cs.source_type != 'FIXED'${efOv.clause}
-  `).bind(from, ...efOv.params).all<{
-    id: number; flow_type: string; source_type: string; amount: number
-    description: string | null; status: string; client_name: string | null
-  }>()
-  for (const r of ovRows) {
-    add(from, {
-      flow: r.flow_type === 'IN' ? 'IN' : 'OUT',
-      type: r.source_type,
-      name: `${r.description || r.client_name || r.source_type} (연체)`,
-      amount: Number(r.amount) || 0,
-      status: r.status,
-      materialized: true,
-      schedule_id: r.id,
-    })
+  if (carryOverdue) {
+    const efOv = entityFilter(c, 'cs')
+    const { results: ovRows } = await c.env.DB.prepare(`
+      SELECT cs.id, cs.flow_type, cs.source_type, cs.amount, cs.description, cs.status, cl.client_name
+      FROM cash_schedule cs
+      LEFT JOIN clients cl ON cl.id = cs.client_id
+      WHERE cs.schedule_date < ?
+        AND cs.status IN ('PENDING', 'OVERDUE')
+        AND cs.source_type != 'FIXED'${efOv.clause}
+    `).bind(from, ...efOv.params).all<{
+      id: number; flow_type: string; source_type: string; amount: number
+      description: string | null; status: string; client_name: string | null
+    }>()
+    for (const r of ovRows) {
+      add(from, {
+        flow: r.flow_type === 'IN' ? 'IN' : 'OUT',
+        type: r.source_type,
+        name: `${r.description || r.client_name || r.source_type} (연체)`,
+        amount: Number(r.amount) || 0,
+        status: r.status,
+        materialized: true,
+        schedule_id: r.id,
+      })
+    }
   }
 
   const months = monthsBetween(from, to)
@@ -177,7 +188,7 @@ export async function buildCashflowDays(
     SELECT lp.scheduled_date, lp.total_amount, lp.actual_paid_amount, lp.status, l.creditor
     FROM loan_payments lp
     JOIN loans l ON lp.loan_id = l.id
-    WHERE lp.scheduled_date >= date(?, '-31 days') AND lp.scheduled_date <= ?
+    WHERE lp.scheduled_date >= ${carryOverdue ? "date(?, '-31 days')" : '?'} AND lp.scheduled_date <= ?
       AND lp.status IN ('SCHEDULED', 'OVERDUE', 'PARTIAL')${efLoan.clause.replace('entity_id', 'l.entity_id')}
   `).bind(from, to, ...efLoan.params).all<{
     scheduled_date: string; total_amount: number; actual_paid_amount: number | null; status: string; creditor: string
@@ -185,7 +196,7 @@ export async function buildCashflowDays(
   for (const lp of loanRows) {
     const remaining = (Number(lp.total_amount) || 0) - (Number(lp.actual_paid_amount) || 0)
     if (remaining <= 0) continue
-    const due = lp.scheduled_date < from ? from : lp.scheduled_date  // 과거 미납분은 예측 시작일에 표시
+    const due = carryOverdue && lp.scheduled_date < from ? from : lp.scheduled_date  // 과거 미납분은 예측 시작일에 표시
     add(due, {
       flow: 'OUT', type: 'LOAN', name: `${lp.creditor} 상환`,
       amount: remaining, status: lp.status, materialized: false,
@@ -267,7 +278,7 @@ export async function buildCashflowDays(
         payment_cycle_type: g.payment_cycle_type, payment_terms_days: g.terms,
         closing_day: g.closing_day, payment_month_offset: g.payment_month_offset, payment_day: g.payment_day,
       })
-      if (due < from) due = from   // 연체분(예상일이 과거)은 예측 시작일에 표시 — 미수는 즉시 회수 대상
+      if (carryOverdue && due < from) due = from   // 연체분(예상일이 과거)은 예측 시작일에 표시 — 미수는 즉시 회수 대상
       const k = ckey(g.client_id, g.entity_id)
       const list = byCE.get(k) ?? []
       list.push({ order_number: g.order_number, client_name: g.client_name, amount: Number(g.amount) || 0, due })
@@ -324,7 +335,7 @@ export async function buildCashflowDays(
       payment_cycle_type: po.payment_cycle_type, payment_terms_days: po.terms,
       closing_day: po.closing_day, payment_month_offset: po.payment_month_offset, payment_day: po.payment_day,
     })
-    if (due < from) due = from   // 연체 지급(예정일 경과)은 예측 시작일에 표시 (매출 §4b와 대칭)
+    if (carryOverdue && due < from) due = from   // 연체 지급(예정일 경과)은 예측 시작일에 표시 (매출 §4b와 대칭)
     add(due, {
       flow: 'OUT', type: 'PURCHASE_EXPECTED',
       name: `${po.supplier_name || '공급사'} 지급예정 (발주 ${po.po_number})`,

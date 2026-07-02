@@ -15,6 +15,19 @@ function fmt(n) {
   return (n || 0).toLocaleString('ko-KR', { maximumFractionDigits: 0 });
 }
 
+// 하이브리드 엔진 항목 type → 한글 라벨 (달력 pill·일자 상세 공용)
+var SCH_TYPE_LABELS = {
+  ORDER: '입금예정', ORDER_EXPECTED: '예상입금',
+  PURCHASE: '지급예정', PURCHASE_EXPECTED: '지급예상',
+  CARD: '카드대금', CARD_EXPECTED: '카드대금',
+  FIXED: '고정비', LOAN: '대출상환',
+  PAYROLL: '급여', PAYROLL_TAX: '4대보험·원천세',
+  TAX: '세금', OTHER: '기타'
+};
+function schTypeLabel(type) {
+  return SCH_TYPE_LABELS[type] || type || '';
+}
+
 function fmtDate(d) {
   if (typeof d === 'string') return d;
   return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
@@ -63,7 +76,7 @@ function renderSchedule() {
   document.getElementById('schKpiNetFlow').textContent = fmt(netFlow);
   document.getElementById('schKpiInDone').textContent = fmt(summary.in_done);
 
-  // 연체 개수 계산 (예정이지만 아직 완료되지 않은, 날짜가 지난 항목)
+  // 연체 개수 계산 (물질화 예정 중 날짜가 지났는데 미완료인 항목 — 온더플라이 추정치는 제외)
   var today = new Date();
   var overdueCount = 0;
   for (var dateStr in days) {
@@ -71,7 +84,7 @@ function renderSchedule() {
       var day = days[dateStr];
       for (var i = 0; i < day.items.length; i++) {
         var item = day.items[i];
-        if (item.status !== 'DONE') overdueCount++;
+        if (item.materialized && item.status !== 'DONE') overdueCount++;
       }
     }
   }
@@ -112,15 +125,15 @@ function renderSchedule() {
       html += '<div class="text-[8px] text-red-600 font-medium">출 ' + fmt(outAmount) + '</div>';
     }
 
-    // 항목 피드백
+    // 항목 피드백 (엔진 항목: flow/type, 추정치는 ~ 표시)
     if (itemCount > 0) {
       var items = dayData.items;
       var maxPills = 3;
       for (var j = 0; j < Math.min(maxPills, itemCount); j++) {
         var item = items[j];
-        var pillClass = item.flow_type === 'IN' ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700';
+        var pillClass = item.flow === 'IN' ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700';
         html += '<span class="inline-block text-[7px] px-1 py-0.5 rounded ' + pillClass + ' mr-0.5 mt-0.5">' +
-          item.source_type + '</span>';
+          schTypeLabel(item.type) + (item.estimated ? '~' : '') + '</span>';
       }
       if (itemCount > maxPills) {
         html += '<span class="text-[7px] text-gray-500">+' + (itemCount - maxPills) + '</span>';
@@ -216,53 +229,58 @@ window.schCheckOverdue = async function() {
   }
 };
 
-window.schOpenDayDetail = async function(dateStr) {
-  try {
-    var res = await axios.get('/api/cash-flow/schedule/day/' + dateStr);
-    if (!res.data.success) {
-      showToast('조회 실패', 'error');
-      return;
-    }
-    var items = res.data.data || [];
-    var d = parseDate(dateStr);
-    var dayOfWeek = ['일', '월', '화', '수', '목', '금', '토'][d.getDay()];
+// 일자 상세 — 달력 데이터(하이브리드 엔진 항목) 기반. 물질화 행만 완료/삭제 가능, 온더플라이는 표시 전용.
+var schDetailDate = null;
 
-    document.getElementById('schDayModalTitle').textContent =
-      dateStr + ' (' + dayOfWeek + ') - ' + items.length + '건';
+window.schOpenDayDetail = function(dateStr) {
+  if (!schCalendarData || !schCalendarData.days || !schCalendarData.days[dateStr]) return;
+  schDetailDate = dateStr;
+  var items = schCalendarData.days[dateStr].items || [];
+  var d = parseDate(dateStr);
+  var dayOfWeek = ['일', '월', '화', '수', '목', '금', '토'][d.getDay()];
 
-    var html = '';
-    if (items.length === 0) {
-      html = '<div class="text-sm text-gray-400 text-center py-4">데이터가 없습니다.</div>';
-    } else {
-      items.forEach(function(it) {
-        var typeClass = it.flow_type === 'IN' ? 'text-green-600' : 'text-red-600';
-        var statusBadge = it.status === 'DONE' ?
+  document.getElementById('schDayModalTitle').textContent =
+    dateStr + ' (' + dayOfWeek + ') - ' + items.length + '건';
+
+  var html = '';
+  if (items.length === 0) {
+    html = '<div class="text-sm text-gray-400 text-center py-4">데이터가 없습니다.</div>';
+  } else {
+    items.forEach(function(it) {
+      var typeClass = it.flow === 'IN' ? 'text-green-600' : 'text-red-600';
+      var statusBadge;
+      if (it.materialized) {
+        statusBadge = it.status === 'DONE' ?
           '<span class="inline-flex items-center text-[10px] bg-green-50 text-green-700 px-1.5 py-0.5 rounded"><i class="fas fa-check-circle text-[7px] mr-0.5"></i>완료</span>' :
           '<span class="inline-flex items-center text-[10px] bg-amber-50 text-amber-700 px-1.5 py-0.5 rounded"><i class="far fa-clock text-[7px] mr-0.5"></i>대기</span>';
+      } else {
+        statusBadge = it.estimated ?
+          '<span class="inline-flex items-center text-[10px] bg-purple-50 text-purple-700 px-1.5 py-0.5 rounded"><i class="fas fa-wand-magic-sparkles text-[7px] mr-0.5"></i>추정</span>' :
+          '<span class="inline-flex items-center text-[10px] bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded"><i class="fas fa-bolt text-[7px] mr-0.5"></i>자동</span>';
+      }
 
-        html += '<div class="p-2 border rounded bg-gray-50 space-y-1">';
-        html += '<div class="flex justify-between items-start">';
-        html += '<div class="text-xs font-medium">' + it.source_type + ' <span class="' + typeClass + '">' + it.flow_type + '</span></div>';
-        html += '<div>' + statusBadge + '</div>';
-        html += '</div>';
-        html += '<div class="text-[11px] text-gray-600">' + escapeHtml(it.client_name || it.description || '-') + '</div>';
-        html += '<div class="text-sm font-bold tabular-nums text-gray-900">' + fmt(it.amount) + '</div>';
+      html += '<div class="p-2 border rounded bg-gray-50 space-y-1">';
+      html += '<div class="flex justify-between items-start">';
+      html += '<div class="text-xs font-medium">' + schTypeLabel(it.type) + ' <span class="' + typeClass + '">' + (it.flow === 'IN' ? '입금' : '지급') + '</span></div>';
+      html += '<div>' + statusBadge + '</div>';
+      html += '</div>';
+      html += '<div class="text-[11px] text-gray-600">' + escapeHtml(it.name || '-') + '</div>';
+      html += '<div class="text-sm font-bold tabular-nums text-gray-900">' + fmt(it.amount) + '</div>';
+      if (it.materialized && it.schedule_id) {
         html += '<div class="flex gap-1 pt-1">';
         if (it.status !== 'DONE') {
-          html += '<button onclick="schCompleteItem(' + it.id + ')" class="px-2 py-0.5 text-[10px] bg-green-600 text-white rounded hover:bg-green-700">완료</button>';
+          html += '<button onclick="schCompleteItem(' + it.schedule_id + ')" class="px-2 py-0.5 text-[10px] bg-green-600 text-white rounded hover:bg-green-700">완료</button>';
           // '수정' 버튼 제거: schEditItem 미구현(ReferenceError 유발)이라 제거. 수정 필요 시 삭제 후 재등록.
         }
-        html += '<button onclick="schDeleteItem(' + it.id + ')" class="px-2 py-0.5 text-[10px] border border-red-300 text-red-700 rounded hover:bg-red-50">삭제</button>';
+        html += '<button onclick="schDeleteItem(' + it.schedule_id + ')" class="px-2 py-0.5 text-[10px] border border-red-300 text-red-700 rounded hover:bg-red-50">삭제</button>';
         html += '</div>';
-        html += '</div>';
-      });
-    }
-
-    document.getElementById('schDayModalContent').innerHTML = html;
-    document.getElementById('schDayModal').classList.remove('hidden');
-  } catch (e) {
-    showToast('오류: ' + (e.response?.data?.error || e.message), 'error');
+      }
+      html += '</div>';
+    });
   }
+
+  document.getElementById('schDayModalContent').innerHTML = html;
+  document.getElementById('schDayModal').classList.remove('hidden');
 };
 
 window.schCloseDayDetail = function() {
@@ -279,8 +297,8 @@ window.schCompleteItem = async function(id) {
     });
     if (res.data.success) {
       showToast('완료 처리되었습니다.', 'success');
-      schOpenDayDetail(document.getElementById('schDayModalTitle').textContent.substring(0, 10));
-      loadSchedule();
+      await loadSchedule();
+      if (schDetailDate) schOpenDayDetail(schDetailDate);
     } else {
       showToast('실패: ' + res.data.error, 'error');
     }

@@ -5,28 +5,8 @@ import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
 import { requirePagePermission } from '../middleware/permissions'
 import { entityFilter, getEntityId } from '../utils/entityFilter'
-import { buildCashflowDays } from '../utils/cashflowEngine'
+import { buildCashflowDays, type CashflowItem } from '../utils/cashflowEngine'
 import { computeExpectedPaymentDate } from '../utils/paymentSchedule'
-
-interface DailyAggRow {
-  schedule_date: string
-  flow_type: string
-  status: string
-  total_amount: number | string
-  cnt: number
-}
-
-interface ScheduleItemRow {
-  id: number
-  schedule_date: string
-  flow_type: string
-  source_type: string
-  amount: number | string
-  description: string | null
-  status: string
-  client_id: number | null
-  client_name: string | null
-}
 
 interface BilledOrderRow {
   id: number
@@ -150,7 +130,8 @@ cashScheduleRouter.get('/schedule/export/csv', requireRole('ADMIN', 'MANAGER'), 
   }
 })
 
-// 캘린더 (월간)
+// 캘린더 (월간) — 하이브리드 엔진 사용: 물질화(cash_schedule) + 온더플라이(카드대금·고정비·대출·급여·예상입금/지급)
+// forecast/monthly와 동일 소스 → 화면 간 숫자 일치. carryOverdueToStart:false = 연체를 원래 예정일에 표시(월뷰).
 cashScheduleRouter.get('/schedule/calendar', requireRole('ADMIN', 'MANAGER'), async (c) => {
   try {
     const { year, month } = c.req.query()
@@ -161,48 +142,26 @@ cashScheduleRouter.get('/schedule/calendar', requireRole('ADMIN', 'MANAGER'), as
     const lastDay = new Date(y, m, 0).getDate()
     const monthEnd = `${y}-${String(m).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`
 
-    const efDaily = entityFilter(c)
-    const { results: daily } = await c.env.DB.prepare(`
-      SELECT schedule_date, flow_type, status,
-        SUM(amount) as total_amount,
-        COUNT(*) as cnt
-      FROM cash_schedule
-      WHERE schedule_date BETWEEN ? AND ?${efDaily.clause}
-      GROUP BY schedule_date, flow_type, status
-      ORDER BY schedule_date
-    `).bind(monthStart, monthEnd, ...efDaily.params).all<DailyAggRow>()
+    const dayMap = await buildCashflowDays(c, monthStart, monthEnd, { carryOverdueToStart: false })
 
-    const efItems = entityFilter(c, 'cs')
-    const { results: items } = await c.env.DB.prepare(`
-      SELECT cs.id, cs.schedule_date, cs.flow_type, cs.source_type,
-        cs.amount, cs.description, cs.status, cs.client_id,
-        c.client_name
-      FROM cash_schedule cs
-      LEFT JOIN clients c ON c.id = cs.client_id
-      WHERE cs.schedule_date BETWEEN ? AND ?${efItems.clause}
-      ORDER BY cs.schedule_date, cs.flow_type DESC
-    `).bind(monthStart, monthEnd, ...efItems.params).all<ScheduleItemRow>()
-
-    interface DayBucket { date: string; in_total: number; out_total: number; in_done: number; out_done: number; items: ScheduleItemRow[] }
+    interface DayBucket { date: string; in_total: number; out_total: number; in_done: number; out_done: number; items: CashflowItem[] }
     const days: Record<string, DayBucket> = {}
     for (let d = 1; d <= lastDay; d++) {
       const dateStr = `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`
       days[dateStr] = { date: dateStr, in_total: 0, out_total: 0, in_done: 0, out_done: 0, items: [] }
     }
-    for (const row of daily) {
-      const day = days[row.schedule_date]
+    for (const [dateStr, cfDay] of Object.entries(dayMap)) {
+      const day = days[dateStr]
       if (!day) continue
-      if (row.flow_type === 'IN') {
-        day.in_total += Number(row.total_amount) || 0
-        if (row.status === 'DONE') day.in_done += Number(row.total_amount) || 0
-      } else {
-        day.out_total += Number(row.total_amount) || 0
-        if (row.status === 'DONE') day.out_done += Number(row.total_amount) || 0
+      day.in_total = cfDay.in
+      day.out_total = cfDay.out
+      day.items = cfDay.items
+      for (const it of cfDay.items) {
+        if (it.materialized && it.status === 'DONE') {
+          if (it.flow === 'IN') day.in_done += it.amount
+          else day.out_done += it.amount
+        }
       }
-    }
-    for (const item of items) {
-      const day = days[item.schedule_date]
-      if (day) day.items.push(item)
     }
 
     const summary = {
