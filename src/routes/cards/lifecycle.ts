@@ -16,7 +16,7 @@ import { authMiddleware, requireRole } from '../../middleware/auth'
 import { requireAnyPagePermission } from '../../middleware/permissions'
 import { logActivity } from '../../utils/activityLog'
 import { entityFilter, getEntityId } from '../../utils/entityFilter'
-import { getNextSeqNumber } from '../../utils/sequenceGenerator'
+import { ensureShipmentForOrder } from '../../utils/shipmentHelper'
 
 const cardsLifecycleRouter = new Hono<HonoEnv>()
 cardsLifecycleRouter.use('/*', authMiddleware, requireAnyPagePermission('/cards', '/orders'))
@@ -346,13 +346,20 @@ cardsLifecycleRouter.post('/bulk-ship', async (c) => {
         FROM cards WHERE order_id = ?
       `).bind(orderId).first<{ total: number; shipped_count: number }>()
 
+      // P1 출고 정합화: 일괄 카드 출고도 shipment 기록 동기 (실패해도 출고 유지)
+      try {
+        await ensureShipmentForOrder(c.env.DB, orderId, { userId: user?.id ?? null, fallbackEntityId: getEntityId(c) || 1 })
+      } catch (shipRecErr) {
+        console.error('bulk card ship ensureShipment error:', shipRecErr)
+      }
+
       if (progress && progress.total > 0 && progress.total === progress.shipped_count) {
         const order = await c.env.DB.prepare('SELECT status FROM orders WHERE id = ?').bind(orderId).first<{ status: string }>()
         if (order && order.status !== 'SHIPPED' && order.status !== 'CANCELLED') {
           // batch로 UPDATE + 이력 INSERT 원자 처리
           await c.env.DB.batch([
             c.env.DB.prepare(
-              `UPDATE orders SET status = 'SHIPPED', updated_at = CURRENT_TIMESTAMP WHERE id = ?`
+              `UPDATE orders SET status = 'SHIPPED', shipped_at = COALESCE(shipped_at, CURRENT_TIMESTAMP), updated_at = CURRENT_TIMESTAMP WHERE id = ?`
             ).bind(orderId),
             c.env.DB.prepare(`
               INSERT INTO order_status_history (order_id, from_status, to_status, changed_by, change_reason)
@@ -443,7 +450,7 @@ cardsLifecycleRouter.post('/:id/ship', async (c) => {
       if (order && order.status !== 'SHIPPED' && order.status !== 'CANCELLED') {
         await c.env.DB.batch([
           c.env.DB.prepare(`
-            UPDATE orders SET status = 'SHIPPED', updated_at = CURRENT_TIMESTAMP WHERE id = ?
+            UPDATE orders SET status = 'SHIPPED', shipped_at = COALESCE(shipped_at, CURRENT_TIMESTAMP), updated_at = CURRENT_TIMESTAMP WHERE id = ?
           `).bind(card.order_id),
           c.env.DB.prepare(`
             INSERT INTO order_status_history (order_id, from_status, to_status, changed_by, change_reason)
@@ -453,6 +460,13 @@ cardsLifecycleRouter.post('/:id/ship', async (c) => {
 
         orderShipped = true
       }
+    }
+
+    // P1 출고 정합화: QR 출고도 shipment 기록 동기 (실패해도 출고 유지)
+    try {
+      await ensureShipmentForOrder(c.env.DB, card.order_id, { userId: user?.id ?? null, fallbackEntityId: getEntityId(c) || 1 })
+    } catch (shipRecErr) {
+      console.error('QR ship ensureShipment error:', shipRecErr)
     }
 
     return c.json({
@@ -799,7 +813,7 @@ cardsLifecycleRouter.patch('/:id/ship', requireRole('ADMIN', 'MANAGER'), async (
         prevOrderStatus = order.status
         await c.env.DB.batch([
           c.env.DB.prepare(
-            `UPDATE orders SET status = 'SHIPPED', updated_at = datetime('now') WHERE id = ?`
+            `UPDATE orders SET status = 'SHIPPED', shipped_at = COALESCE(shipped_at, CURRENT_TIMESTAMP), updated_at = datetime('now') WHERE id = ?`
           ).bind(card.order_id),
           c.env.DB.prepare(`
             INSERT INTO order_status_history (order_id, from_status, to_status, changed_by, change_reason)
@@ -811,93 +825,9 @@ cardsLifecycleRouter.patch('/:id/ship', requireRole('ADMIN', 'MANAGER'), async (
       }
     }
 
-    // 5-1. 출고 기록(shipments) 생성 — 실패해도 카드 출고는 유지
-    interface CardItemRow { order_item_id: number | null; quantity: number }
+    // 5-1. 출고 기록(shipments) 생성/동기 — 공용 헬퍼로 일원화 (P1 출고 정합화, dtMap 정본=utils/shipmentHelper)
     try {
-      const existingShipment = await c.env.DB.prepare(
-        'SELECT id FROM shipments WHERE order_id = ?'
-      ).bind(card.order_id).first<{ id: number }>()
-
-      if (!existingShipment) {
-        // 출고번호 생성: SHP-E{entity}-YYYYMMDD-NNN (#148: entity별 독립 시퀀스)
-        const today = new Date().toISOString().slice(0, 10).replace(/-/g, '')
-        const shipEid = getEntityId(c) || 1
-        const shipmentNumber = await getNextSeqNumber(c.env.DB, 'shipments', 'shipment_number', `SHP-E${shipEid}-${today}-`, 3, shipEid)
-
-        // 주문 정보 조회
-        const orderInfo = await c.env.DB.prepare(
-          'SELECT delivery_method, delivery_info, contact_phone, entity_id FROM orders WHERE id = ?'
-        ).bind(card.order_id).first<{ delivery_method: string | null; delivery_info: string | null; contact_phone: string | null; entity_id: number | null }>()
-
-        // delivery_method → delivery_type 매핑 (CHECK 제약: DELIVERY, PICKUP, FREIGHT, QUICK)
-        const dtMap: Record<string, string> = {
-          '대신택배': 'DELIVERY', '한진택배': 'DELIVERY', '직배': 'DELIVERY',
-          '대신화물': 'FREIGHT', '용차': 'FREIGHT', '퀵': 'QUICK', '방문수령': 'PICKUP'
-        }
-        const deliveryType = (orderInfo?.delivery_method && dtMap[orderInfo.delivery_method]) || 'DELIVERY'
-
-        const shipmentResult = await c.env.DB.prepare(`
-          INSERT INTO shipments (shipment_number, order_id, status, delivery_type, courier_name, shipped_at, receiver_address, created_by, entity_id)
-          VALUES (?, ?, 'SHIPPED', ?, ?, CURRENT_TIMESTAMP, ?, ?, ?)
-        `).bind(
-          shipmentNumber,
-          card.order_id,
-          deliveryType,
-          orderInfo?.delivery_method || null,
-          orderInfo?.delivery_info || null,
-          user?.id || 1,
-          orderInfo?.entity_id ?? (getEntityId(c) || 1)
-        ).run()
-
-        const shipmentId = shipmentResult.meta?.last_row_id
-
-        if (shipmentId) {
-          // 카드에 연결된 card_items에서 order_item_id와 수량 조회
-          const cardItems = await c.env.DB.prepare(
-            'SELECT order_item_id, quantity FROM card_items WHERE card_id = ?'
-          ).bind(card.id).all<CardItemRow>()
-
-          if (cardItems.results?.length) {
-            for (const ci of cardItems.results) {
-              await c.env.DB.prepare(`
-                INSERT OR IGNORE INTO shipment_items (shipment_id, card_id, order_item_id, quantity)
-                VALUES (?, ?, ?, ?)
-              `).bind(shipmentId, card.id, ci.order_item_id, ci.quantity).run()
-            }
-          } else {
-            // card_items가 없으면 카드 자체 정보로 1건 생성
-            await c.env.DB.prepare(`
-              INSERT OR IGNORE INTO shipment_items (shipment_id, card_id, order_item_id, quantity)
-              VALUES (?, ?, ?, 1)
-            `).bind(shipmentId, card.id, card.order_item_id || null).run()
-          }
-        }
-      } else {
-        // 이미 shipment가 있으면 현재 카드의 아이템만 추가
-        const existsItem = await c.env.DB.prepare(
-          'SELECT id FROM shipment_items WHERE shipment_id = ? AND card_id = ?'
-        ).bind(existingShipment.id, card.id).first()
-
-        if (!existsItem) {
-          const cardItems = await c.env.DB.prepare(
-            'SELECT order_item_id, quantity FROM card_items WHERE card_id = ?'
-          ).bind(card.id).all<CardItemRow>()
-
-          if (cardItems.results?.length) {
-            for (const ci of cardItems.results) {
-              await c.env.DB.prepare(`
-                INSERT OR IGNORE INTO shipment_items (shipment_id, card_id, order_item_id, quantity)
-                VALUES (?, ?, ?, ?)
-              `).bind(existingShipment.id, card.id, ci.order_item_id, ci.quantity).run()
-            }
-          } else {
-            await c.env.DB.prepare(`
-              INSERT OR IGNORE INTO shipment_items (shipment_id, card_id, order_item_id, quantity)
-              VALUES (?, ?, ?, 1)
-            `).bind(existingShipment.id, card.id, card.order_item_id || null).run()
-          }
-        }
-      }
+      await ensureShipmentForOrder(c.env.DB, card.order_id, { userId: user?.id ?? null, fallbackEntityId: getEntityId(c) || 1 })
     } catch (shipErr) {
       // #308: 출고 기록 생성 실패 시 카드/주문 출고 상태를 보상 롤백 (불일치 방지)
       console.error('shipment record creation failed — rolling back card ship:', shipErr)
@@ -966,7 +896,7 @@ cardsLifecycleRouter.patch('/:id/unship', requireRole('ADMIN', 'MANAGER'), async
     if (order && order.status === 'SHIPPED') {
       await c.env.DB.batch([
         c.env.DB.prepare(
-          `UPDATE orders SET status = 'PRINT_DONE', updated_at = datetime('now') WHERE id = ?`
+          `UPDATE orders SET status = 'PRINT_DONE', shipped_at = NULL, updated_at = datetime('now') WHERE id = ?`
         ).bind(card.order_id),
         c.env.DB.prepare(`
           INSERT INTO order_status_history (order_id, from_status, to_status, changed_by, change_reason)

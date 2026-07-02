@@ -17,6 +17,7 @@ import { checkMaterialShortage } from '../../utils/materialShortageCheck'
 import { getEntityId, entityFilter } from '../../utils/entityFilter'
 import { setOrderBillingStatus } from './helpers'
 import { deriveClientBalance } from '../ledger/ar-helpers'
+import { ensureShipmentForOrder } from '../../utils/shipmentHelper'
 
 const ordersLifecycleRouter = new Hono<HonoEnv>()
 ordersLifecycleRouter.use('/*', authMiddleware, requireAnyPagePermission('/orders', '/cards'))
@@ -267,12 +268,13 @@ ordersLifecycleRouter.patch('/:id/status', requireRole('ADMIN', 'MANAGER'), asyn
       }
     }
 
-    // Update order status
+    // Update order status (P1 정합화: SHIPPED 전이 시 주문 출고일 스탬프)
     await c.env.DB.prepare(`
       UPDATE orders SET status = ?, updated_at = CURRENT_TIMESTAMP,
-        confirmed_at = CASE WHEN ? = 'CONFIRMED' THEN CURRENT_TIMESTAMP ELSE confirmed_at END
+        confirmed_at = CASE WHEN ? = 'CONFIRMED' THEN CURRENT_TIMESTAMP ELSE confirmed_at END,
+        shipped_at = CASE WHEN ? = 'SHIPPED' THEN COALESCE(shipped_at, CURRENT_TIMESTAMP) ELSE shipped_at END
       WHERE id = ?
-    `).bind(status, status, id).run()
+    `).bind(status, status, status, id).run()
 
     // balance는 경리 확인(BILLED) 시점에만 반영 — QUOTATION→CONFIRMED 전환 시 미반영
 
@@ -308,6 +310,12 @@ ordersLifecycleRouter.patch('/:id/status', requireRole('ADMIN', 'MANAGER'), asyn
         console.error('Cost calculation failed (non-blocking):', costErr)
       }
     } else if (status === 'SHIPPED') {
+      // P1 출고 정합화: 수동 SHIPPED 전이도 shipment 기록 동기 (실패해도 전이는 유지)
+      try {
+        await ensureShipmentForOrder(c.env.DB, parseInt(id), { userId: user?.id ?? null, fallbackEntityId: getEntityId(c) || 1 })
+      } catch (shipRecErr) {
+        console.error('status-change ensureShipment error:', shipRecErr)
+      }
       await notifyRoles(c.env.DB, ['ADMIN', 'MANAGER'], '출고 완료', `${order.order_number} 출고 처리되었습니다.`, '/orders')
       // 연체 거래처 경고: 파생 미수금(deriveClientBalance) > 0이고 30일 이상 미입금이면 경리에게 알림
       // X5: 폐기 clients.balance 캐시(prod 전체 0) 대신 파생 — 캐시 의존 시 이 경고가 영구 미발동이던 것 정상화
@@ -531,6 +539,7 @@ ordersLifecycleRouter.post('/sync-statuses', requireRole('ADMIN', 'MANAGER'), as
 
       shipStmts.push(db.prepare(`
         UPDATE orders SET status = 'SHIPPED', updated_at = CURRENT_TIMESTAMP,
+          shipped_at = COALESCE(shipped_at, CURRENT_TIMESTAMP),
           billable_after = date('now', '+9 hours', '+' || ? || ' days')
         WHERE id = ? AND status = ?
       `).bind(billableDays, order.id, fromStatus))
@@ -542,6 +551,15 @@ ordersLifecycleRouter.post('/sync-statuses', requireRole('ADMIN', 'MANAGER'), as
     }
     for (let i = 0; i < shipStmts.length; i += 80) {
       await db.batch(shipStmts.slice(i, i + 80))
+    }
+
+    // P1 출고 정합화: 무인 전이분도 shipment 기록 동기 (실패해도 전이는 유지)
+    for (const order of toShip) {
+      try {
+        await ensureShipmentForOrder(db, order.id as number, { userId: user?.id ?? null, fallbackEntityId: getEntityId(c) || 1 })
+      } catch (shipRecErr) {
+        console.error('sync-statuses ensureShipment error:', shipRecErr)
+      }
     }
 
     // Step 2: 회계반영 자동 전이 — auto_billing=1 거래처 + billable_after 도래

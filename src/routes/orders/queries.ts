@@ -9,6 +9,7 @@ import { recalculateOrderCosts } from '../../utils/costCalculator'
 import { sendEmail } from '../../services/emailProvider'
 import { getEntityId, entityFilter, orderVisibilityFilter } from '../../utils/entityFilter'
 import { deductStockLinesOnShip } from '../../utils/stockShip'
+import { ensureShipmentForOrder } from '../../utils/shipmentHelper'
 
 const ordersQueriesRouter = new Hono<HonoEnv>()
 ordersQueriesRouter.use('/*', authMiddleware, requireAnyPagePermission('/orders', '/cards'))
@@ -260,6 +261,7 @@ ordersQueriesRouter.patch('/bulk-ship', async (c) => {
         if (fromStatus !== 'SHIPPED' && fromStatus !== 'CANCELLED') {
           const upd = await c.env.DB.prepare(
             `UPDATE orders SET status = 'SHIPPED', updated_at = datetime('now'),
+               shipped_at = COALESCE(shipped_at, CURRENT_TIMESTAMP),
                billable_after = date('now', '+9 hours', '+' || ? || ' days'),
                auto_complete_date = COALESCE(auto_complete_date, date('now', '+9 hours'))
              WHERE id = ? AND status = ?`
@@ -272,8 +274,22 @@ ordersQueriesRouter.patch('/bulk-ship', async (c) => {
             ).bind(orderId, fromStatus, user?.id || null).run()
           }
         }
+        // P1 출고 정합화: 출고확정 시 shipment 레코드 일원 생성 (파생 레코드 — 실패해도 출고는 유지)
+        try {
+          await ensureShipmentForOrder(c.env.DB, Number(orderId), { userId: user?.id ?? null, fallbackEntityId: getEntityId(c) || 1 })
+        } catch (shipRecErr) {
+          console.error('bulk-ship ensureShipment error:', shipRecErr)
+        }
         results.push({ id: orderId, success: true, shipped_cards: shippedCards, order_shipped: orderShipped || fromStatus === 'SHIPPED' })
       } else {
+        // 분할 출고(일부 카드만): 출고분이 있으면 shipment 기록 (전량 출고 시 동일 shipment에 잔여 카드 합류)
+        if (shippedCards > 0) {
+          try {
+            await ensureShipmentForOrder(c.env.DB, Number(orderId), { userId: user?.id ?? null, fallbackEntityId: getEntityId(c) || 1 })
+          } catch (shipRecErr) {
+            console.error('bulk-ship(partial) ensureShipment error:', shipRecErr)
+          }
+        }
         // 미출고 카드 상세 정보 포함 (프론트에서 안내 표시용)
         const { results: unshippedCards } = await c.env.DB.prepare(`
           SELECT id, card_number, status FROM cards WHERE order_id = ? AND shipped_at IS NULL

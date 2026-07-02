@@ -133,7 +133,8 @@ async function loadShipmentsByDate() {
           client_id: s.client_id,
           client_name: s.client_name || '(거래처 없음)',
           delivery_address: s.delivery_address || '',
-          receiver_address: s.receiver_address || s.client_address || '',
+          // P1: shipment 저장 주소 > 주문 배송처(delivery_info) > 거래처 주소 (기존엔 receiver_address 미저장이라 항상 거래처 폴백)
+          receiver_address: s.receiver_address || s.delivery_info || s.client_address || '',
           contact_phone: s.contact_phone || s.client_phone || '',
           client_mobile: s.client_mobile || s.mobile || '',
           mobile: s.mobile || '',
@@ -424,13 +425,17 @@ function updateBadges() {
 }
 
 // ========== 저장 함수 ==========
-async function saveShipmentCounts(shipmentIds, labelCount, boxCount) {
+async function saveShipmentCounts(shipmentIds, labelCount, boxCount, receiverAddress) {
   try {
     for (var i = 0; i < shipmentIds.length; i++) {
-      await axios.patch('/api/shipments/' + shipmentIds[i], {
+      var payload = {
         label_count: parseInt(labelCount) || 1,
         box_count: parseInt(boxCount) || 1
-      });
+      };
+      // P1: 라벨 인쇄 시 편집한 배송주소도 영속화 (기존엔 인쇄용으로만 읽고 유실)
+      if (receiverAddress !== undefined && receiverAddress !== null) payload.receiver_address = receiverAddress;
+      // by-order 라우트: 여기의 id는 주문 ID (shipment PK 오매칭 방지)
+      await axios.patch('/api/shipments/by-order/' + shipmentIds[i], payload);
     }
   } catch (e) {
     console.error('saveShipmentCounts error:', e);
@@ -459,8 +464,11 @@ async function saveTrackingNumber(key) {
   var ids = getShipmentIds(grp);
   try {
     for (var i = 0; i < ids.length; i++) {
-      await axios.patch('/api/shipments/' + ids[i], { tracking_number: tracking });
+      // by-order 라우트: ids는 주문 ID (shipment PK 오매칭 방지)
+      await axios.patch('/api/shipments/by-order/' + ids[i], { tracking_number: tracking });
     }
+    // P1: 로컬 상태 동기 (재렌더 시 유지 — 서버 재조회 없이도 값 보존)
+    grp.shipments.forEach(function(s) { s.tracking_number = tracking; });
     showToast('송장번호 저장 완료', 'success');
   } catch (e) {
     showToast('저장 실패: ' + (e.message || ''), 'error');
@@ -557,7 +565,8 @@ async function printDeliveryLabel(key, section) {
   var address = addrEl ? addrEl.value.trim() : grp.receiver_address;
   var carrier = section === 'daesintaekbae' ? '대신택배' : '택배';
 
-  await saveShipmentCounts(getShipmentIds(grp), labelCount, boxCount);
+  await saveShipmentCounts(getShipmentIds(grp), labelCount, boxCount, address);
+  grp.receiver_address = address;
 
   doPrint(buildDeliveryLabelHtml(grp.client_name, address, carrier, labelCount));
 }
@@ -585,15 +594,17 @@ async function printAllSection(section) {
     var bcEl = document.getElementById(prefix + 'bc-' + key);
     var labelCount = parseInt(lcEl ? lcEl.value : '1') || 1;
     var boxCount = parseInt(bcEl ? bcEl.value : '1') || 1;
-    await saveShipmentCounts(getShipmentIds(grp), labelCount, boxCount);
 
     if (section === 'freight') {
+      await saveShipmentCounts(getShipmentIds(grp), labelCount, boxCount);
       var termEl = document.getElementById('f-terminal-' + key);
       var terminal = termEl ? termEl.value.trim() : grp.delivery_address;
       allHtml += buildFreightLabelHtml(grp.client_name, terminal, labelCount);
     } else {
       var addrEl = document.getElementById('d-addr-' + key);
       var address = addrEl ? addrEl.value.trim() : grp.receiver_address;
+      await saveShipmentCounts(getShipmentIds(grp), labelCount, boxCount, address);
+      grp.receiver_address = address;
       allHtml += buildDeliveryLabelHtml(grp.client_name, address, carrier, labelCount);
     }
   }

@@ -8,6 +8,7 @@ import { entityFilter, getEntityId } from '../utils/entityFilter'
 import { getNextSeqNumber, withSeqRetry } from '../utils/sequenceGenerator'
 import { autoDeductPostProcessingMaterials } from '../utils/autoDeductPostProcessingMaterials'
 import { deductStockLinesOnShip } from '../utils/stockShip'
+import { ensureShipmentForOrder } from '../utils/shipmentHelper'
 import { getEntityCompanyInfo } from '../utils/entitySettings'
 import { escapeCsvField } from '../utils/csv'
 
@@ -132,12 +133,16 @@ shipmentsRouter.get('/daily', async (c) => {
     const targetDate = date || new Date().toISOString().substring(0, 10)
 
     const efDaily = entityFilter(c, 'o')
+    // P1 출고 정합화: 최신 활성 shipment 1:1 조인 — 송장번호/라벨수량/수신자주소 재표시
+    // (기존엔 미조인이라 저장한 송장번호가 재로딩 시 빈칸으로 보이던 버그)
     const { results } = await c.env.DB.prepare(`
       SELECT o.id, o.order_number, o.delivery_date, o.delivery_method, o.delivery_info,
              o.delivery_time, o.status, o.final_amount, o.contact_phone, o.notes,
              o.reception_location, o.shipping_payment,
              cl.id as client_id, cl.client_name, cl.phone as client_phone, cl.mobile as client_mobile,
              cl.address as client_address, cl.delivery_address,
+             sp.id as shipment_id, sp.tracking_number, sp.label_count, sp.box_count,
+             sp.receiver_address, sp.status as shipment_status,
              COUNT(c.id) as total_cards,
              SUM(CASE WHEN c.status = 'PRINT_DONE' THEN 1 ELSE 0 END) as done_cards,
              SUM(CASE WHEN c.status IN ('RIP_READY', 'PRINTING') THEN 1 ELSE 0 END) as printing_cards,
@@ -145,6 +150,9 @@ shipmentsRouter.get('/daily', async (c) => {
       FROM orders o
       JOIN clients cl ON o.client_id = cl.id
       LEFT JOIN cards c ON c.order_id = o.id
+      LEFT JOIN shipments sp ON sp.id = (
+        SELECT id FROM shipments WHERE order_id = o.id AND status != 'CANCELLED' ORDER BY id DESC LIMIT 1
+      )
       WHERE o.delivery_date = ? AND o.status NOT IN ('CANCELLED', 'DELETED', 'DRAFT')${efDaily.clause}
       GROUP BY o.id
       ORDER BY o.delivery_time ASC NULLS LAST, o.delivery_method ASC, cl.client_name ASC
@@ -551,74 +559,119 @@ shipmentsRouter.post('/', requireRole('ADMIN', 'MANAGER', 'DESIGNER'), async (c)
 })
 
 // ============================================================================
-// PATCH /:id - 라벨 수량 / 송장번호 업데이트
+// 라벨 수량 / 송장번호 / 수신자 필드 patch 공통 적용 (PATCH /by-order/:orderId, /:id 공용)
+// ============================================================================
+interface ShipmentPatchBody {
+  label_count?: number
+  box_count?: number
+  tracking_number?: string
+  receiver_address?: string
+  receiver_name?: string
+  receiver_phone?: string
+}
+
+async function applyShipmentFieldPatch(db: HonoEnv['Bindings']['DB'], shipmentId: number, body: ShipmentPatchBody): Promise<boolean> {
+  const updates: string[] = []
+  const params: any[] = []
+
+  if (body.label_count !== undefined) {
+    updates.push('label_count = ?')
+    params.push(body.label_count)
+  }
+  if (body.box_count !== undefined) {
+    updates.push('box_count = ?')
+    params.push(body.box_count)
+  }
+  if (body.tracking_number !== undefined) {
+    updates.push('tracking_number = ?')
+    params.push(body.tracking_number)
+  }
+  // P1 출고 정합화: 수신자 정보 저장 (기존엔 라벨 인쇄용으로만 읽고 DB 미저장 → 항상 거래처 주소 폴백)
+  if (body.receiver_address !== undefined) {
+    updates.push('receiver_address = ?')
+    params.push(body.receiver_address || null)
+  }
+  if (body.receiver_name !== undefined) {
+    updates.push('receiver_name = ?')
+    params.push(body.receiver_name || null)
+  }
+  if (body.receiver_phone !== undefined) {
+    updates.push('receiver_phone = ?')
+    params.push(body.receiver_phone || null)
+  }
+
+  if (updates.length === 0) return false
+
+  updates.push('updated_at = CURRENT_TIMESTAMP')
+  params.push(shipmentId)
+  await db.prepare(`UPDATE shipments SET ${updates.join(', ')} WHERE id = ?`).bind(...params).run()
+  return true
+}
+
+// ============================================================================
+// PATCH /by-order/:orderId - 주문 기준 라벨/송장/수신자 업데이트 (없으면 자동 생성)
+// P1 정합화: 기존 PATCH /:id의 "shipment PK 우선 → order_id 폴백" 조회는 shipments 행이
+// 축적되면 타 주문 shipment를 오업데이트할 수 있어(ID 공간 충돌) 주문 기준 명시 라우트로 분리.
+// ============================================================================
+shipmentsRouter.patch('/by-order/:orderId', requireRole('ADMIN', 'MANAGER', 'OPERATOR'), async (c) => {
+  try {
+    const orderId = c.req.param('orderId')
+    const body = await c.req.json<ShipmentPatchBody>()
+
+    const ef = entityFilter(c)
+    const order = await c.env.DB.prepare(`SELECT id FROM orders WHERE id = ?${ef.clause}`).bind(orderId, ...ef.params).first<{ id: number }>()
+    if (!order) return c.json({ success: false, error: '주문을 찾을 수 없습니다.' }, 404)
+
+    const user = c.get('user')
+    const shipmentId = await ensureShipmentForOrder(c.env.DB, order.id, { userId: user?.id ?? null, fallbackEntityId: getEntityId(c) || 1, status: 'PREPARING' })
+    if (!shipmentId) return c.json({ success: false, error: '출고 정보를 생성할 수 없습니다.' }, 500)
+
+    const applied = await applyShipmentFieldPatch(c.env.DB, shipmentId, body)
+    if (!applied) return c.json({ success: false, error: '수정할 항목이 없습니다.' }, 400)
+
+    return c.json({ success: true, data: { shipment_id: shipmentId } })
+  } catch (error) {
+    console.error('src/routes/shipments.ts PATCH /by-order error:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
+  }
+})
+
+// ============================================================================
+// PATCH /:id - 라벨 수량 / 송장번호 업데이트 (shipment PK 기준 — 레거시 order_id 폴백 유지)
 // ============================================================================
 shipmentsRouter.patch('/:id', requireRole('ADMIN', 'MANAGER', 'OPERATOR'), async (c) => {
   try {
     const id = c.req.param('id')
-    const body = await c.req.json<{ label_count?: number; box_count?: number; tracking_number?: string }>()
+    const body = await c.req.json<ShipmentPatchBody>()
 
     const ef = entityFilter(c)
     // 1차: shipment ID로 조회
     let shipment = await c.env.DB.prepare(`SELECT id FROM shipments WHERE id = ?${ef.clause}`).bind(id, ...ef.params).first()
 
-    // 2차: 없으면 order_id로 조회 (프론트엔드가 주문 ID를 보내는 경우)
+    // 2차: 없으면 order_id로 조회 (구버전 프론트가 주문 ID를 보내는 경우 — 활성 최신 우선)
     if (!shipment) {
-      shipment = await c.env.DB.prepare(`SELECT id FROM shipments WHERE order_id = ?${ef.clause}`).bind(id, ...ef.params).first()
+      shipment = await c.env.DB.prepare(`SELECT id FROM shipments WHERE order_id = ? AND status != 'CANCELLED'${ef.clause} ORDER BY id DESC LIMIT 1`).bind(id, ...ef.params).first()
     }
 
-    // 3차: 그래도 없으면 해당 주문에 대한 shipment 자동 생성
+    // 3차: 그래도 없으면 해당 주문에 대한 shipment 자동 생성 (공용 헬퍼 — dtMap 7종 정본, PREPARING 상태)
     if (!shipment) {
-      const order = await c.env.DB.prepare(`SELECT id, order_number, delivery_method, entity_id FROM orders WHERE id = ?${ef.clause}`).bind(id, ...ef.params).first<{ id: number; order_number: string; delivery_method: string | null; entity_id: number | null }>()
+      const order = await c.env.DB.prepare(`SELECT id FROM orders WHERE id = ?${ef.clause}`).bind(id, ...ef.params).first<{ id: number }>()
       if (!order) {
         return c.json({ success: false, error: '주문 또는 출고 정보를 찾을 수 없습니다.' }, 404)
       }
-
-      const autoEid = getEntityId(c) || 1
-      const shipmentNumber = `SHP-E${autoEid}-${new Date().toISOString().substring(0, 10).replace(/-/g, '')}-${String(order.id).padStart(3, '0')}`
-      const deliveryType = order.delivery_method === '대신화물' ? 'FREIGHT'
-        : order.delivery_method === '대신택배' ? 'DELIVERY'
-        : order.delivery_method === '한진택배' ? 'DELIVERY'
-        : order.delivery_method === '퀵' ? 'QUICK'
-        : 'DELIVERY'
-
-      await c.env.DB.prepare(
-        `INSERT INTO shipments (shipment_number, order_id, delivery_type, entity_id) VALUES (?, ?, ?, ?)`
-      ).bind(shipmentNumber, order.id, deliveryType, order.entity_id ?? (getEntityId(c) || 1)).run()
-
-      shipment = await c.env.DB.prepare(`SELECT id FROM shipments WHERE order_id = ?${ef.clause}`).bind(id, ...ef.params).first()
+      const user = c.get('user')
+      await ensureShipmentForOrder(c.env.DB, order.id, { userId: user?.id ?? null, fallbackEntityId: getEntityId(c) || 1, status: 'PREPARING' })
+      shipment = await c.env.DB.prepare(`SELECT id FROM shipments WHERE order_id = ? AND status != 'CANCELLED'${ef.clause} ORDER BY id DESC LIMIT 1`).bind(id, ...ef.params).first()
     }
 
     if (!shipment) {
       return c.json({ success: false, error: '출고 정보를 생성할 수 없습니다.' }, 500)
     }
 
-    const updates: string[] = []
-    const params: any[] = []
-
-    if (body.label_count !== undefined) {
-      updates.push('label_count = ?')
-      params.push(body.label_count)
-    }
-    if (body.box_count !== undefined) {
-      updates.push('box_count = ?')
-      params.push(body.box_count)
-    }
-    if (body.tracking_number !== undefined) {
-      updates.push('tracking_number = ?')
-      params.push(body.tracking_number)
-    }
-
-    if (updates.length === 0) {
+    const applied = await applyShipmentFieldPatch(c.env.DB, (shipment as { id: number }).id, body)
+    if (!applied) {
       return c.json({ success: false, error: '수정할 항목이 없습니다.' }, 400)
     }
-
-    updates.push('updated_at = CURRENT_TIMESTAMP')
-    params.push((shipment as { id: number }).id)
-
-    await c.env.DB.prepare(
-      `UPDATE shipments SET ${updates.join(', ')} WHERE id = ?`
-    ).bind(...params).run()
 
     return c.json({ success: true })
   } catch (error) {
@@ -685,9 +738,9 @@ shipmentsRouter.patch('/:id/status', requireRole('ADMIN', 'MANAGER'), async (c) 
           if (!otherShipped || otherShipped.cnt === 0) {
             // 모든 출고 취소됨 → 주문 상태 복원
             const user = c.get('user')
-            // 3) 주문 상태 복원
+            // 3) 주문 상태 복원 (shipped_at도 리셋 — P1 정합화)
             stmts.push(c.env.DB.prepare(
-              `UPDATE orders SET status = 'PRINT_DONE', auto_complete_date = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?`
+              `UPDATE orders SET status = 'PRINT_DONE', auto_complete_date = NULL, shipped_at = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?`
             ).bind(orderRow.order_id))
             // 4) 상태 이력 기록
             stmts.push(c.env.DB.prepare(`
@@ -704,7 +757,7 @@ shipmentsRouter.patch('/:id/status', requireRole('ADMIN', 'MANAGER'), async (c) 
           // #292: 완료 주문에서 출고 취소 → 더 이상 완료 아님, SHIPPED로 복원
           const user = c.get('user')
           stmts.push(c.env.DB.prepare(
-            `UPDATE orders SET status = 'SHIPPED', auto_complete_date = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?`
+            `UPDATE orders SET status = 'SHIPPED', shipped_at = COALESCE(shipped_at, CURRENT_TIMESTAMP), auto_complete_date = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?`
           ).bind(orderRow.order_id))
           stmts.push(c.env.DB.prepare(`
             INSERT INTO order_status_history (order_id, from_status, to_status, changed_by, change_reason)
@@ -736,7 +789,7 @@ shipmentsRouter.patch('/:id/status', requireRole('ADMIN', 'MANAGER'), async (c) 
         const user = c.get('user')
         if (status === 'SHIPPED') {
           stmts.push(c.env.DB.prepare(
-            `UPDATE orders SET status = 'SHIPPED', updated_at = CURRENT_TIMESTAMP WHERE id = ? AND status != 'SHIPPED'`
+            `UPDATE orders SET status = 'SHIPPED', shipped_at = COALESCE(shipped_at, CURRENT_TIMESTAMP), updated_at = CURRENT_TIMESTAMP WHERE id = ? AND status != 'SHIPPED'`
           ).bind(orderRow.order_id))
         } else if (status === 'DELIVERED') {
           // 모든 출고가 DELIVERED인지 확인
@@ -752,7 +805,7 @@ shipmentsRouter.patch('/:id/status', requireRole('ADMIN', 'MANAGER'), async (c) 
         } else if (status === 'IN_TRANSIT') {
           // #305: 배송중 — 여전히 출고 상태이므로 주문을 SHIPPED로 유지/설정
           stmts.push(c.env.DB.prepare(
-            `UPDATE orders SET status = 'SHIPPED', updated_at = CURRENT_TIMESTAMP WHERE id = ? AND status != 'SHIPPED'`
+            `UPDATE orders SET status = 'SHIPPED', shipped_at = COALESCE(shipped_at, CURRENT_TIMESTAMP), updated_at = CURRENT_TIMESTAMP WHERE id = ? AND status != 'SHIPPED'`
           ).bind(orderRow.order_id))
         } else if (status === 'PREPARING') {
           // #305: 출고 준비중 복귀 — 다른 활성 SHIPPED 출고가 없으면 주문을 PRINT_DONE으로
@@ -761,7 +814,7 @@ shipmentsRouter.patch('/:id/status', requireRole('ADMIN', 'MANAGER'), async (c) 
           ).bind(orderRow.order_id, id).first<{ cnt: number }>()
           if (!otherShipped || otherShipped.cnt === 0) {
             stmts.push(c.env.DB.prepare(
-              `UPDATE orders SET status = 'PRINT_DONE', updated_at = CURRENT_TIMESTAMP WHERE id = ? AND status = 'SHIPPED'`
+              `UPDATE orders SET status = 'PRINT_DONE', shipped_at = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND status = 'SHIPPED'`
             ).bind(orderRow.order_id))
           }
         }
@@ -825,6 +878,7 @@ shipmentsRouter.patch('/:orderId/ship', requireRole('ADMIN', 'MANAGER'), async (
     if (order.status !== 'SHIPPED' && order.status !== 'CANCELLED') {
       const upd = await c.env.DB.prepare(
         `UPDATE orders SET status = 'SHIPPED', updated_at = CURRENT_TIMESTAMP,
+           shipped_at = COALESCE(shipped_at, CURRENT_TIMESTAMP),
            billable_after = date('now', '+9 hours', '+' || ? || ' days'),
            auto_complete_date = COALESCE(auto_complete_date, date('now', '+9 hours'))
          WHERE id = ? AND status = ?`
@@ -836,6 +890,13 @@ shipmentsRouter.patch('/:orderId/ship', requireRole('ADMIN', 'MANAGER'), async (
            VALUES (?, ?, 'SHIPPED', ?, '출고처리 즉시 전이')`
         ).bind(orderId, order.status, user?.id || null).run()
       }
+    }
+
+    // P1 출고 정합화: 출고확정 시 shipment 레코드 일원 생성 (실패해도 출고는 유지)
+    try {
+      await ensureShipmentForOrder(c.env.DB, Number(orderId), { userId: user?.id ?? null, fallbackEntityId: getEntityId(c) || 1 })
+    } catch (shipRecErr) {
+      console.error('ship ensureShipment error:', shipRecErr)
     }
 
     return c.json({ success: true, message: '출고완료 처리되었습니다.' })
