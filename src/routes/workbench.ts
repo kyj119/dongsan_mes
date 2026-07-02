@@ -1,5 +1,5 @@
 // src/routes/workbench.ts — 웹 캔버스 IA 워크벤치 P1: 시안 검수 (그룹 ↔ 품목 매칭)
-// spec: docs/superpowers/specs/2026-06-11-web-canvas-ia-workbench.md §5
+// spec: docs/archive/superpowers/specs/2026-06-11-web-canvas-ia-workbench.md §5 (ia-editor 마스터에 흡수)
 import { Hono } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'

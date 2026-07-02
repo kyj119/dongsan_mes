@@ -20,6 +20,8 @@
 
 ## 🔴 현재 진행 중
 
+- **✅ [2026-07-02] md 문서 전수 정리 (docs-only, 무배포)**: ①구 아카이브 32건+queue/done 6건+pending 중복 1건 삭제(git 히스토리 보존) ②완료/흡수/대체 spec 12건+bank-review → `docs/archive/` 이동(코드 주석·spec 상호참조 경로 7곳 동기 수정) ③`docs/INDEX.md` 전면 재작성(2026-06-10 이후 미등재 ~25건 해소) ④알림톡 템플릿 문서 stale 상태("실발송 0")→실발송 완료로 정정 ⑤repo `memory/session-context.md` 스테일 배너(정본=auto-memory). **유지 판단**: ARCHIVE 2종(다이어트 이관 싱크)·static-assets-rootcause spec(decisions-code 재외부화 금지 앵커). 잔여=IMPROVEMENT_BACKLOG.md 266K 다이어트(auto-improve 연동이라 미조치).
+
 - **✅ [2026-07-02] 바로빌 통합포인트 표시 정합 + 법인별 senderId 통일 (prod `01bb23e8`, 커밋 `18343022`·`8dad40f7`)**:
   - **증상**: 설정→메시지 연결카드·자금관리(/bank)·세금계산서 연결테스트에서 통합포인트 **0원**, 미연결 법인(청주·오다플래그)은 **-10001** 표시. 실잔액 102,194원.
   - **근본원인**: 표시가 **회원사 지갑**(`GetBalanceCostAmount`)을 조회 — 동산=0(미충전)·미등록 법인=-10001(에러코드 노출). 실잔액은 **통합(파트너) 지갑**(`GetBalanceCostAmountOfInterOP`, CERTKEY 단위 공통·corpNum 무관)에만 존재. 라이브 SOAP로 확정(모든 corpNum에서 102194).
@@ -112,7 +114,7 @@
 - **✅ [2026-06-24] Claude Code 셋업 정비 + bank 보안/버그 수정 (별도 세션 — 정본 `memory/project-ship-pipeline.md`)**:
   - **CC 셋업**: 죽은 jq훅→node 전환(`.claude/hooks/*.cjs` + SessionStart 자가진단) · `/ship` full-auto-prod 파이프라인(skill+ship:gate) · MCP(context7 + cloudflare-observability, 옛 cloudflare 제거) · 권한정리(통짜Bash 제거) · STATUS 다이어트 · **claude update 2.1.158→2.1.187**(agent teams 활성, **재시작 필요**) · env `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1`. 훅 경로버그(.js 오탐) 수정.
   - **bank 버그(3에이전트 병렬리뷰)**: ✅**#1 IDOR**(card_fee_rates PUT/DELETE entity격리, #437/#434 클래스) · ✅#2 dead `/card-fee-calculate` 삭제 · ✅**#3 auto-match 파생잔액 복원**(폐기 clients.balance→deriveClientBalance; 가드=입금만·유일잔액만·suggest전용) · ✅#5 D1 IN 80청크 · ✅#8 KST 월경계. **전부 prod 배포·검증**(커밋 f29a266b·06c4b653·5f8793c2 → dep e9c1155d). ✅**#4 client-search 파생잔액 복원**(폐기 c.balance=0→order_billing_groups[BILLED]−payments−adjustments, /receivables 동일정의; FE 미수금 힌트 부활·FE 무변경) · ✅**#7 /transactions bt.\* → FE 소비 컬럼 명시SELECT**(리네임 시 silent null→SQL에러 노출). **prod 배포·검증**(커밋 4d2f3fdb → dep `5c1fa54c`; apex /transactions·/client-search 200, 파생잔액 /receivables와 일치=현재 미수금 0건). #6 변경불요. **bank 리뷰 백로그 완결.** + `/ship` 가드 정식 추가(배포 전 git status, SKILL.md).
-  - ⚠️**교훈**: `deploy:prod`는 워킹트리 전체 빌드 → **배포 전 `git status`로 타세션 미커밋 확인 필수**(IDOR 배포 시 cardExpenses WIP 동반배포됨). agent teams=**v2.1.178+** 필요(2.1.158 미작동). observability wrangler config=**Pages 미지원**(347e438e 되돌림, 대시보드 토글 경로). bank 잔여 리뷰=`docs/bank-review-2026-06-24.md`.
+  - ⚠️**교훈**: `deploy:prod`는 워킹트리 전체 빌드 → **배포 전 `git status`로 타세션 미커밋 확인 필수**(IDOR 배포 시 cardExpenses WIP 동반배포됨). agent teams=**v2.1.178+** 필요(2.1.158 미작동). observability wrangler config=**Pages 미지원**(347e438e 되돌림, 대시보드 토글 경로). bank 잔여 리뷰=`docs/archive/bank-review-2026-06-24.md`(완결·아카이브).
 
 - **🟢 [2026-06-24] LogWatcher TPM-01 현장 배포(TopazRip)**: prod·`E:\TNSRip-X1\Print.log`·Legacy(TNS)·`TPM-01`. 추출 정상(사용자 확인). ⚠️검증=**`/equipment`·`/production`** (/rip 페이지 폐기·404). 함정=repo `install-service.bat`·`install.bat` **LF 줄바꿈**→cmd 명령 토막 → `publish\install-service.bat`만 CRLF+ASCII 수정, **소스 LF 정리 보류**(나중에). RIP-03 `/equipment` 비활성화(soft delete=status INACTIVE)→동일 PC RIP-02 전환 깨끗(부활X). 정본=`memory/project-logwatcher-rollout.md`.
 

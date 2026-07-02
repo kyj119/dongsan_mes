@@ -1,5 +1,5 @@
 ﻿# run-queue.ps1 — Claude 작업 큐 러너 (headless, 작업당 새 세션)
-# spec: docs/superpowers/specs/2026-06-11-claude-queue-runner.md
+# spec: docs/archive/superpowers/specs/2026-06-11-claude-queue-runner.md (구축 완료)
 # 사용:
 #   .\run-queue.ps1            # pending 큐 순차 실행
 #   .\run-queue.ps1 -DryRun    # 실행 순서만 표시

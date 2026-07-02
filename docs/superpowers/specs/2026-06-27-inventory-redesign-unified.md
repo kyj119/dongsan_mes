@@ -1,6 +1,6 @@
 # 재고 통합 재설계 — 창고별 분리 × 다단위(multi-UOM)
 
-작성: 2026-06-27 / 상태: 설계(합의·핸드오프 대기) / **두 spec 통합·대체**: [창고별 분리](2026-06-27-warehouse-stock-separation.md) + [다단위](2026-06-27-multi-uom-inventory.md)
+작성: 2026-06-27 / 상태: 설계(합의·핸드오프 대기) / **두 spec 통합·대체**: [창고별 분리](../../archive/superpowers/specs/2026-06-27-warehouse-stock-separation.md) + [다단위](../../archive/superpowers/specs/2026-06-27-multi-uom-inventory.md) (원본은 아카이브)
 
 ## 왜 통합인가
 두 작업이 같은 inventory 테이블·쓰기경로(autoDeductInventory·po-receive·inventory.ts·receipt_items)·표시·발주를 동시에 건드림 → 분리 진행 시 충돌. **개념은 직교**: 다단위=*어떻게 측정*(통/롤→L/cm), 창고=*어디에 있나*(zone). 한 모델로 합치면 일관.

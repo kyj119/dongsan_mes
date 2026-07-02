@@ -4,7 +4,7 @@
 > 이 문서의 템플릿을 **바로빌 사이트에 등록 → 카카오 검수 통과** 후 MES가 자동으로 조회·발송합니다.
 > 최종 갱신: 2026-06-19 (P2 자동발송·멱등·일괄결과 반영) · 기준일: 2026-06-19 · 이전: 2026-06-03
 
-> ⚠️ **현재 상태 = test_mode 유지 (실발송 0)**: `settings.barobill_test_mode != '0'`이면 테스트 CERTKEY 사용 → 실제 알림톡 미발송. **go-live = `barobill_test_mode='0'` 전환 시점**. 아래 P2 자동발송/일괄/멱등 로직은 전부 구현·배포 완료 상태이나, test_mode 해제 전까지는 실고객 발송 0건. (`src/routes/kakao.ts:74-83`, go-live 패키지=`docs/superpowers/specs/2026-06-11-alimtalk-golive-package.md`)
+> ✅ **실발송 전환 완료 (2026-06 확인, 문서 정정 2026-07-02)**: 2026-06-09 실발송 동작 확정(SenderID 빈값·SmsReply·비숫자 접수번호 3버그 수정) → 2026-06-18 멀티법인(동산 DONGSAN·선명 sunm2596) 실발송 prod·e2e 완결. test_mode 메커니즘(`settings.barobill_test_mode != '0'` → 테스트 CERTKEY, `src/routes/kakao.ts`)은 재테스트용으로 유지. 잔여 결정사항은 go-live 패키지=`docs/superpowers/specs/2026-06-11-alimtalk-golive-package.md` 참조.
 
 ---
 

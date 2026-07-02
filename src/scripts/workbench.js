@@ -1,5 +1,5 @@
 // workbench.js — 시안 검수 (AI 그룹 ↔ 품목 매칭)
-// spec: docs/superpowers/specs/2026-06-11-web-canvas-ia-workbench.md P1
+// spec: docs/archive/superpowers/specs/2026-06-11-web-canvas-ia-workbench.md P1 (ia-editor 마스터에 흡수)
 
 var wbOrders = [];
 var wbCurrentOrderId = null;

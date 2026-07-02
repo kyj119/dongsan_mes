@@ -1,5 +1,5 @@
 // 다중단위(multi-UOM) 변환 — items.unit(관리) ↔ base_unit(차감/저장) × pack_size.
-// spec: docs/superpowers/specs/2026-06-27-multi-uom-inventory.md (MU1)
+// spec: docs/archive/superpowers/specs/2026-06-27-multi-uom-inventory.md (MU1, 정본=2026-06-27-inventory-redesign-unified.md)
 //
 // ── 모델 ──
 //   unit       관리(재고)단위. 통 / 롤 / 박스 / EA / yd ...

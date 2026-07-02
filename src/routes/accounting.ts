@@ -1,7 +1,7 @@
 /**
  * accounting.ts — 회계 통합 관리 허브 API (회계 허브 Phase 1)
  *
- * spec: docs/superpowers/specs/2026-06-23-accounting-hub.md
+ * spec: docs/archive/superpowers/specs/2026-06-23-accounting-hub.md (Phase1~4 완료·정본=design-accounting-hub 메모리)
  * 통합 조회·정정 허브. 입금/세금계산서/현금영수증/카드/매입을 한 화면에서 조회·정정.
  *
  * Phase 1 = 요약 KPI(수입/지출/미수금) + 입금(payments) 전체목록 조회.

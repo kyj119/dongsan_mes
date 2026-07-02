@@ -1,6 +1,6 @@
 # Claude 작업 큐
 
-> 러너: 루트 `run-queue.ps1` · 설계: `docs/superpowers/specs/2026-06-11-claude-queue-runner.md`
+> 러너: 루트 `run-queue.ps1` · 설계: `docs/archive/superpowers/specs/2026-06-11-claude-queue-runner.md` (구축 완료)
 
 ## 사용법
 
