@@ -132,6 +132,8 @@ export function payrollPage(c: Context<HonoEnv>) {
           .ds-ledger thead .stick { z-index: 3; background: #f1f5f9; }
           .ds-ledger .grp-pay { background: #eff6ff; }
           .ds-ledger .grp-ded { background: #fef2f2; }
+          .ds-ledger .grp-pay2 { background: #e2edfc; }  /* 지급 2단째 층 (살짝 진한 톤) */
+          .ds-ledger .grp-ded2 { background: #fde9e9; }  /* 공제 2단째 층 */
           .ds-ledger .grp-emp { background: #f0fdf4; }
           .ds-ledger .grp-sum { background: #fefce8; }
           .ds-ledger .b { font-weight: 600; }
