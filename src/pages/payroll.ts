@@ -32,9 +32,6 @@ export function payrollPage(c: Context<HonoEnv>) {
           <button onclick="payrollSyncAttendance()" class="px-3 py-1.5 text-xs border border-blue-300 text-blue-700 bg-blue-50 rounded hover:bg-blue-100" title="해당 월 attendance 테이블의 연장근무/근무일수/지각/결근을 급여에 반영">
             <i class="fas fa-sync-alt mr-1"></i>근태 불러오기
           </button>
-          <button onclick="payrollToggleLedger()" id="prLedgerBtn" class="px-3 py-1.5 text-xs border border-gray-300 text-white bg-blue-600 rounded hover:bg-blue-700" title="급여대장(기본)↔간단표 전환">
-            <i class="fas fa-table-cells mr-1"></i>급여대장
-          </button>
           <button onclick="payrollOpenBatchSlip()" class="px-3 py-1.5 text-xs border border-gray-300 text-gray-700 bg-white rounded hover:bg-gray-50" title="해당 월 전 직원 급여명세서를 새 창에서 일괄 인쇄">
             <i class="fas fa-print mr-1"></i>일괄 명세서
           </button>
@@ -103,35 +100,7 @@ export function payrollPage(c: Context<HonoEnv>) {
           </button>
         </div>
 
-        <!-- 급여 목록 테이블 (compact) — 급여대장을 기본으로 전환, 기본 숨김(급여대장 버튼으로 토글) -->
-        <div class="ds-card overflow-hidden hidden" id="prCompactCard">
-          <div class="overflow-x-auto">
-            <table class="w-full text-sm ds-table-striped">
-              <thead class="bg-gray-50 text-xs text-gray-600 uppercase tracking-wider">
-                <tr>
-                  <th class="px-2 py-2 text-center" style="width:36px"><input type="checkbox" id="prSelectAll" onchange="payrollToggleAll(this.checked)"></th>
-                  <th class="px-3 py-2 text-left" style="width:70px">사번</th>
-                  <th class="px-3 py-2 text-left" style="width:70px">이름</th>
-                  <th class="px-3 py-2 text-left">부서/직급</th>
-                  <th class="px-3 py-2 text-right" style="width:85px">기본급</th>
-                  <th class="px-3 py-2 text-right" style="width:55px">연장(h)</th>
-                  <th class="px-3 py-2 text-right" style="width:80px">연장급여</th>
-                  <th class="px-3 py-2 text-right" style="width:75px">수당</th>
-                  <th class="px-3 py-2 text-right" style="width:85px">총급여</th>
-                  <th class="px-3 py-2 text-right" style="width:80px">공제</th>
-                  <th class="px-3 py-2 text-right" style="width:85px">실지급</th>
-                  <th class="px-3 py-2 text-center" style="width:65px">상태</th>
-                  <th class="px-3 py-2 text-center" style="width:55px">액션</th>
-                </tr>
-              </thead>
-              <tbody id="prBody">
-                <tr><td colspan="13" class="text-center text-gray-400 py-6">조회 버튼을 눌러주세요</td></tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        <!-- 급여대장 (확장 뷰 — 고정형 표 + 탭) — 기본 뷰 -->
+        <!-- 급여대장 (고정형 표 + 탭) — 단일 뷰 (compact 표 제거, 선택/상태/액션 통합) -->
         <div id="prLedgerCard" class="ds-card overflow-hidden">
           <div class="flex items-center justify-between px-4 py-2 border-b border-gray-200 bg-gray-50 flex-wrap gap-2">
             <div class="flex items-end gap-1">
@@ -150,15 +119,13 @@ export function payrollPage(c: Context<HonoEnv>) {
         </div>
 
         <style>
-          /* 급여 목록표: 고정형 — 금액 길이에 무관하게 컬럼 폭 불변(헤더 width 기준). 가변 컬럼(부서/직급)은 잘림 처리 */
-          #prCompactCard table { table-layout: fixed; }
-          #prCompactCard th, #prCompactCard td { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
           /* 급여대장: 고정형(table-layout:fixed) — 값이 바뀌어도 컬럼 폭 불변 */
           .ds-ledger { border-collapse: collapse; table-layout: fixed; font-variant-numeric: tabular-nums; }
           .ds-ledger th, .ds-ledger td { border: 1px solid #e5e7eb; padding: 3px 6px; box-sizing: border-box; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; line-height: 1.35; }
           .ds-ledger thead th { background: #f1f5f9; font-weight: 600; }
           .ds-ledger td.num, .ds-ledger th.num { text-align: right; }
           .ds-ledger td.lft, .ds-ledger th.lft { text-align: left; }
+          .ds-ledger td.ctr, .ds-ledger th.ctr { text-align: center; }
           .ds-ledger .stick { position: sticky; background: #fff; z-index: 1; }
           .ds-ledger thead .stick { z-index: 3; background: #f1f5f9; }
           .ds-ledger .grp-pay { background: #eff6ff; }
