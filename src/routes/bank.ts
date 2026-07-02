@@ -41,7 +41,7 @@ bankRouter.get('/accounts', requireRole('ADMIN'), async (c) => {
   try {
     const ef = entityFilter(c, 'bank_accounts')
     const { results } = await c.env.DB.prepare(
-      `SELECT id, bank_code, bank_name, account_number, account_holder, connected_id, is_active, last_synced_at, last_synced_date, entity_id, created_at, barobill_registered, collect_cycle, barobill_registered_at FROM bank_accounts WHERE is_active = 1${ef.clause} ORDER BY created_at DESC`
+      `SELECT id, bank_code, bank_name, account_number, account_holder, account_alias, connected_id, is_active, last_synced_at, last_synced_date, entity_id, created_at, barobill_registered, collect_cycle, barobill_registered_at FROM bank_accounts WHERE is_active = 1${ef.clause} ORDER BY created_at DESC`
     ).bind(...ef.params).all()
     return c.json({ success: true, data: results })
   } catch (error) {
@@ -55,7 +55,7 @@ bankRouter.post('/accounts', requireRole('ADMIN'), async (c) => {
   try {
     const body = await c.req.json()
     const {
-      bank_code, bank_name, account_number, account_holder,
+      bank_code, bank_name, account_number, account_holder, account_alias,
       barobill_sync, account_password, web_id, web_pwd, identity_num,
       collect_cycle, account_type,
     } = body
@@ -104,13 +104,14 @@ bankRouter.post('/accounts', requireRole('ADMIN'), async (c) => {
     }
 
     const result = await c.env.DB.prepare(`
-      INSERT INTO bank_accounts (bank_code, bank_name, account_number, account_holder, entity_id, barobill_registered, collect_cycle, barobill_registered_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ${barobillRegistered ? 'CURRENT_TIMESTAMP' : 'NULL'})
+      INSERT INTO bank_accounts (bank_code, bank_name, account_number, account_holder, account_alias, entity_id, barobill_registered, collect_cycle, barobill_registered_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ${barobillRegistered ? 'CURRENT_TIMESTAMP' : 'NULL'})
     `).bind(
       bank_code,
       bank_name,
       account_number,
       account_holder ?? null,
+      (account_alias && String(account_alias).trim()) || null,
       entityId,
       barobillRegistered,
       cycle,
@@ -137,7 +138,7 @@ bankRouter.put('/accounts/:id', requireRole('ADMIN'), async (c) => {
   try {
     const id = c.req.param('id')
     const body = await c.req.json()
-    const { bank_code, bank_name, account_number, account_holder } = body
+    const { bank_code, bank_name, account_number, account_holder, account_alias } = body
 
     // #437: entity 격리 — 형제 DELETE/refresh와 동일. 미적용 시 타 법인 계좌 master(계좌번호 등) cross-tenant 덮어쓰기(IDOR)
     const ef = entityFilter(c, 'bank_accounts')
@@ -149,18 +150,24 @@ bankRouter.put('/accounts/:id', requireRole('ADMIN'), async (c) => {
       return c.json({ success: false, error: '계좌를 찾을 수 없습니다' }, 404)
     }
 
+    // account_alias는 직접 대입(빈값 전송=별칭 해제 지원). key 미포함 시에만 기존값 유지.
+    const aliasProvided = Object.prototype.hasOwnProperty.call(body, 'account_alias')
+    const aliasValue = (account_alias && String(account_alias).trim()) || null
     await c.env.DB.prepare(`
       UPDATE bank_accounts
       SET bank_code = COALESCE(?, bank_code),
           bank_name = COALESCE(?, bank_name),
           account_number = COALESCE(?, account_number),
-          account_holder = COALESCE(?, account_holder)
+          account_holder = COALESCE(?, account_holder),
+          account_alias = CASE WHEN ? = 1 THEN ? ELSE account_alias END
       WHERE id = ?${ef.clause}
     `).bind(
       bank_code ?? null,
       bank_name ?? null,
       account_number ?? null,
       account_holder ?? null,
+      aliasProvided ? 1 : 0,
+      aliasValue,
       id,
       ...ef.params
     ).run()
@@ -261,7 +268,7 @@ bankRouter.get('/transactions', requireRole('ADMIN'), async (c) => {
         bt.id, bt.transaction_date, bt.transaction_type, bt.amount, bt.balance_after,
         bt.counterpart_name, bt.description,
         bt.match_status, bt.matched_client_id, bt.matched_category_id,
-        ba.bank_name, ba.account_number, ba.account_holder,
+        ba.bank_name, ba.account_number, ba.account_holder, ba.account_alias,
         c.client_name as matched_client_name, c.representative as matched_client_representative,
         ec.name as matched_category_name, ec.icon as matched_category_icon, ec.color as matched_category_color
       FROM bank_transactions bt

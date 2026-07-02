@@ -326,6 +326,11 @@ export function bankPage(c: Context<HonoEnv>) {
               <label class="form-label">예금주</label>
               <input type="text" id="accHolder" class="form-input" placeholder="예금주명">
             </div>
+            <div>
+              <label class="form-label">계좌 이름(별칭)</label>
+              <input type="text" id="accAlias" class="form-input" placeholder="예: 주거래-국민, 급여계좌 (거래내역 매칭에 표시)">
+              <p class="text-xs text-gray-400 mt-1">거래내역 매칭·계좌 필터에 이 이름으로 표시됩니다. 비우면 은행명·예금주로 표시.</p>
+            </div>
             <!-- 바로빌 자동 수집 연동 (신규 등록 시) -->
             <div id="accBarobillSection" class="border-t pt-3 mt-1">
               <label class="flex items-center gap-2 cursor-pointer">

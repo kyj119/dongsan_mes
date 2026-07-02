@@ -157,7 +157,9 @@
       accounts.forEach(function(a) {
         var opt = document.createElement('option');
         opt.value = a.id;
-        opt.textContent = a.bank_name + ' ' + a.account_number + ' (' + (a.account_holder || '') + ')';
+        opt.textContent = a.account_alias
+          ? a.account_alias + ' (' + a.bank_name + ' ' + a.account_number + ')'
+          : a.bank_name + ' ' + a.account_number + ' (' + (a.account_holder || '') + ')';
         sel.appendChild(opt);
       });
       if (prev) sel.value = prev;
@@ -215,7 +217,7 @@
       var isDeposit = tx.transaction_type === 'DEPOSIT';
       var badge = getStatusBadge(tx.match_status || 'UNMATCHED');
       var actionCell = buildActionCell(tx);
-      var accountLabel = tx.account_holder || tx.bank_name || '';
+      var accountLabel = tx.account_alias || tx.account_holder || tx.bank_name || '';
       var dateStr = tx.transaction_date || '';
       if (dateStr.length === 8) dateStr = dateStr.slice(0,4) + '-' + dateStr.slice(4,6) + '-' + dateStr.slice(6,8);
 
@@ -731,8 +733,10 @@
       html += '<div class="flex items-center gap-4">';
       html += '<div class="w-10 h-10 rounded-full bg-blue-50 flex items-center justify-center"><i class="fas fa-university text-blue-600"></i></div>';
       html += '<div>';
-      html += '<div class="font-semibold text-gray-800">' + escHtml(a.bank_name) + connBadge + '</div>';
-      html += '<div class="text-sm text-gray-500">' + escHtml(a.account_number) + (a.account_holder ? ' · ' + escHtml(a.account_holder) : '') + '</div>';
+      var titleText = a.account_alias ? escHtml(a.account_alias) : escHtml(a.bank_name);
+      var subBank = a.account_alias ? escHtml(a.bank_name) + ' · ' : '';
+      html += '<div class="font-semibold text-gray-800">' + titleText + connBadge + '</div>';
+      html += '<div class="text-sm text-gray-500">' + subBank + escHtml(a.account_number) + (a.account_holder ? ' · ' + escHtml(a.account_holder) : '') + '</div>';
       html += '<div class="text-xs text-gray-400 mt-1"><i class="fas fa-clock mr-1"></i>마지막 동기화: ' + syncTime + '</div>';
       html += '</div>';
       html += '</div>';
@@ -797,7 +801,7 @@
     document.getElementById('accEditId').value = '';
     document.getElementById('accountModalTitle').innerHTML = '<i class="fas fa-university text-blue-500 mr-2"></i>새 계좌 등록';
     document.getElementById('accSaveBtn').textContent = '등록';
-    ['accBank','accNumber','accHolder'].forEach(function(id) {
+    ['accBank','accNumber','accHolder','accAlias'].forEach(function(id) {
       var el = document.getElementById(id);
       if (el) el.value = '';
     });
@@ -816,6 +820,8 @@
     document.getElementById('accBank').value = acc.bank_code || '';
     document.getElementById('accNumber').value = acc.account_number || '';
     document.getElementById('accHolder').value = acc.account_holder || '';
+    var aliasEl = document.getElementById('accAlias');
+    if (aliasEl) aliasEl.value = acc.account_alias || '';
     resetAccBarobill();
     var sec = document.getElementById('accBarobillSection');
     if (sec) sec.classList.add('hidden'); // 수정 시 바로빌 재등록 미지원
@@ -833,13 +839,16 @@
     var bankName = bankSel.options[bankSel.selectedIndex].text;
     var number = document.getElementById('accNumber').value.trim();
     var holder = document.getElementById('accHolder').value.trim();
+    var aliasInput = document.getElementById('accAlias');
+    var alias = aliasInput ? aliasInput.value.trim() : '';
     if (!bankCode) { showToast('은행을 선택하세요.', 'warning'); return; }
     if (!number) { showToast('계좌번호를 입력하세요.', 'warning'); return; }
     var body = {
       bank_code: bankCode,
       bank_name: bankName,
       account_number: number,
-      account_holder: holder || null
+      account_holder: holder || null,
+      account_alias: alias  // 빈 문자열 전송 = 별칭 해제
     };
     // 바로빌 자동 연동 (신규 등록 시에만)
     var syncEl = document.getElementById('accBarobillSync');
