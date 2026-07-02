@@ -1008,8 +1008,11 @@ function prBandHeadHtml(withUi){
   var colw = [];
   if (withUi) colw.push(BAND_W.check);
   BAND_ID_COLS.forEach(function(c){ colw.push(c.w); });
-  for (var k = 0; k < BAND_PAY_ROWS[0].length + BAND_DED_ROWS[0].length; k++) colw.push(BAND_W.slot);
-  colw.push(BAND_W.sum); colw.push(BAND_W.sum); colw.push(BAND_W.net);
+  for (var k = 0; k < BAND_PAY_ROWS[0].length; k++) colw.push(BAND_W.slot);
+  colw.push(BAND_W.sum);   // 지급계 — 지급 블록 바로 뒤
+  for (var k2 = 0; k2 < BAND_DED_ROWS[0].length; k2++) colw.push(BAND_W.slot);
+  colw.push(BAND_W.sum);   // 공제계
+  colw.push(BAND_W.net);
   if (withUi){ colw.push(BAND_W.status); colw.push(BAND_W.act); }
   var html = '<colgroup>' + colw.map(function(w){ return '<col style="width:'+w+'px">'; }).join('') + '</colgroup>';
 
@@ -1023,8 +1026,8 @@ function prBandHeadHtml(withUi){
     if (sticky) left += c.w;
   });
   r += '<th colspan="'+BAND_PAY_ROWS[0].length+'" class="ctr grp-pay">지 급</th>';
-  r += '<th colspan="'+BAND_DED_ROWS[0].length+'" class="ctr grp-ded">공 제</th>';
   r += '<th class="num grp-pay b">지급계</th>';
+  r += '<th colspan="'+BAND_DED_ROWS[0].length+'" class="ctr grp-ded">공 제</th>';
   r += '<th class="num grp-ded b">공제계</th>';
   r += '<th class="num b">실지급</th>';
   if (withUi){ r += '<th class="ctr">상태</th><th class="ctr">액션</th>'; }
@@ -1043,8 +1046,9 @@ function prBandBlock(r, withUi){
   h += '<td rowspan="4" class="lft stick" style="left:'+(left+BAND_ID_COLS[0].w)+'px">'+escapeHtml(r.employee_name||'')+syncedMark+'</td>';
   h += '<td rowspan="4" class="lft">'+escapeHtml(prDeptLabel(r.department))+'</td>';
   h += '<td rowspan="4" class="lft">'+escapeHtml(prPosLabel(r.position))+'</td>';
-  h += prBandItemCells(r, 0, 'grp-pay', 'grp-ded');
-  h += '<td rowspan="4" class="sumcell grp-pay">'+prLC(prNum(r,'total_salary'))+'</td>';
+  BAND_PAY_ROWS[0].forEach(function(s){ h += prBandLvCell(s, r, 'grp-pay'); });
+  h += '<td rowspan="4" class="sumcell grp-pay">'+prLC(prNum(r,'total_salary'))+'</td>';   // 지급계 — 지급 블록 바로 뒤
+  BAND_DED_ROWS[0].forEach(function(s){ h += prBandLvCell(s, r, 'grp-ded'); });
   h += '<td rowspan="4" class="sumcell grp-ded">'+prLC(prNum(r,'total_deduction'))+'</td>';
   h += '<td rowspan="4" class="sumcell">'+prLC(prNum(r,'net_pay'))+'</td>';
   if (withUi){
@@ -1079,8 +1083,9 @@ function prBandTotals(list){
 function prBandTotalBlock(label, t, cls, withUi){
   var idSpan = (withUi ? 1 : 0) + BAND_ID_COLS.length;
   var h = '<tr class="'+cls+'"><td rowspan="4" colspan="'+idSpan+'" class="lft b">'+escapeHtml(label)+' · '+t._count+'명</td>';
-  h += prBandItemCells(t, 0, '', '');
-  h += '<td rowspan="4" class="sumcell">'+prLC(t.total_salary)+'</td>';
+  BAND_PAY_ROWS[0].forEach(function(s){ h += prBandLvCell(s, t, ''); });
+  h += '<td rowspan="4" class="sumcell">'+prLC(t.total_salary)+'</td>';   // 지급계 — 지급 블록 바로 뒤
+  BAND_DED_ROWS[0].forEach(function(s){ h += prBandLvCell(s, t, ''); });
   h += '<td rowspan="4" class="sumcell">'+prLC(t.total_deduction)+'</td>';
   h += '<td rowspan="4" class="sumcell">'+prLC(t.net_pay)+'</td>';
   if (withUi) h += '<td rowspan="4" colspan="2"></td>';
