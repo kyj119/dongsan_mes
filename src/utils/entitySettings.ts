@@ -73,3 +73,34 @@ export async function getEntityCorpNum(
   ).first() as any
   return (row?.setting_value || '').replace(/-/g, '')
 }
+
+/**
+ * 바로빌 연동회원 담당자 ID(senderId)를 법인별로 조회.
+ * entity_settings(법인별) 우선 → 전역 settings → 'DONGSAN'(entity1 하위호환).
+ *
+ * ⚠️ 계좌/카드/세금계산서 *조회* API(GetDaily…TransLog·RefreshBankAccount 등)는 이 ID를
+ * 필수 파라미터로 받는다. CorpNum(getEntityCorpNum, 법인별)과 **반드시 짝을 맞춰야** 하며,
+ * 불일치(예: 선명 corpNum + DONGSAN ID) 시 바로빌 -24005(타법인 담당자)로 수집이 0건이 된다.
+ * (등록 API RegistBankAccountEx/RegistCardEx는 ID를 안 보내므로 senderId 무관하게 성공 —
+ *  그래서 "바로빌엔 등록됐는데 수집만 안 되는" 증상이 나타남.)
+ * kakao.ts·fax.ts와 동일 소스·동일 우선순위를 사용해 멀티법인 일관성 보장.
+ */
+export async function getEntityBarobillSenderId(
+  db: D1Database,
+  entityId: number
+): Promise<string> {
+  if (entityId && entityId > 0) {
+    try {
+      const row = await db.prepare(
+        `SELECT setting_value FROM entity_settings WHERE entity_id = ? AND setting_key = 'barobill_sender_id'`
+      ).bind(entityId).first() as { setting_value: string } | null
+      if (row?.setting_value) return row.setting_value
+    } catch {
+      // entity_settings 미존재(마이그 전) → 전역 fallback
+    }
+  }
+  const g = await db.prepare(
+    `SELECT setting_value FROM settings WHERE setting_key = 'barobill_sender_id'`
+  ).first() as { setting_value: string } | null
+  return g?.setting_value || 'DONGSAN'
+}

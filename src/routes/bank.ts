@@ -8,7 +8,7 @@ import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
 import { createPayment, validatePayment, preparePaymentStatements } from '../lib/payments'
 import { entityFilter, getEntityId } from '../utils/entityFilter'
-import { getEntityCorpNum } from '../utils/entitySettings'
+import { getEntityCorpNum, getEntityBarobillSenderId } from '../utils/entitySettings'
 import { loadProvision, agingCategoryToBucket, effectiveLossRate } from '../utils/provisionMatrix'
 import { computeExpectedPaymentDate } from '../utils/paymentSchedule'
 import { escapeCsvField } from '../utils/csv'
@@ -27,10 +27,9 @@ async function getBarobillConfig(c: any) {
   if (!certKey) throw new Error('BAROBILL_CERT_KEY 미설정')
   const corpNum = await getEntityCorpNum(c.env.DB, getEntityId(c))
   if (!corpNum) throw new Error('사업자등록번호 미설정 (법인별 corpNum 확인)')
-  const senderIdRow = await c.env.DB.prepare(
-    "SELECT setting_value FROM settings WHERE setting_key = 'barobill_sender_id'"
-  ).first() as { setting_value: string } | null
-  return { certKey, corpNum, isTest, senderId: senderIdRow?.setting_value || 'DONGSAN' }
+  // senderId는 법인별(entity_settings) — corpNum과 짝 맞춤 필수. 선명=sunm2596.
+  const senderId = await getEntityBarobillSenderId(c.env.DB, getEntityId(c))
+  return { certKey, corpNum, isTest, senderId }
 }
 
 // ---------------------------------------------------------------------------
@@ -436,10 +435,8 @@ bankRouter.post('/sync-barobill', requireRole('ADMIN'), async (c) => {
     const corpNum = await getEntityCorpNum(c.env.DB, getEntityId(c))
     if (!corpNum) return c.json({ success: false, error: '사업자등록번호 미설정' }, 400)
 
-    const senderIdRow = await c.env.DB.prepare(
-      "SELECT setting_value FROM settings WHERE setting_key = 'barobill_sender_id'"
-    ).first() as { setting_value: string } | null
-    const senderId = senderIdRow?.setting_value || 'DONGSAN'
+    // senderId는 법인별(entity_settings) — corpNum과 짝 맞춤 필수. 불일치 시 바로빌 -24005로 0건 수집.
+    const senderId = await getEntityBarobillSenderId(c.env.DB, getEntityId(c))
 
     const config = { certKey, corpNum, isTest, senderId }
     const entityId = getEntityId(c)
@@ -1731,10 +1728,8 @@ bankRouter.post('/auto-sync', requireRole('ADMIN'), async (c) => {
       return c.json({ success: false, error: '사업자등록번호 미설정' }, 400)
     }
 
-    const senderIdRow = await c.env.DB.prepare(
-      "SELECT setting_value FROM settings WHERE setting_key = 'barobill_sender_id'"
-    ).first() as { setting_value: string } | null
-    const senderId = senderIdRow?.setting_value || 'DONGSAN'
+    // senderId는 법인별(entity_settings) — corpNum과 짝 맞춤 필수. 불일치 시 바로빌 -24005로 0건 수집.
+    const senderId = await getEntityBarobillSenderId(c.env.DB, getEntityId(c))
 
     const config = { certKey, corpNum, isTest, senderId }
 
