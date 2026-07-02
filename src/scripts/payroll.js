@@ -410,6 +410,91 @@ window.payrollSave = async function() {
   }
 };
 
+// ── 선택 일괄수정 ─────────────────────────────────────────────────────────
+// 선택된 PENDING 행에 공통 필드를 덮어써 /save로 round-trip → 서버가 공제(4대보험·소득세) 전액 재계산.
+// 빈칸=변경 없음. 승인/지급완료(잠금)는 스킵. 나머지 필드는 기존값 유지(명시 전달 — /save 직원기본값 폴백 방지).
+window.payrollOpenBulkEdit = function() {
+  var ids = prGetSelectedIds();
+  if (!ids.length) { showToast('수정할 급여를 먼저 선택하세요', 'warning'); return; }
+  ['prBulkPayDate','prBulkMeal','prBulkTransport','prBulkBonus','prBulkOther','prBulkOtherDed'].forEach(function(k){
+    var el = document.getElementById(k); if (el) el.value = '';
+  });
+  var pending = 0;
+  ids.forEach(function(id){
+    var r = (currentPayrollData || []).find(function(x){ return x.id === id; });
+    if (r && r.status === 'PENDING') pending++;
+  });
+  var cnt = document.getElementById('prBulkCount');
+  if (cnt) cnt.textContent = '선택 ' + ids.length + '명 · 수정 가능(작성중) ' + pending + '명';
+  document.getElementById('prBulkModal').classList.remove('hidden');
+};
+
+window.payrollCloseBulkEdit = function() {
+  document.getElementById('prBulkModal').classList.add('hidden');
+};
+
+window.payrollBulkEditApply = async function() {
+  var ids = prGetSelectedIds();
+  if (!ids.length) { showToast('선택된 급여가 없습니다', 'warning'); return; }
+  var readOv = function(elId) {
+    var el = document.getElementById(elId);
+    var s = ((el && el.value) || '').trim();
+    if (!s) return null;   // 빈칸 = 변경 없음 ('0'은 0으로 설정)
+    return window.parseMoney ? window.parseMoney(s) : (parseInt(s.replace(/[^\d.-]/g, ''), 10) || 0);
+  };
+  var ov = {
+    pay_date: (document.getElementById('prBulkPayDate').value || null),
+    meal: readOv('prBulkMeal'),
+    transport: readOv('prBulkTransport'),
+    bonus: readOv('prBulkBonus'),
+    other_allowance: readOv('prBulkOther'),
+    other_deduction: readOv('prBulkOtherDed')
+  };
+  if (!Object.keys(ov).some(function(k){ return ov[k] != null; })) {
+    showToast('변경할 항목을 입력하세요 (빈칸=유지)', 'warning');
+    return;
+  }
+  var done = 0, skipped = 0, failed = 0;
+  for (var i = 0; i < ids.length; i++) {
+    var row = (currentPayrollData || []).find(function(x){ return x.id === ids[i]; });
+    if (!row) continue;
+    if (row.status !== 'PENDING') { skipped++; continue; }
+    var body = {
+      employee_id: row.employee_id,
+      pay_period: row.pay_period,
+      pay_date: ov.pay_date != null ? ov.pay_date : (row.pay_date || ''),
+      base_salary: Number(row.base_salary) || 0,
+      overtime_hours: parseFloat(row.overtime_hours) || 0,
+      overtime_pay: Number(row.overtime_pay) || 0,
+      night_pay: Number(row.night_pay) || 0,
+      holiday_pay: Number(row.holiday_pay) || 0,
+      annual_leave_pay: Number(row.annual_leave_pay) || 0,
+      bonus: ov.bonus != null ? ov.bonus : (Number(row.bonus) || 0),
+      other_allowance: ov.other_allowance != null ? ov.other_allowance : (Number(row.other_allowance) || 0),
+      meal: ov.meal != null ? ov.meal : (Number(row.meal_allowance) || 0),
+      transport: ov.transport != null ? ov.transport : (Number(row.transportation_allowance) || 0),
+      childcare: Number(row.nontax_childcare) || 0,
+      work_days: parseFloat(row.work_days) || 0,
+      absent_days: parseFloat(row.absent_days) || 0,
+      late_count: parseInt(row.late_count) || 0,
+      leave_used_days: parseFloat(row.leave_used_days) || 0,
+      other_deduction: ov.other_deduction != null ? ov.other_deduction : (Number(row.other_deduction) || 0),
+      notes: row.notes || ''
+    };
+    try {
+      await axios.post('/api/payroll/save', body);
+      done++;
+    } catch (e) {
+      failed++;
+    }
+  }
+  payrollCloseBulkEdit();
+  showToast('일괄수정: ' + done + '명 적용'
+    + (skipped ? ' · 잠금 스킵 ' + skipped + '명' : '')
+    + (failed ? ' · 실패 ' + failed + '명' : ''), failed ? 'warning' : 'success');
+  payrollLoad();
+};
+
 window.payrollApprove = async function(id) {
   if (!(await showConfirm('이 급여를 승인하시겠습니까?'))) return;
   try {
@@ -787,16 +872,21 @@ var LEDGER_MAIN_COLS = [
 ];
 
 // 급여대장 화면 좌우 분리 구조: 지급 블록(좌, 5칸×2단) | 공제 블록(우, 4칸×2단).
-// 직원당 2행 — 같은 블록 안에서만 위아래로 접어(전 항목 표시·가로 스크롤 제거),
-// 지급과 공제는 좌/우로 분리 (용준님 요청 2026-07-02: "지급과 공제를 좌우로 나눠서").
-// grid[0]=직원 첫 행, grid[1]=둘째 행에 표시될 항목.
-var BAND_PAY_GRID = [
-  [{key:'base_salary', label:'기본급'}, {key:'overtime_pay', label:'연장'}, {key:'night_pay', label:'야간'}, {key:'holiday_pay', label:'휴일'}, {key:'meal_allowance', label:'식대'}],
-  [{key:'transportation_allowance', label:'교통'}, {key:'other_allowance', label:'기타수당'}, {key:'bonus', label:'상여'}, {key:'annual_leave_pay', label:'연차'}, {key:'total_salary', label:'지급계', bold:true}]
+// 급여대장 4단 좌우 분리 (용준님 요청 2026-07-02: "4단 구조 + 지급계/공제계 병합셀"):
+//   좌=지급 블록 3칸(고정지급|시간외|변동수당)×3단 + 4단째 근태 메타행
+//   우=공제 블록 2칸(4대보험|세금·기타)×4단
+//   셀 = 라벨+금액(in-cell label — 세로 스크롤 중에도 헤더 없이 읽힘, 헤더는 1행으로 단순화)
+//   지급계·공제계·실지급 = rowspan=4 병합셀 클러스터(나란히 배치 — 한눈에)
+var BAND_PAY_ROWS = [
+  [{key:'base_salary', label:'기본급'}, {key:'overtime_pay', label:'연장'}, {key:'other_allowance', label:'기타수당'}],
+  [{key:'meal_allowance', label:'식대'}, {key:'night_pay', label:'야간'}, {key:'bonus', label:'상여'}],
+  [{key:'transportation_allowance', label:'자가운전'}, {key:'holiday_pay', label:'휴일'}, {key:'annual_leave_pay', label:'연차'}]
 ];
-var BAND_DED_GRID = [
-  [{key:'national_pension', label:'국민연금'}, {key:'health_insurance', label:'건강'}, {key:'long_term_care_insurance', label:'장기요양'}, {key:'employment_insurance', label:'고용'}],
-  [{key:'income_tax', label:'소득세'}, {key:'local_tax', label:'지방세'}, {key:'other_deduction', label:'기타공제'}, {key:'total_deduction', label:'공제계', bold:true}]
+var BAND_DED_ROWS = [
+  [{key:'national_pension', label:'국민연금'}, {key:'income_tax', label:'소득세'}],
+  [{key:'health_insurance', label:'건강보험'}, {key:'local_tax', label:'지방세'}],
+  [{key:'long_term_care_insurance', label:'장기요양'}, {key:'other_deduction', label:'기타공제'}],
+  [{key:'employment_insurance', label:'고용보험'}, null]
 ];
 var BAND_ID_COLS = [
   {key:'employee_code', label:'사번', w:60},
@@ -804,7 +894,7 @@ var BAND_ID_COLS = [
   {key:'department', label:'부서', w:64},
   {key:'position', label:'직급', w:56}
 ];
-var BAND_W = {check:32, slot:90, net:108, status:74, act:158};
+var BAND_W = {check:32, slot:118, sum:104, net:110, status:74, act:158};
 var LEDGER_EMP_COLS = [
   {key:'employee_code', label:'사번', w:60, group:'id', kind:'text', sticky:0},
   {key:'employee_name', label:'성명', w:78, group:'id', kind:'text', sticky:60},
@@ -892,106 +982,115 @@ function prLedgerTotalRow(cols, label, t, cls){
   return html + '</tr>';
 }
 
-// ── 급여대장 좌우 분리 렌더 (main 탭) ────────────────────────────────────────
-// 직원당 2행. 좌=지급 블록(5칸), 우=공제 블록(4칸) — 각 블록 내부에서만 2단 접기.
-// 신원/실지급/상태/액션은 rowspan=2. 2단째(grid[1])는 한 톤 진한 배경(grp-*2)으로 층 구분.
+// ── 급여대장 4단 좌우 분리 렌더 (main 탭) ──────────────────────────────────
+// 직원당 4행. 좌=지급 3칸×3단+근태 메타, 우=공제 2칸×4단. 셀=라벨+금액.
+// 신원/지급계/공제계/실지급/상태/액션은 rowspan=4 병합셀.
 function prBandWidth(withUi){
   var w = BAND_ID_COLS.reduce(function(s,c){ return s+c.w; }, 0)
-    + (BAND_PAY_GRID[0].length + BAND_DED_GRID[0].length) * BAND_W.slot + BAND_W.net;
+    + (BAND_PAY_ROWS[0].length + BAND_DED_ROWS[0].length) * BAND_W.slot
+    + BAND_W.sum * 2 + BAND_W.net;
   if (withUi) w += BAND_W.check + BAND_W.status + BAND_W.act;
   return w;
 }
-function prBandCell(val, cls){
-  var v = Math.round(val) || 0;
-  return '<td class="num '+cls+(v===0?' z':'')+'">'+prLC(v)+'</td>';
+// 라벨+금액 셀. item=null → 빈 자리(공제 4단째 우측)
+function prBandLvCell(item, src, tint){
+  if (!item) return '<td class="lv '+tint+' z"></td>';
+  var v = Math.round(prNum(src, item.key)) || 0;
+  return '<td class="lv '+tint+(v===0?' z':'')+'"><span class="lv-l">'+item.label+'</span><span class="lv-v">'+prLC(v)+'</span></td>';
 }
-function prBandLayer(r, layer, forTotal){
-  // 직원(또는 합계) 한 층: 지급 grid[layer] + 공제 grid[layer]
-  var l2 = layer === 1 ? '2' : '';
+function prBandItemCells(src, rowIdx, tintPay, tintDed){
   var html = '';
-  BAND_PAY_GRID[layer].forEach(function(s){
-    html += forTotal
-      ? '<td class="num'+(s.bold?' b':'')+'">'+prLC(r[s.key]||0)+'</td>'
-      : prBandCell(prNum(r, s.key), 'grp-pay'+l2+(s.bold?' b':''));
-  });
-  BAND_DED_GRID[layer].forEach(function(s){
-    html += forTotal
-      ? '<td class="num'+(s.bold?' b':'')+'">'+prLC(r[s.key]||0)+'</td>'
-      : prBandCell(prNum(r, s.key), 'grp-ded'+l2+(s.bold?' b':''));
-  });
+  BAND_PAY_ROWS[rowIdx].forEach(function(s){ html += prBandLvCell(s, src, tintPay); });
+  BAND_DED_ROWS[rowIdx].forEach(function(s){ html += prBandLvCell(s, src, tintDed); });
   return html;
 }
 function prBandHeadHtml(withUi){
   var colw = [];
   if (withUi) colw.push(BAND_W.check);
   BAND_ID_COLS.forEach(function(c){ colw.push(c.w); });
-  for (var k = 0; k < BAND_PAY_GRID[0].length + BAND_DED_GRID[0].length; k++) colw.push(BAND_W.slot);
-  colw.push(BAND_W.net);
+  for (var k = 0; k < BAND_PAY_ROWS[0].length + BAND_DED_ROWS[0].length; k++) colw.push(BAND_W.slot);
+  colw.push(BAND_W.sum); colw.push(BAND_W.sum); colw.push(BAND_W.net);
   if (withUi){ colw.push(BAND_W.status); colw.push(BAND_W.act); }
   var html = '<colgroup>' + colw.map(function(w){ return '<col style="width:'+w+'px">'; }).join('') + '</colgroup>';
 
-  // r0: 그룹 밴드(지 급 | 공 제), r1/r2: 항목 라벨(직원 행 1/2층과 위치 대응)
-  var r0 = '', r1 = '', r2 = '';
+  // 단일 헤더 행 — 항목 라벨은 셀 안에 있으므로 그룹 밴드만 표시
+  var r = '';
   var left = 0;
-  if (withUi){ r0 += '<th rowspan="3" class="ctr stick" style="left:0px"><input type="checkbox" id="prSelectAll" onchange="payrollToggleAll(this.checked)"></th>'; left = BAND_W.check; }
+  if (withUi){ r += '<th class="ctr stick" style="left:0px"><input type="checkbox" id="prSelectAll" onchange="payrollToggleAll(this.checked)"></th>'; left = BAND_W.check; }
   BAND_ID_COLS.forEach(function(c, i){
     var sticky = i < 2;   // 사번·성명 고정
-    r0 += '<th rowspan="3" class="lft'+(sticky?' stick':'')+'"'+(sticky?' style="left:'+left+'px"':'')+'>'+c.label+'</th>';
+    r += '<th class="lft'+(sticky?' stick':'')+'"'+(sticky?' style="left:'+left+'px"':'')+'>'+c.label+'</th>';
     if (sticky) left += c.w;
   });
-  r0 += '<th colspan="'+BAND_PAY_GRID[0].length+'" class="ctr grp-pay">지 급</th>';
-  r0 += '<th colspan="'+BAND_DED_GRID[0].length+'" class="ctr grp-ded">공 제</th>';
-  r0 += '<th rowspan="3" class="num b">실지급</th>';
-  if (withUi){ r0 += '<th rowspan="3" class="ctr">상태</th><th rowspan="3" class="ctr">액션</th>'; }
-  BAND_PAY_GRID[0].forEach(function(s){ r1 += '<th class="num grp-pay'+(s.bold?' b':'')+'">'+s.label+'</th>'; });
-  BAND_DED_GRID[0].forEach(function(s){ r1 += '<th class="num grp-ded'+(s.bold?' b':'')+'">'+s.label+'</th>'; });
-  BAND_PAY_GRID[1].forEach(function(s){ r2 += '<th class="num grp-pay2'+(s.bold?' b':'')+'">'+s.label+'</th>'; });
-  BAND_DED_GRID[1].forEach(function(s){ r2 += '<th class="num grp-ded2'+(s.bold?' b':'')+'">'+s.label+'</th>'; });
-  return html + '<thead><tr>'+r0+'</tr><tr>'+r1+'</tr><tr>'+r2+'</tr></thead>';
+  r += '<th colspan="'+BAND_PAY_ROWS[0].length+'" class="ctr grp-pay">지 급</th>';
+  r += '<th colspan="'+BAND_DED_ROWS[0].length+'" class="ctr grp-ded">공 제</th>';
+  r += '<th class="num grp-pay b">지급계</th>';
+  r += '<th class="num grp-ded b">공제계</th>';
+  r += '<th class="num b">실지급</th>';
+  if (withUi){ r += '<th class="ctr">상태</th><th class="ctr">액션</th>'; }
+  return html + '<thead><tr>'+r+'</tr></thead>';
 }
-function prBandRowPair(r, withUi){
+function prBandBlock(r, withUi){
   var syncedMark = r.attendance_synced_at
     ? '<i class="fas fa-check-circle text-green-500 ml-1" title="근태 동기화: ' + escapeHtml(r.attendance_synced_at) + '"></i>' : '';
   var left = 0;
-  var a = '<tr>';
+  var h = '<tr>';
   if (withUi){
-    a += '<td rowspan="2" class="ctr stick" style="left:0px"><input type="checkbox" class="pr-row-check" onchange="payrollToggleRow(' + r.id + ', this.checked)"' + (prSelected[r.id] ? ' checked' : '') + '></td>';
+    h += '<td rowspan="4" class="ctr stick" style="left:0px"><input type="checkbox" class="pr-row-check" onchange="payrollToggleRow(' + r.id + ', this.checked)"' + (prSelected[r.id] ? ' checked' : '') + '></td>';
     left = BAND_W.check;
   }
-  a += '<td rowspan="2" class="lft stick" style="left:'+left+'px">'+escapeHtml(r.employee_code||'')+'</td>';
-  a += '<td rowspan="2" class="lft stick" style="left:'+(left+BAND_ID_COLS[0].w)+'px">'+escapeHtml(r.employee_name||'')+syncedMark+'</td>';
-  a += '<td rowspan="2" class="lft">'+escapeHtml(prDeptLabel(r.department))+'</td>';
-  a += '<td rowspan="2" class="lft">'+escapeHtml(prPosLabel(r.position))+'</td>';
-  a += prBandLayer(r, 0, false);
-  a += '<td rowspan="2" class="num b">'+prLC(prNum(r,'net_pay'))+'</td>';
+  h += '<td rowspan="4" class="lft stick" style="left:'+left+'px">'+escapeHtml(r.employee_code||'')+'</td>';
+  h += '<td rowspan="4" class="lft stick" style="left:'+(left+BAND_ID_COLS[0].w)+'px">'+escapeHtml(r.employee_name||'')+syncedMark+'</td>';
+  h += '<td rowspan="4" class="lft">'+escapeHtml(prDeptLabel(r.department))+'</td>';
+  h += '<td rowspan="4" class="lft">'+escapeHtml(prPosLabel(r.position))+'</td>';
+  h += prBandItemCells(r, 0, 'grp-pay', 'grp-ded');
+  h += '<td rowspan="4" class="sumcell grp-pay">'+prLC(prNum(r,'total_salary'))+'</td>';
+  h += '<td rowspan="4" class="sumcell grp-ded">'+prLC(prNum(r,'total_deduction'))+'</td>';
+  h += '<td rowspan="4" class="sumcell">'+prLC(prNum(r,'net_pay'))+'</td>';
   if (withUi){
-    a += '<td rowspan="2" class="ctr">'+prStatusBadge(r.status)+'</td>';
-    a += '<td rowspan="2" class="ctr">'+prActionsHtml(r)+'</td>';
+    h += '<td rowspan="4" class="ctr">'+prStatusBadge(r.status)+'</td>';
+    h += '<td rowspan="4" class="ctr">'+prActionsHtml(r)+'</td>';
   }
-  a += '</tr>';
-  return a + '<tr class="band-b">' + prBandLayer(r, 1, false) + '</tr>';
+  h += '</tr>';
+  h += '<tr>' + prBandItemCells(r, 1, 'grp-pay', 'grp-ded') + '</tr>';
+  h += '<tr>' + prBandItemCells(r, 2, 'grp-pay', 'grp-ded') + '</tr>';
+  // 4단째: 근태 메타(지급 3칸 병합) + 공제 4단째(고용보험)
+  var meta = '근무 ' + (parseFloat(r.work_days) || 0) + '일 · 연장 ' + (parseFloat(r.overtime_hours) || 0).toFixed(1) + 'h'
+    + ' · 결근 ' + (parseFloat(r.absent_days) || 0) + ' · 지각 ' + (parseInt(r.late_count) || 0);
+  h += '<tr class="band-b"><td colspan="'+BAND_PAY_ROWS[0].length+'" class="lft meta grp-pay">'+meta+'</td>';
+  BAND_DED_ROWS[3].forEach(function(s){ h += prBandLvCell(s, r, 'grp-ded'); });
+  h += '</tr>';
+  return h;
 }
 function prBandTotals(list){
-  var t = {_count:0, net_pay:0};
-  [BAND_PAY_GRID, BAND_DED_GRID].forEach(function(grid){
-    grid.forEach(function(row){ row.forEach(function(s){ t[s.key] = 0; }); });
+  var t = {_count:0, total_salary:0, total_deduction:0, net_pay:0};
+  [BAND_PAY_ROWS, BAND_DED_ROWS].forEach(function(grid){
+    grid.forEach(function(row){ row.forEach(function(s){ if (s) t[s.key] = 0; }); });
   });
   list.forEach(function(r){
-    t._count++; t.net_pay += prNum(r,'net_pay');
-    [BAND_PAY_GRID, BAND_DED_GRID].forEach(function(grid){
-      grid.forEach(function(row){ row.forEach(function(s){ t[s.key] += prNum(r, s.key); }); });
+    t._count++;
+    t.total_salary += prNum(r,'total_salary'); t.total_deduction += prNum(r,'total_deduction'); t.net_pay += prNum(r,'net_pay');
+    [BAND_PAY_ROWS, BAND_DED_ROWS].forEach(function(grid){
+      grid.forEach(function(row){ row.forEach(function(s){ if (s) t[s.key] += prNum(r, s.key); }); });
     });
   });
   return t;
 }
-function prBandTotalPair(label, t, cls, withUi){
+function prBandTotalBlock(label, t, cls, withUi){
   var idSpan = (withUi ? 1 : 0) + BAND_ID_COLS.length;
-  var a = '<tr class="'+cls+'"><td rowspan="2" colspan="'+idSpan+'" class="lft b">'+escapeHtml(label)+' · '+t._count+'명</td>';
-  a += prBandLayer(t, 0, true);
-  a += '<td rowspan="2" class="num b">'+prLC(t.net_pay)+'</td>';
-  if (withUi) a += '<td rowspan="2" colspan="2"></td>';
-  a += '</tr>';
-  return a + '<tr class="'+cls+' band-b">' + prBandLayer(t, 1, true) + '</tr>';
+  var h = '<tr class="'+cls+'"><td rowspan="4" colspan="'+idSpan+'" class="lft b">'+escapeHtml(label)+' · '+t._count+'명</td>';
+  h += prBandItemCells(t, 0, '', '');
+  h += '<td rowspan="4" class="sumcell">'+prLC(t.total_salary)+'</td>';
+  h += '<td rowspan="4" class="sumcell">'+prLC(t.total_deduction)+'</td>';
+  h += '<td rowspan="4" class="sumcell">'+prLC(t.net_pay)+'</td>';
+  if (withUi) h += '<td rowspan="4" colspan="2"></td>';
+  h += '</tr>';
+  h += '<tr class="'+cls+'">' + prBandItemCells(t, 1, '', '') + '</tr>';
+  h += '<tr class="'+cls+'">' + prBandItemCells(t, 2, '', '') + '</tr>';
+  h += '<tr class="'+cls+' band-b"><td colspan="'+BAND_PAY_ROWS[0].length+'" class="meta"></td>';
+  BAND_DED_ROWS[3].forEach(function(s){ h += prBandLvCell(s, t, ''); });
+  h += '</tr>';
+  return h;
 }
 function prBandHtml(rows, withUi){
   var byDept = {}, order = [];
@@ -999,10 +1098,10 @@ function prBandHtml(rows, withUi){
   var multiDept = order.length > 1;
   var body = '<tbody>';
   order.forEach(function(dept){
-    byDept[dept].forEach(function(r){ body += prBandRowPair(r, withUi); });
-    if (multiDept) body += prBandTotalPair(prDeptLabel(dept)+' 소계', prBandTotals(byDept[dept]), 'subtotal', withUi);
+    byDept[dept].forEach(function(r){ body += prBandBlock(r, withUi); });
+    if (multiDept) body += prBandTotalBlock(prDeptLabel(dept)+' 소계', prBandTotals(byDept[dept]), 'subtotal', withUi);
   });
-  body += prBandTotalPair('전체 합계', prBandTotals(rows), 'grandtotal', withUi);
+  body += prBandTotalBlock('전체 합계', prBandTotals(rows), 'grandtotal', withUi);
   body += '</tbody>';
   return prBandHeadHtml(withUi) + body;
 }

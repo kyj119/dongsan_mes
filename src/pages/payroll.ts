@@ -57,9 +57,6 @@ export function payrollPage(c: Context<HonoEnv>) {
               </button>
             </div>
           </div>
-          <button onclick="payrollOpenEditModal(0)" class="ds-btn ds-btn-primary text-xs">
-            <i class="fas fa-plus mr-1"></i>급여 작성
-          </button>
         </div>
 
         <!-- 요약 카드 -->
@@ -89,6 +86,9 @@ export function payrollPage(c: Context<HonoEnv>) {
           </span>
           <span id="prSelectedCount" class="text-xs text-gray-600">선택: 0명</span>
           <div class="flex-1"></div>
+          <button onclick="payrollOpenBulkEdit()" class="px-3 py-1 bg-white border border-amber-400 text-amber-800 rounded text-sm hover:bg-amber-100" title="선택한 작성중(PENDING) 급여의 공통 항목을 한번에 수정 — 공제는 자동 재계산">
+            <i class="fas fa-pen mr-1"></i>선택 일괄수정
+          </button>
           <button onclick="payrollBulkApprove()" class="ds-btn ds-btn-primary text-sm">
             <i class="fas fa-check mr-1"></i>선택 승인
           </button>
@@ -132,8 +132,11 @@ export function payrollPage(c: Context<HonoEnv>) {
           .ds-ledger thead .stick { z-index: 3; background: #f1f5f9; }
           .ds-ledger .grp-pay { background: #eff6ff; }
           .ds-ledger .grp-ded { background: #fef2f2; }
-          .ds-ledger .grp-pay2 { background: #e2edfc; }  /* 지급 2단째 층 (살짝 진한 톤) */
-          .ds-ledger .grp-ded2 { background: #fde9e9; }  /* 공제 2단째 층 */
+          /* 4단 구조: 라벨+금액 셀 / 병합 계 셀 / 근태 메타 */
+          .ds-ledger td.lv .lv-l { float: left; color: #94a3b8; font-size: 10px; }
+          .ds-ledger td.lv .lv-v { float: right; font-variant-numeric: tabular-nums; }
+          .ds-ledger td.sumcell { font-size: 12.5px; font-weight: 700; text-align: right; }
+          .ds-ledger td.meta { color: #94a3b8; font-size: 10px; }
           .ds-ledger .grp-emp { background: #f0fdf4; }
           .ds-ledger .grp-sum { background: #fefce8; }
           .ds-ledger .b { font-weight: 600; }
@@ -309,6 +312,53 @@ export function payrollPage(c: Context<HonoEnv>) {
           <div class="px-5 py-3 border-t flex justify-end gap-2 sticky bottom-0 bg-white">
             <button onclick="payrollCloseEditModal()" class="px-3 py-1.5 text-xs border border-gray-300 text-gray-700 bg-white rounded hover:bg-gray-50">취소</button>
             <button onclick="payrollSave()" class="ds-btn ds-btn-primary text-xs"><i class="fas fa-save mr-1"></i>저장</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 선택 일괄수정 모달 -->
+      <div id="prBulkModal" class="ds-modal-overlay hidden">
+        <div class="ds-modal" style="max-width:32rem">
+          <div class="px-5 py-3 border-b flex items-center justify-between">
+            <h3 class="text-base font-semibold"><i class="fas fa-pen mr-1 text-amber-600"></i>선택 일괄수정</h3>
+            <button onclick="payrollCloseBulkEdit()" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times"></i></button>
+          </div>
+          <div class="p-5 space-y-3">
+            <div class="text-xs text-gray-600 bg-amber-50 border border-amber-200 rounded p-2.5">
+              <i class="fas fa-info-circle mr-1 text-amber-600"></i>빈칸은 변경하지 않습니다. <b>작성중(PENDING)</b> 상태만 수정되며(승인·지급완료는 잠금 스킵),
+              변경 시 공제액(4대보험·소득세)은 자동 재계산됩니다.
+              <div id="prBulkCount" class="font-semibold mt-1"></div>
+            </div>
+            <div class="grid grid-cols-2 gap-3">
+              <div>
+                <label class="text-xs text-gray-600">지급일</label>
+                <input type="date" id="prBulkPayDate" class="w-full border rounded px-2 py-1.5 text-sm" />
+              </div>
+              <div>
+                <label class="text-xs text-gray-600">식대 (20만 비과세)</label>
+                <input type="text" inputmode="numeric" data-money id="prBulkMeal" class="w-full border rounded px-2 py-1.5 text-sm text-right" placeholder="유지" />
+              </div>
+              <div>
+                <label class="text-xs text-gray-600">자가운전 (20만 비과세)</label>
+                <input type="text" inputmode="numeric" data-money id="prBulkTransport" class="w-full border rounded px-2 py-1.5 text-sm text-right" placeholder="유지" />
+              </div>
+              <div>
+                <label class="text-xs text-gray-600">상여금</label>
+                <input type="text" inputmode="numeric" data-money id="prBulkBonus" class="w-full border rounded px-2 py-1.5 text-sm text-right" placeholder="유지" />
+              </div>
+              <div>
+                <label class="text-xs text-gray-600">기타수당</label>
+                <input type="text" inputmode="numeric" data-money id="prBulkOther" class="w-full border rounded px-2 py-1.5 text-sm text-right" placeholder="유지" />
+              </div>
+              <div>
+                <label class="text-xs text-gray-600">기타공제</label>
+                <input type="text" inputmode="numeric" data-money id="prBulkOtherDed" class="w-full border rounded px-2 py-1.5 text-sm text-right" placeholder="유지" />
+              </div>
+            </div>
+          </div>
+          <div class="px-5 py-3 border-t flex justify-end gap-2">
+            <button onclick="payrollCloseBulkEdit()" class="px-3 py-1.5 text-xs border border-gray-300 text-gray-700 bg-white rounded hover:bg-gray-50">취소</button>
+            <button onclick="payrollBulkEditApply()" class="ds-btn ds-btn-primary text-xs"><i class="fas fa-pen mr-1"></i>적용</button>
           </div>
         </div>
       </div>
