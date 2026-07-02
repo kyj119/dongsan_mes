@@ -1,4 +1,4 @@
-# 설계 결정: 비즈니스·인프라 (A~I)
+# 설계 결정: 비즈니스·인프라
 
 ## 시스템 구성
 
@@ -191,3 +191,18 @@ Case 4: 모든 실패 → group.visibleBounds
 - 통합 내용: 바로빌 연결 상태 바, 잔액 열 추가
 - 삭제: `src/scripts/barobillView.js` (310줄, dead card 코드 포함)
 - 탭 구조: 은행 연동 / 캐시플로 (3탭→2탭)
+
+## BF. 휴일/공휴일 derive-at-read 단일소스 (2026-06-12)
+
+- 휴일 판정의 유일 소스 = `holidays` 달력 테이블(마이그 0311) + 토·일 (둘 다 휴일)
+- 근태·급여는 저장된 휴일 플래그가 아니라 **날짜에서 파생** — attendance를 재분류(mutate)하는 "반영 버튼" 방식 금지
+- 상세 → memory `design-holiday-derive`
+
+## BG. 배송/출고 정합화 · 합배송 · 합포장 (2026-07-02)
+
+- **shipment 생성 일원화**: `ensureShipmentForOrder`(`src/utils/shipmentHelper.ts`) — 출고확정 전 경로(bulk-ship·대시보드 ship·수동/무인 전이·카드 단건/QR/일괄)가 공용 호출. delivery_method→delivery_type 매핑 정본 = `DELIVERY_TYPE_MAP`(부분 복제 금지)
+- **orders.shipped_at**(마이그 0436) = 주문 단위 출고일 정본 (cards.shipped_at 분산 보완, 유통주문 커버). SHIPPED 전이 시 COALESCE 스탬프, 출고취소 복원 시 NULL
+- **합배송 후보 API** `GET /api/shipments/consolidation-candidates` = **명시적 cross-entity**(entityFilter 의도적 미적용, ADMIN·MANAGER 게이트) — 법인 데이터 분리 정책의 예외. 목적=복수 법인 같은 날 출고의 합짐·합포장 조율
+- **우편번호 = 컬럼이 아닌 쿼리시점 파생**: `delivery_info`의 `[12345]` 프리픽스를 substr+GLOB 추출(권역=앞 3자리). 쓰기경로 무변경·수정과 상시 동기
+- **합포장 = merged_into_id 포인터 모델**(마이그 0437): 주문별 shipment 행 유지(법인별 이력 보존), 부속→대표 포인터. 송장/라벨/수신자 정본=대표(쓰기 리다이렉트=`applyShipmentFieldPatch`). 주문ID 저장은 `PATCH /api/shipments/by-order/:orderId`(shipment PK 오매칭 방지)
+- 상세 → memory `project-delivery-system`

@@ -20,6 +20,7 @@
 | AF | BOM 법인 간 공유 | entity_id 미추가, 전 법인 공통 |
 | AL | 자금관리 바로빌통장 탭 통합 | 은행연동으로 합침, barobillView.js 삭제 |
 | BF | 휴일/공휴일 derive-at-read 단일소스 | holidays 달력(마이그0311) + 토·일 = 유일소스. 근태·급여가 날짜에서 휴일 파생, attendance mutate(재분류)·반영버튼 금지 → memory [design-holiday-derive] |
+| BG | 배송/출고 정합화·합배송·합포장 | ensureShipmentForOrder 일원화(dtMap 정본), orders.shipped_at(0436), 합배송 후보=명시적 cross-entity, 우편번호=delivery_info 쿼리파생, 합포장=merged_into_id 포인터(0437)+대표 쓰기 리다이렉트 → memory [project-delivery-system] |
 
 ## 금액 포맷 → `references/decisions-money.md`
 | ID | 제목 | 키워드 |
