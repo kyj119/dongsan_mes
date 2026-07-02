@@ -139,6 +139,7 @@ shipmentsRouter.get('/daily', async (c) => {
       SELECT o.id, o.order_number, o.delivery_date, o.delivery_method, o.delivery_info,
              o.delivery_time, o.status, o.final_amount, o.contact_phone, o.notes,
              o.reception_location, o.shipping_payment,
+             o.entity_id, en.short_name as entity_name,
              cl.id as client_id, cl.client_name, cl.phone as client_phone, cl.mobile as client_mobile,
              cl.address as client_address, cl.delivery_address,
              sp.id as shipment_id, sp.tracking_number, sp.label_count, sp.box_count,
@@ -149,6 +150,7 @@ shipmentsRouter.get('/daily', async (c) => {
              SUM(CASE WHEN c.shipped_at IS NOT NULL THEN 1 ELSE 0 END) as shipped_cards
       FROM orders o
       JOIN clients cl ON o.client_id = cl.id
+      LEFT JOIN entities en ON en.id = o.entity_id
       LEFT JOIN cards c ON c.order_id = o.id
       LEFT JOIN shipments sp ON sp.id = (
         SELECT id FROM shipments WHERE order_id = o.id AND status != 'CANCELLED' ORDER BY id DESC LIMIT 1
@@ -200,6 +202,84 @@ shipmentsRouter.get('/daily', async (c) => {
   } catch (error) {
     console.error('shipments daily error:', error)
     return c.json({ success: false, error: '서버 오류가 발생했습니다' }, 500)
+  }
+})
+
+// ============================================================================
+// GET /consolidation-candidates - 합배송 후보 (법인 통합 뷰, P2)
+// 복수 법인의 같은 날 출고가 ①같은 거래처 ②같은 권역(우편번호 앞 3자리, 자가배송:
+// 직배/용차/퀵)으로 겹치는 건을 탐지 — 합짐·합포장 후보 가시화.
+// ⚠️ 목적상 entityFilter 미적용(명시적 cross-entity 조회) — ADMIN·MANAGER 한정.
+// 권역 키 = delivery_info의 '[12345]' 프리픽스를 쿼리 시점 파생 (컬럼 추가 없이 상시 동기)
+// ※ /:id 보다 먼저 등록
+// ============================================================================
+shipmentsRouter.get('/consolidation-candidates', requireRole('ADMIN', 'MANAGER'), async (c) => {
+  try {
+    const { date } = c.req.query()
+    const targetDate = date || new Date().toISOString().substring(0, 10)
+
+    interface ConsolidationRow {
+      id: number; order_number: string; entity_id: number | null; entity_name: string | null
+      delivery_method: string | null; delivery_time: string | null; delivery_info: string | null
+      shipping_payment: string | null; client_id: number; client_name: string; postal_code: string | null
+    }
+    const { results } = await c.env.DB.prepare(`
+      SELECT o.id, o.order_number, o.entity_id, en.short_name as entity_name,
+             o.delivery_method, o.delivery_time, o.delivery_info, o.shipping_payment,
+             cl.id as client_id, cl.client_name,
+             CASE WHEN substr(o.delivery_info, 1, 1) = '[' AND substr(o.delivery_info, 7, 1) = ']'
+                       AND substr(o.delivery_info, 2, 5) GLOB '[0-9][0-9][0-9][0-9][0-9]'
+                  THEN substr(o.delivery_info, 2, 5) ELSE NULL END as postal_code
+      FROM orders o
+      JOIN clients cl ON o.client_id = cl.id
+      LEFT JOIN entities en ON en.id = o.entity_id
+      WHERE o.delivery_date = ? AND o.status NOT IN ('CANCELLED', 'DELETED', 'DRAFT', 'QUOTATION')
+      ORDER BY cl.client_name ASC, o.entity_id ASC
+    `).bind(targetDate).all<ConsolidationRow>()
+
+    // ① 같은 거래처 × 복수 법인 → 합포장/합짐 후보 (배송방법 무관)
+    const byClient = new Map<number, ConsolidationRow[]>()
+    for (const r of results) {
+      if (!byClient.has(r.client_id)) byClient.set(r.client_id, [])
+      byClient.get(r.client_id)!.push(r)
+    }
+    const sameClient: any[] = []
+    for (const rows of byClient.values()) {
+      const entities = new Set(rows.map(r => r.entity_id))
+      if (entities.size >= 2) {
+        sameClient.push({
+          client_id: rows[0].client_id,
+          client_name: rows[0].client_name,
+          entity_count: entities.size,
+          orders: rows,
+        })
+      }
+    }
+
+    // ② 같은 권역(우편번호 앞 3자리) × 자가배송(직배/용차/퀵) → 동선 묶음 후보
+    //    ①에 이미 잡힌 거래처는 제외. 복수 법인 겹침 또는 단일 법인이라도 3건+ 묶음.
+    const OWN_DELIVERY = new Set(['직배', '용차', '퀵'])
+    const sameClientIds = new Set(sameClient.map(g => g.client_id))
+    const byRegion = new Map<string, ConsolidationRow[]>()
+    for (const r of results) {
+      if (!r.postal_code || !OWN_DELIVERY.has((r.delivery_method || '').trim())) continue
+      if (sameClientIds.has(r.client_id)) continue
+      const prefix = r.postal_code.substring(0, 3)
+      if (!byRegion.has(prefix)) byRegion.set(prefix, [])
+      byRegion.get(prefix)!.push(r)
+    }
+    const sameRegion: any[] = []
+    for (const [prefix, rows] of byRegion) {
+      const entities = new Set(rows.map(r => r.entity_id))
+      if (entities.size >= 2 || rows.length >= 3) {
+        sameRegion.push({ postal_prefix: prefix, entity_count: entities.size, orders: rows })
+      }
+    }
+
+    return c.json({ success: true, data: { date: targetDate, same_client: sameClient, same_region: sameRegion } })
+  } catch (error) {
+    console.error('shipments consolidation-candidates error:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
   }
 })
 

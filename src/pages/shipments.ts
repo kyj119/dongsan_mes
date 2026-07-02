@@ -107,6 +107,17 @@ export function shipmentsPage(c: Context<HonoEnv>) {
         </div>
       </div>
 
+      <!-- 합배송 후보 (법인 통합, P2) — 후보 있을 때만 표시 -->
+      <div id="consolidationCard" class="mb-6 ds-card overflow-hidden hidden">
+        <div class="flex items-center justify-between px-4 py-3 bg-amber-50 border-b border-amber-200">
+          <h3 class="text-sm font-semibold text-amber-800">
+            <i class="fas fa-object-group mr-1"></i>합배송 후보 <span id="consolidationCount" class="ml-1 text-xs font-normal"></span>
+          </h3>
+          <span class="text-xs text-amber-700">같은 날 출고가 같은 거래처·권역으로 겹치는 건 (법인 통합)</span>
+        </div>
+        <div id="consolidationBody" class="p-4 text-sm space-y-2"></div>
+      </div>
+
       <!-- 대신화물 섹션 -->
       <div id="sectionFreight" class="mb-6 ds-card overflow-hidden">
         <div class="flex items-center justify-between px-4 py-3 bg-white border-b border-gray-200">

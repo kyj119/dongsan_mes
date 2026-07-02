@@ -11,6 +11,7 @@ var daesintaekbaeGroups = {};
 var hanjinGroups = {};
 var quickGroups = {};
 var etcGroups = {};
+var shipmentsMultiEntity = false; // P2: 로드된 데이터에 복수 법인 존재 시 법인 배지 표시 (전체모드)
 
 // ========== 발송 상태 ==========
 var selectedShipments = {}; // { 'freight': Set(['key1','key2']), ... }
@@ -150,18 +151,25 @@ async function loadShipmentsByDate() {
           items: [], // 아래 concat에서 모든 shipment(첫 건 포함) items를 1회씩 누적 — s.items로 초기화하면 첫 주문 2배 중복
           item_summaries: [],
           shipments: [],
+          entity_names: {}, // P2: 그룹 내 법인 집합 (배지)
           total_cards: 0,
           done_cards: 0,
           shipped_cards: 0
         };
       }
       map[key].shipments.push(s);
+      if (s.entity_id != null) map[key].entity_names[s.entity_name || ('법인' + s.entity_id)] = true;
       if (s.item_summary) map[key].item_summaries.push(s.item_summary);
       if (s.items && s.items.length) map[key].items = map[key].items.concat(s.items);
       map[key].total_cards += (s.total_cards || 0);
       map[key].done_cards += (s.done_cards || 0);
       map[key].shipped_cards += (s.shipped_cards || 0);
     });
+
+    // P2: 복수 법인 데이터 여부 (관리자 전체모드에서만 true — 법인 배지 노출 조건)
+    var entitySet = {};
+    shipments.forEach(function(s) { if (s.entity_id != null) entitySet[s.entity_id] = true; });
+    shipmentsMultiEntity = Object.keys(entitySet).length > 1;
 
     // 섹션 로드 시 선택 상태 초기화
     selectedShipments = {};
@@ -171,6 +179,7 @@ async function loadShipmentsByDate() {
 
     renderAllSections();
     updateBadges();
+    loadConsolidationCandidates(date); // P2: 합배송 후보 (비동기, 실패해도 본 화면 무관)
   } catch (e) {
     console.error('loadShipmentsByDate error:', e);
     showToast('로드 오류: ' + (e.message || ''), 'error');
@@ -221,6 +230,60 @@ function getDefaultTrackingNumber(grp) {
   return grp.shipments[0] ? (grp.shipments[0].tracking_number || '') : '';
 }
 
+// P2: 법인 배지 (복수 법인 데이터가 로드된 전체모드에서만 표시)
+function shipmentsEntityChips(grp) {
+  if (!shipmentsMultiEntity) return '';
+  var names = Object.keys(grp.entity_names || {});
+  if (!names.length) return '';
+  return names.map(function(n) {
+    return ' <span style="background:#eef2ff;color:#4338ca;font-size:10px;padding:1px 5px;border-radius:8px;white-space:nowrap">' + escapeHtml(n) + '</span>';
+  }).join('');
+}
+
+// ========== P2: 합배송 후보 (법인 통합) ==========
+async function loadConsolidationCandidates(date) {
+  var card = document.getElementById('consolidationCard');
+  var body = document.getElementById('consolidationBody');
+  var cnt = document.getElementById('consolidationCount');
+  if (!card || !body) { console.warn('[shipments] #consolidationCard not found'); return; }
+  try {
+    var res = await axios.get('/api/shipments/consolidation-candidates?date=' + encodeURIComponent(date));
+    var d = (res.data && res.data.success) ? (res.data.data || {}) : {};
+    var sc = d.same_client || [];
+    var sr = d.same_region || [];
+    if (!sc.length && !sr.length) { card.classList.add('hidden'); return; }
+
+    var html = '';
+    sc.forEach(function(g) {
+      var parts = (g.orders || []).map(function(o) {
+        return '<span style="white-space:nowrap">' + escapeHtml(o.entity_name || ('법인' + o.entity_id)) + ' ' + escapeHtml(o.order_number || '') + ' (' + escapeHtml(o.delivery_method || '-') + ')</span>';
+      });
+      html += '<div class="flex items-start gap-2">'
+        + '<span style="background:#fef3c7;color:#92400e;font-size:11px;padding:2px 8px;border-radius:9999px;white-space:nowrap;flex-shrink:0">동일 거래처</span>'
+        + '<div><span class="font-medium">' + escapeHtml(g.client_name) + '</span> '
+        + '<span class="text-gray-600">' + parts.join(' · ') + '</span> '
+        + '<span class="text-xs text-amber-700">→ 합포장·합짐 검토</span></div>'
+        + '</div>';
+    });
+    sr.forEach(function(g) {
+      var parts = (g.orders || []).map(function(o) {
+        return '<span style="white-space:nowrap">' + escapeHtml(o.client_name || '') + ' [' + escapeHtml(o.entity_name || ('법인' + o.entity_id)) + '·' + escapeHtml(o.delivery_method || '-') + ']</span>';
+      });
+      html += '<div class="flex items-start gap-2">'
+        + '<span style="background:#dbeafe;color:#1e40af;font-size:11px;padding:2px 8px;border-radius:9999px;white-space:nowrap;flex-shrink:0">권역 ' + escapeHtml(g.postal_prefix || '') + '**</span>'
+        + '<div><span class="text-gray-600">' + parts.join(' · ') + '</span> '
+        + '<span class="text-xs text-blue-700">→ 동선 묶음 검토</span></div>'
+        + '</div>';
+    });
+    body.innerHTML = html;
+    if (cnt) cnt.textContent = '(거래처 ' + sc.length + ' · 권역 ' + sr.length + ')';
+    card.classList.remove('hidden');
+  } catch (e) {
+    // 403(권한 미달) 등 — 본 화면과 무관하므로 조용히 숨김
+    card.classList.add('hidden');
+  }
+}
+
 // --- 대신화물 ---
 function renderFreightSection() {
   var tbody = document.getElementById('tbody-freight');
@@ -246,7 +309,7 @@ function renderFreightSection() {
 
     return '<tr class="border-t hover:bg-blue-50">'
       + '<td class="px-3 py-2 w-8 text-center"><input type="checkbox" id="cb-freight-' + escapeHtml(key) + '" ' + (isChecked ? 'checked' : '') + ' onchange="toggleShipmentCheck(\'freight\',\'' + escapeHtml(key) + '\',this.checked)" class="rounded"></td>'
-      + '<td class="px-3 py-2 font-medium" title="' + escapeHtml(grp.client_name) + '">' + escapeHtml(grp.client_name)      + '</td>'
+      + '<td class="px-3 py-2 font-medium" title="' + escapeHtml(grp.client_name) + '">' + escapeHtml(grp.client_name) + shipmentsEntityChips(grp) + '</td>'
       + '<td class="px-3 py-2">' + terminalHtml + '</td>'
       + '<td class="px-3 py-2 text-xs text-gray-500 hidden md:table-cell truncate" title="' + escapeHtml(itemSummary) + '">' + escapeHtml(itemSummary) + '</td>'
       + '<td class="px-3 py-2 text-center">'
@@ -284,7 +347,7 @@ function renderDaesintaekbaeSection() {
     // ID 접두어 'd-' 사용: 대신택배 전용 (대신화물과 ID 충돌 방지)
     return '<tr class="border-t hover:bg-green-50">'
       + '<td class="px-3 py-2 w-8 text-center"><input type="checkbox" id="cb-daesintaekbae-' + escapeHtml(key) + '" ' + (isChecked ? 'checked' : '') + ' onchange="toggleShipmentCheck(\'daesintaekbae\',\'' + escapeHtml(key) + '\',this.checked)" class="rounded"></td>'
-      + '<td class="px-3 py-2 font-medium" title="' + escapeHtml(grp.client_name) + '">' + escapeHtml(grp.client_name)      + '</td>'
+      + '<td class="px-3 py-2 font-medium" title="' + escapeHtml(grp.client_name) + '">' + escapeHtml(grp.client_name) + shipmentsEntityChips(grp) + '</td>'
       + '<td class="px-3 py-2 text-sm">'
       + '<input type="text" id="d-addr-' + escapeHtml(key) + '" value="' + escapeHtml(addr) + '"'
       + ' class="ds-input px-2 py-1 text-xs w-full border rounded" placeholder="배송주소">'
@@ -353,7 +416,7 @@ function renderHanjinSection() {
     var isChecked = selectedShipments['hanjin'] && selectedShipments['hanjin'].has(key);
     return '<tr class="border-t hover:bg-orange-50">'
       + '<td class="px-3 py-2 w-8 text-center"><input type="checkbox" id="cb-hanjin-' + escapeHtml(key) + '" ' + (isChecked ? 'checked' : '') + ' onchange="toggleShipmentCheck(\'hanjin\',\'' + escapeHtml(key) + '\',this.checked)" class="rounded"></td>'
-      + '<td class="px-3 py-2 font-medium" title="' + escapeHtml(grp.client_name) + '">' + escapeHtml(grp.client_name)      + '</td>'
+      + '<td class="px-3 py-2 font-medium" title="' + escapeHtml(grp.client_name) + '">' + escapeHtml(grp.client_name) + shipmentsEntityChips(grp) + '</td>'
       + '<td class="px-3 py-2 text-sm text-gray-600 truncate" title="' + escapeHtml(addr || '') + '">' + escapeHtml(addr || '-') + '</td>'
       + '<td class="px-3 py-2">'
       + '<input type="text" id="track-' + escapeHtml(key) + '" value="' + escapeHtml(tracking) + '"'
@@ -380,7 +443,7 @@ function renderQuickSection() {
     var isChecked = selectedShipments['quick'] && selectedShipments['quick'].has(key);
     return '<tr class="border-t hover:bg-gray-50">'
       + '<td class="px-3 py-2 w-8 text-center"><input type="checkbox" id="cb-quick-' + escapeHtml(key) + '" ' + (isChecked ? 'checked' : '') + ' onchange="toggleShipmentCheck(\'quick\',\'' + escapeHtml(key) + '\',this.checked)" class="rounded"></td>'
-      + '<td class="px-3 py-2 font-medium" title="' + escapeHtml(grp.client_name) + '">' + escapeHtml(grp.client_name)      + '</td>'
+      + '<td class="px-3 py-2 font-medium" title="' + escapeHtml(grp.client_name) + '">' + escapeHtml(grp.client_name) + shipmentsEntityChips(grp) + '</td>'
       + '<td class="px-3 py-2 text-sm text-gray-600 truncate" title="' + escapeHtml(grp.receiver_address || '') + '">' + escapeHtml(grp.receiver_address || '-') + '</td>'
       + '<td class="px-3 py-2 text-sm">' + escapeHtml(grp.contact_phone || '-') + '</td>'
       + '<td class="px-3 py-2 text-center">'
@@ -404,7 +467,7 @@ function renderEtcSection() {
   tbody.innerHTML = keys.map(function(key) {
     var grp = etcGroups[key];
     return '<tr class="border-t">'
-      + '<td class="px-3 py-2 font-medium" title="' + escapeHtml(grp.client_name) + '">' + escapeHtml(grp.client_name)      + '</td>'
+      + '<td class="px-3 py-2 font-medium" title="' + escapeHtml(grp.client_name) + '">' + escapeHtml(grp.client_name) + shipmentsEntityChips(grp) + '</td>'
       + '<td class="px-3 py-2 text-xs text-gray-500">' + escapeHtml(grp.delivery_type) + '</td>'
       + '<td class="px-3 py-2 text-xs text-gray-500">' + escapeHtml(grp.courier_name || '-') + '</td>'
       + '<td class="px-3 py-2 text-sm truncate" title="' + escapeHtml(grp.receiver_address || '') + '">' + escapeHtml(grp.receiver_address || '-') + '</td>'
