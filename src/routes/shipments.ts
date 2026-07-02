@@ -142,8 +142,12 @@ shipmentsRouter.get('/daily', async (c) => {
              o.entity_id, en.short_name as entity_name,
              cl.id as client_id, cl.client_name, cl.phone as client_phone, cl.mobile as client_mobile,
              cl.address as client_address, cl.delivery_address,
-             sp.id as shipment_id, sp.tracking_number, sp.label_count, sp.box_count,
-             sp.receiver_address, sp.status as shipment_status,
+             sp.id as shipment_id, sp.merged_into_id,
+             COALESCE(spm.tracking_number, sp.tracking_number) as tracking_number,
+             COALESCE(spm.label_count, sp.label_count) as label_count,
+             COALESCE(spm.box_count, sp.box_count) as box_count,
+             COALESCE(spm.receiver_address, sp.receiver_address) as receiver_address,
+             sp.status as shipment_status,
              COUNT(c.id) as total_cards,
              SUM(CASE WHEN c.status = 'PRINT_DONE' THEN 1 ELSE 0 END) as done_cards,
              SUM(CASE WHEN c.status IN ('RIP_READY', 'PRINTING') THEN 1 ELSE 0 END) as printing_cards,
@@ -155,6 +159,7 @@ shipmentsRouter.get('/daily', async (c) => {
       LEFT JOIN shipments sp ON sp.id = (
         SELECT id FROM shipments WHERE order_id = o.id AND status != 'CANCELLED' ORDER BY id DESC LIMIT 1
       )
+      LEFT JOIN shipments spm ON spm.id = sp.merged_into_id
       WHERE o.delivery_date = ? AND o.status NOT IN ('CANCELLED', 'DELETED', 'DRAFT')${efDaily.clause}
       GROUP BY o.id
       ORDER BY o.delivery_time ASC NULLS LAST, o.delivery_method ASC, cl.client_name ASC
@@ -222,17 +227,22 @@ shipmentsRouter.get('/consolidation-candidates', requireRole('ADMIN', 'MANAGER')
       id: number; order_number: string; entity_id: number | null; entity_name: string | null
       delivery_method: string | null; delivery_time: string | null; delivery_info: string | null
       shipping_payment: string | null; client_id: number; client_name: string; postal_code: string | null
+      shipment_id: number | null; merged_into_id: number | null
     }
     const { results } = await c.env.DB.prepare(`
       SELECT o.id, o.order_number, o.entity_id, en.short_name as entity_name,
              o.delivery_method, o.delivery_time, o.delivery_info, o.shipping_payment,
              cl.id as client_id, cl.client_name,
+             sp.id as shipment_id, sp.merged_into_id,
              CASE WHEN substr(o.delivery_info, 1, 1) = '[' AND substr(o.delivery_info, 7, 1) = ']'
                        AND substr(o.delivery_info, 2, 5) GLOB '[0-9][0-9][0-9][0-9][0-9]'
                   THEN substr(o.delivery_info, 2, 5) ELSE NULL END as postal_code
       FROM orders o
       JOIN clients cl ON o.client_id = cl.id
       LEFT JOIN entities en ON en.id = o.entity_id
+      LEFT JOIN shipments sp ON sp.id = (
+        SELECT id FROM shipments WHERE order_id = o.id AND status != 'CANCELLED' ORDER BY id DESC LIMIT 1
+      )
       WHERE o.delivery_date = ? AND o.status NOT IN ('CANCELLED', 'DELETED', 'DRAFT', 'QUOTATION')
       ORDER BY cl.client_name ASC, o.entity_id ASC
     `).bind(targetDate).all<ConsolidationRow>()
@@ -247,10 +257,14 @@ shipmentsRouter.get('/consolidation-candidates', requireRole('ADMIN', 'MANAGER')
     for (const rows of byClient.values()) {
       const entities = new Set(rows.map(r => r.entity_id))
       if (entities.size >= 2) {
+        // P3: 묶음 상태 — 전 주문의 실효 대표(merged_into || 자신)가 하나로 수렴하면 합포장 완료
+        const primaries = new Set(rows.map(r => r.shipment_id ? (r.merged_into_id || r.shipment_id) : null))
+        const merged = !primaries.has(null) && primaries.size === 1 && rows.length >= 2
         sameClient.push({
           client_id: rows[0].client_id,
           client_name: rows[0].client_name,
           entity_count: entities.size,
+          merged,
           orders: rows,
         })
       }
@@ -279,6 +293,89 @@ shipmentsRouter.get('/consolidation-candidates', requireRole('ADMIN', 'MANAGER')
     return c.json({ success: true, data: { date: targetDate, same_client: sameClient, same_region: sameRegion } })
   } catch (error) {
     console.error('shipments consolidation-candidates error:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
+  }
+})
+
+// ============================================================================
+// POST /merge - 동일 거래처 합포장 묶음 (P3)
+// 같은 날 + 같은 거래처의 복수 주문(법인 무관)을 한 박스로 묶는다.
+// 각 주문의 shipment는 유지, 대표(최소 shipment id) 외에는 merged_into_id로 연결.
+// 송장/라벨수량/수신자주소 쓰기는 대표로 리다이렉트(applyShipmentFieldPatch).
+// ============================================================================
+shipmentsRouter.post('/merge', requireRole('ADMIN', 'MANAGER'), async (c) => {
+  try {
+    const user = c.get('user')
+    const { order_ids } = await c.req.json<{ order_ids: number[] }>()
+    if (!Array.isArray(order_ids) || order_ids.length < 2) {
+      return c.json({ success: false, error: '묶을 주문을 2건 이상 지정하세요.' }, 400)
+    }
+
+    // 같은 거래처 + 같은 납품일 검증 (한 박스 전제)
+    const ph = order_ids.map(() => '?').join(',')
+    const { results: orders } = await c.env.DB.prepare(
+      `SELECT id, client_id, delivery_date FROM orders WHERE id IN (${ph})`
+    ).bind(...order_ids).all<{ id: number; client_id: number; delivery_date: string | null }>()
+    if (orders.length !== order_ids.length) {
+      return c.json({ success: false, error: '존재하지 않는 주문이 포함되어 있습니다.' }, 404)
+    }
+    if (new Set(orders.map(o => o.client_id)).size > 1) {
+      return c.json({ success: false, error: '같은 거래처의 주문만 합포장할 수 있습니다.' }, 400)
+    }
+    if (new Set(orders.map(o => o.delivery_date || '')).size > 1) {
+      return c.json({ success: false, error: '납품일이 같은 주문만 합포장할 수 있습니다.' }, 400)
+    }
+
+    // shipment 확보 (미출고 주문은 PREPARING 생성)
+    const shipmentIds: number[] = []
+    for (const o of orders) {
+      const sid = await ensureShipmentForOrder(c.env.DB, o.id, { userId: user?.id ?? null, fallbackEntityId: getEntityId(c) || 1, status: 'PREPARING' })
+      if (!sid) return c.json({ success: false, error: `주문 ${o.id}의 출고 정보를 생성할 수 없습니다.` }, 500)
+      shipmentIds.push(sid)
+    }
+
+    const primaryId = Math.min(...shipmentIds)
+    const childIds = shipmentIds.filter(sid => sid !== primaryId)
+    const stmts = [
+      c.env.DB.prepare(`UPDATE shipments SET merged_into_id = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?`).bind(primaryId),
+      ...childIds.map(sid =>
+        c.env.DB.prepare(`UPDATE shipments SET merged_into_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`).bind(primaryId, sid)
+      ),
+      // 부속이 기존에 다른 묶음의 대표였다면 그 자식들도 새 대표로 재지정 (체인 방지)
+      ...(childIds.length > 0
+        ? [c.env.DB.prepare(`UPDATE shipments SET merged_into_id = ? WHERE merged_into_id IN (${childIds.map(() => '?').join(',')})`).bind(primaryId, ...childIds)]
+        : []),
+    ]
+    await c.env.DB.batch(stmts)
+
+    return c.json({ success: true, data: { primary_shipment_id: primaryId, merged: childIds.length }, message: `${order_ids.length}건 합포장 묶음 완료` })
+  } catch (error) {
+    console.error('shipments merge error:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
+  }
+})
+
+// ============================================================================
+// POST /unmerge - 합포장 해제 (그룹 전체 해제)
+// ============================================================================
+shipmentsRouter.post('/unmerge', requireRole('ADMIN', 'MANAGER'), async (c) => {
+  try {
+    const { order_id } = await c.req.json<{ order_id: number }>()
+    if (!order_id) return c.json({ success: false, error: 'order_id가 필요합니다.' }, 400)
+
+    const shipment = await c.env.DB.prepare(
+      `SELECT id, merged_into_id FROM shipments WHERE order_id = ? AND status != 'CANCELLED' ORDER BY id DESC LIMIT 1`
+    ).bind(order_id).first<{ id: number; merged_into_id: number | null }>()
+    if (!shipment) return c.json({ success: false, error: '출고 정보를 찾을 수 없습니다.' }, 404)
+
+    const primaryId = shipment.merged_into_id || shipment.id
+    const res = await c.env.DB.prepare(
+      `UPDATE shipments SET merged_into_id = NULL, updated_at = CURRENT_TIMESTAMP WHERE merged_into_id = ?`
+    ).bind(primaryId).run()
+
+    return c.json({ success: true, data: { released: res.meta.changes ?? 0 }, message: '합포장이 해제되었습니다.' })
+  } catch (error) {
+    console.error('shipments unmerge error:', error)
     return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
   }
 })
@@ -651,6 +748,10 @@ interface ShipmentPatchBody {
 }
 
 async function applyShipmentFieldPatch(db: HonoEnv['Bindings']['DB'], shipmentId: number, body: ShipmentPatchBody): Promise<boolean> {
+  // P3 합포장: 부속 shipment는 대표로 리다이렉트 (송장/라벨수량/수신자 정본 = 대표)
+  const merged = await db.prepare(`SELECT merged_into_id FROM shipments WHERE id = ?`).bind(shipmentId).first<{ merged_into_id: number | null }>()
+  if (merged?.merged_into_id) shipmentId = merged.merged_into_id
+
   const updates: string[] = []
   const params: any[] = []
 

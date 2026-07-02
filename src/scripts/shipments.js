@@ -240,7 +240,9 @@ function shipmentsEntityChips(grp) {
   }).join('');
 }
 
-// ========== P2: 합배송 후보 (법인 통합) ==========
+// ========== P2/P3: 합배송 후보 (법인 통합) + 합포장 묶음 ==========
+var shipmentsConsolidation = { same_client: [], same_region: [] }; // P3: 버튼 onclick 인덱스 참조용
+
 async function loadConsolidationCandidates(date) {
   var card = document.getElementById('consolidationCard');
   var body = document.getElementById('consolidationBody');
@@ -251,18 +253,24 @@ async function loadConsolidationCandidates(date) {
     var d = (res.data && res.data.success) ? (res.data.data || {}) : {};
     var sc = d.same_client || [];
     var sr = d.same_region || [];
+    shipmentsConsolidation = { same_client: sc, same_region: sr };
     if (!sc.length && !sr.length) { card.classList.add('hidden'); return; }
 
     var html = '';
-    sc.forEach(function(g) {
+    sc.forEach(function(g, idx) {
       var parts = (g.orders || []).map(function(o) {
         return '<span style="white-space:nowrap">' + escapeHtml(o.entity_name || ('법인' + o.entity_id)) + ' ' + escapeHtml(o.order_number || '') + ' (' + escapeHtml(o.delivery_method || '-') + ')</span>';
       });
+      // P3: 묶음 상태별 액션 버튼
+      var actionHtml = g.merged
+        ? '<span class="text-xs" style="color:#15803d;white-space:nowrap"><i class="fas fa-check mr-1"></i>합포장됨</span> '
+          + '<button onclick="unmergeConsolidation(' + idx + ')" class="px-2 py-0.5 text-xs border border-gray-300 text-gray-600 rounded hover:bg-gray-50">해제</button>'
+        : '<button onclick="mergeConsolidation(' + idx + ')" class="px-2 py-0.5 text-xs bg-amber-600 text-white rounded hover:bg-amber-700"><i class="fas fa-box mr-1"></i>한 박스로 묶기</button>';
       html += '<div class="flex items-start gap-2">'
         + '<span style="background:#fef3c7;color:#92400e;font-size:11px;padding:2px 8px;border-radius:9999px;white-space:nowrap;flex-shrink:0">동일 거래처</span>'
-        + '<div><span class="font-medium">' + escapeHtml(g.client_name) + '</span> '
-        + '<span class="text-gray-600">' + parts.join(' · ') + '</span> '
-        + '<span class="text-xs text-amber-700">→ 합포장·합짐 검토</span></div>'
+        + '<div class="flex-1"><span class="font-medium">' + escapeHtml(g.client_name) + '</span> '
+        + '<span class="text-gray-600">' + parts.join(' · ') + '</span></div>'
+        + '<div class="flex items-center gap-2" style="flex-shrink:0">' + actionHtml + '</div>'
         + '</div>';
     });
     sr.forEach(function(g) {
@@ -281,6 +289,42 @@ async function loadConsolidationCandidates(date) {
   } catch (e) {
     // 403(권한 미달) 등 — 본 화면과 무관하므로 조용히 숨김
     card.classList.add('hidden');
+  }
+}
+
+// P3: 동일 거래처 합포장 묶기/해제
+async function mergeConsolidation(idx) {
+  var g = (shipmentsConsolidation.same_client || [])[idx];
+  if (!g || !g.orders || !g.orders.length) return;
+  var ids = g.orders.map(function(o) { return o.id; });
+  if (!(await showConfirm(g.client_name + ' 주문 ' + ids.length + '건을 한 박스로 묶을까요?\n(송장번호·라벨은 대표 출고 1건으로 관리됩니다)'))) return;
+  try {
+    var res = await axios.post('/api/shipments/merge', { order_ids: ids });
+    if (res.data.success) {
+      showToast(res.data.message || '합포장 묶음 완료', 'success');
+      loadShipmentsByDate();
+    } else {
+      showToast(res.data.error || '묶음 실패', 'error');
+    }
+  } catch (e) {
+    showToast('묶음 실패: ' + ((e.response && e.response.data && e.response.data.error) || e.message), 'error');
+  }
+}
+
+async function unmergeConsolidation(idx) {
+  var g = (shipmentsConsolidation.same_client || [])[idx];
+  if (!g || !g.orders || !g.orders.length) return;
+  if (!(await showConfirm(g.client_name + ' 합포장을 해제할까요?'))) return;
+  try {
+    var res = await axios.post('/api/shipments/unmerge', { order_id: g.orders[0].id });
+    if (res.data.success) {
+      showToast(res.data.message || '합포장 해제 완료', 'success');
+      loadShipmentsByDate();
+    } else {
+      showToast(res.data.error || '해제 실패', 'error');
+    }
+  } catch (e) {
+    showToast('해제 실패: ' + ((e.response && e.response.data && e.response.data.error) || e.message), 'error');
   }
 }
 
