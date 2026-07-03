@@ -148,7 +148,7 @@ export function productionPage(c: Context<HonoEnv>) {
               <span class="text-gray-300 text-[10px]">~</span>
               <input id="evFilterTo" type="date" onchange="applyEventFilters()" class="border rounded px-2 py-1 text-xs" title="종료일">
             </div>
-            <button onclick="resetEventFilters()" class="px-2 py-1 text-[10px] text-gray-400 hover:text-gray-600" title="필터 초기화">
+            <button onclick="resetEventFilters()" class="px-2 py-1 text-[10px] text-gray-400 hover:text-gray-600" title="필터 초기화 (기간: 최근 7일)">
               <i class="fas fa-times mr-0.5"></i>초기화
             </button>
           </div>

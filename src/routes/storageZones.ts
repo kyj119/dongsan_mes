@@ -115,9 +115,9 @@ storageZonesRouter.post('/', requireRole('ADMIN'), async (c) => {
       return c.json({ success: false, error: '구역명을 입력해주세요.' }, 400)
     }
 
-    // #417: body.entity_id 무가드 신뢰 차단 — 같은 파일 PUT(#368)과 대칭. entity_id 지정은 전체모드(0)에서만 허용.
-    // 비전체모드 ADMIN은 자기 법인에만 생성(create로 #368 이관차단 우회 방지).
-    const entityId = (getEntityId(c) === 0 && body.entity_id != null) ? body.entity_id : (getEntityId(c) || 1)
+    // #417 대칭 완화: 본 라우트는 requireRole('ADMIN') 게이트 — 목록 all_entities·PUT/DELETE와 동일 신뢰로
+    // 모달 법인 드롭다운의 entity_id를 존중(비전체모드에서 타법인 선택 시 자기 법인에 잘못 생성되던 문제 해소).
+    const entityId = body.entity_id != null ? body.entity_id : (getEntityId(c) || 1)
 
     // 중복 체크 (같은 법인 내)
     const exists = await c.env.DB.prepare(
@@ -171,12 +171,13 @@ storageZonesRouter.put('/:id', requireRole('ADMIN'), async (c) => {
       facility_zone_id?: number | null
     }>()
 
-    const ef = entityFilter(c)  // #368: 타법인 구역 수정 차단
-    const zone = await c.env.DB.prepare('SELECT id, entity_id FROM storage_zones WHERE id = ?' + ef.clause).bind(id, ...ef.params).first<{ id: number; entity_id: number }>()
+    // #368 대칭 완화: 목록(GET all_entities=1)이 ADMIN에 전 법인을 노출하는데 수정만 세션 법인 필터를
+    // 타면 타법인 창고 수정이 404. 본 라우트는 requireRole('ADMIN') 게이트라 동일 신뢰로 필터 생략.
+    const zone = await c.env.DB.prepare('SELECT id, entity_id FROM storage_zones WHERE id = ?').bind(id).first<{ id: number; entity_id: number }>()
     if (!zone) return c.json({ success: false, error: '구역을 찾을 수 없습니다.' }, 404)
 
-    // #368: entity_id 재배정은 전체모드(0)에서만 허용 — 비전체모드 ADMIN은 타법인 이관 불가
-    const entityId = (getEntityId(c) === 0 && body.entity_id != null) ? body.entity_id : zone.entity_id
+    // entity_id 재배정도 ADMIN 신뢰 (수정 모달 법인 드롭다운과 정합)
+    const entityId = body.entity_id != null ? body.entity_id : zone.entity_id
 
     // 이름 중복 체크 (같은 법인 내, 자기 자신 제외)
     if (body.zone_name) {
@@ -231,8 +232,8 @@ storageZonesRouter.delete('/:id', requireRole('ADMIN'), async (c) => {
   try {
     const id = c.req.param('id')
 
-    const ef = entityFilter(c)  // #368: 타법인 구역 삭제 차단
-    const zone = await c.env.DB.prepare('SELECT id, zone_name FROM storage_zones WHERE id = ?' + ef.clause).bind(id, ...ef.params).first<{ id: number; zone_name: string }>()
+    // #368 대칭 완화: PUT과 동일 — requireRole('ADMIN') 게이트, 목록 all_entities 신뢰와 대칭으로 필터 생략.
+    const zone = await c.env.DB.prepare('SELECT id, zone_name FROM storage_zones WHERE id = ?').bind(id).first<{ id: number; zone_name: string }>()
     if (!zone) return c.json({ success: false, error: '구역을 찾을 수 없습니다.' }, 404)
 
     // 배정된 품목 확인
