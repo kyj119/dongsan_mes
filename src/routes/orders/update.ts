@@ -213,6 +213,9 @@ ordersUpdateRouter.put('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
         c.env.DB.prepare('DELETE FROM card_items WHERE card_id IN (SELECT id FROM cards WHERE order_id = ?)').bind(id),
         c.env.DB.prepare('DELETE FROM cards WHERE order_id = ?').bind(id),
         c.env.DB.prepare("DELETE FROM auto_process_jobs WHERE order_id = ? AND status IN ('pending','processing','failed')").bind(id),
+        // #480: 검수 기록(shipment_checks, 0439)이 order_item_id FK로 물려 있으면 order_items 삭제가 FK throw
+        //   → 라인 통째 교체이므로 구 라인 검수 기록도 함께 정리 (재검수 필요 — checklist GET이 새 라인 재스냅샷)
+        c.env.DB.prepare('DELETE FROM shipment_checks WHERE order_item_id IN (SELECT id FROM order_items WHERE order_id = ?)').bind(id),
         c.env.DB.prepare('DELETE FROM order_items WHERE order_id = ?').bind(id),
       ])
     }
@@ -234,6 +237,8 @@ ordersUpdateRouter.put('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
         quantity: m.quantity,
       }))
 
+      // #480: 카드 보존 경로도 동일 — 구 라인 검수 기록(shipment_checks) 선정리 (FK throw 방지)
+      await c.env.DB.prepare('DELETE FROM shipment_checks WHERE order_item_id IN (SELECT id FROM order_items WHERE order_id = ?)').bind(id).run()
       await c.env.DB.prepare('DELETE FROM order_items WHERE order_id = ?').bind(id).run()
     }
 
