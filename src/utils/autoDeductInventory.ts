@@ -181,8 +181,7 @@ export async function autoDeductInventory(
       if (orderRow?.entity_id) entityId = orderRow.entity_id
     }
 
-    // UP2: 공간인식 소모 — 출력 장비(print_event.equipment_id, 폴백 card.equipment_id)가 배치된
-    //   구역의 창고에서 차감. 장비 미배선/창고 부재 시 자재 품목 기본창고로 폴백(현행 동작).
+    // 차감 창고 = 자재 품목 기본창고 (0439: facility_zone 매핑 폐기로 장비위치 경유 해석 제거, 동작 불변).
     //   ⚠️ 수량(deductedLengthYd)·자재선택은 불변 — zone(출처 창고)만 결정.
     const zoneId = await resolveDeductionZone(db, {
       equipmentId: printEvent.equipment_id || card.equipment_id,

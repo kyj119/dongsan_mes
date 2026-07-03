@@ -179,19 +179,13 @@ function renderZones() {
     container.innerHTML = zones.map(function(z) {
         var b = parseBounds(z.bounds);
         var color = z.color || '#94a3b8';
-        // 우상단: 편집모드=이름/삭제 버튼, 평소=재고 배지(P2, storage_zone 경유 집계)
-        var topRight;
+        // 우상단: 편집모드=이름/삭제 버튼 (0439: 재고 배지는 /storage-zones 배치도 탭으로 이관)
+        var topRight = '';
         if (editMode) {
             topRight = '<span style="position:absolute;right:3px;top:3px;display:flex;gap:2px;pointer-events:auto;">'
                 + '<button data-zone-btn onclick="event.stopPropagation();editZone(' + z.id + ')" title="이름·색상 편집" style="font-size:9px;background:rgba(255,255,255,0.95);border:1px solid #e5e7eb;border-radius:3px;width:18px;height:18px;line-height:1;cursor:pointer;color:#475569;"><i class="fas fa-pen"></i></button>'
                 + '<button data-zone-btn onclick="event.stopPropagation();deleteZone(' + z.id + ')" title="구역 삭제" style="font-size:9px;background:rgba(255,255,255,0.95);border:1px solid #fecaca;border-radius:3px;width:18px;height:18px;line-height:1;cursor:pointer;color:#dc2626;"><i class="fas fa-trash"></i></button>'
                 + '</span>';
-        } else {
-            var invItems = z.inv_item_count || 0;
-            var invShort = z.inv_shortage_count || 0;
-            topRight = invItems > 0
-                ? '<span onclick="event.stopPropagation();showZoneInventory(' + z.id + ')" style="position:absolute;right:4px;top:3px;pointer-events:auto;cursor:pointer;font-size:10px;font-weight:600;background:rgba(255,255,255,0.92);padding:1px 6px;border-radius:3px;border:1px solid ' + (invShort > 0 ? '#fecaca' : '#bbf7d0') + ';color:' + (invShort > 0 ? '#dc2626' : '#16a34a') + ';" title="재고 상세 보기"><i class="fas fa-boxes" style="margin-right:2px;"></i>' + invItems + (invShort > 0 ? ' · ⚠' + invShort : '') + '</span>'
-                : '';
         }
         var resizeHandle = editMode
             ? '<div data-zone-resize style="position:absolute;right:-1px;bottom:-1px;width:14px;height:14px;background:' + color + ';border:2px solid #fff;border-radius:3px;cursor:se-resize;pointer-events:auto;"></div>'
@@ -332,77 +326,7 @@ async function deleteZone(id) {
     }
 }
 
-// ─── 영역 재고 상세 (P2: facility_zone → storage_zone 경유 품목 재고) ──────────
-async function showZoneInventory(zoneId) {
-    var modal = document.getElementById('zoneInvModal');
-    var body = document.getElementById('zoneInvBody');
-    var titleEl = document.getElementById('zoneInvTitle');
-    if (!modal || !body) { console.warn('[equipment] #zoneInvModal not found'); return; }
-    var zone = (zones || []).find(function(z) { return z.id === zoneId; });
-    if (titleEl) titleEl.textContent = (zone ? zone.name : '구역') + ' — 재고';
-    body.innerHTML = '<div class="text-center py-6 text-gray-400"><i class="fas fa-spinner fa-spin"></i></div>';
-    modal.classList.remove('hidden');
-    try {
-        var res = await axios.get('/api/facility/zones/' + zoneId + '/inventory');
-        var rows = res.data.success ? res.data.data : [];
-        if (!rows.length) {
-            body.innerHTML = '<div class="text-center py-8 text-gray-400 text-sm">이 영역에 매핑된 창고·품목이 없습니다.<br><span class="text-xs">설정 &gt; 창고 구역에서 창고에 이 배치도 영역을 지정하세요.</span></div>';
-            return;
-        }
-        var groups = {};
-        rows.forEach(function(r) { var k = r.storage_zone_id; if (!groups[k]) groups[k] = { name: r.zone_name, manager: r.manager_name, items: [] }; groups[k].items.push(r); });
-        var html = '';
-        Object.keys(groups).forEach(function(k) {
-            var g = groups[k];
-            var short = g.items.filter(function(it) { return it.safe_stock > 0 && it.quantity <= it.safe_stock; }).length;
-            html += '<div class="mb-4"><div class="flex items-center gap-2 mb-1.5">'
-                + '<span class="font-bold text-sm text-gray-800">' + escapeHtml(g.name) + '</span>'
-                + (g.manager ? '<span class="text-xs text-gray-400"><i class="fas fa-user mr-0.5"></i>' + escapeHtml(g.manager) + '</span>' : '')
-                + (short > 0 ? '<span class="text-xs text-red-600 font-medium"><i class="fas fa-exclamation-triangle mr-0.5"></i>부족 ' + short + '</span>' : '')
-                + '<span class="text-xs text-gray-400 ml-auto">' + g.items.length + '개 품목</span>'
-                + '<button onclick="event.stopPropagation();eqStartZoneCount(' + k + ')" class="text-xs px-2 py-0.5 rounded bg-blue-50 text-blue-700 hover:bg-blue-100 font-medium whitespace-nowrap" title="이 창고 구역을 대상으로 재고 실사를 시작합니다"><i class="fas fa-clipboard-check mr-1"></i>이 구역 실사</button>'
-                + '</div>';
-            html += '<table class="w-full text-xs"><thead><tr class="text-gray-400 border-b"><th class="text-left py-1 font-medium">품목</th><th class="text-right py-1 font-medium">현재고</th><th class="text-right py-1 font-medium">안전</th></tr></thead><tbody>';
-            g.items.forEach(function(it) {
-                var low = it.safe_stock > 0 && it.quantity <= it.safe_stock;
-                html += '<tr class="border-b border-gray-50"><td class="py-1" title="' + escapeHtml(it.item_name || '') + '">' + escapeHtml(it.item_name || '') + '</td>'
-                    + '<td class="py-1 text-right font-semibold ' + (low ? 'text-red-600' : 'text-gray-700') + '">' + (it.quantity || 0) + ' ' + escapeHtml(it.unit || '') + '</td>'
-                    + '<td class="py-1 text-right text-gray-400">' + (it.safe_stock || 0) + '</td></tr>';
-            });
-            html += '</tbody></table></div>';
-        });
-        body.innerHTML = html;
-    } catch (e) {
-        body.innerHTML = '<div class="text-center py-6 text-red-500 text-sm">재고 로딩 실패</div>';
-    }
-}
-
-function closeZoneInvModal() {
-    var m = document.getElementById('zoneInvModal');
-    if (m) m.classList.add('hidden');
-}
-
-// ─── P3: 구역 기반 재고 실사 진입 ───────────────────────────────────────────
-// 배치도 영역 모달의 창고(storage_zone)별 "이 구역 실사" 버튼 → ZONE 실사 생성 후 재고실사 상세로 이동.
-async function eqStartZoneCount(storageZoneId) {
-    try {
-        var res = await axios.post('/api/inventory-counts', { storage_zone_id: storageZoneId });
-        if (res.data && res.data.success && res.data.data) {
-            var d = res.data.data;
-            var zname = d.storage_zone_name || '';
-            var cnt = (d.item_count != null) ? ' (' + d.item_count + '건)' : '';
-            showToast('구역 실사 생성: ' + (zname || d.count_number || '') + cnt, 'success');
-            // 재고실사 UI = /inventory 의 재고실사 탭(#tab=count). openCount 파라미터로 해당 실사 자동 오픈.
-            window.location.href = '/inventory?openCount=' + d.id + '#tab=count';
-        } else {
-            showToast('구역 실사 생성 실패', 'error');
-        }
-    } catch (e) {
-        var msg = (e.response && e.response.data && e.response.data.error) ? e.response.data.error : e.message;
-        if (e.response && e.response.status === 403) msg = '권한이 없습니다 (관리자/매니저 전용).';
-        showToast('구역 실사 생성 실패: ' + msg, 'error');
-    }
-}
+// (0439: 영역 재고 상세·구역 실사 진입은 /storage-zones 배치도 탭으로 이관 — showZoneInventory/eqStartZoneCount 제거)
 
 // ─── 도면 배경 (R2 blob) ─────────────────────────────────────────────────────
 
@@ -1567,12 +1491,11 @@ document.addEventListener('click', function(e) {
 (function() {
     var params = new URLSearchParams(window.location.search);
     var tab = params.get('tab');
+    // equipList는 전 탭 공용(목록 렌더 + 배치도 장비 카드) — 딥링크에서도 항상 로드.
+    // (기존: queue만 로드 → ?tab=layout 딥링크(/facility 리다이렉트 포함) 시 장비 카드 미표시 버그)
+    loadEquipment();
     if (tab === 'dashboard' || tab === 'layout' || tab === 'queue') {
         currentTab = tab;
-        // 큐 탭도 목록 데이터(equipList)는 필요 없지만, 목록 렌더를 위해 백그라운드 로드
-        if (tab === 'queue') loadEquipment();
         switchTab(tab);
-    } else {
-        loadEquipment();
     }
 })();
