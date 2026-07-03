@@ -1,4 +1,4 @@
--- 0439: 창고 배치도 독립 — storage_zones에 자체 좌표·색상 부여
+-- 0440: 창고 배치도 독립 — storage_zones에 자체 좌표·색상 부여
 -- 설계: 창고는 생산 현장과 물리적으로 분리된 공간 → 공장 배치도(facility_zones) 경유 매핑(0391) 대신
 --       창고 전용 도면(facility_settings 'storage_background_image') 위에 창고 구역을 직접 배치.
 --       storage_zones.facility_zone_id(0391)는 deprecated — D1 FK 컬럼 제거 불가(0335→0337 교훈)라

@@ -433,7 +433,7 @@ export function equipmentPage(c: Context<HonoEnv>) {
             </div>
         </div>
 
-        <!-- (0439: 배치도 영역 재고 상세 모달 제거 — /storage-zones 배치도 탭으로 이관) -->
+        <!-- (0440: 배치도 영역 재고 상세 모달 제거 — /storage-zones 배치도 탭으로 이관) -->
 
         <!-- 장비 추가/수정 모달 -->
         <div id="equipModal" class="ds-modal-overlay hidden">

@@ -74,7 +74,7 @@ export async function getItemDefaultZones(db: D1Database, itemIds: number[], ent
 }
 
 // ── UP2: 소모(차감) 대상 창고 해석 ──────────────────────────────────────────
-// 0439: 창고 배치도 독립으로 facility_zone 매핑(0391) deprecated → 구 체인
+// 0440: 창고 배치도 독립으로 facility_zone 매핑(0391) deprecated → 구 체인
 //   (equipment.zone_id → storage_zones.facility_zone_id) 제거. prod 매핑 0건이라
 //   실동작은 항상 품목 기본창고 폴백이었음 = 동작 불변.
 // 공간인식 소모를 재도입하려면 equipment → storage_zone 직접 링크(신규 컬럼)로 재배선할 것.

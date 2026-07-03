@@ -22,7 +22,7 @@ export function storageZonesPage(c: Context<HonoEnv>) {
     </div>
   </div>
 
-  <!-- 탭: 목록 / 배치도 (0439 창고 배치도 독립) -->
+  <!-- 탭: 목록 / 배치도 (0440 창고 배치도 독립) -->
   <div class="flex items-center gap-1 border-b border-gray-200">
     <button id="szTabList" onclick="szSwitchTab('list')" class="px-4 py-2 text-sm font-semibold text-blue-600 border-b-2 border-blue-600 -mb-px">
       <i class="fas fa-list mr-1"></i>목록
@@ -57,7 +57,7 @@ export function storageZonesPage(c: Context<HonoEnv>) {
   </div>
   </div>
 
-  <!-- 배치도 탭 (0439: 창고 전용 도면 위 storage_zones.bounds 직접 배치) -->
+  <!-- 배치도 탭 (0440: 창고 전용 도면 위 storage_zones.bounds 직접 배치) -->
   <div id="szPanelLayout" class="hidden">
     <div class="ds-card p-4">
       <div class="flex items-center justify-between mb-3 gap-2 flex-wrap">

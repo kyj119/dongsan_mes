@@ -179,7 +179,7 @@ function renderZones() {
     container.innerHTML = zones.map(function(z) {
         var b = parseBounds(z.bounds);
         var color = z.color || '#94a3b8';
-        // 우상단: 편집모드=이름/삭제 버튼 (0439: 재고 배지는 /storage-zones 배치도 탭으로 이관)
+        // 우상단: 편집모드=이름/삭제 버튼 (0440: 재고 배지는 /storage-zones 배치도 탭으로 이관)
         var topRight = '';
         if (editMode) {
             topRight = '<span style="position:absolute;right:3px;top:3px;display:flex;gap:2px;pointer-events:auto;">'
@@ -326,7 +326,7 @@ async function deleteZone(id) {
     }
 }
 
-// (0439: 영역 재고 상세·구역 실사 진입은 /storage-zones 배치도 탭으로 이관 — showZoneInventory/eqStartZoneCount 제거)
+// (0440: 영역 재고 상세·구역 실사 진입은 /storage-zones 배치도 탭으로 이관 — showZoneInventory/eqStartZoneCount 제거)
 
 // ─── 도면 배경 (R2 blob) ─────────────────────────────────────────────────────
 

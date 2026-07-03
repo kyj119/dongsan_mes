@@ -9,7 +9,7 @@ import { validateUpload } from '../utils/uploadValidation'
 //   → entityFilter(e)/cardEntityFilter(c) 적용. ADMIN 전체모드(entityId=0)는 필터 생략(현행 동작 유지).
 // - facility_zones·facility_settings·agent_heartbeats = entity_id 없음 = 전사 공용
 //   (물리 구역/시설설정/모니터링은 법인 무관 단일 시설 데이터).
-// 0439: 창고 배치도 독립 — 재고 오버레이(storage_zones 매핑 경유)·inventory_locations 레거시 제거.
+// 0440: 창고 배치도 독립 — 재고 오버레이(storage_zones 매핑 경유)·inventory_locations 레거시 제거.
 //   창고 배치도 = /storage-zones 배치도 탭 (storage_zones.bounds + 창고 전용 도면).
 const facilityRouter = new Hono<HonoEnv>()
 facilityRouter.use('/*', authMiddleware)

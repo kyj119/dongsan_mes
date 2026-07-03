@@ -27,7 +27,7 @@ storageZonesRouter.get('/', async (c) => {
       params.push(entityId)
     }
 
-    // 0439: facility_zones 매핑(facility_zone_name) 표시 제거 — 창고 배치도 독립(자체 bounds)
+    // 0440: facility_zones 매핑(facility_zone_name) 표시 제거 — 창고 배치도 독립(자체 bounds)
     const sql = `
       SELECT sz.*, u.name as manager_name, e.short_name as entity_name,
         (SELECT COUNT(*) FROM items WHERE storage_zone_id = sz.id AND is_active = 1) as item_count
@@ -64,7 +64,7 @@ storageZonesRouter.get('/my', async (c) => {
 })
 
 // ============================================================================
-// 창고 배치도 (0439: 창고 전용 도면 + 자체 bounds — facility_zones 매핑 대체)
+// 창고 배치도 (0440: 창고 전용 도면 + 자체 bounds — facility_zones 매핑 대체)
 // ============================================================================
 
 // GET /api/storage-zones/layout-data - 배치도용 창고 목록 + 재고 집계 + 도면 키

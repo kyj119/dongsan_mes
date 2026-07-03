@@ -181,7 +181,7 @@ export async function autoDeductInventory(
       if (orderRow?.entity_id) entityId = orderRow.entity_id
     }
 
-    // 차감 창고 = 자재 품목 기본창고 (0439: facility_zone 매핑 폐기로 장비위치 경유 해석 제거, 동작 불변).
+    // 차감 창고 = 자재 품목 기본창고 (0440: facility_zone 매핑 폐기로 장비위치 경유 해석 제거, 동작 불변).
     //   ⚠️ 수량(deductedLengthYd)·자재선택은 불변 — zone(출처 창고)만 결정.
     const zoneId = await resolveDeductionZone(db, {
       equipmentId: printEvent.equipment_id || card.equipment_id,
