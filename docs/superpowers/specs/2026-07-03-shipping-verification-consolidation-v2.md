@@ -1,7 +1,7 @@
 # 출고관리 고도화 v2 — 포장 검수(누락 방지) + 합배송 범위 확장
 
 - **작성일**: 2026-07-03
-- **상태**: ✅ **P1~P4 구현·로컬 검증 완료 (2026-07-03, worktree `session/shipping-verify` 커밋 `cd492fd6`)** — ⛔**배포 대기**: prod D1 마이그 0439 적용이 권한 게이트에서 차단됨. **0439 remote 적용 전에는 push/배포 금지**(0438 사고 동일 패턴: /daily가 shipment_checks 참조 → 테이블 없이 코드만 prod 도달 시 /shipments 500). 배포 = 하단 §배포 절차.
+- **상태**: ✅ **P1~P4 prod 배포완료 (2026-07-03)** — 순서 준수: 0439 remote 적용·검증(테이블 6컬럼·/pack 권한 2건) → push `82dddf2a..2efd34de`→main → deploy `4723f7db` → **apex 검증 14/14**(pack/shipments 마커·checklist/candidates 401·페이지 7종 200·API 게이트 401). 타 세션 커밋 3건(storageZones·production 필터) 머지 동봉, main 워킹트리 미커밋 WIP(bank·barobill·payroll)는 원칙대로 제외. 잔여=실주문 검수 플로우 1회 확인(용준님)·worktree 정리(`end-session.ps1 shipping-verify -DeleteBranch`, ⚠️타 세션 dev서버 종료 부작용).
 - **검증(로컬 D1 E2E)**: 기본 11/11 + 게이트/머지 스위트 — 하드게이트 차단(사유·미완성카드 반환)·카드 스탬프 0·주문 상태 보존 / 납품일 다른 merge 허용 / merge→0438 예약 동기 / unmerge→예약 클리어 / 수동등록 전량 게이트 400 / 무인증 401 / tsc·build·node --check green
 - **배경**: 배송 P1~P3 + 후속 P1~P4(0438 접수 예약) prod 완결 이후 추가 고도화. 요구 2축 = ①하나의 주문 내 물건 누락 방지 ②동일 거래처 다른 주문 포괄(합배송) 출고 확대.
 - **정본 관계**: `memory/project-delivery-system.md` · 선행 spec `2026-07-02-delivery-consolidation-intake-visibility.md` · merge 모델 = `shipments.merged_into_id` · 예약 = `orders.consolidate_with_order_id`(0438)
