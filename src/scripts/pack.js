@@ -133,7 +133,7 @@ async function packSetPartial(li) {
   var ln = packData.lines[li];
   if (!ln) return;
   var cur = ln.packed_quantity != null ? ln.packed_quantity : (ln.quantity || 0);
-  var v = await showPrompt('실제 담은 수량 (전량이면 ' + (ln.quantity || 0) + ', 비우면 전량 처리)', String(cur));
+  var v = await showPrompt('실제 담은 수량 (전량이면 ' + (ln.quantity || 0) + ', 비우면 전량 처리)', { title: '부분 수량', defaultValue: String(cur), placeholder: String(ln.quantity || 0) });
   if (v === null) return;
   var n = parseFloat(v);
   ln.packed_quantity = (v === '' || isNaN(n)) ? null : n;
