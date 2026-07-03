@@ -262,6 +262,22 @@ ordersQueriesRouter.patch('/bulk-ship', async (c) => {
 
     for (const orderId of order_ids) {
       // 카드 출고 + 주문 상태 전환 (per-order 순차 처리)
+      // Step 0 (v2 하드 게이트): 부분출고 전면 금지 — 미완성(미출고·PRINT_DONE 미달) 카드가
+      // 하나라도 있으면 이 주문은 카드 스탬프 없이 전체 차단. (기존: 완성분만 조용히 부분출고 → 잔여 잊힘 사고 원인)
+      const { results: notReadyCards } = await c.env.DB.prepare(`
+        SELECT id, card_number, status FROM cards
+        WHERE order_id = ? AND shipped_at IS NULL AND status != 'PRINT_DONE'
+      `).bind(orderId).all<{ id: number; card_number: string; status: string }>()
+      if (notReadyCards.length > 0) {
+        results.push({
+          id: orderId, success: false,
+          error: `미완성 카드 ${notReadyCards.length}건 — 전량 출고 원칙에 따라 출고할 수 없습니다.`,
+          remaining: notReadyCards.length,
+          unshipped_cards: notReadyCards.map((cd) => ({ id: cd.id, card_number: cd.card_number, status: cd.status })),
+        })
+        continue
+      }
+
       // Step 1: 카드 출고 처리
       const updateResult = await c.env.DB.prepare(`
         UPDATE cards SET shipped_at = CURRENT_TIMESTAMP
@@ -315,19 +331,13 @@ ordersQueriesRouter.patch('/bulk-ship', async (c) => {
         }
         results.push({ id: orderId, success: true, shipped_cards: shippedCards, order_shipped: orderShipped || fromStatus === 'SHIPPED' })
       } else {
-        // 분할 출고(일부 카드만): 출고분이 있으면 shipment 기록 (전량 출고 시 동일 shipment에 잔여 카드 합류)
-        if (shippedCards > 0) {
-          try {
-            await ensureShipmentForOrder(c.env.DB, Number(orderId), { userId: user?.id ?? null, fallbackEntityId: getEntityId(c) || 1 })
-          } catch (shipRecErr) {
-            console.error('bulk-ship(partial) ensureShipment error:', shipRecErr)
-          }
-        }
-        // 미출고 카드 상세 정보 포함 (프론트에서 안내 표시용)
+        // v2: 부분출고 경로 제거 — 하드 게이트 통과 후 여기 도달은 경쟁 상황(게이트 이후 카드 추가 등)뿐.
+        // 부분출고 shipment 기록을 만들지 않고 실패로 보고 (전량 출고 원칙).
         const { results: unshippedCards } = await c.env.DB.prepare(`
           SELECT id, card_number, status FROM cards WHERE order_id = ? AND shipped_at IS NULL
         `).bind(orderId).all<{ id: number; card_number: string; status: string }>()
-        results.push({ id: orderId, success: true, shipped_cards: shippedCards, order_shipped: false,
+        results.push({ id: orderId, success: false, shipped_cards: shippedCards, order_shipped: false,
+          error: '미출고 카드가 남아 있어 출고를 완료하지 못했습니다. 새로고침 후 다시 시도하세요.',
           remaining: afterCheck?.remaining || 0,
           unshipped_cards: (unshippedCards || []).map((cd) => ({ id: cd.id, card_number: cd.card_number, status: cd.status }))
         })

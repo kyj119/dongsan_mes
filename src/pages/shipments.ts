@@ -378,6 +378,27 @@ export function shipmentsPage(c: Context<HonoEnv>) {
         </div>
       </div>
 
+      <!-- 포장 검수 모달 (출고관리 v2 P1) -->
+      <div id="shipCheckModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+        <div class="bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[85vh] flex flex-col">
+          <div class="flex items-center justify-between px-5 py-3 border-b">
+            <h3 class="text-base font-bold text-gray-800"><i class="fas fa-clipboard-check mr-1 text-green-600"></i>포장 검수 <span id="shipCheckClientName" class="ml-1 text-sm font-normal text-gray-500"></span></h3>
+            <button onclick="closeShipCheckModal()" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times"></i></button>
+          </div>
+          <div id="shipCheckBody" class="flex-1 overflow-y-auto px-5 py-3 text-sm"></div>
+          <div class="px-5 py-3 border-t flex flex-wrap items-center justify-between gap-2">
+            <div class="flex items-center gap-2">
+              <button onclick="printShipCheckSheet()" class="ds-btn ds-btn-secondary ds-btn-sm" title="포장대 검수용 체크박스 명세서 (QR 포함)"><i class="fas fa-print mr-1"></i>검수 체크지</button>
+              <button onclick="printShipDeliveryNote()" class="ds-btn ds-btn-secondary ds-btn-sm" title="박스 동봉 거래처용 납품명세서 (가격 제외)"><i class="fas fa-file-alt mr-1"></i>납품명세서</button>
+            </div>
+            <div class="flex items-center gap-2">
+              <button onclick="closeShipCheckModal()" class="ds-btn ds-btn-sm">닫기</button>
+              <button onclick="saveShipCheckModal()" class="ds-btn ds-btn-sm" style="background:#16a34a;color:#fff"><i class="fas fa-check mr-1"></i>검수 저장</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- 프린트 전용 영역: 라벨 (화면에는 숨김) -->
       <div id="printArea"></div>
       <!-- 프린트 전용 영역: A4 가로 출고 리스트 -->

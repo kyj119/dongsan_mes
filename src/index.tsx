@@ -190,6 +190,7 @@ import { portalBalancePage } from './pages/portal/portalBalance'
 import { portalInvoicesPage } from './pages/portal/portalInvoices'
 import { portalDocumentPage } from './pages/portal/portalDocument'
 import { scanPage } from './pages/scan'
+import { packPage } from './pages/pack'
 import { accountingPage } from './pages/accounting'
 
 const app = new Hono<HonoEnv>()
@@ -459,6 +460,7 @@ app.get('/cash-flow', (c) => c.redirect('/cash-schedule'))
 app.get('/facility', pageAuthMiddleware, requireAdminPage(), facilityPage)
 app.get('/bom', pageAuthMiddleware, requirePagePermission('/bom'), bomPage)
 app.get('/scan', pageAuthMiddleware, requirePagePermission('/scan'), scanPage)
+app.get('/pack', pageAuthMiddleware, requirePagePermission('/pack'), packPage)
 // app.get('/workflow') — 폐기됨
 app.get('/approvals', pageAuthMiddleware, requirePagePermission('/approvals'), approvalsPage)
 app.get('/ui-guide', pageAuthMiddleware, requireAdminPage(), uiGuidePage)
