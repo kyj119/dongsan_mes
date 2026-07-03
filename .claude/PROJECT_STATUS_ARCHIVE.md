@@ -268,3 +268,33 @@
 
 ### 2026-06-10 Claude Code 설정 최적화 (Cowork 세션)
 - .mcp.json 토큰 env 참조화 + illustrator/excel → `.claude/mcp-optional.json` 분리, 스킬 5개 frontmatter 추가(auto-scan·deploy-verify·entity-audit·migration-check·qa-audit), commit hook tsc incremental화, UserPromptSubmit/Stop hook 메시지 축약, PROJECT_STATUS 완료세션 아카이브 이관, 루트 노이즈 정리
+
+## 2026-07-04 이관분 (완결·무후속 항목, 세션 정리 시 이동)
+
+- **✅ [2026-06-29~30] 품목 마스터 배너류 등록 완료 (worktree `session/master-banner`)**:
+  - **✅ 출력 배너 6종(9품목) 등록+자동차감+형옵션 prod 라이브** (마이그 **0398~0407**): 윈드/워킹=전사 폰지·매쉬(**0405 정정** — 니트 아님) / 실내·미니=수성·패트 / 자이언트=전사 폰지·매쉬(2제품) / 솔벤패트=솔벤·나투라(0406). 전부 AREA·is_active=1·매입X.
+  - **✅ 원단 자동차감(폭매칭 ROLL)**: 9제품 전부 product_materials 링크(0404/0405/0406) — 폰지5·매쉬2·패트4·나투라2.
+  - **✅ 형(S/F/H) = 범용 선택옵션 메커니즘**(0407 + finishing/calc/parent.js): pp_category 비하드코딩→일반 select 자동렌더·수집·복원. 윈드 S/F·워킹 S/F/H 게이팅. **향후 선택형 옵션은 마이그(데이터)만으로 추가=코드불요**(코팅·WAY 이은 3번째 패턴 일반화). prod API 검증(윈드 2·워킹 3 반환·자이언트 0). dep `fb45ea0f`.
+  - 결정: 배너=출력 PRODUCT + 거치대=부속 GOODS 라인 / 형=주문옵션(범용) / 규격=AREA / 가로등=규격확대 / 실외·철제=물통SET GOODS.
+  - **✅ 태극기배너(TRTB)·외국기배너(TRFB)** 등록 완료(0408, 전사·AREA·폰지·자동차감). 배너 출력물 8종 전부 등록.
+  - **✅ 가로등 규격확대**(0409, 60×160 폰지/매쉬·변종4→6) + **✅ 부속품 GOODS 18종**(0410·0411, ACC-011~028, 상품·매입+판매·item_group='배너 부속품'). 철제배너=판매내역 기반 3 SKU(실외거치대/실외물통SET/실내거치대). 걸이부속(족자봉/삼각접착고리)=현수막 도메인 제외.
+  - **배너 전체 완료** — 출력 8종+자동차감+형옵션·가로등확대·부속품18. **남은=단가(전역 보류, 별도 과제)만.**
+
+- **✅ [2026-06-26→06-29] 현장 잉크 재고관리 + 단위 SSOT/multi-UOM — prod 라이브 (정본 `memory/design-ink-inventory.md`)**:
+  - 잉크 **74품목** 등록(마이그 `0394` **prod 적용**·동산72/선명6·수성잉크테크 LcLm=선명 매출 2). `item_type=MATERIAL`·`unit=L`·`deduction_method=NONE`(수동, 차감X)·코드 `RM-I0001~0074`(자동채번 규칙, 의미코드 금지=채번 깨짐). **장비별 분리**(같은 KM테크라도 솔벤1800/3200 별도·UV평판≠3200).
+  - **단위 SSOT 신설**(`constants/units.ts`, hr.ts 패턴)+폼 input→select. ⚠️yd(ROLL)·장(BOARD)=autoDeduct 리터럴, 변경금지.
+  - **✅ [2026-06-29] multi-UOM 단위 드롭다운 = prod 라이브 (이전 "미배포 보류" 해소)**: 타 세션이 MU1~MU5(items.base_unit/pack_size/stock_mode SELECT)를 main 커밋 → cashflow 세션 superset 배포로 prod 반영(한때 0395 미적용 500 장애 → `0395 --remote` 복구). factory P3(0391/0392/0396)도 그간 prod 적용(smoke facility/zones 200) → **얽힘 무관**. prod `#itemUnit` 9단위 라이브 확인·**smoke101**.
+    - **orphan `UNITS_JS`(window.UNIT_DEFS) 주입 = 폐기**: SSR `unitOptions` 방식 채택으로 클라 주입 소비처 0건(死코드). `wip/multi-uom-unit-ui` 브랜치 삭제(2026-06-29). 복구 필요 시 commit `19868226`(`git branch <name> 19868226`).
+
+- **✅ [2026-06-24] 전 페이지 표 열폭 규격 일괄 정비 (에이전트 팀, 정본 `memory/project-table-spec-sweep.md`)**:
+  - 전역 `col-*` 폭 유틸 신설(shared-styles.ts) + 12클러스터 fan-out으로 **~101개 표 정비**(ds-table 보장+콘텐츠 유형별 고정폭+가변 주열만 흡수+긴 td `title` 호버). 인쇄양식·편집그리드·동적matrix·밀집표 의도적 제외.
+  - 검증: tsc/build green · **node --check 55/55**(?raw JS 문법) · **Playwright 시각검증 6페이지**(clients/reports/shipments/hr/inventory/purchase-orders: fixed·오버플로0·콘솔에러0·title동작, 측정스크립트 정밀). 
+  - **유일 결함=col-date 104px 14px폰트 날짜 3px클립 → 112px 전역수정**. **prod 배포**(`3a64af56`+`8d3fc9da`, dep `01ce3db0`, 롤백 `47fbec9e`). bank 리뷰처럼 백로그 완결.
+
+- **✅ [2026-06-24] Claude Code 셋업 정비 + bank 보안/버그 수정 (별도 세션 — 정본 `memory/project-ship-pipeline.md`)**:
+  - **CC 셋업**: 죽은 jq훅→node 전환(`.claude/hooks/*.cjs` + SessionStart 자가진단) · `/ship` full-auto-prod 파이프라인(skill+ship:gate) · MCP(context7 + cloudflare-observability, 옛 cloudflare 제거) · 권한정리(통짜Bash 제거) · STATUS 다이어트 · **claude update 2.1.158→2.1.187**(agent teams 활성, **재시작 필요**) · env `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1`. 훅 경로버그(.js 오탐) 수정.
+  - **bank 버그(3에이전트 병렬리뷰)**: ✅**#1 IDOR**(card_fee_rates PUT/DELETE entity격리, #437/#434 클래스) · ✅#2 dead `/card-fee-calculate` 삭제 · ✅**#3 auto-match 파생잔액 복원**(폐기 clients.balance→deriveClientBalance; 가드=입금만·유일잔액만·suggest전용) · ✅#5 D1 IN 80청크 · ✅#8 KST 월경계. **전부 prod 배포·검증**(커밋 f29a266b·06c4b653·5f8793c2 → dep e9c1155d). ✅**#4 client-search 파생잔액 복원**(폐기 c.balance=0→order_billing_groups[BILLED]−payments−adjustments, /receivables 동일정의; FE 미수금 힌트 부활·FE 무변경) · ✅**#7 /transactions bt.\* → FE 소비 컬럼 명시SELECT**(리네임 시 silent null→SQL에러 노출). **prod 배포·검증**(커밋 4d2f3fdb → dep `5c1fa54c`; apex /transactions·/client-search 200, 파생잔액 /receivables와 일치=현재 미수금 0건). #6 변경불요. **bank 리뷰 백로그 완결.** + `/ship` 가드 정식 추가(배포 전 git status, SKILL.md).
+  - ⚠️**교훈**: `deploy:prod`는 워킹트리 전체 빌드 → **배포 전 `git status`로 타세션 미커밋 확인 필수**(IDOR 배포 시 cardExpenses WIP 동반배포됨). agent teams=**v2.1.178+** 필요(2.1.158 미작동). observability wrangler config=**Pages 미지원**(347e438e 되돌림, 대시보드 토글 경로). bank 잔여 리뷰=`docs/archive/bank-review-2026-06-24.md`(완결·아카이브).
+
+- **🟢 [2026-06-24] LogWatcher TPM-01 현장 배포(TopazRip)**: prod·`E:\TNSRip-X1\Print.log`·Legacy(TNS)·`TPM-01`. 추출 정상(사용자 확인). ⚠️검증=**`/equipment`·`/production`** (/rip 페이지 폐기·404). 함정=repo `install-service.bat`·`install.bat` **LF 줄바꿈**→cmd 명령 토막 → `publish\install-service.bat`만 CRLF+ASCII 수정, **소스 LF 정리 보류**(나중에). RIP-03 `/equipment` 비활성화(soft delete=status INACTIVE)→동일 PC RIP-02 전환 깨끗(부활X). 정본=`memory/project-logwatcher-rollout.md`.
+

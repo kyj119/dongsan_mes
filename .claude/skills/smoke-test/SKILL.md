@@ -25,7 +25,7 @@ npm run build
 3. `browser_fill_form` → username: `admin`, password: `password`
 4. 로그인 버튼 클릭 → 대시보드로 리다이렉트 확인
 
-### Step 3: 핵심 페이지 로드 확인 (8개)
+### Step 3: 핵심 페이지 로드 확인 (10개)
 로그인 상태에서 각 페이지 이동 후 `browser_snapshot`으로 정상 로드 확인:
 
 | 순서 | 페이지 | 확인 항목 |
@@ -38,6 +38,8 @@ npm run build
 | 6 | `/inventory` | 재고 테이블 존재 |
 | 7 | `/items` | 품목 목록 존재 |
 | 8 | `/ledger` | 원장 테이블 존재 |
+| 9 | `/shipments` | 출고 섹션(대신화물~직배)·합배송 후보 카드·검수 칩 렌더 |
+| 10 | `/pack` | 출고 검수 입력바(#packOrderInput) 존재 |
 
 각 페이지에서:
 - HTTP 에러 (4xx/5xx 화면) 없는지 확인
@@ -63,7 +65,7 @@ return res.status;
 ## 결과 보고
 모든 테스트 통과 시:
 ```
-스모크 테스트 통과 (8/8 페이지, 권한 OK, 콘솔 에러 0건)
+스모크 테스트 통과 (10/10 페이지, 권한 OK, 콘솔 에러 0건)
 ```
 
 실패 시 실패 항목과 스크린샷을 함께 보고.

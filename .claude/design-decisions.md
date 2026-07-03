@@ -21,6 +21,7 @@
 | AL | 자금관리 바로빌통장 탭 통합 | 은행연동으로 합침, barobillView.js 삭제 |
 | BF | 휴일/공휴일 derive-at-read 단일소스 | holidays 달력(마이그0311) + 토·일 = 유일소스. 근태·급여가 날짜에서 휴일 파생, attendance mutate(재분류)·반영버튼 금지 → memory [design-holiday-derive] |
 | BG | 배송/출고 정합화·합배송·합포장 | ensureShipmentForOrder 일원화(dtMap 정본), orders.shipped_at(0436), 합배송 후보=명시적 cross-entity, 우편번호=delivery_info 쿼리파생, 합포장=merged_into_id 포인터(0437)+대표 쓰기 리다이렉트 → memory [project-delivery-system] |
+| BH | 출고 검수·전량출고 하드게이트·/pack 권한 | 부분출고 전면불가(미완성 카드=주문 차단, silent 부분출고 제거), 검수정본=shipment_checks 별도테이블(0439, 승격안 기각), 검수=소프트/출고=하드 분리, /pack=requireAnyPagePermission 확장, merge 납품일 완화+0438 예약동기 → memory [project-delivery-system] |
 
 ## 금액 포맷 → `references/decisions-money.md`
 | ID | 제목 | 키워드 |

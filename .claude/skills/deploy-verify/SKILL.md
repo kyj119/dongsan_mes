@@ -30,16 +30,17 @@ npm run deploy:prod
 ### Phase 4: 배포 후 스모크 테스트 (Playwright MCP)
 배포 완료 후 프로덕션 URL(https://webapp-9i0.pages.dev)에서:
 
-1. **페이지 로드 검증** (14개):
+1. **페이지 로드 검증** (15개):
    `/dashboard`, `/orders`, `/clients`, `/cards`, `/production`, `/inventory`,
    `/items`, `/ledger`, `/bank`, `/card-expenses`, `/quotations`, `/shipments`,
-   `/purchase-orders`, `/settings`
+   `/purchase-orders`, `/settings`, `/pack`
 
-2. **API 응답 검증** (11개):
+2. **API 응답 검증** (13개):
    `bank/stats`, `bank/transactions`, `bank/receivables`, `bank/match-rules`,
    `card-expenses/cards`, `card-expenses/categories`, `card-expenses/transactions`,
    `card-expenses/stats`, `card-expenses/payment-schedule`, `card-expenses/report`,
-   `card-expenses/auto-rules`
+   `card-expenses/auto-rules`,
+   `shipments/checklist/by-order/1` (비로그인 401 = 정상), `shipments/consolidation-candidates` (비로그인 401 = 정상)
 
 3. **콘솔 에러 수집**: 각 페이지에서 error 레벨 메시지 확인
 
@@ -51,8 +52,8 @@ npm run deploy:prod
 타입체크: OK / FAIL
 Entity 감사: OK / N건 누락
 배포: OK / FAIL
-페이지 로드: N/14 통과
-API 응답: N/11 OK
+페이지 로드: N/15 통과
+API 응답: N/13 OK
 콘솔 에러: N건
 ━━━━━━━━━━━━━━━━━━
 ```

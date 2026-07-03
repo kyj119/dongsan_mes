@@ -1,7 +1,7 @@
 # 출고관리 고도화 v2 — 포장 검수(누락 방지) + 합배송 범위 확장
 
 - **작성일**: 2026-07-03
-- **상태**: ✅ **P1~P4 prod 배포완료 (2026-07-03)** — 순서 준수: 0439 remote 적용·검증(테이블 6컬럼·/pack 권한 2건) → push `82dddf2a..2efd34de`→main → deploy `4723f7db` → **apex 검증 14/14**(pack/shipments 마커·checklist/candidates 401·페이지 7종 200·API 게이트 401). 타 세션 커밋 3건(storageZones·production 필터) 머지 동봉, main 워킹트리 미커밋 WIP(bank·barobill·payroll)는 원칙대로 제외. 잔여=실주문 검수 플로우 1회 확인(용준님)·worktree 정리(`end-session.ps1 shipping-verify -DeleteBranch`, ⚠️타 세션 dev서버 종료 부작용).
+- **상태**: ✅ **P1~P4 prod 배포완료 (2026-07-03)** — 순서 준수: 0439 remote 적용·검증(테이블 6컬럼·/pack 권한 2건) → push `82dddf2a..2efd34de`→main → deploy `4723f7db` → **apex 검증 14/14**(pack/shipments 마커·checklist/candidates 401·페이지 7종 200·API 게이트 401). 타 세션 커밋 3건(storageZones·production 필터) 머지 동봉. 이후 **4세션 통합 배포**(dep `4ecb7580`, 0440 동반)에 #480 즉석 수정(주문수정 시 shipment_checks 선정리) 포함. **✅완결(2026-07-03)**: 실주문 검수 플로우 prod 실증(합배송 후보 2법인 감지·검수 ✓1/1·/pack 동기·하드게이트 차단 무변이·콘솔0) + worktree 정리 완료.
 - **검증(로컬 D1 E2E)**: 기본 11/11 + 게이트/머지 스위트 — 하드게이트 차단(사유·미완성카드 반환)·카드 스탬프 0·주문 상태 보존 / 납품일 다른 merge 허용 / merge→0438 예약 동기 / unmerge→예약 클리어 / 수동등록 전량 게이트 400 / 무인증 401 / tsc·build·node --check green
 - **배경**: 배송 P1~P3 + 후속 P1~P4(0438 접수 예약) prod 완결 이후 추가 고도화. 요구 2축 = ①하나의 주문 내 물건 누락 방지 ②동일 거래처 다른 주문 포괄(합배송) 출고 확대.
 - **정본 관계**: `memory/project-delivery-system.md` · 선행 spec `2026-07-02-delivery-consolidation-intake-visibility.md` · merge 모델 = `shipments.merged_into_id` · 예약 = `orders.consolidate_with_order_id`(0438)
@@ -42,13 +42,14 @@
 
 ## 설계
 
-### 공통 골격 — 검수 정본 = shipment_items 승격
-- 현행은 출고 확정 시점 생성 → **PREPARING(검수 시작) 시점에 order_items 스냅샷 생성**(ensureShipmentForOrder 확장 또는 검수 시작 액션).
-- 마이그 0439: `shipment_items.packed_quantity INTEGER NULL`(NULL=전량), `checked_at`, `checked_by`.
+### 공통 골격 — 검수 정본 (⚠️초안→구현 변경: shipment_items 승격 → **shipment_checks 별도 테이블**)
+- 초안은 shipment_items 3컬럼 승격이었으나, shipment_items가 카드행/라인행 혼합 의미(카드 sync 시 라인당 중복행 위험)라 **구현은 `shipment_checks` 별도 테이블**(shipment×order_item UNIQUE)로 확정 — 하단 §구현 상세가 정본.
+- PREPARING(검수 시작) 시점에 order_items 스냅샷 upsert(checklist GET에서 멱등 수행).
+- 마이그 0439: `shipment_checks(packed_quantity NULL=전량, checked_at, checked_by)`.
 - 주문 수량 vs 실은 수량 대조가 처음 가능(갭 1·3 해소 — 카드 없는 라인도 체크 대상).
 
 ### P1 — 검수 데이터 기반 + 라인 체크 UI(PC) + 소프트 게이트
-- 체크 API: `PATCH /api/shipments/:id/check-items` (라인별 checked/packed_quantity, checker 기록).
+- 체크 API(초안 경로 — 구현은 `GET /checklist/by-order/:orderId` + `PATCH /checklist/:shipmentId`, §구현 상세 정본): 라인별 checked/packed_quantity, checker 기록.
 - /shipments 행 확장 시 라인 체크리스트 렌더.
 - bulk-ship(`orders/queries.ts:239`)·`PATCH /by-order/:orderId` 확정 응답에 `unchecked_count` 포함 → 프론트 경고 모달("N개 라인 미검수, 그래도 출고?").
 
@@ -73,7 +74,7 @@
 ### 보류 — 토트 스캔(리서치 2순위): P4 정착 후 재판단.
 
 ## 영향 범위
-- **DB**: 0439(shipment_items 3컬럼) · P5 시 사진 필드/R2
+- **DB**: 0439(`shipment_checks` 신규 테이블 + /pack 권한 — 초안의 "shipment_items 3컬럼"에서 변경) · P5 시 사진 필드/R2
 - **백엔드**: `shipments.ts`(check-items·후보 확장·merge 완화·명세서 데이터) · `shipmentHelper.ts`(PREPARING 스냅샷) · `orders/queries.ts`(게이트 응답)
 - **프론트**: `shipments.js`(체크 UI·경고 모달·배지·인쇄 3종) · P4 신규 `/pack` 페이지+스크립트
 - **공수**: P1+P2 ≈ 1세션 · P3 ≈ 0.5세션 · P4 ≈ 1세션 · P5 ≈ 0.5세션 → 5 Phase = worktree 세션 분리(`session/shipping-verify`)

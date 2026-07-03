@@ -206,3 +206,11 @@ Case 4: 모든 실패 → group.visibleBounds
 - **우편번호 = 컬럼이 아닌 쿼리시점 파생**: `delivery_info`의 `[12345]` 프리픽스를 substr+GLOB 추출(권역=앞 3자리). 쓰기경로 무변경·수정과 상시 동기
 - **합포장 = merged_into_id 포인터 모델**(마이그 0437): 주문별 shipment 행 유지(법인별 이력 보존), 부속→대표 포인터. 송장/라벨/수신자 정본=대표(쓰기 리다이렉트=`applyShipmentFieldPatch`). 주문ID 저장은 `PATCH /api/shipments/by-order/:orderId`(shipment PK 오매칭 방지)
 - 상세 → memory `project-delivery-system`
+
+## BH. 출고 검수 · 전량 출고 하드게이트 · /pack 권한 (2026-07-03, 출고관리 v2)
+
+- **부분출고 전면 불가 = 전량 출고 하드게이트** (용준님 확정): 미완성(미출고·PRINT_DONE 미달) 카드가 1장이라도 있으면 주문 단위 출고 확정 자체를 차단(카드 스탬프 없이 사유+카드목록 반환). bulk-ship의 "완성분만 조용히 부분출고" 경로 제거, `POST /api/shipments`도 ①미완성 카드 400 ②card_ids 미커버 400. 카드 단건 QR 스탬프(scan)는 적재 기록으로 유지(주문 전이는 전량 시에만)
+- **검수 정본 = `shipment_checks` 별도 테이블**(마이그 0439, shipment×order_item UNIQUE): shipment_items 승격안 기각 — 카드행/라인행 혼합 의미라 라인당 중복행 위험. `packed_quantity NULL=전량`(예외 시에만 수량), checked_at은 최초 체크 시각 COALESCE 보존. 검수 게이트=소프트(경고 후 진행 허용), 출고 게이트=하드 — 두 강제성 분리
+- **/pack 권한 모델**: 페이지=`requirePagePermission('/pack')`(permission_pages 0439, MANAGER/OPERATOR 기본), shipments API 라우터 게이트=`requireAnyPagePermission('/shipments','/pack')`로 확장(orders 라우터의 '/orders','/cards' 패턴)
+- **합배송 v2**: 후보=당일 anchor 거래처의 미출고 전체(같은 법인 복수주문 포함, rows≥2), merge 납품일 검증 제거(대기 배지=`consolidate_partner_pending_date`), merge 시 0438 예약 포인터 동기(unmerge 클리어와 대칭)
+- 상세 → memory `project-delivery-system` · spec `2026-07-03-shipping-verification-consolidation-v2.md`

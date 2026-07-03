@@ -26,7 +26,7 @@
 |---|---|---|---|
 | `PROJECT_STATUS.md` | 🟢 | 현황판(단일 소스) | 작업 시작/완료 시 갱신 |
 | `PROJECT_STATUS_ARCHIVE.md` | 🗄️ | 현황판 과거분 이관 싱크 | **삭제 금지** — 다이어트 이관 목적지 |
-| `design-decisions.md` | 🟢 | 설계 결정 인덱스(A~BB) | references/decisions-*와 연결 |
+| `design-decisions.md` | 🟢 | 설계 결정 인덱스(A~BH) | references/decisions-*와 연결 |
 | `references/` 8건 | 🟢 | architecture-flow·decisions-{business,code,money}·glossary·project-context·agent-team-guide·hex-to-tailwind-map | 정리됨, 손대지 말 것 |
 | `skills/` · `templates/` | 🟢 | 스킬 정의·스캐폴딩 템플릿 | 각 SKILL.md 참조 |
 
@@ -47,7 +47,7 @@
 | `integrations/HANJIN_INTEGRATION_ROADMAP.md` | 🟡 | 한진택배 통합 로드맵 — 업체 계약 대기(외부 의존) |
 | ~~`bank-review-2026-06-24.md`~~ | 🗄️ | 완결 → `archive/` 이동 (2026-07-02) |
 
-## 4. `docs/superpowers/specs/` — 활성 spec 28건
+## 4. `docs/superpowers/specs/` — 활성 spec 30건
 
 ### 최상위 로드맵·정본
 | 문서 | 상태 |
@@ -59,6 +59,9 @@
 
 ### 품목 마스터 트랙
 `2026-06-13-item-axis-realign-plan.md`(게이트 통과) · `2026-06-13-item-master-review.md`(참고) · `2026-06-19-item-master-load-phase1.md` · `2026-06-20-spec-group-variant-item-plan.md`(정본) · `2026-06-20-p1c-mapping-draft.md`(초안·사람검토 필수) · `2026-06-13-signage-component-estimate-structure.md`(간판 BOM 선행설계, 보류)
+
+### 배송/출고 트랙 (완결)
+`2026-07-02-delivery-consolidation-intake-visibility.md`(후속 P1~P4 prod 완결) · `2026-07-03-shipping-verification-consolidation-v2.md`(v2 P1~P4 prod 배포·실증 완결 — 검수 shipment_checks·전량출고 하드게이트·/pack, 잔여=P5 사진 증빙 선택)
 
 ### 진행·잔여 있음
 `2026-06-03-receivables-purchase-barobill-brainstorm.md`(잔여 3건) · `2026-06-05-recurring-variable-expense.md`(P4·5 잔여) · `2026-06-10-split-billing-by-entity.md`+`IMPLEMENTATION-PLAN`(P5~) · `2026-06-15-logwatcher-equipment-centric.md`(P4 배포 대기) · `2026-06-25-ia-editor-eps-export.md` · `2026-06-25-ia-editor-p2-p3.md`(R2·R3 잔여) · `2026-06-25-factory-layout-integration.md`(P3~P5 재고게이지) · `2026-06-26-storage-facility-zone-integration.md`(prod 매핑 운영) · `2026-06-24-leave-management-proposal.md`(정본)+`2026-06-24-leave-promotion-expiry-design.md`(일부 배포·확정 대기)
