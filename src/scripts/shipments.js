@@ -283,7 +283,11 @@ async function loadConsolidationCandidates(date) {
     var html = '';
     sc.forEach(function(g, idx) {
       var parts = (g.orders || []).map(function(o) {
-        return '<span style="white-space:nowrap">' + escapeHtml(o.entity_name || ('법인' + o.entity_id)) + ' ' + escapeHtml(o.order_number || '') + ' (' + escapeHtml(o.delivery_method || '-') + ')</span>';
+        // v2: 비당일 미출고 주문 = 대기 칩 (납품일 표기) — 납품일 달라도 묶기 가능
+        var waitChip = o.waiting
+          ? ' <span style="background:#fef3c7;color:#92400e;font-size:10px;padding:0 4px;border-radius:6px;white-space:nowrap">납품 ' + escapeHtml((o.delivery_date || '').substring(5)) + '</span>'
+          : '';
+        return '<span style="white-space:nowrap">' + escapeHtml(o.entity_name || ('법인' + o.entity_id)) + ' ' + escapeHtml(o.order_number || '') + ' (' + escapeHtml(o.delivery_method || '-') + ')' + waitChip + '</span>';
       });
       // P3: 묶음 상태별 액션 버튼
       var actionHtml = g.merged
@@ -377,7 +381,7 @@ function renderFreightSection() {
 
     return '<tr class="border-t hover:bg-blue-50">'
       + '<td class="px-3 py-2 w-8 text-center"><input type="checkbox" id="cb-freight-' + escapeHtml(key) + '" ' + (isChecked ? 'checked' : '') + ' onchange="toggleShipmentCheck(\'freight\',\'' + escapeHtml(key) + '\',this.checked)" class="rounded"></td>'
-      + '<td class="px-3 py-2 font-medium" title="' + escapeHtml(grp.client_name) + '">' + escapeHtml(grp.client_name) + shipmentsEntityChips(grp) + shipmentsMergeBadge(grp) + '</td>'
+      + '<td class="px-3 py-2 font-medium" title="' + escapeHtml(grp.client_name) + '">' + escapeHtml(grp.client_name) + shipmentsEntityChips(grp) + shipmentsMergeBadge(grp) + shipmentsWaitBadge(grp) + shipmentsCheckChip('freight', key, grp) + '</td>'
       + '<td class="px-3 py-2">' + terminalHtml + '</td>'
       + '<td class="px-3 py-2 text-xs text-gray-500 hidden md:table-cell truncate" title="' + escapeHtml(itemSummary) + '">' + escapeHtml(itemSummary) + '</td>'
       + '<td class="px-3 py-2 text-center">'
@@ -415,7 +419,7 @@ function renderDaesintaekbaeSection() {
     // ID 접두어 'd-' 사용: 대신택배 전용 (대신화물과 ID 충돌 방지)
     return '<tr class="border-t hover:bg-green-50">'
       + '<td class="px-3 py-2 w-8 text-center"><input type="checkbox" id="cb-daesintaekbae-' + escapeHtml(key) + '" ' + (isChecked ? 'checked' : '') + ' onchange="toggleShipmentCheck(\'daesintaekbae\',\'' + escapeHtml(key) + '\',this.checked)" class="rounded"></td>'
-      + '<td class="px-3 py-2 font-medium" title="' + escapeHtml(grp.client_name) + '">' + escapeHtml(grp.client_name) + shipmentsEntityChips(grp) + shipmentsMergeBadge(grp) + '</td>'
+      + '<td class="px-3 py-2 font-medium" title="' + escapeHtml(grp.client_name) + '">' + escapeHtml(grp.client_name) + shipmentsEntityChips(grp) + shipmentsMergeBadge(grp) + shipmentsWaitBadge(grp) + shipmentsCheckChip('daesintaekbae', key, grp) + '</td>'
       + '<td class="px-3 py-2 text-sm">'
       + '<input type="text" id="d-addr-' + escapeHtml(key) + '" value="' + escapeHtml(addr) + '"'
       + ' class="ds-input px-2 py-1 text-xs w-full border rounded" placeholder="배송주소">'
@@ -484,7 +488,7 @@ function renderHanjinSection() {
     var isChecked = selectedShipments['hanjin'] && selectedShipments['hanjin'].has(key);
     return '<tr class="border-t hover:bg-orange-50">'
       + '<td class="px-3 py-2 w-8 text-center"><input type="checkbox" id="cb-hanjin-' + escapeHtml(key) + '" ' + (isChecked ? 'checked' : '') + ' onchange="toggleShipmentCheck(\'hanjin\',\'' + escapeHtml(key) + '\',this.checked)" class="rounded"></td>'
-      + '<td class="px-3 py-2 font-medium" title="' + escapeHtml(grp.client_name) + '">' + escapeHtml(grp.client_name) + shipmentsEntityChips(grp) + shipmentsMergeBadge(grp) + '</td>'
+      + '<td class="px-3 py-2 font-medium" title="' + escapeHtml(grp.client_name) + '">' + escapeHtml(grp.client_name) + shipmentsEntityChips(grp) + shipmentsMergeBadge(grp) + shipmentsWaitBadge(grp) + shipmentsCheckChip('hanjin', key, grp) + '</td>'
       + '<td class="px-3 py-2 text-sm text-gray-600 truncate" title="' + escapeHtml(addr || '') + '">' + escapeHtml(addr || '-') + '</td>'
       + '<td class="px-3 py-2">'
       + '<input type="text" id="track-' + escapeHtml(key) + '" value="' + escapeHtml(tracking) + '"'
@@ -511,7 +515,7 @@ function renderQuickSection() {
     var isChecked = selectedShipments['quick'] && selectedShipments['quick'].has(key);
     return '<tr class="border-t hover:bg-gray-50">'
       + '<td class="px-3 py-2 w-8 text-center"><input type="checkbox" id="cb-quick-' + escapeHtml(key) + '" ' + (isChecked ? 'checked' : '') + ' onchange="toggleShipmentCheck(\'quick\',\'' + escapeHtml(key) + '\',this.checked)" class="rounded"></td>'
-      + '<td class="px-3 py-2 font-medium" title="' + escapeHtml(grp.client_name) + '">' + escapeHtml(grp.client_name) + shipmentsEntityChips(grp) + shipmentsMergeBadge(grp) + '</td>'
+      + '<td class="px-3 py-2 font-medium" title="' + escapeHtml(grp.client_name) + '">' + escapeHtml(grp.client_name) + shipmentsEntityChips(grp) + shipmentsMergeBadge(grp) + shipmentsWaitBadge(grp) + shipmentsCheckChip('quick', key, grp) + '</td>'
       + '<td class="px-3 py-2 text-sm text-gray-600 truncate" title="' + escapeHtml(grp.receiver_address || '') + '">' + escapeHtml(grp.receiver_address || '-') + '</td>'
       + '<td class="px-3 py-2 text-sm">' + escapeHtml(grp.contact_phone || '-') + '</td>'
       + '<td class="px-3 py-2 text-center">'
@@ -536,7 +540,7 @@ function renderJikbaeSection() {
     var isChecked = selectedShipments['jikbae'] && selectedShipments['jikbae'].has(key);
     return '<tr class="border-t hover:bg-purple-50">'
       + '<td class="px-3 py-2 w-8 text-center"><input type="checkbox" id="cb-jikbae-' + escapeHtml(key) + '" ' + (isChecked ? 'checked' : '') + ' onchange="toggleShipmentCheck(\'jikbae\',\'' + escapeHtml(key) + '\',this.checked)" class="rounded"></td>'
-      + '<td class="px-3 py-2 font-medium" title="' + escapeHtml(grp.client_name) + '">' + escapeHtml(grp.client_name) + shipmentsEntityChips(grp) + shipmentsMergeBadge(grp) + '</td>'
+      + '<td class="px-3 py-2 font-medium" title="' + escapeHtml(grp.client_name) + '">' + escapeHtml(grp.client_name) + shipmentsEntityChips(grp) + shipmentsMergeBadge(grp) + shipmentsWaitBadge(grp) + shipmentsCheckChip('jikbae', key, grp) + '</td>'
       + '<td class="px-3 py-2 text-sm text-gray-600 truncate" title="' + escapeHtml(grp.receiver_address || '') + '">' + escapeHtml(grp.receiver_address || '-') + '</td>'
       + '<td class="px-3 py-2 text-sm">' + escapeHtml(grp.contact_phone || grp.client_mobile || '-') + '</td>'
       + '<td class="px-3 py-2 text-sm text-center">' + escapeHtml(grp.delivery_time || '-') + '</td>'
@@ -567,7 +571,7 @@ function renderEtcSection() {
   tbody.innerHTML = keys.map(function(key) {
     var grp = etcGroups[key];
     return '<tr class="border-t">'
-      + '<td class="px-3 py-2 font-medium" title="' + escapeHtml(grp.client_name) + '">' + escapeHtml(grp.client_name) + shipmentsEntityChips(grp) + shipmentsMergeBadge(grp) + '</td>'
+      + '<td class="px-3 py-2 font-medium" title="' + escapeHtml(grp.client_name) + '">' + escapeHtml(grp.client_name) + shipmentsEntityChips(grp) + shipmentsMergeBadge(grp) + shipmentsWaitBadge(grp) + '</td>'
       + '<td class="px-3 py-2 text-xs text-gray-500">' + escapeHtml(grp.delivery_type) + '</td>'
       + '<td class="px-3 py-2 text-xs text-gray-500">' + escapeHtml(grp.courier_name || '-') + '</td>'
       + '<td class="px-3 py-2 text-sm truncate" title="' + escapeHtml(grp.receiver_address || '') + '">' + escapeHtml(grp.receiver_address || '-') + '</td>'
@@ -791,22 +795,92 @@ async function confirmShipSection(section) {
   });
   if (orderIds.size === 0) { showToast('출고 대상 주문이 없습니다.', 'warning'); return; }
 
-  if (!(await showConfirm(orderIds.size + '건 주문을 출고 확정하시겠습니까?\n(출력완료 카드만 출고 처리됩니다)'))) return;
+  // v2 소프트 게이트: 미검수 라인 경고 (검수 없이도 진행 가능 — 확인만)
+  var uncheckedOrders = 0, uncheckedLines = 0;
+  keys.forEach(function(key) {
+    groups[key].shipments.forEach(function(s) {
+      var lineCount = (s.items || []).length;
+      if (!lineCount) return;
+      var un = Math.max(0, lineCount - (s.chk_done || 0));
+      if (un > 0) { uncheckedOrders++; uncheckedLines += un; }
+    });
+  });
+  var confirmMsg = orderIds.size + '건 주문을 출고 확정하시겠습니까?\n(전량 출고 원칙 — 미완성 카드가 있는 주문은 차단됩니다)';
+  if (uncheckedOrders > 0) {
+    confirmMsg += '\n\n⚠️ 미검수 라인 ' + uncheckedLines + '개(주문 ' + uncheckedOrders + '건)가 있습니다. 검수 없이 출고합니다.';
+  }
+  if (!(await showConfirm(confirmMsg))) return;
 
   try {
     var res = await axios.patch('/api/orders/bulk-ship', { order_ids: Array.from(orderIds) });
     if (res.data.success) {
       var results = res.data.data || [];
       var shipped = results.filter(function(r) { return r.order_shipped; }).length;
-      var partial = results.filter(function(r) { return r.success && !r.order_shipped; }).length;
+      var blocked = results.filter(function(r) { return !r.success; });
       var msg = shipped + '건 출고 완료';
-      if (partial > 0) msg += ', ' + partial + '건 부분 출고';
-      showToast(msg, 'success');
+      if (blocked.length > 0) {
+        msg += ', ' + blocked.length + '건 차단';
+        showToast(msg, 'warning');
+        showShipBlockedModal(blocked);
+      } else {
+        showToast(msg, 'success');
+      }
       loadShipmentsByDate();
     }
   } catch(err) {
     showToast('출고 처리 실패: ' + (err.response?.data?.error || err.message), 'error');
   }
+}
+
+// v2 하드 게이트 차단 결과 모달 — 주문별 사유 + 미완성 카드 목록
+function showShipBlockedModal(blocked) {
+  var existing = document.getElementById('shipBlockedOverlay');
+  if (existing) existing.remove();
+
+  // 주문 id → 표시 정보 (로드된 그룹에서 역조회)
+  function findOrderInfo(orderId) {
+    var maps = [freightGroups, daesintaekbaeGroups, hanjinGroups, quickGroups, jikbaeGroups, etcGroups];
+    for (var i = 0; i < maps.length; i++) {
+      var gkeys = Object.keys(maps[i]);
+      for (var k = 0; k < gkeys.length; k++) {
+        var grp = maps[i][gkeys[k]];
+        for (var s = 0; s < grp.shipments.length; s++) {
+          if (grp.shipments[s].id === orderId) return { client: grp.client_name, number: grp.shipments[s].order_number || ('#' + orderId) };
+        }
+      }
+    }
+    return { client: '', number: '#' + orderId };
+  }
+
+  var rows = blocked.map(function(r) {
+    var info = findOrderInfo(r.id);
+    var cards = (r.unshipped_cards || []).map(function(cd) { return (cd.card_number || cd.id) + '(' + (cd.status || '-') + ')'; }).join(', ');
+    return '<tr class="border-t border-gray-100">'
+      + '<td class="px-3 py-2 text-sm">' + escapeHtml(info.client) + '</td>'
+      + '<td class="px-3 py-2 text-sm">' + escapeHtml(info.number) + '</td>'
+      + '<td class="px-3 py-2 text-sm text-red-600">' + escapeHtml(r.error || '차단') + (cards ? '<div class="text-xs text-gray-500 mt-0.5">' + escapeHtml(cards) + '</div>' : '') + '</td>'
+      + '</tr>';
+  }).join('');
+
+  var html = '<div id="shipBlockedOverlay" class="fixed inset-0 bg-black/40 z-[60] flex items-center justify-center p-4">'
+    + '<div class="bg-white rounded-lg shadow-xl w-full max-w-lg max-h-[80vh] flex flex-col">'
+    + '<div class="px-5 py-4 border-b flex items-center justify-between">'
+    + '<h3 class="text-base font-semibold text-red-700"><i class="fas fa-ban mr-1"></i>출고 차단 ' + blocked.length + '건 — 전량 출고 원칙</h3>'
+    + '<button id="shipBlockedClose" class="text-gray-400 hover:text-gray-600 text-xl leading-none">&times;</button>'
+    + '</div>'
+    + '<div class="px-5 py-2 text-xs text-gray-500">미완성 카드가 남은 주문은 출고할 수 없습니다. 생산 완료 후 다시 확정하세요.</div>'
+    + '<div class="px-5 pb-3 overflow-y-auto flex-1"><table class="w-full text-left"><thead><tr class="text-xs text-gray-500">'
+    + '<th class="px-3 py-1">거래처</th><th class="px-3 py-1">주문번호</th><th class="px-3 py-1">사유</th>'
+    + '</tr></thead><tbody>' + rows + '</tbody></table></div>'
+    + '<div class="px-5 py-3 border-t flex justify-end"><button id="shipBlockedDismiss" class="ds-btn text-sm">닫기</button></div>'
+    + '</div></div>';
+  document.body.insertAdjacentHTML('beforeend', html);
+  var overlay = document.getElementById('shipBlockedOverlay');
+  if (!overlay) { console.warn('[shipments] #shipBlockedOverlay not found'); return; }
+  function close() { overlay.remove(); }
+  var c1 = document.getElementById('shipBlockedClose'); if (c1) c1.addEventListener('click', close);
+  var c2 = document.getElementById('shipBlockedDismiss'); if (c2) c2.addEventListener('click', close);
+  overlay.addEventListener('click', function(e) { if (e.target === overlay) close(); });
 }
 
 // ========== 출고 확인 리스트 (A4 가로형) ==========
@@ -1310,6 +1384,293 @@ async function runSyncStatuses() {
   } catch(e) {
     showToast('동기화 오류: ' + (e.response?.data?.error || e.message), 'error');
   }
+}
+
+// ========== 출고관리 v2: 포장 검수 + 합배송 대기 배지 + 명세서 ==========
+
+// 합배송 대기 배지 — 예약(0438)·묶음 상대의 납품일이 이 화면 날짜보다 미래면 보류 표시
+function shipmentsWaitBadge(grp) {
+  var maxDate = '';
+  (grp.shipments || []).forEach(function(s) {
+    var pd = s.consolidate_partner_pending_date || '';
+    if (pd && pd > currentDate && pd > maxDate) maxDate = pd;
+  });
+  if (!maxDate) return '';
+  return ' <span style="background:#fff7ed;color:#c2410c;border:1px solid #fdba74;font-size:10px;padding:1px 5px;border-radius:8px;white-space:nowrap" title="합배송 상대 주문의 납품일까지 보류 권장 (묶어서 함께 출고)"><i class="fas fa-hourglass-half" style="font-size:9px"></i> 합배송 대기 →' + escapeHtml(maxDate.substring(5)) + '</span>';
+}
+
+// 검수 진행 칩 — 클릭 시 검수 모달. 회색=미시작 / 황색=진행 / 녹색=완료
+function shipmentsCheckChip(section, key, grp) {
+  var total = 0, done = 0;
+  (grp.shipments || []).forEach(function(s) {
+    total += (s.items || []).length;
+    done += (s.chk_done || 0);
+  });
+  if (!total) return '';
+  var full = done >= total;
+  var bg = full ? '#dcfce7' : (done > 0 ? '#fef9c3' : '#f3f4f6');
+  var fg = full ? '#15803d' : (done > 0 ? '#a16207' : '#6b7280');
+  var label = (full ? '✓ ' : '') + done + '/' + total;
+  return ' <button onclick="openShipCheckModal(\'' + section + '\',\'' + escapeHtml(key) + '\')" style="background:' + bg + ';color:' + fg + ';font-size:10px;padding:1px 6px;border-radius:8px;white-space:nowrap;border:1px solid rgba(0,0,0,0.06);cursor:pointer" title="포장 검수 체크리스트 열기"><i class="fas fa-clipboard-check" style="font-size:9px"></i> 검수 ' + label + '</button>';
+}
+
+// ---- 검수 모달 ----
+var shipCheckState = { section: '', key: '', clientName: '', entries: [] };
+
+async function openShipCheckModal(section, key) {
+  var grp = getSectionGroups(section)[key];
+  if (!grp) return;
+  var modal = document.getElementById('shipCheckModal');
+  var body = document.getElementById('shipCheckBody');
+  var nameEl = document.getElementById('shipCheckClientName');
+  if (!modal || !body) { console.warn('[shipments] #shipCheckModal not found'); return; }
+
+  shipCheckState = { section: section, key: key, clientName: grp.client_name, entries: [] };
+  if (nameEl) nameEl.textContent = grp.client_name;
+  body.innerHTML = '<div class="text-center text-gray-400 py-8"><i class="fas fa-spinner fa-spin mr-1"></i>검수 정보 로딩 중...</div>';
+  modal.classList.remove('hidden');
+  modal.onclick = function(e) { if (e.target === modal) closeShipCheckModal(); };
+
+  try {
+    var orderIds = [];
+    (grp.shipments || []).forEach(function(s) { if (s.id && orderIds.indexOf(s.id) < 0) orderIds.push(s.id); });
+    var resList = await Promise.all(orderIds.map(function(oid) {
+      return axios.get('/api/shipments/checklist/by-order/' + oid);
+    }));
+    shipCheckState.entries = resList.map(function(r) { return r.data && r.data.success ? r.data.data : null; }).filter(Boolean);
+    shipCheckState.entries.forEach(function(en) {
+      (en.lines || []).forEach(function(ln) {
+        ln._checked = !!ln.checked_at;
+        ln._partial = ln.packed_quantity != null;
+      });
+    });
+    renderShipCheckModal();
+  } catch (e) {
+    body.innerHTML = '<div class="text-center text-red-500 py-8">검수 정보 로드 실패: ' + escapeHtml((e.response && e.response.data && e.response.data.error) || e.message || '') + '</div>';
+  }
+}
+
+function shipCheckLineSpec(ln) {
+  if (ln.specification) return ln.specification;
+  if (ln.width && ln.height) return ln.width + 'x' + ln.height;
+  return '';
+}
+
+function renderShipCheckModal() {
+  var body = document.getElementById('shipCheckBody');
+  if (!body) return;
+  var html = '';
+  shipCheckState.entries.forEach(function(en, ei) {
+    var lines = en.lines || [];
+    var done = lines.filter(function(l) { return l._checked; }).length;
+    var shippedBadge = en.order && en.order.shipped_at ? ' <span class="ds-badge ds-badge-blue text-xs">출고됨</span>' : '';
+    html += '<div class="mb-4 border rounded-lg overflow-hidden">'
+      + '<div class="flex items-center justify-between px-3 py-2 bg-gray-50 border-b">'
+      + '<div class="font-semibold text-gray-700">' + escapeHtml(en.order.order_number || ('#' + en.order.id)) + shippedBadge
+      + ' <span class="text-xs font-normal text-gray-500">납품 ' + escapeHtml(en.order.delivery_date || '-') + ' · ' + escapeHtml(en.order.delivery_method || '-') + '</span></div>'
+      + '<div class="flex items-center gap-2">'
+      + '<span id="scCnt-' + ei + '" class="text-xs ' + (done >= lines.length && lines.length ? 'text-green-600 font-semibold' : 'text-gray-500') + '">' + done + '/' + lines.length + '</span>'
+      + '<button onclick="shipCheckAll(' + ei + ')" class="px-2 py-0.5 text-xs border border-gray-300 rounded hover:bg-gray-100">전체 체크</button>'
+      + '</div></div>'
+      + '<table class="w-full text-sm"><thead><tr class="text-xs text-gray-500 bg-gray-50">'
+      + '<th class="px-2 py-1 text-center" style="width:36px">담음</th>'
+      + '<th class="px-2 py-1 text-left">품목</th>'
+      + '<th class="px-2 py-1 text-left" style="width:110px">규격</th>'
+      + '<th class="px-2 py-1 text-center" style="width:70px">수량</th>'
+      + '<th class="px-2 py-1 text-center" style="width:110px">부분(예외)</th>'
+      + '</tr></thead><tbody>';
+    lines.forEach(function(ln, li) {
+      var pqHtml = ln._partial
+        ? '<input type="number" id="sc-pq-' + ei + '-' + li + '" value="' + (ln.packed_quantity != null ? ln.packed_quantity : (ln.quantity || '')) + '" min="0" step="any"'
+          + ' oninput="shipCheckSetQty(' + ei + ',' + li + ',this.value)" class="ds-input w-16 px-1 py-0.5 text-center text-xs border rounded">'
+          + ' <button onclick="shipCheckTogglePartial(' + ei + ',' + li + ')" class="text-xs text-gray-400 hover:text-gray-600" title="전량으로 되돌리기">&times;</button>'
+        : '<button onclick="shipCheckTogglePartial(' + ei + ',' + li + ')" class="px-2 py-0.5 text-xs text-gray-400 border border-dashed border-gray-300 rounded hover:text-amber-600 hover:border-amber-400" title="일부만 담는 예외 수량 입력">부분</button>';
+      html += '<tr class="border-t ' + (ln._checked ? 'bg-green-50' : '') + '">'
+        + '<td class="px-2 py-1.5 text-center"><input type="checkbox" ' + (ln._checked ? 'checked' : '') + ' onchange="toggleShipCheckLine(' + ei + ',' + li + ',this.checked)" class="rounded" style="width:16px;height:16px"></td>'
+        + '<td class="px-2 py-1.5" title="' + escapeHtml(ln.item_name || '') + '">' + escapeHtml(ln.item_name || '-')
+        + (ln.content ? ' <span class="text-xs text-gray-400">' + escapeHtml(ln.content) + '</span>' : '') + '</td>'
+        + '<td class="px-2 py-1.5 text-xs text-gray-500">' + escapeHtml(shipCheckLineSpec(ln) || '-') + '</td>'
+        + '<td class="px-2 py-1.5 text-center">' + (ln.quantity || 0) + (ln.unit ? ' ' + escapeHtml(ln.unit) : '') + '</td>'
+        + '<td class="px-2 py-1.5 text-center">' + pqHtml + '</td>'
+        + '</tr>';
+    });
+    html += '</tbody></table></div>';
+  });
+  if (!html) html = '<div class="text-center text-gray-400 py-8">검수할 라인이 없습니다.</div>';
+  body.innerHTML = html;
+}
+
+function toggleShipCheckLine(ei, li, checked) {
+  var en = shipCheckState.entries[ei];
+  if (!en || !en.lines[li]) return;
+  en.lines[li]._checked = checked;
+  var done = en.lines.filter(function(l) { return l._checked; }).length;
+  var cnt = document.getElementById('scCnt-' + ei);
+  if (cnt) {
+    cnt.textContent = done + '/' + en.lines.length;
+    cnt.className = 'text-xs ' + (done >= en.lines.length ? 'text-green-600 font-semibold' : 'text-gray-500');
+  }
+}
+
+function shipCheckAll(ei) {
+  var en = shipCheckState.entries[ei];
+  if (!en) return;
+  en.lines.forEach(function(l) { l._checked = true; });
+  renderShipCheckModal();
+}
+
+function shipCheckTogglePartial(ei, li) {
+  var en = shipCheckState.entries[ei];
+  if (!en || !en.lines[li]) return;
+  var ln = en.lines[li];
+  ln._partial = !ln._partial;
+  if (!ln._partial) ln.packed_quantity = null;
+  else if (ln.packed_quantity == null) ln.packed_quantity = ln.quantity || 0;
+  renderShipCheckModal();
+}
+
+function shipCheckSetQty(ei, li, val) {
+  var en = shipCheckState.entries[ei];
+  if (!en || !en.lines[li]) return;
+  var n = parseFloat(val);
+  en.lines[li].packed_quantity = isNaN(n) ? null : n;
+}
+
+async function saveShipCheckModal() {
+  if (!shipCheckState.entries.length) { closeShipCheckModal(); return; }
+  try {
+    for (var i = 0; i < shipCheckState.entries.length; i++) {
+      var en = shipCheckState.entries[i];
+      var items = (en.lines || []).map(function(ln) {
+        return {
+          order_item_id: ln.order_item_id,
+          checked: !!ln._checked,
+          packed_quantity: ln._partial && ln.packed_quantity != null ? ln.packed_quantity : null
+        };
+      });
+      if (items.length) await axios.patch('/api/shipments/checklist/' + en.shipment_id, { items: items });
+    }
+    showToast('검수 저장 완료', 'success');
+    closeShipCheckModal();
+    loadShipmentsByDate(); // 칩/집계 갱신
+  } catch (e) {
+    showToast('검수 저장 실패: ' + ((e.response && e.response.data && e.response.data.error) || e.message), 'error');
+  }
+}
+
+function closeShipCheckModal() {
+  var modal = document.getElementById('shipCheckModal');
+  if (modal) modal.classList.add('hidden');
+}
+
+// ---- 명세서 인쇄 (A4) ----
+function shipDoPrintA4(html, orientation) {
+  var listArea = document.getElementById('printListArea');
+  if (!listArea) { showToast('인쇄 영역을 찾을 수 없습니다.', 'error'); return; }
+  listArea.innerHTML = html;
+  document.body.classList.add('print-list-mode');
+  var pageStyle = document.createElement('style');
+  pageStyle.id = 'printListPageStyle';
+  pageStyle.textContent = '@page { size: A4 ' + (orientation || 'portrait') + '; margin: 12mm; }';
+  document.head.appendChild(pageStyle);
+  setTimeout(function() {
+    window.print();
+    document.body.classList.remove('print-list-mode');
+    listArea.innerHTML = '';
+    var ps = document.getElementById('printListPageStyle');
+    if (ps) ps.remove();
+  }, 100);
+}
+
+async function shipQrDataUrl(text) {
+  try {
+    if (typeof QRCode === 'undefined') return null;
+    return await QRCode.toDataURL(text, { width: 96, margin: 1 });
+  } catch (e) { return null; }
+}
+
+// 검수 체크지 — 포장대 내부용 (체크박스 + QR → /pack 모바일 검수 직행)
+async function printShipCheckSheet() {
+  var entries = shipCheckState.entries;
+  if (!entries.length) { showToast('인쇄할 검수 정보가 없습니다.', 'warning'); return; }
+  var html = '<div style="font-family:Malgun Gothic,sans-serif;">';
+  for (var i = 0; i < entries.length; i++) {
+    var en = entries[i];
+    var qr = await shipQrDataUrl(location.origin + '/pack?order=' + en.order.id);
+    html += '<div class="list-section" style="page-break-after:' + (i < entries.length - 1 ? 'always' : 'auto') + '">'
+      + '<div class="list-header"><h2>포장 검수 체크지</h2><span class="list-date">' + escapeHtml(currentDate) + '</span></div>'
+      + '<table style="margin-bottom:8px"><tbody>'
+      + '<tr><td style="width:15%;background:#f0f0f0;font-weight:bold">거래처</td><td style="width:45%">' + escapeHtml(shipCheckState.clientName) + '</td>'
+      + '<td rowspan="3" style="width:40%;text-align:center;vertical-align:middle">' + (qr ? '<img src="' + qr + '" style="width:26mm;height:26mm"><div style="font-size:8pt;color:#666">모바일 검수 QR</div>' : '') + '</td></tr>'
+      + '<tr><td style="background:#f0f0f0;font-weight:bold">주문번호</td><td>' + escapeHtml(en.order.order_number || ('#' + en.order.id)) + '</td></tr>'
+      + '<tr><td style="background:#f0f0f0;font-weight:bold">납품일 / 배송</td><td>' + escapeHtml(en.order.delivery_date || '-') + ' / ' + escapeHtml(en.order.delivery_method || '-') + '</td></tr>'
+      + '</tbody></table>'
+      + '<table><thead><tr>'
+      + '<th style="width:8%;text-align:center">확인</th><th style="width:42%">품목</th><th style="width:18%">규격</th><th style="width:10%;text-align:center">수량</th><th style="width:22%">비고</th>'
+      + '</tr></thead><tbody>';
+    (en.lines || []).forEach(function(ln) {
+      html += '<tr>'
+        + '<td style="text-align:center;font-size:14pt">' + (ln._checked ? '☑' : '☐') + '</td>'
+        + '<td>' + escapeHtml(ln.item_name || '-') + (ln.content ? ' <span style="color:#888;font-size:8pt">' + escapeHtml(ln.content) + '</span>' : '') + '</td>'
+        + '<td>' + escapeHtml(shipCheckLineSpec(ln) || '-') + '</td>'
+        + '<td style="text-align:center;font-weight:bold">' + (ln.quantity || 0) + (ln.unit ? ' ' + escapeHtml(ln.unit) : '') + '</td>'
+        + '<td style="height:8mm"></td>'
+        + '</tr>';
+    });
+    html += '</tbody></table>'
+      + '<div style="margin-top:10mm;display:flex;justify-content:flex-end;gap:20mm;font-size:10pt">'
+      + '<span>검수자: ______________</span><span>확인: ______________</span></div>'
+      + '</div>';
+  }
+  html += '</div>';
+  shipDoPrintA4(html, 'portrait');
+}
+
+// 납품명세서 — 박스 동봉 거래처용 (가격 제외). 복수 주문이면 합배송 통합 명세서(주문별 구분+소계).
+function printShipDeliveryNote() {
+  var entries = shipCheckState.entries;
+  if (!entries.length) { showToast('인쇄할 명세 정보가 없습니다.', 'warning'); return; }
+  var isMulti = entries.length > 1;
+  var supplier = (entries[0].order && entries[0].order.entity_name) || '';
+  var html = '<div style="font-family:Malgun Gothic,sans-serif;">'
+    + '<div class="list-header"><h2>납품명세서' + (isMulti ? ' <span style="font-size:10pt;color:#92400e">(합배송 ' + entries.length + '건 동봉)</span>' : '') + '</h2>'
+    + '<span class="list-date">' + escapeHtml(currentDate) + '</span></div>'
+    + '<table style="margin-bottom:10px"><tbody>'
+    + '<tr><td style="width:15%;background:#f0f0f0;font-weight:bold">받는 곳</td><td style="width:45%">' + escapeHtml(shipCheckState.clientName) + '</td>'
+    + '<td style="width:15%;background:#f0f0f0;font-weight:bold">공급</td><td>' + escapeHtml(supplier || '-') + '</td></tr>'
+    + '</tbody></table>';
+  var grandQty = 0;
+  entries.forEach(function(en) {
+    var subQty = 0;
+    if (isMulti) {
+      html += '<h3 style="font-size:11pt;font-weight:bold;margin:10px 0 4px;border-left:4px solid #92400e;padding-left:6px">'
+        + escapeHtml(en.order.order_number || ('#' + en.order.id)) + ' <span style="font-weight:normal;color:#666;font-size:9pt">납품 ' + escapeHtml(en.order.delivery_date || '-') + '</span></h3>';
+    }
+    html += '<table style="margin-bottom:6px"><thead><tr>'
+      + '<th style="width:6%;text-align:center">No</th><th style="width:46%">품목</th><th style="width:20%">규격</th><th style="width:12%;text-align:center">수량</th><th style="width:16%">비고</th>'
+      + '</tr></thead><tbody>';
+    (en.lines || []).forEach(function(ln, idx) {
+      var q = (ln.packed_quantity != null ? ln.packed_quantity : ln.quantity) || 0;
+      subQty += q; grandQty += q;
+      html += '<tr>'
+        + '<td style="text-align:center">' + (idx + 1) + '</td>'
+        + '<td>' + escapeHtml(ln.item_name || '-') + '</td>'
+        + '<td>' + escapeHtml(shipCheckLineSpec(ln) || '-') + '</td>'
+        + '<td style="text-align:center">' + q + (ln.unit ? ' ' + escapeHtml(ln.unit) : '') + '</td>'
+        + '<td>' + escapeHtml(ln.content || '') + '</td>'
+        + '</tr>';
+    });
+    if (isMulti) {
+      html += '<tr><td colspan="3" style="text-align:right;background:#fafafa;font-weight:bold">소계</td>'
+        + '<td style="text-align:center;background:#fafafa;font-weight:bold">' + subQty + '</td><td style="background:#fafafa"></td></tr>';
+    }
+    html += '</tbody></table>';
+  });
+  html += '<table><tbody><tr><td style="width:72%;text-align:right;background:#f0f0f0;font-weight:bold">총 수량</td>'
+    + '<td style="width:12%;text-align:center;font-weight:bold">' + grandQty + '</td><td style="width:16%"></td></tr></tbody></table>'
+    + '<div style="margin-top:8mm;font-size:10pt;color:#333">위와 같이 납품합니다. 수량을 확인해 주세요.</div>'
+    + '</div>';
+  shipDoPrintA4(html, 'portrait');
 }
 
 // ========== 초기화 ==========

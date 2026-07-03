@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
-import { requirePagePermission } from '../middleware/permissions'
+import { requireAnyPagePermission } from '../middleware/permissions'
 import { sendEmail } from '../services/emailProvider'
 import { renderTemplate } from '../services/emailTemplates'
 import { entityFilter, getEntityId } from '../utils/entityFilter'
@@ -13,7 +13,8 @@ import { getEntityCompanyInfo } from '../utils/entitySettings'
 import { escapeCsvField } from '../utils/csv'
 
 const shipmentsRouter = new Hono<HonoEnv>()
-shipmentsRouter.use('/*', authMiddleware, requirePagePermission('/shipments'))
+// v2 P4: /pack(모바일 출고 검수) 권한 보유자도 출고 데이터 API 사용 (orders 라우터의 '/orders','/cards' 패턴)
+shipmentsRouter.use('/*', authMiddleware, requireAnyPagePermission('/shipments', '/pack'))
 
 // ============================================================================
 // GET / - 출고 목록
@@ -148,6 +149,15 @@ shipmentsRouter.get('/daily', async (c) => {
              COALESCE(spm.box_count, sp.box_count) as box_count,
              COALESCE(spm.receiver_address, sp.receiver_address) as receiver_address,
              sp.status as shipment_status,
+             (SELECT COUNT(*) FROM shipment_checks sc WHERE sc.shipment_id = sp.id) as chk_total,
+             (SELECT COUNT(*) FROM shipment_checks sc WHERE sc.shipment_id = sp.id AND sc.checked_at IS NOT NULL) as chk_done,
+             o.consolidate_with_order_id,
+             (SELECT MAX(o2.delivery_date) FROM orders o2
+              WHERE (o2.id = COALESCE(o.consolidate_with_order_id, o.id)
+                     OR o2.consolidate_with_order_id = COALESCE(o.consolidate_with_order_id, o.id))
+                AND o2.id != o.id
+                AND o2.status NOT IN ('CANCELLED', 'DELETED')
+                AND o2.shipped_at IS NULL) as consolidate_partner_pending_date,
              COUNT(c.id) as total_cards,
              SUM(CASE WHEN c.status = 'PRINT_DONE' THEN 1 ELSE 0 END) as done_cards,
              SUM(CASE WHEN c.status IN ('RIP_READY', 'PRINTING') THEN 1 ELSE 0 END) as printing_cards,
@@ -228,10 +238,14 @@ shipmentsRouter.get('/consolidation-candidates', requireRole('ADMIN', 'MANAGER')
       delivery_method: string | null; delivery_time: string | null; delivery_info: string | null
       shipping_payment: string | null; client_id: number; client_name: string; postal_code: string | null
       shipment_id: number | null; merged_into_id: number | null
+      delivery_date: string | null; shipped_at: string | null; is_today?: boolean; waiting?: boolean
     }
+    // v2 확장: 당일 출고 거래처(anchor)의 "미출고 전체" 주문을 함께 조회 —
+    // 같은 법인 복수 주문·납품일 다른 주문도 합배송 후보로 (기존: 같은 날 + 복수 법인만)
     const { results } = await c.env.DB.prepare(`
       SELECT o.id, o.order_number, o.entity_id, en.short_name as entity_name,
              o.delivery_method, o.delivery_time, o.delivery_info, o.shipping_payment,
+             o.delivery_date, o.shipped_at,
              cl.id as client_id, cl.client_name,
              sp.id as shipment_id, sp.merged_into_id,
              CASE WHEN substr(o.delivery_info, 1, 1) = '[' AND substr(o.delivery_info, 7, 1) = ']'
@@ -243,11 +257,21 @@ shipmentsRouter.get('/consolidation-candidates', requireRole('ADMIN', 'MANAGER')
       LEFT JOIN shipments sp ON sp.id = (
         SELECT id FROM shipments WHERE order_id = o.id AND status != 'CANCELLED' ORDER BY id DESC LIMIT 1
       )
-      WHERE o.delivery_date = ? AND o.status NOT IN ('CANCELLED', 'DELETED', 'DRAFT', 'QUOTATION')
-      ORDER BY cl.client_name ASC, o.entity_id ASC
-    `).bind(targetDate).all<ConsolidationRow>()
+      WHERE o.status NOT IN ('CANCELLED', 'DELETED', 'DRAFT', 'QUOTATION')
+        AND (o.delivery_date = ?
+             OR (o.shipped_at IS NULL AND o.client_id IN (
+                  SELECT o3.client_id FROM orders o3
+                  WHERE o3.delivery_date = ? AND o3.status NOT IN ('CANCELLED', 'DELETED', 'DRAFT', 'QUOTATION')
+                )))
+      ORDER BY cl.client_name ASC, o.delivery_date ASC, o.entity_id ASC
+    `).bind(targetDate, targetDate).all<ConsolidationRow>()
 
-    // ① 같은 거래처 × 복수 법인 → 합포장/합짐 후보 (배송방법 무관)
+    for (const r of results) {
+      r.is_today = r.delivery_date === targetDate
+      r.waiting = !r.is_today // 당일이 아닌 미출고 건 (WHERE 조건상 비당일 = 미출고만 조회됨)
+    }
+
+    // ① 같은 거래처 미출고 복수 주문 → 합포장/합짐 후보 (법인 수·배송방법·납품일 무관, anchor=당일 1건+)
     const byClient = new Map<number, ConsolidationRow[]>()
     for (const r of results) {
       if (!byClient.has(r.client_id)) byClient.set(r.client_id, [])
@@ -256,7 +280,7 @@ shipmentsRouter.get('/consolidation-candidates', requireRole('ADMIN', 'MANAGER')
     const sameClient: any[] = []
     for (const rows of byClient.values()) {
       const entities = new Set(rows.map(r => r.entity_id))
-      if (entities.size >= 2) {
+      if (rows.length >= 2 && rows.some(r => r.is_today)) {
         // P3: 묶음 상태 — 전 주문의 실효 대표(merged_into || 자신)가 하나로 수렴하면 합포장 완료
         const primaries = new Set(rows.map(r => r.shipment_id ? (r.merged_into_id || r.shipment_id) : null))
         const merged = !primaries.has(null) && primaries.size === 1 && rows.length >= 2
@@ -264,18 +288,20 @@ shipmentsRouter.get('/consolidation-candidates', requireRole('ADMIN', 'MANAGER')
           client_id: rows[0].client_id,
           client_name: rows[0].client_name,
           entity_count: entities.size,
+          waiting_count: rows.filter(r => r.waiting).length,
           merged,
           orders: rows,
         })
       }
     }
 
-    // ② 같은 권역(우편번호 앞 3자리) × 자가배송(직배/용차/퀵) → 동선 묶음 후보
+    // ② 같은 권역(우편번호 앞 3자리) × 자가배송(직배/용차/퀵) → 동선 묶음 후보 (당일 건만)
     //    ①에 이미 잡힌 거래처는 제외. 복수 법인 겹침 또는 단일 법인이라도 3건+ 묶음.
     const OWN_DELIVERY = new Set(['직배', '용차', '퀵'])
     const sameClientIds = new Set(sameClient.map(g => g.client_id))
     const byRegion = new Map<string, ConsolidationRow[]>()
     for (const r of results) {
+      if (!r.is_today) continue
       if (!r.postal_code || !OWN_DELIVERY.has((r.delivery_method || '').trim())) continue
       if (sameClientIds.has(r.client_id)) continue
       const prefix = r.postal_code.substring(0, 3)
@@ -311,7 +337,9 @@ shipmentsRouter.post('/merge', requireRole('ADMIN', 'MANAGER'), async (c) => {
       return c.json({ success: false, error: '묶을 주문을 2건 이상 지정하세요.' }, 400)
     }
 
-    // 같은 거래처 + 같은 납품일 검증 (한 박스 전제)
+    // 같은 거래처 검증 (한 박스 전제).
+    // v2: 납품일 동일 검증 제거 — 납품일이 다른 주문도 묶기 허용(이른 주문은 '합배송 대기'로 보류,
+    // 실제 출고 시점에 함께 나감). 대기 가시성 = /daily consolidate_partner_pending_date 배지.
     const ph = order_ids.map(() => '?').join(',')
     const { results: orders } = await c.env.DB.prepare(
       `SELECT id, client_id, delivery_date FROM orders WHERE id IN (${ph})`
@@ -321,9 +349,6 @@ shipmentsRouter.post('/merge', requireRole('ADMIN', 'MANAGER'), async (c) => {
     }
     if (new Set(orders.map(o => o.client_id)).size > 1) {
       return c.json({ success: false, error: '같은 거래처의 주문만 합포장할 수 있습니다.' }, 400)
-    }
-    if (new Set(orders.map(o => o.delivery_date || '')).size > 1) {
-      return c.json({ success: false, error: '납품일이 같은 주문만 합포장할 수 있습니다.' }, 400)
     }
 
     // shipment 확보 (미출고 주문은 PREPARING 생성)
@@ -336,6 +361,10 @@ shipmentsRouter.post('/merge', requireRole('ADMIN', 'MANAGER'), async (c) => {
 
     const primaryId = Math.min(...shipmentIds)
     const childIds = shipmentIds.filter(sid => sid !== primaryId)
+    // v2: 접수 예약 포인터(0438)도 동기 — 납품일 다른 묶음의 '합배송 대기' 배지 근거 +
+    // unmerge 시 그룹 예약 클리어와 대칭. root = 대표 shipment의 주문 (1-hop, 체인 없음)
+    const rootOrderId = orders[shipmentIds.indexOf(primaryId)]?.id
+    const childOrderIds = orders.filter(o => o.id !== rootOrderId).map(o => o.id)
     const stmts = [
       c.env.DB.prepare(`UPDATE shipments SET merged_into_id = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?`).bind(primaryId),
       ...childIds.map(sid =>
@@ -344,6 +373,12 @@ shipmentsRouter.post('/merge', requireRole('ADMIN', 'MANAGER'), async (c) => {
       // 부속이 기존에 다른 묶음의 대표였다면 그 자식들도 새 대표로 재지정 (체인 방지)
       ...(childIds.length > 0
         ? [c.env.DB.prepare(`UPDATE shipments SET merged_into_id = ? WHERE merged_into_id IN (${childIds.map(() => '?').join(',')})`).bind(primaryId, ...childIds)]
+        : []),
+      ...(rootOrderId && childOrderIds.length > 0
+        ? [
+            c.env.DB.prepare(`UPDATE orders SET consolidate_with_order_id = NULL WHERE id = ?`).bind(rootOrderId),
+            c.env.DB.prepare(`UPDATE orders SET consolidate_with_order_id = ? WHERE id IN (${childOrderIds.map(() => '?').join(',')})`).bind(rootOrderId, ...childOrderIds),
+          ]
         : []),
     ]
     await c.env.DB.batch(stmts)
@@ -391,6 +426,128 @@ shipmentsRouter.post('/unmerge', requireRole('ADMIN', 'MANAGER'), async (c) => {
     return c.json({ success: true, data: { released: res.meta.changes ?? 0 }, message: '합포장이 해제되었습니다.' })
   } catch (error) {
     console.error('shipments unmerge error:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
+  }
+})
+
+// ============================================================================
+// GET /checklist/by-order/:orderId - 포장 검수 체크리스트 (출고관리 v2 P1)
+// shipment(없으면 PREPARING 생성) 확보 + 주문 라인 스냅샷(shipment_checks upsert) 후 반환.
+// 검수 단위 = top-level order_item. packed_quantity NULL = 전량.
+// ※ /:id 보다 먼저 등록
+// ============================================================================
+shipmentsRouter.get('/checklist/by-order/:orderId', async (c) => {
+  try {
+    const rawParam = c.req.param('orderId')
+    const orderId = /^\d+$/.test(rawParam) ? parseInt(rawParam) : 0
+    if (!orderId && !rawParam) return c.json({ success: false, error: '주문 ID가 필요합니다.' }, 400)
+
+    const ef = entityFilter(c, 'o')
+    // 숫자 = 주문 ID, 비숫자 = 주문번호 (/pack 수동 입력·QR 폴백)
+    const order = await c.env.DB.prepare(`
+      SELECT o.id, o.order_number, o.delivery_date, o.delivery_method, o.status, o.shipped_at,
+             o.entity_id, en.short_name as entity_name, cl.client_name
+      FROM orders o
+      LEFT JOIN clients cl ON o.client_id = cl.id
+      LEFT JOIN entities en ON en.id = o.entity_id
+      WHERE ${orderId ? 'o.id = ?' : 'o.order_number = ?'}${ef.clause}
+    `).bind(orderId || rawParam, ...ef.params).first<{
+      id: number; order_number: string; delivery_date: string | null; delivery_method: string | null
+      status: string; shipped_at: string | null; entity_id: number | null; entity_name: string | null; client_name: string | null
+    }>()
+    if (!order) return c.json({ success: false, error: '주문을 찾을 수 없습니다.' }, 404)
+
+    const user = c.get('user')
+    const shipmentId = await ensureShipmentForOrder(c.env.DB, order.id, { userId: user?.id ?? null, fallbackEntityId: getEntityId(c) || 1, status: 'PREPARING' })
+    if (!shipmentId) return c.json({ success: false, error: '출고 정보를 생성할 수 없습니다.' }, 500)
+
+    // 라인 스냅샷 upsert — 신규 추가 라인도 재조회 시 합류 (UNIQUE + OR IGNORE 멱등)
+    await c.env.DB.prepare(`
+      INSERT OR IGNORE INTO shipment_checks (shipment_id, order_item_id)
+      SELECT ?, oi.id FROM order_items oi
+      WHERE oi.order_id = ? AND (oi.parent_item_id IS NULL OR oi.parent_item_id = 0)
+    `).bind(shipmentId, order.id).run()
+
+    const { results: lines } = await c.env.DB.prepare(`
+      SELECT sc.order_item_id, sc.packed_quantity, sc.checked_at, sc.checked_by, u.name as checker_name,
+             oi.item_name, oi.specification, oi.width, oi.height, oi.quantity, oi.unit, oi.content, oi.shipment_ready
+      FROM shipment_checks sc
+      JOIN order_items oi ON oi.id = sc.order_item_id
+      LEFT JOIN users u ON u.id = sc.checked_by
+      WHERE sc.shipment_id = ?
+      ORDER BY oi.sort_order ASC, oi.id ASC
+    `).bind(shipmentId).all()
+
+    // 합포장 그룹 (통합 명세서·묶음 검수용)
+    const sp = await c.env.DB.prepare(`SELECT merged_into_id, status FROM shipments WHERE id = ?`)
+      .bind(shipmentId).first<{ merged_into_id: number | null; status: string }>()
+    const primaryId = sp?.merged_into_id || shipmentId
+    const { results: group } = await c.env.DB.prepare(`
+      SELECT s.id as shipment_id, s.order_id, o.order_number, o.delivery_date
+      FROM shipments s JOIN orders o ON o.id = s.order_id
+      WHERE (s.id = ? OR s.merged_into_id = ?) AND s.status != 'CANCELLED'
+      ORDER BY s.id ASC
+    `).bind(primaryId, primaryId).all()
+
+    return c.json({
+      success: true,
+      data: {
+        shipment_id: shipmentId,
+        shipment_status: sp?.status || 'PREPARING',
+        order: {
+          id: order.id, order_number: order.order_number, client_name: order.client_name,
+          delivery_date: order.delivery_date, delivery_method: order.delivery_method,
+          status: order.status, shipped_at: order.shipped_at, entity_name: order.entity_name,
+        },
+        lines,
+        group,
+      },
+    })
+  } catch (error) {
+    console.error('shipments checklist error:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
+  }
+})
+
+// ============================================================================
+// PATCH /checklist/:shipmentId - 검수 라인 체크 저장 (출고관리 v2 P1)
+// checked=true → checked_at/by 스탬프(최초 체크 시각 보존), false → NULL 복귀.
+// packed_quantity: 예외(일부만 담음) 시에만 값, 전량이면 null.
+// ============================================================================
+shipmentsRouter.patch('/checklist/:shipmentId', async (c) => {
+  try {
+    const sid = parseInt(c.req.param('shipmentId'))
+    const body = await c.req.json<{ items?: Array<{ order_item_id: number; checked: boolean; packed_quantity?: number | null }> }>()
+    if (!sid || !Array.isArray(body.items) || body.items.length === 0) {
+      return c.json({ success: false, error: 'items가 필요합니다.' }, 400)
+    }
+
+    const ef = entityFilter(c, 'o')
+    const sp = await c.env.DB.prepare(
+      `SELECT s.id FROM shipments s JOIN orders o ON o.id = s.order_id WHERE s.id = ?${ef.clause}`
+    ).bind(sid, ...ef.params).first<{ id: number }>()
+    if (!sp) return c.json({ success: false, error: '출고 정보를 찾을 수 없습니다.' }, 404)
+
+    const user = c.get('user')
+    const stmts = body.items.map((it) => {
+      const pq = (it.packed_quantity === undefined || it.packed_quantity === null) ? null : Number(it.packed_quantity)
+      return it.checked
+        ? c.env.DB.prepare(
+            `UPDATE shipment_checks SET checked_at = COALESCE(checked_at, CURRENT_TIMESTAMP), checked_by = COALESCE(checked_by, ?), packed_quantity = ? WHERE shipment_id = ? AND order_item_id = ?`
+          ).bind(user?.id ?? null, pq, sid, it.order_item_id)
+        : c.env.DB.prepare(
+            `UPDATE shipment_checks SET checked_at = NULL, checked_by = NULL, packed_quantity = ? WHERE shipment_id = ? AND order_item_id = ?`
+          ).bind(pq, sid, it.order_item_id)
+    })
+    await c.env.DB.batch(stmts)
+
+    const summary = await c.env.DB.prepare(
+      `SELECT COUNT(*) as total, SUM(CASE WHEN checked_at IS NOT NULL THEN 1 ELSE 0 END) as done FROM shipment_checks WHERE shipment_id = ?`
+    ).bind(sid).first<{ total: number; done: number }>()
+
+    return c.json({ success: true, data: { shipment_id: sid, total: summary?.total || 0, done: summary?.done || 0 } })
+  } catch (error) {
+    console.error('shipments checklist patch error:', error)
     return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
   }
 })
@@ -573,6 +730,25 @@ shipmentsRouter.post('/', requireRole('ADMIN', 'MANAGER', 'DESIGNER'), async (c)
       `).bind(...body.card_ids).all<{ id: number; card_number: string }>()
       if (invalidCards.length > 0) {
         return c.json({ success: false, error: `출고 불가 카드(PRINT_DONE 아님): ${invalidCards.map(x => x.card_number || x.id).join(', ')}` }, 400)
+      }
+    }
+
+    // v2 전량 출고 원칙 (부분출고 전면 금지):
+    // ① 주문의 미출고 카드는 전부 PRINT_DONE이어야 하고 ② card_ids 지정 시 미출고 카드 전체를 커버해야 한다.
+    {
+      const { results: pendingCards } = await c.env.DB.prepare(`
+        SELECT id, card_number, status FROM cards WHERE order_id = ? AND shipped_at IS NULL
+      `).bind(body.order_id).all<{ id: number; card_number: string; status: string }>()
+      const notDone = pendingCards.filter(cd => cd.status !== 'PRINT_DONE')
+      if (notDone.length > 0) {
+        return c.json({ success: false, error: `미완성 카드 ${notDone.length}건(${notDone.map(x => x.card_number || x.id).join(', ')}) — 전량 출고 원칙에 따라 출고할 수 없습니다.` }, 400)
+      }
+      if (body.card_ids && body.card_ids.length > 0) {
+        const idSet = new Set(body.card_ids)
+        const uncovered = pendingCards.filter(cd => !idSet.has(cd.id))
+        if (uncovered.length > 0) {
+          return c.json({ success: false, error: `미포함 미출고 카드 ${uncovered.length}건(${uncovered.map(x => x.card_number || x.id).join(', ')}) — 부분 출고는 불가합니다. 전체 카드를 포함하세요.` }, 400)
+        }
       }
     }
 
