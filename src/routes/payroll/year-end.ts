@@ -57,11 +57,13 @@ yearEndRouter.get('/year-end/:employeeId', async (c) => {
     const year = Number(c.req.query('year') || new Date().getFullYear())
     if (!employeeId) return c.json({ success: false, error: 'employeeId 필요' }, 400)
 
+    // #IDOR: 자법인 직원만 (ADMIN=entityId 0 → bypass). 형제 라우트(:144 settlement·:399 list)와 정합.
+    const yeEf = entityFilter(c)
     const emp = await c.env.DB.prepare(
       `SELECT id, name, employee_code, department, position, hire_date, resident_number, phone,
               dependents_count, children_under_20_count, base_salary
-       FROM employees WHERE id = ?`
-    ).bind(employeeId).first<any>()
+       FROM employees WHERE id = ?${yeEf.clause}`
+    ).bind(employeeId, ...yeEf.params).first<any>()
     if (!emp) return c.json({ success: false, error: '직원 없음' }, 404)
 
     // #397: employees에 rrn 컬럼 없음 → resident_number(암호화) 복호화 후 rrn 필드로 반환(프론트 maskRrn 호환).

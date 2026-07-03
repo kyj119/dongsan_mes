@@ -125,14 +125,20 @@ cardsLifecycleRouter.patch('/bulk/status', requireRole('ADMIN', 'MANAGER', 'OPER
 
     // N+1 → 일괄 SELECT로 현재 상태 조회 (루프 SELECT 제거)
     interface BulkCard { id: number; status: string; order_id: number; post_processing: string | null }
-    const placeholders = card_ids.map(() => '?').join(',')
     const efBulk = entityFilter(c, 'o')
-    const { results: existingCards } = await c.env.DB.prepare(`
-      SELECT cards.id, cards.status, cards.order_id, cards.post_processing
-      FROM cards
-      JOIN orders o ON cards.order_id = o.id
-      WHERE cards.id IN (${placeholders})${efBulk.clause}
-    `).bind(...card_ids, ...efBulk.params).all<BulkCard>()
+    // D1 바인드 한도 → 80청크 분할(#409: card_ids + ef params가 100 초과 시 500)
+    const existingCards: BulkCard[] = []
+    for (let i = 0; i < card_ids.length; i += 80) {
+      const chunk = card_ids.slice(i, i + 80)
+      const placeholders = chunk.map(() => '?').join(',')
+      const { results } = await c.env.DB.prepare(`
+        SELECT cards.id, cards.status, cards.order_id, cards.post_processing
+        FROM cards
+        JOIN orders o ON cards.order_id = o.id
+        WHERE cards.id IN (${placeholders})${efBulk.clause}
+      `).bind(...chunk, ...efBulk.params).all<BulkCard>()
+      existingCards.push(...results)
+    }
     const cardMap = new Map(existingCards.map(c => [c.id, c]))
 
     // #282: 카드 상태 전이 규칙 (완료 카드가 출력중으로 역행 방지)
@@ -310,11 +316,17 @@ cardsLifecycleRouter.post('/bulk-ship', async (c) => {
 
     // N+1 → 일괄 SELECT로 카드 정보 조회
     interface ShipCard { id: number; status: string; order_id: number; card_number: string; shipped_at: string | null }
-    const placeholders = card_ids.map(() => '?').join(',')
     const ef = cardEntityScope(c)  // #432: 타 법인 카드 출고 차단
-    const { results: existingCards } = await c.env.DB.prepare(`
-      SELECT id, status, order_id, card_number, shipped_at FROM cards WHERE id IN (${placeholders})${ef.clause}
-    `).bind(...card_ids, ...ef.params).all<ShipCard>()
+    // D1 바인드 한도 → 80청크 분할(#409)
+    const existingCards: ShipCard[] = []
+    for (let i = 0; i < card_ids.length; i += 80) {
+      const chunk = card_ids.slice(i, i + 80)
+      const placeholders = chunk.map(() => '?').join(',')
+      const { results } = await c.env.DB.prepare(`
+        SELECT id, status, order_id, card_number, shipped_at FROM cards WHERE id IN (${placeholders})${ef.clause}
+      `).bind(...chunk, ...ef.params).all<ShipCard>()
+      existingCards.push(...results)
+    }
     const cardMap = new Map(existingCards.map(c => [c.id, c]))
 
     // 적격 카드 필터링 + batch UPDATE 구성
@@ -730,13 +742,18 @@ cardsLifecycleRouter.patch('/bulk/pp-complete', async (c) => {
     if (!card_ids?.length) return c.json({ success: false, error: 'card_ids required' }, 400)
 
     // N+1 → 단일 조건부 UPDATE (SELECT 루프 제거)
-    const placeholders = card_ids.map(() => '?').join(',')
     const ef = cardEntityScope(c)  // #432: 타 법인 카드 일괄 후가공완료 차단
-    const result = await c.env.DB.prepare(`
-      UPDATE cards SET pp_status = 'DONE', pp_completed_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
-      WHERE id IN (${placeholders}) AND status = 'PRINT_DONE' AND pp_status = 'PENDING'${ef.clause}
-    `).bind(...card_ids, ...ef.params).run()
-    const completed = result.meta?.changes ?? 0
+    // D1 바인드 한도 → 80청크 분할(#409)
+    let completed = 0
+    for (let i = 0; i < card_ids.length; i += 80) {
+      const chunk = card_ids.slice(i, i + 80)
+      const placeholders = chunk.map(() => '?').join(',')
+      const result = await c.env.DB.prepare(`
+        UPDATE cards SET pp_status = 'DONE', pp_completed_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+        WHERE id IN (${placeholders}) AND status = 'PRINT_DONE' AND pp_status = 'PENDING'${ef.clause}
+      `).bind(...chunk, ...ef.params).run()
+      completed += result.meta?.changes ?? 0
+    }
 
     return c.json({ success: true, message: `${completed}건 후가공 완료 처리`, data: { completed } })
   } catch (error) {

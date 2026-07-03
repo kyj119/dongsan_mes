@@ -91,6 +91,20 @@ export function parseXmlValues(xml: string): Record<string, string> {
 }
 
 /**
+ * 바로빌 조회 응답의 음수 에러코드 가드.
+ * 조회 실패는 HTTP 200 + <...Result>-24005</...Result>(음수 정수)로 오므로 parseXmlArray가 빈 배열로 삼킨다.
+ * 조회 성공 응답은 XML(<Item>…) 또는 비음수 값 → 순수 음수 정수면 인증/권한/파라미터 오류로 throw.
+ * write(등록·발송) 함수는 반환코드를 parseInt로 직접 판정하므로 이 가드를 쓰지 않는다.
+ * (과거 카드 미수집 사고 재발 방지 — silent "0건 수집" 위장 차단)
+ */
+export function assertBarobillQueryOk(result: string, method: string): void {
+  const trimmed = result.trim()
+  if (/^-\d+$/.test(trimmed)) {
+    throw new Error(`Barobill ${method} 오류코드 ${trimmed} (인증/권한/파라미터 확인: senderId·CERTKEY·corpNum)`)
+  }
+}
+
+/**
  * XML에서 배열 파싱 (반복 요소)
  */
 export function parseXmlArray(xml: string, itemTag: string): Record<string, string>[] {

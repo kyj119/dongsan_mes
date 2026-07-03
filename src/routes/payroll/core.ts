@@ -201,11 +201,13 @@ coreRouter.post('/save', requireRole('ADMIN', 'MANAGER'), async (c) => {
     const user = c.get('user')
 
     // 1) 직원 + 설정 로드
+    // #IDOR: entityFilter로 자법인 직원만 로드 (ADMIN=entityId 0 → bypass). 타 법인 직원 급여 변조 차단.
+    const empEf = entityFilter(c)
     const emp = await c.env.DB.prepare(
       `SELECT id, base_salary, hourly_rate, overtime_daily_hours, overtime_work_days,
               dependents_count, income_tax_table_option
-       FROM employees WHERE id = ?`
-    ).bind(employeeId).first<any>()
+       FROM employees WHERE id = ?${empEf.clause}`
+    ).bind(employeeId, ...empEf.params).first<any>()
     if (!emp) return c.json({ success: false, error: '직원 없음' }, 404)
 
     // 직원 고정수당/4대보험 토글 기본값
@@ -333,6 +335,15 @@ coreRouter.post('/save', requireRole('ADMIN', 'MANAGER'), async (c) => {
     const total_deduction = d.total_deduction + other_deduction
     const net_pay = total_salary - total_deduction
     const notes = String(body.notes || '')
+
+    // #B1 급여확정잠금: 확정(승인/지급) 급여는 재계산 덮어쓰기 차단.
+    //   approve/pay가 status를 바꾼 뒤 동일 employee+period로 /save 재호출 시 net_pay 등 재무필드 변조 방지.
+    const existingPayroll = await c.env.DB.prepare(
+      `SELECT status FROM payroll WHERE employee_id = ? AND pay_period = ?`
+    ).bind(employeeId, payPeriod).first<{ status: string }>()
+    if (existingPayroll && existingPayroll.status !== 'PENDING') {
+      return c.json({ success: false, error: '확정(승인/지급)된 급여는 수정할 수 없습니다. 먼저 승인을 취소하세요.' }, 409)
+    }
 
     // UPSERT — 동일 employee+period 있으면 update
     await c.env.DB.prepare(

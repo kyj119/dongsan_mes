@@ -366,7 +366,7 @@ ordersCreateRouter.post('/', async (c) => {
           (af.file_path || '').split(/[/\\]/).pop() || null,
           af.analysis_id || null,
           idx,
-          getEntityId(c)
+          billingEntityId // #entity정합: 주문행과 동일 법인 (코디 타법인 접수 시 세션≠청구 법인)
         )
       )
       await c.env.DB.batch(aiFileStmts)
@@ -389,7 +389,7 @@ ordersCreateRouter.post('/', async (c) => {
             ai_analysis_id: orderData.ai_analysis_id ?? null
           }),
           user?.id || null,
-          getEntityId(c) || 1
+          billingEntityId // #entity정합: 주문행과 동일 법인 (코디 타법인 접수 대응)
         ).run()
       } catch (taskErr) {
         // Non-fatal — IllustratorAutomat still polls /api/orders?status=CONFIRMED
@@ -699,7 +699,7 @@ ordersCreateRouter.post('/', async (c) => {
               scale, JSON.stringify(clipBounds),
               JSON.stringify({ L: mL, R: mR, T: mT, B: mB }),
               JSON.stringify(iaParams),
-              getEntityId(c)
+              billingEntityId // #entity정합: 주문행과 동일 법인 (코디 타법인 접수 대응)
             ))
           }
           for (let i = 0; i < jobStmts.length; i += 80) {

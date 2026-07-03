@@ -1073,9 +1073,9 @@ kakaoRouter.post('/send-shipment-bulk', async (c) => {
     const db = c.env.DB
     const body = await c.req.json() as any // TODO: #17 — external request body
     const userId = c.get('user').id
-    const { channel, content, targets, template_code, subject, date } = body
+    const { channel, content, targets: rawTargets, template_code, subject, date } = body
 
-    if (!targets || !Array.isArray(targets) || targets.length === 0) {
+    if (!rawTargets || !Array.isArray(rawTargets) || rawTargets.length === 0) {
       return c.json({ success: false, error: '발송 대상이 없습니다.' }, 400)
     }
     if (!content) {
@@ -1090,6 +1090,32 @@ kakaoRouter.post('/send-shipment-bulk', async (c) => {
     const provider = await getKakaoProvider(c)
     if (!provider) {
       return c.json({ success: false, error: '바로빌 연동이 설정되지 않았습니다.' }, 400)
+    }
+
+    // #dedup: 발송 전 (a) 이미 성공발송된 shipment (b) 합포장 자식(merged_into_id) 제외 — 재발송·자식 중복발송 방지(단건 :490 가드를 bulk로 확장). D1 바인드 한도 → 80청크.
+    const allSids = (rawTargets as any[]).flatMap((t) => Array.isArray(t.shipment_ids) ? t.shipment_ids : []).map(Number).filter(Boolean)
+    const sentSet = new Set<number>()
+    const mergedSet = new Set<number>()
+    for (let i = 0; i < allSids.length; i += 80) {
+      const chunk = allSids.slice(i, i + 80)
+      const ph = chunk.map(() => '?').join(',')
+      const { results: sRows } = await db.prepare(
+        `SELECT DISTINCT related_id AS id FROM kakao_send_logs WHERE related_type = 'shipments' AND status = 'SUCCESS' AND related_id IN (${ph})`
+      ).bind(...chunk).all<{ id: number }>()
+      for (const r of sRows) sentSet.add(Number(r.id))
+      const { results: mRows } = await db.prepare(
+        `SELECT id FROM shipments WHERE id IN (${ph}) AND merged_into_id IS NOT NULL`
+      ).bind(...chunk).all<{ id: number }>()
+      for (const r of mRows) mergedSet.add(Number(r.id))
+    }
+    const targets = (rawTargets as any[]).filter((t) => {
+      const ids = (Array.isArray(t.shipment_ids) ? t.shipment_ids : []).map(Number).filter(Boolean)
+      if (ids.length === 0) return true // shipment_id 없는 대상(수동입력 등)은 dedup 불가 → 통과
+      return ids.some((id: number) => !sentSet.has(id) && !mergedSet.has(id))
+    })
+    const skippedDup = (rawTargets as any[]).length - targets.length
+    if (targets.length === 0) {
+      return c.json({ success: true, data: { status: 'SKIPPED', reason: 'all_already_sent_or_merged', skipped: skippedDup } })
     }
 
     // 각 대상별 변수 치환

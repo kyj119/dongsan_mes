@@ -1797,8 +1797,10 @@ bankRouter.post('/auto-sync', requireRole('ADMIN'), async (c) => {
               ).run()
               totalInserted++
             }
-          } catch (_dayErr) {
-            // 특정 날짜 실패는 무시
+          } catch (dayErr: any) {
+            // 관측성: 일별 조회 실패를 로깅+응답 수집 (과거 계좌 조용한 미수집 정지 방지 — 카드 syncErrors와 대칭)
+            console.error(`[bank-auto-sync] ${accNum} ${dateStr} 조회 실패:`, dayErr?.message || dayErr)
+            if (errors.length < 20) errors.push(`${accNum} ${dateStr}: ${dayErr?.message || '조회 실패'}`)
           }
         }
       }
@@ -1845,8 +1847,9 @@ bankRouter.post('/auto-sync', requireRole('ADMIN'), async (c) => {
           totalMatched++
         }
         if (autoSyncStmts.length > 0) await c.env.DB.batch(autoSyncStmts)
-      } catch (matchErr) {
-        // 자동매칭 실패는 치명적이 아님
+      } catch (matchErr: any) {
+        // 자동매칭 실패는 치명적이 아니나 관측 위해 로깅
+        console.error('[bank-auto-sync] 자동매칭 실패:', matchErr?.message || matchErr)
       }
     }
 

@@ -181,6 +181,8 @@ hrRouter.get('/attendance', async (c) => {
     const { employee_id, start_date, end_date, limit = '100' } = c.req.query()
     const safeLimit = Math.min(parseInt(limit) || 100, 200)
 
+    // #IDOR: 자법인 직원 근태만 (ADMIN=entityId 0 → bypass). attendance.ts:87 형제 라우트와 정합.
+    const efAtt = entityFilter(c, 'e')
     let query = `
       SELECT
         a.*,
@@ -189,9 +191,9 @@ hrRouter.get('/attendance', async (c) => {
         e.department
       FROM attendance a
       LEFT JOIN employees e ON a.employee_id = e.id
-      WHERE e.is_deleted = 0
+      WHERE e.is_deleted = 0${efAtt.clause}
     `
-    const params: any[] = []
+    const params: any[] = [...efAtt.params]
 
     if (employee_id) {
       query += ` AND a.employee_id = ?`
@@ -330,9 +332,10 @@ hrRouter.get('/attendances', async (c) => {
         e.department
       FROM attendance a
       LEFT JOIN employees e ON a.employee_id = e.id
-      WHERE e.is_deleted = 0
+      WHERE e.is_deleted = 0${entityFilter(c, 'e').clause}
     `
-    const params: any[] = []
+    // #IDOR: 자법인 직원 근태만 (ADMIN=entityId 0 → bypass). attendance.ts:154 형제 라우트와 정합.
+    const params: any[] = [...entityFilter(c, 'e').params]
 
     if (employee_id) {
       query += ` AND a.employee_id = ?`

@@ -222,12 +222,18 @@ attendanceRouter.patch('/bulk', requireRole('ADMIN', 'MANAGER'), async (c) => {
       for (const r of empRows || []) empEntityMap.set(Number(r.id), r.entity_id)
     }
 
+    const reqEntity = getEntityId(c)
     for (const it of items) {
       try {
         const employee_id = Number(it.employee_id)
         const work_date = String(it.work_date || '')
         if (!employee_id || !work_date) {
           errors.push({ item: it, error: 'employee_id/work_date 누락' })
+          continue
+        }
+        // #IDOR: 자법인 직원만 (ADMIN=entityId 0 → bypass). 타 법인·미존재 직원 근태 쓰기 차단(prefetch 맵 재활용).
+        if (reqEntity !== 0 && empEntityMap.get(employee_id) !== reqEntity) {
+          errors.push({ item: it, error: '접근 권한이 없는 직원입니다.' })
           continue
         }
 

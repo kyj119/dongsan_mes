@@ -236,7 +236,8 @@ ordersQueriesRouter.patch('/bulk-bill', requireRole('ADMIN', 'MANAGER'), async (
 })
 
 // PATCH /api/orders/bulk-ship - 일괄 출고완료 처리
-ordersQueriesRouter.patch('/bulk-ship', async (c) => {
+// #IDOR: 단건 ship(shipments.ts:1038)·bulk-bill(:158)과 동일하게 ADMIN/MANAGER 전용 + entityFilter(자법인만)
+ordersQueriesRouter.patch('/bulk-ship', requireRole('ADMIN', 'MANAGER'), async (c) => {
   try {
     const user = c.get('user')
     const { order_ids } = await c.req.json<{ order_ids: number[] }>()
@@ -251,16 +252,24 @@ ordersQueriesRouter.patch('/bulk-ship', async (c) => {
     //   카드 출고 UPDATE→remaining 확인→deductStockLinesOnShip→상태전이는 read-after-write 순차의존이라 batch 불가, 유지.
     // #458: D1 바인드 한도(100) — 선행 SELECT IN절 80청크 분할 (cards #409 패턴)
     const orderInfoMap = new Map<number, { delivery_method: string | null; order_type: string | null; entity_id: number | null }>()
+    // #IDOR: entityFilter로 자법인 주문만 map에 적재 → 아래 루프에서 map 부재 시 skip(타 법인 카드 출고 차단)
+    const shipEf = entityFilter(c)
     for (let i = 0; i < order_ids.length; i += 80) {
       const chunk = order_ids.slice(i, i + 80)
       const shipPh = chunk.map(() => '?').join(',')
       const { results: orderInfoRows } = await c.env.DB.prepare(
-        `SELECT id, delivery_method, order_type, entity_id FROM orders WHERE id IN (${shipPh})`
-      ).bind(...chunk).all<{ id: number; delivery_method: string | null; order_type: string | null; entity_id: number | null }>()
+        `SELECT id, delivery_method, order_type, entity_id FROM orders WHERE id IN (${shipPh})${shipEf.clause}`
+      ).bind(...chunk, ...shipEf.params).all<{ id: number; delivery_method: string | null; order_type: string | null; entity_id: number | null }>()
       for (const o of orderInfoRows) orderInfoMap.set(o.id, o)
     }
 
     for (const orderId of order_ids) {
+      // #IDOR: 선조회(entityFilter 적용)에 없으면 타 법인/미존재 주문 → 카드 출고 없이 skip
+      const orderInfo = orderInfoMap.get(orderId)
+      if (!orderInfo) {
+        results.push({ id: orderId, success: false, error: '대상 주문이 없거나 접근 권한이 없습니다.' })
+        continue
+      }
       // 카드 출고 + 주문 상태 전환 (per-order 순차 처리)
       // Step 1: 카드 출고 처리
       const updateResult = await c.env.DB.prepare(`
@@ -270,8 +279,7 @@ ordersQueriesRouter.patch('/bulk-ship', async (c) => {
       const shippedCards = updateResult.meta.changes ?? 0
 
       // Step 2: 출고 후 전체 카드 확인 → 모두 출고면 auto_complete_date 설정 (동기화 시 SHIPPED 전이)
-      const orderInfo = orderInfoMap.get(orderId) || null
-      const method = (orderInfo?.delivery_method || '').trim()
+      const method = (orderInfo.delivery_method || '').trim()
 
       // 모든 카드 출고 완료 확인
       const afterCheck = await c.env.DB.prepare(`

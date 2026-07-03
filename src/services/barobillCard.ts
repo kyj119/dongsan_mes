@@ -1,7 +1,7 @@
 /**
  * 바로빌 카드 사용내역 조회 서비스
  */
-import { barobillCall, parseXmlArray, type BarobillConfig } from './barobillClient'
+import { barobillCall, parseXmlArray, assertBarobillQueryOk, type BarobillConfig } from './barobillClient'
 
 export interface CardApprovalLog {
   CardNum: string
@@ -24,6 +24,7 @@ export interface CardApprovalLog {
 /** 등록된 카드 목록 조회 */
 export async function getCardList(config: BarobillConfig, id: string = ''): Promise<any[]> {
   const result = await barobillCall(config, 'CARD', 'GetCardEx', { ID: id, CardStatus: 0 })
+  assertBarobillQueryOk(result, 'GetCardEx')
   return parseXmlArray(result, 'Card')
 }
 
@@ -44,6 +45,7 @@ export async function getDailyCardLog(
     OrderDirection: 0,
   })
 
+  assertBarobillQueryOk(result, 'GetDailyCardApprovalLog')
   const items = parseXmlArray(result, 'CardApprovalLog') as unknown as CardApprovalLog[]
   const maxPageMatch = result.match(/<MaxPageNum>(\d+)<\/MaxPageNum>/)
   const currentPageMatch = result.match(/<CurrentPage>(\d+)<\/CurrentPage>/)
@@ -72,6 +74,7 @@ export async function getMonthlyCardLog(
     OrderDirection: 0,
   })
 
+  assertBarobillQueryOk(result, 'GetMonthlyCardApprovalLog')
   const items = parseXmlArray(result, 'CardApprovalLog') as unknown as CardApprovalLog[]
   const maxPageMatch = result.match(/<MaxPageNum>(\d+)<\/MaxPageNum>/)
 

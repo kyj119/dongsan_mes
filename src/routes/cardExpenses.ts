@@ -962,12 +962,15 @@ cardExpRouter.post('/transactions/bulk-classify', requireRole('ADMIN', 'MANAGER'
     if (!Array.isArray(ids) || !ids.length || !category_id) {
       return c.json({ success: false, error: 'ids, category_id 필수' }, 400)
     }
-    const ph = ids.map(() => '?').join(', ')
     const ef = entityFilter(c)
-    // 상계건(is_offset=1)은 분류 대상 제외
-    await c.env.DB.prepare(
-      `UPDATE card_transactions SET category_id = ?, status = 'CLASSIFIED', updated_at = CURRENT_TIMESTAMP WHERE id IN (${ph}) AND is_offset = 0${ef.clause}`
-    ).bind(category_id, ...ids, ...ef.params).run()
+    // 상계건(is_offset=1)은 분류 대상 제외. D1 바인드 한도 → 80청크 분할(#409)
+    for (let i = 0; i < ids.length; i += 80) {
+      const chunk = ids.slice(i, i + 80)
+      const ph = chunk.map(() => '?').join(', ')
+      await c.env.DB.prepare(
+        `UPDATE card_transactions SET category_id = ?, status = 'CLASSIFIED', updated_at = CURRENT_TIMESTAMP WHERE id IN (${ph}) AND is_offset = 0${ef.clause}`
+      ).bind(category_id, ...chunk, ...ef.params).run()
+    }
     return c.json({ success: true, data: { classified: ids.length }, message: `${ids.length}건 분류 완료` })
   } catch (error) {
     return c.json({ success: false, error: '서버 오류' }, 500)
@@ -1022,12 +1025,15 @@ cardExpRouter.post('/transactions/create-requests', requireRole('ADMIN'), async 
     if (!Array.isArray(ids) || !ids.length) {
       return c.json({ success: false, error: 'ids 필수' }, 400)
     }
-    const ph = ids.map(() => '?').join(', ')
     const ef = entityFilter(c)
-    // 상계건(is_offset=1)은 결의 대상 제외
-    await c.env.DB.prepare(
-      `UPDATE card_transactions SET status = 'REQUESTED', updated_at = CURRENT_TIMESTAMP WHERE id IN (${ph}) AND status = 'CLASSIFIED' AND is_offset = 0${ef.clause}`
-    ).bind(...ids, ...ef.params).run()
+    // 상계건(is_offset=1)은 결의 대상 제외. D1 바인드 한도 → 80청크 분할(#409)
+    for (let i = 0; i < ids.length; i += 80) {
+      const chunk = ids.slice(i, i + 80)
+      const ph = chunk.map(() => '?').join(', ')
+      await c.env.DB.prepare(
+        `UPDATE card_transactions SET status = 'REQUESTED', updated_at = CURRENT_TIMESTAMP WHERE id IN (${ph}) AND status = 'CLASSIFIED' AND is_offset = 0${ef.clause}`
+      ).bind(...chunk, ...ef.params).run()
+    }
     return c.json({ success: true, data: { created: ids.length }, message: `${ids.length}건 결의 요청 완료` })
   } catch (error) {
     return c.json({ success: false, error: '서버 오류' }, 500)

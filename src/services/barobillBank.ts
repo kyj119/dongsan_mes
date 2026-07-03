@@ -1,7 +1,7 @@
 /**
  * 바로빌 계좌 거래내역 조회 서비스
  */
-import { barobillCall, parseXmlArray, type BarobillConfig } from './barobillClient'
+import { barobillCall, parseXmlArray, assertBarobillQueryOk, type BarobillConfig } from './barobillClient'
 
 export interface BankTransLog {
   BankAccountNum: string
@@ -23,6 +23,7 @@ export interface BankTransLog {
 /** 등록된 계좌 목록 조회 */
 export async function getBankAccountList(config: BarobillConfig): Promise<any[]> {
   const result = await barobillCall(config, 'BANKACCOUNT', 'GetBankAccountEx', { ID: config.senderId || '', BankAccountStatus: 0 })
+  assertBarobillQueryOk(result, 'GetBankAccountEx')
   return parseXmlArray(result, 'BankAccount')
 }
 
@@ -45,6 +46,7 @@ export async function getDailyBankLog(
     OrderDirection: 0,
   })
 
+  assertBarobillQueryOk(result, 'GetDailyBankAccountTransLog')
   const items = parseXmlArray(result, 'BankAccountTransLog') as unknown as BankTransLog[]
   const maxPageMatch = result.match(/<MaxPageNum>(\d+)<\/MaxPageNum>/)
 
@@ -73,6 +75,7 @@ export async function getMonthlyBankLog(
     OrderDirection: 0,
   })
 
+  assertBarobillQueryOk(result, 'GetMonthlyBankAccountTransLog')
   const items = parseXmlArray(result, 'BankAccountTransLog') as unknown as BankTransLog[]
   const maxPageMatch = result.match(/<MaxPageNum>(\d+)<\/MaxPageNum>/)
 
