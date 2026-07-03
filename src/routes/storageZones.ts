@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
 import { getEntityId, entityFilter } from '../utils/entityFilter'
+import { validateUpload } from '../utils/uploadValidation'
 
 const storageZonesRouter = new Hono<HonoEnv>()
 storageZonesRouter.use('/*', authMiddleware)
@@ -26,14 +27,13 @@ storageZonesRouter.get('/', async (c) => {
       params.push(entityId)
     }
 
+    // 0440: facility_zones 매핑(facility_zone_name) 표시 제거 — 창고 배치도 독립(자체 bounds)
     const sql = `
       SELECT sz.*, u.name as manager_name, e.short_name as entity_name,
-        fz.name as facility_zone_name,
         (SELECT COUNT(*) FROM items WHERE storage_zone_id = sz.id AND is_active = 1) as item_count
       FROM storage_zones sz
       LEFT JOIN users u ON sz.manager_id = u.id
       LEFT JOIN entities e ON sz.entity_id = e.id
-      LEFT JOIN facility_zones fz ON sz.facility_zone_id = fz.id
       ${where}
       ORDER BY sz.entity_id, sz.sort_order, sz.zone_name
     `
@@ -59,6 +59,151 @@ storageZonesRouter.get('/my', async (c) => {
     return c.json({ success: true, data: results })
   } catch (error) {
     console.error('storageZones /my error:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
+  }
+})
+
+// ============================================================================
+// 창고 배치도 (0440: 창고 전용 도면 + 자체 bounds — facility_zones 매핑 대체)
+// ============================================================================
+
+// GET /api/storage-zones/layout-data - 배치도용 창고 목록 + 재고 집계 + 도면 키
+storageZonesRouter.get('/layout-data', async (c) => {
+  try {
+    // 접근 규칙 = 목록(GET /)과 동일: ADMIN/MANAGER는 전 법인, 그 외 세션 법인
+    const user = c.get('user')
+    const allEntities = user?.role === 'ADMIN' || user?.role === 'MANAGER'
+    const entityId = getEntityId(c)
+    let where = 'WHERE sz.is_active = 1'
+    const params: any[] = []
+    if (!allEntities && entityId > 0) {
+      where += ' AND sz.entity_id = ?'
+      params.push(entityId)
+    }
+
+    const [zonesRes, bgRow] = await Promise.all([
+      // 재고 집계 = inventory 다중행(0396) 기준: zone에 실제 귀속된 품목 수 + 안전재고 미달 수
+      c.env.DB.prepare(`
+        SELECT sz.id, sz.zone_name, sz.zone_code, sz.entity_id, sz.bounds, sz.color,
+          sz.sort_order, sz.is_default, e.short_name as entity_name, u.name as manager_name,
+          (SELECT COUNT(DISTINCT inv.item_id) FROM inventory inv
+             JOIN items i ON i.id = inv.item_id AND i.is_active = 1
+             WHERE inv.storage_zone_id = sz.id AND inv.entity_id = sz.entity_id) as inv_item_count,
+          (SELECT COUNT(*) FROM inventory inv
+             JOIN items i ON i.id = inv.item_id AND i.is_active = 1
+             WHERE inv.storage_zone_id = sz.id AND inv.entity_id = sz.entity_id
+               AND COALESCE(inv.safe_stock, 0) > 0 AND COALESCE(inv.quantity, 0) <= inv.safe_stock) as inv_shortage_count
+        FROM storage_zones sz
+        LEFT JOIN entities e ON sz.entity_id = e.id
+        LEFT JOIN users u ON sz.manager_id = u.id
+        ${where}
+        ORDER BY sz.sort_order, sz.zone_name
+      `).bind(...params).all(),
+      c.env.DB.prepare(
+        "SELECT setting_value FROM facility_settings WHERE setting_key = 'storage_background_image'"
+      ).first<{ setting_value: string }>(),
+    ])
+
+    const zones = (zonesRes.results as Array<{ bounds?: string | null; [key: string]: unknown }>).map(z => ({
+      ...z,
+      bounds: z.bounds ? JSON.parse(z.bounds as string) : null, // null = 도면 미배치
+    }))
+
+    return c.json({ success: true, data: { zones, background: bgRow?.setting_value || null } })
+  } catch (error) {
+    console.error('storageZones layout-data error:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
+  }
+})
+
+// 도면 배경 (facility 배치도와 동일 패턴: R2 키만 D1 보관, 바이트는 blob 서빙)
+storageZonesRouter.get('/background', async (c) => {
+  try {
+    const row = await c.env.DB.prepare(
+      "SELECT setting_value FROM facility_settings WHERE setting_key = 'storage_background_image'"
+    ).first<{ setting_value: string }>()
+    return c.json({ success: true, data: row?.setting_value || null })
+  } catch (error) {
+    console.error('storageZones background error:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
+  }
+})
+
+// 도면 이미지 바이트 서빙 (인증 헤더 경유 → 프론트는 axios blob 로드, <img src> 직접 불가)
+storageZonesRouter.get('/background-image', async (c) => {
+  try {
+    const row = await c.env.DB.prepare(
+      "SELECT setting_value FROM facility_settings WHERE setting_key = 'storage_background_image'"
+    ).first<{ setting_value: string }>()
+    const key = row?.setting_value
+    if (!key) return c.json({ success: false, error: '등록된 도면이 없습니다.' }, 404)
+    if (key.includes('..') || key.includes('\\')) return c.json({ success: false, error: 'Invalid path' }, 400)
+
+    const object = await c.env.R2_BUCKET.get(key)
+    if (!object) return c.json({ success: false, error: '도면 파일을 찾을 수 없습니다.' }, 404)
+
+    const headers = new Headers()
+    headers.set('Content-Type', object.httpMetadata?.contentType || 'image/png')
+    headers.set('Cache-Control', 'private, max-age=300')
+    return new Response(object.body, { headers })
+  } catch (error) {
+    console.error('storageZones background-image error:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
+  }
+})
+
+// 도면 업로드 (multipart → R2)
+storageZonesRouter.post('/background', requireRole('ADMIN'), async (c) => {
+  try {
+    const formData = await c.req.formData()
+    const file = formData.get('file') as File | null
+    if (!file) return c.json({ success: false, error: '파일이 없습니다.' }, 400)
+
+    const v = validateUpload(file, {
+      maxBytes: 10 * 1024 * 1024,
+      allowedMimePrefixes: ['image/'],
+      allowedExts: ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'],
+    })
+    if (!v.ok) return c.json({ success: false, error: v.error }, 400)
+
+    const key = `storage/floor-plan/${Date.now()}.${v.ext}`
+    await c.env.R2_BUCKET.put(key, file.stream(), {
+      httpMetadata: { contentType: file.type || 'image/png' },
+    })
+
+    const prev = await c.env.DB.prepare(
+      "SELECT setting_value FROM facility_settings WHERE setting_key = 'storage_background_image'"
+    ).first<{ setting_value: string }>()
+
+    await c.env.DB.prepare(`
+      INSERT INTO facility_settings (setting_key, setting_value) VALUES ('storage_background_image', ?)
+      ON CONFLICT(setting_key) DO UPDATE SET setting_value = excluded.setting_value, updated_at = CURRENT_TIMESTAMP
+    `).bind(key).run()
+
+    if (prev?.setting_value && prev.setting_value !== key && prev.setting_value.startsWith('storage/')) {
+      try { await c.env.R2_BUCKET.delete(prev.setting_value) } catch { /* ignore */ }
+    }
+
+    return c.json({ success: true, data: { key } })
+  } catch (error) {
+    console.error('storageZones background upload error:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
+  }
+})
+
+// 도면 삭제
+storageZonesRouter.delete('/background', requireRole('ADMIN'), async (c) => {
+  try {
+    const row = await c.env.DB.prepare(
+      "SELECT setting_value FROM facility_settings WHERE setting_key = 'storage_background_image'"
+    ).first<{ setting_value: string }>()
+    if (row?.setting_value && row.setting_value.startsWith('storage/')) {
+      try { await c.env.R2_BUCKET.delete(row.setting_value) } catch { /* ignore */ }
+    }
+    await c.env.DB.prepare("DELETE FROM facility_settings WHERE setting_key = 'storage_background_image'").run()
+    return c.json({ success: true })
+  } catch (error) {
+    console.error('storageZones background delete error:', error)
     return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
   }
 })
@@ -97,6 +242,69 @@ storageZonesRouter.get('/:id', async (c) => {
   }
 })
 
+// GET /api/storage-zones/:id/stock - 구역 실재고 (배치도 클릭 상세: inventory 다중행 기준)
+storageZonesRouter.get('/:id/stock', async (c) => {
+  try {
+    const id = c.req.param('id')
+    // 접근 규칙 = layout-data와 동일: ADMIN/MANAGER 전 법인, 그 외 세션 법인
+    const user = c.get('user')
+    const allEntities = user?.role === 'ADMIN' || user?.role === 'MANAGER'
+    const entityId = getEntityId(c)
+    let extra = ''
+    const params: any[] = [id]
+    if (!allEntities && entityId > 0) {
+      extra = ' AND sz.entity_id = ?'
+      params.push(entityId)
+    }
+    const zone = await c.env.DB.prepare(`
+      SELECT sz.id, sz.zone_name, sz.entity_id, u.name as manager_name
+      FROM storage_zones sz LEFT JOIN users u ON sz.manager_id = u.id
+      WHERE sz.id = ?${extra}
+    `).bind(...params).first<{ id: number; zone_name: string; entity_id: number; manager_name: string | null }>()
+    if (!zone) return c.json({ success: false, error: '구역을 찾을 수 없습니다.' }, 404)
+
+    const { results: items } = await c.env.DB.prepare(`
+      SELECT i.id as item_id, i.item_code, i.item_name, i.category, i.unit,
+        COALESCE(inv.quantity, 0) as quantity, COALESCE(inv.safe_stock, 0) as safe_stock
+      FROM inventory inv
+      JOIN items i ON i.id = inv.item_id AND i.is_active = 1
+      WHERE inv.storage_zone_id = ? AND inv.entity_id = ?
+      ORDER BY i.item_name
+    `).bind(zone.id, zone.entity_id).all()
+
+    return c.json({ success: true, data: { ...zone, items } })
+  } catch (error) {
+    console.error('storageZones :id/stock error:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
+  }
+})
+
+// PUT /api/storage-zones/:id/bounds - 배치도 좌표 저장 (ADMIN). bounds=null → 도면에서 내리기
+storageZonesRouter.put('/:id/bounds', requireRole('ADMIN'), async (c) => {
+  try {
+    const id = c.req.param('id')
+    const { bounds } = await c.req.json<{ bounds: string | null }>()
+    if (bounds != null) {
+      try {
+        const b = JSON.parse(bounds)
+        if (typeof b.x !== 'number' || typeof b.y !== 'number' || typeof b.width !== 'number' || typeof b.height !== 'number') {
+          return c.json({ success: false, error: 'bounds 형식이 올바르지 않습니다.' }, 400)
+        }
+      } catch {
+        return c.json({ success: false, error: 'bounds 형식이 올바르지 않습니다.' }, 400)
+      }
+    }
+    const result = await c.env.DB.prepare(
+      'UPDATE storage_zones SET bounds = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
+    ).bind(bounds ?? null, id).run()
+    if (!result.meta.changes) return c.json({ success: false, error: '구역을 찾을 수 없습니다.' }, 404)
+    return c.json({ success: true })
+  } catch (error) {
+    console.error('storageZones bounds error:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
+  }
+})
+
 // POST /api/storage-zones - 구역 생성 (ADMIN)
 storageZonesRouter.post('/', requireRole('ADMIN'), async (c) => {
   try {
@@ -108,7 +316,7 @@ storageZonesRouter.post('/', requireRole('ADMIN'), async (c) => {
       sort_order?: number
       entity_id?: number
       is_default?: number
-      facility_zone_id?: number | null
+      color?: string
     }>()
 
     if (!body.zone_name?.trim()) {
@@ -135,7 +343,7 @@ storageZonesRouter.post('/', requireRole('ADMIN'), async (c) => {
     }
 
     const result = await c.env.DB.prepare(`
-      INSERT INTO storage_zones (zone_name, zone_code, description, manager_id, sort_order, entity_id, is_default, facility_zone_id)
+      INSERT INTO storage_zones (zone_name, zone_code, description, manager_id, sort_order, entity_id, is_default, color)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `).bind(
       body.zone_name.trim(),
@@ -145,7 +353,7 @@ storageZonesRouter.post('/', requireRole('ADMIN'), async (c) => {
       body.sort_order ?? 0,
       entityId,
       body.is_default ?? 0,
-      body.facility_zone_id || null
+      body.color || '#3B82F6'
     ).run()
 
     return c.json({ success: true, data: { id: result.meta.last_row_id }, message: '구역이 생성되었습니다.' })
@@ -168,7 +376,7 @@ storageZonesRouter.put('/:id', requireRole('ADMIN'), async (c) => {
       is_active?: number
       entity_id?: number
       is_default?: number
-      facility_zone_id?: number | null
+      color?: string
     }>()
 
     // #368 대칭 완화: 목록(GET all_entities=1)이 ADMIN에 전 법인을 노출하는데 수정만 세션 법인 필터를
@@ -204,7 +412,7 @@ storageZonesRouter.put('/:id', requireRole('ADMIN'), async (c) => {
         is_active = COALESCE(?, is_active),
         entity_id = ?,
         is_default = COALESCE(?, is_default),
-        facility_zone_id = ?,
+        color = COALESCE(?, color),
         updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
     `).bind(
@@ -216,7 +424,7 @@ storageZonesRouter.put('/:id', requireRole('ADMIN'), async (c) => {
       body.is_active ?? null,
       entityId,
       body.is_default ?? null,
-      body.facility_zone_id ?? null,
+      body.color ?? null,
       id
     ).run()
 

@@ -1,7 +1,8 @@
 # 출고관리 고도화 v2 — 포장 검수(누락 방지) + 합배송 범위 확장
 
 - **작성일**: 2026-07-03
-- **상태**: 🚧 **착수 (2026-07-03 용준님 확정: 범위=나 P1~P4 · 즉시 착수 · 부분출고 전면 불가)** — worktree `session/shipping-verify`
+- **상태**: ✅ **P1~P4 prod 배포완료 (2026-07-03)** — 순서 준수: 0439 remote 적용·검증(테이블 6컬럼·/pack 권한 2건) → push `82dddf2a..2efd34de`→main → deploy `4723f7db` → **apex 검증 14/14**(pack/shipments 마커·checklist/candidates 401·페이지 7종 200·API 게이트 401). 타 세션 커밋 3건(storageZones·production 필터) 머지 동봉, main 워킹트리 미커밋 WIP(bank·barobill·payroll)는 원칙대로 제외. 잔여=실주문 검수 플로우 1회 확인(용준님)·worktree 정리(`end-session.ps1 shipping-verify -DeleteBranch`, ⚠️타 세션 dev서버 종료 부작용).
+- **검증(로컬 D1 E2E)**: 기본 11/11 + 게이트/머지 스위트 — 하드게이트 차단(사유·미완성카드 반환)·카드 스탬프 0·주문 상태 보존 / 납품일 다른 merge 허용 / merge→0438 예약 동기 / unmerge→예약 클리어 / 수동등록 전량 게이트 400 / 무인증 401 / tsc·build·node --check green
 - **배경**: 배송 P1~P3 + 후속 P1~P4(0438 접수 예약) prod 완결 이후 추가 고도화. 요구 2축 = ①하나의 주문 내 물건 누락 방지 ②동일 거래처 다른 주문 포괄(합배송) 출고 확대.
 - **정본 관계**: `memory/project-delivery-system.md` · 선행 spec `2026-07-02-delivery-consolidation-intake-visibility.md` · merge 모델 = `shipments.merged_into_id` · 예약 = `orders.consolidate_with_order_id`(0438)
 
@@ -76,6 +77,27 @@
 - **백엔드**: `shipments.ts`(check-items·후보 확장·merge 완화·명세서 데이터) · `shipmentHelper.ts`(PREPARING 스냅샷) · `orders/queries.ts`(게이트 응답)
 - **프론트**: `shipments.js`(체크 UI·경고 모달·배지·인쇄 3종) · P4 신규 `/pack` 페이지+스크립트
 - **공수**: P1+P2 ≈ 1세션 · P3 ≈ 0.5세션 · P4 ≈ 1세션 · P5 ≈ 0.5세션 → 5 Phase = worktree 세션 분리(`session/shipping-verify`)
+
+## 배포 절차 (⚠️ 순서 엄수 — 마이그 먼저)
+worktree `dongsan_mes-worktrees\shipping-verify`에서 (브랜치에 main 3커밋 머지 완료 = superset):
+1. `npx wrangler d1 execute webapp-production --remote --file migrations/0439_shipment_checks.sql` ← **반드시 push 전에**
+2. 검증: `--remote --command "SELECT COUNT(*) FROM pragma_table_info('shipment_checks')"` → 6
+3. `git push origin session/shipping-verify:main` (거부 시 pull --rebase 후 재시도)
+4. `npm run deploy:prod` (스크립트에 `--branch main`·ASCII 커밋메시지 포함)
+5. apex 검증: `/pack` 200+`packOrderInput` 마커 · `/shipments` HTML `shipCheckModal` 마커 · `GET /api/shipments/checklist/by-order/1` = 401(404 아님) · /shipments·/orders 페이지 200
+6. 세션 정리: `.\scripts\end-session.ps1 shipping-verify -DeleteBranch` (⚠️타 세션 dev 서버 종료 부작용 — 재기동 안내)
+
+## 구현 상세 (2026-07-03 완료분)
+- **0439**: `shipment_checks`(shipment_id×order_item_id UNIQUE, packed_quantity NULL=전량, checked_at/by) + permission_pages `/pack` + MANAGER/OPERATOR 권한
+- **API**: `GET /api/shipments/checklist/by-order/:orderId`(숫자=ID·비숫자=주문번호, PREPARING ensure+라인 스냅샷 upsert, 합포장 그룹 반환) · `PATCH /api/shipments/checklist/:shipmentId`(최초 체크시각 COALESCE 보존) — 둘 다 `/:id` 라우트보다 먼저 등록
+- **하드 게이트**: bulk-ship Step 0 사전차단(미완성 카드 → 스탬프 없이 실패 반환)+else 부분출고 경로 제거 / POST /shipments ①미완성 카드 400 ②card_ids 미커버 400. 카드 단건 QR 스탬프(scan)는 적재 기록으로 유지(주문 전이는 전량 시에만 — 기존 동작)
+- **소프트 게이트**: /daily에 chk_total/chk_done → confirmShipSection 경고 문구, 차단 결과는 `showShipBlockedModal`
+- **/daily 추가 필드**: chk_total·chk_done·consolidate_with_order_id·consolidate_partner_pending_date(미출고 파트너 MAX 납품일 → `shipmentsWaitBadge` '합배송 대기 →MM/DD')
+- **후보 확장**: anchor=당일 출고 거래처, 그 거래처의 미출고 전체 포함(rows≥2, 법인 무관), 비당일=waiting 칩 '납품 MM/DD'. 권역(②)은 당일만 유지
+- **merge**: 납품일 검증 제거 + 0438 예약 포인터 동기(root=대표 주문, unmerge 클리어와 대칭)
+- **검수 UI(PC)**: 거래처 셀 검수 칩(회/황/녹 n/m) → `shipCheckModal`(주문별 라인 체크+예외수량, 전체체크) / 인쇄 2종: 검수 체크지(QR→/pack)·납품명세서(가격 제외, 복수 주문=통합 명세서 주문별 소계)
+- **/pack 모바일**: 주문번호/QR(html5-qrcode) 진입, 탭=즉시 저장, 부분수량 showPrompt, 진행바+완료 배너. 페이지 게이트=requirePagePermission('/pack'), shipments API 게이트=requireAnyPagePermission('/shipments','/pack')로 확장
+- **?raw 전역 스코프**: pack.js 식별자 전부 `pack*` 프리픽스 (scan.js `scanner` 충돌 회피)
 
 ## 확정 (2026-07-03 용준님)
 1. **도입 범위 = 나) P1~P4** (P5 사진 증빙 제외, 토트 보류 유지)

@@ -433,16 +433,7 @@ export function equipmentPage(c: Context<HonoEnv>) {
             </div>
         </div>
 
-        <!-- P2: 배치도 영역 재고 상세 모달 -->
-        <div id="zoneInvModal" class="ds-modal-overlay hidden">
-            <div class="ds-modal" style="max-width:32rem;max-height:80vh;overflow-y:auto">
-                <div class="flex justify-between items-center p-4 border-b">
-                    <h3 id="zoneInvTitle" class="text-lg font-bold">구역 재고</h3>
-                    <button onclick="closeZoneInvModal()" class="text-gray-400 hover:text-gray-600 text-2xl">&times;</button>
-                </div>
-                <div id="zoneInvBody" class="p-5"></div>
-            </div>
-        </div>
+        <!-- (0440: 배치도 영역 재고 상세 모달 제거 — /storage-zones 배치도 탭으로 이관) -->
 
         <!-- 장비 추가/수정 모달 -->
         <div id="equipModal" class="ds-modal-overlay hidden">
