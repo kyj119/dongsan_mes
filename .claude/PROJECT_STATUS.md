@@ -21,6 +21,8 @@
 
 ## 🔴 현재 진행 중
 
+- **✅ [2026-07-03] 4세션 통합 prod 배포 완료 (배포 담당=출고v2 세션, dep `4ecb7580`, push `99c1b94e`→main)**: 합류 프로토콜(순차 push→단일 배포) 실행 — 동봉: ①출고v2 P1~P4(0439, 선행 dep `4723f7db`) ②창고 배치도 0440 ③production 출력이력 7일 필터 ④전체 코드리뷰 P1/P2(IDOR·확정잠금·바로빌 관측성·IN절 청크) + 봇 2건(#479 /pack showPrompt 인자 수정·#480 이슈) + **#480 즉석 수정**(PUT /orders/:id order_items 교체 경로 2곳에 shipment_checks 선정리 — 검수 열린 주문 수정 FK 500 방지). **마이그 0440 remote 적용·검증(bounds/color 2컬럼) 후 배포** (0439는 선행 적용됨). **통합 apex 14/14**: S1 pack/shipCheckModal 마커·checklist 401 / S2 layout-data 401·storage-zones 200 / S3 productionApplyDefaultEventDates 마커 / S4 bulk-ship 401 게이트 / 페이지 7종 200. 코드리뷰 회귀 시나리오(OPERATOR 403·확정 409·알림톡 SKIPPED)는 로그인 필요 → 실사용 확인 항목. 잔여=출고v2 실주문 검수 1회·worktree 2개 정리(shipping-verify·storage-layout, ⚠️end-session dev서버 종료 부작용).
+
 - **✅ [2026-07-03] 전체 코드리뷰 P1/P2 수정 — 합류 push 완료, prod 미배포**: 에이전트 11개 병렬 리뷰(세션한도로 5영역 완료) → **P1 4건 + P2 9건 수정, verify green**. **⚠️ 새 마이그레이션 없음**(순수 코드 수정 → 마이그 배정 대상 아님, apex 신규 페이지/API 없음).
   - **P1**: ①bulk-ship 권한누락+크로스법인 IDOR(`orders/queries.ts:239` requireRole+entityFilter+루프 소유게이트) ②바로빌 조회 음수코드 가드(`barobillClient/Card/Bank` assertBarobillQueryOk 6함수 — silent "0건 수집 위장" 차단, 과거 카드 미수집 사고 계열) ③bank auto-sync 일별 실패 로깅+수집(`bank.ts:1800`) ④payroll save 확정잠금 우회+타법인 쓰기(`payroll/core.ts:204,338` status게이트+entityFilter).
   - **P2**: HR근태조회 IDOR 2(`hr.ts:179,311`)·근태bulk IDOR(`attendance.ts:225`)·연말정산 IDOR(`year-end.ts:60`)·주문 자식행 entity 불일치 3곳(`create.ts` getEntityId→billingEntityId)·알림톡 bulk dedup(`kakao.ts:1071` 발송전 성공발송·합포장자식 제외)·IN절 80청크 5곳(`cards/lifecycle.ts:128,313,733`·`cardExpenses.ts:965,1025`, #409 재발방지). 오탐정정=`inventory.ts:1076`은 이미 >90 가드.
