@@ -92,8 +92,9 @@ async function resolveCard(db: D1Database, extractedName: string, entityId?: num
 }> {
   // entity가 알려진 경우 print_file_map 조회를 해당 entity로 한정 (per-entity unique index 대응)
   const entClause = entityId != null ? ' AND entity_id = ?' : ''
-  // 1차: file_map 조회 (YYYYMMDD-NNN-FFF 패턴)
-  const seqMatch = extractedName.match(/^(\d{8}-\d{3})-(\d{3})/)
+  // 1차: file_map 조회 — 법인 접두 포함 E{n}-YYYYMMDD-NNN-FFF 및 구형식 YYYYMMDD-NNN-FFF 모두 지원
+  // (주문번호 법인별 채번 E{eid}- 도입 후 접두어 미대응으로 매칭 전멸하던 버그 수정)
+  const seqMatch = extractedName.match(/^((?:E\d+-)?\d{8}-\d{3})-(\d{3})/)
   if (seqMatch) {
     const orderNum = seqMatch[1]
     const fileSeq = Number(seqMatch[2])
@@ -105,14 +106,18 @@ async function resolveCard(db: D1Database, extractedName: string, entityId?: num
     if (map) return { cardId: map.card_id, cardNumber: map.card_number, orderNumber: orderNum, orderItemId: map.order_item_id || null }
   }
   // 2차: 파일명 직접 매칭 (entity 한정 시 교차 매칭 방지)
-  const fnBinds: any[] = [extractedName]
+  // file_map에는 확장자 포함(.eps 등) 저장, LogWatcher 추출명은 확장자 제거본일 수 있어 양쪽 허용
+  const nameNoExt = extractedName.replace(/\.[^.]+$/, '')
+  const likeNoExt = nameNoExt.replace(/[\\%_]/g, (ch) => '\\' + ch) + '.%'
+  const fnBinds: any[] = [extractedName, nameNoExt, likeNoExt]
   if (entityId != null) fnBinds.push(entityId)
   const fnMap = await db.prepare(
-    `SELECT card_id, card_number, order_number, order_item_id FROM print_file_map WHERE file_name = ?${entClause}`
+    `SELECT card_id, card_number, order_number, order_item_id FROM print_file_map
+     WHERE (file_name = ? OR file_name = ? OR file_name LIKE ? ESCAPE '\\')${entClause}`
   ).bind(...fnBinds).first<FileMapRow>()
   if (fnMap) return { cardId: fnMap.card_id, cardNumber: fnMap.card_number, orderNumber: fnMap.order_number, orderItemId: fnMap.order_item_id || null }
-  // 3차: 기존 regex fallback (order_number만)
-  const orderMatch = extractedName.match(/(\d{8}-\d{3})/)
+  // 3차: 기존 regex fallback (order_number만) — E{n}- 접두 포함 추출
+  const orderMatch = extractedName.match(/((?:E\d+-)?\d{8}-\d{3})/)
   return { cardId: null, cardNumber: null, orderNumber: orderMatch?.[1] || null, orderItemId: null }
 }
 
@@ -157,9 +162,13 @@ async function autoCheckCardItem(db: D1Database, cardId: number, orderItemId: nu
       await db.prepare(
         "UPDATE cards SET status = 'PRINT_DONE', rip_status = 'COMPLETED', pp_status = ?, print_done_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = ?"
       ).bind(ppStatus, cardId).run()
-      await db.prepare(
-        "INSERT INTO card_status_history (card_id, from_status, to_status, changed_by, change_reason) VALUES (?, ?, 'PRINT_DONE', 1, ?)"
-      ).bind(cardId, card.status, `All items printed (${agentId})`).run()
+      // changed_by=NULL: 시스템 자동 전환. 하드코딩 1은 prod에 user id=1 부재 시 FK 위반
+      // → 이력 전멸 + throw로 아래 주문 동기화까지 중단되던 버그. 이력 실패가 동기화를 막지 않도록 격리.
+      try {
+        await db.prepare(
+          "INSERT INTO card_status_history (card_id, from_status, to_status, changed_by, change_reason) VALUES (?, ?, 'PRINT_DONE', NULL, ?)"
+        ).bind(cardId, card.status, `All items printed (${agentId})`).run()
+      } catch (histErr) { console.warn('[printEvents] status history insert failed:', histErr) }
 
       // 주문 상태 동기화
       if (card.order_id) {
@@ -517,7 +526,7 @@ printEventsRouter.post('/batch', agentKeyMiddleware, async (c) => {
                 ).bind(bPpStatus, card.id),
                 c.env.DB.prepare(
                   `INSERT INTO card_status_history (card_id, from_status, to_status, changed_by, change_reason)
-                   VALUES (?, ?, 'PRINT_DONE', 1, ?)`
+                   VALUES (?, ?, 'PRINT_DONE', NULL, ?)`
                 ).bind(card.id, card.status, `Print completed on ${agent_id}`)
               ])
             }
@@ -532,7 +541,7 @@ printEventsRouter.post('/batch', agentKeyMiddleware, async (c) => {
                 ).bind(card.id),
                 c.env.DB.prepare(
                   `INSERT INTO card_status_history (card_id, from_status, to_status, changed_by, change_reason)
-                   VALUES (?, ?, ?, 1, ?)`
+                   VALUES (?, ?, ?, NULL, ?)`
                 ).bind(card.id, card.status, card.status, reason)
               ])
             }

@@ -1427,7 +1427,7 @@ ripRouter.post('/send/:cardId', authMiddleware, async (c) => {
     await c.env.DB.prepare(`
       INSERT INTO card_status_history (card_id, from_status, to_status, changed_by, change_reason)
       VALUES (?, ?, ?, ?, ?)
-    `).bind(cardId, prevStatus, prevStatus, 1, `RIP queued → equipment: ${equipment_id}, preset: ${rip_preset}`).run()
+    `).bind(cardId, prevStatus, prevStatus, null, `RIP queued → equipment: ${equipment_id}, preset: ${rip_preset}`).run()
 
     return c.json({
       success: true,
@@ -1480,7 +1480,7 @@ ripRouter.post('/complete/:cardId', authMiddleware, async (c) => {
     await c.env.DB.prepare(`
       INSERT INTO card_status_history (card_id, from_status, to_status, changed_by, change_reason)
       VALUES (?, ?, ?, ?, ?)
-    `).bind(cardId, card.status, 'PRINT_DONE', 1, 'RIP job completed').run()
+    `).bind(cardId, card.status, 'PRINT_DONE', null, 'RIP job completed').run()
 
     return c.json({
       success: true,
@@ -1636,7 +1636,7 @@ ripRouter.post('/ack/:cardId', agentKeyMiddleware, async (c) => {
     await c.env.DB.prepare(`
       INSERT INTO card_status_history (card_id, from_status, to_status, changed_by, change_reason)
       VALUES (?, ?, ?, ?, ?)
-    `).bind(cardId, card.status, card.status, 1, `RIP ACK received, job_path: ${job_path}`).run()
+    `).bind(cardId, card.status, card.status, null, `RIP ACK received, job_path: ${job_path}`).run()
 
     return c.json({
       success: true,
@@ -1734,7 +1734,7 @@ ripRouter.post('/send-item/:cardItemId', authMiddleware, async (c) => {
       VALUES (?, ?, ?, ?, ?)
     `).bind(
       cardItem.card_id, cardItem.card_status, cardItem.card_status,
-      user?.id || 1,
+      user?.id || null,
       `RIP 아이템(#${cardItemId}) 전송: ${cardItem.item_name} → ${equipment.name} / ${rip_preset}`
     ).run()
 

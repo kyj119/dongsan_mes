@@ -145,7 +145,7 @@ scanRouter.get('/:code', async (c) => {
     }
 
     // 4) ORDER prefix 또는 주문번호 패턴
-    if (!result && (prefix === 'ORDER' || /^\d{8}-\d{3}/.test(value))) {
+    if (!result && (prefix === 'ORDER' || /^(?:E\d+-)?\d{8}-\d{3}/.test(value))) {
       const orderNum = prefix === 'ORDER' ? value : value
       const order = await c.env.DB.prepare(`
         SELECT o.id, o.order_number, o.status, o.order_date,
