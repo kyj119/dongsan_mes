@@ -190,6 +190,9 @@ prRouter.get('/stats', async (c) => {
 prRouter.get('/:id/comments', async (c) => {
   try {
     const id = c.req.param('id')
+    const ef = entityFilter(c)  // #481: 타법인 PR 댓글 열람 차단(read-back 404 게이트, #455 형제)
+    const pr = await c.env.DB.prepare(`SELECT id FROM purchase_requests WHERE id = ?${ef.clause}`).bind(Number(id), ...ef.params).first()
+    if (!pr) return c.json({ success: false, error: '발주 요청을 찾을 수 없습니다.' }, 404)
     const { results } = await c.env.DB.prepare(`
       SELECT pc.*, u.name as user_name
       FROM pr_comments pc
@@ -217,7 +220,8 @@ prRouter.post('/:id/comments', async (c) => {
       return c.json({ success: false, error: '댓글 내용을 입력해주세요.' }, 400)
     }
 
-    const pr = await c.env.DB.prepare('SELECT id FROM purchase_requests WHERE id = ?').bind(Number(id)).first()
+    const ef = entityFilter(c)  // #481: 타법인 PR 댓글 주입 차단(read-back 404 게이트, #455 형제)
+    const pr = await c.env.DB.prepare(`SELECT id FROM purchase_requests WHERE id = ?${ef.clause}`).bind(Number(id), ...ef.params).first()
     if (!pr) return c.json({ success: false, error: '발주 요청을 찾을 수 없습니다.' }, 404)
 
     await c.env.DB.prepare(`
