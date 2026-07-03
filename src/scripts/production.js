@@ -361,10 +361,14 @@ async function loadRecentEvents() {
     document.getElementById('eventsNextBtn').disabled = currentPage >= totalPages;
 
     if (events.length === 0) {
+      // 필터(기본 7일 포함) 활성 시 안내 + 기간 해제 탈출버튼 — 이력이 사라진 걸로 오인 방지
+      var hasFilter = (kwEl && kwEl.value.trim()) || eqIds.length > 0
+        || (sfEl && sfEl.value) || (fromEl && fromEl.value) || (toEl && toEl.value);
       tbody.innerHTML =
         '<tr><td colspan="7" class="px-3 py-10 text-center">'
         + '<i class="fas fa-inbox text-3xl block mb-2 text-gray-200"></i>'
-        + '<div class="text-sm text-gray-400">출력 이력이 없습니다.</div>'
+        + '<div class="text-sm text-gray-400">' + (hasFilter ? '조건에 맞는 출력 이력이 없습니다.' : '출력 이력이 없습니다.') + '</div>'
+        + (hasFilter ? '<button onclick="productionShowAllEvents()" class="mt-2 px-2.5 py-1 text-xs text-blue-600 hover:bg-blue-50 border border-blue-200 rounded">전체 기간 보기</button>' : '')
         + '</td></tr>';
       return;
     }
@@ -567,11 +571,20 @@ function productionBindKeyword() {
   });
 }
 
+// 기간 필터 기본값: 최근 7일(오늘 포함, KST) — 이력 누적 시 초기 전체조회 방지
+function productionApplyDefaultEventDates() {
+  var fromEl = document.getElementById('evFilterFrom');
+  if (!fromEl) { console.warn('[production] #evFilterFrom not found'); return; }
+  var d = new Date(Date.now() - 6 * 86400000);
+  fromEl.value = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Seoul', year: 'numeric', month: '2-digit', day: '2-digit' }).format(d);
+}
+
 function resetEventFilters() {
-  ['evFilterKeyword', 'evFilterStatus', 'evFilterFrom', 'evFilterTo'].forEach(function(id) {
+  ['evFilterKeyword', 'evFilterStatus', 'evFilterTo'].forEach(function(id) {
     var el = document.getElementById(id);
     if (el) el.value = '';
   });
+  productionApplyDefaultEventDates();
   productionAgentSelected = {};
   document.querySelectorAll('.ev-agent-cb').forEach(function(cb) { cb.checked = false; });
   var allEl = document.getElementById('evAgentSelectAll');
@@ -580,8 +593,18 @@ function resetEventFilters() {
   applyEventFilters();
 }
 
+// 빈 결과 탈출버튼: 기간 필터만 해제(키워드·장비·상태는 사용자가 의도 설정한 것이라 유지)
+function productionShowAllEvents() {
+  ['evFilterFrom', 'evFilterTo'].forEach(function(id) {
+    var el = document.getElementById(id);
+    if (el) el.value = '';
+  });
+  applyEventFilters();
+}
+
 window.applyEventFilters = applyEventFilters;
 window.resetEventFilters = resetEventFilters;
+window.productionShowAllEvents = productionShowAllEvents;
 window.productionOnAgentCheck = productionOnAgentCheck;
 window.productionToggleAllAgents = productionToggleAllAgents;
 window.productionToggleAgentDropdown = productionToggleAgentDropdown;
@@ -906,6 +929,7 @@ window.editCapacity = async function(equipmentId, currentCapacity) {
   } catch (e) { /* ignore */ }
 })();
 productionBindKeyword();
+productionApplyDefaultEventDates(); // 출력이력 기간 기본값(최근 7일) — loadRecentEvents 전 적용
 loadStats();
 loadPrintingCards();
 loadAgents();
