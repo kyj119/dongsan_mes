@@ -298,3 +298,36 @@
 
 - **🟢 [2026-06-24] LogWatcher TPM-01 현장 배포(TopazRip)**: prod·`E:\TNSRip-X1\Print.log`·Legacy(TNS)·`TPM-01`. 추출 정상(사용자 확인). ⚠️검증=**`/equipment`·`/production`** (/rip 페이지 폐기·404). 함정=repo `install-service.bat`·`install.bat` **LF 줄바꿈**→cmd 명령 토막 → `publish\install-service.bat`만 CRLF+ASCII 수정, **소스 LF 정리 보류**(나중에). RIP-03 `/equipment` 비활성화(soft delete=status INACTIVE)→동일 PC RIP-02 전환 깨끗(부활X). 정본=`memory/project-logwatcher-rollout.md`.
 
+
+---
+
+## [2026-07-05 이관] 완료 항목
+
+> 2026-07-05 세션 정리 시 이관 (verbatim).
+
+- **✅ [2026-07-02] 바로빌 통합포인트 표시 정합 + 법인별 senderId 통일 (prod `01bb23e8`, 커밋 `18343022`·`8dad40f7`)**:
+  - **증상**: 설정→메시지 연결카드·자금관리(/bank)·세금계산서 연결테스트에서 통합포인트 **0원**, 미연결 법인(청주·오다플래그)은 **-10001** 표시. 실잔액 102,194원.
+  - **근본원인**: 표시가 **회원사 지갑**(`GetBalanceCostAmount`)을 조회 — 동산=0(미충전)·미등록 법인=-10001(에러코드 노출). 실잔액은 **통합(파트너) 지갑**(`GetBalanceCostAmountOfInterOP`, CERTKEY 단위 공통·corpNum 무관)에만 존재. 라이브 SOAP로 확정(모든 corpNum에서 102194).
+  - **수정 3곳 전수**: settings.js 연결카드(`remain_point`→`partner_point`, 단가 `unit_cost_alimtalk` 정정) · barobill.ts `/status`(자금관리, `getPartnerBalance`+음수 클램프) · barobillTax.ts `getBalance`(`partnerPoint:0` 하드코딩 해소, barobillSms 형제버그). 회원사 지갑은 어디서도 메인표시 금지.
+  - **⚠️ 동시세션 WIP 얽힘 처리**: 워킹트리에 타세션 미커밋 **법인별 senderId 통일**(`getEntityBarobillSenderId`: bank/cardExpenses senderId 전역→entity_settings, 멀티법인 -24005 방지)이 있었고 배포·내 커밋에 엉킴(Edit "modified since read"가 신호). 완결·컴파일·이미 prod라 별도 커밋(`8dad40f7`)으로 정리 → origin/main 빌드정합 회복(force-push 회피). 교훈 → [[feedback-multi-session-deploy]].
+  - 정본 → [[barobill-charge-balance]] ④⑤. **후속 확인**: senderId WIP 유지 여부(유익·유지 권장) / 담당 세션 진행 여부.
+
+- **✅ [2026-06-26] 공장 배치도 P0~P2 — 장비 공정·구역·도면배경 (정본 `memory/design-factory-layout.md`, spec `docs/superpowers/specs/2026-06-25-factory-layout-integration.md`)**:
+  - 공정 SSOT **확정=items.category 1:1 6종**(AQUEOUS/SOLVENT/UV/TRANSFER/SUBLIMATION/SIGN, 평판=UV흡수·나염=태극기, 사용자 결정) `src/constants/process.ts`+layout 주입.
+  - **P0**: 마이그 `0389_equipment_processes`(M:N·FK없음)·`PUT /api/rip/equipment/:id/processes`·GET/PUT equipment에 processes+zone_id·편집모달 공정 다중지정+구역 select+ID접두사 추천(EPSON→솔벤·FLEXI→전사).
+  - **P1**: 배치도 동적 구역bounds(prod=%좌표=장비와 동일계)·**도면배경 R2**(POST multipart/GET-image blob/DELETE, base64 폐기)·편집모드 업로드.
+  - **P2**: 핀 대표공정 색상점·공정필터 dim·팝오버 공정배지+출력이력(`/production?equipment_ids=` 딥링크)·구역요약 공정.
+  - **+90°회전**: 마이그 `0390` `equipment.layout_rotation`·편집모드 팝오버 "90°회전"(0/90/180/270 순환·영속)·position PATCH 부분업데이트 리팩터. 커밋 `e7eefa35`·dep `8adc578d`.
+  - 검증: tsc0·build·**smoke 101/101**·Playwright(로컬+prod). **prod 배포·push 완료**(커밋 `68c7a41c`+`e7eefa35`·dep `8adc578d`·마이그0389·0390 remote).
+  - **✅ 운영 적용완료**(DB UPDATE, 코드무관): 23대 공정·구역·위치 배정 / HSM 13대=현수막실·수성·1.8m / IP 일괄반영(0.x 20대·127.x 3대 비움) / **배치도 사용자 레이아웃 기준 정렬**(★격자 강제 금지 교훈, align/restore SQL) / TPM ID 재배정(TPM-01→TOPM-01·PC A→TPM-01·PC B 유지+이벤트 재귀속). 도면 이미지만 미업로드.
+  - **다음=P3~P5 재고게이지**(재고 데이터 정책 합의 후, 별도 세션).
+
+- **✅ [2026-06-23] 발주(PO) 라인 원단 폭 표시 — 수정·prod 배포·검증 완료 (dep `7835937e`)** *(커밋 완료 — 0360·0361은 prod 적용 확정, untracked 표기 해소 2026-07-04)*:
+  - 문제: 원단 품목명엔 폭 미포함(설계) → 발주 **저장/재로드/인쇄 시 폭 누락**(`purchase_order_items`에 specification 컬럼 없음, item_id로만 고정). 입력 중엔 보이나 저장 안 됨.
+  - 방식 = **품목마스터 파생**(저장 아님, 마이그 X). `item_id`가 폭을 이미 고정하므로 GET 시 JOIN으로 폭 조회 표시. 입고검수가 쓰던 방식과 통일.
+  - 수정 6: 백엔드 2(core.ts GET /:id + po-queries `/:id/invoice`에 `i.specification AS item_specification`(+invoice엔 items JOIN)) / 프런트 4(편집로드 규격칸·상세모달 뱃지·입고모달 뱃지·**발주서 인쇄** `폰지 [85cm]`).
+  - **★부수 발견·수정**: 발주서 인쇄 페이지(`purchaseInvoice.js`)가 독립 HTML이라 `formatKST`·`escapeHtml` 전역 없어 **렌더 전체 실패 상태였음(2026-06-09 KST 리팩토링 회귀, prod 라이브)** → 두 헬퍼 로컬 폴백 정의로 복구.
+  - 검증: build/tsc green, 백엔드 JOIN 데이터(폰지→850·"85cm"), Playwright 로컬(동일번들) 상세 "폰지 85cm"·인쇄 "폰지 [85cm]" 렌더 확인. prod 원단 spec/폭 보유 확인. (구 "미커밋" 표기는 스테일 — 0360·0361 커밋·prod 적용 완료)
+
+- **✅ [2026-06-13] GitHub 이슈 18건 전수 픽스·prod 배포·close** *(동반이던 휴가→근태 연동은 미배포라 PROJECT_STATUS에 잔류)*:
+  - **이슈 18건**(승인분 전수, 봇이슈라 코드/스키마 대조 후 수정 → 각 이슈에 처리 코멘트 후 close): **보안HIGH** #384(printEvents `cards.entity_id`→`requesting_entity_id`+order폴백)·#375(cards 4엔드포인트 entity필터, by-number는 agent-key겸용 인증으로 분리)·#381(orders 쓰기 7핸들러 소유법인 IDOR 가드). **MED/개선** #388·#391(UTC업무일자→KST 저장+비교)·#392·#393(4대보험 신고서 산재컬럼·사업장별 entity)·#386·#387(split billing DRAFT링크정리·**동결 그룹단위 정밀화**)·#385(출고알림톡 품목 COALESCE)·#389·#390(급여 N+1 prefetch·skipped_names)·#372·#379(CSV truncation경고·printSystem N+1 batch)·#376(죽은 getElementById)·#374·#382·#383(**정적에셋 파이프라인 완전제거**: build:assets 삭제, hono플러그인 `_routes.json {exclude:[]}` 자체생성=MIME장애 클래스 구조소멸. smoke 로그인재시도+프론트부트스트랩 게이트). 커밋 `018ec4d0`·`70d8d0cc`·`644fbabe`·`645ae537`·`3f8fd0d8`·`83ded42c`·`c17e9448`. **prod smoke 103/103 + 프론트게이트 + by-number 3종 검증**.

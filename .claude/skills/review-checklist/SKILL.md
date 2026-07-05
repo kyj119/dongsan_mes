@@ -56,6 +56,7 @@ description: 동산기획 프로젝트 특화 코드 리뷰 체크리스트. 변
   - `npm run typecheck` — 전체 tsc --noEmit (1~2초, 모든 타입 에러)
   - `npm run verify` — typecheck + build 통합
   - **중요**: `npm run build` 만으로는 "requireRole is not defined" 런타임 크래시 못 잡음 (esbuild는 타입 stripping만)
+- **🔴 NEW (2026-07-04): user 계열 FK 컬럼에 하드코딩 id 금지** — `changed_by`/`created_by`/`reported_by` 등에 `1` 같은 리터럴 금지. agent/시스템 경로=**NULL**, 사용자 경로=`user?.id || null`. prod는 FK 강제 ON + user id=1 부재(공장초기화) → INSERT 전멸·후속 로직 중단 실사고(출력완료 파이프라인). 검출: `grep -nE ", 1[,)]|\|\| 1" src/routes src/utils`
 
 ### 5. 마이그레이션 검사 (migrations/*.sql 변경 시)
 

@@ -37,7 +37,7 @@
 - 문자열 인코딩: **EUC-KR** (codepage 949)
 - 상태 마커: `OK!` / `Cancel!` / `Error!` (ASCII 바이트 매칭)
 - 파싱 방식: 상태 마커 위치에서 역방향으로 필드 추출 (ReadFieldsBackward)
-- 카드번호: `\d{8}-\d{3}-\d{2}`, 주문번호: `\d{8}-\d{3}`
+- 카드번호: `(E\d+-)?\d{8}-\d{3}-\d{2}`, 주문번호: `(E\d+-)?\d{8}-\d{3}` — 법인채번 `E{eid}-` 접두 포함(2026-06 도입). 서버측 매칭 정본=printEvents.ts resolveCard(E-prefix 대응, 2026-07-04)
 - 인쇄 상태 감지: 파일 크기 변화 + 90초 타임아웃 → is_printing 플래그
 
 **LogWatcher 설정 (appsettings.json)**

@@ -66,7 +66,7 @@ Epson Edge Print/
 - `KR유통04(93x173-1장).eps` — 거래처+번호(크기) 패턴
 - `25-(솔벤시트)푸른광고-옷걸이(24x10)-12일 점심 자동문.eps` — 긴급건
 
-> ⚠️ IA 명명규칙(`YYYYMMDD-NNN`)이 아직 적용되지 않음. OrderMatcher 확장 필요.
+> ⚠️ IA 명명규칙(`(E{eid}-)YYYYMMDD-NNN`)이 아직 적용되지 않음. OrderMatcher 확장 필요.
 
 **데이터 소스 비교 (설계 결정):**
 | 방식 | 장점 | 단점 |
@@ -80,7 +80,7 @@ Epson Edge Print/
 모든 장비가 공유하는 특성:
 1. **로그 파일이 존재** — 형식만 다를 뿐 로그는 있음
 2. **폴더 구조가 유사** — Job/Log/Output 패턴
-3. **파일명에 주문번호 포함** — IA가 `YYYYMMDD-NNN` 형식으로 통일
+3. **파일명에 주문번호 포함** — IA가 `(E{eid}-)YYYYMMDD-NNN` 형식으로 통일
 4. **완료 이벤트가 존재** — "출력 완료" 시점을 나타내는 마커
 
 ---
@@ -96,7 +96,7 @@ Epson Edge Print/
 
 1. **Config-driven**: 파싱 규칙은 JSON 설정으로 정의, 코드에 하드코딩 금지
 2. **Plugin 구조**: 파서 타입별 플러그인, 새 타입 추가는 1클래스
-3. **주문번호 추출 통일**: 파일명에서 `YYYYMMDD-NNN` 정규식으로 추출 (IA 명명 규칙)
+3. **주문번호 추출 통일**: 파일명에서 `(E{eid}-)YYYYMMDD-NNN` 정규식으로 추출 (IA 명명 규칙)
 4. **기존 파서 호환**: TNS/PrintExp 파서는 그대로 유지, 플러그인으로 래핑
 5. **다중 장비 동시 감시**: 1개 프로세스에서 N개 장비 병렬 폴링
 
@@ -136,7 +136,7 @@ WatcherManager: equipment.json 읽기 → 장비별 파서 인스턴스 생성
     ↓
 각 파서: last_position 이후 새 데이터 읽기 → PrintEvent 생성
     ↓
-OrderMatcher: 파일명에서 주문번호 추출 (YYYYMMDD-NNN)
+OrderMatcher: 파일명에서 주문번호 추출 ((E{eid}-)YYYYMMDD-NNN)
     ↓
 EventDispatcher: POST /api/print-events → MES
     ↓ (실패 시)
@@ -401,9 +401,9 @@ public interface ILogParser
 ```csharp
 public static class OrderMatcher
 {
-    // IA 명명 규칙: YYYYMMDD-NNN[-FFF]
+    // IA 명명 규칙: (E{eid}-)YYYYMMDD-NNN[-FFF] — 법인채번 접두 포함(서버 resolveCard와 동일 패턴)
     private static readonly Regex OrderPattern =
-        new Regex(@"(\d{8}-\d{3})(?:-(\d+))?");
+        new Regex(@"((?:E\d+-)?\d{8}-\d{3})(?:-(\d+))?");
 
     public static (string? orderNumber, int? fileSeq) Extract(string filename)
     {
@@ -622,7 +622,7 @@ nssm restart LogWatcher
 
 - OrderMatcher: 현재 Epson JobName 패턴 지원 추가
   - `(솔벤시트){카드번호}-{파일번호}(WxH-N장).eps` → 카드 매핑
-  - `YYYYMMDD-NNN` 패턴 (IA 적용 후)
+  - `(E{eid}-)YYYYMMDD-NNN` 패턴 (IA 적용 후)
 - `--test --equipment {id}` 모드 (장비별 테스트)
 - `--list` 모드 (등록된 장비 목록 + 상태)
 - `--validate` 모드 (equipment.json 검증)
