@@ -441,13 +441,14 @@ async function loadOrders() {
         const crossBadge = (viewerEntity > 0 && order.entity_id && Number(order.entity_id) !== viewerEntity)
           ? ` <span class="px-1.5 py-0.5 text-[10px] rounded bg-purple-100 text-purple-700 font-bold" title="타법인 주문 — 내 법인 담당 품목 포함">${escapeHtml(order.entity_name || '타법인')}</span>`
           : '';
-        // 합배송 배지 (배송 UX P1): 자식=대표 주문번호 링크 / 대표=묶인 건수. 주문서·청구는 별도, 배송만 한 박스
+        // 합배송 배지 (배송 UX P1): 자식=대표 링크 / 대표=묶인 건수. 주문서·청구는 별도, 배송만 한 박스.
+        // 주문번호 열이 고정폭(col-*)이라 인라인 풀넘버는 잘림 → 번호 아래 줄 + 짧은 라벨, 상세는 title 호버.
         let consBadge = '';
         if (order.consolidate_with_order_id) {
           const rootNo = order.consolidate_root_number || ('#' + order.consolidate_with_order_id);
-          consBadge = ` <span class="px-1.5 py-0.5 text-[10px] rounded bg-amber-100 text-amber-700 font-bold cursor-pointer hover:bg-amber-200" onclick="event.stopPropagation(); viewOrder(${order.consolidate_with_order_id})" title="합배송 묶음 — 대표 주문 ${escapeHtml(rootNo)}과 한 박스로 출고 (주문서·청구서는 각각 유지). 클릭 시 대표 주문 열기"><i class="fas fa-box mr-0.5"></i>합배송→${escapeHtml(rootNo)}</span>`;
+          consBadge = `<div class="mt-0.5"><span class="inline-block px-1.5 py-0.5 text-[10px] rounded bg-amber-100 text-amber-700 font-bold cursor-pointer hover:bg-amber-200" onclick="event.stopPropagation(); viewOrder(${order.consolidate_with_order_id})" title="합배송 묶음 — 대표 주문 ${escapeHtml(rootNo)}과 한 박스로 출고 (주문서·청구서는 각각 유지). 클릭 시 대표 주문 열기"><i class="fas fa-box mr-0.5"></i>합배송→대표</span></div>`;
         } else if (order.consolidation_child_count > 0) {
-          consBadge = ` <span class="px-1.5 py-0.5 text-[10px] rounded bg-amber-100 text-amber-700 font-bold" title="합배송 묶음 대표 — ${escapeHtml(order.consolidation_child_numbers || '')}와 한 박스로 출고 (주문서·청구서는 각각 유지)"><i class="fas fa-box mr-0.5"></i>합배송 ${order.consolidation_child_count}건</span>`;
+          consBadge = `<div class="mt-0.5"><span class="inline-block px-1.5 py-0.5 text-[10px] rounded bg-amber-100 text-amber-700 font-bold" title="합배송 묶음 대표 — ${escapeHtml(order.consolidation_child_numbers || '')}와 한 박스로 출고 (주문서·청구서는 각각 유지)"><i class="fas fa-box mr-0.5"></i>합배송 ${order.consolidation_child_count}건</span></div>`;
         }
         return `
           <tr class="hover:bg-gray-50" data-order-id="${order.id}" data-status="${order.status}" data-billing-status="${order.billing_status || ''}" data-order-number="${escapeHtml(order.order_number || ('#' + order.id))}">
