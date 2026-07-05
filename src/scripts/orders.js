@@ -441,13 +441,21 @@ async function loadOrders() {
         const crossBadge = (viewerEntity > 0 && order.entity_id && Number(order.entity_id) !== viewerEntity)
           ? ` <span class="px-1.5 py-0.5 text-[10px] rounded bg-purple-100 text-purple-700 font-bold" title="타법인 주문 — 내 법인 담당 품목 포함">${escapeHtml(order.entity_name || '타법인')}</span>`
           : '';
+        // 합배송 배지 (배송 UX P1): 자식=대표 주문번호 링크 / 대표=묶인 건수. 주문서·청구는 별도, 배송만 한 박스
+        let consBadge = '';
+        if (order.consolidate_with_order_id) {
+          const rootNo = order.consolidate_root_number || ('#' + order.consolidate_with_order_id);
+          consBadge = ` <span class="px-1.5 py-0.5 text-[10px] rounded bg-amber-100 text-amber-700 font-bold cursor-pointer hover:bg-amber-200" onclick="event.stopPropagation(); viewOrder(${order.consolidate_with_order_id})" title="합배송 묶음 — 대표 주문 ${escapeHtml(rootNo)}과 한 박스로 출고 (주문서·청구서는 각각 유지). 클릭 시 대표 주문 열기"><i class="fas fa-box mr-0.5"></i>합배송→${escapeHtml(rootNo)}</span>`;
+        } else if (order.consolidation_child_count > 0) {
+          consBadge = ` <span class="px-1.5 py-0.5 text-[10px] rounded bg-amber-100 text-amber-700 font-bold" title="합배송 묶음 대표 — ${escapeHtml(order.consolidation_child_numbers || '')}와 한 박스로 출고 (주문서·청구서는 각각 유지)"><i class="fas fa-box mr-0.5"></i>합배송 ${order.consolidation_child_count}건</span>`;
+        }
         return `
           <tr class="hover:bg-gray-50" data-order-id="${order.id}" data-status="${order.status}" data-billing-status="${order.billing_status || ''}" data-order-number="${escapeHtml(order.order_number || ('#' + order.id))}">
             <td class="px-2 py-2.5 text-center">
               <input type="checkbox" class="order-checkbox rounded border-gray-300" data-order-id="${order.id}" onchange="toggleOrderSelect(this)" ${selectedOrderIds.has(order.id) ? 'checked' : ''}>
             </td>
             <td class="px-2 py-2.5 whitespace-nowrap">
-              <div class="text-sm font-medium text-gray-900">${escapeHtml(order.order_number)}${priorityBadge}${crossBadge}</div>
+              <div class="text-sm font-medium text-gray-900">${escapeHtml(order.order_number)}${priorityBadge}${crossBadge}${consBadge}</div>
             </td>
             <td class="px-2 py-2.5">
               <div class="text-sm text-gray-900 truncate" title="${escapeHtml(order.client_name || '')}">${escapeHtml(order.client_name || '-')}</div>
@@ -922,6 +930,7 @@ function showOrderModal(order, cards, autoJobs) {
             <div><label class="text-sm font-medium text-gray-600">등록일</label><p class="text-lg">${formatKST(order.created_at)}</p></div>
             <div><label class="text-sm font-medium text-gray-600">등록자</label><p class="text-lg">${order.created_by_name || '-'}</p></div>
             ${order.quotation_id ? `<div class="col-span-2 bg-blue-50 border border-blue-200 rounded p-3"><label class="text-sm font-medium text-blue-700"><i class="fas fa-link mr-1"></i>견적서 연결</label><p class="text-sm mt-1">이 주문은 견적서 <a href="/quotations#${order.quotation_id}" class="font-bold text-blue-700 underline hover:text-blue-900">#${order.quotation_id}${order.quotation_number ? ' (' + escapeHtml(order.quotation_number) + ')' : ''}</a>에서 생성되었습니다.</p></div>` : ''}
+            ${buildConsolidationSection(order)}
           </div>
           <div class="mb-6">
             <h3 class="text-lg font-bold mb-3">주문 품목</h3>
@@ -999,6 +1008,24 @@ function showOrderModal(order, cards, autoJobs) {
   `;
   document.body.insertAdjacentHTML('beforeend', modalHtml);
   loadOrderTimeline(order.id);
+}
+
+// ── 합배송 묶음 섹션 (배송 UX P1): 예약/묶음 관계 표시 ─────────────────
+// 주문서·청구는 각각 유지되고 배송만 한 박스 — 오해 방지를 위해 문구 명시.
+function buildConsolidationSection(order) {
+  var members = order.consolidation_members || [];
+  if (!order.consolidate_with_order_id && members.length === 0) return '';
+  var links = members.map(function(m) {
+    return '<a href="javascript:void(0)" onclick="document.getElementById(\'orderModal\').remove(); viewOrder(' + m.id + ')" class="font-bold text-amber-800 underline hover:text-amber-900">' + escapeHtml(m.order_number || ('#' + m.id)) + '</a>';
+  }).join(', ');
+  var roleTxt = order.consolidate_with_order_id
+    ? '이 주문은 대표 주문 <b>' + escapeHtml(order.consolidate_root_number || ('#' + order.consolidate_with_order_id)) + '</b>에 합배송으로 묶여 있습니다.'
+    : '이 주문이 합배송 묶음의 <b>대표</b>입니다.';
+  return '<div class="col-span-2 bg-amber-50 border border-amber-200 rounded p-3">'
+    + '<label class="text-sm font-medium text-amber-800"><i class="fas fa-box mr-1"></i>합배송 묶음</label>'
+    + '<p class="text-sm mt-1">' + roleTxt + (links ? ' 함께 묶인 주문: ' + links : '') + '</p>'
+    + '<p class="text-xs text-amber-700 mt-1">주문서·청구서는 각각 유지되며, 출고 시 배송만 한 박스로 묶입니다.</p>'
+    + '</div>';
 }
 
 // ── 자동가공 결과 섹션 ──────────────────────────────────────────────

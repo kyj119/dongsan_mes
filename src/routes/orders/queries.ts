@@ -54,7 +54,7 @@ ordersQueriesRouter.get('/unshipped-by-client', async (c) => {
       return c.json({ success: false, error: 'client_id가 필요합니다.' }, 400)
     }
     const { results } = await c.env.DB.prepare(`
-      SELECT o.id, o.order_number, o.delivery_date, o.delivery_method, o.status,
+      SELECT o.id, o.order_number, o.delivery_date, o.delivery_method, o.status, o.billing_status,
              o.consolidate_with_order_id,
              COALESCE(en.short_name, en.name) as entity_name,
              (SELECT item_name FROM order_items WHERE order_id = o.id AND (parent_item_id IS NULL OR parent_item_id = 0) ORDER BY id LIMIT 1) as main_item_name,

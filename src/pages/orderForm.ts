@@ -129,7 +129,7 @@ export function orderFormPage(c: Context<HonoEnv>) {
                         <div id="ofConsolidationBanner" class="hidden mt-4 border border-amber-200 bg-amber-50 rounded-lg overflow-hidden">
                             <div class="px-4 py-2 border-b border-amber-200 flex items-center justify-between">
                                 <span class="text-sm font-semibold text-amber-800"><i class="fas fa-box mr-1"></i>이 거래처의 미출고 주문 <span id="ofConsolidationCount"></span>건</span>
-                                <span class="text-xs text-amber-700">합배송(한 박스) 예약 시 출고확정 때 자동으로 묶입니다</span>
+                                <span class="text-xs text-amber-700">합배송 예약 시 출고확정 때 자동으로 한 박스로 묶입니다 · 주문서·청구서는 각각 유지</span>
                             </div>
                             <div id="ofConsolidationList" class="px-4 py-2 text-sm divide-y divide-amber-100"></div>
                         </div>

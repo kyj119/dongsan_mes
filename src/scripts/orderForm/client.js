@@ -146,21 +146,31 @@
                     _ofUnshippedCandidates = rows;
                     if (!rows.length) { banner.classList.add('hidden'); return; }
                     if (cntEl) cntEl.textContent = rows.length;
-                    var html = '<label class="flex items-center gap-2 py-1.5 cursor-pointer">'
+                    // 두 의도 분리 (배송 UX P2): 추가 주문(주문서 1장 유지)=품목 추가 버튼 / 별개 주문 합배송=라디오
+                    var html = '<div class="text-[11px] text-amber-700 py-1">같은 주문의 추가분이면 <b>[품목 추가]</b>로 기존 주문서에 합치세요. 합배송은 별도 주문서를 유지한 채 배송만 한 박스로 묶습니다.</div>'
+                        + '<label class="flex items-center gap-2 py-1.5 cursor-pointer">'
                         + '<input type="radio" name="ofConsolidateRadio" value="" ' + (_ofConsolidateWith ? '' : 'checked') + ' onchange="ofSetConsolidateTarget(null)">'
                         + '<span class="text-gray-600">합배송 안 함</span></label>';
                     rows.forEach(function(o, idx) {
                         var dd = o.delivery_date || '-';
                         var checked = (_ofConsolidateWith && Number(_ofConsolidateWith) === Number(o.id)) ? 'checked' : '';
                         var itemTxt = (o.main_item_name || '') + (o.item_count > 1 ? ' 외 ' + (o.item_count - 1) + '건' : '');
-                        html += '<label class="flex items-center gap-2 py-1.5 cursor-pointer">'
+                        // 품목 추가 가능 = 편집 가능 상태 + 미청구 (출고 준비·청구 후 주문은 새 주문+합배송만 안내)
+                        var canAppend = ['CONFIRMED', 'PRINTING', 'PRINT_DONE', 'HOLD'].indexOf(o.status) >= 0
+                            && ['BILLED', 'PAID'].indexOf(o.billing_status || '') < 0;
+                        html += '<div class="flex items-center gap-2 py-1.5">'
+                            + '<label class="flex items-center gap-2 flex-1 min-w-0 cursor-pointer" title="별도 주문서 유지 + 출고 시 한 박스">'
                             + '<input type="radio" name="ofConsolidateRadio" value="' + o.id + '" ' + checked + ' onchange="ofSetConsolidateTarget(' + idx + ')">'
                             + '<span class="font-medium whitespace-nowrap">' + escapeHtml(o.order_number || ('#' + o.id)) + '</span>'
                             + (o.entity_name ? '<span style="background:#eef2ff;color:#4338ca;font-size:10px;padding:1px 5px;border-radius:8px;white-space:nowrap">' + escapeHtml(o.entity_name) + '</span>' : '')
                             + '<span class="text-gray-500 whitespace-nowrap">납품 ' + escapeHtml(dd) + '</span>'
                             + '<span class="text-gray-500 whitespace-nowrap">' + escapeHtml(o.delivery_method || '-') + '</span>'
                             + '<span class="text-gray-400 truncate" title="' + escapeHtml(itemTxt) + '">' + escapeHtml(itemTxt) + '</span>'
-                            + '</label>';
+                            + '</label>'
+                            + (canAppend
+                                ? '<button type="button" class="shrink-0 px-2 py-0.5 text-[11px] rounded border border-amber-300 bg-white text-amber-800 hover:bg-amber-100" title="새 주문서를 만들지 않고 이 주문(주문서 1장)에 품목을 추가합니다" onclick="ofGotoAddItems(' + idx + ')"><i class="fas fa-plus mr-0.5"></i>품목 추가</button>'
+                                : '')
+                            + '</div>';
                     });
                     if (listEl) listEl.innerHTML = html;
                     banner.classList.remove('hidden');
@@ -170,6 +180,16 @@
                 });
                 // 수정모드 복원: 기존 예약 선택 유지
                 if (preselectId) _ofConsolidateWith = preselectId;
+            }
+
+            // [품목 추가] — 새 주문서를 만들지 않고 기존 주문 수정 화면으로 이동 (주문서 1장 유지)
+            async function ofGotoAddItems(idx) {
+                var o = _ofUnshippedCandidates[idx];
+                if (!o) return;
+                var no = o.order_number || ('#' + o.id);
+                if (await showConfirm('주문 ' + no + ' 수정 화면으로 이동해 품목을 추가합니다.\n(새 주문서를 만들지 않으며, 지금 입력 중인 내용은 저장되지 않습니다)')) {
+                    window.location.href = '/order-form?edit=' + o.id;
+                }
             }
 
             // 라디오 선택 → 예약 대상 설정 (+ 납품일 불일치 시 맞추기 제안)

@@ -152,6 +152,45 @@ ordersCoreRouter.get('/', async (c) => {
 
     const { results } = await c.env.DB.prepare(query).bind(...params).all()
 
+    // 합배송 묶음 배지 파생 (배송 UX P1): 페이지 행 한정 배치 후속조회 (행별 상관 서브쿼리 N+1 회피).
+    // 정본 포인터 = orders.consolidate_with_order_id (접수 예약 0438 + 출고 merge/unmerge 동기 — root=NULL·자식=root).
+    // IN(...)은 D1 바인드 한도(~100) 대응 80개 청크. 실패해도 목록 응답은 정상 (배지만 생략).
+    try {
+      const listRows = results as any[]
+      const rootIds = [...new Set(listRows.map(r => Number(r.consolidate_with_order_id)).filter(v => v > 0))]
+      const rootNumMap = new Map<number, string>()
+      for (let i = 0; i < rootIds.length; i += 80) {
+        const chunk = rootIds.slice(i, i + 80)
+        const { results: rn } = await c.env.DB.prepare(
+          `SELECT id, order_number FROM orders WHERE id IN (${chunk.map(() => '?').join(',')})`
+        ).bind(...chunk).all<{ id: number; order_number: string }>()
+        for (const r of rn || []) rootNumMap.set(Number(r.id), r.order_number)
+      }
+      const pageIds = listRows.map(r => Number(r.id)).filter(v => v > 0)
+      const childAgg = new Map<number, { cnt: number; nums: string }>()
+      for (let i = 0; i < pageIds.length; i += 80) {
+        const chunk = pageIds.slice(i, i + 80)
+        const { results: ch } = await c.env.DB.prepare(
+          `SELECT consolidate_with_order_id AS rid, COUNT(*) AS cnt, GROUP_CONCAT(order_number, ', ') AS nums
+           FROM orders
+           WHERE consolidate_with_order_id IN (${chunk.map(() => '?').join(',')})
+             AND status NOT IN ('CANCELLED', 'DELETED')
+           GROUP BY consolidate_with_order_id`
+        ).bind(...chunk).all<{ rid: number; cnt: number; nums: string | null }>()
+        for (const r of ch || []) childAgg.set(Number(r.rid), { cnt: Number(r.cnt) || 0, nums: r.nums || '' })
+      }
+      for (const r of listRows) {
+        if (r.consolidate_with_order_id) {
+          r.consolidate_root_number = rootNumMap.get(Number(r.consolidate_with_order_id)) || null
+        }
+        const agg = childAgg.get(Number(r.id))
+        if (agg && agg.cnt > 0) {
+          r.consolidation_child_count = agg.cnt
+          r.consolidation_child_numbers = agg.nums
+        }
+      }
+    } catch (_consErr) { /* 배지 파생 실패는 목록을 막지 않음 */ }
+
     // Get total count
     let countQuery = 'SELECT COUNT(*) as count FROM orders o LEFT JOIN clients c ON o.client_id = c.id'
     const countParams: any[] = []
@@ -436,12 +475,35 @@ ordersCoreRouter.get('/:id', async (c) => {
       ORDER BY g.entity_id ASC
     `).bind(id).all()
 
+    // 합배송 묶음 정보 (배송 UX P1): 자식이면 대표 주문번호, 그리고 같은 묶음의 다른 멤버(자신 제외).
+    // root=consolidate_with_order_id(자식) 또는 자기 자신(대표 후보). 표시용 — 실패해도 상세는 정상.
+    let consolidateRootNumber: string | null = null
+    let consolidationMembers: Array<{ id: number; order_number: string }> = []
+    try {
+      const selfId = Number(id)
+      const rootId = Number((order as any).consolidate_with_order_id) || 0
+      if (rootId) {
+        const rootRow = await c.env.DB.prepare(`SELECT order_number FROM orders WHERE id = ?`)
+          .bind(rootId).first<{ order_number: string }>()
+        consolidateRootNumber = rootRow?.order_number || null
+      }
+      const groupRoot = rootId || selfId
+      const { results: members } = await c.env.DB.prepare(`
+        SELECT id, order_number FROM orders
+        WHERE (id = ? OR consolidate_with_order_id = ?) AND id != ? AND status NOT IN ('CANCELLED', 'DELETED')
+        ORDER BY id ASC
+      `).bind(groupRoot, groupRoot, selfId).all<{ id: number; order_number: string }>()
+      consolidationMembers = (members || []).map(m => ({ id: Number(m.id), order_number: m.order_number }))
+    } catch (_consErr) { /* 표시용 파생 실패는 무시 */ }
+
     const response: ApiResponse<any> = {
       success: true,
       data: {
         ...order,
         items,
-        billing_groups: billingGroups || []
+        billing_groups: billingGroups || [],
+        consolidate_root_number: consolidateRootNumber,
+        consolidation_members: consolidationMembers
       }
     }
 
