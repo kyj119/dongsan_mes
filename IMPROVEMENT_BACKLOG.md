@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 1 -->
-<!-- last_run_at: 2026-07-05T06:00:00+09:00 -->
+<!-- last_run_area: 2 -->
+<!-- last_run_at: 2026-07-05T10:00:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -16,6 +16,16 @@
 
 > 📦 **과거 사이클 로그**는 `IMPROVEMENT_BACKLOG_ARCHIVE.md`/git 히스토리로 이관됨 (2026-06-10 1차 분리, 2026-06-25 2차 트림 343KB→192KB, **2026-06-25T10:00 3차 트림 — 06-17~06-23 사이클 로그를 git 히스토리로 이관: node_modules 부재 세션에서 commit-gate(typecheck) 차단으로 API 푸시 필요 → 파일 축소로 비용 절감 + 256KB 한도 회복**). 신규 로그는 계속 이 파일 상단에 추가. 본 파일은 직전 2일치(06-24~) 사이클 로그 + 영구 참조 섹션(Approved/New/Auto-fixed/Done/Rejected/FP 카탈로그)만 유지. 이관분은 `git log -p -- IMPROVEMENT_BACKLOG.md`로 복원 가능.
 
+> **Area 2 코드 품질 심층 분석 (2026-07-05T10:00):**
+> - **방법**: `npm ci`(node_modules 0→81, #439) 후 git fetch(origin `c66bfc1→83400ba` force-update, **HEAD=origin/main `83400ba` 0/0 동기**, 워킹트리 clean, #422 디버전스 0). Area 2 **31회차** — 직전 Area2(`ffb1509`, 07-04T10:00, 30회차) 이후 코드 churn = **0**(유일 churn = `bb49684` 마이그 0441 인덱스 = 직전 Area4 산출, routes/scripts 0) → **사실상 clean cycle**. **신선 각도 = 컬럼 존재성 자동스캔(최고 생산성 클래스)을 전 코드베이스 재수행 + 아직 자동화 안 된 UPDATE SET 존재성 미러 추가 + N+1 헬퍼-루프(#478) 전수.**
+> - **🟢 타입 검증 = clean**: `npx tsc --noEmit` **exit 0**.
+> - **🟢 N+1 헬퍼-루프(#478) 전수 = net-new 0**: `for..of` 루프 바디에 `await <helper/db.prepare>` 있는 사이트 40여 곳 추출 → 데이터-스케일 미유계 후보 정밀검토. `shipments.ts:356`(merge 라우트 `ensureShipmentForOrder` 루프)은 대상 `orders`가 user-selected `order_ids`(2+ 합포장)라 practically bounded(#478 FP클래스ⓐ). `weeklyPurchase.ts:47/68`은 루프 바디가 in-memory Map 빌드(DB 호출은 루프 밖 + 서브쿼리로 IN 회피=#458 하드닝 완료). 기존 #478(lifecycle.ts:557 `sync-statuses`)만 open 유지. 신규 미유계 N+1 0.
+> - **🟢 컬럼 존재성 자동스캔(INSERT+UPDATE+SELECT) = net-new 0 (전 후보 파서 FP)**: 마이그 CREATE/ALTER로 schema.json ground-truth(206테이블) 빌드 후 전 코드베이스 INSERT/UPDATE 컬럼셋 대조. **INSERT 후보 12건 전량 FP**: `inventory.entity_id`/`storage_zone_id`(0232 `inventory_new`→RENAME)·`bank_match_rules.matched_category_id`(0270 `_new`)·`caps_employee_map.site_id`(0199 `_new`) = 테이블 재빌드 RENAME 미접힘 / `budgets.feb·mar·may·…`(0219 `jan REAL, feb REAL, mar REAL` 다중컬럼 라인) = 줄-첫-토큰 파서 누락. 각 후보 `grep RENAME TO <t>`/재빌드 본문/원 마이그 라인 직접 대조로 실재 확인. **UPDATE SET 후보 2건 전량 FP**: `cards.ai_analysis_id`(`UPDATE cards SET thumbnail_url=(SELECT ... JOIN order_items oi ON oi.ai_analysis_id ...)` = 서브쿼리 컬럼 오포착, 실 SET은 thumbnail_url만)·`bank_match_rules.matched_category_id`(0270 rebuild). **접기 규칙 적용 후 진짜 미존재 컬럼 0**(#377/#394 클래스 없음).
+> - **🟢 #405 activity_logs 형제 완전성 = clean**: `INSERT INTO activity_logs` 전수 1곳(`cards/lifecycle.ts:1078`)뿐이며 컬럼셋(`user_id/action/entity_type/entity_id/details`) 전부 실재(#405 픽스 이후 resource_* 오컬럼 잔존 형제 0).
+> - **🟢 backlog↔GitHub sync**: open auto-improve **실측 11건**(`list_issues(OPEN,auto-improve)` totalCount=11: #473~#483) = 직전 Area1 stats `new=11` **정합**. 본 Area2 신규 이슈 0(clean cycle) → new 11 유지. owner 신규 close/머지 0(done=163·rejected=3 유지). #422 디버전스: HEAD=origin/main 동기(`83400ba`)라 미push 픽스 0.
+> - **🧬 SKILL 강화 1건 — 컬럼 존재성 자동스캔의 `_new` 재빌드/다중컬럼/SET-서브쿼리 3갭 접기 codify(Area 2, 31회차)**: 컬럼존재성 스캔(최고 생산성 클래스)이 이번 사이클 12+2 후보를 냈으나 **전량 파서 FP** — ① SQLite 테이블 재빌드(`CREATE <t>_new; RENAME TO <t>`) 미접힘으로 재빌드 테이블 신규 컬럼 오플래그(inventory/bank_match_rules/caps 3건) ② 다중컬럼 라인(`jan, feb, mar` 한 줄) 줄-첫-토큰 파싱 누락(budgets 월컬럼) ③ UPDATE SET 절 추출이 서브쿼리 내 JOIN 컬럼 오포착(cards.ai_analysis_id). **접기 규칙**: ground-truth 빌드 시 `RENAME TO <t>` 추적해 `<t>_new` 컬럼을 `<t>`에 fold + CREATE 본문 콤마분할 후 조각별 `(\w+)\s+TYPE` 매치 + SET 절은 첫 최상위 `(`에서 절단(서브쿼리 제외). 미적용 매치는 재검증 없이 신뢰 금지(후보마다 `RENAME TO`/재빌드 본문/원 라인 직접 grep). JOIN-aware SELECT FP(line 86)의 INSERT/UPDATE 버전.
+> - 신규 이슈 0건(net-new 0, clean cycle), 자동수정 0건, SKILL 강화 1건(컬럼존재성 파서 3갭 접기), done-sync(new=11 유지·11=11 정합), **신선 각도 — 컬럼존재성 자동스캔 전 코드베이스 재수행 + UPDATE SET 미러 신규 + N+1 헬퍼-루프 전수. INSERT 12·UPDATE 2 후보 전량 파서 FP(`_new` 재빌드·다중컬럼 라인·SET 서브쿼리), 진짜 미존재 컬럼 0. N+1 신규 미유계 0(shipments merge bounded FP). #405 형제 clean. tsc exit0. 코드수정 0.**
+>
 > **Area 1 프로덕션 헬스 (2026-07-05T06:00):**
 > - **방법**: `npm ci`(node_modules 0→81, #439) 후 git fetch(origin `c66bfc1→e8f401e` force-update, **HEAD=origin/main `e8f401e` 0/0 동기**, 워킹트리 clean, #422 디버전스 0). Area 1 **28회차** — egress 차단(prod 직접 fetch·Playwright 도달 불가)이라 CI/E2E는 GitHub Actions API로 검증. 직전 Area1(`0db3b88`, 07-04T06:00, 27회차) 이후 **routes/scripts 코드 churn 0** — 유일 churn = **`bb49684`(Area4 chore, 마이그 0441 인덱스 추가)** + auto-improve chore/docs만. **신선 각도 = 사실상 clean cycle → 마이그레이션 prod 적용 파이프라인 검증(#483 0441이 실제 prod DB에 도달하는가) + DROP/RENAME·마이그중복·smoke-stale standing scan 전수.**
 > - **🟢 CI 헬스 = green(15/15, 무-failure)**: `deploy.yml` main 최근 15런 **전부 success**(Area1 27회차→6/5/4/3/2 사이클 배포 + `3e29fe6` print-events fix 포함 전부 배포·smoke 통과). smoke는 `continue-on-error:false`라 run success = smoke 통과 방증.
