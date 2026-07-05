@@ -21,6 +21,7 @@ async function showCreateModal() {
     if (specEl) specEl.value = '';
     var szSel = document.getElementById('itemStorageZone');
     if (szSel) szSel.value = '';
+    itemPhotoReset(false);
     await loadItemSubcatOptions();
     populateSubcatSelect('');
     loadGroupList();
@@ -74,6 +75,9 @@ async function editItem(id) {
             }
             var szSel2 = document.getElementById('itemStorageZone');
             if (szSel2) szSel2.value = item.storage_zone_id != null ? String(item.storage_zone_id) : '';
+            // 품목 사진 (T2): image_key 있으면 blob으로 썸네일 로드
+            itemPhotoReset(true);
+            if (item.image_key) itemPhotoLoad(item.id);
             await loadItemSubcatOptions();
             populateSubcatSelect(item.sub_category || item.sub_category_direct || '');
             loadGroupList();
@@ -260,6 +264,105 @@ async function deleteItem(id, name) {
 
 function closeModal() {
     document.getElementById('itemModal').classList.add('hidden');
+    itemPhotoRevoke();
+}
+
+// ── 품목 사진 (T2) ─────────────────────────────────────────
+// R2 업로드/blob 썸네일. 인증=Bearer 헤더 전용이라 <img src="/api/..."> 직접 불가 → axios blob 경유.
+// 정책: 수정 모달에서만 업로드 가능, 신규는 저장 후 업로드. (전역 스코프 충돌 방지: itemPhoto- prefix)
+
+var itemPhotoObjUrl = null;
+
+function itemPhotoRevoke() {
+    if (itemPhotoObjUrl) { URL.revokeObjectURL(itemPhotoObjUrl); itemPhotoObjUrl = null; }
+}
+
+// isEdit=false(신규): 업로드 안내 힌트 표시 / true(수정): 힌트 숨김
+function itemPhotoReset(isEdit) {
+    itemPhotoRevoke();
+    var img = document.getElementById('itemPhotoPreviewImg');
+    if (img) img.removeAttribute('src');
+    var prev = document.getElementById('itemPhotoPreview');
+    if (prev) prev.classList.add('hidden');
+    var ph = document.getElementById('itemPhotoPlaceholder');
+    if (ph) ph.classList.remove('hidden');
+    var delBtn = document.getElementById('itemPhotoDeleteBtn');
+    if (delBtn) delBtn.classList.add('hidden');
+    var input = document.getElementById('itemPhotoInput');
+    if (input) input.value = '';
+    var hint = document.getElementById('itemPhotoHint');
+    if (hint) hint.classList.toggle('hidden', !!isEdit);
+}
+
+async function itemPhotoLoad(itemId) {
+    try {
+        var res = await axios.get('/api/items/' + itemId + '/photo', { responseType: 'blob' });
+        var img = document.getElementById('itemPhotoPreviewImg');
+        if (!img) { console.warn('[items] #itemPhotoPreviewImg not found'); return; }
+        itemPhotoRevoke();
+        itemPhotoObjUrl = URL.createObjectURL(res.data);
+        img.src = itemPhotoObjUrl;
+        var prev = document.getElementById('itemPhotoPreview');
+        if (prev) prev.classList.remove('hidden');
+        var ph = document.getElementById('itemPhotoPlaceholder');
+        if (ph) ph.classList.add('hidden');
+        var delBtn = document.getElementById('itemPhotoDeleteBtn');
+        if (delBtn) delBtn.classList.remove('hidden');
+    } catch (error) {
+        // 404(사진 없음) 등은 placeholder 유지
+        console.warn('[items] 품목 사진 로드 실패:', error.response?.status || error.message);
+    }
+}
+
+function itemPhotoTriggerUpload() {
+    var idEl = document.getElementById('itemId');
+    if (!idEl) { console.warn('[items] #itemId not found'); return; }
+    if (!idEl.value) {
+        showToast('신규 품목은 먼저 저장한 뒤 수정에서 사진을 업로드할 수 있습니다.', 'warning');
+        return;
+    }
+    var input = document.getElementById('itemPhotoInput');
+    if (!input) { console.warn('[items] #itemPhotoInput not found'); return; }
+    input.click();
+}
+
+async function itemPhotoOnFileChange(input) {
+    if (!input || !input.files || !input.files[0]) return;
+    var file = input.files[0];
+    input.value = '';
+    var idEl = document.getElementById('itemId');
+    var itemId = idEl ? idEl.value : '';
+    if (!itemId) {
+        showToast('신규 품목은 저장 후 사진 업로드가 가능합니다.', 'warning');
+        return;
+    }
+    try {
+        // 클라 압축 (cardExpenses.js compressImage 재사용 — ?raw concat 단일 전역 스코프)
+        var out = (typeof compressImage === 'function') ? await compressImage(file, 1600, 0.82) : file;
+        var fname = (out !== file) ? 'photo.jpg' : (file.name || 'photo');
+        var formData = new FormData();
+        formData.append('file', out, fname);
+        await axios.post('/api/items/' + itemId + '/photo', formData, {
+            headers: { 'Content-Type': 'multipart/form-data' }
+        });
+        showToast('품목 사진이 업로드되었습니다.', 'success');
+        await itemPhotoLoad(itemId);
+    } catch (error) {
+        showToast('사진 업로드 실패: ' + (error.response?.data?.error || error.message), 'error');
+    }
+}
+
+async function itemPhotoDelete() {
+    var idEl = document.getElementById('itemId');
+    if (!idEl || !idEl.value) return;
+    if (!(await showConfirm('품목 사진을 삭제하시겠습니까?', { danger: true }))) return;
+    try {
+        await axios.delete('/api/items/' + idEl.value + '/photo');
+        showToast('품목 사진이 삭제되었습니다.', 'success');
+        itemPhotoReset(true);
+    } catch (error) {
+        showToast('사진 삭제 실패: ' + (error.response?.data?.error || error.message), 'error');
+    }
 }
 
 function switchModalTab(tabName) {

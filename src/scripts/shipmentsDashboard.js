@@ -86,9 +86,17 @@
             ? '<span class="text-gray-400 text-xs">' + window.escapeHtml(item.card_number) + ' ' + getCardStatusLabel(item.card_status) + '</span>'
             : '<span class="text-gray-400 text-xs">재고출고</span>';
           var rowBg = ready ? 'bg-green-50/50' : 'bg-amber-50/50';
+          // T1: 규격(specification 우선, width×height 폴백) + content 메모 표시
+          var spec = item.specification || ((item.width && item.height) ? (item.width + 'x' + item.height) : '');
+          var qty = (item.quantity != null ? item.quantity : 1);
+          var fullText = item.item_name + (spec ? ' ' + spec : '') + ' ' + qty + '건' + (item.content ? ' · ' + item.content : '');
 
           html += '<div class="flex items-center justify-between text-sm py-1.5 px-2 rounded ' + rowBg + '">';
-          html += '<span>' + icon + window.escapeHtml(item.item_name) + ' <span class="text-gray-400">' + (item.quantity || 1) + '건</span></span>';
+          html += '<span class="truncate min-w-0" title="' + window.escapeHtml(fullText) + '">' + icon + window.escapeHtml(item.item_name)
+            + (spec ? ' <span class="text-gray-500 text-xs">' + window.escapeHtml(spec) + '</span>' : '')
+            + ' <span class="text-gray-400">' + qty + '건</span>'
+            + (item.content ? ' <span class="text-[10px] text-gray-400">· ' + window.escapeHtml(item.content) + '</span>' : '')
+            + '</span>';
           html += cardInfo;
           html += '</div>';
         });

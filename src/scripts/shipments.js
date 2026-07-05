@@ -213,6 +213,33 @@ function getItemSummaryText(grp) {
   return texts.length ? texts.join(' / ') : '-';
 }
 
+// T1: 품목 셀 상세 렌더 — 품목별 줄 나열(규격·수량·메모). 화면 셀 전용.
+// 엑셀(hanjin-export)·인쇄(printShipmentList)·알림 발송은 getItemSummaryText 요약 유지.
+// (전역 스코프 concat 충돌 방지: shipments prefix)
+function shipmentsItemDetailHtml(grp) {
+  var items = (grp.items || []).filter(function(it) { return it && it.item_name; });
+  if (!items.length) {
+    var texts = (grp.item_summaries || []).filter(Boolean);
+    var fb = texts.length ? texts.join(' / ') : '-';
+    return '<div class="truncate" title="' + escapeHtml(fb) + '">' + escapeHtml(fb) + '</div>';
+  }
+  var MAX_LINES = 3;
+  var html = items.slice(0, MAX_LINES).map(function(it) {
+    // 규격: specification 우선, 없으면 width×height, 둘 다 없으면 생략
+    var spec = it.specification || ((it.width && it.height) ? (it.width + 'x' + it.height) : '');
+    var qty = (it.quantity != null ? it.quantity : 1);
+    var main = it.item_name + (spec ? ' ' + spec : '') + ' ×' + qty;
+    var full = main + (it.content ? ' · ' + it.content : '');
+    return '<div class="truncate" title="' + escapeHtml(full) + '">' + escapeHtml(main)
+      + (it.content ? ' <span class="text-[10px] text-gray-400">· ' + escapeHtml(it.content) + '</span>' : '')
+      + '</div>';
+  }).join('');
+  if (items.length > MAX_LINES) {
+    html += '<div class="text-[10px] text-gray-400">외 ' + (items.length - MAX_LINES) + '건</div>';
+  }
+  return html;
+}
+
 // 착/선불 한글 변환 (shipping_payment: PREPAID/COLLECT, 레거시 COD)
 function payTypeKo(v) {
   if (v === 'PREPAID') return '선불';
@@ -368,7 +395,6 @@ function renderFreightSection() {
     var grp = freightGroups[key];
     var labelCount = getDefaultLabelCount(grp);
     var boxCount = getDefaultBoxCount(grp);
-    var itemSummary = getItemSummaryText(grp);
     var isChecked = selectedShipments['freight'] && selectedShipments['freight'].has(key);
 
     // 터미널: 항상 input으로 표시 (저장 버튼 별도)
@@ -383,7 +409,7 @@ function renderFreightSection() {
       + '<td class="px-3 py-2 w-8 text-center"><input type="checkbox" id="cb-freight-' + escapeHtml(key) + '" ' + (isChecked ? 'checked' : '') + ' onchange="toggleShipmentCheck(\'freight\',\'' + escapeHtml(key) + '\',this.checked)" class="rounded"></td>'
       + '<td class="px-3 py-2 font-medium" title="' + escapeHtml(grp.client_name) + '">' + escapeHtml(grp.client_name) + shipmentsEntityChips(grp) + shipmentsMergeBadge(grp) + shipmentsWaitBadge(grp) + shipmentsCheckChip('freight', key, grp) + '</td>'
       + '<td class="px-3 py-2">' + terminalHtml + '</td>'
-      + '<td class="px-3 py-2 text-xs text-gray-500 hidden md:table-cell truncate" title="' + escapeHtml(itemSummary) + '">' + escapeHtml(itemSummary) + '</td>'
+      + '<td class="px-3 py-2 text-xs text-gray-500 hidden md:table-cell">' + shipmentsItemDetailHtml(grp) + '</td>'
       + '<td class="px-3 py-2 text-center">'
       + '<input type="number" id="f-lc-' + escapeHtml(key) + '" value="' + labelCount + '" min="1" max="99"'
       + ' class="ds-input w-14 px-1 py-1 text-center text-sm border rounded"> 장'
@@ -412,7 +438,6 @@ function renderDaesintaekbaeSection() {
     var grp = daesintaekbaeGroups[key];
     var labelCount = getDefaultLabelCount(grp);
     var boxCount = getDefaultBoxCount(grp);
-    var itemSummary = getItemSummaryText(grp);
     var addr = grp.receiver_address;
     var isChecked = selectedShipments['daesintaekbae'] && selectedShipments['daesintaekbae'].has(key);
 
@@ -424,7 +449,7 @@ function renderDaesintaekbaeSection() {
       + '<input type="text" id="d-addr-' + escapeHtml(key) + '" value="' + escapeHtml(addr) + '"'
       + ' class="ds-input px-2 py-1 text-xs w-full border rounded" placeholder="배송주소">'
       + '</td>'
-      + '<td class="px-3 py-2 text-xs text-gray-500 hidden md:table-cell truncate" title="' + escapeHtml(itemSummary) + '">' + escapeHtml(itemSummary) + '</td>'
+      + '<td class="px-3 py-2 text-xs text-gray-500 hidden md:table-cell">' + shipmentsItemDetailHtml(grp) + '</td>'
       + '<td class="px-3 py-2 text-center">'
       + '<input type="number" id="d-lc-' + escapeHtml(key) + '" value="' + labelCount + '" min="1" max="99"'
       + ' class="ds-input w-14 px-1 py-1 text-center text-sm border rounded"> 장'

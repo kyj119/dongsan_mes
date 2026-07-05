@@ -3,6 +3,7 @@ import type { HonoEnv } from '../types/env'
 import type { Item, ItemCategory, ApiResponse, PaginatedResponse } from '../types/models'
 import { authMiddleware, requireRole } from '../middleware/auth'
 import { getEntityId, entityFilter, isZoneOwnedByEntity } from '../utils/entityFilter'
+import { validateUpload } from '../utils/uploadValidation'
 
 const itemsRouter = new Hono<HonoEnv>()
 
@@ -716,7 +717,7 @@ itemsRouter.get('/:id', async (c) => {
   try {
     const id = c.req.param('id')
     const item = await c.env.DB.prepare(`
-      SELECT id, category_id, subcategory_id, item_code, item_name, description, unit, base_price, sales_price, is_active, item_type, category, sub_category, is_sales_item, is_purchase_item, pricing_method, item_group, group_sort, width_mm, storage_zone_id, is_favorite, code_prefix, specification, production_required, spec_group_id, spec_value, spec_group_id2, spec_value2, deduction_method, sheet_spec, waste_factor, base_unit, pack_size, stock_mode, ecount_code, created_at, updated_at FROM items WHERE id = ?
+      SELECT id, category_id, subcategory_id, item_code, item_name, description, unit, base_price, sales_price, is_active, item_type, category, sub_category, is_sales_item, is_purchase_item, pricing_method, item_group, group_sort, width_mm, storage_zone_id, is_favorite, code_prefix, specification, production_required, spec_group_id, spec_value, spec_group_id2, spec_value2, deduction_method, sheet_spec, waste_factor, base_unit, pack_size, stock_mode, ecount_code, image_key, created_at, updated_at FROM items WHERE id = ?
     `).bind(id).first()
 
     if (!item) {
@@ -736,6 +737,85 @@ itemsRouter.get('/:id', async (c) => {
       success: false,
       error: '서버 오류가 발생했습니다'
     }, 500)
+  }
+})
+
+// ── 품목 사진 (T2): R2 업로드/서빙/삭제 — 키 items/photos/{id}_{timestamp}.{ext} ──
+
+// POST /api/items/:id/photo — 사진 업로드 (기존 사진은 교체 후 R2 정리)
+itemsRouter.post('/:id/photo', requireRole('ADMIN', 'MANAGER'), async (c) => {
+  try {
+    const id = c.req.param('id')
+    const item = await c.env.DB.prepare('SELECT id, image_key FROM items WHERE id = ?')
+      .bind(id).first<{ id: number; image_key: string | null }>()
+    if (!item) return c.json({ success: false, error: '품목을 찾을 수 없습니다' }, 404)
+
+    const formData = await c.req.formData()
+    const file = formData.get('file') as File | null
+    if (!file) return c.json({ success: false, error: '파일 필수' }, 400)
+
+    // 이미지 전용, 5MB 상한
+    const v = validateUpload(file, {
+      maxBytes: 5 * 1024 * 1024,
+      allowedMimePrefixes: ['image/'],
+      allowedExts: ['jpg', 'jpeg', 'png', 'gif', 'webp'],
+    })
+    if (!v.ok) return c.json({ success: false, error: v.error }, 400)
+
+    const key = `items/photos/${id}_${Date.now()}.${v.ext}`
+    await c.env.R2_BUCKET.put(key, await file.arrayBuffer(), {
+      httpMetadata: { contentType: file.type || 'image/jpeg' },
+    })
+    await c.env.DB.prepare('UPDATE items SET image_key = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
+      .bind(key, id).run()
+
+    // 이전 사진 R2 정리 (facility 패턴 — 실패 무시)
+    if (item.image_key && item.image_key !== key && item.image_key.startsWith('items/')) {
+      try { await c.env.R2_BUCKET.delete(item.image_key) } catch { /* ignore */ }
+    }
+
+    return c.json({ success: true, data: { image_key: key }, message: '사진 업로드 완료' })
+  } catch (error) {
+    console.error('items POST /:id/photo error:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다' }, 500)
+  }
+})
+
+// GET /api/items/:id/photo — R2 사진 서빙 (인증=Bearer 헤더 전용 → 프론트는 axios blob 경유 필수)
+itemsRouter.get('/:id/photo', async (c) => {
+  try {
+    const id = c.req.param('id')
+    const item = await c.env.DB.prepare('SELECT image_key FROM items WHERE id = ?')
+      .bind(id).first<{ image_key: string | null }>()
+    if (!item || !item.image_key) return c.json({ success: false, error: '사진 없음' }, 404)
+    const obj = await c.env.R2_BUCKET.get(item.image_key)
+    if (!obj) return c.json({ success: false, error: '사진 없음' }, 404)
+    const headers = new Headers()
+    headers.set('Content-Type', obj.httpMetadata?.contentType || 'image/jpeg')
+    headers.set('Cache-Control', 'private')
+    return new Response(obj.body, { headers })
+  } catch (error) {
+    console.error('items GET /:id/photo error:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다' }, 500)
+  }
+})
+
+// DELETE /api/items/:id/photo — R2 삭제 + image_key NULL
+itemsRouter.delete('/:id/photo', requireRole('ADMIN', 'MANAGER'), async (c) => {
+  try {
+    const id = c.req.param('id')
+    const item = await c.env.DB.prepare('SELECT id, image_key FROM items WHERE id = ?')
+      .bind(id).first<{ id: number; image_key: string | null }>()
+    if (!item) return c.json({ success: false, error: '품목을 찾을 수 없습니다' }, 404)
+    if (item.image_key && item.image_key.startsWith('items/')) {
+      try { await c.env.R2_BUCKET.delete(item.image_key) } catch { /* ignore */ }
+    }
+    await c.env.DB.prepare('UPDATE items SET image_key = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
+      .bind(id).run()
+    return c.json({ success: true, message: '사진 삭제 완료' })
+  } catch (error) {
+    console.error('items DELETE /:id/photo error:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다' }, 500)
   }
 })
 

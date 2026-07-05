@@ -108,6 +108,29 @@ export function itemsPage(c: Context<HonoEnv>) {
                                     <input type="text" id="itemName" required class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
                                 </div>
 
+                                <!-- 1-1. 품목 사진 (T2) — 수정 모달에서만 업로드, 신규는 저장 후 -->
+                                <div id="fieldItemPhoto">
+                                    <label class="block text-sm font-semibold text-gray-700 mb-1">품목 사진</label>
+                                    <div class="flex items-center gap-3">
+                                        <div id="itemPhotoPreview" class="hidden w-24 h-24 border border-gray-200 rounded-lg overflow-hidden bg-gray-50 flex-shrink-0">
+                                            <img id="itemPhotoPreviewImg" class="w-full h-full object-cover" alt="품목 사진">
+                                        </div>
+                                        <div id="itemPhotoPlaceholder" class="w-24 h-24 border border-dashed border-gray-300 rounded-lg flex items-center justify-center text-gray-300 flex-shrink-0">
+                                            <i class="fas fa-image text-2xl"></i>
+                                        </div>
+                                        <div class="flex flex-col gap-1.5">
+                                            <input type="file" id="itemPhotoInput" accept="image/*" class="hidden" onchange="itemPhotoOnFileChange(this)">
+                                            <button type="button" id="itemPhotoUploadBtn" onclick="itemPhotoTriggerUpload()" class="px-3 py-1.5 border border-gray-300 text-gray-700 bg-white rounded-lg hover:bg-gray-50 text-xs">
+                                                <i class="fas fa-camera mr-1"></i>사진 업로드
+                                            </button>
+                                            <button type="button" id="itemPhotoDeleteBtn" onclick="itemPhotoDelete()" class="hidden px-3 py-1.5 border border-red-200 text-red-600 bg-white rounded-lg hover:bg-red-50 text-xs">
+                                                <i class="fas fa-trash mr-1"></i>사진 삭제
+                                            </button>
+                                            <p id="itemPhotoHint" class="text-xs text-gray-400">신규 품목은 저장 후 수정에서 업로드할 수 있습니다.</p>
+                                        </div>
+                                    </div>
+                                </div>
+
                                 <!-- 2. 규격 (모든 타입, 원자재 원단폭도 여기서 입력) -->
                                 <div id="fieldSpecification">
                                     <label class="block text-sm font-semibold text-gray-700 mb-1">규격</label>

@@ -177,7 +177,7 @@ shipmentsRouter.get('/daily', async (c) => {
 
     // 품목 상세
     interface DailyOrderRow { id: number; [key: string]: unknown }
-    interface DailyItemRow { order_id: number; item_name: string; category_name: string | null; width: number | null; height: number | null; quantity: number; content: string | null }
+    interface DailyItemRow { order_id: number; item_name: string; category_name: string | null; specification: string | null; width: number | null; height: number | null; quantity: number; content: string | null }
     const orderIds = (results as DailyOrderRow[]).map(r => r.id)
     const ordersWithItems = results as (DailyOrderRow & { items?: DailyItemRow[]; item_summary?: string })[]
 
@@ -188,7 +188,7 @@ shipmentsRouter.get('/daily', async (c) => {
         const chunk = orderIds.slice(i, i + 80)
         const placeholders = chunk.map(() => '?').join(',')
         const { results: chunkRows } = await c.env.DB.prepare(`
-          SELECT oi.order_id, oi.item_name, oi.category_name, oi.width, oi.height,
+          SELECT oi.order_id, oi.item_name, oi.category_name, oi.specification, oi.width, oi.height,
                  oi.quantity, oi.content
           FROM order_items oi
           WHERE oi.order_id IN (${placeholders}) AND oi.parent_item_id IS NULL
@@ -593,6 +593,7 @@ shipmentsRouter.get('/dashboard', async (c) => {
         o.status as order_status,
         c.id as client_id, c.client_name,
         oi.id as order_item_id, oi.item_name, oi.quantity, oi.width, oi.height,
+        oi.specification, oi.content, oi.unit,
         oi.amount, oi.shipment_ready,
         ci.card_id,
         cd.card_number, cd.status as card_status, cd.category_name as card_category
@@ -608,11 +609,11 @@ shipmentsRouter.get('/dashboard', async (c) => {
     `).bind(targetDate, ...ef.params).all<{
       order_id: number; order_number: string; delivery_method: string | null; delivery_date: string | null; delivery_time: string | null; order_status: string;
       client_id: number; client_name: string;
-      order_item_id: number; item_name: string; quantity: number; width: number | null; height: number | null; amount: number | null; shipment_ready: number | null;
+      order_item_id: number; item_name: string; quantity: number; width: number | null; height: number | null; specification: string | null; content: string | null; unit: string | null; amount: number | null; shipment_ready: number | null;
       card_id: number | null; card_number: string | null; card_status: string | null; card_category: string | null;
     }>()
 
-    interface DashboardItem { order_item_id: number; item_name: string; quantity: number; width: number | null; height: number | null; amount: number | null; shipment_ready: number | null; card_id: number | null; card_number: string | null; card_status: string | null; card_category: string | null }
+    interface DashboardItem { order_item_id: number; item_name: string; quantity: number; width: number | null; height: number | null; specification: string | null; content: string | null; unit: string | null; amount: number | null; shipment_ready: number | null; card_id: number | null; card_number: string | null; card_status: string | null; card_category: string | null }
     interface DashboardOrder { order_id: number; order_number: string; delivery_method: string | null; delivery_date: string | null; delivery_time: string | null; order_status: string; items: DashboardItem[] }
     interface DashboardClient { client_id: number; client_name: string; orders: Map<number, DashboardOrder> }
 
@@ -630,7 +631,8 @@ shipmentsRouter.get('/dashboard', async (c) => {
       }
       client.orders.get(row.order_id)!.items.push({
         order_item_id: row.order_item_id, item_name: row.item_name, quantity: row.quantity,
-        width: row.width, height: row.height, amount: row.amount, shipment_ready: row.shipment_ready,
+        width: row.width, height: row.height, specification: row.specification, content: row.content, unit: row.unit,
+        amount: row.amount, shipment_ready: row.shipment_ready,
         card_id: row.card_id, card_number: row.card_number, card_status: row.card_status, card_category: row.card_category
       })
     }

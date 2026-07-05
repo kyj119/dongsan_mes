@@ -577,6 +577,10 @@ function productionApplyDefaultEventDates() {
   if (!fromEl) { console.warn('[production] #evFilterFrom not found'); return; }
   var d = new Date(Date.now() - 6 * 86400000);
   fromEl.value = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Seoul', year: 'numeric', month: '2-digit', day: '2-digit' }).format(d);
+  var toEl = document.getElementById('evFilterTo');
+  if (!toEl) { console.warn('[production] #evFilterTo not found'); return; }
+  var today = new Date();
+  toEl.value = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Seoul', year: 'numeric', month: '2-digit', day: '2-digit' }).format(today);
 }
 
 function resetEventFilters() {

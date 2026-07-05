@@ -61,10 +61,7 @@ INSERT INTO permission_pages (page_key, page_label, page_section, page_icon, bad
   ('/activity-log',        '시스템 로그',       '관리', 'fa-history',             NULL,                          650),
   ('/kakao',               '알림톡',            '관리', 'fa-comment-dots',        NULL,                          660),
   ('/settings',            '설정',              '관리', 'fa-cog',                 NULL,                          670),
-  ('/migration',           '데이터 이관',       '관리', 'fa-file-import',         NULL,                          680),
-
-  -- 시스템 문서
-  ('/workflow',            '시스템 워크플로우', '시스템 문서', 'fa-diagram-project', NULL,                       710);
+  ('/migration',           '데이터 이관',       '관리', 'fa-file-import',         NULL,                          680);
 
 -- ADMIN: 모든 페이지 자동 허용
 INSERT INTO role_page_permissions (role, page_key, can_access)

@@ -147,6 +147,8 @@ export interface Item {
   base_price: number;
   pricing_method?: 'FIXED' | 'AREA';
   is_active: number;
+  /** R2 사진 키 (items/photos/{id}_{ts}.{ext}) — 0442 */
+  image_key?: string | null;
   created_at: string;
   updated_at: string;
 }
