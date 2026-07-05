@@ -422,10 +422,13 @@ export function inventoryPage(c: Context<HonoEnv>) {
                             <input type="text" id="bulkAssignName" class="w-full px-3 py-2 border rounded" placeholder="예: 전사잉크 (전사% 일괄배정 시)">
                         </div>
                         <label class="flex items-center gap-2 text-sm"><input type="checkbox" id="bulkAssignUnassignedOnly"> 미배정 품목만 대상</label>
+                        <label class="flex items-center gap-2 text-sm"><input type="checkbox" id="bulkAssignMoveStock" checked> 기존 미배정 재고를 이 창고로 이동</label>
                         <div class="text-xs text-gray-500">카테고리·이름 중 1개 이상 지정. 매입/재고 품목만 적용. (예: 전사잉크→전사 창고)</div>
+                        <div id="bulkAssignPreview" class="text-xs font-medium text-blue-700 hidden"></div>
                     </div>
                     <div class="mt-6 flex justify-end gap-2">
                         <button id="cancelBulkAssign" class="px-4 py-2 bg-gray-300 rounded hover:bg-gray-400">취소</button>
+                        <button id="previewBulkAssign" class="px-4 py-2 bg-gray-100 border border-gray-300 rounded hover:bg-gray-200">미리보기</button>
                         <button id="submitBulkAssign" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">적용</button>
                     </div>
                 </div>

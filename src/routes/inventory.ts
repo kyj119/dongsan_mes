@@ -1053,13 +1053,15 @@ inventoryRouter.post('/transfer', async (c) => {
 
 // 기본창고 일괄 배정 (운영설계 B) — 필터(카테고리/이름/품목)로 items.storage_zone_id 설정.
 //   품목은 법인 공유라 storage_zone_id는 전역 1값. 법인별 안착은 getItemDefaultZone(법인 인식)이 처리.
+//   move_stock: 배정과 함께 현재 법인의 미배정(NULL zone) 재고를 대상 창고로 이동 (TRANSFER 이력 기록)
+//   dry_run: 변경 없이 대상 품목 수·이동될 미배정 재고 건수만 반환 (미리보기)
 inventoryRouter.post('/bulk-assign-zones', async (c) => {
   try {
     const user = c.get('user')
     if (!user || !['ADMIN', 'MANAGER'].includes(user.role)) {
       return c.json({ success: false, error: '권한이 없습니다 (관리자 전용)' }, 403)
     }
-    const body = await c.req.json<{ zone_id?: number | null; category?: string; name_like?: string; item_ids?: number[]; only_unassigned?: boolean }>()
+    const body = await c.req.json<{ zone_id?: number | null; category?: string; name_like?: string; item_ids?: number[]; only_unassigned?: boolean; move_stock?: boolean; dry_run?: boolean }>()
     const zoneId = body.zone_id != null && body.zone_id !== ('' as any) ? Number(body.zone_id) : null
 
     // 대상 창고 유효성 (null=미배정 환원 허용) — #461: 법인 소유 검증(타법인 zone 차단, #368 도메인 일관)
@@ -1081,10 +1083,88 @@ inventoryRouter.post('/bulk-assign-zones', async (c) => {
     if (body.only_unassigned) { conds.push('storage_zone_id IS NULL') }
     if (!hasFilter) return c.json({ success: false, error: '필터(카테고리/이름/품목)를 1개 이상 지정하세요' }, 400)
 
+    const entityId = getEntityId(c) || 1
+    const moveStock = !!body.move_stock && zoneId != null
+
+    // 이동 대상 사전 조회 = 현재 법인 미배정(NULL zone)·양수 재고 행 (dry_run 미리보기 + moved_qty 보고 공용)
+    let itemIds: number[] = []
+    let movable: Array<{ item_id: number; quantity: number }> = []
+    if (moveStock || body.dry_run) {
+      const idRows = await c.env.DB.prepare(`SELECT id FROM items WHERE ${conds.join(' AND ')}`).bind(...binds).all<{ id: number }>()
+      itemIds = (idRows.results || []).map(r => Number(r.id))
+      if (zoneId != null) {
+        // D1 바인드 한도(~100) → 80개 청크
+        for (let i = 0; i < itemIds.length; i += 80) {
+          const chunk = itemIds.slice(i, i + 80)
+          const ph = chunk.map(() => '?').join(',')
+          const { results } = await c.env.DB.prepare(
+            `SELECT item_id, quantity FROM inventory WHERE entity_id = ? AND storage_zone_id IS NULL AND quantity > 0 AND item_id IN (${ph})`
+          ).bind(entityId, ...chunk).all<{ item_id: number; quantity: number }>()
+          movable.push(...(results || []))
+        }
+      }
+    }
+
+    if (body.dry_run) {
+      return c.json({
+        success: true,
+        data: {
+          dry_run: true,
+          matched_items: itemIds.length,
+          movable_rows: movable.length,
+          movable_qty: movable.reduce((s, m) => s + (Number(m.quantity) || 0), 0),
+          zone_id: zoneId,
+        },
+      })
+    }
+
     const upd = await c.env.DB.prepare(
       `UPDATE items SET storage_zone_id = ? WHERE ${conds.join(' AND ')}`
     ).bind(zoneId, ...binds).run()
-    return c.json({ success: true, data: { assigned: upd.meta.changes || 0, zone_id: zoneId } })
+
+    // 미배정 재고 이동 — 청크당 단일 batch(=SQLite 트랜잭션)로 set 기반 처리.
+    //   순서 중요: ①도착행 생성 → ②/③이력(원본 수량이 0되기 전 기록) → ④도착 가산 → ⑤원본 0.
+    let movedRows = 0
+    const movedQty = movable.reduce((s, m) => s + (Number(m.quantity) || 0), 0)
+    if (moveStock && movable.length > 0) {
+      const moveIds = movable.map(m => m.item_id)
+      for (let i = 0; i < moveIds.length; i += 80) {
+        const chunk = moveIds.slice(i, i + 80)
+        const ph = chunk.map(() => '?').join(',')
+        const res = await c.env.DB.batch([
+          c.env.DB.prepare(
+            `INSERT OR IGNORE INTO inventory (item_id, entity_id, storage_zone_id, quantity, last_updated)
+             SELECT src.item_id, src.entity_id, ?, 0, CURRENT_TIMESTAMP
+             FROM inventory src WHERE src.entity_id = ? AND src.storage_zone_id IS NULL AND src.quantity > 0 AND src.item_id IN (${ph})`
+          ).bind(zoneId, entityId, ...chunk),
+          c.env.DB.prepare(
+            `INSERT INTO inventory_transactions (item_id, transaction_type, transaction_date, quantity, balance_after, reference_type, reason, handled_by, entity_id, storage_zone_id)
+             SELECT src.item_id, 'TRANSFER_OUT', datetime('now'), -src.quantity, 0, 'TRANSFER', '기본창고 일괄배정 이동', ?, src.entity_id, NULL
+             FROM inventory src WHERE src.entity_id = ? AND src.storage_zone_id IS NULL AND src.quantity > 0 AND src.item_id IN (${ph})`
+          ).bind(user.id, entityId, ...chunk),
+          c.env.DB.prepare(
+            `INSERT INTO inventory_transactions (item_id, transaction_type, transaction_date, quantity, balance_after, reference_type, reason, handled_by, entity_id, storage_zone_id)
+             SELECT src.item_id, 'TRANSFER_IN', datetime('now'), src.quantity,
+                    src.quantity + IFNULL((SELECT dst.quantity FROM inventory dst WHERE dst.item_id = src.item_id AND dst.entity_id = src.entity_id AND dst.storage_zone_id = ?), 0),
+                    'TRANSFER', '기본창고 일괄배정 이동', ?, src.entity_id, ?
+             FROM inventory src WHERE src.entity_id = ? AND src.storage_zone_id IS NULL AND src.quantity > 0 AND src.item_id IN (${ph})`
+          ).bind(zoneId, user.id, zoneId, entityId, ...chunk),
+          c.env.DB.prepare(
+            `UPDATE inventory SET quantity = quantity + (SELECT src.quantity FROM inventory src WHERE src.item_id = inventory.item_id AND src.entity_id = inventory.entity_id AND src.storage_zone_id IS NULL),
+                    last_updated = CURRENT_TIMESTAMP
+             WHERE entity_id = ? AND storage_zone_id = ? AND item_id IN (${ph})
+               AND EXISTS (SELECT 1 FROM inventory src WHERE src.item_id = inventory.item_id AND src.entity_id = inventory.entity_id AND src.storage_zone_id IS NULL AND src.quantity > 0)`
+          ).bind(entityId, zoneId, ...chunk),
+          c.env.DB.prepare(
+            `UPDATE inventory SET quantity = 0, last_updated = CURRENT_TIMESTAMP
+             WHERE entity_id = ? AND storage_zone_id IS NULL AND quantity > 0 AND item_id IN (${ph})`
+          ).bind(entityId, ...chunk),
+        ])
+        movedRows += res[4]?.meta?.changes || 0
+      }
+    }
+
+    return c.json({ success: true, data: { assigned: upd.meta.changes || 0, zone_id: zoneId, moved_rows: movedRows, moved_qty: moveStock ? movedQty : 0 } })
   } catch (e) {
     console.error('bulk-assign-zones error:', e)
     return c.json({ success: false, error: '서버 오류가 발생했습니다' }, 500)

@@ -277,6 +277,24 @@ var cancelBulkAssignEl = document.getElementById('cancelBulkAssign');
 if (cancelBulkAssignEl) cancelBulkAssignEl.addEventListener('click', function() { document.getElementById('bulkAssignModal').classList.add('hidden'); });
 var submitBulkAssignEl = document.getElementById('submitBulkAssign');
 if (submitBulkAssignEl) submitBulkAssignEl.addEventListener('click', submitBulkAssign);
+var previewBulkAssignEl = document.getElementById('previewBulkAssign');
+if (previewBulkAssignEl) previewBulkAssignEl.addEventListener('click', previewBulkAssign);
+var bulkAssignZoneEl = document.getElementById('bulkAssignZone');
+if (bulkAssignZoneEl) bulkAssignZoneEl.addEventListener('change', syncBulkAssignMoveStock);
+
+// '미배정으로 환원' 선택 시 재고이동 옵션 비활성 (이동할 대상 창고가 없음)
+function syncBulkAssignMoveStock() {
+    var sel = document.getElementById('bulkAssignZone');
+    var move = document.getElementById('bulkAssignMoveStock');
+    if (!sel || !move) return;
+    move.disabled = sel.value === '';
+    hideBulkAssignPreview();
+}
+
+function hideBulkAssignPreview() {
+    var p = document.getElementById('bulkAssignPreview');
+    if (p) { p.classList.add('hidden'); p.textContent = ''; }
+}
 
 async function openBulkAssign() {
     var sel = document.getElementById('bulkAssignZone');
@@ -291,22 +309,59 @@ async function openBulkAssign() {
     document.getElementById('bulkAssignCategory').value = '';
     document.getElementById('bulkAssignName').value = '';
     document.getElementById('bulkAssignUnassignedOnly').checked = false;
+    var move = document.getElementById('bulkAssignMoveStock');
+    if (move) move.checked = true;
+    syncBulkAssignMoveStock();
     document.getElementById('bulkAssignModal').classList.remove('hidden');
 }
 
-async function submitBulkAssign() {
+// 필터 검증 + 요청 body 조립 (미리보기/적용 공용). 필터 미충족 시 null.
+function buildBulkAssignBody() {
     var zoneVal = document.getElementById('bulkAssignZone').value;
     var category = document.getElementById('bulkAssignCategory').value;
     var nameLike = document.getElementById('bulkAssignName').value.trim();
     var unassignedOnly = document.getElementById('bulkAssignUnassignedOnly').checked;
-    if (!category && !nameLike) { showToast('카테고리 또는 이름을 1개 이상 지정하세요.', 'warning'); return; }
+    var moveEl = document.getElementById('bulkAssignMoveStock');
+    if (!category && !nameLike) { showToast('카테고리 또는 이름을 1개 이상 지정하세요.', 'warning'); return null; }
     var body = { zone_id: zoneVal === '' ? null : parseInt(zoneVal), only_unassigned: unassignedOnly };
     if (category) body.category = category;
     if (nameLike) body.name_like = nameLike.indexOf('%') >= 0 ? nameLike : ('%' + nameLike + '%');
+    if (zoneVal !== '' && moveEl && moveEl.checked) body.move_stock = true;
+    return body;
+}
+
+async function previewBulkAssign() {
+    var body = buildBulkAssignBody();
+    if (!body) return;
+    body.dry_run = true;
     try {
         var res = await axios.post('/api/inventory/bulk-assign-zones', body);
         if (res.data.success) {
-            showToast(res.data.data.assigned + '개 품목 배정 완료', 'success');
+            var d = res.data.data;
+            var msg = '대상 품목 ' + d.matched_items + '개';
+            if (body.zone_id != null) {
+                msg += ' · 이동될 미배정 재고 ' + d.movable_rows + '건';
+                if (!body.move_stock) msg += ' (이동 체크 해제 — 기본창고만 변경)';
+            }
+            var p = document.getElementById('bulkAssignPreview');
+            if (p) { p.textContent = msg; p.classList.remove('hidden'); }
+        }
+    } catch (e) {
+        showToast('미리보기 실패: ' + (e.response?.data?.error || e.message), 'error');
+    }
+}
+
+async function submitBulkAssign() {
+    var body = buildBulkAssignBody();
+    if (!body) return;
+    try {
+        var res = await axios.post('/api/inventory/bulk-assign-zones', body);
+        if (res.data.success) {
+            var d = res.data.data;
+            var msg = d.assigned + '개 품목 배정 완료';
+            if (d.moved_rows) msg += ' · 미배정 재고 ' + d.moved_rows + '건 이동';
+            showToast(msg, 'success');
+            hideBulkAssignPreview();
             document.getElementById('bulkAssignModal').classList.add('hidden');
             loadInventory();
         }
