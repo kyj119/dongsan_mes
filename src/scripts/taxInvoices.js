@@ -2,7 +2,10 @@
 // cashReceipts.js(나중 로드)가 동명 top-level(statusLabels/statusColors/renderPagination)을 silent 덮어씀
 // → 세금계산서 탭 뱃지(SENT/ISSUING 누락)·페이지네이션(loadReceipts 호출·pageCount shape) 깨짐.
 // 세금계산서 전용 식별자에 ti 프리픽스로 격리(이 파일 내부 참조만, onclick 전역 노출 아님).
+// tiRefreshStatus: cash refreshStatus(현금영수증 미지원 400 stub)가 tax 버전을 shadow해 상태새로고침 버튼이
+//   /api/cash-receipts/:id/refresh-status 400을 치던 것을 ti 프리픽스+onclick(:175/:544)로 격리(auto-improve Area 3).
 // (currentPage는 hometaxInvoices.js 페이지 onclick이 전역으로 참조하므로 의도적으로 미개명 — 별도 flagged.)
+// (openPrintURL은 cash 인쇄 라우트 부재로 owner 결정 대기 — #475.)
 var currentPage = 1;
 var cancelTargetId = null;
 var modifyTargetId = null;
@@ -172,7 +175,7 @@ function displayInvoices(items) {
       actions += '<button onclick="retryInvoice(' + inv.id + ')" class="px-2 py-1 text-xs bg-amber-50 text-amber-700 rounded hover:bg-amber-200" title="재발행(작성중 복귀)"><i class="fas fa-redo"></i></button>';
     }
     if (inv.status === 'SENT' || inv.status === 'NTS_FAILED') {
-      actions += '<button onclick="refreshStatus(' + inv.id + ')" class="px-2 py-1 text-xs bg-blue-50 text-blue-700 rounded hover:bg-blue-200" title="상태 새로고침"><i class="fas fa-sync-alt"></i></button>';
+      actions += '<button onclick="tiRefreshStatus(' + inv.id + ')" class="px-2 py-1 text-xs bg-blue-50 text-blue-700 rounded hover:bg-blue-200" title="상태 새로고침"><i class="fas fa-sync-alt"></i></button>';
     }
     if (inv.status === 'SENT' || inv.status === 'NTS_SUCCESS' || inv.status === 'ISSUED') {
       actions += '<button onclick="openPrintURL(' + inv.id + ')" class="px-2 py-1 text-xs bg-gray-100 text-gray-600 rounded hover:bg-gray-200" title="인쇄/PDF"><i class="fas fa-print"></i></button>';
@@ -541,7 +544,7 @@ async function viewDetail(id) {
         + '<i class="fas fa-redo mr-1"></i>재발행</button>';
     }
     if (inv.status === 'SENT' || inv.status === 'NTS_FAILED') {
-      actionBtns += '<button onclick="refreshStatus(' + inv.id + ')"'
+      actionBtns += '<button onclick="tiRefreshStatus(' + inv.id + ')"'
         + ' class="px-4 py-2 border border-gray-300 text-gray-700 bg-white rounded hover:bg-gray-50 text-sm">'
         + '<i class="fas fa-sync-alt mr-1"></i>상태 새로고침</button>';
     }
@@ -645,7 +648,7 @@ async function issueInvoice(id) {
 
 // ==================== 상태 새로고침 (바로빌 조회) ====================
 
-async function refreshStatus(id) {
+async function tiRefreshStatus(id) {
   try {
     var btn = event && event.target ? event.target.closest('button') : null;
     if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>'; }
