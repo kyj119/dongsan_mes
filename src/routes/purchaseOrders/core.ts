@@ -101,6 +101,31 @@ poCoreRouter.get('/', async (c) => {
 
     const { results } = await c.env.DB.prepare(query).bind(...params).all()
 
+    // include_items=1: 라인 동봉 (최근 발주 복제 모달·자주 품목 칩). 부모 쿼리가 entity 필터 적용됨.
+    if (c.req.query('include_items') === '1' && (results || []).length > 0) {
+      const poIds = (results as any[]).map((r) => r.id as number)
+      const itemsByPo = new Map<number, any[]>()
+      for (let i = 0; i < poIds.length; i += 80) { // D1 바인드 한도 청크
+        const chunk = poIds.slice(i, i + 80)
+        const ph = chunk.map(() => '?').join(',')
+        const { results: poiRows } = await c.env.DB.prepare(`
+          SELECT poi.po_id, poi.item_id, poi.item_name, poi.quantity, poi.unit,
+                 poi.unit_price, poi.amount, poi.vat_included, poi.price_status, poi.notes,
+                 i.specification AS item_specification, i.width_mm AS item_width_mm
+          FROM purchase_order_items poi
+          LEFT JOIN items i ON i.id = poi.item_id
+          WHERE poi.po_id IN (${ph})
+          ORDER BY poi.po_id, poi.sort_order ASC
+        `).bind(...chunk).all()
+        for (const row of (poiRows as any[]) || []) {
+          const arr = itemsByPo.get(row.po_id as number) || []
+          arr.push(row)
+          itemsByPo.set(row.po_id as number, arr)
+        }
+      }
+      for (const r of results as any[]) r.items = itemsByPo.get(r.id as number) || []
+    }
+
     // COUNT 쿼리
     let countQuery = `SELECT COUNT(*) as count
       FROM purchase_orders po

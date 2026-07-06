@@ -179,14 +179,6 @@ function selectSupplier(id, name) {
   document.getElementById('supplierId').value = id;
   document.getElementById('supplierSearch').value = name;
   document.getElementById('supplierDropdown').classList.add('hidden');
-  // 공급업체 뱃지 표시
-  var badge = document.getElementById('supplierBadge');
-  if (badge) {
-    badge.innerHTML = '<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-blue-700">'
-      + escapeHtml(name)
-      + ' <button onclick="clearSupplier()" class="ml-1 text-blue-400 hover:text-blue-600" title="해제">&times;</button>'
-      + '</span>';
-  }
   // 기존 품목 단가 재조회
   refreshPricesForSupplier(id);
   // 자주 품목 칩 로드
@@ -198,7 +190,8 @@ async function loadFreqItems(supplierId) {
   var container = document.getElementById('poFreqItems');
   if (!container) return;
   try {
-    var res = await axios.get('/api/purchase-orders?supplier_id=' + supplierId + '&limit=5&sort=created_at_desc');
+    // include_items=1 필수 — 목록 API 기본 응답엔 items가 없어 칩이 영구 숨김이었음
+    var res = await axios.get('/api/purchase-orders?supplier_id=' + supplierId + '&limit=5&sort=created_at_desc&include_items=1');
     if (!res.data.success) { container.classList.add('hidden'); return; }
     var pos = res.data.data || [];
     // 최근 PO들에서 품목 집계 (TOP 5)
@@ -243,58 +236,104 @@ function addFreqItem(itemId, itemName, unitPrice, unit) {
   calcTotals();
 }
 
-// ── 마지막 발주 복제 ──
-async function cloneLastPO() {
+// ── 최근 발주 조회 + 선택 복제 ──
+var recentPOCache = [];
+var pofPoStatusLabels = { 'DRAFT': '임시저장', 'CONFIRMED': '발주확정', 'PARTIAL_RECEIVED': '부분입고', 'RECEIVED': '입고완료', 'CANCELLED': '취소' };
+var pofPoStatusColors = { 'DRAFT': 'bg-gray-100 text-gray-700', 'CONFIRMED': 'bg-blue-50 text-blue-700', 'PARTIAL_RECEIVED': 'bg-amber-50 text-amber-700', 'RECEIVED': 'bg-green-50 text-green-700', 'CANCELLED': 'bg-red-50 text-red-700' };
+
+async function openRecentPOModal() {
   var supplierId = document.getElementById('supplierId').value;
   if (!supplierId) {
     showToast('먼저 공급업체를 선택하세요', 'warning');
     return;
   }
+  var supplierName = document.getElementById('supplierSearch').value;
+  var modal = document.getElementById('recentPOModal');
+  if (!modal) { console.warn('[purchaseOrderForm] #recentPOModal not found'); return; }
   try {
-    var res = await axios.get('/api/purchase-orders?supplier_id=' + supplierId + '&limit=1&sort=created_at_desc');
-    if (!res.data.success || !res.data.data || res.data.data.length === 0) {
-      showToast('해당 공급업체의 이전 발주가 없습니다.', 'warning');
-      return;
+    var res = await axios.get('/api/purchase-orders?supplier_id=' + supplierId + '&limit=10&sort=created_at_desc&include_items=1');
+    if (!res.data.success) { showToast('발주 이력 조회 실패', 'error'); return; }
+    recentPOCache = res.data.data || [];
+    var listHtml = '';
+    if (recentPOCache.length === 0) {
+      listHtml = '<div class="text-center py-8 text-gray-400">' + SVG.inbox + '<p class="text-sm">해당 공급업체의 발주 이력이 없습니다.</p></div>';
+    } else {
+      listHtml = recentPOCache.map(function(po) {
+        var items = po.items || [];
+        var summary = items.slice(0, 3).map(function(it) {
+          return escapeHtml(it.item_name || '') + ' ×' + (it.quantity || 0);
+        }).join(' · ');
+        if (items.length > 3) summary += ' 외 ' + (items.length - 3) + '건';
+        var st = po.status || '';
+        return '<div class="modal-list-item" onclick="applyRecentPO(' + po.id + ')">'
+          + '<div class="flex items-center justify-between gap-2">'
+          + '<div class="flex items-center gap-2 min-w-0">'
+          + '<span class="font-medium text-sm text-gray-800">' + escapeHtml(po.po_number || '') + '</span>'
+          + '<span class="text-xs px-1.5 py-0.5 rounded whitespace-nowrap ' + (pofPoStatusColors[st] || 'bg-gray-100 text-gray-600') + '">' + (pofPoStatusLabels[st] || escapeHtml(st)) + '</span>'
+          + '</div>'
+          + '<span class="text-sm text-gray-900 font-medium whitespace-nowrap">' + formatAmount(po.final_amount) + '</span>'
+          + '</div>'
+          + '<div class="flex items-center justify-between gap-2 mt-0.5">'
+          + '<div class="text-xs text-gray-500 truncate">' + (items.length ? '품목 ' + items.length + '건: ' + summary : '품목 없음') + '</div>'
+          + '<span class="text-xs text-gray-400 whitespace-nowrap">' + escapeHtml(po.order_date || (po.created_at || '').slice(0, 10)) + '</span>'
+          + '</div>'
+          + '</div>';
+      }).join('');
     }
-    var lastPo = res.data.data[0];
-    // 상세 조회
-    var detailRes = await axios.get('/api/purchase-orders/' + lastPo.id);
-    if (!detailRes.data.success) { showToast('발주 상세 조회 실패', 'error'); return; }
-    var po = detailRes.data.data;
-    var items = po.items || [];
-    if (items.length === 0) { showToast('복제할 품목이 없습니다.', 'warning'); return; }
-    // 기존 행 초기화
-    document.getElementById('itemsBody').innerHTML = '';
-    itemCount = 0;
-    // 오늘 날짜로 리셋
-    document.getElementById('orderDate').value = new Date().toISOString().split('T')[0];
-    // 품목 복제 (수량/단가 유지)
-    items.forEach(function(it) {
-      addItemRow({
-        item_id: it.item_id || '',
-        item_name: it.item_name || '',
-        specification: it.specification || '',
-        quantity: it.quantity || 1,
-        unit: it.unit || 'EA',
-        unit_price: it.unit_price || 0,
-        vat_included: it.vat_included,
-        notes: it.notes || ''
-      });
-    });
-    calcTotals();
-    showToast('발주 ' + (po.po_number || '') + ' 에서 ' + items.length + '개 품목 복제 완료', 'success');
+    modal.innerHTML = '<div class="overlay-bg" onclick="closeRecentPOModal(event)">'
+      + '<div class="modal-box" onclick="event.stopPropagation()">'
+      + '<div class="p-4 border-b flex items-center justify-between">'
+      + '<h3 class="font-bold text-gray-800">최근 발주 — ' + escapeHtml(supplierName) + '</h3>'
+      + '<button onclick="closeRecentPOModal()" class="text-gray-400 hover:text-gray-600 p-1">' + SVG.x + '</button>'
+      + '</div>'
+      + '<div class="px-4 py-2 text-xs text-gray-400 border-b bg-gray-50">발주를 선택하면 품목·수량·단가가 현재 폼에 복제됩니다.</div>'
+      + '<div style="max-height:60vh; overflow-y:auto;">' + listHtml + '</div>'
+      + '</div></div>';
   } catch(e) {
-    showToast('복제 실패: ' + (e.response && e.response.data ? e.response.data.error : e.message), 'error');
+    showToast('발주 이력 조회 실패: ' + (e.response && e.response.data ? e.response.data.error : e.message), 'error');
   }
 }
 
-function clearSupplier() {
-  document.getElementById('supplierId').value = '';
-  document.getElementById('supplierSearch').value = '';
-  var badge = document.getElementById('supplierBadge');
-  if (badge) badge.innerHTML = '';
-  var freqItems = document.getElementById('poFreqItems');
-  if (freqItems) freqItems.classList.add('hidden');
+async function applyRecentPO(poId) {
+  var po = recentPOCache.find(function(p) { return p.id === poId; });
+  if (!po) return;
+  var items = po.items || [];
+  if (items.length === 0) { showToast('복제할 품목이 없습니다.', 'warning'); return; }
+  // 입력 중인 품목이 있으면 확인 후 교체
+  var existing = 0;
+  document.querySelectorAll('#itemsBody tr[id^="item-row-"]').forEach(function(row) {
+    var idx = row.id.replace('item-row-', '');
+    var nameEl = document.getElementById('item_name_' + idx);
+    if (nameEl && nameEl.value.trim()) existing++;
+  });
+  if (existing > 0) {
+    if (!(await showConfirm('입력 중인 품목 ' + existing + '건을 ' + (po.po_number || '') + '의 품목으로 교체합니다. 계속하시겠습니까?'))) return;
+  }
+  document.getElementById('itemsBody').innerHTML = '';
+  itemCount = 0;
+  items.forEach(function(it) {
+    addItemRow({
+      item_id: it.item_id || '',
+      item_name: it.item_name || '',
+      // 규격은 품목마스터 파생 (PO 라인엔 저장 안 됨) — loadPOData와 동일 규칙
+      specification: it.item_specification || (it.item_width_mm ? (it.item_width_mm / 10).toFixed(0) + 'cm' : ''),
+      quantity: it.quantity || 1,
+      unit: it.unit || 'EA',
+      unit_price: it.unit_price || 0,
+      vat_included: it.vat_included,
+      price_status: it.price_status || 'CONFIRMED',
+      notes: it.notes || ''
+    });
+  });
+  calcTotals();
+  closeRecentPOModal();
+  showToast(po.po_number + ' 품목 ' + items.length + '건 복제 완료', 'success');
+}
+
+function closeRecentPOModal(e) {
+  if (e && e.target && !e.target.classList.contains('overlay-bg')) return;
+  var modal = document.getElementById('recentPOModal');
+  if (modal) modal.innerHTML = '';
 }
 
 function refreshPricesForSupplier(supplierId) {

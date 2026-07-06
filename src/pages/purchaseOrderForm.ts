@@ -63,11 +63,11 @@ export function purchaseOrderFormPage(c: Context<HonoEnv>) {
                   <div id="supplierDropdown" class="po-dropdown hidden"></div>
                   <div id="supplierModal"></div>
                 </div>
-                <button id="poCloneBtn" onclick="cloneLastPO()" class="border border-gray-300 bg-white text-gray-700 rounded px-3 py-2 text-sm hover:bg-gray-50 whitespace-nowrap">
-                  <i class="fas fa-copy mr-1 text-gray-500"></i>마지막 발주 복제
+                <button id="poRecentBtn" onclick="openRecentPOModal()" class="border border-gray-300 bg-white text-gray-700 rounded px-3 py-2 text-sm hover:bg-gray-50 whitespace-nowrap">
+                  <i class="fas fa-history mr-1 text-gray-500"></i>최근 발주
                 </button>
               </div>
-              <div id="supplierBadge" class="mt-1"></div>
+              <div id="recentPOModal"></div>
               <!-- 자주 품목 칩 -->
               <div id="poFreqItems" class="flex flex-wrap gap-1 mt-2 hidden">
                 <span class="text-xs text-gray-400 mr-1 self-center">자주 품목:</span>
