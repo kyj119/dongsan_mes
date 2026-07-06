@@ -231,9 +231,11 @@ function closeBulkResultModal() {
   if (m) m.classList.add('hidden');
 }
 
-// 긴급도 계산
-function getOrderUrgency(deliveryDate) {
+// 긴급도 계산 — 출고완료/배송완료/취소 주문은 납기 경과여도 지연·D-Day 배지 대상 아님
+var URGENCY_EXEMPT_STATUS = { SHIPPED: 1, COMPLETED: 1, CANCELLED: 1 };
+function getOrderUrgency(deliveryDate, status) {
   if (!deliveryDate) return null;
+  if (status && URGENCY_EXEMPT_STATUS[status]) return null;
   const now = new Date();
   now.setHours(0, 0, 0, 0);
   const delivery = new Date(deliveryDate);
@@ -414,7 +416,7 @@ async function loadOrders() {
       }
 
       tbody.innerHTML = orders.map(order => {
-        const urgency = getOrderUrgency(order.delivery_date);
+        const urgency = getOrderUrgency(order.delivery_date, order.status);
         const urgencyBadge = urgency
           ? `<span style="display:inline-block;padding:1px 6px;border-radius:4px;font-size:11px;font-weight:600;color:${urgency.color};background:${urgency.bg};margin-left:4px;">${urgency.label}</span>`
           : '';
