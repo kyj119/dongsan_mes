@@ -460,7 +460,23 @@ ordersCoreRouter.get('/:id', async (c) => {
     if (viewerEntity !== 0 && !viewerUser?.is_coordinator) {
       const ownEntity = Number((order as any).entity_id)
       const hasAssigned = (items || []).some((it: any) => Number(it.assigned_entity_id) === viewerEntity)
-      if (ownEntity !== viewerEntity && !hasAssigned) {
+      let allowed = ownEntity === viewerEntity || hasAssigned
+      if (!allowed) {
+        // 합배송 묶음 예외: 같은 묶음(대표+자식) 안에 내 법인 주문(소유 또는 담당 품목)이 있으면 열람 허용.
+        // 하위 법인 /orders의 "합배송→대표" 배지·묶음 멤버 링크가 타법인 대표 주문을 여는 경로.
+        const groupRoot = Number((order as any).consolidate_with_order_id) || Number(id)
+        const memberHit = await c.env.DB.prepare(`
+          SELECT 1 AS hit FROM orders m
+          WHERE (m.id = ? OR m.consolidate_with_order_id = ?)
+            AND m.status NOT IN ('CANCELLED', 'DELETED')
+            AND (m.entity_id = ? OR EXISTS (
+              SELECT 1 FROM order_items oi WHERE oi.order_id = m.id AND oi.assigned_entity_id = ?
+            ))
+          LIMIT 1
+        `).bind(groupRoot, groupRoot, viewerEntity, viewerEntity).first()
+        allowed = !!memberHit
+      }
+      if (!allowed) {
         return c.json({ success: false, error: 'Order not found' }, 404)
       }
     }

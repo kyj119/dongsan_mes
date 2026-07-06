@@ -170,8 +170,8 @@ function showCardModal(card, history, defects, siblingCards) {
             var dotColor = h.to_status === 'PRINT_DONE' ? '#16a34a' : h.to_status === 'HOLD' ? '#ef4444' : '#3b82f6';
             histHtml += '<div style="display:flex;align-items:flex-start;gap:8px;padding:4px 0;font-size:11px">';
             histHtml += '<div style="width:8px;height:8px;border-radius:50%;background:' + dotColor + ';margin-top:4px;flex-shrink:0"></div>';
-            histHtml += '<span style="color:#9ca3af;white-space:nowrap;flex-shrink:0;width:70px">' + formatKST(h.created_at, null, {month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}) + '</span>';
-            histHtml += '<span style="color:#374151">' + fromLabel + ' → <b>' + toLabel + '</b>'
+            histHtml += '<span style="color:#9ca3af;white-space:nowrap;flex-shrink:0;width:84px">' + formatKST(h.created_at, null, {month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hour12:false}) + '</span>';
+            histHtml += '<span style="color:#374151;flex:1;min-width:0;word-break:break-word">' + fromLabel + ' → <b>' + toLabel + '</b>'
                 + (h.change_reason ? ' <span style="color:#9ca3af">(' + escapeHtml(h.change_reason) + ')</span>' : '') + '</span>';
             histHtml += '</div>';
         });
