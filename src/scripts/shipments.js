@@ -41,7 +41,8 @@ function formatDateLabel(dateStr) {
 }
 
 function sectionOf(s) {
-  // shipments 테이블 기반 (기존)
+  // shipments 테이블 기반 (기존) — /daily는 합포장 자식에 대표(primary) 값을 COALESCE로 내려줌
+  //   → 합포장 그룹은 대표의 운송수단 섹션 하나로 모임 (박스는 대표 운송수단으로 나감)
   var type = (s.delivery_type || '').toUpperCase();
   var courier = (s.courier_name || '').trim();
   if (type === 'FREIGHT' && courier === '대신화물') return 'freight';
@@ -49,8 +50,8 @@ function sectionOf(s) {
   if (type === 'DELIVERY' && courier === '한진택배') return 'hanjin';
   if (type === 'DELIVERY' && (courier === '직배' || courier === '직접배송')) return 'jikbae';
   if (type === 'QUICK') return 'quick';
-  // orders/daily 기반 (delivery_method)
-  var method = (s.delivery_method || '').trim();
+  // orders/daily 기반 (delivery_method) — 합포장 자식은 대표 주문의 배송방법 우선
+  var method = ((s.merged_into_id && s.primary_delivery_method) || s.delivery_method || '').trim();
   if (method === '직배' || method === '직접배송') return 'jikbae';
   if (method === '화물' || method.includes('화물')) return 'freight';
   if (method === '택배' || method.includes('한진')) return 'hanjin';
@@ -352,7 +353,22 @@ async function mergeConsolidation(idx) {
   var g = (shipmentsConsolidation.same_client || [])[idx];
   if (!g || !g.orders || !g.orders.length) return;
   var ids = g.orders.map(function(o) { return o.id; });
-  if (!(await showConfirm(g.client_name + ' 주문 ' + ids.length + '건을 한 박스로 묶을까요?\n(송장번호·라벨은 대표 출고 1건으로 관리됩니다)'))) return;
+  // 운송수단·납품일 불일치 경고 (차단 아님 — 인지 후 진행)
+  var mergeMethods = {}, mergeDates = {};
+  g.orders.forEach(function(o) {
+    if (o.delivery_method) mergeMethods[o.delivery_method] = true;
+    if (o.delivery_date) mergeDates[o.delivery_date] = true;
+  });
+  var mergeWarns = [];
+  if (Object.keys(mergeMethods).length > 1) {
+    mergeWarns.push('⚠️ 운송수단이 서로 다릅니다: ' + Object.keys(mergeMethods).join(' / ') + '\n→ 묶으면 대표 주문의 운송수단 섹션으로 함께 표시됩니다.');
+  }
+  if (Object.keys(mergeDates).length > 1) {
+    mergeWarns.push('⚠️ 납품일이 서로 다릅니다: ' + Object.keys(mergeDates).map(function(d) { return d.substring(5); }).join(' / ') + '\n→ 출고 확정 시 파트너 동반 출고 여부를 확인합니다.');
+  }
+  var mergeMsg = g.client_name + ' 주문 ' + ids.length + '건을 한 박스로 묶을까요?\n(송장번호·라벨은 대표 출고 1건으로 관리됩니다)';
+  if (mergeWarns.length) mergeMsg += '\n\n' + mergeWarns.join('\n\n');
+  if (!(await showConfirm(mergeMsg))) return;
   try {
     var res = await axios.post('/api/shipments/merge', { order_ids: ids });
     if (res.data.success) {
@@ -819,6 +835,29 @@ async function confirmShipSection(section) {
     grp.shipments.forEach(function(s) { var oid = s.order_id || s.id; if (oid) orderIds.add(oid); });
   });
   if (orderIds.size === 0) { showToast('출고 대상 주문이 없습니다.', 'warning'); return; }
+
+  // 합배송 파트너(미출고·비당일) 동반 출고 프롬프트 — 박스는 함께 나가는데 한쪽만 SHIPPED 되는 갭 방지.
+  // 파트너가 미완성(하드게이트)·타법인이면 개별 차단 결과로 표시됨 (bulk-ship per-order skip).
+  var partnerMap = {};
+  keys.forEach(function(key) {
+    groups[key].shipments.forEach(function(s) {
+      (s.consolidate_partners || []).forEach(function(p) {
+        if (!orderIds.has(p.id)) partnerMap[p.id] = p;
+      });
+    });
+  });
+  var pendingPartners = Object.keys(partnerMap).map(function(k) { return partnerMap[k]; });
+  if (pendingPartners.length > 0) {
+    var partnerList = pendingPartners.map(function(p) {
+      return '· ' + (p.entity_name ? p.entity_name + ' ' : '') + (p.order_number || ('#' + p.id))
+        + (p.delivery_date ? ' (납품 ' + String(p.delivery_date).substring(5) + ')' : '');
+    }).join('\n');
+    if (await showConfirm('합배송으로 묶인 미출고 주문 ' + pendingPartners.length + '건이 있습니다:\n' + partnerList + '\n\n함께 출고 확정하시겠습니까?')) {
+      pendingPartners.forEach(function(p) { orderIds.add(p.id); });
+    } else {
+      if (!(await showConfirm('합배송 파트너를 제외하고 이 화면의 주문만 출고합니다.\n(박스가 실제로 함께 나갔다면 파트너 주문도 별도 출고 처리가 필요합니다)\n\n계속하시겠습니까?'))) return;
+    }
+  }
 
   // v2 소프트 게이트: 미검수 라인 경고 (검수 없이도 진행 가능 — 확인만)
   var uncheckedOrders = 0, uncheckedLines = 0;

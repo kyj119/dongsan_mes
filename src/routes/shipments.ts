@@ -148,6 +148,9 @@ shipmentsRouter.get('/daily', async (c) => {
              COALESCE(spm.label_count, sp.label_count) as label_count,
              COALESCE(spm.box_count, sp.box_count) as box_count,
              COALESCE(spm.receiver_address, sp.receiver_address) as receiver_address,
+             COALESCE(spm.delivery_type, sp.delivery_type) as delivery_type,
+             COALESCE(spm.courier_name, sp.courier_name) as courier_name,
+             om.delivery_method as primary_delivery_method,
              sp.status as shipment_status,
              (SELECT COUNT(*) FROM shipment_checks sc WHERE sc.shipment_id = sp.id) as chk_total,
              (SELECT COUNT(*) FROM shipment_checks sc WHERE sc.shipment_id = sp.id AND sc.checked_at IS NOT NULL) as chk_done,
@@ -170,6 +173,7 @@ shipmentsRouter.get('/daily', async (c) => {
         SELECT id FROM shipments WHERE order_id = o.id AND status != 'CANCELLED' ORDER BY id DESC LIMIT 1
       )
       LEFT JOIN shipments spm ON spm.id = sp.merged_into_id
+      LEFT JOIN orders om ON om.id = spm.order_id
       WHERE o.delivery_date = ? AND o.status NOT IN ('CANCELLED', 'DELETED', 'DRAFT')${efDaily.clause}
       GROUP BY o.id
       ORDER BY o.delivery_time ASC NULLS LAST, o.delivery_method ASC, cl.client_name ASC
@@ -210,6 +214,38 @@ shipmentsRouter.get('/daily', async (c) => {
           const size = (i.width && i.height) ? `${i.width}x${i.height}` : ''
           return `${i.item_name}${size ? ' ' + size : ''} x${i.quantity}`
         }).join(', ')
+      }
+    }
+
+    // 합배송 파트너(미출고) 상세 — 출고확정 동반 출고 프롬프트용.
+    // 그룹 키 = COALESCE(consolidate_with_order_id, id). 미출고 파트너가 있는 행에만 부착.
+    interface PartnerRow { id: number; order_number: string; delivery_date: string | null; entity_id: number | null; entity_name: string | null; root_id: number }
+    const pendingRows = ordersWithItems.filter(r => r.consolidate_partner_pending_date != null)
+    if (pendingRows.length > 0) {
+      const rootIds = [...new Set(pendingRows.map(r => Number(r.consolidate_with_order_id ?? r.id)))]
+      const partnerRows: PartnerRow[] = []
+      // IN절 2회 사용 → 청크 40 (바인드 80, D1 한도 100 이내)
+      for (let i = 0; i < rootIds.length; i += 40) {
+        const chunk = rootIds.slice(i, i + 40)
+        const ph = chunk.map(() => '?').join(',')
+        const { results: rows } = await c.env.DB.prepare(`
+          SELECT o2.id, o2.order_number, o2.delivery_date, o2.entity_id, en2.short_name as entity_name,
+                 COALESCE(o2.consolidate_with_order_id, o2.id) as root_id
+          FROM orders o2 LEFT JOIN entities en2 ON en2.id = o2.entity_id
+          WHERE (o2.id IN (${ph}) OR o2.consolidate_with_order_id IN (${ph}))
+            AND o2.status NOT IN ('CANCELLED', 'DELETED') AND o2.shipped_at IS NULL
+        `).bind(...chunk, ...chunk).all<PartnerRow>()
+        if (rows) partnerRows.push(...rows)
+      }
+      const byRoot: Record<number, PartnerRow[]> = {}
+      for (const p of partnerRows) {
+        if (!byRoot[p.root_id]) byRoot[p.root_id] = []
+        byRoot[p.root_id].push(p)
+      }
+      for (const row of pendingRows) {
+        const root = Number(row.consolidate_with_order_id ?? row.id)
+        ;(row as { consolidate_partners?: PartnerRow[] }).consolidate_partners =
+          (byRoot[root] || []).filter(p => p.id !== row.id)
       }
     }
 
