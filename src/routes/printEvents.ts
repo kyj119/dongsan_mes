@@ -52,16 +52,31 @@ async function deriveCardEntityId(
   return row?.entity_id || 1
 }
 
+// 현장 표시용 장비 라벨: 호스트명(agent_id) 대신 장비명 우선 (equipment_id → agent_id 매핑 순, 실패 시 원문)
+async function resolveEquipmentLabel(db: D1Database, agentId: string, equipmentId?: string | null): Promise<string> {
+  try {
+    if (equipmentId) {
+      const eq = await db.prepare('SELECT name FROM equipment WHERE id = ?').bind(equipmentId).first<{ name: string }>()
+      if (eq?.name) return eq.name
+    }
+    if (agentId) {
+      const eq = await db.prepare('SELECT name FROM equipment WHERE agent_id = ?').bind(agentId).first<{ name: string }>()
+      if (eq?.name) return eq.name
+    }
+  } catch (_e) { /* 라벨 조회 실패 → 호스트명 폴백 */ }
+  return agentId
+}
+
 // 인쇄 에러/취소 → quality_issues 자동 등록 헬퍼
 async function autoCreateQualityIssue(
-  db: D1Database, cardId: number, printStatus: string, agentId: string,
+  db: D1Database, cardId: number, printStatus: string, agentLabel: string,
   filePath: string, copyTotal: number
 ) {
   const issueType = printStatus === 'ERROR' ? 'DEFECT' : 'REWORK'
   const defectCategory = 'OTHER'
   const description = printStatus === 'ERROR'
-    ? `인쇄 에러 자동 감지 (${agentId}, 파일: ${filePath})`
-    : `인쇄 취소 자동 감지 (${copyTotal}매 중 취소, ${agentId})`
+    ? `인쇄 에러 자동 감지 (${agentLabel}, 파일: ${filePath})`
+    : `인쇄 취소 자동 감지 (${copyTotal}매 중 취소, ${agentLabel})`
   try {
     // #85: reported_by=NULL (시스템 자동 감지), entity_id는 카드에서 가져오되 fallback 안전 처리
     // #384: cards.requesting_entity_id 우선, NULL이면 order entity, 그래도 없으면 1
@@ -132,7 +147,7 @@ async function checkAllTilesComplete(db: D1Database, filePath: string, tileCount
 }
 
 // ─── card_item 자동 체크 + 전체 완료 시 PRINT_DONE 전환 ───
-async function autoCheckCardItem(db: D1Database, cardId: number, orderItemId: number | null, agentId: string): Promise<void> {
+async function autoCheckCardItem(db: D1Database, cardId: number, orderItemId: number | null, agentLabel: string): Promise<void> {
   // orderItemId로 card_item 찾기
   if (orderItemId) {
     await db.prepare(
@@ -167,7 +182,7 @@ async function autoCheckCardItem(db: D1Database, cardId: number, orderItemId: nu
       try {
         await db.prepare(
           "INSERT INTO card_status_history (card_id, from_status, to_status, changed_by, change_reason) VALUES (?, ?, 'PRINT_DONE', NULL, ?)"
-        ).bind(cardId, card.status, `All items printed (${agentId})`).run()
+        ).bind(cardId, card.status, `All items printed (${agentLabel})`).run()
       } catch (histErr) { console.warn('[printEvents] status history insert failed:', histErr) }
 
       // 주문 상태 동기화
@@ -277,6 +292,9 @@ printEventsRouter.post('/', agentKeyMiddleware, async (c) => {
       if (hb?.equipment_id) resolvedEquipmentId = hb.equipment_id
     }
 
+    // 현장 표시용 장비 라벨 (상태 이력·불량 자동등록 문구에 호스트명 대신 사용)
+    const equipLabel = await resolveEquipmentLabel(c.env.DB, agent_id, resolvedEquipmentId)
+
     // Idempotency check (정규화된 completed_at 기준 — 저장값과 동일 기준)
     const existing = await c.env.DB.prepare(
       'SELECT id FROM print_events WHERE file_path = ? AND print_completed_at = ?'
@@ -319,15 +337,15 @@ printEventsRouter.post('/', agentKeyMiddleware, async (c) => {
         if (print_status === 'CANCEL') {
           const copyTotalVal = copy_total || 1
           const reason = copyTotalVal > 1
-            ? `Print cancelled (${copyTotalVal}매 배열출력 중 취소) on ${agent_id}`
-            : `Print cancelled on ${agent_id}`
+            ? `Print cancelled (${copyTotalVal}매 배열출력 중 취소) on ${equipLabel}`
+            : `Print cancelled on ${equipLabel}`
           await c.env.DB.prepare(
             `UPDATE cards SET rip_status = 'ERROR', updated_at = CURRENT_TIMESTAMP WHERE id = ?`
           ).bind(card.id).run()
         }
         // ERROR/CANCEL → quality_issues 자동 등록
         if (print_status === 'ERROR' || print_status === 'CANCEL') {
-          await autoCreateQualityIssue(c.env.DB, card.id, print_status, agent_id, file_path, copy_total || 1)
+          await autoCreateQualityIssue(c.env.DB, card.id, print_status, equipLabel, file_path, copy_total || 1)
         }
       }
     }
@@ -364,7 +382,7 @@ printEventsRouter.post('/', agentKeyMiddleware, async (c) => {
       try {
         const tileComplete = await checkAllTilesComplete(c.env.DB, file_path, tile_count || 0)
         if (tileComplete) {
-          await autoCheckCardItem(c.env.DB, cardId, resolved.orderItemId, agent_id)
+          await autoCheckCardItem(c.env.DB, cardId, resolved.orderItemId, equipLabel)
         }
       } catch (tileError) {
         console.error('Tile completion check error:', tileError)
@@ -483,6 +501,9 @@ printEventsRouter.post('/batch', agentKeyMiddleware, async (c) => {
       if (hb?.equipment_id) resolvedEquipmentId = hb.equipment_id
     }
 
+    // 현장 표시용 장비 라벨 (배치 공통 — 요청당 1회 조회)
+    const equipLabel = await resolveEquipmentLabel(c.env.DB, agent_id, resolvedEquipmentId)
+
     let inserted = 0
     let duplicates = 0
     let errors = 0
@@ -527,14 +548,14 @@ printEventsRouter.post('/batch', agentKeyMiddleware, async (c) => {
                 c.env.DB.prepare(
                   `INSERT INTO card_status_history (card_id, from_status, to_status, changed_by, change_reason)
                    VALUES (?, ?, 'PRINT_DONE', NULL, ?)`
-                ).bind(card.id, card.status, `Print completed on ${agent_id}`)
+                ).bind(card.id, card.status, `Print completed on ${equipLabel}`)
               ])
             }
             if (evt.print_status === 'CANCEL') {
               const evtCopyTotal = evt.copy_total || 1
               const reason = evtCopyTotal > 1
-                ? `Print cancelled (${evtCopyTotal}매 배열출력 중 취소) on ${agent_id}`
-                : `Print cancelled on ${agent_id}`
+                ? `Print cancelled (${evtCopyTotal}매 배열출력 중 취소) on ${equipLabel}`
+                : `Print cancelled on ${equipLabel}`
               await c.env.DB.batch([
                 c.env.DB.prepare(
                   `UPDATE cards SET rip_status = 'ERROR', updated_at = CURRENT_TIMESTAMP WHERE id = ?`
@@ -546,7 +567,7 @@ printEventsRouter.post('/batch', agentKeyMiddleware, async (c) => {
               ])
             }
             if (evt.print_status === 'ERROR' || evt.print_status === 'CANCEL') {
-              await autoCreateQualityIssue(c.env.DB, card.id, evt.print_status, agent_id, evt.file_path, evt.copy_total || 1)
+              await autoCreateQualityIssue(c.env.DB, card.id, evt.print_status, equipLabel, evt.file_path, evt.copy_total || 1)
             }
           }
         }
