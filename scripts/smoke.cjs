@@ -78,6 +78,9 @@ const ENDPOINTS = [
   // 기준정보
   { path: '/api/clients?limit=10', name: 'clients.list' },
   { path: '/api/items?limit=10', name: 'items.list' },
+  // items.detail — 명시 컬럼리스트 SELECT(image_key 등 신규 ADD COLUMN 참조)라 items.list(GROUP BY 집계)가 못 잡는
+  // no-such-column 드리프트를 500으로 노출(#484). allow404=행 부재 허용, 컬럼 미존재 500은 FAIL로 격리.
+  { path: '/api/items/1', name: 'items.detail', allow404: true },
   { path: '/api/price-lists', name: 'priceLists.list' },
   { path: '/api/prices?item_id=1&client_id=1&context=sales', name: 'prices.lookup', allow404: true },
   { path: '/api/bom/overview', name: 'bom.overview' },
