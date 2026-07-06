@@ -505,21 +505,6 @@
                             });
                         }
 
-                        // Generic single-select options (형 등) — pp_category 비하드코딩, 무비용·무차감
-                        ppContainer.querySelectorAll('.pp-generic-select').forEach(function(gs) {
-                            if (gs && gs.value) {
-                                var gopt = gs.options[gs.selectedIndex];
-                                pp.push({
-                                    id: parseInt(gopt.dataset.ppId),
-                                    code: gopt.dataset.ppCode,
-                                    name: gopt.dataset.ppName,
-                                    margin_left: 0, margin_right: 0, margin_top: 0, margin_bottom: 0,
-                                    params: { category: gs.dataset.ppCategory },
-                                    price: 0
-                                });
-                            }
-                        });
-
                         // Transfer PP (하도매, 부직포, 수술)
                         ppContainer.querySelectorAll('.pp-transfer-item').forEach(function(item) {
                             var cb = item.querySelector('.pp-transfer-check');

@@ -924,16 +924,6 @@
                                     });
                                 }
                             }
-                        } else if (container.querySelector('.pp-generic-select option[data-pp-code="' + code + '"]')) {
-                            // Restore generic single-select (형 등) — pp_category 비하드코딩
-                            var genSelsR = container.querySelectorAll('.pp-generic-select');
-                            for (var gsri = 0; gsri < genSelsR.length; gsri++) {
-                                var gselR = genSelsR[gsri]; var gdone = false;
-                                for (var gpri = 0; gpri < gselR.options.length; gpri++) {
-                                    if (gselR.options[gpri].dataset.ppCode === code) { gselR.selectedIndex = gpri; gdone = true; break; }
-                                }
-                                if (gdone) break;
-                            }
                         } else {
                             // Restore finish PP — direction-based
                             if (pp.params && pp.params.directions) {

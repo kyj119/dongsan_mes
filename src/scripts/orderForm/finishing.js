@@ -160,16 +160,6 @@
                     const offsetOpt = options.find(function(o) { return o.pp_category === 'offset'; });
                     const coatingOpts = options.filter(function(o) { return o.pp_category === 'coating'; });
                     const printLayerOpts = options.filter(function(o) { return o.pp_category === 'print_layer'; });
-                    // 범용 선택 옵션(형 등): 하드코딩 카테고리 외 pp_category → pp_category별 단일 select 렌더 (무비용·무차감)
-                    const KNOWN_PP_CATS = ['finish','transfer','punching','annotation','offset','coating','print_layer'];
-                    const genericSelectGroups = {};
-                    options.forEach(function(o) {
-                        var cat = o.pp_category || 'finish';
-                        if (KNOWN_PP_CATS.indexOf(cat) === -1) {
-                            (genericSelectGroups[cat] = genericSelectGroups[cat] || []).push(o);
-                        }
-                    });
-
 
                     let html = '';
 
@@ -350,25 +340,6 @@
                         html += '</select>';
                         html += '</div>';
                     }
-
-                    // --- Section 2.66: Generic single-select options (형 등) — pp_category 비하드코딩, 무비용·무차감 ---
-                    Object.keys(genericSelectGroups).forEach(function(gcat) {
-                        var gopts = genericSelectGroups[gcat];
-                        if (!gopts || gopts.length === 0) return;
-                        html += '<div class="pp-generic-section mb-3 pt-2 border-t border-gray-100" data-pp-category="' + escapeHtml(gcat) + '">';
-                        html += '<label class="block text-xs font-medium text-gray-600 mb-1">' + escapeHtml(gcat) + '</label>';
-                        html += '<select class="pp-generic-select w-full border border-gray-300 rounded px-2 py-1 text-sm" data-pp-category="' + escapeHtml(gcat) + '" data-row="' + rowId + '">';
-                        html += '<option value="">없음</option>';
-                        gopts.forEach(function(opt) {
-                            html += '<option value="' + opt.id + '"'
-                                + ' data-pp-id="' + opt.id + '"'
-                                + ' data-pp-code="' + escapeHtml(opt.option_code || '') + '"'
-                                + ' data-pp-name="' + escapeHtml(opt.option_name || '') + '"'
-                                + '>' + escapeHtml(opt.option_name || '') + '</option>';
-                        });
-                        html += '</select>';
-                        html += '</div>';
-                    });
 
                     // --- Section 2.7: Transfer PP — parameter-based options (하도매, 부직포, 수술) ---
                     if (transferOpts.length > 0) {
