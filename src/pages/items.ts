@@ -134,7 +134,7 @@ export function itemsPage(c: Context<HonoEnv>) {
                                 <!-- 2. 규격 (모든 타입, 원자재 원단폭도 여기서 입력) -->
                                 <div id="fieldSpecification">
                                     <label class="block text-sm font-semibold text-gray-700 mb-1">규격</label>
-                                    <input type="text" id="itemSpecification" placeholder="예: 900x1800, 3T, 1600mm" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                                    <input type="text" id="itemSpecification" placeholder="예: 900x1800, 3T, 127cm/50m" oninput="itemsUpdateWidthFromSpec()" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
                                     <p id="specHint" class="text-xs text-gray-400 mt-1 hidden"></p>
                                 </div>
 
@@ -220,6 +220,11 @@ export function itemsPage(c: Context<HonoEnv>) {
                                         <option value="NONE">차감 안 함 (수동관리)</option>
                                     </select>
                                     <p class="text-xs text-gray-400 mt-1">롤=규격(폭)으로 폭매칭 후 길이 차감 · 판재=보드규격으로 면적→장수 환산 · 차감안함=자동차감 제외</p>
+                                    <div id="rollWidthArea" class="mt-2">
+                                        <label class="block text-xs font-semibold text-gray-600 mb-1">롤 폭 (mm) <span class="text-gray-400 font-normal">— 자동차감 매칭 폭</span></label>
+                                        <input type="number" id="itemWidthMm" min="1" step="1" oninput="itemsWidthHintRefresh()" placeholder="규격에서 자동 인식" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                                        <p id="widthMmHint" class="text-xs text-gray-400 mt-1"></p>
+                                    </div>
                                     <div id="boardSpecArea" class="hidden grid grid-cols-2 gap-2 mt-2">
                                         <div>
                                             <label class="block text-xs font-semibold text-gray-600 mb-1">보드 규격</label>

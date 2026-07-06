@@ -1,5 +1,47 @@
 // items/modals.js — 품목 CRUD 모달, 자재 매핑 (Phase 3.1.B 분할)
 
+// ── 롤 폭(width_mm) 인식/동기화 ──────────────────────────
+// 규격 텍스트 → 폭(mm). 소수점 지원: "127.5cm" → 1275. mm 우선, 없으면 cm×10.
+function itemsParseSpecWidthMm(spec) {
+    if (!spec) return null;
+    var mm = spec.match(/(\d+(?:\.\d+)?)\s*mm/i);
+    if (mm) return Math.round(parseFloat(mm[1]));
+    var cm = spec.match(/(\d+(?:\.\d+)?)\s*cm/i);
+    if (cm) return Math.round(parseFloat(cm[1]) * 10);
+    return null;
+}
+
+// 규격 입력 시: 인식 성공하면 폭 필드에 동기화 (실패 시 기존 값 유지 — 수동 지정 보호)
+function itemsUpdateWidthFromSpec() {
+    if (typeof selectedItemType !== 'undefined' && selectedItemType !== 'MATERIAL') return;
+    var specEl = document.getElementById('itemSpecification');
+    var wEl = document.getElementById('itemWidthMm');
+    if (!specEl || !wEl) { console.warn('[items] #itemSpecification/#itemWidthMm not found'); return; }
+    var parsed = itemsParseSpecWidthMm(specEl.value);
+    if (parsed != null) wEl.value = parsed;
+    itemsWidthHintRefresh();
+}
+
+// 폭 힌트: 저장될 값을 항상 표시 (필드값 우선, 비면 규격 인식값, 둘 다 없으면 경고)
+function itemsWidthHintRefresh() {
+    var hintEl = document.getElementById('widthMmHint');
+    var wEl = document.getElementById('itemWidthMm');
+    if (!hintEl || !wEl) return;
+    var specEl = document.getElementById('itemSpecification');
+    var parsed = itemsParseSpecWidthMm(specEl ? specEl.value : '');
+    var cur = wEl.value !== '' ? Math.round(parseFloat(wEl.value)) : null;
+    hintEl.classList.remove('text-amber-600');
+    if (cur) {
+        hintEl.textContent = '저장될 폭: ' + cur + 'mm'
+            + (parsed != null && parsed !== cur ? ' (규격 인식값 ' + parsed + 'mm와 다름 — 직접 지정)' : '');
+    } else if (parsed != null) {
+        hintEl.textContent = '규격에서 인식된 폭: ' + parsed + 'mm — 저장 시 적용';
+    } else {
+        hintEl.textContent = '폭 미설정 — 롤 차감 매칭에서 제외됩니다. 규격에 폭(mm/cm)을 쓰거나 직접 입력하세요.';
+        hintEl.classList.add('text-amber-600');
+    }
+}
+
 // ── CRUD ──────────────────────────────────────────────────
 
 async function showCreateModal() {
@@ -19,6 +61,8 @@ async function showCreateModal() {
     if (newGroupInput) newGroupInput.value = '';
     var specEl = document.getElementById('itemSpecification');
     if (specEl) specEl.value = '';
+    var wElNew = document.getElementById('itemWidthMm');
+    if (wElNew) wElNew.value = '';
     var szSel = document.getElementById('itemStorageZone');
     if (szSel) szSel.value = '';
     itemPhotoReset(false);
@@ -129,6 +173,10 @@ async function editItem(id) {
                 if (psEl) psEl.value = (item.pack_size != null) ? item.pack_size : '';
                 var smEl = document.getElementById('itemStockMode');
                 if (smEl) smEl.value = item.stock_mode || 'CONTINUOUS';
+                // 롤 폭 직접 필드 복원 (DB 현재값 = 저장될 값, 규격과 불일치도 그대로 노출)
+                var wElEdit = document.getElementById('itemWidthMm');
+                if (wElEdit) wElEdit.value = (item.width_mm != null) ? item.width_mm : '';
+                itemsWidthHintRefresh();
                 if (typeof onDeductionMethodChange === 'function') onDeductionMethodChange();
                 updateAutoCodePreview();
             }
@@ -163,18 +211,20 @@ async function saveItem(event) {
     var groupSortVal = document.getElementById('itemGroupSort').value;
     var specVal = (document.getElementById('itemSpecification') || {}).value || '';
 
-    // 원자재: 규격에서 width_mm 자동 파싱 (예: "1600mm" → 1600, "160cm" → 1600)
-    // 파싱 실패 시 기존 width_mm 보존 (자동차감 매칭에 필수)
+    // 원자재 롤 폭: 폭 필드 값 우선(화면=저장값), 비어 있으면 규격에서 인식 (소수점 지원)
     var widthMm = null;
-    if (selectedItemType === 'MATERIAL' && specVal) {
-        var mmMatch = specVal.match(/(\d+)\s*mm/i);
-        var cmMatch = specVal.match(/(\d+)\s*cm/i);
-        if (mmMatch) widthMm = parseInt(mmMatch[1]);
-        else if (cmMatch) widthMm = parseInt(cmMatch[1]) * 10;
-    }
-    // 수정 모드: 파싱 못 했으면 기존 width_mm 유지 (서버에서 현재값 보존)
-    if (id && widthMm === null && selectedItemType === 'MATERIAL') {
-        widthMm = undefined; // undefined → 서버에서 기존값 유지
+    if (selectedItemType === 'MATERIAL') {
+        var wElSave = document.getElementById('itemWidthMm');
+        if (wElSave) {
+            var manualW = wElSave.value !== '' ? Math.round(parseFloat(wElSave.value)) : null;
+            if (manualW !== null && !(manualW > 0)) manualW = null;
+            widthMm = (manualW !== null) ? manualW : itemsParseSpecWidthMm(specVal);
+        } else {
+            // 폭 필드 부재 폴백: 규격 파싱, 수정 모드 파싱 실패 시 기존값 유지
+            console.warn('[items] #itemWidthMm not found — 규격 파싱 폴백');
+            widthMm = itemsParseSpecWidthMm(specVal);
+            if (id && widthMm === null) widthMm = undefined; // undefined → 서버에서 기존값 유지
+        }
     }
 
     var data = {

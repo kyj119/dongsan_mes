@@ -133,6 +133,9 @@ function onDeductionMethodChange() {
     var boardArea = document.getElementById('boardSpecArea');
     if (!methodEl || !boardArea) return;
     boardArea.classList.toggle('hidden', methodEl.value !== 'BOARD');
+    // 롤 폭(mm) 입력: ROLL일 때만 노출
+    var rollArea = document.getElementById('rollWidthArea');
+    if (rollArea) rollArea.classList.toggle('hidden', methodEl.value !== 'ROLL');
 }
 
 function updateFieldVisibility(type) {
@@ -148,7 +151,7 @@ function updateFieldVisibility(type) {
     var specHint = document.getElementById('specHint');
     if (specHint) {
         if (type === 'MATERIAL') {
-            specHint.textContent = '원단류: 폭을 mm 단위로 입력 (예: 1600mm) — 자동차감 매칭에 사용';
+            specHint.textContent = '원단류(롤): 폭을 mm/cm로 포함하면 자동 인식 (예: 1270mm, 127cm/50m) — 단위는 폭에만, 길이는 m';
             specHint.classList.remove('hidden');
         } else {
             specHint.classList.add('hidden');
