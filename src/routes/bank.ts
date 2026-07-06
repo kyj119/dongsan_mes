@@ -17,6 +17,17 @@ const bankRouter = new Hono<HonoEnv>()
 
 bankRouter.use('/*', authMiddleware)
 
+// H5: 무인 auto-match/sync가 매칭 실패건(UNMATCHED 잔존)을 매일 전건 재스캔하며 대상 집합이
+//     무한 성장하는 것 방지. 스캔 대상을 최근 N일 + 오래된 순 상한으로 제한(매칭 알고리즘 자체는 불변).
+const MATCH_LOOKBACK_DAYS = 90
+const MATCH_SCAN_CAP = 500
+
+/** KST 기준 (오늘 - days)를 YYYYMMDD(무구분자, transaction_date 저장형식)로 반환. */
+function lookbackYmd(days: number): string {
+  const d = new Date(Date.now() + 9 * 3600000 - days * 86400000)
+  return `${d.getUTCFullYear()}${String(d.getUTCMonth() + 1).padStart(2, '0')}${String(d.getUTCDate()).padStart(2, '0')}`
+}
+
 /** 바로빌 SOAP config 생성 (법인별 corpNum, 단일 파트너 CERTKEY). 미설정 시 throw. */
 async function getBarobillConfig(c: any) {
   const testModeRow = await c.env.DB.prepare(
@@ -539,9 +550,10 @@ bankRouter.post('/sync-barobill', requireRole('ADMIN'), async (c) => {
     if (totalInserted > 0) {
       // 미매칭 입금 건 자동매칭
       const efSyncTx = entityFilter(c, 'bank_transactions')
+      // H5: 최근 90일 + 오래된 순 500건 상한. 신규 삽입분은 최근이라 손실 없음, 오래된 실패건 무한 재스캔 방지.
       const { results: unmatchedTxs } = await c.env.DB.prepare(
-        `SELECT id, amount, counterpart_name, description FROM bank_transactions WHERE match_status = 'UNMATCHED' AND transaction_type = 'DEPOSIT'${efSyncTx.clause}`
-      ).bind(...efSyncTx.params).all<{ id: number; amount: number; counterpart_name: string | null; description: string | null }>()
+        `SELECT id, amount, counterpart_name, description FROM bank_transactions WHERE match_status = 'UNMATCHED' AND transaction_type = 'DEPOSIT'${efSyncTx.clause} AND transaction_date >= ? ORDER BY transaction_date ASC, id ASC LIMIT ${MATCH_SCAN_CAP}`
+      ).bind(...efSyncTx.params, lookbackYmd(MATCH_LOOKBACK_DAYS)).all<{ id: number; amount: number; counterpart_name: string | null; description: string | null }>()
 
       const { results: clients } = await c.env.DB.prepare(
         "SELECT id, client_name, search_keywords, balance FROM clients WHERE is_active = 1 ORDER BY balance DESC"
@@ -771,12 +783,23 @@ bankRouter.delete('/match-rules/:id', requireRole('ADMIN'), async (c) => {
 bankRouter.post('/transactions/auto-match', requireRole('ADMIN'), async (c) => {
   try {
     const ef = entityFilter(c, 'bank_transactions')
-    // 1. 모든 UNMATCHED 거래내역 가져오기 (입금+출금 모두)
+    // H5: 스캔 범위 제한(무인 cron이 실패건을 매일 무한 재스캔하는 것 방지).
+    //     기본 최근 90일 + 오래된 순 500건 상한. 명시 파라미터로 확장: ?days=0(또는 음수)→전체, ?limit=N→상한 조정.
+    //     이미 매칭(SUGGESTED/CONFIRMED/APPLIED)·무시(IGNORED)된 건은 match_status='UNMATCHED' 필터로 이미 제외.
+    const daysParam = Number(c.req.query('days'))
+    const lookbackDays = Number.isFinite(daysParam) ? daysParam : MATCH_LOOKBACK_DAYS
+    const limitParam = Number(c.req.query('limit'))
+    const scanCap = Number.isFinite(limitParam) && limitParam > 0 ? Math.min(Math.floor(limitParam), 5000) : MATCH_SCAN_CAP
+    const dateClause = lookbackDays > 0 ? ' AND transaction_date >= ?' : ''
+    const dateParams = lookbackDays > 0 ? [lookbackYmd(lookbackDays)] : []
+    // 1. UNMATCHED 거래내역 가져오기 (입금+출금 모두, 최근 우선 소진 위해 오래된 순)
     const { results: unmatchedTxs } = await c.env.DB.prepare(`
       SELECT id, amount, counterpart_name, description, transaction_type
       FROM bank_transactions
-      WHERE match_status = 'UNMATCHED'${ef.clause}
-    `).bind(...ef.params).all<{
+      WHERE match_status = 'UNMATCHED'${ef.clause}${dateClause}
+      ORDER BY transaction_date ASC, id ASC
+      LIMIT ${scanCap}
+    `).bind(...ef.params, ...dateParams).all<{
       id: number
       amount: number
       counterpart_name: string | null

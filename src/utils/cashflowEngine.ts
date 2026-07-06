@@ -219,6 +219,7 @@ export async function buildCashflowDays(
     JOIN orders o ON o.id = g.order_id
     LEFT JOIN clients cl ON cl.id = o.client_id
     WHERE o.status NOT IN ('CANCELLED', 'DRAFT')${efG.clause}
+    ORDER BY o.delivery_date IS NULL, o.delivery_date ASC, g.order_id ASC, g.entity_id ASC
     LIMIT 2000
   `).bind(...efG.params).all<{
     order_id: number; entity_id: number; billing_status: string | null; amount: number

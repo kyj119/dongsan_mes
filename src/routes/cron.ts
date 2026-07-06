@@ -144,9 +144,38 @@ cronRouter.post('/daily-maintenance', agentKeyMiddleware, async (c) => {
     leaves = { error: String(err?.message || err).slice(0, 200) }
   }
 
+  // 4) 보존기간 정리(retention) — 무인 누적 방지. 각 단계 독립 try/catch(한 단계 실패가 다른 단계·전체 응답을 막지 않게).
+  //    ⚠️ activity_logs·상태이력·발송로그(kakao/email)·업무 테이블은 삭제 금지(감사/법정보존). datetime('now')=UTC(기존 /cleanup 관례).
+  const retention: any = {}
+  try {
+    const r = await c.env.DB.prepare(
+      `DELETE FROM notifications WHERE created_at < datetime('now', '-30 days')`
+    ).run()
+    retention.notifications_deleted = r.meta?.changes || 0
+  } catch (err: any) {
+    retention.notifications_error = String(err?.message || err).slice(0, 200)
+  }
+  try {
+    // 하트비트=순간 liveness(다음 보고 시 UPSERT 원복). 7일 초과 무보고 stale 행 정리.
+    const r = await c.env.DB.prepare(
+      `DELETE FROM agent_heartbeats WHERE COALESCE(last_seen_at, updated_at, created_at) < datetime('now', '-7 days')`
+    ).run()
+    retention.heartbeats_deleted = r.meta?.changes || 0
+  } catch (err: any) {
+    retention.heartbeats_error = String(err?.message || err).slice(0, 200)
+  }
+  try {
+    const r = await c.env.DB.prepare(
+      `DELETE FROM caps_sync_log WHERE started_at < datetime('now', '-90 days')`
+    ).run()
+    retention.caps_sync_log_deleted = r.meta?.changes || 0
+  } catch (err: any) {
+    retention.caps_sync_log_error = String(err?.message || err).slice(0, 200)
+  }
+
   const summary = { entities: entities.length, date: yesterday }
-  console.log('[cron/daily-maintenance]', JSON.stringify({ ...summary, leaves }))
-  return c.json({ success: true, summary, results: out, leaves })
+  console.log('[cron/daily-maintenance]', JSON.stringify({ ...summary, leaves, retention }))
+  return c.json({ success: true, summary, results: out, leaves, retention })
 })
 
 export default cronRouter

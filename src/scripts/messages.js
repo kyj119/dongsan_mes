@@ -328,9 +328,11 @@ function toggleBulkSchedule() {
   }
 }
 
-var bulkSelectedRecipients = []; // { name, phone, email, type }
+var bulkSelectedRecipients = []; // 선택 수신자 영구 보관소 { id, name, phone, email } — 재검색/재렌더에도 선택 유지(렌더 시 checked 복원)
 var _recipientPickerType = '';
-var _recipientAllData = [];
+var _recipientAllData = [];        // 직원용 인메모리 목록 (직원은 소수 → 클라 필터). 거래처는 서버검색이라 미사용
+var _recipientSearchTimer = null;  // 거래처 서버검색 디바운스 타이머
+var _recipientSearchSeq = 0;       // 거래처 서버검색 순번 (out-of-order 응답 무시)
 
 function setBulkTarget(target) {
   bulkTarget = target;
@@ -365,31 +367,59 @@ function openRecipientPicker(type) {
   setBulkTarget(type);
 
   document.getElementById('recipientPickerTitle').textContent = type === 'employees' ? '직원 선택' : '거래처 선택';
-  document.getElementById('recipientSearch').value = '';
+  var searchEl = document.getElementById('recipientSearch');
+  if (searchEl) {
+    searchEl.value = '';
+    searchEl.placeholder = type === 'employees' ? '이름/전화번호 검색' : '거래처명/코드/연락처 검색';
+  }
   document.getElementById('recipientList').innerHTML = '<div class="text-center py-8 text-gray-400"><i class="fas fa-spinner fa-spin"></i> 로딩 중...</div>';
   document.getElementById('recipientPickerModal').classList.remove('hidden');
+  // 직원 전환 시 이전 거래처 검색 디바운스가 늦게 발화하지 않도록 정리
+  if (_recipientSearchTimer) { clearTimeout(_recipientSearchTimer); _recipientSearchTimer = null; }
 
-  var url = type === 'employees' ? '/api/users' : '/api/clients';
-  axios.get(url).then(function(res) {
-    var items = [];
-    if (type === 'employees') {
+  if (type === 'employees') {
+    // 직원: 소수 → 전체 로드 후 인메모리 필터 (기존 동작 유지)
+    axios.get('/api/users').then(function(res) {
       var users = res.data.data || res.data.users || res.data || [];
       if (!Array.isArray(users)) users = [];
-      items = users.filter(function(u) { return u.is_active !== 0; }).map(function(u) {
+      var items = users.filter(function(u) { return u.is_active !== 0; }).map(function(u) {
         return { id: u.id, name: u.name || u.username, phone: u.phone || '', email: u.email || '', role: u.role || '', dept: '' };
       });
-    } else {
-      var clients = (res.data.data && res.data.data.clients) ? res.data.data.clients : (res.data.data || []);
-      if (!Array.isArray(clients)) clients = [];
-      items = clients.map(function(c) {
-        return { id: c.id, name: c.client_name || c.name, phone: c.mobile || c.phone || '', email: c.email || '', role: '', dept: c.client_type || '' };
-      });
-    }
+      _recipientAllData = items;
+      document.getElementById('recipientCountInfo').textContent = items.length + '명';
+      renderRecipientList(items);
+    }).catch(function(e) {
+      document.getElementById('recipientList').innerHTML = '<div class="text-center py-8 text-red-500">목록 조회 실패</div>';
+    });
+  } else {
+    // 거래처: 3,700+ 건 → 서버검색형. 초기 100건 로드 + 검색어 입력 시 전체에서 조회
+    _recipientAllData = [];
+    searchRecipientClients('');
+  }
+}
+
+// 거래처 서버검색: GET /api/clients?search=&limit=100 (out-of-order 응답 무시)
+function searchRecipientClients(keyword) {
+  var seq = ++_recipientSearchSeq;
+  var listEl = document.getElementById('recipientList');
+  var hintEl = document.getElementById('recipientCountInfo');
+  axios.get('/api/clients', { params: { search: keyword || '', limit: 100 } }).then(function(res) {
+    if (seq !== _recipientSearchSeq) return; // 늦게 도착한 이전 검색 응답 폐기
+    var clients = (res.data.data && res.data.data.clients) ? res.data.data.clients : (res.data.data || []);
+    if (!Array.isArray(clients)) clients = [];
+    var items = clients.map(function(c) {
+      return { id: c.id, name: c.client_name || c.name, phone: c.mobile || c.phone || '', email: c.email || '', role: '', dept: c.client_type || '' };
+    });
     _recipientAllData = items;
-    document.getElementById('recipientCountInfo').textContent = items.length + '명';
+    var total = (res.data.data && res.data.data.pagination) ? res.data.data.pagination.total : items.length;
+    if (hintEl) {
+      if (!keyword) hintEl.textContent = '검색어를 입력하면 전체 거래처(' + total + ')에서 찾습니다 · ' + items.length + '명 표시';
+      else hintEl.textContent = total + '명 중 ' + items.length + '명 표시' + (total > items.length ? ' (검색어를 좁혀주세요)' : '');
+    }
     renderRecipientList(items);
   }).catch(function(e) {
-    document.getElementById('recipientList').innerHTML = '<div class="text-center py-8 text-red-500">목록 조회 실패</div>';
+    if (seq !== _recipientSearchSeq) return;
+    listEl.innerHTML = '<div class="text-center py-8 text-red-500">목록 조회 실패</div>';
   });
 }
 
@@ -421,12 +451,23 @@ function renderRecipientList(items) {
 }
 
 function filterRecipients() {
-  var keyword = document.getElementById('recipientSearch').value.trim().toLowerCase();
-  if (!keyword) { renderRecipientList(_recipientAllData); return; }
+  var searchEl = document.getElementById('recipientSearch');
+  var keyword = searchEl ? searchEl.value.trim() : '';
+
+  if (_recipientPickerType === 'clients') {
+    // 거래처: 서버검색 (디바운스 280ms) — 3,700+ 거래처 전체 대상
+    if (_recipientSearchTimer) clearTimeout(_recipientSearchTimer);
+    _recipientSearchTimer = setTimeout(function() { searchRecipientClients(keyword); }, 280);
+    return;
+  }
+
+  // 직원: 인메모리 필터 (기존 동작)
+  var lower = keyword.toLowerCase();
+  if (!lower) { renderRecipientList(_recipientAllData); return; }
   var filtered = _recipientAllData.filter(function(item) {
-    return (item.name || '').toLowerCase().indexOf(keyword) > -1
-      || (item.phone || '').indexOf(keyword) > -1
-      || (item.email || '').toLowerCase().indexOf(keyword) > -1;
+    return (item.name || '').toLowerCase().indexOf(lower) > -1
+      || (item.phone || '').indexOf(lower) > -1
+      || (item.email || '').toLowerCase().indexOf(lower) > -1;
   });
   renderRecipientList(filtered);
 }

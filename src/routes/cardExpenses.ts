@@ -44,12 +44,17 @@ function parseTxDate(s: string | null): number {
  */
 async function reconcileCardOffsets(c: any): Promise<number> {
   const OFFSET_WINDOW_DAYS = 30
+  // H6: 무날짜 전건 스캔 방지 — 최근 90일로 하한. 신규 취소는 항상 원거래 ±30일 이내이므로
+  //     양쪽(취소·승인)을 90일로 좁혀도 매칭 손실 없음(판정 로직 자체는 불변).
+  const OFFSET_LOOKBACK_DAYS = 90
+  const since = new Date(Date.now() + 9 * 3600000 - OFFSET_LOOKBACK_DAYS * 86400000)
+  const sinceYmd = `${since.getUTCFullYear()}${String(since.getUTCMonth() + 1).padStart(2, '0')}${String(since.getUTCDate()).padStart(2, '0')}`
   const ef = entityFilter(c, 'card_transactions')
   const { results } = await c.env.DB.prepare(
     `SELECT id, card_id, transaction_date, merchant_name, amount, approval_type
      FROM card_transactions
-     WHERE is_offset = 0 AND merchant_name IS NOT NULL AND merchant_name != ''${ef.clause}`
-  ).bind(...ef.params).all()
+     WHERE is_offset = 0 AND merchant_name IS NOT NULL AND merchant_name != '' AND transaction_date >= ?${ef.clause}`
+  ).bind(sinceYmd, ...ef.params).all()
 
   const rows = results as any[]
   const cancels = rows.filter(r => r.approval_type === 'CANCEL')

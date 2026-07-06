@@ -25,6 +25,17 @@ dashboardRouter.get('/stats', async (c) => {
     const cf = cardEntityFilter(c)
     // Build basic stats query dynamically to support entity filter on orders + cards
     const basicStats = await c.env.DB.prepare(`
+      WITH card_agg AS (
+        SELECT
+          COUNT(*) AS total_cards,
+          SUM(CASE WHEN status = 'PRINTING' THEN 1 ELSE 0 END) AS pending_cards,
+          SUM(CASE WHEN status = 'PRINTING' THEN 1 ELSE 0 END) AS printing_cards,
+          SUM(CASE WHEN status = 'PRINT_DONE' THEN 1 ELSE 0 END) AS done_cards,
+          SUM(CASE WHEN status = 'HOLD' THEN 1 ELSE 0 END) AS hold_cards,
+          SUM(CASE WHEN status = 'PRINT_DONE' THEN 1 ELSE 0 END) AS shipment_ready_count
+        FROM cards
+        WHERE NOT EXISTS (SELECT 1 FROM orders o WHERE o.id = cards.order_id AND o.status = 'CANCELLED')${cf.clause}
+      )
       SELECT
         (SELECT COUNT(*) FROM users WHERE is_active = 1) as active_users,
         (SELECT COUNT(*) FROM clients WHERE is_active = 1) as active_clients,
@@ -32,11 +43,11 @@ dashboardRouter.get('/stats', async (c) => {
         (SELECT COUNT(*) FROM orders WHERE status = 'CONFIRMED'${ef.clause}) as confirmed_orders,
         (SELECT COUNT(*) FROM orders WHERE status IN ('PRINTING', 'PRINT_DONE')${ef.clause}) as production_orders,
         (SELECT COUNT(*) FROM orders WHERE status = 'SHIPPED'${ef.clause}) as shipped_orders,
-        (SELECT COUNT(*) FROM cards WHERE 1=1 AND NOT EXISTS (SELECT 1 FROM orders o WHERE o.id = cards.order_id AND o.status = 'CANCELLED')${cf.clause}) as total_cards,
-        (SELECT COUNT(*) FROM cards WHERE status = 'PRINTING' AND NOT EXISTS (SELECT 1 FROM orders o WHERE o.id = cards.order_id AND o.status = 'CANCELLED')${cf.clause}) as pending_cards,
-        (SELECT COUNT(*) FROM cards WHERE status = 'PRINTING' AND NOT EXISTS (SELECT 1 FROM orders o WHERE o.id = cards.order_id AND o.status = 'CANCELLED')${cf.clause}) as printing_cards,
-        (SELECT COUNT(*) FROM cards WHERE status = 'PRINT_DONE' AND NOT EXISTS (SELECT 1 FROM orders o WHERE o.id = cards.order_id AND o.status = 'CANCELLED')${cf.clause}) as done_cards,
-        (SELECT COUNT(*) FROM cards WHERE status = 'HOLD' AND NOT EXISTS (SELECT 1 FROM orders o WHERE o.id = cards.order_id AND o.status = 'CANCELLED')${cf.clause}) as hold_cards,
+        ca.total_cards as total_cards,
+        ca.pending_cards as pending_cards,
+        ca.printing_cards as printing_cards,
+        ca.done_cards as done_cards,
+        ca.hold_cards as hold_cards,
         (SELECT SUM(final_amount) FROM orders WHERE 1=1${ef.clause}) as total_revenue,
         (SELECT COUNT(*) FROM orders WHERE ${kstDateOf('created_at')} = ${kstDate()} AND status != 'CANCELLED'${ef.clause}) as today_order_count,
         (SELECT SUM(final_amount) FROM orders WHERE ${kstDateOf('created_at')} = ${kstDate()} AND status != 'CANCELLED'${ef.clause}) as today_revenue,
@@ -45,7 +56,7 @@ dashboardRouter.get('/stats', async (c) => {
         (SELECT SUM(final_amount) FROM orders WHERE ${kstMonth('created_at')} = ${kstMonth("'now'", "'start of month'", "'-1 month'")} AND status != 'CANCELLED'${ef.clause}) as prev_month_revenue,
         (SELECT COUNT(*) FROM orders WHERE ${kstMonth('created_at')} = ${kstMonth("'now'", "'start of month'", "'-1 month'")} AND status != 'CANCELLED'${ef.clause}) as prev_month_order_count,
         (SELECT SUM(final_amount) FROM orders WHERE created_at >= ${kstDate("'-7 days'")} AND status != 'CANCELLED'${ef.clause}) as week_revenue,
-        (SELECT COUNT(*) FROM cards WHERE status = 'PRINT_DONE' AND NOT EXISTS (SELECT 1 FROM orders o WHERE o.id = cards.order_id AND o.status = 'CANCELLED')${cf.clause}) as shipment_ready_count,
+        ca.shipment_ready_count as shipment_ready_count,
         (SELECT COUNT(*) FROM orders WHERE delivery_date = ${kstDate()} AND status NOT IN ('SHIPPED','CANCELLED')${ef.clause}) as today_shipment_due,
         (SELECT COUNT(*) FROM orders WHERE priority='URGENT' AND status NOT IN ('SHIPPED','CANCELLED')${ef.clause}) as urgent_count,
         (SELECT COUNT(*) FROM orders WHERE id IN (SELECT DISTINCT order_id FROM order_items WHERE price_status = 'PENDING') AND status NOT IN ('CANCELLED','SHIPPED')${ef.clause}) as pending_price_orders,
@@ -61,16 +72,13 @@ dashboardRouter.get('/stats', async (c) => {
           NULLIF(COUNT(*), 0), 1)
          FROM orders o2 WHERE o2.status IN ('SHIPPED','COMPLETED') AND strftime('%Y-%m', o2.delivery_date) = ${kstMonth()} AND o2.delivery_date IS NOT NULL${ef.clause}
         ) as on_time_rate
+      FROM card_agg ca
     `).bind(...[
+      ...cf.params, // card_agg CTE (WITH 절이 최상단 → 먼저 바인딩)
       ...ef.params, // total_orders
       ...ef.params, // confirmed_orders
       ...ef.params, // production_orders
       ...ef.params, // shipped_orders
-      ...cf.params, // total_cards
-      ...cf.params, // pending_cards
-      ...cf.params, // printing_cards
-      ...cf.params, // done_cards
-      ...cf.params, // hold_cards
       ...ef.params, // total_revenue
       ...ef.params, // today_order_count
       ...ef.params, // today_revenue
@@ -79,7 +87,6 @@ dashboardRouter.get('/stats', async (c) => {
       ...ef.params, // prev_month_revenue
       ...ef.params, // prev_month_order_count
       ...ef.params, // week_revenue
-      ...cf.params, // shipment_ready_count
       ...ef.params, // today_shipment_due
       ...ef.params, // urgent_count
       ...ef.params, // pending_price_orders
@@ -88,11 +95,15 @@ dashboardRouter.get('/stats', async (c) => {
       ...ef.params, // on_time_rate
     ]).first()
 
-    // 후가공 통계: 활성 카드의 post_processing JSON을 TypeScript에서 파싱
+    // 후가공 대기 현황: pp_status='PENDING'(후가공 대기, 인덱스 idx_cards_pp_status) 카드만 파싱.
+    //   출고(shipped_at IS NOT NULL, 강제출고 시 status는 PRINT_DONE 유지) · 취소주문 · 후가공완료(DONE)/무(N/A)를
+    //   SQL WHERE에서 제외 → PRINT_DONE 카드 무한 누적 방지. WIP(대기) 카드에 한해서만 JSON 파싱.
     const { results: ppCards } = await c.env.DB.prepare(`
       SELECT post_processing FROM cards
-      WHERE status IN ('PRINTING', 'PRINT_DONE')
-      AND post_processing IS NOT NULL AND post_processing != '' AND post_processing != '[]'${cf.clause}
+      WHERE pp_status = 'PENDING'
+      AND shipped_at IS NULL
+      AND post_processing IS NOT NULL AND post_processing != '' AND post_processing != '[]'
+      AND NOT EXISTS (SELECT 1 FROM orders o WHERE o.id = cards.order_id AND o.status = 'CANCELLED')${cf.clause}
     `).bind(...cf.params).all<{ post_processing: string }>()
 
     const ppCounts: Record<string, number> = {}
@@ -322,9 +333,10 @@ dashboardRouter.get('/stats/card-progress', async (c) => {
 dashboardRouter.get('/stats/receivables', async (c) => {
   try {
     const ef = entityFilter(c, 'o')
-    const efP = entityFilter(c, 'p')
 
     // TOP 10 clients by balance — split billing P3: clients.balance 캐시 폐기 → 미수금 파생(청구 법인 g 기준)
+    //   거래처별 상관 서브쿼리(O(clients×scans)) → client_id 사전집계 서브쿼리 LEFT JOIN(O(1 pass))로 재작성. 값 동일.
+    //   payments는 SUM(결제)+MAX(최근결제일)을 한 번의 GROUP BY로 통합.
     const efBalG = entityFilter(c, 'g')
     const efBalP = entityFilter(c, 'p2')
     const efBalA = entityFilter(c, 'a2')
@@ -332,19 +344,36 @@ dashboardRouter.get('/stats/receivables', async (c) => {
       SELECT * FROM (
         SELECT
           c.id, c.client_code, c.client_name,
-          (
-            (SELECT COALESCE(SUM(g.billed_amount), 0) FROM order_billing_groups g JOIN orders o ON o.id = g.order_id WHERE o.client_id = c.id AND g.billing_status = 'BILLED' AND o.status != 'CANCELLED'${efBalG.clause})
-            - (SELECT COALESCE(SUM(amount), 0) FROM payments p2 WHERE p2.client_id = c.id${efBalP.clause})
-            - (SELECT COALESCE(SUM(amount), 0) FROM adjustments a2 WHERE a2.client_id = c.id${efBalA.clause})
-          ) as balance,
-          (SELECT MAX(p.payment_date) FROM payments p WHERE p.client_id = c.id${efP.clause}) as last_payment_date,
-          (SELECT COUNT(*) FROM orders o WHERE o.client_id = c.id AND o.billing_status = 'BILLED'${ef.clause}) as billed_order_count
+          (COALESCE(bg.billed_sum, 0) - COALESCE(pay.paid_sum, 0) - COALESCE(adj.adj_sum, 0)) as balance,
+          pay.last_payment_date as last_payment_date,
+          COALESCE(bo.billed_order_count, 0) as billed_order_count
         FROM clients c
+        LEFT JOIN (
+          SELECT o.client_id AS client_id, COALESCE(SUM(g.billed_amount), 0) AS billed_sum
+          FROM order_billing_groups g JOIN orders o ON o.id = g.order_id
+          WHERE g.billing_status = 'BILLED' AND o.status != 'CANCELLED'${efBalG.clause}
+          GROUP BY o.client_id
+        ) bg ON bg.client_id = c.id
+        LEFT JOIN (
+          SELECT p2.client_id AS client_id, COALESCE(SUM(p2.amount), 0) AS paid_sum, MAX(p2.payment_date) AS last_payment_date
+          FROM payments p2 WHERE 1=1${efBalP.clause}
+          GROUP BY p2.client_id
+        ) pay ON pay.client_id = c.id
+        LEFT JOIN (
+          SELECT a2.client_id AS client_id, COALESCE(SUM(a2.amount), 0) AS adj_sum
+          FROM adjustments a2 WHERE 1=1${efBalA.clause}
+          GROUP BY a2.client_id
+        ) adj ON adj.client_id = c.id
+        LEFT JOIN (
+          SELECT o.client_id AS client_id, COUNT(*) AS billed_order_count
+          FROM orders o WHERE o.billing_status = 'BILLED'${ef.clause}
+          GROUP BY o.client_id
+        ) bo ON bo.client_id = c.id
         WHERE c.is_active = 1
       ) WHERE balance > 0
       ORDER BY balance DESC
       LIMIT 10
-    `).bind(...efBalG.params, ...efBalP.params, ...efBalA.params, ...efP.params, ...ef.params).all()
+    `).bind(...efBalG.params, ...efBalP.params, ...efBalA.params, ...ef.params).all()
 
     // Aging buckets (연체 구간)
     const aging = await c.env.DB.prepare(`
