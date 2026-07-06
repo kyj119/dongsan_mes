@@ -940,9 +940,9 @@ cardsLifecycleRouter.post('/generate/:orderId', async (c) => {
     const user = c.get('user')
 
     // Get order details
-    interface OrderGenRow { order_number: string; client_name: string | null; delivery_date: string | null; priority: string | null }
+    interface OrderGenRow { order_number: string; client_name: string | null; delivery_date: string | null; priority: string | null; entity_id: number | null }
     const order = await c.env.DB.prepare(`
-      SELECT o.order_number, o.delivery_date, o.priority, c.client_name
+      SELECT o.order_number, o.delivery_date, o.priority, o.entity_id, c.client_name
       FROM orders o
       LEFT JOIN clients c ON o.client_id = c.id
       WHERE o.id = ?
@@ -956,9 +956,9 @@ cardsLifecycleRouter.post('/generate/:orderId', async (c) => {
     }
 
     // Get order items
-    interface OrderItemRow { id: number; item_name: string; category_name: string | null; width: number | null; height: number | null; quantity: number; unit: string | null; post_processing: string | null; ai_analysis_id: number | null }
+    interface OrderItemRow { id: number; item_name: string; category_name: string | null; width: number | null; height: number | null; quantity: number; unit: string | null; post_processing: string | null; ai_analysis_id: number | null; assigned_entity_id: number | null }
     const { results: orderItems } = await c.env.DB.prepare(`
-      SELECT id, item_name, category_name, width, height, quantity, unit, post_processing, ai_analysis_id FROM order_items WHERE order_id = ? ORDER BY sort_order ASC
+      SELECT id, item_name, category_name, width, height, quantity, unit, post_processing, ai_analysis_id, assigned_entity_id FROM order_items WHERE order_id = ? ORDER BY sort_order ASC
     `).bind(orderId).all<OrderItemRow>()
 
     if (orderItems.length === 0) {
@@ -983,7 +983,8 @@ cardsLifecycleRouter.post('/generate/:orderId', async (c) => {
     const dateStr = today.toISOString().split('T')[0].replace(/-/g, '')
 
     // MAX 기반 카드 번호 시작점 조회 (entity별 분리)
-    const cardEntityId = getEntityId(c) || 1
+    // 카드 귀속 = 주문 법인 기준 (세션 법인 아님 — 전체모드 0/타법인 세션 오귀속 방지, 2026-07-06 감사 #4)
+    const cardEntityId = Number(order.entity_id) || getEntityId(c) || 1
     const cardSeqRow = await c.env.DB.prepare(`
       SELECT COALESCE(MAX(CAST(SUBSTR(card_number, ${`CARD-${dateStr}-`.length + 1}) AS INTEGER)), 0) as max_seq
       FROM cards WHERE card_number LIKE ? AND requesting_entity_id = ?
@@ -1038,7 +1039,8 @@ cardsLifecycleRouter.post('/generate/:orderId', async (c) => {
           ripFilename, item.post_processing,
           finalWidth, finalHeight,
           order.delivery_date || null, order.priority || 'NORMAL',
-          getEntityId(c)
+          // 협업주문: 품목 담당법인(assigned) 우선 — 정규 generateCardsForOrder(helpers.ts)와 동일 귀속 규칙
+          item.assigned_entity_id ?? cardEntityId
         )
       )
       cardMeta.push({ cardNumber, orderItemId: item.id, ripFilename })

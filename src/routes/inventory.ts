@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import { authMiddleware, requireRole } from '../middleware/auth'
 import type { HonoEnv } from '../types/env'
-import { getEntityId, entityFilter, isZoneOwnedByEntity } from '../utils/entityFilter'
+import { getEntityId, entityFilter, isZoneOwnedByEntity, getWriteEntityId, ENTITY_ALL_MODE_WRITE_ERROR } from '../utils/entityFilter'
 import { getNextEntitySeqNumber } from '../utils/sequenceGenerator'
 import { triggerLowStockAlert } from '../utils/inventoryAlert'
 import { getItemDefaultZone, getItemDefaultZones } from '../utils/inventoryZone'
@@ -132,14 +132,15 @@ inventoryRouter.get('/:id', async (c) => {
     }
 
     // 창고별 분해 (NULL zone = 미배정). entity 격리 유지.
+    // JOIN에 sz.entity_id = inv.entity_id 가드 — 어긋난 행(타법인 zone)은 창고명 대신 '(타법인 창고)' 표기 (2026-07-06 감사 #4)
     const zonesParams: any[] = [id]
     let zonesSql = `
       SELECT inv.storage_zone_id,
-             COALESCE(sz.zone_name, '미배정') as zone_name,
+             COALESCE(sz.zone_name, CASE WHEN inv.storage_zone_id IS NULL THEN '미배정' ELSE '(타법인 창고)' END) as zone_name,
              inv.quantity,
              COALESCE(inv.safe_stock, 0) as safe_stock
       FROM inventory inv
-      LEFT JOIN storage_zones sz ON inv.storage_zone_id = sz.id
+      LEFT JOIN storage_zones sz ON inv.storage_zone_id = sz.id AND sz.entity_id = inv.entity_id
       WHERE inv.item_id = ?
     `
     if (entityId > 0) {
@@ -235,7 +236,11 @@ inventoryRouter.put('/:id/settings', async (c) => {
 
     const id = c.req.param('id')
     const { safe_stock, reorder_point, auto_pr_enabled } = await c.req.json()
-    const entityId = getEntityId(c) || 1
+    // 전체모드(0) 재고 쓰기 차단 — 조용한 동산(1) 귀속 방지 (2026-07-06 감사 #5)
+    const entityId = getWriteEntityId(c)
+    if (entityId == null) {
+      return c.json({ success: false, error: ENTITY_ALL_MODE_WRITE_ERROR }, 400)
+    }
 
     const item = await c.env.DB.prepare(
       `SELECT id, storage_zone_id FROM items WHERE id = ? AND is_purchase_item = 1`
@@ -250,7 +255,8 @@ inventoryRouter.put('/:id/settings', async (c) => {
     const autoPr = auto_pr_enabled ? 1 : 0
 
     // 설정은 품목 기본창고 행에 저장 (NULL=미배정). zone 키 미포함 시 다중 창고 행 동시 변경 = 버그.
-    const zoneId = item.storage_zone_id
+    // 법인 인식 리맵 필수 — raw items.storage_zone_id는 타법인 zone 어긋난 행 생성 (2026-07-06 감사 #3)
+    const zoneId = await getItemDefaultZone(c.env.DB, Number(id), entityId)
 
     const existing = await c.env.DB.prepare(
       `SELECT id FROM inventory WHERE item_id = ? AND entity_id = ? AND IFNULL(storage_zone_id, 0) = IFNULL(?, 0)`
@@ -300,7 +306,11 @@ inventoryRouter.post('/receipts', async (c) => {
       }
     }
 
-    const entityId = getEntityId(c) || 1
+    // 전체모드(0) 재고 쓰기 차단 — 조용한 동산(1) 귀속 방지 (2026-07-06 감사 #5)
+    const entityId = getWriteEntityId(c)
+    if (entityId == null) {
+      return c.json({ success: false, error: ENTITY_ALL_MODE_WRITE_ERROR }, 400)
+    }
 
     // Generate receipt number (#329: 법인코드 E{eid} 내장 + MAX 기반 — 글로벌 COUNT 멀티법인 충돌 방지)
     const today = new Date().toISOString().split('T')[0].replace(/-/g, '')
@@ -459,7 +469,11 @@ inventoryRouter.patch('/receipts/:id/inspection-decision',
     const receiptStatus = decision === 'CANCELLED' ? 'CANCELLED' : null
     const decisionLog = '[' + new Date().toISOString().slice(0,16).replace('T',' ') + ' 결정] ' + decision + (notes ? ': ' + notes : '')
 
-    const cancelEntityId = getEntityId(c) || 1
+    // 전체모드(0) 재고 쓰기 차단 (2026-07-06 감사 #5)
+    const cancelEntityId = getWriteEntityId(c)
+    if (cancelEntityId == null) {
+      return c.json({ success: false, error: ENTITY_ALL_MODE_WRITE_ERROR }, 400)
+    }
     // #373: CANCELLED 분기에서 PO 롤백 결과를 응답에 노출하기 위해 호이스팅
     let poRollback: {
       items: Array<{ poItemId: number; recv: number; acc: number; rej: number }>
@@ -666,7 +680,11 @@ inventoryRouter.post('/releases', async (c) => {
       return c.json({ success: false, message: 'Reference type, release_date, and items are required' }, 400)
     }
 
-    const entityId = getEntityId(c) || 1
+    // 전체모드(0) 재고 쓰기 차단 — 조용한 동산(1) 귀속 방지 (2026-07-06 감사 #5)
+    const entityId = getWriteEntityId(c)
+    if (entityId == null) {
+      return c.json({ success: false, error: ENTITY_ALL_MODE_WRITE_ERROR }, 400)
+    }
 
     const today = new Date().toISOString().split('T')[0].replace(/-/g, '')
     const countRow = await c.env.DB.prepare(
@@ -775,7 +793,11 @@ inventoryRouter.post('/adjustments', async (c) => {
       return c.json({ success: false, message: 'Item ID, adjustment date, quantity, and reason are required' }, 400)
     }
 
-    const entityId = getEntityId(c) || 1
+    // 전체모드(0) 재고 쓰기 차단 — 조용한 동산(1) 귀속 방지 (2026-07-06 감사 #5)
+    const entityId = getWriteEntityId(c)
+    if (entityId == null) {
+      return c.json({ success: false, error: ENTITY_ALL_MODE_WRITE_ERROR }, 400)
+    }
     const adjQty = Number(adjustment_quantity)
     // 조정 대상 창고 = 품목 기본창고 (NULL=미배정)
     const zoneId = await getItemDefaultZone(c.env.DB, item_id, entityId)
@@ -1003,7 +1025,11 @@ inventoryRouter.post('/transfer', async (c) => {
     const fromZone = body.from_zone_id != null && body.from_zone_id !== ('' as any) ? Number(body.from_zone_id) : null
     const toZone = body.to_zone_id != null && body.to_zone_id !== ('' as any) ? Number(body.to_zone_id) : null
     const qty = Number(body.quantity)
-    const entityId = getEntityId(c) || 1
+    // 전체모드(0) 재고 쓰기 차단 — 조용한 동산(1) 귀속 방지 (2026-07-06 감사 #5)
+    const entityId = getWriteEntityId(c)
+    if (entityId == null) {
+      return c.json({ success: false, error: ENTITY_ALL_MODE_WRITE_ERROR }, 400)
+    }
     const userId = c.get('user')?.id || null
 
     if (!itemId || !qty || qty <= 0) {
@@ -1011,6 +1037,11 @@ inventoryRouter.post('/transfer', async (c) => {
     }
     if ((fromZone ?? 0) === (toZone ?? 0)) {
       return c.json({ success: false, error: '출발 창고와 도착 창고가 같습니다' }, 400)
+    }
+    // #461 형제: 도착 창고 법인 소유 검증 — 타법인 zone으로 이동 시 entity≠zone소유 유령 행 생성 차단 (2026-07-06 감사 #2)
+    //   출발 창고는 미검증 의도: 행 자체가 entity 키잉이라 자법인 재고만 차감되고, 어긋난 기존 행의 복구(빼내기) 경로를 열어둠.
+    if (toZone != null && !(await isZoneOwnedByEntity(c, toZone))) {
+      return c.json({ success: false, error: '유효하지 않은 도착 창고입니다' }, 400)
     }
 
     // #459: 출발 창고 원자 차감(TOCTOU 방지) — 부족/동시이동이면 changes=0.
@@ -1083,7 +1114,11 @@ inventoryRouter.post('/bulk-assign-zones', async (c) => {
     if (body.only_unassigned) { conds.push('storage_zone_id IS NULL') }
     if (!hasFilter) return c.json({ success: false, error: '필터(카테고리/이름/품목)를 1개 이상 지정하세요' }, 400)
 
-    const entityId = getEntityId(c) || 1
+    // 전체모드(0) 재고 쓰기 차단 — 조용한 동산(1) 귀속 방지 (2026-07-06 감사 #5)
+    const entityId = getWriteEntityId(c)
+    if (entityId == null) {
+      return c.json({ success: false, error: ENTITY_ALL_MODE_WRITE_ERROR }, 400)
+    }
     const moveStock = !!body.move_stock && zoneId != null
 
     // 이동 대상 사전 조회 = 현재 법인 미배정(NULL zone)·양수 재고 행 (dry_run 미리보기 + moved_qty 보고 공용)

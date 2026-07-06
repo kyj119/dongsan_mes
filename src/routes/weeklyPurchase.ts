@@ -102,11 +102,12 @@ weeklyPurchaseRouter.get('/analyze', async (c) => {
     {
       const zef = entityId > 0 ? 'AND inv.entity_id = ?' : ''
       const zefParams = entityId > 0 ? [entityId] : []
+      // JOIN에 sz.entity_id = inv.entity_id 가드 — 어긋난 행은 타법인 창고명 대신 '(타법인 창고)' (2026-07-06 감사 #4)
       const { results: zoneRows } = await c.env.DB.prepare(`
-        SELECT inv.item_id, COALESCE(sz.zone_name, '미배정') AS zone_name, SUM(inv.quantity) AS quantity
+        SELECT inv.item_id, COALESCE(sz.zone_name, CASE WHEN inv.storage_zone_id IS NULL THEN '미배정' ELSE '(타법인 창고)' END) AS zone_name, SUM(inv.quantity) AS quantity
         FROM inventory inv
         JOIN items i ON inv.item_id = i.id AND i.is_purchase_item = 1 AND i.is_active = 1
-        LEFT JOIN storage_zones sz ON inv.storage_zone_id = sz.id
+        LEFT JOIN storage_zones sz ON inv.storage_zone_id = sz.id AND sz.entity_id = inv.entity_id
         WHERE 1=1 ${zef}
         GROUP BY inv.item_id, inv.storage_zone_id
         HAVING SUM(inv.quantity) != 0

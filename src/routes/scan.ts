@@ -6,7 +6,7 @@
 import { Hono } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { authMiddleware } from '../middleware/auth'
-import { entityFilter, getEntityId } from '../utils/entityFilter'
+import { entityFilter, getEntityId, getWriteEntityId, ENTITY_ALL_MODE_WRITE_ERROR } from '../utils/entityFilter'
 import { getItemDefaultZone } from '../utils/inventoryZone'
 
 const scanRouter = new Hono<HonoEnv>()
@@ -227,7 +227,11 @@ scanRouter.post('/action', async (c) => {
         if (!body.quantity || body.quantity <= 0) {
           return c.json({ success: false, error: '수량을 입력하세요.' }, 400)
         }
-        const entityId = getEntityId(c) || 1
+        // 전체모드(0) 재고 쓰기 차단 (2026-07-06 감사 #5)
+        const entityId = getWriteEntityId(c)
+        if (entityId == null) {
+          return c.json({ success: false, error: ENTITY_ALL_MODE_WRITE_ERROR }, 400)
+        }
         // UP1: 창고별 다중행. 입고 대상 창고 = 품목 기본창고 (NULL=미배정). 0396 UNIQUE=(item,entity,IFNULL(zone,0)).
         const zoneId = await getItemDefaultZone(c.env.DB, body.id, entityId)
         // MU3: 다단위 — 입력 수량(관리단위)을 base_unit으로 환산(×pack_size). 단일단위(pack_size NULL→1)=불변.
@@ -257,7 +261,11 @@ scanRouter.post('/action', async (c) => {
         if (!body.quantity || body.quantity <= 0) {
           return c.json({ success: false, error: '수량을 입력하세요.' }, 400)
         }
-        const entityId2 = getEntityId(c) || 1
+        // 전체모드(0) 재고 쓰기 차단 (2026-07-06 감사 #5)
+        const entityId2 = getWriteEntityId(c)
+        if (entityId2 == null) {
+          return c.json({ success: false, error: ENTITY_ALL_MODE_WRITE_ERROR }, 400)
+        }
         // 차감 대상 창고 = 품목 기본창고 (NULL=미배정). 창고별 다중행.
         // UP2 제외: 수동 스캔 출고는 스캔 위치/장비를 캡처하지 않음 → 품목 기본창고가 정확.
         const zoneId2 = await getItemDefaultZone(c.env.DB, body.id, entityId2)

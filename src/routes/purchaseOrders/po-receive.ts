@@ -9,7 +9,8 @@ import type { HonoEnv } from '../../types/env'
 import type { PurchaseOrder } from '../../types/models'
 import { authMiddleware } from '../../middleware/auth'
 import { requireAnyPagePermission } from '../../middleware/permissions'
-import { getEntityId, entityFilter } from '../../utils/entityFilter'
+import { getEntityId, entityFilter, getWriteEntityId, ENTITY_ALL_MODE_WRITE_ERROR } from '../../utils/entityFilter'
+import { getItemDefaultZones } from '../../utils/inventoryZone'
 
 const poReceiveRouter = new Hono<HonoEnv>()
 poReceiveRouter.use('/*', authMiddleware, requireAnyPagePermission('/purchase-orders', '/receiving'))
@@ -126,24 +127,30 @@ poReceiveRouter.post('/:id/receive', async (c) => {
     let summaryRejected = 0
 
     // #389: inventory/items 건별 조회 N+1 제거 — item_ids로 IN-prefetch (루프 내 재고 쓰기 없음 → 등가)
-    const poEntityIdPrefetch = getEntityId(c) || 1
+    // 재고 귀속 법인 — 전체모드(0) 쓰기 차단 (조용한 동산(1) 귀속 방지)
+    const poEntityIdWrite = getWriteEntityId(c)
+    if (poEntityIdWrite == null) {
+      return c.json({ success: false, error: ENTITY_ALL_MODE_WRITE_ERROR }, 400)
+    }
+    const poEntityIdPrefetch = poEntityIdWrite
     const recvItemIds = [...new Set(
       receiveItems.map((ri: any) => poItemMap.get(ri.po_item_id)?.item_id).filter((x: any) => x != null)
     )] as number[]
-    // 0396 다중행: invQtyMap = 각 품목 기본창고(items.storage_zone_id) 행의 현재고만.
-    //   itemZoneMap을 먼저 채운 뒤 (item,entity,기본창고) 행만 채택(IFNULL(...,0) 동등). 다른 창고 행은 입고 정책상 무시.
+    // 0396 다중행: invQtyMap = 각 품목 기본창고 행의 현재고만.
+    //   itemZoneMap = getItemDefaultZones(법인 인식) — 타법인 zone 배정 품목은 입고 법인 기본창고로 리맵
+    //   (raw items.storage_zone_id 사용 금지: entity_id≠zone 소유법인 어긋난 유령 행 생성. 2026-07-06 감사 #1)
     const invQtyMap = new Map<number, number>()
-    const itemZoneMap = new Map<number, number | null>()
+    let itemZoneMap = new Map<number, number | null>()
     // #462 MU3: 다단위 — 입고 수량(관리단위) → base_unit 환산용 pack_size. NULL/0→1(단일단위·불변).
     //   inventory.quantity·inventory_transactions.quantity는 base 단위. scan/수기입고(inventory.ts:324-357,381)와 동일.
     const packMap = new Map<number, number>()
     if (recvItemIds.length > 0) {
+      itemZoneMap = await getItemDefaultZones(c.env.DB, recvItemIds, poEntityIdPrefetch)
       const iph = recvItemIds.map(() => '?').join(',')
       const { results: zoneRows } = await c.env.DB.prepare(
-        `SELECT id, storage_zone_id, pack_size FROM items WHERE id IN (${iph})`
-      ).bind(...recvItemIds).all<{ id: number; storage_zone_id: number | null; pack_size: number | null }>()
+        `SELECT id, pack_size FROM items WHERE id IN (${iph})`
+      ).bind(...recvItemIds).all<{ id: number; pack_size: number | null }>()
       for (const r of (zoneRows || [])) {
-        itemZoneMap.set(Number(r.id), r.storage_zone_id ?? null)
         packMap.set(Number(r.id), (r.pack_size && r.pack_size > 0) ? r.pack_size : 1)
       }
       const { results: invRows } = await c.env.DB.prepare(
@@ -242,7 +249,7 @@ poReceiveRouter.post('/:id/receive', async (c) => {
       notes || null,
       parseInt(id),
       po.supplier_id || null,
-      getEntityId(c) || 1
+      poEntityIdPrefetch
     ).run()
 
     const receiptId = receiptResult.meta.last_row_id
@@ -309,7 +316,7 @@ poReceiveRouter.post('/:id/receive', async (c) => {
             // #462 MU3: 거래는 base 단위 — quantity=base(×pack), unit_price=base당(÷pack), total_amount=관리단위×관리단가(불변)
             p.itemId, receiptDate, p.acceptedBase, p.unitPrice / p.packSize,
             p.acceptedQty * p.unitPrice, receiptId, p.balanceAfter, user?.id || 1,
-            getEntityId(c) || 1, p.zoneId
+            poEntityIdPrefetch, p.zoneId
           ))
         }
       }

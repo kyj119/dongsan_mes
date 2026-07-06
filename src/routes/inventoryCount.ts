@@ -1,7 +1,8 @@
 import { Hono } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
-import { getEntityId, entityFilter } from '../utils/entityFilter'
+import { getEntityId, entityFilter, isZoneOwnedByEntity, getWriteEntityId, ENTITY_ALL_MODE_WRITE_ERROR } from '../utils/entityFilter'
+import { getItemDefaultZones } from '../utils/inventoryZone'
 
 const inventoryCountRouter = new Hono<HonoEnv>()
 inventoryCountRouter.use('/*', authMiddleware, requireRole('ADMIN', 'MANAGER'))
@@ -75,7 +76,14 @@ inventoryCountRouter.post('/', async (c) => {
     const actualType = zoneId ? 'ZONE' : (category ? 'PERIODIC' : count_type)
     const countNotes = category ? `[${category}] ${notes}` : notes
 
-    const countEntityId = getEntityId(c) || 1
+    // 전체모드(0) 쓰기 차단 + 구역 법인 소유 검증 (2026-07-06 감사 #3·#5)
+    const countEntityId = getWriteEntityId(c)
+    if (countEntityId == null) {
+      return c.json({ success: false, error: ENTITY_ALL_MODE_WRITE_ERROR }, 400)
+    }
+    if (zoneId != null && !(await isZoneOwnedByEntity(c, zoneId))) {
+      return c.json({ success: false, error: '유효하지 않은 창고입니다' }, 400)
+    }
 
     // 구역 실사면 구역명 조회 (응답용)
     let zoneName: string | null = null
@@ -95,36 +103,49 @@ inventoryCountRouter.post('/', async (c) => {
     const countId = (result.meta.last_row_id as number)
 
     // 품목 로드: 구역(zone) 우선 > category 필터 > 전체
-    let itemQuery: string
-    const params: any[] = []
+    let items: Array<{ id: number; item_code: string; item_name: string; unit: string; category: string; storage_zone_id: number | null; quantity: number | null }> = []
     if (zoneId) {
       // 구역 실사: 해당 구역·법인 재고가 있는 품목만 (INNER JOIN). 라인 창고 = 그 구역(inv.storage_zone_id=zoneId)
-      itemQuery = `
+      const { results } = await c.env.DB.prepare(`
         SELECT i.id, i.item_code, i.item_name, i.unit, i.category, inv.storage_zone_id, inv.quantity
         FROM items i
         JOIN inventory inv ON i.id = inv.item_id AND inv.entity_id = ? AND inv.storage_zone_id = ?
         WHERE i.is_active = 1 AND i.is_purchase_item = 1
         ORDER BY i.category, i.item_name
-      `
-      params.push(countEntityId, zoneId)
+      `).bind(countEntityId, zoneId).all<typeof items[number]>()
+      items = results || []
     } else {
-      // 0396: 창고별 다중행 — 품목 기본창고(items.storage_zone_id) 행 1개만 매칭 (LEFT JOIN 중복 라인 방지)
-      itemQuery = `
-        SELECT i.id, i.item_code, i.item_name, i.unit, i.category, i.storage_zone_id, inv.quantity
+      // 0396 다중행: 라인 창고 = 법인 인식 기본창고(getItemDefaultZones) — raw items.storage_zone_id는
+      //   타법인 zone 배정 품목의 실사 승인 시 entity≠zone소유 어긋난 행을 만듦 (2026-07-06 감사 #3)
+      let itemQuery = `
+        SELECT i.id, i.item_code, i.item_name, i.unit, i.category
         FROM items i
-        LEFT JOIN inventory inv ON inv.item_id = i.id AND inv.entity_id = ?
-          AND IFNULL(inv.storage_zone_id,0) = IFNULL(i.storage_zone_id,0)
         WHERE i.is_active = 1 AND i.is_purchase_item = 1
       `
-      params.push(countEntityId)
+      const params: any[] = []
       if (category) {
         itemQuery += ' AND i.category = ?'
         params.push(category)
       }
       itemQuery += ' ORDER BY i.category, i.item_name'
+      const { results: baseItems } = await c.env.DB.prepare(itemQuery).bind(...params).all<{ id: number; item_code: string; item_name: string; unit: string; category: string }>()
+      const ids = (baseItems || []).map(r => Number(r.id))
+      const zoneMap = await getItemDefaultZones(c.env.DB, ids, countEntityId)
+      // 현재고: (item, entity) 전 행을 청크 조회 후 법인 인식 zone 행만 채택
+      const qtyMap = new Map<string, number>()
+      for (let i = 0; i < ids.length; i += 80) {
+        const chunk = ids.slice(i, i + 80)
+        const ph = chunk.map(() => '?').join(',')
+        const { results: invRows } = await c.env.DB.prepare(
+          `SELECT item_id, storage_zone_id, quantity FROM inventory WHERE entity_id = ? AND item_id IN (${ph})`
+        ).bind(countEntityId, ...chunk).all<{ item_id: number; storage_zone_id: number | null; quantity: number }>()
+        for (const r of (invRows || [])) qtyMap.set(`${r.item_id}:${(r.storage_zone_id as number | null) ?? 0}`, Number(r.quantity))
+      }
+      items = (baseItems || []).map(r => {
+        const z = zoneMap.get(Number(r.id)) ?? null
+        return { ...r, storage_zone_id: z, quantity: qtyMap.get(`${r.id}:${z ?? 0}`) ?? 0 }
+      })
     }
-
-    const { results: items } = await c.env.DB.prepare(itemQuery).bind(...params).all<{ id: number; item_code: string; item_name: string; unit: string; category: string; storage_zone_id: number | null; quantity: number | null }>()
 
     if (items && items.length > 0) {
       await c.env.DB.batch(
