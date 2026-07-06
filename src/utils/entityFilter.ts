@@ -8,6 +8,19 @@ export function getEntityId(c: Context<HonoEnv>): number {
 }
 
 /**
+ * 재고 등 법인 귀속이 필수인 쓰기 경로용 entity ID.
+ * ADMIN 전체모드(0)는 null 반환 — 호출부에서 400 처리 필수.
+ * (기존 `getEntityId(c) || 1` 패턴은 전체모드 쓰기를 조용히 동산(1)에 귀속시키는 함정)
+ */
+export function getWriteEntityId(c: Context<HonoEnv>): number | null {
+  const id = getEntityId(c)
+  return id === 0 ? null : id
+}
+
+/** getWriteEntityId가 null일 때 공용 400 응답 본문. */
+export const ENTITY_ALL_MODE_WRITE_ERROR = '전체 모드에서는 재고를 변경할 수 없습니다. 상단에서 법인을 선택하세요.'
+
+/**
  * 트랜잭션 테이블 쿼리에 entity_id 필터를 추가하는 헬퍼.
  * entityId=0 (전체 모드)이면 빈 문자열 반환 → WHERE 절 생략.
  *

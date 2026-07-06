@@ -222,10 +222,18 @@ notificationsRouter.post('/generate', async (c) => {
     }
 
     // 4. 재고 부족 (reorder_point 설정된 품목)
+    //    0396 다중행: 품목×법인 집계(SUM/MAX) + entity 필터 — 행단위 카운트는 창고 행마다 중복·타법인 합산 (2026-07-06 감사 #4)
+    const lowEntityId = getEntityId(c)
+    const lowEf = lowEntityId > 0 ? 'WHERE entity_id = ?' : ''
+    const lowParams = lowEntityId > 0 ? [lowEntityId] : []
     const lowStockResult = await db.prepare(`
-      SELECT COUNT(*) as cnt FROM inventory
-      WHERE reorder_point > 0 AND quantity <= reorder_point
-    `).first<{ cnt: number }>()
+      SELECT COUNT(*) as cnt FROM (
+        SELECT item_id FROM inventory
+        ${lowEf}
+        GROUP BY item_id, entity_id
+        HAVING MAX(reorder_point) > 0 AND SUM(quantity) <= MAX(reorder_point)
+      )
+    `).bind(...lowParams).first<{ cnt: number }>()
 
     if (lowStockResult?.cnt && lowStockResult.cnt > 0) {
       await createIfNotExists(db, 'MANAGER',

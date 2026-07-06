@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
-import { getEntityId, entityFilter } from '../utils/entityFilter'
+import { getEntityId, entityFilter, getWriteEntityId, ENTITY_ALL_MODE_WRITE_ERROR } from '../utils/entityFilter'
 import { getNextEntitySeqNumber, withSeqRetry } from '../utils/sequenceGenerator'
 import { getItemDefaultZones } from '../utils/inventoryZone'
 
@@ -113,20 +113,38 @@ returns.patch('/:id/status', requireRole('ADMIN', 'MANAGER'), async (c) => {
 
   // RESOLVED + RESTOCK → 재고 복원
   if (status === 'RESOLVED') {
+    // 환원 법인 = 출고 차감(stockShip)과 동일 규칙: COALESCE(라인 담당법인, 주문 법인) — 세션 법인 귀속은
+    //   협업주문(선명 출고분을 동산 세션이 처리)에서 나간법인≠돌아온법인 불일치 유발 (2026-07-06 감사 #4)
     const { results: returnItems } = await c.env.DB.prepare(`
-      SELECT ri.*, oi.item_id FROM return_items ri
+      SELECT ri.*, oi.item_id, COALESCE(oi.assigned_entity_id, o.entity_id) AS stock_entity_id
+      FROM return_items ri
       LEFT JOIN order_items oi ON ri.order_item_id = oi.id
+      LEFT JOIN orders o ON oi.order_id = o.id
       WHERE ri.return_id = ? AND ri.disposition = 'RESTOCK' AND oi.item_id IS NOT NULL
-    `).bind(id).all<{ item_id: number; quantity: number }>()
+    `).bind(id).all<{ item_id: number; quantity: number; stock_entity_id: number | null }>()
 
     if (returnItems.length > 0) {
-      const eid = getEntityId(c) || 1
-      // 0396: 창고별 다중행 — 품목 기본창고로 환원 (NULL=미배정). 키 = (item, entity, zone)
-      const zoneMap = await getItemDefaultZones(c.env.DB, returnItems.map(ri => ri.item_id), eid)
+      const sessionEid = getWriteEntityId(c)
+      // 법인별 그룹 → 법인 인식 기본창고 맵 (대개 1~2법인)
+      const byEntity = new Map<number, typeof returnItems>()
+      for (const ri of returnItems) {
+        const eid = ri.stock_entity_id ?? sessionEid
+        if (eid == null) {
+          return c.json({ success: false, error: ENTITY_ALL_MODE_WRITE_ERROR }, 400)
+        }
+        const arr = byEntity.get(eid) || []
+        arr.push(ri)
+        byEntity.set(eid, arr)
+      }
+      const zoneMaps = new Map<number, Map<number, number | null>>()
+      for (const [eid, items] of byEntity) {
+        zoneMaps.set(eid, await getItemDefaultZones(c.env.DB, items.map(ri => ri.item_id), eid))
+      }
       // #164: balance_after를 서브쿼리로 읽어 race condition 방지
       await c.env.DB.batch(
         returnItems.flatMap(ri => {
-          const zoneId = zoneMap.get(ri.item_id) ?? null
+          const eid = (ri.stock_entity_id ?? sessionEid) as number
+          const zoneId = zoneMaps.get(eid)?.get(ri.item_id) ?? null
           return [
             // 대상 창고 행이 없으면 생성 (UNIQUE=IFNULL(zone,0) → 미배정 NULL 행과 구분)
             c.env.DB.prepare(
