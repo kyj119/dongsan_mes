@@ -77,7 +77,10 @@ function loadCatTable(code) {
                 return tabSortState.asc ? String(va).localeCompare(String(vb)) : String(vb).localeCompare(String(va));
             });
         }
-        var cntEl = document.getElementById('catCount'); if (cntEl) cntEl.textContent = items.length + '건';
+        // 카운트 = 서버 총계(pagination.total) — 응답 행수는 limit에 잘릴 수 있음 ("200건" 오표시 원인)
+        var catTotal = (res.data.pagination && res.data.pagination.total != null) ? res.data.pagination.total : items.length;
+        var cntEl = document.getElementById('catCount');
+        if (cntEl) cntEl.textContent = catTotal + '건' + (catTotal > items.length ? ' (표시 ' + items.length + ')' : '');
         if (!items.length) { listEl.innerHTML = '<p class="text-gray-400 text-sm py-8 text-center">등록된 품목이 없습니다.</p>'; return; }
         // item_group 보유 품목이 과반이면 묶음 표시 (원자재·태극기 등). 그 외(개별 제품)는 평면.
         var grouped = items.filter(function(i){ return i.item_group && String(i.item_group).trim(); });

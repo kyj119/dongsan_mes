@@ -87,7 +87,8 @@ itemsRouter.get('/category/:categoryId', async (c) => {
 itemsRouter.get('/', async (c) => {
   try {
     const { page = '1', limit = '50', category = '', type = '', search = '', item_type = '' } = c.req.query()
-    const safeLimit = Math.min(parseInt(limit) || 50, 200)
+    // 상한 500: 품목관리 카테고리 탭이 전량 로드(limit=500) — 200이면 원자재(441) 등이 잘려 목록·카운트 오표시
+    const safeLimit = Math.min(parseInt(limit) || 50, 500)
     const offset = (parseInt(page) - 1) * safeLimit
     // include_inactive: 변종 base 연결 등 staged(is_active=0) 품목까지 검색해야 할 때
     const activeClause = c.req.query('include_inactive') === '1' ? '1=1' : 'i.is_active = 1'
