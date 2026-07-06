@@ -28,7 +28,7 @@ function buildDefectsHtml(defects) {
     return '<div class="flex items-start gap-2 py-1.5 border-b border-gray-100 last:border-0">'
       + '<span class="px-1.5 py-0.5 rounded text-xs font-medium ' + (statusColors[d.status] || 'bg-gray-100') + '">' + (statusLabels[d.status] || d.status) + '</span>'
       + '<span class="text-xs font-medium">' + (catLabels[d.defect_category] || d.defect_category || '') + '</span>'
-      + '<span class="text-xs text-gray-500 flex-1">' + (d.description || '') + '</span>'
+      + '<span class="text-xs text-gray-500 flex-1">' + escapeHtml(d.description || '') + '</span>'
       + '<span class="text-xs text-gray-400 whitespace-nowrap">' + (d.reported_at ? formatKST(d.reported_at, 'date') : '') + '</span>'
       + '</div>';
   }).join('');
@@ -53,7 +53,7 @@ function showCardModal(card, history, defects, siblingCards) {
             pendingSiblings.forEach(function(s) {
                 var sLabel = statusLabels[s.status] || s.status;
                 siblingBannerHtml += '<div style="font-size:12px;color:#b45309;margin-top:4px">'
-                    + s.card_number + ': ' + (s.category_name || s.item_name || '') + ' (' + sLabel + ')</div>';
+                    + escapeHtml(s.card_number || '') + ': ' + escapeHtml(s.category_name || s.item_name || '') + ' (' + sLabel + ')</div>';
             });
             siblingBannerHtml += '<div style="font-size:11px;color:#d97706;margin-top:6px">→ 전체 완료 후 같이 출고해야 합니다</div></div>';
         } else {
@@ -156,7 +156,7 @@ function showCardModal(card, history, defects, siblingCards) {
             itemsHtml += '</div>'; // end card-modal-item
         });
     } else if (card.category_name) {
-        itemsHtml = '<div style="padding:12px 0;font-size:13px;color:#6b7280">' + (card.category_name || '') + ' · ' + (card.item_count || 1) + '건</div>';
+        itemsHtml = '<div style="padding:12px 0;font-size:13px;color:#6b7280">' + escapeHtml(card.category_name || '') + ' · ' + (card.item_count || 1) + '건</div>';
     }
 
     // ── 상태 이력 타임라인 ──
@@ -256,7 +256,7 @@ function showCardModal(card, history, defects, siblingCards) {
         + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">'
         + '  <div style="font-size:12px"><span style="color:#9ca3af">납기일:</span> <span style="color:#111827;font-weight:500">' + (card.delivery_date || '미정') + '</span></div>'
         + '  <div style="font-size:12px"><span style="color:#9ca3af">납품:</span> <span style="color:#111827;font-weight:500">' + (deliveryMethod || '-') + (deliveryTime ? ' ' + deliveryTime : '') + '</span></div>'
-        + '  <div style="font-size:12px"><span style="color:#9ca3af">카테고리:</span> <span style="color:#111827;font-weight:500">' + (card.category_name || '-') + '</span></div>'
+        + '  <div style="font-size:12px"><span style="color:#9ca3af">카테고리:</span> <span style="color:#111827;font-weight:500">' + escapeHtml(card.category_name || '-') + '</span></div>'
         + '  <div style="font-size:12px"><span style="color:#9ca3af">접수자:</span> <span style="color:#111827;font-weight:500">' + escapeHtml(card.created_by_name || '-') + '</span></div>'
         + '</div>'
         // 메모/보류
