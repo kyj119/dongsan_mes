@@ -437,13 +437,13 @@ function renderRecipientList(items) {
     var disabledCls = hasContact ? '' : ' opacity-40';
     var checkedAttr = isSelected ? ' checked' : '';
     var disabledAttr = hasContact ? '' : ' disabled';
-    var badge = item.role ? '<span class="text-xs bg-gray-100 text-gray-500 rounded px-1.5 py-0.5">' + item.role + '</span>' : '';
-    if (item.dept) badge = '<span class="text-xs bg-gray-100 text-gray-500 rounded px-1.5 py-0.5">' + item.dept + '</span>';
+    var badge = item.role ? '<span class="text-xs bg-gray-100 text-gray-500 rounded px-1.5 py-0.5">' + escapeHtml(item.role) + '</span>' : '';
+    if (item.dept) badge = '<span class="text-xs bg-gray-100 text-gray-500 rounded px-1.5 py-0.5">' + escapeHtml(item.dept) + '</span>';
     return '<label class="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-gray-50 cursor-pointer border-b border-gray-50' + disabledCls + '">'
-      + '<input type="checkbox" class="w-4 h-4 text-blue-600 rounded recipient-check" data-id="' + item.id + '" data-name="' + escapeHtml(item.name || '') + '" data-phone="' + (item.phone || '') + '" data-email="' + (item.email || '') + '"' + checkedAttr + disabledAttr + ' onchange="onRecipientCheck(this)">'
+      + '<input type="checkbox" class="w-4 h-4 text-blue-600 rounded recipient-check" data-id="' + item.id + '" data-name="' + escapeHtml(item.name || '') + '" data-phone="' + escapeHtml(item.phone || '') + '" data-email="' + escapeHtml(item.email || '') + '"' + checkedAttr + disabledAttr + ' onchange="onRecipientCheck(this)">'
       + '<div class="flex-1 min-w-0">'
       + '<div class="flex items-center gap-2"><span class="text-sm font-medium text-gray-800">' + escapeHtml(item.name || '-') + '</span>' + badge + '</div>'
-      + '<div class="text-xs text-gray-400">' + (contact || '연락처 없음') + '</div>'
+      + '<div class="text-xs text-gray-400">' + (contact ? escapeHtml(contact) : '연락처 없음') + '</div>'
       + '</div>'
       + '</label>';
   }).join('');
@@ -532,7 +532,7 @@ function renderSelectedTags() {
   var maxShow = 10;
   var html = bulkSelectedRecipients.slice(0, maxShow).map(function(r) {
     return '<span class="inline-flex items-center gap-1 px-2 py-0.5 bg-blue-50 text-blue-700 rounded-full text-xs">'
-      + r.name
+      + escapeHtml(r.name || '')
       + '<button onclick="removeSelectedRecipient(' + r.id + ')" class="text-blue-400 hover:text-blue-600">&times;</button>'
       + '</span>';
   }).join('');
