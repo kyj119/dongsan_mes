@@ -257,3 +257,17 @@ loadCategories();
 loadStorageZonesForItem();
 // 분류 기반 탭 초기화 (item_categories 동적)
 initItemTabs();
+
+// 딥링크: /items?edit=<id>&tab=materials — /bom 미연결 경고 등에서 수정모달 재료탭 직행
+(function() {
+    var itemsQs = new URLSearchParams(location.search);
+    var deepEditId = parseInt(itemsQs.get('edit') || '', 10);
+    if (!deepEditId) return;
+    var deepTab = itemsQs.get('tab');
+    editItem(deepEditId).then(function() {
+        var matBtn = document.getElementById('materialsTabBtn');
+        if (deepTab === 'materials' && matBtn && matBtn.style.display !== 'none') {
+            switchModalTab('materials');
+        }
+    });
+})();

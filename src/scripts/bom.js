@@ -56,7 +56,7 @@ function renderBomUnmapped() {
     return '<div class="flex items-center justify-between py-1.5 border-b border-amber-200 text-sm">'
       + '<span><span class="font-mono text-xs text-gray-500 mr-2">' + esc(p.item_code || '-') + '</span>'
       + esc(p.item_name) + ' <span class="text-xs text-amber-700">[' + esc(p.category) + ']</span></span>'
-      + '<a href="/items" class="text-blue-600 hover:underline text-xs whitespace-nowrap">자재 연결 →</a></div>';
+      + '<a href="/items?edit=' + p.id + '&tab=materials" class="text-blue-600 hover:underline text-xs whitespace-nowrap">자재 연결 →</a></div>';
   }).join('');
 }
 
@@ -117,7 +117,8 @@ function renderBomOverview() {
       var mats = p.materials || [];
       var rows = Math.max(mats.length, 1);
       var prodCell = '<td class="px-4 py-2 text-sm align-top" rowspan="' + rows + '">'
-        + '<div class="font-medium" title="' + esc(p.item_name) + '">' + esc(p.item_name) + '</div>'
+        + '<div class="font-medium" title="' + esc(p.item_name) + '">' + esc(p.item_name)
+        + ' <a href="/items?edit=' + p.id + '&tab=materials" class="text-gray-300 hover:text-blue-600 text-xs ml-1" title="자재 연결 편집 (품목관리 재료탭)"><i class="fas fa-pen"></i></a></div>'
         + '<div class="text-xs text-gray-400 font-mono">' + esc(p.item_code || '') + '</div></td>';
       if (mats.length === 0) {
         html += '<tr class="border-b hover:bg-blue-50">' + prodCell

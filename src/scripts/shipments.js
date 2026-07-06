@@ -869,6 +869,12 @@ async function confirmShipSection(section) {
       if (un > 0) { uncheckedOrders++; uncheckedLines += un; }
     });
   });
+  // 갭4: 동반출고로 추가된 화면 밖 파트너의 미검수 라인도 합산 (chk_done/line_total = /daily 파트너 필드)
+  pendingPartners.forEach(function(p) {
+    if (!orderIds.has(p.id)) return;
+    var un = Math.max(0, (p.line_total || 0) - (p.chk_done || 0));
+    if (un > 0) { uncheckedOrders++; uncheckedLines += un; }
+  });
   var confirmMsg = orderIds.size + '건 주문을 출고 확정하시겠습니까?\n(전량 출고 원칙 — 미완성 카드가 있는 주문은 차단됩니다)';
   if (uncheckedOrders > 0) {
     confirmMsg += '\n\n⚠️ 미검수 라인 ' + uncheckedLines + '개(주문 ' + uncheckedOrders + '건)가 있습니다. 검수 없이 출고합니다.';
@@ -1502,6 +1508,35 @@ async function openShipCheckModal(section, key) {
       return axios.get('/api/shipments/checklist/by-order/' + oid);
     }));
     shipCheckState.entries = resList.map(function(r) { return r.data && r.data.success ? r.data.data : null; }).filter(Boolean);
+
+    // 갭4: 합포장 파트너 합류 — 응답 group에서 화면 밖 주문을 찾아 검수에 포함.
+    // 자법인=라인 합류(편집 가능), 타법인=by-order가 entityFilter 404 → 읽기전용 표기만.
+    var scLoaded = {};
+    shipCheckState.entries.forEach(function(en) { scLoaded[en.order.id] = 1; });
+    var scPartnerMap = {};
+    shipCheckState.entries.forEach(function(en) {
+      (en.group || []).forEach(function(g) {
+        if (g.order_id && !scLoaded[g.order_id] && !scPartnerMap[g.order_id]) scPartnerMap[g.order_id] = g;
+      });
+    });
+    shipCheckState.partnersReadonly = [];
+    var scPartnerIds = Object.keys(scPartnerMap);
+    if (scPartnerIds.length > 0) {
+      var pres = await Promise.all(scPartnerIds.map(function(oid) {
+        return axios.get('/api/shipments/checklist/by-order/' + oid).catch(function() { return null; });
+      }));
+      pres.forEach(function(r, i) {
+        var g = scPartnerMap[scPartnerIds[i]];
+        if (r && r.data && r.data.success) {
+          var pen = r.data.data;
+          pen._offscreen = true;
+          shipCheckState.entries.push(pen);
+        } else {
+          shipCheckState.partnersReadonly.push(g);
+        }
+      });
+    }
+
     shipCheckState.entries.forEach(function(en) {
       (en.lines || []).forEach(function(ln) {
         ln._checked = !!ln.checked_at;
@@ -1524,13 +1559,33 @@ function renderShipCheckModal() {
   var body = document.getElementById('shipCheckBody');
   if (!body) return;
   var html = '';
+  // 갭4: 합포장 배너 — 묶음 전체(파트너 포함)가 한 박스로 나감을 명시
+  var scReadonly = shipCheckState.partnersReadonly || [];
+  var scIsMerged = scReadonly.length > 0 || shipCheckState.entries.some(function(en) { return en._offscreen || (en.group || []).length > 1; });
+  if (scIsMerged) {
+    var scGroupSize = shipCheckState.entries.length + scReadonly.length;
+    html += '<div class="mb-3 px-3 py-2 rounded-lg text-sm" style="background:#eff6ff;border:1px solid #bfdbfe;color:#1d4ed8">'
+      + '<i class="fas fa-boxes-stacked mr-1"></i>합포장 묶음 — 주문 ' + scGroupSize + '건이 한 박스로 나갑니다. 검수도 묶음 전체 기준으로 확인하세요.';
+    if (scReadonly.length > 0) {
+      html += '<div class="mt-1 text-xs" style="color:#1e40af">'
+        + scReadonly.map(function(g) {
+            var prog = (g.line_total || g.chk_total) ? (' 검수 ' + (g.chk_done || 0) + '/' + (g.line_total || g.chk_total)) : '';
+            return '· ' + (g.entity_name ? escapeHtml(g.entity_name) + ' ' : '') + escapeHtml(g.order_number || ('#' + g.order_id)) + prog + ' <span class="text-gray-400">(타법인 — 해당 법인에서 검수)</span>';
+          }).join('<br>')
+        + '</div>';
+    }
+    html += '</div>';
+  }
   shipCheckState.entries.forEach(function(en, ei) {
     var lines = en.lines || [];
     var done = lines.filter(function(l) { return l._checked; }).length;
     var shippedBadge = en.order && en.order.shipped_at ? ' <span class="ds-badge ds-badge-blue text-xs">출고됨</span>' : '';
+    var partnerBadge = en._offscreen
+      ? ' <span class="text-xs px-1.5 py-0.5 rounded" style="background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe" title="합포장으로 묶인 화면 밖 주문 — 함께 검수">합포장 파트너' + (en.order.entity_name ? ' · ' + escapeHtml(en.order.entity_name) : '') + '</span>'
+      : '';
     html += '<div class="mb-4 border rounded-lg overflow-hidden">'
       + '<div class="flex items-center justify-between px-3 py-2 bg-gray-50 border-b">'
-      + '<div class="font-semibold text-gray-700">' + escapeHtml(en.order.order_number || ('#' + en.order.id)) + shippedBadge
+      + '<div class="font-semibold text-gray-700">' + escapeHtml(en.order.order_number || ('#' + en.order.id)) + shippedBadge + partnerBadge
       + ' <span class="text-xs font-normal text-gray-500">납품 ' + escapeHtml(en.order.delivery_date || '-') + ' · ' + escapeHtml(en.order.delivery_method || '-') + '</span></div>'
       + '<div class="flex items-center gap-2">'
       + '<span id="scCnt-' + ei + '" class="text-xs ' + (done >= lines.length && lines.length ? 'text-green-600 font-semibold' : 'text-gray-500') + '">' + done + '/' + lines.length + '</span>'

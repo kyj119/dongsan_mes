@@ -1482,7 +1482,7 @@ itemsRouter.delete('/:id/materials/:materialItemId', requireRole('ADMIN', 'MANAG
 })
 
 // Add all materials in a group to a product (원단 그룹 일괄 매핑)
-itemsRouter.post('/:id/materials/group', async (c) => {
+itemsRouter.post('/:id/materials/group', requireRole('ADMIN', 'MANAGER'), async (c) => {
   try {
     const productId = parseInt(c.req.param('id'))
     const { item_group } = await c.req.json()

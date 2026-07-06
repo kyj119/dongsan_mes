@@ -87,7 +87,30 @@ function packRender() {
         + '</div>';
     }).join('') || '<div class="px-4 py-8 text-center text-gray-400 text-sm">검수할 라인이 없습니다.</div>';
   }
+  packRenderPartners();
   packUpdateProgress();
+}
+
+// 갭4: 합포장 파트너 칩 — checklist 응답 group(merged 묶음)에서 현재 주문 제외.
+// 칩 탭 = 해당 주문 이어서 검수 (타법인이면 by-order entityFilter 404 → 토스트 안내)
+function packRenderPartners() {
+  var box = document.getElementById('packPartners');
+  if (!box) { console.warn('[pack] #packPartners not found'); return; }
+  var o = (packData && packData.order) || {};
+  var group = (packData && packData.group) || [];
+  var partners = group.filter(function(g) { return g.order_id !== o.id; });
+  if (!partners.length) { box.classList.add('hidden'); box.innerHTML = ''; return; }
+  box.classList.remove('hidden');
+  box.innerHTML = '<div class="text-[10px] text-blue-700 font-semibold mb-1"><i class="fas fa-boxes-stacked mr-1"></i>합포장 묶음 — 같은 박스 주문 ' + (partners.length + 1) + '건 (칩을 눌러 이어서 검수)</div>'
+    + partners.map(function(g) {
+        var total = g.line_total || g.chk_total || 0;
+        var done = g.chk_done || 0;
+        var full = total > 0 && done >= total;
+        var style = full ? 'background:#dcfce7;color:#15803d' : (done > 0 ? 'background:#fef9c3;color:#a16207' : 'background:#f3f4f6;color:#6b7280');
+        return '<button onclick="packLoad(' + g.order_id + ')" class="mr-1 mb-1" style="' + style + ';font-size:11px;padding:2px 8px;border-radius:9999px;border:1px solid rgba(0,0,0,0.06)">'
+          + (g.entity_name ? escapeHtml(g.entity_name) + ' ' : '') + escapeHtml(g.order_number || ('#' + g.order_id))
+          + ' ' + (full ? '✓' : done + '/' + (total || '?')) + '</button>';
+      }).join('');
 }
 
 function packUpdateProgress() {

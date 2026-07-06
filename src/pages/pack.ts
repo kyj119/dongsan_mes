@@ -39,6 +39,8 @@ export function packPage(c: Context<HonoEnv>) {
               <div id="packProgressBar" class="h-full bg-green-500 transition-all" style="width:0%"></div>
             </div>
           </div>
+          <!-- 갭4: 합포장 파트너 칩 — 같은 박스로 나가는 형제 주문 (칩 탭 = 이어서 검수) -->
+          <div id="packPartners" class="hidden px-4 py-2 bg-blue-50 border-b border-blue-100"></div>
           <div id="packDoneBanner" class="hidden px-4 py-2 text-sm font-semibold text-green-700 bg-green-50 border-b border-green-200">
             <i class="fas fa-check-circle mr-1"></i>전 라인 검수 완료 — 출고 확정 가능
           </div>

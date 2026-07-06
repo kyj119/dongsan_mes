@@ -219,7 +219,7 @@ shipmentsRouter.get('/daily', async (c) => {
 
     // 합배송 파트너(미출고) 상세 — 출고확정 동반 출고 프롬프트용.
     // 그룹 키 = COALESCE(consolidate_with_order_id, id). 미출고 파트너가 있는 행에만 부착.
-    interface PartnerRow { id: number; order_number: string; delivery_date: string | null; entity_id: number | null; entity_name: string | null; root_id: number }
+    interface PartnerRow { id: number; order_number: string; delivery_date: string | null; entity_id: number | null; entity_name: string | null; root_id: number; chk_done: number; line_total: number }
     const pendingRows = ordersWithItems.filter(r => r.consolidate_partner_pending_date != null)
     if (pendingRows.length > 0) {
       const rootIds = [...new Set(pendingRows.map(r => Number(r.consolidate_with_order_id ?? r.id)))]
@@ -230,7 +230,10 @@ shipmentsRouter.get('/daily', async (c) => {
         const ph = chunk.map(() => '?').join(',')
         const { results: rows } = await c.env.DB.prepare(`
           SELECT o2.id, o2.order_number, o2.delivery_date, o2.entity_id, en2.short_name as entity_name,
-                 COALESCE(o2.consolidate_with_order_id, o2.id) as root_id
+                 COALESCE(o2.consolidate_with_order_id, o2.id) as root_id,
+                 (SELECT COUNT(*) FROM shipment_checks sc WHERE sc.checked_at IS NOT NULL AND sc.shipment_id =
+                   (SELECT id FROM shipments s2 WHERE s2.order_id = o2.id AND s2.status != 'CANCELLED' ORDER BY s2.id DESC LIMIT 1)) as chk_done,
+                 (SELECT COUNT(*) FROM order_items oi2 WHERE oi2.order_id = o2.id AND (oi2.parent_item_id IS NULL OR oi2.parent_item_id = 0)) as line_total
           FROM orders o2 LEFT JOIN entities en2 ON en2.id = o2.entity_id
           WHERE (o2.id IN (${ph}) OR o2.consolidate_with_order_id IN (${ph}))
             AND o2.status NOT IN ('CANCELLED', 'DELETED') AND o2.shipped_at IS NULL
@@ -518,9 +521,16 @@ shipmentsRouter.get('/checklist/by-order/:orderId', async (c) => {
     const sp = await c.env.DB.prepare(`SELECT merged_into_id, status FROM shipments WHERE id = ?`)
       .bind(shipmentId).first<{ merged_into_id: number | null; status: string }>()
     const primaryId = sp?.merged_into_id || shipmentId
+    // 갭4: 파트너 가시화 — 검수 진척(chk_*)·라인수·법인 동봉. 표기는 법인 무관(합배송 후보 카드와 동일 정책),
+    // 검수 라인 로드 자체는 by-order 최상위 entityFilter가 계속 게이트.
     const { results: group } = await c.env.DB.prepare(`
-      SELECT s.id as shipment_id, s.order_id, o.order_number, o.delivery_date
+      SELECT s.id as shipment_id, s.order_id, o.order_number, o.delivery_date,
+             o.entity_id, en2.short_name as entity_name,
+             (SELECT COUNT(*) FROM shipment_checks sc WHERE sc.shipment_id = s.id) as chk_total,
+             (SELECT COUNT(*) FROM shipment_checks sc WHERE sc.shipment_id = s.id AND sc.checked_at IS NOT NULL) as chk_done,
+             (SELECT COUNT(*) FROM order_items oi2 WHERE oi2.order_id = s.order_id AND (oi2.parent_item_id IS NULL OR oi2.parent_item_id = 0)) as line_total
       FROM shipments s JOIN orders o ON o.id = s.order_id
+      LEFT JOIN entities en2 ON en2.id = o.entity_id
       WHERE (s.id = ? OR s.merged_into_id = ?) AND s.status != 'CANCELLED'
       ORDER BY s.id ASC
     `).bind(primaryId, primaryId).all()
