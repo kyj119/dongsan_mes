@@ -48,7 +48,7 @@ returns.post('/', async (c) => {
   `).bind(
     returnNumber, order_id, client_id, claim_id || null,
     return_date || new Date().toISOString().split('T')[0],
-    return_reason, notes || null, getEntityId(c), userId
+    return_reason, notes || null, getEntityId(c) || 1, userId
   ).run()
 
   const returnId = result.meta.last_row_id as number
