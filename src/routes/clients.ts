@@ -1015,6 +1015,39 @@ clientsRouter.patch('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
   }
 })
 
+// PATCH /:id/credit — 여신 설정 저장 (ADMIN/MANAGER) [#476]
+clientsRouter.patch('/:id/credit', requireRole('ADMIN', 'MANAGER'), async (c) => {
+  try {
+    const id = c.req.param('id')
+    const body = await c.req.json()
+    const existing = await c.env.DB.prepare('SELECT id FROM clients WHERE id = ?').bind(id).first()
+    if (!existing) return c.json({ success: false, error: '거래처를 찾을 수 없습니다.' }, 404)
+    const creditLimit = body.credit_limit != null ? Number(body.credit_limit) : 0
+    const creditHold = body.credit_hold ? 1 : 0
+    await c.env.DB.prepare('UPDATE clients SET credit_limit = ?, credit_hold = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
+      .bind(creditLimit, creditHold, id).run()
+    return c.json({ success: true, message: '여신 설정이 저장되었습니다.' })
+  } catch (error) {
+    console.error('src/routes/clients.ts credit PATCH error:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
+  }
+})
+
+// PATCH /:id/toggle-active — 활성/비활성 토글 (ADMIN) [#476]
+clientsRouter.patch('/:id/toggle-active', requireRole('ADMIN'), async (c) => {
+  try {
+    const id = c.req.param('id')
+    const existing = await c.env.DB.prepare('SELECT id, is_active, client_name FROM clients WHERE id = ?').bind(id).first<{ id: number; is_active: number; client_name: string }>()
+    if (!existing) return c.json({ success: false, error: '거래처를 찾을 수 없습니다.' }, 404)
+    const next = existing.is_active === 1 ? 0 : 1
+    await c.env.DB.prepare('UPDATE clients SET is_active = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').bind(next, id).run()
+    return c.json({ success: true, message: `거래처 "${existing.client_name}"이(가) ${next === 1 ? '활성화' : '비활성화'}되었습니다.` })
+  } catch (error) {
+    console.error('src/routes/clients.ts toggle-active PATCH error:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
+  }
+})
+
 // Delete client (ADMIN only)
 clientsRouter.delete('/:id', requireRole('ADMIN'), async (c) => {
   try {

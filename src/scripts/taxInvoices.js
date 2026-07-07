@@ -5,7 +5,8 @@
 // tiRefreshStatus: cash refreshStatus(현금영수증 미지원 400 stub)가 tax 버전을 shadow해 상태새로고침 버튼이
 //   /api/cash-receipts/:id/refresh-status 400을 치던 것을 ti 프리픽스+onclick(:175/:544)로 격리(auto-improve Area 3).
 // (currentPage는 hometaxInvoices.js 페이지 onclick이 전역으로 참조하므로 의도적으로 미개명 — 별도 flagged.)
-// (openPrintURL은 cash 인쇄 라우트 부재로 owner 결정 대기 — #475.)
+// tiOpenPrintURL: cash openPrintURL(존재하지 않는 /api/cash-receipts/:id/print-url 호출)이 tax 버전을
+//   shadow해 인쇄/PDF 버튼이 404를 치던 것을 ti 프리픽스+onclick(:181/:555)로 격리 (#475).
 var currentPage = 1;
 var cancelTargetId = null;
 var modifyTargetId = null;
@@ -178,7 +179,7 @@ function displayInvoices(items) {
       actions += '<button onclick="tiRefreshStatus(' + inv.id + ')" class="px-2 py-1 text-xs bg-blue-50 text-blue-700 rounded hover:bg-blue-200" title="상태 새로고침"><i class="fas fa-sync-alt"></i></button>';
     }
     if (inv.status === 'SENT' || inv.status === 'NTS_SUCCESS' || inv.status === 'ISSUED') {
-      actions += '<button onclick="openPrintURL(' + inv.id + ')" class="px-2 py-1 text-xs bg-gray-100 text-gray-600 rounded hover:bg-gray-200" title="인쇄/PDF"><i class="fas fa-print"></i></button>';
+      actions += '<button onclick="tiOpenPrintURL(' + inv.id + ')" class="px-2 py-1 text-xs bg-gray-100 text-gray-600 rounded hover:bg-gray-200" title="인쇄/PDF"><i class="fas fa-print"></i></button>';
       // Phase 3: 입금 매칭 관리 (발행완료 건만)
       actions += '<button onclick="event.stopPropagation();openPayMatchModal(' + inv.id + ')" class="px-2 py-1 text-xs bg-green-50 text-green-700 rounded hover:bg-green-200" title="입금 매칭"><i class="fas fa-link"></i></button>';
     }
@@ -552,7 +553,7 @@ async function viewDetail(id) {
       actionBtns += '<button onclick="sendInvoiceEmail(' + inv.id + ',\'' + escapeHtml(inv.buyer_email || '') + '\')"'
         + ' class="px-4 py-2 border border-gray-300 text-gray-700 bg-white rounded hover:bg-gray-50 text-sm">'
         + '<i class="fas fa-envelope mr-1"></i>이메일</button>';
-      actionBtns += '<button onclick="openPrintURL(' + inv.id + ')"'
+      actionBtns += '<button onclick="tiOpenPrintURL(' + inv.id + ')"'
         + ' class="px-4 py-2 border border-gray-300 text-gray-700 bg-white rounded hover:bg-gray-50 text-sm">'
         + '<i class="fas fa-print mr-1"></i>인쇄/PDF</button>';
       // Phase 3: 입금 매칭 관리 버튼
@@ -1266,7 +1267,7 @@ function sendTaxInvoiceNotice(id, buyerName, email, invoiceNumber) {
 
 // ==================== 인쇄/PDF ====================
 
-async function openPrintURL(id) {
+async function tiOpenPrintURL(id) {
   try {
     var res = await axios.get('/api/tax-invoices/' + id + '/print-url');
     if (res.data.success && res.data.data.url) {

@@ -1024,8 +1024,9 @@ async function applyShipmentFieldPatch(db: HonoEnv['Bindings']['DB'], shipmentId
 
   updates.push('updated_at = CURRENT_TIMESTAMP')
   params.push(shipmentId)
-  await db.prepare(`UPDATE shipments SET ${updates.join(', ')} WHERE id = ?`).bind(...params).run()
-  return true
+  // #477: 리다이렉트 대상(대표)이 삭제됐으면 0행 → true 반환 시 무성 write 손실. meta.changes로 판정.
+  const res = await db.prepare(`UPDATE shipments SET ${updates.join(', ')} WHERE id = ?`).bind(...params).run()
+  return (res.meta.changes ?? 0) > 0
 }
 
 // ============================================================================
@@ -1136,6 +1137,10 @@ shipmentsRouter.patch('/:id/status', requireRole('ADMIN', 'MANAGER'), async (c) 
         c.env.DB.prepare(
           'UPDATE shipments SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
         ).bind(status, id),
+        // #477: 취소되는 대표를 가리키는 합포장 자식 detach (취소행이 정본 되는 것 방지)
+        c.env.DB.prepare(
+          'UPDATE shipments SET merged_into_id = NULL, updated_at = CURRENT_TIMESTAMP WHERE merged_into_id = ?'
+        ).bind(id),
         // 2) 카드 shipped_at 리셋 (HOLD 카드는 건드리지 않음)
         c.env.DB.prepare(`
           UPDATE cards SET shipped_at = NULL

@@ -520,14 +520,30 @@ ordersLifecycleRouter.post('/sync-statuses', requireRole('ADMIN', 'MANAGER'), as
     //   · 제작 주문: status=PRINT_DONE + 카드 전부 출고
     //   · 기성/유통 주문: status=CONFIRMED + 카드 없음(NOT EXISTS 자동 충족) → 동일하게 전이
     //   auto_complete_date는 출고 처리 시에만 설정되므로 "출고됨" 신호로 신뢰 가능
-    const { results: toShip } = await db.prepare(`
-      SELECT o.id, o.status, o.delivery_method FROM orders o
+    // #478: 대량 백로그 동기화 시 subrequest 한도(~1000) 소진 방지 —
+    //   toShip를 오래된순 100건으로 bound. Step1(전이)·Step2(shipment)가 동일한 bound된 집합을
+    //   순회하므로 "SHIPPED 전이됐으나 shipment 미기록" 구조적 방지. 반복 클릭으로 백로그 소진.
+    const toShipWhere = `
       WHERE o.auto_complete_date IS NOT NULL
         AND o.auto_complete_date <= date('now', '+9 hours')
         AND o.status NOT IN ('SHIPPED', 'COMPLETED', 'CANCELLED', 'QUOTATION', 'HOLD')
         AND NOT EXISTS (SELECT 1 FROM cards c WHERE c.order_id = o.id AND c.shipped_at IS NULL)
         ${ef.clause}
+    `
+    const { results: toShip } = await db.prepare(`
+      SELECT o.id, o.status, o.delivery_method FROM orders o
+      ${toShipWhere}
+      ORDER BY o.auto_complete_date ASC, o.id ASC LIMIT 100
     `).bind(...ef.params).all()
+
+    // #478: 전체 적격 건수 COUNT(동일 WHERE·동일 ef.params, LIMIT 없음) → has_more/remaining 정확 산출
+    const pendingRow = await db.prepare(`
+      SELECT COUNT(*) AS cnt FROM orders o
+      ${toShipWhere}
+    `).bind(...ef.params).first<{ cnt: number }>()
+    const totalPending = pendingRow?.cnt ?? toShip.length
+    const hasMore = totalPending > toShip.length
+    const remaining = Math.max(0, totalPending - toShip.length)
 
     // N+1 제거: 주문당 UPDATE + 이력 INSERT를 db.batch로 묶음 (청크 80, 짝수라 쌍 분할 없음)
     const shipStmts: D1PreparedStatement[] = []
@@ -554,10 +570,14 @@ ordersLifecycleRouter.post('/sync-statuses', requireRole('ADMIN', 'MANAGER'), as
     }
 
     // P1 출고 정합화: 무인 전이분도 shipment 기록 동기 (실패해도 전이는 유지)
+    // #478: shipment 동기화 성공/실패 카운트 — 응답에 정직하게 노출(silent fail 은폐 방지)
+    let shipSynced = 0, shipFailed = 0
     for (const order of toShip) {
       try {
         await ensureShipmentForOrder(db, order.id as number, { userId: user?.id ?? null, fallbackEntityId: getEntityId(c) || 1 })
+        shipSynced++ // #478
       } catch (shipRecErr) {
+        shipFailed++ // #478
         console.error('sync-statuses ensureShipment error:', shipRecErr)
       }
     }
@@ -615,20 +635,31 @@ ordersLifecycleRouter.post('/sync-statuses', requireRole('ADMIN', 'MANAGER'), as
 
     const billedCount = toBill.length + noInvoice.length
 
+    // #478: shipment 동기화 실패·잔여 백로그를 로그/응답 메시지에 반영
+    let syncNote = ''
+    if (shipFailed > 0 || hasMore) {
+      syncNote = `, shipment 동기화 ${shipSynced}건 성공/${shipFailed}건 실패, 남은 ${remaining}건`
+    }
+
     await logActivity({
       db,
       action: 'SYNC_STATUSES',
       entityType: 'ORDER',
       userId: user?.id,
-      details: `상태 동기화 실행: 출고완료 ${toShip.length}건, 회계반영 ${billedCount}건`
+      details: `상태 동기화 실행: 출고완료 ${toShip.length}건, 회계반영 ${billedCount}건${syncNote}`
     })
 
     return c.json({
       success: true,
+      message: `출고완료 ${toShip.length}건, 회계반영 ${billedCount}건${syncNote}`,
       data: {
         shipped: toShip.length,
         billed: billedCount,
-        shipped_ids: toShip.map((o) => o.id)
+        shipped_ids: toShip.map((o) => o.id),
+        ship_synced: shipSynced, // #478
+        ship_failed: shipFailed, // #478
+        has_more: hasMore, // #478
+        remaining: remaining // #478
       }
     })
   } catch (error) {

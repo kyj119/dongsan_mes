@@ -534,17 +534,11 @@ bankRouter.post('/sync-barobill', requireRole('ADMIN'), async (c) => {
               ? (item.TransDT || '').slice(8,10) + ':' + (item.TransDT || '').slice(10,12) + ':00'
               : null
 
-            // 중복 체크: TransRefKey 기준
-            if (refKey) {
-              const dup = await c.env.DB.prepare(
-                "SELECT id FROM bank_transactions WHERE bank_account_id = ? AND codef_transaction_id = ?"
-              ).bind(bankAcc.id, refKey).first()
-              if (dup) { totalSkipped++; continue }
-            }
-
-            await c.env.DB.prepare(`
+            // #474: 기존 UNIQUE 인덱스(idx_bt_codef_id)에 위임 — 건별 dup-check SELECT 제거(N+1)
+            const r = await c.env.DB.prepare(`
               INSERT INTO bank_transactions (bank_account_id, transaction_date, transaction_time, transaction_type, amount, balance_after, counterpart_name, description, match_status, codef_transaction_id, entity_id)
               VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'UNMATCHED', ?, ?)
+              ON CONFLICT(bank_account_id, codef_transaction_id) DO NOTHING
             `).bind(
               bankAcc.id, txDate, txTime, txType, amount,
               parseFloat(item.Balance || '0') || null,
@@ -553,7 +547,7 @@ bankRouter.post('/sync-barobill', requireRole('ADMIN'), async (c) => {
               refKey || null,
               entityId
             ).run()
-            totalInserted++
+            if ((r.meta.changes ?? 0) > 0) totalInserted++; else totalSkipped++
           }
         } catch (err) {
           console.error(`Bank sync error ${accNum} ${dateStr}:`, err)
@@ -1819,23 +1813,18 @@ bankRouter.post('/auto-sync', requireRole('ADMIN'), async (c) => {
                 ? (item.TransDT || '').slice(8,10) + ':' + (item.TransDT || '').slice(10,12) + ':00'
                 : null
 
-              if (refKey) {
-                const dup = await c.env.DB.prepare(
-                  'SELECT id FROM bank_transactions WHERE bank_account_id = ? AND codef_transaction_id = ?'
-                ).bind(bankAcc.id, refKey).first()
-                if (dup) { totalSkipped++; continue }
-              }
-
-              await c.env.DB.prepare(`
+              // #474: 기존 UNIQUE 인덱스(idx_bt_codef_id)에 위임 — 건별 dup-check SELECT 제거(N+1)
+              const r = await c.env.DB.prepare(`
                 INSERT INTO bank_transactions (bank_account_id, transaction_date, transaction_time, transaction_type, amount, balance_after, counterpart_name, description, codef_transaction_id, match_status, entity_id)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'UNMATCHED', ?)
+                ON CONFLICT(bank_account_id, codef_transaction_id) DO NOTHING
               `).bind(
                 bankAcc.id, txDate, txTime, txType, amount,
                 parseFloat(item.Balance || '0'),
                 item.TransRemark1 || null, item.TransOffice || null,
                 refKey || null, bankAcc.entity_id ?? getEntityId(c)
               ).run()
-              totalInserted++
+              if ((r.meta.changes ?? 0) > 0) totalInserted++; else totalSkipped++
             }
           } catch (dayErr: any) {
             // 관측성: 일별 조회 실패를 로깅+응답 수집 (과거 계좌 조용한 미수집 정지 방지 — 카드 syncErrors와 대칭)

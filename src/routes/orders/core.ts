@@ -666,6 +666,8 @@ ordersCoreRouter.delete('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
       c.env.DB.prepare('DELETE FROM returns WHERE order_id = ?').bind(id),
       c.env.DB.prepare('DELETE FROM credit_overrides WHERE order_id = ?').bind(id),
       c.env.DB.prepare(`DELETE FROM shipment_items WHERE shipment_id IN (SELECT id FROM shipments WHERE order_id = ?)`).bind(id),
+      // #477: 합포장 자식(타 주문)이 이 주문의 대표 shipment를 가리키면 삭제 전 detach (비-FK dangling 방지)
+      c.env.DB.prepare('UPDATE shipments SET merged_into_id = NULL WHERE merged_into_id IN (SELECT id FROM shipments WHERE order_id = ?)').bind(id),
       c.env.DB.prepare('DELETE FROM shipments WHERE order_id = ?').bind(id),
       c.env.DB.prepare('DELETE FROM cards WHERE order_id = ?').bind(id),
       // #454: order_id/order_item_id 기반 비-FK 정리 (order_items 삭제 전 order_item_id SET NULL)
