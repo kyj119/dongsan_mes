@@ -315,8 +315,12 @@ function main() {
     // 검출 크기와 다른 목표가 오면 아트보드 아트워크를 그룹으로 묶어 목표 W×H로 비균등 스케일(좌상단 앵커).
     // 목표가 0이거나 검출과 같으면 스킵(기존 동작 보존 = 비-캔버스 주문 무영향).
     if (targetW > 0 && targetH > 0) {
-        var tW_pt = targetW * 10.0 * ptPerMm / effScale;
-        var tH_pt = targetH * 10.0 * ptPerMm / effScale;
+        // realSize=true면 목표를 실물(×scaleFactor)로 계산 — 2a-real이 검출×N 확대한 결과와 목표를 일치시켜
+        //   되돌림 방지. 확대 성공 시 값 일치로 2c 스킵(designW≈tW_pt), 확대 실패 시 여기서 실물 크기로 백업
+        //   리사이즈. 비-realSize/축소 경로는 기존 /effScale 유지(회귀 0). target 기본값=검출크기라 실물=검출×N.
+        var _tgtScale = (realSize && scaleFactor > 1) ? scaleFactor : (1.0 / effScale);
+        var tW_pt = targetW * 10.0 * ptPerMm * _tgtScale;
+        var tH_pt = targetH * 10.0 * ptPerMm * _tgtScale;
         if (Math.abs(tW_pt - designW) > 1 || Math.abs(tH_pt - designH) > 1) {
             try {
                 doc.selection = null;
