@@ -40,6 +40,7 @@ export function appLayout(opts: AppLayoutOptions): string {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="build-time" content="${new Date().toISOString()}">
+    <link rel="icon" type="image/png" href="/favicon.ico">
     <title>${opts.title} - ERP+MES</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">

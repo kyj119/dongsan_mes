@@ -4,6 +4,7 @@ import type { HonoEnv } from './types/env'
 import { authMiddleware, requireAdmin, pageAuthMiddleware } from './middleware/auth'
 import { requirePagePermission, requireAdminPage } from './middleware/permissions'
 import { rateLimitMiddleware } from './middleware/rateLimit'
+import { faviconBytes } from './assets/favicon'
 
 // API Routers
 import clientsRouter from './routes/clients'
@@ -383,7 +384,13 @@ app.get('/api/stats', authMiddleware, requireAdmin, async (c) => {
 // Catch-all for unmatched API routes (must be after all route mounts)
 app.all('/api/*', (c) => c.json({ success: false, error: 'Not Found' }, 404))
 
-app.get('/favicon.ico', (c) => new Response(null, { status: 204 }))
+// 동산기획 심볼 favicon (PNG bytes served with image/png; browsers auto-request /favicon.ico on every page)
+app.get('/favicon.ico', (c) => new Response(faviconBytes(), {
+  headers: {
+    'Content-Type': 'image/png',
+    'Cache-Control': 'public, max-age=604800, immutable',
+  },
+}))
 
 // Page routes (login은 인증 불필요, 나머지는 pageAuthMiddleware로 SPA 토큰 검증)
 app.get('/', (c) => c.redirect('/login'))
