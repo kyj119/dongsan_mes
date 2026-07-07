@@ -49,6 +49,9 @@ export function priceManagementPage(c: Context<HonoEnv>) {
               <input type="text" id="pmSearch" placeholder="품목명, 코드, 그룹 검색..."
                 class="flex-1 max-w-[400px] px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500">
               <div class="flex-1"></div>
+              <button onclick="exportPmCsv()" class="px-4 py-2 border border-gray-300 text-gray-600 rounded-lg text-sm hover:bg-gray-50">
+                <i class="fas fa-file-csv mr-1"></i>CSV
+              </button>
               <button onclick="openHistoryModal()" class="px-4 py-2 border border-gray-300 text-gray-600 rounded-lg text-sm hover:bg-gray-50">
                 <i class="fas fa-history mr-1"></i>이력
               </button>
@@ -97,6 +100,9 @@ export function priceManagementPage(c: Context<HonoEnv>) {
                 <option value="">전체 카테고리</option>
               </select>
 
+              <button type="button" onclick="exportPmCsv()" class="px-4 py-2 border border-gray-300 text-gray-600 rounded-lg text-sm hover:bg-gray-50">
+                <i class="fas fa-file-csv mr-1"></i>CSV
+              </button>
               <button type="button" onclick="printSalesList()" class="px-4 py-2 bg-green-600 text-white rounded-lg text-sm hover:bg-green-700">
                 <i class="fas fa-print mr-1"></i>인쇄
               </button>

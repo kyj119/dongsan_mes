@@ -47,6 +47,79 @@ function switchPmTab(tab) {
 // ║  매입단가 탭                                                   ║
 // ╚═══════════════════════════════════════════════════════════════╝
 
+// ---- Phase 4: 매입단가 요약·하이라이트·인라인 편집 헬퍼 (전역 var 충돌 방지 pm prefix) ----
+function pmItemBase(it) { return Number(it && it.base_price) || 0; }
+function pmItemSales(it) { return Number(it && it.sales_price) || 0; }
+function pmItemMargin(it) {
+  var b = pmItemBase(it), s = pmItemSales(it);
+  return (b > 0 && s > 0) ? Math.round((s - b) / s * 100) : null;
+}
+// 미설정 = 매입단가 또는 판매단가가 0/누락 (스펙 Phase 4 하이라이트 기준)
+function pmItemUnset(it) { return pmItemBase(it) <= 0 || pmItemSales(it) <= 0; }
+function pmMarginColor(m) {
+  return m == null ? 'text-gray-300' : (m >= 30 ? 'text-green-600' : m >= 15 ? 'text-yellow-600' : 'text-red-600');
+}
+// 인라인 편집 권한: ADMIN/MANAGER만(백엔드 PATCH /api/items/:id 와 동일). currentUserRole=shell.js 전역.
+function pmCanEditPrice() {
+  try { return ['ADMIN', 'MANAGER'].indexOf(currentUserRole) !== -1; }
+  catch (e) { return false; }
+}
+
+// 단가 셀 렌더: 편집권한 시 인라인 input, 아니면 텍스트(미설정은 amber 강조)
+function pmPriceCell(id, field, val, canEdit) {
+  var missing = !(val > 0);
+  if (canEdit) {
+    var cls = 'w-24 px-1.5 py-0.5 border rounded text-right font-mono text-sm focus:bg-white focus:border-blue-400 '
+      + (missing ? 'border-amber-300 bg-amber-50' : 'border-transparent bg-transparent hover:border-gray-300');
+    return '<input type="text" inputmode="numeric" value="' + (val > 0 ? val : '') + '" placeholder="0"'
+      + ' data-item="' + id + '" data-field="' + field + '"'
+      + ' onclick="event.stopPropagation()" onfocus="this.select()"'
+      + ' onchange="pmInlineSave(this)" onkeydown="pmInlinePriceKey(event,this)"'
+      + ' class="' + cls + '">';
+  }
+  if (missing) return '<span class="px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 text-xs">미설정</span>';
+  return fmt(val);
+}
+
+// 인라인 저장: 값 변경 시에만 PATCH → price_change_history 기록(백엔드) → 재렌더로 마진·요약 갱신
+function pmInlineSave(el) {
+  if (!el) return;
+  var id = Number(el.getAttribute('data-item'));
+  var field = el.getAttribute('data-field');
+  var item = null;
+  for (var i = 0; i < pmItems.length; i++) { if (pmItems[i].id === id) { item = pmItems[i]; break; } }
+  if (!item) return;
+  var raw = String(el.value || '').replace(/[^0-9]/g, '');
+  var val = raw === '' ? 0 : parseInt(raw, 10);
+  var old = Number(item[field]) || 0;
+  if (val === old) return;
+  el.disabled = true;
+  var body = {}; body[field] = val;
+  axios.patch('/api/items/' + id, body).then(function() {
+    item[field] = val;
+    showToast('단가 저장됨', 'success');
+    renderPurchaseView();
+  }).catch(function(e) {
+    var st = e && e.response && e.response.status;
+    showToast((st === 403 || st === 401) ? '단가 수정 권한이 없습니다' : '단가 저장 실패', 'error');
+    el.disabled = false;
+    el.value = old > 0 ? old : '';
+  });
+}
+
+// Enter=커밋(blur), Escape=원복(원값 복원 후 blur → change 미발생 → 저장 안 함)
+function pmInlinePriceKey(e, el) {
+  if (e.key === 'Enter') { e.preventDefault(); el.blur(); }
+  else if (e.key === 'Escape') {
+    var id = Number(el.getAttribute('data-item'));
+    var field = el.getAttribute('data-field');
+    for (var i = 0; i < pmItems.length; i++) {
+      if (pmItems[i].id === id) { var v = Number(pmItems[i][field]) || 0; el.value = v > 0 ? v : ''; break; }
+    }
+    el.blur();
+  }
+}
+
 function loadPurchaseView() {
   var search = (document.getElementById('pmSearch') || {}).value || '';
   var url = '/api/prices/price-overview';
@@ -81,7 +154,20 @@ function renderPurchaseView() {
     }
   });
 
-  var html = '<div class="text-sm text-gray-500 mb-2">' + pmItems.length + '개 품목</div>';
+  // ── 상단 요약 바 (품목수·평균마진·미설정 단가) — 기존 데이터 재사용 ──
+  var unsetCount = 0, mSum = 0, mCnt = 0;
+  pmItems.forEach(function(it) {
+    if (pmItemUnset(it)) unsetCount++;
+    var m = pmItemMargin(it);
+    if (m != null) { mSum += m; mCnt++; }
+  });
+  var avgM = mCnt ? Math.round(mSum / mCnt) : null;
+  var html = '<div class="ds-card px-4 py-2.5 mb-3 flex flex-wrap items-center gap-x-6 gap-y-1 text-sm">'
+    + '<span class="text-gray-500"><i class="fas fa-box mr-1 text-gray-400"></i>품목 <b class="text-gray-800">' + pmItems.length + '</b>개</span>'
+    + '<span class="text-gray-500">평균마진 <b class="' + pmMarginColor(avgM) + '">' + (avgM != null ? avgM + '%' : '-') + '</b></span>'
+    + '<span class="text-gray-500">미설정 단가 <b class="' + (unsetCount ? 'text-amber-600' : 'text-gray-400') + '">' + unsetCount + '</b>건</span>'
+    + (unsetCount ? '<span class="text-xs text-amber-600"><i class="fas fa-exclamation-triangle mr-1"></i>매입·판매단가 누락 품목 강조</span>' : '')
+    + '</div>';
 
   // 그룹이 있는 품목
   var groupNames = Object.keys(groups).sort();
@@ -119,6 +205,7 @@ function renderPurchaseView() {
 }
 
 function buildItemTable(items, linked) {
+  var canEdit = pmCanEditPrice();
   var html = '<table class="w-full text-sm ds-table"><thead class="bg-gray-50"><tr>';
   html += '<th class="col-code px-4 py-2 text-left text-xs font-medium text-gray-500">코드</th>';
   html += '<th class="col-name px-4 py-2 text-left text-xs font-medium text-gray-500">품목명</th>';
@@ -127,16 +214,20 @@ function buildItemTable(items, linked) {
   html += '<th class="col-qty px-4 py-2 text-right text-xs font-medium text-gray-500">마진</th>';
   html += '</tr></thead><tbody>';
   items.forEach(function(item) {
-    var base = item.base_price || 0;
-    var sales = item.sales_price || 0;
-    var margin = (base > 0 && sales > 0) ? Math.round((sales - base) / sales * 100) : null;
-    var mc = margin !== null ? (margin >= 30 ? 'text-green-600' : margin >= 15 ? 'text-yellow-600' : 'text-red-600') : 'text-gray-300';
+    var base = pmItemBase(item);
+    var sales = pmItemSales(item);
+    var margin = pmItemMargin(item);
+    var mc = pmMarginColor(margin);
+    var unset = pmItemUnset(item);
     var exp = pmExpandedId === item.id;
-    html += '<tr class="border-t hover:bg-gray-50 cursor-pointer' + (exp ? ' bg-blue-50' : '') + '" onclick="expandPurchaseItem(' + item.id + ')">';
+    var rowCls = 'border-t hover:bg-gray-50 cursor-pointer';
+    if (exp) rowCls += ' bg-blue-50';
+    else if (unset) rowCls += ' bg-amber-50';
+    html += '<tr class="' + rowCls + '" onclick="expandPurchaseItem(' + item.id + ')">';
     html += '<td class="px-4 py-2 font-mono text-xs text-gray-500">' + esc(item.item_code) + '</td>';
     html += '<td class="px-4 py-2 font-medium" title="' + esc(item.item_name || '') + '">' + esc(item.item_name) + '</td>';
-    html += '<td class="px-4 py-2 text-right font-mono">' + fmt(base) + '</td>';
-    html += '<td class="px-4 py-2 text-right font-mono">' + (sales ? fmt(sales) : '<span class="text-gray-300">-</span>') + '</td>';
+    html += '<td class="px-4 py-2 text-right font-mono">' + pmPriceCell(item.id, 'base_price', base, canEdit) + '</td>';
+    html += '<td class="px-4 py-2 text-right font-mono">' + pmPriceCell(item.id, 'sales_price', sales, canEdit) + '</td>';
     html += '<td class="px-4 py-2 text-right font-semibold ' + mc + '">' + (margin !== null ? margin + '%' : '-') + '</td>';
     html += '</tr>';
     if (exp) {
@@ -1083,6 +1174,88 @@ function clearPmSheetClient() {
   setVal('pmSheetClientId', '');
   setVal('pmSheetClientSearch', '');
   var cb = document.getElementById('pmSheetClientClear'); if (cb) cb.classList.add('hidden');
+}
+
+// ===================== CSV 내보내기 (Phase 4, 클라 생성 · BOM) =====================
+function pmCsvCell(v) {
+  if (v == null) v = '';
+  v = String(v);
+  if (/[",\n\r]/.test(v)) v = '"' + v.replace(/"/g, '""') + '"';
+  return v;
+}
+function pmCsvDownload(rows, filename) {
+  var csv = rows.map(function(r) { return r.map(pmCsvCell).join(','); }).join('\r\n');
+  // BOM(U+FEFF) 선두 → Excel 한글 깨짐 방지
+  var blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click();
+  setTimeout(function() { document.body.removeChild(a); URL.revokeObjectURL(url); }, 100);
+}
+function pmActiveTab() {
+  var tabs = ['purchase', 'sales', 'policies'];
+  for (var i = 0; i < tabs.length; i++) {
+    var p = document.getElementById('pmPanel_' + tabs[i]);
+    if (p && !p.classList.contains('hidden')) return tabs[i];
+  }
+  return 'purchase';
+}
+// 현재 활성 탭의 화면 표를 CSV로 내보내기(매입 / 매출단가표)
+function exportPmCsv() {
+  var today = window.kstToday ? window.kstToday() : new Date().toISOString().slice(0, 10);
+  var stamp = today.replace(/-/g, '');
+  var tab = pmActiveTab();
+  var rows = [];
+  if (tab === 'purchase') {
+    if (!pmItems.length) { showToast('내보낼 데이터가 없습니다.', 'warning'); return; }
+    rows.push(['코드', '품목명', '그룹', '매입단가', '판매단가', '마진(%)', '미설정']);
+    pmItems.forEach(function(it) {
+      var m = pmItemMargin(it);
+      rows.push([it.item_code || '', it.item_name || '', it.item_group || '',
+        pmItemBase(it) || '', pmItemSales(it) || '', m == null ? '' : m, pmItemUnset(it) ? 'Y' : '']);
+    });
+    pmCsvDownload(rows, '매입단가_' + stamp + '.csv');
+    return;
+  }
+  if (tab === 'sales') {
+    if (pmCurrentSheetId && pmSheetDetail) {
+      var d = pmSheetDetail;
+      rows.push(['코드', '품목명', '규격', '단위', '단가']);
+      (d.items || []).forEach(function(it) {
+        rows.push([it.item_code || '', it.item_name || '', it.specification || '', it.unit || '', (it.price != null ? it.price : '')]);
+      });
+      if (rows.length <= 1) { showToast('내보낼 데이터가 없습니다.', 'warning'); return; }
+      pmCsvDownload(rows, '단가표_' + (d.client_name || d.name || 'set') + '_' + stamp + '.csv');
+      return;
+    }
+    var data = getSalesFilteredGroups();
+    var hasClient = !!salesClientId;
+    var head = ['구분', '카테고리', '코드', '품목명', '규격', '단위', '단가'];
+    if (hasClient) head.push('적용단가');
+    rows.push(head);
+    Object.keys(data.groups).sort().forEach(function(key) {
+      var grp = data.groups[key];
+      var tn = typeLabels[grp.type] || grp.type;
+      grp.items.forEach(function(item) {
+        var p = calcSalesPrice(item);
+        var row = [tn, grp.category, item.item_code || '', item.item_name || '', item.specification || '', item.unit || 'EA', (p.base || '')];
+        if (hasClient) row.push(p.applied || '');
+        rows.push(row);
+      });
+    });
+    Object.keys(data.mediaGroups).forEach(function(mg) {
+      data.mediaGroups[mg].forEach(function(m) {
+        var row = ['출력미디어', mg, m.code || '', m.name || '', '', m.unit || '㎡', (m.price_per_unit || '')];
+        if (hasClient) row.push('');
+        rows.push(row);
+      });
+    });
+    if (rows.length <= 1) { showToast('내보낼 데이터가 없습니다.', 'warning'); return; }
+    pmCsvDownload(rows, '매출단가표_' + stamp + '.csv');
+    return;
+  }
+  showToast('이 탭은 CSV 내보내기를 지원하지 않습니다.', 'warning');
 }
 
 // ===================== Utilities =====================
