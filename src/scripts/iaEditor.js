@@ -220,7 +220,7 @@ function iaeGetSettings(fid, group, gidx) {
     var dh = (group && group.height_mm != null) ? Math.round(group.height_mm / 10) : 0;
     iaeSettings[key] = {
       target_w: dw, target_h: dh, aspect_lock: true, rotate90: false,
-      trim: false, scale_factor: 1,
+      trim: false, scale_factor: 1, real_size: true,
       fin_top: '', fin_bottom: '', fin_left: '', fin_right: '',
       // R3a-2: 고급 후가공(접이식, 기본 빈값). 미입력 시 body 미전송 → 기존 동작 무영향.
       adv: { offset_method: '', offset_top: '', offset_bottom: '', offset_left: '', offset_right: '', punching: '', annotation: '' }
@@ -439,7 +439,7 @@ function iaeApplyActiveToAll(f) {
   var actGroup = f.groups.filter(function (g, i) { return gis[i] === iaeActiveGroup; })[0];
   if (!actGroup) { iaeToast('기준 그룹을 먼저 선택하세요', 'error'); return; }
   var src = iaeGetSettings(f.id, actGroup, iaeActiveGroup);
-  var keys = ['fin_top', 'fin_bottom', 'fin_left', 'fin_right', 'trim', 'rotate90', 'scale_factor', 'adv'];
+  var keys = ['fin_top', 'fin_bottom', 'fin_left', 'fin_right', 'trim', 'rotate90', 'scale_factor', 'real_size', 'adv'];
   var n = 0;
   f.groups.forEach(function (g, i) {
     var gi = gis[i];
@@ -543,6 +543,7 @@ function iaeRenderInspector(f) {
     + '<label class="flex items-center gap-2 text-sm text-gray-700 cursor-pointer"><input id="iaeRot" type="checkbox"' + (s.rotate90 ? ' checked' : '') + '> 90° 회전</label>'
     + '<label class="flex items-center gap-2 text-sm text-gray-700 cursor-pointer"><input id="iaeTrim" type="checkbox"' + (s.trim ? ' checked' : '') + '> 돔보</label>'
     + '<div class="flex items-center gap-2 flex-wrap"><label class="text-xs text-gray-500">파일배율 1/</label><input id="iaeScale" type="number" min="1" step="1" value="' + (s.scale_factor || 1) + '" class="w-16 ' + inputCls + '"><span id="iaeScaleReal" class="text-[11px] text-gray-400">' + iaeScaleHint(effW, effH, s.scale_factor || 1) + '</span></div>'
+    + '<label class="flex items-center gap-2 text-sm text-gray-700 cursor-pointer" title="켜짐=축소본을 실물(×배율) 크기로 확대해 EPS 저장(RIP 100% 출력). 꺼짐=축소본 그대로 저장(RIP에서 ×배율 확대). 파일배율 1일 땐 효과 없음."><input id="iaeReal" type="checkbox"' + (s.real_size !== false ? ' checked' : '') + '> 실물 크기 저장</label>'
     + '</div>'
     // R3a-2: 고급 후가공 (접이식, 기본 접힘) — 도련 offset(method+4면)·펀칭·주석. 미입력 시 가공 body 미전송.
     + iaeAdvancedSectionHTML(iaeAdv(s), inputCls, selCls)
@@ -579,6 +580,8 @@ function iaeRenderInspector(f) {
     s.rotate90 = document.getElementById('iaeRot').checked;
     s.trim = document.getElementById('iaeTrim').checked;
     s.scale_factor = Math.max(1, parseInt(document.getElementById('iaeScale').value, 10) || 1);
+    var realEl = document.getElementById('iaeReal');
+    if (realEl) s.real_size = realEl.checked;
     var srEl = document.getElementById('iaeScaleReal');
     if (srEl) srEl.textContent = iaeScaleHint(effW, effH, s.scale_factor);
     s.fin_top = document.getElementById('iaeFinTop').value;
@@ -603,7 +606,7 @@ function iaeRenderInspector(f) {
     }
     sync();
   });
-  ['iaeAspect', 'iaeRot', 'iaeTrim', 'iaeScale', 'iaeFinTop', 'iaeFinBottom', 'iaeFinLeft', 'iaeFinRight'].forEach(function (id) {
+  ['iaeAspect', 'iaeRot', 'iaeTrim', 'iaeReal', 'iaeScale', 'iaeFinTop', 'iaeFinBottom', 'iaeFinLeft', 'iaeFinRight'].forEach(function (id) {
     var el = document.getElementById(id);
     if (el) el.addEventListener('change', sync);
   });
@@ -727,7 +730,8 @@ function iaeProcessGroupProceed(fid, group, gidx, s) {
     target_w_cm: tw, target_h_cm: th,
     finishing: fin, trim: !!s.trim, rotate90: !!s.rotate90,
     rotation: (s.rotate90 ? 90 : 0),                       // ⑥ 워커가 rotation으로 정규화 (rotate90도 호환)
-    scale_factor: Math.max(1, Number(s.scale_factor) || 1) // ⑤ 파일배율 1/N
+    scale_factor: Math.max(1, Number(s.scale_factor) || 1), // ⑤ 파일배율 1/N
+    real_size: (s.real_size !== false)                      // 실물 크기 저장(기본 ON) — 축소본 ×N 확대 저장
   };
   Object.assign(body, iaeAdvBody(s)); // R3a-2: 고급 후가공(offset/punching/annotation) — 입력 있을 때만
   var resHost = document.getElementById('iaeProcResult');
@@ -768,7 +772,8 @@ function iaePreviewGroup(fid, group, gidx, s) {
     analysis_id: fid, group_index: gidx, preview_only: true,
     target_w_cm: tw, target_h_cm: th,
     finishing: fin, trim: !!s.trim, rotate90: !!s.rotate90,
-    rotation: (s.rotate90 ? 90 : 0), scale_factor: Math.max(1, Number(s.scale_factor) || 1)
+    rotation: (s.rotate90 ? 90 : 0), scale_factor: Math.max(1, Number(s.scale_factor) || 1),
+    real_size: (s.real_size !== false)                      // 실물 크기 저장(기본 ON) — 미리보기도 실렌더 반영
   };
   Object.assign(body, iaeAdvBody(s)); // R3a-2: 미리보기에도 고급 후가공 반영(실렌더 확인)
   var pv = document.getElementById('iaePreview');
@@ -900,7 +905,8 @@ function iaeProcessBody(fid, gidx, s) {
     analysis_id: fid, group_index: gidx,
     target_w_cm: Number(s.target_w) || 0, target_h_cm: Number(s.target_h) || 0,
     finishing: fin, trim: !!s.trim, rotate90: !!s.rotate90,
-    rotation: (s.rotate90 ? 90 : 0), scale_factor: Math.max(1, Number(s.scale_factor) || 1)
+    rotation: (s.rotate90 ? 90 : 0), scale_factor: Math.max(1, Number(s.scale_factor) || 1),
+    real_size: (s.real_size !== false)                      // 실물 크기 저장(기본 ON) — 일괄 가공도 반영
   };
   Object.assign(body, iaeAdvBody(s)); // R3a-2: 일괄 가공에도 고급 후가공 반영
   return body;
@@ -1448,7 +1454,7 @@ function iaeCanLoad() {
 function iaeCanSave() {
   try { localStorage.setItem(IAE_CANVAS_KEY, JSON.stringify(iaeCanObjs)); } catch (_e) {}
   try { localStorage.setItem(IAE_SHEETS_KEY, JSON.stringify(iaeCanSheets)); } catch (_e) {}
-}
+}
 
 // 모든 done 파일 그룹 수집 → 팔레트/소스 (§14.1 "여러 파일 그룹 통합")
 function iaeCanAllGroups() {
@@ -2166,12 +2172,14 @@ function iaeFinJson(fin) {
   if (!fin || (!fin.top && !fin.bottom && !fin.left && !fin.right)) return null;
   return JSON.stringify({ top: fin.top || '', bottom: fin.bottom || '', left: fin.left || '', right: fin.right || '' });
 }
-// order_item.post_processing 배열: 돔보(TRIM) + 캔버스 리사이즈(RESIZE 목표크기). 둘 다 없으면 null
+// order_item.post_processing 배열: 돔보(TRIM) + 캔버스 리사이즈(RESIZE 목표크기) + 실물저장(REALSIZE). 없으면 null
 function iaeOmPostProc(ln) {
   var pp = [];
   if (ln.trim) pp.push({ code: 'TRIM', params: {} });
   var resized = (ln.det_w_cm != null && ln.det_h_cm != null) && (ln.w_cm !== ln.det_w_cm || ln.h_cm !== ln.det_h_cm) && ln.w_cm > 0 && ln.h_cm > 0;
   if (resized) pp.push({ code: 'RESIZE', params: { w_cm: ln.w_cm, h_cm: ln.h_cm } });
+  // 실물 저장: 파일배율 1/N(>1)일 때만 의미. 기본 ON(실물) → 에이전트가 아트워크 ×N 확대·마진 실물 cm.
+  if ((ln.real_size !== false) && (Number(ln.scale_factor) || 1) > 1) pp.push({ code: 'REALSIZE', params: {} });
   return pp.length ? JSON.stringify(pp) : null;
 }
 function iaeCanBuildOrderLines() {
@@ -2196,7 +2204,7 @@ function iaeCanBuildOrderLines() {
     lines.push({
       kind: 'obj', fid: o.fid, gi: o.gi, label: (src ? src.filename : '') + ' #' + o.gi,
       w_cm: iaeMmToCm1(o.w_mm), h_cm: iaeMmToCm1(o.h_mm),
-      qty: 1, fin: o.fin || null, trim: !!o.trim, scale_factor: o.scale_factor || 1,
+      qty: 1, fin: o.fin || null, trim: !!o.trim, scale_factor: o.scale_factor || 1, real_size: (o.real_size !== false),
       det_w_cm: iaeMmToCm1((src ? src.w_mm : o.w_mm) || 0), det_h_cm: iaeMmToCm1((src ? src.h_mm : o.h_mm) || 0),
       item_id: null, item_name: '', pricing_method: 'FIXED', unit_price: 0
     });
@@ -2545,7 +2553,7 @@ function iaeCanSubmitOrderProceed() {
   var vEdit = document.getElementById('iaeViewEdit'), vCanvas = document.getElementById('iaeViewCanvas');
   if (vEdit) vEdit.addEventListener('click', function () { iaeSetView('edit'); });
   if (vCanvas) vCanvas.addEventListener('click', function () { iaeSetView('canvas'); });
-  iaeCanLoad();          // 네스팅 시트 영속 복원
+  iaeCanLoad();          // 네스팅 시트 영속 복원
 
   var ids = iaeLoadIds();
   iaeActiveId = ids.length ? ids[0] : null;

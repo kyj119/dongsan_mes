@@ -69,6 +69,8 @@ function main() {
     var outputDxf    = _p.dxfOutput  || "";      // Export: 재단선 DXF (선택, 주문 가공은 미지정 → 스킵)
     var outputJpg    = _p.jpgOutput  || "";      // Export: 미리보기 JPG (선택, 주문 가공은 미지정 → 스킵)
     var preview      = _p.preview    || false;   // ③ 미리보기 모드: 가공 전부 수행하되 EPS/DXF saveAs만 스킵, JPG만 export
+    var realSize     = _p.realSize   || false;   // 실물 저장: 축소본(1/N) 아트워크를 ×scaleFactor 확대 → EPS를 실물 크기로 저장(RIP 100% 출력).
+                                                  //   false(기본 미지정)=현행 축소 저장(EPS=축소, RIP ×N 확대). 마감·돔보·여백은 effScale로 좌표계 일관.
 
     if (!sourceFile || (!outputEps && !passthroughThumb && !preview)) {
         $.writeln("ProcessOrderItem ERROR: source, epsOutput 필요");
@@ -188,6 +190,34 @@ function main() {
     $.writeln("ProcessOrderItem: " + allMappedItems.length + " total items, "
         + artboardTopItems[abIndex].length + " items for artboard " + abIndex);
 
+    // ── 2a-real. 실물 크기 복원 (realSize): 축소본(1/N) 아트워크를 ×scaleFactor 균등 확대 → EPS를 실물 크기로 저장 ──
+    // 목표 크기(2c)와 달리 검출 종횡비 유지. realSize=false거나 scaleFactor=1이면 완전 무동작(현행 축소 저장 경로 회귀 0).
+    // 이후 모든 좌표(여백·마감·오프셋·펀칭·돔보)는 effScale로 계산 — 실물이면 ÷1(실물 cm), 축소면 ÷N(축소본 보정).
+    if (realSize && scaleFactor > 1) {
+        try {
+            doc.selection = null;
+            doc.artboards.setActiveArtboardIndex(abIndex);
+            doc.selectObjectsOnActiveArtboard();
+            if (doc.selection && doc.selection.length > 0) {
+                var _rsGrp = false;
+                if (doc.selection.length > 1) { app.executeMenuCommand('group'); _rsGrp = true; }
+                var rsg = doc.selection[0];
+                var rsL = rsg.left, rsT = rsg.top;
+                rsg.width  = rsg.width  * scaleFactor;
+                rsg.height = rsg.height * scaleFactor;
+                rsg.left = rsL; rsg.top = rsT;   // 좌상단 앵커 유지 (2c 목표스케일과 동일 패턴)
+                if (_rsGrp) app.executeMenuCommand('ungroup');
+                doc.selection = null;
+                oR = oL + designW * scaleFactor; oB = oT - designH * scaleFactor;
+                designW = designW * scaleFactor; designH = designH * scaleFactor;
+                ab.artboardRect = [oL, oT, oR, oB];
+                $.writeln("ProcessOrderItem: 실물 복원 x" + scaleFactor + " -> "
+                    + Math.round(designW * mmPerPt) + "x" + Math.round(designH * mmPerPt) + "mm");
+            }
+        } catch (eRs) { $.writeln("ProcessOrderItem: 실물 복원 실패 - " + eRs); }
+    }
+    var effScale = (realSize && scaleFactor > 1) ? 1 : scaleFactor;   // 실물=실물cm(÷1), 축소=축소본 보정(÷N)
+
     // ── 2b-rot. 디자인 아트워크 회전 (⑥, 목표 스케일·마감 이전) ──
     // SheetLayout.jsx rotate(-pl.rotation) 패턴 포팅: 프론트/Konva는 화면 CW, Illustrator rotate는 CCW → -rotation.
     // 현재 아트보드 top items를 그룹화 → 그룹 중심 기준 회전 → ungroup 후 회전 결과로 bbox(oL/oT/oR/oB·designW/H) 재계산.
@@ -253,8 +283,8 @@ function main() {
     // 검출 크기와 다른 목표가 오면 아트보드 아트워크를 그룹으로 묶어 목표 W×H로 비균등 스케일(좌상단 앵커).
     // 목표가 0이거나 검출과 같으면 스킵(기존 동작 보존 = 비-캔버스 주문 무영향).
     if (targetW > 0 && targetH > 0) {
-        var tW_pt = targetW * 10.0 * ptPerMm / scaleFactor;
-        var tH_pt = targetH * 10.0 * ptPerMm / scaleFactor;
+        var tW_pt = targetW * 10.0 * ptPerMm / effScale;
+        var tH_pt = targetH * 10.0 * ptPerMm / effScale;
         if (Math.abs(tW_pt - designW) > 1 || Math.abs(tH_pt - designH) > 1) {
             try {
                 doc.selection = null;
@@ -288,12 +318,12 @@ function main() {
         offsetMethod = offsetCfg.method || 'scale';
         offsetCutLine = (offsetCfg.cut_line !== undefined) ? !!offsetCfg.cut_line : true;
         if (offsetCfg.offset_top !== undefined) {
-            offT = (offsetCfg.offset_top || 0) / scaleFactor * ptPerMm;
-            offB = (offsetCfg.offset_bottom || 0) / scaleFactor * ptPerMm;
-            offL = (offsetCfg.offset_left || 0) / scaleFactor * ptPerMm;
-            offR = (offsetCfg.offset_right || 0) / scaleFactor * ptPerMm;
+            offT = (offsetCfg.offset_top || 0) / effScale * ptPerMm;
+            offB = (offsetCfg.offset_bottom || 0) / effScale * ptPerMm;
+            offL = (offsetCfg.offset_left || 0) / effScale * ptPerMm;
+            offR = (offsetCfg.offset_right || 0) / effScale * ptPerMm;
         } else if (offsetCfg.offset_distance) {
-            var d = offsetCfg.offset_distance / scaleFactor * ptPerMm;
+            var d = offsetCfg.offset_distance / effScale * ptPerMm;
             offT = offB = offL = offR = d;
         }
     }
@@ -306,10 +336,10 @@ function main() {
 
     // ── 3. 여백 계산 (cm → pt) ──
     // 소스가 실물의 1/N 축소본이면 여백(블리드)도 ÷scaleFactor로 보정(target·offset·돔보와 일관). scale=1=무변화.
-    var mL = marginL * 10.0 * ptPerMm / scaleFactor;
-    var mR = marginR * 10.0 * ptPerMm / scaleFactor;
-    var mT = marginT * 10.0 * ptPerMm / scaleFactor;
-    var mB = marginB * 10.0 * ptPerMm / scaleFactor;
+    var mL = marginL * 10.0 * ptPerMm / effScale;
+    var mR = marginR * 10.0 * ptPerMm / effScale;
+    var mT = marginT * 10.0 * ptPerMm / effScale;
+    var mB = marginB * 10.0 * ptPerMm / effScale;
 
     // ── 3b. 마감방식(finishing) 여백 계산 (cm → pt) ──
     // 마감 여백 = 빈 공간 확장 (bleed와 다름: 디자인 확장 아님)
@@ -317,10 +347,10 @@ function main() {
     var fT = 0, fB = 0, fL = 0, fR = 0;
     var hasFinishing = false;
     if (finishingCfg) {
-        fT = (finishingCfg.top && finishingCfg.top.margin_cm) ? finishingCfg.top.margin_cm * 10.0 * ptPerMm / scaleFactor : 0;
-        fB = (finishingCfg.bottom && finishingCfg.bottom.margin_cm) ? finishingCfg.bottom.margin_cm * 10.0 * ptPerMm / scaleFactor : 0;
-        fL = (finishingCfg.left && finishingCfg.left.margin_cm) ? finishingCfg.left.margin_cm * 10.0 * ptPerMm / scaleFactor : 0;
-        fR = (finishingCfg.right && finishingCfg.right.margin_cm) ? finishingCfg.right.margin_cm * 10.0 * ptPerMm / scaleFactor : 0;
+        fT = (finishingCfg.top && finishingCfg.top.margin_cm) ? finishingCfg.top.margin_cm * 10.0 * ptPerMm / effScale : 0;
+        fB = (finishingCfg.bottom && finishingCfg.bottom.margin_cm) ? finishingCfg.bottom.margin_cm * 10.0 * ptPerMm / effScale : 0;
+        fL = (finishingCfg.left && finishingCfg.left.margin_cm) ? finishingCfg.left.margin_cm * 10.0 * ptPerMm / effScale : 0;
+        fR = (finishingCfg.right && finishingCfg.right.margin_cm) ? finishingCfg.right.margin_cm * 10.0 * ptPerMm / effScale : 0;
         var hasTop = finishingCfg.top && finishingCfg.top.method && finishingCfg.top.method !== '';
         var hasBot = finishingCfg.bottom && finishingCfg.bottom.method && finishingCfg.bottom.method !== '';
         var hasLeft = finishingCfg.left && finishingCfg.left.method && finishingCfg.left.method !== '';
@@ -573,8 +603,8 @@ function main() {
 
     // ── 6. 펀칭 마크 ──
     if (punching) {
-        var markDiaMm = 5 / scaleFactor;
-        var markOffMm = 10 / scaleFactor;
+        var markDiaMm = 5 / effScale;
+        var markOffMm = 10 / effScale;
         var markDiaPt = markDiaMm * ptPerMm;
         var markOffPt = markOffMm * ptPerMm;
         var markRadius = markDiaPt / 2;
@@ -735,10 +765,10 @@ function main() {
     // 출력 바운드(여백·도련 포함 = 현재 artboardRect)의 1cm 바깥 꼭짓점 + 방향마크 + 50cm 중간마크.
     // PNG(썸네일) 이후·EPS 이전에 그려 썸네일엔 빠지고 EPS엔 포함. 아트보드를 마크 포함해 확장.
     if (trim) {
-        var DOMBO_DIAM  = 6 * ptPerMm / scaleFactor;    // 6mm
-        var CORNER_DIST = 10 * ptPerMm / scaleFactor;   // 꼭짓점 대각 1cm 바깥
-        var DIR_OFFSET  = 60 * ptPerMm / scaleFactor;   // 방향마크 6cm
-        var MAX_GAP     = 500 * ptPerMm / scaleFactor;  // 50cm 간격 보정
+        var DOMBO_DIAM  = 6 * ptPerMm / effScale;    // 6mm
+        var CORNER_DIST = 10 * ptPerMm / effScale;   // 꼭짓점 대각 1cm 바깥
+        var DIR_OFFSET  = 60 * ptPerMm / effScale;   // 방향마크 6cm
+        var MAX_GAP     = 500 * ptPerMm / effScale;  // 50cm 간격 보정 (실물이면 ÷1 → 실물 90×180 기준: 상2·좌우3·하1)
         var _dCol = new CMYKColor(); _dCol.cyan = 0; _dCol.magenta = 0; _dCol.yellow = 0; _dCol.black = 100;
         function _mkDombo(cx, cy) {
             var el = doc.pathItems.ellipse(cy + DOMBO_DIAM / 2, cx - DOMBO_DIAM / 2, DOMBO_DIAM, DOMBO_DIAM);

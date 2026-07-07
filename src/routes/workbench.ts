@@ -802,6 +802,7 @@ workbenchRouter.post('/process', async (c) => {
       target_w_cm?: number; target_h_cm?: number
       finishing?: unknown; trim?: unknown; rotate90?: unknown
       scale_factor?: number; rotation?: number
+      real_size?: boolean
       preview_only?: boolean
       offset?: unknown; punching?: unknown; annotation?: unknown
     }>()
@@ -832,6 +833,8 @@ workbenchRouter.post('/process', async (c) => {
       rotate90: body.rotate90 ?? false,
       // ⑤ 파일배율(1/N): 1 이상 숫자만 허용, 아니면 1 — jsx/에이전트가 scaleFactor 키로 읽음
       scale_factor: (typeof body.scale_factor === 'number' && body.scale_factor >= 1) ? body.scale_factor : 1,
+      // 실물 저장: 축소본(1/N)을 ×N 확대해 EPS를 실물 크기로 저장(RIP 100% 출력). 미지정=false=현행 축소 저장.
+      real_size: !!body.real_size,
       rotation,
       // ③ 미리보기 잡: 실렌더 JPG만 콜백(EPS/DXF 스킵), 이력 목록에서 제외 — spec R1 ③
       preview_only: !!body.preview_only,

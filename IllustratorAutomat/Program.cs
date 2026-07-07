@@ -1608,6 +1608,8 @@ namespace IllustratorAutomation
             double rotation = prm.TryGetProperty("rotation", out var rotEl) && rotEl.ValueKind == JsonValueKind.Number ? rotEl.GetDouble() : 0;
             // ③ 미리보기 모드: 가공(목표·마감·돔보·회전·스케일)은 그대로, EPS/DXF saveAs·R2 업로드 없이 JPG만 콜백.
             bool preview = prm.TryGetProperty("preview_only", out var pvEl) && (pvEl.ValueKind == JsonValueKind.True || (pvEl.ValueKind == JsonValueKind.Number && pvEl.GetDouble() != 0));
+            // 실물 저장: jsx가 _p.realSize로 읽어 아트워크 ×scaleFactor 확대 → EPS 실물 크기. 미지정=false=현행 축소 저장.
+            bool realSize = prm.TryGetProperty("real_size", out var rsEl) && (rsEl.ValueKind == JsonValueKind.True || (rsEl.ValueKind == JsonValueKind.Number && rsEl.GetDouble() != 0));
 
             var now = DateTime.Now;
             // preview는 임시 폴더(TEMP_FOLDER/process_preview_{id}), 일반 가공은 DESIGN/가공/yyyy/MM/dd/process_{id}.
@@ -1636,6 +1638,7 @@ namespace IllustratorAutomation
                 trim = trim,
                 scaleFactor = scaleFactor,  // ⑤ jsx _p.scaleFactor (키명 정확)
                 rotation = rotation,         // ⑥ jsx _p.rotation (0/90/180/270)
+                realSize = realSize,         // 실물 저장: jsx _p.realSize (아트워크 ×N 확대)
                 preview = preview,           // ③ jsx _p.preview (EPS/DXF saveAs 스킵)
                 epsOutput = preview ? "" : epsOut,   // preview면 EPS 미저장
                 dxfOutput = preview ? "" : dxfOut,   // preview면 DXF 미저장
@@ -2373,6 +2376,7 @@ namespace IllustratorAutomation
                 object? annotationConfig = null;
                 object? offsetConfig = null;
                 bool trimEnabled = false;   // N5: 단일 그룹 돔보 마크
+                bool realSize = false;      // 실물 저장(REALSIZE): 축소본(1/N) 아트워크 ×N 확대 → EPS 실물 크기. 미부착=false=현행 축소.
                 double targetWcm = 0, targetHcm = 0;  // N4 fidelity: 캔버스 리사이즈 목표 크기(cm)
                 JsonElement? sheetParamsEl = null;    // N4 다중시트: per-item SHEET(네스팅) 파라미터
                 List<string>? annotationPositions = null;
@@ -2499,6 +2503,9 @@ namespace IllustratorAutomation
                                     // N5: 돔보(TRIM) — 단일 그룹 출력에 돔보 마크 추가 플래그
                                     if (ppCode2 == "TRIM" || ppCode2 == "DOMBO") trimEnabled = true;
 
+                                    // 실물 저장(REALSIZE) — 축소본을 ×scaleFactor 확대해 EPS를 실물 크기로 저장(RIP 100% 출력)
+                                    if (ppCode2 == "REALSIZE") realSize = true;
+
                                     // N4 다중시트: SHEET — per-item 네스팅 시트(placements) → SheetLayout 렌더
                                     if (ppCode2 == "SHEET" && ppEntry.TryGetProperty("params", out var shParamsEl)) sheetParamsEl = shParamsEl.Clone();
 
@@ -2623,7 +2630,9 @@ namespace IllustratorAutomation
                 if (item.TryGetProperty("scale_factor", out var sfEl) && sfEl.ValueKind != JsonValueKind.Null)
                     sfEl.TryGetDouble(out scaleFactor);
                 if (scaleFactor <= 0) scaleFactor = 1.0;
-                if (scaleFactor != 1.0)
+                // 실물 저장(realSize)이면 마진 선처리 스킵 — jsx가 effScale=1로 실물 cm 그대로 적용(아트워크도 ×N 확대).
+                //   축소 저장(!realSize)만 축소본 좌표계로 마진을 ÷scaleFactor 선처리(현행 유지).
+                if (scaleFactor != 1.0 && !realSize)
                 {
                     // 모든 마진을 scaleFactor로 나눔 (실물 cm → 파일 좌표계 cm)
                     marginL /= scaleFactor;
@@ -2760,6 +2769,7 @@ namespace IllustratorAutomation
                     pngOutput = pngOutputPath,
                     thumbSize = 300,
                     scaleFactor = scaleFactor,
+                    realSize    = realSize,     // 실물 저장: jsx _p.realSize (아트워크 ×N 확대, 마진 선처리 스킵과 짝)
                     punching    = punchingConfig,
                     annotation  = annotationConfig,
                     offset      = offsetConfig,
