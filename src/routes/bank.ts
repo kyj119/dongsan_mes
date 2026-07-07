@@ -394,7 +394,7 @@ bankRouter.post('/transactions/import', requireRole('ADMIN'), async (c) => {
       }
     }
 
-    let inserted = 0, skipped = 0
+    let skipped = 0
     const stmts: D1PreparedStatement[] = []
 
     for (const row of rows) {
@@ -407,8 +407,10 @@ bankRouter.post('/transactions/import', requireRole('ADMIN'), async (c) => {
       if (existingSet.has(key)) { skipped++; continue }
       existingSet.add(key) // 같은 배치 내 중복도 방지
 
+      // 0451: INSERT OR IGNORE — content_key(내용키) UNIQUE와 충돌 시 batch 전체 실패 대신 조용히 건너뜀
+      //   (앱-레벨 existingSet은 date|amount|counterpart|time, DB 내용키는 계좌|일자|시각|유형|금액|잔액 → 상호 보완)
       stmts.push(c.env.DB.prepare(`
-        INSERT INTO bank_transactions (bank_account_id, transaction_date, transaction_time, transaction_type, amount, balance_after, counterpart_name, description, match_status, entity_id)
+        INSERT OR IGNORE INTO bank_transactions (bank_account_id, transaction_date, transaction_time, transaction_type, amount, balance_after, counterpart_name, description, match_status, entity_id)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'UNMATCHED', ?)
       `).bind(
         account_id, txDate, txTime,
@@ -418,13 +420,15 @@ bankRouter.post('/transactions/import', requireRole('ADMIN'), async (c) => {
         row.description || null,
         entityId
       ))
-      inserted++
     }
 
-    // 100개 단위 batch 실행
+    // 100개 단위 batch 실행 — 실제 삽입 수는 batch 결과의 changes 합산(OR IGNORE로 무시된 건 제외)
+    let inserted = 0
     for (let i = 0; i < stmts.length; i += 100) {
-      await c.env.DB.batch(stmts.slice(i, i + 100))
+      const res = await c.env.DB.batch(stmts.slice(i, i + 100))
+      for (const r of res) inserted += (r.meta?.changes ?? 0)
     }
+    skipped += stmts.length - inserted // 내용키 충돌로 무시된 건도 중복 건너뜀에 포함
 
     // last_synced 업데이트
     await c.env.DB.prepare(
@@ -536,11 +540,11 @@ bankRouter.post('/sync-barobill', requireRole('ADMIN'), async (c) => {
               ? (item.TransDT || '').slice(8,10) + ':' + (item.TransDT || '').slice(10,12) + ':00'
               : null
 
-            // #474: 기존 UNIQUE 인덱스(idx_bt_codef_id)에 위임 — 건별 dup-check SELECT 제거(N+1)
+            // #474: UNIQUE 인덱스에 위임 — 건별 dup-check SELECT 제거(N+1)
+            // 0451: dedup 신원을 content_key(내용키)로 이전 → 외부 TransRefKey 재생성돼도 중복 미삽입.
             const r = await c.env.DB.prepare(`
-              INSERT INTO bank_transactions (bank_account_id, transaction_date, transaction_time, transaction_type, amount, balance_after, counterpart_name, description, match_status, codef_transaction_id, entity_id)
+              INSERT OR IGNORE INTO bank_transactions (bank_account_id, transaction_date, transaction_time, transaction_type, amount, balance_after, counterpart_name, description, match_status, codef_transaction_id, entity_id)
               VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'UNMATCHED', ?, ?)
-              ON CONFLICT(bank_account_id, codef_transaction_id) DO NOTHING
             `).bind(
               bankAcc.id, txDate, txTime, txType, amount,
               parseFloat(item.Balance || '0') || null,
@@ -1818,11 +1822,11 @@ bankRouter.post('/auto-sync', requireRole('ADMIN'), async (c) => {
                 ? (item.TransDT || '').slice(8,10) + ':' + (item.TransDT || '').slice(10,12) + ':00'
                 : null
 
-              // #474: 기존 UNIQUE 인덱스(idx_bt_codef_id)에 위임 — 건별 dup-check SELECT 제거(N+1)
+              // #474: UNIQUE 인덱스에 위임 — 건별 dup-check SELECT 제거(N+1)
+              // 0451: dedup 신원을 content_key(내용키)로 이전 → 외부 TransRefKey 재생성돼도 중복 미삽입.
               const r = await c.env.DB.prepare(`
-                INSERT INTO bank_transactions (bank_account_id, transaction_date, transaction_time, transaction_type, amount, balance_after, counterpart_name, description, codef_transaction_id, match_status, entity_id)
+                INSERT OR IGNORE INTO bank_transactions (bank_account_id, transaction_date, transaction_time, transaction_type, amount, balance_after, counterpart_name, description, codef_transaction_id, match_status, entity_id)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'UNMATCHED', ?)
-                ON CONFLICT(bank_account_id, codef_transaction_id) DO NOTHING
               `).bind(
                 bankAcc.id, txDate, txTime, txType, amount,
                 parseFloat(item.Balance || '0'),

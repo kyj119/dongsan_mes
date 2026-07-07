@@ -173,9 +173,31 @@ cronRouter.post('/daily-maintenance', agentKeyMiddleware, async (c) => {
     retention.caps_sync_log_error = String(err?.message || err).slice(0, 200)
   }
 
+  // 5) 무결성 트립와이어(0451) — bank_transactions 내용중복 감지.
+  //    정상=0(내용키 UNIQUE 인덱스가 예방). >0이면 인덱스 우회/과거 잔존 의미 → ADMIN 알림(24h dedup).
+  const integrity: any = {}
+  try {
+    const dup = await c.env.DB.prepare(
+      `SELECT COUNT(*) c FROM (SELECT content_key FROM bank_transactions GROUP BY content_key HAVING COUNT(*) > 1)`
+    ).first<{ c: number }>()
+    integrity.bank_dup_groups = dup?.c || 0
+    if ((dup?.c || 0) > 0) {
+      const recent = await c.env.DB.prepare(
+        `SELECT 1 FROM notifications WHERE title = ? AND created_at > datetime('now', '-1 day') LIMIT 1`
+      ).bind('은행거래 중복 감지').first()
+      if (!recent) {
+        const { notifyRoles } = await import('../utils/notify')
+        await notifyRoles(c.env.DB, ['ADMIN'], '은행거래 중복 감지',
+          `bank_transactions 내용 동일·키 상이 ${dup!.c}그룹 감지 — /bank 확인 필요`, '/bank')
+      }
+    }
+  } catch (err: any) {
+    integrity.bank_dup_error = String(err?.message || err).slice(0, 200)
+  }
+
   const summary = { entities: entities.length, date: yesterday }
-  console.log('[cron/daily-maintenance]', JSON.stringify({ ...summary, leaves, retention }))
-  return c.json({ success: true, summary, results: out, leaves, retention })
+  console.log('[cron/daily-maintenance]', JSON.stringify({ ...summary, leaves, retention, integrity }))
+  return c.json({ success: true, summary, results: out, leaves, retention, integrity })
 })
 
 export default cronRouter
