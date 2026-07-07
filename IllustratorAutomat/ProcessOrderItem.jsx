@@ -198,19 +198,40 @@ function main() {
             doc.selection = null;
             doc.artboards.setActiveArtboardIndex(abIndex);
             doc.selectObjectsOnActiveArtboard();
-            if (doc.selection && doc.selection.length > 0) {
-                var _rsGrp = false;
-                if (doc.selection.length > 1) { app.executeMenuCommand('group'); _rsGrp = true; }
-                var rsg = doc.selection[0];
-                var rsL = rsg.left, rsT = rsg.top;
-                rsg.width  = rsg.width  * scaleFactor;
-                rsg.height = rsg.height * scaleFactor;
-                rsg.left = rsL; rsg.top = rsT;   // 좌상단 앵커 유지 (2c 목표스케일과 동일 패턴)
-                if (_rsGrp) app.executeMenuCommand('ungroup');
+            var _rsSel = doc.selection;
+            if (_rsSel && _rsSel.length > 0) {
+                // 디자인 union 바운드 top-left = 스케일 앵커 (그룹/매트릭스 의존 없이 다중 아이템 균등 확대)
+                var uL = null, uT = null;
+                for (var _ui = 0; _ui < _rsSel.length; _ui++) {
+                    var _ugb = _rsSel[_ui].geometricBounds; // [left, top, right, bottom]
+                    if (uL === null) { uL = _ugb[0]; uT = _ugb[1]; }
+                    else { if (_ugb[0] < uL) uL = _ugb[0]; if (_ugb[1] > uT) uT = _ugb[1]; }
+                }
+                var _rsPct = scaleFactor * 100;
+                // 3-pass: 앵커(uL,uT)→원점 이동 → 각 아이템 원점 기준 ×N 스케일 → 앵커로 복귀.
+                //   executeMenuCommand('group')은 selection을 그룹으로 갱신하지 못해(414 path 중 1개만 스케일되던 버그)
+                //   각 아이템에 직접 적용. 상대 위치 보존(모두 같은 앵커로 이동·복귀).
+                var _ri;
+                for (_ri = 0; _ri < _rsSel.length; _ri++) { try { _rsSel[_ri].translate(-uL, -uT); } catch (e1) {} }
+                for (_ri = 0; _ri < _rsSel.length; _ri++) { try { _rsSel[_ri].resize(_rsPct, _rsPct, true, true, true, true, _rsPct, Transformation.DOCUMENTORIGIN); } catch (e2) {} }
+                for (_ri = 0; _ri < _rsSel.length; _ri++) { try { _rsSel[_ri].translate(uL, uT); } catch (e3) {} }
                 doc.selection = null;
-                oR = oL + designW * scaleFactor; oB = oT - designH * scaleFactor;
-                designW = designW * scaleFactor; designH = designH * scaleFactor;
-                ab.artboardRect = [oL, oT, oR, oB];
+                app.redraw();
+                // 스케일된 실제 지오메트리로 바운드 재계산(자기보정)
+                doc.artboards.setActiveArtboardIndex(abIndex);
+                doc.selectObjectsOnActiveArtboard();
+                var sbL = null, sbT = null, sbR = null, sbB = null;
+                for (var sbi = 0; sbi < doc.selection.length; sbi++) {
+                    var sgb = doc.selection[sbi].geometricBounds;
+                    if (sbL === null) { sbL = sgb[0]; sbT = sgb[1]; sbR = sgb[2]; sbB = sgb[3]; }
+                    else { if (sgb[0] < sbL) sbL = sgb[0]; if (sgb[1] > sbT) sbT = sgb[1]; if (sgb[2] > sbR) sbR = sgb[2]; if (sgb[3] < sbB) sbB = sgb[3]; }
+                }
+                doc.selection = null;
+                if (sbL !== null) {
+                    oL = sbL; oT = sbT; oR = sbR; oB = sbB;
+                    designW = Math.abs(oR - oL); designH = Math.abs(oT - oB);
+                    ab.artboardRect = [oL, oT, oR, oB];
+                }
                 $.writeln("ProcessOrderItem: 실물 복원 x" + scaleFactor + " -> "
                     + Math.round(designW * mmPerPt) + "x" + Math.round(designH * mmPerPt) + "mm");
             }
