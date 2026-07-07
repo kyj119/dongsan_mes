@@ -1115,7 +1115,7 @@ hrRouter.get('/contracts', requireRole('ADMIN', 'MANAGER'), async (c) => {
     }
 
     // Count
-    const countQuery = query.replace(/SELECT lc\.\*.*?FROM/, 'SELECT COUNT(*) as total FROM')
+    const countQuery = query.replace(/SELECT lc\.\*.*?FROM/s, 'SELECT COUNT(*) as total FROM')
     const countResult = await c.env.DB.prepare(countQuery).bind(...params).first<{ total: number }>()
     const total = countResult?.total || 0
 

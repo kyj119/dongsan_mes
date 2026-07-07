@@ -159,7 +159,7 @@ hometaxInvoicesRouter.get('/jobs/:id/status', requireRole('ADMIN', 'MANAGER'), a
     const db = c.env.DB
 
     const job = await db.prepare(`
-      SELECT id, job_id, job_type, start_date, end_date, state, result, message, total_count, requested_by, requested_at AS created_at FROM hometax_jobs WHERE id = ?
+      SELECT id, job_id, job_type, start_date, end_date, state, result, message, total_count, requested_by, requested_at, completed_at FROM hometax_jobs WHERE id = ?
     `).bind(Number(jobDbId)).first<HometaxJobRow>()
 
     if (!job) {
@@ -220,7 +220,7 @@ hometaxInvoicesRouter.post('/jobs/:id/fetch', requireRole('ADMIN', 'MANAGER'), a
     const db = c.env.DB
 
     const job = await db.prepare(`
-      SELECT id, job_id, job_type, start_date, end_date, state, result, message, total_count, requested_by, requested_at AS created_at FROM hometax_jobs WHERE id = ?
+      SELECT id, job_id, job_type, start_date, end_date, state, result, message, total_count, requested_by, requested_at, completed_at FROM hometax_jobs WHERE id = ?
     `).bind(Number(jobDbId)).first<HometaxJobRow>()
 
     if (!job) {
@@ -359,7 +359,9 @@ hometaxInvoicesRouter.get('/', requireRole('ADMIN', 'MANAGER'), async (c) => {
     }
 
     const ef = entityFilter(c, 'hi')
-    const where = whereClauses.length > 0 ? 'WHERE ' + whereClauses.join(' AND ') : ''
+    // WHERE 1=1 가드 필수: 필터 미지정(기본 로드) 시 where=''면 ${ef.clause}(" AND hi.entity_id=?")가
+    // 직전 LEFT JOIN의 ON절에 붙어 좌측표(hi) 행을 걸러내지 못함 → 전체법인 누출. 가드로 WHERE에 고정.
+    const where = whereClauses.length > 0 ? 'WHERE ' + whereClauses.join(' AND ') : 'WHERE 1=1'
 
     const db = c.env.DB
     const { results } = await db.prepare(`

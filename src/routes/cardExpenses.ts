@@ -102,8 +102,8 @@ cardExpRouter.get('/cards', requireRole('ADMIN', 'MANAGER'), async (c) => {
     const thisMonth = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}`
     const { results } = await c.env.DB.prepare(`
       SELECT cc.*, u.name as assigned_user_name,
-        (SELECT COUNT(*) FROM card_transactions ct WHERE ct.card_id = cc.id AND ct.transaction_date >= ? AND ct.transaction_date <= ?) as tx_count,
-        (SELECT COALESCE(SUM(CASE WHEN ct2.approval_type != 'CANCEL' THEN ct2.amount ELSE -ct2.amount END), 0) FROM card_transactions ct2 WHERE ct2.card_id = cc.id AND ct2.transaction_date >= ? AND ct2.transaction_date <= ?) as month_total
+        (SELECT COUNT(*) FROM card_transactions ct WHERE ct.card_id = cc.id AND ct.is_offset = 0 AND ct.transaction_date >= ? AND ct.transaction_date <= ?) as tx_count,
+        (SELECT COALESCE(SUM(CASE WHEN ct2.approval_type != 'CANCEL' THEN ct2.amount ELSE -ct2.amount END), 0) FROM card_transactions ct2 WHERE ct2.card_id = cc.id AND ct2.is_offset = 0 AND ct2.transaction_date >= ? AND ct2.transaction_date <= ?) as month_total
       FROM corporate_cards cc
       LEFT JOIN users u ON cc.assigned_user_id = u.id
       WHERE cc.is_active = 1${ef.clause}
@@ -853,7 +853,7 @@ cardExpRouter.get('/report', requireRole('ADMIN', 'MANAGER'), async (c) => {
         COUNT(ct.id) as count, COALESCE(SUM(ct.amount), 0) as total
       FROM card_transactions ct
       LEFT JOIN expense_categories ec ON ct.category_id = ec.id
-      WHERE ct.transaction_date >= ? AND ct.transaction_date <= ? AND ct.approval_type != 'CANCEL'${ef.clause}
+      WHERE ct.transaction_date >= ? AND ct.transaction_date <= ? AND ct.is_offset = 0 AND ct.approval_type != 'CANCEL'${ef.clause}
       GROUP BY ec.id ORDER BY total DESC
     `).bind(dateStart, dateEnd, ...ef.params).all()
 
@@ -862,7 +862,7 @@ cardExpRouter.get('/report', requireRole('ADMIN', 'MANAGER'), async (c) => {
         COUNT(ct.id) as count, COALESCE(SUM(ct.amount), 0) as total
       FROM card_transactions ct
       LEFT JOIN corporate_cards cc ON ct.card_id = cc.id
-      WHERE ct.transaction_date >= ? AND ct.transaction_date <= ? AND ct.approval_type != 'CANCEL'${ef.clause}
+      WHERE ct.transaction_date >= ? AND ct.transaction_date <= ? AND ct.is_offset = 0 AND ct.approval_type != 'CANCEL'${ef.clause}
       GROUP BY cc.id ORDER BY total DESC
     `).bind(dateStart, dateEnd, ...ef.params).all()
 
