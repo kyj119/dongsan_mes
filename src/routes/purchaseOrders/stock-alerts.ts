@@ -32,6 +32,7 @@ stockAlertsRouter.get('/stock-alerts', requireRole('ADMIN', 'MANAGER'), async (c
       LEFT JOIN users u ON sa.acknowledged_by = u.id
       WHERE sa.status = ?${ef.clause}
       ORDER BY sa.created_at DESC
+      LIMIT 500
     `).bind(status, ...ef.params).all()
 
     return c.json({ success: true, data: results })

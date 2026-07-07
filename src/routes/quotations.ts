@@ -145,6 +145,51 @@ quotationsRouter.get('/', async (c) => {
   }
 })
 
+// ===== GET /stats — KPI 집계 (loadStats: 전체 견적 클라 limit=500 합산 대체) =====
+// getQuotStatus 로직과 동일: valid=ACTIVE&미만료(partial 포함), expired=EXPIRED 또는 ACTIVE&만료.
+// today는 목록 자동만료(markExpiredIfNeeded, GET /)와 동일하게 UTC(new Date().toISOString) 기준 → stats↔목록 표시 일치.
+// ⚠️ '/:id'보다 먼저 등록 (id='stats' 섀도잉 방지).
+quotationsRouter.get('/stats', async (c) => {
+  try {
+    const { search = '', client_id = '' } = c.req.query()
+    const today = new Date().toISOString().split('T')[0]
+    let query = `
+      SELECT
+        COUNT(*) AS total,
+        COALESCE(SUM(q.final_amount), 0) AS amount,
+        COALESCE(SUM(CASE WHEN q.status = 'ACTIVE' AND (q.valid_until IS NULL OR q.valid_until >= ?) THEN 1 ELSE 0 END), 0) AS valid,
+        COALESCE(SUM(CASE WHEN q.status = 'EXPIRED' OR (q.status = 'ACTIVE' AND q.valid_until IS NOT NULL AND q.valid_until < ?) THEN 1 ELSE 0 END), 0) AS expired
+      FROM quotations q
+      LEFT JOIN clients c ON q.client_id = c.id
+      WHERE 1=1
+    `
+    const params: any[] = [today, today]
+    if (client_id) { query += ' AND q.client_id = ?'; params.push(Number(client_id)) }
+    if (search) {
+      query += ' AND (q.quotation_number LIKE ? OR c.client_name LIKE ?)'
+      const pat = `%${search}%`
+      params.push(pat, pat)
+    }
+    const ef = entityFilter(c, 'q')
+    query += ef.clause
+    params.push(...ef.params)
+
+    const row = await c.env.DB.prepare(query).bind(...params).first<{ total: number; amount: number; valid: number; expired: number }>()
+    return c.json({
+      success: true,
+      data: {
+        total: row?.total || 0,
+        valid: row?.valid || 0,
+        expired: row?.expired || 0,
+        amount: row?.amount || 0,
+      }
+    })
+  } catch (error) {
+    console.error('quotations.stats error:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
+  }
+})
+
 // ===== GET /:id — 상세 =====
 quotationsRouter.get('/:id', async (c) => {
   try {

@@ -15,6 +15,9 @@ recordsRouter.get('/', async (c) => {
   try {
     const period = c.req.query('period') || ''
     const status = c.req.query('status') || ''
+    // 방어적 상한: 급여 PII 전량 반환 방지 (기본 500, cap 1000)
+    const limit = Math.min(Math.max(parseInt(c.req.query('limit') || '500'), 1), 1000)
+    const offset = Math.max(parseInt(c.req.query('offset') || '0'), 0)
 
     const clauses: string[] = ['e.is_deleted = 0']
     const params: any[] = []
@@ -24,6 +27,11 @@ recordsRouter.get('/', async (c) => {
     if (entityId !== 0) { clauses.push('p.entity_id = ?'); params.push(entityId) }
     const where = 'WHERE ' + clauses.join(' AND ')
 
+    const countRow = await c.env.DB.prepare(
+      `SELECT COUNT(*) as count FROM payroll p JOIN employees e ON p.employee_id = e.id ${where}`
+    ).bind(...params).first<{ count: number }>()
+    const count = countRow?.count ?? 0
+
     const rows = await c.env.DB.prepare(
       `SELECT p.*, e.name as employee_name, e.employee_code, e.department, e.position,
               e.base_salary as employee_base_salary, e.mobile as employee_mobile,
@@ -32,12 +40,13 @@ recordsRouter.get('/', async (c) => {
        JOIN employees e ON p.employee_id = e.id
        LEFT JOIN entities ent ON ent.id = p.entity_id
        ${where}
-       ORDER BY e.department, e.name`
+       ORDER BY e.department, e.name
+       LIMIT ${limit} OFFSET ${offset}`
     ).bind(...params).all()
 
     const items = rows.results || []
     // 응답 포맷 통일: items 키로 반환하되 루트 배열은 backwards compat으로 유지
-    return c.json({ success: true, data: { items, list: items, total: items.length } })
+    return c.json({ success: true, data: { items, list: items, total: items.length, count, limit, offset } })
   } catch (err: any) {
     console.error('Payroll list error:', err)
     return c.json({ success: false, error: '조회 실패', detail: '서버 오류가 발생했습니다' }, 500)

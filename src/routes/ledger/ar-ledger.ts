@@ -473,16 +473,19 @@ arLedgerRouter.get('/settlement', async (c) => {
       .filter((row): row is NonNullable<typeof row> => row !== null)
       .sort((a, b) => b.balance - a.balance)
 
+    // total_orders 추가(프론트 합계 행이 서버값 사용 — 목록 방어적 cap로 잘려도 정확). 기존 키 유지, 추가만.
     const summary = clientRows.reduce((acc, cl) => ({
       total_clients: acc.total_clients + 1,
+      total_orders: acc.total_orders + (cl.order_count || 0),
       total_sales: acc.total_sales + cl.total_sales,
       total_payments: acc.total_payments + cl.total_payments,
       total_balance: acc.total_balance + cl.balance
-    }), { total_clients: 0, total_sales: 0, total_payments: 0, total_balance: 0 })
+    }), { total_clients: 0, total_orders: 0, total_sales: 0, total_payments: 0, total_balance: 0 })
 
+    // 목록 방어적 cap(1000) — 합계는 summary(전체 clientRows) 사용하므로 KPI는 잘려도 정확. count=cap 전 실제 행수.
     return c.json({
       success: true,
-      data: { summary, clients: clientRows }
+      data: { summary, clients: clientRows.slice(0, 1000), count: clientRows.length }
     })
   } catch (error) {
     console.error('Get settlement report error:', error)

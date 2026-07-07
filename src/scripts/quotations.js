@@ -27,21 +27,18 @@ function filterByQuotStatus(s) {
 
 async function loadStats() {
   try {
-    var res = await axios.get('/api/quotations?limit=500&page=1');
+    // 서버 집계 사용 (limit=500 fetch 후 클라 합산 → 상한 초과 시 수치 조용히 축소 제거)
+    var res = await axios.get('/api/quotations/stats');
     if (!res.data.success) return;
-    var quotations = res.data.data || [];
-    var total = quotations.length;
-    var valid = 0, expired = 0, amount = 0;
-    quotations.forEach(function(q) {
-      var s = getQuotStatus(q);
-      if (s === 'valid' || s === 'partial') valid++;
-      if (s === 'expired') expired++;
-      amount += parseFloat(q.final_amount) || 0;
-    });
-    document.getElementById('statTotal').textContent = total;
-    document.getElementById('statValid').textContent = valid;
-    document.getElementById('statExpired').textContent = expired;
-    document.getElementById('statAmount').textContent = amount.toLocaleString() + '원';
+    var d = res.data.data || {};
+    var elT = document.getElementById('statTotal');
+    var elV = document.getElementById('statValid');
+    var elE = document.getElementById('statExpired');
+    var elA = document.getElementById('statAmount');
+    if (elT) elT.textContent = d.total || 0;
+    if (elV) elV.textContent = d.valid || 0;
+    if (elE) elE.textContent = d.expired || 0;
+    if (elA) elA.textContent = (d.amount || 0).toLocaleString() + '원';
   } catch(e) { console.error('loadStats error:', e); }
 }
 

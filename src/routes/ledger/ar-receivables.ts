@@ -202,39 +202,59 @@ arReceivablesRouter.get('/receivables', async (c) => {
     const minBalance = parseFloat(min_balance)
 
     // split billing P3: clients.balance 캐시 폐기 → (거래처 미수금) 파생. billed=order_billing_groups[BILLED](청구법인 g), 미수=billed−payments−adjustments.
-    const { clause: balGEf, params: balGP } = entityFilter(c, 'g')
-    const { clause: balPEf, params: balPP } = entityFilter(c, 'p')
-    const { clause: balAEf, params: balAP } = entityFilter(c, 'a')
-    const { clause: recvPayEf, params: recvPayEfParams } = entityFilter(c, 'p')
-    const { clause: cntGEf, params: cntGP } = entityFilter(c, 'g')
-    const { clause: oldGEf, params: oldGP } = entityFilter(c, 'g')
-    const { clause: recvPayEf2, params: recvPayEf2Params } = entityFilter(c, 'p')
+    // 확장성: 거래처별 상관 서브쿼리(O(clients×scans)) → client_id 사전집계 서브쿼리 LEFT JOIN(O(1 pass))로 재작성. 값 동일(dashboard.ts H4 동일 패턴).
+    const efBg = entityFilter(c, 'g')     // billed_sum + billed_order_count (동일 조인·필터 → 1회 집계로 통합)
+    const efPay = entityFilter(c, 'p')    // paid_sum + last_payment_date (동일 소스 → 1회 집계로 통합)
+    const efAdj = entityFilter(c, 'a')    // adj_sum
+    const efOupG = entityFilter(c, 'g')   // oldest_unpaid_date 대상 청구그룹
+    const efOupP = entityFilter(c, 'p')   // oldest_unpaid_date NOT EXISTS 결제
     const { results: clients } = await c.env.DB.prepare(`
       SELECT * FROM (
         SELECT
           c.id,
           c.client_code,
           c.client_name,
-          (
-            (SELECT COALESCE(SUM(g.billed_amount), 0) FROM order_billing_groups g JOIN orders o ON o.id = g.order_id WHERE o.client_id = c.id AND g.billing_status = 'BILLED' AND o.status != 'CANCELLED'${balGEf})
-            - (SELECT COALESCE(SUM(p.amount), 0) FROM payments p WHERE p.client_id = c.id${balPEf})
-            - (SELECT COALESCE(SUM(a.amount), 0) FROM adjustments a WHERE a.client_id = c.id${balAEf})
-          ) as balance,
-          (SELECT MAX(p.payment_date) FROM payments p WHERE p.client_id = c.id${recvPayEf}) as last_payment_date,
-          (SELECT COUNT(*) FROM order_billing_groups g JOIN orders o ON o.id = g.order_id WHERE o.client_id = c.id AND g.billing_status = 'BILLED' AND o.status != 'CANCELLED'${cntGEf}) as billed_order_count,
-          (SELECT MIN(COALESCE(g.accounting_date, g.billed_at)) FROM order_billing_groups g JOIN orders o ON o.id = g.order_id
-           WHERE o.client_id = c.id AND g.billing_status = 'BILLED' AND o.status != 'CANCELLED'${oldGEf}
-             AND NOT EXISTS (
-               SELECT 1 FROM payments p
-               WHERE p.client_id = c.id${recvPayEf2}
-                 AND p.amount >= g.billed_amount
-                 AND p.payment_date >= COALESCE(g.accounting_date, g.billed_at)
-             )
-          ) as oldest_unpaid_date
+          (COALESCE(bg.billed_sum, 0) - COALESCE(pay.paid_sum, 0) - COALESCE(adj.adj_sum, 0)) as balance,
+          pay.last_payment_date as last_payment_date,
+          COALESCE(bg.billed_order_count, 0) as billed_order_count,
+          oup.oldest_unpaid_date as oldest_unpaid_date
         FROM clients c
+        LEFT JOIN (
+          SELECT o.client_id AS client_id,
+                 COALESCE(SUM(g.billed_amount), 0) AS billed_sum,
+                 COUNT(*) AS billed_order_count
+          FROM order_billing_groups g JOIN orders o ON o.id = g.order_id
+          WHERE g.billing_status = 'BILLED' AND o.status != 'CANCELLED'${efBg.clause}
+          GROUP BY o.client_id
+        ) bg ON bg.client_id = c.id
+        LEFT JOIN (
+          SELECT p.client_id AS client_id,
+                 COALESCE(SUM(p.amount), 0) AS paid_sum,
+                 MAX(p.payment_date) AS last_payment_date
+          FROM payments p WHERE 1=1${efPay.clause}
+          GROUP BY p.client_id
+        ) pay ON pay.client_id = c.id
+        LEFT JOIN (
+          SELECT a.client_id AS client_id, COALESCE(SUM(a.amount), 0) AS adj_sum
+          FROM adjustments a WHERE 1=1${efAdj.clause}
+          GROUP BY a.client_id
+        ) adj ON adj.client_id = c.id
+        LEFT JOIN (
+          SELECT o.client_id AS client_id,
+                 MIN(COALESCE(g.accounting_date, g.billed_at)) AS oldest_unpaid_date
+          FROM order_billing_groups g JOIN orders o ON o.id = g.order_id
+          WHERE g.billing_status = 'BILLED' AND o.status != 'CANCELLED'${efOupG.clause}
+            AND NOT EXISTS (
+              SELECT 1 FROM payments p
+              WHERE p.client_id = o.client_id${efOupP.clause}
+                AND p.amount >= g.billed_amount
+                AND p.payment_date >= COALESCE(g.accounting_date, g.billed_at)
+            )
+          GROUP BY o.client_id
+        ) oup ON oup.client_id = c.id
         WHERE c.is_active = 1
       ) WHERE balance > ?
-    `).bind(...balGP, ...balPP, ...balAP, ...recvPayEfParams, ...cntGP, ...oldGP, ...recvPayEf2Params, minBalance).all<ReceivableClientRow>()
+    `).bind(...efBg.params, ...efPay.params, ...efAdj.params, ...efOupG.params, ...efOupP.params, minBalance).all<ReceivableClientRow>()
 
     // aging_days, aging_category 계산 (JS에서)
     const today = new Date()
@@ -376,8 +396,10 @@ arReceivablesRouter.post('/receivables/check-overdue', requireRole('ADMIN', 'MAN
   try {
     // 30일 초과 연체 거래처 조회
     // split billing P3: clients.balance 캐시 폐기 → 청구그룹 파생(청구 법인 g 기준)
-    const { clause: coPayEf, params: coPayP } = entityFilter(c, 'p')
-    const { clause: coAdjEf, params: coAdjP } = entityFilter(c, 'a')
+    // 확장성: 거래처별 결제·감액 상관 서브쿼리 → client_id 사전집계 LEFT JOIN(1회 집계)으로 재작성. 값 동일.
+    //   pay/adj는 client당 1행이라 g 조인 팬아웃 없음 → SUM(g.billed_amount) 불변.
+    const efCoPay = entityFilter(c, 'p')
+    const efCoAdj = entityFilter(c, 'a')
     const { clause: checkOverdueEf, params: checkOverdueEfParams } = entityFilter(c, 'g')
     const { results: overdueClients } = await c.env.DB.prepare(`
       SELECT
@@ -385,21 +407,31 @@ arReceivablesRouter.post('/receivables/check-overdue', requireRole('ADMIN', 'MAN
         c.client_name,
         (
           COALESCE(SUM(g.billed_amount), 0)
-          - (SELECT COALESCE(SUM(amount), 0) FROM payments p WHERE p.client_id = c.id${coPayEf})
-          - (SELECT COALESCE(SUM(amount), 0) FROM adjustments a WHERE a.client_id = c.id${coAdjEf})
+          - COALESCE(pay.paid_sum, 0)
+          - COALESCE(adj.adj_sum, 0)
         ) as balance,
         MIN(COALESCE(g.accounting_date, g.billed_at)) as oldest_billed_at,
         CAST(julianday('now') - julianday(MIN(COALESCE(g.accounting_date, g.billed_at))) AS INTEGER) as overdue_days
       FROM clients c
       JOIN orders o ON o.client_id = c.id
       JOIN order_billing_groups g ON g.order_id = o.id
+      LEFT JOIN (
+        SELECT p.client_id AS client_id, COALESCE(SUM(p.amount), 0) AS paid_sum
+        FROM payments p WHERE 1=1${efCoPay.clause}
+        GROUP BY p.client_id
+      ) pay ON pay.client_id = c.id
+      LEFT JOIN (
+        SELECT a.client_id AS client_id, COALESCE(SUM(a.amount), 0) AS adj_sum
+        FROM adjustments a WHERE 1=1${efCoAdj.clause}
+        GROUP BY a.client_id
+      ) adj ON adj.client_id = c.id
       WHERE c.is_active = 1
         AND o.status != 'CANCELLED'
         AND g.billing_status = 'BILLED'${checkOverdueEf}
       GROUP BY c.id, c.client_name
       HAVING balance > 0 AND overdue_days > 30
       ORDER BY overdue_days DESC
-    `).bind(...coPayP, ...coAdjP, ...checkOverdueEfParams).all<OverdueClientRow>()
+    `).bind(...efCoPay.params, ...efCoAdj.params, ...checkOverdueEfParams).all<OverdueClientRow>()
 
     let alertsCreated = 0
     const checked = overdueClients.length
@@ -458,14 +490,16 @@ arReceivablesRouter.get('/collection-period', async (c) => {
 
     // 거래처별: 주문 생성일 ~ 마지막 입금일 평균 차이 계산
     // 완납된 주문(balance = 0, 입금 있음) 기준
+    // 확장성: 거래처별 billed/결제/감액 상관 서브쿼리 → client_id 사전집계 LEFT JOIN(1회 집계). 값 동일.
+    //   각 집계는 client당 1행 → sub 팬아웃 없음(settled_orders/avg_days 등 불변). ⚠️ bind 순서=SQL 등장순(ef→cpG→cpP→cpA).
     const { results } = await c.env.DB.prepare(`
       SELECT
         c.id as client_id,
         c.client_name,
         (
-          (SELECT COALESCE(SUM(g.billed_amount), 0) FROM order_billing_groups g JOIN orders o2 ON o2.id = g.order_id WHERE o2.client_id = c.id AND g.billing_status = 'BILLED' AND o2.status != 'CANCELLED'${cpGEf.clause})
-          - (SELECT COALESCE(SUM(amount), 0) FROM payments p2 WHERE p2.client_id = c.id${cpPEf.clause})
-          - (SELECT COALESCE(SUM(amount), 0) FROM adjustments a2 WHERE a2.client_id = c.id${cpAEf.clause})
+          COALESCE(cpbg.billed_sum, 0)
+          - COALESCE(cppay.paid_sum, 0)
+          - COALESCE(cpadj.adj_sum, 0)
         ) as balance,
         COUNT(DISTINCT sub.order_id) as settled_orders,
         ROUND(AVG(sub.days_to_pay), 0) as avg_days,
@@ -487,11 +521,27 @@ arReceivablesRouter.get('/collection-period', async (c) => {
         GROUP BY o.id
         HAVING days_to_pay >= 0
       ) sub ON sub.client_id = c.id
+      LEFT JOIN (
+        SELECT o2.client_id AS client_id, COALESCE(SUM(g.billed_amount), 0) AS billed_sum
+        FROM order_billing_groups g JOIN orders o2 ON o2.id = g.order_id
+        WHERE g.billing_status = 'BILLED' AND o2.status != 'CANCELLED'${cpGEf.clause}
+        GROUP BY o2.client_id
+      ) cpbg ON cpbg.client_id = c.id
+      LEFT JOIN (
+        SELECT p2.client_id AS client_id, COALESCE(SUM(p2.amount), 0) AS paid_sum
+        FROM payments p2 WHERE 1=1${cpPEf.clause}
+        GROUP BY p2.client_id
+      ) cppay ON cppay.client_id = c.id
+      LEFT JOIN (
+        SELECT a2.client_id AS client_id, COALESCE(SUM(a2.amount), 0) AS adj_sum
+        FROM adjustments a2 WHERE 1=1${cpAEf.clause}
+        GROUP BY a2.client_id
+      ) cpadj ON cpadj.client_id = c.id
       WHERE c.is_active = 1
       GROUP BY c.id
       HAVING settled_orders >= 2
       ORDER BY avg_days DESC
-    `).bind(...cpGEf.params, ...cpPEf.params, ...cpAEf.params, ...ef.params).all<{
+    `).bind(...ef.params, ...cpGEf.params, ...cpPEf.params, ...cpAEf.params).all<{
       client_id: number; client_name: string; balance: number
       settled_orders: number; avg_days: number; min_days: number; max_days: number
       last_payment_date: string | null

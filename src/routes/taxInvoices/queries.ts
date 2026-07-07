@@ -161,6 +161,59 @@ taxInvoicesQueriesRouter.get('/', async (c) => {
   }
 })
 
+// GET /billing-pending-summary — 회계반영 대기(SHIPPED·미청구) KPI 서버 집계
+// 프론트(taxInvoices.js loadBillingPendingOrders / ledger.js loadBillingPending)의 limit=500 fetch 후
+// 클라 합산(반영대기 건수·금액·법정기한 초과/임박·정산대기)을 서버로 이관 → 상한 초과 시 수치 조용히 축소 제거.
+// 조건: /api/orders?status=SHIPPED&billing_status=NONE 와 동일(status SHIPPED + billing_status NULL/'') + entityFilter.
+// 공급일=COALESCE(date(shipped_at), order_date)(orders에 shipment_date 컬럼 없음), 법정기한=공급월 익월 10일, KST 기준.
+// ready=billable_after 미도래분 제외(청구 가능), waiting=billable_after 미도래.
+taxInvoicesQueriesRouter.get('/billing-pending-summary', async (c) => {
+  try {
+    const ef = entityFilter(c, 'o')
+    const row = await c.env.DB.prepare(`
+      WITH pend AS (
+        SELECT
+          COALESCE(o.final_amount, 0) AS amount,
+          (o.billable_after IS NULL OR o.billable_after = '' OR o.billable_after <= date('now','+9 hours')) AS is_ready,
+          date(COALESCE(date(o.shipped_at), o.order_date), 'start of month', '+1 month', '+9 days') AS legal_due
+        FROM orders o
+        WHERE o.status = 'SHIPPED'
+          AND (o.billing_status IS NULL OR o.billing_status = '')${ef.clause}
+      )
+      SELECT
+        COUNT(*) AS total_count,
+        COALESCE(SUM(amount), 0) AS total_amount,
+        COALESCE(SUM(CASE WHEN is_ready THEN 1 ELSE 0 END), 0) AS ready_count,
+        COALESCE(SUM(CASE WHEN is_ready THEN amount ELSE 0 END), 0) AS ready_amount,
+        COALESCE(SUM(CASE WHEN NOT is_ready THEN 1 ELSE 0 END), 0) AS waiting_count,
+        COALESCE(SUM(CASE WHEN is_ready AND legal_due IS NOT NULL AND legal_due < date('now','+9 hours') THEN 1 ELSE 0 END), 0) AS overdue_count,
+        COALESCE(SUM(CASE WHEN is_ready AND legal_due IS NOT NULL AND legal_due >= date('now','+9 hours')
+                           AND CAST(julianday(legal_due) - julianday(date('now','+9 hours')) AS INTEGER) <= 7
+                          THEN 1 ELSE 0 END), 0) AS imminent_count
+      FROM pend
+    `).bind(...ef.params).first<{
+      total_count: number; total_amount: number; ready_count: number; ready_amount: number;
+      waiting_count: number; overdue_count: number; imminent_count: number
+    }>()
+
+    return c.json({
+      success: true,
+      data: {
+        total_count: row?.total_count || 0,
+        total_amount: row?.total_amount || 0,
+        ready_count: row?.ready_count || 0,
+        ready_amount: row?.ready_amount || 0,
+        waiting_count: row?.waiting_count || 0,
+        overdue_count: row?.overdue_count || 0,
+        imminent_count: row?.imminent_count || 0,
+      }
+    })
+  } catch (error) {
+    console.error('src/routes/taxInvoices.ts billing-pending-summary error:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
+  }
+})
+
 // GET /eligible-orders — Orders eligible for tax invoice (not yet invoiced)
 // client_id 있으면 해당 거래처만, 없으면 전체를 거래처별 그룹핑하여 반환
 taxInvoicesQueriesRouter.get('/eligible-orders', async (c) => {

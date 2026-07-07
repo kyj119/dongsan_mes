@@ -73,6 +73,7 @@ cashScheduleRouter.get('/schedule', requireRole('ADMIN', 'MANAGER'), async (c) =
       LEFT JOIN clients c ON c.id = cs.client_id
       WHERE ${clauses.join(' AND ')}
       ORDER BY cs.schedule_date ASC, cs.flow_type DESC
+      LIMIT 500
     `).bind(...params).all()
 
     return c.json({ success: true, data: results })

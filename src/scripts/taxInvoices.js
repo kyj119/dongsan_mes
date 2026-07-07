@@ -835,11 +835,18 @@ async function loadBillingPendingOrders() {
   var container = document.getElementById('billingOrdersList');
   container.innerHTML = '<div class="text-center py-12 text-gray-400"><i class="fas fa-spinner fa-spin text-2xl"></i></div>';
   try {
+    // KPI(반영대기 건수·금액·법정기한 초과/임박·정산대기)는 서버 집계 사용 — limit=500 클라 합산 상한 제거
+    var summary = null;
+    try {
+      var sres = await axios.get('/api/tax-invoices/billing-pending-summary');
+      if (sres.data && sres.data.success) summary = sres.data.data;
+    } catch(_) {}
+
     var res = await axios.get('/api/orders?status=SHIPPED&billing_status=NONE&limit=500&sort=order_date_desc');
     if (!res.data.success) { container.innerHTML = '<div class="text-center py-8 text-red-400">조회 실패</div>'; return; }
     _billingPendingOrders = (res.data.data || []).filter(function(o) { return !o.billing_status; });
 
-    // billable_after 기준 분리
+    // billable_after 기준 분리 (목록 렌더용)
     var today = new Date().toISOString().split('T')[0];
     var ready = _billingPendingOrders.filter(function(o) { return !o.billable_after || o.billable_after <= today; });
     var waiting = _billingPendingOrders.filter(function(o) { return o.billable_after && o.billable_after > today; });
@@ -848,29 +855,37 @@ async function loadBillingPendingOrders() {
     var syncBar = document.getElementById('billingSyncBar');
     if (syncBar) syncBar.classList.remove('hidden');
 
-    // 법정기한(출고월 익월10일) 초과/임박 집계 + 임박순 정렬
-    var overdueCnt = 0, imminentCnt = 0;
-    ready.forEach(function(o) {
-      var dd = taxDueDday(taxLegalDueDate(taxSupplyDate(o)));
-      if (dd == null) return;
-      if (dd < 0) overdueCnt++; else if (dd <= 7) imminentCnt++;
-    });
+    // 법정기한 임박순 정렬 (목록 표시용)
     ready.sort(function(a, b) {
       var da = taxLegalDueDate(taxSupplyDate(a)), db = taxLegalDueDate(taxSupplyDate(b));
       return (da ? da.getTime() : Infinity) - (db ? db.getTime() : Infinity);
     });
 
+    // KPI 값: 서버 집계 우선, 실패 시 현재 페이지(ready) 기준 폴백
+    var readyCount = summary ? summary.ready_count : ready.length;
+    var totalAmt = summary ? summary.ready_amount : ready.reduce(function(s, o) { return s + (parseFloat(o.final_amount) || 0); }, 0);
+    var overdueCnt, imminentCnt, waitingCount;
+    if (summary) {
+      overdueCnt = summary.overdue_count; imminentCnt = summary.imminent_count; waitingCount = summary.waiting_count;
+    } else {
+      overdueCnt = 0; imminentCnt = 0; waitingCount = waiting.length;
+      ready.forEach(function(o) {
+        var dd = taxDueDday(taxLegalDueDate(taxSupplyDate(o)));
+        if (dd == null) return;
+        if (dd < 0) overdueCnt++; else if (dd <= 7) imminentCnt++;
+      });
+    }
+
     // 알림 배너
-    var totalAmt = ready.reduce(function(s, o) { return s + (parseFloat(o.final_amount) || 0); }, 0);
     var banner = document.getElementById('billingAlertBanner');
-    if (ready.length > 0) {
+    if (readyCount > 0) {
       banner.classList.remove('hidden');
-      document.getElementById('billingAlertCount').textContent = ready.length;
+      document.getElementById('billingAlertCount').textContent = readyCount;
       document.getElementById('billingAlertAmount').textContent = totalAmt.toLocaleString();
       var warnParts = [];
       if (overdueCnt > 0) warnParts.push('<span class="text-red-600 font-bold">법정기한 초과 ' + overdueCnt + '건</span>');
       if (imminentCnt > 0) warnParts.push('<span class="text-amber-600 font-medium">임박(D-7) ' + imminentCnt + '건</span>');
-      if (waiting.length > 0) warnParts.push('정산대기 ' + waiting.length + '건');
+      if (waitingCount > 0) warnParts.push('정산대기 ' + waitingCount + '건');
       document.getElementById('billingWaitingInfo').innerHTML = warnParts.join(' · ');
     } else {
       banner.classList.add('hidden');
@@ -879,7 +894,7 @@ async function loadBillingPendingOrders() {
     // 탭 뱃지
     var badge = document.getElementById('billingTabBadge');
     if (badge) {
-      if (ready.length > 0) { badge.textContent = ready.length; badge.classList.remove('hidden'); }
+      if (readyCount > 0) { badge.textContent = readyCount; badge.classList.remove('hidden'); }
       else { badge.classList.add('hidden'); }
     }
 

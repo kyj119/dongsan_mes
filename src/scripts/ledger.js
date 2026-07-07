@@ -8,6 +8,7 @@
 var selectedClientId = null;
 var selectedClientName = '';
 var allClients = [];
+var settlementTotals = null; // 서버 집계 합계(전체 clientRows) — 합계 행이 목록 cap로 잘려도 정확
 var currentDateFilter = { startDate: '', endDate: '' };
 var _adjustmentOrderList = [];
 var agingMap = {}; // client_id -> { aging_days, aging_category }
@@ -109,8 +110,17 @@ async function loadSettlement() {
             var ratio = s.total_sales > 0 ? Math.round(s.total_balance / s.total_sales * 100) : 0;
             document.getElementById('balanceRatio').textContent = '미수금율 ' + ratio + '%';
 
+            // 합계 행용 서버 집계(전체 거래처 기준) 저장 — total_orders는 추가된 키(없으면 클라 합산 폴백)
+            settlementTotals = {
+                total_orders: (s.total_orders != null) ? s.total_orders : null,
+                total_sales: s.total_sales,
+                total_payments: s.total_payments,
+                total_balance: s.total_balance,
+                client_count: s.total_clients
+            };
+
             allClients = res.data.data.clients || [];
-            renderClientTable(allClients);
+            renderClientTable(allClients, true);
             applyLedgerDrilldown();  // #402: 드릴다운 진입 파라미터 최초 1회 적용
         }
     } catch (e) {
@@ -119,7 +129,7 @@ async function loadSettlement() {
     }
 }
 
-function renderClientTable(clients) {
+function renderClientTable(clients, isFullList) {
     var tbody = document.getElementById('clientsTableBody');
     var tfoot = document.getElementById('clientsTableFoot');
     tbody.innerHTML = '';
@@ -165,13 +175,25 @@ function renderClientTable(clients) {
         tbody.appendChild(row);
     });
 
+    // 합계 행: 전체 목록이면 서버 집계(목록 방어적 cap로 잘려도 정확), 필터 뷰면 표시행 합산
+    var fClients, fOrders, fSales, fPayments, fBalance;
+    if (isFullList && settlementTotals) {
+        fClients = (settlementTotals.client_count != null) ? settlementTotals.client_count : clients.length;
+        fOrders = (settlementTotals.total_orders != null) ? settlementTotals.total_orders : sumOrders;
+        fSales = settlementTotals.total_sales;
+        fPayments = settlementTotals.total_payments;
+        fBalance = settlementTotals.total_balance;
+    } else {
+        fClients = clients.length; fOrders = sumOrders;
+        fSales = sumSales; fPayments = sumPayments; fBalance = sumBalance;
+    }
     tfoot.innerHTML =
         '<tr>' +
-        '<td class="px-4 py-2" colspan="2">합계 (' + clients.length + '개 거래처)</td>' +
-        '<td class="px-4 py-2 text-right">' + sumOrders + '</td>' +
-        '<td class="px-4 py-2 text-right">' + sumSales.toLocaleString() + '</td>' +
-        '<td class="px-4 py-2 text-right">' + sumPayments.toLocaleString() + '</td>' +
-        '<td class="px-4 py-2 text-right ' + (sumBalance > 0 ? 'text-red-600' : 'text-green-600') + '">' + sumBalance.toLocaleString() + '</td>' +
+        '<td class="px-4 py-2" colspan="2">합계 (' + fClients + '개 거래처)</td>' +
+        '<td class="px-4 py-2 text-right">' + fOrders + '</td>' +
+        '<td class="px-4 py-2 text-right">' + fSales.toLocaleString() + '</td>' +
+        '<td class="px-4 py-2 text-right">' + fPayments.toLocaleString() + '</td>' +
+        '<td class="px-4 py-2 text-right ' + (fBalance > 0 ? 'text-red-600' : 'text-green-600') + '">' + fBalance.toLocaleString() + '</td>' +
         '<td colspan="2"></td>' +
         '</tr>';
 }
@@ -201,7 +223,7 @@ function filterClientTable() {
         return cl.client_name.toLowerCase().indexOf(q) >= 0 ||
                (cl.client_code || '').toLowerCase().indexOf(q) >= 0;
     });
-    renderClientTable(filtered);
+    renderClientTable(filtered, false);
 }
 
 // ===== Modal Open/Close =====
@@ -1752,7 +1774,7 @@ async function loadAgingData() {
             if (el30) el30.textContent = over30.toLocaleString() + '원';
             if (el60) el60.textContent = over60.toLocaleString() + '원';
             // Re-render client table with aging data
-            if (allClients.length) renderClientTable(allClients);
+            if (allClients.length) renderClientTable(allClients, true);
         }
     } catch (e) {
         console.error('Aging data load error:', e);
@@ -1762,16 +1784,19 @@ async function loadAgingData() {
 // ===== Billing Pending Banner =====
 async function loadBillingPending() {
     try {
-        var res = await axios.get('/api/orders?status=SHIPPED&billing_status=NONE&limit=500');
+        // 서버 집계 사용 (limit=500 fetch 후 클라 합산 → 상한 초과 시 수치 조용히 축소 제거)
+        var res = await axios.get('/api/tax-invoices/billing-pending-summary');
         if (res.data.success) {
-            var orders = (res.data.data || []).filter(function(o) { return !o.billing_status; });
-            var count = orders.length;
-            var amount = orders.reduce(function(s, o) { return s + (parseFloat(o.final_amount) || 0); }, 0);
+            var d = res.data.data || {};
+            var count = d.total_count || 0;
+            var amount = d.total_amount || 0;
             var banner = document.getElementById('billingPendingBanner');
             if (count > 0 && banner) {
                 banner.classList.remove('hidden');
-                document.getElementById('billingPendingCount').textContent = count;
-                document.getElementById('billingPendingAmount').textContent = amount.toLocaleString() + '원';
+                var cEl = document.getElementById('billingPendingCount');
+                var aEl = document.getElementById('billingPendingAmount');
+                if (cEl) cEl.textContent = count;
+                if (aEl) aEl.textContent = amount.toLocaleString() + '원';
             }
         }
     } catch (e) {

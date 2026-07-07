@@ -11,10 +11,25 @@ returns.use('*', authMiddleware)
 // ─── 반품 목록 ───────────────────────────────────────────────────────────────
 returns.get('/', async (c) => {
   const status = c.req.query('status')
+  // 하위호환: page/limit 파라미터가 없으면 기존 동작(전체) + 방어적 cap 500. 있으면 기본 50·cap 200.
+  const pageQ = c.req.query('page')
+  const limitQ = c.req.query('limit')
+  const hasPaging = pageQ !== undefined || limitQ !== undefined
+  const page = Math.max(1, Number(pageQ) || 1)
+  const maxLimit = hasPaging ? 200 : 500
+  let limit = hasPaging ? (Number(limitQ) || 50) : 500
+  if (limit < 1) limit = hasPaging ? 50 : 500
+  if (limit > maxLimit) limit = maxLimit
+  const offset = (page - 1) * limit
+
   const eFilter = entityFilter(c, 'r')
   let where = `WHERE 1=1 ${eFilter.clause}`
   const binds: any[] = [...eFilter.params]
   if (status) { where += ' AND r.status = ?'; binds.push(status) }
+
+  const countRow = await c.env.DB.prepare(
+    `SELECT COUNT(*) as cnt FROM returns r ${where}`
+  ).bind(...binds).first<{ cnt: number }>()
 
   const { results } = await c.env.DB.prepare(`
     SELECT r.*, cl.client_name, o.order_number
@@ -22,10 +37,11 @@ returns.get('/', async (c) => {
     LEFT JOIN clients cl ON r.client_id = cl.id
     LEFT JOIN orders o ON r.order_id = o.id
     ${where}
-    ORDER BY r.created_at DESC LIMIT 100
-  `).bind(...binds).all()
+    ORDER BY r.created_at DESC LIMIT ? OFFSET ?
+  `).bind(...binds, limit, offset).all()
 
-  return c.json({ success: true, data: results })
+  const total = countRow?.cnt || 0
+  return c.json({ success: true, data: results, pagination: { total, page, limit, total_pages: Math.ceil(total / limit) || 1 } })
 })
 
 // ─── 반품 생성 ───────────────────────────────────────────────────────────────

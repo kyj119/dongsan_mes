@@ -221,8 +221,30 @@ arPaymentsRouter.get('/payments', async (c) => {
   try {
     const { clientId, startDate, endDate } = c.req.query()
 
+    // 확장성: clientId 생략 시 전체 무제한 방지 — limit(기본 200, cap 500)+offset. 검증·클램프된 정수만 인터폴레이션.
+    const limitRaw = parseInt(c.req.query('limit') || '', 10)
+    const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(limitRaw, 1), 500) : 200
+    const offsetRaw = parseInt(c.req.query('offset') || '', 10)
+    const offset = Number.isFinite(offsetRaw) && offsetRaw > 0 ? offsetRaw : 0
+
     const { clause: listPaymentsEf, params: listPaymentsEfParams } = entityFilter(c, 'p')
-    let query = `
+    let where = `WHERE 1=1${listPaymentsEf}`
+    const params: any[] = [...listPaymentsEfParams]
+
+    if (clientId) {
+      where += ' AND p.client_id = ?'
+      params.push(clientId)
+    }
+    if (startDate) {
+      where += ' AND date(p.payment_date) >= ?'
+      params.push(startDate)
+    }
+    if (endDate) {
+      where += ' AND date(p.payment_date) <= ?'
+      params.push(endDate)
+    }
+
+    const query = `
       SELECT
         p.*,
         c.client_name,
@@ -230,32 +252,28 @@ arPaymentsRouter.get('/payments', async (c) => {
       FROM payments p
       LEFT JOIN clients c ON p.client_id = c.id
       LEFT JOIN users u ON p.created_by = u.id
-      WHERE 1=1${listPaymentsEf}
+      ${where}
+      ORDER BY p.payment_date DESC, p.created_at DESC
+      LIMIT ${limit} OFFSET ${offset}
     `
-    const params: any[] = [...listPaymentsEfParams]
-
-    if (clientId) {
-      query += ' AND p.client_id = ?'
-      params.push(clientId)
-    }
-    if (startDate) {
-      query += ' AND date(p.payment_date) >= ?'
-      params.push(startDate)
-    }
-    if (endDate) {
-      query += ' AND date(p.payment_date) <= ?'
-      params.push(endDate)
-    }
-
-    query += ' ORDER BY p.payment_date DESC, p.created_at DESC'
 
     const { results } = params.length > 0
       ? await c.env.DB.prepare(query).bind(...params).all()
       : await c.env.DB.prepare(query).all()
 
+    // 전체 건수(페이지네이션용) — WHERE는 p만 참조하므로 조인 불필요
+    const countQuery = `SELECT COUNT(*) as cnt FROM payments p ${where}`
+    const countRow = params.length > 0
+      ? await c.env.DB.prepare(countQuery).bind(...params).first<{ cnt: number }>()
+      : await c.env.DB.prepare(countQuery).first<{ cnt: number }>()
+    const total = Number(countRow?.cnt) || 0
+
     return c.json({
       success: true,
-      data: results
+      data: results,
+      total,
+      limit,
+      offset
     })
   } catch (error) {
     console.error('Get payments error:', error)
@@ -347,6 +365,7 @@ arPaymentsRouter.get('/adjustments/:clientId', async (c) => {
       LEFT JOIN users u ON a.created_by = u.id
       WHERE a.client_id = ?${efAdjList.clause}
       ORDER BY a.created_at DESC
+      LIMIT 500
     `).bind(clientId, ...efAdjList.params).all()
 
     return c.json({ success: true, data: results })

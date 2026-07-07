@@ -152,6 +152,7 @@ export function leavesPage(c: Context<HonoEnv>) {
               </table>
             </div>
           </div>
+          <div id="lvRequestsPagebar" class="flex flex-wrap items-center gap-2 mt-3 px-1"></div>
         </div>
         <!-- 탭 3: 미사용 연차수당 -->
         <div id="lvPaneAllowance" class="hidden">

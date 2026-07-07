@@ -137,19 +137,27 @@ approvals.get('/pending', async (c) => {
     const userRole = c.get('user')?.role
 
     const ef = entityFilter(c, 'ar')  // #358: 대기 결재 법인 격리 (전역 role 매칭으로 타법인 가시 차단)
-    const { results } = await c.env.DB.prepare(`
-      SELECT ar.*, u.name as requester_name, ast.step_order, ast.label as step_label
+    // 방어적 상한: 프론트가 전량 받아 클라 페이지네이션하므로 넉넉히(500)
+    const PENDING_CAP = 500
+    const fromWhere = `
       FROM approval_requests ar
       JOIN approval_steps ast ON ar.id = ast.request_id
       LEFT JOIN users u ON ar.requester_id = u.id
       WHERE ar.status IN ('PENDING', 'IN_REVIEW')
         AND ast.status = 'PENDING'
         AND ast.step_order = ar.current_step
-        AND (ast.approver_id = ? OR ast.approver_role = ?)${ef.clause}
+        AND (ast.approver_id = ? OR ast.approver_role = ?)${ef.clause}`
+    const { results } = await c.env.DB.prepare(`
+      SELECT ar.*, u.name as requester_name, ast.step_order, ast.label as step_label
+      ${fromWhere}
       ORDER BY ar.created_at DESC
+      LIMIT ${PENDING_CAP}
     `).bind(userId, userRole, ...ef.params).all()
 
-    return c.json({ success: true, data: results })
+    const countRow = await c.env.DB.prepare(`SELECT COUNT(*) as count ${fromWhere}`)
+      .bind(userId, userRole, ...ef.params).first<{ count: number }>()
+
+    return c.json({ success: true, data: results, count: countRow?.count ?? results.length })
   } catch (e) {
     console.error('Approvals error:', e)
     return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)

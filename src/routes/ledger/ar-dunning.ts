@@ -27,8 +27,13 @@ arDunningRouter.get('/collection-logs/:clientId', async (c) => {
       LEFT JOIN users u ON cl.created_by = u.id
       WHERE cl.client_id = ?
       ORDER BY cl.contact_date DESC, cl.created_at DESC
+      LIMIT 500
     `).bind(clientId).all()
-    return c.json({ success: true, data: results })
+    // 확장성: 전체 건수(방어적 cap 500 초과 여부 판별용)
+    const countRow = await c.env.DB.prepare(
+      'SELECT COUNT(*) as cnt FROM collection_logs WHERE client_id = ?'
+    ).bind(clientId).first<{ cnt: number }>()
+    return c.json({ success: true, data: results, total: Number(countRow?.cnt) || 0 })
   } catch (error) {
     console.error('src/routes/ledger.ts error:', error)
     return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)

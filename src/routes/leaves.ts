@@ -466,6 +466,17 @@ leavesRouter.post('/grant', requireRole('ADMIN'), async (c) => {
 leavesRouter.get('/requests', async (c) => {
   try {
     const { status, employee_id, from, to } = c.req.query()
+    // 하위호환: page/limit 파라미터가 없으면 기존 동작(전체) + 방어적 cap 500. 있으면 기본 50·cap 200.
+    const pageQ = c.req.query('page')
+    const limitQ = c.req.query('limit')
+    const hasPaging = pageQ !== undefined || limitQ !== undefined
+    const page = Math.max(1, Number(pageQ) || 1)
+    const maxLimit = hasPaging ? 200 : 500
+    let limit = hasPaging ? (Number(limitQ) || 50) : 500
+    if (limit < 1) limit = hasPaging ? 50 : 500
+    if (limit > maxLimit) limit = maxLimit
+    const offset = (page - 1) * limit
+
     const ef = entityFilter(c, 'lr')
     const clauses: string[] = []
     const params: any[] = []
@@ -476,6 +487,10 @@ leavesRouter.get('/requests', async (c) => {
     if (to) { clauses.push('lr.end_date <= ?'); params.push(to) }
     const where = clauses.length ? 'WHERE ' + clauses.join(' AND ') : ''
 
+    const countRow = await c.env.DB.prepare(
+      `SELECT COUNT(*) as cnt FROM leave_requests lr ${where}`
+    ).bind(...params).first<{ cnt: number }>()
+
     const { results } = await c.env.DB.prepare(`
       SELECT lr.*, e.name as employee_name, e.employee_code, e.department,
         ap.name as approver_name
@@ -484,10 +499,11 @@ leavesRouter.get('/requests', async (c) => {
       LEFT JOIN users ap ON ap.id = lr.approved_by
       ${where}
       ORDER BY lr.created_at DESC
-      LIMIT 200
-    `).bind(...params).all()
+      LIMIT ? OFFSET ?
+    `).bind(...params, limit, offset).all()
 
-    return c.json({ success: true, data: results })
+    const total = countRow?.cnt || 0
+    return c.json({ success: true, data: results, pagination: { total, page, limit, total_pages: Math.ceil(total / limit) || 1 } })
   } catch (error: any) {
     console.error('leaves requests list error:', error)
     return c.json({ success: false, error: '서버 오류가 발생했습니다.', detail: '서버 오류가 발생했습니다' }, 500)

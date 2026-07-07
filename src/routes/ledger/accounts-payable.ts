@@ -94,6 +94,7 @@ apRouter.get('/purchase-client/:clientId', async (c) => {
     }
 
     poQuery += ' ORDER BY order_date ASC, created_at ASC'
+    poQuery += ' LIMIT 500'  // 확장성: 거래처별 발주 무제한 스캔 방지(방어적 cap)
     const { results: purchaseOrders } = await c.env.DB.prepare(poQuery).bind(...poParams).all<PurchaseOrderRow>()
 
     // Get purchase payments (지급 - credit)
@@ -117,6 +118,7 @@ apRouter.get('/purchase-client/:clientId', async (c) => {
     }
 
     ppQuery += ' ORDER BY payment_date ASC, created_at ASC'
+    ppQuery += ' LIMIT 500'  // 확장성: 거래처별 지급 무제한 스캔 방지(방어적 cap)
     const { results: purchasePayments } = await c.env.DB.prepare(ppQuery).bind(...ppParams).all<PurchasePaymentRow>()
 
     // Calculate totals
@@ -633,9 +635,16 @@ apRouter.get('/purchase-adjustments/:supplierId', async (c) => {
       LEFT JOIN users u ON pa.created_by = u.id
       WHERE pa.supplier_id = ?${paEf.clause}
       ORDER BY pa.adjustment_date DESC
+      LIMIT 500
     `).bind(supplierId, ...paEf.params).all()
 
-    return c.json({ success: true, data: results })
+    // 확장성: 전체 건수(방어적 cap 500 초과 여부 판별용)
+    const paCntEf = entityFilter(c, 'pa')
+    const countRow = await c.env.DB.prepare(
+      `SELECT COUNT(*) as cnt FROM purchase_adjustments pa WHERE pa.supplier_id = ?${paCntEf.clause}`
+    ).bind(supplierId, ...paCntEf.params).first<{ cnt: number }>()
+
+    return c.json({ success: true, data: results, total: Number(countRow?.cnt) || 0 })
   } catch (error) {
     console.error('Get purchase adjustments error:', error)
     console.error('src/routes/ledger.ts error:', error)

@@ -725,6 +725,7 @@ export function taxInvoicesPage(c: Context<HonoEnv>) {
             </table>
           </div>
         </div>
+        <div id="jobsPagination" class="flex flex-wrap items-center gap-2 mt-4"></div>
 
         <!-- Auth Management -->
         <div class="mt-6 bg-amber-50 border border-amber-200 rounded-lg p-4">

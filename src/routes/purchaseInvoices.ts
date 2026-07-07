@@ -43,6 +43,8 @@ purchaseInvoices.get('/', async (c) => {
 // price_status='PENDING' + 입고됨(received_quantity>0) → 실단가 확정 대기
 purchaseInvoices.get('/pending', async (c) => {
   const ef = entityFilter(c, 'po')
+  // 하드 LIMIT 100 → limit 파라미터(기본 100, cap 500) + 전체 count로 무통보 잘림 방지
+  const limit = Math.min(Math.max(parseInt(c.req.query('limit') || '100'), 1), 500)
   const { results } = await c.env.DB.prepare(`
     SELECT po.id as po_id, po.po_number, po.order_date, po.supplier_id,
            cl.client_name as supplier_name,
@@ -54,9 +56,20 @@ purchaseInvoices.get('/pending', async (c) => {
     WHERE poi.price_status = 'PENDING' AND poi.received_quantity > 0 ${ef.clause}
     GROUP BY po.id
     ORDER BY po.order_date DESC
-    LIMIT 100
+    LIMIT ${limit}
   `).bind(...ef.params).all()
-  return c.json({ success: true, data: results })
+
+  const countRow = await c.env.DB.prepare(`
+    SELECT COUNT(*) as count FROM (
+      SELECT po.id
+      FROM purchase_order_items poi
+      JOIN purchase_orders po ON po.id = poi.po_id
+      WHERE poi.price_status = 'PENDING' AND poi.received_quantity > 0 ${ef.clause}
+      GROUP BY po.id
+    )
+  `).bind(...ef.params).first<{ count: number }>()
+
+  return c.json({ success: true, data: results, count: countRow?.count ?? results.length })
 })
 
 // ─── 매입확정 대기 PO 상세 (미정 품목 + 거래명세서) ─────────────────────────

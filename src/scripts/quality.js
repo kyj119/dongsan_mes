@@ -9,6 +9,31 @@
 
   var loaded = { returns: false, defects: false, analytics: false };
   var pickedOrder = { id: null, clientId: null, label: '' };
+  var qcClaimsPage = 1, qcReturnsPage = 1;
+
+  // 페이지바 렌더 (orders 페이지 스타일 재사용). goFn = onclick에서 호출할 전역 함수명 문자열.
+  function qcRenderPagebar(containerId, pagination, goFn) {
+    var container = document.getElementById(containerId);
+    if (!container) { console.warn('[quality] #' + containerId + ' not found'); return; }
+    var total = pagination ? (pagination.total || 0) : 0;
+    var page = pagination ? (pagination.page || 1) : 1;
+    var totalPages = pagination ? (pagination.total_pages || Math.ceil(total / (pagination.limit || 1)) || 1) : 1;
+    if (totalPages <= 1) { container.innerHTML = pagination ? '<span style="font-size:13px;color:#6b7280;">총 ' + total + '건</span>' : ''; return; }
+    var btnStyle = 'padding:6px 14px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;cursor:pointer;background:#fff;';
+    var btnDisabled = 'padding:6px 14px;border:1px solid #e5e7eb;border-radius:6px;font-size:13px;cursor:not-allowed;background:#f9fafb;color:#9ca3af;';
+    var buttons = '';
+    var startPage = Math.max(1, page - 2);
+    var endPage = Math.min(totalPages, startPage + 4);
+    for (var p = startPage; p <= endPage; p++) {
+      var active = p === page ? 'padding:6px 12px;border:1px solid #2563eb;border-radius:6px;font-size:13px;cursor:pointer;background:#2563eb;color:#fff;font-weight:600;' : btnStyle;
+      buttons += '<button onclick="' + goFn + '(' + p + ')" style="' + active + '">' + p + '</button>';
+    }
+    container.innerHTML =
+      '<button onclick="' + goFn + '(' + (page - 1) + ')" ' + (page <= 1 ? 'disabled' : '') + ' style="' + (page <= 1 ? btnDisabled : btnStyle) + '">이전</button>' +
+      buttons +
+      '<button onclick="' + goFn + '(' + (page + 1) + ')" ' + (page >= totalPages ? 'disabled' : '') + ' style="' + (page >= totalPages ? btnDisabled : btnStyle) + '">다음</button>' +
+      '<span style="font-size:13px;color:#6b7280;margin-left:8px;">' + page + ' / ' + totalPages + ' 페이지 (총 ' + total + '건)</span>';
+  }
 
   var RETURN_LABEL = { REQUESTED: '요청', APPROVED: '승인', SHIPPED_BACK: '반송중', RECEIVED: '입고', INSPECTED: '검수', RESOLVED: '완료' };
   var RETURN_NEXT = { REQUESTED: 'APPROVED', APPROVED: 'SHIPPED_BACK', SHIPPED_BACK: 'RECEIVED', RECEIVED: 'INSPECTED', INSPECTED: 'RESOLVED' };
@@ -36,13 +61,16 @@
   function openModal(id) { var m = document.getElementById(id); if (m) { m.style.display = 'flex'; } }
 
   // ─── 클레임 ───
-  window.qcLoadClaims = function () {
+  window.qcLoadClaims = function (page) {
+    qcClaimsPage = page || 1;
     var st = document.getElementById('qcClaimStatus');
     var body = document.getElementById('qcClaimsBody');
     if (!body) return;
-    var url = '/api/claims' + (st && st.value ? '?status=' + encodeURIComponent(st.value) : '');
-    axios.get(url).then(function (res) {
+    var params = { page: qcClaimsPage, limit: 50 };
+    if (st && st.value) params.status = st.value;
+    axios.get('/api/claims', { params: params }).then(function (res) {
       var rows = res.data.data || [];
+      qcRenderPagebar('qcClaimsPagebar', res.data.pagination, 'window.qcClaimsGoPage');
       if (!rows.length) { body.innerHTML = '<tr><td colspan="9" class="text-center py-8 text-gray-400">클레임이 없습니다.</td></tr>'; return; }
       body.innerHTML = rows.map(function (r) {
         var act = r.status === 'RESOLVED'
@@ -61,6 +89,7 @@
       }).join('');
     }).catch(function (e) { apiErr(e, '클레임 로드 실패'); body.innerHTML = '<tr><td colspan="9" class="text-center py-8 text-red-400">로드 실패</td></tr>'; });
   };
+  window.qcClaimsGoPage = function (p) { window.qcLoadClaims(p); };
 
   window.qcOpenClaimModal = function () {
     pickedOrder = { id: null, clientId: null, label: '' };
@@ -124,13 +153,16 @@
   };
 
   // ─── 반품 ───
-  window.qcLoadReturns = function () {
+  window.qcLoadReturns = function (page) {
+    qcReturnsPage = page || 1;
     var st = document.getElementById('qcReturnStatus');
     var body = document.getElementById('qcReturnsBody');
     if (!body) return;
-    var url = '/api/returns' + (st && st.value ? '?status=' + encodeURIComponent(st.value) : '');
-    axios.get(url).then(function (res) {
+    var params = { page: qcReturnsPage, limit: 50 };
+    if (st && st.value) params.status = st.value;
+    axios.get('/api/returns', { params: params }).then(function (res) {
       var rows = res.data.data || [];
+      qcRenderPagebar('qcReturnsPagebar', res.data.pagination, 'window.qcReturnsGoPage');
       if (!rows.length) { body.innerHTML = '<tr><td colspan="8" class="text-center py-8 text-gray-400">반품이 없습니다.</td></tr>'; return; }
       body.innerHTML = rows.map(function (r) {
         var act = (r.status === 'RESOLVED')
@@ -148,6 +180,7 @@
       }).join('');
     }).catch(function (e) { apiErr(e, '반품 로드 실패'); body.innerHTML = '<tr><td colspan="8" class="text-center py-8 text-red-400">로드 실패</td></tr>'; });
   };
+  window.qcReturnsGoPage = function (p) { window.qcLoadReturns(p); };
 
   window.qcOpenReturnStatus = function (id, current) {
     document.getElementById('qcReturnId').value = id;

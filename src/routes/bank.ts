@@ -272,7 +272,42 @@ bankRouter.get('/transactions', requireRole('ADMIN'), async (c) => {
     const matchStatuses = c.req.queries('match_status') || []
     const singleStatus = c.req.query('match_status')
 
-    let query = `
+    // 확장성: 무제한 스캔 방지 — limit(기본 500, cap 1000)+offset. 검증·클램프된 정수만 인터폴레이션.
+    const limitRaw = parseInt(c.req.query('limit') || '', 10)
+    const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(limitRaw, 1), 1000) : 500
+    const offsetRaw = parseInt(c.req.query('offset') || '', 10)
+    const offset = Number.isFinite(offsetRaw) && offsetRaw > 0 ? offsetRaw : 0
+
+    const ef = entityFilter(c, 'bt')
+    let where = `WHERE 1=1${ef.clause}`
+    const params: (string | number)[] = [...ef.params]
+
+    if (account_id) {
+      where += ' AND bt.bank_account_id = ?'
+      params.push(account_id)
+    }
+    if (date_start) {
+      where += ' AND bt.transaction_date >= ?'
+      params.push(date_start.replace(/-/g, ''))
+    }
+    if (date_end) {
+      where += ' AND bt.transaction_date <= ?'
+      params.push(date_end.replace(/-/g, ''))
+    }
+    if (matchStatuses.length > 1) {
+      const ph = matchStatuses.map(() => '?').join(', ')
+      where += ` AND bt.match_status IN (${ph})`
+      params.push(...matchStatuses)
+    } else if (singleStatus) {
+      where += ' AND bt.match_status = ?'
+      params.push(singleStatus)
+    }
+    if (transaction_type) {
+      where += ' AND bt.transaction_type = ?'
+      params.push(transaction_type)
+    }
+
+    const query = `
       SELECT
         -- #7 회귀방어: bt.* 와일드카드 제거, FE(scripts/bank.js renderTransactions) 소비 필드 명시.
         -- 컬럼 리네임 시 silent null 대신 SQL 에러로 노출됨.
@@ -286,42 +321,23 @@ bankRouter.get('/transactions', requireRole('ADMIN'), async (c) => {
       LEFT JOIN bank_accounts ba ON bt.bank_account_id = ba.id
       LEFT JOIN clients c ON bt.matched_client_id = c.id
       LEFT JOIN expense_categories ec ON bt.matched_category_id = ec.id
-      WHERE 1=1${entityFilter(c, 'bt').clause}
+      ${where}
+      ORDER BY bt.transaction_date DESC, bt.transaction_time DESC
+      LIMIT ${limit} OFFSET ${offset}
     `
-    const params: (string | number)[] = [...entityFilter(c, 'bt').params]
-
-    if (account_id) {
-      query += ' AND bt.bank_account_id = ?'
-      params.push(account_id)
-    }
-    if (date_start) {
-      query += ' AND bt.transaction_date >= ?'
-      params.push(date_start.replace(/-/g, ''))
-    }
-    if (date_end) {
-      query += ' AND bt.transaction_date <= ?'
-      params.push(date_end.replace(/-/g, ''))
-    }
-    if (matchStatuses.length > 1) {
-      const ph = matchStatuses.map(() => '?').join(', ')
-      query += ` AND bt.match_status IN (${ph})`
-      params.push(...matchStatuses)
-    } else if (singleStatus) {
-      query += ' AND bt.match_status = ?'
-      params.push(singleStatus)
-    }
-    if (transaction_type) {
-      query += ' AND bt.transaction_type = ?'
-      params.push(transaction_type)
-    }
-
-    query += ' ORDER BY bt.transaction_date DESC, bt.transaction_time DESC'
 
     const { results } = params.length > 0
       ? await c.env.DB.prepare(query).bind(...params).all()
       : await c.env.DB.prepare(query).all()
 
-    return c.json({ success: true, data: results })
+    // 전체 건수(페이지네이션용) — WHERE는 bt만 참조하므로 조인 불필요
+    const countQuery = `SELECT COUNT(*) as cnt FROM bank_transactions bt ${where}`
+    const countRow = params.length > 0
+      ? await c.env.DB.prepare(countQuery).bind(...params).first<{ cnt: number }>()
+      : await c.env.DB.prepare(countQuery).first<{ cnt: number }>()
+    const total = Number(countRow?.cnt) || 0
+
+    return c.json({ success: true, data: results, total, limit, offset })
   } catch (error) {
     console.error('Get bank transactions error:', error)
     return c.json({
@@ -1667,6 +1683,7 @@ bankRouter.get('/transactions/export', requireRole('ADMIN'), async (c) => {
     }
     if (transaction_type) { query += ' AND bt.transaction_type = ?'; params.push(transaction_type) }
     query += ' ORDER BY bt.transaction_date DESC, bt.transaction_time DESC'
+    query += ' LIMIT 5000'  // 확장성: CSV 무제한 스캔 방지(orders CSV 관례)
 
     const { results } = params.length > 0
       ? await c.env.DB.prepare(query).bind(...params).all()

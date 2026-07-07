@@ -40,6 +40,7 @@ export function qualityPage(c: Context) {
             <tbody id="qcClaimsBody"><tr><td colspan="9" class="text-center py-8 text-gray-400">로딩…</td></tr></tbody>
           </table>
         </div>
+        <div id="qcClaimsPagebar" class="flex flex-wrap items-center gap-2 mt-1 px-1"></div>
       </div>
 
       <!-- 반품 -->
@@ -65,6 +66,7 @@ export function qualityPage(c: Context) {
             <tbody id="qcReturnsBody"><tr><td colspan="8" class="text-center py-8 text-gray-400">로딩…</td></tr></tbody>
           </table>
         </div>
+        <div id="qcReturnsPagebar" class="flex flex-wrap items-center gap-2 mt-1 px-1"></div>
       </div>
 
       <!-- 불량코드 -->

@@ -9,6 +9,32 @@
 
 var lvCurrentTab = 'balances';
 var lvEmployees = [];
+var lvReqPage = 1; // 휴가 신청 내역 페이지 (?raw 전역스코프 — lv 프리픽스 격리)
+
+// 페이지바 렌더 (orders 페이지 스타일 재사용). goFn = onclick에서 호출할 전역 함수명 문자열.
+function lvRenderPagebar(containerId, pagination, goFn) {
+  var container = document.getElementById(containerId);
+  if (!container) { console.warn('[leaves] #' + containerId + ' not found'); return; }
+  var total = pagination ? (pagination.total || 0) : 0;
+  var page = pagination ? (pagination.page || 1) : 1;
+  var totalPages = pagination ? (pagination.total_pages || Math.ceil(total / (pagination.limit || 1)) || 1) : 1;
+  if (totalPages <= 1) { container.innerHTML = pagination ? '<span style="font-size:13px;color:#6b7280;">총 ' + total + '건</span>' : ''; return; }
+  var btnStyle = 'padding:6px 14px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;cursor:pointer;background:#fff;';
+  var btnDisabled = 'padding:6px 14px;border:1px solid #e5e7eb;border-radius:6px;font-size:13px;cursor:not-allowed;background:#f9fafb;color:#9ca3af;';
+  var buttons = '';
+  var startPage = Math.max(1, page - 2);
+  var endPage = Math.min(totalPages, startPage + 4);
+  for (var p = startPage; p <= endPage; p++) {
+    var active = p === page ? 'padding:6px 12px;border:1px solid #2563eb;border-radius:6px;font-size:13px;cursor:pointer;background:#2563eb;color:#fff;font-weight:600;' : btnStyle;
+    buttons += '<button onclick="' + goFn + '(' + p + ')" style="' + active + '">' + p + '</button>';
+  }
+  container.innerHTML =
+    '<button onclick="' + goFn + '(' + (page - 1) + ')" ' + (page <= 1 ? 'disabled' : '') + ' style="' + (page <= 1 ? btnDisabled : btnStyle) + '">이전</button>' +
+    buttons +
+    '<button onclick="' + goFn + '(' + (page + 1) + ')" ' + (page >= totalPages ? 'disabled' : '') + ' style="' + (page >= totalPages ? btnDisabled : btnStyle) + '">다음</button>' +
+    '<span style="font-size:13px;color:#6b7280;margin-left:8px;">' + page + ' / ' + totalPages + ' 페이지 (총 ' + total + '건)</span>';
+}
+window.leavesRequestsGoPage = function (p) { window.leavesLoadRequests(p); };
 
 function lvEscapeHtml(str) {
   if (!str) return '';
@@ -103,19 +129,21 @@ window.leavesLoadBalances = async function() {
   }
 };
 
-window.leavesLoadRequests = async function() {
+window.leavesLoadRequests = async function(page) {
+  lvReqPage = page || 1;
   var status = document.getElementById('lvReqStatus').value;
   var fromEl = document.getElementById('lvReqFrom'); // #353: 날짜 범위 필터
   var toEl = document.getElementById('lvReqTo');
   var tbody = document.getElementById('lvRequestsBody');
   tbody.innerHTML = '<tr><td colspan="9" class="text-center text-gray-400 py-6"><i class="fas fa-spinner fa-spin text-2xl mb-2"></i><br>로딩 중...</td></tr>';
   try {
-    var reqParams = {};
+    var reqParams = { page: lvReqPage, limit: 50 };
     if (status) reqParams.status = status;
     if (fromEl && fromEl.value) reqParams.from = fromEl.value;
     if (toEl && toEl.value) reqParams.to = toEl.value;
     var res = await axios.get('/api/leaves/requests', { params: reqParams });
     var rows = res.data.data || [];
+    lvRenderPagebar('lvRequestsPagebar', res.data.pagination, 'window.leavesRequestsGoPage');
     if (!rows.length) {
       tbody.innerHTML = '<tr><td colspan="9" class="text-center text-gray-400 py-6">신청 내역 없음</td></tr>';
       return;

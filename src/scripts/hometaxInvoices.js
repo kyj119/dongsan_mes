@@ -3,6 +3,7 @@
   var currentTab = 'collect';
   var currentPage = 1;
   var pageSize = 20;
+  var jobsPage = 1; // 수집 작업 로그 페이지 (invoices 탭의 currentPage와 분리)
   var jobs = [];
   var invoices = [];
   var matchingInvoiceId = null;
@@ -31,6 +32,30 @@
       return 'bg-red-50 text-red-700';
     }
     return jobStateColors[state] || 'bg-gray-100 text-gray-600';
+  }
+
+  // 페이지바 렌더 (orders 페이지 스타일 재사용). goFn = onclick에서 호출할 전역 함수명 문자열.
+  function renderPagebar(containerId, pagination, goFn) {
+    var container = document.getElementById(containerId);
+    if (!container) { console.warn('[hometaxInvoices] #' + containerId + ' not found'); return; }
+    var total = pagination ? (pagination.total || 0) : 0;
+    var page = pagination ? (pagination.page || 1) : 1;
+    var totalPages = pagination ? (pagination.total_pages || Math.ceil(total / (pagination.limit || 1)) || 1) : 1;
+    if (totalPages <= 1) { container.innerHTML = pagination ? '<span style="font-size:13px;color:#6b7280;">총 ' + total + '건</span>' : ''; return; }
+    var btnStyle = 'padding:6px 14px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;cursor:pointer;background:#fff;';
+    var btnDisabled = 'padding:6px 14px;border:1px solid #e5e7eb;border-radius:6px;font-size:13px;cursor:not-allowed;background:#f9fafb;color:#9ca3af;';
+    var buttons = '';
+    var startPage = Math.max(1, page - 2);
+    var endPage = Math.min(totalPages, startPage + 4);
+    for (var p = startPage; p <= endPage; p++) {
+      var active = p === page ? 'padding:6px 12px;border:1px solid #2563eb;border-radius:6px;font-size:13px;cursor:pointer;background:#2563eb;color:#fff;font-weight:600;' : btnStyle;
+      buttons += '<button onclick="' + goFn + '(' + p + ')" style="' + active + '">' + p + '</button>';
+    }
+    container.innerHTML =
+      '<button onclick="' + goFn + '(' + (page - 1) + ')" ' + (page <= 1 ? 'disabled' : '') + ' style="' + (page <= 1 ? btnDisabled : btnStyle) + '">이전</button>' +
+      buttons +
+      '<button onclick="' + goFn + '(' + (page + 1) + ')" ' + (page >= totalPages ? 'disabled' : '') + ' style="' + (page >= totalPages ? btnDisabled : btnStyle) + '">다음</button>' +
+      '<span style="font-size:13px;color:#6b7280;margin-left:8px;">' + page + ' / ' + totalPages + ' 페이지 (총 ' + total + '건)</span>';
   }
 
   // Tab Switching
@@ -99,13 +124,19 @@
     });
   };
 
-  window.loadJobs = function() {
-    axios.get('/api/hometax-invoices/jobs').then(function(r) {
-      jobs = r.data.data || r.data || [];
+  // hometaxLoadJobs로 노출(전역 loadJobs 오염 회피, hometaxLoadInvoices와 동일 방식). 페이지바 onclick은 hometaxLoadJobs 참조.
+  var loadJobs = window.loadJobs = window.hometaxLoadJobs = function(page) {
+    jobsPage = page || 1;
+    if (jobsPage < 1) jobsPage = 1;
+    axios.get('/api/hometax-invoices/jobs', { params: { page: jobsPage, limit: pageSize } }).then(function(r) {
+      var resp = r.data || {};
+      jobs = resp.data || [];
       displayJobs();
+      renderPagebar('jobsPagination', resp.pagination, 'window.hometaxLoadJobs');
     }).catch(function(e) {
       console.error('loadJobs error:', e);
-      document.getElementById('jobsTableBody').innerHTML = '<tr class="table-row"><td colspan="9" class="text-center text-red-500 py-4">데이터 로드 실패</td></tr>';
+      var tb = document.getElementById('jobsTableBody');
+      if (tb) tb.innerHTML = '<tr class="table-row"><td colspan="9" class="text-center text-red-500 py-4">데이터 로드 실패</td></tr>';
     });
   };
 
