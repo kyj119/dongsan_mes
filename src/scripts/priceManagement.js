@@ -291,7 +291,7 @@ function loadItemDetail(itemId) {
 // 단가 연동 토글
 function togglePriceLinked(groupName, checked) {
   axios.put('/api/items/group-settings/' + encodeURIComponent(groupName), { price_linked: checked ? 1 : 0 })
-    .then(function() { showToast('"' + groupName + '" 단가연동 ' + (checked ? 'ON' : 'OFF'), 'success'); })
+    .then(function() { showToast('"' + esc(groupName) + '" 단가연동 ' + (checked ? 'ON' : 'OFF'), 'success'); })
     .catch(function() { showToast('설정 저장 실패', 'error'); loadPurchaseView(); });
 }
 
@@ -360,7 +360,7 @@ function showSalesClientDD(clients) {
   var dd = document.getElementById('salesClientDropdown');
   if (!clients.length) { dd.innerHTML = '<div class="px-3 py-4 text-center text-gray-400 text-sm">검색 결과 없음</div>'; dd.classList.remove('hidden'); return; }
   dd.innerHTML = clients.map(function(cl) {
-    return '<div class="client-dd-entry" data-id="' + cl.id + '" data-name="' + esc(cl.client_name) + '"><div class="font-medium">' + esc(cl.client_name) + '</div>' + (cl.phone ? '<div class="text-xs text-gray-400">' + cl.phone + '</div>' : '') + '</div>';
+    return '<div class="client-dd-entry" data-id="' + cl.id + '" data-name="' + esc(cl.client_name) + '"><div class="font-medium">' + esc(cl.client_name) + '</div>' + (cl.phone ? '<div class="text-xs text-gray-400">' + esc(cl.phone) + '</div>' : '') + '</div>';
   }).join('');
   dd.querySelectorAll('.client-dd-entry').forEach(function(el) {
     el.addEventListener('click', function() { pickSalesClient(el.dataset.id, el.dataset.name); dd.classList.add('hidden'); });
@@ -1152,7 +1152,7 @@ function showPmSheetClientDD(clients) {
   if (!dd) return;
   if (!clients.length) { dd.innerHTML = '<div class="px-3 py-4 text-center text-gray-400 text-sm">검색 결과 없음</div>'; dd.classList.remove('hidden'); return; }
   dd.innerHTML = clients.map(function(cl) {
-    return '<div class="client-dd-entry" data-id="' + cl.id + '" data-name="' + esc(cl.client_name) + '"><div class="font-medium">' + esc(cl.client_name) + '</div>' + (cl.phone ? '<div class="text-xs text-gray-400">' + cl.phone + '</div>' : '') + '</div>';
+    return '<div class="client-dd-entry" data-id="' + cl.id + '" data-name="' + esc(cl.client_name) + '"><div class="font-medium">' + esc(cl.client_name) + '</div>' + (cl.phone ? '<div class="text-xs text-gray-400">' + esc(cl.phone) + '</div>' : '') + '</div>';
   }).join('');
   dd.querySelectorAll('.client-dd-entry').forEach(function(el) {
     el.addEventListener('click', function() { pickPmSheetClient(el.dataset.id, el.dataset.name); dd.classList.add('hidden'); });

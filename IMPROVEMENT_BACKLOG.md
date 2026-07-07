@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 4 -->
-<!-- last_run_at: 2026-07-07T17:00:00+09:00 -->
+<!-- last_run_area: 5 -->
+<!-- last_run_at: 2026-07-07T21:00:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,7 +8,7 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | **5** — #473, #497(MED, 원장 거래처검색 1000cap 무음누락), #498(LOW, 페이지네이션 로딩인디케이터), #499(LOW, width_mm 힌트 불일치), #500(LOW, Area4 31회차 신규 — bank.ts sync-barobill 잔액0 → NULL 강등, 0451 content_key dedup 충돌 시 거래 무음소실). open 실측(`list_issues(OPEN,auto-improve)`=5) 기준. |
+| 🆕 new | **6** — #473, #497(MED, 원장 거래처검색 1000cap 무음누락), #498(LOW, 페이지네이션 로딩인디케이터), #499(LOW, width_mm 힌트 불일치), #500(LOW, bank.ts sync-barobill 잔액0→NULL 강등), #501(HIGH, Area5 32회차 신규 — price-list `:entityId` 라우트 소유검증 없음, 타법인 직인/로고 열람·변조 IDOR). open 실측(`list_issues(OPEN,auto-improve)`=6) 기준. |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 |
 | ✔️ done | **184** (171 + #482~#496 중 13건, 커밋 `2680102`+`7bff20b`로 실제 코드수정 후 owner close 확인 — Area4 31회차 done-sync) |
@@ -16,6 +16,17 @@
 
 > 📦 **과거 사이클 로그**는 `IMPROVEMENT_BACKLOG_ARCHIVE.md`/git 히스토리로 이관됨 (2026-06-10 1차 분리, 2026-06-25 2차 트림 343KB→192KB, 2026-06-25T10:00 3차 트림, 2026-07-03T06:00 4차 트림 288KB→86KB, **2026-07-07T13:00 5차 트림 — 07-01~07-05 사이클 로그를 git 히스토리로 이관: 238KB→78KB, 256KB Read 한도 재확보**). 신규 로그는 계속 이 파일 상단에 추가. 본 파일은 직전 2일치(07-06~) 사이클 로그 + 영구 참조 섹션(Approved/New/Auto-fixed/Done/Rejected/FP 카탈로그)만 유지. 이관분은 `git log -p -- IMPROVEMENT_BACKLOG.md`로 복원 가능.
 
+> **Area 5 보안 (2026-07-07T21:00):**
+> - **방법**: `npm ci`(node_modules 0→81) 후 `git fetch origin main`(HEAD=origin/main `4de1f2f` 0/0 동기, 워킹트리 clean, #422 디버전스 0). Area 5 **32회차** — 직전 Area5(`7d7b6bc`, 07-06T22:00, 30회차) 이후 churn = 신규 대형 기능 **가격표(단가표) Phase 1-4**(`8bdc235`~`a17cbb9` — 단가표 세트 CRUD·회사 인쇄정보(로고/직인/부서연락처/웹하드)·전달문서 인쇄·요약바/CSV) + `a1ced34`(bank dedup)·`2f09cc4`/`8637e49`(R2 externalize, 이미 Area4/6 검증)·`c6cfd4f`/`92ee636`(scale-fix, 이미 Area1/2/6 검증)·`9dbb477`(ia-editor). **신선 각도 = 가격표 Phase 1-4 신규 라우트(`priceSheets.ts` 신규 256줄·`priceList.ts` +109줄) + 신규 프론트(`priceManagement.js` +694·`settings.js` +193)를 IDOR/XSS/secret 렌즈로 전수.**
+> - **🆕 net-new 1건 — #501 (HIGH·issue-only, price-list `:entityId` 소유검증 없음)**: `priceList.ts`의 `GET/PUT /logo/:entityId`·`GET/PUT /stamp/:entityId`·`GET/PUT /company/:entityId`·`GET/POST/PUT/DELETE /company/:entityId/contacts[/:cid]` 전부 **URL의 `:entityId`가 호출자 소속 법인과 일치하는지 검증 0** — `requireRole('ADMIN')`은 역할만 보고 법인 스코프는 안 봄(`auth.ts:35-52`), `entityId`는 로그인 시 JWT에 고정된 사용자 자신의 법인(`auth.ts:43/51`)이라 요청 파라미터로 자유 조작 가능. **최고위험 = `PUT /stamp/:entityId`**(직인/도장 이미지) — entity A의 ADMIN이 URL만 바꿔 **타법인 공식 직인을 임의 교체**(문서위조 소재) 가능. GET 계열(logo/company/contacts)은 역할 제한조차 없어 인증 사용자 누구나 타법인 로고·직인·주소·이메일·부서연락처 열람 가능. 프론트(`priceManagement.js:504 pmEntityId()`·`settings.js` `window.currentEntityId`)는 항상 호출자 자신의 entity만 넘겨 정상 UI로는 안 드러나나 직접 API 호출로 우회 자명. **원인 = 기존 `/logo/:entityId`(사전 존재, 좁은 갭)를 Phase 2/3가 그대로 답습하며 `stamp`·`company`·`contacts` CRUD까지 대상 확장**. IDOR=owner 워크플로+egress 차단 → issue-only.
+> - **🟢 신규 라우트 나머지 IDOR = clean**: `priceSheets.ts`(신규 CRUD 전체) — GET 목록/DELETE/PUT 전부 read-back `entityFilter` 게이트 완비(#437/#452 정답 패턴), POST는 `getWriteEntityId` 전체모드 게이트. `priceList.ts` `/policies` CRUD·`/policies/:id/rules`(#451 주석 인용 — 부모 소유 검증 이미 반영) 전부 entityFilter 적용. `/calculate`·`GET /`(품목 조회, client_id 옵션)는 read-only 계산 유틸이고 응답이 가격정책 자체(민감도 낮음)+기존 패턴 답습이라 낮은 우선순위.
+> - **🆕 net-new 2건 자동수정 완료 — XSS(priceManagement.js, 신규 대량메시지/단가관리 UI)**: (1) `togglePriceLinked`(:294) `showToast('"' + groupName + ...)`가 item_group 자유텍스트를 미escape로 toast innerHTML(`shell.js:844`)에 보간 — onclick 속성 경유로 전달되며 HTML엔티티가 브라우저에 의해 디코딩되어 원본 문자열 복원(#489 dataset round-trip과 동형 우회 경로). (2) 거래처 검색 드롭다운(:363, :1155 — 동일 코드 2곳)의 `cl.phone`이 미escape로 innerHTML 보간, 같은 파일 `company.phone`(:543)·`ct.phone`(:559)은 이미 escape = A-024/A-025급 부분-escape. **자동수정**(3곳 esc() 래핑) — `node -c` 문법 OK·`npx tsc --noEmit` 0·`npm run build` 0.
+> - **🟢 secret 폴백 = clean**: `grep c.env.X||'리터럴'` = `fax.ts:43`(빈 문자열 폴백, 기존 FP) 외 0.
+> - **🟢 신규 write-path 나머지 = clean**: `quotations.ts GET /stats`(client_id 필터 있는 KPI 집계, `/:id`보다 먼저 등록해 섀도잉 방지, entityFilter 적용) 정합. `storageZones.ts` POST/PUT UNIQUE 위반 409 처리 추가는 순수 에러메시지 개선. `workbench.ts` R2 hydrate 추가는 기능 무변경(read 경로).
+> - **🟢 backlog↔GitHub sync**: open auto-improve **실측 5건**(`list_issues(OPEN,auto-improve)`: #473, #497~#500) = 직전 Area4 stats `new=5` **정합**. 본 Area5 신규 이슈 1건(#501) → **new 6**. owner 신규 close/머지 0(done=184·rejected=3 유지). #422 디버전스: HEAD=origin/main 동기(`4de1f2f`)+본 자동수정 push 예정.
+> - **🧬 SKILL 강화 없음(신규 패턴 아님)** — #501은 기존 "entityId 소유검증" 클래스(합배송 client_id 스코프 FP류와 달리 이번은 **소유검증 자체가 부재**)의 신규 라우트 재발이라 기존 IDOR 카탈로그로 충분히 포착됨. XSS 2건도 기존 A-024/A-025 부분-escape 클래스.
+> - 신규 이슈 1건(#501 HIGH·issue-only), 자동수정 1건(priceManagement.js escapeHtml 3곳), done-sync(new 5→6·5=5 정합), **신선 각도 — 가격표 Phase 1-4 신규 라우트/프론트 전수 보안 분석. #501 = 회사 인쇄정보 엔드포인트가 :entityId 소유검증 없어 직인/로고 열람·변조 가능한 신규 IDOR. XSS 2건(showToast groupName·거래처 검색 phone) 자동수정 완료. priceSheets.ts 신규 CRUD 전체·policies/rules는 entityFilter 완비.**
+>
 > **Area 4 데이터 정합성 (2026-07-07T17:00):**
 > - **방법**: `npm ci`(node_modules 0→81) 후 `git fetch origin main`(`c66bfc1→a1ced34` force-update, **HEAD=origin/main `a1ced34` 0/0 동기**, 워킹트리 clean). Area 4 **31회차** — 직전 Area4(`4dec7b6`, 07-06T18:00, 30회차) 이후 churn = **`afeefa1`(배너 변종)·`c6cfd4f`/`92ee636`(scale-fix P0~P3)·`1ee96db`(area2 자동수정 5건)·`028d7db`(#474~478 5건)·`2680102`(#482~496 전수 수정, 13건 close)·`2f09cc4`/`8637e49`(D1 base64 blob→R2 externalization)·`7bff20b`(po from-template 핫픽스)·`a1ced34`(은행거래 dedup 신원 TransKey→내용키 이전, 마이그 0451)** + 신규 마이그 4건(0446~0449, 0451). **신선 각도 = 오늘 착륙한 두 신규 write-path 재설계(R2 externalize·bank dedup content_key)를 데이터 정합성 렌즈로 전수 — R2 write-choke 실패 시 무손실 여부, dedup 신원 이전이 소비하는 소스 컬럼의 실제 정확성.**
 > - **🆕 net-new 1건 — #500 (LOW·issue-only, bank.ts sync-barobill 잔액0 → NULL 강등)**: `bank.ts:550` `parseFloat(item.Balance || '0') || null`이 JS falsy 규칙상 **실제 잔액 0원**도 NULL로 강등(형제 auto-sync `:1832`는 `|| null` 없이 0을 그대로 저장 = 두 경로 동작 불일치, CSV import `:415`는 `??`로 이미 올바름). 오늘 배포된 0451(dedup 신원을 content_key로 이전)의 VIRTUAL 컬럼이 `balance_after IS NULL`이면 `counterpart_name`으로 폴백 → 같은 계좌·날짜·시각버킷·유형·금액에 거래처명까지 겹치는 **서로 다른 두 거래**가 있으면 UNIQUE 충돌로 `INSERT OR IGNORE`가 두 번째 거래를 조용히 버림(진짜 거래 영구 미기록). **더 나쁜 점**: 0451이 새로 추가한 cron 무결성 트립와이어(content_key 중복 그룹 감지)는 `INSERT OR IGNORE`가 애초에 막은 케이스는 중복 그룹 자체가 안 생겨 **탐지 불가**(자기 자신의 방어망 밖). 수정 = `:550`을 형제 경로와 동일하게 `|| null` 제거. 재무 write-path + egress 검증불가라 issue-only.
