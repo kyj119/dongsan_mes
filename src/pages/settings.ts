@@ -173,6 +173,58 @@ ${capsSettingsScript}
             <div id="logoSettingsArea"></div>
           </div>
 
+          <!-- 회사 인쇄 정보 (단가표·전달 문서 헤더): 부서연락처 / 웹하드 / 직인 (Phase 2) -->
+          <div class="bg-white rounded-lg border border-gray-200 p-6">
+            <h2 class="text-lg font-bold text-gray-900 mb-2 flex items-center gap-2">
+              <i class="fas fa-file-invoice text-indigo-600"></i>
+              <span>회사 인쇄 정보</span>
+              <span class="text-xs font-normal text-gray-500">(단가표·전달 문서 상단/하단에 표시 · 법인별)</span>
+            </h2>
+
+            <!-- 부서별 연락처 -->
+            <div class="mt-4">
+              <div class="flex items-center justify-between mb-2">
+                <h3 class="text-sm font-bold text-gray-700">부서별 연락처</h3>
+                <button onclick="addPcContact()" class="px-3 py-1.5 border border-gray-300 rounded-lg text-sm text-gray-700 hover:bg-gray-50">+ 부서 추가</button>
+              </div>
+              <div class="overflow-x-auto">
+                <table class="w-full text-sm ds-table-striped ds-table-fixed">
+                  <thead>
+                    <tr>
+                      <th class="text-left">부서명</th>
+                      <th class="text-left" style="width:120px">담당자</th>
+                      <th class="text-left" style="width:150px">전화</th>
+                      <th class="text-left" style="width:150px">팩스</th>
+                      <th style="width:40px"></th>
+                    </tr>
+                  </thead>
+                  <tbody id="pcContactsBody"></tbody>
+                </table>
+              </div>
+              <div id="pcNoContactsMsg" class="text-center text-gray-400 py-4 hidden">등록된 부서 연락처가 없습니다.</div>
+              <div class="mt-3 flex justify-end">
+                <button onclick="savePcContacts()" id="savePcContactsBtn" class="ds-btn ds-btn-primary">연락처 저장</button>
+              </div>
+            </div>
+
+            <!-- 웹하드 주소 -->
+            <div class="mt-6 border-t border-gray-100 pt-6">
+              <label class="block text-sm font-bold text-gray-700 mb-1">웹하드 주소</label>
+              <p class="text-xs text-gray-400 mb-2">단가표·전달 문서 상단에 파일 전달용 웹하드 주소를 표시합니다.</p>
+              <div class="flex gap-2">
+                <input type="text" id="pcWebhardUrl" class="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500" placeholder="https://webhard.example.com">
+                <button onclick="savePcWebhard()" id="savePcWebhardBtn" class="ds-btn ds-btn-primary whitespace-nowrap">저장</button>
+              </div>
+            </div>
+
+            <!-- 직인 (인쇄용) -->
+            <div class="mt-6 border-t border-gray-100 pt-6">
+              <h3 class="text-sm font-bold text-gray-700 mb-1">직인 (인감도장)</h3>
+              <p class="text-xs text-gray-400 mb-3">전달 문서 하단 담당자 옆에 표시됩니다. (PNG/JPG · 위 법인 정보의 인감도장과 동일 값)</p>
+              <div id="pcStampArea"></div>
+            </div>
+          </div>
+
           <!-- 전자세금계산서 (바로빌) -->
           <div class="bg-white rounded-lg border border-gray-200 p-6">
             <h2 class="text-lg font-bold text-gray-900 mb-6 flex items-center gap-2">

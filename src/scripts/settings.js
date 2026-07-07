@@ -87,6 +87,8 @@ async function loadSettings() {
       window.currentEntityId = e.id;
       // 법인별 로고 로드 (Phase 후속: price-list에서 이동됨)
       if (typeof loadLogoSettings === 'function' && e.id) loadLogoSettings(e.id);
+      // 회사 인쇄 정보(부서연락처·웹하드·직인) 로드 (Phase 2)
+      if (typeof loadCompanyPrintInfo === 'function' && e.id) loadCompanyPrintInfo(e.id);
       var fieldMap = {
         company_name: e.name || '',
         company_business_registration_number: e.business_reg_no || '',
@@ -574,4 +576,195 @@ async function deleteLogo() {
     showToast('로고 삭제 완료', 'success');
     loadLogoSettings(window.currentEntityId);
   } catch (e) { showToast('삭제 실패', 'error'); }
+}
+
+// ========== 회사 인쇄 정보: 부서연락처 / 웹하드 / 직인 (Phase 2 — 전달 문서 헤더) ==========
+// 전역 var는 pc(print company) prefix로 격리(?raw concat 전역스코프 충돌 방지).
+var pcContacts = [];            // 부서별 연락처 in-memory [{id?, department, person_name, phone, fax}]
+var pcDeletedContactIds = [];   // 삭제 대기 id(저장 시 DELETE)
+var pcPendingStampBase64 = null;
+
+async function loadCompanyPrintInfo(entityId) {
+  if (!entityId) { console.warn('[settings] loadCompanyPrintInfo: entityId 없음'); return; }
+  try {
+    var res = await axios.get('/api/price-list/company/' + entityId);
+    var d = (res.data.success && res.data.data) ? res.data.data : {};
+    var whEl = document.getElementById('pcWebhardUrl');
+    if (whEl) whEl.value = d.webhard_url || '';
+    pcContacts = Array.isArray(d.contacts) ? d.contacts.map(function(cc) {
+      return { id: cc.id, department: cc.department || '', person_name: cc.person_name || '', phone: cc.phone || '', fax: cc.fax || '' };
+    }) : [];
+    pcDeletedContactIds = [];
+    renderPcContacts();
+    renderPcStamp(d.stamp_base64);
+  } catch (e) {
+    console.warn('[settings] loadCompanyPrintInfo 실패', e);
+  }
+}
+
+function renderPcContacts() {
+  var tbody = document.getElementById('pcContactsBody');
+  var noMsg = document.getElementById('pcNoContactsMsg');
+  if (!tbody) { console.warn('[settings] #pcContactsBody not found'); return; }
+  if (pcContacts.length === 0) {
+    tbody.innerHTML = '';
+    if (noMsg) noMsg.classList.remove('hidden');
+    return;
+  }
+  if (noMsg) noMsg.classList.add('hidden');
+  tbody.innerHTML = pcContacts.map(function(cc, idx) {
+    return '<tr data-idx="' + idx + '">'
+      + '<td class="px-3 py-2"><input type="text" value="' + escapeAttr(cc.department || '') + '" data-field="department" class="w-full px-2 py-1 border border-gray-300 rounded text-sm" placeholder="제작부"></td>'
+      + '<td class="px-3 py-2"><input type="text" value="' + escapeAttr(cc.person_name || '') + '" data-field="person_name" class="w-full px-2 py-1 border border-gray-300 rounded text-sm" placeholder="담당자"></td>'
+      + '<td class="px-3 py-2"><input type="text" value="' + escapeAttr(cc.phone || '') + '" data-field="phone" class="w-full px-2 py-1 border border-gray-300 rounded text-sm" placeholder="042-000-0000"></td>'
+      + '<td class="px-3 py-2"><input type="text" value="' + escapeAttr(cc.fax || '') + '" data-field="fax" class="w-full px-2 py-1 border border-gray-300 rounded text-sm" placeholder="042-000-0000"></td>'
+      + '<td class="px-3 py-2 text-center"><button onclick="removePcContact(' + idx + ')" class="text-red-500 hover:text-red-700 p-1" title="삭제"><i class="fas fa-trash"></i></button></td>'
+      + '</tr>';
+  }).join('');
+}
+
+function addPcContact() {
+  collectPcContacts();
+  pcContacts.push({ department: '', person_name: '', phone: '', fax: '' });
+  renderPcContacts();
+  var rows = document.querySelectorAll('#pcContactsBody tr');
+  if (rows.length > 0) { var inp = rows[rows.length - 1].querySelector('input'); if (inp) inp.focus(); }
+}
+
+function removePcContact(idx) {
+  collectPcContacts();
+  var cc = pcContacts[idx];
+  if (cc && cc.id) pcDeletedContactIds.push(cc.id);
+  pcContacts.splice(idx, 1);
+  renderPcContacts();
+}
+
+// DOM 입력값을 pcContacts로 회수(추가/삭제/저장 전 편집 내용 보존)
+function collectPcContacts() {
+  var rows = document.querySelectorAll('#pcContactsBody tr');
+  rows.forEach(function(row) {
+    var idx = Number(row.getAttribute('data-idx'));
+    if (isNaN(idx) || !pcContacts[idx]) return;
+    row.querySelectorAll('input').forEach(function(inp) {
+      var field = inp.getAttribute('data-field');
+      if (field) pcContacts[idx][field] = inp.value.trim();
+    });
+  });
+}
+
+async function savePcContacts() {
+  if (!window.currentEntityId) { showToast('법인 정보 로딩 중', 'warning'); return; }
+  collectPcContacts();
+  var eid = window.currentEntityId;
+  var btn = document.getElementById('savePcContactsBtn');
+  var original = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.textContent = '저장 중...'; }
+  try {
+    for (var i = 0; i < pcDeletedContactIds.length; i++) {
+      await axios.delete('/api/price-list/company/' + eid + '/contacts/' + pcDeletedContactIds[i]);
+    }
+    pcDeletedContactIds = [];
+    for (var j = 0; j < pcContacts.length; j++) {
+      var cc = pcContacts[j];
+      if (!cc.department) continue;   // 부서명 없는 행은 스킵
+      var body = { department: cc.department, person_name: cc.person_name, phone: cc.phone, fax: cc.fax, sort_order: j };
+      if (cc.id) {
+        await axios.put('/api/price-list/company/' + eid + '/contacts/' + cc.id, body);
+      } else {
+        var r = await axios.post('/api/price-list/company/' + eid + '/contacts', body);
+        if (r.data && r.data.data) cc.id = r.data.data.id;
+      }
+    }
+    showToast('부서 연락처가 저장되었습니다', 'success');
+    loadCompanyPrintInfo(eid);
+  } catch (e) {
+    showToast('부서 연락처 저장 실패: ' + ((e.response && e.response.data && e.response.data.error) || e.message), 'error');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = original; }
+  }
+}
+
+async function savePcWebhard() {
+  if (!window.currentEntityId) { showToast('법인 정보 로딩 중', 'warning'); return; }
+  var el = document.getElementById('pcWebhardUrl');
+  if (!el) { console.warn('[settings] #pcWebhardUrl not found'); return; }
+  var btn = document.getElementById('savePcWebhardBtn');
+  var original = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.textContent = '저장 중...'; }
+  try {
+    await axios.put('/api/price-list/company/' + window.currentEntityId, { webhard_url: el.value.trim() });
+    showToast('웹하드 주소가 저장되었습니다', 'success');
+  } catch (e) {
+    showToast('웹하드 저장 실패', 'error');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = original; }
+  }
+}
+
+function renderPcStamp(stampBase64) {
+  var el = document.getElementById('pcStampArea');
+  if (!el) { console.warn('[settings] #pcStampArea not found'); return; }
+  pcPendingStampBase64 = null;
+  el.innerHTML = '<div class="max-w-lg">'
+    + '<div class="mb-4">'
+    + '<label class="block text-sm font-medium text-gray-700 mb-2">현재 직인</label>'
+    + (stampBase64 ? '<img src="' + stampBase64 + '" style="max-height:80px;max-width:120px;border:1px solid #e5e7eb;border-radius:8px;padding:8px;background:#fff;">' : '<div class="text-sm text-gray-400">직인 미설정</div>')
+    + '</div>'
+    + '<div class="mb-4">'
+    + '<label class="block text-sm font-medium text-gray-700 mb-2">직인 업로드 (PNG/JPG, 권장 200x200px 이하)</label>'
+    + '<input type="file" id="pcStampFileInput" accept="image/png,image/jpeg" onchange="onPcStampFileSelected(this)" class="text-sm">'
+    + '</div>'
+    + '<div class="mb-4"><div id="pcStampPreview"></div></div>'
+    + '<button onclick="savePcStamp()" class="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700"><i class="fas fa-save mr-1"></i>직인 저장</button>'
+    + (stampBase64 ? ' <button onclick="deletePcStamp()" class="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm hover:bg-gray-100 ml-2"><i class="fas fa-trash mr-1"></i>삭제</button>' : '')
+    + '</div>';
+}
+
+function onPcStampFileSelected(input) {
+  var file = input.files[0];
+  if (!file) return;
+  if (file.size > 500000) { showToast('이미지 크기는 500KB 이하로 해주세요.', 'warning'); return; }
+  var reader = new FileReader();
+  reader.onload = function(e) {
+    pcPendingStampBase64 = e.target.result;
+    var pv = document.getElementById('pcStampPreview');
+    if (pv) pv.innerHTML = '<img src="' + pcPendingStampBase64 + '" style="max-height:80px;max-width:120px;border:1px solid #e5e7eb;border-radius:8px;padding:8px;background:#fff;margin-top:8px;">';
+  };
+  reader.readAsDataURL(file);
+}
+
+async function savePcStamp() {
+  if (!pcPendingStampBase64) { showToast('직인 파일을 선택하세요.', 'warning'); return; }
+  if (!window.currentEntityId) { showToast('법인 정보 로딩 중', 'warning'); return; }
+  try {
+    await axios.put('/api/price-list/stamp/' + window.currentEntityId, { stamp_base64: pcPendingStampBase64 });
+    syncCompanyFormStamp(pcPendingStampBase64);
+    showToast('직인 저장 완료', 'success');
+    renderPcStamp(pcPendingStampBase64);
+  } catch (e) {
+    showToast('직인 저장 실패', 'error');
+  }
+}
+
+async function deletePcStamp() {
+  if (!confirm('직인을 삭제하시겠습니까?')) return;
+  if (!window.currentEntityId) return;
+  try {
+    await axios.put('/api/price-list/stamp/' + window.currentEntityId, { stamp_base64: null });
+    syncCompanyFormStamp('');
+    showToast('직인 삭제 완료', 'success');
+    renderPcStamp(null);
+  } catch (e) {
+    showToast('직인 삭제 실패', 'error');
+  }
+}
+
+// 회사정보 폼(인감도장)의 히든필드·미리보기와 동기화.
+// 두 UI가 동일 entities.stamp_base64를 가리키므로, 신규 저장/삭제 후 회사정보 폼 '저장'이
+// 옛 값으로 덮어쓰는(clobber) 것을 방지한다.
+function syncCompanyFormStamp(base64) {
+  var hidden = document.getElementById('s_company_stamp_base64');
+  if (hidden) hidden.value = base64 || '';
+  var preview = document.getElementById('stampPreview');
+  if (preview) preview.src = base64 || '';
 }

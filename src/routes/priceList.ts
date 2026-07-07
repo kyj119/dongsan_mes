@@ -284,4 +284,113 @@ priceListRouter.put('/logo/:entityId', requireRole('ADMIN'), async (c) => {
   }
 })
 
+// PUT /stamp/:entityId — 직인 저장 (PUT /logo 미러링, entities.stamp_base64)
+priceListRouter.put('/stamp/:entityId', requireRole('ADMIN'), async (c) => {
+  try {
+    const entityId = c.req.param('entityId')
+    const { stamp_base64 } = await c.req.json<{ stamp_base64: string | null }>()
+    await c.env.DB.prepare(
+      'UPDATE entities SET stamp_base64 = ? WHERE id = ?'
+    ).bind(stamp_base64 || null, entityId).run()
+    return c.json({ success: true })
+  } catch (error) {
+    return c.json({ success: false, error: '직인 저장 실패' }, 500)
+  }
+})
+
+// ============================================================================
+// 회사 인쇄 정보 (인쇄 헤더 통합: 로고·직인·부서연락처·웹하드) — Phase 2/3
+// entityId는 라우트 param(멀티법인 인쇄 지원). 기존 /logo/:entityId 패턴과 동일.
+// ============================================================================
+
+// GET /company/:entityId — 인쇄 헤더 통합 블록 (Phase 3 인쇄가 소비)
+priceListRouter.get('/company/:entityId', async (c) => {
+  try {
+    const entityId = c.req.param('entityId')
+    const entity = await c.env.DB.prepare(
+      'SELECT name, logo_base64, stamp_base64, address, email, phone, fax, webhard_url FROM entities WHERE id = ?'
+    ).bind(entityId).first<Record<string, unknown>>()
+    if (!entity) return c.json({ success: false, error: '법인을 찾을 수 없습니다.' }, 404)
+    const { results: contacts } = await c.env.DB.prepare(
+      'SELECT id, department, person_name, phone, fax FROM entity_contacts WHERE entity_id = ? ORDER BY sort_order, id'
+    ).bind(entityId).all()
+    return c.json({ success: true, data: { ...entity, contacts } })
+  } catch (error) {
+    console.error('priceList GET /company error:', error)
+    return c.json({ success: false, error: '회사 정보 조회 실패' }, 500)
+  }
+})
+
+// PUT /company/:entityId — 웹하드 주소 저장 (ADMIN)
+priceListRouter.put('/company/:entityId', requireRole('ADMIN'), async (c) => {
+  try {
+    const entityId = c.req.param('entityId')
+    const { webhard_url } = await c.req.json<{ webhard_url?: string }>()
+    await c.env.DB.prepare(
+      'UPDATE entities SET webhard_url = ? WHERE id = ?'
+    ).bind(webhard_url?.trim() || null, entityId).run()
+    return c.json({ success: true })
+  } catch (error) {
+    return c.json({ success: false, error: '웹하드 주소 저장 실패' }, 500)
+  }
+})
+
+// GET /company/:entityId/contacts — 부서별 연락처 목록
+priceListRouter.get('/company/:entityId/contacts', async (c) => {
+  try {
+    const entityId = c.req.param('entityId')
+    const { results } = await c.env.DB.prepare(
+      'SELECT id, entity_id, department, person_name, phone, fax, sort_order FROM entity_contacts WHERE entity_id = ? ORDER BY sort_order, id'
+    ).bind(entityId).all()
+    return c.json({ success: true, data: results })
+  } catch (error) {
+    return c.json({ success: false, error: '부서 연락처 조회 실패' }, 500)
+  }
+})
+
+// POST /company/:entityId/contacts — 추가 (ADMIN)
+priceListRouter.post('/company/:entityId/contacts', requireRole('ADMIN'), async (c) => {
+  try {
+    const entityId = c.req.param('entityId')
+    const b = await c.req.json<{ department?: string; person_name?: string; phone?: string; fax?: string; sort_order?: number }>()
+    if (!b.department?.trim()) return c.json({ success: false, error: '부서명은 필수입니다.' }, 400)
+    const result = await c.env.DB.prepare(
+      'INSERT INTO entity_contacts (entity_id, department, person_name, phone, fax, sort_order) VALUES (?, ?, ?, ?, ?, ?)'
+    ).bind(entityId, b.department.trim(), b.person_name?.trim() || null, b.phone?.trim() || null, b.fax?.trim() || null, b.sort_order || 0).run()
+    return c.json({ success: true, data: { id: result.meta.last_row_id } })
+  } catch (error) {
+    return c.json({ success: false, error: '부서 연락처 추가 실패' }, 500)
+  }
+})
+
+// PUT /company/:entityId/contacts/:cid — 수정 (ADMIN)
+priceListRouter.put('/company/:entityId/contacts/:cid', requireRole('ADMIN'), async (c) => {
+  try {
+    const entityId = c.req.param('entityId')
+    const cid = c.req.param('cid')
+    const b = await c.req.json<{ department?: string; person_name?: string; phone?: string; fax?: string; sort_order?: number }>()
+    if (!b.department?.trim()) return c.json({ success: false, error: '부서명은 필수입니다.' }, 400)
+    await c.env.DB.prepare(
+      'UPDATE entity_contacts SET department = ?, person_name = ?, phone = ?, fax = ?, sort_order = ? WHERE id = ? AND entity_id = ?'
+    ).bind(b.department.trim(), b.person_name?.trim() || null, b.phone?.trim() || null, b.fax?.trim() || null, b.sort_order || 0, cid, entityId).run()
+    return c.json({ success: true })
+  } catch (error) {
+    return c.json({ success: false, error: '부서 연락처 수정 실패' }, 500)
+  }
+})
+
+// DELETE /company/:entityId/contacts/:cid — 삭제 (ADMIN)
+priceListRouter.delete('/company/:entityId/contacts/:cid', requireRole('ADMIN'), async (c) => {
+  try {
+    const entityId = c.req.param('entityId')
+    const cid = c.req.param('cid')
+    await c.env.DB.prepare(
+      'DELETE FROM entity_contacts WHERE id = ? AND entity_id = ?'
+    ).bind(cid, entityId).run()
+    return c.json({ success: true })
+  } catch (error) {
+    return c.json({ success: false, error: '부서 연락처 삭제 실패' }, 500)
+  }
+})
+
 export default priceListRouter
