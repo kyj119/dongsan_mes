@@ -178,10 +178,10 @@ templatesRouter.post('/from-template/:templateId', async (c) => {
     }
 
     const { results: templateItems } = await c.env.DB.prepare(`
-      SELECT id, template_id, item_id, item_name, category_name, quantity, unit, unit_price, vat_included, sort_order, notes FROM po_template_items
+      SELECT id, template_id, item_id, item_name, category_name, quantity, unit, unit_price, vat_included, sort_order FROM po_template_items
       WHERE template_id = ? AND is_active = 1
       ORDER BY sort_order ASC
-    `).bind(templateId).all<{ id: number; item_id: number | null; item_name: string; category_name: string | null; quantity: number; unit: string; unit_price: number; vat_included: number; notes: string | null }>()
+    `).bind(templateId).all<{ id: number; item_id: number | null; item_name: string; category_name: string | null; quantity: number; unit: string; unit_price: number; vat_included: number }>()
 
     if (!templateItems || templateItems.length === 0) {
       return c.json({ success: false, error: '템플릿에 품목이 없습니다.' }, 400)
@@ -257,7 +257,7 @@ templatesRouter.post('/from-template/:templateId', async (c) => {
         item.amount,
         item.vat_included ? 1 : 0,
         i,
-        item.notes || null
+        null
       )
     )
     for (let i = 0; i < poItemStmts.length; i += 80) {
