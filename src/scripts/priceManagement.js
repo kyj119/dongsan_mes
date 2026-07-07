@@ -7,7 +7,6 @@ var pmItems = [];
 var salesData = { items: [], media: [], policyRules: [], policyName: '', categories: [] };
 var salesClientId = null;
 var salesClientName = '';
-var entityId = window.__entityId || 1;
 
 // 단가표 세트 (Phase 1) — 전역 var는 pm prefix (?raw concat 전역스코프 충돌 방지)
 var pmSheets = [];
@@ -387,9 +386,21 @@ function renderSalesTable() {
   area.innerHTML = html;
 }
 
-// ===================== 인쇄 =====================
+// ===================== 인쇄 (선택 세트 기준) =====================
+// 인쇄/팩스 대상 = 선택된 단가표 세트. 세트 미선택 시 경고 후 중단.
+// (기존 '전 품목 쏟아내기' 회귀는 스펙 Phase 3에 따라 제거 — 전달 문서는 반드시 선별 세트 기준.)
+function pmRequireSheet(action) {
+  if (!pmCurrentSheetId) {
+    showToast((action || '이 작업') + ' 전에 단가표 세트를 먼저 선택하세요.', 'warning');
+    return false;
+  }
+  return true;
+}
+
 async function printSalesList() {
+  if (!pmRequireSheet('인쇄')) return;
   var printArea = document.getElementById('printArea');
+  if (!printArea) { console.warn('[priceManagement] #printArea not found'); return; }
   await renderPrintHTML(printArea);
   var ps = document.createElement('style');
   ps.id = 'pricePrintStyle';
@@ -398,51 +409,159 @@ async function printSalesList() {
   setTimeout(function() { window.print(); printArea.innerHTML = ''; var el = document.getElementById('pricePrintStyle'); if (el) el.remove(); }, 200);
 }
 
+// 발행 법인 id: 세트 소유 entity가 정본. 없으면 현재 로그인 법인(localStorage) → 0(전체 합산)이면 기본법인 1.
+function pmEntityId(sheet) {
+  if (sheet && sheet.entity_id) return sheet.entity_id;
+  var v = parseInt(localStorage.getItem('entityId'), 10);
+  if (!isFinite(v) || v <= 0) return 1;
+  return v;
+}
+
+// 선택 세트를 A4 세로 전달 문서로 렌더. 회사 머리말(로고·연락처·웹하드) + 제목부 + 품목표 + 비고 + 꼬리말(직인).
 async function renderPrintHTML(target) {
-  var title = salesClientName ? salesClientName + ' 단가표' : '단가표';
-  var today = new Date().toISOString().split('T')[0];
-  var hasClient = !!salesClientId;
-  var colCount = hasClient ? 6 : 5;
-  var data = getSalesFilteredGroups();
-  var logo = '', companyInfo = '';
+  if (!target) return;
+  if (!pmCurrentSheetId) { target.innerHTML = ''; return; }
+
+  // 세트 상세 재조회 → 인쇄 시점 최신 적용가 반영(스펙: 소급 없음·인쇄 시점 최신가).
+  var sheet = null;
   try {
-    var lr = await axios.get('/api/price-list/logo/' + entityId);
-    if (lr.data.success && lr.data.data) {
-      var ent = lr.data.data;
-      if (ent.logo_base64) logo = '<img src="' + ent.logo_base64 + '" style="max-height:50px;max-width:200px;">';
-      companyInfo = '<div style="font-size:8pt;color:#666;">' + (ent.name || '') + '<br>' + (ent.address || '') + '<br>' + (ent.phone ? 'T. ' + ent.phone : '') + (ent.fax ? ' | F. ' + ent.fax : '') + (ent.email ? ' | ' + ent.email : '') + '</div>';
-    }
+    var r = await axios.get('/api/price-sheets/' + pmCurrentSheetId);
+    if (r.data && r.data.success) sheet = r.data.data;
+  } catch (e) {}
+  if (!sheet) sheet = pmSheetDetail; // 폴백: 화면 캐시
+  if (!sheet) { target.innerHTML = '<div style="padding:20px;color:#b91c1c;font-family:sans-serif;">단가표 세트를 불러오지 못했습니다.</div>'; return; }
+
+  // 회사 인쇄 블록(발행 법인별). 실패해도 문서는 렌더(빈 머리말).
+  var company = {};
+  try {
+    var cr = await axios.get('/api/price-list/company/' + pmEntityId(sheet));
+    if (cr.data && cr.data.success && cr.data.data) company = cr.data.data;
   } catch (e) {}
 
-  var s = '<div style="font-family:Malgun Gothic,sans-serif;color:#000;padding:2mm;width:780px;">'
-    + '<table style="width:100%;border:none;margin-bottom:12px;"><tr>'
-    + '<td style="border:none;padding:0;vertical-align:top;width:50%;">' + logo + '<div style="font-size:22pt;font-weight:bold;margin:4px 0 0;">' + esc(title) + '</div>'
-    + '<div style="font-size:10pt;color:#666;">판매 단가' + (salesData.policyName ? ' | 정책: ' + esc(salesData.policyName) : '') + '</div></td>'
-    + '<td style="border:none;padding:0;text-align:right;vertical-align:top;">' + companyInfo + '<div style="font-size:9pt;color:#888;margin-top:6px;">발행일: ' + today + '</div></td></tr></table>'
-    + '<hr style="border:none;border-top:3px solid #000;margin:0 0 10px 0;">';
+  var items = sheet.items || [];
+  var clientName = sheet.client_name || '';
+  var title = clientName ? (clientName + ' 단가표') : (sheet.name || '단가표');
+  var todayIso = window.kstToday ? window.kstToday() : new Date().toISOString().slice(0, 10);
+  var issueDisplay = window.formatKST ? window.formatKST(new Date().toISOString(), 'date') : todayIso;
+  var docNo = 'PS-' + sheet.id + '-' + todayIso.replace(/-/g, '');
 
-  Object.keys(data.groups).sort().forEach(function(key) {
-    var grp = data.groups[key];
-    var tn = typeLabels[grp.type] || grp.type;
-    s += '<table style="width:100%;border-collapse:collapse;margin-bottom:12px;page-break-inside:avoid;">'
-      + '<tr><td colspan="' + colCount + '" style="background:#eee;padding:5px 8px;font-size:10pt;font-weight:bold;border:1px solid #999;">[' + tn + '] ' + esc(grp.category) + ' — ' + grp.items.length + '건</td></tr>'
-      + '<tr style="background:#f5f5f5;"><th style="border:1px solid #bbb;padding:4px 6px;font-size:8pt;text-align:left;">품목코드</th><th style="border:1px solid #bbb;padding:4px 6px;font-size:8pt;text-align:left;">품목명</th><th style="border:1px solid #bbb;padding:4px 6px;font-size:8pt;text-align:left;">규격</th><th style="border:1px solid #bbb;padding:4px 6px;font-size:8pt;text-align:center;">단위</th><th style="border:1px solid #bbb;padding:4px 6px;font-size:8pt;text-align:right;">단가</th>'
-      + (hasClient ? '<th style="border:1px solid #bbb;padding:4px 6px;font-size:8pt;text-align:right;color:#1a56db;">적용단가</th>' : '') + '</tr>';
-    grp.items.forEach(function(item, idx) {
-      var p = calcSalesPrice(item);
-      var bg = idx % 2 ? '#f9f9f9' : '#fff';
-      s += '<tr style="background:' + bg + ';"><td style="border:1px solid #ddd;padding:3px 6px;font-size:8pt;font-family:Consolas,monospace;">' + esc(item.item_code || '') + '</td><td style="border:1px solid #ddd;padding:3px 6px;font-size:8pt;font-weight:600;">' + esc(item.item_name) + '</td><td style="border:1px solid #ddd;padding:3px 6px;font-size:8pt;">' + esc(item.specification || '-') + '</td><td style="border:1px solid #ddd;padding:3px 6px;font-size:8pt;text-align:center;">' + esc(item.unit || 'EA') + '</td><td style="border:1px solid #ddd;padding:3px 6px;font-size:8pt;text-align:right;">' + (p.base ? p.base.toLocaleString() + '원' : '-') + '</td>';
-      if (hasClient) { var ch = p.applied !== p.base; s += '<td style="border:1px solid #ddd;padding:3px 6px;font-size:8pt;text-align:right;font-weight:bold;' + (ch ? 'color:#1a56db;' : '') + '">' + (p.applied ? p.applied.toLocaleString() + '원' : '-') + '</td>'; }
-      s += '</tr>';
+  // --- 머리말: 로고 + 회사정보(좌) / 부서연락처 그리드 + 웹하드(우) ---
+  var logoHtml = company.logo_base64 ? '<img src="' + company.logo_base64 + '" style="max-height:46px;max-width:180px;display:block;margin-bottom:4px;">' : '';
+  var compName = '<div style="font-size:13pt;font-weight:bold;color:#111;">' + esc(company.name || '') + '</div>';
+  var compLines = [
+    company.phone ? 'T. ' + esc(company.phone) : '',
+    company.fax ? 'F. ' + esc(company.fax) : '',
+    company.email ? esc(company.email) : ''
+  ].filter(Boolean).join(' &nbsp;|&nbsp; ');
+  var compInfo = '<div style="font-size:8pt;color:#555;line-height:1.5;">'
+    + (company.address ? esc(company.address) + '<br>' : '')
+    + compLines + '</div>';
+
+  var contacts = company.contacts || [];
+  var contactsHtml = '';
+  if (contacts.length) {
+    contactsHtml = '<table style="border-collapse:collapse;font-size:7.5pt;color:#333;margin-left:auto;">';
+    contacts.forEach(function(ct) {
+      contactsHtml += '<tr>'
+        + '<td style="padding:1px 6px 1px 0;font-weight:600;white-space:nowrap;">' + esc(ct.department || '') + '</td>'
+        + '<td style="padding:1px 6px;white-space:nowrap;">' + esc(ct.person_name || '') + '</td>'
+        + '<td style="padding:1px 6px;white-space:nowrap;color:#555;">' + (ct.phone ? 'T.' + esc(ct.phone) : '') + '</td>'
+        + '<td style="padding:1px 0;white-space:nowrap;color:#555;">' + (ct.fax ? 'F.' + esc(ct.fax) : '') + '</td>'
+        + '</tr>';
     });
-    s += '</table>';
+    contactsHtml += '</table>';
+  }
+  var webhardHtml = company.webhard_url ? '<div style="font-size:7.5pt;color:#1a56db;margin-top:3px;text-align:right;"><b>웹하드</b> ' + esc(company.webhard_url) + '</div>' : '';
+
+  var masthead = '<tr><td colspan="5" style="padding:0 0 6px 0;border:none;">'
+    + '<table style="width:100%;border-collapse:collapse;"><tr>'
+    + '<td style="border:none;vertical-align:top;padding:0;">' + logoHtml + compName + compInfo + '</td>'
+    + '<td style="border:none;vertical-align:top;padding:0;text-align:right;">' + contactsHtml + webhardHtml + '</td>'
+    + '</tr></table>'
+    + '<div style="border-bottom:2.5px solid #111;margin-top:6px;"></div>'
+    + '</td></tr>';
+
+  // --- 제목부 ---
+  var titleRow = '<tr><td colspan="5" style="padding:10px 0 8px 0;border:none;">'
+    + '<table style="width:100%;border-collapse:collapse;"><tr>'
+    + '<td style="border:none;vertical-align:bottom;padding:0;">'
+    +   '<div style="font-size:20pt;font-weight:bold;color:#111;">' + esc(title) + '</div>'
+    +   (clientName ? '<div style="font-size:10.5pt;color:#333;margin-top:3px;">' + esc(clientName) + ' 귀하</div>' : '')
+    + '</td>'
+    + '<td style="border:none;vertical-align:bottom;padding:0;text-align:right;font-size:8.5pt;color:#444;line-height:1.7;">'
+    +   '발행일: ' + esc(issueDisplay) + '<br>'
+    +   (sheet.valid_until ? '유효기간: ~' + esc(sheet.valid_until) + '<br>' : '')
+    +   '문서번호: ' + esc(docNo)
+    + '</td>'
+    + '</tr></table></td></tr>';
+
+  // --- 품목표 열 헤더(thead 반복) ---
+  var colHead = '<tr style="background:#f3f4f6;">'
+    + '<th style="border:1px solid #bbb;padding:5px 6px;font-size:8pt;text-align:left;width:92px;">품목코드</th>'
+    + '<th style="border:1px solid #bbb;padding:5px 6px;font-size:8pt;text-align:left;">품목명</th>'
+    + '<th style="border:1px solid #bbb;padding:5px 6px;font-size:8pt;text-align:left;width:160px;">규격</th>'
+    + '<th style="border:1px solid #bbb;padding:5px 6px;font-size:8pt;text-align:center;width:52px;">단위</th>'
+    + '<th style="border:1px solid #bbb;padding:5px 6px;font-size:8pt;text-align:right;width:110px;">단가</th>'
+    + '</tr>';
+
+  // --- 품목 행(zebra) ---
+  var rows = '';
+  items.forEach(function(it, idx) {
+    var bg = idx % 2 ? '#fafafa' : '#fff';
+    var priceTxt = (it.price != null && it.price !== '') ? Number(it.price).toLocaleString('ko-KR') + '원' : '-';
+    rows += '<tr style="background:' + bg + ';">'
+      + '<td style="border:1px solid #ddd;padding:4px 6px;font-size:8pt;font-family:Consolas,monospace;color:#555;">' + esc(it.item_code || '') + '</td>'
+      + '<td style="border:1px solid #ddd;padding:4px 6px;font-size:8pt;font-weight:600;">' + esc(it.item_name || '') + '</td>'
+      + '<td style="border:1px solid #ddd;padding:4px 6px;font-size:8pt;">' + esc(it.specification || '-') + '</td>'
+      + '<td style="border:1px solid #ddd;padding:4px 6px;font-size:8pt;text-align:center;">' + esc(it.unit || 'EA') + '</td>'
+      + '<td style="border:1px solid #ddd;padding:4px 6px;font-size:8pt;text-align:right;font-weight:bold;">' + priceTxt + '</td>'
+      + '</tr>';
   });
+  if (!items.length) {
+    rows = '<tr><td colspan="5" style="border:1px solid #ddd;padding:16px;text-align:center;color:#999;font-size:9pt;">담긴 품목이 없습니다.</td></tr>';
+  }
+
+  var s = '<div style="font-family:Malgun Gothic,Apple SD Gothic Neo,sans-serif;color:#000;padding:2mm;width:780px;box-sizing:border-box;">'
+    + '<table style="width:100%;border-collapse:collapse;">'
+    + '<thead>' + masthead + titleRow + colHead + '</thead>'
+    + '<tbody>' + rows + '</tbody>'
+    + '</table>';
+
+  // --- 비고 ---
+  if (sheet.notes) {
+    s += '<div class="ps-notes" style="margin-top:12px;border:1px solid #ccc;padding:8px 10px;font-size:8pt;color:#333;">'
+      + '<span style="font-weight:bold;color:#111;">비고</span>'
+      + '<div style="margin-top:3px;white-space:pre-wrap;line-height:1.5;">' + esc(sheet.notes) + '</div></div>';
+  }
+
+  // --- 꼬리말: 담당자 + 직인(show_stamp & stamp_base64) ---
+  var showStamp = String(sheet.show_stamp) !== '0';
+  var stampImg = (showStamp && company.stamp_base64)
+    ? '<span style="display:inline-block;vertical-align:middle;margin-left:2px;"><img src="' + company.stamp_base64 + '" style="max-height:70px;max-width:120px;"></span>'
+    : '';
+  var footer = '<div class="ps-footer" style="margin-top:18px;text-align:right;">';
+  if (sheet.contact_person || sheet.contact_phone) {
+    footer += '<div style="font-size:9pt;color:#333;margin-bottom:4px;">담당자 '
+      + (sheet.contact_person ? esc(sheet.contact_person) : '')
+      + (sheet.contact_phone ? ' &nbsp; ' + esc(sheet.contact_phone) : '') + '</div>';
+  }
+  footer += '<div style="font-size:11.5pt;font-weight:bold;color:#111;">' + esc(company.name || '') + stampImg + '</div>';
+  footer += '</div>';
+  s += footer;
   s += '</div>';
+
   target.innerHTML = s;
 }
 
-// ===================== 팩스 =====================
-function openFaxModal() { document.getElementById('faxModal').classList.remove('hidden'); document.getElementById('faxStatus').textContent = ''; document.getElementById('faxSendBtn').disabled = false; }
+// ===================== 팩스 (선택 세트 기준) =====================
+function openFaxModal() {
+  if (!pmRequireSheet('팩스 발송')) return;
+  var m = document.getElementById('faxModal');
+  if (!m) { console.warn('[priceManagement] #faxModal not found'); return; }
+  m.classList.remove('hidden');
+  var st = document.getElementById('faxStatus'); if (st) st.textContent = '';
+  var btn = document.getElementById('faxSendBtn'); if (btn) btn.disabled = false;
+}
 function closeFaxModal() { document.getElementById('faxModal').classList.add('hidden'); }
 
 function loadHtml2Canvas() {
@@ -457,6 +576,7 @@ function loadHtml2Canvas() {
 }
 
 async function sendFax() {
+  if (!pmRequireSheet('팩스 발송')) return;
   var faxNum = document.getElementById('faxNum').value.trim().replace(/[^0-9\-]/g, '');
   var faxName = document.getElementById('faxName').value.trim();
   if (!faxNum) { document.getElementById('faxStatus').textContent = '팩스번호를 입력해주세요.'; document.getElementById('faxStatus').style.color = '#ef4444'; return; }
@@ -468,7 +588,8 @@ async function sendFax() {
   try {
     printArea.style.display = 'block'; printArea.style.position = 'absolute'; printArea.style.left = '-9999px';
     await renderPrintHTML(printArea);
-    var title = salesClientName ? salesClientName + '_단가표' : '단가표';
+    var sheetLabel = (pmSheetDetail && (pmSheetDetail.client_name || pmSheetDetail.name)) || '단가표';
+    var title = sheetLabel + '_단가표';
     // PDF 생성 → 서버가 FTP 업로드+발송 (동기)
     var r = await window.faxSend(printArea, {
       receiver_num: faxNum, receiver_name: faxName, file_name: title + '.pdf', related_type: 'PRICE_LIST'

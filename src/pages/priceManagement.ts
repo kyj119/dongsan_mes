@@ -20,6 +20,11 @@ export function priceManagementPage(c: Context<HonoEnv>) {
         .sidebar, .main-content > header { display:none !important; }
         .page-body > *:not(#printArea):not(style) { display:none !important; }
         #printArea { display:block !important; }
+        /* 다중 페이지(팩스/장문 단가표) 정리: 회사 머리말·열 헤더 매 페이지 반복 + 행/비고/직인 페이지 넘침 방지 */
+        #printArea table { border-collapse:collapse !important; width:100% !important; }
+        #printArea thead { display:table-header-group; }
+        #printArea tr, #printArea img { page-break-inside:avoid; }
+        #printArea .ps-notes, #printArea .ps-footer { page-break-inside:avoid; }
       }
     `,
     pageContent: `
