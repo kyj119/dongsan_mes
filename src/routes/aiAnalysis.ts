@@ -2,7 +2,7 @@ import { Hono } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
 import { getEntityId, entityFilter } from '../utils/entityFilter'
-import { externalizeGroups, hydrateGroupsJson, putThumbnail, thumbRef, analysisThumbKey } from '../utils/thumbnailStore'
+import { externalizeGroups, externalizeCanvasJson, hydrateGroupsJson, putThumbnail, thumbRef, analysisThumbKey } from '../utils/thumbnailStore'
 
 
 const aiAnalysisRouter = new Hono<HonoEnv>()
@@ -147,7 +147,7 @@ aiAnalysisRouter.get('/batch-results', async (c) => {
 aiAnalysisRouter.post('/admin/backfill-thumbnails-r2', async (c) => {
   try {
     const dryRun = c.req.query('dry_run') === '1'
-    const report = { groups_scanned: 0, groups_migrated: 0, cards_scanned: 0, cards_migrated: 0, thumbs_to_r2: 0 }
+    const report = { groups_scanned: 0, groups_migrated: 0, canvas_scanned: 0, canvas_migrated: 0, cards_scanned: 0, cards_migrated: 0, thumbs_to_r2: 0 }
 
     // 1) ai_analysis_requests.groups_json 에 base64가 남아있는 행
     const { results: aRows } = await c.env.DB.prepare(
@@ -166,6 +166,20 @@ aiAnalysisRouter.post('/admin/backfill-thumbnails-r2', async (c) => {
       await c.env.DB.prepare('UPDATE ai_analysis_requests SET groups_json = ? WHERE id = ?')
         .bind(JSON.stringify(parsed), r.id).run()
       report.groups_migrated++
+    }
+
+    // 1b) ai_analysis_requests.canvas_json 에 render_base64가 남아있는 행
+    const { results: cvRows } = await c.env.DB.prepare(
+      `SELECT id, canvas_json FROM ai_analysis_requests WHERE canvas_json LIKE '%render_base64%'`
+    ).all<{ id: number; canvas_json: string | null }>()
+    for (const r of (cvRows || [])) {
+      report.canvas_scanned++
+      if (dryRun || !r.canvas_json) continue
+      const lean = await externalizeCanvasJson(c.env, r.id, r.canvas_json)
+      if (lean && lean !== r.canvas_json) {
+        await c.env.DB.prepare('UPDATE ai_analysis_requests SET canvas_json = ? WHERE id = ?').bind(lean, r.id).run()
+        report.canvas_migrated++
+      }
     }
 
     // 2) cards.thumbnail_url 에 data URI가 남아있는 행
@@ -435,8 +449,9 @@ aiAnalysisRouter.patch('/:id', async (c) => {
       canvas_json?: string
     }>()
 
-    const { status, error_message, file_path, canvas_json } = body
+    const { status, error_message, file_path } = body
     let groups_json = body.groups_json
+    let canvas_json = body.canvas_json
 
     if (status === 'error') {
       const row = await c.env.DB.prepare(
@@ -472,6 +487,8 @@ aiAnalysisRouter.patch('/:id', async (c) => {
         }
       } catch (_e) { /* 파싱 실패 시 원본(base64) 저장 — 무손실 */ }
     }
+    // R2 이관: canvas_json.render_base64도 R2로 externalize(누적 차단)
+    canvas_json = (await externalizeCanvasJson(c.env, id, canvas_json)) ?? undefined
 
     await c.env.DB.prepare(
       `UPDATE ai_analysis_requests

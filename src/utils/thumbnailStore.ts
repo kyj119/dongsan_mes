@@ -142,3 +142,37 @@ export async function hydrateGroupsJson(env: R2Env, groupsJson: string | null | 
   await hydrateGroups(env, groups)
   return JSON.stringify(groups)
 }
+
+// ── canvas_json.render_base64 (IA 웹 캔버스 렌더 미리보기) — groups_json과 동일 정책 ──
+interface CanvasObj { render_base64?: string | null; render_r2_key?: string | null; [k: string]: unknown }
+
+/** 저장 직전: canvas_json.render_base64 → R2, render_r2_key로 치환. r2 실패/미포함 시 원본 반환. */
+export async function externalizeCanvasJson(env: R2Env, analysisId: number | string, canvasJson: string | null | undefined): Promise<string | null | undefined> {
+  if (!canvasJson || typeof canvasJson !== 'string') return canvasJson
+  if (canvasJson.indexOf('render_base64') < 0) return canvasJson
+  let cj: CanvasObj
+  try { cj = JSON.parse(canvasJson) } catch { return canvasJson }
+  if (cj && typeof cj.render_base64 === 'string' && cj.render_base64.length > 0) {
+    const key = `${KEY_ROOT}/analysis/${analysisId}/canvas.png`
+    try {
+      await putThumbnail(env, key, cj.render_base64)
+      cj.render_r2_key = key
+      delete cj.render_base64
+      return JSON.stringify(cj)
+    } catch (_e) { /* R2 실패 → 원본(base64) 유지, 무손실 */ }
+  }
+  return canvasJson
+}
+
+/** emit 직전: canvas_json.render_r2_key → render_base64(raw) 복원. */
+export async function hydrateCanvasJson(env: R2Env, canvasJson: string | null | undefined): Promise<string | null | undefined> {
+  if (!canvasJson || typeof canvasJson !== 'string') return canvasJson
+  if (canvasJson.indexOf('render_r2_key') < 0) return canvasJson
+  let cj: CanvasObj
+  try { cj = JSON.parse(canvasJson) } catch { return canvasJson }
+  if (cj && !cj.render_base64 && typeof cj.render_r2_key === 'string' && cj.render_r2_key) {
+    const b64 = await getThumbnailBase64(env, cj.render_r2_key)
+    if (b64) { cj.render_base64 = b64; return JSON.stringify(cj) }
+  }
+  return canvasJson
+}

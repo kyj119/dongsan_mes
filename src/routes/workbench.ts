@@ -5,7 +5,7 @@ import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
 import { entityFilter, orderVisibilityFilter, getEntityId } from '../utils/entityFilter'
 import { validateUpload } from '../utils/uploadValidation'
-import { hydrateGroups, hydrateGroupsJson } from '../utils/thumbnailStore'
+import { hydrateGroups, hydrateGroupsJson, hydrateCanvasJson } from '../utils/thumbnailStore'
 
 const workbenchRouter = new Hono<HonoEnv>()
 
@@ -245,8 +245,11 @@ workbenchRouter.get('/files', async (c) => {
       created_at: string; updated_at: string
     }>()
 
-    // R2 이관: 썸네일 base64 복원(아래 sync map이 g.thumbnail_base64를 읽으므로 문자열 단계에서 hydrate)
-    for (const r of results) { r.groups_json = (await hydrateGroupsJson(c.env, r.groups_json)) ?? null }
+    // R2 이관: 썸네일/캔버스 렌더 base64 복원(아래 sync map이 g.thumbnail_base64·cj.render_base64를 읽으므로 문자열 단계에서 hydrate)
+    for (const r of results) {
+      r.groups_json = (await hydrateGroupsJson(c.env, r.groups_json)) ?? null
+      r.canvas_json = (await hydrateCanvasJson(c.env, r.canvas_json)) ?? null
+    }
 
     const data = results.map((r) => {
       type G = { index: number; name: string; thumbnail_base64: string | null; width_mm: number | null; height_mm: number | null; canvas_x_pt: number | null; canvas_y_pt: number | null; canvas_w_pt: number | null; canvas_h_pt: number | null }
