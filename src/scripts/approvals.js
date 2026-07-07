@@ -316,10 +316,22 @@ function showDetailModal(request, steps, attachments) {
     </div>`;
   }).join('');
 
-  // 첨부 파일 목록
-  const attList = attachments.length > 0
-    ? attachments.map(a => `<div class="text-sm"><i class="fas fa-paperclip mr-1"></i>${escapeHtml(a.file_name)}</div>`).join('')
+  // 첨부 파일 목록 — 파일명 레지스트리(onclick 인젝션 회피) + 다운로드 버튼(인증=헤더 전용 → axios blob)
+  window.__apAtt = window.__apAtt || {};
+  (attachments || []).forEach(a => { window.__apAtt[a.id] = a.file_name; });
+  const attList = (attachments && attachments.length > 0)
+    ? attachments.map(a => `<div class="text-sm flex items-center gap-2 py-0.5">
+        <i class="fas fa-paperclip text-gray-400"></i>
+        <button type="button" onclick="downloadApprovalAttachment(${request.id}, ${a.id})" class="text-blue-600 hover:underline">${escapeHtml(a.file_name)}</button>
+      </div>`).join('')
     : '<div class="text-sm text-gray-400">첨부 파일 없음</div>';
+  const canAttach = request.requester_id === currentUser.id && !['APPROVED', 'REJECTED', 'CANCELLED'].includes(request.status);
+  const attUpload = canAttach
+    ? `<div class="mt-2">
+        <input type="file" id="ap-att-file" class="hidden" onchange="uploadApprovalAttachment(${request.id})">
+        <button type="button" onclick="document.getElementById('ap-att-file').click()" class="text-xs px-2 py-1 border rounded text-gray-600 hover:bg-gray-50"><i class="fas fa-plus mr-1"></i>첨부 추가</button>
+      </div>`
+    : '';
 
   let contentHtml = '';
   try {
@@ -363,6 +375,7 @@ function showDetailModal(request, steps, attachments) {
         <div class="mb-4">
           <div class="text-sm font-medium mb-2">첨부 파일</div>
           ${attList}
+          ${attUpload}
         </div>
 
         ${canApprove || canCancel ? `<div class="flex justify-end space-x-2 pt-4 border-t">
@@ -376,6 +389,46 @@ function showDetailModal(request, steps, attachments) {
     </div>
   </div>`;
   document.body.insertAdjacentHTML('beforeend', html);
+}
+
+// 첨부 다운로드 — 인증=헤더 전용이라 <a href>/새창은 401. axios responseType:blob → objectURL 다운로드.
+async function downloadApprovalAttachment(reqId, attId) {
+  try {
+    const res = await axios.get('/api/approvals/' + reqId + '/attachments/' + attId, { responseType: 'blob' });
+    const fname = (window.__apAtt && window.__apAtt[attId]) || ('attachment_' + attId);
+    const url = URL.createObjectURL(res.data);
+    const a = document.createElement('a');
+    a.href = url; a.download = fname;
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+  } catch (e) {
+    showToast('다운로드 실패', 'error');
+  }
+}
+
+// 첨부 업로드 — FileReader base64(data URI) → POST. 서버가 R2 저장.
+async function uploadApprovalAttachment(reqId) {
+  const input = document.getElementById('ap-att-file');
+  const file = input && input.files && input.files[0];
+  if (!file) return;
+  if (file.size > 25 * 1024 * 1024) { showToast('25MB 이하만 가능합니다', 'error'); return; }
+  try {
+    const dataUrl = await new Promise((resolve, reject) => {
+      const r = new FileReader();
+      r.onload = () => resolve(r.result);
+      r.onerror = reject;
+      r.readAsDataURL(file);
+    });
+    await axios.post('/api/approvals/' + reqId + '/attachments', {
+      file_name: file.name,
+      file_type: file.type || 'application/octet-stream',
+      file_data: String(dataUrl),
+    });
+    showToast('첨부 추가됨', 'success');
+    viewApprovalDetail(reqId); // 모달 새로고침
+  } catch (e) {
+    showToast((e && e.response && e.response.data && e.response.data.error) || '첨부 업로드 실패', 'error');
+  }
 }
 
 // ─── 결재 액션 ──────────────────────────────────────────────────────────────

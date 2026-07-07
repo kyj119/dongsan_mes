@@ -12,6 +12,7 @@ import type { Card, ApiResponse } from '../../types/models'
 import { authMiddleware } from '../../middleware/auth'
 import { requireAnyPagePermission } from '../../middleware/permissions'
 import { cardEntityFilter, entityFilter } from '../../utils/entityFilter'
+import { isThumbRef, getThumbnailDataUri } from '../../utils/thumbnailStore'
 
 // ── Row types for D1 query results ──
 interface EquipmentRow {
@@ -899,8 +900,16 @@ cardsQueriesRouter.get('/thumbnails', async (c) => {
       `SELECT id, thumbnail_url FROM cards WHERE id IN (${ph}) AND thumbnail_url IS NOT NULL AND thumbnail_url != ''`
     ).bind(...ids).all<{ id: number; thumbnail_url: string }>()
 
+    // R2 이관: 'r2:thumb:' 마커는 R2에서 읽어 data URI로 복원(인증=헤더 전용이라 백엔드가 서빙). 레거시 data URI는 그대로.
     const map: Record<number, string> = {}
-    for (const r of results) map[r.id] = r.thumbnail_url
+    for (const r of results) {
+      if (isThumbRef(r.thumbnail_url)) {
+        const uri = await getThumbnailDataUri(c.env, r.thumbnail_url)
+        if (uri) map[r.id] = uri
+      } else {
+        map[r.id] = r.thumbnail_url
+      }
+    }
     return c.json({ success: true, data: map })
   } catch (error) {
     return c.json({ success: false, error: '서버 오류' }, 500)
@@ -981,7 +990,7 @@ cardsQueriesRouter.get('/:id', async (c) => {
       }
     }
 
-    interface AnalysisGroup { index: number; thumbnail_base64?: string; [key: string]: unknown }
+    interface AnalysisGroup { index: number; thumbnail_base64?: string; thumbnail_r2_key?: string; [key: string]: unknown }
     const analysisCache = new Map<number, AnalysisGroup[]>()
     if (analysisIds.size > 0) {
       const idArr = Array.from(analysisIds)
@@ -1008,6 +1017,10 @@ cardsQueriesRouter.get('/:id', async (c) => {
           : groups.find((g) => g.index === item.ai_group_index)
         if (matched?.thumbnail_base64) {
           item.thumbnail_url = `data:image/png;base64,${matched.thumbnail_base64}`
+        } else if (matched?.thumbnail_r2_key) {
+          // R2 이관: 썸네일이 R2에 있으면 읽어 data URI로 복원(프론트 무수정)
+          const uri = await getThumbnailDataUri(c.env, matched.thumbnail_r2_key)
+          if (uri) item.thumbnail_url = uri
         }
       }
     }

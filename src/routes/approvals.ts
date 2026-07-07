@@ -8,6 +8,7 @@ import { authMiddleware, requireRole } from '../middleware/auth'
 import { requirePagePermission } from '../middleware/permissions'
 import { getEntityId, entityFilter } from '../utils/entityFilter'
 import { getNextSeqNumber, getNextEntitySeqNumber, withSeqRetry } from '../utils/sequenceGenerator'
+import { putBase64ToR2, base64ToBytes } from '../utils/thumbnailStore'
 
 const approvals = new Hono<HonoEnv>()
 approvals.use('*', authMiddleware, requirePagePermission('/approvals'))
@@ -486,6 +487,13 @@ approvals.post('/:id/attachments', async (c) => {
     const userId = c.get('user')?.id
     const body = await c.req.json()
     const { file_name, file_type, file_data } = body
+    if (!file_data || typeof file_data !== 'string') {
+      return c.json({ success: false, error: '파일 데이터가 필요합니다.' }, 400)
+    }
+    // 크기 가드: base64 ~34MB(≈25MB 원본) 초과 차단
+    if (file_data.length > 34 * 1024 * 1024) {
+      return c.json({ success: false, error: '첨부는 25MB 이하만 가능합니다.' }, 400)
+    }
 
     // #358: 부모 결재 법인 격리 — 타법인 결재에 첨부 추가 차단
     const ef = entityFilter(c)
@@ -494,12 +502,26 @@ approvals.post('/:id/attachments', async (c) => {
     ).bind(id, ...ef.params).first()
     if (!parent) return c.json({ success: false, error: '결재 요청을 찾을 수 없습니다.' }, 404)
 
+    // R2 이관: 첨부 본문을 R2에 저장하고 D1엔 r2_key만 보관(file_data는 NULL).
+    // 행 먼저 생성 → last_row_id로 키 구성 → R2.put → r2_key 기록.
     const result = await c.env.DB.prepare(`
-      INSERT INTO approval_attachments (request_id, file_name, file_type, file_data, uploaded_by, entity_id)
-      VALUES (?, ?, ?, ?, ?, ?)
-    `).bind(id, file_name, file_type || null, file_data, userId, getEntityId(c) || 1).run()
+      INSERT INTO approval_attachments (request_id, file_name, file_type, uploaded_by, entity_id)
+      VALUES (?, ?, ?, ?, ?)
+    `).bind(id, file_name, file_type || null, userId, getEntityId(c) || 1).run()
+    const attachId = result.meta?.last_row_id
 
-    return c.json({ success: true, data: { id: result.meta?.last_row_id } })
+    const safeName = String(file_name || 'file').replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 200)
+    const r2Key = `approvals/${id}/${attachId}/${safeName}`
+    try {
+      await putBase64ToR2(c.env, r2Key, file_data, file_type || 'application/octet-stream')
+      await c.env.DB.prepare('UPDATE approval_attachments SET r2_key = ? WHERE id = ?').bind(r2Key, attachId).run()
+    } catch (r2e) {
+      // R2 실패 시 레거시 폴백: file_data를 D1에 저장(무손실). 이후 백필로 이관 가능.
+      console.error('approval attachment R2 put failed, fallback to D1:', r2e)
+      await c.env.DB.prepare('UPDATE approval_attachments SET file_data = ? WHERE id = ?').bind(file_data, attachId).run()
+    }
+
+    return c.json({ success: true, data: { id: attachId } })
   } catch (e) {
     console.error('Approvals error:', e)
     return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
@@ -511,10 +533,23 @@ approvals.get('/:id/attachments/:attachId', async (c) => {
     const attachId = Number(c.req.param('attachId'))
     const ef = entityFilter(c)  // #358: 타법인 첨부 파일 본문 다운로드 차단
     const att = await c.env.DB.prepare(
-      `SELECT id, request_id, file_name, file_type, file_data, uploaded_by, created_at FROM approval_attachments WHERE id = ?${ef.clause}`
-    ).bind(attachId, ...ef.params).first()
+      `SELECT id, request_id, file_name, file_type, file_data, r2_key, uploaded_by, created_at FROM approval_attachments WHERE id = ?${ef.clause}`
+    ).bind(attachId, ...ef.params).first<{ file_name: string; file_type: string | null; file_data: string | null; r2_key: string | null }>()
     if (!att) return c.json({ success: false, error: '첨부 파일을 찾을 수 없습니다.' }, 404)
-    return c.json({ success: true, data: att })
+
+    // 인증=헤더 전용이므로 프론트는 axios responseType:blob로 호출. 본문을 바이너리로 스트림.
+    const disposition = `attachment; filename*=UTF-8''${encodeURIComponent(att.file_name || 'attachment')}`
+    const ctype = att.file_type || 'application/octet-stream'
+    if (att.r2_key) {
+      const obj = await c.env.R2_BUCKET.get(att.r2_key)
+      if (!obj) return c.json({ success: false, error: '파일을 찾을 수 없습니다.' }, 404)
+      return new Response(obj.body, { headers: { 'Content-Type': ctype, 'Content-Disposition': disposition } })
+    }
+    if (att.file_data) {
+      // 레거시(미이관) 폴백: D1 base64 → 디코드해 스트림
+      return new Response(base64ToBytes(att.file_data), { headers: { 'Content-Type': ctype, 'Content-Disposition': disposition } })
+    }
+    return c.json({ success: false, error: '파일 본문이 없습니다.' }, 404)
   } catch (e) {
     console.error('Approvals error:', e)
     return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)

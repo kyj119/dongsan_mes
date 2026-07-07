@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
 import { getEntityId, entityFilter } from '../utils/entityFilter'
+import { externalizeGroups, hydrateGroupsJson, putThumbnail, thumbRef, analysisThumbKey } from '../utils/thumbnailStore'
 
 
 const aiAnalysisRouter = new Hono<HonoEnv>()
@@ -121,6 +122,9 @@ aiAnalysisRouter.get('/batch-results', async (c) => {
     const stmt = c.env.DB.prepare(query)
     const { results } = binds.length > 0 ? await stmt.bind(...binds).all<AnalysisRow>() : await stmt.all<AnalysisRow>()
 
+    // R2 이관: groups_json 썸네일을 emit 직전 base64로 복원(프론트 무수정). r2_key 없으면 no-op.
+    for (const r of results) { r.groups_json = (await hydrateGroupsJson(c.env, r.groups_json)) ?? null }
+
     // 요약 통계
     const summary = {
       total: results.length,
@@ -134,6 +138,56 @@ aiAnalysisRouter.get('/batch-results', async (c) => {
   } catch (error) {
     console.error('AI Analysis batch-results error:', error)
     return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
+  }
+})
+
+// POST /api/ai-analysis/admin/backfill-thumbnails-r2 — 기존 D1 base64 썸네일을 R2로 일괄 이관(멱등).
+// 확장성 감사 P3 백필. 신규 쓰기는 이미 R2로 저장되므로 이 라우트는 잔존 레거시 행만 정리한다.
+// 인증: 라우터 전역 ADMIN 가드. dry_run=1이면 대상 건수만 반환.
+aiAnalysisRouter.post('/admin/backfill-thumbnails-r2', async (c) => {
+  try {
+    const dryRun = c.req.query('dry_run') === '1'
+    const report = { groups_scanned: 0, groups_migrated: 0, cards_scanned: 0, cards_migrated: 0, thumbs_to_r2: 0 }
+
+    // 1) ai_analysis_requests.groups_json 에 base64가 남아있는 행
+    const { results: aRows } = await c.env.DB.prepare(
+      `SELECT id, groups_json FROM ai_analysis_requests WHERE groups_json LIKE '%thumbnail_base64%'`
+    ).all<{ id: number; groups_json: string | null }>()
+    for (const r of (aRows || [])) {
+      report.groups_scanned++
+      if (!r.groups_json) continue
+      let parsed: Array<Record<string, unknown>>
+      try { parsed = JSON.parse(r.groups_json) } catch { continue }
+      if (!Array.isArray(parsed)) continue
+      const before = parsed.filter((g) => typeof g?.thumbnail_base64 === 'string').length
+      report.thumbs_to_r2 += before
+      if (dryRun) continue
+      await externalizeGroups(c.env, r.id, parsed)
+      await c.env.DB.prepare('UPDATE ai_analysis_requests SET groups_json = ? WHERE id = ?')
+        .bind(JSON.stringify(parsed), r.id).run()
+      report.groups_migrated++
+    }
+
+    // 2) cards.thumbnail_url 에 data URI가 남아있는 행
+    const { results: cRows } = await c.env.DB.prepare(
+      `SELECT id, thumbnail_url FROM cards WHERE thumbnail_url LIKE 'data:%'`
+    ).all<{ id: number; thumbnail_url: string }>()
+    for (const r of (cRows || [])) {
+      report.cards_scanned++
+      if (dryRun) continue
+      const key = `thumbnails/card/${r.id}.png`
+      try {
+        await putThumbnail(c.env, key, r.thumbnail_url)
+        await c.env.DB.prepare('UPDATE cards SET thumbnail_url = ? WHERE id = ?')
+          .bind(thumbRef(key), r.id).run()
+        report.cards_migrated++
+      } catch (_e) { /* 개별 실패는 건너뜀(다음 실행 재시도) */ }
+    }
+
+    return c.json({ success: true, dry_run: dryRun, report })
+  } catch (error) {
+    console.error('backfill-thumbnails-r2 error:', error)
+    return c.json({ success: false, error: '백필 실패' }, 500)
   }
 })
 
@@ -198,18 +252,31 @@ aiAnalysisRouter.post('/:id/thumbnail', async (c) => {
     ).bind(id).first<{ id: number; status: string; groups_json: string | null }>()
     if (!row) return c.json({ success: false, error: 'Not found' }, 404)
 
+    // R2 이관: 썸네일을 R2에 1회 저장하고 D1엔 참조(key/마커)만 남긴다. 실패 시 레거시 data URI 폴백(무손실).
+    const thumbKey = analysisThumbKey(id, 0)
+    let cardThumbValue: string
+    let storedToR2 = false
+    try {
+      await putThumbnail(c.env, thumbKey, thumb)
+      cardThumbValue = thumbRef(thumbKey)
+      storedToR2 = true
+    } catch (_e) {
+      cardThumbValue = thumb.startsWith('data:') ? thumb : `data:image/png;base64,${thumb}`
+    }
+
     // groups_json 비어있으면(직접연결) 1그룹으로 저장 + status done 승격
     let groups: Array<Record<string, unknown>> = []
     try { groups = JSON.parse(row.groups_json || '[]') } catch { groups = [] }
     if (groups.length === 0) {
-      groups = [{ index: 0, name: '직접연결', thumbnail_base64: thumb, width_mm: body.width_mm ?? null, height_mm: body.height_mm ?? null }]
+      const g: Record<string, unknown> = { index: 0, name: '직접연결', width_mm: body.width_mm ?? null, height_mm: body.height_mm ?? null }
+      if (storedToR2) g.thumbnail_r2_key = thumbKey; else g.thumbnail_base64 = thumb
+      groups = [g]
       await c.env.DB.prepare(
         `UPDATE ai_analysis_requests SET groups_json = ?, status = CASE WHEN status = 'direct' THEN 'done' ELSE status END WHERE id = ?`
       ).bind(JSON.stringify(groups), id).run()
     }
 
     // 이 분석을 ai_analysis_id로 참조하는 order_items의 카드 썸네일 채우기 (아직 비어있는 카드만)
-    const thumbUrl = thumb.startsWith('data:') ? thumb : `data:image/png;base64,${thumb}`
     await c.env.DB.prepare(`
       UPDATE cards SET thumbnail_url = ?, updated_at = CURRENT_TIMESTAMP
       WHERE thumbnail_url IS NULL AND id IN (
@@ -218,7 +285,7 @@ aiAnalysisRouter.post('/:id/thumbnail', async (c) => {
         JOIN order_items oi ON oi.id = ci.order_item_id
         WHERE oi.ai_analysis_id = ?
       )
-    `).bind(thumbUrl, id).run()
+    `).bind(cardThumbValue, id).run()
 
     return c.json({ success: true })
   } catch (error) {
@@ -336,6 +403,8 @@ aiAnalysisRouter.get('/:id', async (c) => {
     ).bind(id, ...ef.params).first()
 
     if (!row) return c.json({ success: false, error: 'Not found' }, 404)
+    // R2 이관: groups_json 썸네일을 emit 직전 base64로 복원(프론트 무수정)
+    ;(row as { groups_json?: string | null }).groups_json = (await hydrateGroupsJson(c.env, (row as { groups_json?: string | null }).groups_json)) ?? null
     return c.json({ success: true, data: row })
   } catch (error) {
     console.error('AI Analysis error:', error)
@@ -366,7 +435,8 @@ aiAnalysisRouter.patch('/:id', async (c) => {
       canvas_json?: string
     }>()
 
-    const { status, groups_json, error_message, file_path, canvas_json } = body
+    const { status, error_message, file_path, canvas_json } = body
+    let groups_json = body.groups_json
 
     if (status === 'error') {
       const row = await c.env.DB.prepare(
@@ -390,6 +460,17 @@ aiAnalysisRouter.patch('/:id', async (c) => {
       ).bind(finalStatus, error_message ?? null, newCount, file_path ?? null, id).run()
 
       return c.json({ success: true, requeued: shouldRequeue, retry_count: newCount })
+    }
+
+    // R2 이관: 에이전트가 보낸 base64 썸네일을 R2로 옮기고 D1엔 thumbnail_r2_key만 저장(누적 차단).
+    if (typeof groups_json === 'string' && groups_json.indexOf('thumbnail_base64') >= 0) {
+      try {
+        const parsed = JSON.parse(groups_json)
+        if (Array.isArray(parsed)) {
+          await externalizeGroups(c.env, id, parsed)
+          groups_json = JSON.stringify(parsed)
+        }
+      } catch (_e) { /* 파싱 실패 시 원본(base64) 저장 — 무손실 */ }
     }
 
     await c.env.DB.prepare(

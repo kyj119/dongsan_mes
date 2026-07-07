@@ -11,6 +11,7 @@ import { checkMaterialShortage } from '../../utils/materialShortageCheck'
 import { sendEmail } from '../../services/emailProvider'
 import { getEntityId, entityFilter, orderVisibilityFilter } from '../../utils/entityFilter'
 import { getEntityCompanyInfo } from '../../utils/entitySettings'
+import { hydrateGroupsJson } from '../../utils/thumbnailStore'
 import { deriveClientBalance } from '../ledger/ar-helpers'
 import {
   recommendAssignedEntity,
@@ -452,6 +453,11 @@ ordersCoreRouter.get('/:id', async (c) => {
       WHERE oi.order_id = ?
       ORDER BY oi.sort_order ASC
     `).bind(id).all()
+
+    // R2 이관: ai_groups_json 썸네일을 emit 직전 base64로 복원(주문접수/편집 화면 무수정). r2_key 없으면 no-op.
+    for (const it of (items || []) as Array<{ ai_groups_json?: string | null }>) {
+      it.ai_groups_json = (await hydrateGroupsJson(c.env, it.ai_groups_json)) ?? null
+    }
 
     // 주문 가시성 (멀티법인 격리·IDOR 차단): 소유(청구) 법인 + 담당 품목 보유 법인만 열람.
     // ADMIN(entityId=0)/코디네이터는 전체. 권한 없으면 존재 비노출 위해 404.

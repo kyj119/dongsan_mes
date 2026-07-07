@@ -15,6 +15,7 @@ import { notifyRoles } from '../../utils/notify'
 import { checkMaterialShortage } from '../../utils/materialShortageCheck'
 import { getEntityId, entityFilter } from '../../utils/entityFilter'
 import { ORDER_STATUS_LABELS } from '../../utils/statusLabels'
+import { thumbRef } from '../../utils/thumbnailStore'
 import { recommendAssignedEntity, recalcOrderBillingGroups, generateCardsForOrder, enqueueAutoProcessJobsForItems } from './helpers'
 
 const ordersCreateRouter = new Hono<HonoEnv>()
@@ -585,7 +586,13 @@ ordersCreateRouter.post('/', async (c) => {
           ? groups[0]
           : groups.find((g) => g.index === groupIndex)
 
-        if (matchedGroup?.thumbnail_base64) {
+        if (matchedGroup?.thumbnail_r2_key) {
+          // R2 이관: 그룹 썸네일이 R2에 있으면 카드엔 마커('r2:thumb:')만 저장(D1 누적 차단)
+          thumbStmts.push(c.env.DB.prepare(
+            'UPDATE cards SET thumbnail_url = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
+          ).bind(thumbRef(matchedGroup.thumbnail_r2_key as string), row.card_id))
+        } else if (matchedGroup?.thumbnail_base64) {
+          // 레거시(미이관) 폴백: base64 → data URI 저장
           const thumbnailUrl = `data:image/png;base64,${matchedGroup.thumbnail_base64 as string}`
           thumbStmts.push(c.env.DB.prepare(
             'UPDATE cards SET thumbnail_url = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
