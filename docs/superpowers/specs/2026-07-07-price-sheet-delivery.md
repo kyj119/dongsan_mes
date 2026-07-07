@@ -76,7 +76,7 @@ CREATE INDEX IF NOT EXISTS idx_price_sheets_entity ON price_sheets(entity_id);
 - getElementById null 가드, 전역 var는 `pm` prefix.
 
 ## Phase 2 — 회사정보 확장 (부서연락처·웹하드·직인)
-**마이그레이션 `migrations/0451_entity_contacts_webhard.sql`**
+**마이그레이션 `migrations/0452_entity_contacts_webhard.sql`** *(0451은 타 세션 WIP `0451_bank_transactions_content_key.sql`가 점유 → 0452 사용)*
 ```sql
 ALTER TABLE entities ADD COLUMN webhard_url TEXT;
 CREATE TABLE IF NOT EXISTS entity_contacts (
