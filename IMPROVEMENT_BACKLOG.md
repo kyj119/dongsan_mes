@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 3 -->
-<!-- last_run_at: 2026-07-07T13:00:00+09:00 -->
+<!-- last_run_area: 4 -->
+<!-- last_run_at: 2026-07-07T17:00:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,14 +8,23 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | **17** — #473, #482, #483, #484, #486, #487, #488, #489, #491, #492, #493, #494, #495, #496 (open 실측, GitHub 기준) + Area3 31회차 신규 #497(MED, 원장 거래처검색 1000cap 무음누락)·#498(LOW, 페이지네이션 로딩인디케이터 일관성)·#499(LOW, width_mm 힌트 표시↔저장 불일치). 상세 이력은 `git log -p -- IMPROVEMENT_BACKLOG.md`(5차 트림 07-07T13:00) 참고. |
+| 🆕 new | **5** — #473, #497(MED, 원장 거래처검색 1000cap 무음누락), #498(LOW, 페이지네이션 로딩인디케이터), #499(LOW, width_mm 힌트 불일치), #500(LOW, Area4 31회차 신규 — bank.ts sync-barobill 잔액0 → NULL 강등, 0451 content_key dedup 충돌 시 거래 무음소실). open 실측(`list_issues(OPEN,auto-improve)`=5) 기준. |
 | ✅ approved | 0 |
-| 👀 reviewed | 0 (#372 CSV도 owner close-completed → done 이관) |
-| ✔️ done | **171** (163 + #474~#481 8건, 커밋 `028d7db`로 실제 코드수정 후 owner close 확인 — Area3 31회차 done-sync) |
+| 👀 reviewed | 0 |
+| ✔️ done | **184** (171 + #482~#496 중 13건, 커밋 `2680102`+`7bff20b`로 실제 코드수정 후 owner close 확인 — Area4 31회차 done-sync) |
 | ❌ rejected | 3 |
 
 > 📦 **과거 사이클 로그**는 `IMPROVEMENT_BACKLOG_ARCHIVE.md`/git 히스토리로 이관됨 (2026-06-10 1차 분리, 2026-06-25 2차 트림 343KB→192KB, 2026-06-25T10:00 3차 트림, 2026-07-03T06:00 4차 트림 288KB→86KB, **2026-07-07T13:00 5차 트림 — 07-01~07-05 사이클 로그를 git 히스토리로 이관: 238KB→78KB, 256KB Read 한도 재확보**). 신규 로그는 계속 이 파일 상단에 추가. 본 파일은 직전 2일치(07-06~) 사이클 로그 + 영구 참조 섹션(Approved/New/Auto-fixed/Done/Rejected/FP 카탈로그)만 유지. 이관분은 `git log -p -- IMPROVEMENT_BACKLOG.md`로 복원 가능.
 
+> **Area 4 데이터 정합성 (2026-07-07T17:00):**
+> - **방법**: `npm ci`(node_modules 0→81) 후 `git fetch origin main`(`c66bfc1→a1ced34` force-update, **HEAD=origin/main `a1ced34` 0/0 동기**, 워킹트리 clean). Area 4 **31회차** — 직전 Area4(`4dec7b6`, 07-06T18:00, 30회차) 이후 churn = **`afeefa1`(배너 변종)·`c6cfd4f`/`92ee636`(scale-fix P0~P3)·`1ee96db`(area2 자동수정 5건)·`028d7db`(#474~478 5건)·`2680102`(#482~496 전수 수정, 13건 close)·`2f09cc4`/`8637e49`(D1 base64 blob→R2 externalization)·`7bff20b`(po from-template 핫픽스)·`a1ced34`(은행거래 dedup 신원 TransKey→내용키 이전, 마이그 0451)** + 신규 마이그 4건(0446~0449, 0451). **신선 각도 = 오늘 착륙한 두 신규 write-path 재설계(R2 externalize·bank dedup content_key)를 데이터 정합성 렌즈로 전수 — R2 write-choke 실패 시 무손실 여부, dedup 신원 이전이 소비하는 소스 컬럼의 실제 정확성.**
+> - **🆕 net-new 1건 — #500 (LOW·issue-only, bank.ts sync-barobill 잔액0 → NULL 강등)**: `bank.ts:550` `parseFloat(item.Balance || '0') || null`이 JS falsy 규칙상 **실제 잔액 0원**도 NULL로 강등(형제 auto-sync `:1832`는 `|| null` 없이 0을 그대로 저장 = 두 경로 동작 불일치, CSV import `:415`는 `??`로 이미 올바름). 오늘 배포된 0451(dedup 신원을 content_key로 이전)의 VIRTUAL 컬럼이 `balance_after IS NULL`이면 `counterpart_name`으로 폴백 → 같은 계좌·날짜·시각버킷·유형·금액에 거래처명까지 겹치는 **서로 다른 두 거래**가 있으면 UNIQUE 충돌로 `INSERT OR IGNORE`가 두 번째 거래를 조용히 버림(진짜 거래 영구 미기록). **더 나쁜 점**: 0451이 새로 추가한 cron 무결성 트립와이어(content_key 중복 그룹 감지)는 `INSERT OR IGNORE`가 애초에 막은 케이스는 중복 그룹 자체가 안 생겨 **탐지 불가**(자기 자신의 방어망 밖). 수정 = `:550`을 형제 경로와 동일하게 `|| null` 제거. 재무 write-path + egress 검증불가라 issue-only.
+> - **🟢 R2 externalization(`2f09cc4`/`8637e49`) 정합성 = clean**: `thumbnailStore.ts` `externalizeGroups`가 R2 `put` 실패 시 **base64 원본을 유지**(catch로 무손실, 다음 externalize 재시도) 후 `thumbnail_r2_key`만 치환 — write-choke가 부분 실패해도 데이터 유실 0. hydrate 경로는 emit 시점 lazy 복원(레거시 미이관 행은 base64 그대로 통과)이라 backfill 미완료 상태에서도 프론트 계약 불변. approval_attachments R2 이관도 동일 패턴.
+> - **🟢 0448 storage_zones 재빌드(entity별 복합 UNIQUE) = clean**: 컬럼레벨 전역 UNIQUE→(entity_id,zone_name) 복합 UNIQUE 전환에 필요한 테이블 재빌드가 **자식 4개(items/inventory/purchase_order_items/inventory_counts, 전부 `ON DELETE SET NULL`)의 암묵 cascade SET NULL을 인지**하고 재빌드 전 스냅샷→재빌드(id 보존)→UPDATE 복원 패턴으로 방어(SKILL "DROP write-path" 클래스의 정답 사례) — 자식 배정 전멸 위험 없음.
+> - **🟢 0447 인덱스 2건 = 가산적·멱등(net-new 위험 0)**, `7bff20b` po-template notes 컬럼 핫픽스 = 이미 자체 수정 완료(재검증 불요).
+> - **🟢 backlog↔GitHub sync**: `list_issues(OPEN,auto-improve)` 실측 **4건**(#473,497,498,499) = 직전 Area3 stats(new 17)에서 owner가 `2680102`+`7bff20b` 배치로 **#482~496 중 13건 close**(done 이관) 확인 → done 171→**184**. 본 Area4 신규 1건(#500) → **new 5**.
+> - 신규 이슈 1건(#500 LOW·issue-only), 자동수정 0건(재무 write-path 정책상), done-sync(new 17→5·13건 close 확인), **신선 각도 — 오늘 착륙한 R2 externalize/bank dedup 재설계 2건 전수. R2는 실패-무손실 설계 확인 clean, bank dedup은 신규 content_key가 소비하는 잔액 소스 컬럼의 0→NULL 강등 버그를 포착(#500) — 자체 트립와이어로도 탐지 불가능한 사각지대라 조기 발견 가치 높음. storage_zones 재빌드(0448) cascade 방어 clean.**
+>
 > **Area 1 프로덕션 헬스 (2026-07-07T05:15):**
 > - **방법**: `npm ci`(node_modules 0→설치, #439) 후 git fetch(origin `c66bfc1→def5cb9` force-update, **HEAD=origin/main `def5cb9` 0/0 동기**, 워킹트리 clean, #422 디버전스 0). Area 1 **30회차** — 직전 Area1(`6248ef6`/`9b36462`, 29회차) 이후 churn = `b039d70`(printEvents 장비명)·`837c964`(items width_mm)·`d67e66a`(PO 최근발주 모달)·`a6b319f`(멀티법인 재고)·`58afcbe`(지연배지 예외)·`afeefa1`(배너 변종 0446)·`c6cfd4f fix(scale)`(P0/P1 확장성 7건) + 마이그 `0444`/`0445`/`0446`. **egress 정책 차단(webapp-9i0.pages.dev CONNECT 403) → 직접 API 프로브 불가, CI post-deploy smoke가 prod 헬스 대리검증**. 신선 각도 = CI/E2E 결과 분석 + smoke 맹점 스캔(churn을 write-path/DROP마이그/agent-FK/detail-SELECT 렌즈로).
 > - **🟢 프로덕션 헬스 = 정상(net-new 0)**: 최신 HEAD `def5cb9` deploy.yml **success**(Typecheck·Build·Deploy·Wait·**Smoke 전 스텝 green**). scale-fix `c6cfd4f`가 재작성한 hot 엔드포인트 전량 smoke-프로브·green = **prod 검증**: `dashboard.stats`(:55, dashboard CTE+pp_stats sub)·`dashboard.receivables`(:61, LEFT JOIN 4종)·`cashFlow.summary`(:97, cashflowEngine)·`bank.txs`(:96, 스캔상한). 랜딩 KPI 쿼리 무결.
