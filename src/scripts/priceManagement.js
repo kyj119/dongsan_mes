@@ -9,6 +9,14 @@ var salesClientId = null;
 var salesClientName = '';
 var entityId = window.__entityId || 1;
 
+// 단가표 세트 (Phase 1) — 전역 var는 pm prefix (?raw concat 전역스코프 충돌 방지)
+var pmSheets = [];
+var pmCurrentSheetId = null;   // 선택된 세트 id (null = 미선택 → 기존 전체품목 동작)
+var pmSheetDetail = null;      // 선택 세트 상세(렌더용)
+var pmSheetItemIds = [];       // 모달 편집 중 담긴 품목 id (정렬순)
+var pmSheetClientId = null;    // 모달 거래처 id
+var pmSheetClientName = '';
+
 // ===================== Init =====================
 document.addEventListener('DOMContentLoaded', function() {
   loadPurchaseView();
@@ -19,6 +27,7 @@ document.addEventListener('DOMContentLoaded', function() {
     el.addEventListener('keydown', function(e) { if (e.key === 'Enter') { clearTimeout(t); loadPurchaseView(); } });
   }
   setupSalesClientSearch();
+  setupPmSheetClientSearch();
 });
 
 // ===================== Tab =====================
@@ -31,7 +40,7 @@ function switchPmTab(tab) {
     else { btn.classList.remove('active'); panel.classList.add('hidden'); }
   });
   if (tab === 'purchase') loadPurchaseView();
-  if (tab === 'sales') loadSalesData();
+  if (tab === 'sales') { loadSalesData(); loadPmSheets(); }
   if (tab === 'policies') { if (!salesData.categories || !salesData.categories.length) loadSalesData(); loadPolicies(); }
 }
 
@@ -326,6 +335,8 @@ function getSalesFilteredGroups() {
 function renderSalesTable() {
   var area = document.getElementById('salesTableArea');
   if (!area) return;
+  // 세트 선택 시 담긴 품목만(적용가) 렌더. 미선택 시 기존 전체품목 동작 유지.
+  if (pmCurrentSheetId) { renderPmSheetTable(); return; }
   var data = getSalesFilteredGroups();
   var hasClient = !!salesClientId;
   var html = '';
@@ -657,7 +668,304 @@ async function saveCurrentRules() {
   } catch (e) { showToast('저장 실패', 'error'); }
 }
 
+// ╔═══════════════════════════════════════════════════════════════╗
+// ║  단가표 세트 (Phase 1)                                          ║
+// ╚═══════════════════════════════════════════════════════════════╝
+
+function loadPmSheets() {
+  axios.get('/api/price-sheets').then(function(res) {
+    if (!res.data || !res.data.success) return;
+    pmSheets = res.data.data || [];
+    var sel = document.getElementById('pmSheetSelect');
+    if (!sel) { console.warn('[priceManagement] #pmSheetSelect not found'); return; }
+    var html = '<option value="">세트 미선택 (전체 품목)</option>';
+    pmSheets.forEach(function(s) {
+      var label = esc(s.name) + ' (' + (s.item_count || 0) + '개' + (s.client_name ? ' · ' + esc(s.client_name) : '') + ')';
+      html += '<option value="' + s.id + '">' + label + '</option>';
+    });
+    sel.innerHTML = html;
+    sel.value = pmCurrentSheetId ? String(pmCurrentSheetId) : '';
+    updatePmSheetButtons();
+  }).catch(function() { /* 세트 목록 로드 실패는 무시(기존 화면 유지) */ });
+}
+
+function updatePmSheetButtons() {
+  var has = !!pmCurrentSheetId;
+  var e = document.getElementById('pmSheetEditBtn');
+  var d = document.getElementById('pmSheetDeleteBtn');
+  if (e) e.disabled = !has;
+  if (d) d.disabled = !has;
+}
+
+function onPmSheetChange() {
+  var sel = document.getElementById('pmSheetSelect');
+  if (!sel) return;
+  var v = sel.value;
+  if (!v) {
+    pmCurrentSheetId = null;
+    pmSheetDetail = null;
+    updatePmSheetButtons();
+    renderSalesTable();
+    return;
+  }
+  pmCurrentSheetId = v;
+  updatePmSheetButtons();
+  axios.get('/api/price-sheets/' + v).then(function(res) {
+    if (!res.data || !res.data.success) { showToast('세트 로드 실패', 'error'); return; }
+    pmSheetDetail = res.data.data;
+    renderSalesTable();
+  }).catch(function() { showToast('세트 로드 실패', 'error'); });
+}
+
+function renderPmSheetTable() {
+  var area = document.getElementById('salesTableArea');
+  if (!area) return;
+  var d = pmSheetDetail;
+  if (!d) { area.innerHTML = '<div class="text-center py-8 text-gray-400"><i class="fas fa-spinner fa-spin text-2xl"></i></div>'; return; }
+  var items = d.items || [];
+  var meta = '<div class="bg-blue-50 border border-blue-200 rounded-lg px-4 py-3 mb-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">';
+  meta += '<span class="font-bold text-blue-800"><i class="fas fa-layer-group mr-1"></i>' + esc(d.name) + '</span>';
+  if (d.client_name) meta += '<span class="text-blue-700"><i class="fas fa-user mr-1"></i>' + esc(d.client_name) + ' 적용가</span>';
+  else meta += '<span class="text-gray-500">표준 판매가</span>';
+  if (d.valid_until) meta += '<span class="text-gray-500"><i class="far fa-calendar mr-1"></i>유효 ~' + esc(d.valid_until) + '</span>';
+  meta += '<span class="text-gray-400 ml-auto">' + items.length + '개 품목</span></div>';
+
+  if (!items.length) {
+    area.innerHTML = meta + '<div class="bg-white rounded-lg shadow p-12 text-center text-gray-400"><i class="fas fa-inbox text-4xl mb-3"></i><p>담긴 품목이 없습니다. [수정]에서 품목을 담아주세요.</p></div>';
+    return;
+  }
+
+  var html = meta + '<div class="bg-white rounded-lg shadow overflow-hidden"><table class="w-full ds-table"><thead><tr class="text-xs text-gray-500 border-b bg-gray-50/50">';
+  html += '<th class="col-code text-left py-2 px-4 font-medium">품목코드</th><th class="col-name text-left py-2 px-4 font-medium">품목명</th>';
+  html += '<th class="col-flex text-left py-2 px-4 font-medium">규격</th><th class="col-qty text-center py-2 px-4 font-medium">단위</th>';
+  html += '<th class="col-amount text-right py-2 px-4 font-medium text-blue-600">단가</th></tr></thead><tbody>';
+  items.forEach(function(it, idx) {
+    html += '<tr class="border-b border-gray-50 hover:bg-blue-50/30' + (idx % 2 ? ' bg-gray-50/30' : '') + '">';
+    html += '<td class="py-2.5 px-4 text-sm text-gray-500 font-mono">' + esc(it.item_code || '') + '</td>';
+    html += '<td class="py-2.5 px-4 text-sm font-medium text-gray-800" title="' + esc(it.item_name || '') + '">' + esc(it.item_name) + '</td>';
+    html += '<td class="py-2.5 px-4 text-sm text-gray-600" title="' + esc(it.specification || '') + '">' + esc(it.specification || '-') + '</td>';
+    html += '<td class="py-2.5 px-4 text-sm text-gray-500 text-center">' + esc(it.unit || 'EA') + '</td>';
+    html += '<td class="py-2.5 px-4 text-sm text-right font-bold text-blue-700">' + (it.price ? Number(it.price).toLocaleString() + '원' : '-') + '</td>';
+    html += '</tr>';
+  });
+  html += '</tbody></table></div>';
+  area.innerHTML = html;
+}
+
+// ---- 세트 편집 모달 ----
+function openPmSheetModal(id) {
+  var modal = document.getElementById('pmSheetModal');
+  if (!modal) { console.warn('[priceManagement] #pmSheetModal not found'); return; }
+  // 초기화
+  setVal('pmSheetEditId', id || '');
+  setVal('pmSheetName', '');
+  setVal('pmSheetValidUntil', '');
+  setVal('pmSheetContactPerson', '');
+  setVal('pmSheetContactPhone', '');
+  setVal('pmSheetNotes', '');
+  setVal('pmSheetItemSearch', '');
+  var typeSel = document.getElementById('pmSheetItemType'); if (typeSel) typeSel.value = '';
+  var stampCb = document.getElementById('pmSheetShowStamp'); if (stampCb) stampCb.checked = true;
+  pmSheetItemIds = [];
+  clearPmSheetClient();
+  var title = document.getElementById('pmSheetModalTitle');
+  if (title) title.innerHTML = '<i class="fas fa-layer-group text-blue-600 mr-2"></i>' + (id ? '단가표 세트 수정' : '새 단가표 세트');
+
+  function open() { modal.classList.remove('hidden'); renderPmSheetItemPicker(); }
+
+  if (id) {
+    axios.get('/api/price-sheets/' + id).then(function(res) {
+      if (!res.data || !res.data.success) { showToast('세트 로드 실패', 'error'); return; }
+      var d = res.data.data;
+      setVal('pmSheetName', d.name || '');
+      setVal('pmSheetValidUntil', d.valid_until || '');
+      setVal('pmSheetContactPerson', d.contact_person || '');
+      setVal('pmSheetContactPhone', d.contact_phone || '');
+      setVal('pmSheetNotes', d.notes || '');
+      if (stampCb) stampCb.checked = d.show_stamp !== 0;
+      if (d.client_id) {
+        pmSheetClientId = d.client_id;
+        pmSheetClientName = d.client_name || '';
+        setVal('pmSheetClientId', d.client_id);
+        setVal('pmSheetClientSearch', d.client_name || '');
+        var cb = document.getElementById('pmSheetClientClear'); if (cb) cb.classList.remove('hidden');
+      }
+      pmSheetItemIds = (d.items || []).map(function(it) { return Number(it.item_id); });
+      open();
+    }).catch(function() { showToast('세트 로드 실패', 'error'); });
+  } else {
+    open();
+  }
+}
+
+function closePmSheetModal() { var m = document.getElementById('pmSheetModal'); if (m) m.classList.add('hidden'); }
+
+function renderPmSheetItemPicker() {
+  var avail = document.getElementById('pmSheetAvailList');
+  var selList = document.getElementById('pmSheetSelList');
+  var cnt = document.getElementById('pmSheetSelCount');
+  if (!avail || !selList) return;
+  var q = ((document.getElementById('pmSheetItemSearch') || {}).value || '').trim().toLowerCase();
+  var tf = (document.getElementById('pmSheetItemType') || {}).value || '';
+  var all = salesData.items || [];
+  var selSet = {}; pmSheetItemIds.forEach(function(id) { selSet[id] = true; });
+
+  var list = all.filter(function(i) {
+    if (tf && i.item_type !== tf) return false;
+    if (q) {
+      var hay = ((i.item_name || '') + ' ' + (i.item_code || '') + ' ' + (i.specification || '')).toLowerCase();
+      if (hay.indexOf(q) === -1) return false;
+    }
+    return true;
+  }).slice(0, 200);
+
+  if (!all.length) {
+    avail.innerHTML = '<div class="p-4 text-center text-xs text-gray-400">품목 로딩 중… 매출단가표 탭이 먼저 로드되어야 합니다.</div>';
+  } else if (!list.length) {
+    avail.innerHTML = '<div class="p-4 text-center text-xs text-gray-400">검색 결과 없음</div>';
+  } else {
+    avail.innerHTML = list.map(function(i) {
+      var checked = selSet[i.id] ? 'checked' : '';
+      return '<label class="flex items-center gap-2 px-3 py-1.5 border-b border-gray-50 hover:bg-blue-50/40 cursor-pointer text-sm">'
+        + '<input type="checkbox" ' + checked + ' onchange="togglePmSheetItem(' + i.id + ', this.checked)" class="h-4 w-4 flex-shrink-0">'
+        + '<span class="font-mono text-xs text-gray-400 flex-shrink-0">' + esc(i.item_code || '') + '</span>'
+        + '<span class="font-medium text-gray-700 truncate">' + esc(i.item_name || '') + '</span>'
+        + (i.specification ? '<span class="text-xs text-gray-400 truncate">' + esc(i.specification) + '</span>' : '')
+        + '</label>';
+    }).join('');
+  }
+
+  var byId = {}; all.forEach(function(i) { byId[i.id] = i; });
+  if (!pmSheetItemIds.length) {
+    selList.innerHTML = '<div class="p-4 text-center text-xs text-gray-400">담긴 품목 없음</div>';
+  } else {
+    selList.innerHTML = pmSheetItemIds.map(function(id, idx) {
+      var i = byId[id] || {};
+      return '<div class="flex items-center gap-2 px-3 py-1.5 border-b border-gray-50 text-sm">'
+        + '<span class="text-xs text-gray-300 w-5 text-right flex-shrink-0">' + (idx + 1) + '</span>'
+        + '<span class="font-mono text-xs text-gray-400 flex-shrink-0">' + esc(i.item_code || ('#' + id)) + '</span>'
+        + '<span class="font-medium text-gray-700 truncate flex-1">' + esc(i.item_name || '') + '</span>'
+        + '<button type="button" onclick="togglePmSheetItem(' + id + ', false)" class="text-red-400 hover:text-red-600 flex-shrink-0"><i class="fas fa-times"></i></button>'
+        + '</div>';
+    }).join('');
+  }
+  if (cnt) cnt.textContent = pmSheetItemIds.length;
+}
+
+function togglePmSheetItem(id, checked) {
+  id = Number(id);
+  var pos = pmSheetItemIds.indexOf(id);
+  if (checked) { if (pos === -1) pmSheetItemIds.push(id); }
+  else { if (pos !== -1) pmSheetItemIds.splice(pos, 1); }
+  renderPmSheetItemPicker();
+}
+
+function savePmSheet() {
+  var name = ((document.getElementById('pmSheetName') || {}).value || '').trim();
+  if (!name) { showToast('세트 이름을 입력하세요.', 'warning'); return; }
+  var stampCb = document.getElementById('pmSheetShowStamp');
+  var payload = {
+    name: name,
+    client_id: pmSheetClientId ? Number(pmSheetClientId) : null,
+    valid_until: ((document.getElementById('pmSheetValidUntil') || {}).value || '') || null,
+    notes: ((document.getElementById('pmSheetNotes') || {}).value || '').trim() || null,
+    contact_person: ((document.getElementById('pmSheetContactPerson') || {}).value || '').trim() || null,
+    contact_phone: ((document.getElementById('pmSheetContactPhone') || {}).value || '').trim() || null,
+    show_stamp: (stampCb && !stampCb.checked) ? 0 : 1,
+    item_ids: pmSheetItemIds.slice()
+  };
+  var id = (document.getElementById('pmSheetEditId') || {}).value || '';
+  var saveBtn = document.getElementById('pmSheetSaveBtn');
+  if (saveBtn) saveBtn.disabled = true;
+  var req = id ? axios.put('/api/price-sheets/' + id, payload) : axios.post('/api/price-sheets', payload);
+  req.then(function(res) {
+    showToast('세트 저장 완료', 'success');
+    closePmSheetModal();
+    var newId = id || (res.data && res.data.data && res.data.data.id);
+    pmCurrentSheetId = newId ? String(newId) : pmCurrentSheetId;
+    loadPmSheets();
+    if (pmCurrentSheetId) {
+      axios.get('/api/price-sheets/' + pmCurrentSheetId).then(function(r) {
+        if (r.data && r.data.success) { pmSheetDetail = r.data.data; updatePmSheetButtons(); renderSalesTable(); }
+      });
+    }
+  }).catch(function(e) {
+    var msg = (e && e.response && e.response.data && e.response.data.error) || '저장 실패';
+    showToast(msg, 'error');
+  }).finally(function() { if (saveBtn) saveBtn.disabled = false; });
+}
+
+function deletePmSheet() {
+  if (!pmCurrentSheetId) return;
+  if (!confirm('이 단가표 세트를 삭제하시겠습니까?')) return;
+  axios.delete('/api/price-sheets/' + pmCurrentSheetId).then(function() {
+    showToast('세트 삭제 완료', 'success');
+    pmCurrentSheetId = null;
+    pmSheetDetail = null;
+    loadPmSheets();
+    updatePmSheetButtons();
+    renderSalesTable();
+  }).catch(function() { showToast('삭제 실패', 'error'); });
+}
+
+// ---- 세트 모달 거래처 검색(기존 매출탭 거래처 검색 미러링) ----
+function setupPmSheetClientSearch() {
+  var input = document.getElementById('pmSheetClientSearch');
+  var dd = document.getElementById('pmSheetClientDropdown');
+  if (!input || !dd) return;
+  var timer = null;
+  function doSearch(q, oneAuto) {
+    axios.get('/api/clients?search=' + encodeURIComponent(q) + '&limit=20').then(function(res) {
+      var clients = (res.data && res.data.data && res.data.data.clients) ? res.data.data.clients : [];
+      if (oneAuto && clients.length === 1) { pickPmSheetClient(clients[0].id, clients[0].client_name); dd.classList.add('hidden'); return; }
+      showPmSheetClientDD(clients);
+    });
+  }
+  input.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') { e.preventDefault(); var q = input.value.trim(); if (!q) return; clearTimeout(timer); doSearch(q, true); }
+  });
+  input.addEventListener('input', function() {
+    clearTimeout(timer);
+    var q = input.value.trim();
+    if (q.length < 1) { dd.classList.add('hidden'); return; }
+    timer = setTimeout(function() { doSearch(q, false); }, 300);
+  });
+  document.addEventListener('click', function(e) {
+    if (!input.contains(e.target) && !dd.contains(e.target)) dd.classList.add('hidden');
+  });
+}
+
+function showPmSheetClientDD(clients) {
+  var dd = document.getElementById('pmSheetClientDropdown');
+  if (!dd) return;
+  if (!clients.length) { dd.innerHTML = '<div class="px-3 py-4 text-center text-gray-400 text-sm">검색 결과 없음</div>'; dd.classList.remove('hidden'); return; }
+  dd.innerHTML = clients.map(function(cl) {
+    return '<div class="client-dd-entry" data-id="' + cl.id + '" data-name="' + esc(cl.client_name) + '"><div class="font-medium">' + esc(cl.client_name) + '</div>' + (cl.phone ? '<div class="text-xs text-gray-400">' + cl.phone + '</div>' : '') + '</div>';
+  }).join('');
+  dd.querySelectorAll('.client-dd-entry').forEach(function(el) {
+    el.addEventListener('click', function() { pickPmSheetClient(el.dataset.id, el.dataset.name); dd.classList.add('hidden'); });
+  });
+  dd.classList.remove('hidden');
+}
+
+function pickPmSheetClient(id, name) {
+  pmSheetClientId = id;
+  pmSheetClientName = name;
+  setVal('pmSheetClientId', id);
+  setVal('pmSheetClientSearch', name);
+  var cb = document.getElementById('pmSheetClientClear'); if (cb) cb.classList.remove('hidden');
+}
+
+function clearPmSheetClient() {
+  pmSheetClientId = null;
+  pmSheetClientName = '';
+  setVal('pmSheetClientId', '');
+  setVal('pmSheetClientSearch', '');
+  var cb = document.getElementById('pmSheetClientClear'); if (cb) cb.classList.add('hidden');
+}
+
 // ===================== Utilities =====================
+function setVal(id, v) { var el = document.getElementById(id); if (el) el.value = v; }
 function fmt(n) { if (n == null || isNaN(n)) return '-'; return Number(n).toLocaleString('ko-KR'); }
 function esc(s) { if (!s) return ''; return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 function escAttr(s) { return esc(s).replace(/'/g,'&#39;'); }

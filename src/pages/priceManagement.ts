@@ -57,6 +57,16 @@ export function priceManagementPage(c: Context<HonoEnv>) {
         <!-- ======== 탭 2: 매출단가표 ======== -->
         <div id="pmPanel_sales" class="hidden">
           <div class="ds-card rounded-t-none px-4 py-3 mb-4">
+            <!-- 단가표 세트 관리 -->
+            <div class="flex flex-wrap items-center gap-2 mb-3 pb-3 border-b border-gray-100">
+              <span class="text-sm font-semibold text-gray-600"><i class="fas fa-layer-group mr-1 text-blue-600"></i>단가표 세트</span>
+              <select id="pmSheetSelect" onchange="onPmSheetChange()" class="px-3 py-2 border border-gray-300 rounded-lg text-sm min-w-[240px]">
+                <option value="">세트 미선택 (전체 품목)</option>
+              </select>
+              <button type="button" onclick="openPmSheetModal()" class="px-3 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700"><i class="fas fa-plus mr-1"></i>새 세트</button>
+              <button type="button" id="pmSheetEditBtn" onclick="openPmSheetModal(pmCurrentSheetId)" disabled class="px-3 py-2 border border-gray-300 text-gray-600 rounded-lg text-sm hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"><i class="fas fa-edit mr-1"></i>수정</button>
+              <button type="button" id="pmSheetDeleteBtn" onclick="deletePmSheet()" disabled class="px-3 py-2 border border-gray-300 text-red-500 rounded-lg text-sm hover:bg-red-50 disabled:opacity-40 disabled:cursor-not-allowed"><i class="fas fa-trash mr-1"></i>삭제</button>
+            </div>
             <div class="flex flex-wrap items-center gap-3">
               <!-- 거래처 검색 -->
               <div class="flex-1 min-w-[180px] max-w-[320px]" style="position:relative">
@@ -195,6 +205,81 @@ export function priceManagementPage(c: Context<HonoEnv>) {
           <div class="flex justify-end gap-3">
             <button onclick="closePolicyModal()" class="px-4 py-2 border border-gray-300 rounded-lg text-sm">취소</button>
             <button onclick="savePolicyModal()" class="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm">저장</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 단가표 세트 편집 모달 (Phase 1) -->
+      <div id="pmSheetModal" class="ds-modal-overlay hidden flex items-center justify-center">
+        <div class="ds-modal p-6" style="max-width:760px; width:95%; max-height:88vh; overflow-y:auto">
+          <div class="flex justify-between items-center mb-4">
+            <h3 class="text-lg font-bold" id="pmSheetModalTitle"><i class="fas fa-layer-group text-blue-600 mr-2"></i>새 단가표 세트</h3>
+            <button onclick="closePmSheetModal()" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times text-lg"></i></button>
+          </div>
+          <input type="hidden" id="pmSheetEditId">
+
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">세트 이름 <span class="text-red-500">*</span></label>
+              <input type="text" id="pmSheetName" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" placeholder="예: OO광고 납품 단가표">
+            </div>
+            <div style="position:relative">
+              <label class="block text-sm font-medium text-gray-700 mb-1">거래처 (적용가 기준)</label>
+              <div class="flex gap-2">
+                <input type="text" id="pmSheetClientSearch" autocomplete="off" placeholder="거래처명 검색 (Enter) · 미지정=표준가" class="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm">
+                <button type="button" onclick="clearPmSheetClient()" id="pmSheetClientClear" class="hidden px-3 py-2 text-sm text-gray-500 border border-gray-300 rounded-lg hover:bg-gray-100"><i class="fas fa-times"></i></button>
+              </div>
+              <input type="hidden" id="pmSheetClientId">
+              <div id="pmSheetClientDropdown" class="client-dd hidden"></div>
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">유효기간</label>
+              <input type="date" id="pmSheetValidUntil" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">담당자 / 연락처</label>
+              <div class="flex gap-2">
+                <input type="text" id="pmSheetContactPerson" placeholder="담당자명" class="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm">
+                <input type="text" id="pmSheetContactPhone" placeholder="연락처" class="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm">
+              </div>
+            </div>
+            <div class="md:col-span-2">
+              <label class="block text-sm font-medium text-gray-700 mb-1">비고 · 조건 문구</label>
+              <textarea id="pmSheetNotes" rows="2" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" placeholder="예: 부가세 별도, 유효기간 내 유효"></textarea>
+            </div>
+            <div class="md:col-span-2">
+              <label class="inline-flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+                <input type="checkbox" id="pmSheetShowStamp" checked class="h-4 w-4">직인 표시
+              </label>
+            </div>
+          </div>
+
+          <!-- 품목 담기 -->
+          <div class="border-t pt-4">
+            <div class="flex items-center justify-between mb-2">
+              <h4 class="text-sm font-bold text-gray-700"><i class="fas fa-box mr-1 text-blue-500"></i>품목 담기</h4>
+              <span class="text-xs text-gray-500">담긴 품목 <span id="pmSheetSelCount" class="font-semibold text-blue-600">0</span>개</span>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div>
+                <div class="flex gap-2 mb-2">
+                  <input type="text" id="pmSheetItemSearch" oninput="renderPmSheetItemPicker()" placeholder="품목명·코드 검색" class="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm">
+                  <select id="pmSheetItemType" onchange="renderPmSheetItemPicker()" class="px-2 py-2 border border-gray-300 rounded-lg text-sm">
+                    <option value="">전체</option><option value="PRODUCT">제품</option><option value="MATERIAL">부자재</option><option value="GOODS">상품</option>
+                  </select>
+                </div>
+                <div id="pmSheetAvailList" class="border border-gray-200 rounded-lg" style="max-height:260px; overflow-y:auto"></div>
+              </div>
+              <div>
+                <div class="text-xs text-gray-500 mb-2 py-2">담긴 품목 (정렬순)</div>
+                <div id="pmSheetSelList" class="border border-gray-200 rounded-lg" style="max-height:260px; overflow-y:auto"></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="flex justify-end gap-2 mt-5 pt-4 border-t">
+            <button onclick="closePmSheetModal()" class="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm hover:bg-gray-50">취소</button>
+            <button onclick="savePmSheet()" id="pmSheetSaveBtn" class="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700"><i class="fas fa-save mr-1"></i>저장</button>
           </div>
         </div>
       </div>

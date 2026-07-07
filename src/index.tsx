@@ -88,6 +88,7 @@ import faxRouter from './routes/fax'
 import finishingRouter from './routes/finishing'
 import filesRouter from './routes/files'
 import priceListRouter from './routes/priceList'
+import { priceSheetsRouter } from './routes/priceSheets'
 import quotationsRouter from './routes/quotations'
 import scanRouter from './routes/scan'
 import accountingRouter from './routes/accounting'
@@ -289,6 +290,7 @@ app.route('/api/weekly-purchase', weeklyPurchaseRouter)
 app.route('/api/prices', pricesRouter)
 app.route('/api/price-lists', priceListsRouter)
 app.route('/api/price-list', priceListRouter)
+app.route('/api/price-sheets', priceSheetsRouter)
 app.route('/api/users', usersRouter)
 app.route('/api/tax-invoices', taxInvoicesRouter)
 app.route('/api/webhooks', webhooksRouter)  // 팝빌 Webhook (인증 불필요)
