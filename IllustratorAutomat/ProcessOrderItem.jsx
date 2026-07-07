@@ -241,7 +241,7 @@ function main() {
 
     // ── 2b-rot. 디자인 아트워크 회전 (⑥, 목표 스케일·마감 이전) ──
     // SheetLayout.jsx rotate(-pl.rotation) 패턴 포팅: 프론트/Konva는 화면 CW, Illustrator rotate는 CCW → -rotation.
-    // 현재 아트보드 top items를 그룹화 → 그룹 중심 기준 회전 → ungroup 후 회전 결과로 bbox(oL/oT/oR/oB·designW/H) 재계산.
+    // 아트보드 top items를 union 중심 기준으로 각 아이템 회전(제자리) → 회전 결과로 bbox(oL/oT/oR/oB·designW/H) 재계산.
     // 90/270이면 회전된 geometricBounds가 곧 가로↔세로 swap된 결과 → 아트보드 rect 재설정으로 자연 반영.
     // rotation 0이면 완전 무동작(기존 경로·주문 가공 회귀 0).
     var _rotNorm = ((Math.round(rotation / 90) * 90) % 360 + 360) % 360;  // 0/90/180/270로 정규화
@@ -251,12 +251,23 @@ function main() {
             doc.artboards.setActiveArtboardIndex(abIndex);
             doc.selectObjectsOnActiveArtboard();
             if (doc.selection && doc.selection.length > 0) {
-                var _rgrp = false;
-                if (doc.selection.length > 1) { app.executeMenuCommand('group'); _rgrp = true; }
-                var rg = doc.selection[0];
-                rg.rotate(-_rotNorm);   // 아이템 중심 기준 (AI 기본 앵커=중심) — CW 의도 → -각도
-                if (_rgrp) app.executeMenuCommand('ungroup');
+                // executeMenuCommand('group')이 COM 컨텍스트에서 doc.selection을 그룹으로 갱신 못 함(다중 아이템
+                //   회전 시 selection[0] 1개만 회전되던 잠복 버그) → 각 아이템을 union 중심 기준으로 직접 회전(제자리).
+                //   중심 앵커라 회전 후에도 아트보드 위에 남아 아래 재판독·재앵커가 정상 동작. realSize 3-pass와 동일 원리.
+                var _rotSel = doc.selection;
+                var rpL = null, rpT = null, rpR = null, rpB = null;
+                for (var rpi = 0; rpi < _rotSel.length; rpi++) {
+                    var _rgb = _rotSel[rpi].geometricBounds; // [left, top, right, bottom]
+                    if (rpL === null) { rpL = _rgb[0]; rpT = _rgb[1]; rpR = _rgb[2]; rpB = _rgb[3]; }
+                    else { if (_rgb[0] < rpL) rpL = _rgb[0]; if (_rgb[1] > rpT) rpT = _rgb[1]; if (_rgb[2] > rpR) rpR = _rgb[2]; if (_rgb[3] < rpB) rpB = _rgb[3]; }
+                }
+                var _rcx = (rpL + rpR) / 2, _rcy = (rpT + rpB) / 2;   // union 중심
+                var _rr;
+                for (_rr = 0; _rr < _rotSel.length; _rr++) { try { _rotSel[_rr].translate(-_rcx, -_rcy); } catch (e1) {} }
+                for (_rr = 0; _rr < _rotSel.length; _rr++) { try { _rotSel[_rr].rotate(-_rotNorm, true, true, true, true, Transformation.DOCUMENTORIGIN); } catch (e2) {} }
+                for (_rr = 0; _rr < _rotSel.length; _rr++) { try { _rotSel[_rr].translate(_rcx, _rcy); } catch (e3) {} }
                 doc.selection = null;
+                app.redraw();
                 // 회전 결과로 아트보드 바운드 재계산 (좌상단 앵커 유지)
                 doc.artboards.setActiveArtboardIndex(abIndex);
                 doc.selectObjectsOnActiveArtboard();
