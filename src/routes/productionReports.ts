@@ -190,10 +190,12 @@ productionReportsRouter.get('/post-processing', async (c) => {
 
     // 후가공 유형별 집계
     const ppCounts: Record<string, { total: number, printing: number, done: number }> = {}
+    let parsedCount = 0
     for (const row of (ppCards || [])) {
       try {
         const ppArr = JSON.parse(row.post_processing)
         if (Array.isArray(ppArr)) {
+          parsedCount++
           for (const pp of ppArr) {
             const name = pp.name || pp.code || String(pp)
             if (!ppCounts[name]) ppCounts[name] = { total: 0, printing: 0, done: 0 }
@@ -219,7 +221,7 @@ productionReportsRouter.get('/post-processing', async (c) => {
       data: {
         by_type: Object.entries(ppCounts).map(([name, counts]) => ({ name, ...counts })).sort((a, b) => b.total - a.total),
         by_category: Object.entries(catPp).map(([category, count]) => ({ category, count })).sort((a, b) => b.count - a.count),
-        total_cards_with_pp: ppCards.length,
+        total_cards_with_pp: parsedCount,
         date_from: dateFrom,
         date_to: dateTo
       }

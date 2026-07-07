@@ -900,7 +900,7 @@ migrationRouter.post('/recalculate-all-balances', async (c) => {
 
     let updated = 0
     for (const row of rows) {
-      const newBalance = (row.opening_balance || 0) + (row.total_billed || 0) - (row.total_paid || 0) + (row.total_adj || 0)
+      const newBalance = (row.opening_balance || 0) + (row.total_billed || 0) - (row.total_paid || 0) - (row.total_adj || 0)
       await db.prepare(
         `UPDATE clients SET balance = ? WHERE id = ?`
       ).bind(newBalance, row.id).run()

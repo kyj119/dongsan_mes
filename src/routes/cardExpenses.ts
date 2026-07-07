@@ -993,6 +993,14 @@ cardExpRouter.post('/transactions/import-csv', requireRole('ADMIN'), async (c) =
     const user = c.get('user')
     let imported = 0
 
+    // #485: card_id가 현재 법인 소속인지 검증 (단건 등록과 동일 규칙, IDOR 방지)
+    const cardCheck = entityId > 0
+      ? await c.env.DB.prepare('SELECT id FROM corporate_cards WHERE id = ? AND entity_id = ? AND is_active = 1').bind(card_id, entityId).first()
+      : await c.env.DB.prepare('SELECT id FROM corporate_cards WHERE id = ? AND is_active = 1').bind(card_id).first()
+    if (!cardCheck) {
+      return c.json({ success: false, error: '해당 법인에 등록된 카드가 아닙니다.' }, 400)
+    }
+
     for (const row of rows) {
       const txDate = (row.date || '').replace(/-/g, '')
       if (!txDate || txDate.length !== 8) continue

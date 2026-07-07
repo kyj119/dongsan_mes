@@ -507,6 +507,8 @@ bankRouter.post('/sync-barobill', requireRole('ADMIN'), async (c) => {
     }
 
     let totalInserted = 0, totalSkipped = 0
+    // 관측성: 일별 조회 실패를 로깅+응답 수집 (조용한 미수집 정지 방지 — auto-sync errors[]와 대칭, #494)
+    const errors: string[] = []
 
     // 계좌 × 날짜 조회 → bank_transactions 적재
     for (const acc of accounts) {
@@ -549,8 +551,9 @@ bankRouter.post('/sync-barobill', requireRole('ADMIN'), async (c) => {
             ).run()
             if ((r.meta.changes ?? 0) > 0) totalInserted++; else totalSkipped++
           }
-        } catch (err) {
+        } catch (err: any) {
           console.error(`Bank sync error ${accNum} ${dateStr}:`, err)
+          if (errors.length < 20) errors.push(`${accNum} ${dateStr}: ${err?.message || '조회 실패'}`)
         }
       }
     }
@@ -622,12 +625,14 @@ bankRouter.post('/sync-barobill', requireRole('ADMIN'), async (c) => {
 
     return c.json({
       success: true,
+      partial: errors.length > 0,
       data: {
         accounts: accounts.length,
         dates: dates.length,
         inserted: totalInserted,
         skipped: totalSkipped,
         matched: matchedCount,
+        errors,
       },
       message: `${accounts.length}개 계좌 × ${dates.length}일 동기화: ${totalInserted}건 등록, ${totalSkipped}건 중복, ${matchedCount}건 자동매칭`
     })

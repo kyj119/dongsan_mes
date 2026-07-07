@@ -1514,7 +1514,7 @@ itemsRouter.post('/:id/materials/group', requireRole('ADMIN', 'MANAGER'), async 
           VALUES (?, ?, 0)
         `).bind(productId, mat.id).run()
         added++
-      } catch {}
+      } catch (e) { console.error('[items] group material mapping insert failed:', mat.id, e) }
     }
 
     return c.json({

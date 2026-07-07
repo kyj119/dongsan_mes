@@ -357,7 +357,12 @@ storageZonesRouter.post('/', requireRole('ADMIN'), async (c) => {
     ).run()
 
     return c.json({ success: true, data: { id: result.meta.last_row_id }, message: '구역이 생성되었습니다.' })
-  } catch (error) {
+  } catch (error: any) {
+    // #482: (entity_id, zone_name)·(entity_id, zone_code) 복합 UNIQUE(0448) 위반 시 명확한 409
+    // (zone_code 는 앱 사전검사가 없어 여기서만 걸림)
+    if (error?.message && /UNIQUE constraint failed/i.test(error.message)) {
+      return c.json({ success: false, error: '같은 구역명 또는 코드가 이미 사용 중입니다.' }, 409)
+    }
     console.error('storageZones POST error:', error)
     return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
   }
@@ -429,7 +434,11 @@ storageZonesRouter.put('/:id', requireRole('ADMIN'), async (c) => {
     ).run()
 
     return c.json({ success: true, message: '구역이 수정되었습니다.' })
-  } catch (error) {
+  } catch (error: any) {
+    // #482: 복합 UNIQUE(0448) 위반 시 명확한 409 (zone_code 는 앱 사전검사 없음)
+    if (error?.message && /UNIQUE constraint failed/i.test(error.message)) {
+      return c.json({ success: false, error: '같은 구역명 또는 코드가 이미 사용 중입니다.' }, 409)
+    }
     console.error('storageZones PUT error:', error)
     return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
   }

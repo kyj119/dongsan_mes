@@ -458,3 +458,30 @@ function updatePricingLabel() {
     }
 }
 
+// ===== 품목 사진 압축 (업로드 전 클라이언트 리사이즈 + JPG, cardExpenses.js와 동일 로직) =====
+// 이미지가 아니면(PDF 등) 원본 그대로. 압축본이 원본보다 크면 원본 사용.
+function compressImage(file, maxDim, quality) {
+    maxDim = maxDim || 1600; quality = quality || 0.82;
+    return new Promise(function(resolve) {
+        if (!file.type || file.type.indexOf('image/') !== 0) { resolve(file); return; }
+        var url = URL.createObjectURL(file);
+        var img = new Image();
+        img.onload = function() {
+            var w = img.naturalWidth, h = img.naturalHeight;
+            var scale = Math.min(1, maxDim / Math.max(w, h));
+            var resized = scale < 1;  // 리사이즈가 필요한(큰) 이미지
+            var cw = Math.max(1, Math.round(w * scale)), ch = Math.max(1, Math.round(h * scale));
+            var canvas = document.createElement('canvas');
+            canvas.width = cw; canvas.height = ch;
+            canvas.getContext('2d').drawImage(img, 0, 0, cw, ch);
+            URL.revokeObjectURL(url);
+            canvas.toBlob(function(blob) {
+                // 리사이즈했으면 항상 JPG 사용(원본이 더 큰 치수). 아니면 더 작은 쪽 선택.
+                resolve(blob && (resized || blob.size < file.size) ? blob : file);
+            }, 'image/jpeg', quality);
+        };
+        img.onerror = function() { URL.revokeObjectURL(url); resolve(file); };
+        img.src = url;
+    });
+}
+

@@ -102,7 +102,9 @@
                 var cmInput = document.querySelector('[name="fin_cm_' + direction + '_' + itemId + '"]');
                 if (sel && cmInput) {
                     var methodName = sel.value;
-                    var m = finishingMethodsCache.find(function(fm) { return fm.name === methodName; });
+                    var group = getFinishingGroup(itemId);
+                    var methods = finishingMethodsCache[group] || finishingMethodsCache['all'] || [];
+                    var m = methods.find(function(fm) { return fm.name === methodName; });
                     cmInput.value = m ? m.margin : '';
                 }
                 calcFinishing(itemId);
@@ -118,7 +120,9 @@
                     var cmInput = document.querySelector('[name="fin_cm_' + direction + '_' + itemId + '"]');
                     if (cmInput && cmInput.value !== '') return parseFloat(cmInput.value) || 0;
                     var methodName = getVal('fin_' + direction + '_' + itemId);
-                    var m = finishingMethodsCache.find(function(fm) { return fm.name === methodName; });
+                    var group = getFinishingGroup(itemId);
+                    var methods = finishingMethodsCache[group] || finishingMethodsCache['all'] || [];
+                    var m = methods.find(function(fm) { return fm.name === methodName; });
                     return m ? m.margin : 0;
                 };
 

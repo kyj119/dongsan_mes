@@ -296,9 +296,10 @@ printEventsRouter.post('/', agentKeyMiddleware, async (c) => {
     const equipLabel = await resolveEquipmentLabel(c.env.DB, agent_id, resolvedEquipmentId)
 
     // Idempotency check (정규화된 completed_at 기준 — 저장값과 동일 기준)
+    // IS 연산자로 NULL-safe 비교 (INSERT가 normCompletedAt을 그대로 저장하므로 SELECT도 동일값 바인드, #495)
     const existing = await c.env.DB.prepare(
-      'SELECT id FROM print_events WHERE file_path = ? AND print_completed_at = ?'
-    ).bind(file_path, normCompletedAt || '').first<{ id: number }>()
+      'SELECT id FROM print_events WHERE file_path = ? AND print_completed_at IS ?'
+    ).bind(file_path, normCompletedAt).first<{ id: number }>()
 
     if (existing) {
       return c.json({ success: true, message: 'Event already recorded', data: { id: existing.id, duplicate: true } })
@@ -507,6 +508,8 @@ printEventsRouter.post('/batch', agentKeyMiddleware, async (c) => {
     let inserted = 0
     let duplicates = 0
     let errors = 0
+    // 무음 유실 방지: 실패 샘플 최대 5건 수집 + 로깅 (#495)
+    const failSamples: { file_path?: string; error: string }[] = []
 
     for (const evt of events) {
       try {
@@ -514,10 +517,10 @@ printEventsRouter.post('/batch', agentKeyMiddleware, async (c) => {
         const evtNormStartedAt = kstNaiveToUtc(evt.print_started_at)
         const evtNormCompletedAt = kstNaiveToUtc(evt.print_completed_at)
 
-        // Idempotency (정규화된 completed_at 기준)
+        // Idempotency (정규화된 completed_at 기준) — IS 연산자로 NULL-safe 비교 (#495)
         const existing = await c.env.DB.prepare(
-          'SELECT id FROM print_events WHERE file_path = ? AND print_completed_at = ?'
-        ).bind(evt.file_path, evtNormCompletedAt || '').first()
+          'SELECT id FROM print_events WHERE file_path = ? AND print_completed_at IS ?'
+        ).bind(evt.file_path, evtNormCompletedAt).first()
 
         if (existing) { duplicates++; continue }
 
@@ -609,14 +612,29 @@ printEventsRouter.post('/batch', agentKeyMiddleware, async (c) => {
         }
 
         inserted++
-      } catch {
+      } catch (err: any) {
+        console.error(`[printEvents/batch] event failed (agent=${agent_id}, file=${evt?.file_path}):`, err)
+        if (failSamples.length < 5) {
+          failSamples.push({ file_path: evt?.file_path, error: String(err?.message || err) })
+        }
         errors++
       }
     }
 
+    // 전건 실패 시 비-200 반환 → 클라 재시도 유도 (조용한 영구 유실 방지, #495)
+    if (inserted === 0 && errors > 0) {
+      return c.json({
+        success: false,
+        status: 'PARTIAL',
+        error: '이벤트 처리 전건 실패',
+        data: { inserted, duplicates, errors, total: events.length, failSamples }
+      }, 500)
+    }
+
     return c.json({
       success: true,
-      data: { inserted, duplicates, errors, total: events.length }
+      status: errors > 0 ? 'PARTIAL' : 'OK',
+      data: { inserted, duplicates, errors, total: events.length, failSamples }
     })
   } catch (error) {
     console.error('src/routes/printEvents.ts error:', error)

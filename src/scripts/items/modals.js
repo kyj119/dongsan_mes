@@ -387,7 +387,7 @@ async function itemPhotoOnFileChange(input) {
         return;
     }
     try {
-        // 클라 압축 (cardExpenses.js compressImage 재사용 — ?raw concat 단일 전역 스코프)
+        // 클라 압축 (items/core.js compressImage — cardExpenses.js와 별도 정의, 페이지 미동시로딩이라 무해)
         var out = (typeof compressImage === 'function') ? await compressImage(file, 1600, 0.82) : file;
         var fname = (out !== file) ? 'photo.jpg' : (file.name || 'photo');
         var formData = new FormData();
