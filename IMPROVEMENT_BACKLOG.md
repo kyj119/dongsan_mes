@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 5 -->
-<!-- last_run_at: 2026-07-07T21:00:00+09:00 -->
+<!-- last_run_area: 6 -->
+<!-- last_run_at: 2026-07-08T09:12:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -11,11 +11,18 @@
 | 🆕 new | **6** — #473, #497(MED, 원장 거래처검색 1000cap 무음누락), #498(LOW, 페이지네이션 로딩인디케이터), #499(LOW, width_mm 힌트 불일치), #500(LOW, bank.ts sync-barobill 잔액0→NULL 강등), #501(HIGH, Area5 32회차 신규 — price-list `:entityId` 라우트 소유검증 없음, 타법인 직인/로고 열람·변조 IDOR). open 실측(`list_issues(OPEN,auto-improve)`=6) 기준. |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 |
-| ✔️ done | **184** (171 + #482~#496 중 13건, 커밋 `2680102`+`7bff20b`로 실제 코드수정 후 owner close 확인 — Area4 31회차 done-sync) |
+| ✔️ done | **427** ⚠️전면 재계산(아래 참조) — GitHub 실측 `search_issues(label:auto-improve is:closed reason:completed)`=427. 직전 기재값 184는 다회차에 걸친 점증 델타 동기화(diff-only) 누적오차로 실제보다 **243건 과소집계**돼 있었음(37회차 Area6 발견, 상세는 Area6 로그 참조). |
 | ❌ rejected | 3 |
 
 > 📦 **과거 사이클 로그**는 `IMPROVEMENT_BACKLOG_ARCHIVE.md`/git 히스토리로 이관됨 (2026-06-10 1차 분리, 2026-06-25 2차 트림 343KB→192KB, 2026-06-25T10:00 3차 트림, 2026-07-03T06:00 4차 트림 288KB→86KB, **2026-07-07T13:00 5차 트림 — 07-01~07-05 사이클 로그를 git 히스토리로 이관: 238KB→78KB, 256KB Read 한도 재확보**). 신규 로그는 계속 이 파일 상단에 추가. 본 파일은 직전 2일치(07-06~) 사이클 로그 + 영구 참조 섹션(Approved/New/Auto-fixed/Done/Rejected/FP 카탈로그)만 유지. 이관분은 `git log -p -- IMPROVEMENT_BACKLOG.md`로 복원 가능.
 
+> **Area 6 자기 진화 (2026-07-08T09:12):**
+> - **방법**: `npm ci`(node_modules 0→81) 후 `git fetch origin main`(HEAD=origin/main `5c152df` 0/0 동기, 워킹트리 clean, #422 디버전스 0). Area 6 **37회차**(직전 Area5가 36회차 상당). 직전 Area5(`5c152df`, 07-07T21:00, 32회차) 자체가 최신 HEAD라 **post-Area5 코드 churn = 0**(컬럼-diff bridge·XSS bridge 대상 없음) — `9dbb477`(ia-editor 실물저장 P1)는 Area5 churn 목록에 포함됐으나 개별 XSS 클리어런스가 없어 직접 재확인: `iaEditor.js` 신규 innerHTML 보간 전부 하드코딩 문자열/숫자(`Math.round` 폭 추정치)뿐이고 에러메시지는 `iaeEscape` 적용 = clean.
+> - **🆕 net-new 발견 — backlog↔GitHub done 카운터 243건 드리프트(자기진화 핵심 발견)**: 오픈 이슈 6건 전수 재검증(open≠unfixed 거울, #473/#497~#501)은 전부 안티패턴 코드 잔존 확인(진짜 미픽스, FP 없음) → 정상. 그러나 **backlog 통계의 `done=184`가 GitHub 실측과 크게 어긋남을 발견**: `list_issues(auto-improve)` 총 436건(open 6+closed 430), `search_issues(is:closed reason:completed)`=**427**, `reason:not_planned`=1, `reason:duplicate`=2(합 3=rejected와 정합). 즉 진짜 done은 427인데 백로그는 184로 **243건 과소집계**. 원인 추정: 다회차에 걸친 백로그 파일 트림(5차례, 343KB→78KB) 과정에서 done 카운터가 "이번 사이클 델타(N건 close 확인)"만 가산하는 diff-only 갱신 방식이라, 트림으로 이전 사이클의 세부 로그가 git 히스토리로 넘어갈 때 **누적 총합 재계산 없이** 델타만 이어붙여 온 것으로 보임(예: "171+13=184"처럼 직전 표기값에 이번 델타만 더함 — 그 171 자체가 이미 과거 어느 시점 유실분을 포함한 채였을 가능성). **수정**: 통계표 `done`을 GitHub 실측 427로 정정.
+> - **🧬 SKILL 강화 — done 카운터 드리프트 재발 방지**: `.claude/skills/auto-improve/SKILL.md` Area 6 섹션에 "매 N회차(또는 트림 시점)마다 `search_issues(reason:completed)` 전면 재계산으로 델타 누적 대신 절대값 동기화" 원칙 추가(아래 SKILL 갱신 참조) — 델타-온리 동기화는 장기 다회차 운영에서 부동소수점 누적오차처럼 서서히 벌어지는 구조적 위험이라 존재X 컬럼/IDOR 클래스급으로 codify.
+> - **🟢 close-pending 캐시**: 직전 Area1(30회차)이 통지한 close-pending 5건(#479/#480/#481/#483/#484)은 이번 조회에서 **전부 closed(completed)로 확인** — owner가 배치 close 완료, 재검증 대상 소멸.
+> - 신규 이슈 0(GitHub 코드 이슈 없음, 백로그 자체 데이터 정합성 이슈), 자동수정 0(백로그 통계 정정은 코드 변경 아님), done-sync 전면 재계산(184→427, +243 드리프트 해소), close-pending 5건 해소 확인. **신선 각도 — 백로그 자기 자신의 done/rejected 카운터를 GitHub ground-truth와 전수 대조. 개별 이슈 sync는 여러 사이클째 정확했으나(open=6 정합, rejected=3 정합) done 누적합만 장기간 델타-온리 갱신으로 서서히 벌어진 구조적 드리프트를 격리·수정.**
+>
 > **Area 5 보안 (2026-07-07T21:00):**
 > - **방법**: `npm ci`(node_modules 0→81) 후 `git fetch origin main`(HEAD=origin/main `4de1f2f` 0/0 동기, 워킹트리 clean, #422 디버전스 0). Area 5 **32회차** — 직전 Area5(`7d7b6bc`, 07-06T22:00, 30회차) 이후 churn = 신규 대형 기능 **가격표(단가표) Phase 1-4**(`8bdc235`~`a17cbb9` — 단가표 세트 CRUD·회사 인쇄정보(로고/직인/부서연락처/웹하드)·전달문서 인쇄·요약바/CSV) + `a1ced34`(bank dedup)·`2f09cc4`/`8637e49`(R2 externalize, 이미 Area4/6 검증)·`c6cfd4f`/`92ee636`(scale-fix, 이미 Area1/2/6 검증)·`9dbb477`(ia-editor). **신선 각도 = 가격표 Phase 1-4 신규 라우트(`priceSheets.ts` 신규 256줄·`priceList.ts` +109줄) + 신규 프론트(`priceManagement.js` +694·`settings.js` +193)를 IDOR/XSS/secret 렌즈로 전수.**
 > - **🆕 net-new 1건 — #501 (HIGH·issue-only, price-list `:entityId` 소유검증 없음)**: `priceList.ts`의 `GET/PUT /logo/:entityId`·`GET/PUT /stamp/:entityId`·`GET/PUT /company/:entityId`·`GET/POST/PUT/DELETE /company/:entityId/contacts[/:cid]` 전부 **URL의 `:entityId`가 호출자 소속 법인과 일치하는지 검증 0** — `requireRole('ADMIN')`은 역할만 보고 법인 스코프는 안 봄(`auth.ts:35-52`), `entityId`는 로그인 시 JWT에 고정된 사용자 자신의 법인(`auth.ts:43/51`)이라 요청 파라미터로 자유 조작 가능. **최고위험 = `PUT /stamp/:entityId`**(직인/도장 이미지) — entity A의 ADMIN이 URL만 바꿔 **타법인 공식 직인을 임의 교체**(문서위조 소재) 가능. GET 계열(logo/company/contacts)은 역할 제한조차 없어 인증 사용자 누구나 타법인 로고·직인·주소·이메일·부서연락처 열람 가능. 프론트(`priceManagement.js:504 pmEntityId()`·`settings.js` `window.currentEntityId`)는 항상 호출자 자신의 entity만 넘겨 정상 UI로는 안 드러나나 직접 API 호출로 우회 자명. **원인 = 기존 `/logo/:entityId`(사전 존재, 좁은 갭)를 Phase 2/3가 그대로 답습하며 `stamp`·`company`·`contacts` CRUD까지 대상 확장**. IDOR=owner 워크플로+egress 차단 → issue-only.
