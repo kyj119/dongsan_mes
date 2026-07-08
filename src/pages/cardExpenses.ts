@@ -165,7 +165,7 @@ export function cardExpensesPage(c: Context<HonoEnv>) {
             <div class="text-xl font-bold text-right" id="scheduleNextDate">-</div>
           </div>
         </div>
-        <p class="text-xs text-gray-400 mb-2"><i class="fas fa-info-circle mr-1"></i>현재 진행 중인 청구 사이클(직전 마감일+1 ~ 다음 마감일)의 누적 사용액과 결제 예정일입니다. 마감일·결제일은 [카드 관리]에서 설정합니다.</p>
+        <p class="text-xs text-gray-400 mb-2"><i class="fas fa-info-circle mr-1"></i>가장 가까운 실결제일(오늘 이후 첫 결제일)과 그 결제가 청산하는 마감 사이클의 누적 사용액입니다. 익월결제 카드는 직전에 마감된 사이클이 이번 달 결제됩니다. 마감일·결제일은 [카드 관리]에서 설정합니다.</p>
         <div class="ds-card" style="padding:0">
           <table class="ds-table ds-table-compact ds-table-striped">
             <thead><tr>

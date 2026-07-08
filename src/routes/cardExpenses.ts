@@ -661,9 +661,9 @@ cardExpRouter.get('/receipt-image/*', requireRole('ADMIN', 'MANAGER'), async (c)
 // Phase 4: 결제 예정 + 카드↔통장 대사
 // ===========================================================================
 
-// 결제 예정 = 카드별 "현재 진행 중 청구 사이클"(직전 마감+1 ~ 다음 마감) 누적 사용액(net) + 그 사이클의 결제 예정일.
-// 사이클 규칙은 자금예측(cashflowEngine)과 동일: payment_day > cutoff_day면 동월결제, else 익월결제.
-// "이번달 사용요금"(거래월 단순합)을 폐기하고 결제일 기준으로 일원화.
+// 결제 예정 = 카드별 "가장 가까운 실결제"(오늘 이후 첫 payment_day) + 그 결제가 청산하는 사이클의 누적 사용액(net).
+// 익월결제 카드는 직전 마감분이 이번 달 결제되므로, 진행 중 사이클이 아니라 실제 다음 출금일을 표시(가장 가까운 결제일).
+// 사이클 규칙은 자금예측(cashflowEngine)과 동일: payment_day > cutoff_day면 동월결제(결제월 마감분), else 익월결제(직전월 마감분).
 cardExpRouter.get('/payment-schedule', requireRole('ADMIN', 'MANAGER'), async (c) => {
   try {
     const ef = entityFilter(c, 'cc')
@@ -693,9 +693,16 @@ cardExpRouter.get('/payment-schedule', requireRole('ADMIN', 'MANAGER'), async (c
     for (const card of cards as any[]) {
       const cutoff = card.cutoff_day, payment = card.payment_day
 
-      // 현재 진행 사이클의 마감(close) 월 = 오늘이 이번달 마감일 이후면 다음달, 아니면 이번달
-      const cutoffThisMonth = clampDay(ty, tm, cutoff)
-      const close = td <= cutoffThisMonth ? { y: ty, m: tm } : nextMonth(ty, tm)
+      // 가장 가까운 실결제일: 결제는 매월 payment_day에 발생 → 이번 달 payment_day가
+      // 오늘 이후면 이번 달, 이미 지났으면 다음 달. (진행 중 사이클이 아니라 실제 다음 출금일)
+      const payThisMonthDay = clampDay(ty, tm, payment)
+      const pay = td <= payThisMonthDay ? { y: ty, m: tm } : nextMonth(ty, tm)
+      const payDay = clampDay(pay.y, pay.m, payment)
+      const paymentDate = `${pay.y}-${pad2(pay.m)}-${pad2(payDay)}`
+
+      // 이 결제가 청산하는 사이클의 마감(close) 월 = 동월결제(payment > cutoff)면 결제월, else 직전월.
+      // (cashflowEngine.ts 카드 청산 규칙과 동일)
+      const close = payment > cutoff ? { y: pay.y, m: pay.m } : prevMonth(pay.y, pay.m)
       const cycleEndDay = clampDay(close.y, close.m, cutoff)
       const cycleEnd = ymd(close.y, close.m, cycleEndDay)
 
@@ -705,11 +712,6 @@ cardExpRouter.get('/payment-schedule', requireRole('ADMIN', 'MANAGER'), async (c
       const csDate = new Date(pm.y, pm.m - 1, prevCutoffDay)
       csDate.setDate(csDate.getDate() + 1)
       const cycleStart = ymd(csDate.getFullYear(), csDate.getMonth() + 1, csDate.getDate())
-
-      // 결제 예정일: 동월결제(payment > cutoff)면 마감월, else 익월
-      const pay = payment > cutoff ? close : nextMonth(close.y, close.m)
-      const payDay = clampDay(pay.y, pay.m, payment)
-      const paymentDate = `${pay.y}-${pad2(pay.m)}-${pad2(payDay)}`
 
       // 해당 사이클 누적 사용액(net = 승인 - 취소, 상계건 제외)
       const efTx = entityFilter(c, 'ct')
