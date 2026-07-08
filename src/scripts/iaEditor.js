@@ -1559,10 +1559,10 @@ function iaeCanReassignSheets() {
   iaeCanSheets.forEach(function (sh) {
     var mem = iaeCanObjs.filter(function (o) { return o.sheetUid === sh.uid; });
     if (!mem.length) return;
+    // 멀티소스 임포지션: 여러 파일 조각을 한 시트에 유지(축소 없음). sh.fid는 대표(최다 파일) 표기용.
     var cnt = {}; mem.forEach(function (o) { cnt[o.fid] = (cnt[o.fid] || 0) + 1; });
     var anchor = mem[0].fid, best = -1;
     Object.keys(cnt).forEach(function (f) { if (cnt[f] > best) { best = cnt[f]; anchor = mem.filter(function (m) { return String(m.fid) === f; })[0].fid; } });
-    mem.forEach(function (o) { if (o.fid !== anchor) o.sheetUid = null; });
     sh.fid = anchor;
   });
 }
@@ -1578,7 +1578,7 @@ function iaeCanSyncSheet(sh) {
     var bb = iaeCanRotBBox(o);
     var xc = (bb.left - (sh.x_mm || 0)) / 10, yc = (bb.top - (sh.y_mm || 0)) / 10;
     var wc = bb.w / 10, hc = bb.h / 10;
-    placements.push({ group_index: o.gi, x_cm: Math.round(xc * 100) / 100, y_cm: Math.round(yc * 100) / 100, width_cm: Math.round(wc * 100) / 100, height_cm: Math.round(hc * 100) / 100, rotated: bb.rotated, rotation: bb.rot });
+    placements.push({ group_index: o.gi, analysis_id: o.fid, x_cm: Math.round(xc * 100) / 100, y_cm: Math.round(yc * 100) / 100, width_cm: Math.round(wc * 100) / 100, height_cm: Math.round(hc * 100) / 100, rotated: bb.rotated, rotation: bb.rot });
     areaCm2 += (o.w_mm || 0) * (o.h_mm || 0) / 100; // 조각 실면적(겹침과 무관)
     if (yc + hc > maxBottomCm) maxBottomCm = yc + hc;
     if (xc < -0.1 || xc + wc > rollW + 0.1) overflow = true;
@@ -1757,22 +1757,32 @@ function iaeCanPollSheet(sheetId, resHost, btn, namePrefix) {
 // total=1이면 기존 단일 출력과 byte-identical(name·canvas·placements 동일) → 회귀 0.
 function iaeCanSheetExportBody(sh, idx, total) {
   var src = iaeCanSrc(sh.key) || {};
+  var pls = sh.placements || [];
+  // 멀티소스: placements의 distinct analysis_id(fid) 수집 → source_analysis_ids 배열(JSON).
+  //   단일도 배열로 통일(기존 String(fid)="16" 비배열 저장 → render Array.isArray 실패 잠복버그 해소).
+  var aidSet = {}, aidList = [];
+  pls.forEach(function (p) {
+    var a = (p.analysis_id != null) ? p.analysis_id : null;
+    if (a != null && !aidSet[a]) { aidSet[a] = true; aidList.push(a); }
+  });
+  if (!aidList.length) { var f = (src.fid != null) ? src.fid : sh.fid; if (f != null) aidList.push(f); }
   // 주문보내기와 동일한 SHEET 캡처(placements·규격·scale) → 네스팅 렌더 페이로드
   var canvas = {
     mode: sh.mode || 'roll', scale_factor: sh.scale_factor || 1,
     roll_width_cm: sh.roll_width_cm || (sh.w_mm || 0) / 10,
     total_height_cm: sh.total_height_cm || (sh.h_mm || 0) / 10,
     margin_cm: sh.margin_cm || 0, gap_cm: sh.gap_cm || 0,
-    source_file_path: iaeCanFileR2(src.fid != null ? src.fid : sh.fid),
+    source_file_path: iaeCanFileR2(src.fid != null ? src.fid : sh.fid),  // 하위호환(단일 폴백)
     group_index: sh.gi
   };
-  var name = '네스팅 ' + (src.filename || '') + ' #' + sh.gi + ((total > 1) ? (' (' + (idx + 1) + '/' + total + ')') : '');
+  var multi = aidList.length > 1;
+  var name = '네스팅 ' + (multi ? (aidList.length + '개 소스 ' + pls.length + '조각') : ((src.filename || '') + ' #' + sh.gi)) + ((total > 1) ? (' (' + (idx + 1) + '/' + total + ')') : '');
   return {
     name: name,
     mode: sh.mode || 'roll',
     canvas_json: JSON.stringify(canvas),
     placements_json: JSON.stringify(sh.placements),
-    item_code: '', source_analysis_ids: String(src.fid != null ? src.fid : (sh.fid || '')),
+    item_code: '', source_analysis_ids: JSON.stringify(aidList),
     sheet_count: 1, efficiency: Math.round((sh.eff || 0) * 1000) / 1000
   };
 }

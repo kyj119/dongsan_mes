@@ -519,23 +519,26 @@ workbenchRouter.post('/sheets/:id/render', async (c) => {
     ).bind(id, ...ef.params).first<{ id: number; source_analysis_ids: string | null; placements_json: string | null; render_status: string }>()
     if (!sheet) return c.json({ success: false, error: '네스팅을 찾을 수 없습니다.' }, 404)
 
-    // v1 제약: 단일 분석
+    // 소스 분석: 1개 이상 (멀티소스 임포지션 허용 — 여러 파일의 아트보드를 한 판에)
     let aids: number[] = []
     try { aids = sheet.source_analysis_ids ? JSON.parse(sheet.source_analysis_ids) : [] } catch (_e) { aids = [] }
     aids = (Array.isArray(aids) ? aids : []).filter((n) => Number.isInteger(n))
-    if (aids.length !== 1) return c.json({ success: false, error: `v1 출력은 단일 분석만 지원합니다 (현재 ${aids.length}개).` }, 400)
+    if (aids.length === 0) return c.json({ success: false, error: '소스 분석이 없습니다.' }, 400)
 
-    // v1 제약: 단일 시트
+    // 단일 판(시트) 제약 유지 — 평판 다중판은 판별로 별도 잡(iaeCanExportSheetsMulti)
     let placements: Array<{ sheet?: number }> = []
     try { placements = sheet.placements_json ? JSON.parse(sheet.placements_json) : [] } catch (_e) { placements = [] }
     if (placements.length === 0) return c.json({ success: false, error: '배치된 조각이 없습니다.' }, 400)
     const sheetIdxs = new Set(placements.map((p) => p.sheet || 0))
-    if (sheetIdxs.size > 1) return c.json({ success: false, error: `v1 출력은 단일 시트만 지원합니다 (현재 ${sheetIdxs.size}판).` }, 400)
+    if (sheetIdxs.size > 1) return c.json({ success: false, error: `단일 판만 지원합니다 (현재 ${sheetIdxs.size}판).` }, 400)
 
-    const an = await c.env.DB.prepare(
-      `SELECT id, status FROM ai_analysis_requests WHERE id = ?`
-    ).bind(aids[0]).first<{ id: number; status: string }>()
-    if (!an || an.status !== 'done') return c.json({ success: false, error: '소스 분석이 완료되지 않았습니다.' }, 400)
+    // 각 소스 분석 done 확인
+    for (const aid of aids) {
+      const an = await c.env.DB.prepare(
+        `SELECT status FROM ai_analysis_requests WHERE id = ?`
+      ).bind(aid).first<{ status: string }>()
+      if (!an || an.status !== 'done') return c.json({ success: false, error: `소스 분석(${aid})이 완료되지 않았습니다.` }, 400)
+    }
 
     await c.env.DB.prepare(
       `UPDATE sheet_layouts SET render_status='queued', render_error=NULL, updated_at=datetime('now') WHERE id = ?`
@@ -595,16 +598,20 @@ workbenchRouter.get('/render-queue', async (c) => {
     for (const r of results) {
       let aids: number[] = []
       try { aids = r.source_analysis_ids ? JSON.parse(r.source_analysis_ids) : [] } catch (_e) { aids = [] }
-      const aid = (Array.isArray(aids) && aids.length) ? aids[0] : null
-      let srcPath: string | null = null
-      if (aid) {
+      aids = (Array.isArray(aids) ? aids : []).filter((n) => Number.isInteger(n))
+      // 멀티소스: 모든 aid의 file_path를 sources[]로. source_analysis_id/source_file_path는 첫 소스로 하위호환.
+      const sources: Array<{ analysis_id: number; file_path: string }> = []
+      for (const aid of aids) {
         const an = await c.env.DB.prepare(`SELECT file_path FROM ai_analysis_requests WHERE id = ?`).bind(aid).first<{ file_path: string | null }>()
-        srcPath = an?.file_path ?? null
+        if (an?.file_path) sources.push({ analysis_id: aid, file_path: an.file_path })
       }
+      const first = sources.length ? sources[0] : null
       out.push({
         id: r.id, name: r.name, mode: r.mode,
         canvas_json: r.canvas_json, placements_json: r.placements_json,
-        item_code: r.item_code, source_analysis_id: aid, source_file_path: srcPath
+        item_code: r.item_code,
+        source_analysis_id: first?.analysis_id ?? null, source_file_path: first?.file_path ?? null,
+        sources
       })
     }
     // claim: queued → rendering (재폴링 중복 처리 방지)

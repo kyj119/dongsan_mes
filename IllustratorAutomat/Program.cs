@@ -1325,6 +1325,23 @@ namespace IllustratorAutomation
         private static string? RjStr(JsonElement el, string name)
             => el.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() : null;
 
+        // 소스 .ai 해석: 로컬 우선 → R2 다운로드 → 실패 시 null. 멀티소스는 analysis_id별 파일명으로 충돌 방지.
+        private static async Task<string?> ResolveSourceAiAsync(int analysisId, string srcPath, string tempFolder)
+        {
+            if (File.Exists(srcPath)) { Console.WriteLine($"   📂 소스 .ai: {srcPath}"); return srcPath; }
+            if (srcPath.StartsWith("r2://") && analysisId > 0)
+            {
+                Console.WriteLine($"   ☁️  소스 .ai R2 다운로드: analysis {analysisId}");
+                var r2 = await httpClient.GetAsync($"{ERP_API_URL}/api/ai-analysis/{analysisId}/download");
+                if (!r2.IsSuccessStatusCode) { Console.WriteLine($"   ❌ 소스 .ai 다운로드 실패 {(int)r2.StatusCode} (aid {analysisId})"); return null; }
+                string ext = Path.GetExtension(srcPath.Replace("r2://", "")); if (string.IsNullOrEmpty(ext)) ext = ".ai";
+                string dest = Path.Combine(tempFolder, $"source_{analysisId}{ext}");
+                File.WriteAllBytes(dest, await r2.Content.ReadAsByteArrayAsync());
+                return dest;
+            }
+            return null;
+        }
+
         private static async Task PollSheetRenderAsync()
         {
             if (!Directory.Exists(ZDRIVE_PATH)) return;
@@ -1355,26 +1372,39 @@ namespace IllustratorAutomation
 
         private static async Task ProcessSheetRenderAsync(int jobId, JsonElement job)
         {
-            string? srcPath = RjStr(job, "source_file_path");
-            int analysisId = job.TryGetProperty("source_analysis_id", out var aidEl) && aidEl.ValueKind == JsonValueKind.Number ? aidEl.GetInt32() : 0;
-            if (string.IsNullOrEmpty(srcPath)) { await PatchSheetRender(jobId, "error", null, "소스 경로 없음"); return; }
-
             string reqTempFolder = Path.Combine(TEMP_FOLDER, $"render_sheet_{jobId}");
             if (!Directory.Exists(reqTempFolder)) Directory.CreateDirectory(reqTempFolder);
 
-            // 소스 .ai 해석: 로컬 우선 → R2 다운로드 → 실패
-            string actualSrc;
-            if (File.Exists(srcPath)) { actualSrc = srcPath; Console.WriteLine($"   📂 소스 .ai: {srcPath}"); }
-            else if (srcPath.StartsWith("r2://") && analysisId > 0)
+            // 소스 .ai 해석: 멀티소스(sources[]) 우선 → 없으면 단일(source_file_path) 폴백.
+            //   각 소스를 로컬/R2로 해석 → localSources = [{analysis_id, path}] → ia_params.sources.
+            string actualSrc = "";
+            var localSources = new List<object>();
+            if (job.TryGetProperty("sources", out var srcsEl) && srcsEl.ValueKind == JsonValueKind.Array && srcsEl.GetArrayLength() > 0)
             {
-                Console.WriteLine($"   ☁️  소스 .ai R2 다운로드: analysis {analysisId}");
-                var r2 = await httpClient.GetAsync($"{ERP_API_URL}/api/ai-analysis/{analysisId}/download");
-                if (!r2.IsSuccessStatusCode) { await PatchSheetRender(jobId, "error", null, $"소스 .ai 다운로드 실패 {(int)r2.StatusCode}"); return; }
-                string ext = Path.GetExtension(srcPath.Replace("r2://", "")); if (string.IsNullOrEmpty(ext)) ext = ".ai";
-                actualSrc = Path.Combine(reqTempFolder, $"source{ext}");
-                File.WriteAllBytes(actualSrc, await r2.Content.ReadAsByteArrayAsync());
+                var seen = new HashSet<int>();
+                foreach (var s in srcsEl.EnumerateArray())
+                {
+                    int aid = s.TryGetProperty("analysis_id", out var aEl) && aEl.ValueKind == JsonValueKind.Number ? aEl.GetInt32() : 0;
+                    string? sp = s.TryGetProperty("file_path", out var pEl) && pEl.ValueKind == JsonValueKind.String ? pEl.GetString() : null;
+                    if (aid <= 0 || string.IsNullOrEmpty(sp) || seen.Contains(aid)) continue;
+                    string? local = await ResolveSourceAiAsync(aid, sp, reqTempFolder);
+                    if (local == null) { await PatchSheetRender(jobId, "error", null, $"소스 .ai 해석 실패 (aid {aid})"); return; }
+                    seen.Add(aid);
+                    localSources.Add(new { analysis_id = aid, path = local });
+                    if (string.IsNullOrEmpty(actualSrc)) actualSrc = local;  // 기본/폴백
+                }
+                if (localSources.Count == 0) { await PatchSheetRender(jobId, "error", null, "유효한 소스 없음"); return; }
+                Console.WriteLine($"   🧩 멀티소스 {localSources.Count}개 준비 완료");
             }
-            else { await PatchSheetRender(jobId, "error", null, $"소스 .ai 없음(재분석 필요): {srcPath}"); return; }
+            else
+            {
+                string? srcPath = RjStr(job, "source_file_path");
+                int analysisId = job.TryGetProperty("source_analysis_id", out var aidEl) && aidEl.ValueKind == JsonValueKind.Number ? aidEl.GetInt32() : 0;
+                if (string.IsNullOrEmpty(srcPath)) { await PatchSheetRender(jobId, "error", null, "소스 경로 없음"); return; }
+                string? local = await ResolveSourceAiAsync(analysisId, srcPath, reqTempFolder);
+                if (local == null) { await PatchSheetRender(jobId, "error", null, $"소스 .ai 없음(재분석 필요): {srcPath}"); return; }
+                actualSrc = local;
+            }
 
             // canvas_json / placements_json 파싱
             var canvas = JsonSerializer.Deserialize<JsonElement>(RjStr(job, "canvas_json") ?? "{}");
@@ -1385,7 +1415,7 @@ namespace IllustratorAutomation
             double marginCm = canvas.TryGetProperty("margin_cm", out var mcEl) && mcEl.ValueKind == JsonValueKind.Number ? mcEl.GetDouble() : 1.0;
 
             double maxBottom = 0, maxRight = 0;
-            var rawPl = new List<(int gi, double x, double y, double w, double h, bool rot, double rotation)>();
+            var rawPl = new List<(int gi, double x, double y, double w, double h, bool rot, double rotation, int aid)>();
             foreach (var p in placementsArr.EnumerateArray())
             {
                 double x = p.GetProperty("x_cm").GetDouble(), y = p.GetProperty("y_cm").GetDouble();
@@ -1393,9 +1423,10 @@ namespace IllustratorAutomation
                 bool rot = p.TryGetProperty("rotated", out var rEl) && rEl.GetBoolean();
                 double rotation = p.TryGetProperty("rotation", out var rotEl) && rotEl.ValueKind == JsonValueKind.Number ? rotEl.GetDouble() : (rot ? 90.0 : 0.0); // 이형 인터록
                 int gi = p.GetProperty("group_index").GetInt32();
+                int paid = p.TryGetProperty("analysis_id", out var paidEl) && paidEl.ValueKind == JsonValueKind.Number ? paidEl.GetInt32() : 0;  // 멀티소스: 조각 소스
                 if (y + h > maxBottom) maxBottom = y + h;
                 if (x + w > maxRight) maxRight = x + w;
-                rawPl.Add((gi, x, y, w, h, rot, rotation));
+                rawPl.Add((gi, x, y, w, h, rot, rotation, paid));
             }
             if (rawPl.Count == 0) { await PatchSheetRender(jobId, "error", null, "배치 조각 없음"); return; }
 
@@ -1409,6 +1440,7 @@ namespace IllustratorAutomation
                 scaledPlacements.Add(new
                 {
                     group_index = p.gi,
+                    analysis_id = p.aid,  // 멀티소스: SheetLayout이 이 소스에서 복제(0=기본/단일)
                     x_cm = p.x / scaleFactor, y_cm = p.y / scaleFactor,
                     width_cm = p.w / scaleFactor, height_cm = p.h / scaleFactor,
                     rotated = p.rot,
@@ -1427,7 +1459,8 @@ namespace IllustratorAutomation
             var iaParamsObj = new
             {
                 mode = "sheet_layout",
-                source = actualSrc,
+                source = actualSrc,          // 단일/폴백 (SheetLayout: sources 없으면 이걸로)
+                sources = localSources,      // 멀티소스: [{analysis_id, path}] (비면 단일 source 사용)
                 scale_factor = scaleFactor,
                 canvas = new { width_cm = sheetW / scaleFactor, height_cm = sheetH / scaleFactor, margin_cm = marginCm / scaleFactor },
                 placements = scaledPlacements,

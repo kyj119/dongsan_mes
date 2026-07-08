@@ -47,6 +47,7 @@ _configFile.close();
 var _params = eval("(" + _rawJson + ")");
 
 var sourceFile  = _params.source  || "";
+var sourcesArr  = _params.sources || [];   // 멀티소스 임포지션: [{analysis_id, path}] (없으면 단일 source 폴백)
 var canvas      = _params.canvas  || {};
 var placements  = _params.placements || [];
 var outputs     = _params.outputs || {};
@@ -68,8 +69,8 @@ if (!resultJson && epsPath) {
 }
 _savedResultJson = resultJson;
 
-if (!sourceFile) {
-    $.writeln("SheetLayout ERROR: source 파라미터 필요");
+if (!sourceFile && (!sourcesArr || !sourcesArr.length)) {
+    $.writeln("SheetLayout ERROR: source 또는 sources 파라미터 필요");
     return;
 }
 if (!epsPath) {
@@ -77,18 +78,7 @@ if (!epsPath) {
     return;
 }
 
-var srcFile = new File(sourceFile);
-if (!srcFile.exists) {
-    $.writeln("SheetLayout ERROR: 파일 없음: " + sourceFile);
-    try {
-        var _errDir = resultJson ? resultJson.replace(/[^\\\/]*$/, "") : _scriptDir + "/";
-        var _ef = new File(_errDir + "error.log");
-        _ef.open("w"); _ef.write("JSError: 파일 없음: " + sourceFile); _ef.close();
-    } catch(e_ef) {}
-    return;
-}
-
-$.writeln("SheetLayout: source=" + sourceFile);
+$.writeln("SheetLayout: source=" + (sourceFile || (sourcesArr.length + "개 멀티소스")));
 $.writeln("SheetLayout: canvas=" + canvasWidthCm + "x" + canvasHeightCm + "cm margin=" + marginCm + "cm");
 $.writeln("SheetLayout: placements=" + placements.length + "개");
 
@@ -116,39 +106,61 @@ for (var _pi = 0; _pi < placements.length; _pi++) {
 }
 var canvasHeightPt = maxBottomCm * PT_PER_CM;
 
-// ── 3. 소스 파일 열기 ─────────────────────────────────────────────────────
-var doc = app.open(srcFile);
-
-// 자동 수정: CMYK 변환
-try {
-    if (doc.documentColorSpace !== DocumentColorSpace.CMYK) {
-        $.writeln("AUTO-FIX: CMYK 변환 중...");
-        app.executeMenuCommand('doc-color-cmyk');
+// ── 3. 소스 파일 열기 (멀티소스: sources[] 우선, 없으면 단일 source) ────────
+// 각 소스 .ai를 열어 CMYK 변환·텍스트 아웃라인·루트 그룹 수집 → groupsByAid.
+// 배치 루프(step 7)는 placement.analysis_id로 해당 소스 그룹에서 복제(크로스-도큐먼트).
+function _slOpenPrep(path) {
+    var f = new File(path);
+    if (!f.exists) { $.writeln("SheetLayout: 소스 파일 없음: " + path); return null; }
+    var d = app.open(f);
+    try {
+        if (d.documentColorSpace !== DocumentColorSpace.CMYK) app.executeMenuCommand('doc-color-cmyk');
+    } catch(e_cmyk) { $.writeln("AUTO-FIX WARNING: CMYK 변환 실패 - " + e_cmyk); }
+    try {
+        for (var _ti = d.textFrames.length - 1; _ti >= 0; _ti--) { try { d.textFrames[_ti].createOutline(); } catch(e_tf) {} }
+    } catch(e_tf2) {}
+    var gs = [];
+    for (var _gpi = 0; _gpi < d.pageItems.length; _gpi++) {
+        var it = d.pageItems[_gpi];
+        if (it.typename === "GroupItem" && (it.parent === d || it.parent.typename === "Layer")) gs.push(it);
     }
-} catch(e_cmyk) {
-    $.writeln("AUTO-FIX WARNING: CMYK 변환 실패 - " + e_cmyk.message);
+    return { doc: d, groups: gs };
 }
 
-// 자동 수정: 텍스트 아웃라인
-try {
-    for (var _ti = doc.textFrames.length - 1; _ti >= 0; _ti--) {
-        try { doc.textFrames[_ti].createOutline(); } catch(e_tf) {}
-    }
-} catch(e_tf2) {}
+var srcDocs = [];           // 열린 소스 문서(마지막에 전부 close)
+var groupsByAid = {};       // String(analysis_id) → 루트 그룹 배열
+var defaultGroups = null;   // 단일 소스 / analysis_id 없는 placement 폴백
 
-// ── 4. 루트 레벨 그룹 수집 ────────────────────────────────────────────────
-var allGroups = [];
-for (var i = 0; i < doc.pageItems.length; i++) {
-    var it = doc.pageItems[i];
-    if (it.typename === "GroupItem" && (it.parent === doc || it.parent.typename === "Layer")) {
-        allGroups.push(it);
+if (sourcesArr && sourcesArr.length) {
+    for (var _si = 0; _si < sourcesArr.length; _si++) {
+        var _s = sourcesArr[_si];
+        var _prep = _slOpenPrep(_s.path);
+        if (_prep) {
+            srcDocs.push(_prep.doc);
+            groupsByAid[String(_s.analysis_id)] = _prep.groups;
+            if (!defaultGroups) defaultGroups = _prep.groups;
+            $.writeln("SheetLayout: 소스 aid=" + _s.analysis_id + " 그룹=" + _prep.groups.length);
+        }
     }
+} else {
+    var _prep0 = _slOpenPrep(sourceFile);
+    if (!_prep0) {
+        $.writeln("SheetLayout ERROR: 파일 없음: " + sourceFile);
+        try {
+            var _errDir = resultJson ? resultJson.replace(/[^\\\/]*$/, "") : _scriptDir + "/";
+            var _ef = new File(_errDir + "error.log");
+            _ef.open("w"); _ef.write("JSError: 파일 없음: " + sourceFile); _ef.close();
+        } catch(e_ef) {}
+        return;
+    }
+    srcDocs.push(_prep0.doc);
+    defaultGroups = _prep0.groups;
+    $.writeln("SheetLayout: 소스 그룹 수=" + _prep0.groups.length);
 }
-$.writeln("SheetLayout: 소스 그룹 수=" + allGroups.length);
 
-if (allGroups.length === 0) {
+if (!defaultGroups || defaultGroups.length === 0) {
     $.writeln("SheetLayout ERROR: 그룹이 없습니다");
-    doc.close(SaveOptions.DONOTSAVECHANGES);
+    for (var _ci = 0; _ci < srcDocs.length; _ci++) { try { srcDocs[_ci].close(SaveOptions.DONOTSAVECHANGES); } catch(e_c){} }
     return;
 }
 
@@ -228,9 +240,10 @@ newDoc.activeLayer = layerA;
 
 for (var pi = 0; pi < placements.length; pi++) {
     var pl = placements[pi];
-    var srcGroup = allGroups[pl.group_index];
+    var _plGroups = (pl.analysis_id != null && groupsByAid[String(pl.analysis_id)]) ? groupsByAid[String(pl.analysis_id)] : defaultGroups;
+    var srcGroup = _plGroups[pl.group_index];
     if (!srcGroup) {
-        $.writeln("SheetLayout WARNING: group_index=" + pl.group_index + " 없음");
+        $.writeln("SheetLayout WARNING: aid=" + pl.analysis_id + " group_index=" + pl.group_index + " 없음");
         continue;
     }
 
@@ -437,7 +450,7 @@ if (dxfPath) {
 
 // ── 11. 정리 ──────────────────────────────────────────────────────────────
 newDoc.close(SaveOptions.DONOTSAVECHANGES);
-doc.close(SaveOptions.DONOTSAVECHANGES);
+for (var _sdc = 0; _sdc < srcDocs.length; _sdc++) { try { srcDocs[_sdc].close(SaveOptions.DONOTSAVECHANGES); } catch(e_sdc){} }
 
 // ── 12. 사후 검증 + 결과 JSON ──────────────────────────────────────────────
 var verifyErrors = [];
