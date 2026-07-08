@@ -940,18 +940,58 @@ function fmtMmDd(s) {
   return s.length === 8 ? s.slice(4, 6) + '/' + s.slice(6, 8) : s;
 }
 
+var WEEKDAY_KO = ['일', '월', '화', '수', '목', '금', '토'];
+
 async function loadSchedule() {
+  var tl = document.getElementById('scheduleTimeline');
   var tbody = document.getElementById('scheduleTableBody');
-  if (!tbody) return;
+  if (!tl || !tbody) { console.warn('[cardExpenses] schedule containers not found'); return; }
+  tl.innerHTML = '<div class="text-center py-6 text-gray-400"><i class="fas fa-spinner fa-spin mr-1"></i>로딩 중...</div>';
   tbody.innerHTML = '<tr><td colspan="7" class="text-center py-8 text-gray-400"><i class="fas fa-spinner fa-spin mr-1"></i>로딩 중...</td></tr>';
   try {
     var res = await axios.get('/api/card-expenses/payment-schedule');
     var data = res.data.data || {};
     var cards = data.cards || [];
 
-    setKpiText('scheduleTotal', (data.total_payment || 0).toLocaleString() + '원');
+    // ── 결제일별 그룹 (실제 결제 예정, net>0만) ──
+    var groups = {};   // 'YYYY-MM-DD' → { total, cards:[] }
+    cards.forEach(function(c) {
+      var amt = c.net_amount || 0;
+      if (amt <= 0 || !c.payment_date) return;
+      var g = groups[c.payment_date] || (groups[c.payment_date] = { total: 0, cards: [] });
+      g.total += amt;
+      g.cards.push(c);
+    });
+    var dates = Object.keys(groups).sort();
+    var grandTotal = dates.reduce(function(s, d) { return s + groups[d].total; }, 0);
+
+    setKpiText('scheduleTotal', '₩ ' + grandTotal.toLocaleString());
     setKpiText('scheduleCardCount', cards.length + '개');
-    setKpiText('scheduleNextDate', data.next_payment_date || '-');
+    setKpiText('schedulePayDateCount', dates.length);
+
+    if (!dates.length) {
+      tl.innerHTML = '<div class="text-center py-6 text-gray-400">예정된 결제가 없습니다</div>';
+    } else {
+      var today = new Date(); today.setHours(0, 0, 0, 0);
+      tl.innerHTML = dates.map(function(d, idx) {
+        var p = d.split('-').map(Number);
+        var dt = new Date(p[0], p[1] - 1, p[2]);
+        var dday = Math.round((dt - today) / 86400000);
+        var ddLabel = dday === 0 ? 'D-DAY' : dday > 0 ? 'D-' + dday : 'D+' + (-dday);
+        var nearest = idx === 0;
+        var names = groups[d].cards.map(function(c) {
+          return escapeHtml(c.card_name || '') + (c.card_number_last4 ? '<span class="text-gray-400">(' + escapeHtml(String(c.card_number_last4)) + ')</span>' : '');
+        }).join(' · ');
+        return '<div class="flex items-center gap-3 py-2.5' + (idx < dates.length - 1 ? ' border-b border-gray-100' : '') + '">' +
+          '<div class="shrink-0 text-center" style="width:70px">' +
+            '<div class="text-sm font-bold ' + (nearest ? 'text-red-600' : 'text-gray-700') + '">' + fmtMmDd(d.replace(/-/g, '')) + '</div>' +
+            '<div class="text-[10px] text-gray-400">(' + WEEKDAY_KO[dt.getDay()] + ') ' + ddLabel + '</div>' +
+          '</div>' +
+          '<div class="flex-1 text-xs text-gray-500 leading-snug">' + names + '</div>' +
+          '<div class="shrink-0 text-right tabular-nums font-bold ' + (nearest ? 'text-red-600' : 'text-gray-800') + '">' + groups[d].total.toLocaleString() + '원</div>' +
+        '</div>';
+      }).join('');
+    }
 
     if (!cards.length) {
       tbody.innerHTML = '<tr><td colspan="7" class="text-center py-8 text-gray-400">등록된 카드가 없습니다</td></tr>';
@@ -974,6 +1014,7 @@ async function loadSchedule() {
         '<td class="px-3 py-2 text-center text-sm text-gray-500">' + (c.tx_count || 0) + '</td></tr>';
     }).join('');
   } catch (e) {
+    if (tl) tl.innerHTML = '<div class="text-center py-6 text-red-400">로딩 실패</div>';
     tbody.innerHTML = '<tr><td colspan="7" class="text-center py-8 text-red-400">로딩 실패</td></tr>';
   }
 }

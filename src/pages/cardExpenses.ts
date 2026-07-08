@@ -151,22 +151,24 @@ export function cardExpensesPage(c: Context<HonoEnv>) {
 
       <!-- ===== 결제 예정 탭 (결제일/마감 사이클 기준 일원화) ===== -->
       <div id="scheduleContent" style="display:none">
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-          <div class="ds-card ds-card-compact card-stat" style="border-color:#ef4444">
-            <div class="ds-label mb-1">다음 결제 예정 총액</div>
-            <div class="text-xl font-bold text-red-600 tabular-nums text-right" id="scheduleTotal">-</div>
+        <!-- 요약 + 결제일별 타임라인 -->
+        <div class="ds-card mb-4">
+          <div class="flex items-end justify-between mb-3">
+            <div>
+              <div class="ds-label mb-1">다가오는 결제 예정 총액</div>
+              <div class="text-2xl font-bold text-red-600 tabular-nums" id="scheduleTotal">-</div>
+            </div>
+            <div class="text-right text-xs text-gray-400 leading-relaxed">
+              등록 카드 <b class="text-gray-600" id="scheduleCardCount">-</b><br>
+              결제일 <b class="text-gray-600" id="schedulePayDateCount">-</b>건에 분산
+            </div>
           </div>
-          <div class="ds-card ds-card-compact card-stat" style="border-color:#3b82f6">
-            <div class="ds-label mb-1">카드 수</div>
-            <div class="text-xl font-bold text-blue-600 text-right" id="scheduleCardCount">-</div>
-          </div>
-          <div class="ds-card ds-card-compact card-stat" style="border-color:#8b5cf6">
-            <div class="ds-label mb-1">가장 가까운 결제일</div>
-            <div class="text-xl font-bold text-right" id="scheduleNextDate">-</div>
-          </div>
+          <div id="scheduleTimeline"></div>
+          <p class="text-xs text-gray-400 mt-3 pt-2 border-t border-gray-100"><i class="fas fa-info-circle mr-1"></i>카드사·마감일마다 결제일이 달라 실제 출금일별로 묶어 표시합니다. 각 카드의 다음 결제 1회차(마감된 사이클) 기준입니다. 마감일·결제일은 [카드 관리]에서 설정합니다.</p>
         </div>
-        <p class="text-xs text-gray-400 mb-2"><i class="fas fa-info-circle mr-1"></i>가장 가까운 실결제일(오늘 이후 첫 결제일)과 그 결제가 청산하는 마감 사이클의 누적 사용액입니다. 익월결제 카드는 직전에 마감된 사이클이 이번 달 결제됩니다. 마감일·결제일은 [카드 관리]에서 설정합니다.</p>
+        <!-- 카드별 상세 -->
         <div class="ds-card" style="padding:0">
+          <div class="px-3 py-2 text-xs font-bold text-gray-500 border-b border-gray-100"><i class="fas fa-list-ul mr-1 text-gray-400"></i>카드별 상세</div>
           <table class="ds-table ds-table-compact ds-table-striped">
             <thead><tr>
               <th class="col-name text-left">카드</th>
