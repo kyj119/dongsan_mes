@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 1 -->
-<!-- last_run_at: 2026-07-08T15:11:00+09:00 -->
+<!-- last_run_area: 2 -->
+<!-- last_run_at: 2026-07-08T19:40:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,7 +8,7 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | **6** — #473, #497(MED, 원장 거래처검색 1000cap 무음누락), #498(LOW, 페이지네이션 로딩인디케이터), #499(LOW, width_mm 힌트 불일치), #500(LOW, bank.ts sync-barobill 잔액0→NULL 강등), #501(HIGH, Area5 32회차 신규 — price-list `:entityId` 라우트 소유검증 없음, 타법인 직인/로고 열람·변조 IDOR). open 실측(`list_issues(OPEN,auto-improve)`=6) 기준. |
+| 🆕 new | **7** — #473, #497(MED, 원장 거래처검색 1000cap 무음누락), #498(LOW, 페이지네이션 로딩인디케이터), #499(LOW, width_mm 힌트 불일치), #500(LOW, bank.ts sync-barobill 잔액0→NULL 강등), #501(HIGH, price-list `:entityId` 라우트 소유검증 없음, 타법인 직인/로고 열람·변조 IDOR), #502(S, Area2 32회차 신규 — aiAnalysis.ts R2 백필/batch-results subrequest 한도 무방비+N+1). open 실측(`list_issues(OPEN,auto-improve)`=7) 기준. |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 |
 | ✔️ done | **427** ⚠️전면 재계산(아래 참조) — GitHub 실측 `search_issues(label:auto-improve is:closed reason:completed)`=427. 직전 기재값 184는 다회차에 걸친 점증 델타 동기화(diff-only) 누적오차로 실제보다 **243건 과소집계**돼 있었음(37회차 Area6 발견, 상세는 Area6 로그 참조). |
@@ -16,6 +16,16 @@
 
 > 📦 **과거 사이클 로그**는 `IMPROVEMENT_BACKLOG_ARCHIVE.md`/git 히스토리로 이관됨 (2026-06-10 1차 분리, 2026-06-25 2차 트림 343KB→192KB, 2026-06-25T10:00 3차 트림, 2026-07-03T06:00 4차 트림 288KB→86KB, **2026-07-07T13:00 5차 트림 — 07-01~07-05 사이클 로그를 git 히스토리로 이관: 238KB→78KB, 256KB Read 한도 재확보**). 신규 로그는 계속 이 파일 상단에 추가. 본 파일은 직전 2일치(07-06~) 사이클 로그 + 영구 참조 섹션(Approved/New/Auto-fixed/Done/Rejected/FP 카탈로그)만 유지. 이관분은 `git log -p -- IMPROVEMENT_BACKLOG.md`로 복원 가능.
 
+> **Area 2 코드 품질 심층 분석 (2026-07-08T19:40):**
+> - **방법**: `npm ci`(node_modules 0→81) 후 `git fetch origin main`(HEAD=origin/main `6c73020` 0/0 동기, 워킹트리 clean, #422 디버전스 0). Area 2 **33회차** — 직전 Area2(`9220261`, 07-07T00:27, 31회차) 이후 churn = **40커밋**(가격표 Phase1-4·R2 externalization·bank dedup content_key 이전·scale-fix P2/P3·IA 멀티소스 임포지션 P1-P4·IA 회전/실물저장 버그수정 4건·카드 결제예정 타임라인 재구성·#474~478 5건 픽스·#482~496 13건 배치픽스). 병렬 에이전트 2개(batch A: aiAnalysis/cards/orders/shipments/cron, batch B: clients/cardExpenses/printEvents/workbench/storageZones/approvals/PO-templates/productionReports/items/migration)로 이 churn 전수를 entity_id·N+1·authMiddleware·컬럼존재성·dead code·타입불일치 렌즈로 감사.
+> - **🟢 `npx tsc --noEmit` = exit 0** (batch A/B 공통 확인).
+> - **🟢 batch B(10파일) = net-new 0, clean**: `migration.ts` 부호 반전(`+total_adj`→`-total_adj`)은 코드베이스 공통 `billed−payments−adjustments` 컨벤션과 일치하는 정합 수정. `purchaseOrders/templates.ts`의 `po_template_items.notes` SELECT/INSERT 제거는 애초 그 테이블(0053)에 없던 컬럼 참조를 걷어낸 정합 버그수정(#496 후속). `printEvents.ts` `IS ?` NULL-safe 전환 안전, 하드코딩 리터럴 FK 바인드 없음. `storageZones.ts` 앱레벨 중복검사가 신규 0448 복합 UNIQUE(entity_id,zone_name)와 정확히 대응. `approvals.ts` R2 첨부(0449)는 `r2_key`/`file_data` 폴백 분기 정합. `clients.ts` 신규 `/credit`·`/toggle-active`는 `clients`가 entity_id 無(전역 마스터, FP클래스⑤)라 IDOR 무관 + requireRole 게이트+프론트 배선 확인. `cardExpenses.ts`/`workbench.ts`/`productionReports.ts`/`items.ts` 전부 정합 또는 사소한 로그개선.
+> - **🆕 net-new 1건(batch A) — #502 (S·issue-only, aiAnalysis.ts R2 백필+batch-results subrequest 한도 무방비)**: (1) `POST /admin/backfill-thumbnails-r2`(`:147-206`) 3종 레거시 스캔(groups_json/canvas_json/cards.thumbnail_url) 전부 **LIMIT 없이** 전량 조회 후 행마다 순차 R2 put+D1 UPDATE — 레거시 백로그 500행+ 시 서브요청 한도(~1000) 소진 가능(같은 churn의 `orders/lifecycle.ts:523-546`(#478)이 정확히 이 한도 방어용 `LIMIT 100`+`has_more` 패턴을 도입했는데 같은 파일 백필 라우트엔 미적용). ADMIN 전용·멱등(재실행 안전)이라 데이터 유실 없음, 실패 시 500만 노출. (2) `GET /batch-results`(`:126`) 최대 200행×행당 순차 `hydrateGroupsJson` R2 get — IA 멀티소스 임포지션으로 행당 그룹수 상한이 사실상 사라져 대량 hydrate 시 지연 누적(ADMIN 전용 QA 배치테스트 도구 `iaBatchTest.js:143`만 도달, 고객 트래픽 아님). 배치크기/병렬화 설계판단 필요 → issue-only.
+> - **🟢 batch A 나머지(6파일) = clean**: `orders/lifecycle.ts` #478 `toShip` LIMIT 100+`hasMore`/`shipSynced`/`shipFailed` 카운터 로직 검증 정확. `shipments.ts` `applyShipmentFieldPatch` `meta.changes>0` 반환·`merged_into_id` 취소시 detach(#477) 순서 정확. `orders/core.ts` 주문삭제 batch가 `UPDATE shipments SET merged_into_id=NULL` → `DELETE FROM shipments` 순서로 배치돼 dangling 0. `cron.ts` bank-dedup 트립와이어는 `content_key`가 GENERATED ALWAYS 컬럼이라 NULL-그룹핑 함정 미해당. `orders/create.ts` 썸네일참조 카드갱신 이미 80청크 배치. `cards/queries.ts` 썸네일 hydrate `slice(0,20)`/카드당 아이템수로 bounded.
+> - **🟢 backlog↔GitHub sync**: `list_issues(OPEN,auto-improve)` 실측 **7건**(#473,497~502) = 직전 Area1 stats(new 6) + 본 Area2 신규 1건(#502) 정합. done(427)·rejected(3) 변동 없음(owner close 0). #422 디버전스: HEAD=origin/main 동기(`6c73020`)+본 이슈생성 push 예정.
+> - **🧬 SKILL 강화 없음(신규 패턴 아님)** — #502는 기존 "N+1/subrequest 한도" 카탈로그(#458 IN절·#478 헬퍼-루프)의 R2 hydrate 변종이라 기존 렌즈로 충분히 포착.
+> - 신규 이슈 1건(#502 S·issue-only), 자동수정 0건(발견 전부 배치크기/병렬화 설계판단 필요한 issue-only), done-sync(new 6→7·정합), **신선 각도 — IA 멀티소스 임포지션 P1-P4·R2 externalization·가격표 Phase1-4·카드 결제타임라인 재구성 등 40커밋 대형 churn을 코드품질 렌즈(entity_id/N+1/authMiddleware/컬럼존재성/dead code)로 전수. batch B 10파일 전부 clean. batch A에서 R2 백필/batch-results의 subrequest 한도 무방비 발견(#502) — 같은 churn이 형제 라우트(orders/lifecycle #478)에서 이미 도입한 한도방어 패턴을 aiAnalysis.ts 백필 라우트엔 적용 안 한 부분픽스 유형.**
+>
 > **Area 1 프로덕션 헬스 (2026-07-08T15:11):**
 > - **방법**: `npm ci`(node_modules 0→81) 후 `git fetch origin main`(HEAD=origin/main `9746775` 0/0 동기, 워킹트리 clean, #422 디버전스 0). Area 1 **31회차** — 직전 Area1(`def5cb9`, 07-07T05:15, 30회차) 이후 churn = **20커밋**(IA 임포지션 P1~P4 신규기능·가격표 Phase1-4·R2 externalization·bank dedup content_key 이전·scale-fix P2/P3·카드 결제예정 타임라인 재구성·auto-improve 자동수정 2건). egress 정책 차단(webapp-9i0.pages.dev CONNECT 403) 지속 → 직접 API 프로브 불가, CI/deploy 결과로 대리검증.
 > - **🟢 배포 파이프라인 = 30/30 전량 success(net-new 0)**: `list_workflow_runs(deploy.yml)` 최근 30건(07-06T20:16~07-08T04:33) **전부 conclusion=success** — Typecheck/Build/Deploy/Wait/Smoke 전 스텝 통과. 이번 churn의 대형 신규기능(IA 임포지션 4단계 라이브 배포, 가격표 세트+전달문서 4단계, R2 이관, 카드 결제 재설계) 전체가 post-deploy smoke를 통과한 채 누적 배포됨 = prod 무중단.
