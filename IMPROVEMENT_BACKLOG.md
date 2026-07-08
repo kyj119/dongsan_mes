@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 6 -->
-<!-- last_run_at: 2026-07-08T09:12:00+09:00 -->
+<!-- last_run_area: 1 -->
+<!-- last_run_at: 2026-07-08T15:11:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -16,6 +16,15 @@
 
 > 📦 **과거 사이클 로그**는 `IMPROVEMENT_BACKLOG_ARCHIVE.md`/git 히스토리로 이관됨 (2026-06-10 1차 분리, 2026-06-25 2차 트림 343KB→192KB, 2026-06-25T10:00 3차 트림, 2026-07-03T06:00 4차 트림 288KB→86KB, **2026-07-07T13:00 5차 트림 — 07-01~07-05 사이클 로그를 git 히스토리로 이관: 238KB→78KB, 256KB Read 한도 재확보**). 신규 로그는 계속 이 파일 상단에 추가. 본 파일은 직전 2일치(07-06~) 사이클 로그 + 영구 참조 섹션(Approved/New/Auto-fixed/Done/Rejected/FP 카탈로그)만 유지. 이관분은 `git log -p -- IMPROVEMENT_BACKLOG.md`로 복원 가능.
 
+> **Area 1 프로덕션 헬스 (2026-07-08T15:11):**
+> - **방법**: `npm ci`(node_modules 0→81) 후 `git fetch origin main`(HEAD=origin/main `9746775` 0/0 동기, 워킹트리 clean, #422 디버전스 0). Area 1 **31회차** — 직전 Area1(`def5cb9`, 07-07T05:15, 30회차) 이후 churn = **20커밋**(IA 임포지션 P1~P4 신규기능·가격표 Phase1-4·R2 externalization·bank dedup content_key 이전·scale-fix P2/P3·카드 결제예정 타임라인 재구성·auto-improve 자동수정 2건). egress 정책 차단(webapp-9i0.pages.dev CONNECT 403) 지속 → 직접 API 프로브 불가, CI/deploy 결과로 대리검증.
+> - **🟢 배포 파이프라인 = 30/30 전량 success(net-new 0)**: `list_workflow_runs(deploy.yml)` 최근 30건(07-06T20:16~07-08T04:33) **전부 conclusion=success** — Typecheck/Build/Deploy/Wait/Smoke 전 스텝 통과. 이번 churn의 대형 신규기능(IA 임포지션 4단계 라이브 배포, 가격표 세트+전달문서 4단계, R2 이관, 카드 결제 재설계) 전체가 post-deploy smoke를 통과한 채 누적 배포됨 = prod 무중단.
+> - **🟢 마이그레이션/라우트 완전성 = clean**: 이번 churn 마이그 6건(`0447_scale_indexes`·`0448_storage_zones_entity_unique`·`0449_approval_attachment_r2`·`0450_price_sheets`·`0451_bank_transactions_content_key`·`0452_entity_contacts_webhard`) 중 DROP TABLE/COLUMN 0건(0448 재빌드는 07-07 Area4가 자식 4테이블 SET NULL cascade 방어 확인 완료, 재검증 불요). `git diff def5cb9..HEAD -- src/routes`에서 **제거된 라우트 0건**(신규 추가만 — priceSheets/priceList CRUD·clients credit·toggle-active 등) → #429 smoke-probe-stale 클래스(라우트 제거→프로브 404) 해당 없음.
+> - **🟢 printEvents.ts 에이전트 write-path 개선 확인**: `:296/:520`(idempotency 비교)이 `= ?` → `IS ?`로 NULL-safe 전환 + `:508`(batch) 전건실패 시 500 반환(조용한 영구유실 방지, #495 후속) — 기존 취약 패턴(#430 3번째 축 agent-FK) 재발 아님, 오히려 방어 강화.
+> - **🟡 E2E 워크플로우 = 여전히 휴면(기존 인지, net-new 아님)**: `e2e.yml` 최근 실행 07-06T22:00 최신 조회분까지 **2026-06-22가 마지막**(2주+ 미실행, main push 트리거 아님) — 30회차와 동일 상태, 헬스 게이트는 deploy.yml post-deploy smoke가 계속 담당.
+> - **🟢 backlog↔GitHub sync**: `list_issues(OPEN,auto-improve)` 실측 **6건**(#473,497,498,499,500,501) = 직전 Area6 stats(new 6) **정합**, 변동 없음(owner close/신규 0).
+> - 신규 이슈 0건, 자동수정 0건(발견 없음), done-sync 변동 없음(new 6 유지), **신선 각도 — IA 임포지션 4단계+가격표 4단계라는 두 대형 신규기능이 연속 배포된 고위험 구간을 CI 그린 여부로 전수 검증. 30/30 배포 성공 확인 외에 라우트-제거/DROP-마이그/agent-FK 3대 smoke 맹점 축 전부 clean — 이번 churn엔 해당 패턴 없음(순수 추가형 기능+안전한 read-path 개선). 클린 사이클.**
+>
 > **Area 6 자기 진화 (2026-07-08T09:12):**
 > - **방법**: `npm ci`(node_modules 0→81) 후 `git fetch origin main`(HEAD=origin/main `5c152df` 0/0 동기, 워킹트리 clean, #422 디버전스 0). Area 6 **37회차**(직전 Area5가 36회차 상당). 직전 Area5(`5c152df`, 07-07T21:00, 32회차) 자체가 최신 HEAD라 **post-Area5 코드 churn = 0**(컬럼-diff bridge·XSS bridge 대상 없음) — `9dbb477`(ia-editor 실물저장 P1)는 Area5 churn 목록에 포함됐으나 개별 XSS 클리어런스가 없어 직접 재확인: `iaEditor.js` 신규 innerHTML 보간 전부 하드코딩 문자열/숫자(`Math.round` 폭 추정치)뿐이고 에러메시지는 `iaeEscape` 적용 = clean.
 > - **🆕 net-new 발견 — backlog↔GitHub done 카운터 243건 드리프트(자기진화 핵심 발견)**: 오픈 이슈 6건 전수 재검증(open≠unfixed 거울, #473/#497~#501)은 전부 안티패턴 코드 잔존 확인(진짜 미픽스, FP 없음) → 정상. 그러나 **backlog 통계의 `done=184`가 GitHub 실측과 크게 어긋남을 발견**: `list_issues(auto-improve)` 총 436건(open 6+closed 430), `search_issues(is:closed reason:completed)`=**427**, `reason:not_planned`=1, `reason:duplicate`=2(합 3=rejected와 정합). 즉 진짜 done은 427인데 백로그는 184로 **243건 과소집계**. 원인 추정: 다회차에 걸친 백로그 파일 트림(5차례, 343KB→78KB) 과정에서 done 카운터가 "이번 사이클 델타(N건 close 확인)"만 가산하는 diff-only 갱신 방식이라, 트림으로 이전 사이클의 세부 로그가 git 히스토리로 넘어갈 때 **누적 총합 재계산 없이** 델타만 이어붙여 온 것으로 보임(예: "171+13=184"처럼 직전 표기값에 이번 델타만 더함 — 그 171 자체가 이미 과거 어느 시점 유실분을 포함한 채였을 가능성). **수정**: 통계표 `done`을 GitHub 실측 427로 정정.
