@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 2 -->
-<!-- last_run_at: 2026-07-08T19:40:00+09:00 -->
+<!-- last_run_area: 3 -->
+<!-- last_run_at: 2026-07-08T21:20:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,7 +8,7 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | **7** — #473, #497(MED, 원장 거래처검색 1000cap 무음누락), #498(LOW, 페이지네이션 로딩인디케이터), #499(LOW, width_mm 힌트 불일치), #500(LOW, bank.ts sync-barobill 잔액0→NULL 강등), #501(HIGH, price-list `:entityId` 라우트 소유검증 없음, 타법인 직인/로고 열람·변조 IDOR), #502(S, Area2 32회차 신규 — aiAnalysis.ts R2 백필/batch-results subrequest 한도 무방비+N+1). open 실측(`list_issues(OPEN,auto-improve)`=7) 기준. |
+| 🆕 new | **9** — #473, #497(MED, 원장 거래처검색 1000cap 무음누락), #498(LOW, 페이지네이션 로딩인디케이터), #499(LOW, width_mm 힌트 불일치), #500(LOW, bank.ts sync-barobill 잔액0→NULL 강등), #501(HIGH, price-list `:entityId` 라우트 소유검증 없음, 타법인 직인/로고 열람·변조 IDOR), #502(S, Area2 32회차 — aiAnalysis.ts R2 백필/batch-results subrequest 한도 무방비+N+1), #503(S, Area3 33회차 신규 — priceManagement.js loadHistory catch 누락), #504(S, Area3 33회차 신규 — settings.js 회사인쇄정보 로드실패 무음+CSV 가드 미재사용). open 실측(`list_issues(OPEN,auto-improve)`=9) 기준. |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 |
 | ✔️ done | **427** ⚠️전면 재계산(아래 참조) — GitHub 실측 `search_issues(label:auto-improve is:closed reason:completed)`=427. 직전 기재값 184는 다회차에 걸친 점증 델타 동기화(diff-only) 누적오차로 실제보다 **243건 과소집계**돼 있었음(37회차 Area6 발견, 상세는 Area6 로그 참조). |
@@ -16,6 +16,18 @@
 
 > 📦 **과거 사이클 로그**는 `IMPROVEMENT_BACKLOG_ARCHIVE.md`/git 히스토리로 이관됨 (2026-06-10 1차 분리, 2026-06-25 2차 트림 343KB→192KB, 2026-06-25T10:00 3차 트림, 2026-07-03T06:00 4차 트림 288KB→86KB, **2026-07-07T13:00 5차 트림 — 07-01~07-05 사이클 로그를 git 히스토리로 이관: 238KB→78KB, 256KB Read 한도 재확보**). 신규 로그는 계속 이 파일 상단에 추가. 본 파일은 직전 2일치(07-06~) 사이클 로그 + 영구 참조 섹션(Approved/New/Auto-fixed/Done/Rejected/FP 카탈로그)만 유지. 이관분은 `git log -p -- IMPROVEMENT_BACKLOG.md`로 복원 가능.
 
+> **Area 3 UX/기능 감사 (2026-07-08T21:20):**
+> - **방법**: `npm ci`(node_modules 0→81) 후 `git fetch origin main`(HEAD=origin/main `aee5f5c` 0/0 동기, 워킹트리 clean, #422 디버전스 0). Area 3 **33회차** — 직전 Area3(`028d7db`, 07-07T13:00, 31회차) 이후 UX churn = **13파일**(`git diff --stat 028d7db..HEAD -- src/scripts src/pages`): `iaEditor.js`(+5605, 멀티소스 임포지션 P1~P4)·`priceManagement.js`(+698)·`settings.js`(+193)·`priceManagement.ts`(+96)·`cardExpenses.ts/js`(결제예정 타임라인 재구성)·`approvals.js`(R2 첨부)·`items/core.js`·`orderForm/finishing.js`·`login.ts`(favicon). **신선 각도 = 3개 병렬 에이전트로 대형 신규기능 3종(IA임포지션/가격표관리/카드결제타임라인)을 표준 5축(dead-button·HTML↔JS silent-fail·showConfirm오용·`?raw`concat스코프·로딩/에러/빈상태+타임라인 로직 수기검증)으로 전수 감사.**
+> - **🟢 IA 임포지션(P1~P4, iaEditor.js 5605줄) = clean, net-new 0**: 신규 axios 0건(기존 `/sheets`,`/process` 필드 확장 재사용, 백엔드 확인)·신규 getElementById 전부 자기 자신이 렌더 직후 바인딩(`if(el)` 가드 완비)·showConfirm 2건 전부 `.then()` 정상·`typeof X==='function'` 가드 2건 전부 같은 파일 내 정의(concat 무관)·자동배치/렌더/EPS출력/롤폭추천 전부 에러토스트+스피너+빈상태 가드 완비.
+> - **🆕 net-new 2건(가격표 관리 Phase1-4) — 자동수정 0(Area3 정책상 issue-only)**:
+>   - **#503 (S)** `priceManagement.js:702-718` loadHistory — `axios.get(...).then()`만 있고 `.catch()` 없음(unhandled rejection, 실패 시 로딩/에러 표시 없이 멈춤).
+>   - **#504 (S)** `settings.js:587-603` loadCompanyPrintInfo(신규 Phase2) — catch가 `console.warn`만, 형제 `loadLogoSettings`(`:527-547`)는 `showToast`로 알림하는데 이 함수만 무음(A-024/A-025급 부분 처리). 부차: `priceManagement.js:1180-1195` CSV export가 서버측 `csv.ts escapeCsvField`(#367 가드) 미재사용(LOW, Area5 참고사항으로 병기).
+> - **🟢 가격표 관리 나머지 = clean**: dead-button(price-sheets/price-list 전 axios 경로 라우트 실재)·HTML↔JS id(96개 전수 매치+가드)·showConfirm/Prompt(호출 자체 없음, 네이티브 confirm/prompt만)·`?raw`concat(가드 2건 전부 동일파일)·인라인편집 저장 성공/실패 피드백 완비.
+> - **🟢 카드결제 타임라인 재구성(c325550/ae2bc22) = clean, 로직 정확성 수기검증 완료**: "가장 가까운 결제일 = 진행중 사이클→실제 다음 출금일" 수정을 `cardExpenses.ts:667-730` 대조 추적 — 결제일을 먼저 확정(`td<=payThisMonthDay`)한 뒤 청산 사이클을 역산하는 방식으로 전환, cutoff/payment 조합 2케이스 손계산 검증 결과 과거날짜 노출·off-by-one 없음. KST는 SQL `strftime(...,'+9 hours')`로 정수 y/m/d만 사용해 JS Date 타임존 함정 원천 회피. 정렬(`YYYY-MM-DD` 사전식=날짜순 일치)·빈상태 문구·getElementById(scheduleTimeline/schedulePayDateCount) 전부 정상. `orderForm/finishing.js`의 `.find()`→배열 캐스팅 수정은 기존 TypeError 버그의 정상 수정(신규 이슈 아님).
+> - **🟢 backlog↔GitHub sync**: `list_issues(OPEN,auto-improve)` 실측 **9건**(#473,497~504) = 직전 Area2 stats(new 7) + 본 Area3 신규 2건(#503,504) 정합. done(427)·rejected(3) 변동 없음(owner close 0).
+> - **🧬 SKILL 강화 없음(신규 패턴 아님)** — #503/#504 전부 기존 "로딩/에러/빈상태 UX" 카탈로그(A-024/A-025급 부분 처리)로 충분히 포착.
+> - 신규 이슈 2건(#503 S·#504 S, 전부 issue-only), 자동수정 0건(Area3 정책상 UI/UX 자동수정 금지), done-sync(new 7→9·정합), **신선 각도 — 5600줄 대형 IA임포지션 기능 전수 감사에서 net-new 0(기존 UX 패턴 일관 재사용) 확인 + 가격표관리 신규 Phase1-4에서 에러처리 부분누락 2건 격리 + 카드결제 타임라인 재구성 버그수정 로직을 수기 대조 검증(정확함 확인).**
+>
 > **Area 2 코드 품질 심층 분석 (2026-07-08T19:40):**
 > - **방법**: `npm ci`(node_modules 0→81) 후 `git fetch origin main`(HEAD=origin/main `6c73020` 0/0 동기, 워킹트리 clean, #422 디버전스 0). Area 2 **33회차** — 직전 Area2(`9220261`, 07-07T00:27, 31회차) 이후 churn = **40커밋**(가격표 Phase1-4·R2 externalization·bank dedup content_key 이전·scale-fix P2/P3·IA 멀티소스 임포지션 P1-P4·IA 회전/실물저장 버그수정 4건·카드 결제예정 타임라인 재구성·#474~478 5건 픽스·#482~496 13건 배치픽스). 병렬 에이전트 2개(batch A: aiAnalysis/cards/orders/shipments/cron, batch B: clients/cardExpenses/printEvents/workbench/storageZones/approvals/PO-templates/productionReports/items/migration)로 이 churn 전수를 entity_id·N+1·authMiddleware·컬럼존재성·dead code·타입불일치 렌즈로 감사.
 > - **🟢 `npx tsc --noEmit` = exit 0** (batch A/B 공통 확인).
