@@ -1487,6 +1487,8 @@ function iaeCanAllGroups() {
   return out;
 }
 function iaeCanSrc(key) { return iaeCanAllGroups().filter(function (s) { return s.key === key; })[0]; }
+// 썸네일 base64(프리픽스 없이 저장) → 렌더용 data URI. 이미 data: 접두면 그대로(방어).
+function iaeThumbSrc(t) { return t ? (String(t).indexOf('data:') === 0 ? t : ('data:image/png;base64,' + t)) : ''; }
 
 // W5: 네스팅 뷰 = 좌 폼 + 우 정적 SVG 미리보기(iaeNestRenderPreview). 자유드래그 캔버스 폐기.
 //   P2: 서브모드 'impose'면 임포지션 패널, 아니면 기존 단일그룹 네스팅 패널. 미리보기는 공용.
@@ -1547,7 +1549,7 @@ function iaeNestRenderPreview() {
       if (thumb) {
         var cx = x + w / 2, cy = y + h / 2;
         var uw = rot ? h : w, uh = rot ? w : h; // 회전 전 원본 배치 크기
-        img = '<image href="' + thumb + '" x="' + (cx - uw / 2).toFixed(1) + '" y="' + (cy - uh / 2).toFixed(1) + '" width="' + uw.toFixed(1) + '" height="' + uh.toFixed(1) + '" preserveAspectRatio="none"'
+        img = '<image href="' + iaeThumbSrc(thumb) + '" x="' + (cx - uw / 2).toFixed(1) + '" y="' + (cy - uh / 2).toFixed(1) + '" width="' + uw.toFixed(1) + '" height="' + uh.toFixed(1) + '" preserveAspectRatio="none"'
           + (r ? (' transform="rotate(' + r + ' ' + cx.toFixed(1) + ' ' + cy.toFixed(1) + ')"') : '') + ' opacity="0.92"/>';
       }
       return img
@@ -2371,7 +2373,7 @@ function iaeImposeRenderPanel() {
       var on = !!selKeys[g.key];
       var wc = Math.round((g.w_mm || 0) / 10), hc = Math.round((g.h_mm || 0) / 10);
       var thumb = g.thumb
-        ? '<img src="' + g.thumb + '" class="w-8 h-8 object-contain rounded border border-gray-200 bg-white flex-shrink-0" alt="">'
+        ? '<img src="' + iaeThumbSrc(g.thumb) + '" class="w-8 h-8 object-contain rounded border border-gray-200 bg-white flex-shrink-0" alt="">'
         : '<div class="w-8 h-8 rounded border border-gray-200 bg-white flex items-center justify-center flex-shrink-0"><i class="fas fa-image text-gray-300 text-xs"></i></div>';
       return '<label class="flex items-center gap-2 p-1 rounded-md cursor-pointer border ' + (on ? 'border-blue-300 bg-blue-50' : 'border-transparent hover:bg-white') + '">'
         + '<input type="checkbox" class="iae-imp-pick" data-key="' + g.key + '"' + (on ? ' checked' : '') + '>'
