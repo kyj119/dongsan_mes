@@ -12,13 +12,13 @@ export function iaEditorPage(c: Context<HonoEnv>) {
     activePage: '/ia-editor',
     pageContent: `
       <div class="mb-4">
-        <p class="text-sm text-gray-500">고객 AI 시안 업로드 → 그룹 추출(ExtractGroups) → 처리 설정(크기·마감·회전) → 동일 품목 시트 네스팅. <span class="text-gray-400">주문 연결은 이후 단계.</span></p>
+        <p class="text-sm text-gray-500">고객 AI 시안 업로드 → 그룹 추출(ExtractGroups) → 처리 설정(크기·마감·회전) → 시트 네스팅 · 여러 파일 모아찍기(임포지션). <span class="text-gray-400">주문 연결은 이후 단계.</span></p>
       </div>
 
       <!-- 뷰 토글 -->
       <div class="flex gap-2 mb-4">
         <button id="iaeViewEdit" class="px-4 py-2 rounded-lg text-sm font-medium border border-blue-500 bg-blue-50 text-blue-700"><i class="fas fa-object-group mr-1"></i>파일 처리</button>
-        <button id="iaeViewCanvas" class="px-4 py-2 rounded-lg text-sm font-medium border border-gray-200 text-gray-600 hover:bg-gray-50"><i class="fas fa-layer-group mr-1"></i>네스팅</button>
+        <button id="iaeViewCanvas" class="px-4 py-2 rounded-lg text-sm font-medium border border-gray-200 text-gray-600 hover:bg-gray-50"><i class="fas fa-layer-group mr-1"></i>네스팅/모아찍기</button>
       </div>
 
       <!-- 파일 처리 뷰 -->
