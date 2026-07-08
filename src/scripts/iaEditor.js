@@ -1527,6 +1527,9 @@ function iaeNestRenderPreview() {
   }
   host.className = 'min-h-[480px]';
   var maxW = 560; // px 목표 폭
+  // P3-a: 조각 썸네일 맵(analysis_id:group_index → thumb) — 각 조각을 실제 이미지로 채워 멀티소스 구성 확인.
+  var thumbMap = {};
+  iaeCanAllGroups().forEach(function (g) { if (g.thumb) thumbMap[g.fid + ':' + g.gi] = g.thumb; });
   var cards = sheets.map(function (sh) {
     var wCm = (sh.w_mm || 0) / 10, hCm = (sh.h_mm || 0) / 10;
     if (wCm <= 0 || hCm <= 0) return '';
@@ -1534,11 +1537,22 @@ function iaeNestRenderPreview() {
     var vbW = +(wCm * scale).toFixed(1), vbH = +(hCm * scale).toFixed(1);
     var pls = sh.placements || [];
     var rects = pls.map(function (p) {
-      var rot = (p.rotation === 90 || p.rotation === 270 || p.rotated);
+      var r = ((p.rotation != null ? p.rotation : (p.rotated ? 90 : 0)) % 360 + 360) % 360;
+      var rot = (r === 90 || r === 270);
       var x = (p.x_cm || 0) * scale, y = (p.y_cm || 0) * scale;
       var w = (p.width_cm || 0) * scale, h = (p.height_cm || 0) * scale;
-      return '<rect x="' + x.toFixed(1) + '" y="' + y.toFixed(1) + '" width="' + w.toFixed(1) + '" height="' + h.toFixed(1) + '" fill="#bfdbfe" stroke="#2563eb" stroke-width="1"/>'
-        + (rot ? '<text x="' + (x + w / 2).toFixed(1) + '" y="' + (y + h / 2).toFixed(1) + '" font-size="11" fill="#1e40af" text-anchor="middle" dominant-baseline="middle">&#8635;</text>' : '');
+      // P3-a: 조각 썸네일(회전 시 미회전 크기로 그린 뒤 bbox 중심 기준 회전 → bbox 채움)
+      var thumb = thumbMap[(p.analysis_id != null ? p.analysis_id : sh.fid) + ':' + (p.group_index != null ? p.group_index : sh.gi)];
+      var img = '';
+      if (thumb) {
+        var cx = x + w / 2, cy = y + h / 2;
+        var uw = rot ? h : w, uh = rot ? w : h; // 회전 전 원본 배치 크기
+        img = '<image href="' + thumb + '" x="' + (cx - uw / 2).toFixed(1) + '" y="' + (cy - uh / 2).toFixed(1) + '" width="' + uw.toFixed(1) + '" height="' + uh.toFixed(1) + '" preserveAspectRatio="none"'
+          + (r ? (' transform="rotate(' + r + ' ' + cx.toFixed(1) + ' ' + cy.toFixed(1) + ')"') : '') + ' opacity="0.92"/>';
+      }
+      return img
+        + '<rect x="' + x.toFixed(1) + '" y="' + y.toFixed(1) + '" width="' + w.toFixed(1) + '" height="' + h.toFixed(1) + '" fill="' + (thumb ? 'none' : '#bfdbfe') + '" stroke="#2563eb" stroke-width="1"/>'
+        + (rot ? '<text x="' + (x + 6).toFixed(1) + '" y="' + (y + 12).toFixed(1) + '" font-size="10" fill="#1e40af">&#8635;</text>' : '');
     }).join('');
     var effPct = Math.round((sh.eff || 0) * 100);
     return '<div class="bg-white border border-gray-200 rounded-lg p-3 inline-block align-top mr-4 mb-4">'
@@ -1789,10 +1803,80 @@ function iaeCanPollSheet(sheetId, resHost, btn, namePrefix) {
   });
 }
 
+// ── P3-b: 실제 렌더 미리보기 — 출력 전 실물 판 JPG 확인(EPS/DXF 미생성, 이력 TTL 정리) ──
+//   첫 준비 시트를 SheetLayout preview_only로 렌더 → JPG-only 콜백을 인라인 표시(다운로드 버튼 없음).
+//   신 에이전트=jpg_base64 인라인 / 구 에이전트=jpg_r2 blob 폴백(iaeWireBlobThumbs) 양쪽 처리.
+function iaeCanPreviewRender() {
+  iaeCanReassignSheets();
+  iaeCanSheets.forEach(iaeCanSyncSheet);
+  var ready = iaeCanSheets.filter(function (sh) { return sh.placements && sh.placements.length; });
+  if (ready.length === 0) { iaeToast('먼저 \'자동 배치\'로 시트를 만드세요', 'error'); return; }
+  var sh = ready[0];
+  var body = iaeCanSheetExportBody(sh, 0, 1, true); // preview=true → canvas.preview_only
+  var resHost = document.getElementById('iaeCanNestResult');
+  var btn = document.getElementById('iaeCanPreviewBtn');
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i>렌더 준비…'; }
+  if (resHost) resHost.innerHTML = '<div class="text-xs text-blue-600"><i class="fas fa-spinner fa-spin mr-1"></i>실제 렌더 요청 중…' + (ready.length > 1 ? (' (' + ready.length + '판 중 1판)') : '') + '</div>';
+  iaeStopRenderPoll();
+  axios.post('/api/workbench/sheets', body).then(function (res) {
+    var d = res.data && res.data.data;
+    if (!d || d.id == null) throw new Error('시트 저장 응답 오류');
+    return axios.post('/api/workbench/sheets/' + d.id + '/render').then(function () {
+      iaeCanPollPreview(d.id, resHost, btn, ready.length);
+    });
+  }).catch(function (err) {
+    var msg = (err.response && err.response.data && err.response.data.error) || err.message || '미리보기 실패';
+    iaeToast(msg, 'error');
+    if (resHost) resHost.innerHTML = '';
+    iaeCanResetPreviewBtn(btn);
+  });
+}
+function iaeCanResetPreviewBtn(btn) {
+  btn = btn || document.getElementById('iaeCanPreviewBtn');
+  if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-eye mr-1"></i>실제 렌더'; }
+}
+function iaeCanPreviewResultHTML(result, base, totalReady) {
+  var jpg = result && result.jpg_base64;
+  var hasJpgR2 = result && (result.jpg_r2 || result.jpg_path);
+  var dims = (result && result.width_cm != null && result.height_cm != null) ? (Math.round(result.width_cm) + '×' + Math.round(result.height_cm) + 'cm') : '';
+  var img = jpg
+    ? '<img src="data:image/jpeg;base64,' + jpg + '" class="w-full object-contain bg-white border border-gray-200 rounded">'
+    : (hasJpgR2 ? '<img data-jpg-blob="' + iaeEscape(base) + '?kind=jpg" class="w-full object-contain bg-white border border-gray-200 rounded">' : '<div class="text-[11px] text-gray-400">미리보기 JPG를 받지 못했습니다</div>');
+  return '<div class="border border-blue-200 bg-blue-50 rounded-lg p-2">'
+    + '<div class="text-xs font-semibold text-blue-700 mb-2"><i class="fas fa-eye mr-1"></i>실제 렌더 미리보기'
+    + (totalReady > 1 ? ' <span class="font-normal text-blue-500">(1/' + totalReady + '판)</span>' : '')
+    + (dims ? ' · <span class="font-normal text-blue-600">' + iaeEscape(dims) + '</span>' : '')
+    + '</div>' + img + '</div>';
+}
+function iaeCanPollPreview(sheetId, resHost, btn, totalReady) {
+  if (resHost) resHost.innerHTML = '<div class="text-xs text-blue-600"><i class="fas fa-spinner fa-spin mr-1"></i>실제 렌더 중… (최대 2분)</div>';
+  iaePollRender(function () {
+    return axios.get('/api/workbench/sheets/' + sheetId).then(function (res) {
+      var d = (res.data && res.data.data) || {};
+      var rj = {};
+      try { rj = d.render_result_json ? (typeof d.render_result_json === 'string' ? JSON.parse(d.render_result_json) : d.render_result_json) : {}; } catch (_e) { rj = {}; }
+      if (d.render_status === 'done') return { done: true, result: rj };
+      if (d.render_status === 'error') return { error: true, msg: d.render_error || '렌더 실패' };
+      return null;
+    });
+  }, function (result) {
+    if (resHost) {
+      resHost.innerHTML = iaeCanPreviewResultHTML(result, '/api/workbench/sheets/' + sheetId + '/download', totalReady);
+      iaeWireBlobThumbs(resHost); // 구 에이전트(jpg_r2) blob 로드
+    }
+    iaeCanResetPreviewBtn(btn);
+    iaeToast('실제 렌더 미리보기 완료', 'success');
+  }, function (msg) {
+    if (resHost) resHost.innerHTML = '';
+    iaeToast(msg, 'error');
+    iaeCanResetPreviewBtn(btn);
+  });
+}
+
 // ── R3b-2: 시트 → /sheets 페이로드 빌더 (단일·다중판 공용) ─────────────
 // 단일 시트 출력과 다중판 분할이 동일 페이로드 계약을 쓰도록 추출. total>1이면 이름에 (n/N) 부여.
 // total=1이면 기존 단일 출력과 byte-identical(name·canvas·placements 동일) → 회귀 0.
-function iaeCanSheetExportBody(sh, idx, total) {
+function iaeCanSheetExportBody(sh, idx, total, preview) {
   var src = iaeCanSrc(sh.key) || {};
   var pls = sh.placements || [];
   // 멀티소스: placements의 distinct analysis_id(fid) 수집 → source_analysis_ids 배열(JSON).
@@ -1812,6 +1896,7 @@ function iaeCanSheetExportBody(sh, idx, total) {
     source_file_path: iaeCanFileR2(src.fid != null ? src.fid : sh.fid),  // 하위호환(단일 폴백)
     group_index: sh.gi
   };
+  if (preview) canvas.preview_only = true; // P3-b: 실제 렌더 미리보기(JPG-only, EPS/DXF·R2·이력 스킵). render-queue가 canvas_json 통과 → 에이전트.
   var multi = aidList.length > 1;
   var name = '네스팅 ' + (multi ? (aidList.length + '개 소스 ' + pls.length + '조각') : ((src.filename || '') + ' #' + sh.gi)) + ((total > 1) ? (' (' + (idx + 1) + '/' + total + ')') : '');
   return {
@@ -2101,9 +2186,10 @@ function iaeCanRenderNestPanel() {
     + '<div class="text-[11px] text-gray-400">설정(수량·규격·회전 등)을 바꾸고 다시 누르면 재배치됩니다. 조각 개별 드래그는 없습니다.</div>'
     // (§4.1) 출력(EPS, 주문 없이) / 주문 보내기 — 둘 다 자동 배치 결과 사용
     + '<div class="border-t border-gray-100 pt-2 mt-1 space-y-2">'
+    + '<button id="iaeCanPreviewBtn" class="w-full px-3 py-2 rounded-md border border-blue-400 text-blue-700 hover:bg-blue-50 text-sm"><i class="fas fa-eye mr-1"></i>실제 렌더</button>'
     + '<button id="iaeCanExportBtn" class="w-full px-3 py-2 rounded-md bg-gray-800 text-white hover:bg-black text-sm"><i class="fas fa-file-export mr-1"></i>EPS 출력</button>'
     + '<button id="iaeNestOrderBtn" class="w-full px-3 py-2 rounded-md bg-green-600 text-white hover:bg-green-700 text-sm"><i class="fas fa-file-invoice mr-1"></i>주문 보내기</button>'
-    + '<div class="text-[11px] text-gray-400">EPS = 주문 없이 시트를 받기(단일 시트, 평판은 다중판 분할). 주문 보내기 = 거래처·품목 지정.</div>'
+    + '<div class="text-[11px] text-gray-400">실제 렌더 = 출력 전 실물 판 JPG 확인. EPS = 주문 없이 시트 받기(단일 시트, 평판 다중판 분할). 주문 보내기 = 거래처·품목 지정.</div>'
     + '<div id="iaeCanNestResult"></div>'
     + '</div>'
     + '</div>';
@@ -2190,6 +2276,8 @@ function iaeCanRenderNestPanel() {
     if (packerEl) o.packer = (packerEl.value === 'maxrects') ? 'maxrects' : 'shelf'; // R3b-1
     iaeCanNestPlace(o);
   });
+  var pvEl = document.getElementById('iaeCanPreviewBtn'); // P3-b: 실제 렌더 미리보기
+  if (pvEl) pvEl.addEventListener('click', iaeCanPreviewRender);
   var exportEl = document.getElementById('iaeCanExportBtn');
   if (exportEl) exportEl.addEventListener('click', iaeCanExportSheets);
   var orderEl = document.getElementById('iaeNestOrderBtn'); // W5: 주문 보내기(자동배치 결과)
@@ -2353,8 +2441,9 @@ function iaeImposeRenderPanel() {
     + '<div id="iaeImpEst" class="bg-blue-50 border border-blue-100 rounded-md px-2 py-1.5"></div>'
     + '<button id="iaeImpRun" class="w-full px-3 py-2 rounded-md bg-blue-600 text-white hover:bg-blue-700 text-sm"><i class="fas fa-table-cells mr-1"></i>자동 배치</button>'
     + '<div class="border-t border-gray-100 pt-2 mt-1 space-y-2">'
+    + '<button id="iaeCanPreviewBtn" class="w-full px-3 py-2 rounded-md border border-blue-400 text-blue-700 hover:bg-blue-50 text-sm"><i class="fas fa-eye mr-1"></i>실제 렌더</button>'
     + '<button id="iaeCanExportBtn" class="w-full px-3 py-2 rounded-md bg-gray-800 text-white hover:bg-black text-sm"><i class="fas fa-file-export mr-1"></i>EPS 출력</button>'
-    + '<div class="text-[11px] text-gray-400">이종 파일 혼합 한 판 · 출력 EPS/JPG/DXF (주문·카드 미생성). 조각별 올바른 소스로 복제됩니다.</div>'
+    + '<div class="text-[11px] text-gray-400">실제 렌더 = 출력 전 실물 판 JPG 확인 · EPS 출력 = EPS/JPG/DXF 받기(주문·카드 미생성). 이종 파일 혼합, 조각별 올바른 소스로 복제.</div>'
     + '<div id="iaeCanNestResult"></div>'
     + '</div>'
     + '</div>';
@@ -2428,9 +2517,11 @@ function iaeImposeRenderPanel() {
   if (allowRotEl) allowRotEl.addEventListener('change', function () { o.allow_rotate = allowRotEl.checked; if (!allowRotEl.checked) iaeToast('회전 비허용 — 방향성 소재 보호', 'info'); iaeImposeSave(); iaeImposeRenderEstimate(); });
   var packerEl = document.getElementById('iaeImpPacker');
   if (packerEl) packerEl.addEventListener('change', function () { o.packer = (packerEl.value === 'maxrects') ? 'maxrects' : 'shelf'; if (o.packer === 'maxrects') iaeToast('MaxRects — 빈 공간을 재활용해 촘촘히 배치', 'info'); iaeImposeSave(); iaeImposeRenderEstimate(); });
-  // 자동 배치 / EPS 출력
+  // 자동 배치 / 실제 렌더 / EPS 출력
   var runEl = document.getElementById('iaeImpRun');
   if (runEl) runEl.addEventListener('click', iaeImposePlace);
+  var pvEl = document.getElementById('iaeCanPreviewBtn');
+  if (pvEl) pvEl.addEventListener('click', iaeCanPreviewRender);
   var exportEl = document.getElementById('iaeCanExportBtn');
   if (exportEl) exportEl.addEventListener('click', iaeCanExportSheets);
 

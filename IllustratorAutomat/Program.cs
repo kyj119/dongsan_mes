@@ -1410,6 +1410,8 @@ namespace IllustratorAutomation
             var canvas = JsonSerializer.Deserialize<JsonElement>(RjStr(job, "canvas_json") ?? "{}");
             var placementsArr = JsonSerializer.Deserialize<JsonElement>(RjStr(job, "placements_json") ?? "[]");
             string mode = RjStr(job, "mode") ?? "roll";
+            // P3-b: 실제 렌더 미리보기(canvas_json preview_only) — EPS/DXF·R2 스킵, JPG(base64)만 콜백. (프론트가 canvas_json에 실어보냄)
+            bool preview = canvas.TryGetProperty("preview_only", out var pvSheetEl) && (pvSheetEl.ValueKind == JsonValueKind.True || (pvSheetEl.ValueKind == JsonValueKind.Number && pvSheetEl.GetDouble() != 0));
             double presetW = canvas.TryGetProperty("preset_w_cm", out var pwEl) && pwEl.ValueKind == JsonValueKind.Number ? pwEl.GetDouble() : 0;
             double presetH = canvas.TryGetProperty("preset_h_cm", out var phEl) && phEl.ValueKind == JsonValueKind.Number ? phEl.GetDouble() : 0;
             double marginCm = canvas.TryGetProperty("margin_cm", out var mcEl) && mcEl.ValueKind == JsonValueKind.Number ? mcEl.GetDouble() : 1.0;
@@ -1448,7 +1450,10 @@ namespace IllustratorAutomation
                 });
 
             var now = DateTime.Now;
-            string outFolder = Path.Combine(ZDRIVE_PATH, "DESIGN", "네스팅", now.ToString("yyyy"), now.ToString("MM"), now.ToString("dd"), $"sheet_{jobId}");
+            // preview는 임시 폴더(1회성·삭제), 일반 렌더는 NAS DESIGN/네스팅.
+            string outFolder = preview
+                ? Path.Combine(TEMP_FOLDER, $"render_preview_sheet_{jobId}")
+                : Path.Combine(ZDRIVE_PATH, "DESIGN", "네스팅", now.ToString("yyyy"), now.ToString("MM"), now.ToString("dd"), $"sheet_{jobId}");
             if (!Directory.Exists(outFolder)) Directory.CreateDirectory(outFolder);
             string itemCode = RjStr(job, "item_code") ?? "";
             string baseName = $"네스팅{jobId}-{(int)Math.Round(sheetW)}x{(int)Math.Round(sheetH)}-{rawPl.Count}건" + (string.IsNullOrEmpty(itemCode) ? "" : $"-{SanitizeFilename(itemCode)}");
@@ -1466,7 +1471,8 @@ namespace IllustratorAutomation
                 placements = scaledPlacements,
                 bleed_mm = 3.0,
                 gaps = new List<object>(),
-                outputs = new { eps = epsOut, dxf = dxfOut, jpg = jpgOut }
+                preview_only = preview,   // P3-b: jsx가 EPS/DXF saveAs 스킵, JPG-only
+                outputs = new { eps = preview ? "" : epsOut, dxf = preview ? "" : dxfOut, jpg = jpgOut }
             };
 
             string scriptPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "SheetLayout.jsx");
@@ -1476,10 +1482,27 @@ namespace IllustratorAutomation
             Console.WriteLine($"   🖥️  Running SheetLayout.jsx (sheet {jobId}, {Math.Round(sheetW)}x{Math.Round(sheetH)}cm, scale {scaleFactor:F2}) → {outFolder}");
             RunJsxScript(scriptPath, Path.Combine(scriptDir, "ia_params.json"), timeoutMinutes: 5);
 
-            if (!File.Exists(epsOut)) { await PatchSheetRender(jobId, "error", null, "EPS 생성 실패 (SheetLayout 결과 없음)"); return; }
-
             string? jpgB64 = null;
             if (File.Exists(jpgOut)) { try { jpgB64 = Convert.ToBase64String(File.ReadAllBytes(jpgOut)); } catch { } }
+
+            // P3-b: 미리보기 — EPS/DXF 미생성, R2 업로드 없이 JPG(base64)만 콜백 후 임시폴더 정리.
+            if (preview)
+            {
+                if (jpgB64 == null) { await PatchSheetRender(jobId, "error", null, "미리보기 JPG 생성 실패 (SheetLayout 결과 없음)"); return; }
+                var pvResult = new Dictionary<string, object?>
+                {
+                    ["jpg_base64"] = jpgB64,
+                    ["width_cm"] = Math.Round(sheetW, 1),
+                    ["height_cm"] = Math.Round(sheetH, 1),
+                    ["preview"] = true
+                };
+                Console.WriteLine($"   ✅ 시트 미리보기 완료 #{jobId} (jpg 있음, R2 업로드 없음)");
+                await PatchSheetRender(jobId, "done", JsonSerializer.Serialize(pvResult), null);
+                try { Directory.Delete(outFolder, true); } catch { }
+                return;
+            }
+
+            if (!File.Exists(epsOut)) { await PatchSheetRender(jobId, "error", null, "EPS 생성 실패 (SheetLayout 결과 없음)"); return; }
 
             // R2 업로드 (브라우저 다운로드용) — 실패해도 NAS 경로는 유지
             string? epsR2 = await UploadRenderAssetAsync("sheet", jobId, "eps", epsOut);

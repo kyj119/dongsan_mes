@@ -61,6 +61,8 @@ var marginCm       = canvas.margin_cm || 1.5;
 var epsPath = outputs.eps || outputs.print_eps || "";
 var dxfPath = outputs.dxf || outputs.cut_eps || "";
 var jpgPath = outputs.jpg || "";
+// P3-b: 실제 렌더 미리보기 — EPS/DXF saveAs·사후검증 스킵, JPG만 생성. (에이전트가 outputs.eps/dxf를 ""로 넘김)
+var previewOnly = (_params.preview_only === true) || (canvas && canvas.preview_only === true);
 
 // result JSON 경로
 var resultJson = _params.resultJson || "";
@@ -73,8 +75,12 @@ if (!sourceFile && (!sourcesArr || !sourcesArr.length)) {
     $.writeln("SheetLayout ERROR: source 또는 sources 파라미터 필요");
     return;
 }
-if (!epsPath) {
+if (!previewOnly && !epsPath) {
     $.writeln("SheetLayout ERROR: outputs.eps 파라미터 필요");
+    return;
+}
+if (previewOnly && !jpgPath) {
+    $.writeln("SheetLayout ERROR: preview_only는 outputs.jpg 필요");
     return;
 }
 
@@ -405,14 +411,16 @@ $.writeln("SheetLayout: 아트보드 확장 — 돔보 마크 포함 (pad=" + Ma
 
 // ── 10. 파일 저장 ─────────────────────────────────────────────────────────
 
-// 10-1. EPS 저장 (A + B + C 전체, B는 print OFF 상태 유지)
-var epsFile = new File(epsPath);
-var epsOpts = new EPSSaveOptions();
-epsOpts.compatibility = Compatibility.ILLUSTRATOR17;
-epsOpts.preview = EPSPreview.COLORTIFF;
-epsOpts.embedLinkedFiles = true;
-newDoc.saveAs(epsFile, epsOpts);
-$.writeln("SheetLayout: EPS → " + epsPath);
+// 10-1. EPS 저장 (A + B + C 전체, B는 print OFF 상태 유지) — preview_only면 스킵
+if (!previewOnly) {
+    var epsFile = new File(epsPath);
+    var epsOpts = new EPSSaveOptions();
+    epsOpts.compatibility = Compatibility.ILLUSTRATOR17;
+    epsOpts.preview = EPSPreview.COLORTIFF;
+    epsOpts.embedLinkedFiles = true;
+    newDoc.saveAs(epsFile, epsOpts);
+    $.writeln("SheetLayout: EPS → " + epsPath);
+}
 
 // 10-2. JPG 저장 (A + B만, C 숨기기)
 layerC.visible = false;
@@ -428,6 +436,14 @@ if (jpgPath) {
     $.writeln("SheetLayout: JPG → " + jpgPath);
 }
 layerC.visible = true;
+
+// P3-b: preview_only — DXF·사후검증 스킵, 문서 정리 후 종료(에이전트가 JPG만 읽음).
+if (previewOnly) {
+    $.writeln("SheetLayout: preview_only → JPG만 생성(EPS/DXF·검증 스킵)");
+    newDoc.close(SaveOptions.DONOTSAVECHANGES);
+    for (var _pvc = 0; _pvc < srcDocs.length; _pvc++) { try { srcDocs[_pvc].close(SaveOptions.DONOTSAVECHANGES); } catch (e_pvc) {} }
+    return;
+}
 
 // 10-3. DXF 저장 (B + C만, A 삭제)
 layerA.remove(); // EPS/JPG 이미 저장됨, 문서는 close(DONOTSAVE)이므로 안전

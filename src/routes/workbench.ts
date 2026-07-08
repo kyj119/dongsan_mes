@@ -587,6 +587,8 @@ workbenchRouter.get('/agent-status', async (c) => {
 workbenchRouter.get('/render-queue', async (c) => {
   try {
     await touchAgentHeartbeat(c)
+    // P3-b: preview 시트(canvas_json preview_only)는 일회성 → 완료된 1h 경과분 정리(이력·D1 비대 방지). 에이전트 폴 주기에 편승.
+    try { await c.env.DB.prepare(`DELETE FROM sheet_layouts WHERE render_status IN ('done','error') AND canvas_json LIKE '%"preview_only":true%' AND updated_at < datetime('now','-1 hour')`).run() } catch (_e) { /* best-effort */ }
     const ef = entityFilter(c, 'sheet_layouts')
     const { results } = await c.env.DB.prepare(
       `SELECT id, name, mode, canvas_json, placements_json, item_code, source_analysis_ids
