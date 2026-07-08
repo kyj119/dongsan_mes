@@ -1441,7 +1441,7 @@ var iaeCanHotkeysBound = false;
 var IAE_SHEETS_KEY = 'iae_can_sheets_v1';
 var iaeCanSheets = [];        // [{uid, x_mm, y_mm, w_mm, h_mm, mode, label, eff, trim}]
 var iaeCanSheetUid = 1;
-var iaeCanNestOpts = { mode: 'roll', presetIdx: 0, qty: 10, gap: 0.3, margin: 1.0, key: '', ratio_lock: true, allow_rotate: true, packer: 'shelf' }; // R2-4 allow_rotate · R3b-1 packer(기본 shelf=현행)
+var iaeCanNestOpts = { mode: 'roll', presetIdx: 0, qty: 10, gap: 0.3, margin: 1.0, key: '', ratio_lock: true, allow_rotate: true, packer: 'maxrects' }; // 패킹=MaxRects 고정(선반 옵션 제거, 사용자 요청)
 // ── P2 멀티소스 임포지션(모아찍기) ─────────────────────────────────
 //   여러 파일 아트보드를 골라 한 판에 모아 배치·출력. P1 배관(placement별 analysis_id 소스 라우팅) 위에 얹는 구성 UI.
 //   대지편집 탭 서브모드: 'nest'(기존 단일그룹 네스팅, 회귀0 보존) | 'impose'(다중선택 임포지션). 좌 패널 상단 토글 전환.
@@ -1450,7 +1450,7 @@ var IAE_SUBMODE_KEY = 'iae_can_submode_v1';
 var iaeCanSubMode = 'nest';   // 'nest' | 'impose'
 var IAE_IMPOSE_KEY = 'iae_impose_v1';
 var iaeImposeSel = [];        // [{key, fid, gi, filename, w_mm, h_mm, scale, qty, bleed}] — 선택 조각(조각별 배율×N·개수·도련cm)
-var iaeImposeOpts = { mode: 'roll', presetIdx: 0, gap: 0.3, margin: 1.0, allow_rotate: true, packer: 'shelf', custom_w: '', custom_h: '' };
+var iaeImposeOpts = { mode: 'roll', presetIdx: 0, gap: 0.3, margin: 1.0, allow_rotate: true, packer: 'maxrects', custom_w: '', custom_h: '' };
 
 function iaeCanLoad() {
   try { var raw = localStorage.getItem(IAE_CANVAS_KEY); var a = raw ? JSON.parse(raw) : []; iaeCanObjs = Array.isArray(a) ? a : []; }
@@ -2109,7 +2109,6 @@ function iaeNestRenderEstimate() {
   var host = document.getElementById('iaeCanNestEst'); if (!host) return;
   var o = iaeCanNestOpts;
   var gEl = document.getElementById('iaeCanNestGroup'); if (gEl) o.key = gEl.value;
-  var pkEl = document.getElementById('iaeCanNestPacker'); if (pkEl) o.packer = (pkEl.value === 'maxrects') ? 'maxrects' : 'shelf'; // R3b-1
   var est = iaeNestEstimate(o);
   if (est.error) { host.innerHTML = '<div class="text-[11px] text-amber-600"><i class="fas fa-triangle-exclamation mr-1"></i>' + iaeEscape(est.msg) + '</div>'; return; }
   var effPct = Math.round(est.eff * 100), wastePct = Math.round(est.waste_pct * 100);
@@ -2171,11 +2170,7 @@ function iaeCanRenderNestPanel() {
     + '</div>'
     // R2-4: 회전 허용(방향성 소재 보호). on=두 방향 시뮬 후 자동 선택, off=원본 방향 고정.
     + '<label class="flex items-center gap-1 text-xs text-gray-600 cursor-pointer"><input id="iaeCanNestAllowRot" type="checkbox"' + (o.allow_rotate !== false ? ' checked' : '') + '>회전 허용 <span class="text-gray-400">(끄면 방향성 소재 보호 — 원본 방향 고정)</span></label>'
-    // R3b-1: 패킹 알고리즘 — 선반(기본·현행)/MaxRects(빈공간 재활용·촘촘). 기본 shelf=기존 배치와 동일.
-    + '<div><label class="block text-xs text-gray-500 mb-1">패킹 알고리즘</label><select id="iaeCanNestPacker" class="' + selCls + '">'
-    + '<option value="shelf"' + (o.packer !== 'maxrects' ? ' selected' : '') + '>선반 (기본)</option>'
-    + '<option value="maxrects"' + (o.packer === 'maxrects' ? ' selected' : '') + '>MaxRects (촘촘·빈공간 재활용)</option>'
-    + '</select></div>'
+    // 패킹=MaxRects 고정(빈 공간 재활용). 선반 옵션 제거(사용자 요청).
     + '<div class="grid grid-cols-3 gap-2">'
     + '<div><label class="block text-xs text-gray-500 mb-1">조각 W(cm)</label><input id="iaeCanNestTW" type="number" min="0" step="0.1" value="' + (o.target_w || '') + '" placeholder="' + curW + '" class="w-full ' + inputCls + '"></div>'
     + '<div><label class="block text-xs text-gray-500 mb-1">조각 H(cm)</label><input id="iaeCanNestTH" type="number" min="0" step="0.1" value="' + (o.target_h || '') + '" placeholder="' + curH + '" class="w-full ' + inputCls + '"></div>'
@@ -2234,13 +2229,7 @@ function iaeCanRenderNestPanel() {
     if (!allowRotEl.checked) iaeToast('회전 비허용 — 방향성 소재 보호(원본 방향 고정)', 'info');
     iaeNestRenderEstimate();
   });
-  // R3b-1: 패킹 알고리즘 select → o.packer, 예상치 갱신
-  var packerEl = document.getElementById('iaeCanNestPacker');
-  if (packerEl) packerEl.addEventListener('change', function () {
-    o.packer = (packerEl.value === 'maxrects') ? 'maxrects' : 'shelf';
-    if (o.packer === 'maxrects') iaeToast('MaxRects — 빈 공간을 재활용해 더 촘촘히 배치합니다', 'info');
-    iaeNestRenderEstimate();
-  });
+  // 패킹=MaxRects 고정(선반 옵션 제거) — 별도 select 없음.
   // ② 비율 잠금: 조각 W↔H 검출 종횡비 유지 (인스펙터 applySize 패턴 포팅). 단순 parseFloat 독립저장이 왜곡 원인.
   var nestTW = document.getElementById('iaeCanNestTW'), nestTH = document.getElementById('iaeCanNestTH');
   var nestRatioEl = document.getElementById('iaeCanNestRatio');
@@ -2275,7 +2264,7 @@ function iaeCanRenderNestPanel() {
     o.file_scale = parseFloat(document.getElementById('iaeCanNestFS').value) || 1;
     if (nestRatioEl) o.ratio_lock = nestRatioEl.checked;
     if (allowRotEl) o.allow_rotate = allowRotEl.checked; // R2-4
-    if (packerEl) o.packer = (packerEl.value === 'maxrects') ? 'maxrects' : 'shelf'; // R3b-1
+    o.packer = 'maxrects'; // 패킹 고정
     iaeCanNestPlace(o);
   });
   var pvEl = document.getElementById('iaeCanPreviewBtn'); // P3-b: 실제 렌더 미리보기
@@ -2436,10 +2425,8 @@ function iaeImposeRenderPanel() {
     + '<div><label class="block text-xs text-gray-500 mb-1">돔보 여백(cm)</label><input id="iaeImpMargin" type="number" min="0" step="0.1" value="' + o.margin + '" class="w-full ' + inputCls + '"></div>'
     + '</div>'
     + '<label class="flex items-center gap-1 text-xs text-gray-600 cursor-pointer"><input id="iaeImpAllowRot" type="checkbox"' + (o.allow_rotate !== false ? ' checked' : '') + '>회전 허용 <span class="text-gray-400">(끄면 방향 고정)</span></label>'
-    + '<div><label class="block text-xs text-gray-500 mb-1">패킹 알고리즘</label><select id="iaeImpPacker" class="' + selCls + '">'
-    + '<option value="shelf"' + (o.packer !== 'maxrects' ? ' selected' : '') + '>선반 (기본)</option>'
-    + '<option value="maxrects"' + (o.packer === 'maxrects' ? ' selected' : '') + '>MaxRects (촘촘·빈공간 재활용)</option></select></div>'
-    + '<div class="text-[11px] text-gray-400">도련 = 조각 사이 재단여백(아트워크 원본크기 유지). 재단선은 DXF 조각 외곽선으로 출력됩니다.</div>'
+    + (o.mode === 'roll' ? '<button id="iaeImpRecWidth" type="button" class="w-full px-2 py-1.5 rounded-md border border-emerald-400 text-emerald-700 hover:bg-emerald-50 text-xs"><i class="fas fa-ruler-horizontal mr-1"></i>가장 효율 좋은 롤 폭 추천</button>' : '')
+    + '<div class="text-[11px] text-gray-400">패킹=MaxRects(빈 공간 재활용). 도련=조각 사이 재단여백(아트워크 원본크기 유지). 재단선은 DXF 조각 외곽선으로 출력됩니다.</div>'
     + '<div id="iaeImpEst" class="bg-blue-50 border border-blue-100 rounded-md px-2 py-1.5"></div>'
     + '<button id="iaeImpRun" class="w-full px-3 py-2 rounded-md bg-blue-600 text-white hover:bg-blue-700 text-sm"><i class="fas fa-table-cells mr-1"></i>자동 배치</button>'
     + '<div class="border-t border-gray-100 pt-2 mt-1 space-y-2">'
@@ -2517,8 +2504,8 @@ function iaeImposeRenderPanel() {
   bindOpt('iaeImpMargin', 'margin', function (v) { return parseFloat(v) || 0; });
   var allowRotEl = document.getElementById('iaeImpAllowRot');
   if (allowRotEl) allowRotEl.addEventListener('change', function () { o.allow_rotate = allowRotEl.checked; if (!allowRotEl.checked) iaeToast('회전 비허용 — 방향성 소재 보호', 'info'); iaeImposeSave(); iaeImposeRenderEstimate(); });
-  var packerEl = document.getElementById('iaeImpPacker');
-  if (packerEl) packerEl.addEventListener('change', function () { o.packer = (packerEl.value === 'maxrects') ? 'maxrects' : 'shelf'; if (o.packer === 'maxrects') iaeToast('MaxRects — 빈 공간을 재활용해 촘촘히 배치', 'info'); iaeImposeSave(); iaeImposeRenderEstimate(); });
+  var recWidthEl = document.getElementById('iaeImpRecWidth'); // 폭 추천(롤 모드)
+  if (recWidthEl) recWidthEl.addEventListener('click', iaeImposeRecommendWidth);
   // 자동 배치 / 실제 렌더 / EPS 출력
   var runEl = document.getElementById('iaeImpRun');
   if (runEl) runEl.addEventListener('click', iaeImposePlace);
@@ -2528,6 +2515,36 @@ function iaeImposeRenderPanel() {
   if (exportEl) exportEl.addEventListener('click', iaeCanExportSheets);
 
   iaeImposeRenderEstimate();
+}
+
+// 가장 효율 좋은 롤 폭 추천 — 모든 롤 프리셋으로 MaxRects 패킹 → 재료면적(폭×롤길이) 최소 폭 선택·적용.
+//   재료면적 최소 = 효율 최고(=자투리 최소). 조각 배율/개수/도련·회전 설정 그대로 반영.
+function iaeImposeRecommendWidth() {
+  if (iaeImposeOpts.mode !== 'roll') { iaeToast('폭 추천은 롤 모드에서만 가능합니다', 'info'); return; }
+  var built = iaeImposeBuildItems();
+  if (built.error) { iaeToast(built.error, 'error'); return; }
+  if (!built.items.length) { iaeToast('아트보드를 선택하세요', 'error'); return; }
+  var o = iaeImposeOpts, margin = Number(o.margin) || 0, gap = Number(o.gap) || 0;
+  var allowRotate = (o.allow_rotate !== false);
+  var artArea = 0; built.items.forEach(function (it) { artArea += it.w * it.h; });
+  var presets = iaePresetsFor('roll');
+  var results = [];
+  presets.forEach(function (p, i) {
+    var availW = p.w - margin * 2;
+    if (availW <= 0) return;
+    var m = iaeNestPackBest('roll', p, built.items, availW, gap, margin, allowRotate, 'maxrects');
+    if (m.error) return;
+    var matArea = p.w * m.totalH;              // 재료면적 = 폭 × 롤길이
+    results.push({ idx: i, label: p.label, width: p.w, length: m.totalH, matArea: matArea, eff: matArea > 0 ? artArea / matArea : 0 });
+  });
+  if (!results.length) { iaeToast('추천 가능한 규격이 없습니다 (조각이 모든 폭보다 큼)', 'error'); return; }
+  results.sort(function (a, b) { return a.matArea - b.matArea; }); // 재료면적 최소 = 최고 효율
+  var best = results[0];
+  var cur = presets[o.presetIdx];
+  o.presetIdx = best.idx; iaeImposeSave();
+  var same = cur && cur.label === best.label;
+  iaeToast((same ? '현재 규격이 최적입니다: ' : '추천 규격 적용: ') + best.label + ' · 롤 ' + best.length.toFixed(1) + 'cm · 효율 ' + Math.round(best.eff * 100) + '%', 'success');
+  iaeImposeRenderPanel();
 }
 
 // 임포지션 자동 배치 — 이종 소스 조각을 한 판에. 대지 초기화 후 조각별 소스 오브젝트 생성 → iaeCanSyncSheet.
