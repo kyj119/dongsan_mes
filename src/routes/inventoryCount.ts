@@ -16,7 +16,8 @@ inventoryCountRouter.get('/', async (c) => {
     const storageZoneId = c.req.query('storage_zone_id')
 
     const ef = entityFilter(c, 'ic')  // #279: 법인별 격리 (sz JOIN으로 entity_id 모호 → alias 필수)
-    let query = `SELECT ic.id, ic.count_number, ic.count_date, ic.count_type, ic.status, ic.submitted_at, ic.approved_at, ic.notes, ic.storage_zone_id, sz.zone_name AS storage_zone_name
+    let query = `SELECT ic.id, ic.count_number, ic.count_date, ic.count_type, ic.status, ic.submitted_at, ic.approved_at, ic.notes, ic.storage_zone_id, sz.zone_name AS storage_zone_name,
+      (SELECT COUNT(*) FROM inventory_count_items ci WHERE ci.count_id = ic.id) AS item_count
       FROM inventory_counts ic
       LEFT JOIN storage_zones sz ON ic.storage_zone_id = sz.id
       WHERE 1=1` + ef.clause
@@ -236,26 +237,36 @@ inventoryCountRouter.get('/:id', async (c) => {
   }
 })
 
-// PUT /:id/items — 실사 항목 일괄 업데이트
+// PUT /:id/items — 실사 항목 일괄 업데이트 (APPROVED 잠금 — 승인 후 기록 변조 방지)
 inventoryCountRouter.put('/:id/items', async (c) => {
   try {
     const countId = parseInt(c.req.param('id'))
-    const body = await c.req.json<{ items?: { id: number; system_quantity: string; counted_quantity: string; notes?: string }[] }>()
+    const body = await c.req.json<{ items?: { id: number; system_quantity: string; counted_quantity: string | null; notes?: string }[] }>()
     const { items = [] } = body
 
     // 타법인 실사 항목 수정 차단: 부모 count가 호출자 법인 소속인지 확인
     const efItems = entityFilter(c)
     const ownCount = await c.env.DB.prepare(
-      `SELECT id FROM inventory_counts WHERE id = ?${efItems.clause}`
-    ).bind(countId, ...efItems.params).first()
+      `SELECT id, status FROM inventory_counts WHERE id = ?${efItems.clause}`
+    ).bind(countId, ...efItems.params).first<{ status: string }>()
     if (!ownCount) {
       return c.json({ success: false, error: 'Count not found' }, 404)
     }
+    if (ownCount.status === 'APPROVED') {
+      return c.json({ success: false, error: '승인된 실사는 수정할 수 없습니다' }, 400)
+    }
 
-    // 일괄 업데이트 (batch)
+    // 일괄 업데이트 (batch). counted_quantity null/빈값 = 미입력(NULL) 되돌림 → 승인 시 보정 제외
     if (items.length > 0) {
       await c.env.DB.batch(
         items.map((item: any) => {
+          if (item.counted_quantity === null || item.counted_quantity === undefined || item.counted_quantity === '') {
+            return c.env.DB.prepare(`
+              UPDATE inventory_count_items
+              SET counted_quantity = NULL, difference = NULL, difference_pct = NULL, notes = ?
+              WHERE id = ? AND count_id = ?
+            `).bind(item.notes || '', item.id, countId)
+          }
           const systemQty = Number(item.system_quantity)
           const countedQty = Number(item.counted_quantity)
           const diff = countedQty - systemQty
@@ -288,10 +299,14 @@ inventoryCountRouter.post('/:id/add-items', async (c) => {
     // 타법인 차단: 부모 count가 호출자 법인 소속인지 확인 + count 정보 확보
     const ef = entityFilter(c)
     const count = await c.env.DB.prepare(
-      `SELECT id, storage_zone_id, entity_id FROM inventory_counts WHERE id = ?${ef.clause}`
-    ).bind(countId, ...ef.params).first<{ id: number; storage_zone_id: number | null; entity_id: number }>()
+      `SELECT id, status, storage_zone_id, entity_id FROM inventory_counts WHERE id = ?${ef.clause}`
+    ).bind(countId, ...ef.params).first<{ id: number; status: string; storage_zone_id: number | null; entity_id: number }>()
     if (!count) {
       return c.json({ success: false, error: 'Count not found' }, 404)
+    }
+    // 품목 편입(+구역 배정=재고 이동)은 작성중 실사에만 — 제출/승인 후 추가는 스냅샷 정합 붕괴
+    if (count.status !== 'DRAFT') {
+      return c.json({ success: false, error: '작성중 실사에만 품목을 추가할 수 있습니다' }, 400)
     }
 
     if (itemIds.length === 0) {
@@ -416,12 +431,18 @@ inventoryCountRouter.patch('/:id/approve', async (c) => {
     // count_items 조회 (0396: storage_zone_id 포함 — 그 창고 행을 보정)
     const { results: countItems } = await c.env.DB.prepare(`
       SELECT id, count_id, item_id, system_quantity, counted_quantity, difference, difference_pct, unit, notes, storage_zone_id FROM inventory_count_items WHERE count_id = ?
-    `).bind(countId).all<{ item_id: number; system_quantity: number; counted_quantity: number; storage_zone_id: number | null }>()
+    `).bind(countId).all<{ item_id: number; system_quantity: number; counted_quantity: number | null; storage_zone_id: number | null }>()
+
+    // 미입력(counted_quantity NULL) 항목은 보정 제외 — NULL 바인드 시 inventory.quantity=NULL 재고 소실
+    const adjustable = (countItems || []).filter(
+      (item): item is typeof item & { counted_quantity: number } => item.counted_quantity != null
+    )
+    const skippedCount = (countItems || []).length - adjustable.length
 
     // #152: 재고 보정 + 상태 변경을 단일 batch로 원자화 (이중 조정 방지)
     // #356: 호출자 entity가 아닌 실사 행의 entity로 보정 (타법인 재고 오조정 방지)
     const entityId = count.entity_id || getEntityId(c) || 1
-    const batchStmts = (countItems || []).flatMap((item) => {
+    const batchStmts = adjustable.flatMap((item) => {
       const zoneId = item.storage_zone_id ?? null
       return [
         // 0396: 대상 창고 행이 없으면 생성 (이후 UPDATE가 counted로 보정). 키 = (item, entity, zone)
@@ -455,7 +476,7 @@ inventoryCountRouter.patch('/:id/approve', async (c) => {
     )
     await c.env.DB.batch(batchStmts)
 
-    return c.json({ success: true })
+    return c.json({ success: true, adjusted: adjustable.length, skipped: skippedCount })
   } catch (error) {
     console.error('src/routes/inventoryCount.ts error:', error)
     return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)

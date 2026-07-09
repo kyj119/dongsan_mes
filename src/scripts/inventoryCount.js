@@ -1,5 +1,6 @@
 // ===== 재고실사 페이지 스크립트 =====
 var countsList = [];
+var countsTotal = 0;
 var _detailCountId = null;
 
 // ===== 상태 뱃지 =====
@@ -12,7 +13,7 @@ function getStatusBadge(status) {
 
 // ===== 요약 업데이트 =====
 function updateSummary() {
-  var total = countsList.length;
+  var total = countsTotal || countsList.length; // API total (limit 100 페이지 밖 포함)
   var inProgress = countsList.filter(function(c) { return c.status === 'DRAFT' || c.status === 'SUBMITTED'; }).length;
   var lastCount = countsList.length > 0 ? countsList[0].count_date : '-';
 
@@ -42,7 +43,7 @@ function renderTable(list) {
       + '<td style="padding:10px 12px;text-align:center;font-size:13px;">' + (c.count_date || '') + '</td>'
       + '<td style="padding:10px 12px;text-align:center;font-size:13px;">' + typeLabel + zoneBadge + '</td>'
       + '<td style="padding:10px 12px;text-align:center;">' + badge + '</td>'
-      + '<td style="padding:10px 12px;text-align:center;color:#666;font-size:13px;">-</td>'
+      + '<td style="padding:10px 12px;text-align:center;color:#666;font-size:13px;">' + (c.item_count != null ? c.item_count : '-') + '</td>'
       + '<td style="padding:10px 12px;text-align:center;font-size:12px;color:#666;" title="' + escapeHtml(submittedBy) + '">' + escapeHtml(submittedBy) + '</td>'
       + '<td style="padding:10px 12px;text-align:center;"><a href="javascript:" onclick="event.stopPropagation(); openDetail(' + c.id + ')" style="color:#3b82f6;font-size:13px;text-decoration:none;">열기</a></td>'
       + '</tr>';
@@ -60,6 +61,7 @@ async function loadCounts() {
 
     var res = await axios.get('/api/inventory-counts?' + params.toString());
     countsList = (res.data.data || []);
+    countsTotal = res.data.total || countsList.length;
 
     renderTable(countsList);
     updateSummary();
@@ -168,15 +170,28 @@ async function loadDetailCount(countId) {
     if (!data.items || data.items.length === 0) {
       document.getElementById('panelItems').innerHTML = '<div style="color:#9ca3af;font-size:13px;padding:8px 0;">품목 없음</div>';
     } else {
+      var isEditable = (data.status === 'DRAFT' || data.status === 'SUBMITTED'); // 승인 후 변조 방지 (백엔드 가드와 쌍)
       var itemsHtml = data.items.map(function(item) {
         var systemQty = parseFloat(item.system_quantity) || 0;
-        var countedQty = parseFloat(item.counted_quantity) || 0;
-        var diff = item.difference || 0;
+        // 미입력(NULL)은 "0으로 실사"와 구분 — 빈칸 렌더, 승인 시 보정 제외 대상
+        var notCounted = (item.counted_quantity === null || item.counted_quantity === undefined);
+        var countedQty = notCounted ? 0 : (parseFloat(item.counted_quantity) || 0);
         var diffPct = item.difference_pct || 0;
 
         var varClass = '';
-        if (Math.abs(diffPct) >= 20) varClass = 'variance-danger';
-        else if (Math.abs(diffPct) >= 10) varClass = 'variance-warning';
+        if (!notCounted) {
+          if (Math.abs(diffPct) >= 20) varClass = 'variance-danger';
+          else if (Math.abs(diffPct) >= 10) varClass = 'variance-warning';
+        }
+
+        var countedCell;
+        if (isEditable) {
+          countedCell = '<input type="number" value="' + (notCounted ? '' : window.uomFromBase(countedQty, item)) + '" placeholder="미입력" style="width:60px;padding:4px;border:1px solid #ddd;border-radius:3px;font-size:12px;" onchange="updateItemCount(' + item.id + ', this.value, ' + item.count_id + ', ' + ((item.pack_size && item.pack_size > 0) ? item.pack_size : 1) + ')" /> ' + escapeHtml(item.unit || '');
+        } else {
+          countedCell = notCounted
+            ? '<span style="color:#9ca3af;">미실사 (보정 제외)</span>'
+            : '<strong>' + window.uomFormatStock(countedQty, item) + '</strong>';
+        }
 
         return '<div style="padding:10px;border:1px solid #f1f5f9;border-radius:4px;margin-bottom:8px;">'
           + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">'
@@ -185,7 +200,7 @@ async function loadDetailCount(countId) {
           + '</div>'
           + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:12px;color:#666;">'
             + '<div>시스템: <strong>' + window.uomFormatStock(systemQty, item) + '</strong></div>'
-            + '<div>실사: <input type="number" value="' + window.uomFromBase(countedQty, item) + '" style="width:60px;padding:4px;border:1px solid #ddd;border-radius:3px;font-size:12px;" onchange="updateItemCount(' + item.id + ', this.value, ' + item.count_id + ', ' + ((item.pack_size && item.pack_size > 0) ? item.pack_size : 1) + ')" /> ' + escapeHtml(item.unit || '') + '</div>'
+            + '<div>실사: ' + countedCell + '</div>'
           + '</div>'
           + (item.notes ? '<div style="font-size:11px;color:#9ca3af;margin-top:6px;padding-top:6px;border-top:1px solid #f1f5f9;"><strong>메모:</strong> ' + escapeHtml(item.notes) + '</div>' : '')
         + '</div>';
@@ -285,8 +300,13 @@ function renderDetailActions(status) {
 async function updateItemCount(itemId, countedQty, countId, packSize) {
   try {
     // #463: 입력은 관리단위(통/롤) → base_unit 저장(× pack_size). system_quantity·confirm 과 단위 일치(붕괴 방지).
-    var ps = (packSize && packSize > 0) ? packSize : 1;
-    var countedBase = (parseFloat(countedQty) || 0) * ps;
+    // 빈칸 = 미입력(NULL) 되돌림 (승인 시 보정 제외)
+    var raw = String(countedQty == null ? '' : countedQty).trim();
+    var countedBase = null;
+    if (raw !== '') {
+      var ps = (packSize && packSize > 0) ? packSize : 1;
+      countedBase = (parseFloat(raw) || 0) * ps;
+    }
     var items = [{ id: itemId, counted_quantity: countedBase, system_quantity: 0 }];
     var res = await axios.get('/api/inventory-counts/' + countId);
     var existingItem = (res.data.data.items || []).find(function(i) { return i.id === itemId; });
@@ -298,8 +318,20 @@ async function updateItemCount(itemId, countedQty, countId, packSize) {
   }
 }
 
+async function icUnfilledCount(countId) {
+  // 미입력(NULL) 항목 수 — 제출/승인 confirm 경고용
+  try {
+    var res = await axios.get('/api/inventory-counts/' + countId);
+    return (res.data.data.items || []).filter(function(i) { return i.counted_quantity === null || i.counted_quantity === undefined; }).length;
+  } catch (e) { return 0; }
+}
+
 async function submitCount(countId) {
-  if (!(await showConfirm('이 실사를 제출하시겠습니까?'))) return;
+  var unfilled = await icUnfilledCount(countId);
+  var msg = unfilled > 0
+    ? '미입력 ' + unfilled + '건이 있습니다. 미입력 항목은 승인 시 보정에서 제외됩니다. 제출하시겠습니까?'
+    : '이 실사를 제출하시겠습니까?';
+  if (!(await showConfirm(msg))) return;
   try {
     var res = await axios.patch('/api/inventory-counts/' + countId + '/submit');
     if (res.data.success) {
@@ -314,11 +346,16 @@ async function submitCount(countId) {
 }
 
 async function approveCount(countId) {
-  if (!(await showConfirm('이 실사를 승인하시겠습니까? 재고가 실사 수량으로 보정됩니다.', { danger: true }))) return;
+  var unfilled = await icUnfilledCount(countId);
+  var msg = unfilled > 0
+    ? '미입력 ' + unfilled + '건은 보정에서 제외됩니다. 이 실사를 승인하시겠습니까? 재고가 실사 수량으로 보정됩니다.'
+    : '이 실사를 승인하시겠습니까? 재고가 실사 수량으로 보정됩니다.';
+  if (!(await showConfirm(msg, { danger: true }))) return;
   try {
     var res = await axios.patch('/api/inventory-counts/' + countId + '/approve');
     if (res.data.success) {
-      showToast('승인됨', 'success');
+      var skipped = res.data.skipped || 0;
+      showToast(skipped > 0 ? '승인됨 (미입력 ' + skipped + '건 보정 제외)' : '승인됨', 'success');
       loadCounts();
       loadDetailCount(countId);
     }
