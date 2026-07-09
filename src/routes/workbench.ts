@@ -394,6 +394,25 @@ workbenchRouter.post('/sheets', async (c) => {
     const mode = body.mode === 'flatbed' ? 'flatbed' : 'roll'
     const name = (body.name || '').trim() || `네스팅 ${mode === 'flatbed' ? '평판' : '롤'}`
     const user = c.get('user')
+    // #505 IDOR 차단: source_analysis_ids의 각 분석이 호출자 entity 소유인지 검증.
+    //   (미검증 시 타법인 분석 ID를 넣어 render-queue file_path 노출·에이전트가 타법인 디자인 원본을 자기 판에 렌더 → 고객 아트워크 유출)
+    //   source는 POST에서만 설정(PUT은 미갱신) → 여기만 가드하면 render/render-queue는 자동 안전. /process(:826) 패턴 미러.
+    let _srcAids: number[] = []
+    try {
+      const raw = typeof body.source_analysis_ids === 'string' ? JSON.parse(body.source_analysis_ids) : body.source_analysis_ids
+      if (Array.isArray(raw)) _srcAids = raw.filter((n: unknown): n is number => Number.isInteger(n))
+    } catch { _srcAids = [] }
+    const _uniqAids = Array.from(new Set(_srcAids))
+    if (_uniqAids.length) {
+      const efA = entityFilter(c, 'ai_analysis_requests')
+      const ph = _uniqAids.map(() => '?').join(',')
+      const { results: owned } = await c.env.DB.prepare(
+        `SELECT id FROM ai_analysis_requests WHERE id IN (${ph})${efA.clause}`
+      ).bind(..._uniqAids, ...efA.params).all<{ id: number }>()
+      if (owned.length !== _uniqAids.length) {
+        return c.json({ success: false, error: '접근 권한이 없는 소스 분석이 포함되어 있습니다.' }, 403)
+      }
+    }
     const created = await c.env.DB.prepare(`
       INSERT INTO sheet_layouts
         (name, mode, canvas_json, placements_json, item_code, source_analysis_ids, sheet_count, efficiency, status, entity_id, created_by, updated_at)
