@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 6 -->
-<!-- last_run_at: 2026-07-09T17:00:00+09:00 -->
+<!-- last_run_area: 1 -->
+<!-- last_run_at: 2026-07-09T21:00:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -16,6 +16,14 @@
 
 > 📦 **과거 사이클 로그**는 `IMPROVEMENT_BACKLOG_ARCHIVE.md`/git 히스토리로 이관됨 (2026-06-10 1차 분리, 2026-06-25 2차 트림 343KB→192KB, 2026-06-25T10:00 3차 트림, 2026-07-03T06:00 4차 트림 288KB→86KB, **2026-07-07T13:00 5차 트림 — 07-01~07-05 사이클 로그를 git 히스토리로 이관: 238KB→78KB, 256KB Read 한도 재확보**). 신규 로그는 계속 이 파일 상단에 추가. 본 파일은 직전 2일치(07-06~) 사이클 로그 + 영구 참조 섹션(Approved/New/Auto-fixed/Done/Rejected/FP 카탈로그)만 유지. 이관분은 `git log -p -- IMPROVEMENT_BACKLOG.md`로 복원 가능.
 
+> **Area 1 프로덕션 헬스 (2026-07-09T21:00):**
+> - **방법**: `npm ci`(node_modules 0→81) 후 `git fetch origin main`(HEAD=origin/main `91f5032` 0/0 동기, 워킹트리 clean, #422 디버전스 0). Area 1 **32회차** — 직전 Area1(`9746775`, 07-08T15:11, 31회차) 이후 `git log 9746775..HEAD -- src/routes migrations scripts/smoke.cjs .github/workflows` = **0커밋**(이 구간 실제 착륙분은 Area 2~6 auto-improve chore 커밋 5건뿐 — 전부 `IMPROVEMENT_BACKLOG.md`/이슈 생성만, 코드 변경 0). 즉 이번 사이클은 컬럼-diff bridge·라우트-제거 완전성·smoke 프로브 대조 등 코드 렌즈로 볼 신규 churn 자체가 없음.
+> - **🟢 배포 파이프라인 = 30/30 전량 success(net-new 0)**: `list_workflow_runs(deploy.yml)` 최근 30건(07-07T07:34~07-09T12:14, run #720~#749) **전부 conclusion=success**. 직전 Area1(31회차)이 이미 검증 완료한 IA임포지션 P1~P4·가격표 Phase1-4·R2 externalization 구간(#720~#744)에 더해, 이후 착륙한 auto-improve chore 커밋 5건(#745~#749, Area2~6)도 전부 배포 success — prod 무중단 지속.
+> - **🟡 E2E 워크플로우 = 여전히 휴면(기존 인지, net-new 아님)**: `e2e.yml` 최근 실행 30건 전부 **2026-06-22가 마지막**(2주+ 이상 미실행, main push 트리거 아님) — 31회차와 동일 상태 변화 없음. 헬스 게이트는 deploy.yml post-deploy smoke가 계속 담당.
+> - **🟢 라우트/마이그 완전성 = 해당 없음**: 이번 구간 `src/routes`/`migrations` 변경 0이라 #429(라우트제거→smoke프로브 404)·#483(마이그 미적용 드리프트)·#484(detail SELECT 컬럼드리프트) 3대 축 전부 점검 대상 자체가 없음(클린 무변화, 오탐 아님).
+> - **🟢 backlog↔GitHub sync**: `list_issues(OPEN,auto-improve)` 실측 **10건**(#473,497~505) = 직전 Area6 stats(new 10) **정합**, 변동 없음(owner close/신규 0). done(427)·rejected(3) 재확인 변동 없음.
+> - 신규 이슈 0건, 자동수정 0건(코드 churn 자체가 0), done-sync 변동 없음(new 10 유지), **신선 각도 — 직전 5개 영역 사이클이 코드 변경 없는 auto-improve 자체 chore 커밋뿐이었음을 확인하고, 그 상태에서도 배포 파이프라인이 30/30 계속 success임을 재확인(회귀 없는 정지 상태 헬스체크). 코드 churn 0인 클린 사이클.**
+>
 > **Area 6 자기 진화 (2026-07-09T17:00):**
 > - **방법**: `npm ci`(node_modules 0→81) 후 `git fetch origin main`(HEAD=origin/main `0551b02` 0/0 동기, 워킹트리 clean, #422 디버전스 0). Area 6 **38회차** — 직전 Area5(`0551b02`, 07-09T13:00, 33회차)가 최신 HEAD라 **post-Area5 코드 churn = 0**(컬럼-diff bridge·XSS bridge 대상 없음).
 > - **🟢 open 10건 전수 재검증(open≠unfixed 거울, #473/#497~#505) = 전부 안티패턴 코드 잔존 확인, 오탐/fixed-in-tree 0건**: ① #473 `clients.ts:1103` 포털계정 GET/PATCH/DELETE 여전히 `WHERE client_id=?` bare(entityFilter 미적용, owner가 07-07 코멘트로 "거래처 포탈 코드 수정 보류" 명시 — 의도적 보류 유지). ② #497 `ledger.js`에 `count` 필드 참조 0(여전히 client-side cap 필터). ③ #498 `qcLoadClaims`/`loadJobs` 로딩표시 여전히 미배선. ④ #499 `modals.js:220` `manualW>0` 저장가드와 힌트표시 로직 여전히 불일치. ⑤ #500 `bank.ts:550` `parseFloat(item.Balance||'0')||null` 여전히 0→NULL 강등. ⑥ #501 `priceList.ts` `/logo,/stamp,/company,/contacts` `:entityId` 전부 소유검증 없이 `c.req.param('entityId')` 그대로 bind. ⑦ #502 `aiAnalysis.ts` 백필 3종 SELECT 여전히 LIMIT 없음. ⑧ #503 `priceManagement.js loadHistory()` 여전히 `.catch()` 부재. ⑨ #504 `settings.js loadCompanyPrintInfo` catch 여전히 `console.warn`만(showToast 없음). ⑩ #505 `workbench.ts:407` `source_analysis_ids` 여전히 body 그대로 저장, 소유검증 0. **결론 = 이번 사이클 재분류 0건**(closed≠fixed의 반대 거울도 해당 없음 — open은 전부 실제 미픽스).
