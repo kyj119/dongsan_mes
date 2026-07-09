@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 4 -->
-<!-- last_run_at: 2026-07-09T09:00:00+09:00 -->
+<!-- last_run_area: 5 -->
+<!-- last_run_at: 2026-07-09T13:00:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,7 +8,7 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | **9** — #473, #497(MED, 원장 거래처검색 1000cap 무음누락), #498(LOW, 페이지네이션 로딩인디케이터), #499(LOW, width_mm 힌트 불일치), #500(LOW, bank.ts sync-barobill 잔액0→NULL 강등), #501(HIGH, price-list `:entityId` 라우트 소유검증 없음, 타법인 직인/로고 열람·변조 IDOR), #502(S, Area2 32회차 — aiAnalysis.ts R2 백필/batch-results subrequest 한도 무방비+N+1), #503(S, Area3 33회차 신규 — priceManagement.js loadHistory catch 누락), #504(S, Area3 33회차 신규 — settings.js 회사인쇄정보 로드실패 무음+CSV 가드 미재사용). open 실측(`list_issues(OPEN,auto-improve)`=9) 기준. |
+| 🆕 new | **10** — #473, #497(MED, 원장 거래처검색 1000cap 무음누락), #498(LOW, 페이지네이션 로딩인디케이터), #499(LOW, width_mm 힌트 불일치), #500(LOW, bank.ts sync-barobill 잔액0→NULL 강등), #501(HIGH, price-list `:entityId` 라우트 소유검증 없음, 타법인 직인/로고 열람·변조 IDOR), #502(S, Area2 32회차 — aiAnalysis.ts R2 백필/batch-results subrequest 한도 무방비+N+1), #503(S, Area3 33회차 신규 — priceManagement.js loadHistory catch 누락), #504(S, Area3 33회차 신규 — settings.js 회사인쇄정보 로드실패 무음+CSV 가드 미재사용), #505(HIGH, Area5 33회차 신규 — workbench 멀티소스 임포지션 source_analysis_ids 미검증, 타법인 디자인 파일 R2 경로 노출 IDOR). open 실측(`list_issues(OPEN,auto-improve)`=10) 기준. |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 |
 | ✔️ done | **427** ⚠️전면 재계산(아래 참조) — GitHub 실측 `search_issues(label:auto-improve is:closed reason:completed)`=427. 직전 기재값 184는 다회차에 걸친 점증 델타 동기화(diff-only) 누적오차로 실제보다 **243건 과소집계**돼 있었음(37회차 Area6 발견, 상세는 Area6 로그 참조). |
@@ -16,6 +16,14 @@
 
 > 📦 **과거 사이클 로그**는 `IMPROVEMENT_BACKLOG_ARCHIVE.md`/git 히스토리로 이관됨 (2026-06-10 1차 분리, 2026-06-25 2차 트림 343KB→192KB, 2026-06-25T10:00 3차 트림, 2026-07-03T06:00 4차 트림 288KB→86KB, **2026-07-07T13:00 5차 트림 — 07-01~07-05 사이클 로그를 git 히스토리로 이관: 238KB→78KB, 256KB Read 한도 재확보**). 신규 로그는 계속 이 파일 상단에 추가. 본 파일은 직전 2일치(07-06~) 사이클 로그 + 영구 참조 섹션(Approved/New/Auto-fixed/Done/Rejected/FP 카탈로그)만 유지. 이관분은 `git log -p -- IMPROVEMENT_BACKLOG.md`로 복원 가능.
 
+> **Area 5 보안 (2026-07-09T13:00):**
+> - **방법**: `npm ci`(node_modules 0→81) 후 `git fetch origin main`(HEAD=origin/main `14d4f1c` 0/0 동기, 워킹트리 clean, #422 디버전스 0). Area 5 **33회차** — 직전 Area5(`5c152df`, 07-07T21:00, 32회차) 이후 `src/routes`/`src/scripts` churn = **5파일**(`git diff --stat 4de1f2f..HEAD`): `cardExpenses.ts/js`(결제예정 타임라인 재구성)·`workbench.ts`(+35, IA 멀티소스 임포지션 render-queue/sheets 배관)·`iaEditor.js`(+543, 멀티소스 임포지션 P1~P3 UI)·`priceManagement.js`(+6, XSS 수정 확인용 diff). 서브에이전트 위임 후 발견 재검증 — IDOR/XSS/secret 3렌즈.
+> - **🆕 net-new 1건 — #505 (HIGH·issue-only, workbench 멀티소스 임포지션 source_analysis_ids 미검증 cross-tenant 디자인 파일 노출)**: `workbench.ts` `POST /sheets`(:388-417)가 `source_analysis_ids`(JSON 배열)를 클라이언트 입력 그대로 저장하며 **호출자 entity 소유 검증 0** — `sheet_layouts` 자체는 `entityFilter`로 소유 검증되나 그 안의 소스 ID는 순수 사용자 입력. `POST /sheets/:id/render`(:536-541)는 상태(`done`)만 확인, `GET /render-queue`(:600-609)는 소스 `file_path`(R2 키)를 응답에 그대로 포함 — entity A 사용자가 자기 시트에 entity B의 분석 ID(전역 순차 PK, 추측 가능)를 넣으면 `GET /render-queue` 직접 호출(표준 인증 라우터, IA 에이전트 전용 아님)로 B의 R2 파일 경로를 획득하고, 렌더링 파이프라인을 통해 **B의 실제 디자인 파일이 A의 출력물에 그대로 반영**됨(인쇄업 특성상 고객 원본 디자인=기밀 자산). 이 갭은 P1~P3 이전(`aids[0]` 단일소스 시절)부터 존재했으나, 이번 멀티소스 확장으로 한 시트가 동시에 여러 타법인 소스를 흡수할 수 있게 되며 노출 반경이 커짐. 같은 파일의 `GET /analyses/:orderId`·`PUT /match`는 겉보기엔 같은 조회 패턴이지만 `analysis_id`가 `orderVisibilityFilter`로 이미 검증된 주문에서 파생돼 안전 — `source_analysis_ids`만 주문 경유 없이 직접입력이라 위험. **자동수정 금지**(IDOR=owner 워크플로 #437/#452, egress 차단) → issue-only.
+> - **🟢 나머지 churn = clean**: `cardExpenses.ts` 결제예정 재계산은 순수 날짜연산(엔터티 스코프 `ef`/`efTx` 불변) — IDOR 무관. `cardExpenses.js` 신규 타임라인 렌더러는 `card_name`/`card_number_last4`를 `escapeHtml`로 일관 래핑. `priceManagement.js` diff는 직전 Area5(#501 사이클)의 XSS 자동수정 반영분(오히려 개선) — net-new 없음. `iaEditor.js`(+543, 팔레트/미리보기/MaxRects/롤폭추천) 신규 innerHTML 보간(filename/preset label/client_name/item_name) 전부 `iaeEscape`/`esc` 일관 적용, 미escape `data-*`(data-key/data-i/data-submode)는 숫자 id·고정 enum 문자열이라 free-text 아님. 이번 churn에 신규 마이그레이션 0건. 하드코딩 시크릿·authMiddleware 누락·CSV export 변경 없음.
+> - **🟢 backlog↔GitHub sync**: `list_issues(OPEN,auto-improve)` 실측 **9건**(#473,497~504) = 직전 Area4 stats(new 9) 정합. 본 Area5 신규 1건(#505) → **new 10**. done(427)·rejected(3) 변동 없음(owner close 0). #473 코멘트 재확인 — owner가 "거래처 포탈 코드 수정 보류" 명시(2026-07-07), 이번 사이클도 미수정 유지(owner 지시 존중).
+> - **🧬 SKILL 강화 없음(신규 패턴 아님)** — #505는 기존 "형제-비대칭 IDOR"·"pre-existing 단일갭이 신규기능으로 확장" 클래스(#452/#477 유사)로 충분히 포착되는 패턴.
+> - 신규 이슈 1건(#505 HIGH·issue-only), 자동수정 0건(발견이 전부 IDOR=owner 워크플로), done-sync(new 9→10·정합), **신선 각도 — IA 워크벤치 멀티소스 임포지션(P1~P3) 신규 churn을 IDOR/XSS/secret 3렌즈로 전수. source_analysis_ids 미검증이 기존에도 존재하던 단일소스 갭이 멀티소스로 확장되며 노출 반경이 커진 패턴을 포착(#505) — iaEditor.js 543줄 프론트는 escape 컨벤션 일관 적용으로 clean.**
+>
 > **Area 4 데이터 정합성 (2026-07-09T09:00):**
 > - **방법**: `npm ci`(node_modules 0→81) 후 `git fetch origin main`(HEAD=origin/main `94b1c04` 0/0 동기, 워킹트리 clean, #422 디버전스 0). Area 4 **32회차** — 직전 Area4(`a1ced34`, 07-07T17:00, 31회차) 이후 `src/routes`/`migrations` churn = **4파일 + 신규 마이그 2건**(`git diff --stat a1ced34..HEAD -- src/routes migrations`): `priceSheets.ts`(신규 256줄, 단가표 세트 CRUD)·`priceList.ts`(+109, 회사 인쇄정보/부서연락처 CRUD)·`cardExpenses.ts`(결제예정 타임라인 재계산 로직, read-only)·`workbench.ts`(+38, IA 멀티소스 임포지션 render-queue/process 배관) + `0450_price_sheets.sql`·`0452_entity_contacts_webhard.sql`. IA임포지션(iaEditor.js 5600줄)은 백엔드 라우트/마이그 변경 0(Area3가 이미 확인한 "기존 `/sheets`,`/process` 필드 확장 재사용"과 정합).
 > - **🟢 신규 테이블(0450 price_sheets/price_sheet_items, 0452 entity_contacts) = 컬럼존재성·orphan 위험 clean**: ① `price_sheets`/`price_sheet_items`/`entity_contacts` 전 INSERT 컬럼리스트가 CREATE TABLE 정의와 positional 일치(오타 0). ② NOT NULL no-default(`price_sheets.name`·`entity_contacts.entity_id/department`) 전량 앱단 검증 또는 URL param으로 항상 바인딩. ③ **plain INTEGER FK(하드 FK 미사용) + 부모 하드삭제 0 확인** — `price_sheet_items.item_id`가 가리키는 `items`는 하드 DELETE 없이 **소프트 삭제**(`items.ts:1292 UPDATE items SET is_active=0`)만 존재해 dangling 불가, `price_sheets.client_id`가 가리키는 `clients`도 동일하게 소프트 삭제(`clients.ts:1082`)만 존재. `entities`(entity_contacts의 부모)는 DELETE 라우트 자체가 코드베이스에 없음(전수 grep 0) → 고아 발생 경로 전무. ④ `price_sheets` PUT/DELETE 핸들러가 `price_sheet_items`를 각각 delete+재삽입/cascade delete로 정리(`priceSheets.ts:202,230`) — #454/#477 dangling 클래스 미해당.
