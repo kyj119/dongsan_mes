@@ -1437,7 +1437,9 @@ namespace IllustratorAutomation
             double maxDim = Math.Max(sheetW, sheetH);
             // Illustrator 아트보드 ~577cm(16383pt) 한계 대응: 초과 시 축소 렌더(1/N) → scale_factor=N을 jsx/RIP에 전달해 출력 시 ×N 확대.
             //   ⚠️ 방향 주의: 축소는 canvas/placements를 ÷scaleFactor(=N≥1)해야 함. (구버전 500/maxDim은 <1이라 오히려 확대→PARM)
-            double scaleFactor = maxDim > 500 ? Math.Ceiling(maxDim / 500.0) : 1.0;
+            //   임계 560cm = 577cm 한계에서 돔보/마진 여유 확보. 프론트 경고 기준(IAE_IL_REDUCE_CM)과 일치.
+            const double IL_REDUCE_CM = 560.0;
+            double scaleFactor = maxDim > IL_REDUCE_CM ? Math.Ceiling(maxDim / IL_REDUCE_CM) : 1.0;
 
             var scaledPlacements = new List<object>();
             foreach (var p in rawPl)

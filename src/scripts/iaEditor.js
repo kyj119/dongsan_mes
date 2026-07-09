@@ -2097,11 +2097,12 @@ function iaeNestEstimate(o) {
   if (m.error) return { error: true, msg: m.msg };
   var totalArea = dwCm * dhCm * qty;
   var eff = m.sheetArea > 0 ? totalArea / m.sheetArea : 0;
+  var sheetMaxDim = (o.mode === 'flatbed') ? Math.max(preset.w, preset.h) : Math.max(preset.w, m.totalH);
   return {
     error: false, eff: eff, sheets: m.sheetCount, total_height_cm: m.totalH,
     waste_pct: Math.max(0, 1 - eff), mode: o.mode,
     allow_rotate: allowRotate, chosen_rotate: !!m.chosenAllowRotate,
-    packer: (o.packer === 'maxrects' ? 'maxrects' : 'shelf')
+    packer: (o.packer === 'maxrects' ? 'maxrects' : 'shelf'), sheet_max_dim_cm: sheetMaxDim
   };
 }
 // 패널 하단 예상치 호스트 갱신 (입력 change 시 라이브)
@@ -2118,7 +2119,8 @@ function iaeNestRenderEstimate() {
   var rotTxt = est.allow_rotate ? (est.chosen_rotate ? ' · <span class="text-blue-500">회전 배치</span>' : ' · <span class="text-gray-500">방향 고정</span>') : ' · <span class="text-gray-500">회전 잠금</span>';
   var pkTxt = (est.packer === 'maxrects') ? ' · <span class="text-blue-500">MaxRects</span>' : ''; // R3b-1: shelf(기본)는 미표기(현행 UI 유지)
   host.innerHTML = '<div class="text-[11px] text-gray-600"><i class="fas fa-chart-area mr-1 text-blue-500"></i>'
-    + sizeTxt + ' · 효율 <b class="' + effCls + '">' + effPct + '%</b> · 자투리 ' + wastePct + '%' + rotTxt + pkTxt + '</div>';
+    + sizeTxt + ' · 효율 <b class="' + effCls + '">' + effPct + '%</b> · 자투리 ' + wastePct + '%' + rotTxt + pkTxt + '</div>'
+    + iaeSheetLimitWarnHTML(est.sheet_max_dim_cm || 0);
 }
 
 function iaeCanRenderNestPanel() {
@@ -2326,9 +2328,20 @@ function iaeImposeEstimate() {
   var footprint = 0; built.items.forEach(function (it) { footprint += it.w * it.h; });
   var eff = m.sheetArea > 0 ? footprint / m.sheetArea : 0;
   var srcs = {}; iaeImposeSel.forEach(function (s) { srcs[s.fid] = true; });
+  var sheetMaxDim = (o.mode === 'flatbed') ? Math.max(preset.w, preset.h) : Math.max(preset.w, m.totalH); // Illustrator 한계 경고용
   return { error: false, eff: eff, sheets: m.sheetCount, total_height_cm: m.totalH, waste_pct: Math.max(0, 1 - eff),
     mode: o.mode, allow_rotate: allowRotate, chosen_rotate: !!m.chosenAllowRotate, packer: (o.packer === 'maxrects' ? 'maxrects' : 'shelf'),
-    pieces: built.items.length, sources: Object.keys(srcs).length };
+    pieces: built.items.length, sources: Object.keys(srcs).length, sheet_max_dim_cm: sheetMaxDim };
+}
+// Illustrator 아트보드 한계(≈577cm/16383pt) — 예상 판이 이를 넘으면 에이전트가 1/N 축소 렌더.
+//   경고+축소 권장(실물 100% 출력을 원하면 배율/개수 축소). 임계=에이전트 IL_REDUCE_CM(560)과 일치.
+var IAE_IL_REDUCE_CM = 560;
+function iaeSheetLimitWarnHTML(maxDimCm) {
+  if (!(maxDimCm > IAE_IL_REDUCE_CM)) return '';
+  var n = Math.ceil(maxDimCm / IAE_IL_REDUCE_CM);
+  return '<div class="mt-1.5 text-[11px] text-amber-800 bg-amber-50 border border-amber-300 rounded px-1.5 py-1 leading-snug">'
+    + '<i class="fas fa-triangle-exclamation mr-1 text-amber-600"></i>예상 판 <b>' + Math.round(maxDimCm) + 'cm</b>가 Illustrator 한계(약 5.7m)를 넘어 <b>1/' + n + ' 축소 렌더</b>됩니다.<br>'
+    + '실물 100% 출력을 권장 — <b>배율·개수를 줄이거나</b> 판을 나눠주세요. <span class="text-amber-600">(축소 시 RIP에서 파일명 실물크기로 출력)</span></div>';
 }
 function iaeImposeRenderEstimate() {
   var host = document.getElementById('iaeImpEst'); if (!host) return;
@@ -2340,7 +2353,8 @@ function iaeImposeRenderEstimate() {
   var rotTxt = est.allow_rotate ? (est.chosen_rotate ? ' · <span class="text-blue-500">회전 배치</span>' : ' · <span class="text-gray-500">방향 고정</span>') : ' · <span class="text-gray-500">회전 잠금</span>';
   var pkTxt = (est.packer === 'maxrects') ? ' · <span class="text-blue-500">MaxRects</span>' : '';
   var srcTxt = est.sources > 1 ? (' · ' + est.sources + '개 소스') : '';
-  host.innerHTML = '<div class="text-[11px] text-gray-600"><i class="fas fa-chart-area mr-1 text-blue-500"></i>조각 ' + est.pieces + '개' + srcTxt + ' · ' + sizeTxt + ' · 효율 <b class="' + effCls + '">' + effPct + '%</b> · 자투리 ' + wastePct + '%' + rotTxt + pkTxt + '</div>';
+  host.innerHTML = '<div class="text-[11px] text-gray-600"><i class="fas fa-chart-area mr-1 text-blue-500"></i>조각 ' + est.pieces + '개' + srcTxt + ' · ' + sizeTxt + ' · 효율 <b class="' + effCls + '">' + effPct + '%</b> · 자투리 ' + wastePct + '%' + rotTxt + pkTxt + '</div>'
+    + iaeSheetLimitWarnHTML(est.sheet_max_dim_cm || 0);
 }
 
 function iaeImposeRenderPanel() {
@@ -2630,6 +2644,9 @@ function iaeImposePlace() {
   iaeCanSave();
   iaeNestRenderPreview();
   iaeToast(sheets.length + '판 · ' + built.items.length + '조각' + (multiSrc ? (' · ' + Object.keys(srcSet).length + '개 소스') : '') + ' 배치 완료', 'success');
+  // Illustrator 한계 초과 경고(축소 렌더) — 배율/개수 줄임 권장
+  var _maxDim = 0; iaeCanSheets.forEach(function (sh) { var d = Math.max((sh.roll_width_cm || (sh.w_mm || 0) / 10), (sh.total_height_cm || (sh.h_mm || 0) / 10)); if (d > _maxDim) _maxDim = d; });
+  if (_maxDim > IAE_IL_REDUCE_CM) iaeToast('판 ' + Math.round(_maxDim) + 'cm가 Illustrator 한계 초과 → 1/' + Math.ceil(_maxDim / IAE_IL_REDUCE_CM) + ' 축소 렌더. 실물 100%는 배율/개수를 줄이세요', 'warning');
   iaeImposeRenderPanel();
 }
 
