@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 5 -->
-<!-- last_run_at: 2026-07-09T13:00:00+09:00 -->
+<!-- last_run_area: 6 -->
+<!-- last_run_at: 2026-07-09T17:00:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -15,6 +15,14 @@
 | ❌ rejected | 3 |
 
 > 📦 **과거 사이클 로그**는 `IMPROVEMENT_BACKLOG_ARCHIVE.md`/git 히스토리로 이관됨 (2026-06-10 1차 분리, 2026-06-25 2차 트림 343KB→192KB, 2026-06-25T10:00 3차 트림, 2026-07-03T06:00 4차 트림 288KB→86KB, **2026-07-07T13:00 5차 트림 — 07-01~07-05 사이클 로그를 git 히스토리로 이관: 238KB→78KB, 256KB Read 한도 재확보**). 신규 로그는 계속 이 파일 상단에 추가. 본 파일은 직전 2일치(07-06~) 사이클 로그 + 영구 참조 섹션(Approved/New/Auto-fixed/Done/Rejected/FP 카탈로그)만 유지. 이관분은 `git log -p -- IMPROVEMENT_BACKLOG.md`로 복원 가능.
+
+> **Area 6 자기 진화 (2026-07-09T17:00):**
+> - **방법**: `npm ci`(node_modules 0→81) 후 `git fetch origin main`(HEAD=origin/main `0551b02` 0/0 동기, 워킹트리 clean, #422 디버전스 0). Area 6 **38회차** — 직전 Area5(`0551b02`, 07-09T13:00, 33회차)가 최신 HEAD라 **post-Area5 코드 churn = 0**(컬럼-diff bridge·XSS bridge 대상 없음).
+> - **🟢 open 10건 전수 재검증(open≠unfixed 거울, #473/#497~#505) = 전부 안티패턴 코드 잔존 확인, 오탐/fixed-in-tree 0건**: ① #473 `clients.ts:1103` 포털계정 GET/PATCH/DELETE 여전히 `WHERE client_id=?` bare(entityFilter 미적용, owner가 07-07 코멘트로 "거래처 포탈 코드 수정 보류" 명시 — 의도적 보류 유지). ② #497 `ledger.js`에 `count` 필드 참조 0(여전히 client-side cap 필터). ③ #498 `qcLoadClaims`/`loadJobs` 로딩표시 여전히 미배선. ④ #499 `modals.js:220` `manualW>0` 저장가드와 힌트표시 로직 여전히 불일치. ⑤ #500 `bank.ts:550` `parseFloat(item.Balance||'0')||null` 여전히 0→NULL 강등. ⑥ #501 `priceList.ts` `/logo,/stamp,/company,/contacts` `:entityId` 전부 소유검증 없이 `c.req.param('entityId')` 그대로 bind. ⑦ #502 `aiAnalysis.ts` 백필 3종 SELECT 여전히 LIMIT 없음. ⑧ #503 `priceManagement.js loadHistory()` 여전히 `.catch()` 부재. ⑨ #504 `settings.js loadCompanyPrintInfo` catch 여전히 `console.warn`만(showToast 없음). ⑩ #505 `workbench.ts:407` `source_analysis_ids` 여전히 body 그대로 저장, 소유검증 0. **결론 = 이번 사이클 재분류 0건**(closed≠fixed의 반대 거울도 해당 없음 — open은 전부 실제 미픽스).
+> - **🟢 close-pending 캐시 = 대상 0건**: 직전 사이클들의 close-pending 적체(#479/#480/#481/#483/#484)는 37회차에 owner가 전량 close 확인 완료. 현재 open 10건 중 fixed-in-tree로 재분류할 항목 없음(위 재검증 결과 전부 잔존) → close-pending 통지 대상 없음.
+> - **🟢 backlog↔GitHub sync = 완전 정합, 드리프트 0**: `list_issues(OPEN,auto-improve)` 실측 **10건**(#473,497~505) = 직전 Area5 stats(new 10)와 **정합**. done 재실측 `search_issues(is:closed,reason:completed)`=**427**(직전 기재값과 일치, 37회차 정정 이후 드리프트 재발 없음). rejected 재실측 `not_planned`=1 + `duplicate`=2 = **3**(정합). 통계표 변동 없음.
+> - **🧬 SKILL 강화 없음(신규 패턴 아님)** — 이번 사이클은 코드 churn 0 + 재검증 전건 정합이라 신규 codify 대상 없음. 백로그 파일 크기(111KB) 참고 확인 — 5차 트림(78KB) 이후 6사이클 누적으로 완만히 증가 중이나 아직 Read 한도(256KB) 대비 여유(트림 불요).
+> - 신규 이슈 0건(clean cycle), 자동수정 0건(코드 변경 없음), done-sync 변동 없음(new 10·done 427·rejected 3 전량 정합 재확인), close-pending 0건, **신선 각도 — post-Area5 churn 0인 상태에서 open 10건 전체를 코드 재grep으로 개별 재검증(오탐/부분픽스 0 확인)이 이번 사이클의 핵심 가치. #473은 owner의 명시적 보류 결정이 여전히 유효함을 재확인.**
 
 > **Area 5 보안 (2026-07-09T13:00):**
 > - **방법**: `npm ci`(node_modules 0→81) 후 `git fetch origin main`(HEAD=origin/main `14d4f1c` 0/0 동기, 워킹트리 clean, #422 디버전스 0). Area 5 **33회차** — 직전 Area5(`5c152df`, 07-07T21:00, 32회차) 이후 `src/routes`/`src/scripts` churn = **5파일**(`git diff --stat 4de1f2f..HEAD`): `cardExpenses.ts/js`(결제예정 타임라인 재구성)·`workbench.ts`(+35, IA 멀티소스 임포지션 render-queue/sheets 배관)·`iaEditor.js`(+543, 멀티소스 임포지션 P1~P3 UI)·`priceManagement.js`(+6, XSS 수정 확인용 diff). 서브에이전트 위임 후 발견 재검증 — IDOR/XSS/secret 3렌즈.
