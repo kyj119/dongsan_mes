@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 3 -->
-<!-- last_run_at: 2026-07-08T21:20:00+09:00 -->
+<!-- last_run_area: 4 -->
+<!-- last_run_at: 2026-07-09T09:00:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -16,6 +16,15 @@
 
 > 📦 **과거 사이클 로그**는 `IMPROVEMENT_BACKLOG_ARCHIVE.md`/git 히스토리로 이관됨 (2026-06-10 1차 분리, 2026-06-25 2차 트림 343KB→192KB, 2026-06-25T10:00 3차 트림, 2026-07-03T06:00 4차 트림 288KB→86KB, **2026-07-07T13:00 5차 트림 — 07-01~07-05 사이클 로그를 git 히스토리로 이관: 238KB→78KB, 256KB Read 한도 재확보**). 신규 로그는 계속 이 파일 상단에 추가. 본 파일은 직전 2일치(07-06~) 사이클 로그 + 영구 참조 섹션(Approved/New/Auto-fixed/Done/Rejected/FP 카탈로그)만 유지. 이관분은 `git log -p -- IMPROVEMENT_BACKLOG.md`로 복원 가능.
 
+> **Area 4 데이터 정합성 (2026-07-09T09:00):**
+> - **방법**: `npm ci`(node_modules 0→81) 후 `git fetch origin main`(HEAD=origin/main `94b1c04` 0/0 동기, 워킹트리 clean, #422 디버전스 0). Area 4 **32회차** — 직전 Area4(`a1ced34`, 07-07T17:00, 31회차) 이후 `src/routes`/`migrations` churn = **4파일 + 신규 마이그 2건**(`git diff --stat a1ced34..HEAD -- src/routes migrations`): `priceSheets.ts`(신규 256줄, 단가표 세트 CRUD)·`priceList.ts`(+109, 회사 인쇄정보/부서연락처 CRUD)·`cardExpenses.ts`(결제예정 타임라인 재계산 로직, read-only)·`workbench.ts`(+38, IA 멀티소스 임포지션 render-queue/process 배관) + `0450_price_sheets.sql`·`0452_entity_contacts_webhard.sql`. IA임포지션(iaEditor.js 5600줄)은 백엔드 라우트/마이그 변경 0(Area3가 이미 확인한 "기존 `/sheets`,`/process` 필드 확장 재사용"과 정합).
+> - **🟢 신규 테이블(0450 price_sheets/price_sheet_items, 0452 entity_contacts) = 컬럼존재성·orphan 위험 clean**: ① `price_sheets`/`price_sheet_items`/`entity_contacts` 전 INSERT 컬럼리스트가 CREATE TABLE 정의와 positional 일치(오타 0). ② NOT NULL no-default(`price_sheets.name`·`entity_contacts.entity_id/department`) 전량 앱단 검증 또는 URL param으로 항상 바인딩. ③ **plain INTEGER FK(하드 FK 미사용) + 부모 하드삭제 0 확인** — `price_sheet_items.item_id`가 가리키는 `items`는 하드 DELETE 없이 **소프트 삭제**(`items.ts:1292 UPDATE items SET is_active=0`)만 존재해 dangling 불가, `price_sheets.client_id`가 가리키는 `clients`도 동일하게 소프트 삭제(`clients.ts:1082`)만 존재. `entities`(entity_contacts의 부모)는 DELETE 라우트 자체가 코드베이스에 없음(전수 grep 0) → 고아 발생 경로 전무. ④ `price_sheets` PUT/DELETE 핸들러가 `price_sheet_items`를 각각 delete+재삽입/cascade delete로 정리(`priceSheets.ts:202,230`) — #454/#477 dangling 클래스 미해당.
+> - **🟢 workbench.ts 멀티소스 임포지션 배관 = N+1 FP(기존 예외 클래스 재확인)**: `render-queue`(:600-618)의 `for(sheet) → for(aid)` 이중루프가 소스 분석 lookup을 순차 실행하나, 외곽 루프는 `LIMIT 3`(:595, 기존 SKILL 예시 workbench.ts render-queue = 상수 상한 FP 클래스)로 이미 bounded, 내곽 aid 루프도 사용자가 UI에서 수동 선택하는 "여러 파일"(멀티소스 임포지션 소스 개수, 실질 소수)이라 데이터-스케일 무관 = FP(#458 line 121 "user-selected multi-select는 practically bounded" 조건 충족).
+> - **🟢 priceList.ts 신규 CRUD(회사 인쇄정보/부서연락처) = 데이터정합 관점 clean**: entity 소유검증 부재는 이미 Area5 #501(IDOR)로 별도 보고됨 — Area4 관점(컬럼존재성/NOT NULL/orphan)은 이상 없음. `entity_contacts` DELETE/PUT이 `WHERE id=? AND entity_id=?` 복합조건이라 최소한 entity 불일치 시 0-row(무영향)로 그침(#501의 근본 수정은 IDOR 트랙에서 처리 예정).
+> - **🟢 cardExpenses.ts 결제예정 타임라인 재계산(`ae2bc22`) = read-only, 영속 데이터 정합성 영향 0**: DB write 없는 순수 계산 로직 변경(Area3 33회차가 이미 수기 케이스 검증으로 정확성 확인) — Area4 관점의 신규 위험 없음(persist 되는 값이 아니므로 orphan/제약 위반 가능성 자체가 없음).
+> - **🟢 backlog↔GitHub sync**: `list_issues(OPEN,auto-improve)` 실측 **9건**(#473,497~504) = 직전 Area3 stats(new 9) **정합**. done(427)·rejected(3) 변동 없음(owner close 0).
+> - 신규 이슈 0건(clean cycle), 자동수정 0건(발견 없음), done-sync 변동 없음(new 9 유지), **신선 각도 — 가격표관리 Phase1-4가 도입한 2개 신규 테이블(price_sheets/price_sheet_items/entity_contacts)의 컬럼존재성·NOT NULL·plain-FK dangling 위험을 전수 검증(전부 소프트삭제 부모 + 정리 배치 완비로 clean). IA임포지션은 백엔드 변경 0 확인(프론트 전용, 재검증 불요). workbench.ts 멀티소스 배관의 이중루프는 기존 인지된 LIMIT 3 + user-select bounded FP 클래스로 재확인.**
+>
 > **Area 3 UX/기능 감사 (2026-07-08T21:20):**
 > - **방법**: `npm ci`(node_modules 0→81) 후 `git fetch origin main`(HEAD=origin/main `aee5f5c` 0/0 동기, 워킹트리 clean, #422 디버전스 0). Area 3 **33회차** — 직전 Area3(`028d7db`, 07-07T13:00, 31회차) 이후 UX churn = **13파일**(`git diff --stat 028d7db..HEAD -- src/scripts src/pages`): `iaEditor.js`(+5605, 멀티소스 임포지션 P1~P4)·`priceManagement.js`(+698)·`settings.js`(+193)·`priceManagement.ts`(+96)·`cardExpenses.ts/js`(결제예정 타임라인 재구성)·`approvals.js`(R2 첨부)·`items/core.js`·`orderForm/finishing.js`·`login.ts`(favicon). **신선 각도 = 3개 병렬 에이전트로 대형 신규기능 3종(IA임포지션/가격표관리/카드결제타임라인)을 표준 5축(dead-button·HTML↔JS silent-fail·showConfirm오용·`?raw`concat스코프·로딩/에러/빈상태+타임라인 로직 수기검증)으로 전수 감사.**
 > - **🟢 IA 임포지션(P1~P4, iaEditor.js 5605줄) = clean, net-new 0**: 신규 axios 0건(기존 `/sheets`,`/process` 필드 확장 재사용, 백엔드 확인)·신규 getElementById 전부 자기 자신이 렌더 직후 바인딩(`if(el)` 가드 완비)·showConfirm 2건 전부 `.then()` 정상·`typeof X==='function'` 가드 2건 전부 같은 파일 내 정의(concat 무관)·자동배치/렌더/EPS출력/롤폭추천 전부 에러토스트+스피너+빈상태 가드 완비.
