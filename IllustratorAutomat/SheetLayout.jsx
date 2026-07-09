@@ -256,6 +256,22 @@ for (var pi = 0; pi < placements.length; pi++) {
     // 그룹 복사 → Layer A에 배치
     var copied = srcGroup.duplicate(layerA, ElementPlacement.PLACEATBEGINNING);
 
+    // 조각을 목표(placement) 크기로 스케일 — 임포지션 배율(×N)·목표크기 반영. 미회전 기준(회전 시 W↔H swap).
+    //   배율=1이면 native=placement라 무동작(스케일 100% 스킵) → 기존 렌더 회귀 0.
+    var _tgtW = (pl.rotated ? pl.height_cm : pl.width_cm) * PT_PER_CM;
+    var _tgtH = (pl.rotated ? pl.width_cm  : pl.height_cm) * PT_PER_CM;
+    try {
+        var _cgb = copied.geometricBounds; // [L,T,R,B]
+        var _cW = _cgb[2] - _cgb[0], _cH = _cgb[1] - _cgb[3];
+        if (_cW > 0.01 && _cH > 0.01 && _tgtW > 0.01 && _tgtH > 0.01) {
+            var _sclX = _tgtW / _cW * 100, _sclY = _tgtH / _cH * 100;
+            if (Math.abs(_sclX - 100) > 0.5 || Math.abs(_sclY - 100) > 0.5) {
+                copied.resize(_sclX, _sclY, true, true, true, true, _sclX);
+                $.writeln("SheetLayout: [A] resize placement[" + pi + "] " + Math.round(_cW/PT_PER_MM) + "x" + Math.round(_cH/PT_PER_MM) + " -> " + Math.round(_tgtW/PT_PER_MM) + "x" + Math.round(_tgtH/PT_PER_MM) + "mm");
+            }
+        }
+    } catch (e_scl) { $.writeln("SheetLayout: [A] resize skip[" + pi + "] " + e_scl); }
+
     // 회전: rotation(각도 0/90/180/270) 우선, 없으면 rotated bool(=90). 이형 수동 인터록 지원.
     // Konva CW(화면) → Illustrator rotate(-각도). position이 회전 후 bbox 좌상단을 배치하므로 각도 무관 정확.
     var _rot = (pl.rotation != null) ? Number(pl.rotation) : (pl.rotated ? 90 : 0);

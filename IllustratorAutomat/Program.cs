@@ -1435,7 +1435,9 @@ namespace IllustratorAutomation
             double sheetW = presetW > 0 ? presetW : (maxRight + marginCm);
             double sheetH = (mode == "flatbed" && presetH > 0) ? presetH : (maxBottom + marginCm);
             double maxDim = Math.Max(sheetW, sheetH);
-            double scaleFactor = maxDim > 500 ? (500.0 / maxDim) : 1.0;  // Illustrator 아트보드 ~577cm 한계 대응
+            // Illustrator 아트보드 ~577cm(16383pt) 한계 대응: 초과 시 축소 렌더(1/N) → scale_factor=N을 jsx/RIP에 전달해 출력 시 ×N 확대.
+            //   ⚠️ 방향 주의: 축소는 canvas/placements를 ÷scaleFactor(=N≥1)해야 함. (구버전 500/maxDim은 <1이라 오히려 확대→PARM)
+            double scaleFactor = maxDim > 500 ? Math.Ceiling(maxDim / 500.0) : 1.0;
 
             var scaledPlacements = new List<object>();
             foreach (var p in rawPl)
