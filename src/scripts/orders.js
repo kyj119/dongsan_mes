@@ -1425,7 +1425,7 @@ async function exportOrdersCsv() {
     var url = URL.createObjectURL(blob);
     var a = document.createElement('a');
     a.href = url;
-    a.download = '주문목록_' + new Date().toISOString().slice(0,10) + '.csv';
+    a.download = '주문목록_' + (window.kstToday ? window.kstToday() : new Date().toISOString().slice(0,10)) + '.csv';
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);

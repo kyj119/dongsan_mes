@@ -285,7 +285,7 @@
       const blob = new Blob([res.data], { type: 'text/csv;charset=utf-8;' })
       const link = document.createElement('a')
       link.href = URL.createObjectURL(blob)
-      link.download = 'inspection_results_' + new Date().toISOString().slice(0, 10) + '.csv'
+      link.download = 'inspection_results_' + (window.kstToday ? window.kstToday() : new Date().toISOString().slice(0, 10)) + '.csv'
       link.click()
       URL.revokeObjectURL(link.href)
       showToast('CSV 다운로드 완료', 'success')

@@ -164,7 +164,7 @@ window.exportCashScheduleCsv = async function() {
     var url = URL.createObjectURL(blob);
     var a = document.createElement('a');
     a.href = url;
-    a.download = '자금계획_' + new Date().toISOString().slice(0, 10) + '.csv';
+    a.download = '자금계획_' + (window.kstToday ? window.kstToday() : new Date().toISOString().slice(0, 10)) + '.csv';
     a.click();
     URL.revokeObjectURL(url);
   } catch(e) {

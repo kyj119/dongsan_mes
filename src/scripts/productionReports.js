@@ -736,7 +736,7 @@ async function exportProductionCsv() {
     var url = URL.createObjectURL(blob);
     var a = document.createElement('a');
     a.href = url;
-    a.download = (type === 'daily' ? '일별생산_' : '생산실적_') + new Date().toISOString().slice(0,10) + '.csv';
+    a.download = (type === 'daily' ? '일별생산_' : '생산실적_') + (window.kstToday ? window.kstToday() : new Date().toISOString().slice(0,10)) + '.csv';
     a.click();
     URL.revokeObjectURL(url);
   } catch(e) {

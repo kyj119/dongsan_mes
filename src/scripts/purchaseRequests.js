@@ -557,7 +557,7 @@ async function exportPrCsv() {
     var url = URL.createObjectURL(blob);
     var a = document.createElement('a');
     a.href = url;
-    a.download = '발주요청_' + new Date().toISOString().slice(0, 10) + '.csv';
+    a.download = '발주요청_' + (window.kstToday ? window.kstToday() : new Date().toISOString().slice(0, 10)) + '.csv';
     a.click();
     URL.revokeObjectURL(url);
   } catch(e) {
