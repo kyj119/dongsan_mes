@@ -62,6 +62,101 @@ bankRouter.get('/accounts', requireRole('ADMIN'), async (c) => {
   }
 })
 
+// GET /api/bank/fund-summary — 계좌별 현재잔액 + 총자금/순자금
+//   현재잔액 = 계좌별 최신 거래의 balance_after(파생). 순자금 = 총자금 − Σ대출잔액.
+bankRouter.get('/fund-summary', requireRole('ADMIN'), async (c) => {
+  try {
+    const ef = entityFilter(c, 'ba')
+    const { results } = await c.env.DB.prepare(
+      `SELECT
+        ba.id, ba.bank_name, ba.account_number, ba.account_holder, ba.account_alias,
+        ba.barobill_registered, ba.last_synced_at,
+        (SELECT bt.balance_after FROM bank_transactions bt
+          WHERE bt.bank_account_id = ba.id AND bt.balance_after IS NOT NULL
+          ORDER BY bt.transaction_date DESC, bt.transaction_time DESC, bt.id DESC LIMIT 1) AS current_balance,
+        (SELECT MAX(bt.transaction_date) FROM bank_transactions bt
+          WHERE bt.bank_account_id = ba.id) AS last_tx_date
+      FROM bank_accounts ba
+      WHERE ba.is_active = 1${ef.clause}
+      ORDER BY ba.created_at DESC`
+    ).bind(...ef.params).all<{ current_balance: number | null }>()
+
+    const totalBalance = results.reduce((s, a) => s + (Number(a.current_balance) || 0), 0)
+
+    // 대출잔액 합계 (loans, entity 필터)
+    const loanEf = entityFilter(c, 'loans')
+    const loanRow = await c.env.DB.prepare(
+      `SELECT COALESCE(SUM(current_balance), 0) AS loan_total, COUNT(*) AS loan_count
+       FROM loans WHERE is_active = 1${loanEf.clause}`
+    ).bind(...loanEf.params).first<{ loan_total: number; loan_count: number }>()
+    const loanTotal = Number(loanRow?.loan_total) || 0
+
+    return c.json({
+      success: true,
+      data: {
+        accounts: results,
+        total_balance: totalBalance,
+        loan_total: loanTotal,
+        loan_count: Number(loanRow?.loan_count) || 0,
+        net_funds: totalBalance - loanTotal,
+      },
+    })
+  } catch (error) {
+    console.error('Fund summary error:', error)
+    return c.json({ success: false, error: '자금현황 조회 오류' }, 500)
+  }
+})
+
+// GET /api/bank/fixed-expense-status — 당월 고정비 출금 현황(체크리스트)
+//   고정비 × 기간(YYYY-MM, 기본=당월 KST) LEFT JOIN 실적 → PAID/OVERDUE/PENDING.
+bankRouter.get('/fixed-expense-status', requireRole('ADMIN'), async (c) => {
+  try {
+    const period = c.req.query('period') || kstYmd().slice(0, 7) // YYYY-MM
+    const ef = entityFilter(c, 'fe')
+    const { results } = await c.env.DB.prepare(`
+      SELECT fe.id, fe.name, fe.category, fe.amount AS base_amount, fe.payment_day, fe.amount_type,
+        rea.estimated_amount, rea.actual_amount, rea.actual_source
+      FROM fixed_expenses fe
+      LEFT JOIN recurring_expense_actuals rea ON rea.fixed_expense_id = fe.id AND rea.period = ?
+      WHERE fe.is_active = 1 AND fe.frequency = 'MONTHLY'${ef.clause}
+      ORDER BY fe.payment_day, fe.name
+    `).bind(period, ...ef.params).all<{
+      id: number; name: string; category: string; base_amount: number
+      payment_day: number | null; amount_type: string | null
+      estimated_amount: number | null; actual_amount: number | null; actual_source: string | null
+    }>()
+
+    const today = kstYmd() // YYYY-MM-DD
+    const curPeriod = today.slice(0, 7)
+    const todayDay = Number(today.slice(8, 10))
+    const CAT_LABEL: Record<string, string> = {
+      RENT: '임대료', INSURANCE: '보험', UTILITY: '공과금', LEASE: '리스', SALARY: '급여', TAX: '세금', OTHER: '기타',
+    }
+
+    const items = results.map(r => {
+      let status = 'PENDING'
+      if (r.actual_amount != null) status = 'PAID'
+      else if (period < curPeriod) status = 'OVERDUE'
+      else if (period === curPeriod && r.payment_day && todayDay > r.payment_day) status = 'OVERDUE'
+      return {
+        id: r.id,
+        name: r.name,
+        category: r.category,
+        category_label: CAT_LABEL[r.category] || r.category,
+        payment_day: r.payment_day,
+        estimated_amount: r.estimated_amount != null ? r.estimated_amount : r.base_amount,
+        actual_amount: r.actual_amount,
+        actual_source: r.actual_source,
+        status,
+      }
+    })
+    return c.json({ success: true, data: { period, items } })
+  } catch (error) {
+    console.error('Fixed expense status error:', error)
+    return c.json({ success: false, error: '고정비 현황 조회 오류' }, 500)
+  }
+})
+
 // POST /api/bank/accounts — 계좌 등록
 bankRouter.post('/accounts', requireRole('ADMIN'), async (c) => {
   try {
@@ -314,14 +409,17 @@ bankRouter.get('/transactions', requireRole('ADMIN'), async (c) => {
         -- 컬럼 리네임 시 silent null 대신 SQL 에러로 노출됨.
         bt.id, bt.transaction_date, bt.transaction_type, bt.amount, bt.balance_after,
         bt.counterpart_name, bt.description,
-        bt.match_status, bt.matched_client_id, bt.matched_category_id,
+        bt.match_status, bt.matched_client_id, bt.matched_category_id, bt.matched_fixed_expense_id,
+        bt.match_reason, bt.transfer_pair_id,
         ba.bank_name, ba.account_number, ba.account_holder, ba.account_alias,
         c.client_name as matched_client_name, c.representative as matched_client_representative,
-        ec.name as matched_category_name, ec.icon as matched_category_icon, ec.color as matched_category_color
+        ec.name as matched_category_name, ec.icon as matched_category_icon, ec.color as matched_category_color,
+        fe.name as matched_fixed_expense_name
       FROM bank_transactions bt
       LEFT JOIN bank_accounts ba ON bt.bank_account_id = ba.id
       LEFT JOIN clients c ON bt.matched_client_id = c.id
       LEFT JOIN expense_categories ec ON bt.matched_category_id = ec.id
+      LEFT JOIN fixed_expenses fe ON bt.matched_fixed_expense_id = fe.id
       ${where}
       ORDER BY bt.transaction_date DESC, bt.transaction_time DESC
       LIMIT ${limit} OFFSET ${offset}
@@ -866,17 +964,60 @@ bankRouter.post('/transactions/auto-match', requireRole('ADMIN'), async (c) => {
       balanceCount.set(r.balance, (balanceCount.get(r.balance) ?? 0) + 1)
     }
 
-    // 3. bank_match_rules 캐시 로드 (거래처 + 비용카테고리 규칙)
+    // 3. bank_match_rules 캐시 로드 (거래처 + 비용카테고리 규칙, match_type)
     const efRules = entityFilter(c, 'bank_match_rules')
     const { results: matchRules } = await c.env.DB.prepare(`
-      SELECT counterpart_name, matched_client_id, matched_category_id FROM bank_match_rules WHERE 1=1${efRules.clause}
+      SELECT counterpart_name, matched_client_id, matched_category_id, match_type FROM bank_match_rules WHERE 1=1${efRules.clause}
     `).bind(...efRules.params).all<{
       counterpart_name: string
       matched_client_id: number | null
       matched_category_id: number | null
+      match_type: string | null
     }>()
 
-    const ruleMap = new Map(matchRules.map(r => [r.counterpart_name, { clientId: r.matched_client_id, categoryId: r.matched_category_id }]))
+    // EXACT 규칙 = 이름 완전일치 맵. CONTAINS 규칙 = 부분일치 후보 배열(적요 변동 대응).
+    const ruleMap = new Map(
+      matchRules
+        .filter(r => (r.match_type ?? 'EXACT') !== 'CONTAINS')
+        .map(r => [r.counterpart_name, { clientId: r.matched_client_id, categoryId: r.matched_category_id }])
+    )
+    const containsRules = matchRules
+      .filter(r => (r.match_type ?? 'EXACT') === 'CONTAINS' && r.counterpart_name.trim())
+      .map(r => ({ key: r.counterpart_name.trim(), clientId: r.matched_client_id, categoryId: r.matched_category_id }))
+
+    // 3-b. 활성 고정비 로드 (출금 → 고정비 제안용). 적요 변동 무관: 거래처/키워드 + 금액대로 앵커.
+    const efFixed = entityFilter(c, 'fixed_expenses')
+    const { results: fixedExpenses } = await c.env.DB.prepare(`
+      SELECT id, name, category, amount, amount_type, payment_day, counterpart_name, linked_category_id
+      FROM fixed_expenses WHERE is_active = 1${efFixed.clause}
+    `).bind(...efFixed.params).all<{
+      id: number; name: string; category: string; amount: number
+      amount_type: string | null; payment_day: number | null
+      counterpart_name: string | null; linked_category_id: number | null
+    }>()
+
+    // 출금 tx ↔ 고정비 매칭: 이름/키워드 부분일치 필수 + 금액대(FIXED ±5% / ESTIMATED ±30%). 최소 금액차 우선.
+    function matchFixedExpense(txName: string, txAmount: number) {
+      let best: { id: number; name: string; categoryId: number | null } | null = null
+      let bestDiff = Infinity
+      for (const fe of fixedExpenses) {
+        const key = (fe.counterpart_name || fe.name || '').trim()
+        if (!key) continue
+        const tokens = key.split(/[\s,]+/).filter(t => t.length >= 2)
+        const nameHit = txName.includes(key) || key.includes(txName) || tokens.some(t => txName.includes(t))
+        if (!nameHit) continue
+        if (fe.amount && fe.amount > 0) {
+          const tol = (fe.amount_type === 'ESTIMATED') ? 0.30 : 0.05
+          const diff = Math.abs(txAmount - fe.amount)
+          if (diff / fe.amount > tol) continue
+          if (diff < bestDiff) { bestDiff = diff; best = { id: fe.id, name: fe.name, categoryId: fe.linked_category_id } }
+        } else if (!best) {
+          // 금액 미설정 고정비는 이름만으로 약한 후보(금액 후보가 없을 때만)
+          best = { id: fe.id, name: fe.name, categoryId: fe.linked_category_id }
+        }
+      }
+      return best
+    }
 
     let matchedCount = 0
 
@@ -920,8 +1061,40 @@ bankRouter.post('/transactions/auto-match', requireRole('ADMIN'), async (c) => {
         bestConfidence = 0.95
         bestReason = '학습된 규칙'
       } else {
-        // Step 2: 규칙이 없으면 기존 로직으로 매칭 시도
-        for (const client of clients) {
+        // Step 1-b: CONTAINS 규칙(부분일치) — 적요가 매달 달라도 키워드로 제안
+        const cRule = containsRules.find(r => txName.includes(r.key) || r.key.includes(txName))
+        if (cRule && cRule.categoryId) {
+          // 부분일치 비용분류 → 제안(SUGGESTED, 사람 확정)
+          matchUpdateStmts.push(c.env.DB.prepare(`
+            UPDATE bank_transactions
+            SET match_status = 'SUGGESTED', matched_category_id = ?, matched_fixed_expense_id = NULL,
+                matched_client_id = NULL, match_confidence = 0.8, match_reason = '학습된 규칙(부분일치)'
+            WHERE id = ?
+          `).bind(cRule.categoryId, tx.id))
+          matchedCount++
+          continue
+        }
+        if (cRule && cRule.clientId) {
+          bestClientId = cRule.clientId
+          bestConfidence = 0.75
+          bestReason = '학습된 규칙(부분일치)'
+        } else {
+          // Step 1-c: 출금 → 고정비 제안(SUGGESTED). 확정 시 recurring_expense_actuals 기록.
+          if (tx.transaction_type === 'WITHDRAWAL') {
+            const fe = matchFixedExpense(txName, Math.abs(Number(tx.amount) || 0))
+            if (fe) {
+              matchUpdateStmts.push(c.env.DB.prepare(`
+                UPDATE bank_transactions
+                SET match_status = 'SUGGESTED', matched_category_id = ?, matched_fixed_expense_id = ?,
+                    matched_client_id = NULL, match_confidence = 0.7, match_reason = ?
+                WHERE id = ?
+              `).bind(fe.categoryId, fe.id, '고정비 제안: ' + fe.name, tx.id))
+              matchedCount++
+              continue
+            }
+          }
+          // Step 2: 규칙이 없으면 기존 로직으로 매칭 시도
+          for (const client of clients) {
           const clientName = client.client_name.trim()
           const keywords   = (client.search_keywords ?? '')
             .split(/[,\s]+/)
@@ -959,6 +1132,7 @@ bankRouter.post('/transactions/auto-match', requireRole('ADMIN'), async (c) => {
             bestConfidence = confidence
             bestClientId   = client.id
             bestReason     = reason
+          }
           }
         }
       }
@@ -1003,16 +1177,17 @@ bankRouter.post('/transactions/:id/match', requireRole('ADMIN'), async (c) => {
   try {
     const id   = c.req.param('id')
     const body = await c.req.json()
-    const { client_id, category_id } = body
+    const { client_id, category_id, fixed_expense_id } = body
+    const feId = fixed_expense_id ? Number(fixed_expense_id) : null
 
-    if (!client_id && !category_id) {
-      return c.json({ success: false, error: 'client_id 또는 category_id 필수' }, 400)
+    if (!client_id && !category_id && !feId) {
+      return c.json({ success: false, error: 'client_id · category_id · fixed_expense_id 중 하나 필수' }, 400)
     }
 
     const ef = entityFilter(c, 'bank_transactions')
     const tx = await c.env.DB.prepare(
-      `SELECT id, match_status, counterpart_name FROM bank_transactions WHERE id = ?${ef.clause}`
-    ).bind(id, ...ef.params).first<{ id: number; match_status: string; counterpart_name: string | null }>()
+      `SELECT id, match_status, counterpart_name, transaction_date, amount, entity_id FROM bank_transactions WHERE id = ?${ef.clause}`
+    ).bind(id, ...ef.params).first<{ id: number; match_status: string; counterpart_name: string | null; transaction_date: string; amount: number; entity_id: number | null }>()
 
     if (!tx) {
       return c.json({ success: false, error: '거래내역을 찾을 수 없습니다' }, 404)
@@ -1023,22 +1198,38 @@ bankRouter.post('/transactions/:id/match', requireRole('ADMIN'), async (c) => {
 
     const user = c.get('user')
 
-    if (category_id) {
-      // 비용 카테고리 매칭
+    if (category_id || feId) {
+      // 비용 카테고리(+선택적 고정비) 매칭
       await c.env.DB.prepare(`
         UPDATE bank_transactions
         SET match_status = 'APPLIED',
             matched_category_id = ?,
+            matched_fixed_expense_id = ?,
             matched_client_id = NULL,
             matched_by = ?,
             matched_at = CURRENT_TIMESTAMP,
             match_confidence = 1.0,
-            match_reason = '비용분류'
+            match_reason = ?
         WHERE id = ?
-      `).bind(category_id, user?.id ?? 1, id).run()
+      `).bind(category_id ?? null, feId, user?.id ?? 1, feId ? '고정비 확정' : '비용분류', id).run()
 
-      // 규칙 학습
-      if (tx.counterpart_name && tx.counterpart_name.trim()) {
+      if (feId) {
+        // 고정비 확정 → 당월 실적 기록(recurring_expense_actuals). 적요 변동 무관, 고정비 앵커.
+        const period = (tx.transaction_date || '').length >= 6
+          ? `${tx.transaction_date.slice(0, 4)}-${tx.transaction_date.slice(4, 6)}`
+          : kstYmd().slice(0, 7)
+        const actual = Math.abs(Number(tx.amount) || 0)
+        await c.env.DB.prepare(`
+          INSERT INTO recurring_expense_actuals (fixed_expense_id, period, actual_amount, actual_source, entity_id)
+          VALUES (?, ?, ?, 'BANK', ?)
+          ON CONFLICT(fixed_expense_id, period) DO UPDATE SET
+            actual_amount = excluded.actual_amount,
+            actual_source = 'BANK',
+            variance = excluded.actual_amount - COALESCE(estimated_amount, 0),
+            updated_at = CURRENT_TIMESTAMP
+        `).bind(feId, period, actual, tx.entity_id ?? (getEntityId(c) || 1)).run()
+      } else if (tx.counterpart_name && tx.counterpart_name.trim()) {
+        // 규칙 학습(고정비 확정이 아닌 일반 비용분류만 — 고정비는 적요가 매달 달라 이름앵커 부적합)
         await c.env.DB.prepare(`
           INSERT INTO bank_match_rules (counterpart_name, matched_client_id, matched_category_id, created_by, match_count, entity_id)
           VALUES (?, NULL, ?, ?, 1, ?)
@@ -1050,7 +1241,7 @@ bankRouter.post('/transactions/:id/match', requireRole('ADMIN'), async (c) => {
         `).bind(tx.counterpart_name.trim(), category_id, user?.id ?? 1, getEntityId(c) || 1).run()
       }
 
-      return c.json({ success: true, message: '비용 분류가 적용되었습니다' })
+      return c.json({ success: true, message: feId ? '고정비 실적이 기록되었습니다' : '비용 분류가 적용되었습니다' })
     }
 
     // 거래처 매칭 (기존 로직)
@@ -1583,6 +1774,8 @@ bankRouter.post('/transactions/:id/unmatch', requireRole('ADMIN'), async (c) => 
       UPDATE bank_transactions
       SET match_status = 'UNMATCHED',
           matched_client_id = NULL,
+          matched_category_id = NULL,
+          matched_fixed_expense_id = NULL,
           matched_by = NULL,
           matched_at = NULL,
           match_confidence = NULL,
@@ -1597,6 +1790,114 @@ bankRouter.post('/transactions/:id/unmatch', requireRole('ADMIN'), async (c) => 
       success: false,
       error: '서버 오류가 발생했습니다.'
     }, 500)
+  }
+})
+
+// ---------------------------------------------------------------------------
+// 계좌간 자금이체 (자동감지 → 확인)
+// ---------------------------------------------------------------------------
+
+// POST /api/bank/transactions/detect-transfers — 이체 후보쌍 감지(동일금액·W+D·다계좌·±2일)
+bankRouter.post('/transactions/detect-transfers', requireRole('ADMIN'), async (c) => {
+  try {
+    const ef = entityFilter(c, 'bt')
+    const { results } = await c.env.DB.prepare(`
+      SELECT bt.id, bt.bank_account_id, bt.transaction_date, bt.transaction_type, bt.amount, bt.counterpart_name,
+        COALESCE(ba.account_alias, ba.bank_name) AS account_label
+      FROM bank_transactions bt
+      LEFT JOIN bank_accounts ba ON ba.id = bt.bank_account_id
+      WHERE bt.match_status = 'UNMATCHED' AND bt.transfer_pair_id IS NULL${ef.clause}
+        AND bt.transaction_date >= ?
+      ORDER BY bt.transaction_date ASC, bt.id ASC
+    `).bind(...ef.params, lookbackYmd(MATCH_LOOKBACK_DAYS)).all<{
+      id: number; bank_account_id: number; transaction_date: string
+      transaction_type: string; amount: number; counterpart_name: string | null; account_label: string | null
+    }>()
+
+    const withdrawals = results.filter(r => r.transaction_type === 'WITHDRAWAL')
+    const deposits = results.filter(r => r.transaction_type === 'DEPOSIT')
+    const usedDep = new Set<number>()
+    const ymdEpoch = (s: string) => Date.UTC(+s.slice(0, 4), +s.slice(4, 6) - 1, +s.slice(6, 8))
+
+    const pairs: any[] = []
+    for (const w of withdrawals) {
+      const wAmt = Math.abs(Number(w.amount) || 0)
+      const wt = ymdEpoch(w.transaction_date)
+      for (const d of deposits) {
+        if (usedDep.has(d.id)) continue
+        if (d.bank_account_id === w.bank_account_id) continue
+        if (Math.abs(Number(d.amount) || 0) !== wAmt) continue
+        if (Math.abs(ymdEpoch(d.transaction_date) - wt) / 86400000 > 2) continue
+        usedDep.add(d.id)
+        pairs.push({ withdrawal: w, deposit: d, amount: wAmt })
+        break
+      }
+    }
+    return c.json({ success: true, data: { pairs, count: pairs.length } })
+  } catch (error) {
+    console.error('Detect transfers error:', error)
+    return c.json({ success: false, error: '이체 감지 오류' }, 500)
+  }
+})
+
+// POST /api/bank/transactions/confirm-transfer — 후보쌍을 계좌이체로 확정(상호 링크 + IGNORED)
+bankRouter.post('/transactions/confirm-transfer', requireRole('ADMIN'), async (c) => {
+  try {
+    const { withdrawal_id, deposit_id } = await c.req.json()
+    if (!withdrawal_id || !deposit_id || Number(withdrawal_id) === Number(deposit_id)) {
+      return c.json({ success: false, error: 'withdrawal_id·deposit_id 필수(서로 달라야 함)' }, 400)
+    }
+    const ef = entityFilter(c, 'bt')
+    const { results: rows } = await c.env.DB.prepare(`
+      SELECT bt.id, bt.bank_account_id, bt.transaction_type, bt.match_status, bt.transfer_pair_id
+      FROM bank_transactions bt WHERE bt.id IN (?, ?)${ef.clause}
+    `).bind(withdrawal_id, deposit_id, ...ef.params).all<{
+      id: number; bank_account_id: number; transaction_type: string; match_status: string; transfer_pair_id: number | null
+    }>()
+    if (rows.length !== 2) return c.json({ success: false, error: '거래를 찾을 수 없습니다' }, 404)
+    if (rows.some(r => r.match_status === 'APPLIED' || r.transfer_pair_id != null)) {
+      return c.json({ success: false, error: '이미 적용/이체된 거래가 포함되어 있습니다' }, 400)
+    }
+    const a = rows.find(r => r.id === Number(withdrawal_id))!
+    const b = rows.find(r => r.id === Number(deposit_id))!
+    if (a.bank_account_id === b.bank_account_id) {
+      return c.json({ success: false, error: '같은 계좌 간에는 이체로 처리할 수 없습니다' }, 400)
+    }
+    const upd = (id: number, pair: number) => c.env.DB.prepare(`
+      UPDATE bank_transactions
+      SET transfer_pair_id = ?, match_status = 'IGNORED', match_reason = '계좌이체',
+          matched_client_id = NULL, matched_category_id = NULL, matched_fixed_expense_id = NULL,
+          match_confidence = 1.0
+      WHERE id = ?
+    `).bind(pair, id)
+    await c.env.DB.batch([upd(a.id, b.id), upd(b.id, a.id)])
+    return c.json({ success: true, message: '계좌이체로 처리되었습니다' })
+  } catch (error) {
+    console.error('Confirm transfer error:', error)
+    return c.json({ success: false, error: '이체 확정 오류' }, 500)
+  }
+})
+
+// POST /api/bank/transactions/:id/unlink-transfer — 이체 해제(양쪽 UNMATCHED 복원)
+bankRouter.post('/transactions/:id/unlink-transfer', requireRole('ADMIN'), async (c) => {
+  try {
+    const id = c.req.param('id')
+    const ef = entityFilter(c, 'bt')
+    const row = await c.env.DB.prepare(
+      `SELECT bt.id, bt.transfer_pair_id FROM bank_transactions bt WHERE bt.id = ?${ef.clause}`
+    ).bind(id, ...ef.params).first<{ id: number; transfer_pair_id: number | null }>()
+    if (!row) return c.json({ success: false, error: '거래를 찾을 수 없습니다' }, 404)
+    const ids = row.transfer_pair_id ? [row.id, row.transfer_pair_id] : [row.id]
+    const ph = ids.map(() => '?').join(',')
+    await c.env.DB.prepare(`
+      UPDATE bank_transactions
+      SET transfer_pair_id = NULL, match_status = 'UNMATCHED', match_reason = NULL, match_confidence = NULL
+      WHERE id IN (${ph})
+    `).bind(...ids).run()
+    return c.json({ success: true, message: '계좌이체가 해제되었습니다' })
+  } catch (error) {
+    console.error('Unlink transfer error:', error)
+    return c.json({ success: false, error: '이체 해제 오류' }, 500)
   }
 })
 
@@ -2032,7 +2333,11 @@ bankRouter.get('/receivables', requireRole('ADMIN', 'MANAGER'), async (c) => {
 bankRouter.get('/client-search', requireRole('ADMIN', 'MANAGER'), async (c) => {
   try {
     const q = (c.req.query('q') || '').trim()
-    if (!q || q.length < 1) return c.json({ success: true, data: [] })
+    // 빈 검색어 = 모달 브라우즈 모드(전체 나열, 미수 많은 순). 검색어 있으면 필터.
+    const like = `%${q}%`
+    const searchClause = q ? 'AND (c.client_name LIKE ? OR c.representative LIKE ? OR c.search_keywords LIKE ?)' : ''
+    const binds = q ? [like, like, like] : []
+    const limit = q ? 20 : 40
 
     // #4 폐기 캐시 c.balance(prod 전체 0) → 라이브 파생잔액으로 교체.
     //    /receivables·deriveClientBalance 동일 정의: order_billing_groups[BILLED] − payments − adjustments.
@@ -2054,10 +2359,10 @@ bankRouter.get('/client-search', requireRole('ADMIN', 'MANAGER'), async (c) => {
         SELECT client_id AS cid, SUM(amount) AS amt FROM adjustments GROUP BY client_id
       ) aa ON aa.cid = c.id
       WHERE c.is_active = 1
-        AND (c.client_name LIKE ? OR c.representative LIKE ? OR c.search_keywords LIKE ?)
+        ${searchClause}
       ORDER BY balance DESC, c.client_name
-      LIMIT 15
-    `).bind(`%${q}%`, `%${q}%`, `%${q}%`).all()
+      LIMIT ${limit}
+    `).bind(...binds).all()
 
     return c.json({ success: true, data: results })
   } catch (error) {

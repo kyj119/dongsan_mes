@@ -8,12 +8,12 @@
   // State
   var transactions = [];
   var accounts = [];
-  var currentTab = 'tx';
+  var currentTab = 'fund';
   var matchRules = {};
   var expenseCategories = [];
 
   // Tab switch
-  var bankTabs = ['tx', 'receivables', 'rules', 'accounts'];
+  var bankTabs = ['fund', 'tx', 'receivables', 'rules', 'accounts'];
   window.switchBankTab = function(tab) {
     currentTab = tab;
     bankTabs.forEach(function(t) {
@@ -28,6 +28,7 @@
         btn.classList.toggle('text-gray-500', t !== tab);
       }
     });
+    if (tab === 'fund') loadFundSummary();
     if (tab === 'accounts') loadAccounts();
     if (tab === 'receivables') loadReceivables();
     if (tab === 'rules') loadRulesTable();
@@ -217,17 +218,29 @@
       var isDeposit = tx.transaction_type === 'DEPOSIT';
       var badge = getStatusBadge(tx.match_status || 'UNMATCHED');
       var actionCell = buildActionCell(tx);
-      var accountLabel = tx.account_alias || tx.account_holder || tx.bank_name || '';
+      // 계좌 라벨: 별칭이 있으면 '별칭 · 은행명', 없으면 은행명(폴백 예금주)
+      var accountLabel = tx.account_alias
+        ? tx.account_alias + (tx.bank_name ? ' · ' + tx.bank_name : '')
+        : (tx.bank_name || tx.account_holder || '');
       var dateStr = tx.transaction_date || '';
       if (dateStr.length === 8) dateStr = dateStr.slice(0,4) + '-' + dateStr.slice(4,6) + '-' + dateStr.slice(6,8);
 
-      // 거래처/비용분류 매칭 영역
+      // 거래처/비용분류/고정비 매칭 영역
       var matchedClient = '';
-      if (tx.match_status === 'APPLIED' && tx.matched_category_id && tx.matched_category_name) {
+      var hasCatOrFixed = tx.matched_category_id || tx.matched_fixed_expense_id;
+      if (tx.transfer_pair_id) {
+        matchedClient = '<span class="inline-flex items-center text-xs font-medium px-2 py-0.5 rounded" style="background:#e0e7ff;color:#3730a3"><i class="fas fa-right-left mr-1 text-[8px]"></i>계좌이체</span>';
+      } else if (tx.match_status === 'APPLIED' && hasCatOrFixed) {
         var catColor = tx.matched_category_color || '#6d28d9';
-        matchedClient = '<span class="inline-flex items-center text-xs font-medium px-2 py-0.5 rounded" style="background:' + catColor + '20;color:' + catColor + '"><i class="fas fa-tag mr-1 text-[8px]"></i>' + escHtml(tx.matched_category_name) + '</span>';
+        var appliedLabel = (tx.matched_fixed_expense_id && tx.matched_fixed_expense_name)
+          ? '고정비: ' + tx.matched_fixed_expense_name
+          : (tx.matched_category_name || '비용분류');
+        var appliedIcon = tx.matched_fixed_expense_id ? 'repeat' : 'tag';
+        matchedClient = '<span class="inline-flex items-center text-xs font-medium px-2 py-0.5 rounded" style="background:' + catColor + '20;color:' + catColor + '"><i class="fas fa-' + appliedIcon + ' mr-1 text-[8px]"></i>' + escHtml(appliedLabel) + '</span>';
       } else if (tx.match_status === 'APPLIED' && tx.matched_client_name) {
         matchedClient = '<span class="text-sm text-gray-700 font-medium">' + escHtml(tx.matched_client_name) + '</span>';
+      } else if (['SUGGESTED', 'CONFIRMED'].indexOf(tx.match_status) >= 0 && hasCatOrFixed) {
+        matchedClient = buildFixedSuggestion(tx);
       } else if (['SUGGESTED', 'UNMATCHED', 'CONFIRMED'].indexOf(tx.match_status) >= 0) {
         matchedClient = buildMatchSearch(tx);
       }
@@ -393,14 +406,12 @@
       presetId = suggestedClient.client_id || '';
     }
 
-    var html = '<div class="relative" style="width:140px;">';
-    html += '<input type="text" class="form-input text-xs" style="width:100%;padding:4px 8px;" placeholder="거래처..."';
+    // 거래처 선택 = 모달(clientPicker). 좁은 인라인 드롭다운 대신 전체목록 브라우즈.
+    var html = '<div style="width:140px;">';
+    html += '<input type="text" class="form-input text-xs" style="width:100%;padding:4px 8px;cursor:pointer;background:#fff;" placeholder="거래처 선택..." readonly';
     html += ' id="clientSearch_' + tx.id + '" value="' + escHtml(presetName) + '"';
-    html += ' oninput="searchClient(' + tx.id + ', this.value)"';
-    html += ' onfocus="searchClient(' + tx.id + ', this.value)"';
-    html += '>';
+    html += ' onclick="openRowClientPicker(' + tx.id + ')">';
     html += '<input type="hidden" id="clientId_' + tx.id + '" value="' + presetId + '">';
-    html += '<div id="clientDropdown_' + tx.id + '" class="hidden absolute z-50 left-0 right-0 top-full bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto"></div>';
     html += '</div>';
 
     if (suggestedClient && !tx.matched_client_id) {
@@ -410,55 +421,72 @@
     return html;
   }
 
-  // 거래처 검색 (디바운스)
-  var searchTimers = {};
-  window.searchClient = function(txId, query) {
-    if (searchTimers[txId]) clearTimeout(searchTimers[txId]);
-    var dropdown = document.getElementById('clientDropdown_' + txId);
-    if (!query || query.length < 1) { dropdown.classList.add('hidden'); return; }
-
-    searchTimers[txId] = setTimeout(function() {
-      axios.get('/api/bank/client-search?q=' + encodeURIComponent(query)).then(function(r) {
-        var items = r.data.data || [];
-        if (!items.length) {
-          dropdown.innerHTML = '<div class="px-3 py-2 text-xs text-gray-400">검색 결과 없음</div>';
-          dropdown.classList.remove('hidden');
-          positionTxDropdown(dropdown);
-          return;
-        }
-        var html = '';
-        items.forEach(function(cl) {
-          var rep = cl.representative ? ' (' + escHtml(cl.representative) + ')' : '';
-          var bal = cl.balance > 0 ? '<span class="text-red-500 text-xs ml-1">' + Number(cl.balance).toLocaleString() + '</span>' : '';
-          html += '<div class="px-3 py-2 hover:bg-blue-50 cursor-pointer text-sm border-b border-gray-50" onclick="selectClient(' + txId + ',' + cl.id + ',\'' + escHtml(cl.client_name).replace(/'/g, "\\'") + '\')">';
-          html += '<span class="font-medium">' + escHtml(cl.client_name) + '</span>' + rep + bal;
-          html += '</div>';
-        });
-        dropdown.innerHTML = html;
-        dropdown.classList.remove('hidden');
-        positionTxDropdown(dropdown);
-      }).catch(function() { dropdown.classList.add('hidden'); });
-    }, 200);
+  // in-row 거래처 선택 → 재사용 모달 열기, 선택 시 행의 hidden clientId 채움
+  window.openRowClientPicker = function(txId) {
+    var cur = document.getElementById('clientSearch_' + txId);
+    openClientPicker(function(id, name) {
+      var s = document.getElementById('clientSearch_' + txId);
+      var h = document.getElementById('clientId_' + txId);
+      if (s) s.value = name;
+      if (h) h.value = id;
+    }, cur ? cur.value : '');
   };
 
-  window.selectClient = function(txId, clientId, clientName) {
-    document.getElementById('clientSearch_' + txId).value = clientName;
-    document.getElementById('clientId_' + txId).value = clientId;
-    document.getElementById('clientDropdown_' + txId).classList.add('hidden');
+  // 비용분류/고정비 자동 제안 렌더 (확정=사람이 클릭)
+  function buildFixedSuggestion(tx) {
+    var isFixed = !!tx.matched_fixed_expense_id;
+    var color = tx.matched_category_color || (isFixed ? '#0f766e' : '#6d28d9');
+    var label = isFixed
+      ? (tx.matched_fixed_expense_name ? '고정비: ' + tx.matched_fixed_expense_name : '고정비')
+      : (tx.matched_category_name || '비용분류');
+    var catId = tx.matched_category_id || 'null';
+    var feId = tx.matched_fixed_expense_id || 'null';
+    var html = '<div class="flex items-center gap-1" style="min-width:150px;">';
+    html += '<span class="inline-flex items-center text-xs font-medium px-2 py-0.5 rounded" style="background:' + color + '20;color:' + color + '" title="' + escHtml(tx.match_reason || '자동 제안') + '"><i class="fas fa-' + (isFixed ? 'repeat' : 'tag') + ' mr-1 text-[8px]"></i>' + escHtml(label) + '</span>';
+    html += '<button class="btn-sm btn-match" style="font-size:11px;padding:2px 6px;" title="확정" onclick="confirmSuggestedCategory(' + tx.id + ',' + catId + ',' + feId + ')"><i class="fas fa-check text-[8px]"></i></button>';
+    html += '<button class="btn-sm btn-unmatch" style="font-size:11px;padding:2px 6px;" title="다르게 매칭" onclick="rejectSuggestion(' + tx.id + ')"><i class="fas fa-pen text-[8px]"></i></button>';
+    html += '</div>';
+    return html;
+  }
+
+  // 제안 확정 → APPLIED (+고정비면 당월 실적 기록)
+  window.confirmSuggestedCategory = function(txId, catId, feId) {
+    var body = {};
+    if (catId) body.category_id = catId;
+    if (feId) body.fixed_expense_id = feId;
+    axios.post('/api/bank/transactions/' + txId + '/match', body).then(function(r) {
+      showToast((r.data && r.data.message) || '확정 완료', 'success');
+      loadTransactions();
+      loadStats();
+      if (feId) loadFixedExpenseStatus();
+    }).catch(function(e) {
+      var msg = (e.response && e.response.data && e.response.data.error) ? e.response.data.error : '확정 실패';
+      showToast(msg, 'error');
+    });
   };
 
-  // 드롭다운 외부 클릭 시 닫기
+  // 제안 거절 → UNMATCHED로 되돌려 직접 매칭
+  window.rejectSuggestion = function(txId) {
+    axios.post('/api/bank/transactions/' + txId + '/unmatch').then(function() {
+      loadTransactions();
+    }).catch(function(e) {
+      var msg = (e.response && e.response.data && e.response.data.error) ? e.response.data.error : '처리 실패';
+      showToast(msg, 'error');
+    });
+  };
+
+  // 비용분류 드롭다운 외부 클릭 시 닫기 (거래처는 모달로 전환됨)
   document.addEventListener('click', function(e) {
     var t = e.target;
-    if (!t.closest('[id^="clientSearch_"]') && !t.closest('[id^="clientDropdown_"]')) {
-      document.querySelectorAll('[id^="clientDropdown_"]:not(.hidden)').forEach(function(el) { el.classList.add('hidden'); });
-    }
     if (!t.closest('[id^="categorySearch_"]') && !t.closest('[id^="categoryDropdown_"]')) {
       document.querySelectorAll('[id^="categoryDropdown_"]:not(.hidden)').forEach(function(el) { el.classList.add('hidden'); });
     }
   });
 
   function buildActionCell(tx) {
+    if (tx.transfer_pair_id) {
+      return '<button class="btn-sm btn-unmatch" style="font-size:11px;" title="계좌이체 해제" onclick="unlinkTransfer(' + tx.id + ')">이체해제</button>';
+    }
     var st = tx.match_status || 'UNMATCHED';
     if (st === 'APPLIED') {
       return '<button class="btn-sm" style="background:#fef3c7;color:#92400e;font-size:11px;" onclick="unapplyTx(' + tx.id + ')"><i class="fas fa-undo text-[8px]"></i></button>';
@@ -514,16 +542,7 @@
     updateSelectionBar();
   };
 
-  // More actions dropdown
-  window.toggleMoreActions = function() {
-    var menu = document.getElementById('moreActionsMenu');
-    if (menu) menu.classList.toggle('hidden');
-  };
-  document.addEventListener('click', function(e) {
-    var wrap = document.getElementById('moreActionsWrap');
-    var menu = document.getElementById('moreActionsMenu');
-    if (wrap && menu && !wrap.contains(e.target)) menu.classList.add('hidden');
-  });
+  // (⋯ 더보기 메뉴 제거: CSV 가져오기/내보내기는 액션바 인라인 버튼으로 노출)
 
   // #328: 구 sync-preview 블록(syncAll/showSyncPreview/confirmSync/closeSyncPreview) 제거
   //   — syncPreviewModal 마크업 부재 + 실제 진입점은 syncBarobillBank (dead code였음)
@@ -536,6 +555,92 @@
       loadTransactions();
     }).catch(function(e) {
       var msg = (e.response && e.response.data && e.response.data.error) ? e.response.data.error : '자동매칭 실패';
+      showToast(msg, 'error');
+    });
+  };
+
+  // === 계좌간 이체 감지 → 확인 ===
+  var transferPairs = [];
+  window.detectTransfers = function() {
+    var list = document.getElementById('transferList');
+    document.getElementById('transferModal').classList.add('show');
+    if (list) list.innerHTML = '<div class="px-3 py-8 text-center text-sm text-gray-400"><i class="fas fa-spinner fa-spin mr-1"></i>감지 중...</div>';
+    axios.post('/api/bank/transactions/detect-transfers').then(function(r) {
+      transferPairs = (r.data.data && r.data.data.pairs) || [];
+      renderTransferCandidates();
+    }).catch(function(e) {
+      var msg = (e.response && e.response.data && e.response.data.error) ? e.response.data.error : '이체 감지 실패';
+      if (list) list.innerHTML = '<div class="px-3 py-8 text-center text-sm text-red-400">' + escHtml(msg) + '</div>';
+    });
+  };
+
+  function renderTransferCandidates() {
+    var list = document.getElementById('transferList');
+    var allBtn = document.getElementById('transferConfirmAllBtn');
+    if (!list) return;
+    if (!transferPairs.length) {
+      list.innerHTML = '<div class="px-3 py-8 text-center text-sm text-gray-400"><i class="fas fa-check-circle text-2xl mb-2 block text-gray-300"></i>감지된 이체 후보가 없습니다.</div>';
+      if (allBtn) allBtn.style.display = 'none';
+      return;
+    }
+    if (allBtn) allBtn.style.display = '';
+    var html = '';
+    transferPairs.forEach(function(p, i) {
+      var w = p.withdrawal, d = p.deposit;
+      html += '<div class="px-4 py-3 border-b border-gray-50" id="transferRow_' + i + '">';
+      html += '<div class="flex items-center justify-between gap-2">';
+      html += '<div class="text-sm">';
+      html += '<span class="inline-flex items-center gap-1"><span class="text-red-600 font-medium">' + escHtml(w.account_label || '') + '</span> <i class="fas fa-arrow-right text-gray-300 text-[10px]"></i> <span class="text-blue-600 font-medium">' + escHtml(d.account_label || '') + '</span></span>';
+      html += '<div class="text-xs text-gray-400 mt-0.5">' + fmtDate8(w.transaction_date) + ' 출금 · ' + fmtDate8(d.transaction_date) + ' 입금 · ' + escHtml(w.counterpart_name || '') + '</div>';
+      html += '</div>';
+      html += '<div class="flex items-center gap-2">';
+      html += '<span class="font-semibold tabular-nums text-gray-800">' + Number(p.amount).toLocaleString() + '원</span>';
+      html += '<button class="btn-sm btn-match" style="font-size:11px;padding:3px 8px;" onclick="confirmTransfer(' + i + ')">확정</button>';
+      html += '</div>';
+      html += '</div></div>';
+    });
+    list.innerHTML = html;
+  }
+
+  window.confirmTransfer = function(i) {
+    var p = transferPairs[i];
+    if (!p) return;
+    axios.post('/api/bank/transactions/confirm-transfer', { withdrawal_id: p.withdrawal.id, deposit_id: p.deposit.id }).then(function() {
+      var row = document.getElementById('transferRow_' + i);
+      if (row) row.innerHTML = '<div class="px-1 py-2 text-sm text-green-600"><i class="fas fa-check mr-1"></i>계좌이체로 확정됨</div>';
+      transferPairs[i] = null;
+    }).catch(function(e) {
+      var msg = (e.response && e.response.data && e.response.data.error) ? e.response.data.error : '이체 확정 실패';
+      showToast(msg, 'error');
+    });
+  };
+
+  window.confirmAllTransfers = function() {
+    var tasks = transferPairs.map(function(p, i) {
+      if (!p) return null;
+      return axios.post('/api/bank/transactions/confirm-transfer', { withdrawal_id: p.withdrawal.id, deposit_id: p.deposit.id })
+        .then(function() { transferPairs[i] = null; }).catch(function() {});
+    }).filter(Boolean);
+    if (!tasks.length) { showToast('확정할 후보가 없습니다', 'warning'); return; }
+    Promise.all(tasks).then(function() {
+      showToast(tasks.length + '건 계좌이체 처리됨', 'success');
+      closeTransferModal();
+      loadTransactions();
+    });
+  };
+
+  window.closeTransferModal = function() {
+    document.getElementById('transferModal').classList.remove('show');
+    loadTransactions();
+  };
+
+  window.unlinkTransfer = async function(txId) {
+    if (!(await showConfirm('계좌이체를 해제하고 두 거래를 미매칭으로 되돌리시겠습니까?'))) return;
+    axios.post('/api/bank/transactions/' + txId + '/unlink-transfer').then(function() {
+      showToast('계좌이체 해제됨', 'success');
+      loadTransactions();
+    }).catch(function(e) {
+      var msg = (e.response && e.response.data && e.response.data.error) ? e.response.data.error : '해제 실패';
       showToast(msg, 'error');
     });
   };
@@ -673,44 +778,57 @@
     document.getElementById('applyModal').classList.add('show');
   }
 
-  // 적용 모달 거래처 검색
-  var applySearchTimer = null;
-  window.searchApplyClient = function(query) {
-    if (applySearchTimer) clearTimeout(applySearchTimer);
-    var dropdown = document.getElementById('applyClientDropdown');
-    if (!query || query.length < 1) { dropdown.classList.add('hidden'); return; }
+  window.closeApplyModal = function() {
+    document.getElementById('applyModal').classList.remove('show');
+  };
 
-    applySearchTimer = setTimeout(function() {
-      axios.get('/api/bank/client-search?q=' + encodeURIComponent(query)).then(function(r) {
+  // === 거래처 선택 모달 (재사용: in-row 매칭·입금적용·규칙수정 공용) ===
+  var _clientPickerCb = null;
+  var _clientPickerTimer = null;
+  window.openClientPicker = function(onSelect, initialQuery) {
+    _clientPickerCb = (typeof onSelect === 'function') ? onSelect : null;
+    var modal = document.getElementById('clientPickerModal');
+    var input = document.getElementById('clientPickerSearch');
+    if (input) input.value = initialQuery || '';
+    if (modal) modal.classList.add('show');
+    clientPickerSearch(initialQuery || '');
+    setTimeout(function() { if (input) input.focus(); }, 40);
+  };
+  window.closeClientPicker = function() {
+    var modal = document.getElementById('clientPickerModal');
+    if (modal) modal.classList.remove('show');
+    _clientPickerCb = null;
+  };
+  window.clientPickerSearch = function(query) {
+    if (_clientPickerTimer) clearTimeout(_clientPickerTimer);
+    var list = document.getElementById('clientPickerList');
+    if (!list) return;
+    _clientPickerTimer = setTimeout(function() {
+      axios.get('/api/bank/client-search?q=' + encodeURIComponent(query || '')).then(function(r) {
         var items = r.data.data || [];
         if (!items.length) {
-          dropdown.innerHTML = '<div class="px-3 py-2 text-xs text-gray-400">검색 결과 없음</div>';
-          dropdown.classList.remove('hidden');
+          list.innerHTML = '<div class="px-3 py-8 text-center text-sm text-gray-400">검색 결과 없음</div>';
           return;
         }
         var html = '';
         items.forEach(function(cl) {
-          var rep = cl.representative ? ' (' + escHtml(cl.representative) + ')' : '';
-          html += '<div class="px-3 py-2 hover:bg-blue-50 cursor-pointer text-sm border-b border-gray-50" onclick="selectApplyClient(' + cl.id + ',\'' + escHtml(cl.client_name).replace(/'/g, "\\'") + '\')">';
-          html += '<span class="font-medium">' + escHtml(cl.client_name) + '</span>' + rep;
+          var rep = cl.representative ? '<span class="text-xs text-gray-400 ml-2">' + escHtml(cl.representative) + '</span>' : '';
+          var biz = cl.business_registration_number ? '<span class="text-[11px] text-gray-300 ml-2">' + escHtml(cl.business_registration_number) + '</span>' : '';
+          var bal = (cl.balance && cl.balance > 0) ? '<span class="text-xs text-red-500 whitespace-nowrap">미수 ' + Number(cl.balance).toLocaleString() + '</span>' : '';
+          html += '<div class="px-4 py-2.5 hover:bg-blue-50 cursor-pointer flex items-center justify-between gap-2 border-b border-gray-50" '
+            + 'onclick="pickClient(' + cl.id + ',\'' + escHtml(cl.client_name).replace(/'/g, "\\'") + '\')">';
+          html += '<span class="text-sm font-medium text-gray-800">' + escHtml(cl.client_name) + rep + biz + '</span>' + bal;
           html += '</div>';
         });
-        dropdown.innerHTML = html;
-        dropdown.classList.remove('hidden');
-      }).catch(function() { dropdown.classList.add('hidden'); });
+        list.innerHTML = html;
+      }).catch(function() {
+        list.innerHTML = '<div class="px-3 py-8 text-center text-sm text-red-400">검색 실패</div>';
+      });
     }, 200);
   };
-
-  window.selectApplyClient = function(clientId, clientName) {
-    document.getElementById('applyClientSearch').value = clientName;
-    document.getElementById('applyClientId').value = clientId;
-    document.getElementById('applyClientDropdown').classList.add('hidden');
-  };
-
-  window.closeApplyModal = function() {
-    document.getElementById('applyModal').classList.remove('show');
-    var dd = document.getElementById('applyClientDropdown');
-    if (dd) dd.classList.add('hidden');
+  window.pickClient = function(id, name) {
+    if (_clientPickerCb) _clientPickerCb(id, name);
+    closeClientPicker();
   };
 
   window.confirmApply = function() {
@@ -732,6 +850,104 @@
       showToast(msg, 'error');
     });
   };
+
+  // === 자금 현황 Tab ===
+  function fmtWon(n) { return Number(n || 0).toLocaleString() + '원'; }
+  function fmtDate8(s) {
+    s = String(s || '');
+    if (s.length === 8) return s.slice(0, 4) + '-' + s.slice(4, 6) + '-' + s.slice(6, 8);
+    return s;
+  }
+
+  window.loadFundSummary = function() {
+    var body = document.getElementById('fundAccountsBody');
+    if (body) body.innerHTML = '<tr><td colspan="5" class="text-center py-8 text-gray-400"><i class="fas fa-spinner fa-spin mr-1"></i>로딩 중...</td></tr>';
+    axios.get('/api/bank/fund-summary').then(function(r) {
+      renderFundSummary((r.data && r.data.data) || {});
+    }).catch(function() {
+      if (body) body.innerHTML = '<tr><td colspan="5" class="text-center py-8 text-red-400">자금현황 로딩 실패</td></tr>';
+    });
+    loadFixedExpenseStatus();
+  };
+
+  function renderFundSummary(d) {
+    var tb = document.getElementById('fundTotalBalance');
+    var nf = document.getElementById('fundNetFunds');
+    var lt = document.getElementById('fundLoanTotal');
+    if (tb) tb.textContent = fmtWon(d.total_balance);
+    if (nf) nf.textContent = fmtWon(d.net_funds);
+    if (lt) lt.textContent = fmtWon(d.loan_total);
+    var ac = document.getElementById('fundAccountCount');
+    if (ac) ac.textContent = (d.accounts ? d.accounts.length : 0) + '개 계좌';
+    var ln = document.getElementById('fundLoanNote');
+    if (ln) ln.textContent = (d.loan_count || 0) + '건 · 자금예측에서 관리';
+
+    var body = document.getElementById('fundAccountsBody');
+    if (!body) return;
+    var accts = d.accounts || [];
+    if (!accts.length) {
+      body.innerHTML = '<tr><td colspan="5" class="text-center py-8 text-gray-400">등록된 계좌가 없습니다.</td></tr>';
+      return;
+    }
+    var html = '';
+    accts.forEach(function(a) {
+      var label = a.account_alias
+        ? escHtml(a.account_alias) + (a.bank_name ? ' · ' + escHtml(a.bank_name) : '')
+        : escHtml(a.bank_name || '');
+      var bal = a.current_balance != null ? fmtWon(a.current_balance) : '<span class="text-gray-400">미동기화</span>';
+      var lastTx = a.last_tx_date ? fmtDate8(a.last_tx_date) : '-';
+      var conn = a.barobill_registered
+        ? '<span class="text-xs px-2 py-0.5 rounded" style="background:#d1fae5;color:#065f46;">바로빌</span>'
+        : '<span class="text-xs text-gray-400">-</span>';
+      html += '<tr class="border-b border-gray-50">';
+      html += '<td class="px-3 py-2 font-medium text-gray-800">' + label + '</td>';
+      html += '<td class="px-3 py-2 text-xs text-gray-500">' + escHtml(a.account_number || '') + (a.account_holder ? ' · ' + escHtml(a.account_holder) : '') + '</td>';
+      html += '<td class="px-3 py-2 text-right font-semibold tabular-nums text-gray-800">' + bal + '</td>';
+      html += '<td class="px-3 py-2 text-center text-xs text-gray-500">' + lastTx + '</td>';
+      html += '<td class="px-3 py-2 text-center">' + conn + '</td>';
+      html += '</tr>';
+    });
+    body.innerHTML = html;
+  }
+
+  function loadFixedExpenseStatus() {
+    var body = document.getElementById('fundFixedBody');
+    if (body) body.innerHTML = '<tr><td colspan="6" class="text-center py-6 text-gray-400"><i class="fas fa-spinner fa-spin mr-1"></i>로딩 중...</td></tr>';
+    axios.get('/api/bank/fixed-expense-status').then(function(r) {
+      var d = (r.data && r.data.data) || {};
+      var per = document.getElementById('fundFixedPeriod');
+      if (per) per.textContent = d.period ? '(' + d.period + ')' : '';
+      renderFixedStatus(d.items || []);
+    }).catch(function() {
+      if (body) body.innerHTML = '<tr><td colspan="6" class="text-center py-6 text-gray-400">고정비 현황 없음</td></tr>';
+    });
+  }
+
+  function renderFixedStatus(items) {
+    var body = document.getElementById('fundFixedBody');
+    if (!body) return;
+    if (!items.length) {
+      body.innerHTML = '<tr><td colspan="6" class="text-center py-6 text-gray-400">등록된 월 고정비가 없습니다.</td></tr>';
+      return;
+    }
+    var stMap = {
+      PAID: '<span class="status-badge badge-applied">✓ 출금완료</span>',
+      OVERDUE: '<span class="status-badge badge-ignored">⚠ 미출금</span>',
+      PENDING: '<span class="status-badge badge-suggested">⏳ 예정</span>'
+    };
+    var html = '';
+    items.forEach(function(it) {
+      html += '<tr class="border-b border-gray-50">';
+      html += '<td class="px-3 py-2 font-medium text-gray-800">' + escHtml(it.name || '') + '</td>';
+      html += '<td class="px-3 py-2 text-xs text-gray-500">' + escHtml(it.category_label || it.category || '') + '</td>';
+      html += '<td class="px-3 py-2 text-right tabular-nums text-gray-500">' + (it.estimated_amount != null ? fmtWon(it.estimated_amount) : '-') + '</td>';
+      html += '<td class="px-3 py-2 text-right tabular-nums font-semibold ' + (it.actual_amount != null ? 'text-gray-800' : 'text-gray-300') + '">' + (it.actual_amount != null ? fmtWon(it.actual_amount) : '-') + '</td>';
+      html += '<td class="px-3 py-2 text-center text-xs text-gray-500">' + (it.payment_day ? it.payment_day + '일' : '-') + '</td>';
+      html += '<td class="px-3 py-2 text-center">' + (stMap[it.status] || '') + '</td>';
+      html += '</tr>';
+    });
+    body.innerHTML = html;
+  }
 
   // === Accounts Tab ===
   function loadAccounts() {
@@ -1128,40 +1344,6 @@
 
   window.closeRuleEditModal = function() {
     document.getElementById('ruleEditModal').classList.remove('show');
-    document.getElementById('ruleEditClientDropdown').classList.add('hidden');
-  };
-
-  var ruleSearchTimer = null;
-  window.searchRuleClient = function(query) {
-    if (ruleSearchTimer) clearTimeout(ruleSearchTimer);
-    var dropdown = document.getElementById('ruleEditClientDropdown');
-    if (!query || query.length < 1) { dropdown.classList.add('hidden'); return; }
-
-    ruleSearchTimer = setTimeout(function() {
-      axios.get('/api/bank/client-search?q=' + encodeURIComponent(query)).then(function(r) {
-        var items = r.data.data || [];
-        if (!items.length) {
-          dropdown.innerHTML = '<div class="px-3 py-2 text-xs text-gray-400">검색 결과 없음</div>';
-          dropdown.classList.remove('hidden');
-          return;
-        }
-        var html = '';
-        items.forEach(function(cl) {
-          html += '<div class="px-3 py-2 hover:bg-blue-50 cursor-pointer text-sm border-b border-gray-50" onclick="selectRuleClient(' + cl.id + ',\'' + escHtml(cl.client_name).replace(/'/g, "\\'") + '\')">';
-          html += '<span class="font-medium">' + escHtml(cl.client_name) + '</span>';
-          if (cl.representative) html += ' <span class="text-gray-400">(' + escHtml(cl.representative) + ')</span>';
-          html += '</div>';
-        });
-        dropdown.innerHTML = html;
-        dropdown.classList.remove('hidden');
-      }).catch(function() { dropdown.classList.add('hidden'); });
-    }, 200);
-  };
-
-  window.selectRuleClient = function(clientId, clientName) {
-    document.getElementById('ruleEditClientSearch').value = clientName;
-    document.getElementById('ruleEditClientId').value = clientId;
-    document.getElementById('ruleEditClientDropdown').classList.add('hidden');
   };
 
   window.saveRuleEdit = function() {
@@ -1270,6 +1452,8 @@
     switchStatusTab('PENDING');
   });
   loadBarobillStatus();
+  // 기본 랜딩 탭 = 자금 현황
+  loadFundSummary();
 
   // Close modals on overlay click
   document.getElementById('accountModal').addEventListener('click', function(e) {

@@ -53,7 +53,11 @@ export function bankPage(c: Context<HonoEnv>) {
           </div>
           <!-- Tab Navigation -->
           <div class="flex border-b mb-6">
-          <button id="tabTx" class="tab-btn active px-6 py-3 text-sm font-medium border-b-2 border-blue-600 text-blue-600"
+          <button id="tabFund" class="tab-btn active px-6 py-3 text-sm font-medium border-b-2 border-blue-600 text-blue-600"
+            onclick="switchBankTab('fund')">
+            <i class="fas fa-wallet mr-1"></i>자금 현황
+          </button>
+          <button id="tabTx" class="tab-btn px-6 py-3 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700"
             onclick="switchBankTab('tx')">
             <i class="fas fa-exchange-alt mr-1"></i>거래내역 매칭
           </button>
@@ -71,8 +75,77 @@ export function bankPage(c: Context<HonoEnv>) {
           </button>
         </div>
 
+        <!-- Tab 0: 자금 현황 -->
+        <div id="tabContentFund" class="tab-content active">
+          <!-- 총자금 KPI -->
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-5">
+            <div class="kpi-card bg-white border border-gray-200 rounded-lg">
+              <div class="text-xs font-medium text-gray-500"><i class="fas fa-university mr-1"></i>총 계좌잔액</div>
+              <div class="text-2xl font-bold text-blue-600" id="fundTotalBalance">-</div>
+              <div class="text-[11px] text-gray-400" id="fundAccountCount"></div>
+            </div>
+            <div class="kpi-card bg-white border border-gray-200 rounded-lg">
+              <div class="text-xs font-medium text-gray-500"><i class="fas fa-hand-holding-usd mr-1"></i>대출 잔액</div>
+              <div class="text-2xl font-bold text-red-500" id="fundLoanTotal">-</div>
+              <div class="text-[11px] text-gray-400" id="fundLoanNote"></div>
+            </div>
+            <div class="kpi-card bg-blue-50 border border-blue-200 rounded-lg">
+              <div class="text-xs font-medium text-blue-700"><i class="fas fa-wallet mr-1"></i>순자금 (잔액−대출)</div>
+              <div class="text-2xl font-bold text-blue-700" id="fundNetFunds">-</div>
+            </div>
+          </div>
+
+          <!-- 계좌별 잔액 -->
+          <div class="flex items-center justify-between mb-2">
+            <h2 class="text-sm font-semibold text-gray-700">계좌별 잔액</h2>
+            <button onclick="loadFundSummary()" class="text-xs text-gray-500 hover:text-blue-600"><i class="fas fa-sync-alt mr-1"></i>새로고침</button>
+          </div>
+          <div class="ds-card overflow-hidden mb-6">
+            <div class="overflow-x-auto">
+              <table class="w-full border-collapse ds-table">
+                <thead>
+                  <tr class="bg-gray-50 border-b">
+                    <th class="col-name px-3 py-2 text-left text-[11px] font-medium text-gray-500 uppercase">계좌</th>
+                    <th class="col-tag px-3 py-2 text-left text-[11px] font-medium text-gray-500 uppercase">계좌번호</th>
+                    <th class="col-amount px-3 py-2 text-right text-[11px] font-medium text-gray-500 uppercase">현재 잔액</th>
+                    <th class="col-date px-3 py-2 text-center text-[11px] font-medium text-gray-500 uppercase">최근 거래일</th>
+                    <th class="col-status px-3 py-2 text-center text-[11px] font-medium text-gray-500 uppercase">연동</th>
+                  </tr>
+                </thead>
+                <tbody id="fundAccountsBody">
+                  <tr><td colspan="5" class="text-center py-10 text-gray-400">로딩 중...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- 당월 고정비 출금 체크리스트 (P2) -->
+          <div class="flex items-center justify-between mb-2">
+            <h2 class="text-sm font-semibold text-gray-700">이번 달 고정비 출금 현황 <span id="fundFixedPeriod" class="text-xs font-normal text-gray-400"></span></h2>
+          </div>
+          <div class="ds-card overflow-hidden">
+            <div class="overflow-x-auto">
+              <table class="w-full border-collapse ds-table">
+                <thead>
+                  <tr class="bg-gray-50 border-b">
+                    <th class="col-name px-3 py-2 text-left text-[11px] font-medium text-gray-500 uppercase">고정비 항목</th>
+                    <th class="col-tag px-3 py-2 text-left text-[11px] font-medium text-gray-500 uppercase">분류</th>
+                    <th class="col-amount px-3 py-2 text-right text-[11px] font-medium text-gray-500 uppercase">예상액</th>
+                    <th class="col-amount px-3 py-2 text-right text-[11px] font-medium text-gray-500 uppercase">실제 출금</th>
+                    <th class="col-date px-3 py-2 text-center text-[11px] font-medium text-gray-500 uppercase">결제일</th>
+                    <th class="col-status px-3 py-2 text-center text-[11px] font-medium text-gray-500 uppercase">상태</th>
+                  </tr>
+                </thead>
+                <tbody id="fundFixedBody">
+                  <tr><td colspan="6" class="text-center py-8 text-gray-400">로딩 중...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
         <!-- Tab 1: 거래내역 매칭 -->
-        <div id="tabContentTx" class="tab-content active">
+        <div id="tabContentTx" class="tab-content">
           <input type="hidden" id="filterStatus" value="PENDING">
 
           <!-- 통합 필터 바: 필터 + 상태탭 + KPI 인라인 -->
@@ -123,15 +196,15 @@ export function bankPage(c: Context<HonoEnv>) {
                 <button onclick="runAutoMatch()" class="px-3 py-1.5 text-xs font-medium rounded-lg bg-green-600 text-white hover:bg-green-700 flex items-center gap-1">
                   <i class="fas fa-magic"></i> 자동매칭
                 </button>
-                <div class="relative" id="moreActionsWrap">
-                  <button onclick="toggleMoreActions()" class="px-3 py-1.5 text-xs font-medium rounded-lg bg-gray-100 text-gray-600 hover:bg-gray-200 flex items-center gap-1">
-                    <i class="fas fa-ellipsis-h"></i>
-                  </button>
-                  <div id="moreActionsMenu" class="hidden absolute right-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-50 py-1 w-44">
-                    <button onclick="openCsvImport(); toggleMoreActions();" class="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"><i class="fas fa-file-upload text-gray-400 w-4"></i>CSV 가져오기</button>
-                    <button onclick="exportCsv(); toggleMoreActions();" class="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"><i class="fas fa-download text-gray-400 w-4"></i>CSV 내보내기</button>
-                  </div>
-                </div>
+                <button onclick="detectTransfers()" class="px-3 py-1.5 text-xs font-medium rounded-lg bg-indigo-50 text-indigo-700 border border-indigo-200 hover:bg-indigo-100 flex items-center gap-1" title="계좌간 이체 자동감지">
+                  <i class="fas fa-right-left"></i> 계좌이체 감지
+                </button>
+                <button onclick="openCsvImport()" class="px-3 py-1.5 text-xs font-medium rounded-lg bg-gray-100 text-gray-600 hover:bg-gray-200 flex items-center gap-1" title="통장 CSV 가져오기">
+                  <i class="fas fa-file-upload text-gray-400"></i> CSV
+                </button>
+                <button onclick="exportCsv()" class="px-3 py-1.5 text-xs font-medium rounded-lg bg-gray-100 text-gray-600 hover:bg-gray-200 flex items-center gap-1" title="거래내역 CSV 내보내기">
+                  <i class="fas fa-download text-gray-400"></i>
+                </button>
               </div>
             </div>
           </div>
@@ -476,12 +549,9 @@ export function bankPage(c: Context<HonoEnv>) {
           <div class="space-y-3">
             <div>
               <label class="form-label">거래처 <span class="text-red-500">*</span></label>
-              <div class="relative">
-                <input type="text" id="applyClientSearch" class="form-input" placeholder="거래처 검색..."
-                  oninput="searchApplyClient(this.value)" onfocus="searchApplyClient(this.value)">
-                <input type="hidden" id="applyClientId">
-                <div id="applyClientDropdown" class="hidden absolute z-50 left-0 right-0 top-full bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto"></div>
-              </div>
+              <input type="text" id="applyClientSearch" class="form-input" placeholder="클릭하여 거래처 선택..." readonly style="cursor:pointer;background:#fff;"
+                onclick="openClientPicker(function(id,name){document.getElementById('applyClientSearch').value=name;document.getElementById('applyClientId').value=id;}, this.value)">
+              <input type="hidden" id="applyClientId">
             </div>
             <div>
               <label class="form-label">결제 방법</label>
@@ -518,17 +588,46 @@ export function bankPage(c: Context<HonoEnv>) {
             </div>
             <div>
               <label class="form-label">매칭 거래처 <span class="text-red-500">*</span></label>
-              <div class="relative">
-                <input type="text" id="ruleEditClientSearch" class="form-input" placeholder="거래처 검색..."
-                  oninput="searchRuleClient(this.value)" onfocus="searchRuleClient(this.value)">
-                <input type="hidden" id="ruleEditClientId">
-                <div id="ruleEditClientDropdown" class="hidden absolute z-50 left-0 right-0 top-full bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto"></div>
-              </div>
+              <input type="text" id="ruleEditClientSearch" class="form-input" placeholder="클릭하여 거래처 선택..." readonly style="cursor:pointer;background:#fff;"
+                onclick="openClientPicker(function(id,name){document.getElementById('ruleEditClientSearch').value=name;document.getElementById('ruleEditClientId').value=id;}, this.value)">
+              <input type="hidden" id="ruleEditClientId">
             </div>
           </div>
           <div class="flex gap-2 justify-end mt-6">
             <button onclick="closeRuleEditModal()" class="btn-secondary">취소</button>
             <button onclick="saveRuleEdit()" class="btn-primary">저장</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 거래처 선택 모달 (재사용) -->
+      <div class="modal-overlay" id="clientPickerModal">
+        <div class="modal-box" style="width:520px; max-height:80vh; display:flex; flex-direction:column;">
+          <div class="flex items-center justify-between mb-4">
+            <h3 class="text-base font-bold text-gray-800"><i class="fas fa-address-book text-blue-500 mr-2"></i>거래처 선택</h3>
+            <button onclick="closeClientPicker()" class="text-gray-400 hover:text-gray-600 text-xl leading-none">&times;</button>
+          </div>
+          <input type="text" id="clientPickerSearch" class="form-input mb-3" placeholder="거래처명·대표자 검색 (비우면 전체 목록)" oninput="clientPickerSearch(this.value)">
+          <div id="clientPickerList" class="border border-gray-100 rounded-lg overflow-y-auto" style="flex:1; min-height:220px; max-height:52vh;">
+            <div class="px-3 py-8 text-center text-sm text-gray-400">로딩 중...</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 계좌이체 후보 확정 모달 -->
+      <div class="modal-overlay" id="transferModal">
+        <div class="modal-box" style="width:640px; max-height:82vh; display:flex; flex-direction:column;">
+          <div class="flex items-center justify-between mb-1">
+            <h3 class="text-base font-bold text-gray-800"><i class="fas fa-right-left text-indigo-500 mr-2"></i>계좌간 이체 감지</h3>
+            <button onclick="closeTransferModal()" class="text-gray-400 hover:text-gray-600 text-xl leading-none">&times;</button>
+          </div>
+          <p class="text-xs text-gray-400 mb-3">동일 금액이 한 계좌에서 출금·다른 계좌로 입금(±2일)된 후보입니다. 확정하면 손익·비용분류·미수 매칭에서 제외됩니다(잔액엔 반영).</p>
+          <div id="transferList" class="border border-gray-100 rounded-lg overflow-y-auto" style="flex:1; min-height:180px; max-height:56vh;">
+            <div class="px-3 py-8 text-center text-sm text-gray-400">감지 중...</div>
+          </div>
+          <div class="flex gap-2 justify-end mt-4">
+            <button onclick="closeTransferModal()" class="btn-secondary">닫기</button>
+            <button onclick="confirmAllTransfers()" class="btn-primary" id="transferConfirmAllBtn"><i class="fas fa-check-double mr-1"></i>전체 확정</button>
           </div>
         </div>
       </div>
