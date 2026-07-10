@@ -436,7 +436,7 @@
     });
   };
 
-  // ESC 모달 닫기는 layout.ts 글로벌 핸들러가 처��
+  // ESC 모달 닫기는 layout.ts 글로벌 핸들러가 처리
 
   // Modal background click closes modal
   document.addEventListener('click', function(e) {

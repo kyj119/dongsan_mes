@@ -71,7 +71,7 @@ async function loadCounts() {
   }
 }
 
-// ===== 새 실사 생성 (전체/카테��리별) =====
+// ===== 새 실사 생성 (전체/카테고리별) =====
 async function createNewCount() {
   // 카테고리 선택 다이얼로그
   var categories = [];
@@ -91,7 +91,7 @@ async function createNewCount() {
     + '<label style="font-size:12px;color:#6b7280;margin-bottom:4px;display:block">실사 범위</label>'
     + '<select id="countCategory" style="width:100%;padding:8px 12px;border:1px solid #d1d5db;border-radius:8px;margin-bottom:12px">' + opts + '</select>'
     + '<label style="font-size:12px;color:#6b7280;margin-bottom:4px;display:block">메모 (선택)</label>'
-    + '<input id="countNotes" type="text" placeholder="예: 월말 정기 실���" style="width:100%;padding:8px 12px;border:1px solid #d1d5db;border-radius:8px;margin-bottom:16px">'
+    + '<input id="countNotes" type="text" placeholder="예: 월말 정기 실사" style="width:100%;padding:8px 12px;border:1px solid #d1d5db;border-radius:8px;margin-bottom:16px">'
     + '<div style="display:flex;gap:8px;justify-content:flex-end">'
     + '<button onclick="document.getElementById(\'countCreateModal\').remove()" style="padding:8px 16px;border:1px solid #d1d5db;border-radius:8px;background:#fff;cursor:pointer">취소</button>'
     + '<button onclick="submitNewCount()" style="padding:8px 16px;border:none;border-radius:8px;background:#2563eb;color:#fff;font-weight:600;cursor:pointer">생성</button>'
@@ -115,7 +115,7 @@ async function submitNewCount() {
     if (res.data.success) {
       if (modal) modal.remove();
       var label = category ? '[' + category + '] ' : '[전체] ';
-      showToast(label + '실��� 생성됨: ' + res.data.data.count_number + ' (' + (res.data.data.item_count || '?') + '건)', 'success');
+      showToast(label + '실사 생성됨: ' + res.data.data.count_number + ' (' + (res.data.data.item_count || '?') + '건)', 'success');
       _detailCountId = res.data.data.id;
       loadDetailCount(_detailCountId);
       loadCounts();

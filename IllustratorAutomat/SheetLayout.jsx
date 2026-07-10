@@ -183,9 +183,9 @@ function makeMagenta() {
     return c;
 }
 
-// ── 도련 v5: Design 그룹 자체��� 클립 마스크를 직접 확장 ──
+// ── 도련 v5: Design 그룹 자체의 클립 마스크를 직접 확장 ──
 // Bleed 별도 레이어 없이, Design 레이어의 그룹 내부 클립을 확장하여 도련 구현.
-// CutLine은 원본 크기 유지. 배치 간���은 도련 포함 크기로 계산됨 (프론트엔드에서).
+// CutLine은 원본 크기 유지. 배치 간격은 도련 포함 크기로 계산됨 (프론트엔드에서).
 
 // 그룹 내부의 클리핑 마스크 경로를 찾아서 확장
 function expandClipInGroup(grp, dirs, bleedPt) {

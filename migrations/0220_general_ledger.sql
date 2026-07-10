@@ -18,7 +18,7 @@ INSERT INTO chart_of_accounts (code, name, account_type, parent_id, sort_order) 
   ('1000', '자산', 'ASSET', NULL, 1000),
   ('1100', '유동자산', 'ASSET', 1, 1100),
   ('1110', '보통예금', 'ASSET', 2, 1110),
-  ('1120', '현��', 'ASSET', 2, 1120),
+  ('1120', '현금', 'ASSET', 2, 1120),
   ('1130', '매출채권', 'ASSET', 2, 1130),
   ('1140', '재고자산', 'ASSET', 2, 1140),
   ('1150', '선급금', 'ASSET', 2, 1150),
@@ -51,7 +51,7 @@ INSERT INTO chart_of_accounts (code, name, account_type, parent_id, sort_order) 
   ('5210', '급여', 'EXPENSE', 29, 5210),
   ('5220', '임차료', 'EXPENSE', 29, 5220),
   ('5230', '감가상각비', 'EXPENSE', 29, 5230),
-  ('5240', '수���비', 'EXPENSE', 29, 5240),
+  ('5240', '수선비', 'EXPENSE', 29, 5240),
   ('5250', '통신비', 'EXPENSE', 29, 5250),
   ('5260', '소모품비', 'EXPENSE', 29, 5260);
 
