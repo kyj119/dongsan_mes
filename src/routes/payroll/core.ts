@@ -15,6 +15,8 @@ import {
   loadEmployeeDefaults,
   loadAllEmployeeDefaults,
   loadInsuranceRates,
+  getProrationContext,
+  calcProratedInclusive,
 } from './shared'
 import { getEntityId, entityFilter } from '../../utils/entityFilter'
 
@@ -32,10 +34,13 @@ coreRouter.post('/preview', async (c) => {
 
     const emp = await c.env.DB.prepare(
       `SELECT id, name, base_salary, hourly_rate, overtime_daily_hours, overtime_work_days,
-              dependents_count, children_under_20_count, income_tax_table_option
+              dependents_count, children_under_20_count, income_tax_table_option, hire_date, resignation_date
        FROM employees WHERE id = ?`
     ).bind(employeeId).first<any>()
     if (!emp) return c.json({ success: false, error: '직원 없음' }, 404)
+
+    // 입사/퇴사 월중 일할 컨텍스트 (완전월 = isPartial false → 기존 전액 로직)
+    const prCtx = getProrationContext(payPeriod, emp.hire_date ?? null, emp.resignation_date ?? null)
 
     // 직원 고정수당/4대보험 토글 기본값 로드
     const empDefaults = await loadEmployeeDefaults(c.env.DB, employeeId)
@@ -61,7 +66,28 @@ coreRouter.post('/preview', async (c) => {
     let base_salary: number
     let overtime_hours: number
     let ot: { hourly_wage: number; overtime_pay: number; night_pay: number; holiday_pay: number }
-    if (fixedOvertimeHours > 0) {
+    if (prCtx.isPartial) {
+      // 월중 입사/퇴사: 근무일 단위 일할(포괄·일반 공통). 기준=emp.base_salary 원본(body 재로드 이중분해 방지).
+      const totalOT = body.overtime_hours != null ? Number(body.overtime_hours) : fixedOvertimeHours
+      const extraOT = Math.max(0, totalOT - fixedOvertimeHours)
+      const pro = calcProratedInclusive({
+        inclusiveBase: Number(emp.base_salary || 0),
+        baseMonthlyHours: otSettings.monthlyWorkHours,
+        fixedOTHoursFull: fixedOvertimeHours,
+        overtimeDailyHours: Number(emp.overtime_daily_hours) || 0,
+        extraOTHours: extraOT,
+        nightHours: night_hours,
+        holidayHours: holiday_hours,
+        overtimeMul: otSettings.overtimeMul,
+        nightMul: otSettings.nightMul,
+        holidayMul: otSettings.holidayMul,
+        holidayOverMul: otSettings.holidayOverMul,
+        ctx: prCtx,
+      })
+      base_salary = pro.regular_base
+      overtime_hours = pro.overtime_hours
+      ot = { hourly_wage: pro.hourly_wage, overtime_pay: pro.overtime_pay, night_pay: pro.night_pay, holiday_pay: pro.holiday_pay }
+    } else if (fixedOvertimeHours > 0) {
       // 포괄총액 원본(emp.base_salary) 기준 분해 — body.base_salary(편집 시 저장된 분해값)를 쓰면 이중분해됨.
       // body.overtime_hours = 총 연장시간(고정+추가) → 추가분만 추출 → 저장값 재로드해도 동일(라운드트립 일관).
       const inclusiveBase = Number(emp.base_salary || 0)
@@ -106,14 +132,14 @@ coreRouter.post('/preview', async (c) => {
     const annual_leave_pay = Number(body.annual_leave_pay || 0)
     // 고정상여: body.bonus가 없으면 employees.special_bonus_fixed 사용
     const bonus = body.bonus != null ? Number(body.bonus) : Number(empDefaults.special_bonus_fixed || 0)
-    // 기타수당: body.other_allowance가 없으면 직책수당+차량유지비+기타수당_고정 합
+    // 기타수당: body.other_allowance가 없으면 직책수당+차량유지비+기타수당_고정 합 (월중 입사/퇴사여도 전액)
     const fixedOtherAllowanceDefault =
       empDefaults.position_allowance +
       empDefaults.vehicle_allowance +
       empDefaults.other_allowance_fixed
     const other_allowance = body.other_allowance != null ? Number(body.other_allowance) : fixedOtherAllowanceDefault
 
-    // 식대: body.meal이 없으면 employees.meal_allowance_fixed 사용
+    // 식대: body.meal이 없으면 employees.meal_allowance_fixed 사용 (월중 입사/퇴사여도 전액)
     const meal_total = body.meal != null ? Number(body.meal) : Number(empDefaults.meal_allowance_fixed || 0)
     const transport_total = Number(body.transport || 0)
     const childcare_total = Number(body.childcare || 0)
@@ -205,10 +231,13 @@ coreRouter.post('/save', requireRole('ADMIN', 'MANAGER'), async (c) => {
     const empEf = entityFilter(c)
     const emp = await c.env.DB.prepare(
       `SELECT id, base_salary, hourly_rate, overtime_daily_hours, overtime_work_days,
-              dependents_count, income_tax_table_option
+              dependents_count, income_tax_table_option, hire_date, resignation_date
        FROM employees WHERE id = ?${empEf.clause}`
     ).bind(employeeId, ...empEf.params).first<any>()
     if (!emp) return c.json({ success: false, error: '직원 없음' }, 404)
+
+    // 입사/퇴사 월중 일할 컨텍스트 (완전월 = isPartial false → 기존 전액 로직)
+    const prCtx = getProrationContext(payPeriod, emp.hire_date ?? null, emp.resignation_date ?? null)
 
     // 직원 고정수당/4대보험 토글 기본값
     const empDefaults = await loadEmployeeDefaults(c.env.DB, employeeId)
@@ -244,7 +273,28 @@ coreRouter.post('/save', requireRole('ADMIN', 'MANAGER'), async (c) => {
     let base_salary: number
     let overtime_hours_calc: number
     let ot: { hourly_wage: number; overtime_pay: number; night_pay: number; holiday_pay: number }
-    if (fixedOvertimeHours > 0) {
+    if (prCtx.isPartial) {
+      // 월중 입사/퇴사: 근무일 단위 일할(포괄·일반 공통). 기준=emp.base_salary 원본(body 재로드 이중분해 방지).
+      const totalOT = body.overtime_hours != null ? Number(body.overtime_hours) : fixedOvertimeHours
+      const extraOT = Math.max(0, totalOT - fixedOvertimeHours)
+      const pro = calcProratedInclusive({
+        inclusiveBase: Number(emp.base_salary || 0),
+        baseMonthlyHours: otSettings.monthlyWorkHours,
+        fixedOTHoursFull: fixedOvertimeHours,
+        overtimeDailyHours: Number(emp.overtime_daily_hours) || 0,
+        extraOTHours: extraOT,
+        nightHours: night_hours_in,
+        holidayHours: holiday_hours_in,
+        overtimeMul: otSettings.overtimeMul,
+        nightMul: otSettings.nightMul,
+        holidayMul: otSettings.holidayMul,
+        holidayOverMul: otSettings.holidayOverMul,
+        ctx: prCtx,
+      })
+      base_salary = pro.regular_base
+      overtime_hours_calc = pro.overtime_hours
+      ot = { hourly_wage: pro.hourly_wage, overtime_pay: pro.overtime_pay, night_pay: pro.night_pay, holiday_pay: pro.holiday_pay }
+    } else if (fixedOvertimeHours > 0) {
       // 포괄총액 원본(emp.base_salary) 기준 분해 — body.base_salary(편집 시 저장된 분해값)를 쓰면 이중분해됨.
       // body.overtime_hours = 총 연장시간(고정+추가) → 추가분만 추출 → 저장값 재로드해도 동일(라운드트립 일관).
       const inclusiveBase = Number(emp.base_salary || 0)
@@ -287,14 +337,14 @@ coreRouter.post('/save', requireRole('ADMIN', 'MANAGER'), async (c) => {
     const annual_leave_pay = Number(body.annual_leave_pay || 0)
     // 고정상여 기본값: employees.special_bonus_fixed
     const bonus = body.bonus != null ? Number(body.bonus) : Number(empDefaults.special_bonus_fixed || 0)
-    // 기타수당 기본값: 직책수당+차량유지비+기타수당_고정
+    // 기타수당 기본값: 직책수당+차량유지비+기타수당_고정 (월중 입사/퇴사여도 전액)
     const fixedOtherAllowanceDefault =
       empDefaults.position_allowance +
       empDefaults.vehicle_allowance +
       empDefaults.other_allowance_fixed
     const other_allowance = body.other_allowance != null ? Number(body.other_allowance) : fixedOtherAllowanceDefault
 
-    // 식대 기본값: employees.meal_allowance_fixed
+    // 식대 기본값: employees.meal_allowance_fixed (월중 입사/퇴사여도 전액)
     const meal_total = body.meal != null ? Number(body.meal) : Number(empDefaults.meal_allowance_fixed || 0)
     const transport_total = Number(body.transport || 0)
     const childcare_total = Number(body.childcare || 0)
@@ -447,8 +497,11 @@ coreRouter.post('/batch', requireRole('ADMIN', 'MANAGER'), async (c) => {
     if (!payPeriod) return c.json({ success: false, error: 'pay_period 필요' }, 400)
 
     const ef = entityFilter(c, 'e')
-    const empQuery = `SELECT e.id FROM employees e WHERE e.status = 'ACTIVE' AND e.is_deleted = 0${ef.clause}`
-    const employees = await c.env.DB.prepare(empQuery).bind(...ef.params).all<{ id: number }>()
+    // 월중 퇴사자 자동 포함: status=ACTIVE + 해당 급여월 퇴사자(status 무관) — 퇴사월 급여 누락 방지 후 일할.
+    const empQuery = `SELECT e.id FROM employees e
+      WHERE e.is_deleted = 0
+        AND (e.status = 'ACTIVE' OR (e.resignation_date IS NOT NULL AND substr(e.resignation_date, 1, 7) = ?))${ef.clause}`
+    const employees = await c.env.DB.prepare(empQuery).bind(payPeriod, ...ef.params).all<{ id: number }>()
     const list = employees.results || []
 
     const user = c.get('user')
@@ -470,7 +523,7 @@ coreRouter.post('/batch', requireRole('ADMIN', 'MANAGER'), async (c) => {
       for (const r of existRows || []) existsSet.add(r.employee_id)
       const { results: empRows } = await c.env.DB.prepare(
         `SELECT id, base_salary, hourly_rate, overtime_daily_hours, overtime_work_days,
-                dependents_count, income_tax_table_option FROM employees WHERE id IN (${ph})`
+                dependents_count, income_tax_table_option, hire_date, resignation_date FROM employees WHERE id IN (${ph})`
       ).bind(...empIds).all<any>()
       for (const r of empRows || []) empRowMap.set(r.id, r)
     }
@@ -491,13 +544,34 @@ coreRouter.post('/batch', requireRole('ADMIN', 'MANAGER'), async (c) => {
 
       // 고정연장시간 자동 계산
       const batchFixedOtHours = (Number(empRow?.overtime_daily_hours) || 0) * (Number(empRow?.overtime_work_days) || 22)
+      // 입사/퇴사 월중 일할 컨텍스트 (완전월 = isPartial false → 기존 전액 로직)
+      const prCtx = getProrationContext(payPeriod, empRow?.hire_date ?? null, empRow?.resignation_date ?? null)
+      // 해당 월 재직일 0(입사 익월 전 / 이미 퇴사) → 급여 레코드 생성 안 함
+      if (prCtx.isPartial && prCtx.workedWeekdays === 0) { skipped++; continue }
       // 고정연장(포괄임금) 직원: 입력 기본급=포괄 총액 → 통상시급(÷225.5) 기준 분해.
       //   payBase=기본급(시급×209), batch_overtime_pay=고정연장수당(총액−기본급). 일괄생성 시점엔 추가연장 0.
       // 일반 직원: 분해 없음(payBase=base_salary, 연장수당 0 — 근태는 sync에서 반영).
+      // 월중 입사/퇴사(isPartial): 근무일 단위 일할(재직평일×8 + 주휴, 연장 포함) — 일반/포괄 공통.
       let payBase = base_salary
       let batch_overtime_pay = 0
       let batchOtHours = 0
-      if (batchFixedOtHours > 0) {
+      if (prCtx.isPartial) {
+        const pro = calcProratedInclusive({
+          inclusiveBase: base_salary,
+          baseMonthlyHours: otSettings.monthlyWorkHours,
+          fixedOTHoursFull: batchFixedOtHours,
+          overtimeDailyHours: Number(empRow?.overtime_daily_hours) || 0,
+          extraOTHours: 0, nightHours: 0, holidayHours: 0,
+          overtimeMul: otSettings.overtimeMul,
+          nightMul: otSettings.nightMul,
+          holidayMul: otSettings.holidayMul,
+          holidayOverMul: otSettings.holidayOverMul,
+          ctx: prCtx,
+        })
+        payBase = pro.regular_base
+        batch_overtime_pay = pro.overtime_pay
+        batchOtHours = pro.overtime_hours
+      } else if (batchFixedOtHours > 0) {
         const inc = calcInclusivePay({
           inclusiveBase: base_salary,
           baseMonthlyHours: otSettings.monthlyWorkHours,
@@ -515,7 +589,7 @@ coreRouter.post('/batch', requireRole('ADMIN', 'MANAGER'), async (c) => {
         batchOtHours = inc.overtime_hours
       }
 
-      // 고정 수당
+      // 고정 수당 — 월중 입사/퇴사여도 전액 지급(일할 대상=기본급만). 식대·직책수당·차량유지비·기타·상여 모두 전액.
       const bonus_fixed = empDefaults.special_bonus_fixed
       const other_allowance_fixed_total =
         empDefaults.position_allowance + empDefaults.vehicle_allowance + empDefaults.other_allowance_fixed
@@ -616,7 +690,8 @@ coreRouter.post('/sync-attendance', requireRole('ADMIN', 'MANAGER'), async (c) =
              e.base_salary AS emp_base,
              COALESCE(e.overtime_daily_hours, 0) AS odh,
              COALESCE(e.overtime_work_days, 22) AS owd,
-             e.dependents_count, e.income_tax_table_option
+             e.dependents_count, e.income_tax_table_option,
+             e.hire_date, e.resignation_date
       FROM payroll p
       JOIN employees e ON e.id = p.employee_id
       WHERE p.pay_period = ? AND p.status != 'PAID'${efP.clause}
@@ -688,9 +763,32 @@ coreRouter.post('/sync-attendance', requireRole('ADMIN', 'MANAGER'), async (c) =
         const fixedOTHours = Number(t.odh || 0) * Number(t.owd || 22)
 
         // 연장/야간/휴일수당 + 기본급 분해 재계산 (야간·휴일은 근태 기준 가산)
+        // 월중 입사/퇴사(isPartial): 근무일 일할 — 매 sync가 emp.base_salary 원본으로 재계산하므로 필수.
+        //   (수당/비과세는 payroll 저장값 유지 → 생성 시 일할된 값 그대로, 이중일할 없음)
+        const prCtx = getProrationContext(payPeriod, t.hire_date ?? null, t.resignation_date ?? null)
         let newBase: number, overtime_pay: number, overtime_hours: number
         let nightPay: number, holidayPay: number
-        if (fixedOTHours > 0) {
+        if (prCtx.isPartial) {
+          const pro = calcProratedInclusive({
+            inclusiveBase: empBase,
+            baseMonthlyHours: otSettings.monthlyWorkHours,
+            fixedOTHoursFull: fixedOTHours,
+            overtimeDailyHours: Number(t.odh) || 0,
+            extraOTHours: extraOT,
+            nightHours: nightHrs,
+            holidayHours: holidayHrs,
+            overtimeMul: otSettings.overtimeMul,
+            nightMul: otSettings.nightMul,
+            holidayMul: otSettings.holidayMul,
+            holidayOverMul: otSettings.holidayOverMul,
+            ctx: prCtx,
+          })
+          newBase = pro.regular_base
+          overtime_pay = pro.overtime_pay
+          overtime_hours = pro.overtime_hours
+          nightPay = pro.night_pay
+          holidayPay = pro.holiday_pay
+        } else if (fixedOTHours > 0) {
           // 고정연장(포괄임금): 통상시급(÷225.5) 기준 분해 + 추가연장/야간/휴일 가산
           const inc = calcInclusivePay({
             inclusiveBase: empBase,

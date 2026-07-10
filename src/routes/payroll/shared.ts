@@ -111,6 +111,109 @@ export function calcInclusivePay(input: InclusivePayInput): InclusivePayResult {
   return { hourly_wage: hourly, regular_base, overtime_pay, overtime_hours, night_pay, holiday_pay }
 }
 
+// ============================================================================
+// 입사/퇴사 월중 일할계산 (근무일 단위)
+// 재직기간(입사일~퇴사일 ∩ 급여월)의 평일(월~금)마다 기본 8h + 고정연장, 주 만근 시 주휴 8h.
+// 공휴일 특별처리 없음 — 재직 평일 전부 유급 근무일로 취급(공휴일도 정상 근무일, 연장 포함).
+// 완전월(입사=월초 이후 아님 & 퇴사=월말 이전 아님)은 isPartial=false → 호출측이 전액 기존 로직 유지.
+// 전액월과 단가 정합: 통상시급 = 기본급 ÷ (209 + 고정연장11h×1.5) = ÷225.5 (전액월과 동일).
+// ============================================================================
+export const DAILY_REGULAR_HOURS = 8   // 1일 소정근로시간 (209시간 도출 기준)
+
+export interface ProrationContext {
+  isPartial: boolean       // 입사일 > 월초 또는 퇴사일 < 월말
+  workedWeekdays: number   // 재직∩급여월 내 평일(월~금) 수 (공휴일 미차감)
+  completeWeeks: number    // 주휴 대상 주 수 (그 주 월~금 전부 재직 & 일요일이 급여월 내)
+  monthWeekdays: number    // 급여월 전체 평일 수 (수당 일할 분모)
+}
+
+function payMonthEnd(period: string): string {
+  const [y, m] = period.split('-').map(Number)
+  // Date.UTC(y, m, 0) = (1-base m) 그 달 말일
+  const d = new Date(Date.UTC(y, m, 0)).getUTCDate()
+  return `${period}-${String(d).padStart(2, '0')}`
+}
+function eachDate(start: string, end: string): string[] {
+  if (start > end) return []
+  const out: string[] = []
+  const d = new Date(start + 'T00:00:00Z')
+  const e = new Date(end + 'T00:00:00Z')
+  while (d <= e) { out.push(d.toISOString().slice(0, 10)); d.setUTCDate(d.getUTCDate() + 1) }
+  return out
+}
+function countWeekdaysBetween(start: string, end: string): number {
+  let n = 0
+  for (const day of eachDate(start, end)) {
+    const dow = new Date(day + 'T00:00:00Z').getUTCDay() // 0=일, 6=토
+    if (dow !== 0 && dow !== 6) n++
+  }
+  return n
+}
+
+/** 급여월(YYYY-MM) 기준 입사일/퇴사일로 근무일 일할 컨텍스트 산정 (순수 함수, DB 불요). */
+export function getProrationContext(period: string, hireDate: string | null, resignationDate: string | null): ProrationContext {
+  const monthStart = `${period}-01`
+  const monthEnd = payMonthEnd(period)
+  const hire = hireDate && /^\d{4}-\d{2}-\d{2}/.test(hireDate) ? hireDate.slice(0, 10) : null
+  const resig = resignationDate && /^\d{4}-\d{2}-\d{2}/.test(resignationDate) ? resignationDate.slice(0, 10) : null
+  const isPartial = (!!hire && hire > monthStart) || (!!resig && resig < monthEnd)
+  const monthWeekdays = countWeekdaysBetween(monthStart, monthEnd)
+  if (!isPartial) return { isPartial: false, workedWeekdays: monthWeekdays, completeWeeks: 0, monthWeekdays }
+
+  const windowStart = hire && hire > monthStart ? hire : monthStart
+  const windowEnd = resig && resig < monthEnd ? resig : monthEnd
+  const workedWeekdays = countWeekdaysBetween(windowStart, windowEnd)
+  // 완전주: 급여월 내 일요일 D마다 그 주 월~금(D-6..D-2)이 모두 재직[hire..resig]이면 주휴 1
+  const lower = hire || '0000-01-01'
+  const upper = resig || '9999-12-31'
+  let completeWeeks = 0
+  for (const day of eachDate(monthStart, monthEnd)) {
+    const dt = new Date(day + 'T00:00:00Z')
+    if (dt.getUTCDay() !== 0) continue
+    const mon = new Date(dt); mon.setUTCDate(mon.getUTCDate() - 6)
+    const fri = new Date(dt); fri.setUTCDate(fri.getUTCDate() - 2)
+    if (mon.toISOString().slice(0, 10) >= lower && fri.toISOString().slice(0, 10) <= upper) completeWeeks++
+  }
+  return { isPartial: true, workedWeekdays, completeWeeks, monthWeekdays }
+}
+
+export interface ProratedInclusiveInput {
+  inclusiveBase: number       // 포괄 총액 (전액월 기준 원본)
+  baseMonthlyHours: number    // 월 소정근로시간 (209)
+  fixedOTHoursFull: number    // 전액월 고정연장시간 = overtime_daily_hours × overtime_work_days (분모 고정, 0=일반직원)
+  overtimeDailyHours: number  // 1일 고정연장시간 (일할 연장시간 계산용, 0=일반직원)
+  extraOTHours: number        // 실근태 추가연장 (일할 아님 — 실측)
+  nightHours: number
+  holidayHours: number
+  overtimeMul: number; nightMul: number; holidayMul: number; holidayOverMul: number
+  ctx: ProrationContext
+}
+/**
+ * calcInclusivePay의 일할 버전 — 재직 근무일만큼 기본급/고정연장을 축소.
+ * 반환 형태는 calcInclusivePay와 동일(드롭인). 단가(시급)는 전액월과 동일.
+ *   기본급(일할) = 시급 × (재직평일×8 + 완전주×8[주휴])
+ *   고정연장(일할) = 시급 × 1.5 × (재직평일 × 1일고정연장)
+ *   추가연장/야간/휴일 = 실측 그대로 가산(일할 아님)
+ */
+export function calcProratedInclusive(input: ProratedInclusiveInput): InclusivePayResult {
+  const divisor = input.baseMonthlyHours + input.fixedOTHoursFull * input.overtimeMul // 전액월 분모(225.5)
+  const hourly = divisor > 0 ? Math.round(input.inclusiveBase / divisor) : 0
+  const regHours = input.ctx.workedWeekdays * DAILY_REGULAR_HOURS + input.ctx.completeWeeks * DAILY_REGULAR_HOURS
+  const fixedOtHours = input.ctx.workedWeekdays * input.overtimeDailyHours
+  const regular_base = hourly * regHours
+  const fixedOTPay = Math.floor(hourly * input.overtimeMul * fixedOtHours / 10) * 10
+  const extraOTPay = Math.floor(hourly * input.overtimeMul * input.extraOTHours / 10) * 10
+  const overtime_pay = fixedOTPay + extraOTPay
+  const overtime_hours = fixedOtHours + input.extraOTHours
+  const night_pay = Math.floor(hourly * input.nightMul * input.nightHours / 10) * 10
+  const holidayNormal = Math.min(input.holidayHours, 8)
+  const holidayOver = Math.max(0, input.holidayHours - 8)
+  const holiday_pay =
+    Math.floor(hourly * input.holidayMul * holidayNormal / 10) * 10 +
+    Math.floor(hourly * input.holidayOverMul * holidayOver / 10) * 10
+  return { hourly_wage: hourly, regular_base, overtime_pay, overtime_hours, night_pay, holiday_pay }
+}
+
 export async function loadOvertimeSettings(db: D1Database) {
   const s = await getSettings(db, [
     'payroll_default_work_hours',
