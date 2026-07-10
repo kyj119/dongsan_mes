@@ -1,7 +1,7 @@
 # 사용자 역할 확장 + 읽기/쓰기 권한 분리
 
 - **작성일**: 2026-07-10
-- **상태**: **✅ prod 배포완료 (2026-07-10, main `5e4a048d`)** — Phase 0~2 + Option A enforcement(4역할 핵심). 0453 remote 적용·apex 검증. 잔여 tail(paymentRequests·tax·vat·AP·cashFlow)만 후속.
+- **상태**: **✅ prod 배포완료 (2026-07-10)** — Phase 0~2 + Option A enforcement 전량(4역할 + tail). 0453 remote 적용·검증. tail(paymentRequests·tax-invoices 5서브·vat·AP·cashFlow)까지 배선 완료. 남은 것=orders lifecycle(status/cancel, 보수적 유지) + 미사용 requireRole import 정리(선택).
 - **⚠️ prod 마이그 교훈**: 0453 seed `/production-board`가 prod permission_pages 미존재 → INSERT OR IGNORE가 FK위반 미무시 → 전체 롤백(prod 무변). 수정=seed를 CTE+`WHERE page_key IN (permission_pages)` 필터. 신규 seed는 FK 참조 존재필터 필수.
 - **Phase 2 인프라**: `rpp.can_edit` + 미들웨어 `requirePageEdit`/`requireEditOrRole`/`getEditablePages`(캐시 access|edit) + `/matrix`·PATCH·`/me` can_edit + permissions.js [열람][편집] 2체크박스·역할탭 7개 동적화.
 - **Enforcement 배선 원칙(A) — 실측 반영**: 매트릭스 seed 가 과거 requireRole 권한보다 **좁음**(MANAGER 매트릭스에 /orders·/clients 없음, 로컬 실증). 순수 requirePageEdit 치환 시 MANAGER 회귀 → **가산형 `requireEditOrRole(pageKey, ...legacyRoles)`** 채택: ADMIN·legacyRoles 는 종전 그대로, 신규역할은 매트릭스 can_edit 로 통과(회귀 0). 삭제·토글·포털·크레딧·청구 등 민감/재무는 `requireRole` 유지.
@@ -131,7 +131,8 @@
 - ⏳ **orders lifecycle** (status/cancel/restore) — 운영 write. bill/billing-status/bulk-bill·delete = 재무/삭제, `requireRole` 유지.
 - ✅ **ACCOUNTANT AR ledger** — ledger/ar-ledger·ar-payments·ar-receivables·ar-dunning `requireRole('ADMIN','MANAGER')`(라우터+엔드포인트) → `requireEditOrRole('/ledger','MANAGER')`. 삭제(`requireRole('ADMIN')`)는 유지. (회계 허브 정정=/ledger/payment 경유라 필수.)
 - ✅ **ACCOUNTANT cashSchedule.ts**(/cash-schedule)·**cardExpenses.ts**(/card-expenses) — `requireRole('ADMIN','MANAGER')` 일괄 → `requireEditOrRole`. sync/import/삭제 등 `requireRole('ADMIN')` 유지.
-- ⏳ **ACCOUNTANT 잔여** — paymentRequests(approve/reject/pay=승인권한 뉘앙스, 정책 확인 후)·tax-invoices(hometaxInvoices?)·vat-reports·ledger/accounts-payable(AP, 페이지=/purchase-invoices? 매핑 확인 필요)·cashFlow. ⚠️ bank.ts=전 엔드포인트 `requireRole('ADMIN')`(민감) 유지 → ACCOUNTANT /bank는 허브 경유 조회만. barobill/bom/costs/cashReceipts=신규역할 무관 유지.
+- ✅ **ACCOUNTANT 잔여 완료** — paymentRequests(approve/reject/pay→`requireEditOrRole('/payment-requests','MANAGER')`; 라우터레벨 이미 requirePagePermission) · vatReports 라우터레벨→`requireAccessOrRole('/vat-reports','MANAGER')` · ledger/accounts-payable(AP, `/api/ledger`→`/ledger`)→`requireEditOrRole('/ledger','MANAGER')` · cashFlow(`/api/cash-flow`→`/cash-schedule`) GET→`requireAccessOrRole('/cash-schedule','MANAGER')` · **tax-invoices 5서브라우터**(queries/issue/batch/manage/paymentMatch): 라우터레벨→requireAccessOrRole, write→requireEditOrRole('/tax-invoices'), cancel(ADMIN) 유지. ⚠️ bank.ts=전 엔드포인트 requireRole('ADMIN')(민감) 유지→ACCOUNTANT /bank는 허브 경유. barobill/bom/costs/cashReceipts=신규역할 무관 유지.
+- 원칙 확립: **라우터레벨 read 게이트→requireAccessOrRole, write 엔드포인트→requireEditOrRole**(2계층). ledger계열은 view-only 미사용이라 라우터레벨도 edit 사용(ar-*·AP).
 - ⏳ **미전환 정리**: orders lifecycle 등 잔여 `requireRole` unused import 정리(선택).
 
 > 원칙: 다중 `requireRole('ADMIN','MANAGER',...)` write → `requireEditOrRole(pageKey, ...나머지역할)`. 단일 `requireRole('ADMIN')` 및 재무/삭제/토글 = 유지. 라우터 레벨 read 게이트는 access 가드로 별도 전환.

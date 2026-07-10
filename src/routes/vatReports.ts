@@ -2,10 +2,11 @@
 import { Hono } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
+import { requireAccessOrRole } from '../middleware/permissions'
 import { entityFilter, getEntityId } from '../utils/entityFilter'
 
 const vatReportsRouter = new Hono<HonoEnv>()
-vatReportsRouter.use('/*', authMiddleware, requireRole('ADMIN', 'MANAGER'))
+vatReportsRouter.use('/*', authMiddleware, requireAccessOrRole('/vat-reports', 'MANAGER'))
 
 // 분기별 자동 집계 (저장 X, 미리보기용)
 vatReportsRouter.get('/summary', async (c) => {

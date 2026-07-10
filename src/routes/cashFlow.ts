@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
+import { requireAccessOrRole } from '../middleware/permissions'
 import { entityFilter, getEntityId } from '../utils/entityFilter'
 
 const cashFlowRouter = new Hono<HonoEnv>()
@@ -10,7 +11,7 @@ cashFlowRouter.use('/*', authMiddleware)
 // 고정비 CRUD
 // ============================================================================
 
-cashFlowRouter.get('/fixed-expenses', requireRole('ADMIN', 'MANAGER'), async (c) => {
+cashFlowRouter.get('/fixed-expenses', requireAccessOrRole('/cash-schedule', 'MANAGER'), async (c) => {
   try {
     const { category = '', active = '1' } = c.req.query()
     const clauses: string[] = ['1=1']
@@ -128,7 +129,7 @@ cashFlowRouter.delete('/fixed-expenses/:id', requireRole('ADMIN'), async (c) => 
 // 대출 CRUD
 // ============================================================================
 
-cashFlowRouter.get('/loans', requireRole('ADMIN', 'MANAGER'), async (c) => {
+cashFlowRouter.get('/loans', requireAccessOrRole('/cash-schedule', 'MANAGER'), async (c) => {
   try {
     const { active = '1' } = c.req.query()
     const clauses: string[] = []
@@ -273,7 +274,7 @@ cashFlowRouter.post('/loans/:id/rate-change', requireRole('ADMIN'), async (c) =>
   }
 })
 
-cashFlowRouter.get('/loans/:id/rate-history', requireRole('ADMIN', 'MANAGER'), async (c) => {
+cashFlowRouter.get('/loans/:id/rate-history', requireAccessOrRole('/cash-schedule', 'MANAGER'), async (c) => {
   try {
     const id = c.req.param('id')
     const ef = entityFilter(c, 'lrh')
@@ -295,7 +296,7 @@ cashFlowRouter.get('/loans/:id/rate-history', requireRole('ADMIN', 'MANAGER'), a
 // 상환 스케줄
 // ============================================================================
 
-cashFlowRouter.get('/loans/:id/schedule', requireRole('ADMIN', 'MANAGER'), async (c) => {
+cashFlowRouter.get('/loans/:id/schedule', requireAccessOrRole('/cash-schedule', 'MANAGER'), async (c) => {
   try {
     const id = c.req.param('id')
 
@@ -768,7 +769,7 @@ cashFlowRouter.get('/calendar', requireRole('ADMIN'), async (c) => {
 // 요약 통계
 // ============================================================================
 
-cashFlowRouter.get('/summary', requireRole('ADMIN', 'MANAGER'), async (c) => {
+cashFlowRouter.get('/summary', requireAccessOrRole('/cash-schedule', 'MANAGER'), async (c) => {
   try {
     const now = new Date()
     const yearMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`

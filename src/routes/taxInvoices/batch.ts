@@ -6,17 +6,18 @@
  */
 import { Hono } from 'hono'
 import type { HonoEnv } from '../../types/env'
-import { authMiddleware, requireRole } from '../../middleware/auth'
+import { authMiddleware } from '../../middleware/auth'
+import { requireAccessOrRole, requireEditOrRole } from '../../middleware/permissions'
 import { getEntityId } from '../../utils/entityFilter'
 import { getCompanySettings, createSplitInvoices } from './helpers'
 import { kstYmd } from '../../utils/kstDate'
 import type { ClientRow, MonthlyEligibleRow } from './helpers'
 
 const taxInvoicesBatchRouter = new Hono<HonoEnv>()
-taxInvoicesBatchRouter.use('/*', authMiddleware, requireRole('ADMIN', 'MANAGER'))
+taxInvoicesBatchRouter.use('/*', authMiddleware, requireAccessOrRole('/tax-invoices', 'MANAGER'))
 
 // POST /batch-create — 거래처별 일괄 생성 (정적 경로이므로 /:id 앞에 위치)
-taxInvoicesBatchRouter.post('/batch-create', requireRole('ADMIN', 'MANAGER'), async (c) => {
+taxInvoicesBatchRouter.post('/batch-create', requireEditOrRole('/tax-invoices', 'MANAGER'), async (c) => {
   try {
     const body = await c.req.json<{
       groups: Array<{

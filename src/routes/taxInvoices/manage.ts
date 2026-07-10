@@ -7,16 +7,17 @@
  */
 import { Hono } from 'hono'
 import type { HonoEnv } from '../../types/env'
-import { authMiddleware, requireRole } from '../../middleware/auth'
+import { authMiddleware } from '../../middleware/auth'
+import { requireAccessOrRole, requireEditOrRole } from '../../middleware/permissions'
 import { sendEmail } from '../../services/emailProvider'
 import { entityFilter } from '../../utils/entityFilter'
 import { getTaxProvider } from './helpers'
 
 const taxInvoicesManageRouter = new Hono<HonoEnv>()
-taxInvoicesManageRouter.use('/*', authMiddleware, requireRole('ADMIN', 'MANAGER'))
+taxInvoicesManageRouter.use('/*', authMiddleware, requireAccessOrRole('/tax-invoices', 'MANAGER'))
 
 // PATCH /:id — Update draft
-taxInvoicesManageRouter.patch('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
+taxInvoicesManageRouter.patch('/:id', requireEditOrRole('/tax-invoices', 'MANAGER'), async (c) => {
   try {
     const id = parseInt(c.req.param('id'))
     const body = await c.req.json<{
@@ -121,7 +122,7 @@ taxInvoicesManageRouter.patch('/:id', requireRole('ADMIN', 'MANAGER'), async (c)
 })
 
 // DELETE /:id — Delete draft
-taxInvoicesManageRouter.delete('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
+taxInvoicesManageRouter.delete('/:id', requireEditOrRole('/tax-invoices', 'MANAGER'), async (c) => {
   try {
     const id = parseInt(c.req.param('id'))
 

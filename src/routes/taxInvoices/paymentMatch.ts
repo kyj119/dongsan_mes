@@ -14,11 +14,12 @@
  */
 import { Hono } from 'hono'
 import type { HonoEnv } from '../../types/env'
-import { authMiddleware, requireRole } from '../../middleware/auth'
+import { authMiddleware } from '../../middleware/auth'
+import { requireAccessOrRole, requireEditOrRole } from '../../middleware/permissions'
 import { entityFilter, getEntityId } from '../../utils/entityFilter'
 
 const paymentMatchRouter = new Hono<HonoEnv>()
-paymentMatchRouter.use('/*', authMiddleware, requireRole('ADMIN', 'MANAGER'))
+paymentMatchRouter.use('/*', authMiddleware, requireAccessOrRole('/tax-invoices', 'MANAGER'))
 
 // 자동제안 매칭 기준 상수 (단일 소스)
 const MATCH_AMOUNT_TOLERANCE = 0 // 금액 허용오차(원). 0 = 정확 일치만. (>0이면 |total-amount| <= 오차)
@@ -211,7 +212,7 @@ paymentMatchRouter.get('/payment-match/suggestions', async (c) => {
 //   body: { tax_invoice_id: number | null }  (null = 해제)
 //   entity 격리 + 검증: 입금/계산서 모두 내 법인, client_id 동일성 권고(불일치 시 경고 아닌 차단).
 // ─────────────────────────────────────────────────────────────────────────────
-paymentMatchRouter.put('/payments/:pid/tax-invoice', requireRole('ADMIN', 'MANAGER'), async (c) => {
+paymentMatchRouter.put('/payments/:pid/tax-invoice', requireEditOrRole('/tax-invoices', 'MANAGER'), async (c) => {
   try {
     const pid = parseInt(c.req.param('pid'))
     const body = await c.req.json<{ tax_invoice_id?: number | null }>().catch(() => ({} as { tax_invoice_id?: number | null }))

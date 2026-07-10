@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import type { HonoEnv } from '../../types/env'
 import { authMiddleware, requireRole } from '../../middleware/auth'
+import { requireEditOrRole } from '../../middleware/permissions'
 import { createPayment } from '../../lib/payments'
 import { logActivity } from '../../utils/activityLog'
 import { notifyRoles } from '../../utils/notify'
@@ -55,7 +56,7 @@ interface CsvPaRow {
 }
 
 const apRouter = new Hono<HonoEnv>()
-apRouter.use('/*', authMiddleware, requireRole('ADMIN', 'MANAGER'))
+apRouter.use('/*', authMiddleware, requireEditOrRole('/ledger', 'MANAGER'))
 
 apRouter.get('/purchase-client/:clientId', async (c) => {
   try {
@@ -357,7 +358,7 @@ apRouter.get('/purchase-monthly-summary', async (c) => {
 })
 
 // POST /purchase-payment - 지급 등록 (MANAGER+)
-apRouter.post('/purchase-payment', requireRole('ADMIN', 'MANAGER'), async (c) => {
+apRouter.post('/purchase-payment', requireEditOrRole('/ledger', 'MANAGER'), async (c) => {
   try {
     const user = c.get('user')
     const body = await c.req.json()
@@ -429,7 +430,7 @@ apRouter.post('/purchase-payment', requireRole('ADMIN', 'MANAGER'), async (c) =>
 })
 
 // PUT /purchase-payment/:id - 지급 수정 (MANAGER+)
-apRouter.put('/purchase-payment/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
+apRouter.put('/purchase-payment/:id', requireEditOrRole('/ledger', 'MANAGER'), async (c) => {
   try {
     const id = c.req.param('id')
     const body = await c.req.json()
@@ -548,7 +549,7 @@ apRouter.delete('/purchase-payment/:id', requireRole('ADMIN'), async (c) => {
 // =============================================================================
 
 // GET /collection-logs/:clientId - 독촉 이력 조회
-apRouter.post('/purchase-adjustment', requireRole('ADMIN', 'MANAGER'), async (c) => {
+apRouter.post('/purchase-adjustment', requireEditOrRole('/ledger', 'MANAGER'), async (c) => {
   try {
     const user = c.get('user')
     const body = await c.req.json()
@@ -750,7 +751,7 @@ apRouter.get('/purchase-overdue', async (c) => {
 })
 
 // GET /purchase-integrity-check - 매입 정합성 검사
-apRouter.get('/purchase-integrity-check', requireRole('ADMIN', 'MANAGER'), async (c) => {
+apRouter.get('/purchase-integrity-check', requireEditOrRole('/ledger', 'MANAGER'), async (c) => {
   try {
     const { clause: intPoEf, params: intPoEfParams } = entityFilter(c)
     const { clause: intPpEf, params: intPpEfParams } = entityFilter(c)
@@ -806,7 +807,7 @@ apRouter.get('/purchase-integrity-check', requireRole('ADMIN', 'MANAGER'), async
 })
 
 // POST /purchase-integrity-fix - 매입 정합성 일괄 수정
-apRouter.post('/purchase-integrity-fix', requireRole('ADMIN', 'MANAGER'), async (c) => {
+apRouter.post('/purchase-integrity-fix', requireEditOrRole('/ledger', 'MANAGER'), async (c) => {
   try {
     const { supplier_ids } = await c.req.json() as { supplier_ids?: number[] }
 

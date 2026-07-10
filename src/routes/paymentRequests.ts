@@ -2,7 +2,7 @@
 import { Hono } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
-import { requirePagePermission } from '../middleware/permissions'
+import { requirePagePermission, requireEditOrRole } from '../middleware/permissions'
 import { getEntityId, entityFilter } from '../utils/entityFilter'
 import { getNextSeqNumber, getNextEntitySeqNumber, withSeqRetry } from '../utils/sequenceGenerator'
 import { kstYmdCompact, kstYmd } from '../utils/kstDate'
@@ -250,7 +250,7 @@ paymentRequestsRouter.patch('/:id/submit', async (c) => {
 })
 
 // 승인 (MANAGER+)
-paymentRequestsRouter.patch('/:id/approve', requireRole('ADMIN', 'MANAGER'), async (c) => {
+paymentRequestsRouter.patch('/:id/approve', requireEditOrRole('/payment-requests', 'MANAGER'), async (c) => {
   try {
     const id = c.req.param('id')
     const user = c.get('user')
@@ -288,7 +288,7 @@ paymentRequestsRouter.patch('/:id/approve', requireRole('ADMIN', 'MANAGER'), asy
 })
 
 // 반려
-paymentRequestsRouter.patch('/:id/reject', requireRole('ADMIN', 'MANAGER'), async (c) => {
+paymentRequestsRouter.patch('/:id/reject', requireEditOrRole('/payment-requests', 'MANAGER'), async (c) => {
   try {
     const id = c.req.param('id')
     const { reject_reason } = await c.req.json() as { reject_reason?: string }
@@ -305,7 +305,7 @@ paymentRequestsRouter.patch('/:id/reject', requireRole('ADMIN', 'MANAGER'), asyn
 })
 
 // 이체 완료 처리
-paymentRequestsRouter.patch('/:id/pay', requireRole('ADMIN', 'MANAGER'), async (c) => {
+paymentRequestsRouter.patch('/:id/pay', requireEditOrRole('/payment-requests', 'MANAGER'), async (c) => {
   try {
     const id = c.req.param('id')
     const user = c.get('user')

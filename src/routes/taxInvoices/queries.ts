@@ -6,13 +6,14 @@
  */
 import { Hono } from 'hono'
 import type { HonoEnv } from '../../types/env'
-import { authMiddleware, requireRole } from '../../middleware/auth'
+import { authMiddleware } from '../../middleware/auth'
+import { requireAccessOrRole } from '../../middleware/permissions'
 import { getEntityId, entityFilter } from '../../utils/entityFilter'
 import { getTaxProvider, getCompanySettings } from './helpers'
 import type { EligibleOrderRow } from './helpers'
 
 const taxInvoicesQueriesRouter = new Hono<HonoEnv>()
-taxInvoicesQueriesRouter.use('/*', authMiddleware, requireRole('ADMIN', 'MANAGER'))
+taxInvoicesQueriesRouter.use('/*', authMiddleware, requireAccessOrRole('/tax-invoices', 'MANAGER'))
 
 // GET /test-connection — 바로빌 연결 테스트 (잔여 포인트 조회)
 taxInvoicesQueriesRouter.get('/test-connection', async (c) => {

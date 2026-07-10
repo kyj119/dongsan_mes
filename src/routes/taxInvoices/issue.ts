@@ -8,6 +8,7 @@ import { Hono } from 'hono'
 import type { HonoEnv } from '../../types/env'
 import type { TaxInvoiceItem } from '../../types/models'
 import { authMiddleware, requireRole } from '../../middleware/auth'
+import { requireAccessOrRole, requireEditOrRole } from '../../middleware/permissions'
 import { getEntityId, entityFilter } from '../../utils/entityFilter'
 import { getNextEntitySeqNumber } from '../../utils/sequenceGenerator'
 import { kstYmd, kstYmdCompact } from '../../utils/kstDate'
@@ -15,7 +16,7 @@ import { generateInvoiceNumber, getCompanySettings, issueTaxInvoice, createSplit
 import type { TaxInvoiceWithOrder, ClientRow, OrderWithClient } from './helpers'
 
 const taxInvoicesIssueRouter = new Hono<HonoEnv>()
-taxInvoicesIssueRouter.use('/*', authMiddleware, requireRole('ADMIN', 'MANAGER'))
+taxInvoicesIssueRouter.use('/*', authMiddleware, requireAccessOrRole('/tax-invoices', 'MANAGER'))
 
 // ============================================================================
 // POST /direct — 직접 발행 (주문 없이 세금계산서 발행) — issue #310 방안 A
@@ -25,7 +26,7 @@ taxInvoicesIssueRouter.use('/*', authMiddleware, requireRole('ADMIN', 'MANAGER')
 // 로 자동 생성하고 clients.balance를 증액한다. (단일 진실 공급원 = orders/AR)
 // 취소 시 POST /:id/cancel 에서 이 백업 주문을 CANCELLED + balance 롤백한다.
 // ============================================================================
-taxInvoicesIssueRouter.post('/direct', requireRole('ADMIN', 'MANAGER'), async (c) => {
+taxInvoicesIssueRouter.post('/direct', requireEditOrRole('/tax-invoices', 'MANAGER'), async (c) => {
   try {
     const body = await c.req.json<{
       client_id?: number
@@ -288,7 +289,7 @@ taxInvoicesIssueRouter.post('/direct', requireRole('ADMIN', 'MANAGER'), async (c
 })
 
 // POST / — Create draft from order (단건 또는 묶음 발행, auto_issue 옵션 지원)
-taxInvoicesIssueRouter.post('/', requireRole('ADMIN', 'MANAGER'), async (c) => {
+taxInvoicesIssueRouter.post('/', requireEditOrRole('/tax-invoices', 'MANAGER'), async (c) => {
   try {
     const body = await c.req.json<{
       order_id?: number
@@ -442,7 +443,7 @@ taxInvoicesIssueRouter.post('/', requireRole('ADMIN', 'MANAGER'), async (c) => {
 })
 
 // POST /:id/issue — Issue tax invoice (DRAFT -> ISSUED/SENT)
-taxInvoicesIssueRouter.post('/:id/issue', requireRole('ADMIN', 'MANAGER'), async (c) => {
+taxInvoicesIssueRouter.post('/:id/issue', requireEditOrRole('/tax-invoices', 'MANAGER'), async (c) => {
   try {
     const id = parseInt(c.req.param('id'))
     const user = c.get('user')
@@ -459,7 +460,7 @@ taxInvoicesIssueRouter.post('/:id/issue', requireRole('ADMIN', 'MANAGER'), async
 })
 
 // POST /:id/modify — 수정발행 (ISSUED/SENT 상태의 계산서에 대해 수정본 DRAFT 생성)
-taxInvoicesIssueRouter.post('/:id/modify', requireRole('ADMIN', 'MANAGER'), async (c) => {
+taxInvoicesIssueRouter.post('/:id/modify', requireEditOrRole('/tax-invoices', 'MANAGER'), async (c) => {
   try {
     const id = parseInt(c.req.param('id'))
     const body = await c.req.json<{
