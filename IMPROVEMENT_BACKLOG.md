@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 2 -->
-<!-- last_run_at: 2026-07-10T15:21:00+09:00 -->
+<!-- last_run_area: 3 -->
+<!-- last_run_at: 2026-07-10T19:10:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,7 +8,7 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | **11** — #473, #497(MED, 원장 거래처검색 1000cap 무음누락), #498(LOW, 페이지네이션 로딩인디케이터), #499(LOW, width_mm 힌트 불일치), #500(LOW, bank.ts sync-barobill 잔액0→NULL 강등), #501(HIGH, price-list `:entityId` 라우트 소유검증 없음, 타법인 직인/로고 열람·변조 IDOR), #502(S, aiAnalysis.ts R2 백필/batch-results subrequest 한도 무방비+N+1), #503(S, priceManagement.js loadHistory catch 누락), #504(S, settings.js 회사인쇄정보 로드실패 무음+CSV 가드 미재사용), #506(LOW-MED, Area2 34회차 신규 — workbench.ts /process/clear LIMIT없는 N+1 R2삭제 subrequest한도 무방비), #507(S, Area2 34회차 신규 — reports.ts 당월매출/수금 KST정비 좌변 미보정 잔존). #505는 Area2 34회차에서 워크벤치 IDOR 픽스(`1953986`) 실재 확인 후 done으로 전환(→ 통계 반영). open 실측(`list_issues(OPEN,auto-improve)`=11) 기준. |
+| 🆕 new | **14** — #473, #497(MED, 원장 거래처검색 1000cap 무음누락), #498(LOW, 페이지네이션 로딩인디케이터), #499(LOW, width_mm 힌트 불일치), #500(LOW, bank.ts sync-barobill 잔액0→NULL 강등), #501(HIGH, price-list `:entityId` 라우트 소유검증 없음, 타법인 직인/로고 열람·변조 IDOR), #502(S, aiAnalysis.ts R2 백필/batch-results subrequest 한도 무방비+N+1), #503(S, priceManagement.js loadHistory catch 누락), #504(S, settings.js 회사인쇄정보 로드실패 무음+CSV 가드 미재사용), #506(LOW-MED, workbench.ts /process/clear LIMIT없는 N+1 R2삭제 subrequest한도 무방비), #507(S, reports.ts 당월매출/수금 KST정비 좌변 미보정 잔존), **#508(S, Area3 34회차 신규 — inventory.ts id="lastCountDate" 중복선언으로 실사탭 최근실사일 영구 "-")**, **#509(S~M, Area3 34회차 신규 — 급여 중도입퇴사 일할계산 근거 화면 미표시 블랙박스)**, **#510(S, Area3 34회차 신규 — 역할8종 확장 후 ROLE_LABELS SSOT 이중화로 approvals/messages/storageZones 3곳 role 라벨 미한글화 + permissions.js ADMIN 안내문 자기모순)**. open 실측(`list_issues(OPEN,auto-improve)`=14) 기준. |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 |
 | ✔️ done | **428** ⚠️절대값 재동기화(SKILL Area6 원칙) — GitHub 실측 `search_issues(label:auto-improve is:closed reason:completed)`=428(#505 close 반영, +1). |
@@ -16,6 +16,18 @@
 
 > 📦 **과거 사이클 로그**는 `IMPROVEMENT_BACKLOG_ARCHIVE.md`/git 히스토리로 이관됨 (2026-06-10 1차 분리, 2026-06-25 2차 트림 343KB→192KB, 2026-06-25T10:00 3차 트림, 2026-07-03T06:00 4차 트림 288KB→86KB, **2026-07-07T13:00 5차 트림 — 07-01~07-05 사이클 로그를 git 히스토리로 이관: 238KB→78KB, 256KB Read 한도 재확보**). 신규 로그는 계속 이 파일 상단에 추가. 본 파일은 직전 2일치(07-06~) 사이클 로그 + 영구 참조 섹션(Approved/New/Auto-fixed/Done/Rejected/FP 카탈로그)만 유지. 이관분은 `git log -p -- IMPROVEMENT_BACKLOG.md`로 복원 가능.
 
+> **Area 3 UX/기능 감사 (2026-07-10T19:10):**
+> - **방법**: `git fetch origin main`(HEAD=origin/main `737eff6` 0/0 동기, 워킹트리 clean). Area 3 **34회차** — 직전 Area3(`aee5f5c`, 07-08T21:20, 33회차) 이후 UX churn = **59파일**(`git diff --stat aee5f5c..HEAD -- src/scripts src/pages`): 대형 신규기능 "역할 4→8 확장"(6f7556d)·"KST 전수정비"(9110ad0)·"실사 UX 다·라"(46821c4, inventoryCount.js +270)·"실사 승인 NULL 재고소실 차단"(1475bb9)·"다단위 입력"(1102d9a)·"품목 검색 키워드/별칭"(5a6b626)·"급여 중도입퇴사 일할계산"(737eff6, 최신). egress 차단으로 브라우저 접근 불가 → 병렬 에이전트 3개로 코드 정적분석(표준 5축: dead-button/HTML↔JS silent-fail/showConfirm오용/`?raw`concat스코프/로딩·에러·빈상태).
+> - **🆕 net-new 3건(전부 issue-only, Area3 정책상 UI/UX 자동수정 금지)**:
+>   - **#508 (S)** `src/pages/inventory.ts:92,195` — `id="lastCountDate"`가 재고탭(기존)·실사탭(신규 46821c4) 양쪽에 중복 선언, `getElementById`는 항상 첫 매치(92)만 반환 → 실사탭 "최근 실사일" 요약카드가 실사 이력 존재해도 영구 "-" 표시. 사전 존재 결함이나 신규 실사 UX의 핵심 지표 하나가 무력화되는 실질 영향 확인.
+>   - **#509 (S~M)** 급여 중도입퇴사 일할계산(737eff6) — 백엔드 `getProrationContext`/`calcProratedInclusive`가 `isPartial`/근무일수 기반 정확히 계산(로직 자체는 검증됨)하나 `/preview`·`/save` 응답에 그 근거 필드가 없고 `payroll.js`도 표시 0건 — 급여명세서에서 "왜 기본급이 줄었는지" 확인 불가한 블랙박스. 이 기능의 발단이 "중도입사 직원 전액지급 버그"였던 만큼 투명성 결여가 문의/클레임 유발 소지.
+>   - **#510 (S)** 역할 4→8 확장(6f7556d) 후속 — `src/constants/hr.ts`(구4역할)와 `src/types/roles.ts`(신8역할) 간 `ROLE_LABELS` SSOT 이중화(CLAUDE.md 단일소스 원칙 위반) + `window.ROLE_NAMES` 주입(`HR_ENUMS_JS`)이 `employeeSelf.ts`에만 있어 이를 참조하는 `approvals.js:311`·`messages.js:446`·`storageZones.js:118` 3곳은 항상 `undefined`→원본 role 코드 그대로 노출(i18n 한글화 취지 배치, 사전 존재 결함). 부차: `permissions.js:184` ADMIN 안내문이 "접근·편집 가능하며 편집할 수 없습니다"로 자기모순(6f7556d 문구 수정 시 뒷부분 미삭제).
+> - **🟢 나머지 = clean**: 다단위 입력(1102d9a)은 실시간 환산 프리뷰+단위선택 검증+이력 일관 표시 전부 정상(경미: 수량 입력 클라측 NaN 검증 부재, 저심각도라 미보고). 품목 검색 키워드(5a6b626)는 서버측 전역 매칭이라 프론트 7개 검색 경로 전부 자동 커버 확인, 부분픽스 아님. 실사 UX 다·라(46821c4)의 onclick 전수(`openDetail~deleteCount` 11개)·showConfirm 전부 정상 패턴·NULL 재고소실 차단 로직(`counted_quantity != null` 필터+사전경고 confirm) 정확 확인. 역할확장 permissions.js 8역할 탭 렌더·저장 피드백 정상, 신규 페이지 권한등록 대상 없음(이번 churn에 신규 페이지 0), `approvals.ts` 하드코딩 역할배열은 이미 `ROLE_SET` import로 치환 확인, `menu.ts` 구4역할 하드코딩은 스펙문서에 vestigial 죽은코드로 명시 확인(오탐 아님, 보고 제외).
+> - **🟡 미검증 후보(참고, 보고 보류)**: `inventoryCount.js:132` `loadDetailCount()` 연속 클릭 시 응답 역전 레이스 가능성 — 브라우저 검증 불가로 미확정, 다음 사이클 재확인 대상.
+> - **🟢 backlog↔GitHub sync**: `list_issues(OPEN,auto-improve)` 실측 **14건**(#473,497~504,506~510) = 직전 Area2 stats(new 11) + 본 Area3 신규 3건(#508,509,510) 정합. done(428)·rejected(3) 변동 없음(owner close 0).
+> - **🧬 SKILL 강화 없음(신규 패턴 아님)** — #508은 기존 "HTML↔JS id 충돌" 클래스, #509는 "신규기능 계산근거 UI 미표시" 클래스(신규지만 급여 도메인 특유), #510은 "SSOT 이중화 + 전역주입 페이지 편중" 기존 카탈로그로 충분히 포착.
+> - 신규 이슈 3건(#508 S·#509 S~M·#510 S, 전부 issue-only), 자동수정 0건(Area3 정책상 UI/UX 자동수정 금지), done-sync(new 11→14·정합), **신선 각도 — 대형 정비성 churn(역할확장/KST전수정비) 사이에 묻힌 3개 사용자대면 신규기능(실사UX다라/다단위입력/급여일할계산)을 병렬 에이전트로 개별 심층 감사. 코드 정확성은 대체로 양호했으나 UX 표면(요약카드 id충돌·계산근거 미표시·역할라벨 일부화면 누락) 3건을 격리 — Area2가 이미 백엔드 로직 정확성(코드품질 렌즈)을 검증한 동일 churn에 대해 Area3는 사용자 가시성 관점의 보완적 발견.**
+>
 > **Area 2 코드 품질 심층 분석 (2026-07-10T15:21):**
 > - **방법**: `npm ci`(node_modules 0→81) 후 `git fetch origin main`(HEAD=origin/main `ec55449`→`dcec84d` 최종, 워킹트리 clean). Area 2 **34회차** — 직전 Area2(`6c73020`, 07-08T19:40, 33회차) 이후 churn = **57파일**(`git diff --stat 6c73020..HEAD -- src/routes migrations`): 대형 신규기능 "역할 4→8 확장 + 읽기/쓰기(can_edit) enforcement Option A"(`6f7556d`~`74517ba`) + "entity_id 전체모드(0) 유령귀속 방지 12곳"(`ca7eb99`) + "KST UTC 날짜 드리프트 전수정비 ~137곳"(`9110ad0`) + "실사 승인 NULL 재고소실 차단"(`1475bb9`) + "#505 워크벤치 IDOR 픽스"(`1953986`) + i18n mojibake 정정. 병렬 에이전트 2개(배치A 29파일/배치B 28파일)로 entity_id·N+1·authMiddleware·컬럼존재성·KST회귀·역할게이트 오용 렌즈로 전수 감사.
 > - **🔧 자동수정 완료 — entity_id 유령귀속 방지 형제 누락분 18곳**: `ca7eb99`(12곳)가 놓친 동일 클래스 bare `getEntityId(c)` INSERT/시퀀스스캔 바인딩을 형제 라인과 동일하게 `|| 1`로 정렬. `cashSchedule.ts`(2)·`claims.ts`(2)·`ledger/accounts-payable.ts`(1)·`ledger/ar-dunning.ts`(2)·`ledger/ar-payments.ts`(2)·`notifications.ts`(4)·`orders/update.ts`(1)·`permissions.ts`(1)·`purchaseInvoices.ts`(1)·`purchaseOrders/po-special.ts`(2, 채번 스캔 entityId=0 고정→실INSERT entity_id=1과 불일치로 UNIQUE(entity_id,po_number) 충돌 위험까지 있던 파생버그). 전체모드(ADMIN entityId=0) 사용자가 해당 엔드포인트 호출 시 entity_id=0 저장→특정법인 필터에서 영구 비가시되던 문제 차단. `npx tsc --noEmit`+`npm run build` 그린 확인 후 커밋(`a3c8363`, origin/main이 감사 도중 병렬세션 커밋 `caf060f`로 진행돼 rebase 후 재검증·푸시 `dcec84d`).
