@@ -138,6 +138,13 @@ export function itemsPage(c: Context<HonoEnv>) {
                                     <p id="specHint" class="text-xs text-gray-400 mt-1 hidden"></p>
                                 </div>
 
+                                <!-- 2b. 검색 키워드 (0453: 검색 매칭 전용 별칭 — 화면 미표시) -->
+                                <div>
+                                    <label class="block text-sm font-semibold text-gray-700 mb-1">검색 키워드</label>
+                                    <input type="text" id="itemSearchKeywords" placeholder="예: 운산1, 운산코팅 (쉼표로 여러 개)" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                                    <p class="text-xs text-gray-400 mt-1">화면에는 표시되지 않고 검색에만 사용됩니다 (현장 호칭·공급사명 등)</p>
+                                </div>
+
                                 <!-- 3. 단위 -->
                                 <div>
                                     <label class="block text-sm font-semibold text-gray-700 mb-1">단위</label>

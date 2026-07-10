@@ -207,8 +207,8 @@ pricesRouter.get('/client-item-prices', async (c) => {
     const params: (string | number)[] = [client_id]
 
     if (search) {
-      query += ' AND i.item_name LIKE ?'
-      params.push(`%${search}%`)
+      query += ' AND (i.item_name LIKE ? OR i.search_keywords LIKE ?)'
+      params.push(`%${search}%`, `%${search}%`)
     }
 
     query += ' ORDER BY i.item_name'
@@ -445,8 +445,8 @@ pricesRouter.get('/price-overview', async (c) => {
     const binds: any[] = []
 
     if (search) {
-      sql += ' AND (i.item_name LIKE ? OR i.item_code LIKE ? OR i.item_group LIKE ?)'
-      binds.push(`%${search}%`, `%${search}%`, `%${search}%`)
+      sql += ' AND (i.item_name LIKE ? OR i.item_code LIKE ? OR i.item_group LIKE ? OR i.search_keywords LIKE ?)'
+      binds.push(`%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`)
     }
 
     sql += ' ORDER BY i.item_code'
