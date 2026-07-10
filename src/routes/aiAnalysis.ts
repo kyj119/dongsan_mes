@@ -25,7 +25,7 @@ aiAnalysisRouter.post('/', async (c) => {
     const result = await c.env.DB.prepare(
       `INSERT INTO ai_analysis_requests (file_path, status, entity_id) VALUES (?, 'uploading', ?)
        RETURNING id, file_path, status, created_at`
-    ).bind(file_path, getEntityId(c)).first()
+    ).bind(file_path, getEntityId(c) || 1).first()
 
     return c.json({ success: true, data: result })
   } catch (error) {
@@ -65,7 +65,7 @@ aiAnalysisRouter.post('/batch-test', async (c) => {
           `INSERT INTO ai_analysis_requests (file_path, status, entity_id)
            VALUES (?, 'pending', ?)
            RETURNING id, file_path, status, created_at`
-        ).bind(fp, getEntityId(c)).first<{ id: number; file_path: string; status: string; created_at: string }>()
+        ).bind(fp, getEntityId(c) || 1).first<{ id: number; file_path: string; status: string; created_at: string }>()
         if (result) created.push({ ...result, batch_tag: batchTag })
       } catch (err) {
         errors.push(`${fp}: ${err}`)
@@ -222,7 +222,7 @@ aiAnalysisRouter.post('/upload', async (c) => {
     const result = await c.env.DB.prepare(
       `INSERT INTO ai_analysis_requests (file_path, status, entity_id) VALUES (?, ?, ?)
        RETURNING id, file_path, status, created_at`
-    ).bind(file.name, initStatus, getEntityId(c)).first<{ id: number; file_path: string; status: string; created_at: string }>()
+    ).bind(file.name, initStatus, getEntityId(c) || 1).first<{ id: number; file_path: string; status: string; created_at: string }>()
 
     const analysisId = result!.id
 

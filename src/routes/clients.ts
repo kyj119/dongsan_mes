@@ -580,7 +580,7 @@ clientsRouter.post('/:id/notes', requireRole('ADMIN', 'MANAGER', 'DESIGNER'), as
       body.note_type || 'GENERAL',
       body.content,
       user?.id || null,
-      getEntityId(c)
+      getEntityId(c) || 1
     ).run()
 
     return c.json({
@@ -1157,7 +1157,7 @@ clientsRouter.post('/:id/portal-account', requireRole('ADMIN'), async (c) => {
       contact_name || null,
       contact_phone || null,
       contact_email || null,
-      getEntityId(c)
+      getEntityId(c) || 1
     ).run()
 
     return c.json({ success: true, data: { account_id: result.meta.last_row_id, login_id } })

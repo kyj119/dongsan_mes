@@ -384,7 +384,7 @@ poReceiveRouter.post('/:id/receive', async (c) => {
         await c.env.DB.prepare(
           `INSERT INTO price_change_history (target_type, target_id, field_name, old_value, new_value, changed_by, entity_id)
            VALUES ('ITEM', ?, 'base_price', ?, ?, ?, ?)`
-        ).bind(p.itemId, oldItem.base_price, p.unitPrice, user?.username || 'system', getEntityId(c)).run()
+        ).bind(p.itemId, oldItem.base_price, p.unitPrice, user?.username || 'system', getEntityId(c) || 1).run()
 
         priceUpdates.push({ itemId: p.itemId, name: oldItem.item_name, old: oldItem.base_price, new_: p.unitPrice })
 
@@ -410,7 +410,7 @@ poReceiveRouter.post('/:id/receive', async (c) => {
                 c.env.DB.prepare(
                   `INSERT INTO price_change_history (target_type, target_id, field_name, old_value, new_value, changed_by, entity_id)
                    VALUES ('ITEM', ?, 'base_price', ?, ?, ?, ?)`
-                ).bind(gi.id, gi.base_price, p.unitPrice, user?.username || 'system', getEntityId(c))
+                ).bind(gi.id, gi.base_price, p.unitPrice, user?.username || 'system', getEntityId(c) || 1)
               )
               priceUpdates.push({ itemId: gi.id, name: gi.item_name, old: gi.base_price, new_: p.unitPrice })
             }
@@ -434,7 +434,7 @@ poReceiveRouter.post('/:id/receive', async (c) => {
         if (!existing) {
           await c.env.DB.prepare(
             `INSERT INTO notifications (target_role, title, message, link, entity_id) VALUES ('ADMIN', ?, ?, '/inspections', ?)`
-          ).bind(title, message, getEntityId(c)).run()
+          ).bind(title, message, getEntityId(c) || 1).run()
         }
       } catch (notifErr) {
         console.warn('purchaseOrders receive: notification insert failed (non-fatal)', notifErr)

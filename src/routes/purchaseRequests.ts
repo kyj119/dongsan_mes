@@ -410,7 +410,7 @@ prRouter.post('/', async (c) => {
       `).bind(
         requestId, item.item_id || null, item.item_name, item.category_name || null,
         Number(item.quantity) || 1, item.unit || 'EA',
-        Number(item.estimated_unit_price) || 0, i, item.notes || null, getEntityId(c)
+        Number(item.estimated_unit_price) || 0, i, item.notes || null, getEntityId(c) || 1
       )
     )
     for (let i = 0; i < prItemStmts.length; i += 80) {

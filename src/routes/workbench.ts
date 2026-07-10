@@ -202,7 +202,7 @@ workbenchRouter.post('/files/analyze', async (c) => {
     const created = await c.env.DB.prepare(
       `INSERT INTO ai_analysis_requests (file_path, status, entity_id) VALUES (?, 'pending', ?)
        RETURNING id`
-    ).bind(file.name, getEntityId(c)).first<{ id: number }>()
+    ).bind(file.name, getEntityId(c) || 1).first<{ id: number }>()
     if (!created) return c.json({ success: false, error: '분석 요청 생성 실패' }, 500)
     const analysisId = created.id
 
@@ -426,7 +426,7 @@ workbenchRouter.post('/sheets', async (c) => {
       strOrJson(body.source_analysis_ids),
       Number.isInteger(body.sheet_count) ? body.sheet_count! : 1,
       (typeof body.efficiency === 'number') ? body.efficiency : null,
-      getEntityId(c), user?.id ?? null,
+      getEntityId(c) || 1, user?.id ?? null,
     ).first<{ id: number }>()
     return c.json({ success: true, data: { id: created?.id ?? null, name, mode } })
   } catch (error) {
@@ -878,7 +878,7 @@ workbenchRouter.post('/process', async (c) => {
       VALUES (?, ?, ?, 'queued', ?, ?, datetime('now'))
       RETURNING id
     `).bind(
-      analysisId, gi, JSON.stringify(params), getEntityId(c), user?.id ?? null,
+      analysisId, gi, JSON.stringify(params), getEntityId(c) || 1, user?.id ?? null,
     ).first<{ id: number }>()
     return c.json({ success: true, data: { id: created?.id ?? null } })
   } catch (error) {

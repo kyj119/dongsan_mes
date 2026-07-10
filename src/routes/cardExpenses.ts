@@ -127,7 +127,7 @@ cardExpRouter.post('/cards', requireRole('ADMIN'), async (c) => {
     if (!card_name || !card_company) {
       return c.json({ success: false, error: 'card_name, card_company 필수' }, 400)
     }
-    const entityId = getEntityId(c)
+    const entityId = getEntityId(c) || 1
 
     // 바로빌 연동 시 전체 카드번호에서 last4 도출
     let last4 = card_number_last4
@@ -300,7 +300,7 @@ cardExpRouter.post('/categories', requireRole('ADMIN'), async (c) => {
     const body = await c.req.json()
     const { name, icon, color, sort_order } = body
     if (!name) return c.json({ success: false, error: 'name 필수' }, 400)
-    const entityId = getEntityId(c)
+    const entityId = getEntityId(c) || 1
     const result = await c.env.DB.prepare(
       'INSERT INTO expense_categories (name, icon, color, sort_order, entity_id) VALUES (?, ?, ?, ?, ?)'
     ).bind(name, icon || 'fa-tag', color || '#6b7280', sort_order || 99, entityId).run()
@@ -335,7 +335,7 @@ cardExpRouter.post('/sync', requireRole('ADMIN'), async (c) => {
     // senderId는 법인별(entity_settings) — corpNum과 짝 맞춤 필수. 불일치 시 바로빌 -24005로 0건 수집.
     const senderId = await getEntityBarobillSenderId(c.env.DB, getEntityId(c))
     const config = { certKey, corpNum, isTest, senderId }
-    const entityId = getEntityId(c)
+    const entityId = getEntityId(c) || 1
 
     const { getCardList, getMonthlyCardLog, getDailyCardLog } = await import('../services/barobillCard')
     const cardList = await getCardList(config)
@@ -592,7 +592,7 @@ cardExpRouter.put('/transactions/:id', requireRole('ADMIN', 'MANAGER'), async (c
     if (category_id) {
       const tx = await c.env.DB.prepare(`SELECT merchant_name FROM card_transactions WHERE id = ?${ef.clause}`).bind(id, ...ef.params).first<{ merchant_name: string | null }>()
       if (tx?.merchant_name) {
-        const entityId = getEntityId(c)
+        const entityId = getEntityId(c) || 1
         await c.env.DB.prepare(`
           INSERT INTO expense_auto_rules (keyword, category_id, match_count, entity_id) VALUES (?, ?, 1, ?)
           ON CONFLICT(keyword, entity_id) DO UPDATE SET category_id = excluded.category_id, match_count = match_count + 1
@@ -953,7 +953,7 @@ cardExpRouter.post('/transactions', requireRole('ADMIN', 'MANAGER'), async (c) =
     const result = await c.env.DB.prepare(`
       INSERT INTO card_transactions (card_id, transaction_date, merchant_name, amount, category_id, memo, status, created_by, entity_id, approval_type)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'APPROVED')
-    `).bind(card_id, txDate, merchant_name || null, amount, category_id || null, memo || null, status, user?.id ?? 1, entityId).run()
+    `).bind(card_id, txDate, merchant_name || null, amount, category_id || null, memo || null, status, user?.id ?? 1, entityId || 1).run()
 
     return c.json({ success: true, data: { id: result.meta.last_row_id }, message: '내역 등록 완료' })
   } catch (error) {
@@ -1021,7 +1021,7 @@ cardExpRouter.post('/transactions/import-csv', requireRole('ADMIN'), async (c) =
       `).bind(
         card_id, txDate, row.time || null, row.merchant || null,
         amount, parseInt(row.installments || '1') || 1,
-        refKey, user?.id ?? 1, entityId
+        refKey, user?.id ?? 1, entityId || 1
       ).run()
       imported++
     }
