@@ -116,7 +116,7 @@ function renderPrPagination(p) {
 window.prOpenAddModal = function() {
   prEditingId = null;
   document.getElementById('prModalTitle').textContent = '지출결의서 작성';
-  document.getElementById('prDate').value = new Date().toISOString().substring(0, 10);
+  document.getElementById('prDate').value = (window.kstToday ? window.kstToday() : new Date().toISOString().substring(0, 10));
   document.getElementById('prType').value = 'EXPENSE';
   document.getElementById('prRecipientName').value = '';
   document.getElementById('prBank').value = '';

@@ -650,7 +650,7 @@
       m.value = now.getFullYear() + '-' + pad(now.getMonth() + 1);
     }
     var bd = document.getElementById('attBulkDate');
-    if (bd) bd.value = new Date().toISOString().slice(0, 10);
+    if (bd) bd.value = (window.kstToday ? window.kstToday() : new Date().toISOString().slice(0, 10));
   });
   // CAPS 근태 경보 (미매핑·동기화 지연) — B2
   function loadCapsHealth() {
@@ -677,7 +677,7 @@
       m.value = now.getFullYear() + '-' + pad(now.getMonth() + 1);
     }
     var bd = document.getElementById('attBulkDate');
-    if (bd && !bd.value) bd.value = new Date().toISOString().slice(0, 10);
+    if (bd && !bd.value) bd.value = (window.kstToday ? window.kstToday() : new Date().toISOString().slice(0, 10));
     if (m && m.value) loadMonth();
     loadCapsHealth();
   })();

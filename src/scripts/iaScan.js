@@ -930,7 +930,7 @@ function exportVerified() {
   var output = {
     metadata: {
       source: loadedFileName.replace('.csv', ''),
-      verified_date: new Date().toISOString().slice(0, 10),
+      verified_date: (window.kstToday ? window.kstToday() : new Date().toISOString().slice(0, 10)),
       total_rows: allRows.length,
       approved: approved.length,
       rejected: rejected.length,
@@ -1546,7 +1546,7 @@ function exportGuerrilla() {
   var output = {
     metadata: {
       source: gData.source,
-      verified_date: new Date().toISOString().slice(0, 10),
+      verified_date: (window.kstToday ? window.kstToday() : new Date().toISOString().slice(0, 10)),
       total: gData.files.length,
       approved: approved.length
     },

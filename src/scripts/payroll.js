@@ -609,7 +609,7 @@ window.payrollDownloadTaxPayroll = function() {
 };
 
 window.payrollDownloadTaxRoster = function() {
-  var today = new Date().toISOString().slice(0, 10);
+  var today = (window.kstToday ? window.kstToday() : new Date().toISOString().slice(0, 10));
   payrollDownloadCsv(
     '/api/payroll/tax-agent/roster?status=active',
     '직원명부_재직자_' + today + '.csv'

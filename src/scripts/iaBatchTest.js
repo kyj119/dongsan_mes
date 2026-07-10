@@ -96,7 +96,7 @@ async function submitBatch() {
 
             const res = await axios.post('/api/ai-analysis/batch-test', {
                 file_paths: chunk,
-                tag: 'batch_test_' + new Date().toISOString().slice(0, 10)
+                tag: 'batch_test_' + (window.kstToday ? window.kstToday() : new Date().toISOString().slice(0, 10))
             });
             if (res.data.success) {
                 totalCreated += res.data.created_count;
