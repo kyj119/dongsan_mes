@@ -219,7 +219,7 @@ cashScheduleRouter.post('/schedule', requireEditOrRole('/cash-schedule', 'MANAGE
       body.schedule_date, body.flow_type, body.source_type || 'OTHER',
       body.source_id || null, body.client_id || null,
       body.amount, body.description || null, body.notes || null,
-      user?.id || null, getEntityId(c)
+      user?.id || null, getEntityId(c) || 1
     ).run()
 
     return c.json({ success: true, data: { id: result.meta.last_row_id }, message: '예정이 등록되었습니다.' })
@@ -380,7 +380,7 @@ cashScheduleRouter.post('/schedule/auto-generate', requireRole('ADMIN'), async (
           dueDateStr, po.id, po.supplier_id,
           po.final_amount,
           `${po.supplier_name || '공급사'} 지급예정 (발주 ${po.po_number})`,
-          user?.id || null, getEntityId(c)
+          user?.id || null, getEntityId(c) || 1
         )
       )
       inserted++

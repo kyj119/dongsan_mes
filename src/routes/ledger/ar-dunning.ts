@@ -64,7 +64,7 @@ arDunningRouter.post('/collection-log', requireEditOrRole('/ledger', 'MANAGER'),
       body.promised_amount || null,
       body.notes || null,
       user?.id || null,
-      getEntityId(c)
+      getEntityId(c) || 1
     ).run()
 
     return c.json({
@@ -175,7 +175,7 @@ arDunningRouter.post('/collection-logs', async (c) => {
       body.notes || null,
       body.result || null,
       user?.id || null,
-      getEntityId(c)
+      getEntityId(c) || 1
     ).run()
 
     // 이메일 독촉 발송

@@ -399,7 +399,7 @@ apRouter.post('/purchase-payment', requireEditOrRole('/ledger', 'MANAGER'), asyn
       body.po_id || null,
       body.notes || null,
       user?.id || 1,
-      getEntityId(c)
+      getEntityId(c) || 1
     ).run()
 
     // #164: atomic purchase_balance 감소 (race condition 방지)

@@ -150,7 +150,7 @@ poSpecialRouter.post('/:id/reorder', requireRole('ADMIN', 'MANAGER'), async (c) 
     // 새 PO 번호 생성
     const today = kstYmdCompact()
     // entity별 시퀀스 (0281 복합 UNIQUE(entity_id, po_number) 정합 — 정규 생성 경로와 동일)
-    const poNumber = await getNextSeqNumber(c.env.DB, 'purchase_orders', 'po_number', `${today}-P`, 3, getEntityId(c))
+    const poNumber = await getNextSeqNumber(c.env.DB, 'purchase_orders', 'po_number', `${today}-P`, 3, getEntityId(c) || 1)
 
     // 새 PO 생성
     const result = await c.env.DB.prepare(`
@@ -267,7 +267,7 @@ poSpecialRouter.post('/quick', requireRole('ADMIN', 'MANAGER'), async (c) => {
     // PO 번호 생성
     const today = kstYmdCompact()
     // entity별 시퀀스 (0281 복합 UNIQUE(entity_id, po_number) 정합 — 정규 생성 경로와 동일)
-    const poNumber = await getNextSeqNumber(c.env.DB, 'purchase_orders', 'po_number', `${today}-P`, 3, getEntityId(c))
+    const poNumber = await getNextSeqNumber(c.env.DB, 'purchase_orders', 'po_number', `${today}-P`, 3, getEntityId(c) || 1)
 
     // PO 생성
     const result = await c.env.DB.prepare(`

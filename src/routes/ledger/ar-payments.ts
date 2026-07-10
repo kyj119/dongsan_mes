@@ -49,7 +49,7 @@ arPaymentsRouter.post('/payment', requireEditOrRole('/ledger', 'MANAGER'), async
         reference_number: paymentData.reference_number,
         notes: paymentData.notes,
         created_by: user?.id || 1,
-        entity_id: getEntityId(c),
+        entity_id: getEntityId(c) || 1,
       })
     } catch (err) {
       if (err instanceof Error && err.message.startsWith('Client not found')) {
@@ -330,7 +330,7 @@ arPaymentsRouter.post('/adjustment', requireEditOrRole('/ledger', 'MANAGER'), as
       amount,
       body.reason,
       user?.id || null,
-      getEntityId(c)
+      getEntityId(c) || 1
     ).run()
 
     // split billing P3: balance 캐시 미사용 — 감액 INSERT만 (미수금은 파생).

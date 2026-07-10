@@ -308,7 +308,7 @@ purchaseInvoices.post('/', async (c) => {
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).bind(
     invoice_number, supplier_id, po_id || null, invoice_date, due_date || null,
-    subtotal, vatAmount, totalAmount, notes || null, getEntityId(c), userId
+    subtotal, vatAmount, totalAmount, notes || null, getEntityId(c) || 1, userId
   ).run()
 
   const invoiceId = result.meta.last_row_id as number
