@@ -421,7 +421,7 @@ ordersUpdateRouter.put('/:id', requireEditOrRole('/orders', 'MANAGER'), async (c
         deliveryDate: orderData.delivery_date || null,
         priority: orderData.priority || 'NORMAL',
         notes: orderData.notes || null,
-        entityId: getEntityId(c)
+        entityId: getEntityId(c) || 1
       })
     } // end if (canRegenerateCards)
 

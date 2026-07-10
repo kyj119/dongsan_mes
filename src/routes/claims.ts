@@ -31,7 +31,7 @@ claims.post('/defect-codes', requireRole('ADMIN', 'MANAGER'), async (c) => {
   const result = await c.env.DB.prepare(`
     INSERT INTO defect_codes (code, name, parent_id, category, description, preventive_action, entity_id)
     VALUES (?, ?, ?, ?, ?, ?, ?)
-  `).bind(code, name, parent_id || null, category, description || null, preventive_action || null, getEntityId(c)).run()
+  `).bind(code, name, parent_id || null, category, description || null, preventive_action || null, getEntityId(c) || 1).run()
   return c.json({ success: true, data: { id: result.meta.last_row_id } })
 })
 
@@ -96,7 +96,7 @@ claims.post('/', async (c) => {
     claimNumber, order_id, client_id,
     claim_date || kstYmd(),
     claim_type || 'DEFECT', description, claimed_amount || 0,
-    quality_issue_id || null, getEntityId(c), userId
+    quality_issue_id || null, getEntityId(c) || 1, userId
   ).run()
 
   return c.json({ success: true, data: { id: result.meta.last_row_id, claim_number: claimNumber } })

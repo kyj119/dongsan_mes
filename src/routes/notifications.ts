@@ -174,7 +174,7 @@ notificationsRouter.post('/generate', async (c) => {
       const overdue = dueOrders.filter((o) => (o.delivery_date as string) <= today)
       const dueSoon = dueOrders.filter((o) => (o.delivery_date as string) > today)
 
-      const eid = getEntityId(c)
+      const eid = getEntityId(c) || 1
       if (overdue.length > 0) {
         await createIfNotExists(db, 'MANAGER',
           `납기 지연 ${overdue.length}건`,
@@ -201,7 +201,7 @@ notificationsRouter.post('/generate', async (c) => {
       await createIfNotExists(db, 'MANAGER',
         `발주 납기 초과 ${overduePoResult.cnt}건`,
         '입고 대기 중인 발주서의 납기가 지났습니다.',
-        '/purchase-orders', getEntityId(c))
+        '/purchase-orders', getEntityId(c) || 1)
     }
 
     // 3. 장비 소모품/정비 기한 도래
@@ -219,7 +219,7 @@ notificationsRouter.post('/generate', async (c) => {
       await createIfNotExists(db, 'MANAGER',
         `장비 정비/소모품 알림 ${alertResult.cnt}건`,
         '교체 또는 정비 기한이 도래한 항목이 있습니다.',
-        '/equipment', getEntityId(c))
+        '/equipment', getEntityId(c) || 1)
     }
 
     // 4. 재고 부족 (reorder_point 설정된 품목)
@@ -240,7 +240,7 @@ notificationsRouter.post('/generate', async (c) => {
       await createIfNotExists(db, 'MANAGER',
         `재고 부족 ${lowStockResult.cnt}개 품목`,
         '재주문점 이하로 떨어진 재고 품목이 있습니다.',
-        '/inventory', getEntityId(c))
+        '/inventory', getEntityId(c) || 1)
     }
 
     return c.json({ success: true })
