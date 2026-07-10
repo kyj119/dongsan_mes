@@ -38,7 +38,10 @@ CREATE INDEX IF NOT EXISTS idx_rpp_role_edit ON role_page_permissions(role, can_
 
 -- ── 3. 신규 4역할 기본 매트릭스 seed (관리자가 /permissions 에서 미세조정 가능) ──
 --   can_access=1 열람, can_edit=1 편집. 전 신규역할 공통: /dashboard(랜딩)·/approvals(전자결재 참여).
-INSERT OR IGNORE INTO role_page_permissions (role, page_key, can_access, can_edit) VALUES
+-- page_key 가 permission_pages 에 존재하는 행만 삽입(FK 안전). 로컬/prod 페이지 구성 차이 대비
+-- (예: /production-board 는 prod 미존재 → INSERT OR IGNORE 는 FK 위반을 무시 못 해 전체 롤백됨).
+INSERT OR IGNORE INTO role_page_permissions (role, page_key, can_access, can_edit)
+WITH seed(role, page_key, can_access, can_edit) AS (VALUES
   -- 경리 (ACCOUNTANT): 재무 전반 편집 + 세무/입금 + 거래처 열람
   ('ACCOUNTANT','/dashboard',1,0),
   ('ACCOUNTANT','/approvals',1,1),
@@ -77,4 +80,8 @@ INSERT OR IGNORE INTO role_page_permissions (role, page_key, can_access, can_edi
   ('SHIPPING','/shipments-dashboard',1,1),
   ('SHIPPING','/pack',1,1),
   ('SHIPPING','/cards',1,0),
-  ('SHIPPING','/delivery-analytics',1,0);
+  ('SHIPPING','/delivery-analytics',1,0)
+)
+SELECT s.role, s.page_key, s.can_access, s.can_edit
+FROM seed s
+WHERE s.page_key IN (SELECT page_key FROM permission_pages);
