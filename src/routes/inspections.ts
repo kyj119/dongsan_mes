@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
 import { entityFilter, getEntityId } from '../utils/entityFilter'
+import { kstYmd } from '../utils/kstDate'
 
 const inspectionsRouter = new Hono<HonoEnv>()
 inspectionsRouter.use('/*', authMiddleware)
@@ -395,7 +396,7 @@ inspectionsRouter.get('/results/export/csv', async (c) => {
       r.receipt_number || '', r.supplier_name || '', r.inspector_name || '',
       labelMap[r.overall_result] || r.overall_result || '', r.notes || ''
     ])
-    return csvResponse(c, `검수결과_${new Date().toISOString().slice(0, 10)}.csv`, generateCsv(headers, rows, { footerNote: truncated ? CSV_TRUNCATION_NOTE : undefined }))
+    return csvResponse(c, `검수결과_${kstYmd()}.csv`, generateCsv(headers, rows, { footerNote: truncated ? CSV_TRUNCATION_NOTE : undefined }))
   } catch (error) {
     console.error('inspections CSV export error:', error)
     return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)

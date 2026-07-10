@@ -10,6 +10,7 @@ import { authMiddleware } from '../../middleware/auth'
 import { requireAnyPagePermission } from '../../middleware/permissions'
 import { getEntityId, entityFilter } from '../../utils/entityFilter'
 import { getEntityCompanyInfo } from '../../utils/entitySettings'
+import { kstYmd } from '../../utils/kstDate'
 
 const poQueriesRouter = new Hono<HonoEnv>()
 poQueriesRouter.use('/*', authMiddleware, requireAnyPagePermission('/purchase-orders', '/receiving'))
@@ -143,7 +144,7 @@ poQueriesRouter.get('/export/csv', async (c) => {
     ])
 
     const { generateCsv, csvResponse, CSV_TRUNCATION_NOTE } = await import('../../utils/csv')
-    const today = new Date().toISOString().slice(0, 10)
+    const today = kstYmd()
     return csvResponse(c, `발주목록_${today}.csv`, generateCsv(headers, rows, { footerNote: truncated ? CSV_TRUNCATION_NOTE : undefined }))
   } catch (error) {
     console.error('src/routes/purchaseOrders.ts error:', error)

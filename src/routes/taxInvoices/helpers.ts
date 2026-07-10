@@ -10,6 +10,7 @@ import type { TaxProvider } from '../../services/taxProvider'
 import { sendEmail } from '../../services/emailProvider'
 import { renderTemplate } from '../../services/emailTemplates'
 import { getEntityCompanyInfo } from '../../utils/entitySettings'
+import { kstYear } from '../../utils/kstDate'
 
 export async function getTaxProvider(db: D1Database, env: any, corpNum: string): Promise<TaxProvider | null> {
   const testModeRow = await db.prepare(
@@ -68,7 +69,7 @@ export type MonthlyEligibleRow = {
 // ────────────────────────────────────────────────────────────────────────────
 export async function generateInvoiceNumber(db: D1Database, entityId?: number): Promise<string> {
   // #171: 법인별 시퀀스 채번
-  const year = new Date().getFullYear()
+  const year = kstYear()
   const entityClause = entityId && entityId > 0 ? ' AND entity_id = ?' : ''
   const entityParams = entityId && entityId > 0 ? [entityId] : []
   const lastRow = await db.prepare(

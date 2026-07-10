@@ -6,7 +6,7 @@ import { createPayment } from '../../lib/payments'
 import { logActivity } from '../../utils/activityLog'
 import { notifyRoles } from '../../utils/notify'
 import { getEntityId, entityFilter } from '../../utils/entityFilter'
-import { kstYmd } from '../../utils/kstDate'
+import { kstYmd, kstYear } from '../../utils/kstDate'
 
 // ── Row interfaces ──────────────────────────────────────────────────────────
 interface PurchaseOrderRow {
@@ -278,7 +278,7 @@ apRouter.get('/purchase-settlement', async (c) => {
 apRouter.get('/purchase-monthly-summary', async (c) => {
   try {
     const { year, months = '12' } = c.req.query()
-    const targetYear = year || new Date().getFullYear().toString()
+    const targetYear = year || String(kstYear())
     const monthCount = Number(months)
 
     // Monthly purchase order totals
@@ -965,7 +965,7 @@ apRouter.get('/purchase-client/:clientId/export/csv', async (c) => {
     ])
 
     const { generateCsv, csvResponse } = await import('../../utils/csv')
-    const today = new Date().toISOString().slice(0, 10)
+    const today = kstYmd()
 
     return csvResponse(c, `매입원장_${supplier.client_name}_${today}.csv`, generateCsv(headers, rows))
   } catch (error) {

@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
 import { getEntityId, entityFilter } from '../utils/entityFilter'
+import { kstYear } from '../utils/kstDate'
 
 const insuranceReportsRouter = new Hono<HonoEnv>()
 
@@ -14,7 +15,7 @@ insuranceReportsRouter.use('*', requireRole('ADMIN', 'MANAGER'))
 // ============================================================================
 insuranceReportsRouter.get('/', async (c) => {
   try {
-    const year = Number(c.req.query('year') || new Date().getFullYear())
+    const year = Number(c.req.query('year') || kstYear())
     const month = c.req.query('month')
 
     const ef = entityFilter(c, '')
@@ -42,7 +43,7 @@ insuranceReportsRouter.get('/', async (c) => {
 // ============================================================================
 insuranceReportsRouter.get('/annual-summary', async (c) => {
   try {
-    const year = Number(c.req.query('year') || new Date().getFullYear())
+    const year = Number(c.req.query('year') || kstYear())
     const ef = entityFilter(c, '')
     const rows = await c.env.DB.prepare(
       `SELECT month, employee_count, grand_total_employee, grand_total_employer, grand_total, status
@@ -87,7 +88,7 @@ insuranceReportsRouter.get('/:id', async (c) => {
 insuranceReportsRouter.post('/generate', async (c) => {
   try {
     const body = await c.req.json<any>()
-    const year = Number(body.year || new Date().getFullYear())
+    const year = Number(body.year || kstYear())
     const month = Number(body.month)
     if (!month || month < 1 || month > 12) return c.json({ success: false, error: '월(1~12) 필수' }, 400)
 

@@ -3,7 +3,7 @@ import type { HonoEnv } from '../types/env'
 import type { D1Database } from '@cloudflare/workers-types'
 import { authMiddleware } from '../middleware/auth'
 import { entityFilter, getEntityId } from '../utils/entityFilter'
-import { kstYmd } from '../utils/kstDate'
+import { kstYmd, kstDate, kstDateOf } from '../utils/kstDate'
 
 const notificationsRouter = new Hono<HonoEnv>()
 notificationsRouter.use('/*', authMiddleware)
@@ -11,7 +11,7 @@ notificationsRouter.use('/*', authMiddleware)
 // ── Helper: 중복 방지 알림 생성 (당일 동일 title 스킵) ──
 async function createIfNotExists(db: D1Database, targetRole: string, title: string, message: string, link: string, entityId: number = 1) {
   const existing = await db.prepare(
-    `SELECT id FROM notifications WHERE target_role = ? AND title = ? AND date(created_at) = date('now') LIMIT 1`
+    `SELECT id FROM notifications WHERE target_role = ? AND title = ? AND ${kstDateOf('created_at')} = ${kstDate()} LIMIT 1`
   ).bind(targetRole, title).first()
   if (existing) return
   await db.prepare(

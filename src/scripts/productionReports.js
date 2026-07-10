@@ -409,7 +409,7 @@ async function loadUptime() {
     for (var i = 5; i >= 0; i--) {
       var dt = new Date();
       dt.setMonth(dt.getMonth() - i);
-      months.push(dt.toISOString().substring(0, 7));
+      months.push(dt.getFullYear() + '-' + String(dt.getMonth() + 1).padStart(2, '0'));
     }
 
     var html = '';

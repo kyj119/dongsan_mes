@@ -7,6 +7,7 @@ import type { HonoEnv } from '../../types/env'
 import { authMiddleware, requireRole } from '../../middleware/auth'
 import { entityFilter } from '../../utils/entityFilter'
 import { escapeCsvField } from '../../utils/csv'
+import { kstYmd } from '../../utils/kstDate'
 
 const taxAgentRouter = new Hono<HonoEnv>()
 taxAgentRouter.use('/*', authMiddleware)
@@ -401,7 +402,7 @@ taxAgentRouter.get('/tax-agent/roster', requireRole('ADMIN', 'MANAGER'), async (
       ].map(csvField).join(','))
     }
 
-    const today = new Date().toISOString().slice(0, 10)
+    const today = kstYmd()
     const label = statusFilter === 'all' ? '전체' : statusFilter === 'resigned' ? '퇴사자' : '재직자'
     return csvResponse(c, `직원명부_${label}_${today}.csv`, rows)
   } catch (err: any) {

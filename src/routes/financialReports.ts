@@ -4,6 +4,7 @@ import { Hono } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
 import { entityFilter } from '../utils/entityFilter'
+import { kstYear } from '../utils/kstDate'
 
 // ── Row types for D1 queries ──
 interface SalesRow { order_count: number; total_billed: number; total_final: number }
@@ -161,7 +162,7 @@ financialReportsRouter.get('/pnl', async (c) => {
 // ============================================================
 financialReportsRouter.get('/pnl/monthly', async (c) => {
   try {
-    const year = Number(c.req.query('year') || new Date().getFullYear())
+    const year = Number(c.req.query('year') || kstYear())
     // P5 split billing: 월별 매출=청구그룹 기준
     const ef = entityFilter(c, 'g')
 
@@ -382,7 +383,7 @@ financialReportsRouter.get('/export/csv', async (c) => {
     }
 
     // type === 'monthly'
-    const year = Number(c.req.query('year') || new Date().getFullYear())
+    const year = Number(c.req.query('year') || kstYear())
     // P5 split billing: 월별 매출=청구그룹 기준
     const ef = entityFilter(c, 'g')
 

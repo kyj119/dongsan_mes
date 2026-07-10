@@ -7,6 +7,7 @@ import type { HonoEnv } from '../../types/env'
 import { authMiddleware, requireRole } from '../../middleware/auth'
 import { entityFilter, getEntityId } from '../../utils/entityFilter'
 import { decryptPII } from '../../utils/crypto'
+import { kstYear } from '../../utils/kstDate'
 
 const yearEndRouter = new Hono<HonoEnv>()
 // 연말정산(직원 급여·정산 데이터)은 전 라우트 ADMIN/MANAGER 전용
@@ -54,7 +55,7 @@ function calcEarnedTaxCredit(calculatedTax: number, grossTaxable: number): numbe
 yearEndRouter.get('/year-end/:employeeId', async (c) => {
   try {
     const employeeId = Number(c.req.param('employeeId'))
-    const year = Number(c.req.query('year') || new Date().getFullYear())
+    const year = Number(c.req.query('year') || kstYear())
     if (!employeeId) return c.json({ success: false, error: 'employeeId 필요' }, 400)
 
     // #IDOR: 자법인 직원만 (ADMIN=entityId 0 → bypass). 형제 라우트(:144 settlement·:399 list)와 정합.
@@ -140,7 +141,7 @@ yearEndRouter.get('/year-end/:employeeId', async (c) => {
 yearEndRouter.get('/year-end-settlement/:employeeId', async (c) => {
   try {
     const employeeId = Number(c.req.param('employeeId'))
-    const year = Number(c.req.query('year') || new Date().getFullYear())
+    const year = Number(c.req.query('year') || kstYear())
     if (!employeeId) return c.json({ success: false, error: 'employeeId 필요' }, 400)
 
     const efSet = entityFilter(c, '')
@@ -170,7 +171,7 @@ yearEndRouter.post('/year-end-settlement/:employeeId', requireRole('ADMIN', 'MAN
   try {
     const employeeId = Number(c.req.param('employeeId'))
     const body = await c.req.json<any>()
-    const year = Number(body.year || new Date().getFullYear())
+    const year = Number(body.year || kstYear())
     if (!employeeId) return c.json({ success: false, error: 'employeeId 필요' }, 400)
 
     // 1) 급여 집계 (기납부세액)
@@ -397,7 +398,7 @@ yearEndRouter.put('/year-end-settlement/:settlementId/confirm', requireRole('ADM
 // ============================================================================
 yearEndRouter.get('/year-end-list', async (c) => {
   try {
-    const year = Number(c.req.query('year') || new Date().getFullYear())
+    const year = Number(c.req.query('year') || kstYear())
     const ef = entityFilter(c, 'y')
     const rows = await c.env.DB.prepare(
       `SELECT e.id, e.name, e.employee_code, e.department, e.position,

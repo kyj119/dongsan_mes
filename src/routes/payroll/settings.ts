@@ -5,6 +5,7 @@
 import { Hono } from 'hono'
 import type { HonoEnv } from '../../types/env'
 import { authMiddleware, requireRole } from '../../middleware/auth'
+import { kstYear } from '../../utils/kstDate'
 
 import { calcOfficialMonthlyTax } from './shared'
 
@@ -326,7 +327,7 @@ settingsRouter.delete('/holidays/:date', requireRole('ADMIN', 'MANAGER'), async 
 settingsRouter.post('/holidays/load-defaults', requireRole('ADMIN', 'MANAGER'), async (c) => {
   try {
     const body = await c.req.json<{ year?: number }>().catch(() => ({} as { year?: number }))
-    const year = Number(body.year) || new Date().getFullYear()
+    const year = Number(body.year) || kstYear()
     const fixed: [string, string][] = [
       ['01-01', '신정'], ['03-01', '삼일절'], ['05-05', '어린이날'], ['06-06', '현충일'],
       ['08-15', '광복절'], ['10-03', '개천절'], ['10-09', '한글날'], ['12-25', '성탄절'],

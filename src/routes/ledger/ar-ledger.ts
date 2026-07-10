@@ -10,7 +10,7 @@ import type { HonoEnv } from '../../types/env'
 import { authMiddleware } from '../../middleware/auth'
 import { requireEditOrRole } from '../../middleware/permissions'
 import { entityFilter } from '../../utils/entityFilter'
-import { kstYm } from '../../utils/kstDate'
+import { kstYm, kstYear, kstYmd } from '../../utils/kstDate'
 import {
   type ClientRow, type OrderRow, type PaymentRow, type AdjustmentRow,
   type OrderAggRow, type PaymentAggRow, type MonthlyOrderRow, type MonthlyPaymentRow,
@@ -369,7 +369,7 @@ arLedgerRouter.get('/client/:clientId/export/csv', async (c) => {
     const rows = entries.map(e => [e.date, e.type, e.ref, e.debit || '', e.credit || '', e.balance, e.note])
 
     const { generateCsv, csvResponse } = await import('../../utils/csv')
-    const today = new Date().toISOString().slice(0, 10)
+    const today = kstYmd()
     return csvResponse(c, `원장_${client.client_name}_${today}.csv`, generateCsv(headers, rows))
   } catch (error) {
     console.error('src/routes/ledger.ts error:', error)
@@ -503,7 +503,7 @@ arLedgerRouter.get('/settlement', async (c) => {
 arLedgerRouter.get('/monthly-summary', async (c) => {
   try {
     const { year, months = '12' } = c.req.query()
-    const targetYear = year || new Date().getFullYear().toString()
+    const targetYear = year || String(kstYear())
     const monthCount = parseInt(months)
 
     // Monthly order totals

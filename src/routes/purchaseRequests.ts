@@ -4,7 +4,7 @@ import type { PurchaseRequest, PurchaseRequestItem, ApiResponse, PaginatedRespon
 import { authMiddleware, requireRole } from '../middleware/auth'
 import { getEntityId, entityFilter } from '../utils/entityFilter'
 import { getNextSeqNumber, getNextEntitySeqNumber, withSeqRetry } from '../utils/sequenceGenerator'
-import { kstYmdCompact } from '../utils/kstDate'
+import { kstYmdCompact, kstYmd } from '../utils/kstDate'
 
 const prRouter = new Hono<HonoEnv>()
 
@@ -299,7 +299,7 @@ prRouter.get('/export/csv', async (c) => {
     ])
 
     const { generateCsv, csvResponse, CSV_TRUNCATION_NOTE } = await import('../utils/csv')
-    return csvResponse(c, `발주요청_${new Date().toISOString().slice(0, 10)}.csv`, generateCsv(headers, rows, { footerNote: truncated ? CSV_TRUNCATION_NOTE : undefined }))
+    return csvResponse(c, `발주요청_${kstYmd()}.csv`, generateCsv(headers, rows, { footerNote: truncated ? CSV_TRUNCATION_NOTE : undefined }))
   } catch (error) {
     console.error('purchaseRequests CSV export error:', error)
     return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)

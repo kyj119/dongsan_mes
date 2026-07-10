@@ -11,7 +11,7 @@ import { authMiddleware } from '../../middleware/auth'
 import { requireAnyPagePermission } from '../../middleware/permissions'
 import { getEntityId, entityFilter, getWriteEntityId, ENTITY_ALL_MODE_WRITE_ERROR } from '../../utils/entityFilter'
 import { getItemDefaultZones } from '../../utils/inventoryZone'
-import { kstYmd, kstYmdCompact } from '../../utils/kstDate'
+import { kstYmd, kstYmdCompact, kstDate, kstDateOf } from '../../utils/kstDate'
 
 const poReceiveRouter = new Hono<HonoEnv>()
 poReceiveRouter.use('/*', authMiddleware, requireAnyPagePermission('/purchase-orders', '/receiving'))
@@ -430,7 +430,7 @@ poReceiveRouter.post('/:id/receive', async (c) => {
         const title = '[검수 대기] ' + poNumber + ' 부족 수량 감지'
         const message = poNumber + ' 발주의 입고 수량이 발주 수량보다 부족합니다. 관리자 확인이 필요합니다.'
         const existing = await c.env.DB.prepare(
-          `SELECT id FROM notifications WHERE target_role = 'ADMIN' AND title = ? AND date(created_at) = date('now') LIMIT 1`
+          `SELECT id FROM notifications WHERE target_role = 'ADMIN' AND title = ? AND ${kstDateOf('created_at')} = ${kstDate()} LIMIT 1`
         ).bind(title).first()
         if (!existing) {
           await c.env.DB.prepare(

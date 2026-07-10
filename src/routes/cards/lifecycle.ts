@@ -12,6 +12,7 @@
 import { Hono } from 'hono'
 import type { Context } from 'hono'
 import type { HonoEnv } from '../../types/env'
+import { kstYmdCompact } from '../../utils/kstDate'
 import { authMiddleware, requireRole } from '../../middleware/auth'
 import { requireAnyPagePermission, requireEditOrRole } from '../../middleware/permissions'
 import { logActivity } from '../../utils/activityLog'
@@ -979,8 +980,7 @@ cardsLifecycleRouter.post('/generate/:orderId', async (c) => {
       postProcMap.set(opt.option_code, opt)
     })
 
-    const today = new Date()
-    const dateStr = today.toISOString().split('T')[0].replace(/-/g, '')
+    const dateStr = kstYmdCompact()
 
     // MAX 기반 카드 번호 시작점 조회 (entity별 분리)
     // 카드 귀속 = 주문 법인 기준 (세션 법인 아님 — 전체모드 0/타법인 세션 오귀속 방지, 2026-07-06 감사 #4)

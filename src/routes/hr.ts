@@ -4,7 +4,7 @@ import { requirePagePermission } from '../middleware/permissions'
 import type { HonoEnv } from '../types/env'
 import { encryptPII, decryptPII } from '../utils/crypto'
 import { getEntityId, entityFilter } from '../utils/entityFilter'
-import { kstYm, kstYmd } from '../utils/kstDate'
+import { kstYm, kstYmd, kstYear, kstYmdCompact } from '../utils/kstDate'
 import { calcOvertimePay, loadOvertimeSettings } from './payroll/shared'
 
 // #338: PII(주민등록번호) 암호화 키 — JWT_SECRET 재사용하되 하드코딩 폴백('fallback-dev-key') 제거.
@@ -925,7 +925,7 @@ hrRouter.get('/employees/:id/detail', async (c) => {
   try {
     const id = Number(c.req.param('id'))
     const month = c.req.query('month') || kstYm()  // YYYY-MM
-    const year = c.req.query('year') || new Date().getFullYear().toString()
+    const year = c.req.query('year') || String(kstYear())
 
     // 1) 직원 프로필 + users.username
     // #349: detail 조회 법인 격리(PII 복호화 경로). 단 ADMIN은 전 법인 직원 조회 허용 (2026-06-12).
@@ -1475,12 +1475,11 @@ hrRouter.get('/certificates/employment/:employeeId', async (c) => {
     }
 
     // certificate_number 자동 채번: CERT-YYYYMMDD-NNN
-    const today = new Date()
-    const dateStr = today.toISOString().slice(0, 10).replace(/-/g, '')
+    const dateStr = kstYmdCompact()
     const eidCert = emp.entity_id || 1
     const { results: countResult } = await c.env.DB.prepare(`
       SELECT COUNT(*) as cnt FROM certificate_logs WHERE issue_date = ? AND entity_id = ?
-    `).bind(today.toISOString().slice(0, 10), eidCert).all<{ cnt: number }>().catch(() => ({ results: [{ cnt: 0 }] }))
+    `).bind(kstYmd(), eidCert).all<{ cnt: number }>().catch(() => ({ results: [{ cnt: 0 }] }))
     const seq = ((countResult?.[0]?.cnt) || 0) + 1
     const certificateNumber = `CERT-${dateStr}-${String(seq).padStart(3, '0')}`
 
@@ -1489,7 +1488,7 @@ hrRouter.get('/certificates/employment/:employeeId', async (c) => {
       await c.env.DB.prepare(`
         INSERT INTO certificate_logs (employee_id, certificate_number, certificate_type, purpose, issue_date, entity_id, created_at)
         VALUES (?, ?, 'EMPLOYMENT', ?, ?, ?, datetime('now'))
-      `).bind(employeeId, certificateNumber, purpose, today.toISOString().slice(0, 10), eidCert).run()
+      `).bind(employeeId, certificateNumber, purpose, kstYmd(), eidCert).run()
     } catch (certErr) {
       console.error('certificate_logs insert failed:', certErr)
     }
@@ -1509,7 +1508,7 @@ hrRouter.get('/certificates/employment/:employeeId', async (c) => {
         hire_date: emp.hire_date || '',
         employee_code: emp.employee_code || '',
       },
-      issue_date: today.toISOString().slice(0, 10),
+      issue_date: kstYmd(),
       certificate_number: certificateNumber,
       purpose,
     })

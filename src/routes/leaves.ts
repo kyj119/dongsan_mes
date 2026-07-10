@@ -10,6 +10,7 @@ import { requirePagePermission } from '../middleware/permissions'
 import { entityFilter, getEntityId } from '../utils/entityFilter'
 import { markLeaveAttendance, clearLeaveAttendance, enumerateDates } from '../utils/leaveAttendance'
 import { calcInclusivePay, loadOvertimeSettings, calcDeductions, loadInsuranceRates, loadAllEmployeeDefaults } from './payroll/shared'
+import { kstYear, kstYmd } from '../utils/kstDate'
 import { sendEmail } from '../services/emailProvider'
 
 // ---------- D1 row shapes ----------
@@ -44,7 +45,7 @@ leavesRouter.use('/*', authMiddleware, requirePagePermission('/leaves'))
 // ============================================================================
 
 /** 입사일과 기준일을 받아 해당 시점의 연간 부여 일수를 반환한다. */
-function calcAnnualEntitlement(hireDate: string, asOf: Date = new Date()): number {
+function calcAnnualEntitlement(hireDate: string, asOf: Date = new Date(kstYmd())): number {
   const hire = new Date(hireDate)
   if (isNaN(hire.getTime())) return 0
   const years = (asOf.getTime() - hire.getTime()) / (365.25 * 24 * 3600 * 1000)
@@ -57,7 +58,7 @@ function calcAnnualEntitlement(hireDate: string, asOf: Date = new Date()): numbe
 }
 
 /** 입사 1년 미만 직원의 월별 적립 — 매월 개근 시 1일, 최대 11일 */
-function calcMonthlyAccrualUpTo(hireDate: string, asOf: Date = new Date()): number {
+function calcMonthlyAccrualUpTo(hireDate: string, asOf: Date = new Date(kstYmd())): number {
   const hire = new Date(hireDate)
   if (isNaN(hire.getTime())) return 0
   const months = (asOf.getFullYear() - hire.getFullYear()) * 12 + (asOf.getMonth() - hire.getMonth())
@@ -233,7 +234,7 @@ async function loadAnnualAccruedMap(
 // 전체 직원 연차 현황 (관리자/매니저)
 leavesRouter.get('/balances', requireRole('ADMIN', 'MANAGER'), async (c) => {
   try {
-    const year = Number(c.req.query('year') || new Date().getFullYear())
+    const year = Number(c.req.query('year') || kstYear())
     const department = c.req.query('department') || '' // #346: 부서 필터
     const ef = entityFilter(c, 'e') // employees 기준 격리(병존 집계 서브쿼리라 lb 직접필터 대신 e)
     const deptClause = department ? ' AND e.department = ?' : ''
@@ -290,7 +291,7 @@ leavesRouter.get('/balance/:employeeId', async (c) => {
       ORDER BY year DESC, leave_type
     `).bind(employeeId, ...efB.params).all()
 
-    const currentYear = new Date().getFullYear()
+    const currentYear = kstYear()
     const expectedAnnual = calcAnnualEntitlement(emp.hire_date)
     const expectedMonthly = calcMonthlyAccrualUpTo(emp.hire_date)
 
@@ -1070,7 +1071,7 @@ leavesRouter.post('/sick-grant', requireRole('ADMIN'), async (c) => {
 
 leavesRouter.get('/unused-allowance', requireRole('ADMIN', 'MANAGER'), async (c) => {
   try {
-    const year = Number(c.req.query('year') || new Date().getFullYear())
+    const year = Number(c.req.query('year') || kstYear())
     const department = c.req.query('department') || '' // #346: 부서 필터
     const deptClause = department ? ' AND e.department = ?' : ''
     const deptParams = department ? [department] : []

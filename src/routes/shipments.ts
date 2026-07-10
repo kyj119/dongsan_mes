@@ -9,7 +9,7 @@ import { getNextSeqNumber, withSeqRetry } from '../utils/sequenceGenerator'
 import { autoDeductPostProcessingMaterials } from '../utils/autoDeductPostProcessingMaterials'
 import { deductStockLinesOnShip } from '../utils/stockShip'
 import { ensureShipmentForOrder } from '../utils/shipmentHelper'
-import { kstYmd } from '../utils/kstDate'
+import { kstYmd, kstYmdCompact } from '../utils/kstDate'
 import { getEntityCompanyInfo } from '../utils/entitySettings'
 import { escapeCsvField } from '../utils/csv'
 
@@ -802,8 +802,7 @@ shipmentsRouter.post('/', requireEditOrRole('/shipments', 'MANAGER', 'DESIGNER')
     }
 
     // 출고번호 생성 (#148: entity별 독립 시퀀스)
-    const today = new Date()
-    const dateStr = today.toISOString().split('T')[0].replace(/-/g, '')
+    const dateStr = kstYmdCompact()
     const eid = getEntityId(c) || 1
     const shipmentNumber = await getNextSeqNumber(c.env.DB, 'shipments', 'shipment_number', `SHP-E${eid}-${dateStr}-`, 3, eid)
 

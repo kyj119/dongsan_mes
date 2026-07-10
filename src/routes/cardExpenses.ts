@@ -11,7 +11,7 @@ import { entityFilter, getEntityId } from '../utils/entityFilter'
 import { getEntityCorpNum, getEntityBarobillSenderId } from '../utils/entitySettings'
 import { validateUpload } from '../utils/uploadValidation'
 import { generateCsv, csvResponse, CSV_EXPORT_CAP, CSV_TRUNCATION_NOTE } from '../utils/csv'
-import { kstYmd, kstYmdCompact } from '../utils/kstDate'
+import { kstYmd, kstYmdCompact, kstYear, kstYm } from '../utils/kstDate'
 
 const cardExpRouter = new Hono<HonoEnv>()
 cardExpRouter.use('/*', authMiddleware)
@@ -100,8 +100,7 @@ async function reconcileCardOffsets(c: any): Promise<number> {
 cardExpRouter.get('/cards', requireEditOrRole('/card-expenses', 'MANAGER'), async (c) => {
   try {
     const ef = entityFilter(c, 'cc')
-    const now = new Date()
-    const thisMonth = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}`
+    const thisMonth = kstYm().replace('-', '')
     const { results } = await c.env.DB.prepare(`
       SELECT cc.*, u.name as assigned_user_name,
         (SELECT COUNT(*) FROM card_transactions ct WHERE ct.card_id = cc.id AND ct.is_offset = 0 AND ct.transaction_date >= ? AND ct.transaction_date <= ?) as tx_count,
@@ -678,7 +677,7 @@ cardExpRouter.get('/payment-schedule', requireEditOrRole('/card-expenses', 'MANA
     const todayRow = await c.env.DB.prepare(
       `SELECT CAST(strftime('%Y','now','+9 hours') AS INTEGER) y, CAST(strftime('%m','now','+9 hours') AS INTEGER) m, CAST(strftime('%d','now','+9 hours') AS INTEGER) d`
     ).first<{ y: number; m: number; d: number }>()
-    const ty = todayRow?.y || new Date().getFullYear()
+    const ty = todayRow?.y || kstYear()
     const tm = todayRow?.m || new Date().getMonth() + 1
     const td = todayRow?.d || new Date().getDate()
 
@@ -762,8 +761,7 @@ cardExpRouter.post('/transactions/:id/match-bank', requireRole('ADMIN'), async (
 cardExpRouter.get('/stats', requireEditOrRole('/card-expenses', 'MANAGER'), async (c) => {
   try {
     const ef = entityFilter(c, 'card_transactions')
-    const now = new Date()
-    const thisMonth = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}`
+    const thisMonth = kstYm().replace('-', '')
 
     const stats = await c.env.DB.prepare(`
       SELECT
@@ -907,8 +905,7 @@ cardExpRouter.delete('/auto-rules/:id', requireRole('ADMIN'), async (c) => {
 cardExpRouter.get('/transactions/summary', requireEditOrRole('/card-expenses', 'MANAGER'), async (c) => {
   try {
     const ef = entityFilter(c, 'card_transactions')
-    const now = new Date()
-    const thisMonth = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}`
+    const thisMonth = kstYm().replace('-', '')
 
     // is_offset=1(상계됨)은 미분류/대기/승인 카운트·이번달 합계에서 제외
     const summary = await c.env.DB.prepare(`

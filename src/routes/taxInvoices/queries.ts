@@ -10,6 +10,7 @@ import { authMiddleware } from '../../middleware/auth'
 import { requireAccessOrRole } from '../../middleware/permissions'
 import { getEntityId, entityFilter } from '../../utils/entityFilter'
 import { getTaxProvider, getCompanySettings } from './helpers'
+import { kstYm } from '../../utils/kstDate'
 import type { EligibleOrderRow } from './helpers'
 
 const taxInvoicesQueriesRouter = new Hono<HonoEnv>()
@@ -403,9 +404,8 @@ taxInvoicesQueriesRouter.get('/:id{[0-9]+}', async (c) => {
 taxInvoicesQueriesRouter.get('/monthly-eligible', async (c) => {
   try {
     const { year, month } = c.req.query()
-    const now = new Date()
-    const y = year || String(now.getFullYear())
-    const m = month || String(now.getMonth() + 1).padStart(2, '0')
+    const y = year || kstYm().slice(0, 4)
+    const m = month || kstYm().slice(5, 7)
     const dateFrom = `${y}-${m}-01`
     const dateTo = `${y}-${m}-31`
 

@@ -3,6 +3,7 @@ import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
 import { requireAccessOrRole } from '../middleware/permissions'
 import { entityFilter, getEntityId } from '../utils/entityFilter'
+import { kstYm } from '../utils/kstDate'
 
 const cashFlowRouter = new Hono<HonoEnv>()
 cashFlowRouter.use('/*', authMiddleware)
@@ -448,7 +449,9 @@ cashFlowRouter.get('/projection', requireRole('ADMIN'), async (c) => {
     const efOrders = entityFilter(c)
     const efPayments = entityFilter(c)
 
-    const now = new Date()
+    const nowYm = kstYm()
+    const baseY = Number(nowYm.slice(0, 4))
+    const baseM0 = Number(nowYm.slice(5, 7)) - 1
     const projections: {
       month: string; income: number; fixed_expenses: number; loan_payments: number;
       card_payments: number; purchase_expenses: number; total_expenses: number; net_cash_flow: number; cumulative?: number
@@ -457,7 +460,7 @@ cashFlowRouter.get('/projection', requireRole('ADMIN'), async (c) => {
     // #341: 월 루프×6쿼리(N+1) → 월별 GROUP BY 집계로 통합 (72→6쿼리, 결과값 불변)
     const monthsList: { ym: string; monthStart: string; monthEnd: string; prevYM: string }[] = []
     for (let i = 0; i < monthCount; i++) {
-      const d = new Date(now.getFullYear(), now.getMonth() + i, 1)
+      const d = new Date(baseY, baseM0 + i, 1)
       const ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
       const monthStart = ym + '-01'
       const monthEnd = ym + '-' + new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate()
@@ -771,10 +774,11 @@ cashFlowRouter.get('/calendar', requireRole('ADMIN'), async (c) => {
 
 cashFlowRouter.get('/summary', requireAccessOrRole('/cash-schedule', 'MANAGER'), async (c) => {
   try {
-    const now = new Date()
-    const yearMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+    const yearMonth = kstYm()
+    const smY = Number(yearMonth.slice(0, 4))
+    const smM = Number(yearMonth.slice(5, 7))
     const monthStart = yearMonth + '-01'
-    const monthEnd = yearMonth + '-' + new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate()
+    const monthEnd = yearMonth + '-' + new Date(smY, smM, 0).getDate()
 
     const efSummary = entityFilter(c)
     const efSumFixed = entityFilter(c)

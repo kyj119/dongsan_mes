@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
 import { entityFilter } from '../utils/entityFilter'
+import { kstYm } from '../utils/kstDate'
 
 const forecastRouter = new Hono<HonoEnv>()
 forecastRouter.use('/*', authMiddleware, requireRole('ADMIN', 'MANAGER'))
@@ -73,8 +74,8 @@ forecastRouter.get('/order-forecast', async (c) => {
     const avgRevenue3m = recent3.length > 0 ? Math.round(recent3.reduce((s, m) => s + m.revenue, 0) / recent3.length) : 0
 
     // 전년 동기 (있으면)
-    const now = new Date()
-    const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1)
+    const nowYm = kstYm()
+    const nextMonth = new Date(Number(nowYm.slice(0, 4)), Number(nowYm.slice(5, 7)), 1)
     const nextMonthStr = nextMonth.getFullYear() + '-' + String(nextMonth.getMonth() + 1).padStart(2, '0')
     const yoyMonth = (nextMonth.getFullYear() - 1) + '-' + String(nextMonth.getMonth() + 1).padStart(2, '0')
     const yoyData = data.find(m => m.month === yoyMonth)

@@ -4,6 +4,7 @@ import type { HonoEnv } from '../types/env'
 import { authMiddleware } from '../middleware/auth'
 import { requireAccessOrRole } from '../middleware/permissions'
 import { entityFilter, getEntityId } from '../utils/entityFilter'
+import { kstYear } from '../utils/kstDate'
 
 const vatReportsRouter = new Hono<HonoEnv>()
 vatReportsRouter.use('/*', authMiddleware, requireAccessOrRole('/vat-reports', 'MANAGER'))
@@ -11,7 +12,7 @@ vatReportsRouter.use('/*', authMiddleware, requireAccessOrRole('/vat-reports', '
 // 분기별 자동 집계 (저장 X, 미리보기용)
 vatReportsRouter.get('/summary', async (c) => {
   try {
-    const year = parseInt(c.req.query('year') || String(new Date().getFullYear()))
+    const year = parseInt(c.req.query('year') || String(kstYear()))
     const quarter = parseInt(c.req.query('quarter') || '1')
     if (quarter < 1 || quarter > 4) return c.json({ success: false, error: 'quarter는 1~4' }, 400)
 

@@ -7,6 +7,7 @@ import { authMiddleware, requireRole } from '../middleware/auth'
 import { invalidatePermissionCache, getAccessiblePages, getEditablePages } from '../middleware/permissions'
 import { ROLES, ROLE_SET } from '../types/roles'
 import { getEntityId } from '../utils/entityFilter'
+import { kstDate, kstDateOf } from '../utils/kstDate'
 
 const permissionsRouter = new Hono<HonoEnv>()
 permissionsRouter.use('/*', authMiddleware)
@@ -141,7 +142,7 @@ permissionsRouter.post('/request', async (c) => {
     const userName = user.name || user.username || `#${user.id}`
     const title = `[권한 요청] ${userName} → ${page.page_label}`
     const dup = await c.env.DB.prepare(
-      `SELECT id FROM notifications WHERE target_role = 'ADMIN' AND title = ? AND date(created_at) = date('now') LIMIT 1`
+      `SELECT id FROM notifications WHERE target_role = 'ADMIN' AND title = ? AND ${kstDateOf('created_at')} = ${kstDate()} LIMIT 1`
     ).bind(title).first()
     if (dup) {
       return c.json({ success: false, error: '오늘 이미 동일한 요청을 보내셨습니다. ADMIN 처리를 기다려주세요.' }, 429)

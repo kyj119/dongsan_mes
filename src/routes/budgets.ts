@@ -2,13 +2,14 @@ import { Hono } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
 import { getEntityId, entityFilter } from '../utils/entityFilter'
+import { kstYear } from '../utils/kstDate'
 
 const budgets = new Hono<HonoEnv>()
 budgets.use('*', authMiddleware)
 
 // ─── 예산 목록 (연도별) ──────────────────────────────────────────────────────
 budgets.get('/', async (c) => {
-  const year = Number(c.req.query('year') || new Date().getFullYear())
+  const year = Number(c.req.query('year') || kstYear())
   const eFilter = entityFilter(c)
 
   const { results } = await c.env.DB.prepare(`
@@ -54,7 +55,7 @@ budgets.post('/', requireRole('ADMIN', 'MANAGER'), async (c) => {
 
 // ─── Budget vs Actual 비교 보고서 ────────────────────────────────────────────
 budgets.get('/vs-actual', async (c) => {
-  const year = Number(c.req.query('year') || new Date().getFullYear())
+  const year = Number(c.req.query('year') || kstYear())
   const eFilter = entityFilter(c)
 
   // 예산

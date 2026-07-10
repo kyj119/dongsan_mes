@@ -10,6 +10,7 @@ import { authMiddleware, requireRole } from '../../middleware/auth'
 import { requireAnyPagePermission } from '../../middleware/permissions'
 import { entityFilter } from '../../utils/entityFilter'
 import { validateUpload } from '../../utils/uploadValidation'
+import { kstYmd } from '../../utils/kstDate'
 
 const poReceiptsRouter = new Hono<HonoEnv>()
 poReceiptsRouter.use('/*', authMiddleware, requireAnyPagePermission('/purchase-orders', '/receiving'))
@@ -74,7 +75,7 @@ poReceiptsRouter.get('/receipts/export/csv', async (c) => {
     ])
 
     const { generateCsv, csvResponse, CSV_TRUNCATION_NOTE } = await import('../../utils/csv')
-    return csvResponse(c, `입고이력_${new Date().toISOString().slice(0, 10)}.csv`, generateCsv(headers, rows, { footerNote: truncated ? CSV_TRUNCATION_NOTE : undefined }))
+    return csvResponse(c, `입고이력_${kstYmd()}.csv`, generateCsv(headers, rows, { footerNote: truncated ? CSV_TRUNCATION_NOTE : undefined }))
   } catch (error) {
     console.error('receiving CSV export error:', error)
     return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
@@ -103,7 +104,7 @@ poReceiptsRouter.post('/receipts/:receiptId/statement', requireRole('ADMIN', 'MA
     const v = validateUpload(file)
     if (!v.ok) return c.json({ success: false, error: v.error }, 400)
     const ext = v.ext
-    const key = `po-statements/${new Date().toISOString().slice(0, 10)}/${receiptId}_${Date.now()}.${ext}`
+    const key = `po-statements/${kstYmd()}/${receiptId}_${Date.now()}.${ext}`
     await (c.env as any).R2_BUCKET.put(key, await file.arrayBuffer(), { httpMetadata: { contentType: file.type } })
 
     await c.env.DB.prepare(

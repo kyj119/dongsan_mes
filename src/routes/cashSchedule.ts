@@ -8,6 +8,7 @@ import { requirePagePermission } from '../middleware/permissions'
 import { entityFilter, getEntityId } from '../utils/entityFilter'
 import { buildCashflowDays, type CashflowItem } from '../utils/cashflowEngine'
 import { computeExpectedPaymentDate } from '../utils/paymentSchedule'
+import { kstYm, kstYmd } from '../utils/kstDate'
 
 interface BilledOrderRow {
   id: number
@@ -125,7 +126,7 @@ cashScheduleRouter.get('/schedule/export/csv', requireEditOrRole('/cash-schedule
     ])
 
     const { generateCsv, csvResponse, CSV_TRUNCATION_NOTE } = await import('../utils/csv')
-    return csvResponse(c, `자금계획_${new Date().toISOString().slice(0, 10)}.csv`, generateCsv(headers, rows, { footerNote: truncated ? CSV_TRUNCATION_NOTE : undefined }))
+    return csvResponse(c, `자금계획_${kstYmd()}.csv`, generateCsv(headers, rows, { footerNote: truncated ? CSV_TRUNCATION_NOTE : undefined }))
   } catch (error) {
     console.error('cashSchedule CSV export error:', error)
     return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
@@ -478,9 +479,9 @@ cashScheduleRouter.get('/schedule/forecast', requireEditOrRole('/cash-schedule',
 cashScheduleRouter.get('/schedule/monthly', requireEditOrRole('/cash-schedule', 'MANAGER'), async (c) => {
   try {
     const monthCount = Math.min(Number(c.req.query('months') || '6'), 12)
-    const now = new Date()
-    const from = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`
-    const lastMonthEnd = new Date(now.getFullYear(), now.getMonth() + monthCount, 0)
+    const nowYm = kstYm()
+    const from = nowYm + '-01'
+    const lastMonthEnd = new Date(Number(nowYm.slice(0, 4)), Number(nowYm.slice(5, 7)) - 1 + monthCount, 0)
     const to = lastMonthEnd.toISOString().substring(0, 10)
 
     const dayMap = await buildCashflowDays(c, from, to)
@@ -488,7 +489,7 @@ cashScheduleRouter.get('/schedule/monthly', requireEditOrRole('/cash-schedule', 
     const months: { month: string; in: number; out: number; net: number; cumulative: number }[] = []
     const idx: Record<string, number> = {}
     for (let i = 0; i < monthCount; i++) {
-      const d = new Date(now.getFullYear(), now.getMonth() + i, 1)
+      const d = new Date(Number(nowYm.slice(0, 4)), Number(nowYm.slice(5, 7)) - 1 + i, 1)
       const ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
       idx[ym] = i
       months.push({ month: ym, in: 0, out: 0, net: 0, cumulative: 0 })

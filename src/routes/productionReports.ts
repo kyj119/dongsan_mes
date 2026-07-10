@@ -579,7 +579,7 @@ productionReportsRouter.get('/export/csv', async (c) => {
     const dateFrom = from || new Date(Date.now() - 30 * 86400000).toISOString().substring(0, 10)
     const dateTo = to || kstYmd()
     const { generateCsv, csvResponse } = await import('../utils/csv')
-    const today = new Date().toISOString().slice(0, 10)
+    const today = kstYmd()
 
     if (type === 'production') {
       const { results } = await c.env.DB.prepare(`

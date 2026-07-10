@@ -425,7 +425,7 @@ ordersQueriesRouter.get('/export/csv', async (c) => {
 
     // 스트리밍 CSV 응답 — 대량 데이터 시 메모리 2배 사용 방지
     const { csvStreamResponse } = await import('../../utils/csv')
-    const today = new Date().toISOString().slice(0, 10)
+    const today = kstYmd()
     return csvStreamResponse(`주문목록_${today}.csv`, headers, rows)
   } catch (error) {
     console.error('src/routes/orders.ts error:', error)

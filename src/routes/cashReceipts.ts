@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
 import { getEntityId, entityFilter } from '../utils/entityFilter'
+import { kstYear } from '../utils/kstDate'
 
 interface CashReceiptRow {
   id: number; receipt_number: string; status: string; trade_date: string;
@@ -18,7 +19,7 @@ cashReceiptsRouter.use('/*', authMiddleware, requireRole('ADMIN', 'MANAGER'))
 // 공통 헬퍼: 관리번호 채번 (CR-YYYY-NNNN)
 // ────────────────────────────────────────────────────────────────────────────
 async function generateReceiptNumber(db: D1Database, entityId: number): Promise<string> {
-  const year = new Date().getFullYear()
+  const year = kstYear()
   // #290: 법인별 독립 채번 — entity 프리픽스로 글로벌 UNIQUE와 충돌 없이 분리
   const prefix = `CR-E${entityId}-${year}-`
   const lastRow = await db.prepare(

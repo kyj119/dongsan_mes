@@ -2,7 +2,7 @@ import { Hono } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
 import { entityFilter } from '../utils/entityFilter'
-import { kstMonth, kstYm } from '../utils/kstDate'
+import { kstMonth, kstYm, kstYmd } from '../utils/kstDate'
 
 // ── Row types for D1 query results ──
 interface MonthlyRevenueRow { month: string; order_count: number; revenue: number }
@@ -856,7 +856,7 @@ reportsRouter.get('/monthly-summary/csv', async (c) => {
     })
 
     const { generateCsv, csvResponse } = await import('../utils/csv')
-    const today = new Date().toISOString().slice(0, 10)
+    const today = kstYmd()
     return csvResponse(c, `월별매출분석_${today}.csv`, generateCsv(headers, rows))
   } catch (error) {
     console.error('src/routes/reports.ts error:', error)
