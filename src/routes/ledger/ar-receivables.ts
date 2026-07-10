@@ -8,6 +8,7 @@
 import { Hono } from 'hono'
 import type { HonoEnv } from '../../types/env'
 import { authMiddleware, requireRole } from '../../middleware/auth'
+import { requireEditOrRole } from '../../middleware/permissions'
 import { notifyRoles } from '../../utils/notify'
 import { entityFilter } from '../../utils/entityFilter'
 import {
@@ -17,14 +18,14 @@ import {
 } from './ar-helpers'
 
 const arReceivablesRouter = new Hono<HonoEnv>()
-arReceivablesRouter.use('/*', authMiddleware, requireRole('ADMIN', 'MANAGER'))
+arReceivablesRouter.use('/*', authMiddleware, requireEditOrRole('/ledger', 'MANAGER'))
 
 // =============================================================================
 // 잔액 재계산 / 미수금 경고 / 감액 관리
 // =============================================================================
 
 // GET /integrity-check - 전체 거래처 잔액 정합성 검사
-arReceivablesRouter.get('/integrity-check', requireRole('ADMIN', 'MANAGER'), async (c) => {
+arReceivablesRouter.get('/integrity-check', requireEditOrRole('/ledger', 'MANAGER'), async (c) => {
   try {
     const { query: integrityQuery, params: integrityParams } = buildIntegrityQuery(c)
     const { results: rows } = integrityParams.length > 0
@@ -63,7 +64,7 @@ arReceivablesRouter.get('/integrity-check', requireRole('ADMIN', 'MANAGER'), asy
 })
 
 // POST /integrity-fix - 불일치 거래처 일괄 재계산
-arReceivablesRouter.post('/integrity-fix', requireRole('ADMIN', 'MANAGER'), async (c) => {
+arReceivablesRouter.post('/integrity-fix', requireEditOrRole('/ledger', 'MANAGER'), async (c) => {
   try {
     const { client_ids } = await c.req.json() as { client_ids?: number[] }
 
@@ -101,7 +102,7 @@ arReceivablesRouter.post('/integrity-fix', requireRole('ADMIN', 'MANAGER'), asyn
 })
 
 // POST /recalculate/:clientId - 잔액 재계산 (MANAGER+)
-arReceivablesRouter.post('/recalculate/:clientId', requireRole('ADMIN', 'MANAGER'), async (c) => {
+arReceivablesRouter.post('/recalculate/:clientId', requireEditOrRole('/ledger', 'MANAGER'), async (c) => {
   try {
     const clientId = c.req.param('clientId')
 
@@ -392,7 +393,7 @@ arReceivablesRouter.get('/receivables/:clientId/orders', async (c) => {
 })
 
 // POST /receivables/check-overdue - 연체 자동 알림 생성 (ADMIN/MANAGER)
-arReceivablesRouter.post('/receivables/check-overdue', requireRole('ADMIN', 'MANAGER'), async (c) => {
+arReceivablesRouter.post('/receivables/check-overdue', requireEditOrRole('/ledger', 'MANAGER'), async (c) => {
   try {
     // 30일 초과 연체 거래처 조회
     // split billing P3: clients.balance 캐시 폐기 → 청구그룹 파생(청구 법인 g 기준)

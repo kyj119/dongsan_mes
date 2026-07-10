@@ -7,6 +7,7 @@
 import { Hono } from 'hono'
 import type { HonoEnv } from '../../types/env'
 import { authMiddleware, requireRole } from '../../middleware/auth'
+import { requireEditOrRole } from '../../middleware/permissions'
 import { createPayment } from '../../lib/payments'
 import { logActivity } from '../../utils/activityLog'
 import { notifyRoles } from '../../utils/notify'
@@ -14,10 +15,10 @@ import { getEntityId, entityFilter } from '../../utils/entityFilter'
 import { deriveClientBalance, type PaymentRow, type AdjustmentRow } from './ar-helpers'
 
 const arPaymentsRouter = new Hono<HonoEnv>()
-arPaymentsRouter.use('/*', authMiddleware, requireRole('ADMIN', 'MANAGER'))
+arPaymentsRouter.use('/*', authMiddleware, requireEditOrRole('/ledger', 'MANAGER'))
 
 // Record payment (입금 등록 - MANAGER+)
-arPaymentsRouter.post('/payment', requireRole('ADMIN', 'MANAGER'), async (c) => {
+arPaymentsRouter.post('/payment', requireEditOrRole('/ledger', 'MANAGER'), async (c) => {
   try {
     const user = c.get('user')
     const paymentData = await c.req.json()
@@ -115,7 +116,7 @@ arPaymentsRouter.get('/payment/:id', async (c) => {
 })
 
 // Update payment (입금 수정 - MANAGER+)
-arPaymentsRouter.put('/payment/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
+arPaymentsRouter.put('/payment/:id', requireEditOrRole('/ledger', 'MANAGER'), async (c) => {
   try {
     const id = c.req.param('id')
     const body = await c.req.json()
@@ -286,7 +287,7 @@ arPaymentsRouter.get('/payments', async (c) => {
 })
 
 // POST /adjustment - 감액 등록 (MANAGER+)
-arPaymentsRouter.post('/adjustment', requireRole('ADMIN', 'MANAGER'), async (c) => {
+arPaymentsRouter.post('/adjustment', requireEditOrRole('/ledger', 'MANAGER'), async (c) => {
   try {
     const user = c.get('user')
     const body = await c.req.json()

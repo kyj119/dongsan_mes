@@ -8,6 +8,7 @@
 import { Hono } from 'hono'
 import type { HonoEnv } from '../../types/env'
 import { authMiddleware, requireRole } from '../../middleware/auth'
+import { requireEditOrRole } from '../../middleware/permissions'
 import { entityFilter } from '../../utils/entityFilter'
 import {
   type ClientRow, type OrderRow, type PaymentRow, type AdjustmentRow,
@@ -15,7 +16,7 @@ import {
 } from './ar-helpers'
 
 const arLedgerRouter = new Hono<HonoEnv>()
-arLedgerRouter.use('/*', authMiddleware, requireRole('ADMIN', 'MANAGER'))
+arLedgerRouter.use('/*', authMiddleware, requireEditOrRole('/ledger', 'MANAGER'))
 
 arLedgerRouter.get('/client/:clientId', async (c) => {
   try {

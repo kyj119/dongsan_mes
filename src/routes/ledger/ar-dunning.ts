@@ -8,6 +8,7 @@
 import { Hono } from 'hono'
 import type { HonoEnv } from '../../types/env'
 import { authMiddleware, requireRole } from '../../middleware/auth'
+import { requireEditOrRole } from '../../middleware/permissions'
 import { logActivity } from '../../utils/activityLog'
 import { getEntityId, entityFilter } from '../../utils/entityFilter'
 import {
@@ -16,7 +17,7 @@ import {
 } from './ar-helpers'
 
 const arDunningRouter = new Hono<HonoEnv>()
-arDunningRouter.use('/*', authMiddleware, requireRole('ADMIN', 'MANAGER'))
+arDunningRouter.use('/*', authMiddleware, requireEditOrRole('/ledger', 'MANAGER'))
 
 arDunningRouter.get('/collection-logs/:clientId', async (c) => {
   try {
@@ -41,7 +42,7 @@ arDunningRouter.get('/collection-logs/:clientId', async (c) => {
 })
 
 // POST /collection-log - 독촉 이력 등록 (MANAGER+)
-arDunningRouter.post('/collection-log', requireRole('ADMIN', 'MANAGER'), async (c) => {
+arDunningRouter.post('/collection-log', requireEditOrRole('/ledger', 'MANAGER'), async (c) => {
   try {
     const user = c.get('user')
     const body = await c.req.json()

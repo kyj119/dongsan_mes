@@ -6,6 +6,7 @@
 import { Hono } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
+import { requireEditOrRole } from '../middleware/permissions'
 import { entityFilter, getEntityId } from '../utils/entityFilter'
 import { getEntityCorpNum, getEntityBarobillSenderId } from '../utils/entitySettings'
 import { validateUpload } from '../utils/uploadValidation'
@@ -95,7 +96,7 @@ async function reconcileCardOffsets(c: any): Promise<number> {
 // ===========================================================================
 
 // GET /api/card-expenses/cards
-cardExpRouter.get('/cards', requireRole('ADMIN', 'MANAGER'), async (c) => {
+cardExpRouter.get('/cards', requireEditOrRole('/card-expenses', 'MANAGER'), async (c) => {
   try {
     const ef = entityFilter(c, 'cc')
     const now = new Date()
@@ -283,7 +284,7 @@ cardExpRouter.post('/cards/:id/refresh', requireRole('ADMIN'), async (c) => {
 // Phase 1: 경비 분류 CRUD
 // ===========================================================================
 
-cardExpRouter.get('/categories', requireRole('ADMIN', 'MANAGER'), async (c) => {
+cardExpRouter.get('/categories', requireEditOrRole('/card-expenses', 'MANAGER'), async (c) => {
   try {
     const ef = entityFilter(c, 'expense_categories')
     const { results } = await c.env.DB.prepare(
@@ -504,7 +505,7 @@ cardExpRouter.post('/sync', requireRole('ADMIN'), async (c) => {
 })
 
 // GET /api/card-expenses/transactions
-cardExpRouter.get('/transactions', requireRole('ADMIN', 'MANAGER'), async (c) => {
+cardExpRouter.get('/transactions', requireEditOrRole('/card-expenses', 'MANAGER'), async (c) => {
   try {
     const q = c.req.query()
     // 프론트는 start_date/end_date를 보냄 — date_start/date_end 별칭도 호환
@@ -560,7 +561,7 @@ cardExpRouter.get('/transactions', requireRole('ADMIN', 'MANAGER'), async (c) =>
 // Phase 3: 영수증 + 적요 + 분류
 // ===========================================================================
 
-cardExpRouter.put('/transactions/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
+cardExpRouter.put('/transactions/:id', requireEditOrRole('/card-expenses', 'MANAGER'), async (c) => {
   try {
     const id = c.req.param('id')
     const body = await c.req.json()
@@ -608,7 +609,7 @@ cardExpRouter.put('/transactions/:id', requireRole('ADMIN', 'MANAGER'), async (c
 })
 
 // POST /api/card-expenses/transactions/:id/receipt — 영수증 업로드
-cardExpRouter.post('/transactions/:id/receipt', requireRole('ADMIN', 'MANAGER'), async (c) => {
+cardExpRouter.post('/transactions/:id/receipt', requireEditOrRole('/card-expenses', 'MANAGER'), async (c) => {
   try {
     const id = c.req.param('id')
     const formData = await c.req.formData()
@@ -634,7 +635,7 @@ cardExpRouter.post('/transactions/:id/receipt', requireRole('ADMIN', 'MANAGER'),
 })
 
 // GET /api/card-expenses/receipt-image/* — R2 이미지 서빙
-cardExpRouter.get('/receipt-image/*', requireRole('ADMIN', 'MANAGER'), async (c) => {
+cardExpRouter.get('/receipt-image/*', requireEditOrRole('/card-expenses', 'MANAGER'), async (c) => {
   try {
     const key = c.req.path.replace('/api/card-expenses/receipt-image/', '')
     // #357: path traversal 가드
@@ -664,7 +665,7 @@ cardExpRouter.get('/receipt-image/*', requireRole('ADMIN', 'MANAGER'), async (c)
 // 결제 예정 = 카드별 "가장 가까운 실결제"(오늘 이후 첫 payment_day) + 그 결제가 청산하는 사이클의 누적 사용액(net).
 // 익월결제 카드는 직전 마감분이 이번 달 결제되므로, 진행 중 사이클이 아니라 실제 다음 출금일을 표시(가장 가까운 결제일).
 // 사이클 규칙은 자금예측(cashflowEngine)과 동일: payment_day > cutoff_day면 동월결제(결제월 마감분), else 익월결제(직전월 마감분).
-cardExpRouter.get('/payment-schedule', requireRole('ADMIN', 'MANAGER'), async (c) => {
+cardExpRouter.get('/payment-schedule', requireEditOrRole('/card-expenses', 'MANAGER'), async (c) => {
   try {
     const ef = entityFilter(c, 'cc')
     const { results: cards } = await c.env.DB.prepare(`
@@ -759,7 +760,7 @@ cardExpRouter.post('/transactions/:id/match-bank', requireRole('ADMIN'), async (
 // Phase 5: 통계 + 보고서
 // ===========================================================================
 
-cardExpRouter.get('/stats', requireRole('ADMIN', 'MANAGER'), async (c) => {
+cardExpRouter.get('/stats', requireEditOrRole('/card-expenses', 'MANAGER'), async (c) => {
   try {
     const ef = entityFilter(c, 'card_transactions')
     const now = new Date()
@@ -785,7 +786,7 @@ cardExpRouter.get('/stats', requireRole('ADMIN', 'MANAGER'), async (c) => {
 
 // GET /api/card-expenses/export-csv?start=&end= — 세무사 전달용 카드 사용내역 CSV
 // 전체 건 포함(구분=승인/취소/상계), 금액은 취소 시 음수. 영수증 첨부여부·URL 컬럼 포함.
-cardExpRouter.get('/export-csv', requireRole('ADMIN', 'MANAGER'), async (c) => {
+cardExpRouter.get('/export-csv', requireEditOrRole('/card-expenses', 'MANAGER'), async (c) => {
   try {
     const q = c.req.query()
     const ds = (q.start || q.date_start || '').replace(/-/g, '')
@@ -843,7 +844,7 @@ cardExpRouter.get('/export-csv', requireRole('ADMIN', 'MANAGER'), async (c) => {
   }
 })
 
-cardExpRouter.get('/report', requireRole('ADMIN', 'MANAGER'), async (c) => {
+cardExpRouter.get('/report', requireEditOrRole('/card-expenses', 'MANAGER'), async (c) => {
   try {
     const { month } = c.req.query()
     if (!month) return c.json({ success: false, error: 'month 필수 (YYYYMM)' }, 400)
@@ -877,7 +878,7 @@ cardExpRouter.get('/report', requireRole('ADMIN', 'MANAGER'), async (c) => {
 })
 
 // 자동 분류 규칙
-cardExpRouter.get('/auto-rules', requireRole('ADMIN', 'MANAGER'), async (c) => {
+cardExpRouter.get('/auto-rules', requireEditOrRole('/card-expenses', 'MANAGER'), async (c) => {
   try {
     const ef = entityFilter(c, 'r')
     const { results } = await c.env.DB.prepare(`
@@ -904,7 +905,7 @@ cardExpRouter.delete('/auto-rules/:id', requireRole('ADMIN'), async (c) => {
 // ===========================================================================
 
 // GET /api/card-expenses/transactions/summary
-cardExpRouter.get('/transactions/summary', requireRole('ADMIN', 'MANAGER'), async (c) => {
+cardExpRouter.get('/transactions/summary', requireEditOrRole('/card-expenses', 'MANAGER'), async (c) => {
   try {
     const ef = entityFilter(c, 'card_transactions')
     const now = new Date()
@@ -929,7 +930,7 @@ cardExpRouter.get('/transactions/summary', requireRole('ADMIN', 'MANAGER'), asyn
 })
 
 // POST /api/card-expenses/transactions — 수동 등록
-cardExpRouter.post('/transactions', requireRole('ADMIN', 'MANAGER'), async (c) => {
+cardExpRouter.post('/transactions', requireEditOrRole('/card-expenses', 'MANAGER'), async (c) => {
   try {
     const body = await c.req.json()
     const { card_id, transaction_date, merchant_name, amount, category_id, memo } = body
@@ -963,7 +964,7 @@ cardExpRouter.post('/transactions', requireRole('ADMIN', 'MANAGER'), async (c) =
 })
 
 // POST /api/card-expenses/transactions/bulk-classify — 일괄 분류
-cardExpRouter.post('/transactions/bulk-classify', requireRole('ADMIN', 'MANAGER'), async (c) => {
+cardExpRouter.post('/transactions/bulk-classify', requireEditOrRole('/card-expenses', 'MANAGER'), async (c) => {
   try {
     const { ids, category_id } = await c.req.json()
     if (!Array.isArray(ids) || !ids.length || !category_id) {

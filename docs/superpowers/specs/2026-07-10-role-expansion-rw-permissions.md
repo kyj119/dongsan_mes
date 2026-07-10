@@ -128,7 +128,10 @@
 - ✅ **SHIPPING**: shipments.ts create/merge/unmerge/by-order/:id/status/ship→`requireEditOrRole('/shipments',...)`, consolidation-candidates(GET)→`requireAccessOrRole('/shipments','MANAGER')`.
 - ✅ **ACCOUNTANT accounting.ts** 허브(조회) — 라우터레벨 → `requireAccessOrRole('/accounting','MANAGER')`. (정정은 /ledger 경유.)
 - ⏳ **orders lifecycle** (status/cancel/restore) — 운영 write. bill/billing-status/bulk-bill·delete = 재무/삭제, `requireRole` 유지.
-- ⏳ **ACCOUNTANT 잔여 재무** — cashSchedule.ts(/cash-schedule, per-endpoint 다수)·cardExpenses.ts(/card-expenses, mixed)·ledger/*(/ledger)·tax-invoices·paymentRequests(/payment-requests)·vat-reports·cashFlow. 각 GET→requireAccessOrRole, write→requireEditOrRole. ⚠️ bank.ts는 전 엔드포인트 `requireRole('ADMIN')`(민감)=ADMIN 유지 → ACCOUNTANT /bank는 메뉴만·직접페이지 제한(허브 경유 조회). barobill/bom/costs/cashReceipts=신규역할 무관, 유지.
+- ✅ **ACCOUNTANT AR ledger** — ledger/ar-ledger·ar-payments·ar-receivables·ar-dunning `requireRole('ADMIN','MANAGER')`(라우터+엔드포인트) → `requireEditOrRole('/ledger','MANAGER')`. 삭제(`requireRole('ADMIN')`)는 유지. (회계 허브 정정=/ledger/payment 경유라 필수.)
+- ✅ **ACCOUNTANT cashSchedule.ts**(/cash-schedule)·**cardExpenses.ts**(/card-expenses) — `requireRole('ADMIN','MANAGER')` 일괄 → `requireEditOrRole`. sync/import/삭제 등 `requireRole('ADMIN')` 유지.
+- ⏳ **ACCOUNTANT 잔여** — paymentRequests(approve/reject/pay=승인권한 뉘앙스, 정책 확인 후)·tax-invoices(hometaxInvoices?)·vat-reports·ledger/accounts-payable(AP, 페이지=/purchase-invoices? 매핑 확인 필요)·cashFlow. ⚠️ bank.ts=전 엔드포인트 `requireRole('ADMIN')`(민감) 유지 → ACCOUNTANT /bank는 허브 경유 조회만. barobill/bom/costs/cashReceipts=신규역할 무관 유지.
+- ⏳ **미전환 정리**: orders lifecycle 등 잔여 `requireRole` unused import 정리(선택).
 
 > 원칙: 다중 `requireRole('ADMIN','MANAGER',...)` write → `requireEditOrRole(pageKey, ...나머지역할)`. 단일 `requireRole('ADMIN')` 및 재무/삭제/토글 = 유지. 라우터 레벨 read 게이트는 access 가드로 별도 전환.
 

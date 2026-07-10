@@ -3,6 +3,7 @@
 import { Hono } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
+import { requireEditOrRole } from '../middleware/permissions'
 import { requirePagePermission } from '../middleware/permissions'
 import { entityFilter, getEntityId } from '../utils/entityFilter'
 import { buildCashflowDays, type CashflowItem } from '../utils/cashflowEngine'
@@ -54,7 +55,7 @@ cashScheduleRouter.use('/*', authMiddleware, requirePagePermission('/cash-schedu
 // ============================================================================
 
 // 예정 목록 (기간별)
-cashScheduleRouter.get('/schedule', requireRole('ADMIN', 'MANAGER'), async (c) => {
+cashScheduleRouter.get('/schedule', requireEditOrRole('/cash-schedule', 'MANAGER'), async (c) => {
   try {
     const { from, to, status, flow_type, source_type } = c.req.query()
     if (!from || !to) return c.json({ success: false, error: 'from, to 파라미터 필요' }, 400)
@@ -84,7 +85,7 @@ cashScheduleRouter.get('/schedule', requireRole('ADMIN', 'MANAGER'), async (c) =
 })
 
 // 예정 목록 CSV (현재 필터 기준) — /schedule/:id 류보다 먼저 등록
-cashScheduleRouter.get('/schedule/export/csv', requireRole('ADMIN', 'MANAGER'), async (c) => {
+cashScheduleRouter.get('/schedule/export/csv', requireEditOrRole('/cash-schedule', 'MANAGER'), async (c) => {
   try {
     const { from, to, status, flow_type, source_type } = c.req.query()
     if (!from || !to) return c.json({ success: false, error: 'from, to 파라미터 필요' }, 400)
@@ -133,7 +134,7 @@ cashScheduleRouter.get('/schedule/export/csv', requireRole('ADMIN', 'MANAGER'), 
 
 // 캘린더 (월간) — 하이브리드 엔진 사용: 물질화(cash_schedule) + 온더플라이(카드대금·고정비·대출·급여·예상입금/지급)
 // forecast/monthly와 동일 소스 → 화면 간 숫자 일치. carryOverdueToStart:false = 연체를 원래 예정일에 표시(월뷰).
-cashScheduleRouter.get('/schedule/calendar', requireRole('ADMIN', 'MANAGER'), async (c) => {
+cashScheduleRouter.get('/schedule/calendar', requireEditOrRole('/cash-schedule', 'MANAGER'), async (c) => {
   try {
     const { year, month } = c.req.query()
     if (!year || !month) return c.json({ success: false, error: 'year, month 파라미터 필요' }, 400)
@@ -180,7 +181,7 @@ cashScheduleRouter.get('/schedule/calendar', requireRole('ADMIN', 'MANAGER'), as
 })
 
 // 특정 날짜 상세
-cashScheduleRouter.get('/schedule/day/:date', requireRole('ADMIN', 'MANAGER'), async (c) => {
+cashScheduleRouter.get('/schedule/day/:date', requireEditOrRole('/cash-schedule', 'MANAGER'), async (c) => {
   try {
     const date = c.req.param('date')
     const efDay = entityFilter(c, 'cs')
@@ -199,7 +200,7 @@ cashScheduleRouter.get('/schedule/day/:date', requireRole('ADMIN', 'MANAGER'), a
 })
 
 // 수동 등록
-cashScheduleRouter.post('/schedule', requireRole('ADMIN', 'MANAGER'), async (c) => {
+cashScheduleRouter.post('/schedule', requireEditOrRole('/cash-schedule', 'MANAGER'), async (c) => {
   try {
     const user = c.get('user')
     const body = await c.req.json<{
@@ -229,7 +230,7 @@ cashScheduleRouter.post('/schedule', requireRole('ADMIN', 'MANAGER'), async (c) 
 })
 
 // 수정
-cashScheduleRouter.patch('/schedule/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
+cashScheduleRouter.patch('/schedule/:id', requireEditOrRole('/cash-schedule', 'MANAGER'), async (c) => {
   try {
     const id = c.req.param('id')
     const body = await c.req.json<Record<string, unknown>>()
@@ -257,7 +258,7 @@ cashScheduleRouter.patch('/schedule/:id', requireRole('ADMIN', 'MANAGER'), async
 })
 
 // 삭제
-cashScheduleRouter.delete('/schedule/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
+cashScheduleRouter.delete('/schedule/:id', requireEditOrRole('/cash-schedule', 'MANAGER'), async (c) => {
   try {
     const id = c.req.param('id')
     const efDel = entityFilter(c)
@@ -270,7 +271,7 @@ cashScheduleRouter.delete('/schedule/:id', requireRole('ADMIN', 'MANAGER'), asyn
 })
 
 // 완료 처리
-cashScheduleRouter.patch('/schedule/:id/complete', requireRole('ADMIN', 'MANAGER'), async (c) => {
+cashScheduleRouter.patch('/schedule/:id/complete', requireEditOrRole('/cash-schedule', 'MANAGER'), async (c) => {
   try {
     const id = c.req.param('id')
     const { actual_date, actual_amount } = await c.req.json() as { actual_date: string, actual_amount: number }
@@ -404,7 +405,7 @@ cashScheduleRouter.post('/schedule/auto-generate', requireRole('ADMIN'), async (
 })
 
 // 연체 처리
-cashScheduleRouter.post('/schedule/check-overdue', requireRole('ADMIN', 'MANAGER'), async (c) => {
+cashScheduleRouter.post('/schedule/check-overdue', requireEditOrRole('/cash-schedule', 'MANAGER'), async (c) => {
   try {
     const today = new Date(Date.now() + 9 * 3600 * 1000).toISOString().substring(0, 10)  // KST 기준일
     const result = await c.env.DB.prepare(`
@@ -424,7 +425,7 @@ cashScheduleRouter.post('/schedule/check-overdue', requireRole('ADMIN', 'MANAGER
 })
 
 // A2: 추정 자금 일보 — 향후 N일 잔액 예측 (하이브리드 엔진: 물질화 + 온더플라이)
-cashScheduleRouter.get('/schedule/forecast', requireRole('ADMIN', 'MANAGER'), async (c) => {
+cashScheduleRouter.get('/schedule/forecast', requireEditOrRole('/cash-schedule', 'MANAGER'), async (c) => {
   try {
     const days = Number(c.req.query('days') || '90')
     const startBalance = Number(c.req.query('start_balance') || '0')
@@ -474,7 +475,7 @@ cashScheduleRouter.get('/schedule/forecast', requireRole('ADMIN', 'MANAGER'), as
 })
 
 // 월별 집계 — 캐시플로 탭의 6개월 projection 대체 (cash_schedule 단일 소스 기반)
-cashScheduleRouter.get('/schedule/monthly', requireRole('ADMIN', 'MANAGER'), async (c) => {
+cashScheduleRouter.get('/schedule/monthly', requireEditOrRole('/cash-schedule', 'MANAGER'), async (c) => {
   try {
     const monthCount = Math.min(Number(c.req.query('months') || '6'), 12)
     const now = new Date()
@@ -516,7 +517,7 @@ cashScheduleRouter.get('/schedule/monthly', requireRole('ADMIN', 'MANAGER'), asy
 
 // 은행 실잔액 합계 — 추정자금일보 시작잔액 자동 주입용 (Phase 4 연결)
 // bank_accounts에 잔액 컬럼이 없어 계좌별 최신 bank_transactions.balance_after 합산
-cashScheduleRouter.get('/schedule/bank-balance', requireRole('ADMIN', 'MANAGER'), async (c) => {
+cashScheduleRouter.get('/schedule/bank-balance', requireEditOrRole('/cash-schedule', 'MANAGER'), async (c) => {
   try {
     const ef = entityFilter(c, 'ba')
     const row = await c.env.DB.prepare(`
@@ -541,7 +542,7 @@ cashScheduleRouter.get('/schedule/bank-balance', requireRole('ADMIN', 'MANAGER')
 })
 
 // 거래처 검색 (수동 자금예정 등록 autocomplete용) — /api/bank/client-search는 /bank 권한 게이트라 별도 제공
-cashScheduleRouter.get('/clients/search', requireRole('ADMIN', 'MANAGER'), async (c) => {
+cashScheduleRouter.get('/clients/search', requireEditOrRole('/cash-schedule', 'MANAGER'), async (c) => {
   try {
     const q = (c.req.query('q') || '').trim()
     if (!q) return c.json({ success: true, data: [] })
