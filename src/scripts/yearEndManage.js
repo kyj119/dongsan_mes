@@ -91,7 +91,7 @@
     tbody.innerHTML = data.map(function(r) {
       return '<tr class="hover:bg-gray-50 border-b border-gray-100">' +
         '<td class="px-4 py-3 text-sm" title="' + escapeHtml((r.name || '-') + ' ' + (r.employee_code || '')) + '"><div class="font-medium text-gray-900">' + (r.name || '-') + '</div><div class="text-xs text-gray-500">' + (r.employee_code || '') + '</div></td>' +
-        '<td class="px-4 py-3 text-sm text-gray-600" title="' + escapeHtml(r.department || '-') + '">' + (r.department || '-') + '</td>' +
+        '<td class="px-4 py-3 text-sm text-gray-600" title="' + escapeHtml((window.DEPT_NAMES && window.DEPT_NAMES[r.department]) || r.department || '-') + '">' + ((window.DEPT_NAMES && window.DEPT_NAMES[r.department]) || r.department || '-') + '</td>' +
         '<td class="px-4 py-3 text-sm text-right tabular-nums">' + (r.total_salary ? fmt(r.total_salary) : '<span class="text-gray-400">-</span>') + '</td>' +
         '<td class="px-4 py-3 text-sm text-right tabular-nums">' + (r.determined_tax ? fmt(r.determined_tax) : '<span class="text-gray-400">-</span>') + '</td>' +
         '<td class="px-4 py-3 text-sm text-right tabular-nums">' + (r.prepaid_income_tax ? fmt(r.prepaid_income_tax) : '<span class="text-gray-400">-</span>') + '</td>' +
@@ -122,7 +122,7 @@
       var saved = results[1].data.data;
 
       document.getElementById('yeEmpName').textContent = info.employee.name;
-      document.getElementById('yeEmpDept').textContent = info.employee.department || '-';
+      document.getElementById('yeEmpDept').textContent = (window.DEPT_NAMES && window.DEPT_NAMES[info.employee.department]) || info.employee.department || '-';
       document.getElementById('yeEmpCode').textContent = info.employee.employee_code || '-';
 
       var s = info.summary || {};

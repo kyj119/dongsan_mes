@@ -185,7 +185,7 @@ function renderOrders(orders, total) {
   }
 
   tbody.innerHTML = orders.map(function(o) {
-    var s = STATUS_MAP[o.status] || { label: o.status, step: 0 };
+    var s = STATUS_MAP[o.status] || { label: window.MES_STATUS.orderLabel(o.status), step: 0 };
     var badgeCls = STATUS_BADGE_CLS[o.status] || 'bg-gray-100 text-gray-500';
     var progressBar = (s.step > 0) ? renderProgressBar(o.status) : '';
     var trackingBtn = renderTrackingButton(o.tracking_number, o.courier_name);
@@ -233,7 +233,7 @@ function showOrderDetail(order, items, shipments, card_progress) {
   var existing = document.getElementById('order-detail-modal');
   if (existing) existing.remove();
 
-  var s = STATUS_MAP[order.status] || { label: order.status, step: 0 };
+  var s = STATUS_MAP[order.status] || { label: window.MES_STATUS.orderLabel(order.status), step: 0 };
   var badgeCls = STATUS_BADGE_CLS[order.status] || 'bg-gray-100 text-gray-500';
 
   var itemRows = items.map(function(i) {

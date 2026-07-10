@@ -3,6 +3,7 @@ import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
 import { getEntityId, entityFilter } from '../utils/entityFilter'
 import { computeExpectedPaymentDate } from '../utils/paymentSchedule'
+import { kstYmd } from '../utils/kstDate'
 
 const purchaseInvoices = new Hono<HonoEnv>()
 purchaseInvoices.use('*', authMiddleware)
@@ -232,7 +233,7 @@ purchaseInvoices.post('/confirm', requireRole('ADMIN', 'MANAGER'), async (c) => 
         d: number; payment_cycle_type: string | null; closing_day: number | null
         payment_month_offset: number | null; payment_day: number | null
       }>()
-      const base = (invoice_date || new Date().toISOString()).substring(0, 10)
+      const base = (invoice_date || kstYmd()).substring(0, 10)
       dueStr = computeExpectedPaymentDate(base, {
         payment_cycle_type: sup?.payment_cycle_type ?? null,
         payment_terms_days: sup?.d ?? 30,
@@ -268,7 +269,7 @@ purchaseInvoices.post('/confirm', requireRole('ADMIN', 'MANAGER'), async (c) => 
     INSERT INTO purchase_invoices (invoice_number, supplier_id, po_id, invoice_date, due_date, subtotal, vat_amount, total_amount, match_status, variance_amount, notes, entity_id, created_by)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).bind(
-    invoiceNumber, po.supplier_id, po_id, invoice_date || new Date().toISOString().slice(0, 10), due_date || null,
+    invoiceNumber, po.supplier_id, po_id, invoice_date || kstYmd(), due_date || null,
     invSubtotal, invVat, invTotal, matchStatus, invTotal - (subtotal + vat), notes || null, eid, user?.id || null
   ).run()
   const invoiceId = result.meta.last_row_id as number

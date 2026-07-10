@@ -4,6 +4,7 @@ import type { PurchaseRequest, PurchaseRequestItem, ApiResponse, PaginatedRespon
 import { authMiddleware, requireRole } from '../middleware/auth'
 import { getEntityId, entityFilter } from '../utils/entityFilter'
 import { getNextSeqNumber, getNextEntitySeqNumber, withSeqRetry } from '../utils/sequenceGenerator'
+import { kstYmdCompact } from '../utils/kstDate'
 
 const prRouter = new Hono<HonoEnv>()
 
@@ -381,8 +382,7 @@ prRouter.post('/', async (c) => {
       return c.json({ success: false, error: '품목을 최소 1개 이상 입력해야 합니다.' }, 400)
     }
 
-    const today = new Date()
-    const dateStr = today.toISOString().split('T')[0].replace(/-/g, '')
+    const dateStr = kstYmdCompact()
 
     // #329: 법인코드 E{eid} 내장 — 멀티법인 번호 충돌 방지 (행 entity_id와 동일 eid 사용)
     const requestNumber = await getNextEntitySeqNumber(c.env.DB, 'purchase_requests', 'request_number', getEntityId(c) || 1, dateStr, { base: 'PR-' })
@@ -664,7 +664,7 @@ prRouter.post('/:id/convert', requireRole('ADMIN'), async (c) => {
 
     // PO 번호 자동생성: YYYYMMDD-P001
     const today = new Date()
-    const dateStr = today.toISOString().split('T')[0].replace(/-/g, '')
+    const dateStr = kstYmdCompact()
 
     const poNumber = await getNextEntitySeqNumber(c.env.DB, 'purchase_orders', 'po_number', getEntityId(c) || 1, dateStr, { suffix: 'P' })
 
@@ -817,7 +817,7 @@ prRouter.post('/:id/auto-convert', requireRole('ADMIN'), async (c) => {
     // 각 공급업체 그룹마다 PO 생성
     const createdPOs: { po_id: number, po_number: string, supplier_name: string, item_count: number }[] = []
     const today = new Date()
-    const dateStr = today.toISOString().split('T')[0].replace(/-/g, '')
+    const dateStr = kstYmdCompact()
 
     for (const [groupKey, group] of supplierGroups) {
       if (!group.supplierId) continue // 미지정 그룹 건너뜀

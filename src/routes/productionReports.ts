@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
 import { entityFilter } from '../utils/entityFilter'
+import { kstYmd } from '../utils/kstDate'
 
 const productionReportsRouter = new Hono<HonoEnv>()
 
@@ -12,7 +13,7 @@ productionReportsRouter.use('/*', authMiddleware, requireRole('ADMIN', 'MANAGER'
 productionReportsRouter.get('/daily-summary', async (c) => {
   try {
     const { date } = c.req.query()
-    const targetDate = date || new Date().toISOString().substring(0, 10)
+    const targetDate = date || kstYmd()
 
     // 기본 통계
     const stats = await c.env.DB.prepare(`
@@ -95,7 +96,7 @@ productionReportsRouter.get('/production', async (c) => {
   try {
     const { from, to } = c.req.query()
     const dateFrom = from || new Date(Date.now() - 30 * 86400000).toISOString().substring(0, 10)
-    const dateTo = to || new Date().toISOString().substring(0, 10)
+    const dateTo = to || kstYmd()
 
     // 장비별 집계
     const { results: byEquipment } = await c.env.DB.prepare(`
@@ -178,7 +179,7 @@ productionReportsRouter.get('/post-processing', async (c) => {
   try {
     const { from, to } = c.req.query()
     const dateFrom = from || new Date(Date.now() - 30 * 86400000).toISOString().substring(0, 10)
-    const dateTo = to || new Date().toISOString().substring(0, 10)
+    const dateTo = to || kstYmd()
 
     // 후가공이 있는 카드 조회
     const { results: ppCards } = await c.env.DB.prepare(`
@@ -290,7 +291,7 @@ productionReportsRouter.get('/defects', async (c) => {
   try {
     const { from, to } = c.req.query()
     const dateFrom = from || new Date(Date.now() - 90 * 86400000).toISOString().substring(0, 10)
-    const dateTo = to || new Date().toISOString().substring(0, 10)
+    const dateTo = to || kstYmd()
 
     // 출력 에러/취소 비율 (장비별)
     const { results: printDefects } = await c.env.DB.prepare(`
@@ -355,7 +356,7 @@ productionReportsRouter.get('/consumption', async (c) => {
   try {
     const { from, to } = c.req.query()
     const dateFrom = from || new Date(Date.now() - 90 * 86400000).toISOString().substring(0, 10)
-    const dateTo = to || new Date().toISOString().substring(0, 10)
+    const dateTo = to || kstYmd()
 
     // 품목별 출고(소비) 집계
     // UP4 백로그: 다중행 inventory를 거래와 직접 JOIN하면 거래×재고행 곱집계. 거래/재고를 각각 집계 후 JOIN.
@@ -419,7 +420,7 @@ productionReportsRouter.get('/card-dwell-time', async (c) => {
   try {
     const { from, to } = c.req.query()
     const dateFrom = from || new Date(Date.now() - 30 * 86400000).toISOString().substring(0, 10)
-    const dateTo = to || new Date().toISOString().substring(0, 10)
+    const dateTo = to || kstYmd()
 
     // card_status_history의 연속된 created_at 차이로 각 상태 체류시간 계산
     const { results } = await c.env.DB.prepare(`
@@ -496,7 +497,7 @@ productionReportsRouter.get('/print-duration', async (c) => {
   try {
     const { from, to } = c.req.query()
     const dateFrom = from || new Date(Date.now() - 30 * 86400000).toISOString().substring(0, 10)
-    const dateTo = to || new Date().toISOString().substring(0, 10)
+    const dateTo = to || kstYmd()
 
     // 장비별 평균 인쇄시간
     const { results: byEquipment } = await c.env.DB.prepare(`
@@ -576,7 +577,7 @@ productionReportsRouter.get('/export/csv', async (c) => {
   try {
     const { from, to, type = 'production' } = c.req.query()
     const dateFrom = from || new Date(Date.now() - 30 * 86400000).toISOString().substring(0, 10)
-    const dateTo = to || new Date().toISOString().substring(0, 10)
+    const dateTo = to || kstYmd()
     const { generateCsv, csvResponse } = await import('../utils/csv')
     const today = new Date().toISOString().slice(0, 10)
 

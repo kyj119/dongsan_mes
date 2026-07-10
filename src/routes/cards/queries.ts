@@ -13,6 +13,7 @@ import { authMiddleware } from '../../middleware/auth'
 import { requireAnyPagePermission } from '../../middleware/permissions'
 import { cardEntityFilter, entityFilter } from '../../utils/entityFilter'
 import { isThumbRef, getThumbnailDataUri } from '../../utils/thumbnailStore'
+import { kstYmd } from '../../utils/kstDate'
 
 // ── Row types for D1 query results ──
 interface EquipmentRow {
@@ -682,7 +683,7 @@ cardsQueriesRouter.get('/defect-stats', async (c) => {
   try {
     const { date_from = '', date_to = '' } = c.req.query()
     const startDate = date_from || new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10)
-    const endDate = (date_to || new Date().toISOString().slice(0, 10)) + ' 23:59:59'
+    const endDate = (date_to || kstYmd()) + ' 23:59:59'
 
     // #375: 멀티법인 격리 — quality_issues.entity_id / cards.requesting_entity_id 필터
     const ef = entityFilter(c, 'qi')          // ' AND qi.entity_id = ?' or ''

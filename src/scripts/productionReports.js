@@ -63,7 +63,7 @@ function switchMainTab(tab) {
 // 일일 생산 탭
 // ════════════════════════════════════════════════════════════
 function getToday() {
-  return new Date().toISOString().substring(0, 10);
+  return (window.kstToday ? window.kstToday() : new Date().toISOString().substring(0, 10));
 }
 
 function setToday() {
@@ -219,7 +219,7 @@ function renderOverdueTable(data) {
   html += '</tr></thead><tbody class="divide-y">';
 
   data.forEach(function(o) {
-    var todayStr = new Date().toISOString().substring(0, 10);
+    var todayStr = (window.kstToday ? window.kstToday() : new Date().toISOString().substring(0, 10));
     var isOverdue = o.due_date < todayStr;
     var statusColor = isOverdue ? 'text-red-600 font-bold' : 'text-amber-600';
 
@@ -227,7 +227,7 @@ function renderOverdueTable(data) {
     html += '<td class="px-3 py-2"><a href="/orders?search=' + o.order_number + '" class="text-blue-600 hover:underline">' + o.order_number + '</a></td>';
     html += '<td class="px-3 py-2" title="' + escapeHtml(o.client_name || '-') + '">' + (o.client_name || '-') + '</td>';
     html += '<td class="px-3 py-2 ' + statusColor + '">' + o.due_date + (isOverdue ? ' (지연)' : '') + '</td>';
-    html += '<td class="px-3 py-2">' + o.status + '</td>';
+    html += '<td class="px-3 py-2">' + window.MES_STATUS.orderLabel(o.status) + '</td>';
     html += '<td class="px-3 py-2 text-right">' + o.item_count + '</td>';
     html += '</tr>';
   });
@@ -243,12 +243,12 @@ var currentReportTab = 'production';
 
 // ── 기간 초기화 ──
 (function() {
-  var today = new Date();
-  var thirtyDaysAgo = new Date(today.getTime() - 30 * 86400000);
+  var todayStr = (window.kstToday ? window.kstToday() : new Date().toISOString().substring(0, 10));
+  var thirtyDaysAgo = new Date(new Date(todayStr + 'T00:00:00Z').getTime() - 30 * 86400000);
   var fromEl = document.getElementById('dateFrom');
   var toEl = document.getElementById('dateTo');
   if (fromEl) fromEl.value = thirtyDaysAgo.toISOString().substring(0, 10);
-  if (toEl) toEl.value = today.toISOString().substring(0, 10);
+  if (toEl) toEl.value = todayStr;
 })();
 
 // ── 탭 전환 ──
@@ -773,8 +773,9 @@ loadDailySummary();
 
   function ensureDate() {
     var el = document.getElementById('oeeDate');
-    if (el && !el.value) el.value = new Date().toISOString().substring(0, 10);
-    return el ? el.value : new Date().toISOString().substring(0, 10);
+    var todayStr = (window.kstToday ? window.kstToday() : new Date().toISOString().substring(0, 10));
+    if (el && !el.value) el.value = todayStr;
+    return el ? el.value : todayStr;
   }
 
   function renderSummary(rows) {

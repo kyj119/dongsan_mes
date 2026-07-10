@@ -4,6 +4,7 @@ import { authMiddleware, requireRole } from '../middleware/auth'
 import { getEntityId, entityFilter, getWriteEntityId, ENTITY_ALL_MODE_WRITE_ERROR } from '../utils/entityFilter'
 import { getNextEntitySeqNumber, withSeqRetry } from '../utils/sequenceGenerator'
 import { getItemDefaultZones } from '../utils/inventoryZone'
+import { kstYmd, kstYmdCompact } from '../utils/kstDate'
 
 const returns = new Hono<HonoEnv>()
 returns.use('*', authMiddleware)
@@ -55,7 +56,7 @@ returns.post('/', async (c) => {
   }
 
   // 번호 생성 — 법인코드 E{eid} 내장 (행 entity_id와 동일 eid). 채번 경로 통일.
-  const today = new Date().toISOString().slice(0, 10).replace(/-/g, '')
+  const today = kstYmdCompact()
   const returnNumber = await getNextEntitySeqNumber(c.env.DB, 'returns', 'return_number', getEntityId(c) || 1, today, { base: 'RMA-' })
 
   const result = await c.env.DB.prepare(`
@@ -63,7 +64,7 @@ returns.post('/', async (c) => {
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).bind(
     returnNumber, order_id, client_id, claim_id || null,
-    return_date || new Date().toISOString().split('T')[0],
+    return_date || kstYmd(),
     return_reason, notes || null, getEntityId(c) || 1, userId
   ).run()
 

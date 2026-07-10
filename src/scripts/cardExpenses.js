@@ -429,7 +429,8 @@ async function saveCard() {
     if (!id && data.barobill_sync) {
       showToast('바로빌 카드내역을 수집하는 중...', 'info');
       try {
-        var ced = new Date(), csd = new Date(); csd.setMonth(csd.getMonth() - 3);
+        var todayKst = (window.kstToday ? window.kstToday() : new Date().toISOString().slice(0,10));
+        var ced = new Date(todayKst + 'T00:00:00Z'), csd = new Date(todayKst + 'T00:00:00Z'); csd.setUTCMonth(csd.getUTCMonth() - 3);
         var cfmt = function(d){ return d.toISOString().slice(0,10); };
         var sres = await axios.post('/api/card-expenses/sync', { date_start: cfmt(csd), date_end: cfmt(ced) });
         showToast((sres.data && sres.data.message) || '내역 수집 완료', 'success');
@@ -535,7 +536,7 @@ async function deleteCategory(id) {
 // ===== Transaction CRUD =====
 function openAddTxModal() {
   document.getElementById('txCardId').value = '';
-  document.getElementById('txDate').value = new Date().toISOString().split('T')[0];
+  document.getElementById('txDate').value = (window.kstToday ? window.kstToday() : new Date().toISOString().split('T')[0]);
   document.getElementById('txMerchant').value = '';
   document.getElementById('txAmount').value = '';
   document.getElementById('txCategory').value = '';
@@ -757,8 +758,8 @@ function closeReceiptLightbox() {
 function ensureTaxRange() {
   var s = document.getElementById('taxExportStart');
   var e = document.getElementById('taxExportEnd');
-  if (s && !s.value) { var now = new Date(); s.value = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0]; }
-  if (e && !e.value) { var n2 = new Date(); e.value = new Date(n2.getFullYear(), n2.getMonth() + 1, 0).toISOString().split('T')[0]; }
+  if (s && !s.value) { var now = new Date(); s.value = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0') + '-01'; }
+  if (e && !e.value) { var n2 = new Date(); var lastDay = new Date(n2.getFullYear(), n2.getMonth() + 1, 0).getDate(); e.value = n2.getFullYear() + '-' + String(n2.getMonth() + 1).padStart(2, '0') + '-' + String(lastDay).padStart(2, '0'); }
 }
 
 async function downloadTaxCsv() {

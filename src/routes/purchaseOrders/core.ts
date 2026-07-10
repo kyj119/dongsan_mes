@@ -10,6 +10,7 @@ import { requireAnyPagePermission } from '../../middleware/permissions'
 import { getEntityId, entityFilter } from '../../utils/entityFilter'
 import { getNextSeqNumber, getNextEntitySeqNumber, withSeqRetry } from '../../utils/sequenceGenerator'
 import { getEntityCompanyInfo } from '../../utils/entitySettings'
+import { kstYmd, kstYmdCompact } from '../../utils/kstDate'
 import { validateUpload } from '../../utils/uploadValidation'
 
 const poCoreRouter = new Hono<HonoEnv>()
@@ -287,8 +288,7 @@ poCoreRouter.post('/', requireRole('ADMIN', 'MANAGER'), async (c) => {
     }
 
     // 발주번호 자동생성: YYYYMMDD-P001
-    const today = new Date()
-    const dateStr = today.toISOString().split('T')[0].replace(/-/g, '')
+    const dateStr = kstYmdCompact()
 
     const poNumber = await getNextEntitySeqNumber(c.env.DB, 'purchase_orders', 'po_number', getEntityId(c) || 1, dateStr, { suffix: 'P' })
 
@@ -325,7 +325,7 @@ poCoreRouter.post('/', requireRole('ADMIN', 'MANAGER'), async (c) => {
       poNumber,
       data.supplier_id,
       initialStatus,
-      data.order_date || today.toISOString().split('T')[0],
+      data.order_date || kstYmd(),
       data.expected_date || null,
       totalAmount,
       vatAmount,

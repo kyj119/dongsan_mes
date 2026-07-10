@@ -924,7 +924,7 @@ function showShipBlockedModal(blocked) {
 
   var rows = blocked.map(function(r) {
     var info = findOrderInfo(r.id);
-    var cards = (r.unshipped_cards || []).map(function(cd) { return (cd.card_number || cd.id) + '(' + (cd.status || '-') + ')'; }).join(', ');
+    var cards = (r.unshipped_cards || []).map(function(cd) { return (cd.card_number || cd.id) + '(' + (cd.status ? window.MES_STATUS.cardLabel(cd.status) : '-') + ')'; }).join(', ');
     return '<tr class="border-t border-gray-100">'
       + '<td class="px-3 py-2 text-sm">' + escapeHtml(info.client) + '</td>'
       + '<td class="px-3 py-2 text-sm">' + escapeHtml(info.number) + '</td>'
@@ -1412,7 +1412,7 @@ async function loadInTransitOrders() {
     section.classList.remove('hidden');
     if (badge) badge.textContent = orders.length + '건';
 
-    var today = new Date().toISOString().split('T')[0];
+    var today = (window.kstToday ? window.kstToday() : new Date().toISOString().split('T')[0]);
     tbody.innerHTML = orders.map(function(o) {
       var isOverdue = o.auto_complete_date <= today;
       var statusHtml = isOverdue

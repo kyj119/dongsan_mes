@@ -195,7 +195,7 @@ window.prPay = async function(id) {
   if (!(await showConfirm('이체 완료 처리하시겠습니까?'))) return;
   try {
     await axios.patch('/api/payment-requests/' + id + '/pay', {
-      paid_at: new Date().toISOString().substring(0, 10)
+      paid_at: (window.kstToday ? window.kstToday() : new Date().toISOString().substring(0, 10))
     });
     loadPaymentRequests();
     loadPrStats();

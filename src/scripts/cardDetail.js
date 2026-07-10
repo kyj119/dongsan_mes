@@ -172,7 +172,7 @@
         html += '<span class="cd-ship-label">연 락 처</span><span class="cd-ship-value">' + esc(card.contact_mobile || card.contact_phone || '-') + '</span></div>';
         html += '<div class="cd-ship-row"><span class="cd-ship-label">배송주소</span><span class="cd-ship-value" style="grid-column:span 3">' + esc(card.delivery_info || '-') + '</span></div>';
         html += '<div class="cd-ship-row"><span class="cd-ship-label">배송방법</span><span class="cd-ship-value">' + esc(card.delivery_method || '-') + '</span>';
-        html += '<span class="cd-ship-label">선불/착불</span><span class="cd-ship-value">' + esc(card.shipping_payment === 'PREPAID' ? '선불' : card.shipping_payment === 'COD' ? '착불' : card.shipping_payment || '-') + '</span></div>';
+        html += '<span class="cd-ship-label">선불/착불</span><span class="cd-ship-value">' + esc(card.shipping_payment === 'PREPAID' ? '선불' : (card.shipping_payment === 'COD' || card.shipping_payment === 'COLLECT') ? '착불' : card.shipping_payment || '-') + '</span></div>';
         html += '</div>';
 
         // 비고

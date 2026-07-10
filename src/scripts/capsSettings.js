@@ -6,6 +6,7 @@
 
 var capsSitesCache = [];
 var capsCurrentSiteId = null;
+var capsTriggerLabel = { SCHEDULED: '예약', MANUAL: '수동' };
 
 // ───────── 초기화 ─────────
 async function initCapsTab() {
@@ -275,7 +276,7 @@ async function loadCapsSyncLog() {
         '<td class="px-3 py-2 text-right tabular-nums text-gray-700">' + (r.updated_count || 0) + '</td>' +
         '<td class="px-3 py-2 text-right tabular-nums text-gray-500">' + (r.skipped_count || 0) + '</td>' +
         '<td class="px-3 py-2 text-right tabular-nums ' + ((r.error_count || 0) > 0 ? 'text-red-600 font-semibold' : 'text-gray-400') + '">' + (r.error_count || 0) + '</td>' +
-        '<td class="px-3 py-2 text-xs text-gray-500">' + escapeHtml(r.trigger_type || '-') + '</td>' +
+        '<td class="px-3 py-2 text-xs text-gray-500">' + escapeHtml(capsTriggerLabel[r.trigger_type] || r.trigger_type || '-') + '</td>' +
         '<td class="px-3 py-2 text-xs text-gray-500 tabular-nums" title="' + escapeHtml(range) + '">' + escapeHtml(range) + '</td>' +
       '</tr>';
     }).join('');
@@ -323,7 +324,7 @@ function showCapsSyncLogDetail(logId) {
       '<div><span class="text-gray-500">소요 시간</span><div class="mt-1 tabular-nums">' + duration + '</div></div>' +
       '<div><span class="text-gray-500">시작</span><div class="mt-1 tabular-nums text-xs">' + escapeHtml(r.started_at || '-') + '</div></div>' +
       '<div><span class="text-gray-500">종료</span><div class="mt-1 tabular-nums text-xs">' + escapeHtml(r.finished_at || '-') + '</div></div>' +
-      '<div><span class="text-gray-500">트리거</span><div class="mt-1">' + escapeHtml(r.trigger_type || '-') + '</div></div>' +
+      '<div><span class="text-gray-500">트리거</span><div class="mt-1">' + escapeHtml(capsTriggerLabel[r.trigger_type] || r.trigger_type || '-') + '</div></div>' +
       '<div><span class="text-gray-500">범위</span><div class="mt-1 tabular-nums text-xs">' + escapeHtml(range) + '</div></div>' +
     '</div>' +
     '<div class="mt-4 border-t border-gray-200 pt-4">' +

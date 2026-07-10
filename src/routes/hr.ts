@@ -4,6 +4,7 @@ import { requirePagePermission } from '../middleware/permissions'
 import type { HonoEnv } from '../types/env'
 import { encryptPII, decryptPII } from '../utils/crypto'
 import { getEntityId, entityFilter } from '../utils/entityFilter'
+import { kstYm, kstYmd } from '../utils/kstDate'
 import { calcOvertimePay, loadOvertimeSettings } from './payroll/shared'
 
 // #338: PII(주민등록번호) 암호화 키 — JWT_SECRET 재사용하되 하드코딩 폴백('fallback-dev-key') 제거.
@@ -923,7 +924,7 @@ hrRouter.get('/stats', async (c) => {
 hrRouter.get('/employees/:id/detail', async (c) => {
   try {
     const id = Number(c.req.param('id'))
-    const month = c.req.query('month') || new Date().toISOString().slice(0, 7)  // YYYY-MM
+    const month = c.req.query('month') || kstYm()  // YYYY-MM
     const year = c.req.query('year') || new Date().getFullYear().toString()
 
     // 1) 직원 프로필 + users.username
@@ -1039,8 +1040,8 @@ hrRouter.get('/employees/:id/detail', async (c) => {
 hrRouter.get('/contracts/expiring', requireRole('ADMIN', 'MANAGER'), async (c) => {
   try {
     const entityId = getEntityId(c)
-    const today = new Date().toISOString().split('T')[0]
-    const thirtyDaysLater = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+    const today = kstYmd()
+    const thirtyDaysLater = kstYmd(30)
 
     let query = `
       SELECT lc.*, e.name as employee_name, e.employee_code, e.department, e.position,
@@ -1108,8 +1109,8 @@ hrRouter.get('/contracts', requireRole('ADMIN', 'MANAGER'), async (c) => {
     // 만료 임박 필터: expiring=30 → 오늘~30일 후 만료 계약
     if (expiring) {
       const days = parseInt(expiring) || 30
-      const today = new Date().toISOString().split('T')[0]
-      const future = new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+      const today = kstYmd()
+      const future = kstYmd(days)
       query += ` AND lc.contract_end_date IS NOT NULL AND lc.contract_end_date >= ? AND lc.contract_end_date <= ?`
       params.push(today, future)
     }

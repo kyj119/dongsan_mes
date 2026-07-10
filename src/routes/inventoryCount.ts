@@ -3,6 +3,7 @@ import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
 import { getEntityId, entityFilter, isZoneOwnedByEntity, getWriteEntityId, ENTITY_ALL_MODE_WRITE_ERROR } from '../utils/entityFilter'
 import { getItemDefaultZones } from '../utils/inventoryZone'
+import { kstStamp14, kstYmd } from '../utils/kstDate'
 
 const inventoryCountRouter = new Hono<HonoEnv>()
 inventoryCountRouter.use('/*', authMiddleware, requireRole('ADMIN', 'MANAGER'))
@@ -69,9 +70,8 @@ inventoryCountRouter.post('/', async (c) => {
     const zoneId = (body.storage_zone_id != null && body.storage_zone_id !== '') ? Number(body.storage_zone_id) : null
 
     // count_number 생성: IC-YYYYMMDDHHMMSS (초까지 — 같은 분 다중 생성 UNIQUE 충돌 방지. P3 구역 실사로 연속 생성 빈번)
-    const now = new Date()
-    const countNumber = `IC-${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}${String(now.getSeconds()).padStart(2, '0')}`
-    const countDate = now.toISOString().substring(0, 10)
+    const countNumber = 'IC-' + kstStamp14()
+    const countDate = kstYmd()
 
     // 실사 유형: 구역(ZONE) > 부분(PERIODIC, category) > 전체(FULL)
     const actualType = zoneId ? 'ZONE' : (category ? 'PERIODIC' : count_type)

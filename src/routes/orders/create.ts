@@ -14,6 +14,7 @@ import { logActivity } from '../../utils/activityLog'
 import { notifyRoles } from '../../utils/notify'
 import { checkMaterialShortage } from '../../utils/materialShortageCheck'
 import { getEntityId, entityFilter } from '../../utils/entityFilter'
+import { kstYmd, kstYmdCompact } from '../../utils/kstDate'
 import { ORDER_STATUS_LABELS } from '../../utils/statusLabels'
 import { thumbRef } from '../../utils/thumbnailStore'
 import { recommendAssignedEntity, recalcOrderBillingGroups, generateCardsForOrder, enqueueAutoProcessJobsForItems } from './helpers'
@@ -65,8 +66,7 @@ ordersCreateRouter.post('/', async (c) => {
       : (getEntityId(c) || 1)
 
     // Generate order number (without ORD- prefix)
-    const today = new Date()
-    const dateStr = today.toISOString().split('T')[0].replace(/-/g, '')
+    const dateStr = kstYmdCompact()
 
     const orderNumber = await getNextEntitySeqNumber(c.env.DB, 'orders', 'order_number', billingEntityId, dateStr)
 
@@ -130,9 +130,7 @@ ordersCreateRouter.post('/', async (c) => {
       if (orderData.valid_until) {
         validUntil = orderData.valid_until
       } else {
-        const validUntilDate = new Date(today)
-        validUntilDate.setDate(validUntilDate.getDate() + 30)
-        validUntil = validUntilDate.toISOString().split('T')[0]
+        validUntil = kstYmd(30)
       }
     }
 
@@ -155,12 +153,12 @@ ordersCreateRouter.post('/', async (c) => {
       orderNumber,
       orderData.client_id,
       initialStatus,
-      orderData.order_year || today.getFullYear(),
-      orderData.order_month || today.getMonth() + 1,
+      orderData.order_year || Number(kstYmd().slice(0, 4)),
+      orderData.order_month || Number(kstYmd().slice(5, 7)),
       orderData.reception_location || null,
       orderData.delivery_info || null,
       orderData.delivery_date || null,
-      orderData.order_date || today.toISOString().split('T')[0],
+      orderData.order_date || kstYmd(),
       totalAmount,
       vatAmount,
       orderData.discount_amount || 0,
@@ -436,7 +434,7 @@ ordersCreateRouter.post('/', async (c) => {
 
       if (creditBlocked) {
         // #163: 여신 초과 — 결재 요청 원자적 생성
-        const today2 = new Date().toISOString().slice(0, 10).replace(/-/g, '')
+        const today2 = kstYmdCompact()
         // #329: 법인코드 E{eid} 내장 — 멀티법인 번호 충돌 방지 (행 entity_id와 동일 eid 사용)
         const aprNumber = await getNextEntitySeqNumber(c.env.DB, 'approval_requests', 'request_number', getEntityId(c) || 1, today2, { base: 'APR-' })
 

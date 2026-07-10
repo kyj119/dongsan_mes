@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
 import { entityFilter } from '../utils/entityFilter'
+import { kstMonth, kstYm } from '../utils/kstDate'
 
 // ── Row types for D1 query results ──
 interface MonthlyRevenueRow { month: string; order_count: number; revenue: number }
@@ -471,14 +472,14 @@ reportsRouter.get('/receivables-analysis', async (c) => {
       SELECT COALESCE(SUM(final_amount), 0) as billed
       FROM orders
       WHERE status != 'CANCELLED'
-        AND strftime('%Y-%m', created_at) = strftime('%Y-%m', 'now')${ef.clause}
+        AND strftime('%Y-%m', created_at) = ${kstMonth()}${ef.clause}
     `).bind(...ef.params).all<BilledRow>()
 
     // 당월 수금
     const { results: collectedRows } = await c.env.DB.prepare(`
       SELECT COALESCE(SUM(amount), 0) as collected
       FROM payments
-      WHERE strftime('%Y-%m', payment_date) = strftime('%Y-%m', 'now')${ef.clause}
+      WHERE strftime('%Y-%m', payment_date) = ${kstMonth()}${ef.clause}
     `).bind(...ef.params).all<CollectedRow>()
 
     const summary = {
@@ -651,9 +652,9 @@ reportsRouter.get('/period-comparison', async (c) => {
   try {
     const { base_month, compare = 'MOM' } = c.req.query()
 
-    // 기준월: 지정 안 하면 전월
-    const now = new Date()
-    const defaultBase = new Date(now.getFullYear(), now.getMonth() - 1, 1)
+    // 기준월: 지정 안 하면 전월 (KST 기준)
+    const [kstBaseY, kstBaseM] = kstYm().split('-').map(Number)
+    const defaultBase = new Date(kstBaseY, kstBaseM - 2, 1)
     const baseM = base_month || (defaultBase.getFullYear() + '-' + String(defaultBase.getMonth() + 1).padStart(2, '0'))
 
     // 비교월 계산

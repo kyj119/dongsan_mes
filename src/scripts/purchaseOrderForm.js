@@ -54,10 +54,10 @@ function buildSpecStr(item) {
     document.getElementById('formTitle').innerHTML = SVG.edit + '발주서 수정';
     loadPOData(editPoId);
   } else {
-    document.getElementById('orderDate').value = new Date().toISOString().split('T')[0];
+    document.getElementById('orderDate').value = window.kstToday ? window.kstToday() : new Date().toISOString().split('T')[0];
     var tomorrow = new Date();
     tomorrow.setDate(tomorrow.getDate() + 1);
-    document.getElementById('expectedDate').value = tomorrow.toISOString().split('T')[0];
+    document.getElementById('expectedDate').value = new Date(tomorrow.getTime() - tomorrow.getTimezoneOffset() * 60000).toISOString().split('T')[0];
     addItemRow();
     // 납품 장소 기본값
     axios.get('/api/settings').then(function(res) {

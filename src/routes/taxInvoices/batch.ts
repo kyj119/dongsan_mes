@@ -9,6 +9,7 @@ import type { HonoEnv } from '../../types/env'
 import { authMiddleware, requireRole } from '../../middleware/auth'
 import { getEntityId } from '../../utils/entityFilter'
 import { getCompanySettings, createSplitInvoices } from './helpers'
+import { kstYmd } from '../../utils/kstDate'
 import type { ClientRow, MonthlyEligibleRow } from './helpers'
 
 const taxInvoicesBatchRouter = new Hono<HonoEnv>()
@@ -33,7 +34,7 @@ taxInvoicesBatchRouter.post('/batch-create', requireRole('ADMIN', 'MANAGER'), as
     }
 
     const user = c.get('user')
-    const issueDate = body.issue_date || new Date().toISOString().slice(0, 10)
+    const issueDate = body.issue_date || kstYmd()
     const settings = await getCompanySettings(c.env.DB, getEntityId(c))
 
     if (!settings.company_business_registration_number) {

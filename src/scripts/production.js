@@ -51,7 +51,7 @@ function fmtTime(iso) {
 function statusBadge(status) {
   if (status === 'OK') {
     return '<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-50 text-green-700">'
-      + '<i class="fas fa-check-circle text-[7px] mr-1"></i>OK</span>';
+      + '<i class="fas fa-check-circle text-[7px] mr-1"></i>정상</span>';
   }
   if (status === 'ERROR') {
     return '<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-50 text-red-700">'

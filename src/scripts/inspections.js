@@ -326,9 +326,9 @@
               '<th class="px-3 py-2 text-left">메모</th>' +
             '</tr></thead><tbody>' +
               items.map(function(it) {
-                const rb = it.check_result === 'PASS' ? '<span class="text-green-700">PASS</span>'
-                       : it.check_result === 'FAIL' ? '<span class="text-red-700">FAIL</span>'
-                       : '<span class="text-gray-500">N/A</span>'
+                const rb = it.check_result === 'PASS' ? '<span class="text-green-700">합격</span>'
+                       : it.check_result === 'FAIL' ? '<span class="text-red-700">불합격</span>'
+                       : '<span class="text-gray-500">해당없음</span>'
                 return '<tr class="border-t">' +
                   '<td class="px-3 py-2">' + escapeHtml(it.check_item) + '</td>' +
                   '<td class="px-3 py-2 text-center">' + rb + '</td>' +

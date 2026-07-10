@@ -11,6 +11,7 @@ import { authMiddleware, requireRole } from '../../middleware/auth'
 import { requireEditOrRole } from '../../middleware/permissions'
 import { logActivity } from '../../utils/activityLog'
 import { getEntityId, entityFilter } from '../../utils/entityFilter'
+import { kstYmd } from '../../utils/kstDate'
 import {
   deriveClientBalance,
   type ClientRow, type OrderRow, type PaymentRow, type AdjustmentRow, type UnpaidOrderRow,
@@ -290,7 +291,7 @@ arDunningRouter.post('/send-email', async (c) => {
 
     // Query transactions (reuse logic from GET /client/:clientId)
     const startDate = period_start || new Date(Date.now() - 180 * 86400000).toISOString().substring(0, 10)
-    const endDate = period_end || new Date().toISOString().substring(0, 10)
+    const endDate = period_end || kstYmd()
 
     const { clause: ordersEf, params: ordersEfParams } = entityFilter(c)
     const { results: orders } = await c.env.DB.prepare(`

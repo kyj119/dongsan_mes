@@ -3,6 +3,7 @@ import type { HonoEnv } from '../types/env'
 import { authMiddleware, agentKeyMiddleware } from '../middleware/auth'
 import { autoDeductInventory } from '../utils/autoDeductInventory'
 import { entityFilter } from '../utils/entityFilter'
+import { kstDate, kstDateOf } from '../utils/kstDate'
 
 const printEventsRouter = new Hono<HonoEnv>()
 
@@ -829,7 +830,7 @@ printEventsRouter.get('/stats', authMiddleware, async (c) => {
         COUNT(CASE WHEN print_status = 'CANCEL' THEN 1 END) as cancel_count,
         COUNT(*) as total_count
       FROM print_events
-      WHERE date(created_at) = date('now')${ef.clause}
+      WHERE ${kstDateOf('created_at')} = ${kstDate()}${ef.clause}
     `).bind(...ef.params).first<TodaySummaryRow>()
 
     // Daily breakdown
@@ -851,7 +852,7 @@ printEventsRouter.get('/stats', authMiddleware, async (c) => {
       SELECT agent_id, COUNT(*) as count,
         COUNT(CASE WHEN print_status = 'OK' THEN 1 END) as ok_count
       FROM print_events
-      WHERE date(created_at) = date('now')${ef.clause}
+      WHERE ${kstDateOf('created_at')} = ${kstDate()}${ef.clause}
       GROUP BY agent_id
       ORDER BY count DESC
       LIMIT 10

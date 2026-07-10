@@ -66,7 +66,7 @@
           + '</tr>';
       }).join('');
       document.getElementById('confirmItemsBody').innerHTML = itemsHtml;
-      document.getElementById('confirmInvoiceDate').value = new Date().toISOString().slice(0, 10);
+      document.getElementById('confirmInvoiceDate').value = window.kstToday ? window.kstToday() : new Date().toISOString().slice(0, 10);
       recalcConfirmTotal();
       document.getElementById('confirmModal').classList.remove('hidden');
     } catch (e) { showToast('상세 조회 오류', 'error'); }

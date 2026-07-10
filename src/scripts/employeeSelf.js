@@ -59,7 +59,7 @@
 
     document.getElementById('userName').textContent = employeeInfo.name + '님';
     document.getElementById('userDetail').textContent =
-      employeeInfo.employee_code + ' / ' + (employeeInfo.department || '-') + ' / ' + (employeeInfo.position || '-');
+      employeeInfo.employee_code + ' / ' + ((window.DEPT_NAMES && window.DEPT_NAMES[employeeInfo.department]) || employeeInfo.department || '-') + ' / ' + ((window.POSITION_NAMES && window.POSITION_NAMES[employeeInfo.position]) || employeeInfo.position || '-');
   }
 
   // 재직증명서 출력

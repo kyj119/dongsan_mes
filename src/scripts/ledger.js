@@ -1031,7 +1031,7 @@ function selectSupplier(supplierId, supplierName) {
     selectedSupplierId = supplierId;
     currentPurchaseClientId = supplierId;
     selectedSupplierName = supplierName;
-    document.getElementById('pPaymentDate').value = new Date().toISOString().split('T')[0];
+    document.getElementById('pPaymentDate').value = (window.kstToday ? window.kstToday() : new Date().toISOString().split('T')[0]);
     document.querySelectorAll('#supplierTableBody .client-row').forEach(function(r) {
         r.classList.toggle('active', r.dataset.id == supplierId);
     });
@@ -1296,7 +1296,7 @@ async function loadCollectionLogs(clientId) {
 
 function openCollectionModal() {
     if (!selectedClientId) { showToast('거래처를 먼저 선택하세요', 'error'); return; }
-    document.getElementById('colDate').value = new Date().toISOString().split('T')[0];
+    document.getElementById('colDate').value = (window.kstToday ? window.kstToday() : new Date().toISOString().split('T')[0]);
     document.getElementById('colMethod').value = 'PHONE';
     document.getElementById('colPerson').value = '';
     document.getElementById('colPromisedDate').value = '';
@@ -1592,7 +1592,7 @@ async function openLedgerSendModal(clientId, clientName, balance, defaultChannel
 
     // 기본 메시지 세팅
     var balanceText = (balance || 0).toLocaleString() + '원';
-    var today = new Date().toISOString().slice(0, 10);
+    var today = (window.kstToday ? window.kstToday() : new Date().toISOString().slice(0, 10));
     document.getElementById('ledgerSendContent').value =
         clientName + '님, 동산기획입니다.\n\n'
         + '거래 내역을 안내드립니다.\n\n'
@@ -1988,7 +1988,7 @@ async function loadCollectionPeriod() {
 var _ledgerStatementData = null; // 마지막 로드된 거래처 데이터 캐시
 
 function buildLedgerStatementHtml(clientName, transactions, summary) {
-    var today = new Date().toISOString().split('T')[0];
+    var today = (window.kstToday ? window.kstToday() : new Date().toISOString().split('T')[0]);
     var sd = modalContext.startDate || '';
     var ed = modalContext.endDate || '';
     var periodText = sd && ed ? sd + ' ~ ' + ed : (sd || ed || '전체 기간');

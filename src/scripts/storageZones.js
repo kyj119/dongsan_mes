@@ -115,7 +115,7 @@ function populateManagerSelect(selectedId) {
   sel.innerHTML = '<option value="">미지정</option>'
     + allUsers.filter(function(u) { return u.is_active; }).map(function(u) {
       return '<option value="' + u.id + '"' + (u.id === selectedId ? ' selected' : '') + '>'
-        + escapeAttr(u.name) + ' (' + escapeAttr(u.role) + ')</option>';
+        + escapeAttr(u.name) + ' (' + escapeAttr((window.ROLE_NAMES && window.ROLE_NAMES[u.role]) || u.role) + ')</option>';
     }).join('');
 }
 

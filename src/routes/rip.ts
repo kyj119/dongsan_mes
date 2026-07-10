@@ -3,6 +3,7 @@ import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole, agentKeyMiddleware } from '../middleware/auth'
 import { getEntityId, entityFilter, cardEntityFilter } from '../utils/entityFilter'
 import { PROCESS_CODES } from '../constants/process'
+import { kstDate, kstDateOf } from '../utils/kstDate'
 
 // ─── D1 row types ───────────────────────────────────────────────────────────
 
@@ -596,13 +597,14 @@ ripRouter.patch('/equipment/:id/status', authMiddleware, async (c) => {
       'UPDATE equipment SET equipment_status = ?, notes = COALESCE(?, notes), updated_at = CURRENT_TIMESTAMP WHERE id = ?'
     ).bind(equipment_status, notes || null, equipId).run()
 
-    // 상태 변경 이력 기록
+    // 상태 변경 이력 기록 — 라벨은 equipment.js STATUS_MAP과 통일
+    const equipStatusLabel: Record<string, string> = { RUNNING: '가동중', IDLE: '대기', MAINTENANCE: '점검중', BROKEN: '고장' }
     await c.env.DB.prepare(`
       INSERT INTO maintenance_logs (equipment_id, log_type, description, performed_by)
       VALUES (?, 'STATUS_CHANGE', ?, ?)
     `).bind(
       equipId,
-      `상태 변경: ${prevStatus} → ${equipment_status}` + (notes ? ` (${notes})` : ''),
+      `상태 변경: ${equipStatusLabel[prevStatus] || prevStatus} → ${equipStatusLabel[equipment_status] || equipment_status}` + (notes ? ` (${notes})` : ''),
       user?.id || null
     ).run()
 
@@ -914,8 +916,8 @@ ripRouter.get('/equipment/:id/consumables', authMiddleware, async (c) => {
     const { results } = await c.env.DB.prepare(`
       SELECT id, equipment_id, name, replacement_cycle_days, last_replaced_at, next_due_at, quantity_on_hand, notes, created_at, updated_at,
         CASE
-          WHEN next_due_at IS NOT NULL AND next_due_at <= date('now') THEN 'OVERDUE'
-          WHEN next_due_at IS NOT NULL AND next_due_at <= date('now', '+7 days') THEN 'DUE_SOON'
+          WHEN next_due_at IS NOT NULL AND next_due_at <= ${kstDate()} THEN 'OVERDUE'
+          WHEN next_due_at IS NOT NULL AND next_due_at <= date('now', '+9 hours', '+7 days') THEN 'DUE_SOON'
           ELSE 'OK'
         END as due_status
       FROM equipment_consumables
@@ -1104,8 +1106,8 @@ ripRouter.get('/equipment/:id/schedules', authMiddleware, async (c) => {
     const { results } = await c.env.DB.prepare(`
       SELECT id, equipment_id, title, description, interval_days, checklist, last_performed_at, next_due_at, is_active, created_at, updated_at,
         CASE
-          WHEN next_due_at IS NOT NULL AND next_due_at <= date('now') THEN 'OVERDUE'
-          WHEN next_due_at IS NOT NULL AND next_due_at <= date('now', '+7 days') THEN 'DUE_SOON'
+          WHEN next_due_at IS NOT NULL AND next_due_at <= ${kstDate()} THEN 'OVERDUE'
+          WHEN next_due_at IS NOT NULL AND next_due_at <= date('now', '+9 hours', '+7 days') THEN 'DUE_SOON'
           ELSE 'OK'
         END as due_status
       FROM maintenance_schedules
@@ -1275,7 +1277,7 @@ ripRouter.get('/equipment/:id/stats', authMiddleware, async (c) => {
       FROM print_events
       WHERE equipment_id = ?
         AND print_status = 'OK'
-        AND date(print_completed_at) = date('now')
+        AND ${kstDateOf('print_completed_at')} = ${kstDate()}
     `).bind(equipId).first()
 
     // 가동률 (최근 7일: 출력 이벤트가 있는 시간대 비율)
@@ -1325,14 +1327,14 @@ ripRouter.get('/maintenance/alerts', authMiddleware, async (c) => {
     const { results: consumableAlerts } = await c.env.DB.prepare(`
       SELECT ec.*, e.name as equipment_name,
         CASE
-          WHEN ec.next_due_at <= date('now') THEN 'OVERDUE'
+          WHEN ec.next_due_at <= ${kstDate()} THEN 'OVERDUE'
           ELSE 'DUE_SOON'
         END as alert_type
       FROM equipment_consumables ec
       JOIN equipment e ON ec.equipment_id = e.id
       WHERE e.status = 'ACTIVE'${ef.clause}
         AND ec.next_due_at IS NOT NULL
-        AND ec.next_due_at <= date('now', '+7 days')
+        AND ec.next_due_at <= date('now', '+9 hours', '+7 days')
       ORDER BY ec.next_due_at ASC
     `).bind(...ef.params).all()
 
@@ -1340,14 +1342,14 @@ ripRouter.get('/maintenance/alerts', authMiddleware, async (c) => {
     const { results: scheduleAlerts } = await c.env.DB.prepare(`
       SELECT ms.*, e.name as equipment_name,
         CASE
-          WHEN ms.next_due_at <= date('now') THEN 'OVERDUE'
+          WHEN ms.next_due_at <= ${kstDate()} THEN 'OVERDUE'
           ELSE 'DUE_SOON'
         END as alert_type
       FROM maintenance_schedules ms
       JOIN equipment e ON ms.equipment_id = e.id
       WHERE e.status = 'ACTIVE' AND ms.is_active = 1${ef.clause}
         AND ms.next_due_at IS NOT NULL
-        AND ms.next_due_at <= date('now', '+7 days')
+        AND ms.next_due_at <= date('now', '+9 hours', '+7 days')
       ORDER BY ms.next_due_at ASC
     `).bind(...ef.params).all()
 
@@ -2105,8 +2107,8 @@ ripRouter.get('/maintenance/dashboard', authMiddleware, async (c) => {
     const { results: schedules } = await c.env.DB.prepare(`
       SELECT ms.*, e.name as equipment_name,
         CASE
-          WHEN ms.next_due_at <= date('now') THEN 'OVERDUE'
-          WHEN ms.next_due_at <= date('now', '+7 days') THEN 'DUE_SOON'
+          WHEN ms.next_due_at <= ${kstDate()} THEN 'OVERDUE'
+          WHEN ms.next_due_at <= date('now', '+9 hours', '+7 days') THEN 'DUE_SOON'
           ELSE 'OK'
         END as due_status
       FROM maintenance_schedules ms
@@ -2119,8 +2121,8 @@ ripRouter.get('/maintenance/dashboard', authMiddleware, async (c) => {
     const { results: consumables } = await c.env.DB.prepare(`
       SELECT ec.*, e.name as equipment_name,
         CASE
-          WHEN ec.next_due_at <= date('now') THEN 'OVERDUE'
-          WHEN ec.next_due_at <= date('now', '+7 days') THEN 'DUE_SOON'
+          WHEN ec.next_due_at <= ${kstDate()} THEN 'OVERDUE'
+          WHEN ec.next_due_at <= date('now', '+9 hours', '+7 days') THEN 'DUE_SOON'
           ELSE 'OK'
         END as due_status
       FROM equipment_consumables ec

@@ -20,8 +20,16 @@ var statusColors = {
   'RECEIVED': 'bg-green-50 text-green-700',
   'CANCELLED': 'bg-red-50 text-red-700'
 };
-var inspStatusLabels = { 'PASSED': '합격', 'PARTIAL': '부분합격', 'FAILED': '불합격' };
+// inventory_receipts.inspection_status 전체값 — po-receipts.ts:57 inspLabels와 통일
+var inspStatusLabels = {
+  'NORMAL': '정상', 'PENDING_REVIEW': '확인대기', 'WAITING_RESHIP': '재입고대기', 'CANCELLED': '취소',
+  'PASSED': '합격', 'PARTIAL': '부분합격', 'FAILED': '불합격'
+};
 var inspStatusColors = {
+  'NORMAL': 'bg-green-50 text-green-700',
+  'PENDING_REVIEW': 'bg-amber-50 text-amber-700',
+  'WAITING_RESHIP': 'bg-blue-50 text-blue-700',
+  'CANCELLED': 'bg-red-50 text-red-700',
   'PASSED': 'bg-green-50 text-green-700',
   'PARTIAL': 'bg-amber-50 text-amber-700',
   'FAILED': 'bg-red-50 text-red-700'
@@ -325,7 +333,7 @@ async function openReceiveModal(id, scope) {
       window._receiveItems = items;
 
       // 오늘 날짜 기본값
-      var today = new Date().toISOString().split('T')[0];
+      var today = window.kstToday ? window.kstToday() : new Date().toISOString().split('T')[0];
       var dateEl = document.getElementById('receipt_date');
       if (dateEl) dateEl.value = today;
       var notesEl = document.getElementById('receipt_notes');

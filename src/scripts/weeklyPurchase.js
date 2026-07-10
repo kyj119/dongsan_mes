@@ -235,7 +235,9 @@
     axios.post('/api/weekly-purchase/notify', { summary: lastSummary, channel: 'sms' })
       .then(function(res) {
         if (!res.data.success) throw new Error(res.data.error);
-        var msgs = res.data.data.results.map(function(r) { return r.type + ': ' + r.status + (r.detail ? ' (' + r.detail + ')' : ''); });
+        var wpTypeLabel = { 'in-app': '인앱', 'sms': 'SMS', 'kakao': '카카오', 'external': '외부' };
+        var wpStatusLabel = { 'sent': '발송됨', 'failed': '실패', 'skipped': '건너뜀' };
+        var msgs = res.data.data.results.map(function(r) { return (wpTypeLabel[r.type] || r.type) + ': ' + (wpStatusLabel[r.status] || r.status) + (r.detail ? ' (' + r.detail + ')' : ''); });
         alert('알림 발송 완료\n\n' + msgs.join('\n'));
       })
       .catch(function(err) { alert('알림 발송 실패: ' + (err.response?.data?.error || err.message)); });

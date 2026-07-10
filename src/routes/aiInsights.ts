@@ -128,7 +128,7 @@ aiInsights.get('/credit-risk/:clientId', requireRole('ADMIN', 'MANAGER'), async 
   })
 })
 
-// ─── 전체 거래처 리스크 일괄 계산 ──────��─────────────────────────────────────
+// ─── 전체 거래처 리스크 일괄 계산 ────────────────────────────────────────────
 aiInsights.post('/credit-risk/calculate-all', requireRole('ADMIN', 'MANAGER'), async (c) => {
   // #177: N+1 → 단일 집계 쿼리로 교체
   const { results: clientStats } = await c.env.DB.prepare(`

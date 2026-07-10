@@ -1,6 +1,7 @@
 // ============================================================================
 // 소모 예측 엔진 — inventory_transactions 기반 주간 평균 소모량 산출
 // ============================================================================
+import { kstYmd } from './kstDate'
 
 export interface ConsumptionData {
   item_id: number
@@ -36,9 +37,7 @@ export async function getConsumptionForecast(
 ): Promise<ConsumptionData[]> {
   const weeksBack = options.weeksBack || 8
   const entityId = options.entityId
-  const sinceDate = new Date()
-  sinceDate.setDate(sinceDate.getDate() - weeksBack * 7)
-  const sinceDateStr = sinceDate.toISOString().split('T')[0]
+  const sinceDateStr = kstYmd(-weeksBack * 7)
 
   // 1. 재고 품목 목록 (is_purchase_item=1, auto_pr_enabled or safe_stock > 0)
   let itemFilter = ''

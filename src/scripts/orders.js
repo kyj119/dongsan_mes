@@ -104,7 +104,7 @@ async function bulkShipSelected() {
         if (r.success) {
           totalShipped += (r.shipped_cards || 0);
           if (r.remaining > 0 && r.unshipped_cards) {
-            remainingCards = remainingCards.concat(r.unshipped_cards.map(function(c) { return c.card_number + ' (' + c.status + ')'; }));
+            remainingCards = remainingCards.concat(r.unshipped_cards.map(function(c) { return c.card_number + ' (' + window.MES_STATUS.cardLabel(c.status) + ')'; }));
           }
         } else failCount++;
       });
@@ -1580,7 +1580,7 @@ async function sendOrderNotice(orderId, clientName, mobile, contactPhone, orderN
     return;
   }
   var phone = mobile || contactPhone || '';
-  var today = new Date().toISOString().slice(0, 10);
+  var today = window.kstToday ? window.kstToday() : new Date().toISOString().slice(0, 10);
   var items = itemSummary || '';
   // 출고·미수금과 동일하게 등록된 기본 템플릿을 해석 (없으면 '' → 수동 작성).
   // 과거 하드코딩 'order_received'는 실재하지 않는 코드라 항상 매칭 실패 → 가짜 템플릿처럼 보였음.

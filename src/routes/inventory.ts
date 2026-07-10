@@ -3,6 +3,7 @@ import { authMiddleware, requireRole } from '../middleware/auth'
 import type { HonoEnv } from '../types/env'
 import { getEntityId, entityFilter, isZoneOwnedByEntity, getWriteEntityId, ENTITY_ALL_MODE_WRITE_ERROR } from '../utils/entityFilter'
 import { getNextEntitySeqNumber } from '../utils/sequenceGenerator'
+import { kstYmdCompact } from '../utils/kstDate'
 import { triggerLowStockAlert } from '../utils/inventoryAlert'
 import { getItemDefaultZone, getItemDefaultZones } from '../utils/inventoryZone'
 
@@ -313,7 +314,7 @@ inventoryRouter.post('/receipts', async (c) => {
     }
 
     // Generate receipt number (#329: 법인코드 E{eid} 내장 + MAX 기반 — 글로벌 COUNT 멀티법인 충돌 방지)
-    const today = new Date().toISOString().split('T')[0].replace(/-/g, '')
+    const today = kstYmdCompact()
     const receiptNumber = await getNextEntitySeqNumber(c.env.DB, 'inventory_receipts', 'receipt_number', entityId, today, { base: 'RCV-' })
 
     const totalAmount = items.reduce((sum: number, item: any) => sum + (item.quantity * item.unit_price), 0)
@@ -467,7 +468,7 @@ inventoryRouter.patch('/receipts/:id/inspection-decision',
                      : decision === 'WAITING_RESHIP' ? 'WAITING_RESHIP'
                      : 'CANCELLED'
     const receiptStatus = decision === 'CANCELLED' ? 'CANCELLED' : null
-    const decisionLog = '[' + new Date().toISOString().slice(0,16).replace('T',' ') + ' 결정] ' + decision + (notes ? ': ' + notes : '')
+    const decisionLog = '[' + new Date(Date.now() + 9 * 3600 * 1000).toISOString().slice(0, 16).replace('T', ' ') + ' 결정] ' + decision + (notes ? ': ' + notes : '')
 
     // 전체모드(0) 재고 쓰기 차단 (2026-07-06 감사 #5)
     const cancelEntityId = getWriteEntityId(c)
@@ -686,7 +687,7 @@ inventoryRouter.post('/releases', async (c) => {
       return c.json({ success: false, error: ENTITY_ALL_MODE_WRITE_ERROR }, 400)
     }
 
-    const today = new Date().toISOString().split('T')[0].replace(/-/g, '')
+    const today = kstYmdCompact()
     const countRow = await c.env.DB.prepare(
       `SELECT COUNT(*) as count FROM inventory_releases WHERE release_number LIKE ?`
     ).bind(`REL-${today}%`).first<{ count: number }>()

@@ -21,7 +21,7 @@ async function viewCardDetail(cardId) {
 
 function buildDefectsHtml(defects) {
   if (!defects || defects.length === 0) return '';
-  var catLabels = { COLOR: '색상', ALIGNMENT: '정렬', CUT: '재단', MATERIAL: '소재', PRINT: '출력', PP: '후가공', OTHER: '기타' };
+  var catLabels = { COLOR: '색상', ALIGNMENT: '정렬', CUT: '재단', MATERIAL: '소재', PRINT: '출력', PP: '후가공', SIZE: '규격', DAMAGE: '파손', DESIGN: '디자인', OTHER: '기타' };
   var statusLabels = { OPEN: '미처리', UNDER_REVIEW: '검토중', RESOLVED: '해결', REWORK_REQUIRED: '재작업필요' };
   var statusColors = { OPEN: 'bg-red-50 text-red-700', UNDER_REVIEW: 'bg-amber-50 text-amber-700', RESOLVED: 'bg-green-50 text-green-700', REWORK_REQUIRED: 'bg-amber-50 text-amber-700' };
   var rows = defects.map(function(d) {

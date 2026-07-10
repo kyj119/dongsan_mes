@@ -1261,7 +1261,7 @@
                     if (daysDiff > 0) {
                         var newDeliv = new Date();
                         newDeliv.setDate(newDeliv.getDate() + daysDiff);
-                        document.getElementById('deliveryDate').value = newDeliv.toISOString().split('T')[0];
+                        document.getElementById('deliveryDate').value = new Date(newDeliv.getTime() - newDeliv.getTimezoneOffset() * 60000).toISOString().split('T')[0];
                     } else {
                         document.getElementById('deliveryDate').value = order.delivery_date;
                     }

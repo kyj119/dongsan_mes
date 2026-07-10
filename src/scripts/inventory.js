@@ -233,6 +233,8 @@ window.viewTransactions = async function(itemId, itemName) {
             var tbody = document.getElementById('transactionTableBody');
             tbody.innerHTML = '';
             transactions.forEach(function(tx) {
+                // 조정 사유(adjustReason 옵션 + inventoryCount.ts STOCK_COUNT)과 통일
+                var reasonLabels = { 'STOCK_COUNT': '실사 보정', 'COUNT_ERROR': '실사 차이', 'DAMAGE': '파손·불량', 'LOSS': '분실', 'FOUND': '추가 발견', 'OTHER': '기타' };
                 var typeLabels = { 'IN': '입고', 'OUT': '출고', 'ADJUST': '조정', 'TRANSFER_IN': '이동입고', 'TRANSFER_OUT': '이동출고' };
                 var typeColors = { 'IN': 'bg-blue-50 text-blue-700', 'OUT': 'bg-amber-50 text-amber-700', 'ADJUST': 'bg-gray-100 text-gray-700', 'TRANSFER_IN': 'bg-indigo-50 text-indigo-700', 'TRANSFER_OUT': 'bg-purple-50 text-purple-700' };
                 var typeIcons = { 'IN': 'fas fa-arrow-down', 'OUT': 'fas fa-arrow-up', 'ADJUST': 'fas fa-sliders-h', 'TRANSFER_IN': 'fas fa-right-to-bracket', 'TRANSFER_OUT': 'fas fa-right-from-bracket' };
@@ -248,7 +250,7 @@ window.viewTransactions = async function(itemId, itemName) {
                     + '<td class="px-4 py-2 text-sm"><span class="inline-flex items-center px-2 py-0.5 text-xs rounded ' + typeClass + '"><i class="' + typeIcon + ' text-[7px] mr-1"></i>' + typeText + '</span></td>'
                     + '<td class="px-4 py-2 text-sm ' + qtyClass + ' text-right font-medium tabular-nums">' + (tx.quantity > 0 ? '+' : '') + escapeHtml(uomFmt(tx.quantity, muItem)) + '</td>'
                     + '<td class="px-4 py-2 text-sm text-gray-900 text-right font-medium tabular-nums">' + (tx.balance_after == null ? '-' : escapeHtml(uomFmt(tx.balance_after, muItem))) + '</td>'
-                    + '<td class="px-4 py-2 text-sm text-gray-900" title="' + escapeHtml(tx.reason || '') + '">' + escapeHtml(tx.reason || '-') + '</td>'
+                    + '<td class="px-4 py-2 text-sm text-gray-900" title="' + escapeHtml(reasonLabels[tx.reason] || tx.reason || '') + '">' + escapeHtml(reasonLabels[tx.reason] || tx.reason || '-') + '</td>'
                     + '<td class="px-4 py-2 text-sm text-gray-900" title="' + escapeHtml(tx.handled_by_name || '') + '">' + escapeHtml(tx.handled_by_name || '-') + '</td>';
                 tbody.appendChild(row);
             });

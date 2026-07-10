@@ -29,7 +29,8 @@ async function loadForecast() {
     // 요약 카드
     document.getElementById('fcRevenue').textContent = fmt(fc.revenue) + '원';
     document.getElementById('fcOrders').textContent = fmt(fc.order_count) + '건';
-    document.getElementById('fcMethod').textContent = '예측 방법: ' + fc.method;
+    var fcMethodLabel = { 'MA3': '3개월 이동평균', 'MA3+YoY': '3개월 이동평균+전년동월대비' };
+    document.getElementById('fcMethod').textContent = '예측 방법: ' + (fcMethodLabel[fc.method] || fc.method);
     document.getElementById('fcMonth').textContent = fc.month;
 
     var growthEl = document.getElementById('fcGrowth');

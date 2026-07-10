@@ -39,7 +39,7 @@ async function prLoadEmployeeOptions() {
       for (var i = 0; i < prEmployees.length; i++) {
         var e = prEmployees[i];
         if (e.status && e.status !== 'ACTIVE') continue;
-        opts += '<option value="' + e.id + '" data-base="' + (e.base_salary || 0) + '">' + escapeHtml(e.employee_code || '') + ' ' + escapeHtml(e.name || '') + ' (' + escapeHtml(e.department || '') + ')</option>';
+        opts += '<option value="' + e.id + '" data-base="' + (e.base_salary || 0) + '">' + escapeHtml(e.employee_code || '') + ' ' + escapeHtml(e.name || '') + ' ' + escapeHtml(prDeptLabel(e.department)) + '</option>';
       }
       sel.innerHTML = opts;
     }

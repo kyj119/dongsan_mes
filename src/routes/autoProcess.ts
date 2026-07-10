@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
 import { getEntityId, entityFilter } from '../utils/entityFilter'
+import { kstYmd } from '../utils/kstDate'
 
 const autoProcessRouter = new Hono<HonoEnv>()
 
@@ -316,10 +317,7 @@ autoProcessRouter.post('/:id/approve', async (c) => {
     const category = item?.category || item?.item_name || '기타'
 
     // 저장 경로 생성: Z:\[품목 대분류]\YYYY\MM\DD\주문번호\
-    const now = new Date()
-    const yyyy = now.getFullYear()
-    const mm = String(now.getMonth() + 1).padStart(2, '0')
-    const dd = String(now.getDate()).padStart(2, '0')
+    const [yyyy, mm, dd] = kstYmd().split('-')
     const orderNumber = job.order_number || `ORD-${job.order_id}`
     const savedPath = `Z:\\${category}\\${yyyy}\\${mm}\\${dd}\\${orderNumber}\\`
 

@@ -101,7 +101,8 @@
       html += '<tr><td colspan="6" class="text-center text-secondary">최근 정비 이력 없음</td></tr>';
     }
     d.recent_logs.forEach(function(log) {
-      var typeLabel = { MAINTENANCE: '예방정비', REPAIR: '수리', CLEANING: '청소', CALIBRATION: '교정', SERVICE: '서비스' };
+      // equipment.js LOG_TYPE_MAP과 통일 (실제 valid log_type: rip.ts validTypes)
+      var typeLabel = { MAINTENANCE: '정기 점검', REPAIR: '수리', PART_REPLACEMENT: '부품 교체', STATUS_CHANGE: '상태 변경', INSPECTION: '검사' };
       html += '<tr>';
       html += '<td>' + (log.performed_at ? log.performed_at.split('T')[0] : '-') + '</td>';
       html += '<td title="' + esc(log.equipment_name) + '">' + esc(log.equipment_name) + '</td>';

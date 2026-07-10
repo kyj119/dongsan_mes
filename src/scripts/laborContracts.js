@@ -207,7 +207,7 @@ window.lcOpenEditModal = async function(id) {
   if (previewEl) previewEl.classList.add('hidden');
   document.getElementById('lcContractType').value = 'HOURLY';
   document.getElementById('lcWorkType').value = 'REGULAR';
-  document.getElementById('lcContractDate').value = new Date().toISOString().substring(0, 10);
+  document.getElementById('lcContractDate').value = window.kstToday ? window.kstToday() : new Date().toISOString().substring(0, 10);
   document.getElementById('lcStartDate').value = '';
   document.getElementById('lcEndDate').value = '';
   document.getElementById('lcWageStart').value = '';

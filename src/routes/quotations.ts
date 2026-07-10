@@ -21,6 +21,7 @@ import { requireAnyPagePermission, requireEditOrRole } from '../middleware/permi
 import { logActivity } from '../utils/activityLog'
 import { getEntityId, entityFilter } from '../utils/entityFilter'
 import { getNextSeqNumber, getNextEntitySeqNumber, withSeqRetry } from '../utils/sequenceGenerator'
+import { kstYmdCompact, kstYmd } from '../utils/kstDate'
 
 const quotationsRouter = new Hono<HonoEnv>()
 quotationsRouter.use('/*', authMiddleware, requireAnyPagePermission('/quotations', '/orders'))
@@ -29,14 +30,14 @@ quotationsRouter.use('/*', authMiddleware, requireAnyPagePermission('/quotations
 
 // 견적번호 생성: Q-YYYYMMDD-NNN (entity별 카운터)
 async function generateQuotationNumber(db: any, entityId: number): Promise<string> {
-  const dateStr = new Date().toISOString().split('T')[0].replace(/-/g, '')
+  const dateStr = kstYmdCompact()
   return getNextEntitySeqNumber(db, 'quotations', 'quotation_number', entityId, dateStr, { base: 'Q-' })
 }
 
 // 만료 견적서 자동 마킹 (read-time check)
 async function markExpiredIfNeeded(db: any, quotation: any): Promise<any> {
   if (quotation.status === 'ACTIVE' && quotation.valid_until) {
-    const today = new Date().toISOString().split('T')[0]
+    const today = kstYmd()
     if (quotation.valid_until < today) {
       await db.prepare(`UPDATE quotations SET status = 'EXPIRED' WHERE id = ?`).bind(quotation.id).run()
       quotation.status = 'EXPIRED'
@@ -104,7 +105,7 @@ quotationsRouter.get('/', async (c) => {
     const { results } = await c.env.DB.prepare(query).bind(...params).all<Record<string, unknown>>()
 
     // 만료 자동 마킹 (백그라운드)
-    const today = new Date().toISOString().split('T')[0]
+    const today = kstYmd()
     const toExpire = results.filter(q => q.status === 'ACTIVE' && q.valid_until && q.valid_until < today).map(q => q.id)
     if (toExpire.length > 0) {
       const ph = toExpire.map(() => '?').join(',')
@@ -147,12 +148,12 @@ quotationsRouter.get('/', async (c) => {
 
 // ===== GET /stats — KPI 집계 (loadStats: 전체 견적 클라 limit=500 합산 대체) =====
 // getQuotStatus 로직과 동일: valid=ACTIVE&미만료(partial 포함), expired=EXPIRED 또는 ACTIVE&만료.
-// today는 목록 자동만료(markExpiredIfNeeded, GET /)와 동일하게 UTC(new Date().toISOString) 기준 → stats↔목록 표시 일치.
+// today는 목록 자동만료(markExpiredIfNeeded, GET /)와 동일하게 KST(kstYmd) 기준 → stats↔목록 표시 일치.
 // ⚠️ '/:id'보다 먼저 등록 (id='stats' 섀도잉 방지).
 quotationsRouter.get('/stats', async (c) => {
   try {
     const { search = '', client_id = '' } = c.req.query()
-    const today = new Date().toISOString().split('T')[0]
+    const today = kstYmd()
     let query = `
       SELECT
         COUNT(*) AS total,
@@ -243,7 +244,6 @@ quotationsRouter.post('/', async (c) => {
     }
 
     const quotationNumber = await generateQuotationNumber(c.env.DB, getEntityId(c) || 1)
-    const today = new Date()
 
     // VAT rate
     const vatSetting = await c.env.DB.prepare(
@@ -277,9 +277,7 @@ quotationsRouter.post('/', async (c) => {
     // valid_until 기본 30일
     let validUntil = body.valid_until
     if (!validUntil) {
-      const d = new Date(today)
-      d.setDate(d.getDate() + 30)
-      validUntil = d.toISOString().split('T')[0]
+      validUntil = kstYmd(30)
     }
 
     const result = await c.env.DB.prepare(`
@@ -295,7 +293,7 @@ quotationsRouter.post('/', async (c) => {
       quotationNumber,
       body.client_id,
       getEntityId(c) || 1,
-      body.quotation_date || today.toISOString().split('T')[0],
+      body.quotation_date || kstYmd(),
       body.delivery_date || null,
       validUntil,
       totalAmount, vatAmount, body.discount_amount || 0, finalAmount,
@@ -626,7 +624,7 @@ quotationsRouter.post('/:id/convert-to-order', requireEditOrRole('/quotations', 
 
     // 주문번호 생성
     const today = new Date()
-    const dateStr = today.toISOString().split('T')[0].replace(/-/g, '')
+    const dateStr = kstYmdCompact()
     const orderNumber = await getNextEntitySeqNumber(c.env.DB, 'orders', 'order_number', quotation.entity_id || 1, dateStr)
 
     // #209: 낙관적 잠금 — 변환 중 견적서 수정 여부 확인

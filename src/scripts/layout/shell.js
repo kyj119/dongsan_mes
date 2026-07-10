@@ -1843,7 +1843,7 @@ function toggleScheduleInput() {
     // 기본값: 1시간 후
     var d = new Date(Date.now() + 3600000);
     d.setMinutes(Math.ceil(d.getMinutes() / 10) * 10, 0, 0);
-    document.getElementById('msgScheduleAt').value = d.toISOString().slice(0, 16);
+    document.getElementById('msgScheduleAt').value = new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
   }
 }
 

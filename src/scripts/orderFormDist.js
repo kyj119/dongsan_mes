@@ -472,7 +472,7 @@
                 var tomorrow = new Date();
                 tomorrow.setDate(tomorrow.getDate() + 1);
                 var dateEl = document.getElementById('distDeliveryDate');
-                if (dateEl) dateEl.value = tomorrow.toISOString().split('T')[0];
+                if (dateEl) dateEl.value = new Date(tomorrow.getTime() - tomorrow.getTimezoneOffset() * 60000).toISOString().split('T')[0];
                 // 납품시간 옵션 초기화
                 initDistDeliveryTimeOptions();
                 // 출고방법 초기화 (납품시간 자동 설정 포함)

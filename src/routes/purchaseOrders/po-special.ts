@@ -11,6 +11,7 @@ import { authMiddleware, requireRole } from '../../middleware/auth'
 import { requireAnyPagePermission } from '../../middleware/permissions'
 import { getEntityId, entityFilter } from '../../utils/entityFilter'
 import { getNextSeqNumber, getNextEntitySeqNumber } from '../../utils/sequenceGenerator'
+import { kstYmdCompact, kstDate } from '../../utils/kstDate'
 
 const poSpecialRouter = new Hono<HonoEnv>()
 poSpecialRouter.use('/*', authMiddleware, requireAnyPagePermission('/purchase-orders', '/receiving'))
@@ -42,7 +43,7 @@ poSpecialRouter.post('/:id/copy', requireRole('ADMIN', 'MANAGER'), async (c) => 
 
     // 새 발주번호 생성
     const today = new Date()
-    const dateStr = today.toISOString().split('T')[0].replace(/-/g, '')
+    const dateStr = kstYmdCompact()
 
     const newPoNumber = await getNextEntitySeqNumber(c.env.DB, 'purchase_orders', 'po_number', getEntityId(c) || 1, dateStr, { suffix: 'P' })
 
@@ -147,7 +148,7 @@ poSpecialRouter.post('/:id/reorder', requireRole('ADMIN', 'MANAGER'), async (c) 
     `).bind(id).all()
 
     // 새 PO 번호 생성
-    const today = new Date().toISOString().slice(0, 10).replace(/-/g, '')
+    const today = kstYmdCompact()
     // entity별 시퀀스 (0281 복합 UNIQUE(entity_id, po_number) 정합 — 정규 생성 경로와 동일)
     const poNumber = await getNextSeqNumber(c.env.DB, 'purchase_orders', 'po_number', `${today}-P`, 3, getEntityId(c))
 
@@ -156,7 +157,7 @@ poSpecialRouter.post('/:id/reorder', requireRole('ADMIN', 'MANAGER'), async (c) 
       INSERT INTO purchase_orders (po_number, supplier_id, status, order_date, expected_date, delivery_location,
         total_amount, vat_amount, discount_amount, final_amount, notes, internal_notes,
         source_po_id, created_by, updated_by, entity_id, confirmed_at, confirmed_by)
-      VALUES (?, ?, ?, date('now'), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ${targetStatus === 'CONFIRMED' ? "datetime('now')" : 'NULL'}, ${targetStatus === 'CONFIRMED' ? '?' : 'NULL'})
+      VALUES (?, ?, ?, ${kstDate()}, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ${targetStatus === 'CONFIRMED' ? "datetime('now')" : 'NULL'}, ${targetStatus === 'CONFIRMED' ? '?' : 'NULL'})
     `).bind(
       poNumber,
       originalPo.supplier_id,
@@ -264,7 +265,7 @@ poSpecialRouter.post('/quick', requireRole('ADMIN', 'MANAGER'), async (c) => {
     const status = canAutoApprove ? 'CONFIRMED' : 'DRAFT'
 
     // PO 번호 생성
-    const today = new Date().toISOString().slice(0, 10).replace(/-/g, '')
+    const today = kstYmdCompact()
     // entity별 시퀀스 (0281 복합 UNIQUE(entity_id, po_number) 정합 — 정규 생성 경로와 동일)
     const poNumber = await getNextSeqNumber(c.env.DB, 'purchase_orders', 'po_number', `${today}-P`, 3, getEntityId(c))
 
@@ -273,7 +274,7 @@ poSpecialRouter.post('/quick', requireRole('ADMIN', 'MANAGER'), async (c) => {
       INSERT INTO purchase_orders (po_number, supplier_id, status, order_date, expected_date, delivery_location,
         total_amount, vat_amount, discount_amount, final_amount, notes, internal_notes,
         created_by, updated_by, entity_id, confirmed_at, confirmed_by)
-      VALUES (?, ?, ?, date('now'), ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?,
+      VALUES (?, ?, ?, ${kstDate()}, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?,
         ${canAutoApprove ? "datetime('now')" : 'NULL'},
         ${canAutoApprove ? '?' : 'NULL'})
     `).bind(

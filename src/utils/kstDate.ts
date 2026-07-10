@@ -25,3 +25,31 @@ export function kstDateOf(col: string, ...mods: string[]): string {
 export function kstMonth(col: string = "'now'", ...mods: string[]): string {
   return `strftime('%Y-%m', ${col}, '+9 hours'${mods.length ? ', ' + mods.join(', ') : ''})`
 }
+
+// ── JS측 헬퍼 (SQL 조각이 아닌 문자열 생성 — 채번·업무일 기본값·범위 계산의 단일 소스) ──
+// `new Date().toISOString().slice(0,10)`은 UTC라 KST 00~09시에 전날이 됨 → 아래 헬퍼로만 생성할 것.
+
+/** KST 기준 'YYYY-MM-DD'. offsetDays로 어제(-1)/내일(+1) 계산. */
+export function kstYmd(offsetDays = 0): string {
+  return new Date(Date.now() + (9 * 3600 + offsetDays * 86400) * 1000).toISOString().slice(0, 10)
+}
+
+/** KST 기준 'YYYYMMDD' — 문서번호 프리픽스용. */
+export function kstYmdCompact(): string {
+  return kstYmd().replace(/-/g, '')
+}
+
+/** KST 기준 'YYYY-MM'. */
+export function kstYm(): string {
+  return kstYmd().slice(0, 7)
+}
+
+/** KST 기준 연도(number). */
+export function kstYear(): number {
+  return Number(kstYmd().slice(0, 4))
+}
+
+/** KST 기준 'YYYYMMDDHHMMSS' — 초 단위 채번용(예: 실사 IC-번호). */
+export function kstStamp14(): string {
+  return new Date(Date.now() + 9 * 3600 * 1000).toISOString().replace(/[-:T]/g, '').slice(0, 14)
+}

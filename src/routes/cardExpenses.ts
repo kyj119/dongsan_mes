@@ -11,6 +11,7 @@ import { entityFilter, getEntityId } from '../utils/entityFilter'
 import { getEntityCorpNum, getEntityBarobillSenderId } from '../utils/entitySettings'
 import { validateUpload } from '../utils/uploadValidation'
 import { generateCsv, csvResponse, CSV_EXPORT_CAP, CSV_TRUNCATION_NOTE } from '../utils/csv'
+import { kstYmd, kstYmdCompact } from '../utils/kstDate'
 
 const cardExpRouter = new Hono<HonoEnv>()
 cardExpRouter.use('/*', authMiddleware)
@@ -318,10 +319,8 @@ cardExpRouter.post('/categories', requireRole('ADMIN'), async (c) => {
 cardExpRouter.post('/sync', requireRole('ADMIN'), async (c) => {
   try {
     const body = await c.req.json().catch(() => ({})) as { date_start?: string; date_end?: string }
-    const now = new Date()
-    const defaultStart = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
-    const dateStart = body.date_start?.replace(/-/g, '') || `${defaultStart.getFullYear()}${String(defaultStart.getMonth() + 1).padStart(2, '0')}${String(defaultStart.getDate()).padStart(2, '0')}`
-    const dateEnd = body.date_end?.replace(/-/g, '') || now.toISOString().slice(0, 10).replace(/-/g, '')
+    const dateStart = body.date_start?.replace(/-/g, '') || kstYmd(-7).replace(/-/g, '')
+    const dateEnd = body.date_end?.replace(/-/g, '') || kstYmdCompact()
 
     // 바로빌 설정
     const testModeRow = await c.env.DB.prepare("SELECT setting_value FROM settings WHERE setting_key = 'barobill_test_mode'").first() as { setting_value: string } | null

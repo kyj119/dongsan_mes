@@ -5,6 +5,7 @@ import { authMiddleware, requireRole } from '../middleware/auth'
 import { requirePagePermission } from '../middleware/permissions'
 import { getEntityId, entityFilter } from '../utils/entityFilter'
 import { getNextSeqNumber, getNextEntitySeqNumber, withSeqRetry } from '../utils/sequenceGenerator'
+import { kstYmdCompact, kstYmd } from '../utils/kstDate'
 
 const paymentRequestsRouter = new Hono<HonoEnv>()
 paymentRequestsRouter.use('/*', authMiddleware, requirePagePermission('/payment-requests'))
@@ -108,8 +109,7 @@ paymentRequestsRouter.post('/', async (c) => {
     }
 
     // 결의서 번호 생성 (entity별 독립 시퀀스)
-    const today = new Date()
-    const dateStr = today.toISOString().substring(0, 10).replace(/-/g, '')
+    const dateStr = kstYmdCompact()
     const eid = getEntityId(c) || 1
     const requestNumber = await getNextEntitySeqNumber(c.env.DB, 'payment_requests', 'request_number', eid, dateStr, { base: 'PR-' })
 
@@ -122,7 +122,7 @@ paymentRequestsRouter.post('/', async (c) => {
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'DRAFT', ?, ?)
     `).bind(
       requestNumber,
-      body.request_date || today.toISOString().substring(0, 10),
+      body.request_date || kstYmd(),
       body.request_type || 'EXPENSE',
       body.recipient_client_id || null,
       body.recipient_name,
@@ -167,8 +167,7 @@ paymentRequestsRouter.post('/from-po/:poId', async (c) => {
       return c.json({ success: false, error: '이미 지출결의서가 있습니다.' }, 400)
     }
 
-    const today = new Date()
-    const dateStr = today.toISOString().substring(0, 10).replace(/-/g, '')
+    const dateStr = kstYmdCompact()
     const eidApprove = getEntityId(c) || 1
     const requestNumber = await getNextEntitySeqNumber(c.env.DB, 'payment_requests', 'request_number', eidApprove, dateStr, { base: 'PR-' })
 
@@ -181,7 +180,7 @@ paymentRequestsRouter.post('/from-po/:poId', async (c) => {
       ) VALUES (?, ?, 'PURCHASE', ?, ?, ?, ?, ?, 'DRAFT', ?, ?)
     `).bind(
       requestNumber,
-      today.toISOString().substring(0, 10),
+      kstYmd(),
       po.supplier_id,
       po.client_name || '공급사',
       po.final_amount,

@@ -327,7 +327,7 @@
                 try {
                     const tomorrow = new Date();
                     tomorrow.setDate(tomorrow.getDate() + 1);
-                    document.getElementById('deliveryDate').value = tomorrow.toISOString().split('T')[0];
+                    document.getElementById('deliveryDate').value = new Date(tomorrow.getTime() - tomorrow.getTimezoneOffset() * 60000).toISOString().split('T')[0];
 
                     // 납품시간 옵션 초기화
                     initDeliveryTimeOptions();

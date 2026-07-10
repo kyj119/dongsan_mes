@@ -2,6 +2,12 @@
 var currentMsgTab = 'history';
 var logsPage = 1;
 
+// 거래처 수신자 배지용 client_type 라벨 — clients.js 표시 라벨과 동일 유지
+function msgClientTypeLabel(t) {
+  var m = { SALES: '매출', PURCHASE: '매입', BOTH: '매출+매입' };
+  return m[t] || t;
+}
+
 (function init() {
   loadSummary();
   loadLogs();
@@ -74,7 +80,7 @@ async function loadSummary() {
   }
 
   try {
-    var today = new Date().toISOString().slice(0, 10);
+    var today = window.kstToday ? window.kstToday() : new Date().toISOString().slice(0, 10);
     var logsRes = await axios.get('/api/kakao/logs', { params: { date_from: today, date_to: today, limit: 1 } });
     if (logsRes.data.success) {
       document.getElementById('msgTodayCount').textContent = (logsRes.data.data.pagination.total || 0) + '건';
@@ -324,7 +330,7 @@ function toggleBulkSchedule() {
   if (checked) {
     var d = new Date(Date.now() + 3600000);
     d.setMinutes(Math.ceil(d.getMinutes() / 10) * 10, 0, 0);
-    document.getElementById('bulkScheduleAt').value = d.toISOString().slice(0, 16);
+    document.getElementById('bulkScheduleAt').value = new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
   }
 }
 
@@ -437,8 +443,8 @@ function renderRecipientList(items) {
     var disabledCls = hasContact ? '' : ' opacity-40';
     var checkedAttr = isSelected ? ' checked' : '';
     var disabledAttr = hasContact ? '' : ' disabled';
-    var badge = item.role ? '<span class="text-xs bg-gray-100 text-gray-500 rounded px-1.5 py-0.5">' + escapeHtml(item.role) + '</span>' : '';
-    if (item.dept) badge = '<span class="text-xs bg-gray-100 text-gray-500 rounded px-1.5 py-0.5">' + escapeHtml(item.dept) + '</span>';
+    var badge = item.role ? '<span class="text-xs bg-gray-100 text-gray-500 rounded px-1.5 py-0.5">' + escapeHtml((window.ROLE_NAMES && window.ROLE_NAMES[item.role]) || item.role) + '</span>' : '';
+    if (item.dept) badge = '<span class="text-xs bg-gray-100 text-gray-500 rounded px-1.5 py-0.5">' + escapeHtml(msgClientTypeLabel(item.dept)) + '</span>';
     return '<label class="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-gray-50 cursor-pointer border-b border-gray-50' + disabledCls + '">'
       + '<input type="checkbox" class="w-4 h-4 text-blue-600 rounded recipient-check" data-id="' + item.id + '" data-name="' + escapeHtml(item.name || '') + '" data-phone="' + escapeHtml(item.phone || '') + '" data-email="' + escapeHtml(item.email || '') + '"' + checkedAttr + disabledAttr + ' onchange="onRecipientCheck(this)">'
       + '<div class="flex-1 min-w-0">'

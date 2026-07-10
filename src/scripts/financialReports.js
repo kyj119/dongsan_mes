@@ -467,8 +467,8 @@ window.exportFinancialCsv = async function() {
   var to = new Date(today.getFullYear(), today.getMonth() + 1, 0);
   var elInitFrom = document.getElementById('pnlFromDate'); if (!elInitFrom) { console.warn('[financialReports] #pnlFromDate not found'); return; }
   var elInitTo = document.getElementById('pnlToDate'); if (!elInitTo) { console.warn('[financialReports] #pnlToDate not found'); return; }
-  elInitFrom.value = from.toISOString().split('T')[0];
-  elInitTo.value = to.toISOString().split('T')[0];
+  elInitFrom.value = new Date(from.getTime() - from.getTimezoneOffset() * 60000).toISOString().split('T')[0];
+  elInitTo.value = new Date(to.getTime() - to.getTimezoneOffset() * 60000).toISOString().split('T')[0];
 
   window.loadPnl();
 })();
