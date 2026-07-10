@@ -1,7 +1,7 @@
 // 부가세 신고서 자동집계
 import { Hono } from 'hono'
 import type { HonoEnv } from '../types/env'
-import { authMiddleware, requireRole } from '../middleware/auth'
+import { authMiddleware } from '../middleware/auth'
 import { requireAccessOrRole } from '../middleware/permissions'
 import { entityFilter, getEntityId } from '../utils/entityFilter'
 

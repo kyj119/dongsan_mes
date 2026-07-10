@@ -2,7 +2,7 @@ import { Hono } from 'hono'
 import type { HonoEnv } from '../../types/env'
 import type { Order, OrderItem, ApiResponse, PaginatedResponse } from '../../types/models'
 import { authMiddleware, requireRole } from '../../middleware/auth'
-import { requireAnyPagePermission } from '../../middleware/permissions'
+import { requireAnyPagePermission, requireAccessOrRole } from '../../middleware/permissions'
 import { getNextSeqNumber, getNextEntitySeqNumber, withSeqRetry } from '../../utils/sequenceGenerator'
 import { logActivity } from '../../utils/activityLog'
 import { notifyRoles } from '../../utils/notify'
@@ -390,7 +390,7 @@ ordersCoreRouter.get('/:id/invoice', async (c) => {
 
 // GET /in-transit - 배송 중 주문 목록 (출고 처리됨, 아직 SHIPPED 아님)
 // ※ /:id 보다 먼저 등록해야 "in-transit"가 :id로 매칭되지 않음
-ordersCoreRouter.get('/in-transit', requireRole('ADMIN', 'MANAGER'), async (c) => {
+ordersCoreRouter.get('/in-transit', requireAccessOrRole('/orders', 'MANAGER'), async (c) => {
   try {
     const ef = entityFilter(c, 'o')
     const { results } = await c.env.DB.prepare(`

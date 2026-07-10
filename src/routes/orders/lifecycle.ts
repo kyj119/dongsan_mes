@@ -9,7 +9,7 @@ import { Hono } from 'hono'
 import type { HonoEnv } from '../../types/env'
 import type { Order } from '../../types/models'
 import { authMiddleware, requireRole } from '../../middleware/auth'
-import { requireAnyPagePermission } from '../../middleware/permissions'
+import { requireAnyPagePermission, requireEditOrRole } from '../../middleware/permissions'
 import { logActivity } from '../../utils/activityLog'
 import { notifyRoles } from '../../utils/notify'
 import { recalculateOrderCosts } from '../../utils/costCalculator'
@@ -143,7 +143,7 @@ ordersLifecycleRouter.patch('/:id/output-folder', async (c) => {
 })
 
 // Update order status (MANAGER+ only)
-ordersLifecycleRouter.patch('/:id/status', requireRole('ADMIN', 'MANAGER'), async (c) => {
+ordersLifecycleRouter.patch('/:id/status', requireEditOrRole('/orders', 'MANAGER'), async (c) => {
   try {
     const id = c.req.param('id')
     const { status, reason, confirmed_card_ids, cancelled_card_ids } = await c.req.json()
@@ -359,7 +359,7 @@ ordersLifecycleRouter.patch('/:id/status', requireRole('ADMIN', 'MANAGER'), asyn
 // ============================================================================
 // PATCH /:id/cancel - 주문 취소 (별도 버튼, 이유 필수)
 // ============================================================================
-ordersLifecycleRouter.patch('/:id/cancel', requireRole('ADMIN', 'MANAGER'), async (c) => {
+ordersLifecycleRouter.patch('/:id/cancel', requireEditOrRole('/orders', 'MANAGER'), async (c) => {
   try {
     const id = c.req.param('id')
     const user = c.get('user')
@@ -460,7 +460,7 @@ ordersLifecycleRouter.patch('/:id/cancel', requireRole('ADMIN', 'MANAGER'), asyn
 // ============================================================================
 // PATCH /:id/restore - 취소된 주문 복구 (→ CONFIRMED)
 // ============================================================================
-ordersLifecycleRouter.patch('/:id/restore', requireRole('ADMIN', 'MANAGER'), async (c) => {
+ordersLifecycleRouter.patch('/:id/restore', requireEditOrRole('/orders', 'MANAGER'), async (c) => {
   try {
     const id = c.req.param('id')
     const user = c.get('user')

@@ -75,3 +75,4 @@
 | BC | 부서/직급/고용형태 SSOT | src/constants/hr.ts(DEPARTMENTS/POSITIONS/EMPLOYMENT_TYPES), deptOptions()헬퍼, layout HR_ENUMS_JS→window.DEPT_NAMES. 사무직=ADMIN_DEPT → memory [design-hr-enum-ssot] |
 | BD | 고정연장 포괄임금 분해 | calcInclusivePay, 시급=base÷225.5(209+고정OT×1.5), 기본급=시급×209, 고정연장수당=총액−기본급, batch/sync → memory [design-payroll-inclusive-overtime] |
 | BE | 급여대장 고정형+회사부담탭 | /payroll 확장토글, table-layout:fixed 고정형, 급여대장/회사부담금 2탭, 수당·공제 전개+합계+인쇄·CSV → memory [design-payroll-ledger] |
+| BF | 역할 4→8 확장 + 읽기/쓰기 권한 | ACCOUNTANT/SALES/FINISHING/SHIPPING 추가. users.role CHECK 재빌드 불가(FK RESTRICT)→job_role 컬럼 우회(로그인 COALESCE). role_page_permissions.can_edit 2단(열람/편집). enforcement=가산형 requireEditOrRole/requireAccessOrRole(라우터 read 게이트/write 엔드포인트 2계층, ADMIN·레거시 회귀0). 신규 seed는 page_key FK 존재필터 필수 → memory [design-role-expansion] |

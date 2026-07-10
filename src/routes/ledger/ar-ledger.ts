@@ -7,7 +7,7 @@
  */
 import { Hono } from 'hono'
 import type { HonoEnv } from '../../types/env'
-import { authMiddleware, requireRole } from '../../middleware/auth'
+import { authMiddleware } from '../../middleware/auth'
 import { requireEditOrRole } from '../../middleware/permissions'
 import { entityFilter } from '../../utils/entityFilter'
 import { kstYm } from '../../utils/kstDate'

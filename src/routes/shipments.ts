@@ -1,6 +1,6 @@
 import { Hono } from 'hono'
 import type { HonoEnv } from '../types/env'
-import { authMiddleware, requireRole } from '../middleware/auth'
+import { authMiddleware } from '../middleware/auth'
 import { requireAnyPagePermission, requireEditOrRole, requireAccessOrRole } from '../middleware/permissions'
 import { sendEmail } from '../services/emailProvider'
 import { renderTemplate } from '../services/emailTemplates'

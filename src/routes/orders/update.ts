@@ -7,7 +7,7 @@
 import { Hono } from 'hono'
 import type { HonoEnv } from '../../types/env'
 import type { Order } from '../../types/models'
-import { authMiddleware, requireRole } from '../../middleware/auth'
+import { authMiddleware } from '../../middleware/auth'
 import { requireAnyPagePermission, requireEditOrRole } from '../../middleware/permissions'
 import { recalculateOrderCosts } from '../../utils/costCalculator'
 import { getEntityId, entityFilter } from '../../utils/entityFilter'
