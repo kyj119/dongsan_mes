@@ -78,6 +78,26 @@ export function requirePageEdit(pageKey: string): MiddlewareHandler<HonoEnv> {
   }
 }
 
+// 가산형 쓰기 가드 — 레거시 requireRole 대체용(회귀 0).
+//   ADMIN 또는 명시된 legacyRoles 는 매트릭스와 무관하게 통과(기존 동작 보존),
+//   그 외 역할(신규 ACCOUNTANT/SALES/FINISHING/SHIPPING 등)은 해당 페이지 can_edit=1 이면 통과.
+//   즉 신규 역할은 권한관리 매트릭스로 편집을 통제하고, 기존 역할은 종전 그대로.
+//   삭제·토글 등 민감 엔드포인트는 이 가드 대신 requireRole('ADMIN') 유지.
+export function requireEditOrRole(pageKey: string, ...legacyRoles: string[]): MiddlewareHandler<HonoEnv> {
+  return async (c, next) => {
+    const user = c.get('user') as any
+    if (!user?.role) {
+      return c.json({ success: false, error: '인증이 필요합니다' }, 401)
+    }
+    if (user.role === 'ADMIN' || legacyRoles.includes(user.role)) return next()
+    const editable = await getEditablePages(c.env.DB, user.role)
+    if (!editable.has(pageKey)) {
+      return c.json({ success: false, error: '이 데이터를 수정할 권한이 없습니다 (열람 전용)' }, 403)
+    }
+    await next()
+  }
+}
+
 // 페이지용 ADMIN 전용 가드 (비-SPA 초기 로드에서 user 없으면 통과, SPA에서만 차단).
 // requireAdmin(auth.ts)은 API용이라 user 없으면 401 반환 → 페이지 직접 접근 시 깨짐.
 export function requireAdminPage(): MiddlewareHandler<HonoEnv> {

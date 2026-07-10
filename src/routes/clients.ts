@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import type { HonoEnv } from '../types/env'
 import type { Client, ApiResponse, PaginatedResponse } from '../types/models'
 import { authMiddleware, requireRole } from '../middleware/auth'
+import { requireEditOrRole } from '../middleware/permissions'
 import { hashPassword } from '../utils/crypto'
 import { entityFilter, getEntityId } from '../utils/entityFilter'
 import { getNextSeqNumber } from '../utils/sequenceGenerator'
@@ -562,7 +563,7 @@ clientsRouter.get('/:id/intelligence', async (c) => {
 })
 
 // POST /:id/notes - 메모 등록
-clientsRouter.post('/:id/notes', requireRole('ADMIN', 'MANAGER', 'DESIGNER'), async (c) => {
+clientsRouter.post('/:id/notes', requireEditOrRole('/clients', 'MANAGER', 'DESIGNER'), async (c) => {
   try {
     const clientId = c.req.param('id')
     const user = c.get('user')
@@ -595,7 +596,7 @@ clientsRouter.post('/:id/notes', requireRole('ADMIN', 'MANAGER', 'DESIGNER'), as
 })
 
 // DELETE /:id/notes/:noteId - 메모 삭제
-clientsRouter.delete('/:id/notes/:noteId', requireRole('ADMIN', 'MANAGER'), async (c) => {
+clientsRouter.delete('/:id/notes/:noteId', requireEditOrRole('/clients', 'MANAGER'), async (c) => {
   try {
     // #471: noteId 단독 삭제 = IDOR. client_id(URL) + entity_id 2축으로 소유 검증.
     const clientId = c.req.param('id')
@@ -750,7 +751,7 @@ clientsRouter.post('/import', async (c) => {
 })
 
 // Create new client (MANAGER+ only)
-clientsRouter.post('/', requireRole('ADMIN', 'MANAGER'), async (c) => {
+clientsRouter.post('/', requireEditOrRole('/clients', 'MANAGER'), async (c) => {
   try {
     const clientData = await c.req.json()
 
@@ -851,7 +852,7 @@ clientsRouter.post('/', requireRole('ADMIN', 'MANAGER'), async (c) => {
 })
 
 // Update client (MANAGER+ only)
-clientsRouter.patch('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
+clientsRouter.patch('/:id', requireEditOrRole('/clients', 'MANAGER'), async (c) => {
   try {
     const id = c.req.param('id')
     const clientData = await c.req.json()

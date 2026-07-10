@@ -8,7 +8,7 @@ import { Hono } from 'hono'
 import type { HonoEnv } from '../../types/env'
 import type { Order } from '../../types/models'
 import { authMiddleware, requireRole } from '../../middleware/auth'
-import { requireAnyPagePermission } from '../../middleware/permissions'
+import { requireAnyPagePermission, requireEditOrRole } from '../../middleware/permissions'
 import { recalculateOrderCosts } from '../../utils/costCalculator'
 import { getEntityId, entityFilter } from '../../utils/entityFilter'
 import { recommendAssignedEntity, recalcOrderBillingGroups, generateCardsForOrder } from './helpers'
@@ -17,7 +17,7 @@ const ordersUpdateRouter = new Hono<HonoEnv>()
 ordersUpdateRouter.use('/*', authMiddleware, requireAnyPagePermission('/orders', '/cards'))
 
 // Update order (MANAGER+ only)
-ordersUpdateRouter.put('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
+ordersUpdateRouter.put('/:id', requireEditOrRole('/orders', 'MANAGER'), async (c) => {
   try {
     const id = c.req.param('id')
     const user = c.get('user')

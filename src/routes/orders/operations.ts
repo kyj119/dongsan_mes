@@ -2,7 +2,7 @@ import { Hono } from 'hono'
 import type { HonoEnv } from '../../types/env'
 import type { Order, OrderItem, ApiResponse, PaginatedResponse } from '../../types/models'
 import { authMiddleware, requireRole } from '../../middleware/auth'
-import { requireAnyPagePermission } from '../../middleware/permissions'
+import { requireAnyPagePermission, requireEditOrRole } from '../../middleware/permissions'
 import { getNextSeqNumber, getNextEntitySeqNumber, withSeqRetry } from '../../utils/sequenceGenerator'
 import { logActivity } from '../../utils/activityLog'
 import { notifyRoles } from '../../utils/notify'
@@ -53,7 +53,7 @@ interface SettingValueRow { setting_value: string | null }
 const ordersOpsRouter = new Hono<HonoEnv>()
 ordersOpsRouter.use('/*', authMiddleware, requireAnyPagePermission('/orders', '/cards'))
 
-ordersOpsRouter.post('/:id/copy', requireRole('ADMIN', 'MANAGER', 'DESIGNER'), async (c) => {
+ordersOpsRouter.post('/:id/copy', requireEditOrRole('/orders', 'MANAGER', 'DESIGNER'), async (c) => {
   try {
     const id = c.req.param('id')
     const user = c.get('user')

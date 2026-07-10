@@ -1,9 +1,9 @@
 # 사용자 역할 확장 + 읽기/쓰기 권한 분리
 
 - **작성일**: 2026-07-10
-- **상태**: Phase 0~1 + Phase 2 인프라 완료 (worktree `session/role-expansion`, typecheck+build 통과). Phase 2 enforcement 배선 = **Option A 진행 중**(일반 쓰기 requirePageEdit, 삭제·민감 requireRole('ADMIN') 유지). Phase 3(검증·배포) 대기.
-- **Phase 2 인프라**: `rpp.can_edit` + 미들웨어 `requirePageEdit`/`getEditablePages`(캐시 access|edit) + `/matrix`·PATCH·`/me` can_edit + permissions.js [열람][편집] 2체크박스·역할탭 7개 동적화.
-- **Enforcement 배선 원칙(A)**: `requireRole('ADMIN', ...다중)` → `requirePageEdit('/pagekey')` 로 전환(매트릭스 편집권). 단 **회귀 방지**: 전환 전 해당 페이지에 기존 허용 역할(MANAGER/DESIGNER/OPERATOR)의 can_edit=1 확인/보강 필수(backfill=can_access라 대체로 유지되나 gap 시 seed 추가). 단일 `requireRole('ADMIN')`(삭제·토글·포털·크레딧 등)은 유지.
+- **상태**: Phase 0~1 + Phase 2 인프라 완료 + **Option A enforcement SALES 핵심 완료**(worktree `session/role-expansion`, typecheck+build 통과). enforcement 잔여 라우터 스윕 + Phase 3(검증·배포) 대기.
+- **Phase 2 인프라**: `rpp.can_edit` + 미들웨어 `requirePageEdit`/`requireEditOrRole`/`getEditablePages`(캐시 access|edit) + `/matrix`·PATCH·`/me` can_edit + permissions.js [열람][편집] 2체크박스·역할탭 7개 동적화.
+- **Enforcement 배선 원칙(A) — 실측 반영**: 매트릭스 seed 가 과거 requireRole 권한보다 **좁음**(MANAGER 매트릭스에 /orders·/clients 없음, 로컬 실증). 순수 requirePageEdit 치환 시 MANAGER 회귀 → **가산형 `requireEditOrRole(pageKey, ...legacyRoles)`** 채택: ADMIN·legacyRoles 는 종전 그대로, 신규역할은 매트릭스 can_edit 로 통과(회귀 0). 삭제·토글·포털·크레딧·청구 등 민감/재무는 `requireRole` 유지.
 - **요청**: "사용자 역할이 조금 더 분리되었으면 좋겠어"
 - **채택안**: 옵션 B (역할 8개 + 읽기/쓰기 구분 + 사이드바 매트릭스 일원화), MANAGER 유지
 
@@ -115,6 +115,21 @@
 **로컬 검증 통과**: typecheck+build, job_role 5/5 백필, 신규4역할 seed(경리13/9·영업8/5·후가공7/3·배송7/4), 기존역할 무변, E2E(SALES 사용자→effective_role=SALES→매트릭스 정확).
 
 **구현 파일**: `types/roles.ts`(8역할+ROLE_LABELS+toLegacyRole) · `migrations/0453_role_expansion_rw.sql` · `routes/auth.ts` · `routes/users.ts` · `pages/users.ts` · `scripts/users.js` · `scripts/layout/shell.js` · `routes/approvals.ts`.
+
+## Option A enforcement 롤아웃 트래커
+
+`requireRole` = 40+ 라우터·200+ 엔드포인트. `requireEditOrRole` 로 점진 전환.
+
+- ✅ **clients.ts** (SALES) — create/update/notes POST·DELETE → `requireEditOrRole('/clients','MANAGER'[,'DESIGNER'])`. credit·toggle·delete·portal·billing-groups·import = `requireRole` 유지.
+- ✅ **orders/update.ts** PUT /:id, **orders/operations.ts** POST /:id/copy → `requireEditOrRole('/orders','MANAGER'[,'DESIGNER'])`. (orders create·조회는 이미 `requireAnyPagePermission('/orders','/cards')` 매트릭스라 SALES 통과.)
+- ⏳ **orders lifecycle** (status/cancel/restore) — 운영 write. 정책 후 `requireEditOrRole('/orders','MANAGER')`. bill/billing-status/bulk-bill = 재무, `requireRole` 유지.
+- ⏳ **quotations** (SALES) — 견적 write.
+- ⏳ **claims.ts** (SALES) /quality — defect-codes·resolve.
+- ⏳ **FINISHING**: cards/lifecycle.ts `bulk/status`, cards/scheduling.ts `bulk/priority` → `requireEditOrRole('/cards','MANAGER','OPERATOR')`. finishing 라우터.
+- ⏳ **SHIPPING**: shipments·pack·shipments-dashboard write.
+- ⏳ **ACCOUNTANT (경리)** — ⚠️ 재무 라우터(`accounting.ts`·`cashReceipts.ts`·`barobill.ts`·`bom.ts`·`costs.ts` 등)는 **라우터 레벨 `.use('/*', requireRole('ADMIN','MANAGER'))` = read 게이트** → ACCOUNTANT 가 읽기조차 차단. 라우터 레벨은 read-access 가드(`requireAccessOrRole` 신설 or requirePagePermission)로, write 엔드포인트는 `requireEditOrRole` 로 2계층 처리 필요. cardExpenses·cashSchedule·cashFlow 도 동일 패턴.
+
+> 원칙: 다중 `requireRole('ADMIN','MANAGER',...)` write → `requireEditOrRole(pageKey, ...나머지역할)`. 단일 `requireRole('ADMIN')` 및 재무/삭제/토글 = 유지. 라우터 레벨 read 게이트는 access 가드로 별도 전환.
 
 ## 미해결/후속
 - 읽기/쓰기 가드 전면 배선(Phase 2는 민감 페이지만) — 잔여 라우트는 별도 스윕.
