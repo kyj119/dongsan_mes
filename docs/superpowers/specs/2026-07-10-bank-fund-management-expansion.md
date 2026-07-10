@@ -1,7 +1,7 @@
 # 자금관리(/bank) 확장 — 계좌잔액·거래처검색·비용분류/고정비 자동매칭·계좌간이체
 
 - 작성: 2026-07-10
-- 상태: **P1+P2 구현·로컬검증 완료(미배포)** / P3(계좌간 이체)=보류
+- 상태: **P1+P2+P3 전체 prod 배포완료** (main `06432e0f`, 마이그 0454·0455 remote 적용, apex 401 검증)
 - 대상 파일: `src/pages/bank.ts`, `src/scripts/bank.js`, `src/routes/bank.ts`, `migrations/0454_bank_fixed_expense_match.sql`
 
 ## 사용자 결정(확정)
