@@ -15,12 +15,14 @@
  */
 import { Hono } from 'hono'
 import type { HonoEnv } from '../types/env'
-import { authMiddleware, requireRole } from '../middleware/auth'
+import { authMiddleware } from '../middleware/auth'
+import { requireAccessOrRole } from '../middleware/permissions'
 import { entityFilter } from '../utils/entityFilter'
 import { kstDateOf } from '../utils/kstDate'
 
 const accountingRouter = new Hono<HonoEnv>()
-accountingRouter.use('/*', authMiddleware, requireRole('ADMIN', 'MANAGER'))
+// ACCOUNTANT(경리) 등 신규 역할은 /accounting 매트릭스 열람권으로 통과(회귀 0: ADMIN·MANAGER 종전 유지)
+accountingRouter.use('/*', authMiddleware, requireAccessOrRole('/accounting', 'MANAGER'))
 
 /** YYYY-MM-DD → 현재 KST 기준 이번달 1일/오늘 기본값 보정 (프론트가 항상 전달하지만 방어용) */
 function defaultRange(start?: string, end?: string): { start: string; end: string } {

@@ -17,7 +17,7 @@
 import { Hono } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
-import { requireAnyPagePermission } from '../middleware/permissions'
+import { requireAnyPagePermission, requireEditOrRole } from '../middleware/permissions'
 import { logActivity } from '../utils/activityLog'
 import { getEntityId, entityFilter } from '../utils/entityFilter'
 import { getNextSeqNumber, getNextEntitySeqNumber, withSeqRetry } from '../utils/sequenceGenerator'
@@ -548,7 +548,7 @@ quotationsRouter.put('/:id', async (c) => {
 })
 
 // ===== DELETE /:id — 취소 (soft delete) =====
-quotationsRouter.delete('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
+quotationsRouter.delete('/:id', requireEditOrRole('/quotations', 'MANAGER'), async (c) => {
   try {
     const id = c.req.param('id')
     const user = c.get('user')
@@ -576,7 +576,7 @@ quotationsRouter.delete('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
 })
 
 // ===== POST /:id/convert-to-order — 견적서 → 주문 (immutable snapshot 복사) =====
-quotationsRouter.post('/:id/convert-to-order', requireRole('ADMIN', 'MANAGER'), async (c) => {
+quotationsRouter.post('/:id/convert-to-order', requireEditOrRole('/quotations', 'MANAGER'), async (c) => {
   try {
     const id = c.req.param('id')
     const user = c.get('user')

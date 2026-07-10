@@ -8,7 +8,7 @@ import { Hono } from 'hono'
 import type { Context } from 'hono'
 import type { HonoEnv } from '../../types/env'
 import { authMiddleware, requireRole } from '../../middleware/auth'
-import { requireAnyPagePermission } from '../../middleware/permissions'
+import { requireAnyPagePermission, requireEditOrRole } from '../../middleware/permissions'
 import { logActivity } from '../../utils/activityLog'
 import { getEntityId } from '../../utils/entityFilter'
 
@@ -107,7 +107,7 @@ cardsSchedulingRouter.put('/schedule/priority/:id', async (c) => {
 })
 
 // Bulk priority update (must be before /:id)
-cardsSchedulingRouter.patch('/bulk/priority', requireRole('ADMIN', 'MANAGER'), async (c) => {
+cardsSchedulingRouter.patch('/bulk/priority', requireEditOrRole('/cards', 'MANAGER'), async (c) => {
   try {
     const { card_ids, priority } = await c.req.json()
 

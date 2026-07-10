@@ -122,12 +122,13 @@
 
 - ✅ **clients.ts** (SALES) — create/update/notes POST·DELETE → `requireEditOrRole('/clients','MANAGER'[,'DESIGNER'])`. credit·toggle·delete·portal·billing-groups·import = `requireRole` 유지.
 - ✅ **orders/update.ts** PUT /:id, **orders/operations.ts** POST /:id/copy → `requireEditOrRole('/orders','MANAGER'[,'DESIGNER'])`. (orders create·조회는 이미 `requireAnyPagePermission('/orders','/cards')` 매트릭스라 SALES 통과.)
-- ⏳ **orders lifecycle** (status/cancel/restore) — 운영 write. 정책 후 `requireEditOrRole('/orders','MANAGER')`. bill/billing-status/bulk-bill = 재무, `requireRole` 유지.
-- ⏳ **quotations** (SALES) — 견적 write.
-- ⏳ **claims.ts** (SALES) /quality — defect-codes·resolve.
-- ⏳ **FINISHING**: cards/lifecycle.ts `bulk/status`, cards/scheduling.ts `bulk/priority` → `requireEditOrRole('/cards','MANAGER','OPERATOR')`. finishing 라우터.
-- ⏳ **SHIPPING**: shipments·pack·shipments-dashboard write.
-- ⏳ **ACCOUNTANT (경리)** — ⚠️ 재무 라우터(`accounting.ts`·`cashReceipts.ts`·`barobill.ts`·`bom.ts`·`costs.ts` 등)는 **라우터 레벨 `.use('/*', requireRole('ADMIN','MANAGER'))` = read 게이트** → ACCOUNTANT 가 읽기조차 차단. 라우터 레벨은 read-access 가드(`requireAccessOrRole` 신설 or requirePagePermission)로, write 엔드포인트는 `requireEditOrRole` 로 2계층 처리 필요. cardExpenses·cashSchedule·cashFlow 도 동일 패턴.
+- ✅ **quotations.ts** (SALES) — delete·convert-to-order → `requireEditOrRole('/quotations','MANAGER')`. (create/update는 라우터레벨 매트릭스.)
+- ✅ **claims.ts** (SALES) /quality — resolve → `requireEditOrRole('/quality','MANAGER')`. defect-codes(config)=requireRole 유지.
+- ✅ **FINISHING**: cards/lifecycle.ts `bulk/status`→`requireEditOrRole('/cards','MANAGER','OPERATOR')`, cards/scheduling.ts `bulk/priority`→`requireEditOrRole('/cards','MANAGER')`. ship/unship·finishing_methods(config)=requireRole 유지.
+- ✅ **SHIPPING**: shipments.ts create/merge/unmerge/by-order/:id/status/ship→`requireEditOrRole('/shipments',...)`, consolidation-candidates(GET)→`requireAccessOrRole('/shipments','MANAGER')`.
+- ✅ **ACCOUNTANT accounting.ts** 허브(조회) — 라우터레벨 → `requireAccessOrRole('/accounting','MANAGER')`. (정정은 /ledger 경유.)
+- ⏳ **orders lifecycle** (status/cancel/restore) — 운영 write. bill/billing-status/bulk-bill·delete = 재무/삭제, `requireRole` 유지.
+- ⏳ **ACCOUNTANT 잔여 재무** — cashSchedule.ts(/cash-schedule, per-endpoint 다수)·cardExpenses.ts(/card-expenses, mixed)·ledger/*(/ledger)·tax-invoices·paymentRequests(/payment-requests)·vat-reports·cashFlow. 각 GET→requireAccessOrRole, write→requireEditOrRole. ⚠️ bank.ts는 전 엔드포인트 `requireRole('ADMIN')`(민감)=ADMIN 유지 → ACCOUNTANT /bank는 메뉴만·직접페이지 제한(허브 경유 조회). barobill/bom/costs/cashReceipts=신규역할 무관, 유지.
 
 > 원칙: 다중 `requireRole('ADMIN','MANAGER',...)` write → `requireEditOrRole(pageKey, ...나머지역할)`. 단일 `requireRole('ADMIN')` 및 재무/삭제/토글 = 유지. 라우터 레벨 read 게이트는 access 가드로 별도 전환.
 

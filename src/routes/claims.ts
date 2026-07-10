@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
+import { requireEditOrRole } from '../middleware/permissions'
 import { getEntityId, entityFilter } from '../utils/entityFilter'
 import { getNextEntitySeqNumber, withSeqRetry } from '../utils/sequenceGenerator'
 
@@ -101,7 +102,7 @@ claims.post('/', async (c) => {
 })
 
 // ─── 클레임 해결 ──────────────────────────────────────────────────────────────
-claims.patch('/:id/resolve', requireRole('ADMIN', 'MANAGER'), async (c) => {
+claims.patch('/:id/resolve', requireEditOrRole('/quality', 'MANAGER'), async (c) => {
   const id = Number(c.req.param('id'))
   const userId = c.get('user')?.id
   const { resolution_type, resolved_amount, rework_order_id } = await c.req.json()

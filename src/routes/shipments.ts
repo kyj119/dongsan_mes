@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
-import { requireAnyPagePermission } from '../middleware/permissions'
+import { requireAnyPagePermission, requireEditOrRole, requireAccessOrRole } from '../middleware/permissions'
 import { sendEmail } from '../services/emailProvider'
 import { renderTemplate } from '../services/emailTemplates'
 import { entityFilter, getEntityId } from '../utils/entityFilter'
@@ -267,7 +267,7 @@ shipmentsRouter.get('/daily', async (c) => {
 // 권역 키 = delivery_info의 '[12345]' 프리픽스를 쿼리 시점 파생 (컬럼 추가 없이 상시 동기)
 // ※ /:id 보다 먼저 등록
 // ============================================================================
-shipmentsRouter.get('/consolidation-candidates', requireRole('ADMIN', 'MANAGER'), async (c) => {
+shipmentsRouter.get('/consolidation-candidates', requireAccessOrRole('/shipments', 'MANAGER'), async (c) => {
   try {
     const { date } = c.req.query()
     const targetDate = date || new Date().toISOString().substring(0, 10)
@@ -368,7 +368,7 @@ shipmentsRouter.get('/consolidation-candidates', requireRole('ADMIN', 'MANAGER')
 // 각 주문의 shipment는 유지, 대표(최소 shipment id) 외에는 merged_into_id로 연결.
 // 송장/라벨수량/수신자주소 쓰기는 대표로 리다이렉트(applyShipmentFieldPatch).
 // ============================================================================
-shipmentsRouter.post('/merge', requireRole('ADMIN', 'MANAGER'), async (c) => {
+shipmentsRouter.post('/merge', requireEditOrRole('/shipments', 'MANAGER'), async (c) => {
   try {
     const user = c.get('user')
     const { order_ids } = await c.req.json<{ order_ids: number[] }>()
@@ -432,7 +432,7 @@ shipmentsRouter.post('/merge', requireRole('ADMIN', 'MANAGER'), async (c) => {
 // ============================================================================
 // POST /unmerge - 합포장 해제 (그룹 전체 해제)
 // ============================================================================
-shipmentsRouter.post('/unmerge', requireRole('ADMIN', 'MANAGER'), async (c) => {
+shipmentsRouter.post('/unmerge', requireEditOrRole('/shipments', 'MANAGER'), async (c) => {
   try {
     const { order_id } = await c.req.json<{ order_id: number }>()
     if (!order_id) return c.json({ success: false, error: 'order_id가 필요합니다.' }, 400)
@@ -747,7 +747,7 @@ shipmentsRouter.get('/:id', async (c) => {
 // ============================================================================
 // POST / - 출고 등록
 // ============================================================================
-shipmentsRouter.post('/', requireRole('ADMIN', 'MANAGER', 'DESIGNER'), async (c) => {
+shipmentsRouter.post('/', requireEditOrRole('/shipments', 'MANAGER', 'DESIGNER'), async (c) => {
   try {
     const user = c.get('user')
     const body = await c.req.json() as {
@@ -1034,7 +1034,7 @@ async function applyShipmentFieldPatch(db: HonoEnv['Bindings']['DB'], shipmentId
 // P1 정합화: 기존 PATCH /:id의 "shipment PK 우선 → order_id 폴백" 조회는 shipments 행이
 // 축적되면 타 주문 shipment를 오업데이트할 수 있어(ID 공간 충돌) 주문 기준 명시 라우트로 분리.
 // ============================================================================
-shipmentsRouter.patch('/by-order/:orderId', requireRole('ADMIN', 'MANAGER', 'OPERATOR'), async (c) => {
+shipmentsRouter.patch('/by-order/:orderId', requireEditOrRole('/shipments', 'MANAGER', 'OPERATOR'), async (c) => {
   try {
     const orderId = c.req.param('orderId')
     const body = await c.req.json<ShipmentPatchBody>()
@@ -1060,7 +1060,7 @@ shipmentsRouter.patch('/by-order/:orderId', requireRole('ADMIN', 'MANAGER', 'OPE
 // ============================================================================
 // PATCH /:id - 라벨 수량 / 송장번호 업데이트 (shipment PK 기준 — 레거시 order_id 폴백 유지)
 // ============================================================================
-shipmentsRouter.patch('/:id', requireRole('ADMIN', 'MANAGER', 'OPERATOR'), async (c) => {
+shipmentsRouter.patch('/:id', requireEditOrRole('/shipments', 'MANAGER', 'OPERATOR'), async (c) => {
   try {
     const id = c.req.param('id')
     const body = await c.req.json<ShipmentPatchBody>()
@@ -1104,7 +1104,7 @@ shipmentsRouter.patch('/:id', requireRole('ADMIN', 'MANAGER', 'OPERATOR'), async
 // ============================================================================
 // PATCH /:id/status - 출고 상태 변경
 // ============================================================================
-shipmentsRouter.patch('/:id/status', requireRole('ADMIN', 'MANAGER'), async (c) => {
+shipmentsRouter.patch('/:id/status', requireEditOrRole('/shipments', 'MANAGER'), async (c) => {
   try {
     const id = c.req.param('id')
     const { status } = await c.req.json<{ status: string }>()
@@ -1264,7 +1264,7 @@ shipmentsRouter.patch('/:id/status', requireRole('ADMIN', 'MANAGER'), async (c) 
 // ============================================================================
 // PATCH /:orderId/ship - 출고 대시보드에서 출고 처리
 // ============================================================================
-shipmentsRouter.patch('/:orderId/ship', requireRole('ADMIN', 'MANAGER'), async (c) => {
+shipmentsRouter.patch('/:orderId/ship', requireEditOrRole('/shipments', 'MANAGER'), async (c) => {
   try {
     const orderId = c.req.param('orderId')
     const user = c.get('user')

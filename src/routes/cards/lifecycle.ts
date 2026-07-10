@@ -13,7 +13,7 @@ import { Hono } from 'hono'
 import type { Context } from 'hono'
 import type { HonoEnv } from '../../types/env'
 import { authMiddleware, requireRole } from '../../middleware/auth'
-import { requireAnyPagePermission } from '../../middleware/permissions'
+import { requireAnyPagePermission, requireEditOrRole } from '../../middleware/permissions'
 import { logActivity } from '../../utils/activityLog'
 import { entityFilter, getEntityId } from '../../utils/entityFilter'
 import { ensureShipmentForOrder } from '../../utils/shipmentHelper'
@@ -100,7 +100,7 @@ async function syncOrderStatusFromCards(db: D1Database, orderId: number) {
 }
 
 // Bulk status change (must be before /:id)
-cardsLifecycleRouter.patch('/bulk/status', requireRole('ADMIN', 'MANAGER', 'OPERATOR'), async (c) => {
+cardsLifecycleRouter.patch('/bulk/status', requireEditOrRole('/cards', 'MANAGER', 'OPERATOR'), async (c) => {
   try {
     const user = c.get('user')
     const { card_ids, status, reason, defect_category } = await c.req.json()
