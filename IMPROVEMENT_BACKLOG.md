@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 3 -->
-<!-- last_run_at: 2026-07-10T19:10:00+09:00 -->
+<!-- last_run_area: 4 -->
+<!-- last_run_at: 2026-07-10T23:40:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,7 +8,7 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | **14** — #473, #497(MED, 원장 거래처검색 1000cap 무음누락), #498(LOW, 페이지네이션 로딩인디케이터), #499(LOW, width_mm 힌트 불일치), #500(LOW, bank.ts sync-barobill 잔액0→NULL 강등), #501(HIGH, price-list `:entityId` 라우트 소유검증 없음, 타법인 직인/로고 열람·변조 IDOR), #502(S, aiAnalysis.ts R2 백필/batch-results subrequest 한도 무방비+N+1), #503(S, priceManagement.js loadHistory catch 누락), #504(S, settings.js 회사인쇄정보 로드실패 무음+CSV 가드 미재사용), #506(LOW-MED, workbench.ts /process/clear LIMIT없는 N+1 R2삭제 subrequest한도 무방비), #507(S, reports.ts 당월매출/수금 KST정비 좌변 미보정 잔존), **#508(S, Area3 34회차 신규 — inventory.ts id="lastCountDate" 중복선언으로 실사탭 최근실사일 영구 "-")**, **#509(S~M, Area3 34회차 신규 — 급여 중도입퇴사 일할계산 근거 화면 미표시 블랙박스)**, **#510(S, Area3 34회차 신규 — 역할8종 확장 후 ROLE_LABELS SSOT 이중화로 approvals/messages/storageZones 3곳 role 라벨 미한글화 + permissions.js ADMIN 안내문 자기모순)**. open 실측(`list_issues(OPEN,auto-improve)`=14) 기준. |
+| 🆕 new | **15** — #473, #497(MED, 원장 거래처검색 1000cap 무음누락), #498(LOW, 페이지네이션 로딩인디케이터), #499(LOW, width_mm 힌트 불일치), #500(LOW, bank.ts sync-barobill 잔액0→NULL 강등), #501(HIGH, price-list `:entityId` 라우트 소유검증 없음, 타법인 직인/로고 열람·변조 IDOR), #502(S, aiAnalysis.ts R2 백필/batch-results subrequest 한도 무방비+N+1), #503(S, priceManagement.js loadHistory catch 누락), #504(S, settings.js 회사인쇄정보 로드실패 무음+CSV 가드 미재사용), #506(LOW-MED, workbench.ts /process/clear LIMIT없는 N+1 R2삭제 subrequest한도 무방비), #507(S, reports.ts 당월매출/수금 KST정비 좌변 미보정 잔존), #508(S, inventory.ts id="lastCountDate" 중복선언으로 실사탭 최근실사일 영구 "-"), #509(S~M, 급여 중도입퇴사 일할계산 근거 화면 미표시 블랙박스), #510(S, 역할8종 확장 후 ROLE_LABELS SSOT 이중화 3화면 미한글화 + permissions.js 자기모순), **#511(S~M, Area4 35회차 신규 — bank 자금관리 고정비 매칭 `/unapply`가 matched_category_id/fixed_expense_id·recurring_expense_actuals 미정리, 취소해도 "고정비 출금 완료" 영구 오표시)**. open 실측(`list_issues(OPEN,auto-improve)`=15) 기준. |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 |
 | ✔️ done | **428** ⚠️절대값 재동기화(SKILL Area6 원칙) — GitHub 실측 `search_issues(label:auto-improve is:closed reason:completed)`=428(#505 close 반영, +1). |
@@ -16,6 +16,15 @@
 
 > 📦 **과거 사이클 로그**는 `IMPROVEMENT_BACKLOG_ARCHIVE.md`/git 히스토리로 이관됨 (2026-06-10 1차 분리, 2026-06-25 2차 트림 343KB→192KB, 2026-06-25T10:00 3차 트림, 2026-07-03T06:00 4차 트림 288KB→86KB, **2026-07-07T13:00 5차 트림 — 07-01~07-05 사이클 로그를 git 히스토리로 이관: 238KB→78KB, 256KB Read 한도 재확보**). 신규 로그는 계속 이 파일 상단에 추가. 본 파일은 직전 2일치(07-06~) 사이클 로그 + 영구 참조 섹션(Approved/New/Auto-fixed/Done/Rejected/FP 카탈로그)만 유지. 이관분은 `git log -p -- IMPROVEMENT_BACKLOG.md`로 복원 가능.
 
+> **Area 4 데이터 정합성 (2026-07-10T23:40):**
+> - **방법**: `npm ci`(node_modules 0→81) 후 `git fetch origin main`(HEAD=origin/main `ec1524d` 0/0 동기, 워킹트리 clean). Area 4 **35회차** — 직전 Area4(`a1ced34`, 07-09T09:00, 32회차) 이후 `src/routes`/`migrations` churn = **87파일 + 신규마이그 7건**(역할확장/entity_id/KST 3대 정비 57파일은 이미 Area2 34회차·Area3 34회차가 코드품질/UX 렌즈로 전수 감사 완료). 미감사 최신 churn만 표적 — 오늘 배포된 **자금관리(bank) 확장 P1~P3**(`06432e0`, bank.ts+363/bank.js+422/bank.ts(pages)+145) + KST LOW 후속(`639ceac`)이 이번 사이클의 신선 각도. 신규 마이그 `0454_bank_fixed_expense_match.sql`(matched_fixed_expense_id·match_type)·`0455_bank_transfer_pair.sql`(transfer_pair_id) 도입 컬럼의 write-path를 직접 추적.
+> - **🆕 net-new 1건(issue-only) — #511 (S~M)**: `bank.ts` 고정비 매칭(`POST /transactions/:id/match`:1176)이 `match_status='APPLIED'` 전환 + `recurring_expense_actuals` upsert(당월 실적)를 수행하는데, 이를 되돌리는 유일한 경로 `POST /transactions/:id/unapply`(:1687, `/unmatch`는 APPLIED 상태를 400으로 거부해 유일한 경로)의 `matched_payment_id` 없는 분기(:1737-1746)가 **형제 `/unmatch`(:1773-1784)와 달리 `matched_category_id`/`matched_fixed_expense_id`를 NULL 처리하지 않고, `recurring_expense_actuals` 행도 삭제/리셋하지 않음** — `GET /fixed-expense-status`(:112)의 PAID 판정(`rea.actual_amount != null`)이 취소 후에도 그대로 남아 그 달 고정비가 **실제 미납인데 영구 "출금완료"로 오표시**. UI에 이 실적을 지울 수단이 전혀 없음(직접 DB 조작 외 복구 불가). 신규 컬럼(matched_fixed_expense_id·recurring_expense_actuals upsert)이 기존 `/unapply` 핸들러를 재사용하며 정리 로직만 놓친 부분픽스 패턴(#377/#477 클래스의 재무 write-path 버전). recurring_expense_actuals 리셋 정책(단순 DELETE vs 다른 거래 실적 보존)은 설계판단 필요해 issue-only.
+> - **🟢 나머지 bank 신규 write-path = clean**: `confirm-transfer`(:1844)/`unlink-transfer`(:1882)는 상호 `db.batch` 대칭 UPDATE로 양쪽 링크·해제가 원자적, `entityFilter`로 cross-tenant 짝짓기 차단, `bank_transactions` 하드삭제 자체가 코드베이스에 없어 `transfer_pair_id` dangling 위험 0(#477 클래스 미해당). `matched_fixed_expense_id`(idx_bt_fixed)·`transfer_pair_id`(idx_bt_transfer) 둘 다 마이그레이션이 인덱스 동반 생성(인덱스 누락 없음). `fixed_expenses`는 소프트삭제만(`is_active=0`) 존재해 `LEFT JOIN`으로 안전 처리, dangling FK 불가. `recurring_expense_actuals.actual_amount` INSERT는 `ON CONFLICT(fixed_expense_id, period) DO UPDATE`로 재시도/중복 클릭에 안전(가산이 아닌 덮어쓰기라 #420류 이중계상 없음).
+> - **🟡 참고(minor, 별도 이슈 미생성)**: `migrations/0453_item_search_keywords.sql`·`0453_role_expansion_rw.sql` 마이그 번호 중복(둘 다 이번 churn 구간 신규 도입, 서로 다른 테이블이라 상호 의존 0 — wrangler 전체 파일명 정렬로 기능 안전). SKILL 기존 패턴(#438) = 이 클래스는 Area 6 standing scan 소관이라 별도 이슈 생성하지 않고 다음 Area 6 사이클 재확인 대상으로 위임.
+> - **🟢 backlog↔GitHub sync**: `list_issues(OPEN,auto-improve)` 실측 **14건**(#473,497~510) = 직전 Area3 stats(new 14) 정합. 본 Area4 신규 1건(#511) → **new 15**. done(428)·rejected(3) 변동 없음(owner close 0).
+> - **🧬 SKILL 강화 없음(신규 패턴 아님)** — #511은 기존 "부분픽스"(#377/#477) + "unapply/unmatch 형제 비대칭" 클래스로 충분히 포착되는 패턴, 신규 codify 불요.
+> - 신규 이슈 1건(#511 S~M·issue-only), 자동수정 0건(재무 write-path 정리 정책은 owner 판단 필요), done-sync(new 14→15·정합), **신선 각도 — 대형 정비성 churn(역할확장/entity_id/KST 137곳)은 이미 Area2·3이 전수 감사 완료된 상태에서, 그 사이 새로 착륙한 자금관리(bank) P1~P3 신규기능(3파일 758줄)만 표적 감사. 신규 도입 컬럼(matched_fixed_expense_id/transfer_pair_id)의 전체 write-path(match→apply→unapply/unmatch→재매칭)를 추적해 되돌리기 경로의 정리 누락을 포착 — 계좌이체 짝짓기(confirm/unlink-transfer)는 대칭 batch 설계로 clean, 고정비 매칭만 기존 핸들러 재사용 중 신규 컬럼 정리를 누락한 부분픽스.**
+>
 > **Area 3 UX/기능 감사 (2026-07-10T19:10):**
 > - **방법**: `git fetch origin main`(HEAD=origin/main `737eff6` 0/0 동기, 워킹트리 clean). Area 3 **34회차** — 직전 Area3(`aee5f5c`, 07-08T21:20, 33회차) 이후 UX churn = **59파일**(`git diff --stat aee5f5c..HEAD -- src/scripts src/pages`): 대형 신규기능 "역할 4→8 확장"(6f7556d)·"KST 전수정비"(9110ad0)·"실사 UX 다·라"(46821c4, inventoryCount.js +270)·"실사 승인 NULL 재고소실 차단"(1475bb9)·"다단위 입력"(1102d9a)·"품목 검색 키워드/별칭"(5a6b626)·"급여 중도입퇴사 일할계산"(737eff6, 최신). egress 차단으로 브라우저 접근 불가 → 병렬 에이전트 3개로 코드 정적분석(표준 5축: dead-button/HTML↔JS silent-fail/showConfirm오용/`?raw`concat스코프/로딩·에러·빈상태).
 > - **🆕 net-new 3건(전부 issue-only, Area3 정책상 UI/UX 자동수정 금지)**:
