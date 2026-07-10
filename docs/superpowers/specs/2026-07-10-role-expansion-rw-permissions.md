@@ -1,7 +1,8 @@
 # 사용자 역할 확장 + 읽기/쓰기 권한 분리
 
 - **작성일**: 2026-07-10
-- **상태**: Phase 0~1 + Phase 2 인프라 완료 + **Option A enforcement SALES 핵심 완료**(worktree `session/role-expansion`, typecheck+build 통과). enforcement 잔여 라우터 스윕 + Phase 3(검증·배포) 대기.
+- **상태**: **✅ prod 배포완료 (2026-07-10, main `5e4a048d`)** — Phase 0~2 + Option A enforcement(4역할 핵심). 0453 remote 적용·apex 검증. 잔여 tail(paymentRequests·tax·vat·AP·cashFlow)만 후속.
+- **⚠️ prod 마이그 교훈**: 0453 seed `/production-board`가 prod permission_pages 미존재 → INSERT OR IGNORE가 FK위반 미무시 → 전체 롤백(prod 무변). 수정=seed를 CTE+`WHERE page_key IN (permission_pages)` 필터. 신규 seed는 FK 참조 존재필터 필수.
 - **Phase 2 인프라**: `rpp.can_edit` + 미들웨어 `requirePageEdit`/`requireEditOrRole`/`getEditablePages`(캐시 access|edit) + `/matrix`·PATCH·`/me` can_edit + permissions.js [열람][편집] 2체크박스·역할탭 7개 동적화.
 - **Enforcement 배선 원칙(A) — 실측 반영**: 매트릭스 seed 가 과거 requireRole 권한보다 **좁음**(MANAGER 매트릭스에 /orders·/clients 없음, 로컬 실증). 순수 requirePageEdit 치환 시 MANAGER 회귀 → **가산형 `requireEditOrRole(pageKey, ...legacyRoles)`** 채택: ADMIN·legacyRoles 는 종전 그대로, 신규역할은 매트릭스 can_edit 로 통과(회귀 0). 삭제·토글·포털·크레딧·청구 등 민감/재무는 `requireRole` 유지.
 - **요청**: "사용자 역할이 조금 더 분리되었으면 좋겠어"
