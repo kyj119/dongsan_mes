@@ -5,7 +5,7 @@
 >
 > **✅ 수정 완료 (2026-07-10 당일)**: 1부 KST BUG 전체=`9110ad0e`(74파일 ~137곳, LOW ~45건은 보류) / 2부 영문 상+중=`d952a052`(33파일, 단위 11지점은 현행 유지 결정). 아래 목록은 감사 원본 기록.
 >
-> **✅ LOW ~45건도 완료 (2026-07-10, 커밋 `639ceaca`, prod 배포·apex 검증)**: 1부 LOW 전량(ⓐ연도 getFullYear→kstYear 14파일·ⓑ월 getMonth산술→kstYm파생·ⓒCSV/R2폴더 toISOString→kstYmd 11파일·ⓓ알림 dedup date('now')→KST·채번 kstYmdCompact) 32파일 정비. 동일클래스 형제 CSV(inspections·purchaseRequests·po-receipts·tax-agent·cashSchedule) + leaves calcAnnualEntitlement까지 확장. **제외**: payroll/core.ts 죽은 fallback(미커밋 회피). **+프론트 CSV 다운로드 파일명 10곳도 완료·배포**(커밋 `8f9bc82b`, window.kstToday 가드 패턴 — cashSchedule·inspections·ledger·orders·productionReports·purchaseOrders·purchaseRequests·receiving·reports·taxInvoices). **2부 단위(11지점)=④ 사용자 최종 결정 "현행 유지(EA/yd/L)" — 종결**.
+> **✅ LOW ~45건도 완료 (2026-07-10, 커밋 `639ceaca`, prod 배포·apex 검증)**: 1부 LOW 전량(ⓐ연도 getFullYear→kstYear 14파일·ⓑ월 getMonth산술→kstYm파생·ⓒCSV/R2폴더 toISOString→kstYmd 11파일·ⓓ알림 dedup date('now')→KST·채번 kstYmdCompact) 32파일 정비. 동일클래스 형제 CSV(inspections·purchaseRequests·po-receipts·tax-agent·cashSchedule) + leaves calcAnnualEntitlement까지 확장. **제외**: payroll/core.ts 죽은 fallback(미커밋 회피). **+프론트 CSV 다운로드 파일명 10곳**(`8f9bc82b` — cashSchedule·inspections·ledger·orders·productionReports·purchaseOrders·purchaseRequests·receiving·reports·taxInvoices) **+프론트 폼 기본값/데이터 7곳**(`575ccf13` — attendance×2·paymentRequests·iaScan×2·payroll·iaBatchTest) **= 프론트 .js 날짜 전량 window.kstToday 가드 완료(unguarded 0)**. **2부 단위(11지점)=④ 사용자 최종 결정 "현행 유지(EA/yd/L)" — 종결**.
 
 ---
 
