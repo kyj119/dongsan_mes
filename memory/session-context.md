@@ -26,8 +26,8 @@
 
 ## 다음 세션 TODO
 - ~~① 잉크 pack_size~~ ✅완료(이미 전량 입력 확인, 사용자 통용량 확정) / ~~② 실사 UX 다·라~~ ✅완료(prod dep `7c5c1cb2`)
-- **③ (착수 예약) KST LOW ~45건 정비** — 정본 목록=`docs/audits/2026-07-10-kst-english-audit.md` "LOW" 섹션. 그룹: ⓐ연도 기본값(1/1 00~09시만 오류: budgets·cashReceipts·financialReports·insuranceReports·leaves·payroll/year-end·settings·vatReports·taxInvoices/helpers·ar-ledger·pages/yearEnd) ⓑ월 기본값(1일 00~09시만: taxInvoices/queries·cashSchedule·cashFlow·forecast·cardExpenses·leaves·productionReports.js) ⓒCSV 파일명(표시만) ⓓ알림 dedup UTC창·번호 date 경계(notifications:13·permissions:137·po-receive:432·shipments:804·cards/lifecycle:982·hr:1477). 수정법=kstYear()/kstYm()/kstYmd() 치환(헬퍼 기존재). 에이전트 스윕 1팀이면 충분한 규모
-- **④ (착수 예약) 단위(EA/yd/L) 한글 표기 재론** — 영문 감사에서 보류한 11지점(purchaseInvoice(s)·purchaseOrders·purchaseOrderForm·purchaseRequests(Form)·bom·storageZones·inventoryDashboard·receiving). 방법=constants/units.ts UNIT_LABELS를 UNIT_NAMES_JS로 전역 주입+표시 지점 치환(구조는 HR_ENUMS_JS와 동일 패턴). ⚠️현장 관용(EA/yd) vs 한글(개/야드) — **표기 방침 사용자 결정 선행** 후 일괄 치환
+- ~~**③ KST LOW ~45건 정비**~~ ✅**완료·prod 배포·apex 검증**(2026-07-10, 커밋 `639ceaca`). 32파일: ⓐ연도 getFullYear→kstYear(14) ⓑ월 getMonth산술→kstYm파생(cashFlow·cashSchedule·forecast·taxInvoices/queries·cardExpenses·leaves·productionReports.js) ⓒCSV/R2폴더 toISOString→kstYmd(11, 동일클래스 형제 inspections·purchaseRequests·po-receipts·tax-agent·cashSchedule 포함) ⓓ알림 dedup date('now')→KST·채번 kstYmdCompact(notifications·permissions·po-receive·shipments·cards/lifecycle·hr). +leaves calcAnnualEntitlement 확장. **제외**=payroll/core.ts 죽은 fallback(미커밋 회피)·프론트 .js CSV 파일명(window.kstToday 패턴, 잔여). ⚠️착수 예약 에이전트 2팀이 session-limit로 반쪽 종료→리드 전량 직접 재작업(교훈: 배포성 스윕은 에이전트 결과 grep 검증 필수)
+- ~~**④ 단위(EA/yd/L) 한글 표기 재론**~~ ✅**종결 — 사용자 최종 결정 "현행 유지(EA/yd/L)"**(2026-07-10). 코드 변경 없음. (재론 시 방법=constants/units.ts UNIT_LABELS를 UNIT_NAMES_JS 전역주입, HR_ENUMS_JS 패턴)
 - 잉크 품명 잔여: 유지 39품목(잉크테크=별개 확정·코스테크·엡손솔벤 6/11색기·KM 8색기)은 엑셀에 대응 없음 — 추후 정식명 확보 시 같은 방식(품명 교체+기존명 검색키워드)으로
 - 봇 이슈 확인: #505는 처리됨(`19539861`), 신규 봇 이슈 코멘트 필독 관례 유지
 
