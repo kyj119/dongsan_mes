@@ -144,9 +144,9 @@ itemsRouter.get('/', async (c) => {
     }
 
     if (search) {
-      // 이름 또는 코드로 검색 (숫자만 입력해도 코드 매칭)
-      query += ' AND (i.item_name LIKE ? OR i.item_code LIKE ?)'
-      params.push(`%${search}%`, `%${search}%`)
+      // 이름·코드·검색 키워드(0453 별칭)로 검색 (숫자만 입력해도 코드 매칭)
+      query += ' AND (i.item_name LIKE ? OR i.item_code LIKE ? OR i.search_keywords LIKE ?)'
+      params.push(`%${search}%`, `%${search}%`, `%${search}%`)
     }
 
     const item_group = c.req.query('item_group')
@@ -181,8 +181,8 @@ itemsRouter.get('/', async (c) => {
     }
 
     if (search) {
-      countQuery += ' AND (i.item_name LIKE ? OR i.item_code LIKE ?)'
-      countParams.push(`%${search}%`, `%${search}%`)
+      countQuery += ' AND (i.item_name LIKE ? OR i.item_code LIKE ? OR i.search_keywords LIKE ?)'
+      countParams.push(`%${search}%`, `%${search}%`, `%${search}%`)
     }
 
     const countRow = await c.env.DB.prepare(countQuery).bind(...countParams).first<{ count: number }>()
@@ -354,7 +354,7 @@ itemsRouter.get('/variant-bases', async (c) => {
     const params: any[] = []
     if (type === 'sales') q += ' AND b.is_sales_item = 1'
     else if (type === 'purchase') q += ' AND b.is_purchase_item = 1'
-    if (search) { q += ' AND b.item_name LIKE ?'; params.push(`%${search}%`) }
+    if (search) { q += ' AND (b.item_name LIKE ? OR b.search_keywords LIKE ?)'; params.push(`%${search}%`, `%${search}%`) }
     q += ' ORDER BY b.item_name ASC'
     const { results } = await c.env.DB.prepare(q).bind(...params).all<{ variant_count: number }>()
     return c.json({ success: true, data: (results || []).filter(r => r.variant_count > 0) })
@@ -536,8 +536,8 @@ itemsRouter.get('/materials/search', async (c) => {
     const params: any[] = []
 
     if (search) {
-      query += ' AND item_name LIKE ?'
-      params.push(`%${search}%`)
+      query += ' AND (item_name LIKE ? OR search_keywords LIKE ?)'
+      params.push(`%${search}%`, `%${search}%`)
     }
 
     query += ' ORDER BY item_name ASC LIMIT 50'
@@ -718,7 +718,7 @@ itemsRouter.get('/:id', async (c) => {
   try {
     const id = c.req.param('id')
     const item = await c.env.DB.prepare(`
-      SELECT id, category_id, subcategory_id, item_code, item_name, description, unit, base_price, sales_price, is_active, item_type, category, sub_category, is_sales_item, is_purchase_item, pricing_method, item_group, group_sort, width_mm, storage_zone_id, is_favorite, code_prefix, specification, production_required, spec_group_id, spec_value, spec_group_id2, spec_value2, deduction_method, sheet_spec, waste_factor, base_unit, pack_size, stock_mode, ecount_code, image_key, created_at, updated_at FROM items WHERE id = ?
+      SELECT id, category_id, subcategory_id, item_code, item_name, description, unit, base_price, sales_price, is_active, item_type, category, sub_category, is_sales_item, is_purchase_item, pricing_method, item_group, group_sort, width_mm, storage_zone_id, is_favorite, code_prefix, specification, production_required, spec_group_id, spec_value, spec_group_id2, spec_value2, deduction_method, sheet_spec, waste_factor, base_unit, pack_size, stock_mode, search_keywords, ecount_code, image_key, created_at, updated_at FROM items WHERE id = ?
     `).bind(id).first()
 
     if (!item) {
@@ -959,8 +959,8 @@ itemsRouter.post('/', requireRole('ADMIN', 'MANAGER'), async (c) => {
         is_sales_item, is_purchase_item, pricing_method, width_mm,
         item_group, group_sort, item_type, category_id, item_code, storage_zone_id,
         code_prefix, specification, production_required,
-        base_unit, pack_size, stock_mode
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        base_unit, pack_size, stock_mode, search_keywords
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).bind(
       itemData.item_name,
       itemData.category,
@@ -986,7 +986,9 @@ itemsRouter.post('/', requireRole('ADMIN', 'MANAGER'), async (c) => {
       // MU1: 다단위 (NULL=단일단위·현행)
       itemData.base_unit || null,
       (itemData.pack_size != null && itemData.pack_size !== '') ? Number(itemData.pack_size) : null,
-      itemData.stock_mode || 'CONTINUOUS'
+      itemData.stock_mode || 'CONTINUOUS',
+      // 0453: 검색 키워드(별칭) — 검색 매칭 전용
+      (itemData.search_keywords || '').trim() || null
     ).run()
 
     return c.json({
@@ -1185,6 +1187,11 @@ itemsRouter.put('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
     const stockModeClause = itemData.stock_mode !== undefined ? 'stock_mode = ?,' : ''
     const stockModeParams = itemData.stock_mode !== undefined ? [itemData.stock_mode || 'CONTINUOUS'] : []
 
+    // 0453: 검색 키워드(별칭) — 전송 시에만 갱신, 미전송 시 기존값 보존
+    const searchKwClause = itemData.search_keywords !== undefined ? 'search_keywords = ?,' : ''
+    const searchKwParams = itemData.search_keywords !== undefined
+      ? [(String(itemData.search_keywords || '').trim()) || null] : []
+
     // #461: storage_zone 법인 소유 검증 (타법인 zone 차단, #368 도메인 일관)
     if (itemData.storage_zone_id != null && !(await isZoneOwnedByEntity(c, itemData.storage_zone_id))) {
       return c.json({ success: false, error: '유효하지 않은 창고입니다' }, 400)
@@ -1217,6 +1224,7 @@ itemsRouter.put('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
         ${baseUnitClause}
         ${packSizeClause}
         ${stockModeClause}
+        ${searchKwClause}
         updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
     `).bind(
@@ -1244,6 +1252,7 @@ itemsRouter.put('/:id', requireRole('ADMIN', 'MANAGER'), async (c) => {
       ...baseUnitParams,
       ...packSizeParams,
       ...stockModeParams,
+      ...searchKwParams,
       id
     ).run()
 

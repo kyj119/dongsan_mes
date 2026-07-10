@@ -61,6 +61,8 @@ async function showCreateModal() {
     if (newGroupInput) newGroupInput.value = '';
     var specEl = document.getElementById('itemSpecification');
     if (specEl) specEl.value = '';
+    var skElNew = document.getElementById('itemSearchKeywords');
+    if (skElNew) skElNew.value = '';
     var wElNew = document.getElementById('itemWidthMm');
     if (wElNew) wElNew.value = '';
     var szSel = document.getElementById('itemStorageZone');
@@ -119,6 +121,8 @@ async function editItem(id) {
             }
             var szSel2 = document.getElementById('itemStorageZone');
             if (szSel2) szSel2.value = item.storage_zone_id != null ? String(item.storage_zone_id) : '';
+            var skEl2 = document.getElementById('itemSearchKeywords');
+            if (skEl2) skEl2.value = item.search_keywords || '';
             // 품목 사진 (T2): image_key 있으면 blob으로 썸네일 로드
             itemPhotoReset(true);
             if (item.image_key) itemPhotoLoad(item.id);
@@ -239,6 +243,11 @@ async function saveItem(event) {
         group_sort: parseInt(groupSortVal) || 0,
         item_type: selectedItemType,
         specification: specVal.trim() || null,
+        // 0453: 검색 키워드(별칭) — 검색 매칭 전용
+        search_keywords: (function() {
+            var el = document.getElementById('itemSearchKeywords');
+            return el ? (el.value.trim() || null) : undefined;
+        })(),
         storage_zone_id: (function() {
             var el = document.getElementById('itemStorageZone');
             var v = el ? el.value : '';

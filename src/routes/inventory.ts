@@ -46,9 +46,9 @@ inventoryRouter.get('/', async (c) => {
     const params: any[] = [...inv.params]
 
     if (search) {
-      query += ` AND (i.item_name LIKE ? OR i.category LIKE ?)`
+      query += ` AND (i.item_name LIKE ? OR i.category LIKE ? OR i.search_keywords LIKE ?)`
       const searchTerm = `%${search}%`
-      params.push(searchTerm, searchTerm)
+      params.push(searchTerm, searchTerm, searchTerm)
     }
 
     if (category) {
@@ -75,8 +75,8 @@ inventoryRouter.get('/', async (c) => {
     const countParams: any[] = [...inv.params]
 
     if (search) {
-      countInner += ` AND (i.item_name LIKE ? OR i.category LIKE ?)`
-      countParams.push(`%${search}%`, `%${search}%`)
+      countInner += ` AND (i.item_name LIKE ? OR i.category LIKE ? OR i.search_keywords LIKE ?)`
+      countParams.push(`%${search}%`, `%${search}%`, `%${search}%`)
     }
     if (category) {
       countInner += ` AND i.category = ?`
