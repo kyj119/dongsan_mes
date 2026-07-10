@@ -340,7 +340,11 @@ export function inventoryPage(c: Context<HonoEnv>) {
                         <div class="grid grid-cols-2 gap-4">
                             <div>
                                 <label class="block text-sm font-medium text-gray-700 mb-1">조정 수량 (+/-)</label>
-                                <input type="number" id="adjustQuantity" class="w-full px-3 py-2 border rounded" step="0.01" placeholder="+10 또는 -5">
+                                <div class="flex gap-2">
+                                    <input type="number" id="adjustQuantity" class="w-full px-3 py-2 border rounded" step="0.01" placeholder="+10 또는 -5">
+                                    <select id="adjustUnit" class="px-2 py-2 border rounded text-sm" style="min-width:5rem" title="입력 단위"></select>
+                                </div>
+                                <div id="adjustConvertHint" class="text-xs text-blue-600 mt-1"></div>
                             </div>
                             <div>
                                 <label class="block text-sm font-medium text-gray-700 mb-1">사유</label>
@@ -477,7 +481,11 @@ export function inventoryPage(c: Context<HonoEnv>) {
                         <div class="grid grid-cols-2 gap-3 mb-4">
                             <div>
                                 <label class="block text-xs font-medium text-gray-600 mb-1">수량</label>
-                                <input type="number" id="transferQty" class="w-full px-3 py-2 border rounded text-sm" min="0" step="0.01" placeholder="이동 수량">
+                                <div class="flex gap-2">
+                                    <input type="number" id="transferQty" class="w-full px-3 py-2 border rounded text-sm" min="0" step="0.01" placeholder="이동 수량">
+                                    <select id="transferUnit" class="px-2 py-2 border rounded text-sm" style="min-width:4.5rem" title="입력 단위"></select>
+                                </div>
+                                <div id="transferConvertHint" class="text-xs text-blue-600 mt-1"></div>
                             </div>
                             <div>
                                 <label class="block text-xs font-medium text-gray-600 mb-1">비고 (선택)</label>

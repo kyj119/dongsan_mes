@@ -8,6 +8,46 @@ function uomFmt(qty, item) {
   return (Math.round((Number(qty) || 0) * 100) / 100) + ' ' + (item && item.unit ? item.unit : '');
 }
 
+// MU4: 입력 단위 선택 — value 'unit'=관리단위(×pack_size 환산), 'base'=차감·저장단위(그대로). 단일단위=고정.
+function invUomRenderUnitSelect(selectId, item) {
+  var sel = document.getElementById(selectId);
+  if (!sel) { console.warn('[inventory] #' + selectId + ' not found'); return; }
+  var multi = item && window.uomIsMulti && window.uomIsMulti(item);
+  if (!multi) {
+    sel.innerHTML = '<option value="base">' + escapeHtml((item && item.unit) || '-') + '</option>';
+    sel.disabled = true;
+    return;
+  }
+  sel.innerHTML = '<option value="unit">' + escapeHtml(item.unit) + '</option>'
+    + '<option value="base">' + escapeHtml(item.base_unit) + '</option>';
+  sel.disabled = false;
+  sel.value = (item.stock_mode === 'PACK') ? 'unit' : 'base'; // formatStock 표시 우선순위와 동일한 기본값
+}
+
+// MU4: 입력값(선택 단위) → base 수량 (API는 항상 base로 받음)
+function invUomInputToBase(qty, selectId, item) {
+  var sel = document.getElementById(selectId);
+  if (sel && sel.value === 'unit' && item && window.uomToBase) return window.uomToBase(qty, item);
+  return qty;
+}
+
+// MU4: 환산 힌트 — 다단위일 때 반대 단위 병기 ("= 40 L")
+function invUomUpdateHint(hintId, qtyInputId, selectId, item) {
+  var el = document.getElementById(hintId);
+  if (!el) return;
+  var input = document.getElementById(qtyInputId);
+  var qty = input ? parseFloat(input.value) : NaN;
+  var multi = item && window.uomIsMulti && window.uomIsMulti(item);
+  if (!multi || !qty) { el.textContent = ''; return; }
+  var r2 = function(n) { return Math.round((Number(n) || 0) * 100) / 100; };
+  var sel = document.getElementById(selectId);
+  if (sel && sel.value === 'unit') {
+    el.textContent = '= ' + r2(window.uomToBase(qty, item)) + ' ' + (item.base_unit || '');
+  } else {
+    el.textContent = '= ' + r2(window.uomFromBase(qty, item)) + ' ' + (item.unit || '');
+  }
+}
+
 // Load statistics
 async function loadStats() {
     try {
@@ -186,6 +226,7 @@ function updatePagination(pagination) {
 window.viewTransactions = async function(itemId, itemName) {
     try {
         document.getElementById('modalItemName').textContent = itemName;
+        var muItem = (allItems || []).find(function(it) { return it.id === itemId; }) || null; // MU4: 단위 표기용
         var response = await axios.get('/api/inventory/' + itemId + '/transactions?limit=50');
         if (response.data.success) {
             var transactions = response.data.data.transactions;
@@ -205,8 +246,8 @@ window.viewTransactions = async function(itemId, itemName) {
                 row.innerHTML = ''
                     + '<td class="px-4 py-2 text-sm text-gray-900">' + (tx.transaction_date || '-').substring(0, 16).replace('T', ' ') + '</td>'
                     + '<td class="px-4 py-2 text-sm"><span class="inline-flex items-center px-2 py-0.5 text-xs rounded ' + typeClass + '"><i class="' + typeIcon + ' text-[7px] mr-1"></i>' + typeText + '</span></td>'
-                    + '<td class="px-4 py-2 text-sm ' + qtyClass + ' text-right font-medium tabular-nums">' + (tx.quantity > 0 ? '+' : '') + tx.quantity + '</td>'
-                    + '<td class="px-4 py-2 text-sm text-gray-900 text-right font-medium tabular-nums">' + tx.balance_after + '</td>'
+                    + '<td class="px-4 py-2 text-sm ' + qtyClass + ' text-right font-medium tabular-nums">' + (tx.quantity > 0 ? '+' : '') + escapeHtml(uomFmt(tx.quantity, muItem)) + '</td>'
+                    + '<td class="px-4 py-2 text-sm text-gray-900 text-right font-medium tabular-nums">' + (tx.balance_after == null ? '-' : escapeHtml(uomFmt(tx.balance_after, muItem))) + '</td>'
                     + '<td class="px-4 py-2 text-sm text-gray-900" title="' + escapeHtml(tx.reason || '') + '">' + escapeHtml(tx.reason || '-') + '</td>'
                     + '<td class="px-4 py-2 text-sm text-gray-900" title="' + escapeHtml(tx.handled_by_name || '') + '">' + escapeHtml(tx.handled_by_name || '-') + '</td>';
                 tbody.appendChild(row);
@@ -220,16 +261,14 @@ window.viewTransactions = async function(itemId, itemName) {
 };
 
 
-// 조정 드롭다운
+// 조정 드롭다운 (MU4: 다단위 환산 표기 — 기존 base수량+관리단위 라벨 오표기 수정)
 function updateAdjustSelect(items) {
     var adjustSelect = document.getElementById('adjustItem');
     adjustSelect.innerHTML = '<option value="">품목 선택...</option>';
     items.forEach(function(item) {
         var option = document.createElement('option');
         option.value = item.id;
-        option.textContent = item.item_name + ' (재고: ' + (item.current_stock || 0) + (item.unit || '') + ')';
-        option.dataset.currentStock = item.current_stock || 0;
-        option.dataset.unit = item.unit || '';
+        option.textContent = item.item_name + ' (재고: ' + uomFmt(item.current_stock || 0, item) + ')';
         adjustSelect.appendChild(option);
     });
 }
@@ -394,6 +433,9 @@ window.openZoneStock = async function(itemId, itemName) {
         if (!res.data.success) return;
         invZoneCurrentItem.mu = res.data.data; // MU2: 다단위 환산용(base_unit/pack_size/stock_mode)
         renderZoneStock(res.data.data.zones || []);
+        invUomRenderUnitSelect('transferUnit', invZoneCurrentItem.mu); // MU4: 이동 수량 입력 단위
+        var trHint = document.getElementById('transferConvertHint');
+        if (trHint) trHint.textContent = '';
         document.getElementById('zoneStockModal').classList.remove('hidden');
     } catch (e) {
         console.error('Failed to load zone stock:', e);
@@ -454,11 +496,13 @@ window.submitInvTransfer = async function() {
     var btn = document.querySelector('#zoneStockModal button.ds-btn-primary');
     if (btn) btn.disabled = true;
     try {
+        // MU4: 입력 단위(관리단위 선택 시 ×pack_size) → base 환산 후 전송
+        var trBaseQty = invUomInputToBase(qty, 'transferUnit', (invZoneCurrentItem && invZoneCurrentItem.mu) || null);
         var res = await axios.post('/api/inventory/transfer', {
             item_id: invZoneCurrentItem.id,
             from_zone_id: fromV === '' ? null : parseInt(fromV),
             to_zone_id: toV === '' ? null : parseInt(toV),
-            quantity: qty,
+            quantity: trBaseQty,
             notes: notes
         });
         if (res.data.success) {
@@ -485,23 +529,39 @@ document.getElementById('closeModal').addEventListener('click', function() {
 // 입고/출고 모달 제거됨 — /receiving 페이지에서 처리
 
 // Adjustment modal
+var invAdjustCurrentItem = null; // MU4: 선택 품목 (다단위 환산·현재고 표시용)
 document.getElementById('adjustmentBtn').addEventListener('click', function() {
     document.getElementById('adjustDate').valueAsDate = new Date();
+    document.getElementById('adjustItem').value = '';
+    invAdjustCurrentItem = null;
     document.getElementById('adjustCurrentStock').textContent = '-';
     document.getElementById('adjustQuantity').value = '';
     document.getElementById('adjustReason').value = '';
     document.getElementById('adjustNotes').value = '';
+    invUomRenderUnitSelect('adjustUnit', null);
+    var adjHint = document.getElementById('adjustConvertHint');
+    if (adjHint) adjHint.textContent = '';
     document.getElementById('adjustmentModal').classList.remove('hidden');
 });
 document.getElementById('cancelAdjust').addEventListener('click', function() {
     document.getElementById('adjustmentModal').classList.add('hidden');
 });
 
-// Update current stock when adjustment item is selected
+// Update current stock when adjustment item is selected (MU4: uomFmt + 단위 select 갱신)
 document.getElementById('adjustItem').addEventListener('change', function() {
-    var sel = this.options[this.selectedIndex];
-    document.getElementById('adjustCurrentStock').textContent = sel.value
-        ? (sel.dataset.currentStock + ' ' + sel.dataset.unit) : '-';
+    var id = parseInt(this.value, 10);
+    invAdjustCurrentItem = (allItems || []).find(function(it) { return it.id === id; }) || null;
+    document.getElementById('adjustCurrentStock').textContent = invAdjustCurrentItem
+        ? uomFmt(invAdjustCurrentItem.current_stock || 0, invAdjustCurrentItem) : '-';
+    invUomRenderUnitSelect('adjustUnit', invAdjustCurrentItem);
+    invUomUpdateHint('adjustConvertHint', 'adjustQuantity', 'adjustUnit', invAdjustCurrentItem);
+});
+document.getElementById('adjustQuantity').addEventListener('input', function() {
+    invUomUpdateHint('adjustConvertHint', 'adjustQuantity', 'adjustUnit', invAdjustCurrentItem);
+});
+var invAdjUnitSel = document.getElementById('adjustUnit');
+if (invAdjUnitSel) invAdjUnitSel.addEventListener('change', function() {
+    invUomUpdateHint('adjustConvertHint', 'adjustQuantity', 'adjustUnit', invAdjustCurrentItem);
 });
 
 // 입고/출고 submit 제거됨 — /receiving 페이지에서 처리
@@ -520,15 +580,17 @@ document.getElementById('submitAdjust').addEventListener('click', async function
     }
 
     try {
+        // MU4: 입력 단위(관리단위 선택 시 ×pack_size) → base 환산 후 전송 (API·inventory.quantity=base)
+        var adjBaseQty = invUomInputToBase(parseFloat(adjustQty), 'adjustUnit', invAdjustCurrentItem);
         var response = await axios.post('/api/inventory/adjustments', {
             item_id: parseInt(itemId),
             adjustment_date: adjustDate,
-            adjustment_quantity: parseFloat(adjustQty),
+            adjustment_quantity: adjBaseQty,
             reason: reason,
             notes: notes
         });
         if (response.data.success) {
-            showToast('재고 조정 완료 (조정 전: ' + response.data.data.quantity_before + ' → 조정 후: ' + response.data.data.quantity_after + ')', 'success');
+            showToast('재고 조정 완료 (조정 전: ' + uomFmt(response.data.data.quantity_before, invAdjustCurrentItem) + ' → 조정 후: ' + uomFmt(response.data.data.quantity_after, invAdjustCurrentItem) + ')', 'success');
             document.getElementById('adjustmentModal').classList.add('hidden');
             loadInventory();
             loadStats();
@@ -556,6 +618,16 @@ document.getElementById('prevPage').addEventListener('click', function() {
 });
 document.getElementById('nextPage').addEventListener('click', function() {
     if (currentPage < totalPages) { currentPage++; loadInventory(); }
+});
+
+// MU4: 이동 수량 환산 힌트
+var invTrQtyInput = document.getElementById('transferQty');
+if (invTrQtyInput) invTrQtyInput.addEventListener('input', function() {
+    invUomUpdateHint('transferConvertHint', 'transferQty', 'transferUnit', (invZoneCurrentItem && invZoneCurrentItem.mu) || null);
+});
+var invTrUnitSel = document.getElementById('transferUnit');
+if (invTrUnitSel) invTrUnitSel.addEventListener('change', function() {
+    invUomUpdateHint('transferConvertHint', 'transferQty', 'transferUnit', (invZoneCurrentItem && invZoneCurrentItem.mu) || null);
 });
 
 // Close modals on backdrop click
