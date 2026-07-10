@@ -1,7 +1,7 @@
 # 사용자 역할 확장 + 읽기/쓰기 권한 분리
 
 - **작성일**: 2026-07-10
-- **상태**: **✅ prod 배포완료 (2026-07-10)** — Phase 0~2 + Option A enforcement 전량(4역할 + tail). 0453 remote 적용·검증. tail(paymentRequests·tax-invoices 5서브·vat·AP·cashFlow)까지 배선 완료. 남은 것=orders lifecycle(status/cancel, 보수적 유지) + 미사용 requireRole import 정리(선택).
+- **상태**: **✅ prod 배포·E2E 검증 완료 (2026-07-10)** — Phase 0~2 + Option A enforcement 전량(4역할 + tail: paymentRequests·tax-invoices 5서브·vat·AP·cashFlow). 0453 remote 적용. **E2E 실증**(임시 SALES 유저 prod): /me=SALES 정확·editablePages / GET clients 200·accounting 403(접근) / POST clients 400·shipments 403(편집). 남은 것=orders lifecycle(status/cancel, 보수적 유지)·미사용 requireRole import(선택).
 - **⚠️ prod 마이그 교훈**: 0453 seed `/production-board`가 prod permission_pages 미존재 → INSERT OR IGNORE가 FK위반 미무시 → 전체 롤백(prod 무변). 수정=seed를 CTE+`WHERE page_key IN (permission_pages)` 필터. 신규 seed는 FK 참조 존재필터 필수.
 - **Phase 2 인프라**: `rpp.can_edit` + 미들웨어 `requirePageEdit`/`requireEditOrRole`/`getEditablePages`(캐시 access|edit) + `/matrix`·PATCH·`/me` can_edit + permissions.js [열람][편집] 2체크박스·역할탭 7개 동적화.
 - **Enforcement 배선 원칙(A) — 실측 반영**: 매트릭스 seed 가 과거 requireRole 권한보다 **좁음**(MANAGER 매트릭스에 /orders·/clients 없음, 로컬 실증). 순수 requirePageEdit 치환 시 MANAGER 회귀 → **가산형 `requireEditOrRole(pageKey, ...legacyRoles)`** 채택: ADMIN·legacyRoles 는 종전 그대로, 신규역할은 매트릭스 can_edit 로 통과(회귀 0). 삭제·토글·포털·크레딧·청구 등 민감/재무는 `requireRole` 유지.
