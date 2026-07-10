@@ -25,8 +25,10 @@
 - Playwright 공유 브라우저 점유 시 → claude-in-chrome(사용자 Chrome) + javascript_tool로 검증 대체 가능
 
 ## 다음 세션 TODO
-- (운영) 잉크 74품목 pack_size(통용량) 입력 → 다단위 입력 활성화 전제조건
-- (선택) 실사 UX 다·설계 라 / KST LOW ~45 / 단위 한글화 재론
+- ~~① 잉크 pack_size~~ ✅완료(이미 전량 입력 확인, 사용자 통용량 확정) / ~~② 실사 UX 다·라~~ ✅완료(prod dep `7c5c1cb2`)
+- **③ (착수 예약) KST LOW ~45건 정비** — 정본 목록=`docs/audits/2026-07-10-kst-english-audit.md` "LOW" 섹션. 그룹: ⓐ연도 기본값(1/1 00~09시만 오류: budgets·cashReceipts·financialReports·insuranceReports·leaves·payroll/year-end·settings·vatReports·taxInvoices/helpers·ar-ledger·pages/yearEnd) ⓑ월 기본값(1일 00~09시만: taxInvoices/queries·cashSchedule·cashFlow·forecast·cardExpenses·leaves·productionReports.js) ⓒCSV 파일명(표시만) ⓓ알림 dedup UTC창·번호 date 경계(notifications:13·permissions:137·po-receive:432·shipments:804·cards/lifecycle:982·hr:1477). 수정법=kstYear()/kstYm()/kstYmd() 치환(헬퍼 기존재). 에이전트 스윕 1팀이면 충분한 규모
+- **④ (착수 예약) 단위(EA/yd/L) 한글 표기 재론** — 영문 감사에서 보류한 11지점(purchaseInvoice(s)·purchaseOrders·purchaseOrderForm·purchaseRequests(Form)·bom·storageZones·inventoryDashboard·receiving). 방법=constants/units.ts UNIT_LABELS를 UNIT_NAMES_JS로 전역 주입+표시 지점 치환(구조는 HR_ENUMS_JS와 동일 패턴). ⚠️현장 관용(EA/yd) vs 한글(개/야드) — **표기 방침 사용자 결정 선행** 후 일괄 치환
+- 잉크 품명 잔여: 유지 39품목(잉크테크=별개 확정·코스테크·엡손솔벤 6/11색기·KM 8색기)은 엑셀에 대응 없음 — 추후 정식명 확보 시 같은 방식(품명 교체+기존명 검색키워드)으로
 - 봇 이슈 확인: #505는 처리됨(`19539861`), 신규 봇 이슈 코멘트 필독 관례 유지
 
 ## 검증 명령
