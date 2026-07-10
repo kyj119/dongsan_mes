@@ -275,6 +275,17 @@ export function inventoryPage(c: Context<HonoEnv>) {
                   <h4 style="font-size:13px;font-weight:600;color:#374151;margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid #f1f5f9;">
                     <i class="fas fa-boxes" style="margin-right:6px"></i>품목 실사 현황
                   </h4>
+                  <!-- 실사 UX 다①: 품목 검색·필터 / 다②: 차이 요약 -->
+                  <div style="display:flex;gap:6px;margin-bottom:8px;">
+                    <input type="text" id="panelItemSearch" placeholder="품목명·코드 검색" oninput="icApplyFilter()" style="flex:1;min-width:0;padding:6px 8px;border:1px solid #e2e8f0;border-radius:6px;font-size:12px;">
+                    <select id="panelItemFilter" onchange="icApplyFilter()" style="padding:6px 8px;border:1px solid #e2e8f0;border-radius:6px;font-size:12px;">
+                      <option value="all">전체</option>
+                      <option value="unfilled">미입력만</option>
+                      <option value="diff">차이만</option>
+                      <option value="changed">재고변동만</option>
+                    </select>
+                  </div>
+                  <div id="panelDiffSummary" style="margin-bottom:8px;"></div>
                   <div id="panelItems" style="max-height:400px;overflow-y:auto;"></div>
                 </div>
 

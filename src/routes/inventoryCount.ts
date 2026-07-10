@@ -132,19 +132,28 @@ inventoryCountRouter.post('/', async (c) => {
       const { results: baseItems } = await c.env.DB.prepare(itemQuery).bind(...params).all<{ id: number; item_code: string; item_name: string; unit: string; category: string }>()
       const ids = (baseItems || []).map(r => Number(r.id))
       const zoneMap = await getItemDefaultZones(c.env.DB, ids, countEntityId)
-      // 현재고: (item, entity) 전 행을 청크 조회 후 법인 인식 zone 행만 채택
-      const qtyMap = new Map<string, number>()
+      // 실사 UX 라④: 전수 실사는 (item, zone) 재고 행별로 라인 전개 — 기본창고 1행만 스냅샷하면
+      //   타 창고 재고가 실사 범위 밖(총량 입력 시 이중계상)이었음. 재고 행 없는 품목=기본창고 1행(qty 0).
+      const invByItem = new Map<number, Array<{ zone: number | null; qty: number }>>()
       for (let i = 0; i < ids.length; i += 80) {
         const chunk = ids.slice(i, i + 80)
         const ph = chunk.map(() => '?').join(',')
         const { results: invRows } = await c.env.DB.prepare(
           `SELECT item_id, storage_zone_id, quantity FROM inventory WHERE entity_id = ? AND item_id IN (${ph})`
         ).bind(countEntityId, ...chunk).all<{ item_id: number; storage_zone_id: number | null; quantity: number }>()
-        for (const r of (invRows || [])) qtyMap.set(`${r.item_id}:${(r.storage_zone_id as number | null) ?? 0}`, Number(r.quantity))
+        for (const r of (invRows || [])) {
+          const list = invByItem.get(Number(r.item_id)) || []
+          list.push({ zone: (r.storage_zone_id as number | null) ?? null, qty: Number(r.quantity) || 0 })
+          invByItem.set(Number(r.item_id), list)
+        }
       }
-      items = (baseItems || []).map(r => {
+      items = (baseItems || []).flatMap(r => {
+        const rows = invByItem.get(Number(r.id))
+        if (rows && rows.length > 0) {
+          return rows.map(v => ({ ...r, storage_zone_id: v.zone, quantity: v.qty }))
+        }
         const z = zoneMap.get(Number(r.id)) ?? null
-        return { ...r, storage_zone_id: z, quantity: qtyMap.get(`${r.id}:${z ?? 0}`) ?? 0 }
+        return [{ ...r, storage_zone_id: z, quantity: 0 }]
       })
     }
 
@@ -196,16 +205,21 @@ inventoryCountRouter.get('/:id', async (c) => {
       return c.json({ success: false, error: 'Count not found' }, 404)
     }
 
+    // 라⑤: current_quantity = 지금 재고 — system_quantity 스냅샷과 다르면 실사 중 입출고 발생(승인 전 경고용)
+    const countEntityId = (count as any).entity_id || getEntityId(c) || 1
     const { results: items } = await c.env.DB.prepare(`
       SELECT ci.id, ci.count_id, ci.item_id, ci.system_quantity, ci.counted_quantity, ci.difference, ci.difference_pct, ci.unit, ci.notes,
              ci.storage_zone_id, sz.zone_name AS storage_zone_name,
-             i.item_code, i.item_name, i.base_unit, i.pack_size, i.stock_mode
+             i.item_code, i.item_name, i.base_unit, i.pack_size, i.stock_mode,
+             (SELECT inv.quantity FROM inventory inv
+               WHERE inv.item_id = ci.item_id AND inv.entity_id = ?
+                 AND IFNULL(inv.storage_zone_id, 0) = IFNULL(ci.storage_zone_id, 0)) AS current_quantity
       FROM inventory_count_items ci
       JOIN items i ON ci.item_id = i.id
       LEFT JOIN storage_zones sz ON ci.storage_zone_id = sz.id
       WHERE ci.count_id = ?
       ORDER BY i.item_code
-    `).bind(id).all()
+    `).bind(countEntityId, id).all()
 
     // P3: ZONE 실사 + DRAFT일 때만 미배정 품목(구역 없는 재고) 제시 — 첫 실사가 구역 배정을 겸함
     let unassignedItems: any[] = []
@@ -404,6 +418,51 @@ inventoryCountRouter.patch('/:id/submit', async (c) => {
       return c.json({ success: false, error: 'Count not found or already submitted' }, 400)
     }
 
+    return c.json({ success: true })
+  } catch (error) {
+    console.error('src/routes/inventoryCount.ts error:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
+  }
+})
+
+// PATCH /:id/reject — 반려 (SUBMITTED → DRAFT, 실사 UX 라⑥)
+inventoryCountRouter.patch('/:id/reject', async (c) => {
+  try {
+    const countId = parseInt(c.req.param('id'))
+    const ef = entityFilter(c)
+    const result = await c.env.DB.prepare(`
+      UPDATE inventory_counts
+      SET status = 'DRAFT', submitted_by = NULL, submitted_at = NULL
+      WHERE id = ? AND status = 'SUBMITTED'${ef.clause}
+    `).bind(countId, ...ef.params).run()
+    if ((result.meta.changes || 0) === 0) {
+      return c.json({ success: false, error: '제출됨 상태의 실사만 반려할 수 있습니다' }, 400)
+    }
+    return c.json({ success: true })
+  } catch (error) {
+    console.error('src/routes/inventoryCount.ts error:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
+  }
+})
+
+// DELETE /:id — 작성중(DRAFT) 실사 삭제 (실사 UX 라⑥ — 잘못 만든 실사 정리)
+inventoryCountRouter.delete('/:id', async (c) => {
+  try {
+    const countId = parseInt(c.req.param('id'))
+    const ef = entityFilter(c)
+    const count = await c.env.DB.prepare(
+      `SELECT id, status FROM inventory_counts WHERE id = ?${ef.clause}`
+    ).bind(countId, ...ef.params).first<{ status: string }>()
+    if (!count) {
+      return c.json({ success: false, error: 'Count not found' }, 404)
+    }
+    if (count.status !== 'DRAFT') {
+      return c.json({ success: false, error: '작성중 실사만 삭제할 수 있습니다' }, 400)
+    }
+    await c.env.DB.batch([
+      c.env.DB.prepare('DELETE FROM inventory_count_items WHERE count_id = ?').bind(countId),
+      c.env.DB.prepare(`DELETE FROM inventory_counts WHERE id = ? AND status = 'DRAFT'`).bind(countId),
+    ])
     return c.json({ success: true })
   } catch (error) {
     console.error('src/routes/inventoryCount.ts error:', error)
