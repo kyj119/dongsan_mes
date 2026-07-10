@@ -38,9 +38,15 @@
   var RETURN_LABEL = { REQUESTED: '요청', APPROVED: '승인', SHIPPED_BACK: '반송중', RECEIVED: '입고', INSPECTED: '검수', RESOLVED: '완료' };
   var RETURN_NEXT = { REQUESTED: 'APPROVED', APPROVED: 'SHIPPED_BACK', SHIPPED_BACK: 'RECEIVED', RECEIVED: 'INSPECTED', INSPECTED: 'RESOLVED' };
   var CLAIM_TYPE = { DEFECT: '품질불량', DELAY: '납기지연', QUANTITY: '수량오류', WRONG: '오배송', OTHER: '기타' };
+  // customer_claims.status (migrations/0213): OPEN | INVESTIGATING | RESOLVED | CLOSED
+  var CLAIM_STATUS_LABEL = { OPEN: '접수', INVESTIGATING: '조사중', RESOLVED: '해결', CLOSED: '종결' };
+  // returns.return_reason (migrations/0214): DEFECT | WRONG_ITEM | OVERSTOCK | CUSTOMER_CHANGE
+  var RETURN_REASON_LABEL = { DEFECT: '불량품', WRONG_ITEM: '오배송', OVERSTOCK: '재고과다', CUSTOMER_CHANGE: '고객변심' };
+  // defect_codes.category — 등록폼(qcDefectCategory) 옵션과 통일 + 레거시 시드값(POST_PROCESS/DESIGN) 호환
+  var DEFECT_CATEGORY_LABEL = { PRINT: '인쇄', FINISHING: '후가공', MATERIAL: '자재', COLOR: '색상', SIZE: '규격', OTHER: '기타', POST_PROCESS: '후가공', DESIGN: '디자인' };
 
   function badge(text, cls) { return '<span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium ' + cls + '">' + esc(text) + '</span>'; }
-  function claimBadge(s) { return badge(s || '-', s === 'RESOLVED' ? 'bg-green-50 text-green-700' : 'bg-amber-50 text-amber-700'); }
+  function claimBadge(s) { return badge(CLAIM_STATUS_LABEL[s] || s || '-', s === 'RESOLVED' ? 'bg-green-50 text-green-700' : 'bg-amber-50 text-amber-700'); }
   function returnBadge(s) { var m = { RESOLVED: 'bg-green-50 text-green-700', REQUESTED: 'bg-amber-50 text-amber-700' }; return badge(RETURN_LABEL[s] || s || '-', m[s] || 'bg-blue-50 text-blue-700'); }
 
   // ─── 탭 ───
@@ -172,7 +178,7 @@
           '<td class="col-code font-mono text-[11px]">' + esc(r.return_number) + '</td>' +
           '<td>' + esc(r.client_name || '-') + '</td>' +
           '<td class="col-code text-[11px]">' + esc(r.order_number || '-') + '</td>' +
-          '<td class="max-w-[220px] truncate" title="' + esc(r.return_reason) + '">' + esc(r.return_reason) + '</td>' +
+          '<td class="max-w-[220px] truncate" title="' + esc(RETURN_REASON_LABEL[r.return_reason] || r.return_reason) + '">' + esc(RETURN_REASON_LABEL[r.return_reason] || r.return_reason) + '</td>' +
           '<td>' + returnBadge(r.status) + '</td>' +
           '<td class="col-money text-right tabular-nums">' + money(r.refund_amount) + '</td>' +
           '<td class="col-date text-[11px]">' + fmtDate(r.return_date || r.created_at) + '</td>' +
@@ -222,7 +228,7 @@
         return '<tr>' +
           '<td class="col-code font-mono text-[11px]">' + esc(r.code) + '</td>' +
           '<td>' + esc(r.name) + '</td>' +
-          '<td>' + esc(r.category || '-') + '</td>' +
+          '<td>' + esc(DEFECT_CATEGORY_LABEL[r.category] || r.category || '-') + '</td>' +
           '<td>' + esc(r.parent_name || '-') + '</td>' +
           '<td class="max-w-[240px] truncate" title="' + esc(r.preventive_action) + '">' + esc(r.preventive_action || '-') + '</td></tr>';
       }).join('');

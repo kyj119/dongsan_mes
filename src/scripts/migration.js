@@ -407,6 +407,7 @@ function renderPreviewTable(data, type) {
   const fields = HEADER_MAPS[type]?.fields || [];
   const fieldKeys = fields.map(f => f.system);
   const statusFields = ['_match', '_existing', '_client_match'];
+  const matchStatusLabel = { INSERT: '신규', UPDATE: '갱신', SKIP: '건너뜀', MATCHED: '일치', UNMATCHED: '미매칭' };
 
   const html = `<table class="w-full text-xs">
     <thead><tr class="bg-gray-50 sticky top-0">
@@ -428,7 +429,7 @@ function renderPreviewTable(data, type) {
         ${fieldKeys.map(k => `<td class="px-2 py-1" style="color:#212529;max-width:150px;" class="truncate">${esc(row[k] ?? '')}</td>`).join('')}
         <td class="px-2 py-1 text-center">
           <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium ${badgeClass}">
-            <i class="fas ${badgeIcon} text-[7px] mr-0.5"></i>${matchStatus}
+            <i class="fas ${badgeIcon} text-[7px] mr-0.5"></i>${matchStatusLabel[matchStatus] || matchStatus}
           </span>
         </td>
       </tr>`;
@@ -724,6 +725,7 @@ function renderVerifyResult(data, type) {
           <th class="px-2 py-1.5 text-center text-gray-600 font-semibold">조치</th>
         </tr></thead>
         <tbody>${data.results.map(r => {
+          const balStatusLabel = { MATCH: '일치', TOLERANCE: '허용범위', MISSING: '누락', MISMATCH: '불일치' };
           const badge = r.status === 'MATCH' ? 'bg-green-50 text-green-700' :
             r.status === 'TOLERANCE' ? 'bg-blue-50 text-blue-700' :
             r.status === 'MISSING' ? 'bg-red-50 text-red-700' : 'bg-amber-50 text-amber-700';
@@ -736,7 +738,7 @@ function renderVerifyResult(data, type) {
             <td class="px-2 py-1 text-right" style="font-variant-numeric:tabular-nums;">${(r.ecount_balance || 0).toLocaleString()}</td>
             <td class="px-2 py-1 text-right" style="font-variant-numeric:tabular-nums;">${r.system_balance !== null ? r.system_balance.toLocaleString() : '-'}</td>
             <td class="px-2 py-1 text-right font-medium ${r.diff > 0 ? 'text-red-600' : r.diff < 0 ? 'text-blue-600' : ''}" style="font-variant-numeric:tabular-nums;">${r.diff !== null ? r.diff.toLocaleString() : '-'}</td>
-            <td class="px-2 py-1 text-center"><span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium ${badge}"><i class="fas ${icon} text-[7px] mr-0.5"></i>${r.status}</span></td>
+            <td class="px-2 py-1 text-center"><span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium ${badge}"><i class="fas ${icon} text-[7px] mr-0.5"></i>${balStatusLabel[r.status] || r.status}</span></td>
             <td class="px-2 py-1 text-center">${r.client_id ? `<a href="/clients/${r.client_id}" class="text-blue-600 hover:underline text-[10px]">원장</a>` : ''}</td>
           </tr>`;
         }).join('')}
@@ -796,6 +798,7 @@ async function loadStatusReport() {
     const logs = d.migration_logs || [];
     if (logs.length > 0) {
       const typeLabels = { clients: '거래처', items: '품목', orders: '주문', payments: '입금', tax_invoices: '세금계산서', opening_balances: '기초잔액' };
+      const logStatusLabels = { RUNNING: '진행중', COMPLETED: '완료' };
       document.getElementById('statusLogSummary').innerHTML = `
         <table class="w-full text-xs">
           <thead><tr class="bg-gray-50">
@@ -807,7 +810,7 @@ async function loadStatusReport() {
           <tbody>${logs.map(l => `
             <tr class="border-b border-gray-100">
               <td class="px-2 py-1.5" style="color:#212529;">${typeLabels[l.migration_type] || l.migration_type}</td>
-              <td class="px-2 py-1.5 text-center"><span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium ${l.status === 'COMPLETED' ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-gray-600'}">${l.status}</span></td>
+              <td class="px-2 py-1.5 text-center"><span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium ${l.status === 'COMPLETED' ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-gray-600'}">${logStatusLabels[l.status] || l.status}</span></td>
               <td class="px-2 py-1.5 text-right" style="font-variant-numeric:tabular-nums;">${(l.imported || 0).toLocaleString()}</td>
               <td class="px-2 py-1.5 text-gray-400">${formatKST(l.last_completed)}</td>
             </tr>`).join('')}

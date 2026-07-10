@@ -3,6 +3,7 @@ import type { Context } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { renderPage } from '../layout'
 import permissionsScript from '../scripts/permissions.js?raw'
+import { ROLE_LABELS } from '../constants/hr'
 
 export function permissionsPage(c: Context<HonoEnv>) {
   const pageContent = `
@@ -28,19 +29,19 @@ export function permissionsPage(c: Context<HonoEnv>) {
   <div class="bg-white rounded-t-lg shadow-sm flex border-b border-gray-200 px-2">
     <button id="permTabMANAGER" onclick="permSwitchRole('MANAGER')"
       class="px-6 py-3 text-sm font-semibold border-b-2 border-blue-600 text-blue-600">
-      <i class="fas fa-user-tie mr-1"></i>MANAGER
+      <i class="fas fa-user-tie mr-1"></i>${ROLE_LABELS.MANAGER}
     </button>
     <button id="permTabDESIGNER" onclick="permSwitchRole('DESIGNER')"
       class="px-6 py-3 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">
-      <i class="fas fa-paint-brush mr-1"></i>DESIGNER
+      <i class="fas fa-paint-brush mr-1"></i>${ROLE_LABELS.DESIGNER}
     </button>
     <button id="permTabOPERATOR" onclick="permSwitchRole('OPERATOR')"
       class="px-6 py-3 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">
-      <i class="fas fa-hard-hat mr-1"></i>OPERATOR
+      <i class="fas fa-hard-hat mr-1"></i>${ROLE_LABELS.OPERATOR}
     </button>
     <button id="permTabADMIN" onclick="permSwitchRole('ADMIN')"
       class="px-6 py-3 text-sm font-medium border-b-2 border-transparent text-gray-400 hover:text-gray-600 ml-auto">
-      <i class="fas fa-user-shield mr-1"></i>ADMIN (보기 전용)
+      <i class="fas fa-user-shield mr-1"></i>${ROLE_LABELS.ADMIN} (보기 전용)
     </button>
   </div>
 

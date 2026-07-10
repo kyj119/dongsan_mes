@@ -2,6 +2,7 @@
 // URL: /payslip/:id 또는 /payslip/batch/:period
 import type { Context } from 'hono'
 import type { HonoEnv } from '../types/env'
+import { DEPARTMENT_LABELS, POSITION_LABELS } from '../constants/hr'
 
 export function payslipPage(c: Context<HonoEnv>) {
   const idParam = c.req.param('id')
@@ -187,6 +188,8 @@ export function payslipPage(c: Context<HonoEnv>) {
     var MODE = ${JSON.stringify(mode)};
     var ID_PARAM = ${JSON.stringify(idParam)};
     var PERIOD_PARAM = ${JSON.stringify(periodParam || '')};
+    var DEPT_LABELS = ${JSON.stringify(DEPARTMENT_LABELS)};
+    var POSITION_LABELS = ${JSON.stringify(POSITION_LABELS)};
 
     function fmt(n) {
       if (n == null) return '0';
@@ -250,8 +253,8 @@ export function payslipPage(c: Context<HonoEnv>) {
         '<div class="slip-meta">' +
           '<div class="meta-row"><div class="meta-label">사번</div><div class="meta-value">' + esc(p.employee_code || '-') + '</div></div>' +
           '<div class="meta-row"><div class="meta-label">성명</div><div class="meta-value">' + esc(p.employee_name || '-') + '</div></div>' +
-          '<div class="meta-row"><div class="meta-label">부서</div><div class="meta-value">' + esc(p.department || '-') + '</div></div>' +
-          '<div class="meta-row"><div class="meta-label">직책</div><div class="meta-value">' + esc(p.position || '-') + '</div></div>' +
+          '<div class="meta-row"><div class="meta-label">부서</div><div class="meta-value">' + esc(DEPT_LABELS[p.department] || p.department || '-') + '</div></div>' +
+          '<div class="meta-row"><div class="meta-label">직책</div><div class="meta-value">' + esc(POSITION_LABELS[p.position] || p.position || '-') + '</div></div>' +
         '</div>' +
         '<div class="slip-grid">' +
           '<div>' +

@@ -47,6 +47,14 @@ export const DEPARTMENT_LABELS = toLabelMap(DEPARTMENTS)
 export const POSITION_LABELS = toLabelMap(POSITIONS)
 export const EMPLOYMENT_LABELS = toLabelMap(EMPLOYMENT_TYPES)
 
+// 시스템 역할(users.role) — HR 직급(POSITIONS)과 별개 축. shell.js topbar 라벨과 동일 유지.
+export const ROLE_LABELS: Record<string, string> = {
+  ADMIN: '관리자',
+  MANAGER: '매니저',
+  DESIGNER: '디자이너',
+  OPERATOR: '작업자',
+}
+
 // <option> HTML 생성. lead 지정 시 맨 위 value="" 옵션 추가('전체 부서'·'선택'·'-' 등).
 function optionsHTML(items: CodeLabel[], opts: { selected?: string; lead?: string } = {}): string {
   let html = ''
@@ -63,9 +71,10 @@ export const positionOptions = (opts?: { selected?: string; lead?: string }) => 
 export const employmentTypeOptions = (opts?: { selected?: string; lead?: string }) => optionsHTML(EMPLOYMENT_TYPES, opts)
 
 // 클라이언트 전역 주입 스크립트 — layout.ts 에서 1회 주입.
-// window.DEPT_NAMES / POSITION_NAMES / EMPLOYMENT_NAMES (code→label 맵)
+// window.DEPT_NAMES / POSITION_NAMES / EMPLOYMENT_NAMES / ROLE_NAMES (code→label 맵)
 export const HR_ENUMS_JS = `
 window.DEPT_NAMES = ${JSON.stringify(DEPARTMENT_LABELS)};
 window.POSITION_NAMES = ${JSON.stringify(POSITION_LABELS)};
 window.EMPLOYMENT_NAMES = ${JSON.stringify(EMPLOYMENT_LABELS)};
+window.ROLE_NAMES = ${JSON.stringify(ROLE_LABELS)};
 `

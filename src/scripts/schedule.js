@@ -34,8 +34,8 @@ var draggedFromEquipment = null;
 // ── 카드 HTML 생성 ──
 function renderCard(card) {
   const urgency = getUrgencyInfo(card.delivery_date);
-  const ripBadge = card.rip_status === 'QUEUED' ? '<span class="text-[10px] bg-blue-50 text-blue-700 px-1 rounded">QUEUED</span>'
-    : card.rip_status === 'SENT' ? '<span class="text-[10px] bg-green-50 text-green-700 px-1 rounded">SENT</span>'
+  const ripBadge = card.rip_status === 'QUEUED' ? '<span class="text-[10px] bg-blue-50 text-blue-700 px-1 rounded">대기</span>'
+    : card.rip_status === 'SENT' ? '<span class="text-[10px] bg-green-50 text-green-700 px-1 rounded">전송됨</span>'
     : '';
 
   return `

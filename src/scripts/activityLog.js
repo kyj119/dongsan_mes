@@ -1,7 +1,7 @@
 ﻿var currentPage = 1;
 
 var actionLabels = {
-  CREATE: '생성', STATUS_CHANGE: '상태변경', UPDATE: '수정', DELETE: '삭제'
+  CREATE: '생성', STATUS_CHANGE: '상태변경', UPDATE: '수정', DELETE: '삭제', LEDGER_EMAIL_SENT: '원장 이메일 발송'
 };
 var entityLabels = {
   ORDER: '주문', CARD: '카드', PAYMENT: '결제', CLIENT: '거래처', SHIPMENT: '출고', QUOTATION: '견적'

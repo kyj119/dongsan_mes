@@ -308,7 +308,7 @@ function showDetailModal(request, steps, attachments) {
       </div>
       <div class="flex-1 -mt-0.5">
         <div class="text-sm font-medium">${escapeHtml(s.label || s.step_order + '단계')}</div>
-        <div class="text-xs text-gray-500">${escapeHtml(s.approver_name || s.approver_role || '-')}</div>
+        <div class="text-xs text-gray-500">${escapeHtml(s.approver_name || (s.approver_role && window.ROLE_NAMES && window.ROLE_NAMES[s.approver_role]) || s.approver_role || '-')}</div>
         ${s.comment ? `<div class="text-xs text-gray-600 mt-1 bg-gray-50 p-2 rounded">${escapeHtml(s.comment)}</div>` : ''}
         ${s.acted_at ? `<div class="text-xs text-gray-400 mt-1">${formatKST(s.acted_at)}</div>` : ''}
       </div>

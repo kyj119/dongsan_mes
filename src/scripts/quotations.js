@@ -219,7 +219,7 @@ async function viewQuotation(id) {
       convertedOrders.forEach(function(o) {
         ordersHtml += '<tr class="border-t hover:bg-gray-50">'
           + '<td class="px-3 py-2 font-medium"><a href="/orders/' + o.id + '" class="text-blue-600 hover:underline">' + (o.order_number || '#' + o.id) + '</a></td>'
-          + '<td class="px-3 py-2 text-center">' + (o.status || '-') + '</td>'
+          + '<td class="px-3 py-2 text-center">' + (o.status ? window.MES_STATUS.orderLabel(o.status) : '-') + '</td>'
           + '<td class="px-3 py-2 text-right">' + (parseFloat(o.final_amount) || 0).toLocaleString() + '원</td>'
           + '<td class="px-3 py-2 text-center text-gray-500">' + ((o.created_at || '').substring(0, 10)) + '</td>'
           + '</tr>';

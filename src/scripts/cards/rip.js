@@ -405,7 +405,7 @@ async function processQrScan(value) {
             await axios.patch('/api/cards/' + card.id + '/status', { status: 'PRINTING' });
             showToast(cardNumber + ' 보류 해제 → 진행중', 'success');
         } else {
-            showToast(cardNumber + ' 현재 상태: ' + status, 'info');
+            showToast(cardNumber + ' 현재 상태: ' + window.MES_STATUS.cardLabel(status), 'info');
         }
         loadKanban();
     } catch (e) {

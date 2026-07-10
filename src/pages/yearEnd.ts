@@ -2,6 +2,7 @@
 // URL: /year-end/:employeeId?year=YYYY
 import type { Context } from 'hono'
 import type { HonoEnv } from '../types/env'
+import { DEPARTMENT_LABELS, POSITION_LABELS } from '../constants/hr'
 
 export function yearEndPage(c: Context<HonoEnv>) {
   const employeeId = parseInt(c.req.param('employeeId') || '', 10)
@@ -163,6 +164,8 @@ export function yearEndPage(c: Context<HonoEnv>) {
 
     var EMPLOYEE_ID = ${employeeId};
     var YEAR = ${year};
+    var DEPT_LABELS = ${JSON.stringify(DEPARTMENT_LABELS)};
+    var POSITION_LABELS = ${JSON.stringify(POSITION_LABELS)};
 
     function fmt(n) {
       if (n == null) return '0';
@@ -240,8 +243,8 @@ export function yearEndPage(c: Context<HonoEnv>) {
             '<td class="label">연락처</td><td class="value">' + esc(emp.phone || '-') + '</td>' +
           '</tr>' +
           '<tr>' +
-            '<td class="label">부서</td><td class="value">' + esc(emp.department || '-') + '</td>' +
-            '<td class="label">직책</td><td class="value">' + esc(emp.position || '-') + '</td>' +
+            '<td class="label">부서</td><td class="value">' + esc(DEPT_LABELS[emp.department] || emp.department || '-') + '</td>' +
+            '<td class="label">직책</td><td class="value">' + esc(POSITION_LABELS[emp.position] || emp.position || '-') + '</td>' +
           '</tr>' +
           '<tr>' +
             '<td class="label">입사일</td><td class="value">' + (emp.hire_date || '-') + '</td>' +

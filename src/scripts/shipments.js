@@ -924,7 +924,7 @@ function showShipBlockedModal(blocked) {
 
   var rows = blocked.map(function(r) {
     var info = findOrderInfo(r.id);
-    var cards = (r.unshipped_cards || []).map(function(cd) { return (cd.card_number || cd.id) + '(' + (cd.status || '-') + ')'; }).join(', ');
+    var cards = (r.unshipped_cards || []).map(function(cd) { return (cd.card_number || cd.id) + '(' + (cd.status ? window.MES_STATUS.cardLabel(cd.status) : '-') + ')'; }).join(', ');
     return '<tr class="border-t border-gray-100">'
       + '<td class="px-3 py-2 text-sm">' + escapeHtml(info.client) + '</td>'
       + '<td class="px-3 py-2 text-sm">' + escapeHtml(info.number) + '</td>'

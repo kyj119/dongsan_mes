@@ -104,7 +104,7 @@ async function bulkShipSelected() {
         if (r.success) {
           totalShipped += (r.shipped_cards || 0);
           if (r.remaining > 0 && r.unshipped_cards) {
-            remainingCards = remainingCards.concat(r.unshipped_cards.map(function(c) { return c.card_number + ' (' + c.status + ')'; }));
+            remainingCards = remainingCards.concat(r.unshipped_cards.map(function(c) { return c.card_number + ' (' + window.MES_STATUS.cardLabel(c.status) + ')'; }));
           }
         } else failCount++;
       });

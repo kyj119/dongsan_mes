@@ -2,6 +2,7 @@
 import type { Context } from 'hono'
 import type { HonoEnv } from '../types/env'
 import pageScript from '../scripts/employeeSelf.js?raw'
+import { HR_ENUMS_JS } from '../constants/hr'
 
 export function employeeSelfPage(c: Context<HonoEnv>) {
   return c.html(`<!DOCTYPE html>
@@ -264,6 +265,7 @@ export function employeeSelfPage(c: Context<HonoEnv>) {
       </div>
     </div>
   </div>
+  <script>${HR_ENUMS_JS}</script>
   <script>${pageScript}</script>
 </body>
 </html>`)
