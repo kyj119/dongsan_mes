@@ -74,7 +74,7 @@ async function loadSummary() {
   }
 
   try {
-    var today = new Date().toISOString().slice(0, 10);
+    var today = window.kstToday ? window.kstToday() : new Date().toISOString().slice(0, 10);
     var logsRes = await axios.get('/api/kakao/logs', { params: { date_from: today, date_to: today, limit: 1 } });
     if (logsRes.data.success) {
       document.getElementById('msgTodayCount').textContent = (logsRes.data.data.pagination.total || 0) + '건';
@@ -324,7 +324,7 @@ function toggleBulkSchedule() {
   if (checked) {
     var d = new Date(Date.now() + 3600000);
     d.setMinutes(Math.ceil(d.getMinutes() / 10) * 10, 0, 0);
-    document.getElementById('bulkScheduleAt').value = d.toISOString().slice(0, 16);
+    document.getElementById('bulkScheduleAt').value = new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
   }
 }
 

@@ -297,7 +297,7 @@ export function yearEndPage(c: Context<HonoEnv>) {
         '</table>' +
 
         '<div class="sign-area">' +
-          '<div class="date">' + YEAR + '년 ' + (new Date().getMonth() + 1) + '월 ' + new Date().getDate() + '일 발행</div>' +
+          '<div class="date">' + YEAR + '년 ' + (new Date(Date.now() + 9 * 3600 * 1000).getUTCMonth() + 1) + '월 ' + new Date(Date.now() + 9 * 3600 * 1000).getUTCDate() + '일 발행</div>' +
           '<div><span class="company">동산기획</span> (인)</div>' +
         '</div>' +
 

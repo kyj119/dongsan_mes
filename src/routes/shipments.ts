@@ -9,6 +9,7 @@ import { getNextSeqNumber, withSeqRetry } from '../utils/sequenceGenerator'
 import { autoDeductPostProcessingMaterials } from '../utils/autoDeductPostProcessingMaterials'
 import { deductStockLinesOnShip } from '../utils/stockShip'
 import { ensureShipmentForOrder } from '../utils/shipmentHelper'
+import { kstYmd } from '../utils/kstDate'
 import { getEntityCompanyInfo } from '../utils/entitySettings'
 import { escapeCsvField } from '../utils/csv'
 
@@ -131,7 +132,7 @@ shipmentsRouter.get('/stats', async (c) => {
 shipmentsRouter.get('/daily', async (c) => {
   try {
     const { date } = c.req.query()
-    const targetDate = date || new Date().toISOString().substring(0, 10)
+    const targetDate = date || kstYmd()
 
     const efDaily = entityFilter(c, 'o')
     // P1 출고 정합화: 최신 활성 shipment 1:1 조인 — 송장번호/라벨수량/수신자주소 재표시
@@ -270,7 +271,7 @@ shipmentsRouter.get('/daily', async (c) => {
 shipmentsRouter.get('/consolidation-candidates', requireRole('ADMIN', 'MANAGER'), async (c) => {
   try {
     const { date } = c.req.query()
-    const targetDate = date || new Date().toISOString().substring(0, 10)
+    const targetDate = date || kstYmd()
 
     interface ConsolidationRow {
       id: number; order_number: string; entity_id: number | null; entity_name: string | null
@@ -604,7 +605,7 @@ shipmentsRouter.patch('/checklist/:shipmentId', async (c) => {
 // ============================================================================
 shipmentsRouter.get('/dashboard/counts', async (c) => {
   try {
-    const today = new Date().toISOString().split('T')[0]
+    const today = kstYmd()
     const ef = entityFilter(c, 'o')
     const { results } = await c.env.DB.prepare(`
       SELECT o.id,
@@ -631,7 +632,7 @@ shipmentsRouter.get('/dashboard/counts', async (c) => {
 shipmentsRouter.get('/dashboard', async (c) => {
   try {
     const { date, delivery_method, status = 'all' } = c.req.query()
-    const targetDate = date || new Date().toISOString().split('T')[0]
+    const targetDate = date || kstYmd()
     const ef = entityFilter(c, 'o')
     const { results } = await c.env.DB.prepare(`
       SELECT

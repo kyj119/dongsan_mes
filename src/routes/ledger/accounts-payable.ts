@@ -5,6 +5,7 @@ import { createPayment } from '../../lib/payments'
 import { logActivity } from '../../utils/activityLog'
 import { notifyRoles } from '../../utils/notify'
 import { getEntityId, entityFilter } from '../../utils/entityFilter'
+import { kstYmd } from '../../utils/kstDate'
 
 // ── Row interfaces ──────────────────────────────────────────────────────────
 interface PurchaseOrderRow {
@@ -590,7 +591,7 @@ apRouter.post('/purchase-adjustment', requireRole('ADMIN', 'MANAGER'), async (c)
       body.type,
       amount,
       body.reason || null,
-      body.adjustment_date || new Date().toISOString().split('T')[0],
+      body.adjustment_date || kstYmd(),
       user?.id || null,
       adjEntityId
     ).run()

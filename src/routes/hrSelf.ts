@@ -3,6 +3,7 @@ import { Hono } from 'hono'
 import { sign, verify } from 'hono/jwt'
 import type { HonoEnv } from '../types/env'
 import { renderEmploymentCertificateHTML } from '../templates/employmentCertificate'
+import { kstYmd, kstYmdCompact } from '../utils/kstDate'
 
 const hrSelfRouter = new Hono<HonoEnv>()
 
@@ -112,12 +113,12 @@ hrSelfRouter.get('/self/certificates/employment', async (c) => {
     }
 
     // certificate_number 자동 채번: CERT-YYYYMMDD-NNN
-    const today = new Date()
-    const dateStr = today.toISOString().slice(0, 10).replace(/-/g, '')
+    const today = kstYmd()
+    const dateStr = kstYmdCompact()
     const eidCert = emp.entity_id || 1
     const { results: countResult } = await c.env.DB.prepare(`
       SELECT COUNT(*) as cnt FROM certificate_logs WHERE issue_date = ? AND entity_id = ?
-    `).bind(today.toISOString().slice(0, 10), eidCert).all<{ cnt: number }>().catch(() => ({ results: [{ cnt: 0 }] }))
+    `).bind(today, eidCert).all<{ cnt: number }>().catch(() => ({ results: [{ cnt: 0 }] }))
     const seq = ((countResult?.[0]?.cnt) || 0) + 1
     const certificateNumber = `CERT-${dateStr}-${String(seq).padStart(3, '0')}`
 
@@ -126,7 +127,7 @@ hrSelfRouter.get('/self/certificates/employment', async (c) => {
       await c.env.DB.prepare(`
         INSERT INTO certificate_logs (employee_id, certificate_number, certificate_type, purpose, issue_date, entity_id, created_at)
         VALUES (?, ?, 'EMPLOYMENT', ?, ?, ?, datetime('now'))
-      `).bind(employeeId, certificateNumber, purpose, today.toISOString().slice(0, 10), eidCert).run()
+      `).bind(employeeId, certificateNumber, purpose, today, eidCert).run()
     } catch (certErr) {
       console.error('certificate_logs insert failed:', certErr)
     }
@@ -146,7 +147,7 @@ hrSelfRouter.get('/self/certificates/employment', async (c) => {
         hire_date: emp.hire_date || '',
         employee_code: emp.employee_code || '',
       },
-      issue_date: today.toISOString().slice(0, 10),
+      issue_date: today,
       certificate_number: certificateNumber,
       purpose,
     })

@@ -8,6 +8,7 @@ import { notifyRoles } from '../../utils/notify'
 import { recalculateOrderCosts } from '../../utils/costCalculator'
 import { sendEmail } from '../../services/emailProvider'
 import { getEntityId, entityFilter, orderVisibilityFilter } from '../../utils/entityFilter'
+import { kstYmd } from '../../utils/kstDate'
 import { deductStockLinesOnShip } from '../../utils/stockShip'
 import { ensureShipmentForOrder } from '../../utils/shipmentHelper'
 
@@ -16,7 +17,7 @@ ordersQueriesRouter.use('/*', authMiddleware, requireAnyPagePermission('/orders'
 
 ordersQueriesRouter.get('/quotations/expired', async (c) => {
   try {
-    const today = new Date().toISOString().split('T')[0]
+    const today = kstYmd()
     const { results } = await c.env.DB.prepare(`
       SELECT
         o.*,

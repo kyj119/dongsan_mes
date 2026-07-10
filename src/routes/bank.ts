@@ -12,6 +12,7 @@ import { getEntityCorpNum, getEntityBarobillSenderId } from '../utils/entitySett
 import { loadProvision, agingCategoryToBucket, effectiveLossRate } from '../utils/provisionMatrix'
 import { computeExpectedPaymentDate } from '../utils/paymentSchedule'
 import { escapeCsvField } from '../utils/csv'
+import { kstYmd, kstYmdCompact } from '../utils/kstDate'
 
 const bankRouter = new Hono<HonoEnv>()
 
@@ -456,8 +457,7 @@ bankRouter.post('/sync-barobill', requireRole('ADMIN'), async (c) => {
     const body = await c.req.json().catch(() => ({})) as { date_start?: string; date_end?: string }
 
     // 기본: 오늘
-    const now = new Date()
-    const today = now.toISOString().slice(0, 10).replace(/-/g, '')
+    const today = kstYmdCompact()
     const dateStart = body.date_start?.replace(/-/g, '') || today
     const dateEnd = body.date_end?.replace(/-/g, '') || today
 
@@ -1742,10 +1742,8 @@ bankRouter.post('/auto-sync', requireRole('ADMIN'), async (c) => {
   try {
 
     // 오늘 날짜 기준 최근 3일 동기화
-    const today = new Date()
-    const threeDaysAgo = new Date(today.getTime() - 3 * 24 * 60 * 60 * 1000)
-    const dateStart = threeDaysAgo.toISOString().slice(0, 10)
-    const dateEnd = today.toISOString().slice(0, 10)
+    const dateEnd = kstYmd()
+    const dateStart = kstYmd(-3)
 
     // 모든 활성 계좌에 대해 바로빌 동기화 실행
     const efAutoAcc = entityFilter(c, 'bank_accounts')

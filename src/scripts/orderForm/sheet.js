@@ -10,7 +10,7 @@
                 // 유효기한: 오늘로부터 30일 후
                 var validUntilDate = new Date();
                 validUntilDate.setDate(validUntilDate.getDate() + 30);
-                var validUntil = validUntilDate.toISOString().slice(0, 10);
+                var validUntil = new Date(validUntilDate.getTime() - validUntilDate.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
 
                 if (!(await showConfirm('견적서로 저장하시겠습니까?\n유효기한: ' + validUntil + ' (오늘로부터 30일)'))) return;
 

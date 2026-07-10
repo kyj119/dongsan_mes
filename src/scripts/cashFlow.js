@@ -130,7 +130,7 @@
       + '<div><label class="block text-sm font-medium text-gray-700 mb-1">납부일</label><input id="fe_payment_day" type="number" min="1" max="31" class="w-full px-3 py-2 border rounded-lg text-sm" value="' + ((data && data.payment_day) || 1) + '"></div>'
       + '</div>'
       + '<div class="grid grid-cols-2 gap-3">'
-      + '<div><label class="block text-sm font-medium text-gray-700 mb-1">시작일</label><input id="fe_start" type="date" class="w-full px-3 py-2 border rounded-lg text-sm" value="' + ((data && data.start_date) || new Date().toISOString().slice(0, 10)) + '"></div>'
+      + '<div><label class="block text-sm font-medium text-gray-700 mb-1">시작일</label><input id="fe_start" type="date" class="w-full px-3 py-2 border rounded-lg text-sm" value="' + ((data && data.start_date) || (window.kstToday ? window.kstToday() : new Date().toISOString().slice(0, 10))) + '"></div>'
       + '<div><label class="block text-sm font-medium text-gray-700 mb-1">종료일</label><input id="fe_end" type="date" class="w-full px-3 py-2 border rounded-lg text-sm" value="' + ((data && data.end_date) || '') + '"></div>'
       + '</div>'
       + '<div><label class="block text-sm font-medium text-gray-700 mb-1">은행 거래 상대명 (매칭용)</label><input id="fe_counterpart" class="w-full px-3 py-2 border rounded-lg text-sm" value="' + esc((data && data.counterpart_name) || '') + '" placeholder="예: (주)한화손해보험"></div>'
@@ -272,7 +272,7 @@
     try {
       await axios.post('/api/cash-flow/loans/' + loanId + '/payments/' + paymentId + '/pay', {
         actual_paid_amount: amount,
-        actual_paid_date: new Date().toISOString().slice(0, 10)
+        actual_paid_date: (window.kstToday ? window.kstToday() : new Date().toISOString().slice(0, 10))
       });
       loadLoanSchedule(loanId);
       loadLoans();
@@ -350,7 +350,7 @@
       + '<div class="bg-white rounded-lg shadow-xl p-6 w-full max-w-sm">'
       + '<h3 class="font-bold text-lg mb-4">금리 변경</h3>'
       + '<div class="space-y-3">'
-      + '<div><label class="block text-sm font-medium text-gray-700 mb-1">적용일</label><input id="rc_date" type="date" class="w-full px-3 py-2 border rounded-lg text-sm" value="' + new Date().toISOString().slice(0, 10) + '"></div>'
+      + '<div><label class="block text-sm font-medium text-gray-700 mb-1">적용일</label><input id="rc_date" type="date" class="w-full px-3 py-2 border rounded-lg text-sm" value="' + (window.kstToday ? window.kstToday() : new Date().toISOString().slice(0, 10)) + '"></div>'
       + '<div><label class="block text-sm font-medium text-gray-700 mb-1">새 금리 (%)</label><input id="rc_rate" type="number" step="0.01" class="w-full px-3 py-2 border rounded-lg text-sm"></div>'
       + '<div><label class="block text-sm font-medium text-gray-700 mb-1">비고</label><input id="rc_notes" class="w-full px-3 py-2 border rounded-lg text-sm"></div>'
       + '</div>'

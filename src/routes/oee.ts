@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
 import { entityFilter, getEntityId } from '../utils/entityFilter'
+import { kstYmd } from '../utils/kstDate'
 
 const oee = new Hono<HonoEnv>()
 oee.use('*', authMiddleware)
@@ -10,7 +11,7 @@ oee.use('*', authMiddleware)
 oee.post('/calculate', requireRole('ADMIN', 'MANAGER'), async (c) => {
   try {
     const { date } = await c.req.json()
-    const targetDate = date || new Date().toISOString().split('T')[0]
+    const targetDate = date || kstYmd()
 
     // 활성 장비 목록 (entity 필터 적용)
     const entityId = getEntityId(c)
@@ -149,7 +150,7 @@ oee.post('/calculate', requireRole('ADMIN', 'MANAGER'), async (c) => {
 
 // ─── OEE 일별 조회 ──────────────────────────────────────────────────────────
 oee.get('/daily', async (c) => {
-  const date = c.req.query('date') || new Date().toISOString().split('T')[0]
+  const date = c.req.query('date') || kstYmd()
   const ef = entityFilter(c, 'o')
 
   const { results } = await c.env.DB.prepare(`
@@ -165,10 +166,8 @@ oee.get('/daily', async (c) => {
 
 // ─── OEE 추이 (기간별) ──────────────────────────────────────────────────────
 oee.get('/trend', async (c) => {
-  const from = c.req.query('from') || (() => {
-    const d = new Date(); d.setDate(d.getDate() - 30); return d.toISOString().split('T')[0]
-  })()
-  const to = c.req.query('to') || new Date().toISOString().split('T')[0]
+  const from = c.req.query('from') || kstYmd(-30)
+  const to = c.req.query('to') || kstYmd()
   const equipmentId = c.req.query('equipment_id')
   const ef = entityFilter(c, 'equipment_oee_daily')
 

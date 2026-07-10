@@ -10,6 +10,7 @@ import type { TaxInvoiceItem } from '../../types/models'
 import { authMiddleware, requireRole } from '../../middleware/auth'
 import { getEntityId, entityFilter } from '../../utils/entityFilter'
 import { getNextEntitySeqNumber } from '../../utils/sequenceGenerator'
+import { kstYmd, kstYmdCompact } from '../../utils/kstDate'
 import { generateInvoiceNumber, getCompanySettings, issueTaxInvoice, createSplitInvoices } from './helpers'
 import type { TaxInvoiceWithOrder, ClientRow, OrderWithClient } from './helpers'
 
@@ -73,7 +74,7 @@ taxInvoicesIssueRouter.post('/direct', requireRole('ADMIN', 'MANAGER'), async (c
       return c.json({ success: false, error: '거래처에 사업자등록번호가 등록되어 있지 않습니다.' }, 400)
     }
 
-    const issueDate = body.issue_date || new Date().toISOString().slice(0, 10)
+    const issueDate = body.issue_date || kstYmd()
     const user = c.get('user')
     const entityId = getEntityId(c) || 1
     const vatRate = 0.1
@@ -127,7 +128,7 @@ taxInvoicesIssueRouter.post('/direct', requireRole('ADMIN', 'MANAGER'), async (c
 
     // ── 1) 백업 주문 INSERT (billing_status=BILLED, order_type=DIRECT_INVOICE) ──
     const today = new Date()
-    const dateStr = today.toISOString().split('T')[0].replace(/-/g, '')
+    const dateStr = kstYmdCompact()
     const orderNumber = await getNextEntitySeqNumber(c.env.DB, 'orders', 'order_number', entityId, dateStr, { base: 'DI-' })
 
     // status='SHIPPED': 직접발행은 생산 파이프라인을 거치지 않고 이미 납품/정산된
@@ -312,7 +313,7 @@ taxInvoicesIssueRouter.post('/', requireRole('ADMIN', 'MANAGER'), async (c) => {
     }
 
     // P4: 채번은 createSplitInvoices가 법인별로 수행 (generateInvoiceNumber(entityId)).
-    const issueDate = body.issue_date || new Date().toISOString().slice(0, 10)
+    const issueDate = body.issue_date || kstYmd()
     const user = c.get('user')
 
     // ──────────────────────────────────────────────
@@ -505,7 +506,7 @@ taxInvoicesIssueRouter.post('/:id/modify', requireRole('ADMIN', 'MANAGER'), asyn
     ).bind(id).all()
 
     const invoiceNumber = await generateInvoiceNumber(c.env.DB, getEntityId(c))
-    const issueDate = body.issue_date || new Date().toISOString().slice(0, 10)
+    const issueDate = body.issue_date || kstYmd()
 
     // 새 수정발행 계산서 생성 (원본 정보 복사)
     const insertResult = await c.env.DB.prepare(`

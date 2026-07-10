@@ -9,6 +9,7 @@ import { requirePagePermission } from '../middleware/permissions'
 import { getEntityId, entityFilter } from '../utils/entityFilter'
 import { getNextSeqNumber, getNextEntitySeqNumber, withSeqRetry } from '../utils/sequenceGenerator'
 import { putBase64ToR2, base64ToBytes } from '../utils/thumbnailStore'
+import { kstYmdCompact } from '../utils/kstDate'
 
 const approvals = new Hono<HonoEnv>()
 approvals.use('*', authMiddleware, requirePagePermission('/approvals'))
@@ -174,7 +175,7 @@ approvals.post('/', async (c) => {
     const { template_id, type, title, content, amount, reference_type, reference_id } = body
 
     // 번호 생성 (#329: 법인코드 E{eid} 내장 — 멀티법인 번호 충돌 방지)
-    const today = new Date().toISOString().slice(0, 10).replace(/-/g, '')
+    const today = kstYmdCompact()
     const eid = getEntityId(c) || 1
     const requestNumber = await getNextEntitySeqNumber(c.env.DB, 'approval_requests', 'request_number', eid, today, { base: 'APR-' })
 

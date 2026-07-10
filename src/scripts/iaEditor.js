@@ -2769,7 +2769,7 @@ function iaeOpenOrderModalWithLines(lines) {
     + '</div></div>';
   document.body.appendChild(modal);
   // 기본 납품일 = 오늘+3
-  try { var dd = new Date(); dd.setDate(dd.getDate() + 3); document.getElementById('iaeOmDate').value = dd.toISOString().split('T')[0]; } catch (_e) {}
+  try { var dd = new Date(); dd.setDate(dd.getDate() + 3); document.getElementById('iaeOmDate').value = new Date(dd.getTime() - dd.getTimezoneOffset() * 60000).toISOString().split('T')[0]; } catch (_e) {}
 
   document.getElementById('iaeOmClose').addEventListener('click', iaeCanCloseOrderModal);
   document.getElementById('iaeOmCancel').addEventListener('click', iaeCanCloseOrderModal);

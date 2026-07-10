@@ -11,6 +11,7 @@ import { authMiddleware } from '../../middleware/auth'
 import { requireAnyPagePermission } from '../../middleware/permissions'
 import { getEntityId, entityFilter, getWriteEntityId, ENTITY_ALL_MODE_WRITE_ERROR } from '../../utils/entityFilter'
 import { getItemDefaultZones } from '../../utils/inventoryZone'
+import { kstYmd, kstYmdCompact } from '../../utils/kstDate'
 
 const poReceiveRouter = new Hono<HonoEnv>()
 poReceiveRouter.use('/*', authMiddleware, requireAnyPagePermission('/purchase-orders', '/receiving'))
@@ -47,10 +48,10 @@ poReceiveRouter.post('/:id/receive', async (c) => {
       }, 400)
     }
 
-    const receiptDate = receipt_date || new Date().toISOString().split('T')[0]
+    const receiptDate = receipt_date || kstYmd()
 
     // 입고 번호 생성: RCV-YYYYMMDD-001
-    const dateStr = new Date().toISOString().split('T')[0].replace(/-/g, '')
+    const dateStr = kstYmdCompact()
     const rcvCountRow = await c.env.DB.prepare(`
       SELECT COUNT(*) as count FROM inventory_receipts WHERE receipt_number LIKE ?
     `).bind(`RCV-${dateStr}%`).first<{ count: number }>()

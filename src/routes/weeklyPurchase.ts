@@ -7,6 +7,7 @@ import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
 import { getEntityId, entityFilter } from '../utils/entityFilter'
 import { getNextEntitySeqNumber, withSeqRetry } from '../utils/sequenceGenerator'
+import { kstYmdCompact } from '../utils/kstDate'
 import { getConsumptionForecast } from '../utils/consumptionForecast'
 import { computeMaterialRequirements } from '../utils/materialRequirement'
 import { buildWeeklyPurchaseSMS } from '../utils/inventoryAlert'
@@ -243,7 +244,7 @@ weeklyPurchaseRouter.post('/create-prs', async (c) => {
       item_count: number
     }> = []
 
-    const today = new Date().toISOString().split('T')[0].replace(/-/g, '')
+    const today = kstYmdCompact()
 
     for (const [, group] of groups) {
       // PR 번호 생성 — 법인코드 E{eid} 내장 (행 entity_id와 동일 eid). 채번 경로 통일.

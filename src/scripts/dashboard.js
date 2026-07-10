@@ -301,7 +301,7 @@ async function loadActiveCards() {
             container.innerHTML = '<div class="ds-empty"><i class="fas fa-print"></i><p>진행 중인 작업이 없습니다</p></div>';
             return;
         }
-        const today = new Date().toISOString().slice(0, 10);
+        const today = (window.kstToday ? window.kstToday() : new Date().toISOString().slice(0, 10));
         let html = '<table class="ds-table ds-table-compact">'
             + '<thead><tr>'
             + '<th class="col-name">거래처</th>'
@@ -597,7 +597,7 @@ async function loadTodayDue() {
       container.innerHTML = '<div class="ds-empty" style="color:var(--c-success)"><i class="fas fa-check-circle" style="margin-right:4px"></i>납기 도래 주문 없음</div>';
       return;
     }
-    var today = new Date().toISOString().slice(0, 10);
+    var today = (window.kstToday ? window.kstToday() : new Date().toISOString().slice(0, 10));
     container.innerHTML = items.map(function(o) {
       var isOverdue = o.delivery_date < today;
       var urgencyClass = isOverdue ? 'bg-red-50 border-red-200' : 'bg-orange-50 border-orange-200';

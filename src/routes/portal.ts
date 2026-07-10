@@ -9,6 +9,7 @@ import type { PortalUser } from '../middleware/portalAuth'
 import { hashPassword, verifyPassword } from '../utils/crypto'
 import { authMiddleware, requireRole } from '../middleware/auth'
 import { entityFilter, getEntityId } from '../utils/entityFilter'
+import { kstYmd } from '../utils/kstDate'
 import { getTaxProvider } from './taxInvoices' // #344: 포털 세금계산서 다운로드
 
 // ─── DB Row 타입 ────────────────────────────────────────────────────────────
@@ -738,7 +739,7 @@ portal.post('/verify-document', async (c) => {
     } else {
       // 원장: metadata에 기간이 있으면 해당 기간, 없으면 최근 6개월
       const defaultStart = new Date(Date.now() - 180 * 86400000).toISOString().substring(0, 10)
-      const defaultEnd = new Date().toISOString().substring(0, 10)
+      const defaultEnd = kstYmd()
       const sixMonthsAgo = periodStart || defaultStart
       const today = periodEnd || defaultEnd
 

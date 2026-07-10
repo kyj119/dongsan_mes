@@ -1,5 +1,5 @@
 (function() {
-  var currentDate = new Date().toISOString().split('T')[0];
+  var currentDate = (window.kstToday ? window.kstToday() : new Date().toISOString().split('T')[0]);
   var dateEl = document.getElementById('dashDate');
   if (dateEl) dateEl.value = currentDate;
 

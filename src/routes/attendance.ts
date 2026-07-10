@@ -17,6 +17,7 @@ import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
 import { requirePagePermission } from '../middleware/permissions'
 import { entityFilter, getEntityId } from '../utils/entityFilter'
+import { kstYm } from '../utils/kstDate'
 
 const attendanceRouter = new Hono<HonoEnv>()
 attendanceRouter.use('/*', authMiddleware, requirePagePermission('/attendance'))
@@ -55,7 +56,7 @@ async function hasLateMinutesColumn(db: D1Database): Promise<boolean> {
 // ============================================================================
 attendanceRouter.get('/month', async (c) => {
   try {
-    const month = c.req.query('month') || new Date().toISOString().slice(0, 7)
+    const month = c.req.query('month') || kstYm()
     const department = c.req.query('department') || ''
     const status = c.req.query('status') || 'ACTIVE'
 

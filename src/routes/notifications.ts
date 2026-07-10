@@ -3,6 +3,7 @@ import type { HonoEnv } from '../types/env'
 import type { D1Database } from '@cloudflare/workers-types'
 import { authMiddleware } from '../middleware/auth'
 import { entityFilter, getEntityId } from '../utils/entityFilter'
+import { kstYmd } from '../utils/kstDate'
 
 const notificationsRouter = new Hono<HonoEnv>()
 notificationsRouter.use('/*', authMiddleware)
@@ -155,8 +156,8 @@ notificationsRouter.patch('/:id/read', async (c) => {
 notificationsRouter.post('/generate', async (c) => {
   try {
     const db = c.env.DB
-    const today = new Date().toISOString().slice(0, 10)
-    const tomorrow = new Date(Date.now() + 86400000).toISOString().slice(0, 10)
+    const today = kstYmd()
+    const tomorrow = kstYmd(1)
 
     // 1. 납기 도래/지연 주문
     const ef = entityFilter(c, 'o')

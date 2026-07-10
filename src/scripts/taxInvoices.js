@@ -404,7 +404,7 @@ function updateBatchBar() {
 
 function getIssueDateValue() {
   var d = document.getElementById('unbilledIssueDate').value;
-  if (!d) d = new Date().toISOString().split('T')[0];
+  if (!d) d = (window.kstToday ? window.kstToday() : new Date().toISOString().split('T')[0]);
   return d;
 }
 
@@ -698,7 +698,7 @@ function openModifyModal(id, invoiceNumber) {
   modifyTargetId = id;
   document.getElementById('modifyOriginalInfo').textContent = '원본 세금계산서: ' + invoiceNumber;
   document.getElementById('modifyCode').value = '1';
-  document.getElementById('modifyIssueDate').value = new Date().toISOString().split('T')[0];
+  document.getElementById('modifyIssueDate').value = (window.kstToday ? window.kstToday() : new Date().toISOString().split('T')[0]);
   document.getElementById('modifyNotes').value = '';
   document.getElementById('modifyModal').classList.remove('hidden');
 }
@@ -848,7 +848,7 @@ async function loadBillingPendingOrders() {
     _billingPendingOrders = (res.data.data || []).filter(function(o) { return !o.billing_status; });
 
     // billable_after 기준 분리 (목록 렌더용)
-    var today = new Date().toISOString().split('T')[0];
+    var today = (window.kstToday ? window.kstToday() : new Date().toISOString().split('T')[0]);
     var ready = _billingPendingOrders.filter(function(o) { return !o.billable_after || o.billable_after <= today; });
     var waiting = _billingPendingOrders.filter(function(o) { return o.billable_after && o.billable_after > today; });
 
@@ -1087,7 +1087,7 @@ async function bulkBillSelected() {
   var lastDay = new Date(y, now.getMonth() + 1, 0).getDate();
   document.getElementById('unbilledFrom').value = y + '-' + m + '-01';
   document.getElementById('unbilledTo').value = y + '-' + m + '-' + String(lastDay).padStart(2, '0');
-  document.getElementById('unbilledIssueDate').value = now.toISOString().split('T')[0];
+  document.getElementById('unbilledIssueDate').value = (window.kstToday ? window.kstToday() : now.toISOString().split('T')[0]);
 })();
 
 // 초기 로드: 회계반영 탭이 기본 (발행이력은 탭 전환 시 로드)
@@ -1261,7 +1261,7 @@ function sendTaxInvoiceNotice(id, buyerName, email, invoiceNumber) {
     defaultChannel: 'kakao',
     defaultContent: buyerName + '님, 동산기획입니다.\n\n세금계산서가 발행되었습니다.\n\n■ 세금계산서 번호: ' + invoiceNumber + '\n\n문의: 042-523-1982',
     autoTemplate: '026040001090',
-    templateVars: { '고객명': buyerName, '기준일': new Date().toISOString().slice(0, 10) },
+    templateVars: { '고객명': buyerName, '기준일': (window.kstToday ? window.kstToday() : new Date().toISOString().slice(0, 10)) },
   });
 }
 

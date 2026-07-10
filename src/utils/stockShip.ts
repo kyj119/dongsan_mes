@@ -1,5 +1,6 @@
 import type { D1Database } from '@cloudflare/workers-types'
 import { getItemDefaultZone } from './inventoryZone'
+import { kstDate } from './kstDate'
 
 /**
  * 출고 시 기성품/유통(production_required=0) 라인의 재고를 차감한다.
@@ -64,7 +65,7 @@ export async function deductStockLinesOnShip(
     }
     await db.prepare(
       `INSERT INTO inventory_transactions (item_id, transaction_type, quantity, reference_type, reference_id, balance_after, notes, transaction_date, entity_id, storage_zone_id)
-       VALUES (?, 'OUT', ?, 'ORDER', ?, ?, '기성/유통 출고 차감', date('now'), ?, ?)`
+       VALUES (?, 'OUT', ?, 'ORDER', ?, ?, '기성/유통 출고 차감', ${kstDate()}, ?, ?)`
     ).bind(ln.item_id, ln.qty, orderId, after, lineEntity, zoneId).run()
   }
 }

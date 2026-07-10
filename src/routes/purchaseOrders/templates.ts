@@ -8,6 +8,7 @@ import type { PurchaseOrder, PurchaseOrderItem, ApiResponse, PaginatedResponse }
 import { authMiddleware, requireRole } from '../../middleware/auth'
 import { getEntityId } from '../../utils/entityFilter'
 import { getNextSeqNumber, getNextEntitySeqNumber, withSeqRetry } from '../../utils/sequenceGenerator'
+import { kstYmdCompact } from '../../utils/kstDate'
 
 const templatesRouter = new Hono<HonoEnv>()
 templatesRouter.use('/*', authMiddleware, requireRole('ADMIN', 'MANAGER'))
@@ -189,7 +190,7 @@ templatesRouter.post('/from-template/:templateId', async (c) => {
 
     // 발주번호 생성
     const today = new Date()
-    const dateStr = today.toISOString().split('T')[0].replace(/-/g, '')
+    const dateStr = kstYmdCompact()
     const poNumber = await getNextEntitySeqNumber(c.env.DB, 'purchase_orders', 'po_number', getEntityId(c) || 1, dateStr, { suffix: 'P' })
 
     // 품목별 수량/단가 오버라이드 적용 + 금액 계산

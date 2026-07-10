@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { authMiddleware } from '../middleware/auth'
 import { requirePagePermission } from '../middleware/permissions'
+import { kstYmd } from '../utils/kstDate'
 
 const ppRouter = new Hono<HonoEnv>()
 ppRouter.use('/*', authMiddleware, requirePagePermission('/post-processing'))
@@ -284,9 +285,8 @@ ppRouter.post('/item/:itemId', async (c) => {
 ppRouter.get('/stats', async (c) => {
   try {
     const months = parseInt(c.req.query('months') || '6')
-    const sinceDate = new Date()
-    sinceDate.setMonth(sinceDate.getMonth() - months)
-    const sinceDateStr = sinceDate.toISOString().slice(0, 10)
+    const [ky, km, kd] = kstYmd().split('-').map(Number)
+    const sinceDateStr = new Date(Date.UTC(ky, km - 1 - months, kd)).toISOString().slice(0, 10)
 
     const { entityFilter: ef } = await import('../utils/entityFilter')
     const oef = ef(c, 'o')

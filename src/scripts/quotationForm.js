@@ -604,7 +604,7 @@ document.getElementById('addItemBtn').addEventListener('click', function() {
     // 유효기한 기본값: 오늘 + 30일
     var d = new Date();
     d.setDate(d.getDate() + 30);
-    document.getElementById('validUntil').value = d.toISOString().slice(0, 10);
+    document.getElementById('validUntil').value = new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
 
     // URL에서 ID 추출 — /quotation-form 또는 /quotation-form/123
     var pathParts = window.location.pathname.split('/');

@@ -159,7 +159,7 @@ function renderPagination(pagination) {
 
 function openCreateModal() {
   // Reset form
-  document.getElementById('transactionDate').value = new Date().toISOString().split('T')[0];
+  document.getElementById('transactionDate').value = (window.kstToday ? window.kstToday() : new Date().toISOString().split('T')[0]);
   document.getElementById('transactionType').value = '';
   document.getElementById('identityType').value = '';
   document.getElementById('identityNumber').value = '';

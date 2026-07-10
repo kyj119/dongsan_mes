@@ -10,6 +10,7 @@ import type { HonoEnv } from '../../types/env'
 import { authMiddleware, requireRole } from '../../middleware/auth'
 import { notifyRoles } from '../../utils/notify'
 import { entityFilter } from '../../utils/entityFilter'
+import { kstYmd } from '../../utils/kstDate'
 import {
   deriveClientBalance, buildIntegrityQuery, getAgingCategory,
   type PaymentRow, type IntegrityRow, type OverdueClientRow, type ReceivableClientRow,
@@ -257,8 +258,7 @@ arReceivablesRouter.get('/receivables', async (c) => {
     `).bind(...efBg.params, ...efPay.params, ...efAdj.params, ...efOupG.params, ...efOupP.params, minBalance).all<ReceivableClientRow>()
 
     // aging_days, aging_category 계산 (JS에서)
-    const today = new Date()
-    today.setHours(0, 0, 0, 0)
+    const today = new Date(kstYmd() + 'T00:00:00Z')
 
     let rows = clients.map(client => {
       let agingDays: number | null = null

@@ -325,7 +325,7 @@ async function openReceiveModal(id, scope) {
       window._receiveItems = items;
 
       // 오늘 날짜 기본값
-      var today = new Date().toISOString().split('T')[0];
+      var today = window.kstToday ? window.kstToday() : new Date().toISOString().split('T')[0];
       var dateEl = document.getElementById('receipt_date');
       if (dateEl) dateEl.value = today;
       var notesEl = document.getElementById('receipt_notes');

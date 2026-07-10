@@ -9,6 +9,7 @@ import { Hono } from 'hono'
 import type { HonoEnv } from '../../types/env'
 import { authMiddleware, requireRole } from '../../middleware/auth'
 import { entityFilter } from '../../utils/entityFilter'
+import { kstYm } from '../../utils/kstDate'
 import {
   type ClientRow, type OrderRow, type PaymentRow, type AdjustmentRow,
   type OrderAggRow, type PaymentAggRow, type MonthlyOrderRow, type MonthlyPaymentRow,
@@ -587,11 +588,9 @@ arLedgerRouter.get('/monthly-summary', async (c) => {
 // GET /closing-summary - 월말 마감 대시보드
 arLedgerRouter.get('/closing-summary', async (c) => {
   try {
-    const now = new Date()
-    const y = now.getFullYear()
-    const m = now.getMonth() // 0-based
-    const monthStart = `${y}-${String(m + 1).padStart(2, '0')}-01`
-    const monthEnd = new Date(y, m + 1, 0).toISOString().substring(0, 10)
+    const [y, mo] = kstYm().split('-').map(Number) // mo: 1-based
+    const monthStart = `${y}-${String(mo).padStart(2, '0')}-01`
+    const monthEnd = new Date(y, mo, 0).toISOString().substring(0, 10)
 
     const ef = entityFilter(c)
     const efO = entityFilter(c, 'o')
@@ -630,9 +629,9 @@ arLedgerRouter.get('/closing-summary', async (c) => {
       FROM adjustments WHERE date(created_at) >= ? AND date(created_at) <= ?${ef.clause}
     `).bind(monthStart, monthEnd, ...ef.params).first<{ adj_count: number; adj_amount: number }>()
 
-    // 지난달 매출 (전월 대비용)
-    const prevStart = `${m === 0 ? y - 1 : y}-${String(m === 0 ? 12 : m).padStart(2, '0')}-01`
-    const prevEnd = new Date(y, m, 0).toISOString().substring(0, 10)
+    // 지난달 매출 (전월 대비용) — mo는 1-based
+    const prevStart = `${mo === 1 ? y - 1 : y}-${String(mo === 1 ? 12 : mo - 1).padStart(2, '0')}-01`
+    const prevEnd = new Date(y, mo - 1, 0).toISOString().substring(0, 10)
     const prevSalesRes = await c.env.DB.prepare(`
       SELECT COALESCE(SUM(CASE WHEN billing_status='BILLED' THEN billed_amount ELSE 0 END),0) as prev_sales
       FROM orders o

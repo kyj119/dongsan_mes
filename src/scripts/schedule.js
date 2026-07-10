@@ -146,7 +146,7 @@ async function loadSchedule() {
     const overloaded = queues.filter(eq => eq.daily_capacity > 0 && eq.queue_count > eq.daily_capacity).length;
     const todayDue = [...unassigned, ...queues.flatMap(eq => eq.cards || [])].filter(c => {
       if (!c.delivery_date) return false;
-      const today = new Date().toISOString().substring(0, 10);
+      const today = (window.kstToday ? window.kstToday() : new Date().toISOString().substring(0, 10));
       return c.delivery_date.substring(0, 10) <= today;
     }).length;
 

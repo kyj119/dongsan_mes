@@ -1237,7 +1237,7 @@ function openConsumableModal() {
     if (!currentEquipId) return;
     document.getElementById('fConsName').value = '';
     document.getElementById('fConsCycle').value = '30';
-    document.getElementById('fConsLastReplaced').value = new Date().toISOString().substring(0, 10);
+    document.getElementById('fConsLastReplaced').value = window.kstToday ? window.kstToday() : new Date().toISOString().substring(0, 10);
     document.getElementById('fConsQty').value = '0';
     document.getElementById('fConsNotes').value = '';
     document.getElementById('consumableModal').classList.remove('hidden');

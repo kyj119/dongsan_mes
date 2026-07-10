@@ -3,6 +3,7 @@ import { authMiddleware } from '../middleware/auth'
 import { requireAnyPagePermission } from '../middleware/permissions'
 import type { HonoEnv } from '../types/env'
 import { getEntityId, entityFilter } from '../utils/entityFilter'
+import { kstYmd } from '../utils/kstDate'
 
 const productionRouter = new Hono<HonoEnv>()
 
@@ -415,7 +416,7 @@ productionRouter.get('/stats', async (c) => {
 
     // Default to last 7 days if no dates provided
     const startDate = start_date || new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
-    const endDate = end_date || new Date().toISOString().split('T')[0]
+    const endDate = end_date || kstYmd()
 
     // Total work hours
     const { results: hoursResults } = await c.env.DB.prepare(`

@@ -587,7 +587,7 @@ window.selectVerifyType = function(type) {
   const datePicker = document.getElementById('verifyDatePicker');
   if (type === 'orders') {
     datePicker.classList.remove('hidden');
-    document.getElementById('verifyDate').value = new Date().toISOString().substring(0, 10);
+    document.getElementById('verifyDate').value = window.kstToday ? window.kstToday() : new Date().toISOString().substring(0, 10);
   } else {
     datePicker.classList.add('hidden');
   }

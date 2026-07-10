@@ -273,7 +273,7 @@ export function payslipPage(c: Context<HonoEnv>) {
         '</div>' +
         '<div class="slip-footer">' +
           '<div>근무일수 ' + (p.work_days || 0) + '일 / 결근 ' + (p.absent_days || 0) + '일 / 지각 ' + (p.late_count || 0) + '회</div>' +
-          '<div>발행일: ' + new Date().toISOString().slice(0, 10) + '</div>' +
+          '<div>발행일: ' + new Date(Date.now() + 9 * 3600 * 1000).toISOString().slice(0, 10) + '</div>' +
         '</div>' +
       '</div>';
     }

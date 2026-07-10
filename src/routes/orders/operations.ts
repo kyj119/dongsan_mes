@@ -9,6 +9,7 @@ import { notifyRoles } from '../../utils/notify'
 import { recalculateOrderCosts } from '../../utils/costCalculator'
 import { sendEmail } from '../../services/emailProvider'
 import { getEntityId, orderVisibilityFilter } from '../../utils/entityFilter'
+import { kstYmdCompact, kstYmd } from '../../utils/kstDate'
 import { checkMaterialShortage } from '../../utils/materialShortageCheck'
 
 // ---------- D1 row shapes ----------
@@ -85,9 +86,7 @@ ordersOpsRouter.post('/:id/copy', requireRole('ADMIN', 'MANAGER', 'DESIGNER'), a
 
     // Generate new order number
     const today = new Date()
-    const dateStr = today.getFullYear().toString() +
-      String(today.getMonth() + 1).padStart(2, '0') +
-      String(today.getDate()).padStart(2, '0')
+    const dateStr = kstYmdCompact()
 
     const newOrderNumber = await getNextEntitySeqNumber(c.env.DB, 'orders', 'order_number', getEntityId(c) || 1, dateStr)
 
@@ -248,7 +247,7 @@ ordersOpsRouter.post('/:id/convert-to-order', requireRole('ADMIN', 'MANAGER'), a
     }
 
     // 유효기한 만료 확인
-    const today = new Date().toISOString().split('T')[0]
+    const today = kstYmd()
     const isExpired = order.valid_until && order.valid_until < today
 
     if (isExpired && !force) {

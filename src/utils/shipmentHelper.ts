@@ -1,5 +1,6 @@
 import type { D1Database } from '@cloudflare/workers-types'
 import { getNextSeqNumber } from './sequenceGenerator'
+import { kstYmdCompact } from './kstDate'
 
 /**
  * delivery_method(주문서 한글 7종 + 레거시) → shipments.delivery_type
@@ -70,7 +71,7 @@ export async function ensureShipmentForOrder(
   let created = false
   if (!shipment) {
     const eid = order.entity_id ?? opts.fallbackEntityId ?? 1
-    const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '')
+    const dateStr = kstYmdCompact()
     const shipmentNumber = await getNextSeqNumber(db, 'shipments', 'shipment_number', `SHP-E${eid}-${dateStr}-`, 3, eid)
     const res = await db.prepare(`
       INSERT INTO shipments (
