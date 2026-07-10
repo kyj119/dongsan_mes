@@ -4,7 +4,7 @@
 import { Hono } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
-import { invalidatePermissionCache, getAccessiblePages } from '../middleware/permissions'
+import { invalidatePermissionCache, getAccessiblePages, getEditablePages } from '../middleware/permissions'
 import { ROLES, ROLE_SET } from '../types/roles'
 import { getEntityId } from '../utils/entityFilter'
 
@@ -15,8 +15,11 @@ permissionsRouter.use('/*', authMiddleware)
 permissionsRouter.get('/me', async (c) => {
   try {
     const user = c.get('user') as any
-    const allowed = await getAccessiblePages(c.env.DB, user.role)
-    return c.json({ success: true, data: { role: user.role, pages: Array.from(allowed) } })
+    const [allowed, editable] = await Promise.all([
+      getAccessiblePages(c.env.DB, user.role),
+      getEditablePages(c.env.DB, user.role),
+    ])
+    return c.json({ success: true, data: { role: user.role, pages: Array.from(allowed), editablePages: Array.from(editable) } })
   } catch {
     return c.json({ success: false, error: '서버 오류' }, 500)
   }
@@ -46,14 +49,15 @@ permissionsRouter.get('/matrix', requireRole('ADMIN'), async (c) => {
          ORDER BY sort_order, page_key`
       ).all(),
       c.env.DB.prepare(
-        `SELECT role, page_key, can_access FROM role_page_permissions WHERE can_access = 1`
-      ).all<{ role: string; page_key: string; can_access: number }>(),
+        `SELECT role, page_key, can_access, can_edit FROM role_page_permissions WHERE can_access = 1 OR can_edit = 1`
+      ).all<{ role: string; page_key: string; can_access: number; can_edit: number }>(),
     ])
-    const matrix: Record<string, Record<string, number>> = {}
+    // matrix[role][page_key] = { a: 열람, e: 편집 }
+    const matrix: Record<string, Record<string, { a: number; e: number }>> = {}
     for (const r of ROLES) matrix[r] = {}
     for (const p of permsRes.results || []) {
       if (!matrix[p.role]) matrix[p.role] = {}
-      matrix[p.role][p.page_key] = 1
+      matrix[p.role][p.page_key] = { a: p.can_access ? 1 : 0, e: p.can_edit ? 1 : 0 }
     }
     return c.json({ success: true, data: { pages: pagesRes.results || [], matrix } })
   } catch {
@@ -65,7 +69,7 @@ permissionsRouter.get('/matrix', requireRole('ADMIN'), async (c) => {
 // body: [{ role, page_key, can_access }]
 permissionsRouter.patch('/', requireRole('ADMIN'), async (c) => {
   try {
-    const updates = (await c.req.json()) as Array<{ role: string; page_key: string; can_access: number }>
+    const updates = (await c.req.json()) as Array<{ role: string; page_key: string; can_access: number; can_edit?: number }>
     if (!Array.isArray(updates)) {
       return c.json({ success: false, error: 'updates 배열이 필요합니다' }, 400)
     }
@@ -81,16 +85,19 @@ permissionsRouter.patch('/', requireRole('ADMIN'), async (c) => {
         return c.json({ success: false, error: 'ADMIN 권한은 편집할 수 없습니다' }, 400)
       }
     }
-    const stmts = updates.map(u =>
-      c.env.DB.prepare(
-        `INSERT INTO role_page_permissions (role, page_key, can_access, updated_by, updated_at)
-         VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+    const stmts = updates.map(u => {
+      const canEdit = u.can_edit ? 1 : 0
+      const canAccess = (u.can_access || canEdit) ? 1 : 0  // 편집 가능하면 열람도 자동 보장
+      return c.env.DB.prepare(
+        `INSERT INTO role_page_permissions (role, page_key, can_access, can_edit, updated_by, updated_at)
+         VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
          ON CONFLICT(role, page_key) DO UPDATE SET
            can_access = excluded.can_access,
+           can_edit = excluded.can_edit,
            updated_by = excluded.updated_by,
            updated_at = CURRENT_TIMESTAMP`
-      ).bind(u.role, u.page_key, u.can_access ? 1 : 0, user.id)
-    )
+      ).bind(u.role, u.page_key, canAccess, canEdit, user.id)
+    })
     await c.env.DB.batch(stmts)
     invalidatePermissionCache()
     return c.json({ success: true, updated: updates.length })

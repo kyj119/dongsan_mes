@@ -15,10 +15,14 @@ export function usersPage(c: Context<HonoEnv>) {
         font-size: 12px;
         font-weight: 600;
       }
-      .role-ADMIN    { background: #fee2e2; color: #991b1b; }
-      .role-MANAGER  { background: #dbeafe; color: #1e40af; }
-      .role-DESIGNER { background: #ede9fe; color: #5b21b6; }
-      .role-OPERATOR { background: #dcfce7; color: #166534; }
+      .role-ADMIN      { background: #fee2e2; color: #991b1b; }
+      .role-MANAGER    { background: #dbeafe; color: #1e40af; }
+      .role-DESIGNER   { background: #ede9fe; color: #5b21b6; }
+      .role-OPERATOR   { background: #dcfce7; color: #166534; }
+      .role-ACCOUNTANT { background: #fef9c3; color: #854d0e; }
+      .role-SALES      { background: #ffedd5; color: #9a3412; }
+      .role-FINISHING  { background: #cffafe; color: #155e75; }
+      .role-SHIPPING   { background: #f3e8ff; color: #6b21a8; }
       .status-badge  { display: inline-block; padding: 2px 8px; border-radius: 9999px; font-size: 12px; font-weight: 600; }
       .status-active   { background: #dcfce7; color: #166534; }
       .status-inactive { background: #f1f5f9; color: #64748b; }
@@ -84,8 +88,12 @@ export function usersPage(c: Context<HonoEnv>) {
               <div>
                 <label class="block text-sm font-medium text-gray-700 mb-1">역할 <span class="text-red-500">*</span></label>
                 <select id="f_role" class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500">
-                  <option value="OPERATOR">현장 (OPERATOR)</option>
+                  <option value="OPERATOR">오퍼레이터 (OPERATOR)</option>
                   <option value="DESIGNER">디자이너 (DESIGNER)</option>
+                  <option value="ACCOUNTANT">경리 (ACCOUNTANT)</option>
+                  <option value="SALES">영업 (SALES)</option>
+                  <option value="FINISHING">후가공 (FINISHING)</option>
+                  <option value="SHIPPING">배송 (SHIPPING)</option>
                   <option value="MANAGER">매니저 (MANAGER)</option>
                   <option value="ADMIN">관리자 (ADMIN)</option>
                 </select>

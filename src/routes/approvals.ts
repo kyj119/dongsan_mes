@@ -9,6 +9,7 @@ import { requirePagePermission } from '../middleware/permissions'
 import { getEntityId, entityFilter } from '../utils/entityFilter'
 import { getNextSeqNumber, getNextEntitySeqNumber, withSeqRetry } from '../utils/sequenceGenerator'
 import { putBase64ToR2, base64ToBytes } from '../utils/thumbnailStore'
+import { ROLE_SET } from '../types/roles'
 
 const approvals = new Hono<HonoEnv>()
 approvals.use('*', authMiddleware, requirePagePermission('/approvals'))
@@ -205,7 +206,7 @@ approvals.post('/', async (c) => {
     // 결재 단계 생성 — db.batch()로 단일 왕복 처리
     if (steps.length > 0) {
       const stepStatements = steps.map((step: any) => {
-        const isRole = ['ADMIN', 'MANAGER', 'DESIGNER', 'OPERATOR'].includes(step.role_or_user_id)
+        const isRole = ROLE_SET.has(step.role_or_user_id)
         return c.env.DB.prepare(`
           INSERT INTO approval_steps (request_id, step_order, approver_id, approver_role, label, status, entity_id)
           VALUES (?, ?, ?, ?, ?, 'PENDING', ?)

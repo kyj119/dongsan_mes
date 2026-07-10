@@ -7,7 +7,7 @@
   function jsStr(s) { return String(s == null ? '' : s).replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '\\"').replace(/</g, '\\x3C'); }
 
   function getRoleBadge(role) {
-    var labels = { ADMIN: '관리자', MANAGER: '매니저', DESIGNER: '디자이너', OPERATOR: '현장' };
+    var labels = { ADMIN: '관리자', MANAGER: '매니저', DESIGNER: '디자이너', OPERATOR: '오퍼레이터', ACCOUNTANT: '경리', SALES: '영업', FINISHING: '후가공', SHIPPING: '배송' };
     var label = labels[role] || role;
     return '<span class="role-badge role-' + role + '">' + label + '</span>';
   }

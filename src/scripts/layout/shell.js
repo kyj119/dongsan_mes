@@ -505,7 +505,7 @@ if (__userStr) {
     try {
         const __user = JSON.parse(__userStr);
         currentUserRole = __user.role;
-        const __roleMap = { 'ADMIN': '관리자', 'MANAGER': '매니저', 'DESIGNER': '디자이너', 'OPERATOR': '작업자' };
+        const __roleMap = { 'ADMIN': '관리자', 'MANAGER': '매니저', 'DESIGNER': '디자이너', 'OPERATOR': '작업자', 'ACCOUNTANT': '경리', 'SALES': '영업', 'FINISHING': '후가공', 'SHIPPING': '배송' };
 
         const sidebarUserName = document.getElementById('sidebarUserName');
         if (sidebarUserName) sidebarUserName.textContent = __user.name || __user.username || '-';

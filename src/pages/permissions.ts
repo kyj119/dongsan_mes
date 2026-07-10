@@ -24,25 +24,13 @@ export function permissionsPage(c: Context<HonoEnv>) {
     </div>
   </div>
 
-  <!-- 역할 탭 -->
-  <div class="bg-white rounded-t-lg shadow-sm flex border-b border-gray-200 px-2">
-    <button id="permTabMANAGER" onclick="permSwitchRole('MANAGER')"
-      class="px-6 py-3 text-sm font-semibold border-b-2 border-blue-600 text-blue-600">
-      <i class="fas fa-user-tie mr-1"></i>MANAGER
-    </button>
-    <button id="permTabDESIGNER" onclick="permSwitchRole('DESIGNER')"
-      class="px-6 py-3 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">
-      <i class="fas fa-paint-brush mr-1"></i>DESIGNER
-    </button>
-    <button id="permTabOPERATOR" onclick="permSwitchRole('OPERATOR')"
-      class="px-6 py-3 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">
-      <i class="fas fa-hard-hat mr-1"></i>OPERATOR
-    </button>
-    <button id="permTabADMIN" onclick="permSwitchRole('ADMIN')"
-      class="px-6 py-3 text-sm font-medium border-b-2 border-transparent text-gray-400 hover:text-gray-600 ml-auto">
-      <i class="fas fa-user-shield mr-1"></i>ADMIN (보기 전용)
-    </button>
+  <!-- 열람/편집 안내 -->
+  <div class="bg-blue-50 border border-blue-200 rounded-lg px-4 py-2 text-xs text-blue-800">
+    <i class="fas fa-circle-info mr-1"></i><b>열람</b>=페이지 접근·조회, <b>편집</b>=생성·수정·삭제. 편집을 켜면 열람은 자동 포함됩니다.
   </div>
+
+  <!-- 역할 탭 (permissions.js 가 ROLES 로 동적 렌더) -->
+  <div id="permTabs" class="bg-white rounded-t-lg shadow-sm flex flex-wrap border-b border-gray-200 px-2"></div>
 
   <!-- 매트릭스 -->
   <div id="permContent" class="bg-white rounded-b-lg shadow-sm p-4 min-h-[400px]">

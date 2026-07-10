@@ -18,7 +18,8 @@ auth.post('/login', rateLimitMiddleware(10, 60000), async (c) => {
 
     // 사용자 조회 (users 테이블에서)
     const user = await c.env.DB.prepare(
-      'SELECT id, username, password_hash, name, email, role, default_entity_id, is_coordinator FROM users WHERE username = ? AND is_active = 1'
+      // job_role(확장 역할, 0453) 우선 → JWT.role 로 발급. 하위 권한/메뉴는 role 그대로 사용.
+      'SELECT id, username, password_hash, name, email, COALESCE(job_role, role) AS role, default_entity_id, is_coordinator FROM users WHERE username = ? AND is_active = 1'
     ).bind(username).first()
 
     if (!user) {
@@ -98,7 +99,7 @@ auth.get('/me', async (c) => {
 
     // 사용자 정보 조회
     const user = await c.env.DB.prepare(
-      'SELECT id, username, name, role, email, created_at, last_login_at FROM users WHERE id = ? AND is_active = 1'
+      'SELECT id, username, name, COALESCE(job_role, role) AS role, email, created_at, last_login_at FROM users WHERE id = ? AND is_active = 1'
     ).bind(payload.id).first()
 
     if (!user) {

@@ -2,7 +2,7 @@ import { Hono } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireAdmin } from '../middleware/auth'
 import { hashPassword, verifyPassword } from '../utils/crypto'
-import { ROLES as VALID_ROLES } from '../types/roles'
+import { ROLES as VALID_ROLES, toLegacyRole } from '../types/roles'
 
 export const usersRouter = new Hono<HonoEnv>()
 
@@ -16,7 +16,7 @@ usersRouter.get('/', requireAdmin, async (c) => {
     const { is_active } = c.req.query()
 
     let query = `
-      SELECT u.id, u.username, u.name, u.email, u.phone, u.role, u.is_active,
+      SELECT u.id, u.username, u.name, u.email, u.phone, COALESCE(u.job_role, u.role) AS role, u.is_active,
         u.last_login_at, u.created_at, u.updated_at, u.default_entity_id, u.is_coordinator,
         e.short_name as entity_name
       FROM users u
@@ -107,13 +107,14 @@ usersRouter.post('/', requireAdmin, async (c) => {
     }
 
     const hashedPassword = await hashPassword(password)
+    // 확장 역할은 job_role 에 저장, role 엔 CHECK-안전 대체값(레거시 역할).
     const result = await c.env.DB.prepare(`
-      INSERT INTO users (username, password_hash, name, email, phone, role, is_active, default_entity_id, is_coordinator)
-      VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?)
-    `).bind(username, hashedPassword, name, email ?? null, phone ?? null, role, default_entity_id || 1, is_coordinator ? 1 : 0).run()
+      INSERT INTO users (username, password_hash, name, email, phone, role, job_role, is_active, default_entity_id, is_coordinator)
+      VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
+    `).bind(username, hashedPassword, name, email ?? null, phone ?? null, toLegacyRole(role), role, default_entity_id || 1, is_coordinator ? 1 : 0).run()
 
     const created = await c.env.DB.prepare(
-      `SELECT id, username, name, email, phone, role, is_active, created_at, updated_at FROM users WHERE rowid = ?`
+      `SELECT id, username, name, email, phone, COALESCE(job_role, role) AS role, is_active, created_at, updated_at FROM users WHERE rowid = ?`
     ).bind(result.meta.last_row_id).first()
 
     return c.json({ success: true, data: created }, 201)
@@ -168,7 +169,7 @@ usersRouter.patch('/:id', requireAdmin, async (c) => {
     }
 
     const existing = await c.env.DB.prepare(
-      `SELECT id, role, is_active FROM users WHERE id = ?`
+      `SELECT id, COALESCE(job_role, role) AS role, is_active FROM users WHERE id = ?`
     ).bind(id).first<{ id: number; role: string; is_active: number }>()
     if (!existing) {
       return c.json({ success: false, error: '사용자를 찾을 수 없습니다.' }, 404)
@@ -183,7 +184,7 @@ usersRouter.patch('/:id', requireAdmin, async (c) => {
     const willDeactivate = is_active !== undefined && !is_active
     if (isCurrentlyActiveAdmin && (willDemoteRole || willDeactivate)) {
       const cnt = await c.env.DB.prepare(
-        `SELECT COUNT(*) as cnt FROM users WHERE role = 'ADMIN' AND is_active = 1 AND id != ?`
+        `SELECT COUNT(*) as cnt FROM users WHERE COALESCE(job_role, role) = 'ADMIN' AND is_active = 1 AND id != ?`
       ).bind(id).first<{ cnt: number }>()
       if (!cnt || cnt.cnt === 0) {
         return c.json({
@@ -204,8 +205,11 @@ usersRouter.patch('/:id', requireAdmin, async (c) => {
       if (!VALID_ROLES.includes(role)) {
         return c.json({ success: false, error: `role은 ${VALID_ROLES.join(', ')} 중 하나여야 합니다.` }, 400)
       }
-      updates.push('role = ?')
+      // 확장 역할은 job_role 에, role 컬럼엔 CHECK-안전 대체값.
+      updates.push('job_role = ?')
       params.push(role)
+      updates.push('role = ?')
+      params.push(toLegacyRole(role))
     }
     if (is_active !== undefined) {
       updates.push('is_active = ?')
@@ -240,7 +244,7 @@ usersRouter.patch('/:id', requireAdmin, async (c) => {
     ).bind(...params).run()
 
     const updated = await c.env.DB.prepare(
-      `SELECT id, username, name, email, phone, role, is_active, last_login_at, created_at, updated_at FROM users WHERE id = ?`
+      `SELECT id, username, name, email, phone, COALESCE(job_role, role) AS role, is_active, last_login_at, created_at, updated_at FROM users WHERE id = ?`
     ).bind(id).first()
 
     return c.json({ success: true, data: updated })

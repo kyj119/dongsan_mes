@@ -1,32 +1,45 @@
 // 페이지 권한 미들웨어 (DB 기반 + 메모리 캐시)
 // 설계: .claude/plans/2026-04-16-permission-management-system.md
 // ADMIN 은 모든 페이지 통과. 나머지 역할은 role_page_permissions 매트릭스 기준.
+// can_access(열람) / can_edit(편집) 2단 — 0453.
 
 import type { MiddlewareHandler } from 'hono'
 import type { HonoEnv } from '../types/env'
 
-let _cache: Map<string, Set<string>> | null = null
+interface RolePerm { access: Set<string>; edit: Set<string> }
+let _cache: Map<string, RolePerm> | null = null
 
-async function buildCache(db: D1Database): Promise<Map<string, Set<string>>> {
+async function buildCache(db: D1Database): Promise<Map<string, RolePerm>> {
   const { results } = await db
-    .prepare('SELECT role, page_key FROM role_page_permissions WHERE can_access = 1')
-    .all<{ role: string; page_key: string }>()
-  const map = new Map<string, Set<string>>()
+    .prepare('SELECT role, page_key, can_access, can_edit FROM role_page_permissions')
+    .all<{ role: string; page_key: string; can_access: number; can_edit: number }>()
+  const map = new Map<string, RolePerm>()
   for (const r of results || []) {
-    if (!map.has(r.role)) map.set(r.role, new Set())
-    map.get(r.role)!.add(r.page_key)
+    if (!map.has(r.role)) map.set(r.role, { access: new Set(), edit: new Set() })
+    const rp = map.get(r.role)!
+    if (r.can_access) rp.access.add(r.page_key)
+    if (r.can_edit) rp.edit.add(r.page_key)
   }
   return map
 }
 
+// ADMIN 은 마스터 전체(모든 활성 페이지) 반환.
+async function allActivePages(db: D1Database): Promise<Set<string>> {
+  const { results } = await db.prepare('SELECT page_key FROM permission_pages WHERE is_active = 1').all<{ page_key: string }>()
+  return new Set((results || []).map(r => r.page_key))
+}
+
 export async function getAccessiblePages(db: D1Database, role: string): Promise<Set<string>> {
-  if (role === 'ADMIN') {
-    // ADMIN 은 별도 처리 — 마스터 전체 반환
-    const { results } = await db.prepare('SELECT page_key FROM permission_pages WHERE is_active = 1').all<{ page_key: string }>()
-    return new Set((results || []).map(r => r.page_key))
-  }
+  if (role === 'ADMIN') return allActivePages(db)
   if (!_cache) _cache = await buildCache(db)
-  return _cache.get(role) || new Set()
+  return _cache.get(role)?.access || new Set()
+}
+
+// can_edit=1 인 페이지 집합. ADMIN 은 전체 편집 가능.
+export async function getEditablePages(db: D1Database, role: string): Promise<Set<string>> {
+  if (role === 'ADMIN') return allActivePages(db)
+  if (!_cache) _cache = await buildCache(db)
+  return _cache.get(role)?.edit || new Set()
 }
 
 export function invalidatePermissionCache(): void {
@@ -43,6 +56,23 @@ export function requirePagePermission(pageKey: string): MiddlewareHandler<HonoEn
     const allowed = await getAccessiblePages(c.env.DB, user.role)
     if (!allowed.has(pageKey)) {
       return c.json({ success: false, error: '이 페이지에 접근할 권한이 없습니다' }, 403)
+    }
+    await next()
+  }
+}
+
+// 쓰기(생성/수정/삭제) 가드 — can_edit 기준. 열람은 되지만 편집 불가한 역할을 차단.
+// 데이터 API 이므로 user 없으면 401 (요청은 항상 authMiddleware 뒤에 온다).
+export function requirePageEdit(pageKey: string): MiddlewareHandler<HonoEnv> {
+  return async (c, next) => {
+    const user = c.get('user') as any
+    if (!user?.role) {
+      return c.json({ success: false, error: '인증이 필요합니다' }, 401)
+    }
+    if (user.role === 'ADMIN') return next()
+    const editable = await getEditablePages(c.env.DB, user.role)
+    if (!editable.has(pageKey)) {
+      return c.json({ success: false, error: '이 데이터를 수정할 권한이 없습니다 (열람 전용)' }, 403)
     }
     await next()
   }
