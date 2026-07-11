@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 6 -->
-<!-- last_run_at: 2026-07-11T03:10:00+09:00 -->
+<!-- last_run_area: 1 -->
+<!-- last_run_at: 2026-07-11T21:15:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -16,6 +16,17 @@
 
 > 📦 **과거 사이클 로그**는 `IMPROVEMENT_BACKLOG_ARCHIVE.md`/git 히스토리로 이관됨 (2026-06-10 1차 분리, 2026-06-25 2차 트림 343KB→192KB, 2026-06-25T10:00 3차 트림, 2026-07-03T06:00 4차 트림 288KB→86KB, **2026-07-07T13:00 5차 트림 — 07-01~07-05 사이클 로그를 git 히스토리로 이관: 238KB→78KB, 256KB Read 한도 재확보**). 신규 로그는 계속 이 파일 상단에 추가. 본 파일은 직전 2일치(07-06~) 사이클 로그 + 영구 참조 섹션(Approved/New/Auto-fixed/Done/Rejected/FP 카탈로그)만 유지. 이관분은 `git log -p -- IMPROVEMENT_BACKLOG.md`로 복원 가능.
 
+> **Area 1 프로덕션 헬스 (2026-07-11T21:15):**
+> - **방법**: `npm ci`(node_modules 0→81) 후 `git fetch origin main`(HEAD=origin/main `1ac289f` 0/0 동기, 워킹트리 clean). Area 1 **33회차** — 직전 Area1(`91f5032`, 07-09T21:00, 32회차) 이후 `src/routes`/`migrations`/`scripts/smoke.cjs`/`.github/workflows` churn = **대형**(역할확장 8종+can_edit·entity_id 유령귀속 정비·KST 전수정비 137곳·실사 UX·다단위 입력·품목검색키워드·급여일할계산·자금관리 P1~P3, 신규마이그 4건: `0453_item_search_keywords`·`0453_role_expansion_rw`·`0454_bank_fixed_expense_match`·`0455_bank_transfer_pair`).이 코드 변경들은 이미 Area2~5(33~35회차)가 각자 렌즈로 전수 감사 완료 — Area1은 배포 파이프라인 헬스 + 신규 마이그 적용 드리프트((b)-risk, #483/#484 클래스)만 표적.
+> - **🟢 배포 파이프라인 = 28/30 success, 실패 2건 전부 기존 codify된 transient 클래스로 확정 분류(net-new 0)**: ① run #780(`ea2d8f6` docs-only 커밋) — Typecheck/Build 성공 후 **Deploy 단계 자체가 `Failed to publish your Function. Got error: Unknown internal error occurred.`**로 실패, 로그 직접 확인. 커밋이 `docs/audits/*.md`+`memory/session-context.md` 2줄만 변경(코드 트리 무변경)이라 회귀 불가능 — SKILL 기존 패턴 "🌩️ 배포-step CF-internal transient"(docs-only 커밋 Deploy fail = CF 측 내부 장애) 정확히 매치. 다음 배포(#781, feat bank)는 즉시 success. ② run #762(`81948d3` merge 커밋) — Deploy 자체는 success, **Smoke 단계만 로그인 500**(로그 확인: `로그인 500(1/3) — cold-start transient 추정`→`(2/3)`→최종 500 `"로그인 처리 중 오류가 발생했습니다"`). SKILL 기존 패턴 "🧊 배포후 smoke 로그인 500 = D1 cold-start transient" 정확히 매치(generic catch 500 + 즉시 다음 배포 #763 자동회복). 둘 다 보고 대상 아님(코드 결함 아님, prod 무중단).
+> - **🟢 신규 마이그 4건 = 전부 prod 적용 확인(스모크 간접검증, (b)-risk 해소)**: code-only CI 배포(마이그 자동적용 없음, #483)라 신규 `ADD COLUMN`이 이미 배포된 코드에서 명시 SELECT되면 미적용 시 100% 500(#484 클래스) — 직접 egress 불가라 스모크 증거로 간접 검증. ① `0453_role_expansion_rw`(`users.job_role`) — 로그인 SELECT(`users.ts:19` `COALESCE(u.job_role, u.role) AS role`)가 명시 참조하는데, 이 컬럼 도입 커밋(`6f7556d`) 배포 이후 스모크 로그인이 계속 success(#766~#786 전량, 위 #762 1회 예외는 cold-start이지 컬럼 문제 아님) → **적용 확정**. ② `0453_item_search_keywords`(`items.search_keywords`) — `items.ts:721 GET /:id` 명시 SELECT 참조, smoke.cjs가 이미 `items.detail`(`/api/items/1`) 프로브 보유(#484가 선제 추가)하고 도입 커밋(`5a6b626`, #769) 이후 전량 success → **적용 확정**. ③④ `0454_bank_fixed_expense_match`(`matched_fixed_expense_id`)·`0455_bank_transfer_pair`(`transfer_pair_id`) — `bank.ts:412` 목록 SELECT가 `bt.*` 와일드카드 아닌 명시 컬럼으로 두 신규 컬럼 직접 참조(코드 주석 `#7 회귀방어: bt.* 와일드카드 제거`로 의도적 명시화), smoke.cjs가 `bank.txs`(`/api/bank/transactions?limit=10`) 프로브 보유 + 도입 커밋(`06432e0`, #781) 이후 전량 success → **적용 확정**. 4건 전부 owner 수동 `db:migrate:prod` 완료 상태로 판단, 이슈 미생성.
+> - **🟢 라우트 완전성 = 순수 게이트 치환, 라우트 제거 0**: `git diff 91f5032..HEAD -- src/routes`의 삭제/추가 라인 81건이 전부 `requireRole(...)` → `requireEditOrRole/requireAccessOrRole(...)` 게이트 치환(역할확장 Option A)이지 라우트 삭제가 아님 — `cardExpenses.ts` 등 표본 파일의 엔드포인트 총수(`grep -c`) 전후 동일(32=32) 확인. #429(라우트제거→smoke프로브 404) 대상 아님.
+> - **🟡 0220_general_ledger.sql 재편집 = 무해(재확인)**: `73da47b`가 이미 적용된 마이그의 시드 mojibake(`현금`/`수선비`) 텍스트를 정정 — 커밋 메시지에 "prod/로컬 D1 데이터도 UPDATE 정정 완료" 명시(파일 재편집과 별개로 실데이터는 UPDATE로 정정됨), 마이그레이션 파일 자체 재적용 없음. 위험 없음.
+> - **🟡 E2E 워크플로우 = 여전히 휴면(기존 인지, net-new 아님)**: 최근 실행 10건 전부 2026-06-22가 마지막(2주+ 미실행). 헬스 게이트는 deploy.yml post-deploy smoke가 계속 담당.
+> - **🟢 backlog↔GitHub sync**: `search_issues(label:auto-improve,state:open)` 실측 **16건**(#473,497~512) = 직전 Area6 stats(new 16)와 **정합**, 변동 없음(owner close/신규 0).
+> - **🧬 SKILL 강화 없음(신규 패턴 아님)** — 이번 사이클은 기존 codify된 3개 렌즈(CF-transient/cold-start-transient/(b)-risk 마이그 드리프트)로 전건 clean 분류, 신규 codify 대상 없음.
+> - 신규 이슈 0건, 자동수정 0건(코드 변경 불요), done-sync 변동 없음(new 16·done 428·rejected 3 정합 재확인), **신선 각도 — 대형 정비 사이클(4개 신규 마이그, 역할확장+자금관리+품목검색) 착륙 직후의 배포 파이프라인 헬스를 실제 로그로 직접 검증. 특히 신규 `ADD COLUMN`이 이미 배포된 코드의 명시 SELECT(로그인·품목상세·은행거래목록)에서 참조되는 (b)-risk 3건을 스모크 프로브 통과 이력으로 간접 검증해 prod 마이그 적용 여부를 egress 없이 확정 — #484가 선제 추가한 items.detail 프로브가 실제로 이 검증에 활용됨(스킬 자기강화 선순환 실증).**
+>
 > **Area 6 자기 진화 (2026-07-11T03:10):**
 > - **방법**: `npm ci`(node_modules 0→81) 후 `git fetch origin main`(HEAD=origin/main `4407975` 0/0 동기, 워킹트리 clean, #422 디버전스 0). Area 6 **39회차** — 직전 Area5(`4407975`, 07-11T00:25, 34회차)가 최신 HEAD라 **post-Area5 코드 churn = 0**(컬럼-diff bridge·XSS bridge 대상 없음).
 > - **done-sync 절대값 재확인**: `search_issues(is:closed reason:completed)`=428·`reason:not_planned`=1·`reason:duplicate`=2(rejected 합계 3) — 직전 기재값과 동일, owner close 0건. `list_issues(OPEN,auto-improve)` 실측 16건(#473,497~512) = 직전 Area5 stats와 정합, 변경 없음.
