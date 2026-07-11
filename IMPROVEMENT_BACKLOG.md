@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 5 -->
-<!-- last_run_at: 2026-07-11T00:25:00+09:00 -->
+<!-- last_run_area: 6 -->
+<!-- last_run_at: 2026-07-11T03:10:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -16,6 +16,16 @@
 
 > 📦 **과거 사이클 로그**는 `IMPROVEMENT_BACKLOG_ARCHIVE.md`/git 히스토리로 이관됨 (2026-06-10 1차 분리, 2026-06-25 2차 트림 343KB→192KB, 2026-06-25T10:00 3차 트림, 2026-07-03T06:00 4차 트림 288KB→86KB, **2026-07-07T13:00 5차 트림 — 07-01~07-05 사이클 로그를 git 히스토리로 이관: 238KB→78KB, 256KB Read 한도 재확보**). 신규 로그는 계속 이 파일 상단에 추가. 본 파일은 직전 2일치(07-06~) 사이클 로그 + 영구 참조 섹션(Approved/New/Auto-fixed/Done/Rejected/FP 카탈로그)만 유지. 이관분은 `git log -p -- IMPROVEMENT_BACKLOG.md`로 복원 가능.
 
+> **Area 6 자기 진화 (2026-07-11T03:10):**
+> - **방법**: `npm ci`(node_modules 0→81) 후 `git fetch origin main`(HEAD=origin/main `4407975` 0/0 동기, 워킹트리 clean, #422 디버전스 0). Area 6 **39회차** — 직전 Area5(`4407975`, 07-11T00:25, 34회차)가 최신 HEAD라 **post-Area5 코드 churn = 0**(컬럼-diff bridge·XSS bridge 대상 없음).
+> - **done-sync 절대값 재확인**: `search_issues(is:closed reason:completed)`=428·`reason:not_planned`=1·`reason:duplicate`=2(rejected 합계 3) — 직전 기재값과 동일, owner close 0건. `list_issues(OPEN,auto-improve)` 실측 16건(#473,497~512) = 직전 Area5 stats와 정합, 변경 없음.
+> - **close-pending 캐시 청산 확인(line 292 거울)**: 32~33회차가 "close-pending 적체"로 추적하던 #479·#480·#481·#483 4건 전부 **owner가 2026-07-07에 일괄 close**(`state_reason:completed`) — done=428에 이미 반영됨. 캐시 추적 대상 소멸, 다음 사이클부터 신규 close-pending 없음.
+> - **closed≠fixed 재검증(#473 규칙) — #505(workbench 멀티소스 IDOR) 완전성 확인**: `workbench.ts:397-413` `POST /sheets`에 `#505 IDOR 차단` 주석과 함께 `source_analysis_ids` 전량 `entityFilter(c,'ai_analysis_requests')` 소유검증 가드 실재 확인. 이슈 본문이 명시한 "PUT은 source 미갱신"도 `PUT /sheets/:id`(:475-503) body 타입에 `source_analysis_ids` 필드 자체 부재로 재확인(우회 경로 없음) → **완전 픽스, 형제 누락 0**.
+> - **open≠unfixed 재검증(line 281 규칙)**: 16개 OPEN 이슈 전체를 `git log --all --grep="#<N>"`으로 교차 — 이슈번호를 인용하는 커밋이 각 이슈의 **보고 커밋(자기 자신)** 외에 존재하지 않음 → **fixed-in-tree 사례 0**(모두 진짜 미픽스, owner 검토 대기 중). #473(포털계정 GET/PATCH/DELETE bare `WHERE client_id=?`)도 직접 재확인 결과 여전히 미격리.
+> - **마이그 번호 중복 standing scan(#438 클래스)**: `0327/0412/0416/0420`(기존 기지 중복, prod 적용 추정이라 정리 대상 아님) + **`0453`(item_search_keywords / role_expansion_rw, 07-10 신규)** — 두 파일 상호의존 0(items.search_keywords 단일 ALTER vs role_page_permissions 재빌드+users.job_role, 완전 별개 테이블) + wrangler 전체 파일명 정렬로 기능 안전 → **순수 컨벤션 위반, 이슈 미생성**(Area5가 이미 동일 판정, 재확인만).
+> - **SKILL 갱신**: 이번 사이클은 신규 패턴 발견 0(전부 기존 codify된 렌즈로 clean 재확인) — SKILL.md 변경 없음. done-sync·close-pending·closed≠fixed·open≠unfixed 4개 standing check 전부 정상 작동 확인(자기진화 메타루프 건강).
+> - net-new 이슈 0건, 자동수정 0건, 코드 변경 없음(백로그 문서만 갱신) — **quiet cycle**(직전 Area4/5가 같은 날 대형 정비 사이클을 이미 전수 감사해 신선 churn 소진).
+>
 > **Area 5 보안 (2026-07-11T00:25):**
 > - **방법**: `npm ci`(node_modules 0→81) 후 `git fetch origin main`(HEAD=origin/main `2dda83b` 0/0 동기, 워킹트리 clean). Area 5 **34회차** — 직전 Area5(`0551b02`, 07-09T13:00, 33회차) 이후 `src/routes`/`src/scripts` churn = **142+83파일**(역할 4→8 확장+can_edit 분리 Option A·entity_id 유령귀속 정비·KST 전수정비·자금관리 확장 P1~P3·실사 UX·다단위 입력 등 대형 정비 사이클, Area2/3/4가 이미 각자 렌즈로 전수 감사 완료). 병렬 에이전트 2개(권한게이트 확장 vs 스펙문서 대조 / 신규 프론트 XSS sink 스윕)로 미감사 보안 표면만 표적, 직접 수기 검증(bank.ts 전 엔드포인트 entityFilter·permissions.ts 미들웨어 로직·users.ts role 검증·시크릿 폴백)으로 교차.
 > - **🆕 net-new 1건(issue-only) — #512 (S, 권한게이트 스펙 위반)**: 역할확장 Option A 배선(`6f7556d`~`74517ba`)이 자체 스펙 문서(`docs/superpowers/specs/2026-07-10-role-expansion-rw-permissions.md`)가 명시한 "삭제·민감 write는 requireRole/edit게이트 유지" 원칙을 3곳에서 놓침: ① `cashSchedule.ts:262` DELETE가 스펙이 명시한 `requireRole('ADMIN')` 대신 `requireEditOrRole`로 배선(ACCOUNTANT가 삭제 가능해짐) ② `taxInvoices/batch.ts:159`(월합산+자동발행)·`manage.ts:159/249/306`(상태새로고침/재전송/이메일발송) 4곳이 형제 write 엔드포인트(같은 파일의 POST/PATCH/DELETE)와 달리 개별 edit 게이트 누락, 라우터레벨 access(열람) 게이트에만 의존 ③ **가장 심각** `vatReports.ts:108,167` POST /reports(신고서 생성)·PATCH /reports/:id/submit(국세청 제출)에 edit 게이트가 전혀 없어, 0453 seed가 ACCOUNTANT를 `can_access=1,can_edit=0`(열람전용) 명시했음에도 **지금 당장 부가세 신고서 생성·제출이 가능**. `cardExpenses.ts`(형제 파일)는 동일 원칙을 정확히 지켜 대조군 역할. 권한 경계 변경이라 SKILL Area5 정책상 issue-only.
