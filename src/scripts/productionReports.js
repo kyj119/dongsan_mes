@@ -225,7 +225,7 @@ function renderOverdueTable(data) {
 
     html += '<tr class="hover:bg-gray-50">';
     html += '<td class="px-3 py-2"><a href="/orders?search=' + o.order_number + '" class="text-blue-600 hover:underline">' + o.order_number + '</a></td>';
-    html += '<td class="px-3 py-2" title="' + escapeHtml(o.client_name || '-') + '">' + (o.client_name || '-') + '</td>';
+    html += '<td class="px-3 py-2" title="' + escapeHtml(o.client_name || '-') + '">' + escapeHtml(o.client_name || '-') + '</td>';
     html += '<td class="px-3 py-2 ' + statusColor + '">' + o.due_date + (isOverdue ? ' (지연)' : '') + '</td>';
     html += '<td class="px-3 py-2">' + window.MES_STATUS.orderLabel(o.status) + '</td>';
     html += '<td class="px-3 py-2 text-right">' + o.item_count + '</td>';
