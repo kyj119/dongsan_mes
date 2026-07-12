@@ -442,7 +442,8 @@ arDunningRouter.post('/send-email', async (c) => {
         db: c.env.DB, userId: user?.id, userName: user?.username,
         action: 'LEDGER_EMAIL_SENT', entityType: 'CLIENT', entityId: Number(client_id),
         entityLabel: client.client_name,
-        details: JSON.stringify({ to_email, period_start: startDate, period_end: endDate })
+        details: JSON.stringify({ to_email, period_start: startDate, period_end: endDate }),
+        actorEntityId: getEntityId(c)
       })
       return c.json({ success: true, data: { email_id: result.id } })
     } else {

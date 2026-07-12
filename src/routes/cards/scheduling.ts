@@ -60,7 +60,8 @@ cardsSchedulingRouter.put('/schedule/assign/:id', async (c) => {
       db: c.env.DB, userId: user?.id, userName: user?.username,
       action: 'UPDATE', entityType: 'CARD', entityId: parseInt(id),
       entityLabel: card.card_number || String(id),
-      details: JSON.stringify({ equipment_id_from: card.equipment_id, equipment_id_to: equipment_id })
+      details: JSON.stringify({ equipment_id_from: card.equipment_id, equipment_id_to: equipment_id }),
+      actorEntityId: getEntityId(c)
     })
 
     return c.json({ success: true, message: '장비 배정 완료' })

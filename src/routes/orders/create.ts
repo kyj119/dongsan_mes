@@ -722,7 +722,8 @@ ordersCreateRouter.post('/', async (c) => {
     await logActivity({
       db: c.env.DB, userId: user?.id, userName: user?.username,
       action: 'CREATE', entityType: 'ORDER', entityId: orderId,
-      entityLabel: orderNumber, details: null
+      entityLabel: orderNumber, details: null,
+      actorEntityId: getEntityId(c)
     })
 
     // Phase 5: 주문 생성 시 CONFIRMED이면 자재 부족 경고
@@ -938,6 +939,7 @@ ordersCreateRouter.post('/:id/items', async (c) => {
       db: c.env.DB, userId: user?.id, userName: user?.username,
       action: 'UPDATE', entityType: 'ORDER', entityId: orderId,
       entityLabel: order.order_number, details: `라인 ${newItemIds.length}건 추가`,
+      actorEntityId: getEntityId(c)
     })
 
     const warning = (order.billing_status === 'BILLED' || order.billing_status === 'PAID')

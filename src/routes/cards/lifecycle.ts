@@ -684,7 +684,8 @@ cardsLifecycleRouter.patch('/:id/status', async (c) => {
       db: c.env.DB, userId: user?.id, userName: user?.username,
       action: 'STATUS_CHANGE', entityType: 'CARD', entityId: parseInt(id),
       entityLabel: card.card_number || String(id),
-      details: JSON.stringify({ from: card.status, to: status })
+      details: JSON.stringify({ from: card.status, to: status }),
+      actorEntityId: getEntityId(c)
     })
 
     return c.json({
@@ -724,7 +725,8 @@ cardsLifecycleRouter.patch('/:id/pp-complete', async (c) => {
       db: c.env.DB, userId: user?.id, userName: user?.username,
       action: 'PP_COMPLETE', entityType: 'CARD', entityId: parseInt(id),
       entityLabel: card.card_number || String(id),
-      details: JSON.stringify({ post_processing: card.post_processing })
+      details: JSON.stringify({ post_processing: card.post_processing }),
+      actorEntityId: getEntityId(c)
     })
 
     return c.json({ success: true, message: '후가공 완료 처리되었습니다' })

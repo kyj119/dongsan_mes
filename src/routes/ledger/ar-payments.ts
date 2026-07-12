@@ -64,7 +64,8 @@ arPaymentsRouter.post('/payment', requireEditOrRole('/ledger', 'MANAGER'), async
       db: c.env.DB, userId: user?.id, userName: user?.username,
       action: 'CREATE', entityType: 'PAYMENT', entityId: result.payment_id,
       entityLabel: clientRow?.client_name || String(paymentData.client_id),
-      details: JSON.stringify({ amount: parseFloat(paymentData.amount), method: paymentData.payment_method || null })
+      details: JSON.stringify({ amount: parseFloat(paymentData.amount), method: paymentData.payment_method || null }),
+      actorEntityId: getEntityId(c)
     })
 
     await notifyRoles(c.env.DB, ['ADMIN', 'MANAGER'], '입금 등록', `${clientRow?.client_name || ''} - ${Number(paymentData.amount).toLocaleString()}원 입금`, '/ledger')

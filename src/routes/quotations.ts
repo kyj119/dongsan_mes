@@ -388,7 +388,8 @@ quotationsRouter.post('/', async (c) => {
     await logActivity({
       db: c.env.DB, userId: user?.id, userName: user?.username,
       action: 'CREATE', entityType: 'QUOTATION',
-      entityId: quotationId, entityLabel: quotationNumber
+      entityId: quotationId, entityLabel: quotationNumber,
+      actorEntityId: getEntityId(c)
     })
 
     return c.json({
@@ -535,7 +536,8 @@ quotationsRouter.put('/:id', async (c) => {
     await logActivity({
       db: c.env.DB, userId: user?.id, userName: user?.username,
       action: 'UPDATE', entityType: 'QUOTATION',
-      entityId: Number(id), entityLabel: String(id)
+      entityId: Number(id), entityLabel: String(id),
+      actorEntityId: getEntityId(c)
     })
 
     return c.json({ success: true, data: { id: Number(id) } })
@@ -563,7 +565,8 @@ quotationsRouter.delete('/:id', requireEditOrRole('/quotations', 'MANAGER'), asy
     await logActivity({
       db: c.env.DB, userId: user?.id, userName: user?.username,
       action: 'CANCEL', entityType: 'QUOTATION',
-      entityId: Number(id), entityLabel: quotation.quotation_number
+      entityId: Number(id), entityLabel: quotation.quotation_number,
+      actorEntityId: getEntityId(c)
     })
 
     return c.json({ success: true, message: '견적서 취소 완료' })
@@ -741,7 +744,8 @@ quotationsRouter.post('/:id/convert-to-order', requireEditOrRole('/quotations', 
       db: c.env.DB, userId: user?.id, userName: user?.username,
       action: 'CONVERT', entityType: 'QUOTATION',
       entityId: Number(id), entityLabel: quotation.quotation_number,
-      details: JSON.stringify({ created_order_id: orderId, order_number: orderNumber })
+      details: JSON.stringify({ created_order_id: orderId, order_number: orderNumber }),
+      actorEntityId: getEntityId(c)
     })
 
     return c.json({

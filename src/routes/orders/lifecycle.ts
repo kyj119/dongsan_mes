@@ -288,7 +288,8 @@ ordersLifecycleRouter.patch('/:id/status', requireEditOrRole('/orders', 'MANAGER
       db: c.env.DB, userId: user?.id, userName: user?.username,
       action: 'STATUS_CHANGE', entityType: 'ORDER', entityId: parseInt(id),
       entityLabel: order.order_number,
-      details: JSON.stringify({ from: order.status, to: status })
+      details: JSON.stringify({ from: order.status, to: status }),
+      actorEntityId: getEntityId(c)
     })
 
     // Phase 5: 자재 부족 경고 (CONFIRMED 전환 시, non-blocking)
@@ -447,7 +448,8 @@ ordersLifecycleRouter.patch('/:id/cancel', requireEditOrRole('/orders', 'MANAGER
     await logActivity({
       db: c.env.DB, userId: user?.id, userName: user?.username,
       action: 'ORDER_CANCEL', entityType: 'ORDER', entityId: parseInt(id),
-      entityLabel: order.order_number, details: cancelText
+      entityLabel: order.order_number, details: cancelText,
+      actorEntityId: getEntityId(c)
     })
 
     return c.json({ success: true, message: `주문 ${order.order_number}이(가) 취소되었습니다.` })
@@ -496,7 +498,8 @@ ordersLifecycleRouter.patch('/:id/restore', requireEditOrRole('/orders', 'MANAGE
     await logActivity({
       db: c.env.DB, userId: user?.id, userName: user?.username,
       action: 'ORDER_RESTORE', entityType: 'ORDER', entityId: parseInt(id),
-      entityLabel: order.order_number, details: '취소 주문 복구 → CONFIRMED'
+      entityLabel: order.order_number, details: '취소 주문 복구 → CONFIRMED',
+      actorEntityId: getEntityId(c)
     })
 
     return c.json({ success: true, message: `주문 ${order.order_number}이(가) 복구되었습니다.` })
@@ -646,7 +649,8 @@ ordersLifecycleRouter.post('/sync-statuses', requireRole('ADMIN', 'MANAGER'), as
       action: 'SYNC_STATUSES',
       entityType: 'ORDER',
       userId: user?.id,
-      details: `상태 동기화 실행: 출고완료 ${toShip.length}건, 회계반영 ${billedCount}건${syncNote}`
+      details: `상태 동기화 실행: 출고완료 ${toShip.length}건, 회계반영 ${billedCount}건${syncNote}`,
+      actorEntityId: getEntityId(c)
     })
 
     return c.json({

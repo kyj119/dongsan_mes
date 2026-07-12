@@ -487,7 +487,7 @@ coreRouter.post('/save', requireRole('ADMIN', 'MANAGER'), async (c) => {
       d.employer_employment_insurance, d.employer_industrial_accident,
       total_deduction, net_pay,
       work_days, overtime_hours, extra_overtime_hours, absent_days, late_count, leave_used_days,
-      notes, user?.id || null, getEntityId(c)
+      notes, user?.id || null, getEntityId(c) || 1
     ).run()
 
     return c.json({ success: true, data: { employee_id: employeeId, pay_period: payPeriod, net_pay } })
@@ -647,7 +647,7 @@ coreRouter.post('/batch', requireRole('ADMIN', 'MANAGER'), async (c) => {
         d.employment_insurance, d.income_tax, d.local_tax, fixed_other_deduction,
         d.employer_national_pension, d.employer_health_insurance, d.employer_long_term_care,
         d.employer_employment_insurance, d.employer_industrial_accident,
-        d.total_deduction + fixed_other_deduction, net_pay, user?.id || null, getEntityId(c)
+        d.total_deduction + fixed_other_deduction, net_pay, user?.id || null, getEntityId(c) || 1
       ).run()
       created++
     }
