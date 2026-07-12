@@ -533,7 +533,7 @@ function iaeSaveScaleControlHTML(s, inputCls) {
   var ps = iaeSavePresets();
   var outMax = Math.max(Number(s.target_w) || 0, Number(s.target_h) || 0);
   var rec = iaeRecommendSavePct(outMax);
-  if (s.save_scale_pct == null) s.save_scale_pct = rec;   // 기본 = 추천값
+  if (s.save_scale_pct == null) { s.save_scale_pct = rec; s._save_scale_auto = true; }   // 기본 = 추천값(목표크기 변경 시 추종)
   var cur = Number(s.save_scale_pct) || rec;
   if (ps.indexOf(cur) < 0) ps = ps.concat([cur]).sort(function (a, b) { return b - a; }); // 현재값이 프리셋에 없으면 노출
   var opts = ps.map(function (p) {
@@ -565,6 +565,7 @@ function iaeWireSaveScale(s, f) {
   var sel = document.getElementById('iaeSaveScale');
   if (sel) sel.addEventListener('change', function () {
     s.save_scale_pct = Number(sel.value) || 100;
+    s._save_scale_auto = false;   // 수동 선택 → 추천 자동추종 중단
     iaeSaveSettings();
     var hint = document.getElementById('iaeSaveScaleHint');
     if (hint) hint.innerHTML = iaeSaveScaleHint(s);
@@ -586,7 +587,7 @@ function iaeWireSaveScale(s, f) {
 function iaeSaveScaleSheetHTML(o, recMaxCm, inputCls) {
   var ps = iaeSavePresets();
   var rec = iaeRecommendSavePct(recMaxCm || 0);
-  if (o.save_scale_pct == null) o.save_scale_pct = rec;
+  if (o.save_scale_pct == null) { o.save_scale_pct = rec; o._save_scale_auto = true; }
   var cur = Number(o.save_scale_pct) || rec;
   if (ps.indexOf(cur) < 0) ps = ps.concat([cur]).sort(function (a, b) { return b - a; });
   var opts = ps.map(function (p) { return '<option value="' + p + '"' + (p === cur ? ' selected' : '') + '>저장 ' + p + '%' + (p === rec ? ' · 추천' : '') + '</option>'; }).join('');
@@ -599,7 +600,7 @@ function iaeSaveScaleSheetHTML(o, recMaxCm, inputCls) {
 }
 function iaeWireSheetSaveScale(o, rerender) {
   var sel = document.getElementById('iaeSheetSaveScale');
-  if (sel) sel.addEventListener('change', function () { o.save_scale_pct = Number(sel.value) || 100; });
+  if (sel) sel.addEventListener('change', function () { o.save_scale_pct = Number(sel.value) || 100; o._save_scale_auto = false; });
   var edit = document.getElementById('iaeSheetSaveScaleEdit'), editor = document.getElementById('iaeSheetSaveScaleEditor');
   if (edit && editor) edit.addEventListener('click', function () { editor.classList.toggle('hidden'); });
   var save = document.getElementById('iaeSheetSaveScaleEditSave');
@@ -615,6 +616,20 @@ function iaeSheetFinalFactor(saveScalePct, sheetMaxDimCm) {
   var chosen = iaeScaleFromPct(saveScalePct);
   var safety = (sheetMaxDimCm > IAE_IL_REDUCE_CM) ? Math.ceil(sheetMaxDimCm / IAE_IL_REDUCE_CM) : 1;
   return Math.max(chosen, safety);
+}
+// 추천값 동적 갱신 — 출력/판 크기(maxDimCm)가 바뀌면 select의 '· 추천' 마커를 재계산.
+//   _save_scale_auto(사용자 미선택)면 선택값도 추천으로 자동추종, 수동 선택 후엔 마커만 갱신.
+function iaeUpdateSaveScaleRec(selId, s, maxDimCm) {
+  var sel = document.getElementById(selId);
+  if (!sel) return;
+  var rec = iaeRecommendSavePct(maxDimCm || 0);
+  if (s._save_scale_auto) s.save_scale_pct = rec;
+  var cur = Number(s.save_scale_pct) || rec;
+  var ps = iaeSavePresets();
+  if (ps.indexOf(cur) < 0) ps = ps.concat([cur]).sort(function (a, b) { return b - a; });
+  sel.innerHTML = ps.map(function (p) {
+    return '<option value="' + p + '"' + (p === cur ? ' selected' : '') + '>저장 ' + p + '%' + (p === rec ? ' · 추천' : '') + '</option>';
+  }).join('');
 }
 function iaeRenderInspector(f) {
   var host = document.getElementById('iaeInspector');
@@ -698,7 +713,8 @@ function iaeRenderInspector(f) {
     s.aspect_lock = document.getElementById('iaeAspect').checked;
     s.rotate90 = document.getElementById('iaeRot').checked;
     s.trim = document.getElementById('iaeTrim').checked;
-    // 저장 스케일 힌트는 출력(목표크기)에 의존 → 목표 변경 시 갱신(select 값은 iaeWireSaveScale가 관리).
+    // 저장 스케일: 출력(목표크기)에 의존 → 목표 변경 시 추천 마커·힌트 동적 갱신(미선택 시 추천 추종).
+    iaeUpdateSaveScaleRec('iaeSaveScale', s, Math.max(Number(s.target_w) || 0, Number(s.target_h) || 0));
     var ssHint = document.getElementById('iaeSaveScaleHint');
     if (ssHint) ssHint.innerHTML = iaeSaveScaleHint(s);
     s.fin_top = document.getElementById('iaeFinTop').value;
@@ -2256,6 +2272,7 @@ function iaeNestRenderEstimate() {
   host.innerHTML = '<div class="text-[11px] text-gray-600"><i class="fas fa-chart-area mr-1 text-blue-500"></i>'
     + sizeTxt + ' · 효율 <b class="' + effCls + '">' + effPct + '%</b> · 자투리 ' + wastePct + '%' + rotTxt + pkTxt + '</div>'
     + iaeSheetLimitWarnHTML(est.sheet_max_dim_cm || 0);
+  iaeUpdateSaveScaleRec('iaeSheetSaveScale', o, est.sheet_max_dim_cm || 0); // 추천값 동적화(예상 판 크기 추종)
 }
 
 function iaeCanRenderNestPanel() {
@@ -2492,6 +2509,7 @@ function iaeImposeRenderEstimate() {
   var srcTxt = est.sources > 1 ? (' · ' + est.sources + '개 소스') : '';
   host.innerHTML = '<div class="text-[11px] text-gray-600"><i class="fas fa-chart-area mr-1 text-blue-500"></i>조각 ' + est.pieces + '개' + srcTxt + ' · ' + sizeTxt + ' · 효율 <b class="' + effCls + '">' + effPct + '%</b> · 자투리 ' + wastePct + '%' + rotTxt + pkTxt + '</div>'
     + iaeSheetLimitWarnHTML(est.sheet_max_dim_cm || 0);
+  iaeUpdateSaveScaleRec('iaeSheetSaveScale', iaeImposeOpts, est.sheet_max_dim_cm || 0); // 추천값 동적화(예상 판 크기 추종)
 }
 
 function iaeImposeRenderPanel() {
