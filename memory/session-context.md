@@ -1,39 +1,38 @@
-# 세션 컨텍스트 (2026-07-10) — 재고실사·다단위 + mojibake/KST/영문 전수 정비
+# 세션 컨텍스트 (2026-07-12) — 자금관리(/bank) 확장 P1~P3 + auto-improve 봇 백로그 전건
 
-> 세션별 덮어쓰기 파일. 직전 내용(품목 마스터 정본)은 타 세션 정리로 삭제됨 — 품목 요약 정본은 auto-memory MEMORY.md 품목 라인 + `docs/superpowers/specs/` 참조.
+> 세션별 덮어쓰기 파일. 직전(07-10 재고실사·KST/영문 정비) 내용은 auto-memory MEMORY.md + `docs/audits/2026-07-10-*` 참조.
+> **이 세션 정본 = auto-memory [[project-bank-fund-expansion]] + spec `docs/superpowers/specs/2026-07-10-bank-fund-management-expansion.md`.**
 
-## 이 세션에서 한 것 (전부 prod 배포완료)
-1. **재고실사 안전패키지 + 다단위 조정·이동** (`1475bb9d`+`1102d9a4`, dep `6a14922c`)
-   - 치명: 미입력(counted NULL) 실사 승인 시 inventory.quantity=NULL 재고 소실 → 보정 제외+상태가드(APPROVED 잠금·add-items DRAFT 전용)+미입력 UX
-   - 다단위: 조정/이동 수량 입력 단위 선택(관리↔base)·프론트 base 환산(백엔드 무변경)·현재고/이력 uomFmt
-2. **3축 전수 정비** (`73da47be`·`9110ad0e`·`d952a052`, dep `57182b25`)
-   - mojibake 9건 + **prod DB 계정과목 '현금'/'수선비' 손상 UPDATE 정정**
-   - KST 드리프트 74파일 ~137곳(채번·세금계산서 발행일·KPI 월경계·연체판정·오늘조회·동기화창·datetime-local 9h)
-   - 영문 노출 33파일(ROLE_NAMES SSOT 신설·공식문서 payslip/원천징수 서버라벨·포털 COMPLETED·라벨맵 9종)
+## 이 세션에서 한 것 (전부 prod 배포·apex 검증 완료)
+1. **P1 UI** (main `06432e0f`) — 자금현황 탭(첫 탭·기본 랜딩: 총 계좌잔액·순자금=Σ잔액−Σ대출·계좌별 잔액=최신 balance_after 파생) / 거래처검색 **모달**(빈검색=전체 브라우즈+필터, in-row·입금적용·규칙수정 3곳 공용 openClientPicker) / 거래표 계좌 라벨=`별칭 · 은행명` / 액션바 ⋯더보기 제거→CSV 인라인 버튼
+2. **P2 자동매칭 확장** (main `06432e0f`, 마이그 **0454**) — `bank_match_rules.match_type`(EXACT|CONTAINS) / 출금→고정비 제안(SUGGESTED) / 확정 시 `recurring_expense_actuals` 당월 실적 기록 / 자금현황 탭 당월 고정비 체크리스트(PAID/OVERDUE/PENDING)
+3. **P3 계좌간 이체** (main `06432e0f`, 마이그 **0455**) — `transfer_pair_id` 상호링크. detect-transfers(동일금액·W+D·다계좌·±2일)→confirm-transfer→양쪽 IGNORED+'계좌이체'. unlink-transfer=양쪽 UNMATCHED 복원
+4. **엔진 공유화** (main `0dbb8e9e`) — 매칭 로직을 `runAutoMatchEngine(c,opts)`로 추출, **수동 버튼·바로빌 sync·무인 cron 3곳 단일 소스** → sync·cron도 출금 고정비·CONTAINS 수행(이전 입금·EXACT만)
+5. **CONTAINS 규칙 생성 UI** (main `b011e41e`) — 규칙 탭 [규칙 추가]+생성/수정 겸용 모달(키워드·완전/부분일치·거래처/비용분류). POST/PUT match-rules에 match_type
+6. **봇 백로그 5건 전건 해소** — #514(위 5) / #511 unapply 실적·링크 정리(`b288f460`) / #517 confirmAllTransfers 부분실패 정직보고(`b288f460`) / #513 unlink 가드+필드정리(`08015c52`) / #518 로딩실패 문구 구분(`08015c52`)
 
 ## 결정 + 이유
-- **KST 수정 = BUG 전체 일괄, LOW ~45 보류** — 반복 스윕 비용 최소화. LOW=연초/월초 하루 한정·CSV 파일명·dedup창 (정본: `docs/audits/2026-07-10-kst-english-audit.md`)
-- **단위 표기(EA/yd/L) 현행 유지** — 현장 관용, 한글화는 사업 판단 필요(사용자 질문 타임아웃→권장안 채택)
-- **kstDate.ts에 JS 헬퍼 신설**(kstYmd/kstYmdCompact/kstYm/kstYear/kstStamp14) — 채번·업무일 기본값의 단일 소스. 신규 코드는 raw `new Date().toISOString().slice(0,10)` 금지
-- **ROLE_LABELS는 constants/hr.ts에 배치**(HR 직급과 별개 축 주석 명시), HR_ENUMS_JS로 window.ROLE_NAMES 주입
-- 실사 잔여(미합의): 다=상세 검색/필터·차이 요약·updateItemCount N+1 / 라=FULL 다중창고 스코프·승인 시 재고변동 감지·반려/DRAFT 삭제
+- **이체 표식 = `match_status='IGNORED' + transfer_pair_id`** (신규 'TRANSFER'값 아님) — match_status에 CHECK 제약(UNMATCHED|SUGGESTED|CONFIRMED|APPLIED|IGNORED)이라 값 추가=테이블 재빌드 위험(FK). IGNORED+마커로 회피
+- **하류 집계 이체 자연 제외**(추가 필터 불요, 코드 대조 확정) — expenseEstimator=`matched_category_id IN(...)`(이체 category NULL), 손익·자금계획 은행잔액=계좌별 최신 balance_after 스냅샷(이체 정상반영), auto-match=`match_status='UNMATCHED'` 필터
+- **매칭 확정수준 = 제안 후 사람 확정**(Q3, 사용자) — CONTAINS 비용분류·고정비는 SUGGESTED(자동 APPLIED 아님). EXACT 규칙만 APPLIED
+- **순자금에 대출잔액 차감** — loans는 /cash-schedule에서 관리(은행계좌 연결 불요), 자금현황이 Σ잔액−Σcurrent_balance만 표시
+- **고정비 확정 시 exact-rule 미학습** — 적요가 매달 달라 이름앵커 부적합(고정비 앵커가 정본)
 
 ## 판단기준 / 주의사항
-- **공유 메인 체크아웃 동시 세션 함정**: 타 세션 rebase/reset 중 내 미커밋 파일이 일시 원복돼 보임(허상) + stash-pop 충돌(unmerged) 중엔 어떤 커밋도 불가 → **작업 단위 완성 즉시 커밋 + 스크래치패드 백업 + `git ls-files -u` 폴링 대기**, 경로 지정 add/commit(공유 index에 타 세션 staged 혼입)
-- 에이전트 병렬 스윕은 파일 단위 완전 분할 + "지정 파일 외 수정 금지·git 금지"로 안전 (이번 6팀 무충돌, 잔실수 2건은 리드 검증에서 수습)
-- 프론트 KST 관례 = `(window.kstToday ? window.kstToday() : ...)` 폴백, datetime-local은 getTimezoneOffset 보정(equipment.js:1145 패턴)
-- Playwright 공유 브라우저 점유 시 → claude-in-chrome(사용자 Chrome) + javascript_tool로 검증 대체 가능
+- **⚠️ 로컬 검증 함정(핵심)**: 로컬 dev 서버(miniflare `wrangler pages dev dist`)와 `wrangler d1 execute --local`이 **빌드 리로드 후 서로 다른 D1 인스턴스**를 볼 수 있음. 서버-DB에 거래를 넣으려면 `POST /api/bank/transactions/import`(계좌·rows), 고정비는 `POST /api/cash-flow/fixed-expenses` 사용. curl `-d` 한글은 mojibake 저장되나 규칙·거래가 동일 인코딩이면 `includes` 매칭은 정상(실서비스는 UTF-8 일관). 검증은 되도록 **전 과정 서버 API로** 하거나, 응답을 파일 저장 후 Read(콘솔 한글 깨짐 회피)
+- **`entityFilter(c, X)`의 X = 테이블 별칭**(테이블명 아님) — `FROM ba` 쿼리엔 `entityFilter(c,'ba')`. 혼동 시 `bank_accounts.entity_id` 미존재 별칭 SQL 오류(P1 fund-summary 실제 사고)
+- **신규 마이그(0454·0455)는 prod 직접 적용** — 추적 불일치라 `npx wrangler d1 execute webapp-production --remote --file=./migrations/0454...` / `0455...`. 검증=PRAGMA table_info로 컬럼 존재 확인. **이미 prod 적용 완료**
+- **DOM 훅**: pages/*.ts에서 요소 삭제 시 scripts/*.js의 리터럴 `getElementById('#id')` 참조도 함께 제거(posttooluse-edit 훅이 회귀 차단). 동적 ID(`'x_'+id`)는 미검출
+- 배포=`npm run deploy:prod`(=build+`--branch main`)·apex 검증(신규엔드포인트 401 vs 404 / 페이지 200). 커밋 전 `git status`로 dirty WIP 확인(전체빌드 휩쓸림 방지), origin rebase 후 push
 
-## 다음 세션 TODO
-- ~~① 잉크 pack_size~~ ✅완료(이미 전량 입력 확인, 사용자 통용량 확정) / ~~② 실사 UX 다·라~~ ✅완료(prod dep `7c5c1cb2`)
-- ~~**③ KST LOW ~45건 정비**~~ ✅**완료·prod 배포·apex 검증**(2026-07-10, 커밋 `639ceaca`). 32파일: ⓐ연도 getFullYear→kstYear(14) ⓑ월 getMonth산술→kstYm파생(cashFlow·cashSchedule·forecast·taxInvoices/queries·cardExpenses·leaves·productionReports.js) ⓒCSV/R2폴더 toISOString→kstYmd(11, 동일클래스 형제 inspections·purchaseRequests·po-receipts·tax-agent·cashSchedule 포함) ⓓ알림 dedup date('now')→KST·채번 kstYmdCompact(notifications·permissions·po-receive·shipments·cards/lifecycle·hr). +leaves calcAnnualEntitlement 확장. **제외**=payroll/core.ts 죽은 fallback(미커밋 회피). **+프론트 CSV 다운로드 파일명 10곳**(`8f9bc82b`: 자금계획·검수·원장·주문목록·생산·발주목록·발주요청·입고이력·월별매출·세금계산서) **+프론트 폼 기본값/데이터 7곳**(`575ccf13`: attendance 실사기본일×2·paymentRequests prDate·iaScan verified_date×2·payroll 세무명부·iaBatchTest 태그) **= 프론트 .js 날짜 전량 window.kstToday 가드 완료·배포(unguarded 0)**. ⚠️착수 예약 에이전트 2팀이 session-limit로 반쪽 종료→리드 전량 직접 재작업(교훈: 배포성 스윕은 에이전트 결과 grep 검증 필수)
-- ~~**④ 단위(EA/yd/L) 한글 표기 재론**~~ ✅**종결 — 사용자 최종 결정 "현행 유지(EA/yd/L)"**(2026-07-10). 코드 변경 없음. (재론 시 방법=constants/units.ts UNIT_LABELS를 UNIT_NAMES_JS 전역주입, HR_ENUMS_JS 패턴)
-- 잉크 품명 잔여: 유지 39품목(잉크테크=별개 확정·코스테크·엡손솔벤 6/11색기·KM 8색기)은 엑셀에 대응 없음 — 추후 정식명 확보 시 같은 방식(품명 교체+기존명 검색키워드)으로
-- 봇 이슈 확인: #505는 처리됨(`19539861`), 신규 봇 이슈 코멘트 필독 관례 유지
+## 남은 것 (선택)
+- 봇 잔여 없음(#511·#513·#514·#517·#518 전건 해소). #507은 IA editor 관련(이 세션 무관)
+- 자금관리 자체는 완결. 후속 아이디어(미요청): 이체 감지 정확도(거래처명 유사도), 고정비 매칭 신뢰도 튜닝
 
-## 검증 명령
+## 검증 명령 (PowerShell)
 ```powershell
-npm run verify          # typecheck + build
-npm run dev:d1          # 로컬 (dist 서빙 — 수정 후 build 필수)
-# prod 스모크: 로그인 후 /permissions 탭 한글·/inventory 실사 탭·대시보드 KPI
+npm run verify          # typecheck + build (세션 최종 green 확인)
+npm run dev:d1          # 로컬 (dist 서빙 — 코드 수정 후 npm run build 필수)
+# 로컬 로그인 admin/password → /bank 자금현황 탭·거래처검색 모달·매칭규칙 [규칙 추가]
+# prod 배포: npm run deploy:prod ; apex(https://webapp-9i0.pages.dev) /bank 200·신규 API 401
 ```
