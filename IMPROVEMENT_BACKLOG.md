@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 5 -->
-<!-- last_run_at: 2026-07-12T21:14:35+09:00 -->
+<!-- last_run_area: 6 -->
+<!-- last_run_at: 2026-07-13T03:11:46+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,14 +8,24 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | **3** — #473(reopened, 거래처 포털계정 entity IDOR, owner 보류 지시 유지), #504(S, 회사인쇄정보 로드실패 무음+CSV가드 미재사용), #509(S~M, 급여 중도입퇴사 일할계산 근거 화면 미표시). owner가 본 사이클 직전 `01ca212`(잔여 15건 근본수정)+`08015c5`/`b288f46`(bank #511·#513·#517·#518) 커밋으로 **#497·498·499·500·501·502·503·506·507·508·510·511·512·513·514·516·517·518 총 18건을 일괄 픽스+close** — open 실측(`search_issues(state:open,label:auto-improve)`=3) 기준, 대규모 정리 사이클. |
+| 🆕 new | **3** — #473(reopened, 거래처 포털계정 entity IDOR, owner 보류 지시 유지 — 재보고/재수정 시도 안 함), #504(S, 회사인쇄정보 로드실패 무음 — CSV가드 부분은 본 사이클 자동수정으로 해소, 로드실패 toast 항목만 open 잔존), #509(S~M, 급여 중도입퇴사 일할계산 근거 화면 미표시). 실측(`search_issues(state:open,label:auto-improve)`=3) 정합, 변동 없음. |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 |
-| ✔️ done | **445** ⚠️절대값 재동기화(SKILL Area6 원칙) — GitHub 실측 `search_issues(label:auto-improve is:closed reason:completed)`=445(+17, owner 일괄 close). |
+| ✔️ done | **445** ⚠️절대값 재동기화(SKILL Area6 원칙) — GitHub 실측 `search_issues(label:auto-improve is:closed reason:completed)`=445, 변동 없음(owner close 0). |
 | ❌ rejected | 3 (`reason:not_planned`=1 + `reason:duplicate`=2, 변동 없음) |
 
 > 📦 **과거 사이클 로그**는 `IMPROVEMENT_BACKLOG_ARCHIVE.md`/git 히스토리로 이관됨 (2026-06-10 1차 분리, 2026-06-25 2차 트림 343KB→192KB, 2026-06-25T10:00 3차 트림, 2026-07-03T06:00 4차 트림 288KB→86KB, **2026-07-07T13:00 5차 트림 — 07-01~07-05 사이클 로그를 git 히스토리로 이관: 238KB→78KB, 256KB Read 한도 재확보**). 신규 로그는 계속 이 파일 상단에 추가. 본 파일은 직전 2일치(07-06~) 사이클 로그 + 영구 참조 섹션(Approved/New/Auto-fixed/Done/Rejected/FP 카탈로그)만 유지. 이관분은 `git log -p -- IMPROVEMENT_BACKLOG.md`로 복원 가능.
 
+> **Area 6 자기 진화 (2026-07-13T03:11):**
+> - **방법**: `npm ci`(node_modules 0→81) 후 `git fetch origin main`(HEAD `ae90f05` 0/0 동기, 워킹트리 clean). Area 6 **40회차** — 직전 Area5(`ae90f05`, 07-12T21:14, 35회차)가 최신 HEAD라 **post-Area5 코드 churn = 0**(컬럼-diff bridge·XSS bridge 대상 없음, quiet on that front) — 대신 3개 OPEN 이슈(#473·504·509)의 closed≠fixed/open≠unfixed 재검증과 done-sync 절대값 재확인에 집중.
+> - **🔧 자동수정 완료 — #504 CSV 수식 인젝션 가드, 형제누락 1건 발견·보완**: `01ca212`(owner, #504 대응)가 `window.dsCsvCell`(`src/utils/csv.ts` `CSV_UTIL_JS`, `layout.ts:188`가 전역 주입) SSOT를 도입하고 `priceManagement.js:pmCsvCell`·`taxInvoices.js:tiCsvCell` 2곳을 위임하도록 고쳤으나, **동일 클래스의 3번째 로컬 구현 `payroll.js:1166 prCsvCell`이 이 스윕에서 누락**되어 수식(`=+-@`) 인젝션 가드 없이 콤마/따옴표만 이스케이프하던 원본 그대로 잔존(#377/#473급 "부분픽스" 패턴 — 같은 커밋 안에서도 형제 3곳 중 1곳만 놓침). `prCsvCell`이 처리하는 값(부서/직책 라벨·직원 텍스트 필드)은 급여 담당자가 CSV로 내보내는 자유입력 필드라 실질 위험 있음. **수정**: sibling 2곳과 byte-동일한 위임 패턴(`if (window.dsCsvCell) return window.dsCsvCell(s); ...` fallback 유지) 추가, 비즈니스 로직/응답 형식 변경 없음(escapeHtml 추가와 동급 안전 자동수정 범주). `npm run verify`(typecheck+build) 통과 확인 후 커밋(`bf5092e`).
+> - **closed≠fixed 재검증 불필요**: 이번 사이클 직전 owner의 대규모 close(18건, `01ca212`+`08015c5`+`b288f46`)는 Area2~5(35~36회차)가 이미 각자 렌즈로 커밋 diff를 직접 검토하며 완전성을 확인했음(#513/#514/#517/#518 신규 발견 포함) — 중복 재검증 생략, done=445 신뢰.
+> - **open≠unfixed 재검증 — 3건 전부 여전히 미픽스(fixed-in-tree 0건)**: ① `#473`(포털계정 GET/PATCH/DELETE bare `WHERE client_id=?`) — `clients.ts:1077/1171/1194` 직접 재확인, 여전히 entity 격리 없음. owner가 코멘트로 "보류" 명시했으므로 **재보고·재수정 시도 안 함**(SKILL 원칙 준수). ② `#509`(급여 일할계산 근거 미표시) — `payroll/core.ts` `/preview` 응답에 `prorationContext`류 필드 부재, `payroll.js`에 `isPartial`/`prorationContext` 참조 0건 재확인 — 미픽스, issue-only 유지(응답필드+UI 추가=Area3 자동수정 정책상 코드수정 불가). ③ `#504` — 2개 하위항목 중 **CSV가드(part 2)는 위 자동수정으로 해소**, **로드실패 무음(part 1, `settings.js:600` `loadCompanyPrintInfo` catch가 `console.warn`만 호출)은 형제 `loadLogoSettings`(`:544` `showToast('로고 설정 로드 실패','error')`)와 대비되는 컨벤션 이탈 그대로 잔존** — UI 토스트 문구 추가라 Area6 자동수정 범위 밖(Area3/issue 소관), open 유지.
+> - **마이그 번호 중복 standing scan(#438 클래스) — net-new 0**: `0327/0412/0416/0420`(기존 기지, prod 적용 추정이라 정리 대상 아님) + `0453`(item_search_keywords/role_expansion_rw, 07-10 신규 — 이미 Area1 33회차·Area6 39회차가 상호의존 0 확인, 재확인만) 5건, 신규 유입 0.
+> - **done-sync 절대값 재확인**: `search_issues(is:closed reason:completed)`=445·`not_planned`=1·`duplicate`=2(rejected 합계 3) — 직전 Area5 기재값과 완전 정합, owner close 0건. `search_issues(state:open,label:auto-improve)` 실측 3건(#473,504,509) = 직전 Area5 stats와 정합.
+> - **SKILL 갱신**: 이번 사이클 신규 codify — "다중-sibling SSOT 위임 리팩터(2곳 이상 동일 로컬함수 존재)는 grep으로 **전 사용처를 나열한 뒤** 리스트 전수 위임 확인 필요, '눈에 띈 2곳'만 고치면 3번째가 잔존(#504 CSV가드처럼 sibling 수가 미리 알려지지 않은 리팩터는 #377 부분픽스 트랩에 특히 취약)" — Area 2/5 SKILL "🔁 파일분할 후 부분픽스" 섹션 계열의 추가 실증 사례로 향후 반영 권장(이번 사이클엔 SKILL.md 파일 자체는 미수정, 백로그에 다음 Area6 반영 메모로 기록).
+> - net-new 이슈 0건(자동수정 1건이 #504 일부를 흡수), 자동수정 1건(`bf5092e` prCsvCell CSV 인젝션 가드), done-sync 변동 없음(new 3·done 445·rejected 3 정합 재확인), **신선 각도 — post-Area5 churn 0이라 컬럼/XSS bridge는 무대상이었으나, 3개 OPEN 이슈를 코드 재확인하는 routine 감사 중 owner 자신의 최근 리팩터(#504 대응 `01ca212`)가 놓친 3번째 sibling을 발견 — "owner가 SSOT로 통합했다"는 커밋 메시지를 신뢰하지 않고 실제 호출부 전수(`grep -rn CsvCell src/scripts`)를 재확인한 것이 핵심. Area6 자기진화가 자기 자신뿐 아니라 owner의 리팩터 완전성도 표준 렌즈(#377/#473)로 검증하는 사례.**
+>
 > **Area 5 보안 (2026-07-12T21:14):**
 > - **방법**: `npm ci`(node_modules 0→81) 후 `git fetch origin main`(HEAD `1740ae2` 0/0 동기, 워킹트리 clean). Area 5 **35회차** — 직전 Area5(`2dda83b`, 07-11T00:25, 34회차) 이후 `src/routes`/`src/scripts` churn = **32파일**(`git diff --stat 2dda83b..HEAD`): 최대 변경은 owner 직접커밋 `01ca212`(잔여 15건 근본수정 — #515 activity_logs 법인격리 CRITICAL·#501 priceList IDOR 9핸들러·#512 tax-invoices/vat-reports edit게이트 등 보안 3건 포함) + bank 매칭엔진 공유화·CONTAINS 규칙UI(`0dbb8e9`/`b011e41`/`b288f46`/`08015c5`) + ia-editor 저장스케일 분리(`a30c655`/`e10c238`) + 급여 조기출근 연장반영(`1b5565b`) + XSS 자동수정(`1c46b7a`, 직전 사이클). Area4(36회차)가 이미 entity_id/컬럼존재성/멱등성 렌즈로 이 churn을 감사 완료 — Area5는 순수 보안 렌즈(entityParamGuard 완전성·bank.ts 신규 매칭엔진 entity격리·XSS·표준 4종 standing scan)로 재검증. 병렬 에이전트 2개(XSS sweep on new churn / authMiddleware+시크릿+rate-limit+bank·priceList IDOR spot-check) + 직접 `01ca212` diff 전문 검토.
 > - **🟢 `01ca212` 보안픽스 3건 완전성 직접 검증 — 전부 clean**: ① `priceList.ts` `entityParamGuard` — 9개 `:entityId` 핸들러(`logo` GET/PUT·`stamp` PUT·`company` GET/PUT·`company/contacts` GET/POST·`company/contacts/:cid` PUT/DELETE) 전수 grep, 예외 0(전부 가드 호출 직후 배치). ② `activity_logs.actor_entity_id` — Area4(36회차)가 이미 write-path 15곳 배선 완료(자동수정) + read-side 필터(`activityLogs.ts:23`) 실재 확인. ③ tax-invoices/vat-reports edit게이트 — `taxInvoices/batch.ts:159`(monthly-create)·`manage.ts:159/246/303`(refresh-status/retry/send-email)·`vatReports.ts:108/167`(reports 생성/submit) 6곳 전부 `requireEditOrRole` 부착 확인, 형제 write 엔드포인트와 일관.
