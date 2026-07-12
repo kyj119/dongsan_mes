@@ -37,6 +37,11 @@
     var n = parseFloat(v) || 0;
     return n % 1 === 0 ? String(Math.round(n)) : String(Math.round(n * 100) / 100);
   }
+  // 셀 배지용 소수 시간 표기: 정수는 정수, 아니면 소수 1자리 (예: 2→"2", 1.5→"1.5", 0.75→"0.8")
+  function fmtH1(v) {
+    var n = Math.round((parseFloat(v) || 0) * 10) / 10;
+    return n % 1 === 0 ? String(n) : n.toFixed(1);
+  }
   // 소수점 시간 → hh:mm 변환 (예: 8.5 → "08:30", 0 → "00:00")
   function fmtHM(h) {
     var v = parseFloat(h) || 0;
@@ -275,7 +280,6 @@
       var summary = { work: 0, late: 0, earlyLeave: 0, absent: 0, vacation: 0, holiday: 0, early: 0, ot: 0, elHours: 0, holWork: 0, sick: 0, halfDay: 0 };
       var cells = '';
       // 뱃지용 짧은 hh:mm (앞자리 0 제거: "1:30" 형식)
-      function shortHM(v) { var h = Math.floor(v); var m = Math.round((v - h) * 60); if (m >= 60) { h++; m = 0; } return h + ':' + pad(m); }
       for (var d = 1; d <= 31; d++) {
         if (d > state.daysInMonth) {
           // 해당 월에 없는 날 → 빈 비활성 셀
@@ -337,16 +341,16 @@
         var color = rec ? typeColor(t) : 'bg-white text-gray-300 border-gray-100';
         var otBadge = '', earlyBadge = '';
         if (eh > 0 && ot > 0) {
-          otBadge = '<span class="absolute top-0 left-0 right-0 text-[7px] text-white px-0.5 rounded-b leading-tight text-center" style="background:linear-gradient(90deg,#2563eb 50%,#dc2626 50%);">' + shortHM(eh) + '|+' + shortHM(ot) + '</span>';
+          otBadge = '<span class="absolute top-0 left-0 right-0 text-[7px] text-white px-0.5 rounded-b leading-tight text-center" style="background:linear-gradient(90deg,#2563eb 50%,#dc2626 50%);">' + fmtH1(eh) + '|+' + fmtH1(ot) + '</span>';
         } else if (ot > 0) {
-          otBadge = '<span class="absolute top-0 right-0 text-[7px] bg-red-600 text-white px-0.5 rounded-bl leading-tight">+' + shortHM(ot) + '</span>';
+          otBadge = '<span class="absolute top-0 right-0 text-[7px] bg-red-600 text-white px-0.5 rounded-bl leading-tight">+' + fmtH1(ot) + '</span>';
         } else if (eh > 0) {
-          earlyBadge = '<span class="absolute top-0 left-0 text-[7px] bg-blue-600 text-white px-0.5 rounded-br leading-tight">' + shortHM(eh) + '</span>';
+          earlyBadge = '<span class="absolute top-0 left-0 text-[7px] bg-blue-600 text-white px-0.5 rounded-br leading-tight">' + fmtH1(eh) + '</span>';
         }
         var lateBadge = lateMins > 0 ? '<span class="absolute bottom-0 right-0 text-[7px] bg-amber-500 text-white px-0.5 rounded-tl leading-tight">지' + lateMins + '</span>' : '';
-        var elBadge = elh > 0 ? '<span class="absolute bottom-0 left-1/2 -translate-x-1/2 text-[7px] bg-amber-600 text-white px-0.5 rounded-t leading-tight">조' + shortHM(elh) + '</span>' : '';
+        var elBadge = elh > 0 ? '<span class="absolute bottom-0 left-1/2 -translate-x-1/2 text-[7px] bg-amber-600 text-white px-0.5 rounded-t leading-tight">조' + fmtH1(elh) + '</span>' : '';
         // 휴일근무 배지 — 휴일(토·일·공휴일)에 근무한 시간 표기(요청1). 셀 하단 전폭 초록 스트립.
-        var holBadge = (t === 'HOLIDAY' && hwh > 0) ? '<span class="absolute bottom-0 left-0 right-0 text-[7px] bg-green-600 text-white px-0.5 rounded-t leading-tight text-center">' + fmtNum(hwh) + 'h</span>' : '';
+        var holBadge = (t === 'HOLIDAY' && hwh > 0) ? '<span class="absolute bottom-0 left-0 right-0 text-[7px] bg-green-600 text-white px-0.5 rounded-t leading-tight text-center">' + fmtH1(hwh) + 'h</span>' : '';
         var srcDot = '';
         var tooltip = '';
         if (rec) {
