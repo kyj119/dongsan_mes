@@ -578,7 +578,7 @@
     var list = document.getElementById('transferList');
     var allBtn = document.getElementById('transferConfirmAllBtn');
     if (!list) return;
-    if (!transferPairs.length) {
+    if (!transferPairs.filter(Boolean).length) {
       list.innerHTML = '<div class="px-3 py-8 text-center text-sm text-gray-400"><i class="fas fa-check-circle text-2xl mb-2 block text-gray-300"></i>감지된 이체 후보가 없습니다.</div>';
       if (allBtn) allBtn.style.display = 'none';
       return;
@@ -586,6 +586,7 @@
     if (allBtn) allBtn.style.display = '';
     var html = '';
     transferPairs.forEach(function(p, i) {
+      if (!p) return; // 이미 확정된 쌍은 건너뜀 (원 index 유지)
       var w = p.withdrawal, d = p.deposit;
       html += '<div class="px-4 py-3 border-b border-gray-50" id="transferRow_' + i + '">';
       html += '<div class="flex items-center justify-between gap-2">';
@@ -616,16 +617,28 @@
   };
 
   window.confirmAllTransfers = function() {
-    var tasks = transferPairs.map(function(p, i) {
-      if (!p) return null;
-      return axios.post('/api/bank/transactions/confirm-transfer', { withdrawal_id: p.withdrawal.id, deposit_id: p.deposit.id })
-        .then(function() { transferPairs[i] = null; }).catch(function() {});
-    }).filter(Boolean);
+    var tasks = [];
+    transferPairs.forEach(function(p, i) {
+      if (!p) return;
+      tasks.push(
+        axios.post('/api/bank/transactions/confirm-transfer', { withdrawal_id: p.withdrawal.id, deposit_id: p.deposit.id })
+          .then(function() { transferPairs[i] = null; return true; })
+          .catch(function() { return false; }) // 실패분은 transferPairs에 남겨 재시도 가능
+      );
+    });
     if (!tasks.length) { showToast('확정할 후보가 없습니다', 'warning'); return; }
-    Promise.all(tasks).then(function() {
-      showToast(tasks.length + '건 계좌이체 처리됨', 'success');
-      closeTransferModal();
-      loadTransactions();
+    Promise.all(tasks).then(function(results) {
+      var ok = results.filter(Boolean).length;
+      var fail = results.length - ok;
+      if (fail === 0) {
+        showToast(ok + '건 계좌이체 처리됨', 'success');
+        closeTransferModal(); // loadTransactions 포함
+      } else {
+        // 부분/전체 실패를 정직하게 보고 + 실패분만 목록 유지
+        showToast(ok + '건 처리, ' + fail + '건 실패', ok > 0 ? 'warning' : 'error');
+        loadTransactions();
+        renderTransferCandidates();
+      }
     });
   };
 

@@ -1646,10 +1646,11 @@ bankRouter.post('/transactions/:id/unapply', requireRole('ADMIN'), async (c) => 
     const ef = entityFilter(c, 'bank_transactions')
 
     const tx = await c.env.DB.prepare(
-      `SELECT id, match_status, matched_payment_id, matched_client_id, amount FROM bank_transactions WHERE id = ?${ef.clause}`
+      `SELECT id, match_status, matched_payment_id, matched_client_id, matched_fixed_expense_id, transaction_date, amount, entity_id FROM bank_transactions WHERE id = ?${ef.clause}`
     ).bind(id, ...ef.params).first<{
       id: number; match_status: string; matched_payment_id: number | null
-      matched_client_id: number | null; amount: number
+      matched_client_id: number | null; matched_fixed_expense_id: number | null
+      transaction_date: string; amount: number; entity_id: number | null
     }>()
 
     if (!tx) {
@@ -1672,7 +1673,7 @@ bankRouter.post('/transactions/:id/unapply', requireRole('ADMIN'), async (c) => 
           c.env.DB.prepare(`
             UPDATE bank_transactions
             SET match_status = 'UNMATCHED',
-                matched_client_id = NULL, matched_payment_id = NULL,
+                matched_client_id = NULL, matched_category_id = NULL, matched_fixed_expense_id = NULL, matched_payment_id = NULL,
                 matched_by = NULL, matched_at = NULL,
                 match_confidence = NULL, match_reason = NULL
             WHERE id = ?
@@ -1683,7 +1684,7 @@ bankRouter.post('/transactions/:id/unapply', requireRole('ADMIN'), async (c) => 
         await c.env.DB.prepare(`
           UPDATE bank_transactions
           SET match_status = 'UNMATCHED',
-              matched_client_id = NULL, matched_payment_id = NULL,
+              matched_client_id = NULL, matched_category_id = NULL, matched_fixed_expense_id = NULL, matched_payment_id = NULL,
               matched_by = NULL, matched_at = NULL,
               match_confidence = NULL, match_reason = NULL
           WHERE id = ?
@@ -1694,14 +1695,26 @@ bankRouter.post('/transactions/:id/unapply', requireRole('ADMIN'), async (c) => 
       await c.env.DB.prepare(`
         UPDATE bank_transactions
         SET match_status = 'UNMATCHED',
-            matched_client_id = NULL, matched_payment_id = NULL,
+            matched_client_id = NULL, matched_category_id = NULL, matched_fixed_expense_id = NULL, matched_payment_id = NULL,
             matched_by = NULL, matched_at = NULL,
             match_confidence = NULL, match_reason = NULL
         WHERE id = ?
       `).bind(id).run()
     }
 
-    return c.json({ success: true, message: '적용이 취소되었습니다. 입금 기록이 삭제되고 잔액이 복원되었습니다.' })
+    // #511: 고정비 확정이었으면 당월 실적행(recurring_expense_actuals) 정리 — 체크리스트가 PAID로 남는 것 방지.
+    //   UNIQUE(fixed_expense_id, period)이라 BANK 출처 실적은 이 거래가 만든 것. period=거래일 YYYY-MM.
+    if (tx.matched_fixed_expense_id && (tx.transaction_date || '').length >= 6) {
+      const period = `${tx.transaction_date.slice(0, 4)}-${tx.transaction_date.slice(4, 6)}`
+      await c.env.DB.prepare(
+        `DELETE FROM recurring_expense_actuals WHERE fixed_expense_id = ? AND period = ? AND actual_source = 'BANK'`
+      ).bind(tx.matched_fixed_expense_id, period).run()
+    }
+
+    const restoreMsg = tx.matched_payment_id
+      ? '적용이 취소되었습니다. 입금 기록이 삭제되고 잔액이 복원되었습니다.'
+      : '적용이 취소되었습니다.'
+    return c.json({ success: true, message: restoreMsg })
   } catch (error) {
     console.error('Unapply transaction error:', error)
     return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
