@@ -24,6 +24,10 @@ namespace IllustratorAutomation
         private static string TEMP_FOLDER = Path.Combine(Path.GetTempPath(), "IllustratorAutomat");
         private static int POLL_INTERVAL_MS = 10000; // 10 seconds (workerd 과부하 방지)
         private static int _backoffMs = 0; // 503 발생 시 추가 대기
+        // 갭③: temp 스윕 TTL(시간). 시작 시 + 주기(~1h)로 오래된 잡 폴더 정리. appsettings TempTtlHours로 조정.
+        private static int TEMP_TTL_HOURS = 24;
+        // 갭①: Illustrator hang 감지 시 kill 범위 — "all"(전 인스턴스, 기본·전용머신 권장) | "owned"(에이전트가 띄운 PID만).
+        private static string ILLUSTRATOR_KILL_SCOPE = "all";
         // W1: 단일 인스턴스 가드 + 상태 로그(agent.log) — 중복 실행 차단·운영 가시성.
         private static Mutex? _singletonMutex = null;
         private static string _agentLogPath = "";
@@ -57,6 +61,8 @@ namespace IllustratorAutomation
 
         // COM 자동화: Illustrator 상시 실행 인스턴스 (보안 다이얼로그 우회)
         private static dynamic? _ilApp = null;
+        // 갭①: 에이전트가 시작한 Illustrator PID(owned kill 대상). 미상이면 0.
+        private static int _ilPid = 0;
 
         // ── Windows API: 콘솔 QuickEdit 모드 비활성화 ────────────────────────
         // QuickEdit 모드: 콘솔 창 클릭 시 선택 모드로 진입 → stdout 블로킹 → 프로그램 멈춤
@@ -148,6 +154,8 @@ namespace IllustratorAutomation
             // 임시 폴더 생성
             if (!Directory.Exists(TEMP_FOLDER))
                 Directory.CreateDirectory(TEMP_FOLDER);
+            // 갭③: 시작 시 오래된 잡 temp 폴더 정리(직전 실행에서 crash/에러로 잔존한 것 청소).
+            SweepTempFolder(TimeSpan.FromHours(TEMP_TTL_HOURS));
 
             // 로그인
             Console.WriteLine("🔐 Logging in...");
@@ -187,6 +195,8 @@ namespace IllustratorAutomation
                     await PollTestWatchAsync();
                     // W1: 주기 상태 로그(약 1분마다) — 콘솔 미표시 환경에서 '도는지' 확인.
                     if ((++_heartbeatTick % 6) == 0) WriteAgentLog("폴링 정상 (alive)");
+                    // 갭③: 주기 temp 스윕(~1시간마다). 장시간 무재기동 운영 시 잔존 폴더 누적 방지.
+                    if ((_heartbeatTick % 360) == 0) SweepTempFolder(TimeSpan.FromHours(TEMP_TTL_HOURS));
                 }
                 catch (Exception ex)
                 {
@@ -225,6 +235,10 @@ namespace IllustratorAutomation
                     POLL_INTERVAL_MS = poll;
                 if (bool.TryParse(cfg["UseTaskQueue"], out var useq))
                     USE_TASK_QUEUE = useq;
+                if (int.TryParse(cfg["TempTtlHours"], out var ttl) && ttl > 0)
+                    TEMP_TTL_HOURS = ttl;                                    // 갭③
+                var ks = cfg["IllustratorKillScope"];
+                if (!string.IsNullOrWhiteSpace(ks)) ILLUSTRATOR_KILL_SCOPE = ks.Trim().ToLowerInvariant(); // 갭①
 
                 Console.WriteLine($"✓ Loaded config from {cfgPath}");
             }
@@ -3279,7 +3293,8 @@ namespace IllustratorAutomation
             // 4. 최후 수단: 직접 실행 후 COM 연결 대기 (최대 60초)
             string ilPath = FindIllustratorPath() ?? throw new Exception("Illustrator 설치 경로를 찾을 수 없음");
             Console.WriteLine($"   🚀 Illustrator 직접 시작: {ilPath}");
-            Process.Start(new ProcessStartInfo { FileName = ilPath, UseShellExecute = true });
+            var ilProc = Process.Start(new ProcessStartInfo { FileName = ilPath, UseShellExecute = true });
+            if (ilProc != null) { try { _ilPid = ilProc.Id; } catch { } } // 갭① owned kill 대상 PID 캡처(best-effort)
             for (int i = 0; i < 30; i++)
             {
                 Thread.Sleep(2000);
@@ -3308,7 +3323,80 @@ namespace IllustratorAutomation
             // DoJavaScript는 동기이지만 Task로 감싸 타임아웃 처리
             var task = Task.Run(() => { ai.DoJavaScript(scriptContent); });
             if (!task.Wait(TimeSpan.FromMinutes(timeoutMinutes)))
-                throw new TimeoutException($"JSX 스크립트 시간 초과 ({timeoutMinutes}분): {Path.GetFileName(scriptPath)}");
+            {
+                // 갭①: 진짜 hang. task.Wait는 대기만 포기할 뿐 COM 호출 스레드는 여전히 blocking이고
+                //   공유 _ilApp도 wedged 상태 → Illustrator를 kill해 스레드를 해제하고 다음 잡에서 재기동.
+                RestartIllustrator();
+                throw new TimeoutException($"JSX 스크립트 시간 초과 ({timeoutMinutes}분): {Path.GetFileName(scriptPath)} — Illustrator 재시작함");
+            }
+        }
+
+        // 갭①: Illustrator hang 감지 시 프로세스 kill → COM 재연결 강제(다음 GetOrStartIllustrator에서 fresh 기동).
+        //   kill이 blocking 중인 COM 스레드(RPC)를 fault시켜 함께 해제됨.
+        private static void RestartIllustrator()
+        {
+            try
+            {
+                if (ILLUSTRATOR_KILL_SCOPE == "owned")
+                {
+                    int pid = _ilPid;
+                    if (pid <= 0)
+                    {
+                        // 시작 PID 미상 → Illustrator가 단일 인스턴스면 그것을 owned로 간주(다중이면 생략).
+                        try { var ps = Process.GetProcessesByName("Illustrator"); if (ps.Length == 1) pid = ps[0].Id; } catch { }
+                    }
+                    if (pid > 0) { try { using var p = Process.GetProcessById(pid); p.Kill(true); p.WaitForExit(5000); } catch { } }
+                    else Console.WriteLine("   ⚠️  owned kill 대상 PID 불명(다중 인스턴스) — kill 생략.");
+                }
+                else // "all"(기본): 모든 Illustrator.exe kill (전용 머신 가정)
+                {
+                    foreach (var p in Process.GetProcessesByName("Illustrator"))
+                    {
+                        try { p.Kill(true); p.WaitForExit(5000); } catch { } finally { p.Dispose(); }
+                    }
+                }
+            }
+            catch (Exception ex) { Console.WriteLine($"   ⚠️  Illustrator kill 실패: {ex.Message}"); }
+            _ilApp = null;
+            _ilPid = 0;
+            Console.WriteLine("   🔁 Illustrator hang 감지 → kill 완료. 다음 잡에서 재기동합니다.");
+            WriteAgentLog($"Illustrator hang 감지 → kill·재시작 (scope={ILLUSTRATOR_KILL_SCOPE})");
+        }
+
+        // 갭③: TEMP_FOLDER 하위 잔존 잡 폴더/파일 중 TTL 초과분 정리(시작 시 + 주기).
+        //   에러/crash 경로가 남긴 req_/process_/render_sheet_/layout_/line_ 폴더가 누적되는 것을 방지.
+        //   사용 중이거나 권한 문제인 폴더는 조용히 건너뜀(best-effort).
+        private static void SweepTempFolder(TimeSpan ttl)
+        {
+            try
+            {
+                if (!Directory.Exists(TEMP_FOLDER)) return;
+                var cutoff = DateTime.Now - ttl;
+                int swept = 0;
+                foreach (var dir in Directory.GetDirectories(TEMP_FOLDER))
+                {
+                    try
+                    {
+                        if (new DirectoryInfo(dir).LastWriteTime < cutoff)
+                        {
+                            Directory.Delete(dir, recursive: true);
+                            swept++;
+                        }
+                    }
+                    catch { /* 사용 중/권한 → 건너뜀 */ }
+                }
+                foreach (var file in Directory.GetFiles(TEMP_FOLDER))
+                {
+                    try { if (new FileInfo(file).LastWriteTime < cutoff) { File.Delete(file); swept++; } }
+                    catch { }
+                }
+                if (swept > 0)
+                {
+                    Console.WriteLine($"   🧹 Temp 스윕: {swept}개 정리 (TTL {ttl.TotalHours:0}h)");
+                    WriteAgentLog($"Temp 스윕 {swept}개 정리 (TTL {ttl.TotalHours:0}h)");
+                }
+            }
+            catch (Exception ex) { Console.WriteLine($"   ⚠️  Temp 스윕 실패: {ex.Message}"); }
         }
 
         private static string? FindIllustratorPath()

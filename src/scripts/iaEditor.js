@@ -298,16 +298,38 @@ function iaeRefresh() {
     })
     .catch(function (err) { console.error('[ia-editor] files load fail', err); });
 }
+// ── 분석 폴링 데드라인(갭④): 에이전트 crash 시 무한 "분석 중" 방지 ──
+// 서버가 stale 'processing'을 자동 재큐(웹 갭②)하지만, 폴이 무한 도는 것은 별개 문제.
+// 진입 후 10분 넘게 pending/processing이면 폴을 멈추고 '지연·시간초과'로 표시(수동 새로고침 유도).
+var IAE_ANALYSIS_DEADLINE_MS = 10 * 60 * 1000;
+function iaeParseServerUtc(ts) {
+  if (!ts) return null;
+  var d = new Date(String(ts).replace(' ', 'T') + 'Z'); // 서버 datetime('now')=UTC
+  var n = d.getTime();
+  return isNaN(n) ? null : n;
+}
+function iaeIsAnalysisStuck(f) {
+  if (!f || (f.status !== 'pending' && f.status !== 'processing')) return false;
+  var t = iaeParseServerUtc(f.updated_at);
+  if (t == null) return false; // 시각 불명 → 폴 유지(회귀 방지)
+  return (Date.now() - t) > IAE_ANALYSIS_DEADLINE_MS;
+}
 function iaeSchedulePoll() {
   if (iaePollTimer) { clearTimeout(iaePollTimer); iaePollTimer = null; }
   var pending = iaeFiles.some(function (f) {
-    return f.status === 'uploading' || f.status === 'pending' || f.status === 'processing';
+    if (f.status === 'uploading') return true;
+    if (f.status === 'pending' || f.status === 'processing') return !iaeIsAnalysisStuck(f); // 데드라인 초과 → 폴 중단
+    return false;
   });
   if (pending) iaePollTimer = setTimeout(iaeRefresh, 3000);
 }
 
 // ── 탭 ────────────────────────────────────────────────────────────
-function iaeStatusBadge(status) {
+function iaeStatusBadge(status, f) {
+  // 갭④: 분석 파일(f 전달 시)이 데드라인 초과면 '지연·시간초과' 배지. 이력 패널(f 미전달)은 종전대로.
+  if (f && iaeIsAnalysisStuck(f)) {
+    return '<span class="rounded-full px-2 py-0.5 text-xs font-medium bg-orange-50 text-orange-700" title="분석이 10분 이상 지연되었습니다. IA 에이전트 상태를 확인하고 새로고침하세요(서버가 자동 재시도합니다).">지연·시간초과</span>';
+  }
   var map = {
     uploading: ['bg-gray-100 text-gray-600', '업로드 중'],
     pending: ['bg-amber-50 text-amber-700', '분석 대기'],
@@ -329,7 +351,7 @@ function iaeRenderTabs() {
     html += '<div class="iae-tab flex items-center gap-2 px-3 py-2 border-b-2 cursor-pointer whitespace-nowrap ' + cls + '" data-id="' + f.id + '">'
       + '<i class="fas fa-file-image text-gray-400"></i>'
       + '<span class="text-sm font-medium truncate" style="max-width:160px;">' + iaeEscape(f.filename) + '</span>'
-      + iaeStatusBadge(f.status)
+      + iaeStatusBadge(f.status, f)
       + '<button class="iae-tab-close text-gray-300 hover:text-red-500 ml-1" data-close="' + f.id + '" title="닫기"><i class="fas fa-times"></i></button>'
       + '</div>';
   });
@@ -363,7 +385,7 @@ function iaeRenderPanel() {
   if (empty) empty.classList.add('hidden');
 
   var head = '<div class="flex items-center justify-between mb-4">'
-    + '<div class="flex items-center gap-2"><span class="text-base font-bold text-gray-900">' + iaeEscape(f.filename) + '</span>' + iaeStatusBadge(f.status) + '</div>'
+    + '<div class="flex items-center gap-2"><span class="text-base font-bold text-gray-900">' + iaeEscape(f.filename) + '</span>' + iaeStatusBadge(f.status, f) + '</div>'
     + '<button id="iaeRefreshBtn" class="text-sm text-gray-500 hover:text-blue-600"><i class="fas fa-rotate-right mr-1"></i>새로고침</button>'
     + '</div>';
 
@@ -375,8 +397,13 @@ function iaeRenderPanel() {
     return;
   }
   if (f.status !== 'done') {
-    panel.innerHTML = head + '<div class="border border-dashed border-gray-200 rounded-lg p-10 text-center text-gray-400">'
-      + '<i class="fas fa-spinner fa-spin text-2xl mb-2"></i><div class="text-sm">ExtractGroups 분석 중입니다…</div></div>';
+    panel.innerHTML = head + (iaeIsAnalysisStuck(f)
+      ? '<div class="border border-dashed border-orange-200 rounded-lg p-8 text-center text-sm text-orange-600">'
+        + '<i class="fas fa-triangle-exclamation text-2xl mb-2"></i>'
+        + '<div>분석이 10분 이상 응답이 없습니다.</div>'
+        + '<div class="text-xs text-orange-400 mt-1">IA 에이전트 상태를 확인한 뒤 새로고침하세요. 서버가 자동으로 재시도합니다.</div></div>'
+      : '<div class="border border-dashed border-gray-200 rounded-lg p-10 text-center text-gray-400">'
+        + '<i class="fas fa-spinner fa-spin text-2xl mb-2"></i><div class="text-sm">ExtractGroups 분석 중입니다…</div></div>');
     iaeWireRefresh();
     return;
   }

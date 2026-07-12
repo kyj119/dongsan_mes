@@ -286,7 +286,7 @@ workbenchRouter.get('/files', async (c) => {
       const fp = r.file_path || ''
       const filename = fp.replace(/^r2:\/\//, '').split('/').pop() || fp || `#${r.id}`
       return {
-        id: r.id, filename, status: r.status,
+        id: r.id, filename, status: r.status, updated_at: r.updated_at,
         error_message: r.error_message, group_count: groups.length, groups, canvas,
       }
     })
@@ -608,6 +608,17 @@ workbenchRouter.get('/render-queue', async (c) => {
     await touchAgentHeartbeat(c)
     // P3-b: preview 시트(canvas_json preview_only)는 일회성 → 완료된 1h 경과분 정리(이력·D1 비대 방지). 에이전트 폴 주기에 편승.
     try { await c.env.DB.prepare(`DELETE FROM sheet_layouts WHERE render_status IN ('done','error') AND canvas_json LIKE '%"preview_only":true%' AND updated_at < datetime('now','-1 hour')`).run() } catch (_e) { /* best-effort */ }
+    // 갭②(crash 하드닝): 하드 crash/에이전트 death로 'rendering'에 굳은 시트잡을 재큐(10분 정체).
+    //   requeue_count<3 이면 queued 복귀, 초과 시 error 확정(poison 무한재큐 방지). best-effort·global.
+    try { await c.env.DB.prepare(
+      `UPDATE sheet_layouts
+         SET render_status = CASE WHEN COALESCE(requeue_count,0) < 3 THEN 'queued' ELSE 'error' END,
+             render_error  = CASE WHEN COALESCE(requeue_count,0) < 3 THEN render_error
+                                  ELSE COALESCE(render_error,'렌더가 응답 없이 중단되어 자동 실패 처리됨(재큐 한도 초과)') END,
+             requeue_count = COALESCE(requeue_count,0) + 1,
+             updated_at = datetime('now')
+       WHERE render_status = 'rendering' AND updated_at < datetime('now','-10 minutes')`
+    ).run() } catch (_e) { /* best-effort */ }
     const ef = entityFilter(c, 'sheet_layouts')
     const { results } = await c.env.DB.prepare(
       `SELECT id, name, mode, canvas_json, placements_json, item_code, source_analysis_ids
@@ -897,6 +908,19 @@ workbenchRouter.get('/process-queue', async (c) => {
         `DELETE FROM ia_process_jobs WHERE params_json LIKE '%"preview_only":true%' AND updated_at < datetime('now','-1 hour')`
       ).run()
     } catch (_e) { /* 정리는 best-effort */ }
+    // 갭②(crash 하드닝): 하드 crash/에이전트 death로 'rendering'에 굳은 가공잡을 재큐(10분 정체).
+    //   requeue_count<3 이면 queued 복귀, 초과 시 error 확정(poison 무한재큐 방지). best-effort·global.
+    try {
+      await c.env.DB.prepare(
+        `UPDATE ia_process_jobs
+           SET status = CASE WHEN COALESCE(requeue_count,0) < 3 THEN 'queued' ELSE 'error' END,
+               error_message = CASE WHEN COALESCE(requeue_count,0) < 3 THEN error_message
+                                    ELSE COALESCE(error_message,'가공이 응답 없이 중단되어 자동 실패 처리됨(재큐 한도 초과)') END,
+               requeue_count = COALESCE(requeue_count,0) + 1,
+               updated_at = datetime('now')
+         WHERE status = 'rendering' AND updated_at < datetime('now','-10 minutes')`
+      ).run()
+    } catch (_e) { /* best-effort */ }
     const ef = entityFilter(c, 'j')
     const { results } = await c.env.DB.prepare(`
       SELECT j.id, j.analysis_id, j.group_index, j.params_json, ar.file_path AS source_file_path

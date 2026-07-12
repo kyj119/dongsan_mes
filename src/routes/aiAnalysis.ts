@@ -401,6 +401,26 @@ aiAnalysisRouter.get('/:id/chunks', async (c) => {
 aiAnalysisRouter.get('/', async (c) => {
   try {
     const status = c.req.query('status') || 'pending'
+    // 갭②(crash 하드닝): 하드 crash/에이전트 death로 'processing'에 굳은 분석을 재큐.
+    //   soft 실패(jsx 예외/타임아웃)는 PATCH error가 이미 재시도 처리(0130). 여기선 콜백조차
+    //   없이 'processing'으로 남은 잡만 대상(updated_at 10분 정체). retry_count 재사용해 무한재큐 방지.
+    //   에이전트 폴(status=pending) 진입 시에만 실행. best-effort·global(:610 프리뷰 정리와 동일 정책).
+    if (status === 'pending') {
+      try {
+        await c.env.DB.prepare(
+          `UPDATE ai_analysis_requests
+             SET status = CASE WHEN COALESCE(retry_count,0)+1 < COALESCE(max_retries,3) THEN 'pending' ELSE 'error' END,
+                 retry_count = COALESCE(retry_count,0)+1,
+                 last_error_at = datetime('now'),
+                 error_message = CASE WHEN COALESCE(retry_count,0)+1 < COALESCE(max_retries,3)
+                                      THEN error_message
+                                      ELSE COALESCE(error_message,'분석이 응답 없이 중단되어 자동 실패 처리됨(재큐 한도 초과)') END,
+                 updated_at = datetime('now')
+           WHERE status = 'processing'
+             AND updated_at < datetime('now','-10 minutes')`
+        ).run()
+      } catch (_e) { /* best-effort maintenance */ }
+    }
     const ef = entityFilter(c, 'ai_analysis_requests')
     const { results } = await c.env.DB.prepare(
       `SELECT id, file_path, status, error_message, retry_count, max_retries, last_error_at, created_at
