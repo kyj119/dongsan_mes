@@ -2,6 +2,7 @@
 import type { Context } from 'hono'
 import type { HonoEnv } from './types/env'
 import { STATUS_LABELS_JS } from './utils/statusLabels'
+import { CSV_UTIL_JS } from './utils/csv'
 import { HR_ENUMS_JS } from './constants/hr'
 import { PROCESS_ENUMS_JS } from './constants/process'
 import { sidebarHTML } from './layout/sidebar'
@@ -184,6 +185,7 @@ export function appLayout(opts: AppLayoutOptions): string {
     </div>
     <script>
 ${STATUS_LABELS_JS}
+${CSV_UTIL_JS}
 ${HR_ENUMS_JS}
 ${PROCESS_ENUMS_JS}
 ${SHARED_AUTH_JS}

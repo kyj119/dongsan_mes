@@ -1,10 +1,26 @@
 import { Hono } from 'hono'
+import type { Context } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
 import { entityFilter, getEntityId } from '../utils/entityFilter'
 
 const priceListRouter = new Hono<HonoEnv>()
 priceListRouter.use('/*', authMiddleware)
+
+/**
+ * #501 IDOR 가드: 요청 법인이 URL `:entityId`의 소유자인지 검증.
+ * 위반 시 403 Response, 통과 시 null. ADMIN 전체모드(entityId=0)만 전 법인 접근 허용.
+ * 로고·직인·회사정보·부서연락처는 법인 귀속 자산 — 타법인 열람/변조 차단.
+ */
+function entityParamGuard(c: Context<HonoEnv>): Response | null {
+  const acting = getEntityId(c)
+  if (acting === 0) return null // ADMIN 전체모드 = 전 법인 관리
+  const param = Number(c.req.param('entityId'))
+  if (!Number.isFinite(param) || param !== acting) {
+    return c.json({ success: false, error: '해당 법인 정보에 접근 권한이 없습니다.' }, 403)
+  }
+  return null
+}
 
 // ============================================================================
 // GET / — 단가표 데이터 (품목 + 미디어 + 거래처 정책 적용)
@@ -261,6 +277,7 @@ priceListRouter.get('/calculate', async (c) => {
 // ============================================================================
 priceListRouter.get('/logo/:entityId', async (c) => {
   try {
+    const g = entityParamGuard(c); if (g) return g
     const entityId = c.req.param('entityId')
     const entity = await c.env.DB.prepare(
       'SELECT name, logo_base64, phone, fax, address, email FROM entities WHERE id = ?'
@@ -273,6 +290,7 @@ priceListRouter.get('/logo/:entityId', async (c) => {
 
 priceListRouter.put('/logo/:entityId', requireRole('ADMIN'), async (c) => {
   try {
+    const g = entityParamGuard(c); if (g) return g
     const entityId = c.req.param('entityId')
     const { logo_base64 } = await c.req.json<{ logo_base64: string }>()
     await c.env.DB.prepare(
@@ -287,6 +305,7 @@ priceListRouter.put('/logo/:entityId', requireRole('ADMIN'), async (c) => {
 // PUT /stamp/:entityId — 직인 저장 (PUT /logo 미러링, entities.stamp_base64)
 priceListRouter.put('/stamp/:entityId', requireRole('ADMIN'), async (c) => {
   try {
+    const g = entityParamGuard(c); if (g) return g
     const entityId = c.req.param('entityId')
     const { stamp_base64 } = await c.req.json<{ stamp_base64: string | null }>()
     await c.env.DB.prepare(
@@ -306,6 +325,7 @@ priceListRouter.put('/stamp/:entityId', requireRole('ADMIN'), async (c) => {
 // GET /company/:entityId — 인쇄 헤더 통합 블록 (Phase 3 인쇄가 소비)
 priceListRouter.get('/company/:entityId', async (c) => {
   try {
+    const g = entityParamGuard(c); if (g) return g
     const entityId = c.req.param('entityId')
     const entity = await c.env.DB.prepare(
       'SELECT name, logo_base64, stamp_base64, address, email, phone, fax, webhard_url FROM entities WHERE id = ?'
@@ -324,6 +344,7 @@ priceListRouter.get('/company/:entityId', async (c) => {
 // PUT /company/:entityId — 웹하드 주소 저장 (ADMIN)
 priceListRouter.put('/company/:entityId', requireRole('ADMIN'), async (c) => {
   try {
+    const g = entityParamGuard(c); if (g) return g
     const entityId = c.req.param('entityId')
     const { webhard_url } = await c.req.json<{ webhard_url?: string }>()
     await c.env.DB.prepare(
@@ -338,6 +359,7 @@ priceListRouter.put('/company/:entityId', requireRole('ADMIN'), async (c) => {
 // GET /company/:entityId/contacts — 부서별 연락처 목록
 priceListRouter.get('/company/:entityId/contacts', async (c) => {
   try {
+    const g = entityParamGuard(c); if (g) return g
     const entityId = c.req.param('entityId')
     const { results } = await c.env.DB.prepare(
       'SELECT id, entity_id, department, person_name, phone, fax, sort_order FROM entity_contacts WHERE entity_id = ? ORDER BY sort_order, id'
@@ -351,6 +373,7 @@ priceListRouter.get('/company/:entityId/contacts', async (c) => {
 // POST /company/:entityId/contacts — 추가 (ADMIN)
 priceListRouter.post('/company/:entityId/contacts', requireRole('ADMIN'), async (c) => {
   try {
+    const g = entityParamGuard(c); if (g) return g
     const entityId = c.req.param('entityId')
     const b = await c.req.json<{ department?: string; person_name?: string; phone?: string; fax?: string; sort_order?: number }>()
     if (!b.department?.trim()) return c.json({ success: false, error: '부서명은 필수입니다.' }, 400)
@@ -366,6 +389,7 @@ priceListRouter.post('/company/:entityId/contacts', requireRole('ADMIN'), async 
 // PUT /company/:entityId/contacts/:cid — 수정 (ADMIN)
 priceListRouter.put('/company/:entityId/contacts/:cid', requireRole('ADMIN'), async (c) => {
   try {
+    const g = entityParamGuard(c); if (g) return g
     const entityId = c.req.param('entityId')
     const cid = c.req.param('cid')
     const b = await c.req.json<{ department?: string; person_name?: string; phone?: string; fax?: string; sort_order?: number }>()
@@ -382,6 +406,7 @@ priceListRouter.put('/company/:entityId/contacts/:cid', requireRole('ADMIN'), as
 // DELETE /company/:entityId/contacts/:cid — 삭제 (ADMIN)
 priceListRouter.delete('/company/:entityId/contacts/:cid', requireRole('ADMIN'), async (c) => {
   try {
+    const g = entityParamGuard(c); if (g) return g
     const entityId = c.req.param('entityId')
     const cid = c.req.param('cid')
     await c.env.DB.prepare(

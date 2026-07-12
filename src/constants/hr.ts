@@ -4,6 +4,9 @@
 //    - 클라 JS: layout.ts 가 HR_ENUMS_JS 주입 → window.DEPT_NAMES/POSITION_NAMES/EMPLOYMENT_NAMES 사용
 //    (statusLabels.ts 의 STATUS_LABELS_JS 와 동일 패턴)
 
+// #510: 역할 라벨 SSOT = types/roles.ts (8역할). 재노출만 하고 여기서 재정의 금지.
+import { ROLE_LABELS } from '../types/roles'
+
 export interface CodeLabel { code: string; label: string }
 
 // employees.department
@@ -47,13 +50,8 @@ export const DEPARTMENT_LABELS = toLabelMap(DEPARTMENTS)
 export const POSITION_LABELS = toLabelMap(POSITIONS)
 export const EMPLOYMENT_LABELS = toLabelMap(EMPLOYMENT_TYPES)
 
-// 시스템 역할(users.role) — HR 직급(POSITIONS)과 별개 축. shell.js topbar 라벨과 동일 유지.
-export const ROLE_LABELS: Record<string, string> = {
-  ADMIN: '관리자',
-  MANAGER: '매니저',
-  DESIGNER: '디자이너',
-  OPERATOR: '작업자',
-}
+// 시스템 역할 라벨은 types/roles.ts SSOT를 재노출(상단 import). HR_ENUMS_JS가 window.ROLE_NAMES로 주입.
+export { ROLE_LABELS }
 
 // <option> HTML 생성. lead 지정 시 맨 위 value="" 옵션 추가('전체 부서'·'선택'·'-' 등).
 function optionsHTML(items: CodeLabel[], opts: { selected?: string; lead?: string } = {}): string {

@@ -472,14 +472,14 @@ reportsRouter.get('/receivables-analysis', async (c) => {
       SELECT COALESCE(SUM(final_amount), 0) as billed
       FROM orders
       WHERE status != 'CANCELLED'
-        AND strftime('%Y-%m', created_at) = ${kstMonth()}${ef.clause}
+        AND ${kstMonth('created_at')} = ${kstMonth()}${ef.clause}
     `).bind(...ef.params).all<BilledRow>()
 
     // 당월 수금
     const { results: collectedRows } = await c.env.DB.prepare(`
       SELECT COALESCE(SUM(amount), 0) as collected
       FROM payments
-      WHERE strftime('%Y-%m', payment_date) = ${kstMonth()}${ef.clause}
+      WHERE ${kstMonth('payment_date')} = ${kstMonth()}${ef.clause}
     `).bind(...ef.params).all<CollectedRow>()
 
     const summary = {

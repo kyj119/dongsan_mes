@@ -19,9 +19,14 @@ function updateSummary() {
   var inProgress = countsList.filter(function(c) { return c.status === 'DRAFT' || c.status === 'SUBMITTED'; }).length;
   var lastCount = countsList.length > 0 ? countsList[0].count_date : '-';
 
-  document.getElementById('totalCounts').textContent = total;
-  document.getElementById('inProgressCounts').textContent = inProgress;
-  document.getElementById('lastCountDate').textContent = lastCount;
+  // #508: lastCountDate id가 재고현황 탭(:92)과 중복 → getElementById가 첫 매치(재고현황 카드)를
+  //        덮어써 재고실사 카드는 영구 "-"였다. 실사 탭 전용 id(countTabLastCountDate)로 분리.
+  var totalEl = document.getElementById('totalCounts');
+  if (totalEl) totalEl.textContent = total;
+  var inProgEl = document.getElementById('inProgressCounts');
+  if (inProgEl) inProgEl.textContent = inProgress;
+  var lastEl = document.getElementById('countTabLastCountDate');
+  if (lastEl) lastEl.textContent = lastCount;
 }
 
 // ===== 테이블 렌더 =====

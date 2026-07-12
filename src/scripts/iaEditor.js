@@ -1087,13 +1087,26 @@ function iaeClearHistory() {
   if (!window.confirm('완료·실패한 가공 이력을 모두 삭제할까요? (R2 산출물 포함, 되돌릴 수 없음)')) return;
   var cb = document.getElementById('iaeHistClear');
   if (cb) { cb.disabled = true; cb.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i>삭제 중…'; }
-  axios.post('/api/workbench/process/clear').then(function (res) {
-    var n = (res.data && res.data.data && res.data.data.deleted) || 0;
-    iaeToast(n + '건 이력 삭제 완료', 'success');
+  // #506: 서버가 배치(150건)씩 삭제하고 hasMore로 잔여를 알림 → 다 지울 때까지 반복 호출.
+  var totalDeleted = 0;
+  var guard = 0;
+  function clearBatch() {
+    return axios.post('/api/workbench/process/clear').then(function (res) {
+      var d = (res.data && res.data.data) || {};
+      totalDeleted += (d.deleted || 0);
+      guard++;
+      if (d.hasMore && guard < 200) {
+        if (cb) cb.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i>삭제 중… (' + totalDeleted + '건)';
+        return clearBatch();
+      }
+    });
+  }
+  clearBatch().then(function () {
+    iaeToast(totalDeleted + '건 이력 삭제 완료', 'success');
     iaeLoadHistory();
   }).catch(function (err) {
     var msg = (err.response && err.response.data && err.response.data.error) || err.message || '이력 삭제 실패';
-    iaeToast(msg, 'error');
+    iaeToast(totalDeleted > 0 ? (totalDeleted + '건 삭제 후 중단: ' + msg) : msg, 'error');
     if (cb) { cb.disabled = false; cb.innerHTML = '<i class="fas fa-trash-can mr-1"></i>이력 비우기'; }
   });
 }

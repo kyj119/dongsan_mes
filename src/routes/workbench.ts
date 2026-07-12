@@ -1046,15 +1046,29 @@ workbenchRouter.post('/process/:id/retry', async (c) => {
 workbenchRouter.post('/process/clear', async (c) => {
   try {
     const ef = entityFilter(c, 'ia_process_jobs')
+    // #506: 행당 최대 3회 R2.delete → 무제한이면 CF Workers 1000-subrequest 한도 초과 위험.
+    //       배치 상한(150행 = 최대 450 R2 delete)으로 1회 호출 부하 제한. 초과분은 hasMore로 재호출.
+    const BATCH = 150
     const { results } = await c.env.DB.prepare(
-      `SELECT id, result_json FROM ia_process_jobs WHERE status IN ('done','error')${ef.clause}`
+      `SELECT id, result_json FROM ia_process_jobs WHERE status IN ('done','error')${ef.clause} ORDER BY id LIMIT ${BATCH}`
     ).bind(...ef.params).all<{ id: number; result_json: string | null }>()
-    for (const r of results) { await deleteRenderAssets(c, r.result_json) }
-    // status 조건 DELETE(IN(ids) 미사용 → D1 바인드 한도 무관). SELECT~DELETE 사이 신규 done은 다음 정리로.
-    await c.env.DB.prepare(
-      `DELETE FROM ia_process_jobs WHERE status IN ('done','error')${ef.clause}`
-    ).bind(...ef.params).run()
-    return c.json({ success: true, data: { deleted: results.length } })
+    if (results.length === 0) return c.json({ success: true, data: { deleted: 0, hasMore: false } })
+
+    // R2 산출물 삭제(유한 동시성). status 기반 전체 DELETE는 R2 미정리 행까지 지워 orphan을 만들므로,
+    // 이번 배치에서 실제 정리한 id만 DELETE → R2·DB 정합 유지.
+    const R2_CONCURRENCY = 10
+    for (let i = 0; i < results.length; i += R2_CONCURRENCY) {
+      await Promise.all(results.slice(i, i + R2_CONCURRENCY).map((r) => deleteRenderAssets(c, r.result_json)))
+    }
+
+    // id IN 삭제 — D1 바인드 한도(~100) 대비 80개 청크 분할([[d1-bind-param-limit]]).
+    const ids = results.map((r) => r.id)
+    for (let i = 0; i < ids.length; i += 80) {
+      const chunk = ids.slice(i, i + 80)
+      const ph = chunk.map(() => '?').join(',')
+      await c.env.DB.prepare(`DELETE FROM ia_process_jobs WHERE id IN (${ph})`).bind(...chunk).run()
+    }
+    return c.json({ success: true, data: { deleted: results.length, hasMore: results.length === BATCH } })
   } catch (error) {
     console.error('Workbench process clear error:', error)
     return c.json({ success: false, error: '이력 삭제 실패' }, 500)

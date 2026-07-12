@@ -1076,9 +1076,10 @@ cardsLifecycleRouter.post('/generate/:orderId', async (c) => {
     // Log activity
     try {
       // #405: activity_logs 실제 컬럼은 entity_type/entity_id (resource_* 부재 → INSERT throw로 감사로그 영구 누락)
+      // #515: actor_entity_id를 행위 법인(0=전체모드면 행위자 기본법인 폴백)으로 채워 법인 격리.
       await c.env.DB.prepare(`
-        INSERT INTO activity_logs (user_id, action, entity_type, entity_id, details)
-        VALUES (?, ?, ?, ?, ?)
+        INSERT INTO activity_logs (user_id, action, entity_type, entity_id, details, actor_entity_id)
+        VALUES (?, ?, ?, ?, ?, COALESCE(?, (SELECT default_entity_id FROM users WHERE id = ?)))
       `).bind(
         user.id,
         'CREATE',
@@ -1087,7 +1088,9 @@ cardsLifecycleRouter.post('/generate/:orderId', async (c) => {
         JSON.stringify({
           card_count: createdCards.length,
           card_numbers: createdCards.map((c) => c.card_number)
-        })
+        }),
+        (() => { const e = getEntityId(c); return e === 0 ? null : e })(),
+        user.id
       ).run()
     } catch (logErr) {
       console.error('Activity log failed (non-blocking):', logErr)

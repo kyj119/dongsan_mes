@@ -192,7 +192,7 @@ export function inventoryPage(c: Context<HonoEnv>) {
                 </div>
                 <div class="ds-card ds-card-compact summary-card">
                   <div class="label"><i class="fas fa-calendar" style="color:#16a34a;margin-right:4px"></i>최근 실사일</div>
-                  <div class="value" style="color:#16a34a;font-size:16px" id="lastCountDate">-</div>
+                  <div class="value" style="color:#16a34a;font-size:16px" id="countTabLastCountDate">-</div>
                 </div>
               </div>
 

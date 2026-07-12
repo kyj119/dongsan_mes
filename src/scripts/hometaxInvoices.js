@@ -128,6 +128,8 @@
   var loadJobs = window.loadJobs = window.hometaxLoadJobs = function(page) {
     jobsPage = page || 1;
     if (jobsPage < 1) jobsPage = 1;
+    var _jtb = document.getElementById('jobsTableBody'); // #498: 로딩 인디케이터 컨벤션 통일
+    if (_jtb && window.dsSkeleton) _jtb.innerHTML = dsSkeleton.table(9, 6);
     axios.get('/api/hometax-invoices/jobs', { params: { page: jobsPage, limit: pageSize } }).then(function(r) {
       var resp = r.data || {};
       jobs = resp.data || [];

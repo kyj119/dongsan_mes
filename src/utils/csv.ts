@@ -77,3 +77,18 @@ export function escapeCsvField(val: any): string {
   }
   return str
 }
+
+/**
+ * #504: 클라이언트 CSV 셀 이스케이프 SSOT. layout.ts가 window.dsCsvCell로 1회 주입.
+ * escapeCsvField(서버)와 동일 규칙 — #367 수식(=+-@) 인젝션 가드 + 콤마/따옴표/개행 이스케이프.
+ * 기존 pmCsvCell/tiCsvCell/prCsvCell가 각자 콤마·따옴표만 처리하고 수식 가드를 누락하던 것을 통합.
+ */
+export const CSV_UTIL_JS = `
+window.dsCsvCell = function(val) {
+  if (val == null) return '';
+  var str = String(val);
+  if (typeof val !== 'number' && /^[=+\\-@\\t\\r]/.test(str) && isNaN(Number(str.replace(/,/g, '')))) { str = "'" + str; }
+  if (str.indexOf(',') >= 0 || str.indexOf('"') >= 0 || str.indexOf('\\n') >= 0) { return '"' + str.replace(/"/g, '""') + '"'; }
+  return str;
+};
+`

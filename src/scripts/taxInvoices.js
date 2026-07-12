@@ -106,6 +106,8 @@ async function loadInvoices(page) {
 
 // #345: 세금계산서 목록 CSV 내보내기 (현재 필터 기준 전량)
 function tiCsvCell(v) {
+  // #504: 수식(=+-@) 인젝션 가드 포함 공용 SSOT(window.dsCsvCell, layout.ts 주입)에 위임.
+  if (window.dsCsvCell) return window.dsCsvCell(v);
   var s = (v === null || v === undefined) ? '' : String(v);
   if (/[",\n]/.test(s)) s = '"' + s.replace(/"/g, '""') + '"';
   return s;

@@ -639,6 +639,15 @@ bankRouter.post('/sync-barobill', requireRole('ADMIN'), async (c) => {
               ? (item.TransDT || '').slice(8,10) + ':' + (item.TransDT || '').slice(10,12) + ':00'
               : null
 
+            // #500: 잔액 0원(실제값)과 미제공을 구분. `|| null`은 0을 falsy로 NULL 강등 →
+            //       0451 content_key가 balance_after=NULL시 counterpart_name 폴백 → 다른 거래와
+            //       UNIQUE 충돌해 INSERT OR IGNORE로 무음 소실. 값이 있으면 0이라도 보존.
+            const balanceRaw = item.Balance
+            const balanceParsed = (balanceRaw === undefined || balanceRaw === null || balanceRaw === '')
+              ? null
+              : parseFloat(balanceRaw)
+            const balanceAfter = (balanceParsed === null || Number.isNaN(balanceParsed)) ? null : balanceParsed
+
             // #474: UNIQUE 인덱스에 위임 — 건별 dup-check SELECT 제거(N+1)
             // 0451: dedup 신원을 content_key(내용키)로 이전 → 외부 TransRefKey 재생성돼도 중복 미삽입.
             const r = await c.env.DB.prepare(`
@@ -646,7 +655,7 @@ bankRouter.post('/sync-barobill', requireRole('ADMIN'), async (c) => {
               VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'UNMATCHED', ?, ?)
             `).bind(
               bankAcc.id, txDate, txTime, txType, amount,
-              parseFloat(item.Balance || '0') || null,
+              balanceAfter,
               item.TransRemark1 || null,
               item.TransRemark2 || null,
               refKey || null,

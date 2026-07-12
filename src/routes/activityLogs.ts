@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
+import { getEntityId } from '../utils/entityFilter'
 
 const activityLogsRouter = new Hono<HonoEnv>()
 activityLogsRouter.use('/*', authMiddleware)
@@ -15,6 +16,11 @@ activityLogsRouter.get('/', requireRole('ADMIN', 'MANAGER'), async (c) => {
     let query = 'SELECT id, user_id, user_name, action, entity_type, entity_id, entity_label, details, ip_address, created_at FROM activity_logs'
     const params: any[] = []
     const where: string[] = []
+
+    // #515: 법인 격리 — ADMIN 전체모드(entityId=0)만 전 법인 열람. 그 외(MANAGER/법인선택 ADMIN)는
+    //       자기 법인 로그로 한정. actor_entity_id NULL(도출불가 시스템 기록)은 전체모드에서만 노출.
+    const actingEntity = getEntityId(c)
+    if (actingEntity !== 0) { where.push('actor_entity_id = ?'); params.push(actingEntity) }
 
     if (entity_type) { where.push('entity_type = ?'); params.push(entity_type) }
     if (user_id) { where.push('user_id = ?'); params.push(parseInt(user_id)) }

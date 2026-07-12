@@ -211,6 +211,10 @@ function updateFieldVisibility(type) {
 
     // 단가 라벨 업데이트
     updatePricingLabel();
+
+    // #499: 폭(width_mm) 힌트를 현재 폼 상태로 갱신. 신규 모달(showCreateModal→selectItemType)·
+    //       타입 전환(MATERIAL 등) 모두 이 경로를 타므로, 이전 편집 세션의 stale 힌트가 남지 않는다.
+    if (typeof itemsWidthHintRefresh === 'function') itemsWidthHintRefresh();
 }
 
 // ── 그룹 관련 ──────────────────────────────────────────────

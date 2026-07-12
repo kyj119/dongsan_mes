@@ -2,7 +2,7 @@
 import { Hono } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { authMiddleware } from '../middleware/auth'
-import { requireAccessOrRole } from '../middleware/permissions'
+import { requireAccessOrRole, requireEditOrRole } from '../middleware/permissions'
 import { entityFilter, getEntityId } from '../utils/entityFilter'
 import { kstYear } from '../utils/kstDate'
 
@@ -105,7 +105,7 @@ vatReportsRouter.get('/summary', async (c) => {
 })
 
 // 신고 이력 저장
-vatReportsRouter.post('/reports', async (c) => {
+vatReportsRouter.post('/reports', requireEditOrRole('/vat-reports', 'MANAGER'), async (c) => {
   try {
     const user = c.get('user')
     const body = await c.req.json() as any
@@ -164,7 +164,7 @@ vatReportsRouter.get('/reports', async (c) => {
 })
 
 // 신고 완료 처리
-vatReportsRouter.patch('/reports/:id/submit', async (c) => {
+vatReportsRouter.patch('/reports/:id/submit', requireEditOrRole('/vat-reports', 'MANAGER'), async (c) => {
   try {
     const id = c.req.param('id')
     const ef = entityFilter(c)

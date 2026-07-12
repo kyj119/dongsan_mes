@@ -505,7 +505,9 @@ if (__userStr) {
     try {
         const __user = JSON.parse(__userStr);
         currentUserRole = __user.role;
-        const __roleMap = { 'ADMIN': '관리자', 'MANAGER': '매니저', 'DESIGNER': '디자이너', 'OPERATOR': '작업자', 'ACCOUNTANT': '경리', 'SALES': '영업', 'FINISHING': '후가공', 'SHIPPING': '배송' };
+        // #510: 역할 라벨 SSOT = window.ROLE_NAMES(types/roles.ts→HR_ENUMS_JS, 이 스크립트 직전 주입).
+        //       하드코딩 사본 제거. 만약을 위한 최소 폴백만 유지.
+        const __roleMap = window.ROLE_NAMES || { 'ADMIN': '관리자', 'MANAGER': '매니저', 'DESIGNER': '디자이너', 'OPERATOR': '작업자' };
 
         const sidebarUserName = document.getElementById('sidebarUserName');
         if (sidebarUserName) sidebarUserName.textContent = __user.name || __user.username || '-';

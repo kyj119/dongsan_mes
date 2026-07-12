@@ -172,6 +172,7 @@ export function ledgerPage(c: Context<HonoEnv>) {
                         </button>
                     </div>
                 </div>
+                <div id="clientsCapNote" class="hidden mx-3 mb-2 px-3 py-2 rounded text-xs" style="background:#fef3c7;color:#92400e;border:1px solid #fcd34d;"></div>
                 <div class="overflow-x-auto" style="max-height: calc(100vh - 280px); overflow-y: auto;">
                     <table class="ds-table ds-table-compact ds-table-striped led-tbl">
                         <thead>

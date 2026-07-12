@@ -484,10 +484,26 @@ arLedgerRouter.get('/settlement', async (c) => {
       total_balance: acc.total_balance + cl.balance
     }), { total_clients: 0, total_orders: 0, total_sales: 0, total_payments: 0, total_balance: 0 })
 
-    // 목록 방어적 cap(1000) — 합계는 summary(전체 clientRows) 사용하므로 KPI는 잘려도 정확. count=cap 전 실제 행수.
+    // #497: 서버측 검색 — 목록이 1000건 cap을 넘으면 클라 필터는 cap된 배열만 봐서 거래처가 무음 누락된다.
+    //       search가 오면 cap 이전 전체 clientRows에서 필터 → 1000 너머 거래처도 검색 가능(완전).
+    const search = (c.req.query('search') || '').trim().toLowerCase()
+    const matched = search
+      ? clientRows.filter(r =>
+          (r.client_name || '').toLowerCase().includes(search) ||
+          (r.client_code || '').toLowerCase().includes(search))
+      : clientRows
+
+    // 목록 방어적 cap(1000) — 합계는 summary(전체 clientRows) 사용하므로 KPI는 잘려도 정확.
+    //   count=검색 매칭 수, totalCount=전체(검색 무관) 거래처 수 → 프론트가 cap 여부 판단(로컬필터 vs 서버검색).
     return c.json({
       success: true,
-      data: { summary, clients: clientRows.slice(0, 1000), count: clientRows.length }
+      data: {
+        summary,
+        clients: matched.slice(0, 1000),
+        count: matched.length,
+        totalCount: clientRows.length,
+        capped: matched.length > 1000
+      }
     })
   } catch (error) {
     console.error('Get settlement report error:', error)

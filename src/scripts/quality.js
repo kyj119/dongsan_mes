@@ -72,6 +72,7 @@
     var st = document.getElementById('qcClaimStatus');
     var body = document.getElementById('qcClaimsBody');
     if (!body) return;
+    if (window.dsSkeleton) body.innerHTML = dsSkeleton.table(9, 8); // #498: 로딩 인디케이터 컨벤션 통일
     var params = { page: qcClaimsPage, limit: 50 };
     if (st && st.value) params.status = st.value;
     axios.get('/api/claims', { params: params }).then(function (res) {
@@ -164,6 +165,7 @@
     var st = document.getElementById('qcReturnStatus');
     var body = document.getElementById('qcReturnsBody');
     if (!body) return;
+    if (window.dsSkeleton) body.innerHTML = dsSkeleton.table(8, 8); // #498: 로딩 인디케이터 컨벤션 통일
     var params = { page: qcReturnsPage, limit: 50 };
     if (st && st.value) params.status = st.value;
     axios.get('/api/returns', { params: params }).then(function (res) {

@@ -522,12 +522,17 @@ async function renderPrintHTML(target) {
   if (!sheet) sheet = pmSheetDetail; // 폴백: 화면 캐시
   if (!sheet) { target.innerHTML = '<div style="padding:20px;color:#b91c1c;font-family:sans-serif;">단가표 세트를 불러오지 못했습니다.</div>'; return; }
 
-  // 회사 인쇄 블록(발행 법인별). 실패해도 문서는 렌더(빈 머리말).
+  // 회사 인쇄 블록(발행 법인별). 실패해도 문서는 렌더(빈 머리말)하되, 무음 삼키지 말고 경고.
+  // #504: 로고·연락처·직인 없는 빈 머리말이 거래처에 인쇄·팩스로 나가는 사고 방지 — 사용자에게 알림.
   var company = {};
   try {
     var cr = await axios.get('/api/price-list/company/' + pmEntityId(sheet));
     if (cr.data && cr.data.success && cr.data.data) company = cr.data.data;
-  } catch (e) {}
+    else if (typeof showToast === 'function') showToast('회사 인쇄정보(로고·직인) 로드 실패 — 머리말이 비어 있을 수 있습니다', 'warning');
+  } catch (e) {
+    console.warn('[priceManagement] company print info load failed:', e);
+    if (typeof showToast === 'function') showToast('회사 인쇄정보(로고·직인)를 불러오지 못했습니다 — 머리말이 비어 인쇄될 수 있습니다', 'warning');
+  }
 
   var items = sheet.items || [];
   var clientName = sheet.client_name || '';
@@ -714,6 +719,11 @@ function loadHistory() {
     });
     html += '</tbody></table>';
     area.innerHTML = html;
+  }).catch(function(e) {
+    // #503: 요청 실패 시 모달이 무한 로딩으로 남던 문제 — 형제 loadPolicies와 동일하게 에러 표시.
+    var area = document.getElementById('pmHistoryArea');
+    if (area) area.innerHTML = '<div class="text-center py-8 text-red-400"><i class="fas fa-triangle-exclamation text-2xl mb-2"></i><p>변경 이력을 불러오지 못했습니다.</p></div>';
+    console.warn('[priceManagement] loadHistory failed:', e);
   });
 }
 
@@ -1178,6 +1188,8 @@ function clearPmSheetClient() {
 
 // ===================== CSV 내보내기 (Phase 4, 클라 생성 · BOM) =====================
 function pmCsvCell(v) {
+  // #504: 수식(=+-@) 인젝션 가드 포함 공용 SSOT(window.dsCsvCell, layout.ts 주입)에 위임.
+  if (window.dsCsvCell) return window.dsCsvCell(v);
   if (v == null) v = '';
   v = String(v);
   if (/[",\n\r]/.test(v)) v = '"' + v.replace(/"/g, '""') + '"';

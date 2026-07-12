@@ -28,9 +28,8 @@ async function initBalance() {
       // 거래처명 표시
       const clientNameEl = document.getElementById('portal-client-name');
       if (clientNameEl) clientNameEl.textContent = res.data.data.client_name;
-      // 로그인 영역 숨김, 내용 표시
-      const loginNote = document.getElementById('token-login-note');
-      if (loginNote) loginNote.style.display = 'none';
+      // #516: 토큰 모드 로그인 스킵은 portalLayout.ts가 리다이렉트 생략으로 이미 처리.
+      //       존재하지 않는 #token-login-note 참조(dead code) 제거.
       await loadBalance();
     } catch (e) {
       showTokenError('링크 확인 중 오류가 발생했습니다.');

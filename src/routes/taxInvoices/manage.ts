@@ -156,7 +156,7 @@ taxInvoicesManageRouter.delete('/:id', requireEditOrRole('/tax-invoices', 'MANAG
 // ────────────────────────────────────────────────────────────────────────────
 // 상태 새로고침 (GetInfo) — 바로빌에서 최신 상태 조회
 // ────────────────────────────────────────────────────────────────────────────
-taxInvoicesManageRouter.post('/:id/refresh-status', async (c) => {
+taxInvoicesManageRouter.post('/:id/refresh-status', requireEditOrRole('/tax-invoices', 'MANAGER'), async (c) => {
   const db = c.env.DB
   const env = c.env
   const id = parseInt(c.req.param('id'))
@@ -246,7 +246,7 @@ taxInvoicesManageRouter.post('/:id/refresh-status', async (c) => {
 // ────────────────────────────────────────────────────────────────────────────
 // FAILED → DRAFT 재시도
 // ────────────────────────────────────────────────────────────────────────────
-taxInvoicesManageRouter.post('/:id/retry', async (c) => {
+taxInvoicesManageRouter.post('/:id/retry', requireEditOrRole('/tax-invoices', 'MANAGER'), async (c) => {
   const db = c.env.DB
   const id = parseInt(c.req.param('id'))
 
@@ -303,7 +303,7 @@ taxInvoicesManageRouter.post('/:id/retry', async (c) => {
 })
 
 // POST /:id/send-email — 이메일 재전송
-taxInvoicesManageRouter.post('/:id/send-email', async (c) => {
+taxInvoicesManageRouter.post('/:id/send-email', requireEditOrRole('/tax-invoices', 'MANAGER'), async (c) => {
   const db = c.env.DB
   const env = c.env
   const id = parseInt(c.req.param('id'))

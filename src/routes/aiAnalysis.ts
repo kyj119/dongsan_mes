@@ -98,11 +98,16 @@ aiAnalysisRouter.get('/batch-results', async (c) => {
 
     let query: string
     let binds: any[]
+    let idsTruncated = false
     const ef = entityFilter(c)  // #339: 법인 격리 (admin 글로벌 entity 0 → 빈 절)
+    // #502: 행당 groups_json 하이드레이션이 그룹마다 R2 get 1회 → 행수 무제한이면 CF Workers
+    //       1000-subrequest 한도 초과 위험. from/to·기본 경로(LIMIT 200/50)와 동일하게 ids도 상한.
+    const MAX_BATCH_ROWS = 200
 
     if (idsParam) {
-      const ids = idsParam.split(',').map(Number).filter(n => !isNaN(n))
+      let ids = idsParam.split(',').map(Number).filter(n => !isNaN(n))
       if (ids.length === 0) return c.json({ success: false, error: 'ids 파라미터 오류' }, 400)
+      if (ids.length > MAX_BATCH_ROWS) { idsTruncated = true; ids = ids.slice(0, MAX_BATCH_ROWS) }
       const placeholders = ids.map(() => '?').join(',')
       query = `SELECT id, file_path, status, groups_json, error_message, created_at, updated_at
                FROM ai_analysis_requests WHERE id IN (${placeholders})${ef.clause} ORDER BY id ASC`
@@ -123,7 +128,14 @@ aiAnalysisRouter.get('/batch-results', async (c) => {
     const { results } = binds.length > 0 ? await stmt.bind(...binds).all<AnalysisRow>() : await stmt.all<AnalysisRow>()
 
     // R2 이관: groups_json 썸네일을 emit 직전 base64로 복원(프론트 무수정). r2_key 없으면 no-op.
-    for (const r of results) { r.groups_json = (await hydrateGroupsJson(c.env, r.groups_json)) ?? null }
+    // #502: 순차 await(N+1) → 유한 동시성 배치로 전환(행수는 위에서 상한). r2_key 없는 행은 no-op라 저렴.
+    const HYDRATE_CONCURRENCY = 10
+    for (let i = 0; i < results.length; i += HYDRATE_CONCURRENCY) {
+      const chunk = results.slice(i, i + HYDRATE_CONCURRENCY)
+      await Promise.all(chunk.map(async (r) => {
+        r.groups_json = (await hydrateGroupsJson(c.env, r.groups_json)) ?? null
+      }))
+    }
 
     // 요약 통계
     const summary = {
@@ -134,7 +146,7 @@ aiAnalysisRouter.get('/batch-results', async (c) => {
       error: results.filter((r) => r.status === 'error').length,
     }
 
-    return c.json({ success: true, summary, results })
+    return c.json({ success: true, summary, results, truncated: idsTruncated, maxRows: MAX_BATCH_ROWS })
   } catch (error) {
     console.error('AI Analysis batch-results error:', error)
     return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)

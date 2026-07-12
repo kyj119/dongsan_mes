@@ -156,7 +156,7 @@ taxInvoicesBatchRouter.post('/batch-create', requireEditOrRole('/tax-invoices', 
 // ============================================================================
 // POST /monthly-create - 월합산 세금계산서 일괄 생성
 // ============================================================================
-taxInvoicesBatchRouter.post('/monthly-create', async (c) => {
+taxInvoicesBatchRouter.post('/monthly-create', requireEditOrRole('/tax-invoices', 'MANAGER'), async (c) => {
   try {
     const user = c.get('user')
     const body = await c.req.json() as {
