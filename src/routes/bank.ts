@@ -1855,11 +1855,17 @@ bankRouter.post('/transactions/:id/unlink-transfer', requireRole('ADMIN'), async
       `SELECT bt.id, bt.transfer_pair_id FROM bank_transactions bt WHERE bt.id = ?${ef.clause}`
     ).bind(id, ...ef.params).first<{ id: number; transfer_pair_id: number | null }>()
     if (!row) return c.json({ success: false, error: '거래를 찾을 수 없습니다' }, 404)
-    const ids = row.transfer_pair_id ? [row.id, row.transfer_pair_id] : [row.id]
+    // #513: 이체쌍이 아닌 거래를 리셋하지 않도록 가드(직접 호출·재시도 방어)
+    if (!row.transfer_pair_id) return c.json({ success: false, error: '계좌이체로 처리된 거래가 아닙니다' }, 400)
+    // #513: 형제 /unmatch와 동일하게 matched_* 전 필드 정리(분류정보 잔존으로 인한 상태 불일치 방지)
+    const ids = [row.id, row.transfer_pair_id]
     const ph = ids.map(() => '?').join(',')
     await c.env.DB.prepare(`
       UPDATE bank_transactions
-      SET transfer_pair_id = NULL, match_status = 'UNMATCHED', match_reason = NULL, match_confidence = NULL
+      SET transfer_pair_id = NULL, match_status = 'UNMATCHED',
+          matched_client_id = NULL, matched_category_id = NULL, matched_fixed_expense_id = NULL,
+          matched_by = NULL, matched_at = NULL,
+          match_reason = NULL, match_confidence = NULL
       WHERE id IN (${ph})
     `).bind(...ids).run()
     return c.json({ success: true, message: '계좌이체가 해제되었습니다' })

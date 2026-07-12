@@ -932,7 +932,7 @@
       if (per) per.textContent = d.period ? '(' + d.period + ')' : '';
       renderFixedStatus(d.items || []);
     }).catch(function() {
-      if (body) body.innerHTML = '<tr><td colspan="6" class="text-center py-6 text-gray-400">고정비 현황 없음</td></tr>';
+      if (body) body.innerHTML = '<tr><td colspan="6" class="text-center py-6 text-red-400">고정비 현황 로딩 실패</td></tr>';
     });
   }
 
