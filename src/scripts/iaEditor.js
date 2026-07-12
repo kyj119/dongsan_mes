@@ -220,7 +220,7 @@ function iaeGetSettings(fid, group, gidx) {
     var dh = (group && group.height_mm != null) ? Math.round(group.height_mm / 10) : 0;
     iaeSettings[key] = {
       target_w: dw, target_h: dh, aspect_lock: true, rotate90: false,
-      trim: false, scale_factor: 1, real_size: true,
+      trim: false, save_scale_pct: null, scale_factor: 1, real_size: true,
       fin_top: '', fin_bottom: '', fin_left: '', fin_right: '',
       // R3a-2: 고급 후가공(접이식, 기본 빈값). 미입력 시 body 미전송 → 기존 동작 무영향.
       adv: { offset_method: '', offset_top: '', offset_bottom: '', offset_left: '', offset_right: '', punching: '', annotation: '' }
@@ -497,6 +497,125 @@ function iaeScaleHint(w, h, n) {
   if (n <= 1) return '원본 크기 (1/1 · 보정 없음)';
   return '1/' + n + ' 축소본 · 실물 ≈ ' + Math.round((w || 0) * n) + '×' + Math.round((h || 0) * n) + 'cm (마감·돔보 자동 보정 · EPS는 원본 크기 저장)';
 }
+
+// ══════════════════════════════════════════════════════════════════════════
+// 저장 스케일 프리셋 — 출력(파일명·카드·주문)과 저장(실제 파일 물리 크기)을 분리.
+//   저장% = 출력 대비 실제 저장 크기 비율. 저장크기 = 출력 × 저장%.
+//   scale_factor(=RIP 확대배율) = 출력/저장 = 100/저장%. 파일명 토큰 1/N으로 명시.
+//   자동 축소는 강제하지 않고 "추천"만(IL 한계 560cm 안에 드는 최대 프리셋). 프리셋 값 편집 가능.
+// ══════════════════════════════════════════════════════════════════════════
+var IAE_SAVE_PRESET_KEY = 'iae_save_presets_v1';
+function iaeSavePresets() {
+  try {
+    var v = JSON.parse(localStorage.getItem(IAE_SAVE_PRESET_KEY) || 'null');
+    if (Array.isArray(v)) {
+      var c = v.map(Number).filter(function (n) { return n > 0 && n <= 100; });
+      if (c.length) return c.sort(function (a, b) { return b - a; });
+    }
+  } catch (_e) {}
+  return [100, 50, 25, 20, 10];
+}
+function iaeSetSavePresets(arr) { try { localStorage.setItem(IAE_SAVE_PRESET_KEY, JSON.stringify(arr)); } catch (_e) {} }
+// 저장% → scale_factor (= 출력/저장 = RIP 확대배율). 100%→1, 20%→5, 40%→2.5.
+function iaeScaleFromPct(pct) { pct = Number(pct) || 100; if (pct > 100) pct = 100; if (pct < 1) pct = 1; return 100 / pct; }
+// scale_factor → 파일명 토큰 '1-5' (디스크 저장용, '/' 불가). 표시는 iaeScaleLabel. ≤1이면 빈 문자열(무축소).
+function iaeScaleToken(sf) { sf = Number(sf) || 1; if (sf <= 1.0001) return ''; var n = Math.round(sf * 100) / 100; return '1-' + (n % 1 === 0 ? n.toFixed(0) : String(n)); }
+function iaeScaleLabel(sf) { var t = iaeScaleToken(sf); return t ? t.replace('-', '/') : '1/1'; }
+// 추천 저장%: 출력 최대변 × 저장%가 IL 한계(560cm) 안에 드는 가장 큰 프리셋(전부 초과면 최소값).
+function iaeRecommendSavePct(outMaxCm) {
+  var ps = iaeSavePresets();
+  if (!(outMaxCm > 0)) return ps[0];
+  for (var i = 0; i < ps.length; i++) { if (outMaxCm * ps[i] / 100 <= IAE_IL_REDUCE_CM) return ps[i]; }
+  return ps[ps.length - 1];
+}
+// 인스펙터 저장 스케일 컨트롤(프리셋 select + 라이브 힌트 + 프리셋 편집).
+function iaeSaveScaleControlHTML(s, inputCls) {
+  var ps = iaeSavePresets();
+  var outMax = Math.max(Number(s.target_w) || 0, Number(s.target_h) || 0);
+  var rec = iaeRecommendSavePct(outMax);
+  if (s.save_scale_pct == null) s.save_scale_pct = rec;   // 기본 = 추천값
+  var cur = Number(s.save_scale_pct) || rec;
+  if (ps.indexOf(cur) < 0) ps = ps.concat([cur]).sort(function (a, b) { return b - a; }); // 현재값이 프리셋에 없으면 노출
+  var opts = ps.map(function (p) {
+    return '<option value="' + p + '"' + (p === cur ? ' selected' : '') + '>저장 ' + p + '%' + (p === rec ? ' · 추천' : '') + '</option>';
+  }).join('');
+  return '<div class="w-full">'
+    + '<label class="block text-xs text-gray-500 mb-1">저장 스케일 <span class="text-gray-400">(출력=파일명·카드·주문 / 저장=실제 파일)</span></label>'
+    + '<div class="flex items-center gap-2">'
+    + '<select id="iaeSaveScale" class="flex-1 ' + inputCls + '">' + opts + '</select>'
+    + '<button id="iaeSaveScaleEdit" type="button" class="text-xs text-gray-400 hover:text-gray-600 px-1" title="프리셋 편집"><i class="fas fa-gear"></i></button>'
+    + '</div>'
+    + '<div id="iaeSaveScaleEditor" class="hidden mt-1 flex items-center gap-1">'
+    + '<input id="iaeSaveScaleEditInput" type="text" value="' + iaeSavePresets().join(',') + '" class="flex-1 ' + inputCls + '" placeholder="100,50,25,20,10">'
+    + '<button id="iaeSaveScaleEditSave" type="button" class="text-[11px] px-2 py-1 rounded bg-gray-800 text-white hover:bg-black whitespace-nowrap">저장</button>'
+    + '</div>'
+    + '<div id="iaeSaveScaleHint" class="text-[11px] text-gray-400 mt-1">' + iaeSaveScaleHint(s) + '</div>'
+    + '</div>';
+}
+function iaeSaveScaleHint(s) {
+  var pct = Number(s.save_scale_pct) || 100;
+  var ow = Number(s.target_w) || 0, oh = Number(s.target_h) || 0;
+  var sw = Math.round(ow * pct / 100), sh = Math.round(oh * pct / 100);
+  var sf = iaeScaleFromPct(pct);
+  if (pct >= 100) return '<i class="fas fa-circle-info mr-1"></i>실물 저장 · ' + sw + '×' + sh + 'cm · RIP 100% 출력';
+  return '<i class="fas fa-circle-info mr-1"></i>저장 <b>' + sw + '×' + sh + 'cm</b> · 파일명 <b>' + iaeScaleLabel(sf) + '</b> · <span class="text-amber-600">RIP ×' + (Math.round(sf * 100) / 100) + ' 확대 출력</span>';
+}
+// 인스펙터 저장 스케일 이벤트 바인딩(select 변경·프리셋 편집 토글/저장).
+function iaeWireSaveScale(s, f) {
+  var sel = document.getElementById('iaeSaveScale');
+  if (sel) sel.addEventListener('change', function () {
+    s.save_scale_pct = Number(sel.value) || 100;
+    iaeSaveSettings();
+    var hint = document.getElementById('iaeSaveScaleHint');
+    if (hint) hint.innerHTML = iaeSaveScaleHint(s);
+  });
+  var edit = document.getElementById('iaeSaveScaleEdit');
+  var editor = document.getElementById('iaeSaveScaleEditor');
+  if (edit && editor) edit.addEventListener('click', function () { editor.classList.toggle('hidden'); });
+  var save = document.getElementById('iaeSaveScaleEditSave');
+  if (save) save.addEventListener('click', function () {
+    var raw = (document.getElementById('iaeSaveScaleEditInput') || {}).value || '';
+    var arr = raw.split(/[,\s]+/).map(Number).filter(function (n) { return n > 0 && n <= 100; });
+    if (!arr.length) { iaeToast('저장% 값을 1~100 사이로 입력하세요 (예: 100,50,25,20,10)', 'error'); return; }
+    iaeSetSavePresets(arr);
+    iaeToast('저장 스케일 프리셋 저장', 'success');
+    if (f) iaeRenderInspector(f);
+  });
+}
+// 시트(네스팅·모아찍기) 저장 스케일 프리셋 — o.save_scale_pct. recMaxCm=예상 판 최대변(추천 계산).
+function iaeSaveScaleSheetHTML(o, recMaxCm, inputCls) {
+  var ps = iaeSavePresets();
+  var rec = iaeRecommendSavePct(recMaxCm || 0);
+  if (o.save_scale_pct == null) o.save_scale_pct = rec;
+  var cur = Number(o.save_scale_pct) || rec;
+  if (ps.indexOf(cur) < 0) ps = ps.concat([cur]).sort(function (a, b) { return b - a; });
+  var opts = ps.map(function (p) { return '<option value="' + p + '"' + (p === cur ? ' selected' : '') + '>저장 ' + p + '%' + (p === rec ? ' · 추천' : '') + '</option>'; }).join('');
+  return '<div><label class="block text-xs text-gray-500 mb-1">저장 스케일 <span class="text-gray-400">(출력=파일명·주문 / 저장=실제 EPS)</span></label>'
+    + '<div class="flex items-center gap-2"><select id="iaeSheetSaveScale" class="flex-1 ' + inputCls + '">' + opts + '</select>'
+    + '<button id="iaeSheetSaveScaleEdit" type="button" class="text-xs text-gray-400 hover:text-gray-600 px-1" title="프리셋 편집"><i class="fas fa-gear"></i></button></div>'
+    + '<div id="iaeSheetSaveScaleEditor" class="hidden mt-1 flex items-center gap-1"><input id="iaeSheetSaveScaleEditInput" type="text" value="' + iaeSavePresets().join(',') + '" class="flex-1 ' + inputCls + '" placeholder="100,50,25,20,10"><button id="iaeSheetSaveScaleEditSave" type="button" class="text-[11px] px-2 py-1 rounded bg-gray-800 text-white hover:bg-black whitespace-nowrap">저장</button></div>'
+    + '<div class="text-[11px] text-gray-400 mt-0.5">출력 판이 IL 한계(5.7m)를 넘으면 선택과 무관하게 자동 축소(안전). 저장%가 작을수록 EPS 가벼움 · RIP는 파일명 배율로 확대.</div>'
+    + '</div>';
+}
+function iaeWireSheetSaveScale(o, rerender) {
+  var sel = document.getElementById('iaeSheetSaveScale');
+  if (sel) sel.addEventListener('change', function () { o.save_scale_pct = Number(sel.value) || 100; });
+  var edit = document.getElementById('iaeSheetSaveScaleEdit'), editor = document.getElementById('iaeSheetSaveScaleEditor');
+  if (edit && editor) edit.addEventListener('click', function () { editor.classList.toggle('hidden'); });
+  var save = document.getElementById('iaeSheetSaveScaleEditSave');
+  if (save) save.addEventListener('click', function () {
+    var raw = (document.getElementById('iaeSheetSaveScaleEditInput') || {}).value || '';
+    var arr = raw.split(/[,\s]+/).map(Number).filter(function (n) { return n > 0 && n <= 100; });
+    if (!arr.length) { iaeToast('저장% 값을 1~100 사이로 입력하세요', 'error'); return; }
+    iaeSetSavePresets(arr); iaeToast('저장 스케일 프리셋 저장', 'success'); if (rerender) rerender();
+  });
+}
+// 저장% + 판 최대변 → 안전 반영 최종 축소배율(클라이언트도 IL 하한 적용 → 주문 경로 등 안전). 에이전트도 동일 클램프(방어).
+function iaeSheetFinalFactor(saveScalePct, sheetMaxDimCm) {
+  var chosen = iaeScaleFromPct(saveScalePct);
+  var safety = (sheetMaxDimCm > IAE_IL_REDUCE_CM) ? Math.ceil(sheetMaxDimCm / IAE_IL_REDUCE_CM) : 1;
+  return Math.max(chosen, safety);
+}
 function iaeRenderInspector(f) {
   var host = document.getElementById('iaeInspector');
   if (!host) return;
@@ -542,9 +661,9 @@ function iaeRenderInspector(f) {
     + '<div class="flex items-center gap-4 flex-wrap">'
     + '<label class="flex items-center gap-2 text-sm text-gray-700 cursor-pointer"><input id="iaeRot" type="checkbox"' + (s.rotate90 ? ' checked' : '') + '> 90° 회전</label>'
     + '<label class="flex items-center gap-2 text-sm text-gray-700 cursor-pointer"><input id="iaeTrim" type="checkbox"' + (s.trim ? ' checked' : '') + '> 돔보</label>'
-    + '<div class="flex items-center gap-2 flex-wrap"><label class="text-xs text-gray-500">파일배율 1/</label><input id="iaeScale" type="number" min="1" step="1" value="' + (s.scale_factor || 1) + '" class="w-16 ' + inputCls + '"><span id="iaeScaleReal" class="text-[11px] text-gray-400">' + iaeScaleHint(effW, effH, s.scale_factor || 1) + '</span></div>'
-    + '<label class="flex items-center gap-2 text-sm text-gray-700 cursor-pointer" title="켜짐=축소본을 실물(×배율) 크기로 확대해 EPS 저장(RIP 100% 출력). 꺼짐=축소본 그대로 저장(RIP에서 ×배율 확대). 파일배율 1일 땐 효과 없음."><input id="iaeReal" type="checkbox"' + (s.real_size !== false ? ' checked' : '') + '> 실물 크기 저장</label>'
     + '</div>'
+    // 저장 스케일 프리셋 — 출력(파일명·카드·주문) ≠ 저장(실제 파일 물리 크기). 추천값 기본선택, 프리셋 편집 가능.
+    + iaeSaveScaleControlHTML(s, inputCls)
     // R3a-2: 고급 후가공 (접이식, 기본 접힘) — 도련 offset(method+4면)·펀칭·주석. 미입력 시 가공 body 미전송.
     + iaeAdvancedSectionHTML(iaeAdv(s), inputCls, selCls)
     + '<div class="text-[11px] text-gray-400"><i class="fas fa-circle-info mr-1"></i>단일 가공은 1매 출력입니다. 여러 매 면付(자동 배치)은 <span class="text-blue-500">대지 편집</span>의 시트 네스팅을 사용하세요.</div>'
@@ -579,11 +698,9 @@ function iaeRenderInspector(f) {
     s.aspect_lock = document.getElementById('iaeAspect').checked;
     s.rotate90 = document.getElementById('iaeRot').checked;
     s.trim = document.getElementById('iaeTrim').checked;
-    s.scale_factor = Math.max(1, parseInt(document.getElementById('iaeScale').value, 10) || 1);
-    var realEl = document.getElementById('iaeReal');
-    if (realEl) s.real_size = realEl.checked;
-    var srEl = document.getElementById('iaeScaleReal');
-    if (srEl) srEl.textContent = iaeScaleHint(effW, effH, s.scale_factor);
+    // 저장 스케일 힌트는 출력(목표크기)에 의존 → 목표 변경 시 갱신(select 값은 iaeWireSaveScale가 관리).
+    var ssHint = document.getElementById('iaeSaveScaleHint');
+    if (ssHint) ssHint.innerHTML = iaeSaveScaleHint(s);
     s.fin_top = document.getElementById('iaeFinTop').value;
     s.fin_bottom = document.getElementById('iaeFinBottom').value;
     s.fin_left = document.getElementById('iaeFinLeft').value;
@@ -606,7 +723,7 @@ function iaeRenderInspector(f) {
     }
     sync();
   });
-  ['iaeAspect', 'iaeRot', 'iaeTrim', 'iaeReal', 'iaeScale', 'iaeFinTop', 'iaeFinBottom', 'iaeFinLeft', 'iaeFinRight'].forEach(function (id) {
+  ['iaeAspect', 'iaeRot', 'iaeTrim', 'iaeFinTop', 'iaeFinBottom', 'iaeFinLeft', 'iaeFinRight'].forEach(function (id) {
     var el = document.getElementById(id);
     if (el) el.addEventListener('change', sync);
   });
@@ -629,6 +746,8 @@ function iaeRenderInspector(f) {
     iaeSaveSettings();
     iaeRenderInspector(f); // 셀렉트 반영 위해 재렌더
   });
+  // 저장 스케일 프리셋 — select 변경·프리셋 편집 바인딩
+  iaeWireSaveScale(s, f);
 
   // (§5.5) 가공해서 받기 — 현재 그룹 settings로 단일 가공 잡 제출·폴링·다운로드
   var procBtn = document.getElementById('iaeProcBtn');
@@ -730,8 +849,7 @@ function iaeProcessGroupProceed(fid, group, gidx, s) {
     target_w_cm: tw, target_h_cm: th,
     finishing: fin, trim: !!s.trim, rotate90: !!s.rotate90,
     rotation: (s.rotate90 ? 90 : 0),                       // ⑥ 워커가 rotation으로 정규화 (rotate90도 호환)
-    scale_factor: Math.max(1, Number(s.scale_factor) || 1), // ⑤ 파일배율 1/N
-    real_size: (s.real_size !== false)                      // 실물 크기 저장(기본 ON) — 축소본 ×N 확대 저장
+    scale_factor: iaeScaleFromPct(s.save_scale_pct)        // 저장 스케일: 출력/저장 = RIP 배율(100%→1). real_size 미전송=축소저장(에이전트가 목표를 ÷sf로 리사이즈)
   };
   Object.assign(body, iaeAdvBody(s)); // R3a-2: 고급 후가공(offset/punching/annotation) — 입력 있을 때만
   var resHost = document.getElementById('iaeProcResult');
@@ -772,8 +890,8 @@ function iaePreviewGroup(fid, group, gidx, s) {
     analysis_id: fid, group_index: gidx, preview_only: true,
     target_w_cm: tw, target_h_cm: th,
     finishing: fin, trim: !!s.trim, rotate90: !!s.rotate90,
-    rotation: (s.rotate90 ? 90 : 0), scale_factor: Math.max(1, Number(s.scale_factor) || 1),
-    real_size: (s.real_size !== false)                      // 실물 크기 저장(기본 ON) — 미리보기도 실렌더 반영
+    rotation: (s.rotate90 ? 90 : 0),
+    scale_factor: iaeScaleFromPct(s.save_scale_pct)        // 저장 스케일(미리보기도 실렌더 반영). real_size 미전송=축소저장
   };
   Object.assign(body, iaeAdvBody(s)); // R3a-2: 미리보기에도 고급 후가공 반영(실렌더 확인)
   var pv = document.getElementById('iaePreview');
@@ -905,8 +1023,8 @@ function iaeProcessBody(fid, gidx, s) {
     analysis_id: fid, group_index: gidx,
     target_w_cm: Number(s.target_w) || 0, target_h_cm: Number(s.target_h) || 0,
     finishing: fin, trim: !!s.trim, rotate90: !!s.rotate90,
-    rotation: (s.rotate90 ? 90 : 0), scale_factor: Math.max(1, Number(s.scale_factor) || 1),
-    real_size: (s.real_size !== false)                      // 실물 크기 저장(기본 ON) — 일괄 가공도 반영
+    rotation: (s.rotate90 ? 90 : 0),
+    scale_factor: iaeScaleFromPct(s.save_scale_pct)        // 저장 스케일(일괄 가공도 반영). real_size 미전송=축소저장
   };
   Object.assign(body, iaeAdvBody(s)); // R3a-2: 일괄 가공에도 고급 후가공 반영
   return body;
@@ -1175,7 +1293,7 @@ function iaeHistOrder(r) {
   var ln = {
     kind: 'obj', fid: fid, gi: gi, label: label,
     w_cm: w, h_cm: h, qty: 1,
-    fin: fin, trim: !!saved.trim, scale_factor: Math.max(1, Number(saved.scale_factor) || 1),
+    fin: fin, trim: !!saved.trim, scale_factor: iaeScaleFromPct(saved.save_scale_pct), // 저장 스케일(축소저장)
     det_w_cm: w, det_h_cm: h,  // 검출=목표(이력엔 검출원본 미보유 → 리사이즈 pp 미생성, 왜곡경고 회피)
     item_id: null, item_name: '', pricing_method: 'FIXED', unit_price: 0
   };
@@ -1673,7 +1791,7 @@ function iaeCanNestPlace(opts) {
   var dhCm = (Number(opts.target_h) > 0) ? Number(opts.target_h) : origH / 10;
   if (dwCm <= 0 || dhCm <= 0) { iaeToast('그룹 크기를 알 수 없습니다', 'error'); return; }
   var pwMm = Math.round(dwCm * 10), phMm = Math.round(dhCm * 10);  // 조각 출력 크기(mm)
-  var fileScale = Math.max(1, Number(opts.file_scale) || 1);        // 파일 배율(소스가 실제의 1/N)
+  var saveScalePct = Math.max(1, Math.min(100, Number(opts.save_scale_pct) || 100)); // 저장 스케일(출력 대비 %)
   var qty = Math.max(1, parseInt(opts.qty, 10) || 1);
   var presets = iaePresetsFor(opts.mode);
   var preset = presets[opts.presetIdx] || presets[0];
@@ -1716,9 +1834,11 @@ function iaeCanNestPlace(opts) {
     sheets = [{ width_cm: preset.w, height_cm: packed.total_height_cm + margin * 2, placements: packed.placements.map(function (p) { return iaeShiftP(p, margin); }) }];
   }
 
-  var totalArea = dwCm * dhCm * qty, sheetArea = 0;
-  sheets.forEach(function (s) { sheetArea += s.width_cm * s.height_cm; });
+  var totalArea = dwCm * dhCm * qty, sheetArea = 0, sheetMaxDim = 0;
+  sheets.forEach(function (s) { sheetArea += s.width_cm * s.height_cm; var d = Math.max(s.width_cm, s.height_cm); if (d > sheetMaxDim) sheetMaxDim = d; });
   var eff = sheetArea > 0 ? totalArea / sheetArea : 0;
+  // 저장 스케일 → 최종 축소배율(IL 한계 안전 하한 반영). 주문 경로도 이 값 사용 → 안전.
+  var sheetFinalFactor = iaeSheetFinalFactor(saveScalePct, sheetMaxDim);
 
   // 대지 빈 곳(기존 콘텐츠 아래)에 시트 세로 적층
   var cursorY = iaeCanContentBottomMm() + 50, originX = 0;
@@ -1728,7 +1848,8 @@ function iaeCanNestPlace(opts) {
     // ⑦ 좌표 일원화: 시트 placements는 인라인 계산하지 않고 조각(객체) 배치 후 iaeCanSyncSheet로 라이브 재계산.
     //    시트는 규격·메타만 보유 → 화면↔출력 단일 소스(객체 위치). 이형 인터록(드래그/회전) 후에도 동일 경로.
     var sh = { uid: sheetUid, x_mm: sx, y_mm: sy, w_mm: Math.round(s.width_cm * 10), h_mm: Math.round(s.height_cm * 10), mode: opts.mode, label: preset.label + (sheets.length > 1 ? (' #' + (si + 1)) : ''), eff: eff, trim: margin > 0,
-      key: opts.key, fid: src.fid, gi: src.gi, roll_width_cm: s.width_cm, total_height_cm: s.height_cm, margin_cm: margin, gap_cm: gap, scale_factor: fileScale,
+      key: opts.key, fid: src.fid, gi: src.gi, roll_width_cm: s.width_cm, total_height_cm: s.height_cm, margin_cm: margin, gap_cm: gap,
+      scale_factor: sheetFinalFactor, save_scale_pct: saveScalePct,
       placements: [] };
     iaeCanSheets.push(sh);
     s.placements.forEach(function (p) {
@@ -1738,7 +1859,7 @@ function iaeCanNestPlace(opts) {
       iaeCanObjs.push({
         uid: iaeCanUid++, fid: src.fid, gi: src.gi, key: opts.key, label: src.filename + ' #' + src.gi,
         w_mm: pwMm, h_mm: phMm, x_mm: ox, y_mm: Math.round(cellY), rotation: p.rotated ? 90 : 0,
-        fin: { top: '', bottom: '', left: '', right: '' }, trim: false, scale_factor: fileScale, sheetUid: sheetUid
+        fin: { top: '', bottom: '', left: '', right: '' }, trim: false, scale_factor: sheetFinalFactor, sheetUid: sheetUid
       });
     });
     iaeCanSyncSheet(sh); // ⑦ 객체 배치로부터 placements·효율·롤 길이 재계산(단일 소스)
@@ -1905,6 +2026,7 @@ function iaeCanSheetExportBody(sh, idx, total, preview) {
   // 주문보내기와 동일한 SHEET 캡처(placements·규격·scale) → 네스팅 렌더 페이로드
   var canvas = {
     mode: sh.mode || 'roll', scale_factor: sh.scale_factor || 1,
+    save_scale_pct: (sh.save_scale_pct != null ? sh.save_scale_pct : 100), // 저장 스케일(에이전트가 100/pct로 축소배율 산출, IL 안전 하한과 max)
     roll_width_cm: sh.roll_width_cm || (sh.w_mm || 0) / 10,
     total_height_cm: sh.total_height_cm || (sh.h_mm || 0) / 10,
     margin_cm: sh.margin_cm || 0, gap_cm: sh.gap_cm || 0,
@@ -2186,13 +2308,14 @@ function iaeCanRenderNestPanel() {
     // R2-4: 회전 허용(방향성 소재 보호). on=두 방향 시뮬 후 자동 선택, off=원본 방향 고정.
     + '<label class="flex items-center gap-1 text-xs text-gray-600 cursor-pointer"><input id="iaeCanNestAllowRot" type="checkbox"' + (o.allow_rotate !== false ? ' checked' : '') + '>회전 허용 <span class="text-gray-400">(끄면 방향성 소재 보호 — 원본 방향 고정)</span></label>'
     // 패킹=MaxRects 고정(빈 공간 재활용). 선반 옵션 제거(사용자 요청).
-    + '<div class="grid grid-cols-3 gap-2">'
+    + '<div class="grid grid-cols-2 gap-2">'
     + '<div><label class="block text-xs text-gray-500 mb-1">조각 W(cm)</label><input id="iaeCanNestTW" type="number" min="0" step="0.1" value="' + (o.target_w || '') + '" placeholder="' + curW + '" class="w-full ' + inputCls + '"></div>'
     + '<div><label class="block text-xs text-gray-500 mb-1">조각 H(cm)</label><input id="iaeCanNestTH" type="number" min="0" step="0.1" value="' + (o.target_h || '') + '" placeholder="' + curH + '" class="w-full ' + inputCls + '"></div>'
-    + '<div><label class="block text-xs text-gray-500 mb-1">파일 1/N</label><input id="iaeCanNestFS" type="number" min="1" step="1" value="' + (o.file_scale || 1) + '" class="w-full ' + inputCls + '"></div>'
     + '</div>'
+    // 저장 스케일 프리셋(파일 1/N 대체) — 출력 판 크기는 파일명·주문, 실제 EPS는 저장% 축소본
+    + iaeSaveScaleSheetHTML(o, 0, inputCls)
     + '<label class="flex items-center gap-1 text-xs text-gray-600 cursor-pointer"><input id="iaeCanNestRatio" type="checkbox"' + (o.ratio_lock !== false ? ' checked' : '') + '>비율 잠금 (조각 W↔H 검출 종횡비 유지)</label>'
-    + '<div class="text-[11px] text-gray-400">조각 크기 비우면 검출 크기로 배치(스케일). 파일 1/N = 소스가 실제의 1/N(현수막 축소본 등)</div>'
+    + '<div class="text-[11px] text-gray-400">조각 크기 비우면 검출 크기로 배치(스케일).</div>'
     + '<div id="iaeCanNestEst" class="bg-blue-50 border border-blue-100 rounded-md px-2 py-1.5"></div>' // ④ 배치 전 실시간 예상치
     + '<button id="iaeCanNestRun" class="w-full px-3 py-2 rounded-md bg-blue-600 text-white hover:bg-blue-700 text-sm"><i class="fas fa-table-cells mr-1"></i>자동 배치</button>'
     + '<div class="text-[11px] text-gray-400">설정(수량·규격·회전 등)을 바꾸고 다시 누르면 재배치됩니다. 조각 개별 드래그는 없습니다.</div>'
@@ -2276,7 +2399,7 @@ function iaeCanRenderNestPanel() {
     o.margin = parseFloat(document.getElementById('iaeCanNestMargin').value) || 0;
     o.target_w = parseFloat(document.getElementById('iaeCanNestTW').value) || 0;
     o.target_h = parseFloat(document.getElementById('iaeCanNestTH').value) || 0;
-    o.file_scale = parseFloat(document.getElementById('iaeCanNestFS').value) || 1;
+    // 저장 스케일(o.save_scale_pct)은 iaeWireSheetSaveScale의 select change로 이미 반영됨(기본=추천).
     if (nestRatioEl) o.ratio_lock = nestRatioEl.checked;
     if (allowRotEl) o.allow_rotate = allowRotEl.checked; // R2-4
     o.packer = 'maxrects'; // 패킹 고정
@@ -2288,6 +2411,7 @@ function iaeCanRenderNestPanel() {
   if (exportEl) exportEl.addEventListener('click', iaeCanExportSheets);
   var orderEl = document.getElementById('iaeNestOrderBtn'); // W5: 주문 보내기(자동배치 결과)
   if (orderEl) orderEl.addEventListener('click', iaeCanOpenOrderModal);
+  iaeWireSheetSaveScale(o, iaeCanRenderNestPanel); // 저장 스케일 프리셋(select·편집)
   iaeCanBindSubModeTabs(host); // P2: 네스팅↔모아찍기 전환
   iaeNestRenderEstimate(); // ④ 패널 열릴 때 초기 예상치
 }
@@ -2454,6 +2578,8 @@ function iaeImposeRenderPanel() {
     + '<label class="flex items-center gap-1 text-xs text-gray-600 cursor-pointer"><input id="iaeImpAllowRot" type="checkbox"' + (o.allow_rotate !== false ? ' checked' : '') + '>회전 허용 <span class="text-gray-400">(끄면 방향 고정)</span></label>'
     + (o.mode === 'roll' ? '<button id="iaeImpRecWidth" type="button" class="w-full px-2 py-1.5 rounded-md border border-emerald-400 text-emerald-700 hover:bg-emerald-50 text-xs"><i class="fas fa-ruler-horizontal mr-1"></i>가장 효율 좋은 롤 폭 추천</button>' : '')
     + '<div class="text-[11px] text-gray-400">패킹=MaxRects(빈 공간 재활용). 도련=조각 사이 재단여백(아트워크 원본크기 유지). 재단선은 DXF 조각 외곽선으로 출력됩니다.</div>'
+    // 저장 스케일 프리셋 — 출력 판 크기는 파일명·주문, 실제 EPS는 저장% 축소본(조각별 배율×N과 별개)
+    + iaeSaveScaleSheetHTML(o, 0, inputCls)
     + '<div id="iaeImpEst" class="bg-blue-50 border border-blue-100 rounded-md px-2 py-1.5"></div>'
     + '<button id="iaeImpRun" class="w-full px-3 py-2 rounded-md bg-blue-600 text-white hover:bg-blue-700 text-sm"><i class="fas fa-table-cells mr-1"></i>자동 배치</button>'
     + '<div class="border-t border-gray-100 pt-2 mt-1 space-y-2">'
@@ -2465,6 +2591,7 @@ function iaeImposeRenderPanel() {
     + '</div>';
 
   iaeCanBindSubModeTabs(host);
+  iaeWireSheetSaveScale(o, iaeImposeRenderPanel); // 저장 스케일 프리셋(select·편집)
 
   // 팔레트 선택 토글
   host.querySelectorAll('.iae-imp-pick').forEach(function (cb) {
@@ -2622,6 +2749,9 @@ function iaeImposePlace() {
     sheets = [{ width_cm: preset.w, height_cm: packed.total_height_cm + margin * 2, placements: packed.placements.map(function (p) { return iaeShiftP(p, margin); }) }];
   }
 
+  var impMaxDim = 0; sheets.forEach(function (s) { var d = Math.max(s.width_cm, s.height_cm); if (d > impMaxDim) impMaxDim = d; });
+  var impSaveScalePct = Math.max(1, Math.min(100, Number(o.save_scale_pct) || 100)); // 저장 스케일(출력 대비 %)
+  var impFinalFactor = iaeSheetFinalFactor(impSaveScalePct, impMaxDim);              // IL 안전 하한 반영 최종 축소배율
   var cursorY = iaeCanContentBottomMm() + 50, originX = 0;
   var srcSet = {}; iaeImposeSel.forEach(function (s) { srcSet[s.fid] = true; });
   var multiSrc = Object.keys(srcSet).length > 1;
@@ -2633,7 +2763,8 @@ function iaeImposePlace() {
       uid: sheetUid, x_mm: sx, y_mm: sy, w_mm: Math.round(s.width_cm * 10), h_mm: Math.round(s.height_cm * 10),
       mode: o.mode, label: '모아찍기 ' + preset.label + (sheets.length > 1 ? (' #' + (si + 1)) : ''),
       eff: 0, trim: margin > 0, key: am.key, fid: am.fid, gi: am.gi,
-      roll_width_cm: s.width_cm, total_height_cm: s.height_cm, margin_cm: margin, gap_cm: gap, scale_factor: 1,
+      roll_width_cm: s.width_cm, total_height_cm: s.height_cm, margin_cm: margin, gap_cm: gap,
+      scale_factor: impFinalFactor, save_scale_pct: impSaveScalePct,
       placements: []
     };
     iaeCanSheets.push(sh);
@@ -2693,8 +2824,8 @@ function iaeOmPostProc(ln) {
   if (ln.trim) pp.push({ code: 'TRIM', params: {} });
   var resized = (ln.det_w_cm != null && ln.det_h_cm != null) && (ln.w_cm !== ln.det_w_cm || ln.h_cm !== ln.det_h_cm) && ln.w_cm > 0 && ln.h_cm > 0;
   if (resized) pp.push({ code: 'RESIZE', params: { w_cm: ln.w_cm, h_cm: ln.h_cm } });
-  // 실물 저장: 파일배율 1/N(>1)일 때만 의미. 기본 ON(실물) → 에이전트가 아트워크 ×N 확대·마진 실물 cm.
-  if ((ln.real_size !== false) && (Number(ln.scale_factor) || 1) > 1) pp.push({ code: 'REALSIZE', params: {} });
+  // 실물 저장(REALSIZE)=레거시 명시(real_size===true)만. 신 저장스케일 모델은 축소저장(scale_factor로 ÷N 리사이즈)이 기본 → REALSIZE 미부착.
+  if (ln.real_size === true && (Number(ln.scale_factor) || 1) > 1) pp.push({ code: 'REALSIZE', params: {} });
   return pp.length ? JSON.stringify(pp) : null;
 }
 function iaeCanBuildOrderLines() {

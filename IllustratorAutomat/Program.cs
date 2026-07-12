@@ -1435,11 +1435,18 @@ namespace IllustratorAutomation
             double sheetW = presetW > 0 ? presetW : (maxRight + marginCm);
             double sheetH = (mode == "flatbed" && presetH > 0) ? presetH : (maxBottom + marginCm);
             double maxDim = Math.Max(sheetW, sheetH);
-            // Illustrator 아트보드 ~577cm(16383pt) 한계 대응: 초과 시 축소 렌더(1/N) → scale_factor=N을 jsx/RIP에 전달해 출력 시 ×N 확대.
-            //   ⚠️ 방향 주의: 축소는 canvas/placements를 ÷scaleFactor(=N≥1)해야 함. (구버전 500/maxDim은 <1이라 오히려 확대→PARM)
-            //   임계 560cm = 577cm 한계에서 돔보/마진 여유 확보. 프론트 경고 기준(IAE_IL_REDUCE_CM)과 일치.
+            // 저장 스케일(사용자 선택) + Illustrator 한계 안전 하한.
+            //   프론트가 canvas_json.save_scale_pct(출력 대비 %)로 저장 배율 선택 → chosenFactor = 100/pct(≥1, 미지정=1=무축소).
+            //   단, 아트보드 ~577cm(16383pt) 한계 초과 판은 PARM 크래시 방지 위해 safetyFactor=ceil(maxDim/560)를 강제 하한으로.
+            //   → scaleFactor = max(선택, 안전). 사용자가 덜 줄여도(또는 100%) IL 한계는 자동 보장. 축소분은 파일명 _1-N 토큰으로 RIP에 ×N 전달.
             const double IL_REDUCE_CM = 560.0;
-            double scaleFactor = maxDim > IL_REDUCE_CM ? Math.Ceiling(maxDim / IL_REDUCE_CM) : 1.0;
+            double safetyFactor = maxDim > IL_REDUCE_CM ? Math.Ceiling(maxDim / IL_REDUCE_CM) : 1.0;
+            double chosenPct = canvas.TryGetProperty("save_scale_pct", out var sspEl) && sspEl.ValueKind == JsonValueKind.Number ? sspEl.GetDouble() : 100.0;
+            if (chosenPct < 1) chosenPct = 1; else if (chosenPct > 100) chosenPct = 100;
+            double chosenFactor = 100.0 / chosenPct;
+            double scaleFactor = Math.Max(chosenFactor, safetyFactor);
+            if (scaleFactor > chosenFactor + 0.001)
+                Console.WriteLine($"   ⚠️  저장 배율 {chosenPct:F0}%(1/{chosenFactor:F2})가 IL 한계 초과 → 안전 하한 1/{scaleFactor:F2}로 축소 렌더");
 
             var scaledPlacements = new List<object>();
             foreach (var p in rawPl)
@@ -1460,7 +1467,8 @@ namespace IllustratorAutomation
                 : Path.Combine(ZDRIVE_PATH, "DESIGN", "네스팅", now.ToString("yyyy"), now.ToString("MM"), now.ToString("dd"), $"sheet_{jobId}");
             if (!Directory.Exists(outFolder)) Directory.CreateDirectory(outFolder);
             string itemCode = RjStr(job, "item_code") ?? "";
-            string baseName = $"네스팅{jobId}-{(int)Math.Round(sheetW)}x{(int)Math.Round(sheetH)}-{rawPl.Count}건" + (string.IsNullOrEmpty(itemCode) ? "" : $"-{SanitizeFilename(itemCode)}");
+            // 파일명 크기 = 출력(sheetW×sheetH), 실제 EPS는 ÷scaleFactor 축소본. 축소 시 _1-N(=1/N) 토큰 → RIP ×N 확대 출력.
+            string baseName = $"네스팅{jobId}-{(int)Math.Round(sheetW)}x{(int)Math.Round(sheetH)}-{rawPl.Count}건" + (string.IsNullOrEmpty(itemCode) ? "" : $"-{SanitizeFilename(itemCode)}") + FormatScaleToken(scaleFactor);
             string epsOut = Path.Combine(outFolder, baseName + ".eps");
             string dxfOut = Path.Combine(outFolder, baseName + ".dxf");
             string jpgOut = Path.Combine(outFolder, baseName + ".jpg");
@@ -1678,9 +1686,11 @@ namespace IllustratorAutomation
                 : Path.Combine(ZDRIVE_PATH, "DESIGN", "가공", now.ToString("yyyy"), now.ToString("MM"), now.ToString("dd"), $"process_{jobId}");
             if (!Directory.Exists(outFolder)) Directory.CreateDirectory(outFolder);
             // R2-3: 식별성 있는 파일명. 사이즈 있으면 {W}x{H}cm_group{gi}, 없으면 group{gi}-가공 폴백.
+            //   저장 스케일: 파일명 {W}x{H}=출력(카드/주문 크기), 실제 EPS는 ÷scaleFactor 축소본. 축소 시 토큰 _1-N(=1/N) 병기 → RIP가 ×N 확대 출력.
+            string scaleTok = FormatScaleToken(scaleFactor);
             string baseName = (targetW > 0 && targetH > 0)
-                ? SanitizeFilename($"{(int)Math.Round(targetW)}x{(int)Math.Round(targetH)}cm_group{groupIndex}")
-                : $"group{groupIndex}-가공";
+                ? SanitizeFilename($"{(int)Math.Round(targetW)}x{(int)Math.Round(targetH)}cm_group{groupIndex}{scaleTok}")
+                : $"group{groupIndex}-가공{scaleTok}";
             string epsOut = Path.Combine(outFolder, baseName + ".eps");
             string dxfOut = Path.Combine(outFolder, baseName + ".dxf");
             string jpgOut = Path.Combine(outFolder, baseName + ".jpg");
@@ -3149,6 +3159,17 @@ namespace IllustratorAutomation
         {
             var invalid = Path.GetInvalidFileNameChars();
             return new string(name.Where(c => !invalid.Contains(c)).ToArray()).Trim();
+        }
+
+        // 저장 스케일 파일명 토큰: EPS를 출력의 1/N 축소본으로 저장할 때 '_1-N'(=1/N) 병기.
+        //   파일명 크기는 출력(실물)이지만 실제 파일은 1/N → RIP가 토큰 배율(×N)로 확대 출력해야 함.
+        //   N이 정수면 '_1-5', 소수면 '_1-2.5'. scaleFactor≤1(무축소)이면 빈 문자열('/'는 파일명 불가 → '-' 사용, 표시상 1/N).
+        private static string FormatScaleToken(double scaleFactor)
+        {
+            if (scaleFactor <= 1.0001) return "";
+            double n = Math.Round(scaleFactor * 100.0) / 100.0;
+            string ns = (n % 1 == 0) ? ((int)n).ToString() : n.ToString("0.##");
+            return "_1-" + ns;
         }
 
         // ── 원본 보존 헬퍼 (P1b) ─────────────────────────────────────────
