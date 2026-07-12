@@ -1163,7 +1163,11 @@ window.payrollRenderLedger = function(){
   }
 };
 
-function prCsvCell(s){ s=String(s); return /[",\n]/.test(s) ? '"'+s.replace(/"/g,'""')+'"' : s; }
+function prCsvCell(s){
+  // #504 형제누락: 수식(=+-@) 인젝션 가드 포함 공용 SSOT(window.dsCsvCell, layout.ts 주입)에 위임.
+  if (window.dsCsvCell) return window.dsCsvCell(s);
+  s=String(s); return /[",\n]/.test(s) ? '"'+s.replace(/"/g,'""')+'"' : s;
+}
 window.payrollLedgerExportCsv = function(){
   var rows = currentPayrollData || [];
   if (!rows.length){ if (typeof showToast==='function') showToast('내보낼 급여 내역이 없습니다','warning'); return; }
