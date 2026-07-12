@@ -734,8 +734,9 @@ bankRouter.get('/match-rules', requireRole('ADMIN', 'MANAGER'), async (c) => {
 bankRouter.post('/match-rules', requireRole('ADMIN'), async (c) => {
   try {
     const body = await c.req.json()
-    const { counterpart_name, matched_client_id, matched_category_id } = body
+    const { counterpart_name, matched_client_id, matched_category_id, match_type } = body
     const user = c.get('user')
+    const mt = match_type === 'CONTAINS' ? 'CONTAINS' : 'EXACT'
 
     if (!counterpart_name || (!matched_client_id && !matched_category_id)) {
       return c.json({
@@ -751,16 +752,17 @@ bankRouter.post('/match-rules', requireRole('ADMIN'), async (c) => {
       if (!client) return c.json({ success: false, error: '거래처를 찾을 수 없습니다' }, 404)
     }
 
-    // INSERT OR REPLACE + match_count 증가 (entity_id별 UNIQUE)
+    // INSERT OR REPLACE + match_count 증가 (entity_id별 UNIQUE). match_type=EXACT|CONTAINS(부분일치).
     const res = await c.env.DB.prepare(`
-      INSERT INTO bank_match_rules (counterpart_name, matched_client_id, matched_category_id, created_by, match_count, entity_id)
-      VALUES (?, ?, ?, ?, 1, ?)
+      INSERT INTO bank_match_rules (counterpart_name, matched_client_id, matched_category_id, match_type, created_by, match_count, entity_id)
+      VALUES (?, ?, ?, ?, ?, 1, ?)
       ON CONFLICT(entity_id, counterpart_name) DO UPDATE SET
         matched_client_id = excluded.matched_client_id,
         matched_category_id = excluded.matched_category_id,
+        match_type = excluded.match_type,
         match_count = match_count + 1,
         last_used_at = CURRENT_TIMESTAMP
-    `).bind(counterpart_name, matched_client_id || null, matched_category_id || null, user?.id ?? 1, getEntityId(c) || 1).run()
+    `).bind(counterpart_name, matched_client_id || null, matched_category_id || null, mt, user?.id ?? 1, getEntityId(c) || 1).run()
 
     return c.json({
       success: true,
@@ -781,7 +783,9 @@ bankRouter.put('/match-rules/:id', requireRole('ADMIN'), async (c) => {
   try {
     const id = c.req.param('id')
     const body = await c.req.json()
-    const { matched_client_id, matched_category_id } = body
+    const { matched_client_id, matched_category_id, match_type } = body
+    // match_type 미지정 시 기존값 유지(COALESCE), 지정 시 EXACT|CONTAINS만 허용
+    const mt = match_type === 'CONTAINS' ? 'CONTAINS' : (match_type === 'EXACT' ? 'EXACT' : null)
 
     if (!matched_client_id && !matched_category_id) {
       return c.json({ success: false, error: 'matched_client_id 또는 matched_category_id 필수' }, 400)
@@ -797,8 +801,8 @@ bankRouter.put('/match-rules/:id', requireRole('ADMIN'), async (c) => {
     }
 
     await c.env.DB.prepare(
-      `UPDATE bank_match_rules SET matched_client_id = ?, matched_category_id = ?, last_used_at = CURRENT_TIMESTAMP WHERE id = ?${ef.clause}`
-    ).bind(matched_client_id || null, matched_category_id || null, id, ...ef.params).run()
+      `UPDATE bank_match_rules SET matched_client_id = ?, matched_category_id = ?, match_type = COALESCE(?, match_type), last_used_at = CURRENT_TIMESTAMP WHERE id = ?${ef.clause}`
+    ).bind(matched_client_id || null, matched_category_id || null, mt, id, ...ef.params).run()
 
     return c.json({ success: true, message: '규칙이 수정되었습니다' })
   } catch (error) {

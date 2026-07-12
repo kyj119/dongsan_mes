@@ -311,10 +311,13 @@ export function bankPage(c: Context<HonoEnv>) {
         <div id="tabContentRules" class="tab-content">
           <div class="flex justify-between items-center mb-4">
             <div>
-              <h2 class="text-base font-semibold text-gray-700">자동매칭 학습 규칙</h2>
-              <p class="text-xs text-gray-400 mt-1">수동 매칭 시 자동으로 학습된 규칙입니다. 입금자명이 같으면 해당 거래처로 자동 제안합니다.</p>
+              <h2 class="text-base font-semibold text-gray-700">자동매칭 규칙</h2>
+              <p class="text-xs text-gray-400 mt-1">수동 매칭 시 자동 학습(완전일치)되거나, 직접 추가할 수 있습니다. <b>부분일치</b>는 적요에 키워드가 포함되면 매칭돼 매달 적요가 달라도 대응합니다.</p>
             </div>
             <div class="flex gap-2">
+              <button onclick="openAddRuleModal()" class="flex items-center gap-1 px-3 py-2 bg-blue-600 text-white rounded-lg text-sm cursor-pointer hover:bg-blue-700">
+                <i class="fas fa-plus"></i> 규칙 추가
+              </button>
               <button onclick="checkRuleConflicts()" class="flex items-center gap-1 px-3 py-2 bg-yellow-50 text-yellow-700 border border-yellow-200 rounded-lg text-sm cursor-pointer hover:bg-yellow-100">
                 <i class="fas fa-exclamation-triangle"></i> 충돌 검사
               </button>
@@ -326,14 +329,15 @@ export function bankPage(c: Context<HonoEnv>) {
                 <thead>
                   <tr class="bg-gray-50 border-b">
                     <th class="col-name px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">입금자명 (키워드)</th>
-                    <th class="col-flex px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">매칭 거래처</th>
+                    <th class="col-tag px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase">방식</th>
+                    <th class="col-flex px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">매칭 대상</th>
                     <th class="col-qty px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase">사용 횟수</th>
                     <th class="col-date px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase">최근 사용</th>
                     <th class="col-action px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase">액션</th>
                   </tr>
                 </thead>
                 <tbody id="rulesTableBody">
-                  <tr><td colspan="5" class="text-center py-10 text-gray-400">로딩 중...</td></tr>
+                  <tr><td colspan="6" class="text-center py-10 text-gray-400">로딩 중...</td></tr>
                 </tbody>
               </table>
             </div>
@@ -573,24 +577,41 @@ export function bankPage(c: Context<HonoEnv>) {
         </div>
       </div>
 
-      <!-- Rule Edit Modal -->
+      <!-- Rule Add/Edit Modal -->
       <div class="modal-overlay" id="ruleEditModal">
-        <div class="modal-box" style="width:420px;">
+        <div class="modal-box" style="width:440px;">
           <div class="flex items-center justify-between mb-5">
-            <h3 class="text-base font-bold text-gray-800"><i class="fas fa-edit text-blue-500 mr-2"></i>매칭 규칙 수정</h3>
+            <h3 class="text-base font-bold text-gray-800" id="ruleModalTitle"><i class="fas fa-plus text-blue-500 mr-2"></i>매칭 규칙 추가</h3>
             <button onclick="closeRuleEditModal()" class="text-gray-400 hover:text-gray-600 text-xl leading-none">&times;</button>
           </div>
           <input type="hidden" id="ruleEditId">
-          <div class="space-y-3">
+          <div class="space-y-4">
             <div>
-              <label class="form-label">입금자명 (키워드)</label>
-              <input type="text" id="ruleEditName" class="form-input bg-gray-50" readonly>
+              <label class="form-label">입금자명 / 출금처 키워드 <span class="text-red-500">*</span></label>
+              <input type="text" id="ruleEditName" class="form-input" placeholder="예: 한국전력, 스타벅스, 카카오">
             </div>
             <div>
-              <label class="form-label">매칭 거래처 <span class="text-red-500">*</span></label>
-              <input type="text" id="ruleEditClientSearch" class="form-input" placeholder="클릭하여 거래처 선택..." readonly style="cursor:pointer;background:#fff;"
-                onclick="openClientPicker(function(id,name){document.getElementById('ruleEditClientSearch').value=name;document.getElementById('ruleEditClientId').value=id;}, this.value)">
-              <input type="hidden" id="ruleEditClientId">
+              <label class="form-label">매칭 방식</label>
+              <div class="flex gap-2" id="ruleMatchTypeToggle">
+                <button type="button" id="ruleMtExact" onclick="setRuleMatchType('EXACT')" class="flex-1 px-3 py-2 text-sm rounded-lg border font-medium">완전일치</button>
+                <button type="button" id="ruleMtContains" onclick="setRuleMatchType('CONTAINS')" class="flex-1 px-3 py-2 text-sm rounded-lg border font-medium">부분일치(포함)</button>
+              </div>
+              <p class="text-xs text-gray-400 mt-1" id="ruleMatchTypeHint">완전일치: 적요가 키워드와 정확히 같을 때만 매칭.</p>
+            </div>
+            <div>
+              <label class="form-label">매칭 대상</label>
+              <div class="flex gap-2 mb-2" id="ruleTargetToggle">
+                <button type="button" id="ruleTgtClient" onclick="setRuleTarget('client')" class="flex-1 px-3 py-2 text-sm rounded-lg border font-medium">거래처</button>
+                <button type="button" id="ruleTgtCategory" onclick="setRuleTarget('category')" class="flex-1 px-3 py-2 text-sm rounded-lg border font-medium">비용분류</button>
+              </div>
+              <div id="ruleClientBlock">
+                <input type="text" id="ruleEditClientSearch" class="form-input" placeholder="클릭하여 거래처 선택..." readonly style="cursor:pointer;background:#fff;"
+                  onclick="openClientPicker(function(id,name){document.getElementById('ruleEditClientSearch').value=name;document.getElementById('ruleEditClientId').value=id;}, this.value)">
+                <input type="hidden" id="ruleEditClientId">
+              </div>
+              <div id="ruleCategoryBlock" class="hidden">
+                <select id="ruleEditCategoryId" class="form-select"><option value="">비용분류 선택...</option></select>
+              </div>
             </div>
           </div>
           <div class="flex gap-2 justify-end mt-6">

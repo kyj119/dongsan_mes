@@ -1298,24 +1298,33 @@
     });
   }
 
+  // 규칙 모달 상태(방식/대상 토글)
+  var ruleTargetType = 'client';
+  var ruleMatchTypeVal = 'EXACT';
+
   function renderRulesTable() {
     var tbody = document.getElementById('rulesTableBody');
     if (!allRules.length) {
-      tbody.innerHTML = '<tr><td colspan="5" class="text-center py-10 text-gray-400">학습된 매칭 규칙이 없습니다</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="6" class="text-center py-10 text-gray-400">등록된 매칭 규칙이 없습니다. 우측 상단 [규칙 추가]로 만들 수 있습니다.</td></tr>';
       return;
     }
     var html = '';
     allRules.forEach(function(rule) {
       var lastUsed = formatKST(rule.last_used_at, 'date');
+      var isContains = (rule.match_type === 'CONTAINS');
+      var mtBadge = isContains
+        ? '<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-indigo-50 text-indigo-700">부분일치</span>'
+        : '<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-500">완전일치</span>';
       html += '<tr class="tx-row">';
-      html += '<td class="px-3 py-2 font-medium text-gray-800" title="' + escHtml(rule.counterpart_name) + '"><i class="fas fa-tag text-blue-400 mr-1 text-xs"></i>' + escHtml(rule.counterpart_name) + '</td>';
+      html += '<td class="px-3 py-2 font-medium text-gray-800" title="' + escHtml(rule.counterpart_name) + '"><i class="fas fa-' + (isContains ? 'quote-right' : 'tag') + ' text-blue-400 mr-1 text-xs"></i>' + escHtml(rule.counterpart_name) + '</td>';
+      html += '<td class="px-3 py-2 text-center">' + mtBadge + '</td>';
       var matchTarget = '';
       var matchTargetTitle = '';
       if (rule.matched_client_id && rule.client_name) {
         matchTarget = '<i class="fas fa-user text-blue-400 mr-1 text-xs"></i>' + escHtml(rule.client_name);
         matchTargetTitle = rule.client_name;
       } else if (rule.matched_category_id && rule.category_name) {
-        matchTarget = '<i class="fas fa-tag text-gray-400 mr-1 text-xs"></i>' + escHtml(rule.category_name);
+        matchTarget = '<i class="fas fa-tag text-gray-400 mr-1 text-xs"></i>' + escHtml(rule.category_name) + ' <span class="text-gray-400 text-xs">(비용분류)</span>';
         matchTargetTitle = rule.category_name;
       } else {
         matchTarget = '<span class="text-gray-400">(삭제됨)</span>';
@@ -1332,13 +1341,73 @@
     tbody.innerHTML = html;
   }
 
+  function populateRuleCategoryDropdown(selectedId) {
+    var sel = document.getElementById('ruleEditCategoryId');
+    if (!sel) return;
+    var html = '<option value="">비용분류 선택...</option>';
+    (expenseCategories || []).forEach(function(cat) {
+      html += '<option value="' + cat.id + '"' + (String(cat.id) === String(selectedId) ? ' selected' : '') + '>' + escHtml(cat.name) + '</option>';
+    });
+    sel.innerHTML = html;
+  }
+
+  window.setRuleMatchType = function(mt) {
+    ruleMatchTypeVal = mt;
+    var on = 'flex-1 px-3 py-2 text-sm rounded-lg border font-medium bg-blue-600 text-white border-blue-600';
+    var off = 'flex-1 px-3 py-2 text-sm rounded-lg border font-medium bg-white text-gray-600 border-gray-300';
+    var ex = document.getElementById('ruleMtExact');
+    var co = document.getElementById('ruleMtContains');
+    if (ex) ex.className = (mt === 'EXACT') ? on : off;
+    if (co) co.className = (mt === 'CONTAINS') ? on : off;
+    var hint = document.getElementById('ruleMatchTypeHint');
+    if (hint) hint.textContent = (mt === 'CONTAINS')
+      ? '부분일치: 적요에 이 키워드가 포함되면 매칭(매달 적요가 달라도 대응). 예: "전기요금"'
+      : '완전일치: 적요가 키워드와 정확히 같을 때만 매칭.';
+  };
+
+  window.setRuleTarget = function(type) {
+    ruleTargetType = type;
+    var on = 'flex-1 px-3 py-2 text-sm rounded-lg border font-medium bg-blue-600 text-white border-blue-600';
+    var off = 'flex-1 px-3 py-2 text-sm rounded-lg border font-medium bg-white text-gray-600 border-gray-300';
+    var cb = document.getElementById('ruleTgtClient');
+    var kb = document.getElementById('ruleTgtCategory');
+    if (cb) cb.className = (type === 'client') ? on : off;
+    if (kb) kb.className = (type === 'category') ? on : off;
+    var clientBlock = document.getElementById('ruleClientBlock');
+    var catBlock = document.getElementById('ruleCategoryBlock');
+    if (clientBlock) clientBlock.classList.toggle('hidden', type !== 'client');
+    if (catBlock) catBlock.classList.toggle('hidden', type !== 'category');
+  };
+
+  window.openAddRuleModal = function() {
+    document.getElementById('ruleEditId').value = '';
+    document.getElementById('ruleModalTitle').innerHTML = '<i class="fas fa-plus text-blue-500 mr-2"></i>매칭 규칙 추가';
+    var nameEl = document.getElementById('ruleEditName');
+    nameEl.value = '';
+    nameEl.readOnly = false;
+    nameEl.classList.remove('bg-gray-50');
+    document.getElementById('ruleEditClientSearch').value = '';
+    document.getElementById('ruleEditClientId').value = '';
+    populateRuleCategoryDropdown('');
+    setRuleMatchType('EXACT');
+    setRuleTarget('client');
+    document.getElementById('ruleEditModal').classList.add('show');
+  };
+
   window.editRule = function(ruleId) {
     var rule = allRules.find(function(r) { return r.id === ruleId; });
     if (!rule) return;
     document.getElementById('ruleEditId').value = ruleId;
-    document.getElementById('ruleEditName').value = rule.counterpart_name;
+    document.getElementById('ruleModalTitle').innerHTML = '<i class="fas fa-edit text-blue-500 mr-2"></i>매칭 규칙 수정';
+    var nameEl = document.getElementById('ruleEditName');
+    nameEl.value = rule.counterpart_name;
+    nameEl.readOnly = true; // 기존 규칙 키워드는 식별자라 변경 불가
+    nameEl.classList.add('bg-gray-50');
     document.getElementById('ruleEditClientSearch').value = rule.client_name || '';
     document.getElementById('ruleEditClientId').value = rule.matched_client_id || '';
+    populateRuleCategoryDropdown(rule.matched_category_id || '');
+    setRuleMatchType(rule.match_type === 'CONTAINS' ? 'CONTAINS' : 'EXACT');
+    setRuleTarget(rule.matched_category_id ? 'category' : 'client');
     document.getElementById('ruleEditModal').classList.add('show');
   };
 
@@ -1348,16 +1417,33 @@
 
   window.saveRuleEdit = function() {
     var ruleId = document.getElementById('ruleEditId').value;
-    var clientId = document.getElementById('ruleEditClientId').value;
-    if (!clientId) { showToast('거래처를 선택하세요', 'warning'); return; }
+    var keyword = document.getElementById('ruleEditName').value.trim();
+    var payload = { match_type: ruleMatchTypeVal };
+    if (ruleTargetType === 'client') {
+      var clientId = document.getElementById('ruleEditClientId').value;
+      if (!clientId) { showToast('거래처를 선택하세요', 'warning'); return; }
+      payload.matched_client_id = parseInt(clientId, 10);
+    } else {
+      var catId = document.getElementById('ruleEditCategoryId').value;
+      if (!catId) { showToast('비용분류를 선택하세요', 'warning'); return; }
+      payload.matched_category_id = parseInt(catId, 10);
+    }
 
-    axios.put('/api/bank/match-rules/' + ruleId, { matched_client_id: parseInt(clientId, 10) }).then(function() {
-      showToast('규칙 수정 완료', 'success');
+    var req;
+    if (ruleId) {
+      req = axios.put('/api/bank/match-rules/' + ruleId, payload);
+    } else {
+      if (!keyword) { showToast('키워드를 입력하세요', 'warning'); return; }
+      payload.counterpart_name = keyword;
+      req = axios.post('/api/bank/match-rules', payload);
+    }
+    req.then(function() {
+      showToast(ruleId ? '규칙 수정 완료' : '규칙 추가 완료', 'success');
       closeRuleEditModal();
       loadRulesTable();
       loadMatchRules(); // 캐시도 갱신
     }).catch(function(e) {
-      var msg = (e.response && e.response.data && e.response.data.error) ? e.response.data.error : '수정 실패';
+      var msg = (e.response && e.response.data && e.response.data.error) ? e.response.data.error : '저장 실패';
       showToast(msg, 'error');
     });
   };
