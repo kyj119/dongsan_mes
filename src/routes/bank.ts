@@ -4,6 +4,7 @@
 // ============================================================================
 
 import { Hono } from 'hono'
+import type { Context } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
 import { createPayment, validatePayment, preparePaymentStatements } from '../lib/payments'
@@ -660,69 +661,11 @@ bankRouter.post('/sync-barobill', requireRole('ADMIN'), async (c) => {
       }
     }
 
-    // 자동매칭 실행 (기존 auto-match 로직 재활용)
+    // 자동매칭 실행 — 수동 [자동매칭]과 동일 공용 엔진(부분일치·고정비 제안·출금 포함)
     let matchedCount = 0
     if (totalInserted > 0) {
-      // 미매칭 입금 건 자동매칭
-      const efSyncTx = entityFilter(c, 'bank_transactions')
-      // H5: 최근 90일 + 오래된 순 500건 상한. 신규 삽입분은 최근이라 손실 없음, 오래된 실패건 무한 재스캔 방지.
-      const { results: unmatchedTxs } = await c.env.DB.prepare(
-        `SELECT id, amount, counterpart_name, description FROM bank_transactions WHERE match_status = 'UNMATCHED' AND transaction_type = 'DEPOSIT'${efSyncTx.clause} AND transaction_date >= ? ORDER BY transaction_date ASC, id ASC LIMIT ${MATCH_SCAN_CAP}`
-      ).bind(...efSyncTx.params, lookbackYmd(MATCH_LOOKBACK_DAYS)).all<{ id: number; amount: number; counterpart_name: string | null; description: string | null }>()
-
-      const { results: clients } = await c.env.DB.prepare(
-        "SELECT id, client_name, search_keywords, balance FROM clients WHERE is_active = 1 ORDER BY balance DESC"
-      ).all<{ id: number; client_name: string; search_keywords: string | null; balance: number | null }>()
-
-      const efSyncRl = entityFilter(c, 'bank_match_rules')
-      const { results: syncMatchRules } = await c.env.DB.prepare(
-        `SELECT counterpart_name, matched_client_id, matched_category_id FROM bank_match_rules WHERE 1=1${efSyncRl.clause}`
-      ).bind(...efSyncRl.params).all<{ counterpart_name: string; matched_client_id: number | null; matched_category_id: number | null }>()
-      const syncRuleMap = new Map(syncMatchRules.map(r => [r.counterpart_name, { clientId: r.matched_client_id, categoryId: r.matched_category_id }]))
-
-      // UPDATE를 모아 단일 batch로 실행 (#321 N+1 제거). per-row try/catch 없음 → 동작 동일.
-      const syncUpdateStmts: D1PreparedStatement[] = []
-      for (const tx of unmatchedTxs) {
-        const txName = (tx.counterpart_name ?? '').trim()
-        if (!txName) continue
-
-        let bestClientId: number | null = null
-        let bestConfidence = 0
-        let bestReason = ''
-
-        const syncRule = syncRuleMap.get(txName)
-        if (syncRule) {
-          if (syncRule.categoryId) {
-            // 비용 카테고리 규칙 → 바로 APPLIED
-            syncUpdateStmts.push(c.env.DB.prepare(
-              "UPDATE bank_transactions SET match_status = 'APPLIED', matched_category_id = ?, match_confidence = 0.95, match_reason = '학습된 규칙 (비용분류)' WHERE id = ?"
-            ).bind(syncRule.categoryId, tx.id))
-            matchedCount++
-            continue
-          }
-          bestClientId = syncRule.clientId
-          bestConfidence = 0.95
-          bestReason = '학습된 규칙'
-        } else {
-          for (const client of clients) {
-            const clientName = client.client_name.trim()
-            const keywords = (client.search_keywords ?? '').split(/[,\s]+/).map(k => k.trim()).filter(Boolean)
-            let confidence = 0, reason = ''
-            if (txName === clientName) { confidence = 0.9; reason = '입금자명 완전일치' }
-            else if (keywords.some(k => k && txName.includes(k))) { confidence = 0.7; reason = '검색키워드 일치' }
-            else if (clientName.includes(txName) || txName.includes(clientName)) { confidence = 0.6; reason = '부분일치' }
-            if (confidence > bestConfidence) { bestConfidence = confidence; bestClientId = client.id; bestReason = reason }
-          }
-        }
-
-        if (bestConfidence >= 0.5 && bestClientId !== null) {
-          syncUpdateStmts.push(c.env.DB.prepare(
-            "UPDATE bank_transactions SET match_status = 'SUGGESTED', matched_client_id = ?, match_confidence = ?, match_reason = ? WHERE id = ?"
-          ).bind(bestClientId, bestConfidence, bestReason, tx.id))
-          matchedCount++
-        }
-      }
-      if (syncUpdateStmts.length > 0) await c.env.DB.batch(syncUpdateStmts)
+      const r = await runAutoMatchEngine(c)
+      matchedCount = r.matched
     }
 
     return c.json({
@@ -896,17 +839,19 @@ bankRouter.delete('/match-rules/:id', requireRole('ADMIN'), async (c) => {
 // 자동 매칭
 // ---------------------------------------------------------------------------
 
-// POST /api/bank/transactions/auto-match — 미매칭 거래 자동매칭 (입금+출금, 규칙 학습 포함)
-bankRouter.post('/transactions/auto-match', requireRole('ADMIN'), async (c) => {
-  try {
+// ---------------------------------------------------------------------------
+// 자동매칭 엔진 (수동 [자동매칭] 버튼·바로빌 sync·무인 cron 공용 — 단일 소스)
+//   규칙(EXACT→APPLIED / CONTAINS→SUGGESTED) → 출금 고정비 제안(SUGGESTED) → 거래처명/키워드/금액.
+//   Q3=제안 후 사람 확정: 부분일치·고정비는 SUGGESTED(자동 APPLIED 아님).
+// ---------------------------------------------------------------------------
+async function runAutoMatchEngine(
+  c: Context<HonoEnv>,
+  opts?: { lookbackDays?: number; scanCap?: number }
+): Promise<{ matched: number; total: number }> {
     const ef = entityFilter(c, 'bank_transactions')
-    // H5: 스캔 범위 제한(무인 cron이 실패건을 매일 무한 재스캔하는 것 방지).
-    //     기본 최근 90일 + 오래된 순 500건 상한. 명시 파라미터로 확장: ?days=0(또는 음수)→전체, ?limit=N→상한 조정.
-    //     이미 매칭(SUGGESTED/CONFIRMED/APPLIED)·무시(IGNORED)된 건은 match_status='UNMATCHED' 필터로 이미 제외.
-    const daysParam = Number(c.req.query('days'))
-    const lookbackDays = Number.isFinite(daysParam) ? daysParam : MATCH_LOOKBACK_DAYS
-    const limitParam = Number(c.req.query('limit'))
-    const scanCap = Number.isFinite(limitParam) && limitParam > 0 ? Math.min(Math.floor(limitParam), 5000) : MATCH_SCAN_CAP
+    // H5: 스캔 범위 제한(무인 cron이 실패건을 매일 무한 재스캔하는 것 방지). 기본 90일·500건 상한.
+    const lookbackDays = opts?.lookbackDays ?? MATCH_LOOKBACK_DAYS
+    const scanCap = opts?.scanCap ?? MATCH_SCAN_CAP
     const dateClause = lookbackDays > 0 ? ' AND transaction_date >= ?' : ''
     const dateParams = lookbackDays > 0 ? [lookbackYmd(lookbackDays)] : []
     // 1. UNMATCHED 거래내역 가져오기 (입금+출금 모두, 최근 우선 소진 위해 오래된 순)
@@ -924,9 +869,7 @@ bankRouter.post('/transactions/auto-match', requireRole('ADMIN'), async (c) => {
       transaction_type: string
     }>()
 
-    if (unmatchedTxs.length === 0) {
-      return c.json({ success: true, data: { matched: 0 }, message: '매칭할 거래가 없습니다' })
-    }
+    if (unmatchedTxs.length === 0) return { matched: 0, total: 0 }
 
     // 2. 모든 활성 거래처 가져오기
     const { results: clients } = await c.env.DB.prepare(`
@@ -1153,18 +1096,26 @@ bankRouter.post('/transactions/auto-match', requireRole('ADMIN'), async (c) => {
     }
 
     if (matchUpdateStmts.length > 0) await c.env.DB.batch(matchUpdateStmts)
+    return { matched: matchedCount, total: unmatchedTxs.length }
+}
 
+// POST /api/bank/transactions/auto-match — 미매칭 거래 자동매칭 (입금+출금, 규칙 학습 포함)
+bankRouter.post('/transactions/auto-match', requireRole('ADMIN'), async (c) => {
+  try {
+    // ?days=0(또는 음수)→전체, ?limit=N→상한 조정
+    const daysParam = Number(c.req.query('days'))
+    const lookbackDays = Number.isFinite(daysParam) ? daysParam : MATCH_LOOKBACK_DAYS
+    const limitParam = Number(c.req.query('limit'))
+    const scanCap = Number.isFinite(limitParam) && limitParam > 0 ? Math.min(Math.floor(limitParam), 5000) : MATCH_SCAN_CAP
+    const r = await runAutoMatchEngine(c, { lookbackDays, scanCap })
     return c.json({
       success: true,
-      data: { matched: matchedCount, total: unmatchedTxs.length },
-      message: `${unmatchedTxs.length}건 중 ${matchedCount}건 매칭 제안`
+      data: { matched: r.matched, total: r.total },
+      message: r.total === 0 ? '매칭할 거래가 없습니다' : `${r.total}건 중 ${r.matched}건 매칭 제안`,
     })
   } catch (error) {
     console.error('Auto-match error:', error)
-    return c.json({
-      success: false,
-      error: '서버 오류가 발생했습니다.'
-    }, 500)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
   }
 })
 
@@ -2145,45 +2096,11 @@ bankRouter.post('/auto-sync', requireRole('ADMIN'), async (c) => {
       errors.push(`바로빌 서비스 오류: ${importErr.message}`)
     }
 
-    // 자동매칭 실행 (신규 건에 대해)
+    // 자동매칭 실행 (신규 건) — 수동 [자동매칭]과 동일 공용 엔진(부분일치·고정비 제안·출금 포함)
     if (totalInserted > 0) {
       try {
-        const efSync = entityFilter(c, 'bank_transactions')
-        const efSyncRules = entityFilter(c, 'bank_match_rules')
-        const { results: unmatchedTxs } = await c.env.DB.prepare(`
-          SELECT id, amount, counterpart_name, description, transaction_type
-          FROM bank_transactions WHERE match_status = 'UNMATCHED'${efSync.clause}
-        `).bind(...efSync.params).all<{ id: number; amount: number; counterpart_name: string | null; description: string | null; transaction_type: string }>()
-
-        const { results: matchRulesSync } = await c.env.DB.prepare(
-          `SELECT counterpart_name, matched_client_id, matched_category_id FROM bank_match_rules WHERE 1=1${efSyncRules.clause}`
-        ).bind(...efSyncRules.params).all<{ counterpart_name: string; matched_client_id: number | null; matched_category_id: number | null }>()
-
-        const autoRuleMap = new Map(matchRulesSync.map(r => [r.counterpart_name, { clientId: r.matched_client_id, categoryId: r.matched_category_id }]))
-
-        // UPDATE를 모아 단일 batch 실행 (#321 N+1 제거). per-row try/catch 없음(외부 try/catch만) → 동작 동일.
-        const autoSyncStmts: D1PreparedStatement[] = []
-        for (const tx of unmatchedTxs) {
-          const txName = (tx.counterpart_name ?? '').trim()
-          if (!txName || !autoRuleMap.has(txName)) continue
-
-          const autoRule = autoRuleMap.get(txName)!
-          if (autoRule.categoryId) {
-            autoSyncStmts.push(c.env.DB.prepare(`
-              UPDATE bank_transactions
-              SET match_status = 'APPLIED', matched_category_id = ?, match_confidence = 0.95, match_reason = '자동동기화 규칙매칭 (비용분류)'
-              WHERE id = ?
-            `).bind(autoRule.categoryId, tx.id))
-          } else if (autoRule.clientId) {
-            autoSyncStmts.push(c.env.DB.prepare(`
-              UPDATE bank_transactions
-              SET match_status = 'CONFIRMED', matched_client_id = ?, match_confidence = 0.95, match_reason = '자동동기화 규칙매칭'
-              WHERE id = ?
-            `).bind(autoRule.clientId, tx.id))
-          }
-          totalMatched++
-        }
-        if (autoSyncStmts.length > 0) await c.env.DB.batch(autoSyncStmts)
+        const r = await runAutoMatchEngine(c)
+        totalMatched = r.matched
       } catch (matchErr: any) {
         // 자동매칭 실패는 치명적이 아니나 관측 위해 로깅
         console.error('[bank-auto-sync] 자동매칭 실패:', matchErr?.message || matchErr)
