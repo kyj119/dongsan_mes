@@ -74,7 +74,7 @@ export function attendancePage(c: Context<HonoEnv>) {
                 </tr>
               </thead>
               <tbody id="attBody">
-                <tr><td colspan="38" class="text-center py-12 text-gray-400">월을 선택하고 검색 버튼을 눌러주세요.</td></tr>
+                <tr><td colspan="39" class="text-center py-12 text-gray-400">월을 선택하고 검색 버튼을 눌러주세요.</td></tr>
               </tbody>
             </table>
           </div>
@@ -98,6 +98,7 @@ export function attendancePage(c: Context<HonoEnv>) {
             <span class="ml-2"><span class="inline-block text-[8px] bg-amber-600 text-white px-1 rounded align-middle mr-1">조1</span>조퇴(h)</span>
             <span class="ml-2"><span class="inline-block text-[8px] bg-blue-600 text-white px-1 rounded align-middle mr-1">1.5</span>조기출근</span>
             <span class="ml-2"><span class="inline-block text-[8px] bg-red-600 text-white px-1 rounded align-middle mr-1">+2</span>연장시간</span>
+            <span class="ml-2"><span class="inline-block text-[8px] bg-green-600 text-white px-1 rounded align-middle mr-1">8h</span>휴일근무</span>
           </div>
           <div class="flex flex-wrap gap-3">
             <span class="font-semibold text-gray-700">출처:</span>
@@ -156,11 +157,11 @@ export function attendancePage(c: Context<HonoEnv>) {
               </div>
               <div class="grid grid-cols-3 gap-3">
                 <div>
-                  <label class="text-sm font-semibold text-gray-700">조기출근(h)</label>
+                  <label class="text-sm font-semibold text-blue-700">조기출근(h)</label>
                   <input id="attDetailEarly" type="number" step="0.5" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm mt-1" />
                 </div>
                 <div>
-                  <label class="text-sm font-semibold text-gray-700">연장근무(h)</label>
+                  <label class="text-sm font-semibold text-red-700">연장근무(h)</label>
                   <input id="attDetailOt" type="number" step="0.5" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm mt-1" />
                 </div>
                 <div>
@@ -168,9 +169,9 @@ export function attendancePage(c: Context<HonoEnv>) {
                   <input id="attDetailEarlyLeave" type="number" step="0.5" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm mt-1" />
                 </div>
               </div>
-              <div>
-                <label class="text-sm font-semibold text-gray-700">휴일근무(h)</label>
-                <input id="attDetailHolidayWork" type="number" step="0.5" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm mt-1" />
+              <!-- 휴일근무는 근무시간(work_hours)으로 단일화 — 휴일(토·일·공휴일) 날짜엔 근무시간이 곧 휴일근무 -->
+              <div id="attDetailHolidayHint" class="hidden text-xs bg-green-50 text-green-700 border border-green-200 rounded px-2 py-1.5">
+                <i class="fas fa-info-circle mr-1"></i>휴일입니다 — <b>근무시간</b>에 입력한 값이 휴일근무로 급여에 자동 반영됩니다.
               </div>
               <div>
                 <label class="text-sm font-semibold text-gray-700">비고</label>

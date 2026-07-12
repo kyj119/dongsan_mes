@@ -378,6 +378,15 @@ window.payrollPreview = function() {
         document.getElementById('prOvertimeAmt').textContent = fmtMoney(d.overtime.auto_overtime_pay);
         document.getElementById('prNightAmt').textContent = fmtMoney(d.overtime.auto_night_pay);
         document.getElementById('prHolidayAmt').textContent = fmtMoney(d.overtime.auto_holiday_pay);
+        // 연장 분해 표기: 고정연장(포괄임금 내재) + 추가연장(근태 실측=연장+조기출근)
+        var bdEl = document.getElementById('prOvertimeBreakdown');
+        if (bdEl) {
+          var fx = parseFloat(d.overtime.fixed_overtime_hours) || 0;
+          var ex = parseFloat(d.overtime.extra_overtime_hours) || 0;
+          bdEl.innerHTML = fx > 0
+            ? ('<span class="text-gray-600">고정연장 ' + fx.toFixed(1) + 'h</span> + <span class="text-red-600 font-medium">추가연장 ' + ex.toFixed(1) + 'h</span>')
+            : (ex > 0 ? '<span class="text-red-600 font-medium">추가연장 ' + ex.toFixed(1) + 'h</span>' : '');
+        }
         // 자동 모드일 때 수동 입력칸도 동기화 (표시용)
         if (!window.prOvertimeManualMode) {
           document.getElementById('prOvertime').value = fmtMoneyInput(d.earnings.overtime_pay);
@@ -1059,7 +1068,14 @@ function prBandBlock(r, withUi){
   h += '<tr>' + prBandItemCells(r, 1, 'grp-pay', 'grp-ded') + '</tr>';
   h += '<tr>' + prBandItemCells(r, 2, 'grp-pay', 'grp-ded') + '</tr>';
   // 4단째: 근태 메타(지급 3칸 병합) + 공제 4단째(고용보험)
-  var meta = '근무 ' + (parseFloat(r.work_days) || 0) + '일 · 연장 ' + (parseFloat(r.overtime_hours) || 0).toFixed(1) + 'h'
+  // 연장 분해 표기: 고정연장(포괄임금 내재) + 추가연장(근태 실측=연장+조기출근). extra 없으면 합산만.
+  var otTotal = parseFloat(r.overtime_hours) || 0;
+  var otExtra = parseFloat(r.extra_overtime_hours) || 0;
+  var otFixed = Math.max(0, Math.round((otTotal - otExtra) * 10) / 10);
+  var otText = otFixed > 0
+    ? ('연장 고정' + otFixed.toFixed(1) + '+추가' + otExtra.toFixed(1) + 'h')
+    : ('연장 ' + otTotal.toFixed(1) + 'h');
+  var meta = '근무 ' + (parseFloat(r.work_days) || 0) + '일 · ' + otText
     + ' · 결근 ' + (parseFloat(r.absent_days) || 0) + ' · 지각 ' + (parseInt(r.late_count) || 0);
   h += '<tr class="band-b"><td colspan="'+BAND_PAY_ROWS[0].length+'" class="lft meta grp-pay">'+meta+'</td>';
   BAND_DED_ROWS[3].forEach(function(s){ h += prBandLvCell(s, r, 'grp-ded'); });

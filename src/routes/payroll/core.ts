@@ -65,11 +65,13 @@ coreRouter.post('/preview', async (c) => {
     //   추가 연장 = body.overtime_hours(기본 0). 일반 직원: 기본급 그대로 + body 연장/야간/휴일 가산.
     let base_salary: number
     let overtime_hours: number
+    let extra_overtime_hours = 0   // 추가연장(근태 실측분) — 기본연장 = overtime_hours - extra_overtime_hours
     let ot: { hourly_wage: number; overtime_pay: number; night_pay: number; holiday_pay: number }
     if (prCtx.isPartial) {
       // 월중 입사/퇴사: 근무일 단위 일할(포괄·일반 공통). 기준=emp.base_salary 원본(body 재로드 이중분해 방지).
       const totalOT = body.overtime_hours != null ? Number(body.overtime_hours) : fixedOvertimeHours
       const extraOT = Math.max(0, totalOT - fixedOvertimeHours)
+      extra_overtime_hours = extraOT
       const pro = calcProratedInclusive({
         inclusiveBase: Number(emp.base_salary || 0),
         baseMonthlyHours: otSettings.monthlyWorkHours,
@@ -93,6 +95,7 @@ coreRouter.post('/preview', async (c) => {
       const inclusiveBase = Number(emp.base_salary || 0)
       const totalOT = body.overtime_hours != null ? Number(body.overtime_hours) : fixedOvertimeHours
       const extraOT = Math.max(0, totalOT - fixedOvertimeHours)
+      extra_overtime_hours = extraOT
       const inc = calcInclusivePay({
         inclusiveBase,
         baseMonthlyHours: otSettings.monthlyWorkHours,
@@ -111,6 +114,7 @@ coreRouter.post('/preview', async (c) => {
     } else {
       base_salary = base_input
       overtime_hours = body.overtime_hours != null ? Number(body.overtime_hours) : 0
+      extra_overtime_hours = overtime_hours   // 일반 직원: 전액이 추가연장(고정연장 없음)
       ot = calcOvertimePay({
         baseSalary: base_salary,
         monthlyWorkHours: otSettings.monthlyWorkHours,
@@ -198,6 +202,8 @@ coreRouter.post('/preview', async (c) => {
           hourly_wage: ot.hourly_wage,
           monthly_work_hours: otSettings.monthlyWorkHours,
           overtime_hours, night_hours, holiday_hours,
+          extra_overtime_hours,                                        // 추가연장(근태 실측: 연장+조기출근)
+          fixed_overtime_hours: Math.max(0, overtime_hours - extra_overtime_hours),  // 기본연장(포괄임금 내재)
           auto_overtime_pay: ot.overtime_pay,
           auto_night_pay: ot.night_pay,
           auto_holiday_pay: ot.holiday_pay,
@@ -272,11 +278,13 @@ coreRouter.post('/save', requireRole('ADMIN', 'MANAGER'), async (c) => {
     //   추가 연장 = body.overtime_hours(기본 0). 일반 직원: 기본급 그대로 + body 연장/야간/휴일 가산.
     let base_salary: number
     let overtime_hours_calc: number
+    let extra_overtime_hours = 0   // 추가연장(근태 실측분) — 기본/추가 분해 표기용. 기본연장 = overtime_hours - extra_overtime_hours
     let ot: { hourly_wage: number; overtime_pay: number; night_pay: number; holiday_pay: number }
     if (prCtx.isPartial) {
       // 월중 입사/퇴사: 근무일 단위 일할(포괄·일반 공통). 기준=emp.base_salary 원본(body 재로드 이중분해 방지).
       const totalOT = body.overtime_hours != null ? Number(body.overtime_hours) : fixedOvertimeHours
       const extraOT = Math.max(0, totalOT - fixedOvertimeHours)
+      extra_overtime_hours = extraOT
       const pro = calcProratedInclusive({
         inclusiveBase: Number(emp.base_salary || 0),
         baseMonthlyHours: otSettings.monthlyWorkHours,
@@ -300,6 +308,7 @@ coreRouter.post('/save', requireRole('ADMIN', 'MANAGER'), async (c) => {
       const inclusiveBase = Number(emp.base_salary || 0)
       const totalOT = body.overtime_hours != null ? Number(body.overtime_hours) : fixedOvertimeHours
       const extraOT = Math.max(0, totalOT - fixedOvertimeHours)
+      extra_overtime_hours = extraOT
       const inc = calcInclusivePay({
         inclusiveBase,
         baseMonthlyHours: otSettings.monthlyWorkHours,
@@ -318,6 +327,7 @@ coreRouter.post('/save', requireRole('ADMIN', 'MANAGER'), async (c) => {
     } else {
       base_salary = base_input
       overtime_hours_calc = body.overtime_hours != null ? Number(body.overtime_hours) : 0
+      extra_overtime_hours = overtime_hours_calc   // 일반 직원: 전액이 추가연장(고정연장 없음)
       ot = calcOvertimePay({
         baseSalary: base_salary,
         monthlyWorkHours: otSettings.monthlyWorkHours,
@@ -409,7 +419,7 @@ coreRouter.post('/save', requireRole('ADMIN', 'MANAGER'), async (c) => {
         employer_national_pension, employer_health_insurance, employer_long_term_care,
         employer_employment_insurance, employer_industrial_accident,
         total_deduction, net_pay,
-        work_days, overtime_hours, absent_days, late_count, leave_used_days,
+        work_days, overtime_hours, extra_overtime_hours, absent_days, late_count, leave_used_days,
         status, notes, created_by, entity_id, created_at, updated_at
       ) VALUES (
         ?, ?, ?,
@@ -423,7 +433,7 @@ coreRouter.post('/save', requireRole('ADMIN', 'MANAGER'), async (c) => {
         ?, ?, ?,
         ?, ?,
         ?, ?,
-        ?, ?, ?, ?, ?,
+        ?, ?, ?, ?, ?, ?,
         'PENDING', ?, ?, ?, datetime('now'), datetime('now')
       )
       ON CONFLICT(employee_id, pay_period) DO UPDATE SET
@@ -458,6 +468,7 @@ coreRouter.post('/save', requireRole('ADMIN', 'MANAGER'), async (c) => {
         net_pay=excluded.net_pay,
         work_days=excluded.work_days,
         overtime_hours=excluded.overtime_hours,
+        extra_overtime_hours=excluded.extra_overtime_hours,
         absent_days=excluded.absent_days,
         late_count=excluded.late_count,
         leave_used_days=excluded.leave_used_days,
@@ -475,7 +486,7 @@ coreRouter.post('/save', requireRole('ADMIN', 'MANAGER'), async (c) => {
       d.employer_national_pension, d.employer_health_insurance, d.employer_long_term_care,
       d.employer_employment_insurance, d.employer_industrial_accident,
       total_deduction, net_pay,
-      work_days, overtime_hours, absent_days, late_count, leave_used_days,
+      work_days, overtime_hours, extra_overtime_hours, absent_days, late_count, leave_used_days,
       notes, user?.id || null, getEntityId(c)
     ).run()
 
@@ -734,7 +745,8 @@ coreRouter.post('/sync-attendance', requireRole('ADMIN', 'MANAGER'), async (c) =
           SUM(CASE WHEN is_hol = 0 AND (attendance_type = 'ABSENT' OR status = 'ABSENT') THEN 1 ELSE 0 END) as absent_days,
           SUM(CASE WHEN is_hol = 0 AND attendance_type = 'LATE' THEN 1 ELSE 0 END) as late_count,
           SUM(CASE WHEN attendance_type = 'VACATION' OR status = 'VACATION' THEN 1 ELSE 0 END) as leave_used_days,
-          SUM(CASE WHEN is_hol = 0 THEN COALESCE(overtime_hours, 0) ELSE 0 END) as total_overtime,
+          -- 추가연장 = 비휴일의 연장근무(퇴근 후) + 조기출근(출근 전) 합산. 조기출근도 연장수당으로 지급(정책 2026-07-12).
+          SUM(CASE WHEN is_hol = 0 THEN COALESCE(overtime_hours, 0) + COALESCE(early_hours, 0) ELSE 0 END) as total_overtime,
           SUM(CASE WHEN is_hol = 1 THEN COALESCE(work_hours, 0) ELSE 0 END) as total_holiday,
           SUM(COALESCE(caps_night_min, 0)) / 60.0 as total_night,
           SUM(COALESCE(work_hours, 0)) as total_work_hours
@@ -857,7 +869,7 @@ coreRouter.post('/sync-attendance', requireRole('ADMIN', 'MANAGER'), async (c) =
         syncStmts.push(
           c.env.DB.prepare(`
             UPDATE payroll
-            SET base_salary = ?, overtime_hours = ?, overtime_pay = ?,
+            SET base_salary = ?, overtime_hours = ?, extra_overtime_hours = ?, overtime_pay = ?,
                 night_pay = ?, holiday_pay = ?,
                 work_days = ?, absent_days = ?, late_count = ?, leave_used_days = ?,
                 taxable_pay = ?, total_salary = ?,
@@ -869,7 +881,7 @@ coreRouter.post('/sync-attendance', requireRole('ADMIN', 'MANAGER'), async (c) =
                 attendance_synced_at = datetime('now'), updated_at = datetime('now')
             WHERE id = ?
           `).bind(
-            newBase, overtime_hours, overtime_pay,
+            newBase, overtime_hours, extraOT, overtime_pay,
             nightPay, holidayPay,
             work_days, absent_days, late_count, leave_used_days,
             taxable_pay, total_salary,
@@ -887,7 +899,7 @@ coreRouter.post('/sync-attendance', requireRole('ADMIN', 'MANAGER'), async (c) =
           payroll_id: t.id,
           employee_id: t.employee_id,
           work_days, absent_days, late_count, leave_used_days,
-          overtime_hours, overtime_pay, base_salary: newBase, total_salary, net_pay
+          overtime_hours, extra_overtime_hours: extraOT, overtime_pay, base_salary: newBase, total_salary, net_pay
         })
       }
 

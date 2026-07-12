@@ -205,9 +205,10 @@ export function payrollPage(c: Context<HonoEnv>) {
                 <div class="text-xs font-semibold text-blue-900 mb-2"><i class="fas fa-clock mr-1"></i>추가근로 (시간 입력 시 금액 자동 계산)</div>
                 <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                   <div>
-                    <label class="text-xs text-gray-600">연장근로 시간 (×1.5)</label>
+                    <label class="text-xs text-gray-600">연장근로 시간 (×1.5, 고정+추가)</label>
                     <input type="number" step="0.5" id="prOvertimeHrs" class="w-full border rounded px-2 py-1.5 text-sm text-right" oninput="payrollPreview()" />
                     <div class="text-xs text-gray-500 mt-1">금액: <span id="prOvertimeAmt" class="font-semibold text-gray-800">0</span></div>
+                    <div class="text-[11px] text-gray-500 mt-0.5" id="prOvertimeBreakdown"></div>
                   </div>
                   <div>
                     <label class="text-xs text-gray-600">야간근로 시간 (+0.5 가산)</label>

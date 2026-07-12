@@ -22,6 +22,12 @@
   // 유틸
   function pad(n) { return n < 10 ? '0' + n : '' + n; }
   function key(empId, date) { return empId + '_' + date; }
+  // 휴일 판정(단일 소스): 공휴일 달력(state.holidays) + 토·일. 급여 sync와 동일 규칙.
+  function isHolidayDate(dateStr) {
+    if (state.holidays && state.holidays[dateStr]) return true;
+    var dow = new Date(dateStr).getDay();
+    return dow === 0 || dow === 6;
+  }
   function daysInMonth(yyyymm) {
     var parts = yyyymm.split('-');
     return new Date(parseInt(parts[0], 10), parseInt(parts[1], 10), 0).getDate();
@@ -111,9 +117,11 @@
     // 지각/조퇴 뱃지 정보
     if (rec.late_minutes > 0) parts.push('지각 ' + rec.late_minutes + '분');
     if (rec.early_leave_hours > 0) parts.push('조퇴 ' + fmtHM(rec.early_leave_hours));
-    // 근무/연장
+    // 근무/조기출근/연장/휴일근무
     if (rec.work_hours > 0) parts.push('근무 ' + fmtHM(rec.work_hours));
+    if (rec.early_hours > 0) parts.push('조기출근 ' + fmtHM(rec.early_hours));
     if (rec.overtime_hours > 0) parts.push('연장 ' + fmtHM(rec.overtime_hours));
+    if (rec.holiday_work_hours > 0) parts.push('휴일근무 ' + fmtHM(rec.holiday_work_hours));
     // 출처
     if (rec.source) parts.push(sourceLabel(rec.source));
     // CAPS 상세
@@ -249,12 +257,13 @@
     headHtml += '<th class="px-1 py-2 border-b border-gray-200 bg-gray-50 text-center text-xs font-semibold text-gray-600 whitespace-nowrap" style="width:36px">결근</th>';
     headHtml += '<th class="px-1 py-2 border-b border-gray-200 bg-gray-50 text-center text-xs font-semibold text-gray-600 whitespace-nowrap" style="width:50px">연차</th>';
     headHtml += '<th class="px-1 py-2 border-b border-gray-200 bg-gray-50 text-center text-xs font-semibold text-gray-600 whitespace-nowrap" style="width:36px">지각</th>';
-    headHtml += '<th class="px-1 py-2 border-b border-gray-200 bg-gray-50 text-center text-xs font-semibold text-gray-600 whitespace-nowrap" style="width:50px">연장</th>';
-    headHtml += '<th class="px-1 py-2 border-b border-gray-200 bg-gray-50 text-center text-xs font-semibold text-gray-600 whitespace-nowrap" style="width:50px">휴일</th>';
+    headHtml += '<th class="px-1 py-2 border-b border-gray-200 bg-blue-50 text-center text-xs font-semibold text-blue-700 whitespace-nowrap" style="width:50px" title="조기출근 시간 합계 (급여 추가연장에 반영)">조기</th>';
+    headHtml += '<th class="px-1 py-2 border-b border-gray-200 bg-red-50 text-center text-xs font-semibold text-red-700 whitespace-nowrap" style="width:50px" title="연장근무(퇴근 후) 시간 합계 (급여 추가연장에 반영)">연장</th>';
+    headHtml += '<th class="px-1 py-2 border-b border-gray-200 bg-green-50 text-center text-xs font-semibold text-green-700 whitespace-nowrap" style="width:50px" title="휴일(토·일·공휴일) 근무시간 합계">휴일</th>';
     headerRow.innerHTML = headHtml;
 
     if (state.employees.length === 0) {
-      body.innerHTML = '<tr><td colspan="38" class="text-center py-12">'
+      body.innerHTML = '<tr><td colspan="39" class="text-center py-12">'
         + '<i class="fas fa-users text-3xl mb-3 block text-gray-300"></i>'
         + '<div class="text-sm text-gray-500">조회된 직원이 없습니다</div>'
         + '</td></tr>';
@@ -336,6 +345,8 @@
         }
         var lateBadge = lateMins > 0 ? '<span class="absolute bottom-0 right-0 text-[7px] bg-amber-500 text-white px-0.5 rounded-tl leading-tight">지' + lateMins + '</span>' : '';
         var elBadge = elh > 0 ? '<span class="absolute bottom-0 left-1/2 -translate-x-1/2 text-[7px] bg-amber-600 text-white px-0.5 rounded-t leading-tight">조' + shortHM(elh) + '</span>' : '';
+        // 휴일근무 배지 — 휴일(토·일·공휴일)에 근무한 시간 표기(요청1). 셀 하단 전폭 초록 스트립.
+        var holBadge = (t === 'HOLIDAY' && hwh > 0) ? '<span class="absolute bottom-0 left-0 right-0 text-[7px] bg-green-600 text-white px-0.5 rounded-t leading-tight text-center">' + fmtNum(hwh) + 'h</span>' : '';
         var srcDot = '';
         var tooltip = '';
         if (rec) {
@@ -361,6 +372,7 @@
           + earlyBadge
           + lateBadge
           + (lateMins > 0 ? '' : elBadge)
+          + holBadge
           + srcDot
           + anomalyMark
           + '</div></td>';
@@ -379,7 +391,8 @@
         + '<td class="px-1 py-1 border-b border-gray-100 text-center text-xs font-medium ' + (summary.absent > 0 ? 'text-red-600' : 'text-gray-300') + '">' + (summary.absent || '-') + '</td>'
         + '<td class="px-1 py-1 border-b border-gray-100 text-center text-xs font-medium ' + (summary.vacation > 0 ? 'text-blue-600' : 'text-gray-300') + '">' + (summary.vacation > 0 ? fmtNum(summary.vacation) : '-') + '</td>'
         + '<td class="px-1 py-1 border-b border-gray-100 text-center text-xs font-medium ' + (summary.late > 0 ? 'text-amber-600' : 'text-gray-300') + '">' + (summary.late || '-') + '</td>'
-        + '<td class="px-1 py-1 border-b border-gray-100 text-center text-xs font-medium ' + ((summary.early + summary.ot) > 0 ? 'text-red-600' : 'text-gray-300') + '">' + ((summary.early + summary.ot) > 0 ? fmtNum(summary.early + summary.ot) : '-') + '</td>'
+        + '<td class="px-1 py-1 border-b border-gray-100 text-center text-xs font-medium ' + (summary.early > 0 ? 'text-blue-600' : 'text-gray-300') + '">' + (summary.early > 0 ? fmtNum(summary.early) : '-') + '</td>'
+        + '<td class="px-1 py-1 border-b border-gray-100 text-center text-xs font-medium ' + (summary.ot > 0 ? 'text-red-600' : 'text-gray-300') + '">' + (summary.ot > 0 ? fmtNum(summary.ot) : '-') + '</td>'
         + '<td class="px-1 py-1 border-b border-gray-100 text-center text-xs font-medium ' + (summary.holWork > 0 ? 'text-green-600' : 'text-gray-300') + '">' + (summary.holWork > 0 ? fmtNum(summary.holWork) : '-') + '</td>'
         + '</tr>';
     });
@@ -417,8 +430,10 @@
     document.getElementById('attDetailEarly').value = rec.early_hours || 0;
     document.getElementById('attDetailOt').value = rec.overtime_hours || 0;
     document.getElementById('attDetailEarlyLeave').value = rec.early_leave_hours || 0;
-    document.getElementById('attDetailHolidayWork').value = rec.holiday_work_hours || 0;
     document.getElementById('attDetailNotes').value = rec.notes || '';
+    // 휴일 날짜면 안내(근무시간=휴일근무 자동반영), 아니면 숨김
+    var holHint = document.getElementById('attDetailHolidayHint');
+    if (holHint) holHint.classList.toggle('hidden', !isHolidayDate(date));
 
     // 이상 감지 표시
     var anomaly = detectAnomaly(rec, date);
@@ -473,7 +488,8 @@
     rec.work_hours = parseFloat(document.getElementById('attDetailHours').value) || 0;
     rec.early_hours = parseFloat(document.getElementById('attDetailEarly').value) || 0;
     rec.overtime_hours = parseFloat(document.getElementById('attDetailOt').value) || 0;
-    rec.holiday_work_hours = parseFloat(document.getElementById('attDetailHolidayWork').value) || 0;
+    // 휴일근무는 근무시간으로 단일화 — 휴일(토·일·공휴일) 날짜면 근무시간이 곧 휴일근무, 평일이면 0
+    rec.holiday_work_hours = isHolidayDate(e.date) ? (rec.work_hours || 0) : 0;
     rec.notes = document.getElementById('attDetailNotes').value || null;
 
     // 근태유형별 기준시간으로 지각·조퇴 자동 재계산
