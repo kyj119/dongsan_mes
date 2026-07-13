@@ -1188,6 +1188,11 @@
 
     axios.post('/api/bank/sync-barobill', { date_start: startDate, date_end: endDate }).then(function(r) {
       showToast(r.data.message || '동기화 완료', 'success');
+      var errs = (r.data && r.data.data && r.data.data.errors) || [];
+      if (errs.length) {
+        console.warn('[bank] 동기화 경고:', errs);
+        showToast('⚠ 미수집 경고 ' + errs.length + '건: ' + errs.slice(0, 3).join(' / '), 'warning');
+      }
       loadTransactions();
       loadStats();
       loadAccountFilter();
