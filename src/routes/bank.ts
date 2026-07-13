@@ -194,17 +194,26 @@ bankRouter.post('/accounts', requireRole('ADMIN'), async (c) => {
       const config = await getBarobillConfig(c)
       const cyc: string = collect_cycle || BAROBILL_COLLECT_CYCLE.DEFAULT
       cycle = cyc
+      const acctType = account_type || BAROBILL_BANK_ACCOUNT_TYPE.CORPORATE
+      const identityDigits = String(identity_num).replace(/-/g, '')
+      const acctDigits = String(account_number).replace(/-/g, '')
       const code = await registBankAccount(config, {
         collectCycle: cyc,
         bank: bbBank,
-        bankAccountType: account_type || BAROBILL_BANK_ACCOUNT_TYPE.CORPORATE,
-        bankAccountNum: String(account_number).replace(/-/g, ''),
+        bankAccountType: acctType,
+        bankAccountNum: acctDigits,
         bankAccountPwd: account_password || '',
         webId: web_id || '',
         webPwd: web_pwd || '',
-        identityNum: String(identity_num).replace(/-/g, ''),
+        identityNum: identityDigits,
         alias: account_holder || bank_name,
       })
+      // 진단 로그 (값 미기록: 비번/ID/식별번호 원문 절대 로그 금지 — 존재여부·길이·코드만)
+      console.log(
+        '[barobill-regist] entity=%s corpLen=%d bank=%s(%s) type=%s cycle=%s hasPwd=%s hasWebId=%s hasWebPwd=%s identityLen=%d acctLen=%d -> raw=%d',
+        getEntityId(c), (config.corpNum || '').length, bbBank, bank_code, acctType, cyc,
+        !!account_password, !!web_id, !!web_pwd, identityDigits.length, acctDigits.length, code
+      )
       if (code <= 0) {
         return c.json({ success: false, error: '바로빌 계좌 수집등록 실패: ' + barobillErrorMessage(code) }, 400)
       }
