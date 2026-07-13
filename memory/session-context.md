@@ -16,7 +16,8 @@
 ### 마이그 0458 (ADD COLUMN, 비멱등·가산형)
 - `ia_process_jobs.requeue_count`·`sheet_layouts.requeue_count` INTEGER DEFAULT 0. prod 적용 완료(PRAGMA proc_ok/sheet_ok=1). ai_analysis_requests는 기존 retry_count/max_retries(0130)로 이미 bound.
 
-### 에이전트 C# (커밋만, `0bc747b9` 내 Program.cs / worker 무관 → publish+재기동 필요)
+### 에이전트 C# (✅publish+재기동 완료, PID 25872 / `0bc747b9` 내 Program.cs — worker 무관 별도 배포)
+> 부팅 시 **갭③ temp 스윕 29개 정리 실증**(agent.log `Temp 스윕 29개`)·10:17 폴 alive(prod 로그인 성공, admin). appsettings=prod(webapp-9i0). kill scope=all(전용머신). 갭①은 로직 라이브·실 hang 미유발 검증.
 - **① hang 재시작**: `RunJsxScript` 타임아웃 시 `RestartIllustrator()` — Illustrator.exe kill(leaked COM DoJavaScript 스레드 해제)→`_ilApp=null`→다음 잡 fresh. kill 범위 = appsettings `IllustratorKillScope`(기본 `all`=전 인스턴스·전용머신 가정 / `owned`=시작 PID만, 다중 시 생략). `_ilPid`는 직접 start 경로에서 best-effort 캡처.
 - **③ temp 스윕**: `SweepTempFolder(ttl)` — 시작 시 1회 + 주기(_heartbeatTick%360 ≈1h) `%TEMP%\IllustratorAutomat` 하위 폴더/파일 LastWriteTime>TTL 삭제. TTL = appsettings `TempTtlHours`(기본 24). 사용중/권한 폴더는 조용히 skip.
 
@@ -31,14 +32,14 @@
 - 0458 prod 적용·PRAGMA 확인. apex: root 302·workbench(files/process-queue/render-queue)·ai-analysis 전부 401(라우트 라이브)·attendance 200.
 
 ## 판단기준 / 주의사항
-- ⚠️ **에이전트 ①③ 미publish 상태** — publish+재기동 전까지 hang 재시작·temp 스윕 미작동(웹 ②④는 이미 라이브). 운영자가 에이전트 PC에서 Illustrator를 대화형으로 쓰면 배포 전 `IllustratorKillScope=owned` 검토.
+- ✅ **에이전트 ①③ publish+재기동 완료**(PID 25872, kill scope=all). 갭③ 실증(29개 스윕)·폴 alive. 갭①(hang kill)은 실 Illustrator hang을 일부러 유발하지 않아 in-situ 미검증(로직·빌드 검증만). 운영자가 에이전트 PC에서 Illustrator를 대화형으로 쓰면 `IllustratorKillScope=owned`로 전환(현재 all).
 - ⚠️ **근태 배지 시각검증(#5)·updated_at emit 실인증 확인 = prod 로그인 필요**(현재 prod 세션 미인증, 안전규칙상 Claude 로그인 불가 → 사용자 확인).
 - 재큐 무한루프 방지: 시트/가공=requeue_count 3회 후 error, 분석=retry_count(기존)로 bound. 프론트 데드라인은 서버 재큐와 독립(에이전트 완전 death 시 재큐 트리거 없음→프론트가 timeout 표기로 정직).
 - 0458은 비멱등 ADD COLUMN — 재적용 금지(이미 prod 반영).
 
 ## 다음 세션 TODO
-- 에이전트 ①③ publish+재기동(kill scope 최종 결정) → hang/temp 실동작 확인.
-- 근태 배지(#5)·updated_at emit prod 로그인 후 시각 확인.
+- (선택) 근태 배지(#5)·updated_at emit prod 로그인 후 시각 확인(Claude 입력불가 → 사용자).
+- (선택) 갭① hang kill in-situ 검증 — 실 Illustrator hang 유발은 리스크라 보류.
 - (직전 이월) 주문-통합 출력(ProcessOrderAsync) 파일명 토큰·프리셋 기본값 조정 검토.
 
 ## 배포 검증 명령 (PowerShell)
