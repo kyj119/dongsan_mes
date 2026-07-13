@@ -372,7 +372,7 @@ export function bankPage(c: Context<HonoEnv>) {
             <div class="grid grid-cols-2 gap-3">
               <div>
                 <label class="form-label">은행명 <span class="text-red-500">*</span></label>
-                <select id="accBank" class="form-select">
+                <select id="accBank" class="form-select" onchange="onAccBankChange()">
                   <option value="">선택</option>
                   <option value="0004">국민은행</option>
                   <option value="0088">신한은행</option>
@@ -415,8 +415,9 @@ export function bankPage(c: Context<HonoEnv>) {
                 <span class="text-sm font-semibold text-gray-700"><i class="fas fa-link text-emerald-500 mr-1"></i>바로빌 자동 수집 연동</span>
               </label>
               <div id="accBarobillFields" class="hidden mt-3 space-y-3 bg-gray-50 rounded-lg p-3">
-                <p class="text-xs text-gray-500"><i class="fas fa-shield-alt mr-1"></i>인증정보는 바로빌 등록에만 1회 사용되며 MES에 저장되지 않습니다. 은행 빠른조회(조회전용) 서비스가 먼저 신청되어 있어야 합니다.</p>
-                <p class="text-xs text-amber-600"><i class="fas fa-circle-info mr-1"></i>은행마다 인증방식이 다릅니다. <b>빠른조회 ID가 없는 은행은 ID/PW를 비우고 계좌비밀번호만</b> 입력하세요. (ID를 넣으면 "-50218: 빠른조회 아이디를 입력하지 않아야 합니다" 오류)</p>
+                <p class="text-xs text-gray-500"><i class="fas fa-shield-alt mr-1"></i>인증정보는 바로빌 등록에만 1회 사용되며 MES에 저장되지 않습니다. 은행 인터넷뱅킹에서 이 계좌의 조회서비스(빠른조회/오픈뱅킹)가 먼저 신청되어 있어야 합니다.</p>
+                <p id="accBankAuthHint" class="text-xs text-emerald-700 bg-emerald-50 rounded px-2 py-1 hidden"><i class="fas fa-circle-info mr-1"></i><span id="accBankAuthHintText"></span></p>
+                <p class="text-xs text-amber-600"><i class="fas fa-triangle-exclamation mr-1"></i>개인사업자 계좌는 <b>계좌 구분=개인</b> + 예금주 식별번호에 <b>생년월일 6자리</b>를 넣으세요. 법인계좌만 사업자번호를 씁니다.</p>
                 <div class="grid grid-cols-2 gap-3">
                   <div>
                     <label class="form-label">예금주 식별번호 <span class="text-red-500">*</span></label>
