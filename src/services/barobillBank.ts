@@ -137,3 +137,20 @@ export async function refreshBankAccount(config: BarobillConfig, bankAccountNum:
   const result = await barobillCall(config, 'BANKACCOUNT', 'RefreshBankAccount', { ID: config.senderId || '', BankAccountNum: bankAccountNum })
   return parseInt(result.trim()) || 0
 }
+
+/**
+ * 경로 B — 바로빌 호스팅 계좌 관리/등록 화면 URL 조회 (GetBankAccountManagementURL).
+ * WSDL 순서: CERTKEY, CorpNum, ID, PWD. PWD는 빈 문자열로도 동작(파트너 CERTKEY 인증, 실측 확인).
+ * 반환: https://www.barobill.co.kr/interop/?TK=...&TL=BANKACCOUNTMGT (임시 토큰 URL).
+ * 이 화면에서 사용자가 은행별 필드를 직접 입력 → 은행이 즉시 검증(계좌비번형/빠른조회형 추측 불필요).
+ * 실패 시 바로빌은 음수코드 문자열 반환 → URL(http) 아니면 오류로 처리.
+ */
+export async function getBankAccountManagementUrl(config: BarobillConfig): Promise<string> {
+  const result = await barobillCall(config, 'BANKACCOUNT', 'GetBankAccountManagementURL', { ID: config.senderId || '', PWD: '' })
+  // SOAP 응답은 XML 엔티티 인코딩(&amp;) 상태 → URL 파라미터 구분자 복원.
+  const url = result.trim().replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"')
+  if (!/^https?:\/\//i.test(url)) {
+    throw new Error(`바로빌 관리화면 URL 조회 실패 (응답: ${url.slice(0, 60)})`)
+  }
+  return url
+}

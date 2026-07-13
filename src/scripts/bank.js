@@ -1073,6 +1073,23 @@
     if (webPwd) webPwd.placeholder = req.webPwd ? '필요: 조회전용 PW' : '이 은행은 비움';
   };
 
+  // 경로 B — 바로빌 호스팅 등록/관리 화면 열기 (은행이 직접 검증, 필드 추측 불필요)
+  window.openBarobillManageUrl = function(btn) {
+    // 팝업 차단 방지: 클릭 즉시 빈 탭 확보 후 URL 주입
+    var w = window.open('', '_blank');
+    if (btn) { btn.disabled = true; }
+    axios.get('/api/bank/barobill-manage-url').then(function(r) {
+      var url = r && r.data && r.data.data && r.data.data.url;
+      if (!url) throw new Error('URL 없음');
+      if (w) { w.location = url; } else { window.location.href = url; }
+      showToast('바로빌 등록 화면을 열었습니다. 등록 후 이 목록에서 동기화하세요.', 'info', 8000);
+    }).catch(function(e) {
+      if (w) { try { w.close(); } catch (x) {} }
+      var msg = (e.response && e.response.data && e.response.data.error) ? e.response.data.error : '바로빌 화면 URL을 가져오지 못했습니다.';
+      showToast(msg, 'error', 10000);
+    }).then(function() { if (btn) btn.disabled = false; });
+  };
+
   function resetAccBarobill() {
     var sync = document.getElementById('accBarobillSync');
     if (sync) sync.checked = false;
