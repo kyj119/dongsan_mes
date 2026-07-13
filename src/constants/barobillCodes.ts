@@ -29,6 +29,7 @@ export const MES_TO_BAROBILL_BANK: Record<string, string> = {
   '0048': 'CU',         // 신협
   '0071': 'EPOST',      // 우체국
   '0081': 'HANA',       // 하나은행
+  '0088': 'SHINHAN',    // 신한은행
   '0089': 'KBANK',      // 케이뱅크
   // 0090 카카오뱅크 · 0092 토스뱅크: 바로빌 계좌조회 미지원
 }
