@@ -1041,6 +1041,36 @@
     var sync = document.getElementById('accBarobillSync');
     var fields = document.getElementById('accBarobillFields');
     if (fields) fields.classList.toggle('hidden', !(sync && sync.checked));
+    if (sync && sync.checked) window.onAccBankChange();
+  };
+
+  // 은행별 계좌조회 등록 필수 인증항목 (백엔드 barobillCodes.getBankAuthRequirement와 동일 소스)
+  var BANK_AUTH_REQ = {
+    '0004': { pwd: true, webId: true, webPwd: false, hint: '국민은행: 계좌비밀번호 + 인터넷뱅킹 로그인 ID (조회 PW는 비움)' },
+    '0088': { pwd: true, webId: true, webPwd: true, hint: '신한은행: 계좌비밀번호 + 조회전용(빠른조회) ID/PW' },
+    '0031': { pwd: true, webId: true, webPwd: true, hint: '대구(아이엠)은행: 계좌비밀번호 + 조회전용 ID/PW' },
+    '0048': { pwd: true, webId: true, webPwd: true, hint: '신협: 계좌비밀번호 + 조회전용 ID/PW' }
+  };
+  var BANK_AUTH_DEFAULT = { pwd: true, webId: false, webPwd: false, hint: '계좌비밀번호만 입력 (조회 ID/PW는 비움)' };
+
+  // 은행 선택 시 필요항목 안내 + 필드 placeholder 갱신 (스무고개 방지)
+  window.onAccBankChange = function() {
+    var bankEl = document.getElementById('accBank');
+    var hintBox = document.getElementById('accBankAuthHint');
+    var hintText = document.getElementById('accBankAuthHintText');
+    if (!bankEl) return;
+    var code = bankEl.value;
+    var req = BANK_AUTH_REQ[code] || BANK_AUTH_DEFAULT;
+    if (hintBox && hintText) {
+      if (!code) { hintBox.classList.add('hidden'); }
+      else { hintText.textContent = '이 은행 필요항목 → ' + req.hint; hintBox.classList.remove('hidden'); }
+    }
+    var pwd = document.getElementById('accPassword');
+    var webId = document.getElementById('accWebId');
+    var webPwd = document.getElementById('accWebPwd');
+    if (pwd) pwd.placeholder = req.pwd ? '필요: 계좌 비밀번호' : '이 은행은 비움';
+    if (webId) webId.placeholder = req.webId ? (req.webPwd ? '필요: 조회전용 ID' : '필요: 인터넷뱅킹 ID') : '이 은행은 비움';
+    if (webPwd) webPwd.placeholder = req.webPwd ? '필요: 조회전용 PW' : '이 은행은 비움';
   };
 
   function resetAccBarobill() {
@@ -1114,18 +1144,24 @@
       var pwd = document.getElementById('accPassword').value;
       var webId = document.getElementById('accWebId').value.trim();
       var webPwd = document.getElementById('accWebPwd').value;
-      // 은행별 인증방식 상이: 식별번호 + (계좌비밀번호 또는 빠른조회 ID/PW). 백엔드 검증과 일치.
-      // 빠른조회 ID가 없는 은행(-50218)은 ID/PW를 비우고 계좌비밀번호만 입력.
-      if (!identity || (!pwd && !(webId && webPwd))) {
-        showToast('예금주 식별번호와, 계좌비밀번호 또는 빠른조회 ID/PW를 입력하세요 (은행별 상이).', 'warning'); return;
+      var typeEl = document.getElementById('accType');
+      var accType = typeEl ? typeEl.value : 'C';
+      // 은행별 필수 인증항목 검증 (백엔드와 동일 소스). 뭘 채워야 하는지 명시.
+      var req = BANK_AUTH_REQ[bankCode] || BANK_AUTH_DEFAULT;
+      var missing = [];
+      if (!identity) missing.push(accType === 'P' ? '예금주 생년월일 6자리' : '예금주 사업자번호');
+      if (req.pwd && !pwd) missing.push('계좌비밀번호');
+      if (req.webId && !webId) missing.push(req.webPwd ? '조회전용 ID' : '인터넷뱅킹 ID');
+      if (req.webPwd && !webPwd) missing.push('조회전용 PW');
+      if (missing.length) {
+        showToast(bankName + ' 필요항목이 비었습니다: ' + missing.join(', ') + '. (' + req.hint + ')', 'warning'); return;
       }
       body.barobill_sync = true;
       body.identity_num = identity;
       body.account_password = pwd;
       body.web_id = webId;
       body.web_pwd = webPwd;
-      var typeEl = document.getElementById('accType');
-      body.account_type = typeEl ? typeEl.value : 'C';
+      body.account_type = accType;
       var cycleEl = document.getElementById('accCollectCycle');
       body.collect_cycle = cycleEl ? cycleEl.value : 'HOUR1';
     }
@@ -1156,7 +1192,8 @@
       }
     }).catch(function(e) {
       var msg = (e.response && e.response.data && e.response.data.error) ? e.response.data.error : '저장 실패';
-      showToast(msg, 'error');
+      // 바로빌 실패 메시지는 여러 줄(필요항목/입력현황) — 줄바꿈 렌더링 + 오래 표시.
+      showToast(String(msg).replace(/\n/g, '<br>'), 'error', 15000);
     });
   };
 

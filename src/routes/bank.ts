@@ -182,14 +182,20 @@ bankRouter.post('/accounts', requireRole('ADMIN'), async (c) => {
     // 바로빌 자동 수집등록 (RegistBankAccountEx). 인증정보는 1회 전송, DB/로그 미저장.
     if (barobill_sync) {
       const { registBankAccount } = await import('../services/barobillBank')
-      const { BAROBILL_COLLECT_CYCLE, BAROBILL_BANK_ACCOUNT_TYPE, toBarobillBank, barobillErrorMessage } = await import('../constants/barobillCodes')
+      const { BAROBILL_COLLECT_CYCLE, BAROBILL_BANK_ACCOUNT_TYPE, toBarobillBank, barobillErrorMessage, getBankAuthRequirement } = await import('../constants/barobillCodes')
       const bbBank = toBarobillBank(bank_code)
       if (!bbBank) {
         return c.json({ success: false, error: '선택한 은행은 바로빌 계좌조회를 지원하지 않습니다 (카카오·토스뱅크 제외).' }, 400)
       }
-      // 은행별 필수항목이 달라 최소 검증만: 예금주 식별번호 + (계좌비번 또는 빠른조회 ID/PW)
-      if (!identity_num || (!account_password && !(web_id && web_pwd))) {
-        return c.json({ success: false, error: '바로빌 연동에는 예금주 식별번호와, 계좌비밀번호 또는 빠른조회 ID/PW가 필요합니다 (은행별 상이).' }, 400)
+      // 은행별 필수 인증항목 사전 검증 — 크립틱 코드(-5021X) 대신 뭘 채워야 하는지 명시.
+      const req = getBankAuthRequirement(bank_code)
+      const missing: string[] = []
+      if (!identity_num) missing.push(account_type === 'P' ? '예금주 생년월일 6자리' : '예금주 사업자번호')
+      if (req.pwd && !account_password) missing.push('계좌비밀번호')
+      if (req.webId && !web_id) missing.push(req.webPwd ? '조회전용 ID' : '인터넷뱅킹 ID')
+      if (req.webPwd && !web_pwd) missing.push('조회전용 PW')
+      if (missing.length) {
+        return c.json({ success: false, error: `${bank_name} 계좌조회 등록에 필요한 항목이 비어 있습니다: ${missing.join(', ')}. (${req.hint})` }, 400)
       }
       const config = await getBarobillConfig(c)
       const cyc: string = collect_cycle || BAROBILL_COLLECT_CYCLE.DEFAULT
@@ -215,12 +221,10 @@ bankRouter.post('/accounts', requireRole('ADMIN'), async (c) => {
         !!account_password, !!web_id, !!web_pwd, identityDigits.length, acctDigits.length, code
       )
       if (code <= 0) {
-        // 진단: 값(비번/ID/식별번호 원문) 미포함 — 존재여부·길이·코드만. 원인 특정 후 제거 예정.
-        // 프론트 렌더링 의존 없이 보이도록 메시지 문자열에 직접 요약 포함.
-        const diagStr = `[진단] entity=${getEntityId(c)} corpLen=${(config.corpNum || '').length} bank=${bbBank}(${bank_code}) type=${acctType} cycle=${cyc} hasPwd=${!!account_password} hasWebId=${!!web_id} hasWebPwd=${!!web_pwd} identityLen=${identityDigits.length} acctLen=${acctDigits.length}`
+        // 값(비번/ID/식별번호 원문)은 절대 미포함 — 은행별 필수항목 안내 + 존재여부·길이·코드만.
         return c.json({
           success: false,
-          error: '바로빌 계좌 수집등록 실패: ' + barobillErrorMessage(code) + ' ' + diagStr,
+          error: `바로빌 계좌 수집등록 실패: ${barobillErrorMessage(code)}\n필요항목: ${req.hint}\n입력현황: 계좌비번=${account_password ? '입력' : '비움'} / 조회ID=${web_id ? '입력' : '비움'} / 조회PW=${web_pwd ? '입력' : '비움'} / 식별번호=${identityDigits.length}자리 / 계좌=${acctDigits.length}자리 / 구분=${acctType === 'P' ? '개인' : '법인'}\n※ 은행 인터넷뱅킹에서 이 계좌의 '빠른조회/조회서비스'가 먼저 신청되어 있어야 합니다.`,
         }, 400)
       }
       barobillRegistered = 1

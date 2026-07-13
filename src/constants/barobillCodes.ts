@@ -79,6 +79,32 @@ export const BAROBILL_BANK_ACCOUNT_TYPE = {
   PERSONAL: 'P',  // 개인계좌
 } as const
 
+/**
+ * 은행별 계좌조회 등록(RegistBankAccountEx) 필수 인증항목.
+ * 출처: 금융결제원/바로빌·팝빌 표준 은행별 필수항목표
+ *   (developers.popbill.com/guide/easyfinbank/introduction/regist-bank-account, 2026-07 확인).
+ * 모든 은행 공통: 예금주 식별번호(법인=사업자번호10 / 개인=생년월일6) + 계좌번호.
+ * 차이나는 것은 (계좌비밀번호 / 조회용 ID / 조회용 PW) 조합뿐.
+ *   - 국민(0004): 계좌비밀번호 + 인터넷뱅킹 ID  (조회전용 PW 불필요)
+ *   - 신한(0088)·아이엠(대구 0031)·신협(0048): 계좌비밀번호 + 조회전용 ID + 조회전용 PW
+ *   - 그 외(기업·하나·우리·농협·부산 등): 계좌비밀번호만
+ * webId=true면 web_id 필수, webPwd=true면 web_pwd 필수, pwd=true면 계좌비밀번호 필수.
+ */
+export interface BankAuthRequirement { pwd: boolean; webId: boolean; webPwd: boolean; hint: string }
+
+const BANK_AUTH_REQUIREMENTS: Record<string, BankAuthRequirement> = {
+  '0004': { pwd: true, webId: true, webPwd: false, hint: '국민은행: 계좌비밀번호 + 인터넷뱅킹 로그인 ID (조회전용 PW는 비움)' },
+  '0088': { pwd: true, webId: true, webPwd: true, hint: '신한은행: 계좌비밀번호 + 조회전용(빠른조회) ID/PW' },
+  '0031': { pwd: true, webId: true, webPwd: true, hint: '대구(아이엠)은행: 계좌비밀번호 + 조회전용 ID/PW' },
+  '0048': { pwd: true, webId: true, webPwd: true, hint: '신협: 계좌비밀번호 + 조회전용 ID/PW' },
+}
+const BANK_AUTH_DEFAULT: BankAuthRequirement = { pwd: true, webId: false, webPwd: false, hint: '계좌비밀번호만 입력 (조회용 ID/PW는 비움)' }
+
+/** 은행코드(4자리) → 계좌조회 등록 필수 인증항목. 미정의 은행은 계좌비밀번호형(DEFAULT). */
+export function getBankAuthRequirement(mesBankCode: string): BankAuthRequirement {
+  return BANK_AUTH_REQUIREMENTS[mesBankCode] ?? BANK_AUTH_DEFAULT
+}
+
 /** 카드 구분 (CardType) */
 export const BAROBILL_CARD_TYPE = {
   CORPORATE: 'C', // 법인카드
