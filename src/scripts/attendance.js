@@ -340,11 +340,11 @@
         var label = rec ? typeLabel(t) : '';
         var color = rec ? typeColor(t) : 'bg-white text-gray-300 border-gray-100';
         var otBadge = '', earlyBadge = '';
-        if (eh > 0 && ot > 0) {
-          otBadge = '<span class="absolute top-0 left-0 right-0 text-[7px] text-white px-0.5 rounded-b leading-tight text-center" style="background:linear-gradient(90deg,#2563eb 50%,#dc2626 50%);">' + fmtH1(eh) + '|+' + fmtH1(ot) + '</span>';
-        } else if (ot > 0) {
-          otBadge = '<span class="absolute top-0 right-0 text-[7px] bg-red-600 text-white px-0.5 rounded-bl leading-tight">+' + fmtH1(ot) + '</span>';
-        } else if (eh > 0) {
+        // 조기(좌상단 파랑)·연장(우상단 빨강)은 독립 배지 — 동시에 있어도 코너에 나란히. 색이 종류를 구분하므로 기호 없이 숫자만.
+        if (ot > 0) {
+          otBadge = '<span class="absolute top-0 right-0 text-[7px] bg-red-600 text-white px-0.5 rounded-bl leading-tight">' + fmtH1(ot) + '</span>';
+        }
+        if (eh > 0) {
           earlyBadge = '<span class="absolute top-0 left-0 text-[7px] bg-blue-600 text-white px-0.5 rounded-br leading-tight">' + fmtH1(eh) + '</span>';
         }
         var lateBadge = lateMins > 0 ? '<span class="absolute bottom-0 right-0 text-[7px] bg-amber-500 text-white px-0.5 rounded-tl leading-tight">지' + lateMins + '</span>' : '';
