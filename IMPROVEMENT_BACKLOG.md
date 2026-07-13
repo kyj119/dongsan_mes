@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 6 -->
-<!-- last_run_at: 2026-07-13T03:11:46+09:00 -->
+<!-- last_run_area: 1 -->
+<!-- last_run_at: 2026-07-13T09:33:03+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -16,6 +16,14 @@
 
 > 📦 **과거 사이클 로그**는 `IMPROVEMENT_BACKLOG_ARCHIVE.md`/git 히스토리로 이관됨 (2026-06-10 1차 분리, 2026-06-25 2차 트림 343KB→192KB, 2026-06-25T10:00 3차 트림, 2026-07-03T06:00 4차 트림 288KB→86KB, **2026-07-07T13:00 5차 트림 — 07-01~07-05 사이클 로그를 git 히스토리로 이관: 238KB→78KB, 256KB Read 한도 재확보**). 신규 로그는 계속 이 파일 상단에 추가. 본 파일은 직전 2일치(07-06~) 사이클 로그 + 영구 참조 섹션(Approved/New/Auto-fixed/Done/Rejected/FP 카탈로그)만 유지. 이관분은 `git log -p -- IMPROVEMENT_BACKLOG.md`로 복원 가능.
 
+> **Area 1 프로덕션 헬스 (2026-07-13T09:33):**
+> - **방법**: `git fetch origin main`(HEAD `d6f1f01` 0/0 동기, 워킹트리 clean). Area 1 — GitHub Actions `deploy.yml`/`e2e.yml` 최근 실행 이력 30건 + 최신 배포 job 로그(smoke 102/102 상세) 직접 조회. 이번 세션은 프록시 정책상 `webapp-9i0.pages.dev`/observability MCP로의 직접 egress가 403(정책 차단)이라 CI 기록·session-context.md 교차검증으로 대체.
+> - **🟢 배포 체인 정상**: 최신 deploy 09-07-12T23:44(`d6f1f01`) — Typecheck/Build/Deploy/Smoke 전부 success, smoke 102/102 PASS(느린 엔드포인트 3건은 700~1800ms대 집계 쿼리로 기존 인지 수준, 500ms 기준 관행적 경보일 뿐 장애 아님). 최근 30회 deploy 실행 중 실패 1건(`ea2d8f6f`, 07-10T13:59) — 로그 확인 결과 Typecheck/Build 성공 후 `Deployment failed! Failed to publish your Function. Got error: Unknown internal error occurred.`로 **SKILL 기지 "🌩️ 배포-step CF-internal transient" 패턴과 정확히 일치**(Cloudflare 측 finalize 단계 내부 오류, 코드/설정 무결) + 66분 뒤 다음 배포(`06432e0f`, 15:05)가 즉시 green 회복 → 비보고 대상.
+> - **🟢 신규 마이그레이션(0456/0457/0458) prod 적용 재확인 — write-path 드리프트 없음**: 직전 사이클 이후 착륙한 `0456_activity_logs_actor_entity`·`0457_payroll_extra_overtime`·`0458_ia_job_requeue_guard` 3건 전부 배포 코드가 명시 컬럼 INSERT/UPDATE로 참조(`cards/lifecycle.ts:1083` activity_logs INSERT·`payroll/core.ts` UPSERT·`workbench.ts:615/916` requeue_count UPDATE) = SKILL #483/#484 "(b)-risk"(code-only CI가 코드는 자동배포하나 마이그는 owner 수동 `db:migrate:prod` 필요) 후보였으나, `.claude/PROJECT_STATUS.md`·`memory/session-context.md`에 각 배포 시점 **PRAGMA 확인 로그가 명시 기록**(0458: `proc_ok/sheet_ok=1`, 0456/0457: 동봉 배포 시 remote 적용 확인) — 3건 모두 owner가 이미 수동 적용 완료. smoke의 `activityLogs.list`(admin은 entity 필터 미적용이라 컬럼 부재를 못 잡는 맹점)·`payroll.month` 둘 다 PASS인 것도 일치. **net-new 이슈 없음**(사전 정황 증거로 확정, egress 재확인 불요).
+> - **⚪ E2E(Playwright) 워크플로 — 06-22 이후 미실행은 정상(의도적 비활성화)**: `e2e.yml`이 prod 데이터 오염(entity-99 테스트 데이터 누적) 문제로 2026-06-22부터 자동 트리거(workflow_run/schedule) 전면 제거 + GitHub Actions 레벨 disable 상태(기지 사실, workflow 파일 주석에 명시) — 재발/신규 아님.
+> - **⚪ 직접 prod API/Playwright 헬스체크 불가**: 이번 세션 프록시가 `webapp-9i0.pages.dev`·`observability.mcp.cloudflare.com` CONNECT를 403 정책 차단(`__agentproxy/status` recentRelayFailures 확인) — LogWatcher heartbeat 신선도·실제 프론트 콘솔에러는 이번 사이클 직접 검증 불가, CI 기록(smoke 102/102 + deploy 로그)으로 대체 커버.
+> - net-new 이슈 0건, 자동수정 0건(수정 대상 없음). 다음 순번 Area 2.
+>
 > **Area 6 자기 진화 (2026-07-13T03:11):**
 > - **방법**: `npm ci`(node_modules 0→81) 후 `git fetch origin main`(HEAD `ae90f05` 0/0 동기, 워킹트리 clean). Area 6 **40회차** — 직전 Area5(`ae90f05`, 07-12T21:14, 35회차)가 최신 HEAD라 **post-Area5 코드 churn = 0**(컬럼-diff bridge·XSS bridge 대상 없음, quiet on that front) — 대신 3개 OPEN 이슈(#473·504·509)의 closed≠fixed/open≠unfixed 재검증과 done-sync 절대값 재확인에 집중.
 > - **🔧 자동수정 완료 — #504 CSV 수식 인젝션 가드, 형제누락 1건 발견·보완**: `01ca212`(owner, #504 대응)가 `window.dsCsvCell`(`src/utils/csv.ts` `CSV_UTIL_JS`, `layout.ts:188`가 전역 주입) SSOT를 도입하고 `priceManagement.js:pmCsvCell`·`taxInvoices.js:tiCsvCell` 2곳을 위임하도록 고쳤으나, **동일 클래스의 3번째 로컬 구현 `payroll.js:1166 prCsvCell`이 이 스윕에서 누락**되어 수식(`=+-@`) 인젝션 가드 없이 콤마/따옴표만 이스케이프하던 원본 그대로 잔존(#377/#473급 "부분픽스" 패턴 — 같은 커밋 안에서도 형제 3곳 중 1곳만 놓침). `prCsvCell`이 처리하는 값(부서/직책 라벨·직원 텍스트 필드)은 급여 담당자가 CSV로 내보내는 자유입력 필드라 실질 위험 있음. **수정**: sibling 2곳과 byte-동일한 위임 패턴(`if (window.dsCsvCell) return window.dsCsvCell(s); ...` fallback 유지) 추가, 비즈니스 로직/응답 형식 변경 없음(escapeHtml 추가와 동급 안전 자동수정 범주). `npm run verify`(typecheck+build) 통과 확인 후 커밋(`bf5092e`).
