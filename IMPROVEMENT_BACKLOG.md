@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 3 -->
-<!-- last_run_at: 2026-07-13T21:19:00+09:00 -->
+<!-- last_run_area: 4 -->
+<!-- last_run_at: 2026-07-14T00:47:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,7 +8,7 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | **4** — #473(reopened, 거래처 포털계정 entity IDOR, owner 보류 지시 유지 — 재보고/재수정 시도 안 함), #504(S, 회사인쇄정보 로드실패 무음 — CSV가드 부분은 자동수정으로 해소, 로드실패 toast 항목만 open 잔존), #509(S~M, 급여 중도입퇴사 일할계산 근거 화면 미표시), #519(신규, S, 계좌이체 전체확정 버튼 double-submit 미방지). 실측(`search_issues(state:open,label:auto-improve)`=4) 정합. |
+| 🆕 new | **5** — #473(reopened, 거래처 포털계정 entity IDOR, owner 보류 지시 유지 — 재보고/재수정 시도 안 함), #504(S, 회사인쇄정보 로드실패 무음 — CSV가드 부분은 자동수정으로 해소, 로드실패 toast 항목만 open 잔존), #509(S~M, 급여 중도입퇴사 일할계산 근거 화면 미표시), #519(S, 계좌이체 전체확정 버튼 double-submit 미방지), #520(신규, S, IA 크래시-하드닝 재큐 완료-콜백 세대가드 부재 → zombie write lost-update). 실측(`search_issues(state:open,label:auto-improve)`=5) 정합. |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 |
 | ✔️ done | **445** ⚠️절대값 재동기화(SKILL Area6 원칙) — GitHub 실측 `search_issues(label:auto-improve is:closed reason:completed)`=445, 변동 없음(owner close 0). |
@@ -16,6 +16,15 @@
 
 > 📦 **과거 사이클 로그**는 `IMPROVEMENT_BACKLOG_ARCHIVE.md`/git 히스토리로 이관됨 (2026-06-10 1차 분리, 2026-06-25 2차 트림 343KB→192KB, 2026-06-25T10:00 3차 트림, 2026-07-03T06:00 4차 트림 288KB→86KB, **2026-07-07T13:00 5차 트림 — 07-01~07-05 사이클 로그를 git 히스토리로 이관: 238KB→78KB, 256KB Read 한도 재확보**). 신규 로그는 계속 이 파일 상단에 추가. 본 파일은 직전 2일치(07-06~) 사이클 로그 + 영구 참조 섹션(Approved/New/Auto-fixed/Done/Rejected/FP 카탈로그)만 유지. 이관분은 `git log -p -- IMPROVEMENT_BACKLOG.md`로 복원 가능.
 
+> **Area 4 데이터 정합성 (2026-07-14T00:47):**
+> - **방법**: `git fetch origin main`(HEAD `0134ae1` 0/0 동기, 워킹트리 clean). Area 4 **37회차** — 직전 Area4(`40b2276`, 07-12T19:05, 36회차) 이후 `src/routes`/`migrations` churn = 신규마이그 1건(`0458_ia_job_requeue_guard.sql`) + 라우트 11개. 대부분(activity_logs actor_entity_id 배선·payroll entity_id·bank 매칭엔진)은 이미 직전 Area4/Area2가 감사 완료 — 이번 사이클 신선 대상은 워크벤치/IA "크래시-하드닝 재큐"(갭② 10분 정체 job 자동 재큐, `0458`) 기능. general-purpose 에이전트로 ground-truth 컬럼존재성·CHECK·dangling고아·entity_id축·인덱스 재검증 + 재큐 기능 신규 검토.
+> - **🆕 net-new 1건(issue-only) — #520 (S, MEDIUM)**: `workbench.ts:613-621`(sheet_layouts)·`:916-924`(ia_process_jobs)·`aiAnalysis.ts:408-423`(ai_analysis_requests)의 재큐 트리거(10분 정체 시 `queued`/`pending` 복귀 + `requeue_count`/`retry_count` 증가)가 완료-콜백 3곳(`workbench.ts:670-673`·`:1027-1030`·`aiAnalysis.ts:525-534`)과 세대(epoch) 정합이 안 맞음 — 콜백이 `WHERE id=?${ef.clause}`로 현재 status/재큐 세대 검증 없이 무조건 덮어씀. 실제로는 살아있으나 10분 넘게 느린 에이전트 A가 재큐로 다른 에이전트 B에게 재클레임된 뒤 뒤늦게 구/오류 결과를 POST하면, 그 결과가 B의 진행/완료 결과를 무조건 덮어쓰는 zombie write lost-update 발생 가능. agent-to-agent write path라 smoke(GET-only)로 탐지 불가(#430 클래스). 이번 사이클 이전엔 자동 재클레임 메커니즘 자체가 없어 존재하지 않던 위험 — 크래시-하드닝이 "멈춤 방치"를 고치며 "동시쓰기 레이스"를 새로 도입한 트레이드오프. 수정 방향 = 완료 콜백에 `AND status='rendering'` 또는 세대 일치(`requeue_count=?`) 가드 추가(claim-fencing 정책 결정 필요, write-path 세만틱 변경이라 issue-only).
+> - **🟢 나머지 = clean**: `0458` 컬럼존재성/CHECK(status·render_status는 CHECK 없는 TEXT, `'queued'`/`'error'` 값 위반 위험 0)/NOT NULL 정상. `activity_logs.actor_entity_id` 배선 15곳 전수 누락 0(직전 사이클 완결 재확인). payroll `/save`·`/batch` entity_id `||1` 일관. 신규 INSERT 0건(전부 UPDATE)이라 컬럼존재성 스캔 대상 자체 없음. dangling 고아 재스캔 대상 없음(DROP/RENAME/신규 비-FK 참조컬럼 없음). 인덱스 신규 불요(재큐 WHERE가 기존 status 인덱스 커버). D1 바인드 100한도 위반 없음(LIMIT 3/소규모 계좌수 bounded).
+> - **🟢 FP 확정**: `bank.ts:630` sync-barobill 계좌번호 하이픈 미제거는 Area2(37회차)가 이미 커밋 근거로 FP 확정(바로빌이 하이픈 제거 형식 반환) — 재보고 안 함.
+> - **🟢 backlog↔GitHub sync**: `search_issues(label:auto-improve,state:open)` 직전 4건(#473,504,509,519) + 본 Area4 신규 1건(#520) → **new 5**. done(445)·rejected(3) 변동 없음(owner close 0).
+> - **🧬 SKILL 강화 없음(신규 패턴 아님)** — #520은 기존 "핵심 write 더블클릭/멱등성"(line 236)·"agent-path write" 계열(#430) 렌즈로 충분히 포착되는 변종(재큐+무방비 콜백 조합). 신규 codify 불요.
+> - 신규 이슈 1건(#520 S, issue-only — claim-fencing 정책 결정 필요), 자동수정 0건(write-path 세만틱 변경은 정책상 issue-only), done-sync 변동 없음(new 4→5·done 445·rejected 3 정합 재확인).
+>
 > **Area 3 UX/기능 감사 (2026-07-13T21:19):**
 > - **방법**: `git fetch origin main`(HEAD `f075c47` 0/0 동기, 워킹트리 clean) 후 `npm ci`(node_modules 0→65). Area 3 **36회차** — 직전 Area3(`4934042`, 07-12T09:14, 35회차) 이후 `src/scripts`/`src/pages` churn = **17파일**(`git diff --stat 4934042..HEAD`): 최대 신규 프론트 기능은 ia-editor 저장 스케일 분리(`a30c655`/`e10c238`/`0bc747b`, iaEditor.js+265)·attendance 조기출근+연장 배지 분리/시간표기 통일(`a33124b`/`f5a5286`, attendance.js+50)·bank.js 추가 UI(매칭규칙 수동생성+CONTAINS UI `b011e41`, 바로빌 계좌등록 은행별 인증안내+호스팅등록화면 `1df2463`/`1c131f2`, bank.js+212) — 백엔드/entity_id/보안 측면은 Area2(36~37회차)·Area4(36회차)·Area5(35회차)·Area6(38~40회차)이 이미 전수 감사 완료라 순수 프론트 UX 5축(dead-button·HTML↔JS silent-fail·showConfirm오용·로딩/에러/빈상태 일관성·cross-page 네비)에 집중. general-purpose 에이전트 1개로 신규 churn 전수 리뷰 + 직접 코드 재확인.
 > - **🆕 net-new 1건(issue-only)**: **#519 (S, LOW)** `bank.js:619-641` `confirmAllTransfers`("전체 확정" 버튼) — `transferConfirmAllBtn`에 클릭 시 disable 처리가 없어 네트워크 왕복 중 재클릭하면 이미 처리 중인 이체쌍에 대한 중복 요청이 백엔드(`bank.ts:1868` APPLIED/transfer_pair_id 가드)에서 400으로 거부됨 → `.catch(function(){return false;})`가 이를 실패로 흡수해 **정상 처리된 건까지 "N건 처리, M건 실패"로 오보고**. 데이터 훼손은 없으나(백엔드 가드 유효) 같은 커밋(#517)이 도입한 "정직한 부분실패 보고" 취지와 배치되는 신뢰도 결함. 형제 단건 함수 `confirmTransfer(i)`는 행 단위라 영향 없음.
