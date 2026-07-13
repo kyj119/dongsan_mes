@@ -27,19 +27,22 @@
 - `department_category_map(category PK, department_id)` — 공정→부문(매출·자재비 엔진)
 - `employees.department_id` FK 신설 + 백필. 레거시 `employees.department`(text)는 보존(제거 불가·드리프트 브리지).
 
-### 부문 시드 (초안 — 로컬 검증 결과 직원수)
-| id | 부문 | parent | type | legacy | 직원 |
-|---|---|---|---|---|---|
-| 1 | 출력 | — | PROD | PRODUCTION,PRINTING | 32 |
-| 2 | 전사 | — | PROD | TRANSFER | 0 |
-| 3 | 간판 | — | PROD | UV_SIGN,SIGN | 14 |
-| 4 | 유통 | — | PROD | — | 0 |
-| 5 | 디자인 | — | SUPPORT | — | 0(부모) |
-| 6 | └ 디자인팀 | 5 | SUPPORT | DESIGN | 17 |
-| 7 | └ 봉제/후가공 | 5 | SUPPORT | FINISHING,ASSEMBLY | 35 |
-| 8 | 관리/본사 | — | SUPPORT | OFFICE,EXECUTIVE,SALES,ADMIN_DEPT | 11 |
+### 부문 시드 (로컬 검증 완료 — migration 0459 + 0460)
+| id | 부문 | parent | type | serves | legacy | 직원 |
+|---|---|---|---|---|---|---|
+| 1 | 출력 | — | PROD | — | PRODUCTION,PRINTING | 32 |
+| 2 | 전사 | — | PROD | — | TRANSFER | 0 |
+| 3 | 간판 | — | PROD | — | UV_SIGN,SIGN | 14 |
+| 4 | 유통 | — | PROD | — | — | 0 |
+| 5 | 디자인 | — | SUPPORT | — | — | 0(부모) |
+| 6 | └ 디자인-출력 | 5 | SUPPORT | →출력(1) | DESIGN | 17 |
+| 10 | └ 디자인-전사 | 5 | SUPPORT | →전사(2) | — | 0 |
+| 11 | └ 디자인-간판 | 5 | SUPPORT | →간판(3) | — | 0 |
+| 7 | └ 봉제/후가공 | 5 | SUPPORT | 공통(null) | FINISHING,ASSEMBLY | 35 |
+| 8 | 관리/본사 | — | SUPPORT | — | OFFICE,EXECUTIVE,SALES,ADMIN_DEPT | 11 |
 
-- 백필 미완 직원 = **0명**(전원 배정 검증).
+- **디자인 하위 = 출력/전사/간판 미러링**(사용자 확정). `serves_department_id`로 각 디자인팀 인건비를 대응 생산부문 원가에 직접 귀속(P4 토글). 봉제=공통(P5 배부).
+- 백필 미완 직원 = **0명**(전원 배정 검증). DESIGN 17명은 데이터 세분 불가 → 디자인-출력에 임시, UI로 전사/간판 재배정.
 - category 매핑 11건: 출력(수성·솔벤·UV·현수막·배너·스티커) / 전사(전사·태극기) / 간판(간판·현판) / 유통(상품).
 
 ## 4. 알려진 갭 (P2에서 처리)
@@ -58,6 +61,7 @@
 | P4 | 부문손익 리포트: 매출−직접비=**공헌이익** + 인건비율. `/financial-reports` 죽은쿼리(order_costs·payroll_slips) 재배선 | |
 | P5 | 공통비 배부율표 → **부문 영업이익** 병기 | |
 
-## 6. 확인 필요 (사용자)
-- 디자인 산하 **하위부문 실제 구성**(디자인팀 외 세부 팀). 현재 시드=디자인팀+봉제/후가공 2개. → P1.5 UI로 추가 가능.
-- 전사/유통 부문 직원 배정 방식(운영 데이터 입력).
+## 6. 확인 필요 (운영 데이터 — P1.5 UI로 처리)
+- **DESIGN 17명 세분**: 현재 전원 디자인-출력. 실제 디자인-전사/디자인-간판 담당자 재배정 필요.
+- **전사/유통 직원 배정**: 전사 인력이 레거시 PRODUCTION(→출력)에 뭉침. 유통 담당자도 미배정.
+- 디자인 인건비 귀속 방식(P4): 기본=`serves_department_id`로 생산부문 직접귀속 / 대안=디자인 부문 독립표시. 리포트 토글 예정.
