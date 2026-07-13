@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 1 -->
-<!-- last_run_at: 2026-07-13T09:33:03+09:00 -->
+<!-- last_run_area: 2 -->
+<!-- last_run_at: 2026-07-13T15:15:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -16,6 +16,17 @@
 
 > 📦 **과거 사이클 로그**는 `IMPROVEMENT_BACKLOG_ARCHIVE.md`/git 히스토리로 이관됨 (2026-06-10 1차 분리, 2026-06-25 2차 트림 343KB→192KB, 2026-06-25T10:00 3차 트림, 2026-07-03T06:00 4차 트림 288KB→86KB, **2026-07-07T13:00 5차 트림 — 07-01~07-05 사이클 로그를 git 히스토리로 이관: 238KB→78KB, 256KB Read 한도 재확보**). 신규 로그는 계속 이 파일 상단에 추가. 본 파일은 직전 2일치(07-06~) 사이클 로그 + 영구 참조 섹션(Approved/New/Auto-fixed/Done/Rejected/FP 카탈로그)만 유지. 이관분은 `git log -p -- IMPROVEMENT_BACKLOG.md`로 복원 가능.
 
+> **Area 2 코드 품질 심층 분석 (2026-07-13T15:15):**
+> - **방법**: `git fetch origin main`(HEAD `1c131f2` 0/0 동기, 워킹트리 clean). Area 2 **37회차** — 직전 Area2(`b4e9e7a`, 07-12T03:17, 36회차) 이후 `src/routes`/`migrations` churn = **21파일 + 신규마이그 3건**(`git diff --stat b4e9e7a..HEAD -- src/routes migrations`): 대부분(`01ca212` 15건 근본수정·bank 매칭엔진 공유화/CONTAINS·activity_logs actor_entity_id 배선·payroll entity_id 정렬)은 Area4(36회차)·Area5(35회차)·Area6(40회차)가 이미 entity_id/보안/자기진화 렌즈로 전수 감사 완료 — Area2는 그 위에 **코드품질 고유 렌즈(N+1·authMiddleware·dead code·SELECT *·타입정합)**로 동일 churn을 재검증 + Area1(41회차) 이후 신규 착륙한 **바로빌 계좌 등록 하드닝 5커밋**(`04c95cd`~`1c131f2`, bank.ts+104/bank.js+73, 아무 영역도 아직 안 본 진짜 신선 churn)과 ia-editor crash 하드닝(`0bc747b`, workbench.ts+54)을 직접 표적 감사.
+> - **🟢 바로빌 계좌 하이픈 정규화 = 오탐 반증 완료**: `sync-barobill`(:629) 자동등록 INSERT가 `account_number`를 하이픈 미제거 상태로 저장해 수동생성 경로(:239, 하이픈 제거)와 불일치하는 것처럼 보였으나, 커밋 메시지(`04c95cd`) 확인 결과 "바로빌은 하이픈 제거로 등록/반환" — `acc.BankAccountNum`은 barobill API 응답 시점에 이미 숫자만이라 저장 형식 불일치 실재하지 않음(보고 전 반증 완료, FP 확정).
+> - **🟢 N+1 = 신규 churn 전부 이미 자체 교정**: `aiAnalysis.ts:131` batch-results groups_json 하이드레이션(#502) — 순차 await→`HYDRATE_CONCURRENCY=10` 유한동시성 + `MAX_BATCH_ROWS=200` 상한 전환 확인. `workbench.ts:1070` process/clear(#506) — 무제한 R2.delete/DELETE IN을 `BATCH=150`+`R2_CONCURRENCY=10`+80청크 IN 분할로 전환 확인. 둘 다 개발자가 이미 SKILL 기지 패턴(D1 바인드 100한도·CF Workers 1000-subrequest 한도)을 스스로 적용한 상태 — net-new 0.
+> - **🟢 authMiddleware 재귀 스캔(standing scan) = net-new 0**: 미커버 후보 5건(`orders/helpers.ts`·`payroll/shared.ts`·`taxInvoices/helpers.ts`=Map.get FP, `cron.ts`=agentKeyMiddleware 자체 게이트, `hrSelf.ts`=scoped-token 자기인증) 전부 기존 FP 카탈로그와 일치, 직접 재확인.
+> - **🟢 dead code / SELECT * = 0**: 신규 export `getBankAccountManagementUrl`(services/barobillBank.ts)·`getBankAuthRequirement`(constants/barobillCodes.ts) 둘 다 호출처 확인(bank.ts). `git diff` 전체에 `SELECT *`/`t.*` 신규 도입 0건.
+> - **🟢 나머지 = clean**: `src/types/models.ts`는 activity_logs/payroll/ia_process_jobs/sheet_layouts 테이블 자체를 모델링하지 않는 파일(기존 아키텍처 — 해당 테이블은 라우트 내 인라인 `as {...}` 타입 사용)이라 신규 컬럼(actor_entity_id/extra_overtime_hours/requeue_count) 타입 갱신 대상 아님, 드리프트 아님. `workbench.ts` render-queue/process-queue의 신규 stale-job 재큐 UPDATE는 entity 필터 없는 전역 best-effort(주석에 명시) — 특정 법인 데이터 노출/조작이 아니라 정체된 잡 상태만 되돌리는 자기치유 로직이라 격리 누락 아님(의도된 설계).
+> - **🟢 backlog↔GitHub sync**: `search_issues(label:auto-improve,state:open)` 실측 **3건**(#473,504,509) = 직전 Area1 stats 정합. done `search_issues(is:closed,reason:completed)`=**445**·rejected=**3** 변동 없음(owner close 0).
+> - **🧬 SKILL 강화 없음(신규 패턴 아님)** — 이번 사이클은 신규 churn이 전부 개발자 자신이 SKILL 기지 패턴(N+1 청크/유한동시성, 하이픈 정규화 전 반증)을 이미 적용한 상태라 clean, 신규 codify 대상 없음.
+> - 신규 이슈 0건, 자동수정 0건(발견 없음), done-sync 변동 없음(new 3·done 445·rejected 3 정합 재확인), **신선 각도 — Area4/5/6이 이미 entity_id/보안/자기진화 렌즈로 감사한 대형 정비 churn 위에, Area2 고유 렌즈(N+1·authMiddleware·dead code·SELECT*)로 재검증 + 아직 아무 영역도 보지 않은 바로빌 계좌등록 하드닝(5커밋)·ia-editor crash 하드닝을 직접 표적. 계좌번호 저장형식 불일치로 보이던 후보를 커밋 메시지 근거로 반증(FP 확정)한 것이 핵심 — 성급한 보고 대신 barobill이 하이픈 제거 형식으로 반환한다는 사실을 직접 확인 후 드롭.**
+>
 > **Area 1 프로덕션 헬스 (2026-07-13T09:33):**
 > - **방법**: `git fetch origin main`(HEAD `d6f1f01` 0/0 동기, 워킹트리 clean). Area 1 — GitHub Actions `deploy.yml`/`e2e.yml` 최근 실행 이력 30건 + 최신 배포 job 로그(smoke 102/102 상세) 직접 조회. 이번 세션은 프록시 정책상 `webapp-9i0.pages.dev`/observability MCP로의 직접 egress가 403(정책 차단)이라 CI 기록·session-context.md 교차검증으로 대체.
 > - **🟢 배포 체인 정상**: 최신 deploy 09-07-12T23:44(`d6f1f01`) — Typecheck/Build/Deploy/Smoke 전부 success, smoke 102/102 PASS(느린 엔드포인트 3건은 700~1800ms대 집계 쿼리로 기존 인지 수준, 500ms 기준 관행적 경보일 뿐 장애 아님). 최근 30회 deploy 실행 중 실패 1건(`ea2d8f6f`, 07-10T13:59) — 로그 확인 결과 Typecheck/Build 성공 후 `Deployment failed! Failed to publish your Function. Got error: Unknown internal error occurred.`로 **SKILL 기지 "🌩️ 배포-step CF-internal transient" 패턴과 정확히 일치**(Cloudflare 측 finalize 단계 내부 오류, 코드/설정 무결) + 66분 뒤 다음 배포(`06432e0f`, 15:05)가 즉시 green 회복 → 비보고 대상.
