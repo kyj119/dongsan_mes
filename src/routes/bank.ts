@@ -215,7 +215,13 @@ bankRouter.post('/accounts', requireRole('ADMIN'), async (c) => {
         !!account_password, !!web_id, !!web_pwd, identityDigits.length, acctDigits.length, code
       )
       if (code <= 0) {
-        return c.json({ success: false, error: '바로빌 계좌 수집등록 실패: ' + barobillErrorMessage(code) }, 400)
+        // 진단: 값(비번/ID/식별번호 원문) 미포함 — 존재여부·길이·코드만. 원인 특정 후 제거 예정.
+        // 프론트 렌더링 의존 없이 보이도록 메시지 문자열에 직접 요약 포함.
+        const diagStr = `[진단] entity=${getEntityId(c)} corpLen=${(config.corpNum || '').length} bank=${bbBank}(${bank_code}) type=${acctType} cycle=${cyc} hasPwd=${!!account_password} hasWebId=${!!web_id} hasWebPwd=${!!web_pwd} identityLen=${identityDigits.length} acctLen=${acctDigits.length}`
+        return c.json({
+          success: false,
+          error: '바로빌 계좌 수집등록 실패: ' + barobillErrorMessage(code) + ' ' + diagStr,
+        }, 400)
       }
       barobillRegistered = 1
     }
