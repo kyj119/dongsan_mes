@@ -69,6 +69,7 @@ import inventoryCountRouter from './routes/inventoryCount'
 import autoProcessRouter from './routes/autoProcess'
 import workbenchRouter from './routes/workbench'
 import storageZonesRouter from './routes/storageZones'
+import departmentsRouter from './routes/departments'
 import permissionsRouter from './routes/permissions'
 import inspectionsRouter from './routes/inspections'
 import migrationRouter from './routes/migration'
@@ -175,6 +176,7 @@ import { leavesPage } from './pages/leaves'
 import { payrollPage } from './pages/payroll'
 import { payrollRatesPage } from './pages/payrollRates'
 import { storageZonesPage } from './pages/storageZones'
+import { departmentsPage } from './pages/departments'
 import { permissionsPage } from './pages/permissions'
 import { noPermissionPage } from './pages/noPermission'
 import { payslipPage } from './pages/payslip'
@@ -320,6 +322,7 @@ app.route('/api/auto-process', autoProcessRouter)
 app.route('/api/workbench', workbenchRouter)
 app.route('/api/files', filesRouter)
 app.route('/api/storage-zones', storageZonesRouter)
+app.route('/api/departments', departmentsRouter)
 app.route('/api/permissions', permissionsRouter)
 app.route('/api/inspections', inspectionsRouter)
 app.route('/api/migration', migrationRouter)
@@ -485,6 +488,7 @@ app.get('/leaves', pageAuthMiddleware, requirePagePermission('/leaves'), leavesP
 app.get('/payroll', pageAuthMiddleware, requirePagePermission('/payroll'), payrollPage)
 app.get('/settings/payroll-rates', pageAuthMiddleware, requirePagePermission('/settings/payroll-rates'), payrollRatesPage)
 app.get('/storage-zones', pageAuthMiddleware, requirePagePermission('/storage-zones'), storageZonesPage)
+app.get('/departments', pageAuthMiddleware, requirePagePermission('/departments'), departmentsPage)
 app.get('/permissions', pageAuthMiddleware, requireAdminPage(), permissionsPage)
 app.get('/no-permission', pageAuthMiddleware, noPermissionPage)
 app.get('/payslip/:id', pageAuthMiddleware, payslipPage)

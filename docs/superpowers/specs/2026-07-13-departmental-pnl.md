@@ -28,21 +28,23 @@
 - `employees.department_id` FK 신설 + 백필. 레거시 `employees.department`(text)는 보존(제거 불가·드리프트 브리지).
 
 ### 부문 시드 (로컬 검증 완료 — migration 0459 + 0460)
-| id | 부문 | parent | type | serves | legacy | 직원 |
+직원수 = **재직/전체(퇴사포함)**. ⚠️ 로컬 테스트DB 시드(0117, 과거직원 포함) 기준 — 실 프로덕션과 다름. 배포 시 실데이터로.
+| id | 부문 | parent | type | serves | legacy | 재직/전체 |
 |---|---|---|---|---|---|---|
-| 1 | 출력 | — | PROD | — | PRODUCTION,PRINTING | 32 |
-| 2 | 전사 | — | PROD | — | TRANSFER | 0 |
-| 3 | 간판 | — | PROD | — | UV_SIGN,SIGN | 14 |
-| 4 | 유통 | — | PROD | — | — | 0 |
+| 1 | 출력 | — | PROD | — | PRODUCTION,PRINTING | 13/32 |
+| 2 | 전사 | — | PROD | — | TRANSFER | 0/0 |
+| 3 | 간판 | — | PROD | — | UV_SIGN,SIGN | 7/14 |
+| 4 | 유통 | — | PROD | — | — | 0/0 |
 | 5 | 디자인 | — | SUPPORT | — | — | 0(부모) |
-| 6 | └ 디자인-출력 | 5 | SUPPORT | →출력(1) | DESIGN | 17 |
-| 10 | └ 디자인-전사 | 5 | SUPPORT | →전사(2) | — | 0 |
-| 11 | └ 디자인-간판 | 5 | SUPPORT | →간판(3) | — | 0 |
-| 7 | └ 봉제/후가공 | 5 | SUPPORT | 공통(null) | FINISHING,ASSEMBLY | 35 |
-| 8 | 관리/본사 | — | SUPPORT | — | OFFICE,EXECUTIVE,SALES,ADMIN_DEPT | 11 |
+| 6 | └ 디자인-출력 | 5 | SUPPORT | →출력(1) | DESIGN | 8/17 |
+| 10 | └ 디자인-전사 | 5 | SUPPORT | →전사(2) | — | 0/0 |
+| 11 | └ 디자인-간판 | 5 | SUPPORT | →간판(3) | — | 0/0 |
+| 7 | └ 봉제/후가공 | 5 | SUPPORT | 공통(null) | FINISHING,ASSEMBLY | 13/35 |
+| 8 | 관리/본사 | — | SUPPORT | — | OFFICE,EXECUTIVE,SALES,ADMIN_DEPT | 7/11 |
 
 - **디자인 하위 = 출력/전사/간판 미러링**(사용자 확정). `serves_department_id`로 각 디자인팀 인건비를 대응 생산부문 원가에 직접 귀속(P4 토글). 봉제=공통(P5 배부).
-- 백필 미완 직원 = **0명**(전원 배정 검증). DESIGN 17명은 데이터 세분 불가 → 디자인-출력에 임시, UI로 전사/간판 재배정.
+- 백필 미완 직원 = **0명**(전원 배정 검증). status 무관 백필(퇴사자 과거소속도 유효). **인건비(P3)·헤드카운트 UI는 재직/급여발생 기준** → 퇴사자 자동 제외.
+- 재직 디자인-출력 8명은 데이터 세분 불가 → UI로 전사/간판 재배정.
 - category 매핑 11건: 출력(수성·솔벤·UV·현수막·배너·스티커) / 전사(전사·태극기) / 간판(간판·현판) / 유통(상품).
 
 ## 4. 알려진 갭 (P2에서 처리)
@@ -55,7 +57,7 @@
 | P | 내용 | 상태 |
 |---|---|---|
 | **P1** | 부문 마스터(계층) + category→부문 매핑 + employees.department_id 백필 | **완료(마이그·검증)** |
-| P1.5 | 부문 관리 UI(트리 편집·category 매핑·직원 배정) + 권한 등록 + hr.ts SSOT 연동 | 다음 |
+| **P1.5** | 부문 관리 UI `/departments`(트리 조회·편집·직원 배정·매출매핑 조회) + 권한(0461) | **완료(로컬)·미배포**. category 매핑 편집·hr.ts 연동=추후 |
 | P2 | 매출(order_items 라인)·자재비(소진이력) 부문 스탬프/집계 쿼리 + 미분류 처리 | |
 | P3 | 인건비·회사부담금 부문 집계(payroll JOIN) | |
 | P4 | 부문손익 리포트: 매출−직접비=**공헌이익** + 인건비율. `/financial-reports` 죽은쿼리(order_costs·payroll_slips) 재배선 | |
