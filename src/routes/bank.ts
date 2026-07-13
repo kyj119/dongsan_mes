@@ -217,7 +217,7 @@ bankRouter.post('/accounts', requireRole('ADMIN'), async (c) => {
     `).bind(
       bank_code,
       bank_name,
-      account_number,
+      String(account_number).replace(/-/g, ''),
       account_holder ?? null,
       (account_alias && String(account_alias).trim()) || null,
       entityId,
@@ -272,7 +272,7 @@ bankRouter.put('/accounts/:id', requireRole('ADMIN'), async (c) => {
     `).bind(
       bank_code ?? null,
       bank_name ?? null,
-      account_number ?? null,
+      account_number != null ? String(account_number).replace(/-/g, '') : null,
       account_holder ?? null,
       aliasProvided ? 1 : 0,
       aliasValue,
@@ -588,8 +588,8 @@ bankRouter.post('/sync-barobill', requireRole('ADMIN'), async (c) => {
       const accNum = acc.BankAccountNum || ''
       if (!accNum) continue
       const existing = await c.env.DB.prepare(
-        'SELECT id FROM bank_accounts WHERE account_number = ? AND is_active = 1'
-      ).bind(accNum).first()
+        "SELECT id FROM bank_accounts WHERE replace(account_number,'-','') = ? AND is_active = 1"
+      ).bind(accNum.replace(/-/g, '')).first()
       if (!existing) {
         await c.env.DB.prepare(
           'INSERT INTO bank_accounts (bank_code, bank_name, account_number, account_holder, entity_id) VALUES (?, ?, ?, ?, ?)'
@@ -620,8 +620,8 @@ bankRouter.post('/sync-barobill', requireRole('ADMIN'), async (c) => {
 
       // bank_accounts.id 조회
       const bankAcc = await c.env.DB.prepare(
-        'SELECT id FROM bank_accounts WHERE account_number = ? AND is_active = 1'
-      ).bind(accNum).first() as { id: number } | null
+        "SELECT id FROM bank_accounts WHERE replace(account_number,'-','') = ? AND is_active = 1"
+      ).bind(accNum.replace(/-/g, '')).first() as { id: number } | null
       if (!bankAcc) continue
 
       for (const dateStr of dates) {
@@ -667,6 +667,19 @@ bankRouter.post('/sync-barobill', requireRole('ADMIN'), async (c) => {
           console.error(`Bank sync error ${accNum} ${dateStr}:`, err)
           if (errors.length < 20) errors.push(`${accNum} ${dateStr}: ${err?.message || '조회 실패'}`)
         }
+      }
+    }
+
+    // 관측성: MES 등록(barobill_registered=1)됐으나 바로빌 수집목록에 없는 계좌 표기 (조용한 미수집 진단)
+    const bbNums = new Set(accounts.map((a: any) => String(a.BankAccountNum || '').replace(/-/g, '')).filter(Boolean))
+    const efReg = entityFilter(c, 'bank_accounts')
+    const { results: regAccts } = await c.env.DB.prepare(
+      `SELECT account_number, bank_name, account_alias FROM bank_accounts WHERE barobill_registered = 1 AND is_active = 1${efReg.clause}`
+    ).bind(...efReg.params).all<{ account_number: string; bank_name: string; account_alias: string | null }>()
+    for (const ra of regAccts) {
+      const stripped = String(ra.account_number).replace(/-/g, '')
+      if (!bbNums.has(stripped) && errors.length < 20) {
+        errors.push(`${ra.account_alias || ra.bank_name || stripped} (${stripped.slice(0, 4)}****): 바로빌 수집목록에 없음 — 등록지연/인증 확인 필요`)
       }
     }
 
@@ -2043,6 +2056,7 @@ bankRouter.post('/auto-sync', requireRole('ADMIN'), async (c) => {
     let totalSkipped = 0
     let totalMatched = 0
     const errors: string[] = []
+    const syncedIds = new Set<number>()  // 실제 바로빌 목록서 매칭된 계좌만 last_synced 갱신(정직화)
 
     // 바로빌 설정 로드
     const testModeRow = await c.env.DB.prepare(
@@ -2086,9 +2100,10 @@ bankRouter.post('/auto-sync', requireRole('ADMIN'), async (c) => {
         if (!accNum) continue
 
         const bankAcc = await c.env.DB.prepare(
-          'SELECT id, entity_id FROM bank_accounts WHERE account_number = ? AND is_active = 1'
-        ).bind(accNum).first() as { id: number; entity_id: number } | null
+          "SELECT id, entity_id FROM bank_accounts WHERE replace(account_number,'-','') = ? AND is_active = 1"
+        ).bind(accNum.replace(/-/g, '')).first() as { id: number; entity_id: number } | null
         if (!bankAcc) continue
+        syncedIds.add(bankAcc.id)
 
         for (const dateStr of dates) {
           try {
@@ -2124,6 +2139,18 @@ bankRouter.post('/auto-sync', requireRole('ADMIN'), async (c) => {
           }
         }
       }
+
+      // 관측성: MES 등록됐으나 바로빌 수집목록에 없는 계좌 표기 (조용한 미수집 진단 — 우리·마이너스 등)
+      const bbNums = new Set(barobillAccounts.map((a: any) => String(a.BankAccountNum || '').replace(/-/g, '')).filter(Boolean))
+      const { results: regAccts } = await c.env.DB.prepare(
+        `SELECT account_number, bank_name, account_alias FROM bank_accounts WHERE barobill_registered = 1 AND is_active = 1${efAutoAcc.clause}`
+      ).bind(...efAutoAcc.params).all<{ account_number: string; bank_name: string; account_alias: string | null }>()
+      for (const ra of regAccts) {
+        const stripped = String(ra.account_number).replace(/-/g, '')
+        if (!bbNums.has(stripped) && errors.length < 20) {
+          errors.push(`${ra.account_alias || ra.bank_name || stripped} (${stripped.slice(0, 4)}****): 바로빌 수집목록에 없음 — 등록지연/인증 확인 필요`)
+        }
+      }
     } catch (importErr: any) {
       errors.push(`바로빌 서비스 오류: ${importErr.message}`)
     }
@@ -2139,10 +2166,13 @@ bankRouter.post('/auto-sync', requireRole('ADMIN'), async (c) => {
       }
     }
 
-    // 계좌 last_synced_at 업데이트
-    await c.env.DB.prepare(
-      'UPDATE bank_accounts SET last_synced_at = CURRENT_TIMESTAMP WHERE is_active = 1'
-    ).run()
+    // 계좌 last_synced_at 업데이트 — 실제 바로빌 수집목록서 매칭된 계좌만 (정직화; 미매칭은 "미동기화" 유지)
+    if (syncedIds.size > 0) {
+      const ids = [...syncedIds]
+      await c.env.DB.prepare(
+        `UPDATE bank_accounts SET last_synced_at = CURRENT_TIMESTAMP WHERE id IN (${ids.map(() => '?').join(',')})`
+      ).bind(...ids).run()
+    }
 
     return c.json({
       success: true,
