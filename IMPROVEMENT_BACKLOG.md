@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 2 -->
-<!-- last_run_at: 2026-07-13T15:15:00+09:00 -->
+<!-- last_run_area: 3 -->
+<!-- last_run_at: 2026-07-13T21:19:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,7 +8,7 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | **3** — #473(reopened, 거래처 포털계정 entity IDOR, owner 보류 지시 유지 — 재보고/재수정 시도 안 함), #504(S, 회사인쇄정보 로드실패 무음 — CSV가드 부분은 본 사이클 자동수정으로 해소, 로드실패 toast 항목만 open 잔존), #509(S~M, 급여 중도입퇴사 일할계산 근거 화면 미표시). 실측(`search_issues(state:open,label:auto-improve)`=3) 정합, 변동 없음. |
+| 🆕 new | **4** — #473(reopened, 거래처 포털계정 entity IDOR, owner 보류 지시 유지 — 재보고/재수정 시도 안 함), #504(S, 회사인쇄정보 로드실패 무음 — CSV가드 부분은 자동수정으로 해소, 로드실패 toast 항목만 open 잔존), #509(S~M, 급여 중도입퇴사 일할계산 근거 화면 미표시), #519(신규, S, 계좌이체 전체확정 버튼 double-submit 미방지). 실측(`search_issues(state:open,label:auto-improve)`=4) 정합. |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 |
 | ✔️ done | **445** ⚠️절대값 재동기화(SKILL Area6 원칙) — GitHub 실측 `search_issues(label:auto-improve is:closed reason:completed)`=445, 변동 없음(owner close 0). |
@@ -16,6 +16,15 @@
 
 > 📦 **과거 사이클 로그**는 `IMPROVEMENT_BACKLOG_ARCHIVE.md`/git 히스토리로 이관됨 (2026-06-10 1차 분리, 2026-06-25 2차 트림 343KB→192KB, 2026-06-25T10:00 3차 트림, 2026-07-03T06:00 4차 트림 288KB→86KB, **2026-07-07T13:00 5차 트림 — 07-01~07-05 사이클 로그를 git 히스토리로 이관: 238KB→78KB, 256KB Read 한도 재확보**). 신규 로그는 계속 이 파일 상단에 추가. 본 파일은 직전 2일치(07-06~) 사이클 로그 + 영구 참조 섹션(Approved/New/Auto-fixed/Done/Rejected/FP 카탈로그)만 유지. 이관분은 `git log -p -- IMPROVEMENT_BACKLOG.md`로 복원 가능.
 
+> **Area 3 UX/기능 감사 (2026-07-13T21:19):**
+> - **방법**: `git fetch origin main`(HEAD `f075c47` 0/0 동기, 워킹트리 clean) 후 `npm ci`(node_modules 0→65). Area 3 **36회차** — 직전 Area3(`4934042`, 07-12T09:14, 35회차) 이후 `src/scripts`/`src/pages` churn = **17파일**(`git diff --stat 4934042..HEAD`): 최대 신규 프론트 기능은 ia-editor 저장 스케일 분리(`a30c655`/`e10c238`/`0bc747b`, iaEditor.js+265)·attendance 조기출근+연장 배지 분리/시간표기 통일(`a33124b`/`f5a5286`, attendance.js+50)·bank.js 추가 UI(매칭규칙 수동생성+CONTAINS UI `b011e41`, 바로빌 계좌등록 은행별 인증안내+호스팅등록화면 `1df2463`/`1c131f2`, bank.js+212) — 백엔드/entity_id/보안 측면은 Area2(36~37회차)·Area4(36회차)·Area5(35회차)·Area6(38~40회차)이 이미 전수 감사 완료라 순수 프론트 UX 5축(dead-button·HTML↔JS silent-fail·showConfirm오용·로딩/에러/빈상태 일관성·cross-page 네비)에 집중. general-purpose 에이전트 1개로 신규 churn 전수 리뷰 + 직접 코드 재확인.
+> - **🆕 net-new 1건(issue-only)**: **#519 (S, LOW)** `bank.js:619-641` `confirmAllTransfers`("전체 확정" 버튼) — `transferConfirmAllBtn`에 클릭 시 disable 처리가 없어 네트워크 왕복 중 재클릭하면 이미 처리 중인 이체쌍에 대한 중복 요청이 백엔드(`bank.ts:1868` APPLIED/transfer_pair_id 가드)에서 400으로 거부됨 → `.catch(function(){return false;})`가 이를 실패로 흡수해 **정상 처리된 건까지 "N건 처리, M건 실패"로 오보고**. 데이터 훼손은 없으나(백엔드 가드 유효) 같은 커밋(#517)이 도입한 "정직한 부분실패 보고" 취지와 배치되는 신뢰도 결함. 형제 단건 함수 `confirmTransfer(i)`는 행 단위라 영향 없음.
+> - **🟢 #511/#517/#518 완전성 재확인 — 전부 정상 반영**: `loadFixedExpenseStatus`(bank.js:930-935)가 `loadAccounts`와 동일 컨벤션으로 "로딩 실패" 문구 분리 확인(#518). 이체 전체확정의 ok/fail 분리 정직 보고 확인(#517, 단 위 #519가 그 신뢰도를 부분 훼손). 고정비 unapply 정리(#511) 확인.
+> - **🟢 나머지 = clean**: dead-button 0(신규 axios 전부 라우트 매칭 — `/api/bank/barobill-manage-url`·`/api/bank/match-rules` POST/PUT 등). HTML↔JS silent-fail 0(신규 DOM id `accBankAuthHint`/`ruleMtExact`/`ruleTgtClient`/`iaeSaveScale*`/`iaeSheetSaveScale*` 전부 대응 템플릿/동적렌더 존재, 네스팅/모아찍기 패널 간 ID 충돌 없음 확인). showConfirm 오용 0(전부 `await`/`.then()` 정상 패턴). attendance `attDetailHolidayWork` 제거가 HTML·JS 양쪽 동시 삭제로 잔존참조 0.
+> - **🟢 backlog↔GitHub sync**: `search_issues(label:auto-improve,state:open)` 실측 **3건**(#473,504,509) = 직전 Area2 stats 정합. 본 Area3 신규 1건(#519) → **new 4**. done(445)·rejected(3) 변동 없음(owner close 0).
+> - **🧬 SKILL 강화 없음(신규 패턴 아님)** — #519는 기존 "핵심 write 더블클릭 중복제출"(line 236, `safeSubmit` 호출처 0건 클래스) + "batch 결과 무시 성공/실패 오표시"(#517과 동일 클래스의 형제 누락)로 충분히 포착.
+> - 신규 이슈 1건(#519 S, issue-only — 버튼 disable=UI 변경), 자동수정 0건(정책상 UI 변경 금지), done-sync 변동 없음(new 3→4·done 445·rejected 3 정합 재확인), **신선 각도 — Area2/4/5/6이 이미 백엔드를 전수 감사한 bank.js/ia-editor/attendance 신규 프론트 churn을 순수 UX 5축으로 재검증. #517("정직한 부분실패 보고")이 도입한 지 얼마 안 된 로직이 자기 자신의 double-submit 미방지로 인해 재차 신뢰도 문제를 겪을 수 있음을 발견 — "이미 한 번 고친 기능"도 인접한 새 결함(버튼 가드 부재)에 취약할 수 있다는 사례.**
+>
 > **Area 2 코드 품질 심층 분석 (2026-07-13T15:15):**
 > - **방법**: `git fetch origin main`(HEAD `1c131f2` 0/0 동기, 워킹트리 clean). Area 2 **37회차** — 직전 Area2(`b4e9e7a`, 07-12T03:17, 36회차) 이후 `src/routes`/`migrations` churn = **21파일 + 신규마이그 3건**(`git diff --stat b4e9e7a..HEAD -- src/routes migrations`): 대부분(`01ca212` 15건 근본수정·bank 매칭엔진 공유화/CONTAINS·activity_logs actor_entity_id 배선·payroll entity_id 정렬)은 Area4(36회차)·Area5(35회차)·Area6(40회차)가 이미 entity_id/보안/자기진화 렌즈로 전수 감사 완료 — Area2는 그 위에 **코드품질 고유 렌즈(N+1·authMiddleware·dead code·SELECT *·타입정합)**로 동일 churn을 재검증 + Area1(41회차) 이후 신규 착륙한 **바로빌 계좌 등록 하드닝 5커밋**(`04c95cd`~`1c131f2`, bank.ts+104/bank.js+73, 아무 영역도 아직 안 본 진짜 신선 churn)과 ia-editor crash 하드닝(`0bc747b`, workbench.ts+54)을 직접 표적 감사.
 > - **🟢 바로빌 계좌 하이픈 정규화 = 오탐 반증 완료**: `sync-barobill`(:629) 자동등록 INSERT가 `account_number`를 하이픈 미제거 상태로 저장해 수동생성 경로(:239, 하이픈 제거)와 불일치하는 것처럼 보였으나, 커밋 메시지(`04c95cd`) 확인 결과 "바로빌은 하이픈 제거로 등록/반환" — `acc.BankAccountNum`은 barobill API 응답 시점에 이미 숫자만이라 저장 형식 불일치 실재하지 않음(보고 전 반증 완료, FP 확정).
