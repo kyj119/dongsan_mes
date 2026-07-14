@@ -376,6 +376,21 @@ bankRouter.post('/accounts/:id/refresh', requireRole('ADMIN'), async (c) => {
   }
 })
 
+// GET /api/bank/barobill-manage-url — 경로 B: 바로빌 호스팅 계좌 등록/관리 화면 URL
+// 직접입력(경로 A)이 은행별 필드 문제로 실패할 때, 바로빌 화면에서 은행이 직접 검증하도록 위임.
+bankRouter.get('/barobill-manage-url', requireRole('ADMIN'), async (c) => {
+  try {
+    const { getBankAccountManagementUrl } = await import('../services/barobillBank')
+    const config = await getBarobillConfig(c)
+    const url = await getBankAccountManagementUrl(config)
+    return c.json({ success: true, data: { url } })
+  } catch (error: any) {
+    console.error('Bank manage-url error:', error?.message || 'unknown')
+    const msg = String(error?.message || '')
+    return c.json({ success: false, error: (msg.includes('미설정') || msg.includes('바로빌')) ? msg : '서버 오류가 발생했습니다.' }, 500)
+  }
+})
+
 // ---------------------------------------------------------------------------
 // 거래내역 조회
 // ---------------------------------------------------------------------------

@@ -418,6 +418,10 @@ export function bankPage(c: Context<HonoEnv>) {
                 <p class="text-xs text-gray-500"><i class="fas fa-shield-alt mr-1"></i>인증정보는 바로빌 등록에만 1회 사용되며 MES에 저장되지 않습니다. 은행 인터넷뱅킹에서 이 계좌의 조회서비스(빠른조회/오픈뱅킹)가 먼저 신청되어 있어야 합니다.</p>
                 <p id="accBankAuthHint" class="text-xs text-emerald-700 bg-emerald-50 rounded px-2 py-1 hidden"><i class="fas fa-circle-info mr-1"></i><span id="accBankAuthHintText"></span></p>
                 <p class="text-xs text-amber-600"><i class="fas fa-triangle-exclamation mr-1"></i>개인사업자 계좌는 <b>계좌 구분=개인</b> + 예금주 식별번호에 <b>생년월일 6자리</b>를 넣으세요. 법인계좌만 사업자번호를 씁니다.</p>
+                <div class="border border-blue-200 bg-blue-50 rounded-lg p-2.5">
+                  <p class="text-xs text-blue-800 mb-1.5"><i class="fas fa-up-right-from-square mr-1"></i>아래 직접입력이 은행별 인증방식(특히 국민/신한) 때문에 계속 실패하면, <b>바로빌 화면에서 직접 등록</b>하세요. 은행이 그 자리에서 검증하므로 필드를 맞출 필요가 없습니다.</p>
+                  <button type="button" onclick="openBarobillManageUrl(this)" class="text-xs px-3 py-1.5 bg-blue-600 text-white rounded hover:bg-blue-700"><i class="fas fa-arrow-up-right-from-square mr-1"></i>바로빌에서 직접 등록·관리</button>
+                </div>
                 <div class="grid grid-cols-2 gap-3">
                   <div>
                     <label class="form-label">예금주 식별번호 <span class="text-red-500">*</span></label>
