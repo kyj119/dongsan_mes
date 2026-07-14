@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 1 -->
-<!-- last_run_at: 2026-07-14T21:13:00+09:00 -->
+<!-- last_run_area: 2 -->
+<!-- last_run_at: 2026-07-14T21:45:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,13 +8,32 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | **6** — #473(reopened, 거래처 포털계정 entity IDOR, owner 보류 지시 유지 — 재보고/재수정 시도 안 함), #504(S, 회사인쇄정보 로드실패 무음 — CSV가드 부분은 자동수정으로 해소, 로드실패 toast 항목만 open 잔존), #509(S~M, 급여 중도입퇴사 일할계산 근거 화면 미표시), #519(S, 계좌이체 전체확정 버튼 double-submit 미방지), #520(S, IA 크래시-하드닝 재큐 완료-콜백 세대가드 부재 → zombie write lost-update), #521(신규, S, security, 부문관리 신규기능 — employees GET/PATCH entity 격리·페이지권한 전무 → cross-tenant 직원 PII 열람+조작). 실측(`search_issues(state:open,label:auto-improve)`=6) 정합. |
+| 🆕 new | **7** — #473(reopened, 거래처 포털계정 entity IDOR, owner 보류 지시 유지 — 재보고/재수정 시도 안 함), #504(S, 회사인쇄정보 로드실패 무음 — CSV가드 부분은 자동수정으로 해소, 로드실패 toast 항목만 open 잔존), #509(S~M, 급여 중도입퇴사 일할계산 근거 화면 미표시), #519(S, 계좌이체 전체확정 버튼 double-submit 미방지), #520(S, IA 크래시-하드닝 재큐 완료-콜백 세대가드 부재 → zombie write lost-update), #521(S, security, 부문관리 employees entity격리 — **Area1이 "fixed-in-tree" 오판, Area2가 재검증해 PATCH write 경로 미픽스 확인 후 코멘트로 정정**, 페이지권한도 미연결), #522(신규, S, improvement, hr.ts 직원등록/수정이 department_id 존재·활성 검증 없음 — departments.ts PATCH와 형제 비대칭). 실측(`search_issues(state:open,label:auto-improve)`=7) 정합. |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 |
 | ✔️ done | **445** ⚠️절대값 재동기화(SKILL Area6 원칙) — GitHub 실측 `search_issues(label:auto-improve is:closed reason:completed)`=445, 변동 없음(owner close 0). |
 | ❌ rejected | 3 (`reason:not_planned`=1 + `reason:duplicate`=2, 변동 없음) |
 
 > 📦 **과거 사이클 로그**는 `IMPROVEMENT_BACKLOG_ARCHIVE.md`/git 히스토리로 이관됨 (2026-06-10 1차 분리, 2026-06-25 2차 트림 343KB→192KB, 2026-06-25T10:00 3차 트림, 2026-07-03T06:00 4차 트림 288KB→86KB, **2026-07-07T13:00 5차 트림 — 07-01~07-05 사이클 로그를 git 히스토리로 이관: 238KB→78KB, 256KB Read 한도 재확보**). 신규 로그는 계속 이 파일 상단에 추가. 본 파일은 직전 2일치(07-06~) 사이클 로그 + 영구 참조 섹션(Approved/New/Auto-fixed/Done/Rejected/FP 카탈로그)만 유지. 이관분은 `git log -p -- IMPROVEMENT_BACKLOG.md`로 복원 가능.
+
+> **Area 2 코드 품질 심층 분석 (2026-07-14T21:45):**
+> - **방법**: `git fetch origin main`(HEAD `529f93c` = origin/main 일치, 워킹트리 clean, detached) 후 `npm ci`(node_modules 0→81). Area 2 **38회차** — 직전 Area2(`1c131f2`, 07-13T15:15, 37회차) 이후 `src/routes`/`migrations`/`src/scripts` churn = **10커밋**: 부문(부서) 손익 관리회계 대형 신규기능 P1~P5(`69dc6e1`~`8c3fd23`, departments.ts 291줄 신설·departments.js 362줄·hr.ts/hr.js 확장·마이그 4건) + `/hr` 통합 리팩터(`bbe223c`, 별도 페이지 제거) + 바로빌 XSS 자동수정(`420e942`, Area5 37회차 기완료). Area1(41회차 헬스)이 이 커밋들 중 `73b86ee`("#521 fix")를 "fixed-in-tree"로 인계했으나, 코드 재검증 없이 커밋 메시지만 신뢰한 상태였음 — 오케스트레이터가 직접 `departments.ts` 전문 Read + 라인별 diff 대조로 정밀 재검증.
+> - **🔴 net-new HIGH — #521 재오픈 성격 코멘트(closed 아님, 이슈는 원래 OPEN 유지 상태라 재오픈 불요) — "fixed-in-tree" 판정 정정**: `73b86ee`는 커밋 메시지가 나열한 **GET 3곳(`/`·`/employees`·`/pnl` 인원비례)만** entityFilter를 적용했고, 원 이슈가 지목한 **더 심각한 write 경로 `PATCH /employees/:id`(`departments.ts:72-88`)는 여전히 bare `WHERE id=?`**로 미변경 확인(현재 HEAD `529f93c` 기준 라인별 diff 대조, `git show 73b86ee -- src/routes/departments.ts`로 정확히 GET 3곳만 패치됐음을 증거 확보). entity-scoped MANAGER가 `:id`만 바꿔 타법인 직원 부문을 여전히 임의 재배정 가능(원 이슈의 "데이터 조작" 영향 그대로 생존) + 페이지권한(`requirePagePermission('/departments')`) 연결도 미반영. **#521에 정정 코멘트 게시**(GitHub comment, 남은 작업 2가지 명시) — 이슈 자체는 OPEN 유지(원래 닫히지 않았음), close 방지 목적. **자기진화 함의**: "fixed-in-tree" 판정은 커밋 메시지가 아니라 diff를 직접 대조해야 함 — Area1(41회차)이 커밋 존재만으로 완결 추정한 것이 SKILL "closed≠fixed"(#473)의 **open 이슈판 오판**(이슈가 열려있으니 당장 위험은 없었으나, 다음 사이클이 "이미 손댐"으로 오인해 재검증을 건너뛸 뻔함).
+> - **🆕 net-new 이슈 1건(issue-only) — #522 (S, improvement)**: `hr.ts:420/502`(POST·PUT `/employees`) `department_id`가 화이트리스트엔 포함됐으나 **존재/활성 검증 없이 그대로 바인드** — 형제 `departments.ts:76-79` PATCH는 `AND is_active=1` 명시 검증. FK가 있어 존재하지 않는 id는 500으로 안전 차단되나, **비활성화(is_active=0)된 부문 id는 FK를 통과**(행 자체는 존재)해 조용히 배정 가능. `hr.js hrLoadDeptOptions()`가 페이지 최초 로드 1회만 활성 부문을 캐시(모달 열 때마다 재조회 안 함) — 페이지를 오래 켜둔 상태에서 부문이 비활성화되면 정상 UI 플로우로도 재현 가능. 수정 방향: `departments.ts:76-79`와 동일 검증 블록 이식(S, 15분 이내).
+> - **🟢 나머지 churn = clean**: `departments.ts`/`departments.js` 전체(N+1 0·SELECT * 0·dead code 0·authMiddleware 적용·XSS는 Area5 영역이나 `deptEscAttr` 일관 확인) — `/pnl` 핸들러(95줄, 매출·자재비·인건비·P5 배부 로직)는 단일-패스 다중 쿼리(반복문 내 DB호출 없음, N+1 아님). `department_category_map` PK(category TEXT)가 items.category(0459 시드)와 cards.category_name(0462 시드) 두 도메인을 공유하나 값 집합이 겹치지 않아 충돌 없음. 마이그 0459~0462 전부 추가형(CHECK 위반·NOT NULL 누락 없음). models.ts에 Employee/Department 인터페이스 자체가 없어(기존 컨벤션) 타입 불일치 해당 없음.
+> - **🧬 SKILL 강화 없음(신규 패턴 아님)** — 이번 발견(#521 정정)은 기존 "open≠unfixed"(Area6 30회차 codify)의 변형이나, 그 규칙이 전제한 "closed 이슈의 fixed-in-tree 재검증"이 아니라 **"OPEN 이슈에 걸린 부분픽스 커밋을 다음 영역이 완결로 오인"**하는 새로운 하위 케이스라 별도 명명 없이 기존 "커밋 메시지가 아니라 diff를 직접 대조" 원칙을 재확인하는 선에서 기록. 다음 Area6가 이 사례를 표준 레시피에 반영할지 판단.
+> - **🟢 backlog↔GitHub sync**: `search_issues(label:auto-improve,state:open)` 실측 **7건**(#473,504,509,519,520,521,522) — #522 신규 생성으로 6→7. done(445)·rejected(3) 변동 없음.
+> - net-new 이슈 1건(#522) + #521 정정 코멘트 1건, 자동수정 0건(둘 다 entity 격리/데이터 검증 write-path 변경이라 정책상 issue-only), done-sync 변동 없음. 다음 순번 Area 3.
+>
+> **Area 1 프로덕션 헬스 (2026-07-14T21:13):**
+> - **방법**: `git fetch origin main`(HEAD `0147a78` = origin/main 일치, 워킹트리 clean). 이번 세션도 프록시가 `webapp-9i0.pages.dev`·`observability.mcp.cloudflare.com` CONNECT를 403 정책 차단(`recentRelayFailures` 재확인, Area1 33/41회차와 동일 제약) — 직접 prod API/Playwright 헬스체크 불가, GitHub Actions CI 기록으로 대체.
+> - **🟢 배포 체인 전수 정상**: `deploy.yml` 최근 30회 실행(07-12T08:06~07-14T06:29, `0147a78` 포함) **전부 success**(Typecheck/Build/Deploy/Smoke), 실패 0건 — 직전 Area1(33회차)이 보고한 유일 실패(`ea2d8f6f`, 07-10, CF-internal transient)는 그 이후 구간(07-12 이후)엔 재발 없음. 최신 HEAD(`0147a78`, #521 부문관리 employees entity격리 픽스 반영 커밋) smoke = **PASS 102/102**, 느린 엔드포인트 3건(`hr.stats` 1255ms·`weekly-purchase/analyze` 1091ms·`attendance/month` 973ms)은 기존 인지 수준의 집계쿼리 지연이라 장애 아님.
+> - **⚪ E2E(Playwright) 워크플로 — 여전히 의도적 비활성화**: `e2e.yml` 트리거 섹션 재확인, 06-22 disable 상태 그대로(prod entity-99 오염 이슈로 owner가 명시 비활성화, 재발/신규 아님).
+> - **🔍 #521(부문관리 employees entity격리, Area6 41회차 발견)이 fixed-in-tree인데 이슈는 OPEN — 다음 Area6가 형제완전성 재검증 대상**: `git log 8c3fd23..HEAD`에서 `73b86ee`("fix(accounting): #521 부문 관리 employees entity 격리 — 전 법인 노출 차단")가 이슈 생성 직후(같은 날 06:16~06:24) 즉시 착륙 — SKILL "open≠unfixed"(line 281) 패턴과 정확히 일치(owner/병렬 worktree 세션이 close 전에 이미 픽스). Area 1 소관 밖이라 코드 재검증은 생략하고 다음 Area 6 사이클에 인계(형제완전성 확인 + close-pending 표기 대상).
+> - **⚠️ [Area2가 정정] "fixed-in-tree" 판정은 GET 경로에만 해당 — PATCH(write) 경로는 미픽스였음. 상세는 위 Area2 38회차 로그 참조.**
+> - **🟢 backlog↔GitHub sync**: `search_issues(label:auto-improve,state:open)` 실측 **6건**(#473,504,509,519,520,521) = 직전 Area6 stats 정합, 변동 없음(owner close 0, 신규 이슈 0). done(445)·rejected(3) 변동 없음.
+> - net-new 이슈 0건, 자동수정 0건(수정 대상 없음). 다음 순번 Area 2.
+>​
 
 > **Area 1 프로덕션 헬스 (2026-07-14T21:13):**
 > - **방법**: `git fetch origin main`(HEAD `0147a78` = origin/main 일치, 워킹트리 clean). 이번 세션도 프록시가 `webapp-9i0.pages.dev`·`observability.mcp.cloudflare.com` CONNECT를 403 정책 차단(`recentRelayFailures` 재확인, Area1 33/41회차와 동일 제약) — 직접 prod API/Playwright 헬스체크 불가, GitHub Actions CI 기록으로 대체.
