@@ -170,7 +170,12 @@ export function hrPage(c: Context<HonoEnv>) {
               <h3 class="text-base font-bold text-gray-900">부문 손익 (관리회계)</h3>
               <p class="text-sm text-gray-500 mt-1">매출·자재비·인건비 → 공헌이익. 매출=주문라인 기준 · 인건비=급여+회사부담 4대보험 · 자재비=소진이력×이동평균단가</p>
             </div>
-            <div class="flex items-center gap-2">
+            <div class="flex items-center gap-2 flex-wrap">
+              <select id="deptPnlBasis" onchange="loadDeptPnl()" class="border border-gray-300 rounded-lg px-2 py-2 text-sm" title="공통비 배부 기준">
+                <option value="revenue">배부:매출비례</option>
+                <option value="headcount">배부:인원비례</option>
+                <option value="labor">배부:인건비비례</option>
+              </select>
               <input type="date" id="deptPnlFrom" class="border border-gray-300 rounded-lg px-3 py-2 text-sm">
               <span class="text-gray-400">~</span>
               <input type="date" id="deptPnlTo" class="border border-gray-300 rounded-lg px-3 py-2 text-sm">
@@ -182,13 +187,14 @@ export function hrPage(c: Context<HonoEnv>) {
             <div class="overflow-x-auto">
               <table class="w-full text-sm ds-table ds-table-striped">
                 <thead><tr>
-                  <th class="text-left" style="width:22%">부문</th>
-                  <th class="text-center" style="width:8%">유형</th>
-                  <th class="text-right" style="width:15%">매출</th>
-                  <th class="text-right" style="width:15%">자재비</th>
-                  <th class="text-right" style="width:15%">인건비</th>
-                  <th class="text-right" style="width:15%">공헌이익</th>
-                  <th class="text-right" style="width:10%">인건비율</th>
+                  <th class="text-left" style="width:16%">부문</th>
+                  <th class="text-right" style="width:14%">매출</th>
+                  <th class="text-right" style="width:12%">자재비</th>
+                  <th class="text-right" style="width:12%">인건비</th>
+                  <th class="text-right" style="width:13%">공헌이익</th>
+                  <th class="text-right" style="width:13%" title="지원부문 직접귀속 + 공통비 안분">배분원가</th>
+                  <th class="text-right" style="width:12%">영업이익</th>
+                  <th class="text-right" style="width:8%">이익률</th>
                 </tr></thead>
                 <tbody id="deptPnlBody"></tbody>
                 <tfoot id="deptPnlFoot" class="font-semibold bg-gray-50"></tfoot>
@@ -196,8 +202,12 @@ export function hrPage(c: Context<HonoEnv>) {
             </div>
             <div id="deptPnlEmpty" class="hidden text-center py-10 text-sm text-gray-400">데이터를 조회하세요.</div>
           </div>
+
+          <!-- 공통비/지원부문 배부 풀 -->
+          <div id="deptPnlPool" class="ds-card p-4 hidden"></div>
+
           <p class="text-xs text-gray-400">
-            <i class="fas fa-info-circle mr-1"></i>지원부문(디자인·봉제·관리)은 매출이 없어 공헌이익이 음수(−)로 표시됩니다(원가센터). 임대료·통신비 등 공통비 배부와 지원부문 원가 재배분은 다음 단계(P5)에서 반영됩니다. 자재비=0은 소진 자동차감 미가동 구간.
+            <i class="fas fa-info-circle mr-1"></i>영업이익 = 공헌이익(매출−자재비−직접인건비) − 배분원가. <b>배분원가</b> = 지원 하위부문(디자인-출력/전사/간판) 인건비 직접귀속 + 공통풀(봉제·관리 인건비 + 고정비 임대·통신·전기) 안분(배부기준 선택). 배부는 리포트 계산 단계만 — 원장 불변. 자재비=0은 소진 자동차감 미가동 구간.
           </p>
         </div>
       </div>

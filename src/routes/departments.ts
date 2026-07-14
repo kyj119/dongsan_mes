@@ -194,36 +194,91 @@ departmentsRouter.get('/pnl', requireRole('ADMIN', 'MANAGER'), async (c) => {
       GROUP BY e.department_id
     `).bind(fromMonth, toMonth, ...efP.params).all<any>()
 
-    const revMap = new Map<any, number>()
-    for (const r of rev || []) revMap.set(r.dept_id, Number(r.revenue) || 0)
-    const matMap = new Map<any, number>()
-    for (const r of mat || []) matMap.set(r.dept_id, Number(r.material) || 0)
-    const labMap = new Map<any, number>()
-    for (const r of lab || []) labMap.set(r.dept_id, Number(r.labor) || 0)
+    const num = (v: any) => Number(v) || 0
+    const revMap = new Map<any, number>(); for (const r of rev || []) revMap.set(r.dept_id, num(r.revenue))
+    const matMap = new Map<any, number>(); for (const r of mat || []) matMap.set(r.dept_id, num(r.material))
+    const labMap = new Map<any, number>(); for (const r of lab || []) labMap.set(r.dept_id, num(r.labor))
 
-    const rows = (depts || []).map((d: any) => {
+    // ── P5 배부: serves 재배분(지원 하위→생산부문) + 공통풀(잔여 지원인건비 + 고정비) 안분 ──
+    // 4) 배부 기준 데이터 — 활성 직원수(인원) + 고정 공통비(임대·통신·전기)
+    const { results: hc } = await c.env.DB.prepare(
+      `SELECT department_id AS dept_id, COUNT(*) AS cnt FROM employees
+       WHERE (status='ACTIVE' OR status IS NULL) AND department_id IS NOT NULL GROUP BY department_id`
+    ).all<any>()
+    const hcMap = new Map<any, number>(); for (const r of hc || []) hcMap.set(r.dept_id, num(r.cnt))
+
+    const fromDate = new Date(from), toDate = new Date(to)
+    const months = Math.max(1, Math.round((toDate.getTime() - fromDate.getTime()) / (30 * 86400000)))
+    const fixedRow = await c.env.DB.prepare(
+      `SELECT COALESCE(SUM(amount),0) AS total FROM fixed_expenses
+       WHERE is_active=1 AND frequency='MONTHLY' AND start_date <= ? AND (end_date IS NULL OR end_date >= ?)`
+    ).bind(to, from).first<{ total: number }>().catch(() => ({ total: 0 }))
+    const fixedCommon = num(fixedRow?.total) * months
+
+    const basis = ['revenue', 'headcount', 'labor'].includes(c.req.query('basis') || '') ? (c.req.query('basis') as string) : 'revenue'
+    const nameById = new Map<number, string>(); for (const d of depts || []) nameById.set(d.id, d.name)
+
+    // serves 재배분 + 공통풀 집계
+    const servesIn = new Map<number, number>()
+    let supportCommonLabor = 0
+    const supportDetail: any[] = []
+    for (const d of depts || []) {
+      if (d.dept_type !== 'SUPPORT') continue
+      const l = labMap.get(d.id) || 0
+      if (l <= 0) continue
+      if (d.serves_department_id) {
+        servesIn.set(d.serves_department_id, (servesIn.get(d.serves_department_id) || 0) + l)
+        supportDetail.push({ name: d.name, labor: Math.round(l), target: (nameById.get(d.serves_department_id) || '?') + ' 직접귀속' })
+      } else {
+        supportCommonLabor += l
+        supportDetail.push({ name: d.name, labor: Math.round(l), target: '공통배부' })
+      }
+    }
+    const commonPool = supportCommonLabor + fixedCommon
+
+    const production = (depts || []).filter((d: any) => d.dept_type === 'PRODUCTION')
+    const weightOf = (d: any) => basis === 'headcount' ? (hcMap.get(d.id) || 0) : basis === 'labor' ? (labMap.get(d.id) || 0) : (revMap.get(d.id) || 0)
+    const totalWeight = production.reduce((s: number, d: any) => s + weightOf(d), 0)
+
+    const rows = production.map((d: any) => {
       const revenue = revMap.get(d.id) || 0
       const material = matMap.get(d.id) || 0
       const labor = labMap.get(d.id) || 0
+      const contribution = revenue - material - labor
+      const serves_alloc = servesIn.get(d.id) || 0
+      const common_alloc = totalWeight > 0 ? commonPool * (weightOf(d) / totalWeight) : 0
+      const operating_profit = contribution - serves_alloc - common_alloc
       return {
-        id: d.id, name: d.name, parent_id: d.parent_id, dept_type: d.dept_type,
-        revenue, material, labor,
-        contribution: revenue - material - labor,
+        id: d.id, name: d.name, dept_type: d.dept_type,
+        revenue, material, labor, contribution,
+        serves_alloc: Math.round(serves_alloc), common_alloc: Math.round(common_alloc),
+        operating_profit: Math.round(operating_profit),
+        op_margin: revenue > 0 ? +((operating_profit / revenue) * 100).toFixed(1) : null,
         labor_ratio: revenue > 0 ? +((labor / revenue) * 100).toFixed(1) : null,
-        material_ratio: revenue > 0 ? +((material / revenue) * 100).toFixed(1) : null,
       }
     })
 
     const unclassified = { revenue: revMap.get(null) || 0, material: matMap.get(null) || 0 }
-    const totals = {
-      revenue: rows.reduce((s, r) => s + r.revenue, 0) + unclassified.revenue,
-      material: rows.reduce((s, r) => s + r.material, 0) + unclassified.material,
-      labor: rows.reduce((s, r) => s + r.labor, 0),
-      contribution: 0,
-    }
-    totals.contribution = totals.revenue - totals.material - totals.labor
+    let totalLabor = 0; for (const v of labMap.values()) totalLabor += v
+    const totalRevenue = production.reduce((s: number, d: any) => s + (revMap.get(d.id) || 0), 0) + unclassified.revenue
+    const totalMaterial = production.reduce((s: number, d: any) => s + (matMap.get(d.id) || 0), 0) + unclassified.material
+    const totalOperating = rows.reduce((s: number, r: any) => s + r.operating_profit, 0)
 
-    return c.json({ success: true, data: { period: { from, to }, rows, unclassified, totals } })
+    return c.json({
+      success: true,
+      data: {
+        period: { from, to, months }, basis,
+        rows,
+        pool: { support_common_labor: Math.round(supportCommonLabor), fixed_common: Math.round(fixedCommon), total: Math.round(commonPool) },
+        support_detail: supportDetail,
+        unclassified,
+        totals: {
+          revenue: totalRevenue, material: totalMaterial, labor: totalLabor,
+          contribution: totalRevenue - totalMaterial - totalLabor,
+          operating_profit: totalOperating,
+        },
+      },
+    })
   } catch (error) {
     console.error('departments pnl GET error:', error)
     return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)

@@ -277,10 +277,12 @@ async function loadDeptPnl() {
     if (!fromEl.value) fromEl.value = d.from;
     if (!toEl.value) toEl.value = d.to;
   }
+  var basisEl = document.getElementById('deptPnlBasis');
+  var basis = basisEl ? basisEl.value : 'revenue';
   var body = document.getElementById('deptPnlBody');
-  if (body) body.innerHTML = '<tr><td colspan="7" class="text-center py-6 text-gray-400">조회 중...</td></tr>';
+  if (body) body.innerHTML = '<tr><td colspan="8" class="text-center py-6 text-gray-400">조회 중...</td></tr>';
   try {
-    var res = await axios.get('/api/departments/pnl', { params: { from: fromEl.value, to: toEl.value } });
+    var res = await axios.get('/api/departments/pnl', { params: { from: fromEl.value, to: toEl.value, basis: basis } });
     if (res.data.success) renderDeptPnl(res.data.data);
     else if (typeof showToast === 'function') showToast(res.data.error || '조회 실패', 'error');
   } catch (err) {
@@ -292,46 +294,69 @@ function renderDeptPnl(data) {
   var body = document.getElementById('deptPnlBody');
   var foot = document.getElementById('deptPnlFoot');
   var empty = document.getElementById('deptPnlEmpty');
+  var poolEl = document.getElementById('deptPnlPool');
   if (!body) return;
   if (empty) empty.classList.add('hidden');
   var rows = (data && data.rows) || [];
   var html = rows.map(function (r) {
-    var indent = r.parent_id ? 'padding-left:1.5rem' : '';
-    var prefix = r.parent_id ? '<span class="text-gray-300 mr-1">└</span>' : '';
-    var typeBadge = r.dept_type === 'PRODUCTION'
-      ? '<span class="inline-flex px-1.5 py-0.5 rounded text-xs bg-blue-50 text-blue-700">생산</span>'
-      : '<span class="inline-flex px-1.5 py-0.5 rounded text-xs bg-gray-100 text-gray-500">지원</span>';
-    var contribCls = r.contribution < 0 ? 'text-red-600' : 'text-gray-900';
-    var lr = (r.labor_ratio == null) ? '-' : (r.labor_ratio + '%');
+    var contribCls = r.contribution < 0 ? 'text-red-600' : 'text-gray-700';
+    var opCls = r.operating_profit < 0 ? 'text-red-600' : 'text-gray-900';
+    var alloc = (r.serves_alloc || 0) + (r.common_alloc || 0);
+    var allocTitle = '지원 직접귀속 ' + deptFmtWon(r.serves_alloc) + ' + 공통 안분 ' + deptFmtWon(r.common_alloc);
+    var opm = (r.op_margin == null) ? '-' : (r.op_margin + '%');
     return '<tr class="border-b border-gray-100">'
-      + '<td class="px-3 py-2 font-medium text-gray-900" style="' + indent + '">' + prefix + deptEscAttr(r.name) + '</td>'
-      + '<td class="px-3 py-2 text-center">' + typeBadge + '</td>'
+      + '<td class="px-3 py-2 font-medium text-gray-900">' + deptEscAttr(r.name) + '</td>'
       + '<td class="px-3 py-2 text-right tabular-nums">' + deptFmtWon(r.revenue) + '</td>'
       + '<td class="px-3 py-2 text-right tabular-nums text-gray-500">' + deptFmtWon(r.material) + '</td>'
       + '<td class="px-3 py-2 text-right tabular-nums text-gray-500">' + deptFmtWon(r.labor) + '</td>'
-      + '<td class="px-3 py-2 text-right tabular-nums font-medium ' + contribCls + '">' + deptFmtWon(r.contribution) + '</td>'
-      + '<td class="px-3 py-2 text-right tabular-nums text-gray-500">' + lr + '</td>'
+      + '<td class="px-3 py-2 text-right tabular-nums ' + contribCls + '">' + deptFmtWon(r.contribution) + '</td>'
+      + '<td class="px-3 py-2 text-right tabular-nums text-gray-500" title="' + allocTitle + '">' + deptFmtWon(alloc) + '</td>'
+      + '<td class="px-3 py-2 text-right tabular-nums font-semibold ' + opCls + '">' + deptFmtWon(r.operating_profit) + '</td>'
+      + '<td class="px-3 py-2 text-right tabular-nums text-gray-500">' + opm + '</td>'
       + '</tr>';
   }).join('');
   var u = (data && data.unclassified) || { revenue: 0, material: 0 };
   if (u.revenue || u.material) {
     html += '<tr class="border-b border-gray-100 text-gray-400">'
-      + '<td class="px-3 py-2" colspan="2">(미분류)</td>'
+      + '<td class="px-3 py-2">(미분류)</td>'
       + '<td class="px-3 py-2 text-right tabular-nums">' + deptFmtWon(u.revenue) + '</td>'
       + '<td class="px-3 py-2 text-right tabular-nums">' + deptFmtWon(u.material) + '</td>'
-      + '<td class="px-3 py-2 text-right">-</td><td class="px-3 py-2 text-right">-</td><td class="px-3 py-2 text-right">-</td>'
+      + '<td class="px-3 py-2 text-gray-400" colspan="5">배부 제외(미매핑)</td>'
       + '</tr>';
   }
-  body.innerHTML = html || '<tr><td colspan="7" class="text-center py-6 text-gray-400">데이터 없음</td></tr>';
+  body.innerHTML = html || '<tr><td colspan="8" class="text-center py-6 text-gray-400">데이터 없음</td></tr>';
   if (foot) {
-    var t = (data && data.totals) || { revenue: 0, material: 0, labor: 0, contribution: 0 };
+    var t = (data && data.totals) || {};
     foot.innerHTML = '<tr>'
-      + '<td class="px-3 py-2" colspan="2">합계</td>'
+      + '<td class="px-3 py-2">합계</td>'
       + '<td class="px-3 py-2 text-right tabular-nums">' + deptFmtWon(t.revenue) + '</td>'
       + '<td class="px-3 py-2 text-right tabular-nums">' + deptFmtWon(t.material) + '</td>'
       + '<td class="px-3 py-2 text-right tabular-nums">' + deptFmtWon(t.labor) + '</td>'
-      + '<td class="px-3 py-2 text-right tabular-nums ' + (t.contribution < 0 ? 'text-red-600' : '') + '">' + deptFmtWon(t.contribution) + '</td>'
+      + '<td class="px-3 py-2 text-right tabular-nums">' + deptFmtWon(t.contribution) + '</td>'
+      + '<td class="px-3 py-2"></td>'
+      + '<td class="px-3 py-2 text-right tabular-nums ' + ((t.operating_profit < 0) ? 'text-red-600' : '') + '">' + deptFmtWon(t.operating_profit) + '</td>'
       + '<td class="px-3 py-2"></td>'
       + '</tr>';
+  }
+  // 공통비·지원부문 배부 풀
+  if (poolEl) {
+    var pool = (data && data.pool) || { support_common_labor: 0, fixed_common: 0, total: 0 };
+    var sd = (data && data.support_detail) || [];
+    var basisLabel = ({ revenue: '매출비례', headcount: '인원비례', labor: '인건비비례' })[(data && data.basis) || 'revenue'] || '매출비례';
+    var sdHtml = sd.map(function (s) {
+      return '<div class="flex justify-between py-0.5"><span class="text-gray-600">' + deptEscAttr(s.name)
+        + ' <span class="text-xs text-gray-400">(' + deptEscAttr(s.target) + ')</span></span>'
+        + '<span class="tabular-nums text-gray-700">' + deptFmtWon(s.labor) + '</span></div>';
+    }).join('');
+    poolEl.classList.remove('hidden');
+    poolEl.innerHTML = '<div class="flex items-center justify-between mb-2"><h4 class="text-sm font-bold text-gray-900">공통비·지원부문 배부 풀</h4>'
+      + '<span class="text-xs text-gray-400">배부기준: ' + basisLabel + '</span></div>'
+      + '<div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">'
+      + '<div>' + (sdHtml || '<span class="text-gray-400">지원부문 인건비 없음</span>') + '</div>'
+      + '<div class="space-y-0.5">'
+      + '<div class="flex justify-between"><span class="text-gray-600">공통 안분 인건비(봉제·관리 등)</span><span class="tabular-nums">' + deptFmtWon(pool.support_common_labor) + '</span></div>'
+      + '<div class="flex justify-between"><span class="text-gray-600">고정비(임대·통신·전기 등)</span><span class="tabular-nums">' + deptFmtWon(pool.fixed_common) + '</span></div>'
+      + '<div class="flex justify-between border-t border-gray-200 pt-1 mt-1 font-semibold"><span>공통풀 합계(생산부문 안분)</span><span class="tabular-nums">' + deptFmtWon(pool.total) + '</span></div>'
+      + '</div></div>';
   }
 }
