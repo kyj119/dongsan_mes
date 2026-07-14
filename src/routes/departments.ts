@@ -12,16 +12,17 @@ departmentsRouter.use('/*', authMiddleware)
 // GET / — 부문 트리 + 재직/전체 인원 + serves(지원 생산부문)
 departmentsRouter.get('/', async (c) => {
   try {
+    const ef = entityFilter(c, 'e')  // #521: 인원수도 현재 법인 스코프 (ADMIN 전체모드=0이면 미필터)
     const { results } = await c.env.DB.prepare(`
       SELECT d.id, d.name, d.parent_id, d.dept_type, d.serves_department_id,
              s.name AS serves_name, d.sort_order, d.is_active,
              (SELECT COUNT(*) FROM employees e WHERE e.department_id = d.id
-                AND (e.status = 'ACTIVE' OR e.status IS NULL)) AS emp_active,
-             (SELECT COUNT(*) FROM employees e WHERE e.department_id = d.id) AS emp_total
+                AND (e.status = 'ACTIVE' OR e.status IS NULL)${ef.clause}) AS emp_active,
+             (SELECT COUNT(*) FROM employees e WHERE e.department_id = d.id${ef.clause}) AS emp_total
       FROM departments d
       LEFT JOIN departments s ON s.id = d.serves_department_id
       ORDER BY d.sort_order, d.name
-    `).all()
+    `).bind(...ef.params, ...ef.params).all()
     return c.json({ success: true, data: results })
   } catch (error) {
     console.error('departments GET error:', error)
@@ -33,16 +34,17 @@ departmentsRouter.get('/', async (c) => {
 departmentsRouter.get('/employees', async (c) => {
   try {
     const includeResigned = c.req.query('include_resigned') === '1'
-    const statusClause = includeResigned ? '' : `WHERE (e.status = 'ACTIVE' OR e.status IS NULL)`
+    const ef = entityFilter(c, 'e')  // #521: 부문 배정 목록 = 현재 법인 스코프 (전 법인 노출 차단)
+    const statusClause = includeResigned ? '' : ` AND (e.status = 'ACTIVE' OR e.status IS NULL)`
     const { results } = await c.env.DB.prepare(`
       SELECT e.id, e.name, e.position, e.status, e.department AS legacy,
              e.department_id, d.name AS dept_name, en.short_name AS entity_name
       FROM employees e
       LEFT JOIN departments d ON d.id = e.department_id
       LEFT JOIN entities en ON en.id = e.entity_id
-      ${statusClause}
+      WHERE 1=1${statusClause}${ef.clause}
       ORDER BY d.sort_order, e.name
-    `).all()
+    `).bind(...ef.params).all()
     return c.json({ success: true, data: results })
   } catch (error) {
     console.error('departments employees GET error:', error)
@@ -201,10 +203,11 @@ departmentsRouter.get('/pnl', requireRole('ADMIN', 'MANAGER'), async (c) => {
 
     // ── P5 배부: serves 재배분(지원 하위→생산부문) + 공통풀(잔여 지원인건비 + 고정비) 안분 ──
     // 4) 배부 기준 데이터 — 활성 직원수(인원) + 고정 공통비(임대·통신·전기)
+    const efHc = entityFilter(c)  // #521: 인원비례 배부 기준도 법인 스코프
     const { results: hc } = await c.env.DB.prepare(
       `SELECT department_id AS dept_id, COUNT(*) AS cnt FROM employees
-       WHERE (status='ACTIVE' OR status IS NULL) AND department_id IS NOT NULL GROUP BY department_id`
-    ).all<any>()
+       WHERE (status='ACTIVE' OR status IS NULL) AND department_id IS NOT NULL${efHc.clause} GROUP BY department_id`
+    ).bind(...efHc.params).all<any>()
     const hcMap = new Map<any, number>(); for (const r of hc || []) hcMap.set(r.dept_id, num(r.cnt))
 
     const fromDate = new Date(from), toDate = new Date(to)
