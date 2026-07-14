@@ -1245,7 +1245,7 @@
       var errs = (r.data && r.data.data && r.data.data.errors) || [];
       if (errs.length) {
         console.warn('[bank] 동기화 경고:', errs);
-        showToast('⚠ 미수집 경고 ' + errs.length + '건: ' + errs.slice(0, 3).join(' / '), 'warning');
+        showToast('⚠ 미수집 경고 ' + errs.length + '건: ' + errs.slice(0, 3).map(escHtml).join(' / '), 'warning');
       }
       loadTransactions();
       loadStats();
