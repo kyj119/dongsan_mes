@@ -4,6 +4,7 @@
 import { Hono } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
+import { entityFilter } from '../utils/entityFilter'
 
 const departmentsRouter = new Hono<HonoEnv>()
 departmentsRouter.use('/*', authMiddleware)
@@ -133,6 +134,98 @@ departmentsRouter.put('/:id', requireRole('ADMIN'), async (c) => {
     return c.json({ success: true, message: '부문이 수정되었습니다.' })
   } catch (error) {
     console.error('departments PUT error:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
+  }
+})
+
+// GET /pnl?from=&to= — 부문별 손익 집계 (매출·자재비·인건비 → 공헌이익). 관리회계.
+//  매출=order_items 라인금액(비취소 주문·주문일 기준, category_name→부문)
+//  자재비=소진이력 deducted_base × 자재 이동평균단가(cards.category_name→부문)
+//  인건비=payroll 급여총액+회사부담 4대보험(employees.department_id, pay_period 월 기준)
+departmentsRouter.get('/pnl', requireRole('ADMIN', 'MANAGER'), async (c) => {
+  try {
+    const { from, to } = c.req.query()
+    if (!from || !to) return c.json({ success: false, error: 'from, to 파라미터 필요' }, 400)
+    const fromMonth = from.slice(0, 7)
+    const toMonth = to.slice(0, 7)
+
+    const { results: depts } = await c.env.DB.prepare(
+      `SELECT id, name, parent_id, dept_type, serves_department_id, sort_order FROM departments ORDER BY sort_order, name`
+    ).all<any>()
+
+    // 1) 매출 — order_items 라인금액, category_name → 부문
+    const efO = entityFilter(c, 'o')
+    const { results: rev } = await c.env.DB.prepare(`
+      SELECT dcm.department_id AS dept_id,
+             COALESCE(SUM(COALESCE(oi.amount, oi.quantity * oi.unit_price)), 0) AS revenue
+      FROM order_items oi
+      JOIN orders o ON o.id = oi.order_id
+      LEFT JOIN department_category_map dcm ON dcm.category = oi.category_name
+      WHERE o.status != 'CANCELLED'
+        AND date(COALESCE(o.order_date, o.created_at)) BETWEEN ? AND ?${efO.clause}
+      GROUP BY dcm.department_id
+    `).bind(from, to, ...efO.params).all<any>()
+
+    // 2) 자재비 — 소진이력 × 자재 이동평균단가, cards.category_name → 부문
+    const efI = entityFilter(c, 'iad')
+    const { results: mat } = await c.env.DB.prepare(`
+      SELECT dcm.department_id AS dept_id,
+             COALESCE(SUM(iad.deducted_base * COALESCE(it.avg_unit_cost, 0)), 0) AS material
+      FROM inventory_auto_deductions iad
+      LEFT JOIN cards ca ON ca.id = iad.card_id
+      LEFT JOIN department_category_map dcm ON dcm.category = ca.category_name
+      LEFT JOIN items it ON it.id = iad.material_item_id
+      WHERE date(iad.created_at) BETWEEN ? AND ?${efI.clause}
+      GROUP BY dcm.department_id
+    `).bind(from, to, ...efI.params).all<any>()
+
+    // 3) 인건비 — payroll 급여총액 + 회사부담 4대보험, employees.department_id
+    const efP = entityFilter(c, 'p')
+    const { results: lab } = await c.env.DB.prepare(`
+      SELECT e.department_id AS dept_id,
+             COALESCE(SUM(
+               p.total_salary
+               + COALESCE(p.employer_national_pension,0) + COALESCE(p.employer_health_insurance,0)
+               + COALESCE(p.employer_long_term_care,0) + COALESCE(p.employer_employment_insurance,0)
+               + COALESCE(p.employer_industrial_accident,0)
+             ), 0) AS labor
+      FROM payroll p JOIN employees e ON e.id = p.employee_id
+      WHERE p.pay_period BETWEEN ? AND ?${efP.clause}
+      GROUP BY e.department_id
+    `).bind(fromMonth, toMonth, ...efP.params).all<any>()
+
+    const revMap = new Map<any, number>()
+    for (const r of rev || []) revMap.set(r.dept_id, Number(r.revenue) || 0)
+    const matMap = new Map<any, number>()
+    for (const r of mat || []) matMap.set(r.dept_id, Number(r.material) || 0)
+    const labMap = new Map<any, number>()
+    for (const r of lab || []) labMap.set(r.dept_id, Number(r.labor) || 0)
+
+    const rows = (depts || []).map((d: any) => {
+      const revenue = revMap.get(d.id) || 0
+      const material = matMap.get(d.id) || 0
+      const labor = labMap.get(d.id) || 0
+      return {
+        id: d.id, name: d.name, parent_id: d.parent_id, dept_type: d.dept_type,
+        revenue, material, labor,
+        contribution: revenue - material - labor,
+        labor_ratio: revenue > 0 ? +((labor / revenue) * 100).toFixed(1) : null,
+        material_ratio: revenue > 0 ? +((material / revenue) * 100).toFixed(1) : null,
+      }
+    })
+
+    const unclassified = { revenue: revMap.get(null) || 0, material: matMap.get(null) || 0 }
+    const totals = {
+      revenue: rows.reduce((s, r) => s + r.revenue, 0) + unclassified.revenue,
+      material: rows.reduce((s, r) => s + r.material, 0) + unclassified.material,
+      labor: rows.reduce((s, r) => s + r.labor, 0),
+      contribution: 0,
+    }
+    totals.contribution = totals.revenue - totals.material - totals.labor
+
+    return c.json({ success: true, data: { period: { from, to }, rows, unclassified, totals } })
+  } catch (error) {
+    console.error('departments pnl GET error:', error)
     return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
   }
 })

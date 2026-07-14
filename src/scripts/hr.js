@@ -204,29 +204,29 @@ window.hrCloseEmployeeModal = function() {
   modal.classList.remove('flex');
 };
 
-// ── 탭 전환 (직원 관리 / 부문 관리) ──
+// ── 탭 전환 (직원 관리 / 부문 관리 / 부문 손익) ──
 var hrDeptTabLoaded = false;
+var hrPnlTabLoaded = false;
 window.hrSwitchTab = function(tab) {
-  var emp = document.getElementById('hrTabEmployees');
-  var dep = document.getElementById('hrTabDepartments');
-  var beEmp = document.getElementById('hrTabBtnEmployees');
-  var beDep = document.getElementById('hrTabBtnDepartments');
-  if (!emp || !dep) return;
+  var tabs = {
+    employees:   { panel: 'hrTabEmployees',   btn: 'hrTabBtnEmployees' },
+    departments: { panel: 'hrTabDepartments', btn: 'hrTabBtnDepartments' },
+    pnl:         { panel: 'hrTabPnl',          btn: 'hrTabBtnPnl' }
+  };
   var on = 'px-4 py-2 text-sm font-medium border-b-2 border-blue-600 text-blue-600';
   var off = 'px-4 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700';
-  if (tab === 'departments') {
-    emp.classList.add('hidden'); dep.classList.remove('hidden');
-    if (beDep) beDep.className = on;
-    if (beEmp) beEmp.className = off;
-    // 부문 탭 최초 열람 시 lazy 로드 (departments.js concat 전역함수)
-    if (!hrDeptTabLoaded && typeof loadDepartmentsPage === 'function') {
-      hrDeptTabLoaded = true;
-      loadDepartmentsPage();
-    }
-  } else {
-    dep.classList.add('hidden'); emp.classList.remove('hidden');
-    if (beEmp) beEmp.className = on;
-    if (beDep) beDep.className = off;
+  Object.keys(tabs).forEach(function(k) {
+    var p = document.getElementById(tabs[k].panel);
+    var b = document.getElementById(tabs[k].btn);
+    if (p) p.classList.toggle('hidden', k !== tab);
+    if (b) b.className = (k === tab) ? on : off;
+  });
+  // 최초 열람 시 lazy 로드 (departments.js concat 전역함수)
+  if (tab === 'departments' && !hrDeptTabLoaded && typeof loadDepartmentsPage === 'function') {
+    hrDeptTabLoaded = true; loadDepartmentsPage();
+  }
+  if (tab === 'pnl' && !hrPnlTabLoaded && typeof loadDeptPnl === 'function') {
+    hrPnlTabLoaded = true; loadDeptPnl();
   }
 };
 

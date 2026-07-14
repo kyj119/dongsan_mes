@@ -255,3 +255,83 @@ function deptToggleResigned(cb) {
 
 // 초기 로드는 /hr '부문 관리' 탭 최초 열람 시 hr.js(hrSwitchTab)가 lazy 호출.
 // (이 스크립트는 /hr pageScript에 concat 되어 loadDepartmentsPage 등이 전역 함수로 노출됨)
+
+// ── 부문 손익 (P2: 매출·자재비·인건비 → 공헌이익) ──
+function deptFmtWon(n) { return (Number(n) || 0).toLocaleString('ko-KR'); }
+
+function deptDefaultPnlRange() {
+  // 당월 1일 ~ 오늘 (KST)
+  var now = new Date(Date.now() + 9 * 3600 * 1000);
+  var pad = function (x) { return (x < 10 ? '0' : '') + x; };
+  var first = now.getUTCFullYear() + '-' + pad(now.getUTCMonth() + 1) + '-01';
+  var today = now.toISOString().slice(0, 10);
+  return { from: first, to: today };
+}
+
+async function loadDeptPnl() {
+  var fromEl = document.getElementById('deptPnlFrom');
+  var toEl = document.getElementById('deptPnlTo');
+  if (!fromEl || !toEl) { console.warn('[departments] pnl inputs not found'); return; }
+  if (!fromEl.value || !toEl.value) {
+    var d = deptDefaultPnlRange();
+    if (!fromEl.value) fromEl.value = d.from;
+    if (!toEl.value) toEl.value = d.to;
+  }
+  var body = document.getElementById('deptPnlBody');
+  if (body) body.innerHTML = '<tr><td colspan="7" class="text-center py-6 text-gray-400">조회 중...</td></tr>';
+  try {
+    var res = await axios.get('/api/departments/pnl', { params: { from: fromEl.value, to: toEl.value } });
+    if (res.data.success) renderDeptPnl(res.data.data);
+    else if (typeof showToast === 'function') showToast(res.data.error || '조회 실패', 'error');
+  } catch (err) {
+    if (typeof showToast === 'function') showToast('손익 조회 실패: ' + ((err.response && err.response.data && err.response.data.error) || err.message), 'error');
+  }
+}
+
+function renderDeptPnl(data) {
+  var body = document.getElementById('deptPnlBody');
+  var foot = document.getElementById('deptPnlFoot');
+  var empty = document.getElementById('deptPnlEmpty');
+  if (!body) return;
+  if (empty) empty.classList.add('hidden');
+  var rows = (data && data.rows) || [];
+  var html = rows.map(function (r) {
+    var indent = r.parent_id ? 'padding-left:1.5rem' : '';
+    var prefix = r.parent_id ? '<span class="text-gray-300 mr-1">└</span>' : '';
+    var typeBadge = r.dept_type === 'PRODUCTION'
+      ? '<span class="inline-flex px-1.5 py-0.5 rounded text-xs bg-blue-50 text-blue-700">생산</span>'
+      : '<span class="inline-flex px-1.5 py-0.5 rounded text-xs bg-gray-100 text-gray-500">지원</span>';
+    var contribCls = r.contribution < 0 ? 'text-red-600' : 'text-gray-900';
+    var lr = (r.labor_ratio == null) ? '-' : (r.labor_ratio + '%');
+    return '<tr class="border-b border-gray-100">'
+      + '<td class="px-3 py-2 font-medium text-gray-900" style="' + indent + '">' + prefix + deptEscAttr(r.name) + '</td>'
+      + '<td class="px-3 py-2 text-center">' + typeBadge + '</td>'
+      + '<td class="px-3 py-2 text-right tabular-nums">' + deptFmtWon(r.revenue) + '</td>'
+      + '<td class="px-3 py-2 text-right tabular-nums text-gray-500">' + deptFmtWon(r.material) + '</td>'
+      + '<td class="px-3 py-2 text-right tabular-nums text-gray-500">' + deptFmtWon(r.labor) + '</td>'
+      + '<td class="px-3 py-2 text-right tabular-nums font-medium ' + contribCls + '">' + deptFmtWon(r.contribution) + '</td>'
+      + '<td class="px-3 py-2 text-right tabular-nums text-gray-500">' + lr + '</td>'
+      + '</tr>';
+  }).join('');
+  var u = (data && data.unclassified) || { revenue: 0, material: 0 };
+  if (u.revenue || u.material) {
+    html += '<tr class="border-b border-gray-100 text-gray-400">'
+      + '<td class="px-3 py-2" colspan="2">(미분류)</td>'
+      + '<td class="px-3 py-2 text-right tabular-nums">' + deptFmtWon(u.revenue) + '</td>'
+      + '<td class="px-3 py-2 text-right tabular-nums">' + deptFmtWon(u.material) + '</td>'
+      + '<td class="px-3 py-2 text-right">-</td><td class="px-3 py-2 text-right">-</td><td class="px-3 py-2 text-right">-</td>'
+      + '</tr>';
+  }
+  body.innerHTML = html || '<tr><td colspan="7" class="text-center py-6 text-gray-400">데이터 없음</td></tr>';
+  if (foot) {
+    var t = (data && data.totals) || { revenue: 0, material: 0, labor: 0, contribution: 0 };
+    foot.innerHTML = '<tr>'
+      + '<td class="px-3 py-2" colspan="2">합계</td>'
+      + '<td class="px-3 py-2 text-right tabular-nums">' + deptFmtWon(t.revenue) + '</td>'
+      + '<td class="px-3 py-2 text-right tabular-nums">' + deptFmtWon(t.material) + '</td>'
+      + '<td class="px-3 py-2 text-right tabular-nums">' + deptFmtWon(t.labor) + '</td>'
+      + '<td class="px-3 py-2 text-right tabular-nums ' + (t.contribution < 0 ? 'text-red-600' : '') + '">' + deptFmtWon(t.contribution) + '</td>'
+      + '<td class="px-3 py-2"></td>'
+      + '</tr>';
+  }
+}

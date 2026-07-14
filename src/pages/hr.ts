@@ -15,6 +15,7 @@ export function hrPage(c: Context<HonoEnv>) {
         <div class="flex gap-1 border-b border-gray-200">
           <button id="hrTabBtnEmployees" onclick="hrSwitchTab('employees')" class="px-4 py-2 text-sm font-medium border-b-2 border-blue-600 text-blue-600">직원 관리</button>
           <button id="hrTabBtnDepartments" onclick="hrSwitchTab('departments')" class="px-4 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">부문 관리</button>
+          <button id="hrTabBtnPnl" onclick="hrSwitchTab('pnl')" class="px-4 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">부문 손익</button>
         </div>
 
         <div id="hrTabEmployees" class="space-y-6">
@@ -160,6 +161,44 @@ export function hrPage(c: Context<HonoEnv>) {
             <div id="deptCatBody" class="p-5 flex flex-wrap gap-2"></div>
             <div id="deptCatEmpty" class="hidden text-center py-8 text-sm text-gray-400">매핑이 없습니다.</div>
           </div>
+        </div><!-- /hrTabDepartments -->
+
+        <!-- 부문 손익 탭 -->
+        <div id="hrTabPnl" class="hidden space-y-4">
+          <div class="flex items-center justify-between flex-wrap gap-3">
+            <div>
+              <h3 class="text-base font-bold text-gray-900">부문 손익 (관리회계)</h3>
+              <p class="text-sm text-gray-500 mt-1">매출·자재비·인건비 → 공헌이익. 매출=주문라인 기준 · 인건비=급여+회사부담 4대보험 · 자재비=소진이력×이동평균단가</p>
+            </div>
+            <div class="flex items-center gap-2">
+              <input type="date" id="deptPnlFrom" class="border border-gray-300 rounded-lg px-3 py-2 text-sm">
+              <span class="text-gray-400">~</span>
+              <input type="date" id="deptPnlTo" class="border border-gray-300 rounded-lg px-3 py-2 text-sm">
+              <button onclick="loadDeptPnl()" class="ds-btn ds-btn-primary text-sm"><i class="fas fa-search mr-1"></i>조회</button>
+            </div>
+          </div>
+
+          <div class="ds-card overflow-hidden">
+            <div class="overflow-x-auto">
+              <table class="w-full text-sm ds-table ds-table-striped">
+                <thead><tr>
+                  <th class="text-left" style="width:22%">부문</th>
+                  <th class="text-center" style="width:8%">유형</th>
+                  <th class="text-right" style="width:15%">매출</th>
+                  <th class="text-right" style="width:15%">자재비</th>
+                  <th class="text-right" style="width:15%">인건비</th>
+                  <th class="text-right" style="width:15%">공헌이익</th>
+                  <th class="text-right" style="width:10%">인건비율</th>
+                </tr></thead>
+                <tbody id="deptPnlBody"></tbody>
+                <tfoot id="deptPnlFoot" class="font-semibold bg-gray-50"></tfoot>
+              </table>
+            </div>
+            <div id="deptPnlEmpty" class="hidden text-center py-10 text-sm text-gray-400">데이터를 조회하세요.</div>
+          </div>
+          <p class="text-xs text-gray-400">
+            <i class="fas fa-info-circle mr-1"></i>지원부문(디자인·봉제·관리)은 매출이 없어 공헌이익이 음수(−)로 표시됩니다(원가센터). 임대료·통신비 등 공통비 배부와 지원부문 원가 재배분은 다음 단계(P5)에서 반영됩니다. 자재비=0은 소진 자동차감 미가동 구간.
+          </p>
         </div>
       </div>
 
