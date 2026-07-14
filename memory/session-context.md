@@ -1,46 +1,40 @@
-# 세션 컨텍스트 (2026-07-13 #2) — 바로빌 신한은행 계좌 등록 점검·매핑 수정
+# 세션 컨텍스트 (2026-07-14) — 부문별 손익 관리회계 (P1~P5) 신규 구축·prod 배포
 
-> 세션별 덮어쓰기 파일. 직전(07-13 #1 IA 잡 crash·temp 하드닝) 내용은 auto-memory [[project-ia-editor]]·PROJECT_STATUS 참조.
-> **이 세션 정본 = auto-memory [[project-barobill-account-card-registration]] (2026-07-13 엔트리) + 이 파일.**
+> 세션별 덮어쓰기 파일. **이 세션 정본 = auto-memory [[design-departmental-pnl]] + 이 파일.**
 
-## 이 세션에서 한 것
-"신한은행 바로빌 등록 안 됨" 점검 → **원인=은행코드 매핑 누락**, 1줄 수정·prod 배포. 이후 −50217/−50218 후속 점검(코드 무결 확인).
+## 요청·결론
+- **요청**: "품목별 어느 부서 입고/재고처리 → 부서별 영업이익·인건비 비율 등 세무회계 계산"
+- **결론**: 부문(cost center)별 손익 = **관리회계**(내부 "어느 팀이 돈 버는지"). 세무신고=법인단위 그대로(부서분할 무관).
 
-### 수정·배포 (main `c7b76a05`, 마이그 없음)
-- **`src/constants/barobillCodes.ts:32`** `MES_TO_BAROBILL_BANK`에 `'0088': 'SHINHAN'` 1줄 추가.
-- **원인**: 프론트 드롭다운(`pages/bank.ts:378`)엔 신한(0088)이 선택지로 있으나 백엔드 매핑엔 없어 `toBarobillBank('0088')=null` → 라우트(`routes/bank.ts:187-189`)가 "바로빌 미지원" 400 반환. 카드사 맵엔 `'신한':'SHINHAN'`이 이미 있었음(은행 맵만 초기 커밋 `704f9070`부터 누락 — 의도적 제외 아님).
-- **배포**: verify green → 커밋 → `git push origin main`(push-first) → `npm run deploy:prod`(`--branch main`, dep `c6b3d396`) → apex `/api/bank/stats` 401 확인. ⚠️배포 시점 워킹트리 clean 확인함(타 세션 WIP 없음).
+## 확정 설계 (사용자 합의)
+- **부서 정의 = 계층 부문 마스터 + 공정(items.category) 귀속엔진**. 순수 공정6종만 쓰면 관리부서·봉제·유통(card_group=null) 구멍 → 얇은 부문 마스터로 포섭. 리포팅 묶음 변경=매핑만 수정.
+- **부문 트리**(prod 시드): 출력/전사/간판/유통(PRODUCTION) + 디자인(부모)>디자인-출력·디자인-전사·디자인-간판·봉제/후가공 + 관리/본사(SUPPORT). 사용자: "디자인도 전사·출력·간판 3부서로 나뉜다" → `serves_department_id`로 디자인 하위팀이 대응 생산부문 지원(P5 직접귀속). 봉제=디자인 산하·공통.
+- **매출귀속=품목라인**(order_items.category_name→부문) 자동. **공통비=공헌이익 먼저→P5 배부**.
+- **관리 UI**: 별도 /departments 페이지 폐기(사용자 요청) → **/hr에 3탭 통합**[직원 관리·부문 관리·부문 손익]. 레거시 `employees.department`(enum) 유지(하위호환), 신규 `department_id`(FK) 병행.
 
-### 실등록 후속 점검 (사용자 실측 −50217/−50218)
-- 신한 실등록 → **−50217**(빠른조회 아이디 잘못). 국민 실등록 → **−50217**, ID 입력 시 **−50218**("입력하지 않아야"). 사용자 "어느 장단" + "코드 자체 문제" 제기.
-- **4계층 전수 점검 결과 = 구조적 코드 버그 없음**(증거 확보):
-  1. 은행코드 매핑: KB=`0004→KB`·신한=`0088→SHINHAN` 정상.
-  2. 프론트 body 키 ↔ 라우트 destructuring: `web_id/web_pwd/account_password/identity_num` **양측 동일**(키 불일치 없음 → 빈값 오전송 아님). `scripts/bank.js:1113-1126` ↔ `routes/bank.ts:165-169`.
-  3. 라우트 → service 파라미터 전달 정상.
-  4. **SOAP 봉투 파라미터 순서/구성 = WSDL(`ws.baroservice.com/BANKACCOUNT.asmx?WSDL`) 실측과 1:1 일치**. RegistBankAccountEx=CERTKEY,CorpNum,CollectCycle,Bank,BankAccountType,BankAccountNum,BankAccountPwd,WebId,WebPwd,IdentityNum,ForeignCurrencyCodes,Alias,(Usage). `ID`(담당자)는 RegistBankAccountEx엔 **없음**(누락 아님, RefreshBankAccount만 ID 필요).
-  - 실제 코드가 만드는 SOAP 봉투를 재현(scratchpad/envgen.mjs) → 빈 필드 `<WebId></WebId>` 정상 직렬화 확인.
-- **결론**: −50217/−50218은 바로빌이 값을 받아 **은행에 실조회한 결과**(파싱도 정상). 은행별 인증방식 차이 문제이지 송신 코드 결함 아님.
+## 배포 결과 (main `73b86ee0`, 마이그 0459~0462 remote **execute --file 직접**[db:migrate:prod 금지=추적 0325 불일치])
+- **P1**(0459/0460): `departments`(계층 parent_id·dept_type·serves_department_id·legacy_codes) + `department_category_map` + `employees.department_id` FK+백필(**미매핑 0** prod 실측).
+- **P1.5**(0461): `routes/departments.ts` CRUD + `/hr` 부문 관리 탭(`pages/hr.ts`+`scripts/departments.js` concat, dept- 접두 전역격리).
+- **P2**(0462): `GET /api/departments/pnl?from&to&basis` 매출·자재비·인건비 집계 + `/hr` 부문 손익 탭. 0462=cards.category_name(card_group 라벨)→부문 보강.
+- **P5**(마이그 없음=순수 리포트): serves 재배분 + 공통풀(잔여 지원인건비+고정비) 안분(basis=revenue/headcount/labor) → 부문 영업이익. **원장 불변·계산단계만**.
+- **#521**(봇 발견): `/employees`·트리 인원수·pnl 인원기준에 `entityFilter` 추가(전 법인 노출 차단).
 
-## 은행별 인증방식 (핵심 지식)
-| 방식 | 채움 | 비움 | 해당 |
-|------|------|------|------|
-| 계좌비밀번호형 | 계좌비밀번호 + 예금주식별번호(사업자번호) | 빠른조회 ID/PW | **국민**(−50218 증거) |
-| 빠른조회(간편조회)형 | 빠른조회 전용 ID/PW | 계좌비밀번호 | **신한**(−50217) |
-- 전제: 각 은행 인터넷뱅킹에서 **빠른조회/간편조회 서비스에 해당 계좌 사전등록** 필요. 미등록이면 어떤 값도 실패(−50217/−50226).
-- 국민 올바른 입력 = 빠른조회 ID/PW **비움** + 계좌비밀번호 + 예금주식별번호=사업자번호.
+## 프로덕션 실측(2026-07)
+- 인건비: 간판 30,255,310 · 관리/본사 10,563,940 (그 달 급여 2부문만 입력). 고정비 15,800,550. 공통풀 26,364,490.
+- 자재비=0(iad 0행). 매출=주문라인 기준(billed_orders=0).
 
-## 판단기준 / 주의사항
-- 코드 무결은 정적으로 확정. **100% 종결하려면 프로덕션 실요청/실응답 물증 필요**(현재 미확보). 제안=안전 진단 로그(비번·ID 값 미로그, **은행코드 + 필드존재 boolean + 원시 응답코드만**) 추가·배포 → 사용자 KB 1회 재시도 → Cloudflare observability 로그 판독. **사용자 승인 대기 중**(미착수).
-- 다음에 이 로그 넣으면: `routes/bank.ts` registBankAccount 호출 전후 `console.log('[barobill-regist] bank=%s type=%s hasPwd=%s hasWebId=%s hasWebPwd=%s identityLen=%d → raw=%d', ...)`. **값(비번/ID) 절대 로그 금지**(인증정보 비저장 원칙).
+## 알려진 한계·후속 (선택, 미착수)
+1. **자재비 0** — `inventory_auto_deductions` prod 미가동([[project-rip-send-pipeline]]). 붙으면 자동 반영(매핑 0462 준비됨).
+2. **매출=주문라인**(비취소·주문일). 청구 기준 원하면 `order_billing_groups` 전환.
+3. **PATCH /employees/:id** entity 가드 미추가(읽기만 #521 차단). 필요시 추가.
+4. **fixed_expenses** entity 미필터(financialReports 관행).
+5. serves 재배분은 디자인 하위팀 급여 입력돼야 동작(2026-07 미발생).
 
-## 다음 세션 TODO
-- (사용자 결정 대기) 진단 로그 추가·배포 여부 — "코드 문제 아님"을 물증으로 종결하거나, 예상 밖 값이면 잡아냄.
-- (운영) 신한=빠른조회 서비스 신청+전용 ID / 국민=계좌 빠른조회 사전등록 후 정확 입력으로 재시도.
-- (선택 개선, 사용자 보류) 은행 선택 시 계좌비밀번호형/빠른조회형 자동 안내 + 안 쓰는 칸 비활성화 — 바로빌 은행별 필수항목표 확보 시.
+## 명령·검증
+- 프로덕션 https://webapp-9i0.pages.dev/hr → 3탭. 로컬 admin/password.
+- `npm run verify`(typecheck+build) / `npm run deploy:prod`(--branch main) / 신규 마이그=`wrangler d1 execute webapp-production --remote --file=./migrations/XXXX.sql`.
+- ⚠️로컬 D1 마이그 추적=0325 불일치(데이터는 최신) → `db:migrate:local` 금지, 신규만 execute --file.
+- ⚠️브랜치 `feat/dept-pnl`에 타 세션 bank 커밋 흡수(공유 체크아웃)·origin/main과 수시 병합하며 FF push `feat/dept-pnl:main`.
 
-## 배포 검증 명령 (PowerShell)
-```powershell
-npm run verify                    # tsc + vite (green)
-npm run deploy:prod               # build + wrangler --branch main (적용 완료, dep c6b3d396)
-# prod: https://webapp-9i0.pages.dev  (apex /api/bank/stats 401 = 정상)
-```
+## 정본
+- auto-memory [[design-departmental-pnl]] / spec `docs/superpowers/specs/2026-07-13-departmental-pnl.md`
