@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 5 -->
-<!-- last_run_at: 2026-07-14T09:17:00+09:00 -->
+<!-- last_run_area: 6 -->
+<!-- last_run_at: 2026-07-14T13:40:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,7 +8,7 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | **5** — #473(reopened, 거래처 포털계정 entity IDOR, owner 보류 지시 유지 — 재보고/재수정 시도 안 함), #504(S, 회사인쇄정보 로드실패 무음 — CSV가드 부분은 자동수정으로 해소, 로드실패 toast 항목만 open 잔존), #509(S~M, 급여 중도입퇴사 일할계산 근거 화면 미표시), #519(S, 계좌이체 전체확정 버튼 double-submit 미방지), #520(신규, S, IA 크래시-하드닝 재큐 완료-콜백 세대가드 부재 → zombie write lost-update). 실측(`search_issues(state:open,label:auto-improve)`=5) 정합. |
+| 🆕 new | **6** — #473(reopened, 거래처 포털계정 entity IDOR, owner 보류 지시 유지 — 재보고/재수정 시도 안 함), #504(S, 회사인쇄정보 로드실패 무음 — CSV가드 부분은 자동수정으로 해소, 로드실패 toast 항목만 open 잔존), #509(S~M, 급여 중도입퇴사 일할계산 근거 화면 미표시), #519(S, 계좌이체 전체확정 버튼 double-submit 미방지), #520(S, IA 크래시-하드닝 재큐 완료-콜백 세대가드 부재 → zombie write lost-update), #521(신규, S, security, 부문관리 신규기능 — employees GET/PATCH entity 격리·페이지권한 전무 → cross-tenant 직원 PII 열람+조작). 실측(`search_issues(state:open,label:auto-improve)`=6) 정합. |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 |
 | ✔️ done | **445** ⚠️절대값 재동기화(SKILL Area6 원칙) — GitHub 실측 `search_issues(label:auto-improve is:closed reason:completed)`=445, 변동 없음(owner close 0). |
@@ -16,6 +16,15 @@
 
 > 📦 **과거 사이클 로그**는 `IMPROVEMENT_BACKLOG_ARCHIVE.md`/git 히스토리로 이관됨 (2026-06-10 1차 분리, 2026-06-25 2차 트림 343KB→192KB, 2026-06-25T10:00 3차 트림, 2026-07-03T06:00 4차 트림 288KB→86KB, **2026-07-07T13:00 5차 트림 — 07-01~07-05 사이클 로그를 git 히스토리로 이관: 238KB→78KB, 256KB Read 한도 재확보**). 신규 로그는 계속 이 파일 상단에 추가. 본 파일은 직전 2일치(07-06~) 사이클 로그 + 영구 참조 섹션(Approved/New/Auto-fixed/Done/Rejected/FP 카탈로그)만 유지. 이관분은 `git log -p -- IMPROVEMENT_BACKLOG.md`로 복원 가능.
 
+> **Area 6 자기 진화 (2026-07-14T13:40):**
+> - **방법**: `git fetch origin main`(강제갱신 감지, HEAD `8c3fd23` = origin/main과 일치, 워킹트리 clean). Area 6 **41회차** — 직전 Area5(`1b51264`, 07-14T09:17, 36회차) 이후 `src/routes`/`migrations`/`src/scripts` churn = **8커밋**: 부문(부서) 손익 관리회계 신규 대형기능(P1~P2, `69dc6e1`~`8c3fd23`, `departments.ts`+233·`departments.js`+337·`hr.ts`/`hr.js`+218·마이그 4건)·바로빌 계좌등록 은행별 인증안내(`04567f3`) — 어느 영역도 아직 감사하지 않은 완전 신선 churn이라 오케스트레이터가 직접 표적 감사(entity 격리 bridge 관점).
+> - **🆕 net-new 1건(issue-only, HIGH) — #521**: `src/routes/departments.ts`(신규 부문관리 라우터)의 `GET /employees`(role 게이트조차 없음, `authMiddleware`만)와 `PATCH /employees/:id`(`requireRole('ADMIN','MANAGER')`만)가 **entity 격리를 전혀 적용하지 않음** — sibling 라우터 `hr.ts`는 같은 `employees` 테이블에 `entityFilter(c,'e')`를 목록·단건 양쪽에 철저 적용(형제 비교로 격리 의도 명백). 도달성 LIVE(`departments.js:28/235`, `/departments` 화면 로드 시 항상 호출 + UI가 `entity_name` 컬럼까지 표시). 영향: ① 임의 인증 사용자(role 무관) → 전 법인 직원 성명/직책/재직상태/소속법인 열람 ② entity-scoped MANAGER → 타법인 직원의 부문 재배정(인건비 귀속 리포트 오염까지 이어짐, `GET /pnl`이 이 department_id로 집계). 부수: `0461_departments_page_permission.sql`이 `permission_pages`엔 등록했으나 라우터 코드에 `requirePagePermission('/departments')`가 실제 연결 안 됨(DB 등록≠코드 시행, CLAUDE.md "신규 페이지→권한 등록" 원칙 절반 이행). GitHub #521 생성 완료.
+> - **🟢 XSS bridge = clean**: `departments.js`(신규 337줄)의 모든 innerHTML 보간이 로컬 `deptEscAttr()`로 일관 이스케이프(부문명/직원명/직책/entity명/legacy 텍스트 전부), option value는 숫자 id — net-new 0.
+> - **🟢 마이그 번호 중복 standing scan = net-new 0**: `0459~0462` 전부 유니크, 기존 기지 5건(0327/0412/0416/0420/0453)과 무관.
+> - **🟢 done-sync 절대값 재확인**: `search_issues(is:closed reason:completed)`=445·`not_planned`=1·`duplicate`=2(rejected 합계 3) — 직전 Area5 기재값과 완전 정합, owner close 0건. `search_issues(state:open,label:auto-improve)` 실측 5건(#473,504,509,519,520) 확인 후 본 Area6 신규 1건(#521) 추가 → **new 6**.
+> - **🧬 SKILL 강화 — 신규 codify**: "전역 dimension 라우터가 곁다리로 다루는 entity-scoped sibling 테이블까지 전염 무격리" 패턴을 Area 5 SKILL에 추가(FP클래스⑤의 반대 방향 실버그 — 주 테이블은 진짜 전역이라 격리 불요이나, 그 라우터가 JOIN/부수 처리하는 다른 entity-scoped 테이블은 별도로 격리 필요한데 "이 도메인은 전역"이라는 설계판단이 잘못 전염되는 함정). 강화 신호(role 게이트조차 없는 list)와 페이지권한 DB등록↔코드연결 괴리도 함께 명문화.
+> - 신규 이슈 1건(#521 S, security, issue-only — IDOR=owner 워크플로+egress 차단), 자동수정 0건(entity 격리 추가는 접근제어 정책 변경이라 이슈로만), done-sync 변동 없음(new 5→6·done 445·rejected 3 정합 재확인), **신선 각도 — Area5 체크포인트 직후 착륙해 어느 영역도 보지 않은 대형 신규기능(부문 손익)을 Area6가 bridge 관점(entity 격리)으로 최초 감사. "부문 자체는 전역"이라는 명시적 설계 결정이 그 라우터가 곁다리로 다루는 entity-scoped 테이블(employees)의 격리 요구까지 지워버린 사례 — 첫 코드리뷰 통과 시점(설계문서 존재)에도 인접 테이블 격리는 별도 체크리스트 항목이어야 함을 실증.**
+>
 > **Area 5 보안 (2026-07-14T09:17):**
 > - **방법**: `git fetch origin main`(HEAD `1b51264` 0/0 동기, 워킹트리 clean) 후 `npm ci`(node_modules 0→81). Area 5 **36회차** — 직전 Area5(`ae90f05`, 07-12T21:14, 35회차) 이후 `src/routes`/`src/scripts` churn = **20커밋**: 바로빌 계좌 자동수집 등록 하드닝 5+커밋(`04c95cd`~`1c131f2`, bank.ts/bank.js/barobillBank.ts)·근태 배지 표기 정리(`a33124b`/`f5a5286`)·IA 크래시 하드닝(`0bc747b`, 데이터정합성 측면은 Area4 37회차 #520으로 이미 보고)·CSV가드 자동수정(`bf5092e`). 이번 사이클 최대 신선 churn = 바로빌 계좌등록 하드닝(진단 노출·경로B 호스팅등록화면 신규 엔드포인트). general-purpose 에이전트 1개로 표준 4종(authMiddleware 재귀·시크릿·rate-limit·IDOR 형제비대칭) + XSS sweep 수행, 오케스트레이터가 사전에 진단노출(`89cfcd2`)·barobill-manage-url(`1c131f2`) 2건을 직접 반증 완료 후 에이전트에 재검토 불요로 명시.
 > - **🔧 자동수정 완료 — bank.js 저장형 XSS(admin-to-admin), `sync-barobill` 미수집 경고 토스트 (A-025급 부분-escape 형제 데이터소스)**: `src/scripts/bank.js:1248`(`syncBarobillBank`)이 `POST /api/bank/sync-barobill` 응답의 `errors[]`(백엔드 `bank.ts:716`, `ra.account_alias || ra.bank_name || stripped` 원문)를 이스케이프 없이 `showToast(...).join(' / ')`로 직접 넘김 — `showToast`(`shell.js:846-848`)는 `toast.innerHTML = ...+message`로 이스케이프 없는 전역 싱크. `account_alias`는 계좌 등록/수정(`POST/PUT /api/bank/accounts`, ADMIN 자유입력) 저장값. 재현: ADMIN이 계좌 별칭에 `<img src=x onerror=...>` 저장 → 그 계좌가 바로빌 수집목록에서 누락된 채 다른 ADMIN이 "바로빌 동기화" 버튼 클릭 시 toast innerHTML로 실행(다른 admin 세션 장악 가능, role 동일해도 유의미한 피해). **같은 파일이 이미 로컬 `escHtml()` 헬퍼(`:502`)를 보유하고 `renderAccounts()`(`:987-988`)에서 동일 `account_alias`를 정상 이스케이프** — 이번 신규 sink(errors[] 토스트, `04c95cd`+`00c4803`가 이번 churn window 신규 도입)만 형제 데이터소스 누락. **수정**: `errs.slice(0, 3).join(' / ')` → `errs.slice(0, 3).map(escHtml).join(' / ')`(동작 무변, 기존 파일 컨벤션 재사용). `npm run verify`(typecheck+build) 그린 확인. GitHub 이슈 미생성(같은 사이클 즉시 자동수정 완료 — 기존 관행: auto-fixed 항목은 이슈 생성 생략하고 백로그에 직접 기록).
