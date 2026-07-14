@@ -103,7 +103,6 @@ export const MENU_ITEMS: MenuGroup[] = [
       { path: '/inventory', icon: 'fa-boxes', label: '재고 관리', roles: ['ADMIN', 'MANAGER'] },
       { path: '/inventory-dashboard', icon: 'fa-chart-bar', label: '창고별 재고', roles: ['ADMIN', 'MANAGER', 'OPERATOR'] },
       { path: '/storage-zones', icon: 'fa-warehouse', label: '창고 관리', roles: ['ADMIN'] },
-      { path: '/departments', icon: 'fa-sitemap', label: '부문 관리', roles: ['ADMIN', 'MANAGER'] },
       { path: '/users', icon: 'fa-users', label: '사용자 관리', roles: ['ADMIN'] },
       { path: '/permissions', icon: 'fa-user-shield', label: '권한 관리', roles: ['ADMIN'] },
       { path: '/activity-log', icon: 'fa-history', label: '시스템 로그', roles: ['ADMIN', 'MANAGER'] },

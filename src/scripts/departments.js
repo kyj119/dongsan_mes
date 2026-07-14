@@ -253,5 +253,5 @@ function deptToggleResigned(cb) {
   loadDepartmentsPage();
 }
 
-// 초기 로드
-loadDepartmentsPage();
+// 초기 로드는 /hr '부문 관리' 탭 최초 열람 시 hr.js(hrSwitchTab)가 lazy 호출.
+// (이 스크립트는 /hr pageScript에 concat 되어 loadDepartmentsPage 등이 전역 함수로 노출됨)

@@ -176,7 +176,6 @@ import { leavesPage } from './pages/leaves'
 import { payrollPage } from './pages/payroll'
 import { payrollRatesPage } from './pages/payrollRates'
 import { storageZonesPage } from './pages/storageZones'
-import { departmentsPage } from './pages/departments'
 import { permissionsPage } from './pages/permissions'
 import { noPermissionPage } from './pages/noPermission'
 import { payslipPage } from './pages/payslip'
@@ -488,7 +487,6 @@ app.get('/leaves', pageAuthMiddleware, requirePagePermission('/leaves'), leavesP
 app.get('/payroll', pageAuthMiddleware, requirePagePermission('/payroll'), payrollPage)
 app.get('/settings/payroll-rates', pageAuthMiddleware, requirePagePermission('/settings/payroll-rates'), payrollRatesPage)
 app.get('/storage-zones', pageAuthMiddleware, requirePagePermission('/storage-zones'), storageZonesPage)
-app.get('/departments', pageAuthMiddleware, requirePagePermission('/departments'), departmentsPage)
 app.get('/permissions', pageAuthMiddleware, requireAdminPage(), permissionsPage)
 app.get('/no-permission', pageAuthMiddleware, noPermissionPage)
 app.get('/payslip/:id', pageAuthMiddleware, payslipPage)

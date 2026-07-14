@@ -417,7 +417,7 @@ hrRouter.post('/employees', async (c) => {
     const ALLOWED = [
       'employee_code', 'name', 'name_eng', 'birth_date', 'resident_number',
       'email', 'phone', 'mobile', 'address', 'postal_code', 'address_detail',
-      'department', 'position', 'job_title', 'employment_type',
+      'department', 'department_id', 'position', 'job_title', 'employment_type',
       'hire_date', 'resignation_date',
       'bank_name', 'bank_account', 'bank_holder',
       'base_salary', 'hourly_rate',
@@ -499,7 +499,7 @@ hrRouter.put('/employees/:id', async (c) => {
       // 기본정보
       'name', 'name_eng', 'birth_date', 'resident_number',
       'email', 'phone', 'mobile', 'address', 'postal_code', 'address_detail',
-      'department', 'position', 'job_title', 'employment_type',
+      'department', 'department_id', 'position', 'job_title', 'employment_type',
       'hire_date', 'resignation_date', 'status',
       // 급여통장
       'bank_name', 'bank_account', 'bank_holder',

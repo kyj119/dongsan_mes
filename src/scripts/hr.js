@@ -204,6 +204,52 @@ window.hrCloseEmployeeModal = function() {
   modal.classList.remove('flex');
 };
 
+// ── 탭 전환 (직원 관리 / 부문 관리) ──
+var hrDeptTabLoaded = false;
+window.hrSwitchTab = function(tab) {
+  var emp = document.getElementById('hrTabEmployees');
+  var dep = document.getElementById('hrTabDepartments');
+  var beEmp = document.getElementById('hrTabBtnEmployees');
+  var beDep = document.getElementById('hrTabBtnDepartments');
+  if (!emp || !dep) return;
+  var on = 'px-4 py-2 text-sm font-medium border-b-2 border-blue-600 text-blue-600';
+  var off = 'px-4 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700';
+  if (tab === 'departments') {
+    emp.classList.add('hidden'); dep.classList.remove('hidden');
+    if (beDep) beDep.className = on;
+    if (beEmp) beEmp.className = off;
+    // 부문 탭 최초 열람 시 lazy 로드 (departments.js concat 전역함수)
+    if (!hrDeptTabLoaded && typeof loadDepartmentsPage === 'function') {
+      hrDeptTabLoaded = true;
+      loadDepartmentsPage();
+    }
+  } else {
+    dep.classList.add('hidden'); emp.classList.remove('hidden');
+    if (beEmp) beEmp.className = on;
+    if (beDep) beDep.className = off;
+  }
+};
+
+// ── 직원 등록 모달의 '부문' 셀렉트 채우기 (DB 부문 마스터) ──
+function hrLoadDeptOptions() {
+  var sel = document.getElementById('hrEmpDeptId');
+  if (!sel) return;
+  axios.get('/api/departments').then(function(res){
+    var list = (res.data && res.data.data) || [];
+    if (!list.length) return;
+    var byId = {};
+    list.forEach(function(d){ byId[d.id] = d; });
+    var esc = function(s){ return String(s==null?'':s).replace(/[&<>"']/g, function(ch){
+      return { '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[ch]; }); };
+    var cur = sel.value;
+    sel.innerHTML = '<option value="">(부문 미배정)</option>' + list.filter(function(d){ return d.is_active; }).map(function(d){
+      var label = (d.parent_id && byId[d.parent_id]) ? byId[d.parent_id].name + ' › ' + d.name : d.name;
+      return '<option value="' + d.id + '">' + esc(label) + '</option>';
+    }).join('');
+    if (cur) sel.value = cur;
+  }).catch(function(){ /* 폴백: 미배정 옵션 유지 */ });
+}
+
 (function hrInit() {
   // 폼 제출
   var form = document.getElementById('hrEmployeeForm');
@@ -281,6 +327,7 @@ window.hrCloseEmployeeModal = function() {
 
   window.hrLoadStats();
   window.hrLoadEmployees();
+  hrLoadDeptOptions();
 
   // 셀렉트 마스터 동적 로드 — 하드코딩 옵션은 API 실패 시 폴백 (감사 2026-06-12)
   axios.get('/api/auth/entities').then(function (res) {
