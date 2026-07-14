@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 6 -->
-<!-- last_run_at: 2026-07-14T13:40:00+09:00 -->
+<!-- last_run_area: 1 -->
+<!-- last_run_at: 2026-07-14T21:13:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -16,6 +16,14 @@
 
 > 📦 **과거 사이클 로그**는 `IMPROVEMENT_BACKLOG_ARCHIVE.md`/git 히스토리로 이관됨 (2026-06-10 1차 분리, 2026-06-25 2차 트림 343KB→192KB, 2026-06-25T10:00 3차 트림, 2026-07-03T06:00 4차 트림 288KB→86KB, **2026-07-07T13:00 5차 트림 — 07-01~07-05 사이클 로그를 git 히스토리로 이관: 238KB→78KB, 256KB Read 한도 재확보**). 신규 로그는 계속 이 파일 상단에 추가. 본 파일은 직전 2일치(07-06~) 사이클 로그 + 영구 참조 섹션(Approved/New/Auto-fixed/Done/Rejected/FP 카탈로그)만 유지. 이관분은 `git log -p -- IMPROVEMENT_BACKLOG.md`로 복원 가능.
 
+> **Area 1 프로덕션 헬스 (2026-07-14T21:13):**
+> - **방법**: `git fetch origin main`(HEAD `0147a78` = origin/main 일치, 워킹트리 clean). 이번 세션도 프록시가 `webapp-9i0.pages.dev`·`observability.mcp.cloudflare.com` CONNECT를 403 정책 차단(`recentRelayFailures` 재확인, Area1 33/41회차와 동일 제약) — 직접 prod API/Playwright 헬스체크 불가, GitHub Actions CI 기록으로 대체.
+> - **🟢 배포 체인 전수 정상**: `deploy.yml` 최근 30회 실행(07-12T08:06~07-14T06:29, `0147a78` 포함) **전부 success**(Typecheck/Build/Deploy/Smoke), 실패 0건 — 직전 Area1(33회차)이 보고한 유일 실패(`ea2d8f6f`, 07-10, CF-internal transient)는 그 이후 구간(07-12 이후)엔 재발 없음. 최신 HEAD(`0147a78`, #521 부문관리 employees entity격리 픽스 반영 커밋) smoke = **PASS 102/102**, 느린 엔드포인트 3건(`hr.stats` 1255ms·`weekly-purchase/analyze` 1091ms·`attendance/month` 973ms)은 기존 인지 수준의 집계쿼리 지연이라 장애 아님.
+> - **⚪ E2E(Playwright) 워크플로 — 여전히 의도적 비활성화**: `e2e.yml` 트리거 섹션 재확인, 06-22 disable 상태 그대로(prod entity-99 오염 이슈로 owner가 명시 비활성화, 재발/신규 아님).
+> - **🔍 #521(부문관리 employees entity격리, Area6 41회차 발견)이 fixed-in-tree인데 이슈는 OPEN — 다음 Area6가 형제완전성 재검증 대상**: `git log 8c3fd23..HEAD`에서 `73b86ee`("fix(accounting): #521 부문 관리 employees entity 격리 — 전 법인 노출 차단")가 이슈 생성 직후(같은 날 06:16~06:24) 즉시 착륙 — SKILL "open≠unfixed"(line 281) 패턴과 정확히 일치(owner/병렬 worktree 세션이 close 전에 이미 픽스). Area 1 소관 밖이라 코드 재검증은 생략하고 다음 Area 6 사이클에 인계(형제완전성 확인 + close-pending 표기 대상).
+> - **🟢 backlog↔GitHub sync**: `search_issues(label:auto-improve,state:open)` 실측 **6건**(#473,504,509,519,520,521) = 직전 Area6 stats 정합, 변동 없음(owner close 0, 신규 이슈 0). done(445)·rejected(3) 변동 없음.
+> - net-new 이슈 0건, 자동수정 0건(수정 대상 없음). 다음 순번 Area 2.
+>
 > **Area 6 자기 진화 (2026-07-14T13:40):**
 > - **방법**: `git fetch origin main`(강제갱신 감지, HEAD `8c3fd23` = origin/main과 일치, 워킹트리 clean). Area 6 **41회차** — 직전 Area5(`1b51264`, 07-14T09:17, 36회차) 이후 `src/routes`/`migrations`/`src/scripts` churn = **8커밋**: 부문(부서) 손익 관리회계 신규 대형기능(P1~P2, `69dc6e1`~`8c3fd23`, `departments.ts`+233·`departments.js`+337·`hr.ts`/`hr.js`+218·마이그 4건)·바로빌 계좌등록 은행별 인증안내(`04567f3`) — 어느 영역도 아직 감사하지 않은 완전 신선 churn이라 오케스트레이터가 직접 표적 감사(entity 격리 bridge 관점).
 > - **🆕 net-new 1건(issue-only, HIGH) — #521**: `src/routes/departments.ts`(신규 부문관리 라우터)의 `GET /employees`(role 게이트조차 없음, `authMiddleware`만)와 `PATCH /employees/:id`(`requireRole('ADMIN','MANAGER')`만)가 **entity 격리를 전혀 적용하지 않음** — sibling 라우터 `hr.ts`는 같은 `employees` 테이블에 `entityFilter(c,'e')`를 목록·단건 양쪽에 철저 적용(형제 비교로 격리 의도 명백). 도달성 LIVE(`departments.js:28/235`, `/departments` 화면 로드 시 항상 호출 + UI가 `entity_name` 컬럼까지 표시). 영향: ① 임의 인증 사용자(role 무관) → 전 법인 직원 성명/직책/재직상태/소속법인 열람 ② entity-scoped MANAGER → 타법인 직원의 부문 재배정(인건비 귀속 리포트 오염까지 이어짐, `GET /pnl`이 이 department_id로 집계). 부수: `0461_departments_page_permission.sql`이 `permission_pages`엔 등록했으나 라우터 코드에 `requirePagePermission('/departments')`가 실제 연결 안 됨(DB 등록≠코드 시행, CLAUDE.md "신규 페이지→권한 등록" 원칙 절반 이행). GitHub #521 생성 완료.
