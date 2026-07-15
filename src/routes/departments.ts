@@ -127,7 +127,7 @@ departmentsRouter.put('/:id', requireRole('ADMIN'), async (c) => {
       WHERE id = ?
     `).bind(
       body.name?.trim() || null,
-      body.dept_type || null,
+      body.dept_type ? (body.dept_type === 'PRODUCTION' ? 'PRODUCTION' : 'SUPPORT') : null,
       body.serves_department_id ?? null,
       body.sort_order ?? null,
       body.is_active ?? null,
