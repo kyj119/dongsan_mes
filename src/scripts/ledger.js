@@ -263,12 +263,23 @@ function openDetailModal(clientId, clientName, mode) {
 }
 
 function closeDetailModal() {
-    document.getElementById('clientDetailModal').classList.add('hidden');
-    document.body.style.overflow = '';
-    selectedClientId = null;
-    selectedSupplierId = null;
-    document.querySelectorAll('.client-row').forEach(function(r) { r.classList.remove('active'); });
+    // 스크롤 복원은 무조건 실행 (중간 에러가 나도 body 잠금이 남지 않도록 finally 보장)
+    try {
+        var _m = document.getElementById('clientDetailModal'); if (_m) _m.classList.add('hidden');
+        selectedClientId = null;
+        selectedSupplierId = null;
+        document.querySelectorAll('.client-row').forEach(function(r) { r.classList.remove('active'); });
+    } finally {
+        document.body.style.overflow = '';
+    }
 }
+// ESC로도 닫히도록 (닫기 경로 보강)
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+        var _m = document.getElementById('clientDetailModal');
+        if (_m && !_m.classList.contains('hidden')) closeDetailModal();
+    }
+});
 
 // Select client (opens modal)
 function selectClient(clientId, clientName) {

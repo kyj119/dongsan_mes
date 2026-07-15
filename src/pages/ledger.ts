@@ -503,13 +503,13 @@ export function ledgerPage(c: Context<HonoEnv>) {
                             <div class="overflow-x-auto" style="max-height:calc(100vh - 320px);overflow-y:auto">
                                 <table class="ds-table ds-table-compact ds-table-striped">
                                     <colgroup>
-                                        <col style="width:96px">
-                                        <col style="width:60px">
+                                        <col style="width:112px">
+                                        <col style="width:56px">
                                         <col>
-                                        <col style="width:105px">
-                                        <col style="width:105px">
-                                        <col style="width:110px">
-                                        <col style="width:32px">
+                                        <col style="width:100px">
+                                        <col style="width:100px">
+                                        <col style="width:108px">
+                                        <col style="width:30px">
                                     </colgroup>
                                     <thead>
                                         <tr>
