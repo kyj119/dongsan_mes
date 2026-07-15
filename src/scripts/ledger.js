@@ -240,6 +240,10 @@ function openDetailModal(clientId, clientName, mode) {
     document.getElementById('modalClientName').textContent = clientName;
     document.getElementById('clientDetailModal').classList.remove('hidden');
     document.body.style.overflow = 'hidden';
+    // A→B 전환/미수금경고 경로: 이전 거래처 내용 잔존 방지 + 스크롤 최상단 초기화
+    var _tb = document.getElementById('transactionsTableBody'); if (_tb) _tb.innerHTML = '';
+    var _modalEl = document.getElementById('clientDetailModal');
+    if (_modalEl) { _modalEl.scrollTop = 0; var _sc = _modalEl.querySelector('.overflow-y-auto'); if (_sc) _sc.scrollTop = 0; }
     // 매출/매입 모드에 따라 표시
     var salesContent = document.getElementById('detailSection');
     var purchaseContent = document.getElementById('pDetailSection');
@@ -336,7 +340,23 @@ async function loadClientDetail(clientId) {
             // Render transactions — 매출(+)/입금(-) 2컬럼, 주문 품목 항상 펼침
             var txBody = document.getElementById('transactionsTableBody');
             txBody.innerHTML = '';
-            (d.transactions || []).forEach(function(tx) {
+            // ── 전기이월 행 (과거순 원장 맨 위) — 잔액이 위→아래로 누적 증가 ──
+            var openingBal = (d.summary && d.summary.opening_balance) || 0;
+            if (Math.round(openingBal) !== 0) {
+                var obTop = document.createElement('tr');
+                obTop.className = 'border-b-2 border-gray-300 bg-gray-100';
+                obTop.innerHTML =
+                    '<td class="px-3 py-2 text-gray-500 whitespace-nowrap text-xs">' + (modalContext.startDate || '') + '</td>' +
+                    '<td class="px-2 py-2 text-center"><span class="tx-badge bg-gray-300 text-gray-700">전기이월</span></td>' +
+                    '<td class="px-3 py-2 text-sm text-gray-500 italic">조회 시작일 이전 잔액</td>' +
+                    '<td class="px-3 py-2"></td>' +
+                    '<td class="px-3 py-2"></td>' +
+                    '<td class="px-3 py-2 text-right tabular-nums text-sm font-semibold ' + (openingBal > 0 ? 'text-red-600' : 'text-green-600') + '">' + openingBal.toLocaleString() + '</td>' +
+                    '<td></td>';
+                txBody.appendChild(obTop);
+            }
+            // 백엔드는 newest-first 반환 → reverse해서 과거→최신(잔액 누적 증가) 표시
+            (d.transactions || []).slice().reverse().forEach(function(tx) {
                 var type = tx.type;
                 var balClass = tx.balance > 0 ? 'text-red-600 font-semibold' : 'text-green-600 font-semibold';
 
@@ -344,12 +364,17 @@ async function loadClientDetail(clientId) {
                     // ── 주문 헤더 행 ──
                     var billedMark = tx.billing_status === 'BILLED'
                         ? ' <i class="fas fa-check-circle text-blue-500" style="font-size:10px" title="회계반영"></i>' : '';
+                    // 부가세 표시: 주문 합계(debit,VAT포함) − 품목합(공급가) = 부가세
+                    var _itemsSum = (tx.items || []).reduce(function(s, it){ return s + (Number(it.amount) || 0); }, 0);
+                    var _vat = Math.round((Number(tx.debit) || 0) - _itemsSum);
+                    var vatNote = (_itemsSum > 0 && _vat > 0)
+                        ? ' <span class="text-gray-400 font-normal" style="font-size:10px">(공급 ' + _itemsSum.toLocaleString() + ' + VAT ' + _vat.toLocaleString() + ')</span>' : '';
                     var headerRow = document.createElement('tr');
                     headerRow.className = 'border-t-2 border-green-200 bg-green-50';
                     headerRow.innerHTML =
                         '<td class="px-3 py-2 text-gray-600 whitespace-nowrap text-xs">' + formatDate(tx.date) + '</td>' +
                         '<td class="px-2 py-2 text-center"><span class="tx-badge bg-green-100 text-green-800">주문</span></td>' +
-                        '<td class="px-3 py-2 text-sm font-bold text-green-800"><i class="fas fa-file-alt text-green-400 mr-1"></i>' + escapeHtml(tx.reference || '') + billedMark + '</td>' +
+                        '<td class="px-3 py-2 text-sm font-bold text-green-800"><i class="fas fa-file-alt text-green-400 mr-1"></i>' + escapeHtml(tx.reference || '') + billedMark + vatNote + '</td>' +
                         '<td class="px-3 py-2 text-right tabular-nums text-sm font-bold text-green-700">' + tx.debit.toLocaleString() + '</td>' +
                         '<td class="px-3 py-2"></td>' +
                         '<td class="px-3 py-2 text-right tabular-nums text-sm ' + balClass + '">' + tx.balance.toLocaleString() + '</td>' +
@@ -417,22 +442,6 @@ async function loadClientDetail(clientId) {
                     txBody.appendChild(adjRow);
                 }
             });
-
-            // ── 전기이월 행 (조회 시작일 이전 잔액) — 최신순 목록의 맨 아래 ──
-            var openingBal = (d.summary && d.summary.opening_balance) || 0;
-            if (Math.round(openingBal) !== 0) {
-                var obRow = document.createElement('tr');
-                obRow.className = 'border-t-2 border-gray-300 bg-gray-100';
-                obRow.innerHTML =
-                    '<td class="px-3 py-2 text-gray-500 whitespace-nowrap text-xs">' + (modalContext.startDate || '') + '</td>' +
-                    '<td class="px-2 py-2 text-center"><span class="tx-badge bg-gray-300 text-gray-700">전기이월</span></td>' +
-                    '<td class="px-3 py-2 text-sm text-gray-500 italic">조회 시작일 이전 잔액</td>' +
-                    '<td class="px-3 py-2"></td>' +
-                    '<td class="px-3 py-2"></td>' +
-                    '<td class="px-3 py-2 text-right tabular-nums text-sm font-semibold ' + (openingBal > 0 ? 'text-red-600' : 'text-green-600') + '">' + openingBal.toLocaleString() + '</td>' +
-                    '<td></td>';
-                txBody.appendChild(obRow);
-            }
 
             if ((d.transactions || []).length === 0 && Math.round(openingBal) === 0) {
                 txBody.innerHTML = '<tr><td colspan="7" class="text-center py-10"><i class="fas fa-receipt text-3xl mb-2 block text-gray-300"></i><div class="text-sm text-gray-400">거래 내역이 없습니다</div></td></tr>';
