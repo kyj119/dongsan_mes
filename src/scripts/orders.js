@@ -313,6 +313,14 @@ function goToPage(n) {
   loadOrders();
 }
 
+// 주문서 기본 조회 기간 시작 = 최근 한달 전 (KST 기준). 전체/과거 조회는 '날짜 초기화'로 해제.
+function ordersDefaultDateFrom() {
+  var t = (window.kstToday ? window.kstToday() : new Date().toISOString().slice(0, 10)).split('-');
+  var d = new Date(parseInt(t[0]), parseInt(t[1]) - 1, parseInt(t[2]));
+  d.setMonth(d.getMonth() - 1);
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+
 function clearDateFilter() {
   document.getElementById('orderDateFrom').value = '';
   document.getElementById('orderDateTo').value = '';
@@ -330,7 +338,7 @@ function resetAllFilters() {
   var _ov = document.getElementById('overdueFilter'); if (_ov) _ov.checked = false;
   document.getElementById('priorityFilter').value = '';
   document.getElementById('sortBy').value = 'created_at_desc';
-  document.getElementById('orderDateFrom').value = '';
+  document.getElementById('orderDateFrom').value = ordersDefaultDateFrom();
   document.getElementById('orderDateTo').value = '';
   localStorage.removeItem('orders_filter_search');
   localStorage.removeItem('orders_filter_status');
@@ -1456,7 +1464,8 @@ async function exportOrdersCsv() {
   if (savedStatus && TRANSIENT_STATUSES.indexOf(savedStatus) === -1) document.getElementById('statusFilter').value = savedStatus;
   if (savedSort) document.getElementById('sortBy').value = savedSort;
   if (savedPage) currentPage = parseInt(savedPage) || 1;
-  if (savedDateFrom) document.getElementById('orderDateFrom').value = savedDateFrom;
+  // 기본 기간 = 최근 한달 (저장된 필터 없을 때). 과거 데이터는 '날짜 초기화' 후 조회.
+  document.getElementById('orderDateFrom').value = savedDateFrom || ordersDefaultDateFrom();
   if (savedDateTo) document.getElementById('orderDateTo').value = savedDateTo;
   if (savedDeliveryMethod) document.getElementById('deliveryMethodFilter').value = savedDeliveryMethod;
   if (savedBillingStatus) document.getElementById('billingStatusFilter').value = savedBillingStatus;
