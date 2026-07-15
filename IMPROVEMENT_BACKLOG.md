@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 2 -->
-<!-- last_run_at: 2026-07-14T21:45:00+09:00 -->
+<!-- last_run_area: 3 -->
+<!-- last_run_at: 2026-07-15T09:00:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,7 +8,7 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | **7** — #473(reopened, 거래처 포털계정 entity IDOR, owner 보류 지시 유지 — 재보고/재수정 시도 안 함), #504(S, 회사인쇄정보 로드실패 무음 — CSV가드 부분은 자동수정으로 해소, 로드실패 toast 항목만 open 잔존), #509(S~M, 급여 중도입퇴사 일할계산 근거 화면 미표시), #519(S, 계좌이체 전체확정 버튼 double-submit 미방지), #520(S, IA 크래시-하드닝 재큐 완료-콜백 세대가드 부재 → zombie write lost-update), #521(S, security, 부문관리 employees entity격리 — **Area1이 "fixed-in-tree" 오판, Area2가 재검증해 PATCH write 경로 미픽스 확인 후 코멘트로 정정**, 페이지권한도 미연결), #522(신규, S, improvement, hr.ts 직원등록/수정이 department_id 존재·활성 검증 없음 — departments.ts PATCH와 형제 비대칭). 실측(`search_issues(state:open,label:auto-improve)`=7) 정합. |
+| 🆕 new | **8** — #473(reopened, 거래처 포털계정 entity IDOR, owner 보류 지시 유지 — 재보고/재수정 시도 안 함), #504(S, 회사인쇄정보 로드실패 무음 — CSV가드 부분은 자동수정으로 해소, 로드실패 toast 항목만 open 잔존), #509(S~M, 급여 중도입퇴사 일할계산 근거 화면 미표시), #519(S, 계좌이체 전체확정 버튼 double-submit 미방지), #520(S, IA 크래시-하드닝 재큐 완료-콜백 세대가드 부재 → zombie write lost-update), #521(S, security, 부문관리 employees entity격리 — Area1이 "fixed-in-tree" 오판, Area2가 재검증해 PATCH write 경로 미픽스 확인 후 코멘트로 정정, 페이지권한도 미연결), #522(S, improvement, hr.ts 직원등록/수정이 department_id 존재·활성 검증 없음 — departments.ts PATCH와 형제 비대칭), #524(신규, S, improvement, 주문목록 기본 날짜필터(최근1개월)가 검색을 무음 차단 — "날짜 초기화" 버튼 미구현(dead code)+"초기화"가 필터를 재적용). 실측(`search_issues(state:open,label:auto-improve)`=8) 정합. |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 |
 | ✔️ done | **445** ⚠️절대값 재동기화(SKILL Area6 원칙) — GitHub 실측 `search_issues(label:auto-improve is:closed reason:completed)`=445, 변동 없음(owner close 0). |
@@ -16,6 +16,14 @@
 
 > 📦 **과거 사이클 로그**는 `IMPROVEMENT_BACKLOG_ARCHIVE.md`/git 히스토리로 이관됨 (2026-06-10 1차 분리, 2026-06-25 2차 트림 343KB→192KB, 2026-06-25T10:00 3차 트림, 2026-07-03T06:00 4차 트림 288KB→86KB, **2026-07-07T13:00 5차 트림 — 07-01~07-05 사이클 로그를 git 히스토리로 이관: 238KB→78KB, 256KB Read 한도 재확보**). 신규 로그는 계속 이 파일 상단에 추가. 본 파일은 직전 2일치(07-06~) 사이클 로그 + 영구 참조 섹션(Approved/New/Auto-fixed/Done/Rejected/FP 카탈로그)만 유지. 이관분은 `git log -p -- IMPROVEMENT_BACKLOG.md`로 복원 가능.
 
+> **Area 3 UX/기능 감사 (2026-07-15T09:00):**
+> - **방법**: `git fetch origin main`(HEAD `e602240` = origin/main 일치, 워킹트리 clean, detached) 후 `npm ci`(node_modules 0→81). Area 3 **37회차** — 직전 Area3(`0134ae1`, 07-13T21:19, 36회차) 이후 `src/scripts`/`src/pages` churn = **7파일**(`git diff --stat 0134ae1..HEAD -- src/scripts src/pages`): 부문 손익 신규기능 UI(`departments.js` +362 신설, `hr.ts` +177/`hr.js` +47 = `/hr` 탭 통합, Area2 38회차가 이미 백엔드·entity·N+1 렌즈로 감사 완료) + `fix(ledger)` 원장모달 3연속 버그픽스(날짜순 정렬·VAT표시·스크롤복원, `ledger.js`+66/`ledger.ts`+12, 이미 fix 커밋이라 자체 검증됨) + `feat(orders)` 기본 조회기간 최근1개월(`orders.js`+13) + `bank.js` XSS 1줄(Area5 기완료). 신선 각도 = departments 탭 UI 5축 표준감사(dead-button·HTML↔JS silent-fail·XSS·로딩/빈상태·cross-tab 배선) + orders.js 신규 날짜필터 로직 직접 추적.
+> - **🔴 net-new HIGH — #524 (S, improvement)**: `ae707ff`(주문 목록 기본 날짜필터=최근1개월)의 커밋 메시지가 "clear-date button = show all/history"를 명시했으나, 실제로는 그 버튼이 구현되지 않음 — `clearDateFilter()`(`orders.js:324`)는 전수 grep(`grep -rn "clearDateFilter" src/`) 결과 **호출처 0건**(dead code). 화면에 실재하는 유일한 "초기화" 버튼(`resetAllFilters()`)은 오히려 `orderDateFrom.value = ''`를 `ordersDefaultDateFrom()`(최근1개월)로 바꿔 **날짜필터를 재적용**(`orders.js:341`, 원래 의도와 반대 동작). 게다가 `orderDateFrom`/`orderDateTo` 입력창 자체가 기본 접힌 "더보기"(`.ds-filter-expand{display:none}`, `shared-styles.ts:765`) 안에 있어 필터가 걸려있다는 사실이 화면에서 보이지 않음. `date_from`은 서버쿼리에서 `search`와 **AND 결합**(`orders.js:396/406`)이라 상담원이 정확한 주문번호로 검색해도 1개월 이전 주문이면 결과 0건 + 원인 불명. "초기화"를 눌러도 복구 불가(수동으로 날짜입력창을 찾아 지워야만 함). issue-only(UI버튼 추가+정책 판단, owner 확인 필요).
+> - **🟢 나머지 churn = clean**: `departments.js`(부문/직원배정/부문손익 3탭) 전체 — XSS(`deptEscAttr` 일관 적용, 텍스트+속성 양쪽), dead-button 0(axios 3개 GET+PATCH+POST/PUT 전부 `departments.ts` 라우트와 1:1 매치 확인), 빈상태 3종(`deptTreeEmpty`/`deptEmpEmpty`/`deptCatEmpty`) 모두 처리, PNL 조회 로딩표시(`조회 중...`)+에러 toast 정상. `hrSwitchTab` 탭 전환·lazy 로드(`hrDeptTabLoaded`/`hrPnlTabLoaded` 플래그)도 정상 배선. `hrLoadDeptOptions()` 1회 캐시 문제는 Area2가 이미 #522로 보고(중복 회피). `ledger.js` 원장모달 3버그픽스는 이미 fix() 커밋 자체가 회귀 없이 정합(전기이월 위치 재배치+reverse, ESC 닫기, ratio 계산 직접 추적 완료) — 재보고 대상 아님.
+> - **🧬 SKILL 강화 없음** — 이번 발견(#524)은 기존 "showConfirm 콜백 오용"(#426)·"커밋 메시지가 선언한 의도가 실제 배선과 불일치"(#486 concat-스코프류) 계열의 변형이나, "커밋 메시지 자체가 미구현 UI를 코멘트로 명시(clear-date button)했는데 실제 버튼은 없고 dead code 함수만 존재 + 기존 버튼이 반대 방향으로 재활용됨"은 신선한 조합이라 별도 codify 없이 기존 "커밋 메시지 vs 실제 diff 대조" 원칙(Area2 38회차 #521 재검증과 동일 정신)의 프론트 버전으로만 기록.
+> - **🟢 backlog↔GitHub sync**: `search_issues(label:auto-improve,state:open)` 실측 **8건**(#473,504,509,519,520,521,522,524) — #524 신규 생성으로 7→8. done(445)·rejected(3) 변동 없음.
+> - net-new 이슈 1건(#524), 자동수정 0건(UI 버튼 추가+정책 판단이라 정책상 issue-only), done-sync 변동 없음. 다음 순번 Area 4.
+>
 > **Area 2 코드 품질 심층 분석 (2026-07-14T21:45):**
 > - **방법**: `git fetch origin main`(HEAD `529f93c` = origin/main 일치, 워킹트리 clean, detached) 후 `npm ci`(node_modules 0→81). Area 2 **38회차** — 직전 Area2(`1c131f2`, 07-13T15:15, 37회차) 이후 `src/routes`/`migrations`/`src/scripts` churn = **10커밋**: 부문(부서) 손익 관리회계 대형 신규기능 P1~P5(`69dc6e1`~`8c3fd23`, departments.ts 291줄 신설·departments.js 362줄·hr.ts/hr.js 확장·마이그 4건) + `/hr` 통합 리팩터(`bbe223c`, 별도 페이지 제거) + 바로빌 XSS 자동수정(`420e942`, Area5 37회차 기완료). Area1(41회차 헬스)이 이 커밋들 중 `73b86ee`("#521 fix")를 "fixed-in-tree"로 인계했으나, 코드 재검증 없이 커밋 메시지만 신뢰한 상태였음 — 오케스트레이터가 직접 `departments.ts` 전문 Read + 라인별 diff 대조로 정밀 재검증.
 > - **🔴 net-new HIGH — #521 재오픈 성격 코멘트(closed 아님, 이슈는 원래 OPEN 유지 상태라 재오픈 불요) — "fixed-in-tree" 판정 정정**: `73b86ee`는 커밋 메시지가 나열한 **GET 3곳(`/`·`/employees`·`/pnl` 인원비례)만** entityFilter를 적용했고, 원 이슈가 지목한 **더 심각한 write 경로 `PATCH /employees/:id`(`departments.ts:72-88`)는 여전히 bare `WHERE id=?`**로 미변경 확인(현재 HEAD `529f93c` 기준 라인별 diff 대조, `git show 73b86ee -- src/routes/departments.ts`로 정확히 GET 3곳만 패치됐음을 증거 확보). entity-scoped MANAGER가 `:id`만 바꿔 타법인 직원 부문을 여전히 임의 재배정 가능(원 이슈의 "데이터 조작" 영향 그대로 생존) + 페이지권한(`requirePagePermission('/departments')`) 연결도 미반영. **#521에 정정 코멘트 게시**(GitHub comment, 남은 작업 2가지 명시) — 이슈 자체는 OPEN 유지(원래 닫히지 않았음), close 방지 목적. **자기진화 함의**: "fixed-in-tree" 판정은 커밋 메시지가 아니라 diff를 직접 대조해야 함 — Area1(41회차)이 커밋 존재만으로 완결 추정한 것이 SKILL "closed≠fixed"(#473)의 **open 이슈판 오판**(이슈가 열려있으니 당장 위험은 없었으나, 다음 사이클이 "이미 손댐"으로 오인해 재검증을 건너뛸 뻔함).
