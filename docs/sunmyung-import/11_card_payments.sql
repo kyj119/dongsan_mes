@@ -1,0 +1,26 @@
+-- 선명 카드매출 수금 payments (payment_method='카드', 주문연결)
+INSERT INTO payments (client_id,payment_date,amount,payment_method,reference_number,notes,created_by,entity_id) VALUES (804,'2026-01-07',500000,'카드','SMCARD-001','카드매출 수금 E2-20260107-002 (선명 이관)',5,2);
+INSERT INTO payments (client_id,payment_date,amount,payment_method,reference_number,notes,created_by,entity_id) VALUES (311,'2026-01-09',255000,'카드','SMCARD-002','카드매출 수금 E2-20260109-001 (선명 이관)',5,2);
+INSERT INTO payments (client_id,payment_date,amount,payment_method,reference_number,notes,created_by,entity_id) VALUES (228,'2026-01-12',432000,'카드','SMCARD-003','카드매출 수금 E2-20260112-001 (선명 이관)',5,2);
+INSERT INTO payments (client_id,payment_date,amount,payment_method,reference_number,notes,created_by,entity_id) VALUES (311,'2026-01-13',419870,'카드','SMCARD-004','카드매출 수금 E2-20260113-002 (선명 이관)',5,2);
+INSERT INTO payments (client_id,payment_date,amount,payment_method,reference_number,notes,created_by,entity_id) VALUES (285,'2026-01-13',1550000,'카드','SMCARD-005','카드매출 수금 E2-20260113-003 (선명 이관)',5,2);
+INSERT INTO payments (client_id,payment_date,amount,payment_method,reference_number,notes,created_by,entity_id) VALUES (228,'2026-02-09',335060,'카드','SMCARD-006','카드매출 수금 E2-20260209-002 (선명 이관)',5,2);
+INSERT INTO payments (client_id,payment_date,amount,payment_method,reference_number,notes,created_by,entity_id) VALUES (455,'2026-02-13',16500,'카드','SMCARD-007','카드매출 수금 E2-20260213-001 (선명 이관)',5,2);
+INSERT INTO payments (client_id,payment_date,amount,payment_method,reference_number,notes,created_by,entity_id) VALUES (285,'2026-02-19',860000,'카드','SMCARD-008','카드매출 수금 E2-20260219-001 (선명 이관)',5,2);
+INSERT INTO payments (client_id,payment_date,amount,payment_method,reference_number,notes,created_by,entity_id) VALUES (311,'2026-02-19',222000,'카드','SMCARD-009','카드매출 수금 E2-20260219-002 (선명 이관)',5,2);
+INSERT INTO payments (client_id,payment_date,amount,payment_method,reference_number,notes,created_by,entity_id) VALUES (455,'2026-02-27',16500,'카드','SMCARD-010','카드매출 수금 E2-20260227-025 (선명 이관)',5,2);
+INSERT INTO payments (client_id,payment_date,amount,payment_method,reference_number,notes,created_by,entity_id) VALUES (285,'2026-03-03',1038000,'카드','SMCARD-011','카드매출 수금 E2-20260303-001 (선명 이관)',5,2);
+INSERT INTO payments (client_id,payment_date,amount,payment_method,reference_number,notes,created_by,entity_id) VALUES (311,'2026-03-03',140000,'카드','SMCARD-012','카드매출 수금 E2-20260303-002 (선명 이관)',5,2);
+INSERT INTO payments (client_id,payment_date,amount,payment_method,reference_number,notes,created_by,entity_id) VALUES (1648,'2026-03-10',786000,'카드','SMCARD-013','카드매출 수금 E2-20260310-001 (선명 이관)',5,2);
+INSERT INTO payments (client_id,payment_date,amount,payment_method,reference_number,notes,created_by,entity_id) VALUES (285,'2026-03-24',590000,'카드','SMCARD-014','카드매출 수금 E2-20260324-001 (선명 이관)',5,2);
+INSERT INTO payments (client_id,payment_date,amount,payment_method,reference_number,notes,created_by,entity_id) VALUES (228,'2026-04-08',1131570,'카드','SMCARD-015','카드매출 수금 E2-20260408-002 (선명 이관)',5,2);
+INSERT INTO payments (client_id,payment_date,amount,payment_method,reference_number,notes,created_by,entity_id) VALUES (285,'2026-04-14',3860000,'카드','SMCARD-016','카드매출 수금 E2-20260414-001 (선명 이관)',5,2);
+INSERT INTO payments (client_id,payment_date,amount,payment_method,reference_number,notes,created_by,entity_id) VALUES (2476,'2026-04-14',1000000,'카드','SMCARD-017','카드매출 수금 E2-20260414-002 (선명 이관)',5,2);
+INSERT INTO payments (client_id,payment_date,amount,payment_method,reference_number,notes,created_by,entity_id) VALUES (1648,'2026-05-19',2000000,'카드','SMCARD-018','카드매출 수금 E2-20260519-001 (선명 이관)',5,2);
+INSERT INTO payments (client_id,payment_date,amount,payment_method,reference_number,notes,created_by,entity_id) VALUES (3763,'2026-05-20',4661800,'카드','SMCARD-019','카드매출 수금 E2-20260520-001 (선명 이관)',5,2);
+INSERT INTO payments (client_id,payment_date,amount,payment_method,reference_number,notes,created_by,entity_id) VALUES (455,'2026-06-05',907500,'카드','SMCARD-020','카드매출 수금 E2-20260605-002 (선명 이관)',5,2);
+INSERT INTO payments (client_id,payment_date,amount,payment_method,reference_number,notes,created_by,entity_id) VALUES (3760,'2026-06-15',649550,'카드','SMCARD-021','카드매출 수금 E2-20260615-001 (선명 이관)',5,2);
+INSERT INTO payments (client_id,payment_date,amount,payment_method,reference_number,notes,created_by,entity_id) VALUES (3774,'2026-06-17',269500,'카드','SMCARD-022','카드매출 수금 E2-20260617-001 (선명 이관)',5,2);
+INSERT INTO payments (client_id,payment_date,amount,payment_method,reference_number,notes,created_by,entity_id) VALUES (3770,'2026-06-17',241340,'카드','SMCARD-023','카드매출 수금 E2-20260617-002 (선명 이관)',5,2);
+INSERT INTO payments (client_id,payment_date,amount,payment_method,reference_number,notes,created_by,entity_id) VALUES (3762,'2026-06-23',1791000,'카드','SMCARD-024','카드매출 수금 E2-20260623-001 (선명 이관)',5,2);
+INSERT INTO payments (client_id,payment_date,amount,payment_method,reference_number,notes,created_by,entity_id) VALUES (1986,'2026-06-30',347600,'카드','SMCARD-025','카드매출 수금 E2-20260630-006 (선명 이관)',5,2);
