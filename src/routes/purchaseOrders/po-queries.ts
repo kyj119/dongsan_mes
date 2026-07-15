@@ -67,7 +67,7 @@ poQueriesRouter.get('/stats', async (c) => {
         COUNT(po.id) as active_po_count
       FROM clients c
       LEFT JOIN purchase_orders po ON po.supplier_id = c.id AND po.status IN ('CONFIRMED', 'PARTIAL_RECEIVED')${efAnd.replace('entity_id', 'po.entity_id')}
-      WHERE c.client_type IN ('PURCHASES', 'BOTH') AND COALESCE(c.purchase_balance, 0) > 0
+      WHERE COALESCE(c.purchase_balance, 0) > 0
       GROUP BY c.id
       ORDER BY c.purchase_balance DESC
       LIMIT 5

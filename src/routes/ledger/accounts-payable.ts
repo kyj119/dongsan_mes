@@ -707,7 +707,6 @@ apRouter.get('/purchase-overdue', async (c) => {
         (SELECT MAX(pp.payment_date) FROM purchase_payments pp WHERE pp.supplier_id = c.id) as last_payment_date
       FROM clients c
       WHERE c.purchase_balance > 0
-      AND c.client_type IN ('SUPPLIER', 'BOTH')
       ORDER BY c.purchase_balance DESC
     `).all<OverdueRow>()
 
@@ -773,7 +772,7 @@ apRouter.get('/purchase-integrity-check', requireEditOrRole('/ledger', 'MANAGER'
       LEFT JOIN (
         SELECT supplier_id, SUM(amount) as v FROM purchase_adjustments WHERE 1=1${intPaEf} GROUP BY supplier_id
       ) pa ON pa.supplier_id = c.id
-      WHERE c.is_active = 1 AND c.client_type IN ('SUPPLIER', 'BOTH')
+      WHERE c.is_active = 1 AND (po.v IS NOT NULL OR pp.v IS NOT NULL OR pa.v IS NOT NULL OR COALESCE(c.purchase_balance, 0) <> 0)
     `).bind(...intPoEfParams, ...intPpEfParams, ...intPaEfParams).all<IntegrityRow>()
 
     const discrepancies: { supplier_id: number; client_code: string; client_name: string; cached_purchase_balance: number; calculated_purchase_balance: number; difference: number }[] = []
@@ -831,7 +830,7 @@ apRouter.post('/purchase-integrity-fix', requireEditOrRole('/ledger', 'MANAGER')
       LEFT JOIN (
         SELECT supplier_id, SUM(amount) as v FROM purchase_adjustments WHERE 1=1${fixPaEf} GROUP BY supplier_id
       ) pa ON pa.supplier_id = c.id
-      WHERE c.is_active = 1 AND c.client_type IN ('SUPPLIER', 'BOTH')
+      WHERE c.is_active = 1 AND (po.v IS NOT NULL OR pp.v IS NOT NULL OR pa.v IS NOT NULL OR COALESCE(c.purchase_balance, 0) <> 0)
     `).bind(...fixPoEfParams, ...fixPpEfParams, ...fixPaEfParams).all<IntegrityRow>()
 
     let fixed = 0
