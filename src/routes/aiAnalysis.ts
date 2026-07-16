@@ -506,9 +506,12 @@ aiAnalysisRouter.patch('/:id', async (c) => {
       ).bind(id).first<{ retry_count: number | null; max_retries: number | null }>()
       if (!row) return c.json({ success: false, error: 'Not found' }, 404)
 
-      // [FONT_MISSING](2026-07-15): 폰트 미설치 등 영구 실패는 재큐 금지 → 즉시 terminal.
-      //   사용자 조치(폰트 설치/아웃라인) 전엔 재시도가 무의미하고, 메시지를 바로 노출해야 함.
-      const isPermanent = typeof error_message === 'string' && error_message.indexOf('[FONT_MISSING]') >= 0
+      // 영구 실패 마커(2026-07-16): 재시도해도 동일 실패 → 즉시 terminal(재큐 금지) + 메시지 바로 노출.
+      //   [FONT_MISSING]=폰트 미설치, [OPEN_HANG]=열기 모달 hang(레거시 텍스트·프로파일 등). 마커는 사용자 표시에서 제거.
+      const permMarkers = ['[FONT_MISSING]', '[OPEN_HANG]']
+      const isPermanent = typeof error_message === 'string' && permMarkers.some((m) => error_message.indexOf(m) >= 0)
+      let cleanMsg: string | null = error_message ?? null
+      if (cleanMsg) for (const m of permMarkers) cleanMsg = cleanMsg.split(m + ' ').join('').split(m).join('')
       const maxRetries = row.max_retries ?? 3
       const newCount = isPermanent ? maxRetries : (row.retry_count ?? 0) + 1
       const shouldRequeue = !isPermanent && newCount < maxRetries
@@ -523,7 +526,7 @@ aiAnalysisRouter.patch('/:id', async (c) => {
              file_path = COALESCE(?, file_path),
              updated_at = datetime('now')
          WHERE id = ?`
-      ).bind(finalStatus, error_message ?? null, newCount, file_path ?? null, id).run()
+      ).bind(finalStatus, cleanMsg, newCount, file_path ?? null, id).run()
 
       return c.json({ success: true, requeued: shouldRequeue, retry_count: newCount })
     }

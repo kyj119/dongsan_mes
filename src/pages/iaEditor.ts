@@ -27,6 +27,7 @@ export function iaEditorPage(c: Context<HonoEnv>) {
           <i class="fas fa-cloud-arrow-up text-3xl text-gray-300 mb-2"></i>
           <div class="text-sm text-gray-600 font-medium">AI/EPS/PDF 파일을 끌어다 놓거나 클릭해 선택</div>
           <div class="text-xs text-gray-400 mt-1">여러 파일 동시 업로드 · 최대 50MB</div>
+          <div class="text-[11px] text-amber-500 mt-1"><i class="fas fa-circle-info mr-1"></i>텍스트는 <b>아웃라인</b> 후 업로드 권장 — 레거시 텍스트·미설치 폰트 등 '열기 경고'가 있는 파일은 처리되지 않습니다</div>
           <input id="iaeFileInput" type="file" multiple accept=".ai,.eps,.pdf,image/*" class="hidden">
         </div>
         <div class="ds-card flex flex-col" style="min-height: 520px;">

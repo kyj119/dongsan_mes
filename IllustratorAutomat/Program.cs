@@ -1335,7 +1335,13 @@ namespace IllustratorAutomation
             catch (Exception ex)
             {
                 Console.WriteLine($"   ❌ AI Analysis error: {ex.Message}");
-                await PatchAnalysisStatus(requestId, "error", null, ex.Message, null);
+                // E(2026-07-16): 타임아웃 = 열기 모달 hang(레거시 텍스트·폰트·색상 프로파일 등 '열기 경고').
+                //   재시도해도 동일하게 hang → [OPEN_HANG] 마커로 서버가 terminal 처리(재큐 금지) + 사용자에게 조치 안내.
+                bool isOpenHang = ex is TimeoutException || ex.Message.Contains("시간 초과");
+                string emsg = isOpenHang
+                    ? "[OPEN_HANG] 파일 열기 중 응답이 없습니다 — 레거시 텍스트·폰트·색상 프로파일 등 '열기 경고'가 있는 파일로 보입니다. 일러스트에서 텍스트 아웃라인(또는 레거시 텍스트 업데이트) 후 다시 저장하여 재업로드하세요."
+                    : ex.Message;
+                await PatchAnalysisStatus(requestId, "error", null, emsg, null);
             }
         }
 
