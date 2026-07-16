@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 1 -->
-<!-- last_run_at: 2026-07-16T23:15:00+09:00 -->
+<!-- last_run_area: 2 -->
+<!-- last_run_at: 2026-07-17T00:10:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,13 +8,26 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | **11** — #473(reopened, 거래처 포털계정 entity IDOR, owner 보류 지시 유지 — 재보고/재수정 시도 안 함), #504(S, 회사인쇄정보 로드실패 무음 — CSV가드 부분은 자동수정으로 해소, 로드실패 toast 항목만 open 잔존), #509(S~M, 급여 중도입퇴사 일할계산 근거 화면 미표시), #519(S, 계좌이체 전체확정 버튼 double-submit 미방지), #520(S, IA 크래시-하드닝 재큐 완료-콜백 세대가드 부재 → zombie write lost-update), #521(S, security, 부문관리 employees entity격리 — PATCH write 경로 미픽스), #522(S, improvement, hr.ts 직원등록/수정이 department_id 존재·활성 검증 없음), #524(S, improvement, 주문목록 기본 날짜필터가 검색을 무음 차단), #525(S~S-M, bug, 부문손익 P5 배부 — serves_department_id 미검증+totalWeight=0 시 공통비 무음소실→totals 불일치), #526(S/M, improvement, 부문손익 자재비 — created_at UTC미보정(KST)+이동평균단가 비재현성), #527(신규, S, security/bug, `PATCH /api/orders/bulk-bill` entityFilter 누락 — 타법인 주문 cross-tenant BILLED 처리 가능, 형제 bulk-ship은 이미 픽스됨). 실측(`search_issues(state:open,label:auto-improve)`=11) 정합. |
+| 🆕 new | **15** — #473(reopened, 거래처 포털계정 entity IDOR, owner 보류 지시 유지 — 재보고/재수정 시도 안 함), #504(S, 회사인쇄정보 로드실패 무음 — CSV가드 부분은 자동수정으로 해소, 로드실패 toast 항목만 open 잔존), #509(S~M, 급여 중도입퇴사 일할계산 근거 화면 미표시), #519(S, 계좌이체 전체확정 버튼 double-submit 미방지), #520(S, IA 크래시-하드닝 재큐 완료-콜백 세대가드 부재 → zombie write lost-update), #521(S, security, 부문관리 employees entity격리 — PATCH write 경로 미픽스), #522(S, improvement, hr.ts 직원등록/수정이 department_id 존재·활성 검증 없음), #524(S, improvement, 주문목록 기본 날짜필터가 검색을 무음 차단), #525(S~S-M, bug, 부문손익 P5 배부 — serves_department_id 미검증+totalWeight=0 시 공통비 무음소실→totals 불일치), #526(S/M, improvement, 부문손익 자재비 — created_at UTC미보정(KST)+이동평균단가 비재현성), #527(S, security/bug, `PATCH /api/orders/bulk-bill` entityFilter 누락 — 타법인 주문 cross-tenant BILLED 처리 가능, 형제 bulk-ship은 이미 픽스됨), #528(신규, M, bug, bank.ts 출금→매입지급 적용 버튼 double-submit 무방지 — 이중지급/이중잔액차감), #529(신규, S, security/bug, bank.ts link_payment_id 명시연결 경로 entity_id 격리 누락), #530(신규, M, bug, items.ts 하드삭제 FK 참조검사 3테이블만 커버 — inventory_transactions 등 다수 누락으로 500+부분삭제), #531(신규, S, improvement, workbench.ts POST /intakes가 `getEntityId(c)||1` 전체모드 오귀속 안티패턴 재사용). 실측(`search_issues(state:open,label:auto-improve)`≈15, GitHub 검색 인덱스 반영 지연으로 신규 4건 중 일부 미반영 가능 — 다음 사이클 재확인) 정합. |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 |
 | ✔️ done | **445** ⚠️절대값 재동기화(SKILL Area6 원칙) — GitHub 실측 `search_issues(label:auto-improve is:closed reason:completed)`=445, 변동 없음(owner close 0). |
 | ❌ rejected | 3 (`reason:not_planned`=1 + `reason:duplicate`=2, 변동 없음) |
 
 > 📦 **과거 사이클 로그**는 `IMPROVEMENT_BACKLOG_ARCHIVE.md`/git 히스토리로 이관됨 (2026-06-10 1차 분리, 2026-06-25 2차 트림 343KB→192KB, 2026-06-25T10:00 3차 트림, 2026-07-03T06:00 4차 트림 288KB→86KB, **2026-07-07T13:00 5차 트림 — 07-01~07-05 사이클 로그를 git 히스토리로 이관: 238KB→78KB, 256KB Read 한도 재확보**). 신규 로그는 계속 이 파일 상단에 추가. 본 파일은 직전 2일치(07-06~) 사이클 로그 + 영구 참조 섹션(Approved/New/Auto-fixed/Done/Rejected/FP 카탈로그)만 유지. 이관분은 `git log -p -- IMPROVEMENT_BACKLOG.md`로 복원 가능.
+
+> **Area 2 코드 품질 심층 분석 (2026-07-17T00:10):**
+> - **방법**: `git fetch origin main`(HEAD `0e66145` = origin/main 일치, 워킹트리 clean, detached) 후 `npm ci`(node_modules 0→81). Area 2 **45회차** — 직전 Area2(`529f93c`, 07-14T21:45, 38회차) 이후 `src/routes`/`migrations`/`src/scripts` churn 27파일(1423+/416-줄): 부문손익 이후 신규기능 다수(bank.ts link-first 원장연동 +481·items.ts 하드삭제/소프트비활성 분리 +62·workbench.ts ia-designer-loop P0 +273·cashSchedule.ts 자금허브 통합 등) — 다른 영역이 각자 렌즈로 일부만 스쳐봤을 뿐 코드품질(entity_id/N+1/authMiddleware/컬럼존재성/원자성) 관점 미검증 상태. general-purpose 에이전트 1개로 신선 churn 심층분석 위임 후, 오케스트레이터가 4건 전부 직접 코드 Read로 재검증(라인 대조·FK 마이그레이션 grep·프론트 가드 유무 확인).
+> - **🆕 net-new 이슈 4건(전부 issue-only)**:
+>   - **#528(M, bug)**: `bank.ts` 출금→매입지급 적용(`applyBankTransaction` 2-B, `:1414-1441`)의 `db.batch()` 3문장 중 마지막(match_status APPLIED 마킹)에만 멱등가드가 있고, 실제 재무영향을 만드는 INSERT/잔액차감 UPDATE 2문장은 무가드. 프론트 `confirmApply()`(`bank.js:919`)도 형제 핸들러(`:1178`/`:1339`/`:1967`)와 달리 버튼 disable 가드가 없어 더블클릭 시 이중지급+이중잔액차감 확정 재현.
+>   - **#529(S, security/bug)**: 같은 함수의 `link_payment_id` 명시연결 분기(`:1382-1387`)가 `client_id`·`amount`만 검증하고 entity_id 미검증 — 대조군 `findLinkCandidates()`(`:1341-1364`)는 `COALESCE(entity_id,1)=?`로 필터링. `payments`/`purchase_payments` 둘 다 entity_id 컬럼 보유(`migrations/0150`) 확인.
+>   - **#530(M, bug)**: `items.ts:1330-1347` 하드삭제 참조검사가 `order_items`·`purchase_order_items`·`product_materials` 3테이블만 커버 — `migrations/*.sql` `REFERENCES items(` 전수 grep으로 `inventory_transactions`·`inventory_receipt_items`·`inventory_release_items`·`inventory_adjustments`·`inventory_count_items`·`inventory_auto_deductions`·`purchase_request_items`·`purchase_invoice_items`·`waste_records`·`price_policy_rules`·`item_post_processing_defaults`·`pp_material_deductions` 등 ON DELETE 절 없는(NO ACTION, D1 강제) FK 다수 확인. `DELETE FROM inventory`와 `DELETE FROM items`가 batch 아닌 분리 실행이라 후자 실패 시 재고행만 사라진 부분삭제 상태 잔존.
+>   - **#531(S, improvement)**: `workbench.ts` 신규 `POST /intakes`가 `Number(body.entity_id) || getEntityId(c) || 1` 사용 — `entityFilter.ts:10-18` 주석이 명시 경고하는 전체모드(0)→동산(1) 오귀속 안티패턴. `GET /intake-config` 응답에 entity_id 필드가 없어 `body.entity_id`가 채워질 근거 자체가 없음(SKILL Area4 #487 동일 클래스). `git diff 529f93c..HEAD`로 이번 churn 신규 라인임을 확인(같은 파일의 기존 `getEntityId(c)||1` 3곳은 이번 churn 밖이라 미보고).
+> - **🟢 클린 확인 항목**: migrations 0463~0466 컬럼명·entity_id 포함 전부 일치 · workbench.ts 신규 라우트 authMiddleware 전수 상속 확인 · designer_intakes INSERT 바인드 17:17 일치 · accounts-payable/ar-payments 삭제-연결해제 대칭 확인 · cashSchedule.ts 단일쿼리(N+1 없음) · D1 바인드 100한도(신규 IN절 전부 청크 분할: 20/80/80) · SELECT * 신규 코드 0건.
+> - **🟢 backlog↔GitHub sync**: 이슈 생성 전 실측 `search_issues(state:open,label:auto-improve)`=11(#473,504,509,519,520,521,522,524,525,526,527) 확인 후 본 Area2 신규 4건(#528~#531) 추가 → **new 15**. done(445)·rejected(3) 변동 없음(owner close 0).
+> - **🧬 SKILL 강화 없음(신규 패턴 아님)** — #528(더블클릭 중복제출)·#529(IDOR 형제-비대칭: 자동추천 경로는 entity 필터, 명시지정 경로는 누락)·#530(파괴적 삭제 참조검사 불완전)·#531(entity 0-sentinel 오귀속) 전부 SKILL에 이미 codify된 클래스의 재현 사례. 다만 4건 모두 "완전 신규 기능(이번 사이클 최초 도입)"에서 나왔다는 점은 "신규 기능 churn은 기존 checklist를 처음부터 놓치기 쉽다"는 기존 관찰(Area6 line 214/281 등)을 재확인.
+> - 신규 이슈 4건(#528~#531, 전부 issue-only — destructive write 원자성/IDOR/entity 오귀속=owner 정책판단+egress 검증불가), 자동수정 0건, done-sync 변동 없음(new 11→15·done 445·rejected 3 정합 재확인). 다음 순번 Area 3.
+>
 
 > **Area 1 프로덕션 헬스 (2026-07-16T23:15):**
 > - **방법**: `git fetch origin main`(강제갱신 감지, HEAD `15f93e5` = origin/main 일치, 워킹트리 clean, detached). 프록시가 이번 세션도 prod 호스트 직접 curl을 차단(exit 56, 기존 33/41회차와 동일 제약, `cloudflare-observability` MCP도 미인증) — GitHub Actions 기록으로 대체. Area 1 **44회차** — 직전 Area6(`b52245d`, 07-16T22:30, 43회차) 이후 신규 커밋 1건(`15f93e5` "feat(ia-designer-loop): P0 디자이너 세션 루프", 워크벤치 라우트 255줄+마이그 0463 신설).
