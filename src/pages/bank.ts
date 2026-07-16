@@ -551,7 +551,7 @@ export function bankPage(c: Context<HonoEnv>) {
       <div class="modal-overlay" id="applyModal">
         <div class="modal-box" style="width:420px;">
           <div class="flex items-center justify-between mb-5">
-            <h3 class="text-base font-bold text-gray-800"><i class="fas fa-check-circle text-green-500 mr-2"></i>입금 적용</h3>
+            <h3 class="text-base font-bold text-gray-800" id="applyModalTitle"><i class="fas fa-check-circle text-green-500 mr-2"></i>입금 적용</h3>
             <button onclick="closeApplyModal()" class="text-gray-400 hover:text-gray-600 text-xl leading-none">&times;</button>
           </div>
           <input type="hidden" id="applyTxId">
@@ -559,8 +559,13 @@ export function bankPage(c: Context<HonoEnv>) {
             <div>
               <label class="form-label">거래처 <span class="text-red-500">*</span></label>
               <input type="text" id="applyClientSearch" class="form-input" placeholder="클릭하여 거래처 선택..." readonly style="cursor:pointer;background:#fff;"
-                onclick="openClientPicker(function(id,name){document.getElementById('applyClientSearch').value=name;document.getElementById('applyClientId').value=id;}, this.value)">
+                onclick="openClientPicker(window.onApplyClientPicked, this.value)">
               <input type="hidden" id="applyClientId">
+            </div>
+            <!-- link-first: 동일 거래처·금액·±7일 기존 원장 기록 후보 → 연결(신규 생성 없음) 우선 -->
+            <div id="applyCandidatesWrap" class="hidden">
+              <label class="form-label">기존 원장 기록 발견 <span class="text-xs font-normal text-amber-600">— 연결하면 이중등록이 방지됩니다</span></label>
+              <div id="applyCandidatesList" class="space-y-1 max-h-44 overflow-y-auto border border-amber-200 bg-amber-50 rounded-lg p-2"></div>
             </div>
             <div>
               <label class="form-label">결제 방법</label>
