@@ -126,6 +126,8 @@
                 // 합배송 예약 후보 (거래처 변경 → 기존 선택 초기화)
                 _ofConsolidateWith = null;
                 ofLoadUnshippedCandidates(id);
+                // 디자이너 가공 대기물 배지 (intake.js)
+                if (typeof ofIntakeOnClientSelected === 'function') ofIntakeOnClientSelected(id, name);
             }
 
             // ========== 합배송 예약 (배송 후속 P1) ==========

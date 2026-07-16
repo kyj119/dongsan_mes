@@ -5,7 +5,8 @@ import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
 import { entityFilter, orderVisibilityFilter, getEntityId } from '../utils/entityFilter'
 import { validateUpload } from '../utils/uploadValidation'
-import { hydrateGroups, hydrateGroupsJson, hydrateCanvasJson } from '../utils/thumbnailStore'
+import { hydrateGroups, hydrateGroupsJson, hydrateCanvasJson, externalizeGroups } from '../utils/thumbnailStore'
+import { kstDateOf } from '../utils/kstDate'
 
 const workbenchRouter = new Hono<HonoEnv>()
 
@@ -1096,6 +1097,258 @@ workbenchRouter.post('/process/clear', async (c) => {
   } catch (error) {
     console.error('Workbench process clear error:', error)
     return c.json({ success: false, error: '이력 삭제 실패' }, 500)
+  }
+})
+
+// ═══ 디자이너 세션 루프(2026-07-16): 가공 대기함(designer_intakes) ═══
+// spec: docs/superpowers/specs/2026-07-16-ia-designer-session-loop.md §4.4
+// 흐름: 디자이너 일러 세션 가공(mes-core.jsx) → Z: manifest → 에이전트 POST /intakes(waiting)
+//       → 주문서 프리필 피커 → POST /intakes/:id/absorb(absorbed) | /void
+
+// ── GET /api/workbench/intake-config — 에이전트 _config 브로드캐스트 소스 ──
+// JSX(ExtendScript)는 HTTPS 호출 불가 → 에이전트가 이 응답을 {IA-등록}\_config\config.json으로 중계.
+workbenchRouter.get('/intake-config', async (c) => {
+  try {
+    const [methods, presets, clients] = await Promise.all([
+      c.env.DB.prepare(
+        `SELECT id, name, margin_cm, method_group FROM finishing_methods WHERE is_active = 1 ORDER BY sort_order, id`
+      ).all(),
+      c.env.DB.prepare(
+        `SELECT id, name, config, method_group FROM finishing_presets WHERE is_active = 1 ORDER BY sort_order, id`
+      ).all(),
+      c.env.DB.prepare(
+        `SELECT id, client_name FROM clients WHERE is_active = 1 ORDER BY client_name LIMIT 3000`
+      ).all(),
+    ])
+    // 경로①(주문 선행)용 미가공 라인: 파일 미연결 + 진행 중 주문만
+    const ovf = orderVisibilityFilter(c, 'o')
+    const { results: openLines } = await c.env.DB.prepare(`
+      SELECT oi.id AS order_item_id, o.order_number, cl.client_name, oi.item_name,
+             oi.width, oi.height, oi.quantity, oi.finishing
+      FROM order_items oi
+      JOIN orders o ON o.id = oi.order_id
+      LEFT JOIN clients cl ON cl.id = o.client_id
+      WHERE o.status IN ('CONFIRMED','PRODUCTION') AND oi.ai_analysis_id IS NULL${ovf.clause}
+      ORDER BY o.id DESC LIMIT 200
+    `).bind(...ovf.params).all()
+    return c.json({
+      success: true,
+      data: {
+        generated_at: new Date().toISOString(),
+        methods: methods.results,
+        presets: presets.results,
+        clients: clients.results,
+        open_lines: openLines,
+      },
+    })
+  } catch (error) {
+    console.error('Workbench intake-config error:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
+  }
+})
+
+// ── POST /api/workbench/intakes — 에이전트 manifest 등록 ──
+// 분석 레코드(status=done, 무인 분석 미경유)를 함께 생성해 임포지션 팔레트/직접연결과 호환.
+workbenchRouter.post('/intakes', async (c) => {
+  try {
+    const body = await c.req.json<Record<string, unknown>>().catch(() => null)
+    if (!body) return c.json({ success: false, error: 'JSON 본문이 필요합니다.' }, 400)
+
+    const clientName = String(body.client_name || '').trim()
+    if (!clientName) return c.json({ success: false, error: 'client_name은 필수입니다.' }, 400)
+    const workAiPath = body.work_ai_path ? String(body.work_ai_path) : null
+    const epsPath = body.eps_path ? String(body.eps_path) : null
+    if (!workAiPath && !epsPath) return c.json({ success: false, error: 'work.ai 또는 EPS 파일이 필요합니다.' }, 400)
+
+    // 멱등 2차 안전망(.ingested 마커가 1차): 같은 source_folder 재등록 시 기존 레코드 반환
+    const sourceFolder = body.source_folder ? String(body.source_folder) : null
+    if (sourceFolder) {
+      const dup = await c.env.DB.prepare(
+        `SELECT id, ai_analysis_id FROM designer_intakes WHERE memo = ? LIMIT 1`
+      ).bind(sourceFolder).first<{ id: number; ai_analysis_id: number }>()
+      if (dup) return c.json({ success: true, data: { intake_id: dup.id, ai_analysis_id: dup.ai_analysis_id, duplicated: true } })
+    }
+
+    const entityId = Number(body.entity_id) || getEntityId(c) || 1
+    const qty = Math.max(1, parseInt(String(body.qty ?? '1'), 10) || 1)
+    const measured = (body.measured_cm || {}) as Record<string, unknown>
+    const w = measured.w != null && Number.isFinite(Number(measured.w)) ? Number(measured.w) : null
+    const h = measured.h != null && Number.isFinite(Number(measured.h)) ? Number(measured.h) : null
+    const scalePct = Math.min(100, Math.max(1, parseInt(String(body.scale_pct ?? '100'), 10) || 100))
+    const mode = ['single', 'impose', 'both'].includes(String(body.mode)) ? String(body.mode) : 'single'
+    const finishing = body.finishing && typeof body.finishing === 'object' ? JSON.stringify(body.finishing) : null
+
+    // 임포지션 팔레트 호환용 분석 레코드. file_path 소비자 규칙:
+    //   single → EPS(직접연결 -3 passthrough가 완성본을 복사) / impose·both → work.ai(SheetLayout 소스 해석)
+    const filePath = mode === 'single' ? (epsPath || workAiPath) : (workAiPath || epsPath)
+    const ins = await c.env.DB.prepare(
+      `INSERT INTO ai_analysis_requests (file_path, status, entity_id) VALUES (?, 'done', ?) RETURNING id`
+    ).bind(filePath, entityId).first<{ id: number }>()
+    const analysisId = ins!.id
+
+    // 썸네일: R2 외부화(0449 정책) 후 groups_json 저장 — 실패 시 base64 인라인 폴백
+    if (body.thumb_base64) {
+      const groups = [{
+        index: 0,
+        name: 'design',
+        thumbnail_base64: String(body.thumb_base64),
+        width_mm: w != null ? Math.round(w * 10) : undefined,
+        height_mm: h != null ? Math.round(h * 10) : undefined,
+      }]
+      let groupsJson: string
+      try {
+        groupsJson = JSON.stringify(await externalizeGroups(c.env, analysisId, groups as never))
+      } catch {
+        groupsJson = JSON.stringify(groups)
+      }
+      await c.env.DB.prepare(
+        `UPDATE ai_analysis_requests SET groups_json = ?, updated_at = datetime('now') WHERE id = ?`
+      ).bind(groupsJson, analysisId).run()
+    }
+
+    const intake = await c.env.DB.prepare(`
+      INSERT INTO designer_intakes (
+        entity_id, ai_analysis_id, client_name, qty, finishing_json, width_cm, height_cm,
+        scale_pct, trim, mode, eps_path, work_ai_path, status,
+        registered_by, pc_name, script_version, outline_failed, memo
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'waiting', ?, ?, ?, ?, ?)
+      RETURNING id
+    `).bind(
+      entityId, analysisId, clientName, qty, finishing, w, h,
+      scalePct, body.trim ? 1 : 0, mode, epsPath, workAiPath,
+      body.registered_by != null ? String(body.registered_by) : null,
+      body.pc_name != null ? String(body.pc_name) : null,
+      body.script_version != null ? String(body.script_version) : null,
+      body.outline_failed ? 1 : 0,
+      sourceFolder
+    ).first<{ id: number }>()
+
+    // 경로①(주문 선행): manifest에 order_item_id 있으면 즉시 라인 연결(-3=완성본 passthrough 약속값)
+    let absorbed = false
+    const orderItemId = Number(body.order_item_id) || null
+    if (orderItemId) {
+      const line = await c.env.DB.prepare(
+        `SELECT id FROM order_items WHERE id = ? AND ai_analysis_id IS NULL`
+      ).bind(orderItemId).first<{ id: number }>()
+      if (line) {
+        await c.env.DB.prepare(
+          `UPDATE order_items SET ai_analysis_id = ?, ai_group_index = -3 WHERE id = ?`
+        ).bind(analysisId, orderItemId).run()
+        await c.env.DB.prepare(
+          `UPDATE designer_intakes SET status = 'absorbed', order_item_id = ?, absorbed_at = datetime('now') WHERE id = ?`
+        ).bind(orderItemId, intake!.id).run()
+        absorbed = true
+      }
+    }
+
+    return c.json({ success: true, data: { intake_id: intake!.id, ai_analysis_id: analysisId, absorbed } })
+  } catch (error) {
+    console.error('Workbench intake create error:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
+  }
+})
+
+// ── GET /api/workbench/intakes — 대기함 목록 (주문서 프리필 피커·지표) ──
+workbenchRouter.get('/intakes', async (c) => {
+  try {
+    const status = (c.req.query('status') || 'waiting').trim()
+    const client = (c.req.query('client') || '').trim()
+    const limit = Math.min(parseInt(c.req.query('limit') || '100', 10) || 100, 200)
+    const ef = entityFilter(c, 'designer_intakes')
+    let where = `1=1${ef.clause}`
+    const params: unknown[] = [...ef.params]
+    if (status && status !== 'all') { where += ` AND designer_intakes.status = ?`; params.push(status) }
+    if (client) { where += ` AND designer_intakes.client_name LIKE ?`; params.push(`%${client}%`) }
+
+    const { results } = await c.env.DB.prepare(`
+      SELECT designer_intakes.*, ar.groups_json
+      FROM designer_intakes
+      LEFT JOIN ai_analysis_requests ar ON ar.id = designer_intakes.ai_analysis_id
+      WHERE ${where}
+      ORDER BY designer_intakes.id DESC LIMIT ${limit}
+    `).bind(...params).all<Record<string, unknown>>()
+
+    // 피커 표시용 썸네일 hydrate(R2 ref → base64)
+    const rows = await Promise.all(results.map(async (r) => {
+      let thumbnail: string | null = null
+      try {
+        const gj = await hydrateGroupsJson(c.env, r.groups_json as string | null)
+        const groups = gj ? JSON.parse(gj) : []
+        thumbnail = groups?.[0]?.thumbnail_base64 || null
+      } catch { /* 썸네일 실패는 목록을 막지 않음 */ }
+      const { groups_json: _gj, ...rest } = r
+      return { ...rest, thumbnail }
+    }))
+    return c.json({ success: true, data: rows })
+  } catch (error) {
+    console.error('Workbench intakes list error:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
+  }
+})
+
+// ── GET /api/workbench/intakes/stats — 지표(D8): 일별·PC별 등록/흡수 ──
+workbenchRouter.get('/intakes/stats', async (c) => {
+  try {
+    const ef = entityFilter(c, 'designer_intakes')
+    const { results } = await c.env.DB.prepare(`
+      SELECT ${kstDateOf('designer_intakes.created_at')} AS day, pc_name,
+             COUNT(*) AS cnt,
+             SUM(CASE WHEN status = 'absorbed' THEN 1 ELSE 0 END) AS absorbed,
+             SUM(CASE WHEN status = 'void' THEN 1 ELSE 0 END) AS voided
+      FROM designer_intakes WHERE 1=1${ef.clause}
+      GROUP BY day, pc_name ORDER BY day DESC LIMIT 60
+    `).bind(...ef.params).all()
+    return c.json({ success: true, data: results })
+  } catch (error) {
+    console.error('Workbench intake stats error:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
+  }
+})
+
+// ── POST /api/workbench/intakes/:id/absorb — 주문 라인 흡수 ──
+// 주문서 저장 성공 후 프론트가 호출. order_item_id는 선택(라인 추적은 ai_analysis_id JOIN으로도 가능).
+workbenchRouter.post('/intakes/:id/absorb', async (c) => {
+  try {
+    const id = parseInt(c.req.param('id'), 10)
+    if (!Number.isFinite(id)) return c.json({ success: false, error: '잘못된 ID' }, 400)
+    const body = await c.req.json<Record<string, unknown>>().catch(() => ({} as Record<string, unknown>))
+    const orderItemId = Number(body?.order_item_id) || null
+
+    const ef = entityFilter(c, 'designer_intakes')
+    const row = await c.env.DB.prepare(
+      `SELECT id, status FROM designer_intakes WHERE id = ?${ef.clause}`
+    ).bind(id, ...ef.params).first<{ id: number; status: string }>()
+    if (!row) return c.json({ success: false, error: '대기물을 찾을 수 없습니다.' }, 404)
+    if (row.status !== 'waiting') return c.json({ success: false, error: `대기 상태가 아닙니다 (${row.status}).` }, 409)
+
+    await c.env.DB.prepare(
+      `UPDATE designer_intakes SET status = 'absorbed', order_item_id = ?, absorbed_at = datetime('now') WHERE id = ?`
+    ).bind(orderItemId, id).run()
+    return c.json({ success: true, data: { id, status: 'absorbed', order_item_id: orderItemId } })
+  } catch (error) {
+    console.error('Workbench intake absorb error:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
+  }
+})
+
+// ── POST /api/workbench/intakes/:id/void — 대기물 취소 ──
+workbenchRouter.post('/intakes/:id/void', async (c) => {
+  try {
+    const id = parseInt(c.req.param('id'), 10)
+    if (!Number.isFinite(id)) return c.json({ success: false, error: '잘못된 ID' }, 400)
+    const ef = entityFilter(c, 'designer_intakes')
+    const row = await c.env.DB.prepare(
+      `SELECT id, status FROM designer_intakes WHERE id = ?${ef.clause}`
+    ).bind(id, ...ef.params).first<{ id: number; status: string }>()
+    if (!row) return c.json({ success: false, error: '대기물을 찾을 수 없습니다.' }, 404)
+    if (row.status !== 'waiting') return c.json({ success: false, error: `대기 상태가 아닙니다 (${row.status}).` }, 409)
+    await c.env.DB.prepare(
+      `UPDATE designer_intakes SET status = 'void' WHERE id = ?`
+    ).bind(id).run()
+    return c.json({ success: true, data: { id, status: 'void' } })
+  } catch (error) {
+    console.error('Workbench intake void error:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
   }
 })
 

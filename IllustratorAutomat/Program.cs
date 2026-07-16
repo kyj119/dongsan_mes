@@ -3,6 +3,7 @@ using System.IO;
 using System.Net.Http;
 using System.Net.Http.Json;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Collections.Generic;
@@ -23,6 +24,9 @@ namespace IllustratorAutomation
         private static string ZDRIVE_PATH = @"Z:\";
         // A안(2026-07-16): 업로드 우회 NAS 입력폴더. 비면 {ZDrivePath}\Designs\IA-입력 사용.
         private static string NAS_INPUT_DIR = "";
+        // 디자이너 세션 루프(2026-07-16): 세션 가공 등록 폴더. 비면 {ZDrivePath}\DESIGNS\IA-등록 사용.
+        // spec: docs/superpowers/specs/2026-07-16-ia-designer-session-loop.md §4.2
+        private static string NAS_REGISTER_DIR = "";
         private static string TEMP_FOLDER = Path.Combine(Path.GetTempPath(), "IllustratorAutomat");
         private static int POLL_INTERVAL_MS = 10000; // 10 seconds (workerd 과부하 방지)
         private static int _backoffMs = 0; // 503 발생 시 추가 대기
@@ -198,6 +202,8 @@ namespace IllustratorAutomation
                     // W1: 주기 상태 로그(약 1분마다) — 콘솔 미표시 환경에서 '도는지' 확인.
                     if ((++_heartbeatTick % 6) == 0) WriteAgentLog("폴링 정상 (alive)");
                     if (_heartbeatTick % 3 == 0) await PollNasInputAsync(); // A안: NAS 입력폴더 목록 보고(~30초 주기)
+                    if (_heartbeatTick % 3 == 1) await PollDesignerIntakesAsync(); // 디자이너 세션 등록 ingest(~30초, NAS 스캔과 틱 오프셋)
+                    if (_heartbeatTick % 30 == 1) await BroadcastDesignerConfigAsync(); // _config 브로드캐스트(시작 직후 1회 + ~5분 주기)
                     // 갭③: 주기 temp 스윕(~1시간마다). 장시간 무재기동 운영 시 잔존 폴더 누적 방지.
                     if ((_heartbeatTick % 360) == 0) SweepTempFolder(TimeSpan.FromHours(TEMP_TTL_HOURS));
                 }
@@ -234,6 +240,7 @@ namespace IllustratorAutomation
                 OUTPUT_FOLDER  = cfg["OutputFolder"] ?? OUTPUT_FOLDER;
                 ZDRIVE_PATH    = cfg["ZDrivePath"]   ?? ZDRIVE_PATH;
                 NAS_INPUT_DIR  = cfg["NasInputDir"]  ?? NAS_INPUT_DIR;
+                NAS_REGISTER_DIR = cfg["NasRegisterDir"] ?? NAS_REGISTER_DIR;
 
                 if (int.TryParse(cfg["PollIntervalMs"], out var poll) && poll > 0)
                     POLL_INTERVAL_MS = poll;
@@ -992,6 +999,125 @@ namespace IllustratorAutomation
                 await httpClient.PostAsync($"{ERP_API_URL}/api/ai-analysis/nas-listing", content);
             }
             catch (Exception ex) { Console.WriteLine($"[NAS] listing report error: {ex.Message}"); }
+        }
+
+        // ═══ 디자이너 세션 루프(2026-07-16): IA-등록 manifest ingest + _config 브로드캐스트 ═══
+        // spec: docs/superpowers/specs/2026-07-16-ia-designer-session-loop.md §4.2~4.3
+        // mes-core.jsx(디자이너 일러 세션)가 {IA-등록}\{건별폴더}\에 work.ai/EPS/thumb를 쓰고
+        // manifest.json을 '마지막'에 기록(커밋 신호) → 여기서 주워 서버 designer_intakes에 등록.
+        // 멱등=.ingested 마커(폴더 이동 없음=서버에 등록된 경로 불변). 4xx=.rejected 격리(poison),
+        // 5xx/네트워크=폴더 잔존=자연 재시도. 에이전트 다운 중에도 manifest는 쌓였다가 복귀 시 처리.
+        private static string ResolveRegisterDir()
+        {
+            return !string.IsNullOrWhiteSpace(NAS_REGISTER_DIR)
+                ? NAS_REGISTER_DIR
+                : Path.Combine(ZDRIVE_PATH, "DESIGNS", "IA-등록");
+        }
+
+        private static async Task PollDesignerIntakesAsync()
+        {
+            try
+            {
+                var root = ResolveRegisterDir();
+                if (!Directory.Exists(root)) return; // 폴더 미생성 = 기능 미사용, 조용히 스킵
+                foreach (var sub in Directory.GetDirectories(root))
+                {
+                    var name = Path.GetFileName(sub);
+                    if (name.StartsWith("_") || name.StartsWith(".")) continue; // _scripts/_config 등 예약 폴더
+                    var manifest = Path.Combine(sub, "manifest.json");
+                    if (!File.Exists(manifest)) continue;                       // 커밋 마커 없음 = 아직 기록 중
+                    if (File.Exists(Path.Combine(sub, ".ingested"))) continue;  // 멱등
+                    if (File.Exists(Path.Combine(sub, ".rejected"))) continue;  // poison 격리분
+                    await IngestDesignerFolderAsync(sub, manifest);
+                }
+            }
+            catch (Exception ex) { Console.WriteLine($"[디자이너등록] 스캔 오류: {ex.Message}"); }
+        }
+
+        private static async Task IngestDesignerFolderAsync(string folder, string manifestPath)
+        {
+            try
+            {
+                JsonObject? obj = null;
+                try { obj = JsonNode.Parse(File.ReadAllText(manifestPath))?.AsObject(); }
+                catch (Exception pe)
+                {
+                    File.WriteAllText(Path.Combine(folder, ".rejected"), $"manifest parse: {pe.Message}");
+                    Console.WriteLine($"[디자이너등록] manifest 파싱 실패 → 격리: {folder}");
+                    return;
+                }
+                if (obj == null)
+                {
+                    File.WriteAllText(Path.Combine(folder, ".rejected"), "manifest not an object");
+                    return;
+                }
+
+                // 상대 파일명 → 절대 경로 (파일 없으면 null 전달 = 서버가 존재 필드만 저장)
+                string? Abs(string key, string fallback)
+                {
+                    var rel = obj["files"]?[key]?.GetValue<string>() ?? fallback;
+                    var p = Path.Combine(folder, rel);
+                    return File.Exists(p) ? p : null;
+                }
+                obj["work_ai_path"] = Abs("work_ai", "work.ai");
+                obj["eps_path"] = Abs("eps", "output.eps");
+                var thumbPath = Abs("thumb", "thumb.png");
+                if (thumbPath != null)
+                {
+                    var bytes = File.ReadAllBytes(thumbPath);
+                    if (bytes.Length <= 1_500_000) obj["thumb_base64"] = Convert.ToBase64String(bytes); // D5 썸네일 크기 가드와 동일
+                }
+                obj["source_folder"] = folder;
+
+                var content = new StringContent(obj.ToJsonString(), System.Text.Encoding.UTF8, "application/json");
+                var res = await httpClient.PostAsync($"{ERP_API_URL}/api/workbench/intakes", content);
+                if (res.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+                {
+                    authToken = null; await LoginAsync(); return; // 다음 폴에서 재시도
+                }
+                if (res.IsSuccessStatusCode)
+                {
+                    File.WriteAllText(Path.Combine(folder, ".ingested"), DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
+                    WriteAgentLog($"디자이너 등록 ingest OK: {Path.GetFileName(folder)}");
+                    Console.WriteLine($"[디자이너등록] 등록 완료: {Path.GetFileName(folder)}");
+                }
+                else if ((int)res.StatusCode >= 400 && (int)res.StatusCode < 500)
+                {
+                    // 검증 실패 = 재시도 무의미 → 격리 (서버 응답을 사유로 보존)
+                    File.WriteAllText(Path.Combine(folder, ".rejected"), $"{(int)res.StatusCode} {await res.Content.ReadAsStringAsync()}");
+                    Console.WriteLine($"[디자이너등록] 서버 거부({(int)res.StatusCode}) → 격리: {folder}");
+                }
+                else
+                {
+                    Console.WriteLine($"[디자이너등록] 일시 실패({(int)res.StatusCode}) — 다음 폴 재시도: {Path.GetFileName(folder)}");
+                }
+            }
+            catch (Exception ex) { Console.WriteLine($"[디자이너등록] ingest 오류: {ex.Message}"); }
+        }
+
+        // _config\config.json 브로드캐스트: JSX(ExtendScript)는 HTTPS 호출 불가 → 에이전트가
+        // 서버 스냅샷(마감 프리셋·거래처·미가공 주문 라인)을 파일로 중계. 원자적 교체(tmp→move).
+        private static async Task BroadcastDesignerConfigAsync()
+        {
+            try
+            {
+                var root = ResolveRegisterDir();
+                if (!Directory.Exists(root)) return;
+                var cfgDir = Path.Combine(root, "_config");
+                Directory.CreateDirectory(cfgDir);
+                var res = await GetWithAuthAsync($"{ERP_API_URL}/api/workbench/intake-config");
+                if (!res.IsSuccessStatusCode)
+                {
+                    Console.WriteLine($"[디자이너등록] config 조회 실패: {(int)res.StatusCode}");
+                    return;
+                }
+                var body = await res.Content.ReadAsStringAsync();
+                var tmp = Path.Combine(cfgDir, "config.json.tmp");
+                var dst = Path.Combine(cfgDir, "config.json");
+                File.WriteAllText(tmp, body, new System.Text.UTF8Encoding(false)); // BOM 없는 UTF-8(JSX f.encoding='UTF-8' 호환)
+                File.Move(tmp, dst, true);
+            }
+            catch (Exception ex) { Console.WriteLine($"[디자이너등록] config 브로드캐스트 오류: {ex.Message}"); }
         }
 
         private static async Task ProcessAIAnalysisAsync(int requestId, string filePath)

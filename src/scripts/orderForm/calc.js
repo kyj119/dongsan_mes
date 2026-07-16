@@ -684,6 +684,8 @@
                             msg += '\n\n[자재 부족 ' + res.data.material_warnings.length + '건]\n' + wl.join('\n');
                         }
                         showToast(msg, 'warning');
+                        // 디자이너 가공 대기물 흡수 (intake.js — 실패해도 주문 등록에 영향 없음)
+                        if (typeof ofIntakeAbsorbAll === 'function') { try { await ofIntakeAbsorbAll(); } catch (e) { /* best-effort */ } }
                         // 대신화물 터미널이 거래처 기본값과 다르면 거래처 기본 터미널 자동 갱신
                         var _dm = document.getElementById('deliveryMethod').value;
                         var _term = (document.getElementById('deliveryInfo').value || '').trim();

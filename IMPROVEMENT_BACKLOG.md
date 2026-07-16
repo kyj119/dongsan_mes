@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 5 -->
-<!-- last_run_at: 2026-07-16T09:10:00+09:00 -->
+<!-- last_run_area: 1 -->
+<!-- last_run_at: 2026-07-16T23:15:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -16,6 +16,24 @@
 
 > 📦 **과거 사이클 로그**는 `IMPROVEMENT_BACKLOG_ARCHIVE.md`/git 히스토리로 이관됨 (2026-06-10 1차 분리, 2026-06-25 2차 트림 343KB→192KB, 2026-06-25T10:00 3차 트림, 2026-07-03T06:00 4차 트림 288KB→86KB, **2026-07-07T13:00 5차 트림 — 07-01~07-05 사이클 로그를 git 히스토리로 이관: 238KB→78KB, 256KB Read 한도 재확보**). 신규 로그는 계속 이 파일 상단에 추가. 본 파일은 직전 2일치(07-06~) 사이클 로그 + 영구 참조 섹션(Approved/New/Auto-fixed/Done/Rejected/FP 카탈로그)만 유지. 이관분은 `git log -p -- IMPROVEMENT_BACKLOG.md`로 복원 가능.
 
+> **Area 1 프로덕션 헬스 (2026-07-16T23:15):**
+> - **방법**: `git fetch origin main`(강제갱신 감지, HEAD `15f93e5` = origin/main 일치, 워킹트리 clean, detached). 프록시가 이번 세션도 prod 호스트 직접 curl을 차단(exit 56, 기존 33/41회차와 동일 제약, `cloudflare-observability` MCP도 미인증) — GitHub Actions 기록으로 대체. Area 1 **44회차** — 직전 Area6(`b52245d`, 07-16T22:30, 43회차) 이후 신규 커밋 1건(`15f93e5` "feat(ia-designer-loop): P0 디자이너 세션 루프", 워크벤치 라우트 255줄+마이그 0463 신설).
+> - **🟢 배포 체인 = 최신 HEAD 포함 전수 정상**: `deploy.yml` 최근 30회 실행(07-14T21:13~07-16T09:01) 중 성공 아닌 18건은 전부 07-15T06:14~06:15 사이 동일 커밋(`80890dc9`)에 대한 **cancelled 12건**(연속 push로 인한 concurrency-group 자동 취소, 실패 아님 — 그 커밋의 최종 런은 이후 성공 처리됨) 뿐. 최신 커밋(`15f93e5`, run #864) job 단계별 = Typecheck/Build/Deploy/Smoke **전부 success**(Smoke 09:02:49~09:03:02, 13초). `backup.yml`(Daily D1 Backup) 최근 8회 전부 success, 최신 07-15T18:00. `e2e.yml`은 여전히 `disabled_manually`(06-22 owner 비활성화 유지, 재발 아님).
+> - **🟡 저확신 관찰(이슈 미생성) — 신규 마이그 0463(designer_intakes) 배포 순서 의존, graceful degrade로 무해**: `15f93e5`가 신규 테이블 `designer_intakes`(전부 추가형 CREATE TABLE IF NOT EXISTS)를 도입했고, 이 테이블에 의존하는 신규 라우트 5종(`workbench.ts` GET/POST `/intakes`·`/absorb`·`/void`·`/intake-config`)이 이미 코드 배포됨 — SKILL #483 "code-only CI 배포 하의 마이그레이션 드리프트" 패턴이나, ① 신규 고립 테이블(기존 detail-SELECT 컬럼 참조 아님, #484류 위험 아님) ② 호출부(`orderForm/intake.js:35` `ofIntakeOnClientSelected`, 거래처 선택 시마다 자동 호출되는 핵심 경로)가 `.catch(function(e){ console.warn(...) })`로 실패를 완전 흡수 — 마이그 미적용 상태에서 "no such table" 500이 나도 주문서 화면은 배지만 안 뜨고 정상 동작(크래시 없음). ③ `POST /intakes`(에이전트 manifest 등록)는 기존 workbench 에이전트와 동일하게 실제 로그인 JWT Bearer 인증 사용(`IllustratorAutomat/Program.cs:1073`, 하드코딩 audit-FK 취약 클래스 아님). **결론**: 이 사이클은 owner가 직접 커밋한 신기능이라 `db:migrate:prod` 인지 여부는 owner 판단 영역 — auto-improve가 액션할 사안 아니나(egress로 prod PRAGMA 검증도 불가), 참고용 1줄 기록만 남김. 미적용이어도 폭발반경=신기능 자체 dormant뿐, 기존 주문서 플로우 영향 0.
+> - **🟢 backlog↔GitHub sync**: `search_issues(label:auto-improve,state:open)` 실측 **11건**(#473,504,509,519,520,521,522,524,525,526,527) = 직전 Area6 stats와 완전 정합, 변동 없음(owner close 0, 신규 이슈 0). done(445)·rejected(3) 변동 없음.
+> - **🧬 SKILL 강화 없음(신규 패턴 아님)** — 이번 관찰은 기존 #483(마이그 드리프트)·printEvents/rip 대비 workbench 에이전트의 "실 JWT 인증" 정상 패턴(#430 하드코딩 audit-FK류가 아님을 재확인) 렌즈로 충분히 설명됨.
+> - 신규 이슈 0건, 자동수정 0건(수정 대상 없음), done-sync 변동 없음(new 11·done 445·rejected 3 정합 재확인). 다음 순번 Area 2.
+>
+> **Area 6 자기 진화 (2026-07-16T22:30):**
+> - **방법**: `git fetch origin main`(강제갱신 감지, HEAD `d126b45` = origin/main 일치, 워킹트리 clean, detached) 후 `npm ci`(node_modules 0→81). Area 6 **43회차** — 직전 Area6(`8c3fd23`, 07-14T13:40, 41회차) 이후 Area1~5가 각자 렌즈로 대부분의 churn을 이미 감사 완료. 이번 사이클의 순수 미검증 churn = 직전 Area5 체크포인트(`5d354ef`, 07-16T09:10) **이후** 착륙한 IA-editor 3커밋(`af533ba`/`34b74d1`/`75fea1c` — NAS 경로 직접분석·열기모달 하드닝·큐 자동만료+분석취소, `aiAnalysis.ts`+118·`iaEditor.js`+77·`iaEditor.ts`+5)뿐(sunmyung 데이터 임포트 커밋들은 `docs/`만 건드려 범위 밖). 오케스트레이터가 직접 라인별 diff 감사(XSS bridge + entity/auth + write-path 정합성 렌즈).
+> - **🟢 IA-editor churn = clean(XSS/auth/SQLi 관점)**: `nas-listing`/`from-nas`/`cancel` 3개 신규 엔드포인트 전부 라우터-와이드 `authMiddleware+requireRole('ADMIN')`(`aiAnalysis.ts:10`) 상속 확인(인증 갭 없음). 파일 경로는 항상 에이전트가 보고한 목록에서만 취함(`from-nas`가 사용자 입력 경로를 신뢰하지 않음 — 코드 주석이 이미 "경로 주입 방지" 명시, 직접 검증: `match = files.find(f => f.name === name)` 후 `match.path`만 사용, 사용자 제공 경로 바인드 없음). 전부 파라미터 바인드(SQLi 0). `iaEditor.js`의 NAS 패널 렌더(`iaeNasLoad`)는 `f.name`/`f.mtime`/`d.reported_at`을 텍스트·`data-name` 속성 양쪽 `iaeEscape()`로 일관 이스케이프 — 기존 컨벤션 유지, net-new XSS 0. `settings` 테이블에 파일목록을 entity_id 없이 전역 저장하는 것은 물리적으로 단일 NAS 폴더(Z:\Designs\IA-입력)를 공유하는 설계상 의도(FP클래스⑤ 전역 마스터와 동형) — 격리 갭 아님.
+> - **🟡 저확신 관찰(이슈 미생성) — pending 큐 10분 리퍼가 신규 NAS 대용량 워크플로와 상호작용 가능성**: `af533ba`가 추가한 EXP-1 리퍼(`aiAnalysis.ts:483-495`, `status='pending' AND updated_at<10분전`→무조건 `error` 확정, 재시도 없음)는 기존 'processing' 리퍼(재시도 최대 3회 후 terminal)와 달리 **최초 1회 미픽업만으로 즉시 terminal**. 같은 커밋 세트가 도입한 NAS 대용량 우회 기능(최대 500개 파일 목록, 사용자가 순차 클릭해 큐잉)과 결합 시, 에이전트가 백로그를 10분 내 못 따라가면(대용량 파일 처리시간 김) 정상 대기 잡이 "포이즌"으로 오분류되어 재시도 없이 죽을 이론적 경로가 있음. **보고 보류 이유**: ① 실제 큐잉이 버튼별 수동 클릭(bulk 아님)이라 실사용 depth 불확실 ② 커밋 코멘트가 이 트레이드오프를 이미 인지·명시("MES 만료 루프 차단" 의도적 설계) ③ 사용자 대면 메시지+취소 버튼(EXP-2)으로 이미 완화됨 — SKILL "확정 재현 트리거" 기준 미충족(Area 2 #369 원칙: 추측성 엣지케이스는 노이즈). 다음 사이클에서 실사용 중 이 케이스로 인한 `error` 발생 빈도가 관찰되면(예: "10분+ 대기 정체" 메시지가 실제 대용량 파일에서 재현) 정식 이슈화.
+> - **🔍 open≠unfixed 재확인 — #521/#527 형제 완전성 직접 grep**: `departments.ts:72` PATCH `/employees/:id`가 여전히 bare `WHERE id=?`(Area2 38회차 지적과 동일, 이번 churn과 무관한 파일이라 변동 없음 확인) — Area2의 정정 코멘트가 유효함을 재확인, 추가 코멘트 불요. `orders/queries.ts:159` bulk-bill도 여전히 entityFilter 없음(#527 그대로) — 두 건 다 이번 churn 범위 밖 파일이라 재검증만 하고 액션 없음.
+> - **🟢 backlog↔GitHub 절대값 재동기화**: `search_issues(is:closed reason:completed)`=**445**(변동 없음, owner close 0) · `not_planned`=1 + `duplicate`=2 → rejected **3**(변동 없음) · `search_issues(state:open,label:auto-improve)` 실측 **11건**(#473,504,509,519,520,521,522,524,525,526,527) — Area5(37회차)가 만든 #527 반영, 변동 없음(new 11 유지).
+> - **🗂️ 백로그 문서 정합성 정비(비-코드 자기수정)**: `## ✅ Approved/👀 Reviewed`·`## 🆕 New` 두 섹션이 **2026-06-12 시점 스냅샷(5주+ stale)** 으로 방치돼 있었음 — 당시 나열된 11건(#373~#388)은 전부 그 사이 done 처리됐고 reviewed 1건(#372)도 06-12 close된 지 오래인데 표만 안 갱신되어 상단 통계(new 11)와 본문 상세표(구 11건 목록)가 서로 다른 이슈 집합을 가리키는 모순이 존재했음. **본문 상세표를 현재 GitHub 실측 11건으로 전면 교체**(이슈번호·제목·영역·상태메모 포함) — SKILL Area6 "절대값 재동기화" 원칙(line 268)을 통계 숫자뿐 아니라 상세 목록 테이블에도 적용. 코드 변경 없음, 문서 전용 커밋으로 분리.
+> - **🧬 SKILL 강화 없음(신규 탐지 패턴 아님)** — 이번 사이클은 신선 churn 자체가 작고(3커밋) 이미 SKILL이 규정한 렌즈(XSS bridge·entity 전역마스터 FP클래스·write-path 재시도정책)로 충분히 커버됨. 유일한 자기진화 산출물은 코드가 아니라 **문서 드리프트 발견**(New/Approved 표가 통계 요약과 별개로 몇 주간 갱신 안 됨) — 향후 사이클에서 이 두 상세표도 매번 통계 절대값과 함께 재동기화 대상임을 재확인.
+> - 신규 이슈 0건, 자동수정 0건(코드 churn 자체가 clean), 문서 동기화 1건(New/Approved 상세표 전면 갱신), done-sync 변동 없음(new 11·done 445·rejected 3 전부 정합 재확인). 다음 순번 Area 1.
+>
 > **Area 5 보안 (2026-07-16T09:10):**
 > - **방법**: `git fetch origin main`(강제갱신 감지, HEAD `5d354ef` = origin/main 일치, 워킹트리 clean, detached) 후 `npm ci`(node_modules 0→81). Area 5 **37회차** — 직전 Area5(`1b51264`, 07-14T09:17, 36회차) 이후 churn 13커밋 중 대부분(부문손익 P1~P5·bank 하드닝·orders 날짜필터)은 이미 Area2/3/4/6이 각자 렌즈로 감사 완료 — 이번 사이클 순수 미검증분은 `ledger.js`/`ledger.ts`/`accounts-payable.ts`/`po-queries.ts` fix 커밋 3건(프론트 CSS/모달 스크롤+read-only 쿼리 조건 변경, XSS/SQLi 관점 재확인)뿐이라 오케스트레이터가 직접 diff 감사 후, **churn-무관 standing scan**(authMiddleware 재귀·시크릿 폴백·자동화 IDOR 형제-비대칭 스캐너)을 전체 코드베이스에 재실행해 순수 코드품질 렌즈가 아닌 "형제가 이미 격리했는데 이 핸들러만 빠짐" 각도로 신선한 후보를 찾음.
 > - **🔴 net-new HIGH — #527 (S, security/bug)**: 자동화 IDOR 스캐너(엔티티 보유 테이블 × bare `WHERE id=?` mutate, `#452` 레시피)가 뽑은 14후보 중 `orders/queries.ts` `PATCH /bulk-bill`(:159)이 결정적 — **바로 다음 핸들러 `PATCH /bulk-ship`(:241)의 헤더 주석(:240)이 "bulk-bill(:158)과 동일하게 ADMIN/MANAGER 전용 + entityFilter(자법인만)"라고 명시하며 bulk-bill을 격리 구현의 근거로 인용**하는데, 정작 `bulk-bill` 자신의 선행 SELECT(:188-190, `SELECT ... FROM orders WHERE id IN (...)`)에는 `entityFilter`가 전혀 적용되지 않음(bulk-ship은 :257 `entityFilter(c)` 적용 확인). 도달성 LIVE(`taxInvoices.js:1031/1064` `axios.patch('/api/orders/bulk-bill', ...)`). entity-scoped MANAGER/ADMIN이 타법인 `order_ids`를 보내면 `order_billing_groups`/`orders`의 `billing_status`를 `BILLED`로 강제전환 + `billed_amount`/`accounting_date`/`receipt_type` 임의 덮어쓰기 가능 — 조용한 회계 데이터 오염(에러 없음, `{success:true}` 응답). GitHub #527 생성 완료.
@@ -430,32 +448,25 @@
 
 ## ✅ Approved / 👀 Reviewed (owner 피드백 수신)
 
-> **👀 Reviewed 1건 (owner 피드백 수신, 미구현)**:
-> | ID | 제목 | 영역 | Issue | owner 피드백 |
-> |----|------|------|-------|------|
-> | I-060 | [improvement] CSV export 5곳 `LIMIT 5000` 무경고 silent truncation — 정산/감사 다운로드 불완전 가능 | Area 3 | #372 | "3번으로 진행해줘 최대 페이지 표시수량을 5000으로 제한하고 사실상 5000을 넘는 경우는 많이 없을것 같은대"(06-11T00:25). ⚠️**모호**: #372 옵션3=페이지네이션 스트리밍(전량 다운로드)인데 "5000 제한 유지"와 모순 → 구현 전 owner에게 의도 확인 필요(옵션1 잘림경고 + 5000 유지를 뜻하는 듯). 승인처리 워크플로우에서 처리. |
->
-> (이전 approved 2건 #340 I-030·#342 I-032은 06-09 구현·close 완료 → Done 표 이관, Area 6 06-09T22:00.)
+> 없음 — 이전 유일 reviewed 건(I-060/#372 CSV 잘림경고)은 06-12 owner 옵션1로 구현·close 완료 → Done 이관 (Area 6 43회차, 2026-07-16 재확인).
 
 ## 🆕 New (미검토)
 
-> 전부 GitHub open + 👍 미수신. 용준님 리뷰 대기. (open **실측 11건** — 2026-06-12T12:00 Area 6. #377·#378 done-sync close로 13→11, #372는 reviewed 별도)
+> 전부 GitHub open + 👍 미수신. 용준님 리뷰 대기. (open **실측 11건** — 2026-07-16T13:30 Area 6 43회차, `search_issues(state:open,label:auto-improve)` 직접 재확인. 아래 표는 5주 이상 stale하던 06-12 시점 목록[전부 done 처리됨]을 이번에 현재 상태로 전면 교체.)
 
-| ID | 제목 | 영역 | Issue | 공수 |
-|----|------|------|-------|------|
-| I-074 | [MED bug] split billing 출고/재고 stored 업무일자 raw date('now') UTC off-by-one — billable_after(shipments.ts:814·queries.ts:251)·auto_complete_date(:815/:252)·fifo receipt_date(inventoryValuation.ts:105). KST 00~09시 작업분 전일 영구기록(stored), #366(b8d2f0d)이 처분일/order_date는 보정했으나 이 3종 미처리. 회계/COGS 귀속 1일 밀림 | Area 4 | #388 | ~1h |
-| I-073 | [MED bug] split billing 청구그룹 동결 order-wide — recalcOrderBillingGroups freeze(helpers.ts:60-64)가 BILLED/PAID 1개라도 있으면 전 그룹 동결. 혼합주문 부분청구 후 미청구 entity 품목 편집 시 그룹 미갱신 → createSplitInvoices가 stale 금액 청구. 정책 결정 필요(NULL그룹만 recalc/편집차단/경고) | Area 4 | #387 | ~2h |
-| I-072 | [MED bug] split billing DRAFT 계산서 삭제가 obg.tax_invoice_id 미정리 — createSplitInvoices(helpers.ts:422)는 링크하나 manage.ts:140 DELETE는 미정리 → dangling. 취소 경로(issue.ts:707)는 정리=비대칭. issue.ts:261 재링크 차단 + 주문상세 phantom 노출 | Area 4 | #386 | ~20m |
-| I-071 | [HIGH bug] printEvents.ts `SELECT entity_id FROM cards` 5곳 — cards엔 `requesting_entity_id`만(존재X 컬럼). node:sqlite empirical=`no such column` **throw**(NULL 아님). cardId 매칭 성공 시 print_events/print_file_map 기록 500 + quality_issues 침묵 미생성 + 미throw경로 entity 1 고정(법인 오귀속). #377/workbench와 동일 컬럼오타 클래스 | Area 2 | #384 | ~1h |
-| I-070 | [LOW-MED bug] 출고 알림톡 품목요약 card_id 경유 단일조인 — `kakao.ts:459` shipment_items를 card_id→cards→order_item_id로만 조인 → 주문단위 출고(card_id NULL) 품목명 누락 "제품" 폴백. 수정=COALESCE 양 경로 | Area 2 | #385 | ~30m |
-| I-069 | [improvement] shell.js 정적에셋 외부화 **불완전 revert** — 런타임은 `layout.ts:181` `?raw` 인라인 복귀(prod green)인데 `build-assets.mjs`가 매 빌드마다 dead `/static/shell.<hash>.js`(소비처 0)·미사용 `ASSET_MANIFEST`(import 0) 생성 = 재외부화 오배선 시 MIME 2회다운 재현 트랩. #382(게이트 방어)의 보완(트랩 제거) | Area 1 | #383 | ~30m |
-| I-068 | [improvement] 배포 게이트 `smoke.cjs`는 `/api/*` 전용 — 프론트 부트스트랩/MIME 장애를 못 잡아 shell.js 2회 prod 다운이 "Deploy 성공"으로 통과(E2E만 ~5분 후 적발). smoke에 경량 프론트 단언(`/` HTML 200+text/html+셸 마커) 추가 | Area 1 | #382 | ~1h |
-| I-067 | [HIGH bug] orders 쓰기 엔드포인트 entity 격리 비대칭(IDOR) — read/delete는 격리, billing-status/cancel/PUT/bill/status/output-folder는 무필터 `WHERE id=?` → 멀티법인 MANAGER가 타법인 주문 청구/취소/balance 조작. 청구분할(72bd97e) PUT이 쓰기 증폭 | Area 5 | #381 | ~2h |
-| I-065 | [improvement] printSystem N+1 2곳 — /media/bulk(2중루프 건별 SELECT, media id 메모리 보유라 재조회 불요)·/repair-links(3중 N+1 ~3000쿼리). setup/repair 저빈도 LOW | Area 2 | #379 | ~1.5h |
-| I-062 | [improvement] 배포 스모크 로그인 단일시도(재시도 부재) → cold-start 일시 500이 deploy 게이트 파손 + E2E skip. bounded 재시도 or health warm-up ping | Area 1 | #374 | ~30m |
-| I-061 | [MED bug] 입고검수 CANCELLED 시 재고만 역분개·PO status/received_quantity 미롤백 → PO 영구 RECEIVED 잔류 + 취소수량 재입고 불가(400 차단). #369(재고측)와 별개 PO측 롤백 | Area 4 | #373 | ~1.5h |
-
-> ✅ 직전 New 8건(#336·#341·#350·#358·#359·#360·#362·#363) + Approved 2건(#340·#342) + 무ID close 7건(#361·#364·#365·#366·#367·#368·#369)은 Area 6(06-09T22:00) 전수 검증 후 **17건 전부 done 확정** → Done 표 이관.
+| Issue | 제목 | 영역 | 라벨 | 상태 메모 |
+|-------|------|------|------|-----------|
+| #527 | PATCH /api/orders/bulk-bill entityFilter 누락 — 타법인 주문 cross-tenant BILLED 처리 | Area 5 | bug,security,S | net-new, 미픽스 확인(43회차 재검증) |
+| #526 | 부문 손익 자재비 — created_at UTC 미보정(KST 귀속오류) + 이동평균단가 비재현성 | Area 4 | improvement,S/M | 미픽스 |
+| #525 | 부문 손익 P5 배부 — serves_department_id 미검증 + totalWeight=0 공통비 무음소실 | Area 4 | bug,S~S-M | 미픽스 |
+| #524 | 주문목록 기본 날짜필터(최근1개월) 무음 차단 — clear-date dead code | Area 3 | improvement,S | 미픽스 |
+| #522 | hr.ts 직원등록/수정 department_id 존재·활성 미검증 (departments.ts와 비대칭) | Area 2 | improvement,S | 미픽스 |
+| #521 | 부문관리 employees entity격리 — GET 3곳은 `73b86ee`로 픽스됐으나 **PATCH /employees/:id는 여전히 bare `WHERE id=?`** | Area 6→2 | bug,security,S | **부분픽스**, Area2가 정정 코멘트 게시(07-14), 43회차 재확인 동일 |
+| #520 | IA 크래시-하드닝 재큐 완료-콜백 세대가드 부재 → zombie write lost-update | Area 4 | bug,S | 미픽스 |
+| #519 | 계좌이체 "전체 확정" 버튼 double-submit 미방지 | Area 3 | improvement,S | 미픽스 |
+| #509 | 급여 중도입퇴사 일할계산 근거(근무일수/비율) 화면 미표시 | — | improvement,S~S-M | 미픽스 |
+| #504 | 회사 인쇄정보 로드 실패 시 무음 처리 (CSV 포뮬러가드는 자동수정 완료, 로드실패 toast만 잔존) | — | improvement,S | 부분 자동수정됨, 잔존분 미픽스 |
+| #473 | 거래처 포털계정 GET/PATCH/DELETE entity 소유 검증 없음 — #452 형제만 미픽스 | Area 5/6 | bug,security,small | **owner 보류 지시**(재보고/재수정 시도 금지, 지시 유지) |
 
 ---
 
