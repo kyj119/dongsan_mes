@@ -1,40 +1,34 @@
-# 세션 컨텍스트 (2026-07-14) — 부문별 손익 관리회계 (P1~P5) 신규 구축·prod 배포
+# 세션 컨텍스트 (2026-07-16) — 선명 매입 이관·미지급 대사 + client_type 수정 + 매입 품목 item_id 매칭 97.5%
 
-> 세션별 덮어쓰기 파일. **이 세션 정본 = auto-memory [[design-departmental-pnl]] + 이 파일.**
+> 세션별 덮어쓰기 파일. **이 세션 정본 = auto-memory [[project-sunmyung-item-import]] + 이 파일.**
 
 ## 요청·결론
-- **요청**: "품목별 어느 부서 입고/재고처리 → 부서별 영업이익·인건비 비율 등 세무회계 계산"
-- **결론**: 부문(cost center)별 손익 = **관리회계**(내부 "어느 팀이 돈 버는지"). 세무신고=법인단위 그대로(부서분할 무관).
+- **요청**: 선명 매입 이관 진행 → (파생) client_type 필터 수정 → 매입 품목 item_id 매칭(원단별 매입분석·수익률·재고 기반 마련).
+- **결론**: 미지급 **246,187,780 완결**, client_type 배포·검증, 품목매칭 **987/999(금액 97.5%)**. 남은 항목=설비/서비스/색특정불가=NULL 확정(사용자 승인 "없어도 괜찮").
 
-## 확정 설계 (사용자 합의)
-- **부서 정의 = 계층 부문 마스터 + 공정(items.category) 귀속엔진**. 순수 공정6종만 쓰면 관리부서·봉제·유통(card_group=null) 구멍 → 얇은 부문 마스터로 포섭. 리포팅 묶음 변경=매핑만 수정.
-- **부문 트리**(prod 시드): 출력/전사/간판/유통(PRODUCTION) + 디자인(부모)>디자인-출력·디자인-전사·디자인-간판·봉제/후가공 + 관리/본사(SUPPORT). 사용자: "디자인도 전사·출력·간판 3부서로 나뉜다" → `serves_department_id`로 디자인 하위팀이 대응 생산부문 지원(P5 직접귀속). 봉제=디자인 산하·공통.
-- **매출귀속=품목라인**(order_items.category_name→부문) 자동. **공통비=공헌이익 먼저→P5 배부**.
-- **관리 UI**: 별도 /departments 페이지 폐기(사용자 요청) → **/hr에 3탭 통합**[직원 관리·부문 관리·부문 손익]. 레거시 `employees.department`(enum) 유지(하위호환), 신규 `department_id`(FK) 병행.
+## 처리 (전부 prod)
+1. **매입 이관**: `purchase_orders`(재고512.46M + 기초187.26M + 회계0.077M) − `purchase_payments`453.05M − `purchase_adjustments`0.561M = **미지급 246,187,780**. 회계허브 `purchase_invoices` 512M(SMI-·po연결). ★AP정본=`clients.purchase_balance`(=purchase_orders−payments−adj) ≠ 매출 deriveClientBalance. 거래처별 19곳 채무파일 완벽일치, 3중검증.
+2. **client_type**: `purchase-overdue`·`integrity-check/fix`·`po-queries` 가 존재않는 `SUPPLIER/BOTH`·`PURCHASES` 필터 → 실질기준(purchase_balance>0·매입활동)으로 수정. 배포 `6eb6354e` + admin/password prod 실API검증(overdue 6곳).
+3. **품목매칭**: 재고매입 999라인 중 **987(98.8%라인·금액 97.5%)**. 카테고리별 단계 + 일괄(sm_bulk2~15). rename(폭라벨·시트150→152), 신규등록(공급사변형·잉크 ITP/TPM·폭·배너거치대 일자형·족자봉부속·투광기파이프·광확산1.8T·알마이트 BK/WH·미러천·깃발천·솔벤코팅·45도·울트라·LM5400·LG조명·블랙아웃). E4/C4엠보=items존재(JG-E4/C4). **배너=완제품 아닌 거치대 부자재**(ACC-011~028), 인두기=GDS-INDUGI.
 
-## 배포 결과 (main `73b86ee0`, 마이그 0459~0462 remote **execute --file 직접**[db:migrate:prod 금지=추적 0325 불일치])
-- **P1**(0459/0460): `departments`(계층 parent_id·dept_type·serves_department_id·legacy_codes) + `department_category_map` + `employees.department_id` FK+백필(**미매핑 0** prod 실측).
-- **P1.5**(0461): `routes/departments.ts` CRUD + `/hr` 부문 관리 탭(`pages/hr.ts`+`scripts/departments.js` concat, dept- 접두 전역격리).
-- **P2**(0462): `GET /api/departments/pnl?from&to&basis` 매출·자재비·인건비 집계 + `/hr` 부문 손익 탭. 0462=cards.category_name(card_group 라벨)→부문 보강.
-- **P5**(마이그 없음=순수 리포트): serves 재배분 + 공통풀(잔여 지원인건비+고정비) 안분(basis=revenue/headcount/labor) → 부문 영업이익. **원장 불변·계산단계만**.
-- **#521**(봇 발견): `/employees`·트리 인원수·pnl 인원기준에 `entityFilter` 추가(전 법인 노출 차단).
+## 판단기준·교훈 (재사용)
+- **item_id는 금액무관 → 미지급 246M 전 과정 불변** (매칭 안전).
+- **공급사/포장/용량 변형=구분등록**(사용자정책), **동일물(개별포장=개별박스·5L=5리터·시트150=152)=통합**.
+- 오매칭 방지=폭/색/규격 정확일치만 자동, 색무표기/종류불명은 확인. **성격 구분**: 배너=거치대 부자재(매칭), EP전사=설비(NULL).
+- 로컬검증=실DDL 복제+FK강제. prod=raw 원장 합산이 정본(D1 읽기지연).
 
-## 프로덕션 실측(2026-07)
-- 인건비: 간판 30,255,310 · 관리/본사 10,563,940 (그 달 급여 2부문만 입력). 고정비 15,800,550. 공통풀 26,364,490.
-- 자재비=0(iad 0행). 매출=주문라인 기준(billed_orders=0).
+## 남은 항목 (NULL 확정)
+EP피더기 11M(전사 설비·고정자산), 자동몰드/양면테이프(장비부속/소모품 극소액), 화물/운임(서비스), 혼합잉크 CMY/K(색특정불가), 저밀도40(사용자 기타결정). → 원자재 아님/색불가/서비스라 NULL 적절. 후속 CSV=`docs/sunmyung-import/purchase_TODO_worksheet.csv`.
 
-## 알려진 한계·후속 (선택, 미착수)
-1. **자재비 0** — `inventory_auto_deductions` prod 미가동([[project-rip-send-pipeline]]). 붙으면 자동 반영(매핑 0462 준비됨).
-2. **매출=주문라인**(비취소·주문일). 청구 기준 원하면 `order_billing_groups` 전환.
-3. **PATCH /employees/:id** entity 가드 미추가(읽기만 #521 차단). 필요시 추가.
-4. **fixed_expenses** entity 미필터(financialReports 관행).
-5. serves 재배분은 디자인 하위팀 급여 입력돼야 동작(2026-07 미발생).
+## 후속 (선택, 미착수)
+1. **수익률**: 원단(매입)↔완제품(매출) BOM 연결 필요(단순 item_id 매칭으론 불가).
+2. **재고 소모량**: 매입 입고를 `inventory_transactions`에 반영하는 이관 별도(현재 재고 미연동).
 
 ## 명령·검증
-- 프로덕션 https://webapp-9i0.pages.dev/hr → 3탭. 로컬 admin/password.
-- `npm run verify`(typecheck+build) / `npm run deploy:prod`(--branch main) / 신규 마이그=`wrangler d1 execute webapp-production --remote --file=./migrations/XXXX.sql`.
-- ⚠️로컬 D1 마이그 추적=0325 불일치(데이터는 최신) → `db:migrate:local` 금지, 신규만 execute --file.
-- ⚠️브랜치 `feat/dept-pnl`에 타 세션 bank 커밋 흡수(공유 체크아웃)·origin/main과 수시 병합하며 FF push `feat/dept-pnl:main`.
+- SQL 정본=`docs/sunmyung-import/`(sm_pm1~3·sm_a1*·sm_ink*·sm_tpm*·sm_bulk_sure·sm_bulk2~15·sm_bulk12/15_new). **통합롤백=`sm_item_rollback_all`**(item_id NULL복원+신규삭제+rename복원, 미지급 무영향).
+- prod 조회/적용=`npx wrangler d1 execute webapp-production --remote --file/--command`. admin/password 로그인 유효.
+- ⚠️브랜치 `feat/dept-pnl`. client_type(6eb6354e)은 origin/main push완료(`5d354ef3`). 이후 docs 커밋(품목매칭 기록)은 **미push**(코드아님·prod 데이터는 SQL 직접적용라 무관). 필요시 `git push origin HEAD:main`.
 
 ## 정본
-- auto-memory [[design-departmental-pnl]] / spec `docs/superpowers/specs/2026-07-13-departmental-pnl.md`
+- auto-memory [[project-sunmyung-item-import]] (매출·미수금 + 매입·미지급 + 품목매칭 전량).
+- 핸드오프 `docs/HANDOFF-sunmyung-purchase.md`(미지급 대사, 역할 종료).
