@@ -189,5 +189,8 @@ async function createPRForZone(zoneId) {
   }
 }
 
-// 초기 로드
-loadDashboard();
+// 초기 로드: 독립 페이지(/inventory-dashboard)에서만 자동 실행.
+// 재고관리 '창고별' 탭(#tabZone 존재)에선 탭 최초 진입 시 switchInvTab이 lazy-load (이중 로드 방지).
+if (document.getElementById('dashContent') && !document.getElementById('tabZone')) {
+  loadDashboard();
+}

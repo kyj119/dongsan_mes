@@ -102,7 +102,9 @@ export const MENU_ITEMS: MenuGroup[] = [
     group: '관리',
     items: [
       { path: '/inventory', icon: 'fa-boxes', label: '재고 관리', roles: ['ADMIN', 'MANAGER'] },
-      { path: '/inventory-dashboard', icon: 'fa-chart-bar', label: '창고별 재고', roles: ['ADMIN', 'MANAGER', 'OPERATOR'] },
+      // /inventory-dashboard 사이드바 은퇴 (2026-07-16): '창고별' 뷰를 /inventory 3번째 탭으로 흡수(중복 제거).
+      // 실질 ADMIN 전용이었음(permission_pages 행 없음→비ADMIN 숨김). 페이지·라우트·API 보존(직접 URL). 되살릴 경우 이 줄 복원.
+      // { path: '/inventory-dashboard', icon: 'fa-chart-bar', label: '창고별 재고', roles: ['ADMIN', 'MANAGER', 'OPERATOR'] },
       { path: '/storage-zones', icon: 'fa-warehouse', label: '창고 관리', roles: ['ADMIN'] },
       { path: '/users', icon: 'fa-users', label: '사용자 관리', roles: ['ADMIN'] },
       { path: '/permissions', icon: 'fa-user-shield', label: '권한 관리', roles: ['ADMIN'] },

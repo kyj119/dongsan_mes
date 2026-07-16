@@ -4,6 +4,7 @@ import { renderPage } from '../layout'
 import { UOM_JS } from '../utils/unitConvert'
 import inventoryScript from '../scripts/inventory.js?raw'
 import inventoryCountScript from '../scripts/inventoryCount.js?raw'
+import inventoryDashboardScript from '../scripts/inventoryDashboard.js?raw'
 
 export function inventoryPage(c: Context<HonoEnv>) {
   const tabScript = `
@@ -13,30 +14,34 @@ export function inventoryPage(c: Context<HonoEnv>) {
         m.classList.add('hidden');
       });
 
-      const stockTab = document.getElementById('tabStock');
-      const countTab = document.getElementById('tabCount');
-      const stockContent = document.getElementById('stockTabContent');
-      const countContent = document.getElementById('countTabContent');
-
-      if (tab === 'stock') {
-        stockTab.classList.remove('border-transparent', 'text-gray-500');
-        stockTab.classList.add('border-blue-600', 'text-blue-600');
-        countTab.classList.remove('border-blue-600', 'text-blue-600');
-        countTab.classList.add('border-transparent', 'text-gray-500');
-        stockContent.classList.remove('hidden');
-        countContent.classList.add('hidden');
-        window.location.hash = '#tab=stock';
-      } else if (tab === 'count') {
-        countTab.classList.remove('border-transparent', 'text-gray-500');
-        countTab.classList.add('border-blue-600', 'text-blue-600');
-        stockTab.classList.remove('border-blue-600', 'text-blue-600');
-        stockTab.classList.add('border-transparent', 'text-gray-500');
-        stockContent.classList.add('hidden');
-        countContent.classList.remove('hidden');
-        window.location.hash = '#tab=count';
-        if (typeof loadCounts === 'function') {
-          loadCounts();
+      var defs = [
+        { key: 'stock', btn: 'tabStock', content: 'stockTabContent' },
+        { key: 'count', btn: 'tabCount', content: 'countTabContent' },
+        { key: 'zone',  btn: 'tabZone',  content: 'zoneTabContent' }
+      ];
+      defs.forEach(function(d) {
+        var btn = document.getElementById(d.btn);
+        var content = document.getElementById(d.content);
+        if (!btn || !content) { console.warn('[inventory] tab not found: ' + d.key); return; }
+        if (d.key === tab) {
+          btn.classList.remove('border-transparent', 'text-gray-500');
+          btn.classList.add('border-blue-600', 'text-blue-600');
+          content.classList.remove('hidden');
+        } else {
+          btn.classList.remove('border-blue-600', 'text-blue-600');
+          btn.classList.add('border-transparent', 'text-gray-500');
+          content.classList.add('hidden');
         }
+      });
+      window.location.hash = '#tab=' + tab;
+
+      if (tab === 'count' && typeof loadCounts === 'function') {
+        loadCounts();
+      }
+      // 창고별 탭: 최초 진입 시에만 lazy-load (inventoryDashboard.js)
+      if (tab === 'zone' && typeof loadDashboard === 'function' && !window.__zoneLoaded) {
+        window.__zoneLoaded = true;
+        loadDashboard();
       }
     }
 
@@ -44,11 +49,13 @@ export function inventoryPage(c: Context<HonoEnv>) {
       const hash = window.location.hash;
       if (hash === '#tab=count') {
         setTimeout(() => switchInvTab('count'), 100);
+      } else if (hash === '#tab=zone') {
+        setTimeout(() => switchInvTab('zone'), 100);
       }
     });
   `;
 
-  const combinedScript = UOM_JS + '\n' + tabScript + '\n' + inventoryScript + '\n' + inventoryCountScript;
+  const combinedScript = UOM_JS + '\n' + tabScript + '\n' + inventoryScript + '\n' + inventoryCountScript + '\n' + inventoryDashboardScript;
 
   return renderPage(c, {
     title: '재고 관리',
@@ -61,6 +68,9 @@ export function inventoryPage(c: Context<HonoEnv>) {
               </button>
               <button onclick="switchInvTab('count')" id="tabCount" class="inv-tab px-6 py-3 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">
                 <i class="fas fa-list-check mr-2"></i>재고실사
+              </button>
+              <button onclick="switchInvTab('zone')" id="tabZone" class="inv-tab px-6 py-3 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">
+                <i class="fas fa-warehouse mr-2"></i>창고별
               </button>
             </div>
 
@@ -241,6 +251,20 @@ export function inventoryPage(c: Context<HonoEnv>) {
                 </div>
               </div>
 
+            </div>
+
+            <!-- 창고별 재고 Tab Content (2026-07-16: /inventory-dashboard 흡수) -->
+            <div id="zoneTabContent" class="hidden">
+              <div class="flex items-center justify-between mb-4">
+                <div>
+                  <h2 class="text-xl font-bold text-gray-900"><i class="fas fa-warehouse text-blue-600 mr-2"></i>창고별 재고 현황</h2>
+                  <p class="text-sm text-gray-500 mt-1">법인·창고별 자재 현황 및 부족 품목 일괄 발주</p>
+                </div>
+                <button onclick="loadDashboard()" class="border border-gray-300 bg-white text-gray-700 rounded-lg px-4 py-2 text-sm hover:bg-gray-50">
+                  <i class="fas fa-sync-alt mr-1"></i>새로고침
+                </button>
+              </div>
+              <div id="dashContent"></div>
             </div>
 
             <!-- 상세 패널 (우측 슬라이드) -->
