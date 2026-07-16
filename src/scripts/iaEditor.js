@@ -298,6 +298,54 @@ function iaeRefresh() {
     })
     .catch(function (err) { console.error('[ia-editor] files load fail', err); });
 }
+
+// ── A안(2026-07-16): NAS에서 분석 (업로드 우회 대용량) ────────────────────────
+// 에이전트가 Z:\Designs\IA-입력 을 스캔해 보고한 목록을 조회 → 선택 → from-nas(pending) → iaeRefresh로 탭 반영.
+function iaeFmtSize(bytes) { if (!bytes) return ''; var mb = bytes / 1048576; return mb >= 1 ? mb.toFixed(1) + 'MB' : Math.round(bytes / 1024) + 'KB'; }
+function iaeNasToggle() {
+  var p = document.getElementById('iaeNasPanel'); if (!p) { console.warn('[ia-editor] #iaeNasPanel not found'); return; }
+  if (p.classList.contains('hidden')) { p.classList.remove('hidden'); iaeNasLoad(); } else { p.classList.add('hidden'); }
+}
+function iaeNasLoad() {
+  var p = document.getElementById('iaeNasPanel'); if (!p) return;
+  p.innerHTML = '<div class="text-xs text-gray-400"><i class="fas fa-spinner fa-spin mr-1"></i>NAS 목록 불러오는 중…</div>';
+  axios.get('/api/ai-analysis/nas-listing').then(function (res) {
+    var d = (res.data && res.data.data) || {}; var files = d.files || [];
+    var at = d.reported_at ? (' · ' + iaeEscape(d.reported_at) + ' 기준(UTC)') : ' · 에이전트 보고 없음';
+    var head = '<div class="flex items-center justify-between mb-2">'
+      + '<div class="text-xs text-gray-500"><b>Z:\\Designs\\IA-입력</b>' + at + '</div>'
+      + '<button id="iaeNasRefresh" class="text-xs text-gray-500 hover:text-blue-600"><i class="fas fa-rotate-right mr-1"></i>새로고침</button></div>';
+    var body;
+    if (!files.length) {
+      body = '<div class="text-xs text-gray-400 py-4 text-center"><b>Z:\\Designs\\IA-입력</b> 에 .ai/.eps/.pdf를 복사한 뒤 새로고침하세요.<br><span class="text-[11px]">에이전트가 ~30초마다 자동 스캔합니다.</span></div>';
+    } else {
+      body = '<div class="max-h-64 overflow-y-auto divide-y divide-gray-100">' + files.map(function (f) {
+        return '<div class="flex items-center justify-between py-1.5 gap-2">'
+          + '<div class="min-w-0"><div class="text-sm text-gray-700 truncate" title="' + iaeEscape(f.name) + '">' + iaeEscape(f.name) + '</div>'
+          + '<div class="text-[11px] text-gray-400">' + iaeFmtSize(f.size) + (f.mtime ? ' · ' + iaeEscape(f.mtime) : '') + '</div></div>'
+          + '<button class="iae-nas-go flex-shrink-0 text-xs px-2 py-1 rounded bg-gray-800 text-white hover:bg-black" data-name="' + iaeEscape(f.name) + '"><i class="fas fa-play mr-1"></i>분석</button></div>';
+      }).join('') + '</div>';
+    }
+    p.innerHTML = head + body;
+    var rb = document.getElementById('iaeNasRefresh'); if (rb) rb.addEventListener('click', iaeNasLoad);
+    Array.prototype.forEach.call(p.querySelectorAll('.iae-nas-go'), function (b) {
+      b.addEventListener('click', function () { iaeNasAnalyze(b.getAttribute('data-name'), b); });
+    });
+  }).catch(function () { p.innerHTML = '<div class="text-xs text-red-500">목록을 불러오지 못했습니다.</div>'; });
+}
+function iaeNasAnalyze(name, btn) {
+  if (!name) return;
+  if (btn) { btn.disabled = true; btn.innerHTML = '요청 중…'; }
+  axios.post('/api/ai-analysis/from-nas', { name: name }).then(function (res) {
+    var d = res.data && res.data.data;
+    if (d && d.id) { iaeAddId(d.id); if (iaeActiveId == null) iaeActiveId = d.id; iaeToast('분석 요청: ' + name, 'success'); iaeRefresh(); }
+    else { iaeToast('분석 요청 실패', 'error'); if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-play mr-1"></i>분석'; } }
+  }).catch(function (err) {
+    var msg = (err.response && err.response.data && err.response.data.error) || '분석 요청 실패';
+    iaeToast(msg, 'error'); if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-play mr-1"></i>분석'; }
+  });
+}
+
 // ── 분석 폴링 데드라인(갭④): 에이전트 crash 시 무한 "분석 중" 방지 ──
 // 서버가 stale 'processing'을 자동 재큐(웹 갭②)하지만, 폴이 무한 도는 것은 별개 문제.
 // 진입 후 10분 넘게 pending/processing이면 폴을 멈추고 '지연·시간초과'로 표시(수동 새로고침 유도).
@@ -3262,6 +3310,9 @@ function iaeCanSubmitOrderProceed() {
   } else {
     console.warn('[ia-editor] #iaeDrop / #iaeFileInput not found');
   }
+  // A안: NAS에서 분석 버튼 (업로드 우회 대용량)
+  var nasBtn = document.getElementById('iaeNasBtn');
+  if (nasBtn) nasBtn.addEventListener('click', iaeNasToggle);
   // 뷰 토글 (파일 처리 / 대지 편집 / 네스팅)
   var vEdit = document.getElementById('iaeViewEdit'), vCanvas = document.getElementById('iaeViewCanvas');
   if (vEdit) vEdit.addEventListener('click', function () { iaeSetView('edit'); });

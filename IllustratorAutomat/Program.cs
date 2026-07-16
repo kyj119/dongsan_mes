@@ -21,6 +21,8 @@ namespace IllustratorAutomation
         private static string PASSWORD = "password";
         private static string OUTPUT_FOLDER = @"C:\TNSRip-X11\Preview";
         private static string ZDRIVE_PATH = @"Z:\";
+        // A안(2026-07-16): 업로드 우회 NAS 입력폴더. 비면 {ZDrivePath}\Designs\IA-입력 사용.
+        private static string NAS_INPUT_DIR = "";
         private static string TEMP_FOLDER = Path.Combine(Path.GetTempPath(), "IllustratorAutomat");
         private static int POLL_INTERVAL_MS = 10000; // 10 seconds (workerd 과부하 방지)
         private static int _backoffMs = 0; // 503 발생 시 추가 대기
@@ -195,6 +197,7 @@ namespace IllustratorAutomation
                     await PollTestWatchAsync();
                     // W1: 주기 상태 로그(약 1분마다) — 콘솔 미표시 환경에서 '도는지' 확인.
                     if ((++_heartbeatTick % 6) == 0) WriteAgentLog("폴링 정상 (alive)");
+                    if (_heartbeatTick % 3 == 0) await PollNasInputAsync(); // A안: NAS 입력폴더 목록 보고(~30초 주기)
                     // 갭③: 주기 temp 스윕(~1시간마다). 장시간 무재기동 운영 시 잔존 폴더 누적 방지.
                     if ((_heartbeatTick % 360) == 0) SweepTempFolder(TimeSpan.FromHours(TEMP_TTL_HOURS));
                 }
@@ -230,6 +233,7 @@ namespace IllustratorAutomation
                 PASSWORD       = cfg["Password"]     ?? PASSWORD;
                 OUTPUT_FOLDER  = cfg["OutputFolder"] ?? OUTPUT_FOLDER;
                 ZDRIVE_PATH    = cfg["ZDrivePath"]   ?? ZDRIVE_PATH;
+                NAS_INPUT_DIR  = cfg["NasInputDir"]  ?? NAS_INPUT_DIR;
 
                 if (int.TryParse(cfg["PollIntervalMs"], out var poll) && poll > 0)
                     POLL_INTERVAL_MS = poll;
@@ -968,6 +972,28 @@ namespace IllustratorAutomation
             return false;
         }
 
+        // A안(2026-07-16): NAS 입력폴더를 스캔해 파일목록을 서버에 보고(업로드 우회 분석용). 폴 루프에서 주기 호출.
+        //   웹워커는 Z:를 못 보므로 에이전트가 목록을 대신 제공 → UI가 GET /nas-listing 으로 표시.
+        private static async Task PollNasInputAsync()
+        {
+            try
+            {
+                string dir = !string.IsNullOrEmpty(NAS_INPUT_DIR) ? NAS_INPUT_DIR : Path.Combine(ZDRIVE_PATH, "Designs", "IA-입력");
+                if (!Directory.Exists(dir)) return; // 폴더 미생성 시 조용히 스킵
+                var exts = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { ".ai", ".eps", ".pdf" };
+                var list = new List<object>();
+                foreach (var f in new DirectoryInfo(dir).GetFiles())
+                {
+                    if (!exts.Contains(f.Extension)) continue;
+                    list.Add(new { name = f.Name, path = f.FullName, size = f.Length, mtime = f.LastWriteTime.ToString("yyyy-MM-dd HH:mm") });
+                }
+                var payload = JsonSerializer.Serialize(new { files = list });
+                var content = new StringContent(payload, System.Text.Encoding.UTF8, "application/json");
+                await httpClient.PostAsync($"{ERP_API_URL}/api/ai-analysis/nas-listing", content);
+            }
+            catch (Exception ex) { Console.WriteLine($"[NAS] listing report error: {ex.Message}"); }
+        }
+
         private static async Task ProcessAIAnalysisAsync(int requestId, string filePath)
         {
             // processing 상태로 업데이트
@@ -1135,7 +1161,10 @@ namespace IllustratorAutomation
                 Console.WriteLine($"   📁 Output: {reqTempFolder}");
 
                 string paramsPath1 = Path.Combine(scriptDir, "ia_params.json");
-                RunJsxScript(scriptPath, paramsPath1, timeoutMinutes: 2);
+                // A안(2026-07-16): 대용량 파일은 여는 데 오래 걸림 → 타임아웃을 파일크기 비례로(2분 base +1분/15MB, 최대 12분).
+                int _anTimeout = 2;
+                try { if (File.Exists(actualFilePath)) { long _mb = new FileInfo(actualFilePath).Length / (1024L * 1024L); _anTimeout = (int)Math.Max(2, Math.Min(12, 2 + _mb / 15)); } } catch { }
+                RunJsxScript(scriptPath, paramsPath1, timeoutMinutes: _anTimeout);
 
                 // ia_diag.log를 output 폴더 → publish 폴더로 복사
                 // (Illustrator ExtendScript는 네트워크 드라이브에 직접 쓰기 불가할 수 있음)

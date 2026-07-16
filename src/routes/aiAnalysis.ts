@@ -37,6 +37,66 @@ aiAnalysisRouter.post('/', async (c) => {
   }
 })
 
+// ── A안(2026-07-16): NAS 경로 직접 분석 (업로드 우회) — 대용량 파일용 ──────────
+// 웹워커는 Z:를 못 보므로 에이전트가 입력폴더를 스캔해 목록 보고(POST) → UI 조회(GET) → 선택(from-nas).
+// 경로는 항상 에이전트 목록에서만 취함(사용자 입력 경로 불신) = 경로 주입 방지. /:id 라우트보다 앞이어야 함.
+
+// POST /api/ai-analysis/nas-listing — 에이전트가 입력폴더 파일목록 보고
+aiAnalysisRouter.post('/nas-listing', async (c) => {
+  try {
+    const body = await c.req.json<{ files?: Array<{ name: string; path: string; size?: number; mtime?: string }> }>()
+    const files = Array.isArray(body.files) ? body.files.filter((f) => f && f.name && f.path).slice(0, 500) : []
+    await c.env.DB.prepare(
+      `INSERT INTO settings (setting_key, setting_value) VALUES ('ia_nas_input_files', ?)
+       ON CONFLICT(setting_key) DO UPDATE SET setting_value = excluded.setting_value`
+    ).bind(JSON.stringify(files)).run()
+    await c.env.DB.prepare(
+      `INSERT INTO settings (setting_key, setting_value) VALUES ('ia_nas_input_files_at', datetime('now'))
+       ON CONFLICT(setting_key) DO UPDATE SET setting_value = datetime('now')`
+    ).run()
+    return c.json({ success: true, count: files.length })
+  } catch (error) {
+    console.error('AI nas-listing post error:', error)
+    return c.json({ success: false, error: '목록 저장 실패' }, 500)
+  }
+})
+
+// GET /api/ai-analysis/nas-listing — UI가 NAS 입력폴더 목록 조회
+aiAnalysisRouter.get('/nas-listing', async (c) => {
+  try {
+    const fr = await c.env.DB.prepare(`SELECT setting_value FROM settings WHERE setting_key='ia_nas_input_files'`).first<{ setting_value: string | null }>()
+    const ar = await c.env.DB.prepare(`SELECT setting_value FROM settings WHERE setting_key='ia_nas_input_files_at'`).first<{ setting_value: string | null }>()
+    let files: unknown[] = []
+    try { files = fr?.setting_value ? JSON.parse(fr.setting_value) : [] } catch { files = [] }
+    return c.json({ success: true, data: { files, reported_at: ar?.setting_value ?? null } })
+  } catch (error) {
+    console.error('AI nas-listing get error:', error)
+    return c.json({ success: false, error: '목록 조회 실패' }, 500)
+  }
+})
+
+// POST /api/ai-analysis/from-nas — 목록에서 선택한 NAS 파일을 업로드 없이 분석 요청(pending)
+aiAnalysisRouter.post('/from-nas', async (c) => {
+  try {
+    const { name } = await c.req.json<{ name: string }>()
+    if (!name) return c.json({ success: false, error: '파일명이 필요합니다.' }, 400)
+    const fr = await c.env.DB.prepare(`SELECT setting_value FROM settings WHERE setting_key='ia_nas_input_files'`).first<{ setting_value: string | null }>()
+    let files: Array<{ name: string; path: string }> = []
+    try { files = fr?.setting_value ? JSON.parse(fr.setting_value) : [] } catch { files = [] }
+    const match = files.find((f) => f && f.name === name)
+    if (!match) return c.json({ success: false, error: '목록에 없는 파일입니다. 새로고침 후 다시 선택하세요.' }, 404)
+    // 경로는 에이전트 목록의 값만 사용(사용자 입력 경로 불신). 업로드 없이 pending → 에이전트가 NAS에서 직접 읽음.
+    const result = await c.env.DB.prepare(
+      `INSERT INTO ai_analysis_requests (file_path, status, entity_id) VALUES (?, 'pending', ?)
+       RETURNING id, file_path, status, created_at`
+    ).bind(match.path, getEntityId(c) || 1).first()
+    return c.json({ success: true, data: result })
+  } catch (error) {
+    console.error('AI from-nas error:', error)
+    return c.json({ success: false, error: '분석 요청 실패' }, 500)
+  }
+})
+
 // ── POST /api/ai-analysis/batch-test ──────────────────────────────
 // 배치 테스트: Z드라이브 원본 파일 경로 목록을 받아 일괄 분석 요청 생성
 // Z드라이브에 파일이 이미 있으므로 청크 업로드 불필요, 바로 pending 상태로 생성

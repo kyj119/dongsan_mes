@@ -30,6 +30,10 @@ export function iaEditorPage(c: Context<HonoEnv>) {
           <div class="text-[11px] text-amber-500 mt-1"><i class="fas fa-circle-info mr-1"></i>텍스트는 <b>아웃라인</b> 후 업로드 권장 — 레거시 텍스트·미설치 폰트 등 '열기 경고'가 있는 파일은 처리되지 않습니다</div>
           <input id="iaeFileInput" type="file" multiple accept=".ai,.eps,.pdf,image/*" class="hidden">
         </div>
+        <div class="mb-4">
+          <button id="iaeNasBtn" class="text-xs px-3 py-1.5 rounded-md border border-gray-300 text-gray-600 hover:bg-gray-50"><i class="fas fa-folder-open mr-1"></i>NAS에서 분석 <span class="text-gray-400">(대용량·업로드 없이 · Z:\\Designs\\IA-입력)</span></button>
+          <div id="iaeNasPanel" class="hidden mt-2 border border-gray-200 rounded-lg p-3 bg-white"></div>
+        </div>
         <div class="ds-card flex flex-col" style="min-height: 520px;">
           <div id="iaeTabs" class="flex items-stretch overflow-x-auto border-b border-gray-200 bg-gray-50/60" style="min-height: 44px;"></div>
           <div class="flex-1 p-4 relative">
