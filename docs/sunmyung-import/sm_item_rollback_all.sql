@@ -8,7 +8,7 @@ DELETE FROM items WHERE item_code IN
   'ALM-2T-BK-48','ALM-2T-WH-48','GITBAL-070','LGSHT-122','LM5400-137','MIRROR-090',
   'PAT-BO-127','SGM-BR45','SVCOAT-127','ULTRA-BOJO-100','ULTRA-CAL-100','UV-PC-1.8T-M')
  OR item_code LIKE 'RM-I000%-ITP' OR item_code LIKE 'RM-I-TPM%'
- OR item_code LIKE 'ACC-JJ-%' OR item_code LIKE 'SGM-LEDPP%';
+ OR item_code LIKE 'ACC-JJ-%' OR item_code LIKE 'SGM-LEDPP%' OR item_code = 'ACC-BN-STR';
 -- rename 복원
 UPDATE items SET item_code='AQ1-150' WHERE item_code='AQ1-152';
 UPDATE items SET item_code='AQ2-150' WHERE item_code='AQ2-152';
