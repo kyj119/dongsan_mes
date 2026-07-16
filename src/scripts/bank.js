@@ -893,7 +893,15 @@
     var ac = document.getElementById('fundAccountCount');
     if (ac) ac.textContent = (d.accounts ? d.accounts.length : 0) + '개 계좌';
     var ln = document.getElementById('fundLoanNote');
-    if (ln) ln.textContent = (d.loan_count || 0) + '건 · 자금예측에서 관리';
+    if (ln) {
+      var lc = (d.loan_count || 0) + '건';
+      // 허브(자금 관리)에서는 계획>대출 탭으로 크로스링크, 단독 /bank는 plain 텍스트
+      if (typeof window.hubGoto === 'function') {
+        ln.innerHTML = lc + ' · <a href="#" onclick="hubGoto(\'plan\',\'loans\');return false;" class="text-blue-500 hover:underline">대출 관리 →</a>';
+      } else {
+        ln.textContent = lc + ' · 자금예측에서 관리';
+      }
+    }
 
     var body = document.getElementById('fundAccountsBody');
     if (!body) return;
@@ -1604,14 +1612,22 @@
     });
   }
 
-  // Init
-  Promise.all([loadAccountFilter(), loadMatchRules(), loadExpenseCategories()]).then(function() {
-    // 기본값: 미반영 탭
-    switchStatusTab('PENDING');
-  });
-  loadBarobillStatus();
-  // 기본 랜딩 탭 = 자금 현황
-  loadFundSummary();
+  // Init — 자금 허브(/cash-schedule) 이식 시 '실적' 첫 진입까지 지연(lazy). 단독 /bank 페이지는 즉시 실행.
+  // window.__bankHubDefer=true(허브 프리앰블)면 자동실행 skip → 허브 토글이 window.__bankHubInit() 호출.
+  window.__bankHubInit = function() {
+    if (window.__bankHubInit._done) return; // 멱등(중복 로드 방지)
+    window.__bankHubInit._done = true;
+    Promise.all([loadAccountFilter(), loadMatchRules(), loadExpenseCategories()]).then(function() {
+      // 기본값: 미반영 탭
+      switchStatusTab('PENDING');
+    });
+    loadBarobillStatus();
+    // 기본 랜딩 탭 = 자금 현황
+    loadFundSummary();
+  };
+  if (!window.__bankHubDefer) {
+    window.__bankHubInit();
+  }
 
   // Close modals on overlay click
   document.getElementById('accountModal').addEventListener('click', function(e) {
