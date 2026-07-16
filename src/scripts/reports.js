@@ -4,7 +4,7 @@ var esc = window.escapeHtml || function(s) { if (s === null || s === undefined) 
 
 function switchReportTab(tab) {
   currentReportTab = tab;
-  var tabs = ['monthly', 'clients', 'items', 'designers', 'margin', 'receivables', 'production', 'comparison'];
+  var tabs = ['monthly', 'clients', 'items', 'designers', 'margin', 'receivables', 'comparison'];
   tabs.forEach(function(t) {
     var btn = document.getElementById('tab' + t.charAt(0).toUpperCase() + t.slice(1));
     var panel = document.getElementById(t + 'Panel');
@@ -34,7 +34,6 @@ async function loadAllReports() {
   loadDesignerStats();
   loadMarginAnalysis();
   loadReceivablesAnalysis();
-  loadProductionAnalysis();
 }
 
 // 1. Monthly Summary
@@ -468,85 +467,7 @@ async function loadReceivablesAnalysis() {
 }
 
 // 7. Production Analysis (생산 실적)
-async function loadProductionAnalysis() {
-  try {
-    var res = await axios.get('/api/reports/production-analysis?months=' + getMonths());
-    if (!res.data.success) return;
-    var d = res.data.data;
-
-    // 요약 카드
-    var elPrOk = document.getElementById('prOkCount'); if (!elPrOk) { console.warn('[reports] #prOkCount not found'); return; }
-    elPrOk.textContent = fmt(d.summary.ok_count) + '건';
-    var elPrErr = document.getElementById('prErrorCount'); if (!elPrErr) { console.warn('[reports] #prErrorCount not found'); return; }
-    elPrErr.textContent = fmt(d.summary.error_count) + '건';
-    var elPrQual = document.getElementById('prQualityCount'); if (!elPrQual) { console.warn('[reports] #prQualityCount not found'); return; }
-    elPrQual.textContent = fmt(d.summary.quality_issues) + '건';
-    var elPrMaint = document.getElementById('prMaintCost'); if (!elPrMaint) { console.warn('[reports] #prMaintCost not found'); return; }
-    elPrMaint.textContent = fmt(d.summary.maintenance_cost) + '원';
-
-    // 장비별 테이블
-    var eqBody = document.getElementById('prEquipmentBody');
-    if (!eqBody) { console.warn('[reports] #prEquipmentBody not found'); return; }
-    var equipments = d.by_equipment || [];
-    if (equipments.length === 0) {
-      eqBody.innerHTML = '<tr><td colspan="4" class="px-4 py-8 text-center text-gray-400">출력 이벤트 데이터가 없습니다</td></tr>';
-    } else {
-      eqBody.innerHTML = equipments.map(function(eq) {
-        var rate = eq.total > 0 ? Math.round(eq.ok_count / eq.total * 100) : 0;
-        var rateColor = rate >= 95 ? 'text-green-600' : rate >= 80 ? 'text-amber-600' : 'text-red-600';
-        return '<tr class="border-t hover:bg-gray-50">'
-          + '<td class="px-4 py-2 font-medium" title="' + esc(eq.printer_name || '-') + '">' + (eq.printer_name || '-') + '</td>'
-          + '<td class="px-4 py-2 text-right">' + fmt(eq.total) + '</td>'
-          + '<td class="px-4 py-2 text-right ' + rateColor + '">' + rate + '%</td>'
-          + '<td class="px-4 py-2 text-right">' + (eq.active_days || 0) + '일</td>'
-          + '</tr>';
-      }).join('');
-    }
-
-    // 월별 출력 추이
-    var monthChart = document.getElementById('prMonthlyChart');
-    if (!monthChart) { console.warn('[reports] #prMonthlyChart not found'); return; }
-    var months = (d.by_month || []).slice().reverse();
-    var maxPrint = Math.max.apply(null, months.map(function(m) { return m.total || 0; })) || 1;
-    if (months.length === 0) {
-      monthChart.innerHTML = '<div class="text-center text-gray-400 py-4 text-sm">데이터 없음</div>';
-    } else {
-      monthChart.innerHTML = months.map(function(m) {
-        var pct = Math.round((m.total / maxPrint) * 100);
-        var okRate = m.total > 0 ? Math.round(m.ok_count / m.total * 100) : 0;
-        return '<div class="flex items-center gap-2">'
-          + '<span class="w-16 text-xs text-gray-500 text-right">' + m.month + '</span>'
-          + '<div class="flex-1 h-4 bg-gray-200 rounded-full overflow-hidden">'
-          + '<div class="h-full bg-blue-500 rounded-full" style="width:' + Math.max(pct, 2) + '%"></div></div>'
-          + '<span class="w-20 text-right text-xs">' + fmt(m.total) + '건</span>'
-          + '<span class="w-12 text-right text-xs text-gray-400">' + okRate + '%</span>'
-          + '</div>';
-      }).join('');
-    }
-
-    // 불량 유형 분포
-    var defectEl = document.getElementById('prDefectChart');
-    if (!defectEl) { console.warn('[reports] #prDefectChart not found'); return; }
-    var defects = d.defect_types || [];
-    if (defects.length === 0) {
-      defectEl.innerHTML = '<div class="text-center text-gray-400 py-4 text-sm">불량 데이터가 없습니다</div>';
-    } else {
-      var maxDefect = Math.max.apply(null, defects.map(function(df) { return df.count || 0; })) || 1;
-      defectEl.innerHTML = defects.map(function(df) {
-        var pct = Math.round((df.count / maxDefect) * 100);
-        return '<div class="flex items-center gap-3">'
-          + '<span class="w-20 text-xs text-gray-600 text-right truncate">' + (df.category || '미분류') + '</span>'
-          + '<div class="flex-1 h-4 bg-gray-200 rounded-full overflow-hidden">'
-          + '<div class="h-full bg-red-400 rounded-full" style="width:' + Math.max(pct, 2) + '%"></div></div>'
-          + '<span class="w-16 text-right text-xs font-medium">' + df.count + '건</span>'
-          + '<span class="w-20 text-right text-xs text-gray-400">' + fmt(parseFloat(df.cost) || 0) + '원</span>'
-          + '</div>';
-      }).join('');
-    }
-  } catch(e) {
-    console.error('Production analysis error:', e);
-  }
-}
+// loadProductionAnalysis 제거 (2026-07-16): 생산 실적 탭 = production-reports 재탕, /production-reports로 일원화
 
 // 8. Period Comparison (기간 비교)
 function initComparison() {

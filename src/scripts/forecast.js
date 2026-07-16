@@ -2,7 +2,7 @@ var currentFcTab = 'forecast';
 
 function switchFcTab(tab) {
   currentFcTab = tab;
-  var tabs = ['forecast', 'capacity', 'clientFc'];
+  var tabs = ['forecast', 'clientFc'];
   tabs.forEach(function(t) {
     var btn = document.getElementById('tab' + t.charAt(0).toUpperCase() + t.slice(1));
     var panel = document.getElementById(t + 'Panel');
@@ -100,78 +100,7 @@ async function loadForecast() {
 }
 
 // 2. 용량 분석
-async function loadCapacity() {
-  try {
-    var months = document.getElementById('capMonths').value || '3';
-    var res = await axios.get('/api/forecast/capacity-analysis?months=' + months);
-    if (!res.data.success) return;
-    var d = res.data.data;
-
-    // 장비 테이블
-    var eqBody = document.getElementById('capEquipmentBody');
-    var equipment = d.equipment || [];
-    if (equipment.length === 0) {
-      eqBody.innerHTML = '<tr><td colspan="7" class="px-4 py-12 text-center"><div class="flex flex-col items-center"><i class="fas fa-print text-4xl text-gray-300 mb-3"></i><p class="text-gray-500 text-sm">출력 데이터가 없습니다</p></div></td></tr>';
-    } else {
-      eqBody.innerHTML = equipment.map(function(eq) {
-        var utilColor = eq.utilization >= 80 ? 'bg-red-500' : eq.utilization >= 50 ? 'bg-amber-500' : 'bg-green-500';
-        var rateColor = eq.success_rate >= 95 ? 'text-green-600' : eq.success_rate >= 80 ? 'text-amber-600' : 'text-red-600';
-        return '<tr class="border-t hover:bg-gray-50">'
-          + '<td class="px-4 py-3 font-medium" title="' + window.escapeHtml(eq.printer_name || '') + '">' + eq.printer_name + '</td>'
-          + '<td class="px-4 py-3 text-right">' + fmt(eq.total_prints) + '</td>'
-          + '<td class="px-4 py-3 text-right ' + rateColor + '">' + eq.success_rate + '%</td>'
-          + '<td class="px-4 py-3 text-right">' + eq.active_days + '일</td>'
-          + '<td class="px-4 py-3 text-right">' + eq.avg_daily + '</td>'
-          + '<td class="px-4 py-3 text-right font-bold">' + eq.peak_daily + '</td>'
-          + '<td class="px-4 py-3"><div class="flex items-center gap-2">'
-          + '<div class="flex-1 h-3 bg-gray-200 rounded-full overflow-hidden">'
-          + '<div class="h-full ' + utilColor + ' rounded-full" style="width:' + Math.min(eq.utilization, 100) + '%"></div></div>'
-          + '<span class="text-xs w-10 text-right">' + eq.utilization + '%</span></div></td>'
-          + '</tr>';
-      }).join('');
-    }
-
-    // 주간별 추이
-    var weekEl = document.getElementById('capWeeklyChart');
-    var weeks = d.weekly_trend || [];
-    if (weeks.length === 0) {
-      weekEl.innerHTML = '<div class="text-center py-12"><i class="fas fa-calendar-week text-4xl text-gray-300 mb-3"></i><p class="text-gray-500 text-sm">데이터 없음</p></div>';
-    } else {
-      var maxWeek = Math.max.apply(null, weeks.map(function(w) { return w.total || 0; })) || 1;
-      weekEl.innerHTML = weeks.map(function(w) {
-        var pct = Math.round((w.total / maxWeek) * 100);
-        return '<div class="flex items-center gap-2">'
-          + '<span class="w-20 text-xs text-gray-500 text-right">' + w.week + '</span>'
-          + '<div class="flex-1 h-4 bg-gray-200 rounded-full overflow-hidden">'
-          + '<div class="h-full bg-green-500 rounded-full" style="width:' + Math.max(pct, 2) + '%"></div></div>'
-          + '<span class="w-16 text-right text-xs">' + fmt(w.total) + '건</span>'
-          + '</div>';
-      }).join('');
-    }
-
-    // 시간대별 분포
-    var hourEl = document.getElementById('capHourlyChart');
-    var hours = d.hourly_distribution || [];
-    if (hours.length === 0) {
-      hourEl.innerHTML = '<div class="text-center py-12"><i class="fas fa-clock text-4xl text-gray-300 mb-3"></i><p class="text-gray-500 text-sm">데이터 없음</p></div>';
-    } else {
-      var maxHour = Math.max.apply(null, hours.map(function(h) { return h.count || 0; })) || 1;
-      hourEl.innerHTML = hours.map(function(h) {
-        var pct = Math.round((h.count / maxHour) * 100);
-        var isPeak = pct >= 80;
-        var color = isPeak ? 'bg-red-500' : pct >= 50 ? 'bg-amber-400' : 'bg-blue-400';
-        return '<div class="flex items-center gap-2">'
-          + '<span class="w-10 text-xs text-gray-500 text-right">' + h.hour + '시</span>'
-          + '<div class="flex-1 h-3 bg-gray-100 rounded-full overflow-hidden">'
-          + '<div class="h-full ' + color + ' rounded-full" style="width:' + Math.max(pct, 1) + '%"></div></div>'
-          + '<span class="w-14 text-right text-xs">' + fmt(h.count) + (isPeak ? ' <i class="fas fa-fire text-red-500"></i>' : '') + '</span>'
-          + '</div>';
-      }).join('');
-    }
-  } catch(e) {
-    console.error('Capacity error:', e);
-  }
-}
+// loadCapacity 제거 (2026-07-16): 용량 분석(가동률) = production-reports 재탕, /production-reports로 일원화
 
 // 3. 거래처별 예측
 async function loadClientForecast() {
@@ -237,5 +166,4 @@ async function loadClientForecast() {
 
 // 초기 로드
 loadForecast();
-loadCapacity();
 loadClientForecast();

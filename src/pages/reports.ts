@@ -64,6 +64,9 @@ export function reportsPage(c: Context<HonoEnv>) {
         <button onclick="exportReportCsv()" class="px-3 py-2 bg-gray-600 text-white rounded-lg text-sm hover:bg-gray-700">
           <i class="fas fa-file-csv mr-1"></i>CSV 내보내기
         </button>
+        <a href="/production-reports" class="px-3 py-2 border rounded-lg text-sm text-gray-700 hover:bg-gray-100 ml-auto" title="장비별 실적·불량률·가동률은 생산 분석 페이지에서">
+          <i class="fas fa-industry mr-1"></i>생산 분석 &rarr;
+        </a>
       </div>
 
       <!-- Tab Navigation -->
@@ -74,7 +77,6 @@ export function reportsPage(c: Context<HonoEnv>) {
         <button id="tabDesigners" onclick="switchReportTab('designers')" class="px-6 py-3 text-sm font-medium text-gray-500 hover:text-gray-700">디자이너 통계</button>
         <button id="tabMargin" onclick="switchReportTab('margin')" class="px-6 py-3 text-sm font-medium text-gray-500 hover:text-gray-700">수익성 분석</button>
         <button id="tabReceivables" onclick="switchReportTab('receivables')" class="px-6 py-3 text-sm font-medium text-gray-500 hover:text-gray-700">미수금 분석</button>
-        <button id="tabProduction" onclick="switchReportTab('production')" class="px-6 py-3 text-sm font-medium text-gray-500 hover:text-gray-700">생산 실적</button>
         <button id="tabComparison" onclick="switchReportTab('comparison')" class="px-6 py-3 text-sm font-medium text-gray-500 hover:text-gray-700">기간 비교</button>
       </div>
 
@@ -334,55 +336,7 @@ export function reportsPage(c: Context<HonoEnv>) {
         </div>
       </div>
 
-      <!-- Production Tab -->
-      <div id="productionPanel" class="hidden">
-        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-          <div class="ds-card p-4">
-            <div class="text-sm text-gray-500">출력 완료</div>
-            <div class="text-2xl font-bold text-green-600" id="prOkCount">-</div>
-          </div>
-          <div class="ds-card p-4">
-            <div class="text-sm text-gray-500">출력 에러</div>
-            <div class="text-2xl font-bold text-red-600" id="prErrorCount">-</div>
-          </div>
-          <div class="ds-card p-4">
-            <div class="text-sm text-gray-500">불량 보고</div>
-            <div class="text-2xl font-bold text-orange-600" id="prQualityCount">-</div>
-          </div>
-          <div class="ds-card p-4">
-            <div class="text-sm text-gray-500">유지보수 비용</div>
-            <div class="text-2xl font-bold text-purple-600" id="prMaintCost">-</div>
-          </div>
-        </div>
-
-        <div class="grid grid-cols-2 gap-6 mb-6">
-          <div class="ds-card overflow-hidden">
-            <div class="p-4"><h3 class="text-lg font-bold"><i class="fas fa-print text-blue-500 mr-2"></i>장비별 출력 실적</h3></div>
-            <table class="w-full text-sm ds-table ds-table-striped">
-              <thead class="bg-gray-50">
-                <tr>
-                  <th class="col-name px-4 py-2 text-left">장비</th>
-                  <th class="col-qty px-4 py-2 text-right">출력수</th>
-                  <th class="col-qty px-4 py-2 text-right">성공률</th>
-                  <th class="col-qty px-4 py-2 text-right">가동일</th>
-                </tr>
-              </thead>
-              <tbody id="prEquipmentBody"></tbody>
-            </table>
-          </div>
-          <div class="ds-card p-6">
-            <h3 class="text-lg font-bold mb-4"><i class="fas fa-chart-bar text-green-500 mr-2"></i>월별 출력 추이</h3>
-            <div id="prMonthlyChart" class="space-y-2"></div>
-          </div>
-        </div>
-
-        <div class="ds-card p-6">
-          <h3 class="text-lg font-bold mb-4"><i class="fas fa-bug text-red-500 mr-2"></i>불량 유형별 분포</h3>
-          <div id="prDefectChart" class="space-y-2">
-            <div class="text-center text-gray-400 py-4 text-sm">로딩 중...</div>
-          </div>
-        </div>
-      </div>
+      <!-- Production Tab 제거 (2026-07-16): 생산 실적 = production-reports 재탕(동일 print events 재집계), 툴바 링크로 일원화 -->
 
       <!-- Comparison Tab -->
       <div id="comparisonPanel" class="hidden">
@@ -438,7 +392,6 @@ export function reportsPage(c: Context<HonoEnv>) {
       <!-- 3탭: 수주 예측, 용량 분석, 거래처 예측 -->
       <div class="flex border-b mb-6">
         <button id="tabForecast" onclick="switchFcTab('forecast')" class="px-6 py-3 text-sm font-medium border-b-2 border-blue-600 text-blue-600">수주 예측</button>
-        <button id="tabCapacity" onclick="switchFcTab('capacity')" class="px-6 py-3 text-sm font-medium text-gray-500 hover:text-gray-700">용량 분석</button>
         <button id="tabClientFc" onclick="switchFcTab('clientFc')" class="px-6 py-3 text-sm font-medium text-gray-500 hover:text-gray-700">거래처 예측</button>
       </div>
 
@@ -486,50 +439,7 @@ export function reportsPage(c: Context<HonoEnv>) {
         </div>
       </div>
 
-      <!-- Capacity Tab -->
-      <div id="capacityPanel" class="hidden">
-        <div class="ds-card p-4 mb-6 flex items-center gap-3">
-          <span class="text-sm font-medium text-gray-700">분석 기간:</span>
-          <select id="capMonths" onchange="loadCapacity()" class="px-3 py-2 border rounded-lg text-sm">
-            <option value="1">최근 1개월</option>
-            <option value="3" selected>최근 3개월</option>
-            <option value="6">최근 6개월</option>
-          </select>
-        </div>
-
-        <!-- 장비별 가동률 -->
-        <div class="ds-card overflow-hidden mb-6">
-          <div class="p-4"><h3 class="text-lg font-bold"><i class="fas fa-server text-blue-500 mr-2"></i>장비별 가동 현황</h3></div>
-          <table class="w-full text-sm ds-table ds-table-striped">
-            <thead class="bg-gray-50">
-              <tr>
-                <th class="col-name px-4 py-3 text-left">장비</th>
-                <th class="col-qty px-4 py-3 text-right">총 출력</th>
-                <th class="col-qty px-4 py-3 text-right">성공률</th>
-                <th class="col-qty px-4 py-3 text-right">가동일</th>
-                <th class="col-qty px-4 py-3 text-right">일평균</th>
-                <th class="col-qty px-4 py-3 text-right">피크</th>
-                <th class="col-qty px-4 py-3">가동률</th>
-              </tr>
-            </thead>
-            <tbody id="capEquipmentBody"></tbody>
-          </table>
-        </div>
-
-        <div class="grid grid-cols-2 gap-6 mb-6">
-          <!-- 주간별 출력 추이 -->
-          <div class="ds-card p-6">
-            <h3 class="text-lg font-bold mb-4"><i class="fas fa-chart-area text-green-500 mr-2"></i>주간별 출력 추이</h3>
-            <div id="capWeeklyChart" class="space-y-2"></div>
-          </div>
-
-          <!-- 시간대별 분포 -->
-          <div class="ds-card p-6">
-            <h3 class="text-lg font-bold mb-4"><i class="fas fa-clock text-orange-500 mr-2"></i>시간대별 출력 분포</h3>
-            <div id="capHourlyChart" class="space-y-1"></div>
-          </div>
-        </div>
-      </div>
+      <!-- Capacity Tab 제거 (2026-07-16): 용량 분석(가동률) = production-reports 재탕, 툴바 링크로 일원화 -->
 
       <!-- Client Forecast Tab -->
       <div id="clientFcPanel" class="hidden">
