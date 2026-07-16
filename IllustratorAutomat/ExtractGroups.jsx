@@ -207,6 +207,9 @@ function main(sourceFile, outputFolder, requestId, thumbSize, epsWidthMm, epsHei
         return;
     }
 
+    // 폰트 사전검증 철회(2026-07-16): CID 폰트 resourcestatus 참조가 실제 사용과 무관한 프롤로그
+    //   boilerplate라 파싱으로 "hang할 파일 vs 정상 파일"을 구분 불가 → 이미지 전용까지 오탐 → 제거.
+    //   (미설치 폰트 hang은 RunJsxScript 2분 타임아웃+Illustrator kill + 서버 terminal/자동만료로 방어)
     var doc = app.open(file);
     var mmPerPt = 1.0 / 2.834645669;
 

@@ -97,7 +97,7 @@ var bleedPt    = bleedMm * PT_PER_MM / scaleFactor;
 
 // 돔보 상수: 실제 크기를 스케일로 나눔 (출력 시 확대되므로)
 var DOMBO_DIAM  = 6 * PT_PER_MM / scaleFactor;    // 돔보 원 지름 (실제 6mm)
-var CORNER_DIST = 10 * PT_PER_MM / scaleFactor;   // 꼭짓점에서 바깥 (실제 1cm)
+var CORNER_DIST = 17 * PT_PER_MM / scaleFactor;   // 돔보 중심↔디자인 모서리 17mm → 돔보 바깥끝까지 17+3(반지름)=20mm
 var DIR_OFFSET  = 60 * PT_PER_MM / scaleFactor;   // 방향 마크 (실제 6cm)
 var MAX_GAP     = 500 * PT_PER_MM / scaleFactor;  // 간격 보정 (실제 50cm)
 $.writeln("SheetLayout: scaleFactor=" + scaleFactor);
@@ -226,6 +226,7 @@ function expandClipInGroup(grp, dirs, bleedPt) {
 // ── 6. 새 문서 생성 + 3개 레이어 설정 ──────────────────────────────────────
 var newDoc = app.documents.add(DocumentColorSpace.CMYK, canvasWidthPt, canvasHeightPt);
 newDoc.artboards[0].artboardRect = [0, canvasHeightPt, canvasWidthPt, 0];
+newDoc.rulerUnits = RulerUnits.Millimeters; // 저장 파일 기본 단위 = mm (재단·검수 편의)
 
 // 레이어 생성 (아래→위 순서: A가 맨 아래, C가 맨 위)
 // 기본 레이어를 A로 사용
@@ -279,7 +280,8 @@ for (var pi = 0; pi < placements.length; pi++) {
         copied.rotate(-_rot);
     }
 
-    // Illustrator 좌표 변환
+    // Illustrator 좌표 변환 — 회전 후 bbox 좌상단을 배치(검증된 원본 방식).
+    // ⚠️ visibleBounds 접근 금지: 복잡/래스터 아트에서 렌더경계 강제계산 → 조각마다 hang(중간멈춤 원인, 2026-07-15).
     var xPt    = pl.x_cm * PT_PER_CM;
     var yTopPt = canvasHeightPt - (pl.y_cm * PT_PER_CM);
     copied.position = [xPt, yTopPt];
@@ -334,9 +336,10 @@ for (var pi2 = 0; pi2 < placements.length; pi2++) {
     var pl2 = placements[pi2];
     var xPt2    = pl2.x_cm * PT_PER_CM;
     var yTopPt2 = canvasHeightPt - (pl2.y_cm * PT_PER_CM);
-    // 회전된 placement는 CutLine도 width↔height 교환
-    var wPt2    = (pl2.rotated ? pl2.height_cm : pl2.width_cm)  * PT_PER_CM;
-    var hPt2    = (pl2.rotated ? pl2.width_cm  : pl2.height_cm) * PT_PER_CM;
+    // width_cm/height_cm = 회전 후 최종 bbox(iaeCanRotBBox 정본). 회전 좌표에 직접 그리므로 스왑 금지
+    // (스왑 시 재단선이 전치(transpose)돼 회전 조각에서 아트보드와 불일치 — Layer A는 회전 전 스케일이라 스왑이 맞음).
+    var wPt2    = pl2.width_cm  * PT_PER_CM;
+    var hPt2    = pl2.height_cm * PT_PER_CM;
 
     var rect = layerB.pathItems.rectangle(yTopPt2, xPt2, wPt2, hPt2);
     rect.filled = false;
@@ -383,8 +386,8 @@ function addIntermediate(from, to, fixedCoord, isHorizontal) {
 var artL = Infinity, artT = -Infinity, artR = -Infinity, artB = Infinity;
 for (var _ci = 0; _ci < placements.length; _ci++) {
     var _cp = placements[_ci];
-    var _cW = _cp.rotated ? _cp.height_cm : _cp.width_cm;
-    var _cH = _cp.rotated ? _cp.width_cm  : _cp.height_cm;
+    var _cW = _cp.width_cm;   // 회전 후 최종 bbox — 스왑 불필요(Layer B와 동일 정본)
+    var _cH = _cp.height_cm;
     var _cxL = _cp.x_cm * PT_PER_CM;
     var _cxR = (_cp.x_cm + _cW) * PT_PER_CM;
     var _cyT = canvasHeightPt - _cp.y_cm * PT_PER_CM;

@@ -947,6 +947,27 @@ namespace IllustratorAutomation
             }
         }
 
+        // P-STOP(2026-07-15): 잡이 서버측에서 취소/만료(terminal)·삭제됐는지 확인. 무거운 COM 직전 호출 → 즉시 skip.
+        //   판단 불가(네트워크/파싱 실패)면 false(=진행) — 보수적. activeStatuses = 계속 처리할 상태 집합.
+        private static async Task<bool> IsJobTerminatedAsync(string url, string statusField, params string[] activeStatuses)
+        {
+            try
+            {
+                var resp = await GetWithAuthAsync(url);
+                if (!resp.IsSuccessStatusCode)
+                    return (int)resp.StatusCode == 404; // 404 = 삭제됨 → terminated
+                var doc = await resp.Content.ReadFromJsonAsync<JsonElement>();
+                if (doc.TryGetProperty("data", out var d) && d.ValueKind == JsonValueKind.Object
+                    && d.TryGetProperty(statusField, out var s) && s.ValueKind == JsonValueKind.String)
+                {
+                    var st = s.GetString() ?? "";
+                    return Array.IndexOf(activeStatuses, st) < 0; // active가 아니면 terminated
+                }
+            }
+            catch { /* 판단 불가 → 진행(보수적) */ }
+            return false;
+        }
+
         private static async Task ProcessAIAnalysisAsync(int requestId, string filePath)
         {
             // processing 상태로 업데이트
@@ -1102,6 +1123,13 @@ namespace IllustratorAutomation
                     eps_height_mm = epsBbHeightMm
                 });
                 File.WriteAllText(Path.Combine(scriptDir, "ia_params.json"), iaParamsJson, System.Text.Encoding.UTF8);
+
+                // P-STOP(2026-07-15): 무거운 COM 직전 서버 상태 재확인 — 취소/만료(terminal)면 즉시 skip(≤2분 hang 회피).
+                if (await IsJobTerminatedAsync($"{ERP_API_URL}/api/ai-analysis/{requestId}", "status", "pending", "processing"))
+                {
+                    Console.WriteLine($"   ⏹️  분석 #{requestId} 서버측 취소/만료 감지 → COM 실행 skip");
+                    return;
+                }
 
                 Console.WriteLine($"   🖥️  Running Illustrator: ExtractGroups.jsx (COM)");
                 Console.WriteLine($"   📁 Output: {reqTempFolder}");
@@ -1505,6 +1533,12 @@ namespace IllustratorAutomation
             if (!File.Exists(scriptPath)) { await PatchSheetRender(jobId, "error", null, "SheetLayout.jsx 없음"); return; }
             string scriptDir = Path.GetDirectoryName(scriptPath)!;
             File.WriteAllText(Path.Combine(scriptDir, "ia_params.json"), JsonSerializer.Serialize(iaParamsObj), System.Text.Encoding.UTF8);
+            // P-STOP(2026-07-15): COM 직전 서버 상태 재확인 — 취소/삭제(terminal)면 렌더 skip(대기 중 취소된 큐 잡 존중).
+            if (await IsJobTerminatedAsync($"{ERP_API_URL}/api/workbench/sheets/{jobId}", "render_status", "queued", "rendering"))
+            {
+                Console.WriteLine($"   ⏹️  시트 #{jobId} 서버측 취소/삭제 감지 → 렌더 skip");
+                return;
+            }
             Console.WriteLine($"   🖥️  Running SheetLayout.jsx (sheet {jobId}, {Math.Round(sheetW)}x{Math.Round(sheetH)}cm, scale {scaleFactor:F2}) → {outFolder}");
             RunJsxScript(scriptPath, Path.Combine(scriptDir, "ia_params.json"), timeoutMinutes: 5);
 

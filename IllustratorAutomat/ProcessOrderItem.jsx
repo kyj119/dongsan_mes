@@ -802,7 +802,7 @@ function main() {
     // PNG(썸네일) 이후·EPS 이전에 그려 썸네일엔 빠지고 EPS엔 포함. 아트보드를 마크 포함해 확장.
     if (trim) {
         var DOMBO_DIAM  = 6 * ptPerMm / effScale;    // 6mm
-        var CORNER_DIST = 10 * ptPerMm / effScale;   // 꼭짓점 대각 1cm 바깥
+        var CORNER_DIST = 17 * ptPerMm / effScale;   // 돔보 중심↔디자인 모서리 17mm → 돔보 바깥끝 17+3(반지름)=20mm
         var DIR_OFFSET  = 60 * ptPerMm / effScale;   // 방향마크 6cm
         var MAX_GAP     = 500 * ptPerMm / effScale;  // 50cm 간격 보정 (실물이면 ÷1 → 실물 90×180 기준: 상2·좌우3·하1)
         var _dCol = new CMYKColor(); _dCol.cyan = 0; _dCol.magenta = 0; _dCol.yellow = 0; _dCol.black = 100;

@@ -420,6 +420,21 @@ aiAnalysisRouter.get('/', async (c) => {
              AND updated_at < datetime('now','-10 minutes')`
         ).run()
       } catch (_e) { /* best-effort maintenance */ }
+      // EXP-1(2026-07-15): pending이 10분+ 미픽업(포이즌/고아·에이전트 스킵)이면 **terminal error로 확정**.
+      //   재큐 CASE를 거치지 않고 retry_count=max로 못박아 "MES 만료인데 에이전트가 계속 재요청"하는 루프를 차단.
+      //   리퍼는 에이전트 폴(status=pending) 진입 시에만 실행 → 에이전트 death 중엔 미실행(정상 대기 잡 오살 방지).
+      try {
+        await c.env.DB.prepare(
+          `UPDATE ai_analysis_requests
+             SET status = 'error',
+                 retry_count = COALESCE(max_retries,3),
+                 last_error_at = datetime('now'),
+                 error_message = COALESCE(error_message,'10분+ 대기 정체로 자동 만료됨(재큐 안 함)'),
+                 updated_at = datetime('now')
+           WHERE status = 'pending'
+             AND updated_at < datetime('now','-10 minutes')`
+        ).run()
+      } catch (_e) { /* best-effort maintenance */ }
     }
     const ef = entityFilter(c, 'ai_analysis_requests')
     const { results } = await c.env.DB.prepare(
@@ -491,8 +506,12 @@ aiAnalysisRouter.patch('/:id', async (c) => {
       ).bind(id).first<{ retry_count: number | null; max_retries: number | null }>()
       if (!row) return c.json({ success: false, error: 'Not found' }, 404)
 
-      const newCount = (row.retry_count ?? 0) + 1
-      const shouldRequeue = newCount < (row.max_retries ?? 3)
+      // [FONT_MISSING](2026-07-15): 폰트 미설치 등 영구 실패는 재큐 금지 → 즉시 terminal.
+      //   사용자 조치(폰트 설치/아웃라인) 전엔 재시도가 무의미하고, 메시지를 바로 노출해야 함.
+      const isPermanent = typeof error_message === 'string' && error_message.indexOf('[FONT_MISSING]') >= 0
+      const maxRetries = row.max_retries ?? 3
+      const newCount = isPermanent ? maxRetries : (row.retry_count ?? 0) + 1
+      const shouldRequeue = !isPermanent && newCount < maxRetries
       const finalStatus = shouldRequeue ? 'pending' : 'error'
 
       await c.env.DB.prepare(
@@ -540,6 +559,36 @@ aiAnalysisRouter.patch('/:id', async (c) => {
       success: false,
       error: '서버 오류가 발생했습니다.'
     }, 500)
+  }
+})
+
+// POST /api/ai-analysis/:id/cancel — 사용자/운영자 강제 취소 (EXP-2, 2026-07-15)
+//   PATCH status='error'는 재큐 CASE(:488)를 거쳐 pending으로 되돌아감 → 취소용 별도 경로 필요.
+//   여기서는 retry_count=max로 못박아 **terminal**로 확정 → 에이전트 폴(status=pending) 제외 = 즉시 큐에서 빠짐.
+//   entity 격리(통합모드 entityId=0이면 전체) — IA편집기 통합 사용 결정 반영.
+aiAnalysisRouter.post('/:id/cancel', async (c) => {
+  try {
+    const id = c.req.param('id')
+    const ef = entityFilter(c)
+    const row = await c.env.DB.prepare(
+      `SELECT id, status FROM ai_analysis_requests WHERE id = ?${ef.clause}`
+    ).bind(id, ...ef.params).first<{ id: number; status: string }>()
+    if (!row) return c.json({ success: false, error: 'Not found' }, 404)
+    if (row.status === 'done') return c.json({ success: false, error: '완료된 분석은 취소할 수 없습니다.' }, 400)
+
+    await c.env.DB.prepare(
+      `UPDATE ai_analysis_requests
+         SET status = 'error',
+             retry_count = COALESCE(max_retries,3),
+             error_message = '사용자 취소',
+             last_error_at = datetime('now'),
+             updated_at = datetime('now')
+       WHERE id = ?`
+    ).bind(id).run()
+    return c.json({ success: true, data: { id: Number(id), cancelled: true } })
+  } catch (error) {
+    console.error('AI Analysis cancel error:', error)
+    return c.json({ success: false, error: '취소 실패' }, 500)
   }
 })
 

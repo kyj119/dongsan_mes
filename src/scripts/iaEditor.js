@@ -374,6 +374,23 @@ function iaeCloseTab(id) {
   if (iaeActiveId === id) { iaeActiveId = iaeFiles.length ? iaeFiles[0].id : null; iaeActiveGroup = null; }
   iaeRenderTabs(); iaeRenderPanel();
 }
+// 분석 강제 취소 (EXP-2, 2026-07-15): 서버가 terminal 처리 → 에이전트 폴(status=pending)에서 즉시 제외.
+//   탭 닫기(×)는 로컬 제거만 하므로 서버 큐엔 pending이 남음 → 이 버튼으로 서버까지 정리.
+function iaeCancelAnalysis(id) {
+  if (!window.confirm('이 파일의 분석을 취소할까요? (대기·진행 중인 분석을 큐에서 제거합니다)')) return;
+  axios.post('/api/ai-analysis/' + id + '/cancel').then(function () {
+    iaeToast('분석을 취소했습니다', 'success');
+    iaeCloseTab(id);
+  }).catch(function (err) {
+    var msg = (err.response && err.response.data && err.response.data.error) || '취소 실패';
+    iaeToast(msg, 'error');
+  });
+}
+function iaeWireCancelAnalysis() {
+  var b = document.getElementById('iaeCancelAnalysis');
+  if (!b) return;
+  b.addEventListener('click', function () { iaeCancelAnalysis(parseInt(b.getAttribute('data-id'), 10)); });
+}
 
 // ── 패널 (활성 파일: 그룹 리스트 + 인스펙터) ──────────────────────
 function iaeRenderPanel() {
@@ -397,14 +414,19 @@ function iaeRenderPanel() {
     return;
   }
   if (f.status !== 'done') {
+    // EXP-2(2026-07-15): 대기·진행·지연 상태에서 분석을 강제 취소(서버 terminal → 에이전트 폴 제외).
+    var _cancelBtn = '<button id="iaeCancelAnalysis" data-id="' + f.id + '" class="mt-3 px-3 py-1.5 rounded-md bg-gray-100 text-gray-600 text-xs hover:bg-red-50 hover:text-red-600"><i class="fas fa-ban mr-1"></i>분석 취소</button>';
     panel.innerHTML = head + (iaeIsAnalysisStuck(f)
       ? '<div class="border border-dashed border-orange-200 rounded-lg p-8 text-center text-sm text-orange-600">'
         + '<i class="fas fa-triangle-exclamation text-2xl mb-2"></i>'
         + '<div>분석이 10분 이상 응답이 없습니다.</div>'
-        + '<div class="text-xs text-orange-400 mt-1">IA 에이전트 상태를 확인한 뒤 새로고침하세요. 서버가 자동으로 재시도합니다.</div></div>'
+        + '<div class="text-xs text-orange-400 mt-1">IA 에이전트 상태를 확인하거나, 아래에서 분석을 취소하세요. (서버가 10분 후 자동 만료 처리합니다)</div>'
+        + _cancelBtn + '</div>'
       : '<div class="border border-dashed border-gray-200 rounded-lg p-10 text-center text-gray-400">'
-        + '<i class="fas fa-spinner fa-spin text-2xl mb-2"></i><div class="text-sm">ExtractGroups 분석 중입니다…</div></div>');
+        + '<i class="fas fa-spinner fa-spin text-2xl mb-2"></i><div class="text-sm">ExtractGroups 분석 중입니다…</div>'
+        + _cancelBtn + '</div>');
     iaeWireRefresh();
+    iaeWireCancelAnalysis();
     return;
   }
   if (!f.groups || f.groups.length === 0) {
