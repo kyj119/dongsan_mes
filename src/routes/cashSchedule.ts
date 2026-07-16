@@ -9,6 +9,7 @@ import { entityFilter, getEntityId } from '../utils/entityFilter'
 import { buildCashflowDays, type CashflowItem } from '../utils/cashflowEngine'
 import { computeExpectedPaymentDate } from '../utils/paymentSchedule'
 import { kstYm, kstYmd } from '../utils/kstDate'
+import { getTotalBankBalance } from '../utils/bankBalance'
 
 interface BilledOrderRow {
   id: number
@@ -520,22 +521,9 @@ cashScheduleRouter.get('/schedule/monthly', requireEditOrRole('/cash-schedule', 
 // bank_accounts에 잔액 컬럼이 없어 계좌별 최신 bank_transactions.balance_after 합산
 cashScheduleRouter.get('/schedule/bank-balance', requireEditOrRole('/cash-schedule', 'MANAGER'), async (c) => {
   try {
-    const ef = entityFilter(c, 'ba')
-    const row = await c.env.DB.prepare(`
-      SELECT COALESCE(SUM(latest.balance_after), 0) AS total_balance,
-             COUNT(latest.bank_account_id) AS account_count
-      FROM bank_accounts ba
-      JOIN (
-        SELECT bt1.bank_account_id, bt1.balance_after
-        FROM bank_transactions bt1
-        WHERE bt1.id = (
-          SELECT MAX(bt2.id) FROM bank_transactions bt2
-          WHERE bt2.bank_account_id = bt1.bank_account_id
-        )
-      ) latest ON latest.bank_account_id = ba.id
-      WHERE ba.is_active = 1${ef.clause}
-    `).bind(...ef.params).first<{ total_balance: number; account_count: number }>()
-    return c.json({ success: true, data: { total_balance: row?.total_balance || 0, account_count: row?.account_count || 0 } })
+    // P1(2026-07-17): bank fund-summary와 동일 로직으로 수렴 → 현금잔액 불일치 제거. [[bankBalance]]
+    const { total_balance, account_count } = await getTotalBankBalance(c)
+    return c.json({ success: true, data: { total_balance, account_count } })
   } catch (error) {
     console.error('cashSchedule bank-balance error:', error)
     return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)

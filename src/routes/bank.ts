@@ -14,6 +14,7 @@ import { loadProvision, agingCategoryToBucket, effectiveLossRate } from '../util
 import { computeExpectedPaymentDate } from '../utils/paymentSchedule'
 import { escapeCsvField } from '../utils/csv'
 import { kstYmd, kstYmdCompact } from '../utils/kstDate'
+import { LATEST_BALANCE_SUBQUERY } from '../utils/bankBalance'
 
 const bankRouter = new Hono<HonoEnv>()
 
@@ -72,9 +73,7 @@ bankRouter.get('/fund-summary', requireRole('ADMIN'), async (c) => {
       `SELECT
         ba.id, ba.bank_name, ba.account_number, ba.account_holder, ba.account_alias,
         ba.barobill_registered, ba.last_synced_at,
-        (SELECT bt.balance_after FROM bank_transactions bt
-          WHERE bt.bank_account_id = ba.id AND bt.balance_after IS NOT NULL
-          ORDER BY bt.transaction_date DESC, bt.transaction_time DESC, bt.id DESC LIMIT 1) AS current_balance,
+        ${LATEST_BALANCE_SUBQUERY} AS current_balance,
         (SELECT MAX(bt.transaction_date) FROM bank_transactions bt
           WHERE bt.bank_account_id = ba.id) AS last_tx_date
       FROM bank_accounts ba
