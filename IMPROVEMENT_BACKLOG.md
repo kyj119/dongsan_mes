@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 6 -->
-<!-- last_run_at: 2026-07-16T22:30:00+09:00 -->
+<!-- last_run_area: 1 -->
+<!-- last_run_at: 2026-07-16T23:15:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -16,6 +16,14 @@
 
 > 📦 **과거 사이클 로그**는 `IMPROVEMENT_BACKLOG_ARCHIVE.md`/git 히스토리로 이관됨 (2026-06-10 1차 분리, 2026-06-25 2차 트림 343KB→192KB, 2026-06-25T10:00 3차 트림, 2026-07-03T06:00 4차 트림 288KB→86KB, **2026-07-07T13:00 5차 트림 — 07-01~07-05 사이클 로그를 git 히스토리로 이관: 238KB→78KB, 256KB Read 한도 재확보**). 신규 로그는 계속 이 파일 상단에 추가. 본 파일은 직전 2일치(07-06~) 사이클 로그 + 영구 참조 섹션(Approved/New/Auto-fixed/Done/Rejected/FP 카탈로그)만 유지. 이관분은 `git log -p -- IMPROVEMENT_BACKLOG.md`로 복원 가능.
 
+> **Area 1 프로덕션 헬스 (2026-07-16T23:15):**
+> - **방법**: `git fetch origin main`(강제갱신 감지, HEAD `15f93e5` = origin/main 일치, 워킹트리 clean, detached). 프록시가 이번 세션도 prod 호스트 직접 curl을 차단(exit 56, 기존 33/41회차와 동일 제약, `cloudflare-observability` MCP도 미인증) — GitHub Actions 기록으로 대체. Area 1 **44회차** — 직전 Area6(`b52245d`, 07-16T22:30, 43회차) 이후 신규 커밋 1건(`15f93e5` "feat(ia-designer-loop): P0 디자이너 세션 루프", 워크벤치 라우트 255줄+마이그 0463 신설).
+> - **🟢 배포 체인 = 최신 HEAD 포함 전수 정상**: `deploy.yml` 최근 30회 실행(07-14T21:13~07-16T09:01) 중 성공 아닌 18건은 전부 07-15T06:14~06:15 사이 동일 커밋(`80890dc9`)에 대한 **cancelled 12건**(연속 push로 인한 concurrency-group 자동 취소, 실패 아님 — 그 커밋의 최종 런은 이후 성공 처리됨) 뿐. 최신 커밋(`15f93e5`, run #864) job 단계별 = Typecheck/Build/Deploy/Smoke **전부 success**(Smoke 09:02:49~09:03:02, 13초). `backup.yml`(Daily D1 Backup) 최근 8회 전부 success, 최신 07-15T18:00. `e2e.yml`은 여전히 `disabled_manually`(06-22 owner 비활성화 유지, 재발 아님).
+> - **🟡 저확신 관찰(이슈 미생성) — 신규 마이그 0463(designer_intakes) 배포 순서 의존, graceful degrade로 무해**: `15f93e5`가 신규 테이블 `designer_intakes`(전부 추가형 CREATE TABLE IF NOT EXISTS)를 도입했고, 이 테이블에 의존하는 신규 라우트 5종(`workbench.ts` GET/POST `/intakes`·`/absorb`·`/void`·`/intake-config`)이 이미 코드 배포됨 — SKILL #483 "code-only CI 배포 하의 마이그레이션 드리프트" 패턴이나, ① 신규 고립 테이블(기존 detail-SELECT 컬럼 참조 아님, #484류 위험 아님) ② 호출부(`orderForm/intake.js:35` `ofIntakeOnClientSelected`, 거래처 선택 시마다 자동 호출되는 핵심 경로)가 `.catch(function(e){ console.warn(...) })`로 실패를 완전 흡수 — 마이그 미적용 상태에서 "no such table" 500이 나도 주문서 화면은 배지만 안 뜨고 정상 동작(크래시 없음). ③ `POST /intakes`(에이전트 manifest 등록)는 기존 workbench 에이전트와 동일하게 실제 로그인 JWT Bearer 인증 사용(`IllustratorAutomat/Program.cs:1073`, 하드코딩 audit-FK 취약 클래스 아님). **결론**: 이 사이클은 owner가 직접 커밋한 신기능이라 `db:migrate:prod` 인지 여부는 owner 판단 영역 — auto-improve가 액션할 사안 아니나(egress로 prod PRAGMA 검증도 불가), 참고용 1줄 기록만 남김. 미적용이어도 폭발반경=신기능 자체 dormant뿐, 기존 주문서 플로우 영향 0.
+> - **🟢 backlog↔GitHub sync**: `search_issues(label:auto-improve,state:open)` 실측 **11건**(#473,504,509,519,520,521,522,524,525,526,527) = 직전 Area6 stats와 완전 정합, 변동 없음(owner close 0, 신규 이슈 0). done(445)·rejected(3) 변동 없음.
+> - **🧬 SKILL 강화 없음(신규 패턴 아님)** — 이번 관찰은 기존 #483(마이그 드리프트)·printEvents/rip 대비 workbench 에이전트의 "실 JWT 인증" 정상 패턴(#430 하드코딩 audit-FK류가 아님을 재확인) 렌즈로 충분히 설명됨.
+> - 신규 이슈 0건, 자동수정 0건(수정 대상 없음), done-sync 변동 없음(new 11·done 445·rejected 3 정합 재확인). 다음 순번 Area 2.
+>
 > **Area 6 자기 진화 (2026-07-16T22:30):**
 > - **방법**: `git fetch origin main`(강제갱신 감지, HEAD `d126b45` = origin/main 일치, 워킹트리 clean, detached) 후 `npm ci`(node_modules 0→81). Area 6 **43회차** — 직전 Area6(`8c3fd23`, 07-14T13:40, 41회차) 이후 Area1~5가 각자 렌즈로 대부분의 churn을 이미 감사 완료. 이번 사이클의 순수 미검증 churn = 직전 Area5 체크포인트(`5d354ef`, 07-16T09:10) **이후** 착륙한 IA-editor 3커밋(`af533ba`/`34b74d1`/`75fea1c` — NAS 경로 직접분석·열기모달 하드닝·큐 자동만료+분석취소, `aiAnalysis.ts`+118·`iaEditor.js`+77·`iaEditor.ts`+5)뿐(sunmyung 데이터 임포트 커밋들은 `docs/`만 건드려 범위 밖). 오케스트레이터가 직접 라인별 diff 감사(XSS bridge + entity/auth + write-path 정합성 렌즈).
 > - **🟢 IA-editor churn = clean(XSS/auth/SQLi 관점)**: `nas-listing`/`from-nas`/`cancel` 3개 신규 엔드포인트 전부 라우터-와이드 `authMiddleware+requireRole('ADMIN')`(`aiAnalysis.ts:10`) 상속 확인(인증 갭 없음). 파일 경로는 항상 에이전트가 보고한 목록에서만 취함(`from-nas`가 사용자 입력 경로를 신뢰하지 않음 — 코드 주석이 이미 "경로 주입 방지" 명시, 직접 검증: `match = files.find(f => f.name === name)` 후 `match.path`만 사용, 사용자 제공 경로 바인드 없음). 전부 파라미터 바인드(SQLi 0). `iaEditor.js`의 NAS 패널 렌더(`iaeNasLoad`)는 `f.name`/`f.mtime`/`d.reported_at`을 텍스트·`data-name` 속성 양쪽 `iaeEscape()`로 일관 이스케이프 — 기존 컨벤션 유지, net-new XSS 0. `settings` 테이블에 파일목록을 entity_id 없이 전역 저장하는 것은 물리적으로 단일 NAS 폴더(Z:\Designs\IA-입력)를 공유하는 설계상 의도(FP클래스⑤ 전역 마스터와 동형) — 격리 갭 아님.
