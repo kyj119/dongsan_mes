@@ -1,0 +1,1 @@
+UPDATE purchase_order_items SET item_id=(SELECT id FROM items WHERE item_code='SGM-LEDP-BW'), updated_at=CURRENT_TIMESTAMP WHERE item_name='LED투광기-검정색/백색 [35W]' AND item_id IS NULL AND po_id IN (SELECT id FROM purchase_orders WHERE entity_id=2 AND notes='선명 이관 매입');
