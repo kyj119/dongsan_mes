@@ -101,7 +101,6 @@
   } catch (eCfg) { config = null; }
   var methods = (config && config.methods) ? config.methods : [];
   var presets = (config && config.presets) ? config.presets : [];
-  var clients = (config && config.clients) ? config.clients : [];
   var openLines = (config && config.open_lines) ? config.open_lines : [];
   function marginOfMethod(name) {
     var m = findByName(methods, name);
@@ -147,28 +146,11 @@
   var pNew = dlg.add('panel', undefined, '접수 정보');
   pNew.alignChildren = 'left';
   pNew.margins = 12;
+  // 거래처 입력 제거(2026-07-17): 주문서도 디자이너 본인이 입력 = 이중 입력. 대기물 식별=썸네일.
   var rowClient = pNew.add('group');
-  rowClient.add('statictext', undefined, '거래처:');
-  var clientEt = rowClient.add('edittext', undefined, '');
-  clientEt.characters = 24;
   rowClient.add('statictext', undefined, '수량:');
   var qtyEt = rowClient.add('edittext', undefined, '1');
   qtyEt.characters = 5;
-  var clientLb = pNew.add('listbox', undefined, [], { multiselect: false });
-  clientLb.preferredSize = [440, 64];
-  clientEt.onChanging = function () {
-    clientLb.removeAll();
-    var q = clientEt.text.replace(/^\s+|\s+$/g, '');
-    if (!q) return;
-    var found = 0;
-    for (var ci = 0; ci < clients.length && found < 6; ci++) {
-      var nm = clients[ci].client_name || '';
-      if (nm.indexOf(q) >= 0) { clientLb.add('item', nm); found++; }
-    }
-  };
-  clientLb.onChange = function () {
-    if (clientLb.selection) { clientEt.text = clientLb.selection.text; clientLb.removeAll(); }
-  };
 
   // ── 가공 설정 ──
   var pFin = dlg.add('panel', undefined, '가공 설정');
@@ -261,7 +243,6 @@
     var idx = lineDrop.selection ? lineDrop.selection.index : 0;
     if (idx <= 0) return;
     var ol = openLines[idx - 1];
-    clientEt.text = ol.client_name || '';
     qtyEt.text = String(ol.quantity || 1);
     if (ol.finishing) {
       var fin;
@@ -286,21 +267,15 @@
   var okBtn = rowBtn.add('button', undefined, '가공 실행', { name: 'ok' });
   rowBtn.add('button', undefined, '취소', { name: 'cancel' });
 
-  okBtn.onClick = function () {
-    var lineIdx = lineDrop.selection ? lineDrop.selection.index : 0;
-    if (lineIdx === 0 && clientEt.text.replace(/^\s+|\s+$/g, '') === '') {
-      alert('거래처를 입력하거나 주문 라인을 선택해 주세요.');
-      return;
-    }
-    dlg.close(1);
-  };
+  okBtn.onClick = function () { dlg.close(1); };
   if (dlg.show() !== 1) return;
 
   // ══ 파라미터 수집 ══
   var lineSel = lineDrop.selection ? lineDrop.selection.index : 0;
   var orderItemId = lineSel > 0 ? (openLines[lineSel - 1].order_item_id || null) : null;
-  var clientName = clientEt.text.replace(/^\s+|\s+$/g, '');
-  if (!clientName && lineSel > 0) clientName = openLines[lineSel - 1].client_name || '무명';
+  // 표시명 = 주문라인 거래처(경로①) 또는 원본 문서명(경로②) — 파일명·피커 식별용
+  var docBase = sanitizeName(String(srcDoc.name).replace(/\.[^.]+$/, ''));
+  var clientName = lineSel > 0 ? (openLines[lineSel - 1].client_name || docBase) : docBase;
   var qty = parseInt(qtyEt.text, 10); if (isNaN(qty) || qty < 1) qty = 1;
   var sN = scaleN();
   var mode = modeImpose.value ? 'impose' : (modeBoth.value ? 'both' : 'single');
@@ -500,7 +475,7 @@
   }
 
   alert('MES 가공 완료 ✓\n\n' +
-    '거래처: ' + clientName + '  수량: ' + qty + '\n' +
+    '등록: ' + clientName + '  수량: ' + qty + '\n' +
     '실물: ' + realW.toFixed(1) + ' × ' + realH.toFixed(1) + ' cm' + (sN > 1 ? ' (파일 1/' + sN + ')' : '') + '\n' +
     (epsName ? ('EPS: ' + epsName + '\n') : '(모아찍기용 — work.ai만 저장)\n') +
     (outlineFailed ? '⚠ 텍스트 아웃라인 일부 실패 — 확인 필요\n' : '') +

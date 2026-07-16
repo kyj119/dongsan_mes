@@ -10,8 +10,8 @@
                 return t.indexOf('data:') === 0 ? t : ('data:image/png;base64,' + t);
             }
 
-            // client.js selectClient()에서 호출 — 배지 갱신
-            window.ofIntakeOnClientSelected = function(clientId, clientName) {
+            // 대기물 배지 — 거래처 무관 전체 waiting (2026-07-17: 거래처 필터 제거, 식별=썸네일)
+            window.ofIntakeRefreshBadge = function() {
                 var anchor = document.getElementById('creditBanner');
                 if (!anchor || !anchor.parentNode) return;
                 var badge = document.getElementById('intakeBadge');
@@ -23,7 +23,7 @@
                 }
                 badge.innerHTML = '';
                 _ofIntakeCache = [];
-                axios.get('/api/workbench/intakes', { params: { status: 'waiting', client: clientName, limit: 50 } })
+                axios.get('/api/workbench/intakes', { params: { status: 'waiting', limit: 50 } })
                     .then(function(res) {
                         var rows = (res.data && res.data.data) || [];
                         if (!rows.length) return;
@@ -34,6 +34,14 @@
                     })
                     .catch(function(e) { console.warn('[orderForm] 가공 대기물 조회 실패', e); }); // 권한 없음(403) 등은 조용히 무시
             };
+            // client.js selectClient() 훅 호환 (거래처 변경 시 재조회)
+            window.ofIntakeOnClientSelected = function() { ofIntakeRefreshBadge(); };
+            // 폼 로드 시 1회 노출 (거래처 선택 전에도 대기물 보이게)
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', function() { ofIntakeRefreshBadge(); });
+            } else {
+                ofIntakeRefreshBadge();
+            }
 
             window.ofIntakeOpenPicker = function() {
                 var rows = _ofIntakeCache || [];

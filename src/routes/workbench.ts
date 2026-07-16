@@ -1109,15 +1109,13 @@ workbenchRouter.post('/process/clear', async (c) => {
 // JSX(ExtendScript)는 HTTPS 호출 불가 → 에이전트가 이 응답을 {IA-등록}\_config\config.json으로 중계.
 workbenchRouter.get('/intake-config', async (c) => {
   try {
-    const [methods, presets, clients] = await Promise.all([
+    // 거래처 스냅샷 제거(2026-07-17): 미니창 거래처 입력 폐지(이중입력) — config 123KB→경량
+    const [methods, presets] = await Promise.all([
       c.env.DB.prepare(
         `SELECT id, name, margin_cm, method_group FROM finishing_methods WHERE is_active = 1 ORDER BY sort_order, id`
       ).all(),
       c.env.DB.prepare(
         `SELECT id, name, config, method_group FROM finishing_presets WHERE is_active = 1 ORDER BY sort_order, id`
-      ).all(),
-      c.env.DB.prepare(
-        `SELECT id, client_name FROM clients WHERE is_active = 1 ORDER BY client_name LIMIT 3000`
       ).all(),
     ])
     // 경로①(주문 선행)용 미가공 라인: 파일 미연결 + 진행 중 주문만
@@ -1137,7 +1135,6 @@ workbenchRouter.get('/intake-config', async (c) => {
         generated_at: new Date().toISOString(),
         methods: methods.results,
         presets: presets.results,
-        clients: clients.results,
         open_lines: openLines,
       },
     })
@@ -1154,8 +1151,8 @@ workbenchRouter.post('/intakes', async (c) => {
     const body = await c.req.json<Record<string, unknown>>().catch(() => null)
     if (!body) return c.json({ success: false, error: 'JSON 본문이 필요합니다.' }, 400)
 
-    const clientName = String(body.client_name || '').trim()
-    if (!clientName) return c.json({ success: false, error: 'client_name은 필수입니다.' }, 400)
+    // 거래처=선택 입력(2026-07-17 미니창 제거) — 표시명(주문라인 거래처 or 원본 문서명) 폴백
+    const clientName = String(body.client_name || '').trim() || '미지정'
     const workAiPath = body.work_ai_path ? String(body.work_ai_path) : null
     const epsPath = body.eps_path ? String(body.eps_path) : null
     if (!workAiPath && !epsPath) return c.json({ success: false, error: 'work.ai 또는 EPS 파일이 필요합니다.' }, 400)
