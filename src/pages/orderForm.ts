@@ -8,7 +8,8 @@ import sFinishing from '../scripts/orderForm/finishing.js?raw'
 import sCalc from '../scripts/orderForm/calc.js?raw'
 import sSheet from '../scripts/orderForm/sheet.js?raw'
 import sParent from '../scripts/orderForm/parent.js?raw'
-const pageScript = [sClient, sItemRow, sFinishing, sCalc, sSheet, sParent].join('\n')
+import sIntake from '../scripts/orderForm/intake.js?raw'
+const pageScript = [sClient, sItemRow, sFinishing, sCalc, sSheet, sParent, sIntake].join('\n')
 import distPageScript from '../scripts/orderFormDist.js?raw'
 
 export function orderFormPage(c: Context<HonoEnv>) {
