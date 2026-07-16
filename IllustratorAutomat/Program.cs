@@ -1080,6 +1080,8 @@ namespace IllustratorAutomation
                     File.WriteAllText(Path.Combine(folder, ".ingested"), DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
                     WriteAgentLog($"디자이너 등록 ingest OK: {Path.GetFileName(folder)}");
                     Console.WriteLine($"[디자이너등록] 등록 완료: {Path.GetFileName(folder)}");
+                    // 등록 직후 config 즉시 갱신 — "등록 → 바로 판짜기" 동선에서 5분 주기 대기 제거
+                    await BroadcastDesignerConfigAsync();
                 }
                 else if ((int)res.StatusCode >= 400 && (int)res.StatusCode < 500)
                 {

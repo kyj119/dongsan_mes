@@ -105,7 +105,7 @@
     } catch (eCfg) { }
     var intakes = (config && config.intakes) ? config.intakes : [];
     if (!intakes.length) {
-      alert('모아찍기 대기물이 없습니다.\n\n일러에서 조각을 선택해 "MES가공"으로 용도=모아찍기용(또는 둘 다)으로 먼저 등록하세요.\n(등록 후 ~5분 내 목록에 반영 — 에이전트 브로드캐스트 주기)');
+      alert('모아찍기 대기물이 없습니다.\n\n일러에서 조각을 선택해 "MES가공"으로 용도=모아찍기용(또는 둘 다)으로 먼저 등록하세요.\n(등록 후 ~1분 내 목록에 반영됩니다)');
       return;
     }
 
