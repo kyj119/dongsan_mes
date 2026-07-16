@@ -65,6 +65,7 @@ export const MENU_ITEMS: MenuGroup[] = [
       { path: '/vat-reports', icon: 'fa-file-invoice', label: '부가세 신고', roles: ['ADMIN', 'MANAGER'] },
       { path: '/financial-reports', icon: 'fa-chart-bar', label: '손익계산서', roles: ['ADMIN', 'MANAGER'] },
       { path: '/reports', icon: 'fa-chart-line', label: '경영 분석', roles: ['ADMIN', 'MANAGER'] },
+      { path: '/management-report', icon: 'fa-stethoscope', label: '경영진단', roles: ['ADMIN', 'MANAGER'] },
     ],
   },
   {

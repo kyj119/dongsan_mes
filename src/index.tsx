@@ -144,6 +144,7 @@ import { bankPage } from './pages/bank'
 import { shipmentsPage } from './pages/shipments'
 import { qualityPage } from './pages/quality'
 import { reportsPage } from './pages/reports'
+import { managementReportPage } from './pages/managementReport'
 import { clientDetailPage } from './pages/clientDetail'
 import { activityLogPage } from './pages/activityLog'
 import { tasksPage } from './pages/tasks'
@@ -456,6 +457,7 @@ app.get('/shipments', pageAuthMiddleware, requirePagePermission('/shipments'), s
 app.get('/shipments-dashboard', pageAuthMiddleware, requirePagePermission('/shipments-dashboard'), shipmentsDashboardPage)
 app.get('/quality', pageAuthMiddleware, requirePagePermission('/quality'), qualityPage)
 app.get('/reports', pageAuthMiddleware, requirePagePermission('/reports'), reportsPage)
+app.get('/management-report', pageAuthMiddleware, requirePagePermission('/management-report'), managementReportPage)
 app.get('/forecast', (c) => c.redirect('/reports?tab=forecast'))
 app.get('/activity-log', pageAuthMiddleware, requirePagePermission('/activity-log'), activityLogPage)
 app.get('/tasks', pageAuthMiddleware, requirePagePermission('/tasks'), tasksPage)
