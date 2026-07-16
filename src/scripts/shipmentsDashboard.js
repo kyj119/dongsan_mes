@@ -136,10 +136,14 @@
     loadDashboard();
   };
 
-  // 초기 로드
-  loadDashboard();
+  // 초기 로드: 독립 페이지(/shipments-dashboard)에서만 자동.
+  // shipments '준비상태' 탭(#shipExecTab 존재)은 탭 최초 진입 시 switchShipTab이 window.loadDashboard 호출(이중 로드 방지).
+  var __isShipTabHost = !!document.getElementById('shipExecTab');
+  if (document.getElementById('dashDate') && !__isShipTabHost) {
+    loadDashboard();
+  }
 
-  // 필터 변경 시 자동 로드
+  // 필터 변경 시 자동 로드 (양쪽 호스트 공통)
   ['dashDate', 'dashMethod', 'dashStatus'].forEach(function(id) {
     var el = document.getElementById(id);
     if (el) el.addEventListener('change', loadDashboard);

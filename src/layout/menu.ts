@@ -20,8 +20,10 @@ export const MENU_ITEMS: MenuGroup[] = [
       { path: '/orders', icon: 'fa-file-alt', label: '주문 관리', roles: ['ADMIN', 'MANAGER', 'DESIGNER'], badgeId: 'nav-badge-orders' },
       { path: '/quotations', icon: 'fa-file-invoice', label: '견적서 관리', roles: ['ADMIN', 'MANAGER'] },
       { path: '/cards', icon: 'fa-th-large', label: '현장 카드', roles: ['ADMIN', 'MANAGER', 'DESIGNER', 'OPERATOR'] },
-      { path: '/shipments', icon: 'fa-truck', label: '출고/배송', roles: ['ADMIN', 'MANAGER', 'DESIGNER'] },
-      { path: '/shipments-dashboard', icon: 'fa-clipboard-check', label: '출고 대시보드', roles: ['ADMIN', 'MANAGER', 'OPERATOR'] },
+      { path: '/shipments', icon: 'fa-truck', label: '출고/배송', roles: ['ADMIN', 'MANAGER', 'DESIGNER', 'OPERATOR'] },
+      // /shipments-dashboard 사이드바 은퇴 (2026-07-17): '준비상태' 뷰를 /shipments 탭으로 흡수(③).
+      // OPERATOR 에 /shipments 접근 부여(0465)+진입 시 준비상태 탭 전용 게이팅. 페이지·라우트·API 보존(직접 URL). 되살릴 경우 이 줄 복원.
+      // { path: '/shipments-dashboard', icon: 'fa-clipboard-check', label: '출고 대시보드', roles: ['ADMIN', 'MANAGER', 'OPERATOR'] },
       { path: '/pack', icon: 'fa-box-open', label: '출고 검수', roles: ['ADMIN', 'MANAGER', 'OPERATOR'] },
       // /delivery-analytics 제거 (2026-06-26): 납기준수율·평균처리시간은 orders.shipped_at 부재로 작동 불가,
       // 오늘출고예정=/dashboard·지연=/orders·체류시간=/production-reports와 전부 중복. 페이지·라우트 삭제됨.

@@ -2,8 +2,40 @@ import type { Context } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { renderPage } from '../layout'
 import pageScript from '../scripts/shipments.js?raw'
+import shipmentsDashboardScript from '../scripts/shipmentsDashboard.js?raw'
 
 export function shipmentsPage(c: Context<HonoEnv>) {
+  // ③ 흡수(2026-07-17): 실행/준비상태 탭 전환 + 역할 게이팅(OPERATOR=준비상태 전용)
+  const tabScript = `
+    (function(){
+      var __shipRole = ''; try { __shipRole = (JSON.parse(localStorage.getItem('user')||'{}').role) || ''; } catch(e){}
+      window.__shipPrepLoaded = false;
+      window.switchShipTab = function(tab){
+        var defs = [ {k:'exec',btn:'shipExecTab',c:'shipExecContent'}, {k:'prep',btn:'shipPrepTab',c:'shipPrepContent'} ];
+        defs.forEach(function(d){
+          var b = document.getElementById(d.btn), ct = document.getElementById(d.c);
+          if(!b || !ct){ console.warn('[shipments] tab not found: ' + d.k); return; }
+          if(d.k === tab){
+            b.classList.remove('border-transparent','text-gray-500'); b.classList.add('border-blue-600','text-blue-600'); ct.classList.remove('hidden');
+          } else {
+            b.classList.remove('border-blue-600','text-blue-600'); b.classList.add('border-transparent','text-gray-500'); ct.classList.add('hidden');
+          }
+        });
+        // 준비상태 탭 최초 진입 시에만 lazy-load (shipmentsDashboard.js)
+        if(tab === 'prep' && typeof window.loadDashboard === 'function' && !window.__shipPrepLoaded){
+          window.__shipPrepLoaded = true; window.loadDashboard();
+        }
+      };
+      document.addEventListener('DOMContentLoaded', function(){
+        // OPERATOR(현장): 사무실 라벨 '실행' 탭 숨기고 '준비상태' 전용
+        if(__shipRole === 'OPERATOR'){
+          var et = document.getElementById('shipExecTab'); if(et) et.style.display = 'none';
+          window.switchShipTab('prep');
+        }
+      });
+    })();
+  `;
+  const combinedScript = pageScript + '\n' + shipmentsDashboardScript + '\n' + tabScript;
   return renderPage(c, {
     title: '출고 라벨 관리',
     activePage: '/shipments',
@@ -79,6 +111,13 @@ export function shipmentsPage(c: Context<HonoEnv>) {
         .quick-guide td:first-child { font-weight: bold; width: 25%; color: #555; }
       </style>
 
+      <!-- ③ 흡수(2026-07-17): 택배사별 실행 / 준비상태(구 /shipments-dashboard) 탭 -->
+      <div class="flex border-b mb-4" id="shipTabNav">
+        <button id="shipExecTab" onclick="switchShipTab('exec')" class="px-5 py-3 text-sm font-medium border-b-2 border-blue-600 text-blue-600"><i class="fas fa-truck mr-1"></i>택배사별 실행</button>
+        <button id="shipPrepTab" onclick="switchShipTab('prep')" class="px-5 py-3 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700"><i class="fas fa-clipboard-check mr-1"></i>준비상태</button>
+      </div>
+
+      <div id="shipExecContent">
       <!-- 헤더: 날짜 탐색 + 배지 -->
       <div class="ds-filter-bar">
         <div class="ds-filter-field">
@@ -398,12 +437,78 @@ export function shipmentsPage(c: Context<HonoEnv>) {
           </div>
         </div>
       </div>
+      </div><!-- /shipExecContent -->
+
+      <!-- 준비상태 탭 (구 /shipments-dashboard 흡수) -->
+      <div id="shipPrepContent" class="hidden">
+        <div class="ds-container space-y-4">
+          <!-- 필터 영역 -->
+          <div class="ds-card p-3">
+            <div class="flex flex-wrap items-end gap-3">
+              <div>
+                <label class="block text-[10px] text-gray-400 mb-1">날짜</label>
+                <input type="date" id="dashDate" class="border rounded px-2 py-1 text-xs" style="color:#212529;" />
+              </div>
+              <div>
+                <label class="block text-[10px] text-gray-400 mb-1">배송방법</label>
+                <select id="dashMethod" class="border rounded px-2 py-1 text-xs" style="color:#212529;">
+                  <option value="">전체</option>
+                  <option value="택배">택배</option>
+                  <option value="방문수령">방문수령</option>
+                  <option value="퀵">퀵</option>
+                  <option value="직접배송">직접배송</option>
+                  <option value="화물">화물</option>
+                </select>
+              </div>
+              <div>
+                <label class="block text-[10px] text-gray-400 mb-1">상태</label>
+                <select id="dashStatus" class="border rounded px-2 py-1 text-xs" style="color:#212529;">
+                  <option value="all">전체</option>
+                  <option value="ready">출고 가능</option>
+                  <option value="pending">미완료</option>
+                </select>
+              </div>
+              <div class="ml-auto flex items-center gap-2">
+                <button onclick="window.resetDashFilters()" class="text-gray-500 text-xs">초기화</button>
+                <button onclick="window.loadDashboard()" class="px-3 py-1 bg-blue-600 text-white text-xs rounded hover:bg-blue-700 transition-all">
+                  <i class="fas fa-search mr-1"></i>검색
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- 요약 카드 -->
+          <div class="grid grid-cols-3 gap-2">
+            <div class="ds-card p-2.5 text-center hover:shadow-md transition-shadow">
+              <div id="dashTotal" class="text-xl font-bold tabular-nums" style="color:#212529;">-</div>
+              <div class="text-[10px] text-gray-400">전체</div>
+            </div>
+            <div class="ds-card p-2.5 text-center hover:shadow-md transition-shadow">
+              <div id="dashReady" class="text-xl font-bold tabular-nums text-green-600">-</div>
+              <div class="text-[10px] text-gray-400">출고 가능</div>
+            </div>
+            <div class="ds-card border-amber-200 p-2.5 text-center hover:shadow-md transition-shadow">
+              <div id="dashPending" class="text-xl font-bold tabular-nums text-amber-600">-</div>
+              <div class="text-[10px] text-amber-500 font-medium">미완료</div>
+            </div>
+          </div>
+
+          <!-- 대시보드 콘텐츠 -->
+          <div id="dashContent">
+            <div class="space-y-2">
+              <div class="ds-skeleton ds-skeleton-card"></div>
+              <div class="ds-skeleton ds-skeleton-card"></div>
+              <div class="ds-skeleton ds-skeleton-card"></div>
+            </div>
+          </div>
+        </div>
+      </div>
 
       <!-- 프린트 전용 영역: 라벨 (화면에는 숨김) -->
       <div id="printArea"></div>
       <!-- 프린트 전용 영역: A4 가로 출고 리스트 -->
       <div id="printListArea"></div>
     `,
-    pageScript
+    pageScript: combinedScript
   })
 }
