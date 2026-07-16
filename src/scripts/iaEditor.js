@@ -346,6 +346,54 @@ function iaeNasAnalyze(name, btn) {
   });
 }
 
+// ── 디자이너 세션 루프(2026-07-17): 가공 대기물 불러오기 ────────────────────
+// 일러 MES가공(mes-core.jsx)으로 등록된 대기물(designer_intakes)을 세션에 추가 → 팔레트/모아찍기에서 사용.
+// 팔레트는 iae_session_ids 기반이라 등록분이 자동으로 안 뜨는 갭을 메움. NAS 패널 패턴 미러.
+function iaeIntakeThumb(t) { if (!t) return ''; return t.indexOf('data:') === 0 ? t : ('data:image/png;base64,' + t); }
+function iaeIntakeToggle() {
+  var p = document.getElementById('iaeIntakePanel'); if (!p) { console.warn('[ia-editor] #iaeIntakePanel not found'); return; }
+  if (p.classList.contains('hidden')) { p.classList.remove('hidden'); iaeIntakeLoad(); } else { p.classList.add('hidden'); }
+}
+function iaeIntakeLoad() {
+  var p = document.getElementById('iaeIntakePanel'); if (!p) return;
+  p.innerHTML = '<div class="text-xs text-gray-400"><i class="fas fa-spinner fa-spin mr-1"></i>대기물 불러오는 중…</div>';
+  axios.get('/api/workbench/intakes', { params: { status: 'waiting', limit: 100 } }).then(function (res) {
+    var rows = (res.data && res.data.data) || [];
+    var head = '<div class="flex items-center justify-between mb-2">'
+      + '<div class="text-xs text-gray-500"><b>가공 대기물</b> · 일러 MES가공 등록분 (waiting)</div>'
+      + '<div class="flex gap-2">'
+      + (rows.length ? '<button id="iaeIntakeAddAll" class="text-xs text-amber-700 hover:text-amber-900"><i class="fas fa-plus mr-1"></i>모두 추가</button>' : '')
+      + '<button id="iaeIntakeRefresh" class="text-xs text-gray-500 hover:text-blue-600"><i class="fas fa-rotate-right mr-1"></i>새로고침</button></div></div>';
+    var body;
+    if (!rows.length) {
+      body = '<div class="text-xs text-gray-400 py-4 text-center">대기물이 없습니다.<br><span class="text-[11px]">일러에서 객체 선택 → 파일 &gt; 스크립트 &gt; MES가공 으로 등록하세요 (~30초 내 반영).</span></div>';
+    } else {
+      body = '<div class="max-h-64 overflow-y-auto divide-y divide-gray-100">' + rows.map(function (r) {
+        var thumb = r.thumbnail
+          ? '<img src="' + iaeIntakeThumb(r.thumbnail) + '" class="flex-shrink-0" style="width:40px;height:40px;object-fit:contain;background:#f3f4f6;border-radius:6px">'
+          : '<div class="flex-shrink-0" style="width:40px;height:40px;background:#f3f4f6;border-radius:6px"></div>';
+        var modeKo = r.mode === 'impose' ? '모아찍기용' : (r.mode === 'both' ? '단건+모아찍기' : '단건');
+        return '<div class="flex items-center justify-between py-1.5 gap-2">' + thumb
+          + '<div class="min-w-0 flex-1"><div class="text-sm text-gray-700 truncate">' + iaeEscape(r.client_name || '') + ' · ' + (r.width_cm != null ? r.width_cm : '?') + '×' + (r.height_cm != null ? r.height_cm : '?') + 'cm ×' + (r.qty || 1) + '</div>'
+          + '<div class="text-[11px] text-gray-400">' + modeKo + (r.trim ? ' · 돔보' : '') + ' · ' + iaeEscape(String(r.created_at || '').slice(0, 16)) + '</div></div>'
+          + '<button class="iae-intake-add flex-shrink-0 text-xs px-2 py-1 rounded bg-amber-600 text-white hover:bg-amber-700" data-aid="' + (r.ai_analysis_id || '') + '"><i class="fas fa-plus mr-1"></i>추가</button></div>';
+      }).join('') + '</div>';
+    }
+    p.innerHTML = head + body;
+    var rb = document.getElementById('iaeIntakeRefresh'); if (rb) rb.addEventListener('click', iaeIntakeLoad);
+    function addOne(aid) { var n = parseInt(aid, 10); if (n) iaeAddId(n); }
+    Array.prototype.forEach.call(p.querySelectorAll('.iae-intake-add'), function (b) {
+      b.addEventListener('click', function () { addOne(b.getAttribute('data-aid')); b.disabled = true; b.innerHTML = '추가됨'; iaeRefresh(); iaeToast('대기물을 세션에 추가했습니다.', 'success'); });
+    });
+    var allBtn = document.getElementById('iaeIntakeAddAll');
+    if (allBtn) allBtn.addEventListener('click', function () {
+      rows.forEach(function (r) { addOne(r.ai_analysis_id); });
+      iaeRefresh(); iaeToast('대기물 ' + rows.length + '건을 세션에 추가했습니다.', 'success');
+      p.classList.add('hidden');
+    });
+  }).catch(function () { p.innerHTML = '<div class="text-xs text-red-500">대기물을 불러오지 못했습니다.</div>'; });
+}
+
 // ── 분석 폴링 데드라인(갭④): 에이전트 crash 시 무한 "분석 중" 방지 ──
 // 서버가 stale 'processing'을 자동 재큐(웹 갭②)하지만, 폴이 무한 도는 것은 별개 문제.
 // 진입 후 10분 넘게 pending/processing이면 폴을 멈추고 '지연·시간초과'로 표시(수동 새로고침 유도).
@@ -3313,6 +3361,9 @@ function iaeCanSubmitOrderProceed() {
   // A안: NAS에서 분석 버튼 (업로드 우회 대용량)
   var nasBtn = document.getElementById('iaeNasBtn');
   if (nasBtn) nasBtn.addEventListener('click', iaeNasToggle);
+  // 디자이너 세션 루프: 가공 대기물 불러오기 버튼
+  var intakeBtn = document.getElementById('iaeIntakeBtn');
+  if (intakeBtn) intakeBtn.addEventListener('click', iaeIntakeToggle);
   // 뷰 토글 (파일 처리 / 대지 편집 / 네스팅)
   var vEdit = document.getElementById('iaeViewEdit'), vCanvas = document.getElementById('iaeViewCanvas');
   if (vEdit) vEdit.addEventListener('click', function () { iaeSetView('edit'); });

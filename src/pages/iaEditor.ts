@@ -32,7 +32,9 @@ export function iaEditorPage(c: Context<HonoEnv>) {
         </div>
         <div class="mb-4">
           <button id="iaeNasBtn" class="text-xs px-3 py-1.5 rounded-md border border-gray-300 text-gray-600 hover:bg-gray-50"><i class="fas fa-folder-open mr-1"></i>NAS에서 분석 <span class="text-gray-400">(대용량·업로드 없이 · Z:\\Designs\\IA-입력)</span></button>
+          <button id="iaeIntakeBtn" class="text-xs px-3 py-1.5 rounded-md border border-amber-300 text-amber-700 hover:bg-amber-50 ml-1"><i class="fas fa-inbox mr-1"></i>가공 대기물 불러오기 <span class="text-amber-400">(일러 MES가공 등록분)</span></button>
           <div id="iaeNasPanel" class="hidden mt-2 border border-gray-200 rounded-lg p-3 bg-white"></div>
+          <div id="iaeIntakePanel" class="hidden mt-2 border border-amber-200 rounded-lg p-3 bg-white"></div>
         </div>
         <div class="ds-card flex flex-col" style="min-height: 520px;">
           <div id="iaeTabs" class="flex items-stretch overflow-x-auto border-b border-gray-200 bg-gray-50/60" style="min-height: 44px;"></div>
