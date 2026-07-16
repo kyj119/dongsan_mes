@@ -3,12 +3,64 @@ import type { HonoEnv } from '../types/env'
 import { renderPage } from '../layout'
 import pageScript from '../scripts/cashSchedule.js?raw'
 import cashFlowScript from '../scripts/cashFlow.js?raw'
+import bankScript from '../scripts/bank.js?raw'
+import { bankPageContent, bankPageCSS } from './bank'
 
 export function cashSchedulePage(c: Context<HonoEnv>) {
+  // P3 자금 허브: [계획](cashSchedule, 기본) + [실적](bank, ADMIN·lazy) 통합. /bank 사이드바 은퇴(라우트 보존).
+  // 실적 첫 진입까지 bank.js Init 지연(__bankHubDefer). 실적 탭은 ADMIN에게만 노출(bank API=서버 requireRole ADMIN).
+  const hubScript = `
+    (function(){
+      var __hubRole=''; try{ __hubRole=(JSON.parse(localStorage.getItem('user')||'{}').role)||''; }catch(e){}
+      // 실적 모드는 ADMIN 전용 — 비관리자는 토글 숨김(서버에서도 bank API 차단)
+      var __ab=document.getElementById('hubTabActuals');
+      if(__ab && __hubRole!=='ADMIN') __ab.style.display='none';
+      window.switchHubMode=function(mode){
+        var plan=document.getElementById('hubPlan'), act=document.getElementById('hubActuals');
+        var pb=document.getElementById('hubTabPlan'), ab=document.getElementById('hubTabActuals');
+        if(!plan||!act||!pb||!ab){ console.warn('[cash-hub] hub nodes not found'); return; }
+        if(mode==='actuals' && __hubRole!=='ADMIN'){ return; } // 방어: 비관리자 실적 진입 차단
+        if(mode==='actuals'){
+          plan.classList.add('hidden'); act.classList.remove('hidden');
+          ab.classList.add('border-blue-600','text-blue-600'); ab.classList.remove('border-transparent','text-gray-500');
+          pb.classList.remove('border-blue-600','text-blue-600'); pb.classList.add('border-transparent','text-gray-500');
+          if(typeof window.__bankHubInit==='function') window.__bankHubInit(); // lazy·멱등
+        } else {
+          act.classList.add('hidden'); plan.classList.remove('hidden');
+          pb.classList.add('border-blue-600','text-blue-600'); pb.classList.remove('border-transparent','text-gray-500');
+          ab.classList.remove('border-blue-600','text-blue-600'); ab.classList.add('border-transparent','text-gray-500');
+        }
+      };
+      // P4 표시 일원화: 모드+하위탭 동시 이동(겹치는 위젯 상호 네비게이션)
+      window.hubGoto=function(mode, tab){
+        if(typeof window.switchHubMode==='function') window.switchHubMode(mode);
+        if(mode==='plan' && tab && typeof window.switchScheduleTab==='function') window.switchScheduleTab(tab);
+        if(mode==='actuals' && tab && typeof window.switchBankTab==='function') window.switchBankTab(tab);
+      };
+      // 상호참조 링크 노출: .hub-only(실적↔계획, 허브에서만)·.hub-actuals-link(계획→실적, ADMIN만)
+      Array.prototype.forEach.call(document.querySelectorAll('.hub-only'), function(el){ el.classList.remove('hidden'); });
+      if(__hubRole==='ADMIN'){
+        Array.prototype.forEach.call(document.querySelectorAll('.hub-actuals-link'), function(el){ el.classList.remove('hidden'); });
+      }
+    })();
+  `
   return renderPage(c, {
-    title: '자금계획',
+    title: '자금 관리',
     activePage: '/cash-schedule',
+    pageCSS: bankPageCSS,
     pageContent: `
+      <!-- 최상위 허브 토글: [계획]/[실적] (P3 자금 허브 통합) -->
+      <div class="ds-card flex border-b mb-3">
+        <button id="hubTabPlan" onclick="switchHubMode('plan')" class="px-5 py-2.5 text-sm font-semibold border-b-2 border-blue-600 text-blue-600 flex items-center gap-2">
+          <i class="fas fa-calendar-alt"></i>계획
+        </button>
+        <button id="hubTabActuals" onclick="switchHubMode('actuals')" class="px-5 py-2.5 text-sm font-semibold border-b-2 border-transparent text-gray-500 hover:text-gray-700 flex items-center gap-2">
+          <i class="fas fa-university"></i>실적 <span class="text-[10px] font-normal text-gray-400">은행·매칭</span>
+        </button>
+      </div>
+
+      <!-- ===== 계획 모드 (cashSchedule, 기본) ===== -->
+      <div id="hubPlan">
       <div class="space-y-4">
         <!-- 탭 버튼 -->
         <div class="ds-card flex border-b">
@@ -164,7 +216,7 @@ export function cashSchedulePage(c: Context<HonoEnv>) {
             <div class="ds-card p-4"><div class="text-sm text-gray-500">이번달 수입</div><div id="kpiIncome" class="text-2xl font-bold text-green-600 mt-1">-</div></div>
             <div class="ds-card p-4"><div class="text-sm text-gray-500">이번달 지출</div><div id="kpiExpense" class="text-2xl font-bold text-red-600 mt-1">-</div></div>
             <div class="ds-card p-4"><div class="text-sm text-gray-500">순 현금흐름</div><div id="kpiNet" class="text-2xl font-bold mt-1">-</div></div>
-            <div class="ds-card p-4"><div class="text-sm text-gray-500">대출 잔액 합계</div><div id="kpiLoanBalance" class="text-2xl font-bold mt-1">-</div></div>
+            <div class="ds-card p-4"><div class="text-sm text-gray-500">대출 잔액 합계</div><div id="kpiLoanBalance" class="text-2xl font-bold mt-1">-</div><button onclick="switchScheduleTab('loans')" class="text-[11px] text-gray-400 hover:text-blue-600 mt-0.5"><i class="fas fa-arrow-right text-[9px] mr-0.5"></i>대출 상세</button></div>
           </div>
           <div class="ds-card p-6">
             <h3 class="text-lg font-bold mb-4">6개월 현금흐름 전망</h3>
@@ -193,10 +245,15 @@ export function cashSchedulePage(c: Context<HonoEnv>) {
         <div id="fixedPanel" class="hidden space-y-4">
           <div class="ds-card p-6">
             <div class="flex items-center justify-between mb-4">
-              <h3 class="text-lg font-bold"><i class="fas fa-file-invoice-dollar text-blue-600 mr-2"></i>고정비 목록</h3>
-              <button onclick="openFixedExpenseModal()" class="ds-btn ds-btn-primary ds-btn-sm">
-                <i class="fas fa-plus mr-1"></i>추가
-              </button>
+              <h3 class="text-lg font-bold"><i class="fas fa-file-invoice-dollar text-blue-600 mr-2"></i>고정비 목록 <span class="text-xs font-normal text-gray-400">(마스터·계획)</span></h3>
+              <div class="flex items-center gap-2">
+                <button onclick="hubGoto('actuals','fund')" class="hub-actuals-link hidden text-xs text-gray-500 hover:text-blue-600 border border-gray-200 rounded px-2 py-1" title="실적 모드의 당월 출금 대사로 이동">
+                  <i class="fas fa-right-left mr-1"></i>당월 실제 출금현황
+                </button>
+                <button onclick="openFixedExpenseModal()" class="ds-btn ds-btn-primary ds-btn-sm">
+                  <i class="fas fa-plus mr-1"></i>추가
+                </button>
+              </div>
             </div>
             <div class="overflow-x-auto" style="max-height: calc(100vh - 280px); overflow-y: auto;">
               <table class="w-full text-sm ds-table ds-table-striped">
@@ -342,7 +399,14 @@ export function cashSchedulePage(c: Context<HonoEnv>) {
           </div>
         </div>
       </div>
+      </div><!-- /#hubPlan -->
+
+      <!-- ===== 실적 모드 (bank, ADMIN·lazy) — 단일소스 bankPageContent 이식 ===== -->
+      <div id="hubActuals" class="hidden">
+        ${bankPageContent}
+      </div>
     `,
-    pageScript: pageScript + '\n;\n' + cashFlowScript
+    // 순서: 프리앰블(__bankHubDefer=true)로 bank.js 자동실행 차단 → cashSchedule/cashFlow → bank → 허브토글
+    pageScript: 'window.__bankHubDefer = true;\n;\n' + pageScript + '\n;\n' + cashFlowScript + '\n;\n' + bankScript + '\n;\n' + hubScript
   })
 }

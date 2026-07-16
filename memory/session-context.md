@@ -1,48 +1,37 @@
-# 세션 핸드오프 — 선명 경영진단 + 품목정비 + 삭제 UI (2026-07-16)
+# 세션 핸드오프 — 자금 허브 통합 P3·P4 (2026-07-17)
 
-> 세션별 덮어쓰기 파일. 상세 정본 = [[project-sunmyung-item-import]] (auto-memory). 이전(IA 편집기)은 PROJECT_STATUS 보존.
+> 세션별 덮어쓰기 파일. 상세 정본 = [[project-sidebar-consolidation]] (auto-memory).
 
-## 이번 세션 완료
+## 이번 세션 완료 (전부 prod 배포·main 반영)
+### Level 2 자금 허브 P3 — /cash-schedule를 자금 관리 허브로 통합
+- **최상위 [계획]/[실적] 토글**: 계획=cashSchedule(기존 5탭·기본), 실적=bank(5탭·ADMIN·lazy).
+- **단일소스 이식**: `bank.ts`→`export const bankPageContent`·`bankPageCSS` 추출→cashSchedule.ts `#hubActuals`에 이식(HTML 중복 0).
+- **lazy-load·지연 init**: 프리앰블 `window.__bankHubDefer=true`로 bank.js 자동실행 차단→`window.__bankHubInit`(멱등)을 실적 첫 진입 시 호출. 계획은 기본 로드.
+- **ADMIN 게이팅**: 실적 토글은 `localStorage.user.role==='ADMIN'`만 노출+`switchHubMode` 서버·클라 이중 차단(bank API 29개 이미 requireRole ADMIN).
+- **사이드바**: /bank 은퇴(라우트·API·페이지 보존, /spec-groups 선례), /cash-schedule 라벨 '자금계획'→'자금 관리'(fa-wallet). 11→10.
+- **충돌 사전검증**: element ID·window.* 교집합 0(bank54/cash19/cashFlow16).
 
-### 1. 선명 매입 품목 매칭 점검 — 이상 없음
-- 오매칭 0(폭불일치 4종=의도된 150→152/105→106 통합), 신규등록 46종 전량 실사용, 헛등록·중복 0.
-- 미매칭 12라인=장비(EP피더기)·운임·극소부속=의도적 NULL.
+### P4 — 표시 일원화(겹치는 위젯 상호 네비게이션)
+- 대출잔액 두 소스(bank fund-summary:89·cashFlow /summary:803) **동일 쿼리 확인**(SUM current_balance FROM loans is_active=1)→데이터 정합, UX만 정비.
+- `window.hubGoto(mode,tab)` 헬퍼(모드+하위탭 동시 이동). 크로스링크:
+  - 계획>고정비 → 실적 당월 출금현황(`.hub-actuals-link`, ADMIN만)
+  - 실적>자금현황 고정비 → 계획 고정비 마스터 편집(`.hub-only`, 허브에서만·단독 /bank 숨김)
+  - 계획>월별 kpiLoanBalance → 대출 탭 / 실적 fundLoanNote → 계획 대출 관리(hubGoto 있을 때만 클릭링크)
 
-### 2. 선명 경영 진단 대시보드 (Artifact, 외부 게시)
-- URL: https://claude.ai/code/artifact/0a0764e9-ba6a-4aab-95d2-da14b4509ab4 (v8)
-- **★계산서 3곳=동산기획 귀속 분리(사용자 확인)**: 오케이애드(80.4M)·인효(43.2M)·대운(4.68M) 계산서 128.3M=직원 급여충당(동산기획 매출). 선명 실질매출 544M. → GP 30.7%는 계산서 착시, 실체 16.5%.
-- **★급여=선명 3명**: 정송엽 부장(월360)·김용준 대표(월320)·강지영 대리(월275). payroll 06/07 2개월만→월평균×6 추정. 나머지 급여=동산기획 대납(계산서로 충당, 정합확인 통장170.3−3명48.6≈계산서128).
-- **자금유출 완전분해**(통장출금 13.26억 12항목): 매입421.7·이체351.4(순증아님)·급여150.6·자본지출148.6(공장이전보증금·설비)·가수금58·4대보험49.6·카드39.6·세금33.2·임차36.3·복리10.3. 자금잠식=영업부족+자본지출→대출129+가수금147.
-- **정밀 재고평가(v8)**: 재고파일(품목마스터/원천주문데이터/재고현황_선명_25.12.31·26.06.30.xlsx) 유사폭 보간 91%. 기초72.45M≈기말72.39M=재고 균형. COGS454.1M→**선명 순수 GP 16.5%·영업손익 −16.0M·BEP 7.61억**.
-- ⚠️매입 unit='EA'는 이관 라벨오류, 실제 yd(매입≈판매 1:1). 대시보드 재현 스크립트=scratchpad(비영구).
+## 검증 (로컬 D1 + Playwright 실측, admin/ADMIN)
+- verify green(typecheck+build) ×2 / 페이지 콘솔 에러 0
+- 계획 기본로드·실적 지연(deferFlag·initDone=false) / 실적 첫클릭 lazy-load(잔액 2,990,000원)
+- bank 하위탭·계획↔실적 왕복·멱등 / P4 크로스링크 4종 hubGoto 네비 동작
+- **단독 /bank 회귀 없음**: deferFlag 없음→즉시 init·hub-only 숨김·fundLoanNote plain
 
-### 3. 미매칭 재고 품목 정비 (prod DB 직접)
-- **31품목 등록**(SQL=docs/sunmyung-import/sm_stock_items.sql, 롤백=sm_stock_items_rollback.sql): 잉크테크4(-IT)·코인텍8(MCA/MCN/MCUV-CO)·아누코16(-AN, **is_active=0 비활성**)·저밀도40(AQD-040)·큐방73·무광바닥코팅(상품).
-- **텐트천 rename**: TENT-090~180 "텐트천"→"수성 텐트천".
-- 통합(등록 안 함)=고밀도폰지→PONGE·솔벤TPM→SVB.
+## 다음 세션 TODO — Level 2 잔여(미착수)
+- **손익/경영분석 허브**: financial-reports(실시간 P&L)+reports 수익성·미수금 탭. ④미수금 aging 4중복(ledger 정본, reports·bank·accounting 미러) 딸림.
+- **생산 2축**: production(실시간)+production-reports(집계) '오늘 생산 스냅샷' 중복.
+- accounting은 이미 "조회통합+링크아웃" 허브 패턴 확립(정답 템플릿).
 
-### 4. 하드/소프트 삭제 UI (커밋 96647302, prod 배포·push 완료)
-- 백엔드 items.ts: `DELETE /:id`(비활성화)·`DELETE /:id/hard`(참조체크 후 영구삭제, 이력있으면 409)·`PATCH /:id/activate`(복구).
-- 프론트 tabs.js/modals.js/bulk.js: "비활성 포함" 토글 + 활성/비활성별 버튼 분기(비활성화/복구/삭제). Playwright 검증 완료(apex 401·버튼분기·아누코 복구버튼).
+## 배포 (완료)
+- FF merge origin/main(ia-designer-loop 3커밋 superset) → 커밋 → push HEAD:main → `deploy:prod`(--branch main).
 
-## 판단 기준 / 결정 이유
-- 계산서·급여 동산기획 분리 = 사용자 확인. GP 30.7%→16.5% 착시 정정의 핵심.
-- 재고평가 = 기초·기말 재고파일 실측 + 유사폭 단가 보간(매입 없는 품목). 단가는 폭 비례(2코팅 40폭288~152폭912원/yd).
-- 품목 코드체계 = 공급사 접미(-IT/-AN/-CO), 유사품 SELECT 복사(INSERT OR IGNORE).
-
-## 주의사항
-- **재고평가 근사**(보간 91%, 남은 17품목=부자재·매입없는 폰지). 방향(균형·16.5%)은 확정.
-- **급여 상반기 추정**(payroll 06/07만). 실액 다르면 정정.
-- 대시보드=Artifact(외부·private). 재현 데이터=scratchpad(세션종료 소멸). 영구화 원하면 MES 페이지화.
-- docs/superpowers/specs 2개(role-expansion·ia-designer)=다른 작업, 미커밋 그대로 둠.
-
-## 다음 TODO (선택)
-- [ ] 미확보 재고 17품목 유사품 정밀 매칭 (금액 영향 미미)
-- [ ] 경영 대시보드 MES 페이지 영구화 (매월 자동 갱신 원하면)
-- [ ] 코인텍 등 신규품목 item_group 정리 (현재 원본 그룹 상속)
-
-## 검증 명령 (다음 세션)
-```powershell
-npm run verify                 # typecheck + build
-npm run build; npm run smoke   # 전체 스모크
-```
+## 주의
+- 사이드바 필터 정본 = DB `/api/permissions/me`(shell.js:687~), menu.ts roles는 decorative. ADMIN 전 메뉴 노출.
+- bank.js는 /bank(단독)·/cash-schedule(허브) 양쪽 로드 — Init 지연은 `__bankHubDefer`로만 분기. 단독은 즉시.

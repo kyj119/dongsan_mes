@@ -3,11 +3,8 @@ import type { HonoEnv } from '../types/env'
 import { renderPage } from '../layout'
 import bankScript from '../scripts/bank.js?raw'
 
-export function bankPage(c: Context<HonoEnv>) {
-  return renderPage(c, {
-    title: '자금 관리',
-    activePage: '/bank',
-    pageCSS: `
+// P3 자금 허브(/cash-schedule) 이식용 단일소스 export. 표준 /bank 라우트와 공유(HTML 중복 방지).
+export const bankPageCSS = `
       .tab-btn { cursor:pointer; transition:border-color .15s, color .15s; }
       .tab-btn.active { border-bottom-color:#2563eb; color:#2563eb; }
       .tab-content { display:none; }
@@ -44,8 +41,9 @@ export function bankPage(c: Context<HonoEnv>) {
       .btn-sync:hover { background:#dcfce7; }
       .btn-delete { background:#fee2e2; color:#991b1b; border:1px solid #fecaca; }
       .btn-delete:hover { background:#fecaca; }
-    `,
-    pageContent: `
+    `
+
+export const bankPageContent = `
       <div>
           <!-- 바로빌 연결 상태 -->
           <div id="barobillStatusBar" class="flex items-center justify-between bg-gray-50 border border-gray-200 rounded-lg px-4 py-2 mb-4 text-sm">
@@ -122,6 +120,9 @@ export function bankPage(c: Context<HonoEnv>) {
           <!-- 당월 고정비 출금 체크리스트 (P2) -->
           <div class="flex items-center justify-between mb-2">
             <h2 class="text-sm font-semibold text-gray-700">이번 달 고정비 출금 현황 <span id="fundFixedPeriod" class="text-xs font-normal text-gray-400"></span></h2>
+            <button onclick="hubGoto('plan','fixed')" class="hub-only hidden text-xs text-gray-500 hover:text-blue-600 border border-gray-200 rounded px-2 py-1" title="계획 모드의 고정비 마스터에서 항목 편집">
+              <i class="fas fa-pen mr-1"></i>고정비 항목 편집
+            </button>
           </div>
           <div class="ds-card overflow-hidden">
             <div class="overflow-x-auto">
@@ -663,7 +664,14 @@ export function bankPage(c: Context<HonoEnv>) {
         </div>
       </div>
 
-    `,
+    `
+
+export function bankPage(c: Context<HonoEnv>) {
+  return renderPage(c, {
+    title: '자금 관리',
+    activePage: '/bank',
+    pageCSS: bankPageCSS,
+    pageContent: bankPageContent,
     pageScript: `
       ${bankScript}
     `
