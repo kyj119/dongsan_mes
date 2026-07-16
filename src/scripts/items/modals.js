@@ -306,18 +306,42 @@ async function saveItem(event) {
     }
 }
 
-async function deleteItem(id, name) {
-    if (!(await showConfirm('품목 "' + name + '"을(를) 삭제하시겠습니까?', { danger: true }))) {
+// 소프트 비활성화 — 목록에서 숨김, 데이터·재고·이력 보존, 복구 가능
+async function deactivateItem(id, name) {
+    if (!(await showConfirm('품목 "' + name + '"을(를) 비활성화하시겠습니까? 목록에서 숨겨지며 언제든 복구할 수 있습니다.'))) {
         return;
     }
-
     try {
         await axios.delete('/api/items/' + id);
-        showToast('품목이 삭제되었습니다.', 'success');
-        // 현재 활성 분류 탭 갱신
+        showToast('품목이 비활성화되었습니다.', 'success');
         if (typeof refreshItemTab === 'function') refreshItemTab(); else loadItems();
     } catch (error) {
-        showToast('삭제 실패: ' + (error.response?.data?.error || error.message), 'error');
+        showToast('비활성화 실패: ' + (error.response?.data?.error || error.message), 'error');
+    }
+}
+
+// 복구 — 비활성 품목을 다시 활성화
+async function activateItem(id, name) {
+    try {
+        await axios.patch('/api/items/' + id + '/activate');
+        showToast('품목이 복구되었습니다.', 'success');
+        if (typeof refreshItemTab === 'function') refreshItemTab(); else loadItems();
+    } catch (error) {
+        showToast('복구 실패: ' + (error.response?.data?.error || error.message), 'error');
+    }
+}
+
+// 하드 삭제 — 영구 제거. 주문·매입·BOM 사용 이력이 있으면 서버가 차단(409)
+async function hardDeleteItem(id, name) {
+    if (!(await showConfirm('품목 "' + name + '"을(를) 영구 삭제하시겠습니까? 되돌릴 수 없습니다. 사용 이력이 있으면 삭제되지 않습니다.', { danger: true }))) {
+        return;
+    }
+    try {
+        await axios.delete('/api/items/' + id + '/hard');
+        showToast('품목이 영구 삭제되었습니다.', 'success');
+        if (typeof refreshItemTab === 'function') refreshItemTab(); else loadItems();
+    } catch (error) {
+        showToast(error.response?.data?.error || ('영구삭제 실패: ' + error.message), 'error');
     }
 }
 

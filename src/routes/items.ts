@@ -1297,14 +1297,14 @@ itemsRouter.delete('/:id', requireRole('ADMIN'), async (c) => {
       }, 404)
     }
 
-    // Soft delete
+    // Soft delete (비활성화 — 목록 숨김, 데이터·재고·이력 보존)
     await c.env.DB.prepare(
       'UPDATE items SET is_active = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
     ).bind(id).run()
 
     return c.json({
       success: true,
-      message: 'Item deleted successfully'
+      message: '품목이 비활성화되었습니다'
     })
   } catch (error) {
     console.error('src/routes/items.ts error:', error)
@@ -1312,6 +1312,64 @@ itemsRouter.delete('/:id', requireRole('ADMIN'), async (c) => {
       success: false,
       error: '서버 오류가 발생했습니다'
     }, 500)
+  }
+})
+
+// Hard delete item (ADMIN only) — 참조가 없을 때만 영구 삭제
+itemsRouter.delete('/:id/hard', requireRole('ADMIN'), async (c) => {
+  try {
+    const id = c.req.param('id')
+
+    const existing = await c.env.DB.prepare(
+      'SELECT id FROM items WHERE id = ?'
+    ).bind(id).first()
+    if (!existing) {
+      return c.json({ success: false, error: 'Item not found' }, 404)
+    }
+
+    // 참조 검사 — 주문·매입·BOM에서 사용 중이면 영구삭제 차단
+    const refs: any = await c.env.DB.prepare(
+      'SELECT ' +
+      '(SELECT COUNT(*) FROM order_items WHERE item_id = ?) AS oi, ' +
+      '(SELECT COUNT(*) FROM purchase_order_items WHERE item_id = ?) AS poi, ' +
+      '(SELECT COUNT(*) FROM product_materials WHERE material_item_id = ? OR product_item_id = ?) AS pm'
+    ).bind(id, id, id, id).first()
+
+    if ((refs?.oi || 0) > 0 || (refs?.poi || 0) > 0 || (refs?.pm || 0) > 0) {
+      return c.json({
+        success: false,
+        error: `사용 이력이 있어 영구삭제할 수 없습니다 (주문 ${refs.oi}·매입 ${refs.poi}·BOM ${refs.pm}건). 대신 비활성화하세요.`
+      }, 409)
+    }
+
+    // 재고 행 정리 후 영구 삭제
+    await c.env.DB.prepare('DELETE FROM inventory WHERE item_id = ?').bind(id).run()
+    await c.env.DB.prepare('DELETE FROM items WHERE id = ?').bind(id).run()
+
+    return c.json({ success: true, message: '품목이 영구 삭제되었습니다' })
+  } catch (error) {
+    console.error('src/routes/items.ts hard-delete error:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다' }, 500)
+  }
+})
+
+// Restore (activate) item (ADMIN only)
+itemsRouter.patch('/:id/activate', requireRole('ADMIN'), async (c) => {
+  try {
+    const id = c.req.param('id')
+    const existing = await c.env.DB.prepare(
+      'SELECT id FROM items WHERE id = ?'
+    ).bind(id).first()
+    if (!existing) {
+      return c.json({ success: false, error: 'Item not found' }, 404)
+    }
+    await c.env.DB.prepare(
+      'UPDATE items SET is_active = 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
+    ).bind(id).run()
+    return c.json({ success: true, message: '품목이 복구되었습니다' })
+  } catch (error) {
+    console.error('src/routes/items.ts activate error:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다' }, 500)
   }
 })
 

@@ -40,6 +40,7 @@ window.switchCatTab = function(code) {
         + '<span id="catCount" class="text-sm text-gray-500"></span></div>'
         + '<div class="flex gap-2">'
         + '<input type="text" id="catSearch" placeholder="품목명/코드 검색..." class="w-48 px-3 py-1.5 border rounded text-sm" oninput="catSearchDebounced()">'
+        + '<label class="flex items-center text-xs text-gray-500 whitespace-nowrap px-1" title="비활성(삭제·단종) 품목까지 표시"><input type="checkbox" id="catInactive" onchange="loadCatTable(currentCatCode)" class="mr-1">비활성 포함</label>'
         + '<button onclick="showCreateModalForCategory(\'' + code + '\')" class="ds-btn ds-btn-primary ds-btn-sm"><i class="fas fa-plus mr-1"></i>추가</button>'
         + '</div></div><div id="catItemsList"><p class="text-gray-400 text-sm py-6 text-center">로딩 중...</p></div></div>';
     loadCatTable(code);
@@ -60,13 +61,27 @@ window.refreshItemTab = function() {
     if (typeof loadItems === 'function') loadItems(); // 캐시 갱신
 };
 
+// 품목 작업 버튼 — 활성: 비활성화/삭제, 비활성: 복구/삭제
+function itemActionBtns(it, en) {
+    var b = '<button onclick="editItem(' + it.id + ')" class="text-blue-600 hover:underline text-xs mr-2">수정</button>';
+    if (it.is_active !== 0) {
+        b += '<button onclick="deactivateItem(' + it.id + ', \'' + en + '\')" class="text-amber-600 hover:underline text-xs mr-2">비활성화</button>';
+    } else {
+        b += '<button onclick="activateItem(' + it.id + ', \'' + en + '\')" class="text-green-600 hover:underline text-xs mr-2">복구</button>';
+    }
+    b += '<button onclick="hardDeleteItem(' + it.id + ', \'' + en + '\')" class="text-red-500 hover:underline text-xs">삭제</button>';
+    return b;
+}
+
 function loadCatTable(code) {
     var listEl = document.getElementById('catItemsList');
     if (!listEl) return;
     var isMat = (code === 'MATERIAL');
     var searchEl = document.getElementById('catSearch');
     var search = searchEl ? searchEl.value.trim() : '';
-    var url = '/api/items?category=' + encodeURIComponent(code) + '&limit=500' + (search ? '&search=' + encodeURIComponent(search) : '');
+    var inactiveEl = document.getElementById('catInactive');
+    var incInactive = inactiveEl && inactiveEl.checked ? '&include_inactive=1' : '';
+    var url = '/api/items?category=' + encodeURIComponent(code) + '&limit=500' + (search ? '&search=' + encodeURIComponent(search) : '') + incInactive;
     axios.get(url).then(function(res) {
         var items = res.data.data || [];
         if (tabSortState.column) {
@@ -101,8 +116,7 @@ function loadCatTable(code) {
                 + '<td class="p-2">' + getTypeBadge(it) + '</td>'
                 + '<td class="p-2 text-right tabular-nums">' + (it.base_price || 0).toLocaleString() + '</td>'
                 + '<td class="p-2">' + (it.is_active !== 0 ? '<span class="text-green-600 text-xs">활성</span>' : '<span class="text-gray-400 text-xs">비활성</span>') + '</td>'
-                + '<td class="p-2 whitespace-nowrap"><button onclick="editItem(' + it.id + ')" class="text-blue-600 hover:underline text-xs mr-2">수정</button>'
-                + '<button onclick="deleteItem(' + it.id + ', \'' + en + '\')" class="text-red-500 hover:underline text-xs">삭제</button></td></tr>';
+                + '<td class="p-2 whitespace-nowrap">' + itemActionBtns(it, en) + '</td></tr>';
         });
         html += '</tbody></table></div>';
         listEl.innerHTML = html;
@@ -145,8 +159,7 @@ function buildGroupedHtml(items, expand) {
                 + '<td class="p-2">' + getTypeBadge(it) + '</td>'
                 + '<td class="p-2 text-right tabular-nums">' + (it.base_price || 0).toLocaleString() + '</td>'
                 + '<td class="p-2">' + (it.is_active !== 0 ? '<span class="text-green-600 text-xs">활성</span>' : '<span class="text-gray-400 text-xs">비활성</span>') + '</td>'
-                + '<td class="p-2 whitespace-nowrap"><button onclick="editItem(' + it.id + ')" class="text-blue-600 hover:underline text-xs mr-2">수정</button>'
-                + '<button onclick="deleteItem(' + it.id + ', \'' + en + '\')" class="text-red-500 hover:underline text-xs">삭제</button></td></tr>';
+                + '<td class="p-2 whitespace-nowrap">' + itemActionBtns(it, en) + '</td></tr>';
         });
         html += '<div class="border rounded-lg overflow-hidden">'
             + '<div class="px-3 py-2 bg-gray-50 flex items-center justify-between cursor-pointer hover:bg-gray-100 select-none" onclick="toggleMatGroup(this)">'

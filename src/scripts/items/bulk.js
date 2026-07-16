@@ -177,7 +177,9 @@ async function loadStorageZonesForItem() {
 // 전역 함수 등록 (onclick 핸들러에서 접근 가능하도록)
 // ═══════════════════════════════════════════════════════
 window.editItem = editItem;
-window.deleteItem = deleteItem;
+window.deactivateItem = deactivateItem;
+window.activateItem = activateItem;
+window.hardDeleteItem = hardDeleteItem;
 window.showCreateModal = showCreateModal;
 window.closeModal = closeModal;
 window.saveItem = saveItem;
