@@ -1,0 +1,4 @@
+-- 일괄4 확실: 수성현수막장폭(AQ2)/조도시트(LDJ90DF)
+UPDATE purchase_order_items SET item_id=(SELECT id FROM items WHERE item_code='AQ2-250'), updated_at=CURRENT_TIMESTAMP WHERE item_name='수성-현수막(장폭) [250폭]' AND item_id IS NULL AND po_id IN (SELECT id FROM purchase_orders WHERE entity_id=2 AND notes='선명 이관 매입');
+UPDATE purchase_order_items SET item_id=(SELECT id FROM items WHERE item_code='AQ2-320'), updated_at=CURRENT_TIMESTAMP WHERE item_name='수성-현수막(장폭) [320폭]' AND item_id IS NULL AND po_id IN (SELECT id FROM purchase_orders WHERE entity_id=2 AND notes='선명 이관 매입');
+UPDATE purchase_order_items SET item_id=(SELECT id FROM items WHERE item_code='LDJ90DF-122'), updated_at=CURRENT_TIMESTAMP WHERE item_name='조도향상시트(LDJ90DF) [1220mm]' AND item_id IS NULL AND po_id IN (SELECT id FROM purchase_orders WHERE entity_id=2 AND notes='선명 이관 매입');
