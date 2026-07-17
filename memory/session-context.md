@@ -3,8 +3,9 @@
 > 세션별 덮어쓰기 파일. 상세 정본 = [[project-sidebar-consolidation]] (auto-memory).
 > 직전 세션(IA 디자이너 루프 P0) 내용은 [[project-ia-designer-loop]] auto-memory + spec `2026-07-16-ia-designer-session-loop.md`에 반영 완료.
 
-## 이번 세션 상태 — 완료·검증·커밋, ⚠️ 프로덕션 배포 대기
-손익 허브 = /financial-reports + /reports 통합. 2단계, 파일 겹침 0.
+## 이번 세션 상태 — ✅ prod 배포완료 (main `8ce8919c`·deploy `c26f6d61`)
+손익 허브 = /financial-reports + /reports 통합. 2단계, 파일 겹침 0. 커밋 `03ff2f60`(P1)+`8cedfaa2`(P2).
+배포 시 origin/main 앞서있어(타 세션 `9077b869` bank AP-link+마이그 0466) **superset 병합**(bank.ts auto-merge 무충돌·verify green) 후 `--branch main`. 0466은 prod 기적용 확인(has_col=2). apex 검증=root 302·3 AR API 401·/financial-reports 200.
 
 ### Phase 1 — 손익허브 UI 통합 (완료)
 - /financial-reports(실시간 P&L: 손익계산서·월별추이·재무스냅샷 3탭)를 /reports '손익계산서' 탭으로 흡수.
@@ -24,10 +25,9 @@
 - `npm run verify` green (typecheck+build). `days_since_payment` 잔여 참조 0.
 
 ## 다음 단계
-1. **⚠️ 프로덕션 배포 = 사용자 명시 확인 대기** ([[feedback-deploy-needs-explicit-request]]·[[feedback-deploy-wording-gate]]: 커밋 후 "배포 진행" 확인이 정답). 마이그레이션 없음(순수 코드).
-2. 배포 시: push-first superset → `wrangler pages deploy dist --branch main` → apex(webapp-9i0.pages.dev) 검증. **사용자 가시 변화**=미수금 aging 숫자가 입금recency→채권나이로 이동(전 거래처).
-3. (후속·선택) accounting 미수금 탭도 aging 미러 가능 → 동일 `buildOldestUnpaidJoin` 재사용으로 정리.
-4. 사이드바 Level 2 잔여: 생산 2축(production+production-reports) 통합.
+1. (선택) 프로덕션 육안 확인: 로그인 후 /reports '손익계산서' 탭 + 미수금 aging이 채권나이로 표시되는지. **사용자 가시 변화**=미수금 aging 숫자가 입금recency→채권나이로 이동(전 거래처).
+2. (후속·선택) accounting 미수금 탭도 aging 미러 가능 → 동일 `buildOldestUnpaidJoin` 재사용으로 정리.
+3. 사이드바 Level 2 잔여: 생산 2축(production+production-reports) 통합.
 
 ## 주의사항
 - reports.ts는 **route(`src/routes/reports.ts`)와 page(`src/pages/reports.ts`)가 별개 파일** — Phase 1은 page, Phase 2는 route 수정. 혼동 금지.
