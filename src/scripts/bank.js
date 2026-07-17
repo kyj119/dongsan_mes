@@ -238,7 +238,16 @@
         var appliedIcon = tx.matched_fixed_expense_id ? 'repeat' : 'tag';
         matchedClient = '<span class="inline-flex items-center text-xs font-medium px-2 py-0.5 rounded" style="background:' + catColor + '20;color:' + catColor + '"><i class="fas fa-' + appliedIcon + ' mr-1 text-[8px]"></i>' + escHtml(appliedLabel) + '</span>';
       } else if (tx.match_status === 'APPLIED' && tx.matched_client_name) {
-        matchedClient = '<span class="text-sm text-gray-700 font-medium">' + escHtml(tx.matched_client_name) + '</span>';
+        // 연결/생성 구분 배지 — LINKED=기존 원장 연결(이관분), CREATED=적용 시 원장 기록 생성
+        var lmBadge = '';
+        if (tx.matched_link_mode === 'LINKED') {
+          lmBadge = '<span class="text-[10px] px-1 py-0.5 rounded bg-sky-50 text-sky-600 ml-1" title="기존 원장 기록에 연결됨">연결</span>';
+        } else if (tx.matched_link_mode === 'CREATED') {
+          lmBadge = '<span class="text-[10px] px-1 py-0.5 rounded bg-emerald-50 text-emerald-600 ml-1" title="적용 시 원장 기록 생성됨">생성</span>';
+        }
+        var apLabel = (tx.transaction_type === 'WITHDRAWAL' && tx.matched_purchase_payment_id)
+          ? '<span class="text-[10px] text-gray-400 ml-1">매입지급</span>' : '';
+        matchedClient = '<span class="text-sm text-gray-700 font-medium">' + escHtml(tx.matched_client_name) + '</span>' + apLabel + lmBadge;
       } else if (['SUGGESTED', 'CONFIRMED'].indexOf(tx.match_status) >= 0 && hasCatOrFixed) {
         matchedClient = buildFixedSuggestion(tx);
       } else if (['SUGGESTED', 'UNMATCHED', 'CONFIRMED'].indexOf(tx.match_status) >= 0) {
@@ -773,11 +782,30 @@
     });
   };
 
-  // Apply modal — 검색형 거래처 선택
+  // Apply modal — 검색형 거래처 선택 + link-first 기존 원장 후보(이중등록 방지)
+  var _applyTxType = 'DEPOSIT';
+
+  function findTxById(txId) {
+    for (var i = 0; i < transactions.length; i++) {
+      if (transactions[i].id === Number(txId)) return transactions[i];
+    }
+    return null;
+  }
+
   function openApplyModal(txId, preClientId) {
     document.getElementById('applyTxId').value = txId;
     document.getElementById('applyClientId').value = preClientId || '';
     document.getElementById('applyNotes').value = '';
+
+    var tx = findTxById(txId);
+    _applyTxType = (tx && tx.transaction_type) || 'DEPOSIT';
+    var titleEl = document.getElementById('applyModalTitle');
+    if (titleEl) {
+      titleEl.innerHTML = _applyTxType === 'WITHDRAWAL'
+        ? '<i class="fas fa-check-circle text-red-500 mr-2"></i>지급 적용 (매입 원장)'
+        : '<i class="fas fa-check-circle text-green-500 mr-2"></i>입금 적용';
+    }
+    renderApplyCandidates(null); // 후보 영역 초기화
 
     // 기존 거래처명 가져오기
     var preClientName = '';
@@ -789,6 +817,50 @@
     if (applySearch) applySearch.value = preClientName;
 
     document.getElementById('applyModal').classList.add('show');
+    if (preClientId) loadApplyCandidates(txId, preClientId);
+  }
+
+  // 거래처 선택 콜백 (applyClientSearch onclick → openClientPicker)
+  window.onApplyClientPicked = function(id, name) {
+    document.getElementById('applyClientSearch').value = name;
+    document.getElementById('applyClientId').value = id;
+    var txId = document.getElementById('applyTxId').value;
+    if (txId) loadApplyCandidates(txId, id);
+  };
+
+  function loadApplyCandidates(txId, clientId) {
+    axios.get('/api/bank/transactions/' + txId + '/link-candidates?client_id=' + clientId).then(function(r) {
+      renderApplyCandidates(r.data.data || []);
+    }).catch(function() { renderApplyCandidates(null); });
+  }
+
+  // candidates: null/[]=숨김, [..]=라디오 목록(+신규 생성 옵션). 기본 선택=첫 후보(연결 우선)
+  function renderApplyCandidates(candidates) {
+    var wrap = document.getElementById('applyCandidatesWrap');
+    var list = document.getElementById('applyCandidatesList');
+    if (!wrap || !list) return;
+    if (!candidates || !candidates.length) {
+      wrap.classList.add('hidden');
+      list.innerHTML = '';
+      return;
+    }
+    var ledgerLabel = _applyTxType === 'WITHDRAWAL' ? '지급' : '입금';
+    var html = '';
+    candidates.forEach(function(cd, i) {
+      var meta = [cd.payment_date, Number(cd.amount).toLocaleString() + '원'];
+      if (cd.payment_method) meta.push(cd.payment_method);
+      html += '<label class="flex items-start gap-2 px-2 py-1.5 rounded hover:bg-white cursor-pointer text-sm">'
+        + '<input type="radio" name="applyLinkChoice" value="' + cd.id + '"' + (i === 0 ? ' checked' : '') + ' class="mt-0.5">'
+        + '<span><span class="font-medium text-gray-800">기존 ' + ledgerLabel + ' #' + cd.id + '</span>'
+        + '<span class="text-xs text-gray-500 ml-2">' + meta.join(' · ') + '</span>'
+        + (cd.notes ? '<div class="text-xs text-gray-400">' + escHtml(cd.notes) + '</div>' : '')
+        + '</span></label>';
+    });
+    html += '<label class="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-white cursor-pointer text-sm border-t border-amber-200 mt-1 pt-2">'
+      + '<input type="radio" name="applyLinkChoice" value="new">'
+      + '<span class="text-gray-600">신규 ' + ledgerLabel + ' 생성 <span class="text-xs text-red-500">(별건일 때만 — 이중등록 주의)</span></span></label>';
+    list.innerHTML = html;
+    wrap.classList.remove('hidden');
   }
 
   window.closeApplyModal = function() {
@@ -850,16 +922,34 @@
     var paymentMethod = document.getElementById('applyPaymentMethod').value;
     var notes = document.getElementById('applyNotes').value;
     if (!clientId) { showToast('거래처를 선택하세요.', 'warning'); return; }
-    axios.post('/api/bank/transactions/' + txId + '/apply', {
+
+    var payload = {
       client_id: parseInt(clientId, 10),
       payment_method: paymentMethod,
       notes: notes
-    }).then(function() {
-      showToast('입금 적용 완료', 'success');
+    };
+    // 후보 영역이 열려 있으면 연결/신규 선택 반영 (link-first)
+    var wrap = document.getElementById('applyCandidatesWrap');
+    if (wrap && !wrap.classList.contains('hidden')) {
+      var sel = document.querySelector('input[name="applyLinkChoice"]:checked');
+      if (sel && sel.value === 'new') payload.force_create = true;
+      else if (sel) payload.link_payment_id = parseInt(sel.value, 10);
+    }
+
+    axios.post('/api/bank/transactions/' + txId + '/apply', payload).then(function(r) {
+      showToast((r.data && r.data.message) || '적용 완료', 'success');
       closeApplyModal();
       loadTransactions();
+      loadStats();
     }).catch(function(e) {
-      var msg = (e.response && e.response.data && e.response.data.error) ? e.response.data.error : '적용 실패';
+      var d = e.response && e.response.data;
+      if (d && d.needs_choice && d.candidates) {
+        // 서버 link-first 가드: 기존 원장 후보 복수 → 선택 후 재적용 유도
+        renderApplyCandidates(d.candidates);
+        showToast('기존 원장 기록이 여러 건 발견됐습니다. 연결 대상을 선택 후 다시 적용하세요.', 'warning');
+        return;
+      }
+      var msg = (d && d.error) ? d.error : '적용 실패';
       showToast(msg, 'error');
     });
   };
@@ -1266,11 +1356,20 @@
     });
   };
 
-  // === Unapply (APPLIED 해제) ===
+  // === Unapply (APPLIED 해제) — 연결(LINKED)은 링크만 해제, 생성(CREATED)은 원장 기록 삭제+잔액 복원 ===
   window.unapplyTx = async function(txId) {
-    if (!(await showConfirm('이 거래의 적용을 취소하시겠습니까?\n입금 기록이 삭제되고 거래처 잔액이 복원됩니다.', { danger: true }))) return;
-    axios.post('/api/bank/transactions/' + txId + '/unapply').then(function() {
-      showToast('적용 취소 완료 — 잔액 복원됨', 'success');
+    var tx = findTxById(txId);
+    var msg;
+    if (tx && tx.matched_link_mode === 'LINKED') {
+      msg = '이 거래의 적용을 취소하시겠습니까?\n연결만 해제되며 원장 기록은 유지됩니다.';
+    } else if (tx && tx.matched_purchase_payment_id) {
+      msg = '이 거래의 적용을 취소하시겠습니까?\n지급 기록이 삭제되고 미지급 잔액이 복원됩니다.';
+    } else {
+      msg = '이 거래의 적용을 취소하시겠습니까?\n입금 기록이 삭제되고 거래처 잔액이 복원됩니다.';
+    }
+    if (!(await showConfirm(msg, { danger: true }))) return;
+    axios.post('/api/bank/transactions/' + txId + '/unapply').then(function(r) {
+      showToast((r.data && r.data.message) || '적용 취소 완료', 'success');
       loadTransactions();
       loadStats();
     }).catch(function(e) {

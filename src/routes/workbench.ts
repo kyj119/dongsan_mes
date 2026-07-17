@@ -1129,6 +1129,14 @@ workbenchRouter.get('/intake-config', async (c) => {
       WHERE o.status IN ('CONFIRMED','PRODUCTION') AND oi.ai_analysis_id IS NULL${ovf.clause}
       ORDER BY o.id DESC LIMIT 200
     `).bind(...ovf.params).all()
+    // 판짜기(세션 임포지션, mes-sheet.jsx)용: 모아찍기 대기물 목록
+    const efI = entityFilter(c, 'designer_intakes')
+    const { results: imposeIntakes } = await c.env.DB.prepare(`
+      SELECT id, ai_analysis_id, client_name, qty, width_cm, height_cm, scale_pct, trim, mode, work_ai_path
+      FROM designer_intakes
+      WHERE status = 'waiting' AND mode IN ('impose','both') AND work_ai_path IS NOT NULL${efI.clause}
+      ORDER BY id DESC LIMIT 100
+    `).bind(...efI.params).all()
     return c.json({
       success: true,
       data: {
@@ -1136,6 +1144,7 @@ workbenchRouter.get('/intake-config', async (c) => {
         methods: methods.results,
         presets: presets.results,
         open_lines: openLines,
+        intakes: imposeIntakes,
       },
     })
   } catch (error) {
@@ -1219,6 +1228,18 @@ workbenchRouter.post('/intakes', async (c) => {
       body.outline_failed ? 1 : 0,
       sourceFolder
     ).first<{ id: number }>()
+
+    // 판짜기(sheet) manifest: 판에 소비된 조각 대기물 absorbed 처리 (mes-sheet.jsx consumed_intake_ids)
+    const consumed = Array.isArray(body.consumed_intake_ids)
+      ? (body.consumed_intake_ids as unknown[]).map(Number).filter((n) => Number.isFinite(n) && n > 0)
+      : []
+    for (let ci = 0; ci < consumed.length; ci += 80) { // D1 바인드 한도 청크([[d1-bind-param-limit]])
+      const chunk = consumed.slice(ci, ci + 80)
+      const ph = chunk.map(() => '?').join(',')
+      await c.env.DB.prepare(
+        `UPDATE designer_intakes SET status = 'absorbed', absorbed_at = datetime('now') WHERE status = 'waiting' AND id IN (${ph})`
+      ).bind(...chunk).run()
+    }
 
     // 경로①(주문 선행): manifest에 order_item_id 있으면 즉시 라인 연결(-3=완성본 passthrough 약속값)
     let absorbed = false

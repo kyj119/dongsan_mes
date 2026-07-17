@@ -199,7 +199,7 @@ arPaymentsRouter.delete('/payment/:id', requireRole('ADMIN'), async (c) => {
       // #93: 결제 삭제 시 은행거래 매칭 해제
       // #413: bank_transactions에 updated_at 컬럼 없음(0043 스키마) — 제거. 이전엔 prepare 단계 throw로 DELETE batch 전체 실패.
       c.env.DB.prepare(
-        `UPDATE bank_transactions SET match_status = 'UNMATCHED', matched_payment_id = NULL WHERE matched_payment_id = ?`
+        `UPDATE bank_transactions SET match_status = 'UNMATCHED', matched_payment_id = NULL, matched_link_mode = NULL WHERE matched_payment_id = ?`
       ).bind(id),
     ])
 

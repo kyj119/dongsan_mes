@@ -524,6 +524,11 @@ apRouter.delete('/purchase-payment/:id', requireRole('ADMIN'), async (c) => {
       'UPDATE clients SET purchase_balance = purchase_balance + ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
     ).bind(existing.amount, existing.supplier_id).run()
 
+    // bank 출금 연결 해제 (0466 대칭) — 지급 삭제 시 연결된 은행거래를 미매칭으로 복원
+    await c.env.DB.prepare(
+      `UPDATE bank_transactions SET match_status = 'UNMATCHED', matched_purchase_payment_id = NULL, matched_link_mode = NULL WHERE matched_purchase_payment_id = ?`
+    ).bind(id).run()
+
     // Get updated balance
     const supplier = await c.env.DB.prepare(
       'SELECT purchase_balance FROM clients WHERE id = ?'

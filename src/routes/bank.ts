@@ -7,7 +7,7 @@ import { Hono } from 'hono'
 import type { Context } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
-import { createPayment, validatePayment, preparePaymentStatements } from '../lib/payments'
+import { validatePayment, preparePaymentStatements } from '../lib/payments'
 import { entityFilter, getEntityId } from '../utils/entityFilter'
 import { getEntityCorpNum, getEntityBarobillSenderId } from '../utils/entitySettings'
 import { loadProvision, agingCategoryToBucket, effectiveLossRate } from '../utils/provisionMatrix'
@@ -445,6 +445,7 @@ bankRouter.get('/transactions', requireRole('ADMIN'), async (c) => {
         bt.id, bt.transaction_date, bt.transaction_type, bt.amount, bt.balance_after,
         bt.counterpart_name, bt.description,
         bt.match_status, bt.matched_client_id, bt.matched_category_id, bt.matched_fixed_expense_id,
+        bt.matched_purchase_payment_id, bt.matched_link_mode,
         bt.match_reason, bt.transfer_pair_id,
         ba.bank_name, ba.account_number, ba.account_holder, ba.account_alias,
         c.client_name as matched_client_name, c.representative as matched_client_representative,
@@ -1299,7 +1300,231 @@ bankRouter.post('/transactions/:id/match', requireRole('ADMIN'), async (c) => {
   }
 })
 
-// POST /api/bank/transactions/:id/apply — 입금 생성 (CONFIRMED/SUGGESTED → APPLIED)
+// ---------------------------------------------------------------------------
+// 적용(APPLY) 공용 — link-first: 기존 원장 기록(이관·수동 등록분)이 있으면 연결, 없으면 생성
+//   이중계상 방지의 핵심. 입금=payments, 출금=purchase_payments(매입 지급) 대칭 처리.
+// ---------------------------------------------------------------------------
+
+interface ApplyTxRow {
+  id: number
+  transaction_date: string
+  transaction_type: string
+  amount: number
+  match_status: string
+  matched_client_id: number | null
+  counterpart_name: string | null
+  description: string | null
+  entity_id: number | null
+}
+
+interface LinkCandidate {
+  id: number
+  payment_date: string
+  amount: number
+  payment_method: string | null
+  reference_number: string | null
+  notes: string | null
+}
+
+function txIsoDate(tx: ApplyTxRow): string {
+  const raw = tx.transaction_date || ''
+  return raw.length === 8 ? `${raw.slice(0, 4)}-${raw.slice(4, 6)}-${raw.slice(6, 8)}` : raw
+}
+
+// 기존 원장 기록 후보: 동일 거래처 + 동일 금액 + 일자 ±7일 + bank 미연결 + 동일 법인
+async function findLinkCandidates(db: D1Database, tx: ApplyTxRow, clientId: number): Promise<LinkCandidate[]> {
+  const isoDate = txIsoDate(tx)
+  const amount = Math.abs(Number(tx.amount) || 0)
+  const entityId = tx.entity_id ?? 1
+  if (tx.transaction_type === 'WITHDRAWAL') {
+    const { results } = await db.prepare(`
+      SELECT pp.id, pp.payment_date, pp.amount, pp.payment_method, pp.reference_number, pp.notes
+      FROM purchase_payments pp
+      WHERE pp.supplier_id = ? AND ABS(pp.amount - ?) < 0.01
+        AND ABS(julianday(pp.payment_date) - julianday(?)) <= 7
+        AND COALESCE(pp.entity_id, 1) = ?
+        AND NOT EXISTS (SELECT 1 FROM bank_transactions b2 WHERE b2.matched_purchase_payment_id = pp.id)
+      ORDER BY ABS(julianday(pp.payment_date) - julianday(?)) ASC, pp.id ASC
+      LIMIT 10
+    `).bind(clientId, amount, isoDate, entityId, isoDate).all<LinkCandidate>()
+    return results || []
+  }
+  const { results } = await db.prepare(`
+    SELECT p.id, p.payment_date, p.amount, p.payment_method, p.reference_number, p.notes
+    FROM payments p
+    WHERE p.client_id = ? AND ABS(p.amount - ?) < 0.01
+      AND ABS(julianday(p.payment_date) - julianday(?)) <= 7
+      AND COALESCE(p.entity_id, 1) = ?
+      AND NOT EXISTS (SELECT 1 FROM bank_transactions b2 WHERE b2.matched_payment_id = p.id)
+    ORDER BY ABS(julianday(p.payment_date) - julianday(?)) ASC, p.id ASC
+    LIMIT 10
+  `).bind(clientId, amount, isoDate, entityId, isoDate).all<LinkCandidate>()
+  return results || []
+}
+
+type ApplyOutcome =
+  | { ok: true; mode: 'LINKED' | 'CREATED'; ledgerId: number; message: string }
+  | { ok: false; error: string; status: number; candidates?: LinkCandidate[] }
+
+async function applyBankTransaction(
+  c: Context<HonoEnv>,
+  tx: ApplyTxRow,
+  clientId: number,
+  opts: { linkLedgerId?: number | null; forceCreate?: boolean; paymentMethod?: string; notes?: string } = {}
+): Promise<ApplyOutcome> {
+  const db = c.env.DB
+  const user = c.get('user')
+  const payDate = txIsoDate(tx)
+  const amount = Math.abs(Number(tx.amount) || 0)
+  const isWithdrawal = tx.transaction_type === 'WITHDRAWAL'
+  const entityId = tx.entity_id ?? (getEntityId(c) || 1)
+
+  // 1) 연결 대상 결정 — 명시 지정 > 단일 후보 자동연결 > 신규 생성. 후보 2건+는 사용자 선택 요구.
+  let linkId = opts.linkLedgerId ?? null
+  if (linkId) {
+    const row = isWithdrawal
+      ? await db.prepare('SELECT id, supplier_id AS client_id, amount FROM purchase_payments WHERE id = ?')
+          .bind(linkId).first<{ id: number; client_id: number; amount: number }>()
+      : await db.prepare('SELECT id, client_id, amount FROM payments WHERE id = ?')
+          .bind(linkId).first<{ id: number; client_id: number; amount: number }>()
+    if (!row) return { ok: false, error: '연결할 원장 기록을 찾을 수 없습니다', status: 404 }
+    if (Number(row.client_id) !== Number(clientId)) return { ok: false, error: '원장 기록의 거래처가 일치하지 않습니다', status: 400 }
+    if (Math.abs(Number(row.amount) - amount) >= 0.01) return { ok: false, error: '원장 기록의 금액이 일치하지 않습니다', status: 400 }
+    const linked = isWithdrawal
+      ? await db.prepare('SELECT id FROM bank_transactions WHERE matched_purchase_payment_id = ?').bind(linkId).first()
+      : await db.prepare('SELECT id FROM bank_transactions WHERE matched_payment_id = ?').bind(linkId).first()
+    if (linked) return { ok: false, error: '이미 다른 은행거래와 연결된 원장 기록입니다', status: 400 }
+  } else if (!opts.forceCreate) {
+    const candidates = await findLinkCandidates(db, tx, clientId)
+    if (candidates.length === 1) linkId = candidates[0].id
+    else if (candidates.length > 1) {
+      return { ok: false, status: 409, error: '동일 조건의 기존 원장 기록이 여러 건입니다. 연결 대상을 선택하세요', candidates }
+    }
+  }
+
+  // 2-A) 기존 기록에 연결만 (LINKED) — 원장 기록·잔액 무변경 (이중계상 방지)
+  if (linkId) {
+    await db.prepare(`
+      UPDATE bank_transactions
+      SET match_status = 'APPLIED',
+          matched_client_id = ?,
+          ${isWithdrawal ? 'matched_purchase_payment_id' : 'matched_payment_id'} = ?,
+          matched_link_mode = 'LINKED',
+          matched_by = ?, matched_at = CURRENT_TIMESTAMP,
+          match_confidence = 1.0, match_reason = '기존 원장 연결'
+      WHERE id = ? AND match_status != 'APPLIED'
+    `).bind(clientId, linkId, user?.id ?? 1, tx.id).run()
+    return {
+      ok: true, mode: 'LINKED', ledgerId: linkId,
+      message: isWithdrawal ? '기존 지급 기록에 연결되었습니다 (신규 생성 없음)' : '기존 입금 기록에 연결되었습니다 (신규 생성 없음)'
+    }
+  }
+
+  const defaultNotes = '[은행연동] ' + [tx.counterpart_name, tx.description].filter(Boolean).join(' ')
+
+  // 2-B) 출금 → 매입 지급(purchase_payments) 생성 + 미지급 잔액 차감 (accounts-payable POST와 동일 규약)
+  if (isWithdrawal) {
+    const supplier = await db.prepare('SELECT id FROM clients WHERE id = ?').bind(clientId).first()
+    if (!supplier) return { ok: false, error: '매칭된 거래처를 찾을 수 없습니다', status: 404 }
+    const results = await db.batch([
+      db.prepare(`
+        INSERT INTO purchase_payments (supplier_id, payment_date, amount, payment_method, reference_number, notes, created_by, entity_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `).bind(clientId, payDate, amount, opts.paymentMethod || '계좌이체', String(tx.id), opts.notes || defaultNotes, user?.id ?? 1, entityId),
+      db.prepare('UPDATE clients SET purchase_balance = COALESCE(purchase_balance, 0) - ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
+        .bind(amount, clientId),
+      db.prepare(`
+        UPDATE bank_transactions
+        SET match_status = 'APPLIED', matched_client_id = ?, matched_link_mode = 'CREATED',
+            matched_by = ?, matched_at = CURRENT_TIMESTAMP
+        WHERE id = ? AND match_status != 'APPLIED'
+      `).bind(clientId, user?.id ?? 1, tx.id),
+    ])
+    const ppId = Number(results[0].meta.last_row_id)
+    await db.prepare('UPDATE bank_transactions SET matched_purchase_payment_id = ? WHERE id = ?').bind(ppId, tx.id).run()
+    return { ok: true, mode: 'CREATED', ledgerId: ppId, message: '지급이 생성되었습니다' }
+  }
+
+  // 2-C) 입금 → payments 생성 (validate + batch 원자 처리)
+  const paymentData = {
+    client_id: clientId,
+    payment_date: payDate,
+    amount,
+    payment_method: opts.paymentMethod || '계좌이체',
+    reference_number: String(tx.id),
+    notes: opts.notes || defaultNotes,
+    created_by: user?.id ?? 1,
+    entity_id: entityId, // 종전 미전달 → DEFAULT 1로 저장되던 법인 오기록 버그 수정
+  }
+  let validated: { newBalance: number }
+  try {
+    validated = await validatePayment(c.env.DB, paymentData)
+  } catch (err) {
+    if (err instanceof Error && err.message.startsWith('Client not found')) {
+      return { ok: false, error: '매칭된 거래처를 찾을 수 없습니다', status: 404 }
+    }
+    if (err instanceof Error && err.message.startsWith('DUPLICATE_PAYMENT')) {
+      return { ok: false, error: '1분 이내 동일한 입금이 이미 등록되었습니다', status: 400 }
+    }
+    throw err
+  }
+  const payStmts = preparePaymentStatements(c.env.DB, paymentData, validated.newBalance)
+  payStmts.push(
+    db.prepare(`
+      UPDATE bank_transactions
+      SET match_status = 'APPLIED', matched_client_id = ?, matched_link_mode = 'CREATED',
+          matched_by = ?, matched_at = CURRENT_TIMESTAMP
+      WHERE id = ? AND match_status != 'APPLIED'
+    `).bind(clientId, user?.id ?? 1, tx.id)
+  )
+  const batchResults = await db.batch(payStmts)
+  const paymentId = Number(batchResults[0].meta.last_row_id)
+  await db.prepare('UPDATE bank_transactions SET matched_payment_id = ? WHERE id = ?').bind(paymentId, tx.id).run()
+
+  // Phase 4: 대응 입금예정(cash_schedule) 자동 DONE (보조 — 실패해도 적용엔 영향 없음)
+  try {
+    await db.prepare(`
+      UPDATE cash_schedule
+      SET status = 'DONE', bank_transaction_id = ?, actual_date = ?, actual_amount = ?, updated_at = CURRENT_TIMESTAMP
+      WHERE id = (
+        SELECT id FROM cash_schedule
+        WHERE client_id = ? AND flow_type = 'IN' AND source_type = 'ORDER'
+          AND status IN ('PENDING', 'OVERDUE') AND amount = ? AND entity_id = ?
+        ORDER BY schedule_date ASC LIMIT 1
+      )
+    `).bind(tx.id, payDate, amount, clientId, amount, tx.entity_id).run()
+  } catch (e) {
+    console.warn('cash_schedule DONE 연동 실패(입금 적용은 정상):', e)
+  }
+
+  return { ok: true, mode: 'CREATED', ledgerId: paymentId, message: '입금이 생성되었습니다' }
+}
+
+// GET /api/bank/transactions/:id/link-candidates — 연결 가능한 기존 원장 기록 후보 조회 (UI 적용 모달)
+bankRouter.get('/transactions/:id/link-candidates', requireRole('ADMIN'), async (c) => {
+  try {
+    const id = c.req.param('id')
+    const clientIdRaw = parseInt(c.req.query('client_id') || '', 10)
+    const ef = entityFilter(c, 'bank_transactions')
+    const tx = await c.env.DB.prepare(
+      `SELECT id, transaction_date, transaction_type, amount, match_status, matched_client_id, counterpart_name, description, entity_id
+       FROM bank_transactions WHERE id = ?${ef.clause}`
+    ).bind(id, ...ef.params).first<ApplyTxRow>()
+    if (!tx) return c.json({ success: false, error: '거래내역을 찾을 수 없습니다' }, 404)
+
+    const clientId = Number.isFinite(clientIdRaw) && clientIdRaw > 0 ? clientIdRaw : tx.matched_client_id
+    if (!clientId) return c.json({ success: true, data: [], transaction_type: tx.transaction_type })
+
+    const candidates = await findLinkCandidates(c.env.DB, tx, clientId)
+    return c.json({ success: true, data: candidates, transaction_type: tx.transaction_type })
+  } catch (error) {
+    console.error('Link candidates error:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
+  }
+})
+
+// POST /api/bank/transactions/:id/apply — 원장 반영 (link-first: 연결 우선, 없으면 생성)
+//   입금 → payments · 출금 → purchase_payments(매입 지급). body.link_payment_id=기존 건 연결, body.force_create=강제 신규.
 bankRouter.post('/transactions/:id/apply', requireRole('ADMIN'), async (c) => {
   try {
     const id   = c.req.param('id')
@@ -1308,16 +1533,9 @@ bankRouter.post('/transactions/:id/apply', requireRole('ADMIN'), async (c) => {
 
     const ef = entityFilter(c, 'bank_transactions')
     const tx = await c.env.DB.prepare(
-      `SELECT id, bank_account_id, transaction_date, transaction_time, transaction_type, amount, balance_after, counterpart_name, description, match_status, matched_client_id, matched_payment_id, entity_id FROM bank_transactions WHERE id = ?${ef.clause}`
-    ).bind(id, ...ef.params).first<{
-      id: number
-      transaction_date: string
-      amount: number
-      match_status: string
-      matched_client_id: number | null
-      counterpart_name: string | null
-      description: string | null
-    }>()
+      `SELECT id, transaction_date, transaction_type, amount, match_status, matched_client_id, counterpart_name, description, entity_id
+       FROM bank_transactions WHERE id = ?${ef.clause}`
+    ).bind(id, ...ef.params).first<ApplyTxRow>()
 
     if (!tx) {
       return c.json({ success: false, error: '거래내역을 찾을 수 없습니다' }, 404)
@@ -1345,81 +1563,31 @@ bankRouter.post('/transactions/:id/apply', requireRole('ADMIN'), async (c) => {
       ).bind(body.client_id, id).run()
     }
 
-    // 날짜 포맷: YYYYMMDD → YYYY-MM-DD
-    const rawDate = tx.transaction_date
-    const payDate = rawDate.length === 8
-      ? `${rawDate.slice(0, 4)}-${rawDate.slice(4, 6)}-${rawDate.slice(6, 8)}`
-      : rawDate
+    const outcome = await applyBankTransaction(c, tx, Number(clientId), {
+      linkLedgerId: body.link_payment_id ? Number(body.link_payment_id) : null,
+      forceCreate: body.force_create === true,
+      paymentMethod: body.payment_method,
+      notes: body.notes,
+    })
 
-    const defaultNotes = '[은행연동] ' + [tx.counterpart_name, tx.description].filter(Boolean).join(' ')
-
-    // #216: 읽기(검증) + 쓰기(batch) 분리로 원자성 보장
-    const paymentData = {
-      client_id: clientId,
-      payment_date: payDate,
-      amount: parseFloat(String(tx.amount)),
-      payment_method: body.payment_method || '계좌이체',
-      reference_number: String(tx.id),
-      notes: body.notes || defaultNotes,
-      created_by: user?.id ?? 1,
-    }
-
-    let validated: { newBalance: number }
-    try {
-      validated = await validatePayment(c.env.DB, paymentData)
-    } catch (err) {
-      if (err instanceof Error && err.message.startsWith('Client not found')) {
-        return c.json({ success: false, error: '매칭된 거래처를 찾을 수 없습니다' }, 404)
-      }
-      throw err
-    }
-
-    // 입금 INSERT + 잔액 차감 + 거래내역 APPLIED를 단일 batch로 원자적 처리
-    const payStmts = preparePaymentStatements(c.env.DB, paymentData, validated.newBalance)
-    payStmts.push(
-      c.env.DB.prepare(`
-        UPDATE bank_transactions
-        SET match_status = 'APPLIED',
-            matched_by = ?,
-            matched_at = CURRENT_TIMESTAMP
-        WHERE id = ? AND match_status != 'APPLIED'
-      `).bind(user?.id ?? 1, id)
-    )
-    const batchResults = await c.env.DB.batch(payStmts)
-
-    // 첫 번째 결과에서 payment_id 추출
-    const paymentId = batchResults[0].meta.last_row_id
-
-    // matched_payment_id는 payment_id를 알아야 하므로 후속 업데이트
-    await c.env.DB.prepare(
-      'UPDATE bank_transactions SET matched_payment_id = ? WHERE id = ?'
-    ).bind(paymentId, id).run()
-
-    // Phase 4: 대응하는 입금예정(cash_schedule)을 자동 DONE 처리.
-    // 보조 연동 — 실패해도 입금 적용 자체엔 영향 없음. 금액 정확 일치 + 동일 법인 건만(보수적).
-    try {
-      const amt = parseFloat(String(tx.amount))
-      await c.env.DB.prepare(`
-        UPDATE cash_schedule
-        SET status = 'DONE', bank_transaction_id = ?, actual_date = ?, actual_amount = ?, updated_at = CURRENT_TIMESTAMP
-        WHERE id = (
-          SELECT id FROM cash_schedule
-          WHERE client_id = ? AND flow_type = 'IN' AND source_type = 'ORDER'
-            AND status IN ('PENDING', 'OVERDUE') AND amount = ? AND entity_id = ?
-          ORDER BY schedule_date ASC LIMIT 1
-        )
-      `).bind(id, payDate, amt, clientId, amt, (tx as any).entity_id).run()
-    } catch (e) {
-      console.warn('cash_schedule DONE 연동 실패(입금 적용은 정상):', e)
+    if (!outcome.ok) {
+      // 409 = 기존 원장 후보 복수 → UI가 candidates로 선택 모달 표시
+      return c.json({
+        success: false,
+        error: outcome.error,
+        needs_choice: outcome.status === 409 ? true : undefined,
+        candidates: outcome.candidates,
+      }, outcome.status as 400 | 404 | 409)
     }
 
     return c.json({
       success: true,
       data: {
-        payment_id: paymentId,
-        new_balance: validated.newBalance,
+        payment_id: tx.transaction_type === 'WITHDRAWAL' ? undefined : outcome.ledgerId,
+        purchase_payment_id: tx.transaction_type === 'WITHDRAWAL' ? outcome.ledgerId : undefined,
+        link_mode: outcome.mode,
       },
-      message: '입금이 생성되었습니다'
+      message: outcome.message
     })
   } catch (error) {
     console.error('Apply transaction error:', error)
@@ -1444,26 +1612,17 @@ bankRouter.post('/transactions/batch-apply', requireRole('ADMIN'), async (c) => 
       return c.json({ success: false, error: 'transaction_ids 배열 필수' }, 400)
     }
 
-    const results: { id: number; success: boolean; error?: string; payment_id?: number }[] = []
+    const results: { id: number; success: boolean; error?: string; payment_id?: number; link_mode?: string }[] = []
 
     // Bulk-fetch all transactions (D1 바인드 한도 회피: 80개 청크 분할)
     const ef = entityFilter(c, 'bank_transactions')
-    type TxApplyRow = {
-      id: number
-      transaction_date: string
-      amount: number
-      match_status: string
-      matched_client_id: number | null
-      counterpart_name: string | null
-      description: string | null
-    }
-    const txMap = new Map<number, TxApplyRow>()
+    const txMap = new Map<number, ApplyTxRow>()
     for (let i = 0; i < transaction_ids.length; i += 80) {
       const chunk = transaction_ids.slice(i, i + 80)
       const placeholders = chunk.map(() => '?').join(', ')
       const { results: txRows } = await c.env.DB.prepare(
-        `SELECT id, transaction_date, amount, match_status, matched_client_id, counterpart_name, description, entity_id FROM bank_transactions WHERE id IN (${placeholders})${ef.clause}`
-      ).bind(...chunk, ...ef.params).all<TxApplyRow>()
+        `SELECT id, transaction_date, transaction_type, amount, match_status, matched_client_id, counterpart_name, description, entity_id FROM bank_transactions WHERE id IN (${placeholders})${ef.clause}`
+      ).bind(...chunk, ...ef.params).all<ApplyTxRow>()
       for (const row of txRows) txMap.set(row.id, row)
     }
 
@@ -1491,11 +1650,6 @@ bankRouter.post('/transactions/batch-apply', requireRole('ADMIN'), async (c) => 
         continue
       }
 
-      const rawDate = tx.transaction_date
-      const payDate = rawDate.length === 8
-        ? `${rawDate.slice(0, 4)}-${rawDate.slice(4, 6)}-${rawDate.slice(6, 8)}`
-        : rawDate
-
       // UNMATCHED에서 client_map으로 온 경우 matched_client_id도 업데이트
       if (uiClientId && tx.matched_client_id !== uiClientId) {
         await c.env.DB.prepare(
@@ -1504,41 +1658,16 @@ bankRouter.post('/transactions/batch-apply', requireRole('ADMIN'), async (c) => 
       }
 
       try {
-        const payResult = await createPayment(c.env.DB, {
-          client_id: effectiveClientId,
-          payment_date: payDate,
-          amount: parseFloat(String(tx.amount)),
-          payment_method: '계좌이체',
-          reference_number: String(tx.id),
-          notes: [tx.counterpart_name, tx.description].filter(Boolean).join(' ') || undefined,
-          created_by: user?.id ?? 1,
-        })
-
-        await c.env.DB.prepare(`
-          UPDATE bank_transactions
-          SET match_status = 'APPLIED',
-              matched_payment_id = ?,
-              matched_by = ?,
-              matched_at = CURRENT_TIMESTAMP
-          WHERE id = ?
-        `).bind(payResult.payment_id, user?.id ?? 1, txId).run()
-
-        // Phase 4: 대응 입금예정(cash_schedule) 자동 DONE (보조 — 실패해도 적용엔 영향 없음)
-        try {
-          const amt = parseFloat(String(tx.amount))
-          await c.env.DB.prepare(`
-            UPDATE cash_schedule
-            SET status = 'DONE', bank_transaction_id = ?, actual_date = ?, actual_amount = ?, updated_at = CURRENT_TIMESTAMP
-            WHERE id = (
-              SELECT id FROM cash_schedule
-              WHERE client_id = ? AND flow_type = 'IN' AND source_type = 'ORDER'
-                AND status IN ('PENDING', 'OVERDUE') AND amount = ? AND entity_id = ?
-              ORDER BY schedule_date ASC LIMIT 1
-            )
-          `).bind(txId, payDate, amt, effectiveClientId, amt, (tx as any).entity_id).run()
-        } catch (e) { console.warn('cash_schedule DONE 연동 실패(batch):', e) }
-
-        results.push({ id: txId, success: true, payment_id: payResult.payment_id })
+        // link-first: 단일 후보=기존 원장 연결, 후보 없음=생성, 복수 후보=개별 적용 유도
+        const outcome = await applyBankTransaction(c, tx, Number(effectiveClientId), {})
+        if (!outcome.ok) {
+          results.push({
+            id: txId, success: false,
+            error: outcome.candidates ? `기존 원장 후보 ${outcome.candidates.length}건 — 개별 적용에서 선택 필요` : outcome.error
+          })
+          continue
+        }
+        results.push({ id: txId, success: true, payment_id: outcome.ledgerId, link_mode: outcome.mode })
       } catch (err) {
         console.error('Payment record error for transaction:', txId, err)
         results.push({
@@ -1694,17 +1823,19 @@ bankRouter.post('/transactions/:id/ignore', requireRole('ADMIN'), async (c) => {
   }
 })
 
-// POST /api/bank/transactions/:id/unapply — APPLIED 해제 (payment 삭제 + balance 복원)
+// POST /api/bank/transactions/:id/unapply — APPLIED 해제
+//   CREATED(bank이 생성): 원장 기록 삭제(+AP는 미지급 잔액 복원). LINKED(기존 건 연결): 링크만 해제, 원장 기록 유지.
+//   기존 데이터(matched_link_mode NULL)는 CREATED로 간주 — 종전 동작(항상 생성)과 동일.
 bankRouter.post('/transactions/:id/unapply', requireRole('ADMIN'), async (c) => {
   try {
     const id = c.req.param('id')
-    const user = c.get('user')
     const ef = entityFilter(c, 'bank_transactions')
 
     const tx = await c.env.DB.prepare(
-      `SELECT id, match_status, matched_payment_id, matched_client_id, matched_fixed_expense_id, transaction_date, amount, entity_id FROM bank_transactions WHERE id = ?${ef.clause}`
+      `SELECT id, match_status, matched_payment_id, matched_purchase_payment_id, matched_link_mode, matched_client_id, matched_fixed_expense_id, transaction_date, amount, entity_id FROM bank_transactions WHERE id = ?${ef.clause}`
     ).bind(id, ...ef.params).first<{
       id: number; match_status: string; matched_payment_id: number | null
+      matched_purchase_payment_id: number | null; matched_link_mode: string | null
       matched_client_id: number | null; matched_fixed_expense_id: number | null
       transaction_date: string; amount: number; entity_id: number | null
     }>()
@@ -1716,8 +1847,25 @@ bankRouter.post('/transactions/:id/unapply', requireRole('ADMIN'), async (c) => 
       return c.json({ success: false, error: 'APPLIED 상태의 거래만 취소할 수 있습니다' }, 400)
     }
 
-    // 1. payment 삭제 + client balance 복원
-    if (tx.matched_payment_id) {
+    const clearStmt = c.env.DB.prepare(`
+      UPDATE bank_transactions
+      SET match_status = 'UNMATCHED',
+          matched_client_id = NULL, matched_category_id = NULL, matched_fixed_expense_id = NULL,
+          matched_payment_id = NULL, matched_purchase_payment_id = NULL, matched_link_mode = NULL,
+          matched_by = NULL, matched_at = NULL,
+          match_confidence = NULL, match_reason = NULL
+      WHERE id = ?
+    `).bind(id)
+
+    const isLinked = tx.matched_link_mode === 'LINKED'
+    let restoreMsg = '적용이 취소되었습니다.'
+
+    if (isLinked) {
+      // 연결만 해제 — 원장 기록(payments/purchase_payments)은 유지 (이관·수동 등록분)
+      await clearStmt.run()
+      restoreMsg = '연결이 해제되었습니다. 원장 기록은 유지됩니다.'
+    } else if (tx.matched_payment_id) {
+      // 1. bank이 생성한 payment 삭제 + transaction 복원
       const payment = await c.env.DB.prepare(
         'SELECT id, client_id, amount FROM payments WHERE id = ?'
       ).bind(tx.matched_payment_id).first<{ id: number; client_id: number; amount: number }>()
@@ -1726,36 +1874,31 @@ bankRouter.post('/transactions/:id/unapply', requireRole('ADMIN'), async (c) => 
         // split billing P3: clients.balance 캐시 미사용 — payment 삭제 + transaction 상태 복원만 (미수금 파생)
         await c.env.DB.batch([
           c.env.DB.prepare('DELETE FROM payments WHERE id = ?').bind(tx.matched_payment_id),
-          c.env.DB.prepare(`
-            UPDATE bank_transactions
-            SET match_status = 'UNMATCHED',
-                matched_client_id = NULL, matched_category_id = NULL, matched_fixed_expense_id = NULL, matched_payment_id = NULL,
-                matched_by = NULL, matched_at = NULL,
-                match_confidence = NULL, match_reason = NULL
-            WHERE id = ?
-          `).bind(id),
+          clearStmt,
         ])
+        restoreMsg = '적용이 취소되었습니다. 입금 기록이 삭제되고 잔액이 복원되었습니다.'
       } else {
-        // payment 없이 transaction만 복원
-        await c.env.DB.prepare(`
-          UPDATE bank_transactions
-          SET match_status = 'UNMATCHED',
-              matched_client_id = NULL, matched_category_id = NULL, matched_fixed_expense_id = NULL, matched_payment_id = NULL,
-              matched_by = NULL, matched_at = NULL,
-              match_confidence = NULL, match_reason = NULL
-          WHERE id = ?
-        `).bind(id).run()
+        await clearStmt.run()
+      }
+    } else if (tx.matched_purchase_payment_id) {
+      // 2. bank이 생성한 매입 지급 삭제 + 미지급 잔액(purchase_balance) 복원
+      const pp = await c.env.DB.prepare(
+        'SELECT id, supplier_id, amount FROM purchase_payments WHERE id = ?'
+      ).bind(tx.matched_purchase_payment_id).first<{ id: number; supplier_id: number; amount: number }>()
+
+      if (pp) {
+        await c.env.DB.batch([
+          c.env.DB.prepare('DELETE FROM purchase_payments WHERE id = ?').bind(pp.id),
+          c.env.DB.prepare('UPDATE clients SET purchase_balance = COALESCE(purchase_balance, 0) + ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').bind(pp.amount, pp.supplier_id),
+          clearStmt,
+        ])
+        restoreMsg = '적용이 취소되었습니다. 지급 기록이 삭제되고 미지급 잔액이 복원되었습니다.'
+      } else {
+        await clearStmt.run()
       }
     } else {
-      // matched_payment_id 없는 경우 transaction만 복원
-      await c.env.DB.prepare(`
-        UPDATE bank_transactions
-        SET match_status = 'UNMATCHED',
-            matched_client_id = NULL, matched_category_id = NULL, matched_fixed_expense_id = NULL, matched_payment_id = NULL,
-            matched_by = NULL, matched_at = NULL,
-            match_confidence = NULL, match_reason = NULL
-        WHERE id = ?
-      `).bind(id).run()
+      // 원장 기록 없음 (비용분류/고정비 확정 등) — transaction만 복원
+      await clearStmt.run()
     }
 
     // #511: 고정비 확정이었으면 당월 실적행(recurring_expense_actuals) 정리 — 체크리스트가 PAID로 남는 것 방지.
@@ -1767,9 +1910,6 @@ bankRouter.post('/transactions/:id/unapply', requireRole('ADMIN'), async (c) => 
       ).bind(tx.matched_fixed_expense_id, period).run()
     }
 
-    const restoreMsg = tx.matched_payment_id
-      ? '적용이 취소되었습니다. 입금 기록이 삭제되고 잔액이 복원되었습니다.'
-      : '적용이 취소되었습니다.'
     return c.json({ success: true, message: restoreMsg })
   } catch (error) {
     console.error('Unapply transaction error:', error)
@@ -1800,6 +1940,8 @@ bankRouter.post('/transactions/:id/unmatch', requireRole('ADMIN'), async (c) => 
           matched_client_id = NULL,
           matched_category_id = NULL,
           matched_fixed_expense_id = NULL,
+          matched_purchase_payment_id = NULL,
+          matched_link_mode = NULL,
           matched_by = NULL,
           matched_at = NULL,
           match_confidence = NULL,

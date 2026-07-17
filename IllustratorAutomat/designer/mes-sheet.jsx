@@ -1,0 +1,467 @@
+﻿// mes-sheet.jsx — MES 판짜기 (세션 임포지션) v0.1.0
+// 정본 위치: Z:\DESIGNS\IA-등록\_scripts\mes-sheet.jsx (스텁 MES판짜기.jsx가 $.evalFile로 로드)
+// spec: docs/superpowers/specs/2026-07-16-ia-designer-session-loop.md §11
+// 흐름(2-패스):
+//   1패스(빈 문서/일반 문서에서 실행) = 판 구성: 모아찍기 대기물 선택 → 자동 배치(shelf)
+//     → 디자이너가 자유 조정(이동·회전·복제 — 복제해도 이름 태그 유지됨)
+//   2패스(MES판_* 문서에서 재실행) = 판 확정: 조각 현재 위치 그대로 재단선·돔보
+//     → EPS+DXF(재단선 전용)+썸네일+manifest(consumed_intake_ids) → 에이전트 ingest
+// 이형 커버: 배치 후 일러에서 직접 끼워맞춤 + 재단선 레이어에 다이라인 직접 작성 가능(자동생성 OFF).
+// ES3(ExtendScript) — 최신 문법 금지. 인코딩 = UTF-8 BOM.
+// ⚠️ 유틸·돔보 블록은 mes-core.jsx와 중복(자기완결 v1) — 상수 변경 시 양쪽 동기 필수.
+#target illustrator
+
+(function () {
+  var SCRIPT_VERSION = '0.1.0';
+  var REGISTER_ROOT = 'Z:/DESIGNS/IA-등록';
+  var PT_PER_MM = 72 / 25.4;
+  var PIECE_PREFIX = 'MES_PIECE:';
+  var SHEET_DOC_PREFIX = 'MES판_';
+  var CUT_LAYER = '재단선';
+
+  // ══ 유틸 (mes-core.jsx 동일 — 중복 주의) ══
+  function readTextFile(path) {
+    var f = new File(path);
+    if (!f.exists) return null;
+    f.encoding = 'UTF-8';
+    if (!f.open('r')) return null;
+    var s = f.read(); f.close(); return s;
+  }
+  function writeTextFile(path, s) {
+    var f = new File(path);
+    f.encoding = 'UTF-8';
+    if (!f.open('w')) return false;
+    f.write(s); f.close(); return true;
+  }
+  function jsonEsc(s) {
+    s = String(s);
+    s = s.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+    s = s.replace(/\r/g, '\\r').replace(/\n/g, '\\n').replace(/\t/g, '\\t');
+    return s;
+  }
+  function toJson(v) {
+    if (v === null || v === undefined) return 'null';
+    var t = typeof v;
+    if (t === 'number') return isFinite(v) ? String(v) : 'null';
+    if (t === 'boolean') return v ? 'true' : 'false';
+    if (t === 'string') return '"' + jsonEsc(v) + '"';
+    if (v instanceof Array) {
+      var a = [];
+      for (var i = 0; i < v.length; i++) a.push(toJson(v[i]));
+      return '[' + a.join(',') + ']';
+    }
+    var o = [];
+    for (var k in v) {
+      if (v.hasOwnProperty && !v.hasOwnProperty(k)) continue;
+      o.push('"' + jsonEsc(k) + '":' + toJson(v[k]));
+    }
+    return '{' + o.join(',') + '}';
+  }
+  function pad2(n) { return (n < 10 ? '0' : '') + n; }
+  function sanitizeName(s) {
+    s = String(s || '');
+    s = s.replace(/[\\\/:\*\?"<>\|]/g, '');
+    s = s.replace(/^\s+|\s+$/g, '');
+    return s || '무명';
+  }
+  function groupBounds(it) {
+    try { return it.visibleBounds; } catch (e) { try { return it.geometricBounds; } catch (e2) { return null; } }
+  }
+  function collectPieces(doc) {
+    var out = [];
+    for (var g = 0; g < doc.groupItems.length; g++) {
+      var gi = doc.groupItems[g];
+      try {
+        if (gi.name && gi.name.indexOf(PIECE_PREFIX) === 0 && !gi.locked && !gi.hidden) out.push(gi);
+      } catch (eG) { }
+    }
+    return out;
+  }
+  function nowStamp() {
+    var d = new Date();
+    return {
+      ymd: '' + d.getFullYear() + pad2(d.getMonth() + 1) + pad2(d.getDate()),
+      hms: pad2(d.getHours()) + pad2(d.getMinutes()) + pad2(d.getSeconds()),
+      hm: pad2(d.getHours()) + pad2(d.getMinutes()),
+      kst: d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate()) + ' ' + pad2(d.getHours()) + ':' + pad2(d.getMinutes()) + ':' + pad2(d.getSeconds()),
+      ms: d.getTime() % 1000
+    };
+  }
+
+  // ══ 분기: MES판 문서면 확정, 아니면 구성 ══
+  var isSheetDoc = false;
+  try { isSheetDoc = app.documents.length > 0 && String(app.activeDocument.name).indexOf(SHEET_DOC_PREFIX) === 0; } catch (eB) { }
+  if (isSheetDoc) { confirmSheet(); } else { composeSheet(); }
+
+  // ────────────────────────────────────────────────────────────────
+  // 1패스: 판 구성
+  // ────────────────────────────────────────────────────────────────
+  function composeSheet() {
+    // 설정 로드 (모아찍기 대기물 목록 — 에이전트 브로드캐스트)
+    var config = null;
+    try {
+      var cs = readTextFile(REGISTER_ROOT + '/_config/config.json');
+      if (cs) { var parsed = eval('(' + cs + ')'); config = (parsed && parsed.data) ? parsed.data : parsed; }
+    } catch (eCfg) { }
+    var intakes = (config && config.intakes) ? config.intakes : [];
+    if (!intakes.length) {
+      alert('모아찍기 대기물이 없습니다.\n\n일러에서 조각을 선택해 "MES가공"으로 용도=모아찍기용(또는 둘 다)으로 먼저 등록하세요.\n(등록 후 ~1분 내 목록에 반영됩니다)');
+      return;
+    }
+
+    // ── 다이얼로그 ──
+    var ROLL_W = [914, 1050, 1270, 1370, 1520];
+    var FLAT = [{ label: '900 × 1800 mm', w: 900, h: 1800 }, { label: '1200 × 2400 mm', w: 1200, h: 2400 }];
+
+    var dlg = new Window('dialog', 'MES 판짜기 v' + SCRIPT_VERSION + ' — 판 구성');
+    dlg.orientation = 'column'; dlg.alignChildren = 'fill'; dlg.spacing = 8;
+
+    var pList = dlg.add('panel', undefined, '모아찍기 대기물 (다중 선택 = Ctrl/Shift)');
+    pList.alignChildren = 'fill'; pList.margins = 12;
+    var labels = [];
+    for (var i = 0; i < intakes.length; i++) {
+      var it = intakes[i];
+      labels.push('#' + it.id + ' · ' + (it.client_name || '') + ' · ' + (it.width_cm || '?') + '×' + (it.height_cm || '?') + 'cm × ' + (it.qty || 1) + '개');
+    }
+    var lb = pList.add('listbox', undefined, labels, { multiselect: true });
+    lb.preferredSize = [480, Math.min(200, 20 * labels.length + 24)];
+
+    var pSheet = dlg.add('panel', undefined, '판 규격');
+    pSheet.alignChildren = 'left'; pSheet.margins = 12;
+    var rowMode = pSheet.add('group');
+    var rbRoll = rowMode.add('radiobutton', undefined, '롤(폭 고정·길이 가변)');
+    var rbFlat = rowMode.add('radiobutton', undefined, '평판');
+    rbFlat.value = true; // 자작나무 등 평판이 이형 주 사용처
+    var rowSize = pSheet.add('group');
+    rowSize.add('statictext', undefined, '롤 폭:');
+    var rollLabels = [];
+    for (var rw = 0; rw < ROLL_W.length; rw++) rollLabels.push(ROLL_W[rw] + 'mm');
+    var rollDrop = rowSize.add('dropdownlist', undefined, rollLabels);
+    rollDrop.selection = 4; // 1520
+    rowSize.add('statictext', undefined, '  평판:');
+    var flatLabels = [];
+    for (var fw = 0; fw < FLAT.length; fw++) flatLabels.push(FLAT[fw].label);
+    var flatDrop = rowSize.add('dropdownlist', undefined, flatLabels);
+    flatDrop.selection = 1; // 1200×2400
+    var rowOpt = pSheet.add('group');
+    rowOpt.add('statictext', undefined, '조각 간격(mm):');
+    var gapEt = rowOpt.add('edittext', undefined, '5'); gapEt.characters = 4;
+    rowOpt.add('statictext', undefined, '  판 여백(mm):');
+    var marginEt = rowOpt.add('edittext', undefined, '10'); marginEt.characters = 4;
+
+    dlg.add('statictext', undefined, '자동 배치 후 일러에서 자유롭게 조정하세요 (이동·회전·복제 가능).');
+    var rowBtn = dlg.add('group'); rowBtn.alignment = 'right';
+    var okBtn = rowBtn.add('button', undefined, '판 구성', { name: 'ok' });
+    rowBtn.add('button', undefined, '취소', { name: 'cancel' });
+    okBtn.onClick = function () {
+      if (!lb.selection || lb.selection.length === 0) { alert('대기물을 1개 이상 선택하세요.'); return; }
+      dlg.close(1);
+    };
+    if (dlg.show() !== 1) return;
+
+    var chosen = [];
+    for (var s = 0; s < lb.selection.length; s++) chosen.push(intakes[lb.selection[s].index]);
+    var isRoll = rbRoll.value;
+    var sheetWmm = isRoll ? ROLL_W[rollDrop.selection.index] : FLAT[flatDrop.selection.index].w;
+    var sheetHmm = isRoll ? 0 : FLAT[flatDrop.selection.index].h; // 0=길이 가변
+    var gapPt = (parseFloat(gapEt.text) || 5) * PT_PER_MM;
+    var marginPt = (parseFloat(marginEt.text) || 10) * PT_PER_MM;
+    var sheetWpt = sheetWmm * PT_PER_MM;
+
+    // ── 건별 폴더 + 판 문서 ──
+    var st = nowStamp();
+    var pcName = $.getenv('COMPUTERNAME') || 'PC';
+    var folderName = st.ymd + '_' + st.hms + '_' + sanitizeName(pcName) + '_판' + st.ms;
+    var jobFolder = new Folder(REGISTER_ROOT + '/' + folderName);
+    if (!jobFolder.exists && !jobFolder.create()) { alert('등록 폴더 생성 실패:\n' + jobFolder.fsName); return; }
+
+    var sheetDoc = app.documents.add(DocumentColorSpace.CMYK, sheetWpt, (sheetHmm || 1000) * PT_PER_MM);
+    sheetDoc.artboards[0].artboardRect = [0, 0, sheetWpt, -((sheetHmm || 1000) * PT_PER_MM)];
+
+    // ── 조각 로드: work.ai 열기 → 그룹으로 복제 → 실물 크기 보정 → 수량만큼 복제 ──
+    var skipped = [];
+    var usedIds = [];
+    for (var ci = 0; ci < chosen.length; ci++) {
+      var itk = chosen[ci];
+      var srcFile = new File(String(itk.work_ai_path || '').replace(/\\/g, '/'));
+      if (!srcFile.exists) { skipped.push('#' + itk.id + ' (work.ai 없음)'); continue; }
+      var src = null;
+      try {
+        src = app.open(srcFile); // 정제 work.ai(아웃라인 완료) — 열기 모달 위험 없음
+        var grp = sheetDoc.groupItems.add();
+        grp.name = PIECE_PREFIX + itk.id;
+        for (var L = 0; L < src.layers.length; L++) {
+          var lay = src.layers[L];
+          for (var pi = lay.pageItems.length - 1; pi >= 0; pi--) {
+            try { lay.pageItems[pi].duplicate(grp, ElementPlacement.PLACEATBEGINNING); } catch (eDup) { }
+          }
+        }
+        src.close(SaveOptions.DONOTSAVECHANGES); src = null;
+        app.activeDocument = sheetDoc;
+        // 실물 크기 보정 (work.ai=파일 스케일 1/N → 실물 cm로 확대)
+        var gb = groupBounds(grp);
+        if (gb && itk.width_cm) {
+          var curW = gb[2] - gb[0];
+          var tgtW = itk.width_cm * 10 * PT_PER_MM;
+          if (curW > 0) {
+            var pct = (tgtW / curW) * 100;
+            if (pct < 99.5 || pct > 100.5) grp.resize(pct, pct);
+          }
+        }
+        usedIds.push(itk.id);
+        // 수량만큼 복제 (duplicate는 이름 태그 유지)
+        var copies = Math.max(1, parseInt(itk.qty, 10) || 1);
+        for (var cp = 2; cp <= copies; cp++) grp.duplicate();
+      } catch (eLoad) {
+        skipped.push('#' + itk.id + ' (' + eLoad + ')');
+        try { if (src) src.close(SaveOptions.DONOTSAVECHANGES); } catch (eCl) { }
+        app.activeDocument = sheetDoc;
+      }
+    }
+
+    var pieces = collectPieces(sheetDoc);
+    if (!pieces.length) {
+      alert('조각을 하나도 불러오지 못했습니다.\n' + skipped.join('\n'));
+      try { sheetDoc.close(SaveOptions.DONOTSAVECHANGES); } catch (eC2) { }
+      return;
+    }
+
+    // ── 자동 배치 (shelf: 높이 내림차순 → 행 채움 · 폭 초과 조각은 90° 회전 시도) ──
+    var usableW = sheetWpt - 2 * marginPt;
+    var items = [];
+    for (var p = 0; p < pieces.length; p++) {
+      var b = groupBounds(pieces[p]);
+      if (!b) continue;
+      var w = b[2] - b[0], h = b[1] - b[3];
+      if (w > usableW && h <= usableW) { pieces[p].rotate(90); b = groupBounds(pieces[p]); w = b[2] - b[0]; h = b[1] - b[3]; }
+      items.push({ grp: pieces[p], w: w, h: h });
+    }
+    items.sort(function (a, bb) { return bb.h - a.h; });
+    var x = 0, y = 0, rowH = 0;
+    for (var q = 0; q < items.length; q++) {
+      var itq = items[q];
+      if (x > 0 && x + itq.w > usableW) { x = 0; y += rowH + gapPt; rowH = 0; }
+      itq.grp.position = [marginPt + x, -(marginPt + y)];
+      x += itq.w + gapPt;
+      if (itq.h > rowH) rowH = itq.h;
+    }
+    var usedH = y + rowH;
+
+    // ── 아트보드 확정 (롤=길이 맞춤 / 평판=고정, 초과 시 경고) ──
+    var overflow = '';
+    if (isRoll) {
+      sheetDoc.artboards[0].artboardRect = [0, 0, sheetWpt, -(usedH + 2 * marginPt)];
+    } else {
+      sheetDoc.artboards[0].artboardRect = [0, 0, sheetWpt, -(sheetHmm * PT_PER_MM)];
+      if (usedH + 2 * marginPt > sheetHmm * PT_PER_MM) overflow = '\n⚠ 조각이 판 높이를 초과했습니다 — 판 밖 조각을 조정(회전·제거)하세요.';
+    }
+
+    // ── 저장 + 메타 ──
+    var sheetFile = new File(jobFolder.fsName + '/' + SHEET_DOC_PREFIX + st.ymd + '_' + st.hms + '.ai');
+    sheetDoc.saveAs(sheetFile, new IllustratorSaveOptions());
+    writeTextFile(jobFolder.fsName + '/sheet-meta.json', toJson({
+      intake_ids: usedIds, is_roll: isRoll, sheet_w_mm: sheetWmm, sheet_h_mm: sheetHmm,
+      margin_mm: (parseFloat(marginEt.text) || 10), gap_mm: (parseFloat(gapEt.text) || 5), created: st.kst
+    }));
+
+    alert('판 구성 완료 ✓  (조각 ' + items.length + '개)' + overflow + '\n\n'
+      + '이제 자유롭게 조정하세요 — 이동·회전·복제 모두 가능합니다.\n'
+      + '(복제한 조각도 그대로 출력에 포함됩니다)\n\n'
+      + '조정이 끝나면 이 스크립트를 다시 실행 → "판 확정"이 진행됩니다.'
+      + (skipped.length ? ('\n\n건너뜀: ' + skipped.join(', ')) : ''));
+  }
+
+  // ────────────────────────────────────────────────────────────────
+  // 2패스: 판 확정 (현재 배치 그대로 재단선·돔보 → EPS/DXF/썸네일/manifest)
+  // ────────────────────────────────────────────────────────────────
+  function confirmSheet() {
+    var doc = app.activeDocument;
+    var jobFolder = doc.fullName ? doc.fullName.parent : null;
+    if (!jobFolder || !jobFolder.exists) { alert('판 문서의 폴더를 찾을 수 없습니다.'); return; }
+    if (new File(jobFolder.fsName + '/manifest.json').exists) {
+      alert('이미 확정된 판입니다.\n재확정하려면 폴더의 manifest.json을 삭제 후 다시 실행하세요.\n' + jobFolder.fsName);
+      return;
+    }
+    var meta = null;
+    try {
+      var ms = readTextFile(jobFolder.fsName + '/sheet-meta.json');
+      if (ms) meta = eval('(' + ms + ')');
+    } catch (eM) { }
+    var pieces = collectPieces(doc);
+    if (!pieces.length) { alert('MES 조각(MES_PIECE:*)을 찾을 수 없습니다.'); return; }
+
+    // ── 확정 다이얼로그 ──
+    var dlg = new Window('dialog', 'MES 판짜기 — 판 확정 (조각 ' + pieces.length + '개)');
+    dlg.orientation = 'column'; dlg.alignChildren = 'left'; dlg.spacing = 8; dlg.margins = 14;
+    var trimCb = dlg.add('checkbox', undefined, '돔보(재단마크) — 판 둘레');
+    trimCb.value = true;
+    var cutCb = dlg.add('checkbox', undefined, '재단선 자동 생성 (조각 외곽 사각 → DXF)');
+    cutCb.value = true;
+    dlg.add('statictext', undefined, '이형(비사각)은 자동 생성을 끄고 "' + CUT_LAYER + '" 레이어에 직접 그리세요.');
+    var rowBtn = dlg.add('group'); rowBtn.alignment = 'right';
+    rowBtn.add('button', undefined, '판 확정', { name: 'ok' });
+    rowBtn.add('button', undefined, '취소', { name: 'cancel' });
+    if (dlg.show() !== 1) return;
+    var trim = trimCb.value;
+
+    var marginPt = ((meta && meta.margin_mm) || 10) * PT_PER_MM;
+
+    // ── 조각 union → 아트보드 맞춤 ──
+    var U = null;
+    for (var i = 0; i < pieces.length; i++) {
+      var b = groupBounds(pieces[i]);
+      if (!b) continue;
+      if (!U) U = [b[0], b[1], b[2], b[3]];
+      else {
+        if (b[0] < U[0]) U[0] = b[0];
+        if (b[1] > U[1]) U[1] = b[1];
+        if (b[2] > U[2]) U[2] = b[2];
+        if (b[3] < U[3]) U[3] = b[3];
+      }
+    }
+    // 롤=내용 맞춤(폭·길이 모두 여백 포함), 평판=기존 아트보드 유지
+    if (meta && meta.is_roll) {
+      doc.artboards[0].artboardRect = [U[0] - marginPt, U[1] + marginPt, U[2] + marginPt, U[3] - marginPt];
+    }
+
+    // ── 재단선 레이어 ──
+    var cutLayer = null;
+    for (var ly = 0; ly < doc.layers.length; ly++) if (doc.layers[ly].name === CUT_LAYER) { cutLayer = doc.layers[ly]; break; }
+    if (!cutLayer) { cutLayer = doc.layers.add(); cutLayer.name = CUT_LAYER; }
+    if (cutCb.value && cutLayer.pageItems.length === 0) {
+      var mCol = new CMYKColor(); mCol.cyan = 0; mCol.magenta = 100; mCol.yellow = 0; mCol.black = 0;
+      for (var cp = 0; cp < pieces.length; cp++) {
+        var cb = groupBounds(pieces[cp]);
+        if (!cb) continue;
+        var rect = cutLayer.pathItems.rectangle(cb[1], cb[0], cb[2] - cb[0], cb[1] - cb[3]);
+        rect.stroked = true; rect.filled = false; rect.strokeColor = mCol; rect.strokeWidth = 0.6;
+      }
+    }
+
+    // ── 돔보 (mes-core.jsx 블록 동일, sN=1 — 상수 동기 주의) ──
+    if (trim) {
+      var ar = doc.artboards[0].artboardRect;
+      var tL = ar[0], tT = ar[1], tR = ar[2], tB = ar[3];
+      var DOMBO_DIAM = 6 * PT_PER_MM;
+      var CORNER_DIST = 17 * PT_PER_MM; // 바깥끝 20mm
+      var DIR_OFFSET = 60 * PT_PER_MM;
+      var MAX_GAP = 500 * PT_PER_MM;
+      var kCol = new CMYKColor(); kCol.cyan = 0; kCol.magenta = 0; kCol.yellow = 0; kCol.black = 100;
+      function mkDombo(cx, cy) {
+        var r = DOMBO_DIAM / 2;
+        var el = doc.pathItems.ellipse(cy + r, cx - r, DOMBO_DIAM, DOMBO_DIAM);
+        el.filled = true; el.stroked = false; el.fillColor = kCol;
+      }
+      function interDombo(from, to, fixed, horiz) {
+        var span = to - from;
+        if (span <= MAX_GAP) return;
+        var n = Math.floor(span / MAX_GAP);
+        var step = span / (n + 1);
+        for (var ii = 1; ii <= n; ii++) {
+          var pos = from + step * ii;
+          if (horiz) mkDombo(pos, fixed); else mkDombo(fixed, pos);
+        }
+      }
+      mkDombo(tL - CORNER_DIST, tT + CORNER_DIST);
+      mkDombo(tR + CORNER_DIST, tT + CORNER_DIST);
+      mkDombo(tL - CORNER_DIST, tB - CORNER_DIST);
+      mkDombo(tR + CORNER_DIST, tB - CORNER_DIST);
+      mkDombo(tL + DIR_OFFSET, tT + CORNER_DIST);
+      interDombo(tL, tR, tT + CORNER_DIST, true);
+      interDombo(tL, tR, tB - CORNER_DIST, true);
+      interDombo(tB, tT, tL - CORNER_DIST, false);
+      interDombo(tB, tT, tR + CORNER_DIST, false);
+      var pad = CORNER_DIST + DOMBO_DIAM;
+      doc.artboards[0].artboardRect = [tL - pad, tT + pad, tR + pad, tB - pad];
+    }
+
+    // ── 크기·파일명 ──
+    var fr = doc.artboards[0].artboardRect;
+    var wCm = Math.round((fr[2] - fr[0]) / PT_PER_MM / 10);
+    var hCm = Math.round((fr[1] - fr[3]) / PT_PER_MM / 10);
+    var st = nowStamp();
+    var baseName = st.ymd + '-판짜기' + st.hm + '-' + wCm + 'x' + hCm + 'cm-1EA';
+
+    // ── .ai 저장(조정 상태 보존) → EPS ──
+    doc.save();
+    var epsFile = new File(jobFolder.fsName + '/' + baseName + '.eps');
+    var epsOpts = new EPSSaveOptions();
+    epsOpts.cmykPostScript = true;
+    epsOpts.compatibility = Compatibility.ILLUSTRATOR10;
+    epsOpts.preview = EPSPreview.COLORTIFF;
+    epsOpts.embedAllFonts = true;
+    doc.saveAs(epsFile, epsOpts);
+
+    // ── DXF (재단선 레이어만 — 다른 레이어 임시 숨김) ──
+    var dxfOk = false;
+    try {
+      var visBack = [];
+      for (var lv = 0; lv < doc.layers.length; lv++) {
+        visBack.push(doc.layers[lv].visible);
+        doc.layers[lv].visible = (doc.layers[lv].name === CUT_LAYER);
+      }
+      var dxfFile = new File(jobFolder.fsName + '/' + baseName + '.dxf');
+      var dxfOpts = new ExportOptionsAutoCAD();
+      dxfOpts.exportFileFormat = AutoCADExportFileFormat.DXF;
+      dxfOpts.version = AutoCADCompatibility.AutoCADRelease21;
+      dxfOpts.unit = AutoCADUnit.Millimeters;
+      dxfOpts.scaleLineweights = false;
+      try { dxfOpts.exportOption = AutoCADExportOption.MaximumEditability; } catch (eOpt) { }
+      doc.exportFile(dxfFile, ExportType.AUTOCAD, dxfOpts);
+      for (var lr = 0; lr < doc.layers.length; lr++) doc.layers[lr].visible = visBack[lr];
+      dxfOk = true;
+    } catch (eDxf) { alert('DXF 내보내기 경고: ' + eDxf + '\n(EPS는 정상 저장됨)'); }
+
+    // ── 썸네일 ──
+    var abW = fr[2] - fr[0], abH = fr[1] - fr[3];
+    var maxPt2 = Math.max(abW, abH);
+    var pct2 = maxPt2 > 0 ? Math.min(100, (400 / maxPt2) * 100) : 100;
+    var pngFile = new File(jobFolder.fsName + '/thumb.png');
+    var pngOpts = new ExportOptionsPNG24();
+    pngOpts.artBoardClipping = true;
+    pngOpts.horizontalScale = pct2; pngOpts.verticalScale = pct2;
+    doc.exportFile(pngFile, ExportType.PNG24, pngOpts);
+
+    // ── _출력 복사 (RIP·재단 픽업) ──
+    try {
+      var outDir = new Folder(REGISTER_ROOT + '/_출력/' + st.ymd);
+      if (!outDir.exists) outDir.create();
+      epsFile.copy(outDir.fsName + '/' + baseName + '.eps');
+      if (dxfOk) new File(jobFolder.fsName + '/' + baseName + '.dxf').copy(outDir.fsName + '/' + baseName + '.dxf');
+    } catch (eCp) { }
+
+    // ── manifest (커밋 마커 — 마지막 기록) ──
+    var pcName = $.getenv('COMPUTERNAME') || 'PC';
+    var userName = $.getenv('USERNAME') || '';
+    var manifest = {
+      manifest_version: 1,
+      script_version: SCRIPT_VERSION,
+      type: 'sheet',
+      registered_by: pcName + '\\' + userName,
+      pc_name: pcName,
+      entity_id: 1,
+      client_name: '판짜기 ' + st.ymd + '-' + st.hm + ' (' + pieces.length + '조각)',
+      qty: 1,
+      finishing: null,
+      trim: trim,
+      scale_pct: 100,
+      measured_cm: { w: wCm, h: hCm },
+      mode: 'single',
+      order_item_id: null,
+      files: { work_ai: String(doc.name), eps: baseName + '.eps', thumb: 'thumb.png' },
+      consumed_intake_ids: (meta && meta.intake_ids) ? meta.intake_ids : [],
+      outline_failed: false,
+      created_at_kst: st.kst
+    };
+    if (!writeTextFile(jobFolder.fsName + '/manifest.json', toJson(manifest))) {
+      alert('manifest 기록 실패 (출력물은 저장됨)\n' + jobFolder.fsName);
+      return;
+    }
+
+    alert('판 확정 완료 ✓\n\n'
+      + '판: ' + wCm + ' × ' + hCm + ' cm · 조각 ' + pieces.length + '개\n'
+      + 'EPS: ' + baseName + '.eps' + (dxfOk ? '\nDXF: ' + baseName + '.dxf (재단선 전용)' : '') + '\n'
+      + '_출력\\' + st.ymd + '\\ 에 복사됨 · MES 등록은 ~30초 내 반영\n\n'
+      + '※ 문서 연결이 EPS로 바뀌었습니다 — 추가 조정하려면 폴더의 .ai를 다시 여세요.');
+  }
+})();
