@@ -7,6 +7,7 @@
 import type { Context } from 'hono'
 import type { HonoEnv } from '../../types/env'
 import { entityFilter } from '../../utils/entityFilter'
+import { kstYmd } from '../../utils/kstDate'
 
 // ── split billing P3: (거래처) 미수금 파생 — order_billing_groups[BILLED] − payments − adjustments ──
 // clients.balance 캐시 대체. entityFilter 적용(현재 사용자 법인 = 청구 법인 기준).
@@ -186,4 +187,42 @@ export function getAgingCategory(days: number | null): string {
   if (days <= 60) return 'warning'
   if (days <= 90) return 'danger'
   return 'critical'
+}
+
+// ── 미수금 aging 단일소스(SSOT): 채권 나이 = 최고령 미결제 청구건(oldest_unpaid_date) 기준 ──
+//    ar-receivables(/receivables)가 정본. reports·bank 가 동일 기준을 쓰도록 JOIN 조각/일수 헬퍼로 공유.
+//    (일원화 2026-07-17: 기존 reports·bank 의 '최근 입금일 경과'(payment recency) 기준을 폐기하고 이 채권나이로 통일)
+//    oldest_unpaid_date = BILLED 청구그룹 중 '해당 건 이상을 커버하는 결제가 없는'(NOT EXISTS) 건들의 MIN(청구일).
+//    outer 쿼리는 clients 를 alias `c` 로 두어야 함(oup.client_id = c.id). alias `oup` 로 조인.
+//    entityScoped=true → 청구(g)·결제(p) 서브쿼리에 현재 법인 필터(호출부의 balance 스코프와 일치시킬 것).
+export function buildOldestUnpaidJoin(
+  c: Context<HonoEnv>,
+  opts: { entityScoped?: boolean } = {}
+): { sql: string; params: unknown[] } {
+  const g = opts.entityScoped ? entityFilter(c, 'g') : { clause: '', params: [] as unknown[] }
+  const p = opts.entityScoped ? entityFilter(c, 'p') : { clause: '', params: [] as unknown[] }
+  const sql = `
+      LEFT JOIN (
+        SELECT o.client_id AS client_id,
+               MIN(COALESCE(g.accounting_date, g.billed_at)) AS oldest_unpaid_date
+        FROM order_billing_groups g JOIN orders o ON o.id = g.order_id
+        WHERE g.billing_status = 'BILLED' AND o.status != 'CANCELLED'${g.clause}
+          AND NOT EXISTS (
+            SELECT 1 FROM payments p
+            WHERE p.client_id = o.client_id${p.clause}
+              AND p.amount >= g.billed_amount
+              AND p.payment_date >= COALESCE(g.accounting_date, g.billed_at)
+          )
+        GROUP BY o.client_id
+      ) oup ON oup.client_id = c.id`
+  return { sql, params: [...g.params, ...p.params] }
+}
+
+// oldest_unpaid_date → aging_days (KST 자정 기준, ar-receivables 와 동일 계산). null/미결제특정불가 → null.
+export function agingDaysFromOldest(oldestUnpaidDate: string | null | undefined): number | null {
+  if (!oldestUnpaidDate) return null
+  const today = new Date(kstYmd() + 'T00:00:00Z')
+  const oldest = new Date(oldestUnpaidDate)
+  oldest.setHours(0, 0, 0, 0)
+  return Math.floor((today.getTime() - oldest.getTime()) / (1000 * 60 * 60 * 24))
 }

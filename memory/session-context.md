@@ -1,37 +1,34 @@
-# 세션 핸드오프 — 자금 허브 통합 P3·P4 (2026-07-17)
+# 세션 핸드오프 — 손익 허브 통합 (사이드바 Level 2, 2026-07-17)
 
 > 세션별 덮어쓰기 파일. 상세 정본 = [[project-sidebar-consolidation]] (auto-memory).
+> 직전 세션(IA 디자이너 루프 P0) 내용은 [[project-ia-designer-loop]] auto-memory + spec `2026-07-16-ia-designer-session-loop.md`에 반영 완료.
 
-## 이번 세션 완료 (전부 prod 배포·main 반영)
-### Level 2 자금 허브 P3 — /cash-schedule를 자금 관리 허브로 통합
-- **최상위 [계획]/[실적] 토글**: 계획=cashSchedule(기존 5탭·기본), 실적=bank(5탭·ADMIN·lazy).
-- **단일소스 이식**: `bank.ts`→`export const bankPageContent`·`bankPageCSS` 추출→cashSchedule.ts `#hubActuals`에 이식(HTML 중복 0).
-- **lazy-load·지연 init**: 프리앰블 `window.__bankHubDefer=true`로 bank.js 자동실행 차단→`window.__bankHubInit`(멱등)을 실적 첫 진입 시 호출. 계획은 기본 로드.
-- **ADMIN 게이팅**: 실적 토글은 `localStorage.user.role==='ADMIN'`만 노출+`switchHubMode` 서버·클라 이중 차단(bank API 29개 이미 requireRole ADMIN).
-- **사이드바**: /bank 은퇴(라우트·API·페이지 보존, /spec-groups 선례), /cash-schedule 라벨 '자금계획'→'자금 관리'(fa-wallet). 11→10.
-- **충돌 사전검증**: element ID·window.* 교집합 0(bank54/cash19/cashFlow16).
+## 이번 세션 상태 — 완료·검증·커밋, ⚠️ 프로덕션 배포 대기
+손익 허브 = /financial-reports + /reports 통합. 2단계, 파일 겹침 0.
 
-### P4 — 표시 일원화(겹치는 위젯 상호 네비게이션)
-- 대출잔액 두 소스(bank fund-summary:89·cashFlow /summary:803) **동일 쿼리 확인**(SUM current_balance FROM loans is_active=1)→데이터 정합, UX만 정비.
-- `window.hubGoto(mode,tab)` 헬퍼(모드+하위탭 동시 이동). 크로스링크:
-  - 계획>고정비 → 실적 당월 출금현황(`.hub-actuals-link`, ADMIN만)
-  - 실적>자금현황 고정비 → 계획 고정비 마스터 편집(`.hub-only`, 허브에서만·단독 /bank 숨김)
-  - 계획>월별 kpiLoanBalance → 대출 탭 / 실적 fundLoanNote → 계획 대출 관리(hubGoto 있을 때만 클릭링크)
+### Phase 1 — 손익허브 UI 통합 (완료)
+- /financial-reports(실시간 P&L: 손익계산서·월별추이·재무스냅샷 3탭)를 /reports '손익계산서' 탭으로 흡수.
+- 단일소스: `pages/financialReports.ts` `export const financialReportsContent` → reports.ts `#anaFinancialContent` 이식(HTML 중복 0).
+- 지연 init: `window.__finDefer=true` 프리앰블 + `window.__finInit`(멱등) 첫 탭진입 호출. 단독 /financial-reports는 flag 없음→즉시 init(회귀 0).
+- ID 충돌 회피: 월별탭 `tabMonthly`/`monthlyPanel`/`monthlyTableBody` → `fin*` 프리픽스(양 페이지 co-load). 전역 격리: financialReports.js를 reports.ts concat 시 IIFE 래핑(bare 전역 fmt/pnlData 등 충돌 방지).
+- menu.ts: /financial-reports 은퇴(라우트·API 보존)·/reports 라벨 '손익·경영 분석'.
 
-## 검증 (로컬 D1 + Playwright 실측, admin/ADMIN)
-- verify green(typecheck+build) ×2 / 페이지 콘솔 에러 0
-- 계획 기본로드·실적 지연(deferFlag·initDone=false) / 실적 첫클릭 lazy-load(잔액 2,990,000원)
-- bank 하위탭·계획↔실적 왕복·멱등 / P4 크로스링크 4종 hubGoto 네비 동작
-- **단독 /bank 회귀 없음**: deferFlag 없음→즉시 init·hub-only 숨김·fundLoanNote plain
+### Phase 2 — 미수금 aging 일원화 (완료·로컬 실검증)
+- **문제**: 같은 거래처가 3화면에서 다른 연령. ledger=채권나이(oldest_unpaid_date), reports·bank='최근 입금일 경과'(payment recency).
+- **SSOT**: `routes/ledger/ar-helpers.ts`에 `buildOldestUnpaidJoin(c,{entityScoped})`(채권나이 oup 조인, ledger 쿼리 verbatim 복사)+`agingDaysFromOldest()`(KST 자정) 추가. `getAgingCategory`는 기존 공유.
+- **전환**: reports `/receivables-analysis`(agingData·topAR 2쿼리)·bank `/receivables`(SQL+JS) → 채권나이. balance 정의·provision 구조(agingCategoryToBucket→effectiveLossRate)·FE 라벨 전부 호환 보존.
+- **법인 스코프 = 각 현행 유지**(무단 반전 배제): reports=법인(entityScoped:true), bank=전체(false·문서화된 의도적 결정). ADMIN(entityId=0)은 어차피 동일. ← 사용자 부재 중 결정.
+- **로컬 실검증**: LOCAL D1에 결정적 시드 2건(107일 critical/22일 normal)→ ledger.aging_days==reports.days_overdue==bank(oldest_unpaid) 완전일치·mismatch 0·total_ar==total_receivable(30,000)·expected_collection=25,900(provision 재계산 정상). 시드 원복 완료.
 
-## 다음 세션 TODO — Level 2 잔여(미착수)
-- **손익/경영분석 허브**: financial-reports(실시간 P&L)+reports 수익성·미수금 탭. ④미수금 aging 4중복(ledger 정본, reports·bank·accounting 미러) 딸림.
-- **생산 2축**: production(실시간)+production-reports(집계) '오늘 생산 스냅샷' 중복.
-- accounting은 이미 "조회통합+링크아웃" 허브 패턴 확립(정답 템플릿).
+## 검증 (완료)
+- `npm run verify` green (typecheck+build). `days_since_payment` 잔여 참조 0.
 
-## 배포 (완료)
-- FF merge origin/main(ia-designer-loop 3커밋 superset) → 커밋 → push HEAD:main → `deploy:prod`(--branch main).
+## 다음 단계
+1. **⚠️ 프로덕션 배포 = 사용자 명시 확인 대기** ([[feedback-deploy-needs-explicit-request]]·[[feedback-deploy-wording-gate]]: 커밋 후 "배포 진행" 확인이 정답). 마이그레이션 없음(순수 코드).
+2. 배포 시: push-first superset → `wrangler pages deploy dist --branch main` → apex(webapp-9i0.pages.dev) 검증. **사용자 가시 변화**=미수금 aging 숫자가 입금recency→채권나이로 이동(전 거래처).
+3. (후속·선택) accounting 미수금 탭도 aging 미러 가능 → 동일 `buildOldestUnpaidJoin` 재사용으로 정리.
+4. 사이드바 Level 2 잔여: 생산 2축(production+production-reports) 통합.
 
-## 주의
-- 사이드바 필터 정본 = DB `/api/permissions/me`(shell.js:687~), menu.ts roles는 decorative. ADMIN 전 메뉴 노출.
-- bank.js는 /bank(단독)·/cash-schedule(허브) 양쪽 로드 — Init 지연은 `__bankHubDefer`로만 분기. 단독은 즉시.
+## 주의사항
+- reports.ts는 **route(`src/routes/reports.ts`)와 page(`src/pages/reports.ts`)가 별개 파일** — Phase 1은 page, Phase 2는 route 수정. 혼동 금지.
+- 커밋 메시지 한글 OK(git UTF-8). 단 wrangler `--commit-message`는 ASCII([[feedback-windows-deploy]]).

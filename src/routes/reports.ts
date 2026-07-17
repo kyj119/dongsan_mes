@@ -3,6 +3,7 @@ import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
 import { entityFilter } from '../utils/entityFilter'
 import { kstMonth, kstYm, kstYmd } from '../utils/kstDate'
+import { buildOldestUnpaidJoin, agingDaysFromOldest } from './ledger/ar-helpers'
 
 // ── Row types for D1 query results ──
 interface MonthlyRevenueRow { month: string; order_count: number; revenue: number }
@@ -21,7 +22,7 @@ interface MarginByClientRow { client_id: number; client_name: string; order_coun
 interface ARSummaryRow { total_ar: number; ar_client_count: number }
 interface BilledRow { billed: number }
 interface CollectedRow { collected: number }
-interface AgingRow { id: number; client_name: string; balance: number; last_payment_date: string | null; days_since_payment: number }
+interface AgingRow { id: number; client_name: string; balance: number; last_payment_date: string | null; oldest_unpaid_date: string | null }
 interface TopARRow { id: number; client_name: string; balance: number; last_payment_date: string | null; days_overdue: number; collection_count: number; total_paid: number }
 interface MonthlyTrendRow { month: string; revenue: number; payments: number }
 interface PrintSummaryRow { ok_count: number; error_count: number; total_count: number }
@@ -490,20 +491,22 @@ reportsRouter.get('/receivables-analysis', async (c) => {
     }
 
     // 2) Aging Buckets (미수금 연령 분석) - 파생 잔액 기준
-    // 최근 입금일 기준으로 연령 판단 (arJoins=1:1 사전집계라 fan-out 없음 → 상관 서브쿼리로 최근입금)
+    // 미수금 일원화(2026-07-17): 연령 기준 = 채권 나이(최고령 미결제 청구건 oldest_unpaid_date). ledger/bank 와 동일 SSOT.
+    //   (기존 '최근 입금일 경과' payment recency 폐기 → 같은 거래처가 3개 화면에서 다른 연령으로 표시되던 불일치 제거)
+    const oupAging = buildOldestUnpaidJoin(c, { entityScoped: true }) // reports balance 스코프(법인)와 일치
     const { results: agingData } = await c.env.DB.prepare(`
       SELECT
         c.id, c.client_name, ${arBalExpr} AS balance,
         (SELECT MAX(p.payment_date) FROM payments p WHERE p.client_id = c.id) as last_payment_date,
-        julianday('now') - julianday(COALESCE((SELECT MAX(p.payment_date) FROM payments p WHERE p.client_id = c.id), c.created_at)) as days_since_payment
-      FROM clients c${arJoins}
+        oup.oldest_unpaid_date as oldest_unpaid_date
+      FROM clients c${arJoins}${oupAging.sql}
       WHERE c.is_active = 1 AND ${arBalExpr} > 0
-    `).bind(...arParams).all<AgingRow>()
+    `).bind(...arParams, ...oupAging.params).all<AgingRow>()
 
     const buckets = { current: 0, days30: 0, days60: 0, days90: 0 }
     const bucketCounts = { current: 0, days30: 0, days60: 0, days90: 0 }
     for (const row of agingData) {
-      const days = row.days_since_payment || 0
+      const days = agingDaysFromOldest(row.oldest_unpaid_date) ?? 0
       const bal = Number(row.balance) || 0
       if (days <= 30) { buckets.current += bal; bucketCounts.current++ }
       else if (days <= 60) { buckets.days30 += bal; bucketCounts.days30++ }
@@ -517,19 +520,21 @@ reportsRouter.get('/receivables-analysis', async (c) => {
       { label: '90일+', amount: buckets.days90, count: bucketCounts.days90 },
     ]
 
-    // 3) 미수금 TOP 15 거래처 (파생 잔액 기준)
-    const { results: topAR } = await c.env.DB.prepare(`
+    // 3) 미수금 TOP 15 거래처 (파생 잔액 기준) — days_overdue = 채권 나이(oldest_unpaid_date, 위 aging 과 동일 SSOT)
+    const oupTop = buildOldestUnpaidJoin(c, { entityScoped: true })
+    const { results: topARraw } = await c.env.DB.prepare(`
       SELECT
         c.id, c.client_name, ${arBalExpr} AS balance,
         (SELECT MAX(p.payment_date) FROM payments p WHERE p.client_id = c.id) as last_payment_date,
-        CAST(julianday('now') - julianday(COALESCE((SELECT MAX(p.payment_date) FROM payments p WHERE p.client_id = c.id), c.created_at)) AS INTEGER) as days_overdue,
+        oup.oldest_unpaid_date as oldest_unpaid_date,
         (SELECT COUNT(*) FROM collection_logs cl WHERE cl.client_id = c.id) as collection_count,
         (SELECT COALESCE(SUM(p.amount), 0) FROM payments p WHERE p.client_id = c.id) as total_paid
-      FROM clients c${arJoins}
+      FROM clients c${arJoins}${oupTop.sql}
       WHERE c.is_active = 1 AND ${arBalExpr} > 0
       ORDER BY balance DESC
       LIMIT 15
-    `).bind(...arParams).all()
+    `).bind(...arParams, ...oupTop.params).all<{ oldest_unpaid_date: string | null }>()
+    const topAR = topARraw.map(r => ({ ...r, days_overdue: agingDaysFromOldest(r.oldest_unpaid_date) }))
 
     // 4) 월별 수금 추이
     const efOrders = entityFilter(c)
