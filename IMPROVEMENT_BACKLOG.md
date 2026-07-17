@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 5 -->
-<!-- last_run_at: 2026-07-17T21:21:00+09:00 -->
+<!-- last_run_area: 6 -->
+<!-- last_run_at: 2026-07-17T22:10:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,14 +8,25 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | **22** — 직전 21건(#473,504,509,519,520,521,522,524,525,526,527,528,529,530,531,532,533,534,535,536,537) + 본 Area5 신규 1건(#539, S, bug/security, workbench.ts POST /intakes의 consumed_intake_ids 일괄흡수 UPDATE에 entity_id 격리 누락 — 형제-비대칭 IDOR). #538(XSS)은 자동수정 커밋에 `closes #538` 포함되어 즉시 auto-closed(done으로 집계). 실측(`search_issues(state:open,label:auto-improve)`=22) 정합. |
+| 🆕 new | **23** — 직전 22건(#473,504,509,519,520,521,522,524,525,526,527,528,529,530,531,532,533,534,535,536,537,539) + 본 Area6 신규 1건(#540, M, improvement, `scripts/entity-audit.mjs` CI 게이트 커버리지 8/111테이블 축소 + write경로 미검사 — issue-only, 자동확장은 오탐폭주 위험). 실측(`search_issues(state:open,label:auto-improve)`=23) 정합. |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 |
-| ✔️ done | **446** (+1, #538 자동수정 후 커밋 메시지로 auto-close). |
+| ✔️ done | **446** (변동 없음, owner close 0) |
 | ❌ rejected | 3 (`reason:not_planned`=1 + `reason:duplicate`=2, 변동 없음) |
 
 > 📦 **과거 사이클 로그**는 `IMPROVEMENT_BACKLOG_ARCHIVE.md`/git 히스토리로 이관됨 (2026-06-10 1차 분리, 2026-06-25 2차 트림 343KB→192KB, 2026-06-25T10:00 3차 트림, 2026-07-03T06:00 4차 트림 288KB→86KB, **2026-07-07T13:00 5차 트림 — 07-01~07-05 사이클 로그를 git 히스토리로 이관: 238KB→78KB, 256KB Read 한도 재확보**). 신규 로그는 계속 이 파일 상단에 추가. 본 파일은 직전 2일치(07-06~) 사이클 로그 + 영구 참조 섹션(Approved/New/Auto-fixed/Done/Rejected/FP 카탈로그)만 유지. 이관분은 `git log -p -- IMPROVEMENT_BACKLOG.md`로 복원 가능.
 
+> **Area 6 자기 진화 (2026-07-17T22:10):**
+> - **방법**: `git fetch origin main`(HEAD `c62577d` = origin/main 일치, 워킹트리 clean, detached) 후 `npm ci`(node_modules 0→81). Area 6 **44회차** — 직전 Area6(`b52245d`, 07-16T22:30, 43회차) 이후 28커밋(부문손익 P1~P5·items 하드삭제·management-report 신설·ia-designer-loop P0~판짜기·bank link-first·AR aging SSOT·cashflow 허브 통합 등)은 이미 Area1~5(44~38회차)가 각자 렌즈로 전수 감사 완료(신규 이슈 #520~#539 다수 생성, 자동수정 다수 커밋). 이번 Area6 HEAD 자체가 직전 Area5(38회차)의 커밋이라 **churn 잔여 0** — "open≠unfixed"·"closed≠fixed" 재검증과 **auto-improve 자신이 의존하는 프로젝트 도구(CI 스크립트/SKILL 문서)의 자기감사**로 사이클 방향 전환.
+> - **🔍 open≠unfixed / closed≠fixed 재확인**: `git log --oneline --all | grep -iE "#(473|504|509|...|539)"`로 22개 open 이슈 전수 대조 — 이번 churn 구간에 언급된 건 전부 자기 자신이 만든 커밋뿐(#538 auto-fix, #524/#525/#527 발견)이라 **병렬 worktree 세션의 "fixed-in-tree인데 OPEN 유지" 사례 0건**(직전 32회차 #479~#481급 재발 없음). close-pending 캐시 대상이던 #479~#483은 전부 이미 owner closed 확인(`issue_read` #483 = closed/completed) — 캐시 staleness 통지 불요.
+> - **🧬 SKILL 강화 — entity-audit 도구 자체의 위험한 오판 규칙 발견 및 정정(신규 패턴, 자기감사)**: `.claude/skills/entity-audit/SKILL.md`(검사방법 §3-1)와 실제 CI 게이트 `scripts/entity-audit.mjs`가 **"ID로 단건 조회(WHERE id = ?)는 예외로 허용"을 write 핸들러에도 무차별 적용**하는 규칙을 갖고 있었음을 발견 — 이는 정확히 이 프로젝트 auto-improve가 40+회차에 걸쳐 가장 많이 발견한 확정 버그 클래스(형제-비대칭 IDOR: 목록은 entityFilter 적용·단건 write만 bare `WHERE id=?`, #349·#356·#437·#452·#455·#473·#481·#521·#527·#529·#539 등 수십 건)와 **정반대 방향의 가이드**였습니다. 이 스킬 문서가 "예외"라고 명시해온 것이, auto-improve가 매 사이클 별도 이슈로 새로 찾아내야 했던 바로 그 패턴입니다.
+>   - **실측 검증**: `entity-audit.mjs`의 `ENTITY_TABLES`(8개, bank/card군)를 `migrations/*.sql` 전수 grep 기준 실제 entity_id 보유 테이블(111개)로 확장해 로컬 실행 → SELECT 검사대상 8→909건, 위반후보 3→**349건**으로 폭증. 표본검토 결과 대부분 개별 파일 맥락 판단(전역 집계·부모JOIN 격리·ADMIN전용) 없이는 진위 구분 불가 — **기계적 테이블목록 확장은 CI 하드게이트를 상시-빨간불로 만들어 무력화(양치기 소년)시킬 위험**이 있어 **스크립트 로직/목록은 원복**하고 문서로만 대응(안전 우선).
+>   - **조치(완료, 문서 전용 — 코드 로직 변경 아님)**: ① `scripts/entity-audit.mjs` 상단 주석에 8/111 커버리지 갭 + SELECT-only 사각(write 경로 미검사) + "id=? 예외를 write에 오적용 금지" 명시(로직·통과조건 무변경, `node scripts/entity-audit.mjs` 재실행으로 기존과 동일 결과[검사 8·통과 5·위반 3] 확인). ② `.claude/skills/entity-audit/SKILL.md` — 정적 8테이블 목록을 "매 실행 시 grep으로 ground-truth 도출" 방식으로 교체 + "id=? 예외"를 SELECT 목록조회 한정으로 재정의하고 write 핸들러 형제-비대칭 규칙을 명시(확정사례 번호 나열). ③ `.claude/skills/review-checklist/SKILL.md` §10에 형제-비대칭 IDOR 체크 항목 신규 추가 — 커밋 전 리뷰 단계에서도 동일 클래스 포착되도록.
+>   - **신규 이슈 1건(issue-only) — #540 (M, improvement)**: 위 실측 결과(8/111 커버리지, 349건 후보, SELECT-only 사각) 자체를 이슈화 — CI 게이트를 안전하게 강화하려면 (1)다회차 큐레이션 (2)write-path 전용 별도 스캐너 신설 (3)현행유지 중 owner 정책 결정 필요, 자동수정 범위 밖(스키마/로직 변경 아니지만 CI 게이트 강도 자체가 owner 판단 사안).
+> - **🟢 backlog↔GitHub 절대값 재동기화**: `search_issues(is:closed reason:completed)`=**446**(변동 없음) · `not_planned`=1+`duplicate`=2 → rejected **3**(변동 없음) · `search_issues(state:open,label:auto-improve)` 실측 **23건**(직전 22 + 본 Area6 신규 #540).
+> - **함의**: 이번 사이클은 "신선 churn 없음"이 오히려 **auto-improve 자신의 도구 체인을 감사하는 기회**가 됐고, 그 결과 프로젝트의 실제 CI 안전망(`entity-audit.mjs`)이 auto-improve가 스스로 정립한 최고-가치 탐지 규칙(형제-비대칭 IDOR)과 반대로 설계돼 있었다는, 단순 코드 churn 감사로는 못 찾는 유형의 발견. Area 6 "자기 진화"의 본래 취지(스킬/도구 자체 개선)에 가장 부합하는 사이클.
+> - 신규 이슈 1건(#540, issue-only), 자동수정 0건(코드 로직은 안전상 원복, SKILL/주석 문서 수정만), 문서 동기화 2건(entity-audit·review-checklist SKILL.md), done-sync 변동 없음(new 22→23·done 446·rejected 3 정합 재확인). 다음 순번 Area 1.
+>
 > **Area 5 보안 (2026-07-17T21:21):**
 > - **방법**: `git fetch origin main`(HEAD `c9e4abc` = origin/main 일치, 워킹트리 clean, detached) 후 `npm ci`(node_modules 0→81). Area 5 **38회차** — 직전 Area5(`b3c5c5d`, 07-16T09:10, 37회차) 이후 churn 40+커밋(bank link-first 원장연동·AR aging SSOT·현금흐름 허브 통합·items 하드삭제·ia-designer-loop P0(가공 대기함)·MES판짜기 임포지션·management-report 신설·탭통합 리팩터 3건·Sunmyung 수기임포트 다수) — 대부분 Area1~4·6이 각자 렌즈로 이미 심층 감사 완료(#528~#537, #530~#533 등). 순수 미검증분 = `git diff --stat b3c5c5d..HEAD -- src/routes migrations`(13파일, workbench.ts+273·bank.ts+518 신규) + `src/scripts`(13파일, iaEditor.js+128·orderForm/intake.js 신규196줄·bank.js+153) 중 IDOR/XSS/authMiddleware/시크릿/CSV/rate-limit 렌즈로 재확인 안 된 부분. general-purpose 에이전트 2개 병렬(신규 프론트 XSS sink 스캔 / 전체코드베이스 standing scan 5종 — authMiddleware 재귀·시크릿폴백·IDOR 형제비대칭 신규테이블·CSV인젝션·rate-limit) 실행 후, 오케스트레이터가 `src/routes/workbench.ts`·`src/scripts/iaEditor.js`·`src/scripts/orderForm/intake.js`·`src/scripts/layout/shell.js`(escapeHtml 구현) 직접 Read로 양쪽 발견 전부 재검증.
 > - **🔴 자동수정 완료 — #538 (S, security, XSS)**: `iaEditor.js:373`·`orderForm/intake.js:62`(신규 가공 대기물 패널/피커)가 `designer_intakes.thumbnail`(=`workbench.ts:1196` `POST /intakes`의 `body.thumb_base64`, **서버 형식검증 0**)를 escape 없이 `<img src="' + ... + '">`에 직접 삽입 — 같은 파일의 `client_name`/`fin`/`created_at`은 전부 `iaeEscape`/`escapeHtml`로 감쌌는데 이 속성 삽입만 누락(A-024/A-025급 부분-escape 재현). `workbenchRouter`가 `authMiddleware+requireRole('ADMIN','MANAGER','DESIGNER')`(최저권한 DESIGNER 포함)로만 게이트되어, DESIGNER 역할 계정이 `thumb_base64`에 `x" onerror="..."` 페이로드를 보내면 이 패널을 여는 다른 사용자(ADMIN 포함) 세션에서 임의 JS 실행 — 저권한→고권한 저장형 XSS. 단순 모달/리스트 렌더(복합 문서 렌더러 아님)라 SKILL 자동수정 기준 충족 — 두 sink 모두 파일 기존 컨벤션(`iaeEscape`/`escapeHtml`)으로 래핑, `npm run verify`(typecheck+build) 통과 확인 후 커밋(`cced2ce`, `closes #538`로 자동 close됨).

@@ -10,24 +10,24 @@ routes/*.ts 파일의 SELECT 쿼리에서 entity_id가 있는 테이블을 사�
 TRIGGERS: routes 파일 수정 후, 배포 전, "entity 감사", "entity audit", "필터 검사"
 
 ## entity_id가 있는 테이블 목록
-- bank_transactions
-- bank_accounts
-- bank_match_rules
-- card_fee_rates
-- corporate_cards
-- card_transactions
-- expense_categories
-- expense_auto_rules
+
+**⚠️ 하드코딩 목록 금지(2026-07-17 codify)**: 과거 이 섹션은 8개 테이블(bank/card군)만 나열했으나 실제로는 `migrations/*.sql` 전체에 `entity_id` 컬럼을 보유한 테이블이 **110개 이상**이며 매 사이클 신규 기능마다 계속 늘어난다. 정적 목록은 작성 시점에 이미 낡으므로, 검사 직전 매번 아래로 ground-truth를 도출할 것:
+```bash
+grep -rhoE "ALTER TABLE (\w+) ADD COLUMN entity_id" migrations/*.sql | awk '{print $3}' | sort -u
+# + CREATE TABLE 본문에 entity_id를 포함하는 테이블(신규 테이블은 ALTER가 아니라 CREATE에 처음부터 포함되는 경우가 많음)도 별도 확인 필요
+```
+(`scripts/entity-audit.mjs`의 `ENTITY_TABLES` 하드코딩 8개도 동일하게 낡아 있음 — 그 스크립트는 **bank/card 격리 핵심군 전용으로 의도적으로 좁게 유지된 CI 게이트**이지 전체 entity_id 테이블 커버리지가 아니다. 실측(2026-07-17): 8→111개로 확장 시 SELECT 위반 후보가 8→349건으로 폭증하며 대부분 개별 파일 맥락 판단이 필요한 후보(전역 대시보드 집계·부모 JOIN으로 이미 격리·ADMIN 전용 등)라 기계적 일괄 적용은 오탐 폭주로 게이트 무력화(양치기 소년) 위험. 테이블 목록 확장은 **후보 발견용 1회성 스캔**으로만 쓰고, CI 하드게이트 자체를 건드릴 땐 후보를 개별 큐레이션 후 반영할 것.)
 
 ## 검사 방법
 
-1. `src/routes/*.ts` 파일에서 위 테이블을 참조하는 SELECT 쿼리를 모두 찾는다
+1. `src/routes/*.ts` 파일에서 위 방법으로 도출한 entity_id 테이블을 참조하는 쿼리를 모두 찾는다 — **SELECT뿐 아니라 UPDATE/DELETE/단건 write 핸들러(PUT·PATCH·DELETE `/:id`)도 반드시 포함**(아래 4번 참조).
 2. 각 쿼리 주변에 `entityFilter` 호출이 있는지 확인한다
-3. 다음은 예외로 허용한다:
-   - ID로 단건 조회하는 경우 (WHERE id = ?)
-   - INSERT/UPDATE/DELETE 문의 서브쿼리
+3. 다음은 예외로 허용한다(SELECT 목록/집계 조회에 한함 — 4번의 write 핸들러에는 적용 금지):
+   - 서브쿼리 안에서 이미 상위 쿼리가 entityFilter로 격리된 경우
+   - INSERT 문의 값 산출용 서브쿼리(격리는 INSERT 대상 자체의 entity_id 컬럼으로 보장)
    - 이미 entity_id가 JOIN 조건에 포함된 경우
    - **orphan 라우터** — 격리 갭을 보안 이슈로 보고하기 전, 해당 라우터가 프론트에서 호출되는지 `grep -rn "api/<path>" src/scripts src/pages`로 도달성 확인. 호출처 0건이면 dead code(보안 무관)로 분류. index.tsx의 `app.route()` 마운트만으로 "사용 중" 단정 금지 (#334 order_templates)
+4. **🔴 "ID로 단건 조회(WHERE id = ?)는 예외" — SELECT 목록조회에만 적용, write 핸들러(PUT/PATCH/DELETE `/:id`, approve/cancel/submit 액션)에는 절대 적용 금지.** 같은 파일의 목록(list) 핸들러가 `entityFilter`를 쓰는데 단건 write 핸들러만 bare `WHERE id = ?`이면 그 자체가 **격리 누락 IDOR 버그**(형제-비대칭 클래스) — "단건 조회니까 예외"로 넘기면 안 됨. 이 프로젝트에서 이 정확한 패턴으로 확정된 사례가 #349·#356·#368·#418·#437·#444·#447·#451·#452·#455·#473·#481·#521·#527·#529·#539 등 수십 건 누적됐다. 판별: 같은 파일에 entityFilter를 쓰는 목록/생성 핸들러가 있는지 확인 → 있는데 write `/:id`만 없으면 confirmed(단, 도달성 0건이면 dead code, ADMIN 전용으로 교차법인이 설계 의도인 파일 전역 컨벤션이면 FP — 상세 판별 기준은 `security-audit/SKILL.md`의 "IDOR 비대칭 탐지 규칙" 참조).
 
 ## 검사 실행 — ⚡ Explore 병렬 fan-out (필수)
 
