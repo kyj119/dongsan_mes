@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 3 -->
-<!-- last_run_at: 2026-07-17T00:35:00+09:00 -->
+<!-- last_run_area: 4 -->
+<!-- last_run_at: 2026-07-17T02:10:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,13 +8,25 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | **17** — #473(reopened, 거래처 포털계정 entity IDOR, owner 보류 지시 유지 — 재보고/재수정 시도 안 함), #504(S, 회사인쇄정보 로드실패 무음 — CSV가드 부분은 자동수정으로 해소, 로드실패 toast 항목만 open 잔존), #509(S~M, 급여 중도입퇴사 일할계산 근거 화면 미표시), #519(S, 계좌이체 전체확정 버튼 double-submit 미방지), #520(S, IA 크래시-하드닝 재큐 완료-콜백 세대가드 부재 → zombie write lost-update), #521(S, security, 부문관리 employees entity격리 — PATCH write 경로 미픽스), #522(S, improvement, hr.ts 직원등록/수정이 department_id 존재·활성 검증 없음), #524(S, improvement, 주문목록 기본 날짜필터가 검색을 무음 차단), #525(S~S-M, bug, 부문손익 P5 배부 — serves_department_id 미검증+totalWeight=0 시 공통비 무음소실→totals 불일치), #526(S/M, improvement, 부문손익 자재비 — created_at UTC미보정(KST)+이동평균단가 비재현성), #527(S, security/bug, `PATCH /api/orders/bulk-bill` entityFilter 누락 — 타법인 주문 cross-tenant BILLED 처리 가능, 형제 bulk-ship은 이미 픽스됨), #528(M, bug, bank.ts 출금→매입지급 적용 버튼 double-submit 무방지 — 이중지급/이중잔액차감), #529(S, security/bug, bank.ts link_payment_id 명시연결 경로 entity_id 격리 누락), #530(M, bug, items.ts 하드삭제 FK 참조검사 3테이블만 커버 — inventory_transactions 등 다수 누락으로 500+부분삭제), #531(S, improvement, workbench.ts POST /intakes가 `getEntityId(c)||1` 전체모드 오귀속 안티패턴 재사용), #532(신규, S, improvement, 품목 하드삭제/복구 버튼이 MANAGER에게도 노출 — 위협적 확인창 통과 후 403), #533(신규, S, improvement, 가공 대기물 absorb 실패 무음 — waiting 잔존으로 중복흡수 위험). 실측(`search_issues(state:open,label:auto-improve)`=15 확인 후 본 Area3 신규 2건 추가) 정합. |
+| 🆕 new | **21** — 직전 17건(#473,504,509,519,520,521,522,524,525,526,527,528,529,530,531,532,533) + 본 Area4 신규 4건: #534(S, bug, workbench.ts designer_intakes absorb UPDATE에 status='waiting' 가드 부재 — 동시흡수 TOCTOU로 order_item_id 소실), #535(S, bug, bank.ts LINKED 연결 경로 UNIQUE제약/재검증 부재 — 동시요청 시 같은 원장이 두 은행거래에 중복연결), #536(M, bug, dashboard.ts만 AR aging SSOT(ar-helpers) 미전환 — 구 방식(직접 billed_amount+UTC julianday) 잔존, reports/bank와 수치 불일치), #537(S, bug, financialReports.ts balance-snapshot만 LATEST_BALANCE_SUBQUERY 미사용 — NULL balance_after 필터 누락으로 현금 과소평가 위험). 실측(`search_issues(state:open,label:auto-improve)`=21) 정합. |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 |
-| ✔️ done | **445** ⚠️절대값 재동기화(SKILL Area6 원칙) — GitHub 실측 `search_issues(label:auto-improve is:closed reason:completed)`=445, 변동 없음(owner close 0). |
+| ✔️ done | **445** (변동 없음, owner close 0). |
 | ❌ rejected | 3 (`reason:not_planned`=1 + `reason:duplicate`=2, 변동 없음) |
 
 > 📦 **과거 사이클 로그**는 `IMPROVEMENT_BACKLOG_ARCHIVE.md`/git 히스토리로 이관됨 (2026-06-10 1차 분리, 2026-06-25 2차 트림 343KB→192KB, 2026-06-25T10:00 3차 트림, 2026-07-03T06:00 4차 트림 288KB→86KB, **2026-07-07T13:00 5차 트림 — 07-01~07-05 사이클 로그를 git 히스토리로 이관: 238KB→78KB, 256KB Read 한도 재확보**). 신규 로그는 계속 이 파일 상단에 추가. 본 파일은 직전 2일치(07-06~) 사이클 로그 + 영구 참조 섹션(Approved/New/Auto-fixed/Done/Rejected/FP 카탈로그)만 유지. 이관분은 `git log -p -- IMPROVEMENT_BACKLOG.md`로 복원 가능.
+
+> **Area 4 데이터 정합성 (2026-07-17T02:10):**
+> - **방법**: `git fetch origin main`(HEAD `ea72b8e` = origin/main 일치, 워킹트리 clean, detached, `npm ci` 선행). 직전 Area4(`cadb7d1`) 이후 `migrations`/`src/routes` churn 16커밋 — 신규 마이그 4건(0463 designer_intakes·0464/0465 permission-only·0466 bank_purchase_payment_link) + 대형 신규기능(items 하드삭제, ia-designer-loop intake/absorb, bank link-first ledger apply, AR aging SSOT 통합 8cedfaa, cashflow 소스단일화 12f7cb2). general-purpose 에이전트 2개 병렬(designer_intakes+bank-link 신규테이블 전담 / items하드삭제+AR/cashflow 부분픽스+컬럼브릿지 전담)로 심층 분석 후, 오케스트레이터가 5개 후보 전부 `src/routes/workbench.ts`·`src/routes/bank.ts`·`src/routes/dashboard.ts`·`src/routes/financialReports.ts`·`src/utils/bankBalance.ts` 직접 Read로 재검증 + 기존 open 이슈(#529,#530,#531,#533) 대조로 중복 배제.
+> - **🆕 net-new 이슈 4건(issue-only) — #534~#537**: 전부 write-path 레이스 또는 재무집계 로직 변경이라 자동수정 정책상 제외.
+>   - **#534(S)**: `workbench.ts:1342-1344` designer_intakes absorb UPDATE가 `WHERE id=?`만 걸고 `AND status='waiting'` 가드가 없음(같은 파일 일괄흡수 경로는 이 가드 보유) — check-then-act TOCTOU로 동시 흡수 시 나중 요청이 `order_item_id`를 덮어써 첫 주문의 흡수이력 소실.
+>   - **#535(S)**: `bank.ts:1394-1416` LINKED 연결 경로가 "이미 연결됐는지" SELECT 확인 후 재검증 없이 UPDATE — `matched_purchase_payment_id`/`matched_payment_id`에 UNIQUE 제약도 없어(마이그 grep 확인) 동시 요청 시 같은 원장이 두 은행거래에 중복 연결 가능.
+>   - **#536(M)**: `8cedfaa` AR aging SSOT 통합(`ar-helpers.ts` buildOldestUnpaidJoin/agingDaysFromOldest)이 `reports.ts`·`bank.ts`는 전환했으나 `dashboard.ts:378-394`만 구 방식(주문별 billed_amount+휴리스틱 NOT EXISTS 판정+UTC raw julianday) 잔존 — #377/#441 부분픽스 패턴. 대시보드 aging 버킷이 /reports·/bank와 다르게 표시.
+>   - **#537(S)**: `12f7cb2` 현금잔액 단일화(`bankBalance.ts` LATEST_BALANCE_SUBQUERY, `balance_after IS NOT NULL` 필터)를 `financialReports.ts:269-281` balance-snapshot만 미적용(인라인 서브쿼리가 필터 없이 최신 행 채택) — 최신 거래의 balance_after가 NULL(바로빌/Codef 동기화 시 가능, `bank.ts:548` 확인)이면 해당 계좌 현금이 0으로 집계되어 재무상태표 과소평가.
+> - **🟢 Clean 확인**: designer_intakes INSERT 컬럼/CHECK 리터럴(mode/status) 일치, unapply NULL→CREATED 간주 로직 정상, CREATED unapply `db.batch()` 원자적, LINKED 대상 삭제 시 `matched_purchase_payment_id` NULL 정리 대칭 확인. 0463/0466 신규 컬럼 코드 사용처 전수 일치. items 하드삭제 orphan(#530 기보고와 동일 메커니즘, 재보고 없음).
+> - **🟢 backlog↔GitHub sync**: `search_issues(label:auto-improve,state:open)` 실측 **21건**(직전 17 + 본 사이클 신규 4) 정합. done(445)·rejected(3) 변동 없음(owner close 0).
+> - **🧬 SKILL 강화 없음(신규 패턴 아님)** — #534/#535는 기존 "TOCTOU atomicity" 판정기준(SKILL Area2 #369, 확정 재현 트리거+회피가능성 2조건 충족)의 재현, #536/#537은 기존 "SSOT 통합 부분픽스"(#377/#441) 클래스의 재현. 자동수정 0건(전부 write-path 레이스/재무로직 변경으로 정책상 issue-only).
+> - 신규 이슈 4건(전부 issue-only), 자동수정 0건, done-sync 변동 없음(new 17→21·done 445·rejected 3 정합 재확인). 다음 순번 Area 5.
 
 > **Area 3 UX/기능 감사 (2026-07-17T00:35):**
 > - **방법**: `git fetch origin main`(HEAD `c536e8b` = origin/main 일치, 워킹트리 clean, detached). Area 3 **38회차** — 직전 Area3(`e602240`, 07-15T09:00, 37회차) 이후 `src/scripts`/`src/pages` churn **14커밋**: 사이드바 중복 제거 리팩터 3건(`858a647` 출고대시보드→'준비상태' 탭 흡수·`eb7cf03` 창고별재고→'창고별' 탭 흡수·`67f7e55` 생산실적/용량분석 탭 제거) + 대형 신규기능 5건(`447d66c` /management-report 신설·`9664730` items 하드삭제/소프트비활성화 분리·`15f93e5`+`75fea1c`+`34b74d1`+`af533ba` ia-designer-loop P0 가공대기함·`9077b86` bank link-first ledger apply·`ef328be` cashSchedule 자금허브 통합). general-purpose 에이전트 2개 병렬(탭통합 리팩터 전담/신규기능 전담)로 표준 7종 체크(dead-link·axios↔라우트 존재성·HTML↔JS silent-fail·탭배선·라우트잔존·기능손실·빈상태) + 역할별 도달성 적용, 오케스트레이터가 상위 2건을 `src/routes/items.ts`·`src/scripts/items/tabs.js`·`src/routes/workbench.ts`·`src/scripts/orderForm/intake.js` 직접 Read로 재검증.
