@@ -80,7 +80,9 @@ export const MENU_ITEMS: MenuGroup[] = [
       { path: '/production', icon: 'fa-industry', label: '생산 현황', roles: ['ADMIN', 'MANAGER', 'DESIGNER', 'OPERATOR'] },
       { path: '/equipment', icon: 'fa-server', label: '장비 관리', roles: ['ADMIN', 'MANAGER', 'DESIGNER'] },
       { path: '/maintenance', icon: 'fa-wrench', label: '정비 관리', roles: ['ADMIN', 'MANAGER'] },
-      { path: '/production-reports', icon: 'fa-chart-bar', label: '생산 분석', roles: ['ADMIN', 'MANAGER'] },
+      // /production-reports 사이드바 은퇴 (생산 2축 통합, 2026-07-17): /production '생산 분석' 탭으로 흡수(ADMIN/MANAGER·lazy).
+      // 페이지·라우트·API 보존(직접 URL·/cost-analysis 리다이렉트). 되살릴 경우 이 줄 복원.
+      // { path: '/production-reports', icon: 'fa-chart-bar', label: '생산 분석', roles: ['ADMIN', 'MANAGER'] },
       // #318: GET /api/forecast/material-consumption 백엔드 미구현(빈 화면). productionReports /consumption은
       // yd 환산·status·trend 미제공으로 비호환 → 구현 전까지 네비 숨김. 구현 시 이 줄 복원.
       // { path: '/material-forecast', icon: 'fa-chart-line', label: '원단 소모 예측', roles: ['ADMIN', 'MANAGER'] },

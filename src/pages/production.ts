@@ -2,12 +2,43 @@ import type { Context } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { renderPage } from '../layout'
 import pageScript from '../scripts/production.js?raw'
+import { productionReportsContent, productionReportsScript } from './productionReports'
 
 export function productionPage(c: Context<HonoEnv>) {
+  // 생산 2축 통합(2026-07-17): [생산 현황](기본·전원) + [생산 분석](productionReports 흡수·ADMIN/MANAGER·lazy) 토글.
+  //   /production-reports 사이드바 은퇴(라우트·API·페이지 보존). 분석 첫 진입까지 스크립트 자동실행 지연(__prodAnaDefer).
+  const hubScript = `
+    (function() {
+      var __hubRole=''; try{ __hubRole=(JSON.parse(localStorage.getItem('user')||'{}').role)||''; }catch(e){}
+      var __canAna = (__hubRole==='ADMIN' || __hubRole==='MANAGER'); // 원가 API=서버 requireRole ADMIN/MANAGER → 비관리자 분석 숨김
+      var __ab=document.getElementById('prodHubTabAnalysis');
+      if(__ab && !__canAna) __ab.style.display='none';
+      function __act(btn,on){ if(!btn)return; if(on){btn.classList.remove('border-transparent','text-gray-500');btn.classList.add('border-blue-600','text-blue-600');}else{btn.classList.remove('border-blue-600','text-blue-600');btn.classList.add('border-transparent','text-gray-500');} }
+      window.switchProdMode=function(mode){
+        if(mode==='analysis' && !__canAna){ return; } // 방어: 비관리자 분석 진입 차단
+        var cur=document.getElementById('prodHubCurrent'), ana=document.getElementById('prodHubAnalysis');
+        if(cur) cur.classList.toggle('hidden', mode!=='current');
+        if(ana) ana.classList.toggle('hidden', mode!=='analysis');
+        __act(document.getElementById('prodHubTabCurrent'), mode==='current');
+        __act(document.getElementById('prodHubTabAnalysis'), mode==='analysis');
+        if(mode==='analysis' && typeof window.__prodAnaInit==='function') window.__prodAnaInit(); // lazy·멱등(daily-summary)
+      };
+    })();
+  `;
   return renderPage(c, {
     title: '생산 현황',
     activePage: '/production',
     pageContent: `
+      <!-- ══ 생산 허브 최상위 토글 (생산 2축 통합): 생산 현황 | 생산 분석(ADMIN/MANAGER·lazy) ══ -->
+      <div class="flex gap-1 mb-4 border-b-2 border-gray-200">
+        <button id="prodHubTabCurrent" onclick="switchProdMode('current')" class="px-5 py-2.5 text-sm font-semibold border-b-2 border-blue-600 text-blue-600 flex items-center gap-2">
+          <i class="fas fa-industry"></i>생산 현황
+        </button>
+        <button id="prodHubTabAnalysis" onclick="switchProdMode('analysis')" class="px-5 py-2.5 text-sm font-semibold border-b-2 border-transparent text-gray-500 hover:text-gray-700 flex items-center gap-2">
+          <i class="fas fa-chart-bar"></i>생산 분석
+        </button>
+      </div>
+      <div id="prodHubCurrent">
       <!-- ── 탭 네비게이션 ── -->
       <div class="flex gap-1 mb-4 border-b border-gray-200">
         <button id="tabBtnStatus" onclick="switchProdTab('status')"
@@ -393,7 +424,12 @@ export function productionPage(c: Context<HonoEnv>) {
 
         </div>
       </div><!-- /tabWork -->
+      </div><!-- /prodHubCurrent -->
+
+      <!-- ══ 생산 분석 모드 (productionReports 단일소스 이식, ADMIN/MANAGER·lazy) ══ -->
+      <div id="prodHubAnalysis" class="hidden">${productionReportsContent}</div>
     `,
-    pageScript
+    // 순서: 프리앰블(__prodAnaDefer=true)로 분석 스크립트 자동실행 차단 → production(현황·즉시) → productionReports(분석) → 허브토글
+    pageScript: 'window.__prodAnaDefer = true;\n;\n' + pageScript + '\n;\n' + productionReportsScript + '\n;\n' + hubScript
   })
 }

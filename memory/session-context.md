@@ -1,34 +1,36 @@
-# 세션 핸드오프 — 손익 허브 통합 (사이드바 Level 2, 2026-07-17)
+# 세션 핸드오프 — 생산 2축 허브 통합 (사이드바 Level 2 마지막, 2026-07-17)
 
 > 세션별 덮어쓰기 파일. 상세 정본 = [[project-sidebar-consolidation]] (auto-memory).
-> 직전 세션(IA 디자이너 루프 P0) 내용은 [[project-ia-designer-loop]] auto-memory + spec `2026-07-16-ia-designer-session-loop.md`에 반영 완료.
+> 직전 작업(손익 허브 통합)은 prod 배포완료(main `8ce8919c`), [[project-sidebar-consolidation]]·PROJECT_STATUS.md 반영.
 
-## 이번 세션 상태 — ✅ prod 배포완료 (main `8ce8919c`·deploy `c26f6d61`)
-손익 허브 = /financial-reports + /reports 통합. 2단계, 파일 겹침 0. 커밋 `03ff2f60`(P1)+`8cedfaa2`(P2).
-배포 시 origin/main 앞서있어(타 세션 `9077b869` bank AP-link+마이그 0466) **superset 병합**(bank.ts auto-merge 무충돌·verify green) 후 `--branch main`. 0466은 prod 기적용 확인(has_col=2). apex 검증=root 302·3 AR API 401·/financial-reports 200.
+## 이번 세션 상태 — 완료·검증·커밋, ⚠️ 프로덕션 배포 대기
+생산 현황(/production) + 생산 분석(/production-reports) 통합. 자금허브/손익허브와 동일 패턴.
 
-### Phase 1 — 손익허브 UI 통합 (완료)
-- /financial-reports(실시간 P&L: 손익계산서·월별추이·재무스냅샷 3탭)를 /reports '손익계산서' 탭으로 흡수.
-- 단일소스: `pages/financialReports.ts` `export const financialReportsContent` → reports.ts `#anaFinancialContent` 이식(HTML 중복 0).
-- 지연 init: `window.__finDefer=true` 프리앰블 + `window.__finInit`(멱등) 첫 탭진입 호출. 단독 /financial-reports는 flag 없음→즉시 init(회귀 0).
-- ID 충돌 회피: 월별탭 `tabMonthly`/`monthlyPanel`/`monthlyTableBody` → `fin*` 프리픽스(양 페이지 co-load). 전역 격리: financialReports.js를 reports.ts concat 시 IIFE 래핑(bare 전역 fmt/pnlData 등 충돌 방지).
-- menu.ts: /financial-reports 은퇴(라우트·API 보존)·/reports 라벨 '손익·경영 분석'.
+### 구조
+- /production 최상위 토글 `[생산 현황][생산 분석]`. 현황=production(전원·OPERATOR 포함·즉시 로드), 분석=productionReports 흡수(**ADMIN/MANAGER 게이팅·lazy**).
+- 단일소스: `productionReports.ts` → `export const productionReportsContent`+`export const productionReportsScript`(tabSwitch+prodReports+costAnalysis) → production.ts `#prodHubAnalysis` 이식.
+- `switchProdMode(mode)`(hubScript): 토글+역할게이팅(`localStorage.user.role` ADMIN/MANAGER, 비관리자 토글 숨김+진입차단)+분석 첫진입 `__prodAnaInit` 호출.
+- menu.ts: /production-reports 은퇴(페이지·라우트·API·`/cost-analysis`→`?tab=cost` 리다이렉트 전부 보존).
 
-### Phase 2 — 미수금 aging 일원화 (완료·로컬 실검증)
-- **문제**: 같은 거래처가 3화면에서 다른 연령. ledger=채권나이(oldest_unpaid_date), reports·bank='최근 입금일 경과'(payment recency).
-- **SSOT**: `routes/ledger/ar-helpers.ts`에 `buildOldestUnpaidJoin(c,{entityScoped})`(채권나이 oup 조인, ledger 쿼리 verbatim 복사)+`agingDaysFromOldest()`(KST 자정) 추가. `getAgingCategory`는 기존 공유.
-- **전환**: reports `/receivables-analysis`(agingData·topAR 2쿼리)·bank `/receivables`(SQL+JS) → 채권나이. balance 정의·provision 구조(agingCategoryToBucket→effectiveLossRate)·FE 라벨 전부 호환 보존.
-- **법인 스코프 = 각 현행 유지**(무단 반전 배제): reports=법인(entityScoped:true), bank=전체(false·문서화된 의도적 결정). ADMIN(entityId=0)은 어차피 동일. ← 사용자 부재 중 결정.
-- **로컬 실검증**: LOCAL D1에 결정적 시드 2건(107일 critical/22일 normal)→ ledger.aging_days==reports.days_overdue==bank(oldest_unpaid) 완전일치·mismatch 0·total_ar==total_receivable(30,000)·expected_collection=25,900(provision 재계산 정상). 시드 원복 완료.
+### 충돌 처리 (Explore 정밀맵 기반)
+- **하드충돌 = element ID `kpiOk`·`kpiError` 2개뿐**(양쪽 '오늘 OK/에러' KPI·동일 ID·다른 API). → **분석측만** `prodAnaKpiOk`/`prodAnaKpiError` 리네임(productionReports.ts 1줄 + productionReports.js 2줄). production(허브 베이스·OPERATOR 핵심)은 무변경.
+- **JS 전역 충돌 0**: 개발자가 production=`switchProdTab`/`production*`, reports=`switchProdAnalysisTab`/`oee*`로 이미 네임스페이스 분리 → ?raw concat 단일스코프에서도 안전. **IIFE 불요**(손익허브보다 단순).
+
+### 지연 init 2종
+- `__prodAnaInit`(daily-summary): 단독=즉시(`!__prodAnaDefer`), 허브=분석 첫진입.
+- `__costInit`(원가): **항상 lazy**(원가 탭 진입 시). ⚠️**근본이유**=costAnalysis.js가 파싱시점 `loadAnalysis()` auto-run → 허브에서 OPERATOR도 `/api/costs`(requireRole ADMIN/MANAGER) 403. 지연으로 방지.
+- production.js는 무변경(현황=기본, 즉시 실행 유지).
 
 ## 검증 (완료)
-- `npm run verify` green (typecheck+build). `days_since_payment` 잔여 참조 0.
+- `npm run verify` green.
+- **로컬 Playwright 실측(ADMIN)**: ID 각1개(충돌해소)·기본 현황/분석 hidden·지연 init_done=false(403 미발생)·분석진입 daily-summary 발동·원가 lazy(탭 진입 시만)·OEE·모드왕복·production 서브탭(현황/스케줄/작업실적)·단독 /production-reports 회귀0·콘솔 0 실에러.
 
 ## 다음 단계
-1. (선택) 프로덕션 육안 확인: 로그인 후 /reports '손익계산서' 탭 + 미수금 aging이 채권나이로 표시되는지. **사용자 가시 변화**=미수금 aging 숫자가 입금recency→채권나이로 이동(전 거래처).
-2. (후속·선택) accounting 미수금 탭도 aging 미러 가능 → 동일 `buildOldestUnpaidJoin` 재사용으로 정리.
-3. 사이드바 Level 2 잔여: 생산 2축(production+production-reports) 통합.
+1. **⚠️ 프로덕션 배포 = 사용자 명시 확인 대기** ([[feedback-deploy-needs-explicit-request]]·[[feedback-deploy-wording-gate]]). 마이그레이션 없음(순수 코드).
+2. 배포 시: **origin/main 분기 먼저 확인**(직전에도 타 세션 앞서 있었음) → superset 병합 → `--branch main` → apex 검증(/production 200·/production-reports 200 보존).
+3. 사이드바 Level 2 3대 허브(자금·손익·생산) 전부 완료 → 통합 프로젝트 사실상 종료.
 
 ## 주의사항
-- reports.ts는 **route(`src/routes/reports.ts`)와 page(`src/pages/reports.ts`)가 별개 파일** — Phase 1은 page, Phase 2는 route 수정. 혼동 금지.
-- 커밋 메시지 한글 OK(git UTF-8). 단 wrangler `--commit-message`는 ASCII([[feedback-windows-deploy]]).
+- 리네임 ID는 **productionReports 측만**(prodAnaKpi*). production.ts/js의 kpiOk/kpiError는 그대로(허브 베이스).
+- 분석 스크립트는 허브에서 전원 파싱되지만 init은 게이팅+지연 → 비관리자 API 호출 0.
+- 커밋 메시지 한글 OK(git). wrangler `--commit-message`만 ASCII([[feedback-windows-deploy]]).

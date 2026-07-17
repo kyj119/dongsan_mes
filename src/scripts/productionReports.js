@@ -94,9 +94,9 @@ async function loadDailySummary() {
     // KPI
     var elKpiPrints = document.getElementById('kpiPrints'); if (!elKpiPrints) { console.warn('[productionReports] #kpiPrints not found'); return; }
     elKpiPrints.textContent = d.ok_count;
-    var elKpiOk = document.getElementById('kpiOk'); if (!elKpiOk) { console.warn('[productionReports] #kpiOk not found'); return; }
+    var elKpiOk = document.getElementById('prodAnaKpiOk'); if (!elKpiOk) { console.warn('[productionReports] #prodAnaKpiOk not found'); return; }
     elKpiOk.textContent = d.ok_count;
-    var elKpiError = document.getElementById('kpiError'); if (!elKpiError) { console.warn('[productionReports] #kpiError not found'); return; }
+    var elKpiError = document.getElementById('prodAnaKpiError'); if (!elKpiError) { console.warn('[productionReports] #prodAnaKpiError not found'); return; }
     elKpiError.textContent = d.error_count + d.cancel_count;
     var elKpiSqm = document.getElementById('kpiSqm'); if (!elKpiSqm) { console.warn('[productionReports] #kpiSqm not found'); return; }
     elKpiSqm.textContent = (d.total_sqm || 0).toLocaleString(undefined, {maximumFractionDigits:1});
@@ -745,10 +745,17 @@ async function exportProductionCsv() {
 }
 
 // ── 초기 로드: 일일 생산 탭 기본 ──
-var elInitDate = document.getElementById('reportDate');
-if (elInitDate) elInitDate.value = getToday();
-else console.warn('[productionReports] #reportDate not found');
-loadDailySummary();
+// 생산 2축 통합: /production 허브 이식 시 __prodAnaDefer=true 프리앰블로 지연(분석 첫 진입에 __prodAnaInit 호출).
+// 단독 /production-reports는 flag 없어 즉시 실행(기존 동작 유지).
+window.__prodAnaInit = function() {
+  if (window.__prodAnaInit._done) return;
+  window.__prodAnaInit._done = true;
+  var elInitDate = document.getElementById('reportDate');
+  if (elInitDate) elInitDate.value = getToday();
+  else console.warn('[productionReports] #reportDate not found');
+  loadDailySummary();
+};
+if (!window.__prodAnaDefer) { window.__prodAnaInit(); }
 
 // ════════════════════════════════════════════════════════════
 // OEE(설비종합효율) — routes/oee.ts 활성화 UI
