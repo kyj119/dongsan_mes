@@ -201,7 +201,7 @@ function renderMonthlyPnl(d) {
       + '</tr>';
   });
 
-  var elMonthlyBody = document.getElementById('monthlyTableBody'); if (!elMonthlyBody) { console.warn('[financialReports] #monthlyTableBody not found'); return; }
+  var elMonthlyBody = document.getElementById('finMonthlyTableBody'); if (!elMonthlyBody) { console.warn('[financialReports] #finMonthlyTableBody not found'); return; }
   elMonthlyBody.innerHTML = html || '<tr><td colspan="5" class="px-3 py-12 text-center"><div class="flex flex-col items-center"><i class="fas fa-chart-line text-4xl text-gray-300 mb-3"></i><p class="text-gray-500 text-sm">데이터가 없습니다</p></div></td></tr>';
 }
 
@@ -389,9 +389,15 @@ function renderBalanceSnapshot(d) {
 
 window.switchFinancialTab = function(tab) {
   currentFinancialTab = tab;
+  // 손익허브 이식 시 reports.ts와 ID 충돌 회피: monthly 탭만 fin* 프리픽스(맵으로 명시).
+  var idMap = {
+    pnl:      { btn: 'tabPnl',        panel: 'pnlPanel' },
+    monthly:  { btn: 'finTabMonthly', panel: 'finMonthlyPanel' },
+    snapshot: { btn: 'tabSnapshot',   panel: 'snapshotPanel' }
+  };
   ['pnl', 'monthly', 'snapshot'].forEach(function(t) {
-    var btn = document.getElementById('tab' + (t === 'pnl' ? 'Pnl' : t === 'monthly' ? 'Monthly' : 'Snapshot'));
-    var panel = document.getElementById(t + 'Panel');
+    var btn = document.getElementById(idMap[t].btn);
+    var panel = document.getElementById(idMap[t].panel);
     if (!btn || !panel) { console.warn('[financialReports] tab elements not found: ' + t); return; }
 
     if (t === tab) {
@@ -449,8 +455,11 @@ window.exportFinancialCsv = async function() {
 
 // ============================================================
 // 초기화 (모든 window.* 함수 정의 이후 실행)
+// 손익허브(/reports) 이식 시 '손익계산서' 탭 첫 진입까지 지연(window.__finDefer). 단독 /financial-reports는 즉시.
 // ============================================================
-(function init() {
+window.__finInit = function() {
+  if (window.__finInit._done) return; // 멱등
+  window.__finInit._done = true;
   var year = new Date().getFullYear();
   var sel = document.getElementById('monthlyYear');
   if (!sel) { console.warn('[financialReports] #monthlyYear not found'); return; }
@@ -471,4 +480,7 @@ window.exportFinancialCsv = async function() {
   elInitTo.value = new Date(to.getTime() - to.getTimezoneOffset() * 60000).toISOString().split('T')[0];
 
   window.loadPnl();
-})();
+};
+if (!window.__finDefer) {
+  window.__finInit();
+}

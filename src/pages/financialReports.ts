@@ -3,11 +3,9 @@ import type { HonoEnv } from '../types/env'
 import { renderPage } from '../layout'
 import pageScript from '../scripts/financialReports.js?raw'
 
-export function financialReportsPage(c: Context<HonoEnv>) {
-  return renderPage(c, {
-    title: '손익계산서',
-    activePage: '/financial-reports',
-    pageContent: `
+// P3식 손익허브(/reports) 이식용 단일소스 export. 표준 /financial-reports 라우트와 공유(HTML 중복 방지).
+// ⚠️ reports.ts와 co-load 시 ID 충돌 회피: 월별 추이 탭의 tabMonthly·monthlyPanel·monthlyTableBody → fin* 프리픽스.
+export const financialReportsContent = `
       <div class="space-y-4">
         <!-- 탭 네비게이션 -->
         <div class="ds-card" style="padding:0;">
@@ -15,7 +13,7 @@ export function financialReportsPage(c: Context<HonoEnv>) {
             <button id="tabPnl" onclick="switchFinancialTab('pnl')" class="px-0 py-3 text-sm font-medium border-b-2 border-blue-600 text-blue-600 flex items-center gap-2">
               <i class="fas fa-file-invoice-dollar"></i>손익계산서
             </button>
-            <button id="tabMonthly" onclick="switchFinancialTab('monthly')" class="px-4 py-3 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700 flex items-center gap-2">
+            <button id="finTabMonthly" onclick="switchFinancialTab('monthly')" class="px-4 py-3 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700 flex items-center gap-2">
               <i class="fas fa-chart-line"></i>월별 추이
             </button>
             <button id="tabSnapshot" onclick="switchFinancialTab('snapshot')" class="px-4 py-3 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700 flex items-center gap-2">
@@ -83,7 +81,7 @@ export function financialReportsPage(c: Context<HonoEnv>) {
           </div>
 
           <!-- 월별 추이 탭 -->
-          <div id="monthlyPanel" class="hidden p-4 space-y-4">
+          <div id="finMonthlyPanel" class="hidden p-4 space-y-4">
             <div class="ds-card p-3 flex items-center gap-2 flex-wrap">
               <label class="text-xs text-gray-500">연도</label>
               <select id="monthlyYear" class="border rounded px-2 py-1 text-xs"></select>
@@ -134,7 +132,7 @@ export function financialReportsPage(c: Context<HonoEnv>) {
                     <th class="text-right" style="width:80px">이익률</th>
                   </tr>
                 </thead>
-                <tbody id="monthlyTableBody">
+                <tbody id="finMonthlyTableBody">
                   <tr>
                     <td colspan="5" class="px-3 py-8 text-center text-gray-400">
                       <i class="fas fa-inbox text-2xl mb-2 block text-gray-300"></i>
@@ -199,7 +197,13 @@ export function financialReportsPage(c: Context<HonoEnv>) {
           </div>
         </div>
       </div>
-    `,
+    `
+
+export function financialReportsPage(c: Context<HonoEnv>) {
+  return renderPage(c, {
+    title: '손익계산서',
+    activePage: '/financial-reports',
+    pageContent: financialReportsContent,
     pageScript
   })
 }

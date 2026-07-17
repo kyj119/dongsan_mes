@@ -67,8 +67,10 @@ export const MENU_ITEMS: MenuGroup[] = [
       { path: '/payment-requests', icon: 'fa-money-check-alt', label: '지출결의서', roles: ['ADMIN', 'MANAGER'] },
       { path: '/card-expenses', icon: 'fa-credit-card', label: '법인카드', roles: ['ADMIN', 'MANAGER'] },
       { path: '/vat-reports', icon: 'fa-file-invoice', label: '부가세 신고', roles: ['ADMIN', 'MANAGER'] },
-      { path: '/financial-reports', icon: 'fa-chart-bar', label: '손익계산서', roles: ['ADMIN', 'MANAGER'] },
-      { path: '/reports', icon: 'fa-chart-line', label: '경영 분석', roles: ['ADMIN', 'MANAGER'] },
+      // /financial-reports 사이드바 은퇴 (손익허브 통합, 2026-07-17): /reports '손익계산서' 탭으로 흡수.
+      // 페이지·라우트·API 보존(직접 URL만 접근). 되살릴 경우 이 줄 복원.
+      // { path: '/financial-reports', icon: 'fa-chart-bar', label: '손익계산서', roles: ['ADMIN', 'MANAGER'] },
+      { path: '/reports', icon: 'fa-chart-line', label: '손익·경영 분석', roles: ['ADMIN', 'MANAGER'] },
       { path: '/management-report', icon: 'fa-stethoscope', label: '경영진단', roles: ['ADMIN', 'MANAGER'] },
     ],
   },

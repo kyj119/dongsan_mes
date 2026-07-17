@@ -3,15 +3,18 @@ import type { HonoEnv } from '../types/env'
 import { renderPage } from '../layout'
 import reportsScript from '../scripts/reports.js?raw'
 import forecastScript from '../scripts/forecast.js?raw'
+import financialScript from '../scripts/financialReports.js?raw'
+import { financialReportsContent } from './financialReports'
 // demandScript 제거됨 (수요분석 탭 = 수주예측+품목분석 탭 재탕, ?raw concat 동명함수가 원본을 덮어써 해당 탭들을 깨뜨림) 2026-06-26
 
 export function reportsPage(c: Context<HonoEnv>) {
   const tabSwitchScript = `
     window.switchAnalyticsTab = function(tab) {
-      var tabs = ['reports', 'forecast'];
+      var tabs = ['reports', 'financial', 'forecast'];
       tabs.forEach(function(t) {
         var content = document.getElementById('ana' + t.charAt(0).toUpperCase() + t.slice(1) + 'Content');
         var tabBtn = document.getElementById('anaTab' + t.charAt(0).toUpperCase() + t.slice(1));
+        if (!content || !tabBtn) return;
         if (t === tab) {
           content.classList.remove('hidden');
           tabBtn.classList.remove('border-transparent', 'text-gray-500');
@@ -22,26 +25,36 @@ export function reportsPage(c: Context<HonoEnv>) {
           tabBtn.classList.add('border-transparent', 'text-gray-500');
         }
       });
+      // 손익계산서 탭 최초 진입 시 lazy-init (financialReports.js)
+      if (tab === 'financial' && typeof window.__finInit === 'function') window.__finInit();
     };
     (function() {
       var p = new URLSearchParams(window.location.search);
       var tab = p.get('tab');
       if (tab === 'forecast' || window.location.hash === '#forecast') {
         window.switchAnalyticsTab('forecast');
+      } else if (tab === 'financial' || window.location.hash === '#financial') {
+        window.switchAnalyticsTab('financial');
       }
     })();
   `;
 
-  const combinedScript = tabSwitchScript + '\n' + reportsScript + '\n' + forecastScript;
+  // 손익계산서(financialReports.js)=bare 전역(fmt·pnlData 등) 다수 → IIFE 격리(reports/forecast 오염 차단).
+  // __finDefer=true로 auto-init 차단 → 손익 탭 첫 진입 시 __finInit() 호출(lazy). 단독 /financial-reports는 즉시.
+  const financialEmbed = 'window.__finDefer = true;\n(function(){\n' + financialScript + '\n})();'
+  const combinedScript = tabSwitchScript + '\n' + reportsScript + '\n' + forecastScript + '\n' + financialEmbed;
 
   return renderPage(c, {
-    title: '경영 분석',
+    title: '손익·경영 분석',
     activePage: '/reports',
     pageContent: `
       <!-- 상위 탭 -->
       <div class="flex border-b mb-4">
         <button onclick="switchAnalyticsTab('reports')" id="anaTabReports" class="px-5 py-3 text-sm font-medium border-b-2 border-blue-600 text-blue-600">
           <i class="fas fa-chart-line mr-1"></i>매출 분석
+        </button>
+        <button onclick="switchAnalyticsTab('financial')" id="anaTabFinancial" class="px-5 py-3 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">
+          <i class="fas fa-file-invoice-dollar mr-1"></i>손익계산서
         </button>
         <button onclick="switchAnalyticsTab('forecast')" id="anaTabForecast" class="px-5 py-3 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">
           <i class="fas fa-chart-area mr-1"></i>수주 예측
@@ -468,6 +481,11 @@ export function reportsPage(c: Context<HonoEnv>) {
           <div id="cfTrendChart" class="space-y-4"></div>
         </div>
       </div>
+      </div>
+
+      <!-- 손익계산서 탭 (손익허브 통합: /financial-reports 흡수, lazy) -->
+      <div id="anaFinancialContent" class="hidden">
+        ${financialReportsContent}
       </div>
     `,
     pageScript: combinedScript
