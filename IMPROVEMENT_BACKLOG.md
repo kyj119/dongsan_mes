@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 4 -->
-<!-- last_run_at: 2026-07-17T02:10:00+09:00 -->
+<!-- last_run_area: 5 -->
+<!-- last_run_at: 2026-07-17T21:21:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,13 +8,24 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | **21** — 직전 17건(#473,504,509,519,520,521,522,524,525,526,527,528,529,530,531,532,533) + 본 Area4 신규 4건: #534(S, bug, workbench.ts designer_intakes absorb UPDATE에 status='waiting' 가드 부재 — 동시흡수 TOCTOU로 order_item_id 소실), #535(S, bug, bank.ts LINKED 연결 경로 UNIQUE제약/재검증 부재 — 동시요청 시 같은 원장이 두 은행거래에 중복연결), #536(M, bug, dashboard.ts만 AR aging SSOT(ar-helpers) 미전환 — 구 방식(직접 billed_amount+UTC julianday) 잔존, reports/bank와 수치 불일치), #537(S, bug, financialReports.ts balance-snapshot만 LATEST_BALANCE_SUBQUERY 미사용 — NULL balance_after 필터 누락으로 현금 과소평가 위험). 실측(`search_issues(state:open,label:auto-improve)`=21) 정합. |
+| 🆕 new | **22** — 직전 21건(#473,504,509,519,520,521,522,524,525,526,527,528,529,530,531,532,533,534,535,536,537) + 본 Area5 신규 1건(#539, S, bug/security, workbench.ts POST /intakes의 consumed_intake_ids 일괄흡수 UPDATE에 entity_id 격리 누락 — 형제-비대칭 IDOR). #538(XSS)은 자동수정 커밋에 `closes #538` 포함되어 즉시 auto-closed(done으로 집계). 실측(`search_issues(state:open,label:auto-improve)`=22) 정합. |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 |
-| ✔️ done | **445** (변동 없음, owner close 0). |
+| ✔️ done | **446** (+1, #538 자동수정 후 커밋 메시지로 auto-close). |
 | ❌ rejected | 3 (`reason:not_planned`=1 + `reason:duplicate`=2, 변동 없음) |
 
 > 📦 **과거 사이클 로그**는 `IMPROVEMENT_BACKLOG_ARCHIVE.md`/git 히스토리로 이관됨 (2026-06-10 1차 분리, 2026-06-25 2차 트림 343KB→192KB, 2026-06-25T10:00 3차 트림, 2026-07-03T06:00 4차 트림 288KB→86KB, **2026-07-07T13:00 5차 트림 — 07-01~07-05 사이클 로그를 git 히스토리로 이관: 238KB→78KB, 256KB Read 한도 재확보**). 신규 로그는 계속 이 파일 상단에 추가. 본 파일은 직전 2일치(07-06~) 사이클 로그 + 영구 참조 섹션(Approved/New/Auto-fixed/Done/Rejected/FP 카탈로그)만 유지. 이관분은 `git log -p -- IMPROVEMENT_BACKLOG.md`로 복원 가능.
+
+> **Area 5 보안 (2026-07-17T21:21):**
+> - **방법**: `git fetch origin main`(HEAD `c9e4abc` = origin/main 일치, 워킹트리 clean, detached) 후 `npm ci`(node_modules 0→81). Area 5 **38회차** — 직전 Area5(`b3c5c5d`, 07-16T09:10, 37회차) 이후 churn 40+커밋(bank link-first 원장연동·AR aging SSOT·현금흐름 허브 통합·items 하드삭제·ia-designer-loop P0(가공 대기함)·MES판짜기 임포지션·management-report 신설·탭통합 리팩터 3건·Sunmyung 수기임포트 다수) — 대부분 Area1~4·6이 각자 렌즈로 이미 심층 감사 완료(#528~#537, #530~#533 등). 순수 미검증분 = `git diff --stat b3c5c5d..HEAD -- src/routes migrations`(13파일, workbench.ts+273·bank.ts+518 신규) + `src/scripts`(13파일, iaEditor.js+128·orderForm/intake.js 신규196줄·bank.js+153) 중 IDOR/XSS/authMiddleware/시크릿/CSV/rate-limit 렌즈로 재확인 안 된 부분. general-purpose 에이전트 2개 병렬(신규 프론트 XSS sink 스캔 / 전체코드베이스 standing scan 5종 — authMiddleware 재귀·시크릿폴백·IDOR 형제비대칭 신규테이블·CSV인젝션·rate-limit) 실행 후, 오케스트레이터가 `src/routes/workbench.ts`·`src/scripts/iaEditor.js`·`src/scripts/orderForm/intake.js`·`src/scripts/layout/shell.js`(escapeHtml 구현) 직접 Read로 양쪽 발견 전부 재검증.
+> - **🔴 자동수정 완료 — #538 (S, security, XSS)**: `iaEditor.js:373`·`orderForm/intake.js:62`(신규 가공 대기물 패널/피커)가 `designer_intakes.thumbnail`(=`workbench.ts:1196` `POST /intakes`의 `body.thumb_base64`, **서버 형식검증 0**)를 escape 없이 `<img src="' + ... + '">`에 직접 삽입 — 같은 파일의 `client_name`/`fin`/`created_at`은 전부 `iaeEscape`/`escapeHtml`로 감쌌는데 이 속성 삽입만 누락(A-024/A-025급 부분-escape 재현). `workbenchRouter`가 `authMiddleware+requireRole('ADMIN','MANAGER','DESIGNER')`(최저권한 DESIGNER 포함)로만 게이트되어, DESIGNER 역할 계정이 `thumb_base64`에 `x" onerror="..."` 페이로드를 보내면 이 패널을 여는 다른 사용자(ADMIN 포함) 세션에서 임의 JS 실행 — 저권한→고권한 저장형 XSS. 단순 모달/리스트 렌더(복합 문서 렌더러 아님)라 SKILL 자동수정 기준 충족 — 두 sink 모두 파일 기존 컨벤션(`iaeEscape`/`escapeHtml`)으로 래핑, `npm run verify`(typecheck+build) 통과 확인 후 커밋(`cced2ce`, `closes #538`로 자동 close됨).
+> - **🆕 net-new 이슈 1건(issue-only) — #539 (S, bug/security)**: 같은 `POST /intakes` 핸들러 내 `consumed_intake_ids`(판짜기 mes-sheet.jsx manifest) 일괄흡수 `UPDATE designer_intakes SET status='absorbed' ... WHERE status='waiting' AND id IN (...)`가 entity_id 절 없음 — 같은 파일의 `GET /intakes`·`GET /intakes/stats`·`POST /intakes/:id/absorb`·`POST /intakes/:id/void` 4곳 전부 `entityFilter(c,'designer_intakes')` 적용과 대비되는 형제-비대칭(#452 클래스). `entityId`가 두 줄 위(`:1178`)에 이미 계산돼 있어 형제 패턴 이식이 기계적. entity-scoped DESIGNER/MANAGER(또는 그 자격증명 사용 로컬 에이전트)가 임의 ID 배열로 타법인 대기물을 `absorbed` 처리해 대기함에서 소거 가능 — 데이터 노출 아닌 무결성 훼손(Medium). IDOR 클래스는 프로젝트 정책상 issue-only.
+> - **🟢 나머지 churn = clean**: workbench.ts 신규 5개 엔드포인트(`GET /intake-config`·`GET /intakes`·`GET /intakes/stats`·`POST /intakes/:id/absorb`·`POST /intakes/:id/void`) 전부 entityFilter/orderVisibilityFilter 적용 확인(#539 제외). bank.ts link-first 원장연동(`applyBankTransaction`)의 나머지 write 경로(`/transactions/:id/link-candidates` ADMIN전용+entityFilter, unapply LINKED 해제 경로)는 entity 격리 정상. bank.js 신규 후보 렌더러(`renderApplyCandidates`)는 escape 적용 확인. financialReports.js/items/tabs.js/items/modals.js/orderForm/calc.js/orderForm/client.js 신규 라인은 innerHTML sink 자체가 없거나 기존 sanitize 패턴 재사용(net-new XSS 0).
+> - **🟢 표준 standing scan = net-new 0**: authMiddleware 재귀 스캔(미커버 후보 전부 `Map.get()` 오탐/barrel/cron 자체게이트, 기지) · 시크릿 폴백 grep(진짜 credential 하드코딩 0, `key:'ship'` 아이콘라벨 오탐만) · CSV 인젝션(전 export 사이트 `escapeCsvField` 경유 확인) · rate-limit(신규 `/management-report`는 view-only 페이지라 해당없음, 기존 credential 엔드포인트 등록 불변).
+> - **🟢 backlog↔GitHub sync**: 이슈 생성 전 실측 `search_issues(state:open,label:auto-improve)`=21 확인 후 #538(auto-closed)·#539(open) 생성 → open **22**. done `search_issues(is:closed,reason:completed)`=**446**(+1, #538) · rejected(`not_planned`=1+`duplicate`=2)=**3**(변동 없음).
+> - **🧬 SKILL 강화 없음(신규 패턴 아님)** — #538은 기존 "SPA innerHTML free-text XSS 부분-escape"(A-024/A-025) 클래스의 재현(단 `<img src>` 속성 컨텍스트라는 변종), #539는 기존 "형제-비대칭 IDOR"(#452) 클래스의 정확한 재현. 둘 다 이번 사이클 최초 도입된 신규기능(ia-designer-loop P0)에서 발견 — "신규 기능은 기존 checklist를 처음부터 놓치기 쉽다"(Area6 반복 관찰)를 재확인.
+> - 신규 이슈 1건(#539, issue-only), 자동수정 1건(#538 XSS escape 래핑, 커밋 `cced2ce`), done-sync 변동(+1, #538 auto-close), new 21→22(#538 auto-close로 순감산 상쇄 후 #539 순증). 다음 순번 Area 6.
+>
 
 > **Area 4 데이터 정합성 (2026-07-17T02:10):**
 > - **방법**: `git fetch origin main`(HEAD `ea72b8e` = origin/main 일치, 워킹트리 clean, detached, `npm ci` 선행). 직전 Area4(`cadb7d1`) 이후 `migrations`/`src/routes` churn 16커밋 — 신규 마이그 4건(0463 designer_intakes·0464/0465 permission-only·0466 bank_purchase_payment_link) + 대형 신규기능(items 하드삭제, ia-designer-loop intake/absorb, bank link-first ledger apply, AR aging SSOT 통합 8cedfaa, cashflow 소스단일화 12f7cb2). general-purpose 에이전트 2개 병렬(designer_intakes+bank-link 신규테이블 전담 / items하드삭제+AR/cashflow 부분픽스+컬럼브릿지 전담)로 심층 분석 후, 오케스트레이터가 5개 후보 전부 `src/routes/workbench.ts`·`src/routes/bank.ts`·`src/routes/dashboard.ts`·`src/routes/financialReports.ts`·`src/utils/bankBalance.ts` 직접 Read로 재검증 + 기존 open 이슈(#529,#530,#531,#533) 대조로 중복 배제.
