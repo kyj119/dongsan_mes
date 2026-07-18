@@ -1,38 +1,39 @@
-# 세션 핸드오프 — 생산 2축 허브 통합 (사이드바 Level 2 마지막, 2026-07-17)
+# 세션 핸드오프 — 사이드바 Level 3 추가 통합 4건 (2026-07-18)
 
 > 세션별 덮어쓰기 파일. 상세 정본 = [[project-sidebar-consolidation]] (auto-memory).
-> 직전 작업(손익 허브 통합)은 prod 배포완료(main `8ce8919c`), [[project-sidebar-consolidation]]·PROJECT_STATUS.md 반영.
+> 직전(생산 2축)은 prod 배포완료(main `b2a05c83`).
 
-## 이번 세션 상태 — ✅ prod 배포완료 (main `b2a05c83`·deploy `8fe3f9ba`, 커밋 `057f73a2`)
-생산 현황(/production) + 생산 분석(/production-reports) 통합. 자금허브/손익허브와 동일 패턴.
-배포 시 origin/main 봇5건 앞서있어(designer XSS `cced2ce0` 포함) superset 병합(충돌0·verify green) 후 `--branch main`. apex=/production 200·/production-reports 200(보존)·/cost-analysis 302·API 401.
-**사이드바 Level 2 3대 허브(자금·손익·생산) 전부 완료 → 통합 프로젝트 종료.**
+## 이번 세션 상태 — 완료·검증·커밋, ⚠️ 프로덕션 배포 대기
+2차 진단으로 발굴한 잔여 기능중복 4건 통합. 전부 흡수-탭 패턴(단일소스 export·지연 init·사이드바 은퇴, 페이지·라우트·API 보존). Explore 2에이전트로 충돌 사전매핑.
 
-### 구조
-- /production 최상위 토글 `[생산 현황][생산 분석]`. 현황=production(전원·OPERATOR 포함·즉시 로드), 분석=productionReports 흡수(**ADMIN/MANAGER 게이팅·lazy**).
-- 단일소스: `productionReports.ts` → `export const productionReportsContent`+`export const productionReportsScript`(tabSwitch+prodReports+costAnalysis) → production.ts `#prodHubAnalysis` 이식.
-- `switchProdMode(mode)`(hubScript): 토글+역할게이팅(`localStorage.user.role` ADMIN/MANAGER, 비관리자 토글 숨김+진입차단)+분석 첫진입 `__prodAnaInit` 호출.
-- menu.ts: /production-reports 은퇴(페이지·라우트·API·`/cost-analysis`→`?tab=cost` 리다이렉트 전부 보존).
+### #1 장비(/equipment) + 정비(/maintenance)
+- 근거: 동일 API(`/api/rip/maintenance/dashboard`)·equipment가 이미 정비모달 내장 = 실중복.
+- 정비를 **equipment 5번째 탭**(list/layout/dashboard/queue/**maintenance**). maintenance.js는 **완전 IIFE**(전역 0)라 충돌 없음 → `__maintDefer`로 auto-init 차단 + `window.__maintInit` 노출(멱등, 클로저 플래그 `__maintInited`)→switchTab('maintenance') 진입 호출.
+- **정비 탭 ADMIN/MANAGER 게이팅**(equipment은 DESIGNER 포함, maintenance API=authMiddleware라 클라 게이팅이 경계 보존). 기본 hidden → maintGateScript가 관리자만 노출.
+- CSS: equipment가 이미 `.summary-card` 보유 → maintenanceCSS 미추가(override 방지).
 
-### 충돌 처리 (Explore 정밀맵 기반)
-- **하드충돌 = element ID `kpiOk`·`kpiError` 2개뿐**(양쪽 '오늘 OK/에러' KPI·동일 ID·다른 API). → **분석측만** `prodAnaKpiOk`/`prodAnaKpiError` 리네임(productionReports.ts 1줄 + productionReports.js 2줄). production(허브 베이스·OPERATOR 핵심)은 무변경.
-- **JS 전역 충돌 0**: 개발자가 production=`switchProdTab`/`production*`, reports=`switchProdAnalysisTab`/`oee*`로 이미 네임스페이스 분리 → ?raw concat 단일스코프에서도 안전. **IIFE 불요**(손익허브보다 단순).
+### #2 급여(/payroll) + 요율(/settings/payroll-rates)
+- payroll에 **상위 탭 없어 신설**([급여 관리][요율 관리], `prSwitchHubTab`). payrollRates(prR*) vs payroll(pr*) 충돌 0.
+- `__prRDefer`로 요율 auto-init(2 API) 차단 → 요율 탭 진입 시 `__prRInit`(멱등). 권한 동일(ADMIN/MANAGER)→게이팅 불요.
+- **중복 요율모달 버튼 제거**(payrollOpenRatesModal). 모달 DOM/함수는 dead 잔존(무해, pr* 충돌 없음).
 
-### 지연 init 2종
-- `__prodAnaInit`(daily-summary): 단독=즉시(`!__prodAnaDefer`), 허브=분석 첫진입.
-- `__costInit`(원가): **항상 lazy**(원가 탭 진입 시). ⚠️**근본이유**=costAnalysis.js가 파싱시점 `loadAnalysis()` auto-run → 허브에서 OPERATOR도 `/api/costs`(requireRole ADMIN/MANAGER) 403. 지연으로 방지.
-- production.js는 무변경(현황=기본, 즉시 실행 유지).
+### #3 경영진단(/management-report) → /reports 탭
+- management-report=**순수 정적 HTML**(pageScript:''·스크립트·API·id 0, .mr-root 스코프) → `switchAnalyticsTab` 배열에 `mgmt` 추가·`anaTabMgmt` 버튼·`anaMgmtContent` 정적삽입. 지연·격리 전부 불요(가장 단순).
+
+### #4 세금증빙(/tax-invoices) + 부가세(/vat-reports)
+- tax-invoices=이미 3탭 허브(`switchTaxTab` tax/cash/hometax) → **vat 4번째 탭**. `__vatDefer`로 vat auto-init(2 API) 차단 → 부가세 탭 진입 시 `__vatInit`.
+- **fmt 충돌 1건**(무해하나 방어적) → vat `fmt`→`vatFmt` 리네임(17개소). 권한 동일→게이팅 불요.
 
 ## 검증 (완료)
 - `npm run verify` green.
-- **로컬 Playwright 실측(ADMIN)**: ID 각1개(충돌해소)·기본 현황/분석 hidden·지연 init_done=false(403 미발생)·분석진입 daily-summary 발동·원가 lazy(탭 진입 시만)·OEE·모드왕복·production 서브탭(현황/스케줄/작업실적)·단독 /production-reports 회귀0·콘솔 0 실에러.
+- **로컬 Playwright 실측(ADMIN)**: 4허브 전부 탭 노출·지연 init(로드 시 미발생→탭 진입 발동)·콘텐츠 이식·탭 전환 정상. 단독 4페이지(/maintenance·/settings/payroll-rates·/management-report·/vat-reports) 즉시 init·허브요소 부재·회귀 0. 콘솔 실에러 0(179건 ERR_CONNECTION_REFUSED=notification 폴링 환경노이즈·무관).
 
 ## 다음 단계
-1. (선택) 프로덕션 육안 확인: 로그인 후 /production에 `[생산 현황][생산 분석]` 토글 노출·분석 진입·원가/OEE.
-2. 사이드바 Level 2 3대 허브(자금·손익·생산) 전부 완료 → 통합 프로젝트 종료. 다음 과제는 별건(단가·간판BOM·HR B3/B5 등 마스터플랜).
-3. (참고) 생산 현황 KPI vs 분석 일일생산 KPI 위젯 콘텐츠 중복은 잔존(허브 co-location만 완료, de-dup은 범위 밖).
+1. **⚠️ 프로덕션 배포 = 사용자 명시 확인 대기** ([[feedback-deploy-needs-explicit-request]]). 마이그레이션 없음(순수 코드).
+2. 배포 시: **origin/main 분기 먼저 확인**(직전 2회 모두 봇이 앞서 있었음) → superset 병합 → `--branch main` → apex 검증(/equipment·/payroll·/reports·/tax-invoices 200 + 단독 4페이지 200 보존).
+3. 사이드바 통합 프로젝트 사실상 종료(Level 1·2·3 완료). 다음은 별건 마스터플랜(단가·간판BOM·HR B3/B5 등).
 
 ## 주의사항
-- 리네임 ID는 **productionReports 측만**(prodAnaKpi*). production.ts/js의 kpiOk/kpiError는 그대로(허브 베이스).
-- 분석 스크립트는 허브에서 전원 파싱되지만 init은 게이팅+지연 → 비관리자 API 호출 0.
+- payroll-rates 실제 라우트=`/settings/payroll-rates`(메뉴 path와 동일, 페이지 activePage만 `/payroll-rates`).
+- 리네임/제거: vat `fmt`→`vatFmt`(vatReports.js), payroll 요율모달 버튼 제거(모달 DOM 잔존).
 - 커밋 메시지 한글 OK(git). wrangler `--commit-message`만 ASCII([[feedback-windows-deploy]]).

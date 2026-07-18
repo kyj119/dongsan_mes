@@ -60,17 +60,23 @@ function switchTab(tab) {
     if (panelQueue) {
         panelQueue.classList.toggle('hidden', tab !== 'queue');
     }
+    var panelMaintenance = document.getElementById('panelMaintenance');
+    if (panelMaintenance) {
+        panelMaintenance.classList.toggle('hidden', tab !== 'maintenance');
+    }
 
     document.querySelectorAll('.tab-btn').forEach(function(btn) {
         btn.classList.remove('bg-white', 'shadow', 'text-gray-800');
         btn.classList.add('text-gray-500');
     });
-    var tabIdMap = { 'list': 'tabList', 'layout': 'tabLayout', 'dashboard': 'tabDashboard', 'queue': 'tabQueue' };
+    var tabIdMap = { 'list': 'tabList', 'layout': 'tabLayout', 'dashboard': 'tabDashboard', 'queue': 'tabQueue', 'maintenance': 'tabMaintenance' };
     var activeBtn = document.getElementById(tabIdMap[tab]);
     if (activeBtn) {
         activeBtn.classList.add('bg-white', 'shadow', 'text-gray-800');
         activeBtn.classList.remove('text-gray-500');
     }
+    // 사이드바 통합: 정비 탭 첫 진입 시 maintenance.js lazy init(멱등)
+    if (tab === 'maintenance' && typeof window.__maintInit === 'function') window.__maintInit();
 
     closeDetail(); // 탭 전환 시 상세 패널 닫기 (다른 탭으로 새어나오는 것 방지)
 
