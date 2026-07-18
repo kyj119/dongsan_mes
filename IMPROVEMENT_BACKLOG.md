@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 1 -->
-<!-- last_run_at: 2026-07-18T00:45:00+09:00 -->
+<!-- last_run_area: 2 -->
+<!-- last_run_at: 2026-07-18T12:20:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -16,6 +16,16 @@
 
 > 📦 **과거 사이클 로그**는 `IMPROVEMENT_BACKLOG_ARCHIVE.md`/git 히스토리로 이관됨 (2026-06-10 1차 분리, 2026-06-25 2차 트림 343KB→192KB, 2026-06-25T10:00 3차 트림, 2026-07-03T06:00 4차 트림 288KB→86KB, **2026-07-07T13:00 5차 트림 — 07-01~07-05 사이클 로그를 git 히스토리로 이관: 238KB→78KB, 256KB Read 한도 재확보**). 신규 로그는 계속 이 파일 상단에 추가. 본 파일은 직전 2일치(07-06~) 사이클 로그 + 영구 참조 섹션(Approved/New/Auto-fixed/Done/Rejected/FP 카탈로그)만 유지. 이관분은 `git log -p -- IMPROVEMENT_BACKLOG.md`로 복원 가능.
 
+> **Area 2 코드 품질 심층 분석 (2026-07-18T12:20):**
+> - **방법**: `git fetch origin main`(HEAD `da50ec7` = origin/main 일치, 워킹트리 clean, detached) 후 `npm ci`(node_modules 0→81). Area 2 **46회차** — 직전 Area2(`c536e8b`, 07-16T19:37, 45회차) 이후 `src/routes`/`src/scripts`/`src/pages`/`migrations` churn = **8커밋**(`git log c536e8b..HEAD`): Area3/4/5/6/1 자체 chore 커밋 5건(각자 렌즈로 이미 심층 감사, #534~#540 생성) + 순수 신규 코드 커밋 3건 — `8cedfaa`(AR aging SSOT 통합 Phase2, `bank.ts`/`ledger/ar-helpers.ts`/`reports.ts` 37+39+27줄) + `03ff2f6`(손익허브 통합 Phase1, `financialReports.ts`/`reports.ts`/`financialReports.js`) + `057f73a`(생산허브 통합, `production.ts`/`productionReports.ts`/`productionReports.js`/`costAnalysis.js`) + `cced2ce`(XSS 자동수정, 이미 Area5 자체 커밋). Area2 고유 렌즈(entity_id INSERT·N+1·authMiddleware·컬럼/타입 불일치·dead code·SELECT *)로 세 신규 커밋 전부 직접 Read 재검증 — AR SSOT는 Area4가 39회차(`c9e4abc`)에서 이미 부분픽스 2건(#536/#537) 포착 완료라 중복 배제하고 Area2 고유 관점만 추가 확인.
+> - **🟢 AR aging SSOT(`8cedfaa`) = Area2 렌즈 clean**: `buildOldestUnpaidJoin()`의 파라미터 바인드 순서 직접 대조 — `bank.ts:2398`(entityScoped:false, clients엔 entity_id 無이라 무관 전체합산 유지)·`reports.ts` aging/topAR 2곳(entityScoped:true) 전부 SQL 내 `?` 플레이스홀더 순서(efG→efP→efA→oup.g→oup.p)와 `.bind()` 인자 순서 일치 확인. `entityFilter(c,'g')`/`entityFilter(c,'p')`가 `order_billing_groups`/`payments` 양쪽 entity_id 컬럼 보유 확인(`migrations/0150`·`0305`). `AgingRow`/`topAR` 타입 변경(`days_since_payment`→`oldest_unpaid_date`) 후 프론트 소비처(`reports.js:451/457` `cl.days_overdue`) 재확인 — 필드명 불일치 없음(서버가 `days_overdue`로 매핑해 응답). N+1·SELECT * 신규 도입 0.
+> - **🟢 손익/생산 허브 통합(`03ff2f6`/`057f73a`) = ID충돌·dead-code·lazy-init 가드 재검증 clean**: `?raw` concat 스코프 충돌(SKILL #475) 관점에서 생산허브 3파일(`production.js`+`productionReports.js`+`costAnalysis.js`) top-level 함수/var 선언 교집합 직접 추출 → 충돌 0건 확인(commit의 "IIFE 불요" 주장과 일치). 손익허브는 반대로 IIFE 래핑 사용(bare 전역 다수라는 커밋 근거 타당). `kpiOk`/`kpiError`(production.js 자체 KPI, id 유지) vs `prodAnaKpiOk`/`prodAnaKpiError`(흡수된 분석 KPI, 신규 프리픽스)로 실제 분리 확인 — 충돌 회피 주장 실증. `__prodAnaInit`/`__costInit`/`__finInit` 전부 `._done` 멱등가드 보유(재진입 안전). `costAnalysis.js`의 `__prodAnaDefer` 체크로 OPERATOR 403 방지(서버 `requireRole('ADMIN','MANAGER')`) 로직 확인 — 클라 가드는 UX용, 실제 방어는 서버 role 체크(기존 원칙과 일치). dead-code 확인: `financialReportsPage`/`productionReportsPage` 독립 라우트가 `index.tsx:432/486`에 여전히 마운트됨(커밋의 "라우트 보존" 주장 실증, 고아 export 아님).
+> - **🟢 entity-audit.mjs CI 게이트 재실행 — Area6(#540) 이후 회귀 없음**: `node scripts/entity-audit.mjs` 직접 실행 → 검사 8테이블·SELECT 59·통과 56·누락 3(`bank.ts:1340/1352`+`cron.ts:180`, 전부 Area6이 기존 확인한 동일 3건, net-new 0) — Area6가 문서만 갱신하고 로직은 원복한 결정이 안전했음을 재확인(하드게이트 안정).
+> - **🟢 `npx tsc --noEmit` 전체 재확인**: 에러 0(prod 배포 성공과 일치, 회귀 없음).
+> - **🟢 backlog↔GitHub sync**: `search_issues(state:open,label:auto-improve)` 실측 **23건**(변동 없음, 신규 이슈 0) · done `search_issues(is:closed,reason:completed)`=**446**(변동 없음) · rejected 3(변동 없음, 재확인 생략 — 최근 3사이클 연속 무변동).
+> - **🧬 SKILL 강화 없음(신규 패턴 아님)** — 이번 사이클은 신선 churn 자체가 작고(순수 신규 코드 3커밋) Area2 고유 렌즈로 봐도 전부 clean. AR SSOT의 실질적 결함(부분픽스 2건)은 이미 Area4가 자기 사이클에서 포착해 중복 여지가 없었던 것은, "여러 영역이 서로 다른 렌즈로 같은 churn을 감사해도 실질 발견은 그 결함에 가장 특화된 렌즈(Area4=데이터정합성 SSOT)가 먼저 잡는다"는 6영역 순환 설계의 정상 동작 사례.
+> - 신규 이슈 0건, 자동수정 0건(수정 대상 없음), done-sync 변동 없음(new 23·done 446·rejected 3 정합 재확인). 다음 순번 Area 3.
+>
 > **Area 1 프로덕션 헬스 (2026-07-18T00:45):**
 > - **방법**: `git fetch origin main`(HEAD `6910766` = origin/main 일치, 워킹트리 clean, detached). 프록시가 이번 세션도 prod 호스트 직접 curl을 차단(exit 56, 기존 33~44회차와 동일 제약, `cloudflare-observability` MCP도 미인증) — GitHub Actions 기록으로 대체. Area 1 **45회차** — 직전 Area1(`33953e2`, 07-16T12:16, 44회차) 이후 대형 churn 다수(경영진단 페이지 신설·사이드바 탭통합 리팩터 3건·자금허브 통합·ia-designer-loop MES판짜기·bank link-first 원장연동(0466)·designer_intakes XSS(#538) 등) — 전부 Area2~6가 각자 렌즈로 이미 심층 감사(신규 이슈 #524~#540 다수 생성) 완료. 이번 사이클은 배포체인/인프라 관점 재확인에 집중.
 > - **🟢 배포체인 = 최신 HEAD 포함 전수 정상**: `deploy.yml` 직전 19회 실행(07-16T12:16~07-17T18:19) 전부 success. 최신 커밋(`6910766`, run #29603369516) job 단계별 = Typecheck/Build/Deploy/Smoke **전부 success**(스모크 18초, 18:20:18~18:20:32). `backup.yml`(Daily D1 Backup) 최근 8회 전부 success, 최신 07-17T17:57. `e2e.yml`은 여전히 `disabled_manually`(06-22 owner 비활성화 유지, 재발 아님).
