@@ -3,8 +3,10 @@
 > 세션별 덮어쓰기 파일. 상세 정본 = [[project-sidebar-consolidation]] (auto-memory).
 > 직전 작업(손익 허브 통합)은 prod 배포완료(main `8ce8919c`), [[project-sidebar-consolidation]]·PROJECT_STATUS.md 반영.
 
-## 이번 세션 상태 — 완료·검증·커밋, ⚠️ 프로덕션 배포 대기
+## 이번 세션 상태 — ✅ prod 배포완료 (main `b2a05c83`·deploy `8fe3f9ba`, 커밋 `057f73a2`)
 생산 현황(/production) + 생산 분석(/production-reports) 통합. 자금허브/손익허브와 동일 패턴.
+배포 시 origin/main 봇5건 앞서있어(designer XSS `cced2ce0` 포함) superset 병합(충돌0·verify green) 후 `--branch main`. apex=/production 200·/production-reports 200(보존)·/cost-analysis 302·API 401.
+**사이드바 Level 2 3대 허브(자금·손익·생산) 전부 완료 → 통합 프로젝트 종료.**
 
 ### 구조
 - /production 최상위 토글 `[생산 현황][생산 분석]`. 현황=production(전원·OPERATOR 포함·즉시 로드), 분석=productionReports 흡수(**ADMIN/MANAGER 게이팅·lazy**).
@@ -26,9 +28,9 @@
 - **로컬 Playwright 실측(ADMIN)**: ID 각1개(충돌해소)·기본 현황/분석 hidden·지연 init_done=false(403 미발생)·분석진입 daily-summary 발동·원가 lazy(탭 진입 시만)·OEE·모드왕복·production 서브탭(현황/스케줄/작업실적)·단독 /production-reports 회귀0·콘솔 0 실에러.
 
 ## 다음 단계
-1. **⚠️ 프로덕션 배포 = 사용자 명시 확인 대기** ([[feedback-deploy-needs-explicit-request]]·[[feedback-deploy-wording-gate]]). 마이그레이션 없음(순수 코드).
-2. 배포 시: **origin/main 분기 먼저 확인**(직전에도 타 세션 앞서 있었음) → superset 병합 → `--branch main` → apex 검증(/production 200·/production-reports 200 보존).
-3. 사이드바 Level 2 3대 허브(자금·손익·생산) 전부 완료 → 통합 프로젝트 사실상 종료.
+1. (선택) 프로덕션 육안 확인: 로그인 후 /production에 `[생산 현황][생산 분석]` 토글 노출·분석 진입·원가/OEE.
+2. 사이드바 Level 2 3대 허브(자금·손익·생산) 전부 완료 → 통합 프로젝트 종료. 다음 과제는 별건(단가·간판BOM·HR B3/B5 등 마스터플랜).
+3. (참고) 생산 현황 KPI vs 분석 일일생산 KPI 위젯 콘텐츠 중복은 잔존(허브 co-location만 완료, de-dup은 범위 밖).
 
 ## 주의사항
 - 리네임 ID는 **productionReports 측만**(prodAnaKpi*). production.ts/js의 kpiOk/kpiError는 그대로(허브 베이스).
