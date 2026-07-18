@@ -56,6 +56,7 @@ export function accountingPage(c: Context<HonoEnv>) {
         <button id="accTabCard" onclick="accSwitchTab('card')" class="acc-tab"><i class="fas fa-credit-card mr-1"></i>카드</button>
         <button id="accTabPurchase" onclick="accSwitchTab('purchase')" class="acc-tab"><i class="fas fa-file-invoice-dollar mr-1"></i>매입</button>
         <button id="accTabTimeline" onclick="accSwitchTab('timeline')" class="acc-tab"><i class="fas fa-stream mr-1"></i>타임라인</button>
+        <button id="accTabInter" onclick="accSwitchTab('inter')" class="acc-tab"><i class="fas fa-exchange-alt mr-1"></i>법인간 거래</button>
       </div>
 
       <!-- ===== 입금 탭 ===== -->
@@ -279,6 +280,129 @@ export function accountingPage(c: Context<HonoEnv>) {
             </table>
           </div>
           <div id="accTimelinePagination" class="p-3 border-t flex justify-between items-center text-sm text-gray-500"></div>
+        </div>
+      </div>
+
+      <!-- ===== 법인간 거래 탭 ===== -->
+      <div id="accInterTab" style="display:none">
+        <!-- 법인 페어별 잔액 (기간 무관 누적) -->
+        <div class="ds-card ds-card-compact mb-3">
+          <div class="flex items-center justify-between mb-2">
+            <span class="text-xs font-semibold text-gray-600"><i class="fas fa-balance-scale mr-1 text-indigo-500"></i>법인간 채권·채무 잔액 <span class="font-normal text-gray-400">(기간 무관 누적)</span></span>
+            <button onclick="accIetOpenModal()" class="ds-btn ds-btn-primary ds-btn-sm"><i class="fas fa-plus mr-1"></i>거래 등록</button>
+          </div>
+          <div id="accIetSummary" class="flex flex-wrap gap-2"></div>
+        </div>
+        <!-- 필터 -->
+        <div class="ds-card ds-card-compact mb-3">
+          <div class="flex flex-wrap items-center gap-3">
+            <select id="accIetType" onchange="accIetSearchNow()" class="ds-input" style="width:auto;font-size:12px">
+              <option value="">전체 유형</option>
+              <option value="SUBROGATION">대납</option>
+              <option value="LOAN">자금대여</option>
+              <option value="REPAYMENT">상환</option>
+              <option value="INTERNAL_TRADE">내부거래대금</option>
+              <option value="INVOICE_TRANSFER">계산서이전</option>
+              <option value="OTHER">기타</option>
+            </select>
+            <input type="text" id="accIetSearch" placeholder="거래처 / 내용..." class="ds-input" style="width:220px;font-size:12px" onkeydown="if(event.key==='Enter')accIetSearchNow()">
+            <button onclick="accIetSearchNow()" class="ds-btn ds-btn-primary ds-btn-sm"><i class="fas fa-search mr-1"></i>조회</button>
+            <span class="text-xs text-gray-400">상단 기간=거래일 기준</span>
+            <span class="text-xs text-gray-500 ml-1">조회 <b id="accIetCount" class="text-gray-700">-</b>건 · 합계 <b id="accIetSum" class="text-indigo-700">-</b></span>
+          </div>
+        </div>
+        <!-- 테이블 -->
+        <div class="ds-card" style="padding:0">
+          <div class="overflow-x-auto" style="max-height:calc(100vh - 430px);overflow-y:auto">
+            <table class="ds-table ds-table-compact">
+              <thead class="sticky top-0 bg-white z-10">
+                <tr class="text-[10px] text-gray-500 uppercase border-b">
+                  <th class="px-3 py-2 text-left" style="width:90px">거래일</th>
+                  <th class="px-3 py-2 text-left" style="width:170px">방향 (지급→수혜)</th>
+                  <th class="px-2 py-2 text-center" style="width:100px">유형</th>
+                  <th class="px-3 py-2 text-right" style="width:120px">금액</th>
+                  <th class="px-2 py-2 text-center" style="width:70px">잔액반영</th>
+                  <th class="px-3 py-2 text-left" style="width:150px">관련 거래처</th>
+                  <th class="px-3 py-2 text-left">내용</th>
+                  <th class="px-3 py-2 text-left" style="width:80px">등록자</th>
+                  <th class="px-2 py-2 text-center" style="width:80px">관리</th>
+                </tr>
+              </thead>
+              <tbody id="accIetBody"></tbody>
+            </table>
+          </div>
+          <div id="accIetPagination" class="p-3 border-t flex justify-between items-center text-sm text-gray-500"></div>
+        </div>
+      </div>
+
+      <!-- ===== 법인간 거래 등록/수정 모달 ===== -->
+      <div id="accIetModal" class="ds-modal-overlay hidden">
+        <div class="ds-modal p-6" style="max-width:480px">
+          <div class="flex justify-between items-center mb-4">
+            <h3 class="text-lg font-bold text-gray-800"><i class="fas fa-exchange-alt text-indigo-500 mr-2"></i><span id="accIetModalTitle">법인간 거래 등록</span></h3>
+            <button onclick="accIetCloseModal()" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times"></i></button>
+          </div>
+          <input type="hidden" id="accIetId">
+          <div class="space-y-3">
+            <div class="grid grid-cols-2 gap-3">
+              <div>
+                <label class="text-sm font-semibold text-gray-700 mb-1 block">거래일 <span class="text-red-500">*</span></label>
+                <input type="date" id="accIetDate" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+              </div>
+              <div>
+                <label class="text-sm font-semibold text-gray-700 mb-1 block">금액 <span class="text-red-500">*</span></label>
+                <input type="text" inputmode="numeric" data-money id="accIetAmount" placeholder="0" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+              </div>
+            </div>
+            <div class="grid grid-cols-2 gap-3">
+              <div>
+                <label class="text-sm font-semibold text-gray-700 mb-1 block">지급 법인(from) <span class="text-red-500">*</span></label>
+                <select id="accIetFrom" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"></select>
+                <p class="text-[11px] text-gray-400 mt-1">돈을 낸(가치를 제공한) 쪽</p>
+              </div>
+              <div>
+                <label class="text-sm font-semibold text-gray-700 mb-1 block">수혜 법인(to) <span class="text-red-500">*</span></label>
+                <select id="accIetTo" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"></select>
+                <p class="text-[11px] text-gray-400 mt-1">혜택을 받은(갚아야 할) 쪽</p>
+              </div>
+            </div>
+            <div class="grid grid-cols-2 gap-3">
+              <div>
+                <label class="text-sm font-semibold text-gray-700 mb-1 block">유형 <span class="text-red-500">*</span></label>
+                <select id="accIetTypeSel" onchange="accIetTypeChanged()" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+                  <option value="SUBROGATION">대납 (남의 채무를 대신 지급)</option>
+                  <option value="LOAN">자금대여</option>
+                  <option value="REPAYMENT">상환 (빌린/대납분 갚음)</option>
+                  <option value="INTERNAL_TRADE">내부거래대금</option>
+                  <option value="INVOICE_TRANSFER">계산서이전 (기록용)</option>
+                  <option value="OTHER">기타</option>
+                </select>
+              </div>
+              <div class="flex items-end pb-2">
+                <label class="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+                  <input type="checkbox" id="accIetAffects" checked class="w-4 h-4">
+                  법인간 잔액에 반영
+                </label>
+              </div>
+            </div>
+            <div>
+              <label class="text-sm font-semibold text-gray-700 mb-1 block">관련 거래처 <span class="text-gray-400 font-normal">(선택)</span></label>
+              <div class="relative">
+                <input type="text" id="accIetClientSearch" placeholder="거래처 검색..." class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" autocomplete="off" oninput="accIetClientInput()">
+                <input type="hidden" id="accIetClientId">
+                <div id="accIetClientDrop" class="absolute left-0 right-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-20 hidden" style="max-height:200px;overflow-y:auto"></div>
+              </div>
+              <p class="text-[11px] text-gray-400 mt-1">대납 대상 공급처 등. 지우면 연결 해제.</p>
+            </div>
+            <div>
+              <label class="text-sm font-semibold text-gray-700 mb-1 block">내용</label>
+              <input type="text" id="accIetDesc" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="예: 서울경금속 3월분 매입대금 대납 (계산서 이전발행)">
+            </div>
+          </div>
+          <div class="flex justify-end gap-2 mt-6">
+            <button onclick="accIetCloseModal()" class="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm hover:bg-gray-50">취소</button>
+            <button onclick="accIetSave()" class="ds-btn ds-btn-primary"><i class="fas fa-save mr-1"></i>저장</button>
+          </div>
         </div>
       </div>
 
