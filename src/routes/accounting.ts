@@ -14,10 +14,11 @@
  * transaction_date)는 입력된 업무일이라 보정 불필요.
  */
 import { Hono } from 'hono'
+import type { Context } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { authMiddleware } from '../middleware/auth'
 import { requireAccessOrRole } from '../middleware/permissions'
-import { entityFilter } from '../utils/entityFilter'
+import { entityFilter, getEntityId } from '../utils/entityFilter'
 import { kstDateOf } from '../utils/kstDate'
 
 const accountingRouter = new Hono<HonoEnv>()
@@ -323,6 +324,224 @@ accountingRouter.get('/timeline', async (c) => {
     })
   } catch (error) {
     console.error('Accounting timeline error:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
+  }
+})
+
+// ===========================================================================
+// 법인간 거래 (inter-entity) — 대납·자금대여·상환·내부거래대금·계산서이전 기록
+//   방향 규약: 돈(가치)이 from → to 로 흘렀다. 대납=대납 법인이 from, 상환=갚는 법인이 from.
+//   법인간 잔액 = Σ(A→B) − Σ(B→A) (affects_balance=1만) — 상환은 역방향 기록으로 자연 상계.
+//   가시성: 전체모드(entityId=0)=전체, 특정 법인 세션=당사자(from/to)인 기록만.
+//   spec: docs/superpowers/specs/2026-07-18-inter-entity-transactions.md
+// ===========================================================================
+const IET_TYPES = ['SUBROGATION', 'LOAN', 'REPAYMENT', 'INTERNAL_TRADE', 'INVOICE_TRANSFER', 'OTHER']
+
+function ietVisibility(c: Context<HonoEnv>): { clause: string; params: number[] } {
+  const e = getEntityId(c)
+  if (e === 0) return { clause: '', params: [] }
+  return { clause: ' AND (t.from_entity_id = ? OR t.to_entity_id = ?)', params: [e, e] }
+}
+
+/** 등록/수정 공통 검증. 실패 시 오류 메시지, 성공 시 null. */
+async function ietValidate(c: Context<HonoEnv>, body: Record<string, unknown>): Promise<string | null> {
+  const date = String(body.transaction_date || '')
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return '거래일(YYYY-MM-DD)이 필요합니다'
+  const from = Number(body.from_entity_id)
+  const to = Number(body.to_entity_id)
+  if (!from || !to) return '지급 법인과 수혜 법인을 선택하세요'
+  if (from === to) return '지급 법인과 수혜 법인이 같을 수 없습니다'
+  if (!IET_TYPES.includes(String(body.transaction_type))) return '유효하지 않은 거래 유형입니다'
+  const amount = Number(body.amount)
+  if (!amount || amount <= 0) return '금액은 0보다 커야 합니다'
+  const { results: ents } = await c.env.DB.prepare(
+    'SELECT id FROM entities WHERE id IN (?, ?) AND is_active = 1'
+  ).bind(from, to).all()
+  if ((ents || []).length !== 2) return '존재하지 않는 법인입니다'
+  if (body.client_id) {
+    const cl = await c.env.DB.prepare('SELECT id FROM clients WHERE id = ?').bind(Number(body.client_id)).first()
+    if (!cl) return '존재하지 않는 거래처입니다'
+  }
+  return null
+}
+
+// GET /api/accounting/inter-entity/summary — 법인 페어별 순잔액 (기간 무관 누적)
+accountingRouter.get('/inter-entity/summary', async (c) => {
+  try {
+    const vis = ietVisibility(c)
+    const { results } = await c.env.DB.prepare(`
+      SELECT t.from_entity_id AS f, t.to_entity_id AS tt, COALESCE(SUM(t.amount), 0) AS total
+      FROM inter_entity_transactions t
+      WHERE t.affects_balance = 1${vis.clause}
+      GROUP BY t.from_entity_id, t.to_entity_id
+    `).bind(...vis.params).all<{ f: number; tt: number; total: number }>()
+
+    const { results: ents } = await c.env.DB.prepare(
+      'SELECT id, name, short_name FROM entities'
+    ).all<{ id: number; name: string; short_name: string | null }>()
+    const nameOf = new Map((ents || []).map(e => [e.id, e.short_name || e.name]))
+
+    // 페어별 순액: net(A,B) = Σ(A→B) − Σ(B→A). net>0 → A가 B에 받을 채권.
+    const flow = new Map<string, number>()
+    for (const r of results || []) flow.set(`${r.f}:${r.tt}`, Number(r.total) || 0)
+    const seen = new Set<string>()
+    const pairs: Array<{ creditor_id: number; creditor_name: string; debtor_id: number; debtor_name: string; amount: number }> = []
+    for (const r of results || []) {
+      const key = r.f < r.tt ? `${r.f}:${r.tt}` : `${r.tt}:${r.f}`
+      if (seen.has(key)) continue
+      seen.add(key)
+      const [a, b] = key.split(':').map(Number)
+      const net = (flow.get(`${a}:${b}`) || 0) - (flow.get(`${b}:${a}`) || 0)
+      const creditor = net >= 0 ? a : b
+      const debtor = net >= 0 ? b : a
+      pairs.push({
+        creditor_id: creditor,
+        creditor_name: nameOf.get(creditor) || `법인${creditor}`,
+        debtor_id: debtor,
+        debtor_name: nameOf.get(debtor) || `법인${debtor}`,
+        amount: Math.abs(net),
+      })
+    }
+    pairs.sort((x, y) => y.amount - x.amount)
+    return c.json({ success: true, data: pairs })
+  } catch (error) {
+    console.error('Inter-entity summary error:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
+  }
+})
+
+// GET /api/accounting/inter-entity — 목록 (start/end/type/search + 페이지네이션)
+accountingRouter.get('/inter-entity', async (c) => {
+  try {
+    const q = c.req.query()
+    const vis = ietVisibility(c)
+    let where = `WHERE 1=1${vis.clause}`
+    const params: (string | number)[] = [...vis.params]
+    if (q.start) { where += ' AND t.transaction_date >= ?'; params.push(q.start) }
+    if (q.end) { where += ' AND t.transaction_date <= ?'; params.push(q.end) }
+    if (q.type) { where += ' AND t.transaction_type = ?'; params.push(q.type) }
+    if (q.search) {
+      where += ' AND (cl.client_name LIKE ? OR t.description LIKE ?)'
+      const kw = '%' + q.search + '%'
+      params.push(kw, kw)
+    }
+
+    const aggRow = await c.env.DB.prepare(`
+      SELECT COUNT(*) AS cnt, COALESCE(SUM(t.amount), 0) AS total
+      FROM inter_entity_transactions t LEFT JOIN clients cl ON cl.id = t.client_id
+      ${where}
+    `).bind(...params).first<{ cnt: number; total: number }>()
+    const total = aggRow?.cnt || 0
+
+    const page = Math.max(1, Number(q.page) || 1)
+    const limit = Math.min(Math.max(1, Number(q.limit) || 50), 200)
+    const offset = (page - 1) * limit
+
+    const { results } = await c.env.DB.prepare(`
+      SELECT t.*,
+             COALESCE(fe.short_name, fe.name) AS from_entity_name,
+             COALESCE(te.short_name, te.name) AS to_entity_name,
+             cl.client_name, u.name AS created_by_name
+      FROM inter_entity_transactions t
+      LEFT JOIN entities fe ON fe.id = t.from_entity_id
+      LEFT JOIN entities te ON te.id = t.to_entity_id
+      LEFT JOIN clients cl ON cl.id = t.client_id
+      LEFT JOIN users u ON u.id = t.created_by
+      ${where}
+      ORDER BY t.transaction_date DESC, t.id DESC
+      LIMIT ? OFFSET ?
+    `).bind(...params, limit, offset).all()
+
+    return c.json({
+      success: true,
+      data: results,
+      summary: { total_amount: Number(aggRow?.total) || 0, total_count: total },
+      pagination: { total, page, limit },
+    })
+  } catch (error) {
+    console.error('Inter-entity list error:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
+  }
+})
+
+// POST /api/accounting/inter-entity — 등록
+accountingRouter.post('/inter-entity', async (c) => {
+  try {
+    const body = await c.req.json()
+    const err = await ietValidate(c, body)
+    if (err) return c.json({ success: false, error: err }, 400)
+    const user = c.get('user')
+    const result = await c.env.DB.prepare(`
+      INSERT INTO inter_entity_transactions
+        (transaction_date, from_entity_id, to_entity_id, transaction_type, amount, affects_balance, client_id, description, created_by)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).bind(
+      String(body.transaction_date),
+      Number(body.from_entity_id),
+      Number(body.to_entity_id),
+      String(body.transaction_type),
+      Number(body.amount),
+      body.affects_balance ? 1 : 0,
+      body.client_id ? Number(body.client_id) : null,
+      body.description ? String(body.description) : null,
+      user?.id || null
+    ).run()
+    return c.json({ success: true, data: { id: result.meta.last_row_id }, message: '법인간 거래가 등록되었습니다' })
+  } catch (error) {
+    console.error('Inter-entity create error:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
+  }
+})
+
+// PUT /api/accounting/inter-entity/:id — 수정
+accountingRouter.put('/inter-entity/:id', async (c) => {
+  try {
+    const id = Number(c.req.param('id'))
+    const vis = ietVisibility(c)
+    const existing = await c.env.DB.prepare(
+      `SELECT id FROM inter_entity_transactions t WHERE t.id = ?${vis.clause}`
+    ).bind(id, ...vis.params).first()
+    if (!existing) return c.json({ success: false, error: '기록을 찾을 수 없습니다' }, 404)
+
+    const body = await c.req.json()
+    const err = await ietValidate(c, body)
+    if (err) return c.json({ success: false, error: err }, 400)
+    await c.env.DB.prepare(`
+      UPDATE inter_entity_transactions
+      SET transaction_date = ?, from_entity_id = ?, to_entity_id = ?, transaction_type = ?,
+          amount = ?, affects_balance = ?, client_id = ?, description = ?, updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `).bind(
+      String(body.transaction_date),
+      Number(body.from_entity_id),
+      Number(body.to_entity_id),
+      String(body.transaction_type),
+      Number(body.amount),
+      body.affects_balance ? 1 : 0,
+      body.client_id ? Number(body.client_id) : null,
+      body.description ? String(body.description) : null,
+      id
+    ).run()
+    return c.json({ success: true, message: '수정되었습니다' })
+  } catch (error) {
+    console.error('Inter-entity update error:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
+  }
+})
+
+// DELETE /api/accounting/inter-entity/:id — 삭제
+accountingRouter.delete('/inter-entity/:id', async (c) => {
+  try {
+    const id = Number(c.req.param('id'))
+    const vis = ietVisibility(c)
+    const existing = await c.env.DB.prepare(
+      `SELECT id FROM inter_entity_transactions t WHERE t.id = ?${vis.clause}`
+    ).bind(id, ...vis.params).first()
+    if (!existing) return c.json({ success: false, error: '기록을 찾을 수 없습니다' }, 404)
+    await c.env.DB.prepare('DELETE FROM inter_entity_transactions WHERE id = ?').bind(id).run()
+    return c.json({ success: true, message: '삭제되었습니다' })
+  } catch (error) {
+    console.error('Inter-entity delete error:', error)
     return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
   }
 })
