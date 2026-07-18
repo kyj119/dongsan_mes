@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 2 -->
-<!-- last_run_at: 2026-07-18T12:20:00+09:00 -->
+<!-- last_run_area: 3 -->
+<!-- last_run_at: 2026-07-18T13:05:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,7 +8,7 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | **23** — 직전 22건(#473,504,509,519,520,521,522,524,525,526,527,528,529,530,531,532,533,534,535,536,537,539) + 본 Area6 신규 1건(#540, M, improvement, `scripts/entity-audit.mjs` CI 게이트 커버리지 8/111테이블 축소 + write경로 미검사 — issue-only, 자동확장은 오탐폭주 위험). 실측(`search_issues(state:open,label:auto-improve)`=23) 정합. |
+| 🆕 new | **25** — 직전 23건(#473,504,509,519,520,521,522,524,525,526,527,528,529,530,531,532,533,534,535,536,537,539,540) + 본 Area3 신규 2건(#541 S bug/security, #542 S bug). 실측(`search_issues(state:open,label:auto-improve)`=25) 정합. |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 |
 | ✔️ done | **446** (변동 없음, owner close 0) |
@@ -16,6 +16,15 @@
 
 > 📦 **과거 사이클 로그**는 `IMPROVEMENT_BACKLOG_ARCHIVE.md`/git 히스토리로 이관됨 (2026-06-10 1차 분리, 2026-06-25 2차 트림 343KB→192KB, 2026-06-25T10:00 3차 트림, 2026-07-03T06:00 4차 트림 288KB→86KB, **2026-07-07T13:00 5차 트림 — 07-01~07-05 사이클 로그를 git 히스토리로 이관: 238KB→78KB, 256KB Read 한도 재확보**). 신규 로그는 계속 이 파일 상단에 추가. 본 파일은 직전 2일치(07-06~) 사이클 로그 + 영구 참조 섹션(Approved/New/Auto-fixed/Done/Rejected/FP 카탈로그)만 유지. 이관분은 `git log -p -- IMPROVEMENT_BACKLOG.md`로 복원 가능.
 
+> **Area 3 UX/기능 감사 (2026-07-18T13:05):**
+> - **방법**: `git fetch origin main`(HEAD `ca75ec9` = origin/main 일치, 워킹트리 clean, detached) 후 `npm ci`(node_modules 0→81). Area 3 **39회차** — 직전 Area3(`c536e8b`, 07-17T00:35, 38회차) 이후 `src/scripts`/`src/pages` churn **14커밋**(사이드바 기능중복 4건 흡수-탭 통합 `6d03293`[장비+정비·급여+요율·경영진단·세금+부가세]·요율 모달 dead-code 제거 `d075dfd`·손익허브 통합 `03ff2f6`·생산허브 통합 `057f73a`·직원 셀프서비스 급여명세서/근로계약서 서명 신설 `360cb51`·payroll pension_base 필드 `1a1d818`+후속수정 `741ee02`·법인간 거래 탭 신설 `d469a39`). general-purpose 에이전트 2개 병렬(①사이드바 탭통합 4건 리팩터 전담 — dead-link/탭배선/HTML↔JS silent-fail/`?raw` concat 충돌/역할 도달성 ②신규기능 3건 전담 — employeeSelf/accounting/payroll pension_base의 빈상태·검색필터·로딩·에러메시지·중복제출·showConfirm오용·XSS)로 표준 체크 수행, 오케스트레이터가 confirmed 2건을 `src/pages/equipment.ts`·`src/routes/rip.ts`·`src/index.tsx`·`migrations/0211`·`src/scripts/accounting.js` 직접 Read로 재검증.
+> - **🔴 신규 이슈 — #541 (S, bug/security)**: 사이드바 정비 흡수(`6d03293`) 전에는 `/maintenance` 페이지 자체가 `requirePagePermission`(ADMIN/MANAGER만, `migrations/0211`)으로 차단되어 DESIGNER는 `maintenance.js`를 받아본 적조차 없었는데, 흡수 후 `/equipment`(DESIGNER 접근 가능 페이지)에 `maintenance.js`가 무조건 concat되고 정비 탭 노출 여부는 `equipment.ts:13-19`의 **로컬스토리지 role 체크 + CSS hidden 토글뿐** — `switchTab('maintenance')`는 전역함수라 devtools 콘솔로 누구나 호출 가능. 백엔드도 `GET /maintenance/dashboard`(`rip.ts:2080`)·`/maintenance/alerts`(`rip.ts:1323`)가 `authMiddleware`만 있고 `requireRole` 없어 DESIGNER가 장비별 정비비용 집계(`total_cost`)까지 열람 가능 — 페이지레벨 차단이 탭통합으로 소실된 access-control 회귀. 읽기전용(POST/PUT 없음)이라 Medium. IDOR/access-control 클래스는 프로젝트 정책상 issue-only.
+> - **🔴 신규 이슈 — #542 (S, bug)**: 신규 "법인간 거래" 탭(`d469a39`)의 수정 기능이 최초 배포부터 완전히 깨져 있음 — `accounting.js:565` `var accIetRows = {}`(캐시, 주석은 "목록 렌더 시 채움") 가 실제로는 어디서도 채워지지 않아(`grep` 2줄뿐: 선언+읽기) 수정 모달이 항상 빈 값으로 열리고 `accIetId`가 빈 문자열로 남아 `accIetSave()`(:655)가 매번 PUT 대신 POST를 호출 — 원본 미변경 + 신규 중복 레코드 생성으로 법인간 채권채무 잔액 집계가 이중 계상됨. 회귀 아닌 도입 즉시 깨짐. 수정은 `accLoadInter()`에 `data.forEach(r=>accIetRows[r.id]=r)` 한 줄 추가로 국지적이나, Area 3 발견은 정책상 자동수정 금지 → issue-only.
+> - **🟢 나머지 = clean**: 탭 배선(`switchAnalyticsTab`/`switchTaxTab`/`prSwitchHubTab`/`switchProdMode` 등) 전부 정상 매핑. `?raw` concat 함수명 충돌 0건(`maintenance.js` IIFE 완전격리, `payrollRates.js`는 `prR*` 프리픽스, `vatReports.js`의 `fmt`→`vatFmt`, `productionReports.js`의 `kpiOk/kpiError`→`prodAnaKpiOk/prodAnaKpiError` 개명 확인). `costAnalysis.js`는 클라 lazy-init 가드 + 서버 `requireRole('ADMIN','MANAGER')` 이중 방어로 #541과 달리 안전. 구 라우트(`/maintenance`·`/financial-reports`·`/production-reports` 등)는 `index.tsx`에 여전히 등록돼 있으나 메뉴에서 전부 은퇴(`menu.ts` 주석처리)돼 dead code(라이브 버그 아님). employeeSelf/accounting/payroll 신규 UI는 빈 상태·검색필터·로딩·에러메시지·중복제출 방어(버튼 disable)·`showConfirm` 사용법·XSS escape 전부 기존 컨벤션과 일관, pension_base 5개 호출부(`core.ts` 4곳+`leaves.ts` 741ee02 추가분) 전부 정합. `hrSelf.ts` self-service 라우트 4종은 JWT `sub` 기반 본인소유 게이트로 IDOR 없음(참고 확인, 부차). 대시보드/보고서의 `/production-reports` 잔존 링크(신규 `/production?tab=analysis`로 안 바뀜)는 라우트가 여전히 동작해 dead-link 아님 — 일관성 개선 기회일 뿐 이슈화 안 함.
+> - **🟢 backlog↔GitHub sync**: 이슈 생성 전 `search_issues(state:open,label:auto-improve)`=23 확인 후 #541·#542 생성 → 실측 **25**. done `search_issues(is:closed,reason:completed)`=**446**(변동 없음) · rejected 3(변동 없음).
+> - **🧬 SKILL 강화 없음(신규 패턴 아님)** — #541은 기존 "대형파일/페이지 흡수 리팩터 보안회귀"(security-audit SKILL) 클래스의 탭통합 변종(페이지레벨 게이트 소실), #542는 흔한 "캐시 변수 선언만 하고 채우기 누락" 구현 버그로 신규 클래스 아님. 둘 다 신규기능 도입 직후 최초 발견(회귀 아닌 최초 결함).
+> - 신규 이슈 2건(#541·#542, 전부 issue-only), 자동수정 0건(Area3 정책상 자동수정 대상 아님), done-sync 변동 없음(new 23→25·done 446·rejected 3 정합 재확인). 다음 순번 Area 4.
+>
 > **Area 2 코드 품질 심층 분석 (2026-07-18T12:20):**
 > - **방법**: `git fetch origin main`(HEAD `da50ec7` = origin/main 일치, 워킹트리 clean, detached) 후 `npm ci`(node_modules 0→81). Area 2 **46회차** — 직전 Area2(`c536e8b`, 07-16T19:37, 45회차) 이후 `src/routes`/`src/scripts`/`src/pages`/`migrations` churn = **8커밋**(`git log c536e8b..HEAD`): Area3/4/5/6/1 자체 chore 커밋 5건(각자 렌즈로 이미 심층 감사, #534~#540 생성) + 순수 신규 코드 커밋 3건 — `8cedfaa`(AR aging SSOT 통합 Phase2, `bank.ts`/`ledger/ar-helpers.ts`/`reports.ts` 37+39+27줄) + `03ff2f6`(손익허브 통합 Phase1, `financialReports.ts`/`reports.ts`/`financialReports.js`) + `057f73a`(생산허브 통합, `production.ts`/`productionReports.ts`/`productionReports.js`/`costAnalysis.js`) + `cced2ce`(XSS 자동수정, 이미 Area5 자체 커밋). Area2 고유 렌즈(entity_id INSERT·N+1·authMiddleware·컬럼/타입 불일치·dead code·SELECT *)로 세 신규 커밋 전부 직접 Read 재검증 — AR SSOT는 Area4가 39회차(`c9e4abc`)에서 이미 부분픽스 2건(#536/#537) 포착 완료라 중복 배제하고 Area2 고유 관점만 추가 확인.
 > - **🟢 AR aging SSOT(`8cedfaa`) = Area2 렌즈 clean**: `buildOldestUnpaidJoin()`의 파라미터 바인드 순서 직접 대조 — `bank.ts:2398`(entityScoped:false, clients엔 entity_id 無이라 무관 전체합산 유지)·`reports.ts` aging/topAR 2곳(entityScoped:true) 전부 SQL 내 `?` 플레이스홀더 순서(efG→efP→efA→oup.g→oup.p)와 `.bind()` 인자 순서 일치 확인. `entityFilter(c,'g')`/`entityFilter(c,'p')`가 `order_billing_groups`/`payments` 양쪽 entity_id 컬럼 보유 확인(`migrations/0150`·`0305`). `AgingRow`/`topAR` 타입 변경(`days_since_payment`→`oldest_unpaid_date`) 후 프론트 소비처(`reports.js:451/457` `cl.days_overdue`) 재확인 — 필드명 불일치 없음(서버가 `days_overdue`로 매핑해 응답). N+1·SELECT * 신규 도입 0.
