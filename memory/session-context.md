@@ -32,7 +32,7 @@
 ## 다음 단계
 1. (선택) 프로덕션 육안 확인: 로그인 후 /equipment '정비' 탭, /payroll [급여][요율], /reports '경영진단', /tax-invoices '부가세 신고' 탭.
 2. **사이드바 통합 프로젝트 종료**(Level 1·2·3 완료). 다음은 별건 마스터플랜(단가·간판BOM·HR B3/B5 등).
-3. (참고) payroll 요율모달 dead 코드(payrollOpenRatesModal 함수·#prRatesModal DOM) 정리 원하면 후속 가능(현재 무해 잔존).
+3. ✅ (완료·prod) payroll 요율모달 dead 코드 제거 — 커밋 `d075dfd9`·deploy `197b78b6`. ⚠️모달 제거 시 고아 close div로 균형 깨짐→div 카운트+브라우저 contains/offsetParent 재검으로 정정.
 
 ## 주의사항
 - payroll-rates 실제 라우트=`/settings/payroll-rates`(메뉴 path와 동일, 페이지 activePage만 `/payroll-rates`).
