@@ -556,13 +556,14 @@ hrRouter.put('/employees/:id', async (c) => {
     // ⚠️ 급여/민감 필드 변경 시 ADMIN/MANAGER 권한 필요
     // 현재 DB 값과 비교하여 실제 변경이 있을 때만 체크
     const SALARY_FIELDS = ['pay_type', 'base_salary', 'hourly_rate', 'position_allowance',
-      'vehicle_allowance', 'meal_allowance_fixed', 'special_bonus_fixed', 'other_allowance_fixed']
+      'vehicle_allowance', 'meal_allowance_fixed', 'special_bonus_fixed', 'other_allowance_fixed',
+      'pension_base']  // 국민연금 공제 직접 변경 → 급여/민감 필드 게이트 대상
     // #349: 타 법인 직원 수정 차단 — 비ADMIN은 자기 법인 직원만. ADMIN은 전 법인 수정 허용
     //   (소속법인 변경 후 '계속 보기'에서 재편집·저장 시 404 방지 — 2026-06-12).
     const sessionUserP = c.get('user') as { role?: string } | undefined
     const ef = sessionUserP?.role === 'ADMIN' ? { clause: '', params: [] as number[] } : entityFilter(c)
     const currentEmp = await c.env.DB.prepare(
-      `SELECT id, pay_type, base_salary, hourly_rate, position_allowance, vehicle_allowance, meal_allowance_fixed, special_bonus_fixed, other_allowance_fixed FROM employees WHERE id = ?${ef.clause}`
+      `SELECT id, pay_type, base_salary, hourly_rate, position_allowance, vehicle_allowance, meal_allowance_fixed, special_bonus_fixed, other_allowance_fixed, pension_base FROM employees WHERE id = ?${ef.clause}`
     ).bind(id, ...ef.params).first<any>()
     if (!currentEmp) {
       return c.json({ success: false, error: '직원을 찾을 수 없습니다.' }, 404)

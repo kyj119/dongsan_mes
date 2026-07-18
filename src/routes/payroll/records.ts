@@ -127,13 +127,15 @@ recordsRouter.post('/publish', async (c) => {
       `UPDATE payroll SET published_at = datetime('now'), updated_at = datetime('now') WHERE pay_period = ?${ef.clause}`
     ).bind(period, ...ef.params).run()
 
-    // 교부 증빙 로그 upsert (D1 batch — bind 파라미터 한도 회피)
+    // 교부 증빙 로그 upsert (D1 batch — 80건 청크 분할로 D1 한도 준수)
     const stmts = targets.map((t) => c.env.DB.prepare(
       `INSERT INTO payslip_issuance_logs (payroll_id, employee_id, entity_id, pay_period, issued_at, issued_by)
        VALUES (?, ?, ?, ?, datetime('now'), ?)
        ON CONFLICT(payroll_id) DO UPDATE SET issued_at = datetime('now'), issued_by = excluded.issued_by`
     ).bind(t.id, t.employee_id, t.entity_id ?? null, period, user?.id ?? null))
-    await c.env.DB.batch(stmts)
+    for (let i = 0; i < stmts.length; i += 80) {
+      await c.env.DB.batch(stmts.slice(i, i + 80))
+    }
 
     return c.json({ success: true, data: { published: targets.length, pay_period: period } })
   } catch (err: any) {

@@ -1225,6 +1225,7 @@ leavesRouter.post('/apply-unused-allowance', requireRole('ADMIN', 'MANAGER'), as
         applyLongTermCare: empDef?.insurance_apply_long_term_care,
         applyEmployment: empDef?.insurance_apply_employment,
         applyIndustrialAccident: empDef?.insurance_apply_industrial_accident,
+        pensionBaseOverride: empDef?.pension_base,
         ratesCache,
       })
       const total_deduction = d.total_deduction + Number(r.other_deduction || 0)

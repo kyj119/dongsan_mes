@@ -11,6 +11,14 @@
   var signSection = document.getElementById('signSection');
   var errorMsg = document.getElementById('errorMsg');
 
+  // 독립 페이지(전역 escapeHtml 없음) — innerHTML 삽입 free-text XSS 방지
+  function esc(s) {
+    if (s == null) return '';
+    return String(s).replace(/[&<>"']/g, function(ch) {
+      return ch === '&' ? '&amp;' : ch === '<' ? '&lt;' : ch === '>' ? '&gt;' : ch === '"' ? '&quot;' : '&#39;';
+    });
+  }
+
   // 로그인 폼 제출
   var form = document.getElementById('selfAuthForm');
   if (!form) { console.warn('[employeeSelf] #selfAuthForm not found'); return; }
@@ -130,7 +138,7 @@
                 ? '<div><button class="sign-btn" onclick="selfOpenSign(' + c.id + ')"><i class="fas fa-signature mr-1"></i>서명하기</button></div>'
                 : '';
               return '<div class="contract-item">'
-                + '<div class="type">' + typeLabel + (c.entity_name ? ' (' + c.entity_name + ')' : '') + '</div>'
+                + '<div class="type">' + typeLabel + (c.entity_name ? ' (' + esc(c.entity_name) + ')' : '') + '</div>'
                 + '<div class="dates">계약일: ' + (c.contract_date || '-') + ' | 기간: ' + period + '</div>'
                 + '<span class="status ' + statusClass + '">' + statusLabel + '</span>'
                 + signBtn
