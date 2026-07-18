@@ -1,7 +1,7 @@
 // 부가세 신고서 자동집계
 var vatData = null;
 
-function fmt(n) { return (n || 0).toLocaleString(); }
+function vatFmt(n) { return (n || 0).toLocaleString(); }
 // 초기화는 파일 맨 아래에서 실행 (window.* 함수 정의 이후)
 
 window.loadVatSummary = async function() {
@@ -28,15 +28,15 @@ function renderVatSummary(d) {
   var elSalesCount = document.getElementById('vatSalesCount'); if (!elSalesCount) { console.warn('[vatReports] #vatSalesCount not found'); return; }
   elSalesCount.textContent = d.sales.count;
   var elSalesSupply = document.getElementById('vatSalesSupply'); if (!elSalesSupply) { console.warn('[vatReports] #vatSalesSupply not found'); return; }
-  elSalesSupply.textContent = fmt(d.sales.supply_amount);
+  elSalesSupply.textContent = vatFmt(d.sales.supply_amount);
   var elSalesTax = document.getElementById('vatSalesTax'); if (!elSalesTax) { console.warn('[vatReports] #vatSalesTax not found'); return; }
-  elSalesTax.textContent = '세액 ' + fmt(d.sales.tax_amount);
+  elSalesTax.textContent = '세액 ' + vatFmt(d.sales.tax_amount);
   var elPurSupply = document.getElementById('vatPurchaseSupply'); if (!elPurSupply) { console.warn('[vatReports] #vatPurchaseSupply not found'); return; }
-  elPurSupply.textContent = fmt(d.purchase.supply_amount);
+  elPurSupply.textContent = vatFmt(d.purchase.supply_amount);
   var elPurTax = document.getElementById('vatPurchaseTax'); if (!elPurTax) { console.warn('[vatReports] #vatPurchaseTax not found'); return; }
-  elPurTax.textContent = '세액 ' + fmt(d.purchase.tax_amount);
+  elPurTax.textContent = '세액 ' + vatFmt(d.purchase.tax_amount);
   var elPayable = document.getElementById('vatPayable'); if (!elPayable) { console.warn('[vatReports] #vatPayable not found'); return; }
-  elPayable.textContent = fmt(d.payable_tax);
+  elPayable.textContent = vatFmt(d.payable_tax);
 
   // 매출 목록
   var salesHtml = '';
@@ -56,9 +56,9 @@ function renderVatSummary(d) {
         + '<td class="px-2 py-1">' + (it.invoice_number || '') + '</td>'
         + '<td class="px-2 py-1" title="' + escapeHtml(it.buyer_name || '') + '">' + (it.buyer_name || '') + '</td>'
         + '<td class="px-2 py-1 text-gray-500">' + (it.buyer_brn || '') + '</td>'
-        + '<td class="px-2 py-1 text-right" style="font-variant-numeric:tabular-nums;">' + fmt(it.supply_amount) + '</td>'
-        + '<td class="px-2 py-1 text-right" style="font-variant-numeric:tabular-nums;">' + fmt(it.tax_amount) + '</td>'
-        + '<td class="px-2 py-1 text-right font-medium" style="font-variant-numeric:tabular-nums;">' + fmt(it.total_amount) + '</td>'
+        + '<td class="px-2 py-1 text-right" style="font-variant-numeric:tabular-nums;">' + vatFmt(it.supply_amount) + '</td>'
+        + '<td class="px-2 py-1 text-right" style="font-variant-numeric:tabular-nums;">' + vatFmt(it.tax_amount) + '</td>'
+        + '<td class="px-2 py-1 text-right font-medium" style="font-variant-numeric:tabular-nums;">' + vatFmt(it.total_amount) + '</td>'
         + '</tr>';
     });
     salesHtml += '</tbody></table>';
@@ -86,9 +86,9 @@ function renderVatSummary(d) {
         + '<td class="px-2 py-1 text-gray-500">' + (it.nts_confirm_number || '') + '</td>'
         + '<td class="px-2 py-1" title="' + escapeHtml(it.supplier_name || '') + '">' + (it.supplier_name || '') + '</td>'
         + '<td class="px-2 py-1 text-gray-500">' + (it.supplier_brn || '') + '</td>'
-        + '<td class="px-2 py-1 text-right" style="font-variant-numeric:tabular-nums;">' + fmt(it.supply_amount) + '</td>'
-        + '<td class="px-2 py-1 text-right" style="font-variant-numeric:tabular-nums;">' + fmt(it.tax_amount) + '</td>'
-        + '<td class="px-2 py-1 text-right font-medium" style="font-variant-numeric:tabular-nums;">' + fmt(it.total_amount) + '</td>'
+        + '<td class="px-2 py-1 text-right" style="font-variant-numeric:tabular-nums;">' + vatFmt(it.supply_amount) + '</td>'
+        + '<td class="px-2 py-1 text-right" style="font-variant-numeric:tabular-nums;">' + vatFmt(it.tax_amount) + '</td>'
+        + '<td class="px-2 py-1 text-right font-medium" style="font-variant-numeric:tabular-nums;">' + vatFmt(it.total_amount) + '</td>'
         + '</tr>';
     });
     purHtml += '</tbody></table>';
@@ -143,11 +143,11 @@ async function loadVatHistory() {
       html += '<tr class="border-b border-gray-100 hover:bg-blue-50/30">'
         + '<td class="px-2 py-1.5">' + r.report_year + '년 ' + r.report_quarter + '기</td>'
         + '<td class="px-2 py-1.5 text-gray-500">' + r.period_start + ' ~ ' + r.period_end + '</td>'
-        + '<td class="px-2 py-1.5 text-right" style="font-variant-numeric:tabular-nums;">' + fmt(r.sales_supply_amount) + '</td>'
-        + '<td class="px-2 py-1.5 text-right" style="font-variant-numeric:tabular-nums;">' + fmt(r.sales_tax_amount) + '</td>'
-        + '<td class="px-2 py-1.5 text-right" style="font-variant-numeric:tabular-nums;">' + fmt(r.purchase_supply_amount) + '</td>'
-        + '<td class="px-2 py-1.5 text-right" style="font-variant-numeric:tabular-nums;">' + fmt(r.purchase_tax_amount) + '</td>'
-        + '<td class="px-2 py-1.5 text-right font-bold text-red-600" style="font-variant-numeric:tabular-nums;">' + fmt(r.payable_tax) + '</td>'
+        + '<td class="px-2 py-1.5 text-right" style="font-variant-numeric:tabular-nums;">' + vatFmt(r.sales_supply_amount) + '</td>'
+        + '<td class="px-2 py-1.5 text-right" style="font-variant-numeric:tabular-nums;">' + vatFmt(r.sales_tax_amount) + '</td>'
+        + '<td class="px-2 py-1.5 text-right" style="font-variant-numeric:tabular-nums;">' + vatFmt(r.purchase_supply_amount) + '</td>'
+        + '<td class="px-2 py-1.5 text-right" style="font-variant-numeric:tabular-nums;">' + vatFmt(r.purchase_tax_amount) + '</td>'
+        + '<td class="px-2 py-1.5 text-right font-bold text-red-600" style="font-variant-numeric:tabular-nums;">' + vatFmt(r.payable_tax) + '</td>'
         + '<td class="px-2 py-1.5 text-center">' + statusBadge + '</td>'
         + '<td class="px-2 py-1.5 text-center">'
         + (r.status !== 'SUBMITTED' ? '<button onclick="submitVat(' + r.id + ')" class="text-[10px] text-green-600 hover:underline">신고완료</button>' : '-')
@@ -233,7 +233,10 @@ window.exportVatExcel = function() {
 // ============================================================
 // 초기화 (모든 window.* 함수 정의 이후 실행)
 // ============================================================
-(function init() {
+// 사이드바 통합: /tax-invoices 허브 이식 시 __vatDefer=true → 부가세 탭 첫 진입에 window.__vatInit(멱등) 호출. 단독 /vat-reports는 flag 없어 즉시.
+window.__vatInit = function() {
+  if (window.__vatInit._done) return;
+  window.__vatInit._done = true;
   var year = new Date().getFullYear();
   var sel = document.getElementById('vatYear');
   if (!sel) { console.warn('[vatReports] #vatYear not found'); return; }
@@ -250,4 +253,5 @@ window.exportVatExcel = function() {
   elQ.value = quarter;
   window.loadVatSummary();
   window.loadVatHistory();
-})();
+};
+if (!window.__vatDefer) { window.__vatInit(); }

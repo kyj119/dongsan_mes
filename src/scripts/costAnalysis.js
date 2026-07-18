@@ -263,5 +263,12 @@ function setDefaultPeriod() {
 }
 
 // ===== 초기 로드 =====
-setDefaultPeriod();
-loadAnalysis();
+// 생산 2축 통합: /production 허브에선 __prodAnaDefer=true → 원가 탭 진입 시에만 lazy(원가 API=ADMIN/MANAGER, OPERATOR 403 방지).
+// 단독 /production-reports는 flag 없어 즉시 실행(기존 동작 유지).
+window.__costInit = function() {
+  if (window.__costInit._done) return;
+  window.__costInit._done = true;
+  setDefaultPeriod();
+  loadAnalysis();
+};
+if (!window.__prodAnaDefer) { window.__costInit(); }

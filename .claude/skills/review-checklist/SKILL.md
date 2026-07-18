@@ -129,6 +129,7 @@ grep -rn "FROM orders\|FROM payments\|FROM purchase_orders\|FROM tax_invoices\|F
 - 목록(GET /) 쿼리 + **stats/count/summary/badge 엔드포인트 모두** entity 필터 있는지 (AP-009)
 - INSERT 시 `entity_id: getEntityId(c)` 포함 여부
 - `|| default` 패턴에서 0이 유효값인 필드가 아닌지 (AP-008)
+- **🔴 형제-비대칭 IDOR (누적 최다 발견 클래스, #349/#356/#452 등)**: 같은 파일의 목록(list) 핸들러가 `entityFilter`를 쓰면서 **단건 write 핸들러(`PUT/PATCH/DELETE /:id`, approve/cancel/submit 액션)만 bare `WHERE id = ?`**이면 그건 예외가 아니라 격리 누락 버그. "단건 조회니까 됨" 판단 금지 — 목록이 격리를 쓴다는 사실 자체가 그 테이블의 격리 의도 증거. 상세 판별 기준·FP 배제 → `.claude/skills/security-audit/SKILL.md`("IDOR 비대칭 탐지 규칙") 참조.
 
 ## 출력 형식
 

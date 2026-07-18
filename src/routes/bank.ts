@@ -11,6 +11,7 @@ import { validatePayment, preparePaymentStatements } from '../lib/payments'
 import { entityFilter, getEntityId } from '../utils/entityFilter'
 import { getEntityCorpNum, getEntityBarobillSenderId } from '../utils/entitySettings'
 import { loadProvision, agingCategoryToBucket, effectiveLossRate } from '../utils/provisionMatrix'
+import { buildOldestUnpaidJoin, agingDaysFromOldest, getAgingCategory } from './ledger/ar-helpers'
 import { computeExpectedPaymentDate } from '../utils/paymentSchedule'
 import { escapeCsvField } from '../utils/csv'
 import { kstYmd, kstYmdCompact } from '../utils/kstDate'
@@ -2366,12 +2367,16 @@ bankRouter.post('/auto-sync', requireRole('ADMIN'), async (c) => {
 bankRouter.get('/receivables', requireRole('ADMIN', 'MANAGER'), async (c) => {
   try {
     // clients 테이블에는 entity_id가 없으므로 entityFilter 미사용
+    // 미수금 일원화(2026-07-17): aging 기준 = 채권 나이(oldest_unpaid_date). ledger/reports 와 동일 SSOT.
+    //   entityScoped=false → bank 전체합산(기존 동작 유지, clients 무 entity_id).
+    const oup = buildOldestUnpaidJoin(c, { entityScoped: false })
     const { results: receivables } = await c.env.DB.prepare(`
       -- 미수금 = clients.balance 캐시(폐기·split billing P3) 대신 라이브 파생.
       -- deriveClientBalance와 동일 정의: order_billing_groups[BILLED] − payments − adjustments.
       -- /accounting·ar-* 와 일치. clients엔 entity_id 없어 엔티티 무관(거래처 전체 합산, 기존 동작 유지).
       SELECT
         c.id, c.client_name, c.representative,
+        oup.oldest_unpaid_date as oldest_unpaid_date,
         (COALESCE(b.amt, 0) - COALESCE(pp.amt, 0) - COALESCE(aa.amt, 0)) AS balance,
         c.credit_risk_grade,
         c.payment_cycle_type, c.payment_terms_days, c.closing_day, c.payment_month_offset, c.payment_day,
@@ -2393,11 +2398,11 @@ bankRouter.get('/receivables', requireRole('ADMIN', 'MANAGER'), async (c) => {
       ) pp ON pp.cid = c.id
       LEFT JOIN (
         SELECT client_id AS cid, SUM(amount) AS amt FROM adjustments GROUP BY client_id
-      ) aa ON aa.cid = c.id
+      ) aa ON aa.cid = c.id${oup.sql}
       WHERE c.is_active = 1
         AND (COALESCE(b.amt, 0) - COALESCE(pp.amt, 0) - COALESCE(aa.amt, 0)) > 0
       ORDER BY balance DESC
-    `).all<{
+    `).bind(...oup.params).all<{
       id: number
       client_name: string
       representative: string | null
@@ -2412,13 +2417,13 @@ bankRouter.get('/receivables', requireRole('ADMIN', 'MANAGER'), async (c) => {
       total_payments: number
       recent_90d_payments: number | null
       earliest_billed_at: string | null
+      oldest_unpaid_date: string | null
     }>()
 
     // provision matrix (회수율) 로드 — 4-3b
     const provision = await loadProvision(c.env.DB)
 
-    // 에이징 분석 (30/60/90일 초과)
-    const today = new Date()
+    // 에이징 분석 — 채권 나이(oldest_unpaid_date) 버킷 (30/60/90일 초과). ledger/reports 와 동일 SSOT.
     const summary = {
       total_receivable: 0,
       total_expected_collection: 0, // 위험조정 예상 회수액
@@ -2434,26 +2439,18 @@ bankRouter.get('/receivables', requireRole('ADMIN', 'MANAGER'), async (c) => {
     const clients = receivables.map(r => {
       summary.total_receivable += r.balance
 
+      // 채권 나이 = 최고령 미결제 청구건 경과일(oldest_unpaid_date). 미결제 청구건 특정 불가(null)만 no_payment(보수적 중간위험).
       let aging_category = 'normal'
-      if (!r.last_payment_date) {
+      const agingDays = agingDaysFromOldest(r.oldest_unpaid_date)
+      if (r.oldest_unpaid_date == null) {
         summary.no_payment++
         aging_category = 'no_payment'
       } else {
-        const lastDate = new Date(r.last_payment_date)
-        const diffDays = Math.floor((today.getTime() - lastDate.getTime()) / (1000 * 60 * 60 * 24))
-        if (diffDays <= 30) {
-          summary.aging_30++
-          aging_category = 'normal'
-        } else if (diffDays <= 60) {
-          summary.aging_60++
-          aging_category = 'warning'
-        } else if (diffDays <= 90) {
-          summary.aging_90++
-          aging_category = 'danger'
-        } else {
-          summary.aging_over++
-          aging_category = 'critical'
-        }
+        aging_category = getAgingCategory(agingDays)
+        if (aging_category === 'normal') summary.aging_30++
+        else if (aging_category === 'warning') summary.aging_60++
+        else if (aging_category === 'danger') summary.aging_90++
+        else summary.aging_over++
       }
 
       const bucket = agingCategoryToBucket(aging_category)

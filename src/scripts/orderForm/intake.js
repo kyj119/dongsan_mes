@@ -59,7 +59,7 @@
                 for (var i = 0; i < rows.length; i++) {
                     var r = rows[i];
                     var thumb = r.thumbnail
-                        ? '<img src="' + ofIntakeThumbSrc(r.thumbnail) + '" style="width:56px;height:56px;object-fit:contain;background:#f3f4f6;border-radius:6px;flex:none">'
+                        ? '<img src="' + escapeHtml(ofIntakeThumbSrc(r.thumbnail)) + '" style="width:56px;height:56px;object-fit:contain;background:#f3f4f6;border-radius:6px;flex:none">'
                         : '<div style="width:56px;height:56px;background:#f3f4f6;border-radius:6px;flex:none"></div>';
                     var fin = '';
                     try {

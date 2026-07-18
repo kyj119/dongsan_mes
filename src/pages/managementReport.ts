@@ -7,12 +7,8 @@ import { renderPage } from '../layout'
 // 사용자 확인을 거친 1회성 수동판단이라 DB 자동집계로 재현 불가 → 확정 진단을 페이지로 박제.
 // 근거·SQL 정본 = docs/sunmyung-import/, 설계 = memory/project-sunmyung-item-import.md
 // 전역 CSS 충돌 방지 위해 .mr-root 컨테이너로 스코프(변수 --mr* 프리픽스, body/:root/* 미사용).
-export function managementReportPage(c: Context<HonoEnv>) {
-  return renderPage(c, {
-    title: '경영진단',
-    activePage: '/management-report',
-    pageScript: '',
-    pageContent: `
+// 사이드바 통합(2026-07-18): /reports '경영진단' 탭 이식용 단일소스 export. 정적 HTML(스크립트·API 없음, .mr-root 스코프).
+export const managementReportContent = `
 <style>
 .mr-root{
  --mrbg:#F6F7F9; --mrsurf:#FFFFFF; --mrink:#1B2430; --mrmuted:#5A6675; --mrline:#E3E7EC;
@@ -236,6 +232,13 @@ export function managementReportPage(c: Context<HonoEnv>) {
 </p>
 </div>
 </div>
-`,
+`
+
+export function managementReportPage(c: Context<HonoEnv>) {
+  return renderPage(c, {
+    title: '경영진단',
+    activePage: '/management-report',
+    pageScript: '',
+    pageContent: managementReportContent,
   })
 }

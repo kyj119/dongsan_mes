@@ -443,6 +443,10 @@ window.prRCopyRates = async function() {
 };
 
 // IIFE 초기화
-(function prRInit() {
+// 사이드바 통합: /payroll 허브 이식 시 __prRDefer=true → 요율 탭 첫 진입에 window.__prRInit 호출(멱등). 단독 /payroll-rates는 flag 없어 즉시.
+window.__prRInit = function() {
+  if (window.__prRInit._done) return;
+  window.__prRInit._done = true;
   prRLoadAll();
-})();
+};
+if (!window.__prRDefer) { window.__prRInit(); }

@@ -2,13 +2,41 @@ import type { Context } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { renderPage } from '../layout'
 import pageScript from '../scripts/payroll.js?raw'
+import payrollRatesScript from '../scripts/payrollRates.js?raw'
+import { payrollRatesContent } from './payrollRates'
 
 export function payrollPage(c: Context<HonoEnv>) {
+  // 사이드바 통합(2026-07-18): [급여 관리](기본)+[요율 관리](payrollRates 흡수·lazy) 최상위 탭. /payroll-rates 은퇴.
+  //   권한 동일(ADMIN/MANAGER)이라 게이팅 불요. __prRDefer로 요율 auto-init(2 API) 차단 → 요율 탭 첫 진입 시 __prRInit. payroll(pr*)↔rates(prR*) 충돌 0.
+  const hubScript = `
+    (function(){
+      window.prSwitchHubTab = function(mode){
+        var pay=document.getElementById('prHubPayroll'), rate=document.getElementById('prHubRates');
+        if(pay) pay.classList.toggle('hidden', mode!=='payroll');
+        if(rate) rate.classList.toggle('hidden', mode!=='rates');
+        function act(b,on){ if(!b)return; if(on){b.classList.remove('border-transparent','text-gray-500');b.classList.add('border-blue-600','text-blue-600');}else{b.classList.remove('border-blue-600','text-blue-600');b.classList.add('border-transparent','text-gray-500');} }
+        act(document.getElementById('prHubTabPayroll'), mode==='payroll');
+        act(document.getElementById('prHubTabRates'), mode==='rates');
+        if(mode==='rates' && typeof window.__prRInit==='function') window.__prRInit();
+      };
+    })();
+  `
+  const combinedScript = 'window.__prRDefer = true;\n;\n' + pageScript + '\n;\n' + payrollRatesScript + '\n;\n' + hubScript
   return renderPage(c, {
     title: '급여 관리',
     activePage: '/payroll',
     pageContent: `
       <div class="space-y-4">
+        <!-- 최상위 탭 (급여 2축 통합): 급여 관리 | 요율 관리 -->
+        <div class="flex border-b mb-2">
+          <button id="prHubTabPayroll" onclick="prSwitchHubTab('payroll')" class="px-5 py-2.5 text-sm font-semibold border-b-2 border-blue-600 text-blue-600 flex items-center gap-2">
+            <i class="fas fa-money-check-alt"></i>급여 관리
+          </button>
+          <button id="prHubTabRates" onclick="prSwitchHubTab('rates')" class="px-5 py-2.5 text-sm font-semibold border-b-2 border-transparent text-gray-500 hover:text-gray-700 flex items-center gap-2">
+            <i class="fas fa-percentage"></i>요율 관리
+          </button>
+        </div>
+        <div id="prHubPayroll">
         <!-- 상단 컨트롤 바 -->
         <div class="ds-card p-3 flex items-center gap-2 flex-wrap">
           <label class="text-xs text-gray-600">급여 월</label>
@@ -23,9 +51,6 @@ export function payrollPage(c: Context<HonoEnv>) {
             <i class="fas fa-search mr-1"></i>조회
           </button>
           <div class="flex-1"></div>
-          <button onclick="payrollOpenRatesModal()" class="px-3 py-1.5 text-xs border border-gray-300 text-gray-700 bg-white rounded hover:bg-gray-50" title="4대보험 요율 확인">
-            <i class="fas fa-percentage mr-1"></i>요율
-          </button>
           <button onclick="payrollBatch()" class="px-3 py-1.5 text-xs border border-gray-300 text-gray-700 bg-white rounded hover:bg-gray-50" title="해당 월 전 직원 급여를 기본급 기준으로 일괄 생성 (PENDING)">
             <i class="fas fa-bolt mr-1"></i>일괄 생성
           </button>
@@ -362,37 +387,12 @@ export function payrollPage(c: Context<HonoEnv>) {
             <button onclick="payrollBulkEditApply()" class="ds-btn ds-btn-primary text-xs"><i class="fas fa-pen mr-1"></i>적용</button>
           </div>
         </div>
-      </div>
+      </div><!-- /prHubPayroll -->
 
-      <!-- 4대보험 요율 모달 -->
-      <div id="prRatesModal" class="ds-modal-overlay hidden">
-        <div class="ds-modal" style="max-width:42rem">
-          <div class="px-5 py-3 border-b flex items-center justify-between">
-            <h3 class="text-base font-semibold">4대보험 요율</h3>
-            <button onclick="payrollCloseRatesModal()" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times"></i></button>
-          </div>
-          <div class="p-5">
-            <div class="flex items-center gap-2 mb-3">
-              <label class="text-xs text-gray-600">연도</label>
-              <input type="number" id="prRatesYear" value="2026" class="border rounded px-2 py-1 text-xs w-24" />
-              <button onclick="payrollLoadRates()" class="ds-btn ds-btn-primary text-xs">조회</button>
-            </div>
-            <table class="w-full text-sm ds-table-striped">
-              <thead class="bg-gray-50 text-xs text-gray-600 uppercase">
-                <tr>
-                  <th class="px-3 py-2 text-left">보험</th>
-                  <th class="px-3 py-2 text-right">전체</th>
-                  <th class="px-3 py-2 text-right">근로자</th>
-                  <th class="px-3 py-2 text-right">사용자</th>
-                  <th class="px-3 py-2 text-left">기준</th>
-                </tr>
-              </thead>
-              <tbody id="prRatesBody"><tr><td colspan="5" class="text-center text-gray-400 py-4">로드 중...</td></tr></tbody>
-            </table>
-          </div>
-        </div>
+        <!-- 요율 관리 탭 (payrollRates 단일소스 이식, lazy) -->
+        <div id="prHubRates" class="hidden">${payrollRatesContent}</div>
       </div>
     `,
-    pageScript,
+    pageScript: combinedScript,
   })
 }

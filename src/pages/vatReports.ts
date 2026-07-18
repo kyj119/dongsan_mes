@@ -3,11 +3,8 @@ import type { HonoEnv } from '../types/env'
 import { renderPage } from '../layout'
 import pageScript from '../scripts/vatReports.js?raw'
 
-export function vatReportsPage(c: Context<HonoEnv>) {
-  return renderPage(c, {
-    title: '부가세 신고',
-    activePage: '/vat-reports',
-    pageContent: `
+// 사이드바 통합(2026-07-18): /tax-invoices 허브 '부가세 신고' 탭 이식용 단일소스 export. vat 스크립트는 fmt→vatFmt 리네임·__vatInit 지연.
+export const vatReportsContent = `
       <div class="space-y-4">
         <!-- 분기 선택 -->
         <div class="ds-card p-3 flex items-center gap-2">
@@ -70,7 +67,13 @@ export function vatReportsPage(c: Context<HonoEnv>) {
           </div>
         </div>
       </div>
-    `,
+    `
+
+export function vatReportsPage(c: Context<HonoEnv>) {
+  return renderPage(c, {
+    title: '부가세 신고',
+    activePage: '/vat-reports',
+    pageContent: vatReportsContent,
     pageScript
   })
 }

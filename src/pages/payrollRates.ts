@@ -3,8 +3,8 @@ import type { Context } from 'hono'
 import { renderPage } from '../layout'
 import payrollRatesScript from '../scripts/payrollRates.js?raw'
 
-export function payrollRatesPage(c: Context) {
-  const pageContent = `
+// 사이드바 통합(2026-07-18): /payroll 허브 '요율 관리' 탭 이식용 단일소스 export. payrollRates.js는 prR* 프리픽스라 payroll(pr*)과 충돌 없음.
+export const payrollRatesContent = `
 <div class="max-w-7xl mx-auto px-6 pt-6 space-y-6">
   <!-- 헤더 -->
   <div class="flex items-center justify-between">
@@ -323,10 +323,12 @@ export function payrollRatesPage(c: Context) {
   </div>
 </div>
 `
+
+export function payrollRatesPage(c: Context) {
   return renderPage(c, {
     title: '급여 요율 관리',
     activePage: '/payroll-rates',
-    pageContent,
+    pageContent: payrollRatesContent,
     pageScript: payrollRatesScript,
   })
 }

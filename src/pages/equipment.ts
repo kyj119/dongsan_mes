@@ -4,9 +4,19 @@ import { renderPage } from '../layout'
 import pageScript from '../scripts/equipment.js?raw'
 import dashboardScript from '../scripts/equipmentDashboard.js?raw'
 import queueScript from '../scripts/equipment/queue.js?raw'
+import maintenanceScript from '../scripts/maintenance.js?raw'
+import { maintenanceContent } from './maintenance'
 
 export function equipmentPage(c: Context<HonoEnv>) {
-  const combinedScript = pageScript + '\n\n' + dashboardScript + '\n\n' + queueScript
+  // 사이드바 통합(2026-07-18): 정비(maintenance) 흡수. __maintDefer로 auto-init 차단 → 정비 탭 첫 진입 시 __maintInit(멱등).
+  // 정비 탭은 ADMIN/MANAGER 게이팅(기본 hidden → 관리자만 노출). maintenance.js는 완전 IIFE라 전역/ID 충돌 0.
+  const maintGateScript = `
+    (function(){
+      var __r=''; try{ __r=(JSON.parse(localStorage.getItem('user')||'{}').role)||''; }catch(e){}
+      if(__r==='ADMIN' || __r==='MANAGER'){ var b=document.getElementById('tabMaintenance'); if(b) b.classList.remove('hidden'); }
+    })();
+  `
+  const combinedScript = 'window.__maintDefer = true;\n;\n' + pageScript + '\n\n' + dashboardScript + '\n\n' + queueScript + '\n;\n' + maintenanceScript + '\n;\n' + maintGateScript
 
   return renderPage(c, {
     title: '장비 관리',
@@ -79,6 +89,9 @@ export function equipmentPage(c: Context<HonoEnv>) {
                     </button>
                     <button onclick="switchTab('queue')" id="tabQueue" class="tab-btn px-4 py-2 rounded-md text-sm font-medium text-gray-500 hover:text-gray-700">
                         <i class="fas fa-layer-group mr-1"></i>큐/부하
+                    </button>
+                    <button onclick="switchTab('maintenance')" id="tabMaintenance" class="tab-btn px-4 py-2 rounded-md text-sm font-medium text-gray-500 hover:text-gray-700 hidden">
+                        <i class="fas fa-wrench mr-1"></i>정비
                     </button>
                 </div>
                 <button onclick="openAddModal()" class="ds-btn ds-btn-primary ds-btn-sm">
@@ -264,6 +277,9 @@ export function equipmentPage(c: Context<HonoEnv>) {
                     </div>
                 </div>
             </div>
+
+            <!-- 정비 탭 (maintenance 단일소스 이식, ADMIN/MANAGER·lazy) -->
+            <div id="panelMaintenance" class="hidden">${maintenanceContent}</div>
 
             <!-- 배치도 탭 -->
             <div id="panelLayout" class="hidden">

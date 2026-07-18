@@ -4,8 +4,9 @@ import { renderPage } from '../layout'
 import prodReportsScript from '../scripts/productionReports.js?raw'
 import costAnalysisScript from '../scripts/costAnalysis.js?raw'
 
-export function productionReportsPage(c: Context<HonoEnv>) {
-  const tabSwitchScript = `
+// 생산 2축 통합(2026-07-17): /production 허브 '생산 분석' 탭 이식용 단일소스 export.
+// 표준 /production-reports 라우트와 공유(HTML·스크립트 중복 방지). kpiOk/kpiError→prodAnaKpiOk/prodAnaKpiError(production.ts와 co-load 시 ID 충돌 회피).
+const tabSwitchScript = `
 window.switchProdAnalysisTab = function(tab) {
   var map = {
     production: { content: 'prodAnaProductionContent', tab: 'prodAnaTabProduction' },
@@ -24,6 +25,7 @@ window.switchProdAnalysisTab = function(tab) {
     }
   });
   if (tab === 'oee' && typeof window.oeeInit === 'function') window.oeeInit();
+  if (tab === 'cost' && typeof window.__costInit === 'function') window.__costInit();
 };
 (function() {
   var p = new URLSearchParams(window.location.search);
@@ -36,12 +38,7 @@ window.switchProdAnalysisTab = function(tab) {
 })();
 `;
 
-  const combinedScript = tabSwitchScript + '\n' + prodReportsScript + '\n' + costAnalysisScript;
-
-  return renderPage(c, {
-    title: '생산 분석',
-    activePage: '/production-reports',
-    pageContent: `
+export const productionReportsContent = `
             <!-- 상위 탭 -->
             <div class="flex border-b mb-6">
               <button onclick="switchProdAnalysisTab('production')" id="prodAnaTabProduction" class="px-5 py-3 text-sm font-medium border-b-2 border-blue-600 text-blue-600">
@@ -85,7 +82,7 @@ window.switchProdAnalysisTab = function(tab) {
                   <div class="ds-card p-4">
                     <div class="text-xs text-gray-500 mb-1">출력 건수</div>
                     <div class="text-2xl font-bold text-blue-700" id="kpiPrints">-</div>
-                    <div class="text-xs text-gray-400 mt-1"><span id="kpiOk">0</span> OK / <span id="kpiError">0</span> 에러</div>
+                    <div class="text-xs text-gray-400 mt-1"><span id="prodAnaKpiOk">0</span> OK / <span id="prodAnaKpiError">0</span> 에러</div>
                   </div>
                   <div class="ds-card p-4">
                     <div class="text-xs text-gray-500 mb-1">출력 면적</div>
@@ -519,7 +516,15 @@ window.switchProdAnalysisTab = function(tab) {
 
             </div>
             </div><!-- end prodAnaOeeContent -->
-    `,
-    pageScript: combinedScript
+`
+
+export const productionReportsScript = tabSwitchScript + '\n' + prodReportsScript + '\n' + costAnalysisScript
+
+export function productionReportsPage(c: Context<HonoEnv>) {
+  return renderPage(c, {
+    title: '생산 분석',
+    activePage: '/production-reports',
+    pageContent: productionReportsContent,
+    pageScript: productionReportsScript
   })
 }

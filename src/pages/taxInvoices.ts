@@ -4,6 +4,8 @@ import { renderPage } from '../layout'
 import taxScript from '../scripts/taxInvoices.js?raw'
 import cashReceiptsScript from '../scripts/cashReceipts.js?raw'
 import hometaxScript from '../scripts/hometaxInvoices.js?raw'
+import vatScript from '../scripts/vatReports.js?raw'
+import { vatReportsContent } from './vatReports'
 
 export function taxInvoicesPage(c: Context<HonoEnv>) {
   const pageContent = `
@@ -17,6 +19,9 @@ export function taxInvoicesPage(c: Context<HonoEnv>) {
       </button>
       <button onclick="switchTaxTab('hometax')" id="taxTabHometax" class="px-5 py-3 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">
         <i class="fas fa-cloud-download-alt mr-1"></i>홈택스 수집
+      </button>
+      <button onclick="switchTaxTab('vat')" id="taxTabVat" class="px-5 py-3 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">
+        <i class="fas fa-file-invoice-dollar mr-1"></i>부가세 신고
       </button>
     </div>
 
@@ -956,12 +961,15 @@ export function taxInvoicesPage(c: Context<HonoEnv>) {
         </div>
       </div>
     </div>
+
+    <!-- 부가세 신고 탭 (vatReports 단일소스 이식, __vatDefer 지연·권한은 상위 페이지와 동일 ADMIN/MANAGER) -->
+    <div id="taxVatContent" class="hidden">${vatReportsContent}</div>
   `
 
   // 탭 전환 스크립트
   const tabSwitchScript = `
   window.switchTaxTab = function(tab) {
-    var tabs = ['tax', 'cash', 'hometax'];
+    var tabs = ['tax', 'cash', 'hometax', 'vat'];
     tabs.forEach(function(t) {
       var contentId = 'tax' + t.charAt(0).toUpperCase() + t.slice(1) + 'Content';
       var tabBtnId = 'taxTab' + t.charAt(0).toUpperCase() + t.slice(1);
@@ -981,6 +989,7 @@ export function taxInvoicesPage(c: Context<HonoEnv>) {
         }
       }
     });
+    if (tab === 'vat' && typeof window.__vatInit === 'function') window.__vatInit(); // lazy·멱등
   };
   (function() {
     var p = new URLSearchParams(window.location.search);
@@ -989,11 +998,14 @@ export function taxInvoicesPage(c: Context<HonoEnv>) {
       window.switchTaxTab('cash');
     } else if (tab === 'hometax' || window.location.hash === '#hometax') {
       window.switchTaxTab('hometax');
+    } else if (tab === 'vat' || window.location.hash === '#vat') {
+      window.switchTaxTab('vat');
     }
   })();
   `;
 
-  const combinedScript = tabSwitchScript + '\n' + taxScript + '\n' + cashReceiptsScript + '\n' + hometaxScript;
+  // 사이드바 통합(2026-07-18): 부가세(vat) 흡수. __vatDefer로 auto-init(2 API) 차단 → 부가세 탭 첫 진입 시 __vatInit. vat fmt→vatFmt 리네임.
+  const combinedScript = 'window.__vatDefer = true;\n;\n' + tabSwitchScript + '\n' + taxScript + '\n' + cashReceiptsScript + '\n' + hometaxScript + '\n;\n' + vatScript;
 
   return renderPage(c, {
     title: '세금 증빙',
