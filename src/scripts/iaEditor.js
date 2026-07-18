@@ -370,7 +370,7 @@ function iaeIntakeLoad() {
     } else {
       body = '<div class="max-h-64 overflow-y-auto divide-y divide-gray-100">' + rows.map(function (r) {
         var thumb = r.thumbnail
-          ? '<img src="' + iaeIntakeThumb(r.thumbnail) + '" class="flex-shrink-0" style="width:40px;height:40px;object-fit:contain;background:#f3f4f6;border-radius:6px">'
+          ? '<img src="' + iaeEscape(iaeIntakeThumb(r.thumbnail)) + '" class="flex-shrink-0" style="width:40px;height:40px;object-fit:contain;background:#f3f4f6;border-radius:6px">'
           : '<div class="flex-shrink-0" style="width:40px;height:40px;background:#f3f4f6;border-radius:6px"></div>';
         var modeKo = r.mode === 'impose' ? '모아찍기용' : (r.mode === 'both' ? '단건+모아찍기' : '단건');
         return '<div class="flex items-center justify-between py-1.5 gap-2">' + thumb
