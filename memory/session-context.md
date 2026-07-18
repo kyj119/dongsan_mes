@@ -3,8 +3,9 @@
 > 세션별 덮어쓰기 파일. 상세 정본 = [[project-sidebar-consolidation]] (auto-memory).
 > 직전(생산 2축)은 prod 배포완료(main `b2a05c83`).
 
-## 이번 세션 상태 — 완료·검증·커밋, ⚠️ 프로덕션 배포 대기
+## 이번 세션 상태 — ✅ prod 배포완료 (main `a3119af9`·deploy `ada7ca93`·커밋 `6d03293c`)
 2차 진단으로 발굴한 잔여 기능중복 4건 통합. 전부 흡수-탭 패턴(단일소스 export·지연 init·사이드바 은퇴, 페이지·라우트·API 보존). Explore 2에이전트로 충돌 사전매핑.
+배포 시 origin/main 봇1건 앞서있어 superset 병합(IMPROVEMENT_BACKLOG.md만) 후 `--branch main`. apex=허브 4페이지+흡수 단독 4페이지 200 보존·API 401.
 
 ### #1 장비(/equipment) + 정비(/maintenance)
 - 근거: 동일 API(`/api/rip/maintenance/dashboard`)·equipment가 이미 정비모달 내장 = 실중복.
@@ -29,9 +30,9 @@
 - **로컬 Playwright 실측(ADMIN)**: 4허브 전부 탭 노출·지연 init(로드 시 미발생→탭 진입 발동)·콘텐츠 이식·탭 전환 정상. 단독 4페이지(/maintenance·/settings/payroll-rates·/management-report·/vat-reports) 즉시 init·허브요소 부재·회귀 0. 콘솔 실에러 0(179건 ERR_CONNECTION_REFUSED=notification 폴링 환경노이즈·무관).
 
 ## 다음 단계
-1. **⚠️ 프로덕션 배포 = 사용자 명시 확인 대기** ([[feedback-deploy-needs-explicit-request]]). 마이그레이션 없음(순수 코드).
-2. 배포 시: **origin/main 분기 먼저 확인**(직전 2회 모두 봇이 앞서 있었음) → superset 병합 → `--branch main` → apex 검증(/equipment·/payroll·/reports·/tax-invoices 200 + 단독 4페이지 200 보존).
-3. 사이드바 통합 프로젝트 사실상 종료(Level 1·2·3 완료). 다음은 별건 마스터플랜(단가·간판BOM·HR B3/B5 등).
+1. (선택) 프로덕션 육안 확인: 로그인 후 /equipment '정비' 탭, /payroll [급여][요율], /reports '경영진단', /tax-invoices '부가세 신고' 탭.
+2. **사이드바 통합 프로젝트 종료**(Level 1·2·3 완료). 다음은 별건 마스터플랜(단가·간판BOM·HR B3/B5 등).
+3. (참고) payroll 요율모달 dead 코드(payrollOpenRatesModal 함수·#prRatesModal DOM) 정리 원하면 후속 가능(현재 무해 잔존).
 
 ## 주의사항
 - payroll-rates 실제 라우트=`/settings/payroll-rates`(메뉴 path와 동일, 페이지 activePage만 `/payroll-rates`).
