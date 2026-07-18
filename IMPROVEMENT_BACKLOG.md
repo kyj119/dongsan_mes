@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 3 -->
-<!-- last_run_at: 2026-07-18T13:05:00+09:00 -->
+<!-- last_run_area: 4 -->
+<!-- last_run_at: 2026-07-18T14:10:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,13 +8,22 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | **25** — 직전 23건(#473,504,509,519,520,521,522,524,525,526,527,528,529,530,531,532,533,534,535,536,537,539,540) + 본 Area3 신규 2건(#541 S bug/security, #542 S bug). 실측(`search_issues(state:open,label:auto-improve)`=25) 정합. |
+| 🆕 new | **26** — 직전 25건(#473,504,509,519,520,521,522,524,525,526,527,528,529,530,531,532,533,534,535,536,537,539,540,541,542) + 본 Area4 신규 1건(#543 S bug). 실측(`search_issues(state:open,label:auto-improve)`=26) 정합. |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 |
 | ✔️ done | **446** (변동 없음, owner close 0) |
 | ❌ rejected | 3 (`reason:not_planned`=1 + `reason:duplicate`=2, 변동 없음) |
 
 > 📦 **과거 사이클 로그**는 `IMPROVEMENT_BACKLOG_ARCHIVE.md`/git 히스토리로 이관됨 (2026-06-10 1차 분리, 2026-06-25 2차 트림 343KB→192KB, 2026-06-25T10:00 3차 트림, 2026-07-03T06:00 4차 트림 288KB→86KB, **2026-07-07T13:00 5차 트림 — 07-01~07-05 사이클 로그를 git 히스토리로 이관: 238KB→78KB, 256KB Read 한도 재확보**). 신규 로그는 계속 이 파일 상단에 추가. 본 파일은 직전 2일치(07-06~) 사이클 로그 + 영구 참조 섹션(Approved/New/Auto-fixed/Done/Rejected/FP 카탈로그)만 유지. 이관분은 `git log -p -- IMPROVEMENT_BACKLOG.md`로 복원 가능.
+
+> **Area 4 데이터 정합성 (2026-07-18T14:10):**
+> - **방법**: `git fetch origin main`(HEAD `18d2cfe` = origin/main 일치, 워킹트리 clean, detached) 후 `npm ci`(node_modules 0→81). Area 4 **40회차** — 직전 Area4(`c9e4abc`, 07-17T02:10, 39회차) 이후 `migrations`/`src/routes` churn 6커밋(`git log c9e4abc..HEAD`): 신규 마이그 3건(0467 inter_entity_transactions·0468 payslip_publish·0469 pension_base) + `accounting.ts`(+221, 법인간 거래 CRUD)·`hrSelf.ts`(신규 172줄, 직원 셀프서비스)·`hr.ts`/`leaves.ts`/`payroll/{core,records,shared}.ts`(pension_base 배선). Area2/3/6이 각자 렌즈(코드품질/UX/자기진화)로 이미 훑었으나 데이터 정합성 렌즈(orphan·상태불일치·NOT NULL·CHECK·entity 격리 authorization)는 미검증 상태라 직접 전수 Read로 심층 분석(에이전트 위임 없이 오케스트레이터 단독 — churn 범위가 7파일로 작아 병렬 위임보다 직접 검증이 효율적).
+> - **🔴 신규 이슈 — #543 (S, bug)**: 법인간 거래(`inter_entity_transactions`, 0467) 라우터 게이트가 `requireAccessOrRole('/accounting','MANAGER')`(`accounting.ts:26`)라 entity-scoped MANAGER도 통과하는데, 공통 검증 `ietValidate()`(`:346`)가 날짜형식/from≠to/거래유형/금액>0/법인실재를 확인하면서 **정작 from_entity_id·to_entity_id 중 하나가 요청자 자신의 소속 법인인지는 검증하지 않음**. 읽기(`GET /inter-entity`)는 `ietVisibility()`(`:340`)로 당사자(from/to)만 격리하는데(격리 의도 명백), 쓰기(POST `:400`/PUT `:434`)만 이 게이트가 빠진 형제-비대칭. PUT은 기존행 조회 시 당사자 여부를 확인하지만 **새로 들어오는 from/to 값에는 같은 제약이 없어 기존 거래를 자신과 무관한 두 법인 사이 거래로 바꿔치기 가능**. 프론트(`accounting.js:471` accIetFrom/To select)도 `/api/auth/entities` 전체 목록을 그대로 노출해 UI 단 제약도 없음(실도달 확인). entity-scoped MANAGER가 자신과 무관한 두 법인(B·C) 사이 임의 법인간 채권채무를 주입/재지정할 수 있어 `GET /inter-entity/summary` 잔액 집계가 조작됨 — IDOR 인접 인가 누락 + 재무 데이터 무결성 훼손. IDOR 클래스는 프로젝트 정책상 issue-only.
+> - **🟢 나머지 = clean**: 0467/0468/0469 NOT NULL no-default 컬럼 전수 INSERT 바인드 확인(inter_entity_transactions 4컬럼·payslip_issuance_logs 3컬럼 전부 충족). CHECK(transaction_type IN(...)) 리터럴 write가 `IET_TYPES` 배열과 1:1 매칭. `entities`/`clients` 하드삭제 라우트 없음(전부 soft-delete, `is_active=0`) — 신규 `from_entity_id`/`to_entity_id`/`client_id` 비-FK 참조 컬럼의 고아 위험 없음(#443/#454 클래스 해당 없음). `from_bank_transaction_id`/`to_bank_transaction_id`는 백엔드 INSERT/UPDATE 어디서도 미기록(프론트 `accounting.js:545`만 읽음) — 향후 기능용 미사용 컬럼, graceful degrade(`||` 폴백)라 무해. `pension_base` 배선(#471 클래스 "부분마이그레이션 잔재" 재검증) — `calcDeductions()` 호출처 5곳(`payroll/core.ts` 4곳+`leaves.ts:1218`) 전수 `pensionBaseOverride` 전달 확인, 형제 누락 0(741ee02가 이미 완전 수정). `hrSelf.ts` 신규 라우트 5종 — 소유(employee_id)+상태(DRAFT/PENDING_SIGNATURE)+교부(published_at) 게이트 전부 확인, 서명 UPDATE도 `WHERE ... AND status IN (...)`로 TOCTOU 안전. `payslip_issuance_logs` UPSERT(`ON CONFLICT(payroll_id)`) 멱등 확인.
+> - **🟢 backlog↔GitHub sync**: 이슈 생성 전 `search_issues(state:open,label:auto-improve)`=25 확인 후 #543 생성 → 실측 **26**. done `search_issues(is:closed,reason:completed)`=**446**(변동 없음) · rejected 3(변동 없음).
+> - **🧬 SKILL 강화 없음(신규 패턴 아님)** — #543은 기존 "형제-비대칭 IDOR"(#437/#452류, list는 격리·write는 미격리) 클래스의 정확한 재현이나, 대상이 "단건 조회 WHERE id=?"가 아니라 "신규 등록/수정 payload의 entity 필드값 자체가 검증 없이 자신의 소속을 벗어날 수 있다"는 변종 — 기존 SKILL 레시피(line 191 등)가 상정한 "PUT만 bare WHERE id=?" 패턴과 달리 read-gate는 있으나 write payload의 신규 값은 무검증이라는 점에서 미묘하게 다름. 다음 IDOR standing scan에 "PUT/POST 바디의 entity 필드가 기존 행 소유자 확인과 별개로 재검증되는지"를 체크항목으로 참고할 가치는 있으나, 현재 SKILL 문서 분량상 즉시 codify는 보류(반복 재현 시 승격).
+> - 신규 이슈 1건(#543, issue-only), 자동수정 0건(IDOR 인접 인가 로직 = 정책 판단 + 프로젝트 정책상 자동수정 금지), done-sync 변동 없음(new 25→26·done 446·rejected 3 정합 재확인). 다음 순번 Area 5.
+>
 
 > **Area 3 UX/기능 감사 (2026-07-18T13:05):**
 > - **방법**: `git fetch origin main`(HEAD `ca75ec9` = origin/main 일치, 워킹트리 clean, detached) 후 `npm ci`(node_modules 0→81). Area 3 **39회차** — 직전 Area3(`c536e8b`, 07-17T00:35, 38회차) 이후 `src/scripts`/`src/pages` churn **14커밋**(사이드바 기능중복 4건 흡수-탭 통합 `6d03293`[장비+정비·급여+요율·경영진단·세금+부가세]·요율 모달 dead-code 제거 `d075dfd`·손익허브 통합 `03ff2f6`·생산허브 통합 `057f73a`·직원 셀프서비스 급여명세서/근로계약서 서명 신설 `360cb51`·payroll pension_base 필드 `1a1d818`+후속수정 `741ee02`·법인간 거래 탭 신설 `d469a39`). general-purpose 에이전트 2개 병렬(①사이드바 탭통합 4건 리팩터 전담 — dead-link/탭배선/HTML↔JS silent-fail/`?raw` concat 충돌/역할 도달성 ②신규기능 3건 전담 — employeeSelf/accounting/payroll pension_base의 빈상태·검색필터·로딩·에러메시지·중복제출·showConfirm오용·XSS)로 표준 체크 수행, 오케스트레이터가 confirmed 2건을 `src/pages/equipment.ts`·`src/routes/rip.ts`·`src/index.tsx`·`migrations/0211`·`src/scripts/accounting.js` 직접 Read로 재검증.
