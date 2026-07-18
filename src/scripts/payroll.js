@@ -54,7 +54,10 @@ function prActionsHtml(r) {
   var prEscName = (r.employee_name || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
   var prEscPhone = (r.employee_mobile || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
   var prEscPeriod = (r.pay_period || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
-  var actions = '<button onclick="payrollSyncOne(' + r.id + ')" class="text-amber-600 hover:text-amber-800 mx-0.5" title="이 직원 근태 동기화"><i class="fas fa-sync-alt"></i></button>';
+  var actions = r.published_at
+    ? '<span class="text-indigo-600 mx-0.5" title="직원 교부됨 (' + escapeHtml(String(r.published_at)) + ')"><i class="fas fa-share-square"></i></span>'
+    : '';
+  actions += '<button onclick="payrollSyncOne(' + r.id + ')" class="text-amber-600 hover:text-amber-800 mx-0.5" title="이 직원 근태 동기화"><i class="fas fa-sync-alt"></i></button>';
   actions += '<button onclick="payrollOpenEditModal(' + r.id + ')" class="text-blue-600 hover:text-blue-800 mx-0.5" title="수정"><i class="fas fa-edit"></i></button>';
   actions += '<button onclick="payrollOpenSlip(' + r.id + ')" class="text-gray-600 hover:text-gray-800 mx-0.5" title="명세서"><i class="fas fa-file-invoice-dollar"></i></button>';
   actions += '<button onclick="payrollOpenYearEnd(' + r.employee_id + ',\'' + year + '\')" class="text-blue-600 hover:text-blue-800 mx-0.5" title="연말정산"><i class="fas fa-file-contract"></i></button>';
@@ -542,6 +545,55 @@ window.payrollOpenBatchSlip = function() {
   var period = document.getElementById('prPeriod').value;
   if (!period) { showToast('급여 월을 먼저 선택하세요', 'warning'); return; }
   window.open('/payslip/batch?period=' + encodeURIComponent(period), '_blank', 'width=900,height=1200');
+};
+
+// 직원 교부(공개) 드롭다운 토글
+window.payrollTogglePublishMenu = function() {
+  var menu = document.getElementById('prPublishMenu');
+  if (!menu) return;
+  menu.classList.toggle('hidden');
+  if (!menu.classList.contains('hidden')) {
+    setTimeout(function() {
+      var close = function(ev) {
+        var btn = document.getElementById('prPublishBtn');
+        if (menu.contains(ev.target) || (btn && btn.contains(ev.target))) return;
+        menu.classList.add('hidden');
+        document.removeEventListener('click', close);
+      };
+      document.addEventListener('click', close);
+    }, 0);
+  }
+};
+
+// 이 달 급여명세서 직원 교부(공개) → 셀프서비스 노출
+window.payrollPublishPeriod = async function() {
+  var menu = document.getElementById('prPublishMenu'); if (menu) menu.classList.add('hidden');
+  var period = document.getElementById('prPeriod').value;
+  if (!period) { showToast('급여 월을 먼저 선택하세요', 'warning'); return; }
+  if (!(await showConfirm(period + ' 급여명세서를 직원에게 교부(공개)합니다. 직원 셀프서비스(사원번호+생년월일)에서 열람 가능해집니다. 계속할까요?'))) return;
+  try {
+    var res = await axios.post('/api/payroll/publish', { pay_period: period });
+    var n = (res.data && res.data.data && res.data.data.published) || 0;
+    showToast('교부 완료: ' + n + '명 공개', 'success');
+    window.payrollLoad();
+  } catch (e) {
+    showToast('교부 실패: ' + ((e.response && e.response.data && e.response.data.error) || e.message), 'error');
+  }
+};
+
+// 이 달 급여명세서 교부 취소(비공개) — 증빙 로그는 보존
+window.payrollUnpublishPeriod = async function() {
+  var menu = document.getElementById('prPublishMenu'); if (menu) menu.classList.add('hidden');
+  var period = document.getElementById('prPeriod').value;
+  if (!period) { showToast('급여 월을 먼저 선택하세요', 'warning'); return; }
+  if (!(await showConfirm(period + ' 급여명세서 교부를 취소합니다(직원 열람 차단). 교부/열람 증빙 기록은 보존됩니다. 계속할까요?'))) return;
+  try {
+    await axios.post('/api/payroll/unpublish', { pay_period: period });
+    showToast('교부 취소 완료', 'success');
+    window.payrollLoad();
+  } catch (e) {
+    showToast('교부 취소 실패: ' + ((e.response && e.response.data && e.response.data.error) || e.message), 'error');
+  }
 };
 
 // 세무사 CSV 다운로드 드롭다운 토글

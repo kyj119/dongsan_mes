@@ -60,6 +60,19 @@ export function payrollPage(c: Context<HonoEnv>) {
           <button onclick="payrollOpenBatchSlip()" class="px-3 py-1.5 text-xs border border-gray-300 text-gray-700 bg-white rounded hover:bg-gray-50" title="해당 월 전 직원 급여명세서를 새 창에서 일괄 인쇄">
             <i class="fas fa-print mr-1"></i>일괄 명세서
           </button>
+          <div class="relative inline-block">
+            <button onclick="payrollTogglePublishMenu()" id="prPublishBtn" class="px-3 py-1.5 text-xs border border-indigo-300 text-indigo-700 bg-indigo-50 rounded hover:bg-indigo-100" title="직원 셀프서비스에 급여명세서 공개(교부)">
+              <i class="fas fa-share-square mr-1"></i>직원 교부 <i class="fas fa-caret-down ml-1"></i>
+            </button>
+            <div id="prPublishMenu" class="hidden absolute right-0 mt-1 w-56 bg-white border border-gray-200 rounded shadow-lg z-10">
+              <button onclick="payrollPublishPeriod()" class="w-full text-left px-3 py-2 text-xs hover:bg-gray-50 flex items-center">
+                <i class="fas fa-unlock mr-2 text-indigo-500"></i>이 달 명세서 교부(직원 공개)
+              </button>
+              <button onclick="payrollUnpublishPeriod()" class="w-full text-left px-3 py-2 text-xs hover:bg-gray-50 flex items-center border-t">
+                <i class="fas fa-lock mr-2 text-gray-500"></i>교부 취소(비공개)
+              </button>
+            </div>
+          </div>
           <button onclick="sendPayslipBulk()" class="px-3 py-1.5 text-xs bg-green-600 text-white rounded hover:bg-green-700" title="현재 조회된 직원에게 급여명세서 SMS 일괄 발송">
             <i class="fas fa-paper-plane mr-1"></i>일괄 명세서 발송
           </button>

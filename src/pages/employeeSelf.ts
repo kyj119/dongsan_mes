@@ -164,6 +164,65 @@ export function employeeSelfPage(c: Context<HonoEnv>) {
     }
     .btn-logout:hover { background: #e5e7eb; }
 
+    /* 급여명세서 목록 */
+    .payslips-section { display: none; }
+    .payslips-section.active { display: block; }
+    .payslip-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 14px;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      margin-bottom: 8px;
+      background: #fff;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .payslip-item:hover { background: #eff6ff; border-color: #bfdbfe; }
+    .payslip-item .pi-period { font-weight: 600; font-size: 14px; }
+    .payslip-item .pi-net { font-size: 13px; color: #1e40af; font-weight: 700; font-variant-numeric: tabular-nums; }
+
+    /* 계약서 서명 */
+    .sign-section { display: none; }
+    .sign-section.active { display: block; }
+    #selfSignCanvas {
+      width: 100%;
+      height: 170px;
+      border: 1px solid #d1d5db;
+      border-radius: 8px;
+      background: #fff;
+      touch-action: none;
+      margin-top: 6px;
+      cursor: crosshair;
+    }
+    .btn-secondary {
+      width: 100%;
+      padding: 10px;
+      background: #eff6ff;
+      color: #1e40af;
+      border: 1px solid #bfdbfe;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .btn-secondary:hover { background: #dbeafe; }
+    .contract-item .sign-btn {
+      display: inline-block;
+      margin-top: 8px;
+      padding: 6px 14px;
+      background: #2563eb;
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .contract-item .sign-btn:hover { background: #1d4ed8; }
+    .status-pending-sign { background: #fef3c7; color: #92400e; }
+
     /* 계약서 목록 */
     .contracts-section { display: none; }
     .contracts-section.active { display: block; }
@@ -246,6 +305,14 @@ export function employeeSelfPage(c: Context<HonoEnv>) {
           </div>
         </div>
 
+        <div class="menu-item" id="btnPayslips">
+          <i class="fas fa-file-invoice-dollar"></i>
+          <div>
+            <div class="label">급여명세서</div>
+            <div class="desc">교부된 월별 급여명세서를 확인·인쇄합니다</div>
+          </div>
+        </div>
+
         <div class="menu-item" id="btnContracts">
           <i class="fas fa-file-contract"></i>
           <div>
@@ -257,11 +324,35 @@ export function employeeSelfPage(c: Context<HonoEnv>) {
         <button class="btn-logout" id="btnLogout">로그아웃</button>
       </div>
 
+      <!-- 급여명세서 목록 -->
+      <div id="payslipsSection" class="payslips-section">
+        <button class="back-btn" id="btnPayslipsBack"><i class="fas fa-arrow-left"></i> 돌아가기</button>
+        <h3 style="font-size:16px;font-weight:700;margin-bottom:12px;">급여명세서</h3>
+        <div id="payslipsList"></div>
+      </div>
+
       <!-- 계약서 목록 -->
       <div id="contractsSection" class="contracts-section">
         <button class="back-btn" id="btnBack"><i class="fas fa-arrow-left"></i> 돌아가기</button>
         <h3 style="font-size:16px;font-weight:700;margin-bottom:12px;">내 계약서 목록</h3>
         <div id="contractsList"></div>
+      </div>
+
+      <!-- 근로계약서 서명 -->
+      <div id="signSection" class="sign-section">
+        <button class="back-btn" id="btnSignBack"><i class="fas fa-arrow-left"></i> 돌아가기</button>
+        <h3 style="font-size:16px;font-weight:700;margin-bottom:8px;">근로계약서 서명</h3>
+        <div id="signContractInfo" style="font-size:13px;color:#6b7280;margin-bottom:12px;"></div>
+        <button type="button" id="btnViewContract" class="btn-secondary"><i class="fas fa-file-alt mr-1"></i> 계약서 전문 보기</button>
+        <div style="margin-top:14px;">
+          <label style="display:block;font-size:13px;font-weight:600;color:#374151;">아래 영역에 서명해 주세요</label>
+          <canvas id="selfSignCanvas"></canvas>
+        </div>
+        <div style="display:flex;gap:8px;margin-top:10px;">
+          <button type="button" id="btnSignClear" class="btn-logout" style="flex:1;margin-top:0;">지우기</button>
+          <button type="button" id="btnSignSubmit" class="btn-primary" style="flex:2;">서명 제출</button>
+        </div>
+        <div class="error-msg" id="signError"></div>
       </div>
     </div>
   </div>

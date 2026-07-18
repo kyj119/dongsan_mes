@@ -106,6 +106,63 @@ recordsRouter.patch('/:id/pay', requireRole('ADMIN', 'MANAGER'), async (c) => {
 })
 
 // ============================================================================
+// API: 급여명세서 직원 공개(교부)
+// POST /api/payroll/publish  body: { pay_period: 'YYYY-MM' }
+// 해당 월 급여 전건에 published_at 세팅(셀프 노출 게이트) + 교부 증빙 로그 upsert.
+// 상태(PENDING/APPROVED/PAID) 무관 — 교부는 상태와 독립(사용자 결정). 재교부 허용.
+// ============================================================================
+recordsRouter.post('/publish', async (c) => {
+  try {
+    const body = await c.req.json().catch(() => ({} as any))
+    const period = String(body.pay_period || '').trim()
+    if (!/^\d{4}-\d{2}$/.test(period)) return c.json({ success: false, error: 'pay_period(YYYY-MM) 형식이 필요합니다.' }, 400)
+    const user = c.get('user')
+    const ef = entityFilter(c)
+    const { results: targets } = await c.env.DB.prepare(
+      `SELECT id, employee_id, entity_id FROM payroll WHERE pay_period = ?${ef.clause}`
+    ).bind(period, ...ef.params).all<{ id: number; employee_id: number; entity_id: number | null }>()
+    if (!targets || targets.length === 0) return c.json({ success: false, error: '해당 월 급여 내역이 없습니다.' }, 404)
+
+    await c.env.DB.prepare(
+      `UPDATE payroll SET published_at = datetime('now'), updated_at = datetime('now') WHERE pay_period = ?${ef.clause}`
+    ).bind(period, ...ef.params).run()
+
+    // 교부 증빙 로그 upsert (D1 batch — bind 파라미터 한도 회피)
+    const stmts = targets.map((t) => c.env.DB.prepare(
+      `INSERT INTO payslip_issuance_logs (payroll_id, employee_id, entity_id, pay_period, issued_at, issued_by)
+       VALUES (?, ?, ?, ?, datetime('now'), ?)
+       ON CONFLICT(payroll_id) DO UPDATE SET issued_at = datetime('now'), issued_by = excluded.issued_by`
+    ).bind(t.id, t.employee_id, t.entity_id ?? null, period, user?.id ?? null))
+    await c.env.DB.batch(stmts)
+
+    return c.json({ success: true, data: { published: targets.length, pay_period: period } })
+  } catch (err: any) {
+    console.error('Payroll publish error:', err)
+    return c.json({ success: false, error: '교부 처리 실패' }, 500)
+  }
+})
+
+// ============================================================================
+// API: 급여명세서 교부 취소 (노출 게이트만 닫음 — 증빙 로그는 보존)
+// POST /api/payroll/unpublish  body: { pay_period: 'YYYY-MM' }
+// ============================================================================
+recordsRouter.post('/unpublish', async (c) => {
+  try {
+    const body = await c.req.json().catch(() => ({} as any))
+    const period = String(body.pay_period || '').trim()
+    if (!/^\d{4}-\d{2}$/.test(period)) return c.json({ success: false, error: 'pay_period(YYYY-MM) 형식이 필요합니다.' }, 400)
+    const ef = entityFilter(c)
+    const res = await c.env.DB.prepare(
+      `UPDATE payroll SET published_at = NULL, updated_at = datetime('now') WHERE pay_period = ?${ef.clause}`
+    ).bind(period, ...ef.params).run()
+    return c.json({ success: true, data: { unpublished: res.meta?.changes ?? 0, pay_period: period } })
+  } catch (err: any) {
+    console.error('Payroll unpublish error:', err)
+    return c.json({ success: false, error: '교부 취소 실패' }, 500)
+  }
+})
+
+// ============================================================================
 // API: 급여 삭제 (PENDING만)
 // DELETE /api/payroll/:id
 // ============================================================================
