@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 6 -->
-<!-- last_run_at: 2026-07-17T22:10:00+09:00 -->
+<!-- last_run_area: 1 -->
+<!-- last_run_at: 2026-07-18T00:45:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -16,6 +16,14 @@
 
 > 📦 **과거 사이클 로그**는 `IMPROVEMENT_BACKLOG_ARCHIVE.md`/git 히스토리로 이관됨 (2026-06-10 1차 분리, 2026-06-25 2차 트림 343KB→192KB, 2026-06-25T10:00 3차 트림, 2026-07-03T06:00 4차 트림 288KB→86KB, **2026-07-07T13:00 5차 트림 — 07-01~07-05 사이클 로그를 git 히스토리로 이관: 238KB→78KB, 256KB Read 한도 재확보**). 신규 로그는 계속 이 파일 상단에 추가. 본 파일은 직전 2일치(07-06~) 사이클 로그 + 영구 참조 섹션(Approved/New/Auto-fixed/Done/Rejected/FP 카탈로그)만 유지. 이관분은 `git log -p -- IMPROVEMENT_BACKLOG.md`로 복원 가능.
 
+> **Area 1 프로덕션 헬스 (2026-07-18T00:45):**
+> - **방법**: `git fetch origin main`(HEAD `6910766` = origin/main 일치, 워킹트리 clean, detached). 프록시가 이번 세션도 prod 호스트 직접 curl을 차단(exit 56, 기존 33~44회차와 동일 제약, `cloudflare-observability` MCP도 미인증) — GitHub Actions 기록으로 대체. Area 1 **45회차** — 직전 Area1(`33953e2`, 07-16T12:16, 44회차) 이후 대형 churn 다수(경영진단 페이지 신설·사이드바 탭통합 리팩터 3건·자금허브 통합·ia-designer-loop MES판짜기·bank link-first 원장연동(0466)·designer_intakes XSS(#538) 등) — 전부 Area2~6가 각자 렌즈로 이미 심층 감사(신규 이슈 #524~#540 다수 생성) 완료. 이번 사이클은 배포체인/인프라 관점 재확인에 집중.
+> - **🟢 배포체인 = 최신 HEAD 포함 전수 정상**: `deploy.yml` 직전 19회 실행(07-16T12:16~07-17T18:19) 전부 success. 최신 커밋(`6910766`, run #29603369516) job 단계별 = Typecheck/Build/Deploy/Smoke **전부 success**(스모크 18초, 18:20:18~18:20:32). `backup.yml`(Daily D1 Backup) 최근 8회 전부 success, 최신 07-17T17:57. `e2e.yml`은 여전히 `disabled_manually`(06-22 owner 비활성화 유지, 재발 아님).
+> - **🟢 마이그레이션 드리프트 확인 — 0466(bank_purchase_payment_link) 적용 확정, 리스크 0**: `9077b86`(feat(bank): link-first ledger apply)이 0466 신설(`bank_transactions.matched_purchase_payment_id`/`matched_link_mode`)을 도입했고, 이 컬럼이 `bank.ts:448` **목록 SELECT**(smoke.cjs가 프로브하는 `/api/bank/transactions?limit=10`, `bank.txs`)에 명시 포함됨에도 그 변경이 배포된 merge(`0e66145`, run #29516038548)부터 이후 전 배포까지 smoke가 지속 green — SKILL #483/#484(code-only CI 배포, 마이그는 owner `db:migrate:prod` 수동적용) 패턴상 **이는 owner가 이미 마이그 적용을 완료했다는 강한 정황 증거**(미적용이면 list 프로브부터 `no such column` 500으로 즉시 FAIL했을 것). 드리프트 리스크 없음, 액션 불요.
+> - **🟢 backlog↔GitHub sync**: `search_issues(label:auto-improve,state:open)` 실측 **23건**(직전 Area6 stats와 완전 정합, 변동 없음 — owner close 0, 신규 이슈 0). done(446)·rejected(3) 변동 없음.
+> - **🧬 SKILL 강화 없음(신규 패턴 아님)** — 마이그레이션 적용 여부를 "그 컬럼이 smoke가 프로브하는 list SELECT에 포함되는데도 smoke가 green"으로 간접 검증하는 방식은 기존 #483/#484 레시피의 정상 적용 사례일 뿐, 새 클래스 아님.
+> - 신규 이슈 0건, 자동수정 0건(수정 대상 없음), done-sync 변동 없음(new 23·done 446·rejected 3 정합 재확인). 다음 순번 Area 2.
+>
 > **Area 6 자기 진화 (2026-07-17T22:10):**
 > - **방법**: `git fetch origin main`(HEAD `c62577d` = origin/main 일치, 워킹트리 clean, detached) 후 `npm ci`(node_modules 0→81). Area 6 **44회차** — 직전 Area6(`b52245d`, 07-16T22:30, 43회차) 이후 28커밋(부문손익 P1~P5·items 하드삭제·management-report 신설·ia-designer-loop P0~판짜기·bank link-first·AR aging SSOT·cashflow 허브 통합 등)은 이미 Area1~5(44~38회차)가 각자 렌즈로 전수 감사 완료(신규 이슈 #520~#539 다수 생성, 자동수정 다수 커밋). 이번 Area6 HEAD 자체가 직전 Area5(38회차)의 커밋이라 **churn 잔여 0** — "open≠unfixed"·"closed≠fixed" 재검증과 **auto-improve 자신이 의존하는 프로젝트 도구(CI 스크립트/SKILL 문서)의 자기감사**로 사이클 방향 전환.
 > - **🔍 open≠unfixed / closed≠fixed 재확인**: `git log --oneline --all | grep -iE "#(473|504|509|...|539)"`로 22개 open 이슈 전수 대조 — 이번 churn 구간에 언급된 건 전부 자기 자신이 만든 커밋뿐(#538 auto-fix, #524/#525/#527 발견)이라 **병렬 worktree 세션의 "fixed-in-tree인데 OPEN 유지" 사례 0건**(직전 32회차 #479~#481급 재발 없음). close-pending 캐시 대상이던 #479~#483은 전부 이미 owner closed 확인(`issue_read` #483 = closed/completed) — 캐시 staleness 통지 불요.
