@@ -744,47 +744,8 @@ window.payrollBulkSyncAttendance = async function() {
   }
 };
 
-window.payrollOpenRatesModal = function() {
-  document.getElementById('prRatesModal').classList.remove('hidden');
-  window.payrollLoadRates();
-};
-window.payrollCloseRatesModal = function() {
-  document.getElementById('prRatesModal').classList.add('hidden');
-};
-window.payrollLoadRates = async function() {
-  var year = document.getElementById('prRatesYear').value || 2026;
-  var tbody = document.getElementById('prRatesBody');
-  tbody.innerHTML = '<tr><td colspan="5" class="text-center text-gray-400 py-4">로드 중...</td></tr>';
-  try {
-    var res = await axios.get('/api/payroll/rates/' + year);
-    var rows = res.data.data || [];
-    if (rows.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="5" class="text-center text-gray-400 py-4">데이터 없음</td></tr>';
-      return;
-    }
-    var labelMap = {
-      NATIONAL_PENSION: '국민연금',
-      HEALTH: '건강보험',
-      LONG_TERM_CARE: '장기요양',
-      EMPLOYMENT: '고용보험',
-      INDUSTRIAL_ACCIDENT: '산재보험',
-    };
-    var html = '';
-    for (var i = 0; i < rows.length; i++) {
-      var r = rows[i];
-      html += '<tr class="border-b">' +
-        '<td class="px-3 py-2">' + (labelMap[r.insurance_type] || r.insurance_type) + '</td>' +
-        '<td class="px-3 py-2 text-right">' + r.total_rate + '%</td>' +
-        '<td class="px-3 py-2 text-right">' + r.employee_rate + '%</td>' +
-        '<td class="px-3 py-2 text-right">' + r.employer_rate + '%</td>' +
-        '<td class="px-3 py-2 text-xs text-gray-500">' + (r.base === 'HEALTH_INSURANCE' ? '건강보험료' : '과세급여') + '</td>' +
-        '</tr>';
-    }
-    tbody.innerHTML = html;
-  } catch (e) {
-    tbody.innerHTML = '<tr><td colspan="5" class="text-center text-red-500 py-4">로드 실패</td></tr>';
-  }
-};
+// 4대보험 요율 모달 제거 (2026-07-18 사이드바 통합): /payroll '요율 관리' 탭(payrollRates)이 대체.
+// payrollOpenRatesModal/payrollCloseRatesModal/payrollLoadRates + #prRatesModal DOM 삭제됨.
 
 // ─── 메시지 발송 ──────────────────────────────────────────────────────────────
 

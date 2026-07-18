@@ -387,36 +387,7 @@ export function payrollPage(c: Context<HonoEnv>) {
             <button onclick="payrollBulkEditApply()" class="ds-btn ds-btn-primary text-xs"><i class="fas fa-pen mr-1"></i>적용</button>
           </div>
         </div>
-      </div>
-
-      <!-- 4대보험 요율 모달 -->
-      <div id="prRatesModal" class="ds-modal-overlay hidden">
-        <div class="ds-modal" style="max-width:42rem">
-          <div class="px-5 py-3 border-b flex items-center justify-between">
-            <h3 class="text-base font-semibold">4대보험 요율</h3>
-            <button onclick="payrollCloseRatesModal()" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times"></i></button>
-          </div>
-          <div class="p-5">
-            <div class="flex items-center gap-2 mb-3">
-              <label class="text-xs text-gray-600">연도</label>
-              <input type="number" id="prRatesYear" value="2026" class="border rounded px-2 py-1 text-xs w-24" />
-              <button onclick="payrollLoadRates()" class="ds-btn ds-btn-primary text-xs">조회</button>
-            </div>
-            <table class="w-full text-sm ds-table-striped">
-              <thead class="bg-gray-50 text-xs text-gray-600 uppercase">
-                <tr>
-                  <th class="px-3 py-2 text-left">보험</th>
-                  <th class="px-3 py-2 text-right">전체</th>
-                  <th class="px-3 py-2 text-right">근로자</th>
-                  <th class="px-3 py-2 text-right">사용자</th>
-                  <th class="px-3 py-2 text-left">기준</th>
-                </tr>
-              </thead>
-              <tbody id="prRatesBody"><tr><td colspan="5" class="text-center text-gray-400 py-4">로드 중...</td></tr></tbody>
-            </table>
-          </div>
-        </div>
-        </div><!-- /prHubPayroll -->
+      </div><!-- /prHubPayroll -->
 
         <!-- 요율 관리 탭 (payrollRates 단일소스 이식, lazy) -->
         <div id="prHubRates" class="hidden">${payrollRatesContent}</div>
