@@ -214,6 +214,7 @@ export function hrDetailPage(c: Context<HonoEnv>) {
                   </select>
                 </div>
                 <div><label class="block text-xs text-gray-500 mb-1">건강보험 등급 <span class="text-gray-400">(선택)</span></label><input data-field="insurance_grade" class="hrd-input w-full border border-gray-200 rounded px-2 py-1.5 text-sm" disabled></div>
+                <div><label class="block text-xs text-gray-500 mb-1">국민연금 기준소득월액 <span class="text-gray-400">(원, 미설정 시 당월급여)</span></label><input data-field="pension_base" data-money="1" type="text" inputmode="numeric" class="hrd-input w-full border border-gray-200 rounded px-2 py-1.5 text-sm text-right tabular-nums" disabled></div>
               </div>
             </section>
 

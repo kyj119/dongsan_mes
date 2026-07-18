@@ -178,6 +178,7 @@ coreRouter.post('/preview', async (c) => {
       applyLongTermCare: empDefaults.insurance_apply_long_term_care,
       applyEmployment: empDefaults.insurance_apply_employment,
       applyIndustrialAccident: empDefaults.insurance_apply_industrial_accident,
+      pensionBaseOverride: empDefaults.pension_base,
     })
 
     // 고정 공제 기본값: body.other_deduction 없으면 상조회비+기타공제_고정 합
@@ -381,6 +382,7 @@ coreRouter.post('/save', requireRole('ADMIN', 'MANAGER'), async (c) => {
       applyLongTermCare: empDefaults.insurance_apply_long_term_care,
       applyEmployment: empDefaults.insurance_apply_employment,
       applyIndustrialAccident: empDefaults.insurance_apply_industrial_accident,
+      pensionBaseOverride: empDefaults.pension_base,
     })
 
     const work_days = Number(body.work_days || 0)
@@ -619,6 +621,7 @@ coreRouter.post('/batch', requireRole('ADMIN', 'MANAGER'), async (c) => {
         applyLongTermCare: empDefaults.insurance_apply_long_term_care,
         applyEmployment: empDefaults.insurance_apply_employment,
         applyIndustrialAccident: empDefaults.insurance_apply_industrial_accident,
+        pensionBaseOverride: empDefaults.pension_base,
         ratesCache: batchRatesCache,
       })
       const fixed_other_deduction = empDefaults.mutual_aid_fee + empDefaults.other_deduction_fixed
@@ -860,6 +863,7 @@ coreRouter.post('/sync-attendance', requireRole('ADMIN', 'MANAGER'), async (c) =
           applyLongTermCare: empDefaults.insurance_apply_long_term_care,
           applyEmployment: empDefaults.insurance_apply_employment,
           applyIndustrialAccident: empDefaults.insurance_apply_industrial_accident,
+          pensionBaseOverride: empDefaults.pension_base,
           ratesCache: syncRatesCache,
         })
         const otherDeduction = Number(t.other_deduction || 0)

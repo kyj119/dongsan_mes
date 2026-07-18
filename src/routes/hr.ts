@@ -423,7 +423,7 @@ hrRouter.post('/employees', async (c) => {
       'base_salary', 'hourly_rate',
       'position_allowance', 'vehicle_allowance', 'meal_allowance_fixed',
       'special_bonus_fixed', 'other_allowance_fixed',
-      'mutual_aid_fee', 'other_deduction_fixed',
+      'mutual_aid_fee', 'other_deduction_fixed', 'pension_base',
       'dependents_count', 'children_under_20_count', 'income_tax_table_option',
       'insurance_grade',
       'insurance_apply_national_pension', 'insurance_apply_health',
@@ -508,7 +508,7 @@ hrRouter.put('/employees/:id', async (c) => {
       'position_allowance', 'vehicle_allowance', 'meal_allowance_fixed',
       'special_bonus_fixed', 'other_allowance_fixed',
       // 고정 공제
-      'mutual_aid_fee', 'other_deduction_fixed',
+      'mutual_aid_fee', 'other_deduction_fixed', 'pension_base',
       // 세금 / 부양가족
       'dependents_count', 'children_under_20_count', 'income_tax_table_option',
       'insurance_grade',

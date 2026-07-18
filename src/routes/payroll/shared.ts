@@ -257,6 +257,9 @@ export interface CalcInput {
   applyLongTermCare?: boolean
   applyEmployment?: boolean
   applyIndustrialAccident?: boolean
+  // 국민연금 기준소득월액 오버라이드(employees.pension_base). >0이면 국민연금 base로 사용(상하한 클램프),
+  // 미지정/0이면 당월 과세급여(taxablePay) 사용 — 기존 동작 하위호환. 국민연금에만 적용.
+  pensionBaseOverride?: number | null
   // #389: 일괄 처리 시 year별 요율을 미리 1회 로드해 주입(루프 N+1 제거). 미지정이면 매 호출 조회(하위호환).
   ratesCache?: Record<string, InsuranceRate>
 }
@@ -379,8 +382,11 @@ export async function calcDeductions(db: D1Database, input: CalcInput): Promise<
   // 1) 4대보험 요율 조회 (#389: 주입된 ratesCache 우선, 미지정 시 조회 — 하위호환·동일 결과)
   const rates: Record<string, InsuranceRate> = input.ratesCache ?? await loadInsuranceRates(db, year)
 
-  // 2) 국민연금 — 상하한 적용
-  let pensionBase = taxablePay
+  // 2) 국민연금 — 기준소득월액(설정 시) 또는 당월 과세급여를 base로 상하한 적용
+  //    pension_base(>0)가 있으면 국민연금공단 고정 기준액 사용(당월급여 변동 무관), 없으면 당월 과세급여(하위호환).
+  let pensionBase = (input.pensionBaseOverride != null && input.pensionBaseOverride > 0)
+    ? input.pensionBaseOverride
+    : taxablePay
   const np = rates['NATIONAL_PENSION']
   if (np) {
     if (np.min_base != null) pensionBase = Math.max(pensionBase, np.min_base)
@@ -451,6 +457,7 @@ export interface EmployeeDefaults {
   other_allowance_fixed: number
   mutual_aid_fee: number
   other_deduction_fixed: number
+  pension_base: number   // 국민연금 기준소득월액 (0=미설정→당월 과세급여 사용)
   insurance_apply_national_pension: boolean
   insurance_apply_health: boolean
   insurance_apply_long_term_care: boolean
@@ -468,6 +475,7 @@ export async function loadEmployeeDefaults(db: D1Database, employeeId: number): 
     other_allowance_fixed: 0,
     mutual_aid_fee: 0,
     other_deduction_fixed: 0,
+    pension_base: 0,
     insurance_apply_national_pension: true,
     insurance_apply_health: true,
     insurance_apply_long_term_care: true,
@@ -477,7 +485,7 @@ export async function loadEmployeeDefaults(db: D1Database, employeeId: number): 
   try {
     const { results: colInfo } = await db.prepare(`PRAGMA table_info(employees)`).all()
     const cols = new Set((colInfo as { name: string }[]).map((r) => r.name))
-    const pickNum = ['position_allowance','vehicle_allowance','meal_allowance_fixed','special_bonus_fixed','other_allowance_fixed','mutual_aid_fee','other_deduction_fixed']
+    const pickNum = ['position_allowance','vehicle_allowance','meal_allowance_fixed','special_bonus_fixed','other_allowance_fixed','mutual_aid_fee','other_deduction_fixed','pension_base']
     const pickBool = ['insurance_apply_national_pension','insurance_apply_health','insurance_apply_long_term_care','insurance_apply_employment','insurance_apply_industrial_accident']
     const selectable = [...pickNum, ...pickBool].filter((c) => cols.has(c))
     if (selectable.length === 0) return defaults
@@ -506,11 +514,12 @@ export async function loadAllEmployeeDefaults(db: D1Database, employeeIds: numbe
   const mkDefaults = (): EmployeeDefaults => ({
     position_allowance: 0, vehicle_allowance: 0, meal_allowance_fixed: 0,
     special_bonus_fixed: 0, other_allowance_fixed: 0, mutual_aid_fee: 0, other_deduction_fixed: 0,
+    pension_base: 0,
     insurance_apply_national_pension: true, insurance_apply_health: true,
     insurance_apply_long_term_care: true, insurance_apply_employment: true,
     insurance_apply_industrial_accident: true,
   })
-  const pickNum = ['position_allowance','vehicle_allowance','meal_allowance_fixed','special_bonus_fixed','other_allowance_fixed','mutual_aid_fee','other_deduction_fixed']
+  const pickNum = ['position_allowance','vehicle_allowance','meal_allowance_fixed','special_bonus_fixed','other_allowance_fixed','mutual_aid_fee','other_deduction_fixed','pension_base']
   const pickBool = ['insurance_apply_national_pension','insurance_apply_health','insurance_apply_long_term_care','insurance_apply_employment','insurance_apply_industrial_accident']
   try {
     const { results: colInfo } = await db.prepare(`PRAGMA table_info(employees)`).all()
