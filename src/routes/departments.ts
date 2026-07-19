@@ -141,8 +141,9 @@ departmentsRouter.put('/:id', requireRole('ADMIN'), async (c) => {
 })
 
 // GET /pnl?from=&to= — 부문별 손익 집계 (매출·자재비·인건비 → 공헌이익). 관리회계.
-//  매출=order_items 라인금액(비취소 주문·주문일 기준, category_name→부문)
-//  자재비=소진이력 deducted_base × 자재 이동평균단가(cards.category_name→부문)
+//  매출=order_items 라인금액(비취소·주문일). PRODUCT=category_name→부문, MATERIAL/GOODS=유통 부문
+//  원가=① 제조 자재비: 소진이력 deducted_base × 이동평균단가(iad·cards.category→부문)
+//       ② 유통 매출원가(COGS): MATERIAL/GOODS 판매수량 × avg_unit_cost(유통 부문) — 둘 다 material 버킷
 //  인건비=payroll 급여총액+회사부담 4대보험(employees.department_id, pay_period 월 기준)
 departmentsRouter.get('/pnl', requireRole('ADMIN', 'MANAGER'), async (c) => {
   try {
@@ -155,18 +156,23 @@ departmentsRouter.get('/pnl', requireRole('ADMIN', 'MANAGER'), async (c) => {
       `SELECT id, name, parent_id, dept_type, serves_department_id, sort_order FROM departments ORDER BY sort_order, name`
     ).all<any>()
 
-    // 1) 매출 — order_items 라인금액, category_name → 부문
+    // 유통 부문 id — MATERIAL/GOODS(원단·상품 직접판매)는 공정 category가 없어(category_name NULL)
+    //   process 매핑 대신 item_type 기준으로 유통 부문에 귀속. 미존재 시 null(미분류) 폴백.
+    const distDeptId = (depts || []).find((d: any) => d.name === '유통')?.id ?? null
+
+    // 1) 매출 — order_items 라인금액. PRODUCT=category_name→부문, MATERIAL/GOODS=유통 부문(유통 판매)
     const efO = entityFilter(c, 'o')
     const { results: rev } = await c.env.DB.prepare(`
-      SELECT dcm.department_id AS dept_id,
+      SELECT CASE WHEN i.item_type IN ('MATERIAL','GOODS') THEN ? ELSE dcm.department_id END AS dept_id,
              COALESCE(SUM(COALESCE(oi.amount, oi.quantity * oi.unit_price)), 0) AS revenue
       FROM order_items oi
       JOIN orders o ON o.id = oi.order_id
+      LEFT JOIN items i ON i.id = oi.item_id
       LEFT JOIN department_category_map dcm ON dcm.category = oi.category_name
       WHERE o.status != 'CANCELLED'
         AND date(COALESCE(o.order_date, o.created_at)) BETWEEN ? AND ?${efO.clause}
-      GROUP BY dcm.department_id
-    `).bind(from, to, ...efO.params).all<any>()
+      GROUP BY 1
+    `).bind(distDeptId, from, to, ...efO.params).all<any>()
 
     // 2) 자재비 — 소진이력 × 자재 이동평균단가, cards.category_name → 부문
     const efI = entityFilter(c, 'iad')
@@ -180,6 +186,19 @@ departmentsRouter.get('/pnl', requireRole('ADMIN', 'MANAGER'), async (c) => {
       WHERE date(iad.created_at) BETWEEN ? AND ?${efI.clause}
       GROUP BY dcm.department_id
     `).bind(from, to, ...efI.params).all<any>()
+
+    // 2-b) 유통 매출원가(COGS) — MATERIAL/GOODS 직접판매는 소진(제조)이 아니라 매입원가.
+    //   COGS = 판매수량 × avg_unit_cost, 유통 부문 귀속. 제조 자재비(iad)와 부문 비중복(품목유형 disjoint).
+    const efOc = entityFilter(c, 'o')
+    const { results: cogs } = await c.env.DB.prepare(`
+      SELECT COALESCE(SUM(oi.quantity * COALESCE(i.avg_unit_cost, 0)), 0) AS cogs
+      FROM order_items oi
+      JOIN orders o ON o.id = oi.order_id
+      JOIN items i ON i.id = oi.item_id
+      WHERE o.status != 'CANCELLED'
+        AND i.item_type IN ('MATERIAL','GOODS')
+        AND date(COALESCE(o.order_date, o.created_at)) BETWEEN ? AND ?${efOc.clause}
+    `).bind(from, to, ...efOc.params).all<any>()
 
     // 3) 인건비 — payroll 급여총액 + 회사부담 4대보험, employees.department_id
     const efP = entityFilter(c, 'p')
@@ -199,6 +218,9 @@ departmentsRouter.get('/pnl', requireRole('ADMIN', 'MANAGER'), async (c) => {
     const num = (v: any) => Number(v) || 0
     const revMap = new Map<any, number>(); for (const r of rev || []) revMap.set(r.dept_id, num(r.revenue))
     const matMap = new Map<any, number>(); for (const r of mat || []) matMap.set(r.dept_id, num(r.material))
+    // 유통 COGS를 material 버킷에 합산(유통 부문). 제조 iad와 부문 disjoint이라 안전.
+    const cogsTotal = num((cogs || [])[0]?.cogs)
+    if (cogsTotal > 0) matMap.set(distDeptId, (matMap.get(distDeptId) || 0) + cogsTotal)
     const labMap = new Map<any, number>(); for (const r of lab || []) labMap.set(r.dept_id, num(r.labor))
 
     // ── P5 배부: serves 재배분(지원 하위→생산부문) + 공통풀(잔여 지원인건비 + 고정비) 안분 ──
