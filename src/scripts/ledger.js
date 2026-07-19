@@ -273,13 +273,8 @@ function closeDetailModal() {
         document.body.style.overflow = '';
     }
 }
-// ESC로도 닫히도록 (닫기 경로 보강)
-document.addEventListener('keydown', function(e) {
-    if (e.key === 'Escape') {
-        var _m = document.getElementById('clientDetailModal');
-        if (_m && !_m.classList.contains('hidden')) closeDetailModal();
-    }
-});
+// ESC 닫기는 layout.ts 전역 ESC 핸들러가 data-esc-close="closeDetailModal" 위임으로 처리.
+// (자체 keydown 리스너를 두면 위 모달 닫는 ESC에도 상세 모달이 같이 닫히는 이중 닫힘 발생)
 
 // Select client (opens modal)
 function selectClient(clientId, clientName) {

@@ -394,7 +394,7 @@ export function ledgerPage(c: Context<HonoEnv>) {
         <!-- End analysisContent -->
 
         <!-- ===== 거래처 상세 모달 (은행 거래내역 스타일) ===== -->
-        <div id="clientDetailModal" class="hidden" style="position:fixed;inset:0;z-index:50">
+        <div id="clientDetailModal" class="hidden" data-esc-close="closeDetailModal" style="position:fixed;inset:0;z-index:50">
             <div style="position:absolute;inset:0;background:rgba(0,0,0,0.3)" onclick="closeDetailModal()"></div>
             <div style="position:relative;background:#fff;max-width:1100px;margin:16px auto;border-radius:12px;box-shadow:0 8px 32px rgba(0,0,0,.15);display:flex;flex-direction:column;max-height:calc(100vh - 32px)">
 
@@ -618,7 +618,7 @@ export function ledgerPage(c: Context<HonoEnv>) {
                                 <table class="ds-table ds-table-compact ds-table-striped">
                                     <thead>
                                         <tr>
-                                            <th class="text-left" style="width:90px">일자</th>
+                                            <th class="text-left" style="width:112px">일자</th>
                                             <th class="text-center" style="width:70px">구분</th>
                                             <th class="text-left">내용</th>
                                             <th class="text-right" style="width:110px">매입(+)</th>

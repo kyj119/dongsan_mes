@@ -84,7 +84,7 @@ export function accountingPage(c: Context<HonoEnv>) {
             <table class="ds-table ds-table-compact">
               <thead class="sticky top-0 bg-white z-10">
                 <tr class="text-[10px] text-gray-500 uppercase border-b">
-                  <th class="px-3 py-2 text-left" style="width:90px">일자</th>
+                  <th class="px-3 py-2 text-left" style="width:112px">일자</th>
                   <th class="px-3 py-2 text-left">거래처</th>
                   <th class="px-3 py-2 text-right" style="width:120px">금액</th>
                   <th class="px-2 py-2 text-center" style="width:80px">방법</th>
@@ -269,7 +269,7 @@ export function accountingPage(c: Context<HonoEnv>) {
             <table class="ds-table ds-table-compact">
               <thead class="sticky top-0 bg-white z-10">
                 <tr class="text-[10px] text-gray-500 uppercase border-b">
-                  <th class="px-3 py-2 text-left" style="width:90px">일자</th>
+                  <th class="px-3 py-2 text-left" style="width:112px">일자</th>
                   <th class="px-2 py-2 text-center" style="width:70px">구분</th>
                   <th class="px-3 py-2 text-left">거래처 / 가맹점</th>
                   <th class="px-3 py-2 text-left">상세</th>

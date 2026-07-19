@@ -219,8 +219,11 @@ document.addEventListener('keydown', function(e) {
         if (m.id === 'lbModal') continue; // lightbox는 전용 closer에서 처리
         var st = window.getComputedStyle(m);
         if (st.display !== 'none' && st.visibility !== 'hidden') {
-          if (m.classList.contains('active')) { m.classList.remove('active'); return true; }
           if (m.classList.contains('hidden')) continue;
+          // 전용 close 함수 선언 모달(data-esc-close="함수명"): 단순 hidden 추가로 닫으면
+          // body 스크롤락 등 부수효과가 복원되지 않으므로 반드시 전용 함수에 위임 (#ledger 모달 스크롤 잠금 잔존 사례)
+          if (m.dataset && m.dataset.escClose && typeof window[m.dataset.escClose] === 'function') { window[m.dataset.escClose](); return true; }
+          if (m.classList.contains('active')) { m.classList.remove('active'); return true; }
           // hidden 클래스 방식 통일 (인라인 style.display='none' 금지 — 재오픈 시 클래스 제거로 복구 불가)
           m.classList.add('hidden'); return true;
         }
