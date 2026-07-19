@@ -82,7 +82,8 @@ cronRouter.post('/barobill-sync', agentKeyMiddleware, async (c) => {
  * POST /api/cron/daily-maintenance — 무인 일일 정비(전 활성 법인).
  *  1) OEE 일배치: 어제분 equipment_oee_daily 재계산(POST /api/oee/calculate)
  *  2) 알림 생성: 납기 도래/지연·저재고 등 서버측 생성(POST /api/notifications/generate) — 프론트 폴링 의존 제거
- * 멱등: OEE=upsert, 알림=createIfNotExists dedup → 반복 호출 안전. 인증: X-Agent-Key.
+ *  3) 연체 경고: 30일 초과 미수 거래처 ADMIN/MANAGER 알림(POST /api/ledger/receivables/check-overdue)
+ * 멱등: OEE=upsert, 알림·연체=createIfNotExists dedup → 반복 호출 안전. 인증: X-Agent-Key.
  */
 cronRouter.post('/daily-maintenance', agentKeyMiddleware, async (c) => {
   const jwtSecret = c.env.JWT_SECRET
@@ -123,10 +124,18 @@ cronRouter.post('/daily-maintenance', agentKeyMiddleware, async (c) => {
       rec.notifications = { error: String(err?.message || err).slice(0, 200) }
     }
 
+    // 3) 연체 경고 (30일 초과 미수 거래처 → ADMIN/MANAGER 알림, 24h dedup). 엔드포인트가 법인 entityFilter 스코프.
+    try {
+      const r = await fetch(`${origin}/api/ledger/receivables/check-overdue`, { method: 'POST', headers: authHdr })
+      rec.overdue = { status: r.status, ...(await r.json().catch(() => ({})) as any) }
+    } catch (err: any) {
+      rec.overdue = { error: String(err?.message || err).slice(0, 200) }
+    }
+
     out.push(rec)
   }
 
-  // 3) 연차 무인 적립 — 월차/연차(전 직원 대상·멱등: expected/entitlement 대비 delta만·ON CONFLICT upsert).
+  // 4) 연차 무인 적립 — 월차/연차(전 직원 대상·멱등: expected/entitlement 대비 delta만·ON CONFLICT upsert).
   //    루프 밖 1회(엔드포인트가 전 직원 처리). 매일 호출해도 초과적립 없음 → 적립 lag 제거.
   let leaves: any = {}
   try {
@@ -144,7 +153,7 @@ cronRouter.post('/daily-maintenance', agentKeyMiddleware, async (c) => {
     leaves = { error: String(err?.message || err).slice(0, 200) }
   }
 
-  // 4) 보존기간 정리(retention) — 무인 누적 방지. 각 단계 독립 try/catch(한 단계 실패가 다른 단계·전체 응답을 막지 않게).
+  // 5) 보존기간 정리(retention) — 무인 누적 방지. 각 단계 독립 try/catch(한 단계 실패가 다른 단계·전체 응답을 막지 않게).
   //    ⚠️ activity_logs·상태이력·발송로그(kakao/email)·업무 테이블은 삭제 금지(감사/법정보존). datetime('now')=UTC(기존 /cleanup 관례).
   const retention: any = {}
   try {
@@ -173,7 +182,7 @@ cronRouter.post('/daily-maintenance', agentKeyMiddleware, async (c) => {
     retention.caps_sync_log_error = String(err?.message || err).slice(0, 200)
   }
 
-  // 5) 무결성 트립와이어(0451) — bank_transactions 내용중복 감지.
+  // 6) 무결성 트립와이어(0451) — bank_transactions 내용중복 감지.
   //    정상=0(내용키 UNIQUE 인덱스가 예방). >0이면 인덱스 우회/과거 잔존 의미 → ADMIN 알림(24h dedup).
   const integrity: any = {}
   try {

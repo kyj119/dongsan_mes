@@ -300,7 +300,7 @@ arPaymentsRouter.post('/adjustment', requireEditOrRole('/ledger', 'MANAGER'), as
       }, 400)
     }
 
-    const validTypes = ['DISCOUNT', 'CLAIM', 'RETURN', 'OTHER']
+    const validTypes = ['DISCOUNT', 'CLAIM', 'RETURN', 'BAD_DEBT', 'OTHER']
     if (!validTypes.includes(body.type)) {
       return c.json({
         success: false,

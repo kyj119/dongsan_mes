@@ -189,6 +189,11 @@ export function clientsPage(c: Context<HonoEnv>) {
                 </select>
               </div>
               <div>
+                <label class="ds-label">연체 기준일(일)</label>
+                <input type="number" id="clientModalOverdueDays" class="ds-input" placeholder="30" min="1" max="365">
+                <div class="text-xs mt-1" style="color:#6b7280">미입력 시 30일. 청구 후 이 일수 초과 시 연체 경고</div>
+              </div>
+              <div>
                 <label class="ds-label">대표자</label>
                 <input type="text" id="clientModalRepresentative" class="ds-input">
               </div>

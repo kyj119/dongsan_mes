@@ -250,7 +250,7 @@ clientsRouter.get('/:id', async (c) => {
               transfer_info, is_active, balance, client_type, delivery_method, delivery_address, auto_billing,
               price_policy_id, notes, invoice_method, address_detail,
               search_keywords, payment_cycle_type, payment_terms_days, closing_day,
-              payment_month_offset, payment_day, created_at, updated_at
+              payment_month_offset, payment_day, overdue_alert_days, created_at, updated_at
        FROM clients WHERE id = ?`
     ).bind(id).first()
 
@@ -288,7 +288,7 @@ clientsRouter.get('/:id/detail', async (c) => {
               transfer_info, is_active, balance, client_type, delivery_method, delivery_address, auto_billing,
               price_policy_id, notes, invoice_method, address_detail,
               search_keywords, payment_cycle_type, payment_terms_days, closing_day,
-              payment_month_offset, payment_day, created_at, updated_at
+              payment_month_offset, payment_day, overdue_alert_days, created_at, updated_at
        FROM clients WHERE id = ?`
     ).bind(id).first()
 
@@ -803,13 +803,24 @@ clientsRouter.post('/', requireEditOrRole('/clients', 'MANAGER'), async (c) => {
       pricePolicyId = defaultPolicy ? defaultPolicy.id : null
     }
 
+    // 연체 기준일 (미입력=NULL, 판정 시 기본 30일). 정수 1~365만 허용
+    let overdueAlertDays: number | null = null
+    if (clientData.overdue_alert_days !== undefined && clientData.overdue_alert_days !== null && clientData.overdue_alert_days !== '') {
+      const n = Number(clientData.overdue_alert_days)
+      if (!Number.isInteger(n) || n < 1 || n > 365) {
+        return c.json({ success: false, error: 'overdue_alert_days must be an integer between 1 and 365' }, 400)
+      }
+      overdueAlertDays = n
+    }
+
     const result = await c.env.DB.prepare(`
       INSERT INTO clients (
         client_code, client_name, representative, business_type, business_item,
         phone, mobile, fax, email, address, search_keywords, transfer_info, is_active,
         business_registration_number, delivery_method, client_type, price_list_id, auto_billing,
-        price_policy_id, payment_cycle_type, payment_terms_days, closing_day, payment_month_offset, payment_day
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        price_policy_id, payment_cycle_type, payment_terms_days, closing_day, payment_month_offset, payment_day,
+        overdue_alert_days
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).bind(
       clientData.client_code,
       clientData.client_name,
@@ -834,7 +845,8 @@ clientsRouter.post('/', requireEditOrRole('/clients', 'MANAGER'), async (c) => {
       clientData.payment_terms_days ?? null,
       clientData.closing_day ?? null,
       clientData.payment_month_offset ?? 1,
-      clientData.payment_day ?? null
+      clientData.payment_day ?? null,
+      overdueAlertDays
     ).run()
 
     return c.json({
@@ -994,6 +1006,19 @@ clientsRouter.patch('/:id', requireEditOrRole('/clients', 'MANAGER'), async (c) 
     if (clientData.payment_day !== undefined) {
       updates.push('payment_day = ?')
       params.push(clientData.payment_day)
+    }
+    // 연체 기준일 (미입력=NULL, 판정 시 기본 30일). 정수 1~365만 허용
+    if (clientData.overdue_alert_days !== undefined) {
+      let v: number | null = null
+      if (clientData.overdue_alert_days !== null && clientData.overdue_alert_days !== '') {
+        const n = Number(clientData.overdue_alert_days)
+        if (!Number.isInteger(n) || n < 1 || n > 365) {
+          return c.json({ success: false, error: 'overdue_alert_days must be an integer between 1 and 365' }, 400)
+        }
+        v = n
+      }
+      updates.push('overdue_alert_days = ?')
+      params.push(v)
     }
 
     updates.push('updated_at = CURRENT_TIMESTAMP')

@@ -704,6 +704,7 @@ export function ledgerPage(c: Context<HonoEnv>) {
                             <option value="DISCOUNT">할인</option>
                             <option value="CLAIM">클레임</option>
                             <option value="RETURN">반품</option>
+                            <option value="BAD_DEBT">대손(탕감)</option>
                             <option value="OTHER">기타</option>
                         </select>
                     </div>

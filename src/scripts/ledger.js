@@ -434,7 +434,7 @@ async function loadClientDetail(clientId) {
                     txBody.appendChild(payRow);
                 } else if (type === 'adjustment') {
                     // ── 감액 행 ──
-                    var adjLabel = { DISCOUNT: '할인', CLAIM: '클레임', RETURN: '반품', OTHER: '기타' };
+                    var adjLabel = { DISCOUNT: '할인', CLAIM: '클레임', RETURN: '반품', BAD_DEBT: '대손', OTHER: '기타' };
                     var adjRow = document.createElement('tr');
                     adjRow.className = 'border-t border-yellow-100 bg-yellow-50/30 hover:bg-yellow-50 transition-colors';
                     adjRow.innerHTML =

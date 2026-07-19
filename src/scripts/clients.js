@@ -267,7 +267,7 @@ function showAddClientModal() {
     var fields = ['clientModalId','clientModalBizRegNum','clientModalName','clientModalRepresentative',
         'clientModalBizType','clientModalBizItem','clientModalPhone','clientModalMobile','clientModalFax',
         'clientModalEmail','clientModalAddress','clientModalPostalCode','clientModalAddressDetail',
-        'clientModalSearchKeywords','clientModalTransferInfo','clientModalDeliveryAddress','clientModalNotes'];
+        'clientModalSearchKeywords','clientModalTransferInfo','clientModalDeliveryAddress','clientModalNotes','clientModalOverdueDays'];
     fields.forEach(function(id) { var el = document.getElementById(id); if (el) el.value = ''; });
     document.getElementById('editClientType').value = 'SALES';
     document.getElementById('clientModalDeliveryMethod').value = 'SAME';
@@ -324,6 +324,8 @@ async function editClient(clientId) {
             if (document.getElementById('clientModalPricePolicy')) {
                 document.getElementById('clientModalPricePolicy').value = c.price_policy_id || '';
             }
+            var overdueDaysEl = document.getElementById('clientModalOverdueDays');
+            if (overdueDaysEl) overdueDaysEl.value = (c.overdue_alert_days != null ? c.overdue_alert_days : '');
             document.getElementById('clientModalSearchKeywords').value = c.search_keywords || '';
             document.getElementById('clientModalTransferInfo').value = c.transfer_info || '';
             document.getElementById('clientModalDeliveryMethod').value = c.delivery_method || '방문수령';
@@ -371,6 +373,7 @@ async function saveClient() {
         client_type: clientType,
         price_list_id: priceListId ? parseInt(priceListId) : null,
         price_policy_id: pricePolicyId ? parseInt(pricePolicyId) : null,
+        overdue_alert_days: (function(){ var v = document.getElementById('clientModalOverdueDays'); return v && v.value !== '' ? parseInt(v.value) : null; })(),
         search_keywords: document.getElementById('clientModalSearchKeywords').value || null,
         transfer_info: document.getElementById('clientModalTransferInfo').value || null,
         delivery_method: document.getElementById('clientModalDeliveryMethod').value || '방문수령',
