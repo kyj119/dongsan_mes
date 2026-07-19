@@ -76,11 +76,11 @@ export function renderLaborContractHTML(data: {
   const totalPay = basePay + otPay
 
   const employerSig = contract.signature_employer_base64
-    ? `<img src="${contract.signature_employer_base64}" style="height:50px;" alt="사용자 인감">`
+    ? `<img src="${esc(contract.signature_employer_base64)}" style="height:50px;" alt="사용자 인감">`
     : '<span style="display:inline-block;width:50px;height:50px;border:1px dashed #999;"></span>'
 
   const employeeSig = contract.signature_employee_base64
-    ? `<img src="${contract.signature_employee_base64}" style="height:50px;" alt="근로자 서명">`
+    ? `<img src="${esc(contract.signature_employee_base64)}" style="height:50px;" alt="근로자 서명">`
     : '<span style="display:inline-block;width:50px;height:50px;border:1px dashed #999;"></span>'
 
   return `<!DOCTYPE html>
