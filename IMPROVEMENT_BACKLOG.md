@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 4 -->
-<!-- last_run_at: 2026-07-18T14:10:00+09:00 -->
+<!-- last_run_area: 5 -->
+<!-- last_run_at: 2026-07-19T00:20:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,13 +8,22 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | **26** — 직전 25건(#473,504,509,519,520,521,522,524,525,526,527,528,529,530,531,532,533,534,535,536,537,539,540,541,542) + 본 Area4 신규 1건(#543 S bug). 실측(`search_issues(state:open,label:auto-improve)`=26) 정합. |
+| 🆕 new | **26** (변동 없음 — 본 Area5 신규 #544는 즉시 자동수정+커밋으로 마감돼 done 이관, open 순증가 없음). 실측(`search_issues(state:open,label:auto-improve)`=26) 정합. |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 |
-| ✔️ done | **446** (변동 없음, owner close 0) |
+| ✔️ done | **447** (+1, #544 자동수정 즉시 close) |
 | ❌ rejected | 3 (`reason:not_planned`=1 + `reason:duplicate`=2, 변동 없음) |
 
 > 📦 **과거 사이클 로그**는 `IMPROVEMENT_BACKLOG_ARCHIVE.md`/git 히스토리로 이관됨 (2026-06-10 1차 분리, 2026-06-25 2차 트림 343KB→192KB, 2026-06-25T10:00 3차 트림, 2026-07-03T06:00 4차 트림 288KB→86KB, **2026-07-07T13:00 5차 트림 — 07-01~07-05 사이클 로그를 git 히스토리로 이관: 238KB→78KB, 256KB Read 한도 재확보**). 신규 로그는 계속 이 파일 상단에 추가. 본 파일은 직전 2일치(07-06~) 사이클 로그 + 영구 참조 섹션(Approved/New/Auto-fixed/Done/Rejected/FP 카탈로그)만 유지. 이관분은 `git log -p -- IMPROVEMENT_BACKLOG.md`로 복원 가능.
+
+> **Area 5 보안 (2026-07-19T00:20):**
+> - **방법**: `git fetch origin main`(HEAD `09919f2` = origin/main 일치, 워킹트리 clean, detached) 후 `npm ci`(node_modules 0→81). Area 5 **39회차** — 직전 Area5(`c9e4abc`, 07-17T21:21, 38회차) 이후 churn 21커밋 대부분(사이드바 탭통합·손익/생산허브 통합·법인간 거래 신설 등)은 Area1~4·6이 각자 렌즈로 이미 심층 감사 완료(#539~#543). 순수 미검증 보안 표면 = `hrSelf.ts`(신규 172줄, 직원 셀프서비스 인증/증명서/계약서서명)·`accounting.ts`(+221, 법인간 거래) — 오케스트레이터가 직접 Read로 authMiddleware 커버리지·IDOR·rate-limit·XSS 렌즈 전수 검증(신규 코드 규모가 작아 병렬 위임 대신 직접 검증이 효율적).
+> - **🔴 신규 이슈 — #544 (S, bug/security) — 자동수정 완료**: `src/templates/laborContract.ts:78-84`가 `signature_employee_base64`/`signature_employer_base64`를 `esc()` 없이 `<img src="...">`에 직접 삽입. `hrSelf.ts:319` PATCH `/self/contracts/:id/sign`의 유일한 검증이 `startsWith('data:image')`뿐이라 `"` 문자로 속성을 탈출하는 payload(`data:image/png;base64,x" onerror="...`)가 통과 → 계정 없이 사원번호+생년월일만으로 얻는 `employee-self` scope 저권한에서 저장 → 이후 HR ADMIN/MANAGER가 `GET /api/hr/contracts/:id/preview`(`hr.ts:1354`)로 열람 시 동일 미escape 템플릿이 렌더되어 **관리자 브라우저 세션에서 stored XSS 실행**(권한 상승). 같은 파일 다른 모든 필드는 이미 `esc()` 적용 — 이 두 줄만 누락. **자동수정**: 두 삽입값을 파일에 이미 import된 `esc()`로 래핑(정상 base64는 escape 대상 문자 미포함이라 동작 무변화, 순수 안전 강화). `npx tsc --noEmit`+`npm run build` 통과 후 커밋(`2129372`, "closes #544") 즉시 push — issue 생성 직후 자동 close 확인.
+> - **🟢 나머지 = clean**: `hrSelf.ts` 5개 라우트 전수 재확인 — self-auth는 `index.tsx:254` rate limit 5/분 기등록, 나머지 4개(certificates/employment·contracts 목록/단건 preview·payslips 목록/단건)는 `verifySelfToken()`(scope='employee-self' 검증) + employee_id 소유 게이트, 서명 UPDATE는 `WHERE ... AND status IN ('DRAFT','PENDING_SIGNATURE')`로 TOCTOU 안전(Area4가 40회차에 이미 확인한 것과 동일 결론, 보안 렌즈로 재확인). `accounting.ts` inter-entity 5개 핸들러 — 라우터 전체 `authMiddleware+requireAccessOrRole` 게이트, DELETE는 `ietVisibility()` 당사자 확인 후 삭제(정상), POST/PUT의 당사자 미검증 갭은 Area4 #543이 이미 포착(중복 배제). `accounting.js`/`employeeSelf.js` 신규 innerHTML sink 전수 — `accIetRenderRow`(설명/거래처명/생성자명)·계약서목록(`entity_name`) 전부 escapeHtml/esc 일관 적용, 숫자·enum 라벨 필드는 SAFE. `payslipHtml.ts`(신규 템플릿) 전체 필드 `esc()` 일관. `employmentCertificate.ts`(기존 템플릿, 참고 확인) 이미 clean. 시크릿 폴백/CSV export 패턴 신규 churn 파일 전수 grep 0건.
+> - **🟢 backlog↔GitHub sync**: 이슈 생성 전 `search_issues(state:open,label:auto-improve)`=26 확인 후 #544 생성+즉시 자동수정 커밋으로 close → 재확인 실측 **open 26(변동없음)** · done `search_issues(is:closed,reason:completed)`=**447**(+1) · rejected 3(변동 없음).
+> - **🧬 SKILL 강화 없음(신규 패턴 아님)** — #544는 기존 "독립 c.html 페이지의 전역 escapeHtml 부재 + 서명/이미지 데이터 URI를 속성값으로 미검증 삽입" 클래스(SKILL Area5 라인 190 부근 "독립 HTML 페이지 예외" 및 A-024/A-025 부분-escape 클래스)의 정확한 재현 — img-src 컨텍스트도 텍스트노드와 동일하게 escape 필요함을 재확인한 사례일 뿐, 신규 클래스는 아님.
+> - 신규 이슈 1건(#544, 자동수정 완료), done-sync 변동 확인(new 26·done 446→447·rejected 3). 다음 순번 Area 6.
+>
 
 > **Area 4 데이터 정합성 (2026-07-18T14:10):**
 > - **방법**: `git fetch origin main`(HEAD `18d2cfe` = origin/main 일치, 워킹트리 clean, detached) 후 `npm ci`(node_modules 0→81). Area 4 **40회차** — 직전 Area4(`c9e4abc`, 07-17T02:10, 39회차) 이후 `migrations`/`src/routes` churn 6커밋(`git log c9e4abc..HEAD`): 신규 마이그 3건(0467 inter_entity_transactions·0468 payslip_publish·0469 pension_base) + `accounting.ts`(+221, 법인간 거래 CRUD)·`hrSelf.ts`(신규 172줄, 직원 셀프서비스)·`hr.ts`/`leaves.ts`/`payroll/{core,records,shared}.ts`(pension_base 배선). Area2/3/6이 각자 렌즈(코드품질/UX/자기진화)로 이미 훑었으나 데이터 정합성 렌즈(orphan·상태불일치·NOT NULL·CHECK·entity 격리 authorization)는 미검증 상태라 직접 전수 Read로 심층 분석(에이전트 위임 없이 오케스트레이터 단독 — churn 범위가 7파일로 작아 병렬 위임보다 직접 검증이 효율적).
