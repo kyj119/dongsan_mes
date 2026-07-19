@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 5 -->
-<!-- last_run_at: 2026-07-19T00:20:00+09:00 -->
+<!-- last_run_area: 6 -->
+<!-- last_run_at: 2026-07-19T01:10:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -15,6 +15,16 @@
 | ❌ rejected | 3 (`reason:not_planned`=1 + `reason:duplicate`=2, 변동 없음) |
 
 > 📦 **과거 사이클 로그**는 `IMPROVEMENT_BACKLOG_ARCHIVE.md`/git 히스토리로 이관됨 (2026-06-10 1차 분리, 2026-06-25 2차 트림 343KB→192KB, 2026-06-25T10:00 3차 트림, 2026-07-03T06:00 4차 트림 288KB→86KB, **2026-07-07T13:00 5차 트림 — 07-01~07-05 사이클 로그를 git 히스토리로 이관: 238KB→78KB, 256KB Read 한도 재확보**). 신규 로그는 계속 이 파일 상단에 추가. 본 파일은 직전 2일치(07-06~) 사이클 로그 + 영구 참조 섹션(Approved/New/Auto-fixed/Done/Rejected/FP 카탈로그)만 유지. 이관분은 `git log -p -- IMPROVEMENT_BACKLOG.md`로 복원 가능.
+
+> **Area 6 자기 진화 (2026-07-19T01:10):**
+> - **방법**: `git fetch origin main`(HEAD `95e9db7` = origin/main 일치, 워킹트리 clean, detached) 후 `npm ci`(node_modules 0→81). Area 6 **45회차** — 직전 Area6(`6910766`, 07-17T22:10, 44회차) 이후 22커밋(부문손익 P1 배부·생산허브 통합·사이드바 기능중복 4건 흡수·요율모달 dead-code 제거·법인간거래 탭 신설·직원셀프 급여명세서/근로계약서서명·pension_base 필드) 전부 **Area1~5(45~39회차)가 각자 렌즈로 이미 심층 감사 완료**(신규 이슈 #541~#544, 자동수정 #544)임을 `git log 6910766..HEAD --grep`(이슈번호 전수)로 확인 — 이번 churn 구간을 인용하는 커밋이 자기 자신(각 Area의 보고 커밋)뿐이라 컬럼-diff/XSS bridge 대상 잔여 0. "신선 churn 없음" → 이전 사이클들과 동일하게 **open≠unfixed/closed≠fixed 재검증 + 도구 자체 상태 확인 + 백로그 문서 정합성 점검**으로 전환.
+> - **🔍 open≠unfixed 재확인 — fixed-in-tree 0건**: `git log 6910766..HEAD --grep`으로 현재 open 26건(#473,504,509,519~540 중 538/544 제외,541~543) 전수 이슈번호 인용 커밋 검색 — 자기 자신의 보고 커밋 외 **어떤 이슈번호도 별도 fix 커밋에서 재인용되지 않음**(병렬 worktree 세션이 close 전에 미리 픽스하는 사례, line 281/#521류 재발 0). `#521`(부문관리 employees, GET 3곳만 부분픽스)도 이번 churn에 `departments.ts` 재수정 없음(`git log 6910766..HEAD -- src/routes/departments.ts`=0) — Area2 38회차 정정 상태 그대로 유효.
+> - **🟢 도구 자체 상태 확인 — 44회차 entity-audit.mjs/SKILL 정정 온전**: `git diff 6910766..HEAD -- .claude/skills/entity-audit/SKILL.md .claude/skills/review-checklist/SKILL.md scripts/entity-audit.mjs` = **변경 0**(이번 churn 어느 커밋도 이 3파일을 건드리지 않음) — 지난 사이클이 정정한 "id=? 예외는 SELECT 목록조회 한정, write 형제-비대칭은 별개" 규칙과 review-checklist §10 신규 항목 그대로 유지, 후속 churn에 의한 회귀나 재오염 없음.
+> - **🗂️ 백로그 문서 정합성 정비(비-코드 자기수정) — `## 🆕 New` 상세표 재-stale 발견 및 갱신**: 43회차(07-16)가 "5주 stale" 문제를 고쳐 당시 실측 11건으로 표를 전면 교체했으나, 이후 2일간 Area1~5가 신규 이슈 15건(#541~#544 포함, 538/544는 auto-close)을 추가하는 동안 이 상세표는 **다시 갱신되지 않아 11/26건만 반영**된 상태로 3일 재-stale(line 137-138이 경고한 "매 사이클 상세표도 통계와 함께 재동기화 대상"이 지켜지지 않은 사례). 상단 통계 숫자(new 26)는 정확했으나 본문 상세표만 뒤처져 "몇 건이 신규인지는 맞는데 어떤 이슈인지는 15건 누락"인 상태 — 통계-전용 절대값 재동기화(line 268)가 상세표까지 자동으로 커버하지 않음을 재확인. **조치**: 아래 `## 🆕 New` 표를 `search_issues(state:open,label:auto-improve)` 실측 26건 전체로 전면 교체(이슈번호·제목·영역·라벨·상태메모, #521/#473/#504는 기존 특기사항 유지). 코드 변경 없음, 문서 전용.
+> - **🧬 SKILL 강화 없음(신규 탐지 패턴 아님)** — 이번 사이클 유일 산출물은 코드가 아니라 **문서 드리프트 재발 확인**(43회차가 고친 지 3일 만에 다시 11/26로 뒤처짐) — "상세표는 통계 절대값 재동기화와 별개로 매 Area6 사이클마다 명시적으로 재확인해야 함"을 재확인. 향후 사이클은 상세표 항목 수를 상단 통계와 기계적으로 대조(둘 다 count만 비교해도 드리프트 조기 발견 가능)하는 습관화가 필요.
+> - **🟢 backlog↔GitHub 절대값 재동기화**: `search_issues(is:closed reason:completed)`=**447**(변동 없음, #544 이미 반영) · `not_planned`=1+`duplicate`=2 → rejected **3**(변동 없음) · `search_issues(state:open,label:auto-improve)` 실측 **26건**(직전 26 유지, owner close 0). 통계 표 자체는 이미 정확(Area5 39회차가 갱신) — 상세표만 갱신 대상.
+> - 신규 이슈 0건(코드 이슈 없음, 순수 문서 드리프트), 자동수정 0건(문서 동기화는 코드 변경 아님), 문서 동기화 1건(New 상세표 11→26 전면 갱신), done-sync 변동 없음(new 26·done 447·rejected 3 전부 정합 재확인). 다음 순번 Area 1.
+>
 
 > **Area 5 보안 (2026-07-19T00:20):**
 > - **방법**: `git fetch origin main`(HEAD `09919f2` = origin/main 일치, 워킹트리 clean, detached) 후 `npm ci`(node_modules 0→81). Area 5 **39회차** — 직전 Area5(`c9e4abc`, 07-17T21:21, 38회차) 이후 churn 21커밋 대부분(사이드바 탭통합·손익/생산허브 통합·법인간 거래 신설 등)은 Area1~4·6이 각자 렌즈로 이미 심층 감사 완료(#539~#543). 순수 미검증 보안 표면 = `hrSelf.ts`(신규 172줄, 직원 셀프서비스 인증/증명서/계약서서명)·`accounting.ts`(+221, 법인간 거래) — 오케스트레이터가 직접 Read로 authMiddleware 커버리지·IDOR·rate-limit·XSS 렌즈 전수 검증(신규 코드 규모가 작아 병렬 위임 대신 직접 검증이 효율적).
@@ -556,16 +566,31 @@
 
 ## 🆕 New (미검토)
 
-> 전부 GitHub open + 👍 미수신. 용준님 리뷰 대기. (open **실측 11건** — 2026-07-16T13:30 Area 6 43회차, `search_issues(state:open,label:auto-improve)` 직접 재확인. 아래 표는 5주 이상 stale하던 06-12 시점 목록[전부 done 처리됨]을 이번에 현재 상태로 전면 교체.)
+> 전부 GitHub open + 👍 미수신. 용준님 리뷰 대기. (open **실측 26건** — 2026-07-19T01:10 Area 6 45회차, `search_issues(state:open,label:auto-improve)` 직접 재확인. 아래 표는 43회차(07-16, 11건) 이후 2일간 갱신되지 않아 다시 stale하던 것을 이번에 현재 상태로 전면 교체 — "상세표는 통계 절대값과 별개로 매 사이클 재확인" 원칙 재확인.)
 
 | Issue | 제목 | 영역 | 라벨 | 상태 메모 |
 |-------|------|------|------|-----------|
-| #527 | PATCH /api/orders/bulk-bill entityFilter 누락 — 타법인 주문 cross-tenant BILLED 처리 | Area 5 | bug,security,S | net-new, 미픽스 확인(43회차 재검증) |
+| #543 | 법인간 거래 POST/PUT 당사자 검증 없음 — 무관한 두 법인 사이 거래 임의 생성/수정 | Area 4 | bug,S | net-new, 미픽스 |
+| #542 | 법인간 거래 탭 "수정" 기능 완전결함 — accIetRows 캐시 미충전으로 매번 신규 등록 | Area 3 | bug,S | net-new, 미픽스 |
+| #541 | 사이드바 정비 흡수 후 access-control 클라 전용 — DESIGNER가 콘솔로 정비비용 대시보드 열람 | Area 3 | bug,security,S | net-new, 미픽스 |
+| #540 | entity-audit.mjs CI 게이트 커버리지 8/111테이블 — write-path 사각 | Area 6 | improvement,M | 문서 대응 완료(44회차), 로직 확장은 owner 정책 결정 대기 |
+| #539 | workbench intakes 일괄흡수 UPDATE entity_id 격리 누락(형제-비대칭) | Area 5 | bug,security,S | 미픽스 |
+| #537 | 현금잔액 소스단일화 부분픽스 — financialReports.ts만 NULL balance_after 미필터(재무상태표 과소평가) | Area 4 | bug,S | 미픽스 |
+| #536 | AR aging SSOT 통합 부분픽스 — dashboard.ts만 구 방식(UTC julianday) 잔존 | Area 4 | bug,M | 미픽스 |
+| #535 | bank LINKED 연결 경로 UNIQUE/재검증 부재 — 동시요청 시 원장 중복연결 | Area 4 | bug,S | 미픽스 |
+| #534 | designer_intakes absorb UPDATE status 가드 부재 — TOCTOU 레이스로 흡수이력 소실 | Area 4 | bug,S | 미픽스 |
+| #533 | 가공 대기물 absorb 실패 완전 무음 — 재사용 위험 | Area 3 | improvement,S | 미픽스 |
+| #532 | 품목 하드삭제/복구 버튼 MANAGER에도 노출 — 위협적 확인창 통과 후 403 | Area 3 | improvement,S | 미픽스 |
+| #531 | workbench POST /intakes entity_id 전체모드 0-sentinel 오귀속(`getEntityId(c)\|\|1`) | Area 2 | improvement,S | 미픽스 |
+| #530 | 품목 하드삭제 참조검사 3테이블만 커버 — 다수 FK 누락으로 500+부분삭제 위험 | Area 2 | bug,M | 미픽스 |
+| #529 | bank 적용 link_payment_id 명시지정 경로 entity_id 격리 누락 | Area 2 | bug,security,S | 미픽스 |
+| #528 | bank 출금→매입지급 적용 중복제출 방어 없음 — 이중지급/이중차감 | Area 2 | bug,M | 미픽스 |
+| #527 | PATCH /api/orders/bulk-bill entityFilter 누락 — 타법인 주문 cross-tenant BILLED 처리 | Area 5 | bug,security,S | 미픽스 |
 | #526 | 부문 손익 자재비 — created_at UTC 미보정(KST 귀속오류) + 이동평균단가 비재현성 | Area 4 | improvement,S/M | 미픽스 |
 | #525 | 부문 손익 P5 배부 — serves_department_id 미검증 + totalWeight=0 공통비 무음소실 | Area 4 | bug,S~S-M | 미픽스 |
 | #524 | 주문목록 기본 날짜필터(최근1개월) 무음 차단 — clear-date dead code | Area 3 | improvement,S | 미픽스 |
 | #522 | hr.ts 직원등록/수정 department_id 존재·활성 미검증 (departments.ts와 비대칭) | Area 2 | improvement,S | 미픽스 |
-| #521 | 부문관리 employees entity격리 — GET 3곳은 `73b86ee`로 픽스됐으나 **PATCH /employees/:id는 여전히 bare `WHERE id=?`** | Area 6→2 | bug,security,S | **부분픽스**, Area2가 정정 코멘트 게시(07-14), 43회차 재확인 동일 |
+| #521 | 부문관리 employees entity격리 — GET 3곳은 `73b86ee`로 픽스됐으나 **PATCH /employees/:id는 여전히 bare `WHERE id=?`** | Area 6→2 | bug,security,S | **부분픽스**, Area2가 정정 코멘트 게시(07-14), 45회차 재확인 동일 |
 | #520 | IA 크래시-하드닝 재큐 완료-콜백 세대가드 부재 → zombie write lost-update | Area 4 | bug,S | 미픽스 |
 | #519 | 계좌이체 "전체 확정" 버튼 double-submit 미방지 | Area 3 | improvement,S | 미픽스 |
 | #509 | 급여 중도입퇴사 일할계산 근거(근무일수/비율) 화면 미표시 | — | improvement,S~S-M | 미픽스 |
