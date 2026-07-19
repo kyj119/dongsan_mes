@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 1 -->
-<!-- last_run_at: 2026-07-19T21:12:00+09:00 -->
+<!-- last_run_area: 2 -->
+<!-- last_run_at: 2026-07-19T22:05:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -15,6 +15,17 @@
 | ❌ rejected | 3 (`reason:not_planned`=1 + `reason:duplicate`=2, 변동 없음) |
 
 > 📦 **과거 사이클 로그**는 `IMPROVEMENT_BACKLOG_ARCHIVE.md`/git 히스토리로 이관됨 (2026-06-10 1차 분리, 2026-06-25 2차 트림 343KB→192KB, 2026-06-25T10:00 3차 트림, 2026-07-03T06:00 4차 트림 288KB→86KB, **2026-07-07T13:00 5차 트림 — 07-01~07-05 사이클 로그를 git 히스토리로 이관: 238KB→78KB, 256KB Read 한도 재확보**). 신규 로그는 계속 이 파일 상단에 추가. 본 파일은 직전 2일치(07-06~) 사이클 로그 + 영구 참조 섹션(Approved/New/Auto-fixed/Done/Rejected/FP 카탈로그)만 유지. 이관분은 `git log -p -- IMPROVEMENT_BACKLOG.md`로 복원 가능.
+
+> **Area 2 코드 품질 심층 분석 (2026-07-19T22:05):**
+> - **방법**: `git fetch origin main`(HEAD `5bb4207` = origin/main 일치, 워킹트리 clean, detached) 후 `npm ci`(node_modules 0→81). Area 2 **47회차** — 직전 Area2(`da50ec7`, 07-18T12:20, 46회차) 이후 `git log da50ec7..HEAD`(28커밋) 대부분은 Area1/3/4/5/6이 각자 렌즈로 이미 심층 감사(#541~#545 생성, #538/#544 자동수정). Area2 고유 렌즈(entity_id INSERT·N+1·authMiddleware·컬럼/타입 불일치·dead code·SELECT *)로 아직 미검증인 순수 신규 코드만 선별 = **부문손익 COGS 반영 2건**(`c10d2b7` 유통 매출원가·`3fb46cf` 제조 매출귀속 전환, 둘 다 `src/routes/departments.ts` 단독) + **payroll 요율모달 dead-code 제거**(`d075dfd`). 나머지(780778e/98c5be8=docs+SQL만, 6494749=layout.ts ESC-close CSS폭 수정 순수 UI) 코드품질 렌즈 무관 확인 후 스킵.
+> - **🟢 `departments.ts` PnL COGS(c10d2b7/3fb46cf) = Area2 렌즈 clean**: `GET /pnl` 5개 집계 쿼리(매출·자재비·유통COGS·인건비·인원수) 직접 Read 전수 — `entityFilter(c,'o'/'iad'/'p')` 별칭이 각 쿼리의 실제 FROM 별칭과 일치, `inventory_auto_deductions`(0264)·`payroll`(0150) 둘 다 entity_id 실보유(migrations grep 확인)라 격리 유효. N+1 없음(전부 단일 집계 SELECT, department 순회는 JS 메모리 Map 연산). `SELECT *` 없음. COGS 신규 서브쿼리(`JOIN items i` INNER)가 `oi.item_id IS NULL`(커스텀 라인) 건을 자연 제외하는 것도 커밋 메시지의 "귀속·원가 구조적 불가" 의도와 일치(버그 아님). `matMap.set(distDeptId, ...)` — `유통` 부문 미존재 시 `distDeptId=null`로 unclassified 버킷에 자연 합산되는 것도 주석대로 의도된 폴백.
+> - **🟢 payroll 요율모달 제거(`d075dfd`) = dead-code 삭제 완결성 확인**: `grep -rn "payrollOpenRatesModal\|payrollCloseRatesModal\|payrollLoadRates\|prRatesModal\|prRatesYear\|prRatesBody"` 코드베이스 전수 = 0건(호출부·DOM·정의 전부 제거, 잔존 참조로 인한 silent-fail 없음). 대체 경로(`payrollRates.js` 요율 탭)는 별도 프리픽스(`prR*`)라 형제 충돌 없음(diff 자체가 순수 삭제, 신규 로직 0).
+> - **🟢 entity-audit.mjs 재확인**: `node scripts/entity-audit.mjs` = 검사 8테이블·SELECT 59·통과 56·누락 3(`bank.ts:1340/1352`+`cron.ts:180`, 기존 확인 동일 3건, net-new 0).
+> - **🟢 `npx tsc --noEmit` 재확인**: 에러 0.
+> - **🟢 backlog↔GitHub sync**: `search_issues(state:open,label:auto-improve)` 실측 **27건**(변동 없음) · done `search_issues(is:closed,reason:completed)`=**447**(변동 없음) · rejected 3(변동 없음, 직전 사이클과 동일).
+> - **🧬 SKILL 강화 없음(신규 패턴 아님)** — 이번 사이클 순수 신규 코드가 작고(1파일 COGS 로직 + 1건 dead-code 삭제) Area2 고유 렌즈로도 전부 clean. `departments.ts`의 기존 open 이슈(#521, `GET /employees`·`PATCH /employees/:id`의 entityFilter 미적용)는 이번 churn이 건드리지 않은 별개 라인이라 재확인만(재발/악화 없음).
+> - 신규 이슈 0건, 자동수정 0건(수정 대상 없음), done-sync 변동 없음(new 27·done 447·rejected 3 정합 재확인). 다음 순번 Area 3.
+>
 
 > **Area 1 프로덕션 헬스 (2026-07-19T21:12):**
 > - **방법**: `git fetch origin main`(HEAD `160678d` = origin/main 일치, 워킹트리 clean, detached). 프록시가 이번 세션도 prod 호스트 직접 curl을 차단(exit 56, CONNECT tunnel 403 — 기존 33~45회차와 동일 제약, `cloudflare-observability` MCP도 미인증). Area 1 **46회차** — 직전 Area1(`6910766`, 07-18T00:45, 45회차) 이후 22커밋(부문손익 P1 배부·생산허브 통합·사이드바 기능중복 흡수·법인간거래 탭 신설(0467)·직원셀프 급여명세서/근로계약서서명(0468)·pension_base(0469) 등).
