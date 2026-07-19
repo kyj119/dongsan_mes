@@ -1,45 +1,53 @@
-# 세션 핸드오프 — 사이드바 중복통합 완결 (2026-07-18)
+# 세션 핸드오프 — HR B3/B5·pension_base·부문손익 원가·매출단가 (2026-07-19)
 
-> 세션별 덮어쓰기 파일. 상세 정본 = [[project-sidebar-consolidation]] (auto-memory).
+> 세션별 덮어쓰기 파일. 상세 정본 = [[design-payroll-self-service]]·[[project-item-pricing]]·[[design-departmental-pnl]] (auto-memory).
 
-## 이번 세션 요약 — 전부 prod 배포완료, 워킹트리 clean
-사이드바 기능중복 통합을 **완결**. 이번 세션 배포 커밋 순서(main):
-- `8ce8919c` 손익 허브 미수금 aging 일원화(Phase 2) — ledger/reports/bank 채권나이 SSOT
-- `b2a05c83` 생산 2축(생산 현황+분석 토글)
-- `a3119af9` 기능중복 4건 흡수-탭(장비+정비·급여+요율·경영진단→reports·세금+부가세)
-- `d075dfd9` 요율 모달 dead 코드 제거
-- 최종 HEAD=origin/main=`9409e03f` (docs). 최종 deploy `197b78b6`.
+## 이번 세션 요약 — 전부 prod 배포완료, 워킹트리 clean, main=origin/main=`cc5c36a7`
+지난 세션 TODO(B5·B3·단가·pension필드)를 대부분 소화. 배포 순서(main):
+1. **B5 요율**(데이터 UPDATE): 국민연금 7월 기준소득월액 상하한 prod → 하한 **410,000**·상한 **6,590,000**(insurance_rates 2026 NATIONAL_PENSION). 반영 시 7월 급여 10건 전원 상한 미만 → 재sync 불필요.
+2. **B3 직원셀프**(`2128fda2`, 마이그 0468, deploy 001cce1d): 급여명세서 셀프교부(payroll.published_at 게이트+payslip_issuance_logs 증빙, admin `POST /api/payroll/publish·unpublish` 교부드롭다운) + 근로계약서 본인서명(`GET /self/contracts/:id/preview`·`PATCH .../sign`·서명캔버스). 셀프 4엔드포인트 employee_id 소유게이트. `src/templates/payslipHtml.ts` 신규.
+3. **pension_base 필드**(`1a1d8187`, 마이그 0469, deploy 69c90016): `employees.pension_base`(국민연금 기준소득월액). 설정 시 국민연금 base=기준소득월액(상하한 클램프), 미설정=당월급여(하위호환). 국민연금만.
+4. **코드리뷰 후속 fix 5건**(`741ee022`, deploy 793f1a6d): ★leaves.ts(미사용연차수당 반영)가 **5번째 calcDeductions 호출부**인데 pensionBaseOverride 누락(pension_base 직원 국민연금 덮어쓰기)·hr.ts SALARY_FIELDS에 pension_base·records.ts publish batch 80청크·employeeSelf.js entity_name esc(XSS)·0468 헤더주석.
+5. **XSS 배포**(deploy c147b200, main `832021ac`): 봇 근로계약서 서명 img-src escape(#544) — 내 셀프서명 preview도 쓰는 템플릿이라 배포.
+6. **원가 backfill**(데이터): `items.avg_unit_cost` 0→**315개**(purchase_order_items 가중평균 SUM(amount)/SUM(qty), VAT 입력값그대로). `docs/price/backfill_avg_cost.sql`.
+7. **부문 P&L 유통 COGS**(`c10d2b7d`, deploy 06d914e9): MATERIAL/GOODS 판매수량×avg_unit_cost→유통 부문, material 버킷.
+8. **부문 매출귀속 근본수정**(`3fb46cf2`, deploy bd1331cd): `oi.category_name`(전유형 NULL)→`items.category`. 출력59.5M·전사6.0M·유통421.5M(원가362.7M·공헌58.8M) 정상화.
+9. **매출 base_price 시드**(데이터): FIXED 안정품목 **73개** 중앙값(`docs/price/seed_base_price_fixed.sql`). has_price 137→210.
 
-**사이드바 통합 프로젝트 종료**: Level 1(3건)·Level 2(자금·손익·생산 3대 허브)·Level 3(추가 4건) 전부 prod. 은퇴한 모든 페이지는 라우트·API·직접 URL 보존.
-
-## 핵심 결정 + 이유 (재사용 패턴)
-- **흡수-탭 패턴**(모든 통합 공통): 허브 페이지에 흡수 페이지를 탭으로. **단일소스 export**(흡수 페이지 `export const xContent`+스크립트)→허브 이식(HTML 중복 0), **지연 init**(`__xDefer` 프리앰블로 auto-init 차단→탭 첫 진입 시 `__xInit` 멱등 호출, 단독 페이지는 flag 없어 즉시), **사이드바만 은퇴**(페이지·라우트·API 보존).
-- **충돌 회피 우선순위**: ①element ID 교집합=흡수측만 프리픽스 리네임 ②JS 전역=이미 네임스페이스 분리면 IIFE 불요, `fmt` 등 동명은 방어적 리네임 ③완전 IIFE 스크립트(maintenance.js)는 충돌 0이나 init 호출 위해 `window.__xInit` 노출 필요.
-- **역할 게이팅**: 흡수 페이지 권한 < 허브 권한일 때만 필요(예 #1 정비는 ADMIN/MANAGER, equipment는 DESIGNER 포함 → 탭 기본 hidden+`localStorage.user.role` 관리자만 노출). 권한 동일이면 불요.
-- **미수금 aging 일원화**(손익 Phase 2): 3화면 서로 다른 aging → ledger의 채권나이(`oldest_unpaid_date`) SSOT로 통일. `ar-helpers.ts` `buildOldestUnpaidJoin`/`agingDaysFromOldest` 공유. **법인 스코프는 각 현행 유지**(무단 반전 배제).
+## 핵심 결정 + 이유
+- **B3 셀프**: 교부는 status와 독립 **publish 토글 게이트**(대부분 PENDING이라 status 게이트=빈화면)·인증 **현행 유지**(사원번호+생년월일)·서명 대상=**근로계약서 본인서명**(spec F-5, 급여수령확인 아님).
+- **pension_base**: 국민연금만(건강/장기요양/고용은 보수월액=당월급여 유지)·미설정 0=당월급여 하위호환. EmployeeDefaults 캐리어로 4호출부(+leaves 5번째) 주입.
+- **원가 소스**: **입금내역 부적합**(payments·cash_receipts에 item_id 없음=거래처/계산서 단위). 매입 원장(purchase_order_items)이 소스. VAT=입력값그대로(데이터 vat_amount=0·선명 미지급 정합).
+- **매출 87%가 유통(원단/상품)**: 자재비(제조 소진)가 아니라 매출원가=판매×매입가. 그래서 유통 COGS가 핵심(자재비 iad 아님).
+- **매출귀속=items.category**: oi.category_name이 전유형 NULL(커스텀 포함)이라 원래 미분류로 샜음. items.category로 전환. MATERIAL/GOODS는 item_type기준 유통(공정 category 없음).
+- **base_price FIXED만**: AREA는 이력 unit_price가 **개당가(431/432)**인데 폼(calc.js)은 ㎡단가로 곱함→그대로 시드하면 **5x 과청구**. AREA는 ㎡단가표 별도 필요.
 
 ## 판단 기준 (다음 세션용)
-- **배포 규칙**: 커밋 후 사용자 "배포 진행" 명시 확인 필수([[feedback-deploy-needs-explicit-request]]). 배포=**origin/main 분기 먼저 fetch**(이 세션 3회 중 3회 봇이 앞서 있었음)→superset 병합→verify→`npm run deploy:prod`(=`--branch main`)→apex 검증→docs 커밋 push.
-- **구조 무결 검증**: HTML 블록 제거/이식 후 `grep -oE '<div|</div>' \| wc -l`로 개폐 카운트 + 브라우저 `parent.contains(child)`·`offsetParent`(class hidden만 보면 놓침)로 형제/자식·계산 visibility 재검.
-- **로컬 D1은 AR 데이터 0**: 미수금 검증은 seed 필요(clients 2·3=결제 0). LOCAL은 폐기가능, 검증 후 원복.
+- **배포**: 커밋 후 사용자 "배포 진행" 명시([[feedback-deploy-needs-explicit-request]])→origin 분기 fetch(이 세션 봇이 수시 앞섬)→superset 병합→verify→`npm run deploy:prod`(--branch main)→apex 검증→docs push.
+- **★신규 calc/공유함수 파라미터 추가=전 호출부 grep 필수**(이 세션 leaves.ts 5번째 calcDeductions 누락을 코드리뷰가 잡음). [[feedback-sibling-incomplete-sweep]].
+- **prod P&L 검증=전체모드 토큰**: admin은 entity1(동산기획, 주문데이터 거의 0)이라 매출 0으로 보임. `POST /api/auth/switch-entity {entity_id:0}`로 전체모드 토큰 재발급해야 선명(entity2) 데이터 보임. 로컬 D1은 order/purchase/insurance_rates 데이터 없음(검증 시 시드 필요·dev 재시작 후 반영).
+- **데이터 backfill**: dry-run(SELECT)로 대상수·이상치·단위혼재 먼저 → 사용자 확인 → 멱등 SQL 적용 → 채움수/spot-check 검증. repo `docs/price/*.sql` 재현 보관.
 
 ## 검증 명령 (PowerShell)
 ```powershell
 npm run verify                 # typecheck + build (backend)
-npm run build; npm run smoke   # 전체
-# 로컬 서버: $env:BROWSER='none'; npm run dev:d1  (127.0.0.1:3000, admin/password)
-# 종료: Get-Process workerd -EA SilentlyContinue | Stop-Process -Force
+npm run build; npm run smoke   # 전체 (smoke는 로컬 activity-logs 500=0456 로컬미적용 기존이슈, 무관)
+# prod D1 조회: npx wrangler d1 execute webapp-production --remote --json --command "..."
+# prod 검증 토큰(전체모드): login→POST /api/auth/switch-entity {entity_id:0}
+# 로컬: npm run dev:d1 (127.0.0.1:3000, admin/password). 종료: Get-Process workerd | Stop-Process -Force
 ```
 
-## 다음 세션 TODO (사이드바 외 — 마스터플랜)
-1. **HR B5**: 4대보험 7월 요율 적용(상한 637만→**659만**·하한 40만→**41만** 리서치완료, prod insurance_rates 반영 확인). 산재 고지서 확인. → [[payroll-insurance-rates-2026]]
-2. **HR B3**: 직원 셀프서비스(급여명세서·전자서명 hrSelf).
-3. **품목 단가 전역 0**(블로커): 매입/매출 단가 미입력 → 원가·손익 정확도 제약.
-4. **간판 BOM**: brainstorming 후 보류 상태.
-5. (선택) 국민연금 기준소득월액 필드([[payroll-calc-ecount-diff]]).
-6. (참고) accounting 미수금 탭도 aging 미러 가능 → 손익 Phase 2 `buildOldestUnpaidJoin` 재사용.
+## 다음 세션 TODO
+1. **매출 base_price 잔여**: FIXED 변동·단발·무이력 품목 수동(showGroupPriceModal) / **AREA=㎡단가표(규격·수량 구간) 설계** — 단 **개당견적↔㎡단가 업무관례 결정 선행**(선명 실거래는 개당). 무이력 514개.
+2. **간판 BOM**: brainstorming 후 보류(spec 2026-06-13). 커스텀 라인(부문 미분류 198.2M) 상당수가 간판 추정.
+3. **자재비 제조(iad)=0**: print_events 1664/1665 card_id NULL(조판↔RIP 단절·과투자보류). 필요 시 computeMaterialRequirements(추정) 경로로 PRODUCT(13%) 자재비 반영 가능.
+4. **HR 잔여**: 건강보험 보수월액 필드(선택, pension_base와 유사)·B3 급여명세서 기존월 "근태 불러오기" 재실행 안내.
+5. (선택) 커스텀 라인 부문 귀속 수단(품목연결 유도 or 수동 태그).
 
-## 주의사항
-- payroll-rates 실제 라우트=`/settings/payroll-rates`(페이지 activePage만 `/payroll-rates`).
-- 커밋 메시지 한글 OK(git). wrangler `--commit-message`만 ASCII([[feedback-windows-deploy]]). PS5.1 heredoc은 Bash 도구로.
+## 주의사항 (함정)
+- ⚠️**AREA base_price 함정**: 이력 unit_price=개당가, 폼은 ㎡단가로 곱함. AREA 시드는 반드시 `amount/(면적×수량)`로 ㎡단가 재도출(그대로 쓰면 5x). 이번엔 AREA 제외함.
+- ⚠️**부문 P&L 미분류 198.2M=item_id NULL 커스텀 라인**(자유입력). 간판 부문 매출 0(커스텀에 있어 인건비만 잡혀 적자표시)=데이터 특성.
+- ⚠️**pension_base 반영**: 기존 급여월은 "근태 불러오기"(sync-attendance) 재실행해야 새 국민연금 base 적용.
+- **dev 서버(workerd) 이 세션 여러번 재시작**(요율/dist 반영 위해). 세션종료 시 정리 — 재사용은 `npm run dev:d1` 재시작.
+- 커밋 한글 OK(git), wrangler `--commit-message`만 ASCII. PS 큰따옴표 heredoc은 Bash 도구로.
 - 미추적 `docs/superpowers/specs/2026-07-10-role-expansion-rw-permissions.local-copy.md`=로컬 참조 사본(커밋 대상 아님).
