@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 6 -->
-<!-- last_run_at: 2026-07-19T01:10:00+09:00 -->
+<!-- last_run_area: 1 -->
+<!-- last_run_at: 2026-07-19T21:12:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,7 +8,7 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | **26** (변동 없음 — 본 Area5 신규 #544는 즉시 자동수정+커밋으로 마감돼 done 이관, open 순증가 없음). 실측(`search_issues(state:open,label:auto-improve)`=26) 정합. |
+| 🆕 new | **27** (+1, 본 Area1 신규 #545). 실측(`search_issues(state:open,label:auto-improve)`=27) 정합. |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 |
 | ✔️ done | **447** (+1, #544 자동수정 즉시 close) |
@@ -16,6 +16,14 @@
 
 > 📦 **과거 사이클 로그**는 `IMPROVEMENT_BACKLOG_ARCHIVE.md`/git 히스토리로 이관됨 (2026-06-10 1차 분리, 2026-06-25 2차 트림 343KB→192KB, 2026-06-25T10:00 3차 트림, 2026-07-03T06:00 4차 트림 288KB→86KB, **2026-07-07T13:00 5차 트림 — 07-01~07-05 사이클 로그를 git 히스토리로 이관: 238KB→78KB, 256KB Read 한도 재확보**). 신규 로그는 계속 이 파일 상단에 추가. 본 파일은 직전 2일치(07-06~) 사이클 로그 + 영구 참조 섹션(Approved/New/Auto-fixed/Done/Rejected/FP 카탈로그)만 유지. 이관분은 `git log -p -- IMPROVEMENT_BACKLOG.md`로 복원 가능.
 
+> **Area 1 프로덕션 헬스 (2026-07-19T21:12):**
+> - **방법**: `git fetch origin main`(HEAD `160678d` = origin/main 일치, 워킹트리 clean, detached). 프록시가 이번 세션도 prod 호스트 직접 curl을 차단(exit 56, CONNECT tunnel 403 — 기존 33~45회차와 동일 제약, `cloudflare-observability` MCP도 미인증). Area 1 **46회차** — 직전 Area1(`6910766`, 07-18T00:45, 45회차) 이후 22커밋(부문손익 P1 배부·생산허브 통합·사이드바 기능중복 흡수·법인간거래 탭 신설(0467)·직원셀프 급여명세서/근로계약서서명(0468)·pension_base(0469) 등).
+> - **🟢 배포체인 = 전수 정상**: `deploy.yml` 최근 30회 실행(07-18T08:32~07-19T10:35) 전부 success, 최신 커밋(`160678d`, run #29683605887) job 단계별 Typecheck/Build/Deploy/Smoke **전부 success**(스모크 10:36:23~10:36:36). `backup.yml`(Daily D1 Backup) 최근 30회 전부 success, 최신 07-18T17:48. `e2e.yml`은 여전히 `disabled_manually`(재발 아님).
+> - **🔴 신규 이슈 1건(issue-only, HIGH) — #545**: 직전 Area1 이후 신설 마이그레이션 3건(0467 법인간거래 신규테이블·0468 payroll.published_at·0469 employees.pension_base) 중 **0469만 기존 핵심 write-path를 침범**한 것을 발견 — `741ee02`("코드리뷰 후속 5건")가 **기존** `hr.ts:558-566` `PUT /api/hr/employees/:id`(직원 정보 수정) 핸들러의 급여필드 변경감지 SELECT에 `pension_base` 컬럼을 추가(diff로 직접 확인). 이 SELECT는 어떤 필드를 수정하든 무조건 실행되는 공통 경로라, prod에 0469 미적용 시 **직원 정보 수정 자체가 100% 500**(SKILL #483/#484 (b)-risk 패턴, `no such column`). `scripts/smoke.cjs`는 GET 프로브 위주라 이 write-path를 커버 안 해 smoke green이 이 회귀를 은폐할 수 있음(#430 write-path 맹점 클래스). 대조로 0468(payroll.published_at)은 `hrSelf.ts`·`payroll/records.ts`의 **신규** 엔드포인트만 참조(기존 기능 회귀 없음, 저위험), `payroll/shared.ts`의 급여계산 핵심 경로(`loadEmployeeDefaults`)는 `PRAGMA table_info` 동적 컬럼가드가 이미 있어 안전(우아한 폴백) — `hr.ts:566`만 방어 없이 노출된 예외. egress 차단으로 prod `PRAGMA table_info(employees)` 직접 확인 불가라 **문제 실재 여부는 강한 정황증거 수준**(코드는 이미 deploy 완료·live) — DB 마이그레이션 적용은 되돌리기 어려운 프로덕션 작업이라 자동실행 안 함, owner 확인 요청.
+> - **🟢 backlog↔GitHub sync**: `search_issues(label:auto-improve,state:open)` 실측 **27건**(직전 26 + 본 Area1 신규 #545). done(447)·rejected(3) 변동 없음.
+> - **🧬 SKILL 강화 없음(신규 패턴 아님)** — #483/#484 (b)-risk 레시피의 정상 적용 사례(신규 ADD COLUMN이 detail 아닌 **공통 write-path SELECT**에 유입된 변종), 기존 카탈로그로 충분히 커버.
+> - 신규 이슈 1건(#545, issue-only), 자동수정 0건(prod DB 마이그레이션은 owner 전용), done-sync 변동 없음(new 26→27·done 447·rejected 3 정합 재확인). 다음 순번 Area 2.
+>
 > **Area 6 자기 진화 (2026-07-19T01:10):**
 > - **방법**: `git fetch origin main`(HEAD `95e9db7` = origin/main 일치, 워킹트리 clean, detached) 후 `npm ci`(node_modules 0→81). Area 6 **45회차** — 직전 Area6(`6910766`, 07-17T22:10, 44회차) 이후 22커밋(부문손익 P1 배부·생산허브 통합·사이드바 기능중복 4건 흡수·요율모달 dead-code 제거·법인간거래 탭 신설·직원셀프 급여명세서/근로계약서서명·pension_base 필드) 전부 **Area1~5(45~39회차)가 각자 렌즈로 이미 심층 감사 완료**(신규 이슈 #541~#544, 자동수정 #544)임을 `git log 6910766..HEAD --grep`(이슈번호 전수)로 확인 — 이번 churn 구간을 인용하는 커밋이 자기 자신(각 Area의 보고 커밋)뿐이라 컬럼-diff/XSS bridge 대상 잔여 0. "신선 churn 없음" → 이전 사이클들과 동일하게 **open≠unfixed/closed≠fixed 재검증 + 도구 자체 상태 확인 + 백로그 문서 정합성 점검**으로 전환.
 > - **🔍 open≠unfixed 재확인 — fixed-in-tree 0건**: `git log 6910766..HEAD --grep`으로 현재 open 26건(#473,504,509,519~540 중 538/544 제외,541~543) 전수 이슈번호 인용 커밋 검색 — 자기 자신의 보고 커밋 외 **어떤 이슈번호도 별도 fix 커밋에서 재인용되지 않음**(병렬 worktree 세션이 close 전에 미리 픽스하는 사례, line 281/#521류 재발 0). `#521`(부문관리 employees, GET 3곳만 부분픽스)도 이번 churn에 `departments.ts` 재수정 없음(`git log 6910766..HEAD -- src/routes/departments.ts`=0) — Area2 38회차 정정 상태 그대로 유효.
