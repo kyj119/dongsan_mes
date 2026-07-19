@@ -2,6 +2,12 @@
 
 > 세션별 덮어쓰기 파일. 상세 정본 = [[design-payroll-self-service]]·[[project-item-pricing]]·[[design-departmental-pnl]] (auto-memory).
 
+## [추가 세션 2026-07-19] 거래처원장 모달 2버그 근본수정 — prod 배포·검증 완료 (커밋 `64947498`, deploy `d201af98`)
+- **스크롤 멈춤(ESC 닫기 한정)**: layout.ts 전역 ESC closer가 `[id$=Modal]`에 hidden만 추가→body 스크롤락 미복원, ledger 자체 ESC 리스너는 "이미 hidden"이라 skip. 프로덕션 Playwright 스택트레이스로 확정(X/배경 클릭은 정상이라 이전 finally 보강으로 안 잡혔던 것).
+- **해결(패턴)**: 전역 closer에 `data-esc-close="함수명"` 위임 훅 신설(layout.ts)+`#clientDetailModal`에 선언. ledger.js 자체 ESC 리스너 제거(스택 모달 이중닫힘 방지). 부수효과(스크롤락 등) 있는 신규 모달=data-esc-close 필수 → [[design-esc-close-delegation]]
+- **일자 잘림 = 매입 모달 테이블**: 이전 수정이 매출(112px)만, 매입 발주/지급 90px 잔존(셀 66px<텍스트 72.7px 실측). 90→112px + accounting.ts 형제 2곳 스윕.
+- 검증: prod에서 ESC/X/배경 3경로 스크롤 복원·스택 ESC 1회 1개·매입일자 112px·wheel 실스크롤 500px. `npm run verify` green.
+
 ## 이번 세션 요약 — 전부 prod 배포완료, 워킹트리 clean, main=origin/main=`cc5c36a7`
 지난 세션 TODO(B5·B3·단가·pension필드)를 대부분 소화. 배포 순서(main):
 1. **B5 요율**(데이터 UPDATE): 국민연금 7월 기준소득월액 상하한 prod → 하한 **410,000**·상한 **6,590,000**(insurance_rates 2026 NATIONAL_PENSION). 반영 시 7월 급여 10건 전원 상한 미만 → 재sync 불필요.
