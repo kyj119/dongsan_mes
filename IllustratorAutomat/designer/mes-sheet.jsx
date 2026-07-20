@@ -88,6 +88,49 @@
     };
   }
 
+  // ══ 자동 배치 (shelf bin-pack) — iaeShelfBinPack(src/scripts/iaEditor.js:1602) 이식 ══
+  //   면적 내림차순 → 기존 shelf 전부 순회 적재(회전 양방향) → 안 되면 새 shelf.
+  //   폭 초과(회전해도) 조각은 skip(수동 배치용)하고 나머지 최적 배치. 단위 무관(호출자가 pt로 넘김).
+  //   반환 = { placements:[{id,x,y,w,h,rotated}], total_height, skipped:[id...] } (좌상단 기준, 넣은 단위 그대로).
+  function sheetShelfBinPack(items, availableWidth, gap) {
+    if (!items || !items.length) return { placements: [], total_height: 0, skipped: [] };
+    gap = gap || 0;
+    var orient = function (it) {
+      return [{ w: it.w, h: it.h, rotated: false }, { w: it.h, h: it.w, rotated: true }];
+    };
+    var sorted = items.slice().sort(function (a, b) { return (b.w * b.h) - (a.w * a.h); });
+    var shelves = [], placements = [], skipped = [];
+    for (var i = 0; i < sorted.length; i++) {
+      var it = sorted[i], placed = false;
+      for (var si = 0; si < shelves.length; si++) {
+        var sh = shelves[si];
+        var xGap = sh.itemCount > 0 ? gap : 0;
+        var ors = orient(it);
+        for (var oi = 0; oi < ors.length; oi++) {
+          var o = ors[oi];
+          if (sh.usedWidth + xGap + o.w <= availableWidth + 1e-6) {
+            placements.push({ id: it.id, x: sh.usedWidth + xGap, y: sh.y, w: o.w, h: o.h, rotated: o.rotated });
+            sh.usedWidth += xGap + o.w; sh.itemCount++; if (o.h > sh.height) sh.height = o.h; placed = true; break;
+          }
+        }
+        if (placed) break;
+      }
+      if (!placed) {
+        var ors2 = orient(it), chosen = null;
+        for (var oi2 = 0; oi2 < ors2.length; oi2++) { if (ors2[oi2].w <= availableWidth + 1e-6) { chosen = ors2[oi2]; break; } }
+        if (!chosen) { skipped.push(it.id); continue; } // 폭 초과 — 수동 배치로 넘김
+        var prev = shelves[shelves.length - 1];
+        var yGap = prev ? gap : 0;
+        var newY = prev ? prev.y + prev.height + yGap : 0;
+        shelves.push({ y: newY, height: chosen.h, usedWidth: chosen.w, itemCount: 1 });
+        placements.push({ id: it.id, x: 0, y: newY, w: chosen.w, h: chosen.h, rotated: chosen.rotated });
+      }
+    }
+    var last = shelves[shelves.length - 1];
+    var totalHeight = last ? last.y + last.height : 0;
+    return { placements: placements, total_height: totalHeight, skipped: skipped };
+  }
+
   // ══ 분기: MES판 문서면 확정, 아니면 구성 ══
   var isSheetDoc = false;
   try { isSheetDoc = app.documents.length > 0 && String(app.activeDocument.name).indexOf(SHEET_DOC_PREFIX) === 0; } catch (eB) { }
@@ -226,26 +269,26 @@
       return;
     }
 
-    // ── 자동 배치 (shelf: 높이 내림차순 → 행 채움 · 폭 초과 조각은 90° 회전 시도) ──
+    // ── 자동 배치 (shelf bin-pack — 기존 shelf 재활용·회전 양방향·면적 내림차순) ──
     var usableW = sheetWpt - 2 * marginPt;
-    var items = [];
+    var packItems = [];
     for (var p = 0; p < pieces.length; p++) {
       var b = groupBounds(pieces[p]);
       if (!b) continue;
-      var w = b[2] - b[0], h = b[1] - b[3];
-      if (w > usableW && h <= usableW) { pieces[p].rotate(90); b = groupBounds(pieces[p]); w = b[2] - b[0]; h = b[1] - b[3]; }
-      items.push({ grp: pieces[p], w: w, h: h });
+      packItems.push({ id: p, w: b[2] - b[0], h: b[1] - b[3] });
     }
-    items.sort(function (a, bb) { return bb.h - a.h; });
-    var x = 0, y = 0, rowH = 0;
-    for (var q = 0; q < items.length; q++) {
-      var itq = items[q];
-      if (x > 0 && x + itq.w > usableW) { x = 0; y += rowH + gapPt; rowH = 0; }
-      itq.grp.position = [marginPt + x, -(marginPt + y)];
-      x += itq.w + gapPt;
-      if (itq.h > rowH) rowH = itq.h;
+    var packed = sheetShelfBinPack(packItems, usableW, gapPt);
+    var totalArea = 0;
+    for (var pl = 0; pl < packed.placements.length; pl++) {
+      var pc = packed.placements[pl];
+      var grp = pieces[pc.id];
+      if (pc.rotated) grp.rotate(90); // packer가 회전 선택 — 회전 후 좌상단 재배치(bounds w↔h swap)
+      grp.position = [marginPt + pc.x, -(marginPt + pc.y)];
+      totalArea += pc.w * pc.h;
     }
-    var usedH = y + rowH;
+    var usedH = packed.total_height;
+    var placedCount = packed.placements.length;
+    var effPct = (usedH > 0 && usableW > 0) ? Math.round((totalArea / (usableW * usedH)) * 100) : 0;
 
     // ── 아트보드 확정 (롤=길이 맞춤 / 평판=고정, 초과 시 경고) ──
     var overflow = '';
@@ -264,7 +307,8 @@
       margin_mm: (parseFloat(marginEt.text) || 10), gap_mm: (parseFloat(gapEt.text) || 5), created: st.kst
     }));
 
-    alert('판 구성 완료 ✓  (조각 ' + items.length + '개)' + overflow + '\n\n'
+    alert('판 구성 완료 ✓  (조각 ' + placedCount + '개 · 자재효율 ' + effPct + '%)' + overflow
+      + (packed.skipped.length ? ('\n⚠ 판 폭 초과 ' + packed.skipped.length + '개 — 판 규격을 키우거나 수동 배치하세요') : '') + '\n\n'
       + '이제 자유롭게 조정하세요 — 이동·회전·복제 모두 가능합니다.\n'
       + '(복제한 조각도 그대로 출력에 포함됩니다)\n\n'
       + '조정이 끝나면 이 스크립트를 다시 실행 → "판 확정"이 진행됩니다.'
