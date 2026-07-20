@@ -254,12 +254,12 @@ financialReportsRouter.get('/balance-snapshot', async (c) => {
       ) as total_ar
     `).first<ArRow>()
 
-    // 매입 미지급 — purchase_balance 캐시 폐기 → 파생(POs[NOT IN DRAFT/CANCELLED] − payments − adjustments). AR과 동일 전사 기준(법인 무필터)
+    // 매입 미지급 — purchase_balance 캐시 폐기 → 파생(POs[NOT IN DRAFT/CANCELLED] − payments − adjustments). AR과 동일 전사 기준(entity 무필터), 단 내부법인(그룹 3사)은 제외(법인간거래 탭 이관)
     const apRow = await c.env.DB.prepare(`
       SELECT (
-        (SELECT COALESCE(SUM(final_amount), 0) FROM purchase_orders WHERE status NOT IN ('DRAFT', 'CANCELLED'))
-        - (SELECT COALESCE(SUM(amount), 0) FROM purchase_payments)
-        - (SELECT COALESCE(SUM(amount), 0) FROM purchase_adjustments)
+        (SELECT COALESCE(SUM(final_amount), 0) FROM purchase_orders WHERE status NOT IN ('DRAFT', 'CANCELLED')${excludeInternalClientsSql('supplier_id')})
+        - (SELECT COALESCE(SUM(amount), 0) FROM purchase_payments WHERE 1=1${excludeInternalClientsSql('supplier_id')})
+        - (SELECT COALESCE(SUM(amount), 0) FROM purchase_adjustments WHERE 1=1${excludeInternalClientsSql('supplier_id')})
       ) as total_ap
     `).first<ApRow>()
 

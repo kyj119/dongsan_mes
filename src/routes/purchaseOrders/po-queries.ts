@@ -9,6 +9,7 @@ import type { HonoEnv } from '../../types/env'
 import { authMiddleware } from '../../middleware/auth'
 import { requireAnyPagePermission } from '../../middleware/permissions'
 import { getEntityId, entityFilter } from '../../utils/entityFilter'
+import { excludeInternalClientsSql } from '../../constants/intercompany'
 import { getEntityCompanyInfo } from '../../utils/entitySettings'
 import { kstYmd } from '../../utils/kstDate'
 
@@ -83,7 +84,8 @@ poQueriesRouter.get('/stats', async (c) => {
       ) ac ON ac.supplier_id = c.id
       -- ⚠️ client_type 필터 금지: prod 매입처는 대부분 'SALES'로 등록돼 있어(PURCHASE/BOTH 4곳뿐)
       --    타입 필터를 걸면 실질 매입처가 전멸함. 잔액>0 실질기준만 사용 (2026-07-16 client_type 수정 전례).
-      WHERE (COALESCE(bpo.v, 0) - COALESCE(bpp.v, 0) - COALESCE(bpa.v, 0)) > 0
+      -- 내부법인(그룹 3사)만 supplier_id NOT IN 제외 — 법인간거래는 회계허브 법인간거래 탭으로 이관 (client_type 필터 아님)
+      WHERE (COALESCE(bpo.v, 0) - COALESCE(bpp.v, 0) - COALESCE(bpa.v, 0)) > 0${excludeInternalClientsSql('c.id')}
       GROUP BY c.id
       ORDER BY balance DESC
       LIMIT 5

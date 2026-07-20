@@ -7,6 +7,7 @@ import { logActivity } from '../../utils/activityLog'
 import { notifyRoles } from '../../utils/notify'
 import { getEntityId, entityFilter } from '../../utils/entityFilter'
 import { kstYmd, kstYear } from '../../utils/kstDate'
+import { excludeInternalClientsSql, isInternalEntityClient } from '../../constants/intercompany'
 
 // ── Row interfaces ──────────────────────────────────────────────────────────
 interface PurchaseOrderRow {
@@ -190,6 +191,8 @@ apRouter.get('/purchase-client/:clientId', async (c) => {
     return c.json({
       success: true,
       data: {
+        // 내부법인(그룹 3사)이면 프론트가 "회계허브 법인간거래 탭" 안내로 전환 (매입원장 노출 안 함)
+        is_internal_entity: isInternalEntityClient(clientId),
         client,
         summary: {
           total_purchases: totalPurchases,
@@ -271,7 +274,7 @@ apRouter.get('/purchase-settlement', async (c) => {
       LEFT JOIN (
         SELECT supplier_id, SUM(amount) AS v FROM purchase_adjustments WHERE 1=1${balEf.clause} GROUP BY supplier_id
       ) bpa ON bpa.supplier_id = c.id
-      WHERE c.is_active = 1
+      WHERE c.is_active = 1${excludeInternalClientsSql('c.id')}
     `).bind(...balEf.params, ...balEf.params, ...balEf.params).all<SupplierRow>()
 
     // Merge
@@ -770,7 +773,8 @@ apRouter.get('/purchase-overdue', async (c) => {
         SELECT supplier_id, SUM(amount) AS v FROM purchase_adjustments WHERE 1=1${ovEf.clause} GROUP BY supplier_id
       ) bpa ON bpa.supplier_id = c.id
       -- ⚠️ client_type 필터 금지: prod 매입처는 대부분 'SALES' 타입(PURCHASE/BOTH 4곳뿐) → 잔액>0 실질기준만 (2026-07-16 전례)
-      WHERE (COALESCE(bpo.v, 0) - COALESCE(bpp.v, 0) - COALESCE(bpa.v, 0)) > 0
+      -- 내부법인(그룹 3사)만 supplier_id NOT IN 제외 — 법인간거래는 회계허브 법인간거래 탭으로 이관 (client_type 필터 아님)
+      WHERE (COALESCE(bpo.v, 0) - COALESCE(bpp.v, 0) - COALESCE(bpa.v, 0)) > 0${excludeInternalClientsSql('c.id')}
       ORDER BY purchase_balance DESC
     `).bind(...ovEf.params, ...ovEf.params, ...ovEf.params).all<OverdueRow>()
 
@@ -836,7 +840,7 @@ apRouter.get('/purchase-integrity-check', requireEditOrRole('/ledger', 'MANAGER'
       LEFT JOIN (
         SELECT supplier_id, SUM(amount) as v FROM purchase_adjustments WHERE 1=1${intPaEf} GROUP BY supplier_id
       ) pa ON pa.supplier_id = c.id
-      WHERE c.is_active = 1 AND (po.v IS NOT NULL OR pp.v IS NOT NULL OR pa.v IS NOT NULL OR COALESCE(c.purchase_balance, 0) <> 0)
+      WHERE c.is_active = 1${excludeInternalClientsSql('c.id')} AND (po.v IS NOT NULL OR pp.v IS NOT NULL OR pa.v IS NOT NULL OR COALESCE(c.purchase_balance, 0) <> 0)
     `).bind(...intPoEfParams, ...intPpEfParams, ...intPaEfParams).all<IntegrityRow>()
 
     const discrepancies: { supplier_id: number; client_code: string; client_name: string; cached_purchase_balance: number; calculated_purchase_balance: number; difference: number }[] = []
@@ -894,7 +898,7 @@ apRouter.post('/purchase-integrity-fix', requireEditOrRole('/ledger', 'MANAGER')
       LEFT JOIN (
         SELECT supplier_id, SUM(amount) as v FROM purchase_adjustments WHERE 1=1${fixPaEf} GROUP BY supplier_id
       ) pa ON pa.supplier_id = c.id
-      WHERE c.is_active = 1 AND (po.v IS NOT NULL OR pp.v IS NOT NULL OR pa.v IS NOT NULL OR COALESCE(c.purchase_balance, 0) <> 0)
+      WHERE c.is_active = 1${excludeInternalClientsSql('c.id')} AND (po.v IS NOT NULL OR pp.v IS NOT NULL OR pa.v IS NOT NULL OR COALESCE(c.purchase_balance, 0) <> 0)
     `).bind(...fixPoEfParams, ...fixPpEfParams, ...fixPaEfParams).all<IntegrityRow>()
 
     let fixed = 0

@@ -1080,6 +1080,18 @@ async function loadPurchaseClientLedger(clientId) {
         var res = await axios.get('/api/ledger/purchase-client/' + clientId);
         if (res.data.success) {
             var d = res.data.data;
+            // 내부법인(그룹 3사): 매입원장 대신 회계허브 법인간거래 탭 안내 (AP 제외 정책)
+            if (d.is_internal_entity) {
+                ['pClientTotalPurchase', 'pClientTotalPayments', 'pClientBalance', 'pClientLastPayment'].forEach(function (id) { var e = document.getElementById(id); if (e) e.textContent = '─'; });
+                var _ptb = document.getElementById('pTransactionsBody');
+                if (_ptb) _ptb.innerHTML = '<tr><td colspan="6" class="text-center py-12 text-gray-500">'
+                    + '<i class="fas fa-building-columns text-3xl text-indigo-300 mb-3 block"></i>'
+                    + '<div class="font-semibold text-gray-700 mb-1">법인간 내부거래처입니다</div>'
+                    + '<div class="text-sm text-gray-500 mb-4 leading-relaxed">동산기획·선명·청주 간 채권·채무는 매입원장이 아니라<br>회계허브 &gt; 법인간거래 탭에서 통합 확인합니다.</div>'
+                    + '<a href="/accounting?tab=inter" class="ds-btn ds-btn-primary ds-btn-sm inline-flex items-center"><i class="fas fa-arrow-right mr-1"></i>법인간거래 탭 열기</a>'
+                    + '</td></tr>';
+                return;
+            }
             var s = d.summary || {};
             document.getElementById('pClientTotalPurchase').textContent = (s.total_purchase || 0).toLocaleString() + '원';
             document.getElementById('pClientTotalPayments').textContent = (s.total_payments || 0).toLocaleString() + '원';
