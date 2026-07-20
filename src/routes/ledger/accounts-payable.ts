@@ -769,8 +769,8 @@ apRouter.get('/purchase-overdue', async (c) => {
       LEFT JOIN (
         SELECT supplier_id, SUM(amount) AS v FROM purchase_adjustments WHERE 1=1${ovEf.clause} GROUP BY supplier_id
       ) bpa ON bpa.supplier_id = c.id
+      -- ⚠️ client_type 필터 금지: prod 매입처는 대부분 'SALES' 타입(PURCHASE/BOTH 4곳뿐) → 잔액>0 실질기준만 (2026-07-16 전례)
       WHERE (COALESCE(bpo.v, 0) - COALESCE(bpp.v, 0) - COALESCE(bpa.v, 0)) > 0
-        AND c.client_type IN ('PURCHASE', 'BOTH')
       ORDER BY purchase_balance DESC
     `).bind(...ovEf.params, ...ovEf.params, ...ovEf.params).all<OverdueRow>()
 

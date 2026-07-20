@@ -81,8 +81,9 @@ poQueriesRouter.get('/stats', async (c) => {
         SELECT supplier_id, COUNT(*) AS cnt FROM purchase_orders
         WHERE status IN ('CONFIRMED', 'PARTIAL_RECEIVED')${ef.clause} GROUP BY supplier_id
       ) ac ON ac.supplier_id = c.id
-      WHERE c.client_type IN ('PURCHASE', 'BOTH')
-        AND (COALESCE(bpo.v, 0) - COALESCE(bpp.v, 0) - COALESCE(bpa.v, 0)) > 0
+      -- ⚠️ client_type 필터 금지: prod 매입처는 대부분 'SALES'로 등록돼 있어(PURCHASE/BOTH 4곳뿐)
+      --    타입 필터를 걸면 실질 매입처가 전멸함. 잔액>0 실질기준만 사용 (2026-07-16 client_type 수정 전례).
+      WHERE (COALESCE(bpo.v, 0) - COALESCE(bpp.v, 0) - COALESCE(bpa.v, 0)) > 0
       GROUP BY c.id
       ORDER BY balance DESC
       LIMIT 5
