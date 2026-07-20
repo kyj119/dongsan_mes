@@ -1,64 +1,50 @@
-# 세션 핸드오프 — HR B3/B5·pension_base·부문손익 원가·매출단가 (2026-07-19)
+# 세션 핸드오프 — 코드리뷰 13건 수정 + AP 파생화 동반 prod 배포 (2026-07-20)
 
-> 세션별 덮어쓰기 파일. 상세 정본 = [[design-payroll-self-service]]·[[project-item-pricing]]·[[design-departmental-pnl]] (auto-memory).
+> 세션별 덮어쓰기 파일. 상세 정본 = [[design-departmental-pnl]]·[[project-clients-balance-deprecated]]·[[feedback-ap-client-type-filter]]·[[feedback-shared-checkout-git]] (auto-memory).
 
-## [추가 세션 2026-07-19] 거래처원장 모달 2버그 근본수정 — prod 배포·검증 완료 (커밋 `64947498`, deploy `d201af98`)
-- **스크롤 멈춤(ESC 닫기 한정)**: layout.ts 전역 ESC closer가 `[id$=Modal]`에 hidden만 추가→body 스크롤락 미복원, ledger 자체 ESC 리스너는 "이미 hidden"이라 skip. 프로덕션 Playwright 스택트레이스로 확정(X/배경 클릭은 정상이라 이전 finally 보강으로 안 잡혔던 것).
-- **해결(패턴)**: 전역 closer에 `data-esc-close="함수명"` 위임 훅 신설(layout.ts)+`#clientDetailModal`에 선언. ledger.js 자체 ESC 리스너 제거(스택 모달 이중닫힘 방지). 부수효과(스크롤락 등) 있는 신규 모달=data-esc-close 필수 → [[design-esc-close-delegation]]
-- **일자 잘림 = 매입 모달 테이블**: 이전 수정이 매출(112px)만, 매입 발주/지급 90px 잔존(셀 66px<텍스트 72.7px 실측). 90→112px + accounting.ts 형제 2곳 스윕.
-- 검증: prod에서 ESC/X/배경 3경로 스크롤 복원·스택 ESC 1회 1개·매입일자 112px·wheel 실스크롤 500px. `npm run verify` green.
+## 이번 세션 요약 — prod 배포·검증·main 정합 완료 (origin/main=`3878eb6a`, 워킹트리 clean)
+feat/dept-pnl 로컬 코드리뷰(high) → **에이전트 8팀 병렬 수정 13파일**(커밋 `1e1b6207`) → **동시 세션 AP 파생화(`2511e57a`)와 충돌 처리** → 필터 재제거(`3f541012`) → **격리 worktree 빌드로 prod 배포**(`--branch main`) → apex 검증 → **main 정합 push**(docs-only 분기 `ff337c92` 병합, `3878eb6a`).
 
-## [추가 세션 2026-07-20] 선명 연체 관리 — AR 보완 3건 prod 배포(`5ad7b2ba`, deploy `5055a343`) + 조사 플랜
-- **보완 3건**(에이전트 3팀 병렬·파일셋 분리·중앙검증): ①cron daily-maintenance에 check-overdue 연결(매일 06:00 법인별 연체 알림, 고아API 해소) ②거래처 모달 연체 기준일(overdue_alert_days) UI(1~365, null=30) ③감액 유형 BAD_DEBT '대손(탕감)'(CHECK 제약 없음=마이그 불요). prod 검증=마커·validTypes 에러메시지 probe(무변이)·401 게이트.
-- **선명 연체 플랜(정본)**: `docs/receivables/sunmyung-overdue-plan-2026-07-20.md` — 연체 205.5M 중 내부 160.3M(본사 115.4M=71%가 2025 이월 81.5M 방치·청주 44.9M 입금0), 외부 45.2M/23곳(독촉이력 전무). 1차 전화 5곳=34.9M(외부 77%)·알림톡 문안 2종·탕감 근접 2곳(94,300원, 최종통보 후).
-- **다음 세션 TODO**: ①내일 06:00 cron 첫 실행 후 연체 알림 생성 확인 ②탕감 2건(세이 6,300·그리미 88,000) 사용자 승인 시 BAD_DEBT 등록 ③내부 정산 160.3M 방식(상계/일괄/분할) 사용자 결정 대기 ④독촉 전화/알림톡=사용자 직접(문안 docs 참조).
-
-## 이번 세션 요약 — 전부 prod 배포완료, 워킹트리 clean, main=origin/main=`cc5c36a7`
-지난 세션 TODO(B5·B3·단가·pension필드)를 대부분 소화. 배포 순서(main):
-1. **B5 요율**(데이터 UPDATE): 국민연금 7월 기준소득월액 상하한 prod → 하한 **410,000**·상한 **6,590,000**(insurance_rates 2026 NATIONAL_PENSION). 반영 시 7월 급여 10건 전원 상한 미만 → 재sync 불필요.
-2. **B3 직원셀프**(`2128fda2`, 마이그 0468, deploy 001cce1d): 급여명세서 셀프교부(payroll.published_at 게이트+payslip_issuance_logs 증빙, admin `POST /api/payroll/publish·unpublish` 교부드롭다운) + 근로계약서 본인서명(`GET /self/contracts/:id/preview`·`PATCH .../sign`·서명캔버스). 셀프 4엔드포인트 employee_id 소유게이트. `src/templates/payslipHtml.ts` 신규.
-3. **pension_base 필드**(`1a1d8187`, 마이그 0469, deploy 69c90016): `employees.pension_base`(국민연금 기준소득월액). 설정 시 국민연금 base=기준소득월액(상하한 클램프), 미설정=당월급여(하위호환). 국민연금만.
-4. **코드리뷰 후속 fix 5건**(`741ee022`, deploy 793f1a6d): ★leaves.ts(미사용연차수당 반영)가 **5번째 calcDeductions 호출부**인데 pensionBaseOverride 누락(pension_base 직원 국민연금 덮어쓰기)·hr.ts SALARY_FIELDS에 pension_base·records.ts publish batch 80청크·employeeSelf.js entity_name esc(XSS)·0468 헤더주석.
-5. **XSS 배포**(deploy c147b200, main `832021ac`): 봇 근로계약서 서명 img-src escape(#544) — 내 셀프서명 preview도 쓰는 템플릿이라 배포.
-6. **원가 backfill**(데이터): `items.avg_unit_cost` 0→**315개**(purchase_order_items 가중평균 SUM(amount)/SUM(qty), VAT 입력값그대로). `docs/price/backfill_avg_cost.sql`.
-7. **부문 P&L 유통 COGS**(`c10d2b7d`, deploy 06d914e9): MATERIAL/GOODS 판매수량×avg_unit_cost→유통 부문, material 버킷.
-8. **부문 매출귀속 근본수정**(`3fb46cf2`, deploy bd1331cd): `oi.category_name`(전유형 NULL)→`items.category`. 출력59.5M·전사6.0M·유통421.5M(원가362.7M·공헌58.8M) 정상화.
-9. **매출 base_price 시드**(데이터): FIXED 안정품목 **73개** 중앙값(`docs/price/seed_base_price_fixed.sql`). has_price 137→210.
+### 배포된 3커밋 (origin/main에 push 완료)
+1. `2511e57a` (**타 세션**): AP 잔액 **법인별 파생화**(`clients.purchase_balance` 캐시 폐기 → `SUM(po.final_amount, NOT IN DRAFT/CANCELLED) − payments − adjustments`, entity 필터) + **관계사 채권채무 일별 대사**(cron daily-maintenance). AR deriveClientBalance 전례의 AP판. → [[project-clients-balance-deprecated]]
+2. `1e1b6207` (**내 코드리뷰 수정 13건**, 8에이전트 병렬):
+   - **부문손익**(departments.ts): 인건비 법인필터 `entityFilter('p'→'e')`(payroll.entity_id DEFAULT 1 신뢰불가·hr.ts:840 전례) · `totalWeight=0` 공통풀 소실 폴백(인원→균등) · 합계 공헌이익=생산부문 기준(행 합 일치)
+   - **법인간거래**: `ietValidate` 세션 법인 당사자 검증(#543) · `accIetRows` 렌더 시 채움→수정 정상화(중복생성 차단, #542)
+   - **은행적용**(bank.ts): LINKED/출금/입금 3모드 **원자적 claim-first**(조건부 UPDATE changes=0→409, 돈변동 전 배타소유권) — 동시적용 이중차감·중복지급 차단 · 명시링크 법인검증 · cash_schedule 자동DONE 법인바인딩 `tx.entity_id→entityId`
+   - **기타**: 품목 하드삭제 참조검사 3→**20 FK 테이블**(무언 CASCADE/opaque 500 방지) · `/maintenance/*` requireRole('ADMIN','MANAGER')(#541) · AR aging KST 정규화(UTC혼용 off-by-one) · 급여 교부 UPDATE+증빙INSERT 단일 batch 원자화 · 대기물 created_at formatKST · absorb order_item 링크(ai_analysis_id 서버 back-resolve)
+3. `3f541012`: **client_type 필터 재제거**(내 리뷰가 복원 제안했으나 오판 — 아래 주의사항)
 
 ## 핵심 결정 + 이유
-- **B3 셀프**: 교부는 status와 독립 **publish 토글 게이트**(대부분 PENDING이라 status 게이트=빈화면)·인증 **현행 유지**(사원번호+생년월일)·서명 대상=**근로계약서 본인서명**(spec F-5, 급여수령확인 아님).
-- **pension_base**: 국민연금만(건강/장기요양/고용은 보수월액=당월급여 유지)·미설정 0=당월급여 하위호환. EmployeeDefaults 캐리어로 4호출부(+leaves 5번째) 주입.
-- **원가 소스**: **입금내역 부적합**(payments·cash_receipts에 item_id 없음=거래처/계산서 단위). 매입 원장(purchase_order_items)이 소스. VAT=입력값그대로(데이터 vat_amount=0·선명 미지급 정합).
-- **매출 87%가 유통(원단/상품)**: 자재비(제조 소진)가 아니라 매출원가=판매×매입가. 그래서 유통 COGS가 핵심(자재비 iad 아님).
-- **매출귀속=items.category**: oi.category_name이 전유형 NULL(커스텀 포함)이라 원래 미분류로 샜음. items.category로 전환. MATERIAL/GOODS는 item_type기준 유통(공정 category 없음).
-- **base_price FIXED만**: AREA는 이력 unit_price가 **개당가(431/432)**인데 폼(calc.js)은 ㎡단가로 곱함→그대로 시드하면 **5x 과청구**. AREA는 ㎡단가표 별도 필요.
+- **client_type 필터 복원 = 오판·철회**: 리뷰가 "미지급 목록에 stale 잔액 유입 방지"로 `client_type IN('PURCHASE','BOTH')` 복원을 제안, 사용자도 승인 → 그러나 **prod 매입처 대부분 'SALES'로 등록**(PURCHASE/BOTH 4곳뿐)이라 필터 시 실질 매입처 전멸. 2026-07-16에 이미 겪은 함정. 실질기준=`purchase_balance>0`(파생)만 사용. 가드 주석 코드에 명시. → [[feedback-ap-client-type-filter]]
+- **배포=격리 worktree 빌드**: 동시 세션 활발(이 세션 중 3커밋 유입 관측). dirty 워킹트리 전체빌드=WIP 휩쓸림 사고근원 → `scripts/new-session.ps1 deployrev <커밋>`으로 커밋 기준 격리 tree 빌드 후 `--branch main`.
+- **은행적용 claim-first**: D1은 배치 내 조건부 가드가 마지막 stmt에만 걸려 동시요청이 무조건 INSERT+잔액차감 통과 → 조건부 UPDATE 1건으로 **배타 소유권 선점**(changes=0→409) 후에만 돈변동. 잔여=클레임 성공 후 INSERT 실패 시 tx만 APPLIED(잔액무변·복구가능), 기존 이중차감보다 안전.
+- **합계 공헌이익=생산부문 기준**: 지원부문 인건비는 공통풀 배부(영업이익 아래)로만 반영, 합계 공헌이익도 생산부문 인건비만 차감해 행↔합계 정합.
 
 ## 판단 기준 (다음 세션용)
-- **배포**: 커밋 후 사용자 "배포 진행" 명시([[feedback-deploy-needs-explicit-request]])→origin 분기 fetch(이 세션 봇이 수시 앞섬)→superset 병합→verify→`npm run deploy:prod`(--branch main)→apex 검증→docs push.
-- **★신규 calc/공유함수 파라미터 추가=전 호출부 grep 필수**(이 세션 leaves.ts 5번째 calcDeductions 누락을 코드리뷰가 잡음). [[feedback-sibling-incomplete-sweep]].
-- **prod P&L 검증=전체모드 토큰**: admin은 entity1(동산기획, 주문데이터 거의 0)이라 매출 0으로 보임. `POST /api/auth/switch-entity {entity_id:0}`로 전체모드 토큰 재발급해야 선명(entity2) 데이터 보임. 로컬 D1은 order/purchase/insurance_rates 데이터 없음(검증 시 시드 필요·dev 재시작 후 반영).
-- **데이터 backfill**: dry-run(SELECT)로 대상수·이상치·단위혼재 먼저 → 사용자 확인 → 멱등 SQL 적용 → 채움수/spot-check 검증. repo `docs/price/*.sql` 재현 보관.
+- **동시 세션 공유파일 충돌**: 에이전트가 편집한 shared 파일을 타 세션이 자기버전으로 커밋하면 내 수정 유실됨(이 세션 client_type 필터 2회 유실). 배포 전 `git log`·`git status` 재확인, 내 순수 파일만 **경로지정 add**, shared 파일은 타 세션 커밋에 동승 or 그 위에 재적용. → [[feedback-shared-checkout-git]]
+- **main 정합**: 배포 후 `git fetch`→`HEAD..origin/main` 확인(0 아니면 분기)→docs-only면 병합 후 `push origin HEAD:main`(FF), 코드분기면 재빌드·재배포 판단. **미push 시 타 세션 main기준 배포가 prod 코드를 되돌림**.
+- **AP 잔액 정본**=`clients.purchase_balance` 파생(orders−payments−adjustments, 법인필터). 캐시 컬럼 reader는 레거시. → [[project-clients-balance-deprecated]]
+- **배포**: 커밋 후 사용자 "배포 진행" 명시([[feedback-deploy-needs-explicit-request]]) → 격리 worktree → `wrangler pages deploy dist --branch main` → apex(302 로그인·신규라우트 401·404/500 부재) → main push → worktree 정리(end-session, dev서버 종료 동반).
 
 ## 검증 명령 (PowerShell)
 ```powershell
 npm run verify                 # typecheck + build (backend)
-npm run build; npm run smoke   # 전체 (smoke는 로컬 activity-logs 500=0456 로컬미적용 기존이슈, 무관)
-# prod D1 조회: npx wrangler d1 execute webapp-production --remote --json --command "..."
-# prod 검증 토큰(전체모드): login→POST /api/auth/switch-entity {entity_id:0}
-# 로컬: npm run dev:d1 (127.0.0.1:3000, admin/password). 종료: Get-Process workerd | Stop-Process -Force
+# 격리 배포: .\scripts\new-session.ps1 deployrev <커밋SHA>; cd ..\dongsan_mes-worktrees\deployrev
+#           npm run verify; npx wrangler pages deploy dist --project-name webapp --branch main --commit-message prod-deploy
+#           cd ..\..\dongsan_mes; .\scripts\end-session.ps1 deployrev -DeleteBranch   # ⚠️포트3000 dev서버 종료
+# apex 검증: curl -A "Mozilla/5.0" https://webapp-9i0.pages.dev/  (302) · /api/... (401)
+# 로컬: npm run dev:d1 (192.168.0.94:3000, admin/password) — 단일 포트, 타 세션과 동시 불가
 ```
 
 ## 다음 세션 TODO
-1. **매출 base_price 잔여**: FIXED 변동·단발·무이력 품목 수동(showGroupPriceModal) / **AREA=㎡단가표(규격·수량 구간) 설계** — 단 **개당견적↔㎡단가 업무관례 결정 선행**(선명 실거래는 개당). 무이력 514개.
-2. **간판 BOM**: brainstorming 후 보류(spec 2026-06-13). 커스텀 라인(부문 미분류 198.2M) 상당수가 간판 추정.
-3. **자재비 제조(iad)=0**: print_events 1664/1665 card_id NULL(조판↔RIP 단절·과투자보류). 필요 시 computeMaterialRequirements(추정) 경로로 PRODUCT(13%) 자재비 반영 가능.
-4. **HR 잔여**: 건강보험 보수월액 필드(선택, pension_base와 유사)·B3 급여명세서 기존월 "근태 불러오기" 재실행 안내.
-5. (선택) 커스텀 라인 부문 귀속 수단(품목연결 유도 or 수동 태그).
+1. **내일 06:00 daily-maintenance cron 첫 실행** 후 관계사 채권채무 대사 결과 확인(불일치 시 ADMIN 알림). 미러 데이터 등록 전엔 불일치가 정상.
+2. **선명 잔액 법인분리 실측**: prod 로그인 → 동산/청주 매입탭에서 선명 잔액이 법인별로 분리(종전 합계 160,273,603원 오표시) 되는지 Playwright 검증 — 배포는 라이브지만 기능 육안검증 미완.
+3. **GitHub 이슈 close**: #541(정비 접근제어)·#542(법인간거래 수정)·#543(인가누락) 코드 수정 완료분.
+4. **리뷰 미조치(의도적 보류)**: workbench ingest entity 필터(W4/W5, 디자이너 인증모델 확인 후) · 퇴사자 셀프 명세서 열람 정책 · reports.ts null oldest_unpaid_date→'current' 버킷(경미) · 마이그 0459/0460 멱등성(이미 prod 적용, 파일수정 무의미).
 
 ## 주의사항 (함정)
-- ⚠️**AREA base_price 함정**: 이력 unit_price=개당가, 폼은 ㎡단가로 곱함. AREA 시드는 반드시 `amount/(면적×수량)`로 ㎡단가 재도출(그대로 쓰면 5x). 이번엔 AREA 제외함.
-- ⚠️**부문 P&L 미분류 198.2M=item_id NULL 커스텀 라인**(자유입력). 간판 부문 매출 0(커스텀에 있어 인건비만 잡혀 적자표시)=데이터 특성.
-- ⚠️**pension_base 반영**: 기존 급여월은 "근태 불러오기"(sync-attendance) 재실행해야 새 국민연금 base 적용.
-- **dev 서버(workerd) 이 세션 여러번 재시작**(요율/dist 반영 위해). 세션종료 시 정리 — 재사용은 `npm run dev:d1` 재시작.
-- 커밋 한글 OK(git), wrangler `--commit-message`만 ASCII. PS 큰따옴표 heredoc은 Bash 도구로.
+- ⚠️**client_type 필터 재제안 금지**: AP 미지급/stats 목록은 `purchase_balance>0` 실질기준. prod 매입처 대부분 SALES 등록 → client_type 필터=매입처 전멸(2회 겪음). → [[feedback-ap-client-type-filter]]
+- ⚠️**dev 서버(포트3000) 이 세션 종료됨**(worktree 정리 end-session 부작용, wrangler 16프로세스 kill). 로컬 테스트 필요 시 `npm run dev:d1` 재시작. 다른 세션 worktree 4개(bank-ap-link·cardtl·ia-designer-loop·issuefix) 잔존 — 그 세션들 몫.
+- ⚠️**동시 세션 매우 활발**: 이 세션 중 origin/main·feat/dept-pnl에 타 세션 커밋 3+건 유입. 공유 체크아웃 작업 전 항상 git 상태 재확인.
+- 커밋 한글 OK(git), wrangler `--commit-message`만 ASCII(`prod-deploy`). worktree 제거는 반드시 end-session.ps1(junction 안전).
 - 미추적 `docs/superpowers/specs/2026-07-10-role-expansion-rw-permissions.local-copy.md`=로컬 참조 사본(커밋 대상 아님).
