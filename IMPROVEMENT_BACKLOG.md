@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 2 -->
-<!-- last_run_at: 2026-07-19T22:05:00+09:00 -->
+<!-- last_run_area: 3 -->
+<!-- last_run_at: 2026-07-20T09:14:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,13 +8,22 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | **27** (+1, 본 Area1 신규 #545). 실측(`search_issues(state:open,label:auto-improve)`=27) 정합. |
+| 🆕 new | **28** (+1, 본 Area3 신규 #546). 실측(`search_issues(state:open,label:auto-improve)`=28) 정합. |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 |
-| ✔️ done | **447** (+1, #544 자동수정 즉시 close) |
+| ✔️ done | **447** (변동 없음) |
 | ❌ rejected | 3 (`reason:not_planned`=1 + `reason:duplicate`=2, 변동 없음) |
 
 > 📦 **과거 사이클 로그**는 `IMPROVEMENT_BACKLOG_ARCHIVE.md`/git 히스토리로 이관됨 (2026-06-10 1차 분리, 2026-06-25 2차 트림 343KB→192KB, 2026-06-25T10:00 3차 트림, 2026-07-03T06:00 4차 트림 288KB→86KB, **2026-07-07T13:00 5차 트림 — 07-01~07-05 사이클 로그를 git 히스토리로 이관: 238KB→78KB, 256KB Read 한도 재확보**). 신규 로그는 계속 이 파일 상단에 추가. 본 파일은 직전 2일치(07-06~) 사이클 로그 + 영구 참조 섹션(Approved/New/Auto-fixed/Done/Rejected/FP 카탈로그)만 유지. 이관분은 `git log -p -- IMPROVEMENT_BACKLOG.md`로 복원 가능.
+
+> **Area 3 UX/기능 감사 (2026-07-20T09:14):**
+> - **방법**: `git fetch origin main`(HEAD `afd639c` = origin/main 일치, 워킹트리 clean, detached) 후 `npm ci`(node_modules 0→81). Area 3 **40회차** — 직전 Area3(`18d2cfe`, 07-18T13:05, 39회차) 이후 `src/scripts`/`src/pages`/`src/routes` churn은 대부분 부문손익 COGS(Area2 47회차 감사완료)·pension_base 마이그 리스크(Area1 #545)·AR 연체관리 문서화 세션(`docs:` 다수) — 순수 UX 표면 변경은 `5ad7b2b`(feat(ledger): AR overdue management gaps) 단일 커밋(연체 기준일 거래처별 커스텀 필드 + BAD_DEBT 조정유형 + cron 알림 배선)뿐이라 이 커밋을 직접 Read로 전수 추적(에이전트 위임 없이 오케스트레이터 단독 — 변경 범위가 7파일·55줄로 작아 직접 검증이 더 정확).
+> - **🔴 신규 이슈 — #546 (S, bug)**: 이 커밋이 같은 통에서 ①거래처별 연체 기준일 필드(`clients.overdue_alert_days`, UI·저장·GET/POST/PATCH 전 구간 연동) ②그동안 미배선이던 `POST /receivables/check-overdue`(알림 발송)를 daily-maintenance cron에 신규 연결, 두 가지를 도입했으나 **막 cron에 연결한 바로 그 엔드포인트가 방금 만든 커스텀 기준일 필드를 전혀 참조하지 않음** — `ar-receivables.ts:396-433`의 `check-overdue` HAVING절이 `overdue_days > 30` 하드코딩인 반면, 같은 파일의 대시보드용 형제 쿼리 `GET /overdue`(:159-181)는 `COALESCE(c.overdue_alert_days, 30)`로 이미 정확히 반영 중 — 형제 쿼리 간 비대칭(SKILL 형제-비대칭 클래스의 SQL-임계값 변종). 필드는 UI/DB/검증까지 전 구간 정상인데 유일하게 방금 활성화된 소비처(실제 알림 발송)만 누락돼 기능이 반쪽으로 배포됨(회귀 아닌 최초 결함). 영향: 커스텀 기준일 설정이 사실상 무시되고 전 거래처가 획일적으로 31일차에 알림 발송(설정 무의미 + 알림 피로 또는 조기경고 누락). SQL 쿼리 임계값 로직(비즈니스 로직) 변경이라 Area3 정책상 issue-only.
+> - **🟢 나머지 = clean**: BAD_DEBT 조정유형 추가(`ar-payments.ts:303`·`ledger.js:437/527`·`ledger.ts` 모달 옵션)는 형제 완전성 확인(AP측 `accounts-payable.ts:569`의 별도 validTypes는 매입 도메인이라 BAD_DEBT 미해당이 정상, sibling 아님). `overdue_alert_days` 필드 자체의 UI(1-365 min/max)·백엔드 검증(정수 범위 400 에러)·저장 round-trip(null→30일 기본 안내문구)·프론트 에러 표시(`handleApiError`)는 기존 컨벤션과 일관. `clientDetailModal`의 `data-esc-close` 전환(레이아웃 전역 ESC 위임)은 이중 닫힘 버그 수정(자체 리스너 제거) — 별도 이슈화 불필요한 개선.
+> - **🟢 backlog↔GitHub sync**: 이슈 생성 전 `search_issues(state:open,label:auto-improve)`=27 확인 후 #546 생성 → 실측 **28**. done `search_issues(is:closed,reason:completed)`=**447**(변동 없음) · rejected 3(변동 없음).
+> - **🧬 SKILL 강화 없음(신규 패턴 아님)** — #546은 기존 "형제-비대칭" 클래스(SKILL Area4/6 다수 codify)의 SQL 임계값(threshold) 변종 — 격리 컬럼(entity_id) 대신 비즈니스 파라미터(overdue_alert_days)가 형제 쿼리 중 한쪽에만 반영된 사례. 이미 확립된 "같은 도메인 형제 쿼리는 전수 대조" 레시피로 충분히 포착됨.
+> - 신규 이슈 1건(#546, issue-only), 자동수정 0건(Area3 정책상 자동수정 대상 아님 — SQL 임계값 로직 변경), done-sync 변동 없음(new 27→28·done 447·rejected 3 정합 재확인). 다음 순번 Area 4.
+>
 
 > **Area 2 코드 품질 심층 분석 (2026-07-19T22:05):**
 > - **방법**: `git fetch origin main`(HEAD `5bb4207` = origin/main 일치, 워킹트리 clean, detached) 후 `npm ci`(node_modules 0→81). Area 2 **47회차** — 직전 Area2(`da50ec7`, 07-18T12:20, 46회차) 이후 `git log da50ec7..HEAD`(28커밋) 대부분은 Area1/3/4/5/6이 각자 렌즈로 이미 심층 감사(#541~#545 생성, #538/#544 자동수정). Area2 고유 렌즈(entity_id INSERT·N+1·authMiddleware·컬럼/타입 불일치·dead code·SELECT *)로 아직 미검증인 순수 신규 코드만 선별 = **부문손익 COGS 반영 2건**(`c10d2b7` 유통 매출원가·`3fb46cf` 제조 매출귀속 전환, 둘 다 `src/routes/departments.ts` 단독) + **payroll 요율모달 dead-code 제거**(`d075dfd`). 나머지(780778e/98c5be8=docs+SQL만, 6494749=layout.ts ESC-close CSS폭 수정 순수 UI) 코드품질 렌즈 무관 확인 후 스킵.
