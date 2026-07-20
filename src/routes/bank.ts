@@ -9,6 +9,7 @@ import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
 import { validatePayment, preparePaymentStatements } from '../lib/payments'
 import { entityFilter, getEntityId } from '../utils/entityFilter'
+import { excludeInternalClientsSql } from '../constants/intercompany'
 import { getEntityCorpNum, getEntityBarobillSenderId } from '../utils/entitySettings'
 import { loadProvision, agingCategoryToBucket, effectiveLossRate } from '../utils/provisionMatrix'
 import { buildOldestUnpaidJoin, agingDaysFromOldest, getAgingCategory } from './ledger/ar-helpers'
@@ -2409,7 +2410,7 @@ bankRouter.get('/receivables', requireRole('ADMIN', 'MANAGER'), async (c) => {
       LEFT JOIN (
         SELECT client_id AS cid, SUM(amount) AS amt FROM adjustments GROUP BY client_id
       ) aa ON aa.cid = c.id${oup.sql}
-      WHERE c.is_active = 1
+      WHERE c.is_active = 1${excludeInternalClientsSql('c.id')}
         AND (COALESCE(b.amt, 0) - COALESCE(pp.amt, 0) - COALESCE(aa.amt, 0)) > 0
       ORDER BY balance DESC
     `).bind(...oup.params).all<{

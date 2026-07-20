@@ -20,6 +20,7 @@ import { authMiddleware } from '../middleware/auth'
 import { requireAccessOrRole } from '../middleware/permissions'
 import { entityFilter, getEntityId } from '../utils/entityFilter'
 import { kstDateOf } from '../utils/kstDate'
+import { excludeInternalClientsSql, INTERCOMPANY_ENTITIES } from '../constants/intercompany'
 
 const accountingRouter = new Hono<HonoEnv>()
 // ACCOUNTANT(경리) 등 신규 역할은 /accounting 매트릭스 열람권으로 통과(회귀 0: ADMIN·MANAGER 종전 유지)
@@ -74,20 +75,20 @@ accountingRouter.get('/summary', async (c) => {
       WHERE date(pi.invoice_date) >= ? AND date(pi.invoice_date) <= ?${efPi.clause}
     `).bind(start, end, ...efPi.params).first<{ v: number }>()
 
-    // ── 미수금: 전체 파생 (deriveClientBalance 집계와 동일 정의) ──
+    // ── 미수금: 전체 파생 (deriveClientBalance 집계와 동일 정의) ── 내부법인은 제외(법인간거래 탭으로 분리)
     const efGall = entityFilter(c, 'g')
     const billedAll = await c.env.DB.prepare(`
       SELECT COALESCE(SUM(g.billed_amount), 0) AS v
       FROM order_billing_groups g JOIN orders o ON o.id = g.order_id
-      WHERE g.billing_status = 'BILLED' AND o.status != 'CANCELLED'${efGall.clause}
+      WHERE g.billing_status = 'BILLED' AND o.status != 'CANCELLED'${efGall.clause}${excludeInternalClientsSql('o.client_id')}
     `).bind(...efGall.params).first<{ v: number }>()
     const efP = entityFilter(c, 'p')
     const paidAll = await c.env.DB.prepare(
-      `SELECT COALESCE(SUM(p.amount), 0) AS v FROM payments p WHERE 1=1${efP.clause}`
+      `SELECT COALESCE(SUM(p.amount), 0) AS v FROM payments p WHERE 1=1${efP.clause}${excludeInternalClientsSql('p.client_id')}`
     ).bind(...efP.params).first<{ v: number }>()
     const efA = entityFilter(c, 'a')
     const adjAll = await c.env.DB.prepare(
-      `SELECT COALESCE(SUM(a.amount), 0) AS v FROM adjustments a WHERE 1=1${efA.clause}`
+      `SELECT COALESCE(SUM(a.amount), 0) AS v FROM adjustments a WHERE 1=1${efA.clause}${excludeInternalClientsSql('a.client_id')}`
     ).bind(...efA.params).first<{ v: number }>()
 
     const revenue = Number(revenueRow?.v) || 0
@@ -411,6 +412,47 @@ accountingRouter.get('/inter-entity/summary', async (c) => {
     return c.json({ success: true, data: pairs })
   } catch (error) {
     console.error('Inter-entity summary error:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
+  }
+})
+
+// GET /api/accounting/inter-entity/derived — 주문·매입 기반 내부거래 채권·채무 포지션(파생)
+//   거래처원장에서 제외한 내부법인(그룹 3사) 간 AR/AP를 여기서 통합 확인. cron 미러 대사와 동일 파생(SSOT).
+//   가시성: 특정 법인 세션은 본인이 당사자(from/to)인 방향만. 채권·채무 둘 다 0인 미거래 방향은 숨김.
+accountingRouter.get('/inter-entity/derived', async (c) => {
+  try {
+    const { deriveIntercompanyPositions } = await import('../utils/intercompany')
+    let positions = await deriveIntercompanyPositions(c.env.DB)
+    const e = getEntityId(c)
+    if (e !== 0) positions = positions.filter(p => p.from_entity_id === e || p.to_entity_id === e)
+    positions = positions.filter(p => Math.round(p.ar) !== 0 || Math.round(p.ap) !== 0)
+    positions.sort((x, y) => Math.abs(y.ar) - Math.abs(x.ar))
+    return c.json({ success: true, data: positions })
+  } catch (error) {
+    console.error('Inter-entity derived error:', error)
+    return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
+  }
+})
+
+// GET /api/accounting/inter-entity/derived/orders?from=<법인id>&client=<거래처id> — 방향별 매출채권 구성 주문(드릴다운)
+accountingRouter.get('/inter-entity/derived/orders', async (c) => {
+  try {
+    const fromEntityId = Number(c.req.query('from'))
+    const toClientId = Number(c.req.query('client'))
+    if (!fromEntityId || !toClientId) return c.json({ success: false, error: 'from·client 파라미터가 필요합니다' }, 400)
+    // 가시성: 특정 법인 세션은 본인이 당사자(from법인 또는 to법인)인 방향만 조회 가능.
+    const e = getEntityId(c)
+    if (e !== 0) {
+      const toEntity = INTERCOMPANY_ENTITIES.find(x => x.clientId === toClientId)
+      if (fromEntityId !== e && toEntity?.entityId !== e) {
+        return c.json({ success: false, error: '조회 권한이 없습니다' }, 403)
+      }
+    }
+    const { getIntercompanyArOrders } = await import('../utils/intercompany')
+    const orders = await getIntercompanyArOrders(c.env.DB, fromEntityId, toClientId)
+    return c.json({ success: true, data: orders })
+  } catch (error) {
+    console.error('Inter-entity derived orders error:', error)
     return c.json({ success: false, error: '서버 오류가 발생했습니다.' }, 500)
   }
 })

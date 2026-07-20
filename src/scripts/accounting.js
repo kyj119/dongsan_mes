@@ -481,6 +481,7 @@ async function accLoadInter() {
   if (!body) { console.warn('[accounting] #accIetBody not found'); return; }
   if (window.dsSkeleton) body.innerHTML = window.dsSkeleton.loadingRow(9);
   accLoadIetSummary();
+  accLoadIetDerived();
 
   var params = new URLSearchParams();
   var start = document.getElementById('accStart').value;
@@ -538,6 +539,75 @@ async function accLoadIetSummary() {
   } catch (e) {
     console.error('[accounting] inter-entity summary error', e);
     el.innerHTML = '<span class="text-xs text-red-400">잔액 로드 실패</span>';
+  }
+}
+
+// ----- 주문·매입 기반 내부거래 채권·채무 (파생, 거래처원장에서 이관) -----
+async function accLoadIetDerived() {
+  var el = document.getElementById('accIetDerived');
+  if (!el) return;
+  try {
+    var res = await axios.get('/api/accounting/inter-entity/derived');
+    var rows = res.data.data || [];
+    if (!rows.length) {
+      el.innerHTML = '<div class="text-xs text-gray-400 py-1">주문·매입 기반 내부거래가 없습니다</div>';
+      return;
+    }
+    el.innerHTML = '<div class="overflow-x-auto"><table class="ds-table ds-table-compact" style="width:100%">'
+      + '<thead><tr class="text-[10px] text-gray-500 uppercase border-b">'
+      + '<th class="px-3 py-2 text-left">방향 (매출법인 → 매입법인)</th>'
+      + '<th class="px-3 py-2 text-right">매출채권(AR)</th>'
+      + '<th class="px-3 py-2 text-right">상대 매입채무(AP)</th>'
+      + '<th class="px-2 py-2 text-center">대사</th>'
+      + '<th class="px-2 py-2 text-center">주문</th>'
+      + '</tr></thead><tbody>'
+      + rows.map(accIetDerivedRow).join('')
+      + '</tbody></table></div>';
+  } catch (e) {
+    console.error('[accounting] inter-entity derived error', e);
+    el.innerHTML = '<div class="text-xs text-red-400 py-1">내부거래 파생 로드 실패</div>';
+  }
+}
+
+function accIetDerivedRow(p) {
+  var recon = p.reconciled
+    ? '<span class="inline-flex items-center px-2 py-0.5 rounded text-xs bg-green-50 text-green-700"><i class="fas fa-check mr-1"></i>일치</span>'
+    : '<span class="inline-flex items-center px-2 py-0.5 rounded text-xs bg-red-50 text-red-700" title="매출채권↔상대 매입채무 차이 — 대사 필요">차이 ' + Math.round(p.diff).toLocaleString() + '원</span>';
+  var oid = 'accIetDrill_' + p.from_entity_id + '_' + p.to_client_id;
+  return '<tr class="acc-row border-b">'
+    + '<td class="px-3 py-2 text-left font-medium text-gray-800">' + escapeHtml(p.from_name) + ' <i class="fas fa-arrow-right text-gray-300 text-[10px] mx-0.5"></i> ' + escapeHtml(p.to_name) + '</td>'
+    + '<td class="px-3 py-2 text-right tabular-nums font-semibold text-indigo-700">' + Math.round(p.ar).toLocaleString() + '원</td>'
+    + '<td class="px-3 py-2 text-right tabular-nums text-gray-600">' + Math.round(p.ap).toLocaleString() + '원</td>'
+    + '<td class="px-2 py-2 text-center">' + recon + '</td>'
+    + '<td class="px-2 py-2 text-center"><button onclick="accIetToggleDrill(' + p.from_entity_id + ',' + p.to_client_id + ')" class="text-blue-500 hover:text-blue-700 text-xs"><i class="fas fa-list mr-0.5"></i>보기</button></td>'
+    + '</tr>'
+    + '<tr id="' + oid + '" style="display:none"><td colspan="5" class="px-3 py-2 bg-gray-50"><div class="acc-drill-body text-xs text-gray-400">불러오는 중...</div></td></tr>';
+}
+
+async function accIetToggleDrill(fromEntityId, toClientId) {
+  var row = document.getElementById('accIetDrill_' + fromEntityId + '_' + toClientId);
+  if (!row) return;
+  if (row.style.display !== 'none') { row.style.display = 'none'; return; }
+  row.style.display = '';
+  var cell = row.querySelector('.acc-drill-body');
+  if (!cell) return;
+  try {
+    var res = await axios.get('/api/accounting/inter-entity/derived/orders?from=' + fromEntityId + '&client=' + toClientId);
+    var orders = res.data.data || [];
+    if (!orders.length) { cell.innerHTML = '<div class="text-gray-400">청구 주문이 없습니다</div>'; return; }
+    cell.innerHTML = '<table style="width:100%" class="text-xs">'
+      + '<thead><tr class="text-gray-400 border-b"><th class="text-left py-1">주문번호</th><th class="text-left">청구일</th><th class="text-right">청구액</th><th class="text-left pl-2">상태</th></tr></thead><tbody>'
+      + orders.map(function (o) {
+          return '<tr class="border-b border-gray-100"><td class="py-1 text-gray-700">' + escapeHtml(o.order_number || '') + '</td>'
+            + '<td class="text-gray-500">' + escapeHtml((o.billed_at || '').slice(0, 10)) + '</td>'
+            + '<td class="text-right tabular-nums text-gray-700">' + (Number(o.billed_amount) || 0).toLocaleString() + '</td>'
+            + '<td class="pl-2 text-gray-500">' + escapeHtml(o.status || '') + '</td></tr>';
+        }).join('')
+      + '</tbody></table>'
+      + '<div class="text-[10px] text-gray-400 mt-1">※ 입금·감액은 거래처 단위로 상계되어 위 청구액 합계에서 차감됩니다(순 채권 = 상단 표기).</div>';
+  } catch (e) {
+    console.error('[accounting] derived orders error', e);
+    cell.innerHTML = '<div class="text-red-400">주문 로드 실패</div>';
   }
 }
 
@@ -776,6 +846,9 @@ async function accDeletePayment(id, clientName) {
 function accInit() {
   accSetPeriod('thisMonth'); // 기본 기간 + 첫 로드 (accReload 트리거)
   if (typeof window.bindMoneyInputs === 'function') window.bindMoneyInputs();
+  // 딥링크 ?tab=inter (원장 내부법인 안내 → 법인간거래 탭 진입)
+  var _tab = new URLSearchParams(window.location.search).get('tab');
+  if (_tab && ACC_TABS[_tab]) accSwitchTab(_tab);
 }
 
 accInit();

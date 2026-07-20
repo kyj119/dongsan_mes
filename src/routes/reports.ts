@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
 import { entityFilter } from '../utils/entityFilter'
+import { excludeInternalClientsSql } from '../constants/intercompany'
 import { kstMonth, kstYm, kstYmd } from '../utils/kstDate'
 import { buildOldestUnpaidJoin, agingDaysFromOldest } from './ledger/ar-helpers'
 
@@ -464,7 +465,7 @@ reportsRouter.get('/receivables-analysis', async (c) => {
       FROM (
         SELECT ${arBalExpr} AS bal
         FROM clients c${arJoins}
-        WHERE c.is_active = 1
+        WHERE c.is_active = 1${excludeInternalClientsSql('c.id')}
       )
     `).bind(...arParams).all<ARSummaryRow>()
 
@@ -500,7 +501,7 @@ reportsRouter.get('/receivables-analysis', async (c) => {
         (SELECT MAX(p.payment_date) FROM payments p WHERE p.client_id = c.id) as last_payment_date,
         oup.oldest_unpaid_date as oldest_unpaid_date
       FROM clients c${arJoins}${oupAging.sql}
-      WHERE c.is_active = 1 AND ${arBalExpr} > 0
+      WHERE c.is_active = 1${excludeInternalClientsSql('c.id')} AND ${arBalExpr} > 0
     `).bind(...arParams, ...oupAging.params).all<AgingRow>()
 
     const buckets = { current: 0, days30: 0, days60: 0, days90: 0 }
@@ -530,7 +531,7 @@ reportsRouter.get('/receivables-analysis', async (c) => {
         (SELECT COUNT(*) FROM collection_logs cl WHERE cl.client_id = c.id) as collection_count,
         (SELECT COALESCE(SUM(p.amount), 0) FROM payments p WHERE p.client_id = c.id) as total_paid
       FROM clients c${arJoins}${oupTop.sql}
-      WHERE c.is_active = 1 AND ${arBalExpr} > 0
+      WHERE c.is_active = 1${excludeInternalClientsSql('c.id')} AND ${arBalExpr} > 0
       ORDER BY balance DESC
       LIMIT 15
     `).bind(...arParams, ...oupTop.params).all<{ oldest_unpaid_date: string | null }>()

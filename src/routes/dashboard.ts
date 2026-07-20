@@ -3,6 +3,7 @@ import type { HonoEnv } from '../types/env'
 import { authMiddleware } from '../middleware/auth'
 import { requirePagePermission } from '../middleware/permissions'
 import { entityFilter, getEntityId } from '../utils/entityFilter'
+import { excludeInternalClientsSql } from '../constants/intercompany'
 import { kstDate, kstDateOf, kstMonth } from '../utils/kstDate'
 
 /** cards 테이블용 엔티티 필터 (requesting_entity_id 컬럼 사용) */
@@ -369,7 +370,7 @@ dashboardRouter.get('/stats/receivables', async (c) => {
           FROM orders o WHERE o.billing_status = 'BILLED'${ef.clause}
           GROUP BY o.client_id
         ) bo ON bo.client_id = c.id
-        WHERE c.is_active = 1
+        WHERE c.is_active = 1${excludeInternalClientsSql('c.id')}
       ) WHERE balance > 0
       ORDER BY balance DESC
       LIMIT 10
@@ -384,7 +385,7 @@ dashboardRouter.get('/stats/receivables', async (c) => {
         SUM(CASE WHEN julianday('now') - julianday(COALESCE(o.accounting_date, o.billed_at)) > 90 THEN o.billed_amount ELSE 0 END) as over_90,
         COUNT(CASE WHEN julianday('now') - julianday(COALESCE(o.accounting_date, o.billed_at)) > 30 THEN 1 END) as overdue_count
       FROM orders o
-      WHERE o.billing_status = 'BILLED'${ef.clause}
+      WHERE o.billing_status = 'BILLED'${ef.clause}${excludeInternalClientsSql('o.client_id')}
         AND NOT EXISTS (
           SELECT 1 FROM payments p
           WHERE p.client_id = o.client_id
@@ -397,9 +398,9 @@ dashboardRouter.get('/stats/receivables', async (c) => {
     const efPlain = entityFilter(c)
     const totals = await c.env.DB.prepare(`
       SELECT
-        COALESCE((SELECT SUM(billed_amount) FROM orders WHERE billing_status = 'BILLED'${efPlain.clause}), 0)
-        - COALESCE((SELECT SUM(amount) FROM payments WHERE 1=1${efPlain.clause}), 0) as total_receivables,
-        (SELECT COUNT(DISTINCT client_id) FROM orders WHERE billing_status = 'BILLED' AND billed_amount > 0${efPlain.clause}) as clients_with_balance
+        COALESCE((SELECT SUM(billed_amount) FROM orders WHERE billing_status = 'BILLED'${efPlain.clause}${excludeInternalClientsSql('client_id')}), 0)
+        - COALESCE((SELECT SUM(amount) FROM payments WHERE 1=1${efPlain.clause}${excludeInternalClientsSql('client_id')}), 0) as total_receivables,
+        (SELECT COUNT(DISTINCT client_id) FROM orders WHERE billing_status = 'BILLED' AND billed_amount > 0${efPlain.clause}${excludeInternalClientsSql('client_id')}) as clients_with_balance
     `).bind(...efPlain.params, ...efPlain.params, ...efPlain.params).first()
 
     return c.json({

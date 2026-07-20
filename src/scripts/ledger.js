@@ -210,6 +210,10 @@ function applyLedgerDrilldown() {
     if (cid) {
         var match = allClients.filter(function(cl) { return String(cl.id) === String(cid); })[0];
         if (match) { selectClient(match.id, match.client_name); return; }
+        // 목록에 없는 거래처(내부법인 등 AR 제외 대상) — 상세 직접 로드(서버 is_internal_entity 플래그로 안내 분기)
+        openDetailModal(cid, '', 'sales');
+        loadClientDetail(cid);
+        return;
     }
     if (q) {
         var si = document.getElementById('clientSearch');
@@ -333,6 +337,19 @@ async function loadClientDetail(clientId) {
             var d = res.data.data;
             // 인쇄/팩스용 데이터 캐시
             _ledgerStatementData = d;
+            // 내부법인(그룹 3사): 거래처원장 대신 회계허브 법인간거래 탭 안내 (AR 제외 정책)
+            if (d.is_internal_entity) {
+                var _dbs = document.getElementById('dualBalanceSection'); if (_dbs) _dbs.innerHTML = '';
+                var _tb = document.getElementById('transactionsTableBody');
+                if (_tb) _tb.innerHTML = '<tr><td colspan="7" class="text-center py-12 text-gray-500">'
+                    + '<i class="fas fa-building-columns text-3xl text-indigo-300 mb-3 block"></i>'
+                    + '<div class="font-semibold text-gray-700 mb-1">법인간 내부거래처입니다</div>'
+                    + '<div class="text-sm text-gray-500 mb-4 leading-relaxed">동산기획·선명·청주 간 채권·채무는 거래처원장이 아니라<br>회계허브 &gt; 법인간거래 탭에서 통합 확인합니다.</div>'
+                    + '<a href="/accounting?tab=inter" class="ds-btn ds-btn-primary ds-btn-sm inline-flex items-center"><i class="fas fa-arrow-right mr-1"></i>법인간거래 탭 열기</a>'
+                    + '</td></tr>';
+                ['clientTotalSales', 'clientTotalPayments', 'clientTotalAdjustments', 'clientBalance', 'clientLastPayment'].forEach(function (id) { var e = document.getElementById(id); if (e) e.textContent = '─'; });
+                return;
+            }
             document.getElementById('clientTotalSales').textContent = d.summary.total_orders.toLocaleString() + '원';
             document.getElementById('clientTotalPayments').textContent = d.summary.total_payments.toLocaleString() + '원';
             var adjEl = document.getElementById('clientTotalAdjustments');

@@ -18,6 +18,7 @@ import { getEntityId, entityFilter } from '../../utils/entityFilter'
 import { setOrderBillingStatus } from './helpers'
 import { deriveClientBalance } from '../ledger/ar-helpers'
 import { ensureShipmentForOrder } from '../../utils/shipmentHelper'
+import { isInternalEntityClient } from '../../constants/intercompany'
 
 const ordersLifecycleRouter = new Hono<HonoEnv>()
 ordersLifecycleRouter.use('/*', authMiddleware, requireAnyPagePermission('/orders', '/cards'))
@@ -322,7 +323,8 @@ ordersLifecycleRouter.patch('/:id/status', requireEditOrRole('/orders', 'MANAGER
       // X5: 폐기 clients.balance 캐시(prod 전체 0) 대신 파생 — 캐시 의존 시 이 경고가 영구 미발동이던 것 정상화
       try {
         const derivedBal = await deriveClientBalance(c, order.client_id as number)
-        if (derivedBal > 0) {
+        // 내부법인(그룹 3사)은 연체 경고 제외 — 법인간거래는 회계허브 법인간거래 탭에서 관리
+        if (derivedBal > 0 && !isInternalEntityClient(order.client_id as number)) {
           const clientCheck = await c.env.DB.prepare(`
             SELECT c.client_name,
               (SELECT MIN(COALESCE(o2.accounting_date, o2.billed_at)) FROM orders o2 WHERE o2.client_id = c.id AND o2.billing_status = 'BILLED') as oldest_billed

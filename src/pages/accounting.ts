@@ -293,6 +293,11 @@ export function accountingPage(c: Context<HonoEnv>) {
           </div>
           <div id="accIetSummary" class="flex flex-wrap gap-2"></div>
         </div>
+        <!-- 주문·매입 기반 내부거래 채권·채무 (거래처원장에서 이관) -->
+        <div class="ds-card ds-card-compact mb-3">
+          <div class="text-xs font-semibold text-gray-600 mb-2"><i class="fas fa-file-invoice-dollar mr-1 text-indigo-500"></i>내부거래 채권·채무 <span class="font-normal text-gray-400">(주문·매입 기반 파생 · 거래처원장 대체)</span></div>
+          <div id="accIetDerived"></div>
+        </div>
         <!-- 필터 -->
         <div class="ds-card ds-card-compact mb-3">
           <div class="flex flex-wrap items-center gap-3">

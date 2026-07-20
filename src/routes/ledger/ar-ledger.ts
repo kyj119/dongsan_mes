@@ -11,6 +11,7 @@ import { authMiddleware } from '../../middleware/auth'
 import { requireEditOrRole } from '../../middleware/permissions'
 import { entityFilter } from '../../utils/entityFilter'
 import { kstYm, kstYear, kstYmd } from '../../utils/kstDate'
+import { excludeInternalClientsSql, isInternalEntityClient } from '../../constants/intercompany'
 import {
   type ClientRow, type OrderRow, type PaymentRow, type AdjustmentRow,
   type OrderAggRow, type PaymentAggRow, type MonthlyOrderRow, type MonthlyPaymentRow,
@@ -247,6 +248,8 @@ arLedgerRouter.get('/client/:clientId', async (c) => {
     return c.json({
       success: true,
       data: {
+        // 내부법인(그룹 3사)이면 프론트가 "회계허브 법인간거래 탭" 안내로 전환 (원장 노출 안 함)
+        is_internal_entity: isInternalEntityClient(clientId),
         client,
         summary: {
           total_orders: totalBilled,
@@ -447,7 +450,7 @@ arLedgerRouter.get('/settlement', async (c) => {
 
     // Step 3: Get active clients
     const { results: clients } = await c.env.DB.prepare(
-      'SELECT id, client_code, client_name, balance FROM clients WHERE is_active = 1'
+      `SELECT id, client_code, client_name, balance FROM clients WHERE is_active = 1${excludeInternalClientsSql('id')}`
     ).all<{ id: number; client_code: string; client_name: string; balance: number }>()
 
     // Merge
