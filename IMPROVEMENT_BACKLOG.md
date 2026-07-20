@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 3 -->
-<!-- last_run_at: 2026-07-20T09:14:00+09:00 -->
+<!-- last_run_area: 4 -->
+<!-- last_run_at: 2026-07-20T15:19:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,13 +8,22 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | **28** (+1, 본 Area3 신규 #546). 실측(`search_issues(state:open,label:auto-improve)`=28) 정합. |
+| 🆕 new | **28** (+1 본 Area4 신규 #547, -1 #546 done 이관). 실측(`search_issues(state:open,label:auto-improve)`=28) 정합. |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 |
-| ✔️ done | **447** (변동 없음) |
+| ✔️ done | **448** (+1, #546 완료 반영) |
 | ❌ rejected | 3 (`reason:not_planned`=1 + `reason:duplicate`=2, 변동 없음) |
 
 > 📦 **과거 사이클 로그**는 `IMPROVEMENT_BACKLOG_ARCHIVE.md`/git 히스토리로 이관됨 (2026-06-10 1차 분리, 2026-06-25 2차 트림 343KB→192KB, 2026-06-25T10:00 3차 트림, 2026-07-03T06:00 4차 트림 288KB→86KB, **2026-07-07T13:00 5차 트림 — 07-01~07-05 사이클 로그를 git 히스토리로 이관: 238KB→78KB, 256KB Read 한도 재확보**). 신규 로그는 계속 이 파일 상단에 추가. 본 파일은 직전 2일치(07-06~) 사이클 로그 + 영구 참조 섹션(Approved/New/Auto-fixed/Done/Rejected/FP 카탈로그)만 유지. 이관분은 `git log -p -- IMPROVEMENT_BACKLOG.md`로 복원 가능.
+
+> **Area 4 데이터 정합성 (2026-07-20T15:19):**
+> - **방법**: `git fetch origin main`(HEAD `bba885b` = origin/main 일치, 워킹트리 clean, detached) 후 `npm ci`(node_modules 0→81). Area 4 **41회차** — 직전 Area4(`18d2cfe`, 07-18T14:10, 40회차) 이후 `src/routes` churn 8커밋, **신규 마이그레이션 0건**(순수 코드 변경). 가장 신선하고 Area4 렌즈 집중도가 높은 두 커밋을 오케스트레이터 단독 직접 Read로 전수 검증: `2511e57`(feat(ap): AP balance per-entity derivation + intercompany daily mirror audit, 4파일)과 `1e1b620`(fix: 코드리뷰 수정 13건, 13파일) — 나머지(`c10d2b7`/`3fb46cf` PnL COGS는 Area2 47회차 완료, `5ad7b2b`는 Area3 40회차가 #546 생성, `3f54101`/`bba885b`는 그 직접 후속 수정)는 이미 다른 Area가 커버해 중복 감사 제외.
+> - **🔴 신규 이슈 — #547 (S, bug)**: `2511e57`는 스스로 "공유 clients 테이블은 한 컬럼에 두 법인의 AP를 담을 수 없다"고 인지하고 4개 읽기 경로(정산/미지급목록/발주stats/재무스냅샷)를 캐시(`clients.purchase_balance`)에서 법인별 파생값으로 전환했으나(4경로 상호정합 확인, clean), 정확히 이 문제의 당사자인 **내부거래 3법인 공급처(client 53/1271/3757, 같은 커밋이 도입한 intercompany 매핑)**를 다루는 `accounts-payable.ts:816/872` `purchase-integrity-check`/`-fix`는 수정에서 누락됨 — `entityFilter(c)`로 **호출자 법인에만 스코프된** 파생값을 계산해 그대로 **법인 구분 없는 공유 컬럼**에 절대값 덮어쓰기(`:911`). 청주(entity 3) MANAGER가 `/ledger` 정산화면(`ledger.js:1529/1558`, 죽은 코드 아님)에서 "일괄 수정"을 누르면 동산기획(client 53) 캐시에서 선명의 매입채무 기여분이 소실되고, 이후 레거시 델타 writer(bank.ts·po-core.ts·po-special.ts·templates.ts)가 이 오염된 값 위에 계속 누적 — "정합성 수정"을 누를수록 캐시가 더 틀어지는 역설. 파괴적 financial cache write-path 정책 결정(전체모드 한정/캐시-기능 은퇴/공유클라이언트 스킵 3택) 필요 + egress로 prod 드리프트 실측 불가라 issue-only.
+> - **🟢 나머지 = clean(2건 완결성 검증)**: (1) `1e1b620` 품목 하드삭제 참조검사 3→20개 FK 테이블 확장 — 독립 node 스크립트로 `migrations/*.sql` 전체를 파싱해 `items(id)` 참조 FK 테이블을 ground-truth 재구성(CREATE TABLE 컬럼 인라인 REFERENCES + 별도 FOREIGN KEY 절 양쪽), 20개 차단 라벨과 1:1 대조 — 누락 0(inventory는 별도 cleanup 경로라 의도적 미차단, 정상). (2) `1e1b620` 법인간 거래(#542/#543) 인가 픽스 — `ietValidate`가 PUT 시 **기존 레코드 당사자 확인**(`ietVisibility` 404게이트)과 **신규 body 당사자 확인**(from/to가 세션 법인이어야) 양쪽을 모두 수행해 "당사자를 제3자로 재배정" 우회 불가 확인, `accIetRows` 캐시가 `accIetOpenModal`에서 정상 소비되어 수정모달 중복생성 재발 없음 확인. `3f54101`(client_type 필터 재제거)도 이미 최종 상태 정합 확인(가드 주석 포함, 재발 없음).
+> - **🟢 backlog↔GitHub sync**: `search_issues(state:open,label:auto-improve)` 실측 27(#547 생성 전) → **28**(생성 후). done `search_issues(is:closed,reason:completed)`=**448**(#546 완료, +1). rejected 3(변동 없음).
+> - **🧬 SKILL 강화 없음(신규 패턴 아님)** — #547은 기존 "형제-비대칭"(read-path는 파생 전환했으나 write-path 캐시writer 한 곳 누락) 클래스의 entity-derivation 변종 — Area4 SKILL의 #462/#480류 sibling-incomplete 레시피로 이미 충분히 포착됨.
+> - 신규 이슈 1건(#547, issue-only), 자동수정 0건(파괴적 financial write-path 정책 판단 필요), done-sync 반영(new 27→28·done 447→448·rejected 3 정합 재확인). 다음 순번 Area 5.
+>
 
 > **Area 3 UX/기능 감사 (2026-07-20T09:14):**
 > - **방법**: `git fetch origin main`(HEAD `afd639c` = origin/main 일치, 워킹트리 clean, detached) 후 `npm ci`(node_modules 0→81). Area 3 **40회차** — 직전 Area3(`18d2cfe`, 07-18T13:05, 39회차) 이후 `src/scripts`/`src/pages`/`src/routes` churn은 대부분 부문손익 COGS(Area2 47회차 감사완료)·pension_base 마이그 리스크(Area1 #545)·AR 연체관리 문서화 세션(`docs:` 다수) — 순수 UX 표면 변경은 `5ad7b2b`(feat(ledger): AR overdue management gaps) 단일 커밋(연체 기준일 거래처별 커스텀 필드 + BAD_DEBT 조정유형 + cron 알림 배선)뿐이라 이 커밋을 직접 Read로 전수 추적(에이전트 위임 없이 오케스트레이터 단독 — 변경 범위가 7파일·55줄로 작아 직접 검증이 더 정확).
