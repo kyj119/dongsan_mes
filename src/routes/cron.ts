@@ -82,7 +82,7 @@ cronRouter.post('/barobill-sync', agentKeyMiddleware, async (c) => {
  * POST /api/cron/daily-maintenance — 무인 일일 정비(전 활성 법인).
  *  1) OEE 일배치: 어제분 equipment_oee_daily 재계산(POST /api/oee/calculate)
  *  2) 알림 생성: 납기 도래/지연·저재고 등 서버측 생성(POST /api/notifications/generate) — 프론트 폴링 의존 제거
- *  3) 연체 경고: 30일 초과 미수 거래처 ADMIN/MANAGER 알림(POST /api/ledger/receivables/check-overdue)
+ *  3) 연체 경고: 거래처별 기준일(overdue_alert_days, 기본 30일) 초과 미수 거래처 ADMIN/MANAGER 알림(POST /api/ledger/receivables/check-overdue)
  * 멱등: OEE=upsert, 알림·연체=createIfNotExists dedup → 반복 호출 안전. 인증: X-Agent-Key.
  */
 cronRouter.post('/daily-maintenance', agentKeyMiddleware, async (c) => {
@@ -124,7 +124,7 @@ cronRouter.post('/daily-maintenance', agentKeyMiddleware, async (c) => {
       rec.notifications = { error: String(err?.message || err).slice(0, 200) }
     }
 
-    // 3) 연체 경고 (30일 초과 미수 거래처 → ADMIN/MANAGER 알림, 24h dedup). 엔드포인트가 법인 entityFilter 스코프.
+    // 3) 연체 경고 (거래처별 기준일 초과 미수 거래처 → ADMIN/MANAGER 알림, 24h dedup). 엔드포인트가 법인 entityFilter 스코프.
     try {
       const r = await fetch(`${origin}/api/ledger/receivables/check-overdue`, { method: 'POST', headers: authHdr })
       rec.overdue = { status: r.status, ...(await r.json().catch(() => ({})) as any) }

@@ -637,7 +637,7 @@ function renderOverdueWarning(overdueList) {
             + 'class="flex items-center justify-between p-3 bg-white rounded border border-red-200 cursor-pointer hover:bg-red-50 transition-colors">'
             + '<div>'
             + '<div class="font-medium text-gray-800 text-sm">' + escapeHtml(item.client_name || '-') + '</div>'
-            + '<div class="text-xs text-gray-500 mt-0.5">연체 ' + (item.overdue_count || 0) + '건 &nbsp;|&nbsp; 최초확인: ' + (item.first_billed_at ? formatDate(item.first_billed_at) : '-') + '</div>'
+            + '<div class="text-xs text-gray-500 mt-0.5">연체 ' + (item.overdue_count || 0) + '건 &nbsp;|&nbsp; 최초확인: ' + (item.oldest_billed_at ? formatDate(item.oldest_billed_at) : '-') + '</div>'
             + '</div>'
             + '<div class="text-right ml-4">'
             + '<div class="font-bold text-red-600 text-sm">' + overdue.toLocaleString() + '원</div>'

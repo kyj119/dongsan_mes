@@ -14,7 +14,7 @@ import { entityFilter } from '../../utils/entityFilter'
 import { kstYmd } from '../../utils/kstDate'
 import {
   deriveClientBalance, buildIntegrityQuery, getAgingCategory,
-  type PaymentRow, type IntegrityRow, type OverdueClientRow, type ReceivableClientRow,
+  type PaymentRow, type IntegrityRow, type OverdueClientRow, type OverdueAlertRow, type ReceivableClientRow,
   type ReceivableOrderRow, type NotifLinkRow,
 } from './ar-helpers'
 
@@ -162,6 +162,11 @@ arReceivablesRouter.post('/recalculate/:clientId', requireEditOrRole('/ledger', 
 arReceivablesRouter.get('/overdue', async (c) => {
   try {
     // split billing P3: 미수금 경고도 청구그룹(청구 법인 g) 기준
+    // 부분입금 반영: payments가 청구그룹에 미매칭(거래처 단위)이라 BILLED 합계만으로는 과대표시 →
+    //   거래처 잔액(billed−pay−adj) ≤ 0 제외 + 경고액 = min(연체 청구합, 잔액) 캡
+    const efOdBg = entityFilter(c, 'g')
+    const efOdPay = entityFilter(c, 'p')
+    const efOdAdj = entityFilter(c, 'a')
     const { clause: overdueEf, params: overdueEfParams } = entityFilter(c, 'g')
     const { results } = await c.env.DB.prepare(`
       SELECT
@@ -169,20 +174,46 @@ arReceivablesRouter.get('/overdue', async (c) => {
         c.client_name,
         c.overdue_alert_days,
         COUNT(DISTINCT o.id) as overdue_count,
-        COALESCE(SUM(g.billed_amount), 0) as overdue_amount,
+        COALESCE(SUM(g.billed_amount), 0) as overdue_billed,
+        (COALESCE(bg.billed_sum, 0) - COALESCE(pay.paid_sum, 0) - COALESCE(adj.adj_sum, 0)) as balance,
         MIN(COALESCE(g.accounting_date, g.billed_at)) as oldest_billed_at
       FROM order_billing_groups g
       JOIN orders o ON o.id = g.order_id
       JOIN clients c ON o.client_id = c.id
+      LEFT JOIN (
+        SELECT o.client_id AS client_id, COALESCE(SUM(g.billed_amount), 0) AS billed_sum
+        FROM order_billing_groups g JOIN orders o ON o.id = g.order_id
+        WHERE g.billing_status = 'BILLED' AND o.status != 'CANCELLED'${efOdBg.clause}
+        GROUP BY o.client_id
+      ) bg ON bg.client_id = c.id
+      LEFT JOIN (
+        SELECT p.client_id AS client_id, COALESCE(SUM(p.amount), 0) AS paid_sum
+        FROM payments p WHERE 1=1${efOdPay.clause}
+        GROUP BY p.client_id
+      ) pay ON pay.client_id = c.id
+      LEFT JOIN (
+        SELECT a.client_id AS client_id, COALESCE(SUM(a.amount), 0) AS adj_sum
+        FROM adjustments a WHERE 1=1${efOdAdj.clause}
+        GROUP BY a.client_id
+      ) adj ON adj.client_id = c.id
       WHERE g.billing_status = 'BILLED'
         AND o.status != 'CANCELLED'
         AND date(COALESCE(g.accounting_date, g.billed_at), '+' || COALESCE(c.overdue_alert_days, 30) || ' days') < date('now', '+9 hours')
         ${overdueEf}
-      GROUP BY c.id, c.client_name, c.overdue_alert_days
-      ORDER BY overdue_amount DESC
-    `).bind(...overdueEfParams).all()
+      GROUP BY c.id, c.client_name, c.overdue_alert_days, bg.billed_sum, pay.paid_sum, adj.adj_sum
+      HAVING balance > 0
+    `).bind(...efOdBg.params, ...efOdPay.params, ...efOdAdj.params, ...overdueEfParams).all<OverdueAlertRow>()
 
-    return c.json({ success: true, data: results })
+    const rows = (results || []).map(r => ({
+      client_id: r.client_id,
+      client_name: r.client_name,
+      overdue_alert_days: r.overdue_alert_days,
+      overdue_count: r.overdue_count,
+      overdue_amount: Math.min(Number(r.overdue_billed) || 0, Number(r.balance) || 0),
+      oldest_billed_at: r.oldest_billed_at,
+    })).sort((a, b) => b.overdue_amount - a.overdue_amount)
+
+    return c.json({ success: true, data: rows })
   } catch (error) {
     console.error('Get overdue error:', error)
     console.error('src/routes/ledger.ts error:', error)
@@ -216,6 +247,7 @@ arReceivablesRouter.get('/receivables', async (c) => {
           c.id,
           c.client_code,
           c.client_name,
+          c.overdue_alert_days,
           (COALESCE(bg.billed_sum, 0) - COALESCE(pay.paid_sum, 0) - COALESCE(adj.adj_sum, 0)) as balance,
           pay.last_payment_date as last_payment_date,
           COALESCE(bg.billed_order_count, 0) as billed_order_count,
@@ -276,9 +308,10 @@ arReceivablesRouter.get('/receivables', async (c) => {
       }
     })
 
-    // overdue_only 필터 (30일 초과)
+    // overdue_only 필터 — 거래처별 overdue_alert_days 기준 (NULL=기본 30일, /overdue 배너와 동일 기준)
     if (overdue_only === '1') {
-      rows = rows.filter(r => r.aging_days !== null && r.aging_days > 30)
+      rows = rows.filter(r => r.aging_days !== null
+        && r.aging_days > (r.overdue_alert_days != null ? Number(r.overdue_alert_days) : 30))
     }
 
     // 정렬
@@ -406,6 +439,7 @@ arReceivablesRouter.post('/receivables/check-overdue', requireEditOrRole('/ledge
       SELECT
         c.id,
         c.client_name,
+        c.overdue_alert_days,
         (
           COALESCE(SUM(g.billed_amount), 0)
           - COALESCE(pay.paid_sum, 0)
@@ -429,8 +463,8 @@ arReceivablesRouter.post('/receivables/check-overdue', requireEditOrRole('/ledge
       WHERE c.is_active = 1
         AND o.status != 'CANCELLED'
         AND g.billing_status = 'BILLED'${checkOverdueEf}
-      GROUP BY c.id, c.client_name
-      HAVING balance > 0 AND overdue_days > 30
+      GROUP BY c.id, c.client_name, c.overdue_alert_days
+      HAVING balance > 0 AND overdue_days > COALESCE(c.overdue_alert_days, 30)
       ORDER BY overdue_days DESC
     `).bind(...efCoPay.params, ...efCoAdj.params, ...checkOverdueEfParams).all<OverdueClientRow>()
 
@@ -451,12 +485,13 @@ arReceivablesRouter.post('/receivables/check-overdue', requireEditOrRole('/ledge
 
       const balanceFormatted = Number(client.balance).toLocaleString()
       const days = client.overdue_days
+      const alertDays = client.overdue_alert_days != null ? Number(client.overdue_alert_days) : 30
 
       await notifyRoles(
         c.env.DB,
         ['ADMIN', 'MANAGER'],
         `연체 경고: ${client.client_name}`,
-        `미수금 ${balanceFormatted}원, 최장 연체 ${days}일`,
+        `미수금 ${balanceFormatted}원, 최장 연체 ${days}일 (기준 ${alertDays}일)`,
         link
       )
 

@@ -84,9 +84,46 @@ notificationsRouter.get('/nav-badges', async (c) => {
     const efPO = (entityId && entityId > 0) ? ' AND po.entity_id = ?' : ''
     const efPOParams = (entityId && entityId > 0) ? [entityId] : []
 
+    // nav-badge-receivables: /api/ledger/overdue와 동일 기준(청구그룹 BILLED·거래처별 overdue_alert_days·잔액>0).
+    // 구 쿼리(orders.final_amount 합·주문생성일·30일 하드코딩)는 배너와 판정 불일치 → 폐기 (2026-07-20 #546)
+    const efNbBg = entityFilter(c, 'g')
+    const efNbPay = entityFilter(c, 'p')
+    const efNbAdj = entityFilter(c, 'a')
+    const efNbMain = entityFilter(c, 'g')
+
     const [orders, receivables, pr, inspPr, inspOverdue, myReceiving, tasksPending] = await Promise.all([
       db.prepare(`SELECT COUNT(*) as cnt FROM orders WHERE status = 'CONFIRMED'${efOrders}`).bind(...efOrdersParams).first<{ cnt: number }>(),
-      db.prepare(`SELECT COUNT(DISTINCT client_id) as cnt FROM orders WHERE status != 'CANCELLED'${efOrders} GROUP BY client_id HAVING SUM(final_amount) - COALESCE((SELECT SUM(amount) FROM payments WHERE payments.client_id = orders.client_id), 0) > 0 AND MIN(created_at) < datetime('now', '-30 days')`).bind(...efOrdersParams).all().then((r) => ({ cnt: r.results?.length || 0 })),
+      db.prepare(`
+        SELECT COUNT(*) as cnt FROM (
+          SELECT c.id,
+                 (COALESCE(bg.billed_sum, 0) - COALESCE(pay.paid_sum, 0) - COALESCE(adj.adj_sum, 0)) as balance
+          FROM order_billing_groups g
+          JOIN orders o ON o.id = g.order_id
+          JOIN clients c ON o.client_id = c.id
+          LEFT JOIN (
+            SELECT o.client_id AS client_id, COALESCE(SUM(g.billed_amount), 0) AS billed_sum
+            FROM order_billing_groups g JOIN orders o ON o.id = g.order_id
+            WHERE g.billing_status = 'BILLED' AND o.status != 'CANCELLED'${efNbBg.clause}
+            GROUP BY o.client_id
+          ) bg ON bg.client_id = c.id
+          LEFT JOIN (
+            SELECT p.client_id AS client_id, COALESCE(SUM(p.amount), 0) AS paid_sum
+            FROM payments p WHERE 1=1${efNbPay.clause}
+            GROUP BY p.client_id
+          ) pay ON pay.client_id = c.id
+          LEFT JOIN (
+            SELECT a.client_id AS client_id, COALESCE(SUM(a.amount), 0) AS adj_sum
+            FROM adjustments a WHERE 1=1${efNbAdj.clause}
+            GROUP BY a.client_id
+          ) adj ON adj.client_id = c.id
+          WHERE g.billing_status = 'BILLED'
+            AND o.status != 'CANCELLED'
+            AND date(COALESCE(g.accounting_date, g.billed_at), '+' || COALESCE(c.overdue_alert_days, 30) || ' days') < date('now', '+9 hours')
+            ${efNbMain.clause}
+          GROUP BY c.id, bg.billed_sum, pay.paid_sum, adj.adj_sum
+          HAVING balance > 0
+        )
+      `).bind(...efNbBg.params, ...efNbPay.params, ...efNbAdj.params, ...efNbMain.params).first<{ cnt: number }>(),
       db.prepare(`SELECT COUNT(*) as cnt FROM purchase_requests WHERE status = 'PENDING'${efOrders}`).bind(...efOrdersParams).first<{ cnt: number }>(),
       db.prepare(`SELECT COUNT(*) as cnt FROM inventory_receipts WHERE inspection_status = 'PENDING_REVIEW'${efOrders}`).bind(...efOrdersParams).first<{ cnt: number }>(),
       db.prepare(`SELECT COUNT(*) as cnt FROM inventory_receipts WHERE inspection_status IS NULL AND status != 'CANCELLED' AND created_at <= datetime('now', '-24 hours')${efOrders}`).bind(...efOrdersParams).first<{ cnt: number }>(),
