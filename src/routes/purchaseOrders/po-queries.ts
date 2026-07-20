@@ -61,17 +61,31 @@ poQueriesRouter.get('/stats', async (c) => {
     `).bind(...ef.params).first<{ total: number }>()
     stats.monthly_amount = monthlyAmount?.total || 0
 
-    // 공급업체별 미지급 현황 TOP 5
+    // 공급업체별 미지급 현황 TOP 5 — purchase_balance 캐시 폐기 → 법인별 파생(POs − payments − adjustments, entity 필터)
     const { results: supplierBalances } = await c.env.DB.prepare(`
-      SELECT c.id, c.client_name, COALESCE(c.purchase_balance, 0) as balance,
-        COUNT(po.id) as active_po_count
+      SELECT c.id, c.client_name,
+        (COALESCE(bpo.v, 0) - COALESCE(bpp.v, 0) - COALESCE(bpa.v, 0)) as balance,
+        COALESCE(ac.cnt, 0) as active_po_count
       FROM clients c
-      LEFT JOIN purchase_orders po ON po.supplier_id = c.id AND po.status IN ('CONFIRMED', 'PARTIAL_RECEIVED')${efAnd.replace('entity_id', 'po.entity_id')}
-      WHERE COALESCE(c.purchase_balance, 0) > 0
+      LEFT JOIN (
+        SELECT supplier_id, SUM(final_amount) AS v FROM purchase_orders
+        WHERE status NOT IN ('DRAFT', 'CANCELLED')${ef.clause} GROUP BY supplier_id
+      ) bpo ON bpo.supplier_id = c.id
+      LEFT JOIN (
+        SELECT supplier_id, SUM(amount) AS v FROM purchase_payments WHERE 1=1${ef.clause} GROUP BY supplier_id
+      ) bpp ON bpp.supplier_id = c.id
+      LEFT JOIN (
+        SELECT supplier_id, SUM(amount) AS v FROM purchase_adjustments WHERE 1=1${ef.clause} GROUP BY supplier_id
+      ) bpa ON bpa.supplier_id = c.id
+      LEFT JOIN (
+        SELECT supplier_id, COUNT(*) AS cnt FROM purchase_orders
+        WHERE status IN ('CONFIRMED', 'PARTIAL_RECEIVED')${ef.clause} GROUP BY supplier_id
+      ) ac ON ac.supplier_id = c.id
+      WHERE (COALESCE(bpo.v, 0) - COALESCE(bpp.v, 0) - COALESCE(bpa.v, 0)) > 0
       GROUP BY c.id
-      ORDER BY c.purchase_balance DESC
+      ORDER BY balance DESC
       LIMIT 5
-    `).bind(...ef.params).all()
+    `).bind(...ef.params, ...ef.params, ...ef.params, ...ef.params).all()
     ;(stats as Record<string, unknown>).supplier_balances = supplierBalances
 
     // 재고 부족 알림 수

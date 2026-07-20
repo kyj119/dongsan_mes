@@ -253,10 +253,13 @@ financialReportsRouter.get('/balance-snapshot', async (c) => {
       ) as total_ar
     `).first<ArRow>()
 
-    // 매입 미지급 (purchase_balance)
+    // 매입 미지급 — purchase_balance 캐시 폐기 → 파생(POs[NOT IN DRAFT/CANCELLED] − payments − adjustments). AR과 동일 전사 기준(법인 무필터)
     const apRow = await c.env.DB.prepare(`
-      SELECT COALESCE(SUM(purchase_balance), 0) as total_ap
-      FROM clients WHERE is_active = 1
+      SELECT (
+        (SELECT COALESCE(SUM(final_amount), 0) FROM purchase_orders WHERE status NOT IN ('DRAFT', 'CANCELLED'))
+        - (SELECT COALESCE(SUM(amount), 0) FROM purchase_payments)
+        - (SELECT COALESCE(SUM(amount), 0) FROM purchase_adjustments)
+      ) as total_ap
     `).first<ApRow>()
 
     // 재고 평가액 (#433: 재고는 items가 아니라 inventory.quantity, 평가단가=items.avg_unit_cost 이동평균)

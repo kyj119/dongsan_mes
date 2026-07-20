@@ -123,10 +123,25 @@ apRouter.get('/purchase-client/:clientId', async (c) => {
     ppQuery += ' LIMIT 500'  // 확장성: 거래처별 지급 무제한 스캔 방지(방어적 cap)
     const { results: purchasePayments } = await c.env.DB.prepare(ppQuery).bind(...ppParams).all<PurchasePaymentRow>()
 
+    // Get purchase adjustments (감액 - credit) — 파생 잔액(POs − payments − adjustments)을 정산 리포트와 동일 기준으로 맞춤
+    const { clause: paEf, params: paEfParams } = entityFilter(c)
+    let clientPaQuery = `
+      SELECT id, adjustment_date as date, amount, type, reason, po_id, created_at
+      FROM purchase_adjustments
+      WHERE supplier_id = ?${paEf}
+    `
+    const clientPaParams: any[] = [clientId, ...paEfParams]
+    if (startDate) { clientPaQuery += ' AND date(adjustment_date) >= ?'; clientPaParams.push(startDate) }
+    if (endDate) { clientPaQuery += ' AND date(adjustment_date) <= ?'; clientPaParams.push(endDate) }
+    clientPaQuery += ' ORDER BY adjustment_date ASC, created_at ASC LIMIT 500'
+    const { results: purchaseAdjustments } = await c.env.DB.prepare(clientPaQuery).bind(...clientPaParams)
+      .all<{ id: number; date: string; amount: number; type: string; reason: string | null; po_id: number | null; created_at: string }>()
+
     // Calculate totals
     const totalPurchases = purchaseOrders.reduce((sum, o) => sum + (o.final_amount || 0), 0)
     const totalPayments = purchasePayments.reduce((sum, p) => sum + (p.amount || 0), 0)
-    const balance = totalPurchases - totalPayments
+    const totalAdjustments = purchaseAdjustments.reduce((sum, a) => sum + (a.amount || 0), 0)
+    const balance = totalPurchases - totalPayments - totalAdjustments
 
     // Find last payment date
     const lastPayment = purchasePayments.length > 0 ? purchasePayments[purchasePayments.length - 1] : null
@@ -152,6 +167,16 @@ apRouter.get('/purchase-client/:clientId', async (c) => {
         reference: p.reference_number,
         po_id: p.po_id,
         notes: p.notes
+      })),
+      ...purchaseAdjustments.map(a => ({
+        type: 'adjustment',
+        id: a.id,
+        date: a.date,
+        description: `감액: ${a.type || ''}${a.reason ? ' - ' + a.reason : ''}`,
+        debit: 0,
+        credit: a.amount || 0,
+        reference: a.po_id ? `발주 #${a.po_id}` : (a.type || ''),
+        po_id: a.po_id
       }))
     ].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
 
@@ -169,12 +194,14 @@ apRouter.get('/purchase-client/:clientId', async (c) => {
         summary: {
           total_purchases: totalPurchases,
           total_payments: totalPayments,
+          total_adjustments: totalAdjustments,
           balance,
           last_payment_date: lastPayment ? lastPayment.date : null
         },
         transactions: transactionsWithBalance.reverse(), // newest first for display
         purchase_count: purchaseOrders.length,
-        payments_count: purchasePayments.length
+        payments_count: purchasePayments.length,
+        adjustments_count: purchaseAdjustments.length
       }
     })
   } catch (error) {
@@ -226,10 +253,26 @@ apRouter.get('/purchase-settlement', async (c) => {
       ? await c.env.DB.prepare(ppQuery).bind(...ppParams).all<PpAggRow>()
       : await c.env.DB.prepare(ppQuery).all<PpAggRow>()
 
-    // Step 3: Get active suppliers
-    const { results: suppliers } = await c.env.DB.prepare(
-      'SELECT id, client_code, client_name, purchase_balance FROM clients WHERE is_active = 1'
-    ).all<SupplierRow>()
+    // Step 3: Get active suppliers with 법인별 파생 AP 잔액 (purchase_balance 캐시 폐기 — clients 공유 테이블이라 법인 구분 불가)
+    //   파생 = SUM(po.final_amount, status NOT IN DRAFT/CANCELLED) − SUM(payments) − SUM(adjustments), 전부 entity 필터(전체모드=0이면 생략).
+    //   AR(receivables) 사전집계 LEFT JOIN 전례와 동일 1-pass. 캐시 UPDATE writer는 레거시로 유지.
+    const balEf = entityFilter(c)
+    const { results: suppliers } = await c.env.DB.prepare(`
+      SELECT c.id, c.client_code, c.client_name,
+        (COALESCE(bpo.v, 0) - COALESCE(bpp.v, 0) - COALESCE(bpa.v, 0)) as purchase_balance
+      FROM clients c
+      LEFT JOIN (
+        SELECT supplier_id, SUM(final_amount) AS v FROM purchase_orders
+        WHERE status NOT IN ('DRAFT', 'CANCELLED')${balEf.clause} GROUP BY supplier_id
+      ) bpo ON bpo.supplier_id = c.id
+      LEFT JOIN (
+        SELECT supplier_id, SUM(amount) AS v FROM purchase_payments WHERE 1=1${balEf.clause} GROUP BY supplier_id
+      ) bpp ON bpp.supplier_id = c.id
+      LEFT JOIN (
+        SELECT supplier_id, SUM(amount) AS v FROM purchase_adjustments WHERE 1=1${balEf.clause} GROUP BY supplier_id
+      ) bpa ON bpa.supplier_id = c.id
+      WHERE c.is_active = 1
+    `).bind(...balEf.params, ...balEf.params, ...balEf.params).all<SupplierRow>()
 
     // Merge
     const poMap = new Map(poResults.map(o => [o.supplier_id, o]))
@@ -706,14 +749,29 @@ apRouter.delete('/purchase-adjustment/:id', requireRole('ADMIN'), async (c) => {
 // GET /purchase-overdue - 미지급 경고 목록
 apRouter.get('/purchase-overdue', async (c) => {
   try {
+    // purchase_balance 캐시 폐기 → 법인별 파생(POs − payments − adjustments, entity 필터). 사전집계 LEFT JOIN 1-pass.
+    const ovEf = entityFilter(c)
     const { results: rows } = await c.env.DB.prepare(`
-      SELECT c.id, c.client_code, c.client_name, c.purchase_balance, c.overdue_alert_days,
-        (SELECT MAX(po.order_date) FROM purchase_orders po WHERE po.supplier_id = c.id AND po.status != 'CANCELLED') as last_order_date,
-        (SELECT MAX(pp.payment_date) FROM purchase_payments pp WHERE pp.supplier_id = c.id) as last_payment_date
+      SELECT c.id, c.client_code, c.client_name,
+        (COALESCE(bpo.v, 0) - COALESCE(bpp.v, 0) - COALESCE(bpa.v, 0)) as purchase_balance,
+        c.overdue_alert_days,
+        bpo.last_order_date as last_order_date,
+        bpp.last_payment_date as last_payment_date
       FROM clients c
-      WHERE c.purchase_balance > 0
-      ORDER BY c.purchase_balance DESC
-    `).all<OverdueRow>()
+      LEFT JOIN (
+        SELECT supplier_id, SUM(final_amount) AS v, MAX(order_date) AS last_order_date
+        FROM purchase_orders WHERE status NOT IN ('DRAFT', 'CANCELLED')${ovEf.clause} GROUP BY supplier_id
+      ) bpo ON bpo.supplier_id = c.id
+      LEFT JOIN (
+        SELECT supplier_id, SUM(amount) AS v, MAX(payment_date) AS last_payment_date
+        FROM purchase_payments WHERE 1=1${ovEf.clause} GROUP BY supplier_id
+      ) bpp ON bpp.supplier_id = c.id
+      LEFT JOIN (
+        SELECT supplier_id, SUM(amount) AS v FROM purchase_adjustments WHERE 1=1${ovEf.clause} GROUP BY supplier_id
+      ) bpa ON bpa.supplier_id = c.id
+      WHERE (COALESCE(bpo.v, 0) - COALESCE(bpp.v, 0) - COALESCE(bpa.v, 0)) > 0
+      ORDER BY purchase_balance DESC
+    `).bind(...ovEf.params, ...ovEf.params, ...ovEf.params).all<OverdueRow>()
 
     const today = new Date()
     const overdue = rows.map((row) => {

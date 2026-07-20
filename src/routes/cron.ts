@@ -204,9 +204,100 @@ cronRouter.post('/daily-maintenance', agentKeyMiddleware, async (c) => {
     integrity.bank_dup_error = String(err?.message || err).slice(0, 200)
   }
 
+  // 7) 내부 관계사 채권·채무 미러 대사 — 그룹 3법인이 서로를 거래처(clients 행)로 등록해 내부거래한다.
+  //    A법인의 "B거래처 매출채권(AR)"과 B법인의 "A거래처 매입채무(AP)"는 거울처럼 같아야 하나, 장부가 법인별로
+  //    분리돼 어긋나도 감지되지 않는다. 매일 대사해 불일치 시 ADMIN 알림(24h dedup, 쌍별 title).
+  //    ⚠️ 미러 데이터 등록 전엔 불일치가 정상 → 등록 후 green이 목표. 문구 자체가 조치 가능하게.
+  const intercompany: any = { pairs: [] }
+  try {
+    // 내부 관계사 매핑: entity ↔ 그 법인을 가리키는 clients 행. 3법인 고정 현실이라 하드코딩(prod client id: 조사값).
+    const INTERCOMPANY = [
+      { entityId: 1, clientId: 53,   name: '동산기획' },
+      { entityId: 2, clientId: 1271, name: '선명' },
+      { entityId: 3, clientId: 3757, name: '청주' },
+    ]
+    const entityIds = INTERCOMPANY.map(x => x.entityId)   // [1,2,3]
+    const clientIds = INTERCOMPANY.map(x => x.clientId)   // [53,1271,3757]
+    const eqs = entityIds.map(() => '?').join(',')
+    const cqs = clientIds.map(() => '?').join(',')
+
+    // (entity_id, key) → amount 사전집계. GROUP BY 2컬럼 → Map('e:k' → sum). 쌍 루프는 JS 조회(추가 쿼리 없음).
+    const agg = async (sql: string, binds: number[]) => {
+      const { results } = await c.env.DB.prepare(sql).bind(...binds).all<{ e: number; k: number; v: number }>()
+      const m = new Map<string, number>()
+      for (const r of results) m.set(`${r.e}:${r.k}`, Number(r.v) || 0)
+      return m
+    }
+
+    // AR 3소스(청구법인 g.entity_id × 거래처 o.client_id) — ar-receivables.ts GET /receivables 파생식과 동일 조인·필터.
+    const billed = await agg(
+      `SELECT g.entity_id e, o.client_id k, COALESCE(SUM(g.billed_amount),0) v
+       FROM order_billing_groups g JOIN orders o ON o.id = g.order_id
+       WHERE g.billing_status = 'BILLED' AND o.status != 'CANCELLED'
+         AND g.entity_id IN (${eqs}) AND o.client_id IN (${cqs})
+       GROUP BY g.entity_id, o.client_id`, [...entityIds, ...clientIds])
+    const arPaid = await agg(
+      `SELECT entity_id e, client_id k, COALESCE(SUM(amount),0) v FROM payments
+       WHERE entity_id IN (${eqs}) AND client_id IN (${cqs}) GROUP BY entity_id, client_id`,
+      [...entityIds, ...clientIds])
+    const arAdj = await agg(
+      `SELECT entity_id e, client_id k, COALESCE(SUM(amount),0) v FROM adjustments
+       WHERE entity_id IN (${eqs}) AND client_id IN (${cqs}) GROUP BY entity_id, client_id`,
+      [...entityIds, ...clientIds])
+
+    // AP 3소스(매입법인 entity_id × 공급처 supplier_id). PO는 확정 이후(DRAFT/CANCELLED 제외)만 채무로 인식.
+    const po = await agg(
+      `SELECT entity_id e, supplier_id k, COALESCE(SUM(final_amount),0) v FROM purchase_orders
+       WHERE status NOT IN ('DRAFT','CANCELLED') AND entity_id IN (${eqs}) AND supplier_id IN (${cqs})
+       GROUP BY entity_id, supplier_id`, [...entityIds, ...clientIds])
+    const apPaid = await agg(
+      `SELECT entity_id e, supplier_id k, COALESCE(SUM(amount),0) v FROM purchase_payments
+       WHERE entity_id IN (${eqs}) AND supplier_id IN (${cqs}) GROUP BY entity_id, supplier_id`,
+      [...entityIds, ...clientIds])
+    const apAdj = await agg(
+      `SELECT entity_id e, supplier_id k, COALESCE(SUM(amount),0) v FROM purchase_adjustments
+       WHERE entity_id IN (${eqs}) AND supplier_id IN (${cqs}) GROUP BY entity_id, supplier_id`,
+      [...entityIds, ...clientIds])
+
+    // 24h 내 이미 발송한 대사 알림 title 로드(쌍별 dedup, N+1 방지). integrity 트립와이어와 동일 패턴.
+    const { results: recentIc } = await c.env.DB.prepare(
+      `SELECT DISTINCT title FROM notifications WHERE title LIKE '내부거래 대사 불일치:%' AND created_at > datetime('now', '-1 day')`
+    ).all<{ title: string }>()
+    const recentTitles = new Set((recentIc || []).map(n => n.title))
+    const { notifyRoles } = await import('../utils/notify')
+
+    for (const A of INTERCOMPANY) {
+      for (const B of INTERCOMPANY) {
+        if (A.entityId === B.entityId) continue
+        // A의 매출채권(B거래처): 청구법인=A, 거래처=B
+        const ar = (billed.get(`${A.entityId}:${B.clientId}`) || 0)
+                 - (arPaid.get(`${A.entityId}:${B.clientId}`) || 0)
+                 - (arAdj.get(`${A.entityId}:${B.clientId}`) || 0)
+        // B의 매입채무(A공급처): 매입법인=B, 공급처=A
+        const ap = (po.get(`${B.entityId}:${A.clientId}`) || 0)
+                 - (apPaid.get(`${B.entityId}:${A.clientId}`) || 0)
+                 - (apAdj.get(`${B.entityId}:${A.clientId}`) || 0)
+        const diff = ar - ap
+        intercompany.pairs.push({ from: A.name, to: B.name, ar, ap, diff })
+        // 둘 다 0 = 미거래 쌍 → skip. 그 외 차이 1원 초과면 불일치 알림.
+        if ((ar !== 0 || ap !== 0) && Math.abs(diff) > 1) {
+          const title = `내부거래 대사 불일치: ${A.name}→${B.name}`
+          if (!recentTitles.has(title)) {
+            await notifyRoles(c.env.DB, ['ADMIN'], title,
+              `${A.name} 매출채권 ${Math.round(ar).toLocaleString()}원 ↔ ${B.name} 매입채무 ${Math.round(ap).toLocaleString()}원 (차이 ${Math.round(diff).toLocaleString()}원). /ledger에서 양측 장부 확인 필요.`,
+              '/ledger')
+            recentTitles.add(title)
+          }
+        }
+      }
+    }
+  } catch (err: any) {
+    intercompany.error = String(err?.message || err).slice(0, 200)
+  }
+
   const summary = { entities: entities.length, date: yesterday }
-  console.log('[cron/daily-maintenance]', JSON.stringify({ ...summary, leaves, retention, integrity }))
-  return c.json({ success: true, summary, results: out, leaves, retention, integrity })
+  console.log('[cron/daily-maintenance]', JSON.stringify({ ...summary, leaves, retention, integrity, intercompany }))
+  return c.json({ success: true, summary, results: out, leaves, retention, integrity, intercompany })
 })
 
 export default cronRouter
