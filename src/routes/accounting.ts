@@ -351,6 +351,11 @@ async function ietValidate(c: Context<HonoEnv>, body: Record<string, unknown>): 
   const to = Number(body.to_entity_id)
   if (!from || !to) return '지급 법인과 수혜 법인을 선택하세요'
   if (from === to) return '지급 법인과 수혜 법인이 같을 수 없습니다'
+  // 인가: 특정 법인 세션은 본인이 당사자(from/to)인 거래만. 전체모드(0)=허용.
+  const sessionEntity = getEntityId(c)
+  if (sessionEntity !== 0 && sessionEntity !== from && sessionEntity !== to) {
+    return '본인 법인이 당사자인 거래만 등록·수정할 수 있습니다'
+  }
   if (!IET_TYPES.includes(String(body.transaction_type))) return '유효하지 않은 거래 유형입니다'
   const amount = Number(body.amount)
   if (!amount || amount <= 0) return '금액은 0보다 커야 합니다'

@@ -1330,14 +1330,33 @@ workbenchRouter.post('/intakes/:id/absorb', async (c) => {
     const id = parseInt(c.req.param('id'), 10)
     if (!Number.isFinite(id)) return c.json({ success: false, error: '잘못된 ID' }, 400)
     const body = await c.req.json<Record<string, unknown>>().catch(() => ({} as Record<string, unknown>))
-    const orderItemId = Number(body?.order_item_id) || null
+    let orderItemId = Number(body?.order_item_id) || null
+    const orderId = Number(body?.order_id) || null
+    const bodyAnalysisId = Number(body?.ai_analysis_id) || null
 
     const ef = entityFilter(c, 'designer_intakes')
     const row = await c.env.DB.prepare(
-      `SELECT id, status FROM designer_intakes WHERE id = ?${ef.clause}`
-    ).bind(id, ...ef.params).first<{ id: number; status: string }>()
+      `SELECT id, status, ai_analysis_id FROM designer_intakes WHERE id = ?${ef.clause}`
+    ).bind(id, ...ef.params).first<{ id: number; status: string; ai_analysis_id: number | null }>()
     if (!row) return c.json({ success: false, error: '대기물을 찾을 수 없습니다.' }, 404)
     if (row.status !== 'waiting') return c.json({ success: false, error: `대기 상태가 아닙니다 (${row.status}).` }, 409)
+
+    // order_item_id 미지정 시: 대기물의 ai_analysis_id 로 방금 생성된 통과 라인(ai_group_index=-3 passthrough)을
+    // 역추적해 링크(대기물↔order_item 추적성). 현재 법인·미링크 후보가 정확히 1건일 때만 연결 —
+    // 애매(0/다건)하면 링크 생략(오매핑 방지). calc.js 훅이 order_id 를 넘기면 그 주문으로 범위 축소.
+    const analysisId = row.ai_analysis_id ?? bodyAnalysisId
+    if (!orderItemId && analysisId != null) {
+      const oef = entityFilter(c, 'o')
+      const cand = await c.env.DB.prepare(
+        `SELECT oi.id AS id FROM order_items oi JOIN orders o ON o.id = oi.order_id
+          WHERE oi.ai_analysis_id = ? AND oi.ai_group_index = -3
+            AND NOT EXISTS (SELECT 1 FROM designer_intakes di WHERE di.order_item_id = oi.id)
+            ${orderId ? 'AND oi.order_id = ?' : ''}${oef.clause}
+          ORDER BY oi.id DESC LIMIT 2`
+      ).bind(analysisId, ...(orderId ? [orderId] : []), ...oef.params).all<{ id: number }>()
+      const cands = cand.results || []
+      if (cands.length === 1) orderItemId = cands[0].id
+    }
 
     await c.env.DB.prepare(
       `UPDATE designer_intakes SET status = 'absorbed', order_item_id = ?, absorbed_at = datetime('now') WHERE id = ?`

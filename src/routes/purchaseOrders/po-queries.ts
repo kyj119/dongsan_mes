@@ -81,7 +81,8 @@ poQueriesRouter.get('/stats', async (c) => {
         SELECT supplier_id, COUNT(*) AS cnt FROM purchase_orders
         WHERE status IN ('CONFIRMED', 'PARTIAL_RECEIVED')${ef.clause} GROUP BY supplier_id
       ) ac ON ac.supplier_id = c.id
-      WHERE (COALESCE(bpo.v, 0) - COALESCE(bpp.v, 0) - COALESCE(bpa.v, 0)) > 0
+      WHERE c.client_type IN ('PURCHASE', 'BOTH')
+        AND (COALESCE(bpo.v, 0) - COALESCE(bpp.v, 0) - COALESCE(bpa.v, 0)) > 0
       GROUP BY c.id
       ORDER BY balance DESC
       LIMIT 5

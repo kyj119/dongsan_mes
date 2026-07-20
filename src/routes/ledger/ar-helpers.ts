@@ -221,8 +221,23 @@ export function buildOldestUnpaidJoin(
 // oldest_unpaid_date → aging_days (KST 자정 기준, ar-receivables 와 동일 계산). null/미결제특정불가 → null.
 export function agingDaysFromOldest(oldestUnpaidDate: string | null | undefined): number | null {
   if (!oldestUnpaidDate) return null
-  const today = new Date(kstYmd() + 'T00:00:00Z')
-  const oldest = new Date(oldestUnpaidDate)
-  oldest.setHours(0, 0, 0, 0)
-  return Math.floor((today.getTime() - oldest.getTime()) / (1000 * 60 * 60 * 24))
+  // KST SSOT(#366): 입력·'오늘'을 모두 KST 업무일(YYYY-MM-DD)로 환원한 뒤 whole-day 차이.
+  //   oldest_unpaid_date = MIN(COALESCE(accounting_date, billed_at)) →
+  //     · 'YYYY-MM-DD' (accounting_date, 이미 KST 업무일) → 그대로 사용
+  //     · 'YYYY-MM-DD HH:MM:SS' (billed_at = CURRENT_TIMESTAMP, UTC·TZ표기 없음) → UTC로 파싱 후 +9h → 날짜부
+  //   구현: UTC 타임스탬프를 setHours(로컬)로 자정 절단하면 KST 자정 경계(00~09시)에서 하루 어긋남(off-by-one).
+  const s = String(oldestUnpaidDate).trim()
+  let oldestYmd: string
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
+    oldestYmd = s
+  } else {
+    let iso = s.replace(' ', 'T')
+    if (!/(?:[zZ]|[+-]\d{2}:?\d{2})$/.test(iso)) iso += 'Z' // TZ 미표기 → UTC로 강제 파싱
+    const ms = Date.parse(iso)
+    if (Number.isNaN(ms)) return null
+    oldestYmd = new Date(ms + 9 * 3600 * 1000).toISOString().slice(0, 10)
+  }
+  const todayMs = Date.parse(kstYmd() + 'T00:00:00Z')
+  const oldestMs = Date.parse(oldestYmd + 'T00:00:00Z')
+  return Math.floor((todayMs - oldestMs) / (1000 * 60 * 60 * 24))
 }

@@ -123,19 +123,20 @@ recordsRouter.post('/publish', async (c) => {
     ).bind(period, ...ef.params).all<{ id: number; employee_id: number; entity_id: number | null }>()
     if (!targets || targets.length === 0) return c.json({ success: false, error: '해당 월 급여 내역이 없습니다.' }, 404)
 
-    await c.env.DB.prepare(
-      `UPDATE payroll SET published_at = datetime('now'), updated_at = datetime('now') WHERE pay_period = ?${ef.clause}`
-    ).bind(period, ...ef.params).run()
-
-    // 교부 증빙 로그 upsert (D1 batch — 80건 청크 분할로 D1 한도 준수)
-    const stmts = targets.map((t) => c.env.DB.prepare(
-      `INSERT INTO payslip_issuance_logs (payroll_id, employee_id, entity_id, pay_period, issued_at, issued_by)
-       VALUES (?, ?, ?, ?, datetime('now'), ?)
-       ON CONFLICT(payroll_id) DO UPDATE SET issued_at = datetime('now'), issued_by = excluded.issued_by`
-    ).bind(t.id, t.employee_id, t.entity_id ?? null, period, user?.id ?? null))
-    for (let i = 0; i < stmts.length; i += 80) {
-      await c.env.DB.batch(stmts.slice(i, i + 80))
-    }
+    // 원자성: published_at UPDATE + 교부 증빙 로그 INSERT를 단일 db.batch로 처리.
+    // D1은 cross-statement 트랜잭션이 없어 분리 실행 시 부분 교부(노출됐는데 증빙 누락) 위험.
+    // 단일 batch면 실패 시 전체 롤백 → 미교부·무증빙 상태 유지. 각 문은 개별 prepared(bind ~5개 <100).
+    const stmts = [
+      c.env.DB.prepare(
+        `UPDATE payroll SET published_at = datetime('now'), updated_at = datetime('now') WHERE pay_period = ?${ef.clause}`
+      ).bind(period, ...ef.params),
+      ...targets.map((t) => c.env.DB.prepare(
+        `INSERT INTO payslip_issuance_logs (payroll_id, employee_id, entity_id, pay_period, issued_at, issued_by)
+         VALUES (?, ?, ?, ?, datetime('now'), ?)
+         ON CONFLICT(payroll_id) DO UPDATE SET issued_at = datetime('now'), issued_by = excluded.issued_by`
+      ).bind(t.id, t.employee_id, t.entity_id ?? null, period, user?.id ?? null)),
+    ]
+    await c.env.DB.batch(stmts)
 
     return c.json({ success: true, data: { published: targets.length, pay_period: period } })
   } catch (err: any) {

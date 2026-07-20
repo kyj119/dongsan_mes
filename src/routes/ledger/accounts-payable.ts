@@ -770,6 +770,7 @@ apRouter.get('/purchase-overdue', async (c) => {
         SELECT supplier_id, SUM(amount) AS v FROM purchase_adjustments WHERE 1=1${ovEf.clause} GROUP BY supplier_id
       ) bpa ON bpa.supplier_id = c.id
       WHERE (COALESCE(bpo.v, 0) - COALESCE(bpp.v, 0) - COALESCE(bpa.v, 0)) > 0
+        AND c.client_type IN ('PURCHASE', 'BOTH')
       ORDER BY purchase_balance DESC
     `).bind(...ovEf.params, ...ovEf.params, ...ovEf.params).all<OverdueRow>()
 

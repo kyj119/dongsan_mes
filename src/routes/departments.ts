@@ -202,7 +202,8 @@ departmentsRouter.get('/pnl', requireRole('ADMIN', 'MANAGER'), async (c) => {
     `).bind(from, to, ...efOc.params).all<any>()
 
     // 3) 인건비 — payroll 급여총액 + 회사부담 4대보험, employees.department_id
-    const efP = entityFilter(c, 'p')
+    //   ⚠️ payroll.entity_id는 신뢰불가(0150 DEFAULT 1·미채움) → employees.entity_id로 필터(hr.ts:840 동일 이유)
+    const efP = entityFilter(c, 'e')
     const { results: lab } = await c.env.DB.prepare(`
       SELECT e.department_id AS dept_id,
              COALESCE(SUM(
@@ -265,6 +266,15 @@ departmentsRouter.get('/pnl', requireRole('ADMIN', 'MANAGER'), async (c) => {
     const production = (depts || []).filter((d: any) => d.dept_type === 'PRODUCTION')
     const weightOf = (d: any) => basis === 'headcount' ? (hcMap.get(d.id) || 0) : basis === 'labor' ? (labMap.get(d.id) || 0) : (revMap.get(d.id) || 0)
     const totalWeight = production.reduce((s: number, d: any) => s + weightOf(d), 0)
+    // 공통풀 배부 비율 — basis 가중치 합이 0(예: 매출기준인데 기간 생산매출 0)이어도
+    //   공통풀(지원인건비+고정비)이 소실되지 않도록 폴백: ① 인원수 비례 → ② 균등(1/N).
+    //   비율의 합은 항상 1 → 생산부문 ≥1이면 공통풀 전액이 배부됨.
+    const totalProdHc = production.reduce((s: number, d: any) => s + (hcMap.get(d.id) || 0), 0)
+    const allocShareOf = (d: any) => {
+      if (totalWeight > 0) return weightOf(d) / totalWeight
+      if (totalProdHc > 0) return (hcMap.get(d.id) || 0) / totalProdHc
+      return production.length > 0 ? 1 / production.length : 0
+    }
 
     const rows = production.map((d: any) => {
       const revenue = revMap.get(d.id) || 0
@@ -272,7 +282,7 @@ departmentsRouter.get('/pnl', requireRole('ADMIN', 'MANAGER'), async (c) => {
       const labor = labMap.get(d.id) || 0
       const contribution = revenue - material - labor
       const serves_alloc = servesIn.get(d.id) || 0
-      const common_alloc = totalWeight > 0 ? commonPool * (weightOf(d) / totalWeight) : 0
+      const common_alloc = commonPool * allocShareOf(d)
       const operating_profit = contribution - serves_alloc - common_alloc
       return {
         id: d.id, name: d.name, dept_type: d.dept_type,
@@ -285,7 +295,9 @@ departmentsRouter.get('/pnl', requireRole('ADMIN', 'MANAGER'), async (c) => {
     })
 
     const unclassified = { revenue: revMap.get(null) || 0, material: matMap.get(null) || 0 }
-    let totalLabor = 0; for (const v of labMap.values()) totalLabor += v
+    // 합계 공헌이익은 행(생산부문) 기준으로 정합 — 지원부문 인건비는 공통풀/serves로 배부되어
+    //   operating_profit(=totalOperating)에 이미 반영되므로, 공헌이익 라인은 생산부문 인건비만 차감.
+    const totalProdLabor = production.reduce((s: number, d: any) => s + (labMap.get(d.id) || 0), 0)
     const totalRevenue = production.reduce((s: number, d: any) => s + (revMap.get(d.id) || 0), 0) + unclassified.revenue
     const totalMaterial = production.reduce((s: number, d: any) => s + (matMap.get(d.id) || 0), 0) + unclassified.material
     const totalOperating = rows.reduce((s: number, r: any) => s + r.operating_profit, 0)
@@ -299,8 +311,8 @@ departmentsRouter.get('/pnl', requireRole('ADMIN', 'MANAGER'), async (c) => {
         support_detail: supportDetail,
         unclassified,
         totals: {
-          revenue: totalRevenue, material: totalMaterial, labor: totalLabor,
-          contribution: totalRevenue - totalMaterial - totalLabor,
+          revenue: totalRevenue, material: totalMaterial, labor: totalProdLabor,
+          contribution: totalRevenue - totalMaterial - totalProdLabor,
           operating_profit: totalOperating,
         },
       },

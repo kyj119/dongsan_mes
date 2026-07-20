@@ -542,6 +542,7 @@ async function accLoadIetSummary() {
 }
 
 function accIetRenderRow(r) {
+  accIetRows[r.id] = r; // 수정 모달 하이드레이션용 캐시 (accIetOpenModal에서 조회)
   var linked = (r.from_bank_transaction_id || r.to_bank_transaction_id)
     ? ' <i class="fas fa-link text-blue-400 text-[10px]" title="은행거래 연결됨"></i>' : '';
   return '<tr class="acc-row border-b">' +

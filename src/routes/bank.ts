@@ -1383,12 +1383,16 @@ async function applyBankTransaction(
   let linkId = opts.linkLedgerId ?? null
   if (linkId) {
     const row = isWithdrawal
-      ? await db.prepare('SELECT id, supplier_id AS client_id, amount FROM purchase_payments WHERE id = ?')
-          .bind(linkId).first<{ id: number; client_id: number; amount: number }>()
-      : await db.prepare('SELECT id, client_id, amount FROM payments WHERE id = ?')
-          .bind(linkId).first<{ id: number; client_id: number; amount: number }>()
+      ? await db.prepare('SELECT id, supplier_id AS client_id, amount, entity_id FROM purchase_payments WHERE id = ?')
+          .bind(linkId).first<{ id: number; client_id: number; amount: number; entity_id: number | null }>()
+      : await db.prepare('SELECT id, client_id, amount, entity_id FROM payments WHERE id = ?')
+          .bind(linkId).first<{ id: number; client_id: number; amount: number; entity_id: number | null }>()
     if (!row) return { ok: false, error: '연결할 원장 기록을 찾을 수 없습니다', status: 404 }
     if (Number(row.client_id) !== Number(clientId)) return { ok: false, error: '원장 기록의 거래처가 일치하지 않습니다', status: 400 }
+    // 법인 스코프 (findLinkCandidates와 동일 규약: COALESCE(entity_id,1)). ADMIN 전체모드(0) 제외.
+    if (getEntityId(c) !== 0 && (row.entity_id ?? 1) !== entityId) {
+      return { ok: false, error: '다른 법인의 원장 기록입니다', status: 400 }
+    }
     if (Math.abs(Number(row.amount) - amount) >= 0.01) return { ok: false, error: '원장 기록의 금액이 일치하지 않습니다', status: 400 }
     const linked = isWithdrawal
       ? await db.prepare('SELECT id FROM bank_transactions WHERE matched_purchase_payment_id = ?').bind(linkId).first()
@@ -1403,8 +1407,9 @@ async function applyBankTransaction(
   }
 
   // 2-A) 기존 기록에 연결만 (LINKED) — 원장 기록·잔액 무변경 (이중계상 방지)
+  //   원자적 클레임: 조건부 UPDATE 1건이 곧 배타적 소유권 획득. changes=0 이면 동시 요청이 선점 → 409.
   if (linkId) {
-    await db.prepare(`
+    const claim = await db.prepare(`
       UPDATE bank_transactions
       SET match_status = 'APPLIED',
           matched_client_id = ?,
@@ -1414,6 +1419,7 @@ async function applyBankTransaction(
           match_confidence = 1.0, match_reason = '기존 원장 연결'
       WHERE id = ? AND match_status != 'APPLIED'
     `).bind(clientId, linkId, user?.id ?? 1, tx.id).run()
+    if (!claim.meta.changes) return { ok: false, error: '이미 처리된 은행거래입니다', status: 409 }
     return {
       ok: true, mode: 'LINKED', ledgerId: linkId,
       message: isWithdrawal ? '기존 지급 기록에 연결되었습니다 (신규 생성 없음)' : '기존 입금 기록에 연결되었습니다 (신규 생성 없음)'
@@ -1426,6 +1432,14 @@ async function applyBankTransaction(
   if (isWithdrawal) {
     const supplier = await db.prepare('SELECT id FROM clients WHERE id = ?').bind(clientId).first()
     if (!supplier) return { ok: false, error: '매칭된 거래처를 찾을 수 없습니다', status: 404 }
+    // 원자적 클레임 우선 — 돈 변동(지급 INSERT·잔액 차감) 전에 배타 소유권 확보. changes=0 이면 동시 요청 선점 → 409, 돈 변동 없음.
+    const claim = await db.prepare(`
+      UPDATE bank_transactions
+      SET match_status = 'APPLIED', matched_client_id = ?, matched_link_mode = 'CREATED',
+          matched_by = ?, matched_at = CURRENT_TIMESTAMP
+      WHERE id = ? AND match_status != 'APPLIED'
+    `).bind(clientId, user?.id ?? 1, tx.id).run()
+    if (!claim.meta.changes) return { ok: false, error: '이미 처리된 은행거래입니다', status: 409 }
     const results = await db.batch([
       db.prepare(`
         INSERT INTO purchase_payments (supplier_id, payment_date, amount, payment_method, reference_number, notes, created_by, entity_id)
@@ -1433,12 +1447,6 @@ async function applyBankTransaction(
       `).bind(clientId, payDate, amount, opts.paymentMethod || '계좌이체', String(tx.id), opts.notes || defaultNotes, user?.id ?? 1, entityId),
       db.prepare('UPDATE clients SET purchase_balance = COALESCE(purchase_balance, 0) - ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
         .bind(amount, clientId),
-      db.prepare(`
-        UPDATE bank_transactions
-        SET match_status = 'APPLIED', matched_client_id = ?, matched_link_mode = 'CREATED',
-            matched_by = ?, matched_at = CURRENT_TIMESTAMP
-        WHERE id = ? AND match_status != 'APPLIED'
-      `).bind(clientId, user?.id ?? 1, tx.id),
     ])
     const ppId = Number(results[0].meta.last_row_id)
     await db.prepare('UPDATE bank_transactions SET matched_purchase_payment_id = ? WHERE id = ?').bind(ppId, tx.id).run()
@@ -1468,15 +1476,17 @@ async function applyBankTransaction(
     }
     throw err
   }
+  // 원자적 클레임 우선 — validatePayment(검증 통과) 후, 돈 변동(payments INSERT) 전에 배타 소유권 확보.
+  //   검증을 클레임보다 먼저 두어, 검증 실패 시 tx가 미결제 상태로 클레임되어 남는 일이 없게 한다.
+  //   changes=0 이면 동시 요청 선점 → 409, 돈 변동 없음.
+  const claim = await db.prepare(`
+    UPDATE bank_transactions
+    SET match_status = 'APPLIED', matched_client_id = ?, matched_link_mode = 'CREATED',
+        matched_by = ?, matched_at = CURRENT_TIMESTAMP
+    WHERE id = ? AND match_status != 'APPLIED'
+  `).bind(clientId, user?.id ?? 1, tx.id).run()
+  if (!claim.meta.changes) return { ok: false, error: '이미 처리된 은행거래입니다', status: 409 }
   const payStmts = preparePaymentStatements(c.env.DB, paymentData, validated.newBalance)
-  payStmts.push(
-    db.prepare(`
-      UPDATE bank_transactions
-      SET match_status = 'APPLIED', matched_client_id = ?, matched_link_mode = 'CREATED',
-          matched_by = ?, matched_at = CURRENT_TIMESTAMP
-      WHERE id = ? AND match_status != 'APPLIED'
-    `).bind(clientId, user?.id ?? 1, tx.id)
-  )
   const batchResults = await db.batch(payStmts)
   const paymentId = Number(batchResults[0].meta.last_row_id)
   await db.prepare('UPDATE bank_transactions SET matched_payment_id = ? WHERE id = ?').bind(paymentId, tx.id).run()
@@ -1492,7 +1502,7 @@ async function applyBankTransaction(
           AND status IN ('PENDING', 'OVERDUE') AND amount = ? AND entity_id = ?
         ORDER BY schedule_date ASC LIMIT 1
       )
-    `).bind(tx.id, payDate, amount, clientId, amount, tx.entity_id).run()
+    `).bind(tx.id, payDate, amount, clientId, amount, entityId).run()
   } catch (e) {
     console.warn('cash_schedule DONE 연동 실패(입금 적용은 정상):', e)
   }

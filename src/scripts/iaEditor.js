@@ -375,7 +375,7 @@ function iaeIntakeLoad() {
         var modeKo = r.mode === 'impose' ? '모아찍기용' : (r.mode === 'both' ? '단건+모아찍기' : '단건');
         return '<div class="flex items-center justify-between py-1.5 gap-2">' + thumb
           + '<div class="min-w-0 flex-1"><div class="text-sm text-gray-700 truncate">' + iaeEscape(r.client_name || '') + ' · ' + (r.width_cm != null ? r.width_cm : '?') + '×' + (r.height_cm != null ? r.height_cm : '?') + 'cm ×' + (r.qty || 1) + '</div>'
-          + '<div class="text-[11px] text-gray-400">' + modeKo + (r.trim ? ' · 돔보' : '') + ' · ' + iaeEscape(String(r.created_at || '').slice(0, 16)) + '</div></div>'
+          + '<div class="text-[11px] text-gray-400">' + modeKo + (r.trim ? ' · 돔보' : '') + ' · ' + ((typeof formatKST === 'function' && r.created_at) ? formatKST(r.created_at) : iaeEscape(r.created_at || '')) + '</div></div>'
           + '<button class="iae-intake-add flex-shrink-0 text-xs px-2 py-1 rounded bg-amber-600 text-white hover:bg-amber-700" data-aid="' + (r.ai_analysis_id || '') + '"><i class="fas fa-plus mr-1"></i>추가</button></div>';
       }).join('') + '</div>';
     }

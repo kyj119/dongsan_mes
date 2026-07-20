@@ -83,7 +83,7 @@
                         + (r.scale_pct && r.scale_pct < 100 ? ' · 1/' + Math.round(100 / r.scale_pct) : '')
                         + ' · ' + modeKo
                         + (r.outline_failed ? ' · <span class="text-red-500">아웃라인 실패</span>' : '')
-                        + ' · ' + String(r.created_at || '').slice(0, 16)
+                        + ' · ' + ((typeof formatKST === 'function' && r.created_at) ? formatKST(r.created_at) : escapeHtml(String(r.created_at || '').slice(0, 16)))
                         + '</div></div>'
                         + '<i class="fas fa-plus text-blue-500"></i>'
                         + '</div>';
@@ -182,13 +182,21 @@
             };
 
             // 주문 저장 성공 후(calc.js 훅) — 라인에 마킹된 대기물 absorb (실패해도 주문 등록에 영향 없음)
-            window.ofIntakeAbsorbAll = async function() {
+            // orderId: 저장된 주문 id(넘어오면 서버가 그 주문으로 order_item 범위 축소). 미지정이어도 서버가
+            // 대기물 ai_analysis_id 로 통과 라인을 역추적해 order_item_id 를 링크(추적성 유지).
+            window.ofIntakeAbsorbAll = async function(orderId) {
                 var marks = document.querySelectorAll('input[name^="intake_id_"]');
                 for (var i = 0; i < marks.length; i++) {
                     var iid = parseInt(marks[i].value, 10);
                     if (!iid) continue;
+                    var rowId = marks[i].name.slice('intake_id_'.length);
+                    var aidEl = document.querySelector('[name="ai_analysis_id_' + rowId + '"]');
+                    var aid = (aidEl && aidEl.value !== '') ? parseInt(aidEl.value, 10) : null;
+                    var payload = {};
+                    if (orderId) payload.order_id = orderId;
+                    if (aid) payload.ai_analysis_id = aid;
                     try {
-                        await axios.post('/api/workbench/intakes/' + iid + '/absorb', {});
+                        await axios.post('/api/workbench/intakes/' + iid + '/absorb', payload);
                     } catch (e) {
                         console.warn('[orderForm] 대기물 absorb 실패 (intake #' + iid + ')', e);
                     }

@@ -1320,7 +1320,7 @@ ripRouter.get('/equipment/:id/stats', authMiddleware, async (c) => {
 
 // ─── GET /api/rip/maintenance/alerts — 전체 장비 정비/소모품 알림 ────────────
 
-ripRouter.get('/maintenance/alerts', authMiddleware, async (c) => {
+ripRouter.get('/maintenance/alerts', authMiddleware, requireRole('ADMIN', 'MANAGER'), async (c) => {
   try {
     const ef = entityFilter(c, 'e')  // #342 설비 법인 격리
     // 교체 기한 도래 소모품
@@ -2077,7 +2077,7 @@ ripRouter.get('/card-items/:cardId', authMiddleware, async (c) => {
 
 // ─── GET /api/rip/maintenance/dashboard — 정비 대시보드 종합 (#73) ────────────
 
-ripRouter.get('/maintenance/dashboard', authMiddleware, async (c) => {
+ripRouter.get('/maintenance/dashboard', authMiddleware, requireRole('ADMIN', 'MANAGER'), async (c) => {
   try {
     const ef = entityFilter(c, 'e')  // #342 설비 법인 격리
     // 최근 30일 정비 이력 요약

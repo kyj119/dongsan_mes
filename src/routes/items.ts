@@ -1327,22 +1327,68 @@ itemsRouter.delete('/:id/hard', requireRole('ADMIN'), async (c) => {
       return c.json({ success: false, error: 'Item not found' }, 404)
     }
 
-    // 참조 검사 — 주문·매입·BOM에서 사용 중이면 영구삭제 차단
+    // 참조 검사 — items(id)를 FK로 참조하는 모든 테이블에서 사용 중이면 영구삭제 차단.
+    // RESTRICT FK면 DELETE가 던져 500(불명확)이 되고, CASCADE/SET NULL FK면 단가·이력이
+    // 조용히 삭제/NULL 처리되어 데이터가 유실됨. 사전 차단으로 명확한 409 반환.
+    // 바인드 21개(< D1 ~100 한도) 단일 쿼리. inventory는 아래에서 정리(cleanup)하므로 차단 대상 제외.
+    const refBinds = 21
     const refs: any = await c.env.DB.prepare(
       'SELECT ' +
       '(SELECT COUNT(*) FROM order_items WHERE item_id = ?) AS oi, ' +
       '(SELECT COUNT(*) FROM purchase_order_items WHERE item_id = ?) AS poi, ' +
-      '(SELECT COUNT(*) FROM product_materials WHERE material_item_id = ? OR product_item_id = ?) AS pm'
-    ).bind(id, id, id, id).first()
+      '(SELECT COUNT(*) FROM product_materials WHERE material_item_id = ? OR product_item_id = ?) AS pm, ' +
+      '(SELECT COUNT(*) FROM quotation_items WHERE item_id = ?) AS qi, ' +
+      '(SELECT COUNT(*) FROM client_item_prices WHERE item_id = ?) AS cip, ' +
+      '(SELECT COUNT(*) FROM size_grade_prices WHERE item_id = ?) AS sgp, ' +
+      '(SELECT COUNT(*) FROM price_policy_rules WHERE item_id = ?) AS ppr, ' +
+      '(SELECT COUNT(*) FROM purchase_request_items WHERE item_id = ?) AS pri, ' +
+      '(SELECT COUNT(*) FROM purchase_invoice_items WHERE item_id = ?) AS pii, ' +
+      '(SELECT COUNT(*) FROM item_post_processing_defaults WHERE item_id = ?) AS ippd, ' +
+      '(SELECT COUNT(*) FROM bom_items WHERE item_id = ?) AS bi, ' +
+      '(SELECT COUNT(*) FROM stock_alerts WHERE item_id = ?) AS sa, ' +
+      '(SELECT COUNT(*) FROM inventory_auto_deductions WHERE material_item_id = ?) AS iad, ' +
+      '(SELECT COUNT(*) FROM inventory_count_items WHERE item_id = ?) AS ici, ' +
+      '(SELECT COUNT(*) FROM inventory_receipt_items WHERE item_id = ?) AS iri, ' +
+      '(SELECT COUNT(*) FROM inventory_transactions WHERE item_id = ?) AS itx, ' +
+      '(SELECT COUNT(*) FROM inventory_release_items WHERE item_id = ?) AS irl, ' +
+      '(SELECT COUNT(*) FROM inventory_adjustments WHERE item_id = ?) AS iadj, ' +
+      '(SELECT COUNT(*) FROM waste_records WHERE material_item_id = ?) AS wr, ' +
+      '(SELECT COUNT(*) FROM pp_material_deductions WHERE material_item_id = ?) AS ppd'
+    ).bind(...Array(refBinds).fill(id)).first()
 
-    if ((refs?.oi || 0) > 0 || (refs?.poi || 0) > 0 || (refs?.pm || 0) > 0) {
+    // 라벨: 기존 3종(주문·매입·BOM) 유지 + FK 참조 테이블 추가. 0이 아닌 항목만 메시지에 나열.
+    const refCategories: [string, number][] = [
+      ['주문', refs?.oi || 0],
+      ['매입', refs?.poi || 0],
+      ['BOM', refs?.pm || 0],
+      ['견적', refs?.qi || 0],
+      ['거래처단가', refs?.cip || 0],
+      ['호수단가', refs?.sgp || 0],
+      ['단가정책', refs?.ppr || 0],
+      ['발주요청', refs?.pri || 0],
+      ['매입계산서', refs?.pii || 0],
+      ['후가공기본값', refs?.ippd || 0],
+      ['자재소요', refs?.bi || 0],
+      ['재고알림', refs?.sa || 0],
+      ['자동차감', refs?.iad || 0],
+      ['재고실사', refs?.ici || 0],
+      ['입고', refs?.iri || 0],
+      ['재고거래', refs?.itx || 0],
+      ['출고', refs?.irl || 0],
+      ['재고조정', refs?.iadj || 0],
+      ['자재폐기', refs?.wr || 0],
+      ['코팅차감', refs?.ppd || 0],
+    ]
+    const blocking = refCategories.filter(([, n]) => n > 0)
+    if (blocking.length > 0) {
+      const detail = blocking.map(([label, n]) => `${label} ${n}`).join('·')
       return c.json({
         success: false,
-        error: `사용 이력이 있어 영구삭제할 수 없습니다 (주문 ${refs.oi}·매입 ${refs.poi}·BOM ${refs.pm}건). 대신 비활성화하세요.`
+        error: `사용 이력이 있어 영구삭제할 수 없습니다 (${detail}건). 대신 비활성화하세요.`
       }, 409)
     }
 
-    // 재고 행 정리 후 영구 삭제
+    // 재고 행 정리 후 영구 삭제 (차단 참조가 없을 때만 도달)
     await c.env.DB.prepare('DELETE FROM inventory WHERE item_id = ?').bind(id).run()
     await c.env.DB.prepare('DELETE FROM items WHERE id = ?').bind(id).run()
 
