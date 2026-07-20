@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 4 -->
-<!-- last_run_at: 2026-07-20T15:19:00+09:00 -->
+<!-- last_run_area: 5 -->
+<!-- last_run_at: 2026-07-20T18:10:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -15,6 +15,15 @@
 | ❌ rejected | 3 (`reason:not_planned`=1 + `reason:duplicate`=2, 변동 없음) |
 
 > 📦 **과거 사이클 로그**는 `IMPROVEMENT_BACKLOG_ARCHIVE.md`/git 히스토리로 이관됨 (2026-06-10 1차 분리, 2026-06-25 2차 트림 343KB→192KB, 2026-06-25T10:00 3차 트림, 2026-07-03T06:00 4차 트림 288KB→86KB, **2026-07-07T13:00 5차 트림 — 07-01~07-05 사이클 로그를 git 히스토리로 이관: 238KB→78KB, 256KB Read 한도 재확보**). 신규 로그는 계속 이 파일 상단에 추가. 본 파일은 직전 2일치(07-06~) 사이클 로그 + 영구 참조 섹션(Approved/New/Auto-fixed/Done/Rejected/FP 카탈로그)만 유지. 이관분은 `git log -p -- IMPROVEMENT_BACKLOG.md`로 복원 가능.
+
+> **Area 5 보안 (2026-07-20T18:10):**
+> - **방법**: `git fetch origin main`(HEAD `ba8a6c6` = origin/main 일치, 워킹트리 clean, detached) 후 `npm ci`(node_modules 0→81). Area 5 **40회차** — 직전 Area5(`09919f2`, 07-19T00:20, 39회차) 이후 `src/routes`/`src/scripts` churn 31커밋. general-purpose 에이전트 2개 병렬(①백엔드 라우트 15파일 — SQLi/IDOR/authMiddleware/secrets/CSV injection ②프론트 5파일 — innerHTML XSS/dataset round-trip) + 오케스트레이터가 `accounting.ts`(#543 ietValidate)·`clients.ts`·`items.ts`(#530)·`cron.ts`·`accounts-payable.ts`(#547)·`po-queries.ts`·`financialReports.ts`·`ar-receivables.ts`(#546)·`ar-ledger.ts`·`ar-payments.ts`·`dashboard.ts`·`aiInsights.ts`·`rip.ts`(#541)·`payroll/records.ts`·`orders/lifecycle.ts` 직접 Read로 교차검증.
+> - **🟢 신규 이슈 0건 — 전 churn 보안 렌즈 clean**: 신규/변경 쿼리 전부 `?` 바인딩, `excludeInternalClientsSql()`(신규 intercompany 유틸)은 사용자 입력이 아닌 소스 리터럴 컬럼명 + 하드코딩 상수(53/1271/3757)만 인라인해 SQLi 경로 없음. 새로 추가된 파생잔액 서브쿼리(AP/AR/dashboard/financialReports/po-queries)는 전부 `purchase_orders`/`purchase_payments`/`payments`/`adjustments`(entity_id 실보유, migrations 확인)에 `entityFilter()` 적용 — 형제-비대칭 없음. `clients`/`items`는 entity_id 없는 전역 마스터라 관련 bare 조회는 기존 의도(재확인, net-new 아님). 프론트 5파일(accounting.js/clients.js/ledger.js/intake.js/iaEditor.js) innerHTML 신규 sink 전부 escapeHtml/iaeEscape 일관 적용, dataset round-trip 우회 패턴 없음. rate limit/CSV export 관련 변경 0건.
+> - **🔍 close-pending 재확인 — fixed-in-tree 6건 발견(Area4 41회차가 이미 #542/#543만 확인, 본 사이클이 #529·#541·#547 3건 추가 확인)**: 이번 churn의 상당수가 이전 사이클이 issue-only로 보고한 항목을 owner/worktree 세션이 이미 코드로 고쳐 놓았으나 GitHub 이슈는 아직 OPEN — line 281 "open≠unfixed" 패턴. 직접 Read로 안티패턴 잔존 여부 재확인: ① **#529**(bank.ts link_payment_id 법인 미검증) — `1e1b620`이 `row.entity_id` 조회 추가 후 `getEntityId(c)!==0 && (row.entity_id??1)!==entityId` 게이트로 차단 확인, 안티패턴 잔존 0. ② **#541**(정비 대시보드 DESIGNER 열람) — `1e1b620`이 `rip.ts:1323/2080`에 `requireRole('ADMIN','MANAGER')` 서버 게이트 추가 확인. ③ **#542**(법인간거래 수정 캐시 미충전)·**#543**(당사자 미검증) — Area4가 이미 확인(재검증 생략). ④ **#546**(연체 cron이 거래처별 기준일 무시) — `bba885b`가 `check-overdue` HAVING절을 `overdue_days > COALESCE(c.overdue_alert_days, 30)`로 정정, `/overdue`와 판정 일원화 확인. ⑤ **#547**(내부거래 3법인 캐시손상) — `e7fd9c3`이 `purchase-integrity-check`/`-fix` 양쪽에 `excludeInternalClientsSql('c.id')` 추가해 내부거래 3법인 자체가 쿼리 스코프에서 제외됨(수정 버튼을 눌러도 그 3법인은 더 이상 손상되지 않음) 확인. **owner에게 6건 일괄 close 대상으로 안내**(개별 재검증 불요, 각 이슈 코멘트로 커밋 SHA 인용 권장).
+> - **🟢 backlog↔GitHub sync**: `search_issues(state:open,label:auto-improve)` 실측 **28건**(변동 없음, 신규 이슈 0 — close-pending 6건은 owner action 대기 중이라 카운트 그대로). done 448·rejected 3(이번 churn에 신규 close 커밋 0건, 변동 없음).
+> - **🧬 SKILL 강화 없음(신규 패턴 아님)** — close-pending 재확인은 기존 "open≠unfixed"(Area6 라인 281) 레시피의 정상 적용, 신규 보안 취약점 클래스도 0건 발견.
+> - 신규 이슈 0건, 자동수정 0건(수정 대상 없음), close-pending 확인 6건(owner batch-close 대상 안내, 이슈 상태 변경 없음), done-sync 변동 없음(new 28·done 448·rejected 3 정합 재확인). 다음 순번 Area 6.
+>
 
 > **Area 4 데이터 정합성 (2026-07-20T15:19):**
 > - **방법**: `git fetch origin main`(HEAD `bba885b` = origin/main 일치, 워킹트리 clean, detached) 후 `npm ci`(node_modules 0→81). Area 4 **41회차** — 직전 Area4(`18d2cfe`, 07-18T14:10, 40회차) 이후 `src/routes` churn 8커밋, **신규 마이그레이션 0건**(순수 코드 변경). 가장 신선하고 Area4 렌즈 집중도가 높은 두 커밋을 오케스트레이터 단독 직접 Read로 전수 검증: `2511e57`(feat(ap): AP balance per-entity derivation + intercompany daily mirror audit, 4파일)과 `1e1b620`(fix: 코드리뷰 수정 13건, 13파일) — 나머지(`c10d2b7`/`3fb46cf` PnL COGS는 Area2 47회차 완료, `5ad7b2b`는 Area3 40회차가 #546 생성, `3f54101`/`bba885b`는 그 직접 후속 수정)는 이미 다른 Area가 커버해 중복 감사 제외.
