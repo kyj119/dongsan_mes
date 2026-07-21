@@ -1,0 +1,12 @@
+DELETE FROM payments WHERE reference_number='2819' AND entity_id=2 AND client_id=3785 AND created_by=9;
+DELETE FROM payments WHERE reference_number='903' AND entity_id=2 AND client_id=314 AND created_by=9;
+DELETE FROM payments WHERE reference_number='1096' AND entity_id=2 AND client_id=2100 AND created_by=9;
+DELETE FROM payments WHERE reference_number='1075' AND entity_id=2 AND client_id=329 AND created_by=9;
+DELETE FROM payments WHERE reference_number='4920' AND entity_id=2 AND client_id=1353 AND created_by=9;
+DELETE FROM payments WHERE reference_number='4921' AND entity_id=2 AND client_id=285 AND created_by=9;
+DELETE FROM payments WHERE reference_number='1936' AND entity_id=2 AND client_id=1523 AND created_by=9;
+DELETE FROM payments WHERE reference_number='992' AND entity_id=2 AND client_id=2171 AND created_by=9;
+DELETE FROM payments WHERE reference_number='2754' AND entity_id=2 AND client_id=1353 AND created_by=9;
+DELETE FROM payments WHERE reference_number='4129' AND entity_id=2 AND client_id=2430 AND created_by=9;
+DELETE FROM payments WHERE reference_number='1089' AND entity_id=2 AND client_id=2644 AND created_by=9;
+UPDATE bank_transactions SET match_status='UNMATCHED', matched_client_id=NULL, matched_payment_id=NULL, matched_link_mode=NULL, matched_by=NULL, matched_at=NULL, match_confidence=NULL, match_reason=NULL WHERE id IN (704,717,4131,2819,1094,903,722,1096,769,1075,929,4920,927,4921,1936,992,2754,1091,4129,1089,767,2923,905,3020,2849,3219);

@@ -201,6 +201,30 @@ export function ledgerPage(c: Context<HonoEnv>) {
         <!-- ===== 매입 원장 콘텐츠 ===== -->
         <div id="purchaseContent" style="display:none">
 
+            <!-- 필터 바 (기간) — 매출과 동일 구조 -->
+            <div class="ds-card ds-card-compact mb-4">
+                <div class="flex flex-wrap gap-3 items-center">
+                    <span class="text-sm font-medium text-gray-700"><i class="fas fa-calendar-alt mr-1"></i>기간:</span>
+                    <div class="flex gap-1">
+                        <button onclick="setPurchaseQuickDate('thisMonth')" class="quick-date px-3 py-1 text-xs rounded border hover:bg-orange-50" data-key="thisMonth">이번달</button>
+                        <button onclick="setPurchaseQuickDate('lastMonth')" class="quick-date px-3 py-1 text-xs rounded border hover:bg-orange-50" data-key="lastMonth">지난달</button>
+                        <button onclick="setPurchaseQuickDate('3months')" class="quick-date px-3 py-1 text-xs rounded border hover:bg-orange-50" data-key="3months">최근3개월</button>
+                        <button onclick="setPurchaseQuickDate('thisYear')" class="quick-date px-3 py-1 text-xs rounded border hover:bg-orange-50" data-key="thisYear">올해</button>
+                    </div>
+                    <input type="date" id="pStartDate" class="px-2 py-1 border rounded text-sm">
+                    <span class="text-gray-400">~</span>
+                    <input type="date" id="pEndDate" class="px-2 py-1 border rounded text-sm">
+                    <button onclick="applyPurchaseDateFilter()" class="ds-btn ds-btn-primary ds-btn-sm" style="background:var(--c-warning)">
+                        <i class="fas fa-search" style="margin-right:4px"></i>조회
+                    </button>
+                    <div class="ml-auto flex gap-2">
+                        <button onclick="loadPurchaseSettlement()" class="ds-btn ds-btn-secondary ds-btn-sm">
+                            <i class="fas fa-sync-alt"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
             <!-- 매입 KPI -->
             <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
                 <div class="ds-card ds-card-compact">
@@ -503,12 +527,14 @@ export function ledgerPage(c: Context<HonoEnv>) {
                             <div class="overflow-x-auto" style="max-height:calc(100vh - 320px);overflow-y:auto">
                                 <table class="ds-table ds-table-compact ds-table-striped">
                                     <colgroup>
-                                        <col style="width:112px">
-                                        <col style="width:56px">
+                                        <col style="width:104px">
+                                        <col style="width:52px">
                                         <col>
+                                        <col style="width:96px">
+                                        <col style="width:82px">
                                         <col style="width:100px">
+                                        <col style="width:96px">
                                         <col style="width:100px">
-                                        <col style="width:108px">
                                         <col style="width:30px">
                                     </colgroup>
                                     <thead>
@@ -516,7 +542,9 @@ export function ledgerPage(c: Context<HonoEnv>) {
                                             <th class="text-left">일자</th>
                                             <th class="text-center">구분</th>
                                             <th class="text-left">내용</th>
-                                            <th class="text-right">매출(+)</th>
+                                            <th class="text-right">공급가액</th>
+                                            <th class="text-right">부가세</th>
+                                            <th class="text-right">합계</th>
                                             <th class="text-right">입금(-)</th>
                                             <th class="text-right">잔액</th>
                                             <th></th>
@@ -604,10 +632,19 @@ export function ledgerPage(c: Context<HonoEnv>) {
                                     <i class="fas fa-stream text-blue-500 mr-1"></i>발주/지급 내역
                                 </h3>
                                 <div class="flex gap-1">
-                                    <button id="purchIntegrityBtn" onclick="checkPurchaseIntegrity()" class="ds-btn ds-btn-ghost ds-btn-sm text-blue-600">
+                                    <button id="purchIntegrityBtn" onclick="checkPurchaseIntegrity()" class="ds-btn ds-btn-ghost ds-btn-sm text-blue-600" title="정합성 검사">
                                         <i class="fas fa-shield-alt mr-1"></i>정합성
                                     </button>
-                                    <button onclick="exportPurchaseTransactionsCSV()" class="ds-btn ds-btn-ghost ds-btn-sm">
+                                    <button onclick="openLedgerSendModal(modalContext.clientId, modalContext.clientName, 0, 'email', 'purchase')" class="ds-btn ds-btn-ghost ds-btn-sm text-blue-600" title="알림 발송">
+                                        <i class="fas fa-paper-plane mr-1"></i>발송
+                                    </button>
+                                    <button onclick="printLedgerStatement()" class="ds-btn ds-btn-ghost ds-btn-sm" title="인쇄">
+                                        <i class="fas fa-print"></i>
+                                    </button>
+                                    <button onclick="openLedgerFaxModal()" class="ds-btn ds-btn-ghost ds-btn-sm text-blue-600" title="팩스 발송">
+                                        <i class="fas fa-fax"></i>
+                                    </button>
+                                    <button onclick="exportPurchaseTransactionsCSV()" class="ds-btn ds-btn-ghost ds-btn-sm" title="CSV 내보내기">
                                         <i class="fas fa-file-csv"></i>
                                     </button>
                                 </div>
@@ -618,12 +655,15 @@ export function ledgerPage(c: Context<HonoEnv>) {
                                 <table class="ds-table ds-table-compact ds-table-striped">
                                     <thead>
                                         <tr>
-                                            <th class="text-left" style="width:112px">일자</th>
-                                            <th class="text-center" style="width:70px">구분</th>
+                                            <th class="text-left" style="width:104px">일자</th>
+                                            <th class="text-center" style="width:64px">구분</th>
                                             <th class="text-left">내용</th>
-                                            <th class="text-right" style="width:110px">매입(+)</th>
-                                            <th class="text-right" style="width:110px">지급(-)</th>
-                                            <th class="text-right" style="width:110px">잔액</th>
+                                            <th class="text-right" style="width:96px">공급가액</th>
+                                            <th class="text-right" style="width:82px">부가세</th>
+                                            <th class="text-right" style="width:104px">합계</th>
+                                            <th class="text-right" style="width:100px">지급(-)</th>
+                                            <th class="text-right" style="width:104px">잔액</th>
+                                            <th class="text-center" style="width:52px"></th>
                                         </tr>
                                     </thead>
                                     <tbody id="pTransactionsBody" class="divide-y"></tbody>

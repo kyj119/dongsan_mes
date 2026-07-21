@@ -1129,12 +1129,14 @@ clientsRouter.delete('/:id', requireRole('ADMIN'), async (c) => {
 clientsRouter.get('/:id/portal-account', requireRole('ADMIN', 'MANAGER'), async (c) => {
   try {
     const clientId = c.req.param('id')
+    // #473: client_accounts.entity_id 기준 격리 (client_notes DELETE:604 형제 패턴). super-ADMIN(0)=전권.
+    const ef = entityFilter(c)
     const account = await c.env.DB.prepare(`
       SELECT id, login_id, contact_name, contact_phone, contact_email,
              is_active, last_login_at, created_at
       FROM client_accounts
-      WHERE client_id = ?
-    `).bind(clientId).first<{ id: number; login_id: string; contact_name: string | null; contact_phone: string | null; contact_email: string | null; is_active: number; last_login_at: string | null; created_at: string }>()
+      WHERE client_id = ?${ef.clause}
+    `).bind(clientId, ...ef.params).first<{ id: number; login_id: string; contact_name: string | null; contact_phone: string | null; contact_email: string | null; is_active: number; last_login_at: string | null; created_at: string }>()
 
     return c.json({ success: true, data: { account: account || null } })
   } catch (error) {
@@ -1199,9 +1201,11 @@ clientsRouter.patch('/:id/portal-account', requireRole('ADMIN'), async (c) => {
     const clientId = c.req.param('id')
     const body = await c.req.json()
 
+    // #473: client_accounts.entity_id 기준 격리 (client_notes DELETE:604 형제 패턴). super-ADMIN(0)=전권.
+    const ef = entityFilter(c)
     const existing = await c.env.DB.prepare(
-      'SELECT id FROM client_accounts WHERE client_id = ?'
-    ).bind(clientId).first<{ id: number }>()
+      `SELECT id FROM client_accounts WHERE client_id = ?${ef.clause}`
+    ).bind(clientId, ...ef.params).first<{ id: number }>()
     if (!existing) {
       return c.json({ success: false, error: '포털 계정이 없습니다.' }, 404)
     }
@@ -1224,10 +1228,10 @@ clientsRouter.patch('/:id/portal-account', requireRole('ADMIN'), async (c) => {
     }
 
     updates.push('updated_at = CURRENT_TIMESTAMP')
-    params.push(clientId)
+    params.push(clientId, ...ef.params)
 
     await c.env.DB.prepare(
-      `UPDATE client_accounts SET ${updates.join(', ')} WHERE client_id = ?`
+      `UPDATE client_accounts SET ${updates.join(', ')} WHERE client_id = ?${ef.clause}`
     ).bind(...params).run()
 
     return c.json({ success: true })
@@ -1242,16 +1246,18 @@ clientsRouter.delete('/:id/portal-account', requireRole('ADMIN'), async (c) => {
   try {
     const clientId = c.req.param('id')
 
+    // #473: client_accounts.entity_id 기준 격리 (client_notes DELETE:604 형제 패턴). super-ADMIN(0)=전권.
+    const ef = entityFilter(c)
     const existing = await c.env.DB.prepare(
-      'SELECT id FROM client_accounts WHERE client_id = ?'
-    ).bind(clientId).first()
+      `SELECT id FROM client_accounts WHERE client_id = ?${ef.clause}`
+    ).bind(clientId, ...ef.params).first()
     if (!existing) {
       return c.json({ success: false, error: '포털 계정이 없습니다.' }, 404)
     }
 
     await c.env.DB.prepare(
-      'DELETE FROM client_accounts WHERE client_id = ?'
-    ).bind(clientId).run()
+      `DELETE FROM client_accounts WHERE client_id = ?${ef.clause}`
+    ).bind(clientId, ...ef.params).run()
 
     return c.json({ success: true })
   } catch (error) {

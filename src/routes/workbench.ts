@@ -3,7 +3,7 @@
 import { Hono } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
-import { entityFilter, orderVisibilityFilter, getEntityId } from '../utils/entityFilter'
+import { entityFilter, orderVisibilityFilter, getEntityId, getWriteEntityId, ENTITY_ALL_MODE_WRITE_ERROR } from '../utils/entityFilter'
 import { validateUpload } from '../utils/uploadValidation'
 import { hydrateGroups, hydrateGroupsJson, hydrateCanvasJson, externalizeGroups } from '../utils/thumbnailStore'
 import { kstDateOf } from '../utils/kstDate'
@@ -1141,6 +1141,7 @@ workbenchRouter.get('/intake-config', async (c) => {
       success: true,
       data: {
         generated_at: new Date().toISOString(),
+        entity_id: getEntityId(c), // 디자이너 에이전트가 POST /intakes에 채워 넣을 귀속 법인(0=전체모드)
         methods: methods.results,
         presets: presets.results,
         open_lines: openLines,
@@ -1175,7 +1176,9 @@ workbenchRouter.post('/intakes', async (c) => {
       if (dup) return c.json({ success: true, data: { intake_id: dup.id, ai_analysis_id: dup.ai_analysis_id, duplicated: true } })
     }
 
-    const entityId = Number(body.entity_id) || getEntityId(c) || 1
+    // 귀속 법인: body.entity_id 명시 우선, 없으면 세션 법인. 전체모드(null)는 400(조용한 동산1 오귀속 차단, #531)
+    const entityId = Number(body.entity_id) || getWriteEntityId(c)
+    if (entityId === null) return c.json({ success: false, error: ENTITY_ALL_MODE_WRITE_ERROR }, 400)
     const qty = Math.max(1, parseInt(String(body.qty ?? '1'), 10) || 1)
     const measured = (body.measured_cm || {}) as Record<string, unknown>
     const w = measured.w != null && Number.isFinite(Number(measured.w)) ? Number(measured.w) : null
@@ -1233,12 +1236,13 @@ workbenchRouter.post('/intakes', async (c) => {
     const consumed = Array.isArray(body.consumed_intake_ids)
       ? (body.consumed_intake_ids as unknown[]).map(Number).filter((n) => Number.isFinite(n) && n > 0)
       : []
+    const efC = entityFilter(c, 'designer_intakes') // #539: 판 소비 대기물도 세션 법인으로 격리(전체모드=빈 절)
     for (let ci = 0; ci < consumed.length; ci += 80) { // D1 바인드 한도 청크([[d1-bind-param-limit]])
       const chunk = consumed.slice(ci, ci + 80)
       const ph = chunk.map(() => '?').join(',')
       await c.env.DB.prepare(
-        `UPDATE designer_intakes SET status = 'absorbed', absorbed_at = datetime('now') WHERE status = 'waiting' AND id IN (${ph})`
-      ).bind(...chunk).run()
+        `UPDATE designer_intakes SET status = 'absorbed', absorbed_at = datetime('now') WHERE status = 'waiting' AND id IN (${ph})${efC.clause}`
+      ).bind(...chunk, ...efC.params).run()
     }
 
     // 경로①(주문 선행): manifest에 order_item_id 있으면 즉시 라인 연결(-3=완성본 passthrough 약속값)
@@ -1358,9 +1362,10 @@ workbenchRouter.post('/intakes/:id/absorb', async (c) => {
       if (cands.length === 1) orderItemId = cands[0].id
     }
 
-    await c.env.DB.prepare(
-      `UPDATE designer_intakes SET status = 'absorbed', order_item_id = ?, absorbed_at = datetime('now') WHERE id = ?`
-    ).bind(orderItemId, id).run()
+    const upd = await c.env.DB.prepare(
+      `UPDATE designer_intakes SET status = 'absorbed', order_item_id = ?, absorbed_at = datetime('now') WHERE id = ? AND status = 'waiting'`
+    ).bind(orderItemId, id).run() // #534: TOCTOU 가드(선행 SELECT 이후 동시 흡수 차단)
+    if (upd.meta.changes === 0) return c.json({ success: false, error: '이미 처리된 대기물입니다.' }, 409)
     return c.json({ success: true, data: { id, status: 'absorbed', order_item_id: orderItemId } })
   } catch (error) {
     console.error('Workbench intake absorb error:', error)

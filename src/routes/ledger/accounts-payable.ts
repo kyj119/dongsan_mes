@@ -100,6 +100,29 @@ apRouter.get('/purchase-client/:clientId', async (c) => {
     poQuery += ' LIMIT 500'  // 확장성: 거래처별 발주 무제한 스캔 방지(방어적 cap)
     const { results: purchaseOrders } = await c.env.DB.prepare(poQuery).bind(...poParams).all<PurchaseOrderRow>()
 
+    // Get purchase order items (발주 품목 라인) — 매출 원장(ar-ledger)과 동일 패턴(청크 50, D1 bind 한도 회피)
+    interface PoItemLine {
+      po_id: number; item_name: string | null; quantity: number; unit: string | null
+      unit_price: number | null; amount: number | null; vat_included: number | null
+    }
+    const poIds = purchaseOrders.map(o => o.id)
+    const poItemsMap = new Map<number, PoItemLine[]>()
+    if (poIds.length > 0) {
+      for (let i = 0; i < poIds.length; i += 50) {
+        const chunk = poIds.slice(i, i + 50)
+        const ph = chunk.map(() => '?').join(',')
+        const { results: poItems } = await c.env.DB.prepare(
+          `SELECT po_id, item_name, quantity, unit, unit_price, amount, vat_included
+           FROM purchase_order_items WHERE po_id IN (${ph})
+           ORDER BY sort_order ASC, id ASC`
+        ).bind(...chunk).all<PoItemLine>()
+        for (const it of poItems) {
+          if (!poItemsMap.has(it.po_id)) poItemsMap.set(it.po_id, [])
+          poItemsMap.get(it.po_id)!.push(it)
+        }
+      }
+    }
+
     // Get purchase payments (지급 - credit)
     const { clause: ppEf, params: ppEfParams } = entityFilter(c)
     let ppQuery = `
@@ -142,7 +165,25 @@ apRouter.get('/purchase-client/:clientId', async (c) => {
     const totalPurchases = purchaseOrders.reduce((sum, o) => sum + (o.final_amount || 0), 0)
     const totalPayments = purchasePayments.reduce((sum, p) => sum + (p.amount || 0), 0)
     const totalAdjustments = purchaseAdjustments.reduce((sum, a) => sum + (a.amount || 0), 0)
-    const balance = totalPurchases - totalPayments - totalAdjustments
+
+    // 전기이월(조회 시작일 이전 순잔액) — 기간필터 시 러닝밸런스 기준점 (매출 원장과 동일 구조)
+    let opening_balance = 0
+    if (startDate) {
+      const obEf = entityFilter(c)
+      const obRow = await c.env.DB.prepare(
+        `SELECT (SELECT COALESCE(SUM(final_amount),0) FROM purchase_orders WHERE supplier_id = ? AND status NOT IN ('DRAFT','CANCELLED') AND date(order_date) < ?${obEf.clause})`
+        + ` - (SELECT COALESCE(SUM(amount),0) FROM purchase_payments WHERE supplier_id = ? AND date(payment_date) < ?${obEf.clause})`
+        + ` - (SELECT COALESCE(SUM(amount),0) FROM purchase_adjustments WHERE supplier_id = ? AND date(adjustment_date) < ?${obEf.clause}) AS ob`
+      ).bind(
+        clientId, startDate, ...obEf.params,
+        clientId, startDate, ...obEf.params,
+        clientId, startDate, ...obEf.params
+      ).first<{ ob: number }>()
+      opening_balance = Number(obRow?.ob) || 0
+    }
+
+    // 잔액 = 전기이월 + 기간 순증감 (기간필터 없으면 opening_balance=0 → 전체 잔액)
+    const balance = opening_balance + totalPurchases - totalPayments - totalAdjustments
 
     // Find last payment date
     const lastPayment = purchasePayments.length > 0 ? purchasePayments[purchasePayments.length - 1] : null
@@ -156,7 +197,15 @@ apRouter.get('/purchase-client/:clientId', async (c) => {
         debit: o.final_amount || 0,
         credit: 0,
         reference: o.po_number,
-        status: o.status
+        status: o.status,
+        items: (poItemsMap.get(o.id) || []).map(it => ({
+          item_name: it.item_name || '-',
+          quantity: it.quantity || 0,
+          unit: it.unit || 'EA',
+          unit_price: Number(it.unit_price) || 0,
+          amount: Number(it.amount) || 0,
+          vat_included: it.vat_included ? true : false,
+        }))
       })),
       ...purchasePayments.map(p => ({
         type: 'payment',
@@ -165,6 +214,8 @@ apRouter.get('/purchase-client/:clientId', async (c) => {
         description: `지급: ${p.payment_method || ''}`,
         debit: 0,
         credit: p.amount || 0,
+        amount: p.amount || 0,
+        payment_method: p.payment_method || '',
         reference: p.reference_number,
         po_id: p.po_id,
         notes: p.notes
@@ -181,8 +232,8 @@ apRouter.get('/purchase-client/:clientId', async (c) => {
       }))
     ].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
 
-    // Calculate running balance (ascending order)
-    let runningBalance = 0
+    // Calculate running balance (ascending order) — 전기이월부터 누적
+    let runningBalance = opening_balance
     const transactionsWithBalance = transactions.map(t => {
       runningBalance += t.debit - t.credit
       return { ...t, balance: runningBalance }
@@ -198,6 +249,7 @@ apRouter.get('/purchase-client/:clientId', async (c) => {
           total_purchases: totalPurchases,
           total_payments: totalPayments,
           total_adjustments: totalAdjustments,
+          opening_balance,
           balance,
           last_payment_date: lastPayment ? lastPayment.date : null
         },
@@ -820,6 +872,9 @@ apRouter.get('/purchase-overdue', async (c) => {
 // GET /purchase-integrity-check - 매입 정합성 검사
 apRouter.get('/purchase-integrity-check', requireEditOrRole('/ledger', 'MANAGER'), async (c) => {
   try {
+    // #547: 전체 모드(전 법인, superadmin)에서만 허용. entity-scoped 호출은 법인 스코프 파생값을
+    //   법인 무관 단일 컬럼 clients.purchase_balance에 덮어써 내부거래 3법인 공급처 잔액을 손상시킴.
+    if (getEntityId(c) !== 0) return c.json({ success: false, error: '전체 모드(전 법인)에서만 실행할 수 있습니다.' }, 403)
     const { clause: intPoEf, params: intPoEfParams } = entityFilter(c)
     const { clause: intPpEf, params: intPpEfParams } = entityFilter(c)
     const { clause: intPaEf, params: intPaEfParams } = entityFilter(c)
@@ -876,6 +931,9 @@ apRouter.get('/purchase-integrity-check', requireEditOrRole('/ledger', 'MANAGER'
 // POST /purchase-integrity-fix - 매입 정합성 일괄 수정
 apRouter.post('/purchase-integrity-fix', requireEditOrRole('/ledger', 'MANAGER'), async (c) => {
   try {
+    // #547: 전체 모드(전 법인, superadmin)에서만 허용. entity-scoped 호출은 법인 스코프 파생값을
+    //   법인 무관 단일 컬럼 clients.purchase_balance에 덮어써 내부거래 3법인 공급처 잔액을 손상시킴.
+    if (getEntityId(c) !== 0) return c.json({ success: false, error: '전체 모드(전 법인)에서만 실행할 수 있습니다.' }, 403)
     const { supplier_ids } = await c.req.json() as { supplier_ids?: number[] }
 
     const { clause: fixPoEf, params: fixPoEfParams } = entityFilter(c)

@@ -133,6 +133,11 @@ export function ordersPage(c: Context<HonoEnv>) {
             <input type="date" id="orderDateTo" class="ds-input"
               onchange="currentPage=1;loadOrders();">
           </div>
+          <div class="ds-filter-field" style="align-self:flex-end">
+            <button type="button" onclick="clearDateFilter()" class="ds-btn ds-btn-secondary ds-btn-sm">
+              <i class="fas fa-eraser" style="margin-right:4px"></i>날짜 초기화
+            </button>
+          </div>
         </div>
       </div>
 

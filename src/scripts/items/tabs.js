@@ -62,14 +62,17 @@ window.refreshItemTab = function() {
 };
 
 // 품목 작업 버튼 — 활성: 비활성화/삭제, 비활성: 복구/삭제
+// #532: 비활성화·복구·삭제는 백엔드 requireRole('ADMIN')이라 ADMIN에게만 렌더(MANAGER 클릭→403 UX 개선)
 function itemActionBtns(it, en) {
     var b = '<button onclick="editItem(' + it.id + ')" class="text-blue-600 hover:underline text-xs mr-2">수정</button>';
-    if (it.is_active !== 0) {
-        b += '<button onclick="deactivateItem(' + it.id + ', \'' + en + '\')" class="text-amber-600 hover:underline text-xs mr-2">비활성화</button>';
-    } else {
-        b += '<button onclick="activateItem(' + it.id + ', \'' + en + '\')" class="text-green-600 hover:underline text-xs mr-2">복구</button>';
+    if (currentUserRole === 'ADMIN') {
+        if (it.is_active !== 0) {
+            b += '<button onclick="deactivateItem(' + it.id + ', \'' + en + '\')" class="text-amber-600 hover:underline text-xs mr-2">비활성화</button>';
+        } else {
+            b += '<button onclick="activateItem(' + it.id + ', \'' + en + '\')" class="text-green-600 hover:underline text-xs mr-2">복구</button>';
+        }
+        b += '<button onclick="hardDeleteItem(' + it.id + ', \'' + en + '\')" class="text-red-500 hover:underline text-xs">삭제</button>';
     }
-    b += '<button onclick="hardDeleteItem(' + it.id + ', \'' + en + '\')" class="text-red-500 hover:underline text-xs">삭제</button>';
     return b;
 }
 

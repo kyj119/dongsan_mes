@@ -186,6 +186,7 @@
             // 대기물 ai_analysis_id 로 통과 라인을 역추적해 order_item_id 를 링크(추적성 유지).
             window.ofIntakeAbsorbAll = async function(orderId) {
                 var marks = document.querySelectorAll('input[name^="intake_id_"]');
+                var __failed = 0; // #533: 실패 건수 집계 → 사용자에게 1회 통지(주문 등록 자체는 막지 않음)
                 for (var i = 0; i < marks.length; i++) {
                     var iid = parseInt(marks[i].value, 10);
                     if (!iid) continue;
@@ -198,7 +199,10 @@
                     try {
                         await axios.post('/api/workbench/intakes/' + iid + '/absorb', payload);
                     } catch (e) {
+                        __failed++;
                         console.warn('[orderForm] 대기물 absorb 실패 (intake #' + iid + ')', e);
                     }
                 }
+                // 토스트 폭주 방지: 루프 종료 후 실패분이 있을 때만 1회
+                if (__failed > 0 && typeof showToast === 'function') showToast('대기물 ' + __failed + '건 연동 실패 — 관리자에게 문의', 'error');
             };
