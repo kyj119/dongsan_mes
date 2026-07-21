@@ -13,10 +13,10 @@ function getQuotStatus(q) {
 
 function getQuotStatusBadge(q) {
   var s = getQuotStatus(q);
-  if (s === 'cancelled') return '<span class="px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-600">취소</span>';
-  if (s === 'partial')   return '<span class="px-2 py-0.5 rounded text-xs font-medium bg-blue-50 text-blue-700">주문생성 ' + (q.actual_order_count || q.converted_count || 0) + '건</span>';
-  if (s === 'expired')   return '<span class="px-2 py-0.5 rounded text-xs font-medium bg-red-50 text-red-600">만료</span>';
-  return '<span class="px-2 py-0.5 rounded text-xs font-medium bg-green-50 text-green-700">유효</span>';
+  if (s === 'cancelled') return '<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-600"><i class="fas fa-ban text-[9px] mr-1"></i>취소</span>';
+  if (s === 'partial')   return '<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-50 text-blue-700"><i class="fas fa-check text-[9px] mr-1"></i>주문생성 ' + (q.actual_order_count || q.converted_count || 0) + '건</span>';
+  if (s === 'expired')   return '<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-50 text-red-700"><i class="fas fa-exclamation-triangle text-[9px] mr-1"></i>만료</span>';
+  return '<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-50 text-green-700"><i class="fas fa-check-circle text-[9px] mr-1"></i>유효</span>';
 }
 
 function filterByQuotStatus(s) {

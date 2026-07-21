@@ -109,7 +109,7 @@ async function bulkShipSelected() {
         } else failCount++;
       });
       var msg = totalShipped + '건 카드 출고 완료';
-      if (remainingCards.length > 0) msg += '\n⚠️ 미출고 카드 ' + remainingCards.length + '건: ' + remainingCards.join(', ');
+      if (remainingCards.length > 0) msg += '\n미출고 카드 ' + remainingCards.length + '건: ' + remainingCards.join(', ');
       if (failCount > 0) msg += ', ' + failCount + '건 실패';
       showToast(msg, remainingCards.length > 0 ? 'warning' : (failCount > 0 ? 'warning' : 'success'));
       clearBulkSelection();
@@ -269,6 +269,12 @@ function getBillingStatusColor(billingStatus) {
   if (billingStatus === 'BILLED') return 'ds-badge ds-badge-gray';
   if (billingStatus === 'PAID') return 'ds-badge ds-badge-green';
   return 'ds-badge ds-badge-gray';
+}
+
+function getBillingStatusIcon(billingStatus) {
+  if (billingStatus === 'PAID') return 'fas fa-check-circle';
+  if (billingStatus === 'BILLED') return 'fas fa-check';
+  return '';
 }
 
 function getStatusColor(status) {
@@ -436,8 +442,9 @@ async function loadOrders() {
           : '-';
         const billingText = getBillingStatusText(order.billing_status);
         const billingColor = getBillingStatusColor(order.billing_status);
+        const billingIcon = getBillingStatusIcon(order.billing_status);
         const billingBadge = order.billing_status
-          ? `<span class="px-2 py-0.5 text-xs rounded-full ${billingColor}">${billingText}</span>`
+          ? `<span class="px-2 py-0.5 text-xs rounded-full ${billingColor}">${billingIcon ? `<i class="${billingIcon} text-[9px] mr-1"></i>` : ''}${billingText}</span>`
           : `<span class="text-xs text-gray-400">-</span>`;
         // 회계반영 대상(출고/배송완료 + 미반영)이면 클릭 버튼, 아니면 배지 (#4 — 대상만 노출해 "눌러도 실패" 방지)
         const isBillable = (order.status === 'SHIPPED' || order.status === 'COMPLETED') && (!order.billing_status || order.billing_status === '');
@@ -482,7 +489,7 @@ async function loadOrders() {
               <div class="text-sm text-gray-900">${order.final_amount?.toLocaleString() || '0'}원${order.has_pending_prices ? '<span class="ml-1 px-1 text-[10px] rounded bg-amber-100 text-amber-700 font-bold">미정</span>' : ''}</div>
             </td>
             <td class="px-2 py-2.5 whitespace-nowrap">
-              <span class="px-2 inline-flex items-center text-xs leading-5 font-semibold rounded-full ${getStatusColor(order.status)}">${getStatusText(order.status)}</span>
+              <span class="px-2 inline-flex items-center text-xs leading-5 font-semibold rounded-full ${getStatusColor(order.status)}"><i class="${getStatusIcon(order.status)} text-[9px] mr-1"></i>${getStatusText(order.status)}</span>
             </td>
             <td class="px-2 py-2.5 whitespace-nowrap text-center">
               ${billingCell}
@@ -558,7 +565,7 @@ async function confirmStatusChange() {
       if (_row && typeof getStatusColor === 'function') {
         _row.dataset.status = newStatus;
         var _sc = _row.querySelector('td:nth-child(7)');
-        if (_sc) _sc.innerHTML = '<span class="px-2 inline-flex items-center text-xs leading-5 font-semibold rounded-full ' + getStatusColor(newStatus) + '">' + getStatusText(newStatus) + '</span>';
+        if (_sc) _sc.innerHTML = '<span class="px-2 inline-flex items-center text-xs leading-5 font-semibold rounded-full ' + getStatusColor(newStatus) + '"><i class="' + getStatusIcon(newStatus) + ' text-[9px] mr-1"></i>' + getStatusText(newStatus) + '</span>';
       }
       loadOrderStats();
       loadOrders();
@@ -931,7 +938,7 @@ function showOrderModal(order, cards, autoJobs) {
         <div class="p-6">
           <div class="grid grid-cols-2 gap-4 mb-6">
             <div><label class="text-sm font-medium text-gray-600">주문번호</label><p class="text-lg font-bold">${escapeHtml(order.order_number)}</p></div>
-            <div><label class="text-sm font-medium text-gray-600">상태</label><p><span class="px-3 py-1 rounded-full ${getStatusColor(order.status)}">${getStatusText(order.status)}</span></p></div>
+            <div><label class="text-sm font-medium text-gray-600">상태</label><p><span class="px-3 py-1 rounded-full ${getStatusColor(order.status)}"><i class="${getStatusIcon(order.status)} text-[9px] mr-1"></i>${getStatusText(order.status)}</span></p></div>
             <div><label class="text-sm font-medium text-gray-600">거래처</label><p class="text-lg">${escapeHtml(order.client_name || '-')}</p></div>
             <div><label class="text-sm font-medium text-gray-600">납기일</label><p class="text-lg">${escapeHtml(order.delivery_date || '-')}</p></div>
             <div><label class="text-sm font-medium text-gray-600">배송처</label><p class="text-lg">${escapeHtml(order.reception_location || '-')}</p></div>

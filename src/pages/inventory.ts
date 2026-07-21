@@ -141,7 +141,7 @@ export function inventoryPage(c: Context<HonoEnv>) {
                 </div>
                 <div class="ds-filter-actions">
                   <button id="searchBtn" class="ds-btn ds-btn-primary ds-btn-sm">
-                    <i class="fas fa-search" style="margin-right:4px"></i>조회
+                    <i class="fas fa-search" style="margin-right:4px"></i>검색
                   </button>
                 </div>
             </div>

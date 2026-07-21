@@ -313,7 +313,7 @@ function szRenderLayout() {
       var invItems = z.inv_item_count || 0;
       var invShort = z.inv_shortage_count || 0;
       topRight = invItems > 0
-        ? '<span style="position:absolute;right:4px;top:3px;font-size:10px;font-weight:600;background:rgba(255,255,255,0.92);padding:1px 6px;border-radius:3px;border:1px solid ' + (invShort > 0 ? '#fecaca' : '#bbf7d0') + ';color:' + (invShort > 0 ? '#dc2626' : '#16a34a') + ';"><i class="fas fa-boxes" style="margin-right:2px;"></i>' + invItems + (invShort > 0 ? ' · ⚠' + invShort : '') + '</span>'
+        ? '<span style="position:absolute;right:4px;top:3px;font-size:10px;font-weight:600;background:rgba(255,255,255,0.92);padding:1px 6px;border-radius:3px;border:1px solid ' + (invShort > 0 ? '#fecaca' : '#bbf7d0') + ';color:' + (invShort > 0 ? '#dc2626' : '#16a34a') + ';"><i class="fas fa-boxes" style="margin-right:2px;"></i>' + invItems + (invShort > 0 ? ' · <i class="fas fa-exclamation-triangle" style="margin-right:2px;"></i>' + invShort : '') + '</span>'
         : '';
     }
     var resizeHandle = szEditMode

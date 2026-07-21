@@ -48,7 +48,7 @@ export function payrollPage(c: Context<HonoEnv>) {
             <option value="PAID">지급완료</option>
           </select>
           <button onclick="payrollLoad()" class="ds-btn ds-btn-primary text-xs">
-            <i class="fas fa-search mr-1"></i>조회
+            <i class="fas fa-search mr-1"></i>검색
           </button>
           <div class="flex-1"></div>
           <button onclick="payrollBatch()" class="px-3 py-1.5 text-xs border border-gray-300 text-gray-700 bg-white rounded hover:bg-gray-50" title="해당 월 전 직원 급여를 기본급 기준으로 일괄 생성 (PENDING)">

@@ -409,8 +409,8 @@ async function loadLowStock() {
                 + ' onclick="location.href=\'/inventory\'">'
                 + '<div class="flex-1 mr-4">'
                 + '<div class="flex items-center gap-2">'
-                + '<span class="font-medium text-sm">' + ((item.item_name || '-').replace(/</g, '&lt;')) + '</span>'
-                + '<span class="px-1.5 py-0.5 text-[10px] rounded bg-blue-50 text-blue-700">' + ((item.category || '-').replace(/</g, '&lt;')) + '</span>'
+                + '<span class="font-medium text-sm">' + escapeHtml(item.item_name || '-') + '</span>'
+                + '<span class="px-1.5 py-0.5 text-[10px] rounded bg-blue-50 text-blue-700">' + escapeHtml(item.category || '-') + '</span>'
                 + '</div>'
                 + '<div class="mt-1 flex items-center gap-2">'
                 + '<div class="flex-1 h-2 bg-gray-200 rounded-full overflow-hidden">'
@@ -454,7 +454,7 @@ async function loadEquipmentLoad() {
       var loadText = cap > 0 ? (count + '/' + cap) : (count + '건');
       return '<div class="p-3 rounded-lg border ' + (isOverloaded ? 'border-red-300 bg-red-50' : 'border-gray-200') + ' cursor-pointer hover:shadow" onclick="location.href=\'/schedule\'">'
         + '<div class="flex items-center justify-between mb-1">'
-        + '<span class="text-sm font-medium">' + eq.name.replace(/</g, '&lt;') + onlineDot + '</span>'
+        + '<span class="text-sm font-medium">' + escapeHtml(eq.name) + onlineDot + '</span>'
         + '<span class="text-[10px] ' + dotClass + '"><i class="fas fa-circle mr-0.5"></i>' + statusLabel + '</span>'
         + '</div>'
         + (cap > 0
@@ -487,7 +487,7 @@ async function loadMaintenanceAlerts() {
         + '<div class="flex items-center gap-2">'
         + '<i class="fas fa-box ' + (isOverdue ? 'text-red-500' : 'text-amber-500') + '"></i>'
         + '<div>'
-        + '<div class="text-sm font-medium">' + (c.equipment_name || '') + ' - ' + (c.name || '').replace(/</g, '&lt;') + '</div>'
+        + '<div class="text-sm font-medium">' + escapeHtml(c.equipment_name || '') + ' - ' + escapeHtml(c.name || '') + '</div>'
         + '<div class="text-[11px] text-gray-500">교체 기한: ' + (c.next_due_at || '').substring(0, 10) + '</div>'
         + '</div>'
         + '</div>'
@@ -501,7 +501,7 @@ async function loadMaintenanceAlerts() {
         + '<div class="flex items-center gap-2">'
         + '<i class="fas fa-calendar-check ' + (isOverdue ? 'text-red-500' : 'text-amber-500') + '"></i>'
         + '<div>'
-        + '<div class="text-sm font-medium">' + (s.equipment_name || '') + ' - ' + (s.title || '').replace(/</g, '&lt;') + '</div>'
+        + '<div class="text-sm font-medium">' + escapeHtml(s.equipment_name || '') + ' - ' + escapeHtml(s.title || '') + '</div>'
         + '<div class="text-[11px] text-gray-500">점검 기한: ' + (s.next_due_at || '').substring(0, 10) + '</div>'
         + '</div>'
         + '</div>'
@@ -681,7 +681,7 @@ async function loadProductionToday() {
         var eqOk = eq.ok_count || 0;
         var eqTotal = eq.total || 0;
         html += '<div class="flex items-center justify-between text-xs">'
-          + '<span class="text-gray-600 truncate" style="max-width:120px;">' + (eq.equipment_name || eq.equipment_id || '-').replace(/</g, '&lt;') + '</span>'
+          + '<span class="text-gray-600 truncate" style="max-width:120px;">' + escapeHtml(eq.equipment_name || eq.equipment_id || '-') + '</span>'
           + '<span class="font-medium"><span class="text-green-600">' + eqOk + '</span><span class="text-gray-400">/' + eqTotal + '</span></span>'
           + '</div>';
       });
@@ -734,7 +734,7 @@ async function loadEquipmentUtilization() {
 
       html += '<div>'
         + '<div class="flex justify-between text-xs mb-1">'
-        + '<span class="text-gray-600 truncate" style="max-width:140px;">' + (eq.equipment_name || eq.equipment_id || '-').replace(/</g, '&lt;') + '</span>'
+        + '<span class="text-gray-600 truncate" style="max-width:140px;">' + escapeHtml(eq.equipment_name || eq.equipment_id || '-') + '</span>'
         + '<span class="font-medium tabular-nums">' + timeStr
         + ' <span class="text-gray-400">(' + pct + '%)</span></span>'
         + '</div>'

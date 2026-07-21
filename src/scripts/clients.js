@@ -180,9 +180,9 @@ function displayClients(clients, pagination) {
 
     var rows = clients.map(function(c) {
         var typeBadge = '';
-        if (c.client_type === 'SALES') typeBadge = '<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-50 text-blue-700">매출</span>';
-        else if (c.client_type === 'PURCHASE') typeBadge = '<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-amber-50 text-amber-700">매입</span>';
-        else if (c.client_type === 'BOTH') typeBadge = '<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-50 text-blue-700">매출+매입</span>';
+        if (c.client_type === 'SALES') typeBadge = '<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-50 text-blue-700"><i class="fas fa-arrow-up text-[9px] mr-1"></i>매출</span>';
+        else if (c.client_type === 'PURCHASE') typeBadge = '<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-amber-50 text-amber-700"><i class="fas fa-arrow-down text-[9px] mr-1"></i>매입</span>';
+        else if (c.client_type === 'BOTH') typeBadge = '<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-50 text-green-700"><i class="fas fa-exchange-alt text-[9px] mr-1"></i>매출+매입</span>';
 
         var statusBadge = c.is_active
             ? '<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-50 text-green-700"><i class="fas fa-check-circle text-[7px] mr-1"></i>활성</span>'

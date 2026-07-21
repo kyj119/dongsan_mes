@@ -43,7 +43,7 @@ export function laborContractsPage(c: Context<HonoEnv>) {
             <i class="fas fa-exclamation-triangle mr-1"></i>만료 임박
           </button>
           <button onclick="lcLoad()" class="ds-btn ds-btn-primary px-3 py-1.5 text-xs">
-            <i class="fas fa-search mr-1"></i>조회
+            <i class="fas fa-search mr-1"></i>검색
           </button>
           <div class="flex-1"></div>
           <button onclick="lcOpenEditModal(0)" class="ds-btn ds-btn-primary px-3 py-1.5 text-xs">

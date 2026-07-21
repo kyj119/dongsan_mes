@@ -8,8 +8,10 @@
 
   function getRoleBadge(role) {
     var labels = { ADMIN: '관리자', MANAGER: '매니저', DESIGNER: '디자이너', OPERATOR: '오퍼레이터', ACCOUNTANT: '경리', SALES: '영업', FINISHING: '후가공', SHIPPING: '배송' };
+    var icons = { ADMIN: 'fa-crown', MANAGER: 'fa-user-tie', DESIGNER: 'fa-pen-nib', OPERATOR: 'fa-print', ACCOUNTANT: 'fa-calculator', SALES: 'fa-handshake', FINISHING: 'fa-cut', SHIPPING: 'fa-truck' };
     var label = labels[role] || role;
-    return '<span class="role-badge role-' + role + '">' + label + '</span>';
+    var icon = icons[role] || 'fa-user';
+    return '<span class="role-badge role-' + role + '"><i class="fas ' + icon + ' mr-1"></i>' + label + '</span>';
   }
 
   function formatDate(str) {

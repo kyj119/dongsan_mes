@@ -1273,5 +1273,5 @@ function exportPmCsv() {
 // ===================== Utilities =====================
 function setVal(id, v) { var el = document.getElementById(id); if (el) el.value = v; }
 function fmt(n) { if (n == null || isNaN(n)) return '-'; return Number(n).toLocaleString('ko-KR'); }
-function esc(s) { if (!s) return ''; return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+var esc = window.escapeHtml;
 function escAttr(s) { return esc(s).replace(/'/g,'&#39;'); }

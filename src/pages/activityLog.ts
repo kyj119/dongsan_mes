@@ -153,7 +153,7 @@ window.switchLogTab = function(tab) {
           </div>
           <div class="mt-3 text-right">
             <button onclick="loadData()" class="ds-btn ds-btn-primary text-sm">
-              <i class="fas fa-search mr-1"></i>조회
+              <i class="fas fa-search mr-1"></i>검색
             </button>
           </div>
         </div>

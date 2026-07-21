@@ -637,7 +637,7 @@
                         <label class="block text-xs font-medium text-green-700 mb-1">마감 방식</label>
                         <div class="flex items-center gap-1 mb-1" id="finishing_presets_${id}"></div>
                         <div class="flex items-center gap-2" id="finishing_simple_${id}">
-                            <button type="button" onclick="toggleFinishingDetail(${id})" class="text-[10px] text-gray-400 hover:text-blue-600 whitespace-nowrap">개별 설정 ▾</button>
+                            <button type="button" onclick="toggleFinishingDetail(${id})" class="text-[10px] text-gray-400 hover:text-blue-600 whitespace-nowrap">개별 설정 <i class="fas fa-caret-down"></i></button>
                         </div>
                         <div class="grid grid-cols-4 gap-1 mt-1 hidden" id="finishing_sides_${id}">
                             <div><label class="text-[10px] text-gray-400">상</label><select name="fin_top_${id}" class="w-full border rounded px-1 py-0.5 text-xs fin-select" onchange="onFinMethodChange(${id},'top')"></select><input name="fin_cm_top_${id}" type="number" step="0.5" min="0" class="w-full border rounded px-1 py-0.5 text-xs mt-0.5" placeholder="cm" onchange="calcFinishing(${id})"></div>

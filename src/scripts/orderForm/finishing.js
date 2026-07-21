@@ -92,7 +92,7 @@
                 if (sides) {
                     var isHidden = sides.classList.contains('hidden');
                     sides.classList.toggle('hidden');
-                    if (btn) btn.textContent = isHidden ? '개별 설정 ▴' : '개별 설정 ▾';
+                    if (btn) btn.innerHTML = isHidden ? '개별 설정 <i class="fas fa-caret-up"></i>' : '개별 설정 <i class="fas fa-caret-down"></i>';
                 }
             };
 

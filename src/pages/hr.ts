@@ -179,7 +179,7 @@ export function hrPage(c: Context<HonoEnv>) {
               <input type="date" id="deptPnlFrom" class="border border-gray-300 rounded-lg px-3 py-2 text-sm">
               <span class="text-gray-400">~</span>
               <input type="date" id="deptPnlTo" class="border border-gray-300 rounded-lg px-3 py-2 text-sm">
-              <button onclick="loadDeptPnl()" class="ds-btn ds-btn-primary text-sm"><i class="fas fa-search mr-1"></i>조회</button>
+              <button onclick="loadDeptPnl()" class="ds-btn ds-btn-primary text-sm"><i class="fas fa-search mr-1"></i>검색</button>
             </div>
           </div>
 

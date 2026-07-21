@@ -281,11 +281,9 @@ function executeAction(actionKey, quantity) {
   });
 }
 
-function escHtml(str) {
-  var d = document.createElement('div');
-  d.textContent = str;
-  return d.innerHTML;
-}
+var escHtml = window.escapeHtml || function(str) {
+  return String(str == null ? '' : str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;');
+};
 
 // ── 시작 ──
 initScanner();

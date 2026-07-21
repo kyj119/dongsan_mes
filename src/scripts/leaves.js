@@ -36,10 +36,10 @@ function lvRenderPagebar(containerId, pagination, goFn) {
 }
 window.leavesRequestsGoPage = function (p) { window.leavesLoadRequests(p); };
 
-function lvEscapeHtml(str) {
-  if (!str) return '';
+var lvEscapeHtml = window.escapeHtml || function(str) {
+  if (str == null) return '';
   return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;');
-}
+};
 
 // 부서/직책 코드 → 한글 라벨 (HR SSOT 전역주입 window.DEPT_NAMES/POSITION_NAMES, design-hr-enum-ssot)
 // ⚠️ var DEPT_NAMES 재선언 금지(?raw concat 전역스코프 충돌) → window 직접 read

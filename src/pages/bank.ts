@@ -270,8 +270,8 @@ export const bankPageContent = `
               <div class="text-xl font-bold text-green-600" id="rcvNormal">-</div>
             </div>
             <div class="kpi-card bg-white border border-gray-200 rounded-lg">
-              <div class="text-xs font-medium text-yellow-700">주의 (31~60일)</div>
-              <div class="text-xl font-bold text-yellow-600" id="rcvWarning">-</div>
+              <div class="text-xs font-medium text-amber-700">주의 (31~60일)</div>
+              <div class="text-xl font-bold text-amber-600" id="rcvWarning">-</div>
             </div>
             <div class="kpi-card bg-white border border-gray-200 rounded-lg">
               <div class="text-xs font-medium text-orange-700">위험 (61~90일)</div>

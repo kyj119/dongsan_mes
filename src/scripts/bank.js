@@ -508,14 +508,14 @@
            '<button class="btn-sm btn-ignore" style="font-size:11px;padding:2px 6px;" onclick="ignoreTx(' + tx.id + ')"><i class="fas fa-ban text-[8px]"></i></button></div>';
   }
 
-  function escHtml(str) {
+  var escHtml = window.escapeHtml || function(str) {
     if (!str) return '';
     return String(str)
       .replace(/&/g, '&amp;')
       .replace(/</g, '&lt;')
       .replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;');
-  }
+  };
 
   // Checkbox all
   window.toggleCheckAll = function(cb) {
@@ -1438,11 +1438,11 @@
       clientList.forEach(function(cl) {
         var agingBadge = '';
         switch (cl.aging_category) {
-          case 'normal':  agingBadge = '<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-50 text-green-700">정상</span>'; break;
-          case 'warning': agingBadge = '<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-yellow-50 text-yellow-700">주의</span>'; break;
-          case 'danger':  agingBadge = '<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-orange-50 text-orange-700">위험</span>'; break;
-          case 'critical': agingBadge = '<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-50 text-red-700">장기미입금</span>'; break;
-          case 'no_payment': agingBadge = '<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-600">입금없음</span>'; break;
+          case 'normal':  agingBadge = '<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-50 text-green-700"><i class="fas fa-check-circle mr-1"></i>정상</span>'; break;
+          case 'warning': agingBadge = '<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-amber-50 text-amber-700"><i class="fas fa-exclamation-triangle mr-1"></i>주의</span>'; break;
+          case 'danger':  agingBadge = '<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-orange-50 text-orange-700"><i class="fas fa-exclamation-circle mr-1"></i>위험</span>'; break;
+          case 'critical': agingBadge = '<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-50 text-red-700"><i class="fas fa-ban mr-1"></i>장기미입금</span>'; break;
+          case 'no_payment': agingBadge = '<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-600"><i class="far fa-clock mr-1"></i>입금없음</span>'; break;
         }
 
         html += '<tr class="tx-row">';
@@ -1495,8 +1495,8 @@
       var lastUsed = formatKST(rule.last_used_at, 'date');
       var isContains = (rule.match_type === 'CONTAINS');
       var mtBadge = isContains
-        ? '<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-indigo-50 text-indigo-700">부분일치</span>'
-        : '<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-500">완전일치</span>';
+        ? '<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-indigo-50 text-indigo-700"><i class="fas fa-adjust mr-1"></i>부분일치</span>'
+        : '<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-500"><i class="fas fa-equals mr-1"></i>완전일치</span>';
       html += '<tr class="tx-row">';
       html += '<td class="px-3 py-2 font-medium text-gray-800" title="' + escHtml(rule.counterpart_name) + '"><i class="fas fa-' + (isContains ? 'quote-right' : 'tag') + ' text-blue-400 mr-1 text-xs"></i>' + escHtml(rule.counterpart_name) + '</td>';
       html += '<td class="px-3 py-2 text-center">' + mtBadge + '</td>';
@@ -1683,9 +1683,9 @@
     if (!conflicts.length) {
       resultDiv.innerHTML = '<div class="p-4 bg-green-50 text-green-700 rounded-lg text-sm"><i class="fas fa-check-circle mr-1"></i>충돌 없음 — ' + allRules.length + '개 규칙 모두 정상</div>';
     } else {
-      var html = '<div class="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">';
-      html += '<div class="font-medium text-yellow-800 mb-2"><i class="fas fa-exclamation-triangle mr-1"></i>' + conflicts.length + '건의 잠재적 문제 발견</div>';
-      html += '<ul class="space-y-1 text-sm text-yellow-700">';
+      var html = '<div class="p-4 bg-amber-50 border border-amber-200 rounded-lg">';
+      html += '<div class="font-medium text-amber-800 mb-2"><i class="fas fa-exclamation-triangle mr-1"></i>' + conflicts.length + '건의 잠재적 문제 발견</div>';
+      html += '<ul class="space-y-1 text-sm text-amber-700">';
       conflicts.forEach(function(c) {
         html += '<li><i class="fas fa-' + (c.type === 'orphan' ? 'unlink' : 'code-branch') + ' mr-1 text-xs"></i>' + escHtml(c.msg) + '</li>';
       });

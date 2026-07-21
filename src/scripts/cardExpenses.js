@@ -1092,10 +1092,7 @@ async function loadUsers() {
 }
 
 // ===== Utility =====
-function escapeHtml(s) {
-  if (!s) return '';
-  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-}
+// escapeHtml: 전역(window.escapeHtml, shell.js) 사용 — 로컬 재정의 제거(단일 소스)
 function parseMoney(s) {
   if (!s) return 0;
   return parseFloat(String(s).replace(/[,\s원]/g, '')) || 0;

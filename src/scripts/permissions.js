@@ -24,13 +24,14 @@ var permMatrix = permBlankMatrix(); // {role: {page_key: {a,e}}}
 var permDirty = {};                 // { 'ROLE:/page': {role, page_key, can_access, can_edit} }
 var permCurrentRole = 'MANAGER';    // 활성 탭
 
-function permEscape(s) {
+var permEscape = window.escapeHtml || function(s) {
   return String(s == null ? '' : s)
     .replace(/&/g, '&amp;')
-    .replace(/"/g, '&quot;')
     .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
-}
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+};
 
 async function permLoad() {
   try {

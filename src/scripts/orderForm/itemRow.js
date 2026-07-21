@@ -23,7 +23,7 @@
                                 <img id="thumb_img_${id}" class="w-20 h-20 object-contain border border-gray-200 rounded shadow-sm" />
                             </div>
                             <span class="font-bold text-gray-700 text-sm" id="item_label_${id}">품목 #${id}</span>
-                            <span id="item_check_${id}" class="hidden text-green-500 text-sm"><i class="fas fa-check-circle"></i></span>
+                            <span id="item_check_${id}" class="hidden text-green-600 text-sm"><i class="fas fa-check-circle"></i></span>
                             <span id="item_dist_badge_${id}" class="hidden text-xs px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 font-medium"><i class="fas fa-box mr-0.5"></i>유통</span>
                             <span id="direct_file_chip_${id}" class="hidden inline-flex items-center gap-1 text-xs px-1.5 py-0.5 rounded bg-purple-50 text-purple-700 border border-purple-200">
                                 <i class="fas fa-paperclip"></i><span id="direct_file_name_${id}" class="max-w-[140px] truncate"></span>
@@ -119,7 +119,7 @@
                         <label class="block text-xs font-medium text-gray-600 mb-1">마감 방식</label>
                         <div class="flex items-center gap-1 mb-1" id="finishing_presets_${id}"></div>
                         <div class="flex items-center gap-2" id="finishing_simple_${id}">
-                            <button type="button" onclick="toggleFinishingDetail(${id})" class="text-[10px] text-gray-400 hover:text-blue-600 whitespace-nowrap">개별 설정 ▾</button>
+                            <button type="button" onclick="toggleFinishingDetail(${id})" class="text-[10px] text-gray-400 hover:text-blue-600 whitespace-nowrap">개별 설정 <i class="fas fa-caret-down"></i></button>
                         </div>
                         <div class="grid grid-cols-4 gap-1 mt-1 hidden" id="finishing_sides_${id}">
                             <div><label class="text-[10px] text-gray-400">상</label><select name="fin_top_${id}" class="w-full border rounded px-1 py-0.5 text-xs fin-select" onchange="onFinMethodChange(${id},'top')"></select><input name="fin_cm_top_${id}" type="number" step="0.5" min="0" class="w-full border rounded px-1 py-0.5 text-xs mt-0.5" placeholder="cm" onchange="calcFinishing(${id})"></div>
@@ -234,7 +234,7 @@
                             var qtyEl = document.querySelector('[name="quantity_' + id + '"]');
                             var qty = qtyEl ? (parseFloat(qtyEl.value) || 1) : 1;
                             if (d.stock < qty) {
-                                showToast('⚠️ ' + item.name + ' 재고 부족 (현재 ' + d.stock + ' / 주문 ' + qty + ') — 출고 시 마이너스 처리됩니다', 'warning');
+                                showToast(item.name + ' 재고 부족 (현재 ' + d.stock + ' / 주문 ' + qty + ') — 출고 시 마이너스 처리됩니다', 'warning');
                             }
                         }).catch(function(){});
                     }

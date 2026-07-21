@@ -42,14 +42,16 @@ function filterByStatus(s) {
 }
 
 var urgencyLabels = { 'LOW': '낮음', 'NORMAL': '보통', 'HIGH': '높음', 'URGENT': '긴급' };
-var urgencyColors = { 'LOW': 'bg-gray-100 text-gray-600', 'NORMAL': 'bg-blue-50 text-blue-600', 'HIGH': 'bg-orange-100 text-orange-700', 'URGENT': 'bg-red-50 text-red-700' };
+var urgencyColors = { 'LOW': 'bg-gray-100 text-gray-600', 'NORMAL': 'bg-blue-50 text-blue-700', 'HIGH': 'bg-amber-50 text-amber-700', 'URGENT': 'bg-red-50 text-red-700' };
+var urgencyIcons = { 'LOW': 'fa-angle-down', 'NORMAL': 'fa-minus', 'HIGH': 'fa-exclamation', 'URGENT': 'fa-bolt' };
 
 function buildSourceRequestsHtml(requests) {
   if (!requests || requests.length === 0) return '';
   var html = '<div class="mb-4 p-3 bg-blue-50 rounded-lg border border-blue-200">'
     + '<h4 class="font-medium mb-2 text-sm text-blue-800"><i class="fas fa-link mr-1"></i>원본 발주요청</h4>';
   requests.forEach(function(pr) {
-    var urgBadge = '<span class="px-1.5 py-0.5 rounded text-xs ' + (urgencyColors[pr.urgency] || 'bg-gray-100 text-gray-600') + '">'
+    var urgBadge = '<span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs ' + (urgencyColors[pr.urgency] || 'bg-gray-100 text-gray-600') + '">'
+      + '<i class="fas ' + (urgencyIcons[pr.urgency] || 'fa-circle') + ' mr-1"></i>'
       + (urgencyLabels[pr.urgency] || pr.urgency || '-') + '</span>';
     html += '<div class="flex items-center justify-between text-sm">'
       + '<div>'

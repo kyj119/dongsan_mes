@@ -72,7 +72,7 @@ export function accountingPage(c: Context<HonoEnv>) {
               <span class="text-gray-300">~</span>
               <input type="text" inputmode="numeric" data-money id="accAmtMax" placeholder="최대" class="ds-input" style="width:110px;font-size:12px">
             </div>
-            <button onclick="accSearchNow()" class="ds-btn ds-btn-primary ds-btn-sm"><i class="fas fa-search mr-1"></i>조회</button>
+            <button onclick="accSearchNow()" class="ds-btn ds-btn-primary ds-btn-sm"><i class="fas fa-search mr-1"></i>검색</button>
             <button onclick="accResetFilters()" class="px-3 py-1.5 text-xs font-medium rounded-lg bg-gray-100 text-gray-600 hover:bg-gray-200">초기화</button>
             <div class="border-l border-gray-200 h-5 mx-1"></div>
             <span class="text-xs text-gray-500">조회 결과 <b id="accResultCount" class="text-gray-700">-</b>건 · 합계 <b id="accResultSum" class="text-blue-700">-</b></span>
@@ -116,7 +116,7 @@ export function accountingPage(c: Context<HonoEnv>) {
               <option value="CANCELLED">취소</option>
             </select>
             <input type="text" id="accTaxSearch" placeholder="계산서번호 / 주문 / 거래처..." class="ds-input" style="width:240px;font-size:12px" onkeydown="if(event.key==='Enter')accLoadTax()">
-            <button onclick="accLoadTax()" class="ds-btn ds-btn-primary ds-btn-sm"><i class="fas fa-search mr-1"></i>조회</button>
+            <button onclick="accLoadTax()" class="ds-btn ds-btn-primary ds-btn-sm"><i class="fas fa-search mr-1"></i>검색</button>
             <span class="text-xs text-gray-400">상단 기간=작성일 기준</span>
             <a href="/tax-invoices" class="ml-auto text-xs text-blue-600 hover:underline"><i class="fas fa-external-link-alt mr-1"></i>발행·취소 등 전체 관리</a>
           </div>
@@ -154,7 +154,7 @@ export function accountingPage(c: Context<HonoEnv>) {
               <option value="FAILED">실패</option>
             </select>
             <input type="text" id="accCashSearch" placeholder="영수증번호 / 거래처 / 식별번호..." class="ds-input" style="width:240px;font-size:12px" onkeydown="if(event.key==='Enter')accLoadCash()">
-            <button onclick="accLoadCash()" class="ds-btn ds-btn-primary ds-btn-sm"><i class="fas fa-search mr-1"></i>조회</button>
+            <button onclick="accLoadCash()" class="ds-btn ds-btn-primary ds-btn-sm"><i class="fas fa-search mr-1"></i>검색</button>
             <span class="text-xs text-gray-400">상단 기간=거래일 기준</span>
             <a href="/tax-invoices?tab=cash" class="ml-auto text-xs text-blue-600 hover:underline"><i class="fas fa-external-link-alt mr-1"></i>발행·취소 등 전체 관리</a>
           </div>
@@ -184,7 +184,7 @@ export function accountingPage(c: Context<HonoEnv>) {
         <div class="ds-card ds-card-compact mb-3">
           <div class="flex flex-wrap items-center gap-3">
             <input type="text" id="accCardSearch" placeholder="가맹점..." class="ds-input" style="width:240px;font-size:12px" onkeydown="if(event.key==='Enter')accLoadCard()">
-            <button onclick="accLoadCard()" class="ds-btn ds-btn-primary ds-btn-sm"><i class="fas fa-search mr-1"></i>조회</button>
+            <button onclick="accLoadCard()" class="ds-btn ds-btn-primary ds-btn-sm"><i class="fas fa-search mr-1"></i>검색</button>
             <span class="text-xs text-gray-400">상단 기간=거래일 기준</span>
             <span class="text-xs text-gray-500 ml-1">페이지 합계 <b id="accCardSum" class="text-red-600">-</b></span>
             <a href="/card-expenses" class="ml-auto text-xs text-blue-600 hover:underline"><i class="fas fa-external-link-alt mr-1"></i>분류·정정 등 전체 관리</a>
@@ -221,7 +221,7 @@ export function accountingPage(c: Context<HonoEnv>) {
               <option value="PAID">지급완료</option>
             </select>
             <input type="text" id="accPurSearch" placeholder="공급처 / 계산서번호..." class="ds-input" style="width:240px;font-size:12px" onkeydown="if(event.key==='Enter')accLoadPurchase()">
-            <button onclick="accLoadPurchase()" class="ds-btn ds-btn-primary ds-btn-sm"><i class="fas fa-search mr-1"></i>조회</button>
+            <button onclick="accLoadPurchase()" class="ds-btn ds-btn-primary ds-btn-sm"><i class="fas fa-search mr-1"></i>검색</button>
             <span class="text-xs text-gray-400">상단 기간=매입일 기준</span>
             <span class="text-xs text-gray-500 ml-1">합계 <b id="accPurSum" class="text-red-600">-</b></span>
             <a href="/purchase-invoices" class="ml-auto text-xs text-blue-600 hover:underline"><i class="fas fa-external-link-alt mr-1"></i>매입확정·정정 전체 관리</a>
@@ -312,7 +312,7 @@ export function accountingPage(c: Context<HonoEnv>) {
               <option value="OTHER">기타</option>
             </select>
             <input type="text" id="accIetSearch" placeholder="거래처 / 내용..." class="ds-input" style="width:220px;font-size:12px" onkeydown="if(event.key==='Enter')accIetSearchNow()">
-            <button onclick="accIetSearchNow()" class="ds-btn ds-btn-primary ds-btn-sm"><i class="fas fa-search mr-1"></i>조회</button>
+            <button onclick="accIetSearchNow()" class="ds-btn ds-btn-primary ds-btn-sm"><i class="fas fa-search mr-1"></i>검색</button>
             <span class="text-xs text-gray-400">상단 기간=거래일 기준</span>
             <span class="text-xs text-gray-500 ml-1">조회 <b id="accIetCount" class="text-gray-700">-</b>건 · 합계 <b id="accIetSum" class="text-indigo-700">-</b></span>
           </div>

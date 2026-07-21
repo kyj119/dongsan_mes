@@ -672,7 +672,7 @@ window.receivingStartInspectionFull = async function(receiptId) {
       : (rejected > 0
         ? '<span class="text-amber-600 font-medium">거부 ' + rejected + '</span>'
         : '<span class="text-green-700">정상</span>');
-    return '<div class="text-xs py-1 border-b border-gray-100">\uD83D\uDCE6 ' + escapeHtml(it.item_name || '품목 #' + it.item_id) + ' \u2014 발주 ' + expected + ' / 수령 ' + received + ' (' + diffBadge + ')</div>';
+    return '<div class="text-xs py-1 border-b border-gray-100"><i class="fas fa-box mr-1"></i>' + escapeHtml(it.item_name || '품목 #' + it.item_id) + ' \u2014 발주 ' + expected + ' / 수령 ' + received + ' (' + diffBadge + ')</div>';
   }).join('');
 
   var body = document.getElementById('inspectionEntryBody');

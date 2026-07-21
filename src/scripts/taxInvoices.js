@@ -287,11 +287,11 @@ function renderUnbilledAccordion() {
     var countBadge = '<span class="text-gray-500 text-xs ml-2">' + orders.length + '건 / ' + clientTotal.toLocaleString() + '원</span>';
     // invoice_method 뱃지
     var invMethodLabels = { PER_ORDER: '건별', MONTHLY: '월합산', UNDECIDED: '미분류', CARD: '카드', ISSUED_BY_OTHER: '타발행' };
-    var invMethodColors = { PER_ORDER: 'bg-blue-50 text-blue-700', MONTHLY: 'bg-purple-50 text-purple-700', UNDECIDED: 'bg-amber-50 text-amber-700' };
+    var invMethodColors = { PER_ORDER: 'bg-blue-50 text-blue-700', MONTHLY: 'bg-green-50 text-green-700', UNDECIDED: 'bg-amber-50 text-amber-700' };
     var clInvMethod = cl.invoice_method || 'PER_ORDER';
     var methodBadge = '';
     if (clInvMethod === 'MONTHLY') {
-      methodBadge = '<span class="px-1.5 py-0.5 rounded text-[10px] font-medium ' + (invMethodColors[clInvMethod] || 'bg-gray-100 text-gray-600') + ' ml-1">' + (invMethodLabels[clInvMethod] || clInvMethod) + ' → 월합산 탭</span>';
+      methodBadge = '<span class="px-1.5 py-0.5 rounded text-[10px] font-medium ' + (invMethodColors[clInvMethod] || 'bg-gray-100 text-gray-600') + ' ml-1"><i class="fas fa-calendar-alt text-[7px] mr-0.5"></i>' + (invMethodLabels[clInvMethod] || clInvMethod) + ' → 월합산 탭</span>';
     } else if (clInvMethod === 'UNDECIDED') {
       methodBadge = '<span class="px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-50 text-amber-700 ml-1"><i class="fas fa-exclamation-circle text-[7px] mr-0.5"></i>' + (invMethodLabels[clInvMethod]) + '</span>';
     }

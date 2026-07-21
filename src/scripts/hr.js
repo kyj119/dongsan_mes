@@ -5,10 +5,10 @@ var DEPT_NAMES = window.DEPT_NAMES || {};
 // 법인명은 window.entityName(id) 사용 (shell.js 공용 헬퍼, DB 기반 — 하드코딩 제거)
 var POSITION_NAMES = window.POSITION_NAMES || {};
 
-function hrEscape(str) {
+var hrEscape = window.escapeHtml || function(str) {
   if (str == null) return '';
   return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
-}
+};
 
 function hrFmtMoney(n) {
   if (n == null || n === '') return '-';
@@ -239,12 +239,10 @@ function hrLoadDeptOptions() {
     if (!list.length) return;
     var byId = {};
     list.forEach(function(d){ byId[d.id] = d; });
-    var esc = function(s){ return String(s==null?'':s).replace(/[&<>"']/g, function(ch){
-      return { '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[ch]; }); };
     var cur = sel.value;
     sel.innerHTML = '<option value="">(부문 미배정)</option>' + list.filter(function(d){ return d.is_active; }).map(function(d){
       var label = (d.parent_id && byId[d.parent_id]) ? byId[d.parent_id].name + ' › ' + d.name : d.name;
-      return '<option value="' + d.id + '">' + esc(label) + '</option>';
+      return '<option value="' + d.id + '">' + hrEscape(label) + '</option>';
     }).join('');
     if (cur) sel.value = cur;
   }).catch(function(){ /* 폴백: 미배정 옵션 유지 */ });
@@ -351,14 +349,9 @@ function hrLoadDeptOptions() {
     if (!list.length) return;
     var sel = document.querySelector('select[name="caps_site_id"]');
     if (!sel) return;
-    var esc = function (s) {
-      return String(s == null ? '' : s).replace(/[&<>"']/g, function (ch) {
-        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch];
-      });
-    };
     var cur = sel.value;
     sel.innerHTML = '<option value="">— 미설정 —</option>' + list.map(function (s) {
-      return '<option value="' + esc(s.id) + '">' + esc(s.name) + ' (' + esc(s.id) + ')</option>';
+      return '<option value="' + hrEscape(s.id) + '">' + hrEscape(s.name) + ' (' + hrEscape(s.id) + ')</option>';
     }).join('');
     if (cur) sel.value = cur;
   }).catch(function () { /* 폴백: 하드코딩 옵션 유지 */ });

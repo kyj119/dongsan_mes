@@ -526,7 +526,7 @@ async function autoConvertToPO(id) {
       }
       var unassigned = res.data.unassigned_items || [];
       if (unassigned.length > 0) {
-        msg += '\n\n⚠ 미매핑 품목:\n• ' + unassigned.join('\n• ');
+        msg += '\n\n미매핑 품목:\n• ' + unassigned.join('\n• ');
       }
       showToast(msg, 'warning');
       loadPRStats();

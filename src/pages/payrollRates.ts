@@ -152,7 +152,7 @@ export const payrollRatesContent = `
         <div class="font-semibold text-gray-900">법정공휴일 달력</div>
         <div class="flex items-center gap-2">
           <input type="number" id="prRHolYearInput" value="2026" class="w-24 border rounded px-2 py-1.5 text-sm text-right" />
-          <button onclick="prRLoadHolidays()" class="border border-gray-300 bg-white text-gray-700 rounded-lg px-3 py-1.5 text-sm hover:bg-gray-50"><i class="fas fa-sync-alt mr-1"></i>조회</button>
+          <button onclick="prRLoadHolidays()" class="border border-gray-300 bg-white text-gray-700 rounded-lg px-3 py-1.5 text-sm hover:bg-gray-50"><i class="fas fa-search mr-1"></i>검색</button>
           <button onclick="prRLoadDefaultHolidays()" class="border border-blue-300 bg-blue-50 text-blue-700 rounded-lg px-3 py-1.5 text-sm hover:bg-blue-100"><i class="fas fa-download mr-1"></i>기본 공휴일 불러오기</button>
           <button onclick="prROpenAddHoliday()" class="bg-blue-600 text-white rounded-lg px-3 py-1.5 text-sm hover:bg-blue-700"><i class="fas fa-plus mr-1"></i>추가</button>
         </div>
@@ -162,7 +162,7 @@ export const payrollRatesContent = `
           <thead class="bg-gray-50 text-xs text-gray-600">
             <tr><th class="text-left px-4 py-2" style="width:150px">날짜</th><th class="text-left px-4 py-2" style="width:80px">요일</th><th class="text-left px-4 py-2">명칭</th><th class="text-center px-4 py-2" style="width:70px">삭제</th></tr>
           </thead>
-          <tbody id="prRHolBody"><tr><td colspan="4" class="text-center text-gray-400 py-6">조회를 눌러주세요</td></tr></tbody>
+          <tbody id="prRHolBody"><tr><td colspan="4" class="text-center text-gray-400 py-6">검색을 눌러주세요</td></tr></tbody>
         </table>
       </div>
     </div>

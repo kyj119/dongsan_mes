@@ -118,7 +118,7 @@ function loadCatTable(code) {
                 + (isMat ? '<td class="p-2 text-right tabular-nums text-gray-500 text-xs">' + (it.width_mm || '') + '</td>' : '')
                 + '<td class="p-2">' + getTypeBadge(it) + '</td>'
                 + '<td class="p-2 text-right tabular-nums">' + (it.base_price || 0).toLocaleString() + '</td>'
-                + '<td class="p-2">' + (it.is_active !== 0 ? '<span class="text-green-600 text-xs">활성</span>' : '<span class="text-gray-400 text-xs">비활성</span>') + '</td>'
+                + '<td class="p-2">' + (it.is_active !== 0 ? '<span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs bg-green-50 text-green-700"><i class="fas fa-check-circle mr-1"></i>활성</span>' : '<span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs bg-gray-100 text-gray-600"><i class="fas fa-ban mr-1"></i>비활성</span>') + '</td>'
                 + '<td class="p-2 whitespace-nowrap">' + itemActionBtns(it, en) + '</td></tr>';
         });
         html += '</tbody></table></div>';
@@ -161,7 +161,7 @@ function buildGroupedHtml(items, expand) {
                 + '<td class="p-2" title="' + escapeHtml((it.item_name || '') + ' · ' + spec) + '">' + escapeHtml(it.item_name || '') + specHint + '</td>'
                 + '<td class="p-2">' + getTypeBadge(it) + '</td>'
                 + '<td class="p-2 text-right tabular-nums">' + (it.base_price || 0).toLocaleString() + '</td>'
-                + '<td class="p-2">' + (it.is_active !== 0 ? '<span class="text-green-600 text-xs">활성</span>' : '<span class="text-gray-400 text-xs">비활성</span>') + '</td>'
+                + '<td class="p-2">' + (it.is_active !== 0 ? '<span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs bg-green-50 text-green-700"><i class="fas fa-check-circle mr-1"></i>활성</span>' : '<span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs bg-gray-100 text-gray-600"><i class="fas fa-ban mr-1"></i>비활성</span>') + '</td>'
                 + '<td class="p-2 whitespace-nowrap">' + itemActionBtns(it, en) + '</td></tr>';
         });
         html += '<div class="border rounded-lg overflow-hidden">'

@@ -25,12 +25,12 @@ const TYPE_LABEL = {
   MANUAL: '수동'
 };
 
-function escTask(s) {
+var escTask = window.escapeHtml || function(s) {
   if (s === null || s === undefined) return '';
   return String(s).replace(/[&<>"']/g, function(m) {
     return ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' })[m];
   });
-}
+};
 
 async function loadStats() {
   try {

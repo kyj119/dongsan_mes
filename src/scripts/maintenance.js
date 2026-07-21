@@ -55,9 +55,9 @@
       html += '<tr><td colspan="6" class="text-center text-secondary">등록된 스케줄 없음</td></tr>';
     }
     d.schedules.forEach(function(s) {
-      var badge = s.due_status === 'OVERDUE' ? '<span class="badge badge-danger">초과</span>'
-        : s.due_status === 'DUE_SOON' ? '<span class="badge badge-warning">임박</span>'
-        : '<span class="badge badge-success">정상</span>';
+      var badge = s.due_status === 'OVERDUE' ? '<span class="badge badge-danger"><i class="fas fa-exclamation-triangle mr-1"></i>초과</span>'
+        : s.due_status === 'DUE_SOON' ? '<span class="badge badge-warning"><i class="far fa-clock mr-1"></i>임박</span>'
+        : '<span class="badge badge-success"><i class="fas fa-check-circle mr-1"></i>정상</span>';
       html += '<tr>';
       html += '<td title="' + esc(s.equipment_name) + '">' + esc(s.equipment_name) + '</td>';
       html += '<td title="' + esc(s.title) + '">' + esc(s.title) + '</td>';
@@ -78,9 +78,9 @@
       html += '<tr><td colspan="6" class="text-center text-secondary">등록된 소모품 없음</td></tr>';
     }
     d.consumables.forEach(function(item) {
-      var badge = item.due_status === 'OVERDUE' ? '<span class="badge badge-danger">초과</span>'
-        : item.due_status === 'DUE_SOON' ? '<span class="badge badge-warning">임박</span>'
-        : '<span class="badge badge-success">정상</span>';
+      var badge = item.due_status === 'OVERDUE' ? '<span class="badge badge-danger"><i class="fas fa-exclamation-triangle mr-1"></i>초과</span>'
+        : item.due_status === 'DUE_SOON' ? '<span class="badge badge-warning"><i class="far fa-clock mr-1"></i>임박</span>'
+        : '<span class="badge badge-success"><i class="fas fa-check-circle mr-1"></i>정상</span>';
       html += '<tr>';
       html += '<td title="' + esc(item.equipment_name) + '">' + esc(item.equipment_name) + '</td>';
       html += '<td title="' + esc(item.name) + '">' + esc(item.name) + '</td>';

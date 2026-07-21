@@ -11,13 +11,13 @@
   var signSection = document.getElementById('signSection');
   var errorMsg = document.getElementById('errorMsg');
 
-  // 독립 페이지(전역 escapeHtml 없음) — innerHTML 삽입 free-text XSS 방지
-  function esc(s) {
+  // 독립 페이지 — 전역 escapeHtml 있으면 위임, 없으면 폴백(innerHTML 삽입 free-text XSS 방지)
+  var esc = window.escapeHtml || function(s) {
     if (s == null) return '';
     return String(s).replace(/[&<>"']/g, function(ch) {
       return ch === '&' ? '&amp;' : ch === '<' ? '&lt;' : ch === '>' ? '&gt;' : ch === '"' ? '&quot;' : '&#39;';
     });
-  }
+  };
 
   // 로그인 폼 제출
   var form = document.getElementById('selfAuthForm');
