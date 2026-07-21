@@ -17,6 +17,10 @@ export function orderFormPage(c: Context<HonoEnv>) {
   if (type === 'dist') {
     return orderFormDistPage(c)
   }
+  // 웹 AI추출·합판(시트배치) 진입점 게이트 — JSX 디자이너 세션 루프로 전환 (IA web sunset Phase 0).
+  // false=숨김. 하부구조(ai_analysis_requests·ProcessOrderItem -3 passthrough·카드 썸네일)는 존치.
+  // ③직접연결(itemRow '파일 연결')은 이행기 fallback으로 무관·유지.
+  const IA_WEB_INTAKE_ENABLED = false
   return renderPage(c, {
     title: '주문 등록',
     activePage: '/orders',
@@ -136,6 +140,7 @@ export function orderFormPage(c: Context<HonoEnv>) {
                         </div>
                     </div>
 
+                    ${IA_WEB_INTAKE_ENABLED ? `
                     <!-- AI 파일 자동 추출 패널 (드래그 앤 드롭 지원) -->
                     <div class="mb-6 bg-blue-50 border border-blue-200 rounded-xl p-4"
                          id="aiDropZone"
@@ -269,6 +274,7 @@ export function orderFormPage(c: Context<HonoEnv>) {
                             </div>
                         </div>
                     </div>
+                    ` : ''}
 
                     <!-- 주문 품목 -->
                     <div class="mb-6">
