@@ -1077,19 +1077,19 @@ function renderSupplierTable(suppliers) {
         row.onclick = function() { selectSupplier(sp.id, sp.client_name || sp.supplier_name || ''); };
         row.innerHTML =
             '<td class="px-4 py-2 font-medium">' + escapeHtml(sp.client_name || sp.supplier_name || '') + '</td>' +
-            '<td class="px-4 py-2 text-right">' + (sp.po_count || 0) + '</td>' +
-            '<td class="px-4 py-2 text-right">' + (sp.total_purchases || 0).toLocaleString() + '</td>' +
-            '<td class="px-4 py-2 text-right">' + (sp.total_payments || 0).toLocaleString() + '</td>' +
-            '<td class="px-4 py-2 text-right ' + balColor + '">' + (sp.purchase_balance || 0).toLocaleString() + '</td>';
+            '<td class="px-4 py-2 text-right tabular-nums">' + (sp.po_count || 0) + '</td>' +
+            '<td class="px-4 py-2 text-right tabular-nums">' + (sp.total_purchases || 0).toLocaleString() + '</td>' +
+            '<td class="px-4 py-2 text-right tabular-nums">' + (sp.total_payments || 0).toLocaleString() + '</td>' +
+            '<td class="px-4 py-2 text-right tabular-nums ' + balColor + '">' + (sp.purchase_balance || 0).toLocaleString() + '</td>';
         tbody.appendChild(row);
     });
     tfoot.innerHTML =
         '<tr>' +
         '<td class="px-4 py-2">합계 (' + suppliers.length + '개 공급업체)</td>' +
-        '<td class="px-4 py-2 text-right">' + sumOrders + '</td>' +
-        '<td class="px-4 py-2 text-right">' + sumPurchase.toLocaleString() + '</td>' +
-        '<td class="px-4 py-2 text-right">' + sumPayments.toLocaleString() + '</td>' +
-        '<td class="px-4 py-2 text-right ' + (sumBalance > 0 ? 'text-red-600' : 'text-green-600') + '">' + sumBalance.toLocaleString() + '</td>' +
+        '<td class="px-4 py-2 text-right tabular-nums">' + sumOrders + '</td>' +
+        '<td class="px-4 py-2 text-right tabular-nums">' + sumPurchase.toLocaleString() + '</td>' +
+        '<td class="px-4 py-2 text-right tabular-nums">' + sumPayments.toLocaleString() + '</td>' +
+        '<td class="px-4 py-2 text-right tabular-nums ' + (sumBalance > 0 ? 'text-red-600' : 'text-green-600') + '">' + sumBalance.toLocaleString() + '</td>' +
         '</tr>';
 }
 
@@ -1217,8 +1217,8 @@ async function loadPurchaseClientLedger(clientId) {
                         '<td class="px-4 py-2"><span class="px-2 py-0.5 text-xs rounded ' + badgeClass + '">' + badgeText + '</span></td>' +
                         '<td class="px-4 py-2">' + escapeHtml(tx.description || '-') + '</td>' +
                         '<td class="px-4 py-2"></td><td class="px-4 py-2"></td><td class="px-4 py-2"></td>' +
-                        '<td class="px-4 py-2 text-right">' + ((tx.credit || 0) > 0 ? (tx.credit).toLocaleString() : '-') + '</td>' +
-                        '<td class="px-4 py-2 text-right ' + balClass + '">' + (tx.balance || 0).toLocaleString() + '</td>' +
+                        '<td class="px-4 py-2 text-right tabular-nums">' + ((tx.credit || 0) > 0 ? (tx.credit).toLocaleString() : '-') + '</td>' +
+                        '<td class="px-4 py-2 text-right tabular-nums ' + balClass + '">' + (tx.balance || 0).toLocaleString() + '</td>' +
                         actionCell;
                     txBody.appendChild(crow);
                 }
@@ -2171,15 +2171,18 @@ function buildLedgerStatementHtml(clientName, transactions, summary, mode) {
       + '<td style="background:#f0f0f0;border:1px solid #999;padding:5px 10px;font-size:10pt;font-weight:bold;">' + creditLabel + '</td>'
       + '<td style="border:1px solid #999;padding:5px 10px;font-size:10pt;text-align:right;">' + (summary.total_payments || 0).toLocaleString() + '원</td></tr></table>';
 
-    // 거래 내역 테이블
+    // 거래 내역 테이블 — 화면과 동일한 공급가액·부가세·합계 3열 분할 (세금계산서 표준)
     h += '<table style="width:100%;border-collapse:collapse;border:1px solid #999;">'
       + '<tr style="background:#e5e5e5;"><th style="border:1px solid #999;padding:4px 6px;font-size:8pt;">일자</th>'
       + '<th style="border:1px solid #999;padding:4px 6px;font-size:8pt;">구분</th>'
       + '<th style="border:1px solid #999;padding:4px 6px;font-size:8pt;text-align:left;">내용</th>'
+      + '<th style="border:1px solid #999;padding:4px 6px;font-size:8pt;text-align:right;">공급가액</th>'
+      + '<th style="border:1px solid #999;padding:4px 6px;font-size:8pt;text-align:right;">부가세</th>'
       + '<th style="border:1px solid #999;padding:4px 6px;font-size:8pt;text-align:right;">' + debitLabel + '(+)</th>'
       + '<th style="border:1px solid #999;padding:4px 6px;font-size:8pt;text-align:right;">' + creditLabel + '(-)</th>'
       + '<th style="border:1px solid #999;padding:4px 6px;font-size:8pt;text-align:right;">잔액</th></tr>';
 
+    var sumSupply = 0, sumVat = 0;
     (transactions || []).forEach(function(tx, i) {
         var bg = i % 2 ? '#f9f9f9' : '#fff';
         var typeLabel;
@@ -2187,6 +2190,7 @@ function buildLedgerStatementHtml(clientName, transactions, summary, mode) {
         else if (tx.type === 'adjustment') typeLabel = '감액';
         else typeLabel = isPur ? '발주' : '주문';
         var desc = '';
+        var supplyCell = '', vatCell = '';
         if (tx.type === 'payment') {
             desc = tx.notes || tx.reference || '';
         } else if (tx.type === 'adjustment') {
@@ -2198,11 +2202,20 @@ function buildLedgerStatementHtml(clientName, transactions, summary, mode) {
                 desc += ' ' + first + (tx.items.length > 1 ? ' 외 ' + (tx.items.length - 1) + '건' : '');
             }
             if (isPur && !desc) desc = (tx.description || '');
+            var _av = ledgerAllocVat(tx.items, tx.debit);
+            if (_av.hasBreakdown) {
+                supplyCell = _av.supply.toLocaleString();
+                vatCell = _av.vat.toLocaleString();
+                sumSupply += _av.supply;
+                sumVat += _av.vat;
+            }
         }
         h += '<tr style="background:' + bg + ';">'
           + '<td style="border:1px solid #ddd;padding:3px 6px;font-size:8pt;text-align:center;">' + formatDate(tx.date) + '</td>'
           + '<td style="border:1px solid #ddd;padding:3px 6px;font-size:8pt;text-align:center;">' + typeLabel + '</td>'
           + '<td style="border:1px solid #ddd;padding:3px 6px;font-size:8pt;">' + escapeHtml(desc) + '</td>'
+          + '<td style="border:1px solid #ddd;padding:3px 6px;font-size:8pt;text-align:right;color:#555;">' + supplyCell + '</td>'
+          + '<td style="border:1px solid #ddd;padding:3px 6px;font-size:8pt;text-align:right;color:#777;">' + vatCell + '</td>'
           + '<td style="border:1px solid #ddd;padding:3px 6px;font-size:8pt;text-align:right;">' + (tx.debit > 0 ? tx.debit.toLocaleString() : '') + '</td>'
           + '<td style="border:1px solid #ddd;padding:3px 6px;font-size:8pt;text-align:right;">' + (tx.credit > 0 ? tx.credit.toLocaleString() : '') + '</td>'
           + '<td style="border:1px solid #ddd;padding:3px 6px;font-size:8pt;text-align:right;font-weight:bold;">' + tx.balance.toLocaleString() + '</td></tr>';
@@ -2217,12 +2230,16 @@ function buildLedgerStatementHtml(clientName, transactions, summary, mode) {
           + '<td style="border:1px solid #ddd;padding:3px 6px;font-size:8pt;">조회 시작일 이전 잔액</td>'
           + '<td style="border:1px solid #ddd;padding:3px 6px;font-size:8pt;"></td>'
           + '<td style="border:1px solid #ddd;padding:3px 6px;font-size:8pt;"></td>'
+          + '<td style="border:1px solid #ddd;padding:3px 6px;font-size:8pt;"></td>'
+          + '<td style="border:1px solid #ddd;padding:3px 6px;font-size:8pt;"></td>'
           + '<td style="border:1px solid #ddd;padding:3px 6px;font-size:8pt;text-align:right;">' + openBal.toLocaleString() + '</td></tr>';
     }
 
     // 합계
     h += '<tr style="background:#e5e5e5;font-weight:bold;">'
       + '<td colspan="3" style="border:1px solid #999;padding:5px 8px;font-size:9pt;text-align:center;">합계</td>'
+      + '<td style="border:1px solid #999;padding:5px 6px;font-size:9pt;text-align:right;">' + (sumSupply > 0 ? sumSupply.toLocaleString() : '') + '</td>'
+      + '<td style="border:1px solid #999;padding:5px 6px;font-size:9pt;text-align:right;">' + (sumSupply > 0 ? sumVat.toLocaleString() : '') + '</td>'
       + '<td style="border:1px solid #999;padding:5px 6px;font-size:9pt;text-align:right;">' + debitTotal.toLocaleString() + '</td>'
       + '<td style="border:1px solid #999;padding:5px 6px;font-size:9pt;text-align:right;">' + ((summary.total_payments || 0) + (summary.total_adjustments || 0)).toLocaleString() + '</td>'
       + '<td style="border:1px solid #999;padding:5px 6px;font-size:9pt;text-align:right;color:#dc2626;">' + (summary.balance || 0).toLocaleString() + '</td></tr>';
