@@ -178,7 +178,7 @@
     document.getElementById('passwordField').style.display = '';
     document.getElementById('f_username').disabled = false;
     document.getElementById('submitBtn').textContent = '생성';
-    document.getElementById('userModal').style.display = 'flex';
+    document.getElementById('userModal').classList.remove('hidden');
   };
 
   window.showEditModal = function(u) {
@@ -196,11 +196,11 @@
     document.getElementById('passwordField').style.display = 'none';
     document.getElementById('f_username').disabled = true;
     document.getElementById('submitBtn').textContent = '저장';
-    document.getElementById('userModal').style.display = 'flex';
+    document.getElementById('userModal').classList.remove('hidden');
   };
 
   window.closeModal = function() {
-    document.getElementById('userModal').style.display = 'none';
+    document.getElementById('userModal').classList.add('hidden');
   };
 
   window.submitUserForm = function(e) {
@@ -249,11 +249,11 @@
     resetTargetId = id;
     document.getElementById('resetTargetName').textContent = name;
     document.getElementById('newPassword').value = '';
-    document.getElementById('resetPwModal').style.display = 'flex';
+    document.getElementById('resetPwModal').classList.remove('hidden');
   };
 
   window.closeResetModal = function() {
-    document.getElementById('resetPwModal').style.display = 'none';
+    document.getElementById('resetPwModal').classList.add('hidden');
     resetTargetId = null;
   };
 

@@ -47,8 +47,10 @@ document.addEventListener('keydown', function(e) {
   var top = modals[0];
   e.preventDefault();
   e.stopImmediatePropagation();
-  // hidden 토글 방식 모달 (id가 있고 원래 HTML에 존재)
-  if (top.id && document.querySelector('#' + top.id + '.hidden') === null && top.parentElement === document.querySelector('.main-content')?.parentElement) {
+  // 부수효과(스크롤락 등) 있는 모달은 전용 닫기 함수에 위임 — 단순 hidden 추가로 닫으면 복원 안 됨
+  if (top.dataset && top.dataset.escClose && typeof window[top.dataset.escClose] === 'function') {
+    window[top.dataset.escClose]();
+  } else if (top.id && document.querySelector('#' + top.id + '.hidden') === null && top.parentElement === document.querySelector('.main-content')?.parentElement) {
     top.classList.add('hidden');
   } else if (top.id && !top.dataset.dynamic) {
     top.classList.add('hidden');

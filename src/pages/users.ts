@@ -31,6 +31,8 @@ export function usersPage(c: Context<HonoEnv>) {
         display: flex; align-items: center; justify-content: center;
         z-index: 1000;
       }
+      /* 전역 ESC closer가 hidden 클래스로 닫으므로 인라인 display 대신 클래스 토글 (P0-2) */
+      .modal-overlay.hidden { display: none; }
       .modal-box {
         background: #fff; border-radius: 12px; padding: 24px;
         width: 100%; max-width: 480px;
@@ -61,7 +63,7 @@ export function usersPage(c: Context<HonoEnv>) {
       </div>
 
       <!-- Create / Edit Modal -->
-      <div id="userModal" class="modal-overlay" style="display:none;">
+      <div id="userModal" class="modal-overlay hidden">
         <div class="modal-box">
           <div class="flex justify-between items-center mb-5">
             <h3 class="text-lg font-bold" id="modalTitle">사용자 추가</h3>
@@ -131,7 +133,7 @@ export function usersPage(c: Context<HonoEnv>) {
       </div>
 
       <!-- Reset Password Modal -->
-      <div id="resetPwModal" class="modal-overlay" style="display:none;">
+      <div id="resetPwModal" class="modal-overlay hidden">
         <div class="modal-box">
           <div class="flex justify-between items-center mb-5">
             <h3 class="text-lg font-bold">비밀번호 초기화</h3>

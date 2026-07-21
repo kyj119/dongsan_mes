@@ -94,7 +94,7 @@ export function qualityPage(c: Context) {
     </div>
 
     <!-- 클레임 생성 모달 -->
-    <div id="qcClaimModal" class="fixed inset-0 bg-black/40 z-50 hidden items-center justify-center p-4" style="display:none;">
+    <div id="qcClaimModal" class="fixed inset-0 bg-black/40 z-50 flex hidden items-center justify-center p-4">
       <div class="bg-white rounded-lg shadow-xl w-full max-w-md p-4 space-y-3">
         <div class="flex items-center justify-between"><h3 class="text-sm font-semibold">새 클레임</h3><button onclick="window.qcCloseModal('qcClaimModal')" class="text-gray-400"><i class="fas fa-times"></i></button></div>
         <div>
@@ -123,7 +123,7 @@ export function qualityPage(c: Context) {
     </div>
 
     <!-- 클레임 해결 모달 -->
-    <div id="qcResolveModal" class="fixed inset-0 bg-black/40 z-50 hidden items-center justify-center p-4" style="display:none;">
+    <div id="qcResolveModal" class="fixed inset-0 bg-black/40 z-50 flex hidden items-center justify-center p-4">
       <div class="bg-white rounded-lg shadow-xl w-full max-w-sm p-4 space-y-3">
         <div class="flex items-center justify-between"><h3 class="text-sm font-semibold">클레임 해결</h3><button onclick="window.qcCloseModal('qcResolveModal')" class="text-gray-400"><i class="fas fa-times"></i></button></div>
         <input type="hidden" id="qcResolveId" />
@@ -141,7 +141,7 @@ export function qualityPage(c: Context) {
     </div>
 
     <!-- 불량코드 모달 -->
-    <div id="qcDefectModal" class="fixed inset-0 bg-black/40 z-50 hidden items-center justify-center p-4" style="display:none;">
+    <div id="qcDefectModal" class="fixed inset-0 bg-black/40 z-50 flex hidden items-center justify-center p-4">
       <div class="bg-white rounded-lg shadow-xl w-full max-w-sm p-4 space-y-3">
         <div class="flex items-center justify-between"><h3 class="text-sm font-semibold">불량코드 추가</h3><button onclick="window.qcCloseModal('qcDefectModal')" class="text-gray-400"><i class="fas fa-times"></i></button></div>
         <div class="grid grid-cols-2 gap-2">
@@ -162,7 +162,7 @@ export function qualityPage(c: Context) {
     </div>
 
     <!-- 반품 상태 모달 -->
-    <div id="qcReturnModal" class="fixed inset-0 bg-black/40 z-50 hidden items-center justify-center p-4" style="display:none;">
+    <div id="qcReturnModal" class="fixed inset-0 bg-black/40 z-50 flex hidden items-center justify-center p-4">
       <div class="bg-white rounded-lg shadow-xl w-full max-w-sm p-4 space-y-3">
         <div class="flex items-center justify-between"><h3 class="text-sm font-semibold">반품 상태 변경</h3><button onclick="window.qcCloseModal('qcReturnModal')" class="text-gray-400"><i class="fas fa-times"></i></button></div>
         <input type="hidden" id="qcReturnId" />
