@@ -249,7 +249,7 @@ function displayClients(clients, pagination) {
 
     document.getElementById('paginationArea').innerHTML =
         '<div class="flex justify-between items-center">'
-        + '<div class="text-xs text-gray-500">싙 <span class="font-medium">' + p.total.toLocaleString('ko-KR') + '</span>건 (페이지 ' + p.page + ' / ' + p.total_pages + ')</div>'
+        + '<div class="text-xs text-gray-500">총 <span class="font-medium">' + p.total.toLocaleString('ko-KR') + '</span>건 (페이지 ' + p.page + ' / ' + p.total_pages + ')</div>'
         + '<div class="flex gap-1 items-center">'
             + (p.page > 1 ? '<button onclick="loadClients(1)" class="px-2 py-1 border rounded text-xs hover:bg-gray-50"><i class="fas fa-angle-double-left"></i></button>' : '')
             + (p.page > 1 ? '<button onclick="loadClients(' + (p.page - 1) + ')" class="px-2 py-1 border rounded text-xs hover:bg-gray-50"><i class="fas fa-angle-left"></i></button>' : '')
@@ -487,7 +487,7 @@ async function importExcel() {
             resultDiv.innerHTML =
                 '<div class="font-medium text-green-700 mb-1"><i class="fas fa-check-circle mr-1"></i>임포트 완료</div>'
                 + '<div class="text-gray-700">'
-                + '전체: ' + r.total + ' / 신규: ' + r.inserted + ' / 업데이트: ' + r.updated + ' / 건너눠: ' + r.skipped
+                + '전체: ' + r.total + ' / 신규: ' + r.inserted + ' / 업데이트: ' + r.updated + ' / 건너뜀: ' + r.skipped
                 + (r.errors.length > 0 ? '<div class="mt-1 text-red-600 text-xs">' + r.errors.slice(0,3).join('<br>') + '</div>' : '')
                 + '</div>';
             loadClients(currentPage);
