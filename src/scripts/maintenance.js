@@ -145,7 +145,7 @@
     return '₩' + Number(v).toLocaleString();
   }
 
-  function esc(s) { return s ? String(s).replace(/</g, '&lt;').replace(/>/g, '&gt;') : ''; }
+  function esc(s) { return s == null ? '' : window.escapeHtml(String(s)); }
 
   // 사이드바 통합: /equipment 허브 이식 시 __maintDefer=true → 정비 탭 첫 진입에 window.__maintInit 호출(멱등). 단독 /maintenance는 flag 없어 즉시.
   var __maintInited = false;

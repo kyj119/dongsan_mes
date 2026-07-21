@@ -37,13 +37,14 @@
                     listHtml = '<div class="text-center py-8 text-gray-400"><i class="fas fa-inbox text-2xl mb-2"></i><p>검색 결과가 없습니다.</p></div>';
                 } else {
                     listHtml = clients.map(function(cl) {
-                        var safeName = (cl.client_name || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+                        // JS 문자열 이스케이프 후 속성 컨텍스트용 HTML 이스케이프 (둘 다 필요)
+                        var safeName = escapeHtml((cl.client_name || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'"));
                         return '<div class="client-modal-row" onclick="selectClientFromModal(' + cl.id + ',\'' + safeName + '\')">'
-                            + '<div class="font-medium text-sm">' + (cl.client_name || '') + '</div>'
+                            + '<div class="font-medium text-sm">' + escapeHtml(cl.client_name || '') + '</div>'
                             + '<div class="text-xs text-gray-500">'
-                            + (cl.client_code || '')
-                            + (cl.business_registration_number ? ' | ' + cl.business_registration_number : '')
-                            + (cl.phone ? ' | ' + cl.phone : '')
+                            + escapeHtml(cl.client_code || '')
+                            + (cl.business_registration_number ? ' | ' + escapeHtml(cl.business_registration_number) : '')
+                            + (cl.phone ? ' | ' + escapeHtml(cl.phone) : '')
                             + '</div></div>';
                     }).join('');
                 }

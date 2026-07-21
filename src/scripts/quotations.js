@@ -108,8 +108,8 @@ function renderQuotationTable(orders) {
     actions += '</div>';
 
     return '<tr class="border-t hover:bg-gray-50 cursor-pointer" ondblclick="viewQuotation(' + q.id + ')">'
-      + '<td class="font-medium text-blue-700">' + (q.quotation_number || '-') + '</td>'
-      + '<td>' + (q.client_name || '-') + '</td>'
+      + '<td class="font-medium text-blue-700">' + escapeHtml(q.quotation_number || '-') + '</td>'
+      + '<td>' + escapeHtml(q.client_name || '-') + '</td>'
       + '<td>' + itemCell + '</td>'
       + '<td class="text-right font-medium">' + amount + '</td>'
       + '<td class="text-center">' + validUntilCell + '</td>'
@@ -146,10 +146,10 @@ async function viewQuotation(id) {
       var amt = parseFloat(it.amount) || 0;
       totalAmount += amt;
       var spec = (it.width && it.height) ? it.width + 'x' + it.height + 'cm' : '';
-      var nameDisplay = (it.item_name || '-') + (spec ? ' <span class="text-gray-400 text-xs">[' + spec + ']</span>' : '');
+      var nameDisplay = escapeHtml(it.item_name || '-') + (spec ? ' <span class="text-gray-400 text-xs">[' + spec + ']</span>' : '');
       return '<tr class="border-t">'
         + '<td class="px-3 py-2" title="' + escapeHtml(it.item_name || '') + '">' + nameDisplay + '</td>'
-        + '<td class="px-3 py-2 text-center text-gray-500">' + (it.spec || spec || '-') + '</td>'
+        + '<td class="px-3 py-2 text-center text-gray-500">' + escapeHtml(it.spec || spec || '-') + '</td>'
         + '<td class="px-3 py-2 text-center">' + (it.quantity || 0) + '</td>'
         + '<td class="px-3 py-2 text-right">' + (parseFloat(it.unit_price) || 0).toLocaleString() + '</td>'
         + '<td class="px-3 py-2 text-right font-medium">' + amt.toLocaleString() + '</td>'
@@ -167,7 +167,7 @@ async function viewQuotation(id) {
       '<div class="flex justify-between items-start mb-4">'
       + '<div>'
       + '<h3 class="text-lg font-bold"><i class="fas fa-file-alt text-blue-600 mr-2"></i>'
-      + (order.quotation_number || order.order_number || '') + '</h3>'
+      + escapeHtml(order.quotation_number || order.order_number || '') + '</h3>'
       + '<div class="mt-1">' + badge + '</div>'
       + '</div>'
       + '<div class="flex gap-2 items-center">'
@@ -179,11 +179,11 @@ async function viewQuotation(id) {
       + '</div>'
       + '</div>'
       + '<div class="grid grid-cols-2 gap-3 mb-4 text-sm bg-gray-50 rounded-lg p-4">'
-      + '<div><span class="text-gray-500">거래처:</span> <span class="font-medium">' + (client.client_name || '-') + '</span></div>'
-      + '<div><span class="text-gray-500">담당자:</span> ' + (client.contact_name || '-') + '</div>'
-      + '<div><span class="text-gray-500">전화:</span> ' + (client.phone || '-') + '</div>'
+      + '<div><span class="text-gray-500">거래처:</span> <span class="font-medium">' + escapeHtml(client.client_name || '-') + '</span></div>'
+      + '<div><span class="text-gray-500">담당자:</span> ' + escapeHtml(client.contact_name || '-') + '</div>'
+      + '<div><span class="text-gray-500">전화:</span> ' + escapeHtml(client.phone || '-') + '</div>'
       + '<div><span class="text-gray-500">유효기한:</span> ' + validUntilDisplay + '</div>'
-      + '<div><span class="text-gray-500">작성자:</span> <span class="font-medium">' + (order.created_by_name || '-') + '</span></div>'
+      + '<div><span class="text-gray-500">작성자:</span> <span class="font-medium">' + escapeHtml(order.created_by_name || '-') + '</span></div>'
       + '<div><span class="text-gray-500">견적금액:</span> <span class="font-bold text-blue-700">' + (parseFloat(order.final_amount) || 0).toLocaleString() + '원</span></div>'
       + '<div><span class="text-gray-500">작성일:</span> ' + ((order.created_at || '').substring(0, 10) || '-') + '</div>'
       + (order.notes ? '<div class="col-span-2"><span class="text-gray-500">비고:</span> ' + escapeHtml(order.notes) + '</div>' : '')

@@ -1307,8 +1307,8 @@
       }
     }).catch(function(e) {
       var msg = (e.response && e.response.data && e.response.data.error) ? e.response.data.error : '저장 실패';
-      // 바로빌 실패 메시지는 여러 줄(필요항목/입력현황) — 줄바꿈 렌더링 + 오래 표시.
-      showToast(String(msg).replace(/\n/g, '<br>'), 'error', 15000);
+      // 바로빌 실패 메시지는 여러 줄(필요항목/입력현황) — showToast가 개행을 <br>로 렌더링 + 오래 표시.
+      showToast(String(msg), 'error', 15000);
     });
   };
 

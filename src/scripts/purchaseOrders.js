@@ -244,17 +244,17 @@ async function viewDetail(id) {
         lineStatus === 'CANCELLED' ? '<span class="inline-flex items-center px-2 py-0.5 text-xs rounded bg-red-50 text-red-700"><i class="fas fa-times-circle text-[7px] mr-1"></i>취소</span>' :
         '<span class="inline-flex items-center px-2 py-0.5 text-xs rounded bg-gray-100 text-gray-500"><i class="far fa-clock text-[7px] mr-1"></i>대기</span>';
       var zoneLabel = it.zone_name
-        ? '<span class="text-xs text-blue-700"><i class="fas fa-warehouse mr-0.5"></i>' + it.zone_name + '</span>'
+        ? '<span class="text-xs text-blue-700"><i class="fas fa-warehouse mr-0.5"></i>' + escapeHtml(it.zone_name) + '</span>'
         : '<span class="text-xs text-gray-400">창고 미지정</span>';
       var personLabel = it.received_by_name
-        ? '<span class="text-xs text-gray-600">' + it.received_by_name + '</span>'
+        ? '<span class="text-xs text-gray-600">' + escapeHtml(it.received_by_name) + '</span>'
         + (it.received_at ? ' <span class="text-xs text-gray-400">· ' + (it.received_at || '').slice(5, 16).replace('T', ' ') + '</span>' : '')
-        : (it.zone_manager_name ? '<span class="text-xs text-gray-500">담당 ' + it.zone_manager_name + '</span>' : '<span class="text-xs text-gray-400">-</span>');
+        : (it.zone_manager_name ? '<span class="text-xs text-gray-500">담당 ' + escapeHtml(it.zone_manager_name) + '</span>' : '<span class="text-xs text-gray-400">-</span>');
       var specBadge = (it.item_specification || it.item_width_mm)
-        ? ' <span class="text-xs font-semibold text-emerald-600">' + (it.item_specification || ((it.item_width_mm / 10).toFixed(0) + 'cm')) + '</span>'
+        ? ' <span class="text-xs font-semibold text-emerald-600">' + escapeHtml(it.item_specification || ((it.item_width_mm / 10).toFixed(0) + 'cm')) + '</span>'
         : '';
       return '<tr class="border-t">'
-        + '<td class="px-3 py-2"><div class="font-medium">' + (it.item_name || '-') + specBadge + '</div><div class="mt-0.5">' + zoneLabel + '</div></td>'
+        + '<td class="px-3 py-2"><div class="font-medium">' + escapeHtml(it.item_name || '-') + specBadge + '</div><div class="mt-0.5">' + zoneLabel + '</div></td>'
         + '<td class="px-3 py-2 text-center">' + ordered + '</td>'
         + '<td class="px-3 py-2 text-center">' + (it.unit || '-') + '</td>'
         + '<td class="px-3 py-2 text-right">' + ((it.unit_price || 0).toLocaleString()) + '</td>'
@@ -371,10 +371,10 @@ async function openReceiveModal(id) {
       var remaining = (it.quantity || 0) - (it.received_quantity || 0);
       var defaultRecv = Math.max(0, remaining);
       var recvSpec = (it.item_specification || it.item_width_mm)
-        ? ' <span class="text-xs font-semibold text-emerald-600">' + (it.item_specification || ((it.item_width_mm / 10).toFixed(0) + 'cm')) + '</span>'
+        ? ' <span class="text-xs font-semibold text-emerald-600">' + escapeHtml(it.item_specification || ((it.item_width_mm / 10).toFixed(0) + 'cm')) + '</span>'
         : '';
       return '<tr class="border-t">'
-        + '<td class="px-3 py-2 text-sm">' + (it.item_name || '-') + recvSpec + '</td>'
+        + '<td class="px-3 py-2 text-sm">' + escapeHtml(it.item_name || '-') + recvSpec + '</td>'
         + '<td class="px-3 py-2 text-center text-sm">' + (it.quantity || 0) + '</td>'
         + '<td class="px-3 py-2 text-center text-sm">' + (it.received_quantity || 0) + '</td>'
         + '<td class="px-3 py-2 text-center text-sm text-orange-600 font-medium">' + Math.max(0, remaining) + '</td>'
@@ -535,12 +535,12 @@ async function loadInspectionHistory(poId) {
         var itBadge = '<span class="px-1.5 py-0.5 rounded text-xs ' + (inspStatusColors[itStatus] || 'bg-gray-100 text-gray-700') + '">'
           + (inspStatusLabels[itStatus] || itStatus) + '</span>';
         return '<tr class="border-t">'
-          + '<td class="px-2 py-1.5 text-xs">' + (it.item_name || '-') + '</td>'
+          + '<td class="px-2 py-1.5 text-xs">' + escapeHtml(it.item_name || '-') + '</td>'
           + '<td class="px-2 py-1.5 text-xs text-center">' + (it.received_quantity || 0) + '</td>'
           + '<td class="px-2 py-1.5 text-xs text-center text-green-700">' + (it.accepted_quantity || 0) + '</td>'
           + '<td class="px-2 py-1.5 text-xs text-center text-red-700">' + (it.rejected_quantity || 0) + '</td>'
           + '<td class="px-2 py-1.5 text-xs text-center">' + itBadge + '</td>'
-          + '<td class="px-2 py-1.5 text-xs text-gray-500">' + (it.reject_memo || '') + '</td>'
+          + '<td class="px-2 py-1.5 text-xs text-gray-500">' + escapeHtml(it.reject_memo || '') + '</td>'
           + '</tr>';
       }).join('');
       return '<div class="border rounded-lg mb-2 overflow-hidden">'
@@ -650,8 +650,8 @@ async function selectTemplate(id) {
 
     var itemsHtml = selectedTemplateItems.map(function(item) {
       return '<div class="flex items-center gap-2 text-sm bg-gray-50 rounded p-2" data-item-id="' + item.id + '">'
-        + '<span class="flex-1 font-medium">' + (item.item_name || '-') + '</span>'
-        + '<span class="text-xs text-gray-500 w-20">' + (item.category_name || '') + '</span>'
+        + '<span class="flex-1 font-medium">' + escapeHtml(item.item_name || '-') + '</span>'
+        + '<span class="text-xs text-gray-500 w-20">' + escapeHtml(item.category_name || '') + '</span>'
         + '<input type="number" class="w-20 px-2 py-1 border rounded text-right tmpl-qty" value="' + (item.quantity || 1) + '" min="1" step="1" />'
         + '<span class="text-xs text-gray-400">' + (item.unit || 'EA') + '</span>'
         + '<input type="number" class="w-24 px-2 py-1 border rounded text-right tmpl-price" value="' + (item.unit_price || 0) + '" min="0" step="100" />'

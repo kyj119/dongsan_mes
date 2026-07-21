@@ -402,7 +402,7 @@ async function loadGroupMembers() {
     }
     container.innerHTML = '<div class="mt-1"><span class="text-[10px] text-gray-400">같은 그룹:</span> '
       + members.map(function(m) {
-        return '<a href="/clients/' + m.id + '" class="text-blue-600 hover:underline text-xs mr-2">' + m.client_name + ' (' + (m.business_registration_number || m.client_code) + ')</a>';
+        return '<a href="/clients/' + m.id + '" class="text-blue-600 hover:underline text-xs mr-2">' + escapeHtml(m.client_name || '') + ' (' + escapeHtml(m.business_registration_number || m.client_code || '') + ')</a>';
       }).join('') + '</div>';
   } catch(e) { console.error('group members error:', e); }
 }
@@ -492,12 +492,12 @@ async function loadPortalAccount() {
 
       el.innerHTML = '<div class="space-y-2">'
         + '<div class="flex items-center justify-between">'
-        + '<span class="text-sm font-medium text-gray-700">' + account.login_id + '</span>'
+        + '<span class="text-sm font-medium text-gray-700">' + escapeHtml(account.login_id || '') + '</span>'
         + statusBadge
         + '</div>'
         + '<div class="text-xs text-gray-500 space-y-1">'
-        + '<div>담당자: <span class="text-gray-700">' + (account.contact_name || '-') + '</span></div>'
-        + '<div>연락처: <span class="text-gray-700">' + (account.contact_phone || '-') + '</span></div>'
+        + '<div>담당자: <span class="text-gray-700">' + escapeHtml(account.contact_name || '-') + '</span></div>'
+        + '<div>연락처: <span class="text-gray-700">' + escapeHtml(account.contact_phone || '-') + '</span></div>'
         + '<div>최근 로그인: <span class="text-gray-700">' + lastLogin + '</span></div>'
         + '</div>'
         + '<div class="flex gap-1.5 pt-2 border-t">'

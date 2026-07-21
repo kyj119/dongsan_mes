@@ -130,9 +130,9 @@ function renderPRTable(requests) {
     actions += '</div>';
 
     return '<tr class="border-t hover:bg-gray-50">'
-      + '<td class="px-4 py-3 font-medium">' + (pr.request_number || '-') + '</td>'
-      + '<td class="px-4 py-3" title="' + escapeHtml(pr.requester_name || '') + '">' + (pr.requester_name || '-') + '</td>'
-      + '<td class="px-4 py-3 text-gray-600" title="' + escapeHtml(pr.supplier_name || '') + '">' + (pr.supplier_name || '-') + '</td>'
+      + '<td class="px-4 py-3 font-medium">' + escapeHtml(pr.request_number || '-') + '</td>'
+      + '<td class="px-4 py-3" title="' + escapeHtml(pr.requester_name || '') + '">' + escapeHtml(pr.requester_name || '-') + '</td>'
+      + '<td class="px-4 py-3 text-gray-600" title="' + escapeHtml(pr.supplier_name || '') + '">' + escapeHtml(pr.supplier_name || '-') + '</td>'
       + '<td class="px-4 py-3 text-center">' + urgBadge + '</td>'
       + '<td class="px-4 py-3 text-center">' + (pr.created_at ? pr.created_at.substring(0, 10) : '-') + '</td>'
       + '<td class="px-4 py-3 text-right tabular-nums">' + (pr.item_count || 0) + '</td>'
@@ -174,9 +174,9 @@ async function viewPRDetail(id) {
       var adminPriceDisplay = (it.admin_unit_price && it.admin_unit_price !== it.estimated_unit_price)
         ? ' <span class="text-blue-600 text-xs">(승인: ' + (it.admin_unit_price || 0).toLocaleString() + ')</span>' : '';
       return '<tr class="border-t">'
-        + '<td class="px-3 py-2">' + (it.item_name || '-') + '</td>'
+        + '<td class="px-3 py-2">' + escapeHtml(it.item_name || '-') + '</td>'
         + '<td class="px-3 py-2 text-center">' + (it.quantity || 0) + adminQtyDisplay + '</td>'
-        + '<td class="px-3 py-2 text-center">' + (it.unit || '-') + '</td>'
+        + '<td class="px-3 py-2 text-center">' + escapeHtml(it.unit || '-') + '</td>'
         + '<td class="px-3 py-2 text-right">' + ((it.estimated_unit_price || 0).toLocaleString()) + adminPriceDisplay + '</td>'
         + '<td class="px-3 py-2 text-right">'
         + (((it.admin_quantity || it.quantity || 0) * (it.admin_unit_price || it.estimated_unit_price || 0)).toLocaleString())
@@ -214,9 +214,9 @@ async function viewPRDetail(id) {
       linkedPOHtml = '<div class="mt-4 p-3 bg-blue-50 rounded-lg border border-blue-200">'
         + '<h4 class="font-medium mb-2 text-sm text-blue-700"><i class="fas fa-link mr-1"></i>연결된 발주서</h4>'
         + '<div class="flex items-center gap-3 text-sm">'
-        + '<span class="font-medium">' + (pr.linkedPO.po_number || '') + '</span>'
+        + '<span class="font-medium">' + escapeHtml(pr.linkedPO.po_number || '') + '</span>'
         + poBadge
-        + '<span class="text-gray-600">' + (pr.linkedPO.supplier_name || '') + '</span>'
+        + '<span class="text-gray-600">' + escapeHtml(pr.linkedPO.supplier_name || '') + '</span>'
         + '<span class="text-gray-600">' + ((pr.linkedPO.final_amount || 0).toLocaleString()) + '원</span>'
         + '<button onclick="window.location.href=\'/purchase-orders\'" class="text-blue-600 hover:text-blue-700 text-xs"><i class="fas fa-external-link-alt mr-1"></i>발주서 보기</button>'
         + '</div></div>';
@@ -233,8 +233,8 @@ async function viewPRDetail(id) {
         var cmTime = cm.created_at ? cm.created_at.substring(0, 16).replace('T', ' ') : '';
         commentsHtml += '<div class="flex items-start gap-2 text-sm p-2 bg-gray-50 rounded">'
           + '<div class="flex-shrink-0 w-7 h-7 bg-blue-50 text-blue-700 rounded-full flex items-center justify-center text-xs font-bold">'
-          + (cm.user_name ? cm.user_name.charAt(0) : '?') + '</div>'
-          + '<div class="flex-1"><div class="text-xs text-gray-500">' + (cm.user_name || '') + ' · ' + cmTime + '</div>'
+          + escapeHtml(cm.user_name ? cm.user_name.charAt(0) : '?') + '</div>'
+          + '<div class="flex-1"><div class="text-xs text-gray-500">' + escapeHtml(cm.user_name || '') + ' · ' + cmTime + '</div>'
           + '<div class="text-gray-700 mt-0.5">' + escapeHtml(cm.content) + '</div></div></div>';
       }
       commentsHtml += '</div>';
@@ -268,17 +268,17 @@ async function viewPRDetail(id) {
     document.getElementById('prDetailContent').innerHTML =
       '<div class="flex justify-between items-start mb-4">'
       + '<h3 class="text-lg font-bold"><i class="fas fa-clipboard-list text-blue-600 mr-2"></i>'
-      + (pr.request_number || '') + '</h3>'
+      + escapeHtml(pr.request_number || '') + '</h3>'
       + '<button onclick="document.getElementById(\'prDetailModal\').classList.add(\'hidden\')"'
       + ' class="text-gray-400 hover:text-gray-600 text-2xl">&times;</button>'
       + '</div>'
       + '<div class="grid grid-cols-2 gap-3 mb-4 text-sm">'
-      + '<div><span class="text-gray-500">요청자:</span> <span class="font-medium">' + (pr.requester_name || '-') + '</span></div>'
+      + '<div><span class="text-gray-500">요청자:</span> <span class="font-medium">' + escapeHtml(pr.requester_name || '-') + '</span></div>'
       + '<div><span class="text-gray-500">긴급도:</span> ' + urgBadge + '</div>'
       + '<div><span class="text-gray-500">상태:</span> ' + statusBadge + '</div>'
       + '<div><span class="text-gray-500">요청일:</span> ' + (pr.created_at ? pr.created_at.substring(0, 10) : '-') + '</div>'
-      + '<div><span class="text-gray-500">공급업체(추천):</span> ' + (pr.supplier_name || '-') + '</div>'
-      + (pr.approved_by_name ? '<div><span class="text-gray-500">승인자:</span> ' + pr.approved_by_name + '</div>' : '')
+      + '<div><span class="text-gray-500">공급업체(추천):</span> ' + escapeHtml(pr.supplier_name || '-') + '</div>'
+      + (pr.approved_by_name ? '<div><span class="text-gray-500">승인자:</span> ' + escapeHtml(pr.approved_by_name) + '</div>' : '')
       + (pr.reject_reason ? '<div class="col-span-2 text-red-600"><span class="text-gray-500">반려사유:</span> ' + escapeHtml(pr.reject_reason) + '</div>' : '')
       + '</div>'
       + (pr.reason ? '<div class="bg-gray-50 rounded p-3 mb-4 text-sm"><span class="font-medium">요청 사유:</span> ' + escapeHtml(pr.reason) + '</div>' : '')
@@ -314,7 +314,7 @@ async function openApproveModal(id) {
 
     var itemRows = items.map(function(it, idx) {
       return '<tr class="border-t" id="appr-row-' + it.id + '">'
-        + '<td class="px-3 py-2 text-sm">' + (it.item_name || '-') + '</td>'
+        + '<td class="px-3 py-2 text-sm">' + escapeHtml(it.item_name || '-') + '</td>'
         + '<td class="px-3 py-2 text-center text-sm">' + (it.quantity || 0) + '</td>'
         + '<td class="px-2 py-2">'
         + '<input type="number" id="appr_qty_' + it.id + '" value="' + (it.quantity || 0) + '" min="0"'
@@ -331,7 +331,7 @@ async function openApproveModal(id) {
     var supplierHtml = '<div class="mb-4">'
       + '<label class="block text-sm font-medium text-gray-700 mb-1">공급업체 변경 (선택)</label>'
       + '<div class="flex gap-2">'
-      + '<input type="text" id="apprSupplierName" value="' + (pr.supplier_name || '') + '" placeholder="공급업체명 입력"'
+      + '<input type="text" id="apprSupplierName" value="' + escapeHtml(pr.supplier_name || '') + '" placeholder="공급업체명 입력"'
       + ' class="flex-1 px-3 py-2 border rounded-lg text-sm">'
       + '<input type="hidden" id="apprSupplierId" value="' + (pr.supplier_id || '') + '">'
       + '<button onclick="searchApprSupplier()" class="px-3 py-2 bg-gray-100 rounded-lg hover:bg-gray-200 text-sm">'
@@ -346,8 +346,8 @@ async function openApproveModal(id) {
       + '<button onclick="document.getElementById(\'prApproveModal\').classList.add(\'hidden\')"'
       + ' class="text-gray-400 hover:text-gray-600 text-2xl">&times;</button>'
       + '</div>'
-      + '<p class="text-sm text-gray-600 mb-4">요청번호: <strong>' + (pr.request_number || '') + '</strong>'
-      + ' | 요청자: <strong>' + (pr.requester_name || '') + '</strong></p>'
+      + '<p class="text-sm text-gray-600 mb-4">요청번호: <strong>' + escapeHtml(pr.request_number || '') + '</strong>'
+      + ' | 요청자: <strong>' + escapeHtml(pr.requester_name || '') + '</strong></p>'
       + supplierHtml
       + '<h4 class="font-medium mb-2 text-sm">품목 수량/단가 검토 (수정 가능)</h4>'
       + '<div class="overflow-x-auto mb-4">'
@@ -385,10 +385,11 @@ async function searchApprSupplier() {
       dd.innerHTML = '<div class="px-3 py-2 text-sm text-gray-400">검색 결과 없음</div>';
     } else {
       dd.innerHTML = clients.map(function(cl) {
-        var safeName = (cl.client_name || '').replace(/'/g, "\\'");
+        // JS 문자열 이스케이프 후 속성 컨텍스트용 HTML 이스케이프 (둘 다 필요)
+        var safeName = escapeHtml((cl.client_name || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'"));
         return '<div class="px-3 py-2 cursor-pointer hover:bg-blue-50 text-sm border-b last:border-b-0"'
           + ' onclick="selectApprSupplier(' + cl.id + ',\'' + safeName + '\')">'
-          + (cl.client_name || '') + '</div>';
+          + escapeHtml(cl.client_name || '') + '</div>';
       }).join('');
     }
     dd.classList.remove('hidden');

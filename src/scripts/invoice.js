@@ -100,15 +100,15 @@ function buildInvoiceHalf(data, copyLabel, fullPage) {
         totalVat += vat;
         totalQty += (it.quantity || 0);
         var spec = '';
-        if (it.specification) spec = it.specification;            // 유통품목 등 규격 텍스트 우선
+        if (it.specification) spec = escapeHtml(it.specification); // 유통품목 등 규격 자유텍스트 — escape 필수
         else if (it.width && it.height) spec = it.width + 'x' + it.height + 'cm';
-        var itemNameDisplay = (it.item_name || '') + (it.content ? '[' + it.content + ']' : '');
+        var itemNameDisplay = escapeHtml(it.item_name || '') + (it.content ? '[' + escapeHtml(it.content) + ']' : '');
         itemRows += '<tr>'
             + '<td>' + (i+1) + '</td>'
             + '<td class="left">' + itemNameDisplay + '</td>'
             + '<td class="left" style="font-size:9px">' + spec + '</td>'
             + '<td>' + (it.quantity || 0) + '</td>'
-            + '<td>' + (it.unit || 'EA') + '</td>'
+            + '<td>' + escapeHtml(it.unit || 'EA') + '</td>'
             + '<td class="right">' + fmt(it.unit_price) + '</td>'
             + '<td class="right">' + fmt(supply) + '</td>'
             + '<td class="right">' + fmt(vat) + '</td>'
@@ -126,7 +126,7 @@ function buildInvoiceHalf(data, copyLabel, fullPage) {
     if (orderDate) { orderDate = formatKST(orderDate, 'date'); }
 
     var stampImg = co.company_stamp_base64
-        ? '<img src="' + co.company_stamp_base64 + '" style="position:absolute;right:-6px;top:50%;transform:translateY(-50%);width:44px;height:44px;opacity:0.8;z-index:10">'
+        ? '<img src="' + escapeHtml(co.company_stamp_base64) + '" style="position:absolute;right:-6px;top:50%;transform:translateY(-50%);width:44px;height:44px;opacity:0.8;z-index:10">'
         : '';
 
     var halfClass = fullPage ? 'invoice-half invoice-full' : 'invoice-half';
@@ -139,23 +139,23 @@ function buildInvoiceHalf(data, copyLabel, fullPage) {
         + '  <div class="info-box">'
         + '    <div class="box-title">공 급 자</div>'
         + '    <div class="info-row"><div class="info-label">등록번호</div><div class="info-value">' + formatRegNumber(co.company_business_registration_number) + '</div></div>'
-        + '    <div class="info-row info-row-split"><div class="info-label">상호(법인)</div><div class="info-value">' + (co.company_name || '') + '</div><div class="info-label-sub">대 표</div><div class="info-value stamp-cell">' + (co.company_representative || '') + stampImg + '</div></div>'
-        + '    <div class="info-row"><div class="info-label">업태/종목</div><div class="info-value">' + (co.company_business_type || '') + ' / ' + (co.company_business_item || '') + '</div></div>'
-        + '    <div class="info-row"><div class="info-label">주소</div><div class="info-value">' + (co.company_address || '') + '</div></div>'
-        + '    <div class="info-row"><div class="info-label">전화/FAX</div><div class="info-value">' + (co.company_phone || '') + ' / ' + (co.company_fax || '') + '</div></div>'
+        + '    <div class="info-row info-row-split"><div class="info-label">상호(법인)</div><div class="info-value">' + escapeHtml(co.company_name || '') + '</div><div class="info-label-sub">대 표</div><div class="info-value stamp-cell">' + escapeHtml(co.company_representative || '') + stampImg + '</div></div>'
+        + '    <div class="info-row"><div class="info-label">업태/종목</div><div class="info-value">' + escapeHtml(co.company_business_type || '') + ' / ' + escapeHtml(co.company_business_item || '') + '</div></div>'
+        + '    <div class="info-row"><div class="info-label">주소</div><div class="info-value">' + escapeHtml(co.company_address || '') + '</div></div>'
+        + '    <div class="info-row"><div class="info-label">전화/FAX</div><div class="info-value">' + escapeHtml(co.company_phone || '') + ' / ' + escapeHtml(co.company_fax || '') + '</div></div>'
         + '  </div>'
         + '  <div class="info-box">'
         + '    <div class="box-title">공 급 받 는 자</div>'
         + '    <div class="info-row"><div class="info-label">등록번호</div><div class="info-value">' + formatRegNumber(client.business_registration_number) + '</div></div>'
-        + '    <div class="info-row info-row-split"><div class="info-label">상호(법인)</div><div class="info-value">' + (client.client_name || '') + '</div><div class="info-label-sub">대 표</div><div class="info-value">' + (client.representative || '') + '</div></div>'
-        + '    <div class="info-row"><div class="info-label">업태/종목</div><div class="info-value">' + (client.business_type || '') + ' / ' + (client.business_item || '') + '</div></div>'
-        + '    <div class="info-row"><div class="info-label">주소</div><div class="info-value">' + (client.address || '') + '</div></div>'
-        + '    <div class="info-row"><div class="info-label">전화/FAX</div><div class="info-value">' + (client.phone || '') + ' / ' + (client.fax || '') + '</div></div>'
+        + '    <div class="info-row info-row-split"><div class="info-label">상호(법인)</div><div class="info-value">' + escapeHtml(client.client_name || '') + '</div><div class="info-label-sub">대 표</div><div class="info-value">' + escapeHtml(client.representative || '') + '</div></div>'
+        + '    <div class="info-row"><div class="info-label">업태/종목</div><div class="info-value">' + escapeHtml(client.business_type || '') + ' / ' + escapeHtml(client.business_item || '') + '</div></div>'
+        + '    <div class="info-row"><div class="info-label">주소</div><div class="info-value">' + escapeHtml(client.address || '') + '</div></div>'
+        + '    <div class="info-row"><div class="info-label">전화/FAX</div><div class="info-value">' + escapeHtml(client.phone || '') + ' / ' + escapeHtml(client.fax || '') + '</div></div>'
         + '  </div>'
         + '</div>'
 
         + '<div class="meta-row">'
-        + '  <span>주문번호: ' + (order.order_number || '') + '</span>'
+        + '  <span>주문번호: ' + escapeHtml(order.order_number || '') + '</span>'
         + '</div>'
 
         + '<div class="total-korean">' + koreanAmount + ' (₩' + fmt(finalAmount) + ')</div>'
@@ -166,8 +166,8 @@ function buildInvoiceHalf(data, copyLabel, fullPage) {
         + '<tfoot><tr class="total-row"><td colspan="3">합 계</td><td>' + fmt(totalQty) + '</td><td></td><td></td><td class="right">' + fmt(totalSupply) + '</td><td class="right">' + fmt(totalVat) + '</td></tr></tfoot>'
         + '</table>'
 
-        + '<div class="footer-section"><span class="label">비고:</span>' + (order.notes || '') + '</div>'
-        + '<div class="footer-section"><span class="label">입금계좌:</span>' + (co.company_bank_info || '') + '</div>'
+        + '<div class="footer-section"><span class="label">비고:</span>' + escapeHtml(order.notes || '') + '</div>'
+        + '<div class="footer-section"><span class="label">입금계좌:</span>' + escapeHtml(co.company_bank_info || '') + '</div>'
 
         + '<table class="items-table" style="margin-top:0;border-top:none">'
         + '<tbody>'

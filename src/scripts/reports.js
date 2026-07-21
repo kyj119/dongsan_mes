@@ -159,7 +159,7 @@ async function loadItemAnalysis() {
     categoryChart.innerHTML = categories.map(function(c, i) {
       var pct = Math.round(((c.total_revenue || 0) / maxCat) * 100);
       return '<div class="flex items-center gap-3">'
-        + '<span class="w-20 text-xs text-gray-600 text-right truncate" title="' + (c.category || '기타') + '">' + (c.category || '기타') + '</span>'
+        + '<span class="w-20 text-xs text-gray-600 text-right truncate" title="' + esc(c.category || '기타') + '">' + esc(c.category || '기타') + '</span>'
         + '<div class="flex-1 h-4 bg-gray-200 rounded-full overflow-hidden">'
         + '<div class="h-full ' + catColors[i % catColors.length] + ' rounded-full" style="width:' + Math.max(pct, 2) + '%"></div></div>'
         + '<span class="w-24 text-right text-xs font-medium">' + fmt(c.total_revenue) + '원</span>'
@@ -171,8 +171,8 @@ async function loadItemAnalysis() {
     if (!tbody) { console.warn('[reports] #itemsTableBody not found'); return; }
     tbody.innerHTML = items.map(function(item) {
       return '<tr class="border-t hover:bg-gray-50">'
-        + '<td class="px-4 py-2" title="' + esc(item.item_name || '-') + '"><span class="font-medium">' + (item.item_name || '-') + '</span>'
-        + (item.category ? ' <span class="text-[10px] text-gray-400">[' + item.category + ']</span>' : '') + '</td>'
+        + '<td class="px-4 py-2" title="' + esc(item.item_name || '-') + '"><span class="font-medium">' + esc(item.item_name || '-') + '</span>'
+        + (item.category ? ' <span class="text-[10px] text-gray-400">[' + esc(item.category) + ']</span>' : '') + '</td>'
         + '<td class="px-4 py-2 text-right">' + fmt(item.order_count) + '</td>'
         + '<td class="px-4 py-2 text-right">' + fmt(item.total_quantity) + '</td>'
         + '<td class="px-4 py-2 text-right font-medium text-blue-600">' + fmt(item.total_revenue) + '원</td>'

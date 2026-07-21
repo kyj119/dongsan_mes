@@ -558,7 +558,7 @@ window.receivingStartInspection = async function(receiptId) {
     else if (rejected > 0) statusBadge = '<span class="px-2 py-0.5 text-xs rounded bg-amber-50 text-amber-700">거부 ' + rejected + '</span>'
     else statusBadge = '<span class="px-2 py-0.5 text-xs rounded bg-green-50 text-green-700">정상</span>'
     return '<tr>' +
-      '<td class="px-3 py-2 text-sm font-medium">' + (it.item_name || '#' + it.item_id) + '</td>' +
+      '<td class="px-3 py-2 text-sm font-medium">' + escapeHtml(it.item_name || '#' + it.item_id) + '</td>' +
       '<td class="px-3 py-2 text-sm text-right">' + expected + '</td>' +
       '<td class="px-3 py-2 text-sm text-right">' + received + '</td>' +
       '<td class="px-3 py-2 text-sm text-right text-red-600">' + rejected + '</td>' +
@@ -672,7 +672,7 @@ window.receivingStartInspectionFull = async function(receiptId) {
       : (rejected > 0
         ? '<span class="text-amber-600 font-medium">거부 ' + rejected + '</span>'
         : '<span class="text-green-700">정상</span>');
-    return '<div class="text-xs py-1 border-b border-gray-100">\uD83D\uDCE6 ' + (it.item_name || '품목 #' + it.item_id) + ' \u2014 발주 ' + expected + ' / 수령 ' + received + ' (' + diffBadge + ')</div>';
+    return '<div class="text-xs py-1 border-b border-gray-100">\uD83D\uDCE6 ' + escapeHtml(it.item_name || '품목 #' + it.item_id) + ' \u2014 발주 ' + expected + ' / 수령 ' + received + ' (' + diffBadge + ')</div>';
   }).join('');
 
   var body = document.getElementById('inspectionEntryBody');

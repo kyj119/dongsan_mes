@@ -1323,11 +1323,11 @@ async function loadCollectionLogs(clientId) {
             }
             return '<tr class="hover:bg-gray-50">'
                 + '<td class="px-4 py-2 text-gray-600">' + formatDate(cl.contact_date) + '</td>'
-                + '<td class="px-4 py-2"><span class="px-2 py-0.5 text-xs rounded bg-gray-100 text-gray-700">' + methodLabel + '</span></td>'
-                + '<td class="px-4 py-2">' + (cl.contact_person || cl.created_by_name || '-') + '</td>'
+                + '<td class="px-4 py-2"><span class="px-2 py-0.5 text-xs rounded bg-gray-100 text-gray-700">' + escapeHtml(methodLabel || '') + '</span></td>'
+                + '<td class="px-4 py-2">' + escapeHtml(cl.contact_person || cl.created_by_name || '-') + '</td>'
                 + '<td class="px-4 py-2">' + (cl.promised_date ? formatDate(cl.promised_date) + promisedOk : '-') + '</td>'
                 + '<td class="px-4 py-2 text-right">' + (cl.promised_amount ? cl.promised_amount.toLocaleString() + '원' : '-') + '</td>'
-                + '<td class="px-4 py-2 text-gray-500 text-xs">' + (cl.notes || '-') + '</td>'
+                + '<td class="px-4 py-2 text-gray-500 text-xs">' + escapeHtml(cl.notes || '-') + '</td>'
                 + '<td class="px-4 py-2 text-center act-col">'
                 + '<button onclick="deleteCollectionLog(' + cl.id + ')" class="text-red-400 hover:text-red-600 text-xs" title="삭제"><i class="fas fa-trash"></i></button>'
                 + '</td></tr>';

@@ -843,9 +843,10 @@ function showToast(message, type = 'info', duration = 3000) {
     }
     const toast = document.createElement('div');
     toast.className = 'toast-item ' + type;
+    // message는 서버 에러 문자열이 그대로 릴레이될 수 있어 escape 필수. 개행만 <br>로 허용.
     toast.innerHTML = '<i class="fas ' +
         (type === 'success' ? 'fa-check-circle' : type === 'error' ? 'fa-exclamation-circle' : 'fa-info-circle') +
-        ' mr-2"></i>' + message;
+        ' mr-2"></i>' + window.escapeHtml(String(message == null ? '' : message)).replace(/\n/g, '<br>');
     container.appendChild(toast);
     requestAnimationFrame(() => toast.classList.add('show'));
     setTimeout(() => {
@@ -1036,15 +1037,15 @@ async function doGlobalSearch() {
       html += '<div style="padding:8px 12px;font-size:11px;color:#64748b;font-weight:600;border-bottom:1px solid #f1f5f9;">주문</div>';
       html += d.orders.map(function(o) {
         return '<a href="/orders" style="display:flex;justify-content:space-between;padding:8px 12px;text-decoration:none;color:#1e293b;font-size:13px;border-bottom:1px solid #f8fafc;cursor:pointer;" onmouseover="this.style.background=\'#f8fafc\'" onmouseout="this.style.background=\'\'">'
-          + '<div><span style="font-weight:500;">' + o.order_number + '</span> <span style="color:#64748b;font-size:12px;">' + (o.client_name || '') + '</span></div>'
-          + '<span style="font-size:11px;color:#94a3b8;">' + (statusLabels[o.status] || o.status) + '</span></a>';
+          + '<div><span style="font-weight:500;">' + window.escapeHtml(o.order_number || '') + '</span> <span style="color:#64748b;font-size:12px;">' + window.escapeHtml(o.client_name || '') + '</span></div>'
+          + '<span style="font-size:11px;color:#94a3b8;">' + window.escapeHtml(statusLabels[o.status] || o.status || '') + '</span></a>';
       }).join('');
     }
     if (d.clients.length > 0) {
       html += '<div style="padding:8px 12px;font-size:11px;color:#64748b;font-weight:600;border-bottom:1px solid #f1f5f9;">거래처</div>';
       html += d.clients.map(function(c) {
-        return '<a href="/clients/' + c.id + '" style="display:flex;justify-content:space-between;padding:8px 12px;text-decoration:none;color:#1e293b;font-size:13px;border-bottom:1px solid #f8fafc;cursor:pointer;" onmouseover="this.style.background=\'#f8fafc\'" onmouseout="this.style.background=\'\'">'
-          + '<span style="font-weight:500;">' + c.client_name + '</span>'
+        return '<a href="/clients/' + encodeURIComponent(c.id) + '" style="display:flex;justify-content:space-between;padding:8px 12px;text-decoration:none;color:#1e293b;font-size:13px;border-bottom:1px solid #f8fafc;cursor:pointer;" onmouseover="this.style.background=\'#f8fafc\'" onmouseout="this.style.background=\'\'">'
+          + '<span style="font-weight:500;">' + window.escapeHtml(c.client_name || '') + '</span>'
           + '</a>';
       }).join('');
     }
@@ -1052,16 +1053,16 @@ async function doGlobalSearch() {
       html += '<div style="padding:8px 12px;font-size:11px;color:#64748b;font-weight:600;border-bottom:1px solid #f1f5f9;">카드</div>';
       html += d.cards.map(function(ca) {
         return '<a href="/cards" style="display:flex;justify-content:space-between;padding:8px 12px;text-decoration:none;color:#1e293b;font-size:13px;border-bottom:1px solid #f8fafc;cursor:pointer;" onmouseover="this.style.background=\'#f8fafc\'" onmouseout="this.style.background=\'\'">'
-          + '<span style="font-weight:500;">' + (ca.card_number || 'Card #' + ca.id) + '</span>'
-          + '<span style="font-size:11px;color:#94a3b8;">' + (statusLabels[ca.status] || ca.status) + '</span></a>';
+          + '<span style="font-weight:500;">' + window.escapeHtml(ca.card_number || 'Card #' + ca.id) + '</span>'
+          + '<span style="font-size:11px;color:#94a3b8;">' + window.escapeHtml(statusLabels[ca.status] || ca.status || '') + '</span></a>';
       }).join('');
     }
     if (d.quotations && d.quotations.length > 0) {
       html += '<div style="padding:8px 12px;font-size:11px;color:#64748b;font-weight:600;border-bottom:1px solid #f1f5f9;">견적서</div>';
       html += d.quotations.map(function(qt) {
         return '<a href="/quotations" style="display:flex;justify-content:space-between;padding:8px 12px;text-decoration:none;color:#1e293b;font-size:13px;border-bottom:1px solid #f8fafc;cursor:pointer;" onmouseover="this.style.background=\'#f8fafc\'" onmouseout="this.style.background=\'\'">'
-          + '<div><span style="font-weight:500;">' + qt.quotation_number + '</span> <span style="color:#64748b;font-size:12px;">' + (qt.client_name || '') + '</span></div>'
-          + '<span style="font-size:11px;color:#94a3b8;">' + (qt.status || '') + '</span></a>';
+          + '<div><span style="font-weight:500;">' + window.escapeHtml(qt.quotation_number || '') + '</span> <span style="color:#64748b;font-size:12px;">' + window.escapeHtml(qt.client_name || '') + '</span></div>'
+          + '<span style="font-size:11px;color:#94a3b8;">' + window.escapeHtml(qt.status || '') + '</span></a>';
       }).join('');
     }
     if (!html) html = '<div style="text-align:center;color:#9ca3af;padding:16px;font-size:13px;">검색 결과 없음</div>';
