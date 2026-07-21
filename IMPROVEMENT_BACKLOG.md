@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 1 -->
-<!-- last_run_at: 2026-07-21T09:17:00+09:00 -->
+<!-- last_run_area: 2 -->
+<!-- last_run_at: 2026-07-21T10:20:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,13 +8,25 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | **28** — Area 6 46회차(07-20T19:20) 절대값 재동기화, `search_issues(state:open,label:auto-improve)` 실측 정합. 이 중 5건(#529·#541·#542·#543·#547)은 fixed-in-tree 확인 후 close-pending 코멘트 게시 완료(owner batch-close 대기, 카운트는 owner close 전까지 그대로). |
+| 🆕 new | **29** — Area 2 48회차(07-21T10:20) 신규 #548(급여교부 batch 청크 회귀) 1건 편입. 7건(#528·#529·#530·#541·#542·#543·#547)은 fixed-in-tree 확인 후 close-pending 코멘트 게시 완료(owner batch-close 대기, 카운트는 owner close 전까지 그대로 — #528/#530은 이번 사이클 신규 확인). |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 |
 | ✔️ done | **448** — `search_issues(is:closed,reason:completed)` 실측 정합, 변동 없음. |
 | ❌ rejected | 3 (`reason:not_planned`=1 + `reason:duplicate`=2, 실측 정합·변동 없음) |
 
 > 📦 **과거 사이클 로그**는 `IMPROVEMENT_BACKLOG_ARCHIVE.md`/git 히스토리로 이관됨 (2026-06-10 1차 분리, 2026-06-25 2차 트림 343KB→192KB, 2026-06-25T10:00 3차 트림, 2026-07-03T06:00 4차 트림 288KB→86KB, 2026-07-07T13:00 5차 트림 238KB→78KB, **2026-07-20T19:20 6차 트림 — 07-06~07-17 사이클 로그를 `IMPROVEMENT_BACKLOG_ARCHIVE.md`로 이관: 306KB→80KB, 256KB Read 한도 재확보**). 신규 로그는 계속 이 파일 상단에 추가. 본 파일은 직전 2~3일치(07-18~) 사이클 로그 + 영구 참조 섹션(Approved/New/Auto-fixed/Done/Rejected/FP 카탈로그)만 유지. 이관분은 `IMPROVEMENT_BACKLOG_ARCHIVE.md` 또는 `git log -p -- IMPROVEMENT_BACKLOG.md`로 복원 가능.
+
+> **Area 2 코드 품질 심층 분석 (2026-07-21T10:20):**
+> - **방법**: `git fetch origin main`(HEAD `2adacf5` = origin/main 일치, 워킹트리 clean, detached) 후 `npm ci`(node_modules 0→81). Area 2 **48회차** — 직전 Area2(`bf434b1`, 07-19T22:05, 47회차) 이후 `git log bf434b1..HEAD -- src/routes src/scripts src/pages migrations`(8커밋): 대부분 Area1/3/4/5/6이 각자 렌즈로 이미 심층 감사 완료(`5ad7b2b`=Area3/4, `2511e57`+`1e1b620`+`3f54101`=Area4 41회차·Area5 40회차·Area6 46회차, `bba885b`=Area5 확인, `f9d211a`/`e7fd9c3`=Area1/4, `ba8a6c6`=feature flag OFF 단순 토글). Area2 고유 렌즈(entity_id INSERT·N+1·authMiddleware·컬럼/타입 불일치·dead code·SELECT *·D1 batch 한도)로 general-purpose 에이전트 1개(`2511e57`+`5ad7b2b` 전담) + 오케스트레이터 직접 Read(`1e1b620`의 bank.ts/items.ts/payroll/records.ts/po-queries.ts/accounts-payable.ts)로 교차검증.
+> - **🔴 신규 이슈 — #548 (S, bug)**: `1e1b620`이 급여교부(`payroll/records.ts POST /publish`)의 `published_at` UPDATE + 교부증빙 INSERT를 "부분교부 방지" 목적으로 단일 `db.batch(stmts)`로 통합하면서, **바로 이틀 전(`741ee02`, 07-18) 같은 파일에 "D1 한도 준수"를 이유로 명시 추가됐던 80개 청크 분할을 제거**함 — `stmts.length = 1 + targets.length`가 청크 없이 그대로 batch() 호출됨. 이 코드베이스는 `aiInsights.ts:162`·`purchaseOrders/templates.ts:112/264`에서도 독립적으로 동일한 "80-청크 db.batch()" 컨벤션을 쓰고 있어(전부 D1 batch statement 개수 한도 회피 목적), 이번 제거는 실측된 제약을 우연이 아니게 재유입한 회귀. 현재 재직인원 규모에선 무증상이나, 인원이 늘어 한도를 넘는 순간 해당 월 급여교부 전체가 hard-fail. 원자성(청크 단위)과 확장성을 동시에 만족하려면 청크별 UPDATE+INSERT 재설계가 필요해 정책판단 + egress로 prod 인원수 대비 실제 한도초과 여부 검증 불가 → issue-only.
+> - **🟢 close-pending 신규 확인 — Area2 자체 미픽스 이슈 중 2건이 `1e1b620`으로 fixed-in-tree(#528·#530), GitHub 코멘트 게시 완료**: ① **#528**(bank 출금→매입지급 중복제출 방어 없음) — `applyBankTransaction()`이 LINKED/출금/입금 3분기 전부 `UPDATE bank_transactions SET match_status='APPLIED' ... WHERE id=? AND match_status != 'APPLIED'` 원자적 클레임(changes=0→409)을 자금변동 INSERT/UPDATE **이전**에 실행하도록 재배치됨 — 안티패턴 잔존 0. ② **#530**(품목 하드삭제 참조검사 3테이블만 커버) — `items.ts` 참조검사가 20개 FK 테이블로 확장됨. `migrations/*.sql` 전체를 파싱한 독립 ground-truth 대조로 누락 0 확인(inventory는 의도적 별도 cleanup 경로).
+> - **🟢 나머지 Area2 open 이슈 재확인 — #531·#521·#522는 여전히 미픽스(재확인, 상태 변동 없음)**: `workbench.ts:1178` `getEntityId(c) || 1`(#531)·`departments.ts:78` PATCH `/employees/:id` bare `WHERE id=?`(#521 부분픽스 잔존)·`hr.ts` department_id 미검증(#522) 전부 코드에 안티패턴 그대로 잔존 확인.
+> - **🟢 churn 2건(2511e57/5ad7b2b) Area2 렌즈 clean**: entity_id 컬럼 실재·바인드 순열 정합·N+1 없음(intercompany 6쌍 상수 루프, cron self-fetch 엔티티 수 고정)·TS-DB 불일치 없음·dead code 없음. 발견된 entity-scope 갭(AP 대시보드 intercompany 혼입)은 같은 날 후속 커밋(`e7fd9c3`)으로 이미 자체 수정되어 라이브 아님(#547과 동일 사안, 중복보고 안 함).
+> - **🟢 entity-audit.mjs·tsc 재확인**: `node scripts/entity-audit.mjs` = 검사 122파일·통과 56·누락 3(`bank.ts:1341/1353`+`cron.ts:189`, 기존 확인 동일 3건 net-new 0). `npx tsc --noEmit` 에러 0.
+> - **🟢 backlog↔GitHub sync**: `search_issues(state:open,label:auto-improve)` 실측 28건(#548 생성 전) → 이슈 생성으로 **29건**. done `search_issues(is:closed,reason:completed)`=448(변동 없음) · rejected 3(`not_planned`=1+`duplicate`=2, 변동 없음).
+> - **🧬 SKILL 강화 없음(신규 탐지 클래스 아님)** — #548은 기존 "80-청크 db.batch() 컨벤션"(SKILL엔 미문서화였으나 코드베이스에 3개 독립 선례가 이미 존재) 위반 사례. 향후 참고를 위해 SKILL Area2 절에 "batch() 재구조화 시 기존 청크링크 보존 확인" 패턴으로 추가할 가치 있으나 이번 사이클은 발견·이슈화에 집중.
+> - 신규 이슈 1건(#548, issue-only), 자동수정 0건(급여 write-path 정책판단 필요), close-pending 신규 확인 2건(#528·#530, GitHub 코멘트 게시 완료), done-sync 변동 없음(new 28→29·done 448·rejected 3 정합 재확인). 다음 순번 Area 3.
+>
 
 > **Area 1 프로덕션 헬스 (2026-07-21T09:17):**
 > - **방법**: `git fetch origin main`(HEAD `26c06b4` = origin/main 일치, 워킹트리 clean, detached). 프록시가 이번 세션도 prod 호스트 직접 curl 차단(exit 56, CONNECT tunnel 403 — 기존 33~46회차와 동일 제약, `cloudflare-observability` MCP 미인증). Playwright MCP를 통한 prod 브라우저 점검도 이번 세션은 도구 승인 게이트에서 거부되어 미수행(console-error 실측 불가, 배포체인 로그로 대체). Area 1 **47회차** — 직전 Area1(`160678d`, 07-19T21:12, 46회차) 이후 `git log 160678d..HEAD`(27커밋): 대부분 Area2~6(47/40/41/40/46회차)이 각자 렌즈로 이미 심층 감사 완료(#546·#547 생성) + 순수 미검증분 = `f9d211a`(법인간 AR을 inter-entity 탭으로 재배치)·`e7fd9c3`(AP 정합성 체크에서도 내부거래 법인 제외)·`ba8a6c6`(주문서 AI추출 진입점 feature-flag OFF). **신규 마이그레이션 0건**(`git diff 160678d..HEAD --stat -- migrations` = 무출력) — (b)-risk 컬럼드리프트 후보 없음.
@@ -144,10 +156,11 @@
 
 ## 🆕 New (미검토)
 
-> 전부 GitHub open + 👍 미수신. 용준님 리뷰 대기. (open **실측 28건** — 2026-07-20T19:20 Area 6 46회차, `search_issues(state:open,label:auto-improve)` 직접 재확인. 45회차 26건에 신규 편입 #545·#547 추가 + close-pending 5건 상태메모 갱신.)
+> 전부 GitHub open + 👍 미수신. 용준님 리뷰 대기. (open **실측 29건** — 2026-07-21T10:20 Area 2 48회차, `search_issues(state:open,label:auto-improve)` 직접 재확인 후 #548 생성. #528·#530 fixed-in-tree 확인·close-pending 코멘트 게시.)
 
 | Issue | 제목 | 영역 | 라벨 | 상태 메모 |
 |-------|------|------|------|-----------|
+| #548 | 급여교부 batch 원자화(1e1b620)가 741ee02의 80청크 D1한도 회피를 되돌림 — 인원증가 시 전체교부 hard-fail | Area 2 | bug,S | issue-only, 정책판단 필요 |
 | #547 | AP 파생화 사이클 — purchase-integrity-fix가 법인-무관 공유 clients.purchase_balance에 법인-스코프 파생값 덮어써 내부거래 3법인 캐시손상 | Area 4 | bug,S | **fixed-in-tree**(`e7fd9c3`), close-pending 코멘트 게시(46회차) |
 | #545 | pension_base(0469) 미적용 시 직원수정(PUT) 100% 500 위험 | Area 1 | bug,S | issue-only, egress로 prod 마이그 적용여부 확인 불가 — owner 확인 대기 |
 | #543 | 법인간 거래 POST/PUT 당사자 검증 없음 — 무관한 두 법인 사이 거래 임의 생성/수정 | Area 4 | bug,S | **fixed-in-tree**(`1e1b620`), close-pending 코멘트 게시(46회차) |
@@ -162,9 +175,9 @@
 | #533 | 가공 대기물 absorb 실패 완전 무음 — 재사용 위험 | Area 3 | improvement,S | 미픽스 |
 | #532 | 품목 하드삭제/복구 버튼 MANAGER에도 노출 — 위협적 확인창 통과 후 403 | Area 3 | improvement,S | 미픽스 |
 | #531 | workbench POST /intakes entity_id 전체모드 0-sentinel 오귀속(`getEntityId(c)\|\|1`) | Area 2 | improvement,S | 미픽스 |
-| #530 | 품목 하드삭제 참조검사 3테이블만 커버 — 다수 FK 누락으로 500+부분삭제 위험 | Area 2 | bug,M | 미픽스 |
+| #530 | 품목 하드삭제 참조검사 3테이블만 커버 — 다수 FK 누락으로 500+부분삭제 위험 | Area 2 | bug,M | **fixed-in-tree**(`1e1b620`, 20테이블 확장), close-pending 코멘트 게시(48회차) |
 | #529 | bank 적용 link_payment_id 명시지정 경로 entity_id 격리 누락 | Area 2 | bug,security,S | **fixed-in-tree**(`1e1b620`), close-pending 코멘트 게시(46회차) |
-| #528 | bank 출금→매입지급 적용 중복제출 방어 없음 — 이중지급/이중차감 | Area 2 | bug,M | 미픽스 |
+| #528 | bank 출금→매입지급 적용 중복제출 방어 없음 — 이중지급/이중차감 | Area 2 | bug,M | **fixed-in-tree**(`1e1b620`, 원자적 claim-first), close-pending 코멘트 게시(48회차) |
 | #527 | PATCH /api/orders/bulk-bill entityFilter 누락 — 타법인 주문 cross-tenant BILLED 처리 | Area 5 | bug,security,S | 미픽스 |
 | #526 | 부문 손익 자재비 — created_at UTC 미보정(KST 귀속오류) + 이동평균단가 비재현성 | Area 4 | improvement,S/M | 미픽스 |
 | #525 | 부문 손익 P5 배부 — serves_department_id 미검증 + totalWeight=0 공통비 무음소실 | Area 4 | bug,S~S-M | 미픽스 |
