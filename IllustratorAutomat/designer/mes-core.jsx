@@ -300,6 +300,11 @@
   }
   var trim = trimCb.value;
 
+  // ── 프리플라이트(경고 전용 — 출력 불변) ──
+  var pfSourceRGB = false;
+  try { pfSourceRGB = (srcDoc.documentColorSpace == DocumentColorSpace.RGB); } catch (ePf0) { }
+  var pfRemainingText = 0, pfLinkedImages = 0;
+
   // ══ 건별 폴더 ══
   var now = new Date();
   var ymd = '' + now.getFullYear() + pad2(now.getMonth() + 1) + pad2(now.getDate());
@@ -328,6 +333,8 @@
     try {
       for (var ti = newDoc.textFrames.length - 1; ti >= 0; ti--) newDoc.textFrames[ti].createOutline();
     } catch (eOl) { outlineFailed = true; }
+    try { pfRemainingText = newDoc.textFrames.length; } catch (ePf1) { }
+    try { pfLinkedImages = newDoc.placedItems.length; } catch (ePf2) { }
 
     // ② 아트보드 = 디자인 경계 (work.ai: 아트보드 기반 소비자 — ExtractGroups/SheetLayout 호환)
     function docUnion() {
@@ -466,6 +473,7 @@
     order_item_id: orderItemId,
     files: { work_ai: 'work.ai', eps: epsName, thumb: 'thumb.png' },
     outline_failed: outlineFailed,
+    preflight: { source_rgb: pfSourceRGB, remaining_text: pfRemainingText, linked_images: pfLinkedImages },
     created_at_kst: now.getFullYear() + '-' + pad2(now.getMonth() + 1) + '-' + pad2(now.getDate()) +
       ' ' + pad2(now.getHours()) + ':' + pad2(now.getMinutes()) + ':' + pad2(now.getSeconds())
   };
@@ -474,10 +482,15 @@
     return;
   }
 
+  var pfWarn = '';
+  if (pfSourceRGB) pfWarn += '⚠ 원본이 RGB 문서 — CMYK 변환됨, 색상 확인\n';
+  if (pfRemainingText > 0) pfWarn += '⚠ 아웃라인 안 된 텍스트 ' + pfRemainingText + '개 — 폰트 확인\n';
+  if (pfLinkedImages > 0) pfWarn += '⚠ 링크(미임베드) 이미지 ' + pfLinkedImages + '개 — 임베드 권장\n';
   alert('MES 가공 완료 ✓\n\n' +
     '등록: ' + clientName + '  수량: ' + qty + '\n' +
     '실물: ' + realW.toFixed(1) + ' × ' + realH.toFixed(1) + ' cm' + (sN > 1 ? ' (파일 1/' + sN + ')' : '') + '\n' +
     (epsName ? ('EPS: ' + epsName + '\n') : '(모아찍기용 — work.ai만 저장)\n') +
     (outlineFailed ? '⚠ 텍스트 아웃라인 일부 실패 — 확인 필요\n' : '') +
+    pfWarn +
     (orderItemId ? '주문 라인에 자동 연결됩니다.' : '주문서에서 "가공 대기물"로 불러올 수 있습니다.'));
 })();
