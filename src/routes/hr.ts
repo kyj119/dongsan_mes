@@ -403,6 +403,14 @@ hrRouter.post('/employees', async (c) => {
       return c.json({ success: false, error: '급여유형은 VARIABLE 또는 FIXED만 가능합니다.' }, 400)
     }
 
+    // #522: department_id 존재·활성 검증 — 비활성 부문 조용한 배정 방지.
+    //   빈 문자열은 미배정(null)으로 정규화 후 검증(null/미포함이면 skip = 부문 미배정 허용).
+    if (body.department_id === '') body.department_id = null
+    if (body.department_id != null) {
+      const dep = await c.env.DB.prepare('SELECT id FROM departments WHERE id = ? AND is_active = 1').bind(body.department_id).first()
+      if (!dep) return c.json({ success: false, error: '유효하지 않은 부문입니다.' }, 400)
+    }
+
     // RRN 마스킹된 값은 무시
     if (typeof body.resident_number === 'string' && body.resident_number.includes('*')) {
       delete body.resident_number
@@ -540,6 +548,16 @@ hrRouter.put('/employees/:id', async (c) => {
     for (const [col, label] of Object.entries(NOT_NULL_FIELDS)) {
       if (col in body && (body[col] === null || body[col] === '' || body[col] === undefined)) {
         return c.json({ success: false, error: `${label}은(는) 필수 항목입니다.` }, 400)
+      }
+    }
+
+    // #522: department_id 존재·활성 검증 — 비활성 부문 조용한 배정 방지.
+    //   빈 문자열은 미배정(null)으로 정규화 후 검증(null/미포함이면 skip = 부문 미배정 허용).
+    if ('department_id' in body) {
+      if (body.department_id === '') body.department_id = null
+      if (body.department_id != null) {
+        const dep = await c.env.DB.prepare('SELECT id FROM departments WHERE id = ? AND is_active = 1').bind(body.department_id).first()
+        if (!dep) return c.json({ success: false, error: '유효하지 않은 부문입니다.' }, 400)
       }
     }
 

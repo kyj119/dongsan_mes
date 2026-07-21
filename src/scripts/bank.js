@@ -626,6 +626,9 @@
   };
 
   window.confirmAllTransfers = function() {
+    // #519: 요청 중 버튼 비활성화 → 재클릭 자기경합(400)로 인한 실패 오집계 방지
+    var __btn = document.getElementById('transferConfirmAllBtn');
+    if (__btn) __btn.disabled = true;
     var tasks = [];
     transferPairs.forEach(function(p, i) {
       if (!p) return;
@@ -635,7 +638,7 @@
           .catch(function() { return false; }) // 실패분은 transferPairs에 남겨 재시도 가능
       );
     });
-    if (!tasks.length) { showToast('확정할 후보가 없습니다', 'warning'); return; }
+    if (!tasks.length) { if (__btn) __btn.disabled = false; showToast('확정할 후보가 없습니다', 'warning'); return; }
     Promise.all(tasks).then(function(results) {
       var ok = results.filter(Boolean).length;
       var fail = results.length - ok;
@@ -648,7 +651,7 @@
         loadTransactions();
         renderTransferCandidates();
       }
-    });
+    }).finally(function() { if (__btn) __btn.disabled = false; });
   };
 
   window.closeTransferModal = function() {

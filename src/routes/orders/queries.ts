@@ -182,12 +182,14 @@ ordersQueriesRouter.patch('/bulk-bill', requireRole('ADMIN', 'MANAGER'), async (
     // N+1 제거: 주문 일괄 조회 후 BILLED + balance UPDATE를 batch로 묶음 (청크 80, 짝수라 주문쌍 분할 없음 → 주문별 원자성 보존)
     // #458: D1 바인드 한도(100) — 선행 SELECT IN절도 80청크 분할 (write batch는 이미 80청크)
     const billOrderMap = new Map<number, { id: number; status: string; client_id: number; final_amount: number; billing_status: string }>()
+    // #527: entityFilter로 자법인 주문만 map에 적재 → 아래 루프에서 map 부재 시 skip(타 법인 주문 cross-tenant BILLED 차단). bulk-ship(:257) 형제 패턴.
+    const billEf = entityFilter(c)
     for (let i = 0; i < order_ids.length; i += 80) {
       const chunk = order_ids.slice(i, i + 80)
       const billPh = chunk.map(() => '?').join(',')
       const { results: billOrderRows } = await c.env.DB.prepare(
-        `SELECT id, status, client_id, final_amount, billing_status FROM orders WHERE id IN (${billPh})`
-      ).bind(...chunk).all<{ id: number; status: string; client_id: number; final_amount: number; billing_status: string }>()
+        `SELECT id, status, client_id, final_amount, billing_status FROM orders WHERE id IN (${billPh})${billEf.clause}`
+      ).bind(...chunk, ...billEf.params).all<{ id: number; status: string; client_id: number; final_amount: number; billing_status: string }>()
       for (const o of billOrderRows) billOrderMap.set(o.id, o)
     }
 

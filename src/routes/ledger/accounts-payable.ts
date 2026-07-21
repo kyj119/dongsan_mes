@@ -872,6 +872,9 @@ apRouter.get('/purchase-overdue', async (c) => {
 // GET /purchase-integrity-check - 매입 정합성 검사
 apRouter.get('/purchase-integrity-check', requireEditOrRole('/ledger', 'MANAGER'), async (c) => {
   try {
+    // #547: 전체 모드(전 법인, superadmin)에서만 허용. entity-scoped 호출은 법인 스코프 파생값을
+    //   법인 무관 단일 컬럼 clients.purchase_balance에 덮어써 내부거래 3법인 공급처 잔액을 손상시킴.
+    if (getEntityId(c) !== 0) return c.json({ success: false, error: '전체 모드(전 법인)에서만 실행할 수 있습니다.' }, 403)
     const { clause: intPoEf, params: intPoEfParams } = entityFilter(c)
     const { clause: intPpEf, params: intPpEfParams } = entityFilter(c)
     const { clause: intPaEf, params: intPaEfParams } = entityFilter(c)
@@ -928,6 +931,9 @@ apRouter.get('/purchase-integrity-check', requireEditOrRole('/ledger', 'MANAGER'
 // POST /purchase-integrity-fix - 매입 정합성 일괄 수정
 apRouter.post('/purchase-integrity-fix', requireEditOrRole('/ledger', 'MANAGER'), async (c) => {
   try {
+    // #547: 전체 모드(전 법인, superadmin)에서만 허용. entity-scoped 호출은 법인 스코프 파생값을
+    //   법인 무관 단일 컬럼 clients.purchase_balance에 덮어써 내부거래 3법인 공급처 잔액을 손상시킴.
+    if (getEntityId(c) !== 0) return c.json({ success: false, error: '전체 모드(전 법인)에서만 실행할 수 있습니다.' }, 403)
     const { supplier_ids } = await c.req.json() as { supplier_ids?: number[] }
 
     const { clause: fixPoEf, params: fixPoEfParams } = entityFilter(c)

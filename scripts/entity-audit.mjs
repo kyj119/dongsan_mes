@@ -89,6 +89,12 @@ function referencesEntityTable(sql) {
 const ALLOWLIST = [
   // CSV import 중복체크: bank_account_id로 스코프(계좌=법인 종속), 관리자 import 흐름
   'FROM bank_transactions WHERE bank_account_id = ? AND transaction_date IN',
+  // findLinkCandidates(bank.ts): 외부 SELECT는 purchase_payments FROM + COALESCE(entity_id,1)=?로 이미 법인 필터. bank_transactions는 NOT EXISTS 안티조인이라 테이블 오귀속(#529 검증)
+  'FROM purchase_payments pp WHERE pp.supplier_id = ?',
+  // findLinkCandidates(bank.ts): payments FROM + COALESCE(entity_id,1)=? 필터. 동일 오귀속
+  'FROM payments p WHERE p.client_id = ? AND ABS(p.amount - ?) < 0.01',
+  // cron.ts 무결성 트립와이어(0451): 전 법인 content_key 중복감지 = 의도된 글로벌 집계(cron 실행·사용자 entity 컨텍스트 없음)
+  'FROM bank_transactions GROUP BY content_key HAVING COUNT(*) > 1',
 ]
 
 function isCompliant(sql, fileSrc) {

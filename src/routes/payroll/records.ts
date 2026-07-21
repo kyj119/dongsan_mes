@@ -136,6 +136,9 @@ recordsRouter.post('/publish', async (c) => {
          ON CONFLICT(payroll_id) DO UPDATE SET issued_at = datetime('now'), issued_by = excluded.issued_by`
       ).bind(t.id, t.employee_id, t.entity_id ?? null, period, user?.id ?? null)),
     ]
+    // D1 batch statement 한도(~80) 주의: statement 수 = 1(UPDATE) + targets.length(INSERT).
+    // 현재 법인·월당 재직 ≤50명이라 한도 미도달로 단일 batch(원자성: 부분교부 방지) 유지.
+    // 인원 증가로 1+targets.length가 ~80 근접 시 aiInsights.ts:162 / purchaseOrders/templates.ts:112 처럼 80-청크 분할 재검토 필요.
     await c.env.DB.batch(stmts)
 
     return c.json({ success: true, data: { published: targets.length, pay_period: period } })

@@ -77,7 +77,9 @@ departmentsRouter.patch('/employees/:id', requireRole('ADMIN', 'MANAGER'), async
       const dep = await c.env.DB.prepare('SELECT id FROM departments WHERE id = ? AND is_active = 1').bind(body.department_id).first()
       if (!dep) return c.json({ success: false, error: '유효하지 않은 부문입니다.' }, 400)
     }
-    const emp = await c.env.DB.prepare('SELECT id FROM employees WHERE id = ?').bind(id).first()
+    // #521: 타 법인 직원 부문 재배정 차단 — caller 법인 직원만 조회(없으면 404). super-ADMIN(0)=전권. hr.ts:566 형제 패턴(단 이 라우트는 ADMIN·MANAGER 공용이라 entityFilter(c) 그대로).
+    const ef = entityFilter(c)
+    const emp = await c.env.DB.prepare(`SELECT id FROM employees WHERE id = ?${ef.clause}`).bind(id, ...ef.params).first()
     if (!emp) return c.json({ success: false, error: '직원을 찾을 수 없습니다.' }, 404)
     await c.env.DB.prepare('UPDATE employees SET department_id = ? WHERE id = ?').bind(body.department_id ?? null, id).run()
     return c.json({ success: true, message: '부문이 변경되었습니다.' })

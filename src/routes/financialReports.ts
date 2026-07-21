@@ -4,6 +4,7 @@ import { Hono } from 'hono'
 import type { HonoEnv } from '../types/env'
 import { authMiddleware, requireRole } from '../middleware/auth'
 import { entityFilter } from '../utils/entityFilter'
+import { LATEST_BALANCE_SUBQUERY } from '../utils/bankBalance'
 import { excludeInternalClientsSql } from '../constants/intercompany'
 import { kstYear } from '../utils/kstDate'
 
@@ -271,16 +272,12 @@ financialReportsRouter.get('/balance-snapshot', async (c) => {
     `).first<InventoryRow>().catch((): InventoryRow => ({ total_inventory: 0 }))
 
     // 은행 잔액 합계 (#433: bank_accounts엔 잔액 컬럼 없음 → 계좌별 최신 거래의 balance_after 합산)
+    // #537: 현금잔액 SSOT — bankBalance.ts LATEST_BALANCE_SUBQUERY(balance_after IS NOT NULL 필터 포함)로 통일.
+    //   bank fund-summary/getTotalBankBalance와 동일 판정 → 페이지 간 현금잔액 불일치 제거.
     const efBank = entityFilter(c, 'ba')
     const bankRow = await c.env.DB.prepare(`
-      SELECT COALESCE(SUM(bt.balance_after), 0) as total_bank
+      SELECT COALESCE(SUM(${LATEST_BALANCE_SUBQUERY}), 0) as total_bank
       FROM bank_accounts ba
-      JOIN bank_transactions bt ON bt.id = (
-        SELECT bt2.id FROM bank_transactions bt2
-        WHERE bt2.bank_account_id = ba.id
-        ORDER BY bt2.transaction_date DESC, bt2.transaction_time DESC, bt2.id DESC
-        LIMIT 1
-      )
       WHERE ba.is_active = 1${efBank.clause}
     `).bind(...efBank.params).first<BankRow>().catch((): BankRow => ({ total_bank: 0 }))
 
