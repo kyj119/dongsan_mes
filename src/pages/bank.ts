@@ -533,7 +533,8 @@ export const bankPageContent = `
               <button onclick="backToCsvStep1()" class="text-sm text-gray-500 hover:text-gray-700"><i class="fas fa-arrow-left mr-1"></i>다시 선택</button>
             </div>
             <div class="overflow-x-auto max-h-64 overflow-y-auto border rounded">
-              <table class="w-full text-xs">
+              <table class="w-full text-xs" style="table-layout:fixed">
+                <colgroup><col style="width:90px"><col><col style="width:90px"><col style="width:90px"><col style="width:100px"></colgroup>
                 <thead class="bg-gray-50 sticky top-0">
                   <tr><th class="px-2 py-1 text-left">날짜</th><th class="px-2 py-1 text-left">입금자명</th><th class="px-2 py-1 text-right">입금</th><th class="px-2 py-1 text-right">출금</th><th class="px-2 py-1 text-right">잔액</th></tr>
                 </thead>

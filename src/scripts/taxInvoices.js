@@ -596,7 +596,7 @@ async function viewDetail(id) {
       + (items.length > 0
         ? '<h4 class="text-sm font-medium mb-2">품목 내역</h4>'
           + '<div class="overflow-x-auto mb-4">'
-          + '<table class="w-full text-sm"><thead class="bg-gray-50"><tr>'
+          + '<table class="w-full text-sm" style="table-layout:fixed"><colgroup><col><col style="width:130px"><col style="width:110px"></colgroup><thead class="bg-gray-50"><tr>'
           + '<th class="px-3 py-2 text-left">품목명</th>'
           + '<th class="px-3 py-2 text-right">공급가액</th>'
           + '<th class="px-3 py-2 text-right">세액</th>'
@@ -607,7 +607,7 @@ async function viewDetail(id) {
       + (inv.orders && inv.orders.length > 0
         ? '<h4 class="text-sm font-medium mb-2 mt-2">연결 주문</h4>'
           + '<div class="overflow-x-auto mb-4">'
-          + '<table class="w-full text-sm"><thead class="bg-gray-50"><tr>'
+          + '<table class="w-full text-sm" style="table-layout:fixed"><colgroup><col><col style="width:100px"><col style="width:130px"><col style="width:110px"></colgroup><thead class="bg-gray-50"><tr>'
           + '<th class="px-3 py-2 text-left">주문번호</th>'
           + '<th class="px-3 py-2 text-center">주문일</th>'
           + '<th class="px-3 py-2 text-right">공급가액</th>'

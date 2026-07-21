@@ -519,7 +519,7 @@ function renderForecast() {
   if (riskDays.length === 0) {
     riskHtml = '<div class="text-sm text-gray-400 text-center py-4">음수 잔액 일자가 없습니다.</div>';
   } else {
-    riskHtml = '<table class="w-full text-xs"><thead><tr class="bg-gray-50">' +
+    riskHtml = '<table class="w-full text-xs" style="table-layout:fixed"><colgroup><col style="width:88px"><col></colgroup><thead><tr class="bg-gray-50">' +
       '<th class="px-2 py-1.5 text-left text-gray-600">날짜</th>' +
       '<th class="px-2 py-1.5 text-right text-gray-600">잔액</th>' +
       '</tr></thead><tbody>';
@@ -533,8 +533,8 @@ function renderForecast() {
   }
   document.getElementById('fcRiskTable').innerHTML = riskHtml;
 
-  // 예측 테이블
-  var fcHtml = '<table class="w-full text-xs"><thead><tr class="bg-gray-50">' +
+  // 예측 테이블 — 고정 레이아웃(값 자릿수 변동에도 열폭 고정)
+  var fcHtml = '<table class="w-full text-xs" style="table-layout:fixed"><colgroup><col style="width:88px"><col><col><col><col></colgroup><thead><tr class="bg-gray-50">' +
     '<th class="px-2 py-1.5 text-left text-gray-600">날짜</th>' +
     '<th class="px-2 py-1.5 text-right text-gray-600">입금</th>' +
     '<th class="px-2 py-1.5 text-right text-gray-600">지급</th>' +

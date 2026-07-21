@@ -159,7 +159,7 @@
                     + '<td class="py-3 px-3"><select name="assigned_entity_' + id + '" class="w-full px-2 py-2 border border-gray-300 rounded-lg text-sm">' + entityAssignOptions() + '</select></td>'
                     + '<td class="py-3 px-3"><input type="number" name="dist_qty_' + id + '" value="1" min="1" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-center" oninput="calcDistItem(' + id + ')"></td>'
                     + '<td class="py-3 px-3"><input type="text" inputmode="numeric" data-money name="dist_price_' + id + '" value="0" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-right" oninput="calcDistItem(' + id + ')"></td>'
-                    + '<td class="py-3 px-3 text-right"><span id="dist_amount_' + id + '" class="font-medium text-blue-700">0원</span></td>'
+                    + '<td class="py-3 px-3 text-right tabular-nums"><span id="dist_amount_' + id + '" class="font-medium text-blue-700">0원</span></td>'
                     + '<td class="py-3 px-2 text-center">'
                     + '<button type="button" onclick="removeDistItem(' + id + ')" class="text-red-400 hover:text-red-600 px-2 py-1.5 rounded hover:bg-red-50">'
                     + '<i class="fas fa-trash"></i></button>'

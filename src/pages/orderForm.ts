@@ -490,16 +490,17 @@ function orderFormDistPage(c: Context<HonoEnv>) {
                             </div>
                         </div>
                         <div class="overflow-x-auto">
-                            <table class="w-full">
+                            <table class="w-full" style="table-layout:fixed;min-width:920px">
+                                <colgroup><col><col style="width:20%"><col style="width:130px"><col style="width:90px"><col style="width:130px"><col style="width:130px"><col style="width:50px"></colgroup>
                                 <thead>
                                     <tr class="bg-gray-50 border-b border-gray-200">
-                                        <th class="text-left py-3 px-3 font-medium text-gray-600" style="min-width:240px">품목명</th>
-                                        <th class="text-left py-3 px-3 font-medium text-gray-600" style="min-width:140px">규격</th>
-                                        <th class="text-left py-3 px-3 font-medium text-gray-600" style="width:130px">담당</th>
-                                        <th class="text-center py-3 px-3 font-medium text-gray-600" style="width:90px">수량</th>
-                                        <th class="text-right py-3 px-3 font-medium text-gray-600" style="width:130px">단가</th>
-                                        <th class="text-right py-3 px-3 font-medium text-gray-600" style="width:130px">금액</th>
-                                        <th class="text-center py-3 px-3 font-medium text-gray-600" style="width:50px"></th>
+                                        <th class="text-left py-3 px-3 font-medium text-gray-600">품목명</th>
+                                        <th class="text-left py-3 px-3 font-medium text-gray-600">규격</th>
+                                        <th class="text-left py-3 px-3 font-medium text-gray-600">담당</th>
+                                        <th class="text-center py-3 px-3 font-medium text-gray-600">수량</th>
+                                        <th class="text-right py-3 px-3 font-medium text-gray-600">단가</th>
+                                        <th class="text-right py-3 px-3 font-medium text-gray-600">금액</th>
+                                        <th class="text-center py-3 px-3 font-medium text-gray-600"></th>
                                     </tr>
                                 </thead>
                                 <tbody id="distItemsBody"></tbody>

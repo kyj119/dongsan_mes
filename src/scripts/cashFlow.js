@@ -245,14 +245,14 @@
         el.innerHTML = '<p class="text-gray-400 text-sm">상환 스케줄이 없습니다. "스케줄 생성" 버튼을 클릭하세요.</p>';
         return;
       }
-      el.innerHTML = '<table class="w-full text-xs"><thead><tr class="bg-gray-50"><th class="px-2 py-1">회차</th><th class="px-2 py-1">날짜</th><th class="px-2 py-1 text-right">원금</th><th class="px-2 py-1 text-right">이자</th><th class="px-2 py-1 text-right">합계</th><th class="px-2 py-1 text-center">상태</th><th class="px-2 py-1"></th></tr></thead><tbody>'
+      el.innerHTML = '<table class="w-full text-xs" style="table-layout:fixed"><colgroup><col style="width:40px"><col style="width:84px"><col><col><col><col style="width:48px"><col style="width:36px"></colgroup><thead><tr class="bg-gray-50"><th class="px-2 py-1">회차</th><th class="px-2 py-1">날짜</th><th class="px-2 py-1 text-right">원금</th><th class="px-2 py-1 text-right">이자</th><th class="px-2 py-1 text-right">합계</th><th class="px-2 py-1 text-center">상태</th><th class="px-2 py-1"></th></tr></thead><tbody>'
         + payments.map(function (p) {
           var statusBadge = p.status === 'PAID' ? '<span class="text-green-600">납부</span>'
             : p.status === 'OVERDUE' ? '<span class="text-red-600 font-bold">연체</span>'
             : p.status === 'PARTIAL' ? '<span class="text-orange-600">일부</span>'
             : '<span class="text-gray-500">예정</span>';
           var payBtn = p.status !== 'PAID' ? '<button onclick="event.stopPropagation();payLoan(' + loanId + ',' + p.id + ',' + p.total_amount + ')" class="text-green-600 hover:text-green-700"><i class="fas fa-check-circle"></i></button>' : '';
-          return '<tr class="border-b hover:bg-gray-50"><td class="px-2 py-1 text-center">' + p.payment_number + '</td><td class="px-2 py-1">' + p.scheduled_date + '</td><td class="px-2 py-1 text-right">' + fmt(p.principal_amount) + '</td><td class="px-2 py-1 text-right">' + fmt(p.interest_amount) + '</td><td class="px-2 py-1 text-right font-medium">' + fmt(p.total_amount) + '</td><td class="px-2 py-1 text-center">' + statusBadge + '</td><td class="px-2 py-1 text-center">' + payBtn + '</td></tr>';
+          return '<tr class="border-b hover:bg-gray-50"><td class="px-2 py-1 text-center tabular-nums">' + p.payment_number + '</td><td class="px-2 py-1 tabular-nums">' + p.scheduled_date + '</td><td class="px-2 py-1 text-right tabular-nums">' + fmt(p.principal_amount) + '</td><td class="px-2 py-1 text-right tabular-nums">' + fmt(p.interest_amount) + '</td><td class="px-2 py-1 text-right font-medium tabular-nums">' + fmt(p.total_amount) + '</td><td class="px-2 py-1 text-center">' + statusBadge + '</td><td class="px-2 py-1 text-center">' + payBtn + '</td></tr>';
         }).join('') + '</tbody></table>';
     } catch (err) { console.error(err); }
   }
