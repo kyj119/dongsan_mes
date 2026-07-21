@@ -142,7 +142,25 @@ apRouter.get('/purchase-client/:clientId', async (c) => {
     const totalPurchases = purchaseOrders.reduce((sum, o) => sum + (o.final_amount || 0), 0)
     const totalPayments = purchasePayments.reduce((sum, p) => sum + (p.amount || 0), 0)
     const totalAdjustments = purchaseAdjustments.reduce((sum, a) => sum + (a.amount || 0), 0)
-    const balance = totalPurchases - totalPayments - totalAdjustments
+
+    // 전기이월(조회 시작일 이전 순잔액) — 기간필터 시 러닝밸런스 기준점 (매출 원장과 동일 구조)
+    let opening_balance = 0
+    if (startDate) {
+      const obEf = entityFilter(c)
+      const obRow = await c.env.DB.prepare(
+        `SELECT (SELECT COALESCE(SUM(final_amount),0) FROM purchase_orders WHERE supplier_id = ? AND status NOT IN ('DRAFT','CANCELLED') AND date(order_date) < ?${obEf.clause})`
+        + ` - (SELECT COALESCE(SUM(amount),0) FROM purchase_payments WHERE supplier_id = ? AND date(payment_date) < ?${obEf.clause})`
+        + ` - (SELECT COALESCE(SUM(amount),0) FROM purchase_adjustments WHERE supplier_id = ? AND date(adjustment_date) < ?${obEf.clause}) AS ob`
+      ).bind(
+        clientId, startDate, ...obEf.params,
+        clientId, startDate, ...obEf.params,
+        clientId, startDate, ...obEf.params
+      ).first<{ ob: number }>()
+      opening_balance = Number(obRow?.ob) || 0
+    }
+
+    // 잔액 = 전기이월 + 기간 순증감 (기간필터 없으면 opening_balance=0 → 전체 잔액)
+    const balance = opening_balance + totalPurchases - totalPayments - totalAdjustments
 
     // Find last payment date
     const lastPayment = purchasePayments.length > 0 ? purchasePayments[purchasePayments.length - 1] : null
@@ -165,6 +183,8 @@ apRouter.get('/purchase-client/:clientId', async (c) => {
         description: `지급: ${p.payment_method || ''}`,
         debit: 0,
         credit: p.amount || 0,
+        amount: p.amount || 0,
+        payment_method: p.payment_method || '',
         reference: p.reference_number,
         po_id: p.po_id,
         notes: p.notes
@@ -181,8 +201,8 @@ apRouter.get('/purchase-client/:clientId', async (c) => {
       }))
     ].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
 
-    // Calculate running balance (ascending order)
-    let runningBalance = 0
+    // Calculate running balance (ascending order) — 전기이월부터 누적
+    let runningBalance = opening_balance
     const transactionsWithBalance = transactions.map(t => {
       runningBalance += t.debit - t.credit
       return { ...t, balance: runningBalance }
@@ -198,6 +218,7 @@ apRouter.get('/purchase-client/:clientId', async (c) => {
           total_purchases: totalPurchases,
           total_payments: totalPayments,
           total_adjustments: totalAdjustments,
+          opening_balance,
           balance,
           last_payment_date: lastPayment ? lastPayment.date : null
         },

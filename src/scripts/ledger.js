@@ -15,12 +15,11 @@ var agingMap = {}; // client_id -> { aging_days, aging_category }
 var modalContext = { clientId: null, clientName: '', mode: 'sales', startDate: '', endDate: '' };
 
 // Date helpers
-function setQuickDate(key) {
+function computeQuickRange(key) {
     var now = new Date();
     var y = now.getFullYear();
     var m = now.getMonth();
     var sd = '', ed = '';
-
     if (key === 'thisMonth') {
         sd = fmtLocalDate(new Date(y, m, 1));
         ed = fmtLocalDate(new Date(y, m + 1, 0));
@@ -33,23 +32,46 @@ function setQuickDate(key) {
     } else if (key === 'thisYear') {
         sd = y + '-01-01';
         ed = y + '-12-31';
-    } else {
-        sd = ''; ed = '';
     }
+    return { sd: sd, ed: ed };
+}
 
-    document.getElementById('startDate').value = sd;
-    document.getElementById('endDate').value = ed;
-
-    // Highlight active button
-    document.querySelectorAll('.quick-date').forEach(function(btn) {
-        if (btn.dataset.key === key) {
-            btn.className = 'quick-date px-3 py-1 text-xs rounded border bg-orange-100 border-orange-300';
-        } else {
-            btn.className = 'quick-date px-3 py-1 text-xs rounded border hover:bg-orange-50';
-        }
+function _highlightQuick(scopeSel, key) {
+    document.querySelectorAll(scopeSel + ' .quick-date').forEach(function(btn) {
+        btn.className = (btn.dataset.key === key)
+            ? 'quick-date px-3 py-1 text-xs rounded border bg-orange-100 border-orange-300'
+            : 'quick-date px-3 py-1 text-xs rounded border hover:bg-orange-50';
     });
+}
 
+function setQuickDate(key) {
+    var r = computeQuickRange(key);
+    document.getElementById('startDate').value = r.sd;
+    document.getElementById('endDate').value = r.ed;
+    _highlightQuick('#salesContent', key);
     applyDateFilter();
+}
+
+// ===== 매입 탭 기간 필터 (매출과 동일 구조, 공유 currentDateFilter) =====
+function setPurchaseQuickDate(key) {
+    var r = computeQuickRange(key);
+    var psd = document.getElementById('pStartDate'), ped = document.getElementById('pEndDate');
+    if (psd) psd.value = r.sd;
+    if (ped) ped.value = r.ed;
+    _highlightQuick('#purchaseContent', key);
+    applyPurchaseDateFilter();
+}
+
+function applyPurchaseDateFilter() {
+    var psd = document.getElementById('pStartDate'), ped = document.getElementById('pEndDate');
+    currentDateFilter.startDate = psd ? psd.value : '';
+    currentDateFilter.endDate = ped ? ped.value : '';
+    // 매출 탭 입력과 동기화 (탭 전환 시 기간 일관 유지)
+    var sd = document.getElementById('startDate'), ed = document.getElementById('endDate');
+    if (sd) sd.value = currentDateFilter.startDate;
+    if (ed) ed.value = currentDateFilter.endDate;
+    loadPurchaseSettlement();
+    loadPurchaseMonthlySummary();
 }
 
 function applyDateFilter() {
@@ -309,7 +331,7 @@ function applyModalPeriod() {
     modalContext.endDate = med ? med.value : '';
     if (!modalContext.clientId) return;
     if (modalContext.mode === 'purchase') {
-        loadPurchaseClientLedger(modalContext.clientId);  // 매입은 날짜 미사용(전체)
+        loadPurchaseClientLedger(modalContext.clientId);  // 매입도 기간필터 적용 (getModalDateParams)
     } else {
         loadClientDetail(modalContext.clientId);
     }
@@ -980,6 +1002,10 @@ function switchLedgerTab(tab) {
     } else if (tab === 'purchase') {
         purchaseTab.className = activeClass;
         purchaseContent.style.display = '';
+        // 매입 탭 기간 입력을 현재 공유 기간과 동기화 (매출 탭에서 설정한 기간 승계)
+        var _psd = document.getElementById('pStartDate'), _ped = document.getElementById('pEndDate');
+        if (_psd) _psd.value = currentDateFilter.startDate || '';
+        if (_ped) _ped.value = currentDateFilter.endDate || '';
         loadPurchaseSettlement();
         loadPurchaseMonthlySummary();
         loadPurchaseOverdue();
@@ -1077,14 +1103,15 @@ function closePurchaseDetail() {
 
 async function loadPurchaseClientLedger(clientId) {
     try {
-        var res = await axios.get('/api/ledger/purchase-client/' + clientId);
+        var res = await axios.get('/api/ledger/purchase-client/' + clientId + '?' + getModalDateParams().substring(1));
         if (res.data.success) {
             var d = res.data.data;
+            _ledgerStatementData = d;  // 인쇄/팩스/발송용 캐시 (매출과 동일 구조)
             // 내부법인(그룹 3사): 매입원장 대신 회계허브 법인간거래 탭 안내 (AP 제외 정책)
             if (d.is_internal_entity) {
                 ['pClientTotalPurchase', 'pClientTotalPayments', 'pClientBalance', 'pClientLastPayment'].forEach(function (id) { var e = document.getElementById(id); if (e) e.textContent = '─'; });
                 var _ptb = document.getElementById('pTransactionsBody');
-                if (_ptb) _ptb.innerHTML = '<tr><td colspan="6" class="text-center py-12 text-gray-500">'
+                if (_ptb) _ptb.innerHTML = '<tr><td colspan="7" class="text-center py-12 text-gray-500">'
                     + '<i class="fas fa-building-columns text-3xl text-indigo-300 mb-3 block"></i>'
                     + '<div class="font-semibold text-gray-700 mb-1">법인간 내부거래처입니다</div>'
                     + '<div class="text-sm text-gray-500 mb-4 leading-relaxed">동산기획·선명·청주 간 채권·채무는 매입원장이 아니라<br>회계허브 &gt; 법인간거래 탭에서 통합 확인합니다.</div>'
@@ -1093,34 +1120,59 @@ async function loadPurchaseClientLedger(clientId) {
                 return;
             }
             var s = d.summary || {};
-            document.getElementById('pClientTotalPurchase').textContent = (s.total_purchase || 0).toLocaleString() + '원';
+            document.getElementById('pClientTotalPurchase').textContent = (s.total_purchases || 0).toLocaleString() + '원';
             document.getElementById('pClientTotalPayments').textContent = (s.total_payments || 0).toLocaleString() + '원';
             document.getElementById('pClientBalance').textContent = (s.balance || 0).toLocaleString() + '원';
             document.getElementById('pClientLastPayment').textContent = s.last_payment_date || '-';
 
             var txBody = document.getElementById('pTransactionsBody');
             txBody.innerHTML = '';
-            (d.transactions || []).forEach(function(tx) {
+            // ── 전기이월 행 (과거순 맨 위, 조회 시작일 이전 잔액) — 매출 원장과 동일 ──
+            var openingBal = s.opening_balance || 0;
+            if (Math.round(openingBal) !== 0) {
+                var obTop = document.createElement('tr');
+                obTop.className = 'border-b-2 border-gray-300 bg-gray-100';
+                obTop.innerHTML =
+                    '<td class="px-4 py-2 text-gray-500 whitespace-nowrap text-xs">' + (modalContext.startDate || '') + '</td>' +
+                    '<td class="px-4 py-2 text-center"><span class="px-2 py-0.5 text-xs rounded bg-gray-300 text-gray-700">전기이월</span></td>' +
+                    '<td class="px-4 py-2 text-sm text-gray-500 italic">조회 시작일 이전 잔액</td>' +
+                    '<td class="px-4 py-2"></td><td class="px-4 py-2"></td>' +
+                    '<td class="px-4 py-2 text-right font-semibold ' + (openingBal > 0 ? 'text-red-600' : 'text-green-600') + '">' + openingBal.toLocaleString() + '</td>' +
+                    '<td></td>';
+                txBody.appendChild(obTop);
+            }
+            // 백엔드는 newest-first 반환 → reverse해서 과거→최신(잔액 누적) 표시 (매출과 동일)
+            var txs = (d.transactions || []).slice().reverse();
+            txs.forEach(function(tx) {
                 var row = document.createElement('tr');
                 row.className = 'hover:bg-gray-50';
-                var isPO = tx.type === 'purchase_order' || tx.type === 'order';
-                var badgeClass = isPO ? 'bg-blue-50 text-blue-700' : 'bg-green-50 text-green-700';
-                var badgeText = isPO ? '발주' : '지급';
+                var t = tx.type;
+                var badgeClass, badgeText;
+                if (t === 'purchase') { badgeClass = 'bg-blue-50 text-blue-700'; badgeText = '발주'; }
+                else if (t === 'adjustment') { badgeClass = 'bg-orange-50 text-orange-700'; badgeText = '감액'; }
+                else { badgeClass = 'bg-green-50 text-green-700'; badgeText = '지급'; }
                 var balClass = (tx.balance || 0) > 0 ? 'text-red-600 font-medium' : 'text-green-600';
+                var amt = (tx.amount != null ? tx.amount : (tx.credit || 0));
+                var actionCell = '<td></td>';
+                if (t === 'payment') {
+                    actionCell = '<td class="px-2 py-2 text-center whitespace-nowrap">'
+                        + '<button onclick="editPurchasePayment(this)" data-id="' + tx.id + '" data-date="' + escapeHtml(tx.date || '') + '" data-amount="' + amt + '" data-method="' + escapeHtml(tx.payment_method || '') + '" data-ref="' + escapeHtml(tx.reference || '') + '" data-notes="' + escapeHtml(tx.notes || '') + '" class="text-gray-400 hover:text-blue-600 p-0.5" title="수정"><i class="fas fa-pen text-xs"></i></button>'
+                        + '<button onclick="deletePurchasePayment(' + tx.id + ',' + amt + ')" class="text-gray-400 hover:text-red-600 p-0.5 ml-1" title="삭제"><i class="fas fa-trash text-xs"></i></button>'
+                        + '</td>';
+                }
                 row.innerHTML =
                     '<td class="px-4 py-2 text-gray-600">' + formatDate(tx.date) + '</td>' +
                     '<td class="px-4 py-2"><span class="px-2 py-0.5 text-xs rounded ' + badgeClass + '">' + badgeText + '</span></td>' +
-                    '<td class="px-4 py-2">' + (tx.description || '-') + '</td>' +
+                    '<td class="px-4 py-2">' + escapeHtml(tx.description || '-') + '</td>' +
                     '<td class="px-4 py-2 text-right">' + ((tx.debit || 0) > 0 ? (tx.debit).toLocaleString() : '-') + '</td>' +
                     '<td class="px-4 py-2 text-right">' + ((tx.credit || 0) > 0 ? (tx.credit).toLocaleString() : '-') + '</td>' +
-                    '<td class="px-4 py-2 text-right ' + balClass + '">' + (tx.balance || 0).toLocaleString() + '</td>';
+                    '<td class="px-4 py-2 text-right ' + balClass + '">' + (tx.balance || 0).toLocaleString() + '</td>' +
+                    actionCell;
                 txBody.appendChild(row);
             });
-            if ((d.transactions || []).length === 0) {
-                txBody.innerHTML = '<tr><td colspan="6" class="text-center py-10"><i class="fas fa-receipt text-3xl mb-2 block text-gray-300"></i><div class="text-sm text-gray-400">거래 내역이 없습니다</div></td></tr>';
+            if (txs.length === 0 && Math.round(openingBal) === 0) {
+                txBody.innerHTML = '<tr><td colspan="7" class="text-center py-10"><i class="fas fa-receipt text-3xl mb-2 block text-gray-300"></i><div class="text-sm text-gray-400">거래 내역이 없습니다</div></td></tr>';
             }
-            // #376: dead pPaymentsBody 렌더 블록 제거 — 백엔드 미반환(d.payments 없음)·요소 부재.
-            //        지급 내역은 통합 #pTransactionsBody(발주/지급 뱃지)에 이미 표시됨.
         }
     } catch (e) {
         console.error('Purchase client ledger error:', e);
@@ -1602,9 +1654,14 @@ window.exportPurchaseCsv = function(clientId) {
 var ledgerSendClientId = null;
 var ledgerSendClientName = '';
 
-async function openLedgerSendModal(clientId, clientName, balance, defaultChannel) {
+async function openLedgerSendModal(clientId, clientName, balance, defaultChannel, mode) {
     ledgerSendClientId = clientId;
     ledgerSendClientName = clientName;
+    var isPur = mode === 'purchase';
+    // 매입 발송: 잔액 미지정 시 현재 로드된 매입원장 요약에서 미지급 잔액 사용
+    if (isPur && (!balance || balance === 0) && _ledgerStatementData && _ledgerStatementData.summary) {
+        balance = _ledgerStatementData.summary.balance || 0;
+    }
 
     document.getElementById('ledgerSendName').value = clientName;
     document.getElementById('ledgerSendMobile').value = '';
@@ -1639,8 +1696,8 @@ async function openLedgerSendModal(clientId, clientName, balance, defaultChannel
     var today = (window.kstToday ? window.kstToday() : new Date().toISOString().slice(0, 10));
     document.getElementById('ledgerSendContent').value =
         clientName + '님, 동산기획입니다.\n\n'
-        + '거래 내역을 안내드립니다.\n\n'
-        + '■ 미수금: ' + balanceText + '\n'
+        + (isPur ? '매입 거래 내역을 안내드립니다.\n\n' : '거래 내역을 안내드립니다.\n\n')
+        + '■ ' + (isPur ? '미지급금' : '미수금') + ': ' + balanceText + '\n'
         + '■ 기준일: ' + today + '\n\n'
         + '상세 내역은 아래 링크에서 확인하세요.\n\n'
         + '문의: 042-523-1982';
@@ -2031,7 +2088,12 @@ async function loadCollectionPeriod() {
 // ===== 원장 명세서 인쇄/팩스 =====
 var _ledgerStatementData = null; // 마지막 로드된 거래처 데이터 캐시
 
-function buildLedgerStatementHtml(clientName, transactions, summary) {
+function buildLedgerStatementHtml(clientName, transactions, summary, mode) {
+    var isPur = (mode || modalContext.mode) === 'purchase';
+    var title = isPur ? '매입 원장' : '거래처 원장';
+    var debitLabel = isPur ? '매입' : '매출';
+    var creditLabel = isPur ? '지급' : '입금';
+    var debitTotal = isPur ? (summary.total_purchases || 0) : (summary.total_orders || 0);
     var today = (window.kstToday ? window.kstToday() : new Date().toISOString().split('T')[0]);
     var sd = modalContext.startDate || '';
     var ed = modalContext.endDate || '';
@@ -2040,7 +2102,7 @@ function buildLedgerStatementHtml(clientName, transactions, summary) {
     var h = '<div style="font-family:Malgun Gothic,sans-serif;color:#000;width:780px;padding:10px;">';
     // 헤더
     h += '<table style="width:100%;border:none;margin-bottom:8px;"><tr>'
-      + '<td style="border:none;padding:0;vertical-align:top;"><div style="font-size:22pt;font-weight:bold;">거래처 원장</div>'
+      + '<td style="border:none;padding:0;vertical-align:top;"><div style="font-size:22pt;font-weight:bold;">' + title + '</div>'
       + '<div style="font-size:10pt;color:#666;margin-top:2px;">기간: ' + periodText + '</div></td>'
       + '<td style="border:none;padding:0;text-align:right;vertical-align:top;">'
       + '<div style="font-size:9pt;color:#888;">발행일: ' + today + '</div></td></tr></table>';
@@ -2049,11 +2111,11 @@ function buildLedgerStatementHtml(clientName, transactions, summary) {
     h += '<table style="width:100%;border-collapse:collapse;margin-bottom:10px;border:2px solid #000;">'
       + '<tr><td style="background:#f0f0f0;border:1px solid #999;padding:5px 10px;font-size:10pt;font-weight:bold;width:100px;">거래처</td>'
       + '<td style="border:1px solid #999;padding:5px 10px;font-size:12pt;font-weight:bold;">' + escapeHtml(clientName) + '</td>'
-      + '<td style="background:#f0f0f0;border:1px solid #999;padding:5px 10px;font-size:10pt;font-weight:bold;width:80px;">매출</td>'
-      + '<td style="border:1px solid #999;padding:5px 10px;font-size:10pt;text-align:right;">' + (summary.total_orders || 0).toLocaleString() + '원</td></tr>'
+      + '<td style="background:#f0f0f0;border:1px solid #999;padding:5px 10px;font-size:10pt;font-weight:bold;width:80px;">' + debitLabel + '</td>'
+      + '<td style="border:1px solid #999;padding:5px 10px;font-size:10pt;text-align:right;">' + debitTotal.toLocaleString() + '원</td></tr>'
       + '<tr><td style="background:#f0f0f0;border:1px solid #999;padding:5px 10px;font-size:10pt;font-weight:bold;">잔액</td>'
       + '<td style="border:1px solid #999;padding:5px 10px;font-size:12pt;font-weight:bold;color:#dc2626;">' + (summary.balance || 0).toLocaleString() + '원</td>'
-      + '<td style="background:#f0f0f0;border:1px solid #999;padding:5px 10px;font-size:10pt;font-weight:bold;">입금</td>'
+      + '<td style="background:#f0f0f0;border:1px solid #999;padding:5px 10px;font-size:10pt;font-weight:bold;">' + creditLabel + '</td>'
       + '<td style="border:1px solid #999;padding:5px 10px;font-size:10pt;text-align:right;">' + (summary.total_payments || 0).toLocaleString() + '원</td></tr></table>';
 
     // 거래 내역 테이블
@@ -2061,24 +2123,28 @@ function buildLedgerStatementHtml(clientName, transactions, summary) {
       + '<tr style="background:#e5e5e5;"><th style="border:1px solid #999;padding:4px 6px;font-size:8pt;">일자</th>'
       + '<th style="border:1px solid #999;padding:4px 6px;font-size:8pt;">구분</th>'
       + '<th style="border:1px solid #999;padding:4px 6px;font-size:8pt;text-align:left;">내용</th>'
-      + '<th style="border:1px solid #999;padding:4px 6px;font-size:8pt;text-align:right;">매출(+)</th>'
-      + '<th style="border:1px solid #999;padding:4px 6px;font-size:8pt;text-align:right;">입금(-)</th>'
+      + '<th style="border:1px solid #999;padding:4px 6px;font-size:8pt;text-align:right;">' + debitLabel + '(+)</th>'
+      + '<th style="border:1px solid #999;padding:4px 6px;font-size:8pt;text-align:right;">' + creditLabel + '(-)</th>'
       + '<th style="border:1px solid #999;padding:4px 6px;font-size:8pt;text-align:right;">잔액</th></tr>';
 
     (transactions || []).forEach(function(tx, i) {
         var bg = i % 2 ? '#f9f9f9' : '#fff';
-        var typeLabel = tx.type === 'order' ? '주문' : tx.type === 'payment' ? (tx.payment_method || '입금') : '감액';
+        var typeLabel;
+        if (tx.type === 'payment') typeLabel = tx.payment_method || creditLabel;
+        else if (tx.type === 'adjustment') typeLabel = '감액';
+        else typeLabel = isPur ? '발주' : '주문';
         var desc = '';
-        if (tx.type === 'order') {
+        if (tx.type === 'payment') {
+            desc = tx.notes || tx.reference || '';
+        } else if (tx.type === 'adjustment') {
+            desc = (tx.description || '').replace('감액: ', '');
+        } else {
             desc = tx.reference || '';
             if (tx.items && tx.items.length > 0) {
                 var first = tx.items[0].item_name || '';
                 desc += ' ' + first + (tx.items.length > 1 ? ' 외 ' + (tx.items.length - 1) + '건' : '');
             }
-        } else if (tx.type === 'payment') {
-            desc = tx.notes || tx.reference || '';
-        } else {
-            desc = (tx.description || '').replace('감액: ', '');
+            if (isPur && !desc) desc = (tx.description || '');
         }
         h += '<tr style="background:' + bg + ';">'
           + '<td style="border:1px solid #ddd;padding:3px 6px;font-size:8pt;text-align:center;">' + formatDate(tx.date) + '</td>'
@@ -2104,7 +2170,7 @@ function buildLedgerStatementHtml(clientName, transactions, summary) {
     // 합계
     h += '<tr style="background:#e5e5e5;font-weight:bold;">'
       + '<td colspan="3" style="border:1px solid #999;padding:5px 8px;font-size:9pt;text-align:center;">합계</td>'
-      + '<td style="border:1px solid #999;padding:5px 6px;font-size:9pt;text-align:right;">' + (summary.total_orders || 0).toLocaleString() + '</td>'
+      + '<td style="border:1px solid #999;padding:5px 6px;font-size:9pt;text-align:right;">' + debitTotal.toLocaleString() + '</td>'
       + '<td style="border:1px solid #999;padding:5px 6px;font-size:9pt;text-align:right;">' + ((summary.total_payments || 0) + (summary.total_adjustments || 0)).toLocaleString() + '</td>'
       + '<td style="border:1px solid #999;padding:5px 6px;font-size:9pt;text-align:right;color:#dc2626;">' + (summary.balance || 0).toLocaleString() + '</td></tr>';
     h += '</table></div>';
