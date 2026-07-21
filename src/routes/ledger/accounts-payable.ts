@@ -100,6 +100,29 @@ apRouter.get('/purchase-client/:clientId', async (c) => {
     poQuery += ' LIMIT 500'  // 확장성: 거래처별 발주 무제한 스캔 방지(방어적 cap)
     const { results: purchaseOrders } = await c.env.DB.prepare(poQuery).bind(...poParams).all<PurchaseOrderRow>()
 
+    // Get purchase order items (발주 품목 라인) — 매출 원장(ar-ledger)과 동일 패턴(청크 50, D1 bind 한도 회피)
+    interface PoItemLine {
+      po_id: number; item_name: string | null; quantity: number; unit: string | null
+      unit_price: number | null; amount: number | null; vat_included: number | null
+    }
+    const poIds = purchaseOrders.map(o => o.id)
+    const poItemsMap = new Map<number, PoItemLine[]>()
+    if (poIds.length > 0) {
+      for (let i = 0; i < poIds.length; i += 50) {
+        const chunk = poIds.slice(i, i + 50)
+        const ph = chunk.map(() => '?').join(',')
+        const { results: poItems } = await c.env.DB.prepare(
+          `SELECT po_id, item_name, quantity, unit, unit_price, amount, vat_included
+           FROM purchase_order_items WHERE po_id IN (${ph})
+           ORDER BY sort_order ASC, id ASC`
+        ).bind(...chunk).all<PoItemLine>()
+        for (const it of poItems) {
+          if (!poItemsMap.has(it.po_id)) poItemsMap.set(it.po_id, [])
+          poItemsMap.get(it.po_id)!.push(it)
+        }
+      }
+    }
+
     // Get purchase payments (지급 - credit)
     const { clause: ppEf, params: ppEfParams } = entityFilter(c)
     let ppQuery = `
@@ -174,7 +197,15 @@ apRouter.get('/purchase-client/:clientId', async (c) => {
         debit: o.final_amount || 0,
         credit: 0,
         reference: o.po_number,
-        status: o.status
+        status: o.status,
+        items: (poItemsMap.get(o.id) || []).map(it => ({
+          item_name: it.item_name || '-',
+          quantity: it.quantity || 0,
+          unit: it.unit || 'EA',
+          unit_price: Number(it.unit_price) || 0,
+          amount: Number(it.amount) || 0,
+          vat_included: it.vat_included ? true : false,
+        }))
       })),
       ...purchasePayments.map(p => ({
         type: 'payment',

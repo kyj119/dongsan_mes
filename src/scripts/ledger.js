@@ -1153,6 +1153,13 @@ async function loadPurchaseClientLedger(clientId) {
                 else { badgeClass = 'bg-green-50 text-green-700'; badgeText = '지급'; }
                 var balClass = (tx.balance || 0) > 0 ? 'text-red-600 font-medium' : 'text-green-600';
                 var amt = (tx.amount != null ? tx.amount : (tx.credit || 0));
+                // 발주 품목 공급가 합 / 부가세 표기 (매출 원장과 동일)
+                var descExtra = '';
+                if (t === 'purchase' && tx.items && tx.items.length > 0) {
+                    var _itemsSum = tx.items.reduce(function(s, it){ return s + (Number(it.amount) || 0); }, 0);
+                    var _vat = Math.round((Number(tx.debit) || 0) - _itemsSum);
+                    if (_itemsSum > 0 && _vat > 0) descExtra = ' <span class="text-gray-400" style="font-size:10px">(공급 ' + _itemsSum.toLocaleString() + ' + VAT ' + _vat.toLocaleString() + ')</span>';
+                }
                 var actionCell = '<td></td>';
                 if (t === 'payment') {
                     actionCell = '<td class="px-2 py-2 text-center whitespace-nowrap">'
@@ -1163,12 +1170,30 @@ async function loadPurchaseClientLedger(clientId) {
                 row.innerHTML =
                     '<td class="px-4 py-2 text-gray-600">' + formatDate(tx.date) + '</td>' +
                     '<td class="px-4 py-2"><span class="px-2 py-0.5 text-xs rounded ' + badgeClass + '">' + badgeText + '</span></td>' +
-                    '<td class="px-4 py-2">' + escapeHtml(tx.description || '-') + '</td>' +
+                    '<td class="px-4 py-2">' + escapeHtml(tx.description || '-') + descExtra + '</td>' +
                     '<td class="px-4 py-2 text-right">' + ((tx.debit || 0) > 0 ? (tx.debit).toLocaleString() : '-') + '</td>' +
                     '<td class="px-4 py-2 text-right">' + ((tx.credit || 0) > 0 ? (tx.credit).toLocaleString() : '-') + '</td>' +
                     '<td class="px-4 py-2 text-right ' + balClass + '">' + (tx.balance || 0).toLocaleString() + '</td>' +
                     actionCell;
                 txBody.appendChild(row);
+
+                // ── 발주 품목 라인 행 (매출 원장과 동일하게 항상 펼침) ──
+                if (t === 'purchase' && tx.items && tx.items.length > 0) {
+                    tx.items.forEach(function(item) {
+                        var itemRow = document.createElement('tr');
+                        itemRow.className = 'bg-blue-50/30';
+                        itemRow.innerHTML =
+                            '<td></td><td></td>' +
+                            '<td class="pl-8 pr-4 py-1 text-xs text-gray-700">' +
+                                '<span class="text-gray-800">' + escapeHtml(item.item_name) + '</span>' +
+                                '<span class="text-gray-400 ml-2">' + item.quantity + (item.unit || '') + ' × ' + (item.unit_price ? item.unit_price.toLocaleString() : '-') +
+                                (item.vat_included ? '<span class="text-blue-400 ml-0.5" title="부가세포함">✓</span>' : '') + '</span>' +
+                            '</td>' +
+                            '<td class="px-4 py-1 text-right tabular-nums text-xs text-gray-600">' + (item.amount || 0).toLocaleString() + '</td>' +
+                            '<td></td><td></td><td></td>';
+                        txBody.appendChild(itemRow);
+                    });
+                }
             });
             if (txs.length === 0 && Math.round(openingBal) === 0) {
                 txBody.innerHTML = '<tr><td colspan="7" class="text-center py-10"><i class="fas fa-receipt text-3xl mb-2 block text-gray-300"></i><div class="text-sm text-gray-400">거래 내역이 없습니다</div></td></tr>';
