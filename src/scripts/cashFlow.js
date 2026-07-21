@@ -123,7 +123,7 @@
       + Object.keys(CATEGORY_MAP).map(function (k) { return '<option value="' + k + '"' + ((data && data.category === k) ? ' selected' : '') + '>' + CATEGORY_MAP[k] + '</option>'; }).join('')
       + '</select></div></div>'
       + '<div class="grid grid-cols-3 gap-3">'
-      + '<div><label class="block text-sm font-medium text-gray-700 mb-1">금액</label><input id="fe_amount" type="number" class="w-full px-3 py-2 border rounded-lg text-sm" value="' + ((data && data.amount) || '') + '"></div>'
+      + '<div><label class="block text-sm font-medium text-gray-700 mb-1">금액</label><input id="fe_amount" type="text" inputmode="numeric" data-money class="w-full px-3 py-2 border rounded-lg text-sm" value="' + window.fmtMoneyInput((data && data.amount) || '') + '"></div>'
       + '<div><label class="block text-sm font-medium text-gray-700 mb-1">주기</label><select id="fe_frequency" class="w-full px-3 py-2 border rounded-lg text-sm">'
       + Object.keys(FREQUENCY_MAP).map(function (k) { return '<option value="' + k + '"' + ((data && data.frequency === k) ? ' selected' : '') + '>' + FREQUENCY_MAP[k] + '</option>'; }).join('')
       + '</select></div>'
@@ -141,13 +141,14 @@
       + '<button onclick="saveFixedExpense(' + ((data && data.id) || 'null') + ')" class="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm">저장</button>'
       + '</div></div></div>';
     document.body.insertAdjacentHTML('beforeend', html);
+    if (window.bindMoneyInputs) window.bindMoneyInputs(document.getElementById('feModalOverlay'));
   };
 
   window.saveFixedExpense = async function (id) {
     var payload = {
       name: document.getElementById('fe_name').value.trim(),
       category: document.getElementById('fe_category').value,
-      amount: parseFloat(document.getElementById('fe_amount').value) || 0,
+      amount: window.readMoney('fe_amount'),
       frequency: document.getElementById('fe_frequency').value,
       payment_day: parseInt(document.getElementById('fe_payment_day').value) || 1,
       start_date: document.getElementById('fe_start').value,
@@ -290,8 +291,8 @@
       + '<div><label class="block text-sm font-medium text-gray-700 mb-1">대출번호</label><input id="ln_number" class="w-full px-3 py-2 border rounded-lg text-sm" value="' + esc((data && data.loan_number) || '') + '"></div>'
       + '</div>'
       + '<div class="grid grid-cols-2 gap-3">'
-      + '<div><label class="block text-sm font-medium text-gray-700 mb-1">원금</label><input id="ln_original" type="number" class="w-full px-3 py-2 border rounded-lg text-sm" value="' + ((data && data.original_amount) || '') + '"></div>'
-      + '<div><label class="block text-sm font-medium text-gray-700 mb-1">현재 잔액</label><input id="ln_balance" type="number" class="w-full px-3 py-2 border rounded-lg text-sm" value="' + ((data && data.current_balance) || '') + '"></div>'
+      + '<div><label class="block text-sm font-medium text-gray-700 mb-1">원금</label><input id="ln_original" type="text" inputmode="numeric" data-money class="w-full px-3 py-2 border rounded-lg text-sm" value="' + window.fmtMoneyInput((data && data.original_amount) || '') + '"></div>'
+      + '<div><label class="block text-sm font-medium text-gray-700 mb-1">현재 잔액</label><input id="ln_balance" type="text" inputmode="numeric" data-money class="w-full px-3 py-2 border rounded-lg text-sm" value="' + window.fmtMoneyInput((data && data.current_balance) || '') + '"></div>'
       + '</div>'
       + '<div class="grid grid-cols-3 gap-3">'
       + '<div><label class="block text-sm font-medium text-gray-700 mb-1">금리(%)</label><input id="ln_rate" type="number" step="0.01" class="w-full px-3 py-2 border rounded-lg text-sm" value="' + ((data && data.current_rate) || '') + '"></div>'
@@ -311,14 +312,15 @@
       + '<button onclick="saveLoan(' + ((data && data.id) || 'null') + ')" class="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm">저장</button>'
       + '</div></div></div>';
     document.body.insertAdjacentHTML('beforeend', html);
+    if (window.bindMoneyInputs) window.bindMoneyInputs(document.getElementById('loanModalOverlay'));
   };
 
   window.saveLoan = async function (id) {
     var payload = {
       creditor: document.getElementById('ln_creditor').value.trim(),
       loan_number: document.getElementById('ln_number').value.trim() || null,
-      original_amount: parseFloat(document.getElementById('ln_original').value) || 0,
-      current_balance: parseFloat(document.getElementById('ln_balance').value) || 0,
+      original_amount: window.readMoney('ln_original'),
+      current_balance: window.readMoney('ln_balance'),
       current_rate: parseFloat(document.getElementById('ln_rate').value) || 0,
       rate_type: document.getElementById('ln_rate_type').value,
       repayment_type: document.getElementById('ln_repay').value,
