@@ -527,12 +527,14 @@ export function ledgerPage(c: Context<HonoEnv>) {
                             <div class="overflow-x-auto" style="max-height:calc(100vh - 320px);overflow-y:auto">
                                 <table class="ds-table ds-table-compact ds-table-striped">
                                     <colgroup>
-                                        <col style="width:112px">
-                                        <col style="width:56px">
+                                        <col style="width:104px">
+                                        <col style="width:52px">
                                         <col>
+                                        <col style="width:96px">
+                                        <col style="width:82px">
                                         <col style="width:100px">
+                                        <col style="width:96px">
                                         <col style="width:100px">
-                                        <col style="width:108px">
                                         <col style="width:30px">
                                     </colgroup>
                                     <thead>
@@ -540,7 +542,9 @@ export function ledgerPage(c: Context<HonoEnv>) {
                                             <th class="text-left">일자</th>
                                             <th class="text-center">구분</th>
                                             <th class="text-left">내용</th>
-                                            <th class="text-right">매출(+)</th>
+                                            <th class="text-right">공급가액</th>
+                                            <th class="text-right">부가세</th>
+                                            <th class="text-right">합계</th>
                                             <th class="text-right">입금(-)</th>
                                             <th class="text-right">잔액</th>
                                             <th></th>
@@ -651,13 +655,15 @@ export function ledgerPage(c: Context<HonoEnv>) {
                                 <table class="ds-table ds-table-compact ds-table-striped">
                                     <thead>
                                         <tr>
-                                            <th class="text-left" style="width:112px">일자</th>
-                                            <th class="text-center" style="width:70px">구분</th>
+                                            <th class="text-left" style="width:104px">일자</th>
+                                            <th class="text-center" style="width:64px">구분</th>
                                             <th class="text-left">내용</th>
-                                            <th class="text-right" style="width:110px">매입(+)</th>
-                                            <th class="text-right" style="width:110px">지급(-)</th>
-                                            <th class="text-right" style="width:110px">잔액</th>
-                                            <th class="text-center" style="width:56px"></th>
+                                            <th class="text-right" style="width:96px">공급가액</th>
+                                            <th class="text-right" style="width:82px">부가세</th>
+                                            <th class="text-right" style="width:104px">합계</th>
+                                            <th class="text-right" style="width:100px">지급(-)</th>
+                                            <th class="text-right" style="width:104px">잔액</th>
+                                            <th class="text-center" style="width:52px"></th>
                                         </tr>
                                     </thead>
                                     <tbody id="pTransactionsBody" class="divide-y"></tbody>
