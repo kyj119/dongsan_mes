@@ -394,6 +394,152 @@ function accRenderPurchaseRow(pi) {
   '</tr>';
 }
 
+// ===== CSV 내보내기 (현재 탭 · 필터 반영 · 페이지 루프 최대 5000건) =====
+var ACC_CSV_CAP = 5000;
+var ACC_CSV_TABS = {
+  payments: {
+    name: '입금', url: '/api/accounting/payments',
+    params: function () {
+      var p = new URLSearchParams();
+      var start = document.getElementById('accStart').value;
+      var end = document.getElementById('accEnd').value;
+      var search = document.getElementById('accSearch').value.trim();
+      var amtMin = window.parseMoney(document.getElementById('accAmtMin').value);
+      var amtMax = window.parseMoney(document.getElementById('accAmtMax').value);
+      if (start) p.set('start', start);
+      if (end) p.set('end', end);
+      if (search) p.set('search', search);
+      if (amtMin != null) p.set('amountMin', amtMin);
+      if (amtMax != null) p.set('amountMax', amtMax);
+      return p;
+    },
+    headers: ['입금일', '거래처', '금액', '결제수단', '참조번호', '비고', '등록자'],
+    row: function (p) { return [(p.payment_date || '').slice(0, 10), p.client_name || '', Number(p.amount) || 0, p.payment_method || '', p.reference_number || '', p.notes || '', p.created_by_name || '']; }
+  },
+  tax: {
+    name: '세금계산서', url: '/api/tax-invoices',
+    params: function () {
+      var p = new URLSearchParams();
+      var start = document.getElementById('accStart').value;
+      var end = document.getElementById('accEnd').value;
+      var status = document.getElementById('accTaxStatus').value;
+      var search = document.getElementById('accTaxSearch').value.trim();
+      if (start) p.set('date_from', start);
+      if (end) p.set('date_to', end);
+      if (status) p.set('status', status);
+      if (search) p.set('search', search);
+      return p;
+    },
+    headers: ['발행일', '계산서번호', '거래처', '공급가액', '세액', '합계', '상태'],
+    row: function (inv) { return [(inv.issue_date || '').slice(0, 10), inv.invoice_number || '', inv.buyer_name || inv.buyer_client_name || '', Number(inv.supply_amount) || 0, Number(inv.tax_amount) || 0, Number(inv.total_amount) || 0, ACC_STATUS_LABEL[inv.status] || inv.status || '']; }
+  },
+  cash: {
+    name: '현금영수증', url: '/api/cash-receipts',
+    params: function () {
+      var p = new URLSearchParams();
+      var start = document.getElementById('accStart').value;
+      var end = document.getElementById('accEnd').value;
+      var status = document.getElementById('accCashStatus').value;
+      var search = document.getElementById('accCashSearch').value.trim();
+      if (start) p.set('date_from', start);
+      if (end) p.set('date_to', end);
+      if (status) p.set('status', status);
+      if (search) p.set('search', search);
+      return p;
+    },
+    headers: ['거래일', '승인번호', '거래처', '신분확인', '금액', '상태'],
+    row: function (r) { return [(r.trade_date || '').slice(0, 10), r.receipt_number || '', r.client_name || '', r.identity_number || '', Number(r.total_amount) || 0, ACC_STATUS_LABEL[r.status] || r.status || '']; }
+  },
+  card: {
+    name: '카드', url: '/api/card-expenses/transactions',
+    params: function () {
+      var p = new URLSearchParams();
+      var start = document.getElementById('accStart').value;
+      var end = document.getElementById('accEnd').value;
+      var search = document.getElementById('accCardSearch').value.trim();
+      if (start) p.set('start_date', start);
+      if (end) p.set('end_date', end);
+      if (search) p.set('search', search);
+      return p;
+    },
+    headers: ['승인일', '카드', '가맹점', '금액', '분류', '상태'],
+    row: function (t) {
+      var isCancel = t.approval_type === 'CANCEL';
+      var cardLabel = (t.card_company || t.card_name || '카드') + (t.card_number_last4 ? ' ' + t.card_number_last4 : '');
+      var stMap = { UNCLASSIFIED: '미분류', CLASSIFIED: '분류완료', REQUESTED: '상신', APPROVED: '승인' };
+      return [accFmtCompact(t.transaction_date), cardLabel, (t.merchant_name || '') + (isCancel ? ' (취소)' : ''), (isCancel ? -1 : 1) * (Number(t.amount) || 0), t.category_name || '미분류', stMap[t.status] || t.status || ''];
+    }
+  },
+  purchase: {
+    name: '매입', url: '/api/accounting/purchases',
+    params: function () {
+      var p = new URLSearchParams();
+      var start = document.getElementById('accStart').value;
+      var end = document.getElementById('accEnd').value;
+      var status = document.getElementById('accPurStatus').value;
+      var search = document.getElementById('accPurSearch').value.trim();
+      if (start) p.set('start', start);
+      if (end) p.set('end', end);
+      if (status) p.set('paymentStatus', status);
+      if (search) p.set('search', search);
+      return p;
+    },
+    headers: ['매입일', '전표번호', '공급처', '공급가액', '부가세', '합계', '지급상태'],
+    row: function (pi) {
+      var stMap = { UNPAID: '미지급', PARTIAL: '부분지급', PAID: '지급완료' };
+      return [(pi.invoice_date || '').slice(0, 10), pi.invoice_number || '', pi.supplier_name || '', Number(pi.subtotal) || 0, Number(pi.vat_amount) || 0, Number(pi.total_amount) || 0, stMap[pi.payment_status] || pi.payment_status || ''];
+    }
+  }
+};
+
+async function accExportCsv() {
+  var cfg = ACC_CSV_TABS[accState.tab];
+  if (!cfg) { showToast('이 탭은 CSV 내보내기를 지원하지 않습니다', 'warning'); return; }
+  var btn = document.getElementById('accCsvBtn');
+  if (btn) btn.disabled = true;
+  try {
+    var params = cfg.params();
+    var rows = [];
+    var page = 1;
+    for (;;) {
+      params.set('page', page);
+      params.set('limit', 200);
+      var res = await axios.get(cfg.url + '?' + params.toString());
+      var data = res.data.data || [];
+      rows = rows.concat(data);
+      var pag = res.data.pagination || {};
+      var totalPages = Math.max(1, pag.total_pages || Math.ceil((pag.total || 0) / (pag.limit || 200)));
+      if (!data.length || page >= totalPages || rows.length > ACC_CSV_CAP) break;
+      page++;
+    }
+    var truncated = rows.length > ACC_CSV_CAP;
+    rows = rows.slice(0, ACC_CSV_CAP);
+    if (!rows.length) { showToast('내보낼 데이터가 없습니다', 'warning'); return; }
+    var esc = window.dsCsvCell;
+    var lines = [cfg.headers.map(esc).join(',')];
+    rows.forEach(function (r) { lines.push(cfg.row(r).map(esc).join(',')); });
+    if (truncated) lines.push(esc('※ 결과가 ' + ACC_CSV_CAP + '건을 초과하여 일부만 내보냈습니다. 기간/필터를 좁혀 다시 받으세요.'));
+    var start = document.getElementById('accStart').value;
+    var end = document.getElementById('accEnd').value;
+    var fname = '회계_' + cfg.name + '_' + (start || '전체') + '_' + (end || '전체') + '.csv';
+    var BOM = String.fromCharCode(0xFEFF);
+    var blob = new Blob([BOM + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = fname;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(a.href);
+    showToast(rows.length.toLocaleString() + '건 CSV 다운로드 완료', 'success');
+  } catch (e) {
+    console.error('[accounting] csv export error', e);
+    showToast('CSV 내보내기 실패', 'error');
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
 // ===== 통합 타임라인 (수입/지출 단일 목록) =====
 async function accLoadTimeline() {
   var body = document.getElementById('accTimelineBody');

@@ -29,6 +29,7 @@ export function accountingPage(c: Context<HonoEnv>) {
             <button onclick="accSetPeriod('lastMonth')" class="px-2.5 py-1 text-xs font-medium rounded-full bg-gray-100 text-gray-600 hover:bg-gray-200">지난달</button>
             <button onclick="accSetPeriod('thisYear')" class="px-2.5 py-1 text-xs font-medium rounded-full bg-gray-100 text-gray-600 hover:bg-gray-200">올해</button>
           </div>
+          <button id="accCsvBtn" onclick="accExportCsv()" class="ds-btn ds-btn-secondary ds-btn-sm ml-auto" title="현재 탭의 필터 결과를 CSV로 내보냅니다"><i class="fas fa-file-csv mr-1"></i>CSV</button>
         </div>
         <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mt-3">
           <div class="acc-kpi ds-card-compact bg-blue-50/40" style="border-color:#3b82f6;padding:12px 14px">
