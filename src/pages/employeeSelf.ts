@@ -132,10 +132,19 @@ export function employeeSelfPage(c: Context<HonoEnv>) {
       transition: all 0.15s;
       text-decoration: none;
       color: #374151;
+      /* button 요소 리셋 (키보드 접근성 전환) */
+      width: 100%;
+      text-align: left;
+      font-family: inherit;
+      font-size: inherit;
     }
     .menu-item:hover {
       background: #eff6ff;
       border-color: #bfdbfe;
+    }
+    .menu-item:focus-visible {
+      outline: 2px solid #2563eb;
+      outline-offset: 2px;
     }
     .menu-item i {
       font-size: 20px;
@@ -297,29 +306,29 @@ export function employeeSelfPage(c: Context<HonoEnv>) {
           <div class="detail" id="userDetail"></div>
         </div>
 
-        <div class="menu-item" id="btnCertificate">
-          <i class="fas fa-file-certificate"></i>
+        <button type="button" class="menu-item" id="btnCertificate">
+          <i class="fas fa-certificate" aria-hidden="true"></i>
           <div>
             <div class="label">재직증명서 출력</div>
             <div class="desc">재직증명서를 발급하여 인쇄합니다</div>
           </div>
-        </div>
+        </button>
 
-        <div class="menu-item" id="btnPayslips">
-          <i class="fas fa-file-invoice-dollar"></i>
+        <button type="button" class="menu-item" id="btnPayslips">
+          <i class="fas fa-file-invoice-dollar" aria-hidden="true"></i>
           <div>
             <div class="label">급여명세서</div>
             <div class="desc">교부된 월별 급여명세서를 확인·인쇄합니다</div>
           </div>
-        </div>
+        </button>
 
-        <div class="menu-item" id="btnContracts">
-          <i class="fas fa-file-contract"></i>
+        <button type="button" class="menu-item" id="btnContracts">
+          <i class="fas fa-file-contract" aria-hidden="true"></i>
           <div>
             <div class="label">내 계약서 목록</div>
             <div class="desc">근로계약서 이력을 확인합니다</div>
           </div>
-        </div>
+        </button>
 
         <button class="btn-logout" id="btnLogout">로그아웃</button>
       </div>
