@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 3 -->
-<!-- last_run_at: 2026-07-21T11:05:00+09:00 -->
+<!-- last_run_area: 4 -->
+<!-- last_run_at: 2026-07-22T03:17:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -8,13 +8,23 @@
 ## 통계
 | 상태 | 건수 |
 |------|------|
-| 🆕 new | **24** — Area 3 41회차(07-21T11:05) 신규 #549(직원 셀프서비스 세션만료 UX) 1건 편입. `list_issues(state:OPEN,label:auto-improve)` **절대값 실측 24건**으로 재동기화(직전 기재값 29는 stale — owner가 사이의 close-pending 다수(#529·#530·#541·#542·#543)를 이번 사이클 사이에 실측상 `not_planned`/기타 사유로 close함, #528·#547은 여전히 open). |
+| 🆕 new | **12** — Area 4 42회차(07-22T03:17) `search_issues(state:open,label:auto-improve)` **절대값 실측 재동기화**. 직전 기재값 24는 대폭 stale로 판명 — 실측 시점 open은 **10건뿐**(owner가 사이클 사이 #547·#545·#543·#542·#541·#539·#537·#534·#533·#532·#531·#530·#529·#527·#524·#522·#521·#519·#473·#548 다수를 completed/not_planned로 대량 close, 개별 재검증은 하지 않고 실측값 그대로 신뢰). 이번 사이클 신규 #550·#551 2건 생성으로 10→**12**. |
 | ✅ approved | 0 |
 | 👀 reviewed | 0 |
-| ✔️ done | **451** — `search_issues(is:closed,reason:completed)` 실측 재동기화(+3, owner의 근접 close 반영). |
-| ❌ rejected | **6** (`reason:not_planned`=4 + `reason:duplicate`=2, 실측 재동기화 — not_planned +3: #541·#542·#543이 fixed-in-tree였음에도 owner가 not_planned 사유로 close, owner 판단 존중·재오픈 안 함) |
+| ✔️ done | **465** — `search_issues(is:closed,reason:completed)` **절대값 실측 재동기화**(+14, owner의 대량 close 반영). |
+| ❌ rejected | **6** (`reason:not_planned`=4 + `reason:duplicate`=2, 실측 재확인 — 변동 없음) |
 
 > 📦 **과거 사이클 로그**는 `IMPROVEMENT_BACKLOG_ARCHIVE.md`/git 히스토리로 이관됨 (2026-06-10 1차 분리, 2026-06-25 2차 트림 343KB→192KB, 2026-06-25T10:00 3차 트림, 2026-07-03T06:00 4차 트림 288KB→86KB, 2026-07-07T13:00 5차 트림 238KB→78KB, **2026-07-20T19:20 6차 트림 — 07-06~07-17 사이클 로그를 `IMPROVEMENT_BACKLOG_ARCHIVE.md`로 이관: 306KB→80KB, 256KB Read 한도 재확보**). 신규 로그는 계속 이 파일 상단에 추가. 본 파일은 직전 2~3일치(07-18~) 사이클 로그 + 영구 참조 섹션(Approved/New/Auto-fixed/Done/Rejected/FP 카탈로그)만 유지. 이관분은 `IMPROVEMENT_BACKLOG_ARCHIVE.md` 또는 `git log -p -- IMPROVEMENT_BACKLOG.md`로 복원 가능.
+
+> **Area 4 데이터 정합성 (2026-07-22T03:17):**
+> - **방법**: `git fetch origin main`(HEAD `73216a0` = origin/main 일치, 워킹트리 clean, detached) 후 `npm ci`(node_modules 0→81). Area 4 **42회차** — 직전 Area4(`70e4943`, 07-20T15:19, 41회차, fetch HEAD `bba885b`) 이후 `src/routes`/`migrations` churn 2커밋뿐: `f9d211a`(intercompany AR을 회계허브 법인간거래 탭으로 재배치, 12파일)·`e7fd9c3`(AP 매입채무에도 내부법인 제외 적용 — 직전 Area4가 발견한 #547의 실제 픽스, Area1/5/6이 이미 close-pending 확인 완료). 신규 마이그레이션 3건(0467 inter_entity_transactions·0468 payslip_publish·0469 pension_base, 전부 Area1 #545가 write-path 컬럼드리프트 각도로 이미 다룸)의 **데이터 정합성 렌즈**(고아 레코드·CHECK 위반·형제 쿼리 비대칭)는 미검증 상태라 general-purpose 에이전트 1개로 심층 위임 + 오케스트레이터가 `payroll/records.ts`·`aiInsights.ts` 핵심 발견을 직접 Read로 교차검증.
+> - **🔴 신규 이슈 — #550 (S, bug)**: `payroll/records.ts` `POST /publish`(`:112` 주석 "상태 무관 — 교부는 상태와 독립")가 PENDING 급여도 교부(`payslip_issuance_logs` 생성)할 수 있는데, `DELETE /:id`(`:177`)는 `status!=='PENDING'`만 확인하고 `published_at`/로그 존재 여부를 검사하지 않아 **근로기준법 교부증빙 로그가 고아화**(FK 미선언 확인). 재현: PENDING 급여 발행→직원 열람(`first_viewed_at` 기록)→관리자가 그 PENDING 급여를 삭제→교부·열람 이력이 있었다는 증빙이 dangling으로 조회 불가화. 로직 변경(삭제 정책)이라 issue-only.
+> - **🟡 신규 이슈 — #551 (S, improvement)**: `f9d211a`가 `aiInsights.ts`의 `GET /credit-risk/summary` 내 `by_grade` 집계엔 `excludeInternalClientsSql()`을 적용했으나 **6줄 아래 형제 쿼리 `high_risk` TOP10엔 누락**(#547·#462류 형제-비대칭 클래스). 근본 원인은 `POST /credit-risk/calculate-all`이 애초에 내부법인 제외 없이 전 거래처의 `credit_risk_grade`를 계산·저장하는 것. 직접 검증 결과 `/credit-risk/*` 엔드포인트를 호출하는 프론트 UI·cron이 전무(도달성 0) — 현재는 dormant라 LOW, 향후 UI 연결 시 즉시 재발하는 잠복 결함. 비즈니스 로직 변경이라 issue-only.
+> - **🟢 나머지 = clean(에이전트 심층 검증)**: `inter_entity_transactions.from/to_bank_transaction_id`는 코드 전체에서 값이 세팅되는 곳이 없어(항상 NULL) 고아화 위험 없음(단 프론트 "연결됨" 배지는 죽은 기능, 별건). `bank_transactions`/`clients` 둘 다 하드 DELETE 경로 없음(append-only/소프트 비활성)이라 신규 참조컬럼 고아화 축 자체가 무해. `transaction_type` CHECK 집합과 서버 `IET_TYPES` 화이트리스트 INSERT/UPDATE 양쪽 일치. `inter_entity_transactions` 수기 장부와 `deriveIntercompanyPositions` 파생 AR/AP는 주석에 명시된 **의도적 별개 시스템**이라 형제-비대칭 아님. `cron.ts` 84줄 삭제분은 전량 `deriveIntercompanyPositions`로 이전 확인(로직 유실 0). `payslip_issuance_logs UNIQUE(payroll_id)` + `ON CONFLICT DO UPDATE` 재교부/재열람 정상 동작.
+> - **🟢 backlog↔GitHub 절대값 재동기화(대폭 stale 발견)**: `search_issues(state:open,label:auto-improve)` **실측 10건**(#550/#551 생성 전) — 직전 기재값 24와 큰 괴리 발견, owner가 이번 사이클 사이 다수 이슈(#547·#545·#543·#542·#541·#539·#537·#534·#533·#532·#531·#530·#529·#527·#524·#522·#521·#519·#473·#548 등)를 대량 close(대부분 completed, 3건은 not_planned 재확인)한 것으로 판단 — 개별 재검증 없이 GitHub 실측을 신뢰. #550/#551 생성 후 **12건**. done `search_issues(is:closed,reason:completed)` 실측 **465**(+14) · not_planned 실측 4 + duplicate 실측 2 → rejected **6**(변동 없음). `## 🆕 New` 상세표를 실측 12건으로 전면 교체(아래).
+> - **🧬 SKILL 강화 없음(신규 탐지 클래스 아님)** — #550은 기존 "상태 무관 write + 파괴 write 가드 비대칭"(멱등/TOCTOU 계열) 클래스의 교부증빙 변종, #551은 기존 "형제 쿼리 비대칭"(intercompany exclusion sibling-incomplete) 클래스의 정확한 재현 — 둘 다 SKILL의 기존 레시피로 충분히 포착됨.
+> - 신규 이슈 2건(#550·#551, 둘 다 issue-only — Area4 정책상 로직 변경은 자동수정 대상 아님), 자동수정 0건, done-sync 대폭 재동기화(new 24(stale)→12(실측)·done 451→465·rejected 6, 전부 절대값 재확인). 다음 순번 Area 5.
+>
 
 > **Area 3 UX/기능 감사 (2026-07-21T11:05):**
 > - **방법**: `git fetch origin main`(HEAD `352a177` = origin/main 일치, 워킹트리 clean, detached). Area 3 **41회차** — 직전 Area3(`afd639c`, 07-20T09:14, 40회차) 이후 `git log afd639c..HEAD`(16커밋) 대부분은 Area1/2/4/5/6(41~48회차)이 각자 렌즈로 이미 심층 감사 완료(#546~#548). 순수 UX 표면 신규 churn은 없었으나, **직전 몇 사이클 동안 어느 Area도 UX 렌즈로 다루지 않은 대형 기능**을 역추적 — `360cb51`(07-18, Area3 39→40회차 사이 착륙, 직원 셀프서비스 급여명세서 교부+근로계약서 본인서명, `/employee-self` 신규 페이지)이 Area4/5가 데이터정합성·보안 렌즈로는 검증했으나(TOCTOU 안전·#544 XSS) 로딩/빈상태/에러메시지 UX 렌즈로는 미감사 상태임을 확인, 오케스트레이터가 `src/pages/employeeSelf.ts`+`src/scripts/employeeSelf.js`+`src/routes/hrSelf.ts`를 직접 Read로 전수 점검(범위가 3파일이라 위임 없이 직접 검증).
@@ -165,39 +175,24 @@
 
 ## 🆕 New (미검토)
 
-> 전부 GitHub open + 👍 미수신. 용준님 리뷰 대기. (open **실측 29건** — 2026-07-21T10:20 Area 2 48회차, `search_issues(state:open,label:auto-improve)` 직접 재확인 후 #548 생성. #528·#530 fixed-in-tree 확인·close-pending 코멘트 게시.)
+> 전부 GitHub open + 👍 미수신. 용준님 리뷰 대기. (open **실측 12건** — 2026-07-22T03:17 Area 4 42회차, `search_issues(state:open,label:auto-improve)` 직접 재확인 결과 직전 기재값 24가 대폭 stale로 판명. owner가 그 사이 20건 안팎을 대량 close — 개별 재검증 없이 GitHub 실측을 그대로 신뢰. #550·#551 신규 생성.)
 
 | Issue | 제목 | 영역 | 라벨 | 상태 메모 |
 |-------|------|------|------|-----------|
-| #548 | 급여교부 batch 원자화(1e1b620)가 741ee02의 80청크 D1한도 회피를 되돌림 — 인원증가 시 전체교부 hard-fail | Area 2 | bug,S | issue-only, 정책판단 필요 |
-| #547 | AP 파생화 사이클 — purchase-integrity-fix가 법인-무관 공유 clients.purchase_balance에 법인-스코프 파생값 덮어써 내부거래 3법인 캐시손상 | Area 4 | bug,S | **fixed-in-tree**(`e7fd9c3`), close-pending 코멘트 게시(46회차) |
-| #545 | pension_base(0469) 미적용 시 직원수정(PUT) 100% 500 위험 | Area 1 | bug,S | issue-only, egress로 prod 마이그 적용여부 확인 불가 — owner 확인 대기 |
-| #543 | 법인간 거래 POST/PUT 당사자 검증 없음 — 무관한 두 법인 사이 거래 임의 생성/수정 | Area 4 | bug,S | **fixed-in-tree**(`1e1b620`), close-pending 코멘트 게시(46회차) |
-| #542 | 법인간 거래 탭 "수정" 기능 완전결함 — accIetRows 캐시 미충전으로 매번 신규 등록 | Area 3 | bug,S | **fixed-in-tree**(`1e1b620`), close-pending 코멘트 게시(46회차) |
-| #541 | 사이드바 정비 흡수 후 access-control 클라 전용 — DESIGNER가 콘솔로 정비비용 대시보드 열람 | Area 3 | bug,security,S | **fixed-in-tree**(`1e1b620`), close-pending 코멘트 게시(46회차) |
+| #551 | 신용위험 등급(credit-risk) high_risk 쿼리·calculate-all 내부법인 제외 누락(형제-비대칭) | Area 4 | improvement,S | issue-only, 현재 dormant(도달성 0)라 LOW |
+| #550 | PENDING 급여 삭제 시 payslip_issuance_logs 교부증빙 고아화 | Area 4 | bug,S | issue-only, 정책판단 필요(삭제차단 vs 이력동반삭제) |
+| #549 | 직원 셀프서비스 — 30분 토큰만료 시 목록화면 오류메시지 무시+재로그인 경로 없음 | Area 3 | bug,S | 미픽스 |
 | #540 | entity-audit.mjs CI 게이트 커버리지 8/111테이블 — write-path 사각 | Area 6 | improvement,M | 문서 대응 완료(44회차), 로직 확장은 owner 정책 결정 대기 |
-| #539 | workbench intakes 일괄흡수 UPDATE entity_id 격리 누락(형제-비대칭) | Area 5 | bug,security,S | 미픽스 |
-| #537 | 현금잔액 소스단일화 부분픽스 — financialReports.ts만 NULL balance_after 미필터(재무상태표 과소평가) | Area 4 | bug,S | 미픽스 |
 | #536 | AR aging SSOT 통합 부분픽스 — dashboard.ts만 구 방식(UTC julianday) 잔존 | Area 4 | bug,M | 미픽스 |
 | #535 | bank LINKED 연결 경로 UNIQUE/재검증 부재 — 동시요청 시 원장 중복연결 | Area 4 | bug,S | 미픽스 |
-| #534 | designer_intakes absorb UPDATE status 가드 부재 — TOCTOU 레이스로 흡수이력 소실 | Area 4 | bug,S | 미픽스 |
-| #533 | 가공 대기물 absorb 실패 완전 무음 — 재사용 위험 | Area 3 | improvement,S | 미픽스 |
-| #532 | 품목 하드삭제/복구 버튼 MANAGER에도 노출 — 위협적 확인창 통과 후 403 | Area 3 | improvement,S | 미픽스 |
-| #531 | workbench POST /intakes entity_id 전체모드 0-sentinel 오귀속(`getEntityId(c)\|\|1`) | Area 2 | improvement,S | 미픽스 |
-| #530 | 품목 하드삭제 참조검사 3테이블만 커버 — 다수 FK 누락으로 500+부분삭제 위험 | Area 2 | bug,M | **fixed-in-tree**(`1e1b620`, 20테이블 확장), close-pending 코멘트 게시(48회차) |
-| #529 | bank 적용 link_payment_id 명시지정 경로 entity_id 격리 누락 | Area 2 | bug,security,S | **fixed-in-tree**(`1e1b620`), close-pending 코멘트 게시(46회차) |
-| #528 | bank 출금→매입지급 적용 중복제출 방어 없음 — 이중지급/이중차감 | Area 2 | bug,M | **fixed-in-tree**(`1e1b620`, 원자적 claim-first), close-pending 코멘트 게시(48회차) |
-| #527 | PATCH /api/orders/bulk-bill entityFilter 누락 — 타법인 주문 cross-tenant BILLED 처리 | Area 5 | bug,security,S | 미픽스 |
+| #528 | bank 출금→매입지급 적용 중복제출 방어 없음 — 이중지급/이중차감 | Area 2 | bug,M | **fixed-in-tree**(`1e1b620`, 원자적 claim-first 확인, 48회차), close-pending(owner 확인/close 대기 — 코드 수정은 이슈 close를 자동 수반하지 않음) |
 | #526 | 부문 손익 자재비 — created_at UTC 미보정(KST 귀속오류) + 이동평균단가 비재현성 | Area 4 | improvement,S/M | 미픽스 |
 | #525 | 부문 손익 P5 배부 — serves_department_id 미검증 + totalWeight=0 공통비 무음소실 | Area 4 | bug,S~S-M | 미픽스 |
-| #524 | 주문목록 기본 날짜필터(최근1개월) 무음 차단 — clear-date dead code | Area 3 | improvement,S | 미픽스 |
-| #522 | hr.ts 직원등록/수정 department_id 존재·활성 미검증 (departments.ts와 비대칭) | Area 2 | improvement,S | 미픽스 |
-| #521 | 부문관리 employees entity격리 — GET 3곳은 `73b86ee`로 픽스됐으나 **PATCH /employees/:id는 여전히 bare `WHERE id=?`** | Area 6→2 | bug,security,S | **부분픽스**, Area2가 정정 코멘트 게시(07-14), 45회차 재확인 동일 |
 | #520 | IA 크래시-하드닝 재큐 완료-콜백 세대가드 부재 → zombie write lost-update | Area 4 | bug,S | 미픽스 |
-| #519 | 계좌이체 "전체 확정" 버튼 double-submit 미방지 | Area 3 | improvement,S | 미픽스 |
 | #509 | 급여 중도입퇴사 일할계산 근거(근무일수/비율) 화면 미표시 | — | improvement,S~S-M | 미픽스 |
 | #504 | 회사 인쇄정보 로드 실패 시 무음 처리 (CSV 포뮬러가드는 자동수정 완료, 로드실패 toast만 잔존) | — | improvement,S | 부분 자동수정됨, 잔존분 미픽스 |
-| #473 | 거래처 포털계정 GET/PATCH/DELETE entity 소유 검증 없음 — #452 형제만 미픽스 | Area 5/6 | bug,security,small | **owner 보류 지시**(재보고/재수정 시도 금지, 지시 유지) |
+
+> 이전에 "fixed-in-tree, close-pending"으로 표에 남아있던 #547·#545·#543·#542·#541·#539·#537·#534·#533·#532·#531·#530·#529·#527·#524·#522·#521·#519·#473·#548은 42회차 실측 open 목록에서 전부 확인되지 않아(=closed) 표에서 제거함 — 대부분 owner가 completed로 close, #543·#542·#541은 not_planned로 close(위 Rejected 카운트에 반영). #528만 close-pending 상태(코드는 픽스됨, GitHub 이슈만 owner의 명시적 close 대기 — 코드 수정이 이슈 close를 자동 수반하지 않으므로 정상 상태) 그대로 open 유지.
 
 ---
 
