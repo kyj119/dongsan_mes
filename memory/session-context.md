@@ -1,50 +1,50 @@
-# 세션 핸드오프 — 코드리뷰 13건 수정 + AP 파생화 동반 prod 배포 (2026-07-20)
+# 세션 핸드오프 — 선명 매입원장 품목 노출 + 거래처 원장 공급가액·부가세·합계 3열 (2026-07-21)
 
-> 세션별 덮어쓰기 파일. 상세 정본 = [[design-departmental-pnl]]·[[project-clients-balance-deprecated]]·[[feedback-ap-client-type-filter]]·[[feedback-shared-checkout-git]] (auto-memory).
+> 세션별 덮어쓰기 파일. 이전 핸드오프(IA JSX 세션루프)의 durable 내용은 [[project-ia-designer-loop]]·[[project-ia-web-sunset]]에 보존됨.
+> 이번 세션 durable = 아래 + [[feedback-shared-checkout-git]](강화)·[[design-ledger-line-vat-columns]].
 
-## 이번 세션 요약 — prod 배포·검증·main 정합 완료 (origin/main=`3878eb6a`, 워킹트리 clean)
-feat/dept-pnl 로컬 코드리뷰(high) → **에이전트 8팀 병렬 수정 13파일**(커밋 `1e1b6207`) → **동시 세션 AP 파생화(`2511e57a`)와 충돌 처리** → 필터 재제거(`3f541012`) → **격리 worktree 빌드로 prod 배포**(`--branch main`) → apex 검증 → **main 정합 push**(docs-only 분기 `ff337c92` 병합, `3878eb6a`).
+## 이번 세션 요약
+거래처 원장(매출·매입) 상세 모달 2건 개선. **전부 prod 배포·검증 완료**.
+1. **선명 매입원장 품목 라인 노출** — "매입내역 정리 안 됨"의 실체 = 데이터(purchase_order_items 1,006라인)는 처음부터 존재, **원장 화면이 발주 총액 행만** 그리고 품목 라인을 안 펼침(매출 원장엔 있던 기능이 매입엔 없었음). 매출(ar-ledger) 패턴 미러링으로 해결.
+2. **원장 금액열 공급가액·부가세·합계 3열 분할** — 품목=공급가(net)·헤더=총액(VAT포함)이 같은 열에 섞여 "라인 합≠헤더" 가독성 저하. 세금계산서 표준(=우리 거래명세서·견적서 관례) 벤치마크로 3열 분할.
 
-### 배포된 3커밋 (origin/main에 push 완료)
-1. `2511e57a` (**타 세션**): AP 잔액 **법인별 파생화**(`clients.purchase_balance` 캐시 폐기 → `SUM(po.final_amount, NOT IN DRAFT/CANCELLED) − payments − adjustments`, entity 필터) + **관계사 채권채무 일별 대사**(cron daily-maintenance). AR deriveClientBalance 전례의 AP판. → [[project-clients-balance-deprecated]]
-2. `1e1b6207` (**내 코드리뷰 수정 13건**, 8에이전트 병렬):
-   - **부문손익**(departments.ts): 인건비 법인필터 `entityFilter('p'→'e')`(payroll.entity_id DEFAULT 1 신뢰불가·hr.ts:840 전례) · `totalWeight=0` 공통풀 소실 폴백(인원→균등) · 합계 공헌이익=생산부문 기준(행 합 일치)
-   - **법인간거래**: `ietValidate` 세션 법인 당사자 검증(#543) · `accIetRows` 렌더 시 채움→수정 정상화(중복생성 차단, #542)
-   - **은행적용**(bank.ts): LINKED/출금/입금 3모드 **원자적 claim-first**(조건부 UPDATE changes=0→409, 돈변동 전 배타소유권) — 동시적용 이중차감·중복지급 차단 · 명시링크 법인검증 · cash_schedule 자동DONE 법인바인딩 `tx.entity_id→entityId`
-   - **기타**: 품목 하드삭제 참조검사 3→**20 FK 테이블**(무언 CASCADE/opaque 500 방지) · `/maintenance/*` requireRole('ADMIN','MANAGER')(#541) · AR aging KST 정규화(UTC혼용 off-by-one) · 급여 교부 UPDATE+증빙INSERT 단일 batch 원자화 · 대기물 created_at formatKST · absorb order_item 링크(ai_analysis_id 서버 back-resolve)
-3. `3f541012`: **client_type 필터 재제거**(내 리뷰가 복원 제안했으나 오판 — 아래 주의사항)
+## 산출/배포
+| 커밋 | 내용 | prod deploy |
+|---|---|---|
+| `0f2d7454` | 매입원장 발주 품목 라인 노출(accounts-payable.ts items[] 부착 + ledger.js 렌더) | `42992db2` |
+| `601392b6` | 원장 공급가액·부가세·합계 3열(ledger.ts thead 9열 + ledger.js ledgerAllocVat 배분/양쪽 렌더/CSV) | `01afbb7d` (superset) |
+- **origin/feat/dept-pnl = `601392b6`** (내 VAT 커밋이 최신). 원격 백업 브랜치 `session/ledgervat` 존재(삭제 가능).
+- 검증: `npm run verify` green·`node --check`·**prod 스모크 102/102**·prod `/ledger` HTML thead 마커(부가세·합계 각 2=AR/AP)·apex 302. VAT 배분 함수 node 단위검증(10%·9품목·면세·반올림 전부 라인합=소계=총액 정확 일치).
 
 ## 핵심 결정 + 이유
-- **client_type 필터 복원 = 오판·철회**: 리뷰가 "미지급 목록에 stale 잔액 유입 방지"로 `client_type IN('PURCHASE','BOTH')` 복원을 제안, 사용자도 승인 → 그러나 **prod 매입처 대부분 'SALES'로 등록**(PURCHASE/BOTH 4곳뿐)이라 필터 시 실질 매입처 전멸. 2026-07-16에 이미 겪은 함정. 실질기준=`purchase_balance>0`(파생)만 사용. 가드 주석 코드에 명시. → [[feedback-ap-client-type-filter]]
-- **배포=격리 worktree 빌드**: 동시 세션 활발(이 세션 중 3커밋 유입 관측). dirty 워킹트리 전체빌드=WIP 휩쓸림 사고근원 → `scripts/new-session.ps1 deployrev <커밋>`으로 커밋 기준 격리 tree 빌드 후 `--branch main`.
-- **은행적용 claim-first**: D1은 배치 내 조건부 가드가 마지막 stmt에만 걸려 동시요청이 무조건 INSERT+잔액차감 통과 → 조건부 UPDATE 1건으로 **배타 소유권 선점**(changes=0→409) 후에만 돈변동. 잔여=클레임 성공 후 INSERT 실패 시 tx만 APPLIED(잔액무변·복구가능), 기존 이중차감보다 안전.
-- **합계 공헌이익=생산부문 기준**: 지원부문 인건비는 공통풀 배부(영업이익 아래)로만 반영, 합계 공헌이익도 생산부문 인건비만 차감해 행↔합계 정합.
+- **원장 상세 = 발주/전표 단위 행**(품목 미표시가 원래 설계, 매출과 동일). 요청은 품목 노출 → 매출 방식 미러링.
+- **3열 분할 벤치마크 = 내부 세금계산서/거래명세서/견적서 관례**(`invoice.js`·`taxInvoices.ts`·`quotationForm.ts` 전부 공급가액|세액|합계) = 국세청 세금계산서 표준. 원장 상세만 안 따르고 있었음.
+- **`ledgerAllocVat`(ledger.js)**: 부가세=총액−공급가합(신뢰식, 면세·할인 자동처리), 품목별 **비례배분+마지막 잔차 흡수** → Σ부가세=총부가세·Σ합계=총액 **정확 일치**. 무품목/면세 안전(hasBreakdown 가드로 공급가·부가세 공란).
+- **주문/발주 헤더 = 소계 행**(공급가액계·부가세·합계, bold). 별도 소계행 불요.
+- **`vat_included` 플래그 신뢰 불가**: 매출품목 vat_included=0·선명매입 vat_included=1인데 **양쪽 다 amount=공급가(net)**. 오해 유발 `✓ 부가세포함` 표시 제거.
+- **격리 배포(worktree)** = 사용자 지시 + 사고 복구 수단. 아래 주의사항 참조.
 
 ## 판단 기준 (다음 세션용)
-- **동시 세션 공유파일 충돌**: 에이전트가 편집한 shared 파일을 타 세션이 자기버전으로 커밋하면 내 수정 유실됨(이 세션 client_type 필터 2회 유실). 배포 전 `git log`·`git status` 재확인, 내 순수 파일만 **경로지정 add**, shared 파일은 타 세션 커밋에 동승 or 그 위에 재적용. → [[feedback-shared-checkout-git]]
-- **main 정합**: 배포 후 `git fetch`→`HEAD..origin/main` 확인(0 아니면 분기)→docs-only면 병합 후 `push origin HEAD:main`(FF), 코드분기면 재빌드·재배포 판단. **미push 시 타 세션 main기준 배포가 prod 코드를 되돌림**.
-- **AP 잔액 정본**=`clients.purchase_balance` 파생(orders−payments−adjustments, 법인필터). 캐시 컬럼 reader는 레거시. → [[project-clients-balance-deprecated]]
-- **배포**: 커밋 후 사용자 "배포 진행" 명시([[feedback-deploy-needs-explicit-request]]) → 격리 worktree → `wrangler pages deploy dist --branch main` → apex(302 로그인·신규라우트 401·404/500 부재) → main push → worktree 정리(end-session, dev서버 종료 동반).
+- 원장 거래처 조회는 **로그인 법인 컨텍스트로 entityFilter**(admin 기본=법인1). 법인2(선명) 데이터는 `POST /api/auth/switch-entity {entity_id:2}` 후 조회. entity_id=0=전체모드(필터 생략).
+- 원장 상세 모달 컬럼 정합: 모든 행 **9칸**(일자·구분·내용·공급가액·부가세·합계·입금/지급·잔액·action). 전기이월/헤더/품목/입금/감액/빈행 각각 9칸 맞춰야 정렬 안 깨짐.
+- 매출=`ar-ledger.ts`+`loadClientDetail`, 매입=`accounts-payable.ts`+`loadPurchaseClientLedger`. 한쪽 고치면 대칭 반영.
 
-## 검증 명령 (PowerShell)
+## 검증 명령
 ```powershell
-npm run verify                 # typecheck + build (backend)
-# 격리 배포: .\scripts\new-session.ps1 deployrev <커밋SHA>; cd ..\dongsan_mes-worktrees\deployrev
-#           npm run verify; npx wrangler pages deploy dist --project-name webapp --branch main --commit-message prod-deploy
-#           cd ..\..\dongsan_mes; .\scripts\end-session.ps1 deployrev -DeleteBranch   # ⚠️포트3000 dev서버 종료
-# apex 검증: curl -A "Mozilla/5.0" https://webapp-9i0.pages.dev/  (302) · /api/... (401)
-# 로컬: npm run dev:d1 (192.168.0.94:3000, admin/password) — 단일 포트, 타 세션과 동시 불가
+npm run verify                                        # typecheck + build
+node --check src/scripts/ledger.js                    # ?raw JS 문법
+$env:SMOKE_URL='https://webapp-9i0.pages.dev'; npm run smoke   # prod 102/102
+# prod 원장 thead 마커: /ledger HTML에 부가세</th>·합계</th> 각 2 (AR+AP)
+# VAT 배분 검증: ledgerAllocVat 추출해 node로 (라인합=소계=총액 확인)
 ```
 
 ## 다음 세션 TODO
-1. **내일 06:00 daily-maintenance cron 첫 실행** 후 관계사 채권채무 대사 결과 확인(불일치 시 ADMIN 알림). 미러 데이터 등록 전엔 불일치가 정상.
-2. **선명 잔액 법인분리 실측**: prod 로그인 → 동산/청주 매입탭에서 선명 잔액이 법인별로 분리(종전 합계 160,273,603원 오표시) 되는지 Playwright 검증 — 배포는 라이브지만 기능 육안검증 미완.
-3. **GitHub 이슈 close**: #541(정비 접근제어)·#542(법인간거래 수정)·#543(인가누락) 코드 수정 완료분.
-4. **리뷰 미조치(의도적 보류)**: workbench ingest entity 필터(W4/W5, 디자이너 인증모델 확인 후) · 퇴사자 셀프 명세서 열람 정책 · reports.ts null oldest_unpaid_date→'current' 버킷(경미) · 마이그 0459/0460 멱등성(이미 prod 적용, 파일수정 무의미).
+1. **메인 체크아웃 sync**: 로컬 `feat/dept-pnl`이 origin(`601392b6`)보다 뒤질 수 있음 → 배포 전 `git pull --ff-only` 필수(안 하면 VAT 회귀).
+2. (선택) **인쇄/팩스 명세서도 3열 정합**: 현재 화면 모달만 3열. `_ledgerStatementData` 기반 print/fax는 별도 작업.
+3. (사소) `ledger.js:401` 주석 "매출(+)/입금(-) 2컬럼" stale → 다음 배포 때 정정.
 
 ## 주의사항 (함정)
-- ⚠️**client_type 필터 재제안 금지**: AP 미지급/stats 목록은 `purchase_balance>0` 실질기준. prod 매입처 대부분 SALES 등록 → client_type 필터=매입처 전멸(2회 겪음). → [[feedback-ap-client-type-filter]]
-- ⚠️**dev 서버(포트3000) 이 세션 종료됨**(worktree 정리 end-session 부작용, wrangler 16프로세스 kill). 로컬 테스트 필요 시 `npm run dev:d1` 재시작. 다른 세션 worktree 4개(bank-ap-link·cardtl·ia-designer-loop·issuefix) 잔존 — 그 세션들 몫.
-- ⚠️**동시 세션 매우 활발**: 이 세션 중 origin/main·feat/dept-pnl에 타 세션 커밋 3+건 유입. 공유 체크아웃 작업 전 항상 git 상태 재확인.
-- 커밋 한글 OK(git), wrangler `--commit-message`만 ASCII(`prod-deploy`). worktree 제거는 반드시 end-session.ps1(junction 안전).
-- 미추적 `docs/superpowers/specs/2026-07-10-role-expansion-rw-permissions.local-copy.md`=로컬 참조 사본(커밋 대상 아님).
+- ⚠️ **공유 메인 체크아웃 = 미커밋 변경 실제 유실**(이번 세션 실증): VAT 변경을 메인에서 편집·빌드 중 타 세션 커밋/체크아웃이 내 **미커밋 파일을 완전히 덮어씀**(git status clean·변경 소실). "허상 원복"이 아니라 진짜 유실. → **처음부터 worktree 격리가 정답**. [[feedback-shared-checkout-git]]
+- ⚠️ **동시 세션 6개 가동**(worktree: bank-ap-link·cardtl·ia-designer-loop·ia-web-sunset·issuefix + 메인). 배포=`new-session.ps1 <이름> feat/dept-pnl`(회귀방지 base) → 워크트리 빌드 → **rebase origin/feat/dept-pnl(superset)** → `deploy:prod` → `git push session/X:feat/dept-pnl`(FF) → `end-session.ps1 X -DeleteBranch`.
+- ⚠️ **end-session은 port 3000 dev 서버도 종료**(재기동 안내). 배포≠push(deploy:prod 후 push 필수).
+- ⚠️ prod 로그인=admin/password 유효(스모크/검증용).
