@@ -240,8 +240,8 @@ async function deleteNote(noteId) {
 var RISK_LABELS = {
   'CHURN_RISK': { label: '이탈 위험: 3개월 이상 주문 없음', icon: 'fa-user-slash', color: 'red' },
   'HIGH_AR': { label: '미수금 과다: 청구 대비 50% 이상 미회수', icon: 'fa-exclamation-triangle', color: 'red' },
-  'LOW_MARGIN': { label: '저마진: 마진율 15% 미만', icon: 'fa-chart-line', color: 'orange' },
-  'DECLINING': { label: '매출 감소: 전분기 대비 30% 이상 하락', icon: 'fa-arrow-down', color: 'orange' },
+  'LOW_MARGIN': { label: '저마진: 마진율 15% 미만', icon: 'fa-chart-line', color: 'amber' },
+  'DECLINING': { label: '매출 감소: 전분기 대비 30% 이상 하락', icon: 'fa-arrow-down', color: 'amber' },
   'FREQUENT_COLLECTION': { label: '잦은 독촉: 최근 6개월 3회 이상', icon: 'fa-phone', color: 'amber' }
 };
 

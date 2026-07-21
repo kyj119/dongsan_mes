@@ -161,7 +161,7 @@ export function ordersPage(c: Context<HonoEnv>) {
           <button onclick="bulkShipSelected()" class="ds-btn ds-btn-sm" style="background:var(--c-success);color:#fff;">
             <i class="fas fa-shipping-fast" style="margin-right:4px"></i>일괄 출고
           </button>
-          <button onclick="bulkBillingConfirm()" class="ds-btn ds-btn-sm" style="background:var(--c-purple);color:#fff;">
+          <button onclick="bulkBillingConfirm()" class="ds-btn ds-btn-primary ds-btn-sm">
             <i class="fas fa-check-double" style="margin-right:4px"></i>회계반영
           </button>
         </div>

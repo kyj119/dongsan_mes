@@ -181,14 +181,14 @@ export function messagesPage(c: Context<HonoEnv>) {
     <div id="tplPanelSms" class="hidden">
       <div class="flex items-center justify-between mb-3">
         <p class="text-sm text-gray-500">자주 쓰는 문자 메시지를 템플릿으로 저장하세요.</p>
-        <button onclick="openTplEditor('sms')" class="px-3 py-1.5 bg-green-600 text-white rounded text-xs hover:bg-green-700"><i class="fas fa-plus mr-1"></i>새 템플릿</button>
+        <button onclick="openTplEditor('sms')" class="px-3 py-1.5 bg-blue-600 text-white rounded text-xs hover:bg-blue-700"><i class="fas fa-plus mr-1"></i>새 템플릿</button>
       </div>
       <div id="smsTemplatesList" class="space-y-3"></div>
     </div>
     <div id="tplPanelEmail" class="hidden">
       <div class="flex items-center justify-between mb-3">
         <p class="text-sm text-gray-500">이메일 템플릿을 관리합니다.</p>
-        <button onclick="openTplEditor('email')" class="px-3 py-1.5 bg-purple-600 text-white rounded text-xs hover:bg-purple-700"><i class="fas fa-plus mr-1"></i>새 템플릿</button>
+        <button onclick="openTplEditor('email')" class="px-3 py-1.5 bg-blue-600 text-white rounded text-xs hover:bg-blue-700"><i class="fas fa-plus mr-1"></i>새 템플릿</button>
       </div>
       <div id="emailTemplatesList" class="space-y-3"></div>
     </div>

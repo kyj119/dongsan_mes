@@ -253,11 +253,11 @@ export function productionPage(c: Context<HonoEnv>) {
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
           <div class="ds-card p-4">
             <div class="text-sm text-gray-600 mb-1">총 대기 카드</div>
-            <div class="text-2xl font-bold text-blue-600" id="statTotalQueue">-</div>
+            <div class="text-2xl font-bold text-gray-900" id="statTotalQueue">-</div>
           </div>
           <div class="ds-card p-4">
             <div class="text-sm text-gray-600 mb-1">미배정 카드</div>
-            <div class="text-2xl font-bold text-orange-600" id="statUnassigned">-</div>
+            <div class="text-2xl font-bold text-amber-600" id="statUnassigned">-</div>
           </div>
           <div class="ds-card p-4">
             <div class="text-sm text-gray-600 mb-1">오늘 납기</div>

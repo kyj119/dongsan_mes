@@ -103,7 +103,7 @@ export function priceManagementPage(c: Context<HonoEnv>) {
               <button type="button" onclick="exportPmCsv()" class="px-4 py-2 border border-gray-300 text-gray-600 rounded-lg text-sm hover:bg-gray-50">
                 <i class="fas fa-file-csv mr-1"></i>CSV
               </button>
-              <button type="button" onclick="printSalesList()" class="px-4 py-2 bg-green-600 text-white rounded-lg text-sm hover:bg-green-700">
+              <button type="button" onclick="printSalesList()" class="px-4 py-2 border border-gray-300 text-gray-700 bg-white rounded-lg text-sm hover:bg-gray-50">
                 <i class="fas fa-print mr-1"></i>인쇄
               </button>
               <button type="button" onclick="openFaxModal()" class="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700">

@@ -52,13 +52,14 @@ function accPaginate(elId, pag, gotoFn) {
 }
 
 function accPmBadge(method) {
+  // 시맨틱 5색 내 매핑 (보라/에메랄드/로즈=차트 전용 금지) — ledger 입금방법 뱃지와 동일 체계
   var m = method || '기타';
-  var cls = 'bg-gray-100 text-gray-700';
-  if (m === '카드') cls = 'bg-purple-100 text-purple-800';
-  else if (m === '현금') cls = 'bg-emerald-100 text-emerald-800';
-  else if (m === '계좌이체') cls = 'bg-blue-100 text-blue-800';
-  else if (m === '수표') cls = 'bg-amber-100 text-amber-800';
-  else if (m === '어음') cls = 'bg-rose-100 text-rose-800';
+  var cls = 'bg-gray-100 text-gray-600';
+  if (m === '카드') cls = 'bg-gray-100 text-gray-700';
+  else if (m === '현금') cls = 'bg-green-50 text-green-700';
+  else if (m === '계좌이체') cls = 'bg-blue-50 text-blue-700';
+  else if (m === '수표') cls = 'bg-amber-50 text-amber-700';
+  else if (m === '어음') cls = 'bg-red-50 text-red-700';
   return '<span class="pm-badge ' + cls + '">' + escapeHtml(m) + '</span>';
 }
 

@@ -172,7 +172,7 @@ async function viewQuotation(id) {
       + '</div>'
       + '<div class="flex gap-2 items-center">'
       + (quotStat !== 'cancelled'
-        ? '<button onclick="convertToOrder(' + id + ');closeQuotModal()" class="px-3 py-1.5 bg-green-600 text-white text-sm rounded hover:bg-green-700"><i class="fas fa-exchange-alt mr-1"></i>주문 생성</button>'
+        ? '<button onclick="convertToOrder(' + id + ');closeQuotModal()" class="px-3 py-1.5 bg-blue-600 text-white text-sm rounded hover:bg-blue-700"><i class="fas fa-exchange-alt mr-1"></i>주문 생성</button>'
         : '')
       + '<a href="/quotation/' + id + '" target="_blank" class="px-3 py-1.5 bg-gray-100 text-gray-700 text-sm rounded hover:bg-gray-200"><i class="fas fa-print mr-1"></i>인쇄</a>'
       + '<button onclick="closeQuotModal()" class="text-gray-400 hover:text-gray-600 text-2xl ml-2">&times;</button>'

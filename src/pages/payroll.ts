@@ -61,7 +61,7 @@ export function payrollPage(c: Context<HonoEnv>) {
             <i class="fas fa-print mr-1"></i>일괄 명세서
           </button>
           <div class="relative inline-block">
-            <button onclick="payrollTogglePublishMenu()" id="prPublishBtn" class="px-3 py-1.5 text-xs border border-indigo-300 text-indigo-700 bg-indigo-50 rounded hover:bg-indigo-100" title="직원 셀프서비스에 급여명세서 공개(교부)">
+            <button onclick="payrollTogglePublishMenu()" id="prPublishBtn" class="px-3 py-1.5 text-xs border border-blue-200 text-blue-700 bg-blue-50 rounded hover:bg-blue-100" title="직원 셀프서비스에 급여명세서 공개(교부)">
               <i class="fas fa-share-square mr-1"></i>직원 교부 <i class="fas fa-caret-down ml-1"></i>
             </button>
             <div id="prPublishMenu" class="hidden absolute right-0 mt-1 w-56 bg-white border border-gray-200 rounded shadow-lg z-10">

@@ -197,7 +197,7 @@ export const bankPageContent = `
                 <button onclick="runAutoMatch()" class="px-3 py-1.5 text-xs font-medium rounded-lg bg-green-600 text-white hover:bg-green-700 flex items-center gap-1">
                   <i class="fas fa-magic"></i> 자동매칭
                 </button>
-                <button onclick="detectTransfers()" class="px-3 py-1.5 text-xs font-medium rounded-lg bg-indigo-50 text-indigo-700 border border-indigo-200 hover:bg-indigo-100 flex items-center gap-1" title="계좌간 이체 자동감지">
+                <button onclick="detectTransfers()" class="px-3 py-1.5 text-xs font-medium rounded-lg bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100 flex items-center gap-1" title="계좌간 이체 자동감지">
                   <i class="fas fa-right-left"></i> 계좌이체 감지
                 </button>
                 <button onclick="openCsvImport()" class="px-3 py-1.5 text-xs font-medium rounded-lg bg-gray-100 text-gray-600 hover:bg-gray-200 flex items-center gap-1" title="통장 CSV 가져오기">
@@ -319,7 +319,7 @@ export const bankPageContent = `
               <button onclick="openAddRuleModal()" class="flex items-center gap-1 px-3 py-2 bg-blue-600 text-white rounded-lg text-sm cursor-pointer hover:bg-blue-700">
                 <i class="fas fa-plus"></i> 규칙 추가
               </button>
-              <button onclick="checkRuleConflicts()" class="flex items-center gap-1 px-3 py-2 bg-yellow-50 text-yellow-700 border border-yellow-200 rounded-lg text-sm cursor-pointer hover:bg-yellow-100">
+              <button onclick="checkRuleConflicts()" class="flex items-center gap-1 px-3 py-2 bg-amber-50 text-amber-700 border border-amber-200 rounded-lg text-sm cursor-pointer hover:bg-amber-100">
                 <i class="fas fa-exclamation-triangle"></i> 충돌 검사
               </button>
             </div>

@@ -114,10 +114,10 @@ function renderResult(data) {
 
   // 타입 뱃지
   var typeBadge = {
-    'CARD': '<span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-blue-100 text-blue-800"><i class="fas fa-id-card mr-1"></i>카드</span>',
-    'ITEM': '<span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-green-100 text-green-800"><i class="fas fa-box mr-1"></i>품목</span>',
-    'EQUIPMENT': '<span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-purple-100 text-purple-800"><i class="fas fa-server mr-1"></i>장비</span>',
-    'ORDER': '<span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-orange-100 text-orange-800"><i class="fas fa-file-alt mr-1"></i>주문</span>',
+    'CARD': '<span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-blue-50 text-blue-700"><i class="fas fa-id-card mr-1"></i>카드</span>',
+    'ITEM': '<span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-green-50 text-green-700"><i class="fas fa-box mr-1"></i>품목</span>',
+    'EQUIPMENT': '<span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-gray-100 text-gray-700"><i class="fas fa-server mr-1"></i>장비</span>',
+    'ORDER': '<span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-amber-50 text-amber-700"><i class="fas fa-file-alt mr-1"></i>주문</span>',
   };
 
   html += '<div class="mb-4">';

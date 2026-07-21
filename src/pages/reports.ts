@@ -116,7 +116,7 @@ export function reportsPage(c: Context<HonoEnv>) {
           </div>
           <div class="ds-card p-4">
             <div class="text-sm text-gray-500">수금률</div>
-            <div class="text-2xl font-bold text-purple-600" id="rptCollectionRate">-</div>
+            <div class="text-2xl font-bold text-gray-900" id="rptCollectionRate">-</div>
           </div>
         </div>
         <div class="ds-card p-6 mb-6">
@@ -226,7 +226,7 @@ export function reportsPage(c: Context<HonoEnv>) {
           </div>
           <div class="ds-card p-4">
             <div class="text-sm text-gray-500">평균 마진율</div>
-            <div class="text-2xl font-bold text-purple-600" id="mgAvgMargin">-</div>
+            <div class="text-2xl font-bold text-gray-900" id="mgAvgMargin">-</div>
           </div>
         </div>
 

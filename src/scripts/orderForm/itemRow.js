@@ -113,7 +113,7 @@
                     <div class="pt-2 border-t border-gray-200" id="pp_section_${id}">
                         <label class="block text-xs font-medium text-gray-600 mb-1">후가공 <span class="text-gray-400 font-normal">(품목 선택 시 자동 로드)</span></label>
                         <div id="pp_options_${id}" class="space-y-1 text-sm text-gray-400">품목을 선택하면 후가공 옵션이 표시됩니다.</div>
-                        <div id="pp_subtotal_${id}" class="text-right text-sm font-medium text-orange-600 mt-1"></div>
+                        <div id="pp_subtotal_${id}" class="text-right text-sm font-medium text-amber-600 mt-1"></div>
                     </div>
                     <div class="pt-2 border-t border-gray-200" id="finishing_section_${id}">
                         <label class="block text-xs font-medium text-gray-600 mb-1">마감 방식</label>

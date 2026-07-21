@@ -467,12 +467,13 @@ async function loadClientDetail(clientId) {
                     // ── 입금 행 ──
                     var pm = tx.payment_method || '기타';
                     var badgeClass;
-                    if (pm === '카드') badgeClass = 'bg-purple-100 text-purple-800';
-                    else if (pm === '현금') badgeClass = 'bg-emerald-100 text-emerald-800';
-                    else if (pm === '수표') badgeClass = 'bg-amber-100 text-amber-800';
-                    else if (pm === '어음') badgeClass = 'bg-rose-100 text-rose-800';
-                    else if (pm === '계좌이체') badgeClass = 'bg-blue-100 text-blue-800';
-                    else badgeClass = 'bg-gray-100 text-gray-700';
+                    // 시맨틱 5색 내 매핑 (보라/에메랄드/로즈=차트 전용 금지) — accounting accPmBadge와 동일 체계
+                    if (pm === '카드') badgeClass = 'bg-gray-100 text-gray-700';
+                    else if (pm === '현금') badgeClass = 'bg-green-50 text-green-700';
+                    else if (pm === '수표') badgeClass = 'bg-amber-50 text-amber-700';
+                    else if (pm === '어음') badgeClass = 'bg-red-50 text-red-700';
+                    else if (pm === '계좌이체') badgeClass = 'bg-blue-50 text-blue-700';
+                    else badgeClass = 'bg-gray-100 text-gray-600';
                     var payRow = document.createElement('tr');
                     payRow.className = 'border-t border-blue-100 bg-blue-50/30 hover:bg-blue-50 transition-colors';
                     var payDesc = '';

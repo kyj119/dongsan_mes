@@ -11,12 +11,12 @@ export function dashboardPage(c: Context<HonoEnv>) {
             <!-- Quick Stats — Bento Grid -->
             <div id="kpiArea" class="ds-bento mb-6">
                 <!-- Hero: 이번 달 매출 (2col × 2row) -->
-                <div class="ds-card ds-bento-hero cursor-pointer" style="border-left:4px solid var(--c-purple);" onclick="location.href='/ledger'" title="거래처 원장으로 이동">
+                <div class="ds-card ds-bento-hero cursor-pointer" style="border-left:4px solid var(--c-primary);" onclick="location.href='/ledger'" title="거래처 원장으로 이동">
                     <div class="flex items-center justify-between mb-2">
                         <div class="text-sm font-medium" style="color:var(--c-text-secondary)">이번 달 매출</div>
-                        <i class="fas fa-won-sign" style="color:var(--c-purple);opacity:0.5"></i>
+                        <i class="fas fa-won-sign" style="color:var(--c-primary);opacity:0.5"></i>
                     </div>
-                    <div style="font-size:36px;font-weight:800;color:var(--c-purple);font-variant-numeric:tabular-nums;line-height:1.1" id="statMonthRevenue">-</div>
+                    <div style="font-size:36px;font-weight:800;color:var(--c-text);font-variant-numeric:tabular-nums;line-height:1.1" id="statMonthRevenue">-</div>
                     <div class="flex items-center gap-2 mt-3" id="statMonthChange" style="color:var(--c-text-muted);font-size:var(--fs-sm)">-</div>
                     <div class="flex items-center gap-4 mt-auto pt-4" style="border-top:1px solid var(--c-border-light)">
                         <div><div class="text-xs" style="color:var(--c-text-muted)">오늘</div><div class="font-bold tabular-nums" style="color:var(--c-text)" id="statTodayRevenueSub">-</div></div>
@@ -70,9 +70,9 @@ export function dashboardPage(c: Context<HonoEnv>) {
                 <div class="ds-card ds-card-compact cursor-pointer" onclick="location.href='/receivables'" title="미수금 현황으로 이동">
                     <div class="flex items-center justify-between mb-1">
                         <div class="text-sm" style="color:var(--c-text-secondary)">수금률</div>
-                        <i class="fas fa-hand-holding-usd text-xs" style="color:var(--c-teal);opacity:0.6"></i>
+                        <i class="fas fa-hand-holding-usd text-xs" style="color:var(--c-success);opacity:0.6"></i>
                     </div>
-                    <div class="text-3xl font-bold tabular-nums" style="color:var(--c-teal)" id="statCollectionRate">-</div>
+                    <div class="text-3xl font-bold tabular-nums" style="color:var(--c-text)" id="statCollectionRate">-</div>
                     <div class="text-xs mt-1 tabular-nums" style="color:var(--c-text-muted)" id="statCollectionDetail">이번 달</div>
                 </div>
                 <!-- 납기 준수율 -->

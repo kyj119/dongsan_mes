@@ -60,7 +60,7 @@ export function weeklyPurchasePage(c: Context<HonoEnv>) {
       </label>
       <span id="selectedCount" class="text-sm text-gray-600"></span>
     </div>
-    <button onclick="createPRs()" class="bg-green-600 text-white rounded-lg px-5 py-2 text-sm font-medium hover:bg-green-700">
+    <button onclick="createPRs()" class="bg-blue-600 text-white rounded-lg px-5 py-2 text-sm font-medium hover:bg-blue-700">
       <i class="fas fa-file-alt mr-1"></i>발주 요청 생성
     </button>
   </div>

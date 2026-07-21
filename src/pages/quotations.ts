@@ -16,7 +16,7 @@ export function quotationsPage(c: Context<HonoEnv>) {
         </div>
         <div class="ds-card ds-card-compact cursor-pointer" style="text-align:center" onclick="filterByQuotStatus('valid')">
           <div class="text-sm" style="color:var(--c-text-secondary)">유효 견적</div>
-          <div class="text-3xl font-bold" style="color:var(--c-teal)" id="statValid">-</div>
+          <div class="text-3xl font-bold" style="color:var(--c-text)" id="statValid">-</div>
         </div>
         <div class="ds-card ds-card-compact cursor-pointer" style="text-align:center" onclick="filterByQuotStatus('expired')">
           <div class="text-sm" style="color:var(--c-text-secondary)">만료 견적</div>
@@ -59,7 +59,7 @@ export function quotationsPage(c: Context<HonoEnv>) {
           <button onclick="loadQuotations(1)" class="ds-btn ds-btn-primary ds-btn-sm">
             <i class="fas fa-search" style="margin-right:4px"></i>검색
           </button>
-          <a href="/quotation-form" class="ds-btn ds-btn-sm" style="background:var(--c-success);color:#fff;text-decoration:none;">
+          <a href="/quotation-form" class="ds-btn ds-btn-primary ds-btn-sm" style="text-decoration:none;">
             <i class="fas fa-plus" style="margin-right:4px"></i>새 견적서
           </a>
         </div>

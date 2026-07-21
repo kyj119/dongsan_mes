@@ -103,9 +103,9 @@ export function ledgerPage(c: Context<HonoEnv>) {
                     <div class="text-lg font-bold text-red-600 tabular-nums text-right" id="totalBalance">-</div>
                     <div class="text-xs text-gray-400 mt-1 text-right" id="balanceRatio"></div>
                 </div>
-                <div class="ds-card ds-card-compact" style="border-left:3px solid #facc15">
-                    <div class="ds-label mb-1"><i class="fas fa-clock text-yellow-500 mr-1"></i>30일+ 연체</div>
-                    <div class="text-lg font-bold text-yellow-600 tabular-nums text-right" id="agingOver30">-</div>
+                <div class="ds-card ds-card-compact" style="border-left:3px solid #f59e0b">
+                    <div class="ds-label mb-1"><i class="fas fa-clock text-amber-500 mr-1"></i>30일+ 연체</div>
+                    <div class="text-lg font-bold text-amber-600 tabular-nums text-right" id="agingOver30">-</div>
                 </div>
                 <div class="ds-card ds-card-compact" style="border-left:3px solid #ef4444">
                     <div class="ds-label mb-1"><i class="fas fa-fire text-red-500 mr-1"></i>60일+ 연체</div>
@@ -812,7 +812,7 @@ export function ledgerPage(c: Context<HonoEnv>) {
                         <textarea id="colNotes" rows="2" placeholder="독촉 내용..." class="w-full ds-input mt-1"></textarea>
                     </div>
                     <div class="flex gap-2 pt-2">
-                        <button onclick="saveCollectionLog()" class="ds-btn ds-btn-primary flex-1" style="background:var(--c-purple)">등록</button>
+                        <button onclick="saveCollectionLog()" class="ds-btn ds-btn-primary flex-1">등록</button>
                         <button onclick="closeCollectionModal()" class="ds-btn ds-btn-secondary flex-1">취소</button>
                     </div>
                 </div>

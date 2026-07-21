@@ -266,13 +266,13 @@ function getBillingStatusText(billingStatus) {
 
 function getBillingStatusColor(billingStatus) {
   if (!billingStatus) return 'ds-badge ds-badge-gray';
-  if (billingStatus === 'BILLED') return 'ds-badge ds-badge-purple';
+  if (billingStatus === 'BILLED') return 'ds-badge ds-badge-gray';
   if (billingStatus === 'PAID') return 'ds-badge ds-badge-green';
   return 'ds-badge ds-badge-gray';
 }
 
 function getStatusColor(status) {
-  const m = { CONFIRMED:'ds-badge ds-badge-blue', PRINTING:'ds-badge ds-badge-orange', PRINT_DONE:'ds-badge ds-badge-green', SHIPPED:'ds-badge ds-badge-purple', CANCELLED:'ds-badge ds-badge-red' };
+  const m = { CONFIRMED:'ds-badge ds-badge-blue', PRINTING:'ds-badge ds-badge-blue', PRINT_DONE:'ds-badge ds-badge-green', SHIPPED:'ds-badge ds-badge-green', CANCELLED:'ds-badge ds-badge-red' };
   return m[status] || 'ds-badge ds-badge-gray';
 }
 
@@ -449,7 +449,7 @@ async function loadOrders() {
         // 타법인 배지 (멀티법인 협업): 내 법인 담당 품목이 있어 보이는 타 청구법인 주문 표시
         const viewerEntity = (window.__currentEntityId != null) ? Number(window.__currentEntityId) : (parseInt(localStorage.getItem('entityId')) || 0);
         const crossBadge = (viewerEntity > 0 && order.entity_id && Number(order.entity_id) !== viewerEntity)
-          ? ` <span class="px-1.5 py-0.5 text-[10px] rounded bg-purple-100 text-purple-700 font-bold" title="타법인 주문 — 내 법인 담당 품목 포함">${escapeHtml(order.entity_name || '타법인')}</span>`
+          ? ` <span class="px-1.5 py-0.5 text-[10px] rounded font-bold" style="background:#eef2ff;color:#4338ca" title="타법인 주문 — 내 법인 담당 품목 포함">${escapeHtml(order.entity_name || '타법인')}</span>`
           : '';
         // 합배송 배지 (배송 UX P1): 자식=대표 링크 / 대표=묶인 건수. 주문서·청구는 별도, 배송만 한 박스.
         // 주문번호 열이 고정폭(col-*)이라 인라인 풀넘버는 잘림 → 번호 아래 줄 + 짧은 라벨, 상세는 title 호버.

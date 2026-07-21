@@ -139,13 +139,13 @@ export function equipmentPage(c: Context<HonoEnv>) {
                             <div class="subtext" id="activeEquipmentSub"></div>
                         </div>
                         <div class="ds-card ds-card-compact summary-card">
-                            <div class="label"><i class="fas fa-file" style="color:#f59e0b;margin-right:4px"></i>오늘 출력</div>
-                            <div class="value" style="color:#f59e0b" id="todayPrints">-</div>
+                            <div class="label"><i class="fas fa-file" style="color:#6b7280;margin-right:4px"></i>오늘 출력</div>
+                            <div class="value" style="color:#212529" id="todayPrints">-</div>
                             <div class="subtext" id="todayPrintsSub"></div>
                         </div>
                         <div class="ds-card ds-card-compact summary-card">
-                            <div class="label"><i class="fas fa-chart-pie" style="color:#8b5cf6;margin-right:4px"></i>평균 가동률</div>
-                            <div class="value" style="color:#8b5cf6" id="avgUtilization">-</div>
+                            <div class="label"><i class="fas fa-chart-pie" style="color:#6b7280;margin-right:4px"></i>평균 가동률</div>
+                            <div class="value" style="color:#212529" id="avgUtilization">-</div>
                             <div class="subtext">%</div>
                         </div>
                     </div>
