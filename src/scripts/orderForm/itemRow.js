@@ -64,6 +64,7 @@
                         <div>
                             <label class="block text-xs font-medium text-gray-600 mb-0.5">세로(cm)</label>
                             <input type="number" name="height_${id}" min="0" step="0.1" placeholder="60" class="w-full px-2 py-1.5 border border-gray-300 rounded text-sm" oninput="calcItem(${id})">
+                            <div id="bill_dim_hint_${id}" class="hidden text-[10px] text-gray-500 mt-0.5 whitespace-nowrap" title="면적 단가는 10cm 단위 올림 치수로 계산됩니다"></div>
                         </div>
                         <div id="scale_div_${id}" class="hidden">
                             <label class="block text-xs font-medium text-gray-600 mb-0.5" title="실제크기/파일크기 배율">스케일</label>

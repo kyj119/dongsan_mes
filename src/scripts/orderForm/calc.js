@@ -122,8 +122,20 @@
                     var w = Math.ceil(wRaw / 10) * 10;
                     var h = Math.ceil(hRaw / 10) * 10;
                     amt = price * (w / 100) * (h / 100) * qty;
+                    // 검산 가능화: 올림 치수가 입력 치수와 다르면 청구 기준 치수 힌트 노출 (P1-8)
+                    var hintEl = document.getElementById('bill_dim_hint_' + id);
+                    if (hintEl) {
+                        if (wRaw > 0 && hRaw > 0 && (w !== wRaw || h !== hRaw)) {
+                            hintEl.textContent = '청구 ' + w + '×' + h + 'cm (10cm 올림)';
+                            hintEl.classList.remove('hidden');
+                        } else {
+                            hintEl.classList.add('hidden');
+                        }
+                    }
                 } else {
                     amt = qty * price;
+                    var hintEl2 = document.getElementById('bill_dim_hint_' + id);
+                    if (hintEl2) hintEl2.classList.add('hidden');
                 }
                 // 100원 단위 반올림
                 amt = Math.round(amt / 100) * 100;
