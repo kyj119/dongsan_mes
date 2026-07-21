@@ -1,50 +1,45 @@
-# 세션 핸드오프 — 선명 매입원장 품목 노출 + 거래처 원장 공급가액·부가세·합계 3열 (2026-07-21)
+# 세션 핸드오프 — UI/UX 전수감사 + P0/P1 수정 (2026-07-21~22)
 
-> 세션별 덮어쓰기 파일. 이전 핸드오프(IA JSX 세션루프)의 durable 내용은 [[project-ia-designer-loop]]·[[project-ia-web-sunset]]에 보존됨.
-> 이번 세션 durable = 아래 + [[feedback-shared-checkout-git]](강화)·[[design-ledger-line-vat-columns]].
+> 세션별 덮어쓰기 파일. 이전 핸드오프(원장 3열)의 durable 내용은 [[design-ledger-line-vat-columns]]에 보존됨.
 
-## 이번 세션 요약
-거래처 원장(매출·매입) 상세 모달 2건 개선. **전부 prod 배포·검증 완료**.
-1. **선명 매입원장 품목 라인 노출** — "매입내역 정리 안 됨"의 실체 = 데이터(purchase_order_items 1,006라인)는 처음부터 존재, **원장 화면이 발주 총액 행만** 그리고 품목 라인을 안 펼침(매출 원장엔 있던 기능이 매입엔 없었음). 매출(ar-ledger) 패턴 미러링으로 해결.
-2. **원장 금액열 공급가액·부가세·합계 3열 분할** — 품목=공급가(net)·헤더=총액(VAT포함)이 같은 열에 섞여 "라인 합≠헤더" 가독성 저하. 세금계산서 표준(=우리 거래명세서·견적서 관례) 벤치마크로 3열 분할.
+## 브랜치 상태
+- **worktree**: `dongsan_mes-worktrees\ui-p0` / 브랜치 `session/ui-p0` (origin push 완료)
+- **base**: origin/main + **origin/feat/dept-pnl 병합 superset** (`f59f7c6a`)
+  - ⚠️ 이유: 원장 3열/매입품목 노출(`601392b6`)이 prod 배포됐지만 origin/main에 없음 → ledger.js 작업 전 병합 필수였음
+  - **배포 시 이 브랜치가 prod superset** — main 머지 후 `--branch main` 배포하면 안전
+- **main 미병합·미배포** (사용자 확인 대기)
 
-## 산출/배포
-| 커밋 | 내용 | prod deploy |
-|---|---|---|
-| `0f2d7454` | 매입원장 발주 품목 라인 노출(accounts-payable.ts items[] 부착 + ledger.js 렌더) | `42992db2` |
-| `601392b6` | 원장 공급가액·부가세·합계 3열(ledger.ts thead 9열 + ledger.js ledgerAllocVat 배분/양쪽 렌더/CSV) | `01afbb7d` (superset) |
-- **origin/feat/dept-pnl = `601392b6`** (내 VAT 커밋이 최신). 원격 백업 브랜치 `session/ledgervat` 존재(삭제 가능).
-- 검증: `npm run verify` green·`node --check`·**prod 스모크 102/102**·prod `/ledger` HTML thead 마커(부가세·합계 각 2=AR/AP)·apex 302. VAT 배분 함수 node 단위검증(10%·9품목·면세·반올림 전부 라인합=소계=총액 정확 일치).
+## 완료 (커밋 11개)
+| 커밋 | 내용 |
+|------|------|
+| `903a7805` | P0-1 XSS ~20곳 escape (shell.js 전역검색·toast / invoice 인쇄 / quotations / orderForm client / clientDetail / ledger 독촉 / purchaseOrders / purchaseRequests 속성주입 / receiving / reports / maintenance esc) |
+| `28bdfcc5` | P0-2 모달 ESC (quality 5모달+users 인라인display→hidden 클래스, shell.js ESC에 data-esc-close 위임) |
+| `c35c3442` | P0-3 employeeSelf 접근성 (fa-certificate·div→button·focus-visible) |
+| `70ae2722` | P0-4 cashFlow 금액입력 data-money (fe_amount/ln_original/ln_balance, readMoney, bindMoneyInputs) |
+| `54ce2d8a` | P0-5 clients.js 깨진한글 (싙→총, 건너눠→건너뜀) |
+| `f59f7c6a` | merge origin/feat/dept-pnl (superset) |
+| `872ef6af` | P1-7 매입원장 tabular-nums + 인쇄명세서 공급가·부가세 3열 (ledgerAllocVat 재사용, 8열) |
+| `dc74f2f5` | P1-9 금액표 fixed 6곳 (cashSchedule 예측/위험·cashFlow 상환·taxInvoices 상세2·bank CSV미리보기·유통주문 품목표) |
+| `2f9fa65b` | P1-10 accounting CSV (5탭: 입금/세금계산서/현금영수증/카드/매입, 페이지루프 limit200 클램프 대응, 5000건 캡, dsCsvCell) |
+| `f8af7a46` | P1-8 주문서 AREA 청구치수 힌트 (10cm 올림 시 "청구 100×70cm" 표시, calc.js+itemRow.js) |
+| `4c30c904` | P1-6 팔레트 스윕 24파일 (SHIPPED purple→green·PRINTING→blue·칸반 출력중 yellow→blue·hero purple→primary·입금방법 뱃지 시맨틱화 ledger↔accounting 동일체계·버튼 indigo/green/teal 정리·인쇄툴바 teal→primary) |
 
-## 핵심 결정 + 이유
-- **원장 상세 = 발주/전표 단위 행**(품목 미표시가 원래 설계, 매출과 동일). 요청은 품목 노출 → 매출 방식 미러링.
-- **3열 분할 벤치마크 = 내부 세금계산서/거래명세서/견적서 관례**(`invoice.js`·`taxInvoices.ts`·`quotationForm.ts` 전부 공급가액|세액|합계) = 국세청 세금계산서 표준. 원장 상세만 안 따르고 있었음.
-- **`ledgerAllocVat`(ledger.js)**: 부가세=총액−공급가합(신뢰식, 면세·할인 자동처리), 품목별 **비례배분+마지막 잔차 흡수** → Σ부가세=총부가세·Σ합계=총액 **정확 일치**. 무품목/면세 안전(hasBreakdown 가드로 공급가·부가세 공란).
-- **주문/발주 헤더 = 소계 행**(공급가액계·부가세·합계, bold). 별도 소계행 불요.
-- **`vat_included` 플래그 신뢰 불가**: 매출품목 vat_included=0·선명매입 vat_included=1인데 **양쪽 다 amount=공급가(net)**. 오해 유발 `✓ 부가세포함` 표시 제거.
-- **격리 배포(worktree)** = 사용자 지시 + 사고 복구 수단. 아래 주의사항 참조.
+## 검증
+- `npm run verify` green · 스모크 **101/102**
+- 1 FAIL = activity-logs 500 → **로컬 D1에 0456 `actor_entity_id` 컬럼 미적용 기존 드리프트** (본 변경 무관, `npm run db:migrate:local`로 해소)
 
-## 판단 기준 (다음 세션용)
-- 원장 거래처 조회는 **로그인 법인 컨텍스트로 entityFilter**(admin 기본=법인1). 법인2(선명) 데이터는 `POST /api/auth/switch-entity {entity_id:2}` 후 조회. entity_id=0=전체모드(필터 생략).
-- 원장 상세 모달 컬럼 정합: 모든 행 **9칸**(일자·구분·내용·공급가액·부가세·합계·입금/지급·잔액·action). 전기이월/헤더/품목/입금/감액/빈행 각각 9칸 맞춰야 정렬 안 깨짐.
-- 매출=`ar-ledger.ts`+`loadClientDetail`, 매입=`accounts-payable.ts`+`loadPurchaseClientLedger`. 한쪽 고치면 대칭 반영.
+## 판단 기준 (이 세션 결정)
+- SHIPPED=green·PRINTING=blue: canon(component.md 상태매핑·칸반 표준) 준수. dashboard.js는 이미 blue였음 — orders만 이탈 상태였음
+- 입금방법 뱃지: 카드=gray·현금=green·계좌이체=blue·수표=amber·어음=red (보라/에메랄드/로즈=차트전용 금지)
+- entity(법인) 뱃지 인디고(#eef2ff/#4338ca)는 **의도적 별도 체계로 보존** (orders.js 타법인 뱃지도 이 스타일로 통일)
+- BILLED 뱃지=gray(중립), 회계반영 버튼=Primary blue(벌크·단건 통일)
+- attendance 범례 purple/cyan(달력 카테고리)·문서 양식 본문은 미변경
 
-## 검증 명령
-```powershell
-npm run verify                                        # typecheck + build
-node --check src/scripts/ledger.js                    # ?raw JS 문법
-$env:SMOKE_URL='https://webapp-9i0.pages.dev'; npm run smoke   # prod 102/102
-# prod 원장 thead 마커: /ledger HTML에 부가세</th>·합계</th> 각 2 (AR+AP)
-# VAT 배분 검증: ledgerAllocVat 추출해 node로 (라인합=소계=총액 확인)
-```
+## 남은 작업 (다음 세션)
+1. **main 머지+배포** — 사용자 확인 후: `git push origin session/ui-p0:main`(rejected 시 pull --rebase) → 프로덕션 배포(반드시 `--branch main`) → apex 검증. 종료=`.\scripts\end-session.ps1 ui-p0`
+2. **P2 스윕**: native date→js-fp 110곳/37파일 · 뱃지 아이콘 누락(orders/quotations/clients/users/items/bank) · "검색"↔"조회" 통일 · 이모지 ~10곳 · 다크모드 인라인 hex 345곳/29파일 · 로컬 esc 사본 단일화
+3. **정본 md 재생성**: design-token.md 타이포/간격/radius/shadow 전면 드리프트(실코드 `--fs-*`/`--space-xs..2xl`) · 3문서 상충(버튼/카드 radius·padding) · z-index 스케일 · ds-sheet/ds-alert/showConfirm 미문서화
 
-## 다음 세션 TODO
-1. **메인 체크아웃 sync**: 로컬 `feat/dept-pnl`이 origin(`601392b6`)보다 뒤질 수 있음 → 배포 전 `git pull --ff-only` 필수(안 하면 VAT 회귀).
-2. (선택) **인쇄/팩스 명세서도 3열 정합**: 현재 화면 모달만 3열. `_ledgerStatementData` 기반 print/fax는 별도 작업.
-3. (사소) `ledger.js:401` 주석 "매출(+)/입금(-) 2컬럼" stale → 다음 배포 때 정정.
-
-## 주의사항 (함정)
-- ⚠️ **공유 메인 체크아웃 = 미커밋 변경 실제 유실**(이번 세션 실증): VAT 변경을 메인에서 편집·빌드 중 타 세션 커밋/체크아웃이 내 **미커밋 파일을 완전히 덮어씀**(git status clean·변경 소실). "허상 원복"이 아니라 진짜 유실. → **처음부터 worktree 격리가 정답**. [[feedback-shared-checkout-git]]
-- ⚠️ **동시 세션 6개 가동**(worktree: bank-ap-link·cardtl·ia-designer-loop·ia-web-sunset·issuefix + 메인). 배포=`new-session.ps1 <이름> feat/dept-pnl`(회귀방지 base) → 워크트리 빌드 → **rebase origin/feat/dept-pnl(superset)** → `deploy:prod` → `git push session/X:feat/dept-pnl`(FF) → `end-session.ps1 X -DeleteBranch`.
-- ⚠️ **end-session은 port 3000 dev 서버도 종료**(재기동 안내). 배포≠push(deploy:prod 후 push 필수).
-- ⚠️ prod 로그인=admin/password 유효(스모크/검증용).
+## 주의
+- PowerShell 검증: `cd dongsan_mes-worktrees\ui-p0; npm run verify` / 스모크는 dev:d1 기동 필요(포트 3000 단일)
+- 감사 상세 리스트(전 항목·file:line) = 2026-07-21 세션 대화가 정본
