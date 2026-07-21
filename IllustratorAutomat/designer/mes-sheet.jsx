@@ -224,6 +224,7 @@
     // ── 조각 로드: work.ai 열기 → 그룹으로 복제 → 실물 크기 보정 → 수량만큼 복제 ──
     var skipped = [];
     var usedIds = [];
+    var loadedPieces = []; // 조각 그룹 명시 수집 (grp.duplicate 후 collectPieces 컬렉션 stale 우회)
     for (var ci = 0; ci < chosen.length; ci++) {
       var itk = chosen[ci];
       var srcFile = new File(String(itk.work_ai_path || '').replace(/\\/g, '/'));
@@ -236,7 +237,9 @@
         for (var L = 0; L < src.layers.length; L++) {
           var lay = src.layers[L];
           for (var pi = lay.pageItems.length - 1; pi >= 0; pi--) {
-            try { lay.pageItems[pi].duplicate(grp, ElementPlacement.PLACEATBEGINNING); } catch (eDup) { }
+            // cross-doc(열린 work.ai→sheetDoc)에서 pageItem을 '그룹'으로 직접 복제는 PARM 실패 →
+            // 대상 문서의 layer로 복제 후 같은 문서 내에서 그룹으로 move (검증: dup→group ok=0, dup→layer ok=2)
+            try { var _ni = lay.pageItems[pi].duplicate(sheetDoc.layers[0], ElementPlacement.PLACEATEND); _ni.move(grp, ElementPlacement.PLACEATBEGINNING); } catch (eDup) { }
           }
         }
         src.close(SaveOptions.DONOTSAVECHANGES); src = null;
@@ -252,9 +255,10 @@
           }
         }
         usedIds.push(itk.id);
+        loadedPieces.push(grp);
         // 수량만큼 복제 (duplicate는 이름 태그 유지)
         var copies = Math.max(1, parseInt(itk.qty, 10) || 1);
-        for (var cp = 2; cp <= copies; cp++) grp.duplicate();
+        for (var cp = 2; cp <= copies; cp++) { var _dup = grp.duplicate(); loadedPieces.push(_dup); }
       } catch (eLoad) {
         skipped.push('#' + itk.id + ' (' + eLoad + ')');
         try { if (src) src.close(SaveOptions.DONOTSAVECHANGES); } catch (eCl) { }
@@ -262,7 +266,7 @@
       }
     }
 
-    var pieces = collectPieces(sheetDoc);
+    var pieces = loadedPieces.length ? loadedPieces : collectPieces(sheetDoc);
     if (!pieces.length) {
       alert('조각을 하나도 불러오지 못했습니다.\n' + skipped.join('\n'));
       try { sheetDoc.close(SaveOptions.DONOTSAVECHANGES); } catch (eC2) { }
