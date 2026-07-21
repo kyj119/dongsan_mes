@@ -1,6 +1,6 @@
 # Improvement Backlog
-<!-- last_run_area: 6 -->
-<!-- last_run_at: 2026-07-20T19:20:00+09:00 -->
+<!-- last_run_area: 1 -->
+<!-- last_run_at: 2026-07-21T09:17:00+09:00 -->
 
 > 자율 점검·개선 에이전트(auto-improve)가 6개 영역을 순환하며 발견한 항목.
 > 용준님이 주기적으로 리뷰하여 상태를 변경 (new → approved → done, 또는 rejected).
@@ -15,6 +15,15 @@
 | ❌ rejected | 3 (`reason:not_planned`=1 + `reason:duplicate`=2, 실측 정합·변동 없음) |
 
 > 📦 **과거 사이클 로그**는 `IMPROVEMENT_BACKLOG_ARCHIVE.md`/git 히스토리로 이관됨 (2026-06-10 1차 분리, 2026-06-25 2차 트림 343KB→192KB, 2026-06-25T10:00 3차 트림, 2026-07-03T06:00 4차 트림 288KB→86KB, 2026-07-07T13:00 5차 트림 238KB→78KB, **2026-07-20T19:20 6차 트림 — 07-06~07-17 사이클 로그를 `IMPROVEMENT_BACKLOG_ARCHIVE.md`로 이관: 306KB→80KB, 256KB Read 한도 재확보**). 신규 로그는 계속 이 파일 상단에 추가. 본 파일은 직전 2~3일치(07-18~) 사이클 로그 + 영구 참조 섹션(Approved/New/Auto-fixed/Done/Rejected/FP 카탈로그)만 유지. 이관분은 `IMPROVEMENT_BACKLOG_ARCHIVE.md` 또는 `git log -p -- IMPROVEMENT_BACKLOG.md`로 복원 가능.
+
+> **Area 1 프로덕션 헬스 (2026-07-21T09:17):**
+> - **방법**: `git fetch origin main`(HEAD `26c06b4` = origin/main 일치, 워킹트리 clean, detached). 프록시가 이번 세션도 prod 호스트 직접 curl 차단(exit 56, CONNECT tunnel 403 — 기존 33~46회차와 동일 제약, `cloudflare-observability` MCP 미인증). Playwright MCP를 통한 prod 브라우저 점검도 이번 세션은 도구 승인 게이트에서 거부되어 미수행(console-error 실측 불가, 배포체인 로그로 대체). Area 1 **47회차** — 직전 Area1(`160678d`, 07-19T21:12, 46회차) 이후 `git log 160678d..HEAD`(27커밋): 대부분 Area2~6(47/40/41/40/46회차)이 각자 렌즈로 이미 심층 감사 완료(#546·#547 생성) + 순수 미검증분 = `f9d211a`(법인간 AR을 inter-entity 탭으로 재배치)·`e7fd9c3`(AP 정합성 체크에서도 내부거래 법인 제외)·`ba8a6c6`(주문서 AI추출 진입점 feature-flag OFF). **신규 마이그레이션 0건**(`git diff 160678d..HEAD --stat -- migrations` = 무출력) — (b)-risk 컬럼드리프트 후보 없음.
+> - **🟢 배포체인 = 전수 정상**: `deploy.yml` 최근 15회 실행(07-19T12:33~07-20T18:17) 전부 `conclusion:success`. 최신 커밋(`26c06b4`, run #29767129355) job 단계별 Typecheck(18:17:45~54)/Build(~18:17:58)/Deploy(~18:18:15)/Smoke(18:18:35~49) **전부 success** — 현재 origin/main HEAD가 정상 배포·스모크 통과 상태로 prod에 반영돼 있음 확인. `backup.yml`(Daily D1 Backup) 최근 10회(07-11~07-20) 전부 success, 최신 07-20T18:48. `e2e.yml`은 여전히 `disabled_manually`(재발 아님, 33회차 이래 동일 상태).
+> - **🟢 신규 이슈 0건 — churn 3건 모두 Area1 렌즈(prod 헬스) 무관**: `ba8a6c6`는 `IA_WEB_INTAKE_ENABLED=false` 상수 토글 1개 파일 6줄 변경(코드 100% 보존, 즉시 원복 가능한 feature flag)로 CLAUDE.md "미완성은 dirty WIP 금지, feature flag" 원칙을 그대로 따름 — 배포/스모크 정상 통과 확인됨. `f9d211a`/`e7fd9c3`는 재무 로직 변경(entity별 파생값·내부거래 제외)으로 Area4가 41회차에서 이미 심층 검증해 #547(파생화 사이클의 intercompany 캐시손상 위험)로 포착·issue화 완료 — Area1 렌즈(가용성/CI/헬스)로는 두 커밋 다 배포·스모크 그린이라 추가 발견 없음.
+> - **🟢 backlog↔GitHub sync**: `search_issues(state:open,label:auto-improve)` 실측 **28건**(변동 없음, 신규 이슈 0). done `search_issues(is:closed,reason:completed)`=**448**(변동 없음) · rejected 3(변동 없음).
+> - **🧬 SKILL 강화 없음(신규 패턴 아님)** — 이번 사이클은 신선 churn 중 Area1 고유 관점(배포/CI/헬스)으로 볼 신규 위험이 없었고(마이그 0건이라 #483/#484 (b)-risk류 재현도 없음), Playwright 도구 거부로 인한 브라우저 점검 공백은 기존 "프록시가 prod 직접 접근 차단"(33~46회차) 제약의 연장선.
+> - 신규 이슈 0건, 자동수정 0건(수정 대상 없음), done-sync 변동 없음(new 28·done 448·rejected 3 정합 재확인). 다음 순번 Area 2.
+>
 
 > **Area 6 자기 진화 (2026-07-20T19:20):**
 > - **방법**: `git fetch origin main`(HEAD `5847d13` = origin/main 일치, 워킹트리 clean, detached) 후 `npm ci`(node_modules 0→81). Area 6 **46회차** — 직전 Area6(`95e9db7`, 07-19T01:10, 45회차) 이후 27커밋 전부 Area1~5(46/47/40/41/40회차)가 각자 렌즈로 이미 심층 감사 완료(`5847d13` 자체가 방금 전 Area5 보고 커밋) — 컬럼-diff/XSS bridge 대상 신선 churn 잔여 0. "신선 churn 없음" → open≠unfixed 재검증 + close-pending 실행 + 도구 자체 상태 확인 + 백로그 문서 정합성 점검으로 전환.
